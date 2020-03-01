@@ -6,8 +6,7 @@ ntsvc also loads boot device drivers (fat32.sys, disk.sys, vga.sys, etc)
 ntsvc starts the first NT client smss.exe
 
 Message buffer:
-   One shared 4K page (at least) between every process (NT client and driver) and ntsvc
-   One shared 4K page (at least) between every NT client process and every driver process
+   One shared 4K page (at least) between every process (NT client and driver) and every NT server process (ntsvc and driver)
 
 Object Manager:
   Server side:
