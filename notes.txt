@@ -1,0 +1,42 @@
+Root task is ntsvc, "NT Executive Services"
+ntsvc manages global, privileged data structures, such as global object database
+ntsvc performs privileged data structure manipulations, such as process and thread creation and deletion
+ntsvc loads the client ntdll.dll
+ntsvc also loads boot device drivers (fat32.sys, disk.sys, vga.sys, etc)
+ntsvc starts the first NT client smss.exe
+
+Message buffer:
+   One shared 4K page (at least) between every process (NT client and driver) and ntsvc
+   One shared 4K page (at least) between every NT client process and every driver process
+
+Object Manager:
+  Server side:
+    Maintains global object database "\"
+  Client side:
+    Maintains local view of global object database
+    Maintains client handle table
+
+NtOpenFile():
+  Client side:
+    ntdll.dll queries local object database to determine the file system driver and its relevant capability
+    ntdll.dll sends message to file system driver by invoking said capability
+  File system driver server side:
+    Queries cached file system metadata to determine access rights
+    If cache miss, call cache manager (locally) to retrieve metadata
+    Cache manager will locate the underlying disk/network driver and call its driver process
+    Disk/network driver returns memory page capabilities of requested metadata
+    Cache manager maps memory pages (locally, in file system driver virtual memory space)
+    Reply to client by either granting access (returns handle and possibily capability?) or denying access
+  Disk/network driver server side:
+    Initiate DMA to read data from disk/network
+    Reply with capabilities to memory pages read
+
+NtReadFile():
+  Client side:
+    ntdll.dll calls cache manager to query cache for requested file
+    If cache miss, invoke local file system routine to determine disk/network driver process and relevant capability
+    Invoke said capability and wait on disk/network driver to return (if blocking IO) or return immediately (if async IO)
+    In case of async IO we give a special reply capability of a dedicated "async IO" thread for the driver process to reply to 
+  Server side (disk/network driver):
+    Initiate DMA to read data from disk/network
+    Reply with capabilities to memory pages read
