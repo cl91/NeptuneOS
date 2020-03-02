@@ -1,2 +1,4 @@
+mkdir build
 cd build
-cmake ../ -G Ninja
+cmake ../private/ntsvc -G Ninja
+ninja
