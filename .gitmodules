@@ -1,0 +1,3 @@
+[submodule "sel4"]
+	path = sel4
+	url = https://github.com/seL4/seL4
