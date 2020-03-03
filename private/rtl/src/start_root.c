@@ -10,7 +10,7 @@
  * @TAG(DATA61_BSD)
  */
 #include <sel4/sel4.h>
-#include <sel4runtime/start.h>
+#include <start.h>
 
 /*
  * As this file is only included when we are running a root server,

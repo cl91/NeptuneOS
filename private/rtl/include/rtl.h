@@ -16,7 +16,7 @@
  */
 #include <sel4/sel4.h>
 
-#include <sel4runtime/start.h>
+#include <start.h>
 
 #pragma once
 

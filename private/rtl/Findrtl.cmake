@@ -10,12 +10,12 @@
 # @TAG(DATA61_BSD)
 #
 
-set(SEL4_RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE STRING "")
-mark_as_advanced(SEL4_RUNTIME_DIR)
+set(RUNTIME_LIBRARY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE STRING "")
+mark_as_advanced(RUNTIME_LIBRARY_DIR)
 
-function(sel4runtime_import_project)
-    add_subdirectory(${SEL4_RUNTIME_DIR} sel4runtime)
+function(rtl_import_project)
+    add_subdirectory(${RUNTIME_LIBRARY_DIR} rtl)
 endfunction()
 
 include(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(sel4runtime DEFAULT_MSG SEL4_RUNTIME_DIR)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(rtl DEFAULT_MSG RUNTIME_LIBRARY_DIR)

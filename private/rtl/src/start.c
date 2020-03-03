@@ -10,7 +10,7 @@
  * @TAG(DATA61_BSD)
  */
 #include <sel4/sel4.h>
-#include <sel4runtime.h>
+#include <rtl.h>
 
 void __sel4runtime_start_main(
     int (*main)(),
