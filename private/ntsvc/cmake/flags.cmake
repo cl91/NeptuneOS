@@ -48,6 +48,11 @@ set(
     "${CMAKE_EXE_LINKER_FLAGS} -static -nostdlib -z max-page-size=${LinkPageSize}"
 )
 
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(kernel.elf PRIVATE "-Wno-error=uninitialized")
+    set(CMAKE_AR "llvm-ar" CACHE FILEPATH "Archiver")
+endif()
+
 if(KernelArchX86)
     add_compile_options(-mtls-direct-seg-refs)
 endif()

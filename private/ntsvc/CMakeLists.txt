@@ -20,7 +20,7 @@ add_executable(ntsvc src/main.c)
 add_dependencies(ntsvc sel4 rtl)
 target_link_libraries(ntsvc sel4 sel4_autoconf rtl)
 
-set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_sel4_start -Wl,-e_sel4_start -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/${KernelSel4Arch}.lds ")
+set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_sel4_start -Wl,-e_sel4_start -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 
 # Declare targets for building the final kernel image
 set(
