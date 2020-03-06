@@ -1,16 +1,4 @@
-/*
- * Copyright 2019, Data61
- * Commonwealth Scientific and Industrial Research Organisation (CSIRO)
- * ABN 41 687 119 230.
- *
- * This software may be distributed and modified according to the terms of
- * the BSD 2-Clause license. Note that NO WARRANTY is provided.
- * See "LICENSE_BSD2.txt" for details.
- *
- * @TAG(DATA61_BSD)
- */
 #include <sel4/sel4.h>
-#include <start.h>
 
 /*
  * As this file is only included when we are running a root server,
@@ -35,17 +23,17 @@ extern unsigned int _tbss_end[];
  * This is invoked by _sel4_start, which simply sets up a static stack
  * and passes the argument to us.
  */
-void __sel4_start_root(seL4_BootInfo *boot_info) {
+void KiInitializeSystem(seL4_BootInfo *boot_info) {
+    main();
+}
 
-    char const * const envp[] = {
-        "seL4=1",
-        NULL,
-    };
+int main()
+{
+    char *str = "Hello, World!\n";
 
-    char const * const argv[] = {
-        "rootserver",
-        NULL,
-    };
+    for (char *p = str; *p != '\0'; p++) {
+	seL4_DebugPutChar(*p);
+    }
 
-    __sel4runtime_start_main(main, ARRAY_LENGTH(argv), argv, envp);
+    return 0;
 }

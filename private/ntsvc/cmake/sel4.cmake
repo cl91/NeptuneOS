@@ -22,3 +22,11 @@ include(${KERNEL_PATH}/configs/seL4Config.cmake)
 
 sel4_import_kernel()
 sel4_import_libsel4()
+
+if(KernelSel4Arch STREQUAL "ia32")
+    set(Arch "i386" CACHE STRING "")
+elseif(KernelSel4Arch STREQUAL "x86_64")
+    set(Arch "amd64" CACHE STRING "")
+else()
+    message(FATAL_ERROR "Unsupported architecture: ${KernelSel4Arch}")
+endif()

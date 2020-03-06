@@ -1,6 +1,6 @@
 mkdir -p build/{pe,elf,images}
 cd build/elf
-cmake ../../private/ntsvc -DCMAKE_TOOLCHAIN_FILE=../../sel4/llvm.cmake -DTRIPLE=i686-pc-none-elf -G Ninja
+cmake ../../private/ntsvc -DCMAKE_TOOLCHAIN_FILE=../../sel4/llvm.cmake -DTRIPLE=i686-pc-none-elf -DCMAKE_BUILD_TYPE=Debug -G Ninja
 ninja
 cd ../pe
 echo 'Hello, world!' > hello.txt

@@ -6,9 +6,6 @@ list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../../sel4
     ${CMAKE_CURRENT_LIST_DIR}/../rtl)
 
-# Make build options a visible choice, default it to Debug
-set(CMAKE_BUILD_TYPE "Debug")
-
 find_package(seL4 REQUIRED)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/sel4.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/flags.cmake)
@@ -16,11 +13,22 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/flags.cmake)
 find_package(rtl REQUIRED)
 rtl_import_project()
 
-add_executable(ntsvc src/main.c)
-add_dependencies(ntsvc sel4 rtl)
-target_link_libraries(ntsvc sel4 sel4_autoconf rtl)
+set(configure_string "")
+config_string(
+    Sel4RuntimeRootStack
+    SEL4RUNTIME_ROOT_STACK
+    "Size of the initial stack for the root task"
+    DEFAULT
+    16384
+    UNQUOTE
+)
+add_config_library(ntsvc "${configure_string}")
 
-set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_sel4_start -Wl,-e_sel4_start -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
+add_executable(ntsvc src/ke/${Arch}/entry.S src/ke/init.c)
+add_dependencies(ntsvc sel4 rtl)
+target_link_libraries(ntsvc PUBLIC sel4 sel4_autoconf rtl PRIVATE ntsvc_Config)
+
+set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_KiSystemStartup -Wl,-e_KiSystemStartup -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 
 # Declare targets for building the final kernel image
 set(

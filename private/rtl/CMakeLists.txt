@@ -21,84 +21,16 @@ cmake_minimum_required(VERSION 3.12.0)
 
 project(rtl C)
 
-set(configure_string "")
-config_string(
-    Sel4RuntimeRootStack
-    SEL4RUNTIME_ROOT_STACK
-    "Size of the initial stack for the root task"
-    DEFAULT
-    16384
-    UNQUOTE
-)
-config_string(
-    Sel4RuntimeStaticTLS
-    SEL4RUNTIME_STATIC_TLS
-    "Size of static TLS area for new processes"
-    DEFAULT
-    16384
-    UNQUOTE
-)
-add_config_library(rtl "${configure_string}")
-
-list(APPEND crt_files crt/sel4_arch/${KernelSel4Arch}/crti.S crt/sel4_arch/${KernelSel4Arch}/crtn.S)
-list(APPEND crt_files crt/sel4_arch/${KernelSel4Arch}/crt0.S crt/sel4_arch/${KernelSel4Arch}/sel4_crt0.S)
-
-add_library(rtl_crt_obj OBJECT ${crt_files})
-
-target_include_directories(
-    rtl_crt_obj
-    PRIVATE
-        src
-        src/sel4_arch/${KernelSel4Arch}
-    PUBLIC include
-)
-target_link_libraries(rtl_crt_obj sel4_autoconf rtl_Config)
-add_custom_command(
-    OUTPUT
-        "${CMAKE_BINARY_DIR}/lib/crt0.o" "${CMAKE_BINARY_DIR}/lib/crti.o"
-        "${CMAKE_BINARY_DIR}/lib/crtn.o"
-    DEPENDS rtl_crt_obj
-    COMMAND
-        ${CMAKE_COMMAND} -E env cp "$<TARGET_OBJECTS:rtl_crt_obj>" ${CMAKE_BINARY_DIR}/lib/
-    COMMAND
-        ${CMAKE_COMMAND} -E env mv ${CMAKE_BINARY_DIR}/lib/crt0.S${CMAKE_C_OUTPUT_EXTENSION}
-        ${CMAKE_BINARY_DIR}/lib/crt0.o
-    COMMAND
-        ${CMAKE_COMMAND} -E env mv ${CMAKE_BINARY_DIR}/lib/crti.S${CMAKE_C_OUTPUT_EXTENSION}
-        ${CMAKE_BINARY_DIR}/lib/crti.o
-    COMMAND
-        ${CMAKE_COMMAND} -E env mv ${CMAKE_BINARY_DIR}/lib/crtn.S${CMAKE_C_OUTPUT_EXTENSION}
-        ${CMAKE_BINARY_DIR}/lib/crtn.o COMMAND_EXPAND_LISTS
-)
-add_custom_target(
-    rtl_crt
-    DEPENDS
-        "${CMAKE_BINARY_DIR}/lib/crt0.o" "${CMAKE_BINARY_DIR}/lib/crti.o"
-        "${CMAKE_BINARY_DIR}/lib/crtn.o"
-)
-
-list(
-    APPEND
-        sources
-        src/crt1.c
-        src/start.c
-        src/start_root.c
-        src/init.c
-)
-
 # The runtime library.
-add_library(rtl STATIC ${crt_files} ${sources})
+add_library(rtl STATIC src/memset.c src/memcpy.c)
 target_include_directories(
     rtl
     PRIVATE
         src
-        src/sel4_arch/${KernelSel4Arch}
+	src/${Arch}
     PUBLIC
         include
-        include/sel4_arch/${KernelSel4Arch}
+	include/${Arch}
 )
-add_dependencies(rtl rtl_crt)
 
-# A C library is still needed here to provide memcpy, stdint.h, and
-# elf.h
-target_link_libraries(rtl PUBLIC sel4 sel4_autoconf PRIVATE rtl_Config)
+target_link_libraries(rtl PUBLIC sel4 sel4_autoconf)

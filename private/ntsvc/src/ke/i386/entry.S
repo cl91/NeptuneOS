@@ -9,11 +9,11 @@
  *
  * @TAG(DATA61_BSD)
  */
-#include <rtl/gen_config.h>
+#include <ntsvc/gen_config.h>
 
 .section .text
-.global _sel4_start
-_sel4_start:
+.global _KiSystemStartup
+_KiSystemStartup:
 	leal __stack_top, %esp
 	mov  %esp, %ebp
 	/*
@@ -29,7 +29,7 @@ _sel4_start:
 	sub  $0x8, %esp
 	push %ebp
 	push %ebx
-	call __sel4_start_root
+	call KiInitializeSystem
 
 	/* should not return */
 1:

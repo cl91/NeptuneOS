@@ -2,7 +2,7 @@
 
 int main()
 {
-    char *str = "Hello, World!\n";
+    char *str = "Hello, world from NT client!\n";
 
     for (char *p = str; *p != '\0'; p++) {
 	seL4_DebugPutChar(*p);

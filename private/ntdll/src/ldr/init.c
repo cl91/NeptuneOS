@@ -1,0 +1,4 @@
+void LdrpInitialize()
+{
+    main();
+}
