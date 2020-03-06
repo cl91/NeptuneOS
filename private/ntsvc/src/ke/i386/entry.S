@@ -24,7 +24,7 @@ _KiSystemStartup:
 	 *
 	 * If additional items are pushed onto the stack, the stack must be
 	 * manually re-aligned before before pushing the arguments for the
-	 * call instruction to __sel4_start_c.
+	 * call instruction to KiInitializeSystem.
 	 */
 	sub  $0x8, %esp
 	push %ebp

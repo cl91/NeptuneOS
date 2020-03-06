@@ -12,7 +12,7 @@ _LdrInitializeThunk:
 	 *
 	 * If additional items are pushed onto the stack, the stack must be
 	 * manually re-aligned before the call instruction to
-	 * __sel4_start_c.
+	 * LdrpInitialize.
 	 */
 	subq $0x8, %rsp
 	push %rbp

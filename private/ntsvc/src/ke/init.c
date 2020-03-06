@@ -13,20 +13,6 @@ extern unsigned int _tdata_start[];
 extern unsigned int _tdata_end[];
 extern unsigned int _tbss_end[];
 
-/*
- * The entrypoint into a root task is somewhat different to the
- * entrypoint into a regular process. The kernel does not provide a
- * stack to the root task nor does it conform to System-V ABI; instead
- * it simply starts execution at the entrypoint with the first argument
- * being the pointer to the seL4_BootInfo.
- *
- * This is invoked by _sel4_start, which simply sets up a static stack
- * and passes the argument to us.
- */
-void KiInitializeSystem(seL4_BootInfo *boot_info) {
-    main();
-}
-
 int main()
 {
     char *str = "Hello, World!\n";
@@ -36,4 +22,8 @@ int main()
     }
 
     return 0;
+}
+
+void KiInitializeSystem(seL4_BootInfo *boot_info) {
+    main();
 }
