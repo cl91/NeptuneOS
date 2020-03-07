@@ -29,8 +29,8 @@ add_config_library(ntsvc "${configure_string}")
 
 add_executable(ntsvc src/ke/${Arch}/entry.S src/ke/init.c)
 add_dependencies(ntsvc sel4 rtl)
-target_include_directories(ntsvc PUBLIC inc inc/${Arch})
-target_link_libraries(ntsvc PUBLIC sel4 sel4_autoconf rtl cpio elf PRIVATE ntsvc_Config)
+target_include_directories(ntsvc PRIVATE inc inc/${Arch})
+target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl cpio elf ntsvc_Config)
 
 set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_KiSystemStartup -Wl,-e_KiSystemStartup -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 
