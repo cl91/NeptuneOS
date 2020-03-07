@@ -1,3 +1,5 @@
+#pragma once
+
 #define _Addr int
 #define _Int64 long long
 #define _Reg int

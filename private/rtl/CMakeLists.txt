@@ -22,15 +22,13 @@ cmake_minimum_required(VERSION 3.12.0)
 project(rtl C)
 
 # The runtime library.
-add_library(rtl STATIC src/memset.c src/memcpy.c)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c)
+add_library(rtl STATIC ${SRC})
 target_include_directories(
     rtl
-    PRIVATE
-        src
-	src/${Arch}
     PUBLIC
-        include
-	include/${Arch}
+        inc
+	inc/${Arch}
 )
 
 target_link_libraries(rtl PUBLIC sel4 sel4_autoconf)

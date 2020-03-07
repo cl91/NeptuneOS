@@ -4,7 +4,8 @@ project(ntsvc C ASM)
 
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../../sel4
-    ${CMAKE_CURRENT_LIST_DIR}/../rtl)
+    ${CMAKE_CURRENT_LIST_DIR}/../rtl
+    ${CMAKE_CURRENT_LIST_DIR}/lib)
 
 find_package(seL4 REQUIRED)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/sel4.cmake)
@@ -12,6 +13,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/flags.cmake)
 
 find_package(rtl REQUIRED)
 rtl_import_project()
+
+add_subdirectory(lib)
 
 set(configure_string "")
 config_string(
@@ -26,7 +29,8 @@ add_config_library(ntsvc "${configure_string}")
 
 add_executable(ntsvc src/ke/${Arch}/entry.S src/ke/init.c)
 add_dependencies(ntsvc sel4 rtl)
-target_link_libraries(ntsvc PUBLIC sel4 sel4_autoconf rtl PRIVATE ntsvc_Config)
+target_include_directories(ntsvc PUBLIC inc inc/${Arch})
+target_link_libraries(ntsvc PUBLIC sel4 sel4_autoconf rtl cpio elf PRIVATE ntsvc_Config)
 
 set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_KiSystemStartup -Wl,-e_KiSystemStartup -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 

@@ -1,3 +1,5 @@
+#pragma once
+
 typedef int32_t int_fast16_t;
 typedef int32_t int_fast32_t;
 typedef uint32_t uint_fast16_t;
