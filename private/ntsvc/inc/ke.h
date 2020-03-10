@@ -1,0 +1,1 @@
+void KeBugCheckMsg(const char *);

@@ -25,14 +25,23 @@ config_string(
     16384
     UNQUOTE
 )
+config_string(
+    Sel4RuntimeStaticTLS
+    SEL4RUNTIME_STATIC_TLS
+    "Size of static TLS area for new processes"
+    DEFAULT
+    16384
+    UNQUOTE
+)
 add_config_library(ntsvc "${configure_string}")
 
-add_executable(ntsvc src/ke/${Arch}/entry.S src/ke/init.c)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
+add_executable(ntsvc ${SRC})
 add_dependencies(ntsvc sel4 rtl)
 target_include_directories(ntsvc PRIVATE inc inc/${Arch})
 target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl cpio elf ntsvc_Config)
 
-set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_KiSystemStartup -Wl,-e_KiSystemStartup -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
+set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_KiSystemStartup -Wl,-e_KiSystemStartup ")
 
 # Declare targets for building the final kernel image
 set(

@@ -10,4 +10,7 @@ target_include_directories(
     PUBLIC
         inc
 	inc/${Arch}
+    PRIVATE
+        src/inc
+	src/inc/${Arch}
 )
