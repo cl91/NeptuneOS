@@ -1,11 +1,13 @@
 #include <sel4/sel4.h>
 #include <ldr.h>
+#include <printf.h>
 
 void hello()
 {
-    char *str = "Hello, World!\n";
+    char buf[128];
+    snprintf(buf, sizeof(buf), "Hello, world! Number: %d\n", 69);
 
-    for (char *p = str; *p != '\0'; p++) {
+    for (char *p = buf; *p != '\0'; p++) {
 	seL4_DebugPutChar(*p);
     }
 }
