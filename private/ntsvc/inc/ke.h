@@ -1,1 +1,5 @@
-void KeBugCheckMsg(const char *);
+#pragma once
+
+#include <nt.h>
+
+VOID KeBugCheckMsg(PCSTR Format, ...);

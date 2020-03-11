@@ -10,6 +10,7 @@ target_include_directories(
     PUBLIC
         inc
 	inc/${Arch}
+	../../public/sdk/inc
     PRIVATE
         src/inc
 	src/inc/${Arch}

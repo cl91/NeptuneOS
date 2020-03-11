@@ -1,15 +1,15 @@
-#include <sel4/sel4.h>
+#include <stdarg.h>
+#include <printf.h>
 #include <ke.h>
-#include <stddef.h>
+#include <rtl.h>
 
-void __assert_fail(const char *str, const char *file, int line, const char *function)
+VOID KeBugCheckMsg(PCSTR Format, ...)
 {
-    KeBugCheckMsg(str);
-}
+    va_list arglist;
+    va_start(arglist, Format);
+    vDbgPrint(Format, arglist);
+    va_end(arglist);
 
-void KeBugCheckMsg(const char *msg)
-{
-    for (const char *p = msg; p != NULL && *p != '\0'; p++) {
-	seL4_DebugPutChar(*p);
-    }
+    // Loop forever
+    while (1);
 }

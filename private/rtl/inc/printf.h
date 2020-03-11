@@ -1,5 +1,6 @@
 #pragma once
 #include <stdarg.h>
+#include <stdint.h>
 
 int scnprintf(char *buf, size_t size, const char *fmt, ...);
 int snprintf(char *buf, size_t size, const char *fmt, ...);
