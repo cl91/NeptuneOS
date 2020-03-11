@@ -1,6 +1,5 @@
 # Kernel configuration
 set(KernelPlatform "pc99" CACHE STRING "")
-set(KernelSel4Arch "ia32" CACHE STRING "")
 set(KernelVerificationBuild OFF CACHE BOOL "")
 set(KernelMaxNumNodes "1" CACHE STRING "")
 set(KernelOptimisation "-O2" CACHE STRING "")

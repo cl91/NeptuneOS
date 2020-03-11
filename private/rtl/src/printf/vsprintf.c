@@ -142,11 +142,18 @@ static char *put_dec_full8(char *buf, unsigned r)
 
 static char *put_dec(char *buf, unsigned long long n)
 {
-    if (n >= 100*1000*1000)
-	buf = put_dec_full8(buf, do_div(n, 100*1000*1000));
+    unsigned int base = 100*1000*1000;
+    if (n >= base) {
+	unsigned int rem = n % base;
+	n /= base;
+	buf = put_dec_full8(buf, rem);
+    }
     /* 1 <= n <= 1.6e11 */
-    if (n >= 100*1000*1000)
-	buf = put_dec_full8(buf, do_div(n, 100*1000*1000));
+    if (n >= base) {
+	unsigned int rem = n % base;
+	n /= base;
+	buf = put_dec_full8(buf, rem);
+    }
     /* 1 <= n < 1e8 */
     return put_dec_trunc8(buf, n);
 }

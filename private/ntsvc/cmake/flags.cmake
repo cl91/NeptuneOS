@@ -38,6 +38,7 @@ add_compile_options(
     -fno-stack-protector
     -fno-asynchronous-unwind-tables
     -ftls-model=local-exec
+    -Wno-incompatible-library-redeclaration
 )
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
@@ -50,6 +51,7 @@ set(
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(kernel.elf PRIVATE "-Wno-error=uninitialized")
+    target_compile_options(kernel.elf PRIVATE "-Wno-error=shift-negative-value")
     set(CMAKE_AR "llvm-ar" CACHE FILEPATH "Archiver")
 endif()
 
