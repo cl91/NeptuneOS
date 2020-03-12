@@ -41,7 +41,7 @@ add_dependencies(ntsvc sel4 rtl)
 target_include_directories(ntsvc PRIVATE inc inc/${Arch})
 target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl cpio elf ntsvc_Config)
 
-set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_KiSystemStartup -Wl,-e_KiSystemStartup ")
+set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 
 # Declare targets for building the final kernel image
 set(
