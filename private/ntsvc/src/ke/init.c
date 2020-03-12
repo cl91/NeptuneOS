@@ -5,7 +5,7 @@
 #include <rtl.h>
 #include <ke.h>
 
-BOOT_ENVIRONMENT BootEnvironment;
+static BOOT_ENVIRONMENT BootEnvironment;
 
 PBOOT_ENVIRONMENT KeGetBootEnvironment()
 {
@@ -50,10 +50,24 @@ static void KiDumpUserImageFramesInfo()
     char buf[64];
 
     DbgPrintFunc();
-    for (seL4_Word cap = slots.start; cap < slots.end; cap++) {
+    for (seL4_CPtr cap = slots.start; cap < slots.end; cap++) {
 	seL4_X86_Page_GetAddress_t addr = seL4_X86_Page_GetAddress(cap);
 	DbgPrint("    frame cap = %zd (%zxh) paddr = %p error = %zd\n",
 		 cap, cap, addr.paddr, addr.error);
+    }
+}
+
+static void KiDumpUntypedMemoryInfo()
+{
+    seL4_BootInfo *bootinfo = KeGetBootEnvironment()->BootInfo;
+    seL4_SlotRegion untyped = bootinfo->untyped;
+
+    DbgPrintFunc();
+    for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
+        seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
+        DbgPrint("    %s cap = %zd (%zxh) paddr = %p log2(size) = %d\n",
+		 desc->isDevice ? "device untyped" : "untyped",
+		 cap, cap, desc->paddr, desc->sizeBits);
     }
 }
 
@@ -61,6 +75,7 @@ static void KiDumpBootInfoAll()
 {
     KiDumpBootInfoStruct();
     KiDumpUserImageFramesInfo();
+    KiDumpUntypedMemoryInfo();
 }
 
 void KiInitBootEnvironment(seL4_BootInfo *bootinfo) {
