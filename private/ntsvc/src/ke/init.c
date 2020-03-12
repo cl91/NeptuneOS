@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <printf.h>
 #include <sel4/sel4.h>
 #include <ldr.h>
 #include <rtl.h>
@@ -15,8 +16,8 @@ static char *KiDumpBootInfoSlotRegion(char *buf,
 				      size_t size,
 				      seL4_SlotRegion *sl)
 {
-    snprintf(buf, size, "slots [%p, %p)",
-	     (uintptr_t) sl->start, (uintptr_t) sl->end);
+    snprintf(buf, size, "slots [%zxh, %zxh) == [%zd, %zd)",
+	     sl->start, sl->end, sl->start, sl->end);
     return buf;
 }
 
