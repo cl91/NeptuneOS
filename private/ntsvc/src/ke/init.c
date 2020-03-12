@@ -21,12 +21,12 @@ static char *KiDumpBootInfoSlotRegion(char *buf,
     return buf;
 }
 
-static void KiDumpBootInfo()
+static void KiDumpBootInfoStruct()
 {
     seL4_BootInfo *bootinfo = KeGetBootEnvironment()->BootInfo;
     char buf[64];
 
-    DbgPrint("KiDumpBootInfo:\n");
+    DbgPrintFunc();
     DbgPrint("    bootinfo vaddr = %p\n", bootinfo);
     DbgPrint("    extraLen = %zd\n", bootinfo->extraLen);
     DbgPrint("    nodeID = %zd\n", bootinfo->nodeID);
@@ -44,6 +44,25 @@ static void KiDumpBootInfo()
     DbgPrint("    untyped = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->untyped));
 }
 
+static void KiDumpUserImageFramesInfo()
+{
+    seL4_SlotRegion slots = KeGetBootEnvironment()->BootInfo->userImageFrames;
+    char buf[64];
+
+    DbgPrintFunc();
+    for (seL4_Word cap = slots.start; cap < slots.end; cap++) {
+	seL4_X86_Page_GetAddress_t addr = seL4_X86_Page_GetAddress(cap);
+	DbgPrint("    frame cap = %zd (%zxh) paddr = %p error = %zd\n",
+		 cap, cap, addr.paddr, addr.error);
+    }
+}
+
+static void KiDumpBootInfoAll()
+{
+    KiDumpBootInfoStruct();
+    KiDumpUserImageFramesInfo();
+}
+
 void KiInitBootEnvironment(seL4_BootInfo *bootinfo) {
     BootEnvironment.BootInfo = bootinfo;
     BootEnvironment.InitialThreadIpcBuffer = bootinfo->ipcBuffer;
@@ -52,6 +71,6 @@ void KiInitBootEnvironment(seL4_BootInfo *bootinfo) {
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitBootEnvironment(bootinfo);
-    KiDumpBootInfo();
+    KiDumpBootInfoAll();
     while (1);
 }
