@@ -6,6 +6,7 @@ SEL4_ARCH=ia32
 mkdir -p build/{pe,elf,images}
 cd build/elf
 cmake ../../private/ntsvc -DCMAKE_TOOLCHAIN_FILE=../../sel4/llvm.cmake -DTRIPLE=${CLANG_ARCH}-pc-none-elf -DCMAKE_BUILD_TYPE=Debug -DKernelSel4Arch=$SEL4_ARCH -G Ninja
+#cmake ../../private/ntsvc -DCMAKE_TOOLCHAIN_FILE=../../sel4/gcc.cmake -DTRIPLE=${CLANG_ARCH}-pc-none-elf -DCMAKE_BUILD_TYPE=Debug -DKernelSel4Arch=$SEL4_ARCH -G Ninja
 ninja
 cd ../pe
 echo 'Hello, world!' > hello.txt

@@ -6,4 +6,4 @@
 VOID vDbgPrint(PCSTR Format, va_list args);
 VOID DbgPrint(PCSTR Format, ...);
 
-#define DbgPrintFunc() DbgPrint("%s:\n", __func__)
+#define DbgPrintFunc() DbgPrint("\n%s:\n", __func__)

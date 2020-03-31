@@ -36,6 +36,8 @@ _KiSystemStartup:
 	jmp  1b
 
 .section .bss
+.global __stack_base
+.global __stack_top
 __stack_base:
 	.align 16
 	.space CONFIG_NTSVC_ROOT_STACK

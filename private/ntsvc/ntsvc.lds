@@ -3,7 +3,34 @@ ENTRY(_KiSystemStartup)
 SECTIONS
 {
   . = 0x00100000;
-  .text : { *(.text) }
-  .data : { *(.data) }
-  .bss : { *(.bss) }
+  .text :
+    {
+        _text_start = . ;
+	*(.text)
+	_text_end = . ;
+    }
+  .data :
+    {
+        _data_start = . ;
+	*(.data)
+	_data_end = . ;
+    }
+  .bss :
+    {
+        _bss_start = . ;
+	*(.bss)
+	_bss_end = . ;
+    }
+  .tdata :
+    {
+        _tdata_start = . ;
+        *(.tdata .tdata.* .gnu.linkonce.td.*)
+        _tdata_end = . ;
+    }
+  .tbss :
+    {
+        _tbss_start = . ;
+        *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon)
+        _tbss_end = . ;
+    }
 }

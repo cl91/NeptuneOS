@@ -2,11 +2,54 @@
 #include <printf.h>
 #include <sel4/sel4.h>
 #include <ntsvc.h>
+#include <thread.h>
+
+// Minimum alignment for TLS across all platforms.
+#define MIN_ALIGN_BYTES 16
+#define MIN_ALIGNED __attribute__((aligned (MIN_ALIGN_BYTES)))
+
+// Static TLS for initial thread.
+static char STATIC_TLS_AREA[4096] MIN_ALIGNED = {};
+
+extern char __stack_base[];
+extern char __stack_top[];
+extern char _text_start[];
+extern char _text_end[];
+extern char _data_start[];
+extern char _data_end[];
+extern char _bss_start[];
+extern char _bss_end[];
+extern char _tbss_start[];
+extern char _tbss_end[];
+extern char _tdata_start[];
+extern char _tdata_end[];
 
 static void KiInitRootThread(seL4_BootInfo *bootinfo)
 {
-    seL4_SetTLSBase(bootinfo->ipcBuffer);
+    uintptr_t tls_base = &STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
+    uintptr_t *tls_ptr = (uintptr_t *)(tls_base);
+    *tls_ptr = tls_base;
+    sel4runtime_set_tls_base(tls_base);
     __sel4_ipc_buffer = bootinfo->ipcBuffer;
+
+    DbgPrintFunc();
+    DbgPrint("_text_start = %p\n", _text_start);
+    DbgPrint("_text_end = %p\n", _text_end);
+    DbgPrint("_data_start = %p\n", _data_start);
+    DbgPrint("_data_end = %p\n", _data_end);
+    DbgPrint("_bss_start = %p\n", _bss_start);
+    DbgPrint("_bss_end = %p\n", _bss_end);
+    DbgPrint("_tbss_start = %p\n", _tbss_start);
+    DbgPrint("_tbss_end = %p\n", _tbss_end);
+    DbgPrint("_tdata_start = %p\n", _tdata_start);
+    DbgPrint("_tdata_end = %p\n", _tdata_end);
+    DbgPrint("__stack_base = %p\n", __stack_base);
+    DbgPrint("__stack_top = %p\n", __stack_top);
+    DbgPrint("static tls area start = %p\n", STATIC_TLS_AREA);
+    DbgPrint("desired tls base = %p\n", tls_base);
+    DbgPrint("tls base = %p\n", sel4runtime_get_tls_base());
+    DbgPrint("&__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
+    DbgPrint("__sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
 static BOOT_ENVIRONMENT BootEnvironment;
