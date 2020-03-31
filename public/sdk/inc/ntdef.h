@@ -38,6 +38,11 @@ typedef CONST CHAR *PCSTR;
 typedef wchar_t WCHAR;
 typedef WCHAR *PWCHAR, *PWSTR;
 
+typedef UCHAR BOOLEAN;
+typedef BOOLEAN *PBOOLEAN;
+#define TRUE (1)
+#define FALSE (0)
+
 typedef short SHORT;
 typedef unsigned short USHORT;
 typedef SHORT *PSHORT;
@@ -56,13 +61,6 @@ typedef LONG HRESULT;
 #define IN
 #define OUT
 #define OPTIONAL
-
-typedef LONG NTSTATUS;
-typedef NTSTATUS *PNTSTATUS;
-#define NT_SUCCESS(Status)	(((NTSTATUS)(Status)) >= 0)
-#define NT_INFORMATION(Status) (((ULONG)(Status) >> 30) == 1)
-#define NT_WARNING(Status)	(((ULONG)(Status) >> 30) == 2)
-#define NT_ERROR(Status)	(((ULONG)(Status) >> 30) == 3)
 
 typedef struct _UNICODE_STRING
 {
@@ -93,3 +91,85 @@ typedef PSTRING POEM_STRING;
 typedef CONST STRING* PCOEM_STRING;
 typedef STRING CANSI_STRING;
 typedef PSTRING PCANSI_STRING;
+
+typedef struct _LIST_ENTRY
+{
+    struct _LIST_ENTRY *Flink;
+    struct _LIST_ENTRY *Blink;
+} LIST_ENTRY, *PLIST_ENTRY;
+
+/* List Functions */
+static inline
+VOID InitializeListHead(IN PLIST_ENTRY ListHead)
+{
+    ListHead->Flink = ListHead->Blink = ListHead;
+}
+
+static inline
+VOID InsertHeadList(IN PLIST_ENTRY ListHead,
+		    IN PLIST_ENTRY Entry)
+{
+    PLIST_ENTRY OldFlink;
+    OldFlink = ListHead->Flink;
+    Entry->Flink = OldFlink;
+    Entry->Blink = ListHead;
+    OldFlink->Blink = Entry;
+    ListHead->Flink = Entry;
+}
+
+static inline
+VOID InsertTailList(IN PLIST_ENTRY ListHead,
+		    IN PLIST_ENTRY Entry)
+{
+    PLIST_ENTRY OldBlink;
+    OldBlink = ListHead->Blink;
+    Entry->Flink = ListHead;
+    Entry->Blink = OldBlink;
+    OldBlink->Flink = Entry;
+    ListHead->Blink = Entry;
+}
+
+static inline
+BOOLEAN IsListEmpty(IN const LIST_ENTRY * ListHead)
+{
+    return (BOOLEAN)(ListHead->Flink == ListHead);
+}
+
+static inline
+BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
+{
+    PLIST_ENTRY OldFlink;
+    PLIST_ENTRY OldBlink;
+
+    OldFlink = Entry->Flink;
+    OldBlink = Entry->Blink;
+    OldFlink->Blink = OldBlink;
+    OldBlink->Flink = OldFlink;
+    return (BOOLEAN)(OldFlink == OldBlink);
+}
+
+static inline
+PLIST_ENTRY RemoveHeadList(IN PLIST_ENTRY ListHead)
+{
+    PLIST_ENTRY Flink;
+    PLIST_ENTRY Entry;
+
+    Entry = ListHead->Flink;
+    Flink = Entry->Flink;
+    ListHead->Flink = Flink;
+    Flink->Blink = ListHead;
+    return Entry;
+}
+
+static inline
+PLIST_ENTRY RemoveTailList(IN PLIST_ENTRY ListHead)
+{
+    PLIST_ENTRY Blink;
+    PLIST_ENTRY Entry;
+
+    Entry = ListHead->Blink;
+    Blink = Entry->Blink;
+    ListHead->Blink = Blink;
+    Blink->Flink = ListHead;
+    return Entry;
+}

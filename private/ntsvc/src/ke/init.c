@@ -1,9 +1,13 @@
 #include <stdint.h>
 #include <printf.h>
 #include <sel4/sel4.h>
-#include <ldr.h>
-#include <rtl.h>
-#include <ke.h>
+#include <ntsvc.h>
+
+static void KiInitRootThread(seL4_BootInfo *bootinfo)
+{
+    seL4_SetTLSBase(bootinfo->ipcBuffer);
+    __sel4_ipc_buffer = bootinfo->ipcBuffer;
+}
 
 static BOOT_ENVIRONMENT BootEnvironment;
 
@@ -82,10 +86,15 @@ void KiInitBootEnvironment(seL4_BootInfo *bootinfo) {
     BootEnvironment.BootInfo = bootinfo;
     BootEnvironment.InitialThreadIpcBuffer = bootinfo->ipcBuffer;
     BootEnvironment.InitialThreadTcb = seL4_CapInitThreadTCB;
+    BootEnvironment.InitialCapSpaceRoot = seL4_CapInitThreadCNode;
+    BootEnvironment.InitialCapSpaceStart = bootinfo->empty.start;
+    BootEnvironment.InitialCapSpaceEnd = bootinfo->empty.end;
 }
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
+    KiInitRootThread(bootinfo);
     KiInitBootEnvironment(bootinfo);
     KiDumpBootInfoAll();
+    MmInitSystem();
     while (1);
 }

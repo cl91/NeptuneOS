@@ -37,5 +37,5 @@ _KiSystemStartup:
 .section .bss
 __stack_base:
 	.align 16
-	.space CONFIG_SEL4RUNTIME_ROOT_STACK
+	.space CONFIG_NTSVC_ROOT_STACK
 __stack_top:

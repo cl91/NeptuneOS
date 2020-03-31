@@ -9,7 +9,7 @@ find_package(rtl REQUIRED)
 rtl_import_project()
 
 add_executable(ntdll src/main.c src/ldr/${Arch}/entry.c src/ldr/init.c)
-add_dependencies(ntdll rtl)
-target_link_libraries(ntdll PUBLIC rtl)
+add_dependencies(ntdll rtl ntos)
+target_link_libraries(ntdll PUBLIC rtl ntos)
 
 set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-u_LdrInitializeThunk -Wl,-e_LdrInitializeThunk ")

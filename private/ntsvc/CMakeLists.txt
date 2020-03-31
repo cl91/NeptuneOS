@@ -5,6 +5,7 @@ project(ntsvc C ASM)
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../../sel4
     ${CMAKE_CURRENT_LIST_DIR}/../rtl
+    ${CMAKE_CURRENT_LIST_DIR}/../ntos
     ${CMAKE_CURRENT_LIST_DIR}/lib)
 
 find_package(seL4 REQUIRED)
@@ -14,32 +15,27 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/flags.cmake)
 find_package(rtl REQUIRED)
 rtl_import_project()
 
+find_package(ntos REQUIRED)
+ntos_import_project()
+
 add_subdirectory(lib)
 
 set(configure_string "")
 config_string(
-    Sel4RuntimeRootStack
-    SEL4RUNTIME_ROOT_STACK
-    "Size of the initial stack for the root task"
+    NtsvcRootStack
+    NTSVC_ROOT_STACK
+    "Size of the initial stack for the ntsvc root thread"
     DEFAULT
-    16384
-    UNQUOTE
-)
-config_string(
-    Sel4RuntimeStaticTLS
-    SEL4RUNTIME_STATIC_TLS
-    "Size of static TLS area for new processes"
-    DEFAULT
-    16384
+    524288
     UNQUOTE
 )
 add_config_library(ntsvc "${configure_string}")
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
 add_executable(ntsvc ${SRC})
-add_dependencies(ntsvc sel4 rtl)
+add_dependencies(ntsvc sel4 rtl ntos)
 target_include_directories(ntsvc PRIVATE inc inc/${Arch})
-target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl cpio elf ntsvc_Config)
+target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl ntos cpio elf ntsvc_Config)
 
 set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 

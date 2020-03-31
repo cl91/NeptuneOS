@@ -4,3 +4,4 @@
 
 #define UNICODE
 #include <ntdef.h>
+#include <ntstatus.h>
