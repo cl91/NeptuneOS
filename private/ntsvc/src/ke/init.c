@@ -24,6 +24,13 @@ extern char _tbss_end[];
 extern char _tdata_start[];
 extern char _tdata_end[];
 
+/* tls_base[0-sizeof(uintptr_t)] must be a pointer to tls_base
+ *
+ * For GNU systems the base of gs segment (on i386) is set to
+ * tls_base. Access to TLS variables can then be done simply
+ * with %gs:-offset. However for some reason clang does not
+ * implement this (or needs some kind of flag).
+ */
 static void KiInitRootThread(seL4_BootInfo *bootinfo)
 {
     uintptr_t tls_base = &STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
