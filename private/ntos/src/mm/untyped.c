@@ -15,7 +15,7 @@ NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
     Dest1->Log2Size = Src->Log2Size - 1;
     Dest2->Log2Size = Src->Log2Size - 1;
 
-    MWORD NewCap;
+    MWORD NewCap = 0;
     RET_IF_ERR(MmCapSpaceAllocCaps(CapSpace, &NewCap, 2));
 
     MWORD error = seL4_Untyped_Retype(Src->Cap,
@@ -26,7 +26,6 @@ NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
 				      0, // node_depth
 				      NewCap, // node_offset
 				      2);
-
     if (error != seL4_NoError) {
 	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap+1));
 	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap));
@@ -36,5 +35,7 @@ NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
     Src->Split = TRUE;
     Dest1->Split = FALSE;
     Dest2->Split = FALSE;
+    Dest1->Cap = NewCap;
+    Dest2->Cap = NewCap+1;
     return STATUS_SUCCESS;
 }

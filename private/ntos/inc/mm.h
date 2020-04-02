@@ -32,6 +32,18 @@ typedef struct _UNTYPED_DESCRIPTOR {
     BOOLEAN Split;
 } UNTYPED_DESCRIPTOR, *PUNTYPED_DESCRIPTOR;
 
+typedef struct _PAGE_DESCRIPTOR {
+    PUNTYPED_DESCRIPTOR Untyped;
+    PCAPSPACE_DESCRIPTOR CapSpace;
+    MWORD Cap;
+    MWORD VSpaceCap;
+    LONG Log2Size;
+    BOOLEAN Mapped;
+    MWORD VirtualAddr;
+    seL4_CapRights_t Rights;
+    seL4_X86_VMAttributes Attributes;
+} PAGE_DESCRIPTOR, PPAGE_DESCRIPTOR;
+
 NTSTATUS MmCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
 			     OUT MWORD *StartCap,
 			     IN LONG NumberRequested);
@@ -48,3 +60,5 @@ MmCapSpaceAllocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
 NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR SrcUntyped,
 			OUT PUNTYPED_DESCRIPTOR DestUntyped1,
 			OUT PUNTYPED_DESCRIPTOR DestUntyped2);
+
+NTSTATUS MmMapTopLevelPage(PPAGE_DESCRIPTOR Page);

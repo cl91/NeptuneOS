@@ -2,6 +2,7 @@
 
 #include <sel4/sel4.h>
 typedef seL4_Word MWORD;
+#define MWORD_BITS	((sizeof(MWORD))*8)
 
 /* NTSTATUS Bits:
  * 0--15   Status code

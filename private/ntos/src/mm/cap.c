@@ -1,3 +1,5 @@
+/* Capability space and CNode management */
+
 #include <ntos.h>
 
 /* Allocate a continuous range of capability slots */
@@ -18,7 +20,7 @@ NTSTATUS MiCNodeAllocCaps(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
     return STATUS_SUCCESS;
 }
 
-/* Perform a depth-first search of all free cap slots
+/* Perform a depth-first search of free (continuous) cap slots
  * Check first child first, then current cnode, then all other children.
  */
 NTSTATUS MiCNodeAllocCapsRecursive(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,

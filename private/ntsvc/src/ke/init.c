@@ -3,6 +3,7 @@
 #include <sel4/sel4.h>
 #include <ntsvc.h>
 #include <thread.h>
+#include "ki.h"
 
 // Minimum alignment for TLS across all platforms.
 #define MIN_ALIGN_BYTES 16
@@ -144,5 +145,6 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitBootEnvironment(bootinfo);
     KiDumpBootInfoAll();
     MmInitSystem();
+    KiInitVga();
     while (1);
 }
