@@ -135,8 +135,6 @@ static void KiDumpBootInfoAll()
 void KiInitBootEnvironment(seL4_BootInfo *bootinfo) {
     BootEnvironment.BootInfo = bootinfo;
     BootEnvironment.InitialThreadIpcBuffer = bootinfo->ipcBuffer;
-    BootEnvironment.InitialThreadTcb = seL4_CapInitThreadTCB;
-    BootEnvironment.InitialCapSpaceRoot = seL4_CapInitThreadCNode;
     BootEnvironment.InitialCapSpaceStart = bootinfo->empty.start;
     BootEnvironment.InitialCapSpaceEnd = bootinfo->empty.end;
 }

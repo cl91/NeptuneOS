@@ -1,18 +1,29 @@
 #pragma once
 
 #include <nt.h>
-#include <sel4/sel4.h>
+#include "ntosdef.h"
 
+/* Describes the entire CapSpace */
 typedef struct _CAPSPACE_DESCRIPTOR {
-    seL4_Word Root;
-    seL4_Word Log2Size;
-    LONG TotalLevels;		/* Total levels of sub-spaces */
-    struct {
-	LIST_ENTRY ListEntry;
-	seL4_Word Start;
-	LONG Number;		/* Indicate range [Start,Start+Number) */
-    } FreeList;
+    MWORD Root;
+    struct _CAPSPACE_CNODE_DESCRIPTOR *RootCNode;
 } CAPSPACE_DESCRIPTOR, *PCAPSPACE_DESCRIPTOR;
+
+/* Describes a single CNode */
+typedef struct _CAPSPACE_CNODE_DESCRIPTOR {
+    PCAPSPACE_DESCRIPTOR CapSpace;
+    MWORD Log2Size;
+    struct _CAPSPACE_CNODE_DESCRIPTOR *FirstChild;
+    LIST_ENTRY SiblingList;
+    enum { CAPSPACE_TYPE_TAIL_DEALLOC_ONLY, CAPSPACE_TYPE_ALLOW_DEALLOC } Policy;
+    union {
+	PUCHAR UsedMap;
+	struct {
+	    MWORD StartCap;  /* Full CPtr to the starting cap */
+	    LONG Number;     /* Indicate range [Start,Start+Number) */
+	} FreeRange;
+    };
+} CAPSPACE_CNODE_DESCRIPTOR, *PCAPSPACE_CNODE_DESCRIPTOR;
 
 typedef struct _UNTYPED_DESCRIPTOR {
     PCAPSPACE_DESCRIPTOR CapSpace;
@@ -21,12 +32,18 @@ typedef struct _UNTYPED_DESCRIPTOR {
     BOOLEAN Split;
 } UNTYPED_DESCRIPTOR, *PUNTYPED_DESCRIPTOR;
 
-NTSTATUS MmCapSpaceAllocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
-			    OUT seL4_Word *CapStart,
-			    IN LONG NumberRequested);
+NTSTATUS MmCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
+			     OUT MWORD *StartCap,
+			     IN LONG NumberRequested);
 NTSTATUS MmCapSpaceDeallocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
-			      IN seL4_Word CapStart,
-			      IN LONG NumberRequested);
+			      IN MWORD Cap);
+
+static inline NTSTATUS
+MmCapSpaceAllocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
+		   OUT MWORD *Cap)
+{
+    return MmCapSpaceAllocCaps(CapSpace, Cap, 1);
+}
 
 NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR SrcUntyped,
 			OUT PUNTYPED_DESCRIPTOR DestUntyped1,

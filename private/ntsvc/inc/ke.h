@@ -6,9 +6,7 @@
 
 typedef struct {
     seL4_BootInfo *BootInfo;
-    seL4_CPtr InitialThreadTcb;
     seL4_IPCBuffer *InitialThreadIpcBuffer;
-    seL4_CPtr InitialCapSpaceRoot;
     seL4_CPtr InitialCapSpaceStart;
     seL4_CPtr InitialCapSpaceEnd;
     elf_t BootElfImage;

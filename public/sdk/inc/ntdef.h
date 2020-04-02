@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __i386__
 #define _M_IX86
@@ -50,8 +51,8 @@ typedef USHORT *PUSHORT;
 
 typedef int32_t LONG;
 typedef uint32_t ULONG;
-typedef LONG *PLONG;
-typedef ULONG *PULONG;
+typedef LONG *PLONG, *LONG_PTR;
+typedef ULONG *PULONG, *ULONG_PTR;
 
 typedef PVOID HANDLE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
@@ -97,6 +98,10 @@ typedef struct _LIST_ENTRY
     struct _LIST_ENTRY *Flink;
     struct _LIST_ENTRY *Blink;
 } LIST_ENTRY, *PLIST_ENTRY;
+
+/* Returns the base address of a structure from a structure member */
+#define CONTAINING_RECORD(address, type, field)				\
+    ((type *)(((ULONG_PTR)address) - (ULONG_PTR)(&(((type *)0)->field))))
 
 /* List Functions */
 static inline

@@ -15,22 +15,21 @@ NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
     Dest1->Log2Size = Src->Log2Size - 1;
     Dest2->Log2Size = Src->Log2Size - 1;
 
-    seL4_Word NewCap;
-    RET_IF_ERR(MmCapSpaceAllocCap(CapSpace, &NewCap, 2));
-    DbgPrint("src cap = %zd, dest cap = %zd, src log2size = %zd, dest log2size = %zd, capspace root = %zd\n",
-	     Src->Cap, NewCap, Src->Log2Size, Dest1->Log2Size, CapSpace->Root);
+    MWORD NewCap;
+    RET_IF_ERR(MmCapSpaceAllocCaps(CapSpace, &NewCap, 2));
 
-    seL4_Word error = seL4_Untyped_Retype(Src->Cap,
-					  seL4_UntypedObject,
-					  Dest1->Log2Size,
-					  CapSpace->Root,
-					  0, // node_index
-					  0, // node_depth
-					  NewCap, // node_offset
-					  2);
+    MWORD error = seL4_Untyped_Retype(Src->Cap,
+				      seL4_UntypedObject,
+				      Dest1->Log2Size,
+				      CapSpace->Root,
+				      0, // node_index
+				      0, // node_depth
+				      NewCap, // node_offset
+				      2);
 
     if (error != seL4_NoError) {
-	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap, 2));
+	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap+1));
+	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap));
 	return SEL4_ERROR(error);
     }
 

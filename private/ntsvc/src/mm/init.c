@@ -1,15 +1,26 @@
 #include <ntsvc.h>
 
-CAPSPACE_DESCRIPTOR MiCapSpaceDescriptor;
+static CAPSPACE_DESCRIPTOR MiCapSpaceDescriptor;
+static CAPSPACE_CNODE_DESCRIPTOR MiInitCNodeDescriptor =
+    {
+     .CapSpace = &MiCapSpaceDescriptor,
+     .Log2Size = CONFIG_ROOT_CNODE_SIZE_BITS,
+     .FirstChild = NULL,
+     .Policy = CAPSPACE_TYPE_TAIL_DEALLOC_ONLY
+    };
+
+static CAPSPACE_DESCRIPTOR MiCapSpaceDescriptor =
+    {
+     .Root = seL4_CapInitThreadCNode,
+     .RootCNode = &MiInitCNodeDescriptor
+    };
 
 static void MiInitCapSpace()
 {
-    MiCapSpaceDescriptor.Root = KeGetBootEnvironment()->InitialCapSpaceRoot;
-    MiCapSpaceDescriptor.Log2Size = CONFIG_ROOT_CNODE_SIZE_BITS;
-    MiCapSpaceDescriptor.TotalLevels = 1;
-    InitializeListHead(&MiCapSpaceDescriptor.FreeList.ListEntry);
-    MiCapSpaceDescriptor.FreeList.Start = KeGetBootEnvironment()->InitialCapSpaceStart;
-    MiCapSpaceDescriptor.FreeList.Number = KeGetBootEnvironment()->InitialCapSpaceEnd - KeGetBootEnvironment()->InitialCapSpaceStart;
+    InitializeListHead(&MiInitCNodeDescriptor.SiblingList);
+    MiInitCNodeDescriptor.FreeRange.StartCap = KeGetBootEnvironment()->InitialCapSpaceStart;
+    MiInitCNodeDescriptor.FreeRange.Number = KeGetBootEnvironment()->InitialCapSpaceEnd
+	- KeGetBootEnvironment()->InitialCapSpaceStart;
 }
 
 void MmInitSystem()
@@ -23,4 +34,3 @@ void MmInitSystem()
     Src.Split = FALSE;
     DbgPrint("Status = %zx\n", MmSplitUntyped(&Src, &Dest1, &Dest2));
 }
-
