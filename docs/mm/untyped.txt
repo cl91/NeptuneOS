@@ -1,0 +1,35 @@
+// Data structure and algorithm for cap space, untyped, and initial heap management
+// Executive Pools start at 0x80000000 (x86), the start of "kernel space"
+
+CapSpaceDescriptor { CNodeDescriptor { ... } }
+
+CapTreeNode { }
+CapTree { LIST_ENTRY SiblingList; CapTreeNode Node; }
+CapForest { CapSpaceDescriptor CapSpace; CapTree Tree; }
+
+MM_INIT_INFO_CLASS { (InitUntyped, Log2Size) }
+
+MM_INFORMATION_CLASS @ 0x80000000
+
+MmRegisterClass ( MM_INIT_INFO_CLASS )
+/* Map initial heap and build Mm book keeping data structures */
+{
+x86: { if InitUntyped > 4MiB {
+           SplitUntyped to 4MiB
+           Map 4MiB @ 0x80000000
+       } else if (InitUntyped >= 1Page + 1PD) {
+           SplitUntyped -> 1Page + 1PD
+           Map PD @ 0x80000000
+           Map Page @ 0x80000000
+       } else {
+           return Error No Memory
+       }
+     }
+Built MM_INFORMATION_CLASS @ 0x80000000
+Register init untyped including intermediates generated above
+
+MmRegisterUntyped ( {Untyped, Log2Size} )
+/* Add untyped to the untyped forest */
+
+MmRequestUntyped ( Log2Size, OUT *UntypedDescriptor)
+/* Mark untyped for use and handout untyped */
