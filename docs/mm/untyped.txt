@@ -27,6 +27,7 @@ x86: { if InitUntyped > 4MiB {
      }
 Built MM_INFORMATION_CLASS @ 0x80000000
 Register init untyped including intermediates generated above
+}
 
 MmRegisterUntyped ( {Untyped, Log2Size} )
 /* Add untyped to the untyped forest */
