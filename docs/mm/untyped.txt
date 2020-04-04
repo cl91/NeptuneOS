@@ -26,6 +26,8 @@ x86: { if InitUntyped > 4MiB {
        }
      }
 Build MM_INFORMATION_CLASS @ 0x80000000
+Initialize MM_POOL
+Initialize EX_POOL
 Register init untyped including intermediates generated above
 }
 
