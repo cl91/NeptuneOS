@@ -3,6 +3,23 @@
 #include <nt.h>
 #include "ntosdef.h"
 
+#ifdef _M_IX86
+#include "i386/mm.h"
+#elif defined(_M_AMD64)
+#include "amd64/mm.h"
+#endif
+
+/* Information needed to initialize the Executive Pool */
+typedef struct _MM_INIT_INFO_CLASS {
+    MWORD InitVSpaceCap;
+    MWORD InitUntypedCap;
+    LONG InitUntypedLog2Size;
+    MWORD RootCNodeCap;
+    LONG RootCNodeLog2Size;
+    MWORD RootCNodeFreeCapStart;
+    LONG RootCNodeFreeCapNumber;
+} MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
+
 /* Describes the entire CapSpace */
 typedef struct _CAPSPACE_DESCRIPTOR {
     MWORD Root;
@@ -37,28 +54,15 @@ typedef struct _PAGE_DESCRIPTOR {
     PCAPSPACE_DESCRIPTOR CapSpace;
     MWORD Cap;
     MWORD VSpaceCap;
-    LONG Log2Size;
+    MM_PAGE_SIZE PageSize;
     BOOLEAN Mapped;
     MWORD VirtualAddr;
     seL4_CapRights_t Rights;
     seL4_X86_VMAttributes Attributes;
 } PAGE_DESCRIPTOR, PPAGE_DESCRIPTOR;
 
-NTSTATUS MmCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
-			     OUT MWORD *StartCap,
-			     IN LONG NumberRequested);
-NTSTATUS MmCapSpaceDeallocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
-			      IN MWORD Cap);
+NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
+NTSTATUS MmRegisterUntyped(IN MWORD Untyped, LONG Log2Size);
+NTSTATUS MmRequestUntyped(IN LONG Log2Size, OUT UNTYPED_DESCRIPTOR *Untyped);
 
-static inline NTSTATUS
-MmCapSpaceAllocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
-		   OUT MWORD *Cap)
-{
-    return MmCapSpaceAllocCaps(CapSpace, Cap, 1);
-}
-
-NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR SrcUntyped,
-			OUT PUNTYPED_DESCRIPTOR DestUntyped1,
-			OUT PUNTYPED_DESCRIPTOR DestUntyped2);
-
-NTSTATUS MmMapTopLevelPage(PPAGE_DESCRIPTOR Page);
+#define MM_RIGHTS_RW	(seL4_ReadWrite)

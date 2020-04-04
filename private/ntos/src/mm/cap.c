@@ -69,7 +69,7 @@ NTSTATUS MiCNodeDeallocCap(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
+NTSTATUS MiCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
 			     OUT MWORD *StartCap,
 			     IN LONG NumberRequested)
 {
@@ -79,7 +79,7 @@ NTSTATUS MmCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
 /* Dealloc caps in reverse order, ie. dealloc Caps[NumberRequested-1] first
  * and Caps[0] last
  */
-NTSTATUS MmCapSpaceDeallocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
+NTSTATUS MiCapSpaceDeallocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
 			      IN MWORD Cap)
 {
     /* Fixme: Find the right cnode to operate on */

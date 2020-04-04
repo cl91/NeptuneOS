@@ -1,6 +1,6 @@
 #include <ntos.h>
 
-NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
+NTSTATUS MiSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
 			OUT PUNTYPED_DESCRIPTOR Dest1,
 			OUT PUNTYPED_DESCRIPTOR Dest2)
 {
@@ -16,7 +16,7 @@ NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
     Dest2->Log2Size = Src->Log2Size - 1;
 
     MWORD NewCap = 0;
-    RET_IF_ERR(MmCapSpaceAllocCaps(CapSpace, &NewCap, 2));
+    RET_IF_ERR(MiCapSpaceAllocCaps(CapSpace, &NewCap, 2));
 
     MWORD error = seL4_Untyped_Retype(Src->Cap,
 				      seL4_UntypedObject,
@@ -27,8 +27,8 @@ NTSTATUS MmSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
 				      NewCap, // node_offset
 				      2);
     if (error != seL4_NoError) {
-	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap+1));
-	RET_IF_ERR(MmCapSpaceDeallocCap(CapSpace, NewCap));
+	RET_IF_ERR(MiCapSpaceDeallocCap(CapSpace, NewCap+1));
+	RET_IF_ERR(MiCapSpaceDeallocCap(CapSpace, NewCap));
 	return SEL4_ERROR(error);
     }
 

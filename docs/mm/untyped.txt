@@ -1,4 +1,4 @@
-// Data structure and algorithm for cap space, untyped, and initial heap management
+// Data structures and algorithms for cap space, untyped, and initial heap management
 // Executive Pools start at 0x80000000 (x86), the start of "kernel space"
 
 CapSpaceDescriptor { CNodeDescriptor { ... } }

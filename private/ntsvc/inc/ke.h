@@ -11,16 +11,14 @@ typedef struct {
     seL4_CPtr InitialCapSpaceStart;
     seL4_CPtr InitialCapSpaceEnd;
     elf_t BootElfImage;
-    PCAPSPACE_DESCRIPTOR InitialCapSpace;
 } BOOT_ENVIRONMENT, *PBOOT_ENVIRONMENT;
 
 PBOOT_ENVIRONMENT KeGetBootEnvironment();
 VOID KeBugCheckMsg(PCSTR Format, ...);
 
 #define BUGCHECK_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { \
-	    KeBugCheckMsg("Unrecoverable error at %s @ %s line %s: Error Code 0x%x\n",\
-			  __func__, __FILE__, __LINE__, Error);		\
-	    return Error; }}
+	    KeBugCheckMsg("Unrecoverable error at %s @ %s line %d: Error Code 0x%x\n",\
+			  __func__, __FILE__, __LINE__, Error);}}
 
 #define LoopOverUntyped(cap, desc, BootEnvironment)			\
     for (MWORD cap = BootEnvironment->BootInfo->untyped.start;		\

@@ -1,12 +1,14 @@
 Root task is ntsvc, "NT Executive Services"
 ntsvc manages global, privileged data structures, such as global object database
 ntsvc performs privileged data structure manipulations, such as process and thread creation and deletion
-ntsvc loads the client ntdll.dll
-ntsvc also loads boot device drivers (fat32.sys, disk.sys, vga.sys, etc)
-ntsvc starts the first NT client smss.exe
+Initial thread of ntsvc loads the client ntdll.dll, as well as boot device drivers (fat32.sys, disk.sys, vga.sys, etc)
+Initial thread starts the first NT client smss.exe
+Initial thread of ntsvc then becomes "fault handler" of all of ntsvc.
+In case of unrecoverable errors initial thread displays the BSOD.
+For each CPU initial thread creates a "handler" thread which accepts incoming requests from NT clients.
 
 Message buffer:
-   One shared 4K page (at least) between every process (NT client and driver) and every NT server process (ntsvc and driver)
+   One 4K page for each thread for each NT client process
 
 Object Manager:
   Server side:
