@@ -41,23 +41,23 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     __sel4_ipc_buffer = bootinfo->ipcBuffer;
 
     DbgPrintFunc();
-    DbgPrint("_text_start = %p\n", _text_start);
-    DbgPrint("_text_end = %p\n", _text_end);
-    DbgPrint("_data_start = %p\n", _data_start);
-    DbgPrint("_data_end = %p\n", _data_end);
-    DbgPrint("_bss_start = %p\n", _bss_start);
-    DbgPrint("_bss_end = %p\n", _bss_end);
-    DbgPrint("_tbss_start = %p\n", _tbss_start);
-    DbgPrint("_tbss_end = %p\n", _tbss_end);
-    DbgPrint("_tdata_start = %p\n", _tdata_start);
-    DbgPrint("_tdata_end = %p\n", _tdata_end);
-    DbgPrint("__stack_base = %p\n", __stack_base);
-    DbgPrint("__stack_top = %p\n", __stack_top);
-    DbgPrint("static tls area start = %p\n", STATIC_TLS_AREA);
-    DbgPrint("desired tls base = %p\n", tls_base);
-    DbgPrint("tls base = %p\n", sel4runtime_get_tls_base());
-    DbgPrint("&__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
-    DbgPrint("__sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
+    DbgPrint("    _text_start = %p\n", _text_start);
+    DbgPrint("    _text_end = %p\n", _text_end);
+    DbgPrint("    _data_start = %p\n", _data_start);
+    DbgPrint("    _data_end = %p\n", _data_end);
+    DbgPrint("    _bss_start = %p\n", _bss_start);
+    DbgPrint("    _bss_end = %p\n", _bss_end);
+    DbgPrint("    _tbss_start = %p\n", _tbss_start);
+    DbgPrint("    _tbss_end = %p\n", _tbss_end);
+    DbgPrint("    _tdata_start = %p\n", _tdata_start);
+    DbgPrint("    _tdata_end = %p\n", _tdata_end);
+    DbgPrint("    __stack_base = %p\n", __stack_base);
+    DbgPrint("    __stack_top = %p\n", __stack_top);
+    DbgPrint("    static tls area start = %p\n", STATIC_TLS_AREA);
+    DbgPrint("    desired tls base = %p\n", tls_base);
+    DbgPrint("    tls base = %p\n", sel4runtime_get_tls_base());
+    DbgPrint("    &__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
+    DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
 static BOOT_ENVIRONMENT BootEnvironment;
