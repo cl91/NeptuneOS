@@ -1,4 +1,4 @@
-#include <ntos.h>
+#include "mi.h"
 
 NTSTATUS MiSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
 			OUT PUNTYPED_DESCRIPTOR Dest1,

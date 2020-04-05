@@ -1,28 +1,32 @@
 #include "mi.h"
 
-LONG MiPageGetLog2Size(PPAGE_DESCRIPTOR Page)
+LONG MiPageGetLog2Size(PPAGING_STRUCTURE_DESCRIPTOR Page)
 {
-    if (Page.PageSize == MM_PAGE) {
+    if (Page.Type == MM_PAGE) {
 	return seL4_PageBits;
-    } else if (Page.PageSize == MM_LARGE_PAGE) {
+    } else if (Page.Type == MM_LARGE_PAGE) {
+	return seL4_LargePageBits;
+    } else if (Page.Type == MM_PAGE_TABLE) {
 	return seL4_LargePageBits;
     } else {
 	return 0;
     }
 }
 
-MWORD MiPageGetSel4Type(PPAGE_DESCRIPTOR Page)
+MWORD MiPageGetSel4Type(PPAGING_STRUCTURE_DESCRIPTOR Page)
 {
-    if (Page.PageSize == MM_PAGE) {
+    if (Page.Type == MM_PAGE) {
 	return seL4_X86_4K;
-    } else if (Page.PageSize == MM_LARGE_PAGE) {
+    } else if (Page.Type == MM_LARGE_PAGE) {
 	return seL4_X86_LargePageObject;
+    } else if (Page.Type == MM_PAGE_TABLE) {
+	return seL4_X86_PageTableObject;
     } else {
 	return 0;
     }
 }
 
-NTSTATUS MiMapLargePage(PPAGE_DESCRIPTOR Page)
+NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE_DESCRIPTOR Page)
 {
     if (Page.Mapped) {
 	return STATUS_SUCCESS;
@@ -50,11 +54,19 @@ NTSTATUS MiMapLargePage(PPAGE_DESCRIPTOR Page)
 	}
     }
 
-    int Error = seL4_X86_Page_Map(Page.Cap,
+    int Error = 0;
+    if (Page.Type == MM_PAGE || Page.Type == MM_LARGE_PAGE) {
+	Error = seL4_X86_Page_Map(Page.Cap,
 				  Page.VSpaceCap,
 				  Page.VirtualAddr,
 				  Page.Rights,
 				  Page.Attributes);
+    } else if (Page.Type == MM_PAGE_TABLE) {
+	Error = seL4_X86_PageTable_Map(Page.Cap,
+				       Page.VSpaceCap,
+				       Page.VirtualAddr,
+				       Page.Attributes);
+    }
 
     if (Error) {
 	if (NeedDeallocCap) {

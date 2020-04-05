@@ -11,14 +11,14 @@ void MmInitSystem()
 
     /* Find the smallest untyped that is at least one large page */
     LoopOverUntyped(cap, desc, BootEnvironment) {
-	if (!desc->isDevice && desc->sizeBits >= seL4_LargePageBits
-	    && desc->sizeBits < Log2Size) {
-	    InitUntyped = cap;
-	    Log2Size = desc->sizeBits;
-	}
+    	if (!desc->isDevice && desc->sizeBits >= seL4_LargePageBits
+    	    && desc->sizeBits < Log2Size) {
+    	    InitUntyped = cap;
+    	    Log2Size = desc->sizeBits;
+    	}
     }
 
-    /* Failing that, find at least 1 Page + 1 PageDirectory */
+    /* failing that, find at least 1 Page + 1 PageDirectory */
     if (InitUntyped == 0) {
 	LoopOverUntyped(cap, desc, BootEnvironment) {
 	    if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 1)

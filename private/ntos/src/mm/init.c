@@ -41,20 +41,46 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     }
 
     if (InitInfo->InitUntypedLog2Size >= seL4_LargePageBits) {
-	PAGE_DESCRIPTOR Page =
+	PAGING_STRUCTURE_DESCRIPTOR Page =
 	    {
 	     .Untyped = &UntypedDescs[2*NumberSplits],
 	     .CapSpace = &InitCapSpace,
 	     .Cap = 0,
 	     .VSpaceCap = InitInfo->InitVSpaceCap,
-	     .PageSize = MM_LARGE_PAGE,
+	     .Type = MM_LARGE_PAGE,
 	     .Mapped = FALSE,
 	     .VirtualAddr = MM_INFORMATION_CLASS_START,
 	     .Rights = MM_RIGHTS_RW,
 	     .Attributes = seL4_X86_Default_VMAttributes
 	    };
-	RET_IF_ERR(MiMapLargePage(Page));
+	RET_IF_ERR(MiMapPagingStructure(Page));
     } else {
+	PAGING_STRUCTURE_DESCRIPTOR PageTable =
+	    {
+	     .Untyped = &UntypedDescs[2*NumberSplits],
+	     .CapSpace = &InitCapSpace,
+	     .Cap = 0,
+	     .VSpaceCap = InitInfo->InitVSpaceCap,
+	     .Type = MM_PAGE_TABLE,
+	     .Mapped = FALSE,
+	     .VirtualAddr = MM_INFORMATION_CLASS_START,
+	     .Rights = 0,
+	     .Attributes = seL4_X86_Default_VMAttributes
+	    };
+	RET_IF_ERR(MiMapPagingStructure(PageTable));
+	PAGING_STRUCTURE_DESCRIPTOR Page =
+	    {
+	     .Untyped = &UntypedDescs[2*NumberSplits+1],
+	     .CapSpace = &InitCapSpace,
+	     .Cap = 0,
+	     .VSpaceCap = InitInfo->InitVSpaceCap,
+	     .Type = MM_PAGE,
+	     .Mapped = FALSE,
+	     .VirtualAddr = MM_INFORMATION_CLASS_START,
+	     .Rights = MM_RIGHTS_RW,
+	     .Attributes = seL4_X86_Default_VMAttributes
+	    };
+	RET_IF_ERR(MiMapPagingStructure(Page));
     }
 
     return STATUS_SUCCESS;

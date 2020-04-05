@@ -1,5 +1,3 @@
 #pragma once
 
 #define MM_INFORMATION_CLASS_START	(0x80000000)
-
-typedef enum _MM_PAGE_SIZE { MM_PAGE, MM_LARGE_PAGE } MM_PAGE_SIZE;
