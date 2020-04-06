@@ -9,8 +9,8 @@
 #define MIN_ALIGN_BYTES 16
 #define MIN_ALIGNED __attribute__((aligned (MIN_ALIGN_BYTES)))
 
-// Static TLS for initial thread.
-static char STATIC_TLS_AREA[4096] MIN_ALIGNED = {};
+// Static TLS for the initial thread.
+static char STATIC_TLS_AREA[256] MIN_ALIGNED = {};
 
 extern char __stack_base[];
 extern char __stack_top[];
@@ -34,7 +34,7 @@ extern char _tdata_end[];
  */
 static void KiInitRootThread(seL4_BootInfo *bootinfo)
 {
-    uintptr_t tls_base = &STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
+    uintptr_t tls_base = (uintptr_t ) &STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
     uintptr_t *tls_ptr = (uintptr_t *)(tls_base);
     *tls_ptr = tls_base;
     sel4runtime_set_tls_base(tls_base);
