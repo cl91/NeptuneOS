@@ -37,3 +37,8 @@ typedef seL4_Word MWORD;
 #else
 #error "Use a real compiler you pleb"
 #endif
+
+static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
+{
+    ListEntry->Flink = ListEntry->Blink = NULL;
+}

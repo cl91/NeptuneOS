@@ -41,6 +41,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	RET_IF_ERR(MiSplitUntyped(&UntypedDescs[2*i], &UntypedDescs[2*i+2], &UntypedDescs[2*i+3]));
     }
 
+    PMM_PAGING_STRUCTURE_DESCRIPTOR InitialPage;
     if (InitInfo->InitUntypedLog2Size >= seL4_LargePageBits) {
 	MM_PAGING_STRUCTURE_DESCRIPTOR Page =
 	    {
@@ -55,7 +56,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	     .Attributes = seL4_X86_Default_VMAttributes
 	    };
 	RET_IF_ERR(MiMapPagingStructure(&Page));
-	RET_IF_ERR(ExInitializePool(&Page));
+	InitialPage = &Page;
     } else {
 	MM_PAGING_STRUCTURE_DESCRIPTOR PageTable =
 	    {
@@ -83,39 +84,10 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	     .Attributes = seL4_X86_Default_VMAttributes
 	    };
 	RET_IF_ERR(MiMapPagingStructure(&Page));
-	RET_IF_ERR(ExInitializePool(&Page));
+	InitialPage = &Page;
     }
 
-    PULONG p = (PULONG) ExAllocatePoolWithTag(12, EX_POOL_TAG('t','m','i','n'));
-
-    DbgPrint("p = %p\n", p);
-    for (ULONG addr = 0x80000000; addr < 0x80000080; addr++) {
-	if ((addr % 8) == 0) {
-	    DbgPrint("\n");
-	}
-	UCHAR c = *((PUCHAR) addr);
-	if (isalpha(c)) {
-	    DbgPrint("%.2x(%c) ", c, c);
-	} else {
-	    DbgPrint("%.2x( ) ", c);
-	}
-    }
-
-    DbgPrint("\n*p = 0x%x\n", *p);
-    *p = 0xdeadbeef;
-    DbgPrint("*p = 0x%x\n", *p);
-
-    for (ULONG addr = 0x80000000; addr < 0x80000080; addr++) {
-	if ((addr % 8) == 0) {
-	    DbgPrint("\n");
-	}
-	UCHAR c = *((PUCHAR) addr);
-	if (isalpha(c)) {
-	    DbgPrint("%.2x(%c) ", c, c);
-	} else {
-	    DbgPrint("%.2x( ) ", c);
-	}
-    }
+    RET_IF_ERR(ExInitializePool(InitialPage));
 
     return STATUS_SUCCESS;
 }
