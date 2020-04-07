@@ -15,7 +15,6 @@ typedef struct _MM_INIT_INFO_CLASS {
 } MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
 
 /* Book keeping structure for all of ntos/mm,
- * located at MM_INFORMATION_CLASS_START
  */
 typedef struct _MM_INFORMATION_CLASS {
     

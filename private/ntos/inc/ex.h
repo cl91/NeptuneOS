@@ -40,25 +40,23 @@ typedef struct _EX_POOL_HEADER {
 } __packed EX_POOL_HEADER, *PEX_POOL_HEADER;
 
 #define EX_POOL_OVERHEAD	(sizeof(EX_POOL_HEADER))
-#define EX_POOL_BUDDY_MAX	(EX_POOL_PAGE_SIZE - EX_POOL_OVERHEAD - EX_POOL_SMALLEST_BLOCK)
+#define EX_POOL_BUDDY_MAX	(EX_POOL_PAGE_SIZE - EX_POOL_OVERHEAD	\
+				 - EX_POOL_SMALLEST_BLOCK - sizeof(EX_PAGE_DESCRIPTOR))
 
 #define EX_POOL_FREE_LISTS	(EX_POOL_PAGE_SIZE / EX_POOL_SMALLEST_BLOCK)
 
 typedef struct _EX_POOL_DESCRIPTOR {
-    ULONG TotalPages;
+    ULONG TotalPages;		/* total pages excluding large pages */
     ULONG TotalLargePages;
-    LIST_ENTRY PageList;
-    LIST_ENTRY LargePageList;
+    LIST_ENTRY UsedPageList;
+    LIST_ENTRY FreePageList;
+    LIST_ENTRY UnmanagedPageList;
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS];
 } EX_POOL_DESCRIPTOR, *PEX_POOL_DESCRIPTOR;
 
 typedef struct _EX_PAGE_DESCRIPTOR {
+    LIST_ENTRY PoolListEntry;
     PMM_PAGING_STRUCTURE_DESCRIPTOR Page;
-    LIST_ENTRY PoolList;
-    struct {
-	USHORT Offset : EX_POOL_LARGE_PAGE_BITS - EX_POOL_PAGE_BITS; /* Offset within a large page */
-	USHORT Managed : 1;		/* TRUE if included in FreeLists */
-    };
 } EX_PAGE_DESCRIPTOR, *PEX_PAGE_DESCRIPTOR;
 
 #define EX_POOL_TAG(Tag0, Tag1)	((USHORT)((((Tag1) & 0x7f) << 8) | ((Tag0) & 0x7f))
