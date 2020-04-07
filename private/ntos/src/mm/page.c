@@ -2,11 +2,11 @@
 
 LONG MiPageGetLog2Size(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 {
-    if (Page.Type == MM_PAGE) {
+    if (Page->Type == MM_PAGE) {
 	return seL4_PageBits;
-    } else if (Page.Type == MM_LARGE_PAGE) {
+    } else if (Page->Type == MM_LARGE_PAGE) {
 	return seL4_LargePageBits;
-    } else if (Page.Type == MM_PAGE_TABLE) {
+    } else if (Page->Type == MM_PAGE_TABLE) {
 	return seL4_LargePageBits;
     } else {
 	return 0;
@@ -15,11 +15,11 @@ LONG MiPageGetLog2Size(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 
 MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 {
-    if (Page.Type == MM_PAGE) {
+    if (Page->Type == MM_PAGE) {
 	return seL4_X86_4K;
-    } else if (Page.Type == MM_LARGE_PAGE) {
+    } else if (Page->Type == MM_LARGE_PAGE) {
 	return seL4_X86_LargePageObject;
-    } else if (Page.Type == MM_PAGE_TABLE) {
+    } else if (Page->Type == MM_PAGE_TABLE) {
 	return seL4_X86_PageTableObject;
     } else {
 	return 0;
@@ -28,25 +28,25 @@ MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 
 NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 {
-    if (Page.Mapped) {
+    if (Page->Mapped) {
 	return STATUS_SUCCESS;
     }
 
-    Page.VirtualAddr &= (~0) << MiPageGetLog2Size(Page);
+    Page->VirtualAddr &= (~0) << MiPageGetLog2Size(Page);
 
     BOOLEAN NeedDeallocCap = FALSE;
-    if (Page.Cap == 0) {
+    if (Page->Cap == 0) {
 	MWORD Cap;
-	RET_IF_ERR(MiCapSpaceAllocCap(Page.CapSpace, &Cap));
-	Page.Cap = Cap;
+	RET_IF_ERR(MiCapSpaceAllocCap(Page->CapSpace, &Cap));
+	Page->Cap = Cap;
 	NeedDeallocCap = TRUE;
-	int Error = seL4_Untyped_Retype(Page.Untyped->Cap,
+	int Error = seL4_Untyped_Retype(Page->Untyped->Cap,
 					MiPageGetSel4Type(Page),
 					MiPageGetLog2Size(Page),
-					Page.CapSpace->Root,
+					Page->CapSpace->Root,
 					0, // node_index
 					0, // node_depth
-					Page.Cap,
+					Page->Cap,
 					1 // num_caps
 					);
 	if (Error) {
@@ -55,34 +55,34 @@ NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
     }
 
     int Error = 0;
-    if (Page.Type == MM_PAGE || Page.Type == MM_LARGE_PAGE) {
-	Error = seL4_X86_Page_Map(Page.Cap,
-				  Page.VSpaceCap,
-				  Page.VirtualAddr,
-				  Page.Rights,
-				  Page.Attributes);
-    } else if (Page.Type == MM_PAGE_TABLE) {
-	Error = seL4_X86_PageTable_Map(Page.Cap,
-				       Page.VSpaceCap,
-				       Page.VirtualAddr,
-				       Page.Attributes);
+    if (Page->Type == MM_PAGE || Page->Type == MM_LARGE_PAGE) {
+	Error = seL4_X86_Page_Map(Page->Cap,
+				  Page->VSpaceCap,
+				  Page->VirtualAddr,
+				  Page->Rights,
+				  Page->Attributes);
+    } else if (Page->Type == MM_PAGE_TABLE) {
+	Error = seL4_X86_PageTable_Map(Page->Cap,
+				       Page->VSpaceCap,
+				       Page->VirtualAddr,
+				       Page->Attributes);
     }
 
     if (Error) {
 	if (NeedDeallocCap) {
-	    int RevokeError = seL4_CNode_Revoke(Page.CapSpace->Root,
-						Page.Cap,
+	    int RevokeError = seL4_CNode_Revoke(Page->CapSpace->Root,
+						Page->Cap,
 						0); /* FIXME: depth */
 	    if (RevokeError) {
 		return SEL4_ERROR(RevokeError);
 	    }
-	    MWORD Cap = Page.Cap;
-	    Page.Cap = 0;
-	    MiCapSpaceDeallocCap(Page.CapSpace, Cap);
+	    MWORD Cap = Page->Cap;
+	    Page->Cap = 0;
+	    MiCapSpaceDeallocCap(Page->CapSpace, Cap);
 	}
 	return SEL4_ERROR(Error);
     }
 
-    Page.Mapped = TRUE;
+    Page->Mapped = TRUE;
     return STATUS_SUCCESS;
 }

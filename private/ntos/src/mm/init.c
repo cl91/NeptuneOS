@@ -1,4 +1,5 @@
 #include "mi.h"
+#include <ctype.h>
 
 /* FIXME: Only works for x86! */
 NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
@@ -53,7 +54,8 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	     .Rights = MM_RIGHTS_RW,
 	     .Attributes = seL4_X86_Default_VMAttributes
 	    };
-	RET_IF_ERR(MiMapPagingStructure(Page));
+	RET_IF_ERR(MiMapPagingStructure(&Page));
+	RET_IF_ERR(ExInitializePool(&Page));
     } else {
 	MM_PAGING_STRUCTURE_DESCRIPTOR PageTable =
 	    {
@@ -67,7 +69,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	     .Rights = 0,
 	     .Attributes = seL4_X86_Default_VMAttributes
 	    };
-	RET_IF_ERR(MiMapPagingStructure(PageTable));
+	RET_IF_ERR(MiMapPagingStructure(&PageTable));
 	MM_PAGING_STRUCTURE_DESCRIPTOR Page =
 	    {
 	     .Untyped = &UntypedDescs[2*NumberSplits+1],
@@ -80,7 +82,39 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	     .Rights = MM_RIGHTS_RW,
 	     .Attributes = seL4_X86_Default_VMAttributes
 	    };
-	RET_IF_ERR(MiMapPagingStructure(Page));
+	RET_IF_ERR(MiMapPagingStructure(&Page));
+	RET_IF_ERR(ExInitializePool(&Page));
+    }
+
+    PULONG p = (PULONG) ExAllocatePoolWithTag(12, EX_POOL_TAG('t','m','i','n'));
+
+    DbgPrint("p = %p\n", p);
+    for (ULONG addr = 0x80000000; addr < 0x80000080; addr++) {
+	if ((addr % 8) == 0) {
+	    DbgPrint("\n");
+	}
+	UCHAR c = *((PUCHAR) addr);
+	if (isalpha(c)) {
+	    DbgPrint("%.2x(%c) ", c, c);
+	} else {
+	    DbgPrint("%.2x( ) ", c);
+	}
+    }
+
+    DbgPrint("\n*p = 0x%x\n", *p);
+    *p = 0xdeadbeef;
+    DbgPrint("*p = 0x%x\n", *p);
+
+    for (ULONG addr = 0x80000000; addr < 0x80000080; addr++) {
+	if ((addr % 8) == 0) {
+	    DbgPrint("\n");
+	}
+	UCHAR c = *((PUCHAR) addr);
+	if (isalpha(c)) {
+	    DbgPrint("%.2x(%c) ", c, c);
+	} else {
+	    DbgPrint("%.2x( ) ", c);
+	}
     }
 
     return STATUS_SUCCESS;
