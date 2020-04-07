@@ -1,6 +1,6 @@
 #include "mi.h"
 
-LONG MiPageGetLog2Size(PPAGING_STRUCTURE_DESCRIPTOR Page)
+LONG MiPageGetLog2Size(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 {
     if (Page.Type == MM_PAGE) {
 	return seL4_PageBits;
@@ -13,7 +13,7 @@ LONG MiPageGetLog2Size(PPAGING_STRUCTURE_DESCRIPTOR Page)
     }
 }
 
-MWORD MiPageGetSel4Type(PPAGING_STRUCTURE_DESCRIPTOR Page)
+MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 {
     if (Page.Type == MM_PAGE) {
 	return seL4_X86_4K;
@@ -26,7 +26,7 @@ MWORD MiPageGetSel4Type(PPAGING_STRUCTURE_DESCRIPTOR Page)
     }
 }
 
-NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE_DESCRIPTOR Page)
+NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 {
     if (Page.Mapped) {
 	return STATUS_SUCCESS;

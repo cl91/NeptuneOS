@@ -2,7 +2,16 @@
 
 #include <sel4/sel4.h>
 typedef seL4_Word MWORD;
-#define MWORD_BITS	((sizeof(MWORD))*8)
+
+#ifdef _M_IX86
+#define MWORD_BITS	(32)
+#define MWORD_BYTES	(4)
+#define MWORD_SHIFT	(2)
+#elif defined(_M_AMD64)
+#define MWORD_BITS	(64)
+#define MWORD_BYTES	(8)
+#define MWORD_SHIFT	(3)
+#endif
 
 /* NTSTATUS Bits:
  * 0--15   Status code
@@ -21,3 +30,10 @@ typedef seL4_Word MWORD;
 #define STATUS_NTOS_EXEC_CAPSPACE_EXHAUSTION	NTOS_EXEC_ERROR(2)
 
 #define RET_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { return Error; }}
+
+#if defined(__GNUC__) || defined(__clang__)
+#define __packed         __attribute__((__packed__))
+#define __aligned(x)    __attribute__ ((aligned(x)))
+#else
+#error "Use a real compiler you pleb"
+#endif

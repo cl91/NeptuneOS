@@ -3,12 +3,6 @@
 #include <nt.h>
 #include "ntosdef.h"
 
-#ifdef _M_IX86
-#include "i386/mm.h"
-#elif defined(_M_AMD64)
-#include "amd64/mm.h"
-#endif
-
 /* Information needed to initialize the Executive Pool */
 typedef struct _MM_INIT_INFO_CLASS {
     MWORD InitVSpaceCap;
@@ -19,6 +13,13 @@ typedef struct _MM_INIT_INFO_CLASS {
     MWORD RootCNodeFreeCapStart;
     LONG RootCNodeFreeCapNumber;
 } MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
+
+/* Book keeping structure for all of ntos/mm,
+ * located at MM_INFORMATION_CLASS_START
+ */
+typedef struct _MM_INFORMATION_CLASS {
+    
+} MM_INFORMATION_CLASS, PMM_INFORMATION_CLASS;
 
 /* Describes the entire CapSpace */
 typedef struct _CAPSPACE_DESCRIPTOR {
@@ -48,6 +49,23 @@ typedef struct _UNTYPED_DESCRIPTOR {
     LONG Log2Size;
     BOOLEAN Split;
 } UNTYPED_DESCRIPTOR, *PUNTYPED_DESCRIPTOR;
+
+typedef enum _MM_PAGING_STRUCTURE_TYPE { MM_PAGE,
+					 MM_LARGE_PAGE,
+					 MM_PAGE_TABLE,
+} MM_PAGING_STRUCTURE_TYPE;
+
+typedef struct _MM_PAGING_STRUCTURE_DESCRIPTOR {
+    PUNTYPED_DESCRIPTOR Untyped;
+    PCAPSPACE_DESCRIPTOR CapSpace;
+    MWORD Cap;
+    MWORD VSpaceCap;
+    MM_PAGING_STRUCTURE_TYPE Type;
+    BOOLEAN Mapped;
+    MWORD VirtualAddr;
+    seL4_CapRights_t Rights;
+    seL4_X86_VMAttributes Attributes;
+} MM_PAGING_STRUCTURE_DESCRIPTOR, PMM_PAGING_STRUCTURE_DESCRIPTOR;
 
 NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
 NTSTATUS MmRegisterUntyped(IN MWORD Untyped, LONG Log2Size);

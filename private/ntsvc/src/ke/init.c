@@ -7,7 +7,7 @@
 
 // Minimum alignment for TLS across all platforms.
 #define MIN_ALIGN_BYTES 16
-#define MIN_ALIGNED __attribute__((aligned (MIN_ALIGN_BYTES)))
+#define MIN_ALIGNED __aligned(MIN_ALIGN_BYTES)
 
 // Static TLS for the initial thread.
 static char STATIC_TLS_AREA[256] MIN_ALIGNED = {};
