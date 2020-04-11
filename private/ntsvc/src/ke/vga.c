@@ -15,7 +15,6 @@ VOID KiVgaWriteString(LONG Color, PCSTR String)
 
 VOID KiInitVga()
 {
-    PBOOT_ENVIRONMENT BootEnvironment = KeGetBootEnvironment();
     /* LoopOverUntyped(cap, desc, BootEnvironment) { */
     /* 	if (desc->isDevice && desc->paddr == 0x0) { */
     /* 	    UNTYPED_DESCRIPTOR Untyped = */

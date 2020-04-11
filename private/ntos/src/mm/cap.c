@@ -28,7 +28,6 @@ NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
 				   IN LONG NumberRequested)
 {
     if (CNode->FirstChild != NULL) {
-	LONG NumberSatisfiedFirstChild = 0;
 	if (NT_SUCCESS(MiCNodeAllocCapsRecursive(CNode->FirstChild, StartCap, NumberRequested))) {
 	    return STATUS_SUCCESS;
 	}
@@ -42,8 +41,8 @@ NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
 	PLIST_ENTRY SiblingListEntry = CNode->FirstChild->SiblingList.Flink;
 	while (SiblingListEntry != &CNode->FirstChild->SiblingList) {
 	    PMM_CNODE Sibling = CONTAINING_RECORD(SiblingListEntry,
-						   MM_CNODE,
-						   SiblingList);
+						  MM_CNODE,
+						  SiblingList);
 	    if (NT_SUCCESS(MiCNodeAllocCapsRecursive(Sibling, StartCap, NumberRequested))) {
 		return STATUS_SUCCESS;
 	    }

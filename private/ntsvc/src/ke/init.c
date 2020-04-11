@@ -60,12 +60,7 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
-static BOOT_ENVIRONMENT BootEnvironment;
-
-PBOOT_ENVIRONMENT KeGetBootEnvironment()
-{
-    return &BootEnvironment;
-}
+static EPROCESS KiNtsvcProcess;
 
 static char *KiDumpBootInfoSlotRegion(char *buf,
 				      size_t size,
@@ -76,9 +71,8 @@ static char *KiDumpBootInfoSlotRegion(char *buf,
     return buf;
 }
 
-static void KiDumpBootInfoStruct()
+static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 {
-    seL4_BootInfo *bootinfo = KeGetBootEnvironment()->BootInfo;
     char buf[64];
 
     DbgPrintFunc();
@@ -99,9 +93,9 @@ static void KiDumpBootInfoStruct()
     DbgPrint("    untyped = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->untyped));
 }
 
-static void KiDumpUserImageFramesInfo()
+static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
 {
-    seL4_SlotRegion slots = KeGetBootEnvironment()->BootInfo->userImageFrames;
+    seL4_SlotRegion slots = bootinfo->userImageFrames;
     char buf[64];
 
     DbgPrintFunc();
@@ -112,9 +106,8 @@ static void KiDumpUserImageFramesInfo()
     }
 }
 
-static void KiDumpUntypedMemoryInfo()
+static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
 {
-    seL4_BootInfo *bootinfo = KeGetBootEnvironment()->BootInfo;
     seL4_SlotRegion untyped = bootinfo->untyped;
 
     DbgPrintFunc();
@@ -126,25 +119,17 @@ static void KiDumpUntypedMemoryInfo()
     }
 }
 
-static void KiDumpBootInfoAll()
+static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 {
-    KiDumpBootInfoStruct();
-    KiDumpUserImageFramesInfo();
-    KiDumpUntypedMemoryInfo();
-}
-
-void KiInitBootEnvironment(seL4_BootInfo *bootinfo) {
-    BootEnvironment.BootInfo = bootinfo;
-    BootEnvironment.InitialThreadIpcBuffer = bootinfo->ipcBuffer;
-    BootEnvironment.InitialCapSpaceStart = bootinfo->empty.start;
-    BootEnvironment.InitialCapSpaceEnd = bootinfo->empty.end;
+    KiDumpBootInfoStruct(bootinfo);
+    KiDumpUserImageFramesInfo(bootinfo);
+    KiDumpUntypedMemoryInfo(bootinfo);
 }
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
-    KiInitBootEnvironment(bootinfo);
-    KiDumpBootInfoAll();
-    MmInitSystem();
+    KiDumpBootInfoAll(bootinfo);
+    MmInitSystem(&KiNtsvcProcess, bootinfo);
     KiInitVga();
     while (1);
 }

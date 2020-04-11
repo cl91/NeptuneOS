@@ -331,7 +331,7 @@ MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
     }
 }
 
-NTSTATUS MmVadTreeInsertNode(IN PMM_VIRTUAL_ADDRESS_SPACE Vspace,
+NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
 			     IN PMM_VAD VadNode)
 {
     PMM_AVL_TREE Tree = &Vspace->VadTree;

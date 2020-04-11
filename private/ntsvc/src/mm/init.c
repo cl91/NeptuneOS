@@ -1,16 +1,16 @@
 #include <ntsvc.h>
+#include <ctype.h>
 #include "mi.h"
 
 /* FIXME: Only works for x86. Doesn't work for x64! */
-void MmInitSystem()
+void MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
 {
-    PBOOT_ENVIRONMENT BootEnvironment = KeGetBootEnvironment();
-    seL4_SlotRegion UntypedCaps = BootEnvironment->BootInfo->untyped;
+    seL4_SlotRegion UntypedCaps = bootinfo->untyped;
     MWORD InitUntyped = 0;
     LONG Log2Size = 128;
 
     /* Find the smallest untyped that is at least one large page */
-    LoopOverUntyped(cap, desc, BootEnvironment) {
+    LoopOverUntyped(cap, desc, bootinfo) {
     	if (!desc->isDevice && desc->sizeBits >= seL4_LargePageBits
     	    && desc->sizeBits < Log2Size) {
     	    InitUntyped = cap;
@@ -18,9 +18,9 @@ void MmInitSystem()
     	}
     }
 
-    /* failing that, find at least 1 Page + 1 PageDirectory */
+    /* Failing that, find at least 1 Page + 1 PageDirectory */
     if (InitUntyped == 0) {
-	LoopOverUntyped(cap, desc, BootEnvironment) {
+	LoopOverUntyped(cap, desc, bootinfo) {
 	    if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 1)
 		&& desc->sizeBits < Log2Size) {
 		InitUntyped = cap;
@@ -41,8 +41,21 @@ void MmInitSystem()
 	 .InitUntypedLog2Size = Log2Size,
 	 .RootCNodeCap = seL4_CapInitThreadCNode,
 	 .RootCNodeLog2Size = CONFIG_ROOT_CNODE_SIZE_BITS,
-	 .RootCNodeFreeCapStart = BootEnvironment->InitialCapSpaceStart,
-	 .RootCNodeFreeCapNumber = BootEnvironment->InitialCapSpaceEnd - BootEnvironment->InitialCapSpaceStart
+	 .RootCNodeFreeCapStart = bootinfo->empty.start,
+	 .RootCNodeFreeCapNumber = bootinfo->empty.end - bootinfo->empty.start,
+	 .EProcess = NtsvcProcess
 	};
     BUGCHECK_IF_ERR(MmRegisterClass(&InitInfo));
+
+    for (MWORD p = EX_POOL_START; p < EX_POOL_START + 0x100; p++) {
+	if (p % 8 == 0) {
+	    DbgPrint("\n");
+	}
+	UCHAR c = *((PUCHAR) p);
+	if (isalpha(c)) {
+	    DbgPrint("%.2x %c  ", c, c);
+	} else {
+	    DbgPrint("%.2x    ", c);
+	}
+    }
 }

@@ -2,6 +2,9 @@
 
 #include <nt.h>
 #include "ntosdef.h"
+#include "ps.h"
+
+#define NTOS_MM_TAG    			(EX_POOL_TAG('n','t','m','m'))
 
 /* Information needed to initialize the Executive Pool */
 typedef struct _MM_INIT_INFO_CLASS {
@@ -12,6 +15,7 @@ typedef struct _MM_INIT_INFO_CLASS {
     LONG RootCNodeLog2Size;
     MWORD RootCNodeFreeCapStart;
     LONG RootCNodeFreeCapNumber;
+    PEPROCESS EProcess;
 } MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
 
 /* Describes the entire CapSpace */
@@ -117,7 +121,7 @@ typedef struct _MM_VAD {
     PMM_PAGING_STRUCTURE *LastLargePage; /* or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;
 
-typedef struct _MM_VIRTUAL_ADDRESS_SPACE {
+typedef struct _MM_VADDR_SPACE {
     MM_CAPSPACE CapSpace;
     MM_AVL_TREE VadTree;
-} MM_VIRTUAL_ADDRESS_SPACE, *PMM_VIRTUAL_ADDRESS_SPACE;
+} MM_VADDR_SPACE, *PMM_VADDR_SPACE;
