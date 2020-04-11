@@ -27,20 +27,20 @@ typedef struct _EX_POOL_HEADER {
     ULONG Tag;
 } __packed EX_POOL_HEADER, *PEX_POOL_HEADER;
 
-typedef struct _EX_PAGE_DESCRIPTOR {
+typedef struct _EX_POOL_PAGE {
     union {
 	struct {
 	    LIST_ENTRY PoolListEntry;
 	};
 	EX_POOL_BLOCK Block;
     };
-} EX_PAGE_DESCRIPTOR, *PEX_PAGE_DESCRIPTOR;
+} EX_POOL_PAGE, *PEX_POOL_PAGE;
 
 #define EX_POOL_OVERHEAD	(sizeof(EX_POOL_HEADER))
-#define EX_POOL_LARGEST_BLOCK	(EX_POOL_PAGE_SIZE - sizeof(EX_PAGE_DESCRIPTOR) - EX_POOL_OVERHEAD)
+#define EX_POOL_LARGEST_BLOCK	(EX_POOL_PAGE_SIZE - sizeof(EX_POOL_PAGE) - EX_POOL_OVERHEAD)
 #define EX_POOL_FREE_LISTS	(EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK)
 
-typedef struct _EX_POOL_DESCRIPTOR {
+typedef struct _EX_POOL {
     ULONG TotalPages;		/* one large page is 2^10 pages */
     ULONG TotalLargePages;
     LIST_ENTRY UsedPageList;
@@ -48,11 +48,11 @@ typedef struct _EX_POOL_DESCRIPTOR {
     LIST_ENTRY LargePageList;
     MWORD HeapEnd;
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS];
-} EX_POOL_DESCRIPTOR, *PEX_POOL_DESCRIPTOR;
+} EX_POOL, *PEX_POOL;
 
-typedef struct _EX_LARGE_PAGE_DESCRIPTOR {
+typedef struct _EX_POOL_LARGE_PAGE {
     LIST_ENTRY ListEntry;
-} EX_LARGE_PAGE_DESCRIPTOR, *PEX_LARGE_PAGE_DESCRIPTOR;
+} EX_POOL_LARGE_PAGE, *PEX_POOL_LARGE_PAGE;
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \
@@ -65,6 +65,6 @@ typedef struct _EX_LARGE_PAGE_DESCRIPTOR {
 
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
 
-NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE_DESCRIPTOR Page);
+NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE Page);
 PVOID ExAllocatePoolWithTag(IN ULONG NumberOfBytes,
 			    IN ULONG Tag);

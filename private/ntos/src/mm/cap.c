@@ -3,11 +3,11 @@
 #include <ntos.h>
 
 /* Allocate a continuous range of capability slots */
-NTSTATUS MiCNodeAllocCaps(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
+NTSTATUS MiCNodeAllocCaps(IN PMM_CNODE CNode,
 			  OUT MWORD *StartCap,
 			  IN LONG NumberRequested)
 {
-    if (CNode->Policy == CAPSPACE_TYPE_TAIL_DEALLOC_ONLY) {
+    if (CNode->Policy == MM_CNODE_TAIL_DEALLOC_ONLY) {
 	if (CNode->FreeRange.Number < NumberRequested) {
 	    return STATUS_NTOS_EXEC_CAPSPACE_EXHAUSTION;
 	}
@@ -23,7 +23,7 @@ NTSTATUS MiCNodeAllocCaps(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
 /* Perform a depth-first search of free (continuous) cap slots
  * Check first child first, then current cnode, then all other children.
  */
-NTSTATUS MiCNodeAllocCapsRecursive(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
+NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
 				   OUT MWORD *StartCap,
 				   IN LONG NumberRequested)
 {
@@ -41,9 +41,9 @@ NTSTATUS MiCNodeAllocCapsRecursive(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
     if (CNode->FirstChild != NULL) {
 	PLIST_ENTRY SiblingListEntry = CNode->FirstChild->SiblingList.Flink;
 	while (SiblingListEntry != &CNode->FirstChild->SiblingList) {
-	    PCAPSPACE_CNODE_DESCRIPTOR Sibling = CONTAINING_RECORD(SiblingListEntry,
-								   CAPSPACE_CNODE_DESCRIPTOR,
-								   SiblingList);
+	    PMM_CNODE Sibling = CONTAINING_RECORD(SiblingListEntry,
+						   MM_CNODE,
+						   SiblingList);
 	    if (NT_SUCCESS(MiCNodeAllocCapsRecursive(Sibling, StartCap, NumberRequested))) {
 		return STATUS_SUCCESS;
 	    }
@@ -53,10 +53,10 @@ NTSTATUS MiCNodeAllocCapsRecursive(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
     return STATUS_NTOS_EXEC_CAPSPACE_EXHAUSTION;
 }
 
-NTSTATUS MiCNodeDeallocCap(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
+NTSTATUS MiCNodeDeallocCap(IN PMM_CNODE CNode,
 			   IN MWORD Cap)
 {
-    if (CNode->Policy == CAPSPACE_TYPE_TAIL_DEALLOC_ONLY) {
+    if (CNode->Policy == MM_CNODE_TAIL_DEALLOC_ONLY) {
 	if (CNode->FreeRange.StartCap == Cap) {
 	    /* Check StartCap-- stays within the CNode */
 	    CNode->FreeRange.StartCap--;
@@ -69,7 +69,7 @@ NTSTATUS MiCNodeDeallocCap(IN PCAPSPACE_CNODE_DESCRIPTOR CNode,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
+NTSTATUS MiCapSpaceAllocCaps(IN PMM_CAPSPACE CapSpace,
 			     OUT MWORD *StartCap,
 			     IN LONG NumberRequested)
 {
@@ -79,7 +79,7 @@ NTSTATUS MiCapSpaceAllocCaps(IN PCAPSPACE_DESCRIPTOR CapSpace,
 /* Dealloc caps in reverse order, ie. dealloc Caps[NumberRequested-1] first
  * and Caps[0] last
  */
-NTSTATUS MiCapSpaceDeallocCap(IN PCAPSPACE_DESCRIPTOR CapSpace,
+NTSTATUS MiCapSpaceDeallocCap(IN PMM_CAPSPACE CapSpace,
 			      IN MWORD Cap)
 {
     /* Fixme: Find the right cnode to operate on */

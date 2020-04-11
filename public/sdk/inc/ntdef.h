@@ -32,6 +32,7 @@ typedef void *PVOID;
 
 typedef char CHAR;
 typedef unsigned char UCHAR;
+typedef signed char SCHAR;
 typedef CHAR *PCHAR;
 typedef UCHAR *PUCHAR;
 typedef CONST CHAR *PCSTR;

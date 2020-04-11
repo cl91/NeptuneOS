@@ -1,16 +1,16 @@
 #include "mi.h"
 
-NTSTATUS MiSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
-			OUT PUNTYPED_DESCRIPTOR Dest1,
-			OUT PUNTYPED_DESCRIPTOR Dest2)
+NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
+			OUT PMM_UNTYPED Dest1,
+			OUT PMM_UNTYPED Dest2)
 {
     if (Src->Split == TRUE) {
 	return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
     }
 
-    PCAPSPACE_DESCRIPTOR CapSpace = Src->CapSpace;
-    Dest1->CapSpace = CapSpace;
-    Dest2->CapSpace = CapSpace;
+    PMM_CAPSPACE CapSpace = Src->TreeNode.CapSpace;
+    Dest1->TreeNode.CapSpace = CapSpace;
+    Dest2->TreeNode.CapSpace = CapSpace;
 
     Dest1->Log2Size = Src->Log2Size - 1;
     Dest2->Log2Size = Src->Log2Size - 1;
@@ -21,7 +21,7 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
     MWORD error = seL4_Untyped_Retype(Src->Cap,
 				      seL4_UntypedObject,
 				      Dest1->Log2Size,
-				      CapSpace->Root,
+				      CapSpace->RootCap,
 				      0, // node_index
 				      0, // node_depth
 				      NewCap, // node_offset
@@ -37,5 +37,11 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED_DESCRIPTOR Src,
     Dest2->Split = FALSE;
     Dest1->Cap = NewCap;
     Dest2->Cap = NewCap+1;
+
+    Src->TreeNode.LeftChild = &Dest1->TreeNode;
+    Src->TreeNode.RightChild = &Dest2->TreeNode;
+    Dest1->TreeNode.Parent = &Src->TreeNode;
+    Dest2->TreeNode.Parent = &Src->TreeNode;
+
     return STATUS_SUCCESS;
 }

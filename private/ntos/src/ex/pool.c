@@ -1,14 +1,14 @@
 #include <nt.h>
 #include <ntos.h>
 
-static EX_POOL_DESCRIPTOR EiGlobalPool;
+static EX_POOL EiGlobalPool;
 
-static PVOID EiAllocatePoolWithTag(IN PEX_POOL_DESCRIPTOR Pool,
+static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN ULONG NumberOfBytes,
 				   IN ULONG Tag);
 
-static NTSTATUS EiInitializePool(PEX_POOL_DESCRIPTOR Pool,
-				 PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
+static NTSTATUS EiInitializePool(PEX_POOL Pool,
+				 PMM_PAGING_STRUCTURE Page)
 {
     InitializeListHead(&Pool->UsedPageList);
     InitializeListHead(&Pool->FreePageList);
@@ -18,20 +18,20 @@ static NTSTATUS EiInitializePool(PEX_POOL_DESCRIPTOR Pool,
     }
 
     /* Add page to pool */
-    PEX_PAGE_DESCRIPTOR ExPage = (PEX_PAGE_DESCRIPTOR) Page->VirtualAddr;
-    if (Page->Type == MM_PAGE) {
+    PEX_POOL_PAGE ExPage = (PEX_POOL_PAGE) Page->VirtualAddr;
+    if (Page->Type == MM_PAGE_TYPE_PAGE) {
 	Pool->TotalPages = 1;
 	Pool->TotalLargePages = 0;
 	Pool->HeapEnd = Page->VirtualAddr + EX_POOL_PAGE_SIZE;
 	InsertHeadList(&Pool->UsedPageList, &ExPage->PoolListEntry);
-    } else if (Page->Type == MM_LARGE_PAGE) {
+    } else if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
 	ULONG TotalPages = 1 << (EX_POOL_LARGE_PAGE_BITS - EX_POOL_PAGE_BITS);
 	Pool->TotalPages = TotalPages;
 	Pool->TotalLargePages = 1;
 	Pool->HeapEnd = Page->VirtualAddr + EX_POOL_LARGE_PAGE_SIZE;
 	InsertHeadList(&Pool->UsedPageList, &ExPage->PoolListEntry);
 	for (ULONG Offset = 1; Offset < TotalPages; Offset++) {
-	    ExPage = (PEX_PAGE_DESCRIPTOR) (Page->VirtualAddr + (Offset << EX_POOL_PAGE_BITS));
+	    ExPage = (PEX_POOL_PAGE) (Page->VirtualAddr + (Offset << EX_POOL_PAGE_BITS));
 	    InsertTailList(&Pool->FreePageList, &ExPage->PoolListEntry);
 	}
     } else {
@@ -40,7 +40,7 @@ static NTSTATUS EiInitializePool(PEX_POOL_DESCRIPTOR Pool,
 
     /* Add free space to FreeLists */
     ULONG FreeListIndex = EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK - 1;
-    MWORD PoolHeaderStart = Page->VirtualAddr + sizeof(EX_PAGE_DESCRIPTOR);
+    MWORD PoolHeaderStart = Page->VirtualAddr + sizeof(EX_POOL_PAGE);
     PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) PoolHeaderStart;
     MWORD FreeEntryStart = PoolHeaderStart + EX_POOL_OVERHEAD;
     PLIST_ENTRY FreeEntry = (PLIST_ENTRY) FreeEntryStart;
@@ -49,16 +49,16 @@ static NTSTATUS EiInitializePool(PEX_POOL_DESCRIPTOR Pool,
     InsertHeadList(&Pool->FreeLists[FreeListIndex], FreeEntry);
 
     /* If large page, allocate maintenance structure and add to pool */
-    if (Page->Type == MM_LARGE_PAGE) {
-	PEX_LARGE_PAGE_DESCRIPTOR LargePage = (PEX_LARGE_PAGE_DESCRIPTOR)
-	    EiAllocatePoolWithTag(Pool, sizeof(EX_LARGE_PAGE_DESCRIPTOR), NTOS_EX_TAG);
+    if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
+	PEX_POOL_LARGE_PAGE LargePage = (PEX_POOL_LARGE_PAGE)
+	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_LARGE_PAGE), NTOS_EX_TAG);
 	InsertHeadList(&Pool->LargePageList, &LargePage->ListEntry);
     }
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
+NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE Page)
 {
     return EiInitializePool(&EiGlobalPool, Page);
 }
@@ -66,10 +66,10 @@ NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE_DESCRIPTOR Page)
 /* If request size > EX_POOL_LARGEST_BLOCK, return pages
  * Else, allocate from the free list.
  * If no more space in free list, request one more page (use large page if available)
- * Each managed (small) page is headed by EX_PAGE_DESCRIPTOR
+ * Each managed (small) page is headed by EX_POOL_PAGE
  * Each managed large page goes into LargePageList
  */
-static PVOID EiAllocatePoolWithTag(IN PEX_POOL_DESCRIPTOR Pool,
+static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN ULONG NumberOfBytes,
 				   IN ULONG Tag)
 {
