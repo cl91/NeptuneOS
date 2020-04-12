@@ -22,36 +22,36 @@ typedef struct _EX_POOL_BLOCK {
 } EX_POOL_BLOCK, *PEX_POOL_BLOCK;
 
 typedef struct _EX_POOL_HEADER {
-    USHORT PreviousSize;	/* does not include PoolHeader, divided by EX_POOL_SMALLEST_BLOCK */
-    USHORT BlockSize;		/* does not include PoolHeader, divided by EX_POOL_SMALLEST_BLOCK */
-    ULONG Tag;
-} __packed EX_POOL_HEADER, *PEX_POOL_HEADER;
+    union {
+	struct {
+	    USHORT PreviousSize;	/* does not include PoolHeader, divided by EX_POOL_SMALLEST_BLOCK */
+	    USHORT BlockSize;		/* does not include PoolHeader, divided by EX_POOL_SMALLEST_BLOCK */
+	    ULONG Tag;
+	} __packed;
+	EX_POOL_BLOCK Block;
+    };
+} EX_POOL_HEADER, *PEX_POOL_HEADER;
 
 #define EX_POOL_OVERHEAD	(sizeof(EX_POOL_HEADER))
 #define EX_POOL_LARGEST_BLOCK	(EX_POOL_PAGE_SIZE - EX_POOL_OVERHEAD)
 #define EX_POOL_FREE_LISTS	(EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK)
 
+COMPILE_ASSERT(EX_POOL_OVERHEAD_MUST_EQUAL_SMALLEST_BLOCK, EX_POOL_OVERHEAD == EX_POOL_SMALLEST_BLOCK);
+
 typedef struct _EX_POOL {
     ULONG TotalPages;		/* one large page is 2^10 pages */
-    ULONG TotalLargePages;
     LIST_ENTRY ManagedPageRangeList; /* pages managed by ExPool */
     LIST_ENTRY UnmanagedPageRangeList; /* pages handed out to clients */
     LIST_ENTRY FreePageRangeList;      /* unused pages */
-    LIST_ENTRY LargePageList;	       /* list of all large pages (managed/unmanaged/free) */
     MWORD HeapEnd;
-    LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS];
+    LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
 } EX_POOL, *PEX_POOL;
 
 typedef struct _EX_POOL_PAGE_RANGE {
     LIST_ENTRY ListEntry;
-    MWORD StartingPageNumber;
+    MWORD FirstPageNumber;
     MWORD NumberOfPages;
 } EX_POOL_PAGE_RANGE, *PEX_POOL_PAGE_RANGE;
-
-typedef struct _EX_POOL_LARGE_PAGE {
-    LIST_ENTRY ListEntry;
-    MWORD StartingLargePageNumber; /* Address == LargePageNumber << LargePageBits */
-} EX_POOL_LARGE_PAGE, *PEX_POOL_LARGE_PAGE;
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \

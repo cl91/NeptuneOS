@@ -89,13 +89,13 @@ typedef struct _MM_AVL_NODE {
     MWORD Parent;
     struct _MM_AVL_NODE *LeftChild;
     struct _MM_AVL_NODE *RightChild;
-    MWORD StartingPageNumber;
-    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to StartingPageNumber */
+    MWORD FirstPageNumber;
+    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to FirstPageNumber */
 } MM_AVL_NODE, *PMM_AVL_NODE;
 
 typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
-    LIST_ENTRY NodeList;	/* ordered linearly according to StartingPageNumber */
+    LIST_ENTRY NodeList;	/* ordered linearly according to FirstPageNumber */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
 typedef struct _MM_PAGE_TABLE {

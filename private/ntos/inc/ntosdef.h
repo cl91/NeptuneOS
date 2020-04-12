@@ -3,6 +3,8 @@
 #include <sel4/sel4.h>
 typedef seL4_Word MWORD;
 
+#define COMPILE_ASSERT(name, expr) typedef int __ntos_assert_failed_##name[(expr) ? 1 : -1]
+
 #ifdef _M_IX86
 #define MWORD_BITS	(32)
 #define MWORD_BYTES	(4)
@@ -44,3 +46,13 @@ static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 {
     ListEntry->Flink = ListEntry->Blink = NULL;
 }
+
+#define LoopOverList(Entry, ListHead, Type, Field)			\
+    for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field); \
+    &(Entry)->Field != (ListHead);					\
+    Entry = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field))
+
+#define ReverseLoopOverList(Entry, ListHead, Type, Field)		\
+    for (Type *Entry = CONTAINING_RECORD((ListHead)->Blink, Type, Field); \
+    &(Entry)->Field != (ListHead);					\
+    Entry = CONTAINING_RECORD((Entry)->Field.Blink, Type, Field))

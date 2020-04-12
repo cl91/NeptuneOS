@@ -52,8 +52,11 @@ typedef USHORT *PUSHORT;
 
 typedef int32_t LONG;
 typedef uint32_t ULONG;
-typedef LONG *PLONG, *LONG_PTR;
-typedef ULONG *PULONG, *ULONG_PTR;
+typedef LONG *PLONG;
+typedef ULONG *PULONG;
+
+typedef uintptr_t ULONG_PTR;
+typedef intptr_t LONG_PTR;
 
 typedef PVOID HANDLE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
