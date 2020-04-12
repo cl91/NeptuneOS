@@ -77,7 +77,6 @@ NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 
     int RevokeError = 0;
     MWORD Cap = 0;
- CleanUpRevoke:
     RevokeError = seL4_CNode_Revoke(Page->TreeNode.CapSpace->RootCap,
 				    Page->Cap,
 				    0); /* FIXME: depth */

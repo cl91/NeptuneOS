@@ -6,7 +6,8 @@
 
 #define NTOS_MM_TAG    			(EX_POOL_TAG('n','t','m','m'))
 
-/* Information needed to initialize the Executive Pool */
+/* Information needed to initialize the Memory Management routines,
+ * including the Executive Pool */
 typedef struct _MM_INIT_INFO_CLASS {
     MWORD InitVSpaceCap;
     MWORD InitUntypedCap;
@@ -57,10 +58,10 @@ typedef struct _MM_CNODE {
 
 typedef struct _MM_UNTYPED {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    LIST_ENTRY ListEntry;
+    LIST_ENTRY FreeListEntry;
+    LIST_ENTRY RootListEntry;
     seL4_Word Cap;
     LONG Log2Size;
-    BOOLEAN Split;
 } MM_UNTYPED, *PMM_UNTYPED;
 
 typedef enum _MM_PAGING_STRUCTURE_TYPE { MM_PAGE_TYPE_PAGE,
@@ -98,16 +99,16 @@ typedef struct _MM_AVL_TREE {
     LIST_ENTRY NodeList;	/* ordered linearly according to FirstPageNumber */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
-typedef struct _MM_PAGE_TABLE {
-    PMM_PAGING_STRUCTURE PagingStructure; /* must be first entry. See MM_VAD */
-    LIST_ENTRY LargePageListEntry;		     /* linked with page table/large pages from low address to high address */
-    MM_AVL_TREE MappedPages;		     /* balanced tree for all mapped pages */
-} MM_PAGE_TABLE, *PMM_PAGE_TABLE;
-
 typedef struct _MM_LARGE_PAGE {
-    PMM_PAGING_STRUCTURE PagingStructure; /* must be first entry. See MM_VAD */
-    LIST_ENTRY LargePageListEntry;		     /* linked with page table/large pages from low address to high address */
+    MM_AVL_NODE AvlNode;		  /* must be first entry. See MM_VAD */
+    PMM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
 } MM_LARGE_PAGE, *PMM_LARGE_PAGE;
+
+typedef struct _MM_PAGE_TABLE {
+    MM_AVL_NODE AvlNode;		  /* must be first entry. See MM_VAD */
+    PMM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
+    MM_AVL_TREE MappedPages;  /* balanced tree for all mapped pages */
+} MM_PAGE_TABLE, *PMM_PAGE_TABLE;
 
 typedef struct _MM_PAGE {
     MM_AVL_NODE AvlNode;	/* must be first entry */
@@ -118,11 +119,16 @@ typedef struct _MM_PAGE {
 typedef struct _MM_VAD {
     MM_AVL_NODE AvlNode;	/* must be first entry */
     MWORD NumberOfPages;
-    PMM_PAGING_STRUCTURE *FirstLargePage; /* polymorphic pointers to either MM_LARGE_PAGE */
-    PMM_PAGING_STRUCTURE *LastLargePage; /* or MM_PAGE_TABLE */
+    PMM_AVL_NODE FirstLargePage; /* polymorphic pointers to either MM_LARGE_PAGE */
+    PMM_AVL_NODE LastLargePage; /* or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;
 
 typedef struct _MM_VADDR_SPACE {
     MM_CAPSPACE CapSpace;
     MM_AVL_TREE VadTree;
+
+    LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
+    LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
+    LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
+    LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;

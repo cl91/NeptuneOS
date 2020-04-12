@@ -4,7 +4,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 			OUT PMM_UNTYPED Dest1,
 			OUT PMM_UNTYPED Dest2)
 {
-    if (Src->Split == TRUE) {
+    if ((Src->TreeNode.LeftChild != NULL) || (Src->TreeNode.RightChild != NULL)) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
@@ -32,9 +32,6 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 	return SEL4_ERROR(error);
     }
 
-    Src->Split = TRUE;
-    Dest1->Split = FALSE;
-    Dest2->Split = FALSE;
     Dest1->Cap = NewCap;
     Dest2->Cap = NewCap+1;
 
@@ -42,6 +39,16 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     Src->TreeNode.RightChild = &Dest2->TreeNode;
     Dest1->TreeNode.Parent = &Src->TreeNode;
     Dest2->TreeNode.Parent = &Src->TreeNode;
+    Dest1->TreeNode.LeftChild = NULL;
+    Dest1->TreeNode.RightChild = NULL;
+    Dest2->TreeNode.LeftChild = NULL;
+    Dest2->TreeNode.RightChild = NULL;
 
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
+			     PMM_UNTYPED Untyped)
+{
     return STATUS_SUCCESS;
 }

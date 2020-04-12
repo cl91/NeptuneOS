@@ -10,6 +10,9 @@
 #include "amd64/ex.h"
 #endif
 
+/* Size of reserved address space starting from EX_POOL_START */
+#define EX_POOL_RESERVED_SIZE	(512 * 1024 * 1024) /* 512MB */
+
 #define EX_POOL_PAGE_BITS	(seL4_PageBits)
 #define EX_POOL_LARGE_PAGE_BITS	(seL4_LargePageBits)
 #define EX_POOL_PAGE_SIZE	(1 << EX_POOL_PAGE_BITS)
