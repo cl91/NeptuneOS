@@ -5,7 +5,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 			OUT PMM_UNTYPED Dest2)
 {
     if (Src->Split == TRUE) {
-	return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
+	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
     PMM_CAPSPACE CapSpace = Src->TreeNode.CapSpace;

@@ -9,7 +9,7 @@ NTSTATUS MiCNodeAllocCaps(IN PMM_CNODE CNode,
 {
     if (CNode->Policy == MM_CNODE_TAIL_DEALLOC_ONLY) {
 	if (CNode->FreeRange.Number < NumberRequested) {
-	    return STATUS_NTOS_EXEC_CAPSPACE_EXHAUSTION;
+	    return STATUS_NTOS_CAPSPACE_EXHAUSTION;
 	}
 	*StartCap = CNode->FreeRange.StartCap;
 	CNode->FreeRange.StartCap += NumberRequested;
@@ -49,7 +49,7 @@ NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
 	}
     }
 
-    return STATUS_NTOS_EXEC_CAPSPACE_EXHAUSTION;
+    return STATUS_NTOS_CAPSPACE_EXHAUSTION;
 }
 
 NTSTATUS MiCNodeDeallocCap(IN PMM_CNODE CNode,
@@ -61,7 +61,7 @@ NTSTATUS MiCNodeDeallocCap(IN PMM_CNODE CNode,
 	    CNode->FreeRange.StartCap--;
 	    CNode->FreeRange.Number++;
 	} else {
-	    return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
+	    return STATUS_NTOS_INVALID_ARGUMENT;
 	}
     } else {			/* CAPSPACE_TYPE_ALLOW_DEALLOC */
     }

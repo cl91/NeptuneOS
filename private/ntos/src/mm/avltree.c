@@ -338,7 +338,7 @@ NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
     MWORD NodeStartPN = VadNode->AvlNode.StartingPageNumber;
     PMM_VAD PrevNode = (PMM_VAD) MiAvlTreeFindNode(Tree, NodeStartPN);
     if (PrevNode != NULL && NodeStartPN < PrevNode->AvlNode.StartingPageNumber + PrevNode->NumberOfPages) {
-	return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
+	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, &PrevNode->AvlNode, &VadNode->AvlNode);
     return STATUS_SUCCESS;

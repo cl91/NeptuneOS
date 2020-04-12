@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nt.h>
+#include <assert.h>
 
 #include "ntosdef.h"
 #include "mm.h"

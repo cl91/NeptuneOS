@@ -38,7 +38,7 @@ NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     if (Page->Cap == 0) {
 	PMM_UNTYPED Untyped = (PMM_UNTYPED) Page->TreeNode.Parent;
 	if (Untyped == NULL) {
-	    return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
+	    return STATUS_NTOS_INVALID_ARGUMENT;
 	}
 	MWORD Cap;
 	RET_IF_ERR(MiCapSpaceAllocCap(Page->TreeNode.CapSpace, &Cap));

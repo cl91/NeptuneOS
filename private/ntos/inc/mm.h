@@ -57,6 +57,7 @@ typedef struct _MM_CNODE {
 
 typedef struct _MM_UNTYPED {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
+    LIST_ENTRY ListEntry;
     seL4_Word Cap;
     LONG Log2Size;
     BOOLEAN Split;

@@ -1,6 +1,8 @@
 #include <nt.h>
 #include <ntos.h>
 
+#define POOL_DATA_TAG	EX_POOL_TAG('p', 'o', 'o', 'l')
+
 static EX_POOL EiGlobalPool;
 
 static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
@@ -10,49 +12,65 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 static NTSTATUS EiInitializePool(PEX_POOL Pool,
 				 PMM_PAGING_STRUCTURE Page)
 {
-    InitializeListHead(&Pool->UsedPageList);
-    InitializeListHead(&Pool->FreePageList);
+    InitializeListHead(&Pool->ManagedPageRangeList);
+    InitializeListHead(&Pool->UnmanagedPageRangeList);
+    InitializeListHead(&Pool->FreePageRangeList);
     InitializeListHead(&Pool->LargePageList);
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
 	InitializeListHead(&Pool->FreeLists[i]);
     }
 
     /* Add page to pool */
-    PEX_POOL_PAGE ExPage = (PEX_POOL_PAGE) Page->VirtualAddr;
     if (Page->Type == MM_PAGE_TYPE_PAGE) {
 	Pool->TotalPages = 1;
 	Pool->TotalLargePages = 0;
 	Pool->HeapEnd = Page->VirtualAddr + EX_POOL_PAGE_SIZE;
-	InsertHeadList(&Pool->UsedPageList, &ExPage->PoolListEntry);
     } else if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
 	ULONG TotalPages = 1 << (EX_POOL_LARGE_PAGE_BITS - EX_POOL_PAGE_BITS);
 	Pool->TotalPages = TotalPages;
 	Pool->TotalLargePages = 1;
 	Pool->HeapEnd = Page->VirtualAddr + EX_POOL_LARGE_PAGE_SIZE;
-	InsertHeadList(&Pool->UsedPageList, &ExPage->PoolListEntry);
-	for (ULONG Offset = 1; Offset < TotalPages; Offset++) {
-	    ExPage = (PEX_POOL_PAGE) (Page->VirtualAddr + (Offset << EX_POOL_PAGE_BITS));
-	    InsertTailList(&Pool->FreePageList, &ExPage->PoolListEntry);
-	}
     } else {
-	return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
+	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
     /* Add free space to FreeLists */
     ULONG FreeListIndex = EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK - 1;
-    MWORD PoolHeaderStart = Page->VirtualAddr + sizeof(EX_POOL_PAGE);
-    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) PoolHeaderStart;
-    MWORD FreeEntryStart = PoolHeaderStart + EX_POOL_OVERHEAD;
+    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) Page->VirtualAddr;
+    MWORD FreeEntryStart = Page->VirtualAddr + EX_POOL_OVERHEAD;
     PLIST_ENTRY FreeEntry = (PLIST_ENTRY) FreeEntryStart;
     PoolHeader->PreviousSize = 0;
     PoolHeader->BlockSize = EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK;
     InsertHeadList(&Pool->FreeLists[FreeListIndex], FreeEntry);
 
-    /* If large page, allocate maintenance structure and add to pool */
-    if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
+    /* Allocate maintenance structure and add to pool lists */
+    if (Page->Type == MM_PAGE_TYPE_PAGE) {
+	PEX_POOL_PAGE_RANGE ManagedPages = (PEX_POOL_PAGE_RANGE)
+	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
+	assert(ManagedPages != NULL);
+	ManagedPages->StartingPageNumber = Page->VirtualAddr >> EX_POOL_PAGE_BITS;
+	ManagedPages->NumberOfPages = 1;
+	InsertHeadList(&Pool->ManagedPageRangeList, &ManagedPages->ListEntry);
+    } else if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
+	PEX_POOL_PAGE_RANGE ManagedPages = (PEX_POOL_PAGE_RANGE)
+	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
+	assert(ManagedPages != NULL);
+	ManagedPages->StartingPageNumber = Page->VirtualAddr >> EX_POOL_PAGE_BITS;
+	ManagedPages->NumberOfPages = 1;
+	InsertHeadList(&Pool->ManagedPageRangeList, &ManagedPages->ListEntry);
+	PEX_POOL_PAGE_RANGE FreePages = (PEX_POOL_PAGE_RANGE)
+	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
+	assert(FreePages != NULL);
+	FreePages->StartingPageNumber = (Page->VirtualAddr >> EX_POOL_PAGE_BITS) + 1;
+	FreePages->NumberOfPages = (1 << (EX_POOL_LARGE_PAGE_BITS - EX_POOL_PAGE_BITS)) - 1;
+	InsertHeadList(&Pool->FreePageRangeList, &FreePages->ListEntry);
 	PEX_POOL_LARGE_PAGE LargePage = (PEX_POOL_LARGE_PAGE)
-	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_LARGE_PAGE), NTOS_EX_TAG);
+	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_LARGE_PAGE), POOL_DATA_TAG);
+	LargePage->StartingLargePageNumber = Page->VirtualAddr >> EX_POOL_LARGE_PAGE_BITS;
+	assert(LargePage != NULL);
 	InsertHeadList(&Pool->LargePageList, &LargePage->ListEntry);
+    } else {
+	return STATUS_NTOS_BUG;
     }
 
     return STATUS_SUCCESS;

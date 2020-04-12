@@ -45,7 +45,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	/* Split the untyped until we have exactly one page plus one page directory */
 	NumberSplits = UntypedDescs[0].Log2Size - seL4_PageBits;
     } else {
-	return STATUS_NTOS_EXEC_INVALID_ARGUMENT;
+	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     for (int i = 0; i < NumberSplits; i++) {
 	RET_IF_ERR(MiSplitUntyped(&UntypedDescs[2*i], &UntypedDescs[2*i+2], &UntypedDescs[2*i+3]));
@@ -95,7 +95,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
      */
     PMM_VADDR_SPACE VaddrSpace = (PMM_VADDR_SPACE) ExAllocatePoolWithTag(sizeof(MM_VADDR_SPACE), EX_POOL_TAG('v', 'a', 's', 'p'));
     if (VaddrSpace == NULL) {
-	return STATUS_NTOS_EXEC_OUT_OF_MEMORY;
+	return STATUS_NTOS_OUT_OF_MEMORY;
     }
     PEPROCESS EProcess = InitInfo->EProcess;
     EProcess->VaddrSpace = VaddrSpace;
@@ -104,7 +104,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     VaddrSpace->CapSpace.RootCap = InitInfo->RootCNodeCap;
     PMM_CNODE RootCNode = (PMM_CNODE) ExAllocatePoolWithTag(sizeof(MM_CNODE), EX_POOL_TAG('r', 'c', 'n', 'd'));
     if (RootCNode == NULL) {
-	return STATUS_NTOS_EXEC_OUT_OF_MEMORY;
+	return STATUS_NTOS_OUT_OF_MEMORY;
     }
     VaddrSpace->CapSpace.RootCNode = RootCNode;
     RootCNode->TreeNode.CapSpace = &VaddrSpace->CapSpace;
