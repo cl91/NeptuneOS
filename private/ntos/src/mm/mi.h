@@ -28,3 +28,53 @@ NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page);
 #define MiAllocatePool(Var, Type)					\
     Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_MM_TAG); \
     if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }
+
+static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
+{
+    Tree->BalancedRoot = NULL;
+    InitializeListHead(&Tree->NodeList);
+}
+
+static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
+				       MWORD PageNumber)
+{
+    Node->Parent = 0;
+    Node->LeftChild = Node->RightChild = NULL;
+    Node->FirstPageNumber = PageNumber;
+    Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
+}
+
+static inline VOID MiInitializePageNode(PMM_PAGE Node,
+					PMM_PAGING_STRUCTURE Page)
+{
+    assert(Page->Type == MM_PAGE_TYPE_PAGE);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> EX_PAGE_BITS);
+    Node->PagingStructure = Page;
+}
+
+static inline VOID MiInitializeLargePageNode(PMM_LARGE_PAGE Node,
+					     PMM_PAGING_STRUCTURE Page)
+{
+    assert(Page->Type == MM_PAGE_TYPE_LARGE_PAGE);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> EX_LARGE_PAGE_BITS);
+    Node->PagingStructure = Page;
+}
+
+static inline VOID MiInitializePageTableNode(PMM_PAGE_TABLE Node,
+					     PMM_PAGING_STRUCTURE Page)
+{
+    assert(Page->Type == MM_PAGE_TYPE_PAGE_TABLE);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> EX_LARGE_PAGE_BITS);
+    MiAvlInitializeTree(&Node->MappedPages);
+    Node->PagingStructure = Page;
+}
+
+static inline VOID MiInitializeVadNode(PMM_VAD Node,
+				       MWORD StartPageNumber,
+				       MWORD NumberOfPages)
+{
+    MiAvlInitializeNode(&Node->AvlNode, StartPageNumber);
+    Node->NumberOfPages = NumberOfPages;
+    Node->FirstLargePage = NULL;
+    Node->LastLargePage = NULL;
+}

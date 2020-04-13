@@ -111,7 +111,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     RootCNode->Policy = MM_CNODE_TAIL_DEALLOC_ONLY;
     RootCNode->FreeRange = InitCNode.FreeRange;
 
-    /* Build the tree of untyped's derived during mapping of initial heap */
+    /* Build the tree of untyped's derived above during mapping of initial heap */
     InitializeListHead(&VaddrSpace->SmallUntypedList);
     InitializeListHead(&VaddrSpace->MediumUntypedList);
     InitializeListHead(&VaddrSpace->LargeUntypedList);
@@ -143,6 +143,12 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     InitialPageHeap->TreeNode.Parent = &RootUntyped->TreeNode;
     InitialPageHeap->TreeNode.LeftChild = NULL;
     InitialPageHeap->TreeNode.RightChild = NULL;
+
+    /* Build the Vad tree of the given EProcess */
+    MiAvlInitializeTree(&VaddrSpace->VadTree);
+    MiAllocatePool(ExPoolVad, MM_VAD);
+    MiInitializeVadNode(ExPoolVad, EX_POOL_START >> EX_PAGE_BITS, EX_POOL_RESERVED_SIZE >> EX_PAGE_BITS);
+    MiAvlInitializeTree(&VaddrSpace->PageTableTree);
     if (InitialPageHeap->Type == MM_PAGE_TYPE_PAGE) {
 	MiAllocatePool(InitialPageTableHeap, MM_PAGING_STRUCTURE);
 	*InitialPageTableHeap = PageTable;
@@ -150,10 +156,20 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 	InitialPageTableHeap->TreeNode.Parent = RootUntyped->TreeNode.Parent->RightChild;
 	InitialPageTableHeap->TreeNode.LeftChild = NULL;
 	InitialPageTableHeap->TreeNode.RightChild = NULL;
+	MiAllocatePool(PageNode, MM_PAGE);
+	MiAllocatePool(PageTableNode, MM_PAGE_TABLE);
+	MiInitializePageNode(PageNode, InitialPageHeap);
+	MiInitializePageTableNode(PageTableNode, InitialPageTableHeap);
+	MmVspaceInsertMappedPageTable(VaddrSpace, PageTableNode);
+	ExPoolVad->FirstLargePage = &PageTableNode->AvlNode;
+	ExPoolVad->LastLargePage = &PageTableNode->AvlNode;
+    } else {
+	MiAllocatePool(LargePageNode, MM_LARGE_PAGE);
+	MiInitializeLargePageNode(LargePageNode, InitialPageHeap);
+	MmVspaceInsertMappedLargePage(VaddrSpace, LargePageNode);
+	ExPoolVad->FirstLargePage = &LargePageNode->AvlNode;
+	ExPoolVad->LastLargePage = &LargePageNode->AvlNode;
     }
 
-    /* Build the Vad tree of the given EProcess */
-    VaddrSpace->VadTree.BalancedRoot = NULL;
-    InitializeListHead(&VaddrSpace->VadTree.NodeList);
     return STATUS_SUCCESS;
 }

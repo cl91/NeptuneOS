@@ -126,9 +126,18 @@ typedef struct _MM_VAD {
 typedef struct _MM_VADDR_SPACE {
     MM_CAPSPACE CapSpace;
     MM_AVL_TREE VadTree;
-
+    MM_AVL_TREE PageTableTree;	/* Node is either a page table or a large page */
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
     LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
+
+NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
+			     IN PMM_VAD VadNode);
+NTSTATUS MmPageTableInsertMappedPage(IN PMM_PAGE_TABLE PageTable,
+				     IN PMM_PAGE Page);
+NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
+					   IN PMM_LARGE_PAGE LargePage);
+NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
+				       IN PMM_PAGE_TABLE PageTable);

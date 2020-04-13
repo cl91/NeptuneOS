@@ -343,3 +343,25 @@ NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
     MiAvlTreeInsertNode(Tree, &PrevNode->AvlNode, &VadNode->AvlNode);
     return STATUS_SUCCESS;
 }
+
+NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
+					   IN PMM_LARGE_PAGE LargePage)
+{
+    if (!LargePage->PagingStructure->Mapped) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    PMM_AVL_TREE Tree = &Vspace->PageTableTree;
+    MWORD LargePN = LargePage->PagingStructure->VirtualAddr >> EX_LARGE_PAGE_BITS;
+    PMM_AVL_NODE PrevNode = MiAvlTreeFindNode(Tree, LargePN);
+    if (PrevNode != NULL && LargePN == PrevNode->FirstPageNumber) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    MiAvlTreeInsertNode(Tree, PrevNode, &LargePage->AvlNode);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
+				       IN PMM_PAGE_TABLE PageTable)
+{
+    return MmVspaceInsertMappedLargePage(Vspace, (PMM_LARGE_PAGE) PageTable);
+}
