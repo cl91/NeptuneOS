@@ -12,9 +12,9 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 static NTSTATUS EiInitializePool(PEX_POOL Pool,
 				 PMM_PAGING_STRUCTURE Page)
 {
-    InitializeListHead(&Pool->ManagedPageRangeList);
-    InitializeListHead(&Pool->UnmanagedPageRangeList);
-    InitializeListHead(&Pool->FreePageRangeList);
+    InitializeListHead(&Pool->ManagedPagesList);
+    InitializeListHead(&Pool->UnmanagedPagesList);
+    InitializeListHead(&Pool->FreePagesList);
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
 	InitializeListHead(&Pool->FreeLists[i]);
     }
@@ -41,19 +41,19 @@ static NTSTATUS EiInitializePool(PEX_POOL Pool,
     InsertHeadList(&Pool->FreeLists[FreeListIndex], FreeEntry);
 
     /* Allocate maintenance structure and add to pool lists */
-    PEX_POOL_PAGE_RANGE ManagedPages = (PEX_POOL_PAGE_RANGE)
-	EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
+    PEX_POOL_PAGES ManagedPages = (PEX_POOL_PAGES)
+	EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGES), POOL_DATA_TAG);
     assert(ManagedPages != NULL);
     ManagedPages->FirstPageNum = Page->VirtualAddr >> EX_PAGE_BITS;
     ManagedPages->NumPages = 1;
-    InsertHeadList(&Pool->ManagedPageRangeList, &ManagedPages->ListEntry);
+    InsertHeadList(&Pool->ManagedPagesList, &ManagedPages->ListEntry);
     if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
-	PEX_POOL_PAGE_RANGE FreePages = (PEX_POOL_PAGE_RANGE)
-	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
+	PEX_POOL_PAGES FreePages = (PEX_POOL_PAGES)
+	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGES), POOL_DATA_TAG);
 	assert(FreePages != NULL);
 	FreePages->FirstPageNum = (Page->VirtualAddr >> EX_PAGE_BITS) + 1;
 	FreePages->NumPages = (1 << (EX_LARGE_PAGE_BITS - EX_PAGE_BITS)) - 1;
-	InsertHeadList(&Pool->FreePageRangeList, &FreePages->ListEntry);
+	InsertHeadList(&Pool->FreePagesList, &FreePages->ListEntry);
     }
 
     return STATUS_SUCCESS;
@@ -72,7 +72,7 @@ static MWORD EiRequestPoolPages(IN PEX_POOL Pool,
 				IN ULONG NumPages)
 {
     /* First look for contiguous pages in the free pages list */
-    LoopOverList(Pages, &Pool->FreePageRangeList, EX_POOL_PAGE_RANGE, ListEntry) {
+    LoopOverList(Pages, &Pool->FreePagesList, EX_POOL_PAGES, ListEntry) {
 	if (Pages->NumPages >= NumPages) {
 	    MWORD PageNum = Pages->FirstPageNum;
 	    Pages->FirstPageNum += NumPages;
@@ -88,10 +88,10 @@ static MWORD EiRequestPoolPages(IN PEX_POOL Pool,
     return 0;
 }
 
-static PEX_POOL_PAGE_RANGE EiPoolFindPrevPageRange(PLIST_ENTRY ListHead,
+static PEX_POOL_PAGES EiPoolFindPrevPages(PLIST_ENTRY ListHead,
 						   MWORD FirstPageNum)
 {
-    ReverseLoopOverList(Pages, ListHead, EX_POOL_PAGE_RANGE, ListEntry) {
+    ReverseLoopOverList(Pages, ListHead, EX_POOL_PAGES, ListEntry) {
 	if (Pages->FirstPageNum <= FirstPageNum) {
 	    return Pages;
 	}
@@ -119,23 +119,23 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	    return NULL;
 	} else {
 	    /* Add pages to unmanaged list */
-	    PEX_POOL_PAGE_RANGE PrevPageRange = EiPoolFindPrevPageRange(&Pool->UnmanagedPageRangeList,
+	    PEX_POOL_PAGES PrevPages = EiPoolFindPrevPages(&Pool->UnmanagedPagesList,
 									PageNum);
-	    if (PrevPageRange != NULL && PrevPageRange->FirstPageNum + PrevPageRange->NumPages == PageNum) {
-		PrevPageRange->NumPages += NumPages;
+	    if (PrevPages != NULL && PrevPages->FirstPageNum + PrevPages->NumPages == PageNum) {
+		PrevPages->NumPages += NumPages;
 	    } else {
-		PEX_POOL_PAGE_RANGE PageRange = (PEX_POOL_PAGE_RANGE)
-		    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
-		if (PageRange == NULL) {
+		PEX_POOL_PAGES Pages = (PEX_POOL_PAGES)
+		    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGES), POOL_DATA_TAG);
+		if (Pages == NULL) {
 		    //EiFreePoolPages(Pool, PageNum, NumPages);
 		    return NULL;
 		}
-		PageRange->FirstPageNum = PageNum;
-		PageRange->NumPages = NumPages;
-		if (PrevPageRange == NULL) {
-		    InsertTailList(&Pool->UnmanagedPageRangeList, &PageRange->ListEntry);
+		Pages->FirstPageNum = PageNum;
+		Pages->NumPages = NumPages;
+		if (PrevPages == NULL) {
+		    InsertTailList(&Pool->UnmanagedPagesList, &Pages->ListEntry);
 		} else {
-		    InsertHeadList(&PrevPageRange->ListEntry, &PageRange->ListEntry);
+		    InsertHeadList(&PrevPages->ListEntry, &Pages->ListEntry);
 		}
 	    }
 	    return (PVOID) (PageNum << EX_PAGE_BITS);
@@ -155,35 +155,35 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	    }
 	    /* Add page to the managed page list */
 	    BOOLEAN NeedAlloc = TRUE;
-	    PEX_POOL_PAGE_RANGE PrevPageRange = EiPoolFindPrevPageRange(&Pool->ManagedPageRangeList,
+	    PEX_POOL_PAGES PrevPages = EiPoolFindPrevPages(&Pool->ManagedPagesList,
 									PageNum);
-	    if (PrevPageRange != NULL && PrevPageRange->FirstPageNum + PrevPageRange->NumPages == PageNum) {
-		PrevPageRange->NumPages++;
+	    if (PrevPages != NULL && PrevPages->FirstPageNum + PrevPages->NumPages == PageNum) {
+		PrevPages->NumPages++;
 		NeedAlloc = FALSE;
 	    } else {
 		NeedAlloc = TRUE;
 	    }
 	    MWORD PageVaddr = PageNum << EX_PAGE_BITS;
-	    ULONG PageRangeStructBlocks = RtlDivCeilUnsigned(sizeof(EX_POOL_PAGE_RANGE), EX_POOL_SMALLEST_BLOCK);
+	    ULONG PagesStructBlocks = RtlDivCeilUnsigned(sizeof(EX_POOL_PAGES), EX_POOL_SMALLEST_BLOCK);
 	    if (NeedAlloc) {
 		PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) PageVaddr;
 		PoolHeader->PreviousSize = 0;
-		PoolHeader->BlockSize = PageRangeStructBlocks;
-		PEX_POOL_PAGE_RANGE PageRange = (PEX_POOL_PAGE_RANGE) (PageVaddr + EX_POOL_OVERHEAD);
-		PageRange->FirstPageNum = PageNum;
-		PageRange->NumPages = 1;
-		if (PrevPageRange == NULL) {
-		    InsertTailList(&Pool->ManagedPageRangeList, &PageRange->ListEntry);
+		PoolHeader->BlockSize = PagesStructBlocks;
+		PEX_POOL_PAGES Pages = (PEX_POOL_PAGES) (PageVaddr + EX_POOL_OVERHEAD);
+		Pages->FirstPageNum = PageNum;
+		Pages->NumPages = 1;
+		if (PrevPages == NULL) {
+		    InsertTailList(&Pool->ManagedPagesList, &Pages->ListEntry);
 		} else {
-		    InsertHeadList(&PrevPageRange->ListEntry, &PageRange->ListEntry);
+		    InsertHeadList(&PrevPages->ListEntry, &Pages->ListEntry);
 		}
 	    }
 	    /* Add the rest of the space to the FreeLists */
-	    MWORD FreeSpaceStart = PageVaddr + (NeedAlloc ? (PageRangeStructBlocks + 1) * EX_POOL_SMALLEST_BLOCK : 0);
-	    MWORD FreeBlockSize = EX_PAGE_SIZE / EX_POOL_SMALLEST_BLOCK - 1 - (NeedAlloc ? PageRangeStructBlocks + 1 : 0);
+	    MWORD FreeSpaceStart = PageVaddr + (NeedAlloc ? (PagesStructBlocks + 1) * EX_POOL_SMALLEST_BLOCK : 0);
+	    MWORD FreeBlockSize = EX_PAGE_SIZE / EX_POOL_SMALLEST_BLOCK - 1 - (NeedAlloc ? PagesStructBlocks + 1 : 0);
 	    FreeListIndex = FreeBlockSize - 1;
 	    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) FreeSpaceStart;
-	    PoolHeader->PreviousSize = NeedAlloc ? PageRangeStructBlocks : 0;
+	    PoolHeader->PreviousSize = NeedAlloc ? PagesStructBlocks : 0;
 	    PoolHeader->BlockSize = FreeBlockSize;
 	    PLIST_ENTRY FreeEntry = (PLIST_ENTRY) (FreeSpaceStart + EX_POOL_OVERHEAD);
 	    InsertHeadList(&Pool->FreeLists[FreeListIndex], FreeEntry);

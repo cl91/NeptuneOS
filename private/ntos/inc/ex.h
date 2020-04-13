@@ -43,18 +43,18 @@ COMPILE_ASSERT(EX_POOL_OVERHEAD_MUST_EQUAL_SMALLEST_BLOCK, EX_POOL_OVERHEAD == E
 
 typedef struct _EX_POOL {
     ULONG TotalPages;		/* one large page is 2^10 pages */
-    LIST_ENTRY ManagedPageRangeList; /* pages managed by ExPool */
-    LIST_ENTRY UnmanagedPageRangeList; /* pages handed out to clients */
-    LIST_ENTRY FreePageRangeList;      /* unused pages */
+    LIST_ENTRY ManagedPagesList; /* pages managed by ExPool */
+    LIST_ENTRY UnmanagedPagesList; /* pages handed out to clients */
+    LIST_ENTRY FreePagesList;      /* unused pages */
     MWORD HeapEnd;
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
 } EX_POOL, *PEX_POOL;
 
-typedef struct _EX_POOL_PAGE_RANGE {
+typedef struct _EX_POOL_PAGES {
     LIST_ENTRY ListEntry;
     MWORD FirstPageNum;
     MWORD NumPages;
-} EX_POOL_PAGE_RANGE, *PEX_POOL_PAGE_RANGE;
+} EX_POOL_PAGES, *PEX_POOL_PAGES;
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \
