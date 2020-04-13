@@ -231,13 +231,13 @@ MiAvlTreeRebalanceNode(PMM_AVL_TREE Tree,
 }
 
 /*
- * Returns Node with largest FirstPageNumber such that
- * Node->FirstPageNumber <= input FirstPageNumber
+ * Returns Node with largest FirstPageNum such that
+ * Node->FirstPageNum <= input FirstPageNum
  * Returns NULL if no such node is found
  */
 static PMM_AVL_NODE
 MiAvlTreeFindNode(IN PMM_AVL_TREE Tree,
-		  IN MWORD FirstPageNumber)
+		  IN MWORD FirstPageNum)
 {
     PMM_AVL_NODE Node = Tree->BalancedRoot;
     if (Node == NULL) {
@@ -245,9 +245,9 @@ MiAvlTreeFindNode(IN PMM_AVL_TREE Tree,
     }
     PMM_AVL_NODE PrevNode = Node;
     while (Node != NULL) {
-	if (FirstPageNumber == Node->FirstPageNumber) {
+	if (FirstPageNum == Node->FirstPageNum) {
 	    return Node;
-	} else if (FirstPageNumber < Node->FirstPageNumber) {
+	} else if (FirstPageNum < Node->FirstPageNum) {
 	    Node = Node->LeftChild;
 	    PrevNode = Node;
 	} else {
@@ -260,7 +260,7 @@ MiAvlTreeFindNode(IN PMM_AVL_TREE Tree,
 /*
  * Insert tree node between PrevNode and PrevNode->Flink,
  * where PrevNode is the largest node such that
- * PrevNode->FirstPageNumber <= Node->FirstPageNumber
+ * PrevNode->FirstPageNum <= Node->FirstPageNum
  */
 static VOID
 MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
@@ -335,9 +335,9 @@ NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
 			     IN PMM_VAD VadNode)
 {
     PMM_AVL_TREE Tree = &Vspace->VadTree;
-    MWORD NodeStartPN = VadNode->AvlNode.FirstPageNumber;
+    MWORD NodeStartPN = VadNode->AvlNode.FirstPageNum;
     PMM_VAD PrevNode = (PMM_VAD) MiAvlTreeFindNode(Tree, NodeStartPN);
-    if (PrevNode != NULL && NodeStartPN < PrevNode->AvlNode.FirstPageNumber + PrevNode->NumberOfPages) {
+    if (PrevNode != NULL && NodeStartPN < PrevNode->AvlNode.FirstPageNum + PrevNode->NumPages) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, &PrevNode->AvlNode, &VadNode->AvlNode);
@@ -353,7 +353,7 @@ NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
     PMM_AVL_TREE Tree = &Vspace->PageTableTree;
     MWORD LargePN = LargePage->PagingStructure->VirtualAddr >> EX_LARGE_PAGE_BITS;
     PMM_AVL_NODE PrevNode = MiAvlTreeFindNode(Tree, LargePN);
-    if (PrevNode != NULL && LargePN == PrevNode->FirstPageNumber) {
+    if (PrevNode != NULL && LargePN == PrevNode->FirstPageNum) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, PrevNode, &LargePage->AvlNode);

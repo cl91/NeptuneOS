@@ -90,13 +90,13 @@ typedef struct _MM_AVL_NODE {
     MWORD Parent;
     struct _MM_AVL_NODE *LeftChild;
     struct _MM_AVL_NODE *RightChild;
-    MWORD FirstPageNumber;
-    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to FirstPageNumber */
+    MWORD FirstPageNum;
+    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to FirstPageNum */
 } MM_AVL_NODE, *PMM_AVL_NODE;
 
 typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
-    LIST_ENTRY NodeList;	/* ordered linearly according to FirstPageNumber */
+    LIST_ENTRY NodeList;	/* ordered linearly according to FirstPageNum */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
 typedef struct _MM_LARGE_PAGE {
@@ -118,7 +118,7 @@ typedef struct _MM_PAGE {
 /* Virtual address descriptor */
 typedef struct _MM_VAD {
     MM_AVL_NODE AvlNode;	/* must be first entry */
-    MWORD NumberOfPages;
+    MWORD NumPages;
     PMM_AVL_NODE FirstLargePage; /* polymorphic pointers to either MM_LARGE_PAGE */
     PMM_AVL_NODE LastLargePage; /* or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;

@@ -52,8 +52,8 @@ typedef struct _EX_POOL {
 
 typedef struct _EX_POOL_PAGE_RANGE {
     LIST_ENTRY ListEntry;
-    MWORD FirstPageNumber;
-    MWORD NumberOfPages;
+    MWORD FirstPageNum;
+    MWORD NumPages;
 } EX_POOL_PAGE_RANGE, *PEX_POOL_PAGE_RANGE;
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \

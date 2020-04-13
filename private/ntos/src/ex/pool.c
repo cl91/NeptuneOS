@@ -44,15 +44,15 @@ static NTSTATUS EiInitializePool(PEX_POOL Pool,
     PEX_POOL_PAGE_RANGE ManagedPages = (PEX_POOL_PAGE_RANGE)
 	EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
     assert(ManagedPages != NULL);
-    ManagedPages->FirstPageNumber = Page->VirtualAddr >> EX_PAGE_BITS;
-    ManagedPages->NumberOfPages = 1;
+    ManagedPages->FirstPageNum = Page->VirtualAddr >> EX_PAGE_BITS;
+    ManagedPages->NumPages = 1;
     InsertHeadList(&Pool->ManagedPageRangeList, &ManagedPages->ListEntry);
     if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
 	PEX_POOL_PAGE_RANGE FreePages = (PEX_POOL_PAGE_RANGE)
 	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
 	assert(FreePages != NULL);
-	FreePages->FirstPageNumber = (Page->VirtualAddr >> EX_PAGE_BITS) + 1;
-	FreePages->NumberOfPages = (1 << (EX_LARGE_PAGE_BITS - EX_PAGE_BITS)) - 1;
+	FreePages->FirstPageNum = (Page->VirtualAddr >> EX_PAGE_BITS) + 1;
+	FreePages->NumPages = (1 << (EX_LARGE_PAGE_BITS - EX_PAGE_BITS)) - 1;
 	InsertHeadList(&Pool->FreePageRangeList, &FreePages->ListEntry);
     }
 
@@ -65,22 +65,22 @@ NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE Page)
 }
 
 /* Returns the starting page number of the range of pages requested
- * Guaranteed to return exactly NumberOfPages contiguous pages
+ * Guaranteed to return exactly NumPages contiguous pages
  * Returns 0 if unable to satisfy request
  */
 static MWORD EiRequestPoolPages(IN PEX_POOL Pool,
-				IN ULONG NumberOfPages)
+				IN ULONG NumPages)
 {
     /* First look for contiguous pages in the free pages list */
     LoopOverList(Pages, &Pool->FreePageRangeList, EX_POOL_PAGE_RANGE, ListEntry) {
-	if (Pages->NumberOfPages >= NumberOfPages) {
-	    MWORD PageNumber = Pages->FirstPageNumber;
-	    Pages->FirstPageNumber += NumberOfPages;
-	    Pages->NumberOfPages -= NumberOfPages;
-	    if (Pages->NumberOfPages == 0) {
+	if (Pages->NumPages >= NumPages) {
+	    MWORD PageNum = Pages->FirstPageNum;
+	    Pages->FirstPageNum += NumPages;
+	    Pages->NumPages -= NumPages;
+	    if (Pages->NumPages == 0) {
 		RemoveEntryList(&Pages->ListEntry);
 	    }
-	    return PageNumber;
+	    return PageNum;
 	}
     }
 
@@ -89,10 +89,10 @@ static MWORD EiRequestPoolPages(IN PEX_POOL Pool,
 }
 
 static PEX_POOL_PAGE_RANGE EiPoolFindPrevPageRange(PLIST_ENTRY ListHead,
-						   MWORD FirstPageNumber)
+						   MWORD FirstPageNum)
 {
     ReverseLoopOverList(Pages, ListHead, EX_POOL_PAGE_RANGE, ListEntry) {
-	if (Pages->FirstPageNumber <= FirstPageNumber) {
+	if (Pages->FirstPageNum <= FirstPageNum) {
 	    return Pages;
 	}
     }
@@ -113,32 +113,32 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     }
 
     if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
-	MWORD NumberOfPages = RtlDivCeilUnsigned(NumberOfBytes, EX_PAGE_SIZE);
-	MWORD PageNumber = EiRequestPoolPages(Pool, NumberOfPages);
-	if (PageNumber == 0) {
+	MWORD NumPages = RtlDivCeilUnsigned(NumberOfBytes, EX_PAGE_SIZE);
+	MWORD PageNum = EiRequestPoolPages(Pool, NumPages);
+	if (PageNum == 0) {
 	    return NULL;
 	} else {
 	    /* Add pages to unmanaged list */
 	    PEX_POOL_PAGE_RANGE PrevPageRange = EiPoolFindPrevPageRange(&Pool->UnmanagedPageRangeList,
-									PageNumber);
-	    if (PrevPageRange != NULL && PrevPageRange->FirstPageNumber + PrevPageRange->NumberOfPages == PageNumber) {
-		PrevPageRange->NumberOfPages += NumberOfPages;
+									PageNum);
+	    if (PrevPageRange != NULL && PrevPageRange->FirstPageNum + PrevPageRange->NumPages == PageNum) {
+		PrevPageRange->NumPages += NumPages;
 	    } else {
 		PEX_POOL_PAGE_RANGE PageRange = (PEX_POOL_PAGE_RANGE)
 		    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGE_RANGE), POOL_DATA_TAG);
 		if (PageRange == NULL) {
-		    //EiFreePoolPages(Pool, PageNumber, NumberOfPages);
+		    //EiFreePoolPages(Pool, PageNum, NumPages);
 		    return NULL;
 		}
-		PageRange->FirstPageNumber = PageNumber;
-		PageRange->NumberOfPages = NumberOfPages;
+		PageRange->FirstPageNum = PageNum;
+		PageRange->NumPages = NumPages;
 		if (PrevPageRange == NULL) {
 		    InsertTailList(&Pool->UnmanagedPageRangeList, &PageRange->ListEntry);
 		} else {
 		    InsertHeadList(&PrevPageRange->ListEntry, &PageRange->ListEntry);
 		}
 	    }
-	    return (PVOID) (PageNumber << EX_PAGE_BITS);
+	    return (PVOID) (PageNum << EX_PAGE_BITS);
 	}
     }
 
@@ -149,29 +149,29 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	FreeListIndex++;
 	if (FreeListIndex >= EX_POOL_FREE_LISTS) {
-	    MWORD PageNumber = EiRequestPoolPages(Pool, 1);
-	    if (PageNumber == 0) {
+	    MWORD PageNum = EiRequestPoolPages(Pool, 1);
+	    if (PageNum == 0) {
 		return NULL;
 	    }
 	    /* Add page to the managed page list */
 	    BOOLEAN NeedAlloc = TRUE;
 	    PEX_POOL_PAGE_RANGE PrevPageRange = EiPoolFindPrevPageRange(&Pool->ManagedPageRangeList,
-									PageNumber);
-	    if (PrevPageRange != NULL && PrevPageRange->FirstPageNumber + PrevPageRange->NumberOfPages == PageNumber) {
-		PrevPageRange->NumberOfPages++;
+									PageNum);
+	    if (PrevPageRange != NULL && PrevPageRange->FirstPageNum + PrevPageRange->NumPages == PageNum) {
+		PrevPageRange->NumPages++;
 		NeedAlloc = FALSE;
 	    } else {
 		NeedAlloc = TRUE;
 	    }
-	    MWORD PageVaddr = PageNumber << EX_PAGE_BITS;
+	    MWORD PageVaddr = PageNum << EX_PAGE_BITS;
 	    ULONG PageRangeStructBlocks = RtlDivCeilUnsigned(sizeof(EX_POOL_PAGE_RANGE), EX_POOL_SMALLEST_BLOCK);
 	    if (NeedAlloc) {
 		PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) PageVaddr;
 		PoolHeader->PreviousSize = 0;
 		PoolHeader->BlockSize = PageRangeStructBlocks;
 		PEX_POOL_PAGE_RANGE PageRange = (PEX_POOL_PAGE_RANGE) (PageVaddr + EX_POOL_OVERHEAD);
-		PageRange->FirstPageNumber = PageNumber;
-		PageRange->NumberOfPages = 1;
+		PageRange->FirstPageNum = PageNum;
+		PageRange->NumPages = 1;
 		if (PrevPageRange == NULL) {
 		    InsertTailList(&Pool->ManagedPageRangeList, &PageRange->ListEntry);
 		} else {

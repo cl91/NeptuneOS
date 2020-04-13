@@ -36,11 +36,11 @@ static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
 }
 
 static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
-				       MWORD PageNumber)
+				       MWORD PageNum)
 {
     Node->Parent = 0;
     Node->LeftChild = Node->RightChild = NULL;
-    Node->FirstPageNumber = PageNumber;
+    Node->FirstPageNum = PageNum;
     Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
 }
 
@@ -70,11 +70,11 @@ static inline VOID MiInitializePageTableNode(PMM_PAGE_TABLE Node,
 }
 
 static inline VOID MiInitializeVadNode(PMM_VAD Node,
-				       MWORD StartPageNumber,
-				       MWORD NumberOfPages)
+				       MWORD StartPageNum,
+				       MWORD NumPages)
 {
-    MiAvlInitializeNode(&Node->AvlNode, StartPageNumber);
-    Node->NumberOfPages = NumberOfPages;
+    MiAvlInitializeNode(&Node->AvlNode, StartPageNum);
+    Node->NumPages = NumPages;
     Node->FirstLargePage = NULL;
     Node->LastLargePage = NULL;
 }
