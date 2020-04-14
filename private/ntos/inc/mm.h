@@ -6,16 +6,21 @@
 
 #define NTOS_MM_TAG    			(EX_POOL_TAG('n','t','m','m'))
 
+#define MM_PAGE_BITS		(seL4_PageBits)
+#define MM_LARGE_PAGE_BITS	(seL4_LargePageBits)
+#define MM_PAGE_SIZE		(1 << MM_PAGE_BITS)
+#define MM_LARGE_PAGE_SIZE	(1 << MM_LARGE_PAGE_BITS)
+
 /* Information needed to initialize the Memory Management routines,
  * including the Executive Pool */
 typedef struct _MM_INIT_INFO_CLASS {
     MWORD InitVSpaceCap;
     MWORD InitUntypedCap;
-    LONG InitUntypedLog2Size;
+    ULONG InitUntypedLog2Size;
     MWORD RootCNodeCap;
-    LONG RootCNodeLog2Size;
+    ULONG RootCNodeLog2Size;
     MWORD RootCNodeFreeCapStart;
-    LONG RootCNodeFreeCapNumber;
+    ULONG RootCNodeFreeCapNumber;
     PEPROCESS EProcess;
 } MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
 
@@ -34,6 +39,7 @@ typedef enum _MM_CAP_TREE_NODE_TYPE {
 /* Describes a node in the Capability Derivation Tree */
 typedef struct _MM_CAP_TREE_NODE {
     PMM_CAPSPACE CapSpace;
+    MWORD Cap;
     struct _MM_CAP_TREE_NODE *Parent;
     struct _MM_CAP_TREE_NODE *LeftChild;
     struct _MM_CAP_TREE_NODE *RightChild;
@@ -43,9 +49,9 @@ typedef struct _MM_CAP_TREE_NODE {
 /* Describes a single CNode */
 typedef struct _MM_CNODE {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MWORD Log2Size;
     struct _MM_CNODE *FirstChild;
     LIST_ENTRY SiblingList;
+    ULONG Log2Size;
     enum { MM_CNODE_TAIL_DEALLOC_ONLY, MM_CNODE_ALLOW_DEALLOC } Policy;
     union {
 	PUCHAR UsedMap;
@@ -60,7 +66,6 @@ typedef struct _MM_UNTYPED {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
     LIST_ENTRY FreeListEntry;
     LIST_ENTRY RootListEntry;
-    seL4_Word Cap;
     LONG Log2Size;
 } MM_UNTYPED, *PMM_UNTYPED;
 
@@ -71,7 +76,6 @@ typedef enum _MM_PAGING_STRUCTURE_TYPE { MM_PAGE_TYPE_PAGE,
 
 typedef struct _MM_PAGING_STRUCTURE {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MWORD Cap;
     MWORD VSpaceCap;
     MM_PAGING_STRUCTURE_TYPE Type;
     BOOLEAN Mapped;
@@ -90,13 +94,13 @@ typedef struct _MM_AVL_NODE {
     MWORD Parent;
     struct _MM_AVL_NODE *LeftChild;
     struct _MM_AVL_NODE *RightChild;
-    MWORD FirstPageNum;
-    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to FirstPageNum */
+    MWORD StartPageNum;
+    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to StartPageNum */
 } MM_AVL_NODE, *PMM_AVL_NODE;
 
 typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
-    LIST_ENTRY NodeList;	/* ordered linearly according to FirstPageNum */
+    LIST_ENTRY NodeList;	/* ordered linearly according to StartPageNum */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
 typedef struct _MM_LARGE_PAGE {
@@ -119,8 +123,8 @@ typedef struct _MM_PAGE {
 typedef struct _MM_VAD {
     MM_AVL_NODE AvlNode;	/* must be first entry */
     MWORD NumPages;
-    PMM_AVL_NODE FirstLargePage; /* polymorphic pointers to either MM_LARGE_PAGE */
-    PMM_AVL_NODE LastLargePage; /* or MM_PAGE_TABLE */
+    PMM_AVL_NODE FirstPageTable; /* point to first and last page table/large page in the vaddr range */
+    PMM_AVL_NODE LastPageTable;	 /* polymorphic pointers to either MM_LARGE_PAGE or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;
 
 typedef struct _MM_VADDR_SPACE {
@@ -141,3 +145,7 @@ NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
 					   IN PMM_LARGE_PAGE LargePage);
 NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
 				       IN PMM_PAGE_TABLE PageTable);
+
+LONG MmGetMaxCommitPages();
+NTSTATUS MmCommitPages(IN MWORD StartPageNum,
+		       IN MWORD NumPages);

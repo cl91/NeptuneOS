@@ -1,108 +1,119 @@
 #include <nt.h>
 #include <ntos.h>
 
-#define POOL_DATA_TAG	EX_POOL_TAG('p', 'o', 'o', 'l')
-
 static EX_POOL EiGlobalPool;
 
-static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
-				   IN ULONG NumberOfBytes,
-				   IN ULONG Tag);
-
-static NTSTATUS EiInitializePool(PEX_POOL Pool,
-				 PMM_PAGING_STRUCTURE Page)
+/* Add the free page to the FreeLists */
+static VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
+				 IN MWORD Addr,
+				 IN USHORT PreviousSize,
+				 IN USHORT BlockSize)
 {
-    InitializeListHead(&Pool->ManagedPagesList);
-    InitializeListHead(&Pool->UnmanagedPagesList);
-    InitializeListHead(&Pool->FreePagesList);
+    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) Addr;
+    PoolHeader->PreviousSize = PreviousSize;
+    PoolHeader->BlockSize = BlockSize;
+    PLIST_ENTRY FreeEntry = (PLIST_ENTRY) (Addr + EX_POOL_OVERHEAD);
+    InsertHeadList(&Pool->FreeLists[BlockSize-1], FreeEntry);
+}
+
+/* Add the free page to the FreeLists */
+static VOID EiAddPageToPool(IN PEX_POOL Pool,
+			    IN MWORD PageNum)
+{
+    EiAddFreeSpaceToPool(Pool, PageNum << MM_PAGE_BITS, 0, EX_POOL_FREE_LISTS);
+}
+
+/* We require 3 consecutive initial pages mapped at Page0->VirtualAddr */
+static NTSTATUS EiInitializePool(PEX_POOL Pool,
+				 MWORD HeapStart,
+				 ULONG NumPages)
+{
+    /* Initialize FreeLists */
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
 	InitializeListHead(&Pool->FreeLists[i]);
     }
 
-    /* Add page to pool */
-    if (Page->Type == MM_PAGE_TYPE_PAGE) {
-	Pool->TotalPages = 1;
-	Pool->HeapEnd = Page->VirtualAddr + EX_PAGE_SIZE;
-    } else if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
-	ULONG TotalPages = 1 << (EX_LARGE_PAGE_BITS - EX_PAGE_BITS);
-	Pool->TotalPages = TotalPages;
-	Pool->HeapEnd = Page->VirtualAddr + EX_LARGE_PAGE_SIZE;
-    } else {
+    if ((HeapStart & (MM_PAGE_SIZE-1)) != 0 || NumPages < 3) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    /* Add free space to FreeLists */
-    ULONG FreeListIndex = EX_POOL_FREE_LISTS - 1;
-    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) Page->VirtualAddr;
-    MWORD FreeEntryStart = Page->VirtualAddr + EX_POOL_OVERHEAD;
-    PLIST_ENTRY FreeEntry = (PLIST_ENTRY) FreeEntryStart;
-    PoolHeader->PreviousSize = 0;
-    PoolHeader->BlockSize = EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK;
-    InsertHeadList(&Pool->FreeLists[FreeListIndex], FreeEntry);
-
-    /* Allocate maintenance structure and add to pool lists */
-    PEX_POOL_PAGES ManagedPages = (PEX_POOL_PAGES)
-	EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGES), POOL_DATA_TAG);
-    assert(ManagedPages != NULL);
-    ManagedPages->FirstPageNum = Page->VirtualAddr >> EX_PAGE_BITS;
-    ManagedPages->NumPages = 1;
-    InsertHeadList(&Pool->ManagedPagesList, &ManagedPages->ListEntry);
-    if (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
-	PEX_POOL_PAGES FreePages = (PEX_POOL_PAGES)
-	    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGES), POOL_DATA_TAG);
-	assert(FreePages != NULL);
-	FreePages->FirstPageNum = (Page->VirtualAddr >> EX_PAGE_BITS) + 1;
-	FreePages->NumPages = (1 << (EX_LARGE_PAGE_BITS - EX_PAGE_BITS)) - 1;
-	InsertHeadList(&Pool->FreePagesList, &FreePages->ListEntry);
-    }
+    /* Add pages to pool */
+    Pool->TotalPages = NumPages;
+    Pool->UsedPages = 1;
+    Pool->HeapEnd = HeapStart + MM_PAGE_SIZE;
+    EiAddPageToPool(Pool, HeapStart >> MM_PAGE_BITS);
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE Page)
+NTSTATUS ExInitializePool(IN MWORD HeapStart,
+			  IN ULONG NumPages)
 {
-    return EiInitializePool(&EiGlobalPool, Page);
+    return EiInitializePool(&EiGlobalPool, HeapStart, NumPages);
 }
 
-/* Returns the starting page number of the range of pages requested
- * Guaranteed to return exactly NumPages contiguous pages
- * Returns 0 if unable to satisfy request
+/* Examine the number of available pages in the pool and optionally
+ * request the memory management subcomponent for more pages.
+ *
+ * If we have more than two pages in the pool, simply add one page
+ * to the FreeLists.
+ *
+ * If there is only one page left, add it to the pool and request mm
+ * for more pages. The reason for adding the last page is that mm
+ * may need to allocate in order to build the capability derivation tree
+ * and paging structure descriptors.
+ *
+ * If pool is initialized with at least 3 pages, then the amount of
+ * available pages never goes below one, assuming there is free untyped
+ * memory available.
  */
-static MWORD EiRequestPoolPages(IN PEX_POOL Pool,
-				IN ULONG NumPages)
+static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 {
-    /* First look for contiguous pages in the free pages list */
-    LoopOverList(Pages, &Pool->FreePagesList, EX_POOL_PAGES, ListEntry) {
-	if (Pages->NumPages >= NumPages) {
-	    MWORD PageNum = Pages->FirstPageNum;
-	    Pages->FirstPageNum += NumPages;
-	    Pages->NumPages -= NumPages;
-	    if (Pages->NumPages == 0) {
-		RemoveEntryList(&Pages->ListEntry);
+    LONG AvailablePages = Pool->TotalPages - Pool->UsedPages;
+    if (AvailablePages >= 1) {
+	/* Add one page to the pool */
+	Pool->UsedPages++;
+	EiAddPageToPool(Pool, Pool->HeapEnd >> MM_PAGE_BITS);
+	Pool->HeapEnd += MM_PAGE_SIZE;
+	if (AvailablePages >= 2) {
+	    /* Plenty of resources here. Simply return */
+	    return;
+	} else {
+	    /* We are running low on resources. Request more pages from mm */
+	    LONG FreePages = MmGetMaxCommitPages();
+	    if (FreePages <= 0) {
+		/* Not much we can do here. System is out of memory. */
+		return;
 	    }
-	    return PageNum;
+	    LONG NewPages = 1;
+	    if (FreePages >= 8) {
+		NewPages = 4;
+	    } else if (FreePages >= 2) {
+		NewPages = 2;
+	    }
+	    NTSTATUS Status = MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS, NewPages);
+	    if (!NT_SUCCESS(Status)) {
+		if (NewPages == 1) {
+		    /* Not much we can do here. System is out of memory. */
+		    return;
+		}
+		/* Perhaps we can still have a single page. Try that. */
+		NewPages = 1;
+		if (!NT_SUCCESS(MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS, 1))) {
+		    /* We are not getting any new page. System is out of memory.
+		       Not much can be done here. */
+		    return;
+		}
+	    }
+	    /* We have some memory. Add them to the available pages. */
+	    Pool->TotalPages += NewPages;
 	}
     }
-
-    /* TODO: Request page from mm */
-    return 0;
 }
 
-static PEX_POOL_PAGES EiPoolFindPrevPages(PLIST_ENTRY ListHead,
-						   MWORD FirstPageNum)
-{
-    ReverseLoopOverList(Pages, ListHead, EX_POOL_PAGES, ListEntry) {
-	if (Pages->FirstPageNum <= FirstPageNum) {
-	    return Pages;
-	}
-    }
-    return NULL;
-}
-
-/* If request size > EX_POOL_LARGEST_BLOCK, return pages
+/* If request size > EX_POOL_LARGEST_BLOCK, deny request
  * Else, allocate from the free list.
  * If no more space in free list, request one more page
- * Each managed page is headed by EX_POOL_PAGE
  */
 static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN ULONG NumberOfBytes,
@@ -113,81 +124,31 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     }
 
     if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
-	MWORD NumPages = RtlDivCeilUnsigned(NumberOfBytes, EX_PAGE_SIZE);
-	MWORD PageNum = EiRequestPoolPages(Pool, NumPages);
-	if (PageNum == 0) {
-	    return NULL;
-	} else {
-	    /* Add pages to unmanaged list */
-	    PEX_POOL_PAGES PrevPages = EiPoolFindPrevPages(&Pool->UnmanagedPagesList,
-									PageNum);
-	    if (PrevPages != NULL && PrevPages->FirstPageNum + PrevPages->NumPages == PageNum) {
-		PrevPages->NumPages += NumPages;
-	    } else {
-		PEX_POOL_PAGES Pages = (PEX_POOL_PAGES)
-		    EiAllocatePoolWithTag(Pool, sizeof(EX_POOL_PAGES), POOL_DATA_TAG);
-		if (Pages == NULL) {
-		    //EiFreePoolPages(Pool, PageNum, NumPages);
-		    return NULL;
-		}
-		Pages->FirstPageNum = PageNum;
-		Pages->NumPages = NumPages;
-		if (PrevPages == NULL) {
-		    InsertTailList(&Pool->UnmanagedPagesList, &Pages->ListEntry);
-		} else {
-		    InsertHeadList(&PrevPages->ListEntry, &Pages->ListEntry);
-		}
-	    }
-	    return (PVOID) (PageNum << EX_PAGE_BITS);
-	}
+	return NULL;
     }
 
     ULONG NumberOfBlocks = RtlDivCeilUnsigned(NumberOfBytes, EX_POOL_SMALLEST_BLOCK);
     NumberOfBytes = NumberOfBlocks * EX_POOL_SMALLEST_BLOCK;
     ULONG FreeListIndex = NumberOfBlocks - 1;
 
+    /* Search FreeLists for available space */
     while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	FreeListIndex++;
 	if (FreeListIndex >= EX_POOL_FREE_LISTS) {
-	    MWORD PageNum = EiRequestPoolPages(Pool, 1);
-	    if (PageNum == 0) {
+	    break;
+	}
+    }
+
+    /* If not found, try adding more pages to the pool and try again */
+    if (FreeListIndex >= EX_POOL_FREE_LISTS) {
+	EiRequestPoolPage(Pool);
+	FreeListIndex = NumberOfBlocks - 1;
+	while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
+	    FreeListIndex++;
+	    if (FreeListIndex >= EX_POOL_FREE_LISTS) {
+		/* Still not enough resource, we are out of memory */
 		return NULL;
 	    }
-	    /* Add page to the managed page list */
-	    BOOLEAN NeedAlloc = TRUE;
-	    PEX_POOL_PAGES PrevPages = EiPoolFindPrevPages(&Pool->ManagedPagesList,
-									PageNum);
-	    if (PrevPages != NULL && PrevPages->FirstPageNum + PrevPages->NumPages == PageNum) {
-		PrevPages->NumPages++;
-		NeedAlloc = FALSE;
-	    } else {
-		NeedAlloc = TRUE;
-	    }
-	    MWORD PageVaddr = PageNum << EX_PAGE_BITS;
-	    ULONG PagesStructBlocks = RtlDivCeilUnsigned(sizeof(EX_POOL_PAGES), EX_POOL_SMALLEST_BLOCK);
-	    if (NeedAlloc) {
-		PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) PageVaddr;
-		PoolHeader->PreviousSize = 0;
-		PoolHeader->BlockSize = PagesStructBlocks;
-		PEX_POOL_PAGES Pages = (PEX_POOL_PAGES) (PageVaddr + EX_POOL_OVERHEAD);
-		Pages->FirstPageNum = PageNum;
-		Pages->NumPages = 1;
-		if (PrevPages == NULL) {
-		    InsertTailList(&Pool->ManagedPagesList, &Pages->ListEntry);
-		} else {
-		    InsertHeadList(&PrevPages->ListEntry, &Pages->ListEntry);
-		}
-	    }
-	    /* Add the rest of the space to the FreeLists */
-	    MWORD FreeSpaceStart = PageVaddr + (NeedAlloc ? (PagesStructBlocks + 1) * EX_POOL_SMALLEST_BLOCK : 0);
-	    MWORD FreeBlockSize = EX_PAGE_SIZE / EX_POOL_SMALLEST_BLOCK - 1 - (NeedAlloc ? PagesStructBlocks + 1 : 0);
-	    FreeListIndex = FreeBlockSize - 1;
-	    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) FreeSpaceStart;
-	    PoolHeader->PreviousSize = NeedAlloc ? PagesStructBlocks : 0;
-	    PoolHeader->BlockSize = FreeBlockSize;
-	    PLIST_ENTRY FreeEntry = (PLIST_ENTRY) (FreeSpaceStart + EX_POOL_OVERHEAD);
-	    InsertHeadList(&Pool->FreeLists[FreeListIndex], FreeEntry);
-	    break;
 	}
     }
 
@@ -201,12 +162,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     if (LeftOverBlocks > 0) {
 	PoolHeader->BlockSize = NumberOfBlocks;
 	MWORD NextPoolHeaderStart = BlockStart + NumberOfBytes;
-	MWORD NextBlockStart = NextPoolHeaderStart + EX_POOL_OVERHEAD;
-	PEX_POOL_HEADER NextPoolHeader = (PEX_POOL_HEADER) NextPoolHeaderStart;
-	PLIST_ENTRY NextFreeEntry = (PLIST_ENTRY) NextBlockStart;
-	NextPoolHeader->PreviousSize = NumberOfBlocks;
-	NextPoolHeader->BlockSize = LeftOverBlocks;
-	InsertHeadList(&Pool->FreeLists[LeftOverBlocks-1], NextFreeEntry);
+	EiAddFreeSpaceToPool(Pool, NextPoolHeaderStart, NumberOfBlocks, LeftOverBlocks);
     } else {
 	PoolHeader->BlockSize = AvailableBlocks;
     }

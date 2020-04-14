@@ -1,0 +1,136 @@
+#include "../mi.h"
+
+NTSTATUS MiPrepareInitialUntyped(IN PMM_INIT_INFO_CLASS InitInfo)
+{
+    MWORD RootCap = InitInfo->RootCNodeCap;
+    MWORD DestCap = InitInfo->RootCNodeFreeCapStart;
+    MWORD UntypedCap = InitInfo->InitUntypedCap;
+    ULONG Log2Size = InitInfo->InitUntypedLog2Size;
+    LONG NumSplits = Log2Size - MM_PAGE_BITS;
+    for (int i = 0; i < NumSplits; i++) {
+	RET_IF_ERR(MiSplitInitialUntyped(RootCap, UntypedCap, Log2Size, DestCap));
+	UntypedCap = DestCap;
+	DestCap += 2;
+	Log2Size--;
+    }
+    MWORD SrcCap = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 3;
+    return MiSplitInitialUntyped(RootCap, SrcCap, Log2Size+1, DestCap);
+}
+
+NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO_CLASS InitInfo,
+			      OUT ULONG *PoolPages,
+			      OUT MWORD *FreeCapStart)
+{
+    /* We require at least three pages to initialize ExPool */
+    if (InitInfo->InitUntypedLog2Size < seL4_PageBits + 2) {
+	return STATUS_NTOS_OUT_OF_MEMORY;
+    }
+
+    /* Map initial pages for ExPool */
+    RET_IF_ERR(MiPrepareInitialUntyped(InitInfo));
+    LONG NumSplits = InitInfo->InitUntypedLog2Size - MM_PAGE_BITS;
+    MWORD Page0Untyped = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 2;
+    MWORD Page1Untyped = Page0Untyped + 1;
+    MWORD Page2Untyped = Page0Untyped + 2;
+    MWORD PageTableUntyped = Page0Untyped + 3;
+    MWORD Page0Cap = Page0Untyped + 4;
+    MWORD Page1Cap = Page0Untyped + 5;
+    MWORD Page2Cap = Page0Untyped + 6;
+    MWORD PageTableCap = Page0Untyped + 7;
+    RET_IF_ERR(MiInitMapPage(InitInfo, PageTableUntyped, PageTableCap,
+			     EX_POOL_START, seL4_X86_PageTableObject));
+    RET_IF_ERR(MiInitMapPage(InitInfo, Page0Untyped, Page0Cap,
+			     EX_POOL_START, seL4_X86_4K));
+    RET_IF_ERR(MiInitMapPage(InitInfo, Page1Untyped, Page1Cap,
+			     EX_POOL_START + MM_PAGE_SIZE, seL4_X86_4K));
+    RET_IF_ERR(MiInitMapPage(InitInfo, Page2Untyped, Page2Cap,
+			     EX_POOL_START + 2*MM_PAGE_SIZE, seL4_X86_4K));
+
+    *PoolPages = 3;
+    *FreeCapStart = PageTableCap + 1;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
+		       IN PMM_VADDR_SPACE VaddrSpace,
+		       IN PMM_VAD ExPoolVad)
+{
+    MiAllocatePool(RootUntyped, MM_UNTYPED);
+    MiInitHeapUntyped(RootUntyped, NULL, VaddrSpace,
+		      InitInfo->InitUntypedLog2Size,
+		      InitInfo->InitUntypedLog2Size);
+
+    PMM_UNTYPED ParentUntyped = RootUntyped;
+    LONG NumSplits = InitInfo->InitUntypedLog2Size - MM_PAGE_BITS;
+    PMM_PAGE_TABLE PageTableNode = NULL;
+    for (int i = 0; i < NumSplits; i++) {
+	MiAllocatePool(LeftChildUntyped, MM_UNTYPED);
+	MiAllocatePool(RightChildUntyped, MM_UNTYPED);
+
+	MiInitHeapUntyped(LeftChildUntyped, ParentUntyped, VaddrSpace,
+			  InitInfo->RootCNodeFreeCapStart + 2*i,
+			  InitInfo->InitUntypedLog2Size - 1 - i);
+	MiInitHeapUntyped(RightChildUntyped, ParentUntyped, VaddrSpace,
+			  InitInfo->RootCNodeFreeCapStart + 2*i + 1,
+			  InitInfo->InitUntypedLog2Size - 1 - i);
+
+	ParentUntyped->TreeNode.LeftChild = &LeftChildUntyped->TreeNode;
+	ParentUntyped->TreeNode.RightChild = &RightChildUntyped->TreeNode;
+
+	if (i < NumSplits-2) {
+	    MiInsertFreeUntyped(VaddrSpace, RightChildUntyped);
+	} else if (i == NumSplits-2) {
+	    MiAllocatePool(Page2Untyped, MM_UNTYPED);
+	    MiAllocatePool(PageTableUntyped, MM_UNTYPED);
+	    MiInitHeapUntyped(Page2Untyped, RightChildUntyped, VaddrSpace,
+			      InitInfo->RootCNodeFreeCapStart + 2*NumSplits,
+			      InitInfo->InitUntypedLog2Size - NumSplits);
+	    MiInitHeapUntyped(PageTableUntyped, RightChildUntyped, VaddrSpace,
+			      InitInfo->RootCNodeFreeCapStart + 2*NumSplits+1,
+			      InitInfo->InitUntypedLog2Size - NumSplits);
+	    MiAllocatePool(Page2, MM_PAGING_STRUCTURE);
+	    MiAllocatePool(PageTable, MM_PAGING_STRUCTURE);
+	    MiInitHeapPagingStructure(Page2, Page2Untyped, VaddrSpace,
+				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 4,
+				      EX_POOL_START + 2*MM_PAGE_SIZE,
+				      MM_PAGE_TYPE_PAGE,
+				      InitInfo);
+	    MiInitHeapPagingStructure(PageTable, PageTableUntyped, VaddrSpace,
+				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 5,
+				      EX_POOL_START,
+				      MM_PAGE_TYPE_PAGE_TABLE,
+				      InitInfo);
+	    MiAllocatePool(Page2Node, MM_PAGE);
+	    MiAllocatePool(pPageTableNode, MM_PAGE_TABLE);
+	    PageTableNode = pPageTableNode;
+	    MiInitializePageNode(Page2Node, Page2);
+	    MiInitializePageTableNode(PageTableNode, PageTable);
+	    RET_IF_ERR(MmVspaceInsertMappedPageTable(VaddrSpace, PageTableNode));
+	    ExPoolVad->FirstPageTable = &PageTableNode->AvlNode;
+	    ExPoolVad->LastPageTable = &PageTableNode->AvlNode;
+	    RET_IF_ERR(MmPageTableInsertPage(PageTableNode, Page2Node));
+	} else {		/* i == NumSplits-1 */
+	    MiAllocatePool(Page0, MM_PAGING_STRUCTURE);
+	    MiAllocatePool(Page1, MM_PAGING_STRUCTURE);
+	    MiInitHeapPagingStructure(Page0, LeftChildUntyped, VaddrSpace,
+				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 2,
+				      EX_POOL_START,
+				      MM_PAGE_TYPE_PAGE,
+				      InitInfo);
+	    MiInitHeapPagingStructure(Page1, RightChildUntyped, VaddrSpace,
+				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 3,
+				      EX_POOL_START + MM_PAGE_SIZE,
+				      MM_PAGE_TYPE_PAGE,
+				      InitInfo);
+	    MiAllocatePool(Page0Node, MM_PAGE);
+	    MiAllocatePool(Page1Node, MM_PAGE);
+	    MiInitializePageNode(Page0Node, Page0);
+	    MiInitializePageNode(Page1Node, Page1);
+	    RET_IF_ERR(MmPageTableInsertPage(PageTableNode, Page0Node));
+	    RET_IF_ERR(MmPageTableInsertPage(PageTableNode, Page1Node));
+	}
+	ParentUntyped = LeftChildUntyped;
+    }
+
+    return STATUS_SUCCESS;
+}

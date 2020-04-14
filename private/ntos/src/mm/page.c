@@ -26,67 +26,87 @@ MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE Page)
     }
 }
 
-NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
+NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
 {
-    if (Page->Mapped) {
-	return STATUS_SUCCESS;
+    if (Page->Mapped || (Page->TreeNode.Cap != 0)) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    Page->VirtualAddr &= (~0) << MiPageGetLog2Size(Page);
+    PMM_UNTYPED Untyped = (PMM_UNTYPED) Page->TreeNode.Parent;
+    if (Untyped == NULL) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
 
-    int Error = 0;
-    if (Page->Cap == 0) {
-	PMM_UNTYPED Untyped = (PMM_UNTYPED) Page->TreeNode.Parent;
-	if (Untyped == NULL) {
-	    return STATUS_NTOS_INVALID_ARGUMENT;
-	}
-	MWORD Cap;
-	RET_IF_ERR(MiCapSpaceAllocCap(Page->TreeNode.CapSpace, &Cap));
-	Page->Cap = Cap;
-	Error = seL4_Untyped_Retype(Untyped->Cap,
+    MWORD Cap;
+    RET_IF_ERR(MiCapSpaceAllocCap(Page->TreeNode.CapSpace, &Cap));
+    Page->TreeNode.Cap = Cap;
+    int Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				    MiPageGetSel4Type(Page),
 				    MiPageGetLog2Size(Page),
 				    Page->TreeNode.CapSpace->RootCap,
 				    0, // node_index
 				    0, // node_depth
-				    Page->Cap,
+				    Cap,
 				    1 // num_caps
 				    );
-	if (Error) {
-	    goto CleanUpCap;
-	}
+    if (Error) {
+	MiCapSpaceDeallocCap(Page->TreeNode.CapSpace, Cap);
+	Page->TreeNode.Cap = 0;
+	return SEL4_ERROR(Error);
     }
 
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
+{
+    if (Page->Mapped) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+
+    Page->VirtualAddr &= (~0) << MiPageGetLog2Size(Page);
+
+    if (Page->TreeNode.Cap == 0) {
+	RET_IF_ERR(MiRetypeIntoPagingStructure(Page));
+    }
+
+    int Error = 0;
     if (Page->Type == MM_PAGE_TYPE_PAGE || Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
-	Error = seL4_X86_Page_Map(Page->Cap,
+	Error = seL4_X86_Page_Map(Page->TreeNode.Cap,
 				  Page->VSpaceCap,
 				  Page->VirtualAddr,
 				  Page->Rights,
 				  Page->Attributes);
     } else if (Page->Type == MM_PAGE_TYPE_PAGE_TABLE) {
-	Error = seL4_X86_PageTable_Map(Page->Cap,
+	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
 				       Page->VSpaceCap,
 				       Page->VirtualAddr,
 				       Page->Attributes);
+    } else {
+	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    if (Error == 0) {
-	Page->Mapped = TRUE;
-	return STATUS_SUCCESS;
+    if (Error) {
+	int RevokeError = seL4_CNode_Revoke(Page->TreeNode.CapSpace->RootCap,
+					    Page->TreeNode.Cap,
+					    0); /* FIXME: depth */
+	if (RevokeError) {
+	    return SEL4_ERROR(RevokeError);
+	}
+	return SEL4_ERROR(Error);
     }
 
-    int RevokeError = 0;
-    MWORD Cap = 0;
-    RevokeError = seL4_CNode_Revoke(Page->TreeNode.CapSpace->RootCap,
-				    Page->Cap,
-				    0); /* FIXME: depth */
-    if (RevokeError) {
-	return SEL4_ERROR(RevokeError);
-    }
+    Page->Mapped = TRUE;
+    return STATUS_SUCCESS;
+}
 
- CleanUpCap:
-    Cap = Page->Cap;
-    Page->Cap = 0;
-    MiCapSpaceDeallocCap(Page->TreeNode.CapSpace, Cap);
-    return SEL4_ERROR(Error);
+LONG MmGetMaxCommitPages()
+{
+    return 0;
+}
+
+NTSTATUS MmCommitPages(IN MWORD StartPageNum,
+		       IN MWORD NumPages)
+{
+    return STATUS_NTOS_OUT_OF_MEMORY;
 }

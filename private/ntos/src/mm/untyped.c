@@ -18,7 +18,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     MWORD NewCap = 0;
     RET_IF_ERR(MiCapSpaceAllocCaps(CapSpace, &NewCap, 2));
 
-    MWORD error = seL4_Untyped_Retype(Src->Cap,
+    MWORD Error = seL4_Untyped_Retype(Src->TreeNode.Cap,
 				      seL4_UntypedObject,
 				      Dest1->Log2Size,
 				      CapSpace->RootCap,
@@ -26,14 +26,14 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 				      0, // node_depth
 				      NewCap, // node_offset
 				      2);
-    if (error != seL4_NoError) {
+    if (Error != seL4_NoError) {
 	RET_IF_ERR(MiCapSpaceDeallocCap(CapSpace, NewCap+1));
 	RET_IF_ERR(MiCapSpaceDeallocCap(CapSpace, NewCap));
-	return SEL4_ERROR(error);
+	return SEL4_ERROR(Error);
     }
 
-    Dest1->Cap = NewCap;
-    Dest2->Cap = NewCap+1;
+    Dest1->TreeNode.Cap = NewCap;
+    Dest2->TreeNode.Cap = NewCap+1;
 
     Src->TreeNode.LeftChild = &Dest1->TreeNode;
     Src->TreeNode.RightChild = &Dest2->TreeNode;
@@ -47,8 +47,15 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
-			     PMM_UNTYPED Untyped)
+NTSTATUS MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			     IN PMM_UNTYPED Untyped)
+{
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN ULONG Log2Size,
+			  OUT PMM_UNTYPED *Untyped)
 {
     return STATUS_SUCCESS;
 }

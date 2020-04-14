@@ -11,12 +11,8 @@
 #endif
 
 /* Size of reserved address space starting from EX_POOL_START */
-#define EX_POOL_RESERVED_SIZE	(512 * 1024 * 1024) /* 512MB */
+#define EX_POOL_RESERVED_SIZE	(128 * 1024 * 1024) /* 128MB */
 
-#define EX_PAGE_BITS		(seL4_PageBits)
-#define EX_LARGE_PAGE_BITS	(seL4_LargePageBits)
-#define EX_PAGE_SIZE		(1 << EX_PAGE_BITS)
-#define EX_LARGE_PAGE_SIZE	(1 << EX_LARGE_PAGE_BITS)
 #define EX_POOL_BLOCK_SHIFT	(1 + MWORD_SHIFT)
 #define EX_POOL_SMALLEST_BLOCK	(1 << EX_POOL_BLOCK_SHIFT)
 
@@ -36,25 +32,17 @@ typedef struct _EX_POOL_HEADER {
 } EX_POOL_HEADER, *PEX_POOL_HEADER;
 
 #define EX_POOL_OVERHEAD	(sizeof(EX_POOL_HEADER))
-#define EX_POOL_LARGEST_BLOCK	(EX_PAGE_SIZE - EX_POOL_OVERHEAD)
+#define EX_POOL_LARGEST_BLOCK	(MM_PAGE_SIZE - EX_POOL_OVERHEAD)
 #define EX_POOL_FREE_LISTS	(EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK)
 
 COMPILE_ASSERT(EX_POOL_OVERHEAD_MUST_EQUAL_SMALLEST_BLOCK, EX_POOL_OVERHEAD == EX_POOL_SMALLEST_BLOCK);
 
 typedef struct _EX_POOL {
-    ULONG TotalPages;		/* one large page is 2^10 pages */
-    LIST_ENTRY ManagedPagesList; /* pages managed by ExPool */
-    LIST_ENTRY UnmanagedPagesList; /* pages handed out to clients */
-    LIST_ENTRY FreePagesList;      /* unused pages */
+    LONG TotalPages;		/* one large page is 2^10 pages */
+    LONG UsedPages;		/* we always allocate page contiguously */
     MWORD HeapEnd;
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
 } EX_POOL, *PEX_POOL;
-
-typedef struct _EX_POOL_PAGES {
-    LIST_ENTRY ListEntry;
-    MWORD FirstPageNum;
-    MWORD NumPages;
-} EX_POOL_PAGES, *PEX_POOL_PAGES;
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \
@@ -67,6 +55,6 @@ typedef struct _EX_POOL_PAGES {
 
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
 
-NTSTATUS ExInitializePool(IN PMM_PAGING_STRUCTURE Page);
+NTSTATUS ExInitializePool(IN MWORD HeapStart, IN ULONG NumPages);
 PVOID ExAllocatePoolWithTag(IN ULONG NumberOfBytes,
 			    IN ULONG Tag);

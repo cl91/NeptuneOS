@@ -231,13 +231,13 @@ MiAvlTreeRebalanceNode(PMM_AVL_TREE Tree,
 }
 
 /*
- * Returns Node with largest FirstPageNum such that
- * Node->FirstPageNum <= input FirstPageNum
+ * Returns Node with largest StartPageNum such that
+ * Node->StartPageNum <= input StartPageNum
  * Returns NULL if no such node is found
  */
 static PMM_AVL_NODE
 MiAvlTreeFindNode(IN PMM_AVL_TREE Tree,
-		  IN MWORD FirstPageNum)
+		  IN MWORD StartPageNum)
 {
     PMM_AVL_NODE Node = Tree->BalancedRoot;
     if (Node == NULL) {
@@ -245,9 +245,9 @@ MiAvlTreeFindNode(IN PMM_AVL_TREE Tree,
     }
     PMM_AVL_NODE PrevNode = Node;
     while (Node != NULL) {
-	if (FirstPageNum == Node->FirstPageNum) {
+	if (StartPageNum == Node->StartPageNum) {
 	    return Node;
-	} else if (FirstPageNum < Node->FirstPageNum) {
+	} else if (StartPageNum < Node->StartPageNum) {
 	    Node = Node->LeftChild;
 	    PrevNode = Node;
 	} else {
@@ -260,7 +260,7 @@ MiAvlTreeFindNode(IN PMM_AVL_TREE Tree,
 /*
  * Insert tree node between PrevNode and PrevNode->Flink,
  * where PrevNode is the largest node such that
- * PrevNode->FirstPageNum <= Node->FirstPageNum
+ * PrevNode->StartPageNum <= Node->StartPageNum
  */
 static VOID
 MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
@@ -335,9 +335,9 @@ NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
 			     IN PMM_VAD VadNode)
 {
     PMM_AVL_TREE Tree = &Vspace->VadTree;
-    MWORD NodeStartPN = VadNode->AvlNode.FirstPageNum;
+    MWORD NodeStartPN = VadNode->AvlNode.StartPageNum;
     PMM_VAD PrevNode = (PMM_VAD) MiAvlTreeFindNode(Tree, NodeStartPN);
-    if (PrevNode != NULL && NodeStartPN < PrevNode->AvlNode.FirstPageNum + PrevNode->NumPages) {
+    if (PrevNode != NULL && NodeStartPN < PrevNode->AvlNode.StartPageNum + PrevNode->NumPages) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, &PrevNode->AvlNode, &VadNode->AvlNode);
@@ -351,9 +351,9 @@ NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     PMM_AVL_TREE Tree = &Vspace->PageTableTree;
-    MWORD LargePN = LargePage->PagingStructure->VirtualAddr >> EX_LARGE_PAGE_BITS;
+    MWORD LargePN = LargePage->PagingStructure->VirtualAddr >> MM_LARGE_PAGE_BITS;
     PMM_AVL_NODE PrevNode = MiAvlTreeFindNode(Tree, LargePN);
-    if (PrevNode != NULL && LargePN == PrevNode->FirstPageNum) {
+    if (PrevNode != NULL && LargePN == PrevNode->StartPageNum) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, PrevNode, &LargePage->AvlNode);
@@ -364,4 +364,20 @@ NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
 				       IN PMM_PAGE_TABLE PageTable)
 {
     return MmVspaceInsertMappedLargePage(Vspace, (PMM_LARGE_PAGE) PageTable);
+}
+
+NTSTATUS MmPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
+			       IN PMM_PAGE Page)
+{
+    if (!PageTable->PagingStructure->Mapped || !Page->PagingStructure->Mapped) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    PMM_AVL_TREE Tree = &PageTable->MappedPages;
+    MWORD PageNum = Page->PagingStructure->VirtualAddr >> MM_PAGE_BITS;
+    PMM_AVL_NODE PrevNode = MiAvlTreeFindNode(Tree, PageNum);
+    if (PrevNode != NULL && PageNum == PrevNode->StartPageNum) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    MiAvlTreeInsertNode(Tree, PrevNode, &Page->AvlNode);
+    return STATUS_SUCCESS;
 }

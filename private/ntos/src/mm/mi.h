@@ -3,6 +3,42 @@
 #include <nt.h>
 #include <ntos.h>
 
+/* init.c */
+NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
+			       IN MWORD SrcCap,
+			       IN ULONG SrcLog2Size,
+			       IN MWORD DestCap);
+NTSTATUS MiInitRetypeIntoPage(IN MWORD RootCap,
+			      IN MWORD Untyped,
+			      IN MWORD PageCap,
+			      IN MWORD Type);
+NTSTATUS MiInitMapPage(IN PMM_INIT_INFO_CLASS InitInfo,
+		       IN MWORD Untyped,
+		       IN MWORD PageCap,
+		       IN MWORD Vaddr,
+		       IN MWORD Type);
+VOID MiInitHeapUntyped(IN PMM_UNTYPED Untyped,
+		       IN PMM_UNTYPED Parent,
+		       IN PMM_VADDR_SPACE VaddrSpace,
+		       IN MWORD Cap,
+		       IN ULONG Log2Size);
+VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
+			       IN PMM_UNTYPED Parent,
+			       IN PMM_VADDR_SPACE VaddrSpace,
+			       IN MWORD Cap,
+			       IN MWORD Vaddr,
+			       IN MM_PAGING_STRUCTURE_TYPE Type,
+			       IN PMM_INIT_INFO_CLASS InitInfo);
+
+/* arch/init.c */
+NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO_CLASS InitInfo,
+			      OUT ULONG *PoolPages,
+			      OUT MWORD *FreeCapStart);
+NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
+		       IN PMM_VADDR_SPACE VaddrSpace,
+		       IN PMM_VAD ExPoolVad);
+
+/* cap.c */
 NTSTATUS MiCapSpaceAllocCaps(IN PMM_CAPSPACE CapSpace,
 			     OUT MWORD *StartCap,
 			     IN LONG NumberRequested);
@@ -16,6 +52,7 @@ MiCapSpaceAllocCap(IN PMM_CAPSPACE CapSpace,
     return MiCapSpaceAllocCaps(CapSpace, Cap, 1);
 }
 
+/* untyped.c */
 NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 			OUT PMM_UNTYPED DestUntyped1,
 			OUT PMM_UNTYPED DestUntyped2);
@@ -23,11 +60,18 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 NTSTATUS MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
 			     PMM_UNTYPED Untyped);
 
+/* page.c */
 NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page);
 
 #define MiAllocatePool(Var, Type)					\
     Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_MM_TAG); \
     if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }
+
+/* avltree.c */
+NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
+				       IN PMM_PAGE_TABLE PageTable);
+NTSTATUS MmPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
+			       IN PMM_PAGE Page);
 
 static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
 {
@@ -40,7 +84,7 @@ static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
 {
     Node->Parent = 0;
     Node->LeftChild = Node->RightChild = NULL;
-    Node->FirstPageNum = PageNum;
+    Node->StartPageNum = PageNum;
     Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
 }
 
@@ -48,7 +92,7 @@ static inline VOID MiInitializePageNode(PMM_PAGE Node,
 					PMM_PAGING_STRUCTURE Page)
 {
     assert(Page->Type == MM_PAGE_TYPE_PAGE);
-    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> EX_PAGE_BITS);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> MM_PAGE_BITS);
     Node->PagingStructure = Page;
 }
 
@@ -56,7 +100,7 @@ static inline VOID MiInitializeLargePageNode(PMM_LARGE_PAGE Node,
 					     PMM_PAGING_STRUCTURE Page)
 {
     assert(Page->Type == MM_PAGE_TYPE_LARGE_PAGE);
-    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> EX_LARGE_PAGE_BITS);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> MM_LARGE_PAGE_BITS);
     Node->PagingStructure = Page;
 }
 
@@ -64,7 +108,7 @@ static inline VOID MiInitializePageTableNode(PMM_PAGE_TABLE Node,
 					     PMM_PAGING_STRUCTURE Page)
 {
     assert(Page->Type == MM_PAGE_TYPE_PAGE_TABLE);
-    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> EX_LARGE_PAGE_BITS);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> MM_LARGE_PAGE_BITS);
     MiAvlInitializeTree(&Node->MappedPages);
     Node->PagingStructure = Page;
 }
@@ -75,6 +119,6 @@ static inline VOID MiInitializeVadNode(PMM_VAD Node,
 {
     MiAvlInitializeNode(&Node->AvlNode, StartPageNum);
     Node->NumPages = NumPages;
-    Node->FirstLargePage = NULL;
-    Node->LastLargePage = NULL;
+    Node->FirstPageTable = NULL;
+    Node->LastPageTable = NULL;
 }

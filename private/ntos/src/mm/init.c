@@ -1,97 +1,130 @@
 #include "mi.h"
 #include <ctype.h>
 
-/* FIXME: Only works for x86! */
-NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
+NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
+			       IN MWORD SrcCap,
+			       IN ULONG SrcLog2Size,
+			       IN MWORD DestCap)
 {
-    /* Build initial cap space descriptor on the stack
-     * Once ExPool is initialized we will move these to the ExPool
-     */
-    MM_CAPSPACE InitCapSpace;
-    MM_CNODE InitCNode =
-	{
-	 .TreeNode = {
-		      .CapSpace = &InitCapSpace,
-		      .Type = MM_CAP_TREE_NODE_CNODE
-		      },
-	 .Log2Size = InitInfo->RootCNodeLog2Size,
-	 .FirstChild = NULL,
-	 .Policy = MM_CNODE_TAIL_DEALLOC_ONLY
-	};
-    InitCapSpace.RootCap = InitInfo->RootCNodeCap;
-    InitCapSpace.RootCNode = &InitCNode;
-    InitializeListHead(&InitCNode.SiblingList);
-    InitCNode.FreeRange.StartCap = InitInfo->RootCNodeFreeCapStart;
-    InitCNode.FreeRange.Number = InitInfo->RootCNodeFreeCapNumber;
+    MWORD Error = seL4_Untyped_Retype(SrcCap,
+				      seL4_UntypedObject,
+				      SrcLog2Size-1,
+				      RootCap,
+				      0, // node_index
+				      0, // node_depth
+				      DestCap, // node_offset
+				      2);
+    if (Error) {
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
 
-    /* Find some space for ExPool */
-    MM_UNTYPED UntypedDescs[32] =
-	{
-	 {
-	 .TreeNode = {
-		      .CapSpace = &InitCapSpace,
-		      .Type = MM_CAP_TREE_NODE_UNTYPED
-		      },	
-	  .Cap = InitInfo->InitUntypedCap,
-	  .Log2Size = InitInfo->InitUntypedLog2Size,
-	 }
-	};
-    LONG NumberSplits = 0;
-    if (InitInfo->InitUntypedLog2Size >= seL4_LargePageBits) {
-	/* Split the untyped until we have exactly one large page */
-	NumberSplits = UntypedDescs[0].Log2Size - seL4_LargePageBits;
-    } else if (InitInfo->InitUntypedLog2Size >= (seL4_PageBits + 1)) {
-	/* Split the untyped until we have exactly one page plus one page directory */
-	NumberSplits = UntypedDescs[0].Log2Size - seL4_PageBits;
+NTSTATUS MiInitRetypeIntoPage(IN MWORD RootCap,
+			      IN MWORD Untyped,
+			      IN MWORD PageCap,
+			      IN MWORD Type)
+{
+    int Error = seL4_Untyped_Retype(Untyped,
+				    Type,
+				    MM_PAGE_BITS,
+				    RootCap,
+				    0, // node_index
+				    0, // node_depth
+				    PageCap,
+				    1 // num_caps
+				    );
+    if (Error) {
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiInitMapPage(IN PMM_INIT_INFO_CLASS InitInfo,
+		       IN MWORD Untyped,
+		       IN MWORD PageCap,
+		       IN MWORD Vaddr,
+		       IN MWORD Type)
+{
+    MWORD RootCap = InitInfo->RootCNodeCap;
+    RET_IF_ERR(MiInitRetypeIntoPage(RootCap, Untyped, PageCap, Type));
+
+    MWORD VSpaceCap = InitInfo->InitVSpaceCap;
+    int Error;
+    if (Type == seL4_X86_4K) {
+	Error = seL4_X86_Page_Map(PageCap,
+				  VSpaceCap,
+				  Vaddr,
+				  MM_RIGHTS_RW,
+				  seL4_X86_Default_VMAttributes);
+    } else if (Type == seL4_X86_PageTableObject) {
+	Error = seL4_X86_PageTable_Map(PageCap,
+				       VSpaceCap,
+				       Vaddr,
+				       seL4_X86_Default_VMAttributes);
     } else {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
-    for (int i = 0; i < NumberSplits; i++) {
-	RET_IF_ERR(MiSplitUntyped(&UntypedDescs[2*i], &UntypedDescs[2*i+2], &UntypedDescs[2*i+3]));
+    if (Error) {
+	return SEL4_ERROR(Error);
     }
 
-    /* Map initial ExPool page and initialize ExPool */
-    MM_PAGING_STRUCTURE InitialPage =
-	{
-	 .TreeNode = {
-		      .CapSpace = &InitCapSpace,
-		      .Parent = &UntypedDescs[2*NumberSplits].TreeNode,
-		      .Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE
-		      },
-	 .Cap = 0,
-	 .VSpaceCap = InitInfo->InitVSpaceCap,
-	 .Mapped = FALSE,
-	 .VirtualAddr = EX_POOL_START,
-	 .Rights = MM_RIGHTS_RW,
-	 .Attributes = seL4_X86_Default_VMAttributes
-	};
-    MM_PAGING_STRUCTURE PageTable =
-	{
-	 .TreeNode = {
-		      .CapSpace = &InitCapSpace,
-		      .Parent = &UntypedDescs[2*NumberSplits+1].TreeNode,
-		      .Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE
-		      },
-	 .Cap = 0,
-	 .VSpaceCap = InitInfo->InitVSpaceCap,
-	 .Type = MM_PAGE_TYPE_PAGE_TABLE,
-	 .Mapped = FALSE,
-	 .VirtualAddr = EX_POOL_START,
-	 .Rights = 0,
-	 .Attributes = seL4_X86_Default_VMAttributes
-	};
-    if (InitInfo->InitUntypedLog2Size < seL4_LargePageBits) {
-	RET_IF_ERR(MiMapPagingStructure(&PageTable));
-	InitialPage.Type = MM_PAGE_TYPE_PAGE;
-    } else {
-	InitialPage.Type = MM_PAGE_TYPE_LARGE_PAGE;
-    }
-    RET_IF_ERR(MiMapPagingStructure(&InitialPage));
-    RET_IF_ERR(ExInitializePool(&InitialPage));
+    return STATUS_SUCCESS;
+}
+
+VOID MiInitHeapUntyped(IN PMM_UNTYPED Untyped,
+		       IN PMM_UNTYPED Parent,
+		       IN PMM_VADDR_SPACE VaddrSpace,
+		       IN MWORD Cap,
+		       IN ULONG Log2Size)
+{
+    Untyped->TreeNode.CapSpace = &VaddrSpace->CapSpace;
+    Untyped->TreeNode.Parent = &Parent->TreeNode;
+    Untyped->TreeNode.Type = MM_CAP_TREE_NODE_UNTYPED;
+    Untyped->TreeNode.Cap = Cap;
+    Untyped->Log2Size = Log2Size;
+    InvalidateListEntry(&Untyped->RootListEntry);
+    InvalidateListEntry(&Untyped->FreeListEntry);
+}
+
+VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
+			       IN PMM_UNTYPED Parent,
+			       IN PMM_VADDR_SPACE VaddrSpace,
+			       IN MWORD Cap,
+			       IN MWORD Vaddr,
+			       IN MM_PAGING_STRUCTURE_TYPE Type,
+			       IN PMM_INIT_INFO_CLASS InitInfo)
+{
+    Page->TreeNode.CapSpace = &VaddrSpace->CapSpace;
+    Page->TreeNode.Parent = &Parent->TreeNode;
+    Page->TreeNode.LeftChild = NULL;
+    Page->TreeNode.RightChild = NULL;
+    Page->TreeNode.Cap = Cap;
+    Page->TreeNode.Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE;
+    Page->VSpaceCap = InitInfo->InitVSpaceCap;
+    Page->Type = Type;
+    Page->Mapped = TRUE;
+    Page->VirtualAddr = Vaddr;
+    Page->Rights = MM_RIGHTS_RW;
+    Page->Attributes = seL4_X86_Default_VMAttributes;
+    Parent->TreeNode.LeftChild = &Page->TreeNode;
+    Parent->TreeNode.RightChild = NULL;
+}
+
+/* FIXME: Only works for x86! */
+NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
+{
+    /* Map initial pages for ExPool */
+    ULONG PoolPages;
+    MWORD FreeCapStart;
+    RET_IF_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
+
+    /* Initialize ExPool */
+    RET_IF_ERR(ExInitializePool(EX_POOL_START, PoolPages));
 
     /* Allocate memory for the virtual address space descriptor
-     * ExPool is usable now so we can allocate pool memory
-     */
+     * ExPool is usable now so we can allocate pool memory */
     MiAllocatePool(VaddrSpace, MM_VADDR_SPACE);
     PEPROCESS EProcess = InitInfo->EProcess;
     EProcess->VaddrSpace = VaddrSpace;
@@ -104,72 +137,27 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     RootCNode->TreeNode.Parent = NULL;
     RootCNode->TreeNode.LeftChild = NULL;
     RootCNode->TreeNode.RightChild = NULL;
+    RootCNode->TreeNode.Cap = InitInfo->RootCNodeCap;
     RootCNode->TreeNode.Type = MM_CAP_TREE_NODE_UNTYPED;
     RootCNode->Log2Size = InitInfo->RootCNodeLog2Size;
     RootCNode->FirstChild = NULL;
     InitializeListHead(&RootCNode->SiblingList);
     RootCNode->Policy = MM_CNODE_TAIL_DEALLOC_ONLY;
-    RootCNode->FreeRange = InitCNode.FreeRange;
+    RootCNode->FreeRange.StartCap = FreeCapStart;
+    RootCNode->FreeRange.Number = (1 << InitInfo->RootCNodeLog2Size) - FreeCapStart;
 
-    /* Build the tree of untyped's derived above during mapping of initial heap */
+    /* Build the Vad tree of the global EProcess */
+    MiAvlInitializeTree(&VaddrSpace->VadTree);
+    MiAllocatePool(ExPoolVad, MM_VAD);
+    MiInitializeVadNode(ExPoolVad, EX_POOL_START >> MM_PAGE_BITS, EX_POOL_RESERVED_SIZE >> MM_PAGE_BITS);
+    MiAvlInitializeTree(&VaddrSpace->PageTableTree);
+
+    /* Add untyped and paging structure built during mapping of initial heap */
     InitializeListHead(&VaddrSpace->SmallUntypedList);
     InitializeListHead(&VaddrSpace->MediumUntypedList);
     InitializeListHead(&VaddrSpace->LargeUntypedList);
     InitializeListHead(&VaddrSpace->RootUntypedList);
-    MiAllocatePool(RootUntyped, MM_UNTYPED);
-    *RootUntyped = UntypedDescs[0];
-    RootUntyped->TreeNode.CapSpace = &VaddrSpace->CapSpace;
-    RootUntyped->TreeNode.Parent = NULL;
-    InsertHeadList(&VaddrSpace->RootUntypedList, &RootUntyped->RootListEntry);
-    for (int i = 1; i <= NumberSplits; i++) {
-	MiAllocatePool(LeftChildUntyped, MM_UNTYPED);
-	MiAllocatePool(RightChildUntyped, MM_UNTYPED);
-	*LeftChildUntyped = UntypedDescs[2*i];
-	*RightChildUntyped = UntypedDescs[2*i+1];
-	LeftChildUntyped->TreeNode.CapSpace = &VaddrSpace->CapSpace;
-	RightChildUntyped->TreeNode.CapSpace = &VaddrSpace->CapSpace;
-	LeftChildUntyped->TreeNode.Parent = &RootUntyped->TreeNode;
-	RightChildUntyped->TreeNode.Parent = &RootUntyped->TreeNode;
-	RootUntyped->TreeNode.LeftChild = &LeftChildUntyped->TreeNode;
-	RootUntyped->TreeNode.RightChild = &RightChildUntyped->TreeNode;
-	MiInsertFreeUntyped(VaddrSpace, RightChildUntyped);
-	RootUntyped = LeftChildUntyped;
-    }
-
-    /* Build MM_PAGING_STRUCTURE of initial heap pages */
-    MiAllocatePool(InitialPageHeap, MM_PAGING_STRUCTURE);
-    *InitialPageHeap = InitialPage;
-    InitialPageHeap->TreeNode.CapSpace = &VaddrSpace->CapSpace;
-    InitialPageHeap->TreeNode.Parent = &RootUntyped->TreeNode;
-    InitialPageHeap->TreeNode.LeftChild = NULL;
-    InitialPageHeap->TreeNode.RightChild = NULL;
-
-    /* Build the Vad tree of the given EProcess */
-    MiAvlInitializeTree(&VaddrSpace->VadTree);
-    MiAllocatePool(ExPoolVad, MM_VAD);
-    MiInitializeVadNode(ExPoolVad, EX_POOL_START >> EX_PAGE_BITS, EX_POOL_RESERVED_SIZE >> EX_PAGE_BITS);
-    MiAvlInitializeTree(&VaddrSpace->PageTableTree);
-    if (InitialPageHeap->Type == MM_PAGE_TYPE_PAGE) {
-	MiAllocatePool(InitialPageTableHeap, MM_PAGING_STRUCTURE);
-	*InitialPageTableHeap = PageTable;
-	InitialPageTableHeap->TreeNode.CapSpace = &VaddrSpace->CapSpace;
-	InitialPageTableHeap->TreeNode.Parent = RootUntyped->TreeNode.Parent->RightChild;
-	InitialPageTableHeap->TreeNode.LeftChild = NULL;
-	InitialPageTableHeap->TreeNode.RightChild = NULL;
-	MiAllocatePool(PageNode, MM_PAGE);
-	MiAllocatePool(PageTableNode, MM_PAGE_TABLE);
-	MiInitializePageNode(PageNode, InitialPageHeap);
-	MiInitializePageTableNode(PageTableNode, InitialPageTableHeap);
-	MmVspaceInsertMappedPageTable(VaddrSpace, PageTableNode);
-	ExPoolVad->FirstLargePage = &PageTableNode->AvlNode;
-	ExPoolVad->LastLargePage = &PageTableNode->AvlNode;
-    } else {
-	MiAllocatePool(LargePageNode, MM_LARGE_PAGE);
-	MiInitializeLargePageNode(LargePageNode, InitialPageHeap);
-	MmVspaceInsertMappedLargePage(VaddrSpace, LargePageNode);
-	ExPoolVad->FirstLargePage = &LargePageNode->AvlNode;
-	ExPoolVad->LastLargePage = &LargePageNode->AvlNode;
-    }
+    RET_IF_ERR(MiInitHeapVad(InitInfo, VaddrSpace, ExPoolVad));
 
     return STATUS_SUCCESS;
 }

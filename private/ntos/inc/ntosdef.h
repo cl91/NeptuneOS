@@ -3,7 +3,8 @@
 #include <sel4/sel4.h>
 typedef seL4_Word MWORD;
 
-#define COMPILE_ASSERT(name, expr) typedef int __ntos_assert_failed_##name[(expr) ? 1 : -1]
+#define ARRAY_LENGTH(x)		(sizeof(x) / sizeof((x)[0]))
+#define COMPILE_ASSERT(name, expr)	typedef int __ntos_assert_failed_##name[(expr) ? 1 : -1]
 
 #ifdef _M_IX86
 #define MWORD_BITS	(32)
