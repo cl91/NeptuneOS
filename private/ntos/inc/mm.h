@@ -2,12 +2,13 @@
 
 #include <nt.h>
 #include "ntosdef.h"
-#include "ps.h"
 
 #define NTOS_MM_TAG    			(EX_POOL_TAG('n','t','m','m'))
 
 #define MM_PAGE_BITS		(seL4_PageBits)
+#define MM_PAGE_TABLE_BITS	(seL4_PageBits)
 #define MM_LARGE_PAGE_BITS	(seL4_LargePageBits)
+#define MM_LARGE_PN_SHIFT	(MM_LARGE_PAGE_BITS - MM_PAGE_BITS)
 #define MM_PAGE_SIZE		(1 << MM_PAGE_BITS)
 #define MM_LARGE_PAGE_SIZE	(1 << MM_LARGE_PAGE_BITS)
 
@@ -21,7 +22,7 @@ typedef struct _MM_INIT_INFO_CLASS {
     ULONG RootCNodeLog2Size;
     MWORD RootCNodeFreeCapStart;
     ULONG RootCNodeFreeCapNumber;
-    PEPROCESS EProcess;
+    struct _EPROCESS *EProcess;
 } MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
 
 /* Describes the entire CapSpace */
@@ -129,6 +130,7 @@ typedef struct _MM_VAD {
 
 typedef struct _MM_VADDR_SPACE {
     MM_CAPSPACE CapSpace;
+    MWORD VSpaceCap;
     MM_AVL_TREE VadTree;
     MM_AVL_TREE PageTableTree;	/* Node is either a page table or a large page */
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
@@ -137,15 +139,15 @@ typedef struct _MM_VADDR_SPACE {
     LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
-NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
-			     IN PMM_VAD VadNode);
-NTSTATUS MmPageTableInsertMappedPage(IN PMM_PAGE_TABLE PageTable,
-				     IN PMM_PAGE Page);
-NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
-					   IN PMM_LARGE_PAGE LargePage);
-NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
-				       IN PMM_PAGE_TABLE PageTable);
+typedef enum _MM_MEM_PRESSURE {
+			       MM_MEM_PRESSURE_LOW,
+			       MM_MEM_PRESSURE_MEDIUM,
+			       MM_MEM_PRESSURE_HIGH
+} MM_MEM_PRESSURE;
 
-LONG MmGetMaxCommitPages();
-NTSTATUS MmCommitPages(IN MWORD StartPageNum,
-		       IN MWORD NumPages);
+/* page.c */
+MM_MEM_PRESSURE MmQueryMemoryPressure();
+NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
+		       IN MWORD StartPageNum,
+		       IN MWORD NumPages,
+		       OUT MWORD *SatisfiedPages);

@@ -331,8 +331,8 @@ MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
     }
 }
 
-NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
-			     IN PMM_VAD VadNode)
+NTSTATUS MiVspaceInsertVadNode(IN PMM_VADDR_SPACE Vspace,
+			       IN PMM_VAD VadNode)
 {
     PMM_AVL_TREE Tree = &Vspace->VadTree;
     MWORD NodeStartPN = VadNode->AvlNode.StartPageNum;
@@ -344,8 +344,44 @@ NTSTATUS MmVadTreeInsertNode(IN PMM_VADDR_SPACE Vspace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
-					   IN PMM_LARGE_PAGE LargePage)
+PMM_VAD MiVspaceFindVadNode(IN PMM_VADDR_SPACE Vspace,
+		      IN MWORD StartPageNum,
+		      IN MWORD NumPages)
+{
+    PMM_AVL_TREE Tree = &Vspace->VadTree;
+    PMM_VAD PrevNode = (PMM_VAD) MiAvlTreeFindNode(Tree, StartPageNum);
+    MWORD EndPageNum = StartPageNum + NumPages;
+    if (PrevNode != NULL && (StartPageNum >= PrevNode->AvlNode.StartPageNum)
+	&& (EndPageNum <= PrevNode->AvlNode.StartPageNum + PrevNode->NumPages)) {
+	return PrevNode;
+    }
+    return NULL;
+}
+
+PMM_AVL_NODE MiVspaceFindPageTableOrLargePage(IN PMM_VADDR_SPACE Vspace,
+					      IN MWORD LargePageNum)
+{
+    PMM_AVL_TREE Tree = &Vspace->PageTableTree;
+    PMM_AVL_NODE PrevNode = MiAvlTreeFindNode(Tree, LargePageNum);
+    if (PrevNode != NULL && (LargePageNum == PrevNode->StartPageNum)) {
+	return PrevNode;
+    }
+    return NULL;
+}
+
+BOOLEAN MiPTNodeIsPageTable(PMM_AVL_NODE Node)
+{
+    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure->Type == MM_PAGE_TYPE_PAGE_TABLE);
+}
+
+BOOLEAN MiPTNodeIsLargePage(PMM_AVL_NODE Node)
+{
+    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure->Type == MM_PAGE_TYPE_LARGE_PAGE);
+}
+
+NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
+				 IN PMM_VAD Vad,
+				 IN PMM_LARGE_PAGE LargePage)
 {
     if (!LargePage->PagingStructure->Mapped) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -357,16 +393,24 @@ NTSTATUS MmVspaceInsertMappedLargePage(IN PMM_VADDR_SPACE Vspace,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, PrevNode, &LargePage->AvlNode);
+    MWORD VadStartLargePN = Vad->AvlNode.StartPageNum >> MM_LARGE_PN_SHIFT;
+    MWORD VadEndLargePN = (Vad->AvlNode.StartPageNum + Vad->NumPages) >> MM_LARGE_PN_SHIFT;
+    if (LargePN == VadStartLargePN) {
+	Vad->FirstPageTable = &LargePage->AvlNode;
+    } else if (LargePN == VadEndLargePN - 1) {
+	Vad->LastPageTable = &LargePage->AvlNode;
+    }
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
-				       IN PMM_PAGE_TABLE PageTable)
+NTSTATUS MiVspaceInsertPageTable(IN PMM_VADDR_SPACE Vspace,
+				 IN PMM_VAD Vad,
+				 IN PMM_PAGE_TABLE PageTable)
 {
-    return MmVspaceInsertMappedLargePage(Vspace, (PMM_LARGE_PAGE) PageTable);
+    return MiVspaceInsertLargePage(Vspace, Vad, (PMM_LARGE_PAGE) PageTable);
 }
 
-NTSTATUS MmPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
+NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 			       IN PMM_PAGE Page)
 {
     if (!PageTable->PagingStructure->Mapped || !Page->PagingStructure->Mapped) {

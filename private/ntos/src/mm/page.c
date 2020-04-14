@@ -100,13 +100,110 @@ NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     return STATUS_SUCCESS;
 }
 
-LONG MmGetMaxCommitPages()
+MM_MEM_PRESSURE MmQueryMemoryPressure()
 {
-    return 0;
+    return MM_MEM_PRESSURE_LOW;
 }
 
-NTSTATUS MmCommitPages(IN MWORD StartPageNum,
-		       IN MWORD NumPages)
+NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
+				IN PMM_VAD Vad,
+				IN MWORD PageTableNum,
+				OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
 {
-    return STATUS_NTOS_OUT_OF_MEMORY;
+    PMM_UNTYPED Untyped;
+    RET_IF_ERR(MiRequestUntyped(Vspace, MM_PAGE_TABLE_BITS, &Untyped));
+
+    MiAllocatePool(Paging, MM_PAGING_STRUCTURE);
+    Paging->TreeNode.CapSpace = &Vspace->CapSpace;
+    Paging->TreeNode.Cap = 0;
+    Paging->TreeNode.Parent = &Untyped->TreeNode;
+    Paging->TreeNode.LeftChild = NULL;
+    Paging->TreeNode.RightChild = NULL;
+    Paging->TreeNode.Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE;
+    Paging->VSpaceCap = Vspace->VSpaceCap;
+    Paging->Type = MM_PAGE_TYPE_PAGE_TABLE;
+    Paging->Mapped = FALSE;
+    Paging->VirtualAddr = PageTableNum << MM_LARGE_PAGE_BITS;
+    Paging->Rights = MM_RIGHTS_RW;
+    Paging->Attributes = seL4_X86_Default_VMAttributes;
+    RET_IF_ERR(MiMapPagingStructure(Paging));
+
+    MiAllocatePool(PageTable, MM_PAGE_TABLE);
+    MiInitializePageTableNode(PageTable, Paging);
+    RET_IF_ERR(MiVspaceInsertPageTable(Vspace, Vad, PageTable));
+
+    if (PTNode != NULL) {
+	*PTNode = PageTable;
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
+			   IN PMM_PAGE_TABLE PageTable,
+			   IN MWORD PageNum,
+			   OUT OPTIONAL PMM_PAGE *PageNode)
+{
+    PMM_UNTYPED Untyped;
+    RET_IF_ERR(MiRequestUntyped(Vspace, MM_PAGE_BITS, &Untyped));
+
+    MiAllocatePool(Paging, MM_PAGING_STRUCTURE);
+    Paging->TreeNode.CapSpace = &Vspace->CapSpace;
+    Paging->TreeNode.Cap = 0;
+    Paging->TreeNode.Parent = &Untyped->TreeNode;
+    Paging->TreeNode.LeftChild = NULL;
+    Paging->TreeNode.RightChild = NULL;
+    Paging->TreeNode.Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE;
+    Paging->VSpaceCap = Vspace->VSpaceCap;
+    Paging->Type = MM_PAGE_TYPE_PAGE;
+    Paging->Mapped = FALSE;
+    Paging->VirtualAddr = PageNum << MM_PAGE_BITS;
+    Paging->Rights = MM_RIGHTS_RW;
+    Paging->Attributes = seL4_X86_Default_VMAttributes;
+    RET_IF_ERR(MiMapPagingStructure(Paging));
+
+    MiAllocatePool(Page, MM_PAGE);
+    MiInitializePageNode(Page, Paging);
+    RET_IF_ERR(MiPageTableInsertPage(PageTable, Page));
+
+    if (PageNode != NULL) {
+	*PageNode = Page;
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
+		       IN MWORD FirstPageNum,
+		       IN MWORD NumPages,
+		       OUT MWORD *SatisfiedPages)
+{
+    PMM_VAD Vad = MiVspaceFindVadNode(VaddrSpace, FirstPageNum, NumPages);
+    if (Vad == NULL) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    MWORD LastPageNum = FirstPageNum + NumPages - 1;
+    MWORD FirstPTNum = FirstPageNum >> MM_LARGE_PN_SHIFT;
+    MWORD LastPTNum = LastPageNum >> MM_LARGE_PN_SHIFT;
+    MWORD PageNum = FirstPageNum;
+    *SatisfiedPages = 0;
+    for (MWORD PTNum = FirstPTNum; PTNum <= LastPTNum; PTNum++) {
+	PMM_AVL_NODE Node = MiVspaceFindPageTableOrLargePage(VaddrSpace, PTNum);
+	if (MiPTNodeIsLargePage(Node)) {
+	    continue;
+	}
+	PMM_PAGE_TABLE PageTable = (PMM_PAGE_TABLE) Node;
+	if (PageTable == NULL) {
+	    RET_IF_ERR(MiBuildAndMapPageTable(VaddrSpace, Vad, PTNum, &PageTable));
+	}
+	MWORD LastPageNumInPageTable = (PTNum + 1) << MM_LARGE_PN_SHIFT;
+	while (PageNum <= LastPageNumInPageTable && *SatisfiedPages < NumPages) {
+	    RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, PageTable, PageNum, NULL));
+	    PageNum++;
+	    *SatisfiedPages += 1;
+	}
+    }
+
+    if (*SatisfiedPages == 0) {
+	return STATUS_NTOS_OUT_OF_MEMORY;
+    }
+    return STATUS_SUCCESS;
 }

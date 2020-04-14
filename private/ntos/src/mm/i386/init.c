@@ -105,10 +105,10 @@ NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
 	    PageTableNode = pPageTableNode;
 	    MiInitializePageNode(Page2Node, Page2);
 	    MiInitializePageTableNode(PageTableNode, PageTable);
-	    RET_IF_ERR(MmVspaceInsertMappedPageTable(VaddrSpace, PageTableNode));
+	    RET_IF_ERR(MiVspaceInsertPageTable(VaddrSpace, ExPoolVad, PageTableNode));
 	    ExPoolVad->FirstPageTable = &PageTableNode->AvlNode;
 	    ExPoolVad->LastPageTable = &PageTableNode->AvlNode;
-	    RET_IF_ERR(MmPageTableInsertPage(PageTableNode, Page2Node));
+	    RET_IF_ERR(MiPageTableInsertPage(PageTableNode, Page2Node));
 	} else {		/* i == NumSplits-1 */
 	    MiAllocatePool(Page0, MM_PAGING_STRUCTURE);
 	    MiAllocatePool(Page1, MM_PAGING_STRUCTURE);
@@ -126,8 +126,8 @@ NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
 	    MiAllocatePool(Page1Node, MM_PAGE);
 	    MiInitializePageNode(Page0Node, Page0);
 	    MiInitializePageNode(Page1Node, Page1);
-	    RET_IF_ERR(MmPageTableInsertPage(PageTableNode, Page0Node));
-	    RET_IF_ERR(MmPageTableInsertPage(PageTableNode, Page1Node));
+	    RET_IF_ERR(MiPageTableInsertPage(PageTableNode, Page0Node));
+	    RET_IF_ERR(MiPageTableInsertPage(PageTableNode, Page1Node));
 	}
 	ParentUntyped = LeftChildUntyped;
     }

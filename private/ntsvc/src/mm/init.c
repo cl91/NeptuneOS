@@ -9,27 +9,14 @@ void MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
     MWORD InitUntyped = 0;
     LONG Log2Size = 128;
 
-    /* Find the smallest untyped that is at least one large page */
+    /* Find at least 3 Page + 1 PageDirectory */
     LoopOverUntyped(cap, desc, bootinfo) {
-    	if (!desc->isDevice && desc->sizeBits >= seL4_LargePageBits
-    	    && desc->sizeBits < Log2Size) {
-    	    InitUntyped = cap;
-    	    Log2Size = desc->sizeBits;
-    	}
-    }
-
-    /* Failing that, find at least 1 Page + 1 PageDirectory */
-    if (InitUntyped == 0) {
-	LoopOverUntyped(cap, desc, bootinfo) {
-	    if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 1)
-		&& desc->sizeBits < Log2Size) {
-		InitUntyped = cap;
-		Log2Size = desc->sizeBits;
-	    }
+	if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 3)
+	    && desc->sizeBits < Log2Size) {
+	    InitUntyped = cap;
+	    Log2Size = desc->sizeBits;
 	}
     }
-
-    /* If that also failed we are really out of options. Just die. */
     if (InitUntyped == 0) {
 	KeBugCheckMsg("Not enough memory. Check kernel config.");
     }

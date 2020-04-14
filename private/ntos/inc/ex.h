@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nt.h>
+#include "ke.h"
 #include "mm.h"
 #include "ntosdef.h"
 
@@ -32,7 +33,7 @@ typedef struct _EX_POOL_HEADER {
 } EX_POOL_HEADER, *PEX_POOL_HEADER;
 
 #define EX_POOL_OVERHEAD	(sizeof(EX_POOL_HEADER))
-#define EX_POOL_LARGEST_BLOCK	(MM_PAGE_SIZE - EX_POOL_OVERHEAD)
+#define EX_POOL_LARGEST_BLOCK	((1 << seL4_PageBits) - EX_POOL_OVERHEAD)
 #define EX_POOL_FREE_LISTS	(EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK)
 
 COMPILE_ASSERT(EX_POOL_OVERHEAD_MUST_EQUAL_SMALLEST_BLOCK, EX_POOL_OVERHEAD == EX_POOL_SMALLEST_BLOCK);
@@ -40,7 +41,9 @@ COMPILE_ASSERT(EX_POOL_OVERHEAD_MUST_EQUAL_SMALLEST_BLOCK, EX_POOL_OVERHEAD == E
 typedef struct _EX_POOL {
     LONG TotalPages;		/* one large page is 2^10 pages */
     LONG UsedPages;		/* we always allocate page contiguously */
+    MWORD HeapStart;
     MWORD HeapEnd;
+    struct _MM_VADDR_SPACE *VaddrSpace;	/* For requesting more pages */
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
 } EX_POOL, *PEX_POOL;
 
@@ -55,6 +58,14 @@ typedef struct _EX_POOL {
 
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
 
-NTSTATUS ExInitializePool(IN MWORD HeapStart, IN ULONG NumPages);
+typedef struct _EPROCESS {
+    KPROCESS Pcb;		/* Must be first entry */
+    EX_POOL ExPool;		/* Executive Pool */
+    MM_VADDR_SPACE VaddrSpace;	/* Virtual address space */
+} EPROCESS, *PEPROCESS;
+
+NTSTATUS ExInitializePool(IN PEPROCESS Process,
+			  IN MWORD HeapStart,
+			  IN ULONG NumPages);
 PVOID ExAllocatePoolWithTag(IN ULONG NumberOfBytes,
 			    IN ULONG Tag);

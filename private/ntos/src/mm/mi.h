@@ -56,9 +56,11 @@ MiCapSpaceAllocCap(IN PMM_CAPSPACE CapSpace,
 NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 			OUT PMM_UNTYPED DestUntyped1,
 			OUT PMM_UNTYPED DestUntyped2);
-
-NTSTATUS MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
-			     PMM_UNTYPED Untyped);
+VOID MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
+			 PMM_UNTYPED Untyped);
+NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN ULONG Log2Size,
+			  OUT PMM_UNTYPED *Untyped);
 
 /* page.c */
 NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page);
@@ -68,9 +70,24 @@ NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page);
     if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }
 
 /* avltree.c */
-NTSTATUS MmVspaceInsertMappedPageTable(IN PMM_VADDR_SPACE Vspace,
-				       IN PMM_PAGE_TABLE PageTable);
-NTSTATUS MmPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
+NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
+			       IN PMM_PAGE Page);
+NTSTATUS MiVspaceInsertVadNode(IN PMM_VADDR_SPACE Vspace,
+			       IN PMM_VAD VadNode);
+PMM_VAD MiVspaceFindVadNode(IN PMM_VADDR_SPACE Vspace,
+			    IN MWORD StartPageNum,
+			    IN MWORD NumPages);
+PMM_AVL_NODE MiVspaceFindPageTableOrLargePage(IN PMM_VADDR_SPACE Vspace,
+					      IN MWORD LargePageNum);
+BOOLEAN MiPTNodeIsLargePage(PMM_AVL_NODE Node);
+BOOLEAN MiPTNodeIsPageTable(PMM_AVL_NODE Node);
+NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
+				 IN PMM_VAD Vad,
+				 IN PMM_LARGE_PAGE LargePage);
+NTSTATUS MiVspaceInsertPageTable(IN PMM_VADDR_SPACE Vspace,
+				 IN PMM_VAD Vad,
+				 IN PMM_PAGE_TABLE PageTable);
+NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 			       IN PMM_PAGE Page);
 
 static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)

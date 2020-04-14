@@ -47,15 +47,55 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			     IN PMM_UNTYPED Untyped)
+VOID MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			 IN PMM_UNTYPED Untyped)
 {
-    return STATUS_SUCCESS;
+    PLIST_ENTRY List;
+    if (Untyped->Log2Size >= MM_LARGE_PAGE_BITS) {
+	List = &VaddrSpace->LargeUntypedList;
+    } else if (Untyped->Log2Size >= MM_PAGE_BITS) {
+	List = &VaddrSpace->MediumUntypedList;
+    } else {
+	List = &VaddrSpace->SmallUntypedList;
+    }
+    InsertHeadList(List, &Untyped->FreeListEntry);
 }
 
 NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			  IN ULONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped)
 {
+    PLIST_ENTRY List = NULL;
+    if (Log2Size >= MM_LARGE_PAGE_BITS && !IsListEmpty(&VaddrSpace->LargeUntypedList)) {
+	List = &VaddrSpace->LargeUntypedList;
+    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&VaddrSpace->MediumUntypedList)) {
+	List = &VaddrSpace->MediumUntypedList;
+    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&VaddrSpace->LargeUntypedList)) {
+	List = &VaddrSpace->LargeUntypedList;
+    } else if (!IsListEmpty(&VaddrSpace->SmallUntypedList)) {
+	List = &VaddrSpace->SmallUntypedList;
+    } else if (!IsListEmpty(&VaddrSpace->MediumUntypedList)) {
+	List = &VaddrSpace->MediumUntypedList;
+    } else if (!IsListEmpty(&VaddrSpace->LargeUntypedList)) {
+	List = &VaddrSpace->LargeUntypedList;
+    }
+    if (List == NULL) {
+	return STATUS_NTOS_OUT_OF_MEMORY;
+    }
+    PMM_UNTYPED RootUntyped = CONTAINING_RECORD(List->Flink, MM_UNTYPED, FreeListEntry);
+    LONG NumSplits = RootUntyped->Log2Size - Log2Size;
+    assert(NumSplits >= 0);
+    RemoveEntryList(List->Flink);
+    for (LONG i = 0; i < NumSplits; i++) {
+	MWORD LeftCap, RightCap;
+	MiAllocatePool(LeftChild, MM_UNTYPED);
+	MiAllocatePool(RightChild, MM_UNTYPED);
+	RET_IF_ERR(MiSplitUntyped(RootUntyped, LeftChild, RightChild));
+	MiInsertFreeUntyped(VaddrSpace, RightChild);
+	RootUntyped = LeftChild;
+    }
+
+    *Untyped = RootUntyped;
+
     return STATUS_SUCCESS;
 }

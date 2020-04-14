@@ -121,16 +121,13 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     RET_IF_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
 
     /* Initialize ExPool */
-    RET_IF_ERR(ExInitializePool(EX_POOL_START, PoolPages));
-
-    /* Allocate memory for the virtual address space descriptor
-     * ExPool is usable now so we can allocate pool memory */
-    MiAllocatePool(VaddrSpace, MM_VADDR_SPACE);
     PEPROCESS EProcess = InitInfo->EProcess;
-    EProcess->VaddrSpace = VaddrSpace;
+    RET_IF_ERR(ExInitializePool(EProcess, EX_POOL_START, PoolPages));
+    PMM_VADDR_SPACE VaddrSpace = &EProcess->VaddrSpace;
 
-    /* Allocate CNode on ExPool and Copy InitCNode over */
+    /* Allocate memory for CNode on ExPool and Copy InitCNode over */
     VaddrSpace->CapSpace.RootCap = InitInfo->RootCNodeCap;
+    VaddrSpace->VSpaceCap = InitInfo->InitVSpaceCap;
     MiAllocatePool(RootCNode, MM_CNODE);
     VaddrSpace->CapSpace.RootCNode = RootCNode;
     RootCNode->TreeNode.CapSpace = &VaddrSpace->CapSpace;
@@ -150,6 +147,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     MiAvlInitializeTree(&VaddrSpace->VadTree);
     MiAllocatePool(ExPoolVad, MM_VAD);
     MiInitializeVadNode(ExPoolVad, EX_POOL_START >> MM_PAGE_BITS, EX_POOL_RESERVED_SIZE >> MM_PAGE_BITS);
+    MiVspaceInsertVadNode(VaddrSpace, ExPoolVad);
     MiAvlInitializeTree(&VaddrSpace->PageTableTree);
 
     /* Add untyped and paging structure built during mapping of initial heap */

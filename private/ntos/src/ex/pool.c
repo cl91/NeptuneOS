@@ -1,7 +1,7 @@
 #include <nt.h>
 #include <ntos.h>
 
-static EX_POOL EiGlobalPool;
+static PEPROCESS EiLocalProcess;
 
 /* Add the free page to the FreeLists */
 static VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
@@ -24,10 +24,12 @@ static VOID EiAddPageToPool(IN PEX_POOL Pool,
 }
 
 /* We require 3 consecutive initial pages mapped at Page0->VirtualAddr */
-static NTSTATUS EiInitializePool(PEX_POOL Pool,
+static NTSTATUS EiInitializePool(PEPROCESS Process,
 				 MWORD HeapStart,
 				 ULONG NumPages)
 {
+    PEX_POOL Pool = &Process->ExPool;
+
     /* Initialize FreeLists */
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
 	InitializeListHead(&Pool->FreeLists[i]);
@@ -40,16 +42,20 @@ static NTSTATUS EiInitializePool(PEX_POOL Pool,
     /* Add pages to pool */
     Pool->TotalPages = NumPages;
     Pool->UsedPages = 1;
+    Pool->HeapStart = HeapStart;
     Pool->HeapEnd = HeapStart + MM_PAGE_SIZE;
+    Pool->VaddrSpace = &Process->VaddrSpace;
     EiAddPageToPool(Pool, HeapStart >> MM_PAGE_BITS);
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ExInitializePool(IN MWORD HeapStart,
+NTSTATUS ExInitializePool(IN PEPROCESS Process,
+			  IN MWORD HeapStart,
 			  IN ULONG NumPages)
 {
-    return EiInitializePool(&EiGlobalPool, HeapStart, NumPages);
+    EiLocalProcess = Process;
+    return EiInitializePool(Process, HeapStart, NumPages);
 }
 
 /* Examine the number of available pages in the pool and optionally
@@ -80,33 +86,19 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 	    return;
 	} else {
 	    /* We are running low on resources. Request more pages from mm */
-	    LONG FreePages = MmGetMaxCommitPages();
-	    if (FreePages <= 0) {
-		/* Not much we can do here. System is out of memory. */
-		return;
-	    }
+	    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
 	    LONG NewPages = 1;
-	    if (FreePages >= 8) {
+	    if (MemPressure == MM_MEM_PRESSURE_LOW) {
 		NewPages = 4;
-	    } else if (FreePages >= 2) {
+	    } else if (MemPressure == MM_MEM_PRESSURE_MEDIUM) {
 		NewPages = 2;
 	    }
-	    NTSTATUS Status = MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS, NewPages);
-	    if (!NT_SUCCESS(Status)) {
-		if (NewPages == 1) {
-		    /* Not much we can do here. System is out of memory. */
-		    return;
-		}
-		/* Perhaps we can still have a single page. Try that. */
-		NewPages = 1;
-		if (!NT_SUCCESS(MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS, 1))) {
-		    /* We are not getting any new page. System is out of memory.
-		       Not much can be done here. */
-		    return;
-		}
-	    }
-	    /* We have some memory. Add them to the available pages. */
-	    Pool->TotalPages += NewPages;
+	    MWORD SatisfiedPages = 0;
+	    MmCommitPages(Pool->VaddrSpace,
+			  Pool->HeapEnd >> MM_PAGE_BITS,
+			  NewPages,
+			  &SatisfiedPages);
+	    Pool->TotalPages += SatisfiedPages;
 	}
     }
 }
@@ -174,5 +166,5 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 PVOID ExAllocatePoolWithTag(IN ULONG NumberOfBytes,
 			    IN ULONG Tag)
 {
-    return EiAllocatePoolWithTag(&EiGlobalPool, NumberOfBytes, Tag);
+    return EiAllocatePoolWithTag(&EiLocalProcess->ExPool, NumberOfBytes, Tag);
 }

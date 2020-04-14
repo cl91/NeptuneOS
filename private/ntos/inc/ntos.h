@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "ntosdef.h"
+#include "ke.h"
 #include "mm.h"
 #include "ex.h"
 #include "ps.h"
