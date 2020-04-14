@@ -5,6 +5,8 @@
 #include <sel4/sel4.h>
 #include <libelf/libelf.h>
 
+VOID KeRunAllTests();
+
 VOID KeBugCheckMsg(PCSTR Format, ...);
 
 #define BUGCHECK_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { \
