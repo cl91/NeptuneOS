@@ -144,13 +144,13 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	}
     }
 
-    ULONG AvailableBlocks = FreeListIndex + 1;
+    LONG AvailableBlocks = FreeListIndex + 1;
     PLIST_ENTRY FreeEntry = Pool->FreeLists[FreeListIndex].Flink;
     MWORD BlockStart = (MWORD) FreeEntry;
     PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) (BlockStart - EX_POOL_OVERHEAD);
     RemoveEntryList(FreeEntry);
     InvalidateListEntry(FreeEntry);
-    ULONG LeftOverBlocks =  AvailableBlocks - NumberOfBlocks - EX_POOL_OVERHEAD / EX_POOL_SMALLEST_BLOCK;
+    LONG LeftOverBlocks =  AvailableBlocks - NumberOfBlocks - EX_POOL_OVERHEAD / EX_POOL_SMALLEST_BLOCK;
     if (LeftOverBlocks > 0) {
 	PoolHeader->BlockSize = NumberOfBlocks;
 	MWORD NextPoolHeaderStart = BlockStart + NumberOfBytes;

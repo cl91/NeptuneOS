@@ -17,11 +17,11 @@ NTSTATUS MiInitMapPage(IN PMM_INIT_INFO_CLASS InitInfo,
 		       IN MWORD PageCap,
 		       IN MWORD Vaddr,
 		       IN MWORD Type);
-VOID MiInitHeapUntyped(IN PMM_UNTYPED Untyped,
-		       IN PMM_UNTYPED Parent,
-		       IN PMM_VADDR_SPACE VaddrSpace,
-		       IN MWORD Cap,
-		       IN ULONG Log2Size);
+VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
+			 IN PMM_UNTYPED Parent,
+			 IN PMM_VADDR_SPACE VaddrSpace,
+			 IN MWORD Cap,
+			 IN ULONG Log2Size);
 VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 			       IN PMM_UNTYPED Parent,
 			       IN PMM_VADDR_SPACE VaddrSpace,

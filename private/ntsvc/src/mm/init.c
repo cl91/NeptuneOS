@@ -34,15 +34,9 @@ void MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
 	};
     BUGCHECK_IF_ERR(MmRegisterClass(&InitInfo));
 
-    for (MWORD p = EX_POOL_START; p < EX_POOL_START + 0x100; p++) {
-	if (p % 8 == 0) {
-	    DbgPrint("\n");
-	}
-	UCHAR c = *((PUCHAR) p);
-	if (isalpha(c)) {
-	    DbgPrint("%.2x %c  ", c, c);
-	} else {
-	    DbgPrint("%.2x    ", c);
+    LoopOverUntyped(cap, desc, bootinfo) {
+	if (!desc->isDevice && cap != InitUntyped) {
+	    MmRegisterRootUntyped(&NtsvcProcess->VaddrSpace, cap, desc->sizeBits);
 	}
     }
 }

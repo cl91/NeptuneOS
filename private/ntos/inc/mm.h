@@ -85,10 +85,6 @@ typedef struct _MM_PAGING_STRUCTURE {
     seL4_X86_VMAttributes Attributes;
 } MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;
 
-NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
-NTSTATUS MmRegisterUntyped(IN MWORD Untyped, LONG Log2Size);
-NTSTATUS MmRequestUntyped(IN LONG Log2Size, OUT MM_UNTYPED *Untyped);
-
 #define MM_RIGHTS_RW	(seL4_ReadWrite)
 
 typedef struct _MM_AVL_NODE {
@@ -144,6 +140,16 @@ typedef enum _MM_MEM_PRESSURE {
 			       MM_MEM_PRESSURE_MEDIUM,
 			       MM_MEM_PRESSURE_HIGH
 } MM_MEM_PRESSURE;
+
+/* init.c */
+NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
+NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			       IN MWORD Cap,
+			       IN MWORD Log2Size);
+
+/* untyped.c */
+NTSTATUS MmRequestUntyped(IN LONG Log2Size,
+			  OUT MM_UNTYPED *Untyped);
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();

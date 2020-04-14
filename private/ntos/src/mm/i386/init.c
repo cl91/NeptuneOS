@@ -56,9 +56,9 @@ NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
 		       IN PMM_VAD ExPoolVad)
 {
     MiAllocatePool(RootUntyped, MM_UNTYPED);
-    MiInitHeapUntyped(RootUntyped, NULL, VaddrSpace,
-		      InitInfo->InitUntypedLog2Size,
-		      InitInfo->InitUntypedLog2Size);
+    MiInitializeUntyped(RootUntyped, NULL, VaddrSpace,
+			InitInfo->InitUntypedCap,
+			InitInfo->InitUntypedLog2Size);
 
     PMM_UNTYPED ParentUntyped = RootUntyped;
     LONG NumSplits = InitInfo->InitUntypedLog2Size - MM_PAGE_BITS;
@@ -67,12 +67,12 @@ NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
 	MiAllocatePool(LeftChildUntyped, MM_UNTYPED);
 	MiAllocatePool(RightChildUntyped, MM_UNTYPED);
 
-	MiInitHeapUntyped(LeftChildUntyped, ParentUntyped, VaddrSpace,
-			  InitInfo->RootCNodeFreeCapStart + 2*i,
-			  InitInfo->InitUntypedLog2Size - 1 - i);
-	MiInitHeapUntyped(RightChildUntyped, ParentUntyped, VaddrSpace,
-			  InitInfo->RootCNodeFreeCapStart + 2*i + 1,
-			  InitInfo->InitUntypedLog2Size - 1 - i);
+	MiInitializeUntyped(LeftChildUntyped, ParentUntyped, VaddrSpace,
+			    InitInfo->RootCNodeFreeCapStart + 2*i,
+			    InitInfo->InitUntypedLog2Size - 1 - i);
+	MiInitializeUntyped(RightChildUntyped, ParentUntyped, VaddrSpace,
+			    InitInfo->RootCNodeFreeCapStart + 2*i + 1,
+			    InitInfo->InitUntypedLog2Size - 1 - i);
 
 	ParentUntyped->TreeNode.LeftChild = &LeftChildUntyped->TreeNode;
 	ParentUntyped->TreeNode.RightChild = &RightChildUntyped->TreeNode;
@@ -82,12 +82,12 @@ NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
 	} else if (i == NumSplits-2) {
 	    MiAllocatePool(Page2Untyped, MM_UNTYPED);
 	    MiAllocatePool(PageTableUntyped, MM_UNTYPED);
-	    MiInitHeapUntyped(Page2Untyped, RightChildUntyped, VaddrSpace,
-			      InitInfo->RootCNodeFreeCapStart + 2*NumSplits,
-			      InitInfo->InitUntypedLog2Size - NumSplits);
-	    MiInitHeapUntyped(PageTableUntyped, RightChildUntyped, VaddrSpace,
-			      InitInfo->RootCNodeFreeCapStart + 2*NumSplits+1,
-			      InitInfo->InitUntypedLog2Size - NumSplits);
+	    MiInitializeUntyped(Page2Untyped, RightChildUntyped, VaddrSpace,
+				InitInfo->RootCNodeFreeCapStart + 2*NumSplits,
+				InitInfo->InitUntypedLog2Size - NumSplits);
+	    MiInitializeUntyped(PageTableUntyped, RightChildUntyped, VaddrSpace,
+				InitInfo->RootCNodeFreeCapStart + 2*NumSplits+1,
+				InitInfo->InitUntypedLog2Size - NumSplits);
 	    MiAllocatePool(Page2, MM_PAGING_STRUCTURE);
 	    MiAllocatePool(PageTable, MM_PAGING_STRUCTURE);
 	    MiInitHeapPagingStructure(Page2, Page2Untyped, VaddrSpace,
