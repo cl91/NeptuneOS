@@ -66,6 +66,6 @@ typedef struct _EPROCESS {
 
 NTSTATUS ExInitializePool(IN PEPROCESS Process,
 			  IN MWORD HeapStart,
-			  IN ULONG NumPages);
-PVOID ExAllocatePoolWithTag(IN ULONG NumberOfBytes,
+			  IN LONG NumPages);
+PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag);

@@ -3,7 +3,7 @@
 
 NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
 			       IN MWORD SrcCap,
-			       IN ULONG SrcLog2Size,
+			       IN LONG SrcLog2Size,
 			       IN MWORD DestCap)
 {
     MWORD Error = seL4_Untyped_Retype(SrcCap,
@@ -77,7 +77,7 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN PMM_UNTYPED Parent,
 			 IN PMM_VADDR_SPACE VaddrSpace,
 			 IN MWORD Cap,
-			 IN ULONG Log2Size)
+			 IN LONG Log2Size)
 {
     Untyped->TreeNode.CapSpace = &VaddrSpace->CapSpace;
     Untyped->TreeNode.Parent = &Parent->TreeNode;
@@ -115,7 +115,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 {
     /* Map initial pages for ExPool */
-    ULONG PoolPages;
+    LONG PoolPages;
     MWORD FreeCapStart;
     RET_IF_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
 
@@ -161,11 +161,19 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
 
 NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
-			       IN MWORD Log2Size)
+			       IN LONG Log2Size)
 {
     MiAllocatePool(Untyped, MM_UNTYPED);
     MiInitializeUntyped(Untyped, NULL, VaddrSpace, Cap, Log2Size);
     InsertTailList(&VaddrSpace->RootUntypedList, &Untyped->RootListEntry);
     MiInsertFreeUntyped(VaddrSpace, Untyped);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmRegisterDeviceUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+				 IN MWORD Cap,
+				 IN MWORD PhyAddr,
+				 IN LONG Log2Size)
+{
     return STATUS_SUCCESS;
 }

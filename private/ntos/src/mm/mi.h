@@ -6,7 +6,7 @@
 /* init.c */
 NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
 			       IN MWORD SrcCap,
-			       IN ULONG SrcLog2Size,
+			       IN LONG SrcLog2Size,
 			       IN MWORD DestCap);
 NTSTATUS MiInitRetypeIntoPage(IN MWORD RootCap,
 			      IN MWORD Untyped,
@@ -21,7 +21,7 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN PMM_UNTYPED Parent,
 			 IN PMM_VADDR_SPACE VaddrSpace,
 			 IN MWORD Cap,
-			 IN ULONG Log2Size);
+			 IN LONG Log2Size);
 VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 			       IN PMM_UNTYPED Parent,
 			       IN PMM_VADDR_SPACE VaddrSpace,
@@ -32,7 +32,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 
 /* arch/init.c */
 NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO_CLASS InitInfo,
-			      OUT ULONG *PoolPages,
+			      OUT LONG *PoolPages,
 			      OUT MWORD *FreeCapStart);
 NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
 		       IN PMM_VADDR_SPACE VaddrSpace,
@@ -59,7 +59,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 VOID MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
 			 PMM_UNTYPED Untyped);
 NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN ULONG Log2Size,
+			  IN LONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped);
 
 /* page.c */

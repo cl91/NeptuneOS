@@ -1,3 +1,3 @@
 #pragma once
 
-VOID MmInitSystem();
+NTSTATUS MmInitSystem();

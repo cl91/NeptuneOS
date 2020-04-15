@@ -129,7 +129,7 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
     KiDumpBootInfoAll(bootinfo);
-    MmInitSystem(&KiNtsvcProcess, bootinfo);
+    BUGCHECK_IF_ERR(MmInitSystem(&KiNtsvcProcess, bootinfo));
     KiInitVga();
     KeRunAllTests();
     while (1);

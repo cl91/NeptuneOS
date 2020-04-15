@@ -62,7 +62,7 @@ VOID MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 }
 
 NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN ULONG Log2Size,
+			  IN LONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped)
 {
     PLIST_ENTRY List = NULL;

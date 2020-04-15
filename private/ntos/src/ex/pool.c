@@ -26,7 +26,7 @@ static VOID EiAddPageToPool(IN PEX_POOL Pool,
 /* We require 3 consecutive initial pages mapped at Page0->VirtualAddr */
 static NTSTATUS EiInitializePool(PEPROCESS Process,
 				 MWORD HeapStart,
-				 ULONG NumPages)
+				 LONG NumPages)
 {
     PEX_POOL Pool = &Process->ExPool;
 
@@ -52,7 +52,7 @@ static NTSTATUS EiInitializePool(PEPROCESS Process,
 
 NTSTATUS ExInitializePool(IN PEPROCESS Process,
 			  IN MWORD HeapStart,
-			  IN ULONG NumPages)
+			  IN LONG NumPages)
 {
     EiLocalProcess = Process;
     return EiInitializePool(Process, HeapStart, NumPages);
@@ -108,7 +108,7 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
  * If no more space in free list, request one more page
  */
 static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
-				   IN ULONG NumberOfBytes,
+				   IN MWORD NumberOfBytes,
 				   IN ULONG Tag)
 {
     if (NumberOfBytes == 0) {

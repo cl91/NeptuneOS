@@ -1,6 +1,4 @@
-#include <nt.h>
-#include <ntos.h>
-#include <printf.h>
+#include "../tests.h"
 
 static int _print_t(PMM_AVL_NODE tree, int is_left, int offset, int depth, char s[20][255])
 {

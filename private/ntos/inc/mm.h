@@ -17,11 +17,11 @@
 typedef struct _MM_INIT_INFO_CLASS {
     MWORD InitVSpaceCap;
     MWORD InitUntypedCap;
-    ULONG InitUntypedLog2Size;
+    LONG InitUntypedLog2Size;
     MWORD RootCNodeCap;
-    ULONG RootCNodeLog2Size;
+    LONG RootCNodeLog2Size;
     MWORD RootCNodeFreeCapStart;
-    ULONG RootCNodeFreeCapNumber;
+    LONG RootCNodeFreeCapNumber;
     struct _EPROCESS *EProcess;
 } MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
 
@@ -52,7 +52,7 @@ typedef struct _MM_CNODE {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
     struct _MM_CNODE *FirstChild;
     LIST_ENTRY SiblingList;
-    ULONG Log2Size;
+    LONG Log2Size;
     enum { MM_CNODE_TAIL_DEALLOC_ONLY, MM_CNODE_ALLOW_DEALLOC } Policy;
     union {
 	PUCHAR UsedMap;
@@ -133,6 +133,7 @@ typedef struct _MM_VADDR_SPACE {
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
     LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
+    MM_AVL_TREE DeviceUntypedTree; /* Root device untyped organized by their starting phy addr */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -145,7 +146,11 @@ typedef enum _MM_MEM_PRESSURE {
 NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
 NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
-			       IN MWORD Log2Size);
+			       IN LONG Log2Size);
+NTSTATUS MmRegisterDeviceUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+				 IN MWORD Cap,
+				 IN MWORD PhyAddr,
+				 IN LONG Log2Size);
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
