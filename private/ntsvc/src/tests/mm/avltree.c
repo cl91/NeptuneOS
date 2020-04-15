@@ -1,76 +1,85 @@
 #include "../tests.h"
 
-static int _print_t(PMM_AVL_NODE tree, int is_left, int offset, int depth, char s[20][255])
+typedef struct _TRUNK
 {
-    char b[20];
-    int width = 5;
+    struct _TRUNK *Prev;
+    char *Str;
+} TRUNK, *PTRUNK;
 
-    if (!tree) return 0;
+// Helper function to print branches of the binary tree
+static void ShowTrunks(PTRUNK p)
+{
+    if (p == NULL)
+        return;
 
-    snprintf(b, sizeof(b), "(%03x)", tree->StartPageNum & 0xfff);
+    ShowTrunks(p->Prev);
 
-    int left  = _print_t(tree->LeftChild,  1, offset,                depth + 1, s);
-    int right = _print_t(tree->RightChild, 0, offset + left + width, depth + 1, s);
-
-#ifdef COMPACT
-    for (int i = 0; i < width; i++)
-        s[depth][offset + left + i] = b[i];
-
-    if (depth && is_left) {
-
-        for (int i = 0; i < width + right; i++)
-            s[depth - 1][offset + left + width/2 + i] = '-';
-
-        s[depth - 1][offset + left + width/2] = '.';
-
-    } else if (depth && !is_left) {
-
-        for (int i = 0; i < left + width; i++)
-            s[depth - 1][offset - width/2 + i] = '-';
-
-        s[depth - 1][offset + left + width/2] = '.';
+    if (p->Str != NULL) {
+	DbgPrint("%s", p->Str);
     }
-#else
-    for (int i = 0; i < width; i++)
-        s[2 * depth][offset + left + i] = b[i];
+}
 
-    if (depth && is_left) {
+// Recursive function to print binary tree
+// It uses inorder traversal
+static void PrintTree(PMM_AVL_NODE Root,
+		      PTRUNK Prev,
+		      BOOLEAN IsLeft)
+{
+    if (Root == NULL)
+        return;
+    
+    char *PrevStr = "    ";
+    TRUNK Trunk = { .Prev = Prev,
+		    .Str = PrevStr };
 
-        for (int i = 0; i < width + right; i++)
-            s[2 * depth - 1][offset + left + width/2 + i] = '-';
+    PrintTree(Root->LeftChild, &Trunk, TRUE);
 
-        s[2 * depth - 1][offset + left + width/2] = '+';
-        s[2 * depth - 1][offset + left + width + right + width/2] = '+';
-
-    } else if (depth && !is_left) {
-
-        for (int i = 0; i < left + width; i++)
-            s[2 * depth - 1][offset - width/2 + i] = '-';
-
-        s[2 * depth - 1][offset + left + width/2] = '+';
-        s[2 * depth - 1][offset - width/2 - 1] = '+';
+    if (!Prev) {
+        Trunk.Str = "---";
+    } else if (IsLeft) {
+        Trunk.Str = ".---";
+        PrevStr = "   |";
+    } else {
+        Trunk.Str = "`---";
+        Prev->Str = PrevStr;
     }
-#endif
 
-    return left + width + right;
+    ShowTrunks(&Trunk);
+    DbgPrint("%05x\n", Root->Key);
+
+    if (Prev)
+        Prev->Str = PrevStr;
+    Trunk.Str = "   |";
+
+    PrintTree(Root->RightChild, &Trunk, FALSE);
 }
 
 static VOID PrintAvlTree(PMM_AVL_TREE tree)
 {
-    char s[20][255];
-    for (int i = 0; i < 20; i++)
-        snprintf(s[i], sizeof(s[0]), "%80s", " ");
-
-    _print_t(tree->BalancedRoot, 0, 0, 0, s);
-
-    for (int i = 0; i < 20; i++)
-        DbgPrint("%s\n", s[i]);
+    PrintTree(tree->BalancedRoot, NULL, TRUE);
 }
 
 static VOID PrintAvlTreeLinear(PMM_AVL_TREE tree)
 {
     LoopOverList(Node, &tree->NodeList, MM_AVL_NODE, ListEntry) {
-	DbgPrint("%p ", Node->StartPageNum);
+	DbgPrint("%05x ", Node->Key);
     }
     DbgPrint("\n");
+}
+
+VOID MmRunAvlTreeTests()
+{
+    DbgPrintFunc();
+    PMM_AVL_TREE IoUntypedTree = &ExNtsvcProcess.VaddrSpace.IoUntypedTree;
+    DbgPrint("  IoUntypedTree:\n");
+    PrintAvlTreeLinear(IoUntypedTree);
+    PrintAvlTree(IoUntypedTree);
+    PMM_AVL_TREE VadTree = &ExNtsvcProcess.VaddrSpace.VadTree;
+    DbgPrint("  VadTree:\n");
+    PrintAvlTreeLinear(VadTree);
+    PrintAvlTree(VadTree);
+    PMM_AVL_TREE PageTableTree = &ExNtsvcProcess.VaddrSpace.PageTableTree;
+    DbgPrint("  PageTableTree:\n");
+    PrintAvlTreeLinear(PageTableTree);
+    PrintAvlTree(PageTableTree);
 }

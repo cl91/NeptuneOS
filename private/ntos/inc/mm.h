@@ -91,13 +91,13 @@ typedef struct _MM_AVL_NODE {
     MWORD Parent;
     struct _MM_AVL_NODE *LeftChild;
     struct _MM_AVL_NODE *RightChild;
-    MWORD StartPageNum;
-    LIST_ENTRY ListEntry;			    /* all node ordered linearly according to StartPageNum */
+    MWORD Key;			/* key is usually address, page number, or large page number */
+    LIST_ENTRY ListEntry; /* all node ordered linearly according to key */
 } MM_AVL_NODE, *PMM_AVL_NODE;
 
 typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
-    LIST_ENTRY NodeList;	/* ordered linearly according to StartPageNum */
+    LIST_ENTRY NodeList;	/* ordered linearly according to key */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
 typedef struct _MM_LARGE_PAGE {
@@ -124,6 +124,11 @@ typedef struct _MM_VAD {
     PMM_AVL_NODE LastPageTable;	 /* polymorphic pointers to either MM_LARGE_PAGE or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;
 
+typedef struct _MM_IO_UNTYPED {
+    MM_AVL_NODE AvlNode;	/* must be first entry */
+    MM_UNTYPED Untyped;
+} MM_IO_UNTYPED, *PMM_IO_UNTYPED;
+
 typedef struct _MM_VADDR_SPACE {
     MM_CAPSPACE CapSpace;
     MWORD VSpaceCap;
@@ -133,7 +138,7 @@ typedef struct _MM_VADDR_SPACE {
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
     LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
-    MM_AVL_TREE DeviceUntypedTree; /* Root device untyped organized by their starting phy addr */
+    MM_AVL_TREE IoUntypedTree; /* Root device untyped organized by their starting phy addr */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -147,10 +152,10 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
 NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
 			       IN LONG Log2Size);
-NTSTATUS MmRegisterDeviceUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-				 IN MWORD Cap,
-				 IN MWORD PhyAddr,
-				 IN LONG Log2Size);
+NTSTATUS MmRegisterIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			     IN MWORD Cap,
+			     IN MWORD PhyAddr,
+			     IN LONG Log2Size);
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,

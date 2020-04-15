@@ -60,8 +60,6 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
-static EPROCESS KiNtsvcProcess;
-
 static char *KiDumpBootInfoSlotRegion(char *buf,
 				      size_t size,
 				      seL4_SlotRegion *sl)
@@ -129,7 +127,7 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
     KiDumpBootInfoAll(bootinfo);
-    BUGCHECK_IF_ERR(MmInitSystem(&KiNtsvcProcess, bootinfo));
+    BUGCHECK_IF_ERR(MmInitSystem(&ExNtsvcProcess, bootinfo));
     KiInitVga();
     KeRunAllTests();
     while (1);

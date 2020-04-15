@@ -89,6 +89,9 @@ NTSTATUS MiVspaceInsertPageTable(IN PMM_VADDR_SPACE Vspace,
 				 IN PMM_PAGE_TABLE PageTable);
 NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 			       IN PMM_PAGE Page);
+NTSTATUS MiVspaceInsertIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+				 IN PMM_IO_UNTYPED IoUntyped,
+				 IN MWORD PhyAddr);
 
 static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
 {
@@ -101,7 +104,7 @@ static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
 {
     Node->Parent = 0;
     Node->LeftChild = Node->RightChild = NULL;
-    Node->StartPageNum = PageNum;
+    Node->Key = PageNum;
     Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
 }
 

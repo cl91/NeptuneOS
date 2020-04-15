@@ -6,3 +6,4 @@
 #include <printf.h>
 
 VOID MmRunTests();
+VOID ExRunTests();

@@ -148,6 +148,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
     MiInitializeVadNode(ExPoolVad, EX_POOL_START >> MM_PAGE_BITS, EX_POOL_RESERVED_SIZE >> MM_PAGE_BITS);
     MiVspaceInsertVadNode(VaddrSpace, ExPoolVad);
     MiAvlInitializeTree(&VaddrSpace->PageTableTree);
+    MiAvlInitializeTree(&VaddrSpace->IoUntypedTree);
 
     /* Add untyped and paging structure built during mapping of initial heap */
     InitializeListHead(&VaddrSpace->SmallUntypedList);
@@ -170,10 +171,17 @@ NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmRegisterDeviceUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-				 IN MWORD Cap,
-				 IN MWORD PhyAddr,
-				 IN LONG Log2Size)
+NTSTATUS MmRegisterIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			     IN MWORD Cap,
+			     IN MWORD PhyAddr,
+			     IN LONG Log2Size)
 {
+    if (Log2Size < MM_PAGE_BITS || (PhyAddr & (MM_PAGE_SIZE - 1)) != 0) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    MiAllocatePool(IoUntyped, MM_IO_UNTYPED);
+    MiInitializeUntyped(&IoUntyped->Untyped, NULL, VaddrSpace, Cap, Log2Size);
+    IoUntyped->AvlNode.Key = PhyAddr >> MM_PAGE_BITS;
+    RET_IF_ERR(MiVspaceInsertIoUntyped(VaddrSpace, IoUntyped, PhyAddr));
     return STATUS_SUCCESS;
 }

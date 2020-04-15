@@ -35,13 +35,12 @@ NTSTATUS MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
     RET_IF_ERR(MmRegisterClass(&InitInfo));
 
     LoopOverUntyped(cap, desc, bootinfo) {
-	if (cap != InitUntyped) {
-	    if (desc->isDevice) {
-		RET_IF_ERR(MmRegisterDeviceUntyped(&NtsvcProcess->VaddrSpace, cap,
-						   desc->paddr, desc->sizeBits));
-	    } else {
-		RET_IF_ERR(MmRegisterRootUntyped(&NtsvcProcess->VaddrSpace, cap, desc->sizeBits));
-	    }
+	if (!desc->isDevice && cap != InitUntyped) {
+	    RET_IF_ERR(MmRegisterRootUntyped(&NtsvcProcess->VaddrSpace, cap,
+					     desc->sizeBits));
+	} else if (desc->isDevice && desc->sizeBits >= MM_PAGE_BITS) {
+	    RET_IF_ERR(MmRegisterIoUntyped(&NtsvcProcess->VaddrSpace, cap,
+					   desc->paddr, desc->sizeBits));
 	}
     }
 
