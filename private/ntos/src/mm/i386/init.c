@@ -51,9 +51,9 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO InitInfo,
-		       IN PMM_VADDR_SPACE VaddrSpace,
-		       IN PMM_VAD ExPoolVad)
+NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
+				     IN PMM_VADDR_SPACE VaddrSpace,
+				     IN PMM_VAD ExPoolVad)
 {
     MiAllocatePool(RootUntyped, MM_UNTYPED);
     MiInitializeUntyped(RootUntyped, NULL, VaddrSpace,

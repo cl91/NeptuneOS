@@ -138,7 +138,11 @@ typedef struct _MM_VADDR_SPACE {
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
     LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
-    MM_AVL_TREE IoUntypedTree; /* Root device untyped organized by their starting phy addr */
+    MM_AVL_TREE RootIoUntypedTree; /* Root device untyped organized by their starting phy addr */
+    struct {
+	PMM_VAD Vad;
+	PMM_IO_UNTYPED RootIoUntyped;
+    } Caches;			/* speed up look up */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -152,10 +156,10 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo);
 NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
 			       IN LONG Log2Size);
-NTSTATUS MmRegisterIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			     IN MWORD Cap,
-			     IN MWORD PhyAddr,
-			     IN LONG Log2Size);
+NTSTATUS MmRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+				 IN MWORD Cap,
+				 IN MWORD PhyAddr,
+				 IN LONG Log2Size);
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
@@ -167,3 +171,11 @@ NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
 		       IN MWORD StartPageNum,
 		       IN MWORD NumPages,
 		       OUT MWORD *SatisfiedPages);
+NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
+			IN MWORD PhyPageNum,
+			IN MWORD VirtPageNum);
+
+/* vaddr.c */
+NTSTATUS MmReserveVirtualMemory(IN PMM_VADDR_SPACE Vspace,
+				IN MWORD StartPageNum,
+				IN MWORD NumPages);

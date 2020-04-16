@@ -99,3 +99,34 @@ NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 
     return STATUS_SUCCESS;
 }
+
+NTSTATUS MiRequestIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			    IN PMM_IO_UNTYPED RootIoUntyped,
+			    IN MWORD PhyPageNum,
+			    OUT PMM_IO_UNTYPED *IoUntyped)
+{
+    *IoUntyped = RootIoUntyped;
+    LONG NumSplits = RootIoUntyped->Untyped.Log2Size - MM_PAGE_BITS;
+    for (LONG i = NumSplits-1; i >= 0; i--) {
+	if ((*IoUntyped)->Untyped.TreeNode.LeftChild == NULL) {
+	    MiAllocatePool(LeftChild, MM_IO_UNTYPED);
+	    MiAllocatePool(RightChild, MM_IO_UNTYPED);
+	    RET_IF_ERR(MiSplitUntyped(&(*IoUntyped)->Untyped,
+				      &LeftChild->Untyped,
+				      &RightChild->Untyped));
+	    LeftChild->AvlNode.Key = (*IoUntyped)->AvlNode.Key;
+	    RightChild->AvlNode.Key = (*IoUntyped)->AvlNode.Key +
+		(1 << (LeftChild->Untyped.Log2Size - MM_PAGE_BITS));
+	}
+	MWORD Bit = PhyPageNum & (1 << i);
+	PMM_UNTYPED Child;
+	if (Bit) {
+	    Child = (PMM_UNTYPED) (*IoUntyped)->Untyped.TreeNode.LeftChild;
+	} else {
+	    Child = (PMM_UNTYPED) (*IoUntyped)->Untyped.TreeNode.RightChild;
+	}
+	*IoUntyped = CONTAINING_RECORD(Child, MM_IO_UNTYPED, Untyped);
+    }
+
+    return STATUS_SUCCESS;
+}

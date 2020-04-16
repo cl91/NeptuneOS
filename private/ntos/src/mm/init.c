@@ -127,6 +127,8 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
     /* Allocate memory for CNode on ExPool and Copy InitCNode over */
     VaddrSpace->CapSpace.RootCap = InitInfo->RootCNodeCap;
     VaddrSpace->VSpaceCap = InitInfo->InitVSpaceCap;
+    VaddrSpace->Caches.Vad = NULL;
+    VaddrSpace->Caches.RootIoUntyped = NULL;
     MiAllocatePool(RootCNode, MM_CNODE);
     VaddrSpace->CapSpace.RootCNode = RootCNode;
     RootCNode->TreeNode.CapSpace = &VaddrSpace->CapSpace;
@@ -144,18 +146,23 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
 
     /* Build the Vad tree of the global EProcess */
     MiAvlInitializeTree(&VaddrSpace->VadTree);
-    MiAllocatePool(ExPoolVad, MM_VAD);
-    MiInitializeVadNode(ExPoolVad, EX_POOL_START >> MM_PAGE_BITS, EX_POOL_RESERVED_SIZE >> MM_PAGE_BITS);
-    MiVspaceInsertVadNode(VaddrSpace, ExPoolVad);
+    RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
     MiAvlInitializeTree(&VaddrSpace->PageTableTree);
-    MiAvlInitializeTree(&VaddrSpace->IoUntypedTree);
+    MiAvlInitializeTree(&VaddrSpace->RootIoUntypedTree);
+    PMM_VAD ExPoolVad = MiVspaceFindVadNode(VaddrSpace, EX_POOL_START_PN, 1);
+    if (ExPoolVad == NULL) {
+	return STATUS_NTOS_BUG;
+    }
+
+    /* FIXME: Build Vad for initial image */
+    RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, 0, 1 << MM_LARGE_PN_SHIFT));
 
     /* Add untyped and paging structure built during mapping of initial heap */
     InitializeListHead(&VaddrSpace->SmallUntypedList);
     InitializeListHead(&VaddrSpace->MediumUntypedList);
     InitializeListHead(&VaddrSpace->LargeUntypedList);
     InitializeListHead(&VaddrSpace->RootUntypedList);
-    RET_IF_ERR(MiInitHeapVad(InitInfo, VaddrSpace, ExPoolVad));
+    RET_IF_ERR(MiInitRecordUntypedAndPages(InitInfo, VaddrSpace, ExPoolVad));
 
     return STATUS_SUCCESS;
 }
@@ -171,7 +178,7 @@ NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmRegisterIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+NTSTATUS MmRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			     IN MWORD Cap,
 			     IN MWORD PhyAddr,
 			     IN LONG Log2Size)
@@ -179,9 +186,9 @@ NTSTATUS MmRegisterIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     if (Log2Size < MM_PAGE_BITS || (PhyAddr & (MM_PAGE_SIZE - 1)) != 0) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
-    MiAllocatePool(IoUntyped, MM_IO_UNTYPED);
-    MiInitializeUntyped(&IoUntyped->Untyped, NULL, VaddrSpace, Cap, Log2Size);
-    IoUntyped->AvlNode.Key = PhyAddr >> MM_PAGE_BITS;
-    RET_IF_ERR(MiVspaceInsertIoUntyped(VaddrSpace, IoUntyped, PhyAddr));
+    MiAllocatePool(RootIoUntyped, MM_IO_UNTYPED);
+    MiInitializeUntyped(&RootIoUntyped->Untyped, NULL, VaddrSpace, Cap, Log2Size);
+    RootIoUntyped->AvlNode.Key = PhyAddr >> MM_PAGE_BITS;
+    RET_IF_ERR(MiVspaceInsertRootIoUntyped(VaddrSpace, RootIoUntyped));
     return STATUS_SUCCESS;
 }

@@ -1,6 +1,6 @@
 #include "mi.h"
 
-LONG MiPageGetLog2Size(PMM_PAGING_STRUCTURE Page)
+static LONG MiPageGetLog2Size(PMM_PAGING_STRUCTURE Page)
 {
     if (Page->Type == MM_PAGE_TYPE_PAGE) {
 	return seL4_PageBits;
@@ -13,7 +13,7 @@ LONG MiPageGetLog2Size(PMM_PAGING_STRUCTURE Page)
     }
 }
 
-MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE Page)
+static MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE Page)
 {
     if (Page->Type == MM_PAGE_TYPE_PAGE) {
 	return seL4_X86_4K;
@@ -26,7 +26,7 @@ MWORD MiPageGetSel4Type(PMM_PAGING_STRUCTURE Page)
     }
 }
 
-NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
+static NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
 {
     if (Page->Mapped || (Page->TreeNode.Cap != 0)) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -58,7 +58,7 @@ NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
+static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 {
     if (Page->Mapped) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -105,10 +105,10 @@ MM_MEM_PRESSURE MmQueryMemoryPressure()
     return MM_MEM_PRESSURE_LOW;
 }
 
-NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
-				IN PMM_VAD Vad,
-				IN MWORD PageTableNum,
-				OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
+static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
+				       IN PMM_VAD Vad,
+				       IN MWORD PageTableNum,
+				       OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
 {
     PMM_UNTYPED Untyped;
     RET_IF_ERR(MiRequestUntyped(Vspace, MM_PAGE_TABLE_BITS, &Untyped));
@@ -138,14 +138,12 @@ NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
-			   IN PMM_PAGE_TABLE PageTable,
-			   IN MWORD PageNum,
-			   OUT OPTIONAL PMM_PAGE *PageNode)
+static NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
+				  IN PMM_UNTYPED Untyped,
+				  IN PMM_PAGE_TABLE PageTable,
+				  IN MWORD PageNum,
+				  OUT OPTIONAL PMM_PAGE *PageNode)
 {
-    PMM_UNTYPED Untyped;
-    RET_IF_ERR(MiRequestUntyped(Vspace, MM_PAGE_BITS, &Untyped));
-
     MiAllocatePool(Paging, MM_PAGING_STRUCTURE);
     Paging->TreeNode.CapSpace = &Vspace->CapSpace;
     Paging->TreeNode.Cap = 0;
@@ -196,7 +194,11 @@ NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
 	}
 	MWORD LastPageNumInPageTable = (PTNum + 1) << MM_LARGE_PN_SHIFT;
 	while (PageNum <= LastPageNumInPageTable && *SatisfiedPages < NumPages) {
-	    RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, PageTable, PageNum, NULL));
+	    if (MiPageTableFindPage(PageTable, PageNum) == NULL) {
+		PMM_UNTYPED Untyped;
+		RET_IF_ERR(MiRequestUntyped(VaddrSpace, MM_PAGE_BITS, &Untyped));
+		RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, NULL));
+	    }
 	    PageNum++;
 	    *SatisfiedPages += 1;
 	}
@@ -205,5 +207,42 @@ NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
     if (*SatisfiedPages == 0) {
 	return STATUS_NTOS_OUT_OF_MEMORY;
     }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
+			IN MWORD PhyPageNum,
+			IN MWORD VirtPageNum)
+{
+    PMM_VAD Vad = MiVspaceFindVadNode(VaddrSpace, VirtPageNum, 1);
+    if (Vad == NULL) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+
+    PMM_IO_UNTYPED RootIoUntyped = MiVspaceFindRootIoUntyped(VaddrSpace, PhyPageNum);
+    if (RootIoUntyped == NULL) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+
+    PMM_IO_UNTYPED IoUntyped;
+    RET_IF_ERR(MiRequestIoUntyped(VaddrSpace, RootIoUntyped, PhyPageNum, &IoUntyped));
+
+    MWORD PTNum = VirtPageNum >> MM_LARGE_PN_SHIFT;
+    PMM_AVL_NODE Node = MiVspaceFindPageTableOrLargePage(VaddrSpace, PTNum);
+    if (MiPTNodeIsLargePage(Node)) {
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+    PMM_PAGE_TABLE PageTable = (PMM_PAGE_TABLE) Node;
+    if (PageTable == NULL) {
+	    RET_IF_ERR(MiBuildAndMapPageTable(VaddrSpace, Vad, PTNum, &PageTable));
+    }
+
+    if (MiPageTableFindPage(PageTable, VirtPageNum) != NULL) {
+	/* Unmap page? */
+	return STATUS_NTOS_INVALID_ARGUMENT;
+    }
+
+    RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, &IoUntyped->Untyped, PageTable, VirtPageNum, NULL));
+
     return STATUS_SUCCESS;
 }

@@ -129,6 +129,6 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiDumpBootInfoAll(bootinfo);
     BUGCHECK_IF_ERR(MmInitSystem(&ExNtsvcProcess, bootinfo));
     KiInitVga();
-    KeRunAllTests();
+    //KeRunAllTests();
     while (1);
 }
