@@ -20,7 +20,7 @@ mkdir -p iso/boot/grub
 cp images/kernel iso/
 cp images/ntos iso/
 cat <<EOF > iso/boot/grub/grub.cfg
-set timeout=1
+set timeout=0
 menuentry 'seL4-ntos' --class fedora --class gnu-linux --class gnu --class os {
     insmod all_video
     insmod gzio

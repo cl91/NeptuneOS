@@ -121,9 +121,9 @@ NTSTATUS MiRequestIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 	MWORD Bit = PhyPageNum & (1 << i);
 	PMM_UNTYPED Child;
 	if (Bit) {
-	    Child = (PMM_UNTYPED) (*IoUntyped)->Untyped.TreeNode.LeftChild;
-	} else {
 	    Child = (PMM_UNTYPED) (*IoUntyped)->Untyped.TreeNode.RightChild;
+	} else {
+	    Child = (PMM_UNTYPED) (*IoUntyped)->Untyped.TreeNode.LeftChild;
 	}
 	*IoUntyped = CONTAINING_RECORD(Child, MM_IO_UNTYPED, Untyped);
     }
