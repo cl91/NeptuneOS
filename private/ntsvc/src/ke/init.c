@@ -39,7 +39,7 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     *tls_ptr = tls_base;
     sel4runtime_set_tls_base(tls_base);
     __sel4_ipc_buffer = bootinfo->ipcBuffer;
-
+#ifdef CONFIG_DEBUG_BUILD
     DbgPrintFunc();
     DbgPrint("    _text_start = %p\n", _text_start);
     DbgPrint("    _text_end = %p\n", _text_end);
@@ -58,6 +58,7 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    tls base = %p\n", sel4runtime_get_tls_base());
     DbgPrint("    &__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
+#endif
 }
 
 static char *KiDumpBootInfoSlotRegion(char *buf,
@@ -126,9 +127,13 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
+#ifdef CONFIG_DEBUG_BUILD
     KiDumpBootInfoAll(bootinfo);
+#endif
     BUGCHECK_IF_ERR(MmInitSystem(&ExNtsvcProcess, bootinfo));
     KiInitVga();
-    //KeRunAllTests();
+#ifdef CONFIG_RUN_TESTS
+    KeRunAllTests();
+#endif
     while (1);
 }
