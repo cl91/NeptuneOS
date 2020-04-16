@@ -41,7 +41,7 @@ NTSTATUS MiInitRetypeIntoPage(IN MWORD RootCap,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInitMapPage(IN PMM_INIT_INFO_CLASS InitInfo,
+NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
 		       IN MWORD Untyped,
 		       IN MWORD PageCap,
 		       IN MWORD Vaddr,
@@ -94,7 +94,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 			       IN MWORD Cap,
 			       IN MWORD Vaddr,
 			       IN MM_PAGING_STRUCTURE_TYPE Type,
-			       IN PMM_INIT_INFO_CLASS InitInfo)
+			       IN PMM_INIT_INFO InitInfo)
 {
     Page->TreeNode.CapSpace = &VaddrSpace->CapSpace;
     Page->TreeNode.Parent = &Parent->TreeNode;
@@ -112,7 +112,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
     Parent->TreeNode.RightChild = NULL;
 }
 
-NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo)
+NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
 {
     /* Map initial pages for ExPool */
     LONG PoolPages;

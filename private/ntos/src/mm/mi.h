@@ -12,7 +12,7 @@ NTSTATUS MiInitRetypeIntoPage(IN MWORD RootCap,
 			      IN MWORD Untyped,
 			      IN MWORD PageCap,
 			      IN MWORD Type);
-NTSTATUS MiInitMapPage(IN PMM_INIT_INFO_CLASS InitInfo,
+NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
 		       IN MWORD Untyped,
 		       IN MWORD PageCap,
 		       IN MWORD Vaddr,
@@ -28,13 +28,13 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 			       IN MWORD Cap,
 			       IN MWORD Vaddr,
 			       IN MM_PAGING_STRUCTURE_TYPE Type,
-			       IN PMM_INIT_INFO_CLASS InitInfo);
+			       IN PMM_INIT_INFO InitInfo);
 
 /* arch/init.c */
-NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO_CLASS InitInfo,
+NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
 			      OUT LONG *PoolPages,
 			      OUT MWORD *FreeCapStart);
-NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
+NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO InitInfo,
 		       IN PMM_VADDR_SPACE VaddrSpace,
 		       IN PMM_VAD ExPoolVad);
 

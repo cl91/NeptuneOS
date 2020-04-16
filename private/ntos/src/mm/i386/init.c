@@ -1,6 +1,6 @@
 #include "../mi.h"
 
-NTSTATUS MiPrepareInitialUntyped(IN PMM_INIT_INFO_CLASS InitInfo)
+NTSTATUS MiPrepareInitialUntyped(IN PMM_INIT_INFO InitInfo)
 {
     MWORD RootCap = InitInfo->RootCNodeCap;
     MWORD DestCap = InitInfo->RootCNodeFreeCapStart;
@@ -17,7 +17,7 @@ NTSTATUS MiPrepareInitialUntyped(IN PMM_INIT_INFO_CLASS InitInfo)
     return MiSplitInitialUntyped(RootCap, SrcCap, Log2Size+1, DestCap);
 }
 
-NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO_CLASS InitInfo,
+NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
 			      OUT LONG *PoolPages,
 			      OUT MWORD *FreeCapStart)
 {
@@ -51,7 +51,7 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO_CLASS InitInfo,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO_CLASS InitInfo,
+NTSTATUS MiInitHeapVad(IN PMM_INIT_INFO InitInfo,
 		       IN PMM_VADDR_SPACE VaddrSpace,
 		       IN PMM_VAD ExPoolVad)
 {

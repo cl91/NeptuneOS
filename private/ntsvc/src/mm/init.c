@@ -21,7 +21,7 @@ NTSTATUS MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
 	return STATUS_NTOS_OUT_OF_MEMORY;
     }
 
-    MM_INIT_INFO_CLASS InitInfo =
+    MM_INIT_INFO InitInfo =
 	{
 	 .InitVSpaceCap = seL4_CapInitThreadVSpace,
 	 .InitUntypedCap = InitUntyped,

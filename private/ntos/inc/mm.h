@@ -14,7 +14,7 @@
 
 /* Information needed to initialize the Memory Management routines,
  * including the Executive Pool */
-typedef struct _MM_INIT_INFO_CLASS {
+typedef struct _MM_INIT_INFO {
     MWORD InitVSpaceCap;
     MWORD InitUntypedCap;
     LONG InitUntypedLog2Size;
@@ -23,7 +23,7 @@ typedef struct _MM_INIT_INFO_CLASS {
     MWORD RootCNodeFreeCapStart;
     LONG RootCNodeFreeCapNumber;
     struct _EPROCESS *EProcess;
-} MM_INIT_INFO_CLASS, *PMM_INIT_INFO_CLASS;
+} MM_INIT_INFO, *PMM_INIT_INFO;
 
 /* Describes the entire CapSpace */
 typedef struct _MM_CAPSPACE {
@@ -148,7 +148,7 @@ typedef enum _MM_MEM_PRESSURE {
 } MM_MEM_PRESSURE;
 
 /* init.c */
-NTSTATUS MmRegisterClass(IN PMM_INIT_INFO_CLASS InitInfo);
+NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo);
 NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
 			       IN LONG Log2Size);
