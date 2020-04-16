@@ -80,7 +80,7 @@ typedef struct _MM_PAGING_STRUCTURE {
     MWORD VSpaceCap;
     MM_PAGING_STRUCTURE_TYPE Type;
     BOOLEAN Mapped;
-    MWORD VirtualAddr;
+    MWORD VirtPageNum;
     seL4_CapRights_t Rights;
     seL4_X86_VMAttributes Attributes;
 } MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;

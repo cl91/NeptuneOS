@@ -64,7 +64,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    Page->VirtualAddr &= (~0) << MiPageGetLog2Size(Page);
+    Page->VirtPageNum &= (~0) << (MiPageGetLog2Size(Page) - MM_PAGE_BITS);
 
     if (Page->TreeNode.Cap == 0) {
 	RET_IF_ERR(MiRetypeIntoPagingStructure(Page));
@@ -74,13 +74,13 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     if (Page->Type == MM_PAGE_TYPE_PAGE || Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
 	Error = seL4_X86_Page_Map(Page->TreeNode.Cap,
 				  Page->VSpaceCap,
-				  Page->VirtualAddr,
+				  Page->VirtPageNum << MM_PAGE_BITS,
 				  Page->Rights,
 				  Page->Attributes);
     } else if (Page->Type == MM_PAGE_TYPE_PAGE_TABLE) {
 	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
 				       Page->VSpaceCap,
-				       Page->VirtualAddr,
+				       Page->VirtPageNum << MM_PAGE_BITS,
 				       Page->Attributes);
     } else {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -123,7 +123,7 @@ static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
     Paging->VSpaceCap = Vspace->VSpaceCap;
     Paging->Type = MM_PAGE_TYPE_PAGE_TABLE;
     Paging->Mapped = FALSE;
-    Paging->VirtualAddr = PageTableNum << MM_LARGE_PAGE_BITS;
+    Paging->VirtPageNum = PageTableNum << MM_LARGE_PN_SHIFT;
     Paging->Rights = MM_RIGHTS_RW;
     Paging->Attributes = seL4_X86_Default_VMAttributes;
     RET_IF_ERR(MiMapPagingStructure(Paging));
@@ -154,7 +154,7 @@ static NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
     Paging->VSpaceCap = Vspace->VSpaceCap;
     Paging->Type = MM_PAGE_TYPE_PAGE;
     Paging->Mapped = FALSE;
-    Paging->VirtualAddr = PageNum << MM_PAGE_BITS;
+    Paging->VirtPageNum = PageNum;
     Paging->Rights = MM_RIGHTS_RW;
     Paging->Attributes = seL4_X86_Default_VMAttributes;
     RET_IF_ERR(MiMapPagingStructure(Paging));

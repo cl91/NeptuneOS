@@ -92,7 +92,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 			       IN PMM_UNTYPED Parent,
 			       IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
-			       IN MWORD Vaddr,
+			       IN MWORD VirtPageNum,
 			       IN MM_PAGING_STRUCTURE_TYPE Type,
 			       IN PMM_INIT_INFO InitInfo)
 {
@@ -105,7 +105,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
     Page->VSpaceCap = InitInfo->InitVSpaceCap;
     Page->Type = Type;
     Page->Mapped = TRUE;
-    Page->VirtualAddr = Vaddr;
+    Page->VirtPageNum = VirtPageNum;
     Page->Rights = MM_RIGHTS_RW;
     Page->Attributes = seL4_X86_Default_VMAttributes;
     Parent->TreeNode.LeftChild = &Page->TreeNode;

@@ -391,7 +391,7 @@ NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     PMM_AVL_TREE Tree = &Vspace->PageTableTree;
-    MWORD LargePN = LargePage->PagingStructure->VirtualAddr >> MM_LARGE_PAGE_BITS;
+    MWORD LargePN = LargePage->PagingStructure->VirtPageNum >> MM_LARGE_PN_SHIFT;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, LargePN);
     if (Parent != NULL && LargePN == Parent->Key) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -421,7 +421,7 @@ NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     PMM_AVL_TREE Tree = &PageTable->MappedPages;
-    MWORD PageNum = Page->PagingStructure->VirtualAddr >> MM_PAGE_BITS;
+    MWORD PageNum = Page->PagingStructure->VirtPageNum;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, PageNum);
     if (Parent != NULL && PageNum == Parent->Key) {
 	return STATUS_NTOS_INVALID_ARGUMENT;

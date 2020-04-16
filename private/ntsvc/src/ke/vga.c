@@ -7,7 +7,7 @@
 #define VGA_VIDEO_PAGE		(0xB8000)
 #define VGA_VIDEO_PN		(VGA_VIDEO_PAGE >> MM_PAGE_BITS)
 
-VOID KiVgaWriteString(UCHAR Color, PCSTR String)
+static VOID KiVgaWriteString(UCHAR Color, PCSTR String)
 {
     volatile PCHAR Video = (volatile PCHAR) (VGA_VADDR_BASE + VGA_VIDEO_PAGE);
     while (*String != 0) {

@@ -23,7 +23,7 @@ static VOID EiAddPageToPool(IN PEX_POOL Pool,
     EiAddFreeSpaceToPool(Pool, PageNum << MM_PAGE_BITS, 0, EX_POOL_FREE_LISTS);
 }
 
-/* We require 3 consecutive initial pages mapped at Page0->VirtualAddr */
+/* We require 3 consecutive initial pages mapped at EX_POOL_START */
 static NTSTATUS EiInitializePool(PEPROCESS Process,
 				 MWORD HeapStart,
 				 LONG NumPages)

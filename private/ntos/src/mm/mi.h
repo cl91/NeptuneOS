@@ -30,7 +30,7 @@ VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
 			       IN PMM_UNTYPED Parent,
 			       IN PMM_VADDR_SPACE VaddrSpace,
 			       IN MWORD Cap,
-			       IN MWORD Vaddr,
+			       IN MWORD VirtPageNum,
 			       IN MM_PAGING_STRUCTURE_TYPE Type,
 			       IN PMM_INIT_INFO InitInfo);
 
@@ -116,7 +116,7 @@ static inline VOID MiInitializePageNode(PMM_PAGE Node,
 					PMM_PAGING_STRUCTURE Page)
 {
     assert(Page->Type == MM_PAGE_TYPE_PAGE);
-    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> MM_PAGE_BITS);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtPageNum);
     Node->PagingStructure = Page;
 }
 
@@ -124,7 +124,7 @@ static inline VOID MiInitializeLargePageNode(PMM_LARGE_PAGE Node,
 					     PMM_PAGING_STRUCTURE Page)
 {
     assert(Page->Type == MM_PAGE_TYPE_LARGE_PAGE);
-    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> MM_LARGE_PAGE_BITS);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtPageNum >> MM_LARGE_PN_SHIFT);
     Node->PagingStructure = Page;
 }
 
@@ -132,7 +132,7 @@ static inline VOID MiInitializePageTableNode(PMM_PAGE_TABLE Node,
 					     PMM_PAGING_STRUCTURE Page)
 {
     assert(Page->Type == MM_PAGE_TYPE_PAGE_TABLE);
-    MiAvlInitializeNode(&Node->AvlNode, Page->VirtualAddr >> MM_LARGE_PAGE_BITS);
+    MiAvlInitializeNode(&Node->AvlNode, Page->VirtPageNum >> MM_LARGE_PN_SHIFT);
     MiAvlInitializeTree(&Node->MappedPages);
     Node->PagingStructure = Page;
 }

@@ -94,12 +94,12 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 	    MiAllocatePool(PageTable, MM_PAGING_STRUCTURE);
 	    MiInitHeapPagingStructure(Page2, Page2Untyped, VaddrSpace,
 				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 4,
-				      EX_POOL_START + 2*MM_PAGE_SIZE,
+				      (EX_POOL_START >> MM_PAGE_BITS) + 2,
 				      MM_PAGE_TYPE_PAGE,
 				      InitInfo);
 	    MiInitHeapPagingStructure(PageTable, PageTableUntyped, VaddrSpace,
 				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 5,
-				      EX_POOL_START,
+				      EX_POOL_START >> MM_PAGE_BITS,
 				      MM_PAGE_TYPE_PAGE_TABLE,
 				      InitInfo);
 	    MiAllocatePool(Page2Node, MM_PAGE);
@@ -116,12 +116,12 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 	    MiAllocatePool(Page1, MM_PAGING_STRUCTURE);
 	    MiInitHeapPagingStructure(Page0, LeftChildUntyped, VaddrSpace,
 				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 2,
-				      EX_POOL_START,
+				      EX_POOL_START >> MM_PAGE_BITS,
 				      MM_PAGE_TYPE_PAGE,
 				      InitInfo);
 	    MiInitHeapPagingStructure(Page1, RightChildUntyped, VaddrSpace,
 				      InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 3,
-				      EX_POOL_START + MM_PAGE_SIZE,
+				      (EX_POOL_START >> MM_PAGE_BITS) + 1,
 				      MM_PAGE_TYPE_PAGE,
 				      InitInfo);
 	    MiAllocatePool(Page0Node, MM_PAGE);
