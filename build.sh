@@ -30,7 +30,12 @@ objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} 
 	initcpio initcpio.o
 
 cd ../images
-ld.lld -m ${LLD_TARGET} \
+if [[ ${BUILD_TYPE} == Release ]]; then
+    LLD_OPTIONS="--gc-sections -O 3"
+else
+    LLD_OPTIONS=""
+fi
+ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS}\
        ../elf/libntsvc.a \
        ../elf/ntos/libntos.a ../elf/rtl/librtl.a \
        ../pe/initcpio.o \

@@ -21,17 +21,17 @@ SECTIONS
 	*(.data)
 	_data_end = . ;
     }
-  .bss :
-    {
-        _bss_start = . ;
-	*(.bss)
-	_bss_end = . ;
-    }
   .tdata :
     {
         _tdata_start = . ;
         *(.tdata .tdata.* .gnu.linkonce.td.*)
         _tdata_end = . ;
+    }
+  .bss :
+    {
+        _bss_start = . ;
+	*(.bss)
+	_bss_end = . ;
     }
   .tbss :
     {
