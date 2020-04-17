@@ -9,6 +9,12 @@ SECTIONS
 	*(.text)
 	_text_end = . ;
     }
+  .rodata :
+    {
+        _rodata_start = . ;
+	*(.rodata)
+	_rodata_end = . ;
+    }
   .data :
     {
         _data_start = . ;

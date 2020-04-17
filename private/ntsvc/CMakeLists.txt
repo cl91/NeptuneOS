@@ -32,7 +32,7 @@ config_string(
 add_config_library(ntsvc "${configure_string}")
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/tests/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
-add_executable(ntsvc ${SRC})
+add_library(ntsvc STATIC ${SRC})
 add_dependencies(ntsvc sel4 rtl ntos)
 target_include_directories(ntsvc PRIVATE inc inc/${Arch})
 target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl ntos cpio elf ntsvc_Config)

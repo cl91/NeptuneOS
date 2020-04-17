@@ -37,8 +37,9 @@ typedef seL4_Word MWORD;
 #define RET_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { return Error; }}
 
 #if defined(__GNUC__) || defined(__clang__)
-#define __packed         __attribute__((__packed__))
-#define __aligned(x)    __attribute__ ((aligned(x)))
+#define __packed	__attribute__((__packed__))
+#define __aligned(x)	__attribute__((aligned(x)))
+#define __section(x)	__attribute__((section(x)))
 #else
 #error "Use a real compiler you pleb"
 #endif
