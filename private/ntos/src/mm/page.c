@@ -113,23 +113,9 @@ static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
     PMM_UNTYPED Untyped;
     RET_IF_ERR(MiRequestUntyped(Vspace, MM_PAGE_TABLE_BITS, &Untyped));
 
-    MiAllocatePool(Paging, MM_PAGING_STRUCTURE);
-    Paging->TreeNode.CapSpace = &Vspace->CapSpace;
-    Paging->TreeNode.Cap = 0;
-    Paging->TreeNode.Parent = &Untyped->TreeNode;
-    Paging->TreeNode.LeftChild = NULL;
-    Paging->TreeNode.RightChild = NULL;
-    Paging->TreeNode.Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE;
-    Paging->VSpaceCap = Vspace->VSpaceCap;
-    Paging->Type = MM_PAGE_TYPE_PAGE_TABLE;
-    Paging->Mapped = FALSE;
-    Paging->VirtPageNum = PageTableNum << MM_LARGE_PN_SHIFT;
-    Paging->Rights = MM_RIGHTS_RW;
-    Paging->Attributes = seL4_X86_Default_VMAttributes;
-    RET_IF_ERR(MiMapPagingStructure(Paging));
-
     MiAllocatePool(PageTable, MM_PAGE_TABLE);
-    MiInitializePageTableNode(PageTable, Paging);
+    MiInitializePageTable(PageTable, Untyped, Vspace, 0, PageTableNum, FALSE);
+    RET_IF_ERR(MiMapPagingStructure(&PageTable->PagingStructure));
     RET_IF_ERR(MiVspaceInsertPageTable(Vspace, Vad, PageTable));
 
     if (PTNode != NULL) {
@@ -144,23 +130,9 @@ static NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
 				  IN MWORD PageNum,
 				  OUT OPTIONAL PMM_PAGE *PageNode)
 {
-    MiAllocatePool(Paging, MM_PAGING_STRUCTURE);
-    Paging->TreeNode.CapSpace = &Vspace->CapSpace;
-    Paging->TreeNode.Cap = 0;
-    Paging->TreeNode.Parent = &Untyped->TreeNode;
-    Paging->TreeNode.LeftChild = NULL;
-    Paging->TreeNode.RightChild = NULL;
-    Paging->TreeNode.Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE;
-    Paging->VSpaceCap = Vspace->VSpaceCap;
-    Paging->Type = MM_PAGE_TYPE_PAGE;
-    Paging->Mapped = FALSE;
-    Paging->VirtPageNum = PageNum;
-    Paging->Rights = MM_RIGHTS_RW;
-    Paging->Attributes = seL4_X86_Default_VMAttributes;
-    RET_IF_ERR(MiMapPagingStructure(Paging));
-
     MiAllocatePool(Page, MM_PAGE);
-    MiInitializePageNode(Page, Paging);
+    MiInitializePage(Page, Untyped, Vspace, 0, PageNum, FALSE, MM_RIGHTS_RW);
+    RET_IF_ERR(MiMapPagingStructure(&Page->PagingStructure));
     RET_IF_ERR(MiPageTableInsertPage(PageTable, Page));
 
     if (PageNode != NULL) {
@@ -226,7 +198,6 @@ NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
 
     PMM_IO_UNTYPED IoUntyped;
     RET_IF_ERR(MiRequestIoUntyped(VaddrSpace, RootIoUntyped, PhyPageNum, &IoUntyped));
-
     MWORD PTNum = VirtPageNum >> MM_LARGE_PN_SHIFT;
     PMM_AVL_NODE Node = MiVspaceFindPageTableOrLargePage(VaddrSpace, PTNum);
     if (MiPTNodeIsLargePage(Node)) {

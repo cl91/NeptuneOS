@@ -7,7 +7,6 @@
 
 static void LdrpLoadBootElfImage()
 {
-//    seL4_SlotRegion frames = bootinfo->userImageFrames;
 }
 
 void LdrLoadBootModules()

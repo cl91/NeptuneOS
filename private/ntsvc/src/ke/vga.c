@@ -3,7 +3,7 @@
 #include <ntsvc.h>
 #include <string.h>
 
-#define VGA_VADDR_BASE		(0x10000000)
+#define VGA_VADDR_BASE		(0x0)
 #define VGA_VADDR_BASE_PN	(VGA_VADDR_BASE >> MM_PAGE_BITS)
 #define VGA_VIDEO_PAGE		(0xB8000)
 #define VGA_VIDEO_PN		(VGA_VIDEO_PAGE >> MM_PAGE_BITS)

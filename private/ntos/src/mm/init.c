@@ -88,28 +88,80 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
     InvalidateListEntry(&Untyped->FreeListEntry);
 }
 
-VOID MiInitHeapPagingStructure(IN PMM_PAGING_STRUCTURE Page,
-			       IN PMM_UNTYPED Parent,
-			       IN PMM_VADDR_SPACE VaddrSpace,
-			       IN MWORD Cap,
-			       IN MWORD VirtPageNum,
-			       IN MM_PAGING_STRUCTURE_TYPE Type,
-			       IN PMM_INIT_INFO InitInfo)
+static VOID MiInitializePagingStructure(IN PMM_PAGING_STRUCTURE Page,
+					IN PMM_UNTYPED Parent,
+					IN PMM_VADDR_SPACE VaddrSpace,
+					IN MWORD Cap,
+					IN MWORD VirtPageNum,
+					IN MM_PAGING_STRUCTURE_TYPE Type,
+					IN BOOLEAN Mapped,
+					IN seL4_CapRights_t Rights)
 {
+    if (Parent != NULL) {
+	Parent->TreeNode.LeftChild = &Page->TreeNode;
+	Parent->TreeNode.RightChild = NULL;
+    }
     Page->TreeNode.CapSpace = &VaddrSpace->CapSpace;
     Page->TreeNode.Parent = &Parent->TreeNode;
     Page->TreeNode.LeftChild = NULL;
     Page->TreeNode.RightChild = NULL;
     Page->TreeNode.Cap = Cap;
     Page->TreeNode.Type = MM_CAP_TREE_NODE_PAGING_STRUCTURE;
-    Page->VSpaceCap = InitInfo->InitVSpaceCap;
+    Page->VSpaceCap = VaddrSpace->VSpaceCap;
     Page->Type = Type;
-    Page->Mapped = TRUE;
+    Page->Mapped = Mapped;
     Page->VirtPageNum = VirtPageNum;
-    Page->Rights = MM_RIGHTS_RW;
+    Page->Rights = Rights;
+    /* TODO: Implement page attributes */
     Page->Attributes = seL4_X86_Default_VMAttributes;
-    Parent->TreeNode.LeftChild = &Page->TreeNode;
-    Parent->TreeNode.RightChild = NULL;
+}
+
+VOID MiInitializePage(IN PMM_PAGE Page,
+		      IN PMM_UNTYPED Parent,
+		      IN PMM_VADDR_SPACE VaddrSpace,
+		      IN MWORD Cap,
+		      IN MWORD VirtPageNum,
+		      IN BOOLEAN Mapped,
+		      IN seL4_CapRights_t Rights)
+{
+    MiInitializePagingStructure(&Page->PagingStructure,
+				Parent, VaddrSpace, Cap,
+				VirtPageNum,
+				MM_PAGE_TYPE_PAGE,
+				Mapped, Rights);
+    MiAvlInitializeNode(&Page->AvlNode, VirtPageNum);
+}
+
+VOID MiInitializeMappedLargePage(IN PMM_LARGE_PAGE LargePage,
+				 IN PMM_UNTYPED Parent,
+				 IN PMM_VADDR_SPACE VaddrSpace,
+				 IN MWORD Cap,
+				 IN MWORD VirtPTNum,
+				 IN BOOLEAN Mapped,
+				 IN seL4_CapRights_t Rights)
+{
+    MiInitializePagingStructure(&LargePage->PagingStructure,
+				Parent, VaddrSpace, Cap,
+				VirtPTNum << MM_LARGE_PN_SHIFT,
+				MM_PAGE_TYPE_LARGE_PAGE,
+				Mapped, Rights);
+    MiAvlInitializeNode(&LargePage->AvlNode, VirtPTNum);
+}
+
+VOID MiInitializePageTable(IN PMM_PAGE_TABLE PageTable,
+			   IN PMM_UNTYPED Parent,
+			   IN PMM_VADDR_SPACE VaddrSpace,
+			   IN MWORD Cap,
+			   IN MWORD VirtPTNum,
+			   IN BOOLEAN Mapped)
+{
+    MiInitializePagingStructure(&PageTable->PagingStructure,
+				Parent, VaddrSpace, Cap,
+				VirtPTNum << MM_LARGE_PN_SHIFT,
+				MM_PAGE_TYPE_PAGE_TABLE,
+				Mapped, MM_RIGHTS_RW);
+    MiAvlInitializeNode(&PageTable->AvlNode, VirtPTNum);
+    MiAvlInitializeTree(&PageTable->MappedPages);
 }
 
 NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
@@ -154,15 +206,20 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
 	return STATUS_NTOS_BUG;
     }
 
-    /* FIXME: Build Vad for initial image */
-    RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, 0, 1 << MM_LARGE_PN_SHIFT));
-
     /* Add untyped and paging structure built during mapping of initial heap */
     InitializeListHead(&VaddrSpace->SmallUntypedList);
     InitializeListHead(&VaddrSpace->MediumUntypedList);
     InitializeListHead(&VaddrSpace->LargeUntypedList);
     InitializeListHead(&VaddrSpace->RootUntypedList);
     RET_IF_ERR(MiInitRecordUntypedAndPages(InitInfo, VaddrSpace, ExPoolVad));
+
+    /* Build Vad for initial image */
+    RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages));
+    PMM_VAD UserImageVad = MiVspaceFindVadNode(VaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages);
+    if (UserImageVad == NULL) {
+	return STATUS_NTOS_BUG;
+    }
+    RET_IF_ERR(MiInitRecordUserImagePaging(InitInfo, VaddrSpace, UserImageVad));
 
     return STATUS_SUCCESS;
 }

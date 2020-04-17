@@ -375,23 +375,23 @@ PMM_AVL_NODE MiVspaceFindPageTableOrLargePage(IN PMM_VADDR_SPACE Vspace,
 
 BOOLEAN MiPTNodeIsPageTable(PMM_AVL_NODE Node)
 {
-    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure->Type == MM_PAGE_TYPE_PAGE_TABLE);
+    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure.Type == MM_PAGE_TYPE_PAGE_TABLE);
 }
 
 BOOLEAN MiPTNodeIsLargePage(PMM_AVL_NODE Node)
 {
-    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure->Type == MM_PAGE_TYPE_LARGE_PAGE);
+    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure.Type == MM_PAGE_TYPE_LARGE_PAGE);
 }
 
 NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
 				 IN PMM_VAD Vad,
 				 IN PMM_LARGE_PAGE LargePage)
 {
-    if (!LargePage->PagingStructure->Mapped) {
+    if (!LargePage->PagingStructure.Mapped) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     PMM_AVL_TREE Tree = &Vspace->PageTableTree;
-    MWORD LargePN = LargePage->PagingStructure->VirtPageNum >> MM_LARGE_PN_SHIFT;
+    MWORD LargePN = LargePage->PagingStructure.VirtPageNum >> MM_LARGE_PN_SHIFT;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, LargePN);
     if (Parent != NULL && LargePN == Parent->Key) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -417,11 +417,11 @@ NTSTATUS MiVspaceInsertPageTable(IN PMM_VADDR_SPACE Vspace,
 NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 			       IN PMM_PAGE Page)
 {
-    if (!PageTable->PagingStructure->Mapped || !Page->PagingStructure->Mapped) {
+    if (!PageTable->PagingStructure.Mapped || !Page->PagingStructure.Mapped) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     PMM_AVL_TREE Tree = &PageTable->MappedPages;
-    MWORD PageNum = Page->PagingStructure->VirtPageNum;
+    MWORD PageNum = Page->PagingStructure.VirtPageNum;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, PageNum);
     if (Parent != NULL && PageNum == Parent->Key) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -433,7 +433,7 @@ NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 PMM_PAGE MiPageTableFindPage(IN PMM_PAGE_TABLE PageTable,
 			     IN MWORD PageNum)
 {
-    if (!PageTable->PagingStructure->Mapped) {
+    if (!PageTable->PagingStructure.Mapped) {
 	return NULL;
     }
     PMM_AVL_TREE Tree = &PageTable->MappedPages;

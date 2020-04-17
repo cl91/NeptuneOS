@@ -5,6 +5,7 @@
 /* FIXME: Only works for x86. Doesn't work for x64! */
 NTSTATUS MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
 {
+    extern char _text_start[];
     seL4_SlotRegion UntypedCaps = bootinfo->untyped;
     MWORD InitUntyped = 0;
     LONG Log2Size = 128;
@@ -29,8 +30,12 @@ NTSTATUS MmInitSystem(PEPROCESS NtsvcProcess, seL4_BootInfo *bootinfo)
 	 .RootCNodeCap = seL4_CapInitThreadCNode,
 	 .RootCNodeLog2Size = CONFIG_ROOT_CNODE_SIZE_BITS,
 	 .RootCNodeFreeCapStart = bootinfo->empty.start,
-	 .RootCNodeFreeCapNumber = bootinfo->empty.end - bootinfo->empty.start,
-	 .EProcess = NtsvcProcess
+	 .EProcess = NtsvcProcess,
+	 .UserStartPageNum = (MWORD) (&_text_start[0]) >> MM_PAGE_BITS,
+	 .UserPageCapStart = bootinfo->userImageFrames.start,
+	 .NumUserPages = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
+	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
+	 .NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start
 	};
     RET_IF_ERR(MmRegisterClass(&InitInfo));
 

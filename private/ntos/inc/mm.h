@@ -21,8 +21,12 @@ typedef struct _MM_INIT_INFO {
     MWORD RootCNodeCap;
     LONG RootCNodeLog2Size;
     MWORD RootCNodeFreeCapStart;
-    LONG RootCNodeFreeCapNumber;
     struct _EPROCESS *EProcess;
+    MWORD UserStartPageNum;
+    MWORD UserPageCapStart;
+    MWORD NumUserPages;
+    MWORD UserPagingStructureCapStart;
+    MWORD NumUserPagingStructureCaps;
 } MM_INIT_INFO, *PMM_INIT_INFO;
 
 /* Describes the entire CapSpace */
@@ -102,18 +106,18 @@ typedef struct _MM_AVL_TREE {
 
 typedef struct _MM_LARGE_PAGE {
     MM_AVL_NODE AvlNode;		  /* must be first entry. See MM_VAD */
-    PMM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
+    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
 } MM_LARGE_PAGE, *PMM_LARGE_PAGE;
 
 typedef struct _MM_PAGE_TABLE {
     MM_AVL_NODE AvlNode;		  /* must be first entry. See MM_VAD */
-    PMM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
+    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
     MM_AVL_TREE MappedPages;  /* balanced tree for all mapped pages */
 } MM_PAGE_TABLE, *PMM_PAGE_TABLE;
 
 typedef struct _MM_PAGE {
     MM_AVL_NODE AvlNode;	/* must be first entry */
-    PMM_PAGING_STRUCTURE PagingStructure;
+    MM_PAGING_STRUCTURE PagingStructure;
 } MM_PAGE, *PMM_PAGE;
 
 /* Virtual address descriptor */
