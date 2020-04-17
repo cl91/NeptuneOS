@@ -163,7 +163,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     return (PVOID) BlockStart;
 }
 
-PVOID ExAllocatePoolWithTag(IN ULONG NumberOfBytes,
+PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag)
 {
     return EiAllocatePoolWithTag(&EiLocalProcess->ExPool, NumberOfBytes, Tag);
