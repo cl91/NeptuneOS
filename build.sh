@@ -46,10 +46,13 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
+
+# Build initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=.rodata,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o
 
+# Link ntsvc and initcpio into final ntos image
 cd ../images
 if [[ ${BUILD_TYPE} == Release ]]; then
     LLD_OPTIONS="--gc-sections -O 3"
