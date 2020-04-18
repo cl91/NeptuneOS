@@ -55,7 +55,7 @@ struct cpio_info {
  * @return             The location of the file in memory; NULL if the index
  *                     exceeds the number of files in the CPIO archive.
  */
-void *cpio_get_entry(void *archive, unsigned long len, int index, const char **name, unsigned long *size);
+void *cpio_get_entry(void *archive, size_t len, int index, const char **name, size_t *size);
 
 /**
  * Retrieve file information from a provided file name
@@ -65,7 +65,7 @@ void *cpio_get_entry(void *archive, unsigned long len, int index, const char **n
  * @return             The location of the file in memory; NULL if the file
  *                     does not exist.
  */
-void *cpio_get_file(void *archive, unsigned long len, const char *name, unsigned long *size);
+void *cpio_get_file(void *archive, size_t len, const char *name, size_t *size);
 
 /**
  * Retrieves information about the provided CPIO archive
@@ -73,7 +73,7 @@ void *cpio_get_file(void *archive, unsigned long len, const char *name, unsigned
  * @param[out] info    A CPIO info structure to populate
  * @return             Non-zero on error.
  */
-int cpio_info(void *archive, unsigned long len, struct cpio_info *info);
+int cpio_info(void *archive, size_t len, struct cpio_info *info);
 
 /**
  * Writes the list of file names contained within a CPIO archive into
@@ -82,5 +82,5 @@ int cpio_info(void *archive, unsigned long len, struct cpio_info *info);
  * @param[in] buf      A memory location to store the CPIO file list to
  * @param[in] buf_len  The length of the provided buf
  */
-void cpio_ls(void *archive, unsigned long len, char **buf, unsigned long buf_len);
+void cpio_ls(void *archive, size_t len, char **buf, size_t buf_len);
 

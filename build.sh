@@ -15,7 +15,7 @@ ninja
 cd ../pe
 echo 'Hello, world!' > hello.txt
 echo 'hello.txt' > image-list
-cpio -o < image-list > initcpio
+cpio -H newc -o < image-list > initcpio
 if [[ ${CLANG_ARCH} == i686 ]]; then
     ELF_TARGET=elf32-i386
     ELF_ARCH=i386
@@ -37,7 +37,9 @@ else
 fi
 ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS}\
        ../elf/libntsvc.a \
-       ../elf/ntos/libntos.a ../elf/rtl/librtl.a \
+       ../elf/ntos/libntos.a \
+       ../elf/rtl/librtl.a \
+       ../elf/lib/cpio/libcpio.a \
        ../pe/initcpio.o \
        -T ../../private/ntsvc/ntsvc.lds \
        -o ntos
