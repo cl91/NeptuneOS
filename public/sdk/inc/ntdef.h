@@ -4,11 +4,15 @@
 #include <stddef.h>
 
 #ifdef __i386__
+#ifndef _M_IX86
 #define _M_IX86
+#endif
 #endif
 
 #ifdef __x86_64
+#ifndef _M_AMD64
 #define _M_AMD64
+#endif
 #endif
 
 #ifdef _M_IX86

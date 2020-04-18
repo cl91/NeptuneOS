@@ -4,21 +4,14 @@ project(ntsvc C ASM)
 
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../../sel4
-    ${CMAKE_CURRENT_LIST_DIR}/../rtl
-    ${CMAKE_CURRENT_LIST_DIR}/../ntos
-    ${CMAKE_CURRENT_LIST_DIR}/lib)
+    ${CMAKE_CURRENT_LIST_DIR}/../ntos)
 
 find_package(seL4 REQUIRED)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/sel4.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/flags.cmake)
 
-find_package(rtl REQUIRED)
-rtl_import_project()
-
 find_package(ntos REQUIRED)
 ntos_import_project()
-
-add_subdirectory(lib)
 
 set(configure_string "")
 config_string(
@@ -31,11 +24,12 @@ config_string(
 )
 add_config_library(ntsvc "${configure_string}")
 
-file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/tests/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/rtl/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/rtl/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/rtl/*/${Arch}/*.s ${CMAKE_CURRENT_LIST_DIR}/src/tests/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
+
 add_library(ntsvc STATIC ${SRC})
-add_dependencies(ntsvc sel4 rtl ntos)
+add_dependencies(ntsvc sel4 ntos)
 target_include_directories(ntsvc PRIVATE inc inc/${Arch})
-target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf rtl ntos cpio elf ntsvc_Config)
+target_link_libraries(ntsvc PRIVATE sel4 sel4_autoconf ntos elf ntsvc_Config)
 
 set_property(TARGET ntsvc APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntsvc.lds ")
 
@@ -63,7 +57,7 @@ else()
 endif()
 
 add_custom_target(
-    all-pe ALL
+    all-elf ALL
     DEPENDS
         "${KERNEL_IMAGE_NAME}"
         kernel.elf

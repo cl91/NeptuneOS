@@ -5,8 +5,12 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
-#include <gnu.h>
-#include <bits.h>
+#include "../inc/gnu.h"
+#ifdef __i386__
+#include "../inc/i386/bits.h"
+#elif defined(__x86_64)
+#include "../inc/amd64/bits.h"
+#endif
 
 #define BUILD_BUG_ON(x)
 #define WARN_ONCE(x,y,z) (x)

@@ -15,7 +15,7 @@ _LdrInitializeThunk:
 	 */
 	sub  $0xc, %esp
 	push %ebp
-	call LdrpInitialize
+	call _LdrpInitialize
 
 	/* should not return */
 1:

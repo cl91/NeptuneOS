@@ -1,20 +1,41 @@
-#CLANG_ARCH=x86_64
-#SEL4_ARCH=x86_64
-CLANG_ARCH=i686
-SEL4_ARCH=ia32
+ARCH=i386
 BUILD_TYPE=Debug
 #BUILD_TYPE=Release
 TOOLCHAIN=llvm
 
+if [[ ${ARCH} == "i386" ]]; then
+    CLANG_ARCH=i686
+    SEL4_ARCH=ia32
+elif [[ ${ARCH} == "amd64" ]]; then
+    CLANG_ARCH=x86_64
+    SEL4_ARCH=x86_64
+else
+    echo "Unsupported arch ${ARCH}"
+    exit 1
+fi
+
 mkdir -p build/{pe,elf,images}
+
+# Build ntsvc with ELF toolchain
 cd build/elf
-cmake ../../private/ntsvc -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake	\
-    -DTRIPLE=${CLANG_ARCH}-pc-none-elf -DCMAKE_BUILD_TYPE=${BUILD_TYPE}		\
-    -DKernelSel4Arch=$SEL4_ARCH -G Ninja
+cmake ../../private/ntsvc \
+      -DTRIPLE=${CLANG_ARCH}-pc-none-elf \
+      -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DKernelSel4Arch=$SEL4_ARCH -G Ninja
+ninja libsel4.a
+ninja kernel.elf
 ninja
+
+# Build ntdll and NT clients with PE toolchain
 cd ../pe
-echo 'Hello, world!' > hello.txt
-echo 'hello.txt' > image-list
+cmake ../../private/ntdll \
+      -DArch=${ARCH} \
+      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DCMAKE_TOOLCHAIN_FILE=../../private/ntdll/cmake/${TOOLCHAIN}.cmake \
+      -G Ninja
+ninja
+echo 'ntdll' > image-list
 cpio -H newc -o < image-list > initcpio
 if [[ ${CLANG_ARCH} == i686 ]]; then
     ELF_TARGET=elf32-i386
@@ -38,8 +59,6 @@ fi
 ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS}\
        ../elf/libntsvc.a \
        ../elf/ntos/libntos.a \
-       ../elf/rtl/librtl.a \
-       ../elf/lib/cpio/libcpio.a \
        ../pe/initcpio.o \
        -T ../../private/ntsvc/ntsvc.lds \
        -o ntos

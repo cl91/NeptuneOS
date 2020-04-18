@@ -11,7 +11,7 @@
  */
 
 #include <stddef.h>
-#include <cpio/cpio.h>
+#include "cpio.h"
 
 struct cpio_header_info {
     const char *filename;
