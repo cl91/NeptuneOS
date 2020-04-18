@@ -7,7 +7,6 @@ typedef struct {
     seL4_IPCBuffer *InitialThreadIpcBuffer;
     seL4_CPtr InitialCapSpaceStart;
     seL4_CPtr InitialCapSpaceEnd;
-    elf_t BootElfImage;
 } BOOT_ENVIRONMENT, *PBOOT_ENVIRONMENT;
 
 VOID KiInitVga();

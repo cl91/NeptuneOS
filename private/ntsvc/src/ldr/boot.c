@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <sel4/sel4.h>
-#include <libelf/libelf.h>
 #include <cpio/cpio.h>
 #include <ntsvc.h>
 
