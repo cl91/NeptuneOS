@@ -35,8 +35,8 @@ cmake ../../private/ntdll \
       -DCMAKE_TOOLCHAIN_FILE=../../private/ntdll/cmake/${TOOLCHAIN}.cmake \
       -G Ninja
 ninja
-echo 'ntdll' > image-list
-cpio -H newc -o < image-list > initcpio
+
+# Build initcpio
 if [[ ${CLANG_ARCH} == i686 ]]; then
     ELF_TARGET=elf32-i386
     ELF_ARCH=i386
@@ -46,8 +46,8 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
-
-# Build initcpio
+echo 'ntdll' > image-list
+cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=.rodata,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o

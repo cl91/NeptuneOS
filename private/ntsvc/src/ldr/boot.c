@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <sel4/sel4.h>
-#include "cpio.h"
 #include <ntsvc.h>
+#include "cpio.h"
 
 extern UCHAR _binary_initcpio_start[];
 extern UCHAR _binary_initcpio_end[];
