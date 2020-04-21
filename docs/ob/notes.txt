@@ -1,0 +1,55 @@
+OBJECT_HEADER {
+    OBJECT_TYPE ObjectType;
+    MWORD ObjectSize;	/* Size of object struct (apart from OBJECT_HEADER), including NumCaps */
+    MWORD Handle;	/* Handle is global for all processes */
+}
+
+enum OBJECT_TYPE {
+    OBJECT_TYPE_THREAD,
+    OBJECT_TYPE_PROCESS,
+    OBJECT_TYPE_SECTION
+}
+
+#define OBJECT_PROCESS_CAPS 3
+struct OBJECT_PROCESS {
+    MWORD TcbCap;
+    MWORD VspaceCap;
+    MWORD MsgBufCap;
+}
+
+OBJECT_DATA must be shareable ie. independent of process context (ntsvc or ntdll)
+
+NTDLL:
+/* Publishes Object to NTSVC
+ * Essentially: copies ObjectData into thread msg buffer, and then calls ntsvc
+ * via an endpoint capability, and transfer all capabilities to ntsvc
+ * NTSVC will then copy all transfered capabilities into its internal
+ * data stricture (basically an OBJECT_HEADER followed by copied caps)
+ *
+ * Ntsvc will validate data and reply with either Success or Fail
+ */
+ObCreateObject(IN POBJECT_TYPE ObjectType,
+	       IN PUNICODE_STRING ObjectName,
+	       IN PVOID ObjectData)
+/* Request object data from ntsvc, transfering capabilities
+ */
+ObOpenObjectByHandle(IN HANDLE Handle,
+		     OUT VOID *ObjectData)
+ObOpenObjectByName()
+ObLookupObjectHandleByName()
+/* Delete all capabilities (should not call ntsvc)
+ */
+ObReleaseObject(IN POBJECT_TYPE ObjectType,
+	        IN PVOID ObjectData)
+
+NTSVC:
+Object data structure will consist of
+  OBJECT_HEADER
+  OBJECT_DATA (PROCESS_OBJECT, etc) which includes MWORD Caps[]
+
+/* Copies the object data and stores the received capabilities from client process
+ * Potentially validating client data
+ */
+ObReceiveObject()
+/* Copy data to client msg buffer and transfer capabilities */
+ObHandleOpenRequest()

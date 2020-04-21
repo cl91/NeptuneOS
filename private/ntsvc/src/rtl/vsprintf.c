@@ -5,11 +5,18 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
-#include "../inc/gnu.h"
+#include <gnu.h>
+
 #ifdef __i386__
-#include "../inc/i386/bits.h"
+#define BITS_PER_LONG (32)
+#define BITS_PER_LONG_LONG (64)
 #elif defined(__x86_64)
-#include "../inc/amd64/bits.h"
+#ifdef _MSC_VER
+#define BITS_PER_LONG (32)
+#else
+#define BITS_PER_LONG (64)
+#endif
+#define BITS_PER_LONG_LONG (64)
 #endif
 
 #define BUILD_BUG_ON(x)

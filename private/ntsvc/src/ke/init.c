@@ -135,6 +135,7 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
+    seL4_TCB_SetSpace(seL4_CapInitThreadTCB, 0, seL4_CapInitThreadCNode, 0, seL4_CapInitThreadVSpace, 0);
 #ifdef CONFIG_DEBUG_BUILD
     KiDumpBootInfoAll(bootinfo);
 #endif

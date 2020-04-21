@@ -1,0 +1,30 @@
+/* #pragma once */
+
+typedef enum _OBJECT_TYPE_ENUM {
+				OBJECT_TYPE_DIRECTORY,
+				OBJECT_TYPE_THREAD,
+				OBJECT_TYPE_PROCESS,
+				OBJECT_TYPE_SECTION,
+				NUM_OBJECT_TYPES
+} OBJECT_TYPE_ENUM;
+
+typedef VOID (*OB_OPEN_METHOD)();
+typedef VOID (*OB_CLOSE_METHOD)();
+
+typedef struct _OBJECT_TYPE_INITIALIZER {
+    OB_OPEN_METHOD OpenProc;
+    OB_CLOSE_METHOD CloseProc;
+} OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
+
+typedef struct _OBJECT_TYPE {
+    OBJECT_TYPE_ENUM TypeEnum;
+    UNICODE_STRING Name;
+    SIZE_T NumCaps;		/* Number of capabilities in ObjectData */
+    OBJECT_TYPE_INITIALIZER InitInfo;
+} OBJECT_TYPE, *POBJECT_TYPE;
+
+typedef struct _OBJECT_HEADER {
+    POBJECT_TYPE Type;
+    MWORD HandleCount;
+    PHANDLE Handles;
+} OBJECT_HEADER, *POBJECT_HEADER;

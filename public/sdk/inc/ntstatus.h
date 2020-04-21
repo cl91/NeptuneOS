@@ -16,3 +16,5 @@ typedef NTSTATUS *PNTSTATUS;
 #define NT_INFORMATION(Status) (((ULONG)(Status) >> 30) == STATUS_SEVERITY_INFORMATIONAL)
 #define NT_WARNING(Status)	(((ULONG)(Status) >> 30) == STATUS_SEVERITY_WARNING)
 #define NT_ERROR(Status)	(((ULONG)(Status) >> 30) == STATUS_SEVERITY_ERROR)
+
+#define STATUS_NAME_TOO_LONG                    ((NTSTATUS)0xC0000106)

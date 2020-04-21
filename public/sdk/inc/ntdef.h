@@ -43,6 +43,7 @@ typedef CONST CHAR *PCSTR;
 
 typedef wchar_t WCHAR;
 typedef WCHAR *PWCHAR, *PWSTR;
+typedef CONST WCHAR *PCWCH, *PCWSTR;
 
 typedef UCHAR BOOLEAN;
 typedef BOOLEAN *PBOOLEAN;
@@ -61,6 +62,9 @@ typedef ULONG *PULONG;
 
 typedef uintptr_t ULONG_PTR;
 typedef intptr_t LONG_PTR;
+typedef ULONG_PTR SIZE_T;
+
+#define MAXUSHORT (0xffff)
 
 typedef PVOID HANDLE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
@@ -70,6 +74,8 @@ typedef LONG HRESULT;
 #define IN
 #define OUT
 #define OPTIONAL
+
+#define UNICODE_NULL ((WCHAR)0)
 
 typedef struct _UNICODE_STRING
 {
