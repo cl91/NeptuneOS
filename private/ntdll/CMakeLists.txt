@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.7.2)
 project(ntdll C ASM)
 
 list(APPEND CMAKE_MODULE_PATH
-    ${CMAKE_CURRENT_LIST_DIR}/../ntos)
+    ${CMAKE_CURRENT_LIST_DIR}/../rtl)
 
 add_compile_options(
     -nostdinc
@@ -33,16 +33,32 @@ else()
     message(FATAL_ERROR "Unsupported architecture: ${Arch}")
 endif()
 
-find_package(ntos REQUIRED)
-ntos_import_project()
+find_package(rtl REQUIRED)
+rtl_import_project()
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
 
 add_executable(ntdll ${SRC})
-add_dependencies(ntdll ntos)
-target_link_libraries(ntdll PUBLIC ntos)
+add_dependencies(ntdll rtl)
+target_link_libraries(ntdll PRIVATE rtl)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
 
 set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-subsystem:native -Wl,-safeseh:no -Wl,-entry:LdrInitializeThunk ")
+
+target_include_directories(
+    ntdll
+    PRIVATE
+	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/include
+	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/mode_include/${KernelWordSize}
+	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/sel4_plat_include/${KernelPlatform}
+	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/arch_include/${KernelArch}
+	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/sel4_arch_include/${KernelSel4Arch}
+	${BUILD_ELF_OUT_DIR}/kernel/gen_config
+	${BUILD_ELF_OUT_DIR}/libsel4/gen_config
+	${BUILD_ELF_OUT_DIR}/libsel4/autoconf
+	${BUILD_ELF_OUT_DIR}/libsel4/include
+	${BUILD_ELF_OUT_DIR}/libsel4/arch_include/${KernelArch}
+	${BUILD_ELF_OUT_DIR}/libsel4/sel4_arch_include/${KernelSel4Arch}
+)

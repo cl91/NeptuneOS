@@ -1,13 +1,12 @@
 #pragma once
 
+#include <stdarg.h>
 #include <nt.h>
-#include <wchar.h>
+
+VOID vDbgPrint(PCSTR Format, va_list args);
+VOID DbgPrint(PCSTR Format, ...);
+
+#define DbgPrintFunc() DbgPrint("\n%s:\n", __func__)
 
 /* Returns Ceil(x/y) for unsigned integers x and y */
 #define RtlDivCeilUnsigned(x,y)	(((x)+(y)-1)/(y))
-
-VOID NTAPI RtlInitUnicodeString(IN OUT PUNICODE_STRING DestinationString,
-				IN PCWSTR SourceString);
-
-NTSTATUS NTAPI RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
-				      IN PCWSTR SourceString);

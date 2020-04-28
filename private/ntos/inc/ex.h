@@ -71,3 +71,5 @@ NTSTATUS ExInitializePool(IN PEPROCESS Process,
 			  IN LONG NumPages);
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag);
+
+extern EPROCESS ExNtosProcess;

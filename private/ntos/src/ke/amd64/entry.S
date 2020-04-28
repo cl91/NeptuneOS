@@ -9,13 +9,13 @@
  *
  * @TAG(DATA61_BSD)
  */
-#include <ntsvc/gen_config.h>
+#include <ntos/gen_config.h>
 
 .section .text
 .global _KiSystemStartup
 _KiSystemStartup:
-	leal __stack_top, %esp
-	mov  %esp, %ebp
+	leaq __stack_top, %rsp
+	movq %rsp, %rbp
 	/*
 	 * GCC expects that a C function is always entered via a call
 	 * instruction and that the stack is 16-byte aligned before such an
@@ -23,12 +23,11 @@ _KiSystemStartup:
 	 * implicit push when the function is entered).
 	 *
 	 * If additional items are pushed onto the stack, the stack must be
-	 * manually re-aligned before before pushing the arguments for the
-	 * call instruction to KiInitializeSystem.
+	 * manually re-aligned before the call instruction to
+	 * KiInitializeSystem.
 	 */
-	sub  $0x8, %esp
-	push %ebp
-	push %ebx
+	subq $0x8, %rsp
+	push %rbp
 	call KiInitializeSystem
 
 	/* should not return */
@@ -40,5 +39,5 @@ _KiSystemStartup:
 .global __stack_top
 __stack_base:
 	.align 16
-	.space CONFIG_NTSVC_ROOT_STACK
+	.space CONFIG_NTOS_ROOT_STACK
 __stack_top:

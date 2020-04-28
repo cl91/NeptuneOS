@@ -16,16 +16,14 @@ fi
 
 mkdir -p build/{pe,elf,images}
 
-# Build ntsvc with ELF toolchain
+# Build ntos with ELF toolchain
 cd build/elf
-cmake ../../private/ntsvc \
+cmake ../../private/ntos \
       -DTRIPLE=${CLANG_ARCH}-pc-none-elf \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DKernelSel4Arch=$SEL4_ARCH -G Ninja
-ninja libsel4.a
-ninja kernel.elf
-ninja
+ninja all-elf
 
 # Build ntdll and NT clients with PE toolchain
 cd ../pe
@@ -33,6 +31,7 @@ cmake ../../private/ntdll \
       -DArch=${ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../private/ntdll/cmake/${TOOLCHAIN}.cmake \
+      -DBUILD_ELF_OUT_DIR="${PWD}/../elf" \
       -G Ninja
 ninja
 
@@ -52,7 +51,7 @@ objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} 
 	--rename-section .data=.rodata,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o
 
-# Link ntsvc and initcpio into final ntos image
+# Link ntos and initcpio into final ntos image
 cd ../images
 if [[ ${BUILD_TYPE} == Release ]]; then
     LLD_OPTIONS="--gc-sections -O 3"
@@ -60,10 +59,9 @@ else
     LLD_OPTIONS=""
 fi
 ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS}\
-       ../elf/libntsvc.a \
-       ../elf/ntos/libntos.a \
+       ../elf/libntos.a \
        ../pe/initcpio.o \
-       -T ../../private/ntsvc/ntsvc.lds \
+       -T ../../private/ntos/ntos.lds \
        -o ntos
 cp ../elf/kernel-$SEL4_ARCH-pc99 kernel
 

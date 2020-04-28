@@ -10,7 +10,7 @@ typedef enum _OBJECT_TYPE_ENUM {
 
 typedef struct _OBJECT_TYPE {
     OBJECT_TYPE_ENUM TypeEnum;
-    UNICODE_STRING Name;
+    PCSTR Name;
     SIZE_T NumCaps;		/* Number of capabilities in ObjectData */
     struct _OBJECT_TYPE_INITIALIZER *Init;
 } OBJECT_TYPE, *POBJECT_TYPE;
@@ -32,5 +32,5 @@ typedef struct _OBJECT_TYPE_INITIALIZER {
 } OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
 
 NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
-			    IN PCWSTR TypeName,
+			    IN PCSTR TypeName,
 			    IN POBJECT_TYPE_INITIALIZER Init);

@@ -1,7 +1,6 @@
 #include <stdarg.h>
 #include <printf.h>
-#include <ke.h>
-#include <rtl.h>
+#include <ntos.h>
 
 VOID KeBugCheckMsg(PCSTR Format, ...)
 {

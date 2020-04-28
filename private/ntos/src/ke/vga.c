@@ -1,6 +1,5 @@
 #include <nt.h>
 #include <ntos.h>
-#include <ntsvc.h>
 #include <string.h>
 
 #define VGA_VADDR_BASE		(0x0)
@@ -38,8 +37,8 @@ static VOID KiVgaWriteString(PCSTR String)
 
 VOID KiInitVga()
 {
-    BUGCHECK_IF_ERR(MmReserveVirtualMemory(&ExNtsvcProcess.VaddrSpace, VGA_VADDR_BASE_PN + VGA_VIDEO_PN, 1));
-    BUGCHECK_IF_ERR(MmCommitIoPage(&ExNtsvcProcess.VaddrSpace, VGA_VIDEO_PN, VGA_VADDR_BASE_PN + VGA_VIDEO_PN));
+    BUGCHECK_IF_ERR(MmReserveVirtualMemory(&ExNtosProcess.VaddrSpace, VGA_VADDR_BASE_PN + VGA_VIDEO_PN, 1));
+    BUGCHECK_IF_ERR(MmCommitIoPage(&ExNtosProcess.VaddrSpace, VGA_VIDEO_PN, VGA_VADDR_BASE_PN + VGA_VIDEO_PN));
     KiVgaClearScreen();
     KiVgaWriteString("Welcome!");
 }

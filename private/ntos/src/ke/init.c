@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <printf.h>
 #include <sel4/sel4.h>
-#include <ntsvc.h>
+#include <ntos.h>
 #include <thread.h>
 #include "ki.h"
 
@@ -139,7 +139,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 #ifdef CONFIG_DEBUG_BUILD
     KiDumpBootInfoAll(bootinfo);
 #endif
-    BUGCHECK_IF_ERR(MmInitSystem(&ExNtsvcProcess, bootinfo));
+    BUGCHECK_IF_ERR(MmInitSystem(&ExNtosProcess, bootinfo));
     KiInitVga();
     LdrLoadBootModules();
 #ifdef CONFIG_RUN_TESTS

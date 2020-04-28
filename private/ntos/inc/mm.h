@@ -190,3 +190,5 @@ NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
 NTSTATUS MmReserveVirtualMemory(IN PMM_VADDR_SPACE Vspace,
 				IN MWORD StartPageNum,
 				IN MWORD NumPages);
+
+NTSTATUS MmInitSystem();

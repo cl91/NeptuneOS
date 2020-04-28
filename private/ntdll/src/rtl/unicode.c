@@ -1,5 +1,4 @@
 #include <nt.h>
-#include <ntos.h>
 
 /*
  * @implemented

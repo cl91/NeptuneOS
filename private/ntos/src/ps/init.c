@@ -49,14 +49,14 @@ OBJECT_TYPE_INITIALIZER PspProcessInitProcs =
 static NTSTATUS PspCreateThreadType()
 {
     return ObCreateObjectType(OBJECT_TYPE_THREAD,
-			      L"Thread",
+			      "Thread",
 			      &PspThreadInitProcs);
 }
 
 static NTSTATUS PspCreateProcessType()
 {
     return ObCreateObjectType(OBJECT_TYPE_PROCESS,
-			      L"Process",
+			      "Process",
 			      &PspThreadInitProcs);
 }
 
