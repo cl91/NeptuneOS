@@ -1,6 +1,6 @@
 /* Capability space and CNode management */
 
-#include <ntos.h>
+#include "mi.h"
 
 /* Allocate a continuous range of capability slots */
 NTSTATUS MiCNodeAllocCaps(IN PMM_CNODE CNode,
@@ -79,4 +79,16 @@ NTSTATUS MiCapSpaceDeallocCap(IN PMM_CAPSPACE CapSpace,
 {
     /* Fixme: Find the right cnode to operate on */
     return MiCNodeDeallocCap(CapSpace->RootCNode, Cap);
+}
+
+NTSTATUS MmAllocateCap(IN PMM_VADDR_SPACE Vspace,
+		       OUT MWORD *Cap)
+{
+    return MiCapSpaceAllocCap(&Vspace->CapSpace, Cap);
+}
+
+NTSTATUS MmDeallocateCap(IN PMM_VADDR_SPACE Vspace,
+			 IN MWORD Cap)
+{
+    return MiCapSpaceDeallocCap(&Vspace->CapSpace, Cap);
 }

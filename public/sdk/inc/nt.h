@@ -5,4 +5,5 @@
 #define UNICODE
 #include <ntdef.h>
 #include <ntstatus.h>
+#include <ntseapi.h>
 #include <nosal.h>

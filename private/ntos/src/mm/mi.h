@@ -78,9 +78,6 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 			OUT PMM_UNTYPED DestUntyped2);
 VOID MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
 			 PMM_UNTYPED Untyped);
-NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN LONG Log2Size,
-			  OUT PMM_UNTYPED *Untyped);
 NTSTATUS MiRequestIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			    IN PMM_IO_UNTYPED RootIoUntyped,
 			    IN MWORD PhyPageNum,

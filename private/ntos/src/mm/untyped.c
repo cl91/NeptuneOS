@@ -61,7 +61,7 @@ VOID MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     InsertHeadList(List, &Untyped->FreeListEntry);
 }
 
-NTSTATUS MiRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+NTSTATUS MmRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 			  IN LONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped)
 {

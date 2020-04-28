@@ -165,9 +165,16 @@ NTSTATUS MmRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 				 IN MWORD PhyAddr,
 				 IN LONG Log2Size);
 
+/* cap.c */
+NTSTATUS MmAllocateCap(IN PMM_VADDR_SPACE Vspace,
+		       OUT MWORD *Cap);
+NTSTATUS MmDeallocateCap(IN PMM_VADDR_SPACE Vspace,
+			 IN MWORD Cap);
+
 /* untyped.c */
-NTSTATUS MmRequestUntyped(IN LONG Log2Size,
-			  OUT MM_UNTYPED *Untyped);
+NTSTATUS MmRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN LONG Log2Size,
+			  OUT PMM_UNTYPED *Untyped);
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();

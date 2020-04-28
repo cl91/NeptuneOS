@@ -1,4 +1,4 @@
-/* #pragma once */
+#pragma once
 
 typedef enum _OBJECT_TYPE_ENUM {
 				OBJECT_TYPE_DIRECTORY,
@@ -8,19 +8,11 @@ typedef enum _OBJECT_TYPE_ENUM {
 				NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
-typedef VOID (*OB_OPEN_METHOD)();
-typedef VOID (*OB_CLOSE_METHOD)();
-
-typedef struct _OBJECT_TYPE_INITIALIZER {
-    OB_OPEN_METHOD OpenProc;
-    OB_CLOSE_METHOD CloseProc;
-} OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
-
 typedef struct _OBJECT_TYPE {
     OBJECT_TYPE_ENUM TypeEnum;
     UNICODE_STRING Name;
     SIZE_T NumCaps;		/* Number of capabilities in ObjectData */
-    OBJECT_TYPE_INITIALIZER InitInfo;
+    struct _OBJECT_TYPE_INITIALIZER *Init;
 } OBJECT_TYPE, *POBJECT_TYPE;
 
 typedef struct _OBJECT_HEADER {
@@ -28,3 +20,17 @@ typedef struct _OBJECT_HEADER {
     MWORD HandleCount;
     PHANDLE Handles;
 } OBJECT_HEADER, *POBJECT_HEADER;
+
+typedef NTSTATUS (*OB_TYPE_CREATE_METHOD)(POBJECT_TYPE);
+typedef NTSTATUS (*OB_OBJECT_OPEN_METHOD)(POBJECT_HEADER);
+typedef NTSTATUS (*OB_OBJECT_CLOSE_METHOD)(POBJECT_HEADER);
+
+typedef struct _OBJECT_TYPE_INITIALIZER {
+    OB_TYPE_CREATE_METHOD TypeCreateProc;
+    OB_OBJECT_OPEN_METHOD OpenProc;
+    OB_OBJECT_CLOSE_METHOD CloseProc;
+} OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
+
+NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
+			    IN PCWSTR TypeName,
+			    IN POBJECT_TYPE_INITIALIZER Init);

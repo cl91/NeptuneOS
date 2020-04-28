@@ -111,7 +111,7 @@ static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
 				       OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
 {
     PMM_UNTYPED Untyped;
-    RET_IF_ERR(MiRequestUntyped(Vspace, MM_PAGE_TABLE_BITS, &Untyped));
+    RET_IF_ERR(MmRequestUntyped(Vspace, MM_PAGE_TABLE_BITS, &Untyped));
 
     MiAllocatePool(PageTable, MM_PAGE_TABLE);
     MiInitializePageTable(PageTable, Untyped, Vspace, 0, PageTableNum, FALSE);
@@ -168,7 +168,7 @@ NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
 	while (PageNum <= LastPageNumInPageTable && *SatisfiedPages < NumPages) {
 	    if (MiPageTableFindPage(PageTable, PageNum) == NULL) {
 		PMM_UNTYPED Untyped;
-		RET_IF_ERR(MiRequestUntyped(VaddrSpace, MM_PAGE_BITS, &Untyped));
+		RET_IF_ERR(MmRequestUntyped(VaddrSpace, MM_PAGE_BITS, &Untyped));
 		RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, NULL));
 	    }
 	    PageNum++;
