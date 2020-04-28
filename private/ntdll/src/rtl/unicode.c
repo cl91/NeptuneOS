@@ -1,4 +1,5 @@
 #include <nt.h>
+#include <wchar.h>
 
 /*
  * @implemented
