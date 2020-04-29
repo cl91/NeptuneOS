@@ -37,8 +37,8 @@ static VOID KiVgaWriteString(PCSTR String)
 
 VOID KiInitVga()
 {
-    BUGCHECK_IF_ERR(MmReserveVirtualMemory(&MmNtosVaddrSpace, VGA_VADDR_BASE_PN + VGA_VIDEO_PN, 1));
-    BUGCHECK_IF_ERR(MmCommitIoPage(&MmNtosVaddrSpace, VGA_VIDEO_PN, VGA_VADDR_BASE_PN + VGA_VIDEO_PN));
+    BUGCHECK_IF_ERR(MmReserveVirtualMemory(VGA_VADDR_BASE_PN + VGA_VIDEO_PN, 1));
+    BUGCHECK_IF_ERR(MmCommitIoPage(VGA_VIDEO_PN, VGA_VADDR_BASE_PN + VGA_VIDEO_PN));
     KiVgaClearScreen();
     KiVgaWriteString("Welcome!");
 }

@@ -81,14 +81,17 @@ NTSTATUS MiCapSpaceDeallocCap(IN PMM_CAPSPACE CapSpace,
     return MiCNodeDeallocCap(CapSpace->RootCNode, Cap);
 }
 
-NTSTATUS MmAllocateCap(IN PMM_VADDR_SPACE Vspace,
-		       OUT MWORD *Cap)
+NTSTATUS MmAllocateCap(OUT MWORD *Cap)
 {
-    return MiCapSpaceAllocCap(&Vspace->CapSpace, Cap);
+    return MiCapSpaceAllocCap(&MiNtosVaddrSpace.CapSpace, Cap);
 }
 
-NTSTATUS MmDeallocateCap(IN PMM_VADDR_SPACE Vspace,
-			 IN MWORD Cap)
+NTSTATUS MmDeallocateCap(IN MWORD Cap)
 {
-    return MiCapSpaceDeallocCap(&Vspace->CapSpace, Cap);
+    return MiCapSpaceDeallocCap(&MiNtosVaddrSpace.CapSpace, Cap);
+}
+
+MWORD MmRootCap()
+{
+    return MiNtosVaddrSpace.CapSpace.RootCap;
 }

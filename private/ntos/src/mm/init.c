@@ -3,7 +3,7 @@
 #include "mi.h"
 #include <ctype.h>
 
-MM_VADDR_SPACE MmNtosVaddrSpace;
+MM_VADDR_SPACE MiNtosVaddrSpace;
 
 NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
 			       IN MWORD SrcCap,
@@ -176,7 +176,7 @@ static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
     RET_IF_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
 
     /* Initialize ExPool */
-    PMM_VADDR_SPACE VaddrSpace = &MmNtosVaddrSpace;
+    PMM_VADDR_SPACE VaddrSpace = &MiNtosVaddrSpace;
     RET_IF_ERR(ExInitializePool(EX_POOL_START, PoolPages));
 
     /* Allocate memory for CNode on ExPool and Copy InitCNode over */
@@ -201,7 +201,7 @@ static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
 
     /* Build the Vad tree of the ntos virtual address space */
     MiAvlInitializeTree(&VaddrSpace->VadTree);
-    RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
+    RET_IF_ERR(MmReserveVirtualMemory(EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
     MiAvlInitializeTree(&VaddrSpace->PageTableTree);
     MiAvlInitializeTree(&VaddrSpace->RootIoUntypedTree);
     PMM_VAD ExPoolVad = MiVspaceFindVadNode(VaddrSpace, EX_POOL_START_PN, 1);
@@ -217,7 +217,7 @@ static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
     RET_IF_ERR(MiInitRecordUntypedAndPages(InitInfo, VaddrSpace, ExPoolVad));
 
     /* Build Vad for initial image */
-    RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages));
+    RET_IF_ERR(MmReserveVirtualMemory(InitInfo->UserStartPageNum, InitInfo->NumUserPages));
     PMM_VAD UserImageVad = MiVspaceFindVadNode(VaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages);
     if (UserImageVad == NULL) {
 	return STATUS_NTOS_BUG;
@@ -290,10 +290,10 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
 
     LoopOverUntyped(cap, desc, bootinfo) {
 	if (!desc->isDevice && cap != InitUntyped) {
-	    RET_IF_ERR(MiRegisterRootUntyped(&MmNtosVaddrSpace, cap,
+	    RET_IF_ERR(MiRegisterRootUntyped(&MiNtosVaddrSpace, cap,
 					     desc->sizeBits));
 	} else if (desc->isDevice && desc->sizeBits >= MM_PAGE_BITS) {
-	    RET_IF_ERR(MiRegisterRootIoUntyped(&MmNtosVaddrSpace, cap,
+	    RET_IF_ERR(MiRegisterRootIoUntyped(&MiNtosVaddrSpace, cap,
 					       desc->paddr, desc->sizeBits));
 	}
     }

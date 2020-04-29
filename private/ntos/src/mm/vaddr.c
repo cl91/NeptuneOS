@@ -2,9 +2,9 @@
 
 #include "mi.h"
 
-NTSTATUS MmReserveVirtualMemory(IN PMM_VADDR_SPACE Vspace,
-				IN MWORD StartPageNum,
-				IN MWORD NumPages)
+NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,
+				  IN MWORD StartPageNum,
+				  IN MWORD NumPages)
 {
     if (MiVspaceFindVadNode(Vspace, StartPageNum, NumPages) != NULL) {
 	/* Enlarge VAD? */
@@ -15,4 +15,10 @@ NTSTATUS MmReserveVirtualMemory(IN PMM_VADDR_SPACE Vspace,
     MiInitializeVadNode(Vad, StartPageNum, NumPages);
     MiVspaceInsertVadNode(Vspace, Vad);
     return STATUS_SUCCESS;
+}
+
+NTSTATUS MmReserveVirtualMemory(IN MWORD StartPageNum,
+				IN MWORD NumPages)
+{
+    return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, StartPageNum, NumPages);
 }

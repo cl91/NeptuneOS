@@ -61,10 +61,10 @@ VOID MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     InsertHeadList(List, &Untyped->FreeListEntry);
 }
 
-NTSTATUS MmRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN LONG Log2Size,
+NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped)
 {
+    PMM_VADDR_SPACE VaddrSpace = &MiNtosVaddrSpace;
     PLIST_ENTRY List = NULL;
     if (Log2Size >= MM_LARGE_PAGE_BITS && !IsListEmpty(&VaddrSpace->LargeUntypedList)) {
 	List = &VaddrSpace->LargeUntypedList;
@@ -100,8 +100,7 @@ NTSTATUS MmRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiRequestIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			    IN PMM_IO_UNTYPED RootIoUntyped,
+NTSTATUS MiRequestIoUntyped(IN PMM_IO_UNTYPED RootIoUntyped,
 			    IN MWORD PhyPageNum,
 			    OUT PMM_IO_UNTYPED *IoUntyped)
 {

@@ -24,6 +24,7 @@ typedef struct _MM_INIT_INFO {
     if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }
 
 /* init.c */
+extern MM_VADDR_SPACE MiNtosVaddrSpace;
 NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
 			       IN MWORD SrcCap,
 			       IN LONG SrcLog2Size,
@@ -94,8 +95,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 			OUT PMM_UNTYPED DestUntyped2);
 VOID MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
 			 PMM_UNTYPED Untyped);
-NTSTATUS MiRequestIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			    IN PMM_IO_UNTYPED RootIoUntyped,
+NTSTATUS MiRequestIoUntyped(IN PMM_IO_UNTYPED RootIoUntyped,
 			    IN MWORD PhyPageNum,
 			    OUT PMM_IO_UNTYPED *IoUntyped);
 

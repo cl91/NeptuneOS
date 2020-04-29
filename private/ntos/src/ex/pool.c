@@ -81,8 +81,7 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 		NewPages = 2;
 	    }
 	    MWORD SatisfiedPages = 0;
-	    MmCommitPages(&MmNtosVaddrSpace,
-			  Pool->HeapEnd >> MM_PAGE_BITS,
+	    MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS,
 			  NewPages,
 			  &SatisfiedPages);
 	    Pool->TotalPages += SatisfiedPages;

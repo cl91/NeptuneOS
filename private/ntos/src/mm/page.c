@@ -111,7 +111,7 @@ static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
 				       OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
 {
     PMM_UNTYPED Untyped;
-    RET_IF_ERR(MmRequestUntyped(Vspace, MM_PAGE_TABLE_BITS, &Untyped));
+    RET_IF_ERR(MmRequestUntyped(MM_PAGE_TABLE_BITS, &Untyped));
 
     MiAllocatePool(PageTable, MM_PAGE_TABLE);
     MiInitializePageTable(PageTable, Untyped, Vspace, 0, PageTableNum, FALSE);
@@ -141,10 +141,10 @@ static NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
-		       IN MWORD FirstPageNum,
-		       IN MWORD NumPages,
-		       OUT MWORD *SatisfiedPages)
+NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
+			 IN MWORD FirstPageNum,
+			 IN MWORD NumPages,
+			 OUT MWORD *SatisfiedPages)
 {
     PMM_VAD Vad = MiVspaceFindVadNode(VaddrSpace, FirstPageNum, NumPages);
     if (Vad == NULL) {
@@ -168,7 +168,7 @@ NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
 	while (PageNum <= LastPageNumInPageTable && *SatisfiedPages < NumPages) {
 	    if (MiPageTableFindPage(PageTable, PageNum) == NULL) {
 		PMM_UNTYPED Untyped;
-		RET_IF_ERR(MmRequestUntyped(VaddrSpace, MM_PAGE_BITS, &Untyped));
+		RET_IF_ERR(MmRequestUntyped(MM_PAGE_BITS, &Untyped));
 		RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, NULL));
 	    }
 	    PageNum++;
@@ -182,9 +182,16 @@ NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
-			IN MWORD PhyPageNum,
-			IN MWORD VirtPageNum)
+NTSTATUS MmCommitPages(IN MWORD FirstPageNum,
+		       IN MWORD NumPages,
+		       OUT MWORD *SatisfiedPages)
+{
+    return MmCommitPagesEx(&MiNtosVaddrSpace, FirstPageNum, NumPages, SatisfiedPages);
+}
+
+NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN MWORD PhyPageNum,
+			  IN MWORD VirtPageNum)
 {
     PMM_VAD Vad = MiVspaceFindVadNode(VaddrSpace, VirtPageNum, 1);
     if (Vad == NULL) {
@@ -197,7 +204,7 @@ NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
     }
 
     PMM_IO_UNTYPED IoUntyped;
-    RET_IF_ERR(MiRequestIoUntyped(VaddrSpace, RootIoUntyped, PhyPageNum, &IoUntyped));
+    RET_IF_ERR(MiRequestIoUntyped(RootIoUntyped, PhyPageNum, &IoUntyped));
     MWORD PTNum = VirtPageNum >> MM_LARGE_PN_SHIFT;
     PMM_AVL_NODE Node = MiVspaceFindPageTableOrLargePage(VaddrSpace, PTNum);
     if (MiPTNodeIsLargePage(Node)) {
@@ -216,4 +223,10 @@ NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
     RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, &IoUntyped->Untyped, PageTable, VirtPageNum, NULL));
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
+			IN MWORD VirtPageNum)
+{
+    return MmCommitIoPageEx(&MiNtosVaddrSpace, PhyPageNum, VirtPageNum);
 }

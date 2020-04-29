@@ -139,31 +139,35 @@ typedef enum _MM_MEM_PRESSURE {
 } MM_MEM_PRESSURE;
 
 /* init.c */
-extern MM_VADDR_SPACE MmNtosVaddrSpace;
 NTSTATUS MmInitSystem(IN seL4_BootInfo *bootinfo);
 
 /* cap.c */
-NTSTATUS MmAllocateCap(IN PMM_VADDR_SPACE Vspace,
-		       OUT MWORD *Cap);
-NTSTATUS MmDeallocateCap(IN PMM_VADDR_SPACE Vspace,
-			 IN MWORD Cap);
+NTSTATUS MmAllocateCap(OUT MWORD *Cap);
+NTSTATUS MmDeallocateCap(IN MWORD Cap);
+MWORD MmRootCap();
 
 /* untyped.c */
-NTSTATUS MmRequestUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN LONG Log2Size,
+NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped);
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitPages(IN PMM_VADDR_SPACE VaddrSpace,
-		       IN MWORD StartPageNum,
+NTSTATUS MmCommitPages(IN MWORD StartPageNum,
 		       IN MWORD NumPages,
 		       OUT MWORD *SatisfiedPages);
-NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
-			IN MWORD PhyPageNum,
+NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
+			 IN MWORD StartPageNum,
+			 IN MWORD NumPages,
+			 OUT MWORD *SatisfiedPages);
+NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN MWORD PhyPageNum,
+			  IN MWORD VirtPageNum);
+NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
 			IN MWORD VirtPageNum);
 
 /* vaddr.c */
-NTSTATUS MmReserveVirtualMemory(IN PMM_VADDR_SPACE Vspace,
-				IN MWORD StartPageNum,
+NTSTATUS MmReserveVirtualMemory(IN MWORD StartPageNum,
 				IN MWORD NumPages);
+NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,
+				  IN MWORD StartPageNum,
+				  IN MWORD NumPages);

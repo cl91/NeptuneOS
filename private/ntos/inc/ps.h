@@ -13,6 +13,8 @@
 #define seL4_VSpaceObject seL4_X64_PML4Object
 #endif
 
+#define NTOS_PS_TAG	EX_POOL_TAG('n', 't', 'p', 's')
+
 typedef struct _THREAD {
     LIST_ENTRY ThreadListEntry;
     PMM_UNTYPED TcbUntyped;
