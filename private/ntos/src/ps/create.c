@@ -26,26 +26,25 @@ static NTSTATUS PspRetypeIntoObject(IN PMM_VADDR_SPACE LocalVspace,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspCreateThread(PMM_VADDR_SPACE LocalVspace)
+static NTSTATUS PspCreateThread(IN PPROCESS Process,
+				OUT PTHREAD *Thread)
 {
     PMM_UNTYPED TcbUntyped;
     PMM_UNTYPED IpcBufferUntyped;
-    PMM_UNTYPED NtBufferUntyped;
-    RET_IF_ERR(MmRequestUntyped(LocalVspace, seL4_TCBBits, &TcbUntyped));
-    RET_IF_ERR(MmRequestUntyped(LocalVspace, seL4_PageBits, &IpcBufferUntyped));
-    RET_IF_ERR(MmRequestUntyped(LocalVspace, seL4_PageBits, &NtBufferUntyped));
+    RET_IF_ERR(MmRequestUntyped(&MmNtosVaddrSpace, seL4_TCBBits, &TcbUntyped));
+    RET_IF_ERR(MmRequestUntyped(&MmNtosVaddrSpace, seL4_PageBits, &IpcBufferUntyped));
     MWORD TcbCap;
-    RET_IF_ERR(PspRetypeIntoObject(LocalVspace, TcbUntyped, seL4_TCBObject,
+    RET_IF_ERR(PspRetypeIntoObject(&MmNtosVaddrSpace, TcbUntyped, seL4_TCBObject,
 				   seL4_TCBBits, &TcbCap));
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspCreateProcess(PMM_VADDR_SPACE LocalVspace)
+static NTSTATUS PspCreateProcess()
 {
     PMM_UNTYPED VspaceUntyped;
-    RET_IF_ERR(MmRequestUntyped(LocalVspace, seL4_VSpaceBits, &VspaceUntyped));
+    RET_IF_ERR(MmRequestUntyped(&MmNtosVaddrSpace, seL4_VSpaceBits, &VspaceUntyped));
     MWORD VspaceCap;
-    RET_IF_ERR(PspRetypeIntoObject(LocalVspace, VspaceUntyped, seL4_VSpaceObject,
+    RET_IF_ERR(PspRetypeIntoObject(&MmNtosVaddrSpace, VspaceUntyped, seL4_VSpaceObject,
 				   seL4_VSpaceBits, &VspaceCap));
     return STATUS_SUCCESS;
 }

@@ -3,6 +3,22 @@
 #include <nt.h>
 #include <ntos.h>
 
+/* Information needed to initialize the Memory Management subcomponent,
+ * including the Executive Pool */
+typedef struct _MM_INIT_INFO {
+    MWORD InitVSpaceCap;
+    MWORD InitUntypedCap;
+    LONG InitUntypedLog2Size;
+    MWORD RootCNodeCap;
+    LONG RootCNodeLog2Size;
+    MWORD RootCNodeFreeCapStart;
+    MWORD UserStartPageNum;
+    MWORD UserPageCapStart;
+    MWORD NumUserPages;
+    MWORD UserPagingStructureCapStart;
+    MWORD NumUserPagingStructureCaps;
+} MM_INIT_INFO, *PMM_INIT_INFO;
+
 #define MiAllocatePool(Var, Type)					\
     Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_MM_TAG); \
     if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }

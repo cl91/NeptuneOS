@@ -2,7 +2,6 @@
 
 static NTSTATUS PspThreadTypeCreateProc(POBJECT_TYPE ObjectType)
 {
-    ObjectType->NumCaps = PS_THREAD_OBJECT_CAPS;
     return STATUS_SUCCESS;
 }
 
@@ -25,7 +24,6 @@ OBJECT_TYPE_INITIALIZER PspThreadInitProcs =
 
 static NTSTATUS PspProcessTypeCreateProc(POBJECT_TYPE ObjectType)
 {
-    ObjectType->NumCaps = PS_PROCESS_OBJECT_CAPS;
     return STATUS_SUCCESS;
 }
 

@@ -13,15 +13,16 @@
 #define seL4_VSpaceObject seL4_X64_PML4Object
 #endif
 
-#define PS_THREAD_OBJECT_CAPS	(1)
-typedef struct _PS_THREAD_OBJECT {
+typedef struct _THREAD {
+    LIST_ENTRY ThreadListEntry;
+    PMM_UNTYPED TcbUntyped;
+    PMM_UNTYPED IpcBufferUntyped;
     MWORD TcbCap;
-    MWORD ThreadHandle;
-    MWORD ProcessHandle;
-} PS_THREAD_OBJECT, *PPS_THREAD_OBJECT;
+    MWORD IpcBufferCap;
+} THREAD, *PTHREAD;
 
-#define PS_PROCESS_OBJECT_CAPS	(1)
-typedef struct _PS_PROCESS_OBJECT {
-    MWORD VspaceCap;
-    MWORD ProcessHandle;
-} PS_PROCESS_OBJECT, *PPS_PROCESS_OBJECT;
+typedef struct _PROCESS {
+    PTHREAD InitThread;
+    LIST_ENTRY ThreadList;
+    MM_VADDR_SPACE VaddrSpace;	/* Virtual address space */
+} PROCESS, *PPROCESS;

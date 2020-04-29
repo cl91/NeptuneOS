@@ -1,56 +1,9 @@
-#include "mi.h"
+/* TODO: Add amd64 code path. */
 
-/* FIXME: Only works for x86. Doesn't work for x64! */
-NTSTATUS MmInitSystem(PEPROCESS NtosProcess, seL4_BootInfo *bootinfo)
-{
-    extern char _text_start[];
-    seL4_SlotRegion UntypedCaps = bootinfo->untyped;
-    MWORD InitUntyped = 0;
-    LONG Log2Size = 128;
-
-    /* Find at least 7 Page + 1 PageDirectory */
-    LoopOverUntyped(cap, desc, bootinfo) {
-	if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 3)
-	    && desc->sizeBits < Log2Size) {
-	    InitUntyped = cap;
-	    Log2Size = desc->sizeBits;
-	}
-    }
-    if (InitUntyped == 0) {
-	return STATUS_NTOS_OUT_OF_MEMORY;
-    }
-
-    MM_INIT_INFO InitInfo =
-	{
-	 .InitVSpaceCap = seL4_CapInitThreadVSpace,
-	 .InitUntypedCap = InitUntyped,
-	 .InitUntypedLog2Size = Log2Size,
-	 .RootCNodeCap = seL4_CapInitThreadCNode,
-	 .RootCNodeLog2Size = CONFIG_ROOT_CNODE_SIZE_BITS,
-	 .RootCNodeFreeCapStart = bootinfo->empty.start,
-	 .EProcess = NtosProcess,
-	 .UserStartPageNum = (MWORD) (&_text_start[0]) >> MM_PAGE_BITS,
-	 .UserPageCapStart = bootinfo->userImageFrames.start,
-	 .NumUserPages = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
-	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
-	 .NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start
-	};
-    RET_IF_ERR(MmRegisterClass(&InitInfo));
-
-    LoopOverUntyped(cap, desc, bootinfo) {
-	if (!desc->isDevice && cap != InitUntyped) {
-	    RET_IF_ERR(MmRegisterRootUntyped(&NtosProcess->VaddrSpace, cap,
-					     desc->sizeBits));
-	} else if (desc->isDevice && desc->sizeBits >= MM_PAGE_BITS) {
-	    RET_IF_ERR(MmRegisterRootIoUntyped(&NtosProcess->VaddrSpace, cap,
-					       desc->paddr, desc->sizeBits));
-	}
-    }
-
-    return STATUS_SUCCESS;
-}
 #include "mi.h"
 #include <ctype.h>
+
+MM_VADDR_SPACE MmNtosVaddrSpace;
 
 NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
 			       IN MWORD SrcCap,
@@ -215,7 +168,7 @@ VOID MiInitializePageTable(IN PMM_PAGE_TABLE PageTable,
     MiAvlInitializeTree(&PageTable->MappedPages);
 }
 
-NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
+static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
 {
     /* Map initial pages for ExPool */
     LONG PoolPages;
@@ -223,9 +176,8 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
     RET_IF_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
 
     /* Initialize ExPool */
-    PEPROCESS EProcess = InitInfo->EProcess;
-    RET_IF_ERR(ExInitializePool(EProcess, EX_POOL_START, PoolPages));
-    PMM_VADDR_SPACE VaddrSpace = &EProcess->VaddrSpace;
+    PMM_VADDR_SPACE VaddrSpace = &MmNtosVaddrSpace;
+    RET_IF_ERR(ExInitializePool(EX_POOL_START, PoolPages));
 
     /* Allocate memory for CNode on ExPool and Copy InitCNode over */
     VaddrSpace->CapSpace.RootCap = InitInfo->RootCNodeCap;
@@ -247,7 +199,7 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
     RootCNode->FreeRange.StartCap = FreeCapStart;
     RootCNode->FreeRange.Number = (1 << InitInfo->RootCNodeLog2Size) - FreeCapStart;
 
-    /* Build the Vad tree of the global EProcess */
+    /* Build the Vad tree of the ntos virtual address space */
     MiAvlInitializeTree(&VaddrSpace->VadTree);
     RET_IF_ERR(MmReserveVirtualMemory(VaddrSpace, EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
     MiAvlInitializeTree(&VaddrSpace->PageTableTree);
@@ -275,9 +227,9 @@ NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			       IN MWORD Cap,
-			       IN LONG Log2Size)
+static NTSTATUS MiRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+				      IN MWORD Cap,
+				      IN LONG Log2Size)
 {
     MiAllocatePool(Untyped, MM_UNTYPED);
     MiInitializeUntyped(Untyped, NULL, VaddrSpace, Cap, Log2Size);
@@ -286,10 +238,10 @@ NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			     IN MWORD Cap,
-			     IN MWORD PhyAddr,
-			     IN LONG Log2Size)
+static NTSTATUS MiRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+					IN MWORD Cap,
+					IN MWORD PhyAddr,
+					IN LONG Log2Size)
 {
     if (Log2Size < MM_PAGE_BITS || (PhyAddr & (MM_PAGE_SIZE - 1)) != 0) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -298,5 +250,53 @@ NTSTATUS MmRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     MiInitializeUntyped(&RootIoUntyped->Untyped, NULL, VaddrSpace, Cap, Log2Size);
     RootIoUntyped->AvlNode.Key = PhyAddr >> MM_PAGE_BITS;
     RET_IF_ERR(MiVspaceInsertRootIoUntyped(VaddrSpace, RootIoUntyped));
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
+{
+    extern char _text_start[];
+    seL4_SlotRegion UntypedCaps = bootinfo->untyped;
+    MWORD InitUntyped = 0;
+    LONG Log2Size = 128;
+
+    /* Find at least 7 Page + 1 PageDirectory */
+    LoopOverUntyped(cap, desc, bootinfo) {
+	if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 3)
+	    && desc->sizeBits < Log2Size) {
+	    InitUntyped = cap;
+	    Log2Size = desc->sizeBits;
+	}
+    }
+    if (InitUntyped == 0) {
+	return STATUS_NTOS_OUT_OF_MEMORY;
+    }
+
+    MM_INIT_INFO InitInfo =
+	{
+	 .InitVSpaceCap = seL4_CapInitThreadVSpace,
+	 .InitUntypedCap = InitUntyped,
+	 .InitUntypedLog2Size = Log2Size,
+	 .RootCNodeCap = seL4_CapInitThreadCNode,
+	 .RootCNodeLog2Size = CONFIG_ROOT_CNODE_SIZE_BITS,
+	 .RootCNodeFreeCapStart = bootinfo->empty.start,
+	 .UserStartPageNum = (MWORD) (&_text_start[0]) >> MM_PAGE_BITS,
+	 .UserPageCapStart = bootinfo->userImageFrames.start,
+	 .NumUserPages = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
+	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
+	 .NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start
+	};
+    RET_IF_ERR(MiRegisterClass(&InitInfo));
+
+    LoopOverUntyped(cap, desc, bootinfo) {
+	if (!desc->isDevice && cap != InitUntyped) {
+	    RET_IF_ERR(MiRegisterRootUntyped(&MmNtosVaddrSpace, cap,
+					     desc->sizeBits));
+	} else if (desc->isDevice && desc->sizeBits >= MM_PAGE_BITS) {
+	    RET_IF_ERR(MiRegisterRootIoUntyped(&MmNtosVaddrSpace, cap,
+					       desc->paddr, desc->sizeBits));
+	}
+    }
+
     return STATUS_SUCCESS;
 }

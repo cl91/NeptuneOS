@@ -3,7 +3,7 @@
 #include <nt.h>
 #include "ntosdef.h"
 
-#define NTOS_MM_TAG    			(EX_POOL_TAG('n','t','m','m'))
+#define NTOS_MM_TAG    		(EX_POOL_TAG('n','t','m','m'))
 
 #define MM_PAGE_BITS		(seL4_PageBits)
 #define MM_PAGE_TABLE_BITS	(seL4_PageBits)
@@ -11,23 +11,6 @@
 #define MM_LARGE_PN_SHIFT	(MM_LARGE_PAGE_BITS - MM_PAGE_BITS)
 #define MM_PAGE_SIZE		(1 << MM_PAGE_BITS)
 #define MM_LARGE_PAGE_SIZE	(1 << MM_LARGE_PAGE_BITS)
-
-/* Information needed to initialize the Memory Management routines,
- * including the Executive Pool */
-typedef struct _MM_INIT_INFO {
-    MWORD InitVSpaceCap;
-    MWORD InitUntypedCap;
-    LONG InitUntypedLog2Size;
-    MWORD RootCNodeCap;
-    LONG RootCNodeLog2Size;
-    MWORD RootCNodeFreeCapStart;
-    struct _EPROCESS *EProcess;
-    MWORD UserStartPageNum;
-    MWORD UserPageCapStart;
-    MWORD NumUserPages;
-    MWORD UserPagingStructureCapStart;
-    MWORD NumUserPagingStructureCaps;
-} MM_INIT_INFO, *PMM_INIT_INFO;
 
 /* Describes the entire CapSpace */
 typedef struct _MM_CAPSPACE {
@@ -156,14 +139,8 @@ typedef enum _MM_MEM_PRESSURE {
 } MM_MEM_PRESSURE;
 
 /* init.c */
-NTSTATUS MmRegisterClass(IN PMM_INIT_INFO InitInfo);
-NTSTATUS MmRegisterRootUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-			       IN MWORD Cap,
-			       IN LONG Log2Size);
-NTSTATUS MmRegisterRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-				 IN MWORD Cap,
-				 IN MWORD PhyAddr,
-				 IN LONG Log2Size);
+extern MM_VADDR_SPACE MmNtosVaddrSpace;
+NTSTATUS MmInitSystem(IN seL4_BootInfo *bootinfo);
 
 /* cap.c */
 NTSTATUS MmAllocateCap(IN PMM_VADDR_SPACE Vspace,
@@ -190,5 +167,3 @@ NTSTATUS MmCommitIoPage(IN PMM_VADDR_SPACE VaddrSpace,
 NTSTATUS MmReserveVirtualMemory(IN PMM_VADDR_SPACE Vspace,
 				IN MWORD StartPageNum,
 				IN MWORD NumPages);
-
-NTSTATUS MmInitSystem();

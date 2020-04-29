@@ -139,7 +139,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 #ifdef CONFIG_DEBUG_BUILD
     KiDumpBootInfoAll(bootinfo);
 #endif
-    BUGCHECK_IF_ERR(MmInitSystem(&ExNtosProcess, bootinfo));
+    BUGCHECK_IF_ERR(MmInitSystem(bootinfo));
     KiInitVga();
     LdrLoadBootModules();
 #ifdef CONFIG_RUN_TESTS

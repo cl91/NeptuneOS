@@ -1,7 +1,6 @@
-#include <nt.h>
-#include <ntos.h>
+#include "ei.h"
 
-static PEPROCESS EiLocalProcess;
+static EX_POOL EiPool;
 
 /* Add the free page to the FreeLists */
 static VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
@@ -24,15 +23,12 @@ static VOID EiAddPageToPool(IN PEX_POOL Pool,
 }
 
 /* We require 3 consecutive initial pages mapped at EX_POOL_START */
-static NTSTATUS EiInitializePool(PEPROCESS Process,
-				 MWORD HeapStart,
-				 LONG NumPages)
+NTSTATUS ExInitializePool(MWORD HeapStart,
+			  LONG NumPages)
 {
-    PEX_POOL Pool = &Process->ExPool;
-
     /* Initialize FreeLists */
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
-	InitializeListHead(&Pool->FreeLists[i]);
+	InitializeListHead(&EiPool.FreeLists[i]);
     }
 
     if ((HeapStart & (MM_PAGE_SIZE-1)) != 0 || NumPages < 3) {
@@ -40,22 +36,13 @@ static NTSTATUS EiInitializePool(PEPROCESS Process,
     }
 
     /* Add pages to pool */
-    Pool->TotalPages = NumPages;
-    Pool->UsedPages = 1;
-    Pool->HeapStart = HeapStart;
-    Pool->HeapEnd = HeapStart + MM_PAGE_SIZE;
-    Pool->VaddrSpace = &Process->VaddrSpace;
-    EiAddPageToPool(Pool, HeapStart >> MM_PAGE_BITS);
+    EiPool.TotalPages = NumPages;
+    EiPool.UsedPages = 1;
+    EiPool.HeapStart = HeapStart;
+    EiPool.HeapEnd = HeapStart + MM_PAGE_SIZE;
+    EiAddPageToPool(&EiPool, HeapStart >> MM_PAGE_BITS);
 
     return STATUS_SUCCESS;
-}
-
-NTSTATUS ExInitializePool(IN PEPROCESS Process,
-			  IN MWORD HeapStart,
-			  IN LONG NumPages)
-{
-    EiLocalProcess = Process;
-    return EiInitializePool(Process, HeapStart, NumPages);
 }
 
 /* Examine the number of available pages in the pool and optionally
@@ -94,7 +81,7 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 		NewPages = 2;
 	    }
 	    MWORD SatisfiedPages = 0;
-	    MmCommitPages(Pool->VaddrSpace,
+	    MmCommitPages(&MmNtosVaddrSpace,
 			  Pool->HeapEnd >> MM_PAGE_BITS,
 			  NewPages,
 			  &SatisfiedPages);
@@ -166,5 +153,5 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag)
 {
-    return EiAllocatePoolWithTag(&EiLocalProcess->ExPool, NumberOfBytes, Tag);
+    return EiAllocatePoolWithTag(&EiPool, NumberOfBytes, Tag);
 }

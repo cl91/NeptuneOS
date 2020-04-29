@@ -2,15 +2,7 @@
 
 #include <nt.h>
 #include <sel4/sel4.h>
-
-typedef struct _KTHREAD {
-    LIST_ENTRY ThreadListEntry;
-} KTHREAD, *PKTHREAD;
-
-typedef struct _KPROCESS {
-    PKTHREAD InitThread;
-    LIST_ENTRY ThreadList;
-} KPROCESS, *PKPROCESS;
+#include "mm.h"
 
 VOID KeRunAllTests();
 

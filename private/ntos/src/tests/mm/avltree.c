@@ -70,15 +70,15 @@ static VOID PrintAvlTreeLinear(PMM_AVL_TREE tree)
 VOID MmRunAvlTreeTests()
 {
     DbgPrintFunc();
-    PMM_AVL_TREE RootIoUntypedTree = &ExNtosProcess.VaddrSpace.RootIoUntypedTree;
+    PMM_AVL_TREE RootIoUntypedTree = &MmNtosVaddrSpace.RootIoUntypedTree;
     DbgPrint("  RootIoUntypedTree:\n");
     PrintAvlTreeLinear(RootIoUntypedTree);
     PrintAvlTree(RootIoUntypedTree);
-    PMM_AVL_TREE VadTree = &ExNtosProcess.VaddrSpace.VadTree;
+    PMM_AVL_TREE VadTree = &MmNtosVaddrSpace.VadTree;
     DbgPrint("  VadTree:\n");
     PrintAvlTreeLinear(VadTree);
     PrintAvlTree(VadTree);
-    PMM_AVL_TREE PageTableTree = &ExNtosProcess.VaddrSpace.PageTableTree;
+    PMM_AVL_TREE PageTableTree = &MmNtosVaddrSpace.PageTableTree;
     DbgPrint("  PageTableTree:\n");
     PrintAvlTreeLinear(PageTableTree);
     PrintAvlTree(PageTableTree);
