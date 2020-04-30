@@ -347,16 +347,16 @@ PMM_VAD MiVspaceFindVadNode(IN PMM_VADDR_SPACE Vspace,
 {
     PMM_AVL_TREE Tree = &Vspace->VadTree;
     MWORD EndPageNum = StartPageNum + NumPages;
-    if (Vspace->Caches.Vad != NULL && (StartPageNum >= Vspace->Caches.Vad->AvlNode.Key)
-	&& (EndPageNum <= Vspace->Caches.Vad->AvlNode.Key + Vspace->Caches.Vad->NumPages)) {
+    if (Vspace->CachedVad != NULL && (StartPageNum >= Vspace->CachedVad->AvlNode.Key)
+	&& (EndPageNum <= Vspace->CachedVad->AvlNode.Key + Vspace->CachedVad->NumPages)) {
 	/* EndPageNum <= ...: Here the equal sign is important! */
-	return Vspace->Caches.Vad;
+	return Vspace->CachedVad;
     }
     PMM_VAD Parent = (PMM_VAD) MiAvlTreeFindNodeOrParent(Tree, StartPageNum);
     if (Parent != NULL && (StartPageNum >= Parent->AvlNode.Key)
 	&& (EndPageNum <= Parent->AvlNode.Key + Parent->NumPages)) {
 	/* EndPageNum <= ...: Here the equal sign is important! */
-	Vspace->Caches.Vad = Parent;
+	Vspace->CachedVad = Parent;
 	return Parent;
     }
     return NULL;
@@ -444,13 +444,13 @@ PMM_PAGE MiPageTableFindPage(IN PMM_PAGE_TABLE PageTable,
     return NULL;
 }
 
-NTSTATUS MiVspaceInsertRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-				     IN PMM_IO_UNTYPED RootIoUntyped)
+NTSTATUS MiInsertRootIoUntyped(IN PMM_PHY_MEM PhyMem,
+			       IN PMM_IO_UNTYPED RootIoUntyped)
 {
     assert(RootIoUntyped->Untyped.Log2Size >= MM_PAGE_BITS);
     MWORD StartPageNum = RootIoUntyped->AvlNode.Key;
     MWORD EndPageNum = StartPageNum + (1 << (RootIoUntyped->Untyped.Log2Size - MM_PAGE_BITS));
-    PMM_AVL_TREE Tree = &VaddrSpace->RootIoUntypedTree;
+    PMM_AVL_TREE Tree = &PhyMem->RootIoUntypedTree;
     PMM_IO_UNTYPED Parent = (PMM_IO_UNTYPED) MiAvlTreeFindNodeOrParent(Tree, StartPageNum);
     if (Parent != NULL && (StartPageNum >= Parent->AvlNode.Key)
 	&& (EndPageNum <= Parent->AvlNode.Key + (1 << (Parent->Untyped.Log2Size - MM_PAGE_BITS)))) {
@@ -461,19 +461,19 @@ NTSTATUS MiVspaceInsertRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-PMM_IO_UNTYPED MiVspaceFindRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-					 IN MWORD PhyPageNum)
+PMM_IO_UNTYPED MiFindRootIoUntyped(IN PMM_PHY_MEM PhyMem,
+				   IN MWORD PhyPageNum)
 {
-    PMM_AVL_TREE Tree = &VaddrSpace->RootIoUntypedTree;
-    if (VaddrSpace->Caches.RootIoUntyped != NULL && (PhyPageNum >= VaddrSpace->Caches.RootIoUntyped->AvlNode.Key)
-	&& (PhyPageNum < VaddrSpace->Caches.RootIoUntyped->AvlNode.Key +
-	    (1 << (VaddrSpace->Caches.RootIoUntyped->Untyped.Log2Size - MM_PAGE_BITS)))) {
-	return VaddrSpace->Caches.RootIoUntyped;
+    PMM_AVL_TREE Tree = &PhyMem->RootIoUntypedTree;
+    if (PhyMem->CachedRootIoUntyped != NULL && (PhyPageNum >= PhyMem->CachedRootIoUntyped->AvlNode.Key)
+	&& (PhyPageNum < PhyMem->CachedRootIoUntyped->AvlNode.Key +
+	    (1 << (PhyMem->CachedRootIoUntyped->Untyped.Log2Size - MM_PAGE_BITS)))) {
+	return PhyMem->CachedRootIoUntyped;
     }
     PMM_IO_UNTYPED Parent = (PMM_IO_UNTYPED) MiAvlTreeFindNodeOrParent(Tree, PhyPageNum);
     if (Parent != NULL && (PhyPageNum >= Parent->AvlNode.Key)
 	&& (PhyPageNum < Parent->AvlNode.Key + (1 << (Parent->Untyped.Log2Size - MM_PAGE_BITS)))) {
-	VaddrSpace->Caches.RootIoUntyped = Parent;
+	PhyMem->CachedRootIoUntyped = Parent;
 	return Parent;
     }
     return NULL;

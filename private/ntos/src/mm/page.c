@@ -38,19 +38,19 @@ static NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
     }
 
     MWORD Cap;
-    RET_IF_ERR(MiCapSpaceAllocCap(Page->TreeNode.CapSpace, &Cap));
+    RET_IF_ERR(MmAllocateCap(&Cap));
     Page->TreeNode.Cap = Cap;
     int Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				    MiPageGetSel4Type(Page),
 				    MiPageGetLog2Size(Page),
-				    Page->TreeNode.CapSpace->RootCap,
+				    MmRootCspaceCap(),
 				    0, // node_index
 				    0, // node_depth
 				    Cap,
 				    1 // num_caps
 				    );
     if (Error) {
-	MiCapSpaceDeallocCap(Page->TreeNode.CapSpace, Cap);
+	MmDeallocateCap(Cap);
 	Page->TreeNode.Cap = 0;
 	return SEL4_ERROR(Error);
     }
@@ -87,7 +87,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     }
 
     if (Error) {
-	int RevokeError = seL4_CNode_Revoke(Page->TreeNode.CapSpace->RootCap,
+	int RevokeError = seL4_CNode_Revoke(MmRootCspaceCap(),
 					    Page->TreeNode.Cap,
 					    0); /* FIXME: depth */
 	if (RevokeError) {
@@ -190,6 +190,7 @@ NTSTATUS MmCommitPages(IN MWORD FirstPageNum,
 }
 
 NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN PMM_PHY_MEM PhyMem,
 			  IN MWORD PhyPageNum,
 			  IN MWORD VirtPageNum)
 {
@@ -198,7 +199,7 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    PMM_IO_UNTYPED RootIoUntyped = MiVspaceFindRootIoUntyped(VaddrSpace, PhyPageNum);
+    PMM_IO_UNTYPED RootIoUntyped = MiFindRootIoUntyped(PhyMem, PhyPageNum);
     if (RootIoUntyped == NULL) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
@@ -228,5 +229,6 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
 NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
 			IN MWORD VirtPageNum)
 {
-    return MmCommitIoPageEx(&MiNtosVaddrSpace, PhyPageNum, VirtPageNum);
+    return MmCommitIoPageEx(&MiNtosVaddrSpace, &MiPhyMemDescriptor,
+			    PhyPageNum, VirtPageNum);
 }

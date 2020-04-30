@@ -12,7 +12,7 @@ static NTSTATUS PspRetypeIntoObject(IN PMM_UNTYPED Untyped,
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				      ObjType,
 				      ObjBits,
-				      MmRootCap(),
+				      MmRootCspaceCap(),
 				      0, // node_index
 				      0, // node_depth
 				      *ObjCap, // node_offset

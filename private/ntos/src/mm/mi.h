@@ -25,6 +25,8 @@ typedef struct _MM_INIT_INFO {
 
 /* init.c */
 extern MM_VADDR_SPACE MiNtosVaddrSpace;
+extern MM_PHY_MEM MiPhyMemDescriptor;
+extern MM_CAPSPACE MiNtosCapSpace;
 NTSTATUS MiSplitInitialUntyped(IN MWORD RootCap,
 			       IN MWORD SrcCap,
 			       IN LONG SrcLog2Size,
@@ -40,7 +42,6 @@ NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
 		       IN MWORD Type);
 VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN PMM_UNTYPED Parent,
-			 IN PMM_VADDR_SPACE VaddrSpace,
 			 IN MWORD Cap,
 			 IN LONG Log2Size);
 VOID MiInitializePage(IN PMM_PAGE Page,
@@ -69,31 +70,15 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
 			      OUT LONG *PoolPages,
 			      OUT MWORD *FreeCapStart);
 NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
-				     IN PMM_VADDR_SPACE VaddrSpace,
 				     IN PMM_VAD ExPoolVad);
 NTSTATUS MiInitRecordUserImagePaging(IN PMM_INIT_INFO InitInfo,
-				     IN PMM_VADDR_SPACE VaddrSpace,
 				     IN PMM_VAD UserImageVad);
-
-/* cap.c */
-NTSTATUS MiCapSpaceAllocCaps(IN PMM_CAPSPACE CapSpace,
-			     OUT MWORD *StartCap,
-			     IN LONG NumberRequested);
-NTSTATUS MiCapSpaceDeallocCap(IN PMM_CAPSPACE CapSpace,
-			      IN MWORD Cap);
-
-static inline NTSTATUS
-MiCapSpaceAllocCap(IN PMM_CAPSPACE CapSpace,
-		   OUT MWORD *Cap)
-{
-    return MiCapSpaceAllocCaps(CapSpace, Cap, 1);
-}
 
 /* untyped.c */
 NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 			OUT PMM_UNTYPED DestUntyped1,
 			OUT PMM_UNTYPED DestUntyped2);
-VOID MiInsertFreeUntyped(PMM_VADDR_SPACE VaddrSpace,
+VOID MiInsertFreeUntyped(PMM_PHY_MEM PhyMem,
 			 PMM_UNTYPED Untyped);
 NTSTATUS MiRequestIoUntyped(IN PMM_IO_UNTYPED RootIoUntyped,
 			    IN MWORD PhyPageNum,
@@ -121,10 +106,10 @@ NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 			       IN PMM_PAGE Page);
 PMM_PAGE MiPageTableFindPage(IN PMM_PAGE_TABLE PageTable,
 			     IN MWORD PageNum);
-NTSTATUS MiVspaceInsertRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-				     IN PMM_IO_UNTYPED RootIoUntyped);
-PMM_IO_UNTYPED MiVspaceFindRootIoUntyped(IN PMM_VADDR_SPACE VaddrSpace,
-					 IN MWORD PhyPageNum);
+NTSTATUS MiInsertRootIoUntyped(IN PMM_PHY_MEM PhyMem,
+			       IN PMM_IO_UNTYPED RootIoUntyped);
+PMM_IO_UNTYPED MiFindRootIoUntyped(IN PMM_PHY_MEM PhyMem,
+				   IN MWORD PhyPageNum);
 
 static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
 {

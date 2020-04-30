@@ -8,27 +8,23 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    PMM_CAPSPACE CapSpace = Src->TreeNode.CapSpace;
-    Dest1->TreeNode.CapSpace = CapSpace;
-    Dest2->TreeNode.CapSpace = CapSpace;
-
     Dest1->Log2Size = Src->Log2Size - 1;
     Dest2->Log2Size = Src->Log2Size - 1;
 
     MWORD NewCap = 0;
-    RET_IF_ERR(MiCapSpaceAllocCaps(CapSpace, &NewCap, 2));
+    RET_IF_ERR(MmAllocateCaps(&NewCap, 2));
 
     MWORD Error = seL4_Untyped_Retype(Src->TreeNode.Cap,
 				      seL4_UntypedObject,
 				      Dest1->Log2Size,
-				      CapSpace->RootCap,
+				      MmRootCspaceCap(),
 				      0, // node_index
 				      0, // node_depth
 				      NewCap, // node_offset
 				      2);
     if (Error != seL4_NoError) {
-	RET_IF_ERR(MiCapSpaceDeallocCap(CapSpace, NewCap+1));
-	RET_IF_ERR(MiCapSpaceDeallocCap(CapSpace, NewCap));
+	RET_IF_ERR(MmDeallocateCap(NewCap+1));
+	RET_IF_ERR(MmDeallocateCap(NewCap));
 	return SEL4_ERROR(Error);
     }
 
@@ -47,16 +43,16 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     return STATUS_SUCCESS;
 }
 
-VOID MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
+VOID MiInsertFreeUntyped(IN PMM_PHY_MEM PhyMem,
 			 IN PMM_UNTYPED Untyped)
 {
     PLIST_ENTRY List;
     if (Untyped->Log2Size >= MM_LARGE_PAGE_BITS) {
-	List = &VaddrSpace->LargeUntypedList;
+	List = &PhyMem->LargeUntypedList;
     } else if (Untyped->Log2Size >= MM_PAGE_BITS) {
-	List = &VaddrSpace->MediumUntypedList;
+	List = &PhyMem->MediumUntypedList;
     } else {
-	List = &VaddrSpace->SmallUntypedList;
+	List = &PhyMem->SmallUntypedList;
     }
     InsertHeadList(List, &Untyped->FreeListEntry);
 }
@@ -64,20 +60,19 @@ VOID MiInsertFreeUntyped(IN PMM_VADDR_SPACE VaddrSpace,
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 			  OUT PMM_UNTYPED *Untyped)
 {
-    PMM_VADDR_SPACE VaddrSpace = &MiNtosVaddrSpace;
     PLIST_ENTRY List = NULL;
-    if (Log2Size >= MM_LARGE_PAGE_BITS && !IsListEmpty(&VaddrSpace->LargeUntypedList)) {
-	List = &VaddrSpace->LargeUntypedList;
-    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&VaddrSpace->MediumUntypedList)) {
-	List = &VaddrSpace->MediumUntypedList;
-    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&VaddrSpace->LargeUntypedList)) {
-	List = &VaddrSpace->LargeUntypedList;
-    } else if (!IsListEmpty(&VaddrSpace->SmallUntypedList)) {
-	List = &VaddrSpace->SmallUntypedList;
-    } else if (!IsListEmpty(&VaddrSpace->MediumUntypedList)) {
-	List = &VaddrSpace->MediumUntypedList;
-    } else if (!IsListEmpty(&VaddrSpace->LargeUntypedList)) {
-	List = &VaddrSpace->LargeUntypedList;
+    if (Log2Size >= MM_LARGE_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
+	List = &MiPhyMemDescriptor.LargeUntypedList;
+    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.MediumUntypedList)) {
+	List = &MiPhyMemDescriptor.MediumUntypedList;
+    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
+	List = &MiPhyMemDescriptor.LargeUntypedList;
+    } else if (!IsListEmpty(&MiPhyMemDescriptor.SmallUntypedList)) {
+	List = &MiPhyMemDescriptor.SmallUntypedList;
+    } else if (!IsListEmpty(&MiPhyMemDescriptor.MediumUntypedList)) {
+	List = &MiPhyMemDescriptor.MediumUntypedList;
+    } else if (!IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
+	List = &MiPhyMemDescriptor.LargeUntypedList;
     }
     if (List == NULL) {
 	return STATUS_NTOS_OUT_OF_MEMORY;
@@ -91,7 +86,7 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 	MiAllocatePool(LeftChild, MM_UNTYPED);
 	MiAllocatePool(RightChild, MM_UNTYPED);
 	RET_IF_ERR(MiSplitUntyped(RootUntyped, LeftChild, RightChild));
-	MiInsertFreeUntyped(VaddrSpace, RightChild);
+	MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChild);
 	RootUntyped = LeftChild;
     }
 

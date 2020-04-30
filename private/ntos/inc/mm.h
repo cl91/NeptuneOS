@@ -26,7 +26,6 @@ typedef enum _MM_CAP_TREE_NODE_TYPE {
 
 /* Describes a node in the Capability Derivation Tree */
 typedef struct _MM_CAP_TREE_NODE {
-    PMM_CAPSPACE CapSpace;
     MWORD Cap;
     struct _MM_CAP_TREE_NODE *Parent;
     struct _MM_CAP_TREE_NODE *LeftChild;
@@ -117,20 +116,20 @@ typedef struct _MM_IO_UNTYPED {
 } MM_IO_UNTYPED, *PMM_IO_UNTYPED;
 
 typedef struct _MM_VADDR_SPACE {
-    MM_CAPSPACE CapSpace;
     MWORD VSpaceCap;
     MM_AVL_TREE VadTree;
     MM_AVL_TREE PageTableTree;	/* Node is either a page table or a large page */
+    PMM_VAD CachedVad;		/* speed up look up */
+} MM_VADDR_SPACE, *PMM_VADDR_SPACE;
+
+typedef struct _MM_PHY_MEM {
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
     LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
     MM_AVL_TREE RootIoUntypedTree; /* Root device untyped organized by their starting phy addr */
-    struct {
-	PMM_VAD Vad;
-	PMM_IO_UNTYPED RootIoUntyped;
-    } Caches;			/* speed up look up */
-} MM_VADDR_SPACE, *PMM_VADDR_SPACE;
+    PMM_IO_UNTYPED CachedRootIoUntyped; /* speed up look up */
+} MM_PHY_MEM, *PMM_PHY_MEM;
 
 typedef enum _MM_MEM_PRESSURE {
 			       MM_MEM_PRESSURE_LOW,
@@ -143,8 +142,10 @@ NTSTATUS MmInitSystem(IN seL4_BootInfo *bootinfo);
 
 /* cap.c */
 NTSTATUS MmAllocateCap(OUT MWORD *Cap);
+NTSTATUS MmAllocateCaps(OUT MWORD *StartCap,
+			IN LONG NumberRequested);
 NTSTATUS MmDeallocateCap(IN MWORD Cap);
-MWORD MmRootCap();
+MWORD MmRootCspaceCap();
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
@@ -160,6 +161,7 @@ NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 			 IN MWORD NumPages,
 			 OUT MWORD *SatisfiedPages);
 NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
+			  IN PMM_PHY_MEM PhyMem,
 			  IN MWORD PhyPageNum,
 			  IN MWORD VirtPageNum);
 NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,

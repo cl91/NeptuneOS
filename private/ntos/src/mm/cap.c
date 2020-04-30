@@ -3,9 +3,9 @@
 #include "mi.h"
 
 /* Allocate a continuous range of capability slots */
-NTSTATUS MiCNodeAllocCaps(IN PMM_CNODE CNode,
-			  OUT MWORD *StartCap,
-			  IN LONG NumberRequested)
+static NTSTATUS MiCNodeAllocCaps(IN PMM_CNODE CNode,
+				 OUT MWORD *StartCap,
+				 IN LONG NumberRequested)
 {
     if (CNode->Policy == MM_CNODE_TAIL_DEALLOC_ONLY) {
 	if (CNode->FreeRange.Number < NumberRequested) {
@@ -23,9 +23,9 @@ NTSTATUS MiCNodeAllocCaps(IN PMM_CNODE CNode,
 /* Perform a depth-first search of free (continuous) cap slots
  * Check first child first, then current cnode, then all other children.
  */
-NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
-				   OUT MWORD *StartCap,
-				   IN LONG NumberRequested)
+static NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
+					  OUT MWORD *StartCap,
+					  IN LONG NumberRequested)
 {
     if (CNode->FirstChild != NULL) {
 	if (NT_SUCCESS(MiCNodeAllocCapsRecursive(CNode->FirstChild, StartCap, NumberRequested))) {
@@ -48,8 +48,8 @@ NTSTATUS MiCNodeAllocCapsRecursive(IN PMM_CNODE CNode,
     return STATUS_NTOS_CAPSPACE_EXHAUSTION;
 }
 
-NTSTATUS MiCNodeDeallocCap(IN PMM_CNODE CNode,
-			   IN MWORD Cap)
+static NTSTATUS MiCNodeDeallocCap(IN PMM_CNODE CNode,
+				  IN MWORD Cap)
 {
     if (CNode->Policy == MM_CNODE_TAIL_DEALLOC_ONLY) {
 	if (CNode->FreeRange.StartCap == Cap) {
@@ -64,9 +64,9 @@ NTSTATUS MiCNodeDeallocCap(IN PMM_CNODE CNode,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiCapSpaceAllocCaps(IN PMM_CAPSPACE CapSpace,
-			     OUT MWORD *StartCap,
-			     IN LONG NumberRequested)
+static NTSTATUS MiCapSpaceAllocCaps(IN PMM_CAPSPACE CapSpace,
+				    OUT MWORD *StartCap,
+				    IN LONG NumberRequested)
 {
     return MiCNodeAllocCapsRecursive(CapSpace->RootCNode, StartCap, NumberRequested);
 }
@@ -74,24 +74,30 @@ NTSTATUS MiCapSpaceAllocCaps(IN PMM_CAPSPACE CapSpace,
 /* Dealloc caps in reverse order, ie. dealloc Caps[NumberRequested-1] first
  * and Caps[0] last
  */
-NTSTATUS MiCapSpaceDeallocCap(IN PMM_CAPSPACE CapSpace,
-			      IN MWORD Cap)
+static NTSTATUS MiCapSpaceDeallocCap(IN PMM_CAPSPACE CapSpace,
+				     IN MWORD Cap)
 {
     /* Fixme: Find the right cnode to operate on */
     return MiCNodeDeallocCap(CapSpace->RootCNode, Cap);
 }
 
+NTSTATUS MmAllocateCaps(OUT MWORD *StartCap,
+			IN LONG NumberRequested)
+{
+    return MiCapSpaceAllocCaps(&MiNtosCapSpace, StartCap, NumberRequested);
+}
+
 NTSTATUS MmAllocateCap(OUT MWORD *Cap)
 {
-    return MiCapSpaceAllocCap(&MiNtosVaddrSpace.CapSpace, Cap);
+    return MmAllocateCaps(Cap, 1);
 }
 
 NTSTATUS MmDeallocateCap(IN MWORD Cap)
 {
-    return MiCapSpaceDeallocCap(&MiNtosVaddrSpace.CapSpace, Cap);
+    return MiCapSpaceDeallocCap(&MiNtosCapSpace, Cap);
 }
 
-MWORD MmRootCap()
+MWORD MmRootCspaceCap()
 {
-    return MiNtosVaddrSpace.CapSpace.RootCap;
+    return MiNtosCapSpace.RootCap;
 }

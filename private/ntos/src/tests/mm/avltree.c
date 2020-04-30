@@ -68,11 +68,12 @@ static VOID PrintAvlTreeLinear(PMM_AVL_TREE tree)
 }
 
 extern MM_VADDR_SPACE MiNtosVaddrSpace;
+extern MM_PHY_MEM MiPhyMemDescriptor;
 
 VOID MmRunAvlTreeTests()
 {
     DbgPrintFunc();
-    PMM_AVL_TREE RootIoUntypedTree = &MiNtosVaddrSpace.RootIoUntypedTree;
+    PMM_AVL_TREE RootIoUntypedTree = &MiPhyMemDescriptor.RootIoUntypedTree;
     DbgPrint("  RootIoUntypedTree:\n");
     PrintAvlTreeLinear(RootIoUntypedTree);
     PrintAvlTree(RootIoUntypedTree);
