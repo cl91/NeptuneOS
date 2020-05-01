@@ -49,13 +49,6 @@ typedef struct _MM_CNODE {
     };
 } MM_CNODE, *PMM_CNODE;
 
-typedef struct _MM_UNTYPED {
-    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    LIST_ENTRY FreeListEntry;
-    LIST_ENTRY RootListEntry;
-    LONG Log2Size;
-} MM_UNTYPED, *PMM_UNTYPED;
-
 typedef enum _MM_PAGING_STRUCTURE_TYPE { MM_PAGE_TYPE_PAGE,
 					 MM_PAGE_TYPE_LARGE_PAGE,
 					 MM_PAGE_TYPE_PAGE_TABLE,
@@ -110,11 +103,6 @@ typedef struct _MM_VAD {
     PMM_AVL_NODE LastPageTable;	 /* polymorphic pointers to either MM_LARGE_PAGE or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;
 
-typedef struct _MM_IO_UNTYPED {
-    MM_AVL_NODE AvlNode;	/* must be first entry */
-    MM_UNTYPED Untyped;
-} MM_IO_UNTYPED, *PMM_IO_UNTYPED;
-
 typedef struct _MM_VADDR_SPACE {
     MWORD VSpaceCap;
     MM_AVL_TREE VadTree;
@@ -122,13 +110,20 @@ typedef struct _MM_VADDR_SPACE {
     PMM_VAD CachedVad;		/* speed up look up */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
+typedef struct _MM_UNTYPED {
+    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
+    MM_AVL_NODE AvlNode;	/* Node ordered by physical address */
+    LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
+    LONG Log2Size;
+    BOOLEAN IsDevice;
+} MM_UNTYPED, *PMM_UNTYPED;
+
 typedef struct _MM_PHY_MEM {
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
-    LIST_ENTRY RootUntypedList; /* Root untyped's (including used and unused) */
-    MM_AVL_TREE RootIoUntypedTree; /* Root device untyped organized by their starting phy addr */
-    PMM_IO_UNTYPED CachedRootIoUntyped; /* speed up look up */
+    MM_AVL_TREE RootUntypedTree; /* Root untyped organized by their starting phy addr */
+    PMM_UNTYPED CachedRootUntyped; /* speed up look up */
 } MM_PHY_MEM, *PMM_PHY_MEM;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -148,8 +143,8 @@ NTSTATUS MmDeallocateCap(IN MWORD Cap);
 MWORD MmRootCspaceCap();
 
 /* untyped.c */
-NTSTATUS MmRequestUntyped(IN LONG Log2Size,
-			  OUT PMM_UNTYPED *Untyped);
+NTSTATUS MmRequestFreeUntyped(IN LONG Log2Size,
+			      OUT PMM_UNTYPED *pUntyped);
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
@@ -168,6 +163,8 @@ NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
 			IN MWORD VirtPageNum);
 
 /* vaddr.c */
+VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE VaddrSpace,
+			    IN MWORD VspaceCap);
 NTSTATUS MmReserveVirtualMemory(IN MWORD StartPageNum,
 				IN MWORD NumPages);
 NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,

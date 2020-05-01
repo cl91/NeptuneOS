@@ -55,9 +55,9 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 				     IN PMM_VAD ExPoolVad)
 {
     MiAllocatePool(RootUntyped, MM_UNTYPED);
-    MiInitializeUntyped(RootUntyped, NULL,
-			InitInfo->InitUntypedCap,
-			InitInfo->InitUntypedLog2Size);
+    MiInitializeUntyped(RootUntyped, NULL, TRUE, InitInfo->InitUntypedCap,
+			InitInfo->InitUntypedPhyAddr,
+			InitInfo->InitUntypedLog2Size, FALSE);
 
     PMM_UNTYPED ParentUntyped = RootUntyped;
     LONG NumSplits = InitInfo->InitUntypedLog2Size - MM_PAGE_BITS;
@@ -69,26 +69,50 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 	LONG ChildLog2Size = InitInfo->InitUntypedLog2Size - 1 - i;
 	MWORD LeftChildCap = InitInfo->RootCNodeFreeCapStart + 2*i;
 	MWORD RigthChildCap = LeftChildCap + 1;
-	MiInitializeUntyped(LeftChildUntyped, ParentUntyped,
-			    LeftChildCap, ChildLog2Size);
-	MiInitializeUntyped(RightChildUntyped, ParentUntyped,
-			    RigthChildCap, ChildLog2Size);
-
-	ParentUntyped->TreeNode.LeftChild = &LeftChildUntyped->TreeNode;
-	ParentUntyped->TreeNode.RightChild = &RightChildUntyped->TreeNode;
+	MiInitializeUntyped(LeftChildUntyped, ParentUntyped, TRUE,
+			    LeftChildCap, InitInfo->InitUntypedPhyAddr,
+			    ChildLog2Size, FALSE);
+	MiInitializeUntyped(RightChildUntyped, ParentUntyped, FALSE, RigthChildCap,
+			    InitInfo->InitUntypedPhyAddr + (1 << ChildLog2Size),
+			    ChildLog2Size, FALSE);
 
 	if (i < NumSplits-2) {
 	    MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChildUntyped);
 	} else if (i == NumSplits-2) {
+	    /*
+	     * The capability derivation tree at this level is:
+	     *
+	     *                 (ParentUntyped)                         ----    (i == NumSplits-2)
+	     *                  /           \
+	     *    (LeftChildUntyped)     (RightChilduntyped)           ----    (i == NumSplits-1)
+	     *       /         \            /             \
+	     * (Page0Un)   (Page1Un)    (Page2Un)    (PageTableUn)     ----    (i == NumSplits)
+	     *     |           |            |              |
+	     *  (Page0)     (Page1)      (Page2)      (PageTable)
+	     *
+	     * Capabilities are
+	     *
+	     *            (FS+2NS-5 or InitUntypedCap)                   ----    (i == NumSplits-2)
+	     *             /                        \
+	     *        (FS+2NS-4)                (FS+2NS-3)               ----    (i == NumSplits-1)
+	     *       /         \               /          \
+	     * (FS+2NS-2)   (FS+2NS-1)    (FS+2NS)    (FS+2NS+1)         ----    (i == NumSplits)
+	     *     |            |             |            |
+	     * (FS+2NS+2)   (FS+2NS+3)    (FS+2NS+4)  (FS+2NS+5)
+	     *
+	     * Here FS = InitInfo->RootCNodeFreeCapStart, NS = NumSplits
+	     */
 	    MiAllocatePool(Page2Untyped, MM_UNTYPED);
 	    MiAllocatePool(PageTableUntyped, MM_UNTYPED);
 	    assert(InitInfo->InitUntypedLog2Size - NumSplits == MM_PAGE_BITS);
 	    MWORD Page2UntypedCap = InitInfo->RootCNodeFreeCapStart + 2*NumSplits;
 	    MWORD PageTableUntypedCap = Page2UntypedCap + 1;
-	    MiInitializeUntyped(Page2Untyped, RightChildUntyped,
-				Page2UntypedCap, MM_PAGE_BITS);
-	    MiInitializeUntyped(PageTableUntyped, RightChildUntyped,
-				PageTableUntypedCap, MM_PAGE_BITS);
+	    MiInitializeUntyped(Page2Untyped, RightChildUntyped, TRUE, Page2UntypedCap,
+				InitInfo->InitUntypedPhyAddr + 2 * MM_PAGE_SIZE,
+				MM_PAGE_BITS, FALSE);
+	    MiInitializeUntyped(PageTableUntyped, RightChildUntyped, FALSE, PageTableUntypedCap,
+				InitInfo->InitUntypedPhyAddr + 3 * MM_PAGE_SIZE,
+				MM_PAGE_BITS, FALSE);
 	    MiAllocatePool(Page2, MM_PAGE);
 	    MiAllocatePool(pPageTable, MM_PAGE_TABLE);
 	    PageTable = pPageTable;

@@ -236,7 +236,7 @@ MiAvlTreeRebalanceNode(PMM_AVL_TREE Tree,
  * Node->Key <= input Key
  * Returns NULL if no such node is found
  */
-static PMM_AVL_NODE
+PMM_AVL_NODE
 MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 			  IN MWORD Key)
 {
@@ -262,7 +262,7 @@ MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 /*
  * Insert tree node under Parent.
  */
-static VOID
+VOID
 MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 		    IN PMM_AVL_NODE Parent,
 		    IN PMM_AVL_NODE Node)
@@ -324,157 +324,4 @@ MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 	    break;
 	}
     }
-}
-
-NTSTATUS MiVspaceInsertVadNode(IN PMM_VADDR_SPACE Vspace,
-			       IN PMM_VAD VadNode)
-{
-    PMM_AVL_TREE Tree = &Vspace->VadTree;
-    MWORD StartPageNum = VadNode->AvlNode.Key;
-    MWORD EndPageNum = StartPageNum + VadNode->NumPages;
-    PMM_VAD Parent = (PMM_VAD) MiAvlTreeFindNodeOrParent(Tree, StartPageNum);
-    if (Parent != NULL && (StartPageNum >= Parent->AvlNode.Key)
-	&& (EndPageNum <= Parent->AvlNode.Key + Parent->NumPages)) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
-    }
-    MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &VadNode->AvlNode);
-    return STATUS_SUCCESS;
-}
-
-PMM_VAD MiVspaceFindVadNode(IN PMM_VADDR_SPACE Vspace,
-			    IN MWORD StartPageNum,
-			    IN MWORD NumPages)
-{
-    PMM_AVL_TREE Tree = &Vspace->VadTree;
-    MWORD EndPageNum = StartPageNum + NumPages;
-    if (Vspace->CachedVad != NULL && (StartPageNum >= Vspace->CachedVad->AvlNode.Key)
-	&& (EndPageNum <= Vspace->CachedVad->AvlNode.Key + Vspace->CachedVad->NumPages)) {
-	/* EndPageNum <= ...: Here the equal sign is important! */
-	return Vspace->CachedVad;
-    }
-    PMM_VAD Parent = (PMM_VAD) MiAvlTreeFindNodeOrParent(Tree, StartPageNum);
-    if (Parent != NULL && (StartPageNum >= Parent->AvlNode.Key)
-	&& (EndPageNum <= Parent->AvlNode.Key + Parent->NumPages)) {
-	/* EndPageNum <= ...: Here the equal sign is important! */
-	Vspace->CachedVad = Parent;
-	return Parent;
-    }
-    return NULL;
-}
-
-PMM_AVL_NODE MiVspaceFindPageTableOrLargePage(IN PMM_VADDR_SPACE Vspace,
-					      IN MWORD LargePageNum)
-{
-    PMM_AVL_TREE Tree = &Vspace->PageTableTree;
-    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, LargePageNum);
-    if (Parent != NULL && (LargePageNum == Parent->Key)) {
-	return Parent;
-    }
-    return NULL;
-}
-
-BOOLEAN MiPTNodeIsPageTable(PMM_AVL_NODE Node)
-{
-    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure.Type == MM_PAGE_TYPE_PAGE_TABLE);
-}
-
-BOOLEAN MiPTNodeIsLargePage(PMM_AVL_NODE Node)
-{
-    return (Node != NULL) && (((PMM_LARGE_PAGE) Node)->PagingStructure.Type == MM_PAGE_TYPE_LARGE_PAGE);
-}
-
-NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
-				 IN PMM_VAD Vad,
-				 IN PMM_LARGE_PAGE LargePage)
-{
-    if (!LargePage->PagingStructure.Mapped) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
-    }
-    PMM_AVL_TREE Tree = &Vspace->PageTableTree;
-    MWORD LargePN = LargePage->PagingStructure.VirtPageNum >> MM_LARGE_PN_SHIFT;
-    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, LargePN);
-    if (Parent != NULL && LargePN == Parent->Key) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
-    }
-    MiAvlTreeInsertNode(Tree, Parent, &LargePage->AvlNode);
-    MWORD VadStartLargePN = Vad->AvlNode.Key >> MM_LARGE_PN_SHIFT;
-    MWORD VadEndLargePN = (Vad->AvlNode.Key + Vad->NumPages) >> MM_LARGE_PN_SHIFT;
-    if (LargePN == VadStartLargePN) {
-	Vad->FirstPageTable = &LargePage->AvlNode;
-    } else if (LargePN == VadEndLargePN - 1) {
-	Vad->LastPageTable = &LargePage->AvlNode;
-    }
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS MiVspaceInsertPageTable(IN PMM_VADDR_SPACE Vspace,
-				 IN PMM_VAD Vad,
-				 IN PMM_PAGE_TABLE PageTable)
-{
-    return MiVspaceInsertLargePage(Vspace, Vad, (PMM_LARGE_PAGE) PageTable);
-}
-
-NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
-			       IN PMM_PAGE Page)
-{
-    if (!PageTable->PagingStructure.Mapped || !Page->PagingStructure.Mapped) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
-    }
-    PMM_AVL_TREE Tree = &PageTable->MappedPages;
-    MWORD PageNum = Page->PagingStructure.VirtPageNum;
-    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, PageNum);
-    if (Parent != NULL && PageNum == Parent->Key) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
-    }
-    MiAvlTreeInsertNode(Tree, Parent, &Page->AvlNode);
-    return STATUS_SUCCESS;
-}
-
-PMM_PAGE MiPageTableFindPage(IN PMM_PAGE_TABLE PageTable,
-			     IN MWORD PageNum)
-{
-    if (!PageTable->PagingStructure.Mapped) {
-	return NULL;
-    }
-    PMM_AVL_TREE Tree = &PageTable->MappedPages;
-    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, PageNum);
-    if (Parent != NULL && PageNum == Parent->Key) {
-	return (PMM_PAGE) Parent;
-    }
-    return NULL;
-}
-
-NTSTATUS MiInsertRootIoUntyped(IN PMM_PHY_MEM PhyMem,
-			       IN PMM_IO_UNTYPED RootIoUntyped)
-{
-    assert(RootIoUntyped->Untyped.Log2Size >= MM_PAGE_BITS);
-    MWORD StartPageNum = RootIoUntyped->AvlNode.Key;
-    MWORD EndPageNum = StartPageNum + (1 << (RootIoUntyped->Untyped.Log2Size - MM_PAGE_BITS));
-    PMM_AVL_TREE Tree = &PhyMem->RootIoUntypedTree;
-    PMM_IO_UNTYPED Parent = (PMM_IO_UNTYPED) MiAvlTreeFindNodeOrParent(Tree, StartPageNum);
-    if (Parent != NULL && (StartPageNum >= Parent->AvlNode.Key)
-	&& (EndPageNum <= Parent->AvlNode.Key + (1 << (Parent->Untyped.Log2Size - MM_PAGE_BITS)))) {
-	/* EndPageNum <= ...: Here the equal sign is important! */
-	return STATUS_NTOS_INVALID_ARGUMENT;
-    }
-    MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &RootIoUntyped->AvlNode);
-    return STATUS_SUCCESS;
-}
-
-PMM_IO_UNTYPED MiFindRootIoUntyped(IN PMM_PHY_MEM PhyMem,
-				   IN MWORD PhyPageNum)
-{
-    PMM_AVL_TREE Tree = &PhyMem->RootIoUntypedTree;
-    if (PhyMem->CachedRootIoUntyped != NULL && (PhyPageNum >= PhyMem->CachedRootIoUntyped->AvlNode.Key)
-	&& (PhyPageNum < PhyMem->CachedRootIoUntyped->AvlNode.Key +
-	    (1 << (PhyMem->CachedRootIoUntyped->Untyped.Log2Size - MM_PAGE_BITS)))) {
-	return PhyMem->CachedRootIoUntyped;
-    }
-    PMM_IO_UNTYPED Parent = (PMM_IO_UNTYPED) MiAvlTreeFindNodeOrParent(Tree, PhyPageNum);
-    if (Parent != NULL && (PhyPageNum >= Parent->AvlNode.Key)
-	&& (PhyPageNum < Parent->AvlNode.Key + (1 << (Parent->Untyped.Log2Size - MM_PAGE_BITS)))) {
-	PhyMem->CachedRootIoUntyped = Parent;
-	return Parent;
-    }
-    return NULL;
 }

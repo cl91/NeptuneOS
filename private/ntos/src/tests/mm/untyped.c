@@ -5,11 +5,6 @@ extern MM_PHY_MEM MiPhyMemDescriptor;
 VOID MmRunUntypedTests()
 {
     DbgPrintFunc();
-    PLIST_ENTRY RootUntypedList = &MiPhyMemDescriptor.RootUntypedList;
-    DbgPrint("  Root untyped:\n");
-    LoopOverList(Untyped, RootUntypedList, MM_UNTYPED, RootListEntry) {
-	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
-    }
     PLIST_ENTRY SmallUntypedList = &MiPhyMemDescriptor.SmallUntypedList;
     DbgPrint("  Small free untyped:\n");
     LoopOverList(Untyped, SmallUntypedList, MM_UNTYPED, FreeListEntry) {

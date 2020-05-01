@@ -73,10 +73,10 @@ extern MM_PHY_MEM MiPhyMemDescriptor;
 VOID MmRunAvlTreeTests()
 {
     DbgPrintFunc();
-    PMM_AVL_TREE RootIoUntypedTree = &MiPhyMemDescriptor.RootIoUntypedTree;
-    DbgPrint("  RootIoUntypedTree:\n");
-    PrintAvlTreeLinear(RootIoUntypedTree);
-    PrintAvlTree(RootIoUntypedTree);
+    PMM_AVL_TREE RootUntypedTree = &MiPhyMemDescriptor.RootUntypedTree;
+    DbgPrint("  RootUntypedTree:\n");
+    PrintAvlTreeLinear(RootUntypedTree);
+    PrintAvlTree(RootUntypedTree);
     PMM_AVL_TREE VadTree = &MiNtosVaddrSpace.VadTree;
     DbgPrint("  VadTree:\n");
     PrintAvlTreeLinear(VadTree);

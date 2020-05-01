@@ -11,13 +11,6 @@ extern UCHAR _binary_initcpio_size[];
 
 VOID LdrLoadBootModules()
 {
-    for (PUCHAR p = &_binary_initcpio_start[0]; p < &_binary_initcpio_end[0]; p++) {
-    	if ((p - &_binary_initcpio_start[0]) % 8 == 0) {
-    	    DbgPrint("\n");
-    	}
-    	DbgPrint("%02x ", *p, *p);
-    }
-
     struct cpio_info cpio;
     cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
     DbgPrint("\ncpio has %d file(s):\n", cpio.file_count);
