@@ -45,11 +45,11 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
-echo 'ntdll' > image-list
-cpio -H newc -o < image-list > initcpio
+#echo 'ntdll' > image-list
+#cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
-	--rename-section .data=.rodata,CONTENTS,ALLOC,LOAD,READONLY,DATA \
-	initcpio initcpio.o
+	--rename-section .data=ntdll,CONTENTS,ALLOC,LOAD,READONLY,DATA \
+	ntdll ntdll.o
 
 # Link ntos and initcpio into final ntos image
 cd ../images
@@ -60,7 +60,7 @@ else
 fi
 ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS}\
        ../elf/libntos.a \
-       ../pe/initcpio.o \
+       ../pe/ntdll.o \
        -T ../../private/ntos/ntos.lds \
        -o ntos
 cp ../elf/kernel-$SEL4_ARCH-pc99 kernel

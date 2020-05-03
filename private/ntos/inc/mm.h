@@ -143,24 +143,44 @@ NTSTATUS MmDeallocateCap(IN MWORD Cap);
 MWORD MmRootCspaceCap();
 
 /* untyped.c */
-NTSTATUS MmRequestFreeUntyped(IN LONG Log2Size,
-			      OUT PMM_UNTYPED *pUntyped);
+NTSTATUS MmRequestUntyped(IN LONG Log2Size,
+			  OUT PMM_UNTYPED *pUntyped);
+NTSTATUS MmReleaseUntyped(IN PMM_UNTYPED Untyped);
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitPages(IN MWORD StartPageNum,
+NTSTATUS MmCommitPages(IN MWORD FirstPageNum,
 		       IN MWORD NumPages,
-		       OUT MWORD *SatisfiedPages);
+		       OUT MWORD *SatisfiedPages,
+		       OUT OPTIONAL PMM_PAGE *Pages);
 NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 			 IN MWORD StartPageNum,
 			 IN MWORD NumPages,
-			 OUT MWORD *SatisfiedPages);
+			 OUT MWORD *SatisfiedPages,
+			 OUT OPTIONAL PMM_PAGE *Pages);
 NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
 			  IN PMM_PHY_MEM PhyMem,
 			  IN MWORD PhyPageNum,
 			  IN MWORD VirtPageNum);
 NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
 			IN MWORD VirtPageNum);
+
+static inline NTSTATUS
+MmCommitPageEx(IN PMM_VADDR_SPACE VaddrSpace,
+	       IN MWORD StartPageNum,
+	       OUT OPTIONAL PMM_PAGE *Page)
+{
+    MWORD SatisfiedPages;
+    return MmCommitPagesEx(VaddrSpace, StartPageNum, 1, &SatisfiedPages, Page);
+}
+
+static inline NTSTATUS
+MmCommitPage(IN MWORD StartPageNum,
+	     OUT OPTIONAL PMM_PAGE *Page)
+{
+    MWORD SatisfiedPages;
+    return MmCommitPages(StartPageNum, 1, &SatisfiedPages, Page);
+}
 
 /* vaddr.c */
 VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE VaddrSpace,

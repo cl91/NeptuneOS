@@ -1,14 +1,15 @@
 #pragma once
 
 #include <nt.h>
+#include <sel4/sel4.h>
 #include "ke.h"
 #include "mm.h"
 #include "ntosdef.h"
 
 #ifdef _M_IX86
-#include "i386/ex.h"
+#define EX_POOL_START	(0x80000000)
 #elif defined(_M_AMD64)
-#include "amd64/ex.h"
+#define EX_POOL_START	(0x80000000)
 #endif
 
 /* Size of reserved address space starting from EX_POOL_START */
@@ -27,7 +28,12 @@
 
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
 
-NTSTATUS ExInitializePool(MWORD HeapStart,
-			  LONG NumPages);
+/* init.c */
+NTSTATUS ExInitSystem(seL4_BootInfo *bootinfo);
+
+/* pool.c */
+NTSTATUS ExInitializePool(IN MWORD HeapStart,
+			  IN LONG NumPages);
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag);
+VOID ExFreePool(IN PVOID Ptr);

@@ -73,8 +73,8 @@ VOID MiInsertFreeUntyped(IN PMM_PHY_MEM PhyMem,
     InsertHeadList(List, &Untyped->FreeListEntry);
 }
 
-NTSTATUS MmRequestFreeUntyped(IN LONG Log2Size,
-			      OUT PMM_UNTYPED *pUntyped)
+NTSTATUS MmRequestUntyped(IN LONG Log2Size,
+			  OUT PMM_UNTYPED *pUntyped)
 {
     PLIST_ENTRY List = NULL;
     if (Log2Size >= MM_LARGE_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
@@ -188,5 +188,11 @@ NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
     MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &RootUntyped->AvlNode);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmReleaseUntyped(IN PMM_UNTYPED Untyped)
+{
+    /* TODO: Merge untyped recursively if possible and add to free list */
     return STATUS_SUCCESS;
 }

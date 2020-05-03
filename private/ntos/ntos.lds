@@ -14,6 +14,11 @@ SECTIONS
         _rodata_start = . ;
 	*(.rodata)
 	_rodata_end = . ;
+	. = ALIGN(4096);
+	_ntdll_start = .;
+	*(ntdll)
+	_ntdll_end = .;
+	. = ALIGN(4096);
     }
   .data :
     {

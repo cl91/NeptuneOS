@@ -7,10 +7,12 @@
 
 #ifdef _M_IX86
 #define seL4_VSpaceObject seL4_X86_PageDirectoryObject
+#define IPC_BUFFER_VADDR	(0xc0000000)
 #endif
 
 #ifdef _M_AMD64
 #define seL4_VSpaceObject seL4_X64_PML4Object
+#define IPC_BUFFER_VADDR	(0xc0000000)
 #endif
 
 #define NTOS_PS_TAG	EX_POOL_TAG('n', 't', 'p', 's')
@@ -18,9 +20,8 @@
 typedef struct _THREAD {
     LIST_ENTRY ThreadListEntry;
     PMM_UNTYPED TcbUntyped;
-    PMM_UNTYPED IpcBufferUntyped;
     MWORD TcbCap;
-    MWORD IpcBufferCap;
+    PMM_PAGE IpcBuffer;
 } THREAD, *PTHREAD;
 
 typedef struct _PROCESS {
@@ -28,3 +29,11 @@ typedef struct _PROCESS {
     LIST_ENTRY ThreadList;
     MM_VADDR_SPACE VaddrSpace;	/* Virtual address space */
 } PROCESS, *PPROCESS;
+
+/* init.c */
+NTSTATUS PsInitSystem();
+
+/* create.c */
+NTSTATUS PsCreateThread(IN PPROCESS Process,
+			OUT PTHREAD *pThread);
+NTSTATUS PsCreateProcess(OUT PPROCESS *pProcess);

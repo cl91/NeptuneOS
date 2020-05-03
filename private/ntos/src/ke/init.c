@@ -18,8 +18,8 @@ extern char _text_start[];
 extern char _text_end[];
 extern char _rodata_start[];
 extern char _rodata_end[];
-extern char _binary_initcpio_start[];
-extern char _binary_initcpio_end[];
+extern char _ntdll_start[];
+extern char _ntdll_end[];
 extern char _data_start[];
 extern char _data_end[];
 extern char _bss_start[];
@@ -49,8 +49,8 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    _text_end = %p\n", _text_end);
     DbgPrint("    _rodata_start = %p\n", _rodata_start);
     DbgPrint("    _rodata_end = %p\n", _rodata_end);
-    DbgPrint("    _binary_initcpio_start = %p\n", _binary_initcpio_start);
-    DbgPrint("    _binary_initcpio_end = %p\n", _binary_initcpio_end);
+    DbgPrint("    _ntdll_start = %p\n", _ntdll_start);
+    DbgPrint("    _ntdll_end = %p\n", _ntdll_end);
     DbgPrint("    _data_start = %p\n", _data_start);
     DbgPrint("    _data_end = %p\n", _data_end);
     DbgPrint("    _bss_start = %p\n", _bss_start);
@@ -139,7 +139,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 #ifdef CONFIG_DEBUG_BUILD
     KiDumpBootInfoAll(bootinfo);
 #endif
-    BUGCHECK_IF_ERR(MmInitSystem(bootinfo));
+    BUGCHECK_IF_ERR(ExInitSystem(bootinfo));
     KiInitVga();
     LdrLoadBootModules();
 #ifdef CONFIG_RUN_TESTS

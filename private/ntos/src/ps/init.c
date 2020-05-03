@@ -1,64 +1,54 @@
 #include "psp.h"
 
-static NTSTATUS PspThreadTypeCreateProc(POBJECT_TYPE ObjectType)
+static NTSTATUS PspThreadObjectOpenProc(PVOID Object)
 {
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspThreadObjectOpenProc(POBJECT_HEADER ObjectHeader)
+static NTSTATUS PspThreadObjectCloseProc(PVOID Object)
 {
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspThreadObjectCloseProc(POBJECT_HEADER ObjectHeader)
+static NTSTATUS PspProcessObjectOpenProc(PVOID Object)
 {
     return STATUS_SUCCESS;
 }
 
-OBJECT_TYPE_INITIALIZER PspThreadInitProcs =
-    {
-     .TypeCreateProc = PspThreadTypeCreateProc,
-     .OpenProc = PspThreadObjectOpenProc,
-     .CloseProc = PspThreadObjectCloseProc
-    };
-
-static NTSTATUS PspProcessTypeCreateProc(POBJECT_TYPE ObjectType)
+static NTSTATUS PspProcessObjectCloseProc(PVOID Object)
 {
     return STATUS_SUCCESS;
 }
-
-static NTSTATUS PspProcessObjectOpenProc(POBJECT_HEADER ObjectHeader)
-{
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspProcessObjectCloseProc(POBJECT_HEADER ObjectHeader)
-{
-    return STATUS_SUCCESS;
-}
-
-OBJECT_TYPE_INITIALIZER PspProcessInitProcs =
-    {
-     .TypeCreateProc = PspProcessTypeCreateProc,
-     .OpenProc = PspProcessObjectOpenProc,
-     .CloseProc = PspProcessObjectCloseProc
-    };
 
 static NTSTATUS PspCreateThreadType()
 {
+    OBJECT_TYPE_INITIALIZER TypeInfo =
+	{
+	 .CreateProc = PspThreadObjectCreateProc,
+	 .OpenProc = PspThreadObjectOpenProc,
+	 .CloseProc = PspThreadObjectCloseProc
+	};
     return ObCreateObjectType(OBJECT_TYPE_THREAD,
 			      "Thread",
-			      &PspThreadInitProcs);
+			      sizeof(THREAD),
+			      TypeInfo);
 }
 
 static NTSTATUS PspCreateProcessType()
 {
+    OBJECT_TYPE_INITIALIZER TypeInfo =
+	{
+	 .CreateProc = PspProcessObjectCreateProc,
+	 .OpenProc = PspProcessObjectOpenProc,
+	 .CloseProc = PspProcessObjectCloseProc
+	};
     return ObCreateObjectType(OBJECT_TYPE_PROCESS,
 			      "Process",
-			      &PspThreadInitProcs);
+			      sizeof(PROCESS),
+			      TypeInfo);
 }
 
-NTSTATUS PsInitialize()
+NTSTATUS PsInitSystem()
 {
     RET_IF_ERR(PspCreateThreadType());
     RET_IF_ERR(PspCreateProcessType());

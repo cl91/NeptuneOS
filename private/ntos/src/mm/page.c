@@ -180,7 +180,7 @@ static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
 				       OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
 {
     PMM_UNTYPED Untyped;
-    RET_IF_ERR(MmRequestFreeUntyped(MM_PAGE_TABLE_BITS, &Untyped));
+    RET_IF_ERR(MmRequestUntyped(MM_PAGE_TABLE_BITS, &Untyped));
 
     MiAllocatePool(PageTable, MM_PAGE_TABLE);
     MiInitializePageTable(PageTable, Untyped, Vspace, 0, PageTableNum, FALSE);
@@ -213,7 +213,8 @@ static NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
 NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 			 IN MWORD FirstPageNum,
 			 IN MWORD NumPages,
-			 OUT MWORD *SatisfiedPages)
+			 OUT MWORD *SatisfiedPages,
+			 OUT OPTIONAL PMM_PAGE *Pages)
 {
     PMM_VAD Vad = MiVspaceFindVadNode(VaddrSpace, FirstPageNum, NumPages);
     if (Vad == NULL) {
@@ -235,10 +236,14 @@ NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 	}
 	MWORD LastPageNumInPageTable = (PTNum + 1) << MM_LARGE_PN_SHIFT;
 	while (PageNum <= LastPageNumInPageTable && *SatisfiedPages < NumPages) {
-	    if (MiPageTableFindPage(PageTable, PageNum) == NULL) {
+	    PMM_PAGE Page = MiPageTableFindPage(PageTable, PageNum);
+	    if (Page == NULL) {
 		PMM_UNTYPED Untyped;
-		RET_IF_ERR(MmRequestFreeUntyped(MM_PAGE_BITS, &Untyped));
-		RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, NULL));
+		RET_IF_ERR(MmRequestUntyped(MM_PAGE_BITS, &Untyped));
+		PMM_PAGE *PageOut = Pages ? &Pages[*SatisfiedPages] : NULL;
+		RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, PageOut));
+	    } else if (Pages != NULL) {
+		Pages[*SatisfiedPages] = Page;
 	    }
 	    PageNum++;
 	    *SatisfiedPages += 1;
@@ -253,9 +258,10 @@ NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 
 NTSTATUS MmCommitPages(IN MWORD FirstPageNum,
 		       IN MWORD NumPages,
-		       OUT MWORD *SatisfiedPages)
+		       OUT MWORD *SatisfiedPages,
+		       OUT OPTIONAL PMM_PAGE *Pages)
 {
-    return MmCommitPagesEx(&MiNtosVaddrSpace, FirstPageNum, NumPages, SatisfiedPages);
+    return MmCommitPagesEx(&MiNtosVaddrSpace, FirstPageNum, NumPages, SatisfiedPages, Pages);
 }
 
 NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,

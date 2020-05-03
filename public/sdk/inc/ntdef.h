@@ -32,7 +32,7 @@
 #undef CONST
 #define CONST const
 #define VOID void
-typedef void *PVOID;
+typedef void *PVOID, **PPVOID;
 
 typedef char CHAR;
 typedef unsigned char UCHAR;
@@ -59,6 +59,8 @@ typedef int32_t LONG;
 typedef uint32_t ULONG;
 typedef LONG *PLONG;
 typedef ULONG *PULONG;
+
+typedef uint64_t ULONGLONG, *PULONGLONG;
 
 typedef uintptr_t ULONG_PTR;
 typedef intptr_t LONG_PTR;

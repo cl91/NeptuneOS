@@ -23,8 +23,8 @@ static VOID EiAddPageToPool(IN PEX_POOL Pool,
 }
 
 /* We require 3 consecutive initial pages mapped at EX_POOL_START */
-NTSTATUS ExInitializePool(MWORD HeapStart,
-			  LONG NumPages)
+NTSTATUS ExInitializePool(IN MWORD HeapStart,
+			  IN LONG NumPages)
 {
     /* Initialize FreeLists */
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
@@ -82,8 +82,7 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 	    }
 	    MWORD SatisfiedPages = 0;
 	    MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS,
-			  NewPages,
-			  &SatisfiedPages);
+			  NewPages, &SatisfiedPages, NULL);
 	    Pool->TotalPages += SatisfiedPages;
 	}
     }
@@ -149,8 +148,19 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     return (PVOID) BlockStart;
 }
 
+static VOID EiFreePool(IN PEX_POOL Pool,
+		       IN PVOID Ptr)
+{
+    /* TODO: Implement */
+}
+
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag)
 {
     return EiAllocatePoolWithTag(&EiPool, NumberOfBytes, Tag);
+}
+
+VOID ExFreePool(IN PVOID Ptr)
+{
+    return EiFreePool(&EiPool, Ptr);
 }

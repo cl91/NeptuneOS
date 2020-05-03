@@ -1,5 +1,7 @@
-
 #include "psp.h"
+
+extern UCHAR _ntdll_start[];
+extern UCHAR _ntdll_end[];
 
 static NTSTATUS PspRetypeIntoObject(IN PMM_UNTYPED Untyped,
 				    IN MWORD ObjType,
@@ -26,41 +28,67 @@ static NTSTATUS PspRetypeIntoObject(IN PMM_UNTYPED Untyped,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspCreateThread(IN PPROCESS pProcess,
-				OUT PTHREAD *pThread)
+NTSTATUS PspThreadObjectCreateProc(PVOID Object)
 {
+    PTHREAD Thread = (PTHREAD) Object;
+
     PMM_UNTYPED TcbUntyped;
-    PMM_UNTYPED IpcBufferUntyped;
-    RET_IF_ERR(MmRequestFreeUntyped(seL4_TCBBits, &TcbUntyped));
-    RET_IF_ERR(MmRequestFreeUntyped(seL4_PageBits, &IpcBufferUntyped));
+    RET_IF_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
+
     MWORD TcbCap;
-    RET_IF_ERR(PspRetypeIntoObject(TcbUntyped, seL4_TCBObject,
-				   seL4_TCBBits, &TcbCap));
-    /* Retype into ipc buffer page */
+    NTSTATUS Status = PspRetypeIntoObject(TcbUntyped, seL4_TCBObject,
+					  seL4_TCBBits, &TcbCap);
+    if (!NT_SUCCESS(Status)) {
+	RET_IF_ERR(MmReleaseUntyped(TcbUntyped));
+	return Status;
+    }
 
-    PspAllocatePool(Thread, THREAD);
     Thread->TcbUntyped = TcbUntyped;
-    Thread->IpcBufferUntyped = IpcBufferUntyped;
     Thread->TcbCap = TcbCap;
-    /* Record ipc buffer page */
+    Thread->IpcBuffer = NULL;
 
-    *pThread = Thread;
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspCreateProcess(OUT PPROCESS *pProcess)
+NTSTATUS PspProcessObjectCreateProc(PVOID Object)
 {
-    PMM_UNTYPED VspaceUntyped;
-    RET_IF_ERR(MmRequestFreeUntyped(seL4_VSpaceBits, &VspaceUntyped));
-    MWORD VspaceCap;
-    RET_IF_ERR(PspRetypeIntoObject(VspaceUntyped, seL4_VSpaceObject,
-				   seL4_VSpaceBits, &VspaceCap));
+    PPROCESS Process = (PPROCESS) Object;
 
-    PspAllocatePool(Process, PROCESS);
+    PMM_UNTYPED VspaceUntyped;
+    RET_IF_ERR(MmRequestUntyped(seL4_VSpaceBits, &VspaceUntyped));
+    MWORD VspaceCap;
+    NTSTATUS Status = PspRetypeIntoObject(VspaceUntyped, seL4_VSpaceObject,
+					  seL4_VSpaceBits, &VspaceCap);
+    if (!NT_SUCCESS(Status)) {
+	RET_IF_ERR(MmReleaseUntyped(VspaceUntyped));
+	return Status;
+    }
+
     Process->InitThread = NULL;
     InitializeListHead(&Process->ThreadList);
     MmInitializeVaddrSpace(&Process->VaddrSpace, VspaceCap);
 
-    *pProcess = Process;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS PsCreateThread(IN PPROCESS Process,
+			OUT PTHREAD *Thread)
+{
+    RET_IF_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (PPVOID) Thread));
+
+    PMM_PAGE IpcBuffer;
+    RET_IF_ERR(MmCommitPageEx(&Process->VaddrSpace, IPC_BUFFER_VADDR, &IpcBuffer));
+    (*Thread)->IpcBuffer = IpcBuffer;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS PsCreateProcess(OUT PPROCESS *Process)
+{
+    RET_IF_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (PPVOID) Process));
+
+    RET_IF_ERR(MmReserveVirtualMemoryEx(&(*Process)->VaddrSpace,
+					IPC_BUFFER_VADDR, 1));
+
     return STATUS_SUCCESS;
 }
