@@ -121,7 +121,7 @@ static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
     InitializeListHead(&MiPhyMemDescriptor.LargeUntypedList);
     RET_IF_ERR(MiInitRecordUntypedAndPages(InitInfo, ExPoolVad));
 
-    /* Build Vad for initial image */
+    /* Build Vad for ntos image */
     RET_IF_ERR(MmReserveVirtualMemory(InitInfo->UserStartPageNum, InitInfo->NumUserPages));
     PMM_VAD UserImageVad = MiVspaceFindVadNode(&MiNtosVaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages);
     if (UserImageVad == NULL) {
@@ -155,7 +155,7 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
     MWORD InitUntypedPhyAddr = 0;
     LONG Log2Size = 128;
 
-    /* Find at least 7 Page + 1 PageDirectory */
+    /* Find at least 7 Pages + 1 PageDirectory */
     LoopOverUntyped(cap, desc, bootinfo) {
 	if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 3)
 	    && desc->sizeBits < Log2Size) {
