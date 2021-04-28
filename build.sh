@@ -58,7 +58,8 @@ if [[ ${BUILD_TYPE} == Release ]]; then
 else
     LLD_OPTIONS=""
 fi
-ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS}\
+ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} \
+       --allow-multiple-definition \
        ../elf/libntos.a \
        ../pe/ntdll.o \
        -T ../../private/ntos/ntos.lds \
