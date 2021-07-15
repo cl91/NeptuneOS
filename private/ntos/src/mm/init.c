@@ -54,7 +54,7 @@ NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
 		       IN MWORD Type)
 {
     MWORD RootCap = InitInfo->RootCNodeCap;
-    RET_IF_ERR(MiInitRetypeIntoPage(RootCap, Untyped, PageCap, Type));
+    RET_ERR(MiInitRetypeIntoPage(RootCap, Untyped, PageCap, Type));
 
     MWORD VSpaceCap = InitInfo->InitVSpaceCap;
     int Error;
@@ -79,15 +79,15 @@ NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
+static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
 {
     /* Map initial pages for ExPool */
     LONG PoolPages;
     MWORD FreeCapStart;
-    RET_IF_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
+    RET_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
 
     /* Initialize ExPool */
-    RET_IF_ERR(ExInitializePool(EX_POOL_START, PoolPages));
+    RET_ERR(ExInitializePool(EX_POOL_START, PoolPages));
 
     /* Allocate memory for CNode on ExPool and Copy InitCNode over */
     MiNtosCapSpace.RootCap = InitInfo->RootCNodeCap;
@@ -107,7 +107,7 @@ static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
 
     /* Build the Vad tree of the ntos virtual address space */
     MmInitializeVaddrSpace(&MiNtosVaddrSpace, InitInfo->InitVSpaceCap);
-    RET_IF_ERR(MmReserveVirtualMemory(EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
+    RET_ERR(MmReserveVirtualMemory(EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
     PMM_VAD ExPoolVad = MiVspaceFindVadNode(&MiNtosVaddrSpace, EX_POOL_START_PN, 1);
     if (ExPoolVad == NULL) {
 	return STATUS_NTOS_BUG;
@@ -119,15 +119,15 @@ static NTSTATUS MiRegisterClass(IN PMM_INIT_INFO InitInfo)
     InitializeListHead(&MiPhyMemDescriptor.SmallUntypedList);
     InitializeListHead(&MiPhyMemDescriptor.MediumUntypedList);
     InitializeListHead(&MiPhyMemDescriptor.LargeUntypedList);
-    RET_IF_ERR(MiInitRecordUntypedAndPages(InitInfo, ExPoolVad));
+    RET_ERR(MiInitRecordUntypedAndPages(InitInfo, ExPoolVad));
 
     /* Build Vad for ntos image */
-    RET_IF_ERR(MmReserveVirtualMemory(InitInfo->UserStartPageNum, InitInfo->NumUserPages));
+    RET_ERR(MmReserveVirtualMemory(InitInfo->UserStartPageNum, InitInfo->NumUserPages));
     PMM_VAD UserImageVad = MiVspaceFindVadNode(&MiNtosVaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages);
     if (UserImageVad == NULL) {
 	return STATUS_NTOS_BUG;
     }
-    RET_IF_ERR(MiInitRecordUserImagePaging(InitInfo, UserImageVad));
+    RET_ERR(MiInitRecordUserImagePaging(InitInfo, UserImageVad));
 
     return STATUS_SUCCESS;
 }
@@ -140,7 +140,7 @@ static NTSTATUS MiRegisterRootUntyped(IN PMM_PHY_MEM PhyMem,
 {
     MiAllocatePool(Untyped, MM_UNTYPED);
     MiInitializeUntyped(Untyped, NULL, TRUE, Cap, PhyAddr, Log2Size, IsDevice);
-    RET_IF_ERR(MiInsertRootUntyped(PhyMem, Untyped));
+    RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), ExFreePool(Untyped));
     if (!IsDevice) {
 	MiInsertFreeUntyped(PhyMem, Untyped);
     }
@@ -165,7 +165,7 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
 	}
     }
     if (InitUntyped == 0) {
-	return STATUS_NTOS_OUT_OF_MEMORY;
+	return STATUS_NO_MEMORY;
     }
 
     MM_INIT_INFO InitInfo =
@@ -183,15 +183,15 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
 	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
 	 .NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start
 	};
-    RET_IF_ERR(MiRegisterClass(&InitInfo));
+    RET_ERR(MiInitializeRootTask(&InitInfo));
 
     LoopOverUntyped(cap, desc, bootinfo) {
 	if (desc->isDevice && desc->sizeBits < MM_PAGE_BITS) {
 	    continue;
 	}
 	if (cap != InitUntyped) {
-	    RET_IF_ERR(MiRegisterRootUntyped(&MiPhyMemDescriptor, cap, desc->paddr,
-					     desc->sizeBits, desc->isDevice));
+	    RET_ERR(MiRegisterRootUntyped(&MiPhyMemDescriptor, cap, desc->paddr,
+					  desc->sizeBits, desc->isDevice));
 	}
     }
 

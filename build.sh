@@ -61,6 +61,7 @@ fi
 ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} \
        --allow-multiple-definition \
        ../elf/libntos.a \
+       ../elf/rtl/librtl.a \
        ../pe/ntdll.o \
        -T ../../private/ntos/ntos.lds \
        -o ntos

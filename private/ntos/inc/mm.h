@@ -19,9 +19,9 @@ typedef struct _MM_CAPSPACE {
 } MM_CAPSPACE, *PMM_CAPSPACE;
 
 typedef enum _MM_CAP_TREE_NODE_TYPE {
-				     MM_CAP_TREE_NODE_CNODE,
-				     MM_CAP_TREE_NODE_UNTYPED,
-				     MM_CAP_TREE_NODE_PAGING_STRUCTURE,
+    MM_CAP_TREE_NODE_CNODE,
+    MM_CAP_TREE_NODE_UNTYPED,
+    MM_CAP_TREE_NODE_PAGING_STRUCTURE,
 } MM_CAP_TREE_NODE_TYPE;
 
 /* Describes a node in the Capability Derivation Tree */
@@ -49,11 +49,26 @@ typedef struct _MM_CNODE {
     };
 } MM_CNODE, *PMM_CNODE;
 
-typedef enum _MM_PAGING_STRUCTURE_TYPE { MM_PAGE_TYPE_PAGE,
-					 MM_PAGE_TYPE_LARGE_PAGE,
-					 MM_PAGE_TYPE_PAGE_TABLE,
+typedef enum _MM_PAGING_STRUCTURE_TYPE {
+    MM_PAGE_TYPE_PAGE,
+    MM_PAGE_TYPE_LARGE_PAGE,
+    MM_PAGE_TYPE_PAGE_TABLE,
 } MM_PAGING_STRUCTURE_TYPE;
 
+/*
+ * A paging structure represents a capability to either a page,
+ * a large page, or a page table. A paging structure has a unique
+ * virtual address space associated with it, since to share a
+ * page in seL4 between multiple threads, the capability to that
+ * page must first be cloned. Mapping the same page cap twice is
+ * an error.
+ *
+ * Therefore, mapping a page on two different virtual address
+ * spaces involves duplicating the MM_PAGING_STRUCTURE first
+ * and then map the new paging structure. The new paging
+ * structure will be the left child of the old paging structure
+ * in the capability derivation tree.
+ */
 typedef struct _MM_PAGING_STRUCTURE {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
     MWORD VSpaceCap;
@@ -65,6 +80,9 @@ typedef struct _MM_PAGING_STRUCTURE {
 } MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;
 
 #define MM_RIGHTS_RW	(seL4_ReadWrite)
+
+typedef ULONG WIN32_PROTECTION_MASK;
+typedef PULONG PWIN32_PROTECTION_MASK;
 
 typedef struct _MM_AVL_NODE {
     MWORD Parent;
@@ -127,9 +145,9 @@ typedef struct _MM_PHY_MEM {
 } MM_PHY_MEM, *PMM_PHY_MEM;
 
 typedef enum _MM_MEM_PRESSURE {
-			       MM_MEM_PRESSURE_LOW,
-			       MM_MEM_PRESSURE_MEDIUM,
-			       MM_MEM_PRESSURE_HIGH
+    MM_MEM_PRESSURE_SUFFICIENT_MEMORY,
+    MM_MEM_PRESSURE_LOW_MEMORY,
+    MM_MEM_PRESSURE_CRITICALLY_LOW_MEMORY
 } MM_MEM_PRESSURE;
 
 /* init.c */

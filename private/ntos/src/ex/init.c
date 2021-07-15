@@ -3,7 +3,8 @@
 
 NTSTATUS ExInitSystem(seL4_BootInfo *bootinfo)
 {
-    RET_IF_ERR(MmInitSystem(bootinfo));
-    RET_IF_ERR(PsInitSystem());
+    RET_ERR(MmInitSystem(bootinfo));
+    RET_ERR(ObInitSystem());
+    RET_ERR(PsInitSystem());
     return STATUS_SUCCESS;
 }

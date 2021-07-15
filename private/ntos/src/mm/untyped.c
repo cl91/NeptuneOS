@@ -34,7 +34,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     }
 
     MWORD NewCap = 0;
-    RET_IF_ERR(MmAllocateCaps(&NewCap, 2));
+    RET_ERR(MmAllocateCaps(&NewCap, 2));
 
     MWORD Error = seL4_Untyped_Retype(Src->TreeNode.Cap,
 				      seL4_UntypedObject,
@@ -45,8 +45,8 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 				      NewCap, // node_offset
 				      2);
     if (Error != seL4_NoError) {
-	RET_IF_ERR(MmDeallocateCap(NewCap+1));
-	RET_IF_ERR(MmDeallocateCap(NewCap));
+	MmDeallocateCap(NewCap+1);
+	MmDeallocateCap(NewCap);
 	return SEL4_ERROR(Error);
     }
 
@@ -91,7 +91,7 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 	List = &MiPhyMemDescriptor.LargeUntypedList;
     }
     if (List == NULL) {
-	return STATUS_NTOS_OUT_OF_MEMORY;
+	return STATUS_NO_MEMORY;
     }
     PMM_UNTYPED Untyped = CONTAINING_RECORD(List->Flink, MM_UNTYPED, FreeListEntry);
     LONG NumSplits = Untyped->Log2Size - Log2Size;
@@ -100,8 +100,12 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     for (LONG i = 0; i < NumSplits; i++) {
 	MWORD LeftCap, RightCap;
 	MiAllocatePool(LeftChild, MM_UNTYPED);
-	MiAllocatePool(RightChild, MM_UNTYPED);
-	RET_IF_ERR(MiSplitUntyped(Untyped, LeftChild, RightChild));
+	MiAllocatePoolEx(RightChild, MM_UNTYPED, ExFreePool(LeftChild));
+	RET_ERR_EX(MiSplitUntyped(Untyped, LeftChild, RightChild),
+		   {
+		       ExFreePool(LeftChild);
+		       ExFreePool(RightChild);
+		   });
 	MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChild);
 	Untyped = LeftChild;
     }
@@ -156,10 +160,12 @@ NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
     for (LONG i = NumSplits-1; i >= 0; i--) {
 	if ((*IoUntyped)->TreeNode.LeftChild == NULL) {
 	    MiAllocatePool(LeftChild, MM_UNTYPED);
-	    MiAllocatePool(RightChild, MM_UNTYPED);
-	    RET_IF_ERR(MiSplitUntyped(*IoUntyped,
-				      LeftChild,
-				      RightChild));
+	    MiAllocatePoolEx(RightChild, MM_UNTYPED, ExFreePool(LeftChild));
+	    RET_ERR_EX(MiSplitUntyped(*IoUntyped, LeftChild, RightChild),
+		       {
+			   ExFreePool(LeftChild);
+			   ExFreePool(RightChild);
+		       });
 	}
 	MWORD Bit = PhyPageNum & (1 << i);
 	PMM_UNTYPED Child;

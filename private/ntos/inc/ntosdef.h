@@ -32,9 +32,16 @@ typedef seL4_Word MWORD;
 #define STATUS_NTOS_BUG				NTOS_ERROR(1)
 #define STATUS_NTOS_INVALID_ARGUMENT		NTOS_ERROR(2)
 #define STATUS_NTOS_CAPSPACE_EXHAUSTION		NTOS_ERROR(3)
-#define STATUS_NTOS_OUT_OF_MEMORY		NTOS_ERROR(4)
 
-#define RET_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { return Error; }}
+#define RET_ERR_EX(Expr, OnError)					\
+    {NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) {			\
+	    DbgPrint("Expression %s in function %s at %s:%d returns error 0x%x\n", \
+		     #Expr, __func__, __FILE__, __LINE__, Error);	\
+	    {OnError;} return Error; }}
+#define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
+#define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
+    Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
+    if ((Var) == NULL) { {OnError;} return STATUS_NO_MEMORY; }
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __packed	__attribute__((__packed__))

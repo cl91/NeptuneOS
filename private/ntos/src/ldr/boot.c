@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <sel4/sel4.h>
 #include <ntos.h>
 //#include "cpio.h"
 
@@ -9,7 +8,7 @@
 
 #define NTOS_LDR_BOOT_TAG	(EX_POOL_TAG('L', 'D', 'R', 'B'))
 
-VOID LdrLoadBootModules()
+NTSTATUS LdrLoadBootModules()
 {
     /* struct cpio_info cpio; */
     /* cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio); */
@@ -39,9 +38,11 @@ VOID LdrLoadBootModules()
     /* 	} */
     /* } */
 
-    PPROCESS Process;
-    PsCreateProcess(&Process);
-    PTHREAD Thread;
-    PsCreateThread(Process, &Thread);
+    PPROCESS Process = NULL;
+    RET_ERR(PsCreateProcess(&Process));
+    assert(Process != NULL);
+    PTHREAD Thread = NULL;
+    RET_ERR(PsCreateThread(Process, &Thread));
 
+    return STATUS_SUCCESS;
 }

@@ -20,9 +20,9 @@ typedef struct _MM_INIT_INFO {
     MWORD NumUserPagingStructureCaps;
 } MM_INIT_INFO, *PMM_INIT_INFO;
 
-#define MiAllocatePool(Var, Type)					\
-    Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_MM_TAG); \
-    if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }
+#define MiAllocatePoolEx(Var, Type, OnError)				\
+    ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_MM_TAG, OnError)
+#define MiAllocatePool(Var, Type)	MiAllocatePoolEx(Var, Type, {})
 
 /* init.c */
 extern MM_VADDR_SPACE MiNtosVaddrSpace;

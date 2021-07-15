@@ -11,7 +11,7 @@ static NTSTATUS PspRetypeIntoObject(IN PMM_UNTYPED Untyped,
     if (Untyped->Log2Size != ObjBits) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
-    RET_IF_ERR(MmAllocateCap(ObjCap));
+    RET_ERR(MmAllocateCap(ObjCap));
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				      ObjType,
 				      ObjBits,
@@ -21,7 +21,7 @@ static NTSTATUS PspRetypeIntoObject(IN PMM_UNTYPED Untyped,
 				      *ObjCap, // node_offset
 				      1);
     if (Error != seL4_NoError) {
-	RET_IF_ERR(MmDeallocateCap(*ObjCap));
+	MmDeallocateCap(*ObjCap);
 	*ObjCap = 0;
 	return SEL4_ERROR(Error);
     }
@@ -32,14 +32,14 @@ NTSTATUS PspThreadObjectCreateProc(PVOID Object)
 {
     PTHREAD Thread = (PTHREAD) Object;
 
-    PMM_UNTYPED TcbUntyped;
-    RET_IF_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
+    PMM_UNTYPED TcbUntyped = NULL;
+    RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
-    MWORD TcbCap;
+    MWORD TcbCap = 0;
     NTSTATUS Status = PspRetypeIntoObject(TcbUntyped, seL4_TCBObject,
 					  seL4_TCBBits, &TcbCap);
     if (!NT_SUCCESS(Status)) {
-	RET_IF_ERR(MmReleaseUntyped(TcbUntyped));
+	MmReleaseUntyped(TcbUntyped);
 	return Status;
     }
 
@@ -54,15 +54,12 @@ NTSTATUS PspProcessObjectCreateProc(PVOID Object)
 {
     PPROCESS Process = (PPROCESS) Object;
 
-    PMM_UNTYPED VspaceUntyped;
-    RET_IF_ERR(MmRequestUntyped(seL4_VSpaceBits, &VspaceUntyped));
-    MWORD VspaceCap;
-    NTSTATUS Status = PspRetypeIntoObject(VspaceUntyped, seL4_VSpaceObject,
-					  seL4_VSpaceBits, &VspaceCap);
-    if (!NT_SUCCESS(Status)) {
-	RET_IF_ERR(MmReleaseUntyped(VspaceUntyped));
-	return Status;
-    }
+    PMM_UNTYPED VspaceUntyped = NULL;
+    RET_ERR(MmRequestUntyped(seL4_VSpaceBits, &VspaceUntyped));
+    MWORD VspaceCap = 0;
+    RET_ERR_EX(PspRetypeIntoObject(VspaceUntyped, seL4_VSpaceObject,
+				   seL4_VSpaceBits, &VspaceCap),
+	       MmReleaseUntyped(VspaceUntyped));
 
     Process->InitThread = NULL;
     InitializeListHead(&Process->ThreadList);
@@ -74,10 +71,12 @@ NTSTATUS PspProcessObjectCreateProc(PVOID Object)
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *Thread)
 {
-    RET_IF_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (PPVOID) Thread));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (PPVOID) Thread));
 
     PMM_PAGE IpcBuffer;
-    RET_IF_ERR(MmCommitPageEx(&Process->VaddrSpace, IPC_BUFFER_VADDR, &IpcBuffer));
+    RET_ERR_EX(MmCommitPageEx(&Process->VaddrSpace,
+			      IPC_BUFFER_PAGENUM, &IpcBuffer),
+	       ObDereferenceObject(*Thread))
     (*Thread)->IpcBuffer = IpcBuffer;
 
     return STATUS_SUCCESS;
@@ -85,10 +84,11 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 
 NTSTATUS PsCreateProcess(OUT PPROCESS *Process)
 {
-    RET_IF_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (PPVOID) Process));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (PPVOID) Process));
 
-    RET_IF_ERR(MmReserveVirtualMemoryEx(&(*Process)->VaddrSpace,
-					IPC_BUFFER_VADDR, 1));
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&(*Process)->VaddrSpace,
+					IPC_BUFFER_PAGENUM, 1),
+	       ObDereferenceObject(*Process));
 
     return STATUS_SUCCESS;
 }

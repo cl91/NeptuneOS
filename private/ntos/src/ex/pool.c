@@ -75,11 +75,11 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 	    /* We are running low on resources. Request more pages from mm */
 	    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
 	    LONG NewPages = 1;
-	    if (MemPressure == MM_MEM_PRESSURE_LOW) {
+	    if (MemPressure == MM_MEM_PRESSURE_SUFFICIENT_MEMORY) {
 		NewPages = 4;
-	    } else if (MemPressure == MM_MEM_PRESSURE_MEDIUM) {
+	    } else if (MemPressure == MM_MEM_PRESSURE_LOW_MEMORY) {
 		NewPages = 2;
-	    }
+	    } /* Otherwise we are critically low on memory, just get one page only */
 	    MWORD SatisfiedPages = 0;
 	    MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS,
 			  NewPages, &SatisfiedPages, NULL);

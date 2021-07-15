@@ -5,7 +5,12 @@ static NTSTATUS PspThreadObjectOpenProc(PVOID Object)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspThreadObjectCloseProc(PVOID Object)
+static NTSTATUS PspThreadObjectParseProc(PVOID Object)
+{
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspThreadObjectInsertProc(PVOID Object)
 {
     return STATUS_SUCCESS;
 }
@@ -15,19 +20,24 @@ static NTSTATUS PspProcessObjectOpenProc(PVOID Object)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspProcessObjectCloseProc(PVOID Object)
+static NTSTATUS PspProcessObjectParseProc(PVOID Object)
+{
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspProcessObjectInsertProc(PVOID Object)
 {
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS PspCreateThreadType()
 {
-    OBJECT_TYPE_INITIALIZER TypeInfo =
-	{
-	 .CreateProc = PspThreadObjectCreateProc,
-	 .OpenProc = PspThreadObjectOpenProc,
-	 .CloseProc = PspThreadObjectCloseProc
-	};
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = PspThreadObjectCreateProc,
+	.OpenProc = PspThreadObjectOpenProc,
+	.ParseProc = PspThreadObjectParseProc,
+	.InsertProc = PspThreadObjectInsertProc,
+    };
     return ObCreateObjectType(OBJECT_TYPE_THREAD,
 			      "Thread",
 			      sizeof(THREAD),
@@ -36,12 +46,12 @@ static NTSTATUS PspCreateThreadType()
 
 static NTSTATUS PspCreateProcessType()
 {
-    OBJECT_TYPE_INITIALIZER TypeInfo =
-	{
-	 .CreateProc = PspProcessObjectCreateProc,
-	 .OpenProc = PspProcessObjectOpenProc,
-	 .CloseProc = PspProcessObjectCloseProc
-	};
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = PspProcessObjectCreateProc,
+	.OpenProc = PspProcessObjectOpenProc,
+	.ParseProc = PspProcessObjectParseProc,
+	.InsertProc = PspProcessObjectInsertProc,
+    };
     return ObCreateObjectType(OBJECT_TYPE_PROCESS,
 			      "Process",
 			      sizeof(PROCESS),
@@ -50,7 +60,7 @@ static NTSTATUS PspCreateProcessType()
 
 NTSTATUS PsInitSystem()
 {
-    RET_IF_ERR(PspCreateThreadType());
-    RET_IF_ERR(PspCreateProcessType());
+    RET_ERR(PspCreateThreadType());
+    RET_ERR(PspCreateProcessType());
     return STATUS_SUCCESS;
 }

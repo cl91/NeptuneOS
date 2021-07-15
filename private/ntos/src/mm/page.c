@@ -107,7 +107,7 @@ static NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
     }
 
     MWORD Cap;
-    RET_IF_ERR(MmAllocateCap(&Cap));
+    RET_ERR(MmAllocateCap(&Cap));
     Page->TreeNode.Cap = Cap;
     int Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				    MiPageGetSel4Type(Page),
@@ -136,17 +136,22 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     Page->VirtPageNum &= (~0) << (MiPageGetLog2Size(Page) - MM_PAGE_BITS);
 
     if (Page->TreeNode.Cap == 0) {
-	RET_IF_ERR(MiRetypeIntoPagingStructure(Page));
+	RET_ERR(MiRetypeIntoPagingStructure(Page));
     }
 
     int Error = 0;
     if (Page->Type == MM_PAGE_TYPE_PAGE || Page->Type == MM_PAGE_TYPE_LARGE_PAGE) {
+	DbgPrint("MiMapPagingStructure: Mapping %spage cap 0x%x for vspacecap 0x%x at vaddr %p\n",
+		 (Page->Type == MM_PAGE_TYPE_LARGE_PAGE) ? "large " : "",
+		 Page->TreeNode.Cap, Page->VSpaceCap, Page->VirtPageNum << MM_PAGE_BITS);
 	Error = seL4_X86_Page_Map(Page->TreeNode.Cap,
 				  Page->VSpaceCap,
 				  Page->VirtPageNum << MM_PAGE_BITS,
 				  Page->Rights,
 				  Page->Attributes);
     } else if (Page->Type == MM_PAGE_TYPE_PAGE_TABLE) {
+	DbgPrint("MiMapPagingStructure: Mapping page table cap 0x%x for vspacecap 0x%x at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, Page->VirtPageNum << MM_PAGE_BITS);
 	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
 				       Page->VSpaceCap,
 				       Page->VirtPageNum << MM_PAGE_BITS,
@@ -156,12 +161,12 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     }
 
     if (Error) {
-	int RevokeError = seL4_CNode_Revoke(MmRootCspaceCap(),
-					    Page->TreeNode.Cap,
-					    0); /* FIXME: depth */
-	if (RevokeError) {
-	    return SEL4_ERROR(RevokeError);
-	}
+	seL4_CNode_Revoke(MmRootCspaceCap(), Page->TreeNode.Cap,
+			  0); /* TODO: fix the depth argument here */
+	MmDeallocateCap(Page->TreeNode.Cap);
+	Page->TreeNode.Cap = 0;
+	DbgPrint("MiMapPagingStructure: Mapping failed for page/table cap 0x%x for vspacecap 0x%x at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, Page->VirtPageNum << MM_PAGE_BITS);
 	return SEL4_ERROR(Error);
     }
 
@@ -171,7 +176,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 
 MM_MEM_PRESSURE MmQueryMemoryPressure()
 {
-    return MM_MEM_PRESSURE_LOW;
+    return MM_MEM_PRESSURE_SUFFICIENT_MEMORY;
 }
 
 static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
@@ -180,12 +185,22 @@ static NTSTATUS MiBuildAndMapPageTable(IN PMM_VADDR_SPACE Vspace,
 				       OUT OPTIONAL PMM_PAGE_TABLE *PTNode)
 {
     PMM_UNTYPED Untyped;
-    RET_IF_ERR(MmRequestUntyped(MM_PAGE_TABLE_BITS, &Untyped));
+    RET_ERR(MmRequestUntyped(MM_PAGE_TABLE_BITS, &Untyped));
 
-    MiAllocatePool(PageTable, MM_PAGE_TABLE);
+    MiAllocatePoolEx(PageTable, MM_PAGE_TABLE, MmReleaseUntyped(Untyped));
     MiInitializePageTable(PageTable, Untyped, Vspace, 0, PageTableNum, FALSE);
-    RET_IF_ERR(MiMapPagingStructure(&PageTable->PagingStructure));
-    RET_IF_ERR(MiVspaceInsertPageTable(Vspace, Vad, PageTable));
+    RET_ERR_EX(MiMapPagingStructure(&PageTable->PagingStructure),
+	       {
+		   ExFreePool(PageTable);
+		   MmReleaseUntyped(Untyped);
+	       });
+
+    RET_ERR_EX(MiVspaceInsertPageTable(Vspace, Vad, PageTable),
+	       {
+		   ExFreePool(PageTable);
+		   MmReleaseUntyped(Untyped);
+		   /* TODO: Unmap Paging Structure */
+	       });
 
     if (PTNode != NULL) {
 	*PTNode = PageTable;
@@ -201,8 +216,19 @@ static NTSTATUS MiBuildAndMapPage(IN PMM_VADDR_SPACE Vspace,
 {
     MiAllocatePool(Page, MM_PAGE);
     MiInitializePage(Page, Untyped, Vspace, 0, PageNum, FALSE, MM_RIGHTS_RW);
-    RET_IF_ERR(MiMapPagingStructure(&Page->PagingStructure));
-    RET_IF_ERR(MiPageTableInsertPage(PageTable, Page));
+
+    NTSTATUS Status = MiMapPagingStructure(&Page->PagingStructure);
+    if (!NT_SUCCESS(Status)) {
+	ExFreePool(Page);
+	return Status;
+    }
+
+    Status = MiPageTableInsertPage(PageTable, Page);
+    if (!NT_SUCCESS(Status)) {
+	ExFreePool(Page);
+	/* TODO: Unmap paging structure */
+	return Status;
+    }
 
     if (PageNode != NULL) {
 	*PageNode = Page;
@@ -216,6 +242,8 @@ NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 			 OUT MWORD *SatisfiedPages,
 			 OUT OPTIONAL PMM_PAGE *Pages)
 {
+    DbgPrint("MmCommitPagesEx: Committing %d page(s) for vaddrcap 0x%x at vaddr %p\n",
+	     NumPages, VaddrSpace->VSpaceCap, FirstPageNum << MM_PAGE_BITS);
     PMM_VAD Vad = MiVspaceFindVadNode(VaddrSpace, FirstPageNum, NumPages);
     if (Vad == NULL) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
@@ -232,16 +260,22 @@ NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 	}
 	PMM_PAGE_TABLE PageTable = (PMM_PAGE_TABLE) Node;
 	if (PageTable == NULL) {
-	    RET_IF_ERR(MiBuildAndMapPageTable(VaddrSpace, Vad, PTNum, &PageTable));
+	    RET_ERR(MiBuildAndMapPageTable(VaddrSpace, Vad, PTNum, &PageTable));
 	}
 	MWORD LastPageNumInPageTable = (PTNum + 1) << MM_LARGE_PN_SHIFT;
 	while (PageNum <= LastPageNumInPageTable && *SatisfiedPages < NumPages) {
 	    PMM_PAGE Page = MiPageTableFindPage(PageTable, PageNum);
 	    if (Page == NULL) {
 		PMM_UNTYPED Untyped;
-		RET_IF_ERR(MmRequestUntyped(MM_PAGE_BITS, &Untyped));
+		RET_ERR_EX(MmRequestUntyped(MM_PAGE_BITS, &Untyped),
+			   {
+			       /* TODO: Error path */
+			   });
 		PMM_PAGE *PageOut = Pages ? &Pages[*SatisfiedPages] : NULL;
-		RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, PageOut));
+		RET_ERR_EX(MiBuildAndMapPage(VaddrSpace, Untyped, PageTable, PageNum, PageOut),
+			   {
+			       /* TODO: Error path */
+			   });
 	    } else if (Pages != NULL) {
 		Pages[*SatisfiedPages] = Page;
 	    }
@@ -249,9 +283,11 @@ NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
 	    *SatisfiedPages += 1;
 	}
     }
+    DbgPrint("MmCommitPagesEx: Successfully committed %d page(s) for vaddrcap 0x%x at vaddr %p\n",
+	     *SatisfiedPages, VaddrSpace->VSpaceCap, FirstPageNum << MM_PAGE_BITS);
 
     if (*SatisfiedPages == 0) {
-	return STATUS_NTOS_OUT_OF_MEMORY;
+	return STATUS_NO_MEMORY;
     }
     return STATUS_SUCCESS;
 }
@@ -275,7 +311,7 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
     }
 
     PMM_UNTYPED IoUntyped;
-    RET_IF_ERR(MiRequestIoUntyped(PhyMem, PhyPageNum, &IoUntyped));
+    RET_ERR(MiRequestIoUntyped(PhyMem, PhyPageNum, &IoUntyped));
     if (IoUntyped->Log2Size < MM_PAGE_BITS) {
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
@@ -287,7 +323,7 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
     }
     PMM_PAGE_TABLE PageTable = (PMM_PAGE_TABLE) Node;
     if (PageTable == NULL) {
-	    RET_IF_ERR(MiBuildAndMapPageTable(VaddrSpace, Vad, PTNum, &PageTable));
+	RET_ERR(MiBuildAndMapPageTable(VaddrSpace, Vad, PTNum, &PageTable));
     }
 
     if (MiPageTableFindPage(PageTable, VirtPageNum) != NULL) {
@@ -295,7 +331,7 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
 	return STATUS_NTOS_INVALID_ARGUMENT;
     }
 
-    RET_IF_ERR(MiBuildAndMapPage(VaddrSpace, IoUntyped, PageTable, VirtPageNum, NULL));
+    RET_ERR(MiBuildAndMapPage(VaddrSpace, IoUntyped, PageTable, VirtPageNum, NULL));
 
     return STATUS_SUCCESS;
 }

@@ -5,7 +5,7 @@
 
 #define PspAllocatePool(Var, Type)					\
     Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_PS_TAG); \
-    if ((Var) == NULL) { return STATUS_NTOS_OUT_OF_MEMORY; }
+    if ((Var) == NULL) { return STATUS_NO_MEMORY; }
 
 /* create.c */
 NTSTATUS PspThreadObjectCreateProc(PVOID Object);

@@ -156,6 +156,7 @@ BOOLEAN IsListEmpty(IN const LIST_ENTRY * ListHead)
     return (BOOLEAN)(ListHead->Flink == ListHead);
 }
 
+/* Returns TRUE if list is empty after removal */
 static inline
 BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
 {

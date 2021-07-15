@@ -15,6 +15,8 @@
 #define IPC_BUFFER_VADDR	(0xc0000000)
 #endif
 
+#define IPC_BUFFER_PAGENUM	(IPC_BUFFER_VADDR >> MM_PAGE_BITS)
+
 #define NTOS_PS_TAG	EX_POOL_TAG('n', 't', 'p', 's')
 
 typedef struct _THREAD {

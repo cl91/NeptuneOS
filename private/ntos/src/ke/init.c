@@ -34,7 +34,7 @@ extern char _tdata_end[];
  * For GNU systems the base of gs segment (on i386) is set to
  * tls_base. Access to TLS variables can then be done simply
  * with %gs:-offset. However for some reason clang does not
- * implement this (or needs some kind of flag).
+ * implement this (or need some kind of compiler flag to enable).
  */
 static void KiInitRootThread(seL4_BootInfo *bootinfo)
 {
@@ -141,7 +141,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 #endif
     BUGCHECK_IF_ERR(ExInitSystem(bootinfo));
     KiInitVga();
-    LdrLoadBootModules();
+    BUGCHECK_IF_ERR(LdrLoadBootModules());
 #ifdef CONFIG_RUN_TESTS
     KeRunAllTests();
 #endif
