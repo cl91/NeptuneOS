@@ -19,7 +19,7 @@ static VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
 static VOID EiAddPageToPool(IN PEX_POOL Pool,
 			    IN MWORD PageNum)
 {
-    EiAddFreeSpaceToPool(Pool, PageNum << MM_PAGE_BITS, 0, EX_POOL_FREE_LISTS);
+    EiAddFreeSpaceToPool(Pool, PageNum << PAGE_LOG2SIZE, 0, EX_POOL_FREE_LISTS);
 }
 
 /* We require 3 consecutive initial pages mapped at EX_POOL_START */
@@ -31,16 +31,16 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
 	InitializeListHead(&EiPool.FreeLists[i]);
     }
 
-    if ((HeapStart & (MM_PAGE_SIZE-1)) != 0 || NumPages < 3) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+    if ((HeapStart & (PAGE_SIZE-1)) != 0 || NumPages < 3) {
+	return STATUS_INVALID_PARAMETER;
     }
 
     /* Add pages to pool */
     EiPool.TotalPages = NumPages;
     EiPool.UsedPages = 1;
     EiPool.HeapStart = HeapStart;
-    EiPool.HeapEnd = HeapStart + MM_PAGE_SIZE;
-    EiAddPageToPool(&EiPool, HeapStart >> MM_PAGE_BITS);
+    EiPool.HeapEnd = HeapStart + PAGE_SIZE;
+    EiAddPageToPool(&EiPool, HeapStart >> PAGE_LOG2SIZE);
 
     return STATUS_SUCCESS;
 }
@@ -66,8 +66,8 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
     if (AvailablePages >= 1) {
 	/* Add one page to the pool */
 	Pool->UsedPages++;
-	EiAddPageToPool(Pool, Pool->HeapEnd >> MM_PAGE_BITS);
-	Pool->HeapEnd += MM_PAGE_SIZE;
+	EiAddPageToPool(Pool, Pool->HeapEnd >> PAGE_LOG2SIZE);
+	Pool->HeapEnd += PAGE_SIZE;
 	if (AvailablePages >= 2) {
 	    /* Plenty of resources here. Simply return */
 	    return;
@@ -81,7 +81,7 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 		NewPages = 2;
 	    } /* Otherwise we are critically low on memory, just get one page only */
 	    MWORD SatisfiedPages = 0;
-	    MmCommitPages(Pool->HeapEnd >> MM_PAGE_BITS,
+	    MmCommitPages(Pool->HeapEnd >> PAGE_LOG2SIZE,
 			  NewPages, &SatisfiedPages, NULL);
 	    Pool->TotalPages += SatisfiedPages;
 	}

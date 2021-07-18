@@ -2,19 +2,18 @@
 
 NTSTATUS MiPrepareInitialUntyped(IN PMM_INIT_INFO InitInfo)
 {
-    MWORD RootCap = InitInfo->RootCNodeCap;
     MWORD DestCap = InitInfo->RootCNodeFreeCapStart;
     MWORD UntypedCap = InitInfo->InitUntypedCap;
     LONG Log2Size = InitInfo->InitUntypedLog2Size;
-    LONG NumSplits = Log2Size - MM_PAGE_BITS;
+    LONG NumSplits = Log2Size - PAGE_LOG2SIZE;
     for (int i = 0; i < NumSplits; i++) {
-	RET_ERR(MiSplitInitialUntyped(RootCap, UntypedCap, Log2Size, DestCap));
+	RET_ERR(MiSplitInitialUntyped(UntypedCap, Log2Size, DestCap));
 	UntypedCap = DestCap;
 	DestCap += 2;
 	Log2Size--;
     }
     MWORD SrcCap = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 3;
-    return MiSplitInitialUntyped(RootCap, SrcCap, Log2Size+1, DestCap);
+    return MiSplitInitialUntyped(SrcCap, Log2Size+1, DestCap);
 }
 
 NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
@@ -28,7 +27,7 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
 
     /* Map initial pages for ExPool */
     RET_ERR(MiPrepareInitialUntyped(InitInfo));
-    LONG NumSplits = InitInfo->InitUntypedLog2Size - MM_PAGE_BITS;
+    LONG NumSplits = InitInfo->InitUntypedLog2Size - PAGE_LOG2SIZE;
     MWORD Page0Untyped = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 2;
     MWORD Page1Untyped = Page0Untyped + 1;
     MWORD Page2Untyped = Page0Untyped + 2;
@@ -42,9 +41,9 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
     RET_ERR(MiInitMapPage(InitInfo, Page0Untyped, Page0Cap,
 			  EX_POOL_START, seL4_X86_4K));
     RET_ERR(MiInitMapPage(InitInfo, Page1Untyped, Page1Cap,
-			  EX_POOL_START + MM_PAGE_SIZE, seL4_X86_4K));
+			  EX_POOL_START + PAGE_SIZE, seL4_X86_4K));
     RET_ERR(MiInitMapPage(InitInfo, Page2Untyped, Page2Cap,
-			  EX_POOL_START + 2*MM_PAGE_SIZE, seL4_X86_4K));
+			  EX_POOL_START + 2*PAGE_SIZE, seL4_X86_4K));
 
     *PoolPages = 3;
     *FreeCapStart = PageTableCap + 1;
@@ -55,12 +54,12 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 				     IN PMM_VAD ExPoolVad)
 {
     MiAllocatePool(RootUntyped, MM_UNTYPED);
-    MiInitializeUntyped(RootUntyped, NULL, TRUE, InitInfo->InitUntypedCap,
+    MiInitializeUntyped(RootUntyped, NULL, InitInfo->InitUntypedCap,
 			InitInfo->InitUntypedPhyAddr,
 			InitInfo->InitUntypedLog2Size, FALSE);
 
     PMM_UNTYPED ParentUntyped = RootUntyped;
-    LONG NumSplits = InitInfo->InitUntypedLog2Size - MM_PAGE_BITS;
+    LONG NumSplits = InitInfo->InitUntypedLog2Size - PAGE_LOG2SIZE;
     PMM_PAGE_TABLE PageTable = NULL;
     for (int i = 0; i < NumSplits; i++) {
 	MiAllocatePool(LeftChildUntyped, MM_UNTYPED);
@@ -69,10 +68,10 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 	LONG ChildLog2Size = InitInfo->InitUntypedLog2Size - 1 - i;
 	MWORD LeftChildCap = InitInfo->RootCNodeFreeCapStart + 2*i;
 	MWORD RigthChildCap = LeftChildCap + 1;
-	MiInitializeUntyped(LeftChildUntyped, ParentUntyped, TRUE,
+	MiInitializeUntyped(LeftChildUntyped, ParentUntyped,
 			    LeftChildCap, InitInfo->InitUntypedPhyAddr,
 			    ChildLog2Size, FALSE);
-	MiInitializeUntyped(RightChildUntyped, ParentUntyped, FALSE, RigthChildCap,
+	MiInitializeUntyped(RightChildUntyped, ParentUntyped, RigthChildCap,
 			    InitInfo->InitUntypedPhyAddr + (1 << ChildLog2Size),
 			    ChildLog2Size, FALSE);
 
@@ -104,24 +103,24 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 	     */
 	    MiAllocatePool(Page2Untyped, MM_UNTYPED);
 	    MiAllocatePool(PageTableUntyped, MM_UNTYPED);
-	    assert(InitInfo->InitUntypedLog2Size - NumSplits == MM_PAGE_BITS);
+	    assert(InitInfo->InitUntypedLog2Size - NumSplits == PAGE_LOG2SIZE);
 	    MWORD Page2UntypedCap = InitInfo->RootCNodeFreeCapStart + 2*NumSplits;
 	    MWORD PageTableUntypedCap = Page2UntypedCap + 1;
-	    MiInitializeUntyped(Page2Untyped, RightChildUntyped, TRUE, Page2UntypedCap,
-				InitInfo->InitUntypedPhyAddr + 2 * MM_PAGE_SIZE,
-				MM_PAGE_BITS, FALSE);
-	    MiInitializeUntyped(PageTableUntyped, RightChildUntyped, FALSE, PageTableUntypedCap,
-				InitInfo->InitUntypedPhyAddr + 3 * MM_PAGE_SIZE,
-				MM_PAGE_BITS, FALSE);
+	    MiInitializeUntyped(Page2Untyped, RightChildUntyped, Page2UntypedCap,
+				InitInfo->InitUntypedPhyAddr + 2 * PAGE_SIZE,
+				PAGE_LOG2SIZE, FALSE);
+	    MiInitializeUntyped(PageTableUntyped, RightChildUntyped, PageTableUntypedCap,
+				InitInfo->InitUntypedPhyAddr + 3 * PAGE_SIZE,
+				PAGE_LOG2SIZE, FALSE);
 	    MiAllocatePool(Page2, MM_PAGE);
 	    MiAllocatePool(pPageTable, MM_PAGE_TABLE);
 	    PageTable = pPageTable;
 	    MiInitializePageTable(PageTable, PageTableUntyped, &MiNtosVaddrSpace,
 				  InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 5,
-				  EX_POOL_START >> MM_LARGE_PAGE_BITS, TRUE);
+				  EX_POOL_START >> LARGE_PAGE_LOG2SIZE, TRUE);
 	    MiInitializePage(Page2, Page2Untyped, &MiNtosVaddrSpace,
 			     InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 4,
-			     (EX_POOL_START >> MM_PAGE_BITS) + 2, TRUE, MM_RIGHTS_RW);
+			     (EX_POOL_START >> PAGE_LOG2SIZE) + 2, TRUE, MM_RIGHTS_RW);
 	    RET_ERR(MiVspaceInsertPageTable(&MiNtosVaddrSpace, ExPoolVad, PageTable));
 	    assert(ExPoolVad->FirstPageTable == &PageTable->AvlNode);
 	    assert(ExPoolVad->LastPageTable == &PageTable->AvlNode);
@@ -131,10 +130,10 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
 	    MiAllocatePool(Page1, MM_PAGE);
 	    MiInitializePage(Page0, LeftChildUntyped, &MiNtosVaddrSpace,
 			     InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 2,
-			     EX_POOL_START >> MM_PAGE_BITS, TRUE, MM_RIGHTS_RW);
+			     EX_POOL_START >> PAGE_LOG2SIZE, TRUE, MM_RIGHTS_RW);
 	    MiInitializePage(Page1, RightChildUntyped, &MiNtosVaddrSpace,
 			     InitInfo->RootCNodeFreeCapStart + 2*NumSplits + 3,
-			     (EX_POOL_START >> MM_PAGE_BITS) + 1, TRUE, MM_RIGHTS_RW);
+			     (EX_POOL_START >> PAGE_LOG2SIZE) + 1, TRUE, MM_RIGHTS_RW);
 	    RET_ERR(MiPageTableInsertPage(PageTable, Page0));
 	    RET_ERR(MiPageTableInsertPage(PageTable, Page1));
 	}
@@ -149,7 +148,7 @@ NTSTATUS MiInitRecordUserImagePaging(IN PMM_INIT_INFO InitInfo,
 {
     MWORD StartPageNum = InitInfo->UserStartPageNum;
     MWORD EndPageNum = StartPageNum + InitInfo->NumUserPages;
-    MWORD StartPTNum = StartPageNum >> MM_LARGE_PN_SHIFT;
+    MWORD StartPTNum = StartPageNum >> LARGE_PN_SHIFT;
     MWORD EndPTNum = StartPTNum + InitInfo->NumUserPagingStructureCaps;
     MWORD PageNum = StartPageNum;
     for (MWORD PTNum = StartPTNum; PTNum < EndPTNum; PTNum++) {
@@ -158,7 +157,7 @@ NTSTATUS MiInitRecordUserImagePaging(IN PMM_INIT_INFO InitInfo,
 			      InitInfo->UserPagingStructureCapStart + PTNum - StartPTNum,
 			      PTNum, TRUE);
 	RET_ERR(MiVspaceInsertPageTable(&MiNtosVaddrSpace, UserImageVad, PageTable));
-	while (PageNum < EndPageNum && PageNum < ((PTNum+1) << MM_LARGE_PN_SHIFT)) {
+	while (PageNum < EndPageNum && PageNum < ((PTNum+1) << LARGE_PN_SHIFT)) {
 	    MiAllocatePool(Page, MM_PAGE);
 	    MiInitializePage(Page, NULL, &MiNtosVaddrSpace,
 			     InitInfo->UserPageCapStart + PageNum - StartPageNum,

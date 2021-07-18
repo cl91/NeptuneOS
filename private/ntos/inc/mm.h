@@ -5,18 +5,46 @@
 
 #define NTOS_MM_TAG    		(EX_POOL_TAG('n','t','m','m'))
 
-#define MM_PAGE_BITS		(seL4_PageBits)
-#define MM_PAGE_TABLE_BITS	(seL4_PageBits)
-#define MM_LARGE_PAGE_BITS	(seL4_LargePageBits)
-#define MM_LARGE_PN_SHIFT	(MM_LARGE_PAGE_BITS - MM_PAGE_BITS)
-#define MM_PAGE_SIZE		(1 << MM_PAGE_BITS)
-#define MM_LARGE_PAGE_SIZE	(1 << MM_LARGE_PAGE_BITS)
+#define PAGE_LOG2SIZE		(seL4_PageBits)
+#define PAGE_TABLE_LOG2SIZE	(seL4_PageBits)
+#define LARGE_PAGE_LOG2SIZE	(seL4_LargePageBits)
+#define PAGE_SIZE		(1 << PAGE_LOG2SIZE)
+#define LARGE_PAGE_SIZE		(1 << LARGE_PAGE_LOG2SIZE)
 
-/* Describes the entire CapSpace */
-typedef struct _MM_CAPSPACE {
-    MWORD RootCap;
-    struct _MM_CNODE *RootCNode;
-} MM_CAPSPACE, *PMM_CAPSPACE;
+#define PAGE_ALIGN(p)		((MWORD)(p) & ~(PAGE_SIZE - 1))
+#define IS_PAGE_ALIGNED(p)	(((MWORD)(p)) == PAGE_ALIGN(p))
+#define PAGE_ALIGNED_DATA	__aligned(PAGE_SIZE)
+
+#define ROOT_CNODE_CAP		(seL4_CapInitThreadCNode)
+#define ROOT_VSPACE_CAP		(seL4_CapInitThreadVSpace)
+
+/*
+ * Capability derivation tree
+ *
+ * All seL4 kernel objects with a capability are assigned
+ * a capability tree node and are inserted into a
+ * capability derivation tree, starting from the root
+ * untyped from which they are derived. When capabilities
+ * are minted, copied, or derived via Untyped_Retype, the
+ * new capabilities are inserted into the capability
+ * derivation tree as the child of the original capability.
+ * When a capability is moved or mutated, the original
+ * tree node is updated to have the new capability pointer.
+ * When the capability is revoked, its children are deleted
+ * and freed (but the tree node itself is not). When the
+ * capability is deleted, all its children as well as the
+ * node itself are deleted and freed.
+ *
+ * The set of capability derivation trees derived from
+ * each root untyped form the capability derivation forest.
+ * This forest is organized by the physical address of
+ * the untyped caps in an AVL tree, and is stored in the
+ * MM_PHY_MEM struct as RootUntypedForest.
+ *
+ * Note: a CNode is usually the leaf node of a capability
+ * derivation tree, since a CNode cannot be minted or mutated.
+ * We do not usually copy a CNode capability.
+*/
 
 typedef enum _MM_CAP_TREE_NODE_TYPE {
     MM_CAP_TREE_NODE_CNODE,
@@ -26,92 +54,68 @@ typedef enum _MM_CAP_TREE_NODE_TYPE {
 
 /* Describes a node in the Capability Derivation Tree */
 typedef struct _MM_CAP_TREE_NODE {
-    MWORD Cap;
-    struct _MM_CAP_TREE_NODE *Parent;
-    struct _MM_CAP_TREE_NODE *LeftChild;
-    struct _MM_CAP_TREE_NODE *RightChild;
     MM_CAP_TREE_NODE_TYPE Type;
+    MWORD Cap;			/* Relative to the root task CSpace */
+    struct _MM_CAP_TREE_NODE *Parent;
+    LIST_ENTRY ChildrenList;	/* List head of the sibling list of children */
+    LIST_ENTRY SiblingLink;	/* Chains all siblings together */
 } MM_CAP_TREE_NODE, *PMM_CAP_TREE_NODE;
 
-/* Describes a single CNode */
+/*
+ * A CNode represents a table of capability slots. It is
+ * created by retyping a suitably-sized untyped capability.
+ * The newly created CNode will be the child of the parent
+ * untyped capability in the capability derivation tree.
+ *
+ * The root task starts with a (large) CNode as the single
+ * layer of its CSpace. Each client process gets a (small)
+ * CNode as its single layer of CSpace. The guard bits are
+ * always zero and are suitably sized such that no remaining
+ * bits are to be resolved in a capability lookup.
+ */
 typedef struct _MM_CNODE {
     MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    struct _MM_CNODE *FirstChild;
-    LIST_ENTRY SiblingList;
-    LONG Log2Size;
-    enum { MM_CNODE_TAIL_DEALLOC_ONLY, MM_CNODE_ALLOW_DEALLOC } Policy;
-    union {
-	PUCHAR UsedMap;
-	struct {
-	    MWORD StartCap;  /* Full CPtr to the starting cap */
-	    LONG Number;     /* Indicate range [Start,Start+Number) */
-	} FreeRange;
-    };
+    MWORD *UsedMap;		/* Bitmap of used slots */
+    ULONG Log2Size;		/* Called 'radix' in seL4 manual */
+    ULONG RecentFree;		/* Most recently freed bit */
+    ULONG TotalUsed;		/* Number of used slots */
 } MM_CNODE, *PMM_CNODE;
 
-typedef enum _MM_PAGING_STRUCTURE_TYPE {
-    MM_PAGE_TYPE_PAGE,
-    MM_PAGE_TYPE_LARGE_PAGE,
-    MM_PAGE_TYPE_PAGE_TABLE,
-} MM_PAGING_STRUCTURE_TYPE;
-
 /*
- * A paging structure represents a capability to either a page,
- * a large page, or a page table. A paging structure has a unique
- * virtual address space associated with it, since to share a
- * page in seL4 between multiple threads, the capability to that
- * page must first be cloned. Mapping the same page cap twice is
- * an error.
- *
- * Therefore, mapping a page on two different virtual address
- * spaces involves duplicating the MM_PAGING_STRUCTURE first
- * and then map the new paging structure. The new paging
- * structure will be the left child of the old paging structure
- * in the capability derivation tree.
+ * A tree node in the AVL tree
  */
-typedef struct _MM_PAGING_STRUCTURE {
-    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MWORD VSpaceCap;
-    MM_PAGING_STRUCTURE_TYPE Type;
-    BOOLEAN Mapped;
-    MWORD VirtPageNum;
-    seL4_CapRights_t Rights;
-    seL4_X86_VMAttributes Attributes;
-} MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;
-
-#define MM_RIGHTS_RW	(seL4_ReadWrite)
-
-typedef ULONG WIN32_PROTECTION_MASK;
-typedef PULONG PWIN32_PROTECTION_MASK;
-
 typedef struct _MM_AVL_NODE {
     MWORD Parent;
     struct _MM_AVL_NODE *LeftChild;
     struct _MM_AVL_NODE *RightChild;
-    MWORD Key;			/* key is usually address, page number, or large page number */
+    MWORD Key; /* key is usually address, page number, or large page number */
     LIST_ENTRY ListEntry; /* all node ordered linearly according to key */
 } MM_AVL_NODE, *PMM_AVL_NODE;
 
+/*
+ * AVL tree ordered by the key of the tree node
+ */
 typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
-    LIST_ENTRY NodeList;	/* ordered linearly according to key */
+    LIST_ENTRY NodeList;       /* ordered linearly according to key */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
-typedef struct _MM_LARGE_PAGE {
-    MM_AVL_NODE AvlNode;		  /* must be first entry. See MM_VAD */
-    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
-} MM_LARGE_PAGE, *PMM_LARGE_PAGE;
-
-typedef struct _MM_PAGE_TABLE {
-    MM_AVL_NODE AvlNode;		  /* must be first entry. See MM_VAD */
-    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
-    MM_AVL_TREE MappedPages;  /* balanced tree for all mapped pages */
-} MM_PAGE_TABLE, *PMM_PAGE_TABLE;
-
-typedef struct _MM_PAGE {
-    MM_AVL_NODE AvlNode;	/* must be first entry */
-    MM_PAGING_STRUCTURE PagingStructure;
-} MM_PAGE, *PMM_PAGE;
+/*
+ * An untyped capability represents either free physical
+ * memory or device memory mapped into the physical memory.
+ * Both types of untyped capabilities are organized by
+ * their starting physical memory address. An untyped node
+ * therefore has a duality of membership, first in its capability
+ * derivation tree, as well as in an AVL tree ordered by the
+ * the physical memory address.
+ */
+typedef struct _MM_UNTYPED {
+    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
+    MM_AVL_NODE AvlNode;	/* Node ordered by physical address */
+    LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
+    LONG Log2Size;
+    BOOLEAN IsDevice;
+} MM_UNTYPED, *PMM_UNTYPED;
 
 /* Virtual address descriptor */
 typedef struct _MM_VAD {
@@ -121,27 +125,32 @@ typedef struct _MM_VAD {
     PMM_AVL_NODE LastPageTable;	 /* polymorphic pointers to either MM_LARGE_PAGE or MM_PAGE_TABLE */
 } MM_VAD, *PMM_VAD;
 
+/*
+ * Top level structure of the virtual address space of a process
+ */
 typedef struct _MM_VADDR_SPACE {
-    MWORD VSpaceCap;
+    MWORD VSpaceCap;		/* This is relative to the root task cspace */
     MM_AVL_TREE VadTree;
     MM_AVL_TREE PageTableTree;	/* Node is either a page table or a large page */
-    PMM_VAD CachedVad;		/* speed up look up */
+    PMM_VAD CachedVad;		/* Speed up look up */
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
-typedef struct _MM_UNTYPED {
-    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MM_AVL_NODE AvlNode;	/* Node ordered by physical address */
-    LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
-    LONG Log2Size;
-    BOOLEAN IsDevice;
-} MM_UNTYPED, *PMM_UNTYPED;
-
+/*
+ * The top level structure for the memory management component.
+ *
+ * This represents the entire physical memory, consisting of both
+ * all untyped caps (including device memory untyped caps). The
+ * currently unused free memory are organized into three lists,
+ * small, medium, and large, to speed up resource allocations.
+ */
 typedef struct _MM_PHY_MEM {
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
-    MM_AVL_TREE RootUntypedTree; /* Root untyped organized by their starting phy addr */
-    PMM_UNTYPED CachedRootUntyped; /* speed up look up */
+    MM_AVL_TREE RootUntypedForest; /* Root untyped forest organized by their starting phy addr.
+				    * Note that RootUntypedForest represents both the cap derivation
+				    * forest as well as the AVL tree of all untyped caps. */
+    PMM_UNTYPED CachedRootUntyped; /* Speed up look up */
 } MM_PHY_MEM, *PMM_PHY_MEM;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -150,15 +159,37 @@ typedef enum _MM_MEM_PRESSURE {
     MM_MEM_PRESSURE_CRITICALLY_LOW_MEMORY
 } MM_MEM_PRESSURE;
 
+/* Forward declarations */
+typedef struct _MM_PAGE MM_PAGE, *PMM_PAGE;
+
 /* init.c */
 NTSTATUS MmInitSystem(IN seL4_BootInfo *bootinfo);
 
 /* cap.c */
-NTSTATUS MmAllocateCap(OUT MWORD *Cap);
-NTSTATUS MmAllocateCaps(OUT MWORD *StartCap,
-			IN LONG NumberRequested);
-NTSTATUS MmDeallocateCap(IN MWORD Cap);
-MWORD MmRootCspaceCap();
+NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
+			      OUT MWORD *StartCap,
+			      IN LONG NumberRequested);
+NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
+			   IN MWORD Cap);
+
+static inline NTSTATUS MmAllocateCap(OUT MWORD *Cap)
+{
+    extern MM_CNODE MiNtosCNode;
+    return MmAllocateCapRangeEx(&MiNtosCNode, Cap, 1);
+}
+
+static inline NTSTATUS MmAllocateCapRange(OUT MWORD *StartCap,
+					  IN LONG NumberRequested)
+{
+    extern MM_CNODE MiNtosCNode;
+    return MmAllocateCapRangeEx(&MiNtosCNode, StartCap, NumberRequested);
+}
+
+static inline NTSTATUS MmDeallocateCap(IN MWORD Cap)
+{
+    extern MM_CNODE MiNtosCNode;
+    return MmDeallocateCapEx(&MiNtosCNode, Cap);
+}
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
@@ -183,18 +214,16 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
 NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
 			IN MWORD VirtPageNum);
 
-static inline NTSTATUS
-MmCommitPageEx(IN PMM_VADDR_SPACE VaddrSpace,
-	       IN MWORD StartPageNum,
-	       OUT OPTIONAL PMM_PAGE *Page)
+static inline NTSTATUS MmCommitPageEx(IN PMM_VADDR_SPACE VaddrSpace,
+				      IN MWORD StartPageNum,
+				      OUT OPTIONAL PMM_PAGE *Page)
 {
     MWORD SatisfiedPages;
     return MmCommitPagesEx(VaddrSpace, StartPageNum, 1, &SatisfiedPages, Page);
 }
 
-static inline NTSTATUS
-MmCommitPage(IN MWORD StartPageNum,
-	     OUT OPTIONAL PMM_PAGE *Page)
+static inline NTSTATUS MmCommitPage(IN MWORD StartPageNum,
+				    OUT OPTIONAL PMM_PAGE *Page)
 {
     MWORD SatisfiedPages;
     return MmCommitPages(StartPageNum, 1, &SatisfiedPages, Page);

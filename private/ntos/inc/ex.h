@@ -13,9 +13,9 @@
 #endif
 
 /* Size of reserved address space starting from EX_POOL_START */
-#define EX_POOL_START_PN	(EX_POOL_START >> MM_PAGE_BITS)
+#define EX_POOL_START_PN	(EX_POOL_START >> PAGE_LOG2SIZE)
 #define EX_POOL_RESERVED_SIZE	(128 * 1024 * 1024) /* 128MB */
-#define EX_POOL_RESERVED_PAGES	(EX_POOL_RESERVED_SIZE >> MM_PAGE_BITS)
+#define EX_POOL_RESERVED_PAGES	(EX_POOL_RESERVED_SIZE >> PAGE_LOG2SIZE)
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \

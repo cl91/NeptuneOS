@@ -8,11 +8,17 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN ULONG ObjectBodySize,
 			    IN OBJECT_TYPE_INITIALIZER Init)
 {
+    assert(TypeName != NULL);
+    assert(ObjectBodySize != 0);
+    assert(Init != NULL);
+    assert(Init->CreateProc != NULL);
+
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
     ObjectType->Name = TypeName;
     ObjectType->Index = Type;
     ObjectType->ObjectBodySize = ObjectBodySize;
     ObjectType->TypeInfo = Init;
+
     return STATUS_SUCCESS;
 }
 
@@ -23,7 +29,10 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT PVOID *Object)
 {
+    assert(Type < NUM_OBJECT_TYPES);
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
+    assert(ObjectType->TypeInfo.CreateProc != NULL);
+
     ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER,
 		      sizeof(OBJECT_HEADER) + ObjectType->ObjectBodySize,
 		      {});
@@ -31,12 +40,13 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
     ObjectHeader->RefCount = 0;
     InitializeListHead(&ObjectHeader->ObjectLink);
     *Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
-    NTSTATUS Status = ObjectType->TypeInfo.CreateProc(*Object);
-    if (!NT_SUCCESS(Status)) {
-	*Object = NULL;
-	ExFreePool(ObjectHeader);
-    }
+
+    RET_ERR_EX(ObjectType->TypeInfo.CreateProc(*Object),
+	       {
+		   *Object = NULL;
+		   ExFreePool(ObjectHeader);
+	       });
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);
     ObpReferenceObject(ObjectHeader);
-    return Status;
+    return STATUS_SUCCESS;
 }

@@ -2,6 +2,15 @@
 
 #include <ntos.h>
 
+#ifdef _M_IX86
+#define MWORD_SHIFT	(2)
+#elif defined(_M_AMD64)
+#define MWORD_SHIFT	(3)
+#else
+#error "Unsupported architecture"
+#endif
+
+/* Two machine words for smallest EX_POOL_BLOCK */
 #define EX_POOL_BLOCK_SHIFT	(1 + MWORD_SHIFT)
 #define EX_POOL_SMALLEST_BLOCK	(1 << EX_POOL_BLOCK_SHIFT)
 

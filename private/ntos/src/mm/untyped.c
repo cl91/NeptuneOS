@@ -2,23 +2,14 @@
 
 VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN PMM_UNTYPED Parent,
-			 IN BOOLEAN IsLeft,
 			 IN MWORD Cap,
 			 IN MWORD PhyAddr,
 			 IN LONG Log2Size,
 			 IN BOOLEAN IsDevice)
 {
     assert((PhyAddr & ((1 << Log2Size) - 1)) == 0);
-    Untyped->TreeNode.Parent = &Parent->TreeNode;
-    if (Parent != NULL) {
-	if (IsLeft) {
-	    Parent->TreeNode.LeftChild = &Untyped->TreeNode;
-	} else {
-	    Parent->TreeNode.RightChild = &Untyped->TreeNode;
-	}
-    }
-    Untyped->TreeNode.Type = MM_CAP_TREE_NODE_UNTYPED;
-    Untyped->TreeNode.Cap = Cap;
+    MiInitializeCapTreeNode(&Untyped->TreeNode, MM_CAP_TREE_NODE_UNTYPED,
+			    Cap, &Parent->TreeNode);
     Untyped->Log2Size = Log2Size;
     Untyped->IsDevice = IsDevice;
     InvalidateListEntry(&Untyped->FreeListEntry);
@@ -26,20 +17,20 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 }
 
 NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
-			OUT PMM_UNTYPED Dest1,
-			OUT PMM_UNTYPED Dest2)
+			OUT PMM_UNTYPED LeftChild,
+			OUT PMM_UNTYPED RightChild)
 {
-    if ((Src->TreeNode.LeftChild != NULL) || (Src->TreeNode.RightChild != NULL)) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+    if (MiCapTreeNodeHasChildren(&Src->TreeNode)) {
+	return STATUS_INVALID_PARAMETER;
     }
 
     MWORD NewCap = 0;
-    RET_ERR(MmAllocateCaps(&NewCap, 2));
+    RET_ERR(MmAllocateCapRange(&NewCap, 2));
 
     MWORD Error = seL4_Untyped_Retype(Src->TreeNode.Cap,
 				      seL4_UntypedObject,
 				      Src->Log2Size - 1,
-				      MmRootCspaceCap(),
+				      ROOT_CNODE_CAP,
 				      0, // node_index
 				      0, // node_depth
 				      NewCap, // node_offset
@@ -50,10 +41,10 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 	return SEL4_ERROR(Error);
     }
 
-    MiInitializeUntyped(Dest1, Src, TRUE, NewCap, Src->AvlNode.Key,
+    MiInitializeUntyped(LeftChild, Src, NewCap, Src->AvlNode.Key,
 			Src->Log2Size - 1, Src->IsDevice);
-    MiInitializeUntyped(Dest2, Src, FALSE, NewCap + 1,
-			Src->AvlNode.Key + (1 << Dest1->Log2Size),
+    MiInitializeUntyped(RightChild, Src, NewCap + 1,
+			Src->AvlNode.Key + (1 << LeftChild->Log2Size),
 			Src->Log2Size - 1, Src->IsDevice);
 
     return STATUS_SUCCESS;
@@ -63,9 +54,9 @@ VOID MiInsertFreeUntyped(IN PMM_PHY_MEM PhyMem,
 			 IN PMM_UNTYPED Untyped)
 {
     PLIST_ENTRY List;
-    if (Untyped->Log2Size >= MM_LARGE_PAGE_BITS) {
+    if (Untyped->Log2Size >= LARGE_PAGE_LOG2SIZE) {
 	List = &PhyMem->LargeUntypedList;
-    } else if (Untyped->Log2Size >= MM_PAGE_BITS) {
+    } else if (Untyped->Log2Size >= PAGE_LOG2SIZE) {
 	List = &PhyMem->MediumUntypedList;
     } else {
 	List = &PhyMem->SmallUntypedList;
@@ -77,11 +68,11 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 			  OUT PMM_UNTYPED *pUntyped)
 {
     PLIST_ENTRY List = NULL;
-    if (Log2Size >= MM_LARGE_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
+    if (Log2Size >= LARGE_PAGE_LOG2SIZE && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
 	List = &MiPhyMemDescriptor.LargeUntypedList;
-    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.MediumUntypedList)) {
+    } else if (Log2Size >= PAGE_LOG2SIZE && !IsListEmpty(&MiPhyMemDescriptor.MediumUntypedList)) {
 	List = &MiPhyMemDescriptor.MediumUntypedList;
-    } else if (Log2Size >= MM_PAGE_BITS && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
+    } else if (Log2Size >= PAGE_LOG2SIZE && !IsListEmpty(&MiPhyMemDescriptor.LargeUntypedList)) {
 	List = &MiPhyMemDescriptor.LargeUntypedList;
     } else if (!IsListEmpty(&MiPhyMemDescriptor.SmallUntypedList)) {
 	List = &MiPhyMemDescriptor.SmallUntypedList;
@@ -93,6 +84,7 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     if (List == NULL) {
 	return STATUS_NO_MEMORY;
     }
+
     PMM_UNTYPED Untyped = CONTAINING_RECORD(List->Flink, MM_UNTYPED, FreeListEntry);
     LONG NumSplits = Untyped->Log2Size - Log2Size;
     assert(NumSplits >= 0);
@@ -116,19 +108,28 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     return STATUS_SUCCESS;
 }
 
+/* Returns true if the supplied physical address is bounded
+ * by the untyped memory's starting and ending physical address
+ */
+static inline BOOLEAN MiUntypedContainsPhyAddr(IN PMM_UNTYPED Untyped,
+					       IN MWORD PhyAddr)
+{
+    MWORD StartAddr = Untyped->AvlNode.Key;
+    MWORD EndAddr = StartAddr + (1 << Untyped->Log2Size);
+    return (PhyAddr >= StartAddr) && (PhyAddr < EndAddr);
+}
+
 static PMM_UNTYPED MiFindRootUntyped(IN PMM_PHY_MEM PhyMem,
 				     IN MWORD PhyAddr)
 {
-    PMM_AVL_TREE Tree = &PhyMem->RootUntypedTree;
-    if (PhyMem->CachedRootUntyped != NULL && (PhyAddr >= PhyMem->CachedRootUntyped->AvlNode.Key)
-	&& (PhyAddr < PhyMem->CachedRootUntyped->AvlNode.Key +
-	    (1 << PhyMem->CachedRootUntyped->Log2Size))) {
+    PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
+    if (PhyMem->CachedRootUntyped != NULL
+	&& MiUntypedContainsPhyAddr(PhyMem->CachedRootUntyped, PhyAddr)) {
 	return PhyMem->CachedRootUntyped;
     }
     PMM_AVL_NODE Node = MiAvlTreeFindNodeOrParent(Tree, PhyAddr);
     PMM_UNTYPED Parent = Node ? CONTAINING_RECORD(Node, MM_UNTYPED, AvlNode) : NULL;
-    if (Parent != NULL && (PhyAddr >= Parent->AvlNode.Key)
-	&& (PhyAddr < Parent->AvlNode.Key + (1 << Parent->Log2Size))) {
+    if (Parent != NULL && MiUntypedContainsPhyAddr(Parent, PhyAddr)) {
 	PhyMem->CachedRootUntyped = Parent;
 	return Parent;
     }
@@ -149,32 +150,33 @@ NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
 			    IN MWORD PhyPageNum,
 			    OUT PMM_UNTYPED *IoUntyped)
 {
-    MWORD PhyAddr = PhyPageNum << MM_PAGE_BITS;
+    MWORD PhyAddr = PhyPageNum << PAGE_LOG2SIZE;
     PMM_UNTYPED RootIoUntyped = MiFindRootIoUntyped(PhyMem, PhyAddr);
     if (RootIoUntyped == NULL) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
 
     *IoUntyped = RootIoUntyped;
-    LONG NumSplits = RootIoUntyped->Log2Size - MM_PAGE_BITS;
+    LONG NumSplits = RootIoUntyped->Log2Size - PAGE_LOG2SIZE;
     for (LONG i = NumSplits-1; i >= 0; i--) {
-	if ((*IoUntyped)->TreeNode.LeftChild == NULL) {
-	    MiAllocatePool(LeftChild, MM_UNTYPED);
-	    MiAllocatePoolEx(RightChild, MM_UNTYPED, ExFreePool(LeftChild));
-	    RET_ERR_EX(MiSplitUntyped(*IoUntyped, LeftChild, RightChild),
+	if (!MiCapTreeNodeHasChildren(&(*IoUntyped)->TreeNode)) {
+	    MiAllocatePool(Child0, MM_UNTYPED);
+	    MiAllocatePoolEx(Child1, MM_UNTYPED, ExFreePool(Child0));
+	    RET_ERR_EX(MiSplitUntyped(*IoUntyped, Child0, Child1),
 		       {
-			   ExFreePool(LeftChild);
-			   ExFreePool(RightChild);
+			   ExFreePool(Child0);
+			   ExFreePool(Child1);
 		       });
 	}
-	MWORD Bit = PhyPageNum & (1 << i);
-	PMM_UNTYPED Child;
-	if (Bit) {
-	    Child = (PMM_UNTYPED) (*IoUntyped)->TreeNode.RightChild;
+	assert(MiCapTreeNodeChildrenCount(&(*IoUntyped)->TreeNode) == 2);
+	PMM_UNTYPED Child0 = MiCapTreeGetFirstChildTyped(*IoUntyped, MM_UNTYPED);
+	PMM_UNTYPED Child1 = MiCapTreeGetSecondChildTyped(*IoUntyped, MM_UNTYPED);
+	if (MiUntypedContainsPhyAddr(Child0, PhyAddr)) {
+	    *IoUntyped = Child0;
 	} else {
-	    Child = (PMM_UNTYPED) (*IoUntyped)->TreeNode.LeftChild;
+	    assert(MiUntypedContainsPhyAddr(Child1, PhyAddr));
+	    *IoUntyped = Child1;
 	}
-	*IoUntyped = Child;
     }
 
     return STATUS_SUCCESS;
@@ -185,13 +187,20 @@ NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
 {
     MWORD StartPhyAddr = RootUntyped->AvlNode.Key;
     MWORD EndPhyAddr = StartPhyAddr + (1 << RootUntyped->Log2Size);
-    PMM_AVL_TREE Tree = &PhyMem->RootUntypedTree;
+    PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
     PMM_AVL_NODE Node = MiAvlTreeFindNodeOrParent(Tree, StartPhyAddr);
     PMM_UNTYPED Parent = Node ? CONTAINING_RECORD(Node, MM_UNTYPED, AvlNode) : NULL;
+
+    /* Reject the insertion if the root untyped to be inserted overlaps
+     * with its parent node. This should never happen and in case it did,
+     * it would be due to a programming error. We therefore trigger an
+     * assertion on debug build in this case.
+     */
     if (Parent != NULL && (StartPhyAddr >= Parent->AvlNode.Key)
 	&& (EndPhyAddr <= Parent->AvlNode.Key + (1 << Parent->Log2Size))) {
-	/* EndPageNum <= ...: Here the equal sign is important! */
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	/* EndPhyAddr <= ...: Here the equal sign is important! */
+	assert(FALSE);
+	return STATUS_NTOS_BUG;
     }
     MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &RootUntyped->AvlNode);
     return STATUS_SUCCESS;

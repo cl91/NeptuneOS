@@ -1,20 +1,13 @@
 #pragma once
 
 #include <sel4/sel4.h>
+
 typedef seL4_Word MWORD;
+#define MWORD_BYTES	(sizeof(MWORD))
+#define MWORD_BITS	(MWORD_BYTES * 8)
 
 #define ARRAY_LENGTH(x)		(sizeof(x) / sizeof((x)[0]))
 #define COMPILE_ASSERT(name, expr)	typedef int __ntos_assert_failed_##name[(expr) ? 1 : -1]
-
-#ifdef _M_IX86
-#define MWORD_BITS	(32)
-#define MWORD_BYTES	(4)
-#define MWORD_SHIFT	(2)
-#elif defined(_M_AMD64)
-#define MWORD_BITS	(64)
-#define MWORD_BYTES	(8)
-#define MWORD_SHIFT	(3)
-#endif
 
 /* NTSTATUS Bits:
  * 0--15   Status code
@@ -30,12 +23,11 @@ typedef seL4_Word MWORD;
 #define NTOS_ERROR(Code)	((NTSTATUS)(Code | (FACILITY_NTOS << 16) | ERROR_SEVERITY_ERROR))
 
 #define STATUS_NTOS_BUG				NTOS_ERROR(1)
-#define STATUS_NTOS_INVALID_ARGUMENT		NTOS_ERROR(2)
-#define STATUS_NTOS_CAPSPACE_EXHAUSTION		NTOS_ERROR(3)
+#define STATUS_NTOS_CAPSPACE_EXHAUSTION		NTOS_ERROR(2)
 
 #define RET_ERR_EX(Expr, OnError)					\
     {NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) {			\
-	    DbgPrint("Expression %s in function %s at %s:%d returns error 0x%x\n", \
+	    DbgPrint("Expression %s in function %s @ %s:%d returned error 0x%x\n", \
 		     #Expr, __func__, __FILE__, __LINE__, Error);	\
 	    {OnError;} return Error; }}
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
@@ -54,6 +46,15 @@ typedef seL4_Word MWORD;
 static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 {
     ListEntry->Flink = ListEntry->Blink = NULL;
+}
+
+static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
+{
+    ULONG Length = 0;
+    for (PLIST_ENTRY Ptr = ListEntry->Flink; Ptr != ListEntry; Ptr = Ptr->Flink) {
+	Length++;
+    }
+    return Length;
 }
 
 #define LoopOverList(Entry, ListHead, Type, Field)			\

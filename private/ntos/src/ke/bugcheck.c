@@ -9,6 +9,9 @@ VOID KeBugCheckMsg(PCSTR Format, ...)
     vDbgPrint(Format, arglist);
     va_end(arglist);
 
-    // Loop forever
+    /* Dump some useful information. */
+    seL4_DebugDumpScheduler();
+
+    /* Loop forever */
     while (1);
 }

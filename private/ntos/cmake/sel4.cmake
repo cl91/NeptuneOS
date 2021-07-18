@@ -24,17 +24,22 @@ include(${KERNEL_PATH}/configs/seL4Config.cmake)
 sel4_import_kernel()
 sel4_import_libsel4()
 
+# For small memory systems, reduce the root cnode size.
+# For large memory systems, increase the root cnode size.
+# The numbers below are for a moderate system (256MB for x32, 4G for x64).
+# On x32 each CNode slot costs 16 bytes. 2^18 slots cost 4M.
+# On x64 each CNode slot costs 32 bytes. 2^20 slots cost 32M.
 if(KernelSel4Arch STREQUAL "ia32")
     set(Arch "i386" CACHE STRING "")
     set(KernelFSGSBase msr CACHE STRING "")
     set(KernelSetTLSBaseSelf ON CACHE BOOL "")
-    set(KernelRootCNodeSizeBits 12 CACHE STRING "")
+    set(KernelRootCNodeSizeBits 18 CACHE STRING "")
     set(KernelMaxNumBootinfoUntypedCaps 230 CACHE STRING "")
 elseif(KernelSel4Arch STREQUAL "x86_64")
     set(Arch "amd64" CACHE STRING "")
     set(KernelFSGSBase inst CACHE STRING "")
     set(KernelSetTLSBaseSelf OFF CACHE BOOL "")
-    set(KernelRootCNodeSizeBits 16 CACHE STRING "")
+    set(KernelRootCNodeSizeBits 20 CACHE STRING "")
     set(KernelMaxNumBootinfoUntypedCaps 1024 CACHE STRING "")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${KernelSel4Arch}")

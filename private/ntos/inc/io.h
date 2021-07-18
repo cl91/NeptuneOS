@@ -1,7 +1,7 @@
 #pragma once
 
 typedef struct _DEVICE_OBJECT {
-    PCHAR DeviceName;
+    PCSTR DeviceName;
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
 
 typedef struct _SECTION_OBJECT_POINTERS {
@@ -11,6 +11,6 @@ typedef struct _SECTION_OBJECT_POINTERS {
 
 typedef struct _FILE_OBJECT {
     PDEVICE_OBJECT DeviceObject;
-    PCHAR FileName;
+    PCSTR FileName;
     PSECTION_OBJECT_POINTERS SectionObjectPointer;
 } FILE_OBJECT, *PFILE_OBJECT;

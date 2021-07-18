@@ -73,7 +73,7 @@ extern MM_PHY_MEM MiPhyMemDescriptor;
 VOID MmRunAvlTreeTests()
 {
     DbgPrintFunc();
-    PMM_AVL_TREE RootUntypedTree = &MiPhyMemDescriptor.RootUntypedTree;
+    PMM_AVL_TREE RootUntypedTree = &MiPhyMemDescriptor.RootUntypedForest;
     DbgPrint("  RootUntypedTree:\n");
     PrintAvlTreeLinear(RootUntypedTree);
     PrintAvlTree(RootUntypedTree);

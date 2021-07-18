@@ -20,7 +20,7 @@ NTSTATUS MiVspaceInsertVadNode(IN PMM_VADDR_SPACE Vspace,
     PMM_VAD Parent = (PMM_VAD) MiAvlTreeFindNodeOrParent(Tree, StartPageNum);
     if (Parent != NULL && (StartPageNum >= Parent->AvlNode.Key)
 	&& (EndPageNum <= Parent->AvlNode.Key + Parent->NumPages)) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
     MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &VadNode->AvlNode);
     return STATUS_SUCCESS;
@@ -73,17 +73,17 @@ NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
 				 IN PMM_LARGE_PAGE LargePage)
 {
     if (!LargePage->PagingStructure.Mapped) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
     PMM_AVL_TREE Tree = &Vspace->PageTableTree;
-    MWORD LargePN = LargePage->PagingStructure.VirtPageNum >> MM_LARGE_PN_SHIFT;
+    MWORD LargePN = LargePage->PagingStructure.VirtPageNum >> LARGE_PN_SHIFT;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, LargePN);
     if (Parent != NULL && LargePN == Parent->Key) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
     MiAvlTreeInsertNode(Tree, Parent, &LargePage->AvlNode);
-    MWORD VadStartLargePN = Vad->AvlNode.Key >> MM_LARGE_PN_SHIFT;
-    MWORD VadEndLargePN = (Vad->AvlNode.Key + Vad->NumPages) >> MM_LARGE_PN_SHIFT;
+    MWORD VadStartLargePN = Vad->AvlNode.Key >> LARGE_PN_SHIFT;
+    MWORD VadEndLargePN = (Vad->AvlNode.Key + Vad->NumPages) >> LARGE_PN_SHIFT;
     if (LargePN == VadStartLargePN) {
 	Vad->FirstPageTable = &LargePage->AvlNode;
     } else if (LargePN == VadEndLargePN - 1) {
@@ -103,13 +103,13 @@ NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
 			       IN PMM_PAGE Page)
 {
     if (!PageTable->PagingStructure.Mapped || !Page->PagingStructure.Mapped) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
     PMM_AVL_TREE Tree = &PageTable->MappedPages;
     MWORD PageNum = Page->PagingStructure.VirtPageNum;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, PageNum);
     if (Parent != NULL && PageNum == Parent->Key) {
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
     MiAvlTreeInsertNode(Tree, Parent, &Page->AvlNode);
     return STATUS_SUCCESS;
@@ -135,7 +135,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,
 {
     if (MiVspaceFindVadNode(Vspace, StartPageNum, NumPages) != NULL) {
 	/* Enlarge VAD? */
-	return STATUS_NTOS_INVALID_ARGUMENT;
+	return STATUS_INVALID_PARAMETER;
     }
 
     MiAllocatePool(Vad, MM_VAD);

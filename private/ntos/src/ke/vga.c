@@ -3,9 +3,9 @@
 #include <string.h>
 
 #define VGA_VADDR_BASE		(0x0)
-#define VGA_VADDR_BASE_PN	(VGA_VADDR_BASE >> MM_PAGE_BITS)
+#define VGA_VADDR_BASE_PN	(VGA_VADDR_BASE >> PAGE_LOG2SIZE)
 #define VGA_VIDEO_PAGE		(0xB8000)
-#define VGA_VIDEO_PN		(VGA_VIDEO_PAGE >> MM_PAGE_BITS)
+#define VGA_VIDEO_PN		(VGA_VIDEO_PAGE >> PAGE_LOG2SIZE)
 #define VGA_BLUE		(1)
 #define VGA_WHITE		(15)
 #define VGA_BG_COLOR		(VGA_BLUE << 4)
@@ -24,7 +24,7 @@ static VOID KiVgaWriteStringEx(UCHAR Color, PCSTR String)
 static VOID KiVgaClearScreen()
 {
     volatile PCHAR Video = (volatile PCHAR) (VGA_VADDR_BASE + VGA_VIDEO_PAGE);
-    for (ULONG i = 0; i < MM_PAGE_SIZE/2; i++) {
+    for (ULONG i = 0; i < PAGE_SIZE/2; i++) {
 	*Video++ = 0;
 	*Video++ = VGA_BG_COLOR;
     }

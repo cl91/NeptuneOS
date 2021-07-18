@@ -65,26 +65,39 @@ typedef struct _OBJECT_HEADER {
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
     ((POBJECT_HEADER)(((MWORD) Ptr) - sizeof(OBJECT_HEADER)))
 
-/* Initialize the object. Self points to the beginning of the
- * object body.
+/*
+ * The create routine creates an empty object and initializes
+ * the object body to sane, default values. Self points to the
+ * beginning of the object body.
+ *
+ * The create routine cannot be NULL. The object manager will
+ * reject such object types during object type registration.
  */
 typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN PVOID Self);
 
-/* Opening the object can yield a different object, such
- * as a FILE object or a IO request from the Executive to the
- * driver process.
+/*
+ * The open routine produces an opened instance of the object,
+ * which can be an object of a different object type. For instance,
+ * opening a DEVICE object produces a FILE object.
  */
 typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN PVOID Self);
 
-/* Parse the object with the given Path. The parse procedure
- * will consume as many characters in Path as needed, and will
- * return the sub-object and the remaining path that is yet
- * to be parsed. The object manager will recursively call
- * on the sub-object with the remaining path until the remaining
+/*
+ * The parse routine is used by the object manager when other
+ * Executive components request an object by a path. It implements
+ * the semantics of a subobject identified by a subpath, given by
+ * the argument Path. The parse procedure will consume as many
+ * characters in Path as needed, and will return the subobject
+ * (if found) and the remaining path that is yet to be parsed.
+ * The object manager will recursively invoke the parse routine
+ * of the sub-object with the remaining path until the remaining
  * path is empty, or until the object fails to parse a path,
  * whichever occurs earlier.
  *
- * Note: the parse method is not allowed to modify the Path string.
+ * The parse routine can be NULL, in which case the object does
+ * not implement the semantics of sub-object.
+ *
+ * The parse routine is not allowed to modify the Path string.
  * RemainingPath must point to a sub-string within Path, and does
  * NOT include the leading OBJ_NAME_PATH_SEPARATOR.
  */
@@ -98,7 +111,7 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN PVOID Self,
  */
 typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN PVOID Self,
 					 IN POBJECT_HEADER Subobject,
-    					 IN PCSTR Subpath);
+					 IN PCSTR Subpath);
 
 typedef struct _OBJECT_TYPE_INITIALIZER {
     OBJECT_CREATE_METHOD CreateProc;

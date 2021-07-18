@@ -104,23 +104,22 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN PVOID Self,
 	 * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR.
 	 */
 	assert(FALSE);
-	return STATUS_OBJECT_PATH_SYNTAX_BAD;
+	return STATUS_NTOS_BUG;
     }
     ObpAllocatePoolEx(Name, CHAR, NameLength+1, {});
     memcpy(Name, Path, NameLength);
     Name[NameLength] = '\0';
 
     /* Look for the named object under the directory. */
-    NTSTATUS Status = ObpLookupDirectoryEntry(Directory, Name, FoundObject);
+    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Name, FoundObject),
+	       {
+		   ExFreePool(Name);
+		   *FoundObject = NULL;
+		   *RemainingPath = Path;
+	       });
     ExFreePool(Name);
-
-    if (!NT_SUCCESS(Status)) {
-	*FoundObject = NULL;
-	*RemainingPath = Path;
-	return Status;
-    }
-
     *RemainingPath = Path + NameLength;
+
     /* Remaining path does not include leading OBJ_NAME_PATH_SEPARATOR */
     if (**RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
 	(*RemainingPath)++;
@@ -210,15 +209,15 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
 	POBJECT_HEADER Subobject = NULL;
 	PCSTR RemainingPath = Path;
-	Status = ObjectHeader->Type->TypeInfo.ParseProc(Object,
-							Path,
-							&Subobject,
-							&RemainingPath);
-	if (!NT_SUCCESS(Status)) {
-	    return STATUS_OBJECT_NAME_NOT_FOUND;
-	}
+	RET_ERR(ObjectHeader->Type->TypeInfo.ParseProc(Object,
+						       Path,
+						       &Subobject,
+						       &RemainingPath));
 	/* It is a programming error if Subobject is NULL */
-	assert(Subobject != NULL);
+	if (Subobject == NULL) {
+	    assert(FALSE);
+	    return STATUS_NTOS_BUG;
+	}
 	/* Remaining path should not have leading OBJ_NAME_PATH_SEPARATOR */
 	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
 	    assert(FASLE);

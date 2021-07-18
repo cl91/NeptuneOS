@@ -15,7 +15,7 @@
 #define IPC_BUFFER_VADDR	(0xc0000000)
 #endif
 
-#define IPC_BUFFER_PAGENUM	(IPC_BUFFER_VADDR >> MM_PAGE_BITS)
+#define IPC_BUFFER_PAGENUM	(IPC_BUFFER_VADDR >> PAGE_LOG2SIZE)
 
 #define NTOS_PS_TAG	EX_POOL_TAG('n', 't', 'p', 's')
 
@@ -29,6 +29,7 @@ typedef struct _THREAD {
 typedef struct _PROCESS {
     PTHREAD InitThread;
     LIST_ENTRY ThreadList;
+    MM_CNODE CNode;
     MM_VADDR_SPACE VaddrSpace;	/* Virtual address space */
 } PROCESS, *PPROCESS;
 
