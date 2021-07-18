@@ -220,7 +220,7 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 	}
 	/* Remaining path should not have leading OBJ_NAME_PATH_SEPARATOR */
 	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	    assert(FASLE);
+	    assert(FALSE);
 	    RemainingPath++;
 	}
 	/* Remaining path should also be within the original Path */

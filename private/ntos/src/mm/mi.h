@@ -4,6 +4,7 @@
 #include <ntos.h>
 
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)
+#define LOG2SIZE_PER_CNODE_SLOT	(MWORD_LOG2SIZE + 2)
 #define LARGE_PN_SHIFT		(LARGE_PAGE_LOG2SIZE - PAGE_LOG2SIZE)
 
 /* Information needed to initialize the Memory Management subcomponent,
@@ -23,6 +24,8 @@ typedef struct _MM_INIT_INFO {
 #define MiAllocatePoolEx(Var, Type, OnError)				\
     ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_MM_TAG, OnError)
 #define MiAllocatePool(Var, Type)	MiAllocatePoolEx(Var, Type, {})
+#define MiAllocateArray(Var, Type, Size, OnError)			\
+    ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 
 static inline VOID MiInitializeCapTreeNode(IN PMM_CAP_TREE_NODE Self,
 					   IN MM_CAP_TREE_NODE_TYPE Type,
@@ -102,7 +105,7 @@ static inline VOID MiInitializeCNode(IN PMM_CNODE Self,
 				     IN MWORD *UsedMap)
 {
     assert(Self != NULL);
-    assert(RootCap != NULL);
+    assert(RootCap != 0);
     assert(UsedMap != NULL);
     MiInitializeCapTreeNode(&Self->TreeNode, MM_CAP_TREE_NODE_CNODE,
 			    RootCap, Parent);
@@ -111,6 +114,11 @@ static inline VOID MiInitializeCNode(IN PMM_CNODE Self,
     Self->TotalUsed = 1;
     SetBit(UsedMap, 0);
     Self->UsedMap = UsedMap;
+}
+
+static inline PMM_UNTYPED MiTreeNodeToUntyped(PMM_CAP_TREE_NODE TreeNode)
+{
+    return CONTAINING_RECORD(TreeNode, MM_UNTYPED, TreeNode);
 }
 
 typedef enum _MM_PAGING_STRUCTURE_TYPE {
@@ -198,9 +206,6 @@ static inline VOID MiInitializeVadNode(PMM_VAD Node,
 extern MM_VADDR_SPACE MiNtosVaddrSpace;
 extern MM_PHY_MEM MiPhyMemDescriptor;
 extern MM_CNODE MiNtosCNode;
-NTSTATUS MiSplitInitialUntyped(IN MWORD SrcCap,
-			       IN LONG SrcLog2Size,
-			       IN MWORD DestCap);
 NTSTATUS MiInitRetypeIntoPage(IN MWORD Untyped,
 			      IN MWORD PageCap,
 			      IN MWORD Type);
@@ -214,10 +219,10 @@ NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
 NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
 			      OUT LONG *PoolPages,
 			      OUT MWORD *FreeCapStart);
-NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
-				     IN PMM_VAD ExPoolVad);
-NTSTATUS MiInitRecordUserImagePaging(IN PMM_INIT_INFO InitInfo,
-				     IN PMM_VAD UserImageVad);
+NTSTATUS MiInitAddUntypedAndPages(IN PMM_INIT_INFO InitInfo,
+				  IN PMM_VAD ExPoolVad);
+NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo,
+				  IN PMM_VAD UserImageVad);
 
 /* untyped.c */
 VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
@@ -226,6 +231,9 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN MWORD PhyAddr,
 			 IN LONG Log2Size,
 			 IN BOOLEAN IsDevice);
+NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
+			   IN LONG SrcLog2Size,
+			   IN MWORD DestCap);
 NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 			OUT PMM_UNTYPED DestUntyped1,
 			OUT PMM_UNTYPED DestUntyped2);

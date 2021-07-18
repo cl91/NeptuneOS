@@ -16,6 +16,51 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
     MiAvlInitializeNode(&Untyped->AvlNode, PhyAddr);
 }
 
+/*
+ * Retype the untyped memory into a seL4 kernel object.
+ */
+NTSTATUS MmRetypeIntoObject(IN PMM_UNTYPED Untyped,
+			    IN MWORD ObjType,
+			    IN MWORD ObjBits,
+			    OUT MWORD *ObjCap)
+{
+    assert(Untyped != NULL);
+    assert(ObjCap != NULL);
+    RET_ERR(MmAllocateCap(ObjCap));
+    MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
+				      ObjType,
+				      ObjBits,
+				      ROOT_CNODE_CAP,
+				      0, // node_index
+				      0, // node_depth
+				      *ObjCap, // node_offset
+				      1);
+    if (Error != seL4_NoError) {
+	MmDeallocateCap(*ObjCap);
+	*ObjCap = 0;
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
+			   IN LONG SrcLog2Size,
+			   IN MWORD DestCap)
+{
+    MWORD Error = seL4_Untyped_Retype(SrcCap,
+				      seL4_UntypedObject,
+				      SrcLog2Size-1,
+				      ROOT_CNODE_CAP,
+				      0, // node_index
+				      0, // node_depth
+				      DestCap, // node_offset
+				      2);
+    if (Error) {
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 			OUT PMM_UNTYPED LeftChild,
 			OUT PMM_UNTYPED RightChild)
@@ -26,20 +71,11 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
 
     MWORD NewCap = 0;
     RET_ERR(MmAllocateCapRange(&NewCap, 2));
-
-    MWORD Error = seL4_Untyped_Retype(Src->TreeNode.Cap,
-				      seL4_UntypedObject,
-				      Src->Log2Size - 1,
-				      ROOT_CNODE_CAP,
-				      0, // node_index
-				      0, // node_depth
-				      NewCap, // node_offset
-				      2);
-    if (Error != seL4_NoError) {
-	MmDeallocateCap(NewCap+1);
-	MmDeallocateCap(NewCap);
-	return SEL4_ERROR(Error);
-    }
+    RET_ERR_EX(MiSplitUntypedCap(Src->TreeNode.Cap, Src->Log2Size, NewCap),
+	       {
+		   MmDeallocateCap(NewCap+1);
+		   MmDeallocateCap(NewCap);
+	       });
 
     MiInitializeUntyped(LeftChild, Src, NewCap, Src->AvlNode.Key,
 			Src->Log2Size - 1, Src->IsDevice);
@@ -206,8 +242,14 @@ NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
     return STATUS_SUCCESS;
 }
 
+/*
+ * Revoke all child objects of the specified untyped and return
+ * the untyped to the free untyped lists, possibly merging with
+ * sibling untyped memories.
+ */
 NTSTATUS MmReleaseUntyped(IN PMM_UNTYPED Untyped)
 {
+    /* TODO: Revoke child objects */
     /* TODO: Merge untyped recursively if possible and add to free list */
     return STATUS_SUCCESS;
 }

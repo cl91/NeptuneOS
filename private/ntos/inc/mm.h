@@ -18,6 +18,14 @@
 #define ROOT_CNODE_CAP		(seL4_CapInitThreadCNode)
 #define ROOT_VSPACE_CAP		(seL4_CapInitThreadVSpace)
 
+#ifdef _M_IX86
+#define MWORD_LOG2SIZE	(2)
+#elif defined(_M_AMD64)
+#define MWORD_LOG2SIZE	(3)
+#else
+#error "Unsupported architecture"
+#endif
+
 /*
  * Capability derivation tree
  *
@@ -41,9 +49,13 @@
  * the untyped caps in an AVL tree, and is stored in the
  * MM_PHY_MEM struct as RootUntypedForest.
  *
- * Note: a CNode is usually the leaf node of a capability
+ * Note: a CNode is always the leaf node of a capability
  * derivation tree, since a CNode cannot be minted or mutated.
- * We do not usually copy a CNode capability.
+ * We do not directly copy a CNode capability. When we are
+ * in the process of expanding a CNode, we always create a new
+ * larger CNode and copy old capabilities into the new one,
+ * and then delete the old CNode, releasing both ExPool memories
+ * and freeing the untyped memory that the old CNode has claimed.
 */
 
 typedef enum _MM_CAP_TREE_NODE_TYPE {
@@ -171,6 +183,9 @@ NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
 			      IN LONG NumberRequested);
 NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
 			   IN MWORD Cap);
+NTSTATUS MmCreateCNode(IN ULONG Log2Size,
+		       OUT PMM_CNODE *pCNode);
+NTSTATUS MmDeleteCNode(PMM_CNODE CNode);
 
 static inline NTSTATUS MmAllocateCap(OUT MWORD *Cap)
 {
@@ -195,6 +210,10 @@ static inline NTSTATUS MmDeallocateCap(IN MWORD Cap)
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 			  OUT PMM_UNTYPED *pUntyped);
 NTSTATUS MmReleaseUntyped(IN PMM_UNTYPED Untyped);
+NTSTATUS MmRetypeIntoObject(IN PMM_UNTYPED Untyped,
+			    IN MWORD ObjType,
+			    IN MWORD ObjBits,
+			    OUT MWORD *ObjCap);
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();

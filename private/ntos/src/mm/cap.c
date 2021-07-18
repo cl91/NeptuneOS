@@ -130,3 +130,62 @@ NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
     
     return STATUS_SUCCESS;
 }
+
+/*
+ * Request a suitably sized untyped memory and retype it
+ * into a CNode object. Allocate the relevant book-keeping
+ * data structures on the Executive Pool and return the CNode
+ */
+NTSTATUS MmCreateCNode(IN ULONG Log2Size,
+		       OUT PMM_CNODE *pCNode)
+{
+    PMM_UNTYPED Untyped = NULL;
+    ULONG Log2SizeUntyped = Log2Size + LOG2SIZE_PER_CNODE_SLOT;
+    RET_ERR(MmRequestUntyped(Log2SizeUntyped, &Untyped));
+
+    MWORD CNodeCap = 0;
+    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_CapTableObject, Log2Size, &CNodeCap),
+	       MmReleaseUntyped(Untyped));
+
+    MiAllocatePoolEx(CNode, MM_CNODE, MmReleaseUntyped(Untyped));
+    MiAllocateArray(UsedMap, MWORD, (1 << Log2Size) / MWORD_BITS,
+		    {
+			MmReleaseUntyped(Untyped);
+			ExFreePool(CNode);
+		    });
+    MiInitializeCNode(CNode, CNodeCap, Log2Size, &Untyped->TreeNode, UsedMap);
+    *pCNode = CNode;
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Delete the specified, dynamically allocated CNode. The initial root task
+ * CNode is not dynamically allocated and should never be deleted.
+ */
+NTSTATUS MmDeleteCNode(PMM_CNODE CNode)
+{
+    if (CNode->TreeNode.Parent != NULL) {
+	if (CNode->TreeNode.Type != MM_CAP_TREE_NODE_UNTYPED) {
+	    /* The parent of a CNode should always be an untyped. BUG! */
+	    assert(FALSE);
+	    return STATUS_NTOS_BUG;
+	}
+	RET_ERR(MmReleaseUntyped(MiTreeNodeToUntyped(CNode->TreeNode.Parent)));
+    }
+
+    if (CNode != &MiNtosCNode) {
+	/* We should never call MmDeleteCNode with the root task CNode. BUG! */
+	assert(FALSE);
+	return STATUS_NTOS_BUG;
+    }
+
+    /* A CNode should always be the leaf node of a capability derivation tree.
+     * On debug build we assert if this requirement has not been maintained. */
+    assert(!MiCapTreeNodeHasChildren(&CNode->TreeNode));
+
+    ExFreePool(CNode->UsedMap);
+    ExFreePool(CNode);
+
+    return STATUS_SUCCESS;
+}

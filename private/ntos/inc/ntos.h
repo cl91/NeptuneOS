@@ -1,5 +1,7 @@
 #pragma once
 
+#include <kernel/gen_config.h>
+
 #include <nt.h>
 #include <assert.h>
 #include <string.h>

@@ -29,7 +29,7 @@ typedef struct _THREAD {
 typedef struct _PROCESS {
     PTHREAD InitThread;
     LIST_ENTRY ThreadList;
-    MM_CNODE CNode;
+    PMM_CNODE CNode;
     MM_VADDR_SPACE VaddrSpace;	/* Virtual address space */
 } PROCESS, *PPROCESS;
 

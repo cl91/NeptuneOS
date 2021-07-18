@@ -27,6 +27,6 @@ VOID DbgPrint(PCSTR Format, ...)
 
 VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
 {
-    KeBugCheckMsg("Assertion %s failed in function %s at line %s of file %s\n",
+    KeBugCheckMsg("Assertion %s failed in function %s at line %d of file %s\n",
 		  str, function, line, file);
 }

@@ -8,24 +8,6 @@ MM_PHY_MEM MiPhyMemDescriptor;
 MM_CNODE MiNtosCNode;
 static MWORD MiNtosCNodeUsedMap[(1 << ROOT_CNODE_LOG2SIZE) / MWORD_BITS] PAGE_ALIGNED_DATA;
 
-NTSTATUS MiSplitInitialUntyped(IN MWORD SrcCap,
-			       IN LONG SrcLog2Size,
-			       IN MWORD DestCap)
-{
-    MWORD Error = seL4_Untyped_Retype(SrcCap,
-				      seL4_UntypedObject,
-				      SrcLog2Size-1,
-				      ROOT_CNODE_CAP,
-				      0, // node_index
-				      0, // node_depth
-				      DestCap, // node_offset
-				      2);
-    if (Error) {
-	return SEL4_ERROR(Error);
-    }
-    return STATUS_SUCCESS;
-}
-
 NTSTATUS MiInitRetypeIntoPage(IN MWORD Untyped,
 			      IN MWORD PageCap,
 			      IN MWORD Type)
@@ -110,7 +92,7 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
     InitializeListHead(&MiPhyMemDescriptor.SmallUntypedList);
     InitializeListHead(&MiPhyMemDescriptor.MediumUntypedList);
     InitializeListHead(&MiPhyMemDescriptor.LargeUntypedList);
-    RET_ERR(MiInitRecordUntypedAndPages(InitInfo, ExPoolVad));
+    RET_ERR(MiInitAddUntypedAndPages(InitInfo, ExPoolVad));
 
     /* Build Vad for ntos image */
     RET_ERR(MmReserveVirtualMemory(InitInfo->UserStartPageNum, InitInfo->NumUserPages));
@@ -118,7 +100,7 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
     if (UserImageVad == NULL) {
 	return STATUS_NTOS_BUG;
     }
-    RET_ERR(MiInitRecordUserImagePaging(InitInfo, UserImageVad));
+    RET_ERR(MiInitAddUserImagePaging(InitInfo, UserImageVad));
 
     return STATUS_SUCCESS;
 }
@@ -146,9 +128,9 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
     MWORD InitUntypedPhyAddr = 0;
     LONG Log2Size = 128;
 
-    /* Find at least 7 Pages + 1 PageDirectory */
+    /* Find at least 7 Pages + 1 PageTable */
     LoopOverUntyped(cap, desc, bootinfo) {
-	if (!desc->isDevice && desc->sizeBits >= (seL4_PageBits + 3)
+	if (!desc->isDevice && desc->sizeBits >= (PAGE_LOG2SIZE + 3)
 	    && desc->sizeBits < Log2Size) {
 	    InitUntyped = cap;
 	    InitUntypedPhyAddr = desc->paddr;
@@ -174,6 +156,8 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
     RET_ERR(MiInitializeRootTask(&InitInfo));
 
     LoopOverUntyped(cap, desc, bootinfo) {
+	/* For device memory we need to skip all device memories smaller than
+	 * one page since we map device memories as pages */
 	if (desc->isDevice && desc->sizeBits < PAGE_LOG2SIZE) {
 	    continue;
 	}

@@ -1,19 +1,23 @@
 #include "../mi.h"
 
-NTSTATUS MiPrepareInitialUntyped(IN PMM_INIT_INFO InitInfo)
+/*
+ * Split the initial untyped cap until the leaf node is page
+ * sized, taking the left child at every step.
+ */
+static NTSTATUS MiSplitInitialUntyped(IN PMM_INIT_INFO InitInfo)
 {
     MWORD DestCap = InitInfo->RootCNodeFreeCapStart;
     MWORD UntypedCap = InitInfo->InitUntypedCap;
     LONG Log2Size = InitInfo->InitUntypedLog2Size;
     LONG NumSplits = Log2Size - PAGE_LOG2SIZE;
     for (int i = 0; i < NumSplits; i++) {
-	RET_ERR(MiSplitInitialUntyped(UntypedCap, Log2Size, DestCap));
+	RET_ERR(MiSplitUntypedCap(UntypedCap, Log2Size, DestCap));
 	UntypedCap = DestCap;
 	DestCap += 2;
 	Log2Size--;
     }
     MWORD SrcCap = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 3;
-    return MiSplitInitialUntyped(SrcCap, Log2Size+1, DestCap);
+    return MiSplitUntypedCap(SrcCap, Log2Size+1, DestCap);
 }
 
 NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
@@ -26,7 +30,7 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
     }
 
     /* Map initial pages for ExPool */
-    RET_ERR(MiPrepareInitialUntyped(InitInfo));
+    RET_ERR(MiSplitInitialUntyped(InitInfo));
     LONG NumSplits = InitInfo->InitUntypedLog2Size - PAGE_LOG2SIZE;
     MWORD Page0Untyped = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 2;
     MWORD Page1Untyped = Page0Untyped + 1;
@@ -50,8 +54,8 @@ NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
-				     IN PMM_VAD ExPoolVad)
+NTSTATUS MiInitAddUntypedAndPages(IN PMM_INIT_INFO InitInfo,
+				  IN PMM_VAD ExPoolVad)
 {
     MiAllocatePool(RootUntyped, MM_UNTYPED);
     MiInitializeUntyped(RootUntyped, NULL, InitInfo->InitUntypedCap,
@@ -143,8 +147,8 @@ NTSTATUS MiInitRecordUntypedAndPages(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInitRecordUserImagePaging(IN PMM_INIT_INFO InitInfo,
-				     IN PMM_VAD UserImageVad)
+NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo,
+				  IN PMM_VAD UserImageVad)
 {
     MWORD StartPageNum = InitInfo->UserStartPageNum;
     MWORD EndPageNum = StartPageNum + InitInfo->NumUserPages;
