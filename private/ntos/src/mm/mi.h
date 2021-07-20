@@ -5,7 +5,6 @@
 
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)
 #define LOG2SIZE_PER_CNODE_SLOT	(MWORD_LOG2SIZE + 2)
-#define LARGE_PN_SHIFT		(LARGE_PAGE_LOG2SIZE - PAGE_LOG2SIZE)
 
 /* Information needed to initialize the Memory Management subcomponent,
  * including the Executive Pool */
@@ -14,9 +13,9 @@ typedef struct _MM_INIT_INFO {
     MWORD InitUntypedPhyAddr;
     LONG InitUntypedLog2Size;
     MWORD RootCNodeFreeCapStart;
-    MWORD UserStartPageNum;
-    MWORD UserPageCapStart;
-    MWORD NumUserPages;
+    MWORD UserImageStartVirtAddr;
+    MWORD UserImageFrameCapStart;
+    MWORD NumUserImageFrames;
     MWORD UserPagingStructureCapStart;
     MWORD NumUserPagingStructureCaps;
 } MM_INIT_INFO, *PMM_INIT_INFO;
@@ -121,57 +120,6 @@ static inline PMM_UNTYPED MiTreeNodeToUntyped(PMM_CAP_TREE_NODE TreeNode)
     return CONTAINING_RECORD(TreeNode, MM_UNTYPED, TreeNode);
 }
 
-typedef enum _MM_PAGING_STRUCTURE_TYPE {
-    MM_PAGE_TYPE_PAGE,
-    MM_PAGE_TYPE_LARGE_PAGE,
-    MM_PAGE_TYPE_PAGE_TABLE,
-} MM_PAGING_STRUCTURE_TYPE;
-
-/*
- * A paging structure represents a capability to either a page,
- * a large page, or a page table. A paging structure has a unique
- * virtual address space associated with it, since to share a
- * page in seL4 between multiple threads, the capability to that
- * page must first be cloned. Mapping the same page cap twice is
- * an error.
- *
- * Therefore, mapping a page on two different virtual address
- * spaces involves duplicating the MM_PAGING_STRUCTURE first
- * and then map the new paging structure. The new paging
- * structure will be the child of the old paging structure
- * in the capability derivation tree.
- */
-typedef struct _MM_PAGING_STRUCTURE {
-    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MWORD VSpaceCap;
-    MM_PAGING_STRUCTURE_TYPE Type;
-    BOOLEAN Mapped;
-    MWORD VirtPageNum;
-    seL4_CapRights_t Rights;
-    seL4_X86_VMAttributes Attributes;
-} MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;
-
-typedef struct _MM_PAGE {
-    MM_AVL_NODE AvlNode;	/* must be first entry */
-    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
-} MM_PAGE, *PMM_PAGE;
-
-typedef struct _MM_LARGE_PAGE {
-    MM_AVL_NODE AvlNode;	/* must be first entry. See MM_VAD */
-    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
-} MM_LARGE_PAGE, *PMM_LARGE_PAGE;
-
-typedef struct _MM_PAGE_TABLE {
-    MM_AVL_NODE AvlNode;	/* must be first entry. See MM_VAD */
-    MM_PAGING_STRUCTURE PagingStructure; /* must be second entry */
-    MM_AVL_TREE MappedPages;  /* balanced tree for all mapped pages */
-} MM_PAGE_TABLE, *PMM_PAGE_TABLE;
-
-#define MM_RIGHTS_RW	(seL4_ReadWrite)
-
-typedef ULONG WIN32_PROTECTION_MASK;
-typedef PULONG PWIN32_PROTECTION_MASK;
-
 static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
 				       MWORD Key)
 {
@@ -188,13 +136,12 @@ static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
 }
 
 static inline VOID MiInitializeVadNode(PMM_VAD Node,
-				       MWORD StartPageNum,
-				       MWORD NumPages)
+				       MWORD StartVaddr,
+				       MWORD WindowSize)
 {
-    MiAvlInitializeNode(&Node->AvlNode, StartPageNum);
-    Node->NumPages = NumPages;
-    Node->FirstPageTable = NULL;
-    Node->LastPageTable = NULL;
+    assert(IS_PAGE_ALIGNED(StartVaddr));
+    MiAvlInitializeNode(&Node->AvlNode, StartVaddr);
+    Node->WindowSize = WindowSize;
 }
 
 
@@ -206,25 +153,9 @@ static inline VOID MiInitializeVadNode(PMM_VAD Node,
 extern MM_VADDR_SPACE MiNtosVaddrSpace;
 extern MM_PHY_MEM MiPhyMemDescriptor;
 extern MM_CNODE MiNtosCNode;
-NTSTATUS MiInitRetypeIntoPage(IN MWORD Untyped,
-			      IN MWORD PageCap,
-			      IN MWORD Type);
-NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
-		       IN MWORD Untyped,
-		       IN MWORD PageCap,
-		       IN MWORD Vaddr,
-		       IN MWORD Type);
-
-/* arch/init.c */
-NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
-			      OUT LONG *PoolPages,
-			      OUT MWORD *FreeCapStart);
-NTSTATUS MiInitAddUntypedAndPages(IN PMM_INIT_INFO InitInfo,
-				  IN PMM_VAD ExPoolVad);
-NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo,
-				  IN PMM_VAD UserImageVad);
 
 /* untyped.c */
+VOID MiInitializePhyMemDescriptor(PMM_PHY_MEM PhyMem);
 VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN PMM_UNTYPED Parent,
 			 IN MWORD Cap,
@@ -240,7 +171,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
 VOID MiInsertFreeUntyped(PMM_PHY_MEM PhyMem,
 			 PMM_UNTYPED Untyped);
 NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
-			    IN MWORD PhyPageNum,
+			    IN MWORD PhyAddr,
 			    OUT PMM_UNTYPED *IoUntyped);
 NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
 			     IN PMM_UNTYPED RootUntyped);
@@ -252,47 +183,67 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 			 IN PMM_AVL_NODE Parent,
 			 IN PMM_AVL_NODE Node);
 
-/* vaddr.c */
-NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
-			       IN PMM_PAGE Page);
-NTSTATUS MiVspaceInsertVadNode(IN PMM_VADDR_SPACE Vspace,
-			       IN PMM_VAD VadNode);
-PMM_VAD MiVspaceFindVadNode(IN PMM_VADDR_SPACE Vspace,
-			    IN MWORD StartPageNum,
-			    IN MWORD NumPages);
-PMM_AVL_NODE MiVspaceFindPageTableOrLargePage(IN PMM_VADDR_SPACE Vspace,
-					      IN MWORD LargePageNum);
-BOOLEAN MiPTNodeIsLargePage(PMM_AVL_NODE Node);
-BOOLEAN MiPTNodeIsPageTable(PMM_AVL_NODE Node);
-NTSTATUS MiVspaceInsertLargePage(IN PMM_VADDR_SPACE Vspace,
-				 IN PMM_VAD Vad,
-				 IN PMM_LARGE_PAGE LargePage);
-NTSTATUS MiVspaceInsertPageTable(IN PMM_VADDR_SPACE Vspace,
-				 IN PMM_VAD Vad,
-				 IN PMM_PAGE_TABLE PageTable);
-NTSTATUS MiPageTableInsertPage(IN PMM_PAGE_TABLE PageTable,
-			       IN PMM_PAGE Page);
-PMM_PAGE MiPageTableFindPage(IN PMM_PAGE_TABLE PageTable,
-			     IN MWORD PageNum);
+/*
+ * Returns TRUE if the supplied address is within the address range
+ * specified by the AVL node's key value and the supplied window size
+ */
+static inline BOOLEAN MiAvlNodeContainsAddr(IN PMM_AVL_NODE Node,
+					    IN MWORD Size,
+					    IN MWORD Addr)
+{
+    assert(Node != NULL);
+    MWORD StartAddr = Node->Key;
+    MWORD EndAddr = StartAddr + Size;
+    return (Addr >= StartAddr) && (Addr < EndAddr);
+}
+
+/*
+ * Returns TRUE if the supplied address window is fully contained within
+ * the AVL node with the given size
+ */
+static inline BOOLEAN MiAvlNodeContainsAddrWindow(IN PMM_AVL_NODE Node,
+						  IN MWORD NodeSize,
+						  IN MWORD Addr,
+						  IN MWORD WindowSize)
+{
+    assert(Node != NULL);
+    MWORD EndNodeAddr = Node->Key + NodeSize;
+    MWORD EndWindowAddr = Addr + WindowSize;
+    /* Note here the equal signs are important */
+    return (Addr >= Node->Key) && (EndWindowAddr <= EndNodeAddr);
+}
+
+/*
+ * Returns TRUE if the supplied address window has overlap with
+ * the AVL node of the given size
+ */
+static inline BOOLEAN MiAvlNodeOverlapsAddrWindow(IN PMM_AVL_NODE Node,
+						  IN MWORD NodeSize,
+						  IN MWORD Addr,
+						  IN MWORD WindowSize)
+{
+    assert(Node != NULL);
+    MWORD EndWindowAddr = Addr + WindowSize;
+    /* Note here the equal signs are important */
+    return MiAvlNodeContainsAddr(Node, NodeSize, Addr) ||
+	MiAvlNodeContainsAddr(Node, NodeSize, EndWindowAddr-1);
+}
 
 /* page.c */
-VOID MiInitializePage(IN PMM_PAGE Page,
-		      IN PMM_UNTYPED Parent,
-		      IN PMM_VADDR_SPACE VaddrSpace,
-		      IN MWORD Cap,
-		      IN MWORD VirtPageNum,
-		      IN BOOLEAN Mapped,
-		      IN seL4_CapRights_t Rights);
-VOID MiInitializeLargePage(IN PMM_LARGE_PAGE LargePage,
-			   IN PMM_UNTYPED Parent,
-			   IN PMM_VADDR_SPACE VaddrSpace,
-			   IN MWORD Cap,
-			   IN MWORD VirtPTNum,
-			   IN BOOLEAN Mapped,
-			   IN seL4_CapRights_t Rights);
-VOID MiInitializePageTable(IN PMM_PAGE_TABLE PageTable,
-			   IN PMM_UNTYPED Parent,
-			   IN PMM_VADDR_SPACE VaddrSpace,
-			   IN MWORD Cap,
-			   IN MWORD VirtPTNum,
-			   IN BOOLEAN Mapped);
+VOID MiInitializePagingStructure(IN PMM_PAGING_STRUCTURE Page,
+				 IN PMM_CAP_TREE_NODE ParentNode,
+				 IN PMM_PAGING_STRUCTURE ParentPagingStructure,
+				 IN MWORD VSpaceCap,
+				 IN MWORD Cap,
+				 IN MWORD VirtAddr,
+				 IN MM_PAGING_STRUCTURE_TYPE Type,
+				 IN BOOLEAN Mapped,
+				 IN MM_PAGING_RIGHTS Rights);
+NTSTATUS MiCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
+				 IN PMM_UNTYPED Untyped,
+				 IN MWORD VirtAddr,
+				 IN MWORD VSpaceCap,
+				 IN MM_PAGING_RIGHTS Rights,
+				 OUT PMM_PAGING_STRUCTURE *pPaging);
+NTSTATUS MiVSpaceInsertPagingStructure(IN PMM_VADDR_SPACE VSpace,
+				       IN PMM_PAGING_STRUCTURE Paging);

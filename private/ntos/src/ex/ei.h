@@ -22,13 +22,13 @@ typedef struct _EX_POOL_HEADER {
 } EX_POOL_HEADER, *PEX_POOL_HEADER;
 
 #define EX_POOL_OVERHEAD	(sizeof(EX_POOL_HEADER))
-#define EX_POOL_LARGEST_BLOCK	((1 << seL4_PageBits) - EX_POOL_OVERHEAD)
+#define EX_POOL_LARGEST_BLOCK	(PAGE_SIZE - EX_POOL_OVERHEAD)
 #define EX_POOL_FREE_LISTS	(EX_POOL_LARGEST_BLOCK / EX_POOL_SMALLEST_BLOCK)
 
 COMPILE_ASSERT(EX_POOL_OVERHEAD_MUST_EQUAL_SMALLEST_BLOCK, EX_POOL_OVERHEAD == EX_POOL_SMALLEST_BLOCK);
 
 typedef struct _EX_POOL {
-    LONG TotalPages;		/* one large page is 2^10 pages */
+    LONG TotalPages;		/* number of 4K pages */
     LONG UsedPages;		/* we always allocate page contiguously */
     MWORD HeapStart;
     MWORD HeapEnd;

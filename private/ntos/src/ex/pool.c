@@ -17,9 +17,9 @@ static VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
 
 /* Add the free page to the FreeLists */
 static VOID EiAddPageToPool(IN PEX_POOL Pool,
-			    IN MWORD PageNum)
+			    IN MWORD Addr)
 {
-    EiAddFreeSpaceToPool(Pool, PageNum << PAGE_LOG2SIZE, 0, EX_POOL_FREE_LISTS);
+    EiAddFreeSpaceToPool(Pool, Addr, 0, EX_POOL_FREE_LISTS);
 }
 
 /* We require 3 consecutive initial pages mapped at EX_POOL_START */
@@ -40,7 +40,7 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
     EiPool.UsedPages = 1;
     EiPool.HeapStart = HeapStart;
     EiPool.HeapEnd = HeapStart + PAGE_SIZE;
-    EiAddPageToPool(&EiPool, HeapStart >> PAGE_LOG2SIZE);
+    EiAddPageToPool(&EiPool, HeapStart);
 
     return STATUS_SUCCESS;
 }
@@ -66,24 +66,23 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
     if (AvailablePages >= 1) {
 	/* Add one page to the pool */
 	Pool->UsedPages++;
-	EiAddPageToPool(Pool, Pool->HeapEnd >> PAGE_LOG2SIZE);
+	EiAddPageToPool(Pool, Pool->HeapEnd);
 	Pool->HeapEnd += PAGE_SIZE;
-	if (AvailablePages >= 2) {
+	if (AvailablePages >= 4) {
 	    /* Plenty of resources here. Simply return */
 	    return;
 	} else {
 	    /* We are running low on resources. Request more pages from mm */
 	    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
-	    LONG NewPages = 1;
+	    LONG Size = PAGE_SIZE;
 	    if (MemPressure == MM_MEM_PRESSURE_SUFFICIENT_MEMORY) {
-		NewPages = 4;
+		Size = LARGE_PAGE_SIZE;
 	    } else if (MemPressure == MM_MEM_PRESSURE_LOW_MEMORY) {
-		NewPages = 2;
+		Size = 4 * PAGE_SIZE;
 	    } /* Otherwise we are critically low on memory, just get one page only */
-	    MWORD SatisfiedPages = 0;
-	    MmCommitPages(Pool->HeapEnd >> PAGE_LOG2SIZE,
-			  NewPages, &SatisfiedPages, NULL);
-	    Pool->TotalPages += SatisfiedPages;
+	    MWORD SatisfiedSize = 0;
+	    MmCommitAddrWindow(Pool->HeapEnd, Size, &SatisfiedSize);
+	    Pool->TotalPages += SatisfiedSize >> PAGE_LOG2SIZE;
 	}
     }
 }

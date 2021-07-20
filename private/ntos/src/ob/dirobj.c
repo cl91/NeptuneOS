@@ -103,7 +103,6 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN PVOID Self,
 	/* This is a programming error since the object manager shall always
 	 * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR.
 	 */
-	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
     ObpAllocatePoolEx(Name, CHAR, NameLength+1, {});
@@ -215,13 +214,11 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 						       &RemainingPath));
 	/* It is a programming error if Subobject is NULL */
 	if (Subobject == NULL) {
-	    assert(FALSE);
 	    return STATUS_NTOS_BUG;
 	}
 	/* Remaining path should not have leading OBJ_NAME_PATH_SEPARATOR */
 	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	    assert(FALSE);
-	    RemainingPath++;
+	    return STATUS_NTOS_BUG;
 	}
 	/* Remaining path should also be within the original Path */
 	assert(RemainingPath > Path);

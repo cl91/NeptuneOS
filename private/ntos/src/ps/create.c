@@ -78,9 +78,10 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 					 &Process->VaddrSpace),
 	       ObDereferenceObject(*pThread));
 
-    PMM_PAGE IpcBuffer;
-    RET_ERR_EX(MmCommitPageEx(&Process->VaddrSpace,
-			      IPC_BUFFER_PAGENUM, &IpcBuffer),
+    PMM_PAGING_STRUCTURE IpcBuffer;
+    RET_ERR_EX(MmCommitAddrWindowEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
+				    PAGE_SIZE, MM_RIGHTS_RW, TRUE, NULL,
+				    &IpcBuffer, 1, NULL),
 	       ObDereferenceObject(*pThread));
     (*pThread)->IpcBuffer = IpcBuffer;
 
@@ -92,7 +93,7 @@ NTSTATUS PsCreateProcess(OUT PPROCESS *pProcess)
     RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (PPVOID) pProcess));
 
     RET_ERR_EX(MmReserveVirtualMemoryEx(&(*pProcess)->VaddrSpace,
-					IPC_BUFFER_PAGENUM, 1),
+					IPC_BUFFER_VADDR, PAGE_SIZE),
 	       ObDereferenceObject(*pProcess));
 
     return STATUS_SUCCESS;

@@ -140,8 +140,11 @@ static VOID MiAvlTreeRotateNode(PMM_AVL_TREE Tree,
 
 /*
  * Performs the rebalancing of a given node S, which had just
- * become unbalanced due to insertion/deletion
- * See page 463--475 of TAOCP Volume 3, Section 6.2.3
+ * become unbalanced due to insertion/deletion.
+ *
+ * See page 463--475 of The Art of Computer Programming,
+ * Volume 3, Section 6.2.3
+ *
  * Returns TRUE if delete can terminate after rebalancing.
  */
 static BOOLEAN
@@ -324,4 +327,71 @@ MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 	    break;
 	}
     }
+}
+
+typedef struct _TRUNK
+{
+    struct _TRUNK *Prev;
+    char *Str;
+} TRUNK, *PTRUNK;
+
+// Helper function to print branches of the binary tree
+static void MiAvlTreeShowTrunks(PTRUNK p)
+{
+    if (p == NULL)
+        return;
+
+    MiAvlTreeShowTrunks(p->Prev);
+
+    if (p->Str != NULL) {
+	DbgPrint("%s", p->Str);
+    }
+}
+
+// Recursive function to print binary tree
+// It uses inorder traversal
+static void MiAvlTreePrintTree(PMM_AVL_NODE Root,
+			       PTRUNK Prev,
+			       BOOLEAN IsLeft)
+{
+    if (Root == NULL)
+        return;
+
+    char *PrevStr = "    ";
+    TRUNK Trunk = { .Prev = Prev,
+		    .Str = PrevStr };
+
+    MiAvlTreePrintTree(Root->LeftChild, &Trunk, TRUE);
+
+    if (!Prev) {
+        Trunk.Str = "---";
+    } else if (IsLeft) {
+        Trunk.Str = ".---";
+        PrevStr = "   |";
+    } else {
+        Trunk.Str = "`---";
+        Prev->Str = PrevStr;
+    }
+
+    MiAvlTreeShowTrunks(&Trunk);
+    DbgPrint("%05x\n", Root->Key >> PAGE_LOG2SIZE);
+
+    if (Prev)
+        Prev->Str = PrevStr;
+    Trunk.Str = "   |";
+
+    MiAvlTreePrintTree(Root->RightChild, &Trunk, FALSE);
+}
+
+VOID MmAvlDumpTree(PMM_AVL_TREE tree)
+{
+    MiAvlTreePrintTree(tree->BalancedRoot, NULL, TRUE);
+}
+
+VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree)
+{
+    LoopOverList(Node, &tree->NodeList, MM_AVL_NODE, ListEntry) {
+	DbgPrint("%p ", Node->Key);
+    }
+    DbgPrint("\n");
 }

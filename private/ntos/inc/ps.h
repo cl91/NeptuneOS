@@ -6,24 +6,20 @@
 #include "ob.h"
 
 #ifdef _M_IX86
-#define seL4_VSpaceObject seL4_X86_PageDirectoryObject
 #define IPC_BUFFER_VADDR	(0xc0000000)
 #endif
 
 #ifdef _M_AMD64
-#define seL4_VSpaceObject seL4_X64_PML4Object
 #define IPC_BUFFER_VADDR	(0xc0000000)
 #endif
 
-#define IPC_BUFFER_PAGENUM	(IPC_BUFFER_VADDR >> PAGE_LOG2SIZE)
-
-#define NTOS_PS_TAG	EX_POOL_TAG('n', 't', 'p', 's')
+#define NTOS_PS_TAG		EX_POOL_TAG('n', 't', 'p', 's')
 
 typedef struct _THREAD {
     LIST_ENTRY ThreadListEntry;
     PMM_UNTYPED TcbUntyped;
     MWORD TcbCap;
-    PMM_PAGE IpcBuffer;
+    PMM_PAGING_STRUCTURE IpcBuffer;
 } THREAD, *PTHREAD;
 
 typedef struct _PROCESS {

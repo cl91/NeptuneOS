@@ -8,13 +8,12 @@ MM_PHY_MEM MiPhyMemDescriptor;
 MM_CNODE MiNtosCNode;
 static MWORD MiNtosCNodeUsedMap[(1 << ROOT_CNODE_LOG2SIZE) / MWORD_BITS] PAGE_ALIGNED_DATA;
 
-NTSTATUS MiInitRetypeIntoPage(IN MWORD Untyped,
-			      IN MWORD PageCap,
-			      IN MWORD Type)
+static NTSTATUS MiInitRetypeIntoLargePage(IN MWORD Untyped,
+					  IN MWORD PageCap)
 {
     int Error = seL4_Untyped_Retype(Untyped,
-				    Type,
-				    PAGE_LOG2SIZE,
+				    MM_PAGING_TYPE_LARGE_PAGE,
+				    LARGE_PAGE_LOG2SIZE,
 				    ROOT_CNODE_CAP,
 				    0, // node_index
 				    0, // node_depth
@@ -27,30 +26,18 @@ NTSTATUS MiInitRetypeIntoPage(IN MWORD Untyped,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
-		       IN MWORD Untyped,
-		       IN MWORD PageCap,
-		       IN MWORD Vaddr,
-		       IN MWORD Type)
+static NTSTATUS MiInitMapLargePage(IN MWORD Untyped,
+				   IN MWORD PageCap,
+				   IN MWORD Vaddr)
 {
-    RET_ERR(MiInitRetypeIntoPage(Untyped, PageCap, Type));
+    assert(IS_LARGE_PAGE_ALIGNED(Vaddr));
+    RET_ERR(MiInitRetypeIntoLargePage(Untyped, PageCap));
 
-    int Error;
-    if (Type == seL4_X86_4K) {
-	Error = seL4_X86_Page_Map(PageCap,
+    int Error = seL4_X86_Page_Map(PageCap,
 				  ROOT_VSPACE_CAP,
 				  Vaddr,
 				  MM_RIGHTS_RW,
 				  seL4_X86_Default_VMAttributes);
-    } else if (Type == seL4_X86_PageTableObject) {
-	Error = seL4_X86_PageTable_Map(PageCap,
-				       ROOT_VSPACE_CAP,
-				       Vaddr,
-				       seL4_X86_Default_VMAttributes);
-    } else {
-	/* This is a programming error. */
-	return STATUS_NTOS_BUG;
-    }
 
     if (Error) {
 	return SEL4_ERROR(Error);
@@ -59,15 +46,178 @@ NTSTATUS MiInitMapPage(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
+
+/*
+ * Split the initial untyped cap until the leaf node is exactly the
+ * same size as one large page, taking the left child at every step.
+ * The new untyped caps start from the first free cap slot in the
+ * root CNode. The total number of new untyped caps equals two times
+ * the number of splits needed to split the initial untyped cap into
+ * large page size.
+ */
+static NTSTATUS MiSplitInitialUntyped(IN PMM_INIT_INFO InitInfo)
+{
+    MWORD DestCap = InitInfo->RootCNodeFreeCapStart;
+    MWORD UntypedCap = InitInfo->InitUntypedCap;
+    LONG Log2Size = InitInfo->InitUntypedLog2Size;
+    LONG NumSplits = Log2Size - LARGE_PAGE_LOG2SIZE;
+    for (int i = 0; i < NumSplits; i++) {
+	RET_ERR(MiSplitUntypedCap(UntypedCap, Log2Size--, DestCap));
+	UntypedCap = DestCap;
+	DestCap += 2;
+    }
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Split the initial untyped, taking left child at every turn,
+ * and map the last left child at EX_POOL_START
+ */
+static NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
+				     OUT MWORD *FreeCapStart)
+{
+    /* We require one large page to initialize ExPool */
+    if (InitInfo->InitUntypedLog2Size < LARGE_PAGE_LOG2SIZE) {
+	return STATUS_NO_MEMORY;
+    }
+
+    /* Map initial pages for ExPool */
+    RET_ERR(MiSplitInitialUntyped(InitInfo));
+    LONG NumSplits = InitInfo->InitUntypedLog2Size - LARGE_PAGE_LOG2SIZE;
+    MWORD PageUntyped = InitInfo->InitUntypedCap;
+    if (NumSplits > 0) {
+	PageUntyped = InitInfo->RootCNodeFreeCapStart + 2*NumSplits - 2;
+    }
+    MWORD PageCap = InitInfo->RootCNodeFreeCapStart + 2*NumSplits;
+    RET_ERR(MiInitMapLargePage(PageUntyped, PageCap, EX_POOL_START));
+
+    *FreeCapStart = PageCap + 1;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * The capability derivation tree after mapping the initial heap is
+ *
+ *                    (ParentUntyped)				i == 0
+ *                    (InitUntypedCap)
+ *                      /           \
+ *        (LeftChildUntyped)     (RightChilduntyped)            i == 1
+ *     (RootCNodeFreeCapStart)  (RootCNodeFreeCapStart+1)
+ *            /        \
+ *           (L)       (R)                                      i == 2
+ *          (CS+2)     (CS+3)      CS == RootCNodeFreeCapStart
+ *        ...........
+ *       /           \
+ *      (L)         (R)                                         i == NS-1
+ * (CS+(NS-1)*2) (CS+NS*2-1)       NS == NumSplits
+ *       |
+ * (LargePageCap)     LargePageCap == CS+NS*2                   i == NS
+ *
+ *  FreeCapStart == LargePageCap + 1
+ */
+static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
+{
+    MiAllocatePool(RootUntyped, MM_UNTYPED);
+    MiInitializeUntyped(RootUntyped, NULL, InitInfo->InitUntypedCap,
+			InitInfo->InitUntypedPhyAddr,
+			InitInfo->InitUntypedLog2Size, FALSE);
+
+    PMM_UNTYPED ParentUntyped = RootUntyped;
+    LONG NumSplits = InitInfo->InitUntypedLog2Size - LARGE_PAGE_LOG2SIZE;
+    for (int i = 0; i < NumSplits; i++) {
+	MiAllocatePool(LeftChildUntyped, MM_UNTYPED);
+	MiAllocatePool(RightChildUntyped, MM_UNTYPED);
+
+	LONG ChildLog2Size = InitInfo->InitUntypedLog2Size - 1 - i;
+	MWORD LeftChildCap = InitInfo->RootCNodeFreeCapStart + 2*i;
+	MWORD RigthChildCap = LeftChildCap + 1;
+	MiInitializeUntyped(LeftChildUntyped, ParentUntyped,
+			    LeftChildCap, InitInfo->InitUntypedPhyAddr,
+			    ChildLog2Size, FALSE);
+	MiInitializeUntyped(RightChildUntyped, ParentUntyped, RigthChildCap,
+			    InitInfo->InitUntypedPhyAddr + (1 << ChildLog2Size),
+			    ChildLog2Size, FALSE);
+	MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChildUntyped);
+	ParentUntyped = LeftChildUntyped;
+    }
+
+    PMM_PAGING_STRUCTURE Page = NULL;
+    MiCreatePagingStructure(MM_PAGING_TYPE_LARGE_PAGE, ParentUntyped, EX_POOL_START,
+			    ROOT_VSPACE_CAP, MM_RIGHTS_RW, &Page);
+    assert(Page != NULL);
+    Page->TreeNode.Cap = InitInfo->RootCNodeFreeCapStart + 2 * NumSplits;
+    Page->Mapped = TRUE;
+    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Add the initial root task user image paging structures to the virtual address
+ * space descriptor of the root task.
+ *
+ * For amd64, the first paging structure cap is the PDPT cap, and the rest are
+ * page table caps.
+ *
+ * Fox i386, the paging structure caps are page table caps.
+ */
+static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
+{
+    MWORD StartPageCap = InitInfo->UserImageFrameCapStart;
+    MWORD EndPageCap = StartPageCap + InitInfo->NumUserImageFrames;
+
+#ifdef _M_AMD64
+    /* FIXME: TODO */
+    PMM_PAGING_STRUCTURE PDPT = NULL;
+    RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PDPT, NULL,
+				    InitInfo->UserImageStartVirtAddr,
+				    ROOT_VSPACE_CAP, MM_RIGHTS_RW, &PDPT));
+    assert(PDPT != NULL);
+    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PDPT));
+#endif
+
+    /* Insert all the page tables used to map the root task user image */
+    MWORD StartPTNum = InitInfo->UserImageStartVirtAddr >> PAGE_TABLE_WINDOW_LOG2SIZE;
+    MWORD EndPTNum = StartPTNum + InitInfo->NumUserPagingStructureCaps;
+    for (MWORD PTNum = StartPTNum; PTNum < EndPTNum; PTNum++) {
+	PMM_PAGING_STRUCTURE PageTable = NULL;
+	RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PAGE_TABLE, NULL,
+					PTNum << PAGE_TABLE_WINDOW_LOG2SIZE,
+					ROOT_VSPACE_CAP, MM_RIGHTS_RW, &PageTable));
+	assert(PageTable != NULL);
+	PageTable->TreeNode.Cap = InitInfo->UserPagingStructureCapStart + PTNum - StartPTNum;
+	PageTable->Mapped = TRUE;
+	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PageTable));
+    }
+
+    /* Insert all the page frames used to map the root task user image */
+    MWORD StartPN = InitInfo->UserImageStartVirtAddr >> PAGE_LOG2SIZE;
+    MWORD EndPN = StartPN + InitInfo->NumUserImageFrames;
+    for (MWORD PN = StartPN; PN < EndPN; PN++) {
+	PMM_PAGING_STRUCTURE Page = NULL;
+	RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PAGE, NULL, PN << PAGE_LOG2SIZE,
+					ROOT_VSPACE_CAP, MM_RIGHTS_RW, &Page));
+	assert(Page != NULL);
+	Page->TreeNode.Cap = InitInfo->UserImageFrameCapStart + PN - StartPN;
+	Page->Mapped = TRUE;
+	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Map the initial ExPool heap and build the book-keeping data structures
+ * for the root task.
+ */
 static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
 {
     /* Map initial pages for ExPool */
-    LONG PoolPages;
-    MWORD FreeCapStart;
-    RET_ERR(MiInitMapInitialHeap(InitInfo, &PoolPages, &FreeCapStart));
+    MWORD FreeCapStart = 0;
+    RET_ERR(MiInitMapInitialHeap(InitInfo, &FreeCapStart));
 
     /* Initialize ExPool */
-    RET_ERR(ExInitializePool(EX_POOL_START, PoolPages));
+    RET_ERR(ExInitializePool(EX_POOL_START, LARGE_PAGE_SIZE / PAGE_SIZE));
 
     /* Initialize root CNode. Record used cap slots at this point. */
     MiInitializeCNode(&MiNtosCNode, ROOT_CNODE_CAP, ROOT_CNODE_LOG2SIZE,
@@ -78,29 +228,17 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
     MiNtosCNode.TotalUsed = FreeCapStart;
     MiNtosCNode.RecentFree = FreeCapStart;
 
-    /* Build the Vad tree of the ntos virtual address space */
+    /* Populate the virtual address space data structure for the root task. */
     MmInitializeVaddrSpace(&MiNtosVaddrSpace, ROOT_VSPACE_CAP);
-    RET_ERR(MmReserveVirtualMemory(EX_POOL_START_PN, EX_POOL_RESERVED_PAGES));
-    PMM_VAD ExPoolVad = MiVspaceFindVadNode(&MiNtosVaddrSpace, EX_POOL_START_PN, 1);
-    if (ExPoolVad == NULL) {
-	return STATUS_NTOS_BUG;
-    }
 
-    /* Add untyped and paging structure built during mapping of initial heap */
-    MiAvlInitializeTree(&MiPhyMemDescriptor.RootUntypedForest);
-    MiPhyMemDescriptor.CachedRootUntyped = NULL;
-    InitializeListHead(&MiPhyMemDescriptor.SmallUntypedList);
-    InitializeListHead(&MiPhyMemDescriptor.MediumUntypedList);
-    InitializeListHead(&MiPhyMemDescriptor.LargeUntypedList);
-    RET_ERR(MiInitAddUntypedAndPages(InitInfo, ExPoolVad));
+    /* Add the paging structures for the root task image. */
+    RET_ERR(MiInitAddUserImagePaging(InitInfo));
 
-    /* Build Vad for ntos image */
-    RET_ERR(MmReserveVirtualMemory(InitInfo->UserStartPageNum, InitInfo->NumUserPages));
-    PMM_VAD UserImageVad = MiVspaceFindVadNode(&MiNtosVaddrSpace, InitInfo->UserStartPageNum, InitInfo->NumUserPages);
-    if (UserImageVad == NULL) {
-	return STATUS_NTOS_BUG;
-    }
-    RET_ERR(MiInitAddUserImagePaging(InitInfo, UserImageVad));
+    /* Register the initial root untyped used for mapping the initial ExPool heap.
+     * Add all the intermediate untyped caps built during mapping of initial heap,
+     * as well as the large page for the initial ExPool heap. */
+    MiInitializePhyMemDescriptor(&MiPhyMemDescriptor);
+    RET_ERR(MiInitAddUntypedAndLargePage(InitInfo));
 
     return STATUS_SUCCESS;
 }
@@ -128,9 +266,9 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
     MWORD InitUntypedPhyAddr = 0;
     LONG Log2Size = 128;
 
-    /* Find at least 7 Pages + 1 PageTable */
+    /* Find the smallest untyped that is at least one large page sized. */
     LoopOverUntyped(cap, desc, bootinfo) {
-	if (!desc->isDevice && desc->sizeBits >= (PAGE_LOG2SIZE + 3)
+	if (!desc->isDevice && desc->sizeBits >= LARGE_PAGE_LOG2SIZE
 	    && desc->sizeBits < Log2Size) {
 	    InitUntyped = cap;
 	    InitUntypedPhyAddr = desc->paddr;
@@ -147,9 +285,9 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
 	 .InitUntypedPhyAddr = InitUntypedPhyAddr,
 	 .InitUntypedLog2Size = Log2Size,
 	 .RootCNodeFreeCapStart = bootinfo->empty.start,
-	 .UserStartPageNum = (MWORD) (&_text_start[0]) >> PAGE_LOG2SIZE,
-	 .UserPageCapStart = bootinfo->userImageFrames.start,
-	 .NumUserPages = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
+	 .UserImageStartVirtAddr = (MWORD) (&_text_start[0]),
+	 .UserImageFrameCapStart = bootinfo->userImageFrames.start,
+	 .NumUserImageFrames = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
 	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
 	 .NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start
 	};

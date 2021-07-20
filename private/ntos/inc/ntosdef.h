@@ -27,13 +27,18 @@ typedef seL4_Word MWORD;
 
 #define RET_ERR_EX(Expr, OnError)					\
     {NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) {			\
-	    DbgPrint("Expression %s in function %s @ %s:%d returned error 0x%x\n", \
+	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+		     " error 0x%x\n",					\
 		     #Expr, __func__, __FILE__, __LINE__, Error);	\
 	    {OnError;} return Error; }}
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
     Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
-    if ((Var) == NULL) { {OnError;} return STATUS_NO_MEMORY; }
+    if ((Var) == NULL) {						\
+	DbgPrint("Allocation of 0x%x bytes for variable %s of type"	\
+		 " (%s *) failed in function %s @ %s:%d\n",		\
+		 Size, #Var, #Type, __func__, __FILE__, __LINE__);	\
+	{OnError;} return STATUS_NO_MEMORY; }
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __packed	__attribute__((__packed__))

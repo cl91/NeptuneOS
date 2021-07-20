@@ -44,7 +44,7 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     sel4runtime_set_tls_base(tls_base);
     __sel4_ipc_buffer = bootinfo->ipcBuffer;
 #ifdef CONFIG_DEBUG_BUILD
-    DbgPrintFunc();
+    DbgPrint("Initial root thread address space:\n");
     DbgPrint("    _text_start = %p\n", _text_start);
     DbgPrint("    _text_end = %p\n", _text_end);
     DbgPrint("    _rodata_start = %p\n", _rodata_start);
@@ -82,7 +82,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 {
     char buf[64];
 
-    DbgPrintFunc();
+    DbgPrint("Bootinfo record:\n");
     DbgPrint("    bootinfo vaddr = %p\n", bootinfo);
     DbgPrint("    extraLen = %zd\n", bootinfo->extraLen);
     DbgPrint("    nodeID = %zd\n", bootinfo->nodeID);
@@ -105,7 +105,7 @@ static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
     seL4_SlotRegion slots = bootinfo->userImageFrames;
     char buf[64];
 
-    DbgPrintFunc();
+    DbgPrint("Initial root task user image frames:\n");
     for (seL4_CPtr cap = slots.start; cap < slots.end; cap++) {
 	seL4_X86_Page_GetAddress_t addr = seL4_X86_Page_GetAddress(cap);
 	DbgPrint("    frame cap = %zd (0x%zx) paddr = %p error = %zd\n",
@@ -117,7 +117,7 @@ static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
 {
     seL4_SlotRegion untyped = bootinfo->untyped;
 
-    DbgPrintFunc();
+    DbgPrint("Initial root untyped capabilities:\n");
     for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
         seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
         DbgPrint("    %s cap = %zd (0x%zx) paddr = %p log2(size) = %d\n",

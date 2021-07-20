@@ -3,25 +3,40 @@
 #include <nt.h>
 #include "ntosdef.h"
 
-#define NTOS_MM_TAG    		(EX_POOL_TAG('n','t','m','m'))
+#define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
 
-#define PAGE_LOG2SIZE		(seL4_PageBits)
-#define PAGE_TABLE_LOG2SIZE	(seL4_PageBits)
-#define LARGE_PAGE_LOG2SIZE	(seL4_LargePageBits)
-#define PAGE_SIZE		(1 << PAGE_LOG2SIZE)
-#define LARGE_PAGE_SIZE		(1 << LARGE_PAGE_LOG2SIZE)
+#define PAGE_LOG2SIZE			(seL4_PageBits)
+#define PAGE_TABLE_OBJ_LOG2SIZE		(seL4_PageTableBits)
+#define PAGE_TABLE_WINDOW_LOG2SIZE	(seL4_PageBits + seL4_PageDirIndexBits)
+#define LARGE_PAGE_LOG2SIZE		(seL4_LargePageBits)
+#define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageDirBits)
+#define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
+#define PAGE_SIZE			(1 << PAGE_LOG2SIZE)
+#define LARGE_PAGE_SIZE			(1 << LARGE_PAGE_LOG2SIZE)
 
-#define PAGE_ALIGN(p)		((MWORD)(p) & ~(PAGE_SIZE - 1))
-#define IS_PAGE_ALIGNED(p)	(((MWORD)(p)) == PAGE_ALIGN(p))
-#define PAGE_ALIGNED_DATA	__aligned(PAGE_SIZE)
+#define PAGE_ALIGN(p)			((MWORD)(p) & ~(PAGE_SIZE - 1))
+#define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
+#define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
+#define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
+#define IS_LARGE_PAGE_ALIGNED(p)	(((MWORD)(p)) == LARGE_PAGE_ALIGN(p))
 
-#define ROOT_CNODE_CAP		(seL4_CapInitThreadCNode)
-#define ROOT_VSPACE_CAP		(seL4_CapInitThreadVSpace)
+#define ROOT_CNODE_CAP			(seL4_CapInitThreadCNode)
+#define ROOT_VSPACE_CAP			(seL4_CapInitThreadVSpace)
 
 #ifdef _M_IX86
-#define MWORD_LOG2SIZE	(2)
+#define MWORD_LOG2SIZE			(2)
+#define seL4_VSpaceObject		seL4_X86_PageDirectoryObject
+#define PDPT_OBJ_LOG2SIZE		(0)
+#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE)
+#define PML4_OBJ_LOG2SIZE		(0)
+#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE)
 #elif defined(_M_AMD64)
-#define MWORD_LOG2SIZE	(3)
+#define MWORD_LOG2SIZE			(3)
+#define seL4_VSpaceObject		seL4_X64_PML4Object
+#define PDPT_OBJ_LOG2SIZE		(seL4_PDPTBits)
+#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE + seL4_PDPTIndexBits)
+#define PML4_OBJ_LOG2SIZE		(seL4_PML4Bits)
+#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE + seL4_PDPTIndexBits)
 #else
 #error "Unsupported architecture"
 #endif
@@ -129,22 +144,105 @@ typedef struct _MM_UNTYPED {
     BOOLEAN IsDevice;
 } MM_UNTYPED, *PMM_UNTYPED;
 
-/* Virtual address descriptor */
-typedef struct _MM_VAD {
-    MM_AVL_NODE AvlNode;	/* must be first entry */
-    MWORD NumPages;
-    PMM_AVL_NODE FirstPageTable; /* point to first and last page table/large page in the vaddr range */
-    PMM_AVL_NODE LastPageTable;	 /* polymorphic pointers to either MM_LARGE_PAGE or MM_PAGE_TABLE */
-} MM_VAD, *PMM_VAD;
+#define MM_AVL_NODE_TO_UNTYPED(Node)					\
+    ((Node) != NULL ? CONTAINING_RECORD(Node, MM_UNTYPED, AvlNode) : NULL)
 
 /*
- * Top level structure of the virtual address space of a process
+ * Virtual address descriptor
+ *
+ * This data structure is used for keeping track of the client
+ * process's request to reserve virtual address space. The memory
+ * manager's internal routines do not rely on this information
+ * to map or unmap a paging structure.
+ */
+typedef struct _MM_VAD {
+    MM_AVL_NODE AvlNode;	/* must be first entry */
+    MWORD WindowSize;
+} MM_VAD, *PMM_VAD;
+
+#define MM_AVL_NODE_TO_VAD(Node)					\
+    ((Node) != NULL ? CONTAINING_RECORD(Node, MM_VAD, AvlNode) : NULL)
+
+/*
+ * A paging structure represents a capability to either a page,
+ * a large page, or a page table. A paging structure has a unique
+ * virtual address space associated with it, since to share a
+ * page in seL4 between multiple threads, the capability to that
+ * page must first be cloned. Mapping the same page cap twice is
+ * an error.
+ *
+ * Therefore, mapping a page on two different virtual address
+ * spaces involves duplicating the MM_PAGING_STRUCTURE first
+ * and then map the new paging structure. The new paging
+ * structure will be the child of the old paging structure
+ * in the capability derivation tree.
+ *
+ * The virtual address space data structure of a process keeps
+ * track of the full page mapping information of the virtual
+ * address space. The page mapping is done in multiple layers,
+ * which for x86 has three, page directory, page table, and pages.
+ *
+ * All pages belonging to the same page table are inserted via the
+ * AvlNode member into an AVL tree denoted by the page table's
+ * SubStructureTree member. Likewise, all page tables belonging
+ * to a page directory are linked into an AVL tree via its AvlNode
+ * member. The SuperStructure member points to the paging structure
+ * one level above the current paging structure. The top level paging
+ * structure is recorded in the process's virtual address space descriptor.
+ */
+typedef enum _MM_PAGING_STRUCTURE_TYPE {
+    MM_PAGING_TYPE_PAGE = seL4_X86_4K,
+    MM_PAGING_TYPE_LARGE_PAGE = seL4_X86_LargePageObject,
+    MM_PAGING_TYPE_PAGE_TABLE = seL4_X86_PageTableObject,
+    MM_PAGING_TYPE_PAGE_DIRECTORY = seL4_X86_PageDirectoryObject,
+    MM_PAGING_TYPE_ROOT_PAGING_STRUCTURE = seL4_VSpaceObject,
+#ifdef _M_IX86
+    MM_PAGING_TYPE_PDPT = 0,
+    MM_PAGING_TYPE_PML4 = 0,
+#elif defined(_M_AMD64)
+    MM_PAGING_TYPE_PDPT = seL4_X64_PDPTObject,
+    MM_PAGING_TYPE_PML4 = seL4_X64_PML4Object,
+#else
+#error "Unsupported architecture"
+#endif
+} MM_PAGING_STRUCTURE_TYPE;
+
+#define MM_PAGING_RIGHTS		seL4_CapRights_t
+#define MM_PAGING_ATTRIBUTES		seL4_X86_VMAttributes
+
+typedef struct _MM_PAGING_STRUCTURE {
+    MM_CAP_TREE_NODE TreeNode;
+    MM_AVL_NODE AvlNode;
+    struct _MM_PAGING_STRUCTURE *SuperStructure;
+    MM_AVL_TREE SubStructureTree;
+    MWORD VSpaceCap;
+    MM_PAGING_STRUCTURE_TYPE Type;
+    BOOLEAN Mapped;
+    MM_PAGING_RIGHTS Rights;
+    MM_PAGING_ATTRIBUTES Attributes;
+} MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;
+
+#define MM_AVL_NODE_TO_PAGING_STRUCTURE(Node)					\
+    ((Node) != NULL ? CONTAINING_RECORD(Node, MM_PAGING_STRUCTURE, AvlNode) : NULL)
+
+#define MM_RIGHTS_RW	(seL4_ReadWrite)
+
+typedef ULONG WIN32_PROTECTION_MASK;
+typedef PULONG PWIN32_PROTECTION_MASK;
+
+/*
+ * Top level structure of the virtual address space of a process.
+ *
+ * This can represent both the root task's virtual address space
+ * as well as client processes' virtual address spaces. For the
+ * root task the Vad tree contains exactly one node, spanning the
+ * entire virtual address space.
  */
 typedef struct _MM_VADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
     MM_AVL_TREE VadTree;
-    MM_AVL_TREE PageTableTree;	/* Node is either a page table or a large page */
     PMM_VAD CachedVad;		/* Speed up look up */
+    MM_PAGING_STRUCTURE RootPagingStructure;
 } MM_VADDR_SPACE, *PMM_VADDR_SPACE;
 
 /*
@@ -171,13 +269,20 @@ typedef enum _MM_MEM_PRESSURE {
     MM_MEM_PRESSURE_CRITICALLY_LOW_MEMORY
 } MM_MEM_PRESSURE;
 
-/* Forward declarations */
-typedef struct _MM_PAGE MM_PAGE, *PMM_PAGE;
+
+/*
+ * Forward declarations
+ */
 
 /* init.c */
 NTSTATUS MmInitSystem(IN seL4_BootInfo *bootinfo);
 
+/* avltree.c */
+VOID MmAvlDumpTree(PMM_AVL_TREE tree);
+VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree);
+
 /* cap.c */
+VOID MmDbgDumpCapTreeNode(IN PMM_CAP_TREE_NODE Node);
 NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
 			      OUT MWORD *StartCap,
 			      IN LONG NumberRequested);
@@ -214,45 +319,58 @@ NTSTATUS MmRetypeIntoObject(IN PMM_UNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
 			    OUT MWORD *ObjCap);
+VOID MmDbgDumpUntypedInfo();
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitPages(IN MWORD FirstPageNum,
-		       IN MWORD NumPages,
-		       OUT MWORD *SatisfiedPages,
-		       OUT OPTIONAL PMM_PAGE *Pages);
-NTSTATUS MmCommitPagesEx(IN PMM_VADDR_SPACE VaddrSpace,
-			 IN MWORD StartPageNum,
-			 IN MWORD NumPages,
-			 OUT MWORD *SatisfiedPages,
-			 OUT OPTIONAL PMM_PAGE *Pages);
+NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
+			      IN MWORD VirtAddr,
+			      IN MWORD Size,
+			      IN MM_PAGING_RIGHTS Rights,
+			      IN BOOLEAN UseLargePage,
+			      OUT OPTIONAL MWORD *pSatisfiedSize,
+			      OUT OPTIONAL PMM_PAGING_STRUCTURE *pPage,
+			      IN OPTIONAL LONG MaxNumPagingStruct,
+			      OUT OPTIONAL LONG *pNumPagingStruct);
 NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
 			  IN PMM_PHY_MEM PhyMem,
-			  IN MWORD PhyPageNum,
-			  IN MWORD VirtPageNum);
-NTSTATUS MmCommitIoPage(IN MWORD PhyPageNum,
-			IN MWORD VirtPageNum);
+			  IN MWORD PhyAddr,
+			  IN MWORD VirtAddr,
+			  IN MM_PAGING_RIGHTS Rights,
+			  OUT OPTIONAL PMM_PAGING_STRUCTURE *pPage);
+VOID MmDbgDumpPagingStructure(IN PMM_PAGING_STRUCTURE Paging);
 
-static inline NTSTATUS MmCommitPageEx(IN PMM_VADDR_SPACE VaddrSpace,
-				      IN MWORD StartPageNum,
-				      OUT OPTIONAL PMM_PAGE *Page)
+static inline NTSTATUS MmCommitIoPage(IN MWORD PhyAddr,
+				      IN MWORD VirtAddr)
 {
-    MWORD SatisfiedPages;
-    return MmCommitPagesEx(VaddrSpace, StartPageNum, 1, &SatisfiedPages, Page);
+    extern MM_VADDR_SPACE MiNtosVaddrSpace;
+    extern MM_PHY_MEM MiPhyMemDescriptor;
+    return MmCommitIoPageEx(&MiNtosVaddrSpace, &MiPhyMemDescriptor,
+			    PhyAddr, VirtAddr, MM_RIGHTS_RW, NULL);
 }
 
-static inline NTSTATUS MmCommitPage(IN MWORD StartPageNum,
-				    OUT OPTIONAL PMM_PAGE *Page)
+/*
+ * Commit an address window in the NTOS Root Task, using large pages if available.
+ */
+static inline NTSTATUS MmCommitAddrWindow(IN MWORD VirtAddr,
+					  IN MWORD Size,
+					  OUT OPTIONAL MWORD *pSatisfiedSize)
 {
-    MWORD SatisfiedPages;
-    return MmCommitPages(StartPageNum, 1, &SatisfiedPages, Page);
+    extern MM_VADDR_SPACE MiNtosVaddrSpace;
+    return MmCommitAddrWindowEx(&MiNtosVaddrSpace, VirtAddr, Size, MM_RIGHTS_RW,
+				TRUE, pSatisfiedSize, NULL, 0, NULL);
 }
 
 /* vaddr.c */
 VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE VaddrSpace,
-			    IN MWORD VspaceCap);
-NTSTATUS MmReserveVirtualMemory(IN MWORD StartPageNum,
-				IN MWORD NumPages);
+			    IN MWORD VSpaceCap);
 NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,
-				  IN MWORD StartPageNum,
-				  IN MWORD NumPages);
+				  IN MWORD VirtAddr,
+				  IN MWORD WindowSize);
+
+static inline NTSTATUS MmReserveVirtualMemory(IN MWORD VirtAddr,
+					      IN MWORD WindowSize)
+{
+    extern MM_VADDR_SPACE MiNtosVaddrSpace;
+    return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, VirtAddr, WindowSize);
+}

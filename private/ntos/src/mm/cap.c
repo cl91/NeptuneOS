@@ -49,6 +49,24 @@ Revision History:
 
 #include "mi.h"
 
+VOID MmDbgDumpCapTreeNode(IN PMM_CAP_TREE_NODE Node)
+{
+    if (Node == NULL) {
+	DbgPrint("(nil)");
+	return;
+    }
+
+    PCSTR Type = "Unknown";
+    if (Node->Type == MM_CAP_TREE_NODE_CNODE) {
+	Type = "CNODE";
+    } else if (Node->Type == MM_CAP_TREE_NODE_UNTYPED) {
+	Type = "UNTYPED";
+    } else if (Node->Type == MM_CAP_TREE_NODE_PAGING_STRUCTURE) {
+	Type = "PAGING";
+    }
+    DbgPrint("Cap 0x%x (Type %s)", Node->Cap, Type);
+}
+
 /* Allocate a continuous range of capability slots */
 NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
 			      OUT MWORD *StartCap,
@@ -168,7 +186,6 @@ NTSTATUS MmDeleteCNode(PMM_CNODE CNode)
     if (CNode->TreeNode.Parent != NULL) {
 	if (CNode->TreeNode.Type != MM_CAP_TREE_NODE_UNTYPED) {
 	    /* The parent of a CNode should always be an untyped. BUG! */
-	    assert(FALSE);
 	    return STATUS_NTOS_BUG;
 	}
 	RET_ERR(MmReleaseUntyped(MiTreeNodeToUntyped(CNode->TreeNode.Parent)));
@@ -176,7 +193,6 @@ NTSTATUS MmDeleteCNode(PMM_CNODE CNode)
 
     if (CNode != &MiNtosCNode) {
 	/* We should never call MmDeleteCNode with the root task CNode. BUG! */
-	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
 

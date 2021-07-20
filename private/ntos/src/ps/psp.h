@@ -7,7 +7,11 @@
     Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_PS_TAG); \
     if ((Var) == NULL) { return STATUS_NO_MEMORY; }
 
-#define PROCESS_INIT_CNODE_LOG2SIZE	4
+/* Initial CNode for client processes has exactly MWORD_BITS slots */
+#define PROCESS_INIT_CNODE_LOG2SIZE	(MWORD_LOG2SIZE + 3)
+
+COMPILE_ASSERT(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
+	       (1 << PROCESS_INIT_CNODE_LOG2SIZE) >= MWORD_BITS);
 
 /* create.c */
 NTSTATUS PspThreadObjectCreateProc(PVOID Object);
