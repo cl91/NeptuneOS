@@ -200,7 +200,7 @@ typedef enum _MM_PAGING_STRUCTURE_TYPE {
     MM_PAGING_TYPE_PDPT = 0,
     MM_PAGING_TYPE_PML4 = 0,
 #elif defined(_M_AMD64)
-    MM_PAGING_TYPE_PDPT = seL4_X64_PDPTObject,
+    MM_PAGING_TYPE_PDPT = seL4_X86_PDPTObject,
     MM_PAGING_TYPE_PML4 = seL4_X64_PML4Object,
 #else
 #error "Unsupported architecture"

@@ -5,12 +5,20 @@
 #include <thread.h>
 #include "ki.h"
 
-// Minimum alignment for TLS across all platforms.
+/* Minimum alignment for TLS across all platforms. */
 #define MIN_ALIGN_BYTES 16
 #define MIN_ALIGNED __aligned(MIN_ALIGN_BYTES)
 
-// Static TLS for the initial thread.
+/* Static TLS for the initial thread of the root task. */
 static char STATIC_TLS_AREA[256] MIN_ALIGNED = {};
+
+/* Address for the IPC buffer of the initial thread of the root task. */
+__thread seL4_IPCBuffer *__sel4_ipc_buffer;
+
+/* Thread local variable used by libsel4 for printing syscall errors. */
+#ifdef CONFIG_KERNEL_INVOCATION_REPORT_ERROR_IPC
+__thread char __sel4_print_error;
+#endif
 
 extern char __stack_base[];
 extern char __stack_top[];

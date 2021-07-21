@@ -312,8 +312,8 @@ NTSTATUS MiCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
  * All super-structures are allocated from the available untyped memory of the root task.
  */
 static NTSTATUS MiMapSuperStructure(IN PMM_PAGING_STRUCTURE Paging,
-				     IN PMM_VADDR_SPACE VSpace,
-				     OUT OPTIONAL PMM_PAGING_STRUCTURE *pSuperStructure)
+				    IN PMM_VADDR_SPACE VSpace,
+				    OUT OPTIONAL PMM_PAGING_STRUCTURE *pSuperStructure)
 {
     assert(Paging != NULL);
     assert(VSpace != NULL);

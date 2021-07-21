@@ -2,11 +2,9 @@
 
 void LdrpInitialize()
 {
-    char *str = "Hello, world from NT client!\n";
-
-    for (char *p = str; *p != '\0'; p++) {
-	seL4_DebugPutChar(*p);
-    }
+#ifdef CONFIG_DEBUG_BUILD
+    seL4_DebugPutString("Hello, world from NT client!\n");
+#endif
 
     while (1);
 }

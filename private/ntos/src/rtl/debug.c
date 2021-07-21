@@ -6,15 +6,13 @@
 #include <stdarg.h>
 #include <printf.h>
 
+#ifdef CONFIG_DEBUG_BUILD
+
 VOID vDbgPrint(PCSTR Format, va_list args)
 {
-#ifdef CONFIG_DEBUG_BUILD
     char buf[512];
     vsnprintf(buf, sizeof(buf), Format, args);
-    for (const char *p = buf; p != NULL && *p != '\0'; p++) {
-	seL4_DebugPutChar(*p);
-    }
-#endif
+    seL4_DebugPutString(buf);
 }
 
 VOID DbgPrint(PCSTR Format, ...)
@@ -24,6 +22,8 @@ VOID DbgPrint(PCSTR Format, ...)
     vDbgPrint(Format, arglist);
     va_end(arglist);
 }
+
+#endif
 
 VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
 {

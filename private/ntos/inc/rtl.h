@@ -3,8 +3,12 @@
 #include <stdarg.h>
 #include <nt.h>
 
+#ifdef CONFIG_DEBUG_BUILD
 VOID vDbgPrint(PCSTR Format, va_list args);
 VOID DbgPrint(PCSTR Format, ...);
+#else
+#define DbgPrint(...)
+#endif
 
 #define DbgTrace(...) { DbgPrint("%s:  ", __func__); DbgPrint(__VA_ARGS__); }
 

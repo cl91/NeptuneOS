@@ -19,6 +19,9 @@ if((${CMAKE_BUILD_TYPE} STREQUAL "Release") OR (${CMAKE_BUILD_TYPE} STREQUAL "Mi
 endif()
 mark_as_advanced(UserLinkerGCSections)
 
+# The NT Executive task and all device driver tasks cannot use FPU registers,
+# since we do not handle FPU context saving when switching threads.
+# TODO: Profile +fpu vs -fpu context switching cost.
 add_compile_options(
     -nostdinc
     -fno-pic
@@ -27,6 +30,9 @@ add_compile_options(
     -fno-asynchronous-unwind-tables
     -ftls-model=local-exec
     -Wno-incompatible-library-redeclaration
+    -msoft-float
+    -mno-sse
+    -mno-mmx
 )
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
