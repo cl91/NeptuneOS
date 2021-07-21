@@ -351,6 +351,9 @@ static NTSTATUS MiMapSuperStructure(IN PMM_PAGING_STRUCTURE Paging,
  * Allocate and map pages that cover the address window [VirtAddr, VirtAddr+Size),
  * optionally returning the size of the memory region that has been successfully mapped.
  *
+ * VirtAddr will be rounded down to the nearest page boundary. VirtAddr+Size will be
+ * rounded up to the nearest page boundary.
+ *
  * If specified, return the paging structure pointers to the leaf-node (inner-most)
  * paging structures that have been successfully mapped (page or large page), stopping
  * once the buffer size is reached. Note that these do NOT include any intermediate
@@ -373,6 +376,12 @@ NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
 {
     DbgTrace("Committing vaddr window [%p, %p) for vaddrcap 0x%x\n",
 	     VirtAddr, VirtAddr+Size, VaddrSpace->VSpaceCap);
+    if (pSatisfiedSize != NULL) {
+	*pSatisfiedSize = 0;
+    }
+    if (pPage != NULL) {
+	*pPage = NULL;
+    }
     if (pNumPagingStruct != NULL) {
 	*pNumPagingStruct = 0;
     }
@@ -387,7 +396,8 @@ NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
     while (CurVaddr < VirtAddr + Size) {
 	PMM_UNTYPED Untyped = NULL;
 	MM_PAGING_STRUCTURE_TYPE Type = MM_PAGING_TYPE_PAGE;
-	if (UseLargePage && IS_LARGE_PAGE_ALIGNED(CurVaddr)) {
+	if (UseLargePage && IS_LARGE_PAGE_ALIGNED(CurVaddr)
+	    && (VirtAddr + Size - CurVaddr) >= LARGE_PAGE_SIZE) {
 	    Type = MM_PAGING_TYPE_LARGE_PAGE;
 	}
 	RET_ERR(MmRequestUntyped(MiPagingObjLog2Size(Type), &Untyped));
@@ -413,7 +423,7 @@ NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
 	}
 	NumPagingStruct++;
 	/* Optionally store the pointer to the new paging structure */
-	if (pPage != NULL && NumPagingStruct < MaxNumPagingStruct) {
+	if (pPage != NULL && NumPagingStruct <= MaxNumPagingStruct) {
 	    *(pPage++) = Page;
 	}
 	/* Optionally store the number of leaf-node paging structures */

@@ -3,17 +3,18 @@
 extern UCHAR _ntdll_start[];
 extern UCHAR _ntdll_end[];
 
-static NTSTATUS PspSetThreadCapVaddrSpace(IN MWORD Tcb,
-					  IN MWORD FaultHandler,
-					  IN PMM_CNODE CNode,
-					  IN PMM_VADDR_SPACE VaddrSpace)
+static NTSTATUS PspConfigureThread(IN MWORD Tcb,
+				   IN MWORD FaultHandler,
+				   IN PMM_CNODE CNode,
+				   IN PMM_VADDR_SPACE VaddrSpace,
+				   IN PMM_PAGING_STRUCTURE IpcPage)
 {
     assert(CNode != NULL);
     assert(VaddrSpace != NULL);
-    seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool, VaddrSpace->VSpaceCap);
-    int Error = seL4_TCB_SetSpace(Tcb, FaultHandler, CNode->TreeNode.Cap,
-				  0, /* TODO: Fix capspace guard */
-				  VaddrSpace->VSpaceCap, 0);
+    assert(IpcPage != NULL);
+    int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap, 0,
+				   VaddrSpace->VSpaceCap, 0, IPC_BUFFER_VADDR,
+				   IpcPage->TreeNode.Cap);
 
     if (Error != seL4_NoError) {
 	return SEL4_ERROR(Error);
@@ -64,6 +65,10 @@ NTSTATUS PspProcessObjectCreateProc(IN PVOID Object)
     InitializeListHead(&Process->ThreadList);
     MmInitializeVaddrSpace(&Process->VaddrSpace, VspaceCap);
 
+    /* Assign an ASID for the virtual address space just created */
+    seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
+			     Process->VaddrSpace.VSpaceCap);
+
     return STATUS_SUCCESS;
 }
 
@@ -72,18 +77,20 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 {
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (PPVOID) pThread));
 
-    RET_ERR_EX(PspSetThreadCapVaddrSpace((*pThread)->TcbCap,
-					 0, /* TODO: Fault handler */
-					 Process->CNode,
-					 &Process->VaddrSpace),
-	       ObDereferenceObject(*pThread));
-
-    PMM_PAGING_STRUCTURE IpcBuffer;
+    PMM_PAGING_STRUCTURE IpcBuffer = NULL;
     RET_ERR_EX(MmCommitAddrWindowEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
 				    PAGE_SIZE, MM_RIGHTS_RW, TRUE, NULL,
 				    &IpcBuffer, 1, NULL),
 	       ObDereferenceObject(*pThread));
+    assert(IpcBuffer != NULL);
     (*pThread)->IpcBuffer = IpcBuffer;
+
+    RET_ERR_EX(PspConfigureThread((*pThread)->TcbCap,
+				  0, /* TODO: Fault handler */
+				  Process->CNode,
+				  &Process->VaddrSpace,
+				  IpcBuffer),
+	       ObDereferenceObject(*pThread));
 
     return STATUS_SUCCESS;
 }
