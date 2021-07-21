@@ -240,6 +240,7 @@ typedef PULONG PWIN32_PROTECTION_MASK;
  */
 typedef struct _MM_VADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
+    MWORD ASIDPool;
     MM_AVL_TREE VadTree;
     PMM_VAD CachedVad;		/* Speed up look up */
     MM_PAGING_STRUCTURE RootPagingStructure;
@@ -367,6 +368,7 @@ VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE VaddrSpace,
 NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,
 				  IN MWORD VirtAddr,
 				  IN MWORD WindowSize);
+NTSTATUS MmAssignASID(IN PMM_VADDR_SPACE VaddrSpace);
 
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD VirtAddr,
 					      IN MWORD WindowSize)

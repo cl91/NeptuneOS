@@ -23,8 +23,8 @@ static inline LONG MiPagingAddrWindowBits(MM_PAGING_STRUCTURE_TYPE Type)
 }
 
 /*
- * Sanitize the virtual address such that it is aligned with on
- * the boundary of the paging structure
+ * Sanitize the virtual address such that it is aligned with
+ * the boundary of the address window of the paging structure
  */
 static inline MWORD MiSanitizeAlignment(IN MM_PAGING_STRUCTURE_TYPE Type,
 					IN MWORD VirtAddr)
@@ -239,7 +239,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     if (Page->Type == MM_PAGING_TYPE_PAGE || Page->Type == MM_PAGING_TYPE_LARGE_PAGE) {
 #if CONFIG_DEBUG_BUILD
 	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
-	DbgTrace("Mapping %spage cap 0x%x (paddr %p%s) for vspacecap 0x%x at vaddr %p\n",
+	DbgTrace("Mapping %spage cap 0x%x (paddr %p%s) into vspacecap 0x%x at vaddr %p\n",
 		 (Page->Type == MM_PAGING_TYPE_LARGE_PAGE) ? "large " : "",
 		 Page->TreeNode.Cap, Reply.paddr, (Reply.error == 0) ? "" : " ???",
 		 Page->VSpaceCap, Page->AvlNode.Key);
@@ -250,7 +250,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 				  Page->Rights,
 				  Page->Attributes);
     } else if (Page->Type == MM_PAGING_TYPE_PAGE_TABLE) {
-	DbgTrace("Mapping page table cap 0x%x for vspacecap 0x%x at vaddr %p\n",
+	DbgTrace("Mapping page table cap 0x%x into vspacecap 0x%x at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
 	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
 				       Page->VSpaceCap,
@@ -261,7 +261,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     }
 
     if (Error) {
-	DbgTrace("Mapping failed for page/table cap 0x%x for vspacecap 0x%x at vaddr %p\n",
+	DbgTrace("Failed to map cap 0x%x into vspacecap 0x%x at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
 	seL4_CNode_Delete(ROOT_CNODE_CAP, Page->TreeNode.Cap, 0);
 	MmDeallocateCap(Page->TreeNode.Cap);
@@ -269,6 +269,8 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 	return SEL4_ERROR(Error);
     }
 
+    DbgTrace("Successfully mapped cap 0x%x into vspacecap 0x%x at vaddr %p\n",
+	     Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
     Page->Mapped = TRUE;
     return STATUS_SUCCESS;
 }
@@ -354,13 +356,13 @@ static NTSTATUS MiMapSuperStructure(IN PMM_PAGING_STRUCTURE Paging,
  * VirtAddr will be rounded down to the nearest page boundary. VirtAddr+Size will be
  * rounded up to the nearest page boundary.
  *
- * If specified, return the paging structure pointers to the leaf-node (inner-most)
- * paging structures that have been successfully mapped (page or large page), stopping
- * once the buffer size is reached. Note that these do NOT include any intermediate
- * paging structure (ie. page table, page directory, PDPT, PML4).
+ * If specified, return the paging structure pointers for the pages or large pages
+ * that have been successfully mapped, stopping once the buffer size is reached.
+ * Note that these do NOT include any intermediate paging structure (ie. page table,
+ * page directory, PDPT, PML4).
  *
- * If specified, return the number of leaf-node paging structures that have been
- * successfully mapped. This option is independent of the previous argument.
+ * All optional arguments can be specified independently. When an optional argument
+ * is NULL, will not attempt to access it.
  *
  * If specified, will attempt to use large pages when mapping.
  */

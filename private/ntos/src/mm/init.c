@@ -165,9 +165,10 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
 {
     MWORD StartPageCap = InitInfo->UserImageFrameCapStart;
     MWORD EndPageCap = StartPageCap + InitInfo->NumUserImageFrames;
+    MWORD PageTableCapStart = InitInfo->UserImageFrameCapStart;
 
 #ifdef _M_AMD64
-    /* FIXME: TODO */
+    /* TODO: Fix amd64 init image paging structure. */
     PMM_PAGING_STRUCTURE PDPT = NULL;
     RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PDPT, NULL,
 				    InitInfo->UserImageStartVirtAddr,
@@ -198,7 +199,7 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
 	RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PAGE, NULL, PN << PAGE_LOG2SIZE,
 					ROOT_VSPACE_CAP, MM_RIGHTS_RW, &Page));
 	assert(Page != NULL);
-	Page->TreeNode.Cap = InitInfo->UserImageFrameCapStart + PN - StartPN;
+	Page->TreeNode.Cap = PageTableCapStart + PN - StartPN;
 	Page->Mapped = TRUE;
 	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
     }

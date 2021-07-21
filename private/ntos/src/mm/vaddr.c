@@ -6,11 +6,31 @@ VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE Self,
 			    IN MWORD VSpaceCap)
 {
     Self->VSpaceCap = VSpaceCap;
+    Self->ASIDPool = 0;
     Self->CachedVad = NULL;
     MiAvlInitializeTree(&Self->VadTree);
     MiInitializePagingStructure(&Self->RootPagingStructure, NULL, NULL, VSpaceCap,
 				VSpaceCap, 0, MM_PAGING_TYPE_ROOT_PAGING_STRUCTURE,
 				TRUE, MM_RIGHTS_RW);
+}
+
+/*
+ * Search for an ASID pool with a free ASID slot and assign an ASID
+ * for the virtual address space. An ASID must be assigned before the
+ * virtual address space can be used for mapping.
+ */
+NTSTATUS MmAssignASID(IN PMM_VADDR_SPACE VaddrSpace)
+{
+    /* TODO: Create ASID pool if not enough ASID slots */
+    int Error = seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
+					 VaddrSpace->VSpaceCap);
+
+    if (Error != 0) {
+	return SEL4_ERROR(Error);
+    }
+
+    VaddrSpace->ASIDPool = seL4_CapInitThreadASIDPool;
+    return STATUS_SUCCESS;
 }
 
 /* Returns TRUE if the supplied VAD node overlaps with the address window */

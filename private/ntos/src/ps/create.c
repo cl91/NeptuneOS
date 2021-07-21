@@ -66,8 +66,11 @@ NTSTATUS PspProcessObjectCreateProc(IN PVOID Object)
     MmInitializeVaddrSpace(&Process->VaddrSpace, VspaceCap);
 
     /* Assign an ASID for the virtual address space just created */
-    seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
-			     Process->VaddrSpace.VSpaceCap);
+    RET_ERR_EX(MmAssignASID(&Process->VaddrSpace),
+	       {
+		   MmReleaseUntyped(VspaceUntyped);
+		   MmDeleteCNode(CNode);
+	       });
 
     return STATUS_SUCCESS;
 }
