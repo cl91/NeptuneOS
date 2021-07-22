@@ -1,16 +1,16 @@
 #include "mi.h"
 #include <ctype.h>
 
-MM_VADDR_SPACE MiNtosVaddrSpace;
-MM_PHY_MEM MiPhyMemDescriptor;
-MM_CNODE MiNtosCNode;
+VIRT_ADDR_SPACE MiNtosVaddrSpace;
+PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
+CNODE MiNtosCNode;
 static MWORD MiNtosCNodeUsedMap[(1 << ROOT_CNODE_LOG2SIZE) / MWORD_BITS] PAGE_ALIGNED_DATA;
 
 static NTSTATUS MiInitRetypeIntoLargePage(IN MWORD Untyped,
 					  IN MWORD PageCap)
 {
     int Error = seL4_Untyped_Retype(Untyped,
-				    MM_PAGING_TYPE_LARGE_PAGE,
+				    PAGING_TYPE_LARGE_PAGE,
 				    LARGE_PAGE_LOG2SIZE,
 				    ROOT_CNODE_CAP,
 				    0, // node_index
@@ -93,11 +93,11 @@ static NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
-static inline NTSTATUS MiInitCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
-						   IN PMM_UNTYPED Untyped,
+static inline NTSTATUS MiInitCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
+						   IN PUNTYPED Untyped,
 						   IN MWORD Cap,
 						   IN MWORD VirtAddr,
-						   OUT PMM_PAGING_STRUCTURE *pPaging)
+						   OUT PPAGING_STRUCTURE *pPaging)
 {
     assert(pPaging != NULL);
     RET_ERR(MiCreatePagingStructure(Type, Untyped, VirtAddr, ROOT_VSPACE_CAP,
@@ -131,16 +131,16 @@ static inline NTSTATUS MiInitCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE T
  */
 static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 {
-    MiAllocatePool(RootUntyped, MM_UNTYPED);
+    MiAllocatePool(RootUntyped, UNTYPED);
     MiInitializeUntyped(RootUntyped, NULL, InitInfo->InitUntypedCap,
 			InitInfo->InitUntypedPhyAddr,
 			InitInfo->InitUntypedLog2Size, FALSE);
 
-    PMM_UNTYPED ParentUntyped = RootUntyped;
+    PUNTYPED ParentUntyped = RootUntyped;
     LONG NumSplits = InitInfo->InitUntypedLog2Size - LARGE_PAGE_LOG2SIZE;
     for (int i = 0; i < NumSplits; i++) {
-	MiAllocatePool(LeftChildUntyped, MM_UNTYPED);
-	MiAllocatePool(RightChildUntyped, MM_UNTYPED);
+	MiAllocatePool(LeftChildUntyped, UNTYPED);
+	MiAllocatePool(RightChildUntyped, UNTYPED);
 
 	LONG ChildLog2Size = InitInfo->InitUntypedLog2Size - 1 - i;
 	MWORD LeftChildCap = InitInfo->RootCNodeFreeCapStart + 2*i;
@@ -155,8 +155,8 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 	ParentUntyped = LeftChildUntyped;
     }
 
-    PMM_PAGING_STRUCTURE Page = NULL;
-    RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_LARGE_PAGE, ParentUntyped,
+    PPAGING_STRUCTURE Page = NULL;
+    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_LARGE_PAGE, ParentUntyped,
 					InitInfo->RootCNodeFreeCapStart + 2 * NumSplits,
 					EX_POOL_START, &Page));
     assert(Page != NULL);
@@ -181,13 +181,13 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
     MWORD PageTableCapStart = InitInfo->UserPagingStructureCapStart;
 
 #ifdef _M_AMD64
-    PMM_PAGING_STRUCTURE PDPT = NULL;
-    RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PDPT, NULL, PageTableCapStart++,
+    PPAGING_STRUCTURE PDPT = NULL;
+    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PDPT, NULL, PageTableCapStart++,
 					InitInfo->UserImageStartVirtAddr, &PDPT));
     assert(PDPT != NULL);
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PDPT));
-    PMM_PAGING_STRUCTURE PD = NULL;
-    RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PAGE_DIRECTORY, NULL,
+    PPAGING_STRUCTURE PD = NULL;
+    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PAGE_DIRECTORY, NULL,
 					PageTableCapStart++,
 					InitInfo->UserImageStartVirtAddr, &PD));
     assert(PD != NULL);
@@ -198,8 +198,8 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
     MWORD StartPTNum = InitInfo->UserImageStartVirtAddr >> PAGE_TABLE_WINDOW_LOG2SIZE;
     MWORD EndPTNum = StartPTNum + InitInfo->NumUserPagingStructureCaps;
     for (MWORD PTNum = StartPTNum; PTNum < EndPTNum; PTNum++) {
-	PMM_PAGING_STRUCTURE PageTable = NULL;
-	RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PAGE_TABLE, NULL,
+	PPAGING_STRUCTURE PageTable = NULL;
+	RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PAGE_TABLE, NULL,
 					    PageTableCapStart + PTNum - StartPTNum,
 					    PTNum << PAGE_TABLE_WINDOW_LOG2SIZE,
 					    &PageTable));
@@ -211,8 +211,8 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
     MWORD StartPN = InitInfo->UserImageStartVirtAddr >> PAGE_LOG2SIZE;
     MWORD EndPN = StartPN + InitInfo->NumUserImageFrames;
     for (MWORD PN = StartPN; PN < EndPN; PN++) {
-	PMM_PAGING_STRUCTURE Page = NULL;
-	RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PAGE, NULL,
+	PPAGING_STRUCTURE Page = NULL;
+	RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PAGE, NULL,
 					    InitInfo->UserImageFrameCapStart + PN - StartPN,
 					    PN << PAGE_LOG2SIZE, &Page));
 	assert(Page != NULL);
@@ -259,13 +259,13 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS MiRegisterRootUntyped(IN PMM_PHY_MEM PhyMem,
+static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 				      IN MWORD Cap,
 				      IN MWORD PhyAddr,
 				      IN LONG Log2Size,
 				      IN BOOLEAN IsDevice)
 {
-    MiAllocatePool(Untyped, MM_UNTYPED);
+    MiAllocatePool(Untyped, UNTYPED);
     MiInitializeUntyped(Untyped, NULL, Cap, PhyAddr, Log2Size, IsDevice);
     RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), ExFreePool(Untyped));
     if (!IsDevice) {

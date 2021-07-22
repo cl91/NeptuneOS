@@ -1,7 +1,7 @@
 #include "../tests.h"
 
-extern MM_VADDR_SPACE MiNtosVaddrSpace;
-extern MM_PHY_MEM MiPhyMemDescriptor;
+extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 
 VOID MmRunAvlTreeTests()
 {

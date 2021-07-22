@@ -62,7 +62,7 @@
  * each root untyped form the capability derivation forest.
  * This forest is organized by the physical address of
  * the untyped caps in an AVL tree, and is stored in the
- * MM_PHY_MEM struct as RootUntypedForest.
+ * PHY_MEM_DESCRIPTOR struct as RootUntypedForest.
  *
  * Note: a CNode is always the leaf node of a capability
  * derivation tree, since a CNode cannot be minted or mutated.
@@ -73,20 +73,20 @@
  * and freeing the untyped memory that the old CNode has claimed.
 */
 
-typedef enum _MM_CAP_TREE_NODE_TYPE {
-    MM_CAP_TREE_NODE_CNODE,
-    MM_CAP_TREE_NODE_UNTYPED,
-    MM_CAP_TREE_NODE_PAGING_STRUCTURE,
-} MM_CAP_TREE_NODE_TYPE;
+typedef enum _CAP_TREE_NODE_TYPE {
+    CAP_TREE_NODE_CNODE,
+    CAP_TREE_NODE_UNTYPED,
+    CAP_TREE_NODE_PAGING_STRUCTURE,
+} CAP_TREE_NODE_TYPE;
 
 /* Describes a node in the Capability Derivation Tree */
-typedef struct _MM_CAP_TREE_NODE {
-    MM_CAP_TREE_NODE_TYPE Type;
+typedef struct _CAP_TREE_NODE {
+    CAP_TREE_NODE_TYPE Type;
     MWORD Cap;			/* Relative to the root task CSpace */
-    struct _MM_CAP_TREE_NODE *Parent;
+    struct _CAP_TREE_NODE *Parent;
     LIST_ENTRY ChildrenList;	/* List head of the sibling list of children */
     LIST_ENTRY SiblingLink;	/* Chains all siblings together */
-} MM_CAP_TREE_NODE, *PMM_CAP_TREE_NODE;
+} CAP_TREE_NODE, *PCAP_TREE_NODE;
 
 /*
  * A CNode represents a table of capability slots. It is
@@ -100,13 +100,13 @@ typedef struct _MM_CAP_TREE_NODE {
  * always zero and are suitably sized such that no remaining
  * bits are to be resolved in a capability lookup.
  */
-typedef struct _MM_CNODE {
-    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
+typedef struct _CNODE {
+    CAP_TREE_NODE TreeNode;	/* Must be first entry */
     MWORD *UsedMap;		/* Bitmap of used slots */
     ULONG Log2Size;		/* Called 'radix' in seL4 manual */
     ULONG RecentFree;		/* Most recently freed bit */
     ULONG TotalUsed;		/* Number of used slots */
-} MM_CNODE, *PMM_CNODE;
+} CNODE, *PCNODE;
 
 /*
  * A tree node in the AVL tree
@@ -136,16 +136,16 @@ typedef struct _MM_AVL_TREE {
  * derivation tree, as well as in an AVL tree ordered by the
  * the physical memory address.
  */
-typedef struct _MM_UNTYPED {
-    MM_CAP_TREE_NODE TreeNode;	/* Must be first entry */
+typedef struct _UNTYPED {
+    CAP_TREE_NODE TreeNode;	/* Must be first entry */
     MM_AVL_NODE AvlNode;	/* Node ordered by physical address */
     LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
     LONG Log2Size;
     BOOLEAN IsDevice;
-} MM_UNTYPED, *PMM_UNTYPED;
+} UNTYPED, *PUNTYPED;
 
 #define MM_AVL_NODE_TO_UNTYPED(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, MM_UNTYPED, AvlNode) : NULL)
+    ((Node) != NULL ? CONTAINING_RECORD(Node, UNTYPED, AvlNode) : NULL)
 
 /*
  * Virtual address descriptor
@@ -155,13 +155,13 @@ typedef struct _MM_UNTYPED {
  * manager's internal routines do not rely on this information
  * to map or unmap a paging structure.
  */
-typedef struct _MM_VAD {
+typedef struct _VAD {
     MM_AVL_NODE AvlNode;	/* must be first entry */
     MWORD WindowSize;
-} MM_VAD, *PMM_VAD;
+} VAD, *PVAD;
 
 #define MM_AVL_NODE_TO_VAD(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, MM_VAD, AvlNode) : NULL)
+    ((Node) != NULL ? CONTAINING_RECORD(Node, VAD, AvlNode) : NULL)
 
 /*
  * A paging structure represents a capability to either a page,
@@ -172,7 +172,7 @@ typedef struct _MM_VAD {
  * an error.
  *
  * Therefore, mapping a page on two different virtual address
- * spaces involves duplicating the MM_PAGING_STRUCTURE first
+ * spaces involves duplicating the PAGING_STRUCTURE first
  * and then map the new paging structure. The new paging
  * structure will be the child of the old paging structure
  * in the capability derivation tree.
@@ -190,40 +190,40 @@ typedef struct _MM_VAD {
  * one level above the current paging structure. The top level paging
  * structure is recorded in the process's virtual address space descriptor.
  */
-typedef enum _MM_PAGING_STRUCTURE_TYPE {
-    MM_PAGING_TYPE_PAGE = seL4_X86_4K,
-    MM_PAGING_TYPE_LARGE_PAGE = seL4_X86_LargePageObject,
-    MM_PAGING_TYPE_PAGE_TABLE = seL4_X86_PageTableObject,
-    MM_PAGING_TYPE_PAGE_DIRECTORY = seL4_X86_PageDirectoryObject,
-    MM_PAGING_TYPE_ROOT_PAGING_STRUCTURE = seL4_VSpaceObject,
+typedef enum _PAGING_STRUCTURE_TYPE {
+    PAGING_TYPE_PAGE = seL4_X86_4K,
+    PAGING_TYPE_LARGE_PAGE = seL4_X86_LargePageObject,
+    PAGING_TYPE_PAGE_TABLE = seL4_X86_PageTableObject,
+    PAGING_TYPE_PAGE_DIRECTORY = seL4_X86_PageDirectoryObject,
+    PAGING_TYPE_ROOT_PAGING_STRUCTURE = seL4_VSpaceObject,
 #ifdef _M_IX86
-    MM_PAGING_TYPE_PDPT = 0,
-    MM_PAGING_TYPE_PML4 = 0,
+    PAGING_TYPE_PDPT = 0,
+    PAGING_TYPE_PML4 = 0,
 #elif defined(_M_AMD64)
-    MM_PAGING_TYPE_PDPT = seL4_X86_PDPTObject,
-    MM_PAGING_TYPE_PML4 = seL4_X64_PML4Object,
+    PAGING_TYPE_PDPT = seL4_X86_PDPTObject,
+    PAGING_TYPE_PML4 = seL4_X64_PML4Object,
 #else
 #error "Unsupported architecture"
 #endif
-} MM_PAGING_STRUCTURE_TYPE;
+} PAGING_STRUCTURE_TYPE;
 
-#define MM_PAGING_RIGHTS		seL4_CapRights_t
-#define MM_PAGING_ATTRIBUTES		seL4_X86_VMAttributes
+#define PAGING_RIGHTS		seL4_CapRights_t
+#define PAGING_ATTRIBUTES	seL4_X86_VMAttributes
 
-typedef struct _MM_PAGING_STRUCTURE {
-    MM_CAP_TREE_NODE TreeNode;
+typedef struct _PAGING_STRUCTURE {
+    CAP_TREE_NODE TreeNode;
     MM_AVL_NODE AvlNode;
-    struct _MM_PAGING_STRUCTURE *SuperStructure;
+    struct _PAGING_STRUCTURE *SuperStructure;
     MM_AVL_TREE SubStructureTree;
     MWORD VSpaceCap;
-    MM_PAGING_STRUCTURE_TYPE Type;
+    PAGING_STRUCTURE_TYPE Type;
     BOOLEAN Mapped;
-    MM_PAGING_RIGHTS Rights;
-    MM_PAGING_ATTRIBUTES Attributes;
-} MM_PAGING_STRUCTURE, *PMM_PAGING_STRUCTURE;
+    PAGING_RIGHTS Rights;
+    PAGING_ATTRIBUTES Attributes;
+} PAGING_STRUCTURE, *PPAGING_STRUCTURE;
 
 #define MM_AVL_NODE_TO_PAGING_STRUCTURE(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, MM_PAGING_STRUCTURE, AvlNode) : NULL)
+    ((Node) != NULL ? CONTAINING_RECORD(Node, PAGING_STRUCTURE, AvlNode) : NULL)
 
 #define MM_RIGHTS_RW	(seL4_ReadWrite)
 
@@ -238,13 +238,13 @@ typedef PULONG PWIN32_PROTECTION_MASK;
  * root task the Vad tree contains exactly one node, spanning the
  * entire virtual address space.
  */
-typedef struct _MM_VADDR_SPACE {
+typedef struct _VIRT_ADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
     MWORD ASIDPool;
     MM_AVL_TREE VadTree;
-    PMM_VAD CachedVad;		/* Speed up look up */
-    MM_PAGING_STRUCTURE RootPagingStructure;
-} MM_VADDR_SPACE, *PMM_VADDR_SPACE;
+    PVAD CachedVad;		/* Speed up look up */
+    PAGING_STRUCTURE RootPagingStructure;
+} VIRT_ADDR_SPACE, *PVIRT_ADDR_SPACE;
 
 /*
  * The top level structure for the memory management component.
@@ -254,15 +254,15 @@ typedef struct _MM_VADDR_SPACE {
  * currently unused free memory are organized into three lists,
  * small, medium, and large, to speed up resource allocations.
  */
-typedef struct _MM_PHY_MEM {
+typedef struct _PHY_MEM_DESCRIPTOR {
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
     MM_AVL_TREE RootUntypedForest; /* Root untyped forest organized by their starting phy addr.
 				    * Note that RootUntypedForest represents both the cap derivation
 				    * forest as well as the AVL tree of all untyped caps. */
-    PMM_UNTYPED CachedRootUntyped; /* Speed up look up */
-} MM_PHY_MEM, *PMM_PHY_MEM;
+    PUNTYPED CachedRootUntyped; /* Speed up look up */
+} PHY_MEM_DESCRIPTOR, *PPHY_MEM_DESCRIPTOR;
 
 typedef enum _MM_MEM_PRESSURE {
     MM_MEM_PRESSURE_SUFFICIENT_MEMORY,
@@ -283,40 +283,40 @@ VOID MmAvlDumpTree(PMM_AVL_TREE tree);
 VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree);
 
 /* cap.c */
-VOID MmDbgDumpCapTreeNode(IN PMM_CAP_TREE_NODE Node);
-NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
+VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
+NTSTATUS MmAllocateCapRangeEx(IN PCNODE CNode,
 			      OUT MWORD *StartCap,
 			      IN LONG NumberRequested);
-NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
+NTSTATUS MmDeallocateCapEx(IN PCNODE CNode,
 			   IN MWORD Cap);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
-		       OUT PMM_CNODE *pCNode);
-NTSTATUS MmDeleteCNode(PMM_CNODE CNode);
+		       OUT PCNODE *pCNode);
+NTSTATUS MmDeleteCNode(PCNODE CNode);
 
 static inline NTSTATUS MmAllocateCap(OUT MWORD *Cap)
 {
-    extern MM_CNODE MiNtosCNode;
+    extern CNODE MiNtosCNode;
     return MmAllocateCapRangeEx(&MiNtosCNode, Cap, 1);
 }
 
 static inline NTSTATUS MmAllocateCapRange(OUT MWORD *StartCap,
 					  IN LONG NumberRequested)
 {
-    extern MM_CNODE MiNtosCNode;
+    extern CNODE MiNtosCNode;
     return MmAllocateCapRangeEx(&MiNtosCNode, StartCap, NumberRequested);
 }
 
 static inline NTSTATUS MmDeallocateCap(IN MWORD Cap)
 {
-    extern MM_CNODE MiNtosCNode;
+    extern CNODE MiNtosCNode;
     return MmDeallocateCapEx(&MiNtosCNode, Cap);
 }
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
-			  OUT PMM_UNTYPED *pUntyped);
-NTSTATUS MmReleaseUntyped(IN PMM_UNTYPED Untyped);
-NTSTATUS MmRetypeIntoObject(IN PMM_UNTYPED Untyped,
+			  OUT PUNTYPED *pUntyped);
+NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped);
+NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
 			    OUT MWORD *ObjCap);
@@ -324,28 +324,28 @@ VOID MmDbgDumpUntypedInfo();
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
+NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
 			      IN MWORD VirtAddr,
 			      IN MWORD Size,
-			      IN MM_PAGING_RIGHTS Rights,
+			      IN PAGING_RIGHTS Rights,
 			      IN BOOLEAN UseLargePage,
 			      OUT OPTIONAL MWORD *pSatisfiedSize,
-			      OUT OPTIONAL PMM_PAGING_STRUCTURE *pPage,
+			      OUT OPTIONAL PPAGING_STRUCTURE *pPage,
 			      IN OPTIONAL LONG MaxNumPagingStruct,
 			      OUT OPTIONAL LONG *pNumPagingStruct);
-NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN PMM_PHY_MEM PhyMem,
+NTSTATUS MmCommitIoPageEx(IN PVIRT_ADDR_SPACE VaddrSpace,
+			  IN PPHY_MEM_DESCRIPTOR PhyMem,
 			  IN MWORD PhyAddr,
 			  IN MWORD VirtAddr,
-			  IN MM_PAGING_RIGHTS Rights,
-			  OUT OPTIONAL PMM_PAGING_STRUCTURE *pPage);
-VOID MmDbgDumpPagingStructure(IN PMM_PAGING_STRUCTURE Paging);
+			  IN PAGING_RIGHTS Rights,
+			  OUT OPTIONAL PPAGING_STRUCTURE *pPage);
+VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
 
 static inline NTSTATUS MmCommitIoPage(IN MWORD PhyAddr,
 				      IN MWORD VirtAddr)
 {
-    extern MM_VADDR_SPACE MiNtosVaddrSpace;
-    extern MM_PHY_MEM MiPhyMemDescriptor;
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
     return MmCommitIoPageEx(&MiNtosVaddrSpace, &MiPhyMemDescriptor,
 			    PhyAddr, VirtAddr, MM_RIGHTS_RW, NULL);
 }
@@ -357,22 +357,22 @@ static inline NTSTATUS MmCommitAddrWindow(IN MWORD VirtAddr,
 					  IN MWORD Size,
 					  OUT OPTIONAL MWORD *pSatisfiedSize)
 {
-    extern MM_VADDR_SPACE MiNtosVaddrSpace;
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmCommitAddrWindowEx(&MiNtosVaddrSpace, VirtAddr, Size, MM_RIGHTS_RW,
 				TRUE, pSatisfiedSize, NULL, 0, NULL);
 }
 
 /* vaddr.c */
-VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE VaddrSpace,
+VOID MmInitializeVaddrSpace(IN PVIRT_ADDR_SPACE VaddrSpace,
 			    IN MWORD VSpaceCap);
-NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE Vspace,
+NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE Vspace,
 				  IN MWORD VirtAddr,
 				  IN MWORD WindowSize);
-NTSTATUS MmAssignASID(IN PMM_VADDR_SPACE VaddrSpace);
+NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace);
 
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD VirtAddr,
 					      IN MWORD WindowSize)
 {
-    extern MM_VADDR_SPACE MiNtosVaddrSpace;
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, VirtAddr, WindowSize);
 }

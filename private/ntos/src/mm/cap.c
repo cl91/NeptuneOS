@@ -49,7 +49,7 @@ Revision History:
 
 #include "mi.h"
 
-VOID MmDbgDumpCapTreeNode(IN PMM_CAP_TREE_NODE Node)
+VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
     if (Node == NULL) {
 	DbgPrint("(nil)");
@@ -57,18 +57,18 @@ VOID MmDbgDumpCapTreeNode(IN PMM_CAP_TREE_NODE Node)
     }
 
     PCSTR Type = "Unknown";
-    if (Node->Type == MM_CAP_TREE_NODE_CNODE) {
+    if (Node->Type == CAP_TREE_NODE_CNODE) {
 	Type = "CNODE";
-    } else if (Node->Type == MM_CAP_TREE_NODE_UNTYPED) {
+    } else if (Node->Type == CAP_TREE_NODE_UNTYPED) {
 	Type = "UNTYPED";
-    } else if (Node->Type == MM_CAP_TREE_NODE_PAGING_STRUCTURE) {
+    } else if (Node->Type == CAP_TREE_NODE_PAGING_STRUCTURE) {
 	Type = "PAGING";
     }
     DbgPrint("Cap 0x%x (Type %s)", Node->Cap, Type);
 }
 
 /* Allocate a continuous range of capability slots */
-NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
+NTSTATUS MmAllocateCapRangeEx(IN PCNODE CNode,
 			      OUT MWORD *StartCap,
 			      IN LONG NumberRequested)
 {
@@ -133,7 +133,7 @@ Lookup:
 }
 
 /* Mark the capability slot of the given CNode as free */
-NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
+NTSTATUS MmDeallocateCapEx(IN PCNODE CNode,
 			   IN MWORD Cap)
 {
     assert(CNode != NULL);
@@ -155,9 +155,9 @@ NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
  * data structures on the Executive Pool and return the CNode
  */
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
-		       OUT PMM_CNODE *pCNode)
+		       OUT PCNODE *pCNode)
 {
-    PMM_UNTYPED Untyped = NULL;
+    PUNTYPED Untyped = NULL;
     ULONG Log2SizeUntyped = Log2Size + LOG2SIZE_PER_CNODE_SLOT;
     RET_ERR(MmRequestUntyped(Log2SizeUntyped, &Untyped));
 
@@ -165,7 +165,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_CapTableObject, Log2Size, &CNodeCap),
 	       MmReleaseUntyped(Untyped));
 
-    MiAllocatePoolEx(CNode, MM_CNODE, MmReleaseUntyped(Untyped));
+    MiAllocatePoolEx(CNode, CNODE, MmReleaseUntyped(Untyped));
     MiAllocateArray(UsedMap, MWORD, (1ULL << Log2Size) / MWORD_BITS,
 		    {
 			MmReleaseUntyped(Untyped);
@@ -181,10 +181,10 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
  * Delete the specified, dynamically allocated CNode. The initial root task
  * CNode is not dynamically allocated and should never be deleted.
  */
-NTSTATUS MmDeleteCNode(PMM_CNODE CNode)
+NTSTATUS MmDeleteCNode(PCNODE CNode)
 {
     if (CNode->TreeNode.Parent != NULL) {
-	if (CNode->TreeNode.Type != MM_CAP_TREE_NODE_UNTYPED) {
+	if (CNode->TreeNode.Type != CAP_TREE_NODE_UNTYPED) {
 	    /* The parent of a CNode should always be an untyped. BUG! */
 	    return STATUS_NTOS_BUG;
 	}

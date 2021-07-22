@@ -3,38 +3,38 @@
 /*
  * Returns the log2size of the address window that the paging structure represents
  */
-static inline LONG MiPagingAddrWindowBits(MM_PAGING_STRUCTURE_TYPE Type)
+static inline LONG MiPagingAddrWindowBits(PAGING_STRUCTURE_TYPE Type)
 {
-    if (Type == MM_PAGING_TYPE_PAGE) {
+    if (Type == PAGING_TYPE_PAGE) {
 	return PAGE_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_LARGE_PAGE) {
+    } else if (Type == PAGING_TYPE_LARGE_PAGE) {
 	return LARGE_PAGE_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PAGE_TABLE) {
+    } else if (Type == PAGING_TYPE_PAGE_TABLE) {
 	return PAGE_TABLE_WINDOW_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
+    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	return PAGE_DIRECTORY_WINDOW_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PDPT) {
+    } else if (Type == PAGING_TYPE_PDPT) {
 	return PDPT_WINDOW_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PML4) {
+    } else if (Type == PAGING_TYPE_PML4) {
 	return PML4_WINDOW_LOG2SIZE;
     }
     assert(FALSE);
     return 0;
 }
 
-static inline PCSTR MiPagingTypeToStr(MM_PAGING_STRUCTURE_TYPE Type)
+static inline PCSTR MiPagingTypeToStr(PAGING_STRUCTURE_TYPE Type)
 {
-    if (Type == MM_PAGING_TYPE_PAGE) {
+    if (Type == PAGING_TYPE_PAGE) {
 	return "PAGE";
-    } else if (Type == MM_PAGING_TYPE_LARGE_PAGE) {
+    } else if (Type == PAGING_TYPE_LARGE_PAGE) {
 	return "LARGE PAGE";
-    } else if (Type == MM_PAGING_TYPE_PAGE_TABLE) {
+    } else if (Type == PAGING_TYPE_PAGE_TABLE) {
 	return "PAGE TABLE";
-    } else if (Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
+    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	return "PAGE DIRECTORY";
-    } else if (Type == MM_PAGING_TYPE_PDPT) {
+    } else if (Type == PAGING_TYPE_PDPT) {
 	return "PDPT";
-    } else if (Type == MM_PAGING_TYPE_PML4) {
+    } else if (Type == PAGING_TYPE_PML4) {
 	return "PML4";
     }
     assert(FALSE);
@@ -45,7 +45,7 @@ static inline PCSTR MiPagingTypeToStr(MM_PAGING_STRUCTURE_TYPE Type)
  * Sanitize the virtual address such that it is aligned with
  * the boundary of the address window of the paging structure
  */
-static inline MWORD MiSanitizeAlignment(IN MM_PAGING_STRUCTURE_TYPE Type,
+static inline MWORD MiSanitizeAlignment(IN PAGING_STRUCTURE_TYPE Type,
 					IN MWORD VirtAddr)
 {
     return VirtAddr & ~((1ULL << MiPagingAddrWindowBits(Type)) - 1);
@@ -59,19 +59,19 @@ static inline MWORD MiSanitizeAlignment(IN MM_PAGING_STRUCTURE_TYPE Type,
  *
  * Note: Not to be confused with the log2size of the address window it represents
  */
-static inline LONG MiPagingObjLog2Size(MM_PAGING_STRUCTURE_TYPE Type)
+static inline LONG MiPagingObjLog2Size(PAGING_STRUCTURE_TYPE Type)
 {
-    if (Type == MM_PAGING_TYPE_PAGE) {
+    if (Type == PAGING_TYPE_PAGE) {
 	return PAGE_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_LARGE_PAGE) {
+    } else if (Type == PAGING_TYPE_LARGE_PAGE) {
 	return LARGE_PAGE_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PAGE_TABLE) {
+    } else if (Type == PAGING_TYPE_PAGE_TABLE) {
 	return PAGE_TABLE_OBJ_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
+    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	return PAGE_DIRECTORY_OBJ_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PDPT) {
+    } else if (Type == PAGING_TYPE_PDPT) {
 	return PDPT_OBJ_LOG2SIZE;
-    } else if (Type == MM_PAGING_TYPE_PML4) {
+    } else if (Type == PAGING_TYPE_PML4) {
 	return PML4_OBJ_LOG2SIZE;
     }
     assert(FALSE);
@@ -88,16 +88,16 @@ static inline LONG MiPagingObjLog2Size(MM_PAGING_STRUCTURE_TYPE Type)
  * and MiPagingSubStructureType returns the intermediate mapping structure (ie.
  * page table, page directory, and PDPT), not the large/huge page types.
  */
-static inline MM_PAGING_STRUCTURE_TYPE MiPagingSubStructureType(PMM_PAGING_STRUCTURE Page)
+static inline PAGING_STRUCTURE_TYPE MiPagingSubStructureType(PPAGING_STRUCTURE Page)
 {
-    if (Page->Type == MM_PAGING_TYPE_PAGE_TABLE) {
-	return MM_PAGING_TYPE_PAGE;
-    } else if (Page->Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
-	return MM_PAGING_TYPE_PAGE_TABLE;
-    } else if (Page->Type == MM_PAGING_TYPE_PDPT) {
-	return MM_PAGING_TYPE_PAGE_DIRECTORY;
-    } else if (Page->Type == MM_PAGING_TYPE_PML4) {
-	return MM_PAGING_TYPE_PDPT;
+    if (Page->Type == PAGING_TYPE_PAGE_TABLE) {
+	return PAGING_TYPE_PAGE;
+    } else if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
+	return PAGING_TYPE_PAGE_TABLE;
+    } else if (Page->Type == PAGING_TYPE_PDPT) {
+	return PAGING_TYPE_PAGE_DIRECTORY;
+    } else if (Page->Type == PAGING_TYPE_PML4) {
+	return PAGING_TYPE_PDPT;
     }
     assert(FALSE);
     return 0;
@@ -108,20 +108,20 @@ static inline MM_PAGING_STRUCTURE_TYPE MiPagingSubStructureType(PMM_PAGING_STRUC
  * that is one layer below the specified paging structure. In other words, for page
  * tables we return page, etc.
  */
-static inline MM_PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PMM_PAGING_STRUCTURE Page)
+static inline PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PPAGING_STRUCTURE Page)
 {
-    if (Page->Type == MM_PAGING_TYPE_PAGE) {
-	return MM_PAGING_TYPE_PAGE_TABLE;
-    } else if (Page->Type == MM_PAGING_TYPE_PAGE_TABLE) {
-	return MM_PAGING_TYPE_PAGE_DIRECTORY;
-    } else if (Page->Type == MM_PAGING_TYPE_LARGE_PAGE) {
-	return MM_PAGING_TYPE_PAGE_DIRECTORY;
+    if (Page->Type == PAGING_TYPE_PAGE) {
+	return PAGING_TYPE_PAGE_TABLE;
+    } else if (Page->Type == PAGING_TYPE_PAGE_TABLE) {
+	return PAGING_TYPE_PAGE_DIRECTORY;
+    } else if (Page->Type == PAGING_TYPE_LARGE_PAGE) {
+	return PAGING_TYPE_PAGE_DIRECTORY;
     }
 #ifdef _M_AMD64
-    if (Page->Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
-	return MM_PAGING_TYPE_PDPT;
-    } else if (Page->Type == MM_PAGING_TYPE_PDPT) {
-	return MM_PAGING_TYPE_PML4;
+    if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
+	return PAGING_TYPE_PDPT;
+    } else if (Page->Type == PAGING_TYPE_PDPT) {
+	return PAGING_TYPE_PML4;
     }
 #endif
     assert(FALSE);
@@ -132,7 +132,7 @@ static inline MM_PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PMM_PAGING_STR
  * Returns TRUE if the address window that the paging structure represents
  * contains the given virtual address
  */
-static inline BOOLEAN MiPagingStructureContainsAddr(IN PMM_PAGING_STRUCTURE Paging,
+static inline BOOLEAN MiPagingStructureContainsAddr(IN PPAGING_STRUCTURE Paging,
 						    IN MWORD VirtAddr)
 {
     return MiAvlNodeContainsAddr(&Paging->AvlNode,
@@ -140,20 +140,20 @@ static inline BOOLEAN MiPagingStructureContainsAddr(IN PMM_PAGING_STRUCTURE Pagi
 }
 
 /*
- * Initialize the MM_PAGING_STRUCTURE with the given parameters. The virtual address
+ * Initialize the PAGING_STRUCTURE with the given parameters. The virtual address
  * is rounded down to the correct alignment.
  */
-VOID MiInitializePagingStructure(IN PMM_PAGING_STRUCTURE Page,
-				 IN PMM_CAP_TREE_NODE ParentNode,
-				 IN PMM_PAGING_STRUCTURE SuperStructure,
+VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
+				 IN PCAP_TREE_NODE ParentNode,
+				 IN PPAGING_STRUCTURE SuperStructure,
 				 IN MWORD VSpaceCap,
 				 IN MWORD Cap,
 				 IN MWORD VirtAddr,
-				 IN MM_PAGING_STRUCTURE_TYPE Type,
+				 IN PAGING_STRUCTURE_TYPE Type,
 				 IN BOOLEAN Mapped,
-				 IN MM_PAGING_RIGHTS Rights)
+				 IN PAGING_RIGHTS Rights)
 {
-    MiInitializeCapTreeNode(&Page->TreeNode, MM_CAP_TREE_NODE_PAGING_STRUCTURE,
+    MiInitializeCapTreeNode(&Page->TreeNode, CAP_TREE_NODE_PAGING_STRUCTURE,
 			    Cap, ParentNode);
     MiAvlInitializeNode(&Page->AvlNode, MiSanitizeAlignment(Type, VirtAddr));
     Page->SuperStructure = SuperStructure;
@@ -170,14 +170,14 @@ VOID MiInitializePagingStructure(IN PMM_PAGING_STRUCTURE Page,
  * Find the substructure within the given paging structure that contains
  * the given virtual address.
  */
-static PMM_PAGING_STRUCTURE MiPagingFindSubstructure(IN PMM_PAGING_STRUCTURE Paging,
+static PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
 						     IN MWORD VirtAddr)
 {
     assert(Paging != NULL);
     VirtAddr = MiSanitizeAlignment(MiPagingSubStructureType(Paging), VirtAddr);
     PMM_AVL_TREE Tree = &Paging->SubStructureTree;
     PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, VirtAddr);
-    PMM_PAGING_STRUCTURE Super = MM_AVL_NODE_TO_PAGING_STRUCTURE(Parent);
+    PPAGING_STRUCTURE Super = MM_AVL_NODE_TO_PAGING_STRUCTURE(Parent);
     if (Super != NULL && MiPagingStructureContainsAddr(Super, VirtAddr)) {
 	return Super;
     }
@@ -193,8 +193,8 @@ static PMM_PAGING_STRUCTURE MiPagingFindSubstructure(IN PMM_PAGING_STRUCTURE Pag
  * It is a programming bug if this has not been enforced.
  *
  */
-static VOID MiPagingInsertSubStructure(IN PMM_PAGING_STRUCTURE Self,
-				       IN PMM_PAGING_STRUCTURE SubStructure)
+static VOID MiPagingInsertSubStructure(IN PPAGING_STRUCTURE Self,
+				       IN PPAGING_STRUCTURE SubStructure)
 {
     assert(Self != NULL);
     assert(SubStructure != NULL);
@@ -216,10 +216,10 @@ static VOID MiPagingInsertSubStructure(IN PMM_PAGING_STRUCTURE Self,
  * space, starting from its root paging structure. All the intermediate paging
  * structures must already have been mapped prior to calling this function.
  */
-NTSTATUS MiVSpaceInsertPagingStructure(IN PMM_VADDR_SPACE VSpace,
-				       IN PMM_PAGING_STRUCTURE Paging)
+NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
+				       IN PPAGING_STRUCTURE Paging)
 {
-    PMM_PAGING_STRUCTURE Super = &VSpace->RootPagingStructure;
+    PPAGING_STRUCTURE Super = &VSpace->RootPagingStructure;
     assert(Super != NULL);
     while (Super->Type != MiPagingSuperStructureType(Paging)) {
 	Super = MiPagingFindSubstructure(Super, Paging->AvlNode.Key);
@@ -231,13 +231,13 @@ NTSTATUS MiVSpaceInsertPagingStructure(IN PMM_VADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
+static NTSTATUS MiRetypeIntoPagingStructure(PPAGING_STRUCTURE Page)
 {
     if (Page->Mapped || (Page->TreeNode.Cap != 0)) {
 	return STATUS_NTOS_BUG;
     }
 
-    PMM_UNTYPED Untyped = (PMM_UNTYPED) Page->TreeNode.Parent;
+    PUNTYPED Untyped = (PUNTYPED) Page->TreeNode.Parent;
     if (Untyped == NULL) {
 	return STATUS_NTOS_BUG;
     }
@@ -247,7 +247,7 @@ static NTSTATUS MiRetypeIntoPagingStructure(PMM_PAGING_STRUCTURE Page)
 			      &Page->TreeNode.Cap);
 }
 
-static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
+static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
 {
     assert(Page != NULL);
     ASSERT_ALIGNMENT(Page);
@@ -255,11 +255,11 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
     RET_ERR(MiRetypeIntoPagingStructure(Page));
 
     int Error = 0;
-    if (Page->Type == MM_PAGING_TYPE_PAGE || Page->Type == MM_PAGING_TYPE_LARGE_PAGE) {
+    if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
 #if CONFIG_DEBUG_BUILD
 	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
 	DbgTrace("Mapping %spage cap 0x%x (paddr %p%s) into vspacecap 0x%x at vaddr %p\n",
-		 (Page->Type == MM_PAGING_TYPE_LARGE_PAGE) ? "large " : "",
+		 (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
 		 Page->TreeNode.Cap, Reply.paddr, (Reply.error == 0) ? "" : " ???",
 		 Page->VSpaceCap, Page->AvlNode.Key);
 #endif
@@ -268,7 +268,7 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 				  Page->AvlNode.Key,
 				  Page->Rights,
 				  Page->Attributes);
-    } else if (Page->Type == MM_PAGING_TYPE_PAGE_TABLE) {
+    } else if (Page->Type == PAGING_TYPE_PAGE_TABLE) {
 	DbgTrace("Mapping page table cap 0x%x into vspacecap 0x%x at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
 	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
@@ -276,14 +276,14 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 				       Page->AvlNode.Key,
 				       Page->Attributes);
 #ifdef _M_AMD64
-    } else if (Page->Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
+    } else if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	DbgTrace("Mapping page directory cap 0x%x into vspacecap 0x%x at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
 	Error = seL4_X86_PageDirectory_Map(Page->TreeNode.Cap,
 					   Page->VSpaceCap,
 					   Page->AvlNode.Key,
 					   Page->Attributes);
-    } else if (Page->Type == MM_PAGING_TYPE_PDPT) {
+    } else if (Page->Type == PAGING_TYPE_PDPT) {
 	DbgTrace("Mapping PDPT cap 0x%x into vspacecap 0x%x at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
 	Error = seL4_X86_PDPT_Map(Page->TreeNode.Cap,
@@ -320,16 +320,16 @@ MM_MEM_PRESSURE MmQueryMemoryPressure()
  * and initialize the paging structure. The virtual address is rounded down
  * to the correct alignment.
  */
-NTSTATUS MiCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
-				 IN PMM_UNTYPED Untyped,
+NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
+				 IN PUNTYPED Untyped,
 				 IN MWORD VirtAddr,
 				 IN MWORD VSpaceCap,
-				 IN MM_PAGING_RIGHTS Rights,
-				 OUT PMM_PAGING_STRUCTURE *pPaging)
+				 IN PAGING_RIGHTS Rights,
+				 OUT PPAGING_STRUCTURE *pPaging)
 {
     assert(pPaging);
 
-    MiAllocatePool(Paging, MM_PAGING_STRUCTURE);
+    MiAllocatePool(Paging, PAGING_STRUCTURE);
     MiInitializePagingStructure(Paging, &Untyped->TreeNode, NULL, VSpaceCap, 0, VirtAddr,
 				Type, FALSE, Rights);
 
@@ -346,9 +346,9 @@ NTSTATUS MiCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
  *
  * All super-structures are allocated from the available untyped memory of the root task.
  */
-static NTSTATUS MiMapSuperStructure(IN PMM_PAGING_STRUCTURE Paging,
-				    IN PMM_VADDR_SPACE VSpace,
-				    OUT OPTIONAL PMM_PAGING_STRUCTURE *pSuperStructure)
+static NTSTATUS MiMapSuperStructure(IN PPAGING_STRUCTURE Paging,
+				    IN PVIRT_ADDR_SPACE VSpace,
+				    OUT OPTIONAL PPAGING_STRUCTURE *pSuperStructure)
 {
     assert(Paging != NULL);
     assert(VSpace != NULL);
@@ -356,20 +356,20 @@ static NTSTATUS MiMapSuperStructure(IN PMM_PAGING_STRUCTURE Paging,
     /* The MiInitializePagingStructure routine will round the virtual address
      * to the correct alignment when mapping super structures. */
     MWORD VirtAddr = Paging->AvlNode.Key;
-    PMM_PAGING_STRUCTURE SuperStructure = &VSpace->RootPagingStructure;
+    PPAGING_STRUCTURE SuperStructure = &VSpace->RootPagingStructure;
 
     while (SuperStructure->Type != MiPagingSuperStructureType(Paging)) {
 	assert(SuperStructure->VSpaceCap == VSpace->VSpaceCap);
-	PMM_PAGING_STRUCTURE SubStructure =
+	PPAGING_STRUCTURE SubStructure =
 	    MiPagingFindSubstructure(SuperStructure, VirtAddr);
 	if (SubStructure == NULL) {
-	    MM_PAGING_STRUCTURE_TYPE Subtype = MiPagingSubStructureType(SuperStructure);
-	    PMM_UNTYPED Untyped = NULL;
+	    PAGING_STRUCTURE_TYPE Subtype = MiPagingSubStructureType(SuperStructure);
+	    PUNTYPED Untyped = NULL;
 	    RET_ERR(MmRequestUntyped(MiPagingObjLog2Size(Subtype), &Untyped));
 	    RET_ERR_EX(MiCreatePagingStructure(Subtype, Untyped, VirtAddr, VSpace->VSpaceCap,
 					       SuperStructure->Rights, &SubStructure),
 		       MmReleaseUntyped(Untyped));
-	    /* On error, MmReleaseUntyped will call ExFreePool on the MM_UNTYPED */
+	    /* On error, MmReleaseUntyped will call ExFreePool on the UNTYPED */
 	    RET_ERR_EX(MiMapPagingStructure(SubStructure), MmReleaseUntyped(Untyped));
 	    MiPagingInsertSubStructure(SuperStructure, SubStructure);
 	}
@@ -401,13 +401,13 @@ static NTSTATUS MiMapSuperStructure(IN PMM_PAGING_STRUCTURE Paging,
  *
  * If specified, will attempt to use large pages when mapping.
  */
-NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
+NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
 			      IN MWORD VirtAddr,
 			      IN MWORD Size,
-			      IN MM_PAGING_RIGHTS Rights,
+			      IN PAGING_RIGHTS Rights,
 			      IN BOOLEAN UseLargePage,
 			      OUT OPTIONAL MWORD *pSatisfiedSize,
-			      OUT OPTIONAL PMM_PAGING_STRUCTURE *pPage,
+			      OUT OPTIONAL PPAGING_STRUCTURE *pPage,
 			      IN OPTIONAL LONG MaxNumPagingStruct,
 			      OUT OPTIONAL LONG *pNumPagingStruct)
 {
@@ -427,18 +427,18 @@ NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
     VirtAddr = PAGE_ALIGN(VirtAddr);
     Size = PAGE_ALIGN(Size + PAGE_SIZE - 1);
  
-    PMM_PAGING_STRUCTURE SuperStructure = NULL;
+    PPAGING_STRUCTURE SuperStructure = NULL;
     MWORD CurVaddr = VirtAddr;
     LONG NumPagingStruct = 0;
     while (CurVaddr < VirtAddr + Size) {
-	PMM_UNTYPED Untyped = NULL;
-	MM_PAGING_STRUCTURE_TYPE Type = MM_PAGING_TYPE_PAGE;
+	PUNTYPED Untyped = NULL;
+	PAGING_STRUCTURE_TYPE Type = PAGING_TYPE_PAGE;
 	if (UseLargePage && IS_LARGE_PAGE_ALIGNED(CurVaddr)
 	    && (VirtAddr + Size - CurVaddr) >= LARGE_PAGE_SIZE) {
-	    Type = MM_PAGING_TYPE_LARGE_PAGE;
+	    Type = PAGING_TYPE_LARGE_PAGE;
 	}
 	RET_ERR(MmRequestUntyped(MiPagingObjLog2Size(Type), &Untyped));
-	PMM_PAGING_STRUCTURE Page = NULL;
+	PPAGING_STRUCTURE Page = NULL;
 	RET_ERR_EX(MiCreatePagingStructure(Type, Untyped, CurVaddr,
 					   VaddrSpace->VSpaceCap, Rights, &Page),
 		   MmReleaseUntyped(Untyped));
@@ -479,26 +479,26 @@ NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
  * Map one page of physical memory at specified physical address into the specified
  * virtual address, optionally returning the paging structure pointer.
  */
-NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
-			  IN PMM_PHY_MEM PhyMem,
+NTSTATUS MmCommitIoPageEx(IN PVIRT_ADDR_SPACE VaddrSpace,
+			  IN PPHY_MEM_DESCRIPTOR PhyMem,
 			  IN MWORD PhyAddr,
 			  IN MWORD VirtAddr,
-			  IN MM_PAGING_RIGHTS Rights,
-			  OUT OPTIONAL PMM_PAGING_STRUCTURE *pPage)
+			  IN PAGING_RIGHTS Rights,
+			  OUT OPTIONAL PPAGING_STRUCTURE *pPage)
 {
     assert(IS_PAGE_ALIGNED(PhyAddr));
     assert(IS_PAGE_ALIGNED(VirtAddr));
     PhyAddr = PAGE_ALIGN(PhyAddr);
     VirtAddr = PAGE_ALIGN(VirtAddr);
 
-    PMM_UNTYPED IoUntyped;
+    PUNTYPED IoUntyped;
     RET_ERR(MiRequestIoUntyped(PhyMem, PhyAddr, &IoUntyped));
     if (IoUntyped->Log2Size != PAGE_LOG2SIZE) {
 	return STATUS_NTOS_BUG;
     }
 
-    PMM_PAGING_STRUCTURE Page = NULL;
-    RET_ERR_EX(MiCreatePagingStructure(MM_PAGING_TYPE_PAGE, IoUntyped, VirtAddr,
+    PPAGING_STRUCTURE Page = NULL;
+    RET_ERR_EX(MiCreatePagingStructure(PAGING_TYPE_PAGE, IoUntyped, VirtAddr,
 				       VaddrSpace->VSpaceCap, Rights, &Page),
 	       MmReleaseUntyped(IoUntyped));
     assert(Page != NULL);
@@ -512,9 +512,9 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-VOID MmDbgDumpPagingStructure(IN PMM_PAGING_STRUCTURE Paging)
+VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 {
-    DbgPrint("Dumping paging structure (PMM_PAGING_STRUCTURE = %p)\n", Paging);
+    DbgPrint("Dumping paging structure (PPAGING_STRUCTURE = %p)\n", Paging);
     if (Paging == NULL) {
 	DbgPrint("    (nil)\n");
 	return;

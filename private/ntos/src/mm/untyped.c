@@ -1,13 +1,13 @@
 #include "mi.h"
 
-VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
-			 IN PMM_UNTYPED Parent,
+VOID MiInitializeUntyped(IN PUNTYPED Untyped,
+			 IN PUNTYPED Parent,
 			 IN MWORD Cap,
 			 IN MWORD PhyAddr,
 			 IN LONG Log2Size,
 			 IN BOOLEAN IsDevice)
 {
-    MiInitializeCapTreeNode(&Untyped->TreeNode, MM_CAP_TREE_NODE_UNTYPED,
+    MiInitializeCapTreeNode(&Untyped->TreeNode, CAP_TREE_NODE_UNTYPED,
 			    Cap, &Parent->TreeNode);
     Untyped->Log2Size = Log2Size;
     Untyped->IsDevice = IsDevice;
@@ -15,7 +15,7 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
     MiAvlInitializeNode(&Untyped->AvlNode, PhyAddr);
 }
 
-VOID MiInitializePhyMemDescriptor(PMM_PHY_MEM PhyMem)
+VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem)
 {
     MiAvlInitializeTree(&PhyMem->RootUntypedForest);
     PhyMem->CachedRootUntyped = NULL;
@@ -27,7 +27,7 @@ VOID MiInitializePhyMemDescriptor(PMM_PHY_MEM PhyMem)
 /*
  * Retype the untyped memory into a seL4 kernel object.
  */
-NTSTATUS MmRetypeIntoObject(IN PMM_UNTYPED Untyped,
+NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
 			    OUT MWORD *ObjCap)
@@ -69,9 +69,9 @@ NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
-			OUT PMM_UNTYPED LeftChild,
-			OUT PMM_UNTYPED RightChild)
+NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
+			OUT PUNTYPED LeftChild,
+			OUT PUNTYPED RightChild)
 {
     if (MiCapTreeNodeHasChildren(&Src->TreeNode)) {
 	return STATUS_INVALID_PARAMETER;
@@ -94,8 +94,8 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     return STATUS_SUCCESS;
 }
 
-VOID MiInsertFreeUntyped(IN PMM_PHY_MEM PhyMem,
-			 IN PMM_UNTYPED Untyped)
+VOID MiInsertFreeUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
+			 IN PUNTYPED Untyped)
 {
     PLIST_ENTRY List;
     if (Untyped->Log2Size >= LARGE_PAGE_LOG2SIZE) {
@@ -109,12 +109,12 @@ VOID MiInsertFreeUntyped(IN PMM_PHY_MEM PhyMem,
 }
 
 /* Find the smallest untyped that is at least of the given log2size. */
-static PMM_UNTYPED MiFindSmallestUntypedOfLog2Size(IN PLIST_ENTRY ListHead,
+static PUNTYPED MiFindSmallestUntypedOfLog2Size(IN PLIST_ENTRY ListHead,
 						   IN LONG Log2Size)
 {
     LONG SmallestLog2Size = 255;
-    PMM_UNTYPED DesiredUntyped = NULL;
-    LoopOverList(Untyped, ListHead, MM_UNTYPED, FreeListEntry) {
+    PUNTYPED DesiredUntyped = NULL;
+    LoopOverList(Untyped, ListHead, UNTYPED, FreeListEntry) {
 	assert(!Untyped->IsDevice);
 	if (Untyped->Log2Size >= Log2Size && Untyped->Log2Size < SmallestLog2Size) {
 	    DesiredUntyped = Untyped;
@@ -125,9 +125,9 @@ static PMM_UNTYPED MiFindSmallestUntypedOfLog2Size(IN PLIST_ENTRY ListHead,
 }
 
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
-			  OUT PMM_UNTYPED *pUntyped)
+			  OUT PUNTYPED *pUntyped)
 {
-    PMM_UNTYPED Untyped = NULL;
+    PUNTYPED Untyped = NULL;
     if (Log2Size >= LARGE_PAGE_LOG2SIZE) {
 	Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.LargeUntypedList,
 						  Log2Size);
@@ -159,8 +159,8 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     RemoveEntryList(&Untyped->FreeListEntry);
     for (LONG i = 0; i < NumSplits; i++) {
 	MWORD LeftCap, RightCap;
-	MiAllocatePool(LeftChild, MM_UNTYPED);
-	MiAllocatePoolEx(RightChild, MM_UNTYPED, ExFreePool(LeftChild));
+	MiAllocatePool(LeftChild, UNTYPED);
+	MiAllocatePoolEx(RightChild, UNTYPED, ExFreePool(LeftChild));
 	RET_ERR_EX(MiSplitUntyped(Untyped, LeftChild, RightChild),
 		   {
 		       ExFreePool(LeftChild);
@@ -179,13 +179,13 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 /* Returns true if the supplied physical address is bounded
  * by the untyped memory's starting and ending physical address
  */
-static inline BOOLEAN MiUntypedContainsPhyAddr(IN PMM_UNTYPED Untyped,
+static inline BOOLEAN MiUntypedContainsPhyAddr(IN PUNTYPED Untyped,
 					       IN MWORD PhyAddr)
 {
     return MiAvlNodeContainsAddr(&Untyped->AvlNode, 1ULL << Untyped->Log2Size, PhyAddr);
 }
 
-static PMM_UNTYPED MiFindRootUntyped(IN PMM_PHY_MEM PhyMem,
+static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 				     IN MWORD PhyAddr)
 {
     PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
@@ -194,7 +194,7 @@ static PMM_UNTYPED MiFindRootUntyped(IN PMM_PHY_MEM PhyMem,
 	return PhyMem->CachedRootUntyped;
     }
     PMM_AVL_NODE Node = MiAvlTreeFindNodeOrParent(Tree, PhyAddr);
-    PMM_UNTYPED Parent = MM_AVL_NODE_TO_UNTYPED(Node);
+    PUNTYPED Parent = MM_AVL_NODE_TO_UNTYPED(Node);
     if (Parent != NULL && MiUntypedContainsPhyAddr(Parent, PhyAddr)) {
 	PhyMem->CachedRootUntyped = Parent;
 	return Parent;
@@ -202,21 +202,21 @@ static PMM_UNTYPED MiFindRootUntyped(IN PMM_PHY_MEM PhyMem,
     return NULL;
 }
 
-static PMM_UNTYPED MiFindRootIoUntyped(IN PMM_PHY_MEM PhyMem,
+static PUNTYPED MiFindRootIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 				       IN MWORD PhyAddr)
 {
-    PMM_UNTYPED Untyped = MiFindRootUntyped(PhyMem, PhyAddr);
+    PUNTYPED Untyped = MiFindRootUntyped(PhyMem, PhyAddr);
     if ((Untyped == NULL) || (Untyped->IsDevice == FALSE)) {
 	return NULL;
     }
     return Untyped;
 }
 
-NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
+NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			    IN MWORD PhyAddr,
-			    OUT PMM_UNTYPED *IoUntyped)
+			    OUT PUNTYPED *IoUntyped)
 {
-    PMM_UNTYPED RootIoUntyped = MiFindRootIoUntyped(PhyMem, PhyAddr);
+    PUNTYPED RootIoUntyped = MiFindRootIoUntyped(PhyMem, PhyAddr);
     if (RootIoUntyped == NULL) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -225,8 +225,8 @@ NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
     LONG NumSplits = RootIoUntyped->Log2Size - PAGE_LOG2SIZE;
     for (LONG i = NumSplits-1; i >= 0; i--) {
 	if (!MiCapTreeNodeHasChildren(&(*IoUntyped)->TreeNode)) {
-	    MiAllocatePool(Child0, MM_UNTYPED);
-	    MiAllocatePoolEx(Child1, MM_UNTYPED, ExFreePool(Child0));
+	    MiAllocatePool(Child0, UNTYPED);
+	    MiAllocatePoolEx(Child1, UNTYPED, ExFreePool(Child0));
 	    RET_ERR_EX(MiSplitUntyped(*IoUntyped, Child0, Child1),
 		       {
 			   ExFreePool(Child0);
@@ -234,8 +234,8 @@ NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
 		       });
 	}
 	assert(MiCapTreeNodeChildrenCount(&(*IoUntyped)->TreeNode) == 2);
-	PMM_UNTYPED Child0 = MiCapTreeGetFirstChildTyped(*IoUntyped, MM_UNTYPED);
-	PMM_UNTYPED Child1 = MiCapTreeGetSecondChildTyped(*IoUntyped, MM_UNTYPED);
+	PUNTYPED Child0 = MiCapTreeGetFirstChildTyped(*IoUntyped, UNTYPED);
+	PUNTYPED Child1 = MiCapTreeGetSecondChildTyped(*IoUntyped, UNTYPED);
 	if (MiUntypedContainsPhyAddr(Child0, PhyAddr)) {
 	    *IoUntyped = Child0;
 	} else {
@@ -247,13 +247,13 @@ NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
-			     IN PMM_UNTYPED RootUntyped)
+NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
+			     IN PUNTYPED RootUntyped)
 {
     MWORD StartPhyAddr = RootUntyped->AvlNode.Key;
     PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
     PMM_AVL_NODE Node = MiAvlTreeFindNodeOrParent(Tree, StartPhyAddr);
-    PMM_UNTYPED Parent = Node ? CONTAINING_RECORD(Node, MM_UNTYPED, AvlNode) : NULL;
+    PUNTYPED Parent = Node ? CONTAINING_RECORD(Node, UNTYPED, AvlNode) : NULL;
 
     /* Reject the insertion if the root untyped to be inserted overlaps
      * with its parent node within the AVL tree. This should never happen
@@ -273,7 +273,7 @@ NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
  * the untyped to the free untyped lists, possibly merging with
  * sibling untyped memories.
  */
-NTSTATUS MmReleaseUntyped(IN PMM_UNTYPED Untyped)
+NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped)
 {
     /* TODO: Revoke child objects */
     /* TODO: Merge untyped recursively if possible and add to free list */
@@ -285,17 +285,17 @@ VOID MmDbgDumpUntypedInfo()
     PLIST_ENTRY SmallUntypedList = &MiPhyMemDescriptor.SmallUntypedList;
     DbgPrint("Dumping untyped information:\n");
     DbgPrint("  Small free untyped:\n");
-    LoopOverList(Untyped, SmallUntypedList, MM_UNTYPED, FreeListEntry) {
+    LoopOverList(Untyped, SmallUntypedList, UNTYPED, FreeListEntry) {
 	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY MediumUntypedList = &MiPhyMemDescriptor.MediumUntypedList;
     DbgPrint("  Medium free untyped:\n");
-    LoopOverList(Untyped, MediumUntypedList, MM_UNTYPED, FreeListEntry) {
+    LoopOverList(Untyped, MediumUntypedList, UNTYPED, FreeListEntry) {
 	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY LargeUntypedList = &MiPhyMemDescriptor.LargeUntypedList;
     DbgPrint("  Large free untyped:\n");
-    LoopOverList(Untyped, LargeUntypedList, MM_UNTYPED, FreeListEntry) {
+    LoopOverList(Untyped, LargeUntypedList, UNTYPED, FreeListEntry) {
 	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     DbgPrint("  Root untyped forest linearly:\n");

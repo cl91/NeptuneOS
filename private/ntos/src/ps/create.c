@@ -5,9 +5,9 @@ extern UCHAR _ntdll_end[];
 
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
-				   IN PMM_CNODE CNode,
-				   IN PMM_VADDR_SPACE VaddrSpace,
-				   IN PMM_PAGING_STRUCTURE IpcPage)
+				   IN PCNODE CNode,
+				   IN PVIRT_ADDR_SPACE VaddrSpace,
+				   IN PPAGING_STRUCTURE IpcPage)
 {
     assert(CNode != NULL);
     assert(VaddrSpace != NULL);
@@ -27,7 +27,7 @@ NTSTATUS PspThreadObjectCreateProc(IN PVOID Object)
 {
     PTHREAD Thread = (PTHREAD) Object;
 
-    PMM_UNTYPED TcbUntyped = NULL;
+    PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
     MWORD TcbCap = 0;
@@ -46,12 +46,12 @@ NTSTATUS PspProcessObjectCreateProc(IN PVOID Object)
 {
     PPROCESS Process = (PPROCESS) Object;
 
-    PMM_CNODE CNode = NULL;
+    PCNODE CNode = NULL;
     RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &CNode));
     assert(CNode != NULL);
     Process->CNode = CNode;
 
-    PMM_UNTYPED VspaceUntyped = NULL;
+    PUNTYPED VspaceUntyped = NULL;
     RET_ERR_EX(MmRequestUntyped(seL4_VSpaceBits, &VspaceUntyped), MmDeleteCNode(CNode));
     MWORD VspaceCap = 0;
     RET_ERR_EX(MmRetypeIntoObject(VspaceUntyped, seL4_VSpaceObject,
@@ -80,7 +80,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 {
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (PPVOID) pThread));
 
-    PMM_PAGING_STRUCTURE IpcBuffer = NULL;
+    PPAGING_STRUCTURE IpcBuffer = NULL;
     RET_ERR_EX(MmCommitAddrWindowEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
 				    PAGE_SIZE, MM_RIGHTS_RW, TRUE, NULL,
 				    &IpcBuffer, 1, NULL),

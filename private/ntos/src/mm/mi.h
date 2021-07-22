@@ -26,10 +26,10 @@ typedef struct _MM_INIT_INFO {
 #define MiAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 
-static inline VOID MiInitializeCapTreeNode(IN PMM_CAP_TREE_NODE Self,
-					   IN MM_CAP_TREE_NODE_TYPE Type,
+static inline VOID MiInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
+					   IN CAP_TREE_NODE_TYPE Type,
 					   IN MWORD Cap,
-					   IN OPTIONAL PMM_CAP_TREE_NODE Parent)
+					   IN OPTIONAL PCAP_TREE_NODE Parent)
 {
     assert(Self != NULL);
     Self->Type = Type;
@@ -42,26 +42,26 @@ static inline VOID MiInitializeCapTreeNode(IN PMM_CAP_TREE_NODE Self,
     }
 }
 
-static inline BOOLEAN MiCapTreeNodeHasChildren(IN PMM_CAP_TREE_NODE Node)
+static inline BOOLEAN MiCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
 {
     return !IsListEmpty(&Node->ChildrenList);
 }
 
-static inline ULONG MiCapTreeNodeChildrenCount(IN PMM_CAP_TREE_NODE Node)
+static inline ULONG MiCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
 {
     return GetListLength(&Node->ChildrenList);
 }
 
-static inline PMM_CAP_TREE_NODE MiCapTreeNodeGetFirstChild(IN PMM_CAP_TREE_NODE Node)
+static inline PCAP_TREE_NODE MiCapTreeNodeGetFirstChild(IN PCAP_TREE_NODE Node)
 {
     assert(MiCapTreeNodeHasChildren(Node));
-    return CONTAINING_RECORD(Node->ChildrenList.Flink, MM_CAP_TREE_NODE, SiblingLink);
+    return CONTAINING_RECORD(Node->ChildrenList.Flink, CAP_TREE_NODE, SiblingLink);
 }
 
-static inline PMM_CAP_TREE_NODE MiCapTreeNodeGetSecondChild(IN PMM_CAP_TREE_NODE Node)
+static inline PCAP_TREE_NODE MiCapTreeNodeGetSecondChild(IN PCAP_TREE_NODE Node)
 {
     assert(MiCapTreeNodeChildrenCount(Node) == 2);
-    return CONTAINING_RECORD(Node->ChildrenList.Flink->Flink, MM_CAP_TREE_NODE, SiblingLink);
+    return CONTAINING_RECORD(Node->ChildrenList.Flink->Flink, CAP_TREE_NODE, SiblingLink);
 }
 
 #define MiCapTreeGetFirstChildTyped(Obj, Type)	(CONTAINING_RECORD(MiCapTreeNodeGetFirstChild(&(Obj)->TreeNode), Type, TreeNode))
@@ -97,16 +97,16 @@ static inline VOID ClearBit(MWORD *Map, ULONG Bit)
 /* Initialize an empty CNode. The zeroth slot is always
  * used since it represents the null capability.
  */
-static inline VOID MiInitializeCNode(IN PMM_CNODE Self,
+static inline VOID MiInitializeCNode(IN PCNODE Self,
 				     IN MWORD RootCap,
 				     IN ULONG Log2Size,
-				     IN OPTIONAL PMM_CAP_TREE_NODE Parent,
+				     IN OPTIONAL PCAP_TREE_NODE Parent,
 				     IN MWORD *UsedMap)
 {
     assert(Self != NULL);
     assert(RootCap != 0);
     assert(UsedMap != NULL);
-    MiInitializeCapTreeNode(&Self->TreeNode, MM_CAP_TREE_NODE_CNODE,
+    MiInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_CNODE,
 			    RootCap, Parent);
     Self->Log2Size = Log2Size;
     Self->RecentFree = 1;
@@ -115,9 +115,9 @@ static inline VOID MiInitializeCNode(IN PMM_CNODE Self,
     Self->UsedMap = UsedMap;
 }
 
-static inline PMM_UNTYPED MiTreeNodeToUntyped(PMM_CAP_TREE_NODE TreeNode)
+static inline PUNTYPED MiTreeNodeToUntyped(PCAP_TREE_NODE TreeNode)
 {
-    return CONTAINING_RECORD(TreeNode, MM_UNTYPED, TreeNode);
+    return CONTAINING_RECORD(TreeNode, UNTYPED, TreeNode);
 }
 
 static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
@@ -135,7 +135,7 @@ static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
     InitializeListHead(&Tree->NodeList);
 }
 
-static inline VOID MiInitializeVadNode(PMM_VAD Node,
+static inline VOID MiInitializeVadNode(PVAD Node,
 				       MWORD StartVaddr,
 				       MWORD WindowSize)
 {
@@ -150,14 +150,14 @@ static inline VOID MiInitializeVadNode(PMM_VAD Node,
  */
 
 /* init.c */
-extern MM_VADDR_SPACE MiNtosVaddrSpace;
-extern MM_PHY_MEM MiPhyMemDescriptor;
-extern MM_CNODE MiNtosCNode;
+extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
+extern CNODE MiNtosCNode;
 
 /* untyped.c */
-VOID MiInitializePhyMemDescriptor(PMM_PHY_MEM PhyMem);
-VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
-			 IN PMM_UNTYPED Parent,
+VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem);
+VOID MiInitializeUntyped(IN PUNTYPED Untyped,
+			 IN PUNTYPED Parent,
 			 IN MWORD Cap,
 			 IN MWORD PhyAddr,
 			 IN LONG Log2Size,
@@ -165,16 +165,16 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
 			   IN LONG SrcLog2Size,
 			   IN MWORD DestCap);
-NTSTATUS MiSplitUntyped(IN PMM_UNTYPED SrcUntyped,
-			OUT PMM_UNTYPED DestUntyped1,
-			OUT PMM_UNTYPED DestUntyped2);
-VOID MiInsertFreeUntyped(PMM_PHY_MEM PhyMem,
-			 PMM_UNTYPED Untyped);
-NTSTATUS MiRequestIoUntyped(IN PMM_PHY_MEM PhyMem,
+NTSTATUS MiSplitUntyped(IN PUNTYPED SrcUntyped,
+			OUT PUNTYPED DestUntyped1,
+			OUT PUNTYPED DestUntyped2);
+VOID MiInsertFreeUntyped(PPHY_MEM_DESCRIPTOR PhyMem,
+			 PUNTYPED Untyped);
+NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			    IN MWORD PhyAddr,
-			    OUT PMM_UNTYPED *IoUntyped);
-NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
-			     IN PMM_UNTYPED RootUntyped);
+			    OUT PUNTYPED *IoUntyped);
+NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
+			     IN PUNTYPED RootUntyped);
 
 /* avltree.c */
 PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
@@ -230,20 +230,20 @@ static inline BOOLEAN MiAvlNodeOverlapsAddrWindow(IN PMM_AVL_NODE Node,
 }
 
 /* page.c */
-VOID MiInitializePagingStructure(IN PMM_PAGING_STRUCTURE Page,
-				 IN PMM_CAP_TREE_NODE ParentNode,
-				 IN PMM_PAGING_STRUCTURE ParentPagingStructure,
+VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
+				 IN PCAP_TREE_NODE ParentNode,
+				 IN PPAGING_STRUCTURE ParentPagingStructure,
 				 IN MWORD VSpaceCap,
 				 IN MWORD Cap,
 				 IN MWORD VirtAddr,
-				 IN MM_PAGING_STRUCTURE_TYPE Type,
+				 IN PAGING_STRUCTURE_TYPE Type,
 				 IN BOOLEAN Mapped,
-				 IN MM_PAGING_RIGHTS Rights);
-NTSTATUS MiCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
-				 IN PMM_UNTYPED Untyped,
+				 IN PAGING_RIGHTS Rights);
+NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
+				 IN PUNTYPED Untyped,
 				 IN MWORD VirtAddr,
 				 IN MWORD VSpaceCap,
-				 IN MM_PAGING_RIGHTS Rights,
-				 OUT PMM_PAGING_STRUCTURE *pPaging);
-NTSTATUS MiVSpaceInsertPagingStructure(IN PMM_VADDR_SPACE VSpace,
-				       IN PMM_PAGING_STRUCTURE Paging);
+				 IN PAGING_RIGHTS Rights,
+				 OUT PPAGING_STRUCTURE *pPaging);
+NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
+				       IN PPAGING_STRUCTURE Paging);

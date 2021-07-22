@@ -17,16 +17,16 @@
 
 typedef struct _THREAD {
     LIST_ENTRY ThreadListEntry;
-    PMM_UNTYPED TcbUntyped;
+    PUNTYPED TcbUntyped;
     MWORD TcbCap;
-    PMM_PAGING_STRUCTURE IpcBuffer;
+    PPAGING_STRUCTURE IpcBuffer;
 } THREAD, *PTHREAD;
 
 typedef struct _PROCESS {
     PTHREAD InitThread;
     LIST_ENTRY ThreadList;
-    PMM_CNODE CNode;
-    MM_VADDR_SPACE VaddrSpace;	/* Virtual address space */
+    PCNODE CNode;
+    VIRT_ADDR_SPACE VaddrSpace;	/* Virtual address space */
 } PROCESS, *PPROCESS;
 
 /* init.c */

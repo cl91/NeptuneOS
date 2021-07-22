@@ -2,7 +2,7 @@
 
 #include "mi.h"
 
-VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE Self,
+VOID MmInitializeVaddrSpace(IN PVIRT_ADDR_SPACE Self,
 			    IN MWORD VSpaceCap)
 {
     Self->VSpaceCap = VSpaceCap;
@@ -10,7 +10,7 @@ VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE Self,
     Self->CachedVad = NULL;
     MiAvlInitializeTree(&Self->VadTree);
     MiInitializePagingStructure(&Self->RootPagingStructure, NULL, NULL, VSpaceCap,
-				VSpaceCap, 0, MM_PAGING_TYPE_ROOT_PAGING_STRUCTURE,
+				VSpaceCap, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
 				TRUE, MM_RIGHTS_RW);
 }
 
@@ -19,7 +19,7 @@ VOID MmInitializeVaddrSpace(IN PMM_VADDR_SPACE Self,
  * for the virtual address space. An ASID must be assigned before the
  * virtual address space can be used for mapping.
  */
-NTSTATUS MmAssignASID(IN PMM_VADDR_SPACE VaddrSpace)
+NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace)
 {
     /* TODO: Create ASID pool if not enough ASID slots */
     int Error = seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
@@ -34,7 +34,7 @@ NTSTATUS MmAssignASID(IN PMM_VADDR_SPACE VaddrSpace)
 }
 
 /* Returns TRUE if the supplied VAD node overlaps with the address window */
-static inline BOOLEAN MiVadNodeOverlapsAddrWindow(IN PMM_VAD Node,
+static inline BOOLEAN MiVadNodeOverlapsAddrWindow(IN PVAD Node,
 						  IN MWORD VirtAddr,
 						  IN MWORD WindowSize)
 {
@@ -43,8 +43,8 @@ static inline BOOLEAN MiVadNodeOverlapsAddrWindow(IN PMM_VAD Node,
 }
 
 /* Returns TRUE if two VAD nodes have non-zero overlap */
-static inline BOOLEAN MiVadNodeOverlapsVad(IN PMM_VAD Node0,
-					   IN PMM_VAD Node1)
+static inline BOOLEAN MiVadNodeOverlapsVad(IN PVAD Node0,
+					   IN PVAD Node1)
 {
     return MiVadNodeOverlapsAddrWindow(Node0, Node1->AvlNode.Key, Node1->WindowSize);
 }
@@ -52,12 +52,12 @@ static inline BOOLEAN MiVadNodeOverlapsVad(IN PMM_VAD Node0,
 /*
  * Insert the given VAD node into the virtual address space
  */
-static NTSTATUS MiVSpaceInsertVadNode(IN PMM_VADDR_SPACE VSpace,
-				      IN PMM_VAD VadNode)
+static NTSTATUS MiVSpaceInsertVadNode(IN PVIRT_ADDR_SPACE VSpace,
+				      IN PVAD VadNode)
 {
     PMM_AVL_TREE Tree = &VSpace->VadTree;
     PMM_AVL_NODE ParentNode = MiAvlTreeFindNodeOrParent(Tree, VadNode->AvlNode.Key);
-    PMM_VAD ParentVad = MM_AVL_NODE_TO_VAD(ParentNode);
+    PVAD ParentVad = MM_AVL_NODE_TO_VAD(ParentNode);
 
     /* Vad nodes within a VAD tree should never overlap. Is a bug if it does. */
     if (ParentVad != NULL && MiVadNodeOverlapsVad(VadNode, ParentVad)) {
@@ -72,7 +72,7 @@ static NTSTATUS MiVSpaceInsertVadNode(IN PMM_VADDR_SPACE VSpace,
  * If multiple VADs overlap with the given address window, return the VAD
  * with the lowest address.
  */
-static PMM_VAD MiVSpaceFindOverlappingVadNode(IN PMM_VADDR_SPACE VSpace,
+static PVAD MiVSpaceFindOverlappingVadNode(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD VirtAddr,
 					      IN MWORD WindowSize)
 {
@@ -81,7 +81,7 @@ static PMM_VAD MiVSpaceFindOverlappingVadNode(IN PMM_VADDR_SPACE VSpace,
 	MiVadNodeOverlapsAddrWindow(VSpace->CachedVad, VirtAddr, WindowSize)) {
 	return VSpace->CachedVad;
     }
-    PMM_VAD Parent = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrParent(Tree, VirtAddr));
+    PVAD Parent = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrParent(Tree, VirtAddr));
     if (Parent != NULL && MiVadNodeOverlapsAddrWindow(Parent, VirtAddr, WindowSize)) {
 	VSpace->CachedVad = Parent;
 	return Parent;
@@ -89,7 +89,7 @@ static PMM_VAD MiVSpaceFindOverlappingVadNode(IN PMM_VADDR_SPACE VSpace,
     return NULL;
 }
 
-NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE VSpace,
+NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD VirtAddr,
 				  IN MWORD WindowSize)
 {
@@ -99,7 +99,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PMM_VADDR_SPACE VSpace,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    MiAllocatePool(Vad, MM_VAD);
+    MiAllocatePool(Vad, VAD);
     MiInitializeVadNode(Vad, VirtAddr, WindowSize);
     MiVSpaceInsertVadNode(VSpace, Vad);
     return STATUS_SUCCESS;
