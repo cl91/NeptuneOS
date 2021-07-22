@@ -135,7 +135,7 @@ static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
     InitializeListHead(&Tree->NodeList);
 }
 
-static inline VOID MiInitializeVadNode(PVAD Node,
+static inline VOID MiInitializeVadNode(PMMVAD Node,
 				       MWORD StartVaddr,
 				       MWORD WindowSize)
 {

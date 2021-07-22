@@ -155,13 +155,13 @@ typedef struct _UNTYPED {
  * manager's internal routines do not rely on this information
  * to map or unmap a paging structure.
  */
-typedef struct _VAD {
+typedef struct _MMVAD {
     MM_AVL_NODE AvlNode;	/* must be first entry */
     MWORD WindowSize;
-} VAD, *PVAD;
+} MMVAD, *PMMVAD;
 
 #define MM_AVL_NODE_TO_VAD(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, VAD, AvlNode) : NULL)
+    ((Node) != NULL ? CONTAINING_RECORD(Node, MMVAD, AvlNode) : NULL)
 
 /*
  * A paging structure represents a capability to either a page,
@@ -242,7 +242,7 @@ typedef struct _VIRT_ADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
     MWORD ASIDPool;
     MM_AVL_TREE VadTree;
-    PVAD CachedVad;		/* Speed up look up */
+    PMMVAD CachedVad;		/* Speed up look up */
     PAGING_STRUCTURE RootPagingStructure;
 } VIRT_ADDR_SPACE, *PVIRT_ADDR_SPACE;
 
@@ -269,7 +269,6 @@ typedef enum _MM_MEM_PRESSURE {
     MM_MEM_PRESSURE_LOW_MEMORY,
     MM_MEM_PRESSURE_CRITICALLY_LOW_MEMORY
 } MM_MEM_PRESSURE;
-
 
 /*
  * Forward declarations
