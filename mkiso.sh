@@ -17,9 +17,9 @@ cd $BUILDDIR
 mkdir -p iso/boot/grub
 cp $IMAGEDIR/kernel iso/
 cp $IMAGEDIR/ntos iso/
-cat <<EOF > iso/boot/grub/grub.cfg
-set timeout=2
-menuentry 'seL4-ntos' --class fedora --class gnu-linux --class gnu --class os {
+echo "set timeout=2" > iso/boot/grub/grub.cfg
+echo "menuentry 'Neptune OS $ARCH ($BUILD_TYPE Build)' --class fedora --class gnu-linux --class gnu --class os {" >> iso/boot/grub/grub.cfg
+cat <<EOF >> iso/boot/grub/grub.cfg
     insmod all_video
     insmod gzio
     insmod part_msdos

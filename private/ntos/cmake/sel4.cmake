@@ -19,6 +19,7 @@ set(KernelNumDomains 1 CACHE STRING "")
 set(KernelSupportPCID OFF CACHE BOOL "")
 set(KernelIOMMU OFF CACHE BOOL "")
 set(KernelFPU FXSAVE CACHE STRING "")
+set(KernelHugePage OFF CACHE BOOL "")
 
 include(${KERNEL_PATH}/configs/seL4Config.cmake)
 
