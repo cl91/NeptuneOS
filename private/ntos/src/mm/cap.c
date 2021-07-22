@@ -76,7 +76,7 @@ NTSTATUS MmAllocateCapRangeEx(IN PMM_CNODE CNode,
     assert(StartCap != NULL);
     *StartCap = 0;
 
-    ULONG CNodeSize = 1 << CNode->Log2Size;
+    ULONG CNodeSize = 1ULL << CNode->Log2Size;
     if (CNode->TotalUsed >= CNodeSize) {
 	return STATUS_NTOS_CAPSPACE_EXHAUSTION;
     }
@@ -137,7 +137,7 @@ NTSTATUS MmDeallocateCapEx(IN PMM_CNODE CNode,
 			   IN MWORD Cap)
 {
     assert(CNode != NULL);
-    assert(Cap < (1 << CNode->Log2Size));
+    assert(Cap < (1ULL << CNode->Log2Size));
     assert(CNode->UsedMap != NULL);
     assert(GetBit(CNode->UsedMap, Cap) == TRUE);
     assert(Cap != 0);		/* Freeing the null cap is a bug. */
@@ -166,7 +166,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 	       MmReleaseUntyped(Untyped));
 
     MiAllocatePoolEx(CNode, MM_CNODE, MmReleaseUntyped(Untyped));
-    MiAllocateArray(UsedMap, MWORD, (1 << Log2Size) / MWORD_BITS,
+    MiAllocateArray(UsedMap, MWORD, (1ULL << Log2Size) / MWORD_BITS,
 		    {
 			MmReleaseUntyped(Untyped);
 			ExFreePool(CNode);

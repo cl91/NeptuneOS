@@ -4,7 +4,7 @@
 
 /* Two machine words for smallest EX_POOL_BLOCK */
 #define EX_POOL_BLOCK_SHIFT	(1 + MWORD_LOG2SIZE)
-#define EX_POOL_SMALLEST_BLOCK	(1 << EX_POOL_BLOCK_SHIFT)
+#define EX_POOL_SMALLEST_BLOCK	(1ULL << EX_POOL_BLOCK_SHIFT)
 
 typedef struct _EX_POOL_BLOCK {
     UCHAR Fill[EX_POOL_SMALLEST_BLOCK];

@@ -55,11 +55,11 @@ target_include_directories(
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/mode_include/${KernelWordSize}
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/sel4_plat_include/${KernelPlatform}
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/arch_include/${KernelArch}
-	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/sel4_arch_include/${KernelSel4Arch}
-	${BUILD_ELF_OUT_DIR}/kernel/gen_config
-	${BUILD_ELF_OUT_DIR}/libsel4/gen_config
-	${BUILD_ELF_OUT_DIR}/libsel4/autoconf
-	${BUILD_ELF_OUT_DIR}/libsel4/include
-	${BUILD_ELF_OUT_DIR}/libsel4/arch_include/${KernelArch}
-	${BUILD_ELF_OUT_DIR}/libsel4/sel4_arch_include/${KernelSel4Arch}
+	${LIBSEL4_PE_HEADERS_DIR}/sel4_arch_include
+	${LIBSEL4_PE_HEADERS_DIR}/generated/kernelconfig
+	${LIBSEL4_PE_HEADERS_DIR}/generated/gen_config
+	${LIBSEL4_PE_HEADERS_DIR}/generated/autoconf
+	${LIBSEL4_PE_HEADERS_DIR}/generated/include
+	${LIBSEL4_PE_HEADERS_DIR}/generated/arch_include/${KernelArch}
+	${LIBSEL4_PE_HEADERS_DIR}/generated/sel4_arch_include/${KernelSel4Arch}
 )

@@ -7,7 +7,6 @@ VOID MiInitializeUntyped(IN PMM_UNTYPED Untyped,
 			 IN LONG Log2Size,
 			 IN BOOLEAN IsDevice)
 {
-    assert((PhyAddr & ((1 << Log2Size) - 1)) == 0);
     MiInitializeCapTreeNode(&Untyped->TreeNode, MM_CAP_TREE_NODE_UNTYPED,
 			    Cap, &Parent->TreeNode);
     Untyped->Log2Size = Log2Size;
@@ -89,7 +88,7 @@ NTSTATUS MiSplitUntyped(IN PMM_UNTYPED Src,
     MiInitializeUntyped(LeftChild, Src, NewCap, Src->AvlNode.Key,
 			Src->Log2Size - 1, Src->IsDevice);
     MiInitializeUntyped(RightChild, Src, NewCap + 1,
-			Src->AvlNode.Key + (1 << LeftChild->Log2Size),
+			Src->AvlNode.Key + (1ULL << LeftChild->Log2Size),
 			Src->Log2Size - 1, Src->IsDevice);
 
     return STATUS_SUCCESS;
@@ -183,7 +182,7 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 static inline BOOLEAN MiUntypedContainsPhyAddr(IN PMM_UNTYPED Untyped,
 					       IN MWORD PhyAddr)
 {
-    return MiAvlNodeContainsAddr(&Untyped->AvlNode, 1 << Untyped->Log2Size, PhyAddr);
+    return MiAvlNodeContainsAddr(&Untyped->AvlNode, 1ULL << Untyped->Log2Size, PhyAddr);
 }
 
 static PMM_UNTYPED MiFindRootUntyped(IN PMM_PHY_MEM PhyMem,
@@ -261,8 +260,8 @@ NTSTATUS MiInsertRootUntyped(IN PMM_PHY_MEM PhyMem,
      * and in case it did, it would be a programming error.
      */
     if (Parent != NULL &&
-	MiAvlNodeOverlapsAddrWindow(Node, 1 << Parent->Log2Size,
-				    StartPhyAddr, 1 << RootUntyped->Log2Size)) {
+	MiAvlNodeOverlapsAddrWindow(Node, 1ULL << Parent->Log2Size,
+				    StartPhyAddr, 1ULL << RootUntyped->Log2Size)) {
 	return STATUS_NTOS_BUG;
     }
     MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &RootUntyped->AvlNode);

@@ -22,6 +22,25 @@ static inline LONG MiPagingAddrWindowBits(MM_PAGING_STRUCTURE_TYPE Type)
     return 0;
 }
 
+static inline PCSTR MiPagingTypeToStr(MM_PAGING_STRUCTURE_TYPE Type)
+{
+    if (Type == MM_PAGING_TYPE_PAGE) {
+	return "PAGE";
+    } else if (Type == MM_PAGING_TYPE_LARGE_PAGE) {
+	return "LARGE PAGE";
+    } else if (Type == MM_PAGING_TYPE_PAGE_TABLE) {
+	return "PAGE TABLE";
+    } else if (Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
+	return "PAGE DIRECTORY";
+    } else if (Type == MM_PAGING_TYPE_PDPT) {
+	return "PDPT";
+    } else if (Type == MM_PAGING_TYPE_PML4) {
+	return "PML4";
+    }
+    assert(FALSE);
+    return 0;
+}
+
 /*
  * Sanitize the virtual address such that it is aligned with
  * the boundary of the address window of the paging structure
@@ -29,7 +48,7 @@ static inline LONG MiPagingAddrWindowBits(MM_PAGING_STRUCTURE_TYPE Type)
 static inline MWORD MiSanitizeAlignment(IN MM_PAGING_STRUCTURE_TYPE Type,
 					IN MWORD VirtAddr)
 {
-    return VirtAddr & ~((1 << MiPagingAddrWindowBits(Type)) - 1);
+    return VirtAddr & ~((1ULL << MiPagingAddrWindowBits(Type)) - 1);
 }
 
 #define ASSERT_ALIGNMENT(Page)						\
@@ -117,7 +136,7 @@ static inline BOOLEAN MiPagingStructureContainsAddr(IN PMM_PAGING_STRUCTURE Pagi
 						    IN MWORD VirtAddr)
 {
     return MiAvlNodeContainsAddr(&Paging->AvlNode,
-				 1 << MiPagingAddrWindowBits(Paging->Type), VirtAddr);
+				 1ULL << MiPagingAddrWindowBits(Paging->Type), VirtAddr);
 }
 
 /*
@@ -168,7 +187,7 @@ static PMM_PAGING_STRUCTURE MiPagingFindSubstructure(IN PMM_PAGING_STRUCTURE Pag
 /*
  * Insert the given substructure into the given paging structure.
  * Both the paging structure and the substructure must be mapped.
- * Otherwise it is a programming bug. We enforce this by returning BUG.
+ * Otherwise it is a programming bug. We enforce this on debug build.
  *
  * The paging structure must not already contain an overlapping substructure.
  * It is a programming bug if this has not been enforced.
@@ -256,6 +275,22 @@ static NTSTATUS MiMapPagingStructure(PMM_PAGING_STRUCTURE Page)
 				       Page->VSpaceCap,
 				       Page->AvlNode.Key,
 				       Page->Attributes);
+#ifdef _M_AMD64
+    } else if (Page->Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
+	DbgTrace("Mapping page directory cap 0x%x into vspacecap 0x%x at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
+	Error = seL4_X86_PageDirectory_Map(Page->TreeNode.Cap,
+					   Page->VSpaceCap,
+					   Page->AvlNode.Key,
+					   Page->Attributes);
+    } else if (Page->Type == MM_PAGING_TYPE_PDPT) {
+	DbgTrace("Mapping PDPT cap 0x%x into vspacecap 0x%x at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
+	Error = seL4_X86_PDPT_Map(Page->TreeNode.Cap,
+				  Page->VSpaceCap,
+				  Page->AvlNode.Key,
+				  Page->Attributes);
+#endif
     } else {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -413,7 +448,7 @@ NTSTATUS MmCommitAddrWindowEx(IN PMM_VADDR_SPACE VaddrSpace,
 	    assert(SuperStructure != NULL);
 	}
 	RET_ERR(MiMapPagingStructure(Page));
-	CurVaddr += 1 << MiPagingAddrWindowBits(Page->Type);
+	CurVaddr += 1ULL << MiPagingAddrWindowBits(Page->Type);
 	/* When we cross a large page boundary, reset the SuperStructure pointer
 	 * to make sure that there is a page table for the new page. */
 	if (IS_LARGE_PAGE_ALIGNED(CurVaddr)) {
@@ -477,28 +512,9 @@ NTSTATUS MmCommitIoPageEx(IN PMM_VADDR_SPACE VaddrSpace,
     return STATUS_SUCCESS;
 }
 
-static inline PCSTR MiPagingTypeToStr(MM_PAGING_STRUCTURE_TYPE Type)
-{
-    if (Type == MM_PAGING_TYPE_PAGE) {
-	return "PAGE";
-    } else if (Type == MM_PAGING_TYPE_LARGE_PAGE) {
-	return "LARGE PAGE";
-    } else if (Type == MM_PAGING_TYPE_PAGE_TABLE) {
-	return "PAGE TABLE";
-    } else if (Type == MM_PAGING_TYPE_PAGE_DIRECTORY) {
-	return "PAGE DIRECTORY";
-    } else if (Type == MM_PAGING_TYPE_PDPT) {
-	return "PDPT";
-    } else if (Type == MM_PAGING_TYPE_PML4) {
-	return "PML4";
-    }
-    assert(FALSE);
-    return 0;
-}
-
 VOID MmDbgDumpPagingStructure(IN PMM_PAGING_STRUCTURE Paging)
 {
-    DbgPrint("Dumping paging structure (PMM_PAGING_STRUCTURE Paging = %p)\n", Paging);
+    DbgPrint("Dumping paging structure (PMM_PAGING_STRUCTURE = %p)\n", Paging);
     if (Paging == NULL) {
 	DbgPrint("    (nil)\n");
 	return;

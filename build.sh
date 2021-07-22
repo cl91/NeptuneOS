@@ -58,11 +58,32 @@ cd ../pe
 echo
 echo "---- Building PE targets ----"
 echo
+# For amd64 PE targets, since the ELF toolchain assumes sizeof(long) == 8
+# and the PE toolchain assumes sizeof(long) == 4, we need to modify the
+# libsel4 sel4_arch headers to undefine the macro SEL4_INT64_IS_LONG and
+# define SEL4_INT64_IS_LONG_LONG. So far this seems to work and produce
+# valid seL4 system calls. However we need to be very careful.
+mkdir -p libsel4-pe/generated
+cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH libsel4-pe/sel4_arch_include || build_failed
+cp -r ../elf/kernel/gen_config libsel4-pe/generated/kernelconfig || build_failed
+for i in gen_config autoconf include arch_include sel4_arch_include; do
+    cp -r ../elf/libsel4/$i libsel4-pe/generated || build_failed
+done
+if [[ $ARCH == "amd64" ]]; then
+    cat <<EOF > libsel4-pe/sel4_arch_include/sel4/sel4_arch/simple_types.h
+#pragma once
+
+#define SEL4_WORD_IS_UINT64
+#define SEL4_INT64_IS_LONG_LONG
+EOF
+    sed -i '/assert_size_correct(long/d' libsel4-pe/generated/include/interfaces/sel4_client.h || build_failed
+    sed -i '/assert_size_correct(seL4_X86_VMAttributes,/d' libsel4-pe/generated/include/interfaces/sel4_client.h || build_failed
+fi
 cmake ../../private/ntdll \
       -DArch=${ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../private/ntdll/cmake/${TOOLCHAIN}.cmake \
-      -DBUILD_ELF_OUT_DIR="${PWD}/../elf" \
+      -DLIBSEL4_PE_HEADERS_DIR="${PWD}/libsel4-pe" \
       -G Ninja
 ninja || build_failed
 

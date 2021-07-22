@@ -75,7 +75,7 @@ static inline BOOLEAN GetBit(MWORD *Map, ULONG Bit)
     ULONG WordOffset = Bit / MWORD_BITS;
     ULONG BitOffset = Bit % MWORD_BITS;
 
-    return (Map[WordOffset] & (1 << BitOffset)) != 0;
+    return (Map[WordOffset] & (1ULL << BitOffset)) != 0;
 }
 
 static inline VOID SetBit(MWORD *Map, ULONG Bit)
@@ -83,7 +83,7 @@ static inline VOID SetBit(MWORD *Map, ULONG Bit)
     ULONG WordOffset = Bit / MWORD_BITS;
     ULONG BitOffset = Bit % MWORD_BITS;
 
-    Map[WordOffset] |= (1 << BitOffset);
+    Map[WordOffset] |= (1ULL << BitOffset);
 }
 
 static inline VOID ClearBit(MWORD *Map, ULONG Bit)
@@ -91,7 +91,7 @@ static inline VOID ClearBit(MWORD *Map, ULONG Bit)
     ULONG WordOffset = Bit / MWORD_BITS;
     ULONG BitOffset = Bit % MWORD_BITS;
 
-    Map[WordOffset] &= ~(1 << BitOffset);
+    Map[WordOffset] &= ~(1ULL << BitOffset);
 }
 
 /* Initialize an empty CNode. The zeroth slot is always

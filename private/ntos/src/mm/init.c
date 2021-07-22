@@ -1,5 +1,3 @@
-/* TODO: Add amd64 code path. */
-
 #include "mi.h"
 #include <ctype.h>
 
@@ -95,6 +93,22 @@ static NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS MiInitCreatePagingStructure(IN MM_PAGING_STRUCTURE_TYPE Type,
+						   IN PMM_UNTYPED Untyped,
+						   IN MWORD Cap,
+						   IN MWORD VirtAddr,
+						   OUT PMM_PAGING_STRUCTURE *pPaging)
+{
+    assert(pPaging != NULL);
+    RET_ERR(MiCreatePagingStructure(Type, Untyped, VirtAddr, ROOT_VSPACE_CAP,
+				    MM_RIGHTS_RW, pPaging));
+    assert(*pPaging != NULL);
+    (*pPaging)->TreeNode.Cap = Cap;
+    (*pPaging)->Mapped = TRUE;
+
+    return STATUS_SUCCESS;
+}
+
 /*
  * The capability derivation tree after mapping the initial heap is
  *
@@ -142,11 +156,10 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
     }
 
     PMM_PAGING_STRUCTURE Page = NULL;
-    MiCreatePagingStructure(MM_PAGING_TYPE_LARGE_PAGE, ParentUntyped, EX_POOL_START,
-			    ROOT_VSPACE_CAP, MM_RIGHTS_RW, &Page);
+    RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_LARGE_PAGE, ParentUntyped,
+					InitInfo->RootCNodeFreeCapStart + 2 * NumSplits,
+					EX_POOL_START, &Page));
     assert(Page != NULL);
-    Page->TreeNode.Cap = InitInfo->RootCNodeFreeCapStart + 2 * NumSplits;
-    Page->Mapped = TRUE;
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
 
     return STATUS_SUCCESS;
@@ -165,16 +178,20 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
 {
     MWORD StartPageCap = InitInfo->UserImageFrameCapStart;
     MWORD EndPageCap = StartPageCap + InitInfo->NumUserImageFrames;
-    MWORD PageTableCapStart = InitInfo->UserImageFrameCapStart;
+    MWORD PageTableCapStart = InitInfo->UserPagingStructureCapStart;
 
 #ifdef _M_AMD64
-    /* TODO: Fix amd64 init image paging structure. */
     PMM_PAGING_STRUCTURE PDPT = NULL;
-    RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PDPT, NULL,
-				    InitInfo->UserImageStartVirtAddr,
-				    ROOT_VSPACE_CAP, MM_RIGHTS_RW, &PDPT));
+    RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PDPT, NULL, PageTableCapStart++,
+					InitInfo->UserImageStartVirtAddr, &PDPT));
     assert(PDPT != NULL);
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PDPT));
+    PMM_PAGING_STRUCTURE PD = NULL;
+    RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PAGE_DIRECTORY, NULL,
+					PageTableCapStart++,
+					InitInfo->UserImageStartVirtAddr, &PD));
+    assert(PD != NULL);
+    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PD));
 #endif
 
     /* Insert all the page tables used to map the root task user image */
@@ -182,12 +199,11 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
     MWORD EndPTNum = StartPTNum + InitInfo->NumUserPagingStructureCaps;
     for (MWORD PTNum = StartPTNum; PTNum < EndPTNum; PTNum++) {
 	PMM_PAGING_STRUCTURE PageTable = NULL;
-	RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PAGE_TABLE, NULL,
-					PTNum << PAGE_TABLE_WINDOW_LOG2SIZE,
-					ROOT_VSPACE_CAP, MM_RIGHTS_RW, &PageTable));
+	RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PAGE_TABLE, NULL,
+					    PageTableCapStart + PTNum - StartPTNum,
+					    PTNum << PAGE_TABLE_WINDOW_LOG2SIZE,
+					    &PageTable));
 	assert(PageTable != NULL);
-	PageTable->TreeNode.Cap = InitInfo->UserPagingStructureCapStart + PTNum - StartPTNum;
-	PageTable->Mapped = TRUE;
 	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PageTable));
     }
 
@@ -196,11 +212,10 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
     MWORD EndPN = StartPN + InitInfo->NumUserImageFrames;
     for (MWORD PN = StartPN; PN < EndPN; PN++) {
 	PMM_PAGING_STRUCTURE Page = NULL;
-	RET_ERR(MiCreatePagingStructure(MM_PAGING_TYPE_PAGE, NULL, PN << PAGE_LOG2SIZE,
-					ROOT_VSPACE_CAP, MM_RIGHTS_RW, &Page));
+	RET_ERR(MiInitCreatePagingStructure(MM_PAGING_TYPE_PAGE, NULL,
+					    InitInfo->UserImageFrameCapStart + PN - StartPN,
+					    PN << PAGE_LOG2SIZE, &Page));
 	assert(Page != NULL);
-	Page->TreeNode.Cap = PageTableCapStart + PN - StartPN;
-	Page->Mapped = TRUE;
 	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
     }
 

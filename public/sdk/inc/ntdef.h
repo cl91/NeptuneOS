@@ -17,11 +17,12 @@
 
 #ifdef _M_IX86
 #define FASTCALL __fastcall
+#define NTAPI __stdcall
 #else
 #define FASTCALL
+#define NTAPI
 #endif
 
-#define NTAPI __stdcall
 #define DECLSPEC_IMPORT __declspec(dllimport)
 #define DECLSPEC_NORETURN   __declspec(noreturn)
 

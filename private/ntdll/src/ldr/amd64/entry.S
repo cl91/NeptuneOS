@@ -1,6 +1,6 @@
 .section .text
-.global _LdrInitializeThunk
-_LdrInitializeThunk:
+.global LdrInitializeThunk
+LdrInitializeThunk:
 	movq %rsp, %rbp
 	movq %rsp, %rdi
 
