@@ -20,4 +20,22 @@ else
     QEMU="qemu-system-x86_64  -cpu Nehalem,+fsgsbase,-pdpe1gb"
 fi
 
-$QEMU -m size=400M -serial stdio  -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos
+declare -a ARGS
+for var in "$@"; do
+    # Ignore known bad arguments
+    if [ "${var,,}" == 'release' ]; then
+        continue
+    fi
+    if [ "${var,,}" == 'debug' ]; then
+        continue
+    fi
+    if [ "${var,,}" == 'amd64' ]; then
+        continue
+    fi
+    if [ "${var,,}" == 'i386' ]; then
+        continue
+    fi
+    ARGS[${#ARGS[@]}]="$var"
+done
+
+$QEMU -m size=400M -serial stdio  -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"
