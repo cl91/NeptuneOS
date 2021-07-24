@@ -14,5 +14,5 @@ COMPILE_ASSERT(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
 	       (1ULL << PROCESS_INIT_CNODE_LOG2SIZE) >= MWORD_BITS);
 
 /* create.c */
-NTSTATUS PspThreadObjectCreateProc(PVOID Object);
-NTSTATUS PspProcessObjectCreateProc(PVOID Object);
+NTSTATUS PspThreadObjectCreateProc(POBJECT Object);
+NTSTATUS PspProcessObjectCreateProc(POBJECT Object);

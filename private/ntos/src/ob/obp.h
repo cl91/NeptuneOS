@@ -13,18 +13,23 @@
 typedef struct _OBJECT_DIRECTORY_ENTRY {
     LIST_ENTRY ChainLink;
     PCSTR Name;	   /* Owned by this struct, allocated on the expool */
-    POBJECT_HEADER Object;
+    POBJECT Object;
 } OBJECT_DIRECTORY_ENTRY, *POBJECT_DIRECTORY_ENTRY;
 
 extern LIST_ENTRY ObpObjectList;
 extern POBJECT_DIRECTORY ObpRootObjectDirectory;
 
-static inline void ObpReferenceObject(POBJECT_HEADER ObjectHeader)
+static inline void ObpReferenceObjectHeader(POBJECT_HEADER ObjectHeader)
 {
     ObjectHeader->RefCount++;
+}
+
+static inline void ObpReferenceObject(POBJECT Object)
+{
+    ObpReferenceObjectHeader(OBJECT_TO_OBJECT_HEADER(Object));
 }
 
 /* dirobj.c */
 NTSTATUS ObpInitDirectoryObjectType();
 NTSTATUS ObpLookupObjectName(IN PCSTR Path,
-			     OUT POBJECT_HEADER *FoundObject);
+			     OUT POBJECT *FoundObject);

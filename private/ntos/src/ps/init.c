@@ -1,42 +1,12 @@
 #include "psp.h"
 
-static NTSTATUS PspThreadObjectOpenProc(PVOID Object)
-{
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspThreadObjectParseProc(PVOID Object)
-{
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspThreadObjectInsertProc(PVOID Object)
-{
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspProcessObjectOpenProc(PVOID Object)
-{
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspProcessObjectParseProc(PVOID Object)
-{
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspProcessObjectInsertProc(PVOID Object)
-{
-    return STATUS_SUCCESS;
-}
-
 static NTSTATUS PspCreateThreadType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = PspThreadObjectCreateProc,
-	.OpenProc = PspThreadObjectOpenProc,
-	.ParseProc = PspThreadObjectParseProc,
-	.InsertProc = PspThreadObjectInsertProc,
+	.OpenProc = NULL,
+	.ParseProc = NULL,
+	.InsertProc = NULL,
     };
     return ObCreateObjectType(OBJECT_TYPE_THREAD,
 			      "Thread",
@@ -48,9 +18,9 @@ static NTSTATUS PspCreateProcessType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = PspProcessObjectCreateProc,
-	.OpenProc = PspProcessObjectOpenProc,
-	.ParseProc = PspProcessObjectParseProc,
-	.InsertProc = PspProcessObjectInsertProc,
+	.OpenProc = NULL,
+	.ParseProc = NULL,
+	.InsertProc = NULL,
     };
     return ObCreateObjectType(OBJECT_TYPE_PROCESS,
 			      "Process",

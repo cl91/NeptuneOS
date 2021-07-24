@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <printf.h>
-#include <sel4/sel4.h>
 #include <ntos.h>
 #include <thread.h>
 #include "ki.h"
@@ -26,8 +25,8 @@ extern char _text_start[];
 extern char _text_end[];
 extern char _rodata_start[];
 extern char _rodata_end[];
-extern char _ntdll_start[];
-extern char _ntdll_end[];
+extern char _initcpio_start[];
+extern char _initcpio_end[];
 extern char _data_start[];
 extern char _data_end[];
 extern char _bss_start[];
@@ -46,19 +45,20 @@ extern char _tdata_end[];
  */
 static void KiInitRootThread(seL4_BootInfo *bootinfo)
 {
-    uintptr_t tls_base = (uintptr_t ) &STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
+    uintptr_t tls_base = (uintptr_t ) &STATIC_TLS_AREA[0]
+	+ sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
     uintptr_t *tls_ptr = (uintptr_t *)(tls_base);
     *tls_ptr = tls_base;
     sel4runtime_set_tls_base(tls_base);
     __sel4_ipc_buffer = bootinfo->ipcBuffer;
-#ifdef CONFIG_DEBUG_BUILD
+
     DbgPrint("Initial root thread address space:\n");
     DbgPrint("    _text_start = %p\n", _text_start);
     DbgPrint("    _text_end = %p\n", _text_end);
     DbgPrint("    _rodata_start = %p\n", _rodata_start);
     DbgPrint("    _rodata_end = %p\n", _rodata_end);
-    DbgPrint("    _ntdll_start = %p\n", _ntdll_start);
-    DbgPrint("    _ntdll_end = %p\n", _ntdll_end);
+    DbgPrint("    _initcpio_start = %p\n", _initcpio_start);
+    DbgPrint("    _initcpio_end = %p\n", _initcpio_end);
     DbgPrint("    _data_start = %p\n", _data_start);
     DbgPrint("    _data_end = %p\n", _data_end);
     DbgPrint("    _bss_start = %p\n", _bss_start);
@@ -74,7 +74,6 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    tls base = %p\n", sel4runtime_get_tls_base());
     DbgPrint("    &__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
-#endif
 }
 
 static char *KiDumpBootInfoSlotRegion(char *buf,
@@ -144,13 +143,19 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
+
+#ifdef CONFIG_DEBUG_BUILD
     KiDumpBootInfoAll(bootinfo);
-    BUGCHECK_IF_ERR(ExInitSystem(bootinfo));
+#endif
+
+    BUGCHECK_IF_ERR(ExInitSystemPhase0(bootinfo));
     KiInitVga();
-    BUGCHECK_IF_ERR(LdrLoadBootModules());
+    BUGCHECK_IF_ERR(ExInitSystemPhase1());
+
 #ifdef CONFIG_RUN_TESTS
     KeRunAllTests();
 #endif
 
+    /* This should never return. */
     while (1);
 }

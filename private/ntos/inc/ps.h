@@ -5,13 +5,8 @@
 #include "ex.h"
 #include "ob.h"
 
-#ifdef _M_IX86
-#define IPC_BUFFER_VADDR	(0xc0000000)
-#endif
-
-#ifdef _M_AMD64
-#define IPC_BUFFER_VADDR	(0xc0000000)
-#endif
+/* All hard-coded addresses in client processes' address space go here. */
+#define IPC_BUFFER_VADDR		(0xc0000000)
 
 #define NTOS_PS_TAG		EX_POOL_TAG('n', 't', 'p', 's')
 

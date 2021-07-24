@@ -247,3 +247,6 @@ NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 OUT PPAGING_STRUCTURE *pPaging);
 NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
+
+/* section.c */
+NTSTATUS MiSectionInitialization();

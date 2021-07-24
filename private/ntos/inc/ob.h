@@ -17,6 +17,7 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_THREAD,
     OBJECT_TYPE_PROCESS,
     OBJECT_TYPE_SECTION,
+    OBJECT_TYPE_FILE,
     NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
@@ -24,19 +25,14 @@ typedef enum _OBJECT_TYPE_ENUM {
  *
  *    |-------------|
  *    |OBJECT_HEADER|
- *    |-------------|    <- (PVOID) Self
+ *    |-------------|    <- (POBJECT) Self
  *    | OBJECT_BODY |
  *    |-------------|
  *
- * Note: (PVOID) Self always points to the beginning of the
- * object body, not the object header.
- *
- * TODO: We need to figure out the supported API of object types,
- * especially since the object namespace needs to have
- * objects that are represented across process boundary. For
- * instance, the IO manager uses the object namespace to manage
- * device objects and their driver objects, and their functions
- * are implemented in a different process.
+ * Note: (POBJECT) Self always points to the beginning of the
+ * object body, not the object header. To avoid confusion we
+ * always pass OBJECT pointers across function boundary, and
+ * never pass OBJECT_HEADER pointers.
  *
  * The preliminary design is that opening an object can yield
  * a different object (such as a FILE object, or an IO request)
@@ -47,8 +43,8 @@ typedef enum _OBJECT_TYPE_ENUM {
  * idea of a sub-object. Calling the parse procedure produces
  * a sub-object of the object being called.
  *
- * We of course also need to figure out the delete procedure,
- * closing an object, and object life-times.
+ * The delete procedure, closing an object, and object life-times
+ * are yet to be designed.
  *
  * All of these methods operate with in-process pointers. The
  * APIs for handles to objects are yet to be determined.
@@ -59,8 +55,10 @@ typedef struct _OBJECT_HEADER {
     LIST_ENTRY ObjectLink;
 } OBJECT_HEADER, *POBJECT_HEADER;
 
+typedef PVOID POBJECT;
+
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
-    ((PVOID)(((MWORD) Ptr) + sizeof(OBJECT_HEADER)))
+    ((POBJECT)(((MWORD) Ptr) + sizeof(OBJECT_HEADER)))
 
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
     ((POBJECT_HEADER)(((MWORD) Ptr) - sizeof(OBJECT_HEADER)))
@@ -73,14 +71,14 @@ typedef struct _OBJECT_HEADER {
  * The create routine cannot be NULL. The object manager will
  * reject such object types during object type registration.
  */
-typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN PVOID Self);
+typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self);
 
 /*
  * The open routine produces an opened instance of the object,
  * which can be an object of a different object type. For instance,
  * opening a DEVICE object produces a FILE object.
  */
-typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN PVOID Self);
+typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN POBJECT Self);
 
 /*
  * The parse routine is used by the object manager when other
@@ -101,16 +99,16 @@ typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN PVOID Self);
  * RemainingPath must point to a sub-string within Path, and does
  * NOT include the leading OBJ_NAME_PATH_SEPARATOR.
  */
-typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN PVOID Self,
+typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
-					OUT POBJECT_HEADER *Subobject,
+					OUT POBJECT *Subobject,
 					OUT PCSTR *RemainingPath);
 
 /* Insert the given object as the sub-object of Self, with Subpath
  * as the name identifier of said sub-object.
  */
-typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN PVOID Self,
-					 IN POBJECT_HEADER Subobject,
+typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Self,
+					 IN POBJECT Subobject,
 					 IN PCSTR Subpath);
 
 typedef struct _OBJECT_TYPE_INITIALIZER {
@@ -143,9 +141,21 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN ULONG ObjectBodySize,
 			    IN OBJECT_TYPE_INITIALIZER Init);
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
-			OUT PVOID *Object);
+			OUT POBJECT *Object);
+
+/* dirobj.c */
+NTSTATUS ObCreateDirectory(IN PCSTR ParentPath,
+			   IN PCSTR DirectoryName);
+
+/* insert.c */
+NTSTATUS ObInsertObject(IN POBJECT Parent,
+			IN POBJECT Subobject,
+			IN PCSTR Name);
+NTSTATUS ObInsertObjectByName(IN PCSTR ParentPath,
+			      IN POBJECT Subobject,
+			      IN PCSTR Name);
 
 /* obref.c */
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
-				 OUT PVOID *Object);
-NTSTATUS ObDereferenceObject(IN PVOID Object);
+				 OUT POBJECT *Object);
+NTSTATUS ObDereferenceObject(IN POBJECT Object);

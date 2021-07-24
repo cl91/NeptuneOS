@@ -1,8 +1,5 @@
 #include "psp.h"
 
-extern UCHAR _ntdll_start[];
-extern UCHAR _ntdll_end[];
-
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
 				   IN PCNODE CNode,
@@ -23,7 +20,7 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PspThreadObjectCreateProc(IN PVOID Object)
+NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object)
 {
     PTHREAD Thread = (PTHREAD) Object;
 
@@ -42,7 +39,7 @@ NTSTATUS PspThreadObjectCreateProc(IN PVOID Object)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PspProcessObjectCreateProc(IN PVOID Object)
+NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object)
 {
     PPROCESS Process = (PPROCESS) Object;
 
@@ -78,7 +75,7 @@ NTSTATUS PspProcessObjectCreateProc(IN PVOID Object)
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread)
 {
-    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (PPVOID) pThread));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) pThread));
 
     PPAGING_STRUCTURE IpcBuffer = NULL;
     RET_ERR_EX(MmCommitAddrWindowEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
@@ -100,7 +97,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 
 NTSTATUS PsCreateProcess(OUT PPROCESS *pProcess)
 {
-    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (PPVOID) pProcess));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) pProcess));
 
     RET_ERR_EX(MmReserveVirtualMemoryEx(&(*pProcess)->VaddrSpace,
 					IPC_BUFFER_VADDR, PAGE_SIZE),

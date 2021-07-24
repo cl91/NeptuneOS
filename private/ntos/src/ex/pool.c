@@ -48,6 +48,9 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
 /* Examine the number of available pages in the pool and optionally
  * request the memory management subcomponent for more pages.
  *
+ * Returns TRUE if successfully added page(s) to ExPool. Returns
+ * FALSE if unable to request more pool pages from mm.
+ *
  * If we have more than two pages in the pool, simply add one page
  * to the FreeLists.
  *
@@ -60,7 +63,7 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
  * available pages never goes below one, assuming there is free untyped
  * memory available.
  */
-static VOID EiRequestPoolPage(IN PEX_POOL Pool)
+static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
 {
     LONG AvailablePages = Pool->TotalPages - Pool->UsedPages;
     if (AvailablePages >= 1) {
@@ -70,9 +73,13 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 	Pool->HeapEnd += PAGE_SIZE;
 	if (AvailablePages >= 4) {
 	    /* Plenty of resources here. Simply return */
-	    return;
+	    return TRUE;
 	} else {
-	    /* We are running low on resources. Request more pages from mm */
+	    /* We are running low on resources. Check if we have run out of ExPool
+	     * virtual space first, and then request more pages from mm. */
+	    if (Pool->HeapEnd >= EX_POOL_START + EX_POOL_MAX_SIZE) {
+		return FALSE;
+	    }
 	    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
 	    LONG Size = PAGE_SIZE;
 	    if (MemPressure == MM_MEM_PRESSURE_SUFFICIENT_MEMORY) {
@@ -81,10 +88,18 @@ static VOID EiRequestPoolPage(IN PEX_POOL Pool)
 		Size = 4 * PAGE_SIZE;
 	    } /* Otherwise we are critically low on memory, just get one page only */
 	    MWORD SatisfiedSize = 0;
+	    /* Make sure we don't run over the end of ExPool space. */
+	    if (Pool->HeapEnd + Size >= EX_POOL_START + EX_POOL_MAX_SIZE) {
+		Size = EX_POOL_START + EX_POOL_MAX_SIZE - Pool->HeapEnd;
+	    }
 	    MmCommitAddrWindow(Pool->HeapEnd, Size, &SatisfiedSize);
+	    if (SatisfiedSize < PAGE_SIZE) {
+		return FALSE;
+	    }
 	    Pool->TotalPages += SatisfiedSize >> PAGE_LOG2SIZE;
 	}
     }
+    return TRUE;
 }
 
 /* If request size > EX_POOL_LARGEST_BLOCK, deny request
@@ -117,7 +132,9 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 
     /* If not found, try adding more pages to the pool and try again */
     if (FreeListIndex >= EX_POOL_FREE_LISTS) {
-	EiRequestPoolPage(Pool);
+	if (!EiRequestPoolPage(Pool)) {
+	    return NULL;
+	}
 	FreeListIndex = NumberOfBlocks - 1;
 	while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	    FreeListIndex++;

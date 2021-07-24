@@ -100,11 +100,11 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
-#echo 'ntdll' > image-list
-#cpio -H newc -o < image-list > initcpio
+echo 'ntdll' > image-list
+cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=ntdll,CONTENTS,ALLOC,LOAD,READONLY,DATA \
-	ntdll ntdll.o
+	initcpio initcpio.o
 if [[ $? == 0 ]]; then
     echo "Success."
 else
@@ -126,7 +126,7 @@ ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} \
        --allow-multiple-definition \
        ../elf/libntos.a \
        ../elf/rtl/librtl.a \
-       ../pe/ntdll.o \
+       ../pe/initcpio.o \
        -T ../../private/ntos/ntos.lds \
        -o ntos
 if [[ $? == 0 ]]; then

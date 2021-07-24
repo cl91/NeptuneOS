@@ -6,7 +6,7 @@ POBJECT_DIRECTORY ObpRootObjectDirectory;
  * Called when Executive components attempt to create a new
  * directory in the object hierarchy.
  */
-static NTSTATUS ObpDirectoryObjectCreateProc(IN PVOID Self)
+static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
     assert(Self != NULL);
@@ -21,7 +21,7 @@ static NTSTATUS ObpDirectoryObjectCreateProc(IN PVOID Self)
  * Called when a client process attempts to open an object
  * directory in the object hierarchy.
  */
-static NTSTATUS ObpDirectoryObjectOpenProc(IN PVOID Self)
+static NTSTATUS ObpDirectoryObjectOpenProc(IN POBJECT Self)
 {
     /* Do nothing. The object manager will assign a handle. */
     return STATUS_SUCCESS;
@@ -45,7 +45,7 @@ static ULONG ObpDirectoryEntryHashIndex(PCSTR Str)
 /* Looks up a named object under an object directory */
 static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 					IN PCSTR Name,
-					OUT POBJECT_HEADER *FoundObject)
+					OUT POBJECT *FoundObject)
 {
     assert(Directory != NULL);
     assert(Name != NULL);
@@ -81,9 +81,9 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
  * Called when the Object Manager attempts to parse a path
  * under the object directory.
  */
-static NTSTATUS ObpDirectoryObjectParseProc(IN PVOID Self,
+static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    IN PCSTR Path,
-					    OUT POBJECT_HEADER *FoundObject,
+					    OUT POBJECT *FoundObject,
 					    OUT PCSTR *RemainingPath)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
@@ -130,8 +130,8 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN PVOID Self,
  * Called when the object manager attempts to insert an object
  * under the object directory
  */
-static NTSTATUS ObpDirectoryObjectInsertProc(IN PVOID Self,
-					     IN POBJECT_HEADER Object,
+static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
+					     IN POBJECT Object,
 					     IN PCSTR Name)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
@@ -180,11 +180,16 @@ NTSTATUS ObpInitDirectoryObjectType()
  * to which the path points.
  */
 NTSTATUS ObpLookupObjectName(IN PCSTR Path,
-			     OUT POBJECT_HEADER *FoundObject)
+			     OUT POBJECT *FoundObject)
 {
     assert(ObpRootObjectDirectory != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
+
+    if (Path[0] == '\0') {
+	return STATUS_OBJECT_PATH_SYNTAX_BAD;
+    }
+
     /* Points to the terminating '\0' charactor of Path */
     PCSTR LastByte = Path + strlen(Path);
 
@@ -198,20 +203,27 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 	Path++;
     }
 
+    /* Caller has simply requested the root directory. */
+    if (Path[0] == '\0') {
+	*FoundObject = ObpRootObjectDirectory;
+	return STATUS_SUCCESS;
+    }
+
     /* Recursively invoke the parse method of the object,
      * until either the remaining path is empty, or the parse
      * method fails. */
-    PVOID Object = ObpRootObjectDirectory;
+    POBJECT Object = ObpRootObjectDirectory;
     NTSTATUS Status = STATUS_SUCCESS;
 
     while (TRUE) {
 	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
-	POBJECT_HEADER Subobject = NULL;
+	POBJECT Subobject = NULL;
 	PCSTR RemainingPath = Path;
-	RET_ERR(ObjectHeader->Type->TypeInfo.ParseProc(Object,
-						       Path,
-						       &Subobject,
-						       &RemainingPath));
+	OBJECT_PARSE_METHOD ParseProc = ObjectHeader->Type->TypeInfo.ParseProc;
+	if (ParseProc == NULL) {
+	    return STATUS_OBJECT_NAME_NOT_FOUND;
+	}
+	RET_ERR(ParseProc(Object, Path, &Subobject, &RemainingPath));
 	/* It is a programming error if Subobject is NULL */
 	if (Subobject == NULL) {
 	    return STATUS_NTOS_BUG;
@@ -229,7 +241,20 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 	    return STATUS_SUCCESS;
 	}
 	/* Else, we keep parsing */
-	Object = OBJECT_HEADER_TO_OBJECT(Subobject);
+	Object = Subobject;
 	Path = RemainingPath;
     }
+}
+
+NTSTATUS ObCreateDirectory(IN PCSTR ParentPath,
+			   IN PCSTR DirectoryName)
+{
+    POBJECT_DIRECTORY Directory = NULL;
+    RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
+			   (POBJECT *) &Directory));
+    assert(Directory != NULL);
+    RET_ERR_EX(ObInsertObjectByName(ParentPath, Directory, DirectoryName),
+	       ObDereferenceObject(Directory));
+
+    return STATUS_SUCCESS;
 }

@@ -2,8 +2,6 @@
 #include <ntos.h>
 #include <string.h>
 
-#define VGA_VIDEO_PAGE_VADDR		(0xB8000)
-#define VGA_VIDEO_PAGE_PADDR		(0xB8000)
 #define VGA_BLUE			(1)
 #define VGA_WHITE			(15)
 #define VGA_BG_COLOR			(VGA_BLUE << 4)

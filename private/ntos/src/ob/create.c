@@ -26,7 +26,7 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
  * object type, and insert the object into the global object list.
  */
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
-			OUT PVOID *Object)
+			OUT POBJECT *Object)
 {
     assert(Type < NUM_OBJECT_TYPES);
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
@@ -46,6 +46,6 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 		   ExFreePool(ObjectHeader);
 	       });
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);
-    ObpReferenceObject(ObjectHeader);
+    ObpReferenceObjectHeader(ObjectHeader);
     return STATUS_SUCCESS;
 }

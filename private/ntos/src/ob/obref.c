@@ -1,17 +1,17 @@
 #include "obp.h"
 
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
-				 OUT PVOID *Object)
+				 OUT POBJECT *Object)
 {
-    POBJECT_HEADER ObjectHeader = NULL;
-    RET_ERR(ObpLookupObjectName(Path, &ObjectHeader));
-    assert(ObjectHeader != NULL);
-    ObpReferenceObject(ObjectHeader);
-    *Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
+    if (Object == NULL) {
+	return STATUS_NTOS_BUG;
+    }
+    RET_ERR(ObpLookupObjectName(Path, Object));
+    ObpReferenceObject(*Object);
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ObDereferenceObject(IN PVOID Object)
+NTSTATUS ObDereferenceObject(IN POBJECT Object)
 {
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);

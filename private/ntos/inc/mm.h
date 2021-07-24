@@ -271,6 +271,56 @@ typedef enum _MM_MEM_PRESSURE {
 } MM_MEM_PRESSURE;
 
 /*
+ * Section object.
+ *
+ * A SECTION object describes the in-memory mapping of a FILE, which is recorded
+ * in the SEGMENT object that the section object points to. The SECTION object
+ * is managed by the object manager and exposed to the client processes (via an
+ * instance handle), while the SEGMENT object is never exposed to the clients.
+ *
+ * Multiple SECTION objects can point to the same FILE. In this case they point
+ * to the same SEGMENT object.
+ *
+ * All memory addresses are aligned with the 4K page boundary.
+ */
+typedef union _MMSECTION_FLAGS {
+    struct {
+	MWORD Image : 1;
+	MWORD Based : 1;
+	MWORD File : 1;
+	MWORD PhysicalMemory : 1;
+	MWORD CopyOnWrite : 1;
+	MWORD Reserve : 1;
+	MWORD Commit : 1;
+    };
+    MWORD Word;
+} MMSECTION_FLAGS;
+
+typedef struct _SECTION {
+    MM_AVL_NODE BasedSectionNode; /* All SEC_BASED Sections are organized in an AVL tree */
+    MMSECTION_FLAGS Flags;
+    struct _SEGMENT *Segment;
+} SECTION, *PSECTION;
+
+typedef struct _SEGMENT {
+    MWORD Size;
+    LIST_ENTRY SubSectionList;
+    LONG NumberOfSubSections;
+    struct _FILE_OBJECT *FileObject;
+} SEGMENT, *PSEGMENT;
+
+/*
+ * A subsection is a window of contiguous pages within a section. All
+ * subsections that belong to a segment are linked in its SubSectionList.
+ */
+typedef struct _SUBSECTION {
+    PSEGMENT Section;	  /* Segment that this subsection belong to */
+    LIST_ENTRY Link; /* Link for the owning segment's SubSectionList */
+    MWORD Base;	/* Offset from the start of the segment, 4K page aligned */
+    MWORD Size;	/* Size of the subsection, 4K page aligned */
+} SUBSECTION, *PSUBSECTION;
+
+/*
  * Forward declarations
  */
 

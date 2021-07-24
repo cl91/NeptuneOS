@@ -321,5 +321,7 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
 	}
     }
 
+    RET_ERR(MiSectionInitialization());
+
     return STATUS_SUCCESS;
 }

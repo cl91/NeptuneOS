@@ -1,48 +1,70 @@
 #include <stdint.h>
 #include <ntos.h>
-//#include "cpio.h"
+#include "cpio.h"
 
-/* extern UCHAR _binary_initcpio_start[]; */
-/* extern UCHAR _binary_initcpio_end[]; */
-/* extern UCHAR _binary_initcpio_size[]; */
+extern UCHAR _binary_initcpio_start[];
+extern UCHAR _binary_initcpio_end[];
+extern UCHAR _binary_initcpio_size[];
 
 #define NTOS_LDR_BOOT_TAG	(EX_POOL_TAG('L', 'D', 'R', 'B'))
 
+#define LdrpAllocatePoolEx(Var, Type, OnError)				\
+    ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_LDR_BOOT_TAG, OnError)
+#define LdrpAllocatePool(Var, Type)	LdrpAllocatePoolEx(Var, Type, {})
+#define LdrpAllocateArray(Var, Type, Size)				\
+    ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_LDR_BOOT_TAG, {})
+
 NTSTATUS LdrLoadBootModules()
 {
-    /* struct cpio_info cpio; */
-    /* cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio); */
-    /* DbgPrint("\ncpio has %d file(s):\n", cpio.file_count); */
-    /* PCHAR *FileNames = (PCHAR *) ExAllocatePoolWithTag(cpio.file_count, NTOS_LDR_BOOT_TAG); */
-    /* if (FileNames == NULL) { */
-    /* 	KeBugCheckMsg("Out of memory."); */
-    /* } */
-    /* for (int i = 0; i < cpio.file_count; i++) { */
-    /* 	FileNames[i] = (PCHAR) ExAllocatePoolWithTag(cpio.max_path_sz+1, NTOS_LDR_BOOT_TAG); */
-    /* 	if (FileNames[i] == NULL) { */
-    /* 	    KeBugCheckMsg("Out of memory."); */
-    /* 	} */
-    /* } */
-    /* cpio_ls(_binary_initcpio_start, (size_t) _binary_initcpio_size, FileNames, cpio.file_count); */
-    /* for (int i = 0; i < cpio.file_count; i++) { */
-    /* 	DbgPrint("  %s\n", FileNames[i]); */
-    /* } */
-    /* DbgPrint("Content of files:\n"); */
-    /* for (int i = 0; i < cpio.file_count; i++) { */
-    /* 	DbgPrint("  %s:\n", FileNames[i]); */
-    /* 	MWORD FileSize; */
-    /* 	PCHAR FileContent = cpio_get_file(_binary_initcpio_start, (size_t) _binary_initcpio_size, */
-    /* 					  FileNames[i], &FileSize); */
-    /* 	for (int j = 0; j < FileSize; j++) { */
-    /* 	    DbgPrint("%c", FileContent[j]); */
-    /* 	} */
-    /* } */
+    RET_ERR(ObCreateDirectory("\\", "BootModules"));
 
-    PPROCESS Process = NULL;
-    RET_ERR(PsCreateProcess(&Process));
-    assert(Process != NULL);
-    PTHREAD Thread = NULL;
-    RET_ERR(PsCreateThread(Process, &Thread));
+    struct cpio_info cpio;
+    cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
+    DbgTrace("initcpio has %d file(s).\n", cpio.file_count);
+
+    LdrpAllocateArray(FileNames, PCHAR, cpio.file_count);
+
+    for (int i = 0; i < cpio.file_count; i++) {
+	LdrpAllocateArray(FileName, CHAR, cpio.max_path_sz+1);
+	FileNames[i] = FileName;
+    }
+
+    cpio_ls(_binary_initcpio_start, (size_t) _binary_initcpio_size,
+	    FileNames, cpio.file_count);
+
+    DbgTrace("initcpio file list:\n");
+    for (int i = 0; i < cpio.file_count; i++) {
+	DbgPrint("    %s\n", FileNames[i]);
+    }
+
+    MWORD CurAddr = BOOT_MODULES_START;
+    for (int i = 0; i < cpio.file_count; i++) {
+	MWORD FileSize;
+	PCHAR FileContent = cpio_get_file(_binary_initcpio_start,
+					  (size_t) _binary_initcpio_size,
+					  FileNames[i], &FileSize);
+	DbgTrace("File %s start vaddr %p size 0x%x\n", FileNames[i], FileContent, FileSize);
+
+	/* Request pages from mm and copy file content over. */
+	MWORD CommitSize = PAGE_ALIGN(FileSize + PAGE_SIZE - 1);
+	if (CurAddr + CommitSize >= BOOT_MODULES_START + BOOT_MODULES_MAX_SIZE) {
+	    break;
+	}
+	MWORD SatisfiedSize = 0;
+	MmCommitAddrWindow(CurAddr, CommitSize, &SatisfiedSize);
+	if (SatisfiedSize < CommitSize) {
+	    break;
+	}
+	memcpy((PVOID) CurAddr, FileContent, FileSize);
+
+	/* Create FILE object and insert into object directory */
+	PFILE_OBJECT File = NULL;
+	RET_ERR(IoCreateFile(FileNames[i], CurAddr, FileSize, &File));
+	assert(File != NULL);
+	CurAddr += CommitSize;
+	RET_ERR_EX(ObInsertObjectByName("\\BootModules", File, FileNames[i]),
+		   ObDereferenceObject(File));
+    }
 
     return STATUS_SUCCESS;
 }
