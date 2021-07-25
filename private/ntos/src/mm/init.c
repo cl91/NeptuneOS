@@ -100,7 +100,7 @@ static inline NTSTATUS MiInitCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type
 						   OUT PPAGING_STRUCTURE *pPaging)
 {
     assert(pPaging != NULL);
-    RET_ERR(MiCreatePagingStructure(Type, Untyped, VirtAddr, ROOT_VSPACE_CAP,
+    RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, VirtAddr, ROOT_VSPACE_CAP,
 				    MM_RIGHTS_RW, pPaging));
     assert(*pPaging != NULL);
     (*pPaging)->TreeNode.Cap = Cap;
@@ -161,6 +161,8 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 					EX_POOL_START, &Page));
     assert(Page != NULL);
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
+    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, EX_POOL_START,
+				   LARGE_PAGE_SIZE, MEM_PRIVATE));
 
     return STATUS_SUCCESS;
 }

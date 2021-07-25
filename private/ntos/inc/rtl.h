@@ -5,7 +5,7 @@
 
 #ifdef CONFIG_DEBUG_BUILD
 VOID vDbgPrint(PCSTR Format, va_list args);
-VOID DbgPrint(PCSTR Format, ...);
+VOID DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 #else
 #define DbgPrint(...)
 #endif

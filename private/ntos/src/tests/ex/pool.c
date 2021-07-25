@@ -105,7 +105,7 @@ VOID ExRunPoolTests()
 			   43, 258, 4284, 3321, 3442, 1437, 2991, 4168, 3603, 2338 };
 
     for (int i = 0; i < ARRAY_LENGTH(AllocSizes); i++) {
-	DbgPrint("AllocSize = %4d  Got pointer %p\n", AllocSizes[i],
+	DbgPrint("AllocSize = %4zd  Got pointer %p\n", AllocSizes[i],
 		 ExAllocatePoolWithTag(AllocSizes[i], EX_POOL_TAG('T','E','S','T')));
     }
 

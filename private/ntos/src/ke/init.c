@@ -70,8 +70,8 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __stack_base = %p\n", __stack_base);
     DbgPrint("    __stack_top = %p\n", __stack_top);
     DbgPrint("    static tls area start = %p\n", STATIC_TLS_AREA);
-    DbgPrint("    desired tls base = %p\n", tls_base);
-    DbgPrint("    tls base = %p\n", sel4runtime_get_tls_base());
+    DbgPrint("    desired tls base = %p\n", (PVOID) tls_base);
+    DbgPrint("    tls base = %p\n", (PVOID) sel4runtime_get_tls_base());
     DbgPrint("    &__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
@@ -115,8 +115,8 @@ static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
     DbgPrint("Initial root task user image frames:\n");
     for (seL4_CPtr cap = slots.start; cap < slots.end; cap++) {
 	seL4_X86_Page_GetAddress_t addr = seL4_X86_Page_GetAddress(cap);
-	DbgPrint("    frame cap = %zd (0x%zx) paddr = %p error = %zd\n",
-		 cap, cap, addr.paddr, addr.error);
+	DbgPrint("    frame cap = %zd (0x%zx) paddr = %p error = %d\n",
+		 cap, cap, (PVOID) addr.paddr, addr.error);
     }
 }
 
@@ -129,7 +129,7 @@ static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
         seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
         DbgPrint("    %s cap = %zd (0x%zx) paddr = %p log2(size) = %d\n",
 		 desc->isDevice ? "device untyped" : "untyped",
-		 cap, cap, desc->paddr, desc->sizeBits);
+		 cap, cap, (PVOID) desc->paddr, desc->sizeBits);
     }
 }
 

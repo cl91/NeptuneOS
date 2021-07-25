@@ -286,17 +286,20 @@ VOID MmDbgDumpUntypedInfo()
     DbgPrint("Dumping untyped information:\n");
     DbgPrint("  Small free untyped:\n");
     LoopOverList(Untyped, SmallUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
+	DbgPrint("    cap = %zd  log2(size) = %d\n",
+		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY MediumUntypedList = &MiPhyMemDescriptor.MediumUntypedList;
     DbgPrint("  Medium free untyped:\n");
     LoopOverList(Untyped, MediumUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
+	DbgPrint("    cap = %zd  log2(size) = %d\n",
+		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY LargeUntypedList = &MiPhyMemDescriptor.LargeUntypedList;
     DbgPrint("  Large free untyped:\n");
     LoopOverList(Untyped, LargeUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = %d  log2(size) = %d\n", Untyped->TreeNode.Cap, Untyped->Log2Size);
+	DbgPrint("    cap = %zd  log2(size) = %d\n",
+		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     DbgPrint("  Root untyped forest linearly:\n");
     MmAvlDumpTreeLinear(&MiPhyMemDescriptor.RootUntypedForest);

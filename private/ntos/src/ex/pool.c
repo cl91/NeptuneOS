@@ -87,16 +87,15 @@ static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
 	    } else if (MemPressure == MM_MEM_PRESSURE_LOW_MEMORY) {
 		Size = 4 * PAGE_SIZE;
 	    } /* Otherwise we are critically low on memory, just get one page only */
-	    MWORD SatisfiedSize = 0;
 	    /* Make sure we don't run over the end of ExPool space. */
 	    if (Pool->HeapEnd + Size >= EX_POOL_START + EX_POOL_MAX_SIZE) {
 		Size = EX_POOL_START + EX_POOL_MAX_SIZE - Pool->HeapEnd;
 	    }
-	    MmCommitAddrWindow(Pool->HeapEnd, Size, &SatisfiedSize);
-	    if (SatisfiedSize < PAGE_SIZE) {
+	    NTSTATUS Status = MmAllocatePrivateMemory(Pool->HeapEnd, Size);
+	    if (!NT_SUCCESS(Status)) {
 		return FALSE;
 	    }
-	    Pool->TotalPages += SatisfiedSize >> PAGE_LOG2SIZE;
+	    Pool->TotalPages += Size >> PAGE_LOG2SIZE;
 	}
     }
     return TRUE;

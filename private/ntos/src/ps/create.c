@@ -77,11 +77,13 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 {
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) pThread));
 
-    PPAGING_STRUCTURE IpcBuffer = NULL;
-    RET_ERR_EX(MmCommitAddrWindowEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
-				    PAGE_SIZE, MM_RIGHTS_RW, TRUE, NULL,
-				    &IpcBuffer, 1, NULL),
+    RET_ERR_EX(MmAllocatePrivateMemoryEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
+					 PAGE_SIZE, MEM_COMMIT | MEM_RESERVE,
+					 PAGE_READWRITE),
 	       ObDereferenceObject(*pThread));
+    PPAGING_STRUCTURE IpcBuffer = NULL;
+    RET_ERR_EX(MmQueryVirtualAddress(&Process->VaddrSpace, IPC_BUFFER_VADDR, &IpcBuffer),
+	       return STATUS_NTOS_BUG); /* Should never fail. */
     assert(IpcBuffer != NULL);
     (*pThread)->IpcBuffer = IpcBuffer;
 
@@ -98,10 +100,6 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 NTSTATUS PsCreateProcess(OUT PPROCESS *pProcess)
 {
     RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) pProcess));
-
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&(*pProcess)->VaddrSpace,
-					IPC_BUFFER_VADDR, PAGE_SIZE),
-	       ObDereferenceObject(*pProcess));
 
     return STATUS_SUCCESS;
 }

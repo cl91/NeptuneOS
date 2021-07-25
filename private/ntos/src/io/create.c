@@ -5,7 +5,8 @@ NTSTATUS IopFileObjectCreateProc(POBJECT Object)
     PFILE_OBJECT File = (PFILE_OBJECT) Object;
     File->DeviceObject = NULL;
     File->FileName = NULL;
-    File->SectionObject = NULL;
+    File->SectionObject.DataSectionObject = NULL;
+    File->SectionObject.ImageSectionObject = NULL;
     File->BufferPtr = 0;
     File->Size = 0;
     return STATUS_SUCCESS;

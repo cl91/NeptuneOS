@@ -6,4 +6,5 @@
 #include <ntdef.h>
 #include <ntstatus.h>
 #include <ntseapi.h>
+#include <ntmmapi.h>
 #include <nosal.h>

@@ -64,7 +64,7 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     } else if (Node->Type == CAP_TREE_NODE_PAGING_STRUCTURE) {
 	Type = "PAGING";
     }
-    DbgPrint("Cap 0x%x (Type %s)", Node->Cap, Type);
+    DbgPrint("Cap 0x%zx (Type %s)", Node->Cap, Type);
 }
 
 /* Allocate a continuous range of capability slots */
@@ -78,7 +78,7 @@ NTSTATUS MmAllocateCapRangeEx(IN PCNODE CNode,
 
     ULONG CNodeSize = 1ULL << CNode->Log2Size;
     if (CNode->TotalUsed >= CNodeSize) {
-	return STATUS_NTOS_CAPSPACE_EXHAUSTION;
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     /* Starting from the RecentFree bit, search for
@@ -97,7 +97,7 @@ Lookup:
     }
     /* We don't have enough free slots */
     if (Index >= MaxIndex) {
-	return STATUS_NTOS_CAPSPACE_EXHAUSTION;
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
     /* Check whether the next (NumberRequested-1) bits are
      * free (the bit pointed by Index is already free) */
@@ -166,7 +166,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 	       MmReleaseUntyped(Untyped));
 
     MiAllocatePoolEx(CNode, CNODE, MmReleaseUntyped(Untyped));
-    MiAllocateArray(UsedMap, MWORD, (1ULL << Log2Size) / MWORD_BITS,
+    MiAllocateArray(UsedMap, MWORD, (MWORD)((1ULL << Log2Size) / MWORD_BITS),
 		    {
 			MmReleaseUntyped(Untyped);
 			ExFreePool(CNode);

@@ -19,6 +19,7 @@
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define IS_LARGE_PAGE_ALIGNED(p)	(((MWORD)(p)) == LARGE_PAGE_ALIGN(p))
+#define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
 
 #define ROOT_CNODE_CAP			(seL4_CapInitThreadCNode)
 #define ROOT_VSPACE_CAP			(seL4_CapInitThreadVSpace)
@@ -155,9 +156,22 @@ typedef struct _UNTYPED {
  * manager's internal routines do not rely on this information
  * to map or unmap a paging structure.
  */
+typedef union _MMVAD_FLAGS {
+    struct {
+	MWORD PrivateMemory : 1; /* Section pointer is null */
+	MWORD ImageMap : 1;
+	MWORD LargePages : 1;
+	MWORD MemCommit: 1;
+	MWORD PhysicalMapping : 1;
+    };
+    MWORD Word;
+} MMVAD_FLAGS;
+
 typedef struct _MMVAD {
     MM_AVL_NODE AvlNode;	/* must be first entry */
-    MWORD WindowSize;
+    MMVAD_FLAGS Flags;
+    MWORD WindowSize;		/* rounded up to 4K page boundary */
+    struct _SECTION *Section;
 } MMVAD, *PMMVAD;
 
 #define MM_AVL_NODE_TO_VAD(Node)					\
@@ -373,17 +387,7 @@ VOID MmDbgDumpUntypedInfo();
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
-			      IN MWORD VirtAddr,
-			      IN MWORD Size,
-			      IN PAGING_RIGHTS Rights,
-			      IN BOOLEAN UseLargePage,
-			      OUT OPTIONAL MWORD *pSatisfiedSize,
-			      OUT OPTIONAL PPAGING_STRUCTURE *pPage,
-			      IN OPTIONAL LONG MaxNumPagingStruct,
-			      OUT OPTIONAL LONG *pNumPagingStruct);
 NTSTATUS MmCommitIoPageEx(IN PVIRT_ADDR_SPACE VaddrSpace,
-			  IN PPHY_MEM_DESCRIPTOR PhyMem,
 			  IN MWORD PhyAddr,
 			  IN MWORD VirtAddr,
 			  IN PAGING_RIGHTS Rights,
@@ -394,34 +398,29 @@ static inline NTSTATUS MmCommitIoPage(IN MWORD PhyAddr,
 				      IN MWORD VirtAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
-    return MmCommitIoPageEx(&MiNtosVaddrSpace, &MiPhyMemDescriptor,
-			    PhyAddr, VirtAddr, MM_RIGHTS_RW, NULL);
-}
-
-/*
- * Commit an address window in the NTOS Root Task, using large pages if available.
- */
-static inline NTSTATUS MmCommitAddrWindow(IN MWORD VirtAddr,
-					  IN MWORD Size,
-					  OUT OPTIONAL MWORD *pSatisfiedSize)
-{
-    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmCommitAddrWindowEx(&MiNtosVaddrSpace, VirtAddr, Size, MM_RIGHTS_RW,
-				TRUE, pSatisfiedSize, NULL, 0, NULL);
+    return MmCommitIoPageEx(&MiNtosVaddrSpace, PhyAddr, VirtAddr, MM_RIGHTS_RW, NULL);
 }
 
 /* vaddr.c */
 VOID MmInitializeVaddrSpace(IN PVIRT_ADDR_SPACE VaddrSpace,
 			    IN MWORD VSpaceCap);
-NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE Vspace,
-				  IN MWORD VirtAddr,
-				  IN MWORD WindowSize);
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace);
+NTSTATUS MmAllocatePrivateMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+				   IN MWORD VirtAddr,
+				   IN MWORD WindowSize,
+				   IN MWORD AllocationType,
+				   IN MWORD Protect);
+NTSTATUS MmQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD VirtAddr,
+			       OUT PPAGING_STRUCTURE *pPage);
+VOID MmDbgDumpVad(PMMVAD Vad);
+VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
 
-static inline NTSTATUS MmReserveVirtualMemory(IN MWORD VirtAddr,
-					      IN MWORD WindowSize)
+static inline NTSTATUS MmAllocatePrivateMemory(IN MWORD VirtAddr,
+					       IN MWORD WindowSize)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, VirtAddr, WindowSize);
+    return MmAllocatePrivateMemoryEx(&MiNtosVaddrSpace, VirtAddr, WindowSize,
+				     MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES,
+				     PAGE_READWRITE);
 }

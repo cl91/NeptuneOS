@@ -146,7 +146,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 	}
     }
 
-    ULONG BufferLength = strlen(Name)+1;
+    MWORD BufferLength = strlen(Name)+1;
     ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
     ObpAllocatePoolEx(NameOwned, CHAR, BufferLength, ExFreePool(DirectoryEntry));
     InitializeListHead(&DirectoryEntry->ChainLink);
@@ -154,7 +154,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     DirectoryEntry->Name = NameOwned;
     DirectoryEntry->Object = Object;
 
-    ULONG HashIndex = ObpDirectoryEntryHashIndex(Name);
+    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name);
     assert(HashIndex < NUMBER_HASH_BUCKETS);
     InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
 

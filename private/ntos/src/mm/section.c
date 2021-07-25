@@ -23,14 +23,55 @@ NTSTATUS MiSectionInitialization()
 			      TypeInfo);
 }
 
-NTSTATUS MmCreateSection(OUT POBJECT *SectionObject,
-			 IN ACCESS_MASK DesiredAccess,
-			 IN OPTIONAL PCHAR ObjectName,
-			 IN MWORD InputMaxSize,
-			 IN WIN32_PROTECTION_MASK SectionPageProtection,
-			 IN ULONG AllocationAttributes,
-			 IN OPTIONAL PFILE_OBJECT FileObject)
+static NTSTATUS MiCreateImageFileMap(IN PFILE_OBJECT File,
+				     OUT PSEGMENT *Segment)
 {
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
+			 IN MWORD Attribute,
+			 OUT PSECTION *SectionObject)
+{
+    assert(FileObject != NULL);
+    assert(SectionObject != NULL);
+    *SectionObject = NULL;
+
+    if (!(Attribute & SEC_FILE)) {
+	return STATUS_NTOS_UNIMPLEMENTED;
+    }
+
+    if (!(Attribute & SEC_IMAGE)) {
+	return STATUS_NTOS_UNIMPLEMENTED;
+    }
+
+    if (!(Attribute & SEC_RESERVE)) {
+	return STATUS_NTOS_UNIMPLEMENTED;
+    }
+
+    if (!(Attribute & SEC_COMMIT)) {
+	return STATUS_NTOS_UNIMPLEMENTED;
+    }
+
+    PSEGMENT Segment = FileObject->SectionObject.ImageSectionObject;
+
+    if (Segment == NULL) {
+	RET_ERR(MiCreateImageFileMap(FileObject, &Segment));
+	assert(Segment != NULL);
+	FileObject->SectionObject.ImageSectionObject = Segment;
+    }
+
+    PSECTION Section = NULL;
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section));
+    assert(Section != NULL);
+    Section->Flags.File = 1;
+    Section->Flags.Image = 1;
+    /* For now all sections are committed immediately. */
+    Section->Flags.Reserve = 1;
+    Section->Flags.Commit = 1;
+    Section->Segment = Segment;
+
+    *SectionObject = Section;
     return STATUS_SUCCESS;
 }
 

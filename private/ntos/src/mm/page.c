@@ -170,8 +170,8 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
  * Find the substructure within the given paging structure that contains
  * the given virtual address.
  */
-static PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
-						     IN MWORD VirtAddr)
+PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
+					   IN MWORD VirtAddr)
 {
     assert(Paging != NULL);
     VirtAddr = MiSanitizeAlignment(MiPagingSubStructureType(Paging), VirtAddr);
@@ -252,16 +252,20 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
     assert(Page != NULL);
     ASSERT_ALIGNMENT(Page);
 
+    if (Page->SuperStructure == NULL) {
+	return STATUS_NTOS_BUG;
+    }
+
     RET_ERR(MiRetypeIntoPagingStructure(Page));
 
     int Error = 0;
     if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
 #if CONFIG_DEBUG_BUILD
 	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
-	DbgTrace("Mapping %spage cap 0x%x (paddr %p%s) into vspacecap 0x%x at vaddr %p\n",
+	DbgTrace("Mapping %spage cap 0x%zx (paddr %p%s) into vspacecap 0x%zx at vaddr %p\n",
 		 (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
-		 Page->TreeNode.Cap, Reply.paddr, (Reply.error == 0) ? "" : " ???",
-		 Page->VSpaceCap, Page->AvlNode.Key);
+		 Page->TreeNode.Cap, (PVOID) Reply.paddr, (Reply.error == 0) ? "" : " ???",
+		 Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 #endif
 	Error = seL4_X86_Page_Map(Page->TreeNode.Cap,
 				  Page->VSpaceCap,
@@ -269,23 +273,23 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
 				  Page->Rights,
 				  Page->Attributes);
     } else if (Page->Type == PAGING_TYPE_PAGE_TABLE) {
-	DbgTrace("Mapping page table cap 0x%x into vspacecap 0x%x at vaddr %p\n",
-		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
+	DbgTrace("Mapping page table cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
 				       Page->VSpaceCap,
 				       Page->AvlNode.Key,
 				       Page->Attributes);
 #ifdef _M_AMD64
     } else if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
-	DbgTrace("Mapping page directory cap 0x%x into vspacecap 0x%x at vaddr %p\n",
-		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
+	DbgTrace("Mapping page directory cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 	Error = seL4_X86_PageDirectory_Map(Page->TreeNode.Cap,
 					   Page->VSpaceCap,
 					   Page->AvlNode.Key,
 					   Page->Attributes);
     } else if (Page->Type == PAGING_TYPE_PDPT) {
-	DbgTrace("Mapping PDPT cap 0x%x into vspacecap 0x%x at vaddr %p\n",
-		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
+	DbgTrace("Mapping PDPT cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 	Error = seL4_X86_PDPT_Map(Page->TreeNode.Cap,
 				  Page->VSpaceCap,
 				  Page->AvlNode.Key,
@@ -296,17 +300,19 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
     }
 
     if (Error) {
-	DbgTrace("Failed to map cap 0x%x into vspacecap 0x%x at vaddr %p\n",
-		 Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
+	DbgTrace("Failed to map cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
+		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 	seL4_CNode_Delete(ROOT_CNODE_CAP, Page->TreeNode.Cap, 0);
 	MmDeallocateCap(Page->TreeNode.Cap);
 	Page->TreeNode.Cap = 0;
 	return SEL4_ERROR(Error);
     }
 
-    DbgTrace("Successfully mapped cap 0x%x into vspacecap 0x%x at vaddr %p\n",
-	     Page->TreeNode.Cap, Page->VSpaceCap, Page->AvlNode.Key);
     Page->Mapped = TRUE;
+    MiPagingInsertSubStructure(Page->SuperStructure, Page);
+
+    DbgTrace("Successfully mapped cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
+	     Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
     return STATUS_SUCCESS;
 }
 
@@ -322,6 +328,7 @@ MM_MEM_PRESSURE MmQueryMemoryPressure()
  */
 NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 IN PUNTYPED Untyped,
+				 IN PPAGING_STRUCTURE ParentPaging,
 				 IN MWORD VirtAddr,
 				 IN MWORD VSpaceCap,
 				 IN PAGING_RIGHTS Rights,
@@ -330,17 +337,16 @@ NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
     assert(pPaging);
 
     MiAllocatePool(Paging, PAGING_STRUCTURE);
-    MiInitializePagingStructure(Paging, &Untyped->TreeNode, NULL, VSpaceCap, 0, VirtAddr,
-				Type, FALSE, Rights);
+    MiInitializePagingStructure(Paging, &Untyped->TreeNode, ParentPaging,
+				VSpaceCap, 0, VirtAddr, Type, FALSE, Rights);
 
     *pPaging = Paging;
     return STATUS_SUCCESS;
 }
 
 /*
- * Ensure that all levels of super-structures of the given paging structure are mapped.
- * Optionally returning the pointer to the paging structure one level above the supplied
- * paging structure.
+ * Ensure that all levels of super-structures of the given paging structure are mapped,
+ * Optionally returning the pointer to the immediate super-structure.
  *
  * The mapped intermediate structures inherit their super structure's access rights.
  *
@@ -348,7 +354,7 @@ NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
  */
 static NTSTATUS MiMapSuperStructure(IN PPAGING_STRUCTURE Paging,
 				    IN PVIRT_ADDR_SPACE VSpace,
-				    OUT OPTIONAL PPAGING_STRUCTURE *pSuperStructure)
+				    OUT PPAGING_STRUCTURE *pSuperStructure)
 {
     assert(Paging != NULL);
     assert(VSpace != NULL);
@@ -366,17 +372,19 @@ static NTSTATUS MiMapSuperStructure(IN PPAGING_STRUCTURE Paging,
 	    PAGING_STRUCTURE_TYPE Subtype = MiPagingSubStructureType(SuperStructure);
 	    PUNTYPED Untyped = NULL;
 	    RET_ERR(MmRequestUntyped(MiPagingObjLog2Size(Subtype), &Untyped));
-	    RET_ERR_EX(MiCreatePagingStructure(Subtype, Untyped, VirtAddr, VSpace->VSpaceCap,
+	    RET_ERR_EX(MiCreatePagingStructure(Subtype, Untyped, SuperStructure,
+					       VirtAddr, VSpace->VSpaceCap,
 					       SuperStructure->Rights, &SubStructure),
 		       MmReleaseUntyped(Untyped));
 	    /* On error, MmReleaseUntyped will call ExFreePool on the UNTYPED */
 	    RET_ERR_EX(MiMapPagingStructure(SubStructure), MmReleaseUntyped(Untyped));
-	    MiPagingInsertSubStructure(SuperStructure, SubStructure);
 	}
 	assert(SubStructure != NULL);
 	SuperStructure = SubStructure;
     }
 
+    assert(SuperStructure != NULL);
+    Paging->SuperStructure = SuperStructure;
     if (pSuperStructure != NULL) {
 	*pSuperStructure = SuperStructure;
     }
@@ -386,50 +394,24 @@ static NTSTATUS MiMapSuperStructure(IN PPAGING_STRUCTURE Paging,
 
 /*
  * Allocate and map pages that cover the address window [VirtAddr, VirtAddr+Size),
- * optionally returning the size of the memory region that has been successfully mapped.
  *
- * VirtAddr will be rounded down to the nearest page boundary. VirtAddr+Size will be
- * rounded up to the nearest page boundary.
- *
- * If specified, return the paging structure pointers for the pages or large pages
- * that have been successfully mapped, stopping once the buffer size is reached.
- * Note that these do NOT include any intermediate paging structure (ie. page table,
- * page directory, PDPT, PML4).
- *
- * All optional arguments can be specified independently. When an optional argument
- * is NULL, will not attempt to access it.
+ * Address window must be aligned at page boundary.
  *
  * If specified, will attempt to use large pages when mapping.
  */
-NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
-			      IN MWORD VirtAddr,
-			      IN MWORD Size,
-			      IN PAGING_RIGHTS Rights,
-			      IN BOOLEAN UseLargePage,
-			      OUT OPTIONAL MWORD *pSatisfiedSize,
-			      OUT OPTIONAL PPAGING_STRUCTURE *pPage,
-			      IN OPTIONAL LONG MaxNumPagingStruct,
-			      OUT OPTIONAL LONG *pNumPagingStruct)
+NTSTATUS MiCommitPrivateMemory(IN PVIRT_ADDR_SPACE VaddrSpace,
+			       IN MWORD VirtAddr,
+			       IN MWORD Size,
+			       IN PAGING_RIGHTS Rights,
+			       IN BOOLEAN UseLargePage)
 {
-    DbgTrace("Committing vaddr window [%p, %p) for vaddrcap 0x%x\n",
-	     VirtAddr, VirtAddr+Size, VaddrSpace->VSpaceCap);
-    if (pSatisfiedSize != NULL) {
-	*pSatisfiedSize = 0;
-    }
-    if (pPage != NULL) {
-	*pPage = NULL;
-    }
-    if (pNumPagingStruct != NULL) {
-	*pNumPagingStruct = 0;
-    }
-
-    /* Round the address window to page boundary */
-    VirtAddr = PAGE_ALIGN(VirtAddr);
-    Size = PAGE_ALIGN(Size + PAGE_SIZE - 1);
+    DbgTrace("Committing vaddr window [%p, %p) for vaddrcap 0x%zx\n",
+	     (PVOID) VirtAddr, (PVOID)(VirtAddr+Size), VaddrSpace->VSpaceCap);
+    assert(IS_PAGE_ALIGNED(VirtAddr));
+    assert(IS_PAGE_ALIGNED(Size));
  
     PPAGING_STRUCTURE SuperStructure = NULL;
     MWORD CurVaddr = VirtAddr;
-    LONG NumPagingStruct = 0;
     while (CurVaddr < VirtAddr + Size) {
 	PUNTYPED Untyped = NULL;
 	PAGING_STRUCTURE_TYPE Type = PAGING_TYPE_PAGE;
@@ -439,7 +421,7 @@ NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
 	}
 	RET_ERR(MmRequestUntyped(MiPagingObjLog2Size(Type), &Untyped));
 	PPAGING_STRUCTURE Page = NULL;
-	RET_ERR_EX(MiCreatePagingStructure(Type, Untyped, CurVaddr,
+	RET_ERR_EX(MiCreatePagingStructure(Type, Untyped, SuperStructure, CurVaddr,
 					   VaddrSpace->VSpaceCap, Rights, &Page),
 		   MmReleaseUntyped(Untyped));
 	assert(Page != NULL);
@@ -454,23 +436,10 @@ NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
 	if (IS_LARGE_PAGE_ALIGNED(CurVaddr)) {
 	    SuperStructure = NULL;
 	}
-	/* Optionally store the size of the memory region that has been mapped */
-	if (pSatisfiedSize != NULL) {
-	    *pSatisfiedSize = CurVaddr - VirtAddr;
-	}
-	NumPagingStruct++;
-	/* Optionally store the pointer to the new paging structure */
-	if (pPage != NULL && NumPagingStruct <= MaxNumPagingStruct) {
-	    *(pPage++) = Page;
-	}
-	/* Optionally store the number of leaf-node paging structures */
-	if (pNumPagingStruct != NULL) {
-	    *pNumPagingStruct = NumPagingStruct;
-	}
     }
 
-    DbgTrace("Successfully committed vaddr window [%p, %p) for vaddrcap 0x%x\n",
-	     VirtAddr, VirtAddr+Size, VaddrSpace->VSpaceCap);
+    DbgTrace("Successfully committed vaddr window [%p, %p) for vaddrcap 0x%zx\n",
+	     (PVOID) VirtAddr, (PVOID) (VirtAddr+Size), VaddrSpace->VSpaceCap);
 
     return STATUS_SUCCESS;
 }
@@ -480,7 +449,6 @@ NTSTATUS MmCommitAddrWindowEx(IN PVIRT_ADDR_SPACE VaddrSpace,
  * virtual address, optionally returning the paging structure pointer.
  */
 NTSTATUS MmCommitIoPageEx(IN PVIRT_ADDR_SPACE VaddrSpace,
-			  IN PPHY_MEM_DESCRIPTOR PhyMem,
 			  IN MWORD PhyAddr,
 			  IN MWORD VirtAddr,
 			  IN PAGING_RIGHTS Rights,
@@ -492,13 +460,13 @@ NTSTATUS MmCommitIoPageEx(IN PVIRT_ADDR_SPACE VaddrSpace,
     VirtAddr = PAGE_ALIGN(VirtAddr);
 
     PUNTYPED IoUntyped;
-    RET_ERR(MiRequestIoUntyped(PhyMem, PhyAddr, &IoUntyped));
+    RET_ERR(MiRequestIoUntyped(&MiPhyMemDescriptor, PhyAddr, &IoUntyped));
     if (IoUntyped->Log2Size != PAGE_LOG2SIZE) {
 	return STATUS_NTOS_BUG;
     }
 
     PPAGING_STRUCTURE Page = NULL;
-    RET_ERR_EX(MiCreatePagingStructure(PAGING_TYPE_PAGE, IoUntyped, VirtAddr,
+    RET_ERR_EX(MiCreatePagingStructure(PAGING_TYPE_PAGE, IoUntyped, NULL, VirtAddr,
 				       VaddrSpace->VSpaceCap, Rights, &Page),
 	       MmReleaseUntyped(IoUntyped));
     assert(Page != NULL);
@@ -520,15 +488,15 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 	return;
     }
 
-    DbgPrint("    Virtual address %p  Type %s  VSpaceCap 0x%x\n",
-	     Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type), Paging->VSpaceCap);
+    DbgPrint("    Virtual address %p  Type %s  VSpaceCap 0x%zx\n",
+	     (PVOID) Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type), Paging->VSpaceCap);
     DbgPrint("    ");
     MmDbgDumpCapTreeNode(&Paging->TreeNode);
     DbgPrint("  Cap Tree Parent ");
     MmDbgDumpCapTreeNode(Paging->TreeNode.Parent);
     DbgPrint("\n    Parent Paging Structure ");
     if (Paging->SuperStructure != NULL) {
-	DbgPrint("Vaddr %p Type %s", Paging->SuperStructure->AvlNode.Key,
+	DbgPrint("Vaddr %p Type %s", (PVOID) Paging->SuperStructure->AvlNode.Key,
 		 MiPagingTypeToStr(Paging->SuperStructure->Type));
     } else {
 	DbgPrint("(nil)");
@@ -539,9 +507,8 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
     } else {
 	DbgPrint("Not mapped");
     }
-    DbgPrint("\n    Sub-structures linearly:\n");
+    DbgPrint("\n    Sub-structures linearly:  ");
     MmAvlDumpTreeLinear(&Paging->SubStructureTree);
-    DbgPrint("    Sub-structures as a tree:\n");
+    DbgPrint("\n    Sub-structures as a tree:\n");
     MmAvlDumpTree(&Paging->SubStructureTree);
-    DbgPrint("\n");
 }

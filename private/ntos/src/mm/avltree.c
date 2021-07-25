@@ -374,7 +374,7 @@ static void MiAvlTreePrintTree(PMM_AVL_NODE Root,
     }
 
     MiAvlTreeShowTrunks(&Trunk);
-    DbgPrint("%05x\n", Root->Key >> PAGE_LOG2SIZE);
+    DbgPrint("%05zx\n", Root->Key >> PAGE_LOG2SIZE);
 
     if (Prev)
         Prev->Str = PrevStr;
@@ -391,7 +391,6 @@ VOID MmAvlDumpTree(PMM_AVL_TREE tree)
 VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree)
 {
     LoopOverList(Node, &tree->NodeList, MM_AVL_NODE, ListEntry) {
-	DbgPrint("%p ", Node->Key);
+	DbgPrint("%p ", (PVOID) Node->Key);
     }
-    DbgPrint("\n");
 }

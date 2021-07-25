@@ -24,7 +24,6 @@ typedef seL4_Word MWORD;
 
 #define STATUS_NTOS_BUG				NTOS_ERROR(1)
 #define STATUS_NTOS_UNIMPLEMENTED		NTOS_ERROR(1)
-#define STATUS_NTOS_CAPSPACE_EXHAUSTION		NTOS_ERROR(3)
 
 #define RET_ERR_EX(Expr, OnError)					\
     {NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) {			\
@@ -36,7 +35,7 @@ typedef seL4_Word MWORD;
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
     Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
     if ((Var) == NULL) {						\
-	DbgPrint("Allocation of 0x%x bytes for variable %s of type"	\
+	DbgPrint("Allocation of 0x%zx bytes for variable %s of type"	\
 		 " (%s *) failed in function %s @ %s:%d\n",		\
 		 Size, #Var, #Type, __func__, __FILE__, __LINE__);	\
 	{OnError;} return STATUS_NO_MEMORY; }

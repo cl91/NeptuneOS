@@ -23,8 +23,8 @@ static NTSTATUS EiStartSessionManager()
     RET_ERR(ObReferenceObjectByName("\\BootModules\\ntdll",
 				    (POBJECT *) &NtdllFile));
     assert(NtdllFile != NULL);
-    DbgTrace("Ntdll file name = %s, size = 0x%x, buffer = %p\n",
-	     NtdllFile->FileName, NtdllFile->Size, NtdllFile->BufferPtr);
+    DbgTrace("Ntdll file name = %s, size = 0x%zx, buffer = %p\n",
+	     NtdllFile->FileName, NtdllFile->Size, (PVOID) NtdllFile->BufferPtr);
 
     return STATUS_SUCCESS;
 }

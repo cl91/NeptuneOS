@@ -140,9 +140,18 @@ static inline VOID MiInitializeVadNode(PMMVAD Node,
 				       MWORD WindowSize)
 {
     assert(IS_PAGE_ALIGNED(StartVaddr));
+    assert(IS_PAGE_ALIGNED(WindowSize));
     MiAvlInitializeNode(&Node->AvlNode, StartVaddr);
+    Node->Flags.Word = 0;
     Node->WindowSize = WindowSize;
+    Node->Section = NULL;
 }
+
+#define LoopOverVadTree(Vad, VSpace, Statement)				\
+    LoopOverList(_LoopOverVadTree_tmp_Node, &VSpace->VadTree.NodeList,	\
+		 MM_AVL_NODE, ListEntry) {				\
+    PMMVAD Vad = MM_AVL_NODE_TO_VAD(_LoopOverVadTree_tmp_Node);		\
+    Statement; }
 
 
 /*
@@ -185,6 +194,18 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 
 /*
  * Returns TRUE if the supplied address is within the address range
+ * specified by the address window
+ */
+static inline BOOLEAN MiAddrWindowContainsAddr(IN MWORD StartAddr,
+					       IN MWORD WindowSize,
+					       IN MWORD Addr)
+{
+    MWORD EndAddr = StartAddr + WindowSize;
+    return (Addr >= StartAddr) && (Addr < EndAddr);
+}
+
+/*
+ * Returns TRUE if the supplied address is within the address range
  * specified by the AVL node's key value and the supplied window size
  */
 static inline BOOLEAN MiAvlNodeContainsAddr(IN PMM_AVL_NODE Node,
@@ -192,30 +213,14 @@ static inline BOOLEAN MiAvlNodeContainsAddr(IN PMM_AVL_NODE Node,
 					    IN MWORD Addr)
 {
     assert(Node != NULL);
-    MWORD StartAddr = Node->Key;
-    MWORD EndAddr = StartAddr + Size;
-    return (Addr >= StartAddr) && (Addr < EndAddr);
-}
-
-/*
- * Returns TRUE if the supplied address window is fully contained within
- * the AVL node with the given size
- */
-static inline BOOLEAN MiAvlNodeContainsAddrWindow(IN PMM_AVL_NODE Node,
-						  IN MWORD NodeSize,
-						  IN MWORD Addr,
-						  IN MWORD WindowSize)
-{
-    assert(Node != NULL);
-    MWORD EndNodeAddr = Node->Key + NodeSize;
-    MWORD EndWindowAddr = Addr + WindowSize;
-    /* Note here the equal signs are important */
-    return (Addr >= Node->Key) && (EndWindowAddr <= EndNodeAddr);
+    return MiAddrWindowContainsAddr(Node->Key, Size, Addr);
 }
 
 /*
  * Returns TRUE if the supplied address window has overlap with
- * the AVL node of the given size
+ * the AVL node of the given size, ie. the intersection of the set
+ * [Node, Node+NodeSize) with the set [Addr, Addr+WindowSize) is
+ * non-empty in \mathbb{Z}.
  */
 static inline BOOLEAN MiAvlNodeOverlapsAddrWindow(IN PMM_AVL_NODE Node,
 						  IN MWORD NodeSize,
@@ -223,10 +228,10 @@ static inline BOOLEAN MiAvlNodeOverlapsAddrWindow(IN PMM_AVL_NODE Node,
 						  IN MWORD WindowSize)
 {
     assert(Node != NULL);
-    MWORD EndWindowAddr = Addr + WindowSize;
-    /* Note here the equal signs are important */
     return MiAvlNodeContainsAddr(Node, NodeSize, Addr) ||
-	MiAvlNodeContainsAddr(Node, NodeSize, EndWindowAddr-1);
+	MiAvlNodeContainsAddr(Node, NodeSize, Addr + WindowSize - 1) ||
+	MiAddrWindowContainsAddr(Addr, WindowSize, Node->Key) ||
+	MiAddrWindowContainsAddr(Addr, WindowSize, Node->Key + NodeSize - 1);
 }
 
 /* page.c */
@@ -241,12 +246,26 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
 				 IN PAGING_RIGHTS Rights);
 NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 IN PUNTYPED Untyped,
+				 IN PPAGING_STRUCTURE ParentPaging,
 				 IN MWORD VirtAddr,
 				 IN MWORD VSpaceCap,
 				 IN PAGING_RIGHTS Rights,
 				 OUT PPAGING_STRUCTURE *pPaging);
 NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
+PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
+					   IN MWORD VirtAddr);
+NTSTATUS MiCommitPrivateMemory(IN PVIRT_ADDR_SPACE VaddrSpace,
+			       IN MWORD VirtAddr,
+			       IN MWORD Size,
+			       IN PAGING_RIGHTS Rights,
+			       IN BOOLEAN UseLargePage);
 
 /* section.c */
 NTSTATUS MiSectionInitialization();
+
+/* vaddr.c */
+NTSTATUS MiReserveVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
+				IN MWORD VirtAddr,
+				IN MWORD WindowSize,
+				IN MWORD Attribute);
