@@ -342,11 +342,12 @@ typedef struct _DATA_SECTION_OBJECT {
 typedef struct _SUBSECTION {
     PIMAGE_SECTION_OBJECT ImageSection;	/* Image section that this subsection belong to */
     LIST_ENTRY Link; /* Link for the owning image section's SubSectionList */
+    UCHAR Name[IMAGE_SIZEOF_SHORT_NAME+1]; /* name of the PE section (.text, .data, etc) */
     ULONG SubSectionSize; /* Size of the subsection in memory, 4K aligned. */
     ULONG FileOffset; /* Offset from the start of the file, file aligned */
     ULONG RawDataSize;   /* Size of the subsection, file aligned */
     ULONG SubSectionBase; /* relative to the start of the owning section, 4K aligned */
-    ULONG Characteristics;	/* characteristics field in the PE image section table */
+    ULONG Characteristics; /* section characteristics in the PE image section table */
 } SUBSECTION, *PSUBSECTION;
 
 /*
@@ -425,6 +426,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN OUT MWORD *BaseAddress,
 			    IN OUT MWORD *SectionOffset,
 			    IN OUT MWORD *ViewSize);
+VOID MmDbgDumpSection(IN PSECTION Section);
 
 /* vaddr.c */
 VOID MmInitializeVaddrSpace(IN PVIRT_ADDR_SPACE VaddrSpace,

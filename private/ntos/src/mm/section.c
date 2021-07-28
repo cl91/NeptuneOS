@@ -43,7 +43,7 @@ static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
  * This is stolen shamelessly from the ReactOS source code.
  *
  * Parse the PE image headers and populate the given image section object,
- * including the SUBSECTIONS. The number of subsections equal the number of PE
+ * including the SUBSECTIONs. The number of subsections equal the number of PE
  * sections of the image file, plus the zeroth subsection which is the PE image
  * headers.
  *
@@ -348,6 +348,8 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
     /* The zeroth subsection of the image section is the image headers */
     SubSectionsArray[0]->SubSectionSize = ALIGN_UP_BY(AllHeadersSize, SectionAlignment);
+    memcpy(SubSectionsArray[0]->Name, "HEADERS", IMAGE_SIZEOF_SHORT_NAME);
+    SubSectionsArray[0]->Name[IMAGE_SIZEOF_SHORT_NAME] = '\0';
     SubSectionsArray[0]->FileOffset = 0;
     SubSectionsArray[0]->RawDataSize = AllHeadersSize;
     SubSectionsArray[0]->SubSectionBase = 0;
@@ -382,6 +384,8 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
         SubSectionsArray[i]->SubSectionSize = VirtualSize;
         SubSectionsArray[i]->SubSectionBase = SectionHeaders[i-1].VirtualAddress;
+	memcpy(SubSectionsArray[i]->Name, SectionHeaders[i-1].Name, IMAGE_SIZEOF_SHORT_NAME);
+	SubSectionsArray[i]->Name[IMAGE_SIZEOF_SHORT_NAME] = '\0';
 
 	InsertTailList(&ImageSection->SubSectionList, &SubSectionsArray[i]->Link);
     }
@@ -403,6 +407,7 @@ static NTSTATUS MiCreateImageFileMap(IN PFILE_OBJECT File,
 	       ExFreePool(ImageSection));
 
     File->SectionObject.ImageSectionObject = ImageSection;
+    ImageSection->FileObject = File;
     *pImageSection = ImageSection;
     return STATUS_SUCCESS;
 }
@@ -451,10 +456,12 @@ NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
 
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 					IN PSECTION Section,
-					IN OUT MWORD *BaseAddress,
-					IN OUT MWORD *SectionOffset,
-					IN OUT MWORD *ViewSize)
+					IN OUT OPTIONAL MWORD *BaseAddress,
+					IN OUT OPTIONAL MWORD *SectionOffset,
+					IN OUT OPTIONAL MWORD *ViewSize)
 {
+    assert(VSpace != NULL);
+    assert(Section != NULL);
     return STATUS_SUCCESS;
 }
 
@@ -465,9 +472,9 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
  */
 NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,
-			    IN OUT MWORD *BaseAddress,
-			    IN OUT MWORD *SectionOffset,
-			    IN OUT MWORD *ViewSize)
+			    IN OUT OPTIONAL MWORD *BaseAddress,
+			    IN OUT OPTIONAL MWORD *SectionOffset,
+			    IN OUT OPTIONAL MWORD *ViewSize)
 {
     assert(VSpace != NULL);
     assert(Section != NULL);
@@ -476,4 +483,101 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 				       SectionOffset, ViewSize);
     }
     return STATUS_NTOS_UNIMPLEMENTED;
+}
+
+static VOID MiDbgDumpSubSection(IN PSUBSECTION SubSection)
+{
+    DbgPrint("Dumping sub-section %p\n", SubSection);
+    if (SubSection == NULL) {
+	DbgPrint("    (nil)\n");
+	return;
+    }
+    DbgPrint("    parent image section object = %p\n", SubSection->ImageSection);
+    DbgPrint("    sub-section name = %s\n", SubSection->Name);
+    DbgPrint("    sub-section size = 0x%x\n", SubSection->SubSectionSize);
+    DbgPrint("    starting file offset = 0x%x\n", SubSection->FileOffset);
+    DbgPrint("    raw data size = 0x%x\n", SubSection->RawDataSize);
+    DbgPrint("    sub-section base = 0x%x\n", SubSection->SubSectionBase);
+    DbgPrint("    characteristics = 0x%x\n", SubSection->Characteristics);
+}
+
+static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
+{
+    DbgPrint("Dumping image section object %p\n", ImageSection);
+    if (ImageSection == NULL) {
+	DbgPrint("    (nil)\n");
+	return;
+    }
+    DbgPrint("    Number of subsections = %d\n", ImageSection->NumSubSections);
+    DbgPrint("    Image base = %p\n", (PVOID) ImageSection->ImageBase);
+    DbgPrint("    TransferAddress = %p\n",
+	     (PVOID) ImageSection->ImageInformation.TransferAddress);
+    DbgPrint("    ZeroBits = 0x%x\n",
+	     ImageSection->ImageInformation.ZeroBits);
+    DbgPrint("    MaximumStackSize = 0x%zx\n",
+	     ImageSection->ImageInformation.MaximumStackSize);
+    DbgPrint("    CommittedStackSize = 0x%zx\n",
+	     ImageSection->ImageInformation.CommittedStackSize);
+    DbgPrint("    SubSystemType = 0x%x\n",
+	     ImageSection->ImageInformation.SubSystemType);
+    DbgPrint("    SubSystemMinorVersion = 0x%x\n",
+	     ImageSection->ImageInformation.SubSystemMinorVersion);
+    DbgPrint("    SubSystemMajorVersion = 0x%x\n",
+	     ImageSection->ImageInformation.SubSystemMajorVersion);
+    DbgPrint("    GpValue = 0x%x\n",
+	     ImageSection->ImageInformation.GpValue);
+    DbgPrint("    ImageCharacteristics = 0x%x\n",
+	     ImageSection->ImageInformation.ImageCharacteristics);
+    DbgPrint("    DllCharacteristics = 0x%x\n",
+	     ImageSection->ImageInformation.DllCharacteristics);
+    DbgPrint("    Machine = 0x%x\n",
+	     ImageSection->ImageInformation.Machine);
+    if (ImageSection->ImageInformation.ImageContainsCode) {
+	DbgPrint("    Image contains code\n");
+    } else {
+	DbgPrint("    Image does not contain code\n");
+    }
+    DbgPrint("    ImageFlags = 0x%x\n",
+	     ImageSection->ImageInformation.ImageFlags);
+    DbgPrint("    LoaderFlags = 0x%x\n",
+	     ImageSection->ImageInformation.LoaderFlags);
+    DbgPrint("    ImageFileSize = 0x%x\n",
+	     ImageSection->ImageInformation.ImageFileSize);
+    DbgPrint("    CheckSum = 0x%x\n",
+	     ImageSection->ImageInformation.CheckSum);
+    DbgPrint("    FileObject = %p\n", ImageSection->FileObject);
+    IoDbgDumpFileObject(ImageSection->FileObject);
+    LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
+	MiDbgDumpSubSection(SubSection);
+    }
+}
+
+static VOID MiDbgDumpDataSectionObject(IN PDATA_SECTION_OBJECT DataSection)
+{
+    DbgPrint("Dumping data section object %p\n", DataSection);
+    if (DataSection == NULL) {
+	DbgPrint("    (nil)\n");
+	return;
+    }
+    DbgPrint("    UNIMPLEMENTED\n");
+}
+
+VOID MmDbgDumpSection(PSECTION Section)
+{
+    DbgPrint("Dumping section %p\n", Section);
+    if (Section == NULL) {
+	DbgPrint("    (nil)\n");
+    }
+    DbgPrint("    Flags: %s%s%s%s%s%s\n",
+	     Section->Flags.Image ? " image" : "",
+	     Section->Flags.Based? " based" : "",
+	     Section->Flags.File ? " file" : "",
+	     Section->Flags.PhysicalMemory ? " physical-memory" : "",
+	     Section->Flags.Reserve ? " reserve" : "",
+	     Section->Flags.Commit ? " commit" : "");
+    if (Section->Flags.Image) {
+	MiDbgDumpImageSectionObject(Section->ImageSectionObject);
+    } else {
+	MiDbgDumpDataSectionObject(Section->DataSectionObject);
+    }
 }

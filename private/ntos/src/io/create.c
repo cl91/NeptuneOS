@@ -34,3 +34,18 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
     *pFile = File;
     return STATUS_SUCCESS;
 }
+
+VOID IoDbgDumpFileObject(IN PFILE_OBJECT File)
+{
+    DbgPrint("Dumping file object %p\n", File);
+    if (File == NULL) {
+	DbgPrint("    (nil)\n");
+	return;
+    }
+    DbgPrint("    DeviceObject = %p\n", File->DeviceObject);
+    DbgPrint("    FileName = %s\n", File->FileName);
+    DbgPrint("    ImageSectionObject = %p\n", File->SectionObject.ImageSectionObject);
+    DbgPrint("    DataSectionObject = %p\n", File->SectionObject.DataSectionObject);
+    DbgPrint("    BufferPtr = %p\n", (PVOID) File->BufferPtr);
+    DbgPrint("    Size = 0x%zx\n", File->Size);
+}

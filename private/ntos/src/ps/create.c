@@ -132,6 +132,7 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
 			    &Section));
     assert(Section != NULL);
     Process->ImageSection = Section;
+    MmDbgDumpSection(Process->ImageSection);
 
     *pProcess = Process;
     return STATUS_SUCCESS;
