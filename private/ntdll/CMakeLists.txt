@@ -9,17 +9,13 @@ add_compile_options(
     -nostdinc
     -fno-pic
     -fno-pie
-    -fno-stack-protector
-    -fno-asynchronous-unwind-tables
-    -ftls-model=local-exec
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
 )
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -fno-asynchronous-unwind-tables -ftls-model=local-exec")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
-set(
-    CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple"
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple"
 )
 
 set(KernelPlatform "pc99")
@@ -42,9 +38,6 @@ file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/
 add_executable(ntdll ${SRC})
 add_dependencies(ntdll rtl)
 target_link_libraries(ntdll PRIVATE rtl)
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
-set(CMAKE_C_STANDARD 11)
 
 set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-subsystem:native -Wl,-safeseh:no -Wl,-entry:LdrInitializeThunk ")
 

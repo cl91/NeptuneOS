@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.12.0)
 
 project(rtl C)
 
-file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/*/${Arch}/*.c)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/*/${Arch}/*.S)
 add_library(rtl STATIC ${SRC})
 target_include_directories(
     rtl

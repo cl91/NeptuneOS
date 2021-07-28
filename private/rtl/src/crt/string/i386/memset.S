@@ -1,5 +1,11 @@
+#ifdef _MSC_VER
+#define memset _memset
+#endif
+
 .global memset
+#ifndef _MSC_VER
 .type memset,@function
+#endif
 memset:
 	mov 12(%esp),%ecx
 	cmp $62,%ecx

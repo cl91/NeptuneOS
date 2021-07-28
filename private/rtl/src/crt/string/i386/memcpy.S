@@ -1,8 +1,16 @@
-.global memcpy
+#ifdef _MSC_VER
+#define MEMCPY _memcpy
+#else
+#define MEMCPY memcpy
+#endif
+
+.global MEMCPY
 .global __memcpy_fwd
+#ifndef _MSC_VER
 .hidden __memcpy_fwd
-.type memcpy,@function
-memcpy:
+.type MEMCPY,@function
+#endif
+MEMCPY:
 __memcpy_fwd:
 	push %esi
 	push %edi
