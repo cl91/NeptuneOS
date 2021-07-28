@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef _NTIMAGE_
 #define _NTIMAGE_
 
@@ -291,7 +293,7 @@ typedef struct _IMAGE_DATA_DIRECTORY {
 //
 // Optional Header Formats
 //
-typedef struct _IMAGE_OPTIONAL_HEADER {
+typedef struct _IMAGE_OPTIONAL_HEADER32 {
   USHORT Magic;
   UCHAR MajorLinkerVersion;
   UCHAR MinorLinkerVersion;
@@ -400,7 +402,7 @@ typedef struct _IMAGE_NT_HEADERS64 {
   IMAGE_OPTIONAL_HEADER64 OptionalHeader;
 } IMAGE_NT_HEADERS64;
 
-typedef struct _IMAGE_NT_HEADERS {
+typedef struct _IMAGE_NT_HEADERS32 {
   ULONG Signature;
   IMAGE_FILE_HEADER FileHeader;
   IMAGE_OPTIONAL_HEADER32 OptionalHeader;
@@ -414,7 +416,7 @@ typedef IMAGE_NT_HEADERS32                  IMAGE_NT_HEADERS;
 
 #ifndef _NTDDK_
 
-typedef struct _IMAGE_NT_HEADERS *PIMAGE_NT_HEADERS32;
+typedef struct _IMAGE_NT_HEADERS32 *PIMAGE_NT_HEADERS32;
 typedef struct _IMAGE_NT_HEADERS64 *PIMAGE_NT_HEADERS64;
 
 #ifdef _WIN64

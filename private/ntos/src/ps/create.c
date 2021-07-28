@@ -59,6 +59,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object)
 	       });
 
     Process->InitThread = NULL;
+    Process->ImageSection = NULL;
     InitializeListHead(&Process->ThreadList);
     MmInitializeVaddrSpace(&Process->VaddrSpace, VspaceCap);
 
@@ -75,31 +76,63 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object)
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread)
 {
-    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) pThread));
+    assert(Process);
+
+    if (Process->ImageSection == NULL) {
+	return STATUS_NTOS_UNIMPLEMENTED;
+    }
+
+    if (!Process->ImageSection->Flags.Image) {
+	return STATUS_NTOS_BUG;
+    }
+
+    if (Process->ImageSection->ImageSectionObject == NULL) {
+	return STATUS_NTOS_BUG;
+    }
+
+    PTHREAD Thread = NULL;
+    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread));
 
     RET_ERR_EX(MmAllocatePrivateMemoryEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
 					 PAGE_SIZE, MEM_COMMIT | MEM_RESERVE,
 					 PAGE_READWRITE),
-	       ObDereferenceObject(*pThread));
+	       ObDereferenceObject(Thread));
     PPAGING_STRUCTURE IpcBuffer = NULL;
     RET_ERR_EX(MmQueryVirtualAddress(&Process->VaddrSpace, IPC_BUFFER_VADDR, &IpcBuffer),
 	       return STATUS_NTOS_BUG); /* Should never fail. */
     assert(IpcBuffer != NULL);
-    (*pThread)->IpcBuffer = IpcBuffer;
+    Thread->IpcBuffer = IpcBuffer;
 
-    RET_ERR_EX(PspConfigureThread((*pThread)->TcbCap,
+    RET_ERR_EX(PspConfigureThread(Thread->TcbCap,
 				  0, /* TODO: Fault handler */
 				  Process->CNode,
 				  &Process->VaddrSpace,
 				  IpcBuffer),
-	       ObDereferenceObject(*pThread));
+	       ObDereferenceObject(Thread));
 
+    RET_ERR_EX(MmMapViewOfSection(&Process->VaddrSpace, Process->ImageSection, 
+				  NULL, NULL, NULL),
+	       ObDereferenceObject(Thread));
+
+    *pThread = Thread;
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PsCreateProcess(OUT PPROCESS *pProcess)
+NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
+			 OUT PPROCESS *pProcess)
 {
-    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) pProcess));
+    assert(ImageFile != NULL);
+    assert(pProcess != NULL);
 
+    PPROCESS Process = NULL;
+    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process));
+
+    PSECTION Section = NULL;
+    RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+			    &Section));
+    assert(Section != NULL);
+    Process->ImageSection = Section;
+
+    *pProcess = Process;
     return STATUS_SUCCESS;
 }

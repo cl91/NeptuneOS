@@ -7,4 +7,5 @@
 #include <ntstatus.h>
 #include <ntseapi.h>
 #include <ntmmapi.h>
+#include <ntimage.h>
 #include <nosal.h>

@@ -166,6 +166,8 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 static VOID EiFreePool(IN PEX_POOL Pool,
 		       IN PVOID Ptr)
 {
+    assert(Pool != NULL);
+    assert(Ptr != NULL);
     /* TODO: Implement */
 }
 

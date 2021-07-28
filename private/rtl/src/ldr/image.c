@@ -114,7 +114,8 @@ LdrVerifyMappedImageMatchesChecksum(
     CalcSum += ImageSize;
 
     if (CalcSum != HeaderSum)
-        DPRINT1("Image %p checksum mismatches! 0x%x != 0x%x, ImageSize %x, FileLen %x\n", BaseAddress, CalcSum, HeaderSum, ImageSize, FileLength);
+        DPRINT1("Image %p checksum mismatches! 0x%x != 0x%x, ImageSize %x, FileLen %x\n",
+		BaseAddress, CalcSum, HeaderSum, ImageSize, FileLength);
 
     return (BOOLEAN)(CalcSum == HeaderSum);
 #else
@@ -123,7 +124,7 @@ LdrVerifyMappedImageMatchesChecksum(
      * and other system code when normally on Windows they would not, since
      * we do not write the checksum in them.
      * Our compilers should be made to write out the checksum and this function
-     * should be enabled as to reject badly checksummed code.
+     * should be enabled as to reject badly check-summed code.
      */
     return TRUE;
 #endif
@@ -480,14 +481,18 @@ LdrRelocateImageWithBias(
         return Success;
     }
 
-    Delta = (ULONG_PTR)BaseAddress - SWAPD(NtHeaders->OptionalHeader.ImageBase) + AdditionalBias;
-    RelocationDir = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)BaseAddress + SWAPD(RelocationDDir->VirtualAddress));
-    RelocationEnd = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)RelocationDir + SWAPD(RelocationDDir->Size));
+    Delta = (ULONG_PTR)BaseAddress - SWAPD(NtHeaders->OptionalHeader.ImageBase)
+	+ AdditionalBias;
+    RelocationDir = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)BaseAddress
+					     + SWAPD(RelocationDDir->VirtualAddress));
+    RelocationEnd = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)RelocationDir
+					     + SWAPD(RelocationDDir->Size));
 
     while (RelocationDir < RelocationEnd &&
             SWAPW(RelocationDir->SizeOfBlock) > 0)
     {
-        Count = (SWAPW(RelocationDir->SizeOfBlock) - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
+        Count = (SWAPW(RelocationDir->SizeOfBlock)
+		 - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
         Address = (ULONG_PTR)RVA(BaseAddress, SWAPD(RelocationDir->VirtualAddress));
         TypeOffset = (PUSHORT)(RelocationDir + 1);
 

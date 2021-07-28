@@ -30,3 +30,38 @@
 #define SEC_NOCACHE		(0x10000000UL)
 #define SEC_GLOBAL		(0x20000000UL)
 #define SEC_LARGE_PAGES		(0x80000000UL)
+
+typedef struct _SECTION_IMAGE_INFORMATION {
+    PVOID TransferAddress;
+    ULONG ZeroBits;
+    SIZE_T MaximumStackSize;
+    SIZE_T CommittedStackSize;
+    ULONG SubSystemType;
+    union
+    {
+        struct
+        {
+            USHORT SubSystemMinorVersion;
+            USHORT SubSystemMajorVersion;
+        };
+        ULONG SubSystemVersion;
+    };
+    ULONG GpValue;
+    USHORT ImageCharacteristics;
+    USHORT DllCharacteristics;
+    USHORT Machine;
+    BOOLEAN ImageContainsCode;
+    union {
+	struct {
+	    UCHAR ComPlusNativeReady:1;
+	    UCHAR ComPlusILOnly:1;
+	    UCHAR ImageDynamicallyRelocated:1;
+	    UCHAR ImageMappedFlat:1;
+	    UCHAR Reserved:4;
+	};
+	UCHAR ImageFlags;
+    };			   /* Added in longhorn, was BOOLEAN Spare1 */
+    ULONG LoaderFlags;
+    ULONG ImageFileSize;
+    ULONG CheckSum;	/* Added in longhorn, was ULONG Reserved[1] */
+} SECTION_IMAGE_INFORMATION, *PSECTION_IMAGE_INFORMATION;

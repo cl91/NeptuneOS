@@ -67,7 +67,18 @@ typedef uintptr_t ULONG_PTR;
 typedef intptr_t LONG_PTR;
 typedef ULONG_PTR SIZE_T;
 
-#define MAXUSHORT (0xffff)
+typedef int64_t LONG64, *PLONG64;
+typedef int64_t INT64,  *PINT64;
+typedef uint64_t ULONG64, *PULONG64;
+typedef uint64_t DWORD64, *PDWORD64;
+typedef uint64_t UINT64,  *PUINT64;
+
+#define MAXUSHORT	(0xffff)
+#define MAXULONG_PTR	(~((ULONG_PTR)0))
+#define MAXLONG_PTR	((LONG_PTR)(MAXULONG_PTR >> 1))
+#define MINLONG_PTR	(~MAXLONG_PTR)
+#define MAXLONGLONG	(0x7fffffffffffffffLL)
+#define MAXULONG	(0xffffffffUL)
 
 typedef PVOID HANDLE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
@@ -205,3 +216,41 @@ typedef struct _OBJECT_ATTRIBUTES {
     PVOID SecurityDescriptor;
     PVOID SecurityQualityOfService;
 } OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
+
+/*
+ * Returns the byte offset of a field in a structure of the given type.
+ */
+#define FIELD_OFFSET(Type, Field)    ((LONG)(LONG_PTR)&(((Type *)0)->Field))
+
+/*
+ * Returns the size of a field in a structure of the given type.
+ */
+#define RTL_FIELD_SIZE(Type, Field) (sizeof(((Type *)0)->Field))
+
+/*
+ * Returns the size of a structure of given type up through and including the given field.
+ */
+#define RTL_SIZEOF_THROUGH_FIELD(Type, Field)			\
+    (FIELD_OFFSET(Type, Field) + RTL_FIELD_SIZE(Type, Field))
+
+/*
+ * Returns TRUE if the Field offset of a given Struct does not exceed Size
+ */
+#define RTL_CONTAINS_FIELD(Struct, Size, Field)				\
+    ((((PCHAR)(&(Struct)->Field)) + sizeof((Struct)->Field)) <= (((PCHAR)(Struct))+(Size)))
+
+/*
+ * Alignment macros
+ */
+#define ALIGN_DOWN_BY(addr, align)			\
+    ((ULONG_PTR)(addr) & ~((ULONG_PTR)(align) - 1))
+
+#define ALIGN_UP_BY(addr, align)				\
+    (ALIGN_DOWN_BY(((ULONG_PTR)(addr) + (align) - 1), (align)))
+
+#define ALIGN_DOWN_POINTER_BY(ptr, align)	((PVOID)ALIGN_DOWN_BY((ptr), (align)))
+#define ALIGN_UP_POINTER_BY(ptr, align)		((PVOID)ALIGN_UP_BY((ptr), (align)))
+#define ALIGN_DOWN(addr, type)			ALIGN_DOWN_BY((addr), sizeof(type))
+#define ALIGN_UP(addr, type)			ALIGN_UP_BY((addr), sizeof(type))
+#define ALIGN_DOWN_POINTER(ptr, type)		ALIGN_DOWN_POINTER_BY((ptr), sizeof(type))
+#define ALIGN_UP_POINTER(ptr, type)		ALIGN_UP_POINTER_BY((ptr), sizeof(type))

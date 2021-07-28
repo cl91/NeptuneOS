@@ -26,11 +26,11 @@ typedef seL4_Word MWORD;
 #define STATUS_NTOS_UNIMPLEMENTED		NTOS_ERROR(1)
 
 #define RET_ERR_EX(Expr, OnError)					\
-    {NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) {			\
+    {NTSTATUS __tmp_rete = (Expr); if (!NT_SUCCESS(__tmp_rete)) {	\
 	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
 		     " error 0x%x\n",					\
-		     #Expr, __func__, __FILE__, __LINE__, Error);	\
-	    {OnError;} return Error; }}
+		     #Expr, __func__, __FILE__, __LINE__, __tmp_rete);	\
+	    {OnError;} return __tmp_rete; }}
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
     Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
@@ -71,3 +71,8 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
     for (Type *Entry = CONTAINING_RECORD((ListHead)->Blink, Type, Field); \
     &(Entry)->Field != (ListHead);					\
     Entry = CONTAINING_RECORD((Entry)->Field.Blink, Type, Field))
+
+/*
+ * Additional alignment macros
+ */
+#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, type))

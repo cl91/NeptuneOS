@@ -2,6 +2,8 @@
 
 #include <nt.h>
 
-VOID DbgPrint(PCSTR Format, ...);
+VOID DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
-#define DPRINT1 DbgPrint
+#define DbgTrace(...) { DbgPrint("%s:  ", __func__); DbgPrint(__VA_ARGS__); }
+
+#define DPRINT1 DbgTrace

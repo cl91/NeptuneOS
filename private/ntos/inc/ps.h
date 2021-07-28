@@ -22,6 +22,7 @@ typedef struct _PROCESS {
     LIST_ENTRY ThreadList;
     PCNODE CNode;
     VIRT_ADDR_SPACE VaddrSpace;	/* Virtual address space */
+    PSECTION ImageSection;
 } PROCESS, *PPROCESS;
 
 /* init.c */
@@ -30,4 +31,5 @@ NTSTATUS PsInitSystem();
 /* create.c */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread);
-NTSTATUS PsCreateProcess(OUT PPROCESS *pProcess);
+NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
+			 OUT PPROCESS *pProcess);

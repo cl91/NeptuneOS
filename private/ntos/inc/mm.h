@@ -249,8 +249,7 @@ typedef PULONG PWIN32_PROTECTION_MASK;
  *
  * This can represent both the root task's virtual address space
  * as well as client processes' virtual address spaces. For the
- * root task the Vad tree contains exactly one node, spanning the
- * entire virtual address space.
+ * root task the Vad tree is not used.
  */
 typedef struct _VIRT_ADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
@@ -287,51 +286,67 @@ typedef enum _MM_MEM_PRESSURE {
 /*
  * Section object.
  *
- * A SECTION object describes the in-memory mapping of a FILE, which is recorded
- * in the SEGMENT object that the section object points to. The SECTION object
+ * A SECTION object describes the in-memory mapping of a FILE. The SECTION object
  * is managed by the object manager and exposed to the client processes (via an
- * instance handle), while the SEGMENT object is never exposed to the clients.
+ * instance handle). It is essentially a pointer into the actual IMAGE_SECTION_OBJECT
+ * struct or DATA_SECTION_OBJECT struct. Since multiple SECTION objects can point
+ * to the same FILE which can be mapped as image or data, the FILE_OBJECT contains
+ * pointers to both IMAGE_SECTION_OBJECT and DATA_SECTION_OBJECT.
  *
- * Multiple SECTION objects can point to the same FILE. In this case they point
- * to the same SEGMENT object.
- *
- * All memory addresses are aligned with the 4K page boundary.
+ * Note the nomenclatures here are somewhat different from ELF/PE object format
+ * and may be confusing. A PE file can have multiple sections (.text, .data, etc)
+ * which are loaded into memory according to its image headers (including the
+ * section headers). During loading NTOS will create a SECTION object for the
+ * PE file, which will simply be a pointer to an IMAGE_SECTION_OBJECT struct,
+ * that contains multiple SUBSECTIONS each of which corresponds to a section
+ * of the PE image file (plus one additional SUBSECTION for the PE image header).
  */
 typedef union _MMSECTION_FLAGS {
     struct {
-	MWORD Image : 1;
-	MWORD Based : 1;
-	MWORD File : 1;
-	MWORD PhysicalMemory : 1;
-	MWORD CopyOnWrite : 1;
-	MWORD Reserve : 1;
-	MWORD Commit : 1;
+	ULONG Image : 1;
+	ULONG Based : 1;
+	ULONG File : 1;
+	ULONG PhysicalMemory : 1;
+	ULONG Reserve : 1;
+	ULONG Commit : 1;
     };
-    MWORD Word;
+    ULONG Word;
 } MMSECTION_FLAGS;
 
 typedef struct _SECTION {
     MM_AVL_NODE BasedSectionNode; /* All SEC_BASED Sections are organized in an AVL tree */
+    union {
+	struct _IMAGE_SECTION_OBJECT *ImageSectionObject;
+	struct _DATA_SECTION_OBJECT *DataSectionObject;
+    };
     MMSECTION_FLAGS Flags;
-    struct _SEGMENT *Segment;
 } SECTION, *PSECTION;
 
-typedef struct _SEGMENT {
-    MWORD Size;
+typedef struct _IMAGE_SECTION_OBJECT {
     LIST_ENTRY SubSectionList;
-    LONG NumberOfSubSections;
+    LONG NumSubSections;
     struct _FILE_OBJECT *FileObject;
-} SEGMENT, *PSEGMENT;
+    MWORD ImageBase;
+    SECTION_IMAGE_INFORMATION ImageInformation;
+} IMAGE_SECTION_OBJECT, *PIMAGE_SECTION_OBJECT;
+
+typedef struct _DATA_SECTION_OBJECT {
+    MWORD SectionSize;
+    struct _FILE_OBJECT *FileObject;
+} DATA_SECTION_OBJECT, *PDATA_SECTION_OBJECT;
 
 /*
  * A subsection is a window of contiguous pages within a section. All
- * subsections that belong to a segment are linked in its SubSectionList.
+ * subsections that belong to a section are linked in its SubSectionList.
  */
 typedef struct _SUBSECTION {
-    PSEGMENT Section;	  /* Segment that this subsection belong to */
-    LIST_ENTRY Link; /* Link for the owning segment's SubSectionList */
-    MWORD Base;	/* Offset from the start of the segment, 4K page aligned */
-    MWORD Size;	/* Size of the subsection, 4K page aligned */
+    PIMAGE_SECTION_OBJECT ImageSection;	/* Image section that this subsection belong to */
+    LIST_ENTRY Link; /* Link for the owning image section's SubSectionList */
+    ULONG SubSectionSize; /* Size of the subsection in memory, 4K aligned. */
+    ULONG FileOffset; /* Offset from the start of the file, file aligned */
+    ULONG RawDataSize;   /* Size of the subsection, file aligned */
+    ULONG SubSectionBase; /* relative to the start of the owning section, 4K aligned */
+    ULONG Characteristics;	/* characteristics field in the PE image section table */
 } SUBSECTION, *PSUBSECTION;
 
 /*
@@ -400,6 +415,16 @@ static inline NTSTATUS MmCommitIoPage(IN MWORD PhyAddr,
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmCommitIoPageEx(&MiNtosVaddrSpace, PhyAddr, VirtAddr, MM_RIGHTS_RW, NULL);
 }
+
+/* section.c */
+NTSTATUS MmCreateSection(IN struct _FILE_OBJECT *FileObject,
+			 IN MWORD Attribute,
+			 OUT PSECTION *SectionObject);
+NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
+			    IN PSECTION Section,
+			    IN OUT MWORD *BaseAddress,
+			    IN OUT MWORD *SectionOffset,
+			    IN OUT MWORD *ViewSize);
 
 /* vaddr.c */
 VOID MmInitializeVaddrSpace(IN PVIRT_ADDR_SPACE VaddrSpace,

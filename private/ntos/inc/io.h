@@ -7,8 +7,8 @@ typedef struct _DEVICE_OBJECT {
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
 
 typedef struct _SECTION_OBJECT_POINTERS {
-    PSEGMENT DataSectionObject;
-    PSEGMENT ImageSectionObject;
+    PDATA_SECTION_OBJECT DataSectionObject;
+    PIMAGE_SECTION_OBJECT ImageSectionObject;
 } SECTION_OBJECT_POINTERS;
 
 typedef struct _FILE_OBJECT {

@@ -409,6 +409,11 @@ NTSTATUS MiCommitPrivateMemory(IN PVIRT_ADDR_SPACE VaddrSpace,
 	     (PVOID) VirtAddr, (PVOID)(VirtAddr+Size), VaddrSpace->VSpaceCap);
     assert(IS_PAGE_ALIGNED(VirtAddr));
     assert(IS_PAGE_ALIGNED(Size));
+
+    if (VirtAddr + Size < VirtAddr) {
+	/* Integer overflow */
+	return STATUS_INVALID_PARAMETER;
+    }
  
     PPAGING_STRUCTURE SuperStructure = NULL;
     MWORD CurVaddr = VirtAddr;
