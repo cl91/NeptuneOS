@@ -181,7 +181,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
  * Delete the specified, dynamically allocated CNode. The initial root task
  * CNode is not dynamically allocated and should never be deleted.
  */
-NTSTATUS MmDeleteCNode(PCNODE CNode)
+NTSTATUS MmDeleteCNode(IN PCNODE CNode)
 {
     if (CNode->TreeNode.Parent != NULL) {
 	if (CNode->TreeNode.Type != CAP_TREE_NODE_UNTYPED) {
@@ -203,5 +203,23 @@ NTSTATUS MmDeleteCNode(PCNODE CNode)
     ExFreePool(CNode->UsedMap);
     ExFreePool(CNode);
 
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Copy a capability into a new slot in the root task's CSpace, setting
+ * the access rights of the new capability
+ */
+NTSTATUS MiCopyCap(IN MWORD Dest,
+		   IN MWORD Src,
+		   IN seL4_CapRights_t NewRights)
+{
+    int Error = seL4_CNode_Copy(ROOT_CNODE_CAP, Dest, 0,
+				ROOT_CNODE_CAP, Src, 0,
+				NewRights);
+
+    if (Error != 0) {
+	return SEL4_ERROR(Error);
+    }
     return STATUS_SUCCESS;
 }

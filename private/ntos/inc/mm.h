@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nt.h>
+#include <string.h>
 #include "ntosdef.h"
 
 #define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
@@ -120,6 +121,8 @@ typedef struct _MM_AVL_NODE {
     LIST_ENTRY ListEntry; /* all node ordered linearly according to key */
 } MM_AVL_NODE, *PMM_AVL_NODE;
 
+#define LIST_ENTRY_TO_MM_AVL_NODE(Entry)	CONTAINING_RECORD(Entry, MM_AVL_NODE, ListEntry)
+
 /*
  * AVL tree ordered by the key of the tree node
  */
@@ -151,27 +154,45 @@ typedef struct _UNTYPED {
 /*
  * Virtual address descriptor
  *
- * This data structure is used for keeping track of the client
- * process's request to reserve virtual address space. The memory
- * manager's internal routines do not rely on this information
+ * A virtual address descriptor describes a contiguous region of pages within
+ * the client process's virtual address space, that have the same access rights,
+ * attributes, and commit status, and that belong to the same section (and sub-
+ * section). When the user request to partially commit a reserved address window,
+ * we will split the original VAD into regions that have the same commit status.
+ * Therefore, a single VAD is always either fully committed, or not committed at all.
+ *
+ * Note that the memory manager's internal routines do not rely on this information
  * to map or unmap a paging structure.
  */
 typedef union _MMVAD_FLAGS {
     struct {
-	MWORD PrivateMemory : 1; /* Section pointer is null */
-	MWORD ImageMap : 1;
-	MWORD LargePages : 1;
-	MWORD MemCommit: 1;
-	MWORD PhysicalMapping : 1;
+	ULONG LargePages : 1; /* Use large pages when possible */
+	ULONG ReadOnly : 1;   /* Otherwise page is mapped ReadWrite */
+	ULONG Committed: 1;   /* True if all pages are mapped */
+	ULONG PrivateMemory : 1; /* True if pages are not shared with any other VSpace */
+	ULONG ImageMap : 1;	 /* Node is a subsection of an image section */
+	ULONG FileMap : 1;	 /* Node is a view of a file section */
+	ULONG PhysicalMapping : 1;
     };
-    MWORD Word;
+    ULONG Word;
 } MMVAD_FLAGS;
 
 typedef struct _MMVAD {
-    MM_AVL_NODE AvlNode;	/* must be first entry */
-    MMVAD_FLAGS Flags;
+    MM_AVL_NODE AvlNode;	/* starting virtual address of the node, 4K aligned */
+    struct _VIRT_ADDR_SPACE *VSpace;
     MWORD WindowSize;		/* rounded up to 4K page boundary */
-    struct _SECTION *Section;
+    MMVAD_FLAGS Flags;
+    union {
+	struct {
+	    struct _SECTION *Section;
+	    MWORD SectionOffset; /* rounded down to 4K page boundary */
+	} DataSectionView;
+	struct {
+	    struct _SUBSECTION *SubSection;
+	    LONG NumPrivatePages;
+	    struct _PAGING_STRUCTURE **PrivatePages;
+	} ImageSectionView;
+    };
 } MMVAD, *PMMVAD;
 
 #define MM_AVL_NODE_TO_VAD(Node)					\
@@ -240,6 +261,13 @@ typedef struct _PAGING_STRUCTURE {
     ((Node) != NULL ? CONTAINING_RECORD(Node, PAGING_STRUCTURE, AvlNode) : NULL)
 
 #define MM_RIGHTS_RW	(seL4_ReadWrite)
+#define MM_RIGHTS_RO	(seL4_CanRead)
+
+static inline BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
+					     IN PAGING_RIGHTS Right)
+{
+    return memcmp(&Left, &Right, sizeof(PAGING_RIGHTS)) == 0;
+}
 
 typedef ULONG WIN32_PROTECTION_MASK;
 typedef PULONG PWIN32_PROTECTION_MASK;

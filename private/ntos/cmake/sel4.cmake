@@ -10,7 +10,10 @@ set(KernelFastpath ON CACHE BOOL "")
 if((${CMAKE_BUILD_TYPE} STREQUAL "Debug"))
     set(KernelDebugBuild ON CACHE BOOL "")
     set(KernelPrinting ON CACHE BOOL "")
-    set(KernelInvocationReportErrorIPC ON CACHE BOOL "")
+    # This redirects kernel invocation errors to the IPC buffer. We
+    # don't want this. The kernel invocation error messages will be
+    # displayed on the serial console.
+    set(KernelInvocationReportErrorIPC OFF CACHE BOOL "")
 else()
     set(KernelDebugBuild OFF CACHE BOOL "")
     set(KernelPrinting OFF CACHE BOOL "")

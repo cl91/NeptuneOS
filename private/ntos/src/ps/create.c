@@ -23,6 +23,7 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object)
 {
     PTHREAD Thread = (PTHREAD) Object;
+    memset(Thread, 0, sizeof(THREAD));
 
     PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
@@ -73,6 +74,68 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object)
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS PspLoadThreadContext(IN PTHREAD Thread)
+{
+    assert(Thread != NULL);
+    int Error = seL4_TCB_ReadRegisters(Thread->TcbCap, 0, 0,
+				       sizeof(THREAD_CONTEXT) / sizeof(MWORD),
+				       &Thread->Context);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_ReadRegisters failed for thread cap 0x%zx with error %zd\n",
+		 Thread->TcbCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspSetThreadContext(IN PTHREAD Thread)
+{
+    assert(Thread != NULL);
+    int Error = seL4_TCB_WriteRegisters(Thread->TcbCap, 0, 0,
+					sizeof(THREAD_CONTEXT) / sizeof(MWORD),
+					&Thread->Context);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_WriteRegisters failed for thread cap 0x%zx with error %zd\n",
+		 Thread->TcbCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspSetThreadPriority(IN PTHREAD Thread,
+				     IN THREAD_PRIORITY Priority)
+{
+    assert(Thread != NULL);
+    int Error = seL4_TCB_SetPriority(Thread->TcbCap, ROOT_TCB_CAP, Priority);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %zd\n",
+		 Thread->TcbCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    Thread->CurrentPriority = Priority;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspResumeThread(IN PTHREAD Thread)
+{
+    assert(Thread != NULL);
+    int Error = seL4_TCB_Resume(Thread->TcbCap);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_Resume failed for thread cap 0x%zx with error %zd\n",
+		 Thread->TcbCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread)
 {
@@ -113,6 +176,24 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     RET_ERR_EX(MmMapViewOfSection(&Process->VaddrSpace, Process->ImageSection, 
 				  NULL, NULL, NULL),
 	       ObDereferenceObject(Thread));
+
+    ULONG StackCommitSize = Process->ImageSection->ImageSectionObject->ImageInformation.CommittedStackSize;
+    if (StackCommitSize > (THREAD_STACK_END - THREAD_STACK_START)) {
+	StackCommitSize = THREAD_STACK_END - THREAD_STACK_START;
+    }
+    RET_ERR_EX(MmAllocatePrivateMemoryEx(&Process->VaddrSpace, THREAD_STACK_END - StackCommitSize,
+					 StackCommitSize,
+					 MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES, PAGE_READWRITE),
+	       ObDereferenceObject(Thread));
+
+    RET_ERR_EX(PspLoadThreadContext(Thread), ObDereferenceObject(Thread));
+    Thread->Context.eip = (MWORD) Process->ImageSection->ImageSectionObject->ImageInformation.TransferAddress;
+    Thread->Context.esp = THREAD_STACK_END;
+    Thread->Context.ebp = THREAD_STACK_END;
+
+    RET_ERR_EX(PspSetThreadContext(Thread), ObDereferenceObject(Thread));
+    RET_ERR_EX(PspSetThreadPriority(Thread, seL4_MaxPrio), ObDereferenceObject(Thread));
+    RET_ERR_EX(PspResumeThread(Thread), ObDereferenceObject(Thread));
 
     *pThread = Thread;
     return STATUS_SUCCESS;

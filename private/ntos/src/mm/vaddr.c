@@ -89,11 +89,18 @@ static PMMVAD MiVSpaceFindOverlappingVadNode(IN PVIRT_ADDR_SPACE VSpace,
     return NULL;
 }
 
+/*
+ * Create a VAD of given address window and insert into the virtual address
+ * space's VAD tree, optionally returning the pointer to the newly created
+ * VAD.
+ */
 NTSTATUS MiReserveVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
 				IN MWORD VirtAddr,
 				IN MWORD WindowSize,
-				IN MWORD Attribute)
+				IN MMVAD_FLAGS Flags,
+				OUT OPTIONAL PMMVAD *pVad)
 {
+    assert(VSpace != NULL);
     assert(IS_PAGE_ALIGNED(VirtAddr));
     assert(IS_PAGE_ALIGNED(WindowSize));
     if (MiVSpaceFindOverlappingVadNode(VSpace, VirtAddr, WindowSize) != NULL) {
@@ -101,11 +108,36 @@ NTSTATUS MiReserveVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     MiAllocatePool(Vad, MMVAD);
-    MiInitializeVadNode(Vad, VirtAddr, WindowSize);
-    if (Attribute & MEM_PRIVATE) {
-	Vad->Flags.PrivateMemory = TRUE;
-    }
+    MiInitializeVadNode(Vad, VSpace, VirtAddr, WindowSize, Flags);
     MiVSpaceInsertVadNode(VSpace, Vad);
+
+    if (pVad != NULL) {
+	*pVad = Vad;
+    }
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Reserve an address window in the given virtual address space for a subsection
+ * of an image section object, optionally returning the Vad pointer.
+ */
+NTSTATUS MiReserveImageVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
+				     IN MWORD BaseAddress,
+				     IN PSUBSECTION SubSection,
+				     OUT OPTIONAL PMMVAD *pVad)
+{
+    PMMVAD Vad = NULL;
+    MMVAD_FLAGS Flags;
+    Flags.Word = 0;
+    Flags.ImageMap = TRUE;
+    RET_ERR(MiReserveVirtualMemory(VSpace, BaseAddress + SubSection->SubSectionBase,
+				   SubSection->SubSectionSize, Flags, &Vad));
+    assert(Vad != NULL);
+    Vad->ImageSectionView.SubSection = SubSection;
+
+    if (pVad != NULL) {
+	*pVad = Vad;
+    }
     return STATUS_SUCCESS;
 }
 
@@ -138,7 +170,10 @@ NTSTATUS MmAllocatePrivateMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     if (AllocationType & MEM_RESERVE) {
-	RET_ERR(MiReserveVirtualMemory(VSpace, VirtAddr, WindowSize, MEM_PRIVATE));
+	MMVAD_FLAGS Flags;
+	Flags.Word = 0;
+	Flags.PrivateMemory = TRUE;
+	RET_ERR(MiReserveVirtualMemory(VSpace, VirtAddr, WindowSize, Flags, NULL));
     }
 
     if (AllocationType & MEM_COMMIT) {
@@ -147,12 +182,11 @@ NTSTATUS MmAllocatePrivateMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PARAMETER;
 	}
 	/* TODO: Split MMVAD when partially committing a VAD */
-	RET_ERR(MiCommitPrivateMemory(VSpace, VirtAddr, WindowSize, MM_RIGHTS_RW,
-				      AllocationType & MEM_LARGE_PAGES));
-	if (AllocationType & MEM_LARGE_PAGES) {
-	    Vad->Flags.LargePages = TRUE;
+	if ((Vad->AvlNode.Key != VirtAddr) || (Vad->WindowSize != WindowSize)) {
+	    return STATUS_NTOS_UNIMPLEMENTED;
 	}
-	Vad->Flags.MemCommit = TRUE;
+	Vad->Flags.LargePages = AllocationType & MEM_LARGE_PAGES;
+	RET_ERR(MiCommitVirtualMemory(Vad));
     }
 
     return STATUS_SUCCESS;
@@ -202,15 +236,20 @@ VOID MmDbgDumpVad(PMMVAD Vad)
     }
 
     DbgPrint("    vaddr start = %p  window size = 0x%zx\n"
-	     "    %s%s%s%s%s\n"
-	     "    section = %p\n",
+	     "    %s%s%s%s%s\n",
 	     (PVOID) Vad->AvlNode.Key, Vad->WindowSize,
 	     Vad->Flags.PrivateMemory ? "private memory" : "",
 	     Vad->Flags.ImageMap ? ", image map" : "",
 	     Vad->Flags.LargePages ? ", large pages" : "",
-	     Vad->Flags.MemCommit ? ", committed" : "",
-	     Vad->Flags.PhysicalMapping ? ", physical mapping" : "",
-	     Vad->Section);
+	     Vad->Flags.Committed ? ", committed" : "",
+	     Vad->Flags.PhysicalMapping ? ", physical mapping" : "");
+    if (Vad->Flags.ImageMap) {
+	    DbgPrint("    subsection = %p\n", Vad->ImageSectionView.SubSection);
+    }
+    if (Vad->Flags.FileMap) {
+	DbgPrint("    section = %p\n", Vad->DataSectionView.Section);
+	DbgPrint("    section offset = %p\n", (PVOID) Vad->DataSectionView.SectionOffset);
+    }
 }
 
 VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace)

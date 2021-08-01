@@ -33,6 +33,20 @@ static VOID KiVgaWriteString(PCSTR String)
 
 VOID KiInitVga()
 {
+    /* TODO: Implement physical section and view mapping */
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    extern NTSTATUS MiReserveVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
+					   IN MWORD VirtAddr,
+					   IN MWORD WindowSize,
+					   IN MMVAD_FLAGS Flags,
+					   OUT OPTIONAL PMMVAD *pVad);
+    MMVAD_FLAGS Flags;
+    Flags.Word = 0;
+    Flags.PrivateMemory = TRUE;
+    Flags.Committed = TRUE;
+    Flags.PhysicalMapping = TRUE;
+    BUGCHECK_IF_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, VGA_VIDEO_PAGE_VADDR,
+					   PAGE_SIZE, Flags, NULL));
     BUGCHECK_IF_ERR(MmCommitIoPage(VGA_VIDEO_PAGE_PADDR, VGA_VIDEO_PAGE_VADDR));
     KiVgaClearScreen();
     KiVgaWriteString("Welcome!");

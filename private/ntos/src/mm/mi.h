@@ -135,16 +135,21 @@ static inline VOID MiAvlInitializeTree(PMM_AVL_TREE Tree)
     InitializeListHead(&Tree->NodeList);
 }
 
-static inline VOID MiInitializeVadNode(PMMVAD Node,
-				       MWORD StartVaddr,
-				       MWORD WindowSize)
+static inline VOID MiInitializeVadNode(IN PMMVAD Node,
+				       IN PVIRT_ADDR_SPACE VSpace,
+				       IN MWORD StartVaddr,
+				       IN MWORD WindowSize,
+				       IN MMVAD_FLAGS Flags)
 {
-    assert(IS_PAGE_ALIGNED(StartVaddr));
+    assert(Node != NULL);
+    assert(VSpace != NULL);
     assert(IS_PAGE_ALIGNED(WindowSize));
+    assert(IS_PAGE_ALIGNED(StartVaddr));
+    memset(Node, 0, sizeof(MMVAD));
     MiAvlInitializeNode(&Node->AvlNode, StartVaddr);
-    Node->Flags.Word = 0;
+    Node->VSpace = VSpace;
+    Node->Flags = Flags;
     Node->WindowSize = WindowSize;
-    Node->Section = NULL;
 }
 
 #define LoopOverVadTree(Vad, VSpace, Statement)				\
@@ -162,6 +167,11 @@ static inline VOID MiInitializeVadNode(PMMVAD Node,
 extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
 extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 extern CNODE MiNtosCNode;
+
+/* cap.c */
+NTSTATUS MiCopyCap(IN MWORD Dest,
+		   IN MWORD Src,
+		   IN seL4_CapRights_t NewRights);
 
 /* untyped.c */
 VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem);
@@ -190,6 +200,8 @@ PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 				       IN MWORD Key);
 VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 			 IN PMM_AVL_NODE Parent,
+			 IN PMM_AVL_NODE Node);
+VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
 			 IN PMM_AVL_NODE Node);
 
 /*
@@ -251,15 +263,14 @@ NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 IN MWORD VSpaceCap,
 				 IN PAGING_RIGHTS Rights,
 				 OUT PPAGING_STRUCTURE *pPaging);
+NTSTATUS MiMapSuperStructure(IN PPAGING_STRUCTURE Paging,
+			     IN PVIRT_ADDR_SPACE VSpace,
+			     OUT OPTIONAL PPAGING_STRUCTURE *pSuperStructure);
 NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
 PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
 					   IN MWORD VirtAddr);
-NTSTATUS MiCommitPrivateMemory(IN PVIRT_ADDR_SPACE VaddrSpace,
-			       IN MWORD VirtAddr,
-			       IN MWORD Size,
-			       IN PAGING_RIGHTS Rights,
-			       IN BOOLEAN UseLargePage);
+NTSTATUS MiCommitVirtualMemory(IN PMMVAD Vad);
 
 /* section.c */
 NTSTATUS MiSectionInitialization();
@@ -268,4 +279,9 @@ NTSTATUS MiSectionInitialization();
 NTSTATUS MiReserveVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
 				IN MWORD VirtAddr,
 				IN MWORD WindowSize,
-				IN MWORD Attribute);
+				IN MMVAD_FLAGS Flags,
+				OUT OPTIONAL PMMVAD *pVad);
+NTSTATUS MiReserveImageVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
+				     IN MWORD BaseAddress,
+				     IN PSUBSECTION SubSection,
+				     OUT OPTIONAL PMMVAD *pVad);

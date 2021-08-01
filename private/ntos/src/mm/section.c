@@ -18,10 +18,24 @@ NTSTATUS MiSectionInitialization()
 	.ParseProc = NULL,
 	.InsertProc = NULL,
     };
-    return ObCreateObjectType(OBJECT_TYPE_SECTION,
-			      "Section",
-			      sizeof(SECTION),
-			      TypeInfo);
+    RET_ERR(ObCreateObjectType(OBJECT_TYPE_SECTION,
+			       "Section",
+			       sizeof(SECTION),
+			       TypeInfo));
+
+    /* Create VADs for "hyperspace", which is used for mapping client process
+     * pages in the NTOS root task temporarily. The necessary super-structures
+     * at starting addresses for 4K page hyperspace and large page hyperspace
+     * will be mapped on-demand. */
+    MMVAD_FLAGS Flags;
+    Flags.Word = 0;
+    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, HYPERSPACE_4K_PAGE_START,
+				   LARGE_PAGE_SIZE, Flags, NULL));
+    Flags.LargePages = TRUE;
+    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, HYPERSPACE_LARGE_PAGE_START,
+				   LARGE_PAGE_SIZE, Flags, NULL));
+
+    return STATUS_SUCCESS;
 }
 
 static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSection,
@@ -348,7 +362,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
     /* The zeroth subsection of the image section is the image headers */
     SubSectionsArray[0]->SubSectionSize = ALIGN_UP_BY(AllHeadersSize, SectionAlignment);
-    memcpy(SubSectionsArray[0]->Name, "HEADERS", IMAGE_SIZEOF_SHORT_NAME);
+    memcpy(SubSectionsArray[0]->Name, "PEIMGHDR", IMAGE_SIZEOF_SHORT_NAME);
     SubSectionsArray[0]->Name[IMAGE_SIZEOF_SHORT_NAME] = '\0';
     SubSectionsArray[0]->FileOffset = 0;
     SubSectionsArray[0]->RawDataSize = AllHeadersSize;
@@ -455,13 +469,49 @@ NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
 }
 
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
-					IN PSECTION Section,
-					IN OUT OPTIONAL MWORD *BaseAddress,
-					IN OUT OPTIONAL MWORD *SectionOffset,
-					IN OUT OPTIONAL MWORD *ViewSize)
+					IN PIMAGE_SECTION_OBJECT ImageSection,
+					IN OUT OPTIONAL MWORD *pBaseAddress)
 {
     assert(VSpace != NULL);
-    assert(Section != NULL);
+    assert(ImageSection != NULL);
+    MWORD BaseAddress = ImageSection->ImageBase;
+
+    /* For each subsection of the image section object, create a VAD that points
+     * to the subsection, and commit the memory pages of that subsection. */
+    LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
+	PMMVAD Vad = NULL;
+	RET_ERR_EX(MiReserveImageVirtualMemory(VSpace, BaseAddress, SubSection, &Vad),
+		   {
+		       /* TODO: Clean up when error */
+		   });
+	assert(Vad != NULL);
+
+	/* For now we always map pages as private. In the future when we have
+	 * implemented the cache manager, pages can be shared between the cache
+	 * manager and the client processes. For this to happen the pages must
+	 * be mapped read-only and the start of the data buffer happens to fall
+	 * on page boundary.
+	 *
+	 * Of course, sections can be shared with other client processes. This is
+	 * also left as future work. */
+	Vad->Flags.PrivateMemory = TRUE;
+	Vad->Flags.ReadOnly = !(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE);
+	/* If PE data section is large enough, use large pages to save resources */
+	Vad->Flags.LargePages = Vad->Flags.PrivateMemory &&
+	    (SubSection->RawDataSize >= (LARGE_PAGE_SIZE - PAGE_SIZE));
+	RET_ERR_EX(MiCommitVirtualMemory(Vad),
+		   {
+		       /* TODO: Clean up when error */
+		   });
+    }
+
+    if (pBaseAddress != NULL) {
+	if (*pBaseAddress != 0) {
+	    BaseAddress = *pBaseAddress;
+	} else {
+	    *pBaseAddress = BaseAddress;
+	}
+    }
     return STATUS_SUCCESS;
 }
 
@@ -479,8 +529,13 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
     assert(VSpace != NULL);
     assert(Section != NULL);
     if (Section->Flags.Image) {
-	return MiMapViewOfImageSection(VSpace, Section, BaseAddress,
-				       SectionOffset, ViewSize);
+	if (SectionOffset != NULL) {
+	    return STATUS_INVALID_PARAMETER;
+	}
+	if (ViewSize != NULL) {
+	    return STATUS_INVALID_PARAMETER;
+	}
+	return MiMapViewOfImageSection(VSpace, Section->ImageSectionObject, BaseAddress);
     }
     return STATUS_NTOS_UNIMPLEMENTED;
 }
