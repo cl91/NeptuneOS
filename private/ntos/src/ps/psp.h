@@ -13,6 +13,9 @@
 COMPILE_ASSERT(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
 	       (1ULL << PROCESS_INIT_CNODE_LOG2SIZE) >= MWORD_BITS);
 
+/* arch/context.c */
+VOID PspInitializeThreadContext(IN PTHREAD Thread);
+
 /* create.c */
 NTSTATUS PspThreadObjectCreateProc(POBJECT Object);
 NTSTATUS PspProcessObjectCreateProc(POBJECT Object);

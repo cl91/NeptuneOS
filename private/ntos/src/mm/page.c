@@ -366,11 +366,11 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
     } else if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	DbgTrace("Unmapping page directory cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PageDirectory_Unmap(Page->TreeNode.Cap)
+	Error = seL4_X86_PageDirectory_Unmap(Page->TreeNode.Cap);
     } else if (Page->Type == PAGING_TYPE_PDPT) {
 	DbgTrace("Unmapping PDPT cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PDPT_Map(Page->TreeNode.Cap);
+	Error = seL4_X86_PDPT_Unmap(Page->TreeNode.Cap);
 #endif
     } else {
 	return STATUS_INVALID_PARAMETER;

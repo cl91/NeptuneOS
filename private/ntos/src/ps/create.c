@@ -82,7 +82,7 @@ static NTSTATUS PspLoadThreadContext(IN PTHREAD Thread)
 				       &Thread->Context);
 
     if (Error != 0) {
-	DbgTrace("seL4_TCB_ReadRegisters failed for thread cap 0x%zx with error %zd\n",
+	DbgTrace("seL4_TCB_ReadRegisters failed for thread cap 0x%zx with error %d\n",
 		 Thread->TcbCap, Error);
 	return SEL4_ERROR(Error);
     }
@@ -98,7 +98,7 @@ static NTSTATUS PspSetThreadContext(IN PTHREAD Thread)
 					&Thread->Context);
 
     if (Error != 0) {
-	DbgTrace("seL4_TCB_WriteRegisters failed for thread cap 0x%zx with error %zd\n",
+	DbgTrace("seL4_TCB_WriteRegisters failed for thread cap 0x%zx with error %d\n",
 		 Thread->TcbCap, Error);
 	return SEL4_ERROR(Error);
     }
@@ -113,7 +113,7 @@ static NTSTATUS PspSetThreadPriority(IN PTHREAD Thread,
     int Error = seL4_TCB_SetPriority(Thread->TcbCap, ROOT_TCB_CAP, Priority);
 
     if (Error != 0) {
-	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %zd\n",
+	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %d\n",
 		 Thread->TcbCap, Error);
 	return SEL4_ERROR(Error);
     }
@@ -128,7 +128,7 @@ static NTSTATUS PspResumeThread(IN PTHREAD Thread)
     int Error = seL4_TCB_Resume(Thread->TcbCap);
 
     if (Error != 0) {
-	DbgTrace("seL4_TCB_Resume failed for thread cap 0x%zx with error %zd\n",
+	DbgTrace("seL4_TCB_Resume failed for thread cap 0x%zx with error %d\n",
 		 Thread->TcbCap, Error);
 	return SEL4_ERROR(Error);
     }
@@ -155,6 +155,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 
     PTHREAD Thread = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread));
+    Thread->Process = Process;
 
     RET_ERR_EX(MmAllocatePrivateMemoryEx(&Process->VaddrSpace, IPC_BUFFER_VADDR,
 					 PAGE_SIZE, MEM_COMMIT | MEM_RESERVE,
@@ -187,10 +188,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	       ObDereferenceObject(Thread));
 
     RET_ERR_EX(PspLoadThreadContext(Thread), ObDereferenceObject(Thread));
-    Thread->Context.eip = (MWORD) Process->ImageSection->ImageSectionObject->ImageInformation.TransferAddress;
-    Thread->Context.esp = THREAD_STACK_END;
-    Thread->Context.ebp = THREAD_STACK_END;
-
+    PspInitializeThreadContext(Thread);
     RET_ERR_EX(PspSetThreadContext(Thread), ObDereferenceObject(Thread));
     RET_ERR_EX(PspSetThreadPriority(Thread, seL4_MaxPrio), ObDereferenceObject(Thread));
     RET_ERR_EX(PspResumeThread(Thread), ObDereferenceObject(Thread));

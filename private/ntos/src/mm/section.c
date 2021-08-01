@@ -147,7 +147,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     /* We only process PE files that are native to the architecture, which for
      * i386 is PE32, and for amd64 is PE32+ */
     if (OptHeader->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) {
-	DIE("Invalid optional header, Magic is %X\n", OptHeader->Magic);
+	DIE("Invalid optional header, magic is 0x%x\n", OptHeader->Magic);
     }
 
     /* Validate section alignment and file alignment */
@@ -204,7 +204,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, AddressOfEntryPoint)) {
 	ImageInformation->TransferAddress =
-	    (PVOID) (OptHeader->ImageBase + OptHeader->AddressOfEntryPoint);
+	    (PVOID) ((MWORD) (OptHeader->ImageBase + OptHeader->AddressOfEntryPoint));
     }
     if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SizeOfCode)) {
 	ImageInformation->ImageContainsCode = (OptHeader->SizeOfCode != 0);
@@ -570,9 +570,9 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
     DbgPrint("    ZeroBits = 0x%x\n",
 	     ImageSection->ImageInformation.ZeroBits);
     DbgPrint("    MaximumStackSize = 0x%zx\n",
-	     ImageSection->ImageInformation.MaximumStackSize);
+	     (MWORD) ImageSection->ImageInformation.MaximumStackSize);
     DbgPrint("    CommittedStackSize = 0x%zx\n",
-	     ImageSection->ImageInformation.CommittedStackSize);
+	     (MWORD) ImageSection->ImageInformation.CommittedStackSize);
     DbgPrint("    SubSystemType = 0x%x\n",
 	     ImageSection->ImageInformation.SubSystemType);
     DbgPrint("    SubSystemMinorVersion = 0x%x\n",

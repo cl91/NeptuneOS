@@ -12,6 +12,7 @@
 #ifdef __x86_64
 #ifndef _M_AMD64
 #define _M_AMD64
+#define _WIN64
 #endif
 #endif
 

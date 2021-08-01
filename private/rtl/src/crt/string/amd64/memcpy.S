@@ -1,7 +1,9 @@
 .global memcpy
 .global __memcpy_fwd
+#ifndef _MSC_VER
 .hidden __memcpy_fwd
 .type memcpy,@function
+#endif
 memcpy:
 __memcpy_fwd:
 	mov %rdi,%rax

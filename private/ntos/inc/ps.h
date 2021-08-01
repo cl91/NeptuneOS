@@ -18,6 +18,7 @@ typedef seL4_UserContext THREAD_CONTEXT;
 typedef ULONG THREAD_PRIORITY;
 
 typedef struct _THREAD {
+    struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;
     PUNTYPED TcbUntyped;
     MWORD TcbCap;
