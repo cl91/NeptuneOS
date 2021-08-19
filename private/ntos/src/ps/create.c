@@ -35,7 +35,7 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     assert(VaddrSpace != NULL);
     assert(IpcPage != NULL);
     int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap,
-				   MWORD_BITS - CNode->Log2Size,
+				   seL4_GuardBits + seL4_GuardSizeBits - CNode->Log2Size,
 				   VaddrSpace->VSpaceCap, 0, IpcPage->AvlNode.Key,
 				   IpcPage->TreeNode.Cap);
 

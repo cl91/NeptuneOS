@@ -4,13 +4,8 @@
 #define _Int64 long long
 #define _Reg int
 
-#if __GNUC__ >= 3
 typedef __builtin_va_list va_list;
 typedef __builtin_va_list __isoc_va_list;
-#else
-typedef struct __va_list * va_list;
-typedef struct __va_list * __isoc_va_list;
-#endif
 
 #ifndef __cplusplus
 #ifdef __WCHAR_TYPE__
