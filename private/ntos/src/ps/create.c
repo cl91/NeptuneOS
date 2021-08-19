@@ -34,8 +34,9 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     assert(CNode != NULL);
     assert(VaddrSpace != NULL);
     assert(IpcPage != NULL);
-    int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap, 0,
-				   VaddrSpace->VSpaceCap, 0, IPC_BUFFER_START,
+    int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap,
+				   MWORD_BITS - CNode->Log2Size,
+				   VaddrSpace->VSpaceCap, 0, IpcPage->AvlNode.Key,
 				   IpcPage->TreeNode.Cap);
 
     if (Error != seL4_NoError) {
@@ -264,8 +265,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	       ObDereferenceObject(Thread));
     Thread->TEBServerAddr = ServerTebVad->AvlNode.Key;
     PTEB Teb = (PTEB) Thread->TEBServerAddr;
-    Teb->SystemDllTlsRegion = (PVOID) Thread->SystemDllTlsBase;
-    Teb->Tib.PtrSystemDllTlsRegion = (PPVOID) (Thread->TEBClientAddr + FIELD_OFFSET(TEB, SystemDllTlsRegion));
+    Teb->ThreadLocalStoragePointer = (PVOID) Thread->SystemDllTlsBase;
 
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));

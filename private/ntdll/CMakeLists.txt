@@ -12,7 +12,7 @@ add_compile_options(
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
 )
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -fno-asynchronous-unwind-tables -ftls-model=local-exec")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -fno-asynchronous-unwind-tables -ftls-model=global-dynamic")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple"

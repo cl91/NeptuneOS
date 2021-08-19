@@ -535,7 +535,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
 					IN MWORD DataSize,
 					OUT PPAGING_STRUCTURE *pPaging)
 {
-    assert(DataSize < (1ULL << MiPagingAddrWindowBits(Type)));
+    assert(DataSize <= (1ULL << MiPagingAddrWindowBits(Type)));
     assert(pPaging != NULL);
     assert(MiPagingTypeIsPageOrLargePage(Type));
 

@@ -26,9 +26,16 @@ add_config_library(ntos "${configure_string}")
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/rtl/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/rtl/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/rtl/*/${Arch}/*.s ${CMAKE_CURRENT_LIST_DIR}/src/tests/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
 
+add_custom_target(
+    structures_gen ALL
+    COMMAND sed -n "/enum cap_tag {/,/typedef enum cap_tag cap_tag_t/p" ${STRUCTURES_GEN_H_ORIG} > ${STRUCTURES_GEN_DIR}/structures_gen.h
+    VERBATIM
+    DEPENDS kernel.elf
+)
+
 add_library(ntos STATIC ${SRC})
-add_dependencies(ntos sel4 rtl)
-target_include_directories(ntos PRIVATE inc inc/${Arch})
+add_dependencies(ntos sel4 rtl kernel.elf structures_gen)
+target_include_directories(ntos PRIVATE inc inc/${Arch} ${STRUCTURES_GEN_DIR})
 target_link_libraries(ntos PRIVATE sel4 sel4_autoconf rtl ntos_Config)
 
 set_property(TARGET ntos APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntos.lds ")

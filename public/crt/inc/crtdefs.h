@@ -7,6 +7,18 @@
 #ifndef _INC_CRTDEFS
 #define _INC_CRTDEFS
 
+#ifndef _In_
+#define _In_
+#endif
+
+#ifndef _Out_
+#define _Out_
+#endif
+
+#ifndef _Inout_
+#define _Inout_
+#endif
+
 #ifdef _USE_32BIT_TIME_T
 #ifdef _WIN64
 #error You cannot use 32-bit time_t (_USE_32BIT_TIME_T) with _WIN64

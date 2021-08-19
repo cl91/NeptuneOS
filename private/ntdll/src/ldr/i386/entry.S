@@ -19,12 +19,12 @@ _LdrInitializeThunk:
 	/*
 	 * The virtual address of the IPC buffer is in %ecx
 	 */
-	call @LdrpInitialize@4
+	call @LdrpInitialize@8
 
 	/* should not return */
 1:
 	jmp  1b
 
-/* Must match offset of SystemDllTlsRegion in TEB struct */
+/* Must match offset of ThreadLocalStoragePointer in TEB struct */
 .global __tls_array
-.equ __tls_array, 0xc
+.equ __tls_array, 0x2c

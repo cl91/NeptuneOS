@@ -116,6 +116,9 @@ typedef union _ULARGE_INTEGER {
 #define IN
 #define OUT
 #define OPTIONAL
+#define _In_
+#define _Out_
+#define _Inout_
 
 #define UNICODE_NULL ((WCHAR)0)
 

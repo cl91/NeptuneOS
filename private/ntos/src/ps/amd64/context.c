@@ -10,6 +10,7 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Thread->StackTop);
     assert(Context != NULL);
     Context->rcx = Thread->IpcBufferClientPage->AvlNode.Key;
+    Context->rdx = Thread->SystemDllTlsBase;
     Context->rip = (MWORD) Thread->Process->ImageSection->
 	ImageSectionObject->ImageInformation.TransferAddress;
     Context->rsp = Thread->StackTop;

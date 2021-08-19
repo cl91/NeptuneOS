@@ -50,6 +50,8 @@ cmake ../../private/ntos \
       -DTRIPLE=${CLANG_ARCH}-pc-none-elf \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DSTRUCTURES_GEN_H_ORIG=${PWD}/kernel/generated/arch/object/structures_gen.h \
+      -DSTRUCTURES_GEN_DIR=${PWD} \
       -DKernelSel4Arch=$SEL4_ARCH -G Ninja
 ninja all-elf || build_failed
 
