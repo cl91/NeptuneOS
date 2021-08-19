@@ -15,7 +15,11 @@ _LdrInitializeThunk:
 	 */
 	sub  $0xc, %esp
 	push %ebp
-	call _LdrpInitialize
+
+	/*
+	 * The virtual address of the IPC buffer is in %ecx
+	 */
+	call @LdrpInitialize@4
 
 	/* should not return */
 1:

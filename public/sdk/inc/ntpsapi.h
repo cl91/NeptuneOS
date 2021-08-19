@@ -118,7 +118,7 @@ typedef struct _NT_TIB {
     PVOID StackLimit;
     union {
 	PVOID SubSystemTib;
-	PVOID SystemDllTlsRegion;
+	PPVOID PtrSystemDllTlsRegion;
     };
     union {
 	PVOID FiberData;
@@ -198,4 +198,5 @@ typedef struct _TEB {                                             /* win32/win64
     PVOID                        CurrentTransactionHandle;          /* fac/17b8 */
     TEB_ACTIVE_FRAME            *ActiveFrame;                       /* fb0/17c0 */
     PVOID                       *FlsSlots;                          /* fb4/17c8 */
+    PVOID                        SystemDllTlsRegion;                /* fb8/17d0 */
 } TEB, *PTEB;

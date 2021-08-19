@@ -1,5 +1,30 @@
 #include "psp.h"
 
+static MWORD PspServerPebTebFreeStart = EX_PEB_TEB_REGION_START;
+
+static NTSTATUS PspReservePebOrTebServerRegion(IN MWORD RegionSize,
+					       OUT PMMVAD *pVad)
+{
+    assert(pVad != NULL);
+    PMMVAD ServerVad = NULL;
+    if (!NT_SUCCESS(MmReserveVirtualMemory(PspServerPebTebFreeStart,
+					   0, RegionSize,
+					   MEM_RESERVE_MIRRORED_MEMORY,
+					   &ServerVad))) {
+	RET_ERR(MmReserveVirtualMemory(EX_PEB_TEB_REGION_START,
+				       EX_PEB_TEB_REGION_END,
+				       RegionSize,
+				       MEM_RESERVE_MIRRORED_MEMORY,
+				       &ServerVad));
+    }
+    PspServerPebTebFreeStart = ServerVad->AvlNode.Key + ServerVad->WindowSize;
+    if (PspServerPebTebFreeStart >= EX_PEB_TEB_REGION_END) {
+	PspServerPebTebFreeStart = EX_PEB_TEB_REGION_START;
+    }
+    *pVad = ServerVad;
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
 				   IN PCNODE CNode,
@@ -181,33 +206,103 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	       ObDereferenceObject(Thread));
 
     if (Process->PEBClientAddr == 0) {
-	/* TODO: Map PEB client and server area */
+	/* Thread is the initial thread in the process */
+	PMMVAD ClientPebVad = NULL;
+	RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_PEB_START, 0, sizeof(PEB),
+					    MEM_RESERVE_OWNED_MEMORY, &ClientPebVad),
+		   ObDereferenceObject(Thread));
+	assert(ClientPebVad != NULL);
+	RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientPebVad->AvlNode.Key,
+					   ClientPebVad->WindowSize, 0),
+		   ObDereferenceObject(Thread));
+	Process->PEBClientAddr = ClientPebVad->AvlNode.Key;
+	PMMVAD ServerPebVad = NULL;
+	RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(PEB), &ServerPebVad),
+		   ObDereferenceObject(Thread));
+	MmRegisterMirroredMemory(ServerPebVad, ClientPebVad, 0);
+	RET_ERR_EX(MmCommitVirtualMemory(ServerPebVad->AvlNode.Key, ServerPebVad->WindowSize),
+		   ObDereferenceObject(Thread));
+	Process->PEBServerAddr = ServerPebVad->AvlNode.Key;
+	/* Use the .tls subsection of the PE image map for SystemDll TLS region */
+	assert(Process->SystemDllTlsSubsection != NULL);
+	assert(Process->SystemDllTlsSubsection->ImageSection != NULL);
+	Thread->SystemDllTlsBase = Process->SystemDllTlsSubsection->ImageSection->ImageBase +
+	    Process->SystemDllTlsSubsection->SubSectionBase;
+    } else {
+	/* Allocate SystemDll TLS region */
+	assert(Process->SystemDllTlsSubsection != NULL);
+	PMMVAD SystemDllTlsVad = NULL;
+	RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, SYSTEM_DLL_TLS_REGION_START,
+					    SYSTEM_DLL_TLS_REGION_END,
+					    Process->SystemDllTlsSubsection->SubSectionSize,
+					    MEM_RESERVE_OWNED_MEMORY, &SystemDllTlsVad),
+		   ObDereferenceObject(Thread));
+	assert(SystemDllTlsVad != NULL);
+	RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, SystemDllTlsVad->AvlNode.Key,
+					   SystemDllTlsVad->WindowSize, 0),
+		   ObDereferenceObject(Thread));
+	Thread->SystemDllTlsBase = SystemDllTlsVad->AvlNode.Key;
     }
-    /* assert(Process->PEBClientAddr); */
-    /* assert(Process->PEBServerAddr); */
+    assert(Process->PEBClientAddr);
+    assert(Process->PEBServerAddr);
 
-    PMMVAD TebVad = NULL;
+    PMMVAD ClientTebVad = NULL;
     RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_TEB_START, WIN32_TEB_END, sizeof(TEB),
 					MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_TOP_DOWN,
-					&TebVad),
+					&ClientTebVad),
 	       ObDereferenceObject(Thread));
-    assert(TebVad != NULL);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, TebVad->AvlNode.Key, TebVad->WindowSize, 0),
+    assert(ClientTebVad != NULL);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientTebVad->AvlNode.Key,
+				       ClientTebVad->WindowSize, 0),
 	       ObDereferenceObject(Thread));
-    Thread->TEBClientAddr = TebVad->AvlNode.Key;
-    /* TODO: Map TEB server area */
+    Thread->TEBClientAddr = ClientTebVad->AvlNode.Key;
+    PMMVAD ServerTebVad = NULL;
+    RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(TEB), &ServerTebVad),
+	       ObDereferenceObject(Thread));
+    MmRegisterMirroredMemory(ServerTebVad, ClientTebVad, 0);
+    RET_ERR_EX(MmCommitVirtualMemory(ServerTebVad->AvlNode.Key, ServerTebVad->WindowSize),
+	       ObDereferenceObject(Thread));
+    Thread->TEBServerAddr = ServerTebVad->AvlNode.Key;
+    PTEB Teb = (PTEB) Thread->TEBServerAddr;
+    Teb->SystemDllTlsRegion = (PVOID) Thread->SystemDllTlsBase;
+    Teb->Tib.PtrSystemDllTlsRegion = (PPVOID) (Thread->TEBClientAddr + FIELD_OFFSET(TEB, SystemDllTlsRegion));
 
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeThreadContext(Thread, &Context);
     RET_ERR_EX(PspSetThreadContext(Thread, &Context), ObDereferenceObject(Thread));
     RET_ERR_EX(PspSetThreadPriority(Thread, seL4_MaxPrio), ObDereferenceObject(Thread));
-
     RET_ERR_EX(KeEnableSystemServices(Process, Thread), ObDereferenceObject(Thread));
     RET_ERR_EX(PspResumeThread(Thread), ObDereferenceObject(Thread));
 
     InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);
     *pThread = Thread;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspMapSystemDll(IN PPROCESS Process)
+{
+    PSECTION Section = NULL;
+    RET_ERR(MmCreateSection(Process->ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+			    &Section));
+    assert(Section != NULL);
+    MmDbgDumpSection(Section);
+
+    RET_ERR_EX(MmMapViewOfSection(&Process->VSpace, Section, 
+				  NULL, NULL, NULL),
+	       ObDereferenceObject(Section));
+    Process->ImageSection = Section;
+
+    /* TODO: Factor out SystemDll */
+    PIMAGE_SECTION_OBJECT ImageSectionObject = Process->ImageSection->ImageSectionObject;
+    LoopOverList(SubSection, &ImageSectionObject->SubSectionList, SUBSECTION, Link) {
+	if (!strncmp((PCHAR) SubSection->Name, ".tls", sizeof(".tls"))) {
+	    Process->SystemDllTlsSubsection = SubSection;
+	}
+    }
+    if (Process->SystemDllTlsSubsection == NULL) {
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
     return STATUS_SUCCESS;
 }
 
@@ -220,19 +315,8 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     PPROCESS Process = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process));
 
-    PSECTION Section = NULL;
-    RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-			    &Section));
-    assert(Section != NULL);
-    Process->ImageSection = Section;
-    MmDbgDumpSection(Process->ImageSection);
-
-    RET_ERR_EX(MmMapViewOfSection(&Process->VSpace, Process->ImageSection, 
-				  NULL, NULL, NULL),
-	       {
-		   ObDereferenceObject(Section);
-		   ObDereferenceObject(Process);
-	       });
+    Process->ImageFile = ImageFile;
+    RET_ERR_EX(PspMapSystemDll(Process), ObDereferenceObject(Process));
 
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
     *pProcess = Process;

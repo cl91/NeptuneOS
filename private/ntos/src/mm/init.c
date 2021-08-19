@@ -161,8 +161,8 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 					EX_POOL_START, &Page));
     assert(Page != NULL);
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
-    RET_ERR(MmReserveVirtualMemory(EX_POOL_START, EX_POOL_MAX_SIZE,
-				   MEM_RESERVE_OWNED_MEMORY));
+    RET_ERR(MmReserveVirtualMemory(EX_POOL_START, 0, EX_POOL_MAX_SIZE,
+				   MEM_RESERVE_OWNED_MEMORY, NULL));
     /* TODO: Commit */
 
     return STATUS_SUCCESS;
@@ -221,9 +221,9 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
 	assert(Page != NULL);
 	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
     }
-    RET_ERR(MmReserveVirtualMemory(InitInfo->UserImageStartVirtAddr,
+    RET_ERR(MmReserveVirtualMemory(InitInfo->UserImageStartVirtAddr, 0,
 				   InitInfo->NumUserImageFrames * PAGE_SIZE,
-				   MEM_RESERVE_OWNED_MEMORY));
+				   MEM_RESERVE_OWNED_MEMORY, NULL));
 
     return STATUS_SUCCESS;
 }

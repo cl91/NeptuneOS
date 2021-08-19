@@ -136,7 +136,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     assert(VSpace != NULL);
     assert(WindowSize != 0);
     StartAddr = PAGE_ALIGN(StartAddr);
-    WindowSize = PAGE_ALIGN(WindowSize);
+    WindowSize = PAGE_ALIGN_UP(WindowSize);
     /* We shouldn't align EndAddr since EndAddr might be MAX_ULONGPTR */
     if (Flags & MEM_RESERVE_TOP_DOWN) {
 	assert(EndAddr != 0);
@@ -146,6 +146,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    EndAddr = StartAddr + WindowSize;
 	}
     }
+    DbgTrace("Finding an address window of size 0x%zx within [%p, %p) for vspace %p\n",
+	     WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, (PVOID) VSpace);
     assert(StartAddr < EndAddr);
     assert(StartAddr + WindowSize > StartAddr);
     assert(StartAddr + WindowSize <= EndAddr);
@@ -178,8 +180,6 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	assert(!(Flags & MEM_RESERVE_FILE_MAP));
 	assert(!(Flags & MEM_RESERVE_IMAGE_MAP));
     }
-    DbgTrace("Finding an address window of size 0x%zx within [%p, %p) for vspace %p\n",
-	     WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, (PVOID) VSpace);
 
     /* Locate the first unused address window */
     MWORD VirtAddr = (Flags & MEM_RESERVE_TOP_DOWN) ? EndAddr : StartAddr;
@@ -190,7 +190,18 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     if (Flags & MEM_RESERVE_TOP_DOWN) {
-	/* Search from higher address to lower address */
+	/* If there is enough space between Parent and EndAddr,
+	 * insert after Parent. */
+	if (Parent->AvlNode.Key + Parent->WindowSize <= EndAddr) {
+	    goto Insert;
+	}
+	/* Else, retreat to the address immediately before Parent,
+	 * unless EndAddr is already smaller than start of Parent */
+	if (EndAddr >= Parent->AvlNode.Key) {
+	    VirtAddr = Parent->AvlNode.Key;
+	}
+	/* And start searching from higher address to lower address
+	 * for an unused address window till we reach StartAddr */
 	while (VirtAddr - WindowSize >= StartAddr) {
 	    if (VirtAddr - WindowSize >= VirtAddr) {
 		/* addr window underflows */
@@ -220,7 +231,17 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    VirtAddr = Prev->AvlNode.Key;
 	}
     } else {
-	/* Search from lower address to higher address */
+	/* If there is enough space between StartAddr and Parent,
+	 * insert before Parent. */
+	if (StartAddr + WindowSize <= Parent->AvlNode.Key) {
+	    goto Insert;
+	}
+	/* Else, advance to the address immediately after Parent, unless
+	 * StartAddr is already bigger than the end of Parent VAD */
+	if (StartAddr < Parent->AvlNode.Key + Parent->WindowSize) {
+	    VirtAddr = Parent->AvlNode.Key + Parent->WindowSize;
+	}
+	/* And start searching for unused window till we reach EndAddr */
 	while (VirtAddr + WindowSize <= EndAddr) {
 	    if (VirtAddr + WindowSize < VirtAddr) {
 		/* addr window overflows */
@@ -249,6 +270,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     /* Unable to find an unused address window */
+    MmDbgDumpVSpace(VSpace);
     return STATUS_CONFLICTING_ADDRESSES;
 
 Insert:
@@ -299,6 +321,22 @@ Insert:
 	     (PVOID) (Vad->AvlNode.Key + Vad->WindowSize),
 	     (PVOID) VSpace);
     return STATUS_SUCCESS;
+}
+
+/*
+ * Add the mirrored memory VAD to the owner VAD's viewer list
+ */
+VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
+			      IN PMMVAD Owner,
+			      IN MWORD Offset)
+{
+    assert(Viewer != NULL);
+    assert(Owner != NULL);
+    assert(Viewer->Flags.MirroredMemory);
+    assert(Owner->Flags.OwnedMemory);
+    Viewer->MirroredMemory.OwnerVad = Owner;
+    Viewer->MirroredMemory.Offset = Offset;
+    InsertTailList(&Owner->OwnedMemory.ViewerList, &Viewer->MirroredMemory.ViewerLink);
 }
 
 NTSTATUS MiCommitImageVad(IN PMMVAD Vad)

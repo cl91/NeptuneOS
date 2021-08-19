@@ -529,17 +529,21 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD CommitFlags);
 PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 			      IN MWORD VirtAddr);
+VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
+			      IN PMMVAD Owner,
+			      IN MWORD Offset);
 VOID MmDbgDumpVad(PMMVAD Vad);
 VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
 
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
+					      IN OPTIONAL MWORD EndAddr,
 					      IN MWORD WindowSize,
-					      IN MWORD Flags)
+					      IN MWORD Flags,
+					      OUT OPTIONAL PMMVAD *pVad)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    assert(!(Flags & MEM_RESERVE_TOP_DOWN));
-    return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, 0,
-				    WindowSize, Flags, NULL);
+    return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, EndAddr,
+				    WindowSize, Flags, pVad);
 }
 
 static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,

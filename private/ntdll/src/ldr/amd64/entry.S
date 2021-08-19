@@ -16,6 +16,10 @@ LdrInitializeThunk:
 	 */
 	subq $0x8, %rsp
 	push %rbp
+
+	/*
+	 * The virtual address of the IPC buffer is in %rcx
+	 */
 	call LdrpInitialize
 
 	/* should not return */

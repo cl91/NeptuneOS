@@ -221,11 +221,16 @@ static NTSTATUS MiCopyCap(IN PCNODE DestCSpace,
     assert(SrcCSpace->TreeNode.Cap != 0);
     assert(DestCap != 0);
     assert(SrcCap != 0);
-    int Error = seL4_CNode_Copy(DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Log2Size,
-				SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Log2Size,
+    int Error = seL4_CNode_Copy(DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
+				SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
 				NewRights);
 
     if (Error != 0) {
+	DbgTrace("CNode_Copy(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx) failed with error %d\n",
+		 DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
+		 SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+		 NewRights.words[0], Error);
+	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
     return STATUS_SUCCESS;
@@ -250,8 +255,8 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
 
     if (Error != 0) {
 	DbgTrace("CNode_Mint(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx, 0x%zx) failed with error %d\n",
-		 DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Log2Size,
-		 SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Log2Size,
+		 DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
+		 SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
 		 Rights.words[0], Badge, Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);

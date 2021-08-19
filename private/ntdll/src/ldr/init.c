@@ -5,12 +5,8 @@
 #include <services.h>
 #include <stdint.h>
 
-/* The executable always has tls_index == 0, and NTDLL always has tls_index == 1 */
-ULONG _tls_index = 1;
-
 /* Address for the IPC buffer of the initial thread. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
-__thread seL4_IPCBuffer *__sel4_ipc_buffer2;
 
 static CHAR LdrpUninitializedArray[1024];
 
@@ -20,10 +16,11 @@ VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
 {
 }
 
-void LdrpInitialize()
+__fastcall void LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer)
 {
-    __sel4_ipc_buffer = (seL4_IPCBuffer *) IPC_BUFFER_START;
-    __sel4_ipc_buffer2 = (seL4_IPCBuffer *) IPC_BUFFER_START;
+    PUCHAR p = (PUCHAR) 0x00404000;
+    p[0] = 'a';
+    __sel4_ipc_buffer = IpcBuffer;
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugPutString("Hello, world from NT client!\n");
     seL4_DebugPutString(LdrpInitializedArray);

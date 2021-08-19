@@ -9,7 +9,7 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Thread->TEBClientAddr);
     assert(Thread->StackTop);
     assert(Context != NULL);
-    Context->eax = Thread->IpcBufferClientPage->AvlNode.Key;
+    Context->ecx = Thread->IpcBufferClientPage->AvlNode.Key;
     Context->eip = (MWORD) Thread->Process->ImageSection->
 	ImageSectionObject->ImageInformation.TransferAddress;
     Context->esp = Thread->StackTop;

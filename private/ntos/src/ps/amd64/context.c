@@ -8,10 +8,11 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Thread->IpcBufferClientPage != NULL);
     assert(Thread->TEBClientAddr);
     assert(Thread->StackTop);
-    Context.rax = Thread->IpcBufferClientPage->AvlNode.Key;
-    Context.rip = (MWORD) Thread->Process->ImageSection->
+    assert(Context != NULL);
+    Context->rcx = Thread->IpcBufferClientPage->AvlNode.Key;
+    Context->rip = (MWORD) Thread->Process->ImageSection->
 	ImageSectionObject->ImageInformation.TransferAddress;
-    Context.rsp = Thread->StackTop;
-    Context.rbp = Thread->StackTop;
+    Context->rsp = Thread->StackTop;
+    Context->rbp = Thread->StackTop;
     Context->gs_base = Thread->TEBClientAddr;
 }

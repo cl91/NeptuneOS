@@ -29,10 +29,10 @@ NTSTATUS MmSectionInitialization()
      * pages in the NTOS root task temporarily. The necessary super-structures
      * at starting addresses for 4K page hyperspace and large page hyperspace
      * will be mapped on-demand. */
-    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_4K_PAGE_START, LARGE_PAGE_SIZE,
-				   MEM_RESERVE_MIRRORED_MEMORY));
-    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_LARGE_PAGE_START, LARGE_PAGE_SIZE,
-				   MEM_RESERVE_MIRRORED_MEMORY));
+    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_4K_PAGE_START, 0, LARGE_PAGE_SIZE,
+				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
+    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_LARGE_PAGE_START, 0, LARGE_PAGE_SIZE,
+				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
 
     /* Create the singleton physical section. */
     RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection));
