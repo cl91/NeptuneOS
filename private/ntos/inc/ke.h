@@ -21,7 +21,7 @@ VOID KeBugCheckMsg(PCSTR Format, ...);
 		 &bootinfo->untypedList[cap - bootinfo->untyped.start]; \
 	     desc != NULL; desc = NULL)
 
-#define ENDPOINT_RIGHTS_WRITE_GRANTREPLY	seL4_CapRights_new(1, 0, 1, 0)
+#define ENDPOINT_RIGHTS_WRITE_GRANTREPLY	seL4_CapRights_new(1, 0, 0, 1)
 
 typedef struct _IPC_ENDPOINT {
     CAP_TREE_NODE TreeNode;
