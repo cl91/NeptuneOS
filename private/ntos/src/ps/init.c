@@ -1,5 +1,7 @@
 #include "psp.h"
 
+LIST_ENTRY PspProcessList;
+
 static NTSTATUS PspCreateThreadType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -28,9 +30,10 @@ static NTSTATUS PspCreateProcessType()
 			      TypeInfo);
 }
 
-NTSTATUS PsInitSystem()
+NTSTATUS PsInitSystemPhase0()
 {
     RET_ERR(PspCreateThreadType());
     RET_ERR(PspCreateProcessType());
+    InitializeListHead(&PspProcessList);
     return STATUS_SUCCESS;
 }

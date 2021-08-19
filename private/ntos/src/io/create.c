@@ -18,7 +18,7 @@ NTSTATUS IopFileObjectCreateProc(POBJECT Object)
  * to 4K page boundary.
  */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
-		      IN MWORD BufferPtr,
+		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
 		      OUT PFILE_OBJECT *pFile)
 {

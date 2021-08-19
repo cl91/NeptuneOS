@@ -37,7 +37,6 @@ NTSTATUS LdrLoadBootModules()
 	DbgPrint("    %s\n", FileNames[i]);
     }
 
-    MWORD CurAddr = BOOT_MODULES_START;
     for (int i = 0; i < cpio.file_count; i++) {
 	SIZE_T FileSize;
 	PCHAR FileContent = cpio_get_file(_binary_initcpio_start,
@@ -46,19 +45,10 @@ NTSTATUS LdrLoadBootModules()
 	DbgTrace("File %s start vaddr %p size 0x%x\n", FileNames[i],
 		 FileContent, (unsigned int) FileSize);
 
-	/* Request pages from mm and copy file content over. */
-	MWORD CommitSize = PAGE_ALIGN(FileSize + PAGE_SIZE - 1);
-	if (CurAddr + CommitSize >= BOOT_MODULES_START + BOOT_MODULES_MAX_SIZE) {
-	    break;
-	}
-	RET_ERR(MmAllocatePrivateMemory(CurAddr, CommitSize));
-	memcpy((PVOID) CurAddr, FileContent, FileSize);
-
 	/* Create FILE object and insert into object directory */
 	PFILE_OBJECT File = NULL;
-	RET_ERR(IoCreateFile(FileNames[i], CurAddr, FileSize, &File));
+	RET_ERR(IoCreateFile(FileNames[i], (PVOID) FileContent, FileSize, &File));
 	assert(File != NULL);
-	CurAddr += CommitSize;
 	RET_ERR_EX(ObInsertObjectByName("\\BootModules", File, FileNames[i]),
 		   ObDereferenceObject(File));
     }

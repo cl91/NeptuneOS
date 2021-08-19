@@ -14,7 +14,7 @@ static NTSTATUS IopCreateFileType()
 			      TypeInfo);
 }
 
-NTSTATUS IoInitSystem()
+NTSTATUS IoInitSystemPhase0()
 {
     RET_ERR(IopCreateFileType());
 

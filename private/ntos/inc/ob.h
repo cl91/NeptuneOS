@@ -58,10 +58,25 @@ typedef struct _OBJECT_HEADER {
 typedef PVOID POBJECT;
 
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
-    ((POBJECT)(((MWORD) Ptr) + sizeof(OBJECT_HEADER)))
+    ((POBJECT)(((MWORD)(Ptr)) + sizeof(OBJECT_HEADER)))
 
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
-    ((POBJECT_HEADER)(((MWORD) Ptr) - sizeof(OBJECT_HEADER)))
+    ((POBJECT_HEADER)(((MWORD)(Ptr)) - sizeof(OBJECT_HEADER)))
+
+/*
+ * We use the offset of an object header pointer from the start of the
+ * Executive pool as the global handle (badge) of an object.
+ */
+#define OBJECT_TO_GLOBAL_HANDLE(Ptr)				\
+    ((MWORD)(OBJECT_TO_OBJECT_HEADER(Ptr)) - EX_POOL_START)
+
+/*
+ * We convert the global handle into an object header pointer by masking
+ * off the lowest EX_POOL_BLOCK_SHIFT bits and the bits higher than
+ * EX_POOL_MAX_SIZE
+ */
+#define GLOBAL_HANDLE_TO_OBJECT(Handle)					\
+    OBJECT_HEADER_TO_OBJECT((((MWORD)(Handle)) & ~(EX_POOL_SMALLEST_BLOCK - 1)) & (EX_POOL_MAX_SIZE - 1))
 
 /*
  * The create routine creates an empty object and initializes
@@ -133,7 +148,7 @@ typedef struct _OBJECT_DIRECTORY {
 } OBJECT_DIRECTORY, *POBJECT_DIRECTORY;
 
 /* init.c */
-NTSTATUS ObInitSystem();
+NTSTATUS ObInitSystemPhase0();
 
 /* create.c */
 NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,

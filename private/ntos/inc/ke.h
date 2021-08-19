@@ -4,6 +4,8 @@
 #include <sel4/sel4.h>
 #include "mm.h"
 
+#define NTOS_KE_TAG			(EX_POOL_TAG('n','t','k','e'))
+
 VOID KeRunAllTests();
 
 VOID KeBugCheckMsg(PCSTR Format, ...);
@@ -18,3 +20,17 @@ VOID KeBugCheckMsg(PCSTR Format, ...);
 	for (seL4_UntypedDesc *desc =					\
 		 &bootinfo->untypedList[cap - bootinfo->untyped.start]; \
 	     desc != NULL; desc = NULL)
+
+#define ENDPOINT_RIGHTS_WRITE_GRANTREPLY	seL4_CapRights_new(1, 0, 1, 0)
+
+typedef struct _IPC_ENDPOINT {
+    CAP_TREE_NODE TreeNode;
+    MWORD Badge;
+} IPC_ENDPOINT, *PIPC_ENDPOINT;
+
+/* services.c */
+struct _PROCESS;
+struct _THREAD;
+NTSTATUS KeEnableSystemServices(IN struct _PROCESS *Process,
+				IN struct _THREAD *Thread);
+VOID KeDbgDumpIPCError(IN int Error);

@@ -14,7 +14,7 @@ VOID MmRunAvlTreeTests()
     DbgPrint("  VadTree:\n");
     MmAvlDumpTreeLinear(VadTree);
     MmAvlDumpTree(VadTree);
-    PMM_AVL_TREE PageTableTree = &MiNtosVaddrSpace.RootPagingStructure.SubStructureTree;
+    PMM_AVL_TREE PageTableTree = &MiNtosVaddrSpace.RootPagingStructure->SubStructureTree;
     DbgPrint("  PageTableTree:\n");
     MmAvlDumpTreeLinear(PageTableTree);
     MmAvlDumpTree(PageTableTree);

@@ -4,7 +4,11 @@
 
 #include <nt.h>
 #include <assert.h>
+#include <compile_assert.h>
 #include <string.h>
+#include <gnu.h>
+
+#include <services.h>
 
 #include "ntosdef.h"
 #include "ke.h"

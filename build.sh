@@ -103,7 +103,7 @@ fi
 echo 'ntdll' > image-list
 cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
-	--rename-section .data=ntdll,CONTENTS,ALLOC,LOAD,READONLY,DATA \
+	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o
 if [[ $? == 0 ]]; then
     echo "Success."

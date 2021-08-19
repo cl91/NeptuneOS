@@ -1,6 +1,6 @@
 #include "obp.h"
 
-NTSTATUS ObInitSystem()
+NTSTATUS ObInitSystemPhase0()
 {
     InitializeListHead(&ObpObjectList);
     RET_ERR(ObpInitDirectoryObjectType());

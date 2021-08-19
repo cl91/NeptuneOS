@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <excpt.h>
 
 #ifdef __i386__
 #ifndef _M_IX86
@@ -42,6 +43,7 @@ typedef signed char SCHAR;
 typedef CHAR *PCHAR;
 typedef UCHAR *PUCHAR;
 typedef CONST CHAR *PCSTR;
+typedef unsigned char BYTE;
 
 typedef wchar_t WCHAR;
 typedef WCHAR *PWCHAR, *PWSTR;
@@ -63,6 +65,7 @@ typedef LONG *PLONG;
 typedef ULONG *PULONG;
 
 typedef uint64_t ULONGLONG, *PULONGLONG;
+typedef int64_t LONGLONG, *PLONGLONG;
 
 typedef uintptr_t ULONG_PTR;
 typedef intptr_t LONG_PTR;
@@ -81,10 +84,34 @@ typedef uint64_t UINT64,  *PUINT64;
 #define MAXLONGLONG	(0x7fffffffffffffffLL)
 #define MAXULONG	(0xffffffffUL)
 
-typedef PVOID HANDLE;
+typedef PVOID HANDLE, HMODULE, HINSTANCE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
 typedef HANDLE *PHANDLE;
 typedef LONG HRESULT;
+
+typedef union _LARGE_INTEGER {
+    struct {
+        ULONG LowPart;
+        LONG HighPart;
+    };
+    struct {
+        ULONG LowPart;
+        LONG HighPart;
+    } u;
+    LONGLONG QuadPart;
+} LARGE_INTEGER, *PLARGE_INTEGER;
+
+typedef union _ULARGE_INTEGER {
+    struct {
+        ULONG LowPart;
+        ULONG HighPart;
+    };
+    struct {
+        ULONG LowPart;
+        ULONG HighPart;
+    } u;
+    ULONGLONG QuadPart;
+} ULARGE_INTEGER, *PULARGE_INTEGER;
 
 #define IN
 #define OUT
@@ -122,6 +149,18 @@ typedef CONST STRING* PCOEM_STRING;
 typedef STRING CANSI_STRING;
 typedef PSTRING PCANSI_STRING;
 
+struct _CONTEXT;
+struct _EXCEPTION_RECORD;
+
+typedef EXCEPTION_DISPOSITION
+(*PEXCEPTION_ROUTINE) (IN struct _EXCEPTION_RECORD *ExceptionRecord,
+		       IN PVOID EstablisherFrame,
+		       IN OUT struct _CONTEXT *ContextRecord,
+		       IN OUT PVOID DispatcherContext);
+
+/*
+ * Doubly-linked list and related list routines
+ */
 typedef struct _LIST_ENTRY
 {
     struct _LIST_ENTRY *Flink;

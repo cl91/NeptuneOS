@@ -60,7 +60,7 @@ static NTSTATUS MiSplitInitialUntyped(IN PMM_INIT_INFO InitInfo)
     LONG Log2Size = InitInfo->InitUntypedLog2Size;
     LONG NumSplits = Log2Size - LARGE_PAGE_LOG2SIZE;
     for (int i = 0; i < NumSplits; i++) {
-	RET_ERR(MiSplitUntypedCap(UntypedCap, Log2Size--, DestCap));
+	RET_ERR(MiSplitUntypedCap(UntypedCap, Log2Size--, ROOT_CNODE_CAP, DestCap));
 	UntypedCap = DestCap;
 	DestCap += 2;
     }
@@ -132,7 +132,7 @@ static inline NTSTATUS MiInitCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type
 static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 {
     MiAllocatePool(RootUntyped, UNTYPED);
-    MiInitializeUntyped(RootUntyped, NULL, InitInfo->InitUntypedCap,
+    MiInitializeUntyped(RootUntyped, &MiNtosCNode, NULL, InitInfo->InitUntypedCap,
 			InitInfo->InitUntypedPhyAddr,
 			InitInfo->InitUntypedLog2Size, FALSE);
 
@@ -145,10 +145,10 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 	LONG ChildLog2Size = InitInfo->InitUntypedLog2Size - 1 - i;
 	MWORD LeftChildCap = InitInfo->RootCNodeFreeCapStart + 2*i;
 	MWORD RigthChildCap = LeftChildCap + 1;
-	MiInitializeUntyped(LeftChildUntyped, ParentUntyped,
+	MiInitializeUntyped(LeftChildUntyped, &MiNtosCNode, ParentUntyped,
 			    LeftChildCap, InitInfo->InitUntypedPhyAddr,
 			    ChildLog2Size, FALSE);
-	MiInitializeUntyped(RightChildUntyped, ParentUntyped, RigthChildCap,
+	MiInitializeUntyped(RightChildUntyped, &MiNtosCNode, ParentUntyped, RigthChildCap,
 			    InitInfo->InitUntypedPhyAddr + (1 << ChildLog2Size),
 			    ChildLog2Size, FALSE);
 	MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChildUntyped);
@@ -161,13 +161,9 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 					EX_POOL_START, &Page));
     assert(Page != NULL);
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
-    MMVAD_FLAGS Flags;
-    Flags.Word = 0;
-    Flags.PrivateMemory = TRUE;
-    Flags.LargePages = TRUE;
-    Flags.Committed = TRUE;
-    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, EX_POOL_START,
-				   LARGE_PAGE_SIZE, Flags, NULL));
+    RET_ERR(MmReserveVirtualMemory(EX_POOL_START, EX_POOL_MAX_SIZE,
+				   MEM_RESERVE_OWNED_MEMORY));
+    /* TODO: Commit */
 
     return STATUS_SUCCESS;
 }
@@ -225,12 +221,9 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
 	assert(Page != NULL);
 	RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
     }
-    MMVAD_FLAGS Flags;
-    Flags.Word = 0;
-    Flags.PrivateMemory = TRUE;
-    Flags.Committed = TRUE;
-    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, InitInfo->UserImageStartVirtAddr,
-				   InitInfo->NumUserImageFrames * PAGE_SIZE, Flags, NULL));
+    RET_ERR(MmReserveVirtualMemory(InitInfo->UserImageStartVirtAddr,
+				   InitInfo->NumUserImageFrames * PAGE_SIZE,
+				   MEM_RESERVE_OWNED_MEMORY));
 
     return STATUS_SUCCESS;
 }
@@ -249,16 +242,20 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
     RET_ERR(ExInitializePool(EX_POOL_START, LARGE_PAGE_SIZE / PAGE_SIZE));
 
     /* Initialize root CNode. Record used cap slots at this point. */
-    MiInitializeCNode(&MiNtosCNode, ROOT_CNODE_CAP, ROOT_CNODE_LOG2SIZE,
-		      NULL, MiNtosCNodeUsedMap);
+    MiInitializeCNode(&MiNtosCNode, ROOT_CNODE_CAP, ROOT_CNODE_LOG2SIZE, MWORD_BITS,
+		      &MiNtosCNode, NULL, MiNtosCNodeUsedMap);
     for (ULONG i = 0; i < FreeCapStart; i++) {
 	SetBit(MiNtosCNode.UsedMap, i);
     }
     MiNtosCNode.TotalUsed = FreeCapStart;
     MiNtosCNode.RecentFree = FreeCapStart;
 
-    /* Populate the virtual address space data structure for the root task. */
-    MmInitializeVaddrSpace(&MiNtosVaddrSpace, ROOT_VSPACE_CAP);
+    /* Initialize the virtual address space struct for the root task. */
+    MiAllocatePool(RootPagingStructure, PAGING_STRUCTURE);
+    MiInitializePagingStructure(RootPagingStructure, NULL, NULL, ROOT_VSPACE_CAP,
+				ROOT_VSPACE_CAP, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
+				TRUE, MM_RIGHTS_RW);
+    MiInitializeVSpace(&MiNtosVaddrSpace, RootPagingStructure);
 
     /* Add the paging structures for the root task image. */
     RET_ERR(MiInitAddUserImagePaging(InitInfo));
@@ -279,7 +276,7 @@ static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 				      IN BOOLEAN IsDevice)
 {
     MiAllocatePool(Untyped, UNTYPED);
-    MiInitializeUntyped(Untyped, NULL, Cap, PhyAddr, Log2Size, IsDevice);
+    MiInitializeUntyped(Untyped, &MiNtosCNode, NULL, Cap, PhyAddr, Log2Size, IsDevice);
     RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), ExFreePool(Untyped));
     if (!IsDevice) {
 	MiInsertFreeUntyped(PhyMem, Untyped);
@@ -287,7 +284,7 @@ static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
+NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
 {
     extern char _text_start[];
     seL4_SlotRegion UntypedCaps = bootinfo->untyped;
@@ -333,8 +330,6 @@ NTSTATUS MmInitSystem(seL4_BootInfo *bootinfo)
 					  desc->sizeBits, desc->isDevice));
 	}
     }
-
-    RET_ERR(MiSectionInitialization());
 
     return STATUS_SUCCESS;
 }

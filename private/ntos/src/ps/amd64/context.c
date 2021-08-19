@@ -1,11 +1,17 @@
 #include "../psp.h"
 
-VOID PspInitializeThreadContext(IN PTHREAD Thread)
+VOID PspInitializeThreadContext(IN PTHREAD Thread,
+				IN PTHREAD_CONTEXT Context)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    Thread->Context.rip = (MWORD) Thread->Process->ImageSection->
+    assert(Thread->IpcBufferClientPage != NULL);
+    assert(Thread->TEBClientAddr);
+    assert(Thread->StackTop);
+    Context.rax = Thread->IpcBufferClientPage->AvlNode.Key;
+    Context.rip = (MWORD) Thread->Process->ImageSection->
 	ImageSectionObject->ImageInformation.TransferAddress;
-    Thread->Context.rsp = THREAD_STACK_END;
-    Thread->Context.rbp = THREAD_STACK_END;
+    Context.rsp = Thread->StackTop;
+    Context.rbp = Thread->StackTop;
+    Context->gs_base = Thread->TEBClientAddr;
 }

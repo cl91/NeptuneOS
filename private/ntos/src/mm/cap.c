@@ -64,11 +64,12 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     } else if (Node->Type == CAP_TREE_NODE_PAGING_STRUCTURE) {
 	Type = "PAGING";
     }
-    DbgPrint("Cap 0x%zx (Type %s)", Node->Cap, Type);
+    DbgPrint("Cap 0x%zx (Type %s seL4 Cap ID %d)", Node->Cap, Type,
+	     seL4_DebugCapIdentify(Node->Cap));
 }
 
 /* Allocate a continuous range of capability slots */
-NTSTATUS MmAllocateCapRangeEx(IN PCNODE CNode,
+NTSTATUS MiAllocateCapRangeEx(IN PCNODE CNode,
 			      OUT MWORD *StartCap,
 			      IN LONG NumberRequested)
 {
@@ -133,7 +134,7 @@ Lookup:
 }
 
 /* Mark the capability slot of the given CNode as free */
-NTSTATUS MmDeallocateCapEx(IN PCNODE CNode,
+NTSTATUS MiDeallocateCapEx(IN PCNODE CNode,
 			   IN MWORD Cap)
 {
     assert(CNode != NULL);
@@ -150,20 +151,18 @@ NTSTATUS MmDeallocateCapEx(IN PCNODE CNode,
 }
 
 /*
- * Request a suitably sized untyped memory and retype it
- * into a CNode object. Allocate the relevant book-keeping
- * data structures on the Executive Pool and return the CNode
+ * Request a suitably sized untyped memory and retype it into a CNode
+ * object, allocating the required book-keeping information on ExPool
  */
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode)
 {
+    assert(pCNode != NULL);
+
     PUNTYPED Untyped = NULL;
     ULONG Log2SizeUntyped = Log2Size + LOG2SIZE_PER_CNODE_SLOT;
     RET_ERR(MmRequestUntyped(Log2SizeUntyped, &Untyped));
-
-    MWORD CNodeCap = 0;
-    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_CapTableObject, Log2Size, &CNodeCap),
-	       MmReleaseUntyped(Untyped));
+    assert(Untyped->TreeNode.CSpace == &MiNtosCNode);
 
     MiAllocatePoolEx(CNode, CNODE, MmReleaseUntyped(Untyped));
     MiAllocateArray(UsedMap, MWORD, (MWORD)((1ULL << Log2Size) / MWORD_BITS),
@@ -171,55 +170,123 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 			MmReleaseUntyped(Untyped);
 			ExFreePool(CNode);
 		    });
-    MiInitializeCNode(CNode, CNodeCap, Log2Size, &Untyped->TreeNode, UsedMap);
+    MiInitializeCNode(CNode, 0, Log2Size, Log2Size, &MiNtosCNode, NULL, UsedMap);
+    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_CapTableObject,
+				  Log2Size, &CNode->TreeNode),
+	       {
+		   ExFreePool(UsedMap);
+		   MmReleaseUntyped(Untyped);
+	       });
     *pCNode = CNode;
 
     return STATUS_SUCCESS;
 }
 
 /*
- * Delete the specified, dynamically allocated CNode. The initial root task
- * CNode is not dynamically allocated and should never be deleted.
+ * Revoke the capability of the specified CNode and release its untyped memory
+ * for reuse. Delete its book-keeping information.
+ *
+ * The initial root task CNode should never be destroyed.
  */
-NTSTATUS MmDeleteCNode(IN PCNODE CNode)
+VOID MmDeleteCNode(IN PCNODE CNode)
 {
-    if (CNode->TreeNode.Parent != NULL) {
-	if (CNode->TreeNode.Type != CAP_TREE_NODE_UNTYPED) {
-	    /* The parent of a CNode should always be an untyped. BUG! */
-	    return STATUS_NTOS_BUG;
-	}
-	RET_ERR(MmReleaseUntyped(MiTreeNodeToUntyped(CNode->TreeNode.Parent)));
-    }
-
-    if (CNode != &MiNtosCNode) {
-	/* We should never call MmDeleteCNode with the root task CNode. BUG! */
-	return STATUS_NTOS_BUG;
-    }
-
     /* A CNode should always be the leaf node of a capability derivation tree.
      * On debug build we assert if this requirement has not been maintained. */
     assert(!MiCapTreeNodeHasChildren(&CNode->TreeNode));
+    /* We should never delete the root task CNode */
+    assert(CNode != &MiNtosCNode);
+    /* All CNode are retyped from the untyped memory, so must have a parent */
+    assert(CNode->TreeNode.Parent != NULL);
+    /* The parent of a CNode should always be an untyped. BUG! */
+    assert(CNode->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
 
     ExFreePool(CNode->UsedMap);
-    ExFreePool(CNode);
-
-    return STATUS_SUCCESS;
+    /* This will free the CNode struct itself from the ExPool */
+    MmReleaseUntyped(TREE_NODE_TO_UNTYPED(CNode->TreeNode.Parent));
 }
 
 /*
  * Copy a capability into a new slot in the root task's CSpace, setting
  * the access rights of the new capability
  */
-NTSTATUS MiCopyCap(IN MWORD Dest,
-		   IN MWORD Src,
-		   IN seL4_CapRights_t NewRights)
+static NTSTATUS MiCopyCap(IN PCNODE DestCSpace,
+			  IN MWORD DestCap,
+			  IN PCNODE SrcCSpace,
+			  IN MWORD SrcCap,
+			  IN seL4_CapRights_t NewRights)
 {
-    int Error = seL4_CNode_Copy(ROOT_CNODE_CAP, Dest, 0,
-				ROOT_CNODE_CAP, Src, 0,
+    assert(DestCSpace != NULL);
+    assert(DestCSpace->TreeNode.Cap != 0);
+    assert(SrcCSpace != NULL);
+    assert(SrcCSpace->TreeNode.Cap != 0);
+    assert(DestCap != 0);
+    assert(SrcCap != 0);
+    int Error = seL4_CNode_Copy(DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Log2Size,
+				SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Log2Size,
 				NewRights);
 
     if (Error != 0) {
 	return SEL4_ERROR(Error);
     }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
+			  IN MWORD DestCap,
+			  IN PCNODE SrcCSpace,
+			  IN MWORD SrcCap,
+			  IN seL4_CapRights_t Rights,
+			  IN MWORD Badge)
+{
+    assert(DestCSpace != NULL);
+    assert(DestCSpace->TreeNode.Cap != 0);
+    assert(SrcCSpace != NULL);
+    assert(SrcCSpace->TreeNode.Cap != 0);
+    assert(DestCap != 0);
+    assert(SrcCap != 0);
+    int Error = seL4_CNode_Mint(DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
+				SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+				Rights, Badge);
+
+    if (Error != 0) {
+	DbgTrace("CNode_Mint(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx, 0x%zx) failed with error %d\n",
+		 DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Log2Size,
+		 SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Log2Size,
+		 Rights.words[0], Badge, Error);
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
+				   IN PCAP_TREE_NODE OldNode,
+				   IN seL4_CapRights_t NewRights,
+				   IN MWORD Badge)
+{
+    assert(NewNode != NULL);
+    assert(OldNode != NULL);
+    assert(NewNode->CSpace != NULL);
+    assert(OldNode->CSpace != NULL);
+
+    if (NewNode->Cap != 0) {
+	return STATUS_NTOS_BUG;
+    }
+
+    MWORD NewCap = 0;
+    RET_ERR(MiAllocateCapRangeEx(NewNode->CSpace, &NewCap, 1));
+    assert(NewCap != 0);
+
+    if (Badge == 0) {
+	RET_ERR_EX(MiCopyCap(NewNode->CSpace, NewCap, OldNode->CSpace,
+			     OldNode->Cap, NewRights),
+		   MiDeallocateCapEx(NewNode->CSpace, NewCap));
+    } else {
+	RET_ERR_EX(MiMintCap(NewNode->CSpace, NewCap, OldNode->CSpace,
+			     OldNode->Cap, NewRights, Badge),
+		   MiDeallocateCapEx(NewNode->CSpace, NewCap));
+    }
+    NewNode->Cap = NewCap;
+
     return STATUS_SUCCESS;
 }

@@ -1,6 +1,8 @@
 #include "mi.h"
 #include "intsafe.h"
 
+PSECTION MiPhysicalSection;
+
 NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object)
 {
     PSECTION Section = (PSECTION) Object;
@@ -10,7 +12,7 @@ NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiSectionInitialization()
+NTSTATUS MmSectionInitialization()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = MiSectionObjectCreateProc,
@@ -27,13 +29,18 @@ NTSTATUS MiSectionInitialization()
      * pages in the NTOS root task temporarily. The necessary super-structures
      * at starting addresses for 4K page hyperspace and large page hyperspace
      * will be mapped on-demand. */
-    MMVAD_FLAGS Flags;
-    Flags.Word = 0;
-    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, HYPERSPACE_4K_PAGE_START,
-				   LARGE_PAGE_SIZE, Flags, NULL));
-    Flags.LargePages = TRUE;
-    RET_ERR(MiReserveVirtualMemory(&MiNtosVaddrSpace, HYPERSPACE_LARGE_PAGE_START,
-				   LARGE_PAGE_SIZE, Flags, NULL));
+    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_4K_PAGE_START, LARGE_PAGE_SIZE,
+				   MEM_RESERVE_MIRRORED_MEMORY));
+    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_LARGE_PAGE_START, LARGE_PAGE_SIZE,
+				   MEM_RESERVE_MIRRORED_MEMORY));
+
+    /* Create the singleton physical section. */
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection));
+    assert(MiPhysicalSection != NULL);
+    MiPhysicalSection->Flags.PhysicalMemory = 1;
+    /* Physical section is always committed immediately. */
+    MiPhysicalSection->Flags.Reserve = 1;
+    MiPhysicalSection->Flags.Commit = 1;
 
     return STATUS_SUCCESS;
 }
@@ -57,8 +64,8 @@ static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
  * This is stolen shamelessly from the ReactOS source code.
  *
  * Parse the PE image headers and populate the given image section object,
- * including the SUBSECTIONs. The number of subsections equal the number of PE
- * sections of the image file, plus the zeroth subsection which is the PE image
+ * including the SUBSECTIONs. The number of subsections equals the number of PE
+ * sections of the image file plus the zeroth subsection which is the PE image
  * headers.
  *
  * References:
@@ -476,16 +483,14 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
     assert(ImageSection != NULL);
     MWORD BaseAddress = ImageSection->ImageBase;
 
+    if ((pBaseAddress != NULL) && (*pBaseAddress != 0)) {
+	BaseAddress = *pBaseAddress;
+    }
+
     /* For each subsection of the image section object, create a VAD that points
      * to the subsection, and commit the memory pages of that subsection. */
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	PMMVAD Vad = NULL;
-	RET_ERR_EX(MiReserveImageVirtualMemory(VSpace, BaseAddress, SubSection, &Vad),
-		   {
-		       /* TODO: Clean up when error */
-		   });
-	assert(Vad != NULL);
-
 	/* For now we always map pages as private. In the future when we have
 	 * implemented the cache manager, pages can be shared between the cache
 	 * manager and the client processes. For this to happen the pages must
@@ -494,12 +499,28 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	 *
 	 * Of course, sections can be shared with other client processes. This is
 	 * also left as future work. */
-	Vad->Flags.PrivateMemory = TRUE;
-	Vad->Flags.ReadOnly = !(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE);
+	MWORD Flags = MEM_RESERVE_IMAGE_MAP | MEM_RESERVE_OWNED_MEMORY;
+	if (!(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE)) {
+	    Flags |= MEM_RESERVE_READ_ONLY;
+	}
 	/* If PE data section is large enough, use large pages to save resources */
-	Vad->Flags.LargePages = Vad->Flags.PrivateMemory &&
-	    (SubSection->RawDataSize >= (LARGE_PAGE_SIZE - PAGE_SIZE));
-	RET_ERR_EX(MiCommitVirtualMemory(Vad),
+	if (SubSection->RawDataSize >= (LARGE_PAGE_SIZE - PAGE_SIZE)) {
+	    Flags |= MEM_RESERVE_LARGE_PAGES;
+	}
+	RET_ERR_EX(MmReserveVirtualMemoryEx(VSpace, BaseAddress + SubSection->SubSectionBase,
+					    0, SubSection->SubSectionSize, Flags, &Vad),
+		   {
+		       /* TODO: Clean up when error */
+		   });
+	assert(Vad != NULL);
+	Vad->ImageSectionView.SubSection = SubSection;
+
+	if (BaseAddress != ImageSection->ImageBase) {
+	    /* TODO: Perform relocation */
+	    return STATUS_NTOS_UNIMPLEMENTED;
+	}
+
+	RET_ERR_EX(MiCommitImageVad(Vad),
 		   {
 		       /* TODO: Clean up when error */
 		   });
@@ -513,6 +534,29 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	}
     }
     return STATUS_SUCCESS;
+}
+
+static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
+					   IN MWORD PhysicalBase,
+					   IN MWORD VirtualBase,
+					   IN MWORD WindowSize)
+{
+    assert(VSpace != NULL);
+    PMMVAD Vad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace, VirtualBase, 0, WindowSize,
+				     MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
+    assert(Vad != NULL);
+    Vad->PhysicalSectionView.PhysicalBase = PhysicalBase;
+    RET_ERR(MmCommitVirtualMemoryEx(VSpace, VirtualBase, WindowSize, 0));
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
+			     IN MWORD VirtualBase,
+			     IN MWORD WindowSize)
+{
+    return MmMapViewOfSection(&MiNtosVaddrSpace, MiPhysicalSection, &VirtualBase,
+			      &PhysicalBase, &WindowSize);
 }
 
 /*
@@ -536,6 +580,11 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PARAMETER;
 	}
 	return MiMapViewOfImageSection(VSpace, Section->ImageSectionObject, BaseAddress);
+    } else if (Section->Flags.PhysicalMemory) {
+	assert((BaseAddress != NULL) && (*BaseAddress));
+	assert((SectionOffset != NULL) && (*SectionOffset));
+	assert((ViewSize != NULL) && (*ViewSize));
+	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress, *ViewSize);
     }
     return STATUS_NTOS_UNIMPLEMENTED;
 }
@@ -625,7 +674,7 @@ VOID MmDbgDumpSection(PSECTION Section)
     }
     DbgPrint("    Flags: %s%s%s%s%s%s\n",
 	     Section->Flags.Image ? " image" : "",
-	     Section->Flags.Based? " based" : "",
+	     Section->Flags.Based ? " based" : "",
 	     Section->Flags.File ? " file" : "",
 	     Section->Flags.PhysicalMemory ? " physical-memory" : "",
 	     Section->Flags.Reserve ? " reserve" : "",

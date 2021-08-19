@@ -21,3 +21,7 @@ LdrInitializeThunk:
 	/* should not return */
 1:
 	jmp  1b
+
+/* Must match offset of SystemDllTlsRegion in TEB struct */
+.global __tls_array
+.equ __tls_array, 0x18

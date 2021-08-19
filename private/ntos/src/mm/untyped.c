@@ -1,14 +1,22 @@
 #include "mi.h"
 
+/* cap.c */
+NTSTATUS MiAllocateCapRangeEx(IN PCNODE CNode,
+			      OUT MWORD *StartCap,
+			      IN LONG NumberRequested);
+NTSTATUS MiDeallocateCapEx(IN PCNODE CNode,
+			   IN MWORD Cap);
+
 VOID MiInitializeUntyped(IN PUNTYPED Untyped,
-			 IN PUNTYPED Parent,
+			 IN PCNODE CSpace,
+			 IN OPTIONAL PUNTYPED Parent,
 			 IN MWORD Cap,
 			 IN MWORD PhyAddr,
 			 IN LONG Log2Size,
 			 IN BOOLEAN IsDevice)
 {
-    MiInitializeCapTreeNode(&Untyped->TreeNode, CAP_TREE_NODE_UNTYPED,
-			    Cap, &Parent->TreeNode);
+    MmInitializeCapTreeNode(&Untyped->TreeNode, CAP_TREE_NODE_UNTYPED,
+			    Cap, CSpace, Parent ? &Parent->TreeNode : NULL);
     Untyped->Log2Size = Log2Size;
     Untyped->IsDevice = IsDevice;
     InvalidateListEntry(&Untyped->FreeListEntry);
@@ -30,39 +38,40 @@ VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem)
 NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
-			    OUT MWORD *ObjCap)
+			    IN PCAP_TREE_NODE TreeNode)
 {
     assert(Untyped != NULL);
-    assert(ObjCap != NULL);
-    RET_ERR(MmAllocateCap(ObjCap));
+    assert(Untyped->TreeNode.CSpace != NULL);
+    assert(TreeNode->CSpace != NULL);
+    assert(TreeNode->Cap == 0);
+    assert((TreeNode->Parent == NULL) ||
+	   (TreeNode->Parent == &Untyped->TreeNode));
+
+    MWORD ObjCap = 0;
+    RET_ERR(MiAllocateCapRangeEx(TreeNode->CSpace, &ObjCap, 1));
+    assert(ObjCap);
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
-				      ObjType,
-				      ObjBits,
+				      ObjType, ObjBits,
 				      ROOT_CNODE_CAP,
-				      0, // node_index
-				      0, // node_depth
-				      *ObjCap, // node_offset
-				      1);
+				      TreeNode->CSpace->TreeNode.Cap,
+				      0, ObjCap, 1);
     if (Error != seL4_NoError) {
-	MmDeallocateCap(*ObjCap);
-	*ObjCap = 0;
+	MiDeallocateCapEx(TreeNode->CSpace, ObjCap);
 	return SEL4_ERROR(Error);
     }
+    TreeNode->Cap = ObjCap;
+    MmCapTreeNodeSetParent(TreeNode, &Untyped->TreeNode);
     return STATUS_SUCCESS;
 }
 
 NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
 			   IN LONG SrcLog2Size,
+			   IN MWORD DestCSpace,
 			   IN MWORD DestCap)
 {
-    MWORD Error = seL4_Untyped_Retype(SrcCap,
-				      seL4_UntypedObject,
-				      SrcLog2Size-1,
-				      ROOT_CNODE_CAP,
-				      0, // node_index
-				      0, // node_depth
-				      DestCap, // node_offset
-				      2);
+    MWORD Error = seL4_Untyped_Retype(SrcCap, seL4_UntypedObject,
+				      SrcLog2Size-1, ROOT_CNODE_CAP,
+				      DestCSpace, 0, DestCap, 2);
     if (Error) {
 	return SEL4_ERROR(Error);
     }
@@ -73,21 +82,27 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
 			OUT PUNTYPED LeftChild,
 			OUT PUNTYPED RightChild)
 {
+    assert(Src != NULL);
+    assert(LeftChild != NULL);
+    assert(RightChild != NULL);
+    assert(Src->TreeNode.CSpace != NULL);
+
     if (MiCapTreeNodeHasChildren(&Src->TreeNode)) {
 	return STATUS_INVALID_PARAMETER;
     }
 
     MWORD NewCap = 0;
-    RET_ERR(MmAllocateCapRange(&NewCap, 2));
-    RET_ERR_EX(MiSplitUntypedCap(Src->TreeNode.Cap, Src->Log2Size, NewCap),
+    RET_ERR(MiAllocateCapRangeEx(Src->TreeNode.CSpace, &NewCap, 2));
+    RET_ERR_EX(MiSplitUntypedCap(Src->TreeNode.Cap, Src->Log2Size,
+				 Src->TreeNode.CSpace->TreeNode.Cap, NewCap),
 	       {
-		   MmDeallocateCap(NewCap+1);
-		   MmDeallocateCap(NewCap);
+		   MiDeallocateCapEx(Src->TreeNode.CSpace, NewCap+1);
+		   MiDeallocateCapEx(Src->TreeNode.CSpace, NewCap);
 	       });
 
-    MiInitializeUntyped(LeftChild, Src, NewCap, Src->AvlNode.Key,
+    MiInitializeUntyped(LeftChild, Src->TreeNode.CSpace, Src, NewCap, Src->AvlNode.Key,
 			Src->Log2Size - 1, Src->IsDevice);
-    MiInitializeUntyped(RightChild, Src, NewCap + 1,
+    MiInitializeUntyped(RightChild, Src->TreeNode.CSpace, Src, NewCap + 1,
 			Src->AvlNode.Key + (1ULL << LeftChild->Log2Size),
 			Src->Log2Size - 1, Src->IsDevice);
 
@@ -216,6 +231,8 @@ NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			    IN MWORD PhyAddr,
 			    OUT PUNTYPED *IoUntyped)
 {
+    assert(PhyMem != NULL);
+    assert(IoUntyped != NULL);
     PUNTYPED RootIoUntyped = MiFindRootIoUntyped(PhyMem, PhyAddr);
     if (RootIoUntyped == NULL) {
 	return STATUS_INVALID_PARAMETER;

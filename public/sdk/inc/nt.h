@@ -5,7 +5,9 @@
 #define UNICODE
 #include <ntdef.h>
 #include <ntstatus.h>
+#include <ntrtl.h>
 #include <ntseapi.h>
 #include <ntmmapi.h>
+#include <ntpsapi.h>
 #include <ntimage.h>
 #include <nosal.h>

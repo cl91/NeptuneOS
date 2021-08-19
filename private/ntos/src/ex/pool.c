@@ -91,7 +91,7 @@ static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
 	    if (Pool->HeapEnd + Size >= EX_POOL_START + EX_POOL_MAX_SIZE) {
 		Size = EX_POOL_START + EX_POOL_MAX_SIZE - Pool->HeapEnd;
 	    }
-	    NTSTATUS Status = MmAllocatePrivateMemory(Pool->HeapEnd, Size);
+	    NTSTATUS Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
 	    if (!NT_SUCCESS(Status)) {
 		return FALSE;
 	    }
@@ -163,6 +163,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     return (PVOID) BlockStart;
 }
 
+/* TODO: Catch double free. */
 static VOID EiFreePool(IN PEX_POOL Pool,
 		       IN PVOID Ptr)
 {

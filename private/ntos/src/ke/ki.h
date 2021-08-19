@@ -1,12 +1,14 @@
 #pragma once
 
+#include <ntos.h>
 #include <sel4/sel4.h>
 
-typedef struct {
-    seL4_BootInfo *BootInfo;
-    seL4_IPCBuffer *InitialThreadIpcBuffer;
-    seL4_CPtr InitialCapSpaceStart;
-    seL4_CPtr InitialCapSpaceEnd;
-} BOOT_ENVIRONMENT, *PBOOT_ENVIRONMENT;
+#define KiAllocatePoolEx(Var, Type, OnError)				\
+    ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_KE_TAG, OnError)
+#define KiAllocatePool(Var, Type)	KiAllocatePoolEx(Var, Type, {})
+#define KiAllocateArray(Var, Type, Size, OnError)			\
+    ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_KE_TAG, OnError)
 
 VOID KiInitVga();
+NTSTATUS KiCreateSystemServicesEndpoint();
+VOID KiDispatchSystemServices();

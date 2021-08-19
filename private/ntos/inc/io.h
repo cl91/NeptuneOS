@@ -15,7 +15,7 @@ typedef struct _FILE_OBJECT {
     PDEVICE_OBJECT DeviceObject;
     PCSTR FileName;
     SECTION_OBJECT_POINTERS SectionObject;
-    MWORD BufferPtr;
+    PVOID BufferPtr;
     MWORD Size;
 } FILE_OBJECT, *PFILE_OBJECT;
 
@@ -24,11 +24,11 @@ typedef struct _FILE_OBJECT {
  */
 
 /* init.c */
-NTSTATUS IoInitSystem();
+NTSTATUS IoInitSystemPhase0();
 
 /* create.c */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
-		      IN MWORD BufferPtr,
+		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
 		      OUT PFILE_OBJECT *pFile);
 VOID IoDbgDumpFileObject(IN PFILE_OBJECT File);

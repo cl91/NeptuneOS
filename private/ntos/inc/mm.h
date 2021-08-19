@@ -2,6 +2,7 @@
 
 #include <nt.h>
 #include <string.h>
+#include <assert.h>
 #include "ntosdef.h"
 
 #define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
@@ -79,16 +80,34 @@ typedef enum _CAP_TREE_NODE_TYPE {
     CAP_TREE_NODE_CNODE,
     CAP_TREE_NODE_UNTYPED,
     CAP_TREE_NODE_PAGING_STRUCTURE,
+    CAP_TREE_NODE_ENDPOINT,
 } CAP_TREE_NODE_TYPE;
 
 /* Describes a node in the Capability Derivation Tree */
 typedef struct _CAP_TREE_NODE {
     CAP_TREE_NODE_TYPE Type;
-    MWORD Cap;			/* Relative to the root task CSpace */
+    MWORD Cap;
+    struct _CNODE *CSpace;
     struct _CAP_TREE_NODE *Parent;
     LIST_ENTRY ChildrenList;	/* List head of the sibling list of children */
     LIST_ENTRY SiblingLink;	/* Chains all siblings together */
 } CAP_TREE_NODE, *PCAP_TREE_NODE;
+
+static inline VOID MmCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
+					  IN PCAP_TREE_NODE Parent)
+{
+    assert(Self != NULL);
+    Self->Parent = Parent;
+    if (Parent != NULL) {
+	InsertTailList(&Parent->ChildrenList, &Self->SiblingLink);
+    }
+}
+
+static inline VOID MmCapTreeNodeRemoveFromParent(IN PCAP_TREE_NODE Node)
+{
+    RemoveEntryList(&Node->SiblingLink);
+    Node->Parent = NULL;
+}
 
 /*
  * A CNode represents a table of capability slots. It is
@@ -106,9 +125,26 @@ typedef struct _CNODE {
     CAP_TREE_NODE TreeNode;	/* Must be first entry */
     MWORD *UsedMap;		/* Bitmap of used slots */
     ULONG Log2Size;		/* Called 'radix' in seL4 manual */
+    ULONG Depth;	  /* Equals Log2Size for client process CNode,
+			     MWORD_BITS for root task CNODe */
     ULONG RecentFree;		/* Most recently freed bit */
     ULONG TotalUsed;		/* Number of used slots */
 } CNODE, *PCNODE;
+
+static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
+					   IN CAP_TREE_NODE_TYPE Type,
+					   IN MWORD Cap,
+					   IN PCNODE CSpace,
+					   IN OPTIONAL PCAP_TREE_NODE Parent)
+{
+    assert(Self != NULL);
+    Self->Type = Type;
+    Self->Cap = Cap;
+    Self->CSpace = CSpace;
+    InitializeListHead(&Self->ChildrenList);
+    InitializeListHead(&Self->SiblingLink);
+    MmCapTreeNodeSetParent(Self, Parent);
+}
 
 /*
  * A tree node in the AVL tree
@@ -156,29 +192,68 @@ typedef struct _UNTYPED {
  *
  * A virtual address descriptor describes a contiguous region of pages within
  * the client process's virtual address space, that have the same access rights,
- * attributes, and commit status, and that belong to the same section (and sub-
- * section). When the user request to partially commit a reserved address window,
- * we will split the original VAD into regions that have the same commit status.
- * Therefore, a single VAD is always either fully committed, or not committed at all.
+ * attributes, and that belong to the same view of a section (or subsection).
  *
- * Note that the memory manager's internal routines do not rely on this information
- * to map or unmap a paging structure.
+ * In terms of ownership of the memory pages within the VAD, there are two types
+ * of VADs, owned memory region and mirrored memory region. Owned memory regions
+ * allocate the pages by retyping untyped memories, while mirrored memory region
+ * maps other owned memory regions via seL4_CNode_Copy, possibly with different
+ * access rights.
+ *
+ * A VAD node does not in general track the commitment status of individual pages.
+ * Apart from a single bit to indicate whether the VAD has been fully committed,
+ * owned memory regions also have a CommitmentSize member to indicate the total
+ * amount of committed memory. This is due to the fact that owned memory can be
+ * committed in pieces. No other types of VADs can be committed partially.
+ *
+ * A MirroredMemory is a type of VADs that map another OwnedMemory VAD (typically
+ * within another VSpace) into this VSpace, possibly with a different WindowSize
+ * and access rights. The commitment status of the MirroredMemory VAD is kept
+ * in sync with the owned memory (within the address window of the mirrored VAD),
+ * meaning that when the pages of the owned VAD are committed, the mirrored VAD
+ * will have the corresponding pages mirrored as well, if these pages are within
+ * the address window of the mirrored VAD.
+ *
+ * Note that the memory manager's internal routines do not rely on the information
+ * stored in VADs to map or unmap a paging structure.
  */
 typedef union _MMVAD_FLAGS {
     struct {
-	ULONG LargePages : 1; /* Use large pages when possible */
+	ULONG NoAccess : 1;   /* True if forbidden to access memory region */
 	ULONG ReadOnly : 1;   /* Otherwise page is mapped ReadWrite */
-	ULONG Committed: 1;   /* True if all pages are mapped */
-	ULONG PrivateMemory : 1; /* True if pages are not shared with any other VSpace */
 	ULONG ImageMap : 1;	 /* Node is a subsection of an image section */
 	ULONG FileMap : 1;	 /* Node is a view of a file section */
-	ULONG PhysicalMapping : 1;
+	ULONG PhysicalMapping : 1; /* Node is a view of the physical memory */
+	ULONG LargePages : 1; /* Use large pages when possible */
+	ULONG Committed : 1;   /* True if all pages are mapped */
+	ULONG OwnedMemory : 1; /* True if pages are owned by this VSpace */
+	ULONG MirroredMemory : 1; /* True if this VAD is a mirror of another VAD */
     };
     ULONG Word;
 } MMVAD_FLAGS;
 
+/* Flags that can be passed into MmReserveVirtualMemoryEx */
+#define MEM_RESERVE_NO_ACCESS		(0x1UL)
+#define MEM_RESERVE_READ_ONLY		(0x1UL << 1)
+/* If the VAD is neither an image map/file map nor a physical map, it would be
+ * what Windows calls "page-file backed section", in other words just memory. */
+#define MEM_RESERVE_IMAGE_MAP		(0x1UL << 2)
+#define MEM_RESERVE_FILE_MAP		(0x1UL << 3)
+#define MEM_RESERVE_PHYSICAL_MAPPING	(0x1UL << 4)
+#define MEM_RESERVE_LARGE_PAGES		(0x1UL << 5)
+/* Search from higher address to lower address */
+#define MEM_RESERVE_TOP_DOWN		(0x1UL << 6)
+/* Memory pages are owned by this VSpace */
+#define MEM_RESERVE_OWNED_MEMORY	(0x1UL << 7)
+/* Memory pages are derived from pages in other VSpace via seL4_CNode_Copy */
+#define MEM_RESERVE_MIRRORED_MEMORY	(0x1UL << 8)
+
+/* Flags that can be passed into MmCommitVirtualMemoryEx */
+/* When committing owned memory, map all viewer address windows as well */
+#define MEM_COMMIT_SYNC_VIEWERS		(0x1UL << 9)
+
 typedef struct _MMVAD {
-    MM_AVL_NODE AvlNode;	/* starting virtual address of the node, 4K aligned */
+    MM_AVL_NODE AvlNode; /* starting virtual address of the node, 4K aligned */
     struct _VIRT_ADDR_SPACE *VSpace;
     MWORD WindowSize;		/* rounded up to 4K page boundary */
     MMVAD_FLAGS Flags;
@@ -189,9 +264,21 @@ typedef struct _MMVAD {
 	} DataSectionView;
 	struct {
 	    struct _SUBSECTION *SubSection;
-	    LONG NumPrivatePages;
-	    struct _PAGING_STRUCTURE **PrivatePages;
 	} ImageSectionView;
+	struct {
+	    MWORD PhysicalBase;	/* Base of the physical address window to map, 4K aligned */
+	} PhysicalSectionView;	/* Physical section is neither owned or mirrored memory */
+    };
+    union {
+	struct {
+	    MWORD CommitmentSize;
+	    LIST_ENTRY ViewerList;
+	} OwnedMemory;
+	struct {
+	    struct _MMVAD *OwnerVad;
+	    MWORD Offset; /* Offset from the start of the owner VAD */
+	    LIST_ENTRY ViewerLink;
+	} MirroredMemory;
     };
 } MMVAD, *PMMVAD;
 
@@ -200,11 +287,11 @@ typedef struct _MMVAD {
 
 /*
  * A paging structure represents a capability to either a page,
- * a large page, or a page table. A paging structure has a unique
- * virtual address space associated with it, since to share a
- * page in seL4 between multiple threads, the capability to that
- * page must first be cloned. Mapping the same page cap twice is
- * an error.
+ * a large page, or a page table/page directory/PDPT/PML4/etc.
+ * A paging structure has a unique virtual address space associated
+ * with it, since to share a page in seL4 between multiple threads,
+ * the capability to that page must first be cloned. Mapping the
+ * same page cap twice is an error.
  *
  * Therefore, mapping a page on two different virtual address
  * spaces involves duplicating the PAGING_STRUCTURE first
@@ -242,8 +329,8 @@ typedef enum _PAGING_STRUCTURE_TYPE {
 #endif
 } PAGING_STRUCTURE_TYPE;
 
-#define PAGING_RIGHTS		seL4_CapRights_t
-#define PAGING_ATTRIBUTES	seL4_X86_VMAttributes
+typedef seL4_CapRights_t PAGING_RIGHTS;
+typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
 
 typedef struct _PAGING_STRUCTURE {
     CAP_TREE_NODE TreeNode;
@@ -269,9 +356,6 @@ static inline BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
     return memcmp(&Left, &Right, sizeof(PAGING_RIGHTS)) == 0;
 }
 
-typedef ULONG WIN32_PROTECTION_MASK;
-typedef PULONG PWIN32_PROTECTION_MASK;
-
 /*
  * Top level structure of the virtual address space of a process.
  *
@@ -284,7 +368,7 @@ typedef struct _VIRT_ADDR_SPACE {
     MWORD ASIDPool;
     MM_AVL_TREE VadTree;
     PMMVAD CachedVad;		/* Speed up look up */
-    PAGING_STRUCTURE RootPagingStructure;
+    PPAGING_STRUCTURE RootPagingStructure;
 } VIRT_ADDR_SPACE, *PVIRT_ADDR_SPACE;
 
 /*
@@ -383,7 +467,8 @@ typedef struct _SUBSECTION {
  */
 
 /* init.c */
-NTSTATUS MmInitSystem(IN seL4_BootInfo *bootinfo);
+NTSTATUS MmInitSystemPhase0(IN seL4_BootInfo *bootinfo);
+NTSTATUS MmInitSystemPhase1();
 
 /* avltree.c */
 VOID MmAvlDumpTree(PMM_AVL_TREE tree);
@@ -391,33 +476,13 @@ VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree);
 
 /* cap.c */
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
-NTSTATUS MmAllocateCapRangeEx(IN PCNODE CNode,
-			      OUT MWORD *StartCap,
-			      IN LONG NumberRequested);
-NTSTATUS MmDeallocateCapEx(IN PCNODE CNode,
-			   IN MWORD Cap);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
-NTSTATUS MmDeleteCNode(PCNODE CNode);
-
-static inline NTSTATUS MmAllocateCap(OUT MWORD *Cap)
-{
-    extern CNODE MiNtosCNode;
-    return MmAllocateCapRangeEx(&MiNtosCNode, Cap, 1);
-}
-
-static inline NTSTATUS MmAllocateCapRange(OUT MWORD *StartCap,
-					  IN LONG NumberRequested)
-{
-    extern CNODE MiNtosCNode;
-    return MmAllocateCapRangeEx(&MiNtosCNode, StartCap, NumberRequested);
-}
-
-static inline NTSTATUS MmDeallocateCap(IN MWORD Cap)
-{
-    extern CNODE MiNtosCNode;
-    return MmDeallocateCapEx(&MiNtosCNode, Cap);
-}
+VOID MmDeleteCNode(PCNODE CNode);
+NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
+				   IN PCAP_TREE_NODE OldNode,
+				   IN seL4_CapRights_t NewRights,
+				   IN MWORD Badge);
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
@@ -426,26 +491,15 @@ NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped);
 NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
-			    OUT MWORD *ObjCap);
+			    IN PCAP_TREE_NODE TreeNode);
 VOID MmDbgDumpUntypedInfo();
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitIoPageEx(IN PVIRT_ADDR_SPACE VaddrSpace,
-			  IN MWORD PhyAddr,
-			  IN MWORD VirtAddr,
-			  IN PAGING_RIGHTS Rights,
-			  OUT OPTIONAL PPAGING_STRUCTURE *pPage);
 VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
 
-static inline NTSTATUS MmCommitIoPage(IN MWORD PhyAddr,
-				      IN MWORD VirtAddr)
-{
-    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmCommitIoPageEx(&MiNtosVaddrSpace, PhyAddr, VirtAddr, MM_RIGHTS_RW, NULL);
-}
-
 /* section.c */
+NTSTATUS MmSectionInitialization();
 NTSTATUS MmCreateSection(IN struct _FILE_OBJECT *FileObject,
 			 IN MWORD Attribute,
 			 OUT PSECTION *SectionObject);
@@ -454,28 +508,43 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN OUT MWORD *BaseAddress,
 			    IN OUT MWORD *SectionOffset,
 			    IN OUT MWORD *ViewSize);
+NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
+			     IN MWORD VirtualBase,
+			     IN MWORD WindowSize);
 VOID MmDbgDumpSection(IN PSECTION Section);
 
 /* vaddr.c */
-VOID MmInitializeVaddrSpace(IN PVIRT_ADDR_SPACE VaddrSpace,
-			    IN MWORD VSpaceCap);
+NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);
+NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self);
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace);
-NTSTATUS MmAllocatePrivateMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
-				   IN MWORD VirtAddr,
-				   IN MWORD WindowSize,
-				   IN MWORD AllocationType,
-				   IN MWORD Protect);
-NTSTATUS MmQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
-			       IN MWORD VirtAddr,
-			       OUT PPAGING_STRUCTURE *pPage);
+NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+				  IN MWORD StartAddr,
+				  IN OPTIONAL MWORD EndAddr,
+				  IN MWORD WindowSize,
+				  IN MWORD Flags,
+				  OUT OPTIONAL PMMVAD *pVad);
+NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+				 IN MWORD StartAddr,
+				 IN MWORD WindowSize,
+				 IN MWORD CommitFlags);
+PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
+			      IN MWORD VirtAddr);
 VOID MmDbgDumpVad(PMMVAD Vad);
 VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
 
-static inline NTSTATUS MmAllocatePrivateMemory(IN MWORD VirtAddr,
-					       IN MWORD WindowSize)
+static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
+					      IN MWORD WindowSize,
+					      IN MWORD Flags)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmAllocatePrivateMemoryEx(&MiNtosVaddrSpace, VirtAddr, WindowSize,
-				     MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES,
-				     PAGE_READWRITE);
+    assert(!(Flags & MEM_RESERVE_TOP_DOWN));
+    return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, 0,
+				    WindowSize, Flags, NULL);
+}
+
+static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
+					     IN MWORD WindowSize)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize, 0);
 }
