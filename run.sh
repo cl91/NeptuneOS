@@ -38,4 +38,4 @@ for var in "$@"; do
     ARGS[${#ARGS[@]}]="$var"
 done
 
-$QEMU -m size=400M -serial stdio  -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"
+$QEMU -m size=400M -serial stdio -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"

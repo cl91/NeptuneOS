@@ -29,6 +29,7 @@ add_compile_options(
     -fno-stack-protector
     -fno-asynchronous-unwind-tables
     -ftls-model=local-exec
+    -mtls-direct-seg-refs
     -Wno-incompatible-library-redeclaration
     -msoft-float
     -mno-sse
@@ -48,8 +49,4 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(kernel.elf PRIVATE "-Wno-error=uninitialized")
     target_compile_options(kernel.elf PRIVATE "-Wno-error=shift-negative-value")
     set(CMAKE_AR "llvm-ar" CACHE FILEPATH "Archiver")
-endif()
-
-if(KernelArchX86)
-    add_compile_options(-mtls-direct-seg-refs)
 endif()

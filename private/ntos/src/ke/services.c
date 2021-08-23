@@ -48,7 +48,6 @@ NTSTATUS KeEnableSystemServices(IN PPROCESS Process,
 
 VOID KiDispatchSystemServices()
 {
-    while (TRUE) {
 	MWORD Badge = 0;
 	seL4_MessageInfo_t Reply = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
 	ULONG SvcNum = seL4_MessageInfo_get_label(Reply);
@@ -58,12 +57,14 @@ VOID KiDispatchSystemServices()
 	DbgTrace("Got message label 0x%x length %d unwrapped caps %d extra caps %d badge 0x%zx\n",
 		 SvcNum, SvcMsgLength, NumUnwrappedCaps, NumExtraCaps, Badge);
 	/* Reject the system service call since the service message is invalid. */
-	if (Badge == 0 || NumUnwrappedCaps != 0 || NumExtraCaps != 0
-	    || SvcNum >= NUMBER_OF_SYSTEM_SERVICES) {
-	    break;
+	/* if (Badge == 0 || NumUnwrappedCaps != 0 || NumExtraCaps != 0 */
+	/*     || SvcNum >= NUMBER_OF_SYSTEM_SERVICES) { */
+	/*     continue; */
+	/* } */
+	/* PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge); */
+	Reply = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
+	while (TRUE) {
 	}
-	PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
-    }
 }
 
 PCSTR KiDbgErrorCodeToStr(IN int Error)

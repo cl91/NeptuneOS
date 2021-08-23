@@ -1,0 +1,7 @@
+megs: 64
+display_library: x
+ata1-master: type=cdrom, path=build-i386-debug/boot.iso, status=inserted
+boot: cdrom
+log: bochsout.txt
+com1: enabled=1, mode=file, dev=bochs-serial-out.txt
+mouse: enabled=0

@@ -1,2 +1,4 @@
 build
 build-*
+bochsout.txt
+bochs-serial-out.txt

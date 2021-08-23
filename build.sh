@@ -66,6 +66,7 @@ echo
 # define SEL4_INT64_IS_LONG_LONG. So far this seems to work and produce
 # valid seL4 system calls. However we need to be very careful.
 mkdir -p libsel4-pe/generated
+cp ../elf/structures_gen.h libsel4-pe/generated || build_failed
 cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH libsel4-pe/sel4_arch_include || build_failed
 cp -r ../elf/kernel/gen_config libsel4-pe/generated/kernelconfig || build_failed
 for i in gen_config autoconf include arch_include sel4_arch_include; do
@@ -86,6 +87,7 @@ cmake ../../private/ntdll \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../private/ntdll/cmake/${TOOLCHAIN}.cmake \
       -DLIBSEL4_PE_HEADERS_DIR="${PWD}/libsel4-pe" \
+      -DSTRUCTURES_GEN_DIR=${PWD}/libsel4-pe/generated \
       -G Ninja
 ninja || build_failed
 

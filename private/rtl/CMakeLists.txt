@@ -17,4 +17,5 @@ target_include_directories(
     PRIVATE
 	src/inc
 	src/inc/${Arch}
+	${STRUCTURES_GEN_DIR}
 )

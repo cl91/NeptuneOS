@@ -44,6 +44,7 @@ set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-subsystem:nat
 target_include_directories(
     ntdll
     PRIVATE
+	${STRUCTURES_GEN_DIR}
 	${CMAKE_CURRENT_LIST_DIR}/inc
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/include
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/mode_include/${KernelWordSize}

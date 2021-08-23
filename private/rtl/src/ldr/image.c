@@ -12,7 +12,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include <rtl.h>
+#include <debug.h>
 
 #define RVA(m, b) ((PVOID)((ULONG_PTR)(b) + (ULONG_PTR)(m)))
 

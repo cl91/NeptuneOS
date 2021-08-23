@@ -33,8 +33,9 @@ add_custom_target(
     DEPENDS kernel.elf
 )
 
+add_dependencies(rtl structures_gen)
 add_library(ntos STATIC ${SRC})
-add_dependencies(ntos sel4 rtl kernel.elf structures_gen)
+add_dependencies(ntos sel4 rtl kernel.elf)
 target_include_directories(ntos PRIVATE inc inc/${Arch} ${STRUCTURES_GEN_DIR})
 target_link_libraries(ntos PRIVATE sel4 sel4_autoconf rtl ntos_Config)
 

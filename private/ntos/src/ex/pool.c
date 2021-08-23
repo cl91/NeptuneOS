@@ -22,7 +22,7 @@ static VOID EiAddPageToPool(IN PEX_POOL Pool,
     EiAddFreeSpaceToPool(Pool, Addr, 0, EX_POOL_FREE_LISTS);
 }
 
-/* We require 3 consecutive initial pages mapped at EX_POOL_START */
+/* We require at least 3 consecutive 4K pages mapped at EX_POOL_START */
 NTSTATUS ExInitializePool(IN MWORD HeapStart,
 			  IN LONG NumPages)
 {

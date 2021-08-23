@@ -9,6 +9,7 @@
 #include <gnu.h>
 
 #include <services.h>
+#include <debug.h>
 
 #include "ntosdef.h"
 #include "ke.h"
@@ -17,5 +18,4 @@
 #include "ob.h"
 #include "io.h"
 #include "ps.h"
-#include "rtl.h"
 #include "ldr.h"
