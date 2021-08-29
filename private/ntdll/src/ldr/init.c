@@ -30,13 +30,7 @@ __fastcall void LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 {
     _tls_index = SYSTEMDLL_TLS_INDEX;
     SystemDllTlsRegion[SYSTEMDLL_TLS_INDEX] = SystemDllTlsRegion;
-    DbgPrint("IpcBuffer = %p\n", IpcBuffer);
     __sel4_ipc_buffer = IpcBuffer;
-    DbgPrint("__sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
-    for (int i = 0; i < 0xf; i++) {
-	DbgPrint("cap 0x%x is type %s\n", i,
-		 RtlDbgCapTypeToStr(seL4_DebugCapIdentify(i)));
-    }
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugPutString("Hello, world from NT client!\n");
     seL4_DebugPutString(LdrpInitializedArray);

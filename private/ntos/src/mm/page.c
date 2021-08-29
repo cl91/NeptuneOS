@@ -838,3 +838,25 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
     DbgPrint("\n    Sub-structures as a tree:\n");
     MmAvlDumpTree(&Paging->SubStructureTree);
 }
+
+static VOID MiDbgDumpPagingStructureVisitor(IN PMM_AVL_NODE Node)
+{
+    MmDbgDumpPagingStructureRecursively(MM_AVL_NODE_TO_PAGING_STRUCTURE(Node));
+}
+
+VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
+{
+    DbgPrint("    Virtual address %p  Type %s",
+	     (PVOID) Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type));
+    if (MiPagingTypeIsPageOrLargePage(Paging->Type)) {
+	DbgPrint("  Physical address ");
+	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Paging->TreeNode.Cap);
+	if (Reply.error == 0) {
+	    DbgPrint("%p", (PVOID) Reply.paddr);
+	} else {
+	    DbgPrint("(error)");
+	}
+    }
+    DbgPrint("\n    ");
+    MmAvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);
+}

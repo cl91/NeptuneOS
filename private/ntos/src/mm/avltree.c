@@ -539,3 +539,12 @@ VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree)
 	DbgPrint("%p ", (PVOID) Node->Key);
     }
 }
+
+VOID MmAvlVisitTreeLinear(PMM_AVL_TREE Tree, PMM_AVL_TREE_VISITOR Visitor)
+{
+    assert(Tree != NULL);
+    assert(Visitor != NULL);
+    LoopOverList(Node, &Tree->NodeList, MM_AVL_NODE, ListEntry) {
+	Visitor(Node);
+    }
+}

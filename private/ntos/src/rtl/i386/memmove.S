@@ -1,18 +1,10 @@
-#ifdef _MSC_VER
-#define memmove _memmove
-#endif
-
 .global memmove
-#ifndef _MSC_VER
 .type memmove,@function
-#endif
 memmove:
 	mov 4(%esp),%eax
 	sub 8(%esp),%eax
 	cmp 12(%esp),%eax
-#ifndef _MSC_VER
 .hidden __memcpy_fwd
-#endif
 	jae __memcpy_fwd
 	push %esi
 	push %edi

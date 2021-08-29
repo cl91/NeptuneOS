@@ -473,6 +473,8 @@ NTSTATUS MmInitSystemPhase1();
 /* avltree.c */
 VOID MmAvlDumpTree(PMM_AVL_TREE tree);
 VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree);
+typedef VOID (*PMM_AVL_TREE_VISITOR)(PMM_AVL_NODE Node);
+VOID MmAvlVisitTreeLinear(PMM_AVL_TREE Tree, PMM_AVL_TREE_VISITOR Visitor);
 
 /* cap.c */
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
@@ -497,6 +499,7 @@ VOID MmDbgDumpUntypedInfo();
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
 VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
+VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
 
 /* section.c */
 NTSTATUS MmSectionInitialization();

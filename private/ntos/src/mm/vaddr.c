@@ -525,4 +525,6 @@ VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace)
     MmAvlDumpTree(&VSpace->VadTree);
     DbgPrint("    vad tree content:\n");
     LoopOverVadTree(Vad, VSpace, MmDbgDumpVad(Vad));
+    DbgPrint("    page mappings:\n");
+    MmDbgDumpPagingStructureRecursively(VSpace->RootPagingStructure);
 }
