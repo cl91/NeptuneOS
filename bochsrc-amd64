@@ -1,0 +1,8 @@
+megs: 128
+cpu: model=corei7_ivy_bridge_3770k
+display_library: x
+ata1-master: type=cdrom, path=build-amd64-debug/boot.iso, status=inserted
+boot: cdrom
+log: bochsout.txt
+com1: enabled=1, mode=file, dev=bochs-serial-out.txt
+mouse: enabled=0
