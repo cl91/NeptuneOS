@@ -81,6 +81,7 @@ typedef enum _CAP_TREE_NODE_TYPE {
     CAP_TREE_NODE_UNTYPED,
     CAP_TREE_NODE_PAGING_STRUCTURE,
     CAP_TREE_NODE_ENDPOINT,
+    CAP_TREE_NODE_X86_IOPORT,
 } CAP_TREE_NODE_TYPE;
 
 /* Describes a node in the Capability Derivation Tree */
@@ -477,6 +478,11 @@ typedef VOID (*PMM_AVL_TREE_VISITOR)(PMM_AVL_NODE Node);
 VOID MmAvlVisitTreeLinear(PMM_AVL_TREE Tree, PMM_AVL_TREE_VISITOR Visitor);
 
 /* cap.c */
+NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
+			    OUT MWORD *StartCap,
+			    IN LONG NumberRequested);
+NTSTATUS MmDeallocateCap(IN PCNODE CNode,
+			 IN MWORD Cap);
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
@@ -485,6 +491,12 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,
 				   IN MWORD Badge);
+
+static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
+				     OUT MWORD *Cap)
+{
+    return MmAllocateCapRange(CNode, Cap, 1);
+}
 
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,

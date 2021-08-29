@@ -8,11 +8,15 @@
 
 VOID KeRunAllTests();
 
-VOID KeBugCheckMsg(PCSTR Format, ...);
+VOID KeBugCheckMsg(IN PCSTR Format, ...);
+
+VOID KeBugCheck(IN PCSTR Function,
+		IN PCSTR File,
+		IN ULONG Line,
+		IN ULONG Error);
 
 #define BUGCHECK_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { \
-	    KeBugCheckMsg("Unrecoverable error at %s @ %s line %d: Error Code 0x%x\n",\
-			  __func__, __FILE__, __LINE__, Error);}}
+	    KeBugCheck(__func__, __FILE__, __LINE__, Error);}}
 
 #define LoopOverUntyped(cap, desc, bootinfo)				\
     for (MWORD cap = bootinfo->untyped.start;				\
@@ -28,9 +32,19 @@ typedef struct _IPC_ENDPOINT {
     MWORD Badge;
 } IPC_ENDPOINT, *PIPC_ENDPOINT;
 
+typedef struct _X86_IOPORT {
+    CAP_TREE_NODE TreeNode; /* capability with which to invoke seL4_X86_IOPort_* */
+    USHORT PortNum;	    /* port number */
+} X86_IOPORT, *PX86_IOPORT;
+
 /* services.c */
 struct _PROCESS;
 struct _THREAD;
 NTSTATUS KeEnableSystemServices(IN struct _PROCESS *Process,
 				IN struct _THREAD *Thread);
 VOID KeDbgDumpIPCError(IN int Error);
+
+/* port.c */
+NTSTATUS KeEnableIoPortX86(IN PCNODE CSpace,
+			   IN USHORT PortNum,
+			   IN PX86_IOPORT IoPort);

@@ -1,12 +1,5 @@
 #include "mi.h"
 
-/* cap.c */
-NTSTATUS MiAllocateCapRangeEx(IN PCNODE CNode,
-			      OUT MWORD *StartCap,
-			      IN LONG NumberRequested);
-NTSTATUS MiDeallocateCapEx(IN PCNODE CNode,
-			   IN MWORD Cap);
-
 VOID MiInitializeUntyped(IN PUNTYPED Untyped,
 			 IN PCNODE CSpace,
 			 IN OPTIONAL PUNTYPED Parent,
@@ -48,7 +41,7 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 	   (TreeNode->Parent == &Untyped->TreeNode));
 
     MWORD ObjCap = 0;
-    RET_ERR(MiAllocateCapRangeEx(TreeNode->CSpace, &ObjCap, 1));
+    RET_ERR(MmAllocateCapRange(TreeNode->CSpace, &ObjCap, 1));
     assert(ObjCap);
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				      ObjType, ObjBits,
@@ -56,7 +49,7 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 				      TreeNode->CSpace->TreeNode.Cap,
 				      0, ObjCap, 1);
     if (Error != seL4_NoError) {
-	MiDeallocateCapEx(TreeNode->CSpace, ObjCap);
+	MmDeallocateCap(TreeNode->CSpace, ObjCap);
 	return SEL4_ERROR(Error);
     }
     TreeNode->Cap = ObjCap;
@@ -92,12 +85,12 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
     }
 
     MWORD NewCap = 0;
-    RET_ERR(MiAllocateCapRangeEx(Src->TreeNode.CSpace, &NewCap, 2));
+    RET_ERR(MmAllocateCapRange(Src->TreeNode.CSpace, &NewCap, 2));
     RET_ERR_EX(MiSplitUntypedCap(Src->TreeNode.Cap, Src->Log2Size,
 				 Src->TreeNode.CSpace->TreeNode.Cap, NewCap),
 	       {
-		   MiDeallocateCapEx(Src->TreeNode.CSpace, NewCap+1);
-		   MiDeallocateCapEx(Src->TreeNode.CSpace, NewCap);
+		   MmDeallocateCap(Src->TreeNode.CSpace, NewCap+1);
+		   MmDeallocateCap(Src->TreeNode.CSpace, NewCap);
 	       });
 
     MiInitializeUntyped(LeftChild, Src->TreeNode.CSpace, Src, NewCap, Src->AvlNode.Key,

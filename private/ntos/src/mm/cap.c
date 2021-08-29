@@ -64,6 +64,8 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 	Type = "PAGING";
     } else if (Node->Type == CAP_TREE_NODE_ENDPOINT) {
 	Type = "ENDPOINT";
+    } else if (Node->Type == CAP_TREE_NODE_X86_IOPORT) {
+	Type = "X86_IOPORT";
     }
     PCSTR CapType = RtlDbgCapTypeToStr(seL4_DebugCapIdentify(Node->Cap));
     if (Node->CSpace != &MiNtosCNode) {
@@ -73,9 +75,9 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 }
 
 /* Allocate a continuous range of capability slots */
-NTSTATUS MiAllocateCapRangeEx(IN PCNODE CNode,
-			      OUT MWORD *StartCap,
-			      IN LONG NumberRequested)
+NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
+			    OUT MWORD *StartCap,
+			    IN LONG NumberRequested)
 {
     assert(CNode != NULL);
     assert(StartCap != NULL);
@@ -138,8 +140,8 @@ Lookup:
 }
 
 /* Mark the capability slot of the given CNode as free */
-NTSTATUS MiDeallocateCapEx(IN PCNODE CNode,
-			   IN MWORD Cap)
+NTSTATUS MmDeallocateCap(IN PCNODE CNode,
+			 IN MWORD Cap)
 {
     assert(CNode != NULL);
     assert(Cap < (1ULL << CNode->Log2Size));
@@ -283,17 +285,17 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     }
 
     MWORD NewCap = 0;
-    RET_ERR(MiAllocateCapRangeEx(NewNode->CSpace, &NewCap, 1));
+    RET_ERR(MmAllocateCapRange(NewNode->CSpace, &NewCap, 1));
     assert(NewCap != 0);
 
     if (Badge == 0) {
 	RET_ERR_EX(MiCopyCap(NewNode->CSpace, NewCap, OldNode->CSpace,
 			     OldNode->Cap, NewRights),
-		   MiDeallocateCapEx(NewNode->CSpace, NewCap));
+		   MmDeallocateCap(NewNode->CSpace, NewCap));
     } else {
 	RET_ERR_EX(MiMintCap(NewNode->CSpace, NewCap, OldNode->CSpace,
 			     OldNode->Cap, NewRights, Badge),
-		   MiDeallocateCapEx(NewNode->CSpace, NewCap));
+		   MmDeallocateCap(NewNode->CSpace, NewCap));
     }
     NewNode->Cap = NewCap;
 
