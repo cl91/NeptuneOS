@@ -52,6 +52,7 @@ cmake ../../private/ntos \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DSTRUCTURES_GEN_H_ORIG=${PWD}/kernel/generated/arch/object/structures_gen.h \
       -DSTRUCTURES_GEN_DIR=${PWD} \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DKernelSel4Arch=$SEL4_ARCH -G Ninja
 ninja all-elf || build_failed
 

@@ -34,6 +34,7 @@ add_compile_options(
     -msoft-float
     -mno-sse
     -mno-mmx
+    -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
 )
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
