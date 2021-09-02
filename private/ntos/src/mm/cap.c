@@ -48,6 +48,8 @@ Revision History:
 --*/
 
 #include "mi.h"
+
+#ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
     if (Node == NULL) {
@@ -73,6 +75,7 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     }
     DbgPrint("Cap 0x%zx (Type %s seL4 Cap %s)", Node->Cap, Type, CapType);
 }
+#endif
 
 /* Allocate a continuous range of capability slots */
 NTSTATUS MmAllocateCapRange(IN PCNODE CNode,

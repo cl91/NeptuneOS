@@ -35,6 +35,7 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
     return STATUS_SUCCESS;
 }
 
+#ifdef CONFIG_DEBUG_BUILD
 VOID IoDbgDumpFileObject(IN PFILE_OBJECT File)
 {
     DbgPrint("Dumping file object %p\n", File);
@@ -49,3 +50,4 @@ VOID IoDbgDumpFileObject(IN PFILE_OBJECT File)
     DbgPrint("    BufferPtr = %p\n", (PVOID) File->BufferPtr);
     DbgPrint("    Size = 0x%zx\n", File->Size);
 }
+#endif

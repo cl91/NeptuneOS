@@ -483,7 +483,6 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
 			    IN LONG NumberRequested);
 NTSTATUS MmDeallocateCap(IN PCNODE CNode,
 			 IN MWORD Cap);
-VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
 VOID MmDeleteCNode(PCNODE CNode);
@@ -506,12 +505,9 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
 			    IN PCAP_TREE_NODE TreeNode);
-VOID MmDbgDumpUntypedInfo();
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
-VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
 
 /* section.c */
 NTSTATUS MmSectionInitialization();
@@ -526,7 +522,6 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
 			     IN MWORD VirtualBase,
 			     IN MWORD WindowSize);
-VOID MmDbgDumpSection(IN PSECTION Section);
 
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);
@@ -547,8 +542,6 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
 			      IN PMMVAD Owner,
 			      IN MWORD Offset);
-VOID MmDbgDumpVad(PMMVAD Vad);
-VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
 
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
 					      IN OPTIONAL MWORD EndAddr,

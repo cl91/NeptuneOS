@@ -290,6 +290,7 @@ NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped)
     return STATUS_SUCCESS;
 }
 
+#ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpUntypedInfo()
 {
     PLIST_ENTRY SmallUntypedList = &MiPhyMemDescriptor.SmallUntypedList;
@@ -316,3 +317,4 @@ VOID MmDbgDumpUntypedInfo()
     DbgPrint("  Root untyped forest as an AVL tree ordered by physical address:\n");
     MmAvlDumpTree(&MiPhyMemDescriptor.RootUntypedForest);
 }
+#endif

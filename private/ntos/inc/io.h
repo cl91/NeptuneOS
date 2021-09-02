@@ -31,4 +31,3 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
 		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
 		      OUT PFILE_OBJECT *pFile);
-VOID IoDbgDumpFileObject(IN PFILE_OBJECT File);

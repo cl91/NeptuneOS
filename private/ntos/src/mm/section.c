@@ -589,6 +589,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_NTOS_UNIMPLEMENTED;
 }
 
+#ifdef CONFIG_DEBUG_BUILD
 static VOID MiDbgDumpSubSection(IN PSUBSECTION SubSection)
 {
     DbgPrint("Dumping sub-section %p\n", SubSection);
@@ -685,3 +686,4 @@ VOID MmDbgDumpSection(PSECTION Section)
 	MiDbgDumpDataSectionObject(Section->DataSectionObject);
     }
 }
+#endif

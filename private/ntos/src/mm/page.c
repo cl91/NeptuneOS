@@ -806,6 +806,7 @@ NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
+#ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 {
     DbgPrint("Dumping paging structure (PPAGING_STRUCTURE = %p)\n", Paging);
@@ -860,3 +861,4 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
     DbgPrint("\n    ");
     MmAvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);
 }
+#endif

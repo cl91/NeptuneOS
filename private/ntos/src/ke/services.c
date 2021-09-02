@@ -126,6 +126,7 @@ loop:
     goto loop;
 }
 
+#ifdef CONFIG_DEBUG_BUILD
 PCSTR KiDbgErrorCodeToStr(IN int Error)
 {
     switch (Error) {
@@ -210,3 +211,4 @@ VOID KeDbgDumpIPCError(IN int Error)
 	break;
     }
 }
+#endif

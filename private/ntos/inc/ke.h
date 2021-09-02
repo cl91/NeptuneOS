@@ -42,7 +42,6 @@ struct _PROCESS;
 struct _THREAD;
 NTSTATUS KeEnableSystemServices(IN struct _PROCESS *Process,
 				IN struct _THREAD *Thread);
-VOID KeDbgDumpIPCError(IN int Error);
 
 /* port.c */
 NTSTATUS KeEnableIoPortX86(IN PCNODE CSpace,

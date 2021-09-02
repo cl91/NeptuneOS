@@ -466,6 +466,7 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
     return MiPagingTypeIsPage(Page->Type) ? Page : NULL;
 }
 
+#ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpVad(PMMVAD Vad)
 {
     DbgPrint("Dumping vad at %p\n", Vad);
@@ -528,3 +529,4 @@ VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace)
     DbgPrint("    page mappings:\n");
     MmDbgDumpPagingStructureRecursively(VSpace->RootPagingStructure);
 }
+#endif
