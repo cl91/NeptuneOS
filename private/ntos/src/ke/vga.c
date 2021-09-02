@@ -9,11 +9,6 @@ static ULONG KiVgaCursorPositionVertical;
 
 #define VGA_MODE_HORIZONTAL		(80)
 #define VGA_MODE_VERTICAL		(25)
-#define VGA_BLUE			(1)
-#define VGA_WHITE			(15)
-#define VGA_BG_COLOR			(VGA_BLUE << 4)
-#define VGA_FG_COLOR			(VGA_WHITE)
-#define VGA_TEXT_COLOR			(VGA_BG_COLOR | VGA_FG_COLOR)
 #define VGA_CURSOR_CONTROL_PORT		(0x3D4)
 #define VGA_CURSOR_DATA_PORT		(0x3D5)
 
@@ -66,7 +61,7 @@ static VOID KiVgaScrollLine()
     }
 }
 
-static VOID KiVgaWriteStringEx(UCHAR Color, PCSTR String)
+VOID KeVgaWriteStringEx(UCHAR Color, PCSTR String)
 {
     while (*String != 0) {
 	volatile PCHAR Video = (volatile PCHAR)
@@ -110,18 +105,13 @@ static VOID KiVgaClearScreen()
     }
 }
 
-static inline VOID KiVgaWriteString(PCSTR String)
-{
-    KiVgaWriteStringEx(VGA_TEXT_COLOR, String);
-}
-
 /*
  * TODO: Check if calling process has the required privilege
  */
 NTSTATUS NtDisplayString(IN PTHREAD Thread,
 			 IN PCSTR String)
 {
-    KiVgaWriteString(String);
+    KeVgaWriteString(String);
     return STATUS_SUCCESS;
 }
 
@@ -142,5 +132,5 @@ VOID KiInitVga()
     HALT_IF_ERR(KiInitVgaIoPort());
     KiVgaDisableCursor();
     KiVgaClearScreen();
-    KiVgaWriteString(OS_BANNER "\n");
+    KeVgaWriteString(OS_BANNER "\n\n");
 }
