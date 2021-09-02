@@ -1,0 +1,37 @@
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+    <xsd:annotation>
+        <xsd:documentation xml:lang="en">
+            NTOS System Services schema.
+        </xsd:documentation>
+    </xsd:annotation>
+
+    <xsd:attribute name="system-services" type="SystemServiceListType" />
+
+    <xsd:complexType name="SystemServiceListType">
+        <xsd:sequence>
+            <xsd:element name="syssvc" minOccurs="0" maxOccurs="unbounded" type="SystemServiceType" />
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:complexType name="SystemServiceType">
+        <xsd:attribute name="name" type="xsd:string" />
+        <xsd:sequence>
+            <xsd:element name="parameter" minOccurs="0" maxOccurs="unbounded" type="ParameterType" />
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:complexType name="ParameterType">
+        <xsd:attribute name="direction" type="ParameterDirectionType"/>
+        <xsd:attribute name="type" type="xsd:string"/>
+        <xsd:attribute name="name" type="xsd:string"/>
+    </xsd:complexType>
+
+    <xs:simpleType name="ParameterDirectionType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="in" />
+            <xs:enumeration value="out" />
+        </xs:restriction>
+    </xs:simpleType>
+
+</xsd:schema>

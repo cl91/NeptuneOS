@@ -110,9 +110,19 @@ static VOID KiVgaClearScreen()
     }
 }
 
-static VOID KiVgaWriteString(PCSTR String)
+static inline VOID KiVgaWriteString(PCSTR String)
 {
-    return KiVgaWriteStringEx(VGA_TEXT_COLOR, String);
+    KiVgaWriteStringEx(VGA_TEXT_COLOR, String);
+}
+
+/*
+ * TODO: Check if calling process has the required privilege
+ */
+NTSTATUS NtDisplayString(IN PTHREAD Thread,
+			 IN PCSTR String)
+{
+    KiVgaWriteString(String);
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS KiInitVgaIoPort()

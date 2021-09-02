@@ -17,9 +17,9 @@ set(configure_string "")
 config_string(
     NtosRootStack
     NTOS_ROOT_STACK
-    "Size of the initial stack for the ntos root thread"
+    "Size of the initial stack for the ntos root task"
     DEFAULT
-    524288
+    1048576
     UNQUOTE
 )
 add_config_library(ntos "${configure_string}")

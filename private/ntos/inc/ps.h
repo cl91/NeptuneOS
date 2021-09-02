@@ -28,6 +28,14 @@
 #define IPC_BUFFER_END			(0xe0000000)
 #define HIGHEST_USER_ADDRESS		(0xe0000000)
 
+#if IPC_BUFFER_END > HIGHEST_USER_ADDRESS
+#error "IPC_BUFFER_END must be smaller than HIGHEST_USER_ADDRESS"
+#endif
+
+#if seL4_PageBits <= seL4_IPCBufferSizeBits
+#error "seL4 IPC Buffer too large (must be no larger than half of a 4K page)"
+#endif
+
 #define ROOT_TCB_CAP			(seL4_CapInitThreadTCB)
 
 /* Initial CNode for client processes has exactly MWORD_BITS slots */

@@ -1,6 +1,7 @@
 #include "psp.h"
 
 static MWORD PspServerPebTebFreeStart = EX_PEB_TEB_REGION_START;
+static MWORD PspServerIpcBufferFreeStart = EX_IPC_BUFFER_REGION_START;
 
 static NTSTATUS PspReservePebOrTebServerRegion(IN MWORD RegionSize,
 					       OUT PMMVAD *pVad)
@@ -20,6 +21,28 @@ static NTSTATUS PspReservePebOrTebServerRegion(IN MWORD RegionSize,
     PspServerPebTebFreeStart = ServerVad->AvlNode.Key + ServerVad->WindowSize;
     if (PspServerPebTebFreeStart >= EX_PEB_TEB_REGION_END) {
 	PspServerPebTebFreeStart = EX_PEB_TEB_REGION_START;
+    }
+    *pVad = ServerVad;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspReserveIpcBufferServerRegion(OUT PMMVAD *pVad)
+{
+    assert(pVad != NULL);
+    PMMVAD ServerVad = NULL;
+    if (!NT_SUCCESS(MmReserveVirtualMemory(PspServerIpcBufferFreeStart,
+					   0, PAGE_SIZE,
+					   MEM_RESERVE_MIRRORED_MEMORY,
+					   &ServerVad))) {
+	RET_ERR(MmReserveVirtualMemory(EX_IPC_BUFFER_REGION_START,
+				       EX_IPC_BUFFER_REGION_END,
+				       PAGE_SIZE,
+				       MEM_RESERVE_MIRRORED_MEMORY,
+				       &ServerVad));
+    }
+    PspServerIpcBufferFreeStart = ServerVad->AvlNode.Key + ServerVad->WindowSize;
+    if (PspServerIpcBufferFreeStart >= EX_IPC_BUFFER_REGION_END) {
+	PspServerIpcBufferFreeStart = EX_IPC_BUFFER_REGION_START;
     }
     *pVad = ServerVad;
     return STATUS_SUCCESS;
@@ -171,15 +194,25 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread));
     Thread->Process = Process;
 
+    PMMVAD ClientIpcBufferVad = NULL;
     RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START, 0,
 					PAGE_SIZE, MEM_RESERVE_OWNED_MEMORY,
-					NULL),
+					&ClientIpcBufferVad),
 	       ObDereferenceObject(Thread));
+    assert(ClientIpcBufferVad != NULL);
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START,
 				       PAGE_SIZE, 0),
 	       ObDereferenceObject(Thread));
     Thread->IpcBufferClientPage = MmQueryPage(&Process->VSpace, IPC_BUFFER_START);
     assert(Thread->IpcBufferClientPage != NULL);
+    PMMVAD ServerIpcBufferVad = NULL;
+    RET_ERR_EX(PspReserveIpcBufferServerRegion(&ServerIpcBufferVad),
+	       ObDereferenceObject(Thread));
+    MmRegisterMirroredMemory(ServerIpcBufferVad, ClientIpcBufferVad, 0);
+    RET_ERR_EX(MmCommitVirtualMemory(ServerIpcBufferVad->AvlNode.Key,
+				     ServerIpcBufferVad->WindowSize),
+	       ObDereferenceObject(Thread));
+    Thread->IpcBufferServerAddr = ServerIpcBufferVad->AvlNode.Key;
 
     RET_ERR_EX(PspConfigureThread(Thread->TreeNode.Cap,
 				  0, /* TODO: Fault handler */

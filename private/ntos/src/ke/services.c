@@ -46,10 +46,57 @@ NTSTATUS KeEnableSystemServices(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS KeSvc2(PTHREAD Thread,
+                IN PCSTR String,
+                IN BOOLEAN BoolVal,
+                IN PCSTR String2,
+                OUT ULONG LongVal,
+                OUT MWORD MwordVal)
+{
+    return STATUS_SUCCESS;
+}
+
+static inline PVOID KiSystemServiceGetArgument(IN PTHREAD Thread,
+					       IN MWORD MsgWord)
+{
+    SYSTEM_SERVICE_ARGUMENT_BUFFER ArgumentBuffer;
+    ArgumentBuffer.Word = MsgWord;
+    return (PVOID) (Thread->IpcBufferServerAddr +
+		    SEL4_IPC_BUFFER_SIZE + ArgumentBuffer.BufferStart);
+}
+
+static inline BOOLEAN KiSystemServiceValidateArgument(IN MWORD MsgWord)
+{
+    SYSTEM_SERVICE_ARGUMENT_BUFFER ArgumentBuffer;
+    ArgumentBuffer.Word = MsgWord;
+    if (((ULONG)(ArgumentBuffer.BufferStart) + ArgumentBuffer.BufferSize)
+	> SYSSVC_MESSAGE_BUFFER_SIZE) {
+	return FALSE;
+    }
+    return TRUE;
+}
+
+static inline BOOLEAN KiSystemServiceValidateUnicodeString(IN PTHREAD Thread,
+							   IN MWORD MsgWord)
+{
+    SYSTEM_SERVICE_ARGUMENT_BUFFER ArgumentBuffer;
+    ArgumentBuffer.Word = MsgWord;
+    if (!KiSystemServiceValidateArgument(MsgWord)) {
+	return FALSE;
+    }
+    PCSTR String = (PCSTR) KiSystemServiceGetArgument(Thread, MsgWord);
+    if (String[ArgumentBuffer.BufferSize-1] != '\0') {
+	return FALSE;
+    }
+    return TRUE;
+}
+
 VOID KiDispatchSystemServices()
 {
-	MWORD Badge = 0;
-	seL4_MessageInfo_t Reply = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
+    MWORD Badge = 0;
+    seL4_MessageInfo_t Reply = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
+loop:
+    {
 	ULONG SvcNum = seL4_MessageInfo_get_label(Reply);
 	ULONG SvcMsgLength = seL4_MessageInfo_get_length(Reply);
 	ULONG NumUnwrappedCaps = seL4_MessageInfo_get_capsUnwrapped(Reply);
@@ -57,14 +104,24 @@ VOID KiDispatchSystemServices()
 	DbgTrace("Got message label 0x%x length %d unwrapped caps %d extra caps %d badge 0x%zx\n",
 		 SvcNum, SvcMsgLength, NumUnwrappedCaps, NumExtraCaps, Badge);
 	/* Reject the system service call since the service message is invalid. */
-	/* if (Badge == 0 || NumUnwrappedCaps != 0 || NumExtraCaps != 0 */
-	/*     || SvcNum >= NUMBER_OF_SYSTEM_SERVICES) { */
-	/*     continue; */
-	/* } */
-	/* PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge); */
-	Reply = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
-	while (TRUE) {
+	NTSTATUS Status = STATUS_INVALID_PARAMETER;
+	if (NumUnwrappedCaps != 0 || NumExtraCaps != 0) {
+	    DbgTrace("Invalid system service message (%d unwrapped caps, %d extra caps)\n",
+		     NumUnwrappedCaps, NumExtraCaps);
+	    goto ret;
 	}
+	/* Thread is always a valid pointer since the client cannot modify the badge */
+	assert(Badge != 0);
+	PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
+	DbgTrace("Got thread %p\n", Thread);
+	/* The actual handling of system services is in the generated file below. */
+        #include <ntos_syssvc_gen.c>
+    ret:
+	seL4_SetMR(0, (MWORD) Status);
+	Reply = seL4_ReplyRecv(KiSystemServiceEndpoint.TreeNode.Cap,
+			       seL4_MessageInfo_new(0, 0, 0, 1), &Badge);
+    }
+    goto loop;
 }
 
 PCSTR KiDbgErrorCodeToStr(IN int Error)

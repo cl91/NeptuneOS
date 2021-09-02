@@ -1,3 +1,4 @@
 #pragma once
 
-NTSTATUS NtDisplayString(PCSTR String);
+#include <services.h>
+#include <ntdll_syssvc_gen.h>

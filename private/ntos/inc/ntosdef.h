@@ -1,10 +1,6 @@
 #pragma once
 
-#include <sel4/sel4.h>
-
-typedef seL4_Word MWORD;
-#define MWORD_BYTES	(sizeof(MWORD))
-#define MWORD_BITS	(MWORD_BYTES * 8)
+#include <services.h>
 
 #define ARRAY_LENGTH(x)		(sizeof(x) / sizeof((x)[0]))
 
@@ -23,21 +19,6 @@ typedef seL4_Word MWORD;
 
 #define STATUS_NTOS_BUG				NTOS_ERROR(1)
 #define STATUS_NTOS_UNIMPLEMENTED		NTOS_ERROR(2)
-
-#define RET_ERR_EX(Expr, OnError)					\
-    {NTSTATUS __tmp_rete = (Expr); if (!NT_SUCCESS(__tmp_rete)) {	\
-	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
-		     " error 0x%x\n",					\
-		     #Expr, __func__, __FILE__, __LINE__, __tmp_rete);	\
-	    {OnError;} return __tmp_rete; }}
-#define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
-#define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
-    {} Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
-    if ((Var) == NULL) {						\
-	DbgPrint("Allocation of 0x%zx bytes for variable %s of type"	\
-		 " (%s *) failed in function %s @ %s:%d\n",		\
-		 Size, #Var, #Type, __func__, __FILE__, __LINE__);	\
-	{OnError;} return STATUS_NO_MEMORY; }
 
 static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 {

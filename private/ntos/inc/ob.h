@@ -76,7 +76,11 @@ typedef PVOID POBJECT;
  * EX_POOL_MAX_SIZE
  */
 #define GLOBAL_HANDLE_TO_OBJECT(Handle)					\
-    OBJECT_HEADER_TO_OBJECT((((MWORD)(Handle)) & ~(EX_POOL_SMALLEST_BLOCK - 1)) & (EX_POOL_MAX_SIZE - 1))
+    OBJECT_HEADER_TO_OBJECT(						\
+	((((MWORD)(Handle) >> EX_POOL_BLOCK_SHIFT)			\
+	  << EX_POOL_BLOCK_SHIFT)					\
+	 & (EX_POOL_MAX_SIZE - 1))					\
+	+ EX_POOL_START)
 
 /*
  * The create routine creates an empty object and initializes

@@ -8,7 +8,6 @@
 #include <string.h>
 #include <gnu.h>
 
-#include <services.h>
 #include <debug.h>
 
 #include "ntosdef.h"

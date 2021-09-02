@@ -23,9 +23,13 @@
 #define EX_PEB_TEB_REGION_START		(EX_POOL_START + EX_POOL_MAX_SIZE)
 #define EX_PEB_TEB_REGION_SIZE		(0x10000000)
 #define EX_PEB_TEB_REGION_END		(EX_PEB_TEB_REGION_START + EX_PEB_TEB_REGION_SIZE)
+/* Region where the client thread's ipc buffers are mapped */
+#define EX_IPC_BUFFER_REGION_START	(EX_PEB_TEB_REGION_END)
+#define EX_IPC_BUFFER_REGION_SIZE	(0x10000000)
+#define EX_IPC_BUFFER_REGION_END	(EX_IPC_BUFFER_REGION_START + EX_IPC_BUFFER_REGION_SIZE)
 /* Region of the dynamically managed Executive virtual address space */
-#define EX_DYN_VSPACE_START		(EX_PEB_TEB_REGION_END)
-#define EX_DYN_VSPACE_END		(0xd0000000)
+#define EX_DYN_VSPACE_START		(EX_IPC_BUFFER_REGION_END)
+#define EX_DYN_VSPACE_END		(0xe0000000)
 
 #if HYPERSPACE_END > EX_POOL_START
 #error "Hyperspace too large."

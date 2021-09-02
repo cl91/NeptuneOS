@@ -1,10 +1,4 @@
-#include <sel4/sel4.h>
-#include <nt.h>
-#include <string.h>
-#include <ke.h>
-#include <services.h>
-#include <stdint.h>
-#include <debug.h>
+#include <ntdll.h>
 
 /*
  * Executable always has _tls_index == 0. NTDLL always has _tls_index == 1
@@ -38,7 +32,9 @@ __fastcall void LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     seL4_DebugPutString(LdrpUninitializedArray);
 #endif
 
-    NtDisplayString("Hello, world from NT client!\n");
+    UNICODE_STRING ClientWelcome;
+    RtlInitUnicodeString(&ClientWelcome, L"Hello, world from NT client!\n");
+    NtDisplayString(&ClientWelcome);
 
     while (1);
 }
