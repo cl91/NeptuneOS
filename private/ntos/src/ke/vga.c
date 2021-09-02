@@ -1,5 +1,5 @@
 #include <string.h>
-#include <ctype.h>
+#include <ctype_inline.h>
 #include "ki.h"
 
 static X86_IOPORT KiVgaCursorControlPort;

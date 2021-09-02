@@ -3,20 +3,23 @@
  * This file is part of the w64 mingw-runtime package.
  * No warranty is given; refer to the file DISCLAIMER within this package.
  */
+#include <specstrings.h>
 
 #ifndef _INC_CRTDEFS
 #define _INC_CRTDEFS
 
-#ifndef _In_
-#define _In_
+#ifndef _WIN64
+#if defined(_M_X64) || defined(__amd64__)
+#define _WIN64
+#endif
 #endif
 
-#ifndef _Out_
-#define _Out_
+#ifndef NULL
+#ifdef __cplusplus
+#define NULL 0
+#else
+#define NULL ((void *)0)
 #endif
-
-#ifndef _Inout_
-#define _Inout_
 #endif
 
 #ifdef _USE_32BIT_TIME_T
@@ -33,6 +36,12 @@
 #undef _CRT_PACKING
 #define _CRT_PACKING 8
 #pragma pack(push,_CRT_PACKING)
+
+/* Disable non-ANSI C definitions if compiling with __STDC__ */
+//HACK: Disabled
+//#if __STDC__
+//#define NO_OLDNAMES
+//#endif
 
 
 /** Properties ***************************************************************/
@@ -51,14 +60,6 @@
 #define _CRT_WIDE(_String) __CRT_WIDE(_String)
 #endif
 
-#ifndef _W64
- #if !defined(_midl) && defined(_X86_) && _MSC_VER >= 1300
-  #define _W64 __w64
- #else
-  #define _W64
- #endif
-#endif
-
 #ifndef _CRTIMP
  #ifdef CRTDLL /* Defined for ntdll, crtdll, msvcrt, etc */
   #define _CRTIMP
@@ -68,6 +69,8 @@
   #define _CRTIMP
  #endif /* CRTDLL || _DLL */
 #endif /* !_CRTIMP */
+
+//#define _CRT_ALTERNATIVE_INLINES
 
 #ifndef _CRTIMP_ALT
  #ifdef _DLL
@@ -149,6 +152,18 @@
 #endif
 #endif
 
+#ifdef __cplusplus
+# define __CRT_INLINE inline
+#elif defined(_MSC_VER)
+# define __CRT_INLINE __inline
+#elif defined(__GNUC__)
+# if defined(__clang__)
+#  define __CRT_INLINE extern inline __attribute__((__always_inline__,__gnu_inline__))
+# else
+#  define __CRT_INLINE extern __inline__ __attribute__((__always_inline__))
+# endif
+#endif
+
 #ifndef _CRTNOALIAS
 #define _CRTNOALIAS
 #endif
@@ -176,6 +191,15 @@
 
 #define __crt_typefix(ctype)
 
+#ifndef _STATIC_ASSERT
+  #ifdef __cplusplus
+    #define _STATIC_ASSERT(expr) static_assert((expr), #expr)
+  #elif defined(__clang__) || defined(__GNUC__)
+    #define _STATIC_ASSERT(expr) _Static_assert((expr), #expr)
+  #else
+    #define _STATIC_ASSERT(expr) extern char (*__static_assert__(void)) [(expr) ? 1 : -1]
+  #endif
+#endif /* _STATIC_ASSERT */
 
 /** Deprecated ***************************************************************/
 
@@ -239,14 +263,181 @@
 #endif
 
 
-/** Constants ****************************************************************/
+/** Type definitions *********************************************************/
 
-#define _ARGMAX 100
-
-#ifndef _TRUNCATE
-#define _TRUNCATE ((size_t)-1)
+#ifdef __cplusplus
+extern "C" {
 #endif
 
+#ifndef _MSC_VER
+#define __int64 long long
+#endif
+
+#ifndef _SIZE_T_DEFINED
+#define _SIZE_T_DEFINED
+#undef size_t
+#ifdef _WIN64
+  typedef unsigned long long size_t;
+#else
+  typedef unsigned int size_t;
+#endif
+#endif
+
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
+#undef ssize_t
+#ifdef _WIN64
+  typedef long long ssize_t;
+#else
+  typedef int ssize_t;
+#endif
+#endif
+
+#ifndef _INTPTR_T_DEFINED
+#define _INTPTR_T_DEFINED
+#ifndef __intptr_t_defined
+#define __intptr_t_defined
+#undef intptr_t
+#ifdef _WIN64
+  typedef long long intptr_t;
+#else
+  typedef int intptr_t;
+#endif
+#endif
+#endif
+
+#ifndef _UINTPTR_T_DEFINED
+#define _UINTPTR_T_DEFINED
+#ifndef __uintptr_t_defined
+#define __uintptr_t_defined
+#undef uintptr_t
+#ifdef _WIN64
+  typedef unsigned long long uintptr_t;
+#else
+  typedef unsigned int uintptr_t;
+#endif
+#endif
+#endif
+
+#ifndef _PTRDIFF_T_DEFINED
+#define _PTRDIFF_T_DEFINED
+#ifndef _PTRDIFF_T_
+#undef ptrdiff_t
+#ifdef _WIN64
+  typedef long long ptrdiff_t;
+#else
+  typedef int ptrdiff_t;
+#endif
+#endif
+#endif
+
+#ifndef _WCHAR_T_DEFINED
+#define _WCHAR_T_DEFINED
+#if defined(_MSC_VER) || !defined(__cplusplus)
+  typedef unsigned short wchar_t;
+#endif
+#endif
+
+#ifndef _WCTYPE_T_DEFINED
+#define _WCTYPE_T_DEFINED
+  typedef unsigned short wint_t;
+  typedef unsigned short wctype_t;
+#endif
+
+#ifdef __GNUC__
+#ifndef __GNUC_VA_LIST
+#define __GNUC_VA_LIST
+  typedef __builtin_va_list __gnuc_va_list;
+#endif
+#endif
+
+#ifndef _VA_LIST_DEFINED
+#define _VA_LIST_DEFINED
+#if defined(__GNUC__)
+  typedef __gnuc_va_list va_list;
+#elif defined(_MSC_VER)
+  typedef _Writable_bytes_(_Inexpressible_("length varies")) char *  va_list;
+#endif
+#endif
+
+#ifndef _ERRCODE_DEFINED
+#define _ERRCODE_DEFINED
+  typedef int errcode;
+  typedef int errno_t;
+#endif
+
+#ifndef _TIME32_T_DEFINED
+#define _TIME32_T_DEFINED
+  typedef long __time32_t;
+#endif
+
+#ifndef _TIME64_T_DEFINED
+#define _TIME64_T_DEFINED
+#if _INTEGRAL_MAX_BITS >= 64
+  typedef long long __time64_t;
+#endif
+#endif
+
+#ifndef _TIME_T_DEFINED
+#define _TIME_T_DEFINED
+#ifdef _USE_32BIT_TIME_T
+  typedef __time32_t time_t;
+#else
+  typedef __time64_t time_t;
+#endif
+#endif
+
+struct threadmbcinfostruct;
+typedef struct threadmbcinfostruct *pthreadmbcinfo;
+
+#ifndef _TAGLC_ID_DEFINED
+#define _TAGLC_ID_DEFINED
+  typedef struct tagLC_ID {
+    unsigned short wLanguage;
+    unsigned short wCountry;
+    unsigned short wCodePage;
+  } LC_ID,*LPLC_ID;
+#endif
+
+#ifndef _THREADLOCALEINFO
+#define _THREADLOCALEINFO
+  typedef struct threadlocaleinfostruct {
+    int refcount;
+    unsigned int lc_codepage;
+    unsigned int lc_collate_cp;
+    unsigned long lc_handle[6];
+    LC_ID lc_id[6];
+    struct {
+      char *locale;
+      wchar_t *wlocale;
+      int *refcount;
+      int *wrefcount;
+    } lc_category[6];
+    int lc_clike;
+    int mb_cur_max;
+    int *lconv_intl_refcount;
+    int *lconv_num_refcount;
+    int *lconv_mon_refcount;
+    struct lconv *lconv;
+    int *ctype1_refcount;
+    unsigned short *ctype1;
+    const unsigned short *pctype;
+    const unsigned char *pclmap;
+    const unsigned char *pcumap;
+    struct __lc_time_data *lc_time_curr;
+  } threadlocinfo, *pthreadlocinfo;
+#endif
+
+struct __lc_time_data;
+
+typedef struct localeinfo_struct {
+    pthreadlocinfo locinfo;
+    pthreadmbcinfo mbcinfo;
+}_locale_tstruct,*_locale_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #if defined(_PREFAST_) && defined(_PFT_SHOULD_CHECK_RETURN)
 #define _Check_return_opt_ _Check_return_
@@ -261,5 +452,26 @@
 #endif
 
 #pragma pack(pop)
+
+/* GCC-style diagnostics */
+#ifndef PRAGMA_DIAGNOSTIC_IGNORED
+# ifdef __clang__
+#  define PRAGMA_DIAGNOSTIC_PUSH() _Pragma("clang diagnostic push")
+#  define PRAGMA_DIAGNOSTIC_IGNORED(__x) \
+    _Pragma(_CRT_STRINGIZE(clang diagnostic ignored _CRT_DEFER_MACRO(_CRT_STRINGIZE,__x)))
+#  define PRAGMA_DIAGNOSTIC_POP() _Pragma("clang diagnostic pop")
+# elif defined (__GNUC__)
+#  define PRAGMA_DIAGNOSTIC_PUSH() _Pragma("GCC diagnostic push")
+#  define PRAGMA_DIAGNOSTIC_IGNORED(__x) \
+    _Pragma("GCC diagnostic ignored \"-Wpragmas\"") /* This allows us to use it for unkonwn warnings */ \
+    _Pragma(_CRT_STRINGIZE(GCC diagnostic ignored _CRT_DEFER_MACRO(_CRT_STRINGIZE,__x))) \
+    _Pragma("GCC diagnostic error \"-Wpragmas\"") /* This makes sure that we don't have side effects because we disabled it for our own use. This will be popped anyway. */
+#  define PRAGMA_DIAGNOSTIC_POP() _Pragma("GCC diagnostic pop")
+# else
+#  define PRAGMA_DIAGNOSTIC_PUSH()
+#  define PRAGMA_DIAGNOSTIC_IGNORED(__x)
+#  define PRAGMA_DIAGNOSTIC_POP()
+# endif
+#endif
 
 #endif /* !_INC_CRTDEFS */

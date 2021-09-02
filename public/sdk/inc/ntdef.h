@@ -1,9 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-#include <excpt.h>
-
 #ifdef __i386__
 #ifndef _M_IX86
 #define _M_IX86
@@ -16,6 +12,10 @@
 #define _WIN64
 #endif
 #endif
+
+#include <stdint.h>
+#include <stddef.h>
+#include <excpt.h>
 
 #ifdef _M_IX86
 #define FASTCALL __fastcall
@@ -116,9 +116,6 @@ typedef union _ULARGE_INTEGER {
 #define IN
 #define OUT
 #define OPTIONAL
-#define _In_
-#define _Out_
-#define _Inout_
 
 #define UNICODE_NULL ((WCHAR)0)
 

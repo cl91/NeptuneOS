@@ -10,4 +10,3 @@
 #include <ntmmapi.h>
 #include <ntpsapi.h>
 #include <ntimage.h>
-#include <nosal.h>

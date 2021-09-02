@@ -1,5 +1,4 @@
 #include "mi.h"
-#include <ctype.h>
 
 VIRT_ADDR_SPACE MiNtosVaddrSpace;
 PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;

@@ -22,7 +22,7 @@ typedef enum _EXCEPTION_DISPOSITION
     ExceptionCollidedUnwind,
 } EXCEPTION_DISPOSITION;
 
-#if (defined(_X86_) && !defined(__x86_64))
+#if defined(__i386__) || (defined(_X86_) && !defined(__x86_64))
   struct _EXCEPTION_RECORD;
   struct _CONTEXT;
 
@@ -33,25 +33,6 @@ typedef enum _EXCEPTION_DISPOSITION
     _In_ void *_EstablisherFrame,
     _Inout_ struct _CONTEXT *_ContextRecord,
     _Inout_ void *_DispatcherContext);
-
-#elif defined(__ia64__)
-
-  typedef struct _EXCEPTION_POINTERS *Exception_info_ptr;
-  struct _EXCEPTION_RECORD;
-  struct _CONTEXT;
-  struct _DISPATCHER_CONTEXT;
-
-  __MINGW_EXTENSION
-  _CRTIMP
-  EXCEPTION_DISPOSITION
-  __cdecl
-  __C_specific_handler(
-    _In_ struct _EXCEPTION_RECORD *_ExceptionRecord,
-    _In_ unsigned __int64 _MemoryStackFp,
-    _In_ unsigned __int64 _BackingStoreFp,
-    _Inout_ struct _CONTEXT *_ContextRecord,
-    _Inout_ struct _DISPATCHER_CONTEXT *_DispatcherContext,
-    _In_ unsigned __int64 _GlobalPointer);
 
 #elif defined(__x86_64) || defined(_M_ARM)
 
@@ -67,6 +48,10 @@ typedef enum _EXCEPTION_DISPOSITION
     _In_ void *_EstablisherFrame,
     _Inout_ struct _CONTEXT *_ContextRecord,
     _Inout_ struct _DISPATCHER_CONTEXT *_DispatcherContext);
+
+#else
+
+  #error "Unsupported architecture."
 
 #endif
 
@@ -125,7 +110,7 @@ typedef enum _EXCEPTION_DISPOSITION
   typedef PEXCEPTION_REGISTRATION PEXCEPTION_REGISTRATION_RECORD;
 #endif
 
-#if (defined(_X86_) && !defined(__x86_64))
+#if defined(__i386__) || (defined(_X86_) && !defined(__x86_64))
 #define __try1(pHandler) \
   __asm__ ("pushl %0;pushl %%fs:0;movl %%esp,%%fs:0;" : : "g" (pHandler));
 

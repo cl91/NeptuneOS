@@ -1,9 +1,10 @@
 /* This is stolen from the Linux kernel source */
 
-#include <ctype.h>
+#include <ctype_inline.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <string.h>
 #include <gnu.h>
 
