@@ -15,9 +15,16 @@ __declspec(allocate(".tls")) PVOID THREAD_LOCAL_STORAGE_POINTERS_ARRAY[MAX_NUMBE
 /* Address for the IPC buffer of the initial thread. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 
-static CHAR LdrpUninitializedArray[1024];
+static WCHAR LdrpUninitializedArray[512];
 
-static CHAR LdrpInitializedArray[1024] = "From initialized array.\n";
+static WCHAR LdrpInitializedArray[512] = L"From initialized array.\n";
+
+static inline VOID LdrpDisplayString(PCWSTR String)
+{
+    UNICODE_STRING UnicodeString;
+    RtlInitUnicodeString(&UnicodeString, String);
+    NtDisplayString(&UnicodeString);
+}
 
 __fastcall void LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 			       IN PPVOID SystemDllTlsRegion)
@@ -25,16 +32,11 @@ __fastcall void LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     _tls_index = SYSTEMDLL_TLS_INDEX;
     SystemDllTlsRegion[SYSTEMDLL_TLS_INDEX] = SystemDllTlsRegion;
     __sel4_ipc_buffer = IpcBuffer;
-#ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugPutString("Hello, world from NT client!\n");
-    seL4_DebugPutString(LdrpInitializedArray);
-    memcpy(LdrpUninitializedArray, "From .bss array\n", sizeof("From .bss array\n"));
-    seL4_DebugPutString(LdrpUninitializedArray);
-#endif
 
-    UNICODE_STRING ClientWelcome;
-    RtlInitUnicodeString(&ClientWelcome, L"Hello, world from NT client!\n");
-    NtDisplayString(&ClientWelcome);
+    LdrpDisplayString(L"Hello, world from NT client!\n");
+    LdrpDisplayString(LdrpInitializedArray);
+    memcpy(LdrpUninitializedArray, L"From .bss array\n", sizeof(L"From .bss array\n"));
+    LdrpDisplayString(LdrpUninitializedArray);
 
     while (1);
 }

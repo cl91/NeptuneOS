@@ -53,6 +53,8 @@ NTSTATUS KeSvc2(PTHREAD Thread,
                 OUT ULONG LongVal,
                 OUT MWORD MwordVal)
 {
+    DbgPrint("Got string %s boolean %d string %s long 0x%lx mword 0x%zx\n",
+	     String, BoolVal, String2, LongVal, MwordVal);
     return STATUS_SUCCESS;
 }
 

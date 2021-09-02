@@ -7,29 +7,29 @@
 #include "ntosdef.h"
 
 /* All hard-coded addresses in the address space of the NTOS root task go here. */
-#define VGA_VIDEO_PAGE_PADDR		(0x000b8000)
-#define VGA_VIDEO_PAGE_VADDR		(0x000b8000)
+#define VGA_VIDEO_PAGE_PADDR		(0x000b8000ULL)
+#define VGA_VIDEO_PAGE_VADDR		(0x000b8000ULL)
 /* Hyperspace is 16MB */
-#define HYPERSPACE_START		(0x0f000000)
+#define HYPERSPACE_START		(0x0f000000ULL)
 /* We have LARGE_PAGE_SIZE / PAGE_SIZE slots for 4K pages in the hyperspace */
 #define HYPERSPACE_4K_PAGE_START	(HYPERSPACE_START)
 #define HYPERSPACE_LARGE_PAGE_START	(HYPERSPACE_4K_PAGE_START + LARGE_PAGE_SIZE)
 /* We have one slot for large page in the hyperspace */
 #define HYPERSPACE_END			(HYPERSPACE_LARGE_PAGE_START + LARGE_PAGE_SIZE)
 /* Region for the Executive pool. EX_POOL_MAX_SIZE must be a power of two. */
-#define EX_POOL_START			(0x10000000)
-#define EX_POOL_MAX_SIZE		(0x10000000)
+#define EX_POOL_START			(0x10000000ULL)
+#define EX_POOL_MAX_SIZE		(0x10000000ULL)
 /* Region for the PEB/TEB pages mapped in root task address space */
 #define EX_PEB_TEB_REGION_START		(EX_POOL_START + EX_POOL_MAX_SIZE)
-#define EX_PEB_TEB_REGION_SIZE		(0x10000000)
+#define EX_PEB_TEB_REGION_SIZE		(0x10000000ULL)
 #define EX_PEB_TEB_REGION_END		(EX_PEB_TEB_REGION_START + EX_PEB_TEB_REGION_SIZE)
 /* Region where the client thread's ipc buffers are mapped */
 #define EX_IPC_BUFFER_REGION_START	(EX_PEB_TEB_REGION_END)
-#define EX_IPC_BUFFER_REGION_SIZE	(0x10000000)
+#define EX_IPC_BUFFER_REGION_SIZE	(0x10000000ULL)
 #define EX_IPC_BUFFER_REGION_END	(EX_IPC_BUFFER_REGION_START + EX_IPC_BUFFER_REGION_SIZE)
 /* Region of the dynamically managed Executive virtual address space */
 #define EX_DYN_VSPACE_START		(EX_IPC_BUFFER_REGION_END)
-#define EX_DYN_VSPACE_END		(0xe0000000)
+#define EX_DYN_VSPACE_END		(0xe0000000ULL)
 
 #if HYPERSPACE_END > EX_POOL_START
 #error "Hyperspace too large."
@@ -38,7 +38,7 @@
 /* Since we use the object header's offset from the start of Executive pool as the
  * unique global object handle (badge), and on i386 the seL4 kernel ignores the highest
  * four bits of a badge, the Executive pool cannot be larger than 256MB. */
-#if defined(_M_IX86) && (EX_POOL_MAX_SIZE > 0x10000000)
+#if defined(_M_IX86) && (EX_POOL_MAX_SIZE > 0x10000000ULL)
 #error "Executive pool too large"
 #endif
 
