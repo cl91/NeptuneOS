@@ -68,17 +68,20 @@ default:
 {# #}
 """
 
-NTDLL_SYSSVC_GEN_H_TEMPLATE = """#pragma once
+NTDLL_SYSSVC_GEN_H_TEMPLATE = """#ifndef _NTDLL_SYSSVC_GEN_H
+#define _NTDLL_SYSSVC_GEN_H
 {# #}
-{%- for syssvc in syssvc_list %}NTSTATUS {{syssvc.name}}({%- for param in syssvc.params %}{{param.direction}} {{param.client_type}} {{param.name}}{%- if not loop.last %},
+{%- for syssvc in syssvc_list %}NTSTATUS NTAPI {{syssvc.name}}({%- for param in syssvc.params %}{{param.direction}} {{param.client_type}} {{param.name}}{%- if not loop.last %},
 {{syssvc.param_indent}}
 {%- endif %}{%- endfor %});
 {# #}
 {# #}
 {%- endfor %}
+{# #}
+#endif  /* _NTDLL_SYSSVC_GEN_H */
 """
 
-NTDLL_SYSSVC_GEN_C_TEMPLATE = """{%- for syssvc in syssvc_list %}NTSTATUS {{syssvc.name}}({%- for param in syssvc.params %}{{param.direction}} {{param.client_type}} {{param.name}}{%- if not loop.last %},
+NTDLL_SYSSVC_GEN_C_TEMPLATE = """{%- for syssvc in syssvc_list %}NTSTATUS NTAPI {{syssvc.name}}({%- for param in syssvc.params %}{{param.direction}} {{param.client_type}} {{param.name}}{%- if not loop.last %},
 {{syssvc.param_indent}}
 {%- endif %}{%- endfor %})
 {

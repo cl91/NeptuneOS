@@ -39,10 +39,18 @@ echo "####################################################"
 
 cd "$(dirname "$0")"
 
-mkdir -p $BUILDDIR/{pe,elf,base,initcpio,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,elf,pe,base,initcpio,sdk_lib,$IMAGEDIR}
 
-# Build ntos with ELF toolchain
-cd $BUILDDIR/elf
+# Build spec2def with the native toolchain
+cd $BUILDDIR/host
+echo
+echo "---- Building native targets ----"
+echo
+cmake ../../tools/spec2def -G Ninja
+ninja
+
+# Build ntos with the ELF toolchain
+cd ../elf
 echo
 echo "---- Building ELF targets ----"
 echo
@@ -86,17 +94,25 @@ fi
 cmake ../../private/ntdll \
       -DArch=${ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
-      -DCMAKE_TOOLCHAIN_FILE=../../private/ntdll/cmake/${TOOLCHAIN}.cmake \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DLIBSEL4_PE_HEADERS_DIR="${PWD}/libsel4-pe" \
       -DSTRUCTURES_GEN_DIR=${PWD}/libsel4-pe/generated \
+      -DSPEC2DEF_PATH=${PWD}/../host/spec2def \
       -G Ninja
 ninja || build_failed
+cp ntdll.lib ../sdk_lib || build_failed
 
 # Build base NT clients with the PE toolchain
 cd ../base
 echo
 echo "---- Building base NT clients ----"
 echo
+cmake ../../base \
+      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DSDK_LIB_PATH=${PWD}/../sdk_lib \
+      -G Ninja
+ninja || build_failed
 
 # Build initcpio
 echo
@@ -112,8 +128,8 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
-PE_COPY_LIST='ntdll'
-BASE_COPY_LIST=''
+PE_COPY_LIST='ntdll.dll'
+BASE_COPY_LIST='smss/smss.exe'
 for i in ${PE_COPY_LIST}; do
     cp ../pe/$i . || build_failed
 done
@@ -121,7 +137,7 @@ for i in ${BASE_COPY_LIST}; do
     cp ../base/$i . || build_failed
 done
 { for i in ${PE_COPY_LIST}; do echo $i; done } > image-list
-{ for i in ${BASE_COPY_LIST}; do echo $i; done } >> image-list
+{ for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
 cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \

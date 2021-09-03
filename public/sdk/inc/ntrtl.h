@@ -82,3 +82,17 @@ typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
     struct _ACTIVATION_CONTEXT                 *ActivationContext;
     ULONG                                       Flags;
 } RTL_ACTIVATION_CONTEXT_STACK_FRAME, *PRTL_ACTIVATION_CONTEXT_STACK_FRAME;
+
+VOID NTAPI RtlInitUnicodeString(IN OUT PUNICODE_STRING DestinationString,
+				IN PCWSTR SourceString);
+
+NTSTATUS NTAPI RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
+				      IN PCWSTR SourceString);
+
+NTSTATUS NTAPI RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
+                                 ULONG *utf8_bytes_written,
+                                 const WCHAR *uni_src, ULONG uni_bytes);
+
+NTSTATUS NTAPI RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
+                                 ULONG *uni_bytes_written,
+                                 const CHAR *utf8_src, ULONG utf8_bytes);

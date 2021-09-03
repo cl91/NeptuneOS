@@ -1,0 +1,5 @@
+@ stdcall NtDisplayString(ptr)
+@ stdcall RtlInitUnicodeString(ptr wstr)
+@ stdcall RtlInitUnicodeStringEx(ptr wstr)
+@ cdecl memcpy(ptr ptr long)
+@ cdecl memmove(ptr ptr long)

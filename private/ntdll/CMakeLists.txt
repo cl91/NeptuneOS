@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.7.2)
 
+set(CMAKE_SYSTEM_NAME Windows)
+
 project(ntdll C ASM)
 
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../rtl)
+
+include(${CMAKE_CURRENT_LIST_DIR}/../../tools/cmake/spec2def.cmake)
 
 add_compile_options(
     -nostdinc
@@ -12,10 +16,22 @@ add_compile_options(
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
 )
+set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
+mark_as_advanced(CMAKE_C_FLAGS_DEBUG)
+mark_as_advanced(CMAKE_C_FLAGS_MINSIZEREL)
+mark_as_advanced(CMAKE_C_FLAGS_RELEASE)
+mark_as_advanced(CMAKE_C_FLAGS_RELWITHDEBINFO)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -fno-asynchronous-unwind-tables -ftls-model=global-dynamic")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple"
+set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
+set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
+mark_as_advanced(CMAKE_C_STANDARD_LIBRARIES)
+mark_as_advanced(CMAKE_CXX_STANDARD_LIBRARIES)
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple -Wl,-subsystem:native -Wl,-safeseh:no"
 )
 
 set(KernelPlatform "pc99")
@@ -35,11 +51,12 @@ rtl_import_project()
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
 
-add_executable(ntdll ${SRC})
+add_library(ntdll SHARED ${SRC})
 add_dependencies(ntdll rtl)
 target_link_libraries(ntdll PRIVATE rtl)
 
-set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-subsystem:native -Wl,-safeseh:no -Wl,-entry:LdrInitializeThunk ")
+spec2def(ntdll ntdll.spec)
+set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,/def:ntdll.def -Wl,-entry:LdrInitializeThunk ")
 
 target_include_directories(
     ntdll
