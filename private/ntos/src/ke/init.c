@@ -9,7 +9,7 @@
 #define MIN_ALIGNED __aligned(MIN_ALIGN_BYTES)
 
 /* Static TLS for the initial thread of the root task. */
-static char STATIC_TLS_AREA[256] MIN_ALIGNED = {};
+static char STATIC_TLS_AREA[256] MIN_ALIGNED;
 
 /* Address for the IPC buffer of the initial thread of the root task. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
