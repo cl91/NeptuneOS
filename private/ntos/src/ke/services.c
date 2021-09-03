@@ -46,18 +46,6 @@ NTSTATUS KeEnableSystemServices(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS KeSvc2(PTHREAD Thread,
-                IN PCSTR String,
-                IN BOOLEAN BoolVal,
-                IN PCSTR String2,
-                OUT ULONG LongVal,
-                OUT MWORD MwordVal)
-{
-    DbgPrint("Got string %s boolean %d string %s long 0x%x mword 0x%zx\n",
-	     String, BoolVal, String2, LongVal, MwordVal);
-    return STATUS_SUCCESS;
-}
-
 static inline PVOID KiSystemServiceGetArgument(IN PTHREAD Thread,
 					       IN MWORD MsgWord)
 {

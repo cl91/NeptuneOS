@@ -26,7 +26,7 @@ typedef enum _SYSTEM_SERVICE_NUMBER {
 NTOS_SYSSVC_GEN_H_TEMPLATE = """#pragma once
 {# #}
 {%- for syssvc in syssvc_list %}
-NTSTATUS {{syssvc.name}}(struct _THREAD *Thread,
+NTSTATUS Sys{{syssvc.name}}(struct _THREAD *Thread,
 {{syssvc.param_indent}}{%- for param in syssvc.params %}{{param.direction}} {{param.server_type}} {{param.name}}{%- if not loop.last %},
 {{syssvc.param_indent}}
 {%- endif %}{%- endfor %});
@@ -55,8 +55,8 @@ case {{syssvc.enum_tag}}:
         {{param.server_type}} {{param.name}} = ({{param.server_type}}) seL4_GetMR({{loop.index-1}});
 {%- endif %}
 {%- endfor %}
-        DbgTrace("Calling {{syssvc.name}}\\n");
-        Status = {{syssvc.name}}(Thread, {%- for param in syssvc.params %}{{param.name}}{% if not loop.last %}, {% endif %}{%- endfor %});
+        DbgTrace("Calling Sys{{syssvc.name}}\\n");
+        Status = Sys{{syssvc.name}}(Thread, {%- for param in syssvc.params %}{{param.name}}{% if not loop.last %}, {% endif %}{%- endfor %});
     }
     break;
 {# #}

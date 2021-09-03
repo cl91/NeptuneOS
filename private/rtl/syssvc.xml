@@ -7,12 +7,4 @@
     <parameter direction="in" type="UnicodeString" name="String" />
   </syssvc>
 
-  <syssvc name="KeSvc2">
-    <parameter direction="in" type="UnicodeString" name="String" />
-    <parameter direction="in" type="BOOLEAN" name="BoolVal" />
-    <parameter direction="in" type="UnicodeString" name="String2" />
-    <parameter direction="out" type="ULONG" name="LongVal" />
-    <parameter direction="out" type="MWORD" name="MwordVal" />
-  </syssvc>
-
 </system-services>

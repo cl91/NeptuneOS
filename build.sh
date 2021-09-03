@@ -39,7 +39,7 @@ echo "####################################################"
 
 cd "$(dirname "$0")"
 
-mkdir -p $BUILDDIR/{pe,elf,$IMAGEDIR}
+mkdir -p $BUILDDIR/{pe,elf,base,initcpio,$IMAGEDIR}
 
 # Build ntos with ELF toolchain
 cd $BUILDDIR/elf
@@ -56,10 +56,10 @@ cmake ../../private/ntos \
       -DKernelSel4Arch=$SEL4_ARCH -G Ninja
 ninja all-elf || build_failed
 
-# Build ntdll and NT clients with PE toolchain
+# Build ntdll with the PE toolchain
 cd ../pe
 echo
-echo "---- Building PE targets ----"
+echo "---- Building private PE targets ----"
 echo
 # For amd64 PE targets, since the ELF toolchain assumes sizeof(long) == 8
 # and the PE toolchain assumes sizeof(long) == 4, we need to modify the
@@ -92,10 +92,17 @@ cmake ../../private/ntdll \
       -G Ninja
 ninja || build_failed
 
+# Build base NT clients with the PE toolchain
+cd ../base
+echo
+echo "---- Building base NT clients ----"
+echo
+
 # Build initcpio
 echo
 echo "---- Building INITCPIO ----"
 echo
+cd ../initcpio
 if [[ ${CLANG_ARCH} == i686 ]]; then
     ELF_TARGET=elf32-i386
     ELF_ARCH=i386
@@ -105,7 +112,16 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
-echo 'ntdll' > image-list
+PE_COPY_LIST='ntdll'
+BASE_COPY_LIST=''
+for i in ${PE_COPY_LIST}; do
+    cp ../pe/$i . || build_failed
+done
+for i in ${BASE_COPY_LIST}; do
+    cp ../base/$i . || build_failed
+done
+{ for i in ${PE_COPY_LIST}; do echo $i; done } > image-list
+{ for i in ${BASE_COPY_LIST}; do echo $i; done } >> image-list
 cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
@@ -131,7 +147,7 @@ ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} \
        --allow-multiple-definition \
        ../elf/libntos.a \
        ../elf/rtl/librtl.a \
-       ../pe/initcpio.o \
+       ../initcpio/initcpio.o \
        -T ../../private/ntos/ntos.lds \
        -o ntos
 if [[ $? == 0 ]]; then
@@ -144,6 +160,8 @@ if [[ ${BUILD_TYPE} == Release ]]; then
     echo
     echo "---- Stripping symbols for release build ----"
     echo
+    copy kernel kernel-no-strip
+    copy ntos ntos-no-strip
     strip kernel
     strip ntos
     if [[ $? == 0 ]]; then
