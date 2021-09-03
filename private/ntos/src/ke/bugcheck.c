@@ -9,6 +9,9 @@ static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
     /* Dump some useful information. */
     seL4_DebugDumpScheduler();
 #endif
+    char buf[512];
+    vsnprintf(buf, sizeof(buf), Format, arglist);
+    KeVgaWriteString(buf);
 }
 
 VOID KiHaltSystem(IN PCSTR Format, ...)
