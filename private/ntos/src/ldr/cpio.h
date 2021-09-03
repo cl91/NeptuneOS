@@ -15,7 +15,6 @@
 /* Magic identifiers for the "cpio" file format. */
 #define CPIO_HEADER_MAGIC "070701"
 #define CPIO_FOOTER_MAGIC "TRAILER!!!"
-#define CPIO_ALIGNMENT 4
 
 struct cpio_header {
     char c_magic[6];      /* Magic header '070701'. */

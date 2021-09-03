@@ -20,12 +20,6 @@ struct cpio_header_info {
     struct cpio_header *next;
 };
 
-/* Align 'n' up to the value 'align', which must be a power of two. */
-static size_t align_up(size_t n, size_t align)
-{
-    return (n + align - 1) & (~(align - 1));
-}
-
 /* Parse an ASCII hex string into an integer. */
 static size_t parse_hex_str(char *s, unsigned int max_len)
 {
@@ -103,7 +97,7 @@ static size_t cpio_len_next(size_t len, void *prev, void *next) {
  * Return -1 if the header is not valid, 1 if it is EOF.
  */
 int cpio_parse_header(struct cpio_header *archive, size_t len,
-        struct cpio_header_info *info)
+		      struct cpio_header_info *info)
 {
     const char *filename;
     size_t filesize;
@@ -143,9 +137,8 @@ int cpio_parse_header(struct cpio_header *archive, size_t len,
     }
 
     /* Find offset to data. */
-    data = (void *) align_up((size_t) archive + sizeof(struct cpio_header) +
-            filename_length, CPIO_ALIGNMENT);
-    next = (struct cpio_header *) align_up((size_t) data + filesize, CPIO_ALIGNMENT);
+    data = (void *) ((size_t) archive + sizeof(struct cpio_header) + filename_length);
+    next = (struct cpio_header *) ((size_t) data + filesize);
 
     if (info) {
         info->filename = filename;
