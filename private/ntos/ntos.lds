@@ -14,9 +14,10 @@ SECTIONS
         _rodata_start = . ;
 	*(.rodata)
 	_rodata_end = . ;
-	_initcpio_start = .;
+	. = ALIGN(8) ;
+	_initcpio_start = . ;
 	*(initcpio)
-	_initcpio_end = .;
+	_initcpio_end = . ;
     }
   .data :
     {

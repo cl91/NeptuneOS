@@ -1,25 +1,20 @@
 #include <stdint.h>
-#include <ntos.h>
+#include "ldrp.h"
 #include "cpio.h"
 
 extern UCHAR _binary_initcpio_start[];
 extern UCHAR _binary_initcpio_end[];
 extern UCHAR _binary_initcpio_size[];
 
-#define NTOS_LDR_BOOT_TAG	(EX_POOL_TAG('L', 'D', 'R', 'B'))
-
-#define LdrpAllocatePoolEx(Var, Type, OnError)				\
-    ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_LDR_BOOT_TAG, OnError)
-#define LdrpAllocatePool(Var, Type)	LdrpAllocatePoolEx(Var, Type, {})
-#define LdrpAllocateArray(Var, Type, Size)				\
-    ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_LDR_BOOT_TAG, {})
-
 NTSTATUS LdrLoadBootModules()
 {
     RET_ERR(ObCreateDirectory("\\", "BootModules"));
 
     struct cpio_info cpio;
-    cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
+    int error = cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
+    if (error) {
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
     DbgTrace("initcpio has %d file(s).\n", cpio.file_count);
 
     LdrpAllocateArray(FileNames, PCHAR, cpio.file_count);

@@ -12,15 +12,17 @@
 
 /* INCLUDES *****************************************************************/
 
-#include <debug.h>
+#include "ldrp.h"
 
-#define RVA(m, b) ((PVOID)((ULONG_PTR)(b) + (ULONG_PTR)(m)))
+#define RVA(m, b)	((PVOID)((ULONG_PTR)(b) + (ULONG_PTR)(m)))
+
+#define HIWORD(l)	((WORD)(((DWORD_PTR)(l) >> 16) & 0xffff))
+#define LOWORD(l)	((WORD)((DWORD_PTR)(l) & 0xffff))
+#define MAKELONG(a,b)	((LONG)(((WORD)(a))|(((DWORD)((WORD)(b)))<<16)))
 
 /* FUNCTIONS *****************************************************************/
 
-FORCEINLINE
-USHORT
-ChkSum(ULONG Sum, PUSHORT Src, ULONG Len)
+FORCEINLINE USHORT ChkSum(ULONG Sum, PUSHORT Src, ULONG Len)
 {
     ULONG i;
 
@@ -37,12 +39,9 @@ ChkSum(ULONG Sum, PUSHORT Src, ULONG Len)
     return (Sum + (Sum >> 16)) & 0xFFFF;
 }
 
-BOOLEAN
-NTAPI
-LdrVerifyMappedImageMatchesChecksum(
-    IN PVOID BaseAddress,
-    IN SIZE_T ImageSize,
-    IN ULONG FileLength)
+BOOLEAN NTAPI LdrVerifyMappedImageMatchesChecksum(IN PVOID BaseAddress,
+						  IN SIZE_T ImageSize,
+						  IN ULONG FileLength)
 {
 #if 0
     PIMAGE_NT_HEADERS Header;
@@ -130,16 +129,10 @@ LdrVerifyMappedImageMatchesChecksum(
 #endif
 }
 
-/*
- * @implemented
- */
-NTSTATUS
-NTAPI
-RtlpImageNtHeaderEx(
-    _In_ ULONG Flags,
-    _In_ PVOID Base,
-    _In_ ULONG64 Size,
-    _Out_ PIMAGE_NT_HEADERS *OutHeaders)
+static NTSTATUS RtlpImageNtHeaderEx(IN ULONG Flags,
+				    IN PVOID Base,
+				    IN ULONG64 Size,
+				    OUT PIMAGE_NT_HEADERS *OutHeaders)
 {
     PIMAGE_NT_HEADERS NtHeaders;
     PIMAGE_DOS_HEADER DosHeader;
@@ -159,7 +152,7 @@ RtlpImageNtHeaderEx(
     /* Validate Flags */
     if (Flags & ~RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK)
     {
-        DPRINT1("Invalid flags: 0x%lx\n", Flags);
+        DPRINT1("Invalid flags: 0x%x\n", Flags);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -222,10 +215,10 @@ RtlpImageNtHeaderEx(
     NtHeaders = (PIMAGE_NT_HEADERS)((ULONG_PTR)Base + NtHeaderOffset);
 
     /* Check if the mapping is in user space */
-    if (Base <= MmHighestUserAddress)
+    if ((MWORD) Base <= HIGHEST_USER_ADDRESS)
     {
         /* Make sure we don't overflow into kernel space */
-        if ((PVOID)(NtHeaders + 1) > MmHighestUserAddress)
+        if ((MWORD)(NtHeaders + 1) > HIGHEST_USER_ADDRESS)
         {
             DPRINT1("Image overflows from user space into kernel space!\n");
             return STATUS_INVALID_IMAGE_FORMAT;
@@ -247,10 +240,35 @@ RtlpImageNtHeaderEx(
 
 /*
  * @implemented
+ * @note: This is the version of RtlpImageNtHeaderEx guarded by SEH.
  */
-PIMAGE_NT_HEADERS
-NTAPI
-RtlImageNtHeader(IN PVOID Base)
+NTSTATUS NTAPI RtlImageNtHeaderEx(IN ULONG Flags,
+				  IN PVOID Base,
+				  IN ULONG64 Size,
+				  OUT PIMAGE_NT_HEADERS *OutHeaders)
+{
+    NTSTATUS Status;
+
+    _SEH2_TRY {
+	/* Assume failure. This is also done in RtlpImageNtHeaderEx,
+	 * but this is guarded by SEH. */
+	if (OutHeaders != NULL) {
+	    *OutHeaders = NULL;
+	}
+        Status = RtlpImageNtHeaderEx(Flags, Base, Size, OutHeaders);
+    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+        /* Fail with the SEH error */
+        Status = _SEH2_GetExceptionCode();
+    }
+    _SEH2_END;
+
+    return Status;
+}
+
+/*
+ * @implemented
+ */
+PIMAGE_NT_HEADERS NTAPI RtlImageNtHeader(IN PVOID Base)
 {
     PIMAGE_NT_HEADERS NtHeader;
 
@@ -265,13 +283,10 @@ RtlImageNtHeader(IN PVOID Base)
 /*
  * @implemented
  */
-PVOID
-NTAPI
-RtlImageDirectoryEntryToData(
-    PVOID BaseAddress,
-    BOOLEAN MappedAsImage,
-    USHORT Directory,
-    PULONG Size)
+PVOID NTAPI RtlImageDirectoryEntryToData(IN PVOID BaseAddress,
+					 IN BOOLEAN MappedAsImage,
+					 IN USHORT Directory,
+					 IN PULONG Size)
 {
     PIMAGE_NT_HEADERS NtHeader;
     ULONG Va;
@@ -306,12 +321,9 @@ RtlImageDirectoryEntryToData(
 /*
  * @implemented
  */
-PIMAGE_SECTION_HEADER
-NTAPI
-RtlImageRvaToSection(
-    PIMAGE_NT_HEADERS NtHeader,
-    PVOID BaseAddress,
-    ULONG Rva)
+PIMAGE_SECTION_HEADER NTAPI RtlImageRvaToSection(IN PIMAGE_NT_HEADERS NtHeader,
+						 IN PVOID BaseAddress,
+						 IN ULONG Rva)
 {
     PIMAGE_SECTION_HEADER Section;
     ULONG Va;
@@ -334,13 +346,10 @@ RtlImageRvaToSection(
 /*
  * @implemented
  */
-PVOID
-NTAPI
-RtlImageRvaToVa(
-    PIMAGE_NT_HEADERS NtHeader,
-    PVOID BaseAddress,
-    ULONG Rva,
-    PIMAGE_SECTION_HEADER *SectionHeader)
+PVOID NTAPI RtlImageRvaToVa(IN PIMAGE_NT_HEADERS NtHeader,
+			    IN PVOID BaseAddress,
+			    IN ULONG Rva,
+			    IN PIMAGE_SECTION_HEADER *SectionHeader)
 {
     PIMAGE_SECTION_HEADER Section = NULL;
 
@@ -364,13 +373,11 @@ RtlImageRvaToVa(
                    (ULONG_PTR)SWAPD(Section->VirtualAddress));
 }
 
-PIMAGE_BASE_RELOCATION
-NTAPI
-LdrProcessRelocationBlockLongLong(
-    IN ULONG_PTR Address,
-    IN ULONG Count,
-    IN PUSHORT TypeOffset,
-    IN LONGLONG Delta)
+static PIMAGE_BASE_RELOCATION
+LdrpProcessRelocationBlockLongLong(IN ULONG_PTR Address,
+				   IN ULONG Count,
+				   IN PUSHORT TypeOffset,
+				   IN LONGLONG Delta)
 {
     SHORT Offset;
     USHORT Type;
@@ -434,27 +441,21 @@ LdrProcessRelocationBlockLongLong(
     return (PIMAGE_BASE_RELOCATION)TypeOffset;
 }
 
-ULONG
-NTAPI
-LdrRelocateImage(
-    IN PVOID BaseAddress,
-    IN PCCH  LoaderName,
-    IN ULONG Success,
-    IN ULONG Conflict,
-    IN ULONG Invalid)
+ULONG LdrpRelocateImage(IN PVOID BaseAddress,
+			IN PCCH  LoaderName,
+			IN ULONG Success,
+			IN ULONG Conflict,
+			IN ULONG Invalid)
 {
-    return LdrRelocateImageWithBias(BaseAddress, 0, LoaderName, Success, Conflict, Invalid);
+    return LdrpRelocateImageWithBias(BaseAddress, 0, LoaderName, Success, Conflict, Invalid);
 }
 
-ULONG
-NTAPI
-LdrRelocateImageWithBias(
-    IN PVOID BaseAddress,
-    IN LONGLONG AdditionalBias,
-    IN PCCH  LoaderName,
-    IN ULONG Success,
-    IN ULONG Conflict,
-    IN ULONG Invalid)
+ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
+				IN LONGLONG AdditionalBias,
+				IN PCCH  LoaderName,
+				IN ULONG Success,
+				IN ULONG Conflict,
+				IN ULONG Invalid)
 {
     PIMAGE_NT_HEADERS NtHeaders;
     PIMAGE_DATA_DIRECTORY RelocationDDir;
@@ -496,14 +497,14 @@ LdrRelocateImageWithBias(
         Address = (ULONG_PTR)RVA(BaseAddress, SWAPD(RelocationDir->VirtualAddress));
         TypeOffset = (PUSHORT)(RelocationDir + 1);
 
-        RelocationDir = LdrProcessRelocationBlockLongLong(Address,
+        RelocationDir = LdrpProcessRelocationBlockLongLong(Address,
                         Count,
                         TypeOffset,
                         Delta);
 
         if (RelocationDir == NULL)
         {
-            DPRINT1("Error during call to LdrProcessRelocationBlockLongLong()!\n");
+            DPRINT1("Error during call to LdrpProcessRelocationBlockLongLong()!\n");
             return Invalid;
         }
     }

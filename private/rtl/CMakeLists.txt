@@ -9,7 +9,7 @@ add_library(rtl STATIC ${SRC})
 target_include_directories(
     rtl
     PUBLIC
-	../../public/sdk/inc
+	../../public/ndk/inc
 	../../public/crt/inc
 	../../public/crt/inc/${Arch}
 	inc

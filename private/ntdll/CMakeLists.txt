@@ -39,9 +39,11 @@ set(KernelArch "x86")
 if(Arch STREQUAL "i386")
     set(KernelWordSize 32)
     set(KernelSel4Arch "ia32")
+    set(GENINC_FILENAME "ks386.h")
 elseif(Arch STREQUAL "amd64")
     set(KernelWordSize 64)
     set(KernelSel4Arch "x86_64")
+    set(GENINC_FILENAME "ksamd64.h")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${Arch}")
 endif()
@@ -56,12 +58,30 @@ add_dependencies(ntdll rtl)
 target_link_libraries(ntdll PRIVATE rtl)
 
 spec2def(ntdll ntdll.spec)
-set_property(TARGET ntdll APPEND_STRING PROPERTY LINK_FLAGS " -Wl,/def:ntdll.def -Wl,-entry:LdrInitializeThunk ")
+set_dll_def(ntdll ntdll.def)
+set_entrypoint(ntdll LdrInitializeThunk)
+
+add_library(genincdata MODULE tools/genincdata.c)
+set_entrypoint(genincdata 0)
+target_include_directories(
+    genincdata
+    PRIVATE
+    	../../public/ndk/inc
+	../../public/crt/inc
+	../../public/crt/inc/${Arch}
+	tools
+)
+add_custom_target(
+    geninc ALL
+    COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/${GENINC_FILENAME}
+    DEPENDS genincdata)
+add_dependencies(ntdll geninc)
 
 target_include_directories(
     ntdll
     PRIVATE
 	${STRUCTURES_GEN_DIR}
+	${CMAKE_CURRENT_BINARY_DIR}
 	${CMAKE_CURRENT_LIST_DIR}/inc
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/include
 	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/mode_include/${KernelWordSize}

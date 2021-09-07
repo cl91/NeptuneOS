@@ -39,14 +39,14 @@ echo "####################################################"
 
 cd "$(dirname "$0")"
 
-mkdir -p $BUILDDIR/{host,elf,pe,base,initcpio,sdk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,elf,pe,base,initcpio,ndk_lib,$IMAGEDIR}
 
 # Build spec2def with the native toolchain
 cd $BUILDDIR/host
 echo
 echo "---- Building native targets ----"
 echo
-cmake ../../tools/spec2def -G Ninja
+cmake ../../tools -G Ninja
 ninja
 
 # Build ntos with the ELF toolchain
@@ -97,10 +97,11 @@ cmake ../../private/ntdll \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DLIBSEL4_PE_HEADERS_DIR="${PWD}/libsel4-pe" \
       -DSTRUCTURES_GEN_DIR=${PWD}/libsel4-pe/generated \
-      -DSPEC2DEF_PATH=${PWD}/../host/spec2def \
+      -DSPEC2DEF_PATH=${PWD}/../host/spec2def/spec2def \
+      -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -G Ninja
 ninja || build_failed
-cp ntdll.lib ../sdk_lib || build_failed
+cp ntdll.lib ../ndk_lib || build_failed
 
 # Build base NT clients with the PE toolchain
 cd ../base
@@ -110,7 +111,7 @@ echo
 cmake ../../base \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
-      -DSDK_LIB_PATH=${PWD}/../sdk_lib \
+      -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -G Ninja
 ninja || build_failed
 
@@ -176,8 +177,8 @@ if [[ ${BUILD_TYPE} == Release ]]; then
     echo
     echo "---- Stripping symbols for release build ----"
     echo
-    copy kernel kernel-no-strip
-    copy ntos ntos-no-strip
+    cp kernel kernel-no-strip
+    cp ntos ntos-no-strip
     strip kernel
     strip ntos
     if [[ $? == 0 ]]; then

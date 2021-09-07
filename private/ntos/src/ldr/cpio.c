@@ -11,6 +11,8 @@
  */
 
 #include <stddef.h>
+#include <string.h>
+#include "ldrp.h"
 #include "cpio.h"
 
 struct cpio_header_info {
@@ -42,46 +44,6 @@ static size_t parse_hex_str(char *s, unsigned int max_len)
     return r;
 }
 
-/*
- * Compare up to 'n' characters in a string.
- *
- * We re-implement the wheel to avoid dependencies on 'libc', required for
- * certain environments that are particularly impoverished.
- */
-static int cpio_strncmp(const char *a, const char *b, size_t n)
-{
-    size_t i;
-    for (i = 0; i < n; i++) {
-        if (a[i] != b[i]) {
-            return a[i] - b[i];
-        }
-        if (a[i] == 0) {
-            return 0;
-        }
-    }
-    return 0;
-}
-
-/**
- * This is an implementation of string copy because, cpi doesn't want to
- * use string.h.
- */
-static char* cpio_strcpy(char *to, const char *from) {
-    char *save = to;
-    while (*from != 0) {
-        *to = *from;
-        to++;
-        from++;
-    }
-    return save;
-}
-
-static unsigned int cpio_strlen(const char *str) {
-    const char *s;
-    for (s = str; *s; ++s) {}
-    return (s - str);
-}
-
 /* Calculate the remaining length in a CPIO file after reading a header. */
 static size_t cpio_len_next(size_t len, void *prev, void *next) {
     size_t diff = (size_t) (next - prev);
@@ -89,6 +51,12 @@ static size_t cpio_len_next(size_t len, void *prev, void *next) {
         return 0;
     }
     return len;
+}
+
+/* Align up the given offset to word (four-byte) boundary */
+static size_t align_up(size_t offset)
+{
+    return ((offset + 3) >> 2) << 2;
 }
 
 /*
@@ -107,11 +75,15 @@ int cpio_parse_header(struct cpio_header *archive, size_t len,
 
     /* Ensure header is accessible */
     if (len < sizeof(struct cpio_header)) {
+	DbgTrace("Length of buffer smaller than cpio_header: archive = %p, len = 0x%lx\n",
+		 archive, (unsigned long) len);
         return -1;
     }
 
     /* Ensure magic header exists. */
-    if (cpio_strncmp(archive->c_magic, CPIO_HEADER_MAGIC, sizeof(archive->c_magic)) != 0) {
+    if (strncmp(archive->c_magic, CPIO_HEADER_MAGIC, sizeof(archive->c_magic)) != 0) {
+	DbgTrace("Invalid cpio magic (expect %s found %s)\n",
+		 CPIO_HEADER_MAGIC, archive->c_magic);
         return -1;
     }
 
@@ -121,24 +93,28 @@ int cpio_parse_header(struct cpio_header *archive, size_t len,
 
     /* Ensure header + filename + file contents are accessible */
     if (len < sizeof(struct cpio_header) + filename_length + filesize) {
+	DbgTrace("Length of buffer too small (expect 0x%lx found 0x%lx)\n",
+		 (unsigned long) (sizeof(struct cpio_header) + filename_length + filesize),
+		 (unsigned long) (len));
         return -1;
     }
 
     filename = (char *) archive + sizeof(struct cpio_header);
     /* Ensure filename is terminated */
     if (filename[filename_length - 1] != 0) {
+	DbgTrace("Filename is not NUL-terminated\n");
         return -1;
     }
 
     /* Ensure filename is not the trailer indicating EOF. */
-    if (filename_length >= sizeof(CPIO_FOOTER_MAGIC) && cpio_strncmp(filename,
-                CPIO_FOOTER_MAGIC, sizeof(CPIO_FOOTER_MAGIC)) == 0) {
+    if (filename_length >= sizeof(CPIO_FOOTER_MAGIC) &&
+	strncmp(filename, CPIO_FOOTER_MAGIC, sizeof(CPIO_FOOTER_MAGIC)) == 0) {
         return 1;
     }
 
     /* Find offset to data. */
-    data = (void *) ((size_t) archive + sizeof(struct cpio_header) + filename_length);
-    next = (struct cpio_header *) ((size_t) data + filesize);
+    data = (void *) ((size_t) archive + align_up(sizeof(struct cpio_header) + filename_length));
+    next = (struct cpio_header *) align_up((size_t) data + filesize);
 
     if (info) {
         info->filename = filename;
@@ -201,7 +177,7 @@ void *cpio_get_file(void *archive, size_t len, const char *name, size_t *size)
         if (error) {
             return NULL;
         }
-        if (cpio_strncmp(header_info.filename, name, -1) == 0) {
+        if (strncmp(header_info.filename, name, -1) == 0) {
             break;
         }
         len = cpio_len_next(len, header, header_info.next);
@@ -237,7 +213,7 @@ int cpio_info(void *archive, size_t len, struct cpio_info *info) {
         header = header_info.next;
 
         // Check if this is the maximum file path size.
-        current_path_sz = cpio_strlen(header_info.filename);
+        current_path_sz = strlen(header_info.filename);
         if (current_path_sz > info->max_path_sz) {
             info->max_path_sz = current_path_sz;
         }
@@ -255,7 +231,7 @@ void cpio_ls(void *archive, size_t len, char **buf, size_t buf_len) {
         int error = cpio_parse_header(header, len, &header_info);
         // Break on an error or nothing left to read.
         if (error) break;
-        cpio_strcpy(buf[i], header_info.filename);
+        strcpy(buf[i], header_info.filename);
         len = cpio_len_next(len, header, header_info.next);
         header = header_info.next;
     }

@@ -437,7 +437,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     } else if (Vad->Flags.OwnedMemory) {
 	RET_ERR(MiCommitOwnedMemory(Vad->VSpace, StartAddr, WindowSize, Rights,
 				    Vad->Flags.LargePages, NULL, 0));
-	Vad->OwnedMemory.CommitmentSize += Vad->WindowSize;
+	Vad->OwnedMemory.CommitmentSize += WindowSize;
     } else {
 	/* Should never reach this */
 	return STATUS_NTOS_BUG;

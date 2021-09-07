@@ -25,3 +25,15 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+function(set_entrypoint _module _entrypoint)
+    if(${_entrypoint} STREQUAL "0")
+	set_property(TARGET ${_module} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-noentry")
+    else()
+	set_property(TARGET ${_module} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-entry:${_entrypoint}")
+    endif()
+endfunction()
+
+function(set_dll_def _module _module_def)
+    set_property(TARGET ${_module} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,/def:${_module_def}")
+endfunction()

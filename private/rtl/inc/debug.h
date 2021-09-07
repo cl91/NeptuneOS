@@ -29,3 +29,5 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 		 " (%s *) failed in function %s @ %s:%d\n",		\
 		 Size, #Var, #Type, __func__, __FILE__, __LINE__);	\
 	{OnError;} return STATUS_NO_MEMORY; }
+
+#define DPRINT1		DbgPrint

@@ -28,6 +28,12 @@
 #define DECLSPEC_IMPORT __declspec(dllimport)
 #define DECLSPEC_NORETURN   __declspec(noreturn)
 
+#ifdef _MSC_VER
+#define DECLSPEC_ALIGN(x) __declspec(align(x))
+#else
+#define DECLSPEC_ALIGN(x) __attribute__((aligned(x)))
+#endif
+
 /* FIXME: dllimport/dllexport */
 #define NTSYSAPI
 #define NTSYSCALLAPI

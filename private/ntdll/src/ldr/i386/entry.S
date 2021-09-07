@@ -1,3 +1,5 @@
+#include <ks386.h>
+
 .section .text
 .global _LdrInitializeThunk
 _LdrInitializeThunk:
@@ -27,4 +29,4 @@ _LdrInitializeThunk:
 
 /* Must match offset of ThreadLocalStoragePointer in TEB struct */
 .global __tls_array
-.equ __tls_array, 0x2c
+.equ __tls_array, TbThreadLocalStoragePointer

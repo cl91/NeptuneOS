@@ -1,4 +1,4 @@
-#include <ntdll.h>
+#include "ldrp.h"
 
 /*
  * Executable always has _tls_index == 0. NTDLL always has _tls_index == 1

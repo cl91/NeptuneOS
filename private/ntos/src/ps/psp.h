@@ -17,3 +17,5 @@ NTSTATUS PspProcessObjectCreateProc(POBJECT Object);
 
 /* init.c */
 extern LIST_ENTRY PspProcessList;
+extern PSECTION PspSystemDllSection;
+extern PSUBSECTION PspSystemDllTlsSubsection;

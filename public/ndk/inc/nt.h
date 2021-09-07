@@ -5,6 +5,7 @@
 #define UNICODE
 #include <ntdef.h>
 #include <ntstatus.h>
+#include <ntkeapi.h>
 #include <ntrtl.h>
 #include <ntseapi.h>
 #include <ntmmapi.h>

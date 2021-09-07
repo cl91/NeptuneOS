@@ -71,66 +71,6 @@ typedef enum _EXCEPTION_DISPOSITION
 #define EXCEPTION_CONTINUE_SEARCH 0
 #define EXCEPTION_CONTINUE_EXECUTION -1
 
-#if 0
-  /* CRT stuff */
-  typedef void (__cdecl * _PHNDLR)(int);
-
-  struct _XCPT_ACTION {
-    unsigned long XcptNum;
-    int SigNum;
-    _PHNDLR XcptAction;
-  };
-
-  extern struct _XCPT_ACTION _XcptActTab[];
-  extern int _XcptActTabCount;
-  extern int _XcptActTabSize;
-  extern int _First_FPE_Indx;
-  extern int _Num_FPE;
-
-  int __cdecl __CppXcptFilter(unsigned long _ExceptionNum,struct _EXCEPTION_POINTERS * _ExceptionPtr);
-  int __cdecl _XcptFilter(unsigned long _ExceptionNum,struct _EXCEPTION_POINTERS * _ExceptionPtr);
-
-  /*
-  * The type of function that is expected as an exception handler to be
-  * installed with _try1.
-  */
-  typedef EXCEPTION_DISPOSITION (*PEXCEPTION_HANDLER)(struct _EXCEPTION_RECORD*, void*, struct _CONTEXT*, void*);
-
-#ifndef HAVE_NO_SEH
-  /*
-  * This is not entirely necessary, but it is the structure installed by
-  * the _try1 primitive below.
-  */
-  typedef struct _EXCEPTION_REGISTRATION {
-    struct _EXCEPTION_REGISTRATION *prev;
-    EXCEPTION_DISPOSITION (*handler)(struct _EXCEPTION_RECORD*, void*, struct _CONTEXT*, void*);
-  } EXCEPTION_REGISTRATION, *PEXCEPTION_REGISTRATION;
-
-  typedef EXCEPTION_REGISTRATION EXCEPTION_REGISTRATION_RECORD;
-  typedef PEXCEPTION_REGISTRATION PEXCEPTION_REGISTRATION_RECORD;
-#endif
-
-#if defined(__i386__) || (defined(_X86_) && !defined(__x86_64))
-#define __try1(pHandler) \
-  __asm__ ("pushl %0;pushl %%fs:0;movl %%esp,%%fs:0;" : : "g" (pHandler));
-
-#define	__except1	\
-  __asm__ ("movl (%%esp),%%eax;movl %%eax,%%fs:0;addl $8,%%esp;" \
-  : : : "%eax");
-#elif defined(__x86_64)
-#define __try1(pHandler) \
-  __asm__ ("pushq %0;pushq %%gs:0;movq %%rsp,%%gs:0;" : : "g" (pHandler));
-
-#define	__except1	\
-  __asm__ ("movq (%%rsp),%%rax;movq %%rax,%%gs:0;addq $16,%%rsp;" \
-  : : : "%rax");
-#else
-#define __try1(pHandler)
-#define __except1
-#endif
-
-#endif // 0
-
 #ifdef __cplusplus
 }
 #endif

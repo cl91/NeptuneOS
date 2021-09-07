@@ -12,10 +12,10 @@ add_compile_options(
 
 include_directories(
     ${CMAKE_CURRENT_LIST_DIR}/../public/crt/inc
-    ${CMAKE_CURRENT_LIST_DIR}/../public/sdk/inc
+    ${CMAKE_CURRENT_LIST_DIR}/../public/ndk/inc
 )
 
-link_directories(${SDK_LIB_PATH})
+link_directories(${NDK_LIB_PATH})
 
 set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG")
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")

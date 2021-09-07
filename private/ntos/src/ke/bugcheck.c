@@ -4,14 +4,14 @@
 
 static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
 {
-#ifdef CONFIG_DEBUG_BUILD
-    vDbgPrint(Format, arglist);
-    /* Dump some useful information. */
-    seL4_DebugDumpScheduler();
-#endif
     char buf[512];
     vsnprintf(buf, sizeof(buf), Format, arglist);
     KeVgaWriteString(buf);
+#ifdef CONFIG_DEBUG_BUILD
+    seL4_DebugPutString(buf);
+    /* Dump some useful information. */
+    seL4_DebugDumpScheduler();
+#endif
 }
 
 VOID KiHaltSystem(IN PCSTR Format, ...)

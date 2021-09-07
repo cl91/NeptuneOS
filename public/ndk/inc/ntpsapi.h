@@ -126,12 +126,12 @@ typedef struct _NT_TIB {
 } NT_TIB, *PNT_TIB;
 
 typedef struct _TEB {                                             /* win32/win64 */
-    NT_TIB                       Tib;                               /* 000/0000 */
+    NT_TIB                       NtTib;                             /* 000/0000 */
     PVOID                        EnvironmentPointer;                /* 01c/0038 */
     CLIENT_ID                    ClientId;                          /* 020/0040 */
     PVOID                        ActiveRpcHandle;                   /* 028/0050 */
     PVOID                        ThreadLocalStoragePointer;         /* 02c/0058 */
-    PPEB                         Peb;                               /* 030/0060 */
+    PPEB                         ProcessEnvironmentBlock;           /* 030/0060 */
     ULONG                        LastErrorValue;                    /* 034/0068 */
     ULONG                        CountOfOwnedCriticalSections;      /* 038/006c */
     PVOID                        CsrClientThread;                   /* 03c/0070 */
@@ -142,7 +142,7 @@ typedef struct _TEB {                                             /* win32/win64
     ULONG                        FpSoftwareStatusRegister;          /* 0c8/010c */
     PVOID                        SystemReserved1[54];               /* 0cc/0110 used for kernel32 private data in Wine */
     LONG                         ExceptionCode;                     /* 1a4/02c0 */
-    ACTIVATION_CONTEXT_STACK     ActivationContextStack;            /* 1a8/02c8 */
+    ACTIVATION_CONTEXT_STACK     ActivationContextStackPointer;     /* 1a8/02c8 */
     BYTE                         SpareBytes1[24];                   /* 1bc/02e8 */
     PVOID                        SystemReserved2[10];               /* 1d4/0300 used for ntdll platform-specific private data in Wine */
     GDI_TEB_BATCH                GdiTebBatch;                       /* 1fc/0350 used for ntdll private data in Wine */
@@ -153,7 +153,7 @@ typedef struct _TEB {                                             /* win32/win64
     HANDLE                       GdiCachedProcessHandle;            /* 6f0/0860 */
     ULONG                        GdiClientPID;                      /* 6f4/0868 */
     ULONG                        GdiClientTID;                      /* 6f8/086c */
-    PVOID                        GdiThreadLocaleInfo;               /* 6fc/0870 */
+    PVOID                        GdiThreadLocalInfo;                /* 6fc/0870 */
     ULONG                        UserReserved[5];                   /* 700/0878 */
     PVOID                        glDispatchTable[280];              /* 714/0890 */
     PVOID                        glReserved1[26];                   /* b74/1150 */
@@ -194,5 +194,5 @@ typedef struct _TEB {                                             /* win32/win64
     ULONG                        HeapVirtualAffinity;               /* fa8/17b0 */
     PVOID                        CurrentTransactionHandle;          /* fac/17b8 */
     TEB_ACTIVE_FRAME            *ActiveFrame;                       /* fb0/17c0 */
-    PVOID                       *FlsSlots;                          /* fb4/17c8 */
+    PVOID                       *FlsData;                           /* fb4/17c8 */
 } TEB, *PTEB;

@@ -170,6 +170,25 @@ typedef struct _IMAGE_BASE_RELOCATION {
   ULONG SizeOfBlock;
 } IMAGE_BASE_RELOCATION, *PIMAGE_BASE_RELOCATION;
 
+#define IMAGE_SIZEOF_BASE_RELOCATION         8
+
+//
+// Based relocation types.
+//
+
+#define IMAGE_REL_BASED_ABSOLUTE              0
+#define IMAGE_REL_BASED_HIGH                  1
+#define IMAGE_REL_BASED_LOW                   2
+#define IMAGE_REL_BASED_HIGHLOW               3
+#define IMAGE_REL_BASED_HIGHADJ               4
+#define IMAGE_REL_BASED_MIPS_JMPADDR          5
+#define IMAGE_REL_BASED_SECTION               6
+#define IMAGE_REL_BASED_REL32                 7
+#define IMAGE_REL_BASED_VXD_RELATIVE          8
+#define IMAGE_REL_BASED_MIPS_JMPADDR16        9
+#define IMAGE_REL_BASED_IA64_IMM64            9
+#define IMAGE_REL_BASED_DIR64                 10
+
 //
 // Resource Format
 //
