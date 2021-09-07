@@ -66,7 +66,7 @@ set_entrypoint(genincdata 0)
 target_include_directories(
     genincdata
     PRIVATE
-    	../../public/ndk/inc
+	../../public/ndk/inc
 	../../public/crt/inc
 	../../public/crt/inc/${Arch}
 	tools

@@ -138,10 +138,10 @@ __local_unwind2:
     push ebp
     push eax
     push -2
-	/* Work around clang limitation by switching to AT&T syntax temporarily */
-	.att_syntax
+    /* Work around clang limitation by switching to AT&T syntax temporarily */
+    .att_syntax
     push $_unwind_handler
-	.intel_syntax noprefix
+    .intel_syntax noprefix
     push fs:0
     mov fs:0, esp
 
@@ -181,10 +181,10 @@ __NLG_Return2:
 
 unwind_return:
     /* Cleanup SEH */
-	/* Work around clang limitation by switching to AT&T syntax temporarily */
-	.att_syntax
-	pop %fs:0x0
-	.intel_syntax noprefix
+    /* Work around clang limitation by switching to AT&T syntax temporarily */
+    .att_syntax
+    pop %fs:0x0
+    .intel_syntax noprefix
     add esp, 16
     pop edi
     pop esi
@@ -193,7 +193,6 @@ unwind_return:
 
 
 __except_handler2:
-
     /* Setup stack and save volatiles */
     push ebp
     mov ebp, esp
