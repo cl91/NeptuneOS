@@ -5,49 +5,6 @@
 
 #define RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK (0x00000001)
 
-NTSTATUS NTAPI RtlImageNtHeaderEx(IN ULONG Flags,
-				  IN PVOID Base,
-				  IN ULONG64 Size,
-				  OUT PIMAGE_NT_HEADERS * OutHeaders);
-
-PIMAGE_NT_HEADERS NTAPI RtlImageNtHeader(IN PVOID Base);
-
-PVOID NTAPI RtlImageDirectoryEntryToData(IN PVOID BaseOfImage,
-					 IN BOOLEAN MappedAsImage,
-					 IN USHORT DirectoryEntry,
-					 IN PULONG Size);
-
-PIMAGE_SECTION_HEADER NTAPI RtlImageRvaToSection(IN PIMAGE_NT_HEADERS NtHeader,
-						 IN PVOID BaseAddress,
-						 IN ULONG Rva);
-
-PVOID NTAPI RtlImageRvaToVa(IN PIMAGE_NT_HEADERS NtHeader,
-			    IN PVOID BaseAddress,
-			    IN ULONG Rva,
-			    IN PIMAGE_SECTION_HEADER *SectionHeader);
-
-/*
- * RTL Critical Section Structures
- */
-typedef struct _RTL_CRITICAL_SECTION_DEBUG {
-    USHORT Type;
-    USHORT CreatorBackTraceIndex;
-    struct _RTL_CRITICAL_SECTION *CriticalSection;
-    LIST_ENTRY ProcessLocksList;
-    ULONG EntryCount;
-    ULONG ContentionCount;
-    ULONG Spare[2];
-} RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG, RTL_RESOURCE_DEBUG, *PRTL_RESOURCE_DEBUG;
-
-typedef struct _RTL_CRITICAL_SECTION {
-    PRTL_CRITICAL_SECTION_DEBUG DebugInfo;
-    LONG LockCount;
-    LONG RecursionCount;
-    HANDLE OwningThread;
-    HANDLE LockSemaphore;
-    ULONG_PTR SpinCount;
-} RTL_CRITICAL_SECTION, *PRTL_CRITICAL_SECTION;
-
 typedef struct _CLIENT_ID {
     HANDLE UniqueProcess;
     HANDLE UniqueThread;
@@ -59,48 +16,53 @@ typedef struct _CURDIR {
 } CURDIR, *PCURDIR;
 
 typedef struct RTL_DRIVE_LETTER_CURDIR {
-    USHORT              Flags;
-    USHORT              Length;
-    ULONG               TimeStamp;
-    UNICODE_STRING      DosPath;
+    USHORT Flags;
+    USHORT Length;
+    ULONG TimeStamp;
+    UNICODE_STRING DosPath;
 } RTL_DRIVE_LETTER_CURDIR, *PRTL_DRIVE_LETTER_CURDIR;
 
-typedef struct tagRTL_BITMAP {
-    ULONG  SizeOfBitMap;	/* Number of bits in the bitmap */
+typedef struct _RTL_BITMAP {
+    ULONG SizeOfBitMap;		/* Number of bits in the bitmap */
     PULONG Buffer; /* Bitmap data, assumed sized to a DWORD boundary */
-} RTL_BITMAP, * PRTL_BITMAP;
+} RTL_BITMAP, *PRTL_BITMAP;
 
 typedef const RTL_BITMAP *PCRTL_BITMAP;
 
+#define RTL_MAX_DRIVE_LETTERS 32
+#define RTL_DRIVE_LETTER_VALID (USHORT)0x0001
+
 typedef struct _RTL_USER_PROCESS_PARAMETERS {
-    ULONG               AllocationSize;
-    ULONG               Size;
-    ULONG               Flags;
-    ULONG               DebugFlags;
-    HANDLE              ConsoleHandle;
-    ULONG               ConsoleFlags;
-    HANDLE              hStdInput;
-    HANDLE              hStdOutput;
-    HANDLE              hStdError;
-    CURDIR              CurrentDirectory;
-    UNICODE_STRING      DllPath;
-    UNICODE_STRING      ImagePathName;
-    UNICODE_STRING      CommandLine;
-    PWSTR               Environment;
-    ULONG               dwX;
-    ULONG               dwY;
-    ULONG               dwXSize;
-    ULONG               dwYSize;
-    ULONG               dwXCountChars;
-    ULONG               dwYCountChars;
-    ULONG               dwFillAttribute;
-    ULONG               dwFlags;
-    ULONG               wShowWindow;
-    UNICODE_STRING      WindowTitle;
-    UNICODE_STRING      Desktop;
-    UNICODE_STRING      ShellInfo;
-    UNICODE_STRING      RuntimeInfo;
-    RTL_DRIVE_LETTER_CURDIR DLCurrentDirectory[0x20];
+    ULONG MaximumLength;
+    ULONG Length;
+    ULONG Flags;
+    ULONG DebugFlags;
+    HANDLE ConsoleHandle;
+    ULONG ConsoleFlags;
+    HANDLE StandardInput;
+    HANDLE StandardOutput;
+    HANDLE StandardError;
+    CURDIR CurrentDirectory;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    PWSTR Environment;
+    ULONG StartingX;
+    ULONG StartingY;
+    ULONG CountX;
+    ULONG CountY;
+    ULONG CountCharsX;
+    ULONG CountCharsY;
+    ULONG FillAttribute;
+    ULONG WindowFlags;
+    ULONG ShowWindowFlags;
+    UNICODE_STRING WindowTitle;
+    UNICODE_STRING DesktopInfo;
+    UNICODE_STRING ShellInfo;
+    UNICODE_STRING RuntimeData;
+    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+    SIZE_T EnvironmentSize;
+    SIZE_T EnvironmentVersion;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
 typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
@@ -141,36 +103,6 @@ typedef struct _EXCEPTION_POINTERS {
   PCONTEXT ContextRecord;
 } EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
 
-/*
- * Unicode routines
- */
-VOID NTAPI RtlInitUnicodeString(IN OUT PUNICODE_STRING DestinationString,
-				IN PCWSTR SourceString);
-
-NTSTATUS NTAPI RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
-				      IN PCWSTR SourceString);
-
-NTSTATUS NTAPI RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
-                                 ULONG *utf8_bytes_written,
-                                 const WCHAR *uni_src, ULONG uni_bytes);
-
-NTSTATUS NTAPI RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
-                                 ULONG *uni_bytes_written,
-                                 const CHAR *utf8_src, ULONG utf8_bytes);
-
-/*
- * Structured exception handling routines
- */
-VOID NTAPI RtlUnwind(IN PVOID TargetFrame OPTIONAL,
-		     IN PVOID TargetIp OPTIONAL,
-		     IN PEXCEPTION_RECORD ExceptionRecord OPTIONAL,
-		     IN PVOID ReturnValue);
-
-#ifdef _M_AMD64
-VOID NTAPI RtlUnwindEx(IN PVOID TargetFrame OPTIONAL,
-		       IN PVOID TargetIp OPTIONAL,
-		       IN PEXCEPTION_RECORD ExceptionRecord OPTIONAL,
-		       IN PVOID ReturnValue,
-		       IN PCONTEXT ContextRecord,
-		       IN PUNWIND_HISTORY_TABLE HistoryTable OPTIONAL);
-#endif
+#ifndef _NTOSKRNL_
+#include <nturtl.h>
+#endif	/* _NTOSKRNL_ */

@@ -15,6 +15,7 @@ add_compile_options(
     -fno-pie
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
+    -D_NTSYSTEM_
 )
 set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG" CACHE STRING "" FORCE)
@@ -31,7 +32,7 @@ set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
 set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
 mark_as_advanced(CMAKE_C_STANDARD_LIBRARIES)
 mark_as_advanced(CMAKE_CXX_STANDARD_LIBRARIES)
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple -Wl,-subsystem:native -Wl,-safeseh:no"
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -static -nostdlib -Wl,-force:multiple -Wl,-subsystem:native -Wl,-safeseh:no -Wl,-errorlimit:0"
 )
 
 set(KernelPlatform "pc99")
@@ -51,13 +52,13 @@ endif()
 find_package(rtl REQUIRED)
 rtl_import_project()
 
-file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/crt/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
 
 add_library(ntdll SHARED ${SRC})
 add_dependencies(ntdll rtl)
 target_link_libraries(ntdll PRIVATE rtl)
 
-spec2def(ntdll ntdll.spec)
+spec2def(ntdll ntdll.spec ${Arch})
 set_dll_def(ntdll ntdll.def)
 set_entrypoint(ntdll LdrInitializeThunk)
 

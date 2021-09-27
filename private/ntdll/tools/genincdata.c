@@ -2,7 +2,6 @@
 //#include <psdk/ntverp.h>
 
 /* DDK/IFS/NDK Headers */
-#define _NTSYSTEM_
 #include <excpt.h>
 //#include <setjmp.h>
 #include <nt.h>
@@ -60,6 +59,8 @@ __attribute__ ((section(".asmdef")))
 
 ASMGENDATA Table[] =
 {
+/* ARCHITECTURE INDEPENDENT CONTSTANTS ***************************************/
+#include "common.template.h"
 /* ARCHITECTURE SPECIFIC CONTSTANTS ******************************************/
 #ifdef _M_IX86
 #include "ks386.template.h"

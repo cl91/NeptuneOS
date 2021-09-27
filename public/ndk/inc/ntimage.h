@@ -3,10 +3,6 @@
 #ifndef _NTIMAGE_
 #define _NTIMAGE_
 
-#define _ANONYMOUS_UNION
-#define _ANONYMOUS_STRUCT
-#define ANYSIZE_ARRAY
-
 //
 // Image Formats
 //

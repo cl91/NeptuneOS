@@ -14,12 +14,6 @@
 
 #include "ldrp.h"
 
-#define RVA(m, b)	((PVOID)((ULONG_PTR)(b) + (ULONG_PTR)(m)))
-
-#define HIWORD(l)	((WORD)(((DWORD_PTR)(l) >> 16) & 0xffff))
-#define LOWORD(l)	((WORD)((DWORD_PTR)(l) & 0xffff))
-#define MAKELONG(a,b)	((LONG)(((WORD)(a))|(((DWORD)((WORD)(b)))<<16)))
-
 /* FUNCTIONS *****************************************************************/
 
 FORCEINLINE USHORT ChkSum(ULONG Sum, PUSHORT Src, ULONG Len)
@@ -213,17 +207,6 @@ static NTSTATUS RtlpImageNtHeaderEx(IN ULONG Flags,
 
     /* Now get a pointer to the NT Headers */
     NtHeaders = (PIMAGE_NT_HEADERS)((ULONG_PTR)Base + NtHeaderOffset);
-
-    /* Check if the mapping is in user space */
-    if ((MWORD) Base <= HIGHEST_USER_ADDRESS)
-    {
-        /* Make sure we don't overflow into kernel space */
-        if ((MWORD)(NtHeaders + 1) > HIGHEST_USER_ADDRESS)
-        {
-            DPRINT1("Image overflows from user space into kernel space!\n");
-            return STATUS_INVALID_IMAGE_FORMAT;
-        }
-    }
 
     /* Verify the PE Signature */
     if (NtHeaders->Signature != IMAGE_NT_SIGNATURE)

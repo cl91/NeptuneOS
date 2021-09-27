@@ -14,9 +14,6 @@
 #define FRAME_TSS    2
 #define FRAME_NONFPO 3
 
-/* Force intel syntax */
-.intel_syntax noprefix
-
 /* Put dwarf debug info in the .dwarf_debug section, which will be properly stripped */
 .cfi_sections .debug_frame
 
@@ -41,9 +38,8 @@
 
 /* To avoid reverse syntax we provide a new macro .PROC, replacing PROC... */
 .macro .PROC name
-    .func \name
     \name:
-#ifdef _X86_
+#ifdef _M_IX86
     .cfi_startproc
 #else
     .seh_proc \name
@@ -53,24 +49,13 @@
 
 /* ... and .ENDP, replacing ENDP */
 .macro .ENDP
-#ifdef _X86_
+#ifdef _M_IX86
     .cfi_endproc
 #else
     .seh_endproc
 #endif
-    .endfunc
 .endm
 #define ENDFUNC .ENDP
-
-/* MASM compatible PUBLIC */
-.macro PUBLIC symbol
-    .global \symbol
-.endm
-
-/* No special marking of global labels */
-.macro GLOBAL_LABEL label
-    \label:
-.endm
 
 /* Dummy ASSUME */
 .macro ASSUME p1 p2 p3 p4 p5 p6 p7 p8
@@ -95,17 +80,6 @@
     jmp far ptr \segment:\offset
 .endm
 
-.macro retf
-    lret
-.endm
-
-/* MASM compatible EXTERN */
-.macro EXTERN name
-.endm
-
-/* MASM needs an END tag */
-#define END
-
 .macro .MODEL model
 .endm
 
@@ -121,11 +95,10 @@
  * See https://docs.microsoft.com/en-us/cpp/assembler/masm/dot-fpo
  * and https://docs.microsoft.com/en-us/windows/desktop/api/winnt/ns-winnt-_fpo_data
  */
-.macro FPO cdwLocals, cdwParams, cbProlog, cbRegs, fUseBP, cbFrame
-    .if (cbFrame == FRAME_TRAP)
-        .cfi_signal_frame
-    .endif
-.endm
+#define FPO(cdwLocals, cdwParams, cbProlog, cbRegs, fUseBP, cbFrame)	\
+    #if cbFrame == FRAME_TRAP						\
+        .cfi_signal_frame						\
+    #endif
 
 /* Macros for x64 stack unwind OPs */
 .macro .allocstack size

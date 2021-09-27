@@ -254,7 +254,7 @@ NTSTATUS ObCreateDirectory(IN PCSTR ParentPath,
 			   (POBJECT *) &Directory));
     assert(Directory != NULL);
     RET_ERR_EX(ObInsertObjectByName(ParentPath, Directory, DirectoryName),
-	       ObDereferenceObject(Directory));
+	       ObDeleteObject(Directory));
 
     return STATUS_SUCCESS;
 }

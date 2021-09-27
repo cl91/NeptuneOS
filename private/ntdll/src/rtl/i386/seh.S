@@ -2,178 +2,167 @@
  * Derived from reactos/sdk/lib/crt/misc/i386/seh.S
  */
 
-/* INCLUDES ******************************************************************/
+/* INCLUDES******************************************************************/
 
 #include <asm.h>
 #include <ks386.h>
 
-#define DISPOSITION_DISMISS         0
-#define DISPOSITION_CONTINUE_SEARCH 1
-#define DISPOSITION_COLLIDED_UNWIND 3
+DISPOSITION_DISMISS = 0
+DISPOSITION_CONTINUE_SEARCH = 1
+DISPOSITION_COLLIDED_UNWIND = 3
 
-#define EXCEPTION_EXIT_UNWIND 4
-#define EXCEPTION_UNWINDING 2
+EXCEPTION_EXIT_UNWIND = 4
+EXCEPTION_UNWINDING = 2
 
 /* See seh_prolog.s */
-SEH_FRAME_NewEsp         =  0 /* 0x00 */
-SEH_FRAME_unused         =  4 /* 0x04 */
-SEH_FRAME_PreviousRecord =  8 /* 0x08 */
-SEH_FRAME_Handler        = 12 /* 0x0c */
-SEH_FRAME_SEHTable       = 16 /* 0x10 */
-SEH_FRAME_Disable        = 20 /* 0x14 */
-SEH_FRAME_OriginalEbp    = 24 /* 0x18 */
-SEH_FRAME_Size           = 28 /* 0x1c */
+SEH_FRAME_NewEsp = 0		/* 0x00 */
+SEH_FRAME_unused = 4		/* 0x04 */
+SEH_FRAME_PreviousRecord = 8	/* 0x08 */
+SEH_FRAME_Handler = 12		/* 0x0c */
+SEH_FRAME_SEHTable = 16		/* 0x10 */
+SEH_FRAME_Disable = 20		/* 0x14 */
+SEH_FRAME_OriginalEbp = 24	/* 0x18 */
+SEH_FRAME_Size = 28		/* 0x1c */
 
 
-EXTERN _RtlUnwind@16:PROC
+/* GLOBALS****************************************************************** */
 
-/* GLOBALS *******************************************************************/
+.global __global_unwind2
+.global __local_unwind2
+.global __abnormal_termination
+.global __except_handler2
+.global __except_handler3
 
-PUBLIC __global_unwind2
-PUBLIC __local_unwind2
-PUBLIC __abnormal_termination
-PUBLIC __except_handler2
-PUBLIC __except_handler3
-
-/* FUNCTIONS *****************************************************************/
+/* FUNCTIONS*****************************************************************/
 
 .code
 _unwind_handler:
-
     /* Check if we were unwinding and continue search if not */
-    mov ecx, [esp+4]
-    test dword ptr [ecx+4], EXCEPTION_EXIT_UNWIND + EXCEPTION_UNWINDING
-    mov eax, DISPOSITION_CONTINUE_SEARCH
+    mov 4(%esp), %ecx
+    testl $(EXCEPTION_EXIT_UNWIND + EXCEPTION_UNWINDING), 4(%ecx)
+    mov $DISPOSITION_CONTINUE_SEARCH, %eax
     jz unwind_handler_return
 
-    /* We have a collision, do a local unwind */
-    mov eax, [esp+20]
-    push ebp
-    mov ebp, [eax+16]
-    mov edx, [eax+40]
-    push edx
-    mov edx, [eax+36]
-    push edx
+    /* We do, have a collision a local unwind */
+    mov 20(%esp), %eax
+    push %ebp
+    mov 16(%eax), %ebp
+    mov 40(%eax), %edx
+    push %edx
+    mov 36(%eax), %edx
+    push %edx
     call __local_unwind2
-    add esp, 8
-    pop ebp
+    add $8, %esp
+    pop %ebp
 
     /* Set new try level */
-    mov eax, [esp+8]
-    mov edx, [esp+16]
-    mov [edx], eax
+    mov 8(%esp), %eax
+    mov 16(%esp), %edx
+    mov %eax, (%edx)
 
     /* Return collided unwind */
-    mov eax, DISPOSITION_COLLIDED_UNWIND
+    mov $DISPOSITION_COLLIDED_UNWIND, %eax
 
 unwind_handler_return:
     ret
 
-
 __global_unwind2:
-
     /* Create stack and save all registers */
-    push ebp
-    mov ebp, esp
-    push ebx
-    push esi
-    push edi
-    push ebp
+    push %ebp
+    mov %esp, %ebp
+    push %ebx
+    push %esi
+    push %edi
+    push %ebp
 
     /* Call unwind */
-    push 0
-    push 0
+    push $0
+    push $0
     push glu_return
-    push [ebp+8]
+    push 8(%ebp)
     call _RtlUnwind@16
 
 glu_return:
     /* Restore registers and return */
-    pop ebp
-    pop edi
-    pop esi
-    pop ebx
-    mov esp, ebp
-    pop ebp
+    pop %ebp
+    pop %edi
+    pop %esi
+    pop %ebx
+    mov %ebp, %esp
+    pop %ebp
     ret
 
-
 __abnormal_termination:
-
     /* Assume false */
-    xor eax, eax
+    xor %eax, %eax
 
     /* Check if the handler is the unwind handler */
-    mov ecx, fs:0
-    cmp dword ptr [ecx+4], offset _unwind_handler
-    jne short ab_return
+    mov %fs:0, %ecx
+    cmpl $_unwind_handler, 4(%ecx)
+    jne ab_return
 
     /* Get the try level */
-    mov edx, [ecx+12]
-    mov edx, [edx+12]
+    mov 12(%ecx), %edx
+    mov 12(%edx), %edx
 
     /* Compare it */
-    cmp [ecx+8], edx
+    cmp %edx, 8(%ecx)
     jne ab_return
 
     /* Return true */
-    mov eax, 1
+    mov $1, %eax
 
-    /* Return */
+/* Return */
 ab_return:
     ret
 
 
 __local_unwind2:
-
     /* Save volatiles */
-    push ebx
-    push esi
-    push edi
+    push %ebx
+    push %esi
+    push %edi
 
     /* Get the exception registration */
-    mov eax, [esp+16]
+    mov 16(%esp), %eax
 
     /* Setup SEH to protect the unwind */
-    push ebp
-    push eax
-    push -2
-    /* Work around clang limitation by switching to AT&T syntax temporarily */
-    .att_syntax
+    push %ebp
+    push %eax
+    push $-2
     push $_unwind_handler
-    .intel_syntax noprefix
-    push fs:0
-    mov fs:0, esp
+    push %fs:0
+    mov %esp, %fs:0
 
 unwind_loop:
     /* Get the exception registration and try level */
-    mov eax, [esp+36]
-    mov ebx, [eax+8]
-    mov esi, [eax+12]
+    mov 36(%esp), %eax
+    mov 8(%eax), %ebx
+    mov 12(%eax), %esi
 
     /* Validate the unwind */
-    cmp esi, -1
+    cmp $-1, %esi
     je unwind_return
-    cmp dword ptr [esp+40], -1
+    cmpl $-1, 40(%esp)
     je unwind_ok
-    cmp esi, [esp+40]
+    cmp 40(%esp), %esi
     jbe unwind_return
 
 unwind_ok:
     /* Get the new enclosing level and save it */
-    lea esi, [esi+esi*2]
-    mov ecx, [ebx+esi*4]
-    mov [esp+8], ecx
-    mov [eax+12], ecx
+    lea (%esi,%esi,2), %esi
+    mov (%ebx,%esi,4), %ecx
+    mov %ecx, 8(%esp)
+    mov %ecx, 12(%eax)
 
     /* Check the filter type */
-    cmp dword ptr [ebx+esi*4+4], 0
+    cmpl $0, 4(%ebx, %esi, 4)
     jnz __NLG_Return2
 
     /* FIXME: NLG Notification */
 
     /* Call the handler */
-    call dword ptr [ebx+esi*4+8]
+    call *8(%ebx,%esi,4)
 
 __NLG_Return2:
     /* Unwind again */
@@ -182,272 +171,267 @@ __NLG_Return2:
 unwind_return:
     /* Cleanup SEH */
     /* Work around clang limitation by switching to AT&T syntax temporarily */
-    .att_syntax
     pop %fs:0x0
-    .intel_syntax noprefix
-    add esp, 16
-    pop edi
-    pop esi
-    pop ebx
+    add $16, %esp
+    pop %edi
+    pop %esi
+    pop %ebx
     ret
 
 
 __except_handler2:
     /* Setup stack and save volatiles */
-    push ebp
-    mov ebp, esp
-    sub esp, 8
-    push ebx
-    push esi
-    push edi
-    push ebp
+    push %ebp
+    mov %esp, %ebp
+    sub $8, %esp
+    push %ebx
+    push %esi
+    push %edi
+    push %ebp
 
     /* Clear direction flag */
     cld
 
     /* Get exception registration and record */
-    mov ebx, [ebp+12]
-    mov eax, [ebp+8]
+    mov 12(%ebp), %ebx
+    mov 8(%ebp), %eax
 
     /* Check if this is an unwind */
-    test dword ptr [eax+4], EXCEPTION_EXIT_UNWIND + EXCEPTION_UNWINDING
+    testl $(EXCEPTION_EXIT_UNWIND + EXCEPTION_UNWINDING), 4(%eax)
     jnz except_unwind2
 
     /* Save exception pointers structure */
-    mov [ebp-8], eax
-    mov eax, [ebp+16]
-    mov [ebp-4], eax
-    lea eax, [ebp-8]
-    mov [ebx+20], eax
+    mov %eax, -8(%ebp)
+    mov 16(%ebp), %eax
+    mov %eax, -4(%ebp)
+    lea -8(%ebp), %eax
+    mov %eax, 20(%ebx)
 
     /* Get the try level and scope table */
-    mov esi, [ebx+12]
-    mov edi, [ebx+8]
+    mov 12(%ebx), %esi
+    mov 8(%ebx), %edi
 
 except_loop2:
     /* Validate try level */
-    cmp esi, -1
+    cmp -1, %esi
     je except_search2
 
     /* Check if this is the termination handler */
-    lea ecx, [esi+esi*2]
-    cmp dword ptr [edi+ecx*4+4], 0
+    lea (%esi,%esi,2), %ecx
+    cmpl $0, 4(%edi,%ecx,4)
     jz except_continue2
 
-    /* Save registers and call filter, then restore them */
-    push esi
-    push ebp
-    mov ebp, [ebx+16]
-    call dword ptr [edi+ecx*4+4]
-    pop ebp
-    pop esi
+    /* Save then, registers and call filter restore them */
+    push %esi
+    push %ebp
+    mov 16(%ebx), %ebp
+    call *4(%edi,%ecx,4)
+    pop %ebp
+    pop %esi
 
-    /* Restore ebx and check the result */
-    mov ebx, [ebp+12]
-    or eax, eax
+    /* Restore %ebx and check the result */
+    mov 12(%ebp), %ebx
+    or %eax, %eax
     jz except_continue2
     js except_dismiss2
 
-    /* So this is an accept, call the termination handlers */
-    mov edi, [ebx+8]
-    push ebx
+    /* So call, this is an accept the termination handlers */
+    mov 8(%ebx), %edi
+    push %ebx
     call __global_unwind2
-    add esp, 4
+    add $4, %esp
 
-    /* Restore ebp */
-    mov ebp, [ebx+16]
+    /* Restore %ebp */
+    mov 16(%ebx), %ebp
 
     /* Do local unwind */
-    push esi
-    push ebx
+    push %esi
+    push %ebx
     call __local_unwind2
-    add esp, 8
+    add $8, %esp
 
     /* Set new try level */
-    lea ecx, [esi+esi*2]
-    mov eax, [edi+ecx*4]
-    mov [ebx+12], eax
+    lea (%esi,%esi,2), %ecx
+    mov (%edi,%ecx,4), %eax
+    mov %eax, 12(%ebx)
 
     /* Call except handler */
-    call dword ptr [edi+ecx*4+8]
+    call *8(%edi,%ecx,4)
 
 except_continue2:
     /* Reload try level and except again */
-    mov edi, [ebx+8]
-    lea ecx, [esi+esi*2]
-    mov esi, [edi+ecx*4]
+    mov 8(%ebx), %edi
+    lea (%esi,%esi,2), %ecx
+    mov (%edi,%ecx,4), %esi
     jmp except_loop2
 
 except_dismiss2:
     /* Dismiss it */
-    mov eax, DISPOSITION_DISMISS
+    mov $DISPOSITION_DISMISS, %eax
     jmp except_return2
 
 except_search2:
     /* Continue searching */
-    mov eax, DISPOSITION_CONTINUE_SEARCH
+    mov $DISPOSITION_CONTINUE_SEARCH, %eax
     jmp except_return2
 
-    /* Do local unwind */
+/* Do local unwind */
 except_unwind2:
-    push ebp
-    mov ebp, [ebx+16]
+    push %ebp
+    mov 16(%ebx), %ebp
     push -1
-    push ebx
+    push %ebx
     call __local_unwind2
-    add esp, 8
+    add $8, %esp
 
     /* Retore EBP and set return disposition */
-    pop ebp
-    mov eax, DISPOSITION_CONTINUE_SEARCH
+    pop %ebp
+    mov $DISPOSITION_CONTINUE_SEARCH, %eax
 
 except_return2:
     /* Restore registers and stack */
-    pop ebp
-    pop edi
-    pop esi
-    pop ebx
-    mov esp, ebp
-    pop ebp
+    pop %ebp
+    pop %edi
+    pop %esi
+    pop %ebx
+    mov %ebp, %esp
+    pop %ebp
     ret
-
 
 __except_handler3:
 PARAM_ExceptionRecord = 8
 PARAM_RegistrationFrame = 12
 PARAM_Context = 16
     /* Setup stack and save volatiles */
-    push ebp
-    mov ebp, esp
-    sub esp, 8
-    push ebx
-    push esi
-    push edi
-    push ebp
+    push %ebp
+    mov %esp, %ebp
+    sub $8, %esp
+    push %ebx
+    push %esi
+    push %edi
+    push %ebp
 
     /* Clear direction flag */
     cld
 
     /* Get exception registration and record */
-    mov ebx, [ebp+PARAM_RegistrationFrame]
-    mov eax, [ebp+PARAM_ExceptionRecord]
+    mov PARAM_RegistrationFrame(%ebp), %ebx
+    mov PARAM_ExceptionRecord(%ebp), %eax
 
     /* Check if this is an unwind */
-    test dword ptr [eax+EXCEPTION_RECORD_EXCEPTION_FLAGS], EXCEPTION_EXIT_UNWIND + EXCEPTION_UNWINDING
+    testl $(EXCEPTION_EXIT_UNWIND + EXCEPTION_UNWINDING), EXCEPTION_RECORD_EXCEPTION_FLAGS(%eax)
     jnz except_unwind3
 
     /* Save exception pointers structure */
-    mov [ebp-8+EXCEPTION_POINTERS_EXCEPTION_RECORD], eax
-    mov eax, [ebp+PARAM_Context]
-    mov [ebp-8+EXCEPTION_POINTERS_CONTEXT_RECORD], eax
-    lea eax, [ebp-8]
-    mov [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_unused], eax
+    mov %eax, (-8 + EXCEPTION_POINTERS_EXCEPTION_RECORD)(%ebp)
+    mov PARAM_Context(%ebp), %eax
+    mov %eax, (-8 + EXCEPTION_POINTERS_CONTEXT_RECORD)(%ebp)
+    lea -8(%ebp), %eax
+    mov %eax, (-SEH_FRAME_PreviousRecord + SEH_FRAME_unused)(%ebx)
 
     /* Get the try level and scope table */
-    mov esi, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_Disable]
-    mov edi, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_SEHTable]
+    mov (-SEH_FRAME_PreviousRecord + SEH_FRAME_Disable)(%ebx), %esi
+    mov (-SEH_FRAME_PreviousRecord + SEH_FRAME_SEHTable)(%ebx), %edi
 
     /* FIXME: Validate the SEH exception */
 
 except_loop3:
     /* Validate try level */
-    cmp esi, -1
+    cmp -1, %esi
     je except_search3
 
     /* Check if this is the termination handler */
-    lea ecx, [esi+esi*2]
-    mov eax, [edi+ecx*4+4]
-    test eax, eax
+    lea (%esi,%esi,2), %ecx
+    mov 4(%edi,%ecx,4), %eax
+    test %eax, %eax
     jz except_continue3
 
     /* Save registers clear them all */
-    push esi
-    push ebp
-    lea ebp, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_OriginalEbp]
-    xor ebx, ebx
-    xor ecx, ecx
-    xor edx, edx
-    xor esi, esi
-    xor edi, edi
+    push %esi
+    push %ebp
+    lea -SEH_FRAME_PreviousRecord + SEH_FRAME_OriginalEbp(%ebx), %ebp
+    xor %ebx, %ebx
+    xor %ecx, %ecx
+    xor %edx, %edx
+    xor %esi, %esi
+    xor %edi, %edi
 
     /* Call the filter and restore our registers */
-    call eax
-    pop ebp
-    pop esi
+    call *(%eax)
+    pop %ebp
+    pop %esi
 
-    /* Restore ebx and check the result */
-    mov ebx, [ebp+PARAM_RegistrationFrame]
-    test eax, eax
+    /* Restore %ebx and check the result */
+    mov PARAM_RegistrationFrame(%ebp), %ebx
+    test %eax, %eax
     jz except_continue3
     js except_dismiss3
 
-    /* So this is an accept, call the termination handlers */
-    mov edi, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_SEHTable]
-    push ebx
+    /* So call, this is an accept the termination handlers */
+    mov (SEH_FRAME_SEHTable - SEH_FRAME_PreviousRecord)(%ebx), %edi
+    push %ebx
     call __global_unwind2
-    add esp, 4
+    add $4, %esp
 
-    /* Restore ebp */
-    lea ebp, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_OriginalEbp]
+    /* Restore %ebp */
+    lea (SEH_FRAME_OriginalEbp -SEH_FRAME_PreviousRecord)(%ebx), %ebp
 
     /* Do local unwind */
-    push esi
-    push ebx
+    push %esi
+    push %ebx
     call __local_unwind2
-    add esp, 8
+    add $8, %esp
 
     /* FIXME: Do NLG Notification */
 
     /* Set new try level */
-    lea ecx, [esi+esi*2]
-    mov eax, [edi+ecx*4]
-    mov [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_Disable], eax
+    lea (%esi,%esi,2), %ecx
+    mov (%edi,%ecx,4), %eax
+    mov %eax, (SEH_FRAME_Disable - SEH_FRAME_PreviousRecord)(%ebx)
 
     /* Clear registers and call except handler */
-    mov eax, [edi+ecx*4+8]
-    xor ebx, ebx
-    xor ecx, ecx
-    xor edx, edx
-    xor esi, esi
-    xor edi, edi
-    call eax
+    mov 8(%edi,%ecx,4), %eax
+    xor %ebx, %ebx
+    xor %ecx, %ecx
+    xor %edx, %edx
+    xor %esi, %esi
+    xor %edi, %edi
+    call *(%eax)
 
 except_continue3:
     /* Reload try level and except again */
-    mov edi, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_SEHTable]
-    lea ecx, [esi+esi*2]
-    mov esi, [edi+ecx*4]
+    mov (SEH_FRAME_SEHTable - SEH_FRAME_PreviousRecord)(%ebx), %edi
+    lea (%esi,%esi,2), %ecx
+    mov (%edi,%ecx,4), %esi
     jmp except_loop3
 
 except_dismiss3:
     /* Dismiss it */
-    mov eax, DISPOSITION_DISMISS
+    mov $DISPOSITION_DISMISS, %eax
     jmp except_return3
 
-    /* Do local unwind */
+/* Do local unwind */
 except_unwind3:
-    push ebp
-    lea ebp, [ebx-SEH_FRAME_PreviousRecord+SEH_FRAME_OriginalEbp]
-    push -1
-    push ebx
+    push %ebp
+    lea (SEH_FRAME_OriginalEbp - SEH_FRAME_PreviousRecord)(%ebx), %ebp
+    push $-1
+    push %ebx
     call __local_unwind2
-    add esp, 8
+    add $8, %esp
 
     /* Restore EBP */
-    pop ebp
+    pop %ebp
 
 except_search3:
     /* Continue searching */
-    mov eax, DISPOSITION_CONTINUE_SEARCH
+    mov $DISPOSITION_CONTINUE_SEARCH, %eax
 
 except_return3:
     /* Restore registers and stack */
-    pop ebp
-    pop edi
-    pop esi
-    pop ebx
-    mov esp, ebp
-    pop ebp
+    pop %ebp
+    pop %edi
+    pop %esi
+    pop %ebx
+    mov %ebp, %esp
+    pop %ebp
     ret
-
-END

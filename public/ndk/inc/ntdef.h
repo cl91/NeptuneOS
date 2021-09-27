@@ -25,25 +25,31 @@
 #define NTAPI
 #endif
 
-#define DECLSPEC_IMPORT __declspec(dllimport)
-#define DECLSPEC_NORETURN   __declspec(noreturn)
+#define DECLSPEC_IMPORT		__declspec(dllimport)
+#define DECLSPEC_NORETURN	__declspec(noreturn)
 
 #ifdef _MSC_VER
-#define DECLSPEC_ALIGN(x) __declspec(align(x))
+#define DECLSPEC_ALIGN(x)	__declspec(align(x))
+#define FORCEINLINE		__forceinline
 #else
-#define DECLSPEC_ALIGN(x) __attribute__((aligned(x)))
+#define DECLSPEC_ALIGN(x)	__attribute__((aligned(x)))
+#define FORCEINLINE		static inline __attribute__((always_inline))
 #endif
 
-/* FIXME: dllimport/dllexport */
+#ifndef _NTSYSTEM_
+#define NTSYSAPI	DECLSPEC_IMPORT
+#define NTSYSCALLAPI	DECLSPEC_IMPORT
+#else
 #define NTSYSAPI
 #define NTSYSCALLAPI
+#endif
 
 #undef CONST
 #define CONST const
 #define VOID void
 typedef void *PVOID, **PPVOID;
 
-typedef char CHAR;
+typedef char CHAR, CCHAR;
 typedef unsigned char UCHAR;
 typedef signed char SCHAR;
 typedef CHAR *PCHAR;
@@ -68,14 +74,14 @@ typedef USHORT *PUSHORT;
 typedef int32_t LONG;
 typedef uint32_t ULONG;
 typedef LONG *PLONG;
-typedef ULONG *PULONG;
+typedef ULONG *PULONG, CLONG, *PCLONG;
 
 typedef uint64_t ULONGLONG, *PULONGLONG;
 typedef int64_t LONGLONG, *PLONGLONG;
 
 typedef uintptr_t ULONG_PTR;
 typedef intptr_t LONG_PTR;
-typedef ULONG_PTR SIZE_T;
+typedef ULONG_PTR SIZE_T, *PSIZE_T, *PULONG_PTR;
 
 typedef int64_t LONG64, *PLONG64;
 typedef int64_t INT64,  *PINT64;
@@ -122,6 +128,19 @@ typedef union _ULARGE_INTEGER {
 #define IN
 #define OUT
 #define OPTIONAL
+
+#define _ANONYMOUS_UNION
+#define _ANONYMOUS_STRUCT
+#define DUMMYSTRUCTNAME
+#define DUMMYSTRUCTNAME2
+#define DUMMYSTRUCTNAME3
+#define DUMMYSTRUCTNAME4
+#define DUMMYSTRUCTNAME5
+#define DUMMYUNIONNAME
+#define DUMMYUNIONNAME2
+#define ANYSIZE_ARRAY
+
+#define UNREFERENCED_PARAMETER(P) ((void)(P))
 
 #define UNICODE_NULL ((WCHAR)0)
 
@@ -300,3 +319,15 @@ typedef struct _OBJECT_ATTRIBUTES {
 #define ALIGN_UP(addr, type)			ALIGN_UP_BY((addr), sizeof(type))
 #define ALIGN_DOWN_POINTER(ptr, type)		ALIGN_DOWN_POINTER_BY((ptr), sizeof(type))
 #define ALIGN_UP_POINTER(ptr, type)		ALIGN_UP_POINTER_BY((ptr), sizeof(type))
+
+#define RTL_BITS_OF(sizeOfArg) (sizeof(sizeOfArg) * 8)
+#define RTL_BITS_OF_FIELD(type, field) (RTL_BITS_OF(RTL_FIELD_TYPE(type, field)))
+
+/*
+ * Use intrinsics for 32-bit and 64-bit multiplications
+ */
+#define Int32x32To64(a,b) __emul(a,b)
+#define UInt32x32To64(a,b) __emulu(a,b)
+#define Int64ShllMod32(a,b) __ll_lshift(a,b)
+#define Int64ShraMod32(a,b) __ll_rshift(a,b)
+#define Int64ShrlMod32(a,b) __ull_rshift(a,b)

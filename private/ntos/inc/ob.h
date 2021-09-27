@@ -71,6 +71,21 @@ typedef PVOID POBJECT;
     ((MWORD)(OBJECT_TO_OBJECT_HEADER(Ptr)) - EX_POOL_START)
 
 /*
+ * Equivalent of NT's OBJECT_ATTRIBUTES, except we make it easier to
+ * pass around, ie. we replace the PUNICODE_STRING ObjectName member
+ * with a pointer to the UTF-8 string buffer as well as its size, so
+ * that we don't need to allocate a UNICODE_STRING struct when creating
+ * this struct. This makes it easier to allocate it on the stack which
+ * simplifies the system service argument marshaling.
+ */
+typedef struct _OB_OBJECT_ATTRIBUTES {
+    HANDLE RootDirectory;
+    ULONG Attributes;
+    PCSTR ObjectNameBuffer;
+    ULONG ObjectNameBufferLength; /* including the terminating '\0' */
+} OB_OBJECT_ATTRIBUTES, *POB_OBJECT_ATTRIBUTES;
+
+/*
  * We convert the global handle into an object header pointer by masking
  * off the lowest EX_POOL_BLOCK_SHIFT bits and the bits higher than
  * EX_POOL_MAX_SIZE
@@ -177,4 +192,4 @@ NTSTATUS ObInsertObjectByName(IN PCSTR ParentPath,
 /* obref.c */
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 OUT POBJECT *Object);
-NTSTATUS ObDereferenceObject(IN POBJECT Object);
+NTSTATUS ObDeleteObject(IN POBJECT Object);

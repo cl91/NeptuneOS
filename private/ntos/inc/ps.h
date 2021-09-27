@@ -7,8 +7,8 @@
 
 #define ROOT_TCB_CAP			(seL4_CapInitThreadTCB)
 
-/* Initial CNode for client processes has exactly MWORD_BITS slots */
-#define PROCESS_INIT_CNODE_LOG2SIZE	(MWORD_LOG2SIZE + 3)
+/* Initial CNode for client processes has 256 slots */
+#define PROCESS_INIT_CNODE_LOG2SIZE	(8)
 
 compile_assert(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
 	       (1ULL << PROCESS_INIT_CNODE_LOG2SIZE) >= MWORD_BITS);
@@ -45,6 +45,7 @@ typedef struct _PROCESS {
     LIST_ENTRY ProcessListEntry;
     MWORD PEBClientAddr;
     MWORD PEBServerAddr;
+    NTDLL_PROCESS_INIT_INFO InitInfo;
 } PROCESS, *PPROCESS;
 
 /* init.c */

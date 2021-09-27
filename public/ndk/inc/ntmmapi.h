@@ -65,3 +65,53 @@ typedef struct _SECTION_IMAGE_INFORMATION {
     ULONG ImageFileSize;
     ULONG CheckSum;	/* Added in longhorn, was ULONG Reserved[1] */
 } SECTION_IMAGE_INFORMATION, *PSECTION_IMAGE_INFORMATION;
+
+/*
+ * Memory Information Classes for NtQueryVirtualMemory
+ */
+typedef enum _MEMORY_INFORMATION_CLASS
+{
+    MemoryBasicInformation,
+    MemoryWorkingSetList,
+    MemorySectionName,
+    MemoryBasicVlmInformation,
+    MemoryWorkingSetExList
+} MEMORY_INFORMATION_CLASS;
+
+/*
+ * Memory Information Types
+ */
+typedef struct _MEMORY_BASIC_INFORMATION
+{
+    PVOID BaseAddress;
+    PVOID AllocationBase;
+    ULONG AllocationProtect;
+    SIZE_T RegionSize;
+    ULONG State;
+    ULONG Protect;
+    ULONG Type;
+} MEMORY_BASIC_INFORMATION,*PMEMORY_BASIC_INFORMATION;
+
+/*
+ * Section Information Clasess for NtQuerySection
+ */
+typedef enum _SECTION_INFORMATION_CLASS {
+    SectionBasicInformation,
+    SectionImageInformation,
+} SECTION_INFORMATION_CLASS;
+
+/*
+ * Section access rights
+ */
+#define SECTION_QUERY                0x0001
+#define SECTION_MAP_WRITE            0x0002
+#define SECTION_MAP_READ             0x0004
+#define SECTION_MAP_EXECUTE          0x0008
+#define SECTION_EXTEND_SIZE          0x0010
+#define SECTION_MAP_EXECUTE_EXPLICIT 0x0020
+
+#define SECTION_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED|SECTION_QUERY| \
+                            SECTION_MAP_WRITE |                     \
+                            SECTION_MAP_READ |                      \
+                            SECTION_MAP_EXECUTE |                   \
+                            SECTION_EXTEND_SIZE)

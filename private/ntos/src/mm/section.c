@@ -113,7 +113,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     /* The buffer doesn't contain all of COFF headers: read it from the file */
     if (FileBufferSize < OptHeaderOffset) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     /*
@@ -141,7 +141,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     /* The buffer doesn't contain the full optional header: read it from the file */
     if (FileBufferSize < SectionHeadersOffset) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     /* Read information from the optional header */
@@ -278,7 +278,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     /* Make sure we have read the entire section header table into memory. */
     if (FileBufferSize < AllHeadersSize) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     /*
@@ -443,15 +443,15 @@ NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
 
     /* Only image section is implemented for now */
     if (!(Attribute & SEC_IMAGE)) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     if (!(Attribute & SEC_RESERVE)) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     if (!(Attribute & SEC_COMMIT)) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     PIMAGE_SECTION_OBJECT ImageSection = FileObject->SectionObject.ImageSectionObject;
@@ -477,11 +477,13 @@ NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
 
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 					IN PIMAGE_SECTION_OBJECT ImageSection,
-					IN OUT OPTIONAL MWORD *pBaseAddress)
+					IN OUT OPTIONAL MWORD *pBaseAddress,
+					OUT OPTIONAL MWORD *pImageVirtualSize)
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
     MWORD BaseAddress = ImageSection->ImageBase;
+    MWORD ImageVirtualSize = 0;
 
     if ((pBaseAddress != NULL) && (*pBaseAddress != 0)) {
 	BaseAddress = *pBaseAddress;
@@ -515,15 +517,11 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	assert(Vad != NULL);
 	Vad->ImageSectionView.SubSection = SubSection;
 
-	if (BaseAddress != ImageSection->ImageBase) {
-	    /* TODO: Perform relocation */
-	    return STATUS_NTOS_UNIMPLEMENTED;
-	}
-
 	RET_ERR_EX(MiCommitImageVad(Vad),
 		   {
 		       /* TODO: Clean up when error */
 		   });
+	ImageVirtualSize += Vad->WindowSize;
     }
 
     if (pBaseAddress != NULL) {
@@ -532,6 +530,9 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	} else {
 	    *pBaseAddress = BaseAddress;
 	}
+    }
+    if (pImageVirtualSize != NULL) {
+	*pImageVirtualSize = ImageVirtualSize;
     }
     return STATUS_SUCCESS;
 }
@@ -576,17 +577,42 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	if (SectionOffset != NULL) {
 	    return STATUS_INVALID_PARAMETER;
 	}
+	MWORD ImageVirtualSize;
+	RET_ERR(MiMapViewOfImageSection(VSpace, Section->ImageSectionObject,
+					BaseAddress, &ImageVirtualSize));
 	if (ViewSize != NULL) {
-	    return STATUS_INVALID_PARAMETER;
+	    *ViewSize = ImageVirtualSize;
 	}
-	return MiMapViewOfImageSection(VSpace, Section->ImageSectionObject, BaseAddress);
     } else if (Section->Flags.PhysicalMemory) {
 	assert((BaseAddress != NULL) && (*BaseAddress));
 	assert((SectionOffset != NULL) && (*SectionOffset));
 	assert((ViewSize != NULL) && (*ViewSize));
 	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress, *ViewSize);
     }
-    return STATUS_NTOS_UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
+NTSTATUS NtCreateSection(IN PTHREAD Thread,
+                         OUT HANDLE *SectionHandle,
+                         IN ACCESS_MASK DesiredAccess,
+                         IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
+                         IN OPTIONAL PLARGE_INTEGER MaximumSize,
+                         IN ULONG SectionPageProtection,
+                         IN ULONG AllocationAttributes,
+                         IN HANDLE FileHandle)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtQuerySection(IN PTHREAD Thread,
+                        IN HANDLE SectionHandle,
+                        IN SECTION_INFORMATION_CLASS SectionInformationClass,
+                        IN PVOID SectionInformationBuffer,
+                        IN ULONG SectionInformationLength,
+                        OUT OPTIONAL ULONG *ReturnLength)
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 #ifdef CONFIG_DEBUG_BUILD

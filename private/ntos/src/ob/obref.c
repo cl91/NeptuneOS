@@ -11,7 +11,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ObDereferenceObject(IN POBJECT Object)
+NTSTATUS ObDeleteObject(IN POBJECT Object)
 {
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
@@ -33,4 +33,22 @@ NTSTATUS ObDereferenceObject(IN POBJECT Object)
     }
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS NtClose(IN PTHREAD Thread,
+		 IN HANDLE Handle)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtDuplicateObject(IN PTHREAD Thread,
+                           IN HANDLE SourceProcessHandle,
+                           IN HANDLE SourceHandle,
+                           IN HANDLE TargetProcessHandle,
+                           OUT HANDLE *TargetHandle,
+                           IN ACCESS_MASK DesiredAccess,
+                           IN BOOLEAN InheritHandle,
+                           IN ULONG Options)
+{
+    return STATUS_NOT_IMPLEMENTED;
 }

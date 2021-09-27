@@ -6,8 +6,8 @@
 #include <sel4/sel4.h>
 
 typedef seL4_Word MWORD;
-#define MWORD_BYTES	(sizeof(MWORD))
-#define MWORD_BITS	(MWORD_BYTES * 8)
+#define MWORD_BYTES			(sizeof(MWORD))
+#define MWORD_BITS			(MWORD_BYTES * 8)
 
 #define PAGE_LOG2SIZE			(seL4_PageBits)
 #define PAGE_SIZE			(1ULL << PAGE_LOG2SIZE)
@@ -29,10 +29,24 @@ typedef seL4_Word MWORD;
 #define SYSTEM_DLL_TLS_REGION_END	(0xaff00000UL)
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
 #define IPC_BUFFER_START		(0xb0000000UL)
-#define IPC_BUFFER_END			(0xe0000000UL)
+#define IPC_BUFFER_END			(0xbfff0000UL)
+
+#define SharedUserData ((KUSER_SHARED_DATA *CONST)IPC_BUFFER_END)
 
 #define IPC_BUFFER_RESERVE		(16 * PAGE_SIZE)
 #define IPC_BUFFER_COMMIT		(PAGE_SIZE)
+
+/* Private heap reserved for the Ldr component of NTDLL */
+#define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
+#define NTDLL_LOADER_HEAP_COMMIT	(4 * PAGE_SIZE)
+
+typedef struct _NTDLL_PROCESS_INIT_INFO {
+    MWORD LoaderHeapStart;
+    MWORD ProcessHeapStart;
+    MWORD ProcessHeapReserve;
+    MWORD ProcessHeapCommit;
+    HANDLE CriticalSectionLockSemaphore;
+} NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
 
 #if seL4_PageBits <= seL4_IPCBufferSizeBits
 #error "seL4 IPC Buffer too large (must be no larger than half of a 4K page)"
@@ -47,15 +61,58 @@ typedef seL4_Word MWORD;
  * an argument to the system service. The client stub copies the client data
  * into the buffer and passes the pointer to the server.
  */
-typedef union _SYSTEM_SERVICE_ARGUMENT_BUFFER {
+typedef union _SYSTEM_SERVICE_ARGUMENT {
     struct {
 	USHORT BufferStart; /* Relative to the beginning of svc msg buffer */
 	USHORT BufferSize;
     };
-    ULONG Word;
-} SYSTEM_SERVICE_ARGUMENT_BUFFER;
+    MWORD Word;
+} SYSTEM_SERVICE_ARGUMENT;
 
-assert_size_correct(SYSTEM_SERVICE_ARGUMENT_BUFFER, 4);
+assert_size_correct(SYSTEM_SERVICE_ARGUMENT, MWORD_BYTES);
+
+static inline BOOLEAN KiSystemServiceValidateArgument(IN MWORD MsgWord)
+{
+    SYSTEM_SERVICE_ARGUMENT Arg;
+    Arg.Word = MsgWord;
+    if (((ULONG)(Arg.BufferStart) + Arg.BufferSize) > SYSSVC_MESSAGE_BUFFER_SIZE) {
+	return FALSE;
+    }
+    return TRUE;
+}
+
+#define SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufAddr, Offset, Type) (*((Type *)(IpcBufAddr + SEL4_IPC_BUFFER_SIZE + (Offset))))
+
+static inline PVOID KiSystemServiceGetArgument(IN MWORD IpcBufferAddr,
+					       IN MWORD MsgWord)
+{
+    if (MsgWord == 0) {
+	return NULL;
+    }
+    SYSTEM_SERVICE_ARGUMENT Arg;
+    Arg.Word = MsgWord;
+    return &SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, Arg.BufferStart, VOID);
+}
+
+static inline NTSTATUS KiSystemServiceMarshalArgument(IN MWORD IpcBufferAddr,
+						      IN OUT ULONG *MsgBufOffset,
+						      IN PVOID Argument,
+						      IN MWORD ArgSize,
+						      OUT SYSTEM_SERVICE_ARGUMENT *SvcArg)
+{
+    if (*MsgBufOffset > SYSSVC_MESSAGE_BUFFER_SIZE) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if (SYSSVC_MESSAGE_BUFFER_SIZE - *MsgBufOffset < ArgSize) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    SvcArg->Word = 0;
+    memcpy(&SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, *MsgBufOffset, VOID), Argument, ArgSize);
+    SvcArg->BufferStart = *MsgBufOffset;
+    SvcArg->BufferSize = ArgSize;
+    *MsgBufOffset += ArgSize;
+    return STATUS_SUCCESS;
+}
 
 #include <syssvc_gen.h>
 

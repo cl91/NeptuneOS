@@ -1,5 +1,10 @@
 #pragma once
 
+typedef PVOID PSECURITY_DESCRIPTOR;
+
+typedef PVOID PACCESS_TOKEN;
+typedef PVOID PSID;
+
 typedef ULONG ACCESS_MASK, *PACCESS_MASK;
 
 #define DELETE                   (0x00010000L)

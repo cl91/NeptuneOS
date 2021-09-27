@@ -18,7 +18,6 @@
 #define NTOS_ERROR(Code)	((NTSTATUS)(Code | (FACILITY_NTOS << 16) | ERROR_SEVERITY_ERROR))
 
 #define STATUS_NTOS_BUG				NTOS_ERROR(1)
-#define STATUS_NTOS_UNIMPLEMENTED		NTOS_ERROR(2)
 
 static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 {

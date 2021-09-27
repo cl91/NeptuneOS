@@ -38,7 +38,7 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
 
 NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
 {
-    return STATUS_NTOS_UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 /*
@@ -416,7 +416,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     if (Vad->Flags.ImageMap) {
 	RET_ERR(MiCommitImageVad(Vad));
     } else if (Vad->Flags.FileMap) {
-	return STATUS_NTOS_UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     } else if (Vad->Flags.PhysicalMapping) {
 	for (MWORD Committed = 0; Committed < WindowSize; Committed += PAGE_SIZE) {
 	    MWORD PhyAddr = StartAddr - Vad->AvlNode.Key +
@@ -464,6 +464,68 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
     PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, VirtAddr);
 
     return MiPagingTypeIsPage(Page->Type) ? Page : NULL;
+}
+
+NTSTATUS NtAllocateVirtualMemory(IN PTHREAD Thread,
+                                 IN HANDLE ProcessHandle,
+                                 IN OUT OPTIONAL PVOID *BaseAddress,
+                                 IN ULONG ZeroBits,
+                                 IN OUT OPTIONAL SIZE_T *RegionSize,
+                                 IN ULONG AllocationType,
+                                 IN ULONG Protect)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtFreeVirtualMemory(IN PTHREAD Thread,
+                             IN HANDLE ProcessHandle,
+                             IN PVOID BaseAddress,
+                             IN OUT OPTIONAL SIZE_T *RegionSize,
+                             IN ULONG FreeType)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtWriteVirtualMemory(IN PTHREAD Thread,
+                              IN HANDLE ProcessHandle,
+                              IN PVOID BaseAddress,
+                              IN PVOID Buffer,
+                              IN ULONG NumberOfBytesToWrite,
+                              OUT ULONG *NumberOfBytesWritten)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
+NTSTATUS NtReadVirtualMemory(IN PTHREAD Thread,
+                             IN HANDLE ProcessHandle,
+                             IN PVOID BaseAddress,
+                             IN PVOID Buffer,
+                             IN ULONG NumberOfBytesToRead,
+                             OUT SIZE_T *NumberOfBytesRead)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtQueryVirtualMemory(IN PTHREAD Thread,
+                              IN HANDLE ProcessHandle,
+                              IN PVOID BaseAddress,
+                              IN MEMORY_INFORMATION_CLASS MemoryInformationClass,
+                              IN PVOID MemoryInformationBuffer,
+                              IN ULONG MemoryInformationLength,
+                              OUT OPTIONAL ULONG *ReturnLength)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtProtectVirtualMemory(IN PTHREAD Thread,
+                                IN HANDLE ProcessHandle,
+                                IN OUT PVOID *BaseAddress,
+                                IN OUT SIZE_T *NumberOfBytesToProtect,
+                                IN ULONG NewAccessProtection,
+                                OUT OPTIONAL ULONG *OldAccessProtection)
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 #ifdef CONFIG_DEBUG_BUILD
