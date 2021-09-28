@@ -6,7 +6,7 @@ static inline NTSTATUS PspReservePebOrTebServerRegion(IN MWORD RegionSize,
     return MmReserveVirtualMemory(EX_PEB_TEB_REGION_START,
 				  EX_PEB_TEB_REGION_END,
 				  RegionSize,
-				  MEM_RESERVE_MIRRORED_MEMORY,
+				  MEM_RESERVE_OWNED_MEMORY,
 				  pVad);
 }
 
@@ -15,7 +15,7 @@ static inline NTSTATUS PspReserveIpcBufferServerRegion(OUT PMMVAD *pVad)
     return MmReserveVirtualMemory(EX_IPC_BUFFER_REGION_START,
 				  EX_IPC_BUFFER_REGION_END,
 				  IPC_BUFFER_RESERVE,
-				  MEM_RESERVE_MIRRORED_MEMORY,
+				  MEM_RESERVE_OWNED_MEMORY,
 				  pVad);
 }
 
@@ -179,31 +179,33 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread));
     Thread->Process = Process;
 
-    PMMVAD ClientIpcBufferVad = NULL;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START, 0,
-					IPC_BUFFER_RESERVE, MEM_RESERVE_OWNED_MEMORY,
-					&ClientIpcBufferVad),
-	       ObDeleteObject(Thread));
-    assert(ClientIpcBufferVad != NULL);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START,
-				       IPC_BUFFER_COMMIT, 0),
-	       ObDeleteObject(Thread));
-    Thread->IpcBufferClientPage = MmQueryPage(&Process->VSpace, IPC_BUFFER_START);
-    assert(Thread->IpcBufferClientPage != NULL);
     PMMVAD ServerIpcBufferVad = NULL;
     RET_ERR_EX(PspReserveIpcBufferServerRegion(&ServerIpcBufferVad),
 	       ObDeleteObject(Thread));
-    MmRegisterMirroredMemory(ServerIpcBufferVad, ClientIpcBufferVad, 0);
     RET_ERR_EX(MmCommitVirtualMemory(ServerIpcBufferVad->AvlNode.Key,
-				     ClientIpcBufferVad->OwnedMemory.CommitmentSize),
+				     IPC_BUFFER_COMMIT),
 	       ObDeleteObject(Thread));
     Thread->IpcBufferServerAddr = ServerIpcBufferVad->AvlNode.Key;
+    PMMVAD ClientIpcBufferVad = NULL;
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START, IPC_BUFFER_END,
+					IPC_BUFFER_RESERVE, MEM_RESERVE_MIRRORED_MEMORY,
+					&ClientIpcBufferVad),
+	       ObDeleteObject(Thread));
+    assert(ClientIpcBufferVad != NULL);
+    MmRegisterMirroredMemory(ClientIpcBufferVad, ServerIpcBufferVad, 0);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientIpcBufferVad->AvlNode.Key,
+				       ServerIpcBufferVad->OwnedMemory.CommitmentSize, 0),
+	       ObDeleteObject(Thread));
+    Thread->IpcBufferClientAddr = ClientIpcBufferVad->AvlNode.Key;
 
+    PPAGING_STRUCTURE IpcBufferClientPage = MmQueryPage(&Process->VSpace,
+							Thread->IpcBufferClientAddr);
+    assert(IpcBufferClientPage != NULL);
     RET_ERR_EX(PspConfigureThread(Thread->TreeNode.Cap,
 				  0, /* TODO: Fault handler */
 				  Process->CSpace,
 				  &Process->VSpace,
-				  Thread->IpcBufferClientPage),
+				  IpcBufferClientPage),
 	       ObDeleteObject(Thread));
 
     ULONG StackReserve = Process->ImageSection->ImageSectionObject->ImageInformation.MaximumStackSize;
@@ -250,23 +252,24 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	Thread->SystemDllTlsBase = SystemDllTlsVad->AvlNode.Key;
     }
 
-    PMMVAD ClientTebVad = NULL;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_TEB_START, WIN32_TEB_END, sizeof(TEB),
-					MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_TOP_DOWN,
-					&ClientTebVad),
-	       ObDeleteObject(Thread));
-    assert(ClientTebVad != NULL);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientTebVad->AvlNode.Key,
-				       ClientTebVad->WindowSize, 0),
-	       ObDeleteObject(Thread));
-    Thread->TebClientAddr = ClientTebVad->AvlNode.Key;
+    /* Allocate and populate the Thread Environment Block */
     PMMVAD ServerTebVad = NULL;
     RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(TEB), &ServerTebVad),
 	       ObDeleteObject(Thread));
-    MmRegisterMirroredMemory(ServerTebVad, ClientTebVad, 0);
-    RET_ERR_EX(MmCommitVirtualMemory(ServerTebVad->AvlNode.Key, ServerTebVad->WindowSize),
+    RET_ERR_EX(MmCommitVirtualMemory(ServerTebVad->AvlNode.Key, sizeof(TEB)),
 	       ObDeleteObject(Thread));
     Thread->TebServerAddr = ServerTebVad->AvlNode.Key;
+    PMMVAD ClientTebVad = NULL;
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_TEB_START, WIN32_TEB_END, sizeof(TEB),
+					MEM_RESERVE_MIRRORED_MEMORY | MEM_RESERVE_TOP_DOWN,
+					&ClientTebVad),
+	       ObDeleteObject(Thread));
+    assert(ClientTebVad != NULL);
+    MmRegisterMirroredMemory(ClientTebVad, ServerTebVad, 0);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientTebVad->AvlNode.Key,
+				       sizeof(TEB), 0),
+	       ObDeleteObject(Thread));
+    Thread->TebClientAddr = ClientTebVad->AvlNode.Key;
     /* Populate the Thread Environment Block */
     PspPopulateTeb(Thread);
 
@@ -354,26 +357,41 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     Process->InitInfo.ProcessHeapCommit = ProcessHeapCommit;
 
     /* Map and initialize the Process Environment Block */
-    PMMVAD ClientPebVad = NULL;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_PEB_START, 0, sizeof(PEB),
-					MEM_RESERVE_OWNED_MEMORY, &ClientPebVad),
-	       ObDeleteObject(Process));
-    assert(ClientPebVad != NULL);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientPebVad->AvlNode.Key,
-				       ClientPebVad->WindowSize, 0),
-	       ObDeleteObject(Process));
-    Process->PebClientAddr = ClientPebVad->AvlNode.Key;
-    assert(Process->PebClientAddr);
     PMMVAD ServerPebVad = NULL;
     RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(PEB), &ServerPebVad),
 	       ObDeleteObject(Process));
-    MmRegisterMirroredMemory(ServerPebVad, ClientPebVad, 0);
-    RET_ERR_EX(MmCommitVirtualMemory(ServerPebVad->AvlNode.Key, ServerPebVad->WindowSize),
+    assert(ServerPebVad != NULL);
+    RET_ERR_EX(MmCommitVirtualMemory(ServerPebVad->AvlNode.Key, sizeof(PEB)),
 	       ObDeleteObject(Process));
     Process->PebServerAddr = ServerPebVad->AvlNode.Key;
     assert(Process->PebServerAddr);
+    PMMVAD ClientPebVad = NULL;
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_PEB_START, 0, sizeof(PEB),
+					MEM_RESERVE_MIRRORED_MEMORY, &ClientPebVad),
+	       ObDeleteObject(Process));
+    assert(ClientPebVad != NULL);
+    MmRegisterMirroredMemory(ClientPebVad, ServerPebVad, 0);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientPebVad->AvlNode.Key,
+				       sizeof(PEB), 0),
+	       ObDeleteObject(Process));
+    Process->PebClientAddr = ClientPebVad->AvlNode.Key;
+    assert(Process->PebClientAddr);
     /* Populate the Process Environment Block */
     PspPopulatePeb(Process);
+
+    /* Map the KUSER_SHARED_DATA into the client address space */
+    PMMVAD ClientSharedDataVad = NULL;
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
+					0, sizeof(KUSER_SHARED_DATA),
+					MEM_RESERVE_MIRRORED_MEMORY,
+					&ClientSharedDataVad),
+	       ObDeleteObject(Process));
+    assert(ClientSharedDataVad != NULL);
+    assert(ClientSharedDataVad->AvlNode.Key == KUSER_SHARED_DATA_CLIENT_ADDR);
+    MmRegisterMirroredMemory(ClientSharedDataVad, PspUserSharedDataVad, 0);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
+				       sizeof(KUSER_SHARED_DATA), 0),
+	       ObDeleteObject(Process));
 
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
     *pProcess = Process;

@@ -413,7 +413,10 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 
     if ((StartAddr < Vad->AvlNode.Key) ||
 	(StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize)) {
-	DbgTrace("Committing addresses spanning multiple VADs is not implemented yet\n");
+	DbgTrace("Committing addresses spanning multiple VADs is not implemented yet "
+		 "(requested [%p, %p) found VAD [%p, %p))\n",
+		 (PVOID) StartAddr, (PVOID)(StartAddr + WindowSize),
+		 (PVOID) Vad->AvlNode.Key, (PVOID) (Vad->AvlNode.Key + Vad->WindowSize));
 	return STATUS_NOT_IMPLEMENTED;
     }
 

@@ -30,8 +30,9 @@ typedef seL4_Word MWORD;
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
 #define IPC_BUFFER_START		(0xb0000000UL)
 #define IPC_BUFFER_END			(0xbfff0000UL)
-
-#define SharedUserData ((KUSER_SHARED_DATA *CONST)IPC_BUFFER_END)
+/* We cannot put the KUSER_SHARED_DATA in the usual place (0xFFDF0000 in i386
+ * or 0xFFFFF780`00000000 in amd64) so we will settle for IPC_BUFFER_END*/
+#define KUSER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
 
 #define IPC_BUFFER_RESERVE		(16 * PAGE_SIZE)
 #define IPC_BUFFER_COMMIT		(PAGE_SIZE)

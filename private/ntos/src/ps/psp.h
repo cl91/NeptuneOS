@@ -30,3 +30,4 @@ NTSTATUS PspProcessObjectCreateProc(POBJECT Object);
 extern LIST_ENTRY PspProcessList;
 extern PSECTION PspSystemDllSection;
 extern PSUBSECTION PspSystemDllTlsSubsection;
+extern PMMVAD PspUserSharedDataVad;

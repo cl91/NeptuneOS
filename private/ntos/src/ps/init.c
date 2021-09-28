@@ -3,6 +3,7 @@
 LIST_ENTRY PspProcessList;
 PSECTION PspSystemDllSection;
 PSUBSECTION PspSystemDllTlsSubsection;
+PMMVAD PspUserSharedDataVad;
 
 static NTSTATUS PspCreateThreadType()
 {
@@ -65,8 +66,31 @@ static NTSTATUS PspInitializeSystemDll()
     return STATUS_SUCCESS;
 }
 
+VOID PspPopulateUserSharedData()
+{
+    PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
+    /* TODO */
+}
+
+NTSTATUS PspMapUserSharedData()
+{
+    PMMVAD Vad = NULL;
+    RET_ERR(MmReserveVirtualMemory(EX_DYN_VSPACE_START,
+				   EX_DYN_VSPACE_END,
+				   sizeof(KUSER_SHARED_DATA),
+				   MEM_RESERVE_OWNED_MEMORY,
+				   &Vad));
+    assert(Vad != NULL);
+    RET_ERR(MmCommitVirtualMemory(Vad->AvlNode.Key,
+				  sizeof(KUSER_SHARED_DATA)));
+    PspUserSharedDataVad = Vad;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS PsInitSystemPhase1()
 {
     RET_ERR(PspInitializeSystemDll());
+    RET_ERR(PspMapUserSharedData());
+    PspPopulateUserSharedData();
     return STATUS_SUCCESS;
 }

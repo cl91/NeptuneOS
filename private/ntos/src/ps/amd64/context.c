@@ -5,11 +5,11 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    assert(Thread->IpcBufferClientPage != NULL);
+    assert(Thread->IpcBufferClientAddr != 0);
     assert(Thread->TebClientAddr);
     assert(Thread->StackTop);
     assert(Context != NULL);
-    Context->rcx = Thread->IpcBufferClientPage->AvlNode.Key;
+    Context->rcx = Thread->IpcBufferClientAddr;
     Context->rdx = Thread->SystemDllTlsBase;
     Context->rip = (MWORD) PspSystemDllSection->ImageSectionObject->ImageInformation.TransferAddress;
     Context->rsp = Thread->StackTop;

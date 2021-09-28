@@ -24,7 +24,7 @@ typedef struct _THREAD {
     struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;
     PIPC_ENDPOINT SystemServiceEndpoint;
-    PPAGING_STRUCTURE IpcBufferClientPage;
+    MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
     MWORD TebClientAddr;
     MWORD TebServerAddr;

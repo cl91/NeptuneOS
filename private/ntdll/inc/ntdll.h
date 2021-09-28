@@ -84,3 +84,5 @@ static inline unsigned long PtrToUlong(const void *p)
 
 /* Defined in winbase.h. We cannot include Win32 headers here */
 #define EXCEPTION_NONCONTINUABLE_EXCEPTION ((DWORD)0xC0000025)
+
+#define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
