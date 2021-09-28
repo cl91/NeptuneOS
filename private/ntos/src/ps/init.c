@@ -51,7 +51,6 @@ static NTSTATUS PspInitializeSystemDll()
     RET_ERR(MmCreateSection(NtdllFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			    &PspSystemDllSection));
     assert(PspSystemDllSection != NULL);
-    MmDbgDumpSection(PspSystemDllSection);
 
     PIMAGE_SECTION_OBJECT ImageSectionObject = PspSystemDllSection->ImageSectionObject;
     LoopOverList(SubSection, &ImageSectionObject->SubSectionList, SUBSECTION, Link) {

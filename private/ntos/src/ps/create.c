@@ -287,7 +287,6 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			    &Section));
     assert(Section != NULL);
-    MmDbgDumpSection(Section);
 
     MWORD ImageBaseAddress = 0;
     MWORD ImageVirtualSize = 0;
@@ -304,8 +303,8 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
 
     /* Reserve and commit the loader private heap */
     MWORD LoaderHeapStart = ImageBaseAddress + ImageVirtualSize;
-    RET_ERR_EX(MmReserveVirtualMemory(LoaderHeapStart, 0, NTDLL_LOADER_HEAP_RESERVE,
-				      MEM_RESERVE_OWNED_MEMORY, NULL),
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, LoaderHeapStart, 0, NTDLL_LOADER_HEAP_RESERVE,
+				      MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES, NULL),
 	       ObDeleteObject(Process));
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, LoaderHeapStart,
 				       NTDLL_LOADER_HEAP_COMMIT, 0),
@@ -326,8 +325,8 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     if (ProcessHeapReserve < ProcessHeapCommit) {
 	ProcessHeapReserve = ProcessHeapCommit;
     }
-    RET_ERR_EX(MmReserveVirtualMemory(ProcessHeapStart, 0, ProcessHeapReserve,
-				      MEM_RESERVE_OWNED_MEMORY, NULL),
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, ProcessHeapStart, 0, ProcessHeapReserve,
+				      MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES, NULL),
 	       ObDeleteObject(Process));
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ProcessHeapStart,
 				       ProcessHeapCommit, 0),

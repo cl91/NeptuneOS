@@ -272,8 +272,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     assert(Intsafe_CanMulULong32(NtHeader->FileHeader.NumberOfSections,
 				 sizeof(IMAGE_SECTION_HEADER)));
-    if (AllHeadersSize <
-	NtHeader->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER)) {
+    if (AllHeadersSize < NtHeader->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER)) {
 	DIE("SizeOfHeaders is less than number of sections times section header size\n");
     }
     /* Make sure we have read the entire section header table into memory. */
@@ -583,6 +582,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	if (ViewSize != NULL) {
 	    *ViewSize = ImageVirtualSize;
 	}
+	return STATUS_SUCCESS;
     } else if (Section->Flags.PhysicalMemory) {
 	assert((BaseAddress != NULL) && (*BaseAddress));
 	assert((SectionOffset != NULL) && (*SectionOffset));

@@ -402,13 +402,19 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     assert(StartAddr + WindowSize > StartAddr);
 
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, StartAddr);
-    if ((Vad == NULL) || Vad->Flags.NoAccess) {
+    if (Vad == NULL) {
+	DbgTrace("Error: Must reserve address window before committing.\n");
+	return STATUS_INVALID_PARAMETER;
+    }
+    if (Vad->Flags.NoAccess) {
+	DbgTrace("Error: Committing a NoAccess Vad.\n");
 	return STATUS_INVALID_PARAMETER;
     }
 
     if ((StartAddr < Vad->AvlNode.Key) ||
 	(StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize)) {
-	return STATUS_INVALID_PARAMETER;
+	DbgTrace("Committing addresses spanning multiple VADs is not implemented yet\n");
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     PAGING_RIGHTS Rights = (Vad->Flags.ReadOnly) ? MM_RIGHTS_RO : MM_RIGHTS_RW;
