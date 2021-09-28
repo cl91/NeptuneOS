@@ -26,8 +26,8 @@ typedef struct _THREAD {
     PIPC_ENDPOINT SystemServiceEndpoint;
     PPAGING_STRUCTURE IpcBufferClientPage;
     MWORD IpcBufferServerAddr;
-    MWORD TEBClientAddr;
-    MWORD TEBServerAddr;
+    MWORD TebClientAddr;
+    MWORD TebServerAddr;
     MWORD SystemDllTlsBase; /* Address in the client's virtual address space */
     MWORD StackTop;
     MWORD StackReserve;
@@ -42,9 +42,11 @@ typedef struct _PROCESS {
     VIRT_ADDR_SPACE VSpace;	/* Virtual address space of the process */
     PFILE_OBJECT ImageFile;
     PSECTION ImageSection;
+    MWORD ImageBaseAddress;
+    MWORD ImageVirtualSize;
     LIST_ENTRY ProcessListEntry;
-    MWORD PEBClientAddr;
-    MWORD PEBServerAddr;
+    MWORD PebClientAddr;
+    MWORD PebServerAddr;
     NTDLL_PROCESS_INIT_INFO InitInfo;
 } PROCESS, *PPROCESS;
 

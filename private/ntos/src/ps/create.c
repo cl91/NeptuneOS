@@ -144,6 +144,20 @@ static NTSTATUS PspResumeThread(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
+VOID PspPopulateTeb(IN PTHREAD Thread)
+{
+    PTEB Teb = (PTEB) Thread->TebServerAddr;
+    Teb->ThreadLocalStoragePointer = (PVOID) Thread->SystemDllTlsBase;
+    Teb->NtTib.Self = (PNT_TIB) Thread->TebClientAddr;
+    Teb->ProcessEnvironmentBlock = (PPEB) Thread->Process->PebClientAddr;
+}
+
+VOID PspPopulatePeb(IN PPROCESS Process)
+{
+    PPEB Peb = (PPEB) Process->PebServerAddr;
+    Peb->ImageBaseAddress = (HMODULE) Process->ImageBaseAddress;
+}
+
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread)
 {
@@ -210,7 +224,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 				       StackCommit, 0),
 	       ObDeleteObject(Thread));
 
-    if (Process->PEBClientAddr == 0) {
+    if (Process->InitThread == NULL) {
 	/* Thread is the initial thread in the process. Use the .tls subsection
 	 * of the mapped NTDLL PE image for SystemDll TLS region */
 	assert(PspSystemDllTlsSubsection != NULL);
@@ -218,6 +232,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	Thread->SystemDllTlsBase = PspSystemDllTlsSubsection->ImageSection->ImageBase +
 	    PspSystemDllTlsSubsection->SubSectionBase;
 	/* Populate the process init info used by ntdll on process startup */
+	/* TODO: We need to find a different place */
 	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
     } else {
 	/* Allocate SystemDll TLS region */
@@ -234,8 +249,6 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 		   ObDeleteObject(Thread));
 	Thread->SystemDllTlsBase = SystemDllTlsVad->AvlNode.Key;
     }
-    assert(Process->PEBClientAddr);
-    assert(Process->PEBServerAddr);
 
     PMMVAD ClientTebVad = NULL;
     RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_TEB_START, WIN32_TEB_END, sizeof(TEB),
@@ -246,16 +259,16 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientTebVad->AvlNode.Key,
 				       ClientTebVad->WindowSize, 0),
 	       ObDeleteObject(Thread));
-    Thread->TEBClientAddr = ClientTebVad->AvlNode.Key;
+    Thread->TebClientAddr = ClientTebVad->AvlNode.Key;
     PMMVAD ServerTebVad = NULL;
     RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(TEB), &ServerTebVad),
 	       ObDeleteObject(Thread));
     MmRegisterMirroredMemory(ServerTebVad, ClientTebVad, 0);
     RET_ERR_EX(MmCommitVirtualMemory(ServerTebVad->AvlNode.Key, ServerTebVad->WindowSize),
 	       ObDeleteObject(Thread));
-    Thread->TEBServerAddr = ServerTebVad->AvlNode.Key;
-    PTEB Teb = (PTEB) Thread->TEBServerAddr;
-    Teb->ThreadLocalStoragePointer = (PVOID) Thread->SystemDllTlsBase;
+    Thread->TebServerAddr = ServerTebVad->AvlNode.Key;
+    /* Populate the Thread Environment Block */
+    PspPopulateTeb(Thread);
 
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
@@ -265,6 +278,9 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     RET_ERR_EX(KeEnableSystemServices(Process, Thread), ObDeleteObject(Thread));
     RET_ERR_EX(PspResumeThread(Thread), ObDeleteObject(Thread));
 
+    if (Process->InitThread == NULL) {
+	Process->InitThread = Thread;
+    }
     InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);
     *pThread = Thread;
     return STATUS_SUCCESS;
@@ -298,6 +314,8 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
 	       });
     assert(ImageBaseAddress != 0);
     assert(ImageVirtualSize != 0);
+    Process->ImageBaseAddress = ImageBaseAddress;
+    Process->ImageVirtualSize = ImageVirtualSize;
     Process->ImageSection = Section;
     Process->ImageFile = ImageFile;
 
@@ -344,16 +362,18 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientPebVad->AvlNode.Key,
 				       ClientPebVad->WindowSize, 0),
 	       ObDeleteObject(Process));
-    Process->PEBClientAddr = ClientPebVad->AvlNode.Key;
+    Process->PebClientAddr = ClientPebVad->AvlNode.Key;
+    assert(Process->PebClientAddr);
     PMMVAD ServerPebVad = NULL;
     RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(PEB), &ServerPebVad),
 	       ObDeleteObject(Process));
     MmRegisterMirroredMemory(ServerPebVad, ClientPebVad, 0);
     RET_ERR_EX(MmCommitVirtualMemory(ServerPebVad->AvlNode.Key, ServerPebVad->WindowSize),
 	       ObDeleteObject(Process));
-    Process->PEBServerAddr = ServerPebVad->AvlNode.Key;
-    PPEB Peb = (PPEB) Process->PEBServerAddr;
-    Peb->ImageBaseAddress = (HMODULE) ImageBaseAddress;
+    Process->PebServerAddr = ServerPebVad->AvlNode.Key;
+    assert(Process->PebServerAddr);
+    /* Populate the Process Environment Block */
+    PspPopulatePeb(Process);
 
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
     *pProcess = Process;
