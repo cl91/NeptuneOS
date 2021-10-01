@@ -56,3 +56,8 @@ BOOLEAN RtlCallVectoredExceptionHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 
 VOID RtlCallVectoredContinueHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 				     IN PCONTEXT Context);
+
+/* critical.c */
+NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
+				       IN HANDLE LockSemaphore,
+				       IN ULONG SpinCount);

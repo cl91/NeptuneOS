@@ -389,9 +389,9 @@ NTAPI NTSTATUS RtlInitializeCriticalSection(PRTL_CRITICAL_SECTION CriticalSectio
  * Allocate the critical section debug infor and populate the RTL_CRITICAL_SECTION
  * data structure.
  */
-static NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
-					      IN HANDLE LockSemaphore,
-					      IN ULONG SpinCount)
+NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
+				       IN HANDLE LockSemaphore,
+				       IN ULONG SpinCount)
 {
     assert(CriticalSection != NULL);
 

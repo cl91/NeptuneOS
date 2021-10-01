@@ -256,7 +256,8 @@ typedef struct _PEB {                                                 /* win32/w
     LIST_ENTRY                       FlsListHead;                       /* 210/328 */
     PRTL_BITMAP                      FlsBitmap;                         /* 218/338 */
     ULONG                            FlsBitmapBits[4];                  /* 21c/340 */
-} PEB, *PPEB;
+} __attribute__((__packed__)) PEB, *PPEB;
+/* For ELF targets we need the packed attribute since clang puts extra spaces otherwise */
 
 typedef struct _EXCEPTION_REGISTRATION_RECORD {
     struct _EXCEPTION_REGISTRATION_RECORD *Next;
@@ -346,7 +347,7 @@ typedef struct _TEB {                                             /* win32/win64
     PVOID                        CurrentTransactionHandle;          /* fac/17b8 */
     TEB_ACTIVE_FRAME            *ActiveFrame;                       /* fb0/17c0 */
     PVOID                       *FlsData;                           /* fb4/17c8 */
-} TEB, *PTEB;
+} __attribute__((__packed__)) TEB, *PTEB;
 
 /*
  * Process Information Structures for NtQueryProcessInformation

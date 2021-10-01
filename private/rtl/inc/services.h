@@ -47,6 +47,12 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     MWORD ProcessHeapReserve;
     MWORD ProcessHeapCommit;
     HANDLE CriticalSectionLockSemaphore;
+    HANDLE LoaderLockSemaphore;
+    HANDLE FastPebLockSemaphore;
+    HANDLE ProcessHeapListLockSemaphore;
+    HANDLE VectoredHandlerLockSemaphore;
+    HANDLE ProcessHeapLockSemaphore;
+    HANDLE LoaderHeapLockSemaphore;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
 
 #if seL4_PageBits <= seL4_IPCBufferSizeBits

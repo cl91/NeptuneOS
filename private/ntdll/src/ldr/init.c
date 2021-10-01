@@ -494,7 +494,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     LdrpInitCriticalSection(InitInfo->CriticalSectionLockSemaphore);
 
     /* Initialize VEH Call lists */
-    RtlpInitializeVectoredExceptionHandling();
+    RtlpInitializeVectoredExceptionHandling(InitInfo);
 
     /* Set TLS/FLS Bitmap data */
     Peb->FlsBitmap = &FlsBitMap;
@@ -512,16 +512,17 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     RtlInitializeBitMap(&TlsExpansionBitMap, Peb->TlsExpansionBitmapBits, TLS_EXPANSION_SLOTS);
     RtlSetBit(&TlsExpansionBitMap, 0);
 
-    /* Initialize the Loader Lock. TODO: Call NtCreateEvent on server side. */
-    RtlInitializeCriticalSection(&LdrpLoaderLock);
+    /* Initialize the Loader Lock. */
+    RtlpInitializeCriticalSection(&LdrpLoaderLock, InitInfo->LoaderLockSemaphore, 0);
+    Peb->LoaderLock = &LdrpLoaderLock;
 
     /* Check if User Stack Trace Database support was requested */
     if (Peb->NtGlobalFlag & FLG_USER_STACK_TRACE_DB) {
 	DPRINT1("We don't support user stack trace databases yet\n");
     }
 
-    /* Setup Fast PEB Lock. TODO: Call NtCreateEvent on server side. */
-    RtlInitializeCriticalSection(&FastPebLock);
+    /* Setup the Fast PEB Lock. */
+    RtlpInitializeCriticalSection(&FastPebLock, InitInfo->FastPebLockSemaphore, 0);
     Peb->FastPebLock = &FastPebLock;
 
     /* For old executables, use 16-byte aligned heap */
@@ -532,12 +533,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     }
 
     /* Setup the process heap and the loader heap */
-    RET_ERR(LdrpInitializeHeapManager((PVOID) InitInfo->ProcessHeapStart,
-				      ProcessHeapFlags,
-				      InitInfo->ProcessHeapReserve,
-				      InitInfo->ProcessHeapCommit,
-				      &ProcessHeapParams,
-				      (PVOID) InitInfo->LoaderHeapStart));
+    RET_ERR(LdrpInitializeHeapManager(InitInfo, ProcessHeapFlags, &ProcessHeapParams));
     LdrpHeap = (HANDLE) InitInfo->LoaderHeapStart;
 
 #if 0
@@ -939,9 +935,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 
     /* Check if we have already setup LDR data */
     if (!Peb->LdrData) {
-	/* Setup the Loader Lock */
-	Peb->LoaderLock = &LdrpLoaderLock;
-
 	/* Initialize the Process */
 	LoaderStatus = LdrpInitializeProcess(&InitInfo);
     } else {

@@ -18,13 +18,13 @@ ULONG NTAPI LdrpRelocateImageWithBias(IN PVOID BaseAddress,
 /* ../rtl/critical.c */
 VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore);
 
+NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
+				       IN HANDLE LockSemaphore,
+				       IN ULONG SpinCount);
 /* ../rtl/heap.c */
-NTSTATUS LdrpInitializeHeapManager(IN PVOID ProcessHeap,
+NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
 				   IN ULONG ProcessHeapFlags,
-				   IN SIZE_T ProcessHeapReserve,
-				   IN SIZE_T ProcessHeapCommit,
-				   IN PRTL_HEAP_PARAMETERS ProcessHeapParams,
-				   IN PVOID LoaderHeap);
+				   IN PRTL_HEAP_PARAMETERS ProcessHeapParams);
 
 /* ../rtl/vectoreh.c */
-VOID RtlpInitializeVectoredExceptionHandling(VOID);
+VOID RtlpInitializeVectoredExceptionHandling(IN PNTDLL_PROCESS_INIT_INFO InitInfo);

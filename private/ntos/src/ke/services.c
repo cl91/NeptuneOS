@@ -144,9 +144,13 @@ VOID KiDispatchSystemServices()
 	    DbgTrace("Got thread %p\n", Thread);
 	    Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
 	}
-	seL4_SetMR(0, (MWORD) Status);
-	Request = seL4_ReplyRecv(KiSystemServiceEndpoint.TreeNode.Cap,
-				 seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength), &Badge);
+	if (Status == STATUS_NTOS_NO_REPLY) {
+	    Request = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
+	} else {
+	    seL4_SetMR(0, (MWORD) Status);
+	    Request = seL4_ReplyRecv(KiSystemServiceEndpoint.TreeNode.Cap,
+				     seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength), &Badge);
+	}
     }
 }
 

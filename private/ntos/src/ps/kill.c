@@ -20,7 +20,7 @@ NTSTATUS NtTerminateThread(IN PTHREAD Thread,
 {
     if (ThreadHandle == NtCurrentThread()) {
 	PspSuspendThread(Thread);
-	return STATUS_SUCCESS;
+	return STATUS_NTOS_NO_REPLY;
     }
     return STATUS_NOT_IMPLEMENTED;
 }

@@ -102,13 +102,11 @@ WCHAR RtlpDphTargetDlls[512];
 
 LIST_ENTRY RtlpDphPageHeapList;
 BOOLEAN RtlpDphPageHeapListInitialized;
-HEAP_LOCK _RtlpDphPageHeapListLock;
-PHEAP_LOCK RtlpDphPageHeapListLock = &_RtlpDphPageHeapListLock;
+HEAP_LOCK RtlpDphPageHeapListLock;
 ULONG RtlpDphPageHeapListLength;
 UNICODE_STRING RtlpDphTargetDllsUnicode;
 
-HEAP_LOCK _RtlpDphDelayedFreeQueueLock;
-PHEAP_LOCK RtlpDphDelayedFreeQueueLock = &_RtlpDphDelayedFreeQueueLock;
+HEAP_LOCK RtlpDphDelayedFreeQueueLock;
 LIST_ENTRY RtlpDphDelayedFreeQueue;
 SLIST_HEADER RtlpDphDelayedTemporaryPushList;
 SIZE_T RtlpDphMemoryUsedByDelayedFreeBlocks;
@@ -1168,8 +1166,7 @@ NTSTATUS RtlpDphInitializeDelayedFreeQueue(VOID)
     Status = RtlpInitializeHeapLock(&RtlpDphDelayedFreeQueueLock);
     if (!NT_SUCCESS(Status)) {
 	// TODO: Log this error!
-	DPRINT1
-	    ("Failure initializing delayed free queue critical section\n");
+	DPRINT1("Failure initializing delayed free queue critical section\n");
 	return Status;
     }
 
@@ -1195,7 +1192,7 @@ VOID RtlpDphFreeDelayedBlocksFromHeap(PDPH_HEAP_ROOT DphRoot,
        then it releases the lock and frees the blocks. But let's make it simple for now */
 
     /* Acquire the delayed free queue lock */
-    RtlpEnterHeapLock(RtlpDphDelayedFreeQueueLock, TRUE);
+    RtlpEnterHeapLock(&RtlpDphDelayedFreeQueueLock, TRUE);
 
     /* Traverse the list */
     Current = RtlpDphDelayedFreeQueue.Flink;
@@ -1232,7 +1229,7 @@ VOID RtlpDphFreeDelayedBlocksFromHeap(PDPH_HEAP_ROOT DphRoot,
     }
 
     /* Release the delayed free queue lock */
-    RtlpLeaveHeapLock(RtlpDphDelayedFreeQueueLock);
+    RtlpLeaveHeapLock(&RtlpDphDelayedFreeQueueLock);
 }
 
 NTSTATUS RtlpDphTargetDllsLogicInitialize(VOID)
@@ -1471,8 +1468,7 @@ HANDLE RtlpPageHeapCreate(ULONG Flags,
     NtQueryPerformanceCounter(&PerfCounter, NULL);
     DphRoot->Seed = PerfCounter.LowPart;
 
-    RtlpInitializeHeapLock
-	(&DphRoot->HeapCritSect);
+    RtlpInitializeHeapLock(DphRoot->HeapCritSect);
     InitializeListHead(&DphRoot->AvailableAllocationHead);
 
     /* Create a normal heap for this paged heap */
@@ -1522,7 +1518,7 @@ HANDLE RtlpPageHeapCreate(ULONG Flags,
 	RtlpDphProcessStartupInitialization();
 
     /* Acquire the heap list lock */
-    RtlpEnterHeapLock(RtlpDphPageHeapListLock, TRUE);
+    RtlpEnterHeapLock(&RtlpDphPageHeapListLock, TRUE);
 
     /* Insert this heap to the tail of the global list */
     InsertTailList(&RtlpDphPageHeapList, &DphRoot->NextHeap);
@@ -1531,7 +1527,7 @@ HANDLE RtlpPageHeapCreate(ULONG Flags,
     RtlpDphPageHeapListLength++;
 
     /* Release the heap list lock */
-    RtlpLeaveHeapLock(RtlpDphPageHeapListLock);
+    RtlpLeaveHeapLock(&RtlpDphPageHeapListLock);
 
     if (RtlpDphDebugOptions & DPH_DEBUG_VERBOSE) {
 	DPRINT1
@@ -1596,14 +1592,14 @@ PVOID RtlpPageHeapDestroy(HANDLE HeapPtr)
     }
 
     /* Acquire the global heap list lock */
-    RtlpEnterHeapLock(RtlpDphPageHeapListLock, TRUE);
+    RtlpEnterHeapLock(&RtlpDphPageHeapListLock, TRUE);
 
     /* Remove the entry and decrement the global counter */
     RemoveEntryList(&DphRoot->NextHeap);
     RtlpDphPageHeapListLength--;
 
     /* Release the global heap list lock */
-    RtlpLeaveHeapLock(RtlpDphPageHeapListLock);
+    RtlpLeaveHeapLock(&RtlpDphPageHeapListLock);
 
     /* Leave and delete this heap's critical section */
     RtlpLeaveHeapLock(DphRoot->HeapCritSect);

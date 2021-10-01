@@ -21,10 +21,11 @@ typedef struct _RTL_VECTORED_HANDLER_ENTRY {
 
 /* FUNCTIONS ***************************************************************/
 
-VOID RtlpInitializeVectoredExceptionHandling(VOID)
+VOID RtlpInitializeVectoredExceptionHandling(IN PNTDLL_PROCESS_INIT_INFO InitInfo)
 {
     /* Initialize our two lists and the common lock */
-    RtlInitializeCriticalSection(&RtlpVectoredHandlerLock);
+    RtlpInitializeCriticalSection(&RtlpVectoredHandlerLock,
+				  InitInfo->VectoredHandlerLockSemaphore, 0);
     InitializeListHead(&RtlpVectoredExceptionList);
     InitializeListHead(&RtlpVectoredContinueList);
 }

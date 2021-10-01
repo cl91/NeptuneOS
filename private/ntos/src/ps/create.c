@@ -156,6 +156,9 @@ VOID PspPopulatePeb(IN PPROCESS Process)
 {
     PPEB Peb = (PPEB) Process->PebServerAddr;
     Peb->ImageBaseAddress = (HMODULE) Process->ImageBaseAddress;
+    Peb->MaximumNumberOfHeaps = (PAGE_SIZE - sizeof(PEB)) / sizeof(PVOID);
+    /* Place the process heap book keeping structures immediately after the PEB */
+    Peb->ProcessHeaps = (PPVOID)(Process->PebClientAddr + sizeof(PEB));
 }
 
 NTSTATUS PsCreateThread(IN PPROCESS Process,
@@ -392,6 +395,11 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
 				       sizeof(KUSER_SHARED_DATA), 0),
 	       ObDeleteObject(Process));
+
+    /* Create the Event objects used by the NTDLL ldr component */
+    /* FIXME: TODO */
+    Process->InitInfo.ProcessHeapLockSemaphore = (HANDLE) 3;
+    Process->InitInfo.LoaderHeapLockSemaphore = (HANDLE) 3;
 
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
     *pProcess = Process;

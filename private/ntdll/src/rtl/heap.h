@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "rtlp.h"
+
 C_ASSERT(HEAP_CREATE_VALID_MASK == 0x0007F0FF);
 
 /* Core heap definitions */
@@ -169,8 +171,7 @@ typedef struct _HEAP_LIST_LOOKUP {
     PLIST_ENTRY *ListHints;
 } HEAP_LIST_LOOKUP, *PHEAP_LIST_LOOKUP;
 
-typedef struct _HEAP_LOCK
-{
+typedef struct _HEAP_LOCK {
     RTL_CRITICAL_SECTION CriticalSection;
 } HEAP_LOCK, *PHEAP_LOCK;
 
@@ -281,9 +282,16 @@ typedef struct _HEAP_VIRTUAL_ALLOC_ENTRY {
 extern BOOLEAN RtlpPageHeapEnabled;
 
 /* Inline functions */
-static inline NTSTATUS RtlpInitializeHeapLock(IN OUT PHEAP_LOCK *Lock)
+static inline NTSTATUS RtlpInitializeHeapLock(IN OUT PHEAP_LOCK Lock)
 {
-    return RtlInitializeCriticalSection(&(*Lock)->CriticalSection);
+    return RtlInitializeCriticalSection(&Lock->CriticalSection);
+}
+
+static inline NTSTATUS RtlpInitializeHeapLockEx(IN OUT PHEAP_LOCK Lock,
+						IN HANDLE LockSemaphore)
+{
+    return RtlpInitializeCriticalSection(&Lock->CriticalSection,
+					 LockSemaphore, 0);
 }
 
 static inline NTSTATUS RtlpEnterHeapLock(IN OUT PHEAP_LOCK Lock,
@@ -315,11 +323,6 @@ static inline NTSTATUS RtlpDeleteHeapLock(IN OUT PHEAP_LOCK Lock)
 /* Functions declarations */
 
 /* heap.c */
-VOID RtlpAddHeapToProcessList(PHEAP Heap);
-VOID RtlpRemoveHeapFromProcessList(PHEAP Heap);
-PHEAP_FREE_ENTRY RtlpCoalesceFreeBlocks(PHEAP Heap,
-					PHEAP_FREE_ENTRY FreeEntry,
-					PSIZE_T FreeSize, BOOLEAN Remove);
 PHEAP_ENTRY_EXTRA RtlpGetExtraStuffPointer(PHEAP_ENTRY HeapEntry);
 BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation);
 BOOLEAN RtlpValidateHeapEntry(PHEAP Heap, PHEAP_ENTRY HeapEntry);

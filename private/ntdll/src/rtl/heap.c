@@ -21,8 +21,9 @@
 
 #include <ntdll.h>
 #include "heap.h"
+#include "rtlp.h"
 
-static RTL_CRITICAL_SECTION RtlpProcessHeapsListLock;
+static RTL_CRITICAL_SECTION RtlpProcessHeapListLock;
 
 /*
  * This function assumes that it is running under usermode (which
@@ -36,11 +37,10 @@ static VOID RtlpAddHeapToProcessList(PHEAP Heap)
     Peb = RtlGetCurrentPeb();
 
     /* Acquire the lock */
-    RtlEnterCriticalSection(&RtlpProcessHeapsListLock);
+    RtlEnterCriticalSection(&RtlpProcessHeapListLock);
 
-    //_SEH2_TRY {
     /* Check if max number of heaps reached */
-    if (Peb->NumberOfHeaps == Peb->MaximumNumberOfHeaps) {
+    if (Peb->NumberOfHeaps >= Peb->MaximumNumberOfHeaps) {
         // TODO: Handle this case
         ASSERT(FALSE);
     }
@@ -48,13 +48,10 @@ static VOID RtlpAddHeapToProcessList(PHEAP Heap)
     /* Add the heap to the process heaps */
     Peb->ProcessHeaps[Peb->NumberOfHeaps] = Heap;
     Peb->NumberOfHeaps++;
-    Heap->ProcessHeapsListIndex = (USHORT)Peb->NumberOfHeaps;
-    // } _SEH2_FINALLY {
+    Heap->ProcessHeapsListIndex = (USHORT)(Peb->NumberOfHeaps);
 
     /* Release the lock */
-    RtlLeaveCriticalSection(&RtlpProcessHeapsListLock);
-
-    // } _SEH2_END
+    RtlLeaveCriticalSection(&RtlpProcessHeapListLock);
 }
 
 /*
@@ -71,14 +68,14 @@ static VOID RtlpRemoveHeapFromProcessList(PHEAP Heap)
     Peb = RtlGetCurrentPeb();
 
     /* Acquire the lock */
-    RtlEnterCriticalSection(&RtlpProcessHeapsListLock);
+    RtlEnterCriticalSection(&RtlpProcessHeapListLock);
 
     /* Check if we don't need anything to do */
     if ((Heap->ProcessHeapsListIndex == 0) ||
         (Heap->ProcessHeapsListIndex > Peb->NumberOfHeaps) ||
         (Peb->NumberOfHeaps == 0)) {
         /* Release the lock */
-        RtlLeaveCriticalSection(&RtlpProcessHeapsListLock);
+        RtlLeaveCriticalSection(&RtlpProcessHeapListLock);
 
         return;
     }
@@ -114,7 +111,7 @@ static VOID RtlpRemoveHeapFromProcessList(PHEAP Heap)
     Heap->ProcessHeapsListIndex = 0;
 
     /* Release the lock */
-    RtlLeaveCriticalSection(&RtlpProcessHeapsListLock);
+    RtlLeaveCriticalSection(&RtlpProcessHeapListLock);
 }
 
 /* Bitmaps stuff */
@@ -189,6 +186,7 @@ static BOOLEAN RtlpIsLastCommittedEntry(PHEAP_ENTRY Entry)
 NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
 			    IN ULONG Flags,
 			    IN PHEAP_LOCK Lock OPTIONAL,
+			    IN HANDLE HeapLockSemaphore OPTIONAL,
 			    IN PRTL_HEAP_PARAMETERS Parameters)
 {
     ULONG NumUCRs = 8;
@@ -205,8 +203,7 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
     ASSERT(!(Flags & HEAP_NO_SERIALIZE) || (Lock == NULL));	/* HEAP_NO_SERIALIZE => no lock */
 
     /* Make sure we're not doing stupid things */
-    DeCommitFreeBlockThreshold =
-	Parameters->DeCommitFreeBlockThreshold >> HEAP_ENTRY_SHIFT;
+    DeCommitFreeBlockThreshold = Parameters->DeCommitFreeBlockThreshold >> HEAP_ENTRY_SHIFT;
     /* Start out with the size of a plain Heap header + our hints of free entries + the bitmap */
     HeaderSize = FIELD_OFFSET(HEAP, FreeHints[DeCommitFreeBlockThreshold])
 	+ (ROUND_UP(DeCommitFreeBlockThreshold, RTL_BITS_OF(ULONG)) /
@@ -271,7 +268,11 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
 
     /* Initialise the Heap Lock */
     if (!(Flags & HEAP_NO_SERIALIZE) && !(Flags & HEAP_LOCK_USER_ALLOCATED)) {
-	Status = RtlpInitializeHeapLock(&Lock);
+	if (HeapLockSemaphore != NULL) {
+	    Status = RtlpInitializeHeapLockEx(Lock, HeapLockSemaphore);
+	} else {
+	    Status = RtlpInitializeHeapLock(Lock);
+	}
 	if (!NT_SUCCESS(Status))
 	    return Status;
     }
@@ -883,6 +884,93 @@ static PHEAP_FREE_ENTRY RtlpFindAndCommitPages(PHEAP Heap,
     return NULL;
 }
 
+static PHEAP_FREE_ENTRY RtlpCoalesceFreeBlocks(PHEAP Heap,
+					       PHEAP_FREE_ENTRY FreeEntry,
+					       PSIZE_T FreeSize,
+					       BOOLEAN Remove)
+{
+    PHEAP_FREE_ENTRY CurrentEntry, NextEntry;
+    UCHAR SegmentOffset;
+
+    /* Get the previous entry */
+    CurrentEntry = (PHEAP_FREE_ENTRY) ((PHEAP_ENTRY) FreeEntry -
+				       FreeEntry->CommonEntry.PreviousSize);
+
+    /* Check it */
+    if (CurrentEntry != FreeEntry &&
+	!(CurrentEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY) &&
+	(*FreeSize + CurrentEntry->CommonEntry.Size) <= HEAP_MAX_BLOCK_SIZE) {
+	ASSERT(FreeEntry->CommonEntry.PreviousSize == CurrentEntry->CommonEntry.Size);
+
+	/* Remove it if asked for */
+	if (Remove) {
+	    RtlpRemoveFreeBlock(Heap, FreeEntry, FALSE);
+	    Heap->TotalFreeSize -= FreeEntry->CommonEntry.Size;
+
+	    /* Remove it only once! */
+	    Remove = FALSE;
+	}
+
+	/* Remove previous entry too */
+	RtlpRemoveFreeBlock(Heap, CurrentEntry, FALSE);
+
+	/* Copy flags */
+	CurrentEntry->CommonEntry.Flags = FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY;
+
+	/* Advance FreeEntry and update sizes */
+	FreeEntry = CurrentEntry;
+	*FreeSize = *FreeSize + CurrentEntry->CommonEntry.Size;
+	Heap->TotalFreeSize -= CurrentEntry->CommonEntry.Size;
+	FreeEntry->CommonEntry.Size = (USHORT) (*FreeSize);
+
+	/* Also update previous size if needed */
+	if (!(FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY)) {
+	    ((PHEAP_ENTRY) FreeEntry + *FreeSize)->CommonEntry.PreviousSize =
+		(USHORT) (*FreeSize);
+	} else {
+	    SegmentOffset = FreeEntry->CommonEntry.SegmentOffset;
+	    ASSERT(SegmentOffset < HEAP_SEGMENTS);
+	}
+    }
+
+    /* Check the next block if it exists */
+    if (!(FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY)) {
+	NextEntry = (PHEAP_FREE_ENTRY) ((PHEAP_ENTRY) FreeEntry + *FreeSize);
+
+	if (!(NextEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY) &&
+	    NextEntry->CommonEntry.Size + *FreeSize <= HEAP_MAX_BLOCK_SIZE) {
+	    ASSERT(*FreeSize == NextEntry->CommonEntry.PreviousSize);
+
+	    /* Remove it if asked for */
+	    if (Remove) {
+		RtlpRemoveFreeBlock(Heap, FreeEntry, FALSE);
+		Heap->TotalFreeSize -= FreeEntry->CommonEntry.Size;
+	    }
+
+	    /* Copy flags */
+	    FreeEntry->CommonEntry.Flags = NextEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY;
+
+	    /* Remove next entry now */
+	    RtlpRemoveFreeBlock(Heap, NextEntry, FALSE);
+
+	    /* Update sizes */
+	    *FreeSize = *FreeSize + NextEntry->CommonEntry.Size;
+	    Heap->TotalFreeSize -= NextEntry->CommonEntry.Size;
+	    FreeEntry->CommonEntry.Size = (USHORT) (*FreeSize);
+
+	    /* Also update previous size if needed */
+	    if (!(FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY)) {
+		((PHEAP_ENTRY) FreeEntry + *FreeSize)->CommonEntry.PreviousSize =
+		    (USHORT) (*FreeSize);
+	    } else {
+		SegmentOffset = FreeEntry->CommonEntry.SegmentOffset;
+		ASSERT(SegmentOffset < HEAP_SEGMENTS);
+	    }
+	}
+    }
+    return FreeEntry;
+}
+
 static VOID RtlpDeCommitFreeBlock(PHEAP Heap,
 				  PHEAP_FREE_ENTRY FreeEntry,
 				  SIZE_T Size)
@@ -998,8 +1086,7 @@ static VOID RtlpDeCommitFreeBlock(PHEAP Heap,
 	GuardEntry->CommonEntry.PreviousSize = PrecedingSize;
 	FreeEntry->CommonEntry.Size = PrecedingSize;
 	FreeEntry->CommonEntry.Flags &= ~HEAP_ENTRY_LAST_ENTRY;
-	FreeEntry =
-	    RtlpCoalesceFreeBlocks(Heap, FreeEntry, &PrecedingSize, FALSE);
+	FreeEntry = RtlpCoalesceFreeBlocks(Heap, FreeEntry, &PrecedingSize, FALSE);
 	RtlpInsertFreeBlock(Heap, FreeEntry, PrecedingSize);
 	break;
     }
@@ -1027,9 +1114,7 @@ static VOID RtlpDeCommitFreeBlock(PHEAP Heap,
 	    ASSERT(NextEntry ==
 		   (PHEAP_ENTRY) NextFreeEntry + NextFreeEntry->CommonEntry.Size);
 
-	    NextFreeEntry =
-		RtlpCoalesceFreeBlocks(Heap, NextFreeEntry, &NextSize,
-				       FALSE);
+	    NextFreeEntry = RtlpCoalesceFreeBlocks(Heap, NextFreeEntry, &NextSize, FALSE);
 	    RtlpInsertFreeBlock(Heap, NextFreeEntry, NextSize);
 	} else {
 	    /* This one must be at the beginning of a page */
@@ -1196,93 +1281,6 @@ static PHEAP_FREE_ENTRY RtlpCoalesceHeap(PHEAP Heap)
     return NULL;
 }
 
-static PHEAP_FREE_ENTRY RtlpCoalesceFreeBlocks(PHEAP Heap,
-					       PHEAP_FREE_ENTRY FreeEntry,
-					       PSIZE_T FreeSize,
-					       BOOLEAN Remove)
-{
-    PHEAP_FREE_ENTRY CurrentEntry, NextEntry;
-    UCHAR SegmentOffset;
-
-    /* Get the previous entry */
-    CurrentEntry = (PHEAP_FREE_ENTRY) ((PHEAP_ENTRY) FreeEntry -
-				       FreeEntry->CommonEntry.PreviousSize);
-
-    /* Check it */
-    if (CurrentEntry != FreeEntry &&
-	!(CurrentEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY) &&
-	(*FreeSize + CurrentEntry->CommonEntry.Size) <= HEAP_MAX_BLOCK_SIZE) {
-	ASSERT(FreeEntry->CommonEntry.PreviousSize == CurrentEntry->CommonEntry.Size);
-
-	/* Remove it if asked for */
-	if (Remove) {
-	    RtlpRemoveFreeBlock(Heap, FreeEntry, FALSE);
-	    Heap->TotalFreeSize -= FreeEntry->CommonEntry.Size;
-
-	    /* Remove it only once! */
-	    Remove = FALSE;
-	}
-
-	/* Remove previous entry too */
-	RtlpRemoveFreeBlock(Heap, CurrentEntry, FALSE);
-
-	/* Copy flags */
-	CurrentEntry->CommonEntry.Flags = FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY;
-
-	/* Advance FreeEntry and update sizes */
-	FreeEntry = CurrentEntry;
-	*FreeSize = *FreeSize + CurrentEntry->CommonEntry.Size;
-	Heap->TotalFreeSize -= CurrentEntry->CommonEntry.Size;
-	FreeEntry->CommonEntry.Size = (USHORT) (*FreeSize);
-
-	/* Also update previous size if needed */
-	if (!(FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY)) {
-	    ((PHEAP_ENTRY) FreeEntry + *FreeSize)->CommonEntry.PreviousSize =
-		(USHORT) (*FreeSize);
-	} else {
-	    SegmentOffset = FreeEntry->CommonEntry.SegmentOffset;
-	    ASSERT(SegmentOffset < HEAP_SEGMENTS);
-	}
-    }
-
-    /* Check the next block if it exists */
-    if (!(FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY)) {
-	NextEntry = (PHEAP_FREE_ENTRY) ((PHEAP_ENTRY) FreeEntry + *FreeSize);
-
-	if (!(NextEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY) &&
-	    NextEntry->CommonEntry.Size + *FreeSize <= HEAP_MAX_BLOCK_SIZE) {
-	    ASSERT(*FreeSize == NextEntry->CommonEntry.PreviousSize);
-
-	    /* Remove it if asked for */
-	    if (Remove) {
-		RtlpRemoveFreeBlock(Heap, FreeEntry, FALSE);
-		Heap->TotalFreeSize -= FreeEntry->CommonEntry.Size;
-	    }
-
-	    /* Copy flags */
-	    FreeEntry->CommonEntry.Flags = NextEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY;
-
-	    /* Remove next entry now */
-	    RtlpRemoveFreeBlock(Heap, NextEntry, FALSE);
-
-	    /* Update sizes */
-	    *FreeSize = *FreeSize + NextEntry->CommonEntry.Size;
-	    Heap->TotalFreeSize -= NextEntry->CommonEntry.Size;
-	    FreeEntry->CommonEntry.Size = (USHORT) (*FreeSize);
-
-	    /* Also update previous size if needed */
-	    if (!(FreeEntry->CommonEntry.Flags & HEAP_ENTRY_LAST_ENTRY)) {
-		((PHEAP_ENTRY) FreeEntry + *FreeSize)->CommonEntry.PreviousSize =
-		    (USHORT) (*FreeSize);
-	    } else {
-		SegmentOffset = FreeEntry->CommonEntry.SegmentOffset;
-		ASSERT(SegmentOffset < HEAP_SEGMENTS);
-	    }
-	}
-    }
-    return FreeEntry;
-}
-
 static PHEAP_FREE_ENTRY RtlpExtendHeap(PHEAP Heap, SIZE_T Size)
 {
     ULONG Pages;
@@ -1320,9 +1318,7 @@ static PHEAP_FREE_ENTRY RtlpExtendHeap(PHEAP Heap, SIZE_T Size)
 	    /* Coalesce it with adjacent entries */
 	    if (FreeEntry) {
 		FreeSize = FreeSize >> HEAP_ENTRY_SHIFT;
-		FreeEntry =
-		    RtlpCoalesceFreeBlocks(Heap, FreeEntry, &FreeSize,
-					   FALSE);
+		FreeEntry = RtlpCoalesceFreeBlocks(Heap, FreeEntry, &FreeSize, FALSE);
 		RtlpInsertFreeBlock(Heap, FreeEntry, FreeSize);
 		return FreeEntry;
 	    }
@@ -1383,9 +1379,8 @@ static PHEAP_FREE_ENTRY RtlpExtendHeap(PHEAP Heap, SIZE_T Size)
 
 	    /* Initialize heap segment if commit was successful */
 	    if (NT_SUCCESS(Status))
-		Status =
-		    RtlpInitializeHeapSegment(Heap, Segment, EmptyIndex, 0,
-					      ReserveSize, CommitSize);
+		Status = RtlpInitializeHeapSegment(Heap, Segment, EmptyIndex, 0,
+						   ReserveSize, CommitSize);
 
 	    /* If everything worked - cool */
 	    if (NT_SUCCESS(Status))
@@ -1420,12 +1415,14 @@ static NTSTATUS RtlpRegisterHeap(IN PHEAP Heap,
 				 IN ULONG HeapFlags,
 				 IN ULONG HeapSegmentFlags,
 				 IN PVOID Lock,
+				 IN HANDLE HeapLockSemaphore,
 				 IN PRTL_HEAP_PARAMETERS Parameters,
 				 IN SIZE_T TotalSize,
 				 IN SIZE_T CommitSize)
-{    
+{
     /* Initialize the heap */
-    NTSTATUS Status = RtlpInitializeHeap(Heap, HeapFlags, Lock, Parameters);
+    NTSTATUS Status = RtlpInitializeHeap(Heap, HeapFlags, Lock,
+					 HeapLockSemaphore, Parameters);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Failed to initialize heap (%x)\n", Status);
 	return Status;
@@ -1555,13 +1552,14 @@ static inline NTSTATUS LdrpCreateHeap(IN PVOID Heap,
 				      IN ULONG HeapFlags,
 				      IN SIZE_T HeapReserve,
 				      IN SIZE_T HeapCommit,
+				      IN HANDLE HeapLockSemaphore,
 				      IN PRTL_HEAP_PARAMETERS Parameters)
 {    
     /* Set appropriate heap flags and heap parameters */
     RtlpNormalizeHeapParameters(&HeapFlags, Parameters);
 
-    return RtlpRegisterHeap(Heap, HeapFlags, 0, NULL, Parameters,
-			    HeapReserve, HeapCommit);
+    return RtlpRegisterHeap(Heap, HeapFlags, 0, NULL, HeapLockSemaphore,
+			    Parameters, HeapReserve, HeapCommit);
 }
 
 /*
@@ -1569,12 +1567,9 @@ static inline NTSTATUS LdrpCreateHeap(IN PVOID Heap,
  * the private loader heap and the process heap. This function
  * sets up the RTL heap book keeping information for these.
  */
-NTSTATUS LdrpInitializeHeapManager(IN PVOID ProcessHeap,
+NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
 				   IN ULONG ProcessHeapFlags,
-				   IN SIZE_T ProcessHeapReserve,
-				   IN SIZE_T ProcessHeapCommit,
-				   IN PRTL_HEAP_PARAMETERS ProcessHeapParams,
-				   IN PVOID LoaderHeap)
+				   IN PRTL_HEAP_PARAMETERS ProcessHeapParams)
 {
     PPEB Peb = RtlGetCurrentPeb();
 
@@ -1582,20 +1577,23 @@ NTSTATUS LdrpInitializeHeapManager(IN PVOID ProcessHeap,
     Peb->NumberOfHeaps = 0;
 
     /* Initialize the process heaps list protecting lock */
-    RtlInitializeCriticalSection(&RtlpProcessHeapsListLock);
+    RtlpInitializeCriticalSection(&RtlpProcessHeapListLock, InitInfo->ProcessHeapListLockSemaphore, 0);
 
-    RET_ERR(LdrpCreateHeap(ProcessHeap, ProcessHeapFlags,
-			   ProcessHeapReserve,
-			   ProcessHeapCommit,
+    RET_ERR(LdrpCreateHeap((PVOID) InitInfo->ProcessHeapStart, ProcessHeapFlags,
+			   InitInfo->ProcessHeapReserve,
+			   InitInfo->ProcessHeapCommit,
+			   InitInfo->ProcessHeapLockSemaphore,
 			   ProcessHeapParams));
-    Peb->ProcessHeap = (HANDLE) ProcessHeap;
+    Peb->ProcessHeap = (HANDLE) InitInfo->ProcessHeapStart;
 
     RTL_HEAP_PARAMETERS LoaderHeapParams;
     RtlZeroMemory(&LoaderHeapParams, sizeof(LoaderHeapParams));
     ULONG LoaderHeapFlags = HEAP_GROWABLE | HEAP_CLASS_1;
     LoaderHeapParams.Length = sizeof(LoaderHeapParams);
-    RET_ERR(LdrpCreateHeap(LoaderHeap, LoaderHeapFlags, NTDLL_LOADER_HEAP_RESERVE,
-			   NTDLL_LOADER_HEAP_COMMIT, &LoaderHeapParams));
+    RET_ERR(LdrpCreateHeap((PVOID) InitInfo->LoaderHeapStart, LoaderHeapFlags,
+			   NTDLL_LOADER_HEAP_RESERVE, NTDLL_LOADER_HEAP_COMMIT,
+			   InitInfo->LoaderHeapLockSemaphore,
+			   &LoaderHeapParams));
 
     return STATUS_SUCCESS;
 }
@@ -1782,7 +1780,7 @@ NTAPI HANDLE RtlCreateHeap(ULONG Flags,
 	UncommittedAddress = (PCHAR) UncommittedAddress + CommitSize;
     }
 
-    if (!NT_SUCCESS(RtlpRegisterHeap(Heap, Flags, HeapSegmentFlags, Lock,
+    if (!NT_SUCCESS(RtlpRegisterHeap(Heap, Flags, HeapSegmentFlags, Lock, 0,
 				     Parameters, TotalSize, CommitSize))) {
 	return NULL;
     }
@@ -1803,7 +1801,7 @@ NTAPI HANDLE RtlCreateHeap(ULONG Flags,
  *  Failure: The Heap handle, if heap is the process heap.
  */
 HANDLE RtlDestroyHeap(HANDLE HeapPtr)
-{				/* [in] Handle of heap */
+{
     PHEAP Heap = (PHEAP) HeapPtr;
     PLIST_ENTRY Current;
     PHEAP_UCR_SEGMENT UcrSegment;
@@ -2410,11 +2408,10 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 
 	/* Coalesce in kernel mode, and in usermode if it's not disabled */
 	if (!(Heap->Flags & HEAP_DISABLE_COALESCE_ON_FREE)) {
-	    HeapEntry =
-		(PHEAP_ENTRY) RtlpCoalesceFreeBlocks(Heap,
-						     (PHEAP_FREE_ENTRY)
-						     HeapEntry, &BlockSize,
-						     FALSE);
+	    HeapEntry = (PHEAP_ENTRY) RtlpCoalesceFreeBlocks(Heap,
+							     (PHEAP_FREE_ENTRY)
+							     HeapEntry, &BlockSize,
+							     FALSE);
 	}
 
 	/* See if we should decommit this block */
@@ -2482,8 +2479,7 @@ BOOLEAN RtlpGrowBlockInPlace(IN PHEAP Heap,
 
 	/* It was successful, perform coalescing */
 	FreeSize = FreeSize >> HEAP_ENTRY_SHIFT;
-	FreeEntry =
-	    RtlpCoalesceFreeBlocks(Heap, FreeEntry, &FreeSize, FALSE);
+	FreeEntry = RtlpCoalesceFreeBlocks(Heap, FreeEntry, &FreeSize, FALSE);
 
 	/* Check if it's enough */
 	if (FreeSize + InUseEntry->CommonEntry.Size < Index) {
