@@ -194,8 +194,7 @@ static PVOID LdrpInitSecurityCookie(PLDR_DATA_TABLE_ENTRY LdrEntry)
 
 	    /* Calculate the milliseconds value and xor it to the cookie */
 	    NewCookie ^= Int64ShrlMod32(UInt32x32To64(SharedUserData->TickCountMultiplier,
-						      SharedUserData->TickCount.LowPart),
-					24)
+						      SharedUserData->TickCount.LowPart), 24)
 		+ SharedUserData->TickCountMultiplier * (SharedUserData->TickCount.High1Time << 8);
 
 	    /* Make the cookie 16bit if necessary */
