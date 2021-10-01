@@ -34,9 +34,6 @@ RtlpCheckLogException(IN PEXCEPTION_RECORD ExceptionRecord,
 
 NTAPI VOID RtlpCaptureContext(OUT PCONTEXT ContextRecord);
 
-/* heap.c */
-VOID RtlpInitializeHeapManager(VOID);
-
 /* util.c */
 NTAPI BOOLEAN RtlpCheckForActiveDebugger(VOID);
 

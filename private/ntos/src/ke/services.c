@@ -47,8 +47,14 @@ NTSTATUS KeEnableSystemServices(IN PPROCESS Process,
 }
 
 static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
-					      IN MWORD MsgWord)
+					      IN MWORD MsgWord,
+					      IN BOOLEAN Optional)
 {
+    /* Allow NULL pointer if parameter is marked optional */
+    if (MsgWord == 0) {
+	return Optional;
+    }
+
     SYSTEM_SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
     if (!KiSystemServiceValidateArgument(MsgWord)) {
@@ -62,8 +68,14 @@ static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
 }
 
 static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
-						 IN MWORD MsgWord)
+						 IN MWORD MsgWord,
+						 IN BOOLEAN Optional)
 {
+    /* Allow NULL pointer if parameter is marked optional */
+    if (MsgWord == 0) {
+	return Optional;
+    }
+
     SYSTEM_SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
     if (!KiSystemServiceValidateArgument(MsgWord)) {
@@ -92,12 +104,16 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
     ULONG MsgOffset = Arg.BufferStart;
     ULONG MsgSize = Arg.BufferSize;
     OB_OBJECT_ATTRIBUTES ObjAttr;
-    ObjAttr.RootDirectory = SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, HANDLE);
-    MsgOffset += sizeof(HANDLE);
-    ObjAttr.Attributes = SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, ULONG);
-    MsgOffset += sizeof(ULONG);
-    ObjAttr.ObjectNameBuffer = &SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, CHAR);
-    ObjAttr.ObjectNameBufferLength = MsgSize - sizeof(HANDLE) - sizeof(ULONG);
+    if (MsgWord == 0) {
+	memset(&ObjAttr, 0, sizeof(OB_OBJECT_ATTRIBUTES));
+    } else {
+	ObjAttr.RootDirectory = SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, HANDLE);
+	MsgOffset += sizeof(HANDLE);
+	ObjAttr.Attributes = SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, ULONG);
+	MsgOffset += sizeof(ULONG);
+	ObjAttr.ObjectNameBuffer = &SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, CHAR);
+	ObjAttr.ObjectNameBufferLength = MsgSize - sizeof(HANDLE) - sizeof(ULONG);
+    }
     return ObjAttr;
 }
 

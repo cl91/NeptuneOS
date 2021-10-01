@@ -22,7 +22,7 @@ typedef seL4_Word MWORD;
 #define WIN32_TEB_START			(0x70000000UL)
 #define WIN32_TEB_END			(0x7ffdf000UL)
 #define WIN32_PEB_START			(WIN32_TEB_END)
-#define HIGHEST_USER_ADDRESS		(0x7ffeffff)
+#define HIGHEST_USER_ADDRESS		(0x7ffeffffUL)
 /* Size of system dll tls region per thread is determined by the size
  * of the .tls section of the NTDLL.DLL image. */
 #define SYSTEM_DLL_TLS_REGION_START	(0x80010000UL)
@@ -31,7 +31,7 @@ typedef seL4_Word MWORD;
 #define IPC_BUFFER_START		(0xb0000000UL)
 #define IPC_BUFFER_END			(0xbfff0000UL)
 /* We cannot put the KUSER_SHARED_DATA in the usual place (0xFFDF0000 in i386
- * or 0xFFFFF780`00000000 in amd64) so we will settle for IPC_BUFFER_END*/
+ * or 0xFFFFF780`00000000 in amd64) so we will settle for IPC_BUFFER_END */
 #define KUSER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
 
 #define IPC_BUFFER_RESERVE		(16 * PAGE_SIZE)

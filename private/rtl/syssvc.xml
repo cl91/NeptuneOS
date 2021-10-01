@@ -48,6 +48,15 @@
     <parameter annotation="in" type="NTSTATUS" name="ExitStatus" />
   </syssvc>
 
+  <syssvc name="NtRaiseHardError">
+    <parameter annotation="in" type="NTSTATUS" name="ErrorStatus" />
+    <parameter annotation="in" type="ULONG" name="NumberOfParameters" />
+    <parameter annotation="in" type="ULONG" name="UnicodeStringParameterMask" />
+    <parameter annotation="in" type="ptr::ULONG_PTR" name="Parameters" />
+    <parameter annotation="in" type="HARDERROR_RESPONSE_OPTION" name="ResponseOption" />
+    <parameter annotation="out" type="ptr::HARDERROR_RESPONSE" name="Response" />
+  </syssvc>
+
   <syssvc name="NtCreateEvent">
     <parameter annotation="out" type="ptr::HANDLE" name="EventHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />

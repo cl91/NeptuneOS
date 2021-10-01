@@ -50,16 +50,14 @@ HANDLE RtlpDebugCreateHeap(ULONG Flags,
 				      sizeof(MemoryInfo), NULL);
 
 	if (!NT_SUCCESS(Status)) {
-	    DPRINT1
-		("HEAP: Specified heap base address %p is invalid, Status 0x%08X\n",
-		 Addr, Status);
+	    DPRINT1("HEAP: Specified heap base address %p is invalid, Status 0x%08X\n",
+		    Addr, Status);
 	    return NULL;
 	}
 
 	if (MemoryInfo.BaseAddress != Addr) {
-	    DPRINT1
-		("HEAP: Specified heap base address %p is not really a base one %p\n",
-		 Addr, MemoryInfo.BaseAddress);
+	    DPRINT1("HEAP: Specified heap base address %p is not really a base one %p\n",
+		    Addr, MemoryInfo.BaseAddress);
 	    return NULL;
 	}
 
@@ -71,12 +69,10 @@ HANDLE RtlpDebugCreateHeap(ULONG Flags,
     }
 
     /* All validation performed, now call the real routine with skip validation check flag */
-    Flags |= HEAP_SKIP_VALIDATION_CHECKS |
-	HEAP_TAIL_CHECKING_ENABLED | HEAP_FREE_CHECKING_ENABLED;
+    Flags |= HEAP_SKIP_VALIDATION_CHECKS | HEAP_TAIL_CHECKING_ENABLED | HEAP_FREE_CHECKING_ENABLED;
 
-    Heap =
-	RtlCreateHeap(Flags, Addr, ReserveSize, CommitSize, Lock,
-		      Parameters);
+    Heap = RtlCreateHeap(Flags, Addr, ReserveSize, CommitSize, Lock,
+			 Parameters);
     if (!Heap)
 	return NULL;
 

@@ -124,8 +124,44 @@ typedef struct _SYSTEM_BASIC_INFORMATION
     CCHAR NumberOfProcessors;
 } SYSTEM_BASIC_INFORMATION, *PSYSTEM_BASIC_INFORMATION;
 
+/*
+ * Responses for NtRaiseHardError
+ */
+typedef enum _HARDERROR_RESPONSE_OPTION {
+    OptionAbortRetryIgnore,
+    OptionOk,
+    OptionOkCancel,
+    OptionRetryCancel,
+    OptionYesNo,
+    OptionYesNoCancel,
+    OptionShutdownSystem,
+    OptionOkNoWait,
+    OptionCancelTryContinue
+} HARDERROR_RESPONSE_OPTION, *PHARDERROR_RESPONSE_OPTION;
+
+typedef enum _HARDERROR_RESPONSE {
+    ResponseReturnToCaller,
+    ResponseNotHandled,
+    ResponseAbort,
+    ResponseCancel,
+    ResponseIgnore,
+    ResponseNo,
+    ResponseOk,
+    ResponseRetry,
+    ResponseYes,
+    ResponseTryAgain,
+    ResponseContinue
+} HARDERROR_RESPONSE, *PHARDERROR_RESPONSE;
+
 #ifndef _NTOSKRNL_
-NTSTATUS NTAPI NTSYSAPI NtDisplayString(IN PUNICODE_STRING String);
+NTAPI NTSYSAPI NTSTATUS NtDisplayString(IN PUNICODE_STRING String);
+
+NTAPI NTSYSAPI NTSTATUS NtRaiseHardError(IN NTSTATUS ErrorStatus,
+					 IN ULONG NumberOfParameters,
+					 IN ULONG UnicodeStringParameterMask,
+					 IN PULONG_PTR Parameters,
+					 IN HARDERROR_RESPONSE_OPTION ResponseOption,
+					 OUT PHARDERROR_RESPONSE Response);
 #endif
 
 #define INVALID_HANDLE_VALUE ((HANDLE)(-1))

@@ -395,7 +395,7 @@ static NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalS
 {
     assert(CriticalSection != NULL);
 
-    PRTL_CRITICAL_SECTION_DEBUG CritcalSectionDebugData;
+    PRTL_CRITICAL_SECTION_DEBUG CriticalSectionDebugData;
 
     /* First things first, set up the Object */
     DPRINT("Initializing Critical Section: %p\n", CriticalSection);
@@ -406,23 +406,23 @@ static NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalS
     CriticalSection->LockSemaphore = LockSemaphore;
 
     /* Allocate the Debug Data */
-    CritcalSectionDebugData = RtlpAllocateDebugInfo();
+    CriticalSectionDebugData = RtlpAllocateDebugInfo();
     DPRINT("Allocated Debug Data: %p inside Process: %p\n",
-	   CritcalSectionDebugData, NtCurrentTeb()->ClientId.UniqueProcess);
+	   CriticalSectionDebugData, NtCurrentTeb()->ClientId.UniqueProcess);
 
-    if (!CritcalSectionDebugData) {
+    if (!CriticalSectionDebugData) {
 	/* This is bad! */
 	DPRINT1("Couldn't allocate Debug Data for: %p\n", CriticalSection);
 	return STATUS_NO_MEMORY;
     }
 
     /* Set it up */
-    CritcalSectionDebugData->Type = RTL_CRITSECT_TYPE;
-    CritcalSectionDebugData->ContentionCount = 0;
-    CritcalSectionDebugData->EntryCount = 0;
-    CritcalSectionDebugData->CriticalSection = CriticalSection;
-    CritcalSectionDebugData->Flags = 0;
-    CriticalSection->DebugInfo = CritcalSectionDebugData;
+    CriticalSectionDebugData->Type = RTL_CRITSECT_TYPE;
+    CriticalSectionDebugData->ContentionCount = 0;
+    CriticalSectionDebugData->EntryCount = 0;
+    CriticalSectionDebugData->CriticalSection = CriticalSection;
+    CriticalSectionDebugData->Flags = 0;
+    CriticalSection->DebugInfo = CriticalSectionDebugData;
 
     return STATUS_SUCCESS;
 }

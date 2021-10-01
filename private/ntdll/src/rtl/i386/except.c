@@ -137,8 +137,7 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 		RtlRaiseException(&ExceptionRecord2);
 	    } else {
 		/* In user mode, call any registered vectored continue handlers */
-		RtlCallVectoredContinueHandlers(ExceptionRecord,
-						Context);
+		RtlCallVectoredContinueHandlers(ExceptionRecord, Context);
 
 		/* Execution continues */
 		return TRUE;
@@ -172,8 +171,7 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 	{
 	    /* Set up the exception record */
 	    ExceptionRecord2.ExceptionRecord = ExceptionRecord;
-	    ExceptionRecord2.ExceptionCode =
-		STATUS_INVALID_DISPOSITION;
+	    ExceptionRecord2.ExceptionCode = STATUS_INVALID_DISPOSITION;
 	    ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
 	    ExceptionRecord2.NumberParameters = 0;
 

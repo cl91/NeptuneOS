@@ -55,25 +55,6 @@ C_ASSERT(HEAP_CREATE_VALID_MASK == 0x0007F0FF);
 /* Segment flags */
 #define HEAP_USER_ALLOCATED    0x1
 
-/* A handy inline to distinguis normal heap, special "debug heap" and special "page heap" */
-FORCEINLINE BOOLEAN RtlpHeapIsSpecial(ULONG Flags)
-{
-    if (Flags & HEAP_SKIP_VALIDATION_CHECKS)
-	return FALSE;
-
-    if (Flags & (HEAP_FLAG_PAGE_ALLOCS |
-		 HEAP_VALIDATE_ALL_ENABLED |
-		 HEAP_VALIDATE_PARAMETERS_ENABLED |
-		 HEAP_CAPTURE_STACK_BACKTRACES |
-		 HEAP_CREATE_ENABLE_TRACING)) {
-	/* This is a special heap */
-	return TRUE;
-    }
-
-    /* No need for a special treatment */
-    return FALSE;
-}
-
 /* Heap structures */
 struct _HEAP_COMMON_ENTRY {
 #ifdef _M_AMD64
@@ -329,28 +310,6 @@ static inline BOOLEAN RtlpTryEnterHeapLock(IN OUT PHEAP_LOCK Lock,
 static inline NTSTATUS RtlpDeleteHeapLock(IN OUT PHEAP_LOCK Lock)
 {
     return RtlDeleteCriticalSection(&Lock->CriticalSection);
-}
-
-static inline VOID RtlpSetHeapParameters(IN PRTL_HEAP_PARAMETERS Parameters)
-{
-    PPEB Peb;
-
-    /* Get PEB */
-    Peb = RtlGetCurrentPeb();
-
-    /* Apply defaults for non-set parameters */
-    if (!Parameters->SegmentCommit) {
-	Parameters->SegmentCommit = Peb->HeapSegmentCommit;
-    }
-    if (!Parameters->SegmentReserve) {
-	Parameters->SegmentReserve = Peb->HeapSegmentReserve;
-    }
-    if (!Parameters->DeCommitFreeBlockThreshold) {
-	Parameters->DeCommitFreeBlockThreshold = Peb->HeapDeCommitFreeBlockThreshold;
-    }
-    if (!Parameters->DeCommitTotalFreeThreshold) {
-	Parameters->DeCommitTotalFreeThreshold = Peb->HeapDeCommitTotalFreeThreshold;
-    }
 }
 
 /* Functions declarations */

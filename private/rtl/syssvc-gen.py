@@ -51,7 +51,7 @@ static inline NTSTATUS KiHandleSystemService(IN ULONG SvcNum,
 {%- for param in syssvc.in_params %}
 {%- if param.is_ptr %}
 {%- if param.custom_marshaling %}
-        if (!{{param.validate_func}}(Thread->IpcBufferServerAddr, seL4_GetMR({{loop.index-1}}))) {
+        if (!{{param.validate_func}}(Thread->IpcBufferServerAddr, seL4_GetMR({{loop.index-1}}), {% if param.optional %}TRUE{% else %}FALSE{% endif %})) {
             DbgTrace("Invalid argument at position %d (starting from one). Argument is 0x%zx.\\n",
                      {{loop.index}}, seL4_GetMR({{loop.index-1}}));
             break;
@@ -168,18 +168,21 @@ NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
 {%- endif %}
 {%- endfor %}
     seL4_MessageInfo_t Reply = seL4_Call(SYSSVC_IPC_CAP, Request);
-    assert(seL4_MessageInfo_get_length(Reply) == (1 + {{syssvc.out_params|length}}));
+    NTSTATUS Status = seL4_GetMR(0);
+    if (NT_SUCCESS(Status)) {
+        assert(seL4_MessageInfo_get_length(Reply) == (1 + {{syssvc.out_params|length}}));
 {%- for param in syssvc.out_params %}
-    if ({{param.name}} != NULL) {
+        if ({{param.name}} != NULL) {
 {%- if param.complex_type %}
-        assert(KiSystemServiceValidateArgument(seL4_GetMR({{loop.index}})));
-        *{{param.name}} = *(({{param.base_type}} *)(KiSystemServiceGetArgument(SYSSVC_MESSAGE_BUFFER_START, seL4_GetMR({{loop.index}}))));
+            assert(KiSystemServiceValidateArgument(seL4_GetMR({{loop.index}})));
+            *{{param.name}} = *(({{param.base_type}} *)(KiSystemServiceGetArgument(SYSSVC_MESSAGE_BUFFER_START, seL4_GetMR({{loop.index}}))));
 {%- else %}
-        *{{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index}});
+            *{{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index}});
 {%- endif %}
-    }
+        }
 {%- endfor %}
-    return seL4_GetMR(0);
+    }
+    return Status;
 }
 {% endfor %}
 {# #}

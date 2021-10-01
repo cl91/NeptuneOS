@@ -103,6 +103,17 @@ typedef struct _EXCEPTION_POINTERS {
   PCONTEXT ContextRecord;
 } EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
 
+/* Pseudo handle values for current process and thread */
+static inline HANDLE NtCurrentProcess(VOID)
+{
+    return (HANDLE)((LONG_PTR)(-1));
+}
+
+static inline HANDLE NtCurrentThread(VOID)
+{
+    return ((HANDLE)(LONG_PTR)(-2));
+}
+
 #ifndef _NTOSKRNL_
 #include <nturtl.h>
 #endif	/* _NTOSKRNL_ */

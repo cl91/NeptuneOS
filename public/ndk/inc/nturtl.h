@@ -65,6 +65,22 @@ typedef RTLP_UNHANDLED_EXCEPTION_FILTER *PRTLP_UNHANDLED_EXCEPTION_FILTER;
 typedef LONG (NTAPI *PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS ExceptionPointers);
 
 /*
+ * Fiber local storage data
+ */
+#define RTL_FLS_MAXIMUM_AVAILABLE 128
+typedef struct _RTL_FLS_DATA
+{
+    LIST_ENTRY ListEntry;
+    PVOID Data[RTL_FLS_MAXIMUM_AVAILABLE];
+} RTL_FLS_DATA, *PRTL_FLS_DATA;
+
+/*
+ * Thread local storage slots
+ */
+#define TLS_MINIMUM_AVAILABLE 64
+#define TLS_EXPANSION_SLOTS 1024
+
+/*
  * Thread Error Mode Flags
  */
 /* Also defined in psdk/winbase.h */
@@ -554,6 +570,8 @@ NTAPI NTSYSAPI USHORT RtlCaptureStackBackTrace(IN ULONG FramesToSkip,
 					       IN ULONG FramesToCapture,
 					       OUT PVOID *BackTrace,
 					       OUT OPTIONAL PULONG BackTraceHash);
+
+NTAPI NTSYSAPI VOID RtlSetUnhandledExceptionFilter(IN PRTLP_UNHANDLED_EXCEPTION_FILTER TopLevelExceptionFilter);
 
 /*
  * Tracing Functions
@@ -1081,20 +1099,6 @@ FORCEINLINE PPEB NtCurrentPeb(VOID)
 #undef __TLSBASE_READ
 
 #define RtlGetCurrentPeb NtCurrentPeb
-
-static inline HANDLE NtCurrentProcess(VOID)
-{
-    return (HANDLE)((LONG_PTR)(-1));
-}
-
-#define ZwCurrentProcess NtCurrentProcess
-
-static inline HANDLE NtCurrentThread(VOID)
-{
-    return ((HANDLE)(LONG_PTR)(-2));
-}
-
-#define ZwCurrentThread NtCurrentThread
 
 NTAPI NTSYSAPI VOID RtlAcquirePebLock(VOID);
 

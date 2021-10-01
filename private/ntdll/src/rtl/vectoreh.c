@@ -21,7 +21,7 @@ typedef struct _RTL_VECTORED_HANDLER_ENTRY {
 
 /* FUNCTIONS ***************************************************************/
 
-VOID NTAPI RtlpInitializeVectoredExceptionHandling(VOID)
+VOID RtlpInitializeVectoredExceptionHandling(VOID)
 {
     /* Initialize our two lists and the common lock */
     RtlInitializeCriticalSection(&RtlpVectoredHandlerLock);

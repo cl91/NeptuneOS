@@ -23,7 +23,6 @@ __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 
 UNICODE_STRING NtDllString = RTL_CONSTANT_STRING(L"ntdll.dll");
 
-BOOLEAN LdrpLdrDatabaseIsSetup;
 BOOLEAN LdrpShutdownInProgress;
 HANDLE LdrpShutdownThreadId;
 
@@ -37,17 +36,9 @@ RTL_BITMAP FlsBitMap;
 BOOLEAN LdrpImageHasTls;
 LIST_ENTRY LdrpTlsList;
 ULONG LdrpNumberOfTlsEntries;
-ULONG LdrpNumberOfProcessors;
-PVOID NtDllBase;
+
 extern LARGE_INTEGER RtlpTimeout;
-BOOLEAN RtlpTimeoutDisable;
 PVOID LdrpHeap;
-LIST_ENTRY LdrpHashTable[LDR_HASH_TABLE_ENTRIES];
-LIST_ENTRY LdrpDllNotificationList;
-HANDLE LdrpKnownDllObjectDirectory;
-UNICODE_STRING LdrpKnownDllPath;
-WCHAR LdrpKnownDllPathBuffer[128];
-UNICODE_STRING LdrpDefaultPath;
 
 PEB_LDR_DATA PebLdr;
 
@@ -74,22 +65,6 @@ extern BOOLEAN RtlpUse16ByteSLists;
 #endif
 
 /* FUNCTIONS *****************************************************************/
-
-static VOID LdrpInitFailure(NTSTATUS Status)
-{
-#if 0
-    ULONG Response;
-    PPEB Peb = NtCurrentPeb();
-
-    /* Print a debug message */
-    DPRINT1("LDR: Process initialization failure for %wZ; NTSTATUS = %08lx\n",
-	    &Peb->ProcessParameters->ImagePathName, Status);
-
-    /* Raise a hard error */
-    NtRaiseHardError(STATUS_APP_INIT_FAILURE, 1, 0,
-		     (PULONG_PTR) & Status, OptionOk, &Response);
-#endif
-}
 
 static NTSTATUS LdrpInitializeTls(VOID)
 {
@@ -463,8 +438,109 @@ Quickie:
 
 static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 {
+    /* Set a NULL SEH Filter */
+    RtlSetUnhandledExceptionFilter(NULL);
+
+    /* Set the critical section timeout from PEB */
+    PPEB Peb = NtCurrentPeb();
+    RtlpTimeout = Peb->CriticalSectionTimeout;
+
+    /* Get the Image Config Directory */
+    ULONG ConfigSize;
+    PIMAGE_LOAD_CONFIG_DIRECTORY LoadConfig = RtlImageDirectoryEntryToData(Peb->ImageBaseAddress, TRUE,
+									   IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG, &ConfigSize);
+
+    /* Setup the Process Heap Parameters */
+    RTL_HEAP_PARAMETERS ProcessHeapParams;    
+    RtlZeroMemory(&ProcessHeapParams, sizeof(RTL_HEAP_PARAMETERS));
+    ULONG ProcessHeapFlags = HEAP_GROWABLE;
+    ProcessHeapParams.Length = sizeof(RTL_HEAP_PARAMETERS);
+
+    /* Check if we have Configuration Data */
+#define VALID_CONFIG_FIELD(Name) (ConfigSize >= (FIELD_OFFSET(IMAGE_LOAD_CONFIG_DIRECTORY, Name) + sizeof(LoadConfig->Name)))
+    /* The 'original' load config ends after SecurityCookie */
+    if ((LoadConfig) && ConfigSize && (VALID_CONFIG_FIELD(SecurityCookie) || ConfigSize == LoadConfig->Size)) {
+	if (ConfigSize != sizeof(IMAGE_LOAD_CONFIG_DIRECTORY))
+	    DPRINT1("WARN: Accepting different LOAD_CONFIG size!\n");
+	else
+	    DPRINT1("Applying LOAD_CONFIG\n");
+
+	if (VALID_CONFIG_FIELD(GlobalFlagsSet) && LoadConfig->GlobalFlagsSet)
+	    Peb->NtGlobalFlag |= LoadConfig->GlobalFlagsSet;
+
+	if (VALID_CONFIG_FIELD(GlobalFlagsClear) && LoadConfig->GlobalFlagsClear)
+	    Peb->NtGlobalFlag &= ~LoadConfig->GlobalFlagsClear;
+
+	if (VALID_CONFIG_FIELD(CriticalSectionDefaultTimeout) && LoadConfig->CriticalSectionDefaultTimeout)
+	    RtlpTimeout.QuadPart = Int32x32To64(LoadConfig->CriticalSectionDefaultTimeout, -10000000);
+
+	if (VALID_CONFIG_FIELD(DeCommitFreeBlockThreshold) && LoadConfig->DeCommitFreeBlockThreshold)
+	    ProcessHeapParams.DeCommitFreeBlockThreshold = LoadConfig->DeCommitFreeBlockThreshold;
+
+	if (VALID_CONFIG_FIELD(DeCommitTotalFreeThreshold) && LoadConfig->DeCommitTotalFreeThreshold)
+	    ProcessHeapParams.DeCommitTotalFreeThreshold = LoadConfig->DeCommitTotalFreeThreshold;
+
+	if (VALID_CONFIG_FIELD(MaximumAllocationSize) && LoadConfig->MaximumAllocationSize)
+	    ProcessHeapParams.MaximumAllocationSize = LoadConfig->MaximumAllocationSize;
+
+	if (VALID_CONFIG_FIELD(VirtualMemoryThreshold) && LoadConfig->VirtualMemoryThreshold)
+	    ProcessHeapParams.VirtualMemoryThreshold = LoadConfig->VirtualMemoryThreshold;
+
+	if (VALID_CONFIG_FIELD(ProcessHeapFlags) && LoadConfig->ProcessHeapFlags)
+	    ProcessHeapFlags = LoadConfig->ProcessHeapFlags;
+    }
+
+    /* Initialize Critical Section Data */
+    LdrpInitCriticalSection(InitInfo->CriticalSectionLockSemaphore);
+
+    /* Initialize VEH Call lists */
+    RtlpInitializeVectoredExceptionHandling();
+
+    /* Set TLS/FLS Bitmap data */
+    Peb->FlsBitmap = &FlsBitMap;
+    Peb->TlsBitmap = &TlsBitMap;
+    Peb->TlsExpansionBitmap = &TlsExpansionBitMap;
+
+    /* Initialize FLS Bitmap */
+    RtlInitializeBitMap(&FlsBitMap, Peb->FlsBitmapBits, RTL_FLS_MAXIMUM_AVAILABLE);
+    RtlSetBit(&FlsBitMap, 0);
+    InitializeListHead(&Peb->FlsListHead);
+
+    /* Initialize TLS Bitmap */
+    RtlInitializeBitMap(&TlsBitMap, Peb->TlsBitmapBits, TLS_MINIMUM_AVAILABLE);
+    RtlSetBit(&TlsBitMap, 0);
+    RtlInitializeBitMap(&TlsExpansionBitMap, Peb->TlsExpansionBitmapBits, TLS_EXPANSION_SLOTS);
+    RtlSetBit(&TlsExpansionBitMap, 0);
+
+    /* Initialize the Loader Lock. TODO: Call NtCreateEvent on server side. */
+    RtlInitializeCriticalSection(&LdrpLoaderLock);
+
+    /* Check if User Stack Trace Database support was requested */
+    if (Peb->NtGlobalFlag & FLG_USER_STACK_TRACE_DB) {
+	DPRINT1("We don't support user stack trace databases yet\n");
+    }
+
+    /* Setup Fast PEB Lock. TODO: Call NtCreateEvent on server side. */
+    RtlInitializeCriticalSection(&FastPebLock);
+    Peb->FastPebLock = &FastPebLock;
+
+    /* For old executables, use 16-byte aligned heap */
+    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
+    if ((NtHeader->OptionalHeader.MajorSubsystemVersion <= 3) &&
+	(NtHeader->OptionalHeader.MinorSubsystemVersion < 51)) {
+	ProcessHeapFlags |= HEAP_CREATE_ALIGN_16;
+    }
+
+    /* Setup the process heap and the loader heap */
+    RET_ERR(LdrpInitializeHeapManager((PVOID) InitInfo->ProcessHeapStart,
+				      ProcessHeapFlags,
+				      InitInfo->ProcessHeapReserve,
+				      InitInfo->ProcessHeapCommit,
+				      &ProcessHeapParams,
+				      (PVOID) InitInfo->LoaderHeapStart));
+    LdrpHeap = (HANDLE) InitInfo->LoaderHeapStart;
+
 #if 0
-    RTL_HEAP_PARAMETERS HeapParameters;
     ULONG ComSectionSize;
     OBJECT_ATTRIBUTES ObjectAttributes;
     HANDLE SymLinkHandle;
@@ -472,15 +548,11 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     PPEB Peb = NtCurrentPeb();
     BOOLEAN FreeCurDir = FALSE;
     PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
-    ULONG ConfigSize;
     UNICODE_STRING CurrentDirectory;
     HANDLE OptionsKey;
-    ULONG HeapFlags;
-    PIMAGE_NT_HEADERS NtHeader;
     PWSTR NtDllName = NULL;
     NTSTATUS Status, ImportStatus;
     NLSTABLEINFO NlsTable;
-    PIMAGE_LOAD_CONFIG_DIRECTORY LoadConfig;
     PTEB Teb = NtCurrentTeb();
     PLIST_ENTRY ListHead;
     PLIST_ENTRY NextEntry;
@@ -491,9 +563,6 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     PWCHAR Current;
     ULONG ExecuteOptions = 0;
     PVOID ViewBase;
-
-    /* Set a NULL SEH Filter */
-    RtlSetUnhandledExceptionFilter(NULL);
 
     /* Get the image path */
     ImagePath = Peb->ProcessParameters->ImagePathName.Buffer;
@@ -509,9 +578,6 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     ImagePathName.MaximumLength = ImagePathName.Length + sizeof(WCHAR);
     ImagePathName.Buffer = ImagePath;
 
-    /* Get the NT Headers */
-    NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
-
     /* Check if this is a .NET executable */
     if (RtlImageDirectoryEntryToData(Peb->ImageBaseAddress, TRUE,
 				     IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR,
@@ -519,13 +585,6 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	DPRINT1("We don't support .NET applications yet\n");
 	return STATUS_NOT_IMPLEMENTED;
     }
-
-    /* Save the NTDLL Base address */
-    NtDllBase = SystemArgument1;
-
-    /* Save the number of processors and CS Timeout */
-    LdrpNumberOfProcessors = Peb->NumberOfProcessors;
-    RtlpTimeout = Peb->CriticalSectionTimeout;
 
     /* Normalize the parameters */
     ProcessParameters = RtlNormalizeProcessParams(Peb->ProcessParameters);
@@ -547,149 +606,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     /* Reset NLS Translations */
     RtlResetRtlTranslations(&NlsTable);
 
-    /* Get the Image Config Directory */
-    LoadConfig = RtlImageDirectoryEntryToData(Peb->ImageBaseAddress,
-					      TRUE,
-					      IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG,
-					      &ConfigSize);
 
-    /* Setup the Heap Parameters */
-    RtlZeroMemory(&HeapParameters, sizeof(HeapParameters));
-    HeapFlags = HEAP_GROWABLE;
-    HeapParameters.Length = sizeof(HeapParameters);
-
-    /* Check if we have Configuration Data */
-#define VALID_CONFIG_FIELD(Name) (ConfigSize >= (FIELD_OFFSET(IMAGE_LOAD_CONFIG_DIRECTORY, Name) + sizeof(LoadConfig->Name)))
-    /* The 'original' load config ends after SecurityCookie */
-    if ((LoadConfig) && ConfigSize && (VALID_CONFIG_FIELD(SecurityCookie) || ConfigSize == LoadConfig->Size)) {
-	if (ConfigSize != sizeof(IMAGE_LOAD_CONFIG_DIRECTORY))
-	    DPRINT1("WARN: Accepting different LOAD_CONFIG size!\n");
-	else
-	    DPRINT1("Applying LOAD_CONFIG\n");
-
-	if (VALID_CONFIG_FIELD(GlobalFlagsSet) && LoadConfig->GlobalFlagsSet)
-	    Peb->NtGlobalFlag |= LoadConfig->GlobalFlagsSet;
-
-	if (VALID_CONFIG_FIELD(GlobalFlagsClear) && LoadConfig->GlobalFlagsClear)
-	    Peb->NtGlobalFlag &= ~LoadConfig->GlobalFlagsClear;
-
-	if (VALID_CONFIG_FIELD(CriticalSectionDefaultTimeout) && LoadConfig->CriticalSectionDefaultTimeout)
-	    RtlpTimeout.QuadPart = Int32x32To64(LoadConfig->CriticalSectionDefaultTimeout, -10000000);
-
-	if (VALID_CONFIG_FIELD(DeCommitFreeBlockThreshold) && LoadConfig->DeCommitFreeBlockThreshold)
-	    HeapParameters.DeCommitFreeBlockThreshold = LoadConfig->DeCommitFreeBlockThreshold;
-
-	if (VALID_CONFIG_FIELD(DeCommitTotalFreeThreshold) && LoadConfig->DeCommitTotalFreeThreshold)
-	    HeapParameters.DeCommitTotalFreeThreshold = LoadConfig->DeCommitTotalFreeThreshold;
-
-	if (VALID_CONFIG_FIELD(MaximumAllocationSize) && LoadConfig->MaximumAllocationSize)
-	    HeapParameters.MaximumAllocationSize = LoadConfig->MaximumAllocationSize;
-
-	if (VALID_CONFIG_FIELD(VirtualMemoryThreshold) && LoadConfig->VirtualMemoryThreshold)
-	    HeapParameters.VirtualMemoryThreshold = LoadConfig->VirtualMemoryThreshold;
-
-	if (VALID_CONFIG_FIELD(ProcessHeapFlags) && LoadConfig->ProcessHeapFlags)
-	    HeapFlags = LoadConfig->ProcessHeapFlags;
-    }
-
-    /* Check for custom affinity mask */
-    if (Peb->ImageProcessAffinityMask) {
-	/* Set it */
-	Status = NtSetInformationProcess(NtCurrentProcess(),
-					 ProcessAffinityMask,
-					 &Peb->ImageProcessAffinityMask,
-					 sizeof(Peb->ImageProcessAffinityMask));
-    }
-
-    /* Check if verbose debugging (ShowSnaps) was requested */
-    ShowSnaps = Peb->NtGlobalFlag & FLG_SHOW_LDR_SNAPS;
-
-    /* Start verbose debugging messages right now if they were requested */
-    if (ShowSnaps) {
-	DPRINT1("LDR: PID: 0x%p started - '%wZ'\n",
-		Teb->ClientId.UniqueProcess, &CommandLine);
-    }
-
-    /* If the timeout is too long */
-    if (RtlpTimeout.QuadPart < Int32x32To64(3600, -10000000)) {
-	/* Then disable CS Timeout */
-	RtlpTimeoutDisable = TRUE;
-    }
-
-    /* Initialize Critical Section Data */
-    RtlpInitDeferedCriticalSection();
-
-    /* Initialize VEH Call lists */
-    RtlpInitializeVectoredExceptionHandling();
-
-    /* Set TLS/FLS Bitmap data */
-    Peb->FlsBitmap = &FlsBitMap;
-    Peb->TlsBitmap = &TlsBitMap;
-    Peb->TlsExpansionBitmap = &TlsExpansionBitMap;
-
-    /* Initialize FLS Bitmap */
-    RtlInitializeBitMap(&FlsBitMap, Peb->FlsBitmapBits, FLS_MAXIMUM_AVAILABLE);
-    RtlSetBit(&FlsBitMap, 0);
-    InitializeListHead(&Peb->FlsListHead);
-
-    /* Initialize TLS Bitmap */
-    RtlInitializeBitMap(&TlsBitMap, Peb->TlsBitmapBits, TLS_MINIMUM_AVAILABLE);
-    RtlSetBit(&TlsBitMap, 0);
-    RtlInitializeBitMap(&TlsExpansionBitMap, Peb->TlsExpansionBitmapBits, TLS_EXPANSION_SLOTS);
-    RtlSetBit(&TlsExpansionBitMap, 0);
-
-    /* Initialize the Hash Table */
-    for (i = 0; i < LDR_HASH_TABLE_ENTRIES; i++) {
-	InitializeListHead(&LdrpHashTable[i]);
-    }
-
-    /* Initialize the Loader Lock */
-    RtlInitializeCriticalSection(&LdrpLoaderLock);
-
-    /* Check if User Stack Trace Database support was requested */
-    if (Peb->NtGlobalFlag & FLG_USER_STACK_TRACE_DB) {
-	DPRINT1("We don't support user stack trace databases yet\n");
-    }
-
-    /* Setup Fast PEB Lock */
-    RtlInitializeCriticalSection(&FastPebLock);
-    Peb->FastPebLock = &FastPebLock;
-    //Peb->FastPebLockRoutine = (PPEBLOCKROUTINE)RtlEnterCriticalSection;
-    //Peb->FastPebUnlockRoutine = (PPEBLOCKROUTINE)RtlLeaveCriticalSection;
-
-    /* Setup Callout Lock and Notification list */
-    //RtlInitializeCriticalSection(&RtlpCalloutEntryLock);
-    InitializeListHead(&LdrpDllNotificationList);
-
-    /* For old executables, use 16-byte aligned heap */
-    if ((NtHeader->OptionalHeader.MajorSubsystemVersion <= 3) &&
-	(NtHeader->OptionalHeader.MinorSubsystemVersion < 51)) {
-	HeapFlags |= HEAP_CREATE_ALIGN_16;
-    }
-
-    /* Setup the Heap */
-    RtlInitializeHeapManager();
-    Peb->ProcessHeap = RtlCreateHeap(HeapFlags,
-				     NULL,
-				     NtHeader->OptionalHeader.
-				     SizeOfHeapReserve,
-				     NtHeader->OptionalHeader.
-				     SizeOfHeapCommit, NULL,
-				     &HeapParameters);
-
-    if (!Peb->ProcessHeap) {
-	DPRINT1("Failed to create process heap\n");
-	return STATUS_NO_MEMORY;
-    }
-
-    RtlZeroMemory(&HeapParameters, sizeof(HeapParameters));
-    HeapFlags = HEAP_GROWABLE | HEAP_CLASS_1;
-    HeapParameters.Length = sizeof(HeapParameters);
-    LdrpHeap = RtlCreateHeap(HeapFlags, 0, 0x10000, 0x6000, 0, &HeapParameters);
-    if (!LdrpHeap) {
-	DPRINT1("Failed to create loader private heap\n");
-	return STATUS_NO_MEMORY;
-    }
 
     /* Build the NTDLL Path */
     FullPath.Buffer = StringBuffer;
@@ -1003,12 +920,13 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     SystemDllTlsRegion[SYSTEMDLL_TLS_INDEX] = SystemDllTlsRegion;
     __sel4_ipc_buffer = IpcBuffer;
 
-    LARGE_INTEGER Timeout;
     PTEB Teb = NtCurrentTeb();
     NTSTATUS Status, LoaderStatus = STATUS_SUCCESS;
-    MEMORY_BASIC_INFORMATION MemoryBasicInfo;
     PPEB Peb = NtCurrentPeb();
-    NTDLL_PROCESS_INIT_INFO InitInfo;
+
+    /* At process startup the process init info is placed at the beginning
+     * of ipc buffer (for now. This might change later). */
+    NTDLL_PROCESS_INIT_INFO InitInfo = *((PNTDLL_PROCESS_INIT_INFO)(IpcBuffer));
 
     DPRINT("LdrpInitialize() %p/%p\n",
 	   NtCurrentTeb()->RealClientId.UniqueProcess,
@@ -1026,13 +944,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 
 	/* Initialize the Process */
 	LoaderStatus = LdrpInitializeProcess(&InitInfo);
-
-	/* Check for success and if MinimumStackCommit was requested */
-	if (NT_SUCCESS(LoaderStatus) && Peb->MinimumStackCommit) {
-	    /* Enforce the limit */
-	    //LdrpTouchThreadStack(Peb->MinimumStackCommit);
-	    UNIMPLEMENTED;
-	}
     } else {
 	/* Loader data is there... is this a fork() ? */
 	if (Peb->InheritedAddressSpace) {
@@ -1051,8 +962,18 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 
     /* Return */
     if (!NT_SUCCESS(LoaderStatus)) {
-	/* Fail */
-	LdrpInitFailure(LoaderStatus);
+	HARDERROR_RESPONSE Response;
+	PPEB Peb = NtCurrentPeb();
+
+	/* Print a debug message */
+	DPRINT1("LDR: Process initialization failure for %wZ; NTSTATUS = %08x\n",
+		&Peb->ProcessParameters->ImagePathName, LoaderStatus);
+
+	/* Send HARDERROR_MSG LPC message to CSRSS */
+	NtRaiseHardError(STATUS_APP_INIT_FAILURE, 1, 0,
+			 (PULONG_PTR) &LoaderStatus, OptionOk, &Response);
+
+	/* Raise a status to terminate the thread. */
 	RtlRaiseStatus(LoaderStatus);
     }
 }
