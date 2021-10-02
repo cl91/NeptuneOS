@@ -909,7 +909,8 @@ static VOID LdrpInitializeThread()
  * of IpcBuffer.
  */
 FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
-			     IN PPVOID SystemDllTlsRegion)
+			     IN PPVOID SystemDllTlsRegion,
+			     IN PTHREAD_START_ROUTINE StartAddress)
 {
     _tls_index = SYSTEMDLL_TLS_INDEX;
     SystemDllTlsRegion[SYSTEMDLL_TLS_INDEX] = SystemDllTlsRegion;
@@ -949,13 +950,9 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	}
     }
 
-    /* All done, test alert the thread */
-    NtTestAlert();
-
-    /* Return */
+    /* Bail out if initialization failed */
     if (!NT_SUCCESS(LoaderStatus)) {
 	HARDERROR_RESPONSE Response;
-	PPEB Peb = NtCurrentPeb();
 
 	/* Print a debug message */
 	DPRINT1("LDR: Process initialization failure for %wZ; NTSTATUS = %08x\n",
@@ -968,6 +965,12 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	/* Raise a status to terminate the thread. */
 	RtlRaiseStatus(LoaderStatus);
     }
+
+    /* Calls the entry point */
+    StartAddress(Peb);
+
+    /* The thread entry point should never return. Shutdown the thread if it does. */
+    RtlExitUserThread(STATUS_UNSUCCESSFUL);
 }
 
 /*

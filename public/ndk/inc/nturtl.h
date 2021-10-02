@@ -45,9 +45,6 @@ typedef struct _RTL_USER_PROCESS_INFORMATION {
  */
 typedef ULONG (NTAPI *PTHREAD_START_ROUTINE)(PVOID Parameter);
 
-typedef VOID (NTAPI *PRTL_BASE_PROCESS_START_ROUTINE)(PTHREAD_START_ROUTINE StartAddress,
-						      PVOID Parameter);
-
 /*
  * End of Exception List
  */
@@ -1100,6 +1097,9 @@ FORCEINLINE PPEB NtCurrentPeb(VOID)
 
 #define RtlGetCurrentPeb NtCurrentPeb
 
+/*
+ * Process entry point for Native executables
+ */
 NTAPI NTSYSAPI VOID RtlAcquirePebLock(VOID);
 
 NTAPI NTSYSAPI NTSTATUS

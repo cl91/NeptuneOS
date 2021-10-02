@@ -24,6 +24,7 @@ typedef struct _THREAD {
     struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;
     PIPC_ENDPOINT SystemServiceEndpoint;
+    MWORD EntryPoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
     MWORD TebClientAddr;
@@ -43,6 +44,7 @@ typedef struct _PROCESS {
     PFILE_OBJECT ImageFile;
     PSECTION ImageSection;
     MWORD ImageBaseAddress;
+    MWORD ImageEntryPoint;
     MWORD ImageVirtualSize;
     LIST_ENTRY ProcessListEntry;
     MWORD PebClientAddr;

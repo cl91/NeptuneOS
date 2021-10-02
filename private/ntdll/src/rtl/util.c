@@ -36,8 +36,7 @@ NTAPI PVOID RtlPcToFileHeader(IN PVOID PcValue,
     RtlEnterCriticalSection (NtCurrentPeb()->LoaderLock);
     ModuleListHead = &NtCurrentPeb()->LdrData->InLoadOrderModuleList;
     Entry = ModuleListHead->Flink;
-    while (Entry != ModuleListHead)
-    {
+    while (Entry != ModuleListHead) {
         Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 
         if ((ULONG_PTR)PcValue >= (ULONG_PTR)Module->DllBase &&
@@ -48,7 +47,7 @@ NTAPI PVOID RtlPcToFileHeader(IN PVOID PcValue,
         }
         Entry = Entry->Flink;
     }
-    RtlLeaveCriticalSection (NtCurrentPeb()->LoaderLock);
+    RtlLeaveCriticalSection(NtCurrentPeb()->LoaderLock);
 
     *BaseOfImage = ImageBase;
     return ImageBase;

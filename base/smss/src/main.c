@@ -12,7 +12,7 @@ static inline VOID LdrpDisplayString(PCWSTR String)
     NtDisplayString(&UnicodeString);
 }
 
-VOID NtProcessStartup(PPEB Peb)
+NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     LdrpDisplayString(L"Hello, world from NT client!\n");
     LdrpDisplayString(LdrpInitializedArray);

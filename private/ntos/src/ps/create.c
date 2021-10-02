@@ -239,6 +239,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	/* Populate the process init info used by ntdll on process startup */
 	/* TODO: We need to find a different place */
 	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
+	Thread->EntryPoint = Process->ImageEntryPoint;
     } else {
 	/* Allocate SystemDll TLS region */
 	assert(PspSystemDllTlsSubsection != NULL);
@@ -322,6 +323,7 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     assert(ImageVirtualSize != 0);
     Process->ImageBaseAddress = ImageBaseAddress;
     Process->ImageVirtualSize = ImageVirtualSize;
+    Process->ImageEntryPoint = (MWORD) Section->ImageSectionObject->ImageInformation.TransferAddress;
     Process->ImageSection = Section;
     Process->ImageFile = ImageFile;
 
