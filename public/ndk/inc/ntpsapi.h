@@ -187,6 +187,8 @@ typedef struct _TEB_ACTIVE_FRAME {
     PTEB_ACTIVE_FRAME_CONTEXT Context;
 } TEB_ACTIVE_FRAME, *PTEB_ACTIVE_FRAME;
 
+/* For ELF targets we need the packed attribute since clang puts extra spaces otherwise */
+#include <pshpack4.h>
 typedef struct _PEB {                                                 /* win32/win64 */
     BOOLEAN                          InheritedAddressSpace;             /* 000/000 */
     BOOLEAN                          ReadImageFileExecOptions;          /* 001/001 */
@@ -256,8 +258,8 @@ typedef struct _PEB {                                                 /* win32/w
     LIST_ENTRY                       FlsListHead;                       /* 210/328 */
     PRTL_BITMAP                      FlsBitmap;                         /* 218/338 */
     ULONG                            FlsBitmapBits[4];                  /* 21c/340 */
-} __attribute__((__packed__)) PEB, *PPEB;
-/* For ELF targets we need the packed attribute since clang puts extra spaces otherwise */
+} PEB, *PPEB;
+#include <poppack.h>
 
 typedef struct _EXCEPTION_REGISTRATION_RECORD {
     struct _EXCEPTION_REGISTRATION_RECORD *Next;
@@ -277,6 +279,7 @@ typedef struct _NT_TIB {
     struct _NT_TIB *Self;
 } NT_TIB, *PNT_TIB;
 
+#include <pshpack4.h>
 typedef struct _TEB {                                             /* win32/win64 */
     NT_TIB                       NtTib;                             /* 000/0000 */
     PVOID                        EnvironmentPointer;                /* 01c/0038 */
@@ -347,7 +350,8 @@ typedef struct _TEB {                                             /* win32/win64
     PVOID                        CurrentTransactionHandle;          /* fac/17b8 */
     TEB_ACTIVE_FRAME            *ActiveFrame;                       /* fb0/17c0 */
     PVOID                       *FlsData;                           /* fb4/17c8 */
-} __attribute__((__packed__)) TEB, *PTEB;
+} TEB, *PTEB;
+#include <poppack.h>
 
 /*
  * Process Information Structures for NtQueryProcessInformation

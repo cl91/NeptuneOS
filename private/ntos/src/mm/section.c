@@ -72,7 +72,7 @@ static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
  *  [1] Microsoft Corporation, "Microsoft Portable Executable and Common Object
  *      File Format Specification", revision 6.0 (February 1999)
  */
-#define DIE(...) { DbgTrace(__VA_ARGS__); return Status; }
+#define DIE(...) { DbgTrace(__VA_ARGS__); return STATUS_INVALID_IMAGE_FORMAT; }
 static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 				    IN ULONG FileBufferSize,
 				    IN PIMAGE_SECTION_OBJECT ImageSection)
@@ -80,59 +80,17 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     assert(FileBuffer);
     assert(FileBufferSize);
     assert(ImageSection != NULL);
+    /* Make sure we FileBuffer + FileBufferSize doesn't overflow */
     assert(Intsafe_CanOffsetPointer(FileBuffer, FileBufferSize));
 
-    /*
-     * DOS HEADER
-     */
-    PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER) FileBuffer;
-    NTSTATUS Status = STATUS_INVALID_IMAGE_NOT_MZ;
-    /* Image too small to be an MZ executable */
-    if (FileBufferSize < sizeof(IMAGE_DOS_HEADER)) {
-        DIE("Too small to be an MZ executable, size is 0x%x\n", FileBufferSize);
-    }
-    /* No MZ signature */
-    if (DosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
-        DIE("No MZ signature found, e_magic is %hX\n", DosHeader->e_magic);
-    }
+    PIMAGE_NT_HEADERS NtHeader = NULL;
+    RET_ERR(RtlpImageNtHeaderEx(RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK,
+				FileBuffer, FileBufferSize, &NtHeader));
+    assert(NtHeader != NULL);
 
-    /*
-     * NT HEADERS, which include COFF header and Optional header
-     */
-    Status = STATUS_INVALID_IMAGE_PROTECT;
-    /* Not a Windows executable */
-    if (DosHeader->e_lfanew <= 0) {
-        DIE("Not a Windows executable, e_lfanew is %d\n", DosHeader->e_lfanew);
-    }
-
-    /* Make sure we have read the whole COFF header into memory. */
-    ULONG OptHeaderOffset = 0;	/* File offset of optional header */
-    if (!Intsafe_AddULong32(&OptHeaderOffset, DosHeader->e_lfanew,
-			    RTL_SIZEOF_THROUGH_FIELD(IMAGE_NT_HEADERS, FileHeader))) {
-        DIE("The DOS stub is too large, e_lfanew is %X\n", DosHeader->e_lfanew);
-    }
-    /* The buffer doesn't contain all of COFF headers: read it from the file */
-    if (FileBufferSize < OptHeaderOffset) {
-	return STATUS_NOT_IMPLEMENTED;
-    }
-
-    /*
-     * We already know that Intsafe_CanOffsetPointer(FileBuffer, FileBufferSize),
-     * and FileBufferSize >= OptHeaderOffset, so this holds true too.
-     */
-    assert(Intsafe_CanOffsetPointer(FileBuffer, DosHeader->e_lfanew));
-    PIMAGE_NT_HEADERS NtHeader = (PIMAGE_NT_HEADERS)
-	((ULONG_PTR)FileBuffer + DosHeader->e_lfanew);
-
-    /* Validate PE signature */
-    Status = STATUS_INVALID_IMAGE_PROTECT;
-    if (NtHeader->Signature != IMAGE_NT_SIGNATURE) {
-	DIE("The file isn't a PE executable, Signature is %X\n", NtHeader->Signature);
-    }
-
-    Status = STATUS_INVALID_IMAGE_FORMAT;
     PIMAGE_OPTIONAL_HEADER OptHeader = &NtHeader->OptionalHeader;
     ULONG OptHeaderSize = NtHeader->FileHeader.SizeOfOptionalHeader;
+    ULONG OptHeaderOffset = (MWORD) OptHeader - (MWORD) FileBuffer;
 
     /* Make sure we have read the whole optional header into memory. */
     ULONG SectionHeadersOffset = 0; /* File offset of beginning of section header table */
@@ -145,7 +103,6 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
 
     /* Read information from the optional header */
-    Status = STATUS_INVALID_IMAGE_FORMAT;
     if (!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, Magic)) {
         DIE("The optional header does not contain the Magic field,"
 	    " SizeOfOptionalHeader is %X\n", OptHeaderSize);
@@ -252,9 +209,8 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
     /*
      * SECTION HEADERS
+     * See [1], section 3.3
      */
-    Status = STATUS_INVALID_IMAGE_FORMAT;
-    /* See [1], section 3.3 */
     if (NtHeader->FileHeader.NumberOfSections > 96) {
         DIE("Too many sections, NumberOfSections is %u\n",
 	    NtHeader->FileHeader.NumberOfSections);
@@ -294,7 +250,6 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
      *
      * See [1], section 4
      */
-    Status = STATUS_INVALID_IMAGE_FORMAT;
     MWORD PreviousSectionEnd = ALIGN_UP_BY(AllHeadersSize, SectionAlignment);
     for (ULONG i = 0; i < NtHeader->FileHeader.NumberOfSections; i++) {
         ULONG Characteristics;
@@ -345,9 +300,8 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
     /*
      * Parse the section headers and allocate SUBSECTIONS for the image section object.
+     * One additional subsection (the zeroth subsection) is for the image headers.
      */
-    Status = STATUS_INSUFFICIENT_RESOURCES;
-    /* One additional subsection for the image headers. */
     LONG NumSubSections = NtHeader->FileHeader.NumberOfSections + 1;
     MiAllocateArray(SubSectionsArray, PSUBSECTION, NumSubSections, {});
     for (LONG i = 0; i < NumSubSections; i++) {

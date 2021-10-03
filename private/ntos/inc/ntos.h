@@ -7,8 +7,8 @@
 #include <compile_assert.h>
 #include <string.h>
 #include <gnu.h>
-
 #include <debug.h>
+#include <image.h>
 
 #include "ntosdef.h"
 #include "ob.h"
