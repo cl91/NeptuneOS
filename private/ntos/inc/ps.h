@@ -49,6 +49,8 @@ typedef struct _PROCESS {
     LIST_ENTRY ProcessListEntry;
     MWORD PebClientAddr;
     MWORD PebServerAddr;
+    MWORD LoaderSharedDataClientAddr;
+    MWORD LoaderSharedDataServerAddr;
     NTDLL_PROCESS_INIT_INFO InitInfo;
 } PROCESS, *PPROCESS;
 

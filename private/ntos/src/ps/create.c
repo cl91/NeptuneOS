@@ -1,24 +1,5 @@
 #include "psp.h"
 
-static inline NTSTATUS PspReservePebOrTebServerRegion(IN MWORD RegionSize,
-						      OUT PMMVAD *pVad)
-{
-    return MmReserveVirtualMemory(EX_PEB_TEB_REGION_START,
-				  EX_PEB_TEB_REGION_END,
-				  RegionSize,
-				  MEM_RESERVE_OWNED_MEMORY,
-				  pVad);
-}
-
-static inline NTSTATUS PspReserveIpcBufferServerRegion(OUT PMMVAD *pVad)
-{
-    return MmReserveVirtualMemory(EX_IPC_BUFFER_REGION_START,
-				  EX_IPC_BUFFER_REGION_END,
-				  IPC_BUFFER_RESERVE,
-				  MEM_RESERVE_OWNED_MEMORY,
-				  pVad);
-}
-
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
 				   IN PCNODE CNode,
@@ -161,6 +142,34 @@ VOID PspPopulatePeb(IN PPROCESS Process)
     Peb->ProcessHeaps = (PPVOID)(Process->PebClientAddr + sizeof(PEB));
 }
 
+static inline NTSTATUS PspMapSharedRegion(IN PPROCESS Process,
+					  IN MWORD ServerStart,
+					  IN MWORD ServerEnd,
+					  IN MWORD ReserveSize,
+					  IN MWORD CommitSize,
+					  IN MWORD ClientStart,
+					  IN MWORD ClientEnd,
+					  IN MWORD ClientReserveFlag,
+					  OUT PMMVAD *ServerVad,
+					  OUT PMMVAD *ClientVad)
+{
+    RET_ERR(MmReserveVirtualMemory(ServerStart, ServerEnd, ReserveSize,
+				   MEM_RESERVE_OWNED_MEMORY, ServerVad));
+    assert(*ServerVad != NULL);
+    assert((*ServerVad)->AvlNode.Key != 0);
+    RET_ERR(MmCommitVirtualMemory((*ServerVad)->AvlNode.Key, ReserveSize));
+
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, ClientStart, ClientEnd,
+				     ReserveSize, MEM_RESERVE_MIRRORED_MEMORY | ClientReserveFlag,
+				     ClientVad));
+    assert(*ClientVad != NULL);
+    assert((*ClientVad)->AvlNode.Key != 0);
+    MmRegisterMirroredMemory(*ClientVad, *ServerVad, 0);
+    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, (*ClientVad)->AvlNode.Key, CommitSize, 0));
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread)
 {
@@ -183,22 +192,19 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     Thread->Process = Process;
 
     PMMVAD ServerIpcBufferVad = NULL;
-    RET_ERR_EX(PspReserveIpcBufferServerRegion(&ServerIpcBufferVad),
-	       ObDeleteObject(Thread));
-    RET_ERR_EX(MmCommitVirtualMemory(ServerIpcBufferVad->AvlNode.Key,
-				     IPC_BUFFER_COMMIT),
+    PMMVAD ClientIpcBufferVad = NULL;
+    RET_ERR_EX(PspMapSharedRegion(Process,
+				  EX_IPC_BUFFER_REGION_START,
+				  EX_IPC_BUFFER_REGION_END,
+				  IPC_BUFFER_RESERVE,
+				  IPC_BUFFER_COMMIT,
+				  IPC_BUFFER_START,
+				  IPC_BUFFER_END,
+				  0,
+				  &ServerIpcBufferVad,
+				  &ClientIpcBufferVad),
 	       ObDeleteObject(Thread));
     Thread->IpcBufferServerAddr = ServerIpcBufferVad->AvlNode.Key;
-    PMMVAD ClientIpcBufferVad = NULL;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START, IPC_BUFFER_END,
-					IPC_BUFFER_RESERVE, MEM_RESERVE_MIRRORED_MEMORY,
-					&ClientIpcBufferVad),
-	       ObDeleteObject(Thread));
-    assert(ClientIpcBufferVad != NULL);
-    MmRegisterMirroredMemory(ClientIpcBufferVad, ServerIpcBufferVad, 0);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientIpcBufferVad->AvlNode.Key,
-				       ServerIpcBufferVad->OwnedMemory.CommitmentSize, 0),
-	       ObDeleteObject(Thread));
     Thread->IpcBufferClientAddr = ClientIpcBufferVad->AvlNode.Key;
 
     PPAGING_STRUCTURE IpcBufferClientPage = MmQueryPage(&Process->VSpace,
@@ -237,7 +243,6 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	Thread->SystemDllTlsBase = PspSystemDllTlsSubsection->ImageSection->ImageBase +
 	    PspSystemDllTlsSubsection->SubSectionBase;
 	/* Populate the process init info used by ntdll on process startup */
-	/* TODO: We need to find a different place */
 	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
 	Thread->EntryPoint = Process->ImageEntryPoint;
     } else {
@@ -258,21 +263,19 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 
     /* Allocate and populate the Thread Environment Block */
     PMMVAD ServerTebVad = NULL;
-    RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(TEB), &ServerTebVad),
-	       ObDeleteObject(Thread));
-    RET_ERR_EX(MmCommitVirtualMemory(ServerTebVad->AvlNode.Key, sizeof(TEB)),
+    PMMVAD ClientTebVad = NULL;
+    RET_ERR_EX(PspMapSharedRegion(Process,
+				  EX_PEB_TEB_REGION_START,
+				  EX_PEB_TEB_REGION_END,
+				  sizeof(TEB),
+				  sizeof(TEB),
+				  WIN32_TEB_START,
+				  WIN32_TEB_END,
+				  MEM_RESERVE_TOP_DOWN,
+				  &ServerTebVad,
+				  &ClientTebVad),
 	       ObDeleteObject(Thread));
     Thread->TebServerAddr = ServerTebVad->AvlNode.Key;
-    PMMVAD ClientTebVad = NULL;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_TEB_START, WIN32_TEB_END, sizeof(TEB),
-					MEM_RESERVE_MIRRORED_MEMORY | MEM_RESERVE_TOP_DOWN,
-					&ClientTebVad),
-	       ObDeleteObject(Thread));
-    assert(ClientTebVad != NULL);
-    MmRegisterMirroredMemory(ClientTebVad, ServerTebVad, 0);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientTebVad->AvlNode.Key,
-				       sizeof(TEB), 0),
-	       ObDeleteObject(Thread));
     Thread->TebClientAddr = ClientTebVad->AvlNode.Key;
     /* Populate the Thread Environment Block */
     PspPopulateTeb(Thread);
@@ -293,6 +296,70 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS PspPopulateLoaderSharedData(IN PPROCESS Process,
+						   IN OUT MWORD *LoaderDataOffset,
+						   IN PCSTR DllPath,
+						   IN MWORD ImageBase)
+{
+    SIZE_T DllPathLength = strlen(DllPath);
+    if (*LoaderDataOffset + sizeof(LDRP_LOADED_MODULE) + DllPathLength >= LOADER_SHARED_DATA_COMMIT) {
+	return STATUS_NO_MEMORY;
+    }
+    PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)(Process->LoaderSharedDataServerAddr + *LoaderDataOffset);
+    LoadedModule->DllPath = *LoaderDataOffset + sizeof(LDRP_LOADED_MODULE);
+    LoadedModule->ImageBase = ImageBase;
+    PUCHAR DllPathCopy = (PUCHAR)(Process->LoaderSharedDataServerAddr + LoadedModule->DllPath);
+    memcpy(DllPathCopy, DllPath, DllPathLength + 1); /* trailing '\0' */
+    *LoaderDataOffset += sizeof(LDRP_LOADED_MODULE) + DllPathLength + 1; /* trailing '\0' */
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Search the given dll name in the process's PATH and map the dll if found.
+ * Write the loader shared data and return the dll file object.
+ *
+ * If the dll is already mapped, nothing will be done, and DllFile will be
+ * set to NULL.
+ */
+static NTSTATUS PspMapDll(IN PPROCESS Process,
+			  IN OUT MWORD *LoaderDataOffset,
+			  IN PCSTR DllName,
+			  OUT PFILE_OBJECT *DllFile)
+{
+    DbgTrace("DllName = %s\n", DllName);
+    if (!strcmp("ntdll.dll", DllName) || !strcmp("ntdll", DllName)) {
+	*DllFile = NULL;
+	return STATUS_SUCCESS;
+    }
+    /* TODO: Actually read and map the dll file */
+    /* TODO: Call PspPopulateLoaderSharedData once done */
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspMapDependencies(IN PPROCESS Process,
+				   IN OUT MWORD *LoaderDataOffset,
+				   IN PVOID DllFileBuffer)
+{
+    SIZE_T ImportTableSize = 0;
+    PIMAGE_IMPORT_DESCRIPTOR ImportTable =
+	RtlImageDirectoryEntryToData(DllFileBuffer, FALSE,
+				     IMAGE_DIRECTORY_ENTRY_IMPORT,
+				     &ImportTableSize);
+    DbgTrace("ImportTableSize = 0x%zx\n", ImportTableSize);
+    SIZE_T ImportDescriptorCount = ImportTableSize / sizeof(IMAGE_IMPORT_DESCRIPTOR);
+    for (ULONG i = 0; i < ImportDescriptorCount; i++) {
+	if (ImportTable[i].Name != 0) {
+	    PCSTR DllName = RtlImageRvaToPtr(DllFileBuffer, ImportTable[i].Name);
+	    PFILE_OBJECT DllFile = NULL;
+	    RET_ERR(PspMapDll(Process, LoaderDataOffset, DllName, &DllFile));
+	    if (DllFile != NULL) {
+		RET_ERR(PspMapDependencies(Process, LoaderDataOffset, DllFile->BufferPtr));
+	    }
+	}
+    }
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
 			 OUT PPROCESS *pProcess)
 {
@@ -302,9 +369,11 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     PPROCESS Process = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process));
 
+    MWORD NtdllBase = 0;
     RET_ERR_EX(MmMapViewOfSection(&Process->VSpace, PspSystemDllSection,
-				  NULL, NULL, NULL),
+				  &NtdllBase, NULL, NULL),
 	       ObDeleteObject(Process));
+    assert(NtdllBase != 0);
 
     PSECTION Section = NULL;
     RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
@@ -363,24 +432,19 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
 
     /* Map and initialize the Process Environment Block */
     PMMVAD ServerPebVad = NULL;
-    RET_ERR_EX(PspReservePebOrTebServerRegion(sizeof(PEB), &ServerPebVad),
-	       ObDeleteObject(Process));
-    assert(ServerPebVad != NULL);
-    RET_ERR_EX(MmCommitVirtualMemory(ServerPebVad->AvlNode.Key, sizeof(PEB)),
+    PMMVAD ClientPebVad = NULL;
+    RET_ERR_EX(PspMapSharedRegion(Process,
+				  EX_PEB_TEB_REGION_START,
+				  EX_PEB_TEB_REGION_END,
+				  sizeof(PEB),
+				  sizeof(PEB),
+				  WIN32_PEB_START,
+				  0, 0,
+				  &ServerPebVad,
+				  &ClientPebVad),
 	       ObDeleteObject(Process));
     Process->PebServerAddr = ServerPebVad->AvlNode.Key;
-    assert(Process->PebServerAddr);
-    PMMVAD ClientPebVad = NULL;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, WIN32_PEB_START, 0, sizeof(PEB),
-					MEM_RESERVE_MIRRORED_MEMORY, &ClientPebVad),
-	       ObDeleteObject(Process));
-    assert(ClientPebVad != NULL);
-    MmRegisterMirroredMemory(ClientPebVad, ServerPebVad, 0);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ClientPebVad->AvlNode.Key,
-				       sizeof(PEB), 0),
-	       ObDeleteObject(Process));
     Process->PebClientAddr = ClientPebVad->AvlNode.Key;
-    assert(Process->PebClientAddr);
     /* Populate the Process Environment Block */
     PspPopulatePeb(Process);
 
@@ -396,6 +460,31 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     MmRegisterMirroredMemory(ClientSharedDataVad, PspUserSharedDataVad, 0);
     RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
 				       sizeof(KUSER_SHARED_DATA), 0),
+	       ObDeleteObject(Process));
+
+    /* Map the loader shared data */
+    PMMVAD ServerLoaderSharedDataVad = NULL;
+    PMMVAD ClientLoaderSharedDataVad = NULL;
+    RET_ERR_EX(PspMapSharedRegion(Process,
+				  EX_LOADER_SHARED_REGION_START,
+				  EX_LOADER_SHARED_REGION_END,
+				  LOADER_SHARED_DATA_RESERVE,
+				  LOADER_SHARED_DATA_COMMIT,
+				  LOADER_SHARED_DATA_CLIENT_ADDR,
+				  0, 0,
+				  &ServerLoaderSharedDataVad,
+				  &ClientLoaderSharedDataVad),
+	       ObDeleteObject(Process));
+    Process->LoaderSharedDataServerAddr = ServerLoaderSharedDataVad->AvlNode.Key;
+    Process->LoaderSharedDataClientAddr = ClientLoaderSharedDataVad->AvlNode.Key;
+
+    /* Walk the import table and map the dependencies recursively */
+    PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA) Process->LoaderSharedDataServerAddr;
+    MWORD LoaderDataOffset = sizeof(LOADER_SHARED_DATA);
+    RET_ERR_EX(PspPopulateLoaderSharedData(Process, &LoaderDataOffset,
+					   "ntdll.dll", NtdllBase),
+	       ObDeleteObject(Process));
+    RET_ERR_EX(PspMapDependencies(Process, &LoaderDataOffset, ImageFile->BufferPtr),
 	       ObDeleteObject(Process));
 
     /* Create the Event objects used by the NTDLL ldr component */

@@ -920,10 +920,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     NTSTATUS Status, LoaderStatus = STATUS_SUCCESS;
     PPEB Peb = NtCurrentPeb();
 
-    /* At process startup the process init info is placed at the beginning
-     * of ipc buffer (for now. This might change later). */
-    NTDLL_PROCESS_INIT_INFO InitInfo = *((PNTDLL_PROCESS_INIT_INFO)(IpcBuffer));
-
     DPRINT("LdrpInitialize() %p/%p\n",
 	   NtCurrentTeb()->RealClientId.UniqueProcess,
 	   NtCurrentTeb()->RealClientId.UniqueThread);
@@ -935,6 +931,11 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 
     /* Check if we have already setup LDR data */
     if (!Peb->LdrData) {
+	/* At process startup the process init info is placed at the beginning
+	 * of the ipc buffer. */
+	NTDLL_PROCESS_INIT_INFO InitInfo = *((PNTDLL_PROCESS_INIT_INFO)(IpcBuffer));
+	/* Now that the init info has been copied to the stack, clear the original. */
+	memset(IpcBuffer, 0, sizeof(NTDLL_PROCESS_INIT_INFO));
 	/* Initialize the Process */
 	LoaderStatus = LdrpInitializeProcess(&InitInfo);
     } else {
@@ -950,7 +951,7 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	}
     }
 
-    /* Bail out if initialization failed */
+    /* Bail out if initialization has failed */
     if (!NT_SUCCESS(LoaderStatus)) {
 	HARDERROR_RESPONSE Response;
 

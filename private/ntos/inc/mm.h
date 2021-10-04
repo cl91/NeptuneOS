@@ -14,12 +14,9 @@
 #define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
 #define LARGE_PAGE_SIZE			(1ULL << LARGE_PAGE_LOG2SIZE)
 
-#define PAGE_ALIGN(p)			((MWORD)(p) & ~(PAGE_SIZE - 1))
-#define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define IS_LARGE_PAGE_ALIGNED(p)	(((MWORD)(p)) == LARGE_PAGE_ALIGN(p))
-#define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
 
 #define ROOT_CNODE_CAP			(seL4_CapInitThreadCNode)
 #define ROOT_VSPACE_CAP			(seL4_CapInitThreadVSpace)

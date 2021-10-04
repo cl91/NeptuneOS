@@ -699,6 +699,11 @@ static NTSTATUS MiCommitSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
 	return STATUS_NOT_COMMITTED;
     }
 
+    PPAGING_STRUCTURE ViewerPage = MiQueryVirtualAddress(ViewerVSpace, ViewerAddr);
+    if (ViewerPage != NULL && MiPagingTypeIsPageOrLargePage(ViewerPage->Type)) {
+	return STATUS_ALREADY_COMMITTED;
+    }
+
     PPAGING_STRUCTURE NewPage = NULL;
     RET_ERR(MiCreateSharedPage(Page, ViewerVSpace, ViewerAddr,
 			       NewRights, &NewPage));

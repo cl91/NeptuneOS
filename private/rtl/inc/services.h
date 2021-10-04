@@ -11,6 +11,9 @@ typedef seL4_Word MWORD;
 
 #define PAGE_LOG2SIZE			(seL4_PageBits)
 #define PAGE_SIZE			(1ULL << PAGE_LOG2SIZE)
+#define PAGE_ALIGN(p)			((MWORD)(p) & ~(PAGE_SIZE - 1))
+#define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
+#define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
 
 /* All hard-coded capability slots in the client processes' CSpace go here. */
 #define SYSSVC_IPC_CAP			(0x1)
@@ -19,23 +22,33 @@ typedef seL4_Word MWORD;
 #define LOWEST_USER_ADDRESS		(0x00010000UL)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000UL)
-#define WIN32_TEB_START			(0x70000000UL)
-#define WIN32_TEB_END			(0x7ffdf000UL)
+#define WIN32_TEB_START			(0xb0000000UL)
+#define WIN32_TEB_END			(0xbffdf000UL)
 #define WIN32_PEB_START			(WIN32_TEB_END)
-#define HIGHEST_USER_ADDRESS		(0x7ffeffffUL)
 /* Size of system dll tls region per thread is determined by the size
  * of the .tls section of the NTDLL.DLL image. */
-#define SYSTEM_DLL_TLS_REGION_START	(0x80010000UL)
-#define SYSTEM_DLL_TLS_REGION_END	(0xaff00000UL)
+#define SYSTEM_DLL_TLS_REGION_START	(0xc0010000UL)
+#define SYSTEM_DLL_TLS_REGION_END	(0xcff00000UL)
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
-#define IPC_BUFFER_START		(0xb0000000UL)
-#define IPC_BUFFER_END			(0xbfff0000UL)
+#define IPC_BUFFER_START		(0xd0000000UL)
+#define IPC_BUFFER_END			(0xdfff0000UL)
 /* We cannot put the KUSER_SHARED_DATA in the usual place (0xFFDF0000 in i386
  * or 0xFFFFF780`00000000 in amd64) so we will settle for IPC_BUFFER_END */
 #define KUSER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
+#define LOADER_SHARED_DATA_CLIENT_ADDR	(KUSER_SHARED_DATA_CLIENT_ADDR + PAGE_ALIGN_UP(sizeof(KUSER_SHARED_DATA)))
+#define USER_ADDRESS_END		(0xe0000000UL)
+#define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
+
+#if KUSER_SHARED_DATA_CLIENT_ADDR >= USER_ADDRESS_END
+#error "User shared data must be within user address space"
+#endif
+
+compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DATA_CLIENT_ADDR >= PAGE_SIZE);
 
 #define IPC_BUFFER_RESERVE		(16 * PAGE_SIZE)
 #define IPC_BUFFER_COMMIT		(PAGE_SIZE)
+#define LOADER_SHARED_DATA_RESERVE	(USER_ADDRESS_END - LOADER_SHARED_DATA_CLIENT_ADDR)
+#define LOADER_SHARED_DATA_COMMIT	(PAGE_SIZE)
 
 /* Private heap reserved for the Ldr component of NTDLL */
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
@@ -54,6 +67,24 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     HANDLE ProcessHeapLockSemaphore;
     HANDLE LoaderHeapLockSemaphore;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
+
+/*
+ * Shared data structure between the NTOS server and the NTDLL loader
+ * component.
+ */
+typedef struct _LDRP_LOADED_MODULE {
+    MWORD DllPath; /* Offset to the string of the full path of the dll file */
+    MWORD ImageBase; /* Client address at which the dll is loaded */
+} LDRP_LOADED_MODULE, *PLDRP_LOADED_MODULE;
+
+/*
+ * Per-process equivalent of KUSER_SHARED_DATA. This has the same function
+ * as Win32 PEB, except that we don't expose it to the public headers.
+ */
+typedef struct _LOADER_SHARED_DATA {
+    MWORD LoadedModuleCount;
+    LDRP_LOADED_MODULE LoadedModules[];
+} LOADER_SHARED_DATA, *PLOADER_SHARED_DATA;
 
 #if seL4_PageBits <= seL4_IPCBufferSizeBits
 #error "seL4 IPC Buffer too large (must be no larger than half of a 4K page)"
