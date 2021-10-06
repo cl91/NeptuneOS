@@ -522,7 +522,7 @@ static NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
     /* Map it */
     Status = LdrpMapDll(ImportName, TRUE, DataTableEntry);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("LDR: LdrpMapDll failed with status %x for dll %wZ\n",
+	DPRINT1("LDR: LdrpMapDll failed with status %x for dll %s\n",
 		Status, ImportName);
 	goto done;
     }
@@ -899,8 +899,7 @@ static NTSTATUS LdrpGetProcedureAddress(IN PVOID BaseAddress,
 
     if (!ExportDir) {
 	DPRINT1("Image %wZ has no exports, but were trying to get procedure %Z. BaseAddress asked 0x%p, got entry BA 0x%p\n",
-		&LdrEntry->BaseDllName, Name, BaseAddress,
-		LdrEntry->DllBase);
+		&LdrEntry->BaseDllName, Name, BaseAddress, LdrEntry->DllBase);
 	Status = STATUS_PROCEDURE_NOT_FOUND;
 	goto Quickie;
     }
@@ -1360,8 +1359,7 @@ NTSTATUS LdrpWalkImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
     PIMAGE_BOUND_IMPORT_DESCRIPTOR BoundEntry = NULL;
     ULONG BoundTableSize = 0, ImportTableSize = 0;
 
-    DbgTrace("Walking import table (%ws %p)\n",
-	     LdrEntry->BaseDllName.Buffer, LdrEntry);
+    DbgTrace("Walking import table (%wZ %p)\n", &LdrEntry->BaseDllName, LdrEntry);
 
     /* Check if we were redirected */
     if (!(LdrEntry->Flags & LDRP_REDIRECTED)) {

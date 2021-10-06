@@ -604,7 +604,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     LdrpImageEntry->FullDllName = ImageFileName;
 
     /* Check if the name is empty */
-    if (!ImageFileName.Buffer[0]) {
+    if (ImageFileName.Buffer == NULL || ImageFileName.Buffer[0] != 0) {
 	/* Use the same Base name */
 	LdrpImageEntry->BaseDllName = LdrpImageEntry->FullDllName;
     } else {
@@ -618,7 +618,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	    }
 	}
 	/* Did we find anything? */
-	if (!ImageBaseName) {
+	if (ImageBaseName == NULL) {
 	    /* Use the same Base name */
 	    LdrpImageEntry->BaseDllName = LdrpImageEntry->FullDllName;
 	} else {

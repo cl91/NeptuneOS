@@ -285,35 +285,38 @@ int num_to_str(char *buf, int size, unsigned long long num, unsigned int width)
 #define ZEROPAD	16		/* pad with zero, must be 16 == '0' - ' ' */
 #define SMALL	32		/* use lowercase in hex (must be 32 == 0x20) */
 #define SPECIAL	64		/* prefix hex with "0x", octal with "0" */
+#define WIDE	128		/* UNICODE_STRING instead of ANSI_STRING */
 
 enum format_type {
-		  FORMAT_TYPE_NONE, /* Just a string part */
-		  FORMAT_TYPE_WIDTH,
-		  FORMAT_TYPE_PRECISION,
-		  FORMAT_TYPE_CHAR,
-		  FORMAT_TYPE_STR,
-		  FORMAT_TYPE_PTR,
-		  FORMAT_TYPE_PERCENT_CHAR,
-		  FORMAT_TYPE_INVALID,
-		  FORMAT_TYPE_LONG_LONG,
-		  FORMAT_TYPE_ULONG,
-		  FORMAT_TYPE_LONG,
-		  FORMAT_TYPE_UBYTE,
-		  FORMAT_TYPE_BYTE,
-		  FORMAT_TYPE_USHORT,
-		  FORMAT_TYPE_SHORT,
-		  FORMAT_TYPE_UINT,
-		  FORMAT_TYPE_INT,
-		  FORMAT_TYPE_SIZE_T,
-		  FORMAT_TYPE_PTRDIFF
+    FORMAT_TYPE_NONE, /* Just a string part */
+    FORMAT_TYPE_WIDTH,
+    FORMAT_TYPE_PRECISION,
+    FORMAT_TYPE_CHAR,
+    FORMAT_TYPE_STR,
+    FORMAT_TYPE_PTR,
+    FORMAT_TYPE_PERCENT_CHAR,
+    FORMAT_TYPE_INVALID,
+    FORMAT_TYPE_LONG_LONG,
+    FORMAT_TYPE_ULONG,
+    FORMAT_TYPE_LONG,
+    FORMAT_TYPE_UBYTE,
+    FORMAT_TYPE_BYTE,
+    FORMAT_TYPE_USHORT,
+    FORMAT_TYPE_SHORT,
+    FORMAT_TYPE_UINT,
+    FORMAT_TYPE_INT,
+    FORMAT_TYPE_SIZE_T,
+    FORMAT_TYPE_PTRDIFF,
+    FORMAT_TYPE_ANSI_STRING,
+    FORMAT_TYPE_UNICODE_STRING
 };
 
 struct printf_spec {
-    unsigned int	type:8;		/* format_type enum */
-    signed int	field_width:24;	/* width of output field */
-    unsigned int	flags:8;	/* flags to number() */
-    unsigned int	base:8;		/* number base, 8, 10 or 16 only */
-    signed int	precision:16;	/* # of digits/chars */
+    unsigned int type:8;	/* format_type enum */
+    signed int field_width:24;	/* width of output field */
+    unsigned int flags:8;	/* flags to number() */
+    unsigned int base:8;	/* number base, 8, 10 or 16 only */
+    signed int precision:16;	/* # of digits/chars */
 } __packed;
 
 #define FIELD_WIDTH_MAX ((1 << 23) - 1)
@@ -638,6 +641,11 @@ static int format_decode(const char *fmt, struct printf_spec *spec)
 	}
     }
 
+    if (*fmt == 'w') {
+	spec->flags |= WIDE;
+	qualifier = *fmt++;
+    }
+
     /* default base */
     spec->base = 10;
     switch (*fmt) {
@@ -656,6 +664,10 @@ static int format_decode(const char *fmt, struct printf_spec *spec)
     case '%':
 	spec->type = FORMAT_TYPE_PERCENT_CHAR;
 	return ++fmt - start;
+
+    case 'Z':
+	spec->type = FORMAT_TYPE_ANSI_STRING;
+	break;
 
 	/* integer number formats - set up the flags and "break" */
     case 'o':
@@ -704,6 +716,8 @@ static int format_decode(const char *fmt, struct printf_spec *spec)
     } else if (qualifier == 'h') {
 	BUILD_BUG_ON(FORMAT_TYPE_USHORT + SIGN != FORMAT_TYPE_SHORT);
 	spec->type = FORMAT_TYPE_USHORT + (spec->flags & SIGN);
+    } else if (qualifier == 'w') {
+	spec->type = FORMAT_TYPE_UNICODE_STRING;
     } else {
 	BUILD_BUG_ON(FORMAT_TYPE_UINT + SIGN != FORMAT_TYPE_INT);
 	spec->type = FORMAT_TYPE_UINT + (spec->flags & SIGN);
@@ -714,8 +728,7 @@ static int format_decode(const char *fmt, struct printf_spec *spec)
 
 #define clamp(x,min,max) ((x)>(max) ? (max) : ((x)<(min) ? (min) : (x)))
 
-static void
-set_field_width(struct printf_spec *spec, int width)
+static void set_field_width(struct printf_spec *spec, int width)
 {
     spec->field_width = width;
     if (WARN_ONCE(spec->field_width != width, "field width %d too large", width)) {
@@ -723,16 +736,13 @@ set_field_width(struct printf_spec *spec, int width)
     }
 }
 
-static void
-set_precision(struct printf_spec *spec, int prec)
+static void set_precision(struct printf_spec *spec, int prec)
 {
     spec->precision = prec;
     if (WARN_ONCE(spec->precision != prec, "precision %d too large", prec)) {
 	spec->precision = clamp(prec, 0, PRECISION_MAX);
     }
 }
-
-
 
 static const char *check_pointer_msg(const void *ptr)
 {
@@ -783,6 +793,49 @@ static char *string(char *buf, char *end, const char *s,
 static char *pointer(char *buf, char *end, void *ptr)
 {
     return special_hex_number(buf, end, (uintptr_t)ptr, sizeof(ptr));
+}
+
+/* The length and maximum length members are swapped due to the way
+ * va_arg works in clang */
+typedef struct _UNICODE_STRING {
+    uint16_t MaximumLength;
+    uint16_t Length;
+    uint16_t *Buffer;
+} UNICODE_STRING, *PUNICODE_STRING;
+
+static char *unicode_string(char *buf, char *end, PUNICODE_STRING uni_str)
+{
+    unsigned int __stdcall RtlUnicodeToUTF8N(char *utf8_dest,
+					     unsigned int utf8_bytes_max,
+					     unsigned int *utf8_bytes_written,
+					     const uint16_t *uni_src,
+					     unsigned int uni_bytes);
+    if (uni_str == NULL || uni_str->Buffer == NULL) {
+	return buf;
+    }
+    unsigned int utf8_bytes_written = 0;
+    RtlUnicodeToUTF8N(buf, end - buf, &utf8_bytes_written,
+		      uni_str->Buffer, uni_str->Length);
+    if ((utf8_bytes_written > 0) && (buf[utf8_bytes_written-1] == '\0')) {
+	utf8_bytes_written--;
+    }
+    return buf + utf8_bytes_written;
+}
+
+typedef struct _ANSI_STRING {
+    uint16_t MaximumLength;
+    uint16_t Length;
+    char *Buffer;
+} ANSI_STRING, *PANSI_STRING;
+
+static char *ansi_string(char *buf, char *end, PANSI_STRING ani_str)
+{
+    if (ani_str == NULL || ani_str->Buffer == NULL) {
+	return buf;
+    }
+    struct printf_spec spec = {0};
+    spec.precision = ani_str->Length;
+    return string_nocheck(buf, end, ani_str->Buffer, spec);
 }
 
 /**
@@ -880,6 +933,14 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 
 	case FORMAT_TYPE_STR:
 	    str = string(str, end, va_arg(args, char *), spec);
+	    break;
+
+	case FORMAT_TYPE_UNICODE_STRING:
+	    str = unicode_string(str, end, va_arg(args, PUNICODE_STRING));
+	    break;
+
+	case FORMAT_TYPE_ANSI_STRING:
+	    str = ansi_string(str, end, va_arg(args, PANSI_STRING));
 	    break;
 
 	case FORMAT_TYPE_PTR:
