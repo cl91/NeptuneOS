@@ -146,8 +146,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    EndAddr = StartAddr + WindowSize;
 	}
     }
-    DbgTrace("Finding an address window of size 0x%zx within [%p, %p) for vspace %p\n",
-	     WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, (PVOID) VSpace);
+    DbgTrace("Finding an address window of size 0x%zx within [%p, %p) for vspacecap 0x%zx\n",
+	     WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, VSpace ? VSpace->VSpaceCap : 0);
     assert(StartAddr < EndAddr);
     assert(StartAddr + WindowSize > StartAddr);
     assert(StartAddr + WindowSize <= EndAddr);
@@ -316,10 +316,10 @@ Insert:
 	*pVad = Vad;
     }
 
-    DbgTrace("Successfully reserved [%p, %p) for vspace %p\n",
+    DbgTrace("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
 	     (PVOID) Vad->AvlNode.Key,
 	     (PVOID) (Vad->AvlNode.Key + Vad->WindowSize),
-	     (PVOID) VSpace);
+	     VSpace ? VSpace->VSpaceCap : 0);
     return STATUS_SUCCESS;
 }
 
