@@ -9,6 +9,7 @@
 #include <debug.h>
 #include <assert.h>
 #include <image.h>
+#include <util.h>
 
 #define UNIMPLEMENTED
 #define DPRINT DbgPrint

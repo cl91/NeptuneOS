@@ -479,6 +479,52 @@ typedef struct _RTL_BITMAP_RUN {
     ULONG NumberOfBits;
 } RTL_BITMAP_RUN, *PRTL_BITMAP_RUN;
 
+#define MAXIMUM_LEADBYTES 12
+
+/*
+ * Code page info
+ *
+ * Some documentation can be found here: http://www.ping.uio.no/~ovehk/nls/
+ */
+typedef struct _CPTABLEINFO {
+    USHORT CodePage;
+    USHORT MaximumCharacterSize;       /* 1 = SBCS, 2 = DBCS */
+    USHORT DefaultChar;                /* Default MultiByte Character for the CP->Unicode conversion */
+    USHORT UniDefaultChar;             /* Default Unicode Character for the CP->Unicode conversion */
+    USHORT TransDefaultChar;           /* Default MultiByte Character for the Unicode->CP conversion */
+    USHORT TransUniDefaultChar;        /* Default Unicode Character for the Unicode->CP conversion */
+    USHORT DBCSCodePage;
+    UCHAR LeadByte[MAXIMUM_LEADBYTES];
+    PUSHORT MultiByteTable;             /* Table for CP->Unicode conversion */
+    PVOID WideCharTable;                /* Table for Unicode->CP conversion */
+    PUSHORT DBCSRanges;
+    PUSHORT DBCSOffsets;
+} CPTABLEINFO, *PCPTABLEINFO;
+
+/*
+ * NLS table info
+ */
+typedef struct _NLSTABLEINFO {
+    CPTABLEINFO OemTableInfo;
+    CPTABLEINFO AnsiTableInfo;
+    PUSHORT UpperCaseTable;
+    PUSHORT LowerCaseTable;
+} NLSTABLEINFO, *PNLSTABLEINFO;
+
+/*
+ * Header for NLS Files
+ */
+typedef struct _NLS_FILE_HEADER {
+    USHORT HeaderSize;
+    USHORT CodePage;
+    USHORT MaximumCharacterSize;
+    USHORT DefaultChar;
+    USHORT UniDefaultChar;
+    USHORT TransDefaultChar;
+    USHORT TransUniDefaultChar;
+    UCHAR LeadByte[MAXIMUM_LEADBYTES];
+} NLS_FILE_HEADER, *PNLS_FILE_HEADER;
+
 /*
  * Constant String Macro
  */
@@ -511,13 +557,23 @@ NTAPI NTSYSAPI PVOID RtlImageRvaToVa(IN PIMAGE_NT_HEADERS NtHeader,
 				     IN PIMAGE_SECTION_HEADER *SectionHeader);
 
 /*
- * Unicode routines
+ * Unicode string functions
  */
 NTAPI NTSYSAPI VOID RtlInitUnicodeString(IN OUT PUNICODE_STRING DestinationString,
 					 IN PCWSTR SourceString);
 
 NTAPI NTSYSAPI NTSTATUS RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
 					       IN PCWSTR SourceString);
+
+NTAPI NTSYSAPI LONG RtlCompareUnicodeString(IN PCUNICODE_STRING String1,
+					    IN PCUNICODE_STRING String2,
+					    IN BOOLEAN CaseInSensitive);
+
+VOID NTAPI RtlFreeUnicodeString(IN PUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI  BOOLEAN RtlEqualUnicodeString(IN PCUNICODE_STRING s1,
+					      IN PCUNICODE_STRING s2,
+					      IN BOOLEAN CaseInsensitive);
 
 NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
 					  ULONG *utf8_bytes_written,
@@ -526,6 +582,38 @@ NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
 NTAPI NTSYSAPI NTSTATUS RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
 					  ULONG *uni_bytes_written,
 					  const CHAR *utf8_src, ULONG utf8_bytes);
+
+/*
+ * Ansi string functions
+ */
+NTAPI NTSYSAPI VOID RtlInitAnsiString(OUT PANSI_STRING DestinationString,
+				      IN OPTIONAL PCSZ SourceString);
+
+NTAPI NTSYSAPI NTSTATUS RtlInitAnsiStringEx(OUT PANSI_STRING DestinationString,
+					    IN OPTIONAL PCSZ SourceString);
+
+/*
+ * Single character functions
+ */
+NTAPI NTSYSAPI NTSTATUS RtlCharToInteger(IN PCSZ String,
+					 IN ULONG Base,
+					 OUT PULONG Value);
+
+/*
+ * NLS Functions
+ */
+NTAPI NTSYSAPI VOID RtlGetDefaultCodePage(OUT PUSHORT AnsiCodePage,
+					  OUT PUSHORT OemCodePage);
+
+NTAPI NTSYSAPI VOID RtlInitNlsTables(IN PUSHORT AnsiTableBase,
+				     IN PUSHORT OemTableBase,
+				     IN PUSHORT CaseTableBase,
+				     OUT PNLSTABLEINFO NlsTable);
+
+NTAPI NTSYSAPI VOID RtlInitCodePageTable(IN PUSHORT TableBase,
+					 OUT PCPTABLEINFO CodePageTable);
+
+NTAPI NTSYSAPI VOID RtlResetRtlTranslations(IN PNLSTABLEINFO NlsTable);
 
 /*
  * Structured exception handling routines

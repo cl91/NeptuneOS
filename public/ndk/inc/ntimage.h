@@ -598,6 +598,18 @@ typedef struct _IMAGE_IMPORT_DESCRIPTOR {
     ULONG FirstThunk;
 } IMAGE_IMPORT_DESCRIPTOR, *PIMAGE_IMPORT_DESCRIPTOR;
 
+typedef struct _IMAGE_BOUND_IMPORT_DESCRIPTOR {
+    ULONG TimeDateStamp;
+    USHORT OffsetModuleName;
+    USHORT NumberOfModuleForwarderRefs;
+} IMAGE_BOUND_IMPORT_DESCRIPTOR, *PIMAGE_BOUND_IMPORT_DESCRIPTOR;
+
+typedef struct _IMAGE_BOUND_FORWARDER_REF {
+    ULONG TimeDateStamp;
+    USHORT OffsetModuleName;
+    USHORT Reserved;
+} IMAGE_BOUND_FORWARDER_REF, *PIMAGE_BOUND_FORWARDER_REF;
+
 #include <poppack.h>
 
 #endif /* _NTIMAGE_ */

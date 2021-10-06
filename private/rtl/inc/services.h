@@ -70,11 +70,16 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
 
 /*
  * Shared data structure between the NTOS server and the NTDLL loader
- * component.
+ * component. The layout is
+ * [LDRP_LOADED_MODULE] [DllPath] [DllName]
+ * ------------- EntrySize ----------------
  */
 typedef struct _LDRP_LOADED_MODULE {
     MWORD DllPath; /* Offset to the string of the full path of the dll file */
-    MWORD ImageBase; /* Client address at which the dll is loaded */
+    MWORD DllName; /* Offset to the string of the dllname (eg kernel32.dll) */
+    MWORD ViewBase;    /* Client address at which the dll is loaded */
+    MWORD ViewSize;    /* Total size of the virtual memory of the image */
+    MWORD EntrySize;   /* Size of this struct plus the strings */
 } LDRP_LOADED_MODULE, *PLDRP_LOADED_MODULE;
 
 /*

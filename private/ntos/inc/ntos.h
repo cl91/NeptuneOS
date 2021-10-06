@@ -9,6 +9,7 @@
 #include <gnu.h>
 #include <debug.h>
 #include <image.h>
+#include <util.h>
 
 #include "ntosdef.h"
 #include "ob.h"

@@ -8,7 +8,7 @@ extern UCHAR _binary_initcpio_size[];
 
 NTSTATUS LdrLoadBootModules()
 {
-    RET_ERR(ObCreateDirectory("\\", "BootModules"));
+    RET_ERR(ObCreateDirectory(BOOTMODULE_PARENT_DIRECTORY, BOOTMODULE_DIRECTORY));
 
     struct cpio_info cpio;
     int error = cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
@@ -45,7 +45,7 @@ NTSTATUS LdrLoadBootModules()
 	PFILE_OBJECT File = NULL;
 	RET_ERR(IoCreateFile(FileNames[i], (PVOID) FileContent, FileSize, &File));
 	assert(File != NULL);
-	RET_ERR_EX(ObInsertObjectByName("\\BootModules", File, FileNames[i]),
+	RET_ERR_EX(ObInsertObjectByName(BOOTMODULE_PATH, File, FileNames[i]),
 		   ObDeleteObject(File));
     }
 

@@ -19,13 +19,12 @@ __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 
 /* GLOBALS *******************************************************************/
 
-#define LDR_HASH_TABLE_ENTRIES 32
-
 UNICODE_STRING NtDllString = RTL_CONSTANT_STRING(L"ntdll.dll");
 
 BOOLEAN LdrpShutdownInProgress;
 HANDLE LdrpShutdownThreadId;
 
+LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
 PLDR_DATA_TABLE_ENTRY LdrpCurrentDllInitializer;
 PLDR_DATA_TABLE_ENTRY LdrpNtDllDataTableEntry;
@@ -36,6 +35,8 @@ RTL_BITMAP FlsBitMap;
 BOOLEAN LdrpImageHasTls;
 LIST_ENTRY LdrpTlsList;
 ULONG LdrpNumberOfTlsEntries;
+
+NLSTABLEINFO LdrpNlsTable;
 
 extern LARGE_INTEGER RtlpTimeout;
 PVOID LdrpHeap;
@@ -444,6 +445,15 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     PPEB Peb = NtCurrentPeb();
     RtlpTimeout = Peb->CriticalSectionTimeout;
 
+    /* Check if this is a .NET executable */
+    ULONG ComSectionSize;
+    if (RtlImageDirectoryEntryToData(Peb->ImageBaseAddress, TRUE,
+				     IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR,
+				     &ComSectionSize)) {
+	DPRINT1("We don't support .NET applications yet\n");
+	return STATUS_NOT_IMPLEMENTED;
+    }
+
     /* Get the Image Config Directory */
     ULONG ConfigSize;
     PIMAGE_LOAD_CONFIG_DIRECTORY LoadConfig = RtlImageDirectoryEntryToData(Peb->ImageBaseAddress, TRUE,
@@ -511,6 +521,11 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     RtlInitializeBitMap(&TlsExpansionBitMap, Peb->TlsExpansionBitmapBits, TLS_EXPANSION_SLOTS);
     RtlSetBit(&TlsExpansionBitMap, 0);
 
+    /* Initialize the Hash Table */
+    for (ULONG i = 0; i < LDRP_HASH_TABLE_ENTRIES; i++) {
+        InitializeListHead(&LdrpHashTable[i]);
+    }
+
     /* Initialize the Loader Lock. */
     RtlpInitializeCriticalSection(&LdrpLoaderLock, InitInfo->LoaderLockSemaphore, 0);
     Peb->LoaderLock = &LdrpLoaderLock;
@@ -524,6 +539,14 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     RtlpInitializeCriticalSection(&FastPebLock, InitInfo->FastPebLockSemaphore, 0);
     Peb->FastPebLock = &FastPebLock;
 
+    /* Initialize NLS data */
+    RtlInitNlsTables(Peb->AnsiCodePageData,
+		     Peb->OemCodePageData,
+		     Peb->UnicodeCaseTableData, &LdrpNlsTable);
+
+    /* Reset NLS Translations */
+    RtlResetRtlTranslations(&LdrpNlsTable);
+
     /* For old executables, use 16-byte aligned heap */
     PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Peb->ImageBaseAddress);
     if ((NtHeader->OptionalHeader.MajorSubsystemVersion <= 3) &&
@@ -535,82 +558,6 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     RET_ERR(LdrpInitializeHeapManager(InitInfo, ProcessHeapFlags, &ProcessHeapParams));
     LdrpHeap = (HANDLE) InitInfo->LoaderHeapStart;
 
-#if 0
-    ULONG ComSectionSize;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    HANDLE SymLinkHandle;
-    UNICODE_STRING CommandLine, NtSystemRoot, ImagePathName, FullPath, ImageFileName, KnownDllString;
-    PPEB Peb = NtCurrentPeb();
-    BOOLEAN FreeCurDir = FALSE;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
-    UNICODE_STRING CurrentDirectory;
-    HANDLE OptionsKey;
-    PWSTR NtDllName = NULL;
-    NTSTATUS Status, ImportStatus;
-    NLSTABLEINFO NlsTable;
-    PTEB Teb = NtCurrentTeb();
-    PLIST_ENTRY ListHead;
-    PLIST_ENTRY NextEntry;
-    ULONG i;
-    PWSTR ImagePath;
-    ULONG DebugProcessHeapOnly = 0;
-    PLDR_DATA_TABLE_ENTRY NtLdrEntry;
-    PWCHAR Current;
-    ULONG ExecuteOptions = 0;
-    PVOID ViewBase;
-
-    /* Get the image path */
-    ImagePath = Peb->ProcessParameters->ImagePathName.Buffer;
-
-    /* Check if it's not normalized */
-    if (!(Peb->ProcessParameters->Flags & RTL_USER_PROCESS_PARAMETERS_NORMALIZED)) {
-	/* Normalize it */
-	ImagePath = (PWSTR) ((ULONG_PTR) ImagePath + (ULONG_PTR) Peb->ProcessParameters);
-    }
-
-    /* Create a unicode string for the Image Path */
-    ImagePathName.Length = Peb->ProcessParameters->ImagePathName.Length;
-    ImagePathName.MaximumLength = ImagePathName.Length + sizeof(WCHAR);
-    ImagePathName.Buffer = ImagePath;
-
-    /* Check if this is a .NET executable */
-    if (RtlImageDirectoryEntryToData(Peb->ImageBaseAddress, TRUE,
-				     IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR,
-				     &ComSectionSize)) {
-	DPRINT1("We don't support .NET applications yet\n");
-	return STATUS_NOT_IMPLEMENTED;
-    }
-
-    /* Normalize the parameters */
-    ProcessParameters = RtlNormalizeProcessParams(Peb->ProcessParameters);
-    if (ProcessParameters) {
-	/* Save the Image and Command Line Names */
-	ImageFileName = ProcessParameters->ImagePathName;
-	CommandLine = ProcessParameters->CommandLine;
-    } else {
-	/* It failed, initialize empty strings */
-	RtlInitUnicodeString(&ImageFileName, NULL);
-	RtlInitUnicodeString(&CommandLine, NULL);
-    }
-
-    /* Initialize NLS data */
-    RtlInitNlsTables(Peb->AnsiCodePageData,
-		     Peb->OemCodePageData,
-		     Peb->UnicodeCaseTableData, &NlsTable);
-
-    /* Reset NLS Translations */
-    RtlResetRtlTranslations(&NlsTable);
-
-
-
-    /* Build the NTDLL Path */
-    FullPath.Buffer = StringBuffer;
-    FullPath.Length = 0;
-    FullPath.MaximumLength = sizeof(StringBuffer);
-    RtlInitUnicodeString(&NtSystemRoot, SharedUserData->NtSystemRoot);
-    RtlAppendUnicodeStringToString(&FullPath, &NtSystemRoot);
-    RtlAppendUnicodeToString(&FullPath, L"\\System32\\");
-
     /* Setup Loader Data */
     Peb->LdrData = &PebLdr;
     InitializeListHead(&PebLdr.InLoadOrderModuleList);
@@ -618,6 +565,34 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     InitializeListHead(&PebLdr.InInitializationOrderModuleList);
     PebLdr.Length = sizeof(PEB_LDR_DATA);
     PebLdr.Initialized = TRUE;
+
+    /* /\* Get the image path *\/ */
+    /* PWSTR ImagePath = Peb->ProcessParameters->ImagePathName.Buffer; */
+
+    /* /\* Check if it's not normalized *\/ */
+    /* if (!(Peb->ProcessParameters->Flags & RTL_USER_PROCESS_PARAMETERS_NORMALIZED)) { */
+    /* 	/\* Normalize it *\/ */
+    /* 	ImagePath = (PWSTR) ((ULONG_PTR) ImagePath + (ULONG_PTR) Peb->ProcessParameters); */
+    /* } */
+
+    /* /\* Create a unicode string for the Image Path *\/ */
+    /* UNICODE_STRING ImagePathName; */
+    /* ImagePathName.Length = Peb->ProcessParameters->ImagePathName.Length; */
+    /* ImagePathName.MaximumLength = ImagePathName.Length + sizeof(WCHAR); */
+    /* ImagePathName.Buffer = ImagePath; */
+
+    /* Normalize the parameters */
+    UNICODE_STRING CommandLine, ImageFileName;
+    PRTL_USER_PROCESS_PARAMETERS ProcessParameters = NULL;//RtlNormalizeProcessParams(Peb->ProcessParameters);
+    if (ProcessParameters) {
+	/* Save the Image and Command Line Names */
+	ImageFileName = ProcessParameters->ImagePathName;
+	CommandLine = ProcessParameters->CommandLine;
+    } else {
+	/* It failed, initialize empty strings */
+	RtlInitUnicodeString(&ImageFileName, L"");
+	RtlInitUnicodeString(&CommandLine, L"");
+    }
 
     /* Allocate a data entry for the Image */
     LdrpImageEntry = LdrpAllocateDataTableEntry(Peb->ImageBaseAddress);
@@ -634,35 +609,85 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	LdrpImageEntry->BaseDllName = LdrpImageEntry->FullDllName;
     } else {
 	/* Find the last slash */
-	Current = ImageFileName.Buffer;
+	PWSTR ImageBaseName = NULL;
+	PWSTR Current = ImageFileName.Buffer;
 	while (*Current) {
 	    if (*Current++ == '\\') {
 		/* Set this path */
-		NtDllName = Current;
+		ImageBaseName = Current;
 	    }
 	}
-
 	/* Did we find anything? */
-	if (!NtDllName) {
+	if (!ImageBaseName) {
 	    /* Use the same Base name */
 	    LdrpImageEntry->BaseDllName = LdrpImageEntry->FullDllName;
 	} else {
 	    /* Setup the name */
-	    LdrpImageEntry->BaseDllName.Length =
-		(USHORT) ((ULONG_PTR) ImageFileName.Buffer +
-			  ImageFileName.Length - (ULONG_PTR) NtDllName);
-	    LdrpImageEntry->BaseDllName.MaximumLength =
-		LdrpImageEntry->BaseDllName.Length + sizeof(WCHAR);
-	    LdrpImageEntry->BaseDllName.Buffer =
-		(PWSTR) ((ULONG_PTR) ImageFileName.Buffer +
-			 (ImageFileName.Length -
-			  LdrpImageEntry->BaseDllName.Length));
+	    LdrpImageEntry->BaseDllName.Length = (USHORT)((ULONG_PTR) ImageFileName.Buffer +
+							  ImageFileName.Length - (ULONG_PTR) ImageBaseName);
+	    LdrpImageEntry->BaseDllName.MaximumLength = LdrpImageEntry->BaseDllName.Length + sizeof(WCHAR);
+	    LdrpImageEntry->BaseDllName.Buffer = (PWSTR)((ULONG_PTR) ImageFileName.Buffer +
+							 (ImageFileName.Length - LdrpImageEntry->BaseDllName.Length));
 	}
     }
 
     /* Processing done, insert it */
-    LdrpInsertMemoryTableEntry(LdrpImageEntry);
+    LdrpInsertMemoryTableEntry(LdrpImageEntry, "exe"); /* TODO: FIXME */
     LdrpImageEntry->Flags |= LDRP_ENTRY_PROCESSED;
+
+    /* Walk the IAT and load all the DLLs */
+    NTSTATUS ImportStatus = LdrpWalkImportDescriptor(LdrpImageEntry);
+
+    /* Check if relocation is needed */
+    if (Peb->ImageBaseAddress != (PVOID) NtHeader->OptionalHeader.ImageBase) {
+	DPRINT1("LDR: Performing EXE relocation\n");
+	/* Do the relocation */
+	RET_ERR(LdrpRelocateImageWithBias(Peb->ImageBaseAddress,
+					  0LL,
+					  NULL,
+					  STATUS_SUCCESS,
+					  STATUS_CONFLICTING_ADDRESSES,
+					  STATUS_INVALID_IMAGE_FORMAT));
+    }
+
+    /* Check whether all static imports were properly loaded and return here */
+    if (!NT_SUCCESS(ImportStatus))
+	return ImportStatus;
+
+#if 0
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE SymLinkHandle;
+    UNICODE_STRING CommandLine, NtSystemRoot, ImagePathName, FullPath, ImageFileName, KnownDllString;
+    PPEB Peb = NtCurrentPeb();
+    BOOLEAN FreeCurDir = FALSE;
+    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
+    UNICODE_STRING CurrentDirectory;
+    HANDLE OptionsKey;
+    PWSTR NtDllName = NULL;
+    NTSTATUS Status, ImportStatus;
+    PTEB Teb = NtCurrentTeb();
+    PLIST_ENTRY ListHead;
+    PLIST_ENTRY NextEntry;
+    ULONG i;
+    PWSTR ImagePath;
+    ULONG DebugProcessHeapOnly = 0;
+    PLDR_DATA_TABLE_ENTRY NtLdrEntry;
+    PWCHAR Current;
+    ULONG ExecuteOptions = 0;
+    PVOID ViewBase;
+
+
+
+
+    /* Build the NTDLL Path */
+    FullPath.Buffer = StringBuffer;
+    FullPath.Length = 0;
+    FullPath.MaximumLength = sizeof(StringBuffer);
+    RtlInitUnicodeString(&NtSystemRoot, SharedUserData->NtSystemRoot);
+    RtlAppendUnicodeStringToString(&FullPath, &NtSystemRoot);
+    RtlAppendUnicodeToString(&FullPath, L"\\System32\\");
+
+
 
     /* Now add an entry for NTDLL */
     NtLdrEntry = LdrpAllocateDataTableEntry(SystemArgument1);
@@ -714,43 +739,6 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	    RtlFreeUnicodeString(&CurrentDirectory);
     }
 
-    /* Walk the IAT and load all the DLLs */
-    ImportStatus = LdrpWalkImportDescriptor(LdrpDefaultPath.Buffer, LdrpImageEntry);
-
-    /* Check if relocation is needed */
-    if (Peb->ImageBaseAddress != (PVOID) NtHeader->OptionalHeader.ImageBase) {
-	DPRINT1("LDR: Performing EXE relocation\n");
-
-	/* Change the protection to prepare for relocation */
-	ViewBase = Peb->ImageBaseAddress;
-	Status = LdrpSetProtection(ViewBase, FALSE);
-	if (!NT_SUCCESS(Status))
-	    return Status;
-
-	/* Do the relocation */
-	Status = LdrRelocateImageWithBias(ViewBase,
-					  0LL,
-					  NULL,
-					  STATUS_SUCCESS,
-					  STATUS_CONFLICTING_ADDRESSES,
-					  STATUS_INVALID_IMAGE_FORMAT);
-	if (!NT_SUCCESS(Status)) {
-	    DPRINT1("LdrRelocateImageWithBias() failed\n");
-	    return Status;
-	}
-
-	/* Check if a start context was provided */
-	if (Context) {
-	    DPRINT1("WARNING: Relocated EXE Context");
-	    UNIMPLEMENTED;	// We should support this
-	    return STATUS_INVALID_IMAGE_FORMAT;
-	}
-
-	/* Restore the protection */
-	Status = LdrpSetProtection(ViewBase, TRUE);
-	if (!NT_SUCCESS(Status))
-	    return Status;
-    }
 
     /* Lock the DLLs */
     ListHead = &Peb->LdrData->InLoadOrderModuleList;
@@ -761,10 +749,6 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	NtLdrEntry->LoadCount = -1;
 	NextEntry = NextEntry->Flink;
     }
-
-    /* Check whether all static imports were properly loaded and return here */
-    if (!NT_SUCCESS(ImportStatus))
-	return ImportStatus;
 
     /* Initialize TLS */
     Status = LdrpInitializeTls();

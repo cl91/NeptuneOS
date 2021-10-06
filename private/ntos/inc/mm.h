@@ -513,7 +513,8 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,
 			    IN OUT MWORD *BaseAddress,
 			    IN OUT MWORD *SectionOffset,
-			    IN OUT MWORD *ViewSize);
+			    IN OUT MWORD *ViewSize,
+			    IN BOOLEAN AlwaysWritable);
 NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
 			     IN MWORD VirtualBase,
 			     IN MWORD WindowSize);

@@ -431,7 +431,8 @@ NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 					IN PIMAGE_SECTION_OBJECT ImageSection,
 					IN OUT OPTIONAL MWORD *pBaseAddress,
-					OUT OPTIONAL MWORD *pImageVirtualSize)
+					OUT OPTIONAL MWORD *pImageVirtualSize,
+					IN BOOLEAN AlwaysWritable)
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
@@ -455,8 +456,10 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	 * Of course, sections can be shared with other client processes. This is
 	 * also left as future work. */
 	MWORD Flags = MEM_RESERVE_IMAGE_MAP | MEM_RESERVE_OWNED_MEMORY;
-	if (!(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE)) {
-	    Flags |= MEM_RESERVE_READ_ONLY;
+	if (!AlwaysWritable) {
+	    if (!(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE)) {
+		Flags |= MEM_RESERVE_READ_ONLY;
+	    }
 	}
 	/* If PE data section is large enough, use large pages to save resources */
 	if (SubSection->RawDataSize >= (LARGE_PAGE_SIZE - PAGE_SIZE)) {
@@ -510,7 +513,7 @@ NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
 			     IN MWORD WindowSize)
 {
     return MmMapViewOfSection(&MiNtosVaddrSpace, MiPhysicalSection, &VirtualBase,
-			      &PhysicalBase, &WindowSize);
+			      &PhysicalBase, &WindowSize, TRUE);
 }
 
 /*
@@ -522,7 +525,8 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,
 			    IN OUT OPTIONAL MWORD *BaseAddress,
 			    IN OUT OPTIONAL MWORD *SectionOffset,
-			    IN OUT OPTIONAL MWORD *ViewSize)
+			    IN OUT OPTIONAL MWORD *ViewSize,
+			    IN BOOLEAN AlwaysWritable)
 {
     assert(VSpace != NULL);
     assert(Section != NULL);
@@ -532,7 +536,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	}
 	MWORD ImageVirtualSize;
 	RET_ERR(MiMapViewOfImageSection(VSpace, Section->ImageSectionObject,
-					BaseAddress, &ImageVirtualSize));
+					BaseAddress, &ImageVirtualSize, AlwaysWritable));
 	if (ViewSize != NULL) {
 	    *ViewSize = ImageVirtualSize;
 	}

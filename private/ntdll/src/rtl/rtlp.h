@@ -61,3 +61,6 @@ VOID RtlCallVectoredContinueHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 				       IN HANDLE LockSemaphore,
 				       IN ULONG SpinCount);
+
+/* nls.c */
+WCHAR RtlpUpcaseUnicodeChar(IN WCHAR Source);

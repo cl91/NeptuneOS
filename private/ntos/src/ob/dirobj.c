@@ -30,15 +30,7 @@ static NTSTATUS ObpDirectoryObjectOpenProc(IN POBJECT Self)
 /* Compute the hash index of a given string. */
 static ULONG ObpDirectoryEntryHashIndex(PCSTR Str)
 {
-    ULONG Hash = 5381;
-    ULONG Chr;
-    assert(Str != NULL);
-
-    while ((Chr = (UCHAR) *Str++) != '\0') {
-	assert(Chr < 256);
-        Hash = ((Hash << 5) + Hash) + Chr; /* Hash * 33 + Chr */
-    }
-
+    ULONG Hash = RtlpHashString(Str);
     return Hash % NUMBER_HASH_BUCKETS;
 }
 

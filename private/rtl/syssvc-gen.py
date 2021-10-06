@@ -153,7 +153,7 @@ NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
 {%- if param.custom_marshaling %}
 {%if param.optional%}    {%endif%}    RET_ERR({{param.marshal_func}}(&MsgBufOffset, {{param.name}}, &{{param.name}}ArgBuf));
 {%- else %}
-{%if param.optional%}    {%endif%}    RET_ERR(KiSystemServiceMarshalArgument(SYSSVC_MESSAGE_BUFFER_START, &MsgBufOffset, {{param.name}}, sizeof({{param.base_type}}), &{{param.name}}ArgBuf));
+{%if param.optional%}    {%endif%}    RET_ERR(KiSystemServiceMarshalArgument((ULONG_PTR)(__sel4_ipc_buffer), &MsgBufOffset, {{param.name}}, sizeof({{param.base_type}}), &{{param.name}}ArgBuf));
 {%- endif %}
 {%if param.optional%}    {%endif%}    seL4_SetMR({{loop.index-1}}, (MWORD) {{param.name}}ArgBuf.Word);
 {%- if param.optional %}
@@ -175,7 +175,7 @@ NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
         if ({{param.name}} != NULL) {
 {%- if param.complex_type %}
             assert(KiSystemServiceValidateArgument(seL4_GetMR({{loop.index}})));
-            *{{param.name}} = *(({{param.base_type}} *)(KiSystemServiceGetArgument(SYSSVC_MESSAGE_BUFFER_START, seL4_GetMR({{loop.index}}))));
+            *{{param.name}} = *(({{param.base_type}} *)(KiSystemServiceGetArgument((ULONG_PTR)(__sel4_ipc_buffer), seL4_GetMR({{loop.index}}))));
 {%- else %}
             *{{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index}});
 {%- endif %}

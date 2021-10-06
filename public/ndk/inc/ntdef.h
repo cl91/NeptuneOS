@@ -54,7 +54,7 @@ typedef unsigned char UCHAR;
 typedef signed char SCHAR;
 typedef CHAR *PCHAR;
 typedef UCHAR *PUCHAR;
-typedef CONST CHAR *PCSTR;
+typedef CONST CHAR *PCSTR, *PCSZ;
 typedef unsigned char BYTE;
 
 typedef wchar_t WCHAR;
@@ -143,6 +143,8 @@ typedef union _ULARGE_INTEGER {
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
 
 #define UNICODE_NULL ((WCHAR)0)
+#define UNICODE_STRING_MAX_BYTES ((USHORT) 65534)
+#define ANSI_NULL ((CHAR)0)
 
 typedef struct _UNICODE_STRING
 {

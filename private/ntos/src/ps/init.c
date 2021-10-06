@@ -45,7 +45,7 @@ static NTSTATUS PspInitializeSystemDll()
 {
     /* Create the NTDLL.DLL image section */
     PFILE_OBJECT NtdllFile = NULL;
-    RET_ERR(ObReferenceObjectByName("\\BootModules\\ntdll.dll",
+    RET_ERR(ObReferenceObjectByName(NTDLL_PATH,
 				    (POBJECT *) &NtdllFile));
     assert(NtdllFile != NULL);
 

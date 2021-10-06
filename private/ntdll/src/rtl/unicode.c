@@ -2,8 +2,8 @@
  * This is taken shamelessly from ReactOS (which steals from WINE).
  */
 
-#include <ntdll.h>
 #include <wchar.h>
+#include "rtlp.h"
 
 /*
  * @implemented
@@ -57,6 +57,204 @@ NTSTATUS NTAPI RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
 
     DestinationString->Buffer = (PWCHAR)SourceString;
     return STATUS_SUCCESS;
+}
+
+/*
+ * @implemented
+ *
+ * NOTES
+ *  If source is NULL the length of source is assumed to be 0.
+ */
+NTAPI VOID RtlInitAnsiString(IN OUT PANSI_STRING DestinationString,
+			     IN PCSZ SourceString)
+{
+    SIZE_T Size;
+
+    if (SourceString) {
+        Size = strlen(SourceString);
+        if (Size > (MAXUSHORT - sizeof(CHAR))) {
+            Size = MAXUSHORT - sizeof(CHAR);
+	}
+        DestinationString->Length = (USHORT) Size;
+        DestinationString->MaximumLength = (USHORT) Size + sizeof(CHAR);
+    } else {
+        DestinationString->Length = 0;
+        DestinationString->MaximumLength = 0;
+    }
+
+    DestinationString->Buffer = (PCHAR) SourceString;
+}
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS RtlInitAnsiStringEx(IN OUT PANSI_STRING DestinationString,
+				   IN PCSZ SourceString)
+{
+    SIZE_T Size;
+
+    if (SourceString) {
+        Size = strlen(SourceString);
+        if (Size > (MAXUSHORT - sizeof(CHAR))) {
+            return STATUS_NAME_TOO_LONG;
+	}
+        DestinationString->Length = (USHORT) Size;
+        DestinationString->MaximumLength = (USHORT) Size + sizeof(CHAR);
+    } else {
+        DestinationString->Length = 0;
+        DestinationString->MaximumLength = 0;
+    }
+
+    DestinationString->Buffer = (PCHAR) SourceString;
+    return STATUS_SUCCESS;
+}
+
+/**************************************************************************
+ *      RtlCharToInteger   (NTDLL.@)
+ * @implemented
+ * Converts a character string into its integer equivalent.
+ *
+ * RETURNS
+ *  Success: STATUS_SUCCESS. value contains the converted number
+ *  Failure: STATUS_INVALID_PARAMETER, if base is not 0, 2, 8, 10 or 16.
+ *           STATUS_ACCESS_VIOLATION, if value is NULL.
+ *
+ * NOTES
+ *  For base 0 it uses 10 as base and the string should be in the format
+ *      "{whitespace} [+|-] [0[x|o|b]] {digits}".
+ *  For other bases the string should be in the format
+ *      "{whitespace} [+|-] {digits}".
+ *  No check is made for value overflow, only the lower 32 bits are assigned.
+ *  If str is NULL it crashes, as the native function does.
+ *
+ * DIFFERENCES
+ *  This function does not read garbage behind '\0' as the native version does.
+ */
+NTSTATUS NTAPI RtlCharToInteger(PCSZ str, /* [I] '\0' terminated single-byte string containing a number */
+                                ULONG base, /* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
+                                PULONG value) /* [O] Destination for the converted value */
+{
+    CHAR chCurrent;
+    int digit;
+    ULONG RunningTotal = 0;
+    char bMinus = 0;
+
+    /* skip leading whitespaces */
+    while (*str != '\0' && *str <= ' ')
+        str++;
+
+    /* Check for +/- */
+    if (*str == '+') {
+        str++;
+    } else if (*str == '-') {
+        bMinus = 1;
+        str++;
+    }
+
+    /* base = 0 means autobase */
+    if (base == 0) {
+        base = 10;
+
+        if (str[0] == '0') {
+            if (str[1] == 'b') {
+                str += 2;
+                base = 2;
+            } else if (str[1] == 'o') {
+                str += 2;
+                base = 8;
+            } else if (str[1] == 'x') {
+                str += 2;
+                base = 16;
+            }
+        }
+    } else if (base != 2 && base != 8 && base != 10 && base != 16) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (value == NULL)
+        return STATUS_ACCESS_VIOLATION;
+
+    while (*str != '\0') {
+        chCurrent = *str;
+
+        if (chCurrent >= '0' && chCurrent <= '9') {
+            digit = chCurrent - '0';
+        } else if (chCurrent >= 'A' && chCurrent <= 'Z') {
+            digit = chCurrent - 'A' + 10;
+        } else if (chCurrent >= 'a' && chCurrent <= 'z') {
+            digit = chCurrent - 'a' + 10;
+        } else {
+            digit = -1;
+        }
+
+        if (digit < 0 || digit >= (int) base)
+            break;
+
+        RunningTotal = RunningTotal * base + digit;
+        str++;
+    }
+
+    *value = bMinus ? (0 - RunningTotal) : RunningTotal;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * @implemented
+ */
+VOID NTAPI RtlFreeUnicodeString(IN PUNICODE_STRING UnicodeString)
+{
+    if (UnicodeString->Buffer) {
+	RtlFreeHeap(RtlGetProcessHeap(), 0, UnicodeString->Buffer);
+        RtlZeroMemory(UnicodeString, sizeof(UNICODE_STRING));
+    }
+}
+
+/*
+ * @implemented
+ */
+NTAPI LONG RtlCompareUnicodeString(IN PCUNICODE_STRING s1,
+				   IN PCUNICODE_STRING s2,
+				   IN BOOLEAN CaseInsensitive)
+{
+    unsigned int len;
+    LONG ret = 0;
+    PCWSTR p1, p2;
+
+    len = min(s1->Length, s2->Length) / sizeof(WCHAR);
+    p1 = s1->Buffer;
+    p2 = s2->Buffer;
+
+    if (CaseInsensitive) {
+        while (!ret && len--) {
+	    ret = RtlpUpcaseUnicodeChar(*p1++) - RtlpUpcaseUnicodeChar(*p2++);
+	}
+    } else {
+        while (!ret && len--) {
+	    ret = *p1++ - *p2++;
+	}
+    }
+
+    if (!ret) {
+	ret = s1->Length - s2->Length;
+    }
+
+    return ret;
+}
+
+/*
+ * @implemented
+ *
+ * RETURNS
+ *  TRUE if strings are equal.
+ */
+NTAPI BOOLEAN RtlEqualUnicodeString(IN CONST UNICODE_STRING *s1,
+				    IN CONST UNICODE_STRING *s2,
+				    IN BOOLEAN CaseInsensitive)
+{
+    if (s1->Length != s2->Length) {
+	return FALSE;
+    }
+    return !RtlCompareUnicodeString(s1, s2, CaseInsensitive);
 }
 
 /******************************************************************************

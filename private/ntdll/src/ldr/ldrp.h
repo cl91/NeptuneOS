@@ -2,6 +2,12 @@
 
 #include <ntdll.h>
 
+#define LDRP_HASH_TABLE_ENTRIES 32
+#define LDRP_GET_HASH_ENTRY(x) (RtlpHashString((x)) & (LDRP_HASH_TABLE_ENTRIES - 1))
+extern LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
+extern PVOID LdrpHeap;
+extern RTL_CRITICAL_SECTION LdrpLoaderLock;
+
 /* pe.c */
 ULONG LdrpRelocateImage(IN PVOID BaseAddress,
 			IN PCCH  LoaderName,
@@ -14,6 +20,11 @@ ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
 				IN ULONG Success,
 				IN ULONG Conflict,
 				IN ULONG Invalid);
+NTSTATUS LdrpWalkImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry);
+VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
+				IN PCSTR BaseDllName);
+PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress);
+PVOID LdrpFetchAddressOfEntryPoint(IN PVOID ImageBase);
 
 /* ../rtl/critical.c */
 VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore);

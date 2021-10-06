@@ -2,6 +2,13 @@
 
 #include <sel4/sel4.h>
 
+#define BOOTMODULE_PARENT_DIRECTORY	"\\"
+#define BOOTMODULE_DIRECTORY		"BootModules"
+#define BOOTMODULE_PATH			BOOTMODULE_PARENT_DIRECTORY BOOTMODULE_DIRECTORY
+#define NTDLL_NAME_NO_EXT		"ntdll"
+#define NTDLL_NAME			NTDLL_NAME_NO_EXT ".dll"
+#define NTDLL_PATH			BOOTMODULE_PATH "\\" NTDLL_NAME
+
 /* boot.c */
 NTSTATUS LdrLoadBootModules();
 

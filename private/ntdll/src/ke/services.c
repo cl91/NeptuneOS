@@ -1,8 +1,6 @@
 #include <ntdll.h>
 
-#define SYSSVC_MESSAGE_BUFFER_START	((ULONG_PTR)(__sel4_ipc_buffer) + (1UL << seL4_IPCBufferSizeBits))
-
-#define OFFSET_TO_ARGUMENT(Offset, Type) SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(SYSSVC_MESSAGE_BUFFER_START, Offset, Type)
+#define OFFSET_TO_ARGUMENT(Offset, Type) SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT((ULONG_PTR)(__sel4_ipc_buffer), Offset, Type)
 
 static inline NTSTATUS KiMarshalUnicodeString(IN OUT ULONG *MsgBufOffset,
 					      IN PUNICODE_STRING String,
