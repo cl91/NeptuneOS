@@ -474,8 +474,7 @@ VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
     }
 }
 
-typedef struct _TRUNK
-{
+typedef struct _TRUNK {
     struct _TRUNK *Prev;
     char *Str;
 } TRUNK, *PTRUNK;
