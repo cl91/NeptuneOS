@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <gnu.h>
+#include <nt.h>
 
 #ifdef __i386__
 #define BITS_PER_LONG (32)
@@ -795,21 +796,8 @@ static char *pointer(char *buf, char *end, void *ptr)
     return special_hex_number(buf, end, (uintptr_t)ptr, sizeof(ptr));
 }
 
-/* The length and maximum length members are swapped due to the way
- * va_arg works in clang */
-typedef struct _UNICODE_STRING {
-    uint16_t MaximumLength;
-    uint16_t Length;
-    uint16_t *Buffer;
-} UNICODE_STRING, *PUNICODE_STRING;
-
 static char *unicode_string(char *buf, char *end, PUNICODE_STRING uni_str)
 {
-    unsigned int __stdcall RtlUnicodeToUTF8N(char *utf8_dest,
-					     unsigned int utf8_bytes_max,
-					     unsigned int *utf8_bytes_written,
-					     const uint16_t *uni_src,
-					     unsigned int uni_bytes);
     if (uni_str == NULL || uni_str->Buffer == NULL) {
 	return buf;
     }
@@ -821,12 +809,6 @@ static char *unicode_string(char *buf, char *end, PUNICODE_STRING uni_str)
     }
     return buf + utf8_bytes_written;
 }
-
-typedef struct _ANSI_STRING {
-    uint16_t MaximumLength;
-    uint16_t Length;
-    char *Buffer;
-} ANSI_STRING, *PANSI_STRING;
 
 static char *ansi_string(char *buf, char *end, PANSI_STRING ani_str)
 {
