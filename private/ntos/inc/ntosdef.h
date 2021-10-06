@@ -50,4 +50,5 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
 /*
  * Additional alignment macros
  */
-#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, type))
+#define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))
+#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN(addr, type))

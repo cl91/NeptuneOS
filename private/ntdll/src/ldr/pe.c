@@ -187,33 +187,6 @@ ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
     return Success;
 }
 
-static NTSTATUS LdrpUtf8ToUnicodeString(IN PCSTR String,
-					OUT PUNICODE_STRING UnicodeString)
-{
-    SIZE_T Length = strlen(String);
-    SIZE_T BufferSize = sizeof(WCHAR) * Length;
-    PWCHAR Buffer = RtlAllocateHeap(LdrpHeap, 0, BufferSize);
-    if (Buffer == NULL) {
-	return STATUS_NO_MEMORY;
-    }
-    ULONG UnicodeStringLength = 0;
-    NTSTATUS Status = RtlUTF8ToUnicodeN(Buffer, BufferSize, &UnicodeStringLength,
-					String, Length);
-    if (!NT_SUCCESS(Status)) {
-	RtlFreeHeap(LdrpHeap, 0, Buffer);
-	return STATUS_NO_MEMORY;
-    }
-    UnicodeString->Buffer = Buffer;
-    UnicodeString->Length = UnicodeStringLength;
-    UnicodeString->MaximumLength = BufferSize;
-    return STATUS_SUCCESS;
-}
-
-static inline VOID LdrpFreeUnicodeString(IN UNICODE_STRING String)
-{
-    RtlFreeHeap(LdrpHeap, 0, String.Buffer);
-}
-
 PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress)
 {
     PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
@@ -328,15 +301,14 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
 
     PLDRP_LOADED_MODULE FoundModule = NULL;
     PLOADER_SHARED_DATA LdrShared = (PLOADER_SHARED_DATA) LOADER_SHARED_DATA_CLIENT_ADDR;
-    PUCHAR Ptr = (PUCHAR)(LOADER_SHARED_DATA_CLIENT_ADDR + sizeof(LOADER_SHARED_DATA));
+    PLDRP_LOADED_MODULE Module = (PLDRP_LOADED_MODULE)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrShared->LoadedModules);
     for (ULONG i = 0; i < LdrShared->LoadedModuleCount; i++) {
-	PLDRP_LOADED_MODULE Module = (PLDRP_LOADED_MODULE) Ptr;
 	PCSTR FoundDllName = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + Module->DllName);
 	if (!strcasecmp(DllName, FoundDllName)) {
 	    FoundModule = Module;
 	    break;
 	}
-	Ptr += Module->EntrySize;
+	Module = (PLDRP_LOADED_MODULE)((MWORD)(Module) + Module->EntrySize);
     }
 
     if (FoundModule == NULL) {

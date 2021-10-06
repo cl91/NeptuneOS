@@ -299,6 +299,31 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS PspMarshalString(IN PPROCESS Process,
+					IN OUT MWORD *LoaderDataOffset,
+					IN PCSTR String,
+					OUT MWORD *OutArg)
+{
+    assert(LoaderDataOffset != NULL);
+    assert(IS_ALIGNED(*LoaderDataOffset, MWORD));
+    assert(String != NULL);
+    SIZE_T Length = strlen(String);
+    if (Length == 0) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    if (*LoaderDataOffset + ALIGN_UP(Length+1, MWORD) > LOADER_SHARED_DATA_COMMIT) {
+	return STATUS_NO_MEMORY;
+    }
+    *OutArg = *LoaderDataOffset;
+    PUCHAR StrCopy = (PUCHAR)(Process->LoaderSharedDataServerAddr + *LoaderDataOffset);
+    memcpy(StrCopy, String, Length + 1); /* trailing '\0' */
+    if (!IS_ALIGNED(Length + 1, MWORD)) {
+	memset(StrCopy+Length+1, 0, ALIGN_UP(Length+1, MWORD) - (Length+1));
+    }
+    *LoaderDataOffset += ALIGN_UP(Length + 1, MWORD);
+    return STATUS_SUCCESS;
+}
+
 /*
  * Serialized format:
  * [LDRP_LOADED_MODULE] [DllPath] [DllName]
@@ -311,29 +336,20 @@ static inline NTSTATUS PspPopulateLoaderSharedData(IN PPROCESS Process,
 						   IN MWORD ViewSize)
 {
     assert(LoaderDataOffset != NULL);
+    assert(IS_ALIGNED(*LoaderDataOffset, MWORD));
     assert(DllPath != NULL);
     assert(DllName != NULL);
-    SIZE_T DllPathLength = strlen(DllPath);
-    SIZE_T DllNameLength = strlen(DllName);
-    if (!DllPathLength || !DllNameLength) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    if (*LoaderDataOffset + sizeof(LDRP_LOADED_MODULE) + DllPathLength + DllNameLength + 2 > LOADER_SHARED_DATA_COMMIT) {
+    if (*LoaderDataOffset + sizeof(LDRP_LOADED_MODULE) > LOADER_SHARED_DATA_COMMIT) {
 	return STATUS_NO_MEMORY;
     }
     PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)(Process->LoaderSharedDataServerAddr + *LoaderDataOffset);
+    MWORD OrigLoaderDataOffset = *LoaderDataOffset;
     *LoaderDataOffset += sizeof(LDRP_LOADED_MODULE);
-    LoadedModule->DllPath = *LoaderDataOffset;
-    PUCHAR DllPathCopy = (PUCHAR)(Process->LoaderSharedDataServerAddr + LoadedModule->DllPath);
-    memcpy(DllPathCopy, DllPath, DllPathLength + 1); /* trailing '\0' */
-    *LoaderDataOffset += DllPathLength + 1; /* trailing '\0' */
-    LoadedModule->DllName = *LoaderDataOffset;
-    PUCHAR DllNameCopy = (PUCHAR)(Process->LoaderSharedDataServerAddr + LoadedModule->DllName);
-    memcpy(DllNameCopy, DllName, DllNameLength + 1); /* trailing '\0' */
-    *LoaderDataOffset += DllNameLength + 1; /* trailing '\0' */
+    RET_ERR(PspMarshalString(Process, LoaderDataOffset, DllPath, &LoadedModule->DllPath));
+    RET_ERR(PspMarshalString(Process, LoaderDataOffset, DllName, &LoadedModule->DllName));
     LoadedModule->ViewBase = ViewBase;
     LoadedModule->ViewSize = ViewSize;
-    LoadedModule->EntrySize = sizeof(LDRP_LOADED_MODULE) + DllPathLength + DllNameLength + 2;
+    LoadedModule->EntrySize = *LoaderDataOffset - OrigLoaderDataOffset;
     return STATUS_SUCCESS;
 }
 
@@ -506,10 +522,18 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     /* Walk the import table and map the dependencies recursively */
     PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA) Process->LoaderSharedDataServerAddr;
     MWORD LoaderDataOffset = sizeof(LOADER_SHARED_DATA);
+    /* TODO: Fix image path and command line */
+    RET_ERR_EX(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->ImagePath),
+	       ObDeleteObject(Process));
+    RET_ERR_EX(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->ImageName),
+	       ObDeleteObject(Process));
+    RET_ERR_EX(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->CommandLine),
+	       ObDeleteObject(Process));
+    LoaderSharedData->LoadedModuleCount = 1;
+    LoaderSharedData->LoadedModules = LoaderDataOffset;
     RET_ERR_EX(PspPopulateLoaderSharedData(Process, &LoaderDataOffset,
 					   NTDLL_PATH, NTDLL_NAME, NtdllBase, NtdllViewSize),
 	       ObDeleteObject(Process));
-    LoaderSharedData->LoadedModuleCount = 1;
     RET_ERR_EX(PspMapDependencies(Process, &LoaderDataOffset, ImageFile->BufferPtr),
 	       ObDeleteObject(Process));
 

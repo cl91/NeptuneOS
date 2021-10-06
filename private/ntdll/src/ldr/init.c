@@ -566,33 +566,18 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     PebLdr.Length = sizeof(PEB_LDR_DATA);
     PebLdr.Initialized = TRUE;
 
-    /* /\* Get the image path *\/ */
-    /* PWSTR ImagePath = Peb->ProcessParameters->ImagePathName.Buffer; */
-
-    /* /\* Check if it's not normalized *\/ */
-    /* if (!(Peb->ProcessParameters->Flags & RTL_USER_PROCESS_PARAMETERS_NORMALIZED)) { */
-    /* 	/\* Normalize it *\/ */
-    /* 	ImagePath = (PWSTR) ((ULONG_PTR) ImagePath + (ULONG_PTR) Peb->ProcessParameters); */
-    /* } */
-
-    /* /\* Create a unicode string for the Image Path *\/ */
-    /* UNICODE_STRING ImagePathName; */
-    /* ImagePathName.Length = Peb->ProcessParameters->ImagePathName.Length; */
-    /* ImagePathName.MaximumLength = ImagePathName.Length + sizeof(WCHAR); */
-    /* ImagePathName.Buffer = ImagePath; */
-
-    /* Normalize the parameters */
-    UNICODE_STRING CommandLine, ImageFileName;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters = NULL;//RtlNormalizeProcessParams(Peb->ProcessParameters);
-    if (ProcessParameters) {
-	/* Save the Image and Command Line Names */
-	ImageFileName = ProcessParameters->ImagePathName;
-	CommandLine = ProcessParameters->CommandLine;
-    } else {
-	/* It failed, initialize empty strings */
-	RtlInitUnicodeString(&ImageFileName, L"");
-	RtlInitUnicodeString(&CommandLine, L"");
+    /* Populate the Process Parameters structure */
+    PLOADER_SHARED_DATA LdrSharedData = (PLOADER_SHARED_DATA) LOADER_SHARED_DATA_CLIENT_ADDR;
+    PCSTR ImagePath = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImagePath);
+    PCSTR ImageName = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImageName);
+    PCSTR CommandLine = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->CommandLine);
+    Peb->ProcessParameters = RtlAllocateHeap(LdrpHeap, 0, sizeof(RTL_USER_PROCESS_PARAMETERS));
+    if (Peb->ProcessParameters == NULL) {
+	return STATUS_NO_MEMORY;
     }
+    RET_ERR(LdrpUtf8ToUnicodeString(ImagePath, &Peb->ProcessParameters->ImagePathName));
+    RET_ERR(LdrpUtf8ToUnicodeString(CommandLine, &Peb->ProcessParameters->CommandLine));
+    Peb->ProcessParameters->Flags &= RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
 
     /* Allocate a data entry for the Image */
     LdrpImageEntry = LdrpAllocateDataTableEntry(Peb->ImageBaseAddress);
@@ -601,38 +586,11 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     LdrpImageEntry->EntryPoint = LdrpFetchAddressOfEntryPoint(LdrpImageEntry->DllBase);
     LdrpImageEntry->LoadCount = -1;
     LdrpImageEntry->EntryPointActivationContext = 0;
-    LdrpImageEntry->FullDllName = ImageFileName;
-
-    /* Check if the name is empty */
-    if (ImageFileName.Buffer == NULL || ImageFileName.Buffer[0] != 0) {
-	/* Use the same Base name */
-	LdrpImageEntry->BaseDllName = LdrpImageEntry->FullDllName;
-    } else {
-	/* Find the last slash */
-	PWSTR ImageBaseName = NULL;
-	PWSTR Current = ImageFileName.Buffer;
-	while (*Current) {
-	    if (*Current++ == '\\') {
-		/* Set this path */
-		ImageBaseName = Current;
-	    }
-	}
-	/* Did we find anything? */
-	if (ImageBaseName == NULL) {
-	    /* Use the same Base name */
-	    LdrpImageEntry->BaseDllName = LdrpImageEntry->FullDllName;
-	} else {
-	    /* Setup the name */
-	    LdrpImageEntry->BaseDllName.Length = (USHORT)((ULONG_PTR) ImageFileName.Buffer +
-							  ImageFileName.Length - (ULONG_PTR) ImageBaseName);
-	    LdrpImageEntry->BaseDllName.MaximumLength = LdrpImageEntry->BaseDllName.Length + sizeof(WCHAR);
-	    LdrpImageEntry->BaseDllName.Buffer = (PWSTR)((ULONG_PTR) ImageFileName.Buffer +
-							 (ImageFileName.Length - LdrpImageEntry->BaseDllName.Length));
-	}
-    }
+    LdrpImageEntry->FullDllName = Peb->ProcessParameters->ImagePathName;
+    RET_ERR(LdrpUtf8ToUnicodeString(ImageName, &LdrpImageEntry->BaseDllName));
 
     /* Processing done, insert it */
-    LdrpInsertMemoryTableEntry(LdrpImageEntry, "exe"); /* TODO: FIXME */
+    LdrpInsertMemoryTableEntry(LdrpImageEntry, ImageName);
     LdrpImageEntry->Flags |= LDRP_ENTRY_PROCESSED;
 
     /* Walk the IAT and load all the DLLs */

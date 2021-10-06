@@ -8,6 +8,36 @@ extern LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 extern PVOID LdrpHeap;
 extern RTL_CRITICAL_SECTION LdrpLoaderLock;
 
+
+static inline NTSTATUS LdrpUtf8ToUnicodeString(IN PCSTR String,
+					       OUT PUNICODE_STRING UnicodeString)
+{
+    assert(String != NULL);
+    assert(UnicodeString != NULL);
+    SIZE_T Length = strlen(String);
+    SIZE_T BufferSize = sizeof(WCHAR) * Length;
+    PWCHAR Buffer = RtlAllocateHeap(LdrpHeap, 0, BufferSize);
+    if (Buffer == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    ULONG UnicodeStringLength = 0;
+    NTSTATUS Status = RtlUTF8ToUnicodeN(Buffer, BufferSize, &UnicodeStringLength,
+					String, Length);
+    if (!NT_SUCCESS(Status)) {
+	RtlFreeHeap(LdrpHeap, 0, Buffer);
+	return STATUS_NO_MEMORY;
+    }
+    UnicodeString->Buffer = Buffer;
+    UnicodeString->Length = UnicodeStringLength;
+    UnicodeString->MaximumLength = BufferSize;
+    return STATUS_SUCCESS;
+}
+
+static inline VOID LdrpFreeUnicodeString(IN UNICODE_STRING String)
+{
+    RtlFreeHeap(LdrpHeap, 0, String.Buffer);
+}
+
 /* pe.c */
 ULONG LdrpRelocateImage(IN PVOID BaseAddress,
 			IN PCCH  LoaderName,

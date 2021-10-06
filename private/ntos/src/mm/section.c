@@ -223,7 +223,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 	DIE("Optional header does not contain SizeOfHeaders member\n");
     }
     ULONG AllHeadersSize = OptHeader->SizeOfHeaders;
-    if (!IS_ALIGNED(AllHeadersSize, FileAlignment)) {
+    if (!IS_ALIGNED_BY(AllHeadersSize, FileAlignment)) {
         DIE("SizeOfHeaders is not aligned with file alignment\n");
     }
     assert(Intsafe_CanMulULong32(NtHeader->FileHeader.NumberOfSections,
@@ -255,7 +255,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
         ULONG Characteristics;
 
         /* Validate alignment */
-        if (!IS_ALIGNED(SectionHeaders[i].VirtualAddress, SectionAlignment)) {
+        if (!IS_ALIGNED_BY(SectionHeaders[i].VirtualAddress, SectionAlignment)) {
             DIE("Section %u VirtualAddress is not aligned\n", i);
 	}
 
@@ -269,10 +269,10 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
             /* Yes, this should be a multiple of FileAlignment, but there's
              * stuff out there that isn't. We can cope with that
              */
-            if (!IS_ALIGNED(SectionHeaders[i].SizeOfRawData, FileAlignment)) {
+            if (!IS_ALIGNED_BY(SectionHeaders[i].SizeOfRawData, FileAlignment)) {
                 DIE("SizeOfRawData[%u] is not aligned\n", i);
 	    }
-            if (!IS_ALIGNED(SectionHeaders[i].PointerToRawData, FileAlignment)) {
+            if (!IS_ALIGNED_BY(SectionHeaders[i].PointerToRawData, FileAlignment)) {
                 DIE("PointerToRawData[%u] is not aligned\n", i);
 	    }
 #endif

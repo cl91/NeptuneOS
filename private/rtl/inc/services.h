@@ -73,10 +73,11 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
  * component. The layout is
  * [LDRP_LOADED_MODULE] [DllPath] [DllName]
  * ------------- EntrySize ----------------
+ * Note: All offsets are with respect to LOADER_SHARED_DATA_CLIENT_ADDR
  */
 typedef struct _LDRP_LOADED_MODULE {
-    MWORD DllPath; /* Offset to the string of the full path of the dll file */
-    MWORD DllName; /* Offset to the string of the dllname (eg kernel32.dll) */
+    MWORD DllPath;     /* Offset to the full path of the dll file */
+    MWORD DllName;     /* Offset to the dllname (eg kernel32.dll) */
     MWORD ViewBase;    /* Client address at which the dll is loaded */
     MWORD ViewSize;    /* Total size of the virtual memory of the image */
     MWORD EntrySize;   /* Size of this struct plus the strings */
@@ -85,10 +86,15 @@ typedef struct _LDRP_LOADED_MODULE {
 /*
  * Per-process equivalent of KUSER_SHARED_DATA. This has the same function
  * as Win32 PEB, except that we don't expose it to the public headers.
+ *
+ * Note: All offsets are with respect to LOADER_SHARED_DATA_CLIENT_ADDR
  */
 typedef struct _LOADER_SHARED_DATA {
     MWORD LoadedModuleCount;
-    LDRP_LOADED_MODULE LoadedModules[];
+    MWORD ImagePath; /* Offset to the full path of the image file */
+    MWORD ImageName; /* Offset to the base name of image (eg smss.exe) */
+    MWORD CommandLine; /* Offset to the command line when creating this process */
+    MWORD LoadedModules; /* Offset to the start of loaded module entries */
 } LOADER_SHARED_DATA, *PLOADER_SHARED_DATA;
 
 #if seL4_PageBits <= seL4_IPCBufferSizeBits
