@@ -511,7 +511,7 @@ static NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
     }
 
 done:
-    if (GotExtension) {
+    if (!GotExtension) {
 	RtlFreeHeap(LdrpHeap, 0, (PVOID) ImportName);
     }
 
