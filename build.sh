@@ -39,10 +39,14 @@ echo "####################################################"
 
 cd "$(dirname "$0")"
 
-mkdir -p $BUILDDIR/{host,elf,pe,base,initcpio,ndk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,elf,pe_inc,ntdll,hal,base,drivers,initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+
+cd $BUILDDIR
+PE_INC=$(echo ${PWD}/pe_inc)
+SPEC2DEF_PATH=$(echo ${PWD}/host/spec2def/spec2def)
 
 # Build spec2def with the native toolchain
-cd $BUILDDIR/host
+cd host
 echo
 echo "---- Building native targets ----"
 echo
@@ -64,16 +68,15 @@ cmake ../../private/ntos \
       -DKernelSel4Arch=$SEL4_ARCH -G Ninja
 ninja all-elf || build_failed
 
-# Build ntdll with the PE toolchain
-cd ../pe
-echo
-echo "---- Building private PE targets ----"
-echo
 # For amd64 PE targets, since the ELF toolchain assumes sizeof(long) == 8
 # and the PE toolchain assumes sizeof(long) == 4, we need to modify the
 # libsel4 sel4_arch headers to undefine the macro SEL4_INT64_IS_LONG and
 # define SEL4_INT64_IS_LONG_LONG. So far this seems to work and produce
 # valid seL4 system calls. However we need to be very careful.
+cd ../pe_inc
+echo
+echo "---- Building private PE targets ----"
+echo
 mkdir -p libsel4-pe/generated
 cp ../elf/structures_gen.h libsel4-pe/generated || build_failed
 cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH libsel4-pe/sel4_arch_include || build_failed
@@ -91,17 +94,35 @@ EOF
     sed -i '/assert_size_correct(long/d' libsel4-pe/generated/include/interfaces/sel4_client.h || build_failed
     sed -i '/assert_size_correct(seL4_X86_VMAttributes,/d' libsel4-pe/generated/include/interfaces/sel4_client.h || build_failed
 fi
+
+# Build ntdll.dll with the PE toolchain
+cd ../ntdll
 cmake ../../private/ntdll \
       -DArch=${ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
-      -DLIBSEL4_PE_HEADERS_DIR="${PWD}/libsel4-pe" \
-      -DSTRUCTURES_GEN_DIR=${PWD}/libsel4-pe/generated \
-      -DSPEC2DEF_PATH=${PWD}/../host/spec2def/spec2def \
+      -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
+      -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
+      -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -G Ninja
 ninja || build_failed
 cp ntdll.lib ../ndk_lib || build_failed
+echo
+
+# Build hal.dll with the PE toolchain
+cd ../hal
+cmake ../../private/hal \
+      -DArch=${ARCH} \
+      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
+      -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
+      -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -G Ninja
+ninja || build_failed
+cp hal.lib ../ddk_lib || build_failed
 
 # Build base NT clients with the PE toolchain
 cd ../base
@@ -112,6 +133,19 @@ cmake ../../base \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -G Ninja
+ninja || build_failed
+
+# Build drivers with the PE toolchain
+cd ../drivers
+echo
+echo "---- Building drivers ----"
+echo
+cmake ../../drivers \
+      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DDDK_LIB_PATH=${PWD}/../ddk_lib \
       -G Ninja
 ninja || build_failed
 
@@ -129,16 +163,21 @@ else
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
 fi
-PE_COPY_LIST='ntdll.dll'
+PE_COPY_LIST='ntdll/ntdll.dll hal/hal.dll'
 BASE_COPY_LIST='smss/smss.exe'
+DRIVER_COPY_LIST='base/null/null.sys'
 for i in ${PE_COPY_LIST}; do
-    cp ../pe/$i . || build_failed
+    cp ../$i . || build_failed
 done
 for i in ${BASE_COPY_LIST}; do
     cp ../base/$i . || build_failed
 done
-{ for i in ${PE_COPY_LIST}; do echo $i; done } > image-list
+for i in ${DRIVER_COPY_LIST}; do
+    cp ../drivers/$i . || build_failed
+done
+{ for i in ${PE_COPY_LIST}; do echo $(basename $i); done } > image-list
 { for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
+{ for i in ${DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
 cpio -H newc -o < image-list > initcpio
 objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
