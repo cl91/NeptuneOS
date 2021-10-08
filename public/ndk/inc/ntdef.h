@@ -36,7 +36,7 @@
 #define FORCEINLINE		static inline __attribute__((always_inline))
 #endif
 
-#ifndef _NTSYSTEM_
+#if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_)
 #define NTSYSAPI	DECLSPEC_IMPORT
 #define NTSYSCALLAPI	DECLSPEC_IMPORT
 #else

@@ -575,10 +575,6 @@ NTAPI NTSYSAPI  BOOLEAN RtlEqualUnicodeString(IN PCUNICODE_STRING s1,
 					      IN PCUNICODE_STRING s2,
 					      IN BOOLEAN CaseInsensitive);
 
-NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
-					  ULONG *utf8_bytes_written,
-					  const WCHAR *uni_src, ULONG uni_bytes);
-
 NTAPI NTSYSAPI NTSTATUS RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
 					  ULONG *uni_bytes_written,
 					  const CHAR *utf8_src, ULONG utf8_bytes);

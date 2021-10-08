@@ -114,6 +114,10 @@ static inline HANDLE NtCurrentThread(VOID)
     return ((HANDLE)(LONG_PTR)(-2));
 }
 
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
+					  ULONG *utf8_bytes_written,
+					  const WCHAR *uni_src, ULONG uni_bytes);
+
 #ifndef _NTOSKRNL_
 #include <nturtl.h>
 #endif	/* _NTOSKRNL_ */
