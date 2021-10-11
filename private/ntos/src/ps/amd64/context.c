@@ -14,6 +14,5 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     Context->rip = (MWORD) PspSystemDllSection->ImageSectionObject->ImageInformation.TransferAddress;
     Context->rsp = Thread->StackTop;
     Context->rbp = Thread->StackTop;
-    Context->r8 = Thread->EntryPoint;
     Context->gs_base = Thread->TebClientAddr;
 }

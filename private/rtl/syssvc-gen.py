@@ -133,7 +133,7 @@ NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
 {{syssvc.client_param_indent}}
 {%- endif %}{%- endfor %})
 {
-    seL4_MessageInfo_t Request = seL4_MessageInfo_new({{syssvc.svcnum}}, 0, 0, {{syssvc.msglength}});
+    seL4_MessageInfo_t Request = seL4_MessageInfo_new({{syssvc.enum_tag}}, 0, 0, {{syssvc.msglength}});
     ULONG MsgBufOffset = 0;
 {%- for param in syssvc.params %}
 {%- if param.is_ptr and not param.optional %}
@@ -250,7 +250,7 @@ class SystemServiceParameter:
         if "UNICODE_STRING" in param_type.upper():
             raise ValueError("Use UnicodeString for PUNICODE_STRING")
         if "PCSTR" in param_type.upper():
-            raise ValueError("Use UnicodeString for PCSTR")
+            raise ValueError("Use AnsiString for PCSTR")
         if "OBJECT_ATTRIBUTES" in param_type.upper():
             raise ValueError("Use ObjectAttributes for OBJECT_ATTRIBUTES")
         if param_type == "UnicodeString":
@@ -260,6 +260,15 @@ class SystemServiceParameter:
             self.server_decl = "PCSTR " + name
             self.client_decl = "PUNICODE_STRING " + name
             self.marshal_func = "KiMarshalUnicodeString"
+            self.validate_func = "KiValidateUnicodeString"
+            self.unmarshal_func = "KiSystemServiceGetArgument"
+        elif param_type == "AnsiString":
+            self.custom_marshaling = True
+            self.is_ptr = True
+            self.server_type = "PCSTR"
+            self.server_decl = "PCSTR " + name
+            self.client_decl = "PCSTR " + name
+            self.marshal_func = "KiMarshalAnsiString"
             self.validate_func = "KiValidateUnicodeString"
             self.unmarshal_func = "KiSystemServiceGetArgument"
         elif param_type == "ObjectAttributes":
@@ -292,20 +301,16 @@ class SystemServiceParameter:
             raise ValueError("Parameter " + name + ": custom marshaling for output parameter is not yet implemented")
 
 class SystemService:
-    def __init__(self, svcnum, name, params):
-        self.svcnum = svcnum
+    def __init__(self, name, enum_tag, params, client_only):
         self.name = name
-        self.enum_tag = SystemService.name_to_enum_tag(name)
+        self.enum_tag = enum_tag
         self.params = params
+        self.client_only = client_only
         self.in_params = [ param for param in params if param.dir_in ]
         self.out_params = [ param for param in params if param.dir_out ]
         self.server_param_indent = " " * (len("NTSTATUS") + len(name) + 2)
         self.client_param_indent = " " * (len("NTSTATUS NTAPI") + len(name) + 2)
         self.msglength = len(params)
-
-    @staticmethod
-    def name_to_enum_tag(name):
-        return camel_case_to_upper_snake_case(name)
 
 def generate_file(tmplstr, syssvc_list, out_file, server_side):
     template = Environment(loader=BaseLoader, trim_blocks=False,
@@ -334,31 +339,52 @@ def parse_syssvc_xml(xml_file):
 
     syssvcs = doc.getElementsByTagName("system-services")[0]
     syssvc_list = []
-    svcnum = 0
     for syssvc in syssvcs.getElementsByTagName("syssvc"):
         name = str(syssvc.getAttribute("name"))
+        enum_tag = camel_case_to_upper_snake_case(name)
         params = []
+        ansi_params = []
+        has_unicode_string = False
         for param in syssvc.getElementsByTagName("parameter"):
             annotation = str(param.getAttribute("annotation")).lower()
             param_name = str(param.getAttribute("name"))
             param_type = str(param.getAttribute("type"))
             params.append(SystemServiceParameter(annotation, param_type, param_name))
-        syssvc_list.append(SystemService(svcnum, name, params))
-        svcnum += 1
+            if param_type == "UnicodeString":
+                has_unicode_string = True
+                ansi_params.append(SystemServiceParameter(annotation, "AnsiString", param_name))
+            else:
+                ansi_params.append(SystemServiceParameter(annotation, param_type, param_name))
+        syssvc_list.append(SystemService(name, enum_tag, params, client_only = False))
+        if has_unicode_string:
+            syssvc_list.append(SystemService(name+"A", enum_tag, ansi_params, client_only = True))
 
     # sanity check
     assert len(syssvc_list) != 0
     return syssvc_list
 
+# For system services with UnicodeString parameters, we generate an ANSI (UTF-8)
+# version such that client can call it without first converting to UTF-16
+def generate_client_syssvc_list(syssvcs):
+    client_syssvc_list = []
+    for syssvc in syssvcs:
+        has_unicode_string = False
+        params = []
+        if has_unicode_string:
+            client_syssvc_list.append(SystemService(syssvc.name + "A", enum_tag, params))
+    return client_syssvc_list
+
 if __name__ == "__main__":
     args = parse_args()
     syssvc_list = parse_syssvc_xml(args.syssvc_xml)
+    server_syssvc_list = [syssvc for syssvc in syssvc_list if not syssvc.client_only]
     syssvc_gen_h = open(os.path.join(args.out_dir, "syssvc_gen.h"), "w")
-    generate_file(SYSSVC_GEN_H_TEMPLATE, syssvc_list, syssvc_gen_h, server_side = True)
+    generate_file(SYSSVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, server_side = True)
     ntos_syssvc_gen_h = open(os.path.join(args.out_dir, "ntos_syssvc_gen.h"), "w")
-    generate_file(NTOS_SYSSVC_GEN_H_TEMPLATE, syssvc_list, ntos_syssvc_gen_h, server_side = True)
+    generate_file(NTOS_SYSSVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, server_side = True)
     ntos_syssvc_gen_c = open(os.path.join(args.out_dir, "ntos_syssvc_gen.c"), "w")
-    generate_file(NTOS_SYSSVC_GEN_C_TEMPLATE, syssvc_list, ntos_syssvc_gen_c, server_side = True)
+    generate_file(NTOS_SYSSVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, server_side = True)
+    client_syssvc_list = generate_client_syssvc_list(syssvc_list)
     ntdll_syssvc_gen_h = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.h"), "w")
     generate_file(NTDLL_SYSSVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, server_side = False)
     ntdll_syssvc_gen_c = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.c"), "w")

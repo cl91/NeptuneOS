@@ -9,6 +9,9 @@
 #define IopAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_IO_TAG, OnError)
 
+/* init.c */
+PSECTION IopHalDllSection;
+
 /* create.c */
 NTSTATUS IopFileObjectCreateProc(POBJECT Object);
 

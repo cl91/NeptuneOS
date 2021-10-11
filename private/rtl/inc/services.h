@@ -22,7 +22,10 @@ typedef seL4_Word MWORD;
 #define LOWEST_USER_ADDRESS		(0x00010000UL)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000UL)
-#define WIN32_TEB_START			(0xb0000000UL)
+/* End of the address space where we can map user images */
+#define USER_IMAGE_REGION_START		(0x00400000UL)
+#define USER_IMAGE_REGION_END		(0xb0000000UL)
+#define WIN32_TEB_START			(USER_IMAGE_REGION_END)
 #define WIN32_TEB_END			(0xbffdf000UL)
 #define WIN32_PEB_START			(WIN32_TEB_END)
 /* Size of system dll tls region per thread is determined by the size
@@ -66,6 +69,7 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     HANDLE VectoredHandlerLockSemaphore;
     HANDLE ProcessHeapLockSemaphore;
     HANDLE LoaderHeapLockSemaphore;
+    BOOLEAN DriverProcess;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
 
 /*

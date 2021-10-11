@@ -19,15 +19,11 @@ __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 
 /* GLOBALS *******************************************************************/
 
-UNICODE_STRING NtDllString = RTL_CONSTANT_STRING(L"ntdll.dll");
-
 BOOLEAN LdrpShutdownInProgress;
 HANDLE LdrpShutdownThreadId;
 
 LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
-PLDR_DATA_TABLE_ENTRY LdrpCurrentDllInitializer;
-PLDR_DATA_TABLE_ENTRY LdrpNtDllDataTableEntry;
 
 RTL_BITMAP TlsBitMap;
 RTL_BITMAP TlsExpansionBitMap;
@@ -436,6 +432,56 @@ Quickie:
     return STATUS_SUCCESS;
 }
 
+/*
+ * Allocate loader data table entry for given module and recursively walk its
+ * import table to load all dependent DLLs, performing relocation if necessary.
+ */
+static NTSTATUS LdrpLoadRootModule(IN PVOID ImageBase,
+				   IN PCSTR ImagePath,
+				   IN PCSTR ImageName,
+				   OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *pEntry)
+{
+    /* Allocate a data entry for the Image */
+    PLDR_DATA_TABLE_ENTRY Entry = LdrpAllocateDataTableEntry(ImageBase);
+
+    /* Set it up */
+    Entry->EntryPoint = LdrpFetchAddressOfEntryPoint(ImageBase);
+    Entry->LoadCount = -1;
+    Entry->EntryPointActivationContext = 0;
+    RET_ERR(LdrpUtf8ToUnicodeString(ImagePath, &Entry->FullDllName));
+    RET_ERR(LdrpUtf8ToUnicodeString(ImageName, &Entry->BaseDllName));
+
+    /* Processing done, insert it */
+    LdrpInsertMemoryTableEntry(Entry, ImageName);
+    Entry->Flags |= LDRP_ENTRY_PROCESSED;
+
+    /* Walk the IAT and load all the dependent DLLs */
+    RET_ERR(LdrpWalkImportDescriptor(Entry));
+
+    /* Check if relocation is needed */
+    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(ImageBase);
+    if (!NtHeaders) {
+	/* Invalid image. This should never happen. Assert in debug build. */
+	assert(FALSE);
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
+    if (ImageBase != (PVOID) NtHeaders->OptionalHeader.ImageBase) {
+	DPRINT1("LDR: Performing image relocation for image %s\n", ImagePath);
+	/* Do the relocation */
+	RET_ERR(LdrpRelocateImageWithBias(ImageBase,
+					  0LL,
+					  NULL,
+					  STATUS_SUCCESS,
+					  STATUS_CONFLICTING_ADDRESSES,
+					  STATUS_INVALID_IMAGE_FORMAT));
+    }
+
+    if (pEntry != NULL) {
+	*pEntry = Entry;
+    }
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 {
     /* Set a NULL SEH Filter */
@@ -575,42 +621,26 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     if (Peb->ProcessParameters == NULL) {
 	return STATUS_NO_MEMORY;
     }
-    RET_ERR(LdrpUtf8ToUnicodeString(ImagePath, &Peb->ProcessParameters->ImagePathName));
     RET_ERR(LdrpUtf8ToUnicodeString(CommandLine, &Peb->ProcessParameters->CommandLine));
     Peb->ProcessParameters->Flags &= RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
 
-    /* Allocate a data entry for the Image */
-    LdrpImageEntry = LdrpAllocateDataTableEntry(Peb->ImageBaseAddress);
+    RET_ERR(LdrpLoadRootModule(Peb->ImageBaseAddress, ImagePath, ImageName, &LdrpImageEntry));
+    Peb->ProcessParameters->ImagePathName = LdrpImageEntry->FullDllName;
 
-    /* Set it up */
-    LdrpImageEntry->EntryPoint = LdrpFetchAddressOfEntryPoint(LdrpImageEntry->DllBase);
-    LdrpImageEntry->LoadCount = -1;
-    LdrpImageEntry->EntryPointActivationContext = 0;
-    LdrpImageEntry->FullDllName = Peb->ProcessParameters->ImagePathName;
-    RET_ERR(LdrpUtf8ToUnicodeString(ImageName, &LdrpImageEntry->BaseDllName));
-
-    /* Processing done, insert it */
-    LdrpInsertMemoryTableEntry(LdrpImageEntry, ImageName);
-    LdrpImageEntry->Flags |= LDRP_ENTRY_PROCESSED;
-
-    /* Walk the IAT and load all the DLLs */
-    NTSTATUS ImportStatus = LdrpWalkImportDescriptor(LdrpImageEntry);
-
-    /* Check if relocation is needed */
-    if (Peb->ImageBaseAddress != (PVOID) NtHeader->OptionalHeader.ImageBase) {
-	DPRINT1("LDR: Performing EXE relocation\n");
-	/* Do the relocation */
-	RET_ERR(LdrpRelocateImageWithBias(Peb->ImageBaseAddress,
-					  0LL,
-					  NULL,
-					  STATUS_SUCCESS,
-					  STATUS_CONFLICTING_ADDRESSES,
-					  STATUS_INVALID_IMAGE_FORMAT));
+    /* Check whether server has injected dll modules that are not part of the
+     * static dependencies of the image and load them. This is used for instance
+     * when server loads a driver process and the driver image does not explicitly
+     * specify hal.dll dependency. */
+    PLOADER_SHARED_DATA LdrShared = (PLOADER_SHARED_DATA) LOADER_SHARED_DATA_CLIENT_ADDR;
+    PLDRP_LOADED_MODULE Module = (PLDRP_LOADED_MODULE)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrShared->LoadedModules);
+    for (ULONG i = 0; i < LdrShared->LoadedModuleCount; i++) {
+	PCSTR DllName = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + Module->DllName);
+	if (!LdrpCheckForLoadedDll(DllName, NULL)) {
+	    PCSTR DllPath = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + Module->DllPath);
+	    RET_ERR(LdrpLoadRootModule((PVOID) Module->ViewBase, DllPath, DllName, NULL));
+	}
+	Module = (PLDRP_LOADED_MODULE)((MWORD)(Module) + Module->EntrySize);
     }
-
-    /* Check whether all static imports were properly loaded and return here */
-    if (!NT_SUCCESS(ImportStatus))
-	return ImportStatus;
 
 #if 0
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -851,18 +881,17 @@ static VOID LdrpInitializeThread()
  * of IpcBuffer.
  */
 FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
-			     IN PPVOID SystemDllTlsRegion,
-			     IN PTHREAD_START_ROUTINE StartAddress)
+			     IN PPVOID SystemDllTlsRegion)
 {
     _tls_index = SYSTEMDLL_TLS_INDEX;
     SystemDllTlsRegion[SYSTEMDLL_TLS_INDEX] = SystemDllTlsRegion;
     __sel4_ipc_buffer = IpcBuffer;
 
     PTEB Teb = NtCurrentTeb();
-    NTSTATUS Status, LoaderStatus = STATUS_SUCCESS;
+    NTSTATUS LoaderStatus = STATUS_SUCCESS;
     PPEB Peb = NtCurrentPeb();
 
-    DPRINT("LdrpInitialize() %p/%p\n",
+    DPRINT("LdrpInitialize() process %p thread %p\n",
 	   NtCurrentTeb()->RealClientId.UniqueProcess,
 	   NtCurrentTeb()->RealClientId.UniqueThread);
 
@@ -872,6 +901,7 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 #endif	/* _WIN64 */
 
     /* Check if we have already setup LDR data */
+    PVOID EntryPoint = 0;
     if (!Peb->LdrData) {
 	/* At process startup the process init info is placed at the beginning
 	 * of the ipc buffer. */
@@ -880,6 +910,21 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	memset(IpcBuffer, 0, sizeof(NTDLL_PROCESS_INIT_INFO));
 	/* Initialize the Process */
 	LoaderStatus = LdrpInitializeProcess(&InitInfo);
+
+	if (InitInfo.DriverProcess) {
+	    PLDR_DATA_TABLE_ENTRY HalDllEntry = NULL;
+	    LdrpCheckForLoadedDll("hal.dll", &HalDllEntry);
+	    if (HalDllEntry == NULL) {
+		/* This should never happen. Assert in debug build. */
+		assert(FALSE);
+		DbgTrace("Fatal error: driver process does not have hal.dll loaded.\n");
+		LoaderStatus = STATUS_ENTRYPOINT_NOT_FOUND;
+	    } else {
+		EntryPoint = HalDllEntry->EntryPoint;
+	    }
+	} else {
+	    EntryPoint = LdrpImageEntry->EntryPoint;
+	}
     } else {
 	/* Loader data is there... is this a fork() ? */
 	if (Peb->InheritedAddressSpace) {
@@ -891,6 +936,10 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	    /* This is a new thread initializing */
 	    LdrpInitializeThread();
 	}
+    }
+
+    if (EntryPoint == NULL) {
+	LoaderStatus = STATUS_ENTRYPOINT_NOT_FOUND;
     }
 
     /* Bail out if initialization has failed */
@@ -909,10 +958,13 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	RtlRaiseStatus(LoaderStatus);
     }
 
-    /* Calls the entry point */
-    StartAddress(Peb);
+    /* Calls the thread entry point */
+    ((PTHREAD_START_ROUTINE)EntryPoint)(Peb);
 
     /* The thread entry point should never return. Shutdown the thread if it does. */
+    DPRINT1("LDR: Thread entry point %p returned for thread %p of process %p, shutting down thread\n",
+	    EntryPoint, NtCurrentTeb()->RealClientId.UniqueThread,
+	    NtCurrentTeb()->RealClientId.UniqueProcess);
     RtlExitUserThread(STATUS_UNSUCCESSFUL);
 }
 

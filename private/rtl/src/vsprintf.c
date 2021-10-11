@@ -844,7 +844,7 @@ static char *ansi_string(char *buf, char *end, PANSI_STRING ani_str)
  *
  * If you're not already dealing with a va_list consider using snprintf().
  */
-int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+static int vsnprintf_impl(char *buf, size_t size, const char *fmt, va_list args)
 {
     unsigned long long num;
     char *str, *end;
@@ -1016,12 +1016,15 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
  * If you're not already dealing with a va_list consider using scnprintf().
  *
  * See the vsnprintf() documentation for format string extensions over C99.
+ *
+ * NOTE: We changed this function name to vsnprintf since we never want the
+ * original behavior.
  */
-int vscnprintf(char *buf, size_t size, const char *fmt, va_list args)
+int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 {
     int i;
 
-    i = vsnprintf(buf, size, fmt, args);
+    i = vsnprintf_impl(buf, size, fmt, args);
 
     if (likely(i < size))
 	return i;
@@ -1037,13 +1040,10 @@ int vscnprintf(char *buf, size_t size, const char *fmt, va_list args)
  * @fmt: The format string to use
  * @...: Arguments for the format string
  *
- * The return value is the number of characters which would be
- * generated for the given input, excluding the trailing null,
- * as per ISO C99.  If the return is greater than or equal to
- * @size, the resulting string is truncated.
- *
- * See the vsnprintf() documentation for format string extensions over C99.
+ * The return value is the number of characters written into @buf not including
+ * the trailing '\0'. If @size is == 0 the function returns 0.
  */
+
 int snprintf(char *buf, size_t size, const char *fmt, ...)
 {
     va_list args;
@@ -1051,29 +1051,6 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
 
     va_start(args, fmt);
     i = vsnprintf(buf, size, fmt, args);
-    va_end(args);
-
-    return i;
-}
-
-/**
- * scnprintf - Format a string and place it in a buffer
- * @buf: The buffer to place the result into
- * @size: The size of the buffer, including the trailing null space
- * @fmt: The format string to use
- * @...: Arguments for the format string
- *
- * The return value is the number of characters written into @buf not including
- * the trailing '\0'. If @size is == 0 the function returns 0.
- */
-
-int scnprintf(char *buf, size_t size, const char *fmt, ...)
-{
-    va_list args;
-    int i;
-
-    va_start(args, fmt);
-    i = vscnprintf(buf, size, fmt, args);
     va_end(args);
 
     return i;

@@ -146,7 +146,7 @@ NTSTATUS NTAPI NullDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return Status;
 }
 
-VOID NTAPI NullUnload(IN PDRIVER_OBJECT DriverObject)
+NTAPI VOID NullUnload(IN PDRIVER_OBJECT DriverObject)
 {
     PDEVICE_OBJECT DeviceObject = DriverObject->DeviceObject;
 
@@ -198,6 +198,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->FastIoDispatch = &FastIoDispatch;
 #endif
 
+    NtDisplayStringA("Hello from null.sys\n");
     /* Return success */
     return STATUS_SUCCESS;
 }

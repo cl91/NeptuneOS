@@ -875,6 +875,7 @@ FORCEINLINE BOOLEAN RtlCheckBit(IN PRTL_BITMAP BitMapHeader,
  * Debug functions
  */
 NTAPI NTSYSAPI VOID DbgBreakPoint(VOID);
+VOID DbgPrint(IN PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
 /*
  * Heap Functions
@@ -1231,6 +1232,17 @@ RtlInitializeContext(IN HANDLE ProcessHandle,
 		     IN PTHREAD_START_ROUTINE ThreadStartAddress,
 		     IN PINITIAL_TEB InitialTeb);
 
+/*
+ * Loader routines
+ */
 NTAPI NTSYSAPI NTSTATUS LdrShutdownProcess(VOID);
 
 NTAPI NTSYSAPI NTSTATUS LdrShutdownThread(VOID);
+
+NTAPI NTSYSAPI NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
+					       IN PANSI_STRING Name,
+					       IN ULONG Ordinal,
+					       OUT PVOID *ProcedureAddress);
+
+NTAPI NTSYSAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
+					       OUT PLDR_DATA_TABLE_ENTRY *Module);

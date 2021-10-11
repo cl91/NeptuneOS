@@ -863,7 +863,7 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
 	    DbgPrint("(error)");
 	}
     }
-    DbgPrint("\n    ");
+    DbgPrint("\n");
     MmAvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);
 }
 #endif

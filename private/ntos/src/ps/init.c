@@ -45,12 +45,18 @@ static NTSTATUS PspInitializeSystemDll()
 {
     /* Create the NTDLL.DLL image section */
     PFILE_OBJECT NtdllFile = NULL;
-    RET_ERR(ObReferenceObjectByName(NTDLL_PATH,
-				    (POBJECT *) &NtdllFile));
+    NTSTATUS Status = ObReferenceObjectByName(NTDLL_PATH,
+					      (POBJECT *) &NtdllFile);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
     assert(NtdllFile != NULL);
 
-    RET_ERR(MmCreateSection(NtdllFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-			    &PspSystemDllSection));
+    Status = MmCreateSection(NtdllFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+			     &PspSystemDllSection);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
     assert(PspSystemDllSection != NULL);
 
     PIMAGE_SECTION_OBJECT ImageSectionObject = PspSystemDllSection->ImageSectionObject;
@@ -60,10 +66,23 @@ static NTSTATUS PspInitializeSystemDll()
 	}
     }
     if (PspSystemDllTlsSubsection == NULL) {
-	return STATUS_INVALID_IMAGE_FORMAT;
+	Status = STATUS_INVALID_IMAGE_FORMAT;
+	goto fail;
     }
 
     return STATUS_SUCCESS;
+
+ fail:
+    KeVgaPrint("\nFatal error: ");
+    if (NtdllFile == NULL) {
+	KeVgaPrint("%s not found", NTDLL_PATH);
+    } else if (PspSystemDllSection == NULL) {
+	KeVgaPrint("unable to create system dll section (error 0x%x)", Status);
+    } else if (PspSystemDllTlsSubsection == NULL) {
+	KeVgaPrint("ntdll.dll is invalid (missing .tls section)");
+    }
+    KeVgaPrint("\n\n");
+    return Status;
 }
 
 VOID PspPopulateUserSharedData()

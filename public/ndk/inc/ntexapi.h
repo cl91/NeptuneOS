@@ -3,8 +3,7 @@
 /*
  *  System Information Classes for NtQuerySystemInformation
  */
-typedef enum _SYSTEM_INFORMATION_CLASS
-{
+typedef enum _SYSTEM_INFORMATION_CLASS {
     SystemBasicInformation,
     SystemProcessorInformation,
     SystemPerformanceInformation,
@@ -109,8 +108,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS
 /*
  * Information Structures for NtQuerySystemInformation
  */
-typedef struct _SYSTEM_BASIC_INFORMATION
-{
+typedef struct _SYSTEM_BASIC_INFORMATION {
     ULONG Reserved;
     ULONG TimerResolution;
     ULONG PageSize;
@@ -155,6 +153,8 @@ typedef enum _HARDERROR_RESPONSE {
 
 #ifndef _NTOSKRNL_
 NTAPI NTSYSAPI NTSTATUS NtDisplayString(IN PUNICODE_STRING String);
+
+NTAPI NTSYSAPI NTSTATUS NtDisplayStringA(IN PCSTR String);
 
 NTAPI NTSYSAPI NTSTATUS NtRaiseHardError(IN NTSTATUS ErrorStatus,
 					 IN ULONG NumberOfParameters,

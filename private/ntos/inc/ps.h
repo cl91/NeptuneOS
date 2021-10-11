@@ -24,7 +24,6 @@ typedef struct _THREAD {
     struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;
     PIPC_ENDPOINT SystemServiceEndpoint;
-    MWORD EntryPoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
     MWORD TebClientAddr;
@@ -44,7 +43,6 @@ typedef struct _PROCESS {
     PFILE_OBJECT ImageFile;
     PSECTION ImageSection;
     MWORD ImageBaseAddress;
-    MWORD ImageEntryPoint;
     MWORD ImageVirtualSize;
     LIST_ENTRY ProcessListEntry;
     MWORD PebClientAddr;
@@ -54,6 +52,8 @@ typedef struct _PROCESS {
     NTDLL_PROCESS_INIT_INFO InitInfo;
 } PROCESS, *PPROCESS;
 
+#define PROC_CREA_FLAG_DRIVER	(0x1)
+
 /* init.c */
 NTSTATUS PsInitSystemPhase0();
 NTSTATUS PsInitSystemPhase1();
@@ -62,5 +62,7 @@ NTSTATUS PsInitSystemPhase1();
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread);
 NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
+			 IN MWORD Flags,
 			 OUT PPROCESS *pProcess);
-PTHREAD PsFindThreadWithBadge(IN MWORD Badge);
+NTSTATUS PsLoadDll(IN PPROCESS Process,
+		   IN PCSTR DllName);

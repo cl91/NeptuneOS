@@ -152,31 +152,42 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     assert(StartAddr + WindowSize > StartAddr);
     assert(StartAddr + WindowSize <= EndAddr);
     assert((Flags & MEM_RESERVE_NO_ACCESS)
+	   || (Flags & MEM_RESERVE_NO_INSERT)
 	   || (Flags & MEM_RESERVE_OWNED_MEMORY)
 	   || (Flags & MEM_RESERVE_MIRRORED_MEMORY)
 	   || (Flags & MEM_RESERVE_PHYSICAL_MAPPING));
     /* There might be a shorter way to write this, but this is the clearest */
     if (Flags & MEM_RESERVE_NO_ACCESS) {
+	assert(!(Flags & MEM_RESERVE_NO_INSERT));
 	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
 	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
 	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
     }
     if (Flags & MEM_RESERVE_OWNED_MEMORY) {
 	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
+	assert(!(Flags & MEM_RESERVE_NO_INSERT));
 	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
 	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
     }
     if (Flags & MEM_RESERVE_MIRRORED_MEMORY) {
 	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
+	assert(!(Flags & MEM_RESERVE_NO_INSERT));
 	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
 	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
     }
     if (Flags & MEM_RESERVE_PHYSICAL_MAPPING) {
 	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
+	assert(!(Flags & MEM_RESERVE_NO_INSERT));
 	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
 	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
+	assert(!(Flags & MEM_RESERVE_FILE_MAP));
+	assert(!(Flags & MEM_RESERVE_IMAGE_MAP));
     }
-    if (Flags & MEM_RESERVE_PHYSICAL_MAPPING) {
+    if (Flags & MEM_RESERVE_NO_INSERT) {
+	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
+	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
+	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
+	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
 	assert(!(Flags & MEM_RESERVE_FILE_MAP));
 	assert(!(Flags & MEM_RESERVE_IMAGE_MAP));
     }
@@ -270,7 +281,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     /* Unable to find an unused address window */
-    MmDbgDumpVSpace(VSpace);
+    // MmDbgDumpVSpace(VSpace);
     return STATUS_CONFLICTING_ADDRESSES;
 
 Insert:
@@ -286,6 +297,15 @@ Insert:
     VadFlags.OwnedMemory = !!(Flags & MEM_RESERVE_OWNED_MEMORY);
     VadFlags.MirroredMemory = !!(Flags & MEM_RESERVE_MIRRORED_MEMORY);
     MiInitializeVadNode(Vad, VSpace, VirtAddr, WindowSize, VadFlags);
+
+    if (pVad != NULL) {
+	*pVad = Vad;
+    }
+
+    if (Flags & MEM_RESERVE_NO_INSERT) {
+	return STATUS_SUCCESS;
+    }
+
     MiAvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
 
     if (VadFlags.ImageMap) {
@@ -310,10 +330,6 @@ Insert:
 	Vad->MirroredMemory.OwnerVad = NULL;
 	Vad->MirroredMemory.Offset = 0;
 	InitializeListHead(&Vad->MirroredMemory.ViewerLink);
-    }
-
-    if (pVad != NULL) {
-	*pVad = Vad;
     }
 
     DbgTrace("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
@@ -591,13 +607,14 @@ VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace)
 	     VSpace->VSpaceCap, VSpace->ASIDPool);
     DbgPrint("    root paging structure %p:\n", VSpace->RootPagingStructure);
     MmDbgDumpPagingStructure(VSpace->RootPagingStructure);
-    DbgPrint("    vad tree %p linearly:  ", &VSpace->VadTree);
+    DbgPrint("Dumping virtual address space %p vad tree %p\n    linearly:  ",
+	     VSpace, &VSpace->VadTree);
     MmAvlDumpTreeLinear(&VSpace->VadTree);
     DbgPrint("\n    vad tree %p:\n", &VSpace->VadTree);
     MmAvlDumpTree(&VSpace->VadTree);
     DbgPrint("    vad tree content:\n");
     LoopOverVadTree(Vad, VSpace, MmDbgDumpVad(Vad));
-    DbgPrint("    page mappings:\n");
+    DbgPrint("Dumping virtual address space %p page mappings:\n", VSpace);
     MmDbgDumpPagingStructureRecursively(VSpace->RootPagingStructure);
 }
 #endif

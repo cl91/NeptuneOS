@@ -253,16 +253,14 @@ VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     InsertTailList(&PebData->InMemoryOrderModuleList, &LdrEntry->InMemoryOrderLinks);
 }
 
-static BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
-				     OUT PLDR_DATA_TABLE_ENTRY *LdrEntry)
+BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
+			      OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *LdrEntry)
 {
 
     /* Check if a dll name was provided */
     if (!DllName) {
 	return FALSE;
     }
-
-    DPRINT("LdrpCheckForLoadedDll('%s' Loader Data Entry at %p)\n", DllName, LdrEntry);
 
     /* Get hash index */
     ULONG HashIndex = LDRP_GET_HASH_ENTRY(DllName);
@@ -281,7 +279,10 @@ static BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
 	/* Check base name of that module */
 	if (RtlEqualUnicodeString(&BaseDllName, &CurEntry->BaseDllName, TRUE)) {
 	    /* It matches, return it */
-	    *LdrEntry = CurEntry;
+	    if (LdrEntry != NULL) {
+		*LdrEntry = CurEntry;
+	    }
+	    DbgTrace("Module '%s' already loaded at %p\n", DllName, CurEntry->DllBase);
 	    return TRUE;
 	}
 
@@ -290,6 +291,8 @@ static BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
     }
 
     /* Module was not found, return failure */
+    DbgTrace("Module '%s' is not loaded\n", DllName);
+
     return FALSE;
 }
 
@@ -567,11 +570,6 @@ static USHORT LdrpNameToOrdinal(IN PCSTR ImportName,
     return OrdinalTable[Next];
 }
 
-NTSTATUS LdrpGetProcedureAddress(IN PVOID BaseAddress,
-				 IN PANSI_STRING Name,
-				 IN ULONG Ordinal,
-				 OUT PVOID *ProcedureAddress);
-
 static BOOLEAN LdrpCheckForLoadedDllHandle(IN PVOID Base,
 					   OUT PLDR_DATA_TABLE_ENTRY *LdrEntry)
 {
@@ -708,8 +706,8 @@ static NTSTATUS LdrpSnapThunk(IN PVOID ExportBase,
 	    }
 
 	    /* Get the pointer */
-	    Status = LdrpGetProcedureAddress(ForwarderHandle, ForwardName, ForwardOrdinal,
-					     (PVOID *)(&Thunk->u1.Function));
+	    Status = LdrGetProcedureAddress(ForwarderHandle, ForwardName, ForwardOrdinal,
+					    (PVOID *)(&Thunk->u1.Function));
 	    /* If this fails, then error out */
 	    if (!NT_SUCCESS(Status))
 		goto FailurePath;
@@ -788,10 +786,10 @@ FailurePath:
     return IsOrdinal ? STATUS_ORDINAL_NOT_FOUND : STATUS_ENTRYPOINT_NOT_FOUND;
 }
 
-static NTSTATUS LdrpGetProcedureAddress(IN PVOID BaseAddress,
-					IN PANSI_STRING Name,
-					IN ULONG Ordinal,
-					OUT PVOID *ProcedureAddress)
+NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
+				IN PANSI_STRING Name,
+				IN ULONG Ordinal,
+				OUT PVOID *ProcedureAddress)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     UCHAR ImportBuffer[64];
@@ -1331,7 +1329,8 @@ NTSTATUS LdrpWalkImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
     PIMAGE_BOUND_IMPORT_DESCRIPTOR BoundEntry = NULL;
     ULONG BoundTableSize = 0, ImportTableSize = 0;
 
-    DbgTrace("Walking import table (%wZ %p)\n", &LdrEntry->BaseDllName, LdrEntry);
+    DbgTrace("Walking import table (%wZ loaded at %p)\n",
+	     &LdrEntry->BaseDllName, LdrEntry->DllBase);
 
     /* Check if we were redirected */
     if (!(LdrEntry->Flags & LDRP_REDIRECTED)) {

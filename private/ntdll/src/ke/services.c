@@ -20,6 +20,21 @@ static inline NTSTATUS KiMarshalUnicodeString(IN OUT ULONG *MsgBufOffset,
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS KiMarshalAnsiString(IN OUT ULONG *MsgBufOffset,
+					   IN PCSTR String,
+					   OUT SYSTEM_SERVICE_ARGUMENT *Arg)
+{
+    ULONG Length = strlen(String) + 1;
+    if ((*MsgBufOffset + Length) > SYSSVC_MESSAGE_BUFFER_SIZE) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    memcpy(&OFFSET_TO_ARGUMENT(*MsgBufOffset, CHAR), String, Length);
+    Arg->BufferStart = *MsgBufOffset;
+    Arg->BufferSize = Length;
+    *MsgBufOffset += Length;
+    return STATUS_SUCCESS;
+}
+
 /*
  * Serialize OBJECT_ATTRIBUTES into the system service message buffer.
  *

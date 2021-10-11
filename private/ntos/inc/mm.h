@@ -243,6 +243,9 @@ typedef union _MMVAD_FLAGS {
 #define MEM_RESERVE_OWNED_MEMORY	(0x1UL << 7)
 /* Memory pages are derived from pages in other VSpace via seL4_CNode_Copy */
 #define MEM_RESERVE_MIRRORED_MEMORY	(0x1UL << 8)
+/* Find unused address window only. Do not actually insert the VAD into the
+ * process address space */
+#define MEM_RESERVE_NO_INSERT		(0x1UL << 9)
 
 /* Flags that can be passed into MmCommitVirtualMemoryEx */
 /* When committing owned memory, map all viewer address windows as well */

@@ -206,4 +206,8 @@
     <parameter annotation="in" type="ULONG" name="OpenOptions" />
   </syssvc>
 
+  <syssvc name="NtLoadDriver">
+    <parameter annotation="in" type="UnicodeString" name="DriverServiceName" />
+  </syssvc>
+
 </system-services>

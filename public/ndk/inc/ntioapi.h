@@ -83,3 +83,12 @@ typedef struct _IO_STATUS_BLOCK {
     } DUMMYUNIONNAME;
     ULONG_PTR Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
+
+/*
+ * System service interface of the IO manager.
+ */
+#ifndef _NTOSKRNL_
+NTAPI NTSYSAPI NTSTATUS NtLoadDriver(IN PUNICODE_STRING DriverServiceName);
+
+NTAPI NTSYSAPI NTSTATUS NtLoadDriverA(IN PCSTR DriverServiceName);
+#endif

@@ -15,7 +15,7 @@ _LdrInitializeThunk:
      * manually re-aligned before pushing the arguments for the
      * call instruction to LdrpInitialize.
      */
-    sub  $0x8, %esp
+    sub  $0xc, %esp
     push %ebp
 
     /*
@@ -23,8 +23,7 @@ _LdrInitializeThunk:
      * The system dll tls region address is in %edx
      * Thread entry point is in %eax
      */
-    push %eax
-    call @LdrpInitialize@12
+    call @LdrpInitialize@8
 
     /* Should not return. */
 1:

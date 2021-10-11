@@ -7,7 +7,7 @@
 extern LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 extern PVOID LdrpHeap;
 extern RTL_CRITICAL_SECTION LdrpLoaderLock;
-
+extern PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
 
 static inline NTSTATUS LdrpUtf8ToUnicodeString(IN PCSTR String,
 					       OUT PUNICODE_STRING UnicodeString)
@@ -55,6 +55,8 @@ VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 				IN PCSTR BaseDllName);
 PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress);
 PVOID LdrpFetchAddressOfEntryPoint(IN PVOID ImageBase);
+BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
+			      OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *LdrEntry);
 
 /* ../rtl/critical.c */
 VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore);

@@ -4,8 +4,9 @@
 #include <ntimage.h>
 
 #define PspAllocatePool(Var, Type)					\
-    Type *Var = (Type *)ExAllocatePoolWithTag(sizeof(Type), NTOS_PS_TAG); \
-    if ((Var) == NULL) { return STATUS_NO_MEMORY; }
+    ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_PS_TAG, {})
+#define PspAllocateArray(Var, Type, Size)				\
+    ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_PS_TAG, {})
 
 /* Unsafe: no validation. Must be called after image file is fully mapped
  * into server address space and validated to be a PE image. */

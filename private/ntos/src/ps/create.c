@@ -247,7 +247,6 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	    PspSystemDllTlsSubsection->SubSectionBase;
 	/* Populate the process init info used by ntdll on process startup */
 	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
-	Thread->EntryPoint = Process->ImageEntryPoint;
     } else {
 	/* Allocate SystemDll TLS region */
 	assert(PspSystemDllTlsSubsection != NULL);
@@ -361,21 +360,80 @@ static inline NTSTATUS PspPopulateLoaderSharedData(IN PPROCESS Process,
  * set to NULL.
  */
 static NTSTATUS PspMapDll(IN PPROCESS Process,
+			  IN PLOADER_SHARED_DATA LoaderSharedData,
 			  IN OUT MWORD *LoaderDataOffset,
 			  IN PCSTR DllName,
 			  OUT PFILE_OBJECT *DllFile)
 {
     DbgTrace("DllName = %s\n", DllName);
-    if (!strcasecmp(NTDLL_NAME, DllName) || !strcasecmp(NTDLL_NAME_NO_EXT, DllName)) {
-	*DllFile = NULL;
-	return STATUS_SUCCESS;
+    assert(LoaderDataOffset != NULL);
+    assert(DllFile != NULL);
+    MWORD OrigLoaderDataOffset = *LoaderDataOffset;
+
+    /* Check the loader shared data to see if the dll has already been mapped */
+    PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)((MWORD)LoaderSharedData + LoaderSharedData->LoadedModules);
+    for (ULONG i = 0; i < LoaderSharedData->LoadedModuleCount; i++) {
+	PCSTR LoadedDllName = (PCSTR)((MWORD)LoaderSharedData + LoadedModule->DllName);
+	if (!strcasecmp(LoadedDllName, DllName)) {
+	    *DllFile = NULL;
+	    return STATUS_SUCCESS;
+	}
+	LoadedModule = (PLDRP_LOADED_MODULE)((MWORD)LoadedModule + LoadedModule->EntrySize);
     }
-    /* TODO: Actually read and map the dll file */
-    /* TODO: Call PspPopulateLoaderSharedData once done */
+
+    /* Search under \BootModules first. */
+    /* TODO: Eventually we need to implement the NT process search path semantics. */
+    ULONG DllNameLength = strlen(DllName);
+    PspAllocateArray(DllPath, CHAR, DllNameLength + sizeof(BOOTMODULE_PATH) + 1);
+    memcpy(DllPath, BOOTMODULE_PATH, sizeof(BOOTMODULE_PATH) - 1);
+    DllPath[sizeof(BOOTMODULE_PATH) - 1] = '\\';
+    memcpy(DllPath + sizeof(BOOTMODULE_PATH), DllName, DllNameLength+1);
+
+    NTSTATUS Status = ObReferenceObjectByName(DllPath, (POBJECT *)DllFile);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
+    assert(*DllFile != NULL);
+
+    PSECTION DllSection = NULL;
+    Status = MmCreateSection(*DllFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+			     &DllSection);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
+    assert(DllSection != NULL);
+
+    MWORD DllBase = 0;
+    MWORD DllViewSize = 0;
+    Status = MmMapViewOfSection(&Process->VSpace, DllSection,
+				&DllBase, NULL, &DllViewSize, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
+    assert(DllBase != 0);
+    assert(DllViewSize != 0);
+
+    LoaderSharedData->LoadedModuleCount++;
+    Status = PspPopulateLoaderSharedData(Process, LoaderDataOffset, DllPath,
+					 DllName, DllBase, DllViewSize);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
+
     return STATUS_SUCCESS;
+
+ fail:
+    ExFreePool(DllPath);
+    if (DllSection != NULL) {
+	ObDeleteObject(DllSection);
+    }
+    *LoaderDataOffset = OrigLoaderDataOffset;
+    *DllFile = NULL;
+    return Status;
 }
 
 static NTSTATUS PspMapDependencies(IN PPROCESS Process,
+				   IN PLOADER_SHARED_DATA LoaderSharedData,
 				   IN OUT MWORD *LoaderDataOffset,
 				   IN PVOID DllFileBuffer)
 {
@@ -390,9 +448,9 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
 	if (ImportTable[i].Name != 0) {
 	    PCSTR DllName = RtlImageRvaToPtr(DllFileBuffer, ImportTable[i].Name);
 	    PFILE_OBJECT DllFile = NULL;
-	    RET_ERR(PspMapDll(Process, LoaderDataOffset, DllName, &DllFile));
+	    RET_ERR(PspMapDll(Process, LoaderSharedData, LoaderDataOffset, DllName, &DllFile));
 	    if (DllFile != NULL) {
-		RET_ERR(PspMapDependencies(Process, LoaderDataOffset, DllFile->BufferPtr));
+		RET_ERR(PspMapDependencies(Process, LoaderSharedData, LoaderDataOffset, DllFile->BufferPtr));
 	    }
 	}
     }
@@ -400,6 +458,7 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
 }
 
 NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
+			 IN MWORD Flags,
 			 OUT PPROCESS *pProcess)
 {
     assert(ImageFile != NULL);
@@ -433,23 +492,28 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     assert(ImageVirtualSize != 0);
     Process->ImageBaseAddress = ImageBaseAddress;
     Process->ImageVirtualSize = ImageVirtualSize;
-    Process->ImageEntryPoint = (MWORD) Section->ImageSectionObject->ImageInformation.TransferAddress;
     Process->ImageSection = Section;
     Process->ImageFile = ImageFile;
 
+    if (Flags & PROC_CREA_FLAG_DRIVER) {
+	Process->InitInfo.DriverProcess = TRUE;
+    }
+
     /* Reserve and commit the loader private heap */
-    MWORD LoaderHeapStart = ImageBaseAddress + ImageVirtualSize;
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, LoaderHeapStart, 0, NTDLL_LOADER_HEAP_RESERVE,
-				      MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES, NULL),
+    PMMVAD LoaderHeapVad = NULL;
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
+					USER_IMAGE_REGION_END, NTDLL_LOADER_HEAP_RESERVE,
+					MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
+					&LoaderHeapVad),
 	       ObDeleteObject(Process));
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, LoaderHeapStart,
+    assert(LoaderHeapVad != NULL);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, LoaderHeapVad->AvlNode.Key,
 				       NTDLL_LOADER_HEAP_COMMIT, 0),
 	       ObDeleteObject(Process));
-    Process->InitInfo.LoaderHeapStart = LoaderHeapStart;
+    Process->InitInfo.LoaderHeapStart = LoaderHeapVad->AvlNode.Key;
 
     /* Reserve and commit the process heap */
     PIMAGE_NT_HEADERS NtHeader = PspImageNtHeader(ImageFile->BufferPtr);
-    MWORD ProcessHeapStart = LoaderHeapStart + NTDLL_LOADER_HEAP_RESERVE;
     MWORD ProcessHeapReserve = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapReserve);
     MWORD ProcessHeapCommit = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapCommit);
     if (ProcessHeapReserve == 0) {
@@ -461,13 +525,17 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     if (ProcessHeapReserve < ProcessHeapCommit) {
 	ProcessHeapReserve = ProcessHeapCommit;
     }
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, ProcessHeapStart, 0, ProcessHeapReserve,
-				      MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES, NULL),
+    PMMVAD ProcessHeapVad = NULL;
+    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
+					USER_IMAGE_REGION_END, ProcessHeapReserve,
+					MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
+					&ProcessHeapVad),
 	       ObDeleteObject(Process));
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ProcessHeapStart,
+    assert(ProcessHeapVad != NULL);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, ProcessHeapVad->AvlNode.Key,
 				       ProcessHeapCommit, 0),
 	       ObDeleteObject(Process));
-    Process->InitInfo.ProcessHeapStart = ProcessHeapStart;
+    Process->InitInfo.ProcessHeapStart = ProcessHeapVad->AvlNode.Key;
     Process->InitInfo.ProcessHeapReserve = ProcessHeapReserve;
     Process->InitInfo.ProcessHeapCommit = ProcessHeapCommit;
 
@@ -534,7 +602,7 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
     RET_ERR_EX(PspPopulateLoaderSharedData(Process, &LoaderDataOffset,
 					   NTDLL_PATH, NTDLL_NAME, NtdllBase, NtdllViewSize),
 	       ObDeleteObject(Process));
-    RET_ERR_EX(PspMapDependencies(Process, &LoaderDataOffset, ImageFile->BufferPtr),
+    RET_ERR_EX(PspMapDependencies(Process, LoaderSharedData, &LoaderDataOffset, ImageFile->BufferPtr),
 	       ObDeleteObject(Process));
 
     /* Create the Event objects used by the NTDLL ldr component */
@@ -544,6 +612,26 @@ NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
 
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
     *pProcess = Process;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS PsLoadDll(IN PPROCESS Process,
+		   IN PCSTR DllName)
+{
+    /* Locate the end of the loader shared data */
+    PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
+    PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)(Process->LoaderSharedDataServerAddr
+							     + LoaderSharedData->LoadedModules);
+    for (ULONG i = 0; i < LoaderSharedData->LoadedModuleCount; i++) {
+	LoadedModule = (PLDRP_LOADED_MODULE)((MWORD)LoadedModule + LoadedModule->EntrySize);
+    }
+    MWORD LoaderDataOffset = (MWORD)LoadedModule - Process->LoaderSharedDataServerAddr;
+
+    PFILE_OBJECT DllFile = NULL;
+    RET_ERR(PspMapDll(Process, LoaderSharedData, &LoaderDataOffset, DllName, &DllFile));
+    if (DllFile != NULL) {
+	RET_ERR(PspMapDependencies(Process, LoaderSharedData, &LoaderDataOffset, DllFile->BufferPtr));
+    }
     return STATUS_SUCCESS;
 }
 

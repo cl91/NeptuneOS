@@ -8,6 +8,10 @@
 #define NTDLL_NAME_NO_EXT		"ntdll"
 #define NTDLL_NAME			NTDLL_NAME_NO_EXT ".dll"
 #define NTDLL_PATH			BOOTMODULE_PATH "\\" NTDLL_NAME
+#define HAL_DLL_NAME			"hal.dll"
+#define HAL_PATH			BOOTMODULE_PATH "\\" HAL_DLL_NAME
+#define SMSS_EXE_NAME			"smss.exe"
+#define SMSS_PATH			BOOTMODULE_PATH "\\" SMSS_EXE_NAME
 
 /* boot.c */
 NTSTATUS LdrLoadBootModules();

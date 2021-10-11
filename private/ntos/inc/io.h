@@ -25,6 +25,7 @@ typedef struct _FILE_OBJECT {
 
 /* init.c */
 NTSTATUS IoInitSystemPhase0();
+NTSTATUS IoInitSystemPhase1();
 
 /* create.c */
 NTSTATUS IoCreateFile(IN PCSTR FileName,

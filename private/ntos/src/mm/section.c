@@ -436,11 +436,35 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
-    MWORD BaseAddress = ImageSection->ImageBase;
-    MWORD ImageVirtualSize = 0;
 
+    /* Compute the total in-memory size of the image */
+    MWORD ImageVirtualSize = 0;
+    LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
+	ImageVirtualSize += SubSection->SubSectionSize;
+    }
+
+    /* Find an unused address window of ImageVirtualSize. If the user supplied the
+     * base address, always map there. If not, try the preferred ImageBase specified
+     * in the image file first */
+    MWORD BaseAddress = ImageSection->ImageBase;
     if ((pBaseAddress != NULL) && (*pBaseAddress != 0)) {
 	BaseAddress = *pBaseAddress;
+    } else if (!NT_SUCCESS(MmReserveVirtualMemoryEx(VSpace, BaseAddress, 0,
+						    ImageVirtualSize,
+						    MEM_RESERVE_NO_INSERT,
+						    NULL))) {
+	/* We cannot map on the preferred image base. Search from the beginning
+	 * of the user address space. */
+	PMMVAD ImageVad = NULL;
+	RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
+					 USER_IMAGE_REGION_END,
+					 ImageVirtualSize,
+					 MEM_RESERVE_NO_INSERT, &ImageVad));
+	assert(ImageVad != NULL);
+	BaseAddress = ImageVad->AvlNode.Key;
+	assert(BaseAddress >= USER_IMAGE_REGION_START);
+	assert(BaseAddress < USER_IMAGE_REGION_END);
+	ExFreePool(ImageVad);
     }
 
     /* For each subsection of the image section object, create a VAD that points
@@ -477,7 +501,6 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 		   {
 		       /* TODO: Clean up when error */
 		   });
-	ImageVirtualSize += Vad->WindowSize;
     }
 
     if (pBaseAddress != NULL) {

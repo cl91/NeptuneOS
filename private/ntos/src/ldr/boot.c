@@ -29,7 +29,7 @@ NTSTATUS LdrLoadBootModules()
 
     KeVgaWriteString("Available boot modules:");
     for (int i = 0; i < cpio.file_count; i++) {
-	KeVgaPrint("  %s", FileNames[i]);
+	KeVgaPrint(" %s", FileNames[i]);
     }
     KeVgaWriteString("\n");
 
