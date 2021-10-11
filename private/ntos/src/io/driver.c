@@ -2,7 +2,7 @@
 
 NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad)
 {
-    PFILE_OBJECT DriverFile = NULL;
+    PIO_FILE_OBJECT DriverFile = NULL;
     RET_ERR(ObReferenceObjectByName(DriverToLoad, (POBJECT *) &DriverFile));
     assert(DriverFile != NULL);
 

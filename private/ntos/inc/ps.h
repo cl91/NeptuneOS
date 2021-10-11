@@ -40,7 +40,7 @@ typedef struct _PROCESS {
     LIST_ENTRY ThreadList;
     PCNODE CSpace;
     VIRT_ADDR_SPACE VSpace;	/* Virtual address space of the process */
-    PFILE_OBJECT ImageFile;
+    PIO_FILE_OBJECT ImageFile;
     PSECTION ImageSection;
     MWORD ImageBaseAddress;
     MWORD ImageVirtualSize;
@@ -61,7 +61,7 @@ NTSTATUS PsInitSystemPhase1();
 /* create.c */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread);
-NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
+NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN MWORD Flags,
 			 OUT PPROCESS *pProcess);
 NTSTATUS PsLoadDll(IN PPROCESS Process,

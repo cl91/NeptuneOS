@@ -2,7 +2,7 @@
 
 NTSTATUS IopFileObjectCreateProc(POBJECT Object)
 {
-    PFILE_OBJECT File = (PFILE_OBJECT) Object;
+    PIO_FILE_OBJECT File = (PIO_FILE_OBJECT) Object;
     File->DeviceObject = NULL;
     File->FileName = NULL;
     File->SectionObject.DataSectionObject = NULL;
@@ -13,17 +13,17 @@ NTSTATUS IopFileObjectCreateProc(POBJECT Object)
 }
 
 /*
- * For now FILE_OBJECT is just a pointer to an in-memory buffer.
+ * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
  * Buffer must be aligned with 4K page boundary. Size is rounded up
  * to 4K page boundary.
  */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
 		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
-		      OUT PFILE_OBJECT *pFile)
+		      OUT PIO_FILE_OBJECT *pFile)
 {
     assert(pFile != NULL);
-    PFILE_OBJECT File = NULL;
+    PIO_FILE_OBJECT File = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File));
     assert(File != NULL);
 
@@ -36,7 +36,7 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
 }
 
 #ifdef CONFIG_DEBUG_BUILD
-VOID IoDbgDumpFileObject(IN PFILE_OBJECT File)
+VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 {
     DbgPrint("Dumping file object %p\n", File);
     if (File == NULL) {

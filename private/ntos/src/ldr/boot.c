@@ -42,7 +42,7 @@ NTSTATUS LdrLoadBootModules()
 		 FileContent, (unsigned int) FileSize);
 
 	/* Create FILE object and insert into object directory */
-	PFILE_OBJECT File = NULL;
+	PIO_FILE_OBJECT File = NULL;
 	RET_ERR(IoCreateFile(FileNames[i], (PVOID) FileContent, FileSize, &File));
 	assert(File != NULL);
 	RET_ERR_EX(ObInsertObjectByName(BOOTMODULE_PATH, File, FileNames[i]),

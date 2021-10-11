@@ -17,7 +17,7 @@ static PTHREAD EiSessionManagerThread;
 
 static NTSTATUS EiStartSessionManager()
 {
-    PFILE_OBJECT SmssExe = NULL;
+    PIO_FILE_OBJECT SmssExe = NULL;
     NTSTATUS Status = ObReferenceObjectByName(SMSS_PATH, (POBJECT *) &SmssExe);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

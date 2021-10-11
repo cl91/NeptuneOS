@@ -26,3 +26,5 @@
 @ stdcall RtlInitAnsiString(ptr str)
 @ stdcall RtlInitAnsiStringEx(ptr str)
 @ stdcall LdrFindEntryForAddress(ptr ptr)
+@ cdecl memset(ptr long long)
+@ stdcall RtlAllocateHeap(ptr long ptr)

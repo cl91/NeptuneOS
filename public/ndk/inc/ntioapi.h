@@ -76,6 +76,156 @@
 #define FILE_OPEN_NO_RECALL               0x00400000
 #define FILE_OPEN_FOR_FREE_SPACE_QUERY    0x00800000
 
+typedef enum _IO_NOTIFICATION_EVENT_CATEGORY {
+    EventCategoryReserved,
+    EventCategoryHardwareProfileChange,
+    EventCategoryDeviceInterfaceChange,
+    EventCategoryTargetDeviceChange
+} IO_NOTIFICATION_EVENT_CATEGORY;
+
+typedef enum _IO_PRIORITY_HINT {
+    IoPriorityVeryLow = 0,
+    IoPriorityLow,
+    IoPriorityNormal,
+    IoPriorityHigh,
+    IoPriorityCritical,
+    MaxIoPriorityTypes
+} IO_PRIORITY_HINT;
+
+typedef enum _FILE_INFORMATION_CLASS {
+    FileDirectoryInformation = 1,
+    FileFullDirectoryInformation,
+    FileBothDirectoryInformation,
+    FileBasicInformation,
+    FileStandardInformation,
+    FileInternalInformation,
+    FileEaInformation,
+    FileAccessInformation,
+    FileNameInformation,
+    FileRenameInformation,
+    FileLinkInformation,
+    FileNamesInformation,
+    FileDispositionInformation,
+    FilePositionInformation,
+    FileFullEaInformation,
+    FileModeInformation,
+    FileAlignmentInformation,
+    FileAllInformation,
+    FileAllocationInformation,
+    FileEndOfFileInformation,
+    FileAlternateNameInformation,
+    FileStreamInformation,
+    FilePipeInformation,
+    FilePipeLocalInformation,
+    FilePipeRemoteInformation,
+    FileMailslotQueryInformation,
+    FileMailslotSetInformation,
+    FileCompressionInformation,
+    FileObjectIdInformation,
+    FileCompletionInformation,
+    FileMoveClusterInformation,
+    FileQuotaInformation,
+    FileReparsePointInformation,
+    FileNetworkOpenInformation,
+    FileAttributeTagInformation,
+    FileTrackingInformation,
+    FileIdBothDirectoryInformation,
+    FileIdFullDirectoryInformation,
+    FileValidDataLengthInformation,
+    FileShortNameInformation,
+    FileIoCompletionNotificationInformation,
+    FileIoStatusBlockRangeInformation,
+    FileIoPriorityHintInformation,
+    FileSfioReserveInformation,
+    FileSfioVolumeInformation,
+    FileHardLinkInformation,
+    FileProcessIdsUsingFileInformation,
+    FileNormalizedNameInformation,
+    FileNetworkPhysicalNameInformation,
+    FileIdGlobalTxDirectoryInformation,
+    FileIsRemoteDeviceInformation,
+    FileAttributeCacheInformation,
+    FileNumaNodeInformation,
+    FileStandardLinkInformation,
+    FileRemoteProtocolInformation,
+    FileMaximumInformation
+} FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
+
+typedef enum _DIRECTORY_NOTIFY_INFORMATION_CLASS {
+    DirectoryNotifyInformation = 1,
+    DirectoryNotifyExtendedInformation
+} DIRECTORY_NOTIFY_INFORMATION_CLASS, *PDIRECTORY_NOTIFY_INFORMATION_CLASS;
+
+typedef struct _FILE_POSITION_INFORMATION {
+    LARGE_INTEGER CurrentByteOffset;
+} FILE_POSITION_INFORMATION, *PFILE_POSITION_INFORMATION;
+
+typedef struct _FILE_BASIC_INFORMATION {
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    ULONG FileAttributes;
+} FILE_BASIC_INFORMATION, *PFILE_BASIC_INFORMATION;
+
+typedef struct _FILE_IO_PRIORITY_HINT_INFORMATION {
+    IO_PRIORITY_HINT PriorityHint;
+} FILE_IO_PRIORITY_HINT_INFORMATION, *PFILE_IO_PRIORITY_HINT_INFORMATION;
+
+typedef struct _FILE_IO_COMPLETION_NOTIFICATION_INFORMATION {
+    ULONG Flags;
+} FILE_IO_COMPLETION_NOTIFICATION_INFORMATION, *PFILE_IO_COMPLETION_NOTIFICATION_INFORMATION;
+
+typedef struct _FILE_IOSTATUSBLOCK_RANGE_INFORMATION {
+    PUCHAR IoStatusBlockRange;
+    ULONG Length;
+} FILE_IOSTATUSBLOCK_RANGE_INFORMATION, *PFILE_IOSTATUSBLOCK_RANGE_INFORMATION;
+
+typedef struct _FILE_IS_REMOTE_DEVICE_INFORMATION {
+    BOOLEAN IsRemote;
+} FILE_IS_REMOTE_DEVICE_INFORMATION, *PFILE_IS_REMOTE_DEVICE_INFORMATION;
+
+typedef struct _FILE_NUMA_NODE_INFORMATION {
+    USHORT NodeNumber;
+} FILE_NUMA_NODE_INFORMATION, *PFILE_NUMA_NODE_INFORMATION;
+
+typedef struct _FILE_PROCESS_IDS_USING_FILE_INFORMATION {
+    ULONG NumberOfProcessIdsInList;
+    ULONG_PTR ProcessIdList[1];
+} FILE_PROCESS_IDS_USING_FILE_INFORMATION, *PFILE_PROCESS_IDS_USING_FILE_INFORMATION;
+
+typedef struct _FILE_STANDARD_INFORMATION {
+    LARGE_INTEGER AllocationSize;
+    LARGE_INTEGER EndOfFile;
+    ULONG NumberOfLinks;
+    BOOLEAN DeletePending;
+    BOOLEAN Directory;
+} FILE_STANDARD_INFORMATION, *PFILE_STANDARD_INFORMATION;
+
+typedef struct _FILE_NETWORK_OPEN_INFORMATION {
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER AllocationSize;
+    LARGE_INTEGER EndOfFile;
+    ULONG FileAttributes;
+} FILE_NETWORK_OPEN_INFORMATION, *PFILE_NETWORK_OPEN_INFORMATION;
+
+typedef enum _FSINFOCLASS {
+    FileFsVolumeInformation = 1,
+    FileFsLabelInformation,
+    FileFsSizeInformation,
+    FileFsDeviceInformation,
+    FileFsAttributeInformation,
+    FileFsControlInformation,
+    FileFsFullSizeInformation,
+    FileFsObjectIdInformation,
+    FileFsDriverPathInformation,
+    FileFsVolumeFlagsInformation,
+    FileFsMaximumInformation
+} FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
+
 typedef struct _IO_STATUS_BLOCK {
     _ANONYMOUS_UNION union {
 	NTSTATUS Status;

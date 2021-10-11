@@ -10,7 +10,7 @@ static NTSTATUS IopCreateFileType()
     };
     return ObCreateObjectType(OBJECT_TYPE_FILE,
 			      "File",
-			      sizeof(FILE_OBJECT),
+			      sizeof(IO_FILE_OBJECT),
 			      TypeInfo);
 }
 
@@ -23,7 +23,7 @@ NTSTATUS IoInitSystemPhase0()
 
 static NTSTATUS IopLoadHalDll()
 {
-    PFILE_OBJECT HalDll = NULL;
+    PIO_FILE_OBJECT HalDll = NULL;
     NTSTATUS Status = ObReferenceObjectByName(HAL_PATH, (POBJECT *) &HalDll);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

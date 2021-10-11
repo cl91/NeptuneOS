@@ -13,6 +13,16 @@
 #include <ntpsapi.h>
 #include <ntseapi.h>
 
+typedef struct _COMPRESSED_DATA_INFO {
+    USHORT CompressionFormatAndEngine;
+    UCHAR CompressionUnitShift;
+    UCHAR ChunkShift;
+    UCHAR ClusterShift;
+    UCHAR Reserved;
+    USHORT NumberOfChunks;
+    ULONG CompressedChunkSizes[ANYSIZE_ARRAY];
+} COMPRESSED_DATA_INFO, *PCOMPRESSED_DATA_INFO;
+
 typedef struct _RTL_USER_PROCESS_INFORMATION {
     ULONG Size;
     HANDLE ProcessHandle;

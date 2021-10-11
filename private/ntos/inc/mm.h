@@ -401,7 +401,7 @@ typedef enum _MM_MEM_PRESSURE {
  * is managed by the object manager and exposed to the client processes (via an
  * instance handle). It is essentially a pointer into the actual IMAGE_SECTION_OBJECT
  * struct or DATA_SECTION_OBJECT struct. Since multiple SECTION objects can point
- * to the same FILE which can be mapped as image or data, the FILE_OBJECT contains
+ * to the same FILE which can be mapped as image or data, the IO_FILE_OBJECT contains
  * pointers to both IMAGE_SECTION_OBJECT and DATA_SECTION_OBJECT.
  *
  * Note the nomenclatures here are somewhat different from ELF/PE object format
@@ -436,14 +436,14 @@ typedef struct _SECTION {
 typedef struct _IMAGE_SECTION_OBJECT {
     LIST_ENTRY SubSectionList;
     LONG NumSubSections;
-    struct _FILE_OBJECT *FileObject;
+    struct _IO_FILE_OBJECT *FileObject;
     MWORD ImageBase;
     SECTION_IMAGE_INFORMATION ImageInformation;
 } IMAGE_SECTION_OBJECT, *PIMAGE_SECTION_OBJECT;
 
 typedef struct _DATA_SECTION_OBJECT {
     MWORD SectionSize;
-    struct _FILE_OBJECT *FileObject;
+    struct _IO_FILE_OBJECT *FileObject;
 } DATA_SECTION_OBJECT, *PDATA_SECTION_OBJECT;
 
 /*
@@ -509,7 +509,7 @@ MM_MEM_PRESSURE MmQueryMemoryPressure();
 
 /* section.c */
 NTSTATUS MmSectionInitialization();
-NTSTATUS MmCreateSection(IN struct _FILE_OBJECT *FileObject,
+NTSTATUS MmCreateSection(IN struct _IO_FILE_OBJECT *FileObject,
 			 IN MWORD Attribute,
 			 OUT PSECTION *SectionObject);
 NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,

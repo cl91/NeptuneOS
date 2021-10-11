@@ -46,7 +46,7 @@ NTSTATUS MmSectionInitialization()
 }
 
 static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSection,
-					    IN PFILE_OBJECT File)
+					    IN PIO_FILE_OBJECT File)
 {
     memset(ImageSection, 0, sizeof(IMAGE_SECTION_OBJECT));
     InitializeListHead(&ImageSection->SubSectionList);
@@ -369,7 +369,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 }
 #undef DIE
 
-static NTSTATUS MiCreateImageFileMap(IN PFILE_OBJECT File,
+static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 				     OUT PIMAGE_SECTION_OBJECT *pImageSection)
 {
     assert(File != NULL);
@@ -386,7 +386,7 @@ static NTSTATUS MiCreateImageFileMap(IN PFILE_OBJECT File,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmCreateSection(IN PFILE_OBJECT FileObject,
+NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
 			 IN MWORD Attribute,
 			 OUT PSECTION *SectionObject)
 {

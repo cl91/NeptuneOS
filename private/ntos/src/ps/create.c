@@ -363,7 +363,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
 			  IN PLOADER_SHARED_DATA LoaderSharedData,
 			  IN OUT MWORD *LoaderDataOffset,
 			  IN PCSTR DllName,
-			  OUT PFILE_OBJECT *DllFile)
+			  OUT PIO_FILE_OBJECT *DllFile)
 {
     DbgTrace("DllName = %s\n", DllName);
     assert(LoaderDataOffset != NULL);
@@ -447,7 +447,7 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
     for (ULONG i = 0; i < ImportDescriptorCount; i++) {
 	if (ImportTable[i].Name != 0) {
 	    PCSTR DllName = RtlImageRvaToPtr(DllFileBuffer, ImportTable[i].Name);
-	    PFILE_OBJECT DllFile = NULL;
+	    PIO_FILE_OBJECT DllFile = NULL;
 	    RET_ERR(PspMapDll(Process, LoaderSharedData, LoaderDataOffset, DllName, &DllFile));
 	    if (DllFile != NULL) {
 		RET_ERR(PspMapDependencies(Process, LoaderSharedData, LoaderDataOffset, DllFile->BufferPtr));
@@ -457,7 +457,7 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PsCreateProcess(IN PFILE_OBJECT ImageFile,
+NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN MWORD Flags,
 			 OUT PPROCESS *pProcess)
 {
@@ -627,7 +627,7 @@ NTSTATUS PsLoadDll(IN PPROCESS Process,
     }
     MWORD LoaderDataOffset = (MWORD)LoadedModule - Process->LoaderSharedDataServerAddr;
 
-    PFILE_OBJECT DllFile = NULL;
+    PIO_FILE_OBJECT DllFile = NULL;
     RET_ERR(PspMapDll(Process, LoaderSharedData, &LoaderDataOffset, DllName, &DllFile));
     if (DllFile != NULL) {
 	RET_ERR(PspMapDependencies(Process, LoaderSharedData, &LoaderDataOffset, DllFile->BufferPtr));

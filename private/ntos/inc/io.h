@@ -11,13 +11,13 @@ typedef struct _SECTION_OBJECT_POINTERS {
     PIMAGE_SECTION_OBJECT ImageSectionObject;
 } SECTION_OBJECT_POINTERS;
 
-typedef struct _FILE_OBJECT {
+typedef struct _IO_FILE_OBJECT {
     PDEVICE_OBJECT DeviceObject;
     PCSTR FileName;
     SECTION_OBJECT_POINTERS SectionObject;
     PVOID BufferPtr;
     MWORD Size;
-} FILE_OBJECT, *PFILE_OBJECT;
+} IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
 /*
  * Forward declarations.
@@ -31,4 +31,4 @@ NTSTATUS IoInitSystemPhase1();
 NTSTATUS IoCreateFile(IN PCSTR FileName,
 		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
-		      OUT PFILE_OBJECT *pFile);
+		      OUT PIO_FILE_OBJECT *pFile);

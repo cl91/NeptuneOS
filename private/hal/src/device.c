@@ -10,3 +10,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 {
     return STATUS_SUCCESS;
 }
+
+NTAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject)
+{
+}

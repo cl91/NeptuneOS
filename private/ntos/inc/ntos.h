@@ -29,7 +29,7 @@ VOID MmDbgDumpSection(IN PSECTION Section);
 VOID MmDbgDumpVad(PMMVAD Vad);
 VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
 VOID KeDbgDumpIPCError(IN int Error);
-VOID IoDbgDumpFileObject(IN PFILE_OBJECT File);
+VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
 #else
 #define MmDbgDumpCapTreeNode(x)
 #define MmDbgDumpUntypedInfo()

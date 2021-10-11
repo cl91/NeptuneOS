@@ -10,19 +10,15 @@
 
 #include <wdm.h>
 
-#if 0
-
 /* GLOBALS *******************************************************************/
 
 FAST_IO_DISPATCH FastIoDispatch;
 
 /* FUNCTIONS *****************************************************************/
 
-NTSTATUS
-NTAPI
-NullQueryFileInformation(OUT PVOID Buffer,
-			 IN PULONG Length,
-			 IN FILE_INFORMATION_CLASS InformationClass)
+NTAPI NTSTATUS NullQueryFileInformation(OUT PVOID Buffer,
+					IN PULONG Length,
+					IN FILE_INFORMATION_CLASS InformationClass)
 {
     PFILE_STANDARD_INFORMATION StandardInfo = Buffer;
 
@@ -43,15 +39,14 @@ NullQueryFileInformation(OUT PVOID Buffer,
     return STATUS_SUCCESS;
 }
 
-BOOLEAN
-NTAPI
-NullRead(IN PFILE_OBJECT FileObject,
-	 IN PLARGE_INTEGER FileOffset,
-	 IN ULONG Length,
-	 IN BOOLEAN Wait,
-	 IN ULONG LockKey,
-	 OUT PVOID Buffer,
-	 OUT PIO_STATUS_BLOCK IoStatus, IN PDEVICE_OBJECT DeviceObject)
+NTAPI BOOLEAN NullRead(IN PFILE_OBJECT FileObject,
+		       IN PLARGE_INTEGER FileOffset,
+		       IN ULONG Length,
+		       IN BOOLEAN Wait,
+		       IN ULONG LockKey,
+		       OUT PVOID Buffer,
+		       OUT PIO_STATUS_BLOCK IoStatus,
+		       IN PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
 
@@ -61,15 +56,14 @@ NullRead(IN PFILE_OBJECT FileObject,
     return TRUE;
 }
 
-BOOLEAN
-NTAPI
-NullWrite(IN PFILE_OBJECT FileObject,
-	  IN PLARGE_INTEGER FileOffset,
-	  IN ULONG Length,
-	  IN BOOLEAN Wait,
-	  IN ULONG LockKey,
-	  IN PVOID Buffer,
-	  OUT PIO_STATUS_BLOCK IoStatus, IN PDEVICE_OBJECT DeviceObject)
+NTAPI BOOLEAN NullWrite(IN PFILE_OBJECT FileObject,
+			IN PLARGE_INTEGER FileOffset,
+			IN ULONG Length,
+			IN BOOLEAN Wait,
+			IN ULONG LockKey,
+			IN PVOID Buffer,
+			OUT PIO_STATUS_BLOCK IoStatus,
+			IN PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
 
@@ -79,7 +73,8 @@ NullWrite(IN PFILE_OBJECT FileObject,
     return TRUE;
 }
 
-NTSTATUS NTAPI NullDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
+			    IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -153,12 +148,10 @@ NTAPI VOID NullUnload(IN PDRIVER_OBJECT DriverObject)
     /* Delete the Null device */
     IoDeleteDevice(DeviceObject);
 }
-#endif
 
 NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
-#if 0
     NTSTATUS Status;
     PDEVICE_OBJECT DeviceObject;
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\Null");
@@ -196,9 +189,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     FastIoDispatch.FastIoRead = NullRead;
     FastIoDispatch.FastIoWrite = NullWrite;
     DriverObject->FastIoDispatch = &FastIoDispatch;
-#endif
 
-    NtDisplayStringA("Hello from null.sys\n");
     /* Return success */
     return STATUS_SUCCESS;
 }

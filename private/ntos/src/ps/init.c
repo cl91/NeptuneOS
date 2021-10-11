@@ -44,7 +44,7 @@ NTSTATUS PsInitSystemPhase0()
 static NTSTATUS PspInitializeSystemDll()
 {
     /* Create the NTDLL.DLL image section */
-    PFILE_OBJECT NtdllFile = NULL;
+    PIO_FILE_OBJECT NtdllFile = NULL;
     NTSTATUS Status = ObReferenceObjectByName(NTDLL_PATH,
 					      (POBJECT *) &NtdllFile);
     if (!NT_SUCCESS(Status)) {
