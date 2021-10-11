@@ -494,6 +494,17 @@ typedef struct _IO_ERROR_LOG_MESSAGE {
 } IO_ERROR_LOG_MESSAGE, *PIO_ERROR_LOG_MESSAGE;
 
 /*
+ * Executive objects. These are simply handles to the server-side objects.
+ */
+typedef struct _EPROCESS {
+    HANDLE Handle;
+} EPROCESS, *PEPROCESS;
+
+typedef struct _ERESOURCE {
+    HANDLE Handle;
+} ERESOURCE, *PERESOURCE;
+
+/*
  * Driver entry point
  */
 typedef NTSTATUS (NTAPI DRIVER_INITIALIZE)(IN struct _DRIVER_OBJECT *DriverObject,
@@ -589,7 +600,7 @@ typedef FAST_IO_QUERY_STANDARD_INFO *PFAST_IO_QUERY_STANDARD_INFO;
 typedef BOOLEAN (NTAPI FAST_IO_LOCK)(IN PFILE_OBJECT FileObject,
 				     IN PLARGE_INTEGER FileOffset,
 				     IN PLARGE_INTEGER Length,
-				     IN struct _EPROCESS *ProcessId,
+				     IN PEPROCESS ProcessId,
 				     IN ULONG Key,
 				     IN BOOLEAN FailImmediately,
 				     IN BOOLEAN ExclusiveLock,
@@ -600,7 +611,7 @@ typedef FAST_IO_LOCK *PFAST_IO_LOCK;
 typedef BOOLEAN (NTAPI FAST_IO_UNLOCK_SINGLE)(IN PFILE_OBJECT FileObject,
 					      IN PLARGE_INTEGER FileOffset,
 					      IN PLARGE_INTEGER Length,
-					      IN struct _EPROCESS *ProcessId,
+					      IN PEPROCESS ProcessId,
 					      IN ULONG Key,
 					      OUT PIO_STATUS_BLOCK IoStatus,
 					      IN PDEVICE_OBJECT DeviceObject);
@@ -649,7 +660,7 @@ typedef FAST_IO_QUERY_NETWORK_OPEN_INFO *PFAST_IO_QUERY_NETWORK_OPEN_INFO;
 
 typedef NTSTATUS (NTAPI FAST_IO_ACQUIRE_FOR_MOD_WRITE)(IN PFILE_OBJECT FileObject,
 						       IN PLARGE_INTEGER EndingOffset,
-						       OUT struct _ERESOURCE **ResourceToRelease,
+						       OUT PERESOURCE *ResourceToRelease,
 						       IN PDEVICE_OBJECT DeviceObject);
 typedef FAST_IO_ACQUIRE_FOR_MOD_WRITE *PFAST_IO_ACQUIRE_FOR_MOD_WRITE;
 
@@ -723,7 +734,7 @@ typedef BOOLEAN (NTAPI FAST_IO_QUERY_OPEN)(IN OUT PIRP Irp,
 typedef FAST_IO_QUERY_OPEN *PFAST_IO_QUERY_OPEN;
 
 typedef NTSTATUS (NTAPI FAST_IO_RELEASE_FOR_MOD_WRITE)(IN PFILE_OBJECT FileObject,
-						       IN struct _ERESOURCE *ResourceToRelease,
+						       IN PERESOURCE ResourceToRelease,
 						       IN PDEVICE_OBJECT DeviceObject);
 typedef FAST_IO_RELEASE_FOR_MOD_WRITE *PFAST_IO_RELEASE_FOR_MOD_WRITE;
 
