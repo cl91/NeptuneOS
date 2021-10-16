@@ -24,8 +24,8 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
 				IN PTHREAD_CONTEXT Context);
 
 /* create.c */
-NTSTATUS PspThreadObjectCreateProc(POBJECT Object);
-NTSTATUS PspProcessObjectCreateProc(POBJECT Object);
+NTSTATUS PspThreadObjectInitProc(POBJECT Object);
+NTSTATUS PspProcessObjectInitProc(POBJECT Object);
 
 /* init.c */
 extern LIST_ENTRY PspProcessList;

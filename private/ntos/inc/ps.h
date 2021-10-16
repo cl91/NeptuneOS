@@ -51,9 +51,8 @@ typedef struct _PROCESS {
     MWORD LoaderSharedDataClientAddr;
     MWORD LoaderSharedDataServerAddr;
     NTDLL_PROCESS_INIT_INFO InitInfo;
+    PIO_DRIVER_OBJECT DriverObject; /* TODO: Mini-driver? */
 } PROCESS, *PPROCESS;
-
-#define PROC_CREA_FLAG_DRIVER	(0x1)
 
 /* init.c */
 NTSTATUS PsInitSystemPhase0();
@@ -63,7 +62,7 @@ NTSTATUS PsInitSystemPhase1();
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread);
 NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
-			 IN MWORD Flags,
+			 IN PIO_DRIVER_OBJECT DriverObject,
 			 OUT PPROCESS *pProcess);
 NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);

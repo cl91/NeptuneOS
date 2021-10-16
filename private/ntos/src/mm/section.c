@@ -3,19 +3,17 @@
 
 PSECTION MiPhysicalSection;
 
-NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object)
+NTSTATUS MiSectionObjectInitProc(IN POBJECT Object)
 {
     PSECTION Section = (PSECTION) Object;
     MiAvlInitializeNode(&Section->BasedSectionNode, 0);
-    Section->Flags.Word = 0;
-    Section->ImageSectionObject = NULL;
     return STATUS_SUCCESS;
 }
 
 NTSTATUS MmSectionInitialization()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = MiSectionObjectCreateProc,
+	.InitProc = MiSectionObjectInitProc,
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
@@ -45,17 +43,21 @@ NTSTATUS MmSectionInitialization()
     return STATUS_SUCCESS;
 }
 
+/*
+ * Note: ImageSection must point to zeroed-memory.
+ */
 static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSection,
 					    IN PIO_FILE_OBJECT File)
 {
-    memset(ImageSection, 0, sizeof(IMAGE_SECTION_OBJECT));
     InitializeListHead(&ImageSection->SubSectionList);
 }
 
+/*
+ * Note: Subsection must point to zeroed-memory.
+ */
 static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
 					  IN PIMAGE_SECTION_OBJECT ImageSection)
 {
-    memset(SubSection, 0, sizeof(SUBSECTION));
     SubSection->ImageSection = ImageSection;
     InitializeListHead(&SubSection->Link);
 }

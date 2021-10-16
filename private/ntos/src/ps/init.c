@@ -8,7 +8,7 @@ PMMVAD PspUserSharedDataVad;
 static NTSTATUS PspCreateThreadType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = PspThreadObjectCreateProc,
+	.InitProc = PspThreadObjectInitProc,
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
@@ -22,7 +22,7 @@ static NTSTATUS PspCreateThreadType()
 static NTSTATUS PspCreateProcessType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = PspProcessObjectCreateProc,
+	.InitProc = PspProcessObjectInitProc,
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,

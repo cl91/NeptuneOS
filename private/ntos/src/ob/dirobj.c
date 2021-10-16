@@ -6,7 +6,7 @@ POBJECT_DIRECTORY ObpRootObjectDirectory;
  * Called when Executive components attempt to create a new
  * directory in the object hierarchy.
  */
-static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self)
+static NTSTATUS ObpDirectoryObjectInitProc(IN POBJECT Self)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
     assert(Self != NULL);
@@ -134,6 +134,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     /* Object name must not contain the OBJ_NAME_PATH_SEPARATOR */
     for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
 	if (*Ptr == OBJ_NAME_PATH_SEPARATOR) {
+	    DbgTrace("Inserting name %s failed\n", Name);
 	    return STATUS_OBJECT_PATH_SYNTAX_BAD;
 	}
     }
@@ -156,7 +157,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 NTSTATUS ObpInitDirectoryObjectType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = ObpDirectoryObjectCreateProc,
+	.InitProc = ObpDirectoryObjectInitProc,
 	.OpenProc = ObpDirectoryObjectOpenProc,
 	.ParseProc = ObpDirectoryObjectParseProc,
 	.InsertProc = ObpDirectoryObjectInsertProc,
@@ -238,14 +239,14 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
     }
 }
 
-NTSTATUS ObCreateDirectory(IN PCSTR ParentPath,
-			   IN PCSTR DirectoryName)
+NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 {
     POBJECT_DIRECTORY Directory = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
 			   (POBJECT *) &Directory));
     assert(Directory != NULL);
-    RET_ERR_EX(ObInsertObjectByName(ParentPath, Directory, DirectoryName),
+
+    RET_ERR_EX(ObInsertObjectByPath(DirectoryPath, Directory),
 	       ObDeleteObject(Directory));
 
     return STATUS_SUCCESS;

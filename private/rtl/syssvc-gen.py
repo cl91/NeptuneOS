@@ -46,6 +46,9 @@ NTOS_SVC_GEN_C_TEMPLATE = """#include <ntos.h>{{extra_headers}}
 
 static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
                         {{handler_func_indent}}IN PTHREAD Thread,
+{%- if halsvc %}
+                        {{handler_func_indent}}IN PIO_DRIVER_OBJECT DriverObject,
+{%- endif %}
                         {{handler_func_indent}}IN ULONG ReqMsgLength,
                         {{handler_func_indent}}OUT ULONG *ReplyMsgLength)
 {
@@ -351,9 +354,10 @@ def generate_file(tmplstr, svc_list, out_file, halsvc, server_side):
     data = template.render({ 'svc_list': svc_list,
                              'svc_group': svc_group,
                              'svc_ipc_cap': svc_ipc_cap,
-                             'handler_func' : handler_func,
-                             'handler_func_indent' : handler_func_indent,
-                             'extra_headers' : extra_headers
+                             'handler_func': handler_func,
+                             'handler_func_indent': handler_func_indent,
+                             'extra_headers': extra_headers,
+                             'halsvc': halsvc
                             })
     out_file.write(data)
 

@@ -118,6 +118,9 @@ static inline VOID MiAvlInitializeTree(IN PMM_AVL_TREE Tree)
     InitializeListHead(&Tree->NodeList);
 }
 
+/*
+ * Note: Node must point to zeroed-memory!
+ */
 static inline VOID MiInitializeVadNode(IN PMMVAD Node,
 				       IN PVIRT_ADDR_SPACE VSpace,
 				       IN MWORD StartVaddr,
@@ -128,7 +131,6 @@ static inline VOID MiInitializeVadNode(IN PMMVAD Node,
     assert(VSpace != NULL);
     assert(IS_PAGE_ALIGNED(WindowSize));
     assert(IS_PAGE_ALIGNED(StartVaddr));
-    memset(Node, 0, sizeof(MMVAD));
     MiAvlInitializeNode(&Node->AvlNode, StartVaddr);
     Node->VSpace = VSpace;
     Node->Flags = Flags;

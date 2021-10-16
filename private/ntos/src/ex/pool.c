@@ -105,8 +105,8 @@ static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
 }
 
 /* If request size > EX_POOL_LARGEST_BLOCK, deny request
- * Else, allocate from the free list.
- * If no more space in free list, request one more page
+ * Else, allocate from the free list, and clear the memory.
+ * If no more space in free list, request one more page.
  */
 static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN MWORD NumberOfBytes,
@@ -163,6 +163,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     }
     PoolHeader->Tag = Tag;
 
+    memset((PVOID) BlockStart, 0, NumberOfBytes);
     return (PVOID) BlockStart;
 }
 
@@ -175,6 +176,9 @@ static VOID EiFreePool(IN PEX_POOL Pool,
     /* TODO: Implement */
 }
 
+/*
+ * Note: on successful allocation, allocated memory is always zeroed.
+ */
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag)
 {

@@ -1,6 +1,6 @@
 #include "iop.h"
 
-NTSTATUS IopFileObjectCreateProc(POBJECT Object)
+NTSTATUS IopFileObjectInitProc(POBJECT Object)
 {
     PIO_FILE_OBJECT File = (PIO_FILE_OBJECT) Object;
     File->DeviceObject = NULL;
@@ -33,6 +33,22 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
 
     *pFile = File;
     return STATUS_SUCCESS;
+}
+
+NTSTATUS IopFileObjectOpenProc(POBJECT Object)
+{
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS NtOpenFile(IN PTHREAD Thread,
+                    OUT HANDLE *FileHandle,
+                    IN ACCESS_MASK DesiredAccess,
+                    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+                    OUT IO_STATUS_BLOCK *IoStatusBlock,
+                    IN ULONG ShareAccess,
+                    IN ULONG OpenOptions)
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 #ifdef CONFIG_DEBUG_BUILD

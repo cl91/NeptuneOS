@@ -6,14 +6,20 @@
 #define IopAllocatePoolEx(Var, Type, OnError)				\
     ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_IO_TAG, OnError)
 #define IopAllocatePool(Var, Type)	IopAllocatePoolEx(Var, Type, {})
-#define IopAllocateArray(Var, Type, Size, OnError)			\
+#define IopAllocateArrayEx(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_IO_TAG, OnError)
+#define IopAllocateArray(Var, Type, Size)	\
+    IopAllocateArrayEx(Var, Type, Size, {})
 
 /* init.c */
 PSECTION IopHalDllSection;
 
-/* create.c */
-NTSTATUS IopFileObjectCreateProc(POBJECT Object);
-
-/* open.c */
+/* file.c */
+NTSTATUS IopFileObjectInitProc(POBJECT Object);
 NTSTATUS IopFileObjectOpenProc(POBJECT Object);
+
+/* device.c */
+NTSTATUS IopDeviceObjectInitProc(POBJECT Object);
+
+/* driver.c */
+NTSTATUS IopDriverObjectInitProc(POBJECT Object);

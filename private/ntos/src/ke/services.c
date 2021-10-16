@@ -165,8 +165,10 @@ VOID KiDispatchExecutiveServices()
 	    assert(Badge != 0);
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    if (Badge & 1) {
+		PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+		assert(DriverObject != NULL);
 		DbgTrace("Got driver call from thread %p\n", Thread);
-		Status = KiHandleHalService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
+		Status = KiHandleHalService(SvcNum, Thread, DriverObject, ReqMsgLength, &ReplyMsgLength);
 	    } else {
 		DbgTrace("Got call from thread %p\n", Thread);
 		Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);

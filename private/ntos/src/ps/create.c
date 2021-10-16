@@ -21,10 +21,9 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object)
+NTSTATUS PspThreadObjectInitProc(IN POBJECT Object)
 {
     PTHREAD Thread = (PTHREAD) Object;
-    memset(Thread, 0, sizeof(THREAD));
 
     PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
@@ -40,10 +39,9 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object)
+NTSTATUS PspProcessObjectInitProc(IN POBJECT Object)
 {
     PPROCESS Process = (PPROCESS) Object;
-    memset(Process, 0, sizeof(PROCESS));
 
     RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &Process->CSpace));
     RET_ERR_EX(MmCreateVSpace(&Process->VSpace), MmDeleteCNode(Process->CSpace));
@@ -387,10 +385,10 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     /* Search under \BootModules first. */
     /* TODO: Eventually we need to implement the NT process search path semantics. */
     ULONG DllNameLength = strlen(DllName);
-    PspAllocateArray(DllPath, CHAR, DllNameLength + sizeof(BOOTMODULE_PATH) + 1);
-    memcpy(DllPath, BOOTMODULE_PATH, sizeof(BOOTMODULE_PATH) - 1);
-    DllPath[sizeof(BOOTMODULE_PATH) - 1] = '\\';
-    memcpy(DllPath + sizeof(BOOTMODULE_PATH), DllName, DllNameLength+1);
+    PspAllocateArray(DllPath, CHAR, DllNameLength + sizeof(BOOTMODULE_OBJECT_DIRECTORY) + 1);
+    memcpy(DllPath, BOOTMODULE_OBJECT_DIRECTORY, sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1);
+    DllPath[sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1] = '\\';
+    memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
 
     NTSTATUS Status = ObReferenceObjectByName(DllPath, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
@@ -461,7 +459,7 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
 }
 
 NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
-			 IN MWORD Flags,
+			 IN PIO_DRIVER_OBJECT DriverObject,
 			 OUT PPROCESS *pProcess)
 {
     assert(ImageFile != NULL);
@@ -498,8 +496,9 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
     Process->ImageSection = Section;
     Process->ImageFile = ImageFile;
 
-    if (Flags & PROC_CREA_FLAG_DRIVER) {
+    if (DriverObject != NULL) {
 	Process->InitInfo.DriverProcess = TRUE;
+	Process->DriverObject = DriverObject;
     }
 
     /* Reserve and commit the loader private heap */

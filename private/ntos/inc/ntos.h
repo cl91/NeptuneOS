@@ -19,6 +19,7 @@
 #include "io.h"
 #include "ps.h"
 #include "ldr.h"
+#include "rtl.h"
 
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);

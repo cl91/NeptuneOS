@@ -3,7 +3,7 @@
 static NTSTATUS IopCreateFileType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = IopFileObjectCreateProc,
+	.InitProc = IopFileObjectInitProc,
 	.OpenProc = IopFileObjectOpenProc,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
@@ -14,9 +14,41 @@ static NTSTATUS IopCreateFileType()
 			      TypeInfo);
 }
 
+static NTSTATUS IopCreateDeviceType()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.InitProc = IopDeviceObjectInitProc,
+	.OpenProc = NULL,
+	.ParseProc = NULL,
+	.InsertProc = NULL,
+    };
+    return ObCreateObjectType(OBJECT_TYPE_DEVICE,
+			      "Device",
+			      sizeof(IO_DEVICE_OBJECT),
+			      TypeInfo);
+}
+
+static NTSTATUS IopCreateDriverType()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.InitProc = IopDriverObjectInitProc,
+	.OpenProc = NULL,
+	.ParseProc = NULL,
+	.InsertProc = NULL,
+    };
+    return ObCreateObjectType(OBJECT_TYPE_DRIVER,
+			      "Driver",
+			      sizeof(IO_DRIVER_OBJECT),
+			      TypeInfo);
+}
+
 NTSTATUS IoInitSystemPhase0()
 {
     RET_ERR(IopCreateFileType());
+    RET_ERR(IopCreateDeviceType());
+    RET_ERR(IopCreateDriverType());
+    RET_ERR(ObCreateDirectory(DRIVER_OBJECT_DIRECTORY));
+    RET_ERR(ObCreateDirectory(DEVICE_OBJECT_DIRECTORY));
 
     return STATUS_SUCCESS;
 }

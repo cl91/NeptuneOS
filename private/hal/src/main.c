@@ -48,10 +48,14 @@ VOID HalStartup(seL4_IPCBuffer *IpcBuffer)
 	NtDisplayStringA("OK\n");
     }
 
-    NtDisplayStringA("hal.dll: Calling DriverEntry...\n");
+    NtDisplayStringA("hal.dll: Calling DriverEntry... ");
     NTSTATUS Status = IopCallDriverEntry(DriverObject);
-    DbgPrint("hal.dll: IopCallDriverEntry returned with status 0x%x\n",
-	     Status);
+    if (NT_SUCCESS(Status)) {
+	NtDisplayStringA("OK\n");
+    } else {
+	NtDisplayStringA("FAIL\n");
+	return;
+    }
 
     while (1);
 }

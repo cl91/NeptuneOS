@@ -111,7 +111,6 @@ static NTSTATUS LdrpAllocateTls(VOID)
 static VOID LdrpFreeTls(VOID)
 {
     assert(NtCurrentTeb()->ThreadLocalStoragePointer == LDRP_TLS_VECTOR);
-    PVOID *TlsVector = LDRP_TLS_VECTOR;
 
     /* Loop through it */
     PLIST_ENTRY ListHead = &LdrpTlsList;
@@ -122,9 +121,9 @@ static VOID LdrpFreeTls(VOID)
 	NextEntry = NextEntry->Flink;
 
 	/* Free each entry */
-	if (TlsVector[TlsData->TlsDirectory.Characteristics]) {
+	if (LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]) {
 	    RtlFreeHeap(RtlGetProcessHeap(), 0,
-			TlsVector[TlsData->TlsDirectory.Characteristics]);
+			LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]);
 	}
     }
 }

@@ -18,6 +18,8 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_PROCESS,
     OBJECT_TYPE_SECTION,
     OBJECT_TYPE_FILE,
+    OBJECT_TYPE_DEVICE,
+    OBJECT_TYPE_DRIVER,
     NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
@@ -98,14 +100,13 @@ typedef struct _OB_OBJECT_ATTRIBUTES {
 	+ EX_POOL_START)
 
 /*
- * The create routine creates an empty object and initializes
- * the object body to sane, default values. Self points to the
- * beginning of the object body.
+ * The init routine initializes the object body to sane, default values.
+ * Self points to the beginning of the object body.
  *
- * The create routine cannot be NULL. The object manager will
+ * The init routine cannot be NULL. The object manager will
  * reject such object types during object type registration.
  */
-typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self);
+typedef NTSTATUS (*OBJECT_INIT_METHOD)(IN POBJECT Self);
 
 /*
  * The open routine produces an opened instance of the object,
@@ -146,7 +147,7 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Self,
 					 IN PCSTR Subpath);
 
 typedef struct _OBJECT_TYPE_INITIALIZER {
-    OBJECT_CREATE_METHOD CreateProc;
+    OBJECT_INIT_METHOD InitProc;
     OBJECT_OPEN_METHOD OpenProc;
     OBJECT_PARSE_METHOD ParseProc;
     OBJECT_INSERT_METHOD InsertProc;
@@ -178,8 +179,7 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *Object);
 
 /* dirobj.c */
-NTSTATUS ObCreateDirectory(IN PCSTR ParentPath,
-			   IN PCSTR DirectoryName);
+NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath);
 
 /* insert.c */
 NTSTATUS ObInsertObject(IN POBJECT Parent,
@@ -188,6 +188,8 @@ NTSTATUS ObInsertObject(IN POBJECT Parent,
 NTSTATUS ObInsertObjectByName(IN PCSTR ParentPath,
 			      IN POBJECT Subobject,
 			      IN PCSTR Name);
+NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
+			      IN POBJECT Object);
 
 /* obref.c */
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,

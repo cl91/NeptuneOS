@@ -1,5 +1,11 @@
 #include <hal.h>
 
+/*
+ * Allocates the client side DEVICE_OBJECT and calls server to create
+ * the device object.
+ *
+ * Note: DeviceName must be a full path.
+ */
 NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			      IN ULONG DeviceExtensionSize,
 			      IN PUNICODE_STRING DeviceName OPTIONAL,

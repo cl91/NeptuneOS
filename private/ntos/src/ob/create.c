@@ -10,7 +10,7 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 {
     assert(TypeName != NULL);
     assert(ObjectBodySize != 0);
-    assert(Init.CreateProc != NULL);
+    assert(Init.InitProc != NULL);
 
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
     ObjectType->Name = TypeName;
@@ -21,26 +21,26 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
     return STATUS_SUCCESS;
 }
 
-/* Request the correct amount of memory (object header + body)
- * from the Executive Pool, invoke the creation procedure of the
- * object type, and insert the object into the global object list.
+/*
+ * Request the correct amount of memory (object header + body)
+ * from the Executive Pool (allocated memory is zeroed by ExPool), invoke the
+ * initialization procedure of the object type, and insert the object
+ * into the global object list.
  */
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *Object)
 {
     assert(Type < NUM_OBJECT_TYPES);
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
-    assert(ObjectType->TypeInfo.CreateProc != NULL);
+    assert(ObjectType->TypeInfo.InitProc != NULL);
 
-    ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER,
-		      sizeof(OBJECT_HEADER) + ObjectType->ObjectBodySize,
-		      {});
+    MWORD TotalSize = sizeof(OBJECT_HEADER) + ObjectType->ObjectBodySize;
+    ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER, TotalSize, {});
     ObjectHeader->Type = ObjectType;
-    ObjectHeader->RefCount = 0;
     InitializeListHead(&ObjectHeader->ObjectLink);
     *Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
 
-    RET_ERR_EX(ObjectType->TypeInfo.CreateProc(*Object),
+    RET_ERR_EX(ObjectType->TypeInfo.InitProc(*Object),
 	       {
 		   *Object = NULL;
 		   ExFreePool(ObjectHeader);
