@@ -101,6 +101,7 @@ cmake ../../private/ntdll \
       -DArch=${ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
@@ -116,10 +117,12 @@ cmake ../../private/hal \
       -DArch=${ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DGEN_INC_DIR=${PWD}/../ntdll \
       -G Ninja
 ninja || build_failed
 cp hal.lib ../ddk_lib || build_failed
@@ -132,6 +135,7 @@ echo
 cmake ../../base \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -G Ninja
 ninja || build_failed
@@ -144,6 +148,7 @@ echo
 cmake ../../drivers \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DDDK_LIB_PATH=${PWD}/../ddk_lib \
       -G Ninja

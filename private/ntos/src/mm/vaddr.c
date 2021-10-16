@@ -494,18 +494,108 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS NtAllocateVirtualMemory(IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN OUT OPTIONAL PVOID *BaseAddress,
-                                 IN ULONG ZeroBits,
-                                 IN OUT OPTIONAL SIZE_T *RegionSize,
+                                 IN ULONG_PTR ZeroBits,
+                                 IN OUT SIZE_T *RegionSize,
                                  IN ULONG AllocationType,
                                  IN ULONG Protect)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    if (ProcessHandle != NtCurrentProcess()) {
+	return STATUS_NOT_IMPLEMENTED;
+    }
+
+    PVIRT_ADDR_SPACE VSpace = &Thread->Process->VSpace;
+
+    /* On 64-bit systems the ZeroBits parameter is interpreted as a bit mask if it is
+     * greater than 32. Convert the bit mask to the number of bits in that case. */
+#ifdef _WIN64
+    if (ZeroBits >= 32) {
+        ZeroBits = 64 - RtlFindMostSignificantBit(ZeroBits) - 1;
+    } else if (ZeroBits) {
+	/* For ZeroBits < 32, on x64 this is interpreted as the number of highest
+	 * zero bits in the lower 32 bit part of the full 64 bit virtual address */
+        ZeroBits += 32;
+    }
+#endif
+
+    if (ZeroBits > MM_MAXIMUM_ZERO_BITS) {
+        return STATUS_INVALID_PARAMETER_3;
+    }
+
+    /* Determine the address window in which we would like to search for unused region */
+    if (RegionSize == NULL || *RegionSize == 0) {
+        return STATUS_INVALID_PARAMETER_4;
+    }
+    MWORD WindowSize = PAGE_ALIGN_UP(*RegionSize);
+    MWORD StartAddr = LOWEST_USER_ADDRESS;
+    MWORD EndAddr = HIGHEST_USER_ADDRESS;
+    if (BaseAddress != NULL || *BaseAddress != NULL) {
+	StartAddr = (MWORD)(*BaseAddress);
+	EndAddr = StartAddr + WindowSize;
+    }
+
+    /* Validate the AllocationType argument */
+    if ((AllocationType & (MEM_COMMIT | MEM_RESERVE | MEM_RESET)) == 0) {
+        return STATUS_INVALID_PARAMETER_5;
+    }
+    if ((AllocationType & MEM_RESET) && (AllocationType != MEM_RESET)) {
+        return STATUS_INVALID_PARAMETER_5;
+    }
+    if (AllocationType & MEM_LARGE_PAGES) {
+        /* Large page allocations MUST be committed */
+        if (!(AllocationType & MEM_COMMIT)) {
+            return STATUS_INVALID_PARAMETER_5;
+        }
+        /* These flags are not allowed with large page allocations */
+        if (AllocationType & (MEM_PHYSICAL | MEM_RESET | MEM_WRITE_WATCH)) {
+            return STATUS_INVALID_PARAMETER_5;
+        }
+    }
+    /* These are not implemented yet */
+    if ((AllocationType & (MEM_RESET | MEM_PHYSICAL | MEM_WRITE_WATCH))) {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    PMMVAD Vad = NULL;
+    if (AllocationType & MEM_RESERVE) {
+	MWORD Flags = MEM_RESERVE_OWNED_MEMORY;
+	if (AllocationType & MEM_LARGE_PAGES) {
+	    Flags |= MEM_RESERVE_LARGE_PAGES;
+	}
+	if (AllocationType & MEM_TOP_DOWN) {
+	    Flags |= MEM_RESERVE_TOP_DOWN;
+	}
+	RET_ERR(MmReserveVirtualMemoryEx(VSpace, StartAddr, EndAddr,
+					 WindowSize, Flags, &Vad));
+    }
+
+    if (AllocationType & MEM_COMMIT) {
+	RET_ERR_EX(MmCommitVirtualMemoryEx(VSpace, StartAddr, WindowSize, 0),
+		   if ((Vad != NULL) && (AllocationType & MEM_RESERVE)) {
+		       /* Unreserve the address window we just reserved */
+		   });
+    }
+
+    if (BaseAddress != NULL) {
+	if (Vad != NULL) {
+	    *BaseAddress = (PVOID) Vad->AvlNode.Key;
+	} else {
+	    *BaseAddress = (PVOID) StartAddr;
+	}
+    }
+
+    if (Vad != NULL) {
+	*RegionSize = Vad->WindowSize;
+    } else {
+	*RegionSize = WindowSize;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtFreeVirtualMemory(IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
                              IN PVOID BaseAddress,
-                             IN OUT OPTIONAL SIZE_T *RegionSize,
+                             IN OUT SIZE_T *RegionSize,
                              IN ULONG FreeType)
 {
     return STATUS_NOT_IMPLEMENTED;

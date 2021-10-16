@@ -187,6 +187,8 @@ typedef struct _TEB_ACTIVE_FRAME {
     PTEB_ACTIVE_FRAME_CONTEXT Context;
 } TEB_ACTIVE_FRAME, *PTEB_ACTIVE_FRAME;
 
+typedef VOID (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE)(VOID);
+
 /* For ELF targets we need the packed attribute since clang puts extra spaces otherwise */
 #include <pshpack4.h>
 typedef struct _PEB {                                                 /* win32/win64 */
@@ -240,7 +242,7 @@ typedef struct _PEB {                                                 /* win32/w
     ULONG                            ImageProcessAffinityMask;          /* 0c0/134 */
     HANDLE                           GdiHandleBuffer[28];               /* 0c4/138 */
     ULONG                            unknown[6];                        /* 134/218 */
-    PVOID                            PostProcessInitRoutine;            /* 14c/230 */
+    PPS_POST_PROCESS_INIT_ROUTINE    PostProcessInitRoutine;            /* 14c/230 */
     PRTL_BITMAP                      TlsExpansionBitmap;                /* 150/238 */
     ULONG                            TlsExpansionBitmapBits[32];        /* 154/240 */
     ULONG                            SessionId;                         /* 1d4/2c0 */

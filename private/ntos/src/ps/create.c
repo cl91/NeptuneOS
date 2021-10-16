@@ -288,6 +288,9 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     RET_ERR_EX(PspSetThreadContext(Thread, &Context), ObDeleteObject(Thread));
     RET_ERR_EX(PspSetThreadPriority(Thread, seL4_MaxPrio), ObDeleteObject(Thread));
     RET_ERR_EX(KeEnableSystemServices(Process, Thread), ObDeleteObject(Thread));
+    if (Process->InitInfo.DriverProcess) {
+	RET_ERR_EX(KeEnableHalServices(Process, Thread), ObDeleteObject(Thread));
+    }
     RET_ERR_EX(PspResumeThread(Thread), ObDeleteObject(Thread));
 
     if (Process->InitThread == NULL) {

@@ -16,11 +16,11 @@ VOID DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 
 #define RET_ERR_EX(Expr, OnError)					\
-    {NTSTATUS __tmp_rete = (Expr); if (!NT_SUCCESS(__tmp_rete)) {	\
+    {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\
 	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
 		     " error 0x%x\n",					\
-		     #Expr, __func__, __FILE__, __LINE__, __tmp_rete);	\
-	    {OnError;} return __tmp_rete; }}
+		     #Expr, __func__, __FILE__, __LINE__, Status);	\
+	    {OnError;} return Status; }}
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
     {} Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\

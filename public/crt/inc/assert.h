@@ -1,17 +1,53 @@
-#pragma once
+/**
+ * This file has no copyright assigned and is placed in the Public Domain.
+ * This file is part of the w64 mingw-runtime package.
+ * No warranty is given; refer to the file DISCLAIMER within this package.
+ */
+#ifndef __ASSERT_H_
+#define __ASSERT_H_
 
-#define STATUS_ASSERT_FAILED	(0xc04500af)
+#include <crtdefs.h>
 
-#ifdef CONFIG_DEBUG_BUILD
+#ifdef NDEBUG
 
-#define assert(expr)							\
-    if(!(expr)) __assert_fail(#expr, __FILE__, __LINE__, __FUNCTION__)
-#define assert_ret(expr)			\
-    if (!(expr)) return STATUS_ASSERT_FAILED;
+#ifndef assert
+#define assert(_Expression) ((void)0)
+#endif
 
-#else
+#else /* !NDEBUG */
 
-#define assert(expr)
-#define assert_ret(expr)
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#endif	/* CONFIG_DEBUG_BUILD */
+  _CRTIMP
+  void
+  __cdecl
+  _assert(
+    _In_z_ const char *_Message,
+    _In_z_ const char *_File,
+    _In_ unsigned _Line);
+
+  _CRTIMP
+  void
+  __cdecl
+  _wassert(
+    _In_z_ const wchar_t *_Message,
+    _In_z_ const wchar_t *_File,
+    _In_ unsigned _Line);
+
+#ifdef __cplusplus
+}
+#endif
+
+#ifndef assert
+#define assert(_Expression) (void)((!!(_Expression)) || (_assert(#_Expression,__FILE__,__LINE__),0))
+#endif
+
+#ifndef wassert
+#define wassert(_Expression) (void)((!!(_Expression)) || (_wassert(_CRT_WIDE(#_Expression),_CRT_WIDE(__FILE__),__LINE__),0))
+#endif
+
+#endif
+
+#endif

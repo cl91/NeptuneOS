@@ -3,16 +3,21 @@
 /* TLS ***********************************************************************/
 
 /*
- * Executable always has _tls_index == 0. NTDLL always has _tls_index == 1
+ * Executable always has _tls_index == 0.
+ * NTDLL always has _tls_index == SYSTEMDLL_TLS_INDEX == 1
  * We will set this during LdrpInitialize
  */
-#define SYSTEMDLL_TLS_INDEX	1
 ULONG _tls_index;
 
 #define MAX_NUMBER_OF_TLS_SLOTS	500
 
+typedef struct _LDRP_TLS_DATA {
+    LIST_ENTRY TlsLinks;
+    IMAGE_TLS_DIRECTORY TlsDirectory;
+} LDRP_TLS_DATA, *PLDRP_TLS_DATA;
+
 /* This must be placed at the very beginning ot the .tls section */
-__declspec(allocate(".tls")) PVOID THREAD_LOCAL_STORAGE_POINTERS_ARRAY[MAX_NUMBER_OF_TLS_SLOTS];
+__declspec(allocate(".tls")) PVOID LDRP_TLS_VECTOR[MAX_NUMBER_OF_TLS_SLOTS];
 
 /* Address for the IPC buffer of the initial thread. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -24,13 +29,13 @@ HANDLE LdrpShutdownThreadId;
 
 LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
+PLDR_DATA_TABLE_ENTRY LdrpNtdllEntry;
 
 RTL_BITMAP TlsBitMap;
 RTL_BITMAP TlsExpansionBitMap;
 RTL_BITMAP FlsBitMap;
 BOOLEAN LdrpImageHasTls;
 LIST_ENTRY LdrpTlsList;
-ULONG LdrpNumberOfTlsEntries;
 
 NLSTABLEINFO LdrpNlsTable;
 
@@ -63,32 +68,96 @@ extern BOOLEAN RtlpUse16ByteSLists;
 
 /* FUNCTIONS *****************************************************************/
 
+/*
+ * Loop the tls array and allocate the tls region
+ *
+ * Note that the tls list does not include the TLS region for NTDLL, which is
+ * allocated by the server and set up on server side and upon LdrpInitialize.
+ */
+static NTSTATUS LdrpAllocateTls(VOID)
+{
+    PLIST_ENTRY ListHead = &LdrpTlsList;
+    PLIST_ENTRY NextEntry = ListHead->Flink;
+    while (NextEntry != ListHead) {
+	/* Get the entry */
+	PLDRP_TLS_DATA TlsData = CONTAINING_RECORD(NextEntry, LDRP_TLS_DATA, TlsLinks);
+	NextEntry = NextEntry->Flink;
+
+	/* Allocate this vector */
+	SIZE_T TlsDataSize = TlsData->TlsDirectory.EndAddressOfRawData -
+	    TlsData->TlsDirectory.StartAddressOfRawData;
+	LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics] =
+	    RtlAllocateHeap(RtlGetProcessHeap(), 0, TlsDataSize);
+	if (!LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]) {
+	    /* Out of memory */
+	    return STATUS_NO_MEMORY;
+	}
+
+	DPRINT1("LDR: TlsVector %p Index %u = %p copied from %zx to %p\n",
+		LDRP_TLS_VECTOR, TlsData->TlsDirectory.Characteristics,
+		&LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics],
+		TlsData->TlsDirectory.StartAddressOfRawData,
+		LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]);
+
+	/* Copy the data */
+	RtlCopyMemory(LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics],
+		      (PVOID) TlsData->TlsDirectory.StartAddressOfRawData,
+		      TlsDataSize);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static VOID LdrpFreeTls(VOID)
+{
+    assert(NtCurrentTeb()->ThreadLocalStoragePointer == LDRP_TLS_VECTOR);
+    PVOID *TlsVector = LDRP_TLS_VECTOR;
+
+    /* Loop through it */
+    PLIST_ENTRY ListHead = &LdrpTlsList;
+    PLIST_ENTRY NextEntry = ListHead->Flink;
+    while (NextEntry != ListHead) {
+	PLDRP_TLS_DATA TlsData = CONTAINING_RECORD(NextEntry, LDRP_TLS_DATA,
+						   TlsLinks);
+	NextEntry = NextEntry->Flink;
+
+	/* Free each entry */
+	if (TlsVector[TlsData->TlsDirectory.Characteristics]) {
+	    RtlFreeHeap(RtlGetProcessHeap(), 0,
+			TlsVector[TlsData->TlsDirectory.Characteristics]);
+	}
+    }
+}
+
 static NTSTATUS LdrpInitializeTls(VOID)
 {
-#if 0
-    PLIST_ENTRY NextEntry, ListHead;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
-    PIMAGE_TLS_DIRECTORY TlsDirectory;
-    PLDRP_TLS_DATA TlsData;
-    ULONG Size;
-
     /* Initialize the TLS List */
     InitializeListHead(&LdrpTlsList);
 
+    /* The executable image has tls_index == 0. NTDLL has tls_index = 1.
+     * All other modules start from tls_index == 2 */
+    ULONG NextTlsIndex = 2;
+
     /* Loop all the modules */
-    ListHead = &NtCurrentPeb()->LdrData->InLoadOrderModuleList;
-    NextEntry = ListHead->Flink;
+    PLIST_ENTRY ListHead = &NtCurrentPeb()->LdrData->InLoadOrderModuleList;
+    PLIST_ENTRY NextEntry = ListHead->Flink;
     while (ListHead != NextEntry) {
 	/* Get the entry */
-	LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY,
-				     InLoadOrderLinks);
+	PLDR_DATA_TABLE_ENTRY LdrEntry = CONTAINING_RECORD(NextEntry,
+							   LDR_DATA_TABLE_ENTRY,
+							   InLoadOrderLinks);
 	NextEntry = NextEntry->Flink;
 
+	/* Skip the ntdll entry */
+	if (LdrEntry == LdrpNtdllEntry)
+	    continue;
+
 	/* Get the TLS directory */
-	TlsDirectory = RtlImageDirectoryEntryToData(LdrEntry->DllBase,
-						    TRUE,
-						    IMAGE_DIRECTORY_ENTRY_TLS,
-						    &Size);
+	ULONG TlsDirectorySize;
+	PIMAGE_TLS_DIRECTORY TlsDirectory = RtlImageDirectoryEntryToData(LdrEntry->DllBase,
+									 TRUE,
+									 IMAGE_DIRECTORY_ENTRY_TLS,
+									 &TlsDirectorySize);
 
 	/* Check if we have a directory */
 	if (!TlsDirectory)
@@ -98,34 +167,43 @@ static NTSTATUS LdrpInitializeTls(VOID)
 	if (!LdrpImageHasTls)
 	    LdrpImageHasTls = TRUE;
 
-	/* Show debug message */
-	if (ShowSnaps) {
-	    DPRINT1("LDR: Tls Found in %wZ at %p\n",
-		    &LdrEntry->BaseDllName, TlsDirectory);
-	}
+	DPRINT1("LDR: Tls Found in %wZ at %p\n",
+		&LdrEntry->BaseDllName, TlsDirectory);
 
 	/* Allocate an entry */
-	TlsData = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(LDRP_TLS_DATA));
+	PLDRP_TLS_DATA TlsData = (PLDRP_TLS_DATA) RtlAllocateHeap(RtlGetProcessHeap(), 0,
+								  sizeof(LDRP_TLS_DATA));
 	if (!TlsData)
 	    return STATUS_NO_MEMORY;
 
-	/* Lock the DLL and mark it for TLS Usage */
+	/* Set the load count to -1 to mark the module as pinned in memory
+	 * for the lifetime of the process */
 	LdrEntry->LoadCount = -1;
+
+	/* For some stupid reason the TlsIndex member is always set to -1
+	 * in the M$ implementation (although not on WINE). We follow the
+	 * M$ convention here though this is quite frankly retarded. See
+	 * http://www.nynaeve.net/?p=186 */
 	LdrEntry->TlsIndex = -1;
 
 	/* Save the cached TLS data */
 	TlsData->TlsDirectory = *TlsDirectory;
 	InsertTailList(&LdrpTlsList, &TlsData->TlsLinks);
 
-	/* Update the index */
-	*(PLONG) TlsData->TlsDirectory.AddressOfIndex = LdrpNumberOfTlsEntries;
-	TlsData->TlsDirectory.Characteristics = LdrpNumberOfTlsEntries++;
+	/* Update the index. For the executable image itself, we
+	 * force the tls index to be 0 (some image assumes this). */
+	ULONG TlsIndex = 0;
+	if (LdrEntry != LdrpImageEntry) {
+	    TlsIndex = NextTlsIndex++;
+	}
+	if (TlsIndex >= MAX_NUMBER_OF_TLS_SLOTS) {
+	    return STATUS_NO_MEMORY;
+	}
+	*(PLONG) TlsData->TlsDirectory.AddressOfIndex = TlsIndex;
+	TlsData->TlsDirectory.Characteristics = TlsIndex;
     }
 
-    /* Done setting up TLS, allocate entries */
     return LdrpAllocateTls();
-#endif
-    return STATUS_SUCCESS;
 }
 
 static PVOID LdrpFetchAddressOfSecurityCookie(IN PVOID BaseAddress,
@@ -210,6 +288,60 @@ static PVOID LdrpInitSecurityCookie(PLDR_DATA_TABLE_ENTRY LdrEntry)
     }
 
     return Cookie;
+}
+
+static BOOLEAN LdrpCallInitRoutine(IN PDLL_INIT_ROUTINE EntryPoint,
+				   IN PVOID BaseAddress,
+				   IN ULONG Reason,
+				   IN PVOID Context)
+{
+    /* Call the entry */
+    return EntryPoint(BaseAddress, Reason, Context);
+}
+
+static VOID LdrpCallTlsInitializers(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
+				    IN ULONG Reason)
+{
+    PIMAGE_TLS_DIRECTORY TlsDirectory;
+    PIMAGE_TLS_CALLBACK *Array, Callback;
+    ULONG Size;
+
+    /* Get the TLS Directory */
+    TlsDirectory = RtlImageDirectoryEntryToData(LdrEntry->DllBase,
+						TRUE,
+						IMAGE_DIRECTORY_ENTRY_TLS,
+						&Size);
+
+    /* Protect against invalid pointers */
+    _SEH2_TRY {
+	/* Make sure it's valid */
+	if (TlsDirectory) {
+	    /* Get the array */
+	    Array = (PIMAGE_TLS_CALLBACK *) TlsDirectory->AddressOfCallBacks;
+	    if (Array) {
+		/* Display debug */
+		DPRINT1("LDR: Tls Callbacks Found. Imagebase %p Tls %p CallBacks %p\n",
+			LdrEntry->DllBase, TlsDirectory, Array);
+
+		/* Loop the array */
+		while (*Array) {
+		    /* Get the TLS Entrypoint */
+		    Callback = *Array++;
+
+		    /* Display debug */
+		    DPRINT1("LDR: Calling Tls Callback Imagebase %p Function %p\n",
+			    LdrEntry->DllBase, Callback);
+
+		    /* Call it */
+		    LdrpCallInitRoutine((PDLL_INIT_ROUTINE) Callback,
+					LdrEntry->DllBase, Reason, NULL);
+		}
+	    }
+	}
+    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+	DPRINT1("LDR: Exception 0x%lx during Tls Callback(%u) for %wZ\n",
+		_SEH2_GetExceptionCode(), Reason, &LdrEntry->BaseDllName);
+    }
 }
 
 static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
@@ -642,162 +774,39 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	Module = (PLDRP_LOADED_MODULE)((MWORD)(Module) + Module->EntrySize);
     }
 
-#if 0
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    HANDLE SymLinkHandle;
-    UNICODE_STRING CommandLine, NtSystemRoot, ImagePathName, FullPath, ImageFileName, KnownDllString;
-    PPEB Peb = NtCurrentPeb();
-    BOOLEAN FreeCurDir = FALSE;
-    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;
-    UNICODE_STRING CurrentDirectory;
-    HANDLE OptionsKey;
-    PWSTR NtDllName = NULL;
-    NTSTATUS Status, ImportStatus;
-    PTEB Teb = NtCurrentTeb();
-    PLIST_ENTRY ListHead;
-    PLIST_ENTRY NextEntry;
-    ULONG i;
-    PWSTR ImagePath;
-    ULONG DebugProcessHeapOnly = 0;
-    PLDR_DATA_TABLE_ENTRY NtLdrEntry;
-    PWCHAR Current;
-    ULONG ExecuteOptions = 0;
-    PVOID ViewBase;
-
-
-
-
-    /* Build the NTDLL Path */
-    FullPath.Buffer = StringBuffer;
-    FullPath.Length = 0;
-    FullPath.MaximumLength = sizeof(StringBuffer);
-    RtlInitUnicodeString(&NtSystemRoot, SharedUserData->NtSystemRoot);
-    RtlAppendUnicodeStringToString(&FullPath, &NtSystemRoot);
-    RtlAppendUnicodeToString(&FullPath, L"\\System32\\");
-
-
-
-    /* Now add an entry for NTDLL */
-    NtLdrEntry = LdrpAllocateDataTableEntry(SystemArgument1);
-    NtLdrEntry->Flags = LDRP_IMAGE_DLL;
-    NtLdrEntry->EntryPoint = LdrpFetchAddressOfEntryPoint(NtLdrEntry->DllBase);
-    NtLdrEntry->LoadCount = -1;
-    NtLdrEntry->EntryPointActivationContext = 0;
-
-    NtLdrEntry->FullDllName.Length = FullPath.Length;
-    NtLdrEntry->FullDllName.MaximumLength = FullPath.MaximumLength;
-    NtLdrEntry->FullDllName.Buffer = StringBuffer;
-    RtlAppendUnicodeStringToString(&NtLdrEntry->FullDllName, &NtDllString);
-
-    NtLdrEntry->BaseDllName.Length = NtDllString.Length;
-    NtLdrEntry->BaseDllName.MaximumLength = NtDllString.MaximumLength;
-    NtLdrEntry->BaseDllName.Buffer = NtDllString.Buffer;
-
-    /* Processing done, insert it */
-    LdrpNtDllDataTableEntry = NtLdrEntry;
-    LdrpInsertMemoryTableEntry(NtLdrEntry);
-
-    /* Let the world know */
-    if (ShowSnaps) {
-	DPRINT1("LDR: NEW PROCESS\n");
-	DPRINT1("     Image Path: %wZ (%wZ)\n",
-		&LdrpImageEntry->FullDllName,
-		&LdrpImageEntry->BaseDllName);
-	DPRINT1("     Current Directory: %wZ\n", &CurrentDirectory);
-	DPRINT1("     Search Path: %wZ\n", &LdrpDefaultPath);
+    if (!LdrpCheckForLoadedDll("ntdll.dll", &LdrpNtdllEntry)) {
+	DbgTrace("Server should inject ntdll.dll to the loaded module list even if image does not explicitly depend on it. Exiting\n");
+	return STATUS_INVALID_IMAGE_FORMAT;
     }
-
-    /* Link the Init Order List */
-    InsertHeadList(&Peb->LdrData->InInitializationOrderModuleList,
-		   &LdrpNtDllDataTableEntry->InInitializationOrderLinks);
-
-    /* Set the current directory */
-    Status = RtlSetCurrentDirectory_U(&CurrentDirectory);
-    if (!NT_SUCCESS(Status)) {
-	/* We failed, check if we should free it */
-	if (FreeCurDir)
-	    RtlFreeUnicodeString(&CurrentDirectory);
-
-	/* Set it to the NT Root */
-	CurrentDirectory = NtSystemRoot;
-	RtlSetCurrentDirectory_U(&CurrentDirectory);
-    } else {
-	/* We're done with it, free it */
-	if (FreeCurDir)
-	    RtlFreeUnicodeString(&CurrentDirectory);
-    }
-
-
-    /* Lock the DLLs */
-    ListHead = &Peb->LdrData->InLoadOrderModuleList;
-    NextEntry = ListHead->Flink;
-    while (ListHead != NextEntry) {
-	NtLdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY,
-				       InLoadOrderLinks);
-	NtLdrEntry->LoadCount = -1;
-	NextEntry = NextEntry->Flink;
-    }
+    assert(LdrpNtdllEntry != NULL);
 
     /* Initialize TLS */
-    Status = LdrpInitializeTls();
-    if (!NT_SUCCESS(Status)) {
-	DPRINT1("LDR: LdrpProcessInitialization failed to initialize TLS slots; status %x\n",
-		Status);
-	return Status;
-    }
-
-    /* FIXME Mark the DLL Ranges for Stack Traces later */
+    RET_ERR_EX(LdrpInitializeTls(),
+	       DPRINT1("LDR: LdrpProcessInitialization failed to initialize TLS slots; status %x\n",
+		       Status));
 
     /* Notify the debugger now */
     if (Peb->BeingDebugged) {
 	/* Break */
 	DbgBreakPoint();
-
-	/* Update show snaps again */
-	ShowSnaps = Peb->NtGlobalFlag & FLG_SHOW_LDR_SNAPS;
     }
-
-    /* Check NX Options */
-    if (SharedUserData->NXSupportPolicy == 1) {
-	ExecuteOptions = 0xD;
-    } else if (!SharedUserData->NXSupportPolicy) {
-	ExecuteOptions = 0xA;
-    }
-
-    /* Let Mm know */
-    NtSetInformationProcess(NtCurrentProcess(),
-			    ProcessExecuteFlags,
-			    &ExecuteOptions, sizeof(ULONG));
 
     /* Now call the Init Routines */
-    Status = LdrpRunInitializeRoutines(Context);
-    if (!NT_SUCCESS(Status)) {
-	DPRINT1("LDR: LdrpProcessInitialization failed running initialization routines; status %x\n",
-		Status);
-	return Status;
-    }
+    RET_ERR_EX(LdrpRunInitializeRoutines(NULL /* TODO: FIXME Context */),
+	       DPRINT1("LDR: LdrpProcessInitialization failed running initialization routines; status %x\n",
+		       Status));
 
     /* Check if we have a user-defined Post Process Routine */
-    if (NT_SUCCESS(Status) && Peb->PostProcessInitRoutine) {
+    if (Peb->PostProcessInitRoutine) {
 	/* Call it */
 	Peb->PostProcessInitRoutine();
     }
 
-    /* Return status */
-    return Status;
-#endif
     return STATUS_SUCCESS;
 }
 
-static VOID LdrpInitializeThread()
+static NTSTATUS LdrpInitializeThread()
 {
-#if 0
-    PPEB Peb = NtCurrentPeb();
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
-    PLIST_ENTRY NextEntry, ListHead;
-    NTSTATUS Status;
-    PVOID EntryPoint;
-
     DPRINT("LdrpInitializeThread() called for %wZ (%p/%p)\n",
 	   &LdrpImageEntry->BaseDllName,
 	   NtCurrentTeb()->RealClientId.UniqueProcess,
@@ -805,22 +814,29 @@ static VOID LdrpInitializeThread()
 
     /* Make sure we are not shutting down */
     if (LdrpShutdownInProgress)
-	return;
+	return STATUS_SUCCESS;
 
-    /* Start at the beginning */
-    ListHead = &Peb->LdrData->InMemoryOrderModuleList;
-    NextEntry = ListHead->Flink;
+    /* Allocate the tls regions, except for NTDLL. For NTDLL we use
+     * the server supplied region (already set up at this point) */
+    RET_ERR(LdrpAllocateTls());
+
+    /* For each DLL module (except the executable image), call the tls
+     * initializer and the dll initialization routine */
+    PPEB Peb = NtCurrentPeb();
+    PLIST_ENTRY ListHead = &Peb->LdrData->InMemoryOrderModuleList;
+    PLIST_ENTRY NextEntry = ListHead->Flink;
     while (NextEntry != ListHead) {
 	/* Get the current entry */
-	LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY,
-				     InMemoryOrderLinks);
+	PLDR_DATA_TABLE_ENTRY LdrEntry = CONTAINING_RECORD(NextEntry,
+							   LDR_DATA_TABLE_ENTRY,
+							   InMemoryOrderLinks);
 
-	/* Make sure it's not ourselves */
+	/* Make sure it's not the executable image itself */
 	if (Peb->ImageBaseAddress != LdrEntry->DllBase) {
 	    /* Check if we should call */
 	    if (!(LdrEntry->Flags & LDRP_DONT_CALL_FOR_THREADS)) {
 		/* Get the entrypoint */
-		EntryPoint = LdrEntry->EntryPoint;
+		PVOID EntryPoint = LdrEntry->EntryPoint;
 
 		/* Check if we are ready to call it */
 		if ((EntryPoint) && (LdrEntry->Flags & LDRP_PROCESS_ATTACH_CALLED) &&
@@ -831,8 +847,7 @@ static VOID LdrpInitializeThread()
 			    /* Make sure we're not shutting down */
 			    if (!LdrpShutdownInProgress) {
 				/* Call TLS */
-				LdrpCallTlsInitializers(LdrEntry,
-							DLL_THREAD_ATTACH);
+				LdrpCallTlsInitializers(LdrEntry, DLL_THREAD_ATTACH);
 			    }
 			}
 
@@ -851,7 +866,7 @@ static VOID LdrpInitializeThread()
 						DLL_THREAD_ATTACH, NULL);
 			}
 		    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-			DPRINT1("WARNING: Exception 0x%x during LdrpCallInitRoutine(DLL_THREAD_ATTACH) for %wZ\n",
+			DPRINT1("WARNING: Exception 0x%lx during LdrpCallInitRoutine(DLL_THREAD_ATTACH) for %wZ\n",
 				_SEH2_GetExceptionCode(),
 				&LdrEntry->BaseDllName);
 		    }
@@ -863,7 +878,7 @@ static VOID LdrpInitializeThread()
 	NextEntry = NextEntry->Flink;
     }
 
-    /* Check for TLS */
+    /* For the image module itself, call the tls initializer (if it has one) */
     if (LdrpImageHasTls && !LdrpShutdownInProgress) {
 	_SEH2_TRY {
 	    /* Do TLS callbacks */
@@ -872,8 +887,9 @@ static VOID LdrpInitializeThread()
 	    /* Do nothing */
 	}
     }
-#endif
+
     DPRINT("LdrpInitializeThread() done\n");
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -888,7 +904,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     __sel4_ipc_buffer = IpcBuffer;
 
     PTEB Teb = NtCurrentTeb();
-    NTSTATUS LoaderStatus = STATUS_SUCCESS;
     PPEB Peb = NtCurrentPeb();
 
     DPRINT("LdrpInitialize() process %p thread %p\n",
@@ -902,14 +917,16 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 
     /* Check if we have already setup LDR data */
     PVOID EntryPoint = 0;
+    NTSTATUS Status = STATUS_SUCCESS;
     if (!Peb->LdrData) {
 	/* At process startup the process init info is placed at the beginning
 	 * of the ipc buffer. */
 	NTDLL_PROCESS_INIT_INFO InitInfo = *((PNTDLL_PROCESS_INIT_INFO)(IpcBuffer));
 	/* Now that the init info has been copied to the stack, clear the original. */
 	memset(IpcBuffer, 0, sizeof(NTDLL_PROCESS_INIT_INFO));
+
 	/* Initialize the Process */
-	LoaderStatus = LdrpInitializeProcess(&InitInfo);
+	Status = LdrpInitializeProcess(&InitInfo);
 
 	if (InitInfo.DriverProcess) {
 	    PLDR_DATA_TABLE_ENTRY HalDllEntry = NULL;
@@ -918,48 +935,48 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 		/* This should never happen. Assert in debug build. */
 		assert(FALSE);
 		DbgTrace("Fatal error: driver process does not have hal.dll loaded.\n");
-		LoaderStatus = STATUS_ENTRYPOINT_NOT_FOUND;
+		Status = STATUS_ENTRYPOINT_NOT_FOUND;
 	    } else {
 		EntryPoint = HalDllEntry->EntryPoint;
+		((PHAL_START_ROUTINE)HalDllEntry->EntryPoint)(IpcBuffer);
 	    }
 	} else {
+	    /* Calls the image entry point */
 	    EntryPoint = LdrpImageEntry->EntryPoint;
+	    ((PTHREAD_START_ROUTINE)LdrpImageEntry->EntryPoint)(Peb);
 	}
     } else {
 	/* Loader data is there... is this a fork() ? */
 	if (Peb->InheritedAddressSpace) {
 	    /* Handle the fork() */
 	    //LoaderStatus = LdrpForkProcess();
-	    LoaderStatus = STATUS_NOT_IMPLEMENTED;
+	    Status = STATUS_NOT_IMPLEMENTED;
 	    UNIMPLEMENTED;
 	} else {
 	    /* This is a new thread initializing */
-	    LdrpInitializeThread();
+	    Status = LdrpInitializeThread();
+	    /* TODO: Call thread entry point */
+	    /* EntryPoint = ...; */
 	}
     }
 
-    if (EntryPoint == NULL) {
-	LoaderStatus = STATUS_ENTRYPOINT_NOT_FOUND;
-    }
-
     /* Bail out if initialization has failed */
-    if (!NT_SUCCESS(LoaderStatus)) {
+    if (!NT_SUCCESS(Status)) {
 	HARDERROR_RESPONSE Response;
 
 	/* Print a debug message */
-	DPRINT1("LDR: Process initialization failure for %wZ; NTSTATUS = %08x\n",
-		&Peb->ProcessParameters->ImagePathName, LoaderStatus);
+	DPRINT1("LDR: Initialization failure for process %p thread %p. Image is %wZ; NTSTATUS = %08x\n",
+		NtCurrentTeb()->RealClientId.UniqueProcess,
+		NtCurrentTeb()->RealClientId.UniqueThread,
+		&Peb->ProcessParameters->ImagePathName, Status);
 
 	/* Send HARDERROR_MSG LPC message to CSRSS */
 	NtRaiseHardError(STATUS_APP_INIT_FAILURE, 1, 0,
-			 (PULONG_PTR) &LoaderStatus, OptionOk, &Response);
+			 (PULONG_PTR) &Status, OptionOk, &Response);
 
 	/* Raise a status to terminate the thread. */
-	RtlRaiseStatus(LoaderStatus);
+	RtlRaiseStatus(Status);
     }
-
-    /* Calls the thread entry point */
-    ((PTHREAD_START_ROUTINE)EntryPoint)(Peb);
 
     /* The thread entry point should never return. Shutdown the thread if it does. */
     DPRINT1("LDR: Thread entry point %p returned for thread %p of process %p, shutting down thread\n",
@@ -1106,8 +1123,7 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
 			    /* Make sure we're not shutting down */
 			    if (!LdrpShutdownInProgress) {
 				/* Call TLS */
-				LdrpCallTlsInitializers(LdrEntry,
-							DLL_THREAD_DETACH);
+				LdrpCallTlsInitializers(LdrEntry, DLL_THREAD_DETACH);
 			    }
 			}
 

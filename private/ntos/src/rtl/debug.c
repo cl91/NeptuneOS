@@ -23,10 +23,24 @@ VOID DbgPrint(PCSTR Format, ...)
     va_end(arglist);
 }
 
+VOID _assert(PCSTR str, PCSTR file, unsigned int line)
+{
+    KeBugCheckMsg("Assertion %s failed at line %d of file %s\n",
+		  str, line, file);
+    /* Loop forever */
+    while (1) ;
+}
+
 #endif
 
+/*
+ * libsel4 requires this, even for release build. The _assert function above
+ * is for the crt assert.h, which is only needed in debug build.
+ */
 VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
 {
     KeBugCheckMsg("Assertion %s failed in function %s at line %d of file %s\n",
 		  str, function, line, file);
+    /* Loop forever */
+    while (1) ;
 }

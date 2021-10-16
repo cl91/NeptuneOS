@@ -160,9 +160,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    /* Page the driver */
-    MmPageEntireDriver(DriverEntry);
-
     /* Create the Null device */
     Status = IoCreateDevice(DriverObject,
 			    0,

@@ -261,10 +261,10 @@ typedef struct _SLIST_ENTRY32 {
 } SLIST_ENTRY32, *PSLIST_ENTRY32;
 
 typedef union DECLSPEC_ALIGN(16) _SLIST_HEADER {
-    _ANONYMOUS_STRUCT struct {
+    struct {
 	ULONGLONG Alignment;
 	ULONGLONG Region;
-    } DUMMYSTRUCTNAME;
+    };
     struct {
 	ULONGLONG Depth:16;
 	ULONGLONG Sequence:9;
@@ -293,11 +293,11 @@ typedef union DECLSPEC_ALIGN(16) _SLIST_HEADER {
 
 typedef union _SLIST_HEADER32 {
     ULONGLONG Alignment;
-    _ANONYMOUS_STRUCT struct {
+    struct {
 	SLIST_ENTRY32 Next;
 	USHORT Depth;
 	USHORT Sequence;
-    } DUMMYSTRUCTNAME;
+    };
 } SLIST_HEADER32, *PSLIST_HEADER32;
 
 #else  /* WIN32 */
@@ -310,11 +310,11 @@ typedef SLIST_ENTRY SLIST_ENTRY32, *PSLIST_ENTRY32;
 
 typedef union _SLIST_HEADER {
     ULONGLONG Alignment;
-    _ANONYMOUS_STRUCT struct {
+    struct {
 	SLIST_ENTRY Next;
 	USHORT Depth;
 	USHORT Sequence;
-    } DUMMYSTRUCTNAME;
+    };
 } SLIST_HEADER, *PSLIST_HEADER;
 
 typedef SLIST_HEADER SLIST_HEADER32, *PSLIST_HEADER32;
@@ -833,12 +833,8 @@ NTAPI NTSYSAPI ULONG RtlFindLastBackwardRunClear(IN PRTL_BITMAP BitMapHeader,
 						 IN ULONG FromIndex,
 						 OUT PULONG StartingRunIndex);
 
-NTAPI NTSYSAPI CCHAR RtlFindLeastSignificantBit(IN ULONGLONG Set);
-
 NTAPI NTSYSAPI ULONG RtlFindLongestRunClear(IN PRTL_BITMAP BitMapHeader,
 					    OUT PULONG StartingIndex);
-
-NTAPI NTSYSAPI CCHAR RtlFindMostSignificantBit(IN ULONGLONG Set);
 
 NTAPI NTSYSAPI ULONG RtlFindNextForwardRunClear(IN PRTL_BITMAP BitMapHeader,
 						IN ULONG FromIndex,

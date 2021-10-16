@@ -194,44 +194,6 @@ RtlpGetLengthOfRunSet(IN PRTL_BITMAP BitMapHeader,
 
 /* PUBLIC FUNCTIONS **********************************************************/
 
-#ifndef USE_RTL_BITMAP64
-CCHAR NTAPI RtlFindMostSignificantBit(ULONGLONG Value)
-{
-    ULONG Position;
-
-#ifdef _M_AMD64
-    if (BitScanReverse64(&Position, Value)) {
-	return (CCHAR) Position;
-    }
-#else
-    if (BitScanReverse(&Position, Value >> _BITCOUNT)) {
-	return (CCHAR) (Position + _BITCOUNT);
-    } else if (BitScanReverse(&Position, (ULONG) Value)) {
-	return (CCHAR) Position;
-    }
-#endif
-    return -1;
-}
-
-CCHAR NTAPI RtlFindLeastSignificantBit(ULONGLONG Value)
-{
-    ULONG Position;
-
-#ifdef _M_AMD64
-    if (BitScanForward64(&Position, Value)) {
-	return (CCHAR) Position;
-    }
-#else
-    if (BitScanForward(&Position, (ULONG) Value)) {
-	return (CCHAR) Position;
-    } else if (BitScanForward(&Position, Value >> _BITCOUNT)) {
-	return (CCHAR) (Position + _BITCOUNT);
-    }
-#endif
-    return -1;
-}
-#endif				/* !USE_RTL_BITMAP64 */
-
 VOID NTAPI RtlInitializeBitMap(OUT PRTL_BITMAP BitMapHeader,
 			       IN OPTIONAL PBITMAP_BUFFER BitMapBuffer,
 			       IN OPTIONAL ULONG SizeOfBitMap)

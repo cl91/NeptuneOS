@@ -679,7 +679,7 @@ VOID RtlpInsertUnCommittedPages(PHEAP_SEGMENT Segment,
     PLIST_ENTRY Current;
     PHEAP_UCR_DESCRIPTOR UcrDescriptor;
 
-    DPRINT("RtlpInsertUnCommittedPages(%p %08Ix %Ix)\n", Segment, Address,
+    DPRINT("RtlpInsertUnCommittedPages(%p 0x%zx 0x%zx)\n", Segment, Address,
 	   Size);
 
     /* Go through the list of UCR descriptors, they are sorted from lowest address
@@ -732,7 +732,7 @@ VOID RtlpInsertUnCommittedPages(PHEAP_SEGMENT Segment,
     /* "Current" is the descriptor before which our one should go */
     InsertTailList(Current, &UcrDescriptor->SegmentEntry);
 
-    DPRINT("Added segment UCR with base %08Ix, size 0x%zx\n", Address,
+    DPRINT("Added segment UCR with base 0x%zx, size 0x%zx\n", Address,
 	   Size);
 
     /* Increase counters */
@@ -747,7 +747,7 @@ static PHEAP_FREE_ENTRY RtlpFindAndCommitPages(PHEAP Heap,
     PLIST_ENTRY Current;
     NTSTATUS Status;
 
-    DPRINT("RtlpFindAndCommitPages(%p %p %Ix %p)\n", Heap, Segment, *Size,
+    DPRINT("RtlpFindAndCommitPages(%p %p 0x%zx %p)\n", Heap, Segment, *Size,
 	   AddressRequested);
 
     /* Go through UCRs in a segment */
@@ -775,7 +775,7 @@ static PHEAP_FREE_ENTRY RtlpFindAndCommitPages(PHEAP Heap,
 						 PAGE_READWRITE);
 	    }
 
-	    DPRINT("Committed %Iu bytes at base %p, UCR size is %zu\n",
+	    DPRINT("Committed 0x%zx bytes at base %p, UCR size is %zu\n",
 		   *Size, Address, UcrDescriptor->Size);
 
 	    /* Fail in unsuccessful case */
@@ -1762,7 +1762,7 @@ NTAPI HANDLE RtlCreateHeap(ULONG Flags,
 						  0, &CommitSize,
 						  MEM_COMMIT, PAGE_READWRITE);
 
-	DPRINT("Committed %Iu bytes at base %p\n", CommitSize, CommittedAddress);
+	DPRINT("Committed 0x%zx bytes at base %p\n", CommitSize, CommittedAddress);
 
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT1("Failure, Status 0x%08X\n", Status);
@@ -3648,7 +3648,7 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
 
     if (Heap->TotalFreeSize != TotalFreeSize) {
 	DPRINT1
-	    ("HEAP: Total size of free blocks in arena (%Iu) does not equal to the one in heap header (%Iu)\n",
+	    ("HEAP: Total size of free blocks in arena (0x%zx) does not equal to the one in heap header (0x%zx)\n",
 	     TotalFreeSize, Heap->TotalFreeSize);
 	return FALSE;
     }

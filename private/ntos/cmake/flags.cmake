@@ -16,6 +16,8 @@ if((${CMAKE_BUILD_TYPE} STREQUAL "Release") OR (${CMAKE_BUILD_TYPE} STREQUAL "Mi
         add_compile_options(-ffunction-sections -fdata-sections)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections ")
     endif()
+
+    add_compile_options(-DNDEBUG)
 endif()
 mark_as_advanced(UserLinkerGCSections)
 

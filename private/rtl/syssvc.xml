@@ -1,22 +1,22 @@
 <?xml version="1.0" ?>
 
 <!-- Please see syssvc.xsd for the format of this file -->
-<system-services>
+<services>
 
-  <syssvc name="NtDisplayString">
+  <svc name="NtDisplayString">
     <parameter annotation="in" type="UnicodeString" name="String" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtClose">
+  <svc name="NtClose">
     <parameter annotation="in" type="HANDLE" name="Handle" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtContinue">
+  <svc name="NtContinue">
     <parameter annotation="in" type="ptr::CONTEXT" name="Context" />
     <parameter annotation="in" type="BOOLEAN" name="TestAlert" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtCreateThread">
+  <svc name="NtCreateThread">
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
@@ -25,14 +25,14 @@
     <parameter annotation="in" type="ptr::CONTEXT" name="ThreadContext" />
     <parameter annotation="in" type="ptr::INITIAL_TEB" name="InitialTeb" />
     <parameter annotation="in" type="BOOLEAN" name="CreateSuspended" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtTerminateThread">
+  <svc name="NtTerminateThread">
     <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="NTSTATUS" name="ExitStatus" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtCreateProcess">
+  <svc name="NtCreateProcess">
     <parameter annotation="out" type="ptr::HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
@@ -41,105 +41,105 @@
     <parameter annotation="in" type="HANDLE" name="SectionHandle" />
     <parameter annotation="in" type="HANDLE" name="DebugPort" />
     <parameter annotation="in" type="HANDLE" name="ExceptionPort" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtTerminateProcess">
+  <svc name="NtTerminateProcess">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="NTSTATUS" name="ExitStatus" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtRaiseHardError">
+  <svc name="NtRaiseHardError">
     <parameter annotation="in" type="NTSTATUS" name="ErrorStatus" />
     <parameter annotation="in" type="ULONG" name="NumberOfParameters" />
     <parameter annotation="in" type="ULONG" name="UnicodeStringParameterMask" />
     <parameter annotation="in" type="ptr::ULONG_PTR" name="Parameters" />
     <parameter annotation="in" type="HARDERROR_RESPONSE_OPTION" name="ResponseOption" />
     <parameter annotation="out" type="ptr::HARDERROR_RESPONSE" name="Response" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtCreateEvent">
+  <svc name="NtCreateEvent">
     <parameter annotation="out" type="ptr::HANDLE" name="EventHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
     <parameter annotation="in" type="EVENT_TYPE" name="EventType" />
     <parameter annotation="in" type="BOOLEAN" name="InitialState" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtSetEvent">
+  <svc name="NtSetEvent">
     <parameter annotation="in" type="HANDLE" name="EventHandle" />
     <parameter annotation="out opt" type="ptr::LONG" name="PreviousState" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtTestAlert" />
+  <svc name="NtTestAlert" />
 
-  <syssvc name="NtWaitForSingleObject">
+  <svc name="NtWaitForSingleObject">
     <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
     <parameter annotation="in" type="BOOLEAN" name="Alertable" />
     <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtAllocateVirtualMemory">
+  <svc name="NtAllocateVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in out opt" type="ptr::PVOID" name="BaseAddress" />
-    <parameter annotation="in" type="ULONG" name="ZeroBits" />
-    <parameter annotation="in out opt" type="ptr::SIZE_T" name="RegionSize" />
+    <parameter annotation="in" type="ULONG_PTR" name="ZeroBits" />
+    <parameter annotation="in out" type="ptr::SIZE_T" name="RegionSize" />
     <parameter annotation="in" type="ULONG" name="AllocationType" />
     <parameter annotation="in" type="ULONG" name="Protect" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtFreeVirtualMemory">
+  <svc name="NtFreeVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
-    <parameter annotation="in out opt" type="ptr::SIZE_T" name="RegionSize" />
+    <parameter annotation="in out" type="ptr::SIZE_T" name="RegionSize" />
     <parameter annotation="in" type="ULONG" name="FreeType" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtQuerySystemInformation">
+  <svc name="NtQuerySystemInformation">
     <parameter annotation="in" type="SYSTEM_INFORMATION_CLASS" name="SystemInformationClass" />
     <parameter annotation="in" type="PVOID" name="SystemInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="SystemInformationLength" />
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtQueryVirtualMemory">
+  <svc name="NtQueryVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
     <parameter annotation="in" type="MEMORY_INFORMATION_CLASS" name="MemoryInformationClass" />
     <parameter annotation="in" type="PVOID" name="MemoryInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="MemoryInformationLength" />
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtProtectVirtualMemory">
+  <svc name="NtProtectVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in out" type="ptr::PVOID" name="BaseAddress" />
     <parameter annotation="in out" type="ptr::SIZE_T" name="NumberOfBytesToProtect" />
     <parameter annotation="in" type="ULONG" name="NewAccessProtection" />
     <parameter annotation="out opt" type="ptr::ULONG" name="OldAccessProtection" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtQueryPerformanceCounter">
+  <svc name="NtQueryPerformanceCounter">
     <parameter annotation="out complex" type="ptr::LARGE_INTEGER" name="PerformanceCounter" />
     <parameter annotation="out opt complex" type="ptr::LARGE_INTEGER" name="PerformanceFrequency" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtWriteVirtualMemory">
+  <svc name="NtWriteVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
     <parameter annotation="in" type="PVOID" name="Buffer" />
     <parameter annotation="in" type="ULONG" name="NumberOfBytesToWrite" />
     <parameter annotation="out" type="ptr::ULONG" name="NumberOfBytesWritten" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtReadVirtualMemory">
+  <svc name="NtReadVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
     <parameter annotation="in" type="PVOID" name="Buffer" />
     <parameter annotation="in" type="ULONG" name="NumberOfBytesToRead" />
     <parameter annotation="out" type="ptr::SIZE_T" name="NumberOfBytesRead" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtDuplicateObject">
+  <svc name="NtDuplicateObject">
     <parameter annotation="in" type="HANDLE" name="SourceProcessHandle" />
     <parameter annotation="in" type="HANDLE" name="SourceHandle" />
     <parameter annotation="in" type="HANDLE" name="TargetProcessHandle" />
@@ -147,9 +147,9 @@
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in" type="BOOLEAN" name="InheritHandle" />
     <parameter annotation="in" type="ULONG" name="Options" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtCreateSection">
+  <svc name="NtCreateSection">
     <parameter annotation="out" type="ptr::HANDLE" name="SectionHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
@@ -157,57 +157,57 @@
     <parameter annotation="in" type="ULONG" name="SectionPageProtection" />
     <parameter annotation="in" type="ULONG" name="AllocationAttributes" />
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtQuerySection">
+  <svc name="NtQuerySection">
     <parameter annotation="in" type="HANDLE" name="SectionHandle" />
     <parameter annotation="in" type="SECTION_INFORMATION_CLASS" name="SectionInformationClass" />
     <parameter annotation="in" type="PVOID" name="SectionInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="SectionInformationLength" />
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtQueryInformationProcess">
+  <svc name="NtQueryInformationProcess">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PROCESS_INFORMATION_CLASS" name="ProcessInformationClass" />
     <parameter annotation="in" type="PVOID" name="ProcessInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="ProcessInformationLength" />
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtQueryInformationThread">
+  <svc name="NtQueryInformationThread">
     <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="THREAD_INFORMATION_CLASS" name="ThreadInformationClass" />
     <parameter annotation="in" type="PVOID" name="ThreadInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="ThreadInformationLength" />
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtSetInformationProcess">
+  <svc name="NtSetInformationProcess">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PROCESS_INFORMATION_CLASS" name="ProcessInformationClass" />
     <parameter annotation="in" type="PVOID" name="ProcessInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="ProcessInformationLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtSetInformationThread">
+  <svc name="NtSetInformationThread">
     <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="THREAD_INFORMATION_CLASS" name="ThreadInformationClass" />
     <parameter annotation="in" type="PVOID" name="ThreadInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="ThreadInformationLength" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtOpenFile">
+  <svc name="NtOpenFile">
     <parameter annotation="out" type="ptr::HANDLE" name="FileHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
     <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
     <parameter annotation="in" type="ULONG" name="ShareAccess" />
     <parameter annotation="in" type="ULONG" name="OpenOptions" />
-  </syssvc>
+  </svc>
 
-  <syssvc name="NtLoadDriver">
+  <svc name="NtLoadDriver">
     <parameter annotation="in" type="UnicodeString" name="DriverServiceName" />
-  </syssvc>
+  </svc>
 
-</system-services>
+</services>

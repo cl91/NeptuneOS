@@ -21,5 +21,5 @@ VOID KiHaltSystem(IN PCSTR Format, ...);
 VOID KiInitVga();
 
 /* services.c */
-NTSTATUS KiCreateSystemServicesEndpoint();
-VOID KiDispatchSystemServices();
+NTSTATUS KiCreateExecutiveServicesEndpoint();
+VOID KiDispatchExecutiveServices();

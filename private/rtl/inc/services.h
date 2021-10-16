@@ -17,29 +17,35 @@ typedef seL4_Word MWORD;
 
 /* All hard-coded capability slots in the client processes' CSpace go here. */
 #define SYSSVC_IPC_CAP			(0x1)
+#define HALSVC_IPC_CAP			(0x2)
+
+/* The maximum number of zero bits (starting from the most significant bit) in
+ * the virtual address that the user can specify in virtual memory allocation.
+ * This is determined by the lowest user address, defined below */
+#define MM_MAXIMUM_ZERO_BITS		(MWORD_BITS - PAGE_LOG2SIZE - 1)
 
 /* All hard-coded addresses in client processes' address space go here. */
-#define LOWEST_USER_ADDRESS		(0x00010000UL)
+#define LOWEST_USER_ADDRESS		(1ULL << PAGE_LOG2SIZE)
 /* First 1MB unmapped to catch stack overflow */
-#define THREAD_STACK_START		(0x00100000UL)
+#define THREAD_STACK_START		(0x00100000ULL)
 /* End of the address space where we can map user images */
-#define USER_IMAGE_REGION_START		(0x00400000UL)
-#define USER_IMAGE_REGION_END		(0xb0000000UL)
+#define USER_IMAGE_REGION_START		(0x00400000ULL)
+#define USER_IMAGE_REGION_END		(0xb0000000ULL)
 #define WIN32_TEB_START			(USER_IMAGE_REGION_END)
-#define WIN32_TEB_END			(0xbffdf000UL)
+#define WIN32_TEB_END			(0xbffdf000ULL)
 #define WIN32_PEB_START			(WIN32_TEB_END)
 /* Size of system dll tls region per thread is determined by the size
  * of the .tls section of the NTDLL.DLL image. */
-#define SYSTEM_DLL_TLS_REGION_START	(0xc0010000UL)
-#define SYSTEM_DLL_TLS_REGION_END	(0xcff00000UL)
+#define SYSTEM_DLL_TLS_REGION_START	(0xc0010000ULL)
+#define SYSTEM_DLL_TLS_REGION_END	(0xcff00000ULL)
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
-#define IPC_BUFFER_START		(0xd0000000UL)
-#define IPC_BUFFER_END			(0xdfff0000UL)
+#define IPC_BUFFER_START		(0xd0000000ULL)
+#define IPC_BUFFER_END			(0xdfff0000ULL)
 /* We cannot put the KUSER_SHARED_DATA in the usual place (0xFFDF0000 in i386
  * or 0xFFFFF780`00000000 in amd64) so we will settle for IPC_BUFFER_END */
 #define KUSER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
 #define LOADER_SHARED_DATA_CLIENT_ADDR	(KUSER_SHARED_DATA_CLIENT_ADDR + PAGE_ALIGN_UP(sizeof(KUSER_SHARED_DATA)))
-#define USER_ADDRESS_END		(0xe0000000UL)
+#define USER_ADDRESS_END		(0xe0000000ULL)
 #define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 
 #if KUSER_SHARED_DATA_CLIENT_ADDR >= USER_ADDRESS_END
@@ -71,6 +77,17 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     HANDLE LoaderHeapLockSemaphore;
     BOOLEAN DriverProcess;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
+
+/*
+ * Start routine of hal.dll. In driver processes we don't call the
+ * driver entry point directly, and instead call HalStartup. */
+typedef VOID (*PHAL_START_ROUTINE)(seL4_IPCBuffer *IpcBuffer);
+
+/*
+ * System dll TLS index. Executable has TLS index == 0. NTDLL always
+ * has TLS index == 1.
+ */
+#define SYSTEMDLL_TLS_INDEX	1
 
 /*
  * Shared data structure between the NTOS server and the NTDLL loader
@@ -105,62 +122,62 @@ typedef struct _LOADER_SHARED_DATA {
 #error "seL4 IPC Buffer too large (must be no larger than half of a 4K page)"
 #endif
 
-/* System service message buffer sits immediately after the seL4 IPC buffer */
-#define SEL4_IPC_BUFFER_SIZE		(1UL << seL4_IPCBufferSizeBits)
-#define SYSSVC_MESSAGE_BUFFER_SIZE	((1UL << seL4_PageBits) - SEL4_IPC_BUFFER_SIZE)
+/* Service message buffer sits immediately after the seL4 IPC buffer */
+#define SEL4_IPC_BUFFER_SIZE	(1UL << seL4_IPCBufferSizeBits)
+#define SVC_MSGBUF_SIZE		((1UL << seL4_PageBits) - SEL4_IPC_BUFFER_SIZE)
 
 /*
- * Points to a buffer (within the system service message buffer) which stores
- * an argument to the system service. The client stub copies the client data
+ * Points to a buffer (within the service message buffer) which stores
+ * an argument to the service. The client stub copies the client data
  * into the buffer and passes the pointer to the server.
  */
-typedef union _SYSTEM_SERVICE_ARGUMENT {
+typedef union _SERVICE_ARGUMENT {
     struct {
 	USHORT BufferStart; /* Relative to the beginning of svc msg buffer */
 	USHORT BufferSize;
     };
     MWORD Word;
-} SYSTEM_SERVICE_ARGUMENT;
+} SERVICE_ARGUMENT;
 
-assert_size_correct(SYSTEM_SERVICE_ARGUMENT, MWORD_BYTES);
+assert_size_correct(SERVICE_ARGUMENT, MWORD_BYTES);
 
-static inline BOOLEAN KiSystemServiceValidateArgument(IN MWORD MsgWord)
+static inline BOOLEAN KiServiceValidateArgument(IN MWORD MsgWord)
 {
-    SYSTEM_SERVICE_ARGUMENT Arg;
+    SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
-    if (((ULONG)(Arg.BufferStart) + Arg.BufferSize) > SYSSVC_MESSAGE_BUFFER_SIZE) {
+    if (((ULONG)(Arg.BufferStart) + Arg.BufferSize) > SVC_MSGBUF_SIZE) {
 	return FALSE;
     }
     return TRUE;
 }
 
-#define SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufAddr, Offset, Type) (*((Type *)(IpcBufAddr + SEL4_IPC_BUFFER_SIZE + (Offset))))
+#define SVC_MSGBUF_OFFSET_TO_ARG(IpcBufAddr, Offset, Type) (*((Type *)(IpcBufAddr + SEL4_IPC_BUFFER_SIZE + (Offset))))
 
-static inline PVOID KiSystemServiceGetArgument(IN MWORD IpcBufferAddr,
-					       IN MWORD MsgWord)
+static inline PVOID KiServiceGetArgument(IN MWORD IpcBufferAddr,
+					 IN MWORD MsgWord)
 {
     if (MsgWord == 0) {
 	return NULL;
     }
-    SYSTEM_SERVICE_ARGUMENT Arg;
+    SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
-    return &SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, Arg.BufferStart, VOID);
+    return &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, Arg.BufferStart, VOID);
 }
 
-static inline NTSTATUS KiSystemServiceMarshalArgument(IN MWORD IpcBufferAddr,
-						      IN OUT ULONG *MsgBufOffset,
-						      IN PVOID Argument,
-						      IN MWORD ArgSize,
-						      OUT SYSTEM_SERVICE_ARGUMENT *SvcArg)
+static inline NTSTATUS KiServiceMarshalArgument(IN MWORD IpcBufferAddr,
+						IN OUT ULONG *MsgBufOffset,
+						IN PVOID Argument,
+						IN MWORD ArgSize,
+						OUT SERVICE_ARGUMENT *SvcArg)
 {
-    if (*MsgBufOffset > SYSSVC_MESSAGE_BUFFER_SIZE) {
+    if (*MsgBufOffset > SVC_MSGBUF_SIZE) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    if (SYSSVC_MESSAGE_BUFFER_SIZE - *MsgBufOffset < ArgSize) {
+    if (SVC_MSGBUF_SIZE - *MsgBufOffset < ArgSize) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
     SvcArg->Word = 0;
-    memcpy(&SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, *MsgBufOffset, VOID), Argument, ArgSize);
+    memcpy(&SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, *MsgBufOffset, VOID), Argument, ArgSize);
     SvcArg->BufferStart = *MsgBufOffset;
     SvcArg->BufferSize = ArgSize;
     *MsgBufOffset += ArgSize;

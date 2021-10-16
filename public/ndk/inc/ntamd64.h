@@ -62,8 +62,8 @@ typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
 	    M128A Xmm13;
 	    M128A Xmm14;
 	    M128A Xmm15;
-	} DUMMYSTRUCTNAME;
-    } DUMMYUNIONNAME;
+	};
+    };
     M128A VectorRegister[26];
     ULONG64 VectorControl;
     ULONG64 DebugControl;
@@ -93,8 +93,8 @@ typedef struct _KNONVOLATILE_CONTEXT_POINTERS {
             PM128A Xmm13;
             PM128A Xmm14;
             PM128A Xmm15;
-        } DUMMYSTRUCTNAME;
-    } DUMMYUNIONNAME;
+        };
+    };
 
     union {
         PULONG64 IntegerContext[16];
@@ -115,8 +115,8 @@ typedef struct _KNONVOLATILE_CONTEXT_POINTERS {
             PULONG64 R13;
             PULONG64 R14;
             PULONG64 R15;
-        } DUMMYSTRUCTNAME;
-    } DUMMYUNIONNAME2;
+        };
+    };
 } KNONVOLATILE_CONTEXT_POINTERS, *PKNONVOLATILE_CONTEXT_POINTERS;
 
 struct _EXCEPTION_POINTERS;

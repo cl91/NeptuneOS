@@ -11,6 +11,14 @@
 #define POINTER_ALIGNMENT
 #endif
 
+#if defined(_WIN64) || defined(_M_ALPHA)
+#define MAX_NATURAL_ALIGNMENT sizeof(ULONGLONG)
+#define MEMORY_ALLOCATION_ALIGNMENT 16
+#else
+#define MAX_NATURAL_ALIGNMENT sizeof(ULONG)
+#define MEMORY_ALLOCATION_ALIGNMENT 8
+#endif
+
 /* FILE_OBJECT.Flags */
 #define FO_FILE_OPEN                 0x00000001
 #define FO_SYNCHRONOUS_IO            0x00000002
@@ -190,96 +198,18 @@
 
 #define IRP_MN_REGINFO_EX                 0x0b
 
-/*
- * DEVICE_OBJECT.DeviceType
- */
-typedef ULONG DEVICE_TYPE;
-
-#define FILE_DEVICE_BEEP                  0x00000001
-#define FILE_DEVICE_CD_ROM                0x00000002
-#define FILE_DEVICE_CD_ROM_FILE_SYSTEM    0x00000003
-#define FILE_DEVICE_CONTROLLER            0x00000004
-#define FILE_DEVICE_DATALINK              0x00000005
-#define FILE_DEVICE_DFS                   0x00000006
-#define FILE_DEVICE_DISK                  0x00000007
-#define FILE_DEVICE_DISK_FILE_SYSTEM      0x00000008
-#define FILE_DEVICE_FILE_SYSTEM           0x00000009
-#define FILE_DEVICE_INPORT_PORT           0x0000000a
-#define FILE_DEVICE_KEYBOARD              0x0000000b
-#define FILE_DEVICE_MAILSLOT              0x0000000c
-#define FILE_DEVICE_MIDI_IN               0x0000000d
-#define FILE_DEVICE_MIDI_OUT              0x0000000e
-#define FILE_DEVICE_MOUSE                 0x0000000f
-#define FILE_DEVICE_MULTI_UNC_PROVIDER    0x00000010
-#define FILE_DEVICE_NAMED_PIPE            0x00000011
-#define FILE_DEVICE_NETWORK               0x00000012
-#define FILE_DEVICE_NETWORK_BROWSER       0x00000013
-#define FILE_DEVICE_NETWORK_FILE_SYSTEM   0x00000014
-#define FILE_DEVICE_NULL                  0x00000015
-#define FILE_DEVICE_PARALLEL_PORT         0x00000016
-#define FILE_DEVICE_PHYSICAL_NETCARD      0x00000017
-#define FILE_DEVICE_PRINTER               0x00000018
-#define FILE_DEVICE_SCANNER               0x00000019
-#define FILE_DEVICE_SERIAL_MOUSE_PORT     0x0000001a
-#define FILE_DEVICE_SERIAL_PORT           0x0000001b
-#define FILE_DEVICE_SCREEN                0x0000001c
-#define FILE_DEVICE_SOUND                 0x0000001d
-#define FILE_DEVICE_STREAMS               0x0000001e
-#define FILE_DEVICE_TAPE                  0x0000001f
-#define FILE_DEVICE_TAPE_FILE_SYSTEM      0x00000020
-#define FILE_DEVICE_TRANSPORT             0x00000021
-#define FILE_DEVICE_UNKNOWN               0x00000022
-#define FILE_DEVICE_VIDEO                 0x00000023
-#define FILE_DEVICE_VIRTUAL_DISK          0x00000024
-#define FILE_DEVICE_WAVE_IN               0x00000025
-#define FILE_DEVICE_WAVE_OUT              0x00000026
-#define FILE_DEVICE_8042_PORT             0x00000027
-#define FILE_DEVICE_NETWORK_REDIRECTOR    0x00000028
-#define FILE_DEVICE_BATTERY               0x00000029
-#define FILE_DEVICE_BUS_EXTENDER          0x0000002a
-#define FILE_DEVICE_MODEM                 0x0000002b
-#define FILE_DEVICE_VDM                   0x0000002c
-#define FILE_DEVICE_MASS_STORAGE          0x0000002d
-#define FILE_DEVICE_SMB                   0x0000002e
-#define FILE_DEVICE_KS                    0x0000002f
-#define FILE_DEVICE_CHANGER               0x00000030
-#define FILE_DEVICE_SMARTCARD             0x00000031
-#define FILE_DEVICE_ACPI                  0x00000032
-#define FILE_DEVICE_DVD                   0x00000033
-#define FILE_DEVICE_FULLSCREEN_VIDEO      0x00000034
-#define FILE_DEVICE_DFS_FILE_SYSTEM       0x00000035
-#define FILE_DEVICE_DFS_VOLUME            0x00000036
-#define FILE_DEVICE_SERENUM               0x00000037
-#define FILE_DEVICE_TERMSRV               0x00000038
-#define FILE_DEVICE_KSEC                  0x00000039
-#define FILE_DEVICE_FIPS                  0x0000003a
-#define FILE_DEVICE_INFINIBAND            0x0000003b
-#define FILE_DEVICE_VMBUS                 0x0000003e
-#define FILE_DEVICE_CRYPT_PROVIDER        0x0000003f
-#define FILE_DEVICE_WPD                   0x00000040
-#define FILE_DEVICE_BLUETOOTH             0x00000041
-#define FILE_DEVICE_MT_COMPOSITE          0x00000042
-#define FILE_DEVICE_MT_TRANSPORT          0x00000043
-#define FILE_DEVICE_BIOMETRIC             0x00000044
-#define FILE_DEVICE_PMI                   0x00000045
-#define FILE_DEVICE_EHSTOR                0x00000046
-#define FILE_DEVICE_DEVAPI                0x00000047
-#define FILE_DEVICE_GPIO                  0x00000048
-#define FILE_DEVICE_USBEX                 0x00000049
-#define FILE_DEVICE_CONSOLE               0x00000050
-#define FILE_DEVICE_NFP                   0x00000051
-#define FILE_DEVICE_SYSENV                0x00000052
-#define FILE_DEVICE_VIRTUAL_BLOCK         0x00000053
-#define FILE_DEVICE_POINT_OF_SERVICE      0x00000054
-#define FILE_DEVICE_STORAGE_REPLICATION   0x00000055
-#define FILE_DEVICE_TRUST_ENV             0x00000056
-#define FILE_DEVICE_UCM                   0x00000057
-#define FILE_DEVICE_UCMTCPCI              0x00000058
-#define FILE_DEVICE_PERSISTENT_MEMORY     0x00000059
-#define FILE_DEVICE_NVDIMM                0x0000005a
-#define FILE_DEVICE_HOLOGRAPHIC           0x0000005b
-#define FILE_DEVICE_SDFXHCI               0x0000005c
-#define FILE_DEVICE_UCMUCSI               0x0000005d
+/* DEVICE_OBJECT.Flags */
+#define DO_DEVICE_HAS_NAME                0x00000040
+#define DO_SYSTEM_BOOT_PARTITION          0x00000100
+#define DO_LONG_TERM_REQUESTS             0x00000200
+#define DO_NEVER_LAST_DEVICE              0x00000400
+#define DO_LOW_PRIORITY_FILESYSTEM        0x00010000
+#define DO_SUPPORTS_TRANSACTIONS          0x00040000
+#define DO_FORCE_NEITHER_IO               0x00080000
+#define DO_VOLUME_DEVICE_OBJECT           0x00100000
+#define DO_SYSTEM_SYSTEM_PARTITION        0x00200000
+#define DO_SYSTEM_CRITICAL_PARTITION      0x00400000
+#define DO_DISALLOW_EXECUTE               0x00800000
 
 /* DEVICE_OBJECT.Flags */
 #define DO_UNLOAD_PENDING                 0x00000001
@@ -293,22 +223,6 @@ typedef ULONG DEVICE_TYPE;
 #define DO_BUS_ENUMERATED_DEVICE          0x00001000
 #define DO_POWER_PAGABLE                  0x00002000
 #define DO_POWER_INRUSH                   0x00004000
-
-/* DEVICE_OBJECT.Characteristics */
-#define FILE_REMOVABLE_MEDIA              0x00000001
-#define FILE_READ_ONLY_DEVICE             0x00000002
-#define FILE_FLOPPY_DISKETTE              0x00000004
-#define FILE_WRITE_ONCE_MEDIA             0x00000008
-#define FILE_REMOTE_DEVICE                0x00000010
-#define FILE_DEVICE_IS_MOUNTED            0x00000020
-#define FILE_VIRTUAL_VOLUME               0x00000040
-#define FILE_AUTOGENERATED_DEVICE_NAME    0x00000080
-#define FILE_DEVICE_SECURE_OPEN           0x00000100
-#define FILE_CHARACTERISTIC_PNP_DEVICE    0x00000800
-#define FILE_CHARACTERISTIC_TS_DEVICE     0x00001000
-#define FILE_CHARACTERISTIC_WEBDAV_DEVICE 0x00002000
-#define FILE_PORTABLE_DEVICE              0x00004000
-#define FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL 0x00020000
 
 /* DEVICE_OBJECT.AlignmentRequirement */
 #define FILE_BYTE_ALIGNMENT             0x00000000
@@ -336,6 +250,24 @@ typedef ULONG DEVICE_TYPE;
 #define IO_SOUND_INCREMENT                8
 #define IO_VIDEO_INCREMENT                1
 #define SEMAPHORE_INCREMENT               1
+
+#define IO_TYPE_ADAPTER                 1
+#define IO_TYPE_CONTROLLER              2
+#define IO_TYPE_DEVICE                  3
+#define IO_TYPE_DRIVER                  4
+#define IO_TYPE_FILE                    5
+#define IO_TYPE_IRP                     6
+#define IO_TYPE_MASTER_ADAPTER          7
+#define IO_TYPE_OPEN_PACKET             8
+#define IO_TYPE_TIMER                   9
+#define IO_TYPE_VPB                     10
+#define IO_TYPE_ERROR_LOG               11
+#define IO_TYPE_ERROR_MESSAGE           12
+#define IO_TYPE_DEVICE_OBJECT_EXTENSION 13
+
+#define IO_TYPE_CSQ_IRP_CONTEXT 1
+#define IO_TYPE_CSQ 2
+#define IO_TYPE_CSQ_EX 3
 
 struct _DEVICE_OBJECT;
 struct _DRIVER_OBJECT;
@@ -373,13 +305,15 @@ typedef struct _FILE_OBJECT {
     LIST_ENTRY IrpList;
 } FILE_OBJECT, *PFILE_OBJECT;
 
-typedef struct _DEVICE_OBJECT {
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     SHORT Type;
-    USHORT Size;
+    ULONG Size;
     LONG ReferenceCount;
+    HANDLE DeviceHandle;
     struct _DRIVER_OBJECT *DriverObject;
     struct _DEVICE_OBJECT *NextDevice;
     struct _DEVICE_OBJECT *AttachedDevice;
+    struct _DEVICE_OBJECT *AttachedTo;
     struct _IRP *CurrentIrp;
     ULONG Flags;
     ULONG Characteristics;
@@ -393,9 +327,13 @@ typedef struct _DEVICE_OBJECT {
     ULONG ActiveThreadCount;
     PSECURITY_DESCRIPTOR SecurityDescriptor;
     USHORT SectorSize;
-    USHORT Spare1;
-    struct _DEVOBJ_EXTENSION *DeviceObjectExtension;
-    PVOID Reserved;
+    ULONG PowerFlags;
+    ULONG ExtensionFlags;
+    struct _DEVICE_NODE *DeviceNode;
+    LONG StartIoCount;
+    LONG StartIoKey;
+    ULONG StartIoFlags;
+    PVPB Vpb;
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
 
 typedef struct _MDL {
@@ -416,7 +354,7 @@ typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
 				   IN OUT struct _IRP *Irp);
 typedef DRIVER_CANCEL *PDRIVER_CANCEL;
 
-typedef struct _IRP {
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     SHORT Type;
     USHORT Size;
     struct _MDL *MdlAddress;
@@ -437,10 +375,10 @@ typedef struct _IRP {
     PIO_STATUS_BLOCK UserIosb;
     union {
 	struct {
-	    _ANONYMOUS_UNION union {
+	    union {
 		PIO_APC_ROUTINE UserApcRoutine;
 		PVOID IssuingProcess;
-	    } DUMMYUNIONNAME;
+	    };
 	    PVOID UserApcContext;
 	} AsynchronousParameters;
 	LARGE_INTEGER AllocationSize;
@@ -449,19 +387,19 @@ typedef struct _IRP {
     PVOID UserBuffer;
     union {
 	struct {
-	    _ANONYMOUS_UNION union {
-		_ANONYMOUS_STRUCT struct {
+	    union {
+		struct {
 		    PVOID DriverContext[4];
-		} DUMMYSTRUCTNAME;
-	    } DUMMYUNIONNAME;
+		};
+	    };
 	    PCHAR AuxiliaryBuffer;
-	    _ANONYMOUS_STRUCT struct {
+	    struct {
 		LIST_ENTRY ListEntry;
-		_ANONYMOUS_UNION union {
+		union {
 		    struct _IO_STACK_LOCATION *CurrentStackLocation;
 		    ULONG PacketType;
-		} DUMMYUNIONNAME;
-	    } DUMMYSTRUCTNAME;
+		};
+	    };
 	    PFILE_OBJECT OriginalFileObject;
 	} Overlay;
 	PVOID CompletionKey;
@@ -517,16 +455,6 @@ typedef DRIVER_INITIALIZE *PDRIVER_INITIALIZE;
 typedef NTSTATUS (NTAPI DRIVER_ADD_DEVICE)(IN struct _DRIVER_OBJECT *DriverObject,
 					   IN PDEVICE_OBJECT PhysicalDeviceObject);
 typedef DRIVER_ADD_DEVICE *PDRIVER_ADD_DEVICE;
-
-/*
- * Driver extension, used by the PNP manager
- */
-typedef struct _DRIVER_EXTENSION {
-    struct _DRIVER_OBJECT *DriverObject;
-    PDRIVER_ADD_DEVICE AddDevice;
-    ULONG Count;
-    UNICODE_STRING ServiceKeyName;
-} DRIVER_EXTENSION, *PDRIVER_EXTENSION;
 
 /*
  * Driver's StartIO routine
@@ -796,12 +724,13 @@ typedef struct _DRIVER_OBJECT {
     PVOID DriverStart;
     ULONG DriverSize;
     PVOID DriverSection;
-    PDRIVER_EXTENSION DriverExtension;
+    UNICODE_STRING ServiceKeyName;
     UNICODE_STRING DriverName;
     PUNICODE_STRING HardwareDatabase;
     struct _FAST_IO_DISPATCH *FastIoDispatch;
     PDRIVER_INITIALIZE DriverInit;
     PDRIVER_STARTIO DriverStartIo;
+    PDRIVER_ADD_DEVICE AddDevice;
     PDRIVER_UNLOAD DriverUnload;
     PDRIVER_DISPATCH MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 } DRIVER_OBJECT, *PDRIVER_OBJECT;
@@ -871,14 +800,14 @@ typedef struct _IO_STACK_LOCATION {
 	    ULONG Length;
 	    FILE_INFORMATION_CLASS POINTER_ALIGNMENT FileInformationClass;
 	    PFILE_OBJECT FileObject;
-	    _ANONYMOUS_UNION union {
-		_ANONYMOUS_STRUCT struct {
+	    union {
+		struct {
 		    BOOLEAN ReplaceIfExists;
 		    BOOLEAN AdvanceOnly;
-		} DUMMYSTRUCTNAME;
+		};
 		ULONG ClusterCount;
 		HANDLE DeleteHandle;
-	    } DUMMYUNIONNAME;
+	    };
 	} SetFile;
 	struct {
 	    ULONG Length;

@@ -2,19 +2,19 @@
 
     <xsd:annotation>
         <xsd:documentation xml:lang="en">
-            NTOS System Services schema.
+            NTOS Services schema.
         </xsd:documentation>
     </xsd:annotation>
 
-    <xsd:attribute name="system-services" type="SystemServiceListType" />
+    <xsd:attribute name="services" type="ServiceListType" />
 
-    <xsd:complexType name="SystemServiceListType">
+    <xsd:complexType name="ServiceListType">
         <xsd:sequence>
-            <xsd:element name="syssvc" minOccurs="0" maxOccurs="unbounded" type="SystemServiceType" />
+            <xsd:element name="svc" minOccurs="0" maxOccurs="unbounded" type="ServiceType" />
         </xsd:sequence>
     </xsd:complexType>
 
-    <xsd:complexType name="SystemServiceType">
+    <xsd:complexType name="ServiceType">
         <xsd:attribute name="name" type="xsd:string" />
         <xsd:sequence>
             <xsd:element name="parameter" minOccurs="0" maxOccurs="unbounded" type="ParameterType" />

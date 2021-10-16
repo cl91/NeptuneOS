@@ -28,3 +28,4 @@
 @ stdcall LdrFindEntryForAddress(ptr ptr)
 @ cdecl memset(ptr long long)
 @ stdcall RtlAllocateHeap(ptr long ptr)
+@ stdcall RtlFreeHeap(long long long)

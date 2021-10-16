@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# This file generates both the system service stubs and the hal service stubs
+
 from __future__ import print_function
 from jinja2 import Environment, BaseLoader
 import argparse
@@ -12,43 +14,53 @@ import xml.dom.minidom
 SYSSVC_GEN_H_TEMPLATE = """#pragma once
 
 typedef enum _SYSTEM_SERVICE_NUMBER {
-    {%- for syssvc in syssvc_list %}
-    {{syssvc.enum_tag}},
+    {%- for svc in svc_list %}
+    {{svc.enum_tag}},
     {%- endfor %}
     NUMBER_OF_SYSTEM_SERVICES
 } SYSTEM_SERVICE_NUMBER;
 """
 
-NTOS_SYSSVC_GEN_H_TEMPLATE = """#pragma once
+HALSVC_GEN_H_TEMPLATE = """#pragma once
+
+typedef enum _HAL_SERVICE_NUMBER {
+    {%- for svc in svc_list %}
+    {{svc.enum_tag}},
+    {%- endfor %}
+    NUMBER_OF_HAL_SERVICES
+} SYSTEM_HAL_NUMBER;
+"""
+
+NTOS_SVC_GEN_H_TEMPLATE = """#pragma once
 
 #include <ntos.h>
 {# #}
-{%- for syssvc in syssvc_list %}
-NTSTATUS {{syssvc.name}}(struct _THREAD *Thread{%- for param in syssvc.params %},
-{{syssvc.server_param_indent}}{{param.annotation}} {{param.server_decl}}{%- endfor %});
+{%- for svc in svc_list %}
+NTSTATUS {{svc.name}}(struct _THREAD *Thread{%- for param in svc.params %},
+{{svc.server_param_indent}}{{param.annotation}} {{param.server_decl}}{%- endfor %});
 {# #}
 {%- endfor %}
 """
 
-NTOS_SYSSVC_GEN_C_TEMPLATE = """#include <ntos.h>
+NTOS_SVC_GEN_C_TEMPLATE = """#include <ntos.h>{{extra_headers}}
 
-static inline NTSTATUS KiHandleSystemService(IN ULONG SvcNum,
-                                             IN PTHREAD Thread,
-                                             IN ULONG ReqMsgLength,
-                                             OUT ULONG *ReplyMsgLength)
+static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
+                        {{handler_func_indent}}IN PTHREAD Thread,
+                        {{handler_func_indent}}IN ULONG ReqMsgLength,
+                        {{handler_func_indent}}OUT ULONG *ReplyMsgLength)
 {
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
     switch (SvcNum) {
-{%- for syssvc in syssvc_list %}
-    case {{syssvc.enum_tag}}:
+{%- for svc in svc_list %}
+    case {{svc.enum_tag}}:
     {
-        assert(SYSSVC_MESSAGE_BUFFER_SIZE > (0{% for param in syssvc.out_params %}{% if param.complex_type %} + sizeof({{param.base_type}}){% endif %}{% endfor %}));
-        if (ReqMsgLength != {{syssvc.msglength}}) {
-            DbgTrace("Invalid service message length for service %d (expect %d got %d)\\n",
-                     SvcNum, {{syssvc.msglength}}, ReqMsgLength);
+        assert(SVC_MSGBUF_SIZE > (0{% for param in svc.out_params %}{% if param.complex_type %} + sizeof({{param.base_type}}){% endif %}{% endfor %}));
+        if (ReqMsgLength != {{svc.msglength}}) {
+            DbgTrace("Invalid service message length for {{svc_group}} service %d (expect %d got %d)\\n",
+                     SvcNum, {{svc.msglength}}, ReqMsgLength);
             break;
         }
-{%- for param in syssvc.in_params %}
+{%- for param in svc.in_params %}
 {%- if param.is_ptr %}
 {%- if param.custom_marshaling %}
         if (!{{param.validate_func}}(Thread->IpcBufferServerAddr, seL4_GetMR({{loop.index-1}}), {% if param.optional %}TRUE{% else %}FALSE{% endif %})) {
@@ -58,7 +70,7 @@ static inline NTSTATUS KiHandleSystemService(IN ULONG SvcNum,
         }
         {{param.server_decl}} = {{param.unmarshal_func}}(Thread->IpcBufferServerAddr, seL4_GetMR({{loop.index-1}}));
 {%- else %}
-        SYSTEM_SERVICE_ARGUMENT {{param.name}}ArgBuf;
+        SERVICE_ARGUMENT {{param.name}}ArgBuf;
         {{param.name}}ArgBuf.Word = seL4_GetMR({{loop.index-1}});
         {{param.server_decl}};
         if ({{param.name}}ArgBuf.Word == 0) {
@@ -70,40 +82,40 @@ static inline NTSTATUS KiHandleSystemService(IN ULONG SvcNum,
             break;
 {%- endif %}
         } else {
-            if (!(KiSystemServiceValidateArgument({{param.name}}ArgBuf.Word)
+            if (!(KiServiceValidateArgument({{param.name}}ArgBuf.Word)
                   && ({{param.name}}ArgBuf.BufferSize == sizeof({{param.base_type}})))) {
                 DbgTrace("Invalid argument at position %d (starting from one). Argument is 0x%zx.\\n",
                          {{loop.index}}, {{param.name}}ArgBuf.Word);
                 break;
             }
-            {{param.name}} = KiSystemServiceGetArgument(Thread->IpcBufferServerAddr, {{param.name}}ArgBuf.Word);
+            {{param.name}} = KiServiceGetArgument(Thread->IpcBufferServerAddr, {{param.name}}ArgBuf.Word);
         }
 {%- endif %}
 {%- else %}
         {{param.base_type}} {{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index-1}});
 {%- endif %}
 {%- endfor %}
-{%- for param in syssvc.out_params %}
+{%- for param in svc.out_params %}
 {%- if not param.dir_in %}
         {{param.base_type}} {{param.name}};
 {%- endif %}
 {%- endfor %}
-        DbgTrace("Calling {{syssvc.name}}\\n");
-        Status = {{syssvc.name}}(Thread{% for param in syssvc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
-{%- for param in syssvc.out_params %}
+        DbgTrace("Calling {{svc.name}}\\n");
+        Status = {{svc.name}}(Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
+{%- for param in svc.out_params %}
 {%- if param.dir_in %}
         {{param.base_type}} {{param.name}}Out = *{{param.name}};
 {%- endif %}
 {%- endfor %}
         ULONG MsgBufOffset = 0;
-        *ReplyMsgLength = 1 + {{syssvc.out_params|length}};
-{%- for param in syssvc.out_params %}
+        *ReplyMsgLength = 1 + {{svc.out_params|length}};
+{%- for param in svc.out_params %}
 {%- if param.complex_type %}
-        SYSTEM_SERVICE_ARGUMENT {{param.name}}ArgBufOut;
-RET_ERR_EX(KiSystemServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOffset, (PVOID) &({{param.name}}{% if param.dir_in %}Out{% endif %}), sizeof({{param.base_type}}), &{{param.name}}ArgBufOut), assert(STATUS_NTOS_BUG));
+        SERVICE_ARGUMENT {{param.name}}ArgBufOut;
+RET_ERR_EX(KiServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOffset, (PVOID) &({{param.name}}{% if param.dir_in %}Out{% endif %}), sizeof({{param.base_type}}), &{{param.name}}ArgBufOut), assert(STATUS_NTOS_BUG));
         seL4_SetMR({{loop.index}}, {{param.name}}ArgBufOut.Word);
 {%- else %}
-        seL4_SetMR({{loop.index}}, (MWORD) {{param.name}});
+        seL4_SetMR({{loop.index}}, (MWORD) {{param.name}}{%- if param.dir_in %}Out{%- endif %});
 {%- endif %}
 {%- endfor %}
         break;
@@ -111,7 +123,7 @@ RET_ERR_EX(KiSystemServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOf
 {# #}
 {%- endfor %}
     default:
-        DbgTrace("Invalid system service number %d\\n", SvcNum);
+        DbgTrace("Invalid {{svc_group}} service number %d\\n", SvcNum);
         break;
     }
     return Status;
@@ -119,41 +131,39 @@ RET_ERR_EX(KiSystemServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOf
 {# #}
 """
 
-NTDLL_SYSSVC_GEN_H_TEMPLATE = """#pragma once
-{% for syssvc in syssvc_list %}
-{% if syssvc.params != [] %}NTAPI {% endif %}NTSTATUS {{syssvc.name}}({%- for param in syssvc.params %}{{param.annotation}} {{param.client_decl}}{%- if not loop.last %},
-{{syssvc.client_param_indent}}
+CLIENT_SVC_GEN_H_TEMPLATE = """#pragma once
+{% for svc in svc_list %}
+{% if svc.ntapi %}NTAPI {% endif %}NTSTATUS {{svc.name}}({%- for param in svc.params %}{{param.annotation}} {{param.client_decl}}{%- if not loop.last %},
+{{svc.client_param_indent}}
 {%- endif %}{%- endfor %});
 {% endfor %}
 """
 
-NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
-{% for syssvc in syssvc_list %}
-{% if syssvc.params != [] %}NTAPI {% endif %}NTSTATUS {{syssvc.name}}({%- for param in syssvc.params %}{{param.annotation}} {{param.client_decl}}{%- if not loop.last %},
-{{syssvc.client_param_indent}}
+CLIENT_SVC_GEN_C_TEMPLATE = """{% for svc in svc_list %}{% if svc.ntapi %}NTAPI {% endif %}NTSTATUS {{svc.name}}({%- for param in svc.params %}{{param.annotation}} {{param.client_decl}}{%- if not loop.last %},
+{{svc.client_param_indent}}
 {%- endif %}{%- endfor %})
 {
-    seL4_MessageInfo_t Request = seL4_MessageInfo_new({{syssvc.enum_tag}}, 0, 0, {{syssvc.msglength}});
+    seL4_MessageInfo_t Request = seL4_MessageInfo_new({{svc.enum_tag}}, 0, 0, {{svc.msglength}});
     ULONG MsgBufOffset = 0;
-{%- for param in syssvc.params %}
+{%- for param in svc.params %}
 {%- if param.is_ptr and not param.optional %}
     if ({{param.name}} == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 {%- endif %}
 {%- endfor %}
-{%- for param in syssvc.in_params %}
+{%- for param in svc.in_params %}
 {%- if param.is_ptr %}
 {%- if param.optional %}
     if ({{param.name}} == NULL) {
         seL4_SetMR({{loop.index-1}}, 0);
     } else {
 {%- endif %}
-{%if param.optional%}    {%endif%}    SYSTEM_SERVICE_ARGUMENT {{param.name}}ArgBuf;
+{%if param.optional%}    {%endif%}    SERVICE_ARGUMENT {{param.name}}ArgBuf;
 {%- if param.custom_marshaling %}
 {%if param.optional%}    {%endif%}    RET_ERR({{param.marshal_func}}(&MsgBufOffset, {{param.name}}, &{{param.name}}ArgBuf));
 {%- else %}
-{%if param.optional%}    {%endif%}    RET_ERR(KiSystemServiceMarshalArgument((ULONG_PTR)(__sel4_ipc_buffer), &MsgBufOffset, {{param.name}}, sizeof({{param.base_type}}), &{{param.name}}ArgBuf));
+{%if param.optional%}    {%endif%}    RET_ERR(KiServiceMarshalArgument((ULONG_PTR)(__sel4_ipc_buffer), &MsgBufOffset, {{param.name}}, sizeof({{param.base_type}}), &{{param.name}}ArgBuf));
 {%- endif %}
 {%if param.optional%}    {%endif%}    seL4_SetMR({{loop.index-1}}, (MWORD) {{param.name}}ArgBuf.Word);
 {%- if param.optional %}
@@ -167,15 +177,15 @@ NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
 {%- endif %}
 {%- endif %}
 {%- endfor %}
-    seL4_MessageInfo_t Reply = seL4_Call(SYSSVC_IPC_CAP, Request);
+    seL4_MessageInfo_t Reply = seL4_Call({{svc_ipc_cap}}, Request);
     NTSTATUS Status = seL4_GetMR(0);
     if (NT_SUCCESS(Status)) {
-        assert(seL4_MessageInfo_get_length(Reply) == (1 + {{syssvc.out_params|length}}));
-{%- for param in syssvc.out_params %}
+        assert(seL4_MessageInfo_get_length(Reply) == (1 + {{svc.out_params|length}}));
+{%- for param in svc.out_params %}
         if ({{param.name}} != NULL) {
 {%- if param.complex_type %}
-            assert(KiSystemServiceValidateArgument(seL4_GetMR({{loop.index}})));
-            *{{param.name}} = *(({{param.base_type}} *)(KiSystemServiceGetArgument((ULONG_PTR)(__sel4_ipc_buffer), seL4_GetMR({{loop.index}}))));
+            assert(KiServiceValidateArgument(seL4_GetMR({{loop.index}})));
+            *{{param.name}} = *(({{param.base_type}} *)(KiServiceGetArgument((ULONG_PTR)(__sel4_ipc_buffer), seL4_GetMR({{loop.index}}))));
 {%- else %}
             *{{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index}});
 {%- endif %}
@@ -184,8 +194,10 @@ NTDLL_SYSSVC_GEN_C_TEMPLATE = """#include <ntdll.h>
     }
     return Status;
 }
-{% endfor %}
+{%- if not loop.last %}
 {# #}
+{%- endif %}
+{% endfor %}
 """
 
 def camel_case_to_upper_snake_case(name):
@@ -217,7 +229,7 @@ def camel_case_to_upper_snake_case(name):
 # types (is_ptr == True), the marshaling function will copy the argument
 # into the system service message buffer. For non-pointer types,
 # the marshaling function will convert the type into MWORD.
-class SystemServiceParameter:
+class ServiceParameter:
     def __init__(self, annotation, param_type, name):
         annotations = []
         self.optional = False
@@ -261,7 +273,7 @@ class SystemServiceParameter:
             self.client_decl = "PUNICODE_STRING " + name
             self.marshal_func = "KiMarshalUnicodeString"
             self.validate_func = "KiValidateUnicodeString"
-            self.unmarshal_func = "KiSystemServiceGetArgument"
+            self.unmarshal_func = "KiServiceGetArgument"
         elif param_type == "AnsiString":
             self.custom_marshaling = True
             self.is_ptr = True
@@ -270,7 +282,7 @@ class SystemServiceParameter:
             self.client_decl = "PCSTR " + name
             self.marshal_func = "KiMarshalAnsiString"
             self.validate_func = "KiValidateUnicodeString"
-            self.unmarshal_func = "KiSystemServiceGetArgument"
+            self.unmarshal_func = "KiServiceGetArgument"
         elif param_type == "ObjectAttributes":
             self.custom_marshaling = True
             self.is_ptr = True
@@ -300,8 +312,8 @@ class SystemServiceParameter:
         if self.dir_out and self.custom_marshaling:
             raise ValueError("Parameter " + name + ": custom marshaling for output parameter is not yet implemented")
 
-class SystemService:
-    def __init__(self, name, enum_tag, params, client_only):
+class Service:
+    def __init__(self, name, enum_tag, params, client_only, halsvc):
         self.name = name
         self.enum_tag = enum_tag
         self.params = params
@@ -309,19 +321,48 @@ class SystemService:
         self.in_params = [ param for param in params if param.dir_in ]
         self.out_params = [ param for param in params if param.dir_out ]
         self.server_param_indent = " " * (len("NTSTATUS") + len(name) + 2)
-        self.client_param_indent = " " * (len("NTSTATUS NTAPI") + len(name) + 2)
         self.msglength = len(params)
+        if len(params) == 0 or halsvc:
+            self.ntapi = False
+        else:
+            self.ntapi = True
+        if self.ntapi:
+            self.client_param_indent = " " * (len("NTSTATUS NTAPI") + len(name) + 2)
+        else:
+            self.client_param_indent = " " * (len("NTSTATUS") + len(name) + 2)
 
-def generate_file(tmplstr, syssvc_list, out_file, server_side):
+def generate_file(tmplstr, svc_list, out_file, halsvc, server_side):
     template = Environment(loader=BaseLoader, trim_blocks=False,
                            lstrip_blocks=False).from_string(tmplstr)
-    data = template.render({ 'syssvc_list': syssvc_list })
+    if halsvc:
+        svc_group = "Hal"
+        svc_ipc_cap = "HALSVC_IPC_CAP"
+        handler_func = "KiHandleHalService"
+        extra_headers = """
+#include <halsvc.h>
+#include "halsvc_gen.h"
+#include "ntos_halsvc_gen.h\""""
+    else:
+        svc_group = "System"
+        svc_ipc_cap = "SYSSVC_IPC_CAP"
+        handler_func = "KiHandleSystemService"
+        extra_headers = ""
+    handler_func_indent = " " * len(handler_func)
+    data = template.render({ 'svc_list': svc_list,
+                             'svc_group': svc_group,
+                             'svc_ipc_cap': svc_ipc_cap,
+                             'handler_func' : handler_func,
+                             'handler_func_indent' : handler_func_indent,
+                             'extra_headers' : extra_headers
+                            })
     out_file.write(data)
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="""Generate NTOS system service headers and stubs""")
+    parser = argparse.ArgumentParser(description="""Generate NTOS service headers and stubs""")
     parser.add_argument('--syssvc_xml', type=argparse.FileType('r'),
                         help='Full path of the syssvc.xml file', required=True)
+    parser.add_argument('--halsvc_xml', type=argparse.FileType('r'),
+                        help='Full path of the halsvc.xml file', required=True)
     parser.add_argument('--out_dir', type=str,
                         help='Output directory for the generated files', required=True)
 
@@ -329,63 +370,76 @@ def parse_args():
 
     return result
 
-def parse_syssvc_xml(xml_file):
-    # first check if the file is valid xml
-    try:
-        doc = xml.dom.minidom.parse(xml_file)
-    except:
-        print("Error: invalid xml file.", file=sys.stderr)
-        sys.exit(-1)
-
-    syssvcs = doc.getElementsByTagName("system-services")[0]
-    syssvc_list = []
-    for syssvc in syssvcs.getElementsByTagName("syssvc"):
-        name = str(syssvc.getAttribute("name"))
+def parse_svcxml(xml_file, halsvc):
+    doc = xml.dom.minidom.parse(xml_file)
+    svcs = doc.getElementsByTagName("services")[0]
+    svc_list = []
+    for svc in svcs.getElementsByTagName("svc"):
+        name = str(svc.getAttribute("name"))
         enum_tag = camel_case_to_upper_snake_case(name)
         params = []
         ansi_params = []
         has_unicode_string = False
-        for param in syssvc.getElementsByTagName("parameter"):
+        for param in svc.getElementsByTagName("parameter"):
             annotation = str(param.getAttribute("annotation")).lower()
             param_name = str(param.getAttribute("name"))
             param_type = str(param.getAttribute("type"))
-            params.append(SystemServiceParameter(annotation, param_type, param_name))
+            params.append(ServiceParameter(annotation, param_type, param_name))
             if param_type == "UnicodeString":
                 has_unicode_string = True
-                ansi_params.append(SystemServiceParameter(annotation, "AnsiString", param_name))
+                ansi_params.append(ServiceParameter(annotation, "AnsiString", param_name))
             else:
-                ansi_params.append(SystemServiceParameter(annotation, param_type, param_name))
-        syssvc_list.append(SystemService(name, enum_tag, params, client_only = False))
+                ansi_params.append(ServiceParameter(annotation, param_type, param_name))
+        svc_list.append(Service(name, enum_tag, params, client_only = False, halsvc = halsvc))
         if has_unicode_string:
-            syssvc_list.append(SystemService(name+"A", enum_tag, ansi_params, client_only = True))
+            svc_list.append(Service(name+"A", enum_tag, ansi_params, client_only = True, halsvc = halsvc))
 
     # sanity check
-    assert len(syssvc_list) != 0
-    return syssvc_list
+    assert len(svc_list) != 0
+    return svc_list
 
 # For system services with UnicodeString parameters, we generate an ANSI (UTF-8)
 # version such that client can call it without first converting to UTF-16
-def generate_client_syssvc_list(syssvcs):
-    client_syssvc_list = []
-    for syssvc in syssvcs:
+def generate_client_svc_list(svcs):
+    client_svc_list = []
+    for svc in svcs:
         has_unicode_string = False
         params = []
         if has_unicode_string:
-            client_syssvc_list.append(SystemService(syssvc.name + "A", enum_tag, params))
-    return client_syssvc_list
+            client_svc_list.append(Service(svc.name + "A", enum_tag, params))
+    return client_svc_list
 
 if __name__ == "__main__":
     args = parse_args()
-    syssvc_list = parse_syssvc_xml(args.syssvc_xml)
+    syssvc_list = parse_svcxml(args.syssvc_xml, halsvc = False)
     server_syssvc_list = [syssvc for syssvc in syssvc_list if not syssvc.client_only]
+
     syssvc_gen_h = open(os.path.join(args.out_dir, "syssvc_gen.h"), "w")
-    generate_file(SYSSVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, server_side = True)
+    generate_file(SYSSVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, halsvc = False, server_side = True)
+
     ntos_syssvc_gen_h = open(os.path.join(args.out_dir, "ntos_syssvc_gen.h"), "w")
-    generate_file(NTOS_SYSSVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, server_side = True)
+    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, halsvc = False, server_side = True)
     ntos_syssvc_gen_c = open(os.path.join(args.out_dir, "ntos_syssvc_gen.c"), "w")
-    generate_file(NTOS_SYSSVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, server_side = True)
-    client_syssvc_list = generate_client_syssvc_list(syssvc_list)
+    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, halsvc = False, server_side = True)
+
+    client_syssvc_list = generate_client_svc_list(syssvc_list)
     ntdll_syssvc_gen_h = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.h"), "w")
-    generate_file(NTDLL_SYSSVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, server_side = False)
+    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, halsvc = False, server_side = False)
     ntdll_syssvc_gen_c = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.c"), "w")
-    generate_file(NTDLL_SYSSVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, server_side = False)
+    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, halsvc = False, server_side = False)
+
+    halsvc_list = parse_svcxml(args.halsvc_xml, halsvc = True)
+    server_halsvc_list = [svc for svc in halsvc_list if not svc.client_only]
+
+    halsvc_gen_h = open(os.path.join(args.out_dir, "halsvc_gen.h"), "w")
+    generate_file(HALSVC_GEN_H_TEMPLATE, server_halsvc_list, halsvc_gen_h, halsvc = True, server_side = True)
+    ntos_halsvc_gen_h = open(os.path.join(args.out_dir, "ntos_halsvc_gen.h"), "w")
+    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_halsvc_list, ntos_halsvc_gen_h, halsvc = True, server_side = True)
+    ntos_halsvc_gen_c = open(os.path.join(args.out_dir, "ntos_halsvc_gen.c"), "w")
+    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_halsvc_list, ntos_halsvc_gen_c, halsvc = True, server_side = True)
+
+    client_halsvc_list = generate_client_svc_list(halsvc_list)
+    hal_halsvc_gen_h = open(os.path.join(args.out_dir, "hal_halsvc_gen.h"), "w")
+    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, halsvc_list, hal_halsvc_gen_h, halsvc = True, server_side = False)
+    hal_halsvc_gen_c = open(os.path.join(args.out_dir, "hal_halsvc_gen.c"), "w")
+    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, halsvc_list, hal_halsvc_gen_c, halsvc = True, server_side = False)

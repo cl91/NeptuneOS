@@ -1,6 +1,6 @@
 #include "ki.h"
 
-static IPC_ENDPOINT KiSystemServiceEndpoint;
+static IPC_ENDPOINT KiExecutiveServiceEndpoint;
 
 static inline VOID KiInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
 					   IN PCNODE CSpace,
@@ -17,33 +17,55 @@ static inline VOID KiInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
  * Create the IPC endpoint for the system services. This IPC endpoint
  * is then badged via seL4_CNode_Mint.
  */
-NTSTATUS KiCreateSystemServicesEndpoint()
+NTSTATUS KiCreateExecutiveServicesEndpoint()
 {
     PUNTYPED Untyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
     assert(Untyped != NULL);
-    KiInitializeIpcEndpoint(&KiSystemServiceEndpoint, Untyped->TreeNode.CSpace, 0);
+    KiInitializeIpcEndpoint(&KiExecutiveServiceEndpoint, Untyped->TreeNode.CSpace, 0);
     RET_ERR(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
-			       &KiSystemServiceEndpoint.TreeNode));
-    assert(KiSystemServiceEndpoint.TreeNode.Cap != 0);
+			       &KiExecutiveServiceEndpoint.TreeNode));
+    assert(KiExecutiveServiceEndpoint.TreeNode.Cap != 0);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS KiEnableClientServiceEndpoint(IN PPROCESS Process,
+					      IN PTHREAD Thread,
+					      IN BOOLEAN Driver)
+{
+    assert(Process != NULL);
+    assert(Thread != NULL);
+    KiAllocatePool(ServiceEndpoint, IPC_ENDPOINT);
+    MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread);
+    if (Driver) {
+	IPCBadge |= 1;
+    }
+    KiInitializeIpcEndpoint(ServiceEndpoint, Process->CSpace, IPCBadge);
+    RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
+					 &KiExecutiveServiceEndpoint.TreeNode,
+					 ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
+					 IPCBadge),
+	       ExFreePool(ServiceEndpoint));
+    if (Driver) {
+	Thread->HalServiceEndpoint = ServiceEndpoint;
+	assert(ServiceEndpoint->TreeNode.Cap == HALSVC_IPC_CAP);
+    } else {
+	Thread->SystemServiceEndpoint = ServiceEndpoint;
+	assert(ServiceEndpoint->TreeNode.Cap == SYSSVC_IPC_CAP);
+    }
     return STATUS_SUCCESS;
 }
 
 NTSTATUS KeEnableSystemServices(IN PPROCESS Process,
 				IN PTHREAD Thread)
 {
-    assert(Process != NULL);
-    assert(Thread != NULL);
-    KiAllocatePool(SystemServiceEndpoint, IPC_ENDPOINT);
-    MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread);
-    KiInitializeIpcEndpoint(SystemServiceEndpoint, Process->CSpace, IPCBadge);
-    RET_ERR(MmCapTreeDeriveBadgedNode(&SystemServiceEndpoint->TreeNode,
-				      &KiSystemServiceEndpoint.TreeNode,
-				      ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
-				      IPCBadge));
-    Thread->SystemServiceEndpoint = SystemServiceEndpoint;
-    assert(SystemServiceEndpoint->TreeNode.Cap == SYSSVC_IPC_CAP);
-    return STATUS_SUCCESS;
+    return KiEnableClientServiceEndpoint(Process, Thread, FALSE);
+}
+
+NTSTATUS KeEnableHalServices(IN PPROCESS Process,
+			     IN PTHREAD Thread)
+{
+    return KiEnableClientServiceEndpoint(Process, Thread, TRUE);
 }
 
 static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
@@ -55,12 +77,12 @@ static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
 	return Optional;
     }
 
-    SYSTEM_SERVICE_ARGUMENT Arg;
+    SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
-    if (!KiSystemServiceValidateArgument(MsgWord)) {
+    if (!KiServiceValidateArgument(MsgWord)) {
 	return FALSE;
     }
-    PCSTR String = (PCSTR) KiSystemServiceGetArgument(IpcBufferServerAddr, MsgWord);
+    PCSTR String = (PCSTR) KiServiceGetArgument(IpcBufferServerAddr, MsgWord);
     if (String[Arg.BufferSize-1] != '\0') {
 	return FALSE;
     }
@@ -76,15 +98,15 @@ static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
 	return Optional;
     }
 
-    SYSTEM_SERVICE_ARGUMENT Arg;
+    SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
-    if (!KiSystemServiceValidateArgument(MsgWord)) {
+    if (!KiServiceValidateArgument(MsgWord)) {
 	return FALSE;
     }
     if (Arg.BufferSize <= (sizeof(HANDLE) + sizeof(ULONG))) {
 	return FALSE;
     }
-    PCSTR String = (PCSTR) KiSystemServiceGetArgument(IpcBufferServerAddr, MsgWord);
+    PCSTR String = (PCSTR) KiServiceGetArgument(IpcBufferServerAddr, MsgWord);
     if (String[Arg.BufferSize-1] != '\0') {
 	return FALSE;
     }
@@ -99,7 +121,7 @@ static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
 static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBufferAddr,
 							       IN MWORD MsgWord)
 {
-    SYSTEM_SERVICE_ARGUMENT Arg;
+    SERVICE_ARGUMENT Arg;
     Arg.Word = MsgWord;
     ULONG MsgOffset = Arg.BufferStart;
     ULONG MsgSize = Arg.BufferSize;
@@ -107,11 +129,11 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
     if (MsgWord == 0) {
 	memset(&ObjAttr, 0, sizeof(OB_OBJECT_ATTRIBUTES));
     } else {
-	ObjAttr.RootDirectory = SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, HANDLE);
+	ObjAttr.RootDirectory = SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, MsgOffset, HANDLE);
 	MsgOffset += sizeof(HANDLE);
-	ObjAttr.Attributes = SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, ULONG);
+	ObjAttr.Attributes = SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, MsgOffset, ULONG);
 	MsgOffset += sizeof(ULONG);
-	ObjAttr.ObjectNameBuffer = &SYSSVC_MSGBUF_OFFSET_TO_ARGUMENT(IpcBufferAddr, MsgOffset, CHAR);
+	ObjAttr.ObjectNameBuffer = &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, MsgOffset, CHAR);
 	ObjAttr.ObjectNameBufferLength = MsgSize - sizeof(HANDLE) - sizeof(ULONG);
     }
     return ObjAttr;
@@ -119,11 +141,12 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
 
 /* The actual handling of system services is in the generated file below. */
 #include <ntos_syssvc_gen.c>
+#include <ntos_halsvc_gen.c>
 
-VOID KiDispatchSystemServices()
+VOID KiDispatchExecutiveServices()
 {
     MWORD Badge = 0;
-    seL4_MessageInfo_t Request = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
+    seL4_MessageInfo_t Request = seL4_Recv(KiExecutiveServiceEndpoint.TreeNode.Cap, &Badge);
     while (TRUE) {
 	ULONG SvcNum = seL4_MessageInfo_get_label(Request);
 	ULONG ReqMsgLength = seL4_MessageInfo_get_length(Request);
@@ -141,14 +164,19 @@ VOID KiDispatchSystemServices()
 	    /* Thread is always a valid pointer since the client cannot modify the badge */
 	    assert(Badge != 0);
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
-	    DbgTrace("Got thread %p\n", Thread);
-	    Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
+	    if (Badge & 1) {
+		DbgTrace("Got driver call from thread %p\n", Thread);
+		Status = KiHandleHalService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
+	    } else {
+		DbgTrace("Got call from thread %p\n", Thread);
+		Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
+	    }
 	}
 	if (Status == STATUS_NTOS_NO_REPLY) {
-	    Request = seL4_Recv(KiSystemServiceEndpoint.TreeNode.Cap, &Badge);
+	    Request = seL4_Recv(KiExecutiveServiceEndpoint.TreeNode.Cap, &Badge);
 	} else {
 	    seL4_SetMR(0, (MWORD) Status);
-	    Request = seL4_ReplyRecv(KiSystemServiceEndpoint.TreeNode.Cap,
+	    Request = seL4_ReplyRecv(KiExecutiveServiceEndpoint.TreeNode.Cap,
 				     seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength), &Badge);
 	}
     }

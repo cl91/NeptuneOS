@@ -49,6 +49,8 @@ struct _PROCESS;
 struct _THREAD;
 NTSTATUS KeEnableSystemServices(IN struct _PROCESS *Process,
 				IN struct _THREAD *Thread);
+NTSTATUS KeEnableHalServices(IN struct _PROCESS *Process,
+			     IN struct _THREAD *Thread);
 
 /* port.c */
 NTSTATUS KeEnableIoPortX86(IN PCNODE CSpace,

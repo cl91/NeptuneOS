@@ -44,7 +44,7 @@ endif()
 find_package(rtl REQUIRED)
 rtl_import_project()
 
-file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.c)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.S)
 
 add_library(hal SHARED ${SRC})
 add_dependencies(hal rtl)
@@ -53,12 +53,13 @@ target_link_libraries(hal PRIVATE rtl)
 
 spec2def(hal hal.spec ${Arch})
 set_dll_def(hal hal.def)
-set_entrypoint(hal NtProcessStartup)
+set_entrypoint(hal HalStartup)
 
 target_include_directories(
     hal
     PRIVATE
 	${STRUCTURES_GEN_DIR}
+	${GEN_INC_DIR}
 	${CMAKE_CURRENT_BINARY_DIR}
 	${CMAKE_CURRENT_LIST_DIR}/inc
 	${CMAKE_CURRENT_LIST_DIR}/../../public/ddk/inc

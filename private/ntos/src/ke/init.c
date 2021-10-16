@@ -150,7 +150,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 
     ExInitSystemPhase0(bootinfo);
     KiInitVga();
-    BUGCHECK_IF_ERR(KiCreateSystemServicesEndpoint());
+    BUGCHECK_IF_ERR(KiCreateExecutiveServicesEndpoint());
     BUGCHECK_IF_ERR(ExInitSystemPhase1());
 
 #ifdef CONFIG_RUN_TESTS
@@ -158,5 +158,5 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 #endif
 
     /* This should never return. */
-    KiDispatchSystemServices();
+    KiDispatchExecutiveServices();
 }

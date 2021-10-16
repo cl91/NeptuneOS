@@ -201,21 +201,21 @@ typedef struct _IMAGE_RESOURCE_DIRECTORY {
 #define IMAGE_RESOURCE_DATA_IS_DIRECTORY     0x80000000
 
 typedef struct _IMAGE_RESOURCE_DIRECTORY_ENTRY {
-    _ANONYMOUS_UNION union {
-	_ANONYMOUS_STRUCT struct {
+    union {
+	struct {
 	    ULONG NameOffset:31;
 	    ULONG NameIsString:1;
-	} DUMMYSTRUCTNAME;
+	};
 	ULONG Name;
 	USHORT Id;
-    } DUMMYUNIONNAME;
-    _ANONYMOUS_UNION union {
+    };
+    union {
 	ULONG OffsetToData;
-	_ANONYMOUS_STRUCT struct {
+	struct {
 	    ULONG OffsetToDirectory:31;
 	    ULONG DataIsDirectory:1;
-	} DUMMYSTRUCTNAME2;
-    } DUMMYUNIONNAME2;
+	};
+    };
 } IMAGE_RESOURCE_DIRECTORY_ENTRY, *PIMAGE_RESOURCE_DIRECTORY_ENTRY;
 
 typedef struct _IMAGE_RESOURCE_DIRECTORY_STRING {
@@ -588,10 +588,10 @@ typedef PIMAGE_TLS_DIRECTORY32          PIMAGE_TLS_DIRECTORY;
 #endif
 
 typedef struct _IMAGE_IMPORT_DESCRIPTOR {
-    _ANONYMOUS_UNION union {
+    union {
 	ULONG Characteristics;
 	ULONG OriginalFirstThunk;
-    } DUMMYUNIONNAME;
+    };
     ULONG TimeDateStamp;
     ULONG ForwarderChain;
     ULONG Name;
@@ -611,5 +611,17 @@ typedef struct _IMAGE_BOUND_FORWARDER_REF {
 } IMAGE_BOUND_FORWARDER_REF, *PIMAGE_BOUND_FORWARDER_REF;
 
 #include <poppack.h>
+
+#define DLL_PROCESS_DETACH    0
+#define DLL_PROCESS_ATTACH    1
+#define DLL_THREAD_ATTACH    2
+#define DLL_THREAD_DETACH    3
+
+/*
+ * DLL Main Routine
+ */
+typedef BOOLEAN (NTAPI *PDLL_INIT_ROUTINE)(IN PVOID DllHandle,
+					   IN ULONG Reason,
+					   IN OPTIONAL PCONTEXT Context);
 
 #endif /* _NTIMAGE_ */

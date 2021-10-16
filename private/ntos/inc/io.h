@@ -2,9 +2,9 @@
 
 #define NTOS_IO_TAG	(EX_POOL_TAG('n','t','i','o'))
 
-typedef struct _DEVICE_OBJECT {
+typedef struct _IO_DEVICE_OBJECT {
     PCSTR DeviceName;
-} DEVICE_OBJECT, *PDEVICE_OBJECT;
+} IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 
 typedef struct _SECTION_OBJECT_POINTERS {
     PDATA_SECTION_OBJECT DataSectionObject;
@@ -12,7 +12,7 @@ typedef struct _SECTION_OBJECT_POINTERS {
 } SECTION_OBJECT_POINTERS;
 
 typedef struct _IO_FILE_OBJECT {
-    PDEVICE_OBJECT DeviceObject;
+    PIO_DEVICE_OBJECT DeviceObject;
     PCSTR FileName;
     SECTION_OBJECT_POINTERS SectionObject;
     PVOID BufferPtr;
