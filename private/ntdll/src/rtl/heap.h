@@ -67,6 +67,7 @@ struct _HEAP_COMMON_ENTRY {
 	    USHORT Size;
 	    UCHAR Flags;
 	    UCHAR SmallTagIndex;
+	    ULONG Unused;
 	};
 	struct {
 #ifndef _M_AMD64
@@ -117,6 +118,19 @@ C_ASSERT(sizeof(HEAP_ENTRY) == 8);
 #endif
 C_ASSERT((1 << HEAP_ENTRY_SHIFT) == sizeof(HEAP_ENTRY));
 C_ASSERT((2 << HEAP_ENTRY_SHIFT) == sizeof(HEAP_FREE_ENTRY));
+
+static inline VOID RtlpDbgDumpHeapEntry(PHEAP_ENTRY Entry)
+{
+    DbgPrint("entry %p size 0x%x (actually 0x%x) previous size 0x%x (actually 0x%x)\n", Entry,
+	     Entry->CommonEntry.Size, Entry->CommonEntry.Size << HEAP_ENTRY_SHIFT,
+	     Entry->CommonEntry.PreviousSize, Entry->CommonEntry.PreviousSize << HEAP_ENTRY_SHIFT);
+}
+
+static inline VOID RtlpDbgDumpHeapFreeEntry(PHEAP_FREE_ENTRY Entry)
+{
+    DbgPrint("free ");
+    RtlpDbgDumpHeapEntry((PHEAP_ENTRY) Entry);
+}
 
 typedef struct _HEAP_TAG_ENTRY {
     ULONG Allocs;
@@ -243,6 +257,9 @@ typedef struct _HEAP_SEGMENT {
     HEAP_SEGMENT_MEMBERS;
 } HEAP_SEGMENT, *PHEAP_SEGMENT;
 
+/*
+ * Heap UnCommitted Range (UCR) Descriptor
+ */
 typedef struct _HEAP_UCR_DESCRIPTOR {
     LIST_ENTRY ListEntry;
     LIST_ENTRY SegmentEntry;
