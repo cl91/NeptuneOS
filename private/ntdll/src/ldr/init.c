@@ -16,8 +16,15 @@ typedef struct _LDRP_TLS_DATA {
     IMAGE_TLS_DIRECTORY TlsDirectory;
 } LDRP_TLS_DATA, *PLDRP_TLS_DATA;
 
-/* This must be placed at the very beginning ot the .tls section */
-__declspec(allocate(".tls")) PVOID LDRP_TLS_VECTOR[MAX_NUMBER_OF_TLS_SLOTS];
+/*
+ * This must be placed at the very beginning ot the .tls section.
+ *
+ * Note: LDRP_INIT_THREAD_TLS_VECTOR is the tls vector for the initial thread.
+ * Subsequent threads have different tls vectors. Use the ThreadLocalStoragePointer
+ * member in the TEB to locate the tls vector for the current thread. This member
+ * is set up by the NTOS server on thread creation.
+ */
+__declspec(allocate(".tls")) PVOID LDRP_INIT_THREAD_TLS_VECTOR[MAX_NUMBER_OF_TLS_SLOTS];
 
 /* Address for the IPC buffer of the initial thread. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -76,6 +83,7 @@ extern BOOLEAN RtlpUse16ByteSLists;
  */
 static NTSTATUS LdrpAllocateTls(VOID)
 {
+    PPVOID TlsVector = NtCurrentTeb()->ThreadLocalStoragePointer;
     PLIST_ENTRY ListHead = &LdrpTlsList;
     PLIST_ENTRY NextEntry = ListHead->Flink;
     while (NextEntry != ListHead) {
@@ -83,24 +91,40 @@ static NTSTATUS LdrpAllocateTls(VOID)
 	PLDRP_TLS_DATA TlsData = CONTAINING_RECORD(NextEntry, LDRP_TLS_DATA, TlsLinks);
 	NextEntry = NextEntry->Flink;
 
+	/* Strictly speaking the .tls section does not need to be a dedicated
+	 * section, and can be merged with other data sections, as long as all
+	 * TLS data remain contiguous in memory. We do this to the hal.dll
+	 * and merge the .tls section and the .data section in order to save memory.
+	 *
+	 * However when generating code clang seems to assume that the tls data
+	 * always start at a section boundary (which is aligned at page boundary).
+	 * Therefore when merging the .tls section with other sections the .tls
+	 * section must always be at the very beginning of the final section.
+	 * If this is not the case, heap corruption will occur when accessing
+	 * thread local variables. Warn the user in this case. */
+	if (!IS_PAGE_ALIGNED(TlsData->TlsDirectory.StartAddressOfRawData)) {
+	    DPRINT("LDR: WARNING: TLS data does not align at page boundary. Heap corruption might occur! Tls data start address %p\n",
+		   (PVOID) TlsData->TlsDirectory.StartAddressOfRawData);
+	}
+
 	/* Allocate this vector */
 	SIZE_T TlsDataSize = TlsData->TlsDirectory.EndAddressOfRawData -
 	    TlsData->TlsDirectory.StartAddressOfRawData;
-	LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics] =
+	TlsVector[TlsData->TlsDirectory.Characteristics] =
 	    RtlAllocateHeap(RtlGetProcessHeap(), 0, TlsDataSize);
-	if (!LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]) {
+	if (!TlsVector[TlsData->TlsDirectory.Characteristics]) {
 	    /* Out of memory */
 	    return STATUS_NO_MEMORY;
 	}
 
-	DPRINT1("LDR: TlsVector %p Index %u = %p copied from %zx to %p\n",
-		LDRP_TLS_VECTOR, TlsData->TlsDirectory.Characteristics,
-		&LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics],
-		TlsData->TlsDirectory.StartAddressOfRawData,
-		LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]);
+	DPRINT1("LDR: TlsData of size 0x%zx is copied from %p to %p (TlsIndex %u = %p, TlsVector = %p)\n",
+		TlsDataSize, (PVOID) TlsData->TlsDirectory.StartAddressOfRawData,
+		TlsVector[TlsData->TlsDirectory.Characteristics],
+		TlsData->TlsDirectory.Characteristics,
+		&TlsVector[TlsData->TlsDirectory.Characteristics], TlsVector);
 
 	/* Copy the data */
-	RtlCopyMemory(LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics],
+	RtlCopyMemory(TlsVector[TlsData->TlsDirectory.Characteristics],
 		      (PVOID) TlsData->TlsDirectory.StartAddressOfRawData,
 		      TlsDataSize);
     }
@@ -108,10 +132,9 @@ static NTSTATUS LdrpAllocateTls(VOID)
     return STATUS_SUCCESS;
 }
 
-static VOID LdrpFreeTls(VOID)
+static VOID LdrpFreeTls()
 {
-    assert(NtCurrentTeb()->ThreadLocalStoragePointer == LDRP_TLS_VECTOR);
-
+    PPVOID TlsVector = NtCurrentTeb()->ThreadLocalStoragePointer;
     /* Loop through it */
     PLIST_ENTRY ListHead = &LdrpTlsList;
     PLIST_ENTRY NextEntry = ListHead->Flink;
@@ -121,9 +144,9 @@ static VOID LdrpFreeTls(VOID)
 	NextEntry = NextEntry->Flink;
 
 	/* Free each entry */
-	if (LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]) {
+	if (TlsVector[TlsData->TlsDirectory.Characteristics]) {
 	    RtlFreeHeap(RtlGetProcessHeap(), 0,
-			LDRP_TLS_VECTOR[TlsData->TlsDirectory.Characteristics]);
+			TlsVector[TlsData->TlsDirectory.Characteristics]);
 	}
     }
 }
@@ -166,8 +189,7 @@ static NTSTATUS LdrpInitializeTls(VOID)
 	if (!LdrpImageHasTls)
 	    LdrpImageHasTls = TRUE;
 
-	DPRINT1("LDR: Tls Found in %wZ at %p\n",
-		&LdrEntry->BaseDllName, TlsDirectory);
+	DPRINT1("LDR: Tls Found in %wZ at %p\n", &LdrEntry->BaseDllName, TlsDirectory);
 
 	/* Allocate an entry */
 	PLDRP_TLS_DATA TlsData = (PLDRP_TLS_DATA) RtlAllocateHeap(RtlGetProcessHeap(), 0,
