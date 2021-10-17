@@ -23,9 +23,12 @@ ULONG _tls_index;
 __declspec(allocate(".tls")) char *_tls_start = NULL;
 __declspec(allocate(".tls$ZZZ")) char *_tls_end = NULL;
 
+/*
+ * TLS directory. Must be called _tls_used as the linker expects this name.
+ */
 const IMAGE_TLS_DIRECTORY _tls_used = {
-  (ULONG_PTR) &_tls_start, (ULONG_PTR) &_tls_end,
-  (ULONG_PTR) &_tls_index, 0, 0, 0
+    (ULONG_PTR) &_tls_start, (ULONG_PTR) &_tls_end,
+    (ULONG_PTR) &_tls_index, 0, 0, 0
 };
 
 static NTSTATUS IopCallDriverEntry(PDRIVER_OBJECT DriverObject)
