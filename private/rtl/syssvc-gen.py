@@ -211,7 +211,7 @@ def camel_case_to_upper_snake_case(name):
 # function is a pointer to its base type, listed in the syssvc.xml
 # as ptr<base_type>. If an input parameter is marked is_ptr it will
 # always be passed via the system service message buffer. Output
-# parameters are always assumed to be is_ptr and will raise an exception
+# parameters are always assumed to be is_ptr and we raise an exception
 # if it is not marked as such. The stub function will check the argument
 # for an is_ptr parameter for NULL-value. If parameter is not optional
 # and user passed a NULL-argument, then stub function returns immediately

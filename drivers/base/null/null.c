@@ -22,8 +22,6 @@ NTAPI NTSTATUS NullQueryFileInformation(OUT PVOID Buffer,
 {
     PFILE_STANDARD_INFORMATION StandardInfo = Buffer;
 
-    PAGED_CODE();
-
     /* We only support one class */
     if (InformationClass != FileStandardInformation) {
 	/* Fail */
@@ -48,8 +46,6 @@ NTAPI BOOLEAN NullRead(IN PFILE_OBJECT FileObject,
 		       OUT PIO_STATUS_BLOCK IoStatus,
 		       IN PDEVICE_OBJECT DeviceObject)
 {
-    PAGED_CODE();
-
     /* Complete successfully */
     IoStatus->Status = STATUS_END_OF_FILE;
     IoStatus->Information = 0;
@@ -65,8 +61,6 @@ NTAPI BOOLEAN NullWrite(IN PFILE_OBJECT FileObject,
 			OUT PIO_STATUS_BLOCK IoStatus,
 			IN PDEVICE_OBJECT DeviceObject)
 {
-    PAGED_CODE();
-
     /* Complete successfully */
     IoStatus->Status = STATUS_SUCCESS;
     IoStatus->Information = Length;
@@ -80,8 +74,6 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     PFILE_OBJECT FileObject;
     ULONG Length;
-
-    PAGED_CODE();
 
     /* Get the file object and check what kind of request this is */
     FileObject = IoStack->FileObject;
@@ -125,10 +117,8 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 
 	/* Get the length inputted and do the request */
 	Length = IoStack->Parameters.QueryFile.Length;
-	Irp->IoStatus.Status =
-	    NullQueryFileInformation(Irp->AssociatedIrp.SystemBuffer,
-				     &Length,
-				     IoStack->Parameters.QueryFile.FileInformationClass);
+	Irp->IoStatus.Status = NullQueryFileInformation(Irp->AssociatedIrp.SystemBuffer, &Length,
+							IoStack->Parameters.QueryFile.FileInformationClass);
 
 	/* Return the actual length */
 	Irp->IoStatus.Information = Length;
@@ -156,15 +146,10 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT DeviceObject;
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\Null");
 
-    PAGED_CODE();
-
     UNREFERENCED_PARAMETER(RegistryPath);
 
     /* Create the Null device */
-    Status = IoCreateDevice(DriverObject,
-			    0,
-			    &DeviceName,
-			    FILE_DEVICE_NULL,
+    Status = IoCreateDevice(DriverObject, 0, &DeviceName, FILE_DEVICE_NULL,
 			    FILE_DEVICE_SECURE_OPEN, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;

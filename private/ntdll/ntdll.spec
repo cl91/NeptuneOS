@@ -29,3 +29,7 @@
 @ cdecl memset(ptr long long)
 @ stdcall RtlAllocateHeap(ptr long ptr)
 @ stdcall RtlFreeHeap(long long long)
+@ stdcall RtlRaiseStatus(long)
+@ stdcall NtClose(long)
+@ stdcall NtCreateFile(ptr long ptr ptr long long long ptr long long ptr)
+@ stdcall NtDeviceIoControlFile(long long long long long long long long long long)

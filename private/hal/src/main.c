@@ -31,13 +31,20 @@ const IMAGE_TLS_DIRECTORY _tls_used = {
     (ULONG_PTR) &_tls_index, 0, 0, 0
 };
 
-static NTSTATUS IopCallDriverEntry(PDRIVER_OBJECT DriverObject)
+static NTSTATUS IopCallDriverEntry(IN PDRIVER_OBJECT DriverObject)
 {
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
     RET_ERR(LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress, &LdrDriverImage));
     PVOID DriverEntry = LdrDriverImage->EntryPoint;
     RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(DriverObject, NULL));
     return STATUS_SUCCESS;
+}
+
+static VOID IopDriverEventLoop(IN PDRIVER_OBJECT DriverObject)
+{
+    while (TRUE) {
+	/* TODO */
+    }
 }
 
 VOID HalStartup(seL4_IPCBuffer *IpcBuffer)
@@ -64,5 +71,8 @@ VOID HalStartup(seL4_IPCBuffer *IpcBuffer)
 	return;
     }
 
-    while (1);
+    IopDriverEventLoop(DriverObject);
+
+    /* The event loop function should never return. Raise a status if it did. */
+    RtlRaiseStatus(STATUS_UNSUCCESSFUL);
 }

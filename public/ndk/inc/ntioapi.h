@@ -1,5 +1,23 @@
 #pragma once
 
+#define METHOD_BUFFERED                   0
+#define METHOD_IN_DIRECT                  1
+#define METHOD_OUT_DIRECT                 2
+#define METHOD_NEITHER                    3
+
+#define METHOD_DIRECT_TO_HARDWARE         METHOD_IN_DIRECT
+#define METHOD_DIRECT_FROM_HARDWARE       METHOD_OUT_DIRECT
+
+#define FILE_SUPERSEDED                   0x00000000
+#define FILE_OPENED                       0x00000001
+#define FILE_CREATED                      0x00000002
+#define FILE_OVERWRITTEN                  0x00000003
+#define FILE_EXISTS                       0x00000004
+#define FILE_DOES_NOT_EXIST               0x00000005
+
+#define FILE_USE_FILE_POINTER_POSITION    0xfffffffe
+#define FILE_WRITE_TO_END_OF_FILE         0xffffffff
+
 #define FILE_LIST_DIRECTORY               0x00000001
 #define FILE_READ_DATA                    0x00000001
 #define FILE_ADD_FILE                     0x00000002
@@ -75,6 +93,11 @@
 #define FILE_OPEN_REPARSE_POINT           0x00200000
 #define FILE_OPEN_NO_RECALL               0x00400000
 #define FILE_OPEN_FOR_FREE_SPACE_QUERY    0x00800000
+
+#define FILE_ANY_ACCESS                   0x00000000
+#define FILE_SPECIAL_ACCESS               FILE_ANY_ACCESS
+#define FILE_READ_ACCESS                  0x00000001
+#define FILE_WRITE_ACCESS                 0x00000002
 
 /*
  * DEVICE_OBJECT.DeviceType
@@ -341,6 +364,17 @@ typedef struct _IO_STATUS_BLOCK {
     ULONG_PTR Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
+typedef VOID (NTAPI *PIO_APC_ROUTINE)(IN PVOID ApcContext,
+				      IN PIO_STATUS_BLOCK IoStatusBlock,
+				      IN ULONG Reserved);
+
+#define CTL_CODE(DeviceType, Function, Method, Access)			\
+    (((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method))
+
+#define DEVICE_TYPE_FROM_CTL_CODE(ctl)	(((ULONG) (ctl & 0xffff0000)) >> 16)
+
+#define METHOD_FROM_CTL_CODE(ctrlCode)	((ULONG)(ctrlCode & 3))
+
 /*
  * System service interface of the IO manager.
  */
@@ -348,4 +382,28 @@ typedef struct _IO_STATUS_BLOCK {
 NTAPI NTSYSAPI NTSTATUS NtLoadDriver(IN PUNICODE_STRING DriverServiceName);
 
 NTAPI NTSYSAPI NTSTATUS NtLoadDriverA(IN PCSTR DriverServiceName);
+
+NTAPI NTSYSAPI NTSTATUS NtCreateFile(OUT PHANDLE FileHandle,
+				     IN ACCESS_MASK DesiredAccess,
+				     IN POBJECT_ATTRIBUTES ObjectAttributes,
+				     OUT PIO_STATUS_BLOCK IoStatusBlock,
+				     IN OPTIONAL PLARGE_INTEGER AllocationSize,
+				     IN ULONG FileAttributes,
+				     IN ULONG ShareAccess,
+				     IN ULONG CreateDisposition,
+				     IN ULONG CreateOptions,
+				     IN PVOID EaBuffer,
+				     IN ULONG EaLength);
+
+NTAPI NTSYSAPI NTSTATUS NtDeviceIoControlFile(IN HANDLE FileHandle,
+					      IN OPTIONAL HANDLE Event,
+					      IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+					      IN OPTIONAL PVOID ApcContext,
+					      OUT PIO_STATUS_BLOCK IoStatusBlock,
+					      IN ULONG IoControlCode,
+					      IN PVOID InputBuffer,
+					      IN ULONG InputBufferLength,
+					      OUT PVOID OutputBuffer,
+					      IN ULONG OutputBufferLength);
+
 #endif

@@ -55,3 +55,18 @@ NTSTATUS IopCreateDevice(IN PIO_DRIVER_OBJECT DriverObject,
 
     return STATUS_SUCCESS;
 }
+
+NTSTATUS NtDeviceIoControlFile(IN PTHREAD Thread,
+                               IN HANDLE FileHandle,
+                               IN HANDLE Event,
+                               IN PIO_APC_ROUTINE ApcRoutine,
+                               IN PVOID ApcContext,
+                               OUT IO_STATUS_BLOCK *IoStatusBlock,
+                               IN ULONG IoControlCode,
+                               IN PVOID InputBuffer,
+                               IN ULONG InputBufferLength,
+                               IN PVOID OutputBuffer,
+                               IN ULONG OutputBufferLength)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}

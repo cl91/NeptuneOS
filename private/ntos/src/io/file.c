@@ -40,6 +40,22 @@ NTSTATUS IopFileObjectOpenProc(POBJECT Object)
     return STATUS_SUCCESS;
 }
 
+NTSTATUS NtCreateFile(IN PTHREAD Thread,
+                      OUT HANDLE *FileHandle,
+                      IN ACCESS_MASK DesiredAccess,
+                      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+                      OUT IO_STATUS_BLOCK *IoStatusBlock,
+                      IN OPTIONAL PLARGE_INTEGER AllocationSize,
+                      IN ULONG FileAttributes,
+                      IN ULONG ShareAccess,
+                      IN ULONG CreateDisposition,
+                      IN ULONG CreateOptions,
+                      IN OPTIONAL PVOID EaBuffer,
+                      IN ULONG EaLength)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 NTSTATUS NtOpenFile(IN PTHREAD Thread,
                     OUT HANDLE *FileHandle,
                     IN ACCESS_MASK DesiredAccess,

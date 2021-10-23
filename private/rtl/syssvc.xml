@@ -197,6 +197,20 @@
     <parameter annotation="in" type="ULONG" name="ThreadInformationLength" />
   </svc>
 
+  <svc name="NtCreateFile">
+    <parameter annotation="out" type="ptr::HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="AllocationSize" />
+    <parameter annotation="in" type="ULONG" name="FileAttributes" />
+    <parameter annotation="in" type="ULONG" name="ShareAccess" />
+    <parameter annotation="in" type="ULONG" name="CreateDisposition" />
+    <parameter annotation="in" type="ULONG" name="CreateOptions" />
+    <parameter annotation="in" type="PVOID" name="EaBuffer" />
+    <parameter annotation="in" type="ULONG" name="EaLength" />
+  </svc>
+
   <svc name="NtOpenFile">
     <parameter annotation="out" type="ptr::HANDLE" name="FileHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
@@ -204,6 +218,19 @@
     <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
     <parameter annotation="in" type="ULONG" name="ShareAccess" />
     <parameter annotation="in" type="ULONG" name="OpenOptions" />
+  </svc>
+
+  <svc name="NtDeviceIoControlFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="HANDLE" name="Event" />
+    <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="ApcContext" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="ULONG" name="IoControlCode" />
+    <parameter annotation="in" type="PVOID" name="InputBuffer" />
+    <parameter annotation="in" type="ULONG" name="InputBufferLength" />
+    <parameter annotation="in" type="PVOID" name="OutputBuffer" />
+    <parameter annotation="in" type="ULONG" name="OutputBufferLength" />
   </svc>
 
   <svc name="NtLoadDriver">

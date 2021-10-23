@@ -346,10 +346,6 @@ typedef struct _MDL {
     ULONG ByteOffset;
 } MDL, *PMDL;
 
-typedef VOID (NTAPI *PIO_APC_ROUTINE)(IN PVOID ApcContext,
-				      IN PIO_STATUS_BLOCK IoStatusBlock,
-				      IN ULONG Reserved);
-
 typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
 				   IN OUT struct _IRP *Irp);
 typedef DRIVER_CANCEL *PDRIVER_CANCEL;
