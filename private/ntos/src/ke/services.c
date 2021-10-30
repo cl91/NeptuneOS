@@ -1,71 +1,75 @@
 #include "ki.h"
 
 static IPC_ENDPOINT KiExecutiveServiceEndpoint;
-
-static inline VOID KiInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
-					   IN PCNODE CSpace,
-					   IN MWORD Badge)
-{
-    assert(Self != NULL);
-    assert(CSpace != NULL);
-    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_ENDPOINT, 0,
-			    CSpace, NULL);
-    Self->Badge = Badge;
-}
+LIST_ENTRY KiReadyThreadList;
 
 /*
  * Create the IPC endpoint for the system services. This IPC endpoint
- * is then badged via seL4_CNode_Mint.
+ * is then badged via seL4_CNode_Mint. Also initialize the ready thread list.
  */
-NTSTATUS KiCreateExecutiveServicesEndpoint()
+NTSTATUS KiInitExecutiveServices()
 {
     PUNTYPED Untyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
     assert(Untyped != NULL);
-    KiInitializeIpcEndpoint(&KiExecutiveServiceEndpoint, Untyped->TreeNode.CSpace, 0);
+    KeInitializeIpcEndpoint(&KiExecutiveServiceEndpoint, Untyped->TreeNode.CSpace, 0, 0);
     RET_ERR(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
 			       &KiExecutiveServiceEndpoint.TreeNode));
     assert(KiExecutiveServiceEndpoint.TreeNode.Cap != 0);
+    InitializeListHead(&KiReadyThreadList);
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS KiEnableClientServiceEndpoint(IN PPROCESS Process,
-					      IN PTHREAD Thread,
-					      IN BOOLEAN Driver)
+static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
+					      IN BOOLEAN HalService)
 {
-    assert(Process != NULL);
     assert(Thread != NULL);
-    KiAllocatePool(ServiceEndpoint, IPC_ENDPOINT);
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->CSpace != NULL);
+
+    MWORD ReplyCap = 0;
+    extern CNODE MiNtosCNode;
+    RET_ERR(MmAllocateCapRange(&MiNtosCNode, &ReplyCap, 1));
+    assert(ReplyCap != 0);
+    KeInitializeIpcEndpoint(&Thread->ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
+
+    KiAllocatePoolEx(ServiceEndpoint, IPC_ENDPOINT,
+		     {
+			 MmDeallocateCap(&MiNtosCNode, ReplyCap);
+			 Thread->ReplyEndpoint.TreeNode.Cap = 0;
+		     });
     MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread);
-    if (Driver) {
+    if (HalService) {
 	IPCBadge |= 1;
     }
-    KiInitializeIpcEndpoint(ServiceEndpoint, Process->CSpace, IPCBadge);
+    KeInitializeIpcEndpoint(ServiceEndpoint, Thread->Process->CSpace, 0, IPCBadge);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
 					 ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
 					 IPCBadge),
-	       ExFreePool(ServiceEndpoint));
-    if (Driver) {
+	       {
+		   ExFreePool(ServiceEndpoint);
+		   MmDeallocateCap(&MiNtosCNode, ReplyCap);
+		   Thread->ReplyEndpoint.TreeNode.Cap = 0;
+	       });
+    if (HalService) {
 	Thread->HalServiceEndpoint = ServiceEndpoint;
-	assert(ServiceEndpoint->TreeNode.Cap == HALSVC_IPC_CAP);
+	Thread->InitInfo.HalServiceCap = ServiceEndpoint->TreeNode.Cap;
     } else {
 	Thread->SystemServiceEndpoint = ServiceEndpoint;
-	assert(ServiceEndpoint->TreeNode.Cap == SYSSVC_IPC_CAP);
+	Thread->InitInfo.SystemServiceCap = ServiceEndpoint->TreeNode.Cap;
     }
     return STATUS_SUCCESS;
 }
 
-NTSTATUS KeEnableSystemServices(IN PPROCESS Process,
-				IN PTHREAD Thread)
+NTSTATUS KeEnableSystemServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Process, Thread, FALSE);
+    return KiEnableClientServiceEndpoint(Thread, FALSE);
 }
 
-NTSTATUS KeEnableHalServices(IN PPROCESS Process,
-			     IN PTHREAD Thread)
+NTSTATUS KeEnableHalServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Process, Thread, TRUE);
+    return KiEnableClientServiceEndpoint(Thread, TRUE);
 }
 
 static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
@@ -139,6 +143,19 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
     return ObjAttr;
 }
 
+NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
+{
+    assert(Thread->ReplyEndpoint.TreeNode.CSpace != NULL);
+    int Error = seL4_CNode_SaveCaller(Thread->ReplyEndpoint.TreeNode.CSpace->TreeNode.Cap,
+				      Thread->ReplyEndpoint.TreeNode.Cap,
+				      Thread->ReplyEndpoint.TreeNode.CSpace->Depth);
+    if (Error != 0) {
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
 /* The actual handling of system services is in the generated file below. */
 #include <ntos_syssvc_gen.c>
 #include <ntos_halsvc_gen.c>
@@ -146,8 +163,8 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
 VOID KiDispatchExecutiveServices()
 {
     MWORD Badge = 0;
-    seL4_MessageInfo_t Request = seL4_Recv(KiExecutiveServiceEndpoint.TreeNode.Cap, &Badge);
     while (TRUE) {
+	seL4_MessageInfo_t Request = seL4_Recv(KiExecutiveServiceEndpoint.TreeNode.Cap, &Badge);
 	ULONG SvcNum = seL4_MessageInfo_get_label(Request);
 	ULONG ReqMsgLength = seL4_MessageInfo_get_length(Request);
 	ULONG NumUnwrappedCaps = seL4_MessageInfo_get_capsUnwrapped(Request);
@@ -165,21 +182,36 @@ VOID KiDispatchExecutiveServices()
 	    assert(Badge != 0);
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    if (Badge & 1) {
-		PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
-		assert(DriverObject != NULL);
 		DbgTrace("Got driver call from thread %p\n", Thread);
-		Status = KiHandleHalService(SvcNum, Thread, DriverObject, ReqMsgLength, &ReplyMsgLength);
+		Status = KiHandleHalService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
 	    } else {
 		DbgTrace("Got call from thread %p\n", Thread);
 		Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
 	    }
 	}
-	if (Status == STATUS_NTOS_NO_REPLY) {
-	    Request = seL4_Recv(KiExecutiveServiceEndpoint.TreeNode.Cap, &Badge);
-	} else {
+	if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
 	    seL4_SetMR(0, (MWORD) Status);
-	    Request = seL4_ReplyRecv(KiExecutiveServiceEndpoint.TreeNode.Cap,
-				     seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength), &Badge);
+	    seL4_Reply(seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength));
+	}
+	/* Check if any other thread is awaken and attempt to continue the execution of
+	 * its service handler from the saved context. */
+	LoopOverList(ReadyThread, &KiReadyThreadList, THREAD, ReadyListLink) {
+	    if (ReadyThread->HalSvc) {
+		Status = KiResumeHalService(ReadyThread, &ReplyMsgLength);
+	    } else {
+		Status = KiResumeSystemService(ReadyThread, &ReplyMsgLength);
+	    }
+	    /* Regardless of whether the handler function has completed, we should
+	     * remove the thread from the ready list. In the case that the async status
+	     * is still pending (because the handler function has blocked on a different
+	     * async wait), it is important that we do not wake up the thread too soon. */
+	    RemoveEntryList(&ReadyThread->ReadyListLink);
+	    /* Reply to the thread if the handler function has completed */
+	    if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
+		seL4_SetMR(0, (MWORD) Status);
+		seL4_Send(ReadyThread->ReplyEndpoint.TreeNode.Cap,
+			  seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength));
+	    }
 	}
     }
 }

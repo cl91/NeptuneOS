@@ -45,7 +45,7 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
     assert(ObjCap);
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				      ObjType, ObjBits,
-				      ROOT_CNODE_CAP,
+				      NTEX_CNODE_CAP,
 				      TreeNode->CSpace->TreeNode.Cap,
 				      0, ObjCap, 1);
     if (Error != seL4_NoError) {
@@ -63,7 +63,7 @@ NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
 			   IN MWORD DestCap)
 {
     MWORD Error = seL4_Untyped_Retype(SrcCap, seL4_UntypedObject,
-				      SrcLog2Size-1, ROOT_CNODE_CAP,
+				      SrcLog2Size-1, NTEX_CNODE_CAP,
 				      DestCSpace, 0, DestCap, 2);
     if (Error) {
 	return SEL4_ERROR(Error);

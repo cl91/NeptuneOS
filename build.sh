@@ -163,10 +163,13 @@ if [[ ${CLANG_ARCH} == i686 ]]; then
     ELF_TARGET=elf32-i386
     ELF_ARCH=i386
     LLD_TARGET=elf_i386
-else
+elif [[ ${CLANG_ARCH} == x86_64 ]]; then
     ELF_TARGET=elf64-x86-64
     ELF_ARCH=i386:x86-64
     LLD_TARGET=elf_x86_64
+else
+    echo "Unsupported architecture ${CLANG_ARCH}"
+    exit 1
 fi
 PE_COPY_LIST='ntdll/ntdll.dll hal/hal.dll'
 BASE_COPY_LIST='smss/smss.exe'
@@ -231,5 +234,5 @@ if [[ ${BUILD_TYPE} == Release ]]; then
 fi
 echo
 echo "####################################"
-echo "         Build succeeded!"
+echo "         Build successful!"
 echo "####################################"

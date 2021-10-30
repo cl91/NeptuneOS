@@ -97,7 +97,7 @@ static NTSTATUS PspSetThreadPriority(IN PTHREAD Thread,
 				     IN THREAD_PRIORITY Priority)
 {
     assert(Thread != NULL);
-    int Error = seL4_TCB_SetPriority(Thread->TreeNode.Cap, ROOT_TCB_CAP, Priority);
+    int Error = seL4_TCB_SetPriority(Thread->TreeNode.Cap, NTEX_TCB_CAP, Priority);
 
     if (Error != 0) {
 	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %d\n",
@@ -171,10 +171,26 @@ static inline NTSTATUS PspMapSharedRegion(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+static inline VOID PspSetThreadDebugName(IN PTHREAD Thread)
+{
+#ifdef CONFIG_DEBUG_BUILD
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->ImageFile != NULL);
+    assert(Thread->Process->ImageFile->FileName != NULL);
+    char NameBuf[seL4_MsgMaxLength * sizeof(MWORD)];
+    /* FIXME: For now we use the IPC buffer client addr to distinguish threads.
+     * We would like to change it to the thread entry point. */
+    snprintf(NameBuf, sizeof(NameBuf), "%s!%p", Thread->Process->ImageFile->FileName,
+	     (PVOID) Thread->IpcBufferClientAddr);
+    seL4_DebugNameThread(Thread->TreeNode.Cap, NameBuf);
+#endif
+}
+
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread)
 {
-    assert(Process);
+    assert(Process != NULL);
 
     if (Process->ImageSection == NULL) {
 	return STATUS_NTOS_BUG;
@@ -243,8 +259,6 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	assert(PspSystemDllTlsSubsection->ImageSection != NULL);
 	Thread->SystemDllTlsBase = PspSystemDllTlsSubsection->ImageSection->ImageBase +
 	    PspSystemDllTlsSubsection->SubSectionBase;
-	/* Populate the process init info used by ntdll on process startup */
-	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
     } else {
 	/* Allocate SystemDll TLS region */
 	assert(PspSystemDllTlsSubsection != NULL);
@@ -285,10 +299,21 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     PspInitializeThreadContext(Thread, &Context);
     RET_ERR_EX(PspSetThreadContext(Thread, &Context), ObDeleteObject(Thread));
     RET_ERR_EX(PspSetThreadPriority(Thread, seL4_MaxPrio), ObDeleteObject(Thread));
-    RET_ERR_EX(KeEnableSystemServices(Process, Thread), ObDeleteObject(Thread));
+    RET_ERR_EX(KeEnableSystemServices(Thread), ObDeleteObject(Thread));
     if (Process->InitInfo.DriverProcess) {
-	RET_ERR_EX(KeEnableHalServices(Process, Thread), ObDeleteObject(Thread));
+	RET_ERR_EX(KeEnableHalServices(Thread), ObDeleteObject(Thread));
     }
+    PspSetThreadDebugName(Thread);
+
+    if (Process->InitThread == NULL) {
+	/* Populate the process init info used by ntdll on process startup */
+	Process->InitInfo.ThreadInitInfo = Thread->InitInfo;
+	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
+    } else {
+	/* Populate the thread init info used by ntdll on process startup */
+	*((PNTDLL_THREAD_INIT_INFO) Thread->IpcBufferServerAddr) = Thread->InitInfo;
+    }
+
     RET_ERR_EX(PspResumeThread(Thread), ObDeleteObject(Thread));
 
     if (Process->InitThread == NULL) {

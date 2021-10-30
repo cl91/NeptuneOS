@@ -14,6 +14,9 @@ add_compile_options(
     -fno-pic
     -fno-pie
     -Wno-incompatible-library-redeclaration
+    -msoft-float
+    -mno-sse
+    -mno-mmx
     --target=${TRIPLE}
     -D_NTSYSTEM_
 )

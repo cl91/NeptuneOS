@@ -29,6 +29,9 @@ __declspec(allocate(".tls")) PVOID LDRP_INIT_THREAD_TLS_VECTOR[MAX_NUMBER_OF_TLS
 /* Address for the IPC buffer of the initial thread. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 
+/* System service endpoint capability */
+__thread seL4_CPtr KiSystemServiceCap;
+
 /* GLOBALS *******************************************************************/
 
 BOOLEAN LdrpShutdownInProgress;
@@ -946,6 +949,9 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	/* Now that the init info has been copied to the stack, clear the original. */
 	memset(IpcBuffer, 0, sizeof(NTDLL_PROCESS_INIT_INFO));
 
+	/* Set the per-thread variable for the system service endpoint capability */
+	KiSystemServiceCap = InitInfo.ThreadInitInfo.SystemServiceCap;
+
 	/* Initialize the Process */
 	Status = LdrpInitializeProcess(&InitInfo);
 
@@ -959,26 +965,33 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 		Status = STATUS_ENTRYPOINT_NOT_FOUND;
 	    } else {
 		EntryPoint = HalDllEntry->EntryPoint;
-		((PHAL_START_ROUTINE)HalDllEntry->EntryPoint)(IpcBuffer);
+		((PHAL_START_ROUTINE)HalDllEntry->EntryPoint)(IpcBuffer, InitInfo.ThreadInitInfo.HalServiceCap);
 	    }
 	} else {
 	    /* Calls the image entry point */
 	    EntryPoint = LdrpImageEntry->EntryPoint;
 	    ((PTHREAD_START_ROUTINE)LdrpImageEntry->EntryPoint)(Peb);
 	}
-    } else {
+    } else if (Peb->InheritedAddressSpace) {
 	/* Loader data is there... is this a fork() ? */
-	if (Peb->InheritedAddressSpace) {
-	    /* Handle the fork() */
-	    //LoaderStatus = LdrpForkProcess();
-	    Status = STATUS_NOT_IMPLEMENTED;
-	    UNIMPLEMENTED;
-	} else {
-	    /* This is a new thread initializing */
-	    Status = LdrpInitializeThread();
-	    /* TODO: Call thread entry point */
-	    /* EntryPoint = ...; */
-	}
+	/* Handle the fork() */
+	//LoaderStatus = LdrpForkProcess();
+	Status = STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
+    } else {
+	/* At process startup the process init info is placed at the beginning
+	 * of the ipc buffer. */
+	NTDLL_THREAD_INIT_INFO InitInfo = *((PNTDLL_THREAD_INIT_INFO)(IpcBuffer));
+	/* Now that the init info has been copied to the stack, clear the original. */
+	memset(IpcBuffer, 0, sizeof(NTDLL_THREAD_INIT_INFO));
+
+	/* Set the per-thread variable for the system service endpoint capability */
+	KiSystemServiceCap = InitInfo.SystemServiceCap;
+
+	/* This is a new thread initializing */
+	Status = LdrpInitializeThread();
+	/* TODO: Call thread entry point */
+	/* EntryPoint = ...; */
     }
 
     /* Bail out if initialization has failed */

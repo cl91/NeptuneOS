@@ -145,12 +145,13 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
 
 #ifdef CONFIG_DEBUG_BUILD
+    seL4_DebugNameThread(NTEX_TCB_CAP, "NTOS Executive");
     KiDumpBootInfoAll(bootinfo);
 #endif
 
     ExInitSystemPhase0(bootinfo);
     KiInitVga();
-    BUGCHECK_IF_ERR(KiCreateExecutiveServicesEndpoint());
+    BUGCHECK_IF_ERR(KiInitExecutiveServices());
     BUGCHECK_IF_ERR(ExInitSystemPhase1());
 
 #ifdef CONFIG_RUN_TESTS

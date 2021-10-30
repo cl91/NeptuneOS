@@ -5,6 +5,7 @@
 #include <hal.h>
 
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
+__thread seL4_CPtr KiHalServiceCap;
 
 ULONG _tls_index;
 
@@ -40,16 +41,19 @@ static NTSTATUS IopCallDriverEntry(IN PDRIVER_OBJECT DriverObject)
     return STATUS_SUCCESS;
 }
 
-static VOID IopDriverEventLoop(IN PDRIVER_OBJECT DriverObject)
+static NTSTATUS IopDriverEventLoop(IN PDRIVER_OBJECT DriverObject)
 {
     while (TRUE) {
-	/* TODO */
+	ULONG NumIrp = 0;
+	RET_ERR(IopRequestIrp(&NumIrp));
+	while (1) ;
     }
 }
 
-VOID HalStartup(seL4_IPCBuffer *IpcBuffer)
+VOID HalStartup(seL4_IPCBuffer *IpcBuffer, seL4_CPtr HalServiceCap)
 {
     __sel4_ipc_buffer = IpcBuffer;
+    KiHalServiceCap = HalServiceCap;
 
     NtDisplayStringA("hal.dll: Allocating DriverObject... ");
     PDRIVER_OBJECT DriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),
@@ -71,8 +75,8 @@ VOID HalStartup(seL4_IPCBuffer *IpcBuffer)
 	return;
     }
 
-    IopDriverEventLoop(DriverObject);
+    Status = IopDriverEventLoop(DriverObject);
 
-    /* The event loop function should never return. Raise a status if it did. */
-    RtlRaiseStatus(STATUS_UNSUCCESSFUL);
+    /* The event loop function returned with an error. Raise the status. */
+    RtlRaiseStatus(Status);
 }

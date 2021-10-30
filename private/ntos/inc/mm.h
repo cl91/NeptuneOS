@@ -18,8 +18,8 @@
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define IS_LARGE_PAGE_ALIGNED(p)	(((MWORD)(p)) == LARGE_PAGE_ALIGN(p))
 
-#define ROOT_CNODE_CAP			(seL4_CapInitThreadCNode)
-#define ROOT_VSPACE_CAP			(seL4_CapInitThreadVSpace)
+#define NTEX_CNODE_CAP			(seL4_CapInitThreadCNode)
+#define NTEX_VSPACE_CAP			(seL4_CapInitThreadVSpace)
 
 #ifdef _M_IX86
 #define MWORD_LOG2SIZE			(2)

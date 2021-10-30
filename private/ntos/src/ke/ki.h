@@ -10,6 +10,9 @@
 #define KiAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_KE_TAG, OnError)
 
+/* async.c */
+VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
+
 /* bugcheck.c */
 VOID KiHaltSystem(IN PCSTR Format, ...);
 
@@ -21,5 +24,6 @@ VOID KiHaltSystem(IN PCSTR Format, ...);
 VOID KiInitVga();
 
 /* services.c */
-NTSTATUS KiCreateExecutiveServicesEndpoint();
+LIST_ENTRY KiReadyThreadList;
+NTSTATUS KiInitExecutiveServices();
 VOID KiDispatchExecutiveServices();

@@ -11,24 +11,14 @@ import os
 import xml.dom.minidom
 
 
-SYSSVC_GEN_H_TEMPLATE = """#pragma once
+SVC_GEN_H_TEMPLATE = """#pragma once
 
-typedef enum _SYSTEM_SERVICE_NUMBER {
-    {%- for svc in svc_list %}
+typedef enum _{{svc_group_upper}}_SERVICE_NUMBER {
+{%- for svc in svc_list %}
     {{svc.enum_tag}},
-    {%- endfor %}
-    NUMBER_OF_SYSTEM_SERVICES
-} SYSTEM_SERVICE_NUMBER;
-"""
-
-HALSVC_GEN_H_TEMPLATE = """#pragma once
-
-typedef enum _HAL_SERVICE_NUMBER {
-    {%- for svc in svc_list %}
-    {{svc.enum_tag}},
-    {%- endfor %}
-    NUMBER_OF_HAL_SERVICES
-} SYSTEM_HAL_NUMBER;
+{%- endfor %}
+    NUMBER_OF_{{svc_group_upper}}_SERVICES
+} {{svc_group_upper}}_SERVICE_NUMBER;
 """
 
 NTOS_SVC_GEN_H_TEMPLATE = """#pragma once
@@ -42,13 +32,22 @@ NTSTATUS {{svc.name}}(struct _THREAD *Thread{%- for param in svc.params %},
 {%- endfor %}
 """
 
-NTOS_SVC_GEN_C_TEMPLATE = """#include <ntos.h>{{extra_headers}}
+SVC_PARAMS_GEN_H_TEMPLATE = """typedef union _{{svc_group_upper}}_SERVICE_PARAMETERS {
+{%- for svc in svc_list %}
+    struct {
+{%- for param in svc.in_params %}
+        {{param.server_decl}};
+{%- endfor %}
+    } {{svc.name}}Params;
+{%- endfor %}
+} {{svc_group_upper}}_SERVICE_PARAMETERS, *P{{svc_group_upper}}_SERVICE_PARAMETERS;
+"""
+
+NTOS_SVC_GEN_C_TEMPLATE = """#include <ntos.h>
+{{extra_headers}}
 
 static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
                         {{handler_func_indent}}IN PTHREAD Thread,
-{%- if halsvc %}
-                        {{handler_func_indent}}IN PIO_DRIVER_OBJECT DriverObject,
-{%- endif %}
                         {{handler_func_indent}}IN ULONG ReqMsgLength,
                         {{handler_func_indent}}OUT ULONG *ReplyMsgLength)
 {
@@ -104,23 +103,37 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
 {%- endif %}
 {%- endfor %}
         DbgTrace("Calling {{svc.name}}\\n");
+        KiResetAsyncStack(Thread);
         Status = {{svc.name}}(Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
+        assert(Status != STATUS_ASYNC_BUGBUG);
+        assert(Status != STATUS_ASYNC_STACK_OVERFLOW);
+        if (Status == STATUS_ASYNC_PENDING) {
+            DbgTrace("{{svc.name}} returned async pending status. Suspending thread %p\\n", Thread);
+            RET_ERR_EX(KiServiceSaveReplyCap(Thread), assert(STATUS_NTOS_BUG));
+            Thread->SvcNum = SvcNum;
+            Thread->HalSvc = {% if halsvc %}TRUE{% else %}FALSE{% endif%};
+{%- for param in svc.in_params %}
+            Thread->{%- if halsvc %}HalSvcParams{% else %}SysSvcParams{% endif%}.{{svc.name}}Params.{{param.name}} = {{param.name}};
+{%- endfor %}
+        } else {
+            DbgTrace("{{svc.name}} returned status 0x%x. Replying to thread %p\\n", Status, Thread);
 {%- for param in svc.out_params %}
 {%- if param.dir_in %}
-        {{param.base_type}} {{param.name}}Out = *{{param.name}};
+            {{param.base_type}} {{param.name}}Out = *{{param.name}};
 {%- endif %}
 {%- endfor %}
-        ULONG MsgBufOffset = 0;
-        *ReplyMsgLength = 1 + {{svc.out_params|length}};
+            ULONG MsgBufOffset = 0;
+            *ReplyMsgLength = 1 + {{svc.out_params|length}};
 {%- for param in svc.out_params %}
 {%- if param.complex_type %}
-        SERVICE_ARGUMENT {{param.name}}ArgBufOut;
-RET_ERR_EX(KiServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOffset, (PVOID) &({{param.name}}{% if param.dir_in %}Out{% endif %}), sizeof({{param.base_type}}), &{{param.name}}ArgBufOut), assert(STATUS_NTOS_BUG));
-        seL4_SetMR({{loop.index}}, {{param.name}}ArgBufOut.Word);
+            SERVICE_ARGUMENT {{param.name}}ArgBufOut;
+            RET_ERR_EX(KiServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOffset, (PVOID) &({{param.name}}{% if param.dir_in %}Out{% endif %}), sizeof({{param.base_type}}), &{{param.name}}ArgBufOut), assert(STATUS_NTOS_BUG));
+            seL4_SetMR({{loop.index}}, {{param.name}}ArgBufOut.Word);
 {%- else %}
-        seL4_SetMR({{loop.index}}, (MWORD) {{param.name}}{%- if param.dir_in %}Out{%- endif %});
+            seL4_SetMR({{loop.index}}, (MWORD) {{param.name}}{%- if param.dir_in %}Out{%- endif %});
 {%- endif %}
 {%- endfor %}
+        }
         break;
     }
 {# #}
@@ -132,6 +145,60 @@ RET_ERR_EX(KiServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOffset, 
     return Status;
 }
 {# #}
+static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
+                        {{resume_func_indent}}OUT ULONG *ReplyMsgLength)
+{
+    assert(Thread->HalSvc == {%- if halsvc %}TRUE{% else %}FALSE{% endif%});
+    NTSTATUS Status = STATUS_INVALID_PARAMETER;
+    ULONG SvcNum = Thread->SvcNum;
+    switch (SvcNum) {
+{%- for svc in svc_list %}
+    case {{svc.enum_tag}}:
+    {
+{%- for param in svc.in_params %}
+        {{param.server_decl}} = Thread->{%- if halsvc %}HalSvcParams{% else %}SysSvcParams{% endif%}.{{svc.name}}Params.{{param.name}};
+{%- endfor %}
+{%- for param in svc.out_params %}
+{%- if not param.dir_in %}
+        {{param.base_type}} {{param.name}};
+{%- endif %}
+{%- endfor %}
+        DbgTrace("Resuming thread %p. Calling {{svc.name}} with saved context.\\n", Thread);
+        Status = {{svc.name}}(Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
+        assert(Status != STATUS_ASYNC_BUGBUG);
+        assert(Status != STATUS_ASYNC_STACK_OVERFLOW);
+        if (Status == STATUS_ASYNC_PENDING) {
+            DbgTrace("{{svc.name}} returned async pending status. Suspending thread %p\\n", Thread);
+        } else {
+            DbgTrace("{{svc.name}} returned status 0x%x. Replying to thread %p\\n", Status, Thread);
+{%- for param in svc.out_params %}
+{%- if param.dir_in %}
+            {{param.base_type}} {{param.name}}Out = *{{param.name}};
+{%- endif %}
+{%- endfor %}
+            ULONG MsgBufOffset = 0;
+            *ReplyMsgLength = 1 + {{svc.out_params|length}};
+{%- for param in svc.out_params %}
+{%- if param.complex_type %}
+            SERVICE_ARGUMENT {{param.name}}ArgBufOut;
+            RET_ERR_EX(KiServiceMarshalArgument(Thread->IpcBufferServerAddr, &MsgBufOffset, (PVOID) &({{param.name}}{% if param.dir_in %}Out{% endif %}), sizeof({{param.base_type}}), &{{param.name}}ArgBufOut), assert(STATUS_NTOS_BUG));
+            seL4_SetMR({{loop.index}}, {{param.name}}ArgBufOut.Word);
+{%- else %}
+            seL4_SetMR({{loop.index}}, (MWORD) {{param.name}}{%- if param.dir_in %}Out{%- endif %});
+{%- endif %}
+{%- endfor %}
+        }
+        break;
+    }
+{# #}
+{%- endfor %}
+    default:
+        DbgTrace("BUGBUG!! BUGBUG!! Invalid {{svc_group}} service number %d when resuming thread %p.\\n", SvcNum, Thread);
+        assert(FALSE);
+        break;
+    }
+    return Status;
+}
 """
 
 CLIENT_SVC_GEN_H_TEMPLATE = """#pragma once
@@ -339,23 +406,34 @@ def generate_file(tmplstr, svc_list, out_file, halsvc, server_side):
                            lstrip_blocks=False).from_string(tmplstr)
     if halsvc:
         svc_group = "Hal"
-        svc_ipc_cap = "HALSVC_IPC_CAP"
+        svc_group_upper = "HAL"
+        svc_ipc_cap = "KiHalServiceCap"
         handler_func = "KiHandleHalService"
+        resume_func = "KiResumeHalService"
         extra_headers = """
 #include <halsvc.h>
 #include "halsvc_gen.h"
-#include "ntos_halsvc_gen.h\""""
+#include "ntos_halsvc_gen.h"
+
+extern __thread seL4_CPtr KiHalServiceCap;"""
     else:
         svc_group = "System"
-        svc_ipc_cap = "SYSSVC_IPC_CAP"
+        svc_group_upper = "SYSTEM"
+        svc_ipc_cap = "KiSystemServiceCap"
         handler_func = "KiHandleSystemService"
-        extra_headers = ""
+        resume_func = "KiResumeSystemService"
+        extra_headers = """
+extern __thread seL4_CPtr KiSystemServiceCap;"""
     handler_func_indent = " " * len(handler_func)
+    resume_func_indent = " " * len(resume_func)
     data = template.render({ 'svc_list': svc_list,
                              'svc_group': svc_group,
+                             'svc_group_upper': svc_group_upper,
                              'svc_ipc_cap': svc_ipc_cap,
                              'handler_func': handler_func,
                              'handler_func_indent': handler_func_indent,
+                             'resume_func': resume_func,
+                             'resume_func_indent': resume_func_indent,
                              'extra_headers': extra_headers,
                              'halsvc': halsvc
                             })
@@ -417,9 +495,16 @@ if __name__ == "__main__":
     args = parse_args()
     syssvc_list = parse_svcxml(args.syssvc_xml, halsvc = False)
     server_syssvc_list = [syssvc for syssvc in syssvc_list if not syssvc.client_only]
+    halsvc_list = parse_svcxml(args.halsvc_xml, halsvc = True)
+    server_halsvc_list = [svc for svc in halsvc_list if not svc.client_only]
+
+    svc_params_gen_h = open(os.path.join(args.out_dir, "ntos_svc_params_gen.h"), "w")
+    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_syssvc_list, svc_params_gen_h, halsvc = False, server_side = True)
+    svc_params_gen_h.write("\n\n")
+    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_halsvc_list, svc_params_gen_h, halsvc = True, server_side = True)
 
     syssvc_gen_h = open(os.path.join(args.out_dir, "syssvc_gen.h"), "w")
-    generate_file(SYSSVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, halsvc = False, server_side = True)
+    generate_file(SVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, halsvc = False, server_side = True)
 
     ntos_syssvc_gen_h = open(os.path.join(args.out_dir, "ntos_syssvc_gen.h"), "w")
     generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, halsvc = False, server_side = True)
@@ -432,11 +517,8 @@ if __name__ == "__main__":
     ntdll_syssvc_gen_c = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.c"), "w")
     generate_file(CLIENT_SVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, halsvc = False, server_side = False)
 
-    halsvc_list = parse_svcxml(args.halsvc_xml, halsvc = True)
-    server_halsvc_list = [svc for svc in halsvc_list if not svc.client_only]
-
     halsvc_gen_h = open(os.path.join(args.out_dir, "halsvc_gen.h"), "w")
-    generate_file(HALSVC_GEN_H_TEMPLATE, server_halsvc_list, halsvc_gen_h, halsvc = True, server_side = True)
+    generate_file(SVC_GEN_H_TEMPLATE, server_halsvc_list, halsvc_gen_h, halsvc = True, server_side = True)
     ntos_halsvc_gen_h = open(os.path.join(args.out_dir, "ntos_halsvc_gen.h"), "w")
     generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_halsvc_list, ntos_halsvc_gen_h, halsvc = True, server_side = True)
     ntos_halsvc_gen_c = open(os.path.join(args.out_dir, "ntos_halsvc_gen.c"), "w")

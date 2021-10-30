@@ -14,6 +14,7 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverImageName;
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
+    KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting IRP */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*

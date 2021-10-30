@@ -15,10 +15,6 @@ typedef seL4_Word MWORD;
 #define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
 #define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
 
-/* All hard-coded capability slots in the client processes' CSpace go here. */
-#define SYSSVC_IPC_CAP			(0x1)
-#define HALSVC_IPC_CAP			(0x2)
-
 /* The maximum number of zero bits (starting from the most significant bit) in
  * the virtual address that the user can specify in virtual memory allocation.
  * This is determined by the lowest user address, defined below */
@@ -63,6 +59,11 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
 #define NTDLL_LOADER_HEAP_COMMIT	(4 * PAGE_SIZE)
 
+typedef struct _NTDLL_THREAD_INIT_INFO {
+    MWORD SystemServiceCap;
+    MWORD HalServiceCap;
+} NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
+
 typedef struct _NTDLL_PROCESS_INIT_INFO {
     MWORD LoaderHeapStart;
     MWORD ProcessHeapStart;
@@ -76,12 +77,13 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     HANDLE ProcessHeapLockSemaphore;
     HANDLE LoaderHeapLockSemaphore;
     BOOLEAN DriverProcess;
+    NTDLL_THREAD_INIT_INFO ThreadInitInfo;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
 
 /*
  * Start routine of hal.dll. In driver processes we don't call the
  * driver entry point directly, and instead call HalStartup. */
-typedef VOID (*PHAL_START_ROUTINE)(seL4_IPCBuffer *IpcBuffer);
+typedef VOID (*PHAL_START_ROUTINE)(seL4_IPCBuffer *IpcBuffer, seL4_CPtr HalServiceCap);
 
 /*
  * System dll TLS index. Executable has TLS index == 0. NTDLL always

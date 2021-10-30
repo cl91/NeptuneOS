@@ -1,5 +1,10 @@
 #include "ki.h"
 
+VOID KeSetEvent(IN PKEVENT Event)
+{
+    KiSignalDispatcherObject(&Event->Header);
+}
+
 NTSTATUS NtCreateEvent(IN PTHREAD Thread,
                        OUT HANDLE *EventHandle,
                        IN ACCESS_MASK DesiredAccess,
@@ -13,26 +18,6 @@ NTSTATUS NtCreateEvent(IN PTHREAD Thread,
 NTSTATUS NtSetEvent(IN PTHREAD Thread,
                     IN HANDLE EventHandle,
                     OUT OPTIONAL LONG *PreviousState)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-NTSTATUS NtTestAlert(IN PTHREAD Thread)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-NTSTATUS NtContinue(IN PTHREAD Thread,
-                    IN PCONTEXT Context,
-                    IN BOOLEAN TestAlert)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-NTSTATUS NtWaitForSingleObject(IN PTHREAD Thread,
-                               IN HANDLE ObjectHandle,
-                               IN BOOLEAN Alertable,
-                               IN OPTIONAL PLARGE_INTEGER TimeOut)
 {
     return STATUS_NOT_IMPLEMENTED;
 }

@@ -11,7 +11,7 @@ static NTSTATUS MiInitRetypeIntoLargePage(IN MWORD Untyped,
     int Error = seL4_Untyped_Retype(Untyped,
 				    PAGING_TYPE_LARGE_PAGE,
 				    LARGE_PAGE_LOG2SIZE,
-				    ROOT_CNODE_CAP,
+				    NTEX_CNODE_CAP,
 				    0, // node_index
 				    0, // node_depth
 				    PageCap,
@@ -31,7 +31,7 @@ static NTSTATUS MiInitMapLargePage(IN MWORD Untyped,
     RET_ERR(MiInitRetypeIntoLargePage(Untyped, PageCap));
 
     int Error = seL4_X86_Page_Map(PageCap,
-				  ROOT_VSPACE_CAP,
+				  NTEX_VSPACE_CAP,
 				  Vaddr,
 				  MM_RIGHTS_RW,
 				  seL4_X86_Default_VMAttributes);
@@ -59,7 +59,7 @@ static NTSTATUS MiSplitInitialUntyped(IN PMM_INIT_INFO InitInfo)
     LONG Log2Size = InitInfo->InitUntypedLog2Size;
     LONG NumSplits = Log2Size - LARGE_PAGE_LOG2SIZE;
     for (int i = 0; i < NumSplits; i++) {
-	RET_ERR(MiSplitUntypedCap(UntypedCap, Log2Size--, ROOT_CNODE_CAP, DestCap));
+	RET_ERR(MiSplitUntypedCap(UntypedCap, Log2Size--, NTEX_CNODE_CAP, DestCap));
 	UntypedCap = DestCap;
 	DestCap += 2;
     }
@@ -99,7 +99,7 @@ static inline NTSTATUS MiInitCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type
 						   OUT PPAGING_STRUCTURE *pPaging)
 {
     assert(pPaging != NULL);
-    RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, VirtAddr, ROOT_VSPACE_CAP,
+    RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, VirtAddr, NTEX_VSPACE_CAP,
 				    MM_RIGHTS_RW, pPaging));
     assert(*pPaging != NULL);
     (*pPaging)->TreeNode.Cap = Cap;
@@ -241,7 +241,7 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
     RET_ERR(ExInitializePool(EX_POOL_START, LARGE_PAGE_SIZE / PAGE_SIZE));
 
     /* Initialize root CNode. Record used cap slots at this point. */
-    MiInitializeCNode(&MiNtosCNode, ROOT_CNODE_CAP, ROOT_CNODE_LOG2SIZE, MWORD_BITS,
+    MiInitializeCNode(&MiNtosCNode, NTEX_CNODE_CAP, ROOT_CNODE_LOG2SIZE, MWORD_BITS,
 		      &MiNtosCNode, NULL, MiNtosCNodeUsedMap);
     for (ULONG i = 0; i < FreeCapStart; i++) {
 	SetBit(MiNtosCNode.UsedMap, i);
@@ -251,8 +251,8 @@ static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
 
     /* Initialize the virtual address space struct for the root task. */
     MiAllocatePool(RootPagingStructure, PAGING_STRUCTURE);
-    MiInitializePagingStructure(RootPagingStructure, NULL, NULL, ROOT_VSPACE_CAP,
-				ROOT_VSPACE_CAP, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
+    MiInitializePagingStructure(RootPagingStructure, NULL, NULL, NTEX_VSPACE_CAP,
+				NTEX_VSPACE_CAP, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
 				TRUE, MM_RIGHTS_RW);
     MiInitializeVSpace(&MiNtosVaddrSpace, RootPagingStructure);
 

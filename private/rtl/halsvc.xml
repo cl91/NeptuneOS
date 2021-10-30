@@ -11,4 +11,8 @@
     <parameter annotation="out" type="ptr::HANDLE" name="DeviceHandle" />
   </svc>
 
+  <svc name="IopRequestIrp">
+    <parameter annotation="out" type="ptr::ULONG" name="NumIrp" />
+  </svc>
+
 </services>

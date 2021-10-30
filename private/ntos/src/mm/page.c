@@ -546,7 +546,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     }
     PPAGING_STRUCTURE Page = NULL;
     RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, HyperspaceAddr,
-				    ROOT_VSPACE_CAP, MM_RIGHTS_RW, &Page));
+				    NTEX_VSPACE_CAP, MM_RIGHTS_RW, &Page));
     assert(Page != NULL);
     RET_ERR_EX(MiMapSuperStructure(Page, &MiNtosVaddrSpace, NULL),
 	       MiFreePagingStructure(Page));

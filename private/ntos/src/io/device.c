@@ -10,13 +10,15 @@ NTSTATUS IopDeviceObjectInitProc(POBJECT Object)
 /*
  * Note: DeviceName must be a full path.
  */
-NTSTATUS IopCreateDevice(IN PIO_DRIVER_OBJECT DriverObject,
+NTSTATUS IopCreateDevice(IN PTHREAD Thread,
                          IN OPTIONAL PCSTR DeviceName,
                          IN DEVICE_TYPE DeviceType,
                          IN ULONG DeviceCharacteristics,
                          IN BOOLEAN Exclusive,
                          OUT HANDLE *DeviceHandle)
 {
+    assert(Thread != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
     assert(DeviceHandle != NULL);
 
