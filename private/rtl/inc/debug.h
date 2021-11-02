@@ -22,12 +22,5 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 		     #Expr, __func__, __FILE__, __LINE__, Status);	\
 	    {OnError;} return Status; }}
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
-#define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
-    {} Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
-    if ((Var) == NULL) {						\
-	DbgPrint("Allocation of 0x%zx bytes for variable %s of type"	\
-		 " (%s *) failed in function %s @ %s:%d\n",		\
-		 Size, #Var, #Type, __func__, __FILE__, __LINE__);	\
-	{OnError;} return STATUS_NO_MEMORY; }
 
 #define DPRINT1		DbgPrint

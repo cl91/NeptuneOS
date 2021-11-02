@@ -2,6 +2,7 @@
 #include <printf.h>
 #include <ntos.h>
 #include <thread.h>
+#include <sel4/arch/bootinfo_types.h>
 #include "ki.h"
 
 /* Minimum alignment for TLS across all platforms. */
@@ -85,6 +86,38 @@ static char *KiDumpBootInfoSlotRegion(char *buf,
     return buf;
 }
 
+static void KiDumpBootInfoVbe(seL4_X86_BootInfo_VBE *VbeInfo)
+{
+    DbgPrint("        vbe signature %c%c%c%c version 0x%x total memory %d*64KB\n",
+	     VbeInfo->vbeInfoBlock.signature[0],
+	     VbeInfo->vbeInfoBlock.signature[1],
+	     VbeInfo->vbeInfoBlock.signature[2],
+	     VbeInfo->vbeInfoBlock.signature[3],
+	     VbeInfo->vbeInfoBlock.version,
+	     VbeInfo->vbeInfoBlock.totalMemory);
+    DbgPrint("        oem str paddr 0x%08x vendor str paddr 0x%08x product str paddr 0x%08x rev str paddr 0x%08x\n",
+	     VbeInfo->vbeInfoBlock.oemStringPtr,
+	     VbeInfo->vbeInfoBlock.oemVendorNamePtr,
+	     VbeInfo->vbeInfoBlock.oemProductNamePtr,
+	     VbeInfo->vbeInfoBlock.oemProductRevPtr);
+    DbgPrint("        %s%s width %d height %d pitch %d bpp %d framebuffer paddr 0x%08x\n",
+	     VbeInfo->vbeModeInfoBlock.vbe_common.modeAttr & (1UL << 4) ? "graphics mode" : "text mode",
+	     VbeInfo->vbeModeInfoBlock.vbe_common.modeAttr & (1UL << 7) ? " linear framebuffer" : "",
+	     VbeInfo->vbeModeInfoBlock.vbe12_part1.xRes,
+	     VbeInfo->vbeModeInfoBlock.vbe12_part1.yRes,
+	     VbeInfo->vbeModeInfoBlock.vbe_common.bytesPerScanLine,
+	     VbeInfo->vbeModeInfoBlock.vbe12_part1.bitsPerPixel,
+	     VbeInfo->vbeModeInfoBlock.vbe20.physBasePtr);
+}
+
+static void KiDumpBootInfoMemMap(seL4_X86_BootInfo_mmap_t *MemMapInfo)
+{
+}
+
+static void KiDumpBootInfoFrameBuffer(seL4_X86_BootInfo_fb_t *FbInfo)
+{
+}
+
 static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 {
     char buf[64];
@@ -105,6 +138,43 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
     DbgPrint("    initThreadCNodeSizeBits = %zd\n", bootinfo->initThreadCNodeSizeBits);
     DbgPrint("    initThreadDomain = %zd\n", bootinfo->initThreadDomain);
     DbgPrint("    untyped = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->untyped));
+
+    if (bootinfo->extraLen) {
+	DbgPrint("Extra bootinfo structures:\n");
+	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD) bootinfo + PAGE_SIZE);
+	while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+	    switch (BootInfoHeader->id) {
+	    case SEL4_BOOTINFO_HEADER_PADDING:
+		DbgPrint("    empty bootinfo padding of size 0x%zx\n", BootInfoHeader->len);
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_VBE:
+		DbgPrint("    x86 vbe info of size 0x%zx\n", BootInfoHeader->len);
+		KiDumpBootInfoVbe((seL4_X86_BootInfo_VBE *)BootInfoHeader);
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
+		DbgPrint("    x86 mem map of size 0x%zx\n", BootInfoHeader->len);
+		KiDumpBootInfoMemMap((seL4_X86_BootInfo_mmap_t *)BootInfoHeader);
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
+		DbgPrint("    x86 acpi rsdp of size 0x%zx\n", BootInfoHeader->len);
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
+		DbgPrint("    x86 multiboot2 framebuffer info of size 0x%zx\n", BootInfoHeader->len);
+		KiDumpBootInfoFrameBuffer((seL4_X86_BootInfo_fb_t *)BootInfoHeader);
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
+		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
+		break;
+	    case SEL4_BOOTINFO_HEADER_FDT:
+		DbgPrint("    fdt of size 0x%zx\n", BootInfoHeader->len);
+		break;
+	    default:
+		DbgPrint("    unknown bootinfo of id %zd and size 0x%zx\n", BootInfoHeader->id, BootInfoHeader->len);
+		break;
+	    }
+	    BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)BootInfoHeader + BootInfoHeader->len);
+	}
+    }
 }
 
 static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
@@ -112,12 +182,11 @@ static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
     seL4_SlotRegion slots = bootinfo->userImageFrames;
     char buf[64];
 
-    DbgPrint("Initial root task user image frames:\n");
-    for (seL4_CPtr cap = slots.start; cap < slots.end; cap++) {
-	seL4_X86_Page_GetAddress_t addr = seL4_X86_Page_GetAddress(cap);
-	DbgPrint("    frame cap = %zd (0x%zx) paddr = %p error = %d\n",
-		 cap, cap, (PVOID) addr.paddr, addr.error);
-    }
+    DbgPrint("Initial root task user image frames:\n"
+	     "    frame cap = [%zd, %zd] ([0x%zx, 0x%zx]) paddr = [%p, %p]\n",
+	     slots.start, slots.end-1, slots.start, slots.end-1,
+	     (PVOID) seL4_X86_Page_GetAddress(slots.start).paddr,
+	     (PVOID) (seL4_X86_Page_GetAddress(slots.end-1).paddr + PAGE_SIZE - 1));
 }
 
 static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
