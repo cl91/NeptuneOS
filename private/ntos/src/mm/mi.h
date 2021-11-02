@@ -216,6 +216,8 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 /* avltree.c */
 PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 				       IN MWORD Key);
+PMM_AVL_NODE MiAvlTreeFindNodeOrPrev(IN PMM_AVL_TREE Tree,
+				     IN MWORD Key);
 VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 			 IN PMM_AVL_NODE Parent,
 			 IN PMM_AVL_NODE Node);

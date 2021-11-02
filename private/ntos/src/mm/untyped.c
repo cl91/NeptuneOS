@@ -194,14 +194,14 @@ static inline BOOLEAN MiUntypedContainsPhyAddr(IN PUNTYPED Untyped,
 }
 
 static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
-				     IN MWORD PhyAddr)
+				  IN MWORD PhyAddr)
 {
     PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
     if (PhyMem->CachedRootUntyped != NULL
 	&& MiUntypedContainsPhyAddr(PhyMem->CachedRootUntyped, PhyAddr)) {
 	return PhyMem->CachedRootUntyped;
     }
-    PMM_AVL_NODE Node = MiAvlTreeFindNodeOrParent(Tree, PhyAddr);
+    PMM_AVL_NODE Node = MiAvlTreeFindNodeOrPrev(Tree, PhyAddr);
     PUNTYPED Parent = MM_AVL_NODE_TO_UNTYPED(Node);
     if (Parent != NULL && MiUntypedContainsPhyAddr(Parent, PhyAddr)) {
 	PhyMem->CachedRootUntyped = Parent;
@@ -211,7 +211,7 @@ static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 }
 
 static PUNTYPED MiFindRootIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
-				       IN MWORD PhyAddr)
+				    IN MWORD PhyAddr)
 {
     PUNTYPED Untyped = MiFindRootUntyped(PhyMem, PhyAddr);
     if ((Untyped == NULL) || (Untyped->IsDevice == FALSE)) {

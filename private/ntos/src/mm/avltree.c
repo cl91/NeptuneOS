@@ -254,9 +254,10 @@ static BOOLEAN MiAvlTreeRebalanceNode(PMM_AVL_TREE Tree,
 }
 
 /*
- * Returns Node with largest key such that
- * Node->Key <= input Key
- * Returns NULL if no such node is found
+ * Returns the node of given key if it is in the tree. Otherwise,
+ * returns its parent should it be inserted.
+ *
+ * Note: use this to find the Parent node if you want to insert into tree.
  */
 PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 				       IN MWORD Key)
@@ -278,6 +279,27 @@ PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 	}
     }
     return Parent;
+}
+
+/*
+ * Returns Node with largest key such that
+ * Node->Key <= input Key
+ * Returns NULL if no such node is found
+ *
+ * Note: don't use this to find the parent node if you want to insert into tree.
+ * Use MiAvlTreeFindNodeOrParent instead.
+ */
+PMM_AVL_NODE MiAvlTreeFindNodeOrPrev(IN PMM_AVL_TREE Tree,
+				     IN MWORD Key)
+{
+    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, Key);
+    if (Parent == NULL) {
+	return NULL;
+    }
+    if (Parent->Key <= Key) {
+	return Parent;
+    }
+    return MiAvlGetPrevNode(Tree, Parent);
 }
 
 /*
