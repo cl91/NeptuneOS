@@ -34,6 +34,8 @@
 #define STATUS_NTOS_NO_REPLY			NTOS_INFORMATION(2)
 #define STATUS_NTOS_DRIVER_ALREADY_LOADED	NTOS_SUCCESS(3)
 
+#define assert_ret(expr)	if (!(expr)) { return STATUS_NTOS_BUG; }
+
 /*
  * Doubly-linked list helper routines
  */

@@ -3,7 +3,8 @@
 /*
  * TODO: Check if calling process has the required privilege
  */
-NTSTATUS NtDisplayString(IN PTHREAD Thread,
+NTSTATUS NtDisplayString(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
 			 IN PCSTR String)
 {
     KeVgaWriteString(String);

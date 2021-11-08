@@ -14,7 +14,8 @@ static NTSTATUS PspSuspendThread(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtTerminateThread(IN PTHREAD Thread,
+NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
                            IN HANDLE ThreadHandle,
                            IN NTSTATUS ExitStatus)
 {
@@ -25,7 +26,8 @@ NTSTATUS NtTerminateThread(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtTerminateProcess(IN PTHREAD Thread,
+NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
+			    IN PTHREAD Thread,
                             IN HANDLE ProcessHandle,
                             IN NTSTATUS ExitStatus)
 {

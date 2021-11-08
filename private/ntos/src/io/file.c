@@ -14,8 +14,6 @@ NTSTATUS IopFileObjectInitProc(POBJECT Object)
 
 /*
  * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
- * Buffer must be aligned with 4K page boundary. Size is rounded up
- * to 4K page boundary.
  */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
 		      IN PVOID BufferPtr,
@@ -40,7 +38,13 @@ NTSTATUS IopFileObjectOpenProc(POBJECT Object)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtCreateFile(IN PTHREAD Thread,
+NTSTATUS IoOpenFile(IN PCSTR FullPath)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtCreateFile(IN ASYNC_STATE State,
+		      IN PTHREAD Thread,
                       OUT HANDLE *FileHandle,
                       IN ACCESS_MASK DesiredAccess,
                       IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -53,10 +57,17 @@ NTSTATUS NtCreateFile(IN PTHREAD Thread,
                       IN OPTIONAL PVOID EaBuffer,
                       IN ULONG EaLength)
 {
+    DbgTrace("Got create file name %s file attr 0x%x share access 0x%x create disp 0x%x create opt 0x%x\n",
+	     ObjectAttributes.ObjectNameBuffer, FileAttributes, ShareAccess, CreateDisposition, CreateOptions);
+    PCSTR DevicePath = ObjectAttributes.ObjectNameBuffer;
+    PIO_DEVICE_OBJECT DeviceObject = NULL;
+    RET_ERR(ObReferenceObjectByName(DevicePath, OBJECT_TYPE_DEVICE, (POBJECT *)&DeviceObject));
+    assert(DeviceObject != NULL);
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtOpenFile(IN PTHREAD Thread,
+NTSTATUS NtOpenFile(IN ASYNC_STATE State,
+		    IN PTHREAD Thread,
                     OUT HANDLE *FileHandle,
                     IN ACCESS_MASK DesiredAccess,
                     IN OB_OBJECT_ATTRIBUTES ObjectAttributes,

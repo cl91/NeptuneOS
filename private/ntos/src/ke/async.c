@@ -12,12 +12,13 @@ static inline VOID KiInitializeSingleWaitBlock(IN PKWAIT_BLOCK WaitBlock,
     InsertHeadList(&DispatcherObject->WaitBlockList, &WaitBlock->DispatcherLink);
 }
 
-NTSTATUS KeWaitForSingleObject(IN PTHREAD Thread,
+NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
 			       IN PDISPATCHER_HEADER DispatcherObject)
 {
     assert(Thread != NULL);
     assert(DispatcherObject != NULL);
-    ASYNC_BEGIN(Thread);
+    ASYNC_BEGIN(State);
 
     /* This is the first time that this function is being called. Add the
      * dispatcher object to the thread's root wait block and suspend the thread. */
@@ -25,7 +26,7 @@ NTSTATUS KeWaitForSingleObject(IN PTHREAD Thread,
     KiInitializeSingleWaitBlock(&Thread->RootWaitBlock, Thread, DispatcherObject);
     Thread->Suspended = TRUE;
 
-    ASYNC_YIELD(Thread);
+    ASYNC_YIELD(State);
 
     /* If the control flow gets here it means that we are being called a second
      * time by the system service dispatcher. Remove the dispatcher object from
@@ -112,19 +113,22 @@ VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
     Dispatcher->Signaled = TRUE;
 }
 
-NTSTATUS NtTestAlert(IN PTHREAD Thread)
+NTSTATUS NtTestAlert(IN ASYNC_STATE State,
+		     IN PTHREAD Thread)
 {
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtContinue(IN PTHREAD Thread,
+NTSTATUS NtContinue(IN ASYNC_STATE State,
+		    IN PTHREAD Thread,
                     IN PCONTEXT Context,
                     IN BOOLEAN TestAlert)
 {
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtWaitForSingleObject(IN PTHREAD Thread,
+NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
                                IN HANDLE ObjectHandle,
                                IN BOOLEAN Alertable,
                                IN OPTIONAL PLARGE_INTEGER TimeOut)

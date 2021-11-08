@@ -50,10 +50,14 @@ static NTSTATUS IopDriverEventLoop(IN PDRIVER_OBJECT DriverObject)
     }
 }
 
-VOID HalStartup(seL4_IPCBuffer *IpcBuffer, seL4_CPtr HalServiceCap)
+VOID HalStartup(IN seL4_IPCBuffer *IpcBuffer,
+		IN seL4_CPtr HalServiceCap,
+		IN PNTDLL_DRIVER_INIT_INFO InitInfo)
 {
     __sel4_ipc_buffer = IpcBuffer;
     KiHalServiceCap = HalServiceCap;
+    IopIncomingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->IncomingIrpBuffer;
+    IopOutgoingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->OutgoingIrpBuffer;
 
     NtDisplayStringA("hal.dll: Allocating DriverObject... ");
     PDRIVER_OBJECT DriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),

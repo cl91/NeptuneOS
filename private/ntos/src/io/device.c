@@ -10,7 +10,8 @@ NTSTATUS IopDeviceObjectInitProc(POBJECT Object)
 /*
  * Note: DeviceName must be a full path.
  */
-NTSTATUS IopCreateDevice(IN PTHREAD Thread,
+NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
                          IN OPTIONAL PCSTR DeviceName,
                          IN DEVICE_TYPE DeviceType,
                          IN ULONG DeviceCharacteristics,
@@ -58,7 +59,8 @@ NTSTATUS IopCreateDevice(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtDeviceIoControlFile(IN PTHREAD Thread,
+NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
                                IN HANDLE FileHandle,
                                IN HANDLE Event,
                                IN PIO_APC_ROUTINE ApcRoutine,

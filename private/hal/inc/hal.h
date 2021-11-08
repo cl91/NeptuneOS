@@ -34,3 +34,7 @@
 
 #define IopFreePool(Ptr)			\
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
+
+/* irp.c */
+extern PIO_REQUEST_PACKET IopIncomingIrpBuffer;
+extern PIO_REQUEST_PACKET IopOutgoingIrpBuffer;

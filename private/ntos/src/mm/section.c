@@ -575,8 +575,8 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-
-NTSTATUS NtCreateSection(IN PTHREAD Thread,
+NTSTATUS NtCreateSection(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
                          OUT HANDLE *SectionHandle,
                          IN ACCESS_MASK DesiredAccess,
                          IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -588,7 +588,8 @@ NTSTATUS NtCreateSection(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtQuerySection(IN PTHREAD Thread,
+NTSTATUS NtQuerySection(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
                         IN HANDLE SectionHandle,
                         IN SECTION_INFORMATION_CLASS SectionInformationClass,
                         IN PVOID SectionInformationBuffer,

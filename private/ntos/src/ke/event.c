@@ -5,7 +5,8 @@ VOID KeSetEvent(IN PKEVENT Event)
     KiSignalDispatcherObject(&Event->Header);
 }
 
-NTSTATUS NtCreateEvent(IN PTHREAD Thread,
+NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
                        OUT HANDLE *EventHandle,
                        IN ACCESS_MASK DesiredAccess,
                        IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -15,7 +16,8 @@ NTSTATUS NtCreateEvent(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtSetEvent(IN PTHREAD Thread,
+NTSTATUS NtSetEvent(IN ASYNC_STATE State,
+		    IN PTHREAD Thread,
                     IN HANDLE EventHandle,
                     OUT OPTIONAL LONG *PreviousState)
 {

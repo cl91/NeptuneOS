@@ -193,5 +193,6 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 
 /* obref.c */
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
+				 IN OBJECT_TYPE_ENUM Type,
 				 OUT POBJECT *Object);
 NTSTATUS ObDeleteObject(IN POBJECT Object);

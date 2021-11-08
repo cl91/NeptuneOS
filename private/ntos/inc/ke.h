@@ -49,6 +49,162 @@ typedef struct _X86_IOPORT {
 #define VGA_FG_COLOR			(VGA_WHITE)
 #define VGA_TEXT_COLOR			(VGA_BG_COLOR | VGA_FG_COLOR)
 
+
+/*
+ * Asynchronous routine helpers
+ *
+ * (This is inspired by protothread [1] and async.h from naasking [2].)
+ *
+ * When the NTOS server gets a client NTAPI request, it is often the case that
+ * the request cannot be immediately satisfied. For instance, the client may
+ * request to read a file into a buffer, but the file hasn't yet been read from
+ * the disk. We do not want to synchronously wait for the driver process to
+ * complete the read since (1) this incurs a process switch which is costly
+ * and (2) more importantly, a misbehaving driver may never complete the read,
+ * thus locking the entire system.
+ *
+ * Instead we save the current state of the system service handler function
+ * into a designated place in the thread's THREAD object, and add the thread
+ * to the relevant wait queue to suspend the execution of the currently running
+ * system service handler function, such that in the future when the driver
+ * process does complete the read request, the system service handler function
+ * is resumed and can complete the request this time.
+ *
+ * Since a system service handler may invoke multiple asynchronous subroutines,
+ * it is necessary for the benefit of readability to devise a way to automate
+ * the writing of boilerplate asynchronous state management code. The basic idea
+ * is for any function that can be called asynchronously, we add an additional
+ * input parameter of type ASYNC_STACK as the first parameter of the function. This
+ * parameter keeps track of the progress that the asynchronous subroutine has made
+ * up till the point that it must block. When the async function needs to block and
+ * wait for the completion of an external event, it returns the line number from
+ * which future resumption of execution should start, as well as a special status
+ * indicating that the subroutine has blocked asynchronously. By examining the
+ * asynchronous state, future invocation of the same asynchronous subroutine can
+ * determine where its last execution has been and resume from there. Since an
+ * asynchronous function may invoke other asynchronous routines (or itself), the
+ * status of all asynchronous functions form a stack, ie. the ASYNC_STACK struct.
+ *
+ * [1] http://dunkels.com/adam/pt/
+ * [2] https://github.com/naasking/async.h
+ */
+
+#define ASYNC_MAX_CALL_STACK	32
+
+/*
+ * Starting from the top level function (ie. a service handler), all
+ * async function calls push onto the top of the ASYNC_STACK their
+ * own async status word (ie. line number from which to resume execution).
+ * At the entry of the service handler, StackTop is -1, indicating that the
+ * stack is empty.
+ */
+typedef struct _ASYNC_STACK {
+    ULONG Stack[ASYNC_MAX_CALL_STACK]; /* Stack of line numbers from which execution is to be resumed */
+} ASYNC_STACK, *PASYNC_STACK;
+
+/*
+ * For each async function, it takes an async state parameter which records
+ * the async stack top of the current call frame. At the entry of the service
+ * handler, StackTop is -1, indicating that the stack is empty.
+ *
+ * NOTE: An async state is function-scope and represents the current call frame.
+ * It should always be passed as value and should never be passed as pointer.
+ */
+typedef struct _ASYNC_STATE {
+    PASYNC_STACK AsyncStack;
+    LONG StackTop; /* Points to the async status of the current call frame */
+} ASYNC_STATE;
+
+#define KI_DEFINE_INIT_ASYNC_STATE(state, thread)	\
+    ASYNC_STATE state = {				\
+	.AsyncStack = &thread->AsyncStack,		\
+	.StackTop = -1					\
+    }
+
+/*
+ * Dump the async state of the function
+ */
+#define ASYNC_DUMP(state)						\
+    DbgTrace("Dumping async state for thread %p: Stack top %d. "	\
+	     "Async states:",						\
+	     CONTAINING_RECORD(state.AsyncStack, THREAD, AsyncStack),	\
+	     state.StackTop);						\
+    for (LONG __async_tmp_i = 0;					\
+	 __async_tmp_i <= state.StackTop;				\
+	 __async_tmp_i++) {						\
+	DbgPrint(" %d", state.AsyncStack->Stack[__async_tmp_i]);	\
+    }									\
+    DbgPrint("\n")
+
+/**
+ * Mark the start of an async subroutine
+ * @param thread The thread on which the function is being executed
+ */
+#define ASYNC_BEGIN(state)						\
+    (state).StackTop++;							\
+    if ((state).StackTop >= ASYNC_MAX_CALL_STACK) {			\
+	assert(FALSE);							\
+	return STATUS_ASYNC_STACK_OVERFLOW;				\
+    }									\
+    switch (KiAsyncGetLineNum(state)) { case 0:
+
+/**
+ * Mark the end of a async subroutine.
+ * @param Status The NTSTATUS to return to the caller. Must not be from
+ * the async facility.
+ */
+#define ASYNC_END(status)			\
+    assert(!IS_ASYNC_STATUS(status));		\
+    return status;				\
+    default:					\
+    assert(FALSE);				\
+    return STATUS_ASYNC_BUGBUG; }
+
+/**
+ * Check if async subroutine is done
+ * @param status The NTSTATUS returned by the async function
+ */
+#define ASYNC_IS_DONE(status)			\
+    (status != STATUS_ASYNC_PENDING)
+
+/**
+ * Wait for the completion of the asynchronous function
+ *
+ * NOTE: Just to be safe this macro is written in a single line (since we use the __LINE__ macro)
+ */
+#define AWAIT(func, state, ...) case __LINE__: if (!ASYNC_IS_DONE(func(state __VA_OPT__(,) __VA_ARGS__))) return KiAsyncYield(state, __LINE__)
+
+/**
+ * Yield execution
+ *
+ * NOTE: Just to be safe this macro is written in a single line (since we use the __LINE__ macro)
+ */
+#define ASYNC_YIELD(state) return KiAsyncYield(state, __LINE__); case __LINE__:
+
+/*
+ * Returns the line number from which the current async function should
+ * resume execution. For a new async stack frame, we use zero as the line
+ * number since __LINE__ is always greater than 0 for any (reasonable)
+ * translation unit.
+ */
+static inline LONG KiAsyncGetLineNum(ASYNC_STATE State)
+{
+    assert(State.StackTop < ASYNC_MAX_CALL_STACK);
+    return State.AsyncStack->Stack[State.StackTop];
+}
+
+/*
+ * Record the line number from which to resume the async function and
+ * return async pending status.
+ */
+static inline NTSTATUS KiAsyncYield(ASYNC_STATE State, LONG LineNum)
+{
+    assert(State.StackTop < ASYNC_MAX_CALL_STACK);
+    State.AsyncStack->Stack[State.StackTop] = LineNum;
+    return STATUS_ASYNC_PENDING;
+}
+
+
 /*
  * Synchronization Primitives
  *
@@ -131,7 +287,8 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
 }
 
 /* async.c */
-NTSTATUS KeWaitForSingleObject(IN struct _THREAD *Thread,
+NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
+			       IN struct _THREAD *Thread,
 			       IN PDISPATCHER_HEADER DispatcherObject);
 
 /* bugcheck.c */

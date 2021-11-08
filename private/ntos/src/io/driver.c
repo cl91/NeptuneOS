@@ -36,7 +36,7 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
     DriverObjectPath[BufLength-1] = '\0';
     DbgTrace("%s %s %s\n", DriverToLoad, DriverName, DriverObjectPath);
     PIO_DRIVER_OBJECT DriverObject = NULL;
-    if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, (POBJECT *)&DriverObject))) {
+    if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, OBJECT_TYPE_DRIVER, (POBJECT *)&DriverObject))) {
 	/* Driver is already loaded. */
 	/* TODO: Check if it's the same driver. For now we return SUCCESS */
 	return STATUS_NTOS_DRIVER_ALREADY_LOADED;
@@ -47,7 +47,7 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
     assert(DriverObject != NULL);
 
     PIO_FILE_OBJECT DriverFile = NULL;
-    RET_ERR_EX(ObReferenceObjectByName(DriverToLoad, (POBJECT *) &DriverFile),
+    RET_ERR_EX(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, (POBJECT *) &DriverFile),
 	       ObDeleteObject(DriverObject));
     assert(DriverFile != NULL);
 
@@ -78,19 +78,23 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtLoadDriver(IN PTHREAD Thread,
+NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
+		      IN PTHREAD Thread,
 		      IN PCSTR DriverServiceName)
 {
-    ASYNC_BEGIN(Thread);
+    ASYNC_BEGIN(State);
 
     PIO_DRIVER_OBJECT DriverObject = NULL;
     NTSTATUS Status = IoLoadDriver(DriverServiceName, &DriverObject);
     if (Status == STATUS_NTOS_DRIVER_ALREADY_LOADED) {
 	return STATUS_SUCCESS;
     }
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
     assert(DriverObject != NULL);
 
-    AWAIT(KeWaitForSingleObject, Thread, &DriverObject->InitializationDoneEvent.Header);
+    AWAIT(KeWaitForSingleObject, State, Thread, &DriverObject->InitializationDoneEvent.Header);
 
     ASYNC_END(STATUS_SUCCESS);
 }

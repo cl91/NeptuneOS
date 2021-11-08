@@ -1,4 +1,5 @@
 #include "psp.h"
+#include <halsvc.h>
 
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
@@ -179,10 +180,8 @@ static inline VOID PspSetThreadDebugName(IN PTHREAD Thread)
     assert(Thread->Process->ImageFile != NULL);
     assert(Thread->Process->ImageFile->FileName != NULL);
     char NameBuf[seL4_MsgMaxLength * sizeof(MWORD)];
-    /* FIXME: For now we use the IPC buffer client addr to distinguish threads.
-     * We would like to change it to the thread entry point. */
-    snprintf(NameBuf, sizeof(NameBuf), "%s!%p", Thread->Process->ImageFile->FileName,
-	     (PVOID) Thread->IpcBufferClientAddr);
+    /* We use the thread object addr to distinguish threads. */
+    snprintf(NameBuf, sizeof(NameBuf), "%s!%p", Thread->Process->ImageFile->FileName, Thread);
     seL4_DebugNameThread(Thread->TreeNode.Cap, NameBuf);
 #endif
 }
@@ -415,7 +414,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     DllPath[sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1] = '\\';
     memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
 
-    NTSTATUS Status = ObReferenceObjectByName(DllPath, (POBJECT *)DllFile);
+    NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
@@ -632,6 +631,41 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
     RET_ERR_EX(PspMapDependencies(Process, LoaderSharedData, &LoaderDataOffset, ImageFile->BufferPtr),
 	       ObDeleteObject(Process));
 
+    if (DriverObject != NULL) {
+	PMMVAD ServerIncomingIrpVad = NULL;
+	PMMVAD ClientIncomingIrpVad = NULL;
+	RET_ERR_EX(PspMapSharedRegion(Process,
+				      EX_DRIVER_IRP_REGION_START,
+				      EX_DRIVER_IRP_REGION_END,
+				      DRIVER_IRP_BUFFER_RESERVE,
+				      DRIVER_IRP_BUFFER_COMMIT,
+				      USER_IMAGE_REGION_START,
+				      USER_IMAGE_REGION_END,
+				      MEM_RESERVE_READ_ONLY,
+				      &ServerIncomingIrpVad,
+				      &ClientIncomingIrpVad),
+		   ObDeleteObject(Process));
+	DriverObject->IncomingIrpServerAddr = ServerIncomingIrpVad->AvlNode.Key;
+	DriverObject->IncomingIrpClientAddr = ClientIncomingIrpVad->AvlNode.Key;
+	PMMVAD ServerOutgoingIrpVad = NULL;
+	PMMVAD ClientOutgoingIrpVad = NULL;
+	RET_ERR_EX(PspMapSharedRegion(Process,
+				      EX_DRIVER_IRP_REGION_START,
+				      EX_DRIVER_IRP_REGION_END,
+				      DRIVER_IRP_BUFFER_RESERVE,
+				      DRIVER_IRP_BUFFER_COMMIT,
+				      USER_IMAGE_REGION_START,
+				      USER_IMAGE_REGION_END,
+				      0,
+				      &ServerOutgoingIrpVad,
+				      &ClientOutgoingIrpVad),
+		   ObDeleteObject(Process));
+	DriverObject->OutgoingIrpServerAddr = ServerOutgoingIrpVad->AvlNode.Key;
+	DriverObject->OutgoingIrpClientAddr = ClientOutgoingIrpVad->AvlNode.Key;
+	Process->InitInfo.DriverInitInfo.IncomingIrpBuffer = DriverObject->IncomingIrpClientAddr;
+	Process->InitInfo.DriverInitInfo.IncomingIrpBuffer = DriverObject->IncomingIrpClientAddr;
+    }
+
     /* Create the Event objects used by the NTDLL ldr component */
     /* FIXME: TODO */
     Process->InitInfo.ProcessHeapLockSemaphore = (HANDLE) 3;
@@ -662,7 +696,8 @@ NTSTATUS PsLoadDll(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtCreateThread(IN PTHREAD Thread,
+NTSTATUS NtCreateThread(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
                         OUT HANDLE *ThreadHandle,
                         IN ACCESS_MASK DesiredAccess,
                         IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -675,7 +710,8 @@ NTSTATUS NtCreateThread(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtCreateProcess(IN PTHREAD Thread,
+NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
                          OUT HANDLE *ProcessHandle,
                          IN ACCESS_MASK DesiredAccess,
                          IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,

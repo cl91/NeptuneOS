@@ -1,6 +1,7 @@
 #include "psp.h"
 
-NTSTATUS NtQuerySystemInformation(IN PTHREAD Thread,
+NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
+				  IN PTHREAD Thread,
                                   IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
                                   IN PVOID SystemInformationBuffer,
                                   IN ULONG SystemInformationLength,
@@ -9,14 +10,16 @@ NTSTATUS NtQuerySystemInformation(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtQueryPerformanceCounter(IN PTHREAD Thread,
+NTSTATUS NtQueryPerformanceCounter(IN ASYNC_STATE State,
+				   IN PTHREAD Thread,
                                    OUT LARGE_INTEGER *PerformanceCounter,
                                    OUT OPTIONAL LARGE_INTEGER *PerformanceFrequency)
 {
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtQueryInformationProcess(IN PTHREAD Thread,
+NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
+				   IN PTHREAD Thread,
                                    IN HANDLE ProcessHandle,
                                    IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
                                    IN PVOID ProcessInformationBuffer,
@@ -26,7 +29,8 @@ NTSTATUS NtQueryInformationProcess(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtQueryInformationThread(IN PTHREAD Thread,
+NTSTATUS NtQueryInformationThread(IN ASYNC_STATE State,
+				  IN PTHREAD Thread,
                                   IN HANDLE ThreadHandle,
                                   IN THREAD_INFORMATION_CLASS ThreadInformationClass,
                                   IN PVOID ThreadInformationBuffer,
@@ -36,7 +40,8 @@ NTSTATUS NtQueryInformationThread(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtSetInformationProcess(IN PTHREAD Thread,
+NTSTATUS NtSetInformationProcess(IN ASYNC_STATE State,
+				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
                                  IN PVOID ProcessInformationBuffer,
@@ -45,7 +50,8 @@ NTSTATUS NtSetInformationProcess(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtSetInformationThread(IN PTHREAD Thread,
+NTSTATUS NtSetInformationThread(IN ASYNC_STATE State,
+				IN PTHREAD Thread,
                                 IN HANDLE ThreadHandle,
                                 IN THREAD_INFORMATION_CLASS ThreadInformationClass,
                                 IN PVOID ThreadInformationBuffer,

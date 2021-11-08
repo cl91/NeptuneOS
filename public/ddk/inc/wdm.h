@@ -353,7 +353,7 @@ typedef DRIVER_CANCEL *PDRIVER_CANCEL;
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     SHORT Type;
     USHORT Size;
-    struct _MDL *MdlAddress;
+    PMDL MdlAddress;
     ULONG Flags;
     union {
 	struct _IRP *MasterIrp;
@@ -906,5 +906,5 @@ NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
 
 FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
 {
-  return Irp->Tail.Overlay.CurrentStackLocation;
+    return Irp->Tail.Overlay.CurrentStackLocation;
 }

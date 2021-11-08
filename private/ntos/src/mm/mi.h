@@ -3,6 +3,12 @@
 #include <nt.h>
 #include <ntos.h>
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#undef DbgTrace
+#define DbgTrace(...)
+#endif
+
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)
 #define LOG2SIZE_PER_CNODE_SLOT	(MWORD_LOG2SIZE + 2)
 

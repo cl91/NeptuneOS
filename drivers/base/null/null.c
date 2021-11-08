@@ -70,13 +70,10 @@ NTAPI BOOLEAN NullWrite(IN PFILE_OBJECT FileObject,
 NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 			    IN PIRP Irp)
 {
-    NTSTATUS Status;
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    PFILE_OBJECT FileObject;
-    ULONG Length;
+    PFILE_OBJECT FileObject = IoStack->FileObject;
 
     /* Get the file object and check what kind of request this is */
-    FileObject = IoStack->FileObject;
     switch (IoStack->MajorFunction) {
     case IRP_MJ_CREATE:
     case IRP_MJ_CLOSE:
@@ -116,7 +113,7 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
     case IRP_MJ_QUERY_INFORMATION:
 
 	/* Get the length inputted and do the request */
-	Length = IoStack->Parameters.QueryFile.Length;
+	ULONG Length = IoStack->Parameters.QueryFile.Length;
 	Irp->IoStatus.Status = NullQueryFileInformation(Irp->AssociatedIrp.SystemBuffer, &Length,
 							IoStack->Parameters.QueryFile.FileInformationClass);
 
@@ -126,7 +123,7 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Complete the request */
-    Status = Irp->IoStatus.Status;
+    NTSTATUS Status = Irp->IoStatus.Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return Status;
 }

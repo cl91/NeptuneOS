@@ -64,6 +64,11 @@ typedef struct _NTDLL_THREAD_INIT_INFO {
     MWORD HalServiceCap;
 } NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
 
+typedef struct _NTDLL_DRIVER_INIT_INFO {
+    MWORD IncomingIrpBuffer;
+    MWORD OutgoingIrpBuffer;
+} NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
+
 typedef struct _NTDLL_PROCESS_INIT_INFO {
     MWORD LoaderHeapStart;
     MWORD ProcessHeapStart;
@@ -77,13 +82,16 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     HANDLE ProcessHeapLockSemaphore;
     HANDLE LoaderHeapLockSemaphore;
     BOOLEAN DriverProcess;
+    NTDLL_DRIVER_INIT_INFO DriverInitInfo;
     NTDLL_THREAD_INIT_INFO ThreadInitInfo;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
 
 /*
  * Start routine of hal.dll. In driver processes we don't call the
  * driver entry point directly, and instead call HalStartup. */
-typedef VOID (*PHAL_START_ROUTINE)(seL4_IPCBuffer *IpcBuffer, seL4_CPtr HalServiceCap);
+typedef VOID (*PHAL_START_ROUTINE)(IN seL4_IPCBuffer *IpcBuffer,
+				   IN seL4_CPtr HalServiceCap,
+				   IN PNTDLL_DRIVER_INIT_INFO InitInfo);
 
 /*
  * System dll TLS index. Executable has TLS index == 0. NTDLL always

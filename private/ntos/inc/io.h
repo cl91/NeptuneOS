@@ -15,6 +15,10 @@ typedef struct _IO_DRIVER_OBJECT {
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
     KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting IRP */
+    MWORD IncomingIrpServerAddr; /* IO Request Packets sent to the driver */
+    MWORD IncomingIrpClientAddr;
+    MWORD OutgoingIrpServerAddr; /* Driver's replies */
+    MWORD OutgoingIrpClientAddr;
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*

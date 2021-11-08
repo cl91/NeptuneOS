@@ -1,6 +1,7 @@
 #include "ei.h"
 
-NTSTATUS NtRaiseHardError(IN PTHREAD Thread,
+NTSTATUS NtRaiseHardError(IN ASYNC_STATE State,
+			  IN PTHREAD Thread,
                           IN NTSTATUS ErrorStatus,
                           IN ULONG NumberOfParameters,
                           IN ULONG UnicodeStringParameterMask,

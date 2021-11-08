@@ -965,7 +965,9 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 		Status = STATUS_ENTRYPOINT_NOT_FOUND;
 	    } else {
 		EntryPoint = HalDllEntry->EntryPoint;
-		((PHAL_START_ROUTINE)HalDllEntry->EntryPoint)(IpcBuffer, InitInfo.ThreadInitInfo.HalServiceCap);
+		((PHAL_START_ROUTINE)HalDllEntry->EntryPoint)(IpcBuffer,
+							      InitInfo.ThreadInitInfo.HalServiceCap,
+							      &InitInfo.DriverInitInfo);
 	    }
 	} else {
 	    /* Calls the image entry point */

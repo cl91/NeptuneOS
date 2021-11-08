@@ -491,7 +491,8 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
     return MiPagingTypeIsPage(Page->Type) ? Page : NULL;
 }
 
-NTSTATUS NtAllocateVirtualMemory(IN PTHREAD Thread,
+NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
+				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN OUT OPTIONAL PVOID *BaseAddress,
                                  IN ULONG_PTR ZeroBits,
@@ -592,7 +593,8 @@ NTSTATUS NtAllocateVirtualMemory(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtFreeVirtualMemory(IN PTHREAD Thread,
+NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
+			     IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
                              IN PVOID BaseAddress,
                              IN OUT SIZE_T *RegionSize,
@@ -601,7 +603,8 @@ NTSTATUS NtFreeVirtualMemory(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtWriteVirtualMemory(IN PTHREAD Thread,
+NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
+			      IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress,
                               IN PVOID Buffer,
@@ -612,7 +615,8 @@ NTSTATUS NtWriteVirtualMemory(IN PTHREAD Thread,
 }
 
 
-NTSTATUS NtReadVirtualMemory(IN PTHREAD Thread,
+NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
+			     IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
                              IN PVOID BaseAddress,
                              IN PVOID Buffer,
@@ -622,7 +626,8 @@ NTSTATUS NtReadVirtualMemory(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtQueryVirtualMemory(IN PTHREAD Thread,
+NTSTATUS NtQueryVirtualMemory(IN ASYNC_STATE State,
+			      IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress,
                               IN MEMORY_INFORMATION_CLASS MemoryInformationClass,
@@ -633,7 +638,8 @@ NTSTATUS NtQueryVirtualMemory(IN PTHREAD Thread,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtProtectVirtualMemory(IN PTHREAD Thread,
+NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
+				IN PTHREAD Thread,
                                 IN HANDLE ProcessHandle,
                                 IN OUT PVOID *BaseAddress,
                                 IN OUT SIZE_T *NumberOfBytesToProtect,

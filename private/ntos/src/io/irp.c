@@ -1,6 +1,7 @@
 #include "iop.h"
 
-NTSTATUS IopRequestIrp(IN PTHREAD Thread,
+NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
 		       OUT ULONG *pNumIrp)
 {
     assert(Thread != NULL);

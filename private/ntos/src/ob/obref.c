@@ -1,14 +1,21 @@
 #include "obp.h"
 
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
-				 OUT POBJECT *Object)
+				 IN OBJECT_TYPE_ENUM Type,
+				 OUT POBJECT *pObject)
 {
-    if (Object == NULL) {
-	return STATUS_NTOS_BUG;
+    assert(pObject != NULL);
+    POBJECT Object = NULL;
+    RET_ERR(ObpLookupObjectName(Path, &Object));
+    assert(Object != NULL);
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
+    assert(ObjectHeader->Type != NULL);
+    if (ObjectHeader->Type->Index == Type) {
+	ObpReferenceObject(Object);
+	*pObject = Object;
+	return STATUS_SUCCESS;
     }
-    RET_ERR(ObpLookupObjectName(Path, Object));
-    ObpReferenceObject(*Object);
-    return STATUS_SUCCESS;
+    return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
 NTSTATUS ObDeleteObject(IN POBJECT Object)
@@ -35,13 +42,15 @@ NTSTATUS ObDeleteObject(IN POBJECT Object)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtClose(IN PTHREAD Thread,
+NTSTATUS NtClose(IN ASYNC_STATE State,
+		 IN PTHREAD Thread,
 		 IN HANDLE Handle)
 {
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS NtDuplicateObject(IN PTHREAD Thread,
+NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
                            IN HANDLE SourceProcessHandle,
                            IN HANDLE SourceHandle,
                            IN HANDLE TargetProcessHandle,

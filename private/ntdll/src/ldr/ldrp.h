@@ -2,6 +2,12 @@
 
 #include <ntdll.h>
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#undef DbgTrace
+#define DbgTrace(...)
+#endif
+
 #define LDRP_HASH_TABLE_ENTRIES 32
 #define LDRP_GET_HASH_ENTRY(x) (RtlpHashString((x)) & (LDRP_HASH_TABLE_ENTRIES - 1))
 extern LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];

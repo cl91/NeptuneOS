@@ -56,7 +56,7 @@ NTSTATUS IoInitSystemPhase0()
 static NTSTATUS IopLoadHalDll()
 {
     PIO_FILE_OBJECT HalDll = NULL;
-    NTSTATUS Status = ObReferenceObjectByName(HAL_PATH, (POBJECT *) &HalDll);
+    NTSTATUS Status = ObReferenceObjectByName(HAL_PATH, OBJECT_TYPE_FILE, (POBJECT *) &HalDll);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

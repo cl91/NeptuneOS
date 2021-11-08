@@ -26,7 +26,8 @@ NTOS_SVC_GEN_H_TEMPLATE = """#pragma once
 #include <ntos.h>
 {# #}
 {%- for svc in svc_list %}
-NTSTATUS {{svc.name}}(struct _THREAD *Thread{%- for param in svc.params %},
+NTSTATUS {{svc.name}}(IN ASYNC_STATE AsyncState,
+{{svc.server_param_indent}}IN struct _THREAD *Thread{%- for param in svc.params %},
 {{svc.server_param_indent}}{{param.annotation}} {{param.server_decl}}{%- endfor %});
 {# #}
 {%- endfor %}
@@ -103,8 +104,8 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
 {%- endif %}
 {%- endfor %}
         DbgTrace("Calling {{svc.name}}\\n");
-        KiResetAsyncStack(Thread);
-        Status = {{svc.name}}(Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
+        KI_DEFINE_INIT_ASYNC_STATE(AsyncState, Thread);
+        Status = {{svc.name}}(AsyncState, Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
         assert(Status != STATUS_ASYNC_BUGBUG);
         assert(Status != STATUS_ASYNC_STACK_OVERFLOW);
         if (Status == STATUS_ASYNC_PENDING) {
@@ -164,7 +165,8 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
 {%- endif %}
 {%- endfor %}
         DbgTrace("Resuming thread %p. Calling {{svc.name}} with saved context.\\n", Thread);
-        Status = {{svc.name}}(Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
+        KI_DEFINE_INIT_ASYNC_STATE(AsyncState, Thread);
+        Status = {{svc.name}}(AsyncState, Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
         assert(Status != STATUS_ASYNC_BUGBUG);
         assert(Status != STATUS_ASYNC_STACK_OVERFLOW);
         if (Status == STATUS_ASYNC_PENDING) {
