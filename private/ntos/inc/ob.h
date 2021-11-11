@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ke.h"
+#include "mm.h"
+
 /* Unlike in Windows, the ObjectType itself is not a type.
  *
  * Windows has ObpTypeObjectType which denotes the type of all
@@ -20,6 +23,7 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_FILE,
     OBJECT_TYPE_DEVICE,
     OBJECT_TYPE_DRIVER,
+    OBJECT_TYPE_IO_REQUEST_PACKET,
     NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
@@ -36,20 +40,46 @@ typedef enum _OBJECT_TYPE_ENUM {
  * always pass OBJECT pointers across function boundary, and
  * never pass OBJECT_HEADER pointers.
  *
- * The preliminary design is that opening an object can yield
- * a different object (such as a FILE object, or an IO request)
- * which represents an opened instance of said object.
- * For instance, opening a Device object yields a FILE object.
- *
  * The parse procedure allows the object type to implement the
- * idea of a sub-object. Calling the parse procedure produces
- * a sub-object of the object being called.
+ * semantics of sub-object. Calling the parse procedure produces
+ * a sub-object of the object being called. The parse procedure
+ * operates on a global context, meaning that it does not take
+ * a PTHREAD parameter and cannot modify THREAD states.
  *
- * The delete procedure, closing an object, and object life-times
- * are yet to be designed.
+ * On the other hand, the open procedure operates on a thread
+ * context, meaning that it takes a PTHREAD parameter and can
+ * modify the THREAD states. An open procedure of an object type
+ * usually yield an object with a different object type, that
+ * represents an opened instance of the original object.
  *
- * All of these methods operate with in-process pointers. The
- * APIs for handles to objects are yet to be determined.
+ * The IO subsystem uses the facilities of the object manager
+ * extensively. Since opening a device or a file is inherently
+ * an asynchronous process, the IO subsystem uses a two-step
+ * scheme when opening or creating a file. First, the parse
+ * procedures are invoked on the given path to locate the DEVICE
+ * object to be opened. For a simple DEVICE such as \Device\Beep,
+ * the parse prodecure will essentially be a no-op since the
+ * device does not implement sub-objects. The object manager
+ * then invokes the open procedure of the DEVICE object, which
+ * will yield a FILE_OBJECT, representing an opened instance of
+ * the DEVICE object. The open procedure will then constructs
+ * an IO_REQUEST_PACKET object and invoke the open procedure of
+ * the IRP object, which queues the IRP to the thread calling
+ * the NT system service and depending on whether the open is
+ * synchronous or asynchronous, either wait on the IO completion
+ * event or return STATUS_PENDING.
+ *
+ * For a more complex device such as a partition device, its parse
+ * procedure will take the remaining path after the device name
+ * (ie. the src\main.c in \Device\Harddisk0\Partition0\src\main.c)
+ * and first invoke the cache manager and see if the file has been
+ * previously opened. If it was previously opened, the cached device
+ * object is returned immediately. Otherwise, an IO_REQUEST_PACKET
+ * object is constructed and returned, and the open procedure of
+ * the IRP object is invoked just like the simple case above.
+ *
+ * All object methods operate with in-process pointers. Assigning
+ * HANDLEs to opened objects is done by the object manager itself.
  */
 typedef struct _OBJECT_HEADER {
     struct _OBJECT_TYPE *Type;
@@ -112,8 +142,17 @@ typedef NTSTATUS (*OBJECT_INIT_METHOD)(IN POBJECT Self);
  * The open routine produces an opened instance of the object,
  * which can be an object of a different object type. For instance,
  * opening a DEVICE object produces a FILE object.
+ *
+ * Assigning the object handle is not the open routine's concern.
+ * The object manager will assign the handle. 
+ *
+ * The open routine can be null, in which case the opened instance
+ * of an object is itself.
  */
-typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN POBJECT Self);
+typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
+				       IN struct _THREAD *Thread,
+				       IN POBJECT Self,
+				       OUT POBJECT *pOpenedInstance);
 
 /*
  * The parse routine is used by the object manager when other
@@ -167,6 +206,37 @@ typedef struct _OBJECT_DIRECTORY {
     LIST_ENTRY HashBuckets[NUMBER_HASH_BUCKETS];
 } OBJECT_DIRECTORY, *POBJECT_DIRECTORY;
 
+/*
+ * A process's object handle table. All handles are inserted into
+ * an AVL tree, organized by the handle values.
+ */
+typedef struct _HANDLE_TABLE {
+    MM_AVL_TREE Tree;
+} HANDLE_TABLE, *PHANDLE_TABLE;
+
+static inline VOID ObInitializeHandleTable(IN PHANDLE_TABLE Table)
+{
+    MmAvlInitializeTree(&Table->Tree);
+}
+
+/*
+ * An entry in the process's object handle table. Each handle is
+ * represented by an AVL node where the node key is the handle value.
+ */
+typedef struct _HANDLE_TABLE_ENTRY {
+    MM_AVL_NODE AvlNode;	/* Node key is handle */
+    POBJECT Object;
+} HANDLE_TABLE_ENTRY, *PHANDLE_TABLE_ENTRY;
+
+/*
+ * In Windows/ReactOS the lowest two bits of a HANDLE (called EXHANDLE
+ * therein) are available for application use. Therefore all HANDLE
+ * values we return to client processes are aligned by 4. We also skip
+ * the NULL handle value. System services can use NULL as a special
+ * handle value for specific semantics.
+ */
+#define HANDLE_VALUE_INC 4
+
 /* init.c */
 NTSTATUS ObInitSystemPhase0();
 
@@ -195,4 +265,9 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
 				 OUT POBJECT *Object);
+NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
+			    IN struct _THREAD *Thread,
+			    IN PCSTR Path,
+			    IN OBJECT_TYPE_ENUM Type,
+			    OUT HANDLE *pHandle);
 NTSTATUS ObDeleteObject(IN POBJECT Object);

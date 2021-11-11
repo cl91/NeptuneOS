@@ -155,6 +155,15 @@ typedef struct _MM_AVL_NODE {
 
 #define LIST_ENTRY_TO_MM_AVL_NODE(Entry)	CONTAINING_RECORD(Entry, MM_AVL_NODE, ListEntry)
 
+static inline VOID MmAvlInitializeNode(PMM_AVL_NODE Node,
+				       MWORD Key)
+{
+    Node->Parent = 0;
+    Node->LeftChild = Node->RightChild = NULL;
+    Node->Key = Key;
+    Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
+}
+
 /*
  * AVL tree ordered by the key of the tree node
  */
@@ -162,6 +171,12 @@ typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
     LIST_ENTRY NodeList;       /* ordered linearly according to key */
 } MM_AVL_TREE, *PMM_AVL_TREE;
+
+static inline VOID MmAvlInitializeTree(IN PMM_AVL_TREE Tree)
+{
+    Tree->BalancedRoot = NULL;
+    InitializeListHead(&Tree->NodeList);
+}
 
 /*
  * An untyped capability represents either free physical
@@ -470,6 +485,11 @@ NTSTATUS MmInitSystemPhase0(IN seL4_BootInfo *bootinfo);
 NTSTATUS MmInitSystemPhase1();
 
 /* avltree.c */
+PMM_AVL_NODE MmAvlTreeFindNode(IN PMM_AVL_TREE Tree,
+			       IN MWORD Key);
+VOID MmAvlTreeAppendNode(IN PMM_AVL_TREE Tree,
+			 IN OUT PMM_AVL_NODE Node,
+			 IN MWORD Increment);
 VOID MmAvlDumpTree(PMM_AVL_TREE tree);
 VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree);
 typedef VOID (*PMM_AVL_TREE_VISITOR)(PMM_AVL_NODE Node);

@@ -109,21 +109,6 @@ static inline VOID MiInitializeCNode(IN PCNODE Self,
 
 #define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
 
-static inline VOID MiAvlInitializeNode(PMM_AVL_NODE Node,
-				       MWORD Key)
-{
-    Node->Parent = 0;
-    Node->LeftChild = Node->RightChild = NULL;
-    Node->Key = Key;
-    Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
-}
-
-static inline VOID MiAvlInitializeTree(IN PMM_AVL_TREE Tree)
-{
-    Tree->BalancedRoot = NULL;
-    InitializeListHead(&Tree->NodeList);
-}
-
 /*
  * Note: Node must point to zeroed-memory!
  */
@@ -137,7 +122,7 @@ static inline VOID MiInitializeVadNode(IN PMMVAD Node,
     assert(VSpace != NULL);
     assert(IS_PAGE_ALIGNED(WindowSize));
     assert(IS_PAGE_ALIGNED(StartVaddr));
-    MiAvlInitializeNode(&Node->AvlNode, StartVaddr);
+    MmAvlInitializeNode(&Node->AvlNode, StartVaddr);
     Node->VSpace = VSpace;
     Node->Flags = Flags;
     Node->WindowSize = WindowSize;
@@ -187,6 +172,24 @@ static inline BOOLEAN MiAvlTreeIsEmpty(IN PMM_AVL_TREE Tree)
 {
     assert(Tree != NULL);
     return Tree->BalancedRoot == NULL;
+}
+
+static inline PMM_AVL_NODE MiAvlGetLastNode(IN PMM_AVL_TREE Tree)
+{
+    if (IsListEmpty(&Tree->NodeList)) {
+	return NULL;
+    }
+    assert(Tree->NodeList.Blink != NULL);
+    PMM_AVL_NODE Last = CONTAINING_RECORD(Tree->NodeList.Blink,
+					  MM_AVL_NODE, ListEntry);
+#ifdef CONFIG_DEBUG_BUILD
+    PMM_AVL_NODE Node = Tree->BalancedRoot;
+    while (Node->RightChild != NULL) {
+	Node = Node->RightChild;
+    }
+    assert(Last == Node);
+#endif
+    return Last;
 }
 
 /*

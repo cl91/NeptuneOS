@@ -13,7 +13,7 @@ VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
     Self->RootPagingStructure = RootPagingStructure;
     Self->ASIDPool = 0;
     Self->CachedVad = NULL;
-    MiAvlInitializeTree(&Self->VadTree);
+    MmAvlInitializeTree(&Self->VadTree);
 }
 
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)

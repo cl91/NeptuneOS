@@ -33,14 +33,16 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopFileObjectOpenProc(POBJECT Object)
+/*
+ * A FILE_OBJECT is an opened instance of a DEVICE_OBJECT. It therefore
+ * makes no sense to open a FILE_OBJECT. We return error this case.
+ */
+NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN POBJECT Object,
+			       OUT POBJECT *pOpenedInstance)
 {
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS IoOpenFile(IN PCSTR FullPath)
-{
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_INVALID_PARAMETER;
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,

@@ -6,7 +6,7 @@ PSECTION MiPhysicalSection;
 NTSTATUS MiSectionObjectInitProc(IN POBJECT Object)
 {
     PSECTION Section = (PSECTION) Object;
-    MiAvlInitializeNode(&Section->BasedSectionNode, 0);
+    MmAvlInitializeNode(&Section->BasedSectionNode, 0);
     return STATUS_SUCCESS;
 }
 

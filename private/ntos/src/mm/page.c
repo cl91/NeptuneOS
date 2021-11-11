@@ -161,9 +161,9 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
     MmInitializeCapTreeNode(&Page->TreeNode, CAP_TREE_NODE_PAGING_STRUCTURE, Cap,
 			    ParentNode ? ParentNode->CSpace : &MiNtosCNode,
 			    ParentNode);
-    MiAvlInitializeNode(&Page->AvlNode, MiSanitizeAlignment(Type, VirtAddr));
+    MmAvlInitializeNode(&Page->AvlNode, MiSanitizeAlignment(Type, VirtAddr));
     Page->SuperStructure = SuperStructure;
-    MiAvlInitializeTree(&Page->SubStructureTree);
+    MmAvlInitializeTree(&Page->SubStructureTree);
     Page->VSpaceCap = VSpaceCap;
     Page->Type = Type;
     Page->Mapped = Mapped;

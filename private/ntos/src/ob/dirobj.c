@@ -17,16 +17,6 @@ static NTSTATUS ObpDirectoryObjectInitProc(IN POBJECT Self)
     return STATUS_SUCCESS;
 }
 
-/*
- * Called when a client process attempts to open an object
- * directory in the object hierarchy.
- */
-static NTSTATUS ObpDirectoryObjectOpenProc(IN POBJECT Self)
-{
-    /* Do nothing. The object manager will assign a handle. */
-    return STATUS_SUCCESS;
-}
-
 /* Compute the hash index of a given string. */
 static ULONG ObpDirectoryEntryHashIndex(PCSTR Str)
 {
@@ -158,7 +148,7 @@ NTSTATUS ObpInitDirectoryObjectType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.InitProc = ObpDirectoryObjectInitProc,
-	.OpenProc = ObpDirectoryObjectOpenProc,
+	.OpenProc = NULL,
 	.ParseProc = ObpDirectoryObjectParseProc,
 	.InsertProc = ObpDirectoryObjectInsertProc,
     };

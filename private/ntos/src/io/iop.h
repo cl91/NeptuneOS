@@ -16,7 +16,10 @@ PSECTION IopHalDllSection;
 
 /* file.c */
 NTSTATUS IopFileObjectInitProc(POBJECT Object);
-NTSTATUS IopFileObjectOpenProc(POBJECT Object);
+NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN POBJECT Object,
+			       OUT POBJECT *pOpenedInstance);
 
 /* device.c */
 NTSTATUS IopDeviceObjectInitProc(POBJECT Object);

@@ -61,6 +61,7 @@ typedef struct _PROCESS {
     PTHREAD InitThread;
     LIST_ENTRY ThreadList;
     PCNODE CSpace;
+    HANDLE_TABLE HandleTable;
     VIRT_ADDR_SPACE VSpace;	/* Virtual address space of the process */
     PIO_FILE_OBJECT ImageFile;
     PSECTION ImageSection;

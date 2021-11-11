@@ -49,6 +49,7 @@ NTSTATUS PspProcessObjectInitProc(IN POBJECT Object)
 
     InitializeListHead(&Process->ThreadList);
     InitializeListHead(&Process->ProcessListEntry);
+    ObInitializeHandleTable(&Process->HandleTable);
 
     /* Assign an ASID for the virtual address space just created */
     RET_ERR_EX(MmAssignASID(&Process->VSpace),

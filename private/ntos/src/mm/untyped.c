@@ -13,12 +13,12 @@ VOID MiInitializeUntyped(IN PUNTYPED Untyped,
     Untyped->Log2Size = Log2Size;
     Untyped->IsDevice = IsDevice;
     InvalidateListEntry(&Untyped->FreeListEntry);
-    MiAvlInitializeNode(&Untyped->AvlNode, PhyAddr);
+    MmAvlInitializeNode(&Untyped->AvlNode, PhyAddr);
 }
 
 VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem)
 {
-    MiAvlInitializeTree(&PhyMem->RootUntypedForest);
+    MmAvlInitializeTree(&PhyMem->RootUntypedForest);
     PhyMem->CachedRootUntyped = NULL;
     InitializeListHead(&PhyMem->SmallUntypedList);
     InitializeListHead(&PhyMem->MediumUntypedList);

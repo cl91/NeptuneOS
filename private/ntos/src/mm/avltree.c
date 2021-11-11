@@ -303,6 +303,61 @@ PMM_AVL_NODE MiAvlTreeFindNodeOrPrev(IN PMM_AVL_TREE Tree,
 }
 
 /*
+ * Returns the node of given key if it is in the tree. Otherwise,
+ * returns NULL.
+ */
+PMM_AVL_NODE MmAvlTreeFindNode(IN PMM_AVL_TREE Tree,
+			       IN MWORD Key)
+{
+    assert(Tree != NULL);
+    PMM_AVL_NODE Node = Tree->BalancedRoot;
+    if (Node == NULL) {
+	return NULL;
+    }
+    while (Node != NULL) {
+	if (Key == Node->Key) {
+	    return Node;
+	}
+	if (Key < Node->Key) {
+	    Node = Node->LeftChild;
+	} else {
+	    Node = Node->RightChild;
+	}
+    }
+    return NULL;
+}
+
+/*
+ * Insert the node as the last element of the tree, overriding its
+ * key with the key of the original last element plus the given
+ * increment. The increment cannot be zero. The increment cannot
+ * be so large that the new key overflows. If the tree is empty,
+ * the node will have the given increment as the key.
+ */
+VOID MmAvlTreeAppendNode(IN PMM_AVL_TREE Tree,
+			 IN OUT PMM_AVL_NODE Node,
+			 IN MWORD Increment)
+{
+    assert(Tree != NULL);
+    assert(Node != NULL);
+    assert(Increment != 0);
+    if (MiAvlTreeIsEmpty(Tree)) {
+	Node->Key = Increment;
+	MiAvlTreeInsertNode(Tree, NULL, Node);
+    } else {
+	/* Find the last node in the tree */
+	PMM_AVL_NODE Last = MiAvlGetLastNode(Tree);
+	assert(Last != NULL);
+	Node->Key = Last->Key + Increment;
+	if (Node->Key < Last->Key) {
+	    /* Integer overflow. We simply return in this case. */
+	    return;
+	}
+	MiAvlTreeInsertNode(Tree, Last, Node);
+    }
+}
+
+/*
  * Insert tree node under Parent.
  */
 VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
