@@ -59,28 +59,24 @@ VOID HalStartup(IN seL4_IPCBuffer *IpcBuffer,
     IopIncomingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->IncomingIrpBuffer;
     IopOutgoingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->OutgoingIrpBuffer;
 
-    NtDisplayStringA("hal.dll: Allocating DriverObject... ");
     PDRIVER_OBJECT DriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),
 								   HEAP_ZERO_MEMORY,
 								   sizeof(DRIVER_OBJECT));
+
+    NTSTATUS Status = STATUS_SUCCESS;
     if (DriverObject == NULL) {
-	NtDisplayStringA("FAIL\n");
-	return;
-    } else {
-	NtDisplayStringA("OK\n");
+	Status = STATUS_NO_MEMORY;
+	goto fail;
     }
 
-    NtDisplayStringA("hal.dll: Calling DriverEntry... ");
-    NTSTATUS Status = IopCallDriverEntry(DriverObject);
-    if (NT_SUCCESS(Status)) {
-	NtDisplayStringA("OK\n");
-    } else {
-	NtDisplayStringA("FAIL\n");
-	return;
+    Status = IopCallDriverEntry(DriverObject);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
     }
 
     Status = IopDriverEventLoop(DriverObject);
 
-    /* The event loop function returned with an error. Raise the status. */
+fail:
+    /* The driver startup failed. Raise the status to terminate the driver process. */
     RtlRaiseStatus(Status);
 }

@@ -37,10 +37,9 @@ NTSTATUS SmPrint(PCSTR Format, ...)
 static NTSTATUS SmLoadBootDrivers()
 {
     PCSTR DriverToLoad = "\\BootModules\\null.sys";
-    SmPrint("Loading driver %s...\n", DriverToLoad);
-    RET_ERR_EX(NtLoadDriverA(DriverToLoad),
-	       SmPrint("Failed to load driver %s\n", DriverToLoad));
-    SmPrint("Loaded driver %s\n", DriverToLoad);
+    SmPrint("Loading driver %s... ", DriverToLoad);
+    RET_ERR_EX(NtLoadDriverA(DriverToLoad), SmPrint("FAIL\n"));
+    SmPrint("OK\n");
     return STATUS_SUCCESS;
 }
 
