@@ -19,8 +19,9 @@
 /* Region for the Executive pool. EX_POOL_MAX_SIZE must be a power of two. */
 #define EX_POOL_START			(0x10000000ULL)
 #define EX_POOL_MAX_SIZE		(0x10000000ULL)
+#define EX_POOL_END			(EX_POOL_START + EX_POOL_MAX_SIZE)
 /* Region for the PEB/TEB pages mapped in root task address space */
-#define EX_PEB_TEB_REGION_START		(EX_POOL_START + EX_POOL_MAX_SIZE)
+#define EX_PEB_TEB_REGION_START		(EX_POOL_END)
 #define EX_PEB_TEB_REGION_SIZE		(0x10000000ULL)
 #define EX_PEB_TEB_REGION_END		(EX_PEB_TEB_REGION_START + EX_PEB_TEB_REGION_SIZE)
 /* Region where the client thread's ipc buffers are mapped */

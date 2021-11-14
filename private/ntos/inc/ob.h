@@ -2,6 +2,8 @@
 
 #include "ke.h"
 #include "mm.h"
+#include "ex.h"
+#include <halsvc.h>
 
 /* Unlike in Windows, the ObjectType itself is not a type.
  *
@@ -23,7 +25,6 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_FILE,
     OBJECT_TYPE_DEVICE,
     OBJECT_TYPE_DRIVER,
-    OBJECT_TYPE_IO_REQUEST_PACKET,
     NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
@@ -62,29 +63,36 @@ typedef enum _OBJECT_TYPE_ENUM {
  * device does not implement sub-objects. The object manager
  * then invokes the open procedure of the DEVICE object, which
  * will yield a FILE_OBJECT, representing an opened instance of
- * the DEVICE object. The open procedure will then constructs
- * an IO_REQUEST_PACKET object and invoke the open procedure of
- * the IRP object, which queues the IRP to the thread calling
- * the NT system service and depending on whether the open is
- * synchronous or asynchronous, either wait on the IO completion
- * event or return STATUS_PENDING.
+ * the DEVICE object. The open procedure will then queue the IRP
+ * to the thread calling the NT system service and depending on
+ * whether the open is synchronous or asynchronous, either wait
+ * on the IO completion event or return STATUS_PENDING.
  *
  * For a more complex device such as a partition device, its parse
  * procedure will take the remaining path after the device name
  * (ie. the src\main.c in \Device\Harddisk0\Partition0\src\main.c)
  * and first invoke the cache manager and see if the file has been
  * previously opened. If it was previously opened, the cached device
- * object is returned immediately. Otherwise, an IO_REQUEST_PACKET
- * object is constructed and returned, and the open procedure of
- * the IRP object is invoked just like the simple case above.
+ * object is returned immediately. Otherwise, a pseudo-device object
+ * representing that the file is being opened is constructed and
+ * returned, and the open procedure of pseudo device object is
+ * invoked just like the simple case above.
+ *
+ * On the other hand, closing an object is always a lazy process.
+ * We simply flag the object for closing and queues the object
+ * closure IRP to the driver process (if it's created by a driver).
+ * The close routine does not wait for the driver's response and
+ * is therefore synchronous. This simplifies the error paths,
+ * especially in a asynchronous function.
  *
  * All object methods operate with in-process pointers. Assigning
  * HANDLEs to opened objects is done by the object manager itself.
  */
 typedef struct _OBJECT_HEADER {
     struct _OBJECT_TYPE *Type;
-    LONG RefCount;
     LIST_ENTRY ObjectLink;
+    LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
+    LONG RefCount;
 } OBJECT_HEADER, *POBJECT_HEADER;
 
 typedef PVOID POBJECT;
@@ -97,10 +105,46 @@ typedef PVOID POBJECT;
 
 /*
  * We use the offset of an object header pointer from the start of the
- * Executive pool as the global handle (badge) of an object.
+ * Executive pool as the global handle (badge) of an object. Since the
+ * lowest EX_POOL_BLOCK_SHIFT (== 3 on x86 and 4 on amd64) bits are
+ * always zero for any memory allocated on the ExPool we use the lowest
+ * bits to indicate the nature of the handle.
+ *
+ * Note: the type GLOBAL_HANDLE is defined in rtl/inc/halsvc.h
+ *
+ * WARNING: Values of GLOBAL_HANDLE_FLAG enum cannot be larger than
+ * 1 << EX_POOL_BLOCK_SHIFT
  */
+typedef enum _GLOBAL_HANDLE_FLAG {
+    THREAD_SYSTEM_SERVICE_IPC_BADGE = 0,
+    THREAD_HAL_SERVICE_IPC_BADGE = 1,
+} GLOBAL_HANDLE_FLAG;
+
+/* For structures that are not managed by the Object Manager (for
+ * instance the IO_REQUEST_PACKET and IO_RESPONSE_PACKET) we simply
+ * take the offset of the pointer from EX_POOL_START */
+#define POINTER_TO_GLOBAL_HANDLE(Ptr)	((MWORD)(Ptr) - EX_POOL_START)
+
+/* For objects managed by the Object Manager, use the offset of the
+ * object header from the ExPool start address */
 #define OBJECT_TO_GLOBAL_HANDLE(Ptr)				\
-    ((MWORD)(OBJECT_TO_OBJECT_HEADER(Ptr)) - EX_POOL_START)
+    POINTER_TO_GLOBAL_HANDLE(OBJECT_TO_OBJECT_HEADER(Ptr))
+
+/*
+ * We convert the global handle into an object header pointer by masking
+ * off the lowest EX_POOL_BLOCK_SHIFT bits and the bits higher than
+ * EX_POOL_MAX_SIZE
+ */
+#define GLOBAL_HANDLE_TO_POINTER(Handle)				\
+    ((MWORD)((((((MWORD)(Handle) >> EX_POOL_BLOCK_SHIFT)		\
+		<< EX_POOL_BLOCK_SHIFT)					\
+	       & (EX_POOL_MAX_SIZE - 1)) + EX_POOL_START)))
+
+#define GLOBAL_HANDLE_TO_OBJECT(Handle)					\
+    OBJECT_HEADER_TO_OBJECT(GLOBAL_HANDLE_TO_POINTER(Handle))
+
+#define GLOBAL_HANDLE_GET_FLAG(Handle)			\
+    ((MWORD)Handle & ((1 << EX_POOL_BLOCK_SHIFT) - 1))
 
 /*
  * Equivalent of NT's OBJECT_ATTRIBUTES, except we make it easier to
@@ -116,18 +160,6 @@ typedef struct _OB_OBJECT_ATTRIBUTES {
     PCSTR ObjectNameBuffer;
     ULONG ObjectNameBufferLength; /* including the terminating '\0' */
 } OB_OBJECT_ATTRIBUTES, *POB_OBJECT_ATTRIBUTES;
-
-/*
- * We convert the global handle into an object header pointer by masking
- * off the lowest EX_POOL_BLOCK_SHIFT bits and the bits higher than
- * EX_POOL_MAX_SIZE
- */
-#define GLOBAL_HANDLE_TO_OBJECT(Handle)					\
-    OBJECT_HEADER_TO_OBJECT(						\
-	((((MWORD)(Handle) >> EX_POOL_BLOCK_SHIFT)			\
-	  << EX_POOL_BLOCK_SHIFT)					\
-	 & (EX_POOL_MAX_SIZE - 1))					\
-	+ EX_POOL_START)
 
 /*
  * The init routine initializes the object body to sane, default values.
@@ -152,6 +184,8 @@ typedef NTSTATUS (*OBJECT_INIT_METHOD)(IN POBJECT Self);
 typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
 				       IN struct _THREAD *Thread,
 				       IN POBJECT Self,
+				       IN PVOID Context,
+				       OUT PVOID OpenResponse,
 				       OUT POBJECT *pOpenedInstance);
 
 /*
@@ -226,6 +260,7 @@ static inline VOID ObInitializeHandleTable(IN PHANDLE_TABLE Table)
 typedef struct _HANDLE_TABLE_ENTRY {
     MM_AVL_NODE AvlNode;	/* Node key is handle */
     POBJECT Object;
+    LIST_ENTRY HandleEntryLink; /* Link for the object header's HandleEntryList */
 } HANDLE_TABLE_ENTRY, *PHANDLE_TABLE_ENTRY;
 
 /*
@@ -269,5 +304,7 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN PCSTR Path,
 			    IN OBJECT_TYPE_ENUM Type,
+			    IN PVOID Context,
+			    OUT PVOID OpenResponse,
 			    OUT HANDLE *pHandle);
 NTSTATUS ObDeleteObject(IN POBJECT Object);

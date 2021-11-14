@@ -2114,8 +2114,6 @@ NTAPI PVOID RtlAllocateHeap(IN PVOID HeapPtr,
 		Flags);
     }
 
-    DPRINT("RtlAllocateHeap(%p 0x%x 0x%zx)\n", Heap, Flags, Size);
-
     /* Calculate allocation size and index */
     if (Size)
 	AllocationSize = Size;

@@ -115,89 +115,6 @@
 #define IRP_ALLOCATED_FIXED_SIZE          0x04
 #define IRP_LOOKASIDE_ALLOCATION          0x08
 
-/*
-** IRP function codes
-*/
-
-#define IRP_MJ_CREATE                     0x00
-#define IRP_MJ_CREATE_NAMED_PIPE          0x01
-#define IRP_MJ_CLOSE                      0x02
-#define IRP_MJ_READ                       0x03
-#define IRP_MJ_WRITE                      0x04
-#define IRP_MJ_QUERY_INFORMATION          0x05
-#define IRP_MJ_SET_INFORMATION            0x06
-#define IRP_MJ_QUERY_EA                   0x07
-#define IRP_MJ_SET_EA                     0x08
-#define IRP_MJ_FLUSH_BUFFERS              0x09
-#define IRP_MJ_QUERY_VOLUME_INFORMATION   0x0a
-#define IRP_MJ_SET_VOLUME_INFORMATION     0x0b
-#define IRP_MJ_DIRECTORY_CONTROL          0x0c
-#define IRP_MJ_FILE_SYSTEM_CONTROL        0x0d
-#define IRP_MJ_DEVICE_CONTROL             0x0e
-#define IRP_MJ_INTERNAL_DEVICE_CONTROL    0x0f
-#define IRP_MJ_SCSI                       0x0f
-#define IRP_MJ_SHUTDOWN                   0x10
-#define IRP_MJ_LOCK_CONTROL               0x11
-#define IRP_MJ_CLEANUP                    0x12
-#define IRP_MJ_CREATE_MAILSLOT            0x13
-#define IRP_MJ_QUERY_SECURITY             0x14
-#define IRP_MJ_SET_SECURITY               0x15
-#define IRP_MJ_POWER                      0x16
-#define IRP_MJ_SYSTEM_CONTROL             0x17
-#define IRP_MJ_DEVICE_CHANGE              0x18
-#define IRP_MJ_QUERY_QUOTA                0x19
-#define IRP_MJ_SET_QUOTA                  0x1a
-#define IRP_MJ_PNP                        0x1b
-#define IRP_MJ_PNP_POWER                  0x1b
-#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
-
-#define IRP_MN_SCSI_CLASS                 0x01
-
-#define IRP_MN_START_DEVICE               0x00
-#define IRP_MN_QUERY_REMOVE_DEVICE        0x01
-#define IRP_MN_REMOVE_DEVICE              0x02
-#define IRP_MN_CANCEL_REMOVE_DEVICE       0x03
-#define IRP_MN_STOP_DEVICE                0x04
-#define IRP_MN_QUERY_STOP_DEVICE          0x05
-#define IRP_MN_CANCEL_STOP_DEVICE         0x06
-
-#define IRP_MN_QUERY_DEVICE_RELATIONS       0x07
-#define IRP_MN_QUERY_INTERFACE              0x08
-#define IRP_MN_QUERY_CAPABILITIES           0x09
-#define IRP_MN_QUERY_RESOURCES              0x0A
-#define IRP_MN_QUERY_RESOURCE_REQUIREMENTS  0x0B
-#define IRP_MN_QUERY_DEVICE_TEXT            0x0C
-#define IRP_MN_FILTER_RESOURCE_REQUIREMENTS 0x0D
-
-#define IRP_MN_READ_CONFIG                  0x0F
-#define IRP_MN_WRITE_CONFIG                 0x10
-#define IRP_MN_EJECT                        0x11
-#define IRP_MN_SET_LOCK                     0x12
-#define IRP_MN_QUERY_ID                     0x13
-#define IRP_MN_QUERY_PNP_DEVICE_STATE       0x14
-#define IRP_MN_QUERY_BUS_INFORMATION        0x15
-#define IRP_MN_DEVICE_USAGE_NOTIFICATION    0x16
-#define IRP_MN_SURPRISE_REMOVAL             0x17
-#define IRP_MN_DEVICE_ENUMERATED            0x19
-
-#define IRP_MN_WAIT_WAKE                  0x00
-#define IRP_MN_POWER_SEQUENCE             0x01
-#define IRP_MN_SET_POWER                  0x02
-#define IRP_MN_QUERY_POWER                0x03
-
-#define IRP_MN_QUERY_ALL_DATA             0x00
-#define IRP_MN_QUERY_SINGLE_INSTANCE      0x01
-#define IRP_MN_CHANGE_SINGLE_INSTANCE     0x02
-#define IRP_MN_CHANGE_SINGLE_ITEM         0x03
-#define IRP_MN_ENABLE_EVENTS              0x04
-#define IRP_MN_DISABLE_EVENTS             0x05
-#define IRP_MN_ENABLE_COLLECTION          0x06
-#define IRP_MN_DISABLE_COLLECTION         0x07
-#define IRP_MN_REGINFO                    0x08
-#define IRP_MN_EXECUTE_METHOD             0x09
-
-#define IRP_MN_REGINFO_EX                 0x0b
-
 /* DEVICE_OBJECT.Flags */
 #define DO_DEVICE_HAS_NAME                0x00000040
 #define DO_SYSTEM_BOOT_PARTITION          0x00000100
@@ -291,7 +208,6 @@ typedef struct _FILE_OBJECT {
     SHORT Type;
     SHORT Size;
     struct _DEVICE_OBJECT *DeviceObject;
-    PVOID PrivateCacheMap;
     BOOLEAN LockOperation;
     BOOLEAN DeletePending;
     BOOLEAN ReadAccess;
@@ -302,14 +218,11 @@ typedef struct _FILE_OBJECT {
     BOOLEAN SharedDelete;
     ULONG Flags;
     UNICODE_STRING FileName;
-    LIST_ENTRY IrpList;
 } FILE_OBJECT, *PFILE_OBJECT;
 
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     SHORT Type;
     ULONG Size;
-    LONG ReferenceCount;
-    HANDLE DeviceHandle;
     struct _DRIVER_OBJECT *DriverObject;
     struct _DEVICE_OBJECT *NextDevice;
     struct _DEVICE_OBJECT *AttachedDevice;
@@ -320,9 +233,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     PVOID DeviceExtension;
     DEVICE_TYPE DeviceType;
     CCHAR StackSize;
-    union {
-	LIST_ENTRY ListEntry;
-    } Queue;
     ULONG AlignmentRequirement;
     ULONG ActiveThreadCount;
     PSECURITY_DESCRIPTOR SecurityDescriptor;
@@ -350,21 +260,42 @@ typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
 				   IN OUT struct _IRP *Irp);
 typedef DRIVER_CANCEL *PDRIVER_CANCEL;
 
+/*
+ * Client (ie. driver) side data structure for the IO request packet.
+ */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     SHORT Type;
     USHORT Size;
     PMDL MdlAddress;
     ULONG Flags;
+
+    /* We need to figure out master/associated IRPs and buffered IO */
     union {
 	struct _IRP *MasterIrp;
 	volatile LONG IrpCount;
 	PVOID SystemBuffer;
     } AssociatedIrp;
-    LIST_ENTRY ThreadListEntry;
+
+    /* IO status block returned by the driver */
     IO_STATUS_BLOCK IoStatus;
-    BOOLEAN PendingReturned;
+
+    /* Number of IO stack locations associated with this IRP object.
+     * This is a constant member and drivers should never change this.
+     */
     CHAR StackCount;
+
+    /* Current IO stack location. As opposed to Windows/ReactOS
+     * IO stack location starts from 0 and increases as we "push"
+     * the stack.
+     *
+     * NOTE: Drivers should never access this member directly. Call
+     * the helper functions below (IoGetCurrentIrpStackLocation etc).
+     */
     CHAR CurrentLocation;
+
+    /* We need to determine the use of the following */
+#if 0
+    BOOLEAN PendingReturned;
     BOOLEAN Cancel;
     CCHAR ApcEnvironment;
     UCHAR AllocationFlags;
@@ -381,26 +312,34 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     } Overlay;
     volatile PDRIVER_CANCEL CancelRoutine;
     PVOID UserBuffer;
+#endif
+
+    /* The following is used mostly by filesystem and network drivers.
+     * We will enable them once we get to porting those. */
+#if 0
     union {
 	struct {
-	    union {
-		struct {
-		    PVOID DriverContext[4];
-		};
-	    };
-	    PCHAR AuxiliaryBuffer;
-	    struct {
-		LIST_ENTRY ListEntry;
-		union {
-		    struct _IO_STACK_LOCATION *CurrentStackLocation;
-		    ULONG PacketType;
-		};
-	    };
+	    /* Available for driver use */
+	    PVOID DriverContext[4];
+	    /* The following two members are used for the network packet filter
+	     * to queue IRP to an I/O completion queue.
+	     * These will be enabled once we get to porting network drivers. */
+	    // LIST_ENTRY ListEntry;
+	    // ULONG PacketType;
 	    PFILE_OBJECT OriginalFileObject;
 	} Overlay;
-	PVOID CompletionKey;
     } Tail;
+#endif
 } IRP, *PIRP;
+
+/*
+ * USHORT IoSizeOfIrp(IN CCHAR StackSize)
+ *
+ * Determines the full size of an IRP object given the number of IO stack
+ * locations available to the IRP object. 
+ */
+#define IoSizeOfIrp(StackSize)						\
+    ((USHORT)(sizeof(IRP) + ((StackSize) * (sizeof(IO_STACK_LOCATION)))))
 
 typedef struct _IO_ERROR_LOG_PACKET {
     UCHAR MajorFunctionCode;
@@ -718,8 +657,6 @@ typedef struct _DRIVER_OBJECT {
     PDEVICE_OBJECT DeviceObject;
     ULONG Flags;
     PVOID DriverStart;
-    ULONG DriverSize;
-    PVOID DriverSection;
     UNICODE_STRING ServiceKeyName;
     UNICODE_STRING DriverName;
     PUNICODE_STRING HardwareDatabase;
@@ -904,7 +841,11 @@ NTAPI NTSYSAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject);
 
 NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
 
+/*
+ * Returns the current IO stack location pointer.
+ */
 FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
 {
-    return Irp->Tail.Overlay.CurrentStackLocation;
+    PIO_STACK_LOCATION Stack = (PIO_STACK_LOCATION)(Irp + 1);
+    return &Stack[Irp->CurrentLocation];
 }

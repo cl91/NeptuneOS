@@ -18,7 +18,7 @@ static NTSTATUS IopCreateDeviceType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.InitProc = IopDeviceObjectInitProc,
-	.OpenProc = NULL,
+	.OpenProc = IopDeviceObjectOpenProc,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
     };

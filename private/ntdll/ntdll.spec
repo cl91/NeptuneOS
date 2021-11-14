@@ -4,6 +4,7 @@
 @ stdcall NtLoadDriverA(ptr)
 @ stdcall RtlInitUnicodeString(ptr wstr)
 @ stdcall RtlInitUnicodeStringEx(ptr wstr)
+@ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)
 @ cdecl memcpy(ptr ptr long)
 @ cdecl memmove(ptr ptr long)
 @ stdcall RtlCompareMemory(ptr ptr long)

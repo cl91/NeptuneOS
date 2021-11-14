@@ -36,35 +36,6 @@
 
 #define assert_ret(expr)	if (!(expr)) { return STATUS_NTOS_BUG; }
 
-/*
- * Doubly-linked list helper routines
- */
-static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
-{
-    ListEntry->Flink = ListEntry->Blink = NULL;
-}
-
-static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
-{
-    ULONG Length = 0;
-    for (PLIST_ENTRY Ptr = ListEntry->Flink; Ptr != ListEntry; Ptr = Ptr->Flink) {
-	Length++;
-    }
-    return Length;
-}
-
-#define LoopOverList(Entry, ListHead, Type, Field)			\
-    for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
-	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \
-	 &(Entry)->Field != (ListHead); Entry = __LoopOverList_flink,	\
-	     __LoopOverList_flink = CONTAINING_RECORD((__LoopOverList_flink)->Field.Flink, Type, Field))
-
-#define ReverseLoopOverList(Entry, ListHead, Type, Field)		\
-    for (Type *Entry = CONTAINING_RECORD((ListHead)->Blink, Type, Field), \
-	     *__ReverseLoop_blink = CONTAINING_RECORD((Entry)->Field.Blink, Type, Field); \
-	 &(Entry)->Field != (ListHead); Entry = __ReverseLoop_blink,	\
-	     __ReverseLoop_blink = __CONTAINING_RECORD((__ReverseLoop_blink)->Field.Blink, Type, Field))
-
 
 /*
  * Additional alignment macros

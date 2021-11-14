@@ -4,7 +4,10 @@ NTSTATUS IopDriverObjectInitProc(POBJECT Object)
 {
     PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT) Object;
     InitializeListHead(&Driver->DeviceList);
+    InitializeListHead(&Driver->IrpQueue);
+    InitializeListHead(&Driver->PendingIrpList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
+    KeInitializeEvent(&Driver->IrpQueuedEvent, SynchronizationEvent);
     return STATUS_SUCCESS;
 }
 
@@ -34,7 +37,7 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
     DriverObjectPath[sizeof(DRIVER_OBJECT_DIRECTORY)-1] = OBJ_NAME_PATH_SEPARATOR;
     memcpy(&DriverObjectPath[sizeof(DRIVER_OBJECT_DIRECTORY)], DriverName, PathLen - SepIndex);
     DriverObjectPath[BufLength-1] = '\0';
-    DbgTrace("%s %s %s\n", DriverToLoad, DriverName, DriverObjectPath);
+    DbgTrace("Object file %s driver name %s driver object %s\n", DriverToLoad, DriverName, DriverObjectPath);
     PIO_DRIVER_OBJECT DriverObject = NULL;
     if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, OBJECT_TYPE_DRIVER, (POBJECT *)&DriverObject))) {
 	/* Driver is already loaded. */
@@ -82,9 +85,10 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN PCSTR DriverServiceName)
 {
+    PIO_DRIVER_OBJECT DriverObject = NULL;
+
     ASYNC_BEGIN(State);
 
-    PIO_DRIVER_OBJECT DriverObject = NULL;
     NTSTATUS Status = IoLoadDriver(DriverServiceName, &DriverObject);
     if (Status == STATUS_NTOS_DRIVER_ALREADY_LOADED) {
 	return STATUS_SUCCESS;
@@ -94,6 +98,8 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
     }
     assert(DriverObject != NULL);
 
+    /* The second time that this function is called, DriverObject is actually NULL here,
+     * but that's fine since the event has been recorded into the thread's root wait block. */
     AWAIT(KeWaitForSingleObject, State, Thread, &DriverObject->InitializationDoneEvent.Header);
 
     ASYNC_END(STATUS_SUCCESS);

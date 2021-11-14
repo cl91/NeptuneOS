@@ -4,7 +4,7 @@
 #include <nt.h>
 #include <structures_gen.h>
 
-#ifdef CONFIG_DEBUG_BUILD
+#if defined(CONFIG_DEBUG_BUILD) || (defined(_DEBUG) && !defined(NDEBUG))
 VOID vDbgPrint(PCSTR Format, va_list args);
 VOID DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 #else

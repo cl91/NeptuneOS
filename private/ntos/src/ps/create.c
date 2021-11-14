@@ -664,7 +664,7 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 	DriverObject->OutgoingIrpServerAddr = ServerOutgoingIrpVad->AvlNode.Key;
 	DriverObject->OutgoingIrpClientAddr = ClientOutgoingIrpVad->AvlNode.Key;
 	Process->InitInfo.DriverInitInfo.IncomingIrpBuffer = DriverObject->IncomingIrpClientAddr;
-	Process->InitInfo.DriverInitInfo.IncomingIrpBuffer = DriverObject->IncomingIrpClientAddr;
+	Process->InitInfo.DriverInitInfo.OutgoingIrpBuffer = DriverObject->OutgoingIrpClientAddr;
     }
 
     /* Create the Event objects used by the NTDLL ldr component */

@@ -14,7 +14,15 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverImageName;
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
+    LIST_ENTRY IrpQueue; /* IRPs queued on this driver object but has not been processed yet. */
+    LIST_ENTRY PendingIrpList;	/* IRPs that have already been moved to driver process's
+				 * incoming IRP buffer. Note that the driver may choose to
+				 * save this IRP to its internal buffer and withhold the
+				 * response until much later (say, after several calls to
+				 * IopRequestIrp). Therefore this list does NOT in general
+				 * equal the IRPs in the driver's in/out IRP buffer. */
     KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting IRP */
+    KEVENT IrpQueuedEvent;	    /* Signaled when an IRP is queued on the driver object. */
     MWORD IncomingIrpServerAddr; /* IO Request Packets sent to the driver */
     MWORD IncomingIrpClientAddr;
     MWORD OutgoingIrpServerAddr; /* Driver's replies */
@@ -48,6 +56,13 @@ typedef struct _IO_FILE_OBJECT {
     SECTION_OBJECT_POINTERS SectionObject;
     PVOID BufferPtr;
     MWORD Size;
+    BOOLEAN ReadAccess;
+    BOOLEAN WriteAccess;
+    BOOLEAN DeleteAccess;
+    BOOLEAN SharedRead;
+    BOOLEAN SharedWrite;
+    BOOLEAN SharedDelete;
+    ULONG Flags;
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
 /*

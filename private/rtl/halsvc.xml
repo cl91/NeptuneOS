@@ -8,11 +8,12 @@
     <parameter annotation="in" type="DEVICE_TYPE" name="DeviceType" />
     <parameter annotation="in" type="ULONG" name="DeviceCharacteristics" />
     <parameter annotation="in" type="BOOLEAN" name="Exclusive" />
-    <parameter annotation="out" type="ptr::HANDLE" name="DeviceHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
   <svc name="IopRequestIrp">
-    <parameter annotation="out" type="ptr::ULONG" name="NumIrp" />
+    <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
+    <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
   </svc>
 
 </services>

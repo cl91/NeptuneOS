@@ -9,7 +9,8 @@ static inline VOID KiInitializeSingleWaitBlock(IN PKWAIT_BLOCK WaitBlock,
     memset(WaitBlock, 0, sizeof(KWAIT_BLOCK));
     WaitBlock->Thread = Thread;
     WaitBlock->WaitType = WaitOne;
-    InsertHeadList(&DispatcherObject->WaitBlockList, &WaitBlock->DispatcherLink);
+    InsertHeadList(&DispatcherObject->WaitBlockList, &WaitBlock->WaitBlockLink);
+    WaitBlock->Dispatcher = DispatcherObject;
 }
 
 NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
@@ -31,10 +32,14 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
     /* If the control flow gets here it means that we are being called a second
      * time by the system service dispatcher. Remove the dispatcher object from
      * the thread's root block and resume the thread. */
-    assert(Thread->Suspended);
+    assert(Thread->Suspended == FALSE);
     assert(Thread->RootWaitBlock.WaitType == WaitOne);
-    Thread->Suspended = FALSE;
-    RemoveEntryList(&Thread->RootWaitBlock.DispatcherLink);
+    assert(Thread->RootWaitBlock.Dispatcher != NULL);
+    /* If the event type is a synchronization event, set the event to non-signaled. */
+    if (Thread->RootWaitBlock.Dispatcher->EventType == SynchronizationEvent) {
+	Thread->RootWaitBlock.Dispatcher->Signaled = FALSE;
+    }
+    RemoveEntryList(&Thread->RootWaitBlock.WaitBlockLink);
 
     ASYNC_END(STATUS_SUCCESS);
 }
@@ -52,6 +57,7 @@ static inline VOID KiResumeThread(IN PTHREAD Thread)
 	    return;
 	}
     }
+    Thread->Suspended = FALSE;
     /* Add the thread to the end of the ready list */
     InsertTailList(&KiReadyThreadList, &Thread->ReadyListLink);
 }
@@ -102,12 +108,25 @@ VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
     if (Dispatcher->Signaled) {
 	return;
     }
-    /* Walk the wait block list and wake the thread up */
-    LoopOverList(Block, &Dispatcher->WaitBlockList, KWAIT_BLOCK, DispatcherLink) {
-	Block->Satisfied = TRUE;
-	assert(Block->Thread != NULL);
-	if (KiShouldWakeThread(Block->Thread)) {
-	    KiResumeThread(Block->Thread);
+    if (Dispatcher->EventType == NotificationEvent) {
+	/* Walk the wait block list and wake the thread up */
+	LoopOverList(Block, &Dispatcher->WaitBlockList, KWAIT_BLOCK, WaitBlockLink) {
+	    Block->Satisfied = TRUE;
+	    assert(Block->Thread != NULL);
+	    if (KiShouldWakeThread(Block->Thread)) {
+		KiResumeThread(Block->Thread);
+	    }
+	}
+    } else {
+	assert(Dispatcher->EventType == SynchronizationEvent);
+	if (!IsListEmpty(&Dispatcher->WaitBlockList)) {
+	    PKWAIT_BLOCK Block = CONTAINING_RECORD(Dispatcher->WaitBlockList.Flink,
+						   KWAIT_BLOCK, WaitBlockLink);
+	    Block->Satisfied = TRUE;
+	    assert(Block->Thread != NULL);
+	    if (KiShouldWakeThread(Block->Thread)) {
+		KiResumeThread(Block->Thread);
+	    }
 	}
     }
     Dispatcher->Signaled = TRUE;

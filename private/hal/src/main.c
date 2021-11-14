@@ -4,6 +4,8 @@
 
 #include <hal.h>
 
+PDRIVER_OBJECT IopDriverObject;
+
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 __thread seL4_CPtr KiHalServiceCap;
 
@@ -32,21 +34,35 @@ const IMAGE_TLS_DIRECTORY _tls_used = {
     (ULONG_PTR) &_tls_index, 0, 0, 0
 };
 
-static NTSTATUS IopCallDriverEntry(IN PDRIVER_OBJECT DriverObject)
+static NTSTATUS IopCallDriverEntry()
 {
+    assert(IopDriverObject != NULL);
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
     RET_ERR(LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress, &LdrDriverImage));
     PVOID DriverEntry = LdrDriverImage->EntryPoint;
-    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(DriverObject, NULL));
+    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(IopDriverObject, NULL));
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopDriverEventLoop(IN PDRIVER_OBJECT DriverObject)
+static NTSTATUS IopDriverEventLoop()
 {
+    assert(IopDriverObject != NULL);
+    ULONG NumResponsePackets = 0;
     while (TRUE) {
-	ULONG NumIrp = 0;
-	RET_ERR(IopRequestIrp(&NumIrp));
-	while (1) ;
+	ULONG NumRequestPackets = 0;
+	RET_ERR(IopRequestIrp(NumResponsePackets, &NumRequestPackets));
+	NTSTATUS Status = IopProcessIrp(&NumResponsePackets, NumRequestPackets);
+	if (!NT_SUCCESS(Status)) {
+	    DbgTrace("IopProcessIrp returned error 0x%08x\n", Status);
+	    /* On debug build, we simply stop the driver so we can debug the
+	     * error and fix it. On release build, we have no choice but
+	     * to keep going. Since the IopProcessIrp function never generates
+	     * partial response packets (if a response packet gets into the
+	     * outgoing IRP queue it is guaranteed to be valid), it will appear
+	     * that the driver simply dropped some request packets, which will
+	     * never get a response. */
+	    assert(FALSE);
+	}
     }
 }
 
@@ -58,23 +74,27 @@ VOID HalStartup(IN seL4_IPCBuffer *IpcBuffer,
     KiHalServiceCap = HalServiceCap;
     IopIncomingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->IncomingIrpBuffer;
     IopOutgoingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->OutgoingIrpBuffer;
+    InitializeListHead(&IopIrpQueue);
+    InitializeListHead(&IopCompletedIrpList);
+    InitializeListHead(&IopDeviceList);
+    InitializeListHead(&IopFileObjectList);
 
-    PDRIVER_OBJECT DriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),
-								   HEAP_ZERO_MEMORY,
-								   sizeof(DRIVER_OBJECT));
+    IopDriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),
+						       HEAP_ZERO_MEMORY,
+						       sizeof(DRIVER_OBJECT));
 
     NTSTATUS Status = STATUS_SUCCESS;
-    if (DriverObject == NULL) {
+    if (IopDriverObject == NULL) {
 	Status = STATUS_NO_MEMORY;
 	goto fail;
     }
 
-    Status = IopCallDriverEntry(DriverObject);
+    Status = IopCallDriverEntry();
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
 
-    Status = IopDriverEventLoop(DriverObject);
+    Status = IopDriverEventLoop();
 
 fail:
     /* The driver startup failed. Raise the status to terminate the driver process. */

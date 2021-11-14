@@ -1,5 +1,22 @@
 #include <hal.h>
 
+/* List of all devices created by this driver */
+LIST_ENTRY IopDeviceList;
+
+/*
+ * Search the list of all devices created by this driver and return
+ * the one matching the given GLOBAL_HANDLE. Returns NULL if not found.
+ */
+PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
+{
+    LoopOverList(Entry, &IopDeviceList, DEVICE_LIST_ENTRY, Link) {
+	if (Handle == Entry->Handle) {
+	    return Entry->Object;
+	}
+    }
+    return NULL;
+}
+
 /*
  * Allocates the client side DEVICE_OBJECT and calls server to create
  * the device object.
@@ -24,6 +41,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     /* The driver-specific device extension follows the DEVICE_OBJECT */
     SIZE_T TotalSize = sizeof(DEVICE_OBJECT) + AlignedDevExtSize;
     IopAllocatePool(DeviceObject, DEVICE_OBJECT, TotalSize);
+    IopAllocateObjectEx(DeviceListEntry, DEVICE_LIST_ENTRY, IopFreePool(DeviceObject));
 
     DeviceObject->Type = IO_TYPE_DEVICE;
     DeviceObject->Size = sizeof(DEVICE_OBJECT) + DeviceExtensionSize;
@@ -53,12 +71,17 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
             DeviceObject->SectorSize = 2048;
     }
 
-    HANDLE DeviceHandle = 0;
+    GLOBAL_HANDLE DeviceHandle = 0;
     RET_ERR_EX(IopCreateDevice(DeviceName, DeviceType, DeviceCharacteristics,
 			       Exclusive, &DeviceHandle),
-	       IopFreePool(DeviceObject));
+	       {
+		   IopFreePool(DeviceObject);
+		   IopFreePool(DeviceListEntry);
+	       });
     assert(DeviceHandle != 0);
-    DeviceObject->DeviceHandle = DeviceHandle;
+    DeviceListEntry->Object = DeviceObject;
+    DeviceListEntry->Handle = DeviceHandle;
+    InsertTailList(&IopDeviceList, &DeviceListEntry->Link);
 
     return STATUS_SUCCESS;
 }

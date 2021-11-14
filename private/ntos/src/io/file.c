@@ -15,16 +15,18 @@ NTSTATUS IopFileObjectInitProc(POBJECT Object)
 /*
  * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
  */
-NTSTATUS IoCreateFile(IN PCSTR FileName,
-		      IN PVOID BufferPtr,
-		      IN MWORD FileSize,
-		      OUT PIO_FILE_OBJECT *pFile)
+NTSTATUS IopCreateFileObject(IN PCSTR FileName,
+			     IN PIO_DEVICE_OBJECT DeviceObject,
+			     IN PVOID BufferPtr,
+			     IN MWORD FileSize,
+			     OUT PIO_FILE_OBJECT *pFile)
 {
     assert(pFile != NULL);
     PIO_FILE_OBJECT File = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File));
     assert(File != NULL);
 
+    File->DeviceObject = DeviceObject;
     File->FileName = FileName;
     File->BufferPtr = BufferPtr;
     File->Size = FileSize;
@@ -34,15 +36,36 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
 }
 
 /*
+ * This is a temporary function for the ldr component to create the initrd
+ * boot module files. When we finished the cache manager we will use the cc
+ * facilities for this.
+ */
+NTSTATUS IoCreateFile(IN PCSTR FileName,
+		      IN PVOID BufferPtr,
+		      IN MWORD FileSize,
+		      OUT PIO_FILE_OBJECT *pFile)
+{
+    return IopCreateFileObject(FileName, NULL, BufferPtr, FileSize, pFile);
+}
+
+/*
  * A FILE_OBJECT is an opened instance of a DEVICE_OBJECT. It therefore
  * makes no sense to open a FILE_OBJECT. We return error this case.
+ *
+ * TODO: For now we don't allow opening a FILE_OBJECT. This might change
+ * depending on how we design the cache manager. For instance, the parse
+ * routine of a partition device might return a FILE_OBJECT directly
+ * and opening the FILE_OBJECT will yield another file object (both
+ * pointing to the same device object).
  */
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
+			       IN PVOID Context,
+			       IN PVOID OpenResponse,
 			       OUT POBJECT *pOpenedInstance)
 {
-    return STATUS_INVALID_PARAMETER;
+    return STATUS_NTOS_BUG;
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
@@ -59,13 +82,21 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
                       IN OPTIONAL PVOID EaBuffer,
                       IN ULONG EaLength)
 {
-    DbgTrace("Got create file name %s file attr 0x%x share access 0x%x create disp 0x%x create opt 0x%x\n",
-	     ObjectAttributes.ObjectNameBuffer, FileAttributes, ShareAccess, CreateDisposition, CreateOptions);
     PCSTR DevicePath = ObjectAttributes.ObjectNameBuffer;
-    PIO_DEVICE_OBJECT DeviceObject = NULL;
-    RET_ERR(ObReferenceObjectByName(DevicePath, OBJECT_TYPE_DEVICE, (POBJECT *)&DeviceObject));
-    assert(DeviceObject != NULL);
-    return STATUS_NOT_IMPLEMENTED;
+    NTSTATUS Status;
+    OPEN_PACKET OpenPacket;
+    OPEN_RESPONSE OpenResponse;
+
+    ASYNC_BEGIN(State);
+    OpenPacket.CreateFileType = CreateFileTypeNone;
+    OpenPacket.CreateOptions = CreateOptions;
+    OpenPacket.FileAttributes = FileAttributes;
+    OpenPacket.ShareAccess = ShareAccess;
+    OpenPacket.Disposition = CreateDisposition;
+
+    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, DevicePath,
+	     OBJECT_TYPE_DEVICE, &OpenPacket, &OpenResponse, FileHandle);
+    ASYNC_END(Status);
 }
 
 NTSTATUS NtOpenFile(IN ASYNC_STATE State,

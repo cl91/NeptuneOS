@@ -166,8 +166,7 @@ NTAPI NTSTATUS BeepDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	Status = STATUS_NOT_IMPLEMENTED;
     } else {
 	/* Validate the input buffer length */
-	if (Stack->Parameters.DeviceIoControl.InputBufferLength <
-	    sizeof(BEEP_SET_PARAMETERS)) {
+	if (Stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(BEEP_SET_PARAMETERS)) {
 	    /* Invalid buffer */
 	    Status = STATUS_INVALID_PARAMETER;
 	} else if ((BeepParam->Frequency != 0) && !(BeepParam->Duration)) {
@@ -238,8 +237,7 @@ NTAPI VOID BeepStartIo(IN PDEVICE_OBJECT DeviceObject,
     /* Get the I/O Stack and make sure the request is valid */
     BeepParam = (PBEEP_SET_PARAMETERS) Irp->AssociatedIrp.SystemBuffer;
     IoStack = IoGetCurrentIrpStackLocation(Irp);
-    if (IoStack->Parameters.DeviceIoControl.IoControlCode ==
-	IOCTL_BEEP_SET) {
+    if (IoStack->Parameters.DeviceIoControl.IoControlCode == IOCTL_BEEP_SET) {
 	/* Check if we have an active timer */
 	if (DeviceExtension->TimerActive) {
 	    /* Cancel it */
@@ -255,8 +253,7 @@ NTAPI VOID BeepStartIo(IN PDEVICE_OBJECT DeviceObject,
 	    Status = STATUS_SUCCESS;
 	    DueTime.QuadPart = BeepParam->Duration * -10000LL;
 	    DeviceExtension->TimerActive = TRUE;
-	    KeSetTimer(&DeviceExtension->Timer, DueTime,
-		       &DeviceObject->Dpc);
+	    KeSetTimer(&DeviceExtension->Timer, DueTime, &DeviceObject->Dpc);
 	} else {
 	    /* Beep has failed */
 	    Status = STATUS_INVALID_PARAMETER;
@@ -284,9 +281,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     UNREFERENCED_PARAMETER(RegistryPath);
 
     /* Create the device */
-    Status = IoCreateDevice(DriverObject,
-			    sizeof(DEVICE_EXTENSION),
-			    &DeviceName,
+    Status = IoCreateDevice(DriverObject, sizeof(DEVICE_EXTENSION), &DeviceName,
 			    FILE_DEVICE_BEEP, 0, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;

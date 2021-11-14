@@ -42,12 +42,18 @@ typedef struct _THREAD {
     MWORD StackCommit;
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
-    BOOLEAN Suspended;
-    LIST_ENTRY ReadyListLink;
-    KWAIT_BLOCK RootWaitBlock;
-    ASYNC_STACK AsyncStack;
-    ULONG SvcNum;	 /* Saved service number */
-    BOOLEAN HalSvc;	 /* Saved service is HAL service */
+    BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
+    PIO_REQUEST_PACKET PendingIrp; /* IRP that the thread is waiting for a response for.
+				    * There can only be one pending IRP per thread.
+				    * For driver processes, the IRPs from higher-level
+				    * IoCallDriver are queued on the driver object. */
+    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IRP. */
+    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
+    LIST_ENTRY ReadyListLink; /* Links all threads that are ready to be resumed. */
+    KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */
+    ASYNC_STACK AsyncStack; /* Stack of asynchronous state, starting from the service handler */
+    ULONG SvcNum;	    /* Saved service number */
+    BOOLEAN HalSvc;	    /* Saved service is HAL service */
     union {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	HAL_SERVICE_PARAMETERS HalSvcParams;

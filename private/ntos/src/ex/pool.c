@@ -80,7 +80,7 @@ static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
 	} else {
 	    /* We are running low on resources. Check if we have run out of ExPool
 	     * virtual space first, and then request more pages from mm. */
-	    if (Pool->HeapEnd >= EX_POOL_START + EX_POOL_MAX_SIZE) {
+	    if (Pool->HeapEnd >= EX_POOL_END) {
 		return FALSE;
 	    }
 	    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
@@ -91,8 +91,8 @@ static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
 		Size = 4 * PAGE_SIZE;
 	    } /* Otherwise we are critically low on memory, just get one page only */
 	    /* Make sure we don't run over the end of ExPool space. */
-	    if (Pool->HeapEnd + Size >= EX_POOL_START + EX_POOL_MAX_SIZE) {
-		Size = EX_POOL_START + EX_POOL_MAX_SIZE - Pool->HeapEnd;
+	    if (Pool->HeapEnd + Size >= EX_POOL_END) {
+		Size = EX_POOL_END - Pool->HeapEnd;
 	    }
 	    NTSTATUS Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
 	    if (!NT_SUCCESS(Status)) {

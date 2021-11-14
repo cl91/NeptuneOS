@@ -38,6 +38,7 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
     ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER, TotalSize, {});
     ObjectHeader->Type = ObjectType;
     InitializeListHead(&ObjectHeader->ObjectLink);
+    InitializeListHead(&ObjectHeader->HandleEntryList);
     *Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
 
     RET_ERR_EX(ObjectType->TypeInfo.InitProc(*Object),

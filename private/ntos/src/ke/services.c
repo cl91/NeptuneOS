@@ -40,7 +40,9 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
 		     });
     MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread);
     if (HalService) {
-	IPCBadge |= 1;
+	IPCBadge |= THREAD_HAL_SERVICE_IPC_BADGE;
+    } else {
+	IPCBadge |= THREAD_SYSTEM_SERVICE_IPC_BADGE;
     }
     KeInitializeIpcEndpoint(ServiceEndpoint, Thread->Process->CSpace, 0, IPCBadge);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
@@ -143,7 +145,7 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
     return ObjAttr;
 }
 
-NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
+static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
 {
     assert(Thread->ReplyEndpoint.TreeNode.CSpace != NULL);
     int Error = seL4_CNode_SaveCaller(Thread->ReplyEndpoint.TreeNode.CSpace->TreeNode.Cap,
@@ -154,6 +156,11 @@ NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
 	return SEL4_ERROR(Error);
     }
     return STATUS_SUCCESS;
+}
+
+static inline VOID KiClearAsyncStack(IN PTHREAD Thread)
+{
+    memset(&Thread->AsyncStack, 0, sizeof(ASYNC_STACK));
 }
 
 /* The actual handling of system services is in the generated file below. */
@@ -181,10 +188,12 @@ VOID KiDispatchExecutiveServices()
 	    /* Thread is always a valid pointer since the client cannot modify the badge */
 	    assert(Badge != 0);
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
-	    if (Badge & 1) {
+	    KiClearAsyncStack(Thread);
+	    if (GLOBAL_HANDLE_GET_FLAG(Badge) == THREAD_HAL_SERVICE_IPC_BADGE) {
 		DbgTrace("Got driver call from thread %p\n", Thread);
 		Status = KiHandleHalService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
 	    } else {
+		assert(GLOBAL_HANDLE_GET_FLAG(Badge) == THREAD_SYSTEM_SERVICE_IPC_BADGE);
 		DbgTrace("Got call from thread %p\n", Thread);
 		Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength, &ReplyMsgLength);
 	    }

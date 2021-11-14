@@ -8,6 +8,7 @@
 #define METHOD_DIRECT_TO_HARDWARE         METHOD_IN_DIRECT
 #define METHOD_DIRECT_FROM_HARDWARE       METHOD_OUT_DIRECT
 
+/* IO_STATUS_BLOCK.Information */
 #define FILE_SUPERSEDED                   0x00000000
 #define FILE_OPENED                       0x00000001
 #define FILE_CREATED                      0x00000002
@@ -18,6 +19,7 @@
 #define FILE_USE_FILE_POINTER_POSITION    0xfffffffe
 #define FILE_WRITE_TO_END_OF_FILE         0xffffffff
 
+/* ACCESS_MASK (Bit 0--15) */
 #define FILE_LIST_DIRECTORY               0x00000001
 #define FILE_READ_DATA                    0x00000001
 #define FILE_ADD_FILE                     0x00000002
@@ -33,11 +35,13 @@
 #define FILE_READ_ATTRIBUTES              0x00000080
 #define FILE_WRITE_ATTRIBUTES             0x00000100
 
+/* NtCreateFile.ShareAccess */
 #define FILE_SHARE_READ                   0x00000001
 #define FILE_SHARE_WRITE                  0x00000002
 #define FILE_SHARE_DELETE                 0x00000004
 #define FILE_SHARE_VALID_FLAGS            0x00000007
 
+/* NtCreateFile.FileAttributes */
 #define FILE_ATTRIBUTE_READONLY           0x00000001
 #define FILE_ATTRIBUTE_HIDDEN             0x00000002
 #define FILE_ATTRIBUTE_SYSTEM             0x00000004
@@ -63,6 +67,7 @@
 #define FILE_VALID_MAILSLOT_OPTION_FLAGS  0x00000032
 #define FILE_VALID_SET_FLAGS              0x00000036
 
+/* NtCreateFile.CreateDisposition */
 #define FILE_SUPERSEDE                    0x00000000
 #define FILE_OPEN                         0x00000001
 #define FILE_CREATE                       0x00000002
@@ -71,6 +76,7 @@
 #define FILE_OVERWRITE_IF                 0x00000005
 #define FILE_MAXIMUM_DISPOSITION          0x00000005
 
+/* NtCreateFile.CreateOptions */
 #define FILE_DIRECTORY_FILE               0x00000001
 #define FILE_WRITE_THROUGH                0x00000002
 #define FILE_SEQUENTIAL_ONLY              0x00000004
@@ -94,6 +100,7 @@
 #define FILE_OPEN_NO_RECALL               0x00400000
 #define FILE_OPEN_FOR_FREE_SPACE_QUERY    0x00800000
 
+/* IOCTL.RequiredAccess. See CTL_CODE */
 #define FILE_ANY_ACCESS                   0x00000000
 #define FILE_SPECIAL_ACCESS               FILE_ANY_ACCESS
 #define FILE_READ_ACCESS                  0x00000001
@@ -205,6 +212,88 @@ typedef ULONG DEVICE_TYPE;
 #define FILE_CHARACTERISTIC_WEBDAV_DEVICE 0x00002000
 #define FILE_PORTABLE_DEVICE              0x00004000
 #define FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL 0x00020000
+
+/*
+ * IRP function codes
+ */
+#define IRP_MJ_CREATE                     0x00
+#define IRP_MJ_CREATE_NAMED_PIPE          0x01
+#define IRP_MJ_CLOSE                      0x02
+#define IRP_MJ_READ                       0x03
+#define IRP_MJ_WRITE                      0x04
+#define IRP_MJ_QUERY_INFORMATION          0x05
+#define IRP_MJ_SET_INFORMATION            0x06
+#define IRP_MJ_QUERY_EA                   0x07
+#define IRP_MJ_SET_EA                     0x08
+#define IRP_MJ_FLUSH_BUFFERS              0x09
+#define IRP_MJ_QUERY_VOLUME_INFORMATION   0x0a
+#define IRP_MJ_SET_VOLUME_INFORMATION     0x0b
+#define IRP_MJ_DIRECTORY_CONTROL          0x0c
+#define IRP_MJ_FILE_SYSTEM_CONTROL        0x0d
+#define IRP_MJ_DEVICE_CONTROL             0x0e
+#define IRP_MJ_INTERNAL_DEVICE_CONTROL    0x0f
+#define IRP_MJ_SCSI                       0x0f
+#define IRP_MJ_SHUTDOWN                   0x10
+#define IRP_MJ_LOCK_CONTROL               0x11
+#define IRP_MJ_CLEANUP                    0x12
+#define IRP_MJ_CREATE_MAILSLOT            0x13
+#define IRP_MJ_QUERY_SECURITY             0x14
+#define IRP_MJ_SET_SECURITY               0x15
+#define IRP_MJ_POWER                      0x16
+#define IRP_MJ_SYSTEM_CONTROL             0x17
+#define IRP_MJ_DEVICE_CHANGE              0x18
+#define IRP_MJ_QUERY_QUOTA                0x19
+#define IRP_MJ_SET_QUOTA                  0x1a
+#define IRP_MJ_PNP                        0x1b
+#define IRP_MJ_PNP_POWER                  0x1b
+#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
+
+#define IRP_MN_SCSI_CLASS                 0x01
+
+#define IRP_MN_START_DEVICE               0x00
+#define IRP_MN_QUERY_REMOVE_DEVICE        0x01
+#define IRP_MN_REMOVE_DEVICE              0x02
+#define IRP_MN_CANCEL_REMOVE_DEVICE       0x03
+#define IRP_MN_STOP_DEVICE                0x04
+#define IRP_MN_QUERY_STOP_DEVICE          0x05
+#define IRP_MN_CANCEL_STOP_DEVICE         0x06
+
+#define IRP_MN_QUERY_DEVICE_RELATIONS       0x07
+#define IRP_MN_QUERY_INTERFACE              0x08
+#define IRP_MN_QUERY_CAPABILITIES           0x09
+#define IRP_MN_QUERY_RESOURCES              0x0A
+#define IRP_MN_QUERY_RESOURCE_REQUIREMENTS  0x0B
+#define IRP_MN_QUERY_DEVICE_TEXT            0x0C
+#define IRP_MN_FILTER_RESOURCE_REQUIREMENTS 0x0D
+
+#define IRP_MN_READ_CONFIG                  0x0F
+#define IRP_MN_WRITE_CONFIG                 0x10
+#define IRP_MN_EJECT                        0x11
+#define IRP_MN_SET_LOCK                     0x12
+#define IRP_MN_QUERY_ID                     0x13
+#define IRP_MN_QUERY_PNP_DEVICE_STATE       0x14
+#define IRP_MN_QUERY_BUS_INFORMATION        0x15
+#define IRP_MN_DEVICE_USAGE_NOTIFICATION    0x16
+#define IRP_MN_SURPRISE_REMOVAL             0x17
+#define IRP_MN_DEVICE_ENUMERATED            0x19
+
+#define IRP_MN_WAIT_WAKE                  0x00
+#define IRP_MN_POWER_SEQUENCE             0x01
+#define IRP_MN_SET_POWER                  0x02
+#define IRP_MN_QUERY_POWER                0x03
+
+#define IRP_MN_QUERY_ALL_DATA             0x00
+#define IRP_MN_QUERY_SINGLE_INSTANCE      0x01
+#define IRP_MN_CHANGE_SINGLE_INSTANCE     0x02
+#define IRP_MN_CHANGE_SINGLE_ITEM         0x03
+#define IRP_MN_ENABLE_EVENTS              0x04
+#define IRP_MN_DISABLE_EVENTS             0x05
+#define IRP_MN_ENABLE_COLLECTION          0x06
+#define IRP_MN_DISABLE_COLLECTION         0x07
+#define IRP_MN_REGINFO                    0x08
+#define IRP_MN_EXECUTE_METHOD             0x09
+
+#define IRP_MN_REGINFO_EX                 0x0b
 
 typedef enum _IO_NOTIFICATION_EVENT_CATEGORY {
     EventCategoryReserved,

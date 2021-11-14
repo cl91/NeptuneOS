@@ -78,12 +78,6 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
     case IRP_MJ_CREATE:
     case IRP_MJ_CLOSE:
 
-	/* Check if this is synch I/O */
-	if (FileObject->Flags & FO_SYNCHRONOUS_IO) {
-	    /* Set distinguished value for Cc */
-	    FileObject->PrivateCacheMap = (PVOID) 1;
-	}
-
 	/* Complete successfully */
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
@@ -112,7 +106,7 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 
     case IRP_MJ_QUERY_INFORMATION:
 
-	/* Get the length inputted and do the request */
+	/* Get the length from the request and complete the request */
 	ULONG Length = IoStack->Parameters.QueryFile.Length;
 	Irp->IoStatus.Status = NullQueryFileInformation(Irp->AssociatedIrp.SystemBuffer, &Length,
 							IoStack->Parameters.QueryFile.FileInformationClass);
