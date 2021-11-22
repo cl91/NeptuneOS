@@ -50,19 +50,10 @@ static NTSTATUS IopDriverEventLoop()
     ULONG NumResponsePackets = 0;
     while (TRUE) {
 	ULONG NumRequestPackets = 0;
+	/* This should never return error. If it did, something is seriously
+	 * wrong and we should terminate the driver process. */
 	RET_ERR(IopRequestIrp(NumResponsePackets, &NumRequestPackets));
-	NTSTATUS Status = IopProcessIrp(&NumResponsePackets, NumRequestPackets);
-	if (!NT_SUCCESS(Status)) {
-	    DbgTrace("IopProcessIrp returned error 0x%08x\n", Status);
-	    /* On debug build, we simply stop the driver so we can debug the
-	     * error and fix it. On release build, we have no choice but
-	     * to keep going. Since the IopProcessIrp function never generates
-	     * partial response packets (if a response packet gets into the
-	     * outgoing IRP queue it is guaranteed to be valid), it will appear
-	     * that the driver simply dropped some request packets, which will
-	     * never get a response. */
-	    assert(FALSE);
-	}
+	IopProcessIrp(&NumResponsePackets, NumRequestPackets);
     }
 }
 
@@ -78,6 +69,7 @@ VOID HalStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopCompletedIrpList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
+    InitializeListHead(&IopTimerList);
 
     IopDriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),
 						       HEAP_ZERO_MEMORY,

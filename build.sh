@@ -173,7 +173,7 @@ else
 fi
 PE_COPY_LIST='ntdll/ntdll.dll hal/hal.dll'
 BASE_COPY_LIST='smss/smss.exe'
-DRIVER_COPY_LIST='base/null/null.sys'
+DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
 done

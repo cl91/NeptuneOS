@@ -57,6 +57,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     if (DeviceName) {
 	DeviceObject->Flags |= DO_DEVICE_HAS_NAME;
     }
+    KeInitializeDeviceQueue(&DeviceObject->DeviceQueue);
 
     /* Set the right Sector Size */
     switch (DeviceType) {
@@ -83,6 +84,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     DeviceListEntry->Handle = DeviceHandle;
     InsertTailList(&IopDeviceList, &DeviceListEntry->Link);
 
+    *pDeviceObject = DeviceObject;
     return STATUS_SUCCESS;
 }
 

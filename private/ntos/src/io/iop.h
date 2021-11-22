@@ -42,6 +42,11 @@ static inline VOID IopQueueIrp(IN PIO_REQUEST_PACKET Irp,
     KeSetEvent(&Driver->IrpQueuedEvent);
 }
 
+static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
+{
+    return !!(File->Flags & FO_SYNCHRONOUS_IO);
+}
+
 typedef enum _CREATE_FILE_TYPE {
     CreateFileTypeNone,
     CreateFileTypeNamedPipe,
@@ -100,3 +105,13 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
 /* driver.c */
 NTSTATUS IopDriverObjectInitProc(POBJECT Object);
+
+/* irp.c */
+NTSTATUS IopMapUserBuffer(IN PPROCESS User,
+			  IN PIO_DRIVER_OBJECT Driver,
+			  IN MWORD UserStartAddr,
+			  IN MWORD UserBufferLength,
+			  OUT MWORD *DriverBufferStart,
+			  IN BOOLEAN ReadOnly);
+VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
+			IN MWORD DriverBuffer);

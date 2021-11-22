@@ -529,7 +529,7 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
 				     MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
     assert(Vad != NULL);
     Vad->PhysicalSectionView.PhysicalBase = PhysicalBase;
-    RET_ERR(MmCommitVirtualMemoryEx(VSpace, VirtualBase, WindowSize, 0));
+    RET_ERR(MmCommitVirtualMemoryEx(VSpace, VirtualBase, WindowSize));
     return STATUS_SUCCESS;
 }
 

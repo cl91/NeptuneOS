@@ -2,6 +2,7 @@
 
 #include <nt.h>
 #include <string.h>
+#include <assert.h>
 
 #define PAGED_CODE()
 
@@ -19,38 +20,6 @@
 #define MEMORY_ALLOCATION_ALIGNMENT 8
 #endif
 
-/* FILE_OBJECT.Flags */
-#define FO_FILE_OPEN                 0x00000001
-#define FO_SYNCHRONOUS_IO            0x00000002
-#define FO_ALERTABLE_IO              0x00000004
-#define FO_NO_INTERMEDIATE_BUFFERING 0x00000008
-#define FO_WRITE_THROUGH             0x00000010
-#define FO_SEQUENTIAL_ONLY           0x00000020
-#define FO_CACHE_SUPPORTED           0x00000040
-#define FO_NAMED_PIPE                0x00000080
-#define FO_STREAM_FILE               0x00000100
-#define FO_MAILSLOT                  0x00000200
-#define FO_GENERATE_AUDIT_ON_CLOSE   0x00000400
-#define FO_QUEUE_IRP_TO_THREAD       0x00000400
-#define FO_DIRECT_DEVICE_OPEN        0x00000800
-#define FO_FILE_MODIFIED             0x00001000
-#define FO_FILE_SIZE_CHANGED         0x00002000
-#define FO_CLEANUP_COMPLETE          0x00004000
-#define FO_TEMPORARY_FILE            0x00008000
-#define FO_DELETE_ON_CLOSE           0x00010000
-#define FO_OPENED_CASE_SENSITIVE     0x00020000
-#define FO_HANDLE_CREATED            0x00040000
-#define FO_FILE_FAST_IO_READ         0x00080000
-#define FO_RANDOM_ACCESS             0x00100000
-#define FO_FILE_OPEN_CANCELLED       0x00200000
-#define FO_VOLUME_OPEN               0x00400000
-#define FO_REMOTE_ORIGIN             0x01000000
-#define FO_DISALLOW_EXCLUSIVE        0x02000000
-#define FO_SKIP_COMPLETION_PORT      0x02000000
-#define FO_SKIP_SET_EVENT            0x04000000
-#define FO_SKIP_SET_FAST_IO          0x08000000
-#define FO_FLAGS_VALID_ONLY_DURING_CREATE FO_DISALLOW_EXCLUSIVE
-
 /* VPB.Flags */
 #define VPB_MOUNTED                       0x0001
 #define VPB_LOCKED                        0x0002
@@ -60,7 +29,6 @@
 #define VPB_DIRECT_WRITES_ALLOWED         0x0020
 
 /* IO_STACK_LOCATION.Flags */
-
 #define SL_FORCE_ACCESS_CHECK             0x01
 #define SL_OPEN_PAGING_FILE               0x02
 #define SL_OPEN_TARGET_DIRECTORY          0x04
@@ -87,6 +55,13 @@
 #define SL_WATCH_TREE                     0x01
 
 #define SL_ALLOW_RAW_MOUNT                0x01
+
+/* IO_STACK_LOCATION.Control */
+#define SL_PENDING_RETURNED               0x01
+#define SL_ERROR_RETURNED                 0x02
+#define SL_INVOKE_ON_CANCEL               0x20
+#define SL_INVOKE_ON_SUCCESS              0x40
+#define SL_INVOKE_ON_ERROR                0x80
 
 /* IRP.Flags */
 #define IRP_NOCACHE                     0x00000001
@@ -153,6 +128,18 @@
 #define FILE_256_BYTE_ALIGNMENT         0x000000ff
 #define FILE_512_BYTE_ALIGNMENT         0x000001ff
 
+/*
+ * Device Object StartIo Flags
+ */
+#define DOE_SIO_NO_KEY                          0x20
+#define DOE_SIO_WITH_KEY                        0x40
+#define DOE_SIO_CANCELABLE                      0x80
+#define DOE_SIO_DEFERRED                        0x100
+#define DOE_SIO_NO_CANCEL                       0x200
+
+/*
+ * Priority boost for the thread initiating an IO request
+ */
 #define EVENT_INCREMENT                   1
 #define IO_NO_INCREMENT                   0
 #define IO_CD_ROM_INCREMENT               1
@@ -220,6 +207,49 @@ typedef struct _FILE_OBJECT {
     UNICODE_STRING FileName;
 } FILE_OBJECT, *PFILE_OBJECT;
 
+/*
+ * DPC routine
+ */
+struct _KDPC;
+typedef VOID (NTAPI KDEFERRED_ROUTINE)(IN struct _KDPC *Dpc,
+				       IN OPTIONAL PVOID DeferredContext,
+				       IN OPTIONAL PVOID SystemArgument1,
+				       IN OPTIONAL PVOID SystemArgument2);
+typedef KDEFERRED_ROUTINE *PKDEFERRED_ROUTINE;
+
+/*
+ * DPC Object. Note: despite being called 'KDPC' this is a client
+ * (ie. driver process) side structure. The name KDPC is kept to
+ * to ease porting Windows/ReactOS drivers.
+ */
+typedef struct _KDPC {
+    LIST_ENTRY DpcListEntry;
+    PKDEFERRED_ROUTINE DeferredRoutine;
+    PVOID DeferredContext;
+    PVOID SystemArgument1;
+    PVOID SystemArgument2;
+} KDPC, *PKDPC;
+
+/*
+ * Device queue. Used for queuing an IRP for serialized IO processing
+ */
+typedef struct _KDEVICE_QUEUE {
+    LIST_ENTRY DeviceListHead;
+    BOOLEAN Busy;
+} KDEVICE_QUEUE, *PKDEVICE_QUEUE;
+
+/*
+ * Entry for a device queue.
+ */
+typedef struct _KDEVICE_QUEUE_ENTRY {
+    LIST_ENTRY DeviceListEntry;
+    ULONG SortKey;
+    BOOLEAN Inserted;
+} KDEVICE_QUEUE_ENTRY, *PKDEVICE_QUEUE_ENTRY;
+
+/*
+ * Device object.
+ */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     SHORT Type;
     ULONG Size;
@@ -234,6 +264,8 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     DEVICE_TYPE DeviceType;
     CCHAR StackSize;
     ULONG AlignmentRequirement;
+    KDEVICE_QUEUE DeviceQueue;
+    KDPC Dpc;
     ULONG ActiveThreadCount;
     PSECURITY_DESCRIPTOR SecurityDescriptor;
     USHORT SectorSize;
@@ -280,8 +312,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     IO_STATUS_BLOCK IoStatus;
 
     /* Number of IO stack locations associated with this IRP object.
-     * This is a constant member and drivers should never change this.
-     */
+     * This is a constant member and drivers should never change this. */
     CHAR StackCount;
 
     /* Current IO stack location. As opposed to Windows/ReactOS
@@ -293,43 +324,48 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
      */
     CHAR CurrentLocation;
 
-    /* We need to determine the use of the following */
-#if 0
+    /* TODO. */
     BOOLEAN PendingReturned;
-    BOOLEAN Cancel;
-    CCHAR ApcEnvironment;
-    UCHAR AllocationFlags;
-    PIO_STATUS_BLOCK UserIosb;
-    union {
-	struct {
-	    union {
-		PIO_APC_ROUTINE UserApcRoutine;
-		PVOID IssuingProcess;
-	    };
-	    PVOID UserApcContext;
-	} AsynchronousParameters;
-	LARGE_INTEGER AllocationSize;
-    } Overlay;
-    volatile PDRIVER_CANCEL CancelRoutine;
-    PVOID UserBuffer;
-#endif
 
-    /* The following is used mostly by filesystem and network drivers.
-     * We will enable them once we get to porting those. */
-#if 0
-    union {
-	struct {
-	    /* Available for driver use */
+    /* Indicates whether this IRP has been canceled */
+    BOOLEAN Cancel;
+
+    /* Cancel routine to call when canceling this IRP */
+    PDRIVER_CANCEL CancelRoutine;
+
+    /* Indicates that this IRP has been completed */
+    BOOLEAN Completed;
+
+    /* The priority boost that is to be added to the thread which
+     * originally initiated this IO request when the IRP is completed */
+    CHAR PriorityBoost;
+
+    /* User buffer for NEITHER_IO */
+    PVOID UserBuffer;
+
+    /* Porting guide: in the original Windows/ReactOS definition
+     * this is a union of the following struct with other things.
+     * Since we do not need the other "things" this can simply be
+     * a struct. To port Windows/ReactOS drivers to NeptuneOS
+     * simply change Tail.Overlay to Tail */
+    struct {
+	union {
+	    /* Used by the driver to queue the IRP to the device
+	     * queue. This is optional. The driver can also use
+	     * the StartIo routine to serialize IO processing. */
+	    KDEVICE_QUEUE_ENTRY DeviceQueueEntry;
+	    /* If the driver does not use device queue, these are
+	     * available for driver use */
 	    PVOID DriverContext[4];
-	    /* The following two members are used for the network packet filter
-	     * to queue IRP to an I/O completion queue.
-	     * These will be enabled once we get to porting network drivers. */
-	    // LIST_ENTRY ListEntry;
-	    // ULONG PacketType;
-	    PFILE_OBJECT OriginalFileObject;
-	} Overlay;
+	};
+	/* Available for driver use. Typically used to queue IRP to
+	 * a driver-defined queue. */
+	LIST_ENTRY ListEntry;
+	/* The following member is used by the network packet filter
+	 * to queue IRP to an I/O completion queue. */
+	ULONG PacketType;
+	PFILE_OBJECT OriginalFileObject;
     } Tail;
-#endif
 } IRP, *PIRP;
 
 /*
@@ -834,9 +870,6 @@ NTAPI NTSYSAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 				       IN BOOLEAN Exclusive,
 				       OUT PDEVICE_OBJECT *DeviceObject);
 
-NTAPI NTSYSAPI VOID IoCompleteRequest(IN PIRP Irp,
-				      IN CHAR PriorityBoost);
-
 NTAPI NTSYSAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject);
 
 NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
@@ -848,4 +881,297 @@ FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack = (PIO_STACK_LOCATION)(Irp + 1);
     return &Stack[Irp->CurrentLocation];
+}
+
+/*
+ * IO DPC routine
+ */
+typedef VOID (NTAPI IO_DPC_ROUTINE)(IN PKDPC Dpc,
+				    IN PDEVICE_OBJECT DeviceObject,
+				    IN OUT PIRP Irp,
+				    IN OPTIONAL PVOID Context);
+typedef IO_DPC_ROUTINE *PIO_DPC_ROUTINE;
+
+/*
+ * TIMER object. Note: just like KDPC despite being called 'KTIMER'
+ * this is the client-side handle to the server side KTIMER object.
+ * There is no name collision because the NTOS server does not
+ * include files under public/ddk.
+ */
+typedef struct _KTIMER {
+    HANDLE Handle;
+    LIST_ENTRY TimerListEntry;
+    PKDPC Dpc;
+    BOOLEAN State;		/* TRUE if the timer is set. */
+    BOOLEAN Canceled;
+} KTIMER, *PKTIMER;
+
+/*
+ * Device queue initialization function
+ */
+FORCEINLINE VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
+{
+    assert(Queue != NULL);
+    InitializeListHead(&Queue->DeviceListHead);
+    Queue->Busy = FALSE;
+}
+
+/*
+ * Note: this function has a somewhat peculiar behavior at first glance.
+ * If the device queue is not busy, the function does NOT insert the entry
+ * into the queue, and instead simply sets the device queue to busy.
+ * On the other hand, if the device queue is busy, the entry is inserted
+ * at the end of the queue. The return value indicates whether the insertion
+ * has been performed.
+ */
+FORCEINLINE BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
+					IN PKDEVICE_QUEUE_ENTRY Entry)
+{
+    assert(Queue != NULL);
+    assert(Entry != NULL);
+    if (!Queue->Busy) {
+        Entry->Inserted = FALSE;
+        Queue->Busy = TRUE;
+    } else {
+        Entry->Inserted = TRUE;
+        InsertTailList(&Queue->DeviceListHead, &Entry->DeviceListEntry);
+    }
+    return Entry->Inserted;
+}
+
+/*
+ * Same as KeInsertDeviceQueue, except that the insertion is sorted by
+ * the specified key (the given queue entry is inserted after the first
+ * entry that satisfies the property that the specified key is larger or
+ * equal to it but smaller than its successor).
+ *
+ * NOTE: Queue must be already sorted (or empty). Otherwise the function
+ * behaves unpredictably.
+ */
+FORCEINLINE BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
+					     IN PKDEVICE_QUEUE_ENTRY Entry,
+					     IN ULONG SortKey)
+{
+    assert(Queue != NULL);
+    assert(Entry != NULL);
+    Entry->SortKey = SortKey;
+
+    if (!Queue->Busy) {
+        Entry->Inserted = FALSE;
+        Queue->Busy = TRUE;
+    } else {
+        /* Make sure the list isn't empty */
+	PLIST_ENTRY NextEntry = &Queue->DeviceListHead;
+        if (!IsListEmpty(NextEntry)) {
+            /* Get the last entry */
+	    PKDEVICE_QUEUE_ENTRY LastEntry = CONTAINING_RECORD(NextEntry->Blink,
+							       KDEVICE_QUEUE_ENTRY,
+							       DeviceListEntry);
+
+	    /* Find the first occurrence where the specified key is larger or equal
+	     * to an entry but smaller than its successor. */
+            if (SortKey < LastEntry->SortKey) {
+                do {
+                    NextEntry = NextEntry->Flink;
+                    LastEntry = CONTAINING_RECORD(NextEntry,
+                                                  KDEVICE_QUEUE_ENTRY,
+                                                  DeviceListEntry);
+                } while (SortKey >= LastEntry->SortKey);
+            }
+        }
+
+        /* Now insert us */
+        InsertTailList(NextEntry, &Entry->DeviceListEntry);
+        Entry->Inserted = TRUE;
+    }
+    return Entry->Inserted;
+}
+
+/*
+ * Removes the entry from the head and returns the removed entry. If queue
+ * is empty, return NULL. This function should only be called when the queue
+ * is set to busy state, otherwise it asserts.
+ */
+FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
+{
+    PKDEVICE_QUEUE_ENTRY Entry = NULL;
+
+    assert(Queue != NULL);
+    assert(Queue->Busy);
+
+    /* Check if this is an empty queue */
+    if (IsListEmpty(&Queue->DeviceListHead)) {
+        /* Set it to idle and return nothing */
+        Queue->Busy = FALSE;
+    } else {
+        /* Remove the Entry from the List */
+	PLIST_ENTRY ListEntry = RemoveHeadList(&Queue->DeviceListHead);
+        Entry = CONTAINING_RECORD(ListEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
+        Entry->Inserted = FALSE;
+    }
+    return Entry;
+}
+
+/*
+ * Same as KeRemoveDeviceQueue, except the entry to be removed is the first entry
+ * with a key that is greater or equal to the specified sort key. If all entries
+ * have keys smaller than the specified sort key, then the head of the queue is
+ * removed and returned.
+ *
+ * The queue must be busy, otherwise the function asserts in debug build.
+ *
+ * NOTE: Queue must be already sorted. Otherwise the function behaves unpredictably.
+ */
+FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
+							  IN ULONG SortKey)
+{
+    PKDEVICE_QUEUE_ENTRY Entry = NULL;
+
+    assert(Queue != NULL);
+    assert(Queue->Busy);
+
+    /* Check if this is an empty queue */
+    if (IsListEmpty(&Queue->DeviceListHead)) {
+        /* Set it to idle and return nothing */
+        Queue->Busy = FALSE;
+    } else {
+	PLIST_ENTRY NextEntry = &Queue->DeviceListHead;
+        Entry = CONTAINING_RECORD(NextEntry->Blink, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
+        /* If SortKey is greater than the last key, then return the first entry right away */
+        if (Entry->SortKey <= SortKey) {
+            Entry = CONTAINING_RECORD(NextEntry->Flink, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
+        } else {
+            NextEntry = Queue->DeviceListHead.Flink;
+            while (TRUE) {
+                /* Make sure we don't go beyond the end of the queue */
+                assert(NextEntry != &Queue->DeviceListHead);
+
+                /* Get the next entry and check if its key is greater or equal to SortKey */
+                Entry = CONTAINING_RECORD(NextEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
+                if (SortKey <= Entry->SortKey) {
+		    break;
+		}
+                NextEntry = NextEntry->Flink;
+            }
+        }
+
+        RemoveEntryList(&Entry->DeviceListEntry);
+        Entry->Inserted = FALSE;
+    }
+    return Entry;
+}
+
+/*
+ * Same as KeRemoveByKeyDeviceQueue, except it doesn't assert if the queue is not busy.
+ * Instead, NULL is returned if queue is not busy.
+ */
+FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVICE_QUEUE Queue,
+								IN ULONG SortKey)
+{
+    assert(Queue != NULL);
+    if (!Queue->Busy) {
+	return NULL;
+    }
+    return KeRemoveByKeyDeviceQueue(Queue, SortKey);
+}
+
+/*
+ * Removes the specified entry from the queue, returning TRUE.
+ * If the entry is not inserted, nothing is done and we return FALSE.
+ */
+FORCEINLINE BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
+					     IN PKDEVICE_QUEUE_ENTRY Entry)
+{
+    assert(Queue != NULL);
+    assert(Queue->Busy);
+    if (Entry->Inserted) {
+        Entry->Inserted = FALSE;
+        RemoveEntryList(&Entry->DeviceListEntry);
+	return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+ * Set the IO cancel routine of the given IRP, returning the previous one.
+ *
+ * NOTE: As opposed to Windows/ReactOS we do NOT need the interlocked (atomic)
+ * operation here, since in NeptuneOS driver dispatch routines run in a single thread.
+ */
+FORCEINLINE PDRIVER_CANCEL IoSetCancelRoutine(IN OUT PIRP Irp,
+					      IN OPTIONAL PDRIVER_CANCEL CancelRoutine)
+{
+    PDRIVER_CANCEL Old = Irp->CancelRoutine;
+    Irp->CancelRoutine = CancelRoutine;
+    return Old;
+}
+
+/*
+ * DPC initialization function
+ */
+FORCEINLINE VOID KeInitializeDpc(IN PKDPC Dpc,
+				 IN PKDEFERRED_ROUTINE DeferredRoutine,
+				 IN PVOID DeferredContext)
+{
+    Dpc->DeferredRoutine = DeferredRoutine;
+    Dpc->DeferredContext = DeferredContext;
+}
+
+/*
+ * Initialize the device object's built-in DPC object
+ */
+FORCEINLINE VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
+					IN PIO_DPC_ROUTINE DpcRoutine)
+{
+    KeInitializeDpc(&DeviceObject->Dpc, (PKDEFERRED_ROUTINE)DpcRoutine,
+		    DeviceObject);
+}
+
+/*
+ * Complete the IRP. We simply mark the IRP as completed and the
+ * IO manager will inform the NTOS server of IRP completion.
+ */
+FORCEINLINE VOID IoCompleteRequest(IN PIRP Irp,
+				   IN CHAR PriorityBoost)
+{
+    Irp->Completed = TRUE;
+    Irp->PriorityBoost = PriorityBoost;
+}
+
+/*
+ * Mark the current IRP as pending
+ */
+FORCEINLINE VOID IoMarkIrpPending(IN OUT PIRP Irp)
+{
+    IoGetCurrentIrpStackLocation((Irp))->Control |= SL_PENDING_RETURNED;
+}
+
+/*
+ * Start the IO packet.
+ */
+NTAPI NTSYSAPI VOID IoStartPacket(IN PDEVICE_OBJECT DeviceObject,
+				  IN PIRP Irp,
+				  IN OPTIONAL PULONG Key,
+				  IN OPTIONAL PDRIVER_CANCEL CancelFunction);
+
+NTAPI NTSYSAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
+				      IN BOOLEAN Cancelable);
+
+/*
+ * Timer routines
+ */
+NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
+
+NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+				  IN LARGE_INTEGER DueTime,
+				  IN OPTIONAL PKDPC Dpc);
+
+FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
+{
+    BOOLEAN PreviousState = Timer->State;
+    /* Mark the timer as canceled. The driver process will
+     * later inform the server about timer cancellation. */
+    Timer->Canceled = TRUE;
+    Timer->State = FALSE;
+    return PreviousState;
 }

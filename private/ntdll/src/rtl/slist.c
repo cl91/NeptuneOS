@@ -79,17 +79,13 @@ NTAPI USHORT RtlQueryDepthSList(IN PSLIST_HEADER SListHead)
 #endif
 }
 
+#ifndef _WIN64
 FASTCALL PSLIST_ENTRY
 RtlInterlockedPushListSList(IN OUT PSLIST_HEADER SListHead,
 			    IN OUT PSLIST_ENTRY List,
 			    IN OUT PSLIST_ENTRY ListEnd,
 			    IN ULONG Count)
 {
-#ifdef _WIN64
-    UNIMPLEMENTED;
-    DbgBreakPoint();
-    return NULL;
-#else
     SLIST_HEADER OldHeader, NewHeader;
     ULONGLONG Compare;
 
@@ -108,14 +104,12 @@ RtlInterlockedPushListSList(IN OUT PSLIST_HEADER SListHead,
 
 	/* Try to exchange atomically */
 	Compare = OldHeader.Alignment;
-	OldHeader.Alignment =
-	    InterlockedCompareExchange64((PLONGLONG) & SListHead->
-					 Alignment, NewHeader.Alignment,
-					 Compare);
-    }
-    while (OldHeader.Alignment != Compare);
+	OldHeader.Alignment = InterlockedCompareExchange64((PLONGLONG) & SListHead->
+							   Alignment, NewHeader.Alignment,
+							   Compare);
+    } while (OldHeader.Alignment != Compare);
 
     /* Return the old first entry */
     return OldHeader.Next.Next;
-#endif				/* _WIN64 */
 }
+#endif	/* !defined(_WIN64) */

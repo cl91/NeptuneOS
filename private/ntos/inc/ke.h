@@ -222,10 +222,10 @@ typedef struct _ASYNC_STATE {
  * conditionally. Enclosing the AWAIT statement in an if-statement is INCORRECT!
  */
 #define AWAIT_IF(cond, func, state, ...)				\
-    } case __LINE__: {							\
-    if ((cond) &&							\
-	!ASYNC_IS_DONE(func(state __VA_OPT__(,) __VA_ARGS__)))		\
-	return KiAsyncYield(state, __LINE__)
+    if (cond) {								\
+    case __LINE__:							\
+	if (!ASYNC_IS_DONE(func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	    return KiAsyncYield(state, __LINE__); } } {
 
 /**
  * IMPORTANT: You MUST use the following macros if you want to await conditionally
@@ -233,10 +233,11 @@ typedef struct _ASYNC_STATE {
  * is INCORRECT!
  */
 #define AWAIT_EX_IF(cond, func, status, state, ...)			\
-    } case __LINE__: {							\
-    if ((cond) &&							\
-	!ASYNC_IS_DONE(status = func(state __VA_OPT__(,) __VA_ARGS__))) \
-	return KiAsyncYield(state, __LINE__)
+    if (cond) {								\
+    case __LINE__:							\
+	if (!ASYNC_IS_DONE(status =					\
+			   func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	    return KiAsyncYield(state, __LINE__); } } {
 
 /**
  * Yield execution

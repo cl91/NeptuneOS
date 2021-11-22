@@ -46,7 +46,7 @@ NTSTATUS LdrLoadBootModules()
 	RET_ERR(IoCreateFile(FileNames[i], (PVOID) FileContent, FileSize, &File));
 	assert(File != NULL);
 	RET_ERR_EX(ObInsertObjectByName(BOOTMODULE_OBJECT_DIRECTORY, File, FileNames[i]),
-		   ObDeleteObject(File));
+		   ObDereferenceObject(File));
     }
 
     return STATUS_SUCCESS;

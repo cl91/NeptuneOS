@@ -1,5 +1,13 @@
 #include "iop.h"
 
+/*
+ * Handler function for the HAL service IopRequestIrp.
+ *
+ * Check the previous batch of incoming IRPs first and see if any of them
+ * errored out, and then process the driver's outgoing IRP buffer. Once that
+ * is done, process the driver's IRP queue and forward them to the driver's
+ * incoming IRP buffer.
+ */
 NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
 		       IN ULONG NumResponsePackets,
@@ -13,7 +21,62 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
     ASYNC_BEGIN(State);
     KeSetEvent(&DriverObject->InitializationDoneEvent);
 
-    /* Process the driver's response IRP buffer first */
+    /* Check the previous batch of incoming IRPs to see if any of them
+     * is marked with an error status. This means that the driver process
+     * has encountered a serious error (probably out-of-memory). */
+    PIO_REQUEST_PACKET Request = (PIO_REQUEST_PACKET)DriverObject->IncomingIrpServerAddr;
+    for (ULONG i = 0; i < DriverObject->NumRequestPackets; i++) {
+	if (Request[i].Type == IrpTypeRequest) {
+	    PIO_REQUEST_PACKET ThisIrp = (PIO_REQUEST_PACKET)
+		GLOBAL_HANDLE_TO_POINTER(Request[i].ThisIrp);
+	    /* Check the driver's pending IRP list to see if ThisIrp is valid */
+	    BOOLEAN Valid = FALSE;
+	    LoopOverList(PendingIrp, &DriverObject->PendingIrpList, IO_REQUEST_PACKET, IrpLink) {
+		if (PendingIrp == ThisIrp) {
+		    Valid = TRUE;
+		}
+	    }
+	    /* If ThisIrp is not valid, what has most likely happened is that the driver has
+	     * messed up the incoming IRP buffer. */
+	    if (!Valid) {
+		DbgTrace("BUG BUG BUG --- Driver %s made a mess of the incoming IRP buffer!",
+			 DriverObject->DriverImageName);
+		/* On debug build we should assert so we can stop and debug. */
+		assert(FALSE);
+		continue;
+	    }
+	    /* ThisIrp is valid. Check if it errored out. */
+	    if (Request[i].ErrorStatus != STATUS_SUCCESS) {
+		/* Driver should never return a status code that is not STATUS_SUCCESS, but
+		 * does not have the error bit in the NTSTATUS word set. If this happens, then
+		 * most likely driver process has messed up the incoming IRP buffer. */
+		if (NT_SUCCESS(Request[i].ErrorStatus)) {
+		    DbgTrace("BUG BUG BUG --- Driver %s made a mess of the incoming IRP buffer!",
+			     DriverObject->DriverImageName);
+		    /* On debug build we should assert so we can stop and debug. */
+		    assert(FALSE);
+		}
+		PTHREAD ThreadToWakeUp = ThisIrp->Thread.Object;
+		assert(ThreadToWakeUp != NULL);
+		assert((MWORD)ThreadToWakeUp > EX_POOL_START);
+		assert((MWORD)ThreadToWakeUp < EX_POOL_END);
+		assert(ThreadToWakeUp->PendingIrp == ThisIrp);
+		/* Wake up the thread waiting for its IO completion event. */
+		ThreadToWakeUp->IoResponseStatus = Request[i].IoStatus;
+		KeSetEvent(&ThreadToWakeUp->IoCompletionEvent);
+		/* Also remove the IRP from the driver's pending IRP list. */
+		RemoveEntryList(&ThisIrp->IrpLink);
+	    }
+	} else if (Request[i].Type == IrpTypeRequest) {
+	    DbgTrace("BUG BUG BUG --- Driver %s made a mess of the incoming IRP buffer!\n",
+		     DriverObject->DriverImageName);
+	    /* On debug build we should assert so we can stop and debug. */
+	    assert(FALSE);
+	    continue;
+	}
+    }
+
+    /* Now process the driver's response IRP buffer */
     PIO_REQUEST_PACKET Response = (PIO_REQUEST_PACKET)DriverObject->OutgoingIrpServerAddr;
     for (ULONG i = 0; i < NumResponsePackets; i++) {
 	if (Response[i].Type == IrpTypeIoCompleted) {
@@ -43,6 +106,8 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
 	    assert(ThreadToWakeUp->PendingIrp == ParentIrp);
 	    ThreadToWakeUp->IoResponseStatus = Response[i].IoStatus;
 	    KeSetEvent(&ThreadToWakeUp->IoCompletionEvent);
+	    /* Finally, remove the IRP from the driver's pending IRP list. */
+	    RemoveEntryList(&ParentIrp->IrpLink);
 	} else if (Response[i].Type == IrpTypeRequest) {
 	    /* TODO */
 	} else {
@@ -137,6 +202,7 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
 	    IrpBuffer->Thread.Handle = OBJECT_TO_GLOBAL_HANDLE(Irp->Thread.Object);
 	}
 	IrpBuffer->ThisIrp = POINTER_TO_GLOBAL_HANDLE(Irp);
+	IrpBuffer->ErrorStatus = STATUS_SUCCESS;
 	/* Move this Irp from the driver's IRP queue to its pending IRP list */
 	RemoveEntryList(&Irp->IrpLink);
 	InsertTailList(&DriverObject->PendingIrpList, &Irp->IrpLink);
@@ -144,6 +210,72 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
 	IrpBuffer++;
     }
     *pNumRequestPackets = NumRequestPackets;
+    DriverObject->NumRequestPackets = NumRequestPackets;
 
     ASYNC_END(STATUS_SUCCESS);
+}
+
+/*
+ * Maps the specified user IO buffer to the driver process's VSpace.
+ *
+ * If ReadOnly is TRUE, the driver pages will be mapped read-only. Otherwise
+ * the driver pages will be mapped read-write.
+ *
+ * If ReadOnly is FALSE, the user IO buffer must be writable by the user.
+ * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
+ */
+NTSTATUS IopMapUserBuffer(IN PPROCESS User,
+			  IN PIO_DRIVER_OBJECT Driver,
+			  IN MWORD UserBufferStart,
+			  IN MWORD UserBufferLength,
+			  OUT MWORD *DriverBufferStart,
+			  IN BOOLEAN ReadOnly)
+{
+    PVIRT_ADDR_SPACE UserVSpace = &User->VSpace;
+    assert(UserVSpace != NULL);
+    assert(Driver->DriverProcess != NULL);
+    PVIRT_ADDR_SPACE DriverVSpace = &Driver->DriverProcess->VSpace;
+    assert(DriverVSpace != NULL);
+
+    MWORD UserWindowStart = UserBufferStart;
+    MWORD WindowSize = UserBufferLength;
+    RET_ERR_EX(MmEnsureWindowMapped(UserVSpace, &UserWindowStart, &WindowSize, !ReadOnly),
+	       {
+		   DbgTrace("User window not mapped [%p, %p)\n",
+			    (PVOID)UserWindowStart, (PVOID)WindowSize);
+		   MmDbgDumpVSpace(UserVSpace);
+	       });
+
+    MWORD ReserveFlag = MEM_RESERVE_MIRRORED_MEMORY;
+    if (ReadOnly) {
+	ReserveFlag |= MEM_RESERVE_READ_ONLY;
+    }
+    PMMVAD DriverBufferVad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(DriverVSpace,
+				     USER_IMAGE_REGION_START,
+				     USER_IMAGE_REGION_END,
+				     WindowSize,
+				     ReserveFlag,
+				     &DriverBufferVad));
+    assert(DriverBufferVad != NULL);
+    assert(DriverBufferVad->WindowSize == WindowSize);
+
+    MmRegisterMirroredMemory(DriverBufferVad, UserVSpace, UserWindowStart);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(DriverVSpace, DriverBufferVad->AvlNode.Key,
+				       WindowSize),
+	       MmDeleteVad(DriverBufferVad));
+    *DriverBufferStart = UserBufferStart - UserWindowStart + DriverBufferVad->AvlNode.Key;
+    return STATUS_SUCCESS;
+}
+
+VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
+			IN MWORD DriverBuffer)
+{
+    assert(Driver != NULL);
+    assert(Driver->DriverProcess != NULL);
+    PMMVAD Vad = MmVSpaceFindVadNode(&Driver->DriverProcess->VSpace, DriverBuffer);
+    assert(Vad != NULL);
+    if (Vad != NULL) {
+	MmDeleteVad(Vad);
+    }
 }

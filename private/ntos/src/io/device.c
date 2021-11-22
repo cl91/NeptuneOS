@@ -26,15 +26,24 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     PIO_DRIVER_OBJECT Driver = Device->DriverObject;
     assert(Driver != NULL);
     POPEN_PACKET OpenPacket = (POPEN_PACKET)Context;
-    PIO_FILE_OBJECT FileObject = NULL;
 
     ASYNC_BEGIN(State);
 
+    PIO_FILE_OBJECT FileObject = NULL;
     RET_ERR(IopCreateFileObject(Device->DeviceName, Device, NULL, 0, &FileObject));
     assert(FileObject != NULL);
 
+    /* Check if this is Synch I/O and set the sync flag accordingly */
+    if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) {
+	FileObject->Flags |= FO_SYNCHRONOUS_IO;
+	/* Check if it's also alertable and set the alertable flag accordingly */
+	if (OpenPacket->CreateOptions & FILE_SYNCHRONOUS_IO_ALERT) {
+	    FileObject->Flags |= FO_ALERTABLE_IO;
+	}
+    }
+
     PIO_REQUEST_PACKET Irp = NULL;
-    RET_ERR_EX(IopAllocateIrp(IrpTypeRequest, &Irp), ObDeleteObject(FileObject));
+    RET_ERR_EX(IopAllocateIrp(IrpTypeRequest, &Irp), ObDereferenceObject(FileObject));
     assert(Irp != NULL);
 
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
@@ -66,16 +75,18 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
      * Note: The local variable Irp is undefined here. Irp in the previous async block
      * is stored as Thread's PendingIrp */
     assert(Thread->PendingIrp->Type == IrpTypeRequest);
-    FileObject = Thread->PendingIrp->Request.File.Object;
+    PIO_FILE_OBJECT FileObject = Thread->PendingIrp->Request.File.Object;
     assert(FileObject != NULL);
 
     IO_STATUS_BLOCK IoStatus = Thread->IoResponseStatus;
     ((POPEN_RESPONSE)OpenResponse)->Information = IoStatus.Information;
     NTSTATUS Status = IoStatus.Status;
 
-    if (!NT_SUCCESS(Status)) {
+    if (NT_SUCCESS(Status)) {
+	*pOpenedInstance = FileObject;
+    } else {
 	/* The IO request has returned a error status. Clean up the file object. */
-	ObDeleteObject(FileObject);
+	ObDereferenceObject(FileObject);
     }
 
     /* This will free the pending IRP and set the thread pending irp to NULL.
@@ -113,7 +124,7 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
 	}
 	PCSTR DeviceNameCopy = RtlDuplicateString(DeviceName, NTOS_IO_TAG);
 	if (DeviceNameCopy == NULL) {
-	    ObDeleteObject(DeviceObject);
+	    ObDereferenceObject(DeviceObject);
 	    return STATUS_NO_MEMORY;
 	}
 	/* If the client has supplied a device name, insert the device
@@ -121,7 +132,7 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
 	RET_ERR_EX(ObInsertObjectByPath(DeviceName, DeviceObject),
 		   {
 		       ExFreePool((PVOID) DeviceNameCopy);
-		       ObDeleteObject(DeviceObject);
+		       ObDereferenceObject(DeviceObject);
 		   });
 	DeviceObject->DeviceName = DeviceNameCopy;
     }
@@ -150,5 +161,91 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
                                IN PVOID OutputBuffer,
                                IN ULONG OutputBufferLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+
+    ASYNC_BEGIN(State);
+
+    if (FileHandle == NULL) {
+	return STATUS_INVALID_HANDLE;
+    }
+    PIO_FILE_OBJECT FileObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
+				      OBJECT_TYPE_FILE, (POBJECT *)&FileObject));
+    assert(FileObject != NULL);
+    assert(FileObject->DeviceObject != NULL);
+    assert(FileObject->DeviceObject->DriverObject != NULL);
+    PIO_DRIVER_OBJECT DriverObject = FileObject->DeviceObject->DriverObject;
+
+    PIO_REQUEST_PACKET Irp = NULL;
+    RET_ERR_EX(IopAllocateIrp(IrpTypeRequest, &Irp),
+	       ObDereferenceObject(FileObject));
+    assert(Irp != NULL);
+
+    Irp->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
+    Irp->Request.MinorFunction = 0;
+    Irp->Request.Control = 0;
+    Irp->Request.Flags = 0;
+    Irp->Request.Device.Object = FileObject->DeviceObject;
+    Irp->Request.File.Object = FileObject;
+
+    MWORD DriverInputBuffer = 0;
+    if ((InputBuffer != NULL) && (InputBufferLength != 0)) {
+	RET_ERR_EX(IopMapUserBuffer(Thread->Process, DriverObject,
+				    (MWORD) InputBuffer, InputBufferLength,
+				    &DriverInputBuffer, TRUE),
+		   {
+		       ObDereferenceObject(FileObject);
+		       ExFreePool(Irp);
+		   });
+    }
+
+    MWORD DriverOutputBuffer = 0;
+    if ((OutputBuffer != NULL) && (OutputBufferLength != 0)) {
+	RET_ERR_EX(IopMapUserBuffer(Thread->Process, DriverObject,
+				    (MWORD) OutputBuffer, OutputBufferLength,
+				    &DriverOutputBuffer, FALSE),
+		   {
+		       ObDereferenceObject(FileObject);
+		       ExFreePool(Irp);
+		       if (DriverInputBuffer != 0) {
+			   IopUnmapUserBuffer(DriverObject, DriverInputBuffer);
+		       }
+		   });
+    }
+
+    Irp->Request.Parameters.DeviceIoControl.InputBuffer = (PVOID)DriverInputBuffer;
+    Irp->Request.Parameters.DeviceIoControl.OutputBuffer = (PVOID)DriverOutputBuffer;
+    Irp->Request.Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
+    Irp->Request.Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
+    Irp->Request.Parameters.DeviceIoControl.IoControlCode = IoControlCode;
+
+    IopQueueIrp(Irp, DriverObject, Thread);
+
+    /* Only wait for the IO completion if file is opened with
+     * the synchronize flag. Otherwise, return pending status */
+    if (!IopFileIsSynchronous(FileObject)) {
+	/* TODO: Event, APC and IO completion port... */
+	return STATUS_PENDING;
+    }
+    AWAIT_IF(IopFileIsSynchronous(FileObject), KeWaitForSingleObject, State,
+	     Thread, &Thread->IoCompletionEvent.Header);
+
+    /* This is the starting point when the function is resumed. */
+    assert(Thread->PendingIrp->Type == IrpTypeRequest);
+    PIO_FILE_OBJECT FileObject = Thread->PendingIrp->Request.File.Object;
+    assert(FileObject != NULL);
+
+    NTSTATUS Status = Thread->IoResponseStatus.Status;
+
+    if (!NT_SUCCESS(Status)) {
+	/* The IO request has returned a error status. Clean up the file object. */
+	ObDereferenceObject(FileObject);
+    }
+
+    /* This will free the pending IRP and set the thread pending irp to NULL.
+     * At this point the IRP has already been detached from the driver object,
+     * so we do not need to remove it from the driver IRP queue here. */
+    IopFreePendingIrp(Thread);
+    ASYNC_END(Status);
 }

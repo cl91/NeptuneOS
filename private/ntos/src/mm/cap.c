@@ -273,6 +273,41 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CSpace != NULL);
+    assert(Node->Cap);
+    PCNODE CSpace = Node->CSpace;
+    int Error = seL4_CNode_Delete(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
+    if (Error != 0) {
+	DbgTrace("CNode_Delete(0x%zx, 0x%zx, %d) failed with error %d\n",
+		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Invoke CNode_Delete on the node cap and free the node cap and all its cap
+ * tree descendants. Note that we don't unlink the node from its parent
+ * since this would prevent the upstream caller from accessing the children.
+ */
+NTSTATUS MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CSpace != NULL);
+    assert(Node->Cap);
+    RET_ERR(MiDeleteCap(Node));
+    MmDeallocateCap(Node->CSpace, Node->Cap);
+    Node->Cap = 0;
+    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
+	RET_ERR(MmCapTreeDeleteNode(Child));
+    }
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,
@@ -301,6 +336,9 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 		   MmDeallocateCap(NewNode->CSpace, NewCap));
     }
     NewNode->Cap = NewCap;
+
+    /* Add new node as the child of the old node. */
+    MmCapTreeNodeSetParent(NewNode, OldNode);
 
     return STATUS_SUCCESS;
 }

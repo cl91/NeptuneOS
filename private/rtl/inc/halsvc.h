@@ -115,6 +115,13 @@ typedef struct _IO_REQUEST_PARAMETERS {
 	    ULONG Key;
 	    LARGE_INTEGER ByteOffset;
 	} Write;
+	struct {
+	    PVOID InputBuffer;	/* Client-side pointer! */
+	    PVOID OutputBuffer;	/* Client-side pointer! */
+	    ULONG InputBufferLength;
+	    ULONG OutputBufferLength;
+	    ULONG IoControlCode;
+	} DeviceIoControl;
     } Parameters;
 } IO_REQUEST_PARAMETERS, *PIO_REQUEST_PARAMETERS;
 
@@ -126,7 +133,7 @@ typedef struct _IO_REQUEST_PARAMETERS {
 typedef struct _IO_REQUEST_PACKET {
     IO_REQUEST_PACKET_TYPE Type;
     union {
-	IO_STATUS_BLOCK IoStatus; /* Type == IrpTypeIoCompleted */
+	IO_STATUS_BLOCK IoStatus; /* For Type == IrpTypeIoCompleted */
 	IO_REQUEST_PARAMETERS Request; /* Type == IrpTypeRequest */
 	/* DPC... */
     };
@@ -142,13 +149,24 @@ typedef struct _IO_REQUEST_PACKET {
 	LIST_ENTRY IrpLink; /* List entry for either IrpQueue or PendingIrpList of the driver object.
 			     * This is only valid when the IRP object is being queued on the driver
 			     * object or is in the driver's pending IRP list. */
-	GLOBAL_HANDLE ThisIrp; /* Global handle to identify this IRP. This is only valid when the IRP
-				* object is in the driver's IRP buffers. When we pass the IRP to the
-				* driver process we copy the server-side IRP (allocated on the ExPool)
-				* to the driver process's incoming IRP buffer. This handle then refers
-				* to the server-side IRP, and is unique among all IRPs currently being
-				* processed by the system. The system may reuse old handles of IRPs that
-				* have already been processed. */
+	struct {
+	    GLOBAL_HANDLE ThisIrp; /* Global handle to identify this IRP. This is only valid when the IRP
+				    * object is in the driver's IRP buffers. When we pass the IRP to the
+				    * driver process we copy the server-side IRP (allocated on the ExPool)
+				    * to the driver process's incoming IRP buffer. This handle then refers
+				    * to the server-side IRP, and is unique among all IRPs currently being
+				    * processed by the system. The system may reuse old handles of IRPs that
+				    * have already been processed. */
+	    NTSTATUS ErrorStatus; /* If the driver for some reason cannot process this IRP (for instance,
+				   * if it ran out of memory), the error status indicates that error.
+				   * Server checks this parameter when driver has replied after processing
+				   * the previous batch of IRPs. If this is not STATUS_SUCCESS, this IRP
+				   * is canceled immediately and the thread initiating the IO is informed.
+				   * Note that we rely on the driver's cooperation for this to function.
+				   * Since the server always validates the ThisIrp pointer, malicious
+				   * driver can only cancel its own IRPs (ie. only IRPs sent to this driver
+				   * will be affected). */
+	};
     }; /* IRP objects are either physically located in the ExPool and attached to a driver
 	* object (ie. in the IrqQueue or in the PendingIrqList of the driver object), or
 	* located in the driver's IRP buffers. The IRP in the driver's buffers always points
@@ -208,6 +226,13 @@ static inline VOID IoDbgDumpIoRequestPacket(IN PIO_REQUEST_PACKET Irp,
 		     Irp->Request.Parameters.Create.ShareAccess);
 	    DbgPrint("        FileObjectCreateParameters ");
 	    IoDbgDumpFileObjectCreateParameters(&Irp->Request.Parameters.Create.FileObjectParameters);
+	case IRP_MJ_DEVICE_CONTROL:
+	    DbgPrint("    DEVICE-CONTROL  IoControlCode %d InputBuffer %p Length 0x%x OutputBuffer %p Length 0x%x\n",
+		     Irp->Request.Parameters.DeviceIoControl.IoControlCode,
+		     Irp->Request.Parameters.DeviceIoControl.InputBuffer,
+		     Irp->Request.Parameters.DeviceIoControl.InputBufferLength,
+		     Irp->Request.Parameters.DeviceIoControl.OutputBuffer,
+		     Irp->Request.Parameters.DeviceIoControl.OutputBufferLength);
 	}
 	if (ClientSide) {
 	    DbgPrint("    DeviceHandle %p FileHandle %p\n",

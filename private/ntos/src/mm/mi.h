@@ -314,10 +314,46 @@ NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD PhyAddr,
 			IN MWORD VirtAddr,
 			IN PAGING_RIGHTS Rights);
+VOID MiUncommitPage(IN PPAGING_STRUCTURE Page);
 
 static inline BOOLEAN MiPagingTypeIsPage(IN PAGING_STRUCTURE_TYPE Type)
 {
     return Type == PAGING_TYPE_PAGE;
+}
+
+static inline BOOLEAN MiPagingTypeIsPageOrLargePage(IN PAGING_STRUCTURE_TYPE Type)
+{
+    return Type == PAGING_TYPE_PAGE || Type == PAGING_TYPE_LARGE_PAGE;
+}
+
+/*
+ * Returns the log2size of the address window that the paging structure represents
+ */
+static inline LONG MiPagingWindowLog2Size(IN PAGING_STRUCTURE_TYPE Type)
+{
+    if (Type == PAGING_TYPE_PAGE) {
+	return PAGE_LOG2SIZE;
+    } else if (Type == PAGING_TYPE_LARGE_PAGE) {
+	return LARGE_PAGE_LOG2SIZE;
+    } else if (Type == PAGING_TYPE_PAGE_TABLE) {
+	return PAGE_TABLE_WINDOW_LOG2SIZE;
+    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
+	return PAGE_DIRECTORY_WINDOW_LOG2SIZE;
+    } else if (Type == PAGING_TYPE_PDPT) {
+	return PDPT_WINDOW_LOG2SIZE;
+    } else if (Type == PAGING_TYPE_PML4) {
+	return PML4_WINDOW_LOG2SIZE;
+    }
+    assert(FALSE);
+    return 0;
+}
+
+/*
+ * Returns the address window size of the paging structure
+ */
+static inline MWORD MiPagingWindowSize(IN PAGING_STRUCTURE_TYPE Type)
+{
+    return 1ULL << MiPagingWindowLog2Size(Type);
 }
 
 /* vaddr.c */

@@ -70,7 +70,7 @@ static NTSTATUS IopLoadHalDll()
     }
     assert(HalDllSection != NULL);
     assert(HalDllSection->ImageSectionObject != NULL);
-    ObDeleteObject(HalDllSection);
+    ObDereferenceObject(HalDllSection);
 
     return STATUS_SUCCESS;
 

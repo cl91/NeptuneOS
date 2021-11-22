@@ -295,6 +295,38 @@ typedef ULONG DEVICE_TYPE;
 
 #define IRP_MN_REGINFO_EX                 0x0b
 
+/* FILE_OBJECT.Flags */
+#define FO_FILE_OPEN                 0x00000001
+#define FO_SYNCHRONOUS_IO            0x00000002
+#define FO_ALERTABLE_IO              0x00000004
+#define FO_NO_INTERMEDIATE_BUFFERING 0x00000008
+#define FO_WRITE_THROUGH             0x00000010
+#define FO_SEQUENTIAL_ONLY           0x00000020
+#define FO_CACHE_SUPPORTED           0x00000040
+#define FO_NAMED_PIPE                0x00000080
+#define FO_STREAM_FILE               0x00000100
+#define FO_MAILSLOT                  0x00000200
+#define FO_GENERATE_AUDIT_ON_CLOSE   0x00000400
+#define FO_QUEUE_IRP_TO_THREAD       0x00000400
+#define FO_DIRECT_DEVICE_OPEN        0x00000800
+#define FO_FILE_MODIFIED             0x00001000
+#define FO_FILE_SIZE_CHANGED         0x00002000
+#define FO_CLEANUP_COMPLETE          0x00004000
+#define FO_TEMPORARY_FILE            0x00008000
+#define FO_DELETE_ON_CLOSE           0x00010000
+#define FO_OPENED_CASE_SENSITIVE     0x00020000
+#define FO_HANDLE_CREATED            0x00040000
+#define FO_FILE_FAST_IO_READ         0x00080000
+#define FO_RANDOM_ACCESS             0x00100000
+#define FO_FILE_OPEN_CANCELLED       0x00200000
+#define FO_VOLUME_OPEN               0x00400000
+#define FO_REMOTE_ORIGIN             0x01000000
+#define FO_DISALLOW_EXCLUSIVE        0x02000000
+#define FO_SKIP_COMPLETION_PORT      0x02000000
+#define FO_SKIP_SET_EVENT            0x04000000
+#define FO_SKIP_SET_FAST_IO          0x08000000
+#define FO_FLAGS_VALID_ONLY_DURING_CREATE FO_DISALLOW_EXCLUSIVE
+
 typedef enum _IO_NOTIFICATION_EVENT_CATEGORY {
     EventCategoryReserved,
     EventCategoryHardwareProfileChange,

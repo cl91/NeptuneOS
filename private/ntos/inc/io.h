@@ -27,6 +27,7 @@ typedef struct _IO_DRIVER_OBJECT {
     MWORD IncomingIrpClientAddr;
     MWORD OutgoingIrpServerAddr; /* Driver's replies */
     MWORD OutgoingIrpClientAddr;
+    ULONG NumRequestPackets; /* Number of IO request packets currently in the incoming IRP buffer */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*

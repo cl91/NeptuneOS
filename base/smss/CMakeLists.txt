@@ -5,3 +5,5 @@ project(smss C)
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.c)
 
 add_executable(smss ${SRC})
+
+target_include_directories(smss PRIVATE inc)

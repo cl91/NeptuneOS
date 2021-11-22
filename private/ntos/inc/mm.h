@@ -236,7 +236,6 @@ typedef union _MMVAD_FLAGS {
 	ULONG FileMap : 1;	 /* Node is a view of a file section */
 	ULONG PhysicalMapping : 1; /* Node is a view of the physical memory */
 	ULONG LargePages : 1; /* Use large pages when possible */
-	ULONG Committed : 1;   /* True if all pages are mapped */
 	ULONG OwnedMemory : 1; /* True if pages are owned by this VSpace */
 	ULONG MirroredMemory : 1; /* True if this VAD is a mirror of another VAD */
     };
@@ -283,17 +282,11 @@ typedef struct _MMVAD {
 	    MWORD PhysicalBase;	/* Base of the physical address window to map, 4K aligned */
 	} PhysicalSectionView;	/* Physical section is neither owned or mirrored memory */
     };
-    union {
-	struct {
-	    MWORD CommitmentSize;
-	    LIST_ENTRY ViewerList;
-	} OwnedMemory;
-	struct {
-	    struct _MMVAD *OwnerVad;
-	    MWORD Offset; /* Offset from the start of the owner VAD */
-	    LIST_ENTRY ViewerLink;
-	} MirroredMemory;
-    };
+    struct {
+	struct _VIRT_ADDR_SPACE *Master; /* The VSpace that is been mapped into this VSpace */
+	MWORD StartAddr; /* Starting virtual address in the master vspace */
+	LIST_ENTRY ViewerLink;	/* List entry for master VSpace's ViewerList */
+    } MirroredMemory;
 } MMVAD, *PMMVAD;
 
 #define MM_AVL_NODE_TO_VAD(Node)					\
@@ -383,6 +376,7 @@ typedef struct _VIRT_ADDR_SPACE {
     MM_AVL_TREE VadTree;
     PMMVAD CachedVad;		/* Speed up look up */
     PPAGING_STRUCTURE RootPagingStructure;
+    LIST_ENTRY ViewerList;	/* List of all VADs that mirror pages in this VSpace */
 } VIRT_ADDR_SPACE, *PVIRT_ADDR_SPACE;
 
 /*
@@ -508,6 +502,7 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,
 				   IN MWORD Badge);
+NTSTATUS MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node);
 
 static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
 				     OUT MWORD *Cap)
@@ -545,6 +540,8 @@ NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);
 NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self);
+PMMVAD MmVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
+			   IN MWORD VirtAddr);
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace);
 NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,
@@ -554,13 +551,19 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  OUT OPTIONAL PMMVAD *pVad);
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
-				 IN MWORD WindowSize,
-				 IN MWORD CommitFlags);
+				 IN MWORD WindowSize);
 PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 			      IN MWORD VirtAddr);
+VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
+			   IN PMMVAD MasterVad);
 VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
-			      IN PMMVAD Owner,
-			      IN MWORD Offset);
+			      IN PVIRT_ADDR_SPACE Master,
+			      IN MWORD StartAddr);
+NTSTATUS MmEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
+			      IN OUT MWORD *pStartAddr,
+			      IN OUT MWORD *pWindowSize,
+			      IN BOOLEAN Writeable);
+VOID MmDeleteVad(IN PMMVAD Vad);
 
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
 					      IN OPTIONAL MWORD EndAddr,
@@ -577,5 +580,5 @@ static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
 					     IN MWORD WindowSize)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize, 0);
+    return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }

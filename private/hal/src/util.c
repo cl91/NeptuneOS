@@ -21,6 +21,11 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
     /* Loop forever */
     while (1);
 }
+#else
+VOID _assert(PCSTR str, PCSTR file, unsigned int line)
+{
+    /* Do nothing */
+}
 #endif
 
 /*
@@ -32,4 +37,12 @@ VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
 	     str, function, line, file);
     /* Loop forever */
     while (1);
+}
+
+/*
+ * Make a beep through the PC speaker. Returns TRUE is beep is successful.
+ */
+NTAPI BOOLEAN HalMakeBeep(IN ULONG Frequency)
+{
+    return NT_SUCCESS(HalpMakeBeep(Frequency));
 }

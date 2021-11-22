@@ -9,13 +9,14 @@
 
 /* INCLUDES ******************************************************************/
 
+#include <assert.h>
 #include <wdm.h>
+#include <hal.h>
 #include <ntddbeep.h>
 
 /* TYPES *********************************************************************/
 
 typedef struct _BEEP_DEVICE_EXTENSION {
-    LONG ReferenceCount;
     KTIMER Timer;
     BOOLEAN TimerActive;
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION;
@@ -24,14 +25,14 @@ typedef struct _BEEP_DEVICE_EXTENSION {
 
 NTAPI VOID BeepDPC(IN PKDPC Dpc,
 		   IN PDEVICE_OBJECT DeviceObject,
-		   IN PVOID SystemArgument1,
-		   IN PVOID SystemArgument2)
+		   IN OUT PIRP Irp,
+		   IN OPTIONAL PVOID Context)
 {
     PDEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
 
     UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(SystemArgument1);
-    UNREFERENCED_PARAMETER(SystemArgument2);
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(Context);
 
     /* Stop the beep */
     HalMakeBeep(0);
@@ -46,9 +47,6 @@ NTAPI NTSTATUS BeepCreate(IN PDEVICE_OBJECT DeviceObject,
 {
     PDEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
 
-    /* Increase the reference count */
-    ++DeviceExtension->ReferenceCount;
-
     /* Complete the request */
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
@@ -62,15 +60,12 @@ NTAPI NTSTATUS BeepClose(IN PDEVICE_OBJECT DeviceObject,
 {
     PDEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
 
-    /* Decrease reference count */
-    if (!(--DeviceExtension->ReferenceCount)) {
-	/* Check for active timer */
-	if (DeviceExtension->TimerActive) {
-	    /* Cancel it */
-	    if (KeCancelTimer(&DeviceExtension->Timer)) {
-		/* Mark it as cancelled */
-		DeviceExtension->TimerActive = FALSE;
-	    }
+    /* Check for active timer */
+    if (DeviceExtension->TimerActive) {
+	/* Cancel it */
+	if (KeCancelTimer(&DeviceExtension->Timer)) {
+	    /* Mark it as cancelled */
+	    DeviceExtension->TimerActive = FALSE;
 	}
     }
 
@@ -95,7 +90,7 @@ NTAPI VOID BeepCancel(IN PDEVICE_OBJECT DeviceObject,
     } else {
 	/* Otherwise, remove the packet from the queue */
 	KeRemoveEntryDeviceQueue(&DeviceObject->DeviceQueue,
-				 &Irp->Tail.Overlay.DeviceQueueEntry);
+				 &Irp->Tail.DeviceQueueEntry);
     }
 
     /* Complete the request */
@@ -108,7 +103,6 @@ DRIVER_DISPATCH BeepCleanup;
 NTAPI NTSTATUS BeepCleanup(IN PDEVICE_OBJECT DeviceObject,
 			   IN PIRP Irp)
 {
-    KIRQL OldIrql, CancelIrql;
     PKDEVICE_QUEUE_ENTRY Packet;
     PIRP CurrentIrp;
 
@@ -130,8 +124,7 @@ NTAPI NTSTATUS BeepCleanup(IN PDEVICE_OBJECT DeviceObject,
 	Packet = KeRemoveDeviceQueue(&DeviceObject->DeviceQueue);
 	if (Packet) {
 	    /* Get the IRP */
-	    CurrentIrp = CONTAINING_RECORD(Packet, IRP,
-					   Tail.Overlay.DeviceQueueEntry);
+	    CurrentIrp = CONTAINING_RECORD(Packet, IRP, Tail.DeviceQueueEntry);
 	} else {
 	    /* No more IRPs */
 	    CurrentIrp = NULL;
@@ -229,7 +222,7 @@ NTAPI VOID BeepStartIo(IN PDEVICE_OBJECT DeviceObject,
     LARGE_INTEGER DueTime;
     NTSTATUS Status;
 
-    assert(Irq != NULL);
+    assert(Irp != NULL);
 
     /* Remove the cancel routine */
     (VOID) IoSetCancelRoutine(Irp, NULL);
@@ -275,7 +268,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 {
     PDEVICE_EXTENSION DeviceExtension;
     PDEVICE_OBJECT DeviceObject;
-    UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\Beep");
+    UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(DD_BEEP_DEVICE_NAME_U);
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(RegistryPath);
@@ -299,9 +292,8 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     /* Set up device extension */
     DeviceExtension = DeviceObject->DeviceExtension;
-    DeviceExtension->ReferenceCount = 0;
     DeviceExtension->TimerActive = FALSE;
-    IoInitializeDpcRequest(DeviceObject, (PIO_DPC_ROUTINE) BeepDPC);
+    IoInitializeDpcRequest(DeviceObject, BeepDPC);
     KeInitializeTimer(&DeviceExtension->Timer);
 
     return STATUS_SUCCESS;

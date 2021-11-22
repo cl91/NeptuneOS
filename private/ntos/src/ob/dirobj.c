@@ -237,7 +237,7 @@ NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
     assert(Directory != NULL);
 
     RET_ERR_EX(ObInsertObjectByPath(DirectoryPath, Directory),
-	       ObDeleteObject(Directory));
+	       ObDereferenceObject(Directory));
 
     return STATUS_SUCCESS;
 }

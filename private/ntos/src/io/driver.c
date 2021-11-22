@@ -51,29 +51,30 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
 
     PIO_FILE_OBJECT DriverFile = NULL;
     RET_ERR_EX(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, (POBJECT *) &DriverFile),
-	       ObDeleteObject(DriverObject));
+	       ObDereferenceObject(DriverObject));
     assert(DriverFile != NULL);
 
     /* Start the driver process */
     PPROCESS Process = NULL;
     RET_ERR_EX(PsCreateProcess(DriverFile, DriverObject, &Process),
-	       ObDeleteObject(DriverObject));
+	       ObDereferenceObject(DriverObject));
     assert(Process != NULL);
 
     /* Make sure we have loaded hal.dll, even when the driver image does not
      * explicitly depend on it. */
     RET_ERR_EX(PsLoadDll(Process, HAL_DLL_NAME),
-	       ObDeleteObject(DriverObject));
+	       ObDereferenceObject(DriverObject));
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
     RET_ERR_EX(PsCreateThread(Process, &Thread),
-	       ObDeleteObject(DriverObject));
+	       ObDereferenceObject(DriverObject));
     assert(Thread != NULL);
 
     /* Insert the driver object to the \Driver object directory. */
     RET_ERR_EX(ObInsertObjectByName(DRIVER_OBJECT_DIRECTORY, DriverObject, DriverName),
-	       ObDeleteObject(DriverObject));
+	       ObDereferenceObject(DriverObject));
+    DriverObject->DriverProcess = Process;
 
     if (pDriverObject) {
 	*pDriverObject = DriverObject;

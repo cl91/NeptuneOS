@@ -1,27 +1,5 @@
 #include "mi.h"
 
-/*
- * Returns the log2size of the address window that the paging structure represents
- */
-static inline LONG MiPagingAddrWindowBits(PAGING_STRUCTURE_TYPE Type)
-{
-    if (Type == PAGING_TYPE_PAGE) {
-	return PAGE_LOG2SIZE;
-    } else if (Type == PAGING_TYPE_LARGE_PAGE) {
-	return LARGE_PAGE_LOG2SIZE;
-    } else if (Type == PAGING_TYPE_PAGE_TABLE) {
-	return PAGE_TABLE_WINDOW_LOG2SIZE;
-    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
-	return PAGE_DIRECTORY_WINDOW_LOG2SIZE;
-    } else if (Type == PAGING_TYPE_PDPT) {
-	return PDPT_WINDOW_LOG2SIZE;
-    } else if (Type == PAGING_TYPE_PML4) {
-	return PML4_WINDOW_LOG2SIZE;
-    }
-    assert(FALSE);
-    return 0;
-}
-
 static inline PCSTR MiPagingTypeToStr(PAGING_STRUCTURE_TYPE Type)
 {
     if (Type == PAGING_TYPE_PAGE) {
@@ -48,7 +26,7 @@ static inline PCSTR MiPagingTypeToStr(PAGING_STRUCTURE_TYPE Type)
 static inline MWORD MiSanitizeAlignment(IN PAGING_STRUCTURE_TYPE Type,
 					IN MWORD VirtAddr)
 {
-    return VirtAddr & ~((1ULL << MiPagingAddrWindowBits(Type)) - 1);
+    return VirtAddr & ~(MiPagingWindowSize(Type) - 1);
 }
 
 #define ASSERT_ALIGNMENT(Page)						\
@@ -128,11 +106,6 @@ static inline PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PAGING_STRUCTURE_
     return 0;
 }
 
-static inline BOOLEAN MiPagingTypeIsPageOrLargePage(IN PAGING_STRUCTURE_TYPE Type)
-{
-    return Type == PAGING_TYPE_PAGE || Type == PAGING_TYPE_LARGE_PAGE;
-}
-
 /*
  * Returns TRUE if the address window that the paging structure represents
  * contains the given virtual address
@@ -141,7 +114,7 @@ static inline BOOLEAN MiPagingStructureContainsAddr(IN PPAGING_STRUCTURE Paging,
 						    IN MWORD VirtAddr)
 {
     return MiAvlNodeContainsAddr(&Paging->AvlNode,
-				 1ULL << MiPagingAddrWindowBits(Paging->Type), VirtAddr);
+				 MiPagingWindowSize(Paging->Type), VirtAddr);
 }
 
 /*
@@ -385,20 +358,40 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* Remove the paging structure from its parent paging structure (if available) */
-
     if (Error) {
 	DbgTrace("Failed to unmap cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 		 Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 	return SEL4_ERROR(Error);
     }
 
+    /* Remove the paging structure from its parent paging structure (if available) */
     Page->Mapped = FALSE;
     MiPagingRemoveFromParent(Page);
 
     DbgTrace("Successfully unmapped cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 	     Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
     return STATUS_SUCCESS;
+}
+
+/*
+ * Unmap the page and revoke its page cap. Detach the cap tree node of
+ * the page object from the cap derivation tree. Note that this does not
+ * unlink the children of this cap tree node from their parents. The caller
+ * can still access all the derived objects of this cap tree node via the
+ * cap tree node's ChildrenList.
+ */
+VOID MiUncommitPage(IN PPAGING_STRUCTURE Page)
+{
+    assert(Page != NULL);
+    assert(MiPagingTypeIsPageOrLargePage(Page->Type));
+    /* This should never fail. On debug build we assert if it did. */
+    NTSTATUS Status = MiUnmapPagingStructure(Page);
+    assert(NT_SUCCESS(Status));
+    /* Revoke the capability cap */
+    Status = MmCapTreeDeleteNode(&Page->TreeNode);
+    assert(NT_SUCCESS(Status));
+    /* Detach from the cap derivation tree */
+    MmCapTreeNodeRemoveFromParent(&Page->TreeNode);
 }
 
 MM_MEM_PRESSURE MmQueryMemoryPressure()
@@ -535,7 +528,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
 					IN MWORD DataSize,
 					OUT PPAGING_STRUCTURE *pPaging)
 {
-    assert(DataSize <= (1ULL << MiPagingAddrWindowBits(Type)));
+    assert(DataSize <= MiPagingWindowSize(Type));
     assert(pPaging != NULL);
     assert(MiPagingTypeIsPageOrLargePage(Type));
 
@@ -752,7 +745,7 @@ NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 				   ViewerVSpace, ViewerStartAddr + Offset,
 				   NewRights, &NewPage));
 	assert(NewPage != NULL);
-	Offset += 1ULL << MiPagingAddrWindowBits(NewPage->Type);
+	Offset += MiPagingWindowSize(NewPage->Type);
     }
 
     DbgTrace("Successfully mapped mirrored pages from [%p, %p)"

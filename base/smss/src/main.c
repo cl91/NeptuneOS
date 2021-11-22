@@ -1,24 +1,7 @@
-#include <nt.h>
+#include <smss.h>
 #include <ntddbeep.h>
-#include <stdarg.h>
-#include <string.h>
 
 PCSTR SMSS_BANNER = "\nNeptune OS Session Manager\n\n";
-
-/* TODO: Move this to the CRT headers */
-int _vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
-
-#define RET_ERR_EX(Expr, OnError)					\
-    {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\
-	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
-		     " error 0x%x\n",					\
-		     #Expr, __func__, __FILE__, __LINE__, Status);	\
-	    {OnError;} return Status; }}
-#define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
-
-#define DECLARE_UNICODE_STRING(Name, Ptr, Length)			\
-    UNICODE_STRING Name = { .Length = Length, .MaximumLength = Length,	\
-	.Buffer = Ptr }
 
 NTSTATUS SmPrint(PCSTR Format, ...)
 {
@@ -36,10 +19,15 @@ NTSTATUS SmPrint(PCSTR Format, ...)
 
 static NTSTATUS SmLoadBootDrivers()
 {
-    PCSTR DriverToLoad = "\\BootModules\\null.sys";
-    SmPrint("Loading driver %s... ", DriverToLoad);
-    RET_ERR_EX(NtLoadDriverA(DriverToLoad), SmPrint("FAIL\n"));
-    SmPrint("OK\n");
+    PCSTR DriversToLoad[] = {
+	"\\BootModules\\null.sys",
+	"\\BootModules\\beep.sys"
+    };
+    for (ULONG i = 0; i < ARRAY_LENGTH(DriversToLoad); i++) {
+	SmPrint("Loading driver %s... ", DriversToLoad[i]);
+	RET_ERR_EX(NtLoadDriverA(DriversToLoad[i]), SmPrint("FAIL\n"));
+	SmPrint("OK\n");
+    }
     return STATUS_SUCCESS;
 }
 
@@ -58,7 +46,7 @@ static BOOLEAN SmBeep(IN ULONG dwFreq,
     IO_STATUS_BLOCK IoStatusBlock;
 
     /* Open the device */
-    RtlInitUnicodeString(&BeepDevice, L"\\Device\\Beep");
+    RtlInitUnicodeString(&BeepDevice, DD_BEEP_DEVICE_NAME_U);
     InitializeObjectAttributes(&ObjectAttributes, &BeepDevice, 0, NULL, NULL);
     NTSTATUS Status = NtCreateFile(&hBeep, FILE_READ_DATA | FILE_WRITE_DATA,
 				   &ObjectAttributes, &IoStatusBlock, NULL, 0,
@@ -106,12 +94,25 @@ static NTSTATUS SmTestNullDriver()
     return STATUS_SUCCESS;
 }
 
+VOID SmTestBeepDriver(IN ULONG Freq,
+		      IN ULONG Duration)
+{
+    SmPrint("Testing beep driver with frequency %d Hz duration %d ms...\n",
+	    Freq, Duration);
+    BOOLEAN BeepSuccess = SmBeep(Freq, Duration);
+    if (BeepSuccess) {
+	SmPrint("Success. You should hear a beep.\n");
+    } else {
+	SmPrint("FAILED.\n");
+    }
+}
+
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     SmPrint(SMSS_BANNER);
     SmLoadBootDrivers();
     SmTestNullDriver();
-    SmBeep(440, 1000);
+    SmTestBeepDriver(440, 1000);
 
     while (1);
 }

@@ -297,9 +297,14 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 			      IN POBJECT Object);
 
 /* obref.c */
+struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
 				 OUT POBJECT *Object);
+NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
+				   IN HANDLE Handle,
+				   IN OBJECT_TYPE_ENUM Type,
+				   OUT POBJECT *pObject);
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN PCSTR Path,
@@ -307,4 +312,4 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN PVOID Context,
 			    OUT PVOID OpenResponse,
 			    OUT HANDLE *pHandle);
-NTSTATUS ObDeleteObject(IN POBJECT Object);
+VOID ObDereferenceObject(IN POBJECT Object);

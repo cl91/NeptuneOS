@@ -8,6 +8,9 @@
 #include <halsvc.h>
 #include <hal_halsvc_gen.h>
 
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+
 #define IopAllocatePoolEx(Ptr, Type, Size, OnError)		\
     Type *Ptr = (Type *) RtlAllocateHeap(RtlGetProcessHeap(),	\
 					 HEAP_ZERO_MEMORY,	\
@@ -37,6 +40,7 @@ typedef struct _IRP_QUEUE_ENTRY {
     GLOBAL_HANDLE ThisIrp; /* Temporarily unique identifier of the IRP object. See halsvc.h */
     PIRP Irp;		   /* The client-side wdm IRP object allocated on the process heap */
     LIST_ENTRY Link;	   /* List entry for the IRP queue */
+    PVOID OutputBuffer;	   /* Output buffer provided by the client process, mapped here */
 } IRP_QUEUE_ENTRY, *PIRP_QUEUE_ENTRY;
 
 /*
@@ -69,8 +73,11 @@ extern PIO_REQUEST_PACKET IopOutgoingIrpBuffer;
 extern LIST_ENTRY IopIrpQueue;
 extern LIST_ENTRY IopFileObjectList;
 extern LIST_ENTRY IopCompletedIrpList;
-NTSTATUS IopProcessIrp(OUT ULONG *pNumResponses,
-		       IN ULONG NumRequests);
+VOID IopProcessIrp(OUT ULONG *pNumResponses,
+		   IN ULONG NumRequests);
 
 /* main.c */
 extern PDRIVER_OBJECT IopDriverObject;
+
+/* timer.c */
+extern LIST_ENTRY IopTimerList;

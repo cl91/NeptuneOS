@@ -17,6 +17,39 @@ static NTSTATUS ObpLookupObjectNameEx(IN PCSTR Path,
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
+static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
+				      IN HANDLE Handle,
+				      OUT POBJECT *pObject)
+{
+    assert(Process != NULL);
+    assert(Handle != NULL);
+    assert(pObject != NULL);
+    PMM_AVL_NODE Node = MmAvlTreeFindNode(&Process->HandleTable.Tree, (MWORD) Handle);
+    if (Node == NULL) {
+	return STATUS_INVALID_HANDLE;
+    }
+    *pObject = CONTAINING_RECORD(Node, HANDLE_TABLE_ENTRY, AvlNode)->Object;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
+					IN HANDLE Handle,
+					IN OBJECT_TYPE_ENUM Type,
+					OUT POBJECT *pObject)
+{
+    assert(pObject != NULL);
+    POBJECT Object = NULL;
+    RET_ERR(ObpLookupObjectHandle(Process, Handle, &Object));
+    assert(Object != NULL);
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
+    assert(ObjectHeader->Type != NULL);
+    if (ObjectHeader->Type->Index == Type) {
+	*pObject = Object;
+	return STATUS_SUCCESS;
+    }
+    return STATUS_OBJECT_TYPE_MISMATCH;
+}
+
 static NTSTATUS ObpCreateHandle(IN PTHREAD Thread,
 				IN POBJECT Object,
 				OUT HANDLE *pHandle)
@@ -41,6 +74,19 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 {
     assert(pObject != NULL);
     RET_ERR(ObpLookupObjectNameEx(Path, Type, pObject));
+    ObpReferenceObject(*pObject);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
+				   IN HANDLE Handle,
+				   IN OBJECT_TYPE_ENUM Type,
+				   OUT POBJECT *pObject)
+{
+    assert(Process != NULL);
+    assert(Handle != NULL);
+    assert(pObject != NULL);
+    RET_ERR(ObpLookupObjectHandleEx(Process, Handle, Type, pObject));
     ObpReferenceObject(*pObject);
     return STATUS_SUCCESS;
 }
@@ -122,7 +168,16 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
     ASYNC_END(OpenStatus);
 }
 
-NTSTATUS ObDeleteObject(IN POBJECT Object)
+static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
+{
+    assert(ObjectHeader != NULL);
+
+    /* TODO: Invoke the delete routine */
+    RemoveEntryList(&ObjectHeader->ObjectLink);
+    ExFreePool(ObjectHeader);
+}
+
+VOID ObDereferenceObject(IN POBJECT Object)
 {
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
@@ -130,20 +185,15 @@ NTSTATUS ObDeleteObject(IN POBJECT Object)
 
     ObjectHeader->RefCount--;
     if (ObjectHeader->RefCount < 0) {
-	/* This is a programming error since refcount should never
-	 * go zero or below.
-	 */
-	assert(FALSE);
-	ObjectHeader->RefCount = 0;
+       /* This is a programming error since refcount should never
+        * be zero at the time of calling ObDereferenceObject.
+        */
+       assert(FALSE);
+       ObjectHeader->RefCount = 0;
     }
-
     if (ObjectHeader->RefCount == 0) {
-	/* TODO: Invoke the delete routine */
-	RemoveEntryList(&ObjectHeader->ObjectLink);
-	ExFreePool(ObjectHeader);
+	ObpDeleteObject(ObjectHeader);
     }
-
-    return STATUS_SUCCESS;
 }
 
 /*

@@ -14,6 +14,7 @@ VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
     Self->ASIDPool = 0;
     Self->CachedVad = NULL;
     MmAvlInitializeTree(&Self->VadTree);
+    InitializeListHead(&Self->ViewerList);
 }
 
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
@@ -74,18 +75,17 @@ static inline BOOLEAN MiVadNodeContainsAddr(IN PMMVAD Vad,
 /*
  * Returns the VAD node that contains the supplied virtual address.
  */
-static PMMVAD MiVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
-				  IN MWORD VirtAddr)
+PMMVAD MmVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
+			   IN MWORD VirtAddr)
 {
     PMM_AVL_TREE Tree = &VSpace->VadTree;
-    if (VSpace->CachedVad != NULL &&
-	MiVadNodeContainsAddr(VSpace->CachedVad, VirtAddr)) {
+    if (VSpace->CachedVad != NULL && MiVadNodeContainsAddr(VSpace->CachedVad, VirtAddr)) {
 	return VSpace->CachedVad;
     }
-    PMMVAD Parent = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrParent(Tree, VirtAddr));
-    if (Parent != NULL && MiVadNodeContainsAddr(Parent, VirtAddr)) {
-	VSpace->CachedVad = Parent;
-	return Parent;
+    PMMVAD Node = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrPrev(Tree, VirtAddr));
+    if (Node != NULL && MiVadNodeContainsAddr(Node, VirtAddr)) {
+	VSpace->CachedVad = Node;
+	return Node;
     }
     return NULL;
 }
@@ -308,30 +308,6 @@ Insert:
 
     MiAvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
 
-    if (VadFlags.ImageMap) {
-	Vad->ImageSectionView.SubSection = NULL;
-    }
-
-    if (VadFlags.FileMap) {
-	Vad->DataSectionView.Section = NULL;
-	Vad->DataSectionView.SectionOffset = 0;
-    }
-
-    if (VadFlags.PhysicalMapping) {
-	Vad->PhysicalSectionView.PhysicalBase = 0;
-    }
-
-    if (VadFlags.OwnedMemory) {
-	Vad->OwnedMemory.CommitmentSize = 0;
-	InitializeListHead(&Vad->OwnedMemory.ViewerList);
-    }
-
-    if (VadFlags.MirroredMemory) {
-	Vad->MirroredMemory.OwnerVad = NULL;
-	Vad->MirroredMemory.Offset = 0;
-	InitializeListHead(&Vad->MirroredMemory.ViewerLink);
-    }
-
     DbgTrace("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
 	     (PVOID) Vad->AvlNode.Key,
 	     (PVOID) (Vad->AvlNode.Key + Vad->WindowSize),
@@ -340,19 +316,35 @@ Insert:
 }
 
 /*
- * Add the mirrored memory VAD to the owner VAD's viewer list
+ * Add the mirrored memory VAD to the master vspace's viewer list. The mirrored
+ * memory will map a memory window of the master vspace to the viewer vspace.
+ * The start address of the master vspace memory window is given by StartAddr.
+ * The window size of the Viewer VAD's window size.
  */
 VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
-			      IN PMMVAD Owner,
-			      IN MWORD Offset)
+			      IN PVIRT_ADDR_SPACE Master,
+			      IN MWORD StartAddr)
 {
     assert(Viewer != NULL);
-    assert(Owner != NULL);
+    assert(Master != NULL);
     assert(Viewer->Flags.MirroredMemory);
-    assert(Owner->Flags.OwnedMemory);
-    Viewer->MirroredMemory.OwnerVad = Owner;
-    Viewer->MirroredMemory.Offset = Offset;
-    InsertTailList(&Owner->OwnedMemory.ViewerList, &Viewer->MirroredMemory.ViewerLink);
+    Viewer->MirroredMemory.Master = Master;
+    Viewer->MirroredMemory.StartAddr = StartAddr;
+    InsertTailList(&Master->ViewerList, &Viewer->MirroredMemory.ViewerLink);
+}
+
+/*
+ * Register the viewer VAD to map the master VAD. The master VAD must have
+ * the same window size as the viewer VAD.
+ */
+VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
+			   IN PMMVAD MasterVad)
+{
+    assert(Viewer != NULL);
+    assert(MasterVad != NULL);
+    assert(Viewer->WindowSize == MasterVad->WindowSize);
+    assert(MasterVad->VSpace != NULL);
+    MmRegisterMirroredMemory(Viewer, MasterVad->VSpace, MasterVad->AvlNode.Key);
 }
 
 NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
@@ -368,10 +360,6 @@ NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
     assert(Vad->ImageSectionView.SubSection->ImageSection != NULL);
     assert(Vad->ImageSectionView.SubSection->ImageSection->FileObject != NULL);
 
-    if (Vad->Flags.Committed) {
-	return STATUS_SUCCESS;
-    }
-
     PAGING_RIGHTS Rights = Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
     PVOID FileBuffer = Vad->ImageSectionView.SubSection->ImageSection->FileObject->BufferPtr;
     PVOID DataBuffer = FileBuffer + Vad->ImageSectionView.SubSection->FileOffset;
@@ -381,20 +369,12 @@ NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 	RET_ERR(MiCommitOwnedMemory(Vad->VSpace, Vad->AvlNode.Key, Vad->WindowSize, Rights,
 				    Vad->Flags.LargePages, DataSize ? DataBuffer : NULL,
 				    DataSize));
-	Vad->OwnedMemory.CommitmentSize = Vad->WindowSize;
     } else {
-	PMMVAD OwnerVad = Vad->MirroredMemory.OwnerVad;
-	assert(OwnerVad != NULL);
-	assert(OwnerVad->Flags.OwnedMemory);
-	assert(IS_PAGE_ALIGNED(OwnerVad->AvlNode.Key));
-	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.Offset));
-	MWORD OwnerStartAddr = OwnerVad->AvlNode.Key + Vad->MirroredMemory.Offset;
-	assert(OwnerStartAddr + Vad->WindowSize <=
-	       OwnerVad->AvlNode.Key + OwnerVad->WindowSize);
-	RET_ERR(MiMapMirroredMemory(OwnerVad->VSpace, OwnerStartAddr, Vad->VSpace,
-				    Vad->AvlNode.Key, Vad->WindowSize, Rights));
+	assert(Vad->MirroredMemory.Master != NULL);
+	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
+	RET_ERR(MiMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
+				    Vad->VSpace, Vad->AvlNode.Key, Vad->WindowSize, Rights));
     }
-    Vad->Flags.Committed = TRUE;
 
     return STATUS_SUCCESS;
 }
@@ -408,22 +388,24 @@ NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
  */
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
-				 IN MWORD WindowSize,
-				 IN MWORD CommitFlags)
+				 IN MWORD WindowSize)
 {
     assert(VSpace != NULL);
     assert(WindowSize > 0);
+    DbgTrace("Trying to commit [%p, %p)\n", (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize));
     StartAddr = PAGE_ALIGN(StartAddr);
     WindowSize = PAGE_ALIGN_UP(WindowSize);
     assert(StartAddr + WindowSize > StartAddr);
 
-    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, StartAddr);
+    PMMVAD Vad = MmVSpaceFindVadNode(VSpace, StartAddr);
     if (Vad == NULL) {
 	DbgTrace("Error: Must reserve address window before committing.\n");
+	// MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
     if (Vad->Flags.NoAccess) {
 	DbgTrace("Error: Committing a NoAccess Vad.\n");
+	// MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -439,6 +421,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     PAGING_RIGHTS Rights = (Vad->Flags.ReadOnly) ? MM_RIGHTS_RO : MM_RIGHTS_RW;
 
     if (Vad->Flags.ImageMap) {
+	/* This will set CommitmentSize to the size of the VAD */
 	RET_ERR(MiCommitImageVad(Vad));
     } else if (Vad->Flags.FileMap) {
 	return STATUS_NOT_IMPLEMENTED;
@@ -449,20 +432,13 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    RET_ERR(MiCommitIoPage(Vad->VSpace, PhyAddr, StartAddr + Committed, Rights));
 	}
     } else if (Vad->Flags.MirroredMemory) {
-	PMMVAD OwnerVad = Vad->MirroredMemory.OwnerVad;
-	assert(OwnerVad != NULL);
-	assert(OwnerVad->Flags.OwnedMemory);
-	assert(IS_PAGE_ALIGNED(OwnerVad->AvlNode.Key));
-	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.Offset));
-	MWORD OwnerStartAddr = OwnerVad->AvlNode.Key + Vad->MirroredMemory.Offset;
-	assert(OwnerStartAddr + Vad->WindowSize <=
-	       OwnerVad->AvlNode.Key + OwnerVad->WindowSize);
-	RET_ERR(MiMapMirroredMemory(OwnerVad->VSpace, OwnerStartAddr, Vad->VSpace,
-				    StartAddr, WindowSize, Rights));
+	assert(Vad->MirroredMemory.Master != NULL);
+	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
+	RET_ERR(MiMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
+				    Vad->VSpace, StartAddr, WindowSize, Rights));
     } else if (Vad->Flags.OwnedMemory) {
 	RET_ERR(MiCommitOwnedMemory(Vad->VSpace, StartAddr, WindowSize, Rights,
 				    Vad->Flags.LargePages, NULL, 0));
-	Vad->OwnedMemory.CommitmentSize += WindowSize;
     } else {
 	/* Should never reach this */
 	return STATUS_NTOS_BUG;
@@ -481,14 +457,132 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
 
-    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, VirtAddr);
+    PMMVAD Vad = MmVSpaceFindVadNode(VSpace, VirtAddr);
     if (Vad == NULL) {
 	return NULL;
     }
 
     PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, VirtAddr);
 
+    if (Page == NULL) {
+	return FALSE;
+    }
+
     return MiPagingTypeIsPage(Page->Type) ? Page : NULL;
+}
+
+/*
+ * Check if the address window in the given VSpace is fully mapped
+ *
+ * If Writeable is TRUE, pages must be mapped read-write.
+ * If Writable is FALSE, pages can be mapped with any rights
+ *
+ * On success, the address window will be rounded to the nearest
+ * boundary of the underlying lowest-level paging structure.
+ */
+NTSTATUS MmEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
+			      IN OUT MWORD *pStartAddr,
+			      IN OUT MWORD *pWindowSize,
+			      IN BOOLEAN Writable)
+{
+    assert(VSpace != NULL);
+    assert(pStartAddr != NULL);
+    assert(pWindowSize != NULL);
+    MWORD StartAddr = *pStartAddr;
+    MWORD EndAddr = PAGE_ALIGN_UP(StartAddr + *pWindowSize);
+    MWORD CurrentAddr = StartAddr;
+    while (CurrentAddr < EndAddr) {
+	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, StartAddr);
+	if (Page == NULL) {
+	    return STATUS_NOT_COMMITTED;
+	}
+	if (!Page->Mapped) {
+	    return STATUS_NOT_COMMITTED;
+	}
+	if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	    return STATUS_NOT_COMMITTED;
+	}
+	if (Writable && !MmPagingRightsAreEqual(Page->Rights, MM_RIGHTS_RW)) {
+	    return STATUS_INVALID_PAGE_PROTECTION;
+	}
+	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	assert(CurrentAddr <= PageEndAddr);
+	if (StartAddr == CurrentAddr) {
+	    StartAddr = Page->AvlNode.Key;
+	}
+	CurrentAddr = PageEndAddr;
+    }
+    *pStartAddr = StartAddr;
+    *pWindowSize = CurrentAddr - StartAddr;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Uncommit the given VAD. This can only be called when there is
+ * no viewers mirroring any of the pages in this VAD.
+ */
+static VOID MiUncommitVad(IN PMMVAD Vad)
+{
+    PVIRT_ADDR_SPACE VSpace = Vad->VSpace;
+    assert(VSpace != NULL);
+    MWORD CurrentAddr = Vad->AvlNode.Key;
+    MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
+    while (CurrentAddr < EndAddr) {
+	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
+	if ((Page != NULL) && MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	    MiUncommitPage(Page);
+	}
+	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	assert(CurrentAddr <= PageEndAddr);
+	CurrentAddr = PageEndAddr;
+	ExFreePool(Page);
+    }
+}
+
+/*
+ * Returns TRUE if there is no viewer VADs that mirror any memory pages in
+ * this VAD.
+ */
+static BOOLEAN MiEnsureNoViewers(IN PMMVAD Vad)
+{
+    PVIRT_ADDR_SPACE VSpace = Vad->VSpace;
+    assert(VSpace != NULL);
+    MWORD CurrentAddr = Vad->AvlNode.Key;
+    MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
+    while (CurrentAddr < EndAddr) {
+	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
+	if ((Page != NULL) && MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	    if (!IsListEmpty(&Page->TreeNode.ChildrenList)) {
+		return FALSE;
+	    }
+	}
+	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	assert(CurrentAddr <= PageEndAddr);
+	CurrentAddr = PageEndAddr;
+    }
+    return TRUE;
+}
+
+/*
+ * Uncommit the pages in the VAD, detach it from its VSpace (and its master
+ * VSpace if there is one) and free the Vad data structure from the ExPool.
+ * This can only be called when there are no viewers mirroring any of the
+ * memory pages in this VAD.
+ */
+VOID MmDeleteVad(IN PMMVAD Vad)
+{
+    assert(Vad != NULL);
+    /* Make sure that there is no viewer VADs mirroring us */
+    assert(MiEnsureNoViewers(Vad));
+    MiUncommitVad(Vad);
+    MiAvlTreeRemoveNode(&Vad->VSpace->VadTree, &Vad->AvlNode);
+    if (Vad->Flags.MirroredMemory) {
+	assert(Vad->MirroredMemory.ViewerLink.Flink != NULL);
+	assert(Vad->MirroredMemory.ViewerLink.Blink != NULL);
+	assert(!IsListEmpty(&Vad->MirroredMemory.ViewerLink));
+	RemoveEntryList(&Vad->MirroredMemory.ViewerLink);
+    }
+    ExFreePool(Vad);
 }
 
 NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
@@ -570,9 +664,9 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     }
 
     if (AllocationType & MEM_COMMIT) {
-	RET_ERR_EX(MmCommitVirtualMemoryEx(VSpace, StartAddr, WindowSize, 0),
+	RET_ERR_EX(MmCommitVirtualMemoryEx(VSpace, StartAddr, WindowSize),
 		   if ((Vad != NULL) && (AllocationType & MEM_RESERVE)) {
-		       /* Unreserve the address window we just reserved */
+		       MmDeleteVad(Vad);
 		   });
     }
 
@@ -659,11 +753,10 @@ VOID MmDbgDumpVad(PMMVAD Vad)
     }
 
     DbgPrint("    vaddr start = %p  window size = 0x%zx\n"
-	     "   %s%s%s%s%s%s\n",
+	     "   %s%s%s%s%s\n",
 	     (PVOID) Vad->AvlNode.Key, Vad->WindowSize,
 	     Vad->Flags.ImageMap ? " image-map" : "",
 	     Vad->Flags.LargePages ? " large-pages" : "",
-	     Vad->Flags.Committed ? " committed" : " not-committed",
 	     Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
 	     Vad->Flags.OwnedMemory ? " owned-memory" : "",
 	     Vad->Flags.MirroredMemory ? " mirrored-memory" : "");
@@ -677,17 +770,9 @@ VOID MmDbgDumpVad(PMMVAD Vad)
     if (Vad->Flags.PhysicalMapping) {
 	DbgPrint("    physical base = %p\n", (PVOID) Vad->PhysicalSectionView.PhysicalBase);
     }
-    if (Vad->Flags.OwnedMemory) {
-	DbgPrint("    commitment size = 0x%zx\n", Vad->OwnedMemory.CommitmentSize);
-	DbgPrint("    viewers =");
-	LoopOverList(Viewer, &Vad->OwnedMemory.ViewerList, MMVAD, MirroredMemory.ViewerLink) {
-	    DbgPrint(" %p", Viewer);
-	}
-	DbgPrint("\n");
-    }
     if (Vad->Flags.MirroredMemory) {
-	DbgPrint("    owner vad = %p\n", Vad->MirroredMemory.OwnerVad);
-	DbgPrint("    offset from owner vad window = 0x%zx\n", Vad->MirroredMemory.Offset);
+	DbgPrint("    master vspace = %p\n", Vad->MirroredMemory.Master);
+	DbgPrint("    start vaddr in master vspace = 0x%zx\n", Vad->MirroredMemory.StartAddr);
     }
 }
 

@@ -16,4 +16,17 @@
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
   </svc>
 
+  <svc name="IopCreateTimer">
+    <parameter annotation="out" type="ptr::HANDLE" name="Handle" />
+  </svc>
+
+  <svc name="IopSetTimer">
+    <parameter annotation="in" type="HANDLE" name="Handle" />
+    <parameter annotation="in" type="ptr::LARGE_INTEGER" name="DueTime" />
+  </svc>
+
+  <svc name="HalpMakeBeep">
+    <parameter annotation="in" type="ULONG" name="Frequency" />
+  </svc>
+
 </services>
