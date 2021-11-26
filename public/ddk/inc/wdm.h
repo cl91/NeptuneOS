@@ -4,21 +4,8 @@
 #include <string.h>
 #include <assert.h>
 
+/* We are running in user space. All code are paged code. */
 #define PAGED_CODE()
-
-#if defined(_WIN64)
-#define POINTER_ALIGNMENT DECLSPEC_ALIGN(8)
-#else
-#define POINTER_ALIGNMENT
-#endif
-
-#if defined(_WIN64) || defined(_M_ALPHA)
-#define MAX_NATURAL_ALIGNMENT sizeof(ULONGLONG)
-#define MEMORY_ALLOCATION_ALIGNMENT 16
-#else
-#define MAX_NATURAL_ALIGNMENT sizeof(ULONG)
-#define MEMORY_ALLOCATION_ALIGNMENT 8
-#endif
 
 /* VPB.Flags */
 #define VPB_MOUNTED                       0x0001
@@ -916,150 +903,17 @@ FORCEINLINE VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
     Queue->Busy = FALSE;
 }
 
-/*
- * Note: this function has a somewhat peculiar behavior at first glance.
- * If the device queue is not busy, the function does NOT insert the entry
- * into the queue, and instead simply sets the device queue to busy.
- * On the other hand, if the device queue is busy, the entry is inserted
- * at the end of the queue. The return value indicates whether the insertion
- * has been performed.
- */
-FORCEINLINE BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
-					IN PKDEVICE_QUEUE_ENTRY Entry)
-{
-    assert(Queue != NULL);
-    assert(Entry != NULL);
-    if (!Queue->Busy) {
-        Entry->Inserted = FALSE;
-        Queue->Busy = TRUE;
-    } else {
-        Entry->Inserted = TRUE;
-        InsertTailList(&Queue->DeviceListHead, &Entry->DeviceListEntry);
-    }
-    return Entry->Inserted;
-}
+NTAPI NTSYSAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
+					   IN PKDEVICE_QUEUE_ENTRY Entry);
 
-/*
- * Same as KeInsertDeviceQueue, except that the insertion is sorted by
- * the specified key (the given queue entry is inserted after the first
- * entry that satisfies the property that the specified key is larger or
- * equal to it but smaller than its successor).
- *
- * NOTE: Queue must be already sorted (or empty). Otherwise the function
- * behaves unpredictably.
- */
-FORCEINLINE BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
-					     IN PKDEVICE_QUEUE_ENTRY Entry,
-					     IN ULONG SortKey)
-{
-    assert(Queue != NULL);
-    assert(Entry != NULL);
-    Entry->SortKey = SortKey;
+NTAPI NTSYSAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
+						IN PKDEVICE_QUEUE_ENTRY Entry,
+						IN ULONG SortKey);
 
-    if (!Queue->Busy) {
-        Entry->Inserted = FALSE;
-        Queue->Busy = TRUE;
-    } else {
-        /* Make sure the list isn't empty */
-	PLIST_ENTRY NextEntry = &Queue->DeviceListHead;
-        if (!IsListEmpty(NextEntry)) {
-            /* Get the last entry */
-	    PKDEVICE_QUEUE_ENTRY LastEntry = CONTAINING_RECORD(NextEntry->Blink,
-							       KDEVICE_QUEUE_ENTRY,
-							       DeviceListEntry);
+NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue);
 
-	    /* Find the first occurrence where the specified key is larger or equal
-	     * to an entry but smaller than its successor. */
-            if (SortKey < LastEntry->SortKey) {
-                do {
-                    NextEntry = NextEntry->Flink;
-                    LastEntry = CONTAINING_RECORD(NextEntry,
-                                                  KDEVICE_QUEUE_ENTRY,
-                                                  DeviceListEntry);
-                } while (SortKey >= LastEntry->SortKey);
-            }
-        }
-
-        /* Now insert us */
-        InsertTailList(NextEntry, &Entry->DeviceListEntry);
-        Entry->Inserted = TRUE;
-    }
-    return Entry->Inserted;
-}
-
-/*
- * Removes the entry from the head and returns the removed entry. If queue
- * is empty, return NULL. This function should only be called when the queue
- * is set to busy state, otherwise it asserts.
- */
-FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
-{
-    PKDEVICE_QUEUE_ENTRY Entry = NULL;
-
-    assert(Queue != NULL);
-    assert(Queue->Busy);
-
-    /* Check if this is an empty queue */
-    if (IsListEmpty(&Queue->DeviceListHead)) {
-        /* Set it to idle and return nothing */
-        Queue->Busy = FALSE;
-    } else {
-        /* Remove the Entry from the List */
-	PLIST_ENTRY ListEntry = RemoveHeadList(&Queue->DeviceListHead);
-        Entry = CONTAINING_RECORD(ListEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
-        Entry->Inserted = FALSE;
-    }
-    return Entry;
-}
-
-/*
- * Same as KeRemoveDeviceQueue, except the entry to be removed is the first entry
- * with a key that is greater or equal to the specified sort key. If all entries
- * have keys smaller than the specified sort key, then the head of the queue is
- * removed and returned.
- *
- * The queue must be busy, otherwise the function asserts in debug build.
- *
- * NOTE: Queue must be already sorted. Otherwise the function behaves unpredictably.
- */
-FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
-							  IN ULONG SortKey)
-{
-    PKDEVICE_QUEUE_ENTRY Entry = NULL;
-
-    assert(Queue != NULL);
-    assert(Queue->Busy);
-
-    /* Check if this is an empty queue */
-    if (IsListEmpty(&Queue->DeviceListHead)) {
-        /* Set it to idle and return nothing */
-        Queue->Busy = FALSE;
-    } else {
-	PLIST_ENTRY NextEntry = &Queue->DeviceListHead;
-        Entry = CONTAINING_RECORD(NextEntry->Blink, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
-        /* If SortKey is greater than the last key, then return the first entry right away */
-        if (Entry->SortKey <= SortKey) {
-            Entry = CONTAINING_RECORD(NextEntry->Flink, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
-        } else {
-            NextEntry = Queue->DeviceListHead.Flink;
-            while (TRUE) {
-                /* Make sure we don't go beyond the end of the queue */
-                assert(NextEntry != &Queue->DeviceListHead);
-
-                /* Get the next entry and check if its key is greater or equal to SortKey */
-                Entry = CONTAINING_RECORD(NextEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
-                if (SortKey <= Entry->SortKey) {
-		    break;
-		}
-                NextEntry = NextEntry->Flink;
-            }
-        }
-
-        RemoveEntryList(&Entry->DeviceListEntry);
-        Entry->Inserted = FALSE;
-    }
-    return Entry;
-}
+NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
+							     IN ULONG SortKey);
 
 /*
  * Same as KeRemoveByKeyDeviceQueue, except it doesn't assert if the queue is not busy.

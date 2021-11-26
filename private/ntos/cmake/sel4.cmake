@@ -23,6 +23,7 @@ set(KernelSupportPCID OFF CACHE BOOL "")
 set(KernelIOMMU OFF CACHE BOOL "")
 set(KernelFPU FXSAVE CACHE STRING "")
 set(KernelHugePage OFF CACHE BOOL "")
+set(KernelIRQController "PIC" CACHE STRING "")
 
 include(${KERNEL_PATH}/configs/seL4Config.cmake)
 

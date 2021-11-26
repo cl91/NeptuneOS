@@ -1,16 +1,20 @@
 #include <stdint.h>
 #include <printf.h>
 #include <ntos.h>
-#include <thread.h>
 #include <sel4/arch/bootinfo_types.h>
 #include "ki.h"
 
 /* Minimum alignment for TLS across all platforms. */
-#define MIN_ALIGN_BYTES 16
+#define MIN_ALIGN_BYTES 8
 #define MIN_ALIGNED __aligned(MIN_ALIGN_BYTES)
 
+#if MIN_ALIGN_BYTES > EX_POOL_SMALLEST_BLOCK
+#error "Since the TLS region of system threads are allocated on the ExPool, " \
+    "MIN_ALIGN_BYTES must be less than or equal to the ExPool block alignment."
+#endif
+
 /* Static TLS for the initial thread of the root task. */
-static char STATIC_TLS_AREA[256] MIN_ALIGNED;
+static char STATIC_TLS_AREA[NTOS_TLS_AREA_SIZE] MIN_ALIGNED;
 
 /* Address for the IPC buffer of the initial thread of the root task. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -18,6 +22,27 @@ __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 /* Thread local variable used by libsel4 for printing syscall errors. */
 #ifdef CONFIG_KERNEL_INVOCATION_REPORT_ERROR_IPC
 __thread char __sel4_print_error;
+#endif
+
+/*
+ * Define KiSetTlsBase function which sets the value of the TLS base
+ * for the current thread. This is only used to set the TLS base pointer
+ * for the initial thread of the root task (which is an ELF target).
+ * All other system threads (interrupt handler threads of the NTOS root
+ * task) and all PE processes have their TLS base set in ps/create.c
+ */
+#if defined(_M_AMD64) && defined(CONFIG_FSGSBASE_INST)
+static inline void KiSetTlsBase(uintptr_t tls_base)
+{
+    __asm__ __volatile__("wrfsbase %0" :: "r"(tls_base));
+}
+#elif defined(CONFIG_SET_TLS_BASE_SELF)
+static inline void KiSetTlsBase(uintptr_t tls_base)
+{
+    seL4_SetTLSBase(tls_base);
+}
+#else
+#error "You must enable SetTLSBase for i386 build"
 #endif
 
 extern char __stack_base[];
@@ -37,20 +62,26 @@ extern char _tbss_end[];
 extern char _tdata_start[];
 extern char _tdata_end[];
 
-/* tls_base[0-sizeof(uintptr_t)] must be a pointer to tls_base
+ULONG KiProcessorCount;
+
+/*
+ * For the initial thread of the NTOS root task the base of the gs/fs
+ * segment (on i386/amd64 respectively) is set to the end of the static
+ * TLS area minus 8 bytes (to accommodate the TLS base pointer). The
+ * machine word at TlsBase[0] must be set to the value of TlsBase itself.
  *
- * For GNU systems the base of gs segment (on i386) is set to
- * tls_base. Access to TLS variables can then be done simply
- * with %gs:-offset. However for some reason clang does not
- * implement this (or need some kind of compiler flag to enable).
+ * GCC implements an optimization where access to TLS variables can be done
+ * simply with %gs:offset where offset is the offset of the TLS variable
+ * from the *end* of the TLS region (so the offset is always negative).
+ * As long as we never take the address of any TLS variables we don't need
+ * to set TlsBase[0] to TlsBase. However clang does not seem to implement
+ * this optimization. We therefore must always set TlsBase[0] to TlsBase.
  */
 static void KiInitRootThread(seL4_BootInfo *bootinfo)
 {
-    uintptr_t tls_base = (uintptr_t ) &STATIC_TLS_AREA[0]
-	+ sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
-    uintptr_t *tls_ptr = (uintptr_t *)(tls_base);
-    *tls_ptr = tls_base;
-    sel4runtime_set_tls_base(tls_base);
+    MWORD TlsBase = (MWORD)&STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
+    *(MWORD *)(TlsBase) = TlsBase;
+    KiSetTlsBase(TlsBase);
     __sel4_ipc_buffer = bootinfo->ipcBuffer;
 
     DbgPrint("Initial root thread address space:\n");
@@ -71,8 +102,7 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __stack_base = %p\n", __stack_base);
     DbgPrint("    __stack_top = %p\n", __stack_top);
     DbgPrint("    static tls area start = %p\n", STATIC_TLS_AREA);
-    DbgPrint("    desired tls base = %p\n", (PVOID) tls_base);
-    DbgPrint("    tls base = %p\n", (PVOID) sel4runtime_get_tls_base());
+    DbgPrint("    desired tls base = %p\n", (PVOID) TlsBase);
     DbgPrint("    &__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
@@ -212,6 +242,10 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
+    KiProcessorCount = bootinfo->numNodes;
+    if (KiProcessorCount == 0) {
+	KiProcessorCount = 1;
+    }
 
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(NTEX_TCB_CAP, "NTOS Executive");
@@ -221,6 +255,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     ExInitSystemPhase0(bootinfo);
     KiInitVga();
     BUGCHECK_IF_ERR(KiInitExecutiveServices());
+    BUGCHECK_IF_ERR(KiEnableTimerInterruptService());
     BUGCHECK_IF_ERR(ExInitSystemPhase1());
 
 #ifdef CONFIG_RUN_TESTS

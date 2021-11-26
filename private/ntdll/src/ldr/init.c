@@ -66,10 +66,6 @@ RTL_CRITICAL_SECTION LdrpLoaderLock = {
 
 RTL_CRITICAL_SECTION FastPebLock;
 
-BOOLEAN ShowSnaps;
-
-extern BOOLEAN RtlpUse16ByteSLists;
-
 #ifdef _WIN64
 #define DEFAULT_SECURITY_COOKIE 0x00002B992DDFA232ll
 #else
@@ -407,12 +403,10 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
     }
 
     /* Show debug message */
-    if (ShowSnaps) {
-	DPRINT1("[%p,%p] LDR: Real INIT LIST for Process %wZ\n",
-		NtCurrentTeb()->RealClientId.UniqueThread,
-		NtCurrentTeb()->RealClientId.UniqueProcess,
-		&Peb->ProcessParameters->ImagePathName);
-    }
+    DPRINT1("[%p,%p] LDR: Real INIT LIST for Process %wZ\n",
+	    NtCurrentTeb()->RealClientId.UniqueThread,
+	    NtCurrentTeb()->RealClientId.UniqueProcess,
+	    &Peb->ProcessParameters->ImagePathName);
 
     /* Loop in order */
     ListHead = &Peb->LdrData->InInitializationOrderModuleList;
@@ -437,13 +431,11 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 		    LdrRootEntry[i] = LdrEntry;
 
 		    /* Display debug message */
-		    if (ShowSnaps) {
-			DPRINT1("[%p,%p] LDR: %wZ init routine %p\n",
-				NtCurrentTeb()->RealClientId.UniqueThread,
-				NtCurrentTeb()->RealClientId.UniqueProcess,
-				&LdrEntry->FullDllName,
-				LdrEntry->EntryPoint);
-		    }
+		    DPRINT1("[%p,%p] LDR: %wZ init routine %p\n",
+			    NtCurrentTeb()->RealClientId.UniqueThread,
+			    NtCurrentTeb()->RealClientId.UniqueProcess,
+			    &LdrEntry->FullDllName,
+			    LdrEntry->EntryPoint);
 		    i++;
 		}
 	    }
@@ -493,11 +485,8 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 	/* Break if aksed */
 	if (BreakOnDllLoad) {
 	    /* Check if we should show a message */
-	    if (ShowSnaps) {
-		DPRINT1("LDR: %wZ loaded.", &LdrEntry->BaseDllName);
-		DPRINT1(" - About to call init routine at %p\n",
-			EntryPoint);
-	    }
+	    DPRINT1("LDR: %wZ loaded.", &LdrEntry->BaseDllName);
+	    DPRINT1(" - About to call init routine at %p\n", EntryPoint);
 
 	    /* Break in debugger */
 	    DbgBreakPoint();
@@ -517,10 +506,8 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 		}
 
 		/* Call the Entrypoint */
-		if (ShowSnaps) {
-		    DPRINT1("%wZ - Calling entry point at %p for DLL_PROCESS_ATTACH\n",
-			    &LdrEntry->BaseDllName, EntryPoint);
-		}
+		DPRINT1("%wZ - Calling entry point at %p for DLL_PROCESS_ATTACH\n",
+			&LdrEntry->BaseDllName, EntryPoint);
 		DllStatus = LdrpCallInitRoutine(EntryPoint,
 						LdrEntry->DllBase,
 						DLL_PROCESS_ATTACH,
@@ -934,11 +921,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	   NtCurrentTeb()->RealClientId.UniqueProcess,
 	   NtCurrentTeb()->RealClientId.UniqueThread);
 
-#ifdef _WIN64
-    /* Set the SList header usage */
-    RtlpUse16ByteSLists = SharedUserData->ProcessorFeatures[PF_COMPARE_EXCHANGE128];
-#endif	/* _WIN64 */
-
     /* Check if we have already setup LDR data */
     PVOID EntryPoint = 0;
     NTSTATUS Status = STATUS_SUCCESS;
@@ -1035,11 +1017,6 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
     DPRINT("LdrShutdownProcess() called for %wZ\n", &LdrpImageEntry->BaseDllName);
     if (LdrpShutdownInProgress)
 	return STATUS_SUCCESS;
-
-    /* Tell the world */
-    if (ShowSnaps) {
-	DPRINT1("\n");
-    }
 
     /* Set the shutdown variables */
     LdrpShutdownThreadId = NtCurrentTeb()->RealClientId.UniqueThread;

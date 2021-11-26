@@ -298,6 +298,23 @@ static inline unsigned long long __ull_rshift(unsigned long long Mask, int Bit)
     return retval;
 }
 
+FORCEINLINE LONG64 InterlockedAdd64(IN OUT volatile LONG64 *Target,
+				    IN LONG64 Value)
+{
+    LONG64 Old, Prev, New;
+    for (Old = *Target; ; Old = Prev) {
+        New = Old + Value;
+        Prev = InterlockedCompareExchange64(Target, New, Old);
+        if (Prev == Old)
+            return New;
+    }
+}
+
+FORCEINLINE LONG64 InterlockedIncrement64(IN OUT volatile LONG64 *Target)
+{
+    return InterlockedAdd64(Target, 1);
+}
+
 #elif defined(_M_AMD64)
 
 /*

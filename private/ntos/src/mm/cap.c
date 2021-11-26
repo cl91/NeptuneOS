@@ -143,8 +143,8 @@ Lookup:
 }
 
 /* Mark the capability slot of the given CNode as free */
-NTSTATUS MmDeallocateCap(IN PCNODE CNode,
-			 IN MWORD Cap)
+VOID MmDeallocateCap(IN PCNODE CNode,
+		     IN MWORD Cap)
 {
     assert(CNode != NULL);
     assert(Cap < (1ULL << CNode->Log2Size));
@@ -155,8 +155,6 @@ NTSTATUS MmDeallocateCap(IN PCNODE CNode,
     ClearBit(CNode->UsedMap, Cap);
     CNode->RecentFree = Cap;
     CNode->TotalUsed++;
-    
-    return STATUS_SUCCESS;
 }
 
 /*
@@ -290,9 +288,9 @@ static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
 }
 
 /*
- * Invoke CNode_Delete on the node cap and free the node cap and all its cap
- * tree descendants. Note that we don't unlink the node from its parent
- * since this would prevent the upstream caller from accessing the children.
+ * Invoke CNode_Delete on the node cap and deallocate the node cap and all its cap
+ * tree descendants. Note that we don't unlink the node from its parent since this
+ * would prevent the upstream caller from accessing the children.
  */
 NTSTATUS MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 {

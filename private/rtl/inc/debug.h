@@ -23,4 +23,13 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 	    {OnError;} return Status; }}
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
 
+#define IF_ERR_GOTO(Label, Status, Expr)				\
+    Status = (Expr);							\
+    if (!NT_SUCCESS(Status)) {						\
+	DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+		 " error 0x%x\n",					\
+		 #Expr, __func__, __FILE__, __LINE__, Status);		\
+	goto Label;							\
+    }
+
 #define DPRINT1		DbgPrint

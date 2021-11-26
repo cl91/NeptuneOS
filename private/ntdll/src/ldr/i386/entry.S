@@ -21,7 +21,6 @@ _LdrInitializeThunk:
     /*
      * The virtual address of the IPC buffer is in %ecx
      * The system dll tls region address is in %edx
-     * Thread entry point is in %eax
      */
     call @LdrpInitialize@8
 

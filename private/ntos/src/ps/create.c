@@ -78,51 +78,149 @@ static NTSTATUS PspLoadThreadContext(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspSetThreadContext(IN PTHREAD Thread,
+static NTSTATUS PspSetThreadContext(IN MWORD ThreadCap,
 				    IN PTHREAD_CONTEXT Context)
 {
-    assert(Thread != NULL);
-    int Error = seL4_TCB_WriteRegisters(Thread->TreeNode.Cap, 0, 0,
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_WriteRegisters(ThreadCap, 0, 0,
 					sizeof(THREAD_CONTEXT) / sizeof(MWORD),
 					Context);
 
     if (Error != 0) {
 	DbgTrace("seL4_TCB_WriteRegisters failed for thread cap 0x%zx with error %d\n",
-		 Thread->TreeNode.Cap, Error);
+		 ThreadCap, Error);
 	return SEL4_ERROR(Error);
     }
 
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspSetThreadPriority(IN PTHREAD Thread,
+static NTSTATUS PspSetThreadPriority(IN MWORD ThreadCap,
 				     IN THREAD_PRIORITY Priority)
 {
-    assert(Thread != NULL);
-    int Error = seL4_TCB_SetPriority(Thread->TreeNode.Cap, NTEX_TCB_CAP, Priority);
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_SetPriority(ThreadCap, NTEX_TCB_CAP, Priority);
 
     if (Error != 0) {
 	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %d\n",
-		 Thread->TreeNode.Cap, Error);
+		 ThreadCap, Error);
 	return SEL4_ERROR(Error);
     }
-
-    Thread->CurrentPriority = Priority;
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspResumeThread(IN PTHREAD Thread)
+static NTSTATUS PspResumeThread(IN MWORD ThreadCap)
 {
-    assert(Thread != NULL);
-    int Error = seL4_TCB_Resume(Thread->TreeNode.Cap);
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_Resume(ThreadCap);
 
     if (Error != 0) {
 	DbgTrace("seL4_TCB_Resume failed for thread cap 0x%zx with error %d\n",
-		 Thread->TreeNode.Cap, Error);
+		 ThreadCap, Error);
 	return SEL4_ERROR(Error);
     }
 
     return STATUS_SUCCESS;
+}
+
+/*
+ * Startup function for system threads. This is the common entry point for
+ * all system threads. We simply set the seL4 IPC buffer and branch to the
+ * supplied thread entry point.
+ *
+ * The thread entrypoint should never return. On debug build we assert if
+ * it did.
+ */
+VOID PspSystemThreadStartup(IN seL4_IPCBuffer *IpcBuffer,
+			    IN PSYSTEM_THREAD_ENTRY EntryPoint)
+{
+    __sel4_ipc_buffer = IpcBuffer;
+    EntryPoint();
+    DbgTrace("ERROR: System thread entry point %p returned. Current stack pointer is %p\n",
+	     EntryPoint, __builtin_frame_address(0));
+    assert(FALSE);
+    while (TRUE) ;
+}
+
+NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
+			      IN PCSTR DebugName,
+			      IN PSYSTEM_THREAD_ENTRY EntryPoint)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    extern CNODE MiNtosCNode;
+    assert(Thread != NULL);
+    Thread->TreeNode.CSpace = &MiNtosCNode;
+
+    PUNTYPED TcbUntyped = NULL;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    IF_ERR_GOTO(Fail, Status, MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
+    IF_ERR_GOTO(Fail, Status, MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
+						 seL4_TCBBits, &Thread->TreeNode));
+
+#ifdef CONFIG_DEBUG_BUILD
+    assert(DebugName != NULL);
+    assert(DebugName[0] != '\0');
+    seL4_DebugNameThread(Thread->TreeNode.Cap, DebugName);
+#endif
+
+    PMMVAD IpcBufferVad = NULL;
+    IF_ERR_GOTO(Fail, Status,
+		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
+				       SYSTEM_THREAD_IPC_RESERVE, MEM_RESERVE_OWNED_MEMORY,
+				       &IpcBufferVad));
+    assert(IpcBufferVad != NULL);
+    IF_ERR_GOTO(Fail, Status,
+		MmCommitVirtualMemory(IpcBufferVad->AvlNode.Key, SYSTEM_THREAD_IPC_COMMIT));
+    PPAGING_STRUCTURE IpcBufferPage = MmQueryPage(&MiNtosVaddrSpace,
+						  IpcBufferVad->AvlNode.Key);
+    assert(IpcBufferPage != NULL);
+    IF_ERR_GOTO(Fail, Status, PspConfigureThread(Thread->TreeNode.Cap,
+						 0, /* TODO: Fault handler */
+						 &MiNtosCNode,
+						 &MiNtosVaddrSpace,
+						 IpcBufferPage));
+    Thread->IpcBuffer = (PVOID)IpcBufferVad->AvlNode.Key;
+
+    PMMVAD StackVad = NULL;
+    IF_ERR_GOTO(Fail, Status,
+		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
+				       SYSTEM_THREAD_STACK_RESERVE, MEM_RESERVE_OWNED_MEMORY,
+				       &StackVad));
+    assert(StackVad != NULL);
+    IF_ERR_GOTO(Fail, Status,
+		MmCommitVirtualMemory(StackVad->AvlNode.Key, SYSTEM_THREAD_STACK_COMMIT));
+    Thread->StackTop = (PVOID)(StackVad->AvlNode.Key + SYSTEM_THREAD_STACK_COMMIT);
+
+    PspAllocateArrayEx(TlsBase, CHAR, NTOS_TLS_AREA_SIZE,
+		       {
+			   Status = STATUS_NO_MEMORY;
+			   goto Fail;
+		       });
+    Thread->TlsBase = TlsBase - sizeof(ULONGLONG);
+    *((PPVOID)(Thread->TlsBase)) = Thread->TlsBase;
+
+    THREAD_CONTEXT Context;
+    memset(&Context, 0, sizeof(THREAD_CONTEXT));
+    PspInitializeSystemThreadContext(Thread, &Context, EntryPoint);
+    IF_ERR_GOTO(Fail, Status, PspSetThreadContext(Thread->TreeNode.Cap, &Context));
+    IF_ERR_GOTO(Fail, Status, PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
+    Thread->CurrentPriority = seL4_MaxPrio;
+    IF_ERR_GOTO(Fail, Status, PspResumeThread(Thread->TreeNode.Cap));
+
+    return STATUS_SUCCESS;
+
+Fail:
+    if (StackVad != NULL) {
+	MmDeleteVad(StackVad);
+    }
+    if (IpcBufferVad != NULL) {
+	MmDeleteVad(IpcBufferVad);
+    }
+    if (TcbUntyped != NULL) {
+	MmReleaseUntyped(TcbUntyped);
+    }
+    return Status;
 }
 
 VOID PspPopulateTeb(IN PTHREAD Thread)
@@ -296,8 +394,9 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeThreadContext(Thread, &Context);
-    RET_ERR_EX(PspSetThreadContext(Thread, &Context), ObDereferenceObject(Thread));
-    RET_ERR_EX(PspSetThreadPriority(Thread, seL4_MaxPrio), ObDereferenceObject(Thread));
+    RET_ERR_EX(PspSetThreadContext(Thread->TreeNode.Cap, &Context), ObDereferenceObject(Thread));
+    RET_ERR_EX(PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio), ObDereferenceObject(Thread));
+    Thread->CurrentPriority = seL4_MaxPrio;
     RET_ERR_EX(KeEnableSystemServices(Thread), ObDereferenceObject(Thread));
     if (Process->InitInfo.DriverProcess) {
 	RET_ERR_EX(KeEnableHalServices(Thread), ObDereferenceObject(Thread));
@@ -313,7 +412,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	*((PNTDLL_THREAD_INIT_INFO) Thread->IpcBufferServerAddr) = Thread->InitInfo;
     }
 
-    RET_ERR_EX(PspResumeThread(Thread), ObDereferenceObject(Thread));
+    RET_ERR_EX(PspResumeThread(Thread->TreeNode.Cap), ObDereferenceObject(Thread));
 
     if (Process->InitThread == NULL) {
 	Process->InitThread = Thread;

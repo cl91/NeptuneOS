@@ -51,21 +51,97 @@ typedef struct _KSYSTEM_TIME {
 #define PROCESSOR_FEATURE_MAX 64
 
 /*
+ * NT Product and Architecture Types
+ */
+typedef enum _NT_PRODUCT_TYPE {
+    NtProductWinNt = 1,
+    NtProductLanManNt,
+    NtProductServer
+} NT_PRODUCT_TYPE, *PNT_PRODUCT_TYPE;
+
+typedef enum _ALTERNATIVE_ARCHITECTURE_TYPE {
+    StandardDesign,
+    NEC98x86,
+    EndAlternatives
+} ALTERNATIVE_ARCHITECTURE_TYPE;
+
+/*
  * Shared Kernel User Data
  *
- * Note that this data structure is different from its ReactOS
- * or Windows counterpart, since we cannot actually map the
- * kernel shared user data at the desired place (0xFFDF0000 in
- * i386 or 0xFFFFF780`00000000 in amd64). Therefore we might as
- * well make them incompatible. Portable code shouldn't depend
- * on it anyway.
+ * This is exposed to user land (on x86 it is at 0x7ffe0000) so we must maintain
+ * compatibility with Windows/ReactOS.
  */
 typedef struct _KUSER_SHARED_DATA {
-    volatile KSYSTEM_TIME SystemTime;
-    volatile KSYSTEM_TIME TickCount;
-    ULONG_PTR Cookie;
+    ULONG TickCountLowDeprecated;
     ULONG TickCountMultiplier;
+    volatile KSYSTEM_TIME InterruptTime;
+    volatile KSYSTEM_TIME SystemTime;
+    volatile KSYSTEM_TIME TimeZoneBias;
+    USHORT ImageNumberLow;
+    USHORT ImageNumberHigh;
+    WCHAR NtSystemRoot[260];
+    ULONG MaxStackTraceDepth;
+    ULONG CryptoExponent;
+    ULONG TimeZoneId;
+    ULONG LargePageMinimum;
+    ULONG Reserved2[7];
+    NT_PRODUCT_TYPE NtProductType;
+    BOOLEAN ProductTypeIsValid;
+    ULONG NtMajorVersion;
+    ULONG NtMinorVersion;
     BOOLEAN ProcessorFeatures[PROCESSOR_FEATURE_MAX];
+    ULONG Reserved1;
+    ULONG Reserved3;
+    volatile ULONG TimeSlip;
+    ALTERNATIVE_ARCHITECTURE_TYPE AlternativeArchitecture;
+    ULONG AltArchitecturePad[1];
+    LARGE_INTEGER SystemExpirationDate;
+    ULONG SuiteMask;
+    BOOLEAN KdDebuggerEnabled;
+    UCHAR NXSupportPolicy;
+    volatile ULONG ActiveConsoleId;
+    volatile ULONG DismountCount;
+    ULONG ComPlusPackage;
+    ULONG LastSystemRITEventTickCount;
+    ULONG NumberOfPhysicalPages;
+    BOOLEAN SafeBootMode;
+    union {
+	UCHAR TscQpcData;
+	struct {
+	    UCHAR TscQpcEnabled:1;
+	    UCHAR TscQpcSpareFlag:1;
+	    UCHAR TscQpcShift:6;
+	};
+    };
+    UCHAR TscQpcPad[2];
+    union {
+	ULONG SharedDataFlags;
+	struct {
+	    ULONG DbgErrorPortPresent:1;
+	    ULONG DbgElevationEnabled:1;
+	    ULONG DbgVirtEnabled:1;
+	    ULONG DbgInstallerDetectEnabled:1;
+	    ULONG DbgSystemDllRelocated:1;
+	    ULONG DbgDynProcessorEnabled:1;
+	    ULONG DbgSEHValidationEnabled:1;
+	    ULONG SpareBits:25;
+	};
+    };
+    ULONG DataFlagsPad[1];
+    ULONGLONG TestRetInstruction;
+    ULONG SystemCall;
+    ULONG SystemCallReturn;
+    ULONGLONG SystemCallPad[3];
+    union {
+	volatile KSYSTEM_TIME TickCount;
+	volatile ULONG64 TickCountQuad;
+	struct {
+	    ULONG ReservedTickCountOverlay[3];
+	    ULONG TickCountPad[1];
+	};
+    };
+    ULONG Cookie;
+    ULONG CookiePad[1];
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 
 typedef struct DECLSPEC_ALIGN(16) _M128A {

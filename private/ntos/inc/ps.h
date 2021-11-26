@@ -82,6 +82,23 @@ typedef struct _PROCESS {
     PIO_DRIVER_OBJECT DriverObject; /* TODO: Mini-driver? */
 } PROCESS, *PPROCESS;
 
+/*
+ * System thread object
+ *
+ * A system thread is a thread of the NTOS Executive root task, usually used
+ * for interrupt handling.
+ */
+typedef struct _SYSTEM_THREAD {
+    CAP_TREE_NODE TreeNode;
+    PCSTR DebugName;
+    PVOID TlsBase;	 /* TLS base of the thread's TLS region */
+    PVOID IpcBuffer;	 /* Address of the thread's seL4 IPC buffer */
+    PVOID StackTop;	 /* Stack of the thread */
+    THREAD_PRIORITY CurrentPriority;
+} SYSTEM_THREAD, *PSYSTEM_THREAD;
+
+typedef VOID (*PSYSTEM_THREAD_ENTRY)();
+
 /* init.c */
 NTSTATUS PsInitSystemPhase0();
 NTSTATUS PsInitSystemPhase1();
@@ -89,6 +106,9 @@ NTSTATUS PsInitSystemPhase1();
 /* create.c */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread);
+NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
+			      IN PCSTR DebugName,
+			      IN PSYSTEM_THREAD_ENTRY EntryPoint);
 NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN PIO_DRIVER_OBJECT DriverObject,
 			 OUT PPROCESS *pProcess);

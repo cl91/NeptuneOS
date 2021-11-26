@@ -21,6 +21,7 @@ typedef seL4_Word MWORD;
 #define MM_MAXIMUM_ZERO_BITS		(MWORD_BITS - PAGE_LOG2SIZE - 1)
 
 /* All hard-coded addresses in client processes' address space go here. */
+/* TODO: Use Windows/ReactOS address space scheme, especially KUSER_SHARED_DATA */
 #define LOWEST_USER_ADDRESS		(1ULL << PAGE_LOG2SIZE)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000ULL)
@@ -37,8 +38,6 @@ typedef seL4_Word MWORD;
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
 #define IPC_BUFFER_START		(0xd0000000ULL)
 #define IPC_BUFFER_END			(0xdfff0000ULL)
-/* We cannot put the KUSER_SHARED_DATA in the usual place (0xFFDF0000 in i386
- * or 0xFFFFF780`00000000 in amd64) so we will settle for IPC_BUFFER_END */
 #define KUSER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
 #define LOADER_SHARED_DATA_CLIENT_ADDR	(KUSER_SHARED_DATA_CLIENT_ADDR + PAGE_ALIGN_UP(sizeof(KUSER_SHARED_DATA)))
 #define USER_ADDRESS_END		(0xe0000000ULL)

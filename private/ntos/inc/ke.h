@@ -3,9 +3,13 @@
 #include <nt.h>
 #include <sel4/sel4.h>
 #include <printf.h>
+#include <intrin.h>
 #include "mm.h"
 
 #define NTOS_KE_TAG			(EX_POOL_TAG('n','t','k','e'))
+
+/* Size of the TLS section of the NTOS root task image */
+#define NTOS_TLS_AREA_SIZE		(64)
 
 struct _THREAD;
 
@@ -38,10 +42,44 @@ static inline VOID KeInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
     Self->Badge = Badge;
 }
 
+/*
+ * Notification Object
+ */
+typedef struct _NOTIFICATION {
+    CAP_TREE_NODE TreeNode;
+    MWORD Word;
+    MWORD Badge;
+} NOTIFICATION, *PNOTIFICATION;
+
+static inline VOID KeInitializeNotification(IN PNOTIFICATION Self,
+					    IN PCNODE CSpace,
+					    IN MWORD Cap,
+					    IN MWORD Word,
+					    IN MWORD Badge)
+{
+    assert(Self != NULL);
+    assert(CSpace != NULL);
+    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_NOTIFICATION, Cap,
+			    CSpace, NULL);
+    Self->Word = Word;
+    Self->Badge = Badge;
+}
+
+/*
+ * X86 IO Port
+ */
 typedef struct _X86_IOPORT {
     CAP_TREE_NODE TreeNode; /* capability with which to invoke seL4_X86_IOPort_* */
     USHORT PortNum;	    /* port number */
 } X86_IOPORT, *PX86_IOPORT;
+
+/*
+ * IRQ Handler
+ */
+typedef struct _IRQ_HANDLER {
+    CAP_TREE_NODE TreeNode;
+    MWORD Irq;
+} IRQ_HANDLER, *PIRQ_HANDLER;
 
 #define VGA_BLUE			(1)
 #define VGA_WHITE			(15)
@@ -353,6 +391,71 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
 {
     assert(Event != NULL);
     KiInitializeDispatcherHeader(&Event->Header, EventType);
+}
+
+/*
+ * Lightweight mutex, mainly used for protecting concurrent access to timer database
+ *
+ * Although we run the NTOS Executive and drivers in their separate process, this is
+ * not to say that we don't have any synchronization issues. The main event loops of
+ * both NTOS and drivers run in a single thread within their container processes, so
+ * there is no need to synchronize access to data that are only accessed within the
+ * event loop thread. However, we DO run our interrupt handlers in their separate
+ * thread, and since interrupts can arrive at any time, we must protect the access of
+ * shared data shared by the interrupt handlers and the main event loop thread.
+ *
+ * The following data structure, KMUTEX, is designed specifically for the purpose of
+ * protecting the timer queue and expired timer list, since they are accessed by both
+ * the timer interrupt handler and the main event loop thread. The main job of the
+ * timer interrupt handler is to update the timer tick count and traverse the timer
+ * queue and see if any of them expired, and move the expired timer object to the
+ * expired timer list. Since the main event loop might be modifying the timer queue
+ * and expired timer list when the timer interrupt is signaled (since timer interrupt
+ * thread has a higher priority, it gets to preempt the main event loop thread),
+ * without synchronization we would have data corruptions sooner or later.
+ *
+ * Our solution is to use a mutex to protect the relevant timer database, and in the
+ * timer interrupt handler we will try to acquire the mutex. Only if it succeeds
+ * will be actually be updating the timer queue and expired timer list. If we failed
+ * to acquire the timer database lock, the timer interrupt handler will simply return
+ * and let the main event loop update the timer database at a later time. Similarly,
+ * when the main event loop wants to access the timer database, it will try to acquire
+ * the mutex before doing so. On a single processor machine this should always succeed
+ * (and we assert if it does not), and on a multi-processor machine since the timer
+ * interrupt thread might be running in a different core the mutex acquisition may
+ * fail, and in this case we wait for it to become available by spinning. Once the
+ * code is done with the timer database, the lock should be released.
+ */
+typedef struct POINTER_ALIGNMENT _KMUTEX {
+    LONG Counter;
+} KMUTEX, *PKMUTEX;
+
+static inline VOID KeInitializeMutex(IN PKMUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    Mutex->Counter = 0;
+}
+
+/*
+ * Try to acquire the lock. If the lock is free, return TRUE and acquire the lock.
+ * If the lock has already been acquired by another thread, returns FALSE.
+ */
+static inline BOOLEAN KeTryAcquireMutex(IN PKMUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    return InterlockedCompareExchange(&Mutex->Counter, 1, 0) == 0;
+}
+
+/*
+ * Release the mutex that is previously acquired. Note that you must only call
+ * this function after you have acquired the mutex (KeTryAcquireMutex returns TRUE).
+ * On debug build we assert if this has not been enforced.
+ */
+static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    LONG Counter = InterlockedCompareExchange(&Mutex->Counter, 0, 1);
+    assert(Counter == 1);
 }
 
 /* async.c */

@@ -6,4 +6,8 @@
 @ stdcall IoStartNextPacket(ptr long)
 @ stdcall KeInitializeTimer(ptr)
 @ stdcall KeSetTimer(ptr long long ptr)
+@ stdcall KeInsertDeviceQueue(ptr ptr)
+@ stdcall KeInsertByKeyDeviceQueue(ptr ptr long)
+@ stdcall KeRemoveDeviceQueue(ptr)
+@ stdcall KeRemoveByKeyDeviceQueue(ptr long)
 @ cdecl _assert(str str long)

@@ -13,8 +13,9 @@ NTSTATUS KiInitExecutiveServices()
     RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
     assert(Untyped != NULL);
     KeInitializeIpcEndpoint(&KiExecutiveServiceEndpoint, Untyped->TreeNode.CSpace, 0, 0);
-    RET_ERR(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
-			       &KiExecutiveServiceEndpoint.TreeNode));
+    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
+				  &KiExecutiveServiceEndpoint.TreeNode),
+	       MmReleaseUntyped(Untyped));
     assert(KiExecutiveServiceEndpoint.TreeNode.Cap != 0);
     InitializeListHead(&KiReadyThreadList);
     return STATUS_SUCCESS;
