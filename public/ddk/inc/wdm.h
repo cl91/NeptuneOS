@@ -967,7 +967,6 @@ FORCEINLINE VOID KeInitializeDpc(IN PKDPC Dpc,
 				 IN PKDEFERRED_ROUTINE DeferredRoutine,
 				 IN PVOID DeferredContext)
 {
-    DbgPrint("initializing dpc %p %p %p\n\n\n\nn", Dpc, DeferredRoutine, DeferredContext);
     Dpc->DeferredRoutine = DeferredRoutine;
     Dpc->DeferredContext = DeferredContext;
 }
