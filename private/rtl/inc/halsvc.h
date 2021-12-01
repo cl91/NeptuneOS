@@ -55,7 +55,6 @@ typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
 
 typedef enum _IO_REQUEST_PACKET_TYPE {
     IrpTypeRequest,
-    IrpTypeDpc,
     IrpTypeIoCompleted
 } IO_REQUEST_PACKET_TYPE;
 
@@ -135,7 +134,6 @@ typedef struct _IO_REQUEST_PACKET {
     union {
 	IO_STATUS_BLOCK IoStatus; /* For Type == IrpTypeIoCompleted */
 	IO_REQUEST_PARAMETERS Request; /* Type == IrpTypeRequest */
-	/* DPC... */
     };
     IO_REQUEST_PACKET_PTR ParentIrp; /* Pointer to the parent IRP in the IO stack. When the IRP
 				      * is the initial request from a thread, ParentIrp is NULL.
@@ -204,9 +202,6 @@ static inline VOID IoDbgDumpIoRequestPacket(IN PIO_REQUEST_PACKET Irp,
     case IrpTypeRequest:
 	DbgPrint("IO REQUEST\n");
 	break;
-    case IrpTypeDpc:
-	DbgPrint("DPC\n");
-	break;
     case IrpTypeIoCompleted:
 	DbgPrint("IO COMPLETION\n");
 	break;
@@ -244,8 +239,6 @@ static inline VOID IoDbgDumpIoRequestPacket(IN PIO_REQUEST_PACKET Irp,
     } else if (Irp->Type == IrpTypeIoCompleted) {
 	DbgPrint("    Final IO status 0x%08x Information %p\n", Irp->IoStatus.Status,
 		 (PVOID) Irp->IoStatus.Information);
-    } else {
-	/* DPC... */
     }
     if (ClientSide) {
 	DbgPrint("    Parent IRP handle in IO stack %p\n", (PVOID)Irp->ParentIrp.Handle);

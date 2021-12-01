@@ -332,15 +332,11 @@ VOID IopProcessIrp(OUT ULONG *pNumResponses,
 	    if (!NT_SUCCESS(Status)) {
 		SrcIrp->ErrorStatus = Status;
 	    }
-	} else if (SrcIrp->Type == IrpTypeDpc) {
-	    /* TODO */
 	} else {
 	    assert(SrcIrp->Type == IrpTypeIoCompleted);
 	    /* TODO */
 	}
     }
-
-    /* Process all DPCs first */
 
     /* Process all queued IRP. Once processed, the IRP gets moved to the completed IRP list. */
     IopProcessIrpQueue();
