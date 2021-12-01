@@ -27,11 +27,11 @@ NTSTATUS LdrLoadBootModules()
     cpio_ls(_binary_initcpio_start, (size_t) _binary_initcpio_size,
 	    FileNames, cpio.file_count);
 
-    KeVgaWriteString("Available boot modules:");
+    HalDisplayString("Available boot modules:");
     for (int i = 0; i < cpio.file_count; i++) {
-	KeVgaPrint(" %s", FileNames[i]);
+	HalVgaPrint(" %s", FileNames[i]);
     }
-    KeVgaWriteString("\n");
+    HalDisplayString("\n");
 
     for (int i = 0; i < cpio.file_count; i++) {
 	SIZE_T FileSize;

@@ -46,6 +46,3 @@ VOID KiDispatchExecutiveServices();
 /* timer.c */
 VOID KiSignalExpiredTimerList();
 NTSTATUS KiInitTimer();
-
-/* vga.c */
-VOID KiInitVga();

@@ -240,6 +240,8 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
     DbgPrint("\n");
 }
 
+#define OS_BANNER	"Neptune OS v0.0.1 (" GIT_HEAD_SHA_SHORT ")"
+
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
     KiProcessorCount = bootinfo->numNodes;
@@ -253,8 +255,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 #endif
 
     ExInitSystemPhase0(bootinfo);
-    KiInitVga();
-    BUGCHECK_IF_ERR(HalInitializeCmos());
+    HalDisplayString(OS_BANNER "    ");
     BUGCHECK_IF_ERR(KiInitExecutiveServices());
     BUGCHECK_IF_ERR(KiInitTimer());
     BUGCHECK_IF_ERR(ExInitSystemPhase1());

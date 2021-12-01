@@ -4,6 +4,8 @@
 #include <ntos.h>
 #include <halsvc.h>
 
+#define NTOS_IO_TAG	(EX_POOL_TAG('n','t','i','o'))
+
 #define IopAllocatePoolEx(Var, Type, OnError)				\
     ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_IO_TAG, OnError)
 #define IopAllocatePool(Var, Type)	IopAllocatePoolEx(Var, Type, {})

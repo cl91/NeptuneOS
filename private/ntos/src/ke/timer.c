@@ -195,11 +195,11 @@ NTSTATUS KiInitTimer()
     BOOLEAN RtcTimeOk = RtlTimeFieldsToTime(&ClockTime, &KiInitialSystemTime);
     RET_ERR(KiEnableTimerInterruptService());
     if (!RtcTimeOk || (ClockTime.Weekday < 0) || (ClockTime.Weekday > 6)) {
-	KeVgaPrint("Corrupt CMOS clock: %d-%02d-%02d %02d:%02d:%02d\n\n",
+	HalVgaPrint("Corrupt CMOS clock: %d-%02d-%02d %02d:%02d:%02d\n\n",
 		   ClockTime.Year, ClockTime.Month, ClockTime.Day, ClockTime.Hour,
 		   ClockTime.Minute, ClockTime.Second);
     } else {
-	KeVgaPrint("%d-%02d-%02d %s %02d:%02d:%02d UTC.\n\n",
+	HalVgaPrint("%d-%02d-%02d %s %02d:%02d:%02d UTC.\n\n",
 		   ClockTime.Year, ClockTime.Month, ClockTime.Day,
 		   KiWeekdayString[ClockTime.Weekday], ClockTime.Hour,
 		   ClockTime.Minute, ClockTime.Second);

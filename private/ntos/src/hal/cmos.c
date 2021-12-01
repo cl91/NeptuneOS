@@ -10,44 +10,25 @@
 
 #include "halp.h"
 
-/* GLOBALS *******************************************************************/
-
-static X86_IOPORT HalpCmosControlPort;
-static X86_IOPORT HalpCmosDataPort;
-
-/* CMOS Registers and Ports */
-#define CMOS_CONTROL_PORT       0x70
-#define CMOS_DATA_PORT          0x71
-#define RTC_REGISTER_A          0x0A
-#define   RTC_REG_A_UIP         0x80
-#define RTC_REGISTER_B          0x0B
-#define   RTC_REG_B_PI          0x40
-#define RTC_REGISTER_C          0x0C
-#define   RTC_REG_C_IRQ         0x80
-#define RTC_REGISTER_D          0x0D
-#define RTC_REGISTER_CENTURY    0x32
-
 /* PRIVATE FUNCTIONS *********************************************************/
 
 static UCHAR HalpReadCmos(IN UCHAR Reg)
 {
     /* Select the register */
-    KeWritePort8(&HalpCmosControlPort, Reg);
+    WRITE_PORT_UCHAR(CMOS_CONTROL_PORT, Reg);
 
     /* Query the value */
-    UCHAR Value = 0;
-    KeReadPort8(&HalpCmosDataPort, &Value);
-    return Value;
+    return READ_PORT_UCHAR(CMOS_DATA_PORT);
 }
 
 static VOID HalpWriteCmos(IN UCHAR Reg,
 			  IN UCHAR Value)
 {
     /* Select the register */
-    KeWritePort8(&HalpCmosControlPort, Reg);
+    WRITE_PORT_UCHAR(CMOS_CONTROL_PORT, Reg);
 
     /* Write the value */
-    KeWritePort8(&HalpCmosDataPort, Value);
+    WRITE_PORT_UCHAR(CMOS_DATA_PORT, Value);
 }
 
 static ULONG HalpGetCmosData(IN ULONG BusNumber,
@@ -134,14 +115,14 @@ static ULONG HalpSetCmosData(IN ULONG BusNumber,
     return Length - Len;
 }
 
-/* PUBLIC FUNCTIONS **********************************************************/
-
-NTSTATUS HalInitializeCmos(VOID)
+NTSTATUS HalpInitCmos()
 {
-    RET_ERR(KeEnableIoPort(CMOS_CONTROL_PORT, &HalpCmosControlPort));
-    RET_ERR(KeEnableIoPort(CMOS_DATA_PORT, &HalpCmosDataPort));
+    RET_ERR(HalpEnableIoPort(CMOS_CONTROL_PORT));
+    RET_ERR(HalpEnableIoPort(CMOS_DATA_PORT));
     return STATUS_SUCCESS;
 }
+
+/* PUBLIC FUNCTIONS **********************************************************/
 
 /*
  * @implemented

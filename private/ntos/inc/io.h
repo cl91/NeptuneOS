@@ -1,7 +1,5 @@
 #pragma once
 
-#define NTOS_IO_TAG	(EX_POOL_TAG('n','t','i','o'))
-
 #define DRIVER_OBJECT_DIRECTORY		"\\Driver"
 #define DEVICE_OBJECT_DIRECTORY		"\\Device"
 

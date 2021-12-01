@@ -7,6 +7,6 @@ NTSTATUS NtDisplayString(IN ASYNC_STATE State,
 			 IN PTHREAD Thread,
 			 IN PCSTR String)
 {
-    KeVgaWriteString(String);
+    HalDisplayString(String);
     return STATUS_SUCCESS;
 }

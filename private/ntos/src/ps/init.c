@@ -73,15 +73,15 @@ static NTSTATUS PspInitializeSystemDll()
     return STATUS_SUCCESS;
 
  fail:
-    KeVgaPrint("\nFatal error: ");
+    HalVgaPrint("\nFatal error: ");
     if (NtdllFile == NULL) {
-	KeVgaPrint("%s not found", NTDLL_PATH);
+	HalVgaPrint("%s not found", NTDLL_PATH);
     } else if (PspSystemDllSection == NULL) {
-	KeVgaPrint("unable to create system dll section (error 0x%x)", Status);
+	HalVgaPrint("unable to create system dll section (error 0x%x)", Status);
     } else if (PspSystemDllTlsSubsection == NULL) {
-	KeVgaPrint("ntdll.dll is invalid (missing .tls section)");
+	HalVgaPrint("ntdll.dll is invalid (missing .tls section)");
     }
-    KeVgaPrint("\n\n");
+    HalVgaPrint("\n\n");
     return Status;
 }
 

@@ -6,7 +6,9 @@ static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
 {
     char buf[512];
     vsnprintf(buf, sizeof(buf), Format, arglist);
-    KeVgaWriteString(buf);
+    HalDisplayString("\n\n");
+    HalDisplayString(buf);
+    HalDisplayString("\nFATAL ERROR. SYSTEM HALTED.\n");
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugPutString(buf);
     /* Dump some useful information. */
@@ -30,7 +32,7 @@ VOID KeBugCheck(IN PCSTR Function,
 		IN ULONG Line,
 		IN ULONG Error)
 {
-    KiHaltSystem("Unrecoverable error at %s @ %s line %d: Error Code 0x%x. System halted.\n",
+    KiHaltSystem("Unrecoverable error at %s @ %s line %d: Error Code 0x%x.\n",
 		 Function, File, Line, Error);
 }
 

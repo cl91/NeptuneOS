@@ -102,12 +102,6 @@ typedef struct _IRQ_HANDLER {
     MWORD Irq;
 } IRQ_HANDLER, *PIRQ_HANDLER;
 
-#define VGA_BLUE			(1)
-#define VGA_WHITE			(15)
-#define VGA_BG_COLOR			(VGA_BLUE << 4)
-#define VGA_FG_COLOR			(VGA_WHITE)
-#define VGA_TEXT_COLOR			(VGA_BG_COLOR | VGA_FG_COLOR)
-
 
 /*
  * Asynchronous routine helpers
@@ -594,24 +588,6 @@ static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
 /* timer.c */
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);
-
-/* vga.c */
-VOID KeVgaWriteStringEx(UCHAR Color, PCSTR String);
-
-static inline VOID KeVgaWriteString(PCSTR String)
-{
-    KeVgaWriteStringEx(VGA_TEXT_COLOR, String);
-}
-
-static inline __attribute__((format(printf, 1, 2))) VOID KeVgaPrint(PCSTR Format, ...)
-{
-    char buf[512];
-    va_list arglist;
-    va_start(arglist, Format);
-    vsnprintf(buf, sizeof(buf), Format, arglist);
-    va_end(arglist);
-    KeVgaWriteString(buf);
-}
 
 /* ../tests/tests.c */
 VOID KeRunAllTests();

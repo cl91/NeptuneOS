@@ -75,13 +75,13 @@ static NTSTATUS IopLoadHalDll()
     return STATUS_SUCCESS;
 
  fail:
-    KeVgaPrint("\nFatal error: ");
+    HalVgaPrint("\nFatal error: ");
     if (HalDll == NULL) {
-	KeVgaPrint("%s not found", HAL_PATH);
+	HalVgaPrint("%s not found", HAL_PATH);
     } else if (HalDllSection == NULL) {
-	KeVgaPrint("create section failed for hal.dll with error 0x%x", Status);
+	HalVgaPrint("create section failed for hal.dll with error 0x%x", Status);
     }
-    KeVgaPrint("\n\n");
+    HalVgaPrint("\n\n");
     return Status;
 }
 

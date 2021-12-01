@@ -8,6 +8,7 @@ NTSTATUS ExInitSystemPhase0(seL4_BootInfo *bootinfo)
     RET_ERR(MmSectionInitialization());
     RET_ERR(PsInitSystemPhase0());
     RET_ERR(IoInitSystemPhase0());
+    RET_ERR(HalInitSystemPhase0());
 
     return STATUS_SUCCESS;
 }
@@ -40,15 +41,15 @@ static NTSTATUS EiStartSessionManager()
     return STATUS_SUCCESS;
 
  fail:
-    KeVgaPrint("\nFailed to start Session Manager: ");
+    HalVgaPrint("\nFailed to start Session Manager: ");
     if (SmssExe == NULL) {
-	KeVgaPrint("%s not found", SMSS_PATH);
+	HalVgaPrint("%s not found", SMSS_PATH);
     } else if (EiSessionManagerProcess == NULL) {
-	KeVgaPrint("process creation returned error 0x%x", Status);
+	HalVgaPrint("process creation returned error 0x%x", Status);
     } else {
-	KeVgaPrint("thread creation returned error 0x%x", Status);
+	HalVgaPrint("thread creation returned error 0x%x", Status);
     }
-    KeVgaPrint("\n\n");
+    HalVgaPrint("\n\n");
     return Status;
 }
 
@@ -87,6 +88,7 @@ NTSTATUS ExInitSystemPhase1()
     RET_ERR(LdrLoadBootModules());
     RET_ERR(PsInitSystemPhase1());
     RET_ERR(IoInitSystemPhase1());
+    RET_ERR(HalInitSystemPhase1());
     RET_ERR(EiStartSessionManager());
 
     return STATUS_SUCCESS;
