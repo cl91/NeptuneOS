@@ -55,6 +55,7 @@ typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
 
 typedef enum _IO_REQUEST_PACKET_TYPE {
     IrpTypeRequest,
+    IrpTypeNotification, /* Notification sent from the server, such as Unload */
     IrpTypeIoCompleted
 } IO_REQUEST_PACKET_TYPE;
 
@@ -134,6 +135,7 @@ typedef struct _IO_REQUEST_PACKET {
     union {
 	IO_STATUS_BLOCK IoStatus; /* For Type == IrpTypeIoCompleted */
 	IO_REQUEST_PARAMETERS Request; /* Type == IrpTypeRequest */
+	/* Notification... */
     };
     IO_REQUEST_PACKET_PTR ParentIrp; /* Pointer to the parent IRP in the IO stack. When the IRP
 				      * is the initial request from a thread, ParentIrp is NULL.
@@ -197,10 +199,13 @@ static inline VOID IoDbgDumpIoRequestPacket(IN PIO_REQUEST_PACKET Irp,
 					    IN BOOLEAN ClientSide)
 {
     DbgTrace("Dumping IO Request Packet %p size %zd\n", Irp, sizeof(IO_REQUEST_PACKET));
-    DbgPrint("    TYPE ");
+    DbgPrint("    TYPE: ");
     switch (Irp->Type) {
     case IrpTypeRequest:
 	DbgPrint("IO REQUEST\n");
+	break;
+    case IrpTypeNotification:
+	DbgPrint("NOTIFICATION FROM SERVER\n");
 	break;
     case IrpTypeIoCompleted:
 	DbgPrint("IO COMPLETION\n");
@@ -239,6 +244,8 @@ static inline VOID IoDbgDumpIoRequestPacket(IN PIO_REQUEST_PACKET Irp,
     } else if (Irp->Type == IrpTypeIoCompleted) {
 	DbgPrint("    Final IO status 0x%08x Information %p\n", Irp->IoStatus.Status,
 		 (PVOID) Irp->IoStatus.Information);
+    } else {
+	/* Notification... */
     }
     if (ClientSide) {
 	DbgPrint("    Parent IRP handle in IO stack %p\n", (PVOID)Irp->ParentIrp.Handle);
