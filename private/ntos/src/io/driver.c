@@ -1,13 +1,42 @@
 #include "iop.h"
 
-NTSTATUS IopDriverObjectInitProc(POBJECT Object)
+NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
+				   IN PVOID CreaCtx)
 {
     PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT) Object;
+    PDRIVER_OBJ_CREATE_CONTEXT Ctx = (PDRIVER_OBJ_CREATE_CONTEXT)CreaCtx;
+    PCSTR DriverToLoad = Ctx->DriverPath;
+    PCSTR DriverName = Ctx->DriverName;
     InitializeListHead(&Driver->DeviceList);
     InitializeListHead(&Driver->IrpQueue);
     InitializeListHead(&Driver->PendingIrpList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IrpQueuedEvent, SynchronizationEvent);
+
+    PIO_FILE_OBJECT DriverFile = NULL;
+    RET_ERR(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, (POBJECT *) &DriverFile));
+    assert(DriverFile != NULL);
+    Driver->DriverFile = DriverFile;
+
+    /* Start the driver process */
+    PPROCESS Process = NULL;
+    RET_ERR(PsCreateProcess(DriverFile, Driver, &Process));
+    assert(Process != NULL);
+    Driver->DriverProcess = Process;
+
+    /* Make sure we have loaded hal.dll, even when the driver image does not
+     * explicitly depend on it. */
+    RET_ERR(PsLoadDll(Process, HAL_DLL_NAME));
+
+    /* Get the init thread of driver process running */
+    PTHREAD Thread = NULL;
+    RET_ERR(PsCreateThread(Process, &Thread));
+    assert(Thread != NULL);
+    Driver->MainEventLoopThread = Thread;
+
+    /* Insert the driver object to the \Driver object directory. */
+    RET_ERR(ObInsertObjectByName(DRIVER_OBJECT_DIRECTORY, Driver, DriverName));
+
     return STATUS_SUCCESS;
 }
 
@@ -46,35 +75,12 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
     }
 
     /* Allocate the DriverObject */
-    RET_ERR(ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *) &DriverObject));
+    DRIVER_OBJ_CREATE_CONTEXT CreaCtx = {
+	.DriverPath = DriverToLoad,
+	.DriverName = DriverName
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *) &DriverObject, &CreaCtx));
     assert(DriverObject != NULL);
-
-    PIO_FILE_OBJECT DriverFile = NULL;
-    RET_ERR_EX(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, (POBJECT *) &DriverFile),
-	       ObDereferenceObject(DriverObject));
-    assert(DriverFile != NULL);
-
-    /* Start the driver process */
-    PPROCESS Process = NULL;
-    RET_ERR_EX(PsCreateProcess(DriverFile, DriverObject, &Process),
-	       ObDereferenceObject(DriverObject));
-    assert(Process != NULL);
-
-    /* Make sure we have loaded hal.dll, even when the driver image does not
-     * explicitly depend on it. */
-    RET_ERR_EX(PsLoadDll(Process, HAL_DLL_NAME),
-	       ObDereferenceObject(DriverObject));
-
-    /* Get the init thread of driver process running */
-    PTHREAD Thread = NULL;
-    RET_ERR_EX(PsCreateThread(Process, &Thread),
-	       ObDereferenceObject(DriverObject));
-    assert(Thread != NULL);
-
-    /* Insert the driver object to the \Driver object directory. */
-    RET_ERR_EX(ObInsertObjectByName(DRIVER_OBJECT_DIRECTORY, DriverObject, DriverName),
-	       ObDereferenceObject(DriverObject));
-    DriverObject->DriverProcess = Process;
 
     if (pDriverObject) {
 	*pDriverObject = DriverObject;
@@ -101,7 +107,8 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 
     /* The second time that this function is called, DriverObject is actually NULL here,
      * but that's fine since the event has been recorded into the thread's root wait block. */
-    AWAIT(KeWaitForSingleObject, State, Thread, &DriverObject->InitializationDoneEvent.Header);
+    AWAIT(KeWaitForSingleObject, State, Thread,
+	  &DriverObject->InitializationDoneEvent.Header, FALSE);
 
     ASYNC_END(STATUS_SUCCESS);
 }

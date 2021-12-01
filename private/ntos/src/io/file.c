@@ -1,20 +1,22 @@
 #include "iop.h"
 
-NTSTATUS IopFileObjectInitProc(POBJECT Object)
-{
-    PIO_FILE_OBJECT File = (PIO_FILE_OBJECT) Object;
-    File->DeviceObject = NULL;
-    File->FileName = NULL;
-    File->SectionObject.DataSectionObject = NULL;
-    File->SectionObject.ImageSectionObject = NULL;
-    File->BufferPtr = 0;
-    File->Size = 0;
-    return STATUS_SUCCESS;
-}
-
 /*
  * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
  */
+NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
+				 IN PVOID CreaCtx)
+{
+    PIO_FILE_OBJECT File = (PIO_FILE_OBJECT)Object;
+    PFILE_OBJ_CREATE_CONTEXT Ctx = (PFILE_OBJ_CREATE_CONTEXT)CreaCtx;
+
+    File->DeviceObject = Ctx->DeviceObject;
+    File->FileName = Ctx->FileName;
+    File->BufferPtr = Ctx->BufferPtr;
+    File->Size = Ctx->FileSize;
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 			     IN PIO_DEVICE_OBJECT DeviceObject,
 			     IN PVOID BufferPtr,
@@ -23,13 +25,14 @@ NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 {
     assert(pFile != NULL);
     PIO_FILE_OBJECT File = NULL;
-    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File));
+    FILE_OBJ_CREATE_CONTEXT CreaCtx = {
+	.DeviceObject = DeviceObject,
+	.FileName = FileName,
+	.BufferPtr = BufferPtr,
+	.FileSize = FileSize
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File, &CreaCtx));
     assert(File != NULL);
-
-    File->DeviceObject = DeviceObject;
-    File->FileName = FileName;
-    File->BufferPtr = BufferPtr;
-    File->Size = FileSize;
 
     *pFile = File;
     return STATUS_SUCCESS;

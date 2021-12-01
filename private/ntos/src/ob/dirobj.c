@@ -6,7 +6,8 @@ POBJECT_DIRECTORY ObpRootObjectDirectory;
  * Called when Executive components attempt to create a new
  * directory in the object hierarchy.
  */
-static NTSTATUS ObpDirectoryObjectInitProc(IN POBJECT Self)
+static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self,
+					     IN PVOID CreaCtx)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
     assert(Self != NULL);
@@ -147,7 +148,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 NTSTATUS ObpInitDirectoryObjectType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.InitProc = ObpDirectoryObjectInitProc,
+	.CreateProc = ObpDirectoryObjectCreateProc,
 	.OpenProc = NULL,
 	.ParseProc = ObpDirectoryObjectParseProc,
 	.InsertProc = ObpDirectoryObjectInsertProc,
@@ -233,7 +234,7 @@ NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 {
     POBJECT_DIRECTORY Directory = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
-			   (POBJECT *) &Directory));
+			   (POBJECT *) &Directory, NULL));
     assert(Directory != NULL);
 
     RET_ERR_EX(ObInsertObjectByPath(DirectoryPath, Directory),

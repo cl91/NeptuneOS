@@ -52,8 +52,38 @@ static NTSTATUS EiStartSessionManager()
     return Status;
 }
 
+static NTSTATUS EiTimerObjectCreateProc(IN POBJECT Object,
+					IN PVOID CreaCtx)
+{
+    PTIMER Timer = (PTIMER)Object;
+    PTIMER_OBJ_CREATE_CONTEXT Ctx = (PTIMER_OBJ_CREATE_CONTEXT)CreaCtx;
+    KeInitializeTimer(Timer, Ctx->Type);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS EiCreateTimerType()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = EiTimerObjectCreateProc,
+	.OpenProc = NULL,
+	.ParseProc = NULL,
+	.InsertProc = NULL,
+    };
+    return ObCreateObjectType(OBJECT_TYPE_TIMER,
+			      "Timer",
+			      sizeof(TIMER),
+			      TypeInfo);
+}
+
+static NTSTATUS EiCreateObjectTypes()
+{
+    RET_ERR(EiCreateTimerType());
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS ExInitSystemPhase1()
 {
+    RET_ERR(EiCreateObjectTypes());
     RET_ERR(LdrLoadBootModules());
     RET_ERR(PsInitSystemPhase1());
     RET_ERR(IoInitSystemPhase1());

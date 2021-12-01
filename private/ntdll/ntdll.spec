@@ -34,3 +34,5 @@
 @ stdcall NtClose(long)
 @ stdcall NtCreateFile(ptr long ptr ptr long long long ptr long long ptr)
 @ stdcall NtDeviceIoControlFile(long long long long long long long long long long)
+@ stdcall NtCreateTimer(ptr long ptr long)
+@ stdcall NtSetTimer(long ptr ptr ptr long long ptr)

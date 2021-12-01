@@ -91,12 +91,12 @@ NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS ObpOpenObjectByPointer(IN ASYNC_STATE State,
-				       IN PTHREAD Thread,
-				       IN POBJECT Object,
-				       IN PVOID Context,
-				       OUT PVOID OpenResponse,
-				       OUT HANDLE *pHandle)
+NTSTATUS ObOpenObjectByPointer(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN POBJECT Object,
+			       IN PVOID Context,
+			       OUT PVOID OpenResponse,
+			       OUT HANDLE *pHandle)
 {
     assert(Thread != NULL);
     assert(Object != NULL);
@@ -155,11 +155,11 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
     }
 
     AWAIT_EX_IF(NT_SUCCESS(Status),
-		ObpOpenObjectByPointer, OpenStatus, State, Thread,
+		ObOpenObjectByPointer, OpenStatus, State, Thread,
 		Object, Context, OpenResponse, pHandle);
 
     if (!NT_SUCCESS(Status)) {
-	/* We should never delete the object when there is still pending
+	/* We should have never deleted the object when there is still pending
 	 * open request on it. Assert in debug build. */
 	assert(FALSE);
 	return Status;
@@ -168,7 +168,7 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
     ASYNC_END(OpenStatus);
 }
 
-static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
+VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
 {
     assert(ObjectHeader != NULL);
 

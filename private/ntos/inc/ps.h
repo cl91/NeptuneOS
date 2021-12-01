@@ -30,6 +30,7 @@ typedef struct _THREAD {
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;
+    LIST_ENTRY ApcList;
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT HalServiceEndpoint;
     MWORD IpcBufferClientAddr;
@@ -43,6 +44,7 @@ typedef struct _THREAD {
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
+    BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
     PIO_REQUEST_PACKET PendingIrp; /* IRP that the thread is waiting for a response for.
 				    * There can only be one pending IRP per thread.
 				    * For driver processes, the IRPs from higher-level

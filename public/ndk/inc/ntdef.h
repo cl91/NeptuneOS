@@ -48,6 +48,7 @@
 #define CONST const
 #define VOID void
 typedef void *PVOID, **PPVOID;
+typedef CONST VOID *PCVOID;
 
 typedef char CHAR, CCHAR;
 typedef unsigned char UCHAR;
@@ -66,7 +67,7 @@ typedef BOOLEAN *PBOOLEAN;
 #define TRUE (1)
 #define FALSE (0)
 
-typedef short SHORT;
+typedef short SHORT, CSHORT;
 typedef unsigned short USHORT;
 typedef SHORT *PSHORT;
 typedef USHORT *PUSHORT;

@@ -24,6 +24,8 @@ static inline VOID KiInitializeIrqHandler(IN PIRQ_HANDLER Self,
 
 /* async.c */
 VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
+ULONG KiDeliverApc(IN PTHREAD Thread,
+		   IN ULONG MsgBufferEnd);
 
 /* bugcheck.c */
 VOID KiHaltSystem(IN PCSTR Format, ...);
@@ -36,12 +38,14 @@ VOID KiHaltSystem(IN PCSTR Format, ...);
 ULONG KiProcessorCount;
 
 /* services.c */
+IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 NTSTATUS KiInitExecutiveServices();
 VOID KiDispatchExecutiveServices();
 
 /* timer.c */
-NTSTATUS KiEnableTimerInterruptService();
+VOID KiSignalExpiredTimerList();
+NTSTATUS KiInitTimer();
 
 /* vga.c */
 VOID KiInitVga();

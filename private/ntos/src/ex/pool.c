@@ -169,7 +169,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 
 /* TODO: Catch double free. */
 static VOID EiFreePool(IN PEX_POOL Pool,
-		       IN PVOID Ptr)
+		       IN PCVOID Ptr)
 {
     assert(Pool != NULL);
     assert(Ptr != NULL);
@@ -185,7 +185,7 @@ PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
     return EiAllocatePoolWithTag(&EiPool, NumberOfBytes, Tag);
 }
 
-VOID ExFreePool(IN PVOID Ptr)
+VOID ExFreePool(IN PCVOID Ptr)
 {
     return EiFreePool(&EiPool, Ptr);
 }

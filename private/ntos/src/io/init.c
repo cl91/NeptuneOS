@@ -3,7 +3,7 @@
 static NTSTATUS IopCreateFileType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.InitProc = IopFileObjectInitProc,
+	.CreateProc = IopFileObjectCreateProc,
 	.OpenProc = IopFileObjectOpenProc,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
@@ -17,7 +17,7 @@ static NTSTATUS IopCreateFileType()
 static NTSTATUS IopCreateDeviceType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.InitProc = IopDeviceObjectInitProc,
+	.CreateProc = IopDeviceObjectCreateProc,
 	.OpenProc = IopDeviceObjectOpenProc,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
@@ -31,7 +31,7 @@ static NTSTATUS IopCreateDeviceType()
 static NTSTATUS IopCreateDriverType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.InitProc = IopDriverObjectInitProc,
+	.CreateProc = IopDriverObjectCreateProc,
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,

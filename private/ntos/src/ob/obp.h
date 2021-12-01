@@ -33,3 +33,6 @@ static inline void ObpReferenceObject(POBJECT Object)
 NTSTATUS ObpInitDirectoryObjectType();
 NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 			     OUT POBJECT *FoundObject);
+
+/* obref.c */
+VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader);

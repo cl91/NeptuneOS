@@ -237,4 +237,21 @@
     <parameter annotation="in" type="UnicodeString" name="DriverServiceName" />
   </svc>
 
+  <svc name="NtCreateTimer">
+    <parameter annotation="out" type="ptr::HANDLE" name="Handle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="TIMER_TYPE" name="TimerType" />
+  </svc>
+
+  <svc name="NtSetTimer">
+    <parameter annotation="in" type="HANDLE" name="TimerHandle" />
+    <parameter annotation="in" type="ptr::LARGE_INTEGER" name="DueTime" />
+    <parameter annotation="in" type="PTIMER_APC_ROUTINE" name="TimerApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="TimerContext" />
+    <parameter annotation="in" type="BOOLEAN" name="ResumeTimer" />
+    <parameter annotation="in" type="LONG" name="Period" />
+    <parameter annotation="out opt" type="ptr::BOOLEAN" name="PreviousState" />
+  </svc>
+
 </services>

@@ -2,6 +2,8 @@
 #include <ctype_inline.h>
 #include "ki.h"
 
+/* TODO: Move this to ntos/hal */
+
 static X86_IOPORT KiVgaCursorControlPort;
 static X86_IOPORT KiVgaCursorDataPort;
 static ULONG KiVgaCursorPositionHorizontal;
@@ -12,39 +14,10 @@ static ULONG KiVgaCursorPositionVertical;
 #define VGA_CURSOR_CONTROL_PORT		(0x3D4)
 #define VGA_CURSOR_DATA_PORT		(0x3D5)
 
-static NTSTATUS KiReadPort8(IN PX86_IOPORT Port,
-			    OUT UCHAR *Out)
-{
-    assert(Out != NULL);
-    seL4_X86_IOPort_In8_t Reply = seL4_X86_IOPort_In8(Port->TreeNode.Cap,
-						      Port->PortNum);
-    if (Reply.error != 0) {
-	DbgTrace("Reading IO port 0x%x (cap 0x%zx) failed with error %d\n",
-		 Port->PortNum, Port->TreeNode.Cap, Reply.error);
-	KeDbgDumpIPCError(Reply.error);
-	return SEL4_ERROR(Reply.error);
-    }
-    *Out = Reply.result;
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS KiWritePort8(IN PX86_IOPORT Port,
-			     IN UCHAR Data)
-{
-    int Error = seL4_X86_IOPort_Out8(Port->TreeNode.Cap, Port->PortNum, Data);
-    if (Error != 0) {
-	DbgTrace("Writing IO port 0x%x (cap 0x%zx) with data 0x%x failed with error %d\n",
-		 Port->PortNum, Port->TreeNode.Cap, Data, Error);
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
-    }
-    return STATUS_SUCCESS;
-}
-
 static NTSTATUS KiVgaDisableCursor()
 {
-    RET_ERR(KiWritePort8(&KiVgaCursorControlPort, 0x0A));
-    RET_ERR(KiWritePort8(&KiVgaCursorDataPort, 0x20));
+    RET_ERR(KeWritePort8(&KiVgaCursorControlPort, 0x0A));
+    RET_ERR(KeWritePort8(&KiVgaCursorDataPort, 0x20));
     return STATUS_SUCCESS;
 }
 
@@ -107,9 +80,8 @@ static VOID KiVgaClearScreen()
 
 static NTSTATUS KiInitVgaIoPort()
 {
-    extern CNODE MiNtosCNode;
-    RET_ERR(KeEnableIoPortX86(&MiNtosCNode, VGA_CURSOR_CONTROL_PORT, &KiVgaCursorControlPort));
-    RET_ERR(KeEnableIoPortX86(&MiNtosCNode, VGA_CURSOR_DATA_PORT, &KiVgaCursorDataPort));
+    RET_ERR(KeEnableIoPort(VGA_CURSOR_CONTROL_PORT, &KiVgaCursorControlPort));
+    RET_ERR(KeEnableIoPort(VGA_CURSOR_DATA_PORT, &KiVgaCursorDataPort));
     return STATUS_SUCCESS;
 }
 
@@ -122,5 +94,5 @@ VOID KiInitVga()
     HALT_IF_ERR(KiInitVgaIoPort());
     KiVgaDisableCursor();
     KiVgaClearScreen();
-    KeVgaWriteString(OS_BANNER "\n\n");
+    KeVgaWriteString(OS_BANNER "    ");
 }

@@ -3,6 +3,7 @@
 #include <nt.h>
 #include <sel4/sel4.h>
 #include <printf.h>
+#include <debug.h>
 #include <intrin.h>
 #include "mm.h"
 
@@ -47,22 +48,42 @@ static inline VOID KeInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
  */
 typedef struct _NOTIFICATION {
     CAP_TREE_NODE TreeNode;
-    MWORD Word;
     MWORD Badge;
 } NOTIFICATION, *PNOTIFICATION;
 
 static inline VOID KeInitializeNotification(IN PNOTIFICATION Self,
 					    IN PCNODE CSpace,
 					    IN MWORD Cap,
-					    IN MWORD Word,
 					    IN MWORD Badge)
 {
     assert(Self != NULL);
     assert(CSpace != NULL);
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_NOTIFICATION, Cap,
-			    CSpace, NULL);
-    Self->Word = Word;
+			    CSpace, NULL); /* Parent will be set when retyping */
     Self->Badge = Badge;
+}
+
+static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
+{
+    PUNTYPED Untyped = NULL;
+    RET_ERR(MmRequestUntyped(seL4_NotificationBits, &Untyped));
+    assert(Untyped != NULL);
+    KeInitializeNotification(Notification, Untyped->TreeNode.CSpace, 0, 0);
+    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_NotificationObject,
+				  seL4_NotificationBits,
+				  &Notification->TreeNode),
+	       MmReleaseUntyped(Untyped));
+    return STATUS_SUCCESS;
+}
+
+static inline VOID KeWaitOnNotification(IN PNOTIFICATION Notification)
+{
+    seL4_Wait(Notification->TreeNode.Cap, NULL);
+}
+
+static inline VOID KeSignalNotification(IN PNOTIFICATION Notification)
+{
+    seL4_Signal(Notification->TreeNode.Cap);
 }
 
 /*
@@ -155,7 +176,7 @@ typedef struct _IRQ_HANDLER {
  * Starting from the top level function (ie. a service handler), all
  * async function calls push onto the top of the ASYNC_STACK their
  * own async status word (ie. line number from which to resume execution).
- * At the entry of the service handler, StackTop is -1, indicating that the
+ * At the entry of the service handler, StackTop is 0, indicating that the
  * stack is empty.
  */
 typedef struct _ASYNC_STACK {
@@ -165,7 +186,7 @@ typedef struct _ASYNC_STACK {
 /*
  * For each async function, it takes an async state parameter which records
  * the async stack top of the current call frame. At the entry of the service
- * handler, StackTop is -1, indicating that the stack is empty.
+ * handler, StackTop is 0, indicating that the stack is empty.
  *
  * NOTE: An async state is function-scope and represents the current call frame.
  * It should always be passed as value and should never be passed as pointer.
@@ -178,7 +199,7 @@ typedef struct _ASYNC_STATE {
 #define KI_DEFINE_INIT_ASYNC_STATE(state, thread)	\
     ASYNC_STATE state = {				\
 	.AsyncStack = &thread->AsyncStack,		\
-	.StackTop = -1					\
+	.StackTop = 0					\
     }
 
 /*
@@ -190,7 +211,7 @@ typedef struct _ASYNC_STATE {
 	     CONTAINING_RECORD(state.AsyncStack, THREAD, AsyncStack),	\
 	     state.StackTop);						\
     for (LONG __async_tmp_i = 0;					\
-	 __async_tmp_i <= state.StackTop;				\
+	 __async_tmp_i < state.StackTop;				\
 	 __async_tmp_i++) {						\
 	DbgPrint(" %d", state.AsyncStack->Stack[__async_tmp_i]);	\
     }									\
@@ -203,10 +224,6 @@ typedef struct _ASYNC_STATE {
 #define ASYNC_BEGIN(state)						\
     (state).StackTop++;							\
     ASYNC_DUMP(state);							\
-    if ((state).StackTop >= ASYNC_MAX_CALL_STACK) {			\
-	assert(FALSE);							\
-	return STATUS_ASYNC_STACK_OVERFLOW;				\
-    }									\
     switch (KiAsyncGetLineNum(state)) { case 0: {
 
 /**
@@ -214,12 +231,13 @@ typedef struct _ASYNC_STATE {
  * @param Status The NTSTATUS to return to the caller. Must not be from
  * the async facility.
  */
-#define ASYNC_END(status)			\
-    assert(!IS_ASYNC_STATUS(status));		\
-    return status; }				\
-    default:					\
-    assert(FALSE);				\
-    return STATUS_ASYNC_BUGBUG; }
+#define ASYNC_END(status)				\
+    assert(!IS_ASYNC_STATUS(status));			\
+    return status; }					\
+    default:						\
+    KeBugCheckMsg("Asynchronous function has "		\
+		  "encountered a hard error.\n");	\
+    return STATUS_UNSUCCESSFUL; }
 
 /**
  * Check if async subroutine is done
@@ -284,6 +302,9 @@ typedef struct _ASYNC_STATE {
     return KiAsyncYield(state, __LINE__);	\
     } case __LINE__: {
 
+/* bugcheck.c */
+VOID KeBugCheckMsg(IN PCSTR Format, ...);
+
 /*
  * Returns the line number from which the current async function should
  * resume execution. For a new async stack frame, we use zero as the line
@@ -292,8 +313,13 @@ typedef struct _ASYNC_STATE {
  */
 static inline LONG KiAsyncGetLineNum(ASYNC_STATE State)
 {
-    assert(State.StackTop < ASYNC_MAX_CALL_STACK);
-    return State.AsyncStack->Stack[State.StackTop];
+    if (State.StackTop <= 0) {
+	KeBugCheckMsg("BUGBUG Asynchronous function has underflown its call stack.\n");
+    }
+    if (State.StackTop >= ASYNC_MAX_CALL_STACK) {
+	KeBugCheckMsg("BUGBUG Asynchronous function has overflown its call stack.\n");
+    }
+    return State.AsyncStack->Stack[State.StackTop-1];
 }
 
 /*
@@ -302,8 +328,13 @@ static inline LONG KiAsyncGetLineNum(ASYNC_STATE State)
  */
 static inline NTSTATUS KiAsyncYield(ASYNC_STATE State, LONG LineNum)
 {
-    assert(State.StackTop < ASYNC_MAX_CALL_STACK);
-    State.AsyncStack->Stack[State.StackTop] = LineNum;
+    if (State.StackTop <= 0) {
+	KeBugCheckMsg("BUGBUG Asynchronous function has underflown its call stack.\n");
+    }
+    if (State.StackTop >= ASYNC_MAX_CALL_STACK) {
+	KeBugCheckMsg("BUGBUG Asynchronous function has overflown its call stack.\n");
+    }
+    State.AsyncStack->Stack[State.StackTop-1] = LineNum;
     return STATUS_ASYNC_PENDING;
 }
 
@@ -314,12 +345,17 @@ static inline NTSTATUS KiAsyncYield(ASYNC_STATE State, LONG LineNum)
  * A thread can block on a number of kernel objects, collectively known as
  * the dispatcher objects. When a thread blocks on a dispatcher object the
  * system service handler returns STATUS_ASYNC_PENDING and the system
- * service dispatcher saves the reply capability (generated by the seL4
+ * executive dispatcher saves the reply capability (generated by the seL4
  * microkernel) into the THREAD object, and simply moves on to the next
  * system service message. The thread is effectively suspended until a
  * later time when the NTOS server replies to the saved reply capability.
  *
- * KeWaitForSingleObject() and KeWaitForMultipleObjects() ...
+ * KeWaitForSingleObject() and KeWaitForMultipleObjects() add the the
+ * dispatcher header to the thread's root wait block, which represents
+ * a boolean formula that must be satisfied for the thread to wake up.
+ * When a dispatcher object is signaled later, the root wait block is
+ * evaluated and if it is satisfied, the thread is added to the ready
+ * thread list and resumed by the executive service dispatcher.
  */
 typedef enum _WAIT_TYPE {
     WaitOne,
@@ -363,7 +399,7 @@ typedef struct _KWAIT_BLOCK {
     union {
 	LIST_ENTRY SubBlockList; /* Chains all sub-blocks via SiblingLink */
 	struct {
-	    LIST_ENTRY WaitBlockLink; /* List entry for DISPATCHER_HEADER.WaitBlockList */
+	    LIST_ENTRY DispatcherLink; /* List entry for DISPATCHER_HEADER.WaitBlockList */
 	    PDISPATCHER_HEADER Dispatcher; /* The dispatcher object of this wait block */
 	};
     };
@@ -395,6 +431,10 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
 
 /*
  * Lightweight mutex, mainly used for protecting concurrent access to timer database
+ * (but is not restricted to the timer database: any data structure that is accessed
+ * by multiple threads can be protected by KMUTEX).
+ *
+ * Description:
  *
  * Although we run the NTOS Executive and drivers in their separate process, this is
  * not to say that we don't have any synchronization issues. The main event loops of
@@ -404,46 +444,58 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
  * thread, and since interrupts can arrive at any time, we must protect the access of
  * shared data shared by the interrupt handlers and the main event loop thread.
  *
- * The following data structure, KMUTEX, is designed specifically for the purpose of
- * protecting the timer queue and expired timer list, since they are accessed by both
- * the timer interrupt handler and the main event loop thread. The main job of the
- * timer interrupt handler is to update the timer tick count and traverse the timer
- * queue and see if any of them expired, and move the expired timer object to the
- * expired timer list. Since the main event loop might be modifying the timer queue
- * and expired timer list when the timer interrupt is signaled (since timer interrupt
- * thread has a higher priority, it gets to preempt the main event loop thread),
- * without synchronization we would have data corruptions sooner or later.
+ * The following data structure, KMUTEX, can be used for protecting the timer queue
+ * and expired timer list, since they are accessed by both the timer interrupt handler
+ * and the main event loop thread. The main job of the timer interrupt handler is to
+ * update the timer tick count and traverse the timer queue and see if any of them
+ * expired, and move the expired timer object to the expired timer list. Since the
+ * main event loop might be modifying the timer queue and expired timer list when
+ * the timer interrupt is signaled (since timer interrupt thread has a higher priority,
+ * it gets to preempt the main event loop thread), without synchronization we would
+ * have data corruptions sooner or later.
  *
  * Our solution is to use a mutex to protect the relevant timer database, and in the
- * timer interrupt handler we will try to acquire the mutex. Only if it succeeds
- * will be actually be updating the timer queue and expired timer list. If we failed
- * to acquire the timer database lock, the timer interrupt handler will simply return
- * and let the main event loop update the timer database at a later time. Similarly,
- * when the main event loop wants to access the timer database, it will try to acquire
- * the mutex before doing so. On a single processor machine this should always succeed
- * (and we assert if it does not), and on a multi-processor machine since the timer
- * interrupt thread might be running in a different core the mutex acquisition may
- * fail, and in this case we wait for it to become available by spinning. Once the
- * code is done with the timer database, the lock should be released.
+ * timer interrupt handler we will try to acquire the mutex. If it succeeds then we
+ * can modify the timer database freely. If mutex acquisition failed, it means that
+ * the main event loop thread has acquired the mutex and is modifying the timer lists.
+ * In this case we sleep on a notification object which will be signaled by the main
+ * event loop once it is done with the timer lists. When we are waken up we attempt
+ * to reacquire the mutex, and this process is repeated until we successfully acquired
+ * the mutex. Likewise, when the main event loop wants to access the timer database,
+ * it will try to acquire the mutex before doing so. On a single processor machine
+ * this should always succeed since the timer interrupt thread runs in a higher
+ * priority. On a multi-processor machine the timer interrupt thread might be running
+ * on a different core, and thus the mutex acquisition may fail. In this case we wait
+ * on the notification object for it to be signaled by the timer interrupt thread.
+ * Once the code is done with the timer database, the lock will be released.
  */
 typedef struct POINTER_ALIGNMENT _KMUTEX {
-    LONG Counter;
+    NOTIFICATION Notification;	/* Notification object */
+    LONG Counter;		/* 0 == Mutex available.
+				 * 1 == Lock is held by the main event loop thread.
+				 * 2 == Lock is held by the main event loop thread AND
+				 *      the timer interrupt handler is sleeping on the
+				 *      notification object. */
 } KMUTEX, *PKMUTEX;
 
-static inline VOID KeInitializeMutex(IN PKMUTEX Mutex)
+static inline NTSTATUS KeCreateMutex(IN PKMUTEX Mutex)
 {
     assert(Mutex != NULL);
     Mutex->Counter = 0;
+    return KeCreateNotification(&Mutex->Notification);
 }
 
 /*
- * Try to acquire the lock. If the lock is free, return TRUE and acquire the lock.
- * If the lock has already been acquired by another thread, returns FALSE.
+ * Acquire the lock. If the lock is free, simply acquire the lock and return.
+ * If the lock has already been acquired by another thread, wait on the notification
+ * object.
  */
-static inline BOOLEAN KeTryAcquireMutex(IN PKMUTEX Mutex)
+static inline VOID KeAcquireMutex(IN PKMUTEX Mutex)
 {
     assert(Mutex != NULL);
-    return InterlockedCompareExchange(&Mutex->Counter, 1, 0) == 0;
+    if (InterlockedIncrement(&Mutex->Counter) != 1) {
+	KeWaitOnNotification(&Mutex->Notification);
+    }
 }
 
 /*
@@ -454,18 +506,59 @@ static inline BOOLEAN KeTryAcquireMutex(IN PKMUTEX Mutex)
 static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
 {
     assert(Mutex != NULL);
-    LONG Counter = InterlockedCompareExchange(&Mutex->Counter, 0, 1);
-    assert(Counter == 1);
+    LONG Counter = InterlockedDecrement(&Mutex->Counter);
+    assert(Counter >= 0);
+    if (Counter >= 1) {
+	KeSignalNotification(&Mutex->Notification);
+    }
 }
+
+/*
+ * Asynchronous Procedure Call Object
+ */
+typedef struct _KAPC {
+    struct _THREAD *Thread;
+    LIST_ENTRY ThreadApcListEntry;
+    APC_OBJECT Object;		/* ApcRoutine and ApcContext */
+    BOOLEAN Inserted;
+} KAPC, *PKAPC;
+
+/*
+ * Timer object
+ */
+typedef struct _TIMER {
+    DISPATCHER_HEADER Header;
+    ULARGE_INTEGER DueTime;	/* Absolute due time in units of 100ns */
+    struct _THREAD *ApcThread;
+    PTIMER_APC_ROUTINE ApcRoutine;
+    PVOID ApcContext;
+    LIST_ENTRY ListEntry;	/* List entry for KiTimerList */
+    union {
+	LIST_ENTRY QueueEntry;  /* List entry for KiQueuedTimerList */
+	LIST_ENTRY ExpiredListEntry; /* List entry KiExpiredTimerList */
+    };
+    LONG Period;
+    BOOLEAN State;		/* TRUE if timer is set */
+} TIMER, *PTIMER;
 
 /* async.c */
 NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
 			       IN struct _THREAD *Thread,
-			       IN PDISPATCHER_HEADER DispatcherObject);
+			       IN PDISPATCHER_HEADER DispatcherObject,
+			       IN BOOLEAN Alertable);
+NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
+				  IN struct _THREAD *Thread,
+				  IN BOOLEAN Alertable,
+				  IN WAIT_TYPE WaitType,
+				  IN ULONG Count,
+				  ...);
+NTSTATUS KeQueueApcToThread(IN struct _THREAD *Thread,
+			    IN PKAPC_ROUTINE ApcRoutine,
+			    IN PVOID SystemArgument1,
+			    IN PVOID SystemArgument2,
+			    IN PVOID SystemArgument3);
 
 /* bugcheck.c */
-VOID KeBugCheckMsg(IN PCSTR Format, ...);
-
 VOID KeBugCheck(IN PCSTR Function,
 		IN PCSTR File,
 		IN ULONG Line,
@@ -482,10 +575,25 @@ struct _IO_DRIVER_OBJECT;
 NTSTATUS KeEnableSystemServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableHalServices(IN struct _THREAD *Thread);
 
-/* port.c */
-NTSTATUS KeEnableIoPortX86(IN PCNODE CSpace,
-			   IN USHORT PortNum,
-			   IN PX86_IOPORT IoPort);
+/* ioport.c */
+NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
+			  IN USHORT PortNum,
+			  IN PX86_IOPORT IoPort);
+NTSTATUS KeReadPort8(IN PX86_IOPORT Port,
+		     OUT UCHAR *Out);
+NTSTATUS KeWritePort8(IN PX86_IOPORT Port,
+		      IN UCHAR Data);
+
+static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
+				      IN PX86_IOPORT IoPort)
+{
+    extern CNODE MiNtosCNode;
+    return KeEnableIoPortEx(&MiNtosCNode, PortNum, IoPort);
+}
+
+/* timer.c */
+VOID KeInitializeTimer(IN PTIMER Timer,
+		       IN TIMER_TYPE Type);
 
 /* vga.c */
 VOID KeVgaWriteStringEx(UCHAR Color, PCSTR String);

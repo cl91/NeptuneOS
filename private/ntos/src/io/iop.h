@@ -77,11 +77,42 @@ typedef struct _OPEN_RESPONSE {
     ULONG_PTR Information; /* IO_STATUS_BLOCK.Information returned by the driver call */
 } OPEN_RESPONSE, *POPEN_RESPONSE;
 
+/*
+ * Creation context for the driver object creation routine
+ */
+typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
+    PCSTR DriverPath;
+    PCSTR DriverName;
+} DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
+
+/*
+ * Creation context for the device object creation routine
+ */
+typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
+    PIO_DRIVER_OBJECT DriverObject;
+    PCSTR DeviceName;
+    DEVICE_TYPE DeviceType;
+    ULONG DeviceCharacteristics;
+    BOOLEAN Exclusive;
+} DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
+
+/*
+ * Creation context for the file object creation routine
+ */
+typedef struct _FILE_OBJ_CREATE_CONTEXT {
+    PCSTR FileName;
+    PIO_DEVICE_OBJECT DeviceObject;
+    PVOID BufferPtr;
+    MWORD FileSize;
+} FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
+
+
 /* init.c */
 PSECTION IopHalDllSection;
 
 /* file.c */
-NTSTATUS IopFileObjectInitProc(POBJECT Object);
+NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
+				 IN PVOID CreaCtx);
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
@@ -95,7 +126,8 @@ NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 			     OUT PIO_FILE_OBJECT *pFile);
 
 /* device.c */
-NTSTATUS IopDeviceObjectInitProc(POBJECT Object);
+NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
+				   IN PVOID CreaCtx);
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
@@ -104,7 +136,8 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 OUT POBJECT *pOpenedInstance);
 
 /* driver.c */
-NTSTATUS IopDriverObjectInitProc(POBJECT Object);
+NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
+				   IN PVOID CreaCtx);
 
 /* irp.c */
 NTSTATUS IopMapUserBuffer(IN PPROCESS User,

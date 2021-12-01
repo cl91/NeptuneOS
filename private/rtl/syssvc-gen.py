@@ -50,7 +50,8 @@ NTOS_SVC_GEN_C_TEMPLATE = """#include <ntos.h>
 static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
                         {{handler_func_indent}}IN PTHREAD Thread,
                         {{handler_func_indent}}IN ULONG ReqMsgLength,
-                        {{handler_func_indent}}OUT ULONG *ReplyMsgLength)
+                        {{handler_func_indent}}OUT ULONG *ReplyMsgLength,
+                        {{handler_func_indent}}OUT ULONG *MsgBufferEnd)
 {
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
     switch (SvcNum) {
@@ -106,8 +107,6 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
         DbgTrace("Calling {{svc.name}}\\n");
         KI_DEFINE_INIT_ASYNC_STATE(AsyncState, Thread);
         Status = {{svc.name}}(AsyncState, Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
-        assert(Status != STATUS_ASYNC_BUGBUG);
-        assert(Status != STATUS_ASYNC_STACK_OVERFLOW);
         if (Status == STATUS_ASYNC_PENDING) {
             DbgTrace("{{svc.name}} returned async pending status. Suspending thread %p\\n", Thread);
             RET_ERR_EX(KiServiceSaveReplyCap(Thread), assert(STATUS_NTOS_BUG));
@@ -134,6 +133,7 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
             seL4_SetMR({{loop.index}}, (MWORD) {{param.name}}{%- if param.dir_in %}Out{%- endif %});
 {%- endif %}
 {%- endfor %}
+            *MsgBufferEnd = MsgBufOffset;
         }
         break;
     }
@@ -147,7 +147,8 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
 }
 {# #}
 static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
-                        {{resume_func_indent}}OUT ULONG *ReplyMsgLength)
+                        {{resume_func_indent}}OUT ULONG *ReplyMsgLength,
+                        {{resume_func_indent}}OUT ULONG *MsgBufferEnd)
 {
     assert(Thread->HalSvc == {%- if halsvc %}TRUE{% else %}FALSE{% endif%});
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
@@ -167,8 +168,6 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
         DbgTrace("Resuming thread %p. Calling {{svc.name}} with saved context.\\n", Thread);
         KI_DEFINE_INIT_ASYNC_STATE(AsyncState, Thread);
         Status = {{svc.name}}(AsyncState, Thread{% for param in svc.params %}, {% if param.dir_out and not param.dir_in %}&{% endif %}{{param.name}}{% endfor %});
-        assert(Status != STATUS_ASYNC_BUGBUG);
-        assert(Status != STATUS_ASYNC_STACK_OVERFLOW);
         if (Status == STATUS_ASYNC_PENDING) {
             DbgTrace("{{svc.name}} returned async pending status. Suspending thread %p\\n", Thread);
         } else {
@@ -189,6 +188,7 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
             seL4_SetMR({{loop.index}}, (MWORD) {{param.name}}{%- if param.dir_in %}Out{%- endif %});
 {%- endif %}
 {%- endfor %}
+            *MsgBufferEnd = MsgBufOffset;
         }
         break;
     }
@@ -211,7 +211,24 @@ CLIENT_SVC_GEN_H_TEMPLATE = """#pragma once
 {% endfor %}
 """
 
-CLIENT_SVC_GEN_C_TEMPLATE = """{% for svc in svc_list %}{% if svc.ntapi %}NTAPI {% endif %}NTSTATUS {{svc.name}}({%- for param in svc.params %}{{param.annotation}} {{param.client_decl}}{%- if not loop.last %},
+CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBufferStart,
+                                IN MWORD Arg,
+                                IN ULONG NumApc)
+{
+    assert(NumApc != 0);
+    APC_OBJECT Apc[MAX_APC_COUNT_PER_DELIVERY];
+    memcpy(Apc, KiServiceGetArgument(IpcBufferStart, Arg), NumApc * sizeof(APC_OBJECT));
+    for (ULONG i = 0; i < NumApc; i++) {
+        assert(Apc[i].ApcRoutine != NULL);
+        if (Apc[i].ApcRoutine != NULL) {
+            DbgTrace("Delivering APC Routine %p Arguments %p %p %p\\n", Apc->ApcRoutine,
+                     Apc->ApcContext[0], Apc->ApcContext[1], Apc->ApcContext[2]);
+            (Apc[i].ApcRoutine)(Apc[i].ApcContext[0], Apc[i].ApcContext[1], Apc[i].ApcContext[2]);
+        }
+    }
+}
+
+{% for svc in svc_list %}{% if svc.ntapi %}NTAPI {% endif %}NTSTATUS {{svc.name}}({%- for param in svc.params %}{{param.annotation}} {{param.client_decl}}{%- if not loop.last %},
 {{svc.client_param_indent}}
 {%- endif %}{%- endfor %})
 {
@@ -253,14 +270,22 @@ CLIENT_SVC_GEN_C_TEMPLATE = """{% for svc in svc_list %}{% if svc.ntapi %}NTAPI 
     NTSTATUS Status = seL4_GetMR(0);
     if (NT_SUCCESS(Status)) {
         assert(seL4_MessageInfo_get_length(Reply) == (1 + {{svc.out_params|length}}));
+        ULONG NumApc = seL4_MessageInfo_get_label(Reply);
+        SERVICE_ARGUMENT Arg = { .Word = 0 };
 {%- for param in svc.out_params %}
         if ({{param.name}} != NULL) {
 {%- if param.complex_type %}
             assert(KiServiceValidateArgument(seL4_GetMR({{loop.index}})));
             *{{param.name}} = *(({{param.base_type}} *)(KiServiceGetArgument((ULONG_PTR)(__sel4_ipc_buffer), seL4_GetMR({{loop.index}}))));
+            Arg.Word = seL4_GetMR({{loop.index}});
 {%- else %}
             *{{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index}});
 {%- endif %}
+        }
+        if (NumApc != 0) {
+            Arg.BufferStart += Arg.BufferSize;
+            Arg.BufferSize = NumApc * sizeof(APC_OBJECT);
+            KiDeliverApc((ULONG_PTR)(__sel4_ipc_buffer), Arg.Word, NumApc);
         }
 {%- endfor %}
     }

@@ -10,7 +10,7 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 {
     assert(TypeName != NULL);
     assert(ObjectBodySize != 0);
-    assert(Init.InitProc != NULL);
+    assert(Init.CreateProc != NULL);
 
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
     ObjectType->Name = TypeName;
@@ -28,11 +28,12 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
  * into the global object list.
  */
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
-			OUT POBJECT *Object)
+			OUT POBJECT *Object,
+			IN PVOID CreationContext)
 {
     assert(Type < NUM_OBJECT_TYPES);
     POBJECT_TYPE ObjectType = &ObpObjectTypes[Type];
-    assert(ObjectType->TypeInfo.InitProc != NULL);
+    assert(ObjectType->TypeInfo.CreateProc != NULL);
 
     MWORD TotalSize = sizeof(OBJECT_HEADER) + ObjectType->ObjectBodySize;
     ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER, TotalSize, {});
@@ -41,10 +42,11 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
     InitializeListHead(&ObjectHeader->HandleEntryList);
     *Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
 
-    RET_ERR_EX(ObjectType->TypeInfo.InitProc(*Object),
+    RET_ERR_EX(ObjectType->TypeInfo.CreateProc(*Object, CreationContext),
 	       {
-		   *Object = NULL;
+		   ObpDeleteObject(*Object);
 		   ExFreePool(ObjectHeader);
+		   *Object = NULL;
 	       });
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);
     ObpReferenceObjectHeader(ObjectHeader);

@@ -25,6 +25,7 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_FILE,
     OBJECT_TYPE_DEVICE,
     OBJECT_TYPE_DRIVER,
+    OBJECT_TYPE_TIMER,
     NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
@@ -116,8 +117,9 @@ typedef PVOID POBJECT;
  * 1 << EX_POOL_BLOCK_SHIFT
  */
 typedef enum _GLOBAL_HANDLE_FLAG {
-    THREAD_SYSTEM_SERVICE_IPC_BADGE = 0,
-    THREAD_HAL_SERVICE_IPC_BADGE = 1,
+    SYSTEM_SERVICE_IPC_BADGE = 0,
+    HAL_SERVICE_IPC_BADGE = 1,
+    SERVICE_NOTIFICATION = 3
 } GLOBAL_HANDLE_FLAG;
 
 /* For structures that are not managed by the Object Manager (for
@@ -162,13 +164,20 @@ typedef struct _OB_OBJECT_ATTRIBUTES {
 } OB_OBJECT_ATTRIBUTES, *POB_OBJECT_ATTRIBUTES;
 
 /*
- * The init routine initializes the object body to sane, default values.
+ * The creation routine initializes the object given the creation context.
  * Self points to the beginning of the object body.
  *
- * The init routine cannot be NULL. The object manager will
+ * If the creation routine returned an error status, the object's deletion
+ * routine will be invoked. The object is then freed from the ExPool.
+ * It is the creation routine and the deletion routine's responsibilities
+ * to make sure that when creation routine returns error, the object is in
+ * a well-defined state and the deletion routine can correctly delete the object.
+ *
+ * The creation routine cannot be NULL. The object manager will
  * reject such object types during object type registration.
  */
-typedef NTSTATUS (*OBJECT_INIT_METHOD)(IN POBJECT Self);
+typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
+					 IN PVOID CreationContext);
 
 /*
  * The open routine produces an opened instance of the object,
@@ -220,7 +229,7 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Self,
 					 IN PCSTR Subpath);
 
 typedef struct _OBJECT_TYPE_INITIALIZER {
-    OBJECT_INIT_METHOD InitProc;
+    OBJECT_CREATE_METHOD CreateProc;
     OBJECT_OPEN_METHOD OpenProc;
     OBJECT_PARSE_METHOD ParseProc;
     OBJECT_INSERT_METHOD InsertProc;
@@ -281,7 +290,8 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN ULONG ObjectBodySize,
 			    IN OBJECT_TYPE_INITIALIZER Init);
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
-			OUT POBJECT *Object);
+			OUT POBJECT *Object,
+			IN PVOID CreationContext);
 
 /* dirobj.c */
 NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath);
@@ -312,4 +322,10 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN PVOID Context,
 			    OUT PVOID OpenResponse,
 			    OUT HANDLE *pHandle);
+NTSTATUS ObOpenObjectByPointer(IN ASYNC_STATE State,
+			       IN struct _THREAD *Thread,
+			       IN POBJECT Object,
+			       IN PVOID Context,
+			       OUT PVOID OpenResponse,
+			       OUT HANDLE *pHandle);
 VOID ObDereferenceObject(IN POBJECT Object);

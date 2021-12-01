@@ -6,6 +6,7 @@
 #define DEVICE_OBJECT_DIRECTORY		"\\Device"
 
 struct _PROCESS;
+struct _IO_FILE_OBJECT;
 
 /*
  * Server-side object of the client side DRIVER_OBJECT.
@@ -13,7 +14,9 @@ struct _PROCESS;
 typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverImageName;
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
+    struct _IO_FILE_OBJECT *DriverFile;
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
+    struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
     LIST_ENTRY IrpQueue; /* IRPs queued on this driver object but has not been processed yet. */
     LIST_ENTRY PendingIrpList;	/* IRPs that have already been moved to driver process's
 				 * incoming IRP buffer. Note that the driver may choose to

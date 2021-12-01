@@ -177,3 +177,40 @@ typedef enum _EVENT_TYPE {
 #define EVENT_QUERY_STATE (0x0001)
 #define EVENT_MODIFY_STATE (0x0002)
 #define EVENT_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x3)
+
+/*
+ * Timer Types
+ */
+typedef enum _TIMER_TYPE {
+    NotificationTimer,
+    SynchronizationTimer
+} TIMER_TYPE;
+
+#define TIMER_QUERY_STATE	0x0001
+#define TIMER_MODIFY_STATE	0x0002
+#define TIMER_ALL_ACCESS	(STANDARD_RIGHTS_REQUIRED |	\
+				 SYNCHRONIZE |			\
+				 TIMER_QUERY_STATE |		\
+				 TIMER_MODIFY_STATE)
+
+/*
+ * Timer APC Routine
+ */
+typedef VOID (NTAPI *PTIMER_APC_ROUTINE)(IN PVOID TimerContext,
+					 IN ULONG TimerLowValue,
+					 IN LONG TimerHighValue);
+
+#ifndef _NTOSKRNL_
+NTAPI NTSYSAPI NTSTATUS NtCreateTimer(OUT PHANDLE TimerHandle,
+				      IN ACCESS_MASK DesiredAccess,
+				      IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
+				      IN TIMER_TYPE TimerType);
+
+NTAPI NTSYSAPI NTSTATUS NtSetTimer(IN HANDLE TimerHandle,
+				   IN PLARGE_INTEGER DueTime,
+				   IN PTIMER_APC_ROUTINE TimerApcRoutine,
+				   IN PVOID TimerContext,
+				   IN BOOLEAN WakeTimer,
+				   IN OPTIONAL LONG Period,
+				   OUT OPTIONAL PBOOLEAN PreviousState);
+#endif

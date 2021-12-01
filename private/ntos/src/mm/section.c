@@ -3,46 +3,6 @@
 
 PSECTION MiPhysicalSection;
 
-NTSTATUS MiSectionObjectInitProc(IN POBJECT Object)
-{
-    PSECTION Section = (PSECTION) Object;
-    MmAvlInitializeNode(&Section->BasedSectionNode, 0);
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS MmSectionInitialization()
-{
-    OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.InitProc = MiSectionObjectInitProc,
-	.OpenProc = NULL,
-	.ParseProc = NULL,
-	.InsertProc = NULL,
-    };
-    RET_ERR(ObCreateObjectType(OBJECT_TYPE_SECTION,
-			       "Section",
-			       sizeof(SECTION),
-			       TypeInfo));
-
-    /* Create VADs for "hyperspace", which is used for mapping client process
-     * pages in the NTOS root task temporarily. The necessary super-structures
-     * at starting addresses for 4K page hyperspace and large page hyperspace
-     * will be mapped on-demand. */
-    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_4K_PAGE_START, 0, LARGE_PAGE_SIZE,
-				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
-    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_LARGE_PAGE_START, 0, LARGE_PAGE_SIZE,
-				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
-
-    /* Create the singleton physical section. */
-    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection));
-    assert(MiPhysicalSection != NULL);
-    MiPhysicalSection->Flags.PhysicalMemory = 1;
-    /* Physical section is always committed immediately. */
-    MiPhysicalSection->Flags.Reserve = 1;
-    MiPhysicalSection->Flags.Commit = 1;
-
-    return STATUS_SUCCESS;
-}
-
 /*
  * Note: ImageSection must point to zeroed-memory.
  */
@@ -388,13 +348,24 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
-			 IN MWORD Attribute,
-			 OUT PSECTION *SectionObject)
+static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
+					  IN PVOID CreaCtx)
 {
-    assert(FileObject != NULL);
-    assert(SectionObject != NULL);
-    *SectionObject = NULL;
+    PSECTION Section = (PSECTION) Object;
+    PSECTION_OBJ_CREATE_CONTEXT Ctx = (PSECTION_OBJ_CREATE_CONTEXT)CreaCtx;
+    PIO_FILE_OBJECT FileObject = Ctx->FileObject;
+    MWORD Attribute = Ctx->Attribute;
+    BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
+
+    MmAvlInitializeNode(&Section->BasedSectionNode, 0);
+
+    if (PhysicalMapping) {
+	MiPhysicalSection->Flags.PhysicalMemory = 1;
+	/* Physical section is always committed immediately. */
+	MiPhysicalSection->Flags.Reserve = 1;
+	MiPhysicalSection->Flags.Commit = 1;
+	return STATUS_SUCCESS;
+    }
 
     /* Only image section is implemented for now */
     if (!(Attribute & SEC_IMAGE)) {
@@ -416,15 +387,63 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
 	assert(ImageSection != NULL);
     }
 
-    PSECTION Section = NULL;
-    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section));
-    assert(Section != NULL);
     Section->Flags.File = 1;
     Section->Flags.Image = 1;
     /* For now all sections are committed immediately. */
     Section->Flags.Reserve = 1;
     Section->Flags.Commit = 1;
     Section->ImageSectionObject = ImageSection;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmSectionInitialization()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = MiSectionObjectCreateProc,
+	.OpenProc = NULL,
+	.ParseProc = NULL,
+	.InsertProc = NULL,
+    };
+    RET_ERR(ObCreateObjectType(OBJECT_TYPE_SECTION,
+			       "Section",
+			       sizeof(SECTION),
+			       TypeInfo));
+
+    /* Create VADs for "hyperspace", which is used for mapping client process
+     * pages in the NTOS root task temporarily. The necessary super-structures
+     * at starting addresses for 4K page hyperspace and large page hyperspace
+     * will be mapped on-demand. */
+    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_4K_PAGE_START, 0, LARGE_PAGE_SIZE,
+				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
+    RET_ERR(MmReserveVirtualMemory(HYPERSPACE_LARGE_PAGE_START, 0, LARGE_PAGE_SIZE,
+				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
+
+    /* Create the singleton physical section. */
+    SECTION_OBJ_CREATE_CONTEXT Ctx = {
+	.PhysicalMapping = TRUE
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection, &Ctx));
+    assert(MiPhysicalSection != NULL);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
+			 IN MWORD Attribute,
+			 OUT PSECTION *SectionObject)
+{
+    assert(FileObject != NULL);
+    assert(SectionObject != NULL);
+    *SectionObject = NULL;
+
+    PSECTION Section = NULL;
+    SECTION_OBJ_CREATE_CONTEXT CreaCtx = {
+	.FileObject = FileObject,
+	.Attribute = Attribute
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section, &CreaCtx));
+    assert(Section != NULL);
 
     *SectionObject = Section;
     return STATUS_SUCCESS;

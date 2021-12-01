@@ -1,8 +1,8 @@
 #include "ki.h"
 
-NTSTATUS KeEnableIoPortX86(IN PCNODE CSpace,
-			   IN USHORT PortNum,
-			   IN PX86_IOPORT IoPort)
+NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
+			  IN USHORT PortNum,
+			  IN PX86_IOPORT IoPort)
 {
     assert(CSpace != NULL);
     assert(IoPort != NULL);
@@ -25,5 +25,34 @@ NTSTATUS KeEnableIoPortX86(IN PCNODE CSpace,
 			    CAP_TREE_NODE_X86_IOPORT,
 			    Cap, CSpace, NULL);
     IoPort->PortNum = PortNum;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS KeReadPort8(IN PX86_IOPORT Port,
+		     OUT UCHAR *Out)
+{
+    assert(Out != NULL);
+    seL4_X86_IOPort_In8_t Reply = seL4_X86_IOPort_In8(Port->TreeNode.Cap,
+						      Port->PortNum);
+    if (Reply.error != 0) {
+	DbgTrace("Reading IO port 0x%x (cap 0x%zx) failed with error %d\n",
+		 Port->PortNum, Port->TreeNode.Cap, Reply.error);
+	KeDbgDumpIPCError(Reply.error);
+	return SEL4_ERROR(Reply.error);
+    }
+    *Out = Reply.result;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS KeWritePort8(IN PX86_IOPORT Port,
+		      IN UCHAR Data)
+{
+    int Error = seL4_X86_IOPort_Out8(Port->TreeNode.Cap, Port->PortNum, Data);
+    if (Error != 0) {
+	DbgTrace("Writing IO port 0x%x (cap 0x%zx) with data 0x%x failed with error %d\n",
+		 Port->PortNum, Port->TreeNode.Cap, Data, Error);
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
     return STATUS_SUCCESS;
 }

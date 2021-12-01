@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string.h>
 #include <nt.h>
 #include <gnu.h>
 #include <compile_assert.h>
@@ -152,8 +153,7 @@ assert_size_correct(SERVICE_ARGUMENT, MWORD_BYTES);
 
 static inline BOOLEAN KiServiceValidateArgument(IN MWORD MsgWord)
 {
-    SERVICE_ARGUMENT Arg;
-    Arg.Word = MsgWord;
+    SERVICE_ARGUMENT Arg = { .Word = MsgWord };
     if (((ULONG)(Arg.BufferStart) + Arg.BufferSize) > SVC_MSGBUF_SIZE) {
 	return FALSE;
     }
@@ -168,8 +168,7 @@ static inline PVOID KiServiceGetArgument(IN MWORD IpcBufferAddr,
     if (MsgWord == 0) {
 	return NULL;
     }
-    SERVICE_ARGUMENT Arg;
-    Arg.Word = MsgWord;
+    SERVICE_ARGUMENT Arg = { .Word = MsgWord };
     return &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, Arg.BufferStart, VOID);
 }
 
@@ -185,13 +184,29 @@ static inline NTSTATUS KiServiceMarshalArgument(IN MWORD IpcBufferAddr,
     if (SVC_MSGBUF_SIZE - *MsgBufOffset < ArgSize) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-    SvcArg->Word = 0;
     memcpy(&SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, *MsgBufOffset, VOID), Argument, ArgSize);
     SvcArg->BufferStart = *MsgBufOffset;
     SvcArg->BufferSize = ArgSize;
     *MsgBufOffset += ArgSize;
     return STATUS_SUCCESS;
 }
+
+/*
+ * APC Routine
+ */
+typedef VOID (NTAPI *PKAPC_ROUTINE)(IN PVOID SystemArgument1,
+				    IN PVOID SystemArgument2,
+				    IN PVOID SystemArgument3);
+
+/*
+ * APC object that is passed by the service handlers
+ */
+typedef struct _APC_OBJECT {
+    PKAPC_ROUTINE ApcRoutine;
+    PVOID ApcContext[3];
+} APC_OBJECT, *PAPC_OBJECT;
+
+#define MAX_APC_COUNT_PER_DELIVERY	16
 
 #include <syssvc_gen.h>
 

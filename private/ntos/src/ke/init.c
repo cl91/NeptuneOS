@@ -254,8 +254,9 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
 
     ExInitSystemPhase0(bootinfo);
     KiInitVga();
+    BUGCHECK_IF_ERR(HalInitializeCmos());
     BUGCHECK_IF_ERR(KiInitExecutiveServices());
-    BUGCHECK_IF_ERR(KiEnableTimerInterruptService());
+    BUGCHECK_IF_ERR(KiInitTimer());
     BUGCHECK_IF_ERR(ExInitSystemPhase1());
 
 #ifdef CONFIG_RUN_TESTS

@@ -15,11 +15,24 @@ NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
     Timer->Dpc = NULL;
     Timer->Canceled = FALSE;
     Timer->State = FALSE;
-    NTSTATUS Status = IopCreateTimer(&Timer->Handle);
+    NTSTATUS Status = NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
+				    NULL, NotificationTimer);
     if (!NT_SUCCESS(Status)) {
 	assert(FALSE);
 	Timer->Handle = NULL;
 	Timer->Canceled = TRUE;
+    }
+}
+
+static NTAPI VOID KiTimerExpired(IN PVOID TimerContext,
+				 IN ULONG TimerLowValue,
+				 IN LONG TimerHighValue)
+{
+    PKDPC Dpc = TimerContext;
+    DbgTrace("Timer expired %p\n", Dpc);
+    if (Dpc != NULL) {
+	Dpc->DeferredRoutine(Dpc, Dpc->DeferredContext, Dpc->SystemArgument1,
+			     Dpc->SystemArgument2);
     }
 }
 
@@ -38,10 +51,13 @@ NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
     if (Timer->Canceled || (Timer->Handle == NULL)) {
 	return FALSE;
     }
-    BOOLEAN PreviousState = Timer->State;
-    NTSTATUS Status = IopSetTimer(Timer->Handle, &DueTime);
-    /* This can fail (due to server being out of memory). Assert in debug
+    BOOLEAN PreviousState;
+    NTSTATUS Status = NtSetTimer(Timer->Handle, &DueTime, KiTimerExpired,
+				 Dpc, TRUE, 0, &PreviousState);
+    /* This can fail (due to server running out of memory). Assert in debug
      * build so we can find out why. */
+    assert(PreviousState == Timer->State);
     assert(NT_SUCCESS(Status));
+    Timer->State = TRUE;
     return PreviousState;
 }

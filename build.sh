@@ -2,6 +2,18 @@ ARCH=i386
 BUILD_TYPE=Debug
 TOOLCHAIN=llvm
 
+if [[ $ARCH == "i386" ]]; then
+    ARCH_SUFFIX="-m32"
+else
+    ARCH_SUFFIX="-m64"
+fi
+
+if [[ $TOOLCHAIN == "llvm" ]]; then
+    RTLIB=$(clang -print-libgcc-file-name -rtlib=compiler-rt $ARCH_SUFFIX)
+else
+    RTLIB=$(gcc -print-libgcc-file-name $ARCH_SUFFIX)
+fi
+
 if [[ ${1,,} == "release" || ${2,,} == "release" ]]; then
     BUILD_TYPE=Release
 fi
@@ -207,7 +219,7 @@ if [[ ${BUILD_TYPE} == Release ]]; then
 else
     LLD_OPTIONS=""
 fi
-ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} \
+ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} ${RTLIB} \
        --allow-multiple-definition \
        ../elf/libntos.a \
        ../elf/rtl/librtl.a \

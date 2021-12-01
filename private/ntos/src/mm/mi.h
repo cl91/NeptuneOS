@@ -193,6 +193,15 @@ static inline PMM_AVL_NODE MiAvlGetLastNode(IN PMM_AVL_TREE Tree)
 }
 
 /*
+ * Creation context for the section object creation routine
+ */
+typedef struct _SECTION_OBJ_CREATE_CONTEXT {
+    PIO_FILE_OBJECT FileObject;
+    MWORD Attribute;
+    BOOLEAN PhysicalMapping;
+} SECTION_OBJ_CREATE_CONTEXT, *PSECTION_OBJ_CREATE_CONTEXT;
+
+/*
  * Forward declarations.
  */
 

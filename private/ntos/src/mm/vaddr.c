@@ -395,7 +395,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     DbgTrace("Trying to commit [%p, %p)\n", (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize));
     StartAddr = PAGE_ALIGN(StartAddr);
     WindowSize = PAGE_ALIGN_UP(WindowSize);
-    assert(StartAddr + WindowSize > StartAddr);
+    assert_ret(StartAddr + WindowSize > StartAddr);
 
     PMMVAD Vad = MmVSpaceFindVadNode(VSpace, StartAddr);
     if (Vad == NULL) {

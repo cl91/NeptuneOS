@@ -22,6 +22,20 @@ typedef struct RTL_DRIVE_LETTER_CURDIR {
     UNICODE_STRING DosPath;
 } RTL_DRIVE_LETTER_CURDIR, *PRTL_DRIVE_LETTER_CURDIR;
 
+/*
+ * Time Structure for RTL Time calls
+ */
+typedef struct _TIME_FIELDS {
+    CSHORT Year;
+    CSHORT Month;
+    CSHORT Day;
+    CSHORT Hour;
+    CSHORT Minute;
+    CSHORT Second;
+    CSHORT Milliseconds;
+    CSHORT Weekday;
+} TIME_FIELDS, *PTIME_FIELDS;
+
 typedef struct _RTL_BITMAP {
     ULONG SizeOfBitMap;		/* Number of bits in the bitmap */
     PULONG Buffer; /* Bitmap data, assumed sized to a DWORD boundary */
@@ -121,6 +135,55 @@ NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
 NTAPI NTSYSAPI CCHAR RtlFindMostSignificantBit(IN ULONGLONG Set);
 
 NTAPI NTSYSAPI CCHAR RtlFindLeastSignificantBit(IN ULONGLONG Set);
+
+/*
+ * Memory functions
+ */
+
+/*
+ * VOID RtlCopyMemory(IN VOID UNALIGNED *Destination,
+ *                    IN CONST VOID UNALIGNED *Source,
+ *                    IN SIZE_T Length);
+ */
+#define RtlCopyMemory(Destination, Source, Length)	\
+    memcpy(Destination, Source, Length)
+
+/*
+ * VOID RtlFillMemory(IN VOID UNALIGNED *Destination,
+ *                    IN SIZE_T Length,
+ *                    IN UCHAR Fill);
+ */
+#define RtlFillMemory(Destination, Length, Fill)	\
+    memset(Destination, Fill, Length)
+
+/*
+ * Time Functions
+ */
+NTAPI NTSYSAPI BOOLEAN RtlCutoverTimeToSystemTime(IN PTIME_FIELDS CutoverTimeFields,
+						  OUT PLARGE_INTEGER SystemTime,
+						  IN PLARGE_INTEGER CurrentTime,
+						  IN BOOLEAN ThisYearsCutoverOnly);
+
+NTAPI NTSYSAPI VOID RtlTimeToElapsedTimeFields(IN PLARGE_INTEGER Time,
+					       OUT PTIME_FIELDS TimeFields);
+
+NTAPI NTSYSAPI BOOLEAN RtlTimeFieldsToTime(IN PTIME_FIELDS TimeFields,
+					   OUT PLARGE_INTEGER Time);
+
+NTAPI NTSYSAPI VOID RtlTimeToTimeFields(IN PLARGE_INTEGER Time,
+					OUT PTIME_FIELDS TimeFields);
+
+NTAPI NTSYSAPI VOID RtlSecondsSince1970ToTime(IN ULONG SecondsSince1970,
+					      OUT PLARGE_INTEGER Time);
+
+NTAPI NTSYSAPI BOOLEAN RtlTimeToSecondsSince1970(IN PLARGE_INTEGER Time,
+						 OUT PULONG ElapsedSeconds);
+
+NTAPI NTSYSAPI BOOLEAN RtlTimeToSecondsSince1980(IN PLARGE_INTEGER Time,
+						 OUT PULONG ElapsedSeconds);
+
+NTAPI NTSYSAPI VOID RtlSecondsSince1980ToTime(IN ULONG ElapsedSeconds,
+					      OUT PLARGE_INTEGER Time);
 
 #ifndef _NTOSKRNL_
 #include <nturtl.h>

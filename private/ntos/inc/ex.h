@@ -98,6 +98,15 @@
 		 (MWORD) Size, #Var, #Type, __func__, __FILE__, __LINE__); \
 	{OnError;} return STATUS_NO_MEMORY; }
 
+
+/*
+ * Creation context for the timer object creation routine
+ */
+typedef struct _TIMER_OBJ_CREATE_CONTEXT {
+    TIMER_TYPE Type;
+} TIMER_OBJ_CREATE_CONTEXT, *PTIMER_OBJ_CREATE_CONTEXT;
+
+
 /* init.c */
 NTSTATUS ExInitSystemPhase0(seL4_BootInfo *bootinfo);
 NTSTATUS ExInitSystemPhase1();
@@ -107,4 +116,4 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
 			  IN LONG NumPages);
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag);
-VOID ExFreePool(IN PVOID Ptr);
+VOID ExFreePool(IN PCVOID Ptr);

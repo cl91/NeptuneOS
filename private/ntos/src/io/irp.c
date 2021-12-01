@@ -1,7 +1,8 @@
 #include "iop.h"
 
 /*
- * Handler function for the HAL service IopRequestIrp.
+ * Handler function for the HAL service IopRequestIrp. This service should
+ * only be called in the main event loop thread of the driver process.
  *
  * Check the previous batch of incoming IRPs first and see if any of them
  * errored out, and then process the driver's outgoing IRP buffer. Once that
@@ -16,6 +17,7 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(pNumRequestPackets != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    NTSTATUS Status = STATUS_NTOS_BUG;
     assert(DriverObject != NULL);
 
     ASYNC_BEGIN(State);
@@ -120,12 +122,8 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
 
     /* Now process the driver's queued IRPs and forward them to the driver's
      * incoming IRP buffer. */
-    AWAIT_IF(IsListEmpty(&DriverObject->IrpQueue),
-	     KeWaitForSingleObject, State, Thread,
-	     &DriverObject->IrpQueuedEvent.Header);
-
-    /* If we got here, it means that the IrpQueue is not empty. */
-    assert(!IsListEmpty(&DriverObject->IrpQueue));
+    AWAIT_EX(KeWaitForSingleObject, Status, State, Thread,
+	     &DriverObject->IrpQueuedEvent.Header, TRUE);
 
     /* Determine how many packets we can send in one go since the driver IRP
      * buffer has a finite size. This includes potentially the FileName buffer.
@@ -212,7 +210,8 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
     *pNumRequestPackets = NumRequestPackets;
     DriverObject->NumRequestPackets = NumRequestPackets;
 
-    ASYNC_END(STATUS_SUCCESS);
+    /* Returns APC status if the alertable wait above returned APC status */
+    ASYNC_END(Status);
 }
 
 /*

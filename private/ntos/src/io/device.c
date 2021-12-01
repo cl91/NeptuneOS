@@ -1,9 +1,40 @@
 #include "iop.h"
 
-NTSTATUS IopDeviceObjectInitProc(POBJECT Object)
+NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
+				   IN PVOID CreaCtx)
 {
     PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT) Object;
+    PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT) CreaCtx;
+    PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
+    PCSTR DeviceName = Ctx->DeviceName;
+    DEVICE_TYPE DeviceType = Ctx->DeviceType;
+    ULONG DeviceCharacteristics = Ctx->DeviceCharacteristics;
+    BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->DeviceLink);
+
+    /* If the client has supplied a non-empty DeviceName, record it */
+    if ((DeviceName != NULL) && (DeviceName[0] != '\0')) {
+	/* DeviceName must be a full path */
+	if (DeviceName[0] != OBJ_NAME_PATH_SEPARATOR) {
+	    return STATUS_INVALID_PARAMETER_1;
+	}
+	PCSTR DeviceNameCopy = RtlDuplicateString(DeviceName, NTOS_IO_TAG);
+	if (DeviceNameCopy == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	/* If the client has supplied a device name, insert the device
+	 * object into the global object namespace, with the given path. */
+	RET_ERR_EX(ObInsertObjectByPath(DeviceName, Device),
+		   ExFreePool(DeviceNameCopy));
+	Device->DeviceName = DeviceNameCopy;
+    }
+
+    Device->DriverObject = DriverObject;
+    InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
+    Device->DeviceType = DeviceType;
+    Device->DeviceCharacteristics = DeviceCharacteristics;
+    Device->Exclusive = Exclusive;
+
     return STATUS_SUCCESS;
 }
 
@@ -69,7 +100,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     IopQueueIrp(Irp, Driver, Thread);
 
     /* For create/open we always wait till the driver has completed the request. */
-    AWAIT(KeWaitForSingleObject, State, Thread, &Thread->IoCompletionEvent.Header);
+    AWAIT(KeWaitForSingleObject, State, Thread, &Thread->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed.
      * Note: The local variable Irp is undefined here. Irp in the previous async block
@@ -108,40 +139,19 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
                          OUT GLOBAL_HANDLE *DeviceHandle)
 {
     assert(Thread != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
-    assert(DriverObject != NULL);
+    assert(Thread->Process->DriverObject != NULL);
     assert(DeviceHandle != NULL);
 
     PIO_DEVICE_OBJECT DeviceObject = NULL;
-    RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *) &DeviceObject));
+    DEVICE_OBJ_CREATE_CONTEXT CreaCtx = {
+	.DriverObject = Thread->Process->DriverObject,
+	.DeviceName = DeviceName,
+	.DeviceType = DeviceType,
+	.DeviceCharacteristics = DeviceCharacteristics,
+	.Exclusive = Exclusive
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *) &DeviceObject, &CreaCtx));
     assert(DeviceObject != NULL);
-
-    /* If the client has supplied a non-empty DeviceName, record it */
-    if ((DeviceName != NULL) && (DeviceName[0] != '\0')) {
-	/* DeviceName must be a full path */
-	if (DeviceName[0] != OBJ_NAME_PATH_SEPARATOR) {
-	    return STATUS_INVALID_PARAMETER_1;
-	}
-	PCSTR DeviceNameCopy = RtlDuplicateString(DeviceName, NTOS_IO_TAG);
-	if (DeviceNameCopy == NULL) {
-	    ObDereferenceObject(DeviceObject);
-	    return STATUS_NO_MEMORY;
-	}
-	/* If the client has supplied a device name, insert the device
-	 * object into the global object namespace, with the given path. */
-	RET_ERR_EX(ObInsertObjectByPath(DeviceName, DeviceObject),
-		   {
-		       ExFreePool((PVOID) DeviceNameCopy);
-		       ObDereferenceObject(DeviceObject);
-		   });
-	DeviceObject->DeviceName = DeviceNameCopy;
-    }
-
-    DeviceObject->DriverObject = DriverObject;
-    InsertTailList(&DriverObject->DeviceList, &DeviceObject->DeviceLink);
-    DeviceObject->DeviceType = DeviceType;
-    DeviceObject->DeviceCharacteristics = DeviceCharacteristics;
-    DeviceObject->Exclusive = Exclusive;
 
     *DeviceHandle = OBJECT_TO_GLOBAL_HANDLE(DeviceObject);
 
@@ -229,7 +239,7 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 	return STATUS_PENDING;
     }
     AWAIT_IF(IopFileIsSynchronous(FileObject), KeWaitForSingleObject, State,
-	     Thread, &Thread->IoCompletionEvent.Header);
+	     Thread, &Thread->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed. */
     assert(Thread->PendingIrp->Type == IrpTypeRequest);

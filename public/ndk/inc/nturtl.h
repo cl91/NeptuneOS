@@ -719,14 +719,6 @@ NTAPI NTSYSAPI VOID RtlReleaseResource(IN PRTL_RESOURCE Resource);
  * Memory functions
  */
 
-/*
- * VOID RtlCopyMemory(IN VOID UNALIGNED *Destination,
- *                    IN CONST VOID UNALIGNED *Source,
- *                    IN SIZE_T Length);
- */
-#define RtlCopyMemory(Destination, Source, Length)	\
-    memcpy(Destination, Source, Length)
-
 NTAPI NTSYSAPI SIZE_T RtlCompareMemory(IN const VOID *Source1,
 				       IN const VOID *Source2,
 				       IN SIZE_T Length);
@@ -734,14 +726,6 @@ NTAPI NTSYSAPI SIZE_T RtlCompareMemory(IN const VOID *Source1,
 NTAPI NTSYSAPI SIZE_T RtlCompareMemoryUlong(IN PVOID Source,
 					    IN SIZE_T Length,
 					    IN ULONG Value);
-
-/*
- * VOID RtlFillMemory(IN VOID UNALIGNED *Destination,
- *                    IN SIZE_T Length,
- *                    IN UCHAR Fill);
- */
-#define RtlFillMemory(Destination, Length, Fill)	\
-    memset(Destination, Fill, Length)
 
 #ifdef _M_AMD64
 FORCEINLINE VOID RtlFillMemoryUlong(OUT PVOID Destination,

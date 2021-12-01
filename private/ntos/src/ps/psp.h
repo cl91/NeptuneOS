@@ -22,6 +22,21 @@ static inline PIMAGE_NT_HEADERS PspImageNtHeader(IN PVOID FileBuffer)
 #define PROCESS_HEAP_DEFAULT_RESERVE	(64 * PAGE_SIZE)
 #define PROCESS_HEAP_DEFAULT_COMMIT	(PAGE_SIZE)
 
+/*
+ * Creation context for the thread object creation routine
+ */
+typedef struct _THREAD_CREATION_CONTEXT {
+    PPROCESS Process;
+} THREAD_CREATION_CONTEXT, *PTHREAD_CREATION_CONTEXT;
+
+/*
+ * Creation context for the process object creation routine
+ */
+typedef struct _PROCESS_CREATION_CONTEXT {
+    PIO_FILE_OBJECT ImageFile;
+    PIO_DRIVER_OBJECT DriverObject;
+} PROCESS_CREATION_CONTEXT, *PPROCESS_CREATION_CONTEXT;
+
 /* arch/context.c */
 VOID PspInitializeThreadContext(IN PTHREAD Thread,
 				IN PTHREAD_CONTEXT Context);
@@ -30,8 +45,10 @@ VOID PspInitializeSystemThreadContext(IN PSYSTEM_THREAD Thread,
 				      IN PSYSTEM_THREAD_ENTRY EntryPoint);
 
 /* create.c */
-NTSTATUS PspThreadObjectInitProc(POBJECT Object);
-NTSTATUS PspProcessObjectInitProc(POBJECT Object);
+NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
+				   IN PVOID CreaCtx);
+NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
+				    IN PVOID CreaCtx);
 VOID PspSystemThreadStartup(IN seL4_IPCBuffer *IpcBuffer,
 			    IN PSYSTEM_THREAD_ENTRY EntryPoint);
 
