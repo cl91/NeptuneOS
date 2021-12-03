@@ -30,6 +30,7 @@
 @ stdcall NtDeleteValueKey(long ptr)
 @ stdcall NtEnumerateKey (long long long long long long)
 @ stdcall NtEnumerateValueKey(long long long long long long)
+@ stdcall NtTestAlert()
 @ stdcall LdrGetProcedureAddress(ptr ptr long ptr)
 @ stdcall LdrFindEntryForAddress(ptr ptr)
 @ varargs DbgPrint(str)

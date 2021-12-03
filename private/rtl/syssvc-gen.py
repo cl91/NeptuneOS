@@ -213,12 +213,12 @@ CLIENT_SVC_GEN_H_TEMPLATE = """#pragma once
 
 CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBufferStart,
                                 IN MWORD Arg,
-                                IN ULONG NumApc)
+                                IN SHORT NumApc)
 {
-    assert(NumApc != 0);
+    assert(NumApc > 0);
     APC_OBJECT Apc[MAX_APC_COUNT_PER_DELIVERY];
     memcpy(Apc, KiServiceGetArgument(IpcBufferStart, Arg), NumApc * sizeof(APC_OBJECT));
-    for (ULONG i = 0; i < NumApc; i++) {
+    for (SHORT i = 0; i < NumApc; i++) {
         assert(Apc[i].ApcRoutine != NULL);
         if (Apc[i].ApcRoutine != NULL) {
             DbgTrace("Delivering APC Routine %p Arguments %p %p %p\\n", Apc->ApcRoutine,
@@ -270,7 +270,7 @@ CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBuffe
     NTSTATUS Status = seL4_GetMR(0);
     if (NT_SUCCESS(Status)) {
         assert(seL4_MessageInfo_get_length(Reply) == (1 + {{svc.out_params|length}}));
-        ULONG NumApc = seL4_MessageInfo_get_label(Reply);
+        SHORT NumApc = (SHORT)seL4_MessageInfo_get_label(Reply);
         SERVICE_ARGUMENT Arg = { .Word = 0 };
 {%- for param in svc.out_params %}
         if ({{param.name}} != NULL) {
@@ -283,9 +283,16 @@ CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBuffe
 {%- endif %}
         }
         if (NumApc != 0) {
+            BOOLEAN MoreToCome = NumApc < 0;
+            if (NumApc < 0) {
+                NumApc = -NumApc;
+            }
             Arg.BufferStart += Arg.BufferSize;
             Arg.BufferSize = NumApc * sizeof(APC_OBJECT);
             KiDeliverApc((ULONG_PTR)(__sel4_ipc_buffer), Arg.Word, NumApc);
+            if (MoreToCome) {
+                NtTestAlert();
+            }
         }
 {%- endfor %}
     }

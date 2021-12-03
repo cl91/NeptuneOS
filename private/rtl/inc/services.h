@@ -207,6 +207,17 @@ typedef struct _APC_OBJECT {
 
 #define MAX_APC_COUNT_PER_DELIVERY	16
 
+/*
+ * We use a SHORT to indicate the number of APCs being delivered.
+ * Therefore the number of APCs per delivery is limited.
+ * In practice, since on the client side the APC object is being
+ * passed on the stack the maximum number of APCs per delivery
+ * should not be larger than 32, otherwise stack overflow might occur.
+ */
+#if MAX_APC_COUNT_PER_DELIVERY >= 32767
+#error "Too many ACPs per delivery"
+#endif
+
 #include <syssvc_gen.h>
 
 compile_assert(TOO_MANY_SYSTEM_SERVICES, NUMBER_OF_SYSTEM_SERVICES < 0x1000UL);

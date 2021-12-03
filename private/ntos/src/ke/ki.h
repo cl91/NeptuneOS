@@ -24,7 +24,7 @@ static inline VOID KiInitializeIrqHandler(IN PIRQ_HANDLER Self,
 
 /* async.c */
 VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
-ULONG KiDeliverApc(IN PTHREAD Thread,
+SHORT KiDeliverApc(IN PTHREAD Thread,
 		   IN ULONG MsgBufferEnd);
 
 /* bugcheck.c */

@@ -184,7 +184,7 @@ VOID KiDispatchExecutiveServices()
 	    /* Reject the system service call since the service message is invalid. */
 	    ULONG ReplyMsgLength = 1;
 	    ULONG MsgBufferEnd = 0;
-	    ULONG NumApc = 0;
+	    SHORT NumApc = 0;
 	    if ((NumUnwrappedCaps != 0) || (NumExtraCaps != 0)) {
 		DbgTrace("Invalid system service message (%d unwrapped caps, %d extra caps)\n",
 			 NumUnwrappedCaps, NumExtraCaps);
@@ -210,7 +210,7 @@ VOID KiDispatchExecutiveServices()
 	    }
 	    if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
 		seL4_SetMR(0, (MWORD) Status);
-		seL4_Reply(seL4_MessageInfo_new(0, 0, 0, ReplyMsgLength + NumApc));
+		seL4_Reply(seL4_MessageInfo_new((USHORT)NumApc, 0, 0, ReplyMsgLength));
 	    }
 	}
 	/* Check the expired timer list and wake up any thread that is waiting on them */
@@ -220,7 +220,7 @@ VOID KiDispatchExecutiveServices()
 	LoopOverList(ReadyThread, &KiReadyThreadList, THREAD, ReadyListLink) {
 	    ULONG ReplyMsgLength = 0;
 	    ULONG MsgBufferEnd = 0;
-	    ULONG NumApc = 0;
+	    SHORT NumApc = 0;
 	    if (ReadyThread->HalSvc) {
 		Status = KiResumeHalService(ReadyThread, &ReplyMsgLength, &MsgBufferEnd);
 	    } else {
@@ -241,7 +241,7 @@ VOID KiDispatchExecutiveServices()
 		 * the number of APCs via the label of the message */
 		seL4_SetMR(0, (MWORD) Status);
 		seL4_Send(ReadyThread->ReplyEndpoint.TreeNode.Cap,
-			  seL4_MessageInfo_new(NumApc, 0, 0, ReplyMsgLength));
+			  seL4_MessageInfo_new((USHORT)NumApc, 0, 0, ReplyMsgLength));
 	    }
 	}
     }

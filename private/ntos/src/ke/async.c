@@ -303,11 +303,16 @@ static inline BOOLEAN KiShouldWakeThread(IN PTHREAD Thread)
 /*
  * Iterate over the queued APC list of the thread and deliver the APC
  * object via the thread's service message buffer.
+ *
+ * If the thread APC list is not empty after MAX_APC_COUNT_PER_DELIVERY
+ * of APCs is delivered (meaning the thread has more than MAX_APC_COUNT
+ * _PER_DELIVERY APCs queued at the beginning of this function), then
+ * -MAX_APC_COUNT_PER_DELIVERY is returned.
  */
-ULONG KiDeliverApc(IN PTHREAD Thread,
+SHORT KiDeliverApc(IN PTHREAD Thread,
 		   IN ULONG MsgBufferEnd)
 {
-    ULONG NumApc = 0;
+    SHORT NumApc = 0;
     PAPC_OBJECT DestApc = &SVC_MSGBUF_OFFSET_TO_ARG(Thread->IpcBufferServerAddr,
 						    MsgBufferEnd, APC_OBJECT);
     LoopOverList(Apc, &Thread->ApcList, KAPC, ThreadApcListEntry) {
@@ -319,7 +324,7 @@ ULONG KiDeliverApc(IN PTHREAD Thread,
 	    break;
 	}
     }
-    return NumApc;
+    return IsListEmpty(&Thread->ApcList) ? NumApc : -NumApc;
 }
 
 /*
