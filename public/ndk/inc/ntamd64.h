@@ -1,5 +1,8 @@
 #pragma once
 
+#define PAGE_SIZE			0x1000
+#define PROCESSOR_ARCHITECTURE_INTEL	0
+
 typedef XSAVE_FORMAT XMM_SAVE_AREA32, *PXMM_SAVE_AREA32;
 
 typedef struct DECLSPEC_ALIGN(16) _CONTEXT {

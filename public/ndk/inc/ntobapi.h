@@ -38,6 +38,13 @@
 #define OBJ_HANDLE_TAGBITS                      0x3
 
 /*
+ * In the NTOS Executive this is defined as the ASCII '\\'
+ */
+#ifndef _NTOSKRNL_
+#define OBJ_NAME_PATH_SEPARATOR                 L'\\'
+#endif
+
+/*
  * Directory Object Access Rights
  */
 #define DIRECTORY_QUERY                         0x0001
@@ -47,12 +54,30 @@
 #define DIRECTORY_ALL_ACCESS                    (STANDARD_RIGHTS_REQUIRED | 0xF)
 
 /*
+ * Object Information Types for NtQueryInformationObject
+ */
+typedef struct _OBJECT_NAME_INFORMATION {
+    UNICODE_STRING Name;
+} OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
+
+typedef struct _OBJECT_HANDLE_ATTRIBUTE_INFORMATION {
+    BOOLEAN Inherit;
+    BOOLEAN ProtectFromClose;
+} OBJECT_HANDLE_ATTRIBUTE_INFORMATION, *POBJECT_HANDLE_ATTRIBUTE_INFORMATION;
+
+typedef struct _OBJECT_DIRECTORY_INFORMATION {
+    UNICODE_STRING Name;
+    UNICODE_STRING TypeName;
+} OBJECT_DIRECTORY_INFORMATION, *POBJECT_DIRECTORY_INFORMATION;
+
+/*
  * Native Calls. These are only available for client threads.
  * The NTOS root task has different function signatures for these.
  */
 #ifndef _NTOSKRNL_
 
 NTAPI NTSYSAPI NTSTATUS NtClose(IN HANDLE Handle);
+#define ZwClose NtClose
 
 NTAPI NTSYSAPI NTSTATUS NtWaitForSingleObject(IN HANDLE WaitObject,
 					      IN BOOLEAN Alertable,

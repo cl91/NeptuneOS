@@ -11,7 +11,6 @@ typedef seL4_Word MWORD;
 #define MWORD_BITS			(MWORD_BYTES * 8)
 
 #define PAGE_LOG2SIZE			(seL4_PageBits)
-#define PAGE_SIZE			(1ULL << PAGE_LOG2SIZE)
 #define PAGE_ALIGN(p)			((MWORD)(p) & ~(PAGE_SIZE - 1))
 #define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
 #define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
@@ -29,6 +28,7 @@ typedef seL4_Word MWORD;
 /* End of the address space where we can map user images */
 #define USER_IMAGE_REGION_START		(0x00400000ULL)
 #define USER_IMAGE_REGION_END		(0xb0000000ULL)
+#define KUSER_SHARED_DATA_CLIENT_ADDR	(USER_SHARED_DATA)
 #define WIN32_TEB_START			(USER_IMAGE_REGION_END)
 #define WIN32_TEB_END			(0xbffdf000ULL)
 #define WIN32_PEB_START			(WIN32_TEB_END)
@@ -39,8 +39,7 @@ typedef seL4_Word MWORD;
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
 #define IPC_BUFFER_START		(0xd0000000ULL)
 #define IPC_BUFFER_END			(0xdfff0000ULL)
-#define KUSER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
-#define LOADER_SHARED_DATA_CLIENT_ADDR	(KUSER_SHARED_DATA_CLIENT_ADDR + PAGE_ALIGN_UP(sizeof(KUSER_SHARED_DATA)))
+#define LOADER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
 #define USER_ADDRESS_END		(0xe0000000ULL)
 #define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 

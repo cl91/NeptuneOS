@@ -683,7 +683,6 @@ extern "C" {
   _When_(_MaxCount <= _String_length_(_Src),
          _Post_satisfies_(return == _MaxCount))
   _CRTIMP
-  _CRT_INSECURE_DEPRECATE(wcsnlen_s)
   size_t
   __cdecl
   wcsnlen(
@@ -961,13 +960,6 @@ extern "C" {
     _Out_writes_z_(SizeInWords) wchar_t *Dest,
     _In_ size_t SizeInWords,
     _In_z_ const wchar_t *_Source);
-
-  _CRTIMP
-  errno_t
-  __cdecl
-  wcsnlen_s(
-    wchar_t **_Src,
-    size_t _MaxCount);
 
   _Check_return_wat_
   _CRTIMP

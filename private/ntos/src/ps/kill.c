@@ -31,5 +31,21 @@ NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
                             IN HANDLE ProcessHandle,
                             IN NTSTATUS ExitStatus)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
+                        IN PTHREAD Thread,
+                        IN HANDLE ThreadHandle,
+                        OUT OPTIONAL ULONG *SuspendCount)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,
+                          IN PTHREAD Thread,
+                          IN BOOLEAN Alertable,
+                          IN PLARGE_INTEGER Interval)
+{
+    UNIMPLEMENTED;
 }

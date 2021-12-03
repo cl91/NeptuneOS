@@ -5,7 +5,7 @@
 
 #pragma once
 
-#define UNICODE
+#define UNICODE 1
 #include <ntdef.h>
 #include <ntstatus.h>
 #include <intrin.h>
@@ -15,6 +15,8 @@
 #include <ntmmapi.h>
 #include <ntpsapi.h>
 #include <ntimage.h>
-#include <ntexapi.h>
 #include <ntioapi.h>
 #include <ntobapi.h>
+#include <ntcmapi.h>
+#include <ntpoapi.h>
+#include <ntexapi.h>

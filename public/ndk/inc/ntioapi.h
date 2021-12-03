@@ -106,6 +106,32 @@
 #define FILE_READ_ACCESS                  0x00000001
 #define FILE_WRITE_ACCESS                 0x00000002
 
+#define FILE_ALL_ACCESS				\
+    (STANDARD_RIGHTS_REQUIRED |			\
+     SYNCHRONIZE |				\
+     0x1FF)
+
+#define FILE_GENERIC_EXECUTE			\
+    (STANDARD_RIGHTS_EXECUTE |			\
+     FILE_READ_ATTRIBUTES |			\
+     FILE_EXECUTE |				\
+     SYNCHRONIZE)
+
+#define FILE_GENERIC_READ			\
+    (STANDARD_RIGHTS_READ |			\
+     FILE_READ_DATA |				\
+     FILE_READ_ATTRIBUTES |			\
+     FILE_READ_EA |				\
+     SYNCHRONIZE)
+
+#define FILE_GENERIC_WRITE			\
+    (STANDARD_RIGHTS_WRITE |			\
+     FILE_WRITE_DATA |				\
+     FILE_WRITE_ATTRIBUTES |			\
+     FILE_WRITE_EA |				\
+     FILE_APPEND_DATA |				\
+     SYNCHRONIZE)
+
 /*
  * DEVICE_OBJECT.DeviceType
  */
@@ -327,6 +353,30 @@ typedef ULONG DEVICE_TYPE;
 #define FO_SKIP_SET_FAST_IO          0x08000000
 #define FO_FLAGS_VALID_ONLY_DURING_CREATE FO_DISALLOW_EXCLUSIVE
 
+/*
+ * Hardware Interface Type
+ */
+typedef enum _INTERFACE_TYPE {
+    InterfaceTypeUndefined = -1,
+    Internal,
+    Isa,
+    Eisa,
+    MicroChannel,
+    TurboChannel,
+    PCIBus,
+    VMEBus,
+    NuBus,
+    PCMCIABus,
+    CBus,
+    MPIBus,
+    MPSABus,
+    ProcessorInternal,
+    InternalPowerBus,
+    PNPISABus,
+    PNPBus,
+    MaximumInterfaceType
+} INTERFACE_TYPE, *PINTERFACE_TYPE;
+
 typedef enum _IO_NOTIFICATION_EVENT_CATEGORY {
     EventCategoryReserved,
     EventCategoryHardwareProfileChange,
@@ -407,9 +457,16 @@ typedef enum _DIRECTORY_NOTIFY_INFORMATION_CLASS {
     DirectoryNotifyExtendedInformation
 } DIRECTORY_NOTIFY_INFORMATION_CLASS, *PDIRECTORY_NOTIFY_INFORMATION_CLASS;
 
-typedef struct _FILE_POSITION_INFORMATION {
-    LARGE_INTEGER CurrentByteOffset;
-} FILE_POSITION_INFORMATION, *PFILE_POSITION_INFORMATION;
+/*
+ * I/O Status Block
+ */
+typedef struct _IO_STATUS_BLOCK {
+    union {
+	NTSTATUS Status;
+	PVOID Pointer;
+    };
+    ULONG_PTR Information;
+} IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
 typedef struct _FILE_BASIC_INFORMATION {
     LARGE_INTEGER CreationTime;
@@ -419,13 +476,309 @@ typedef struct _FILE_BASIC_INFORMATION {
     ULONG FileAttributes;
 } FILE_BASIC_INFORMATION, *PFILE_BASIC_INFORMATION;
 
-typedef struct _FILE_IO_PRIORITY_HINT_INFORMATION {
-    IO_PRIORITY_HINT PriorityHint;
-} FILE_IO_PRIORITY_HINT_INFORMATION, *PFILE_IO_PRIORITY_HINT_INFORMATION;
+typedef struct _FILE_STANDARD_INFORMATION {
+    LARGE_INTEGER AllocationSize;
+    LARGE_INTEGER EndOfFile;
+    ULONG NumberOfLinks;
+    BOOLEAN DeletePending;
+    BOOLEAN Directory;
+} FILE_STANDARD_INFORMATION, *PFILE_STANDARD_INFORMATION;
+
+typedef struct _FILE_STREAM_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG StreamNameLength;
+    LARGE_INTEGER StreamSize;
+    LARGE_INTEGER StreamAllocationSize;
+    WCHAR StreamName[1];
+} FILE_STREAM_INFORMATION, *PFILE_STREAM_INFORMATION;
+
+typedef struct _FILE_NETWORK_OPEN_INFORMATION {
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER AllocationSize;
+    LARGE_INTEGER EndOfFile;
+    ULONG FileAttributes;
+} FILE_NETWORK_OPEN_INFORMATION, *PFILE_NETWORK_OPEN_INFORMATION;
+
+typedef struct _FILE_EA_INFORMATION {
+    ULONG EaSize;
+} FILE_EA_INFORMATION, *PFILE_EA_INFORMATION;
+
+typedef struct _FILE_ACCESS_INFORMATION {
+    ACCESS_MASK AccessFlags;
+} FILE_ACCESS_INFORMATION, *PFILE_ACCESS_INFORMATION;
+
+typedef struct _FILE_COMPRESSION_INFORMATION {
+    LARGE_INTEGER CompressedFileSize;
+    USHORT CompressionFormat;
+    UCHAR CompressionUnitShift;
+    UCHAR ChunkShift;
+    UCHAR ClusterShift;
+    UCHAR Reserved[3];
+} FILE_COMPRESSION_INFORMATION, *PFILE_COMPRESSION_INFORMATION;
+
+typedef struct _FILE_POSITION_INFORMATION {
+  LARGE_INTEGER CurrentByteOffset;
+} FILE_POSITION_INFORMATION, *PFILE_POSITION_INFORMATION;
+
+typedef struct _FILE_DISPOSITION_INFORMATION {
+    BOOLEAN DeleteFile;
+} FILE_DISPOSITION_INFORMATION, *PFILE_DISPOSITION_INFORMATION;
+
+typedef struct _FILE_FULL_EA_INFORMATION {
+    ULONG NextEntryOffset;
+    UCHAR Flags;
+    UCHAR EaNameLength;
+    USHORT EaValueLength;
+    CHAR EaName[1];
+} FILE_FULL_EA_INFORMATION, *PFILE_FULL_EA_INFORMATION;
+
+typedef struct _FILE_QUOTA_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG SidLength;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER QuotaUsed;
+    LARGE_INTEGER QuotaThreshold;
+    LARGE_INTEGER QuotaLimit;
+// TODO:    SID Sid;
+} FILE_QUOTA_INFORMATION, *PFILE_QUOTA_INFORMATION;
+
+typedef struct _FILE_INTERNAL_INFORMATION {
+    LARGE_INTEGER IndexNumber;
+} FILE_INTERNAL_INFORMATION, *PFILE_INTERNAL_INFORMATION;
+
+typedef struct _FILE_RENAME_INFORMATION {
+    BOOLEAN ReplaceIfExists;
+    HANDLE  RootDirectory;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
+
+typedef struct _FILE_PIPE_INFORMATION {
+    ULONG ReadMode;
+    ULONG CompletionMode;
+} FILE_PIPE_INFORMATION, *PFILE_PIPE_INFORMATION;
+
+typedef struct _FILE_PIPE_LOCAL_INFORMATION {
+    ULONG NamedPipeType;
+    ULONG NamedPipeConfiguration;
+    ULONG MaximumInstances;
+    ULONG CurrentInstances;
+    ULONG InboundQuota;
+    ULONG ReadDataAvailable;
+    ULONG OutboundQuota;
+    ULONG WriteQuotaAvailable;
+    ULONG NamedPipeState;
+    ULONG NamedPipeEnd;
+} FILE_PIPE_LOCAL_INFORMATION, *PFILE_PIPE_LOCAL_INFORMATION;
+
+typedef struct _FILE_PIPE_REMOTE_INFORMATION {
+    LARGE_INTEGER CollectDataTime;
+    ULONG MaximumCollectionCount;
+} FILE_PIPE_REMOTE_INFORMATION, *PFILE_PIPE_REMOTE_INFORMATION;
+
+typedef struct _FILE_MAILSLOT_QUERY_INFORMATION {
+    ULONG MaximumMessageSize;
+    ULONG MailslotQuota;
+    ULONG NextMessageSize;
+    ULONG MessagesAvailable;
+    LARGE_INTEGER ReadTimeout;
+} FILE_MAILSLOT_QUERY_INFORMATION, *PFILE_MAILSLOT_QUERY_INFORMATION;
+
+typedef struct _FILE_MAILSLOT_SET_INFORMATION {
+    PLARGE_INTEGER ReadTimeout;
+} FILE_MAILSLOT_SET_INFORMATION, *PFILE_MAILSLOT_SET_INFORMATION;
+
+typedef struct _FILE_FULL_DIR_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    ULONG EaSize;
+    WCHAR FileName[1];
+} FILE_FULL_DIR_INFORMATION, *PFILE_FULL_DIR_INFORMATION;
+
+typedef struct _FILE_BOTH_DIR_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    ULONG EaSize;
+    CCHAR ShortNameLength;
+    WCHAR ShortName[12];
+    WCHAR FileName[1];
+} FILE_BOTH_DIR_INFORMATION, *PFILE_BOTH_DIR_INFORMATION;
+
+typedef struct _FILE_COMPLETION_INFORMATION {
+    HANDLE Port;
+    PVOID Key;
+} FILE_COMPLETION_INFORMATION, *PFILE_COMPLETION_INFORMATION;
 
 typedef struct _FILE_IO_COMPLETION_NOTIFICATION_INFORMATION {
     ULONG Flags;
 } FILE_IO_COMPLETION_NOTIFICATION_INFORMATION, *PFILE_IO_COMPLETION_NOTIFICATION_INFORMATION;
+
+typedef struct _FILE_LINK_INFORMATION {
+    BOOLEAN ReplaceIfExists;
+    HANDLE RootDirectory;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
+
+typedef struct _FILE_NAME_INFORMATION {
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_NAME_INFORMATION, *PFILE_NAME_INFORMATION;
+
+typedef struct _FILE_ALLOCATION_INFORMATION {
+    LARGE_INTEGER AllocationSize;
+} FILE_ALLOCATION_INFORMATION, *PFILE_ALLOCATION_INFORMATION;
+
+typedef struct _FILE_END_OF_FILE_INFORMATION {
+    LARGE_INTEGER EndOfFile;
+} FILE_END_OF_FILE_INFORMATION, *PFILE_END_OF_FILE_INFORMATION;
+
+typedef struct _FILE_VALID_DATA_LENGTH_INFORMATION {
+    LARGE_INTEGER ValidDataLength;
+} FILE_VALID_DATA_LENGTH_INFORMATION, *PFILE_VALID_DATA_LENGTH_INFORMATION;
+
+typedef struct _FILE_DIRECTORY_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_DIRECTORY_INFORMATION, *PFILE_DIRECTORY_INFORMATION;
+
+typedef struct _FILE_IO_COMPLETION_INFORMATION {
+    PVOID KeyContext;
+    PVOID ApcContext;
+    IO_STATUS_BLOCK IoStatusBlock;
+} FILE_IO_COMPLETION_INFORMATION, *PFILE_IO_COMPLETION_INFORMATION;
+
+typedef struct _FILE_ATTRIBUTE_TAG_INFORMATION {
+    ULONG FileAttributes;
+    ULONG ReparseTag;
+} FILE_ATTRIBUTE_TAG_INFORMATION, *PFILE_ATTRIBUTE_TAG_INFORMATION;
+
+typedef struct _FILE_TRACKING_INFORMATION {
+    HANDLE DestinationFile;
+    ULONG ObjectInformationLength;
+    CHAR ObjectInformation[1];
+} FILE_TRACKING_INFORMATION, *PFILE_TRACKING_INFORMATION;
+
+//
+// File System Information structures for NtQueryInformationFile
+//
+typedef struct _FILE_FS_DEVICE_INFORMATION {
+    DEVICE_TYPE DeviceType;
+    ULONG Characteristics;
+} FILE_FS_DEVICE_INFORMATION, *PFILE_FS_DEVICE_INFORMATION;
+
+typedef struct _FILE_FS_ATTRIBUTE_INFORMATION {
+    ULONG FileSystemAttributes;
+    ULONG MaximumComponentNameLength;
+    ULONG FileSystemNameLength;
+    WCHAR FileSystemName[1];
+} FILE_FS_ATTRIBUTE_INFORMATION, *PFILE_FS_ATTRIBUTE_INFORMATION;
+
+typedef struct _FILE_FS_SIZE_INFORMATION {
+    LARGE_INTEGER TotalAllocationUnits;
+    LARGE_INTEGER AvailableAllocationUnits;
+    ULONG SectorsPerAllocationUnit;
+    ULONG BytesPerSector;
+} FILE_FS_SIZE_INFORMATION, *PFILE_FS_SIZE_INFORMATION;
+
+typedef struct _FILE_FS_FULL_SIZE_INFORMATION {
+    LARGE_INTEGER   TotalAllocationUnits;
+    LARGE_INTEGER   CallerAvailableAllocationUnits;
+    LARGE_INTEGER   ActualAvailableAllocationUnits;
+    ULONG           SectorsPerAllocationUnit;
+    ULONG           BytesPerSector;
+} FILE_FS_FULL_SIZE_INFORMATION, *PFILE_FS_FULL_SIZE_INFORMATION;
+
+typedef struct _FILE_FS_LABEL_INFORMATION {
+    ULONG VolumeLabelLength;
+    WCHAR VolumeLabel[1];
+} FILE_FS_LABEL_INFORMATION, *PFILE_FS_LABEL_INFORMATION;
+
+typedef struct _FILE_FS_VOLUME_INFORMATION {
+    LARGE_INTEGER VolumeCreationTime;
+    ULONG VolumeSerialNumber;
+    ULONG VolumeLabelLength;
+    BOOLEAN SupportsObjects;
+    WCHAR VolumeLabel[1];
+} FILE_FS_VOLUME_INFORMATION, *PFILE_FS_VOLUME_INFORMATION;
+
+//
+// Pipe Structures for IOCTL_PIPE_XXX
+//
+typedef struct _FILE_PIPE_WAIT_FOR_BUFFER {
+    LARGE_INTEGER Timeout;
+    ULONG NameLength;
+    BOOLEAN TimeoutSpecified;
+    WCHAR Name[1];
+} FILE_PIPE_WAIT_FOR_BUFFER, *PFILE_PIPE_WAIT_FOR_BUFFER;
+
+typedef struct _FILE_PIPE_PEEK_BUFFER {
+    ULONG NamedPipeState;
+    ULONG ReadDataAvailable;
+    ULONG NumberOfMessages;
+    ULONG MessageLength;
+    CHAR Data[1];
+} FILE_PIPE_PEEK_BUFFER, *PFILE_PIPE_PEEK_BUFFER;
+
+//
+// I/O Error Log Structures
+//
+typedef struct _IO_ERROR_LOG_PACKET {
+    UCHAR MajorFunctionCode;
+    UCHAR RetryCount;
+    USHORT DumpDataSize;
+    USHORT NumberOfStrings;
+    USHORT StringOffset;
+    USHORT EventCategory;
+    NTSTATUS ErrorCode;
+    ULONG UniqueErrorValue;
+    NTSTATUS FinalStatus;
+    ULONG SequenceNumber;
+    ULONG IoControlCode;
+    LARGE_INTEGER DeviceOffset;
+    ULONG DumpData[1];
+} IO_ERROR_LOG_PACKET, *PIO_ERROR_LOG_PACKET;
+
+typedef struct _IO_ERROR_LOG_MESSAGE {
+    USHORT Type;
+    USHORT Size;
+    USHORT DriverNameLength;
+    LARGE_INTEGER TimeStamp;
+    ULONG DriverNameOffset;
+    IO_ERROR_LOG_PACKET EntryData;
+} IO_ERROR_LOG_MESSAGE, *PIO_ERROR_LOG_MESSAGE;
+
+typedef struct _FILE_IO_PRIORITY_HINT_INFORMATION {
+    IO_PRIORITY_HINT PriorityHint;
+} FILE_IO_PRIORITY_HINT_INFORMATION, *PFILE_IO_PRIORITY_HINT_INFORMATION;
 
 typedef struct _FILE_IOSTATUSBLOCK_RANGE_INFORMATION {
     PUCHAR IoStatusBlockRange;
@@ -445,24 +798,6 @@ typedef struct _FILE_PROCESS_IDS_USING_FILE_INFORMATION {
     ULONG_PTR ProcessIdList[1];
 } FILE_PROCESS_IDS_USING_FILE_INFORMATION, *PFILE_PROCESS_IDS_USING_FILE_INFORMATION;
 
-typedef struct _FILE_STANDARD_INFORMATION {
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER EndOfFile;
-    ULONG NumberOfLinks;
-    BOOLEAN DeletePending;
-    BOOLEAN Directory;
-} FILE_STANDARD_INFORMATION, *PFILE_STANDARD_INFORMATION;
-
-typedef struct _FILE_NETWORK_OPEN_INFORMATION {
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER EndOfFile;
-    ULONG FileAttributes;
-} FILE_NETWORK_OPEN_INFORMATION, *PFILE_NETWORK_OPEN_INFORMATION;
-
 typedef enum _FSINFOCLASS {
     FileFsVolumeInformation = 1,
     FileFsLabelInformation,
@@ -476,14 +811,6 @@ typedef enum _FSINFOCLASS {
     FileFsVolumeFlagsInformation,
     FileFsMaximumInformation
 } FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
-
-typedef struct _IO_STATUS_BLOCK {
-    union {
-	NTSTATUS Status;
-	PVOID Pointer;
-    };
-    ULONG_PTR Information;
-} IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
 typedef VOID (NTAPI *PIO_APC_ROUTINE)(IN PVOID ApcContext,
 				      IN PIO_STATUS_BLOCK IoStatusBlock,
@@ -515,6 +842,29 @@ NTAPI NTSYSAPI NTSTATUS NtCreateFile(OUT PHANDLE FileHandle,
 				     IN ULONG CreateOptions,
 				     IN PVOID EaBuffer,
 				     IN ULONG EaLength);
+#define ZwCreateFile NtCreateFile
+
+NTAPI NTSYSAPI NTSTATUS NtReadFile(IN HANDLE FileHandle,
+				   IN OPTIONAL HANDLE Event,
+				   IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+				   IN OPTIONAL PVOID ApcContext,
+				   OUT PIO_STATUS_BLOCK IoStatusBlock,
+				   OUT PVOID Buffer,
+				   IN ULONG Length,
+				   IN OPTIONAL PLARGE_INTEGER ByteOffset,
+				   IN OPTIONAL PULONG Key);
+
+NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
+				    IN OPTIONAL HANDLE Event,
+				    IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+				    IN OPTIONAL PVOID ApcContext,
+				    OUT PIO_STATUS_BLOCK IoStatusBlock,
+				    IN PVOID Buffer,
+				    IN ULONG Length,
+				    IN OPTIONAL PLARGE_INTEGER ByteOffset,
+				    IN OPTIONAL PULONG Key);
+
+NTAPI NTSYSAPI NTSTATUS NtDeleteFile(IN POBJECT_ATTRIBUTES ObjectAttributes);
 
 NTAPI NTSYSAPI NTSTATUS NtDeviceIoControlFile(IN HANDLE FileHandle,
 					      IN OPTIONAL HANDLE Event,
@@ -526,5 +876,39 @@ NTAPI NTSYSAPI NTSTATUS NtDeviceIoControlFile(IN HANDLE FileHandle,
 					      IN ULONG InputBufferLength,
 					      OUT PVOID OutputBuffer,
 					      IN ULONG OutputBufferLength);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryAttributesFile(IN POBJECT_ATTRIBUTES ObjectAttributes,
+					      OUT PFILE_BASIC_INFORMATION FileInformation);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryVolumeInformationFile(IN HANDLE FileHandle,
+						     OUT PIO_STATUS_BLOCK IoStatusBlock,
+						     OUT PVOID FsInformation,
+						     IN ULONG Length,
+						     IN FS_INFORMATION_CLASS FsInformationClass);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryDirectoryFile(IN HANDLE FileHandle,
+					     IN OPTIONAL HANDLE Event,
+					     IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+					     IN OPTIONAL PVOID ApcContext,
+					     OUT PIO_STATUS_BLOCK IoStatusBlock,
+					     OUT PVOID FileInformation,
+					     IN ULONG Length,
+					     IN FILE_INFORMATION_CLASS FileInformationClass,
+					     IN BOOLEAN ReturnSingleEntry,
+					     IN OPTIONAL PUNICODE_STRING FileName,
+					     IN BOOLEAN RestartScan);
+#define ZwQueryDirectoryFile NtQueryDirectoryFile
+
+NTAPI NTSYSAPI NTSTATUS NtQueryInformationFile(IN HANDLE FileHandle,
+					       OUT PIO_STATUS_BLOCK IoStatusBlock,
+					       OUT PVOID FileInformation,
+					       IN ULONG Length,
+					       IN FILE_INFORMATION_CLASS FileInformationClass);
+
+NTAPI NTSYSAPI NTSTATUS NtSetInformationFile(IN HANDLE FileHandle,
+					     OUT PIO_STATUS_BLOCK IoStatusBlock,
+					     IN PVOID FileInformation,
+					     IN ULONG Length,
+					     IN FILE_INFORMATION_CLASS FileInformationClass);
 
 #endif

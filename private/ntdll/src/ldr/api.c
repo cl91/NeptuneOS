@@ -54,3 +54,21 @@ NTAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
     DbgTrace("LDR: data table entry for module %p not found\n", Address)
     return STATUS_NO_MORE_ENTRIES;
 }
+
+/*
+ * @implemented
+ */
+NTAPI VOID RtlAcquirePebLock(VOID)
+{
+   PPEB Peb = NtCurrentPeb ();
+   RtlEnterCriticalSection(Peb->FastPebLock);
+}
+
+/*
+ * @implemented
+ */
+NTAPI VOID RtlReleasePebLock(VOID)
+{
+   PPEB Peb = NtCurrentPeb ();
+   RtlLeaveCriticalSection(Peb->FastPebLock);
+}

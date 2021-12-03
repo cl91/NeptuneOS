@@ -10,3 +10,11 @@ NTSTATUS NtDisplayString(IN ASYNC_STATE State,
     HalDisplayString(String);
     return STATUS_SUCCESS;
 }
+
+NTSTATUS NtSetDefaultLocale(IN ASYNC_STATE AsyncState,
+                            IN PTHREAD Thread,
+                            IN BOOLEAN UserProfile,
+                            IN LCID DefaultLocaleId)
+{
+    UNIMPLEMENTED;
+}

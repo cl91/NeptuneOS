@@ -49,9 +49,12 @@ endif()
 find_package(rtl REQUIRED)
 rtl_import_project()
 
-file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/crt/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S)
+file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/crt/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/*/${Arch}/*.S ${CMAKE_CURRENT_LIST_DIR}/src/crt/*/${Arch}/*.S)
+
+file(GLOB NTDLLP_SRC ${CMAKE_CURRENT_LIST_DIR}/src/crt/math/${Arch}/*.S ${CMAKE_CURRENT_LIST_DIR}/src/crt/except/${Arch}/*.S)
 
 add_library(ntdll SHARED ${SRC})
+add_library(ntdllp STATIC ${NTDLLP_SRC})
 add_dependencies(ntdll rtl)
 target_link_libraries(ntdll PRIVATE rtl)
 
@@ -74,6 +77,7 @@ add_custom_target(
     COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/${GENINC_FILENAME}
     DEPENDS genincdata)
 add_dependencies(ntdll geninc)
+add_dependencies(ntdllp geninc)
 
 target_include_directories(
     ntdll
@@ -92,4 +96,10 @@ target_include_directories(
 	${LIBSEL4_PE_HEADERS_DIR}/generated/include
 	${LIBSEL4_PE_HEADERS_DIR}/generated/arch_include/${KernelArch}
 	${LIBSEL4_PE_HEADERS_DIR}/generated/sel4_arch_include/${KernelSel4Arch}
+)
+target_include_directories(
+    ntdllp
+    PRIVATE
+	${CMAKE_CURRENT_BINARY_DIR}
+	${CMAKE_CURRENT_LIST_DIR}/inc
 )

@@ -4,6 +4,9 @@
 
 #include <ldrtypes.h>
 
+/* This is the same address for both the i386 and amd64 */
+#define USER_SHARED_DATA                        0x7FFE0000
+
 /*
  * Global Flags
  */
@@ -150,16 +153,16 @@ typedef enum _THREADINFOCLASS {
 } THREADINFOCLASS, THREAD_INFORMATION_CLASS;
 
 typedef struct _GDI_TEB_BATCH {
-    ULONG  Offset;
+    ULONG Offset;
     HANDLE HDC;
-    ULONG  Buffer[0x136];
+    ULONG Buffer[0x136];
 } GDI_TEB_BATCH;
 
 typedef struct _ACTIVATION_CONTEXT_STACK {
-    ULONG                               Flags;
-    ULONG                               NextCookieSequenceNumber;
+    ULONG Flags;
+    ULONG NextCookieSequenceNumber;
     RTL_ACTIVATION_CONTEXT_STACK_FRAME* ActiveFrame;
-    LIST_ENTRY                          FrameListCache;
+    LIST_ENTRY FrameListCache;
 } ACTIVATION_CONTEXT_STACK, * PACTIVATION_CONTEXT_STACK;
 
 /*
@@ -390,5 +393,8 @@ NTAPI NTSYSAPI NTSTATUS NtTerminateProcess(IN HANDLE ProcessHandle,
 
 NTAPI NTSYSAPI NTSTATUS NtTerminateThread(IN HANDLE ThreadHandle,
 					  IN NTSTATUS ExitStatus);
+
+NTAPI NTSYSAPI NTSTATUS NtResumeThread(IN HANDLE ThreadHandle,
+				       OUT OPTIONAL PULONG SuspendCount);
 
 #endif

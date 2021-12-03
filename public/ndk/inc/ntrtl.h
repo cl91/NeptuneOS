@@ -3,6 +3,13 @@
 #include <ntimage.h>
 #include <ntkeapi.h>
 
+#define MAX_PATH	260
+
+#define RTL_UNCHANGED_UNK_PATH  1
+#define RTL_CONVERTED_UNC_PATH  2
+#define RTL_CONVERTED_NT_PATH   3
+#define RTL_UNCHANGED_DOS_PATH  4
+
 #define RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK (0x00000001)
 
 typedef struct _CLIENT_ID {
@@ -10,10 +17,24 @@ typedef struct _CLIENT_ID {
     HANDLE UniqueThread;
 } CLIENT_ID, *PCLIENT_ID;
 
+/*
+ * Current Directory Structures
+ */
 typedef struct _CURDIR {
     UNICODE_STRING DosPath;
     PVOID Handle;
 } CURDIR, *PCURDIR;
+
+typedef struct _RTLP_CURDIR_REF {
+    LONG RefCount;
+    HANDLE Handle;
+} RTLP_CURDIR_REF, *PRTLP_CURDIR_REF;
+
+typedef struct _RTL_RELATIVE_NAME_U {
+    UNICODE_STRING RelativeName;
+    HANDLE ContainingDirectory;
+    PRTLP_CURDIR_REF CurDirRef;
+} RTL_RELATIVE_NAME_U, *PRTL_RELATIVE_NAME_U;
 
 typedef struct RTL_DRIVE_LETTER_CURDIR {
     USHORT Flags;
@@ -21,6 +42,26 @@ typedef struct RTL_DRIVE_LETTER_CURDIR {
     ULONG TimeStamp;
     UNICODE_STRING DosPath;
 } RTL_DRIVE_LETTER_CURDIR, *PRTL_DRIVE_LETTER_CURDIR;
+
+typedef struct _RTL_PERTHREAD_CURDIR {
+    PRTL_DRIVE_LETTER_CURDIR CurrentDirectories;
+    PUNICODE_STRING ImageName;
+    PVOID Environment;
+} RTL_PERTHREAD_CURDIR, *PRTL_PERTHREAD_CURDIR;
+
+/*
+ * RTL Path Types
+ */
+typedef enum _RTL_PATH_TYPE {
+    RtlPathTypeUnknown,
+    RtlPathTypeUncAbsolute,
+    RtlPathTypeDriveAbsolute,
+    RtlPathTypeDriveRelative,
+    RtlPathTypeRooted,
+    RtlPathTypeRelative,
+    RtlPathTypeLocalDevice,
+    RtlPathTypeRootLocalDevice,
+} RTL_PATH_TYPE;
 
 /*
  * Time Structure for RTL Time calls

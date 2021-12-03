@@ -1370,14 +1370,12 @@ _CRTIMP int __cdecl iswblank(wint_t _C);
   _CRTIMP int __cdecl __swprintf_l(wchar_t *_Dest,const wchar_t *_Format,_locale_t _Plocinfo,...);
   _CRTIMP int __cdecl __vswprintf_l(wchar_t *_Dest,const wchar_t *_Format,_locale_t _Plocinfo,va_list _Args);
 
-#if 0 //this is for MSVCRT80 and higher, which we don't use nor implement
 #ifdef _CRT_NON_CONFORMING_SWPRINTFS
 #ifndef __cplusplus
 #define swprintf _swprintf
 #define vswprintf _vswprintf
 #define _swprintf_l __swprintf_l
 #define _vswprintf_l __vswprintf_l
-#endif
 #endif
 #endif
 
@@ -2587,4 +2585,5 @@ __CRT_INLINE wchar_t *__cdecl _wctime(const time_t *_Time) { return _wctime64(_T
 
 #pragma pack(pop)
 
+#include <sec_api/wchar_s.h>
 #endif

@@ -22,6 +22,10 @@
 #endif
 #endif
 
+#ifndef _TRUNCATE
+#define _TRUNCATE ((size_t)-1)
+#endif
+
 #ifdef _USE_32BIT_TIME_T
 #ifdef _WIN64
 #error You cannot use 32-bit time_t (_USE_32BIT_TIME_T) with _WIN64
@@ -37,12 +41,24 @@
 #define _CRT_PACKING 8
 #pragma pack(push,_CRT_PACKING)
 
-/* Disable non-ANSI C definitions if compiling with __STDC__ */
-//HACK: Disabled
-//#if __STDC__
-//#define NO_OLDNAMES
-//#endif
+#ifndef __MINGW_EXTENSION
+#if defined(__GNUC__) || defined(__GNUG__)
+#define __MINGW_EXTENSION       __extension__
+#else
+#define __MINGW_EXTENSION
+#endif
+#endif
 
+#if defined (__GNUC__) && defined (__GNUC_MINOR__)
+#define __MINGW_GNUC_PREREQ(major, minor)			\
+    (__GNUC__ > (major)						\
+     || (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
+#else
+#define __MINGW_GNUC_PREREQ(major, minor)  0
+#endif
+
+#define MINGW_HAS_SECURE_API 1
+#define _INTEGRAL_MAX_BITS 64
 
 /** Properties ***************************************************************/
 

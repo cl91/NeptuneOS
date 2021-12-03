@@ -111,7 +111,102 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
                     IN ULONG ShareAccess,
                     IN ULONG OpenOptions)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtReadFile(IN ASYNC_STATE AsyncState,
+                    IN PTHREAD Thread,
+                    IN HANDLE FileHandle,
+                    IN HANDLE Event,
+                    IN PIO_APC_ROUTINE ApcRoutine,
+                    IN PVOID ApcContext,
+                    OUT IO_STATUS_BLOCK *IoStatusBlock,
+                    IN PVOID Buffer,
+                    IN ULONG BufferLength,
+                    IN OPTIONAL PLARGE_INTEGER ByteOffset,
+                    IN OPTIONAL PULONG Key)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtWriteFile(IN ASYNC_STATE AsyncState,
+                     IN PTHREAD Thread,
+                     IN HANDLE FileHandle,
+                     IN HANDLE Event,
+                     IN PIO_APC_ROUTINE ApcRoutine,
+                     IN PVOID ApcContext,
+                     OUT IO_STATUS_BLOCK *IoStatusBlock,
+                     IN PVOID Buffer,
+                     IN ULONG BufferLength,
+                     IN OPTIONAL PLARGE_INTEGER ByteOffset,
+                     IN OPTIONAL PULONG Key)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtDeleteFile(IN ASYNC_STATE AsyncState,
+                      IN PTHREAD Thread,
+                      IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtSetInformationFile(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN HANDLE FileHandle,
+                              OUT IO_STATUS_BLOCK *IoStatusBlock,
+                              IN PVOID FileInfoBuffer,
+                              IN ULONG BufferLength,
+                              IN FILE_INFORMATION_CLASS FileInformationClass)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE AsyncState,
+                               IN PTHREAD Thread,
+                               IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+                               OUT FILE_BASIC_INFORMATION *FileInformation)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE AsyncState,
+                                      IN PTHREAD Thread,
+                                      IN HANDLE FileHandle,
+                                      OUT IO_STATUS_BLOCK *IoStatusBlock,
+                                      IN PVOID FsInfoBuffer,
+                                      IN ULONG Length,
+                                      IN FS_INFORMATION_CLASS FsInformationClass)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtQueryInformationFile(IN ASYNC_STATE AsyncState,
+                                IN PTHREAD Thread,
+                                IN HANDLE FileHandle,
+                                OUT IO_STATUS_BLOCK *IoStatusBlock,
+                                IN PVOID FileInfoBuffer,
+                                IN ULONG Length,
+                                IN FILE_INFORMATION_CLASS FileInformationClass)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN HANDLE FileHandle,
+                              IN HANDLE Event,
+                              IN PIO_APC_ROUTINE ApcRoutine,
+                              IN PVOID ApcContext,
+                              OUT IO_STATUS_BLOCK *IoStatusBlock,
+                              IN PVOID FileInfoBuffer,
+                              IN ULONG BufferLength,
+                              IN FILE_INFORMATION_CLASS FileInformationClass,
+                              IN BOOLEAN ReturnSingleEntry,
+                              IN OPTIONAL PCSTR FileName,
+                              IN BOOLEAN RestartScan)
+{
+    UNIMPLEMENTED;
 }
 
 #ifdef CONFIG_DEBUG_BUILD

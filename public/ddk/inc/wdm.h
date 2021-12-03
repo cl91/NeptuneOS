@@ -364,31 +364,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 #define IoSizeOfIrp(StackSize)						\
     ((USHORT)(sizeof(IRP) + ((StackSize) * (sizeof(IO_STACK_LOCATION)))))
 
-typedef struct _IO_ERROR_LOG_PACKET {
-    UCHAR MajorFunctionCode;
-    UCHAR RetryCount;
-    USHORT DumpDataSize;
-    USHORT NumberOfStrings;
-    USHORT StringOffset;
-    USHORT EventCategory;
-    NTSTATUS ErrorCode;
-    ULONG UniqueErrorValue;
-    NTSTATUS FinalStatus;
-    ULONG SequenceNumber;
-    ULONG IoControlCode;
-    LARGE_INTEGER DeviceOffset;
-    ULONG DumpData[1];
-} IO_ERROR_LOG_PACKET, *PIO_ERROR_LOG_PACKET;
-
-typedef struct _IO_ERROR_LOG_MESSAGE {
-    USHORT Type;
-    USHORT Size;
-    USHORT DriverNameLength;
-    LARGE_INTEGER TimeStamp;
-    ULONG DriverNameOffset;
-    IO_ERROR_LOG_PACKET EntryData;
-} IO_ERROR_LOG_MESSAGE, *PIO_ERROR_LOG_MESSAGE;
-
 /*
  * Executive objects. These are simply handles to the server-side objects.
  */

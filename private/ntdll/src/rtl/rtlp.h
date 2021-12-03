@@ -2,6 +2,50 @@
 
 #include <ntdll.h>
 
+#define TAG_USTR        'RTSU'
+#define TAG_ASTR        'RTSA'
+#define TAG_OSTR        'RTSO'
+
+static inline PVOID RtlpAllocateMemory(UINT Bytes,
+				       ULONG Tag)
+{
+    UNREFERENCED_PARAMETER(Tag);
+    return RtlAllocateHeap(RtlGetProcessHeap(), 0, Bytes);
+}
+
+static inline VOID RtlpFreeMemory(PVOID Mem,
+				  ULONG Tag)
+{
+    UNREFERENCED_PARAMETER(Tag);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Mem);
+}
+
+#define RtlpAllocateStringMemory RtlpAllocateMemory
+#define RtlpFreeStringMemory RtlpFreeMemory
+
+static inline NTSTATUS RtlpSafeCopyMemory(OUT VOID UNALIGNED *Destination,
+					  OUT CONST VOID UNALIGNED *Source,
+					  IN SIZE_T Length)
+{
+    __try {
+        RtlCopyMemory((PVOID) Destination, (PCVOID) Source, Length);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return _SEH2_GetExceptionCode();
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static inline WCHAR *strchrW(const WCHAR *str, WCHAR ch)
+{
+    do {
+	if (*str == ch) {
+	    return (WCHAR *)(ULONG_PTR)str;
+	}
+    } while (*str++);
+    return NULL;
+}
+
 /*
  * Exception handling helper routines
  */
@@ -64,3 +108,4 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 
 /* nls.c */
 WCHAR RtlpUpcaseUnicodeChar(IN WCHAR Source);
+WCHAR RtlpDowncaseUnicodeChar(IN WCHAR Source);

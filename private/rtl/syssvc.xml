@@ -48,6 +48,11 @@
     <parameter annotation="in" type="NTSTATUS" name="ExitStatus" />
   </svc>
 
+  <svc name="NtResumeThread">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="out opt" type="ptr::ULONG" name="SuspendCount" />
+  </svc>
+
   <svc name="NtRaiseHardError">
     <parameter annotation="in" type="NTSTATUS" name="ErrorStatus" />
     <parameter annotation="in" type="ULONG" name="NumberOfParameters" />
@@ -220,6 +225,34 @@
     <parameter annotation="in" type="ULONG" name="OpenOptions" />
   </svc>
 
+  <svc name="NtReadFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="HANDLE" name="Event" />
+    <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="ApcContext" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="PVOID" name="Buffer" />
+    <parameter annotation="in" type="ULONG" name="BufferLength" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="ByteOffset" />
+    <parameter annotation="in opt" type="ptr::ULONG" name="Key" />
+  </svc>
+
+  <svc name="NtWriteFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="HANDLE" name="Event" />
+    <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="ApcContext" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="PVOID" name="Buffer" />
+    <parameter annotation="in" type="ULONG" name="BufferLength" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="ByteOffset" />
+    <parameter annotation="in opt" type="ptr::ULONG" name="Key" />
+  </svc>
+
+  <svc name="NtDeleteFile">
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
   <svc name="NtDeviceIoControlFile">
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
     <parameter annotation="in" type="HANDLE" name="Event" />
@@ -231,6 +264,49 @@
     <parameter annotation="in" type="ULONG" name="InputBufferLength" />
     <parameter annotation="in" type="PVOID" name="OutputBuffer" />
     <parameter annotation="in" type="ULONG" name="OutputBufferLength" />
+  </svc>
+
+  <svc name="NtSetInformationFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="PVOID" name="FileInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferLength" />
+    <parameter annotation="in" type="FILE_INFORMATION_CLASS" name="FileInformationClass" />
+  </svc>
+
+  <svc name="NtQueryAttributesFile">
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="out complex" type="ptr::FILE_BASIC_INFORMATION" name="FileInformation" />
+  </svc>
+
+  <svc name="NtQueryVolumeInformationFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="PVOID" name="FsInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="Length" />
+    <parameter annotation="in" type="FS_INFORMATION_CLASS" name="FsInformationClass" />
+  </svc>
+
+  <svc name="NtQueryInformationFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="PVOID" name="FileInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="Length" />
+    <parameter annotation="in" type="FILE_INFORMATION_CLASS" name="FileInformationClass" />
+  </svc>
+
+  <svc name="NtQueryDirectoryFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="HANDLE" name="Event" />
+    <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="ApcContext" />
+    <parameter annotation="out complex" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="PVOID" name="FileInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferLength" />
+    <parameter annotation="in" type="FILE_INFORMATION_CLASS" name="FileInformationClass" />
+    <parameter annotation="in" type="BOOLEAN" name="ReturnSingleEntry" />
+    <parameter annotation="in opt" type="UnicodeString" name="FileName" />
+    <parameter annotation="in" type="BOOLEAN" name="RestartScan" />
   </svc>
 
   <svc name="NtLoadDriver">
@@ -252,6 +328,73 @@
     <parameter annotation="in" type="BOOLEAN" name="ResumeTimer" />
     <parameter annotation="in" type="LONG" name="Period" />
     <parameter annotation="out opt" type="ptr::BOOLEAN" name="PreviousState" />
+  </svc>
+
+  <svc name="NtShutdownSystem">
+    <parameter annotation="in" type="SHUTDOWN_ACTION" name="Action" />
+  </svc>
+
+  <svc name="NtSetDefaultLocale">
+    <parameter annotation="in" type="BOOLEAN" name="UserProfile" />
+    <parameter annotation="in" type="LCID" name="DefaultLocaleId" />
+  </svc>
+
+  <svc name="NtDelayExecution">
+    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
+    <parameter annotation="in" type="ptr::LARGE_INTEGER" name="Interval" />
+  </svc>
+
+  <svc name="NtOpenKey">
+    <parameter annotation="out" type="ptr::HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
+  <svc name="NtPlugPlayControl">
+    <parameter annotation="in" type="PLUGPLAY_CONTROL_CLASS" name="PlugPlayControlClass" />
+    <parameter annotation="in" type="PVOID" name="Buffer" />
+    <parameter annotation="in" type="ULONG" name="BufferSize" />
+  </svc>
+
+  <svc name="NtQueryValueKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="UnicodeString" name="ValueName" />
+    <parameter annotation="in" type="KEY_VALUE_INFORMATION_CLASS" name="KeyValueInformationClass" />
+    <parameter annotation="in" type="PVOID" name="InformationBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferSize" />
+    <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
+  </svc>
+
+  <svc name="NtSetValueKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="UnicodeString" name="ValueName" />
+    <parameter annotation="in" type="ULONG" name="TitleIndex" />
+    <parameter annotation="in" type="ULONG" name="Type" />
+    <parameter annotation="in" type="PVOID" name="Data" />
+    <parameter annotation="in" type="ULONG" name="DataSize" />
+  </svc>
+
+  <svc name="NtDeleteValueKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="UnicodeString" name="ValueName" />
+  </svc>
+
+  <svc name="NtEnumerateKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="ULONG" name="Index" />
+    <parameter annotation="in" type="KEY_INFORMATION_CLASS" name="KeyInformationClass" />
+    <parameter annotation="in" type="PVOID" name="InformationBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferSize" />
+    <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
+  </svc>
+
+  <svc name="NtEnumerateValueKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="ULONG" name="Index" />
+    <parameter annotation="in" type="KEY_VALUE_INFORMATION_CLASS" name="KeyValueInformationClass" />
+    <parameter annotation="in" type="PVOID" name="InformationBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferSize" />
+    <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
   </svc>
 
 </services>

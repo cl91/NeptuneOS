@@ -76,7 +76,7 @@ NTAPI NTSTATUS RtlCustomCPToUnicodeN(IN PCPTABLEINFO CustomCP,
 /*
  * @implemented
  */
-NTAPI WCHAR RtlpDowncaseUnicodeChar(IN WCHAR Source)
+WCHAR RtlpDowncaseUnicodeChar(IN WCHAR Source)
 {
     USHORT Offset;
 
@@ -246,8 +246,7 @@ NTAPI NTSTATUS RtlMultiByteToUnicodeN(OUT PWCHAR UnicodeString,
 	    }
 
 	    if (MbString < MbEnd)
-		*UnicodeString++ =
-		    NlsLeadByteInfo[LeadByteInfo + *(PUCHAR) MbString++];
+		*UnicodeString++ = NlsLeadByteInfo[LeadByteInfo + *(PUCHAR) MbString++];
 	}
 
 	if (ResultSize)

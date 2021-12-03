@@ -21,7 +21,6 @@
     } while (0)
 
 #define ASSERT(x)	assert(x)
-#define C_ASSERT(x)	compile_assert(NTDLL_COMPILE_ERROR, x)
 #define CDECL		__cdecl
 
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
@@ -43,6 +42,7 @@ static inline unsigned long PtrToUlong(const void *p)
 }
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
+#define max(a, b) (((a) > (b)) ? (a) : (b))
 
 /* Use native clang/gcc implementation of structured exception handling */
 #include <excpt.h>

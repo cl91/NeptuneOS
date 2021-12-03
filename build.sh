@@ -121,6 +121,7 @@ cmake ../../private/ntdll \
       -G Ninja
 ninja || build_failed
 cp ntdll.lib ../ndk_lib || build_failed
+cp ntdllp.lib ../ndk_lib || build_failed
 echo
 
 # Build hal.dll with the PE toolchain
@@ -184,7 +185,7 @@ else
     exit 1
 fi
 PE_COPY_LIST='ntdll/ntdll.dll hal/hal.dll'
-BASE_COPY_LIST='smss/smss.exe'
+BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
 DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed

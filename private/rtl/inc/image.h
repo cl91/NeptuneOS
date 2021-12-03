@@ -11,13 +11,6 @@
 #endif
 
 /* From windef.h. We cannot include Win32 headers here. */
-typedef unsigned short WORD;
-typedef unsigned long DWORD;
-typedef ULONG_PTR DWORD_PTR;
-typedef CHAR *LPCH, *PCH, *PNZCH, *PSZ;
-typedef CONST CHAR *LPCCH, *PCCH, *PCNZCH;
-typedef unsigned int UINT;
-
 #define LOBYTE(w)	((BYTE)((DWORD_PTR)(w) & 0xff))
 #define HIBYTE(w)	((BYTE)((DWORD_PTR)(w) >> 8))
 

@@ -47,7 +47,7 @@
 #undef CONST
 #define CONST const
 #define VOID void
-typedef void *PVOID, **PPVOID;
+typedef void *PVOID, *LPVOID, **PPVOID;
 typedef CONST VOID *PCVOID;
 
 typedef char CHAR, CCHAR;
@@ -55,14 +55,17 @@ typedef unsigned char UCHAR;
 typedef signed char SCHAR;
 typedef CHAR *PCHAR;
 typedef UCHAR *PUCHAR;
-typedef CONST CHAR *PCSTR, *PCSZ;
-typedef unsigned char BYTE;
+typedef CONST CHAR *PCSTR, *LPCSTR, *PCSZ;
+typedef unsigned char BYTE, *PBYTE;
+typedef CHAR *LPCH, *PCH, *PNZCH, *PSZ;
+typedef CONST CHAR *LPCCH, *PCCH, *PCNZCH;
 
 typedef wchar_t WCHAR;
-typedef WCHAR *PWCHAR, *PWSTR;
-typedef CONST WCHAR *PCWCH, *PCWSTR;
+typedef WCHAR *PWCHAR, *PWCH, *PWSTR, *LPWSTR;
+typedef CONST WCHAR *PCWCH, *PCWSTR, *LPCWSTR;
 
 typedef UCHAR BOOLEAN;
+typedef UCHAR BOOL;
 typedef BOOLEAN *PBOOLEAN;
 #define TRUE (1)
 #define FALSE (0)
@@ -71,11 +74,15 @@ typedef short SHORT, CSHORT;
 typedef unsigned short USHORT;
 typedef SHORT *PSHORT;
 typedef USHORT *PUSHORT;
+typedef unsigned short WORD;
+
+typedef int INT;
+typedef unsigned int UINT;
 
 typedef int32_t LONG;
-typedef uint32_t ULONG;
+typedef uint32_t ULONG, DWORD;
 typedef LONG *PLONG;
-typedef ULONG *PULONG, CLONG, *PCLONG;
+typedef ULONG *PULONG, CLONG, *PCLONG, *LPDWORD;
 
 typedef uint64_t ULONGLONG, *PULONGLONG;
 typedef int64_t LONGLONG, *PLONGLONG;
@@ -83,6 +90,7 @@ typedef int64_t LONGLONG, *PLONGLONG;
 typedef uintptr_t ULONG_PTR;
 typedef intptr_t LONG_PTR;
 typedef ULONG_PTR SIZE_T, *PSIZE_T, *PULONG_PTR;
+typedef ULONG_PTR DWORD_PTR;
 
 typedef int64_t LONG64, *PLONG64;
 typedef int64_t INT64,  *PINT64;
@@ -101,6 +109,7 @@ typedef PVOID HANDLE, HMODULE, HINSTANCE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
 typedef HANDLE *PHANDLE;
 typedef LONG HRESULT;
+typedef ULONG LCID;
 
 typedef union _LARGE_INTEGER {
     struct {
@@ -139,30 +148,29 @@ typedef union _ULARGE_INTEGER {
 #define DUMMYSTRUCTNAME5
 #define DUMMYUNIONNAME
 #define DUMMYUNIONNAME2
-#define ANYSIZE_ARRAY
+#define ANYSIZE_ARRAY	1
 
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
+#define C_ASSERT(expr) extern char (*c_assert(void)) [(expr) ? 1 : -1]
 
 #define UNICODE_NULL ((WCHAR)0)
 #define UNICODE_STRING_MAX_BYTES ((USHORT) 65534)
+#define UNICODE_STRING_MAX_CHARS (32767)
 #define ANSI_NULL ((CHAR)0)
 
-typedef struct _UNICODE_STRING
-{
+typedef struct _UNICODE_STRING {
     USHORT Length;
     USHORT MaximumLength;
     PWSTR Buffer;
 } UNICODE_STRING, *PUNICODE_STRING;
 
-typedef struct _STRING
-{
+typedef struct _STRING {
     USHORT Length;
     USHORT MaximumLength;
     PCHAR Buffer;
 } STRING, *PSTRING;
 
-typedef struct _CSTRING
-{
+typedef struct _CSTRING {
     USHORT Length;
     USHORT MaximumLength;
     CONST CHAR *Buffer;

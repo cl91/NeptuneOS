@@ -12,6 +12,69 @@
 #include <ntmmapi.h>
 #include <ntpsapi.h>
 #include <ntseapi.h>
+#include <guiddef.h>
+
+#define MAX_COMPUTERNAME_LENGTH 15
+
+/*
+ * Unicode routine flags
+ */
+#define IS_TEXT_UNICODE_ASCII16 1
+#define IS_TEXT_UNICODE_REVERSE_ASCII16 16
+#define IS_TEXT_UNICODE_STATISTICS 2
+#define IS_TEXT_UNICODE_REVERSE_STATISTICS 32
+#define IS_TEXT_UNICODE_CONTROLS 4
+#define IS_TEXT_UNICODE_REVERSE_CONTROLS 64
+#define IS_TEXT_UNICODE_SIGNATURE 8
+#define IS_TEXT_UNICODE_REVERSE_SIGNATURE 128
+#define IS_TEXT_UNICODE_ILLEGAL_CHARS 256
+#define IS_TEXT_UNICODE_ODD_LENGTH 512
+#define IS_TEXT_UNICODE_DBCS_LEADBYTE 1024
+#define IS_TEXT_UNICODE_NULL_BYTES 4096
+#define IS_TEXT_UNICODE_UNICODE_MASK 15
+#define IS_TEXT_UNICODE_REVERSE_MASK 240
+#define IS_TEXT_UNICODE_NOT_UNICODE_MASK 3840
+#define IS_TEXT_UNICODE_NOT_ASCII_MASK 61440
+
+/*
+ * String Hash Algorithms
+ */
+#define HASH_STRING_ALGORITHM_DEFAULT                       0
+#define HASH_STRING_ALGORITHM_X65599                        1
+#define HASH_STRING_ALGORITHM_INVALID                       0xffffffff
+
+/*
+ * RtlDuplicateString Flags
+ */
+#define RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE         1
+#define RTL_DUPLICATE_UNICODE_STRING_ALLOCATE_NULL_STRING   2
+
+/*
+ * RtlFindCharInUnicodeString Flags
+ */
+#define RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END        1
+#define RTL_FIND_CHAR_IN_UNICODE_STRING_COMPLEMENT_CHAR_SET 2
+#define RTL_FIND_CHAR_IN_UNICODE_STRING_CASE_INSENSITIVE    4
+
+/*
+ * Auto-Managed Rtl* String Buffer
+ */
+typedef struct _RTL_BUFFER {
+    PUCHAR Buffer;
+    PUCHAR StaticBuffer;
+    SIZE_T Size;
+    SIZE_T StaticSize;
+    SIZE_T ReservedForAllocatedSize;
+    PVOID ReservedForIMalloc;
+} RTL_BUFFER, *PRTL_BUFFER;
+
+typedef struct _RTL_UNICODE_STRING_BUFFER {
+    UNICODE_STRING String;
+    RTL_BUFFER ByteBuffer;
+    WCHAR MinimumStaticBufferForTerminalNul;
+} RTL_UNICODE_STRING_BUFFER, *PRTL_UNICODE_STRING_BUFFER;
+
+#define RTL_SKIP_BUFFER_COPY    0x00000001
 
 typedef struct _COMPRESSED_DATA_INFO {
     USHORT CompressionFormatAndEngine;
@@ -30,6 +93,27 @@ typedef struct _RTL_USER_PROCESS_INFORMATION {
     CLIENT_ID ClientId;
     SECTION_IMAGE_INFORMATION ImageInformation;
 } RTL_USER_PROCESS_INFORMATION, *PRTL_USER_PROCESS_INFORMATION;
+
+/*
+ * Information Structures for RTL Debug Functions
+ */
+typedef struct _RTL_PROCESS_MODULE_INFORMATION {
+    ULONG Section;
+    PVOID MappedBase;
+    PVOID ImageBase;
+    ULONG ImageSize;
+    ULONG Flags;
+    USHORT LoadOrderIndex;
+    USHORT InitOrderIndex;
+    USHORT LoadCount;
+    USHORT OffsetToFileName;
+    CHAR FullPathName[256];
+} RTL_PROCESS_MODULE_INFORMATION, *PRTL_PROCESS_MODULE_INFORMATION;
+
+typedef struct _RTL_PROCESS_MODULES {
+    ULONG NumberOfModules;
+    RTL_PROCESS_MODULE_INFORMATION Modules[1];
+} RTL_PROCESS_MODULES, *PRTL_PROCESS_MODULES;
 
 /*
  * Process Parameters Flags
@@ -536,6 +620,19 @@ typedef struct _NLS_FILE_HEADER {
 } NLS_FILE_HEADER, *PNLS_FILE_HEADER;
 
 /*
+ * Timezone Information
+ */
+typedef struct _RTL_TIME_ZONE_INFORMATION {
+    LONG Bias;
+    WCHAR StandardName[32];
+    TIME_FIELDS StandardDate;
+    LONG StandardBias;
+    WCHAR DaylightName[32];
+    TIME_FIELDS DaylightDate;
+    LONG DaylightBias;
+} RTL_TIME_ZONE_INFORMATION, *PRTL_TIME_ZONE_INFORMATION;
+
+/*
  * Constant String Macro
  */
 #define RTL_CONSTANT_STRING(__SOURCE_STRING__) {		\
@@ -575,19 +672,124 @@ NTAPI NTSYSAPI VOID RtlInitUnicodeString(IN OUT PUNICODE_STRING DestinationStrin
 NTAPI NTSYSAPI NTSTATUS RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
 					       IN PCWSTR SourceString);
 
+NTAPI NTSYSAPI NTSTATUS RtlAppendUnicodeStringToString(IN OUT PUNICODE_STRING Destination,
+						       IN PCUNICODE_STRING Source);
+
 NTAPI NTSYSAPI LONG RtlCompareUnicodeString(IN PCUNICODE_STRING String1,
 					    IN PCUNICODE_STRING String2,
 					    IN BOOLEAN CaseInSensitive);
 
-VOID NTAPI RtlFreeUnicodeString(IN PUNICODE_STRING UnicodeString);
+NTAPI NTSYSAPI VOID RtlFreeUnicodeString(IN PUNICODE_STRING UnicodeString);
 
 NTAPI NTSYSAPI  BOOLEAN RtlEqualUnicodeString(IN PCUNICODE_STRING s1,
 					      IN PCUNICODE_STRING s2,
 					      IN BOOLEAN CaseInsensitive);
 
+NTAPI NTSYSAPI NTSTATUS RtlIntegerToUnicode(IN ULONG Value,
+					    IN ULONG Base OPTIONAL,
+					    IN ULONG Length OPTIONAL,
+					    IN OUT LPWSTR String);
+
+NTAPI NTSYSAPI NTSTATUS RtlIntegerToUnicodeString(IN ULONG Value,
+						  IN ULONG Base OPTIONAL,
+						  IN OUT PUNICODE_STRING String);
+
+NTAPI NTSYSAPI NTSTATUS RtlInt64ToUnicodeString(IN ULONGLONG Value,
+						IN ULONG Base OPTIONAL,
+						IN OUT PUNICODE_STRING String);
+
+NTAPI NTSYSAPI BOOLEAN RtlPrefixUnicodeString(PCUNICODE_STRING String1,
+					      PCUNICODE_STRING String2,
+					      BOOLEAN CaseInsensitive);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeStringToInteger(const UNICODE_STRING * str,	/* [I] Unicode string to be converted */
+						  ULONG base,	/* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
+						  ULONG * value);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeStringToAnsiString(IN OUT PANSI_STRING AnsiDest,
+						     IN PCUNICODE_STRING UniSource,
+						     IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI BOOLEAN RtlIsTextUnicode(CONST VOID *buf,
+					INT len,
+					INT *pf);
+
+NTAPI NTSYSAPI BOOLEAN RtlEqualComputerName(IN PUNICODE_STRING ComputerName1,
+					    IN PUNICODE_STRING ComputerName2);
+
+NTAPI NTSYSAPI BOOLEAN RtlEqualDomainName(IN PUNICODE_STRING DomainName1,
+					  IN PUNICODE_STRING DomainName2);
+
+NTAPI NTSYSAPI VOID RtlEraseUnicodeString(IN PUNICODE_STRING String);
+
+NTAPI NTSYSAPI NTSTATUS RtlHashUnicodeString(IN CONST UNICODE_STRING *String,
+					     IN BOOLEAN CaseInSensitive,
+					     IN ULONG HashAlgorithm,
+					     OUT PULONG HashValue);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeString(IN OUT PUNICODE_STRING UniDest,
+					       IN PCUNICODE_STRING UniSource,
+					       IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeStringToAnsiString(IN OUT PANSI_STRING AnsiDest,
+							   IN PCUNICODE_STRING UniSource,
+							   IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlDowncaseUnicodeString(IN OUT PUNICODE_STRING UniDest,
+						 IN PCUNICODE_STRING UniSource,
+						 IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlStringFromGUID(IN REFGUID Guid,
+					  OUT PUNICODE_STRING GuidString);
+
+NTAPI NTSYSAPI ULONG RtlxUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI ULONG RtlUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI VOID RtlCopyUnicodeString(IN OUT PUNICODE_STRING DestinationString,
+					 IN PCUNICODE_STRING SourceString);
+
+NTAPI NTSYSAPI BOOLEAN RtlCreateUnicodeString(IN OUT PUNICODE_STRING UniDest,
+					      IN PCWSTR Source);
+
+NTAPI NTSYSAPI BOOLEAN RtlCreateUnicodeStringFromAsciiz(OUT PUNICODE_STRING Destination,
+							IN PCSZ Source);
+
+NTAPI NTSYSAPI NTSTATUS RtlAppendUnicodeToString(IN OUT PUNICODE_STRING Destination,
+						 IN PCWSTR Source);
+
+NTAPI NTSYSAPI NTSTATUS RtlDuplicateUnicodeString(IN ULONG Flags,
+						  IN PCUNICODE_STRING SourceString,
+						  OUT PUNICODE_STRING DestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlValidateUnicodeString(IN ULONG Flags,
+						 IN PCUNICODE_STRING String);
+
+NTAPI NTSYSAPI NTSTATUS RtlFindCharInUnicodeString(IN ULONG Flags,
+						   IN PCUNICODE_STRING SearchString,
+						   IN PCUNICODE_STRING MatchString,
+						   OUT PUSHORT Position);
+
+NTAPI NTSYSAPI NTSTATUS RtlDnsHostNameToComputerName(PUNICODE_STRING ComputerName,
+						     PUNICODE_STRING DnsHostName,
+						     BOOLEAN AllocateComputerNameString);
+
 NTAPI NTSYSAPI NTSTATUS RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
 					  ULONG *uni_bytes_written,
-					  const CHAR *utf8_src, ULONG utf8_bytes);
+					  const CHAR *utf8_src,
+					  ULONG utf8_bytes);
+
+/*
+ * Unicode string inline functions
+ */
+FORCEINLINE VOID RtlInitEmptyUnicodeString(OUT PUNICODE_STRING UnicodeString,
+					   IN PWCHAR Buffer,
+					   IN USHORT BufferSize)
+{
+    UnicodeString->Length = 0;
+    UnicodeString->MaximumLength = BufferSize;
+    UnicodeString->Buffer = Buffer;
+}
 
 /*
  * Ansi string functions
@@ -598,12 +800,77 @@ NTAPI NTSYSAPI VOID RtlInitAnsiString(OUT PANSI_STRING DestinationString,
 NTAPI NTSYSAPI NTSTATUS RtlInitAnsiStringEx(OUT PANSI_STRING DestinationString,
 					    IN OPTIONAL PCSZ SourceString);
 
+NTAPI NTSYSAPI VOID RtlInitString(IN OUT PSTRING DestinationString,
+				  IN PCSZ SourceString);
+
+NTAPI NTSYSAPI WCHAR RtlAnsiCharToUnicodeChar(IN OUT PUCHAR *AnsiChar);
+
+NTAPI NTSYSAPI NTSTATUS RtlAnsiStringToUnicodeString(IN OUT PUNICODE_STRING UniDest,
+						     IN PANSI_STRING AnsiSource,
+						     IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI ULONG RtlxAnsiStringToUnicodeSize(IN PCANSI_STRING AnsiString);
+
+NTAPI NTSYSAPI NTSTATUS RtlAppendStringToString(IN PSTRING Destination,
+						IN const STRING *Source);
+
+NTAPI NTSYSAPI LONG RtlCompareString(IN const STRING * s1,
+				     IN const STRING * s2,
+				     IN BOOLEAN CaseInsensitive);
+
+NTAPI NTSYSAPI BOOLEAN RtlEqualString(IN const STRING * s1,
+				      IN const STRING * s2,
+				      IN BOOLEAN CaseInsensitive);
+
+NTAPI NTSYSAPI VOID RtlCopyString(IN OUT PSTRING DestinationString,
+				  IN OPTIONAL const STRING *SourceString);
+
+NTAPI NTSYSAPI VOID RtlFreeAnsiString(IN PANSI_STRING AnsiString);
+
+NTAPI NTSYSAPI BOOLEAN RtlPrefixString(const STRING *String1,
+				       const STRING *String2,
+				       BOOLEAN CaseInsensitive);
+
+NTAPI NTSYSAPI NTSTATUS RtlAppendAsciizToString(IN OUT PSTRING Destination,
+						IN PCSZ Source);
+
+NTAPI NTSYSAPI VOID RtlUpperString(PSTRING DestinationString,
+				   const STRING *SourceString);
+
+/*
+ * Ansi string inline functions
+ */
+FORCEINLINE VOID RtlInitEmptyAnsiString(OUT PANSI_STRING AnsiString,
+					IN PCHAR Buffer,
+					IN USHORT BufferSize)
+{
+    AnsiString->Length = 0;
+    AnsiString->MaximumLength = BufferSize;
+    AnsiString->Buffer = Buffer;
+}
+
 /*
  * Single character functions
  */
 NTAPI NTSYSAPI NTSTATUS RtlCharToInteger(IN PCSZ String,
 					 IN ULONG Base,
 					 OUT PULONG Value);
+
+NTAPI NTSYSAPI BOOLEAN RtlIsValidOemCharacter(IN PWCHAR Char);
+
+NTAPI NTSYSAPI NTSTATUS RtlIntegerToChar(ULONG value,	/* [I] Value to be converted */
+					 ULONG base,	/* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
+					 ULONG length,	/* [I] Length of the str buffer in bytes */
+					 PCHAR str);
+
+NTAPI NTSYSAPI NTSTATUS RtlLargeIntegerToChar(IN PLARGE_INTEGER Value,
+					      IN ULONG Base,
+					      IN ULONG Length,
+					      IN OUT PCHAR String);
+
+NTAPI NTSYSAPI CHAR RtlUpperChar(IN CHAR Source);
+
+NTAPI NTSYSAPI WCHAR RtlUpcaseUnicodeChar(IN WCHAR Source);
 
 /*
  * NLS Functions
@@ -620,6 +887,94 @@ NTAPI NTSYSAPI VOID RtlInitCodePageTable(IN PUSHORT TableBase,
 					 OUT PCPTABLEINFO CodePageTable);
 
 NTAPI NTSYSAPI VOID RtlResetRtlTranslations(IN PNLSTABLEINFO NlsTable);
+
+NTAPI NTSYSAPI VOID RtlFreeOemString(IN POEM_STRING OemString);
+
+NTAPI NTSYSAPI BOOLEAN RtlpDidUnicodeToOemWork(IN PCUNICODE_STRING UnicodeString,
+					       IN POEM_STRING OemString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeToMultiByteSize(OUT PULONG MbSize,
+						  IN PCWCH UnicodeString,
+						  IN ULONG UnicodeSize);
+
+NTAPI NTSYSAPI ULONG RtlxUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI ULONG RtlUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI ULONG RtlUnicodeStringToCountedOemSize(IN PCUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeStringToOemString(IN OUT POEM_STRING OemDest,
+						    IN PCUNICODE_STRING UniSource,
+						    IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeStringToCountedOemString(IN OUT POEM_STRING OemDest,
+							   IN PCUNICODE_STRING UniSource,
+							   IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeStringToCountedOemString(IN OUT POEM_STRING OemDest,
+								 IN PCUNICODE_STRING UniSource,
+								 IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeStringToOemString(IN OUT POEM_STRING OemDest,
+							  IN PCUNICODE_STRING UniSource,
+							  IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI ULONG RtlxOemStringToUnicodeSize(IN PCOEM_STRING OemString);
+
+NTAPI NTSYSAPI NTSTATUS RtlOemStringToUnicodeString(IN OUT PUNICODE_STRING UniDest,
+						    IN PCOEM_STRING OemSource,
+						    IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlOemStringToCountedUnicodeString(IN OUT PUNICODE_STRING UniDest,
+							   IN PCOEM_STRING OemSource,
+							   IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI NTSTATUS RtlMultiByteToUnicodeN(OUT PWCH UnicodeString,
+					       IN ULONG MaxBytesInUnicodeString,
+					       OUT OPTIONAL PULONG BytesInUnicodeString,
+					       IN const CHAR *MultiByteString,
+					       IN ULONG BytesInMultiByteString);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeToMultiByteN(OUT PCHAR MbString,
+					       IN ULONG MbSize,
+					       OUT PULONG ResultSize OPTIONAL,
+					       IN PCWCH UnicodeString,
+					       IN ULONG UnicodeSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlOemToUnicodeN(OUT PWCHAR UnicodeString,
+					 IN ULONG UnicodeSize,
+					 OUT PULONG ResultSize OPTIONAL,
+					 IN PCCH OemString,
+					 IN ULONG OemSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlMultiByteToUnicodeSize(OUT PULONG UnicodeSize,
+						  IN PCSTR MbString,
+						  IN ULONG MbSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeToOemN(OUT PCHAR OemString,
+					 IN ULONG OemSize,
+					 OUT PULONG ResultSize OPTIONAL,
+					 IN PCWCH UnicodeString,
+					 IN ULONG UnicodeSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeToCustomCPN(IN PCPTABLEINFO CustomCP,
+						    OUT PCHAR CustomString,
+						    IN ULONG CustomSize,
+						    OUT PULONG ResultSize OPTIONAL,
+						    IN PWCHAR UnicodeString,
+						    IN ULONG UnicodeSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeToMultiByteN(OUT PCHAR MbString,
+						     IN ULONG MbSize,
+						     OUT PULONG ResultSize OPTIONAL,
+						     IN PCWCH UnicodeString,
+						     IN ULONG UnicodeSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeToOemN(OUT PCHAR OemString,
+					       IN ULONG OemSize,
+					       OUT PULONG ResultSize OPTIONAL,
+					       IN PCWCH UnicodeString,
+					       IN ULONG UnicodeSize);
 
 /*
  * Structured exception handling routines
@@ -1172,10 +1527,9 @@ FORCEINLINE PPEB NtCurrentPeb(VOID)
 
 #define RtlGetCurrentPeb NtCurrentPeb
 
-/*
- * Process entry point for Native executables
- */
 NTAPI NTSYSAPI VOID RtlAcquirePebLock(VOID);
+
+NTAPI NTSYSAPI VOID RtlReleasePebLock(VOID);
 
 NTAPI NTSYSAPI NTSTATUS
 RtlCreateProcessParameters(OUT PRTL_USER_PROCESS_PARAMETERS *ProcessParameters,
@@ -1188,6 +1542,15 @@ RtlCreateProcessParameters(OUT PRTL_USER_PROCESS_PARAMETERS *ProcessParameters,
 			   IN OPTIONAL PUNICODE_STRING DesktopInfo,
 			   IN OPTIONAL PUNICODE_STRING ShellInfo,
 			   IN OPTIONAL PUNICODE_STRING RuntimeInfo);
+
+NTAPI NTSTATUS
+RtlDestroyProcessParameters(IN PRTL_USER_PROCESS_PARAMETERS ProcessParameters);
+
+NTAPI PRTL_USER_PROCESS_PARAMETERS
+RtlDeNormalizeProcessParams(PRTL_USER_PROCESS_PARAMETERS Params);
+
+NTAPI PRTL_USER_PROCESS_PARAMETERS
+RtlNormalizeProcessParams(PRTL_USER_PROCESS_PARAMETERS Params);
 
 NTAPI NTSYSAPI NTSTATUS
 RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
@@ -1215,12 +1578,218 @@ RtlCreateUserThread(IN HANDLE ProcessHandle,
 
 NTAPI NTSYSAPI VOID RtlExitUserThread(IN NTSTATUS Status);
 
-NTAPI NTSYSAPI VOID
-RtlInitializeContext(IN HANDLE ProcessHandle,
-		     OUT PCONTEXT ThreadContext,
-		     IN OPTIONAL PVOID ThreadStartParam,
-		     IN PTHREAD_START_ROUTINE ThreadStartAddress,
-		     IN PINITIAL_TEB InitialTeb);
+NTAPI NTSYSAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
+					 OUT PCONTEXT ThreadContext,
+					 IN OPTIONAL PVOID ThreadStartParam,
+					 IN PTHREAD_START_ROUTINE ThreadStartAddress,
+					 IN PINITIAL_TEB InitialTeb);
+
+/*
+ * Path routines
+ */
+
+NTAPI NTSYSAPI RTL_PATH_TYPE RtlDetermineDosPathNameType_Ustr(IN PCUNICODE_STRING PathString);
+
+NTAPI NTSYSAPI ULONG RtlIsDosDeviceName_Ustr(IN PCUNICODE_STRING PathString);
+
+NTAPI NTSYSAPI NTSTATUS RtlpCheckDeviceName(IN PUNICODE_STRING FileName,
+					    IN ULONG Length,
+					    OUT PBOOLEAN NameInvalid);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetLengthWithoutLastFullDosOrNtPathElement(IN ULONG Flags,
+								      IN PCUNICODE_STRING Path,
+								      OUT PULONG LengthOut);
+
+NTAPI NTSYSAPI NTSTATUS RtlComputePrivatizedDllName_U(IN PUNICODE_STRING DllName,
+						      IN OUT PUNICODE_STRING RealName,
+						      IN OUT PUNICODE_STRING LocalName);
+
+NTAPI NTSYSAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
+					     IN ULONG Size,
+					     OUT PWSTR Buffer,
+					     OUT OPTIONAL PCWSTR * ShortName,
+					     OUT OPTIONAL PBOOLEAN InvalidName,
+					     OUT RTL_PATH_TYPE * PathType);
+
+NTAPI NTSYSAPI BOOLEAN RtlDosPathNameToRelativeNtPathName_Ustr(IN PCUNICODE_STRING DosName,
+							       OUT PUNICODE_STRING NtName,
+							       OUT PCWSTR *PartName,
+							       OUT PRTL_RELATIVE_NAME_U RelativeName);
+
+NTAPI NTSYSAPI BOOLEAN RtlDoesFileExists_UstrEx(IN PCUNICODE_STRING FileName,
+						IN BOOLEAN SucceedIfBusy);
+
+NTAPI NTSYSAPI BOOLEAN RtlDoesFileExists_UStr(IN PUNICODE_STRING FileName);
+
+NTAPI NTSYSAPI BOOLEAN RtlDoesFileExists_UEx(IN PCWSTR FileName,
+					     IN BOOLEAN SucceedIfBusy);
+
+NTAPI NTSYSAPI VOID RtlReleaseRelativeName(IN PRTL_RELATIVE_NAME_U RelativeName);
+
+NTAPI NTSYSAPI ULONG RtlGetLongestNtPathLength(VOID);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetLengthWithoutTrailingPathSeparators(IN ULONG Flags,
+								  IN PCUNICODE_STRING PathString,
+								  OUT PULONG Length);
+
+NTAPI NTSYSAPI RTL_PATH_TYPE RtlDetermineDosPathNameType_U(IN PCWSTR Path);
+
+NTAPI NTSYSAPI ULONG RtlIsDosDeviceName_U(IN PCWSTR Path);
+
+NTAPI NTSYSAPI ULONG RtlGetCurrentDirectory_U(IN ULONG MaximumLength,
+					      OUT PWSTR Buffer);
+
+NTAPI NTSYSAPI NTSTATUS RtlSetCurrentDirectory_U(IN PUNICODE_STRING Path);
+
+NTAPI NTSYSAPI ULONG RtlGetFullPathName_UEx(IN PWSTR FileName,
+					    IN ULONG BufferLength,
+					    OUT PWSTR Buffer,
+					    OUT OPTIONAL PWSTR *FilePart,
+					    OUT OPTIONAL RTL_PATH_TYPE *InputPathType);
+
+NTAPI NTSYSAPI ULONG RtlGetFullPathName_U(IN PCWSTR FileName,
+					  IN ULONG Size,
+					  OUT PWSTR Buffer,
+					  OUT OPTIONAL PWSTR *ShortName);
+
+NTAPI NTSYSAPI BOOLEAN RtlDosPathNameToNtPathName_U(IN PCWSTR DosName,
+						    OUT PUNICODE_STRING NtName,
+						    OUT PCWSTR *PartName,
+						    OUT PRTL_RELATIVE_NAME_U RelativeName);
+
+NTAPI NTSYSAPI NTSTATUS RtlDosPathNameToNtPathName_U_WithStatus(IN PCWSTR DosName,
+								OUT PUNICODE_STRING NtName,
+								OUT PCWSTR *PartName,
+								OUT PRTL_RELATIVE_NAME_U	RelativeName);
+
+NTAPI NTSYSAPI BOOLEAN RtlDosPathNameToRelativeNtPathName_U(IN PCWSTR DosName,
+							    OUT PUNICODE_STRING NtName,
+							    OUT PCWSTR *PartName,
+							    OUT PRTL_RELATIVE_NAME_U RelativeName);
+
+NTAPI NTSYSAPI NTSTATUS RtlDosPathNameToRelativeNtPathName_U_WithStatus(IN PCWSTR DosName,
+									OUT PUNICODE_STRING NtName,
+									OUT PCWSTR *PartName,
+									OUT PRTL_RELATIVE_NAME_U RelativeName);
+
+NTAPI NTSYSAPI NTSTATUS RtlNtPathNameToDosPathName(IN ULONG Flags,
+						   IN OUT PRTL_UNICODE_STRING_BUFFER Path,
+						   OUT PULONG PathType,
+						   PULONG Unknown);
+
+NTAPI NTSYSAPI NTSTATUS RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
+								 IN PUNICODE_STRING OriginalName,
+								 IN PUNICODE_STRING Extension,
+								 IN OUT PUNICODE_STRING StaticString,
+								 IN OUT PUNICODE_STRING DynamicString,
+								 IN OUT PUNICODE_STRING *NewName,
+								 IN PULONG NewFlags,
+								 IN PSIZE_T FileNameSize,
+								 IN PSIZE_T RequiredLength);
+
+NTAPI NTSYSAPI ULONG RtlDosSearchPath_U(IN PCWSTR Path,
+					IN PCWSTR FileName,
+					IN PCWSTR Extension,
+					IN ULONG Size,
+					IN PWSTR Buffer,
+					OUT PWSTR *PartName);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetFullPathName_UstrEx(IN PUNICODE_STRING FileName,
+						  IN PUNICODE_STRING StaticString,
+						  IN PUNICODE_STRING DynamicString,
+						  IN PUNICODE_STRING *StringUsed,
+						  IN PSIZE_T FilePartSize,
+						  OUT PBOOLEAN NameInvalid,
+						  OUT RTL_PATH_TYPE *PathType,
+						  OUT PSIZE_T LengthNeeded);
+
+NTAPI NTSYSAPI NTSTATUS RtlDosSearchPath_Ustr(IN ULONG Flags,
+					      IN PUNICODE_STRING PathString,
+					      IN PUNICODE_STRING FileNameString,
+					      IN PUNICODE_STRING ExtensionString,
+					      IN PUNICODE_STRING CallerBuffer,
+					      IN OUT PUNICODE_STRING DynamicString OPTIONAL,
+					      OUT PUNICODE_STRING *FullNameOut OPTIONAL,
+					      OUT PSIZE_T FilePartSize OPTIONAL,
+					      OUT PSIZE_T LengthNeeded OPTIONAL);
+
+NTAPI NTSYSAPI BOOLEAN RtlDoesFileExists_U(IN PCWSTR FileName);
+
+/*
+ * Environment routines
+ */
+NTAPI NTSYSAPI NTSTATUS RtlCreateEnvironment(BOOLEAN Inherit,
+					     PWSTR *OutEnvironment);
+
+NTAPI NTSYSAPI VOID RtlDestroyEnvironment(PWSTR Environment);
+
+NTAPI NTSYSAPI NTSTATUS RtlExpandEnvironmentStrings_U(PWSTR Environment,
+						      PUNICODE_STRING Source,
+						      PUNICODE_STRING Destination,
+						      PULONG Length);
+
+NTAPI NTSYSAPI VOID RtlSetCurrentEnvironment(PWSTR NewEnvironment,
+					     PWSTR *OldEnvironment);
+
+NTAPI NTSYSAPI NTSTATUS RtlSetEnvironmentVariable(PWSTR *Environment,
+						  PUNICODE_STRING Name,
+						  PUNICODE_STRING Value);
+
+NTAPI NTSYSAPI NTSTATUS RtlQueryEnvironmentVariable_U(PWSTR Environment,
+						      PCUNICODE_STRING Name,
+						      PUNICODE_STRING Value);
+
+/*
+ * RTL auto-managed string buffer functions
+ */
+FORCEINLINE VOID RtlInitBuffer(IN OUT PRTL_BUFFER Buffer,
+			       IN PUCHAR Data,
+			       IN ULONG DataSize)
+{
+    Buffer->Buffer = Buffer->StaticBuffer = Data;
+    Buffer->Size = Buffer->StaticSize = DataSize;
+    Buffer->ReservedForAllocatedSize = 0;
+    Buffer->ReservedForIMalloc = NULL;
+}
+
+NTAPI NTSYSAPI NTSTATUS RtlEnsureBufferSize(IN ULONG Flags,
+					    IN OUT PRTL_BUFFER Buffer,
+					    IN SIZE_T RequiredSize);
+
+FORCEINLINE VOID RtlFreeBuffer(IN OUT PRTL_BUFFER Buffer)
+{
+    if (Buffer->Buffer != Buffer->StaticBuffer && Buffer->Buffer)
+        RtlFreeHeap(RtlGetProcessHeap(), 0, Buffer->Buffer);
+    Buffer->Buffer = Buffer->StaticBuffer;
+    Buffer->Size = Buffer->StaticSize;
+}
+
+/*
+ * Time Functions
+ */
+NTAPI NTSYSAPI BOOLEAN RtlCutoverTimeToSystemTime(IN PTIME_FIELDS CutoverTimeFields,
+						  OUT PLARGE_INTEGER SystemTime,
+						  IN PLARGE_INTEGER CurrentTime,
+						  IN BOOLEAN ThisYearsCutoverOnly);
+
+NTAPI NTSYSAPI NTSTATUS RtlQueryTimeZoneInformation(OUT PRTL_TIME_ZONE_INFORMATION TimeZoneInformation);
+
+NTAPI NTSYSAPI VOID RtlSecondsSince1970ToTime(IN ULONG SecondsSince1970,
+					      OUT PLARGE_INTEGER Time);
+
+NTAPI NTSYSAPI NTSTATUS RtlSetTimeZoneInformation(IN PRTL_TIME_ZONE_INFORMATION TimeZoneInformation);
+
+NTAPI NTSYSAPI BOOLEAN RtlTimeFieldsToTime(IN PTIME_FIELDS TimeFields,
+					   OUT PLARGE_INTEGER Time);
+
+NTAPI NTSYSAPI BOOLEAN RtlTimeToSecondsSince1970(IN PLARGE_INTEGER Time,
+						 OUT PULONG ElapsedSeconds);
+
+NTAPI NTSYSAPI VOID RtlTimeToTimeFields(IN PLARGE_INTEGER Time,
+					OUT PTIME_FIELDS TimeFields);
+
+NTAPI NTSYSAPI NTSTATUS RtlSystemTimeToLocalTime(IN PLARGE_INTEGER SystemTime,
+						 OUT PLARGE_INTEGER LocalTime);
 
 /*
  * Loader routines
@@ -1236,3 +1805,11 @@ NTAPI NTSYSAPI NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
 
 NTAPI NTSYSAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
 					       OUT PLDR_DATA_TABLE_ENTRY *Module);
+
+/*
+ * Security Functions
+ */
+NTAPI NTSYSAPI NTSTATUS RtlAdjustPrivilege(IN ULONG Privilege,
+					   IN BOOLEAN NewValue,
+					   IN BOOLEAN ForThread,
+					   OUT PBOOLEAN OldValue);

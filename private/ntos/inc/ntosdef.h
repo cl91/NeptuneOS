@@ -4,6 +4,12 @@
 
 #define ARRAY_LENGTH(x)		(sizeof(x) / sizeof((x)[0]))
 
+#define UNIMPLEMENTED					\
+    {							\
+	HalVgaPrint("%s UNIMPLEMENTED\n", __func__);	\
+	return STATUS_NOT_IMPLEMENTED;			\
+    }
+
 /* NTSTATUS Bits:
  * 0--15   Status code
  * 16--28  Facility

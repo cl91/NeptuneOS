@@ -5,3 +5,4 @@ project(base)
 include(${CMAKE_CURRENT_LIST_DIR}/base.cmake)
 
 add_subdirectory(smss)
+add_subdirectory(ntcmd)

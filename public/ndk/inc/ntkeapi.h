@@ -192,6 +192,9 @@ typedef struct DECLSPEC_ALIGN(16) _XSAVE_FORMAT {
 NTAPI NTSYSAPI NTSTATUS NtContinue(IN PCONTEXT Context,
 				   IN BOOLEAN TestAlert);
 
+NTAPI NTSYSAPI NTSTATUS NtDelayExecution(IN BOOLEAN Alertable,
+					 IN LARGE_INTEGER *Interval);
+
 NTAPI NTSYSAPI ULONG NtGetCurrentProcessorNumber(VOID);
 
 #endif
