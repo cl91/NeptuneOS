@@ -25,7 +25,7 @@ static NTSTATUS EiStartSessionManager()
     }
     assert(SmssExe != NULL);
 
-    Status = PsCreateProcess(SmssExe, NULL, &EiSessionManagerProcess);
+    Status = PsCreateProcess(SmssExe, NULL, NULL, &EiSessionManagerProcess);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

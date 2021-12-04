@@ -101,10 +101,44 @@ VOID SmTestBeepDriver(IN ULONG Freq,
 	    Freq, Duration);
     BOOLEAN BeepSuccess = SmBeep(Freq, Duration);
     if (BeepSuccess) {
-	SmPrint("Success. You should hear a beep.\n");
+	SmPrint("Success. You should hear a beep.\n\n");
     } else {
-	SmPrint("FAILED.\n");
+	SmPrint("FAILED.\n\n");
     }
+}
+
+NTSTATUS SmStartCommandPrompt()
+{
+    PRTL_USER_PROCESS_PARAMETERS ProcessParams;
+    RTL_USER_PROCESS_INFORMATION ProcessInfo = { 0 };
+    WCHAR ProcessEnv[2] = { 0, 0 };
+
+    UNICODE_STRING ImagePath;
+    RtlInitUnicodeString(&ImagePath, L"\\BootModules\\ntcmd.exe");
+
+    NTSTATUS Status = RtlCreateProcessParameters(&ProcessParams, &ImagePath, NULL,
+						 NULL, NULL, ProcessEnv, NULL, NULL,
+						 NULL, NULL);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("RtlCreateProcessParameters failed\n");
+	return STATUS_UNSUCCESSFUL;
+    }
+
+    Status = RtlCreateUserProcess(&ImagePath, OBJ_CASE_INSENSITIVE,
+				  ProcessParams, NULL, NULL, NULL, FALSE,
+				  NULL, NULL, &ProcessInfo);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("RtlCreateUserProcess failed\n");
+	return STATUS_UNSUCCESSFUL;
+    }
+
+    Status = NtResumeThread(ProcessInfo.ThreadHandle, NULL);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("NtResumeThread failed\n");
+	return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTAPI VOID NtProcessStartup(PPEB Peb)
@@ -113,6 +147,10 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmLoadBootDrivers();
     SmTestNullDriver();
     SmTestBeepDriver(440, 1000);
+
+    if (!NT_SUCCESS(SmStartCommandPrompt())) {
+	SmPrint("Failed to launch native command prompt. System halted.\n");
+    }
 
     while (1);
 }

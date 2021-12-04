@@ -546,7 +546,23 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     PPROCESS Process = (PPROCESS) Object;
     PPROCESS_CREATION_CONTEXT Ctx = (PPROCESS_CREATION_CONTEXT)CreaCtx;
     PIO_FILE_OBJECT ImageFile = Ctx->ImageFile;
+    PSECTION Section = Ctx->ImageSection;
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
+
+    /* You cannot specify both ImageSection and ImageFile */
+    if ((Section != NULL) && (ImageFile != NULL)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Section must be an image section */
+    if ((Section != NULL) && !Section->Flags.Image) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* We haven't implemented process inheritance yet */
+    if ((Section == NULL) && (ImageFile == NULL)) {
+	return STATUS_NOT_IMPLEMENTED;
+    }
 
     RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &Process->CSpace));
     RET_ERR(MmCreateVSpace(&Process->VSpace));
@@ -565,10 +581,14 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     assert(NtdllBase != 0);
     assert(NtdllViewSize != 0);
 
-    PSECTION Section = NULL;
-    RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-			    &Section));
+    if (Section == NULL) {
+	RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+				&Section));
+    } else {
+	ImageFile = Section->ImageSectionObject->FileObject;
+    }
     assert(Section != NULL);
+    assert(ImageFile != NULL);
     Process->ImageSection = Section;
     Process->ImageFile = ImageFile;
 
@@ -750,6 +770,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 
 NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN PIO_DRIVER_OBJECT DriverObject,
+			 IN PSECTION ImageSection,
 			 OUT PPROCESS *pProcess)
 {
     assert(ImageFile != NULL);
@@ -758,7 +779,8 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
     PPROCESS Process = NULL;
     PROCESS_CREATION_CONTEXT CreaCtx = {
 	.ImageFile = ImageFile,
-	.DriverObject = DriverObject
+	.DriverObject = DriverObject,
+	.ImageSection = ImageSection
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process, &CreaCtx));
     *pProcess = Process;
@@ -810,5 +832,31 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
                          IN HANDLE DebugPort,
                          IN HANDLE ExceptionPort)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+
+    /* Inheriting address space from parent process is not yet implemented */
+    if (SectionHandle == NULL) {
+	UNIMPLEMENTED;
+    }
+
+    PSECTION Section = NULL;
+    /* When the process exits or is terminated the image section object is
+     * dereferenced. */
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
+				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
+    assert(Section != NULL);
+    if (!Section->Flags.Image) {
+	ObDereferenceObject(Section);
+	return STATUS_INVALID_PARAMETER_6;
+    }
+
+    PPROCESS Process = NULL;
+    RET_ERR_EX(PsCreateProcess(NULL, NULL, Section, &Process),
+	       ObDereferenceObject(Section));
+    RET_ERR_EX(ObCreateHandle(Thread->Process, Process, ProcessHandle),
+	       /* This will dereference the section object */
+	       ObDereferenceObject(Process));
+
+    return STATUS_SUCCESS;
 }

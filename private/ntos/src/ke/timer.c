@@ -268,18 +268,18 @@ NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
                        IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
                        IN TIMER_TYPE TimerType)
 {
-    NTSTATUS Status = STATUS_NTOS_BUG;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    assert(Handle != NULL);
+
     PTIMER Timer = NULL;
-
-    ASYNC_BEGIN(State);
-
     RET_ERR(KeCreateTimer(TimerType, &Timer));
     assert(Timer != NULL);
 
-    /* This isn't actually async since TIMER object does not have an open routine */
-    AWAIT_EX(ObOpenObjectByPointer, Status, State, Thread, Timer, NULL, NULL, Handle);
+    RET_ERR(ObCreateHandle(Thread->Process, Timer, Handle));
+    assert(*Handle != NULL);
 
-    ASYNC_END(Status);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtSetTimer(IN ASYNC_STATE State,

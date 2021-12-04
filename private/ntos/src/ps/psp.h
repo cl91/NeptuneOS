@@ -35,6 +35,7 @@ typedef struct _THREAD_CREATION_CONTEXT {
 typedef struct _PROCESS_CREATION_CONTEXT {
     PIO_FILE_OBJECT ImageFile;
     PIO_DRIVER_OBJECT DriverObject;
+    PSECTION ImageSection;
 } PROCESS_CREATION_CONTEXT, *PPROCESS_CREATION_CONTEXT;
 
 /* arch/context.c */

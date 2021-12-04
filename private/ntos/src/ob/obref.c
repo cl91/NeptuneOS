@@ -1,7 +1,7 @@
 #include "obp.h"
 
 static NTSTATUS ObpLookupObjectNameEx(IN PCSTR Path,
-				      IN OBJECT_TYPE_ENUM Type,
+				      IN OBJECT_TYPE_MASK Type,
 				      OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
@@ -10,7 +10,7 @@ static NTSTATUS ObpLookupObjectNameEx(IN PCSTR Path,
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
-    if (ObjectHeader->Type->Index == Type) {
+    if (ObjectHeader->Type->Index & Type) {
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
@@ -34,7 +34,7 @@ static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
 
 static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
 					IN HANDLE Handle,
-					IN OBJECT_TYPE_ENUM Type,
+					IN OBJECT_TYPE_MASK Type,
 					OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
@@ -50,26 +50,24 @@ static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
-static NTSTATUS ObpCreateHandle(IN PTHREAD Thread,
-				IN POBJECT Object,
-				OUT HANDLE *pHandle)
+NTSTATUS ObCreateHandle(IN PPROCESS Process,
+			IN POBJECT Object,
+			OUT HANDLE *pHandle)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     assert(Object != NULL);
     assert(pHandle != NULL);
     POBJECT_HEADER Header = OBJECT_TO_OBJECT_HEADER(Object);
     ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
     Entry->Object = Object;
     InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
-    MmAvlTreeAppendNode(&Thread->Process->HandleTable.Tree,
+    MmAvlTreeAppendNode(&Process->HandleTable.Tree,
 			&Entry->AvlNode, HANDLE_VALUE_INC);
     *pHandle = (HANDLE) Entry->AvlNode.Key;
     return STATUS_SUCCESS;
 }
 
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
-				 IN OBJECT_TYPE_ENUM Type,
+				 IN OBJECT_TYPE_MASK Type,
 				 OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
@@ -80,7 +78,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 
 NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
 				   IN HANDLE Handle,
-				   IN OBJECT_TYPE_ENUM Type,
+				   IN OBJECT_TYPE_MASK Type,
 				   OUT POBJECT *pObject)
 {
     assert(Process != NULL);
@@ -119,7 +117,7 @@ NTSTATUS ObOpenObjectByPointer(IN ASYNC_STATE State,
 	OpenedInstance = Object;
     }
     if (NT_SUCCESS(Status)) {
-	RET_ERR_EX(ObpCreateHandle(Thread, OpenedInstance, pHandle),
+	RET_ERR_EX(ObCreateHandle(Thread->Process, OpenedInstance, pHandle),
 		   if (Object != OpenedInstance) {
 		       /* TODO: Close opened instance */
 		   });
@@ -131,7 +129,7 @@ NTSTATUS ObOpenObjectByPointer(IN ASYNC_STATE State,
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN PTHREAD Thread,
 			    IN PCSTR Path,
-			    IN OBJECT_TYPE_ENUM Type,
+			    IN OBJECT_TYPE_MASK Type,
 			    IN PVOID Context,
 			    OUT PVOID OpenResponse,
 			    OUT HANDLE *pHandle)
@@ -139,7 +137,6 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(Path != NULL);
     assert(Path[0] != '\0');
-    assert(Type < NUM_OBJECT_TYPES);
     assert(pHandle != NULL);
 
     /* When the async function is resumed the object may have been deleted.

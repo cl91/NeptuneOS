@@ -20,7 +20,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 
     /* Start the driver process */
     PPROCESS Process = NULL;
-    RET_ERR(PsCreateProcess(DriverFile, Driver, &Process));
+    RET_ERR(PsCreateProcess(DriverFile, Driver, NULL, &Process));
     assert(Process != NULL);
     Driver->DriverProcess = Process;
 

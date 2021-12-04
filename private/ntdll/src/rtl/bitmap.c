@@ -85,11 +85,9 @@ UCHAR BitCountTable[256] = {
 
 /* PRIVATE FUNCTIONS ********************************************************/
 
-static __inline
-BITMAP_INDEX
-RtlpGetLengthOfRunClear(IN PRTL_BITMAP BitMapHeader,
-			IN BITMAP_INDEX StartingIndex,
-			IN BITMAP_INDEX MaxLength)
+static inline BITMAP_INDEX RtlpGetLengthOfRunClear(IN PRTL_BITMAP BitMapHeader,
+						   IN BITMAP_INDEX StartingIndex,
+						   IN BITMAP_INDEX MaxLength)
 {
     BITMAP_INDEX Value, BitPos, Length;
     PBITMAP_BUFFER Buffer, MaxBuffer;
@@ -138,11 +136,9 @@ RtlpGetLengthOfRunClear(IN PRTL_BITMAP BitMapHeader,
     return Length;
 }
 
-static __inline
-BITMAP_INDEX
-RtlpGetLengthOfRunSet(IN PRTL_BITMAP BitMapHeader,
-		      IN BITMAP_INDEX StartingIndex,
-		      IN BITMAP_INDEX MaxLength)
+static inline BITMAP_INDEX RtlpGetLengthOfRunSet(IN PRTL_BITMAP BitMapHeader,
+						 IN BITMAP_INDEX StartingIndex,
+						 IN BITMAP_INDEX MaxLength)
 {
     BITMAP_INDEX InvValue, BitPos, Length;
     PBITMAP_BUFFER Buffer, MaxBuffer;
@@ -194,7 +190,7 @@ RtlpGetLengthOfRunSet(IN PRTL_BITMAP BitMapHeader,
 
 /* PUBLIC FUNCTIONS **********************************************************/
 
-VOID NTAPI RtlInitializeBitMap(OUT PRTL_BITMAP BitMapHeader,
+NTAPI VOID RtlInitializeBitMap(OUT PRTL_BITMAP BitMapHeader,
 			       IN OPTIONAL PBITMAP_BUFFER BitMapBuffer,
 			       IN OPTIONAL ULONG SizeOfBitMap)
 {
@@ -203,7 +199,7 @@ VOID NTAPI RtlInitializeBitMap(OUT PRTL_BITMAP BitMapHeader,
     BitMapHeader->Buffer = BitMapBuffer;
 }
 
-VOID NTAPI RtlClearAllBits(IN PRTL_BITMAP BitMapHeader)
+NTAPI VOID RtlClearAllBits(IN PRTL_BITMAP BitMapHeader)
 {
     BITMAP_INDEX LengthInUlongs;
 
@@ -213,7 +209,7 @@ VOID NTAPI RtlClearAllBits(IN PRTL_BITMAP BitMapHeader)
 		       LengthInUlongs * sizeof(BITMAP_INDEX), 0);
 }
 
-VOID NTAPI RtlSetAllBits(IN PRTL_BITMAP BitMapHeader)
+NTAPI VOID RtlSetAllBits(IN PRTL_BITMAP BitMapHeader)
 {
     BITMAP_INDEX LengthInUlongs;
 
@@ -223,31 +219,24 @@ VOID NTAPI RtlSetAllBits(IN PRTL_BITMAP BitMapHeader)
 		       LengthInUlongs * sizeof(BITMAP_INDEX), ~0);
 }
 
-VOID NTAPI
-RtlClearBit(IN PRTL_BITMAP BitMapHeader, IN BITMAP_INDEX BitNumber)
+NTAPI VOID RtlClearBit(IN PRTL_BITMAP BitMapHeader, IN BITMAP_INDEX BitNumber)
 {
     ASSERT(BitNumber <= BitMapHeader->SizeOfBitMap);
     BitMapHeader->Buffer[BitNumber / _BITCOUNT] &=
 	~(1 << (BitNumber & (_BITCOUNT - 1)));
 }
 
-VOID NTAPI
-RtlSetBit(IN PRTL_BITMAP BitMapHeader,
-	  _In_range_(<, BitMapHeader->SizeOfBitMap) BITMAP_INDEX BitNumber)
+NTAPI VOID RtlSetBit(IN PRTL_BITMAP BitMapHeader,
+		     IN BITMAP_INDEX BitNumber)
 {
     ASSERT(BitNumber <= BitMapHeader->SizeOfBitMap);
     BitMapHeader->Buffer[BitNumber / _BITCOUNT] |=
 	((BITMAP_INDEX) 1 << (BitNumber & (_BITCOUNT - 1)));
 }
 
-VOID NTAPI
-RtlClearBits(IN PRTL_BITMAP BitMapHeader,
-	     _In_range_(0,
-			BitMapHeader->SizeOfBitMap -
-			NumberToClear) BITMAP_INDEX StartingIndex,
-	     _In_range_(0,
-			BitMapHeader->SizeOfBitMap -
-			StartingIndex) BITMAP_INDEX NumberToClear)
+NTAPI VOID RtlClearBits(IN PRTL_BITMAP BitMapHeader,
+			IN BITMAP_INDEX StartingIndex,
+			IN BITMAP_INDEX NumberToClear)
 {
     BITMAP_INDEX Bits, Mask;
     PBITMAP_BUFFER Buffer;
@@ -299,14 +288,9 @@ RtlClearBits(IN PRTL_BITMAP BitMapHeader,
     }
 }
 
-VOID NTAPI
-RtlSetBits(IN PRTL_BITMAP BitMapHeader,
-	   _In_range_(0,
-		      BitMapHeader->SizeOfBitMap -
-		      NumberToSet) BITMAP_INDEX StartingIndex,
-	   _In_range_(0,
-		      BitMapHeader->SizeOfBitMap -
-		      StartingIndex) BITMAP_INDEX NumberToSet)
+NTAPI VOID RtlSetBits(IN PRTL_BITMAP BitMapHeader,
+		      IN BITMAP_INDEX StartingIndex,
+		      IN BITMAP_INDEX NumberToSet)
 {
     BITMAP_INDEX Bits, Mask;
     PBITMAP_BUFFER Buffer;
@@ -358,22 +342,16 @@ RtlSetBits(IN PRTL_BITMAP BitMapHeader,
     }
 }
 
-BOOLEAN
-NTAPI
-RtlTestBit(IN PRTL_BITMAP BitMapHeader,
-	   _In_range_(<,
-		      BitMapHeader->SizeOfBitMap) BITMAP_INDEX BitNumber)
+NTAPI BOOLEAN RtlTestBit(IN PRTL_BITMAP BitMapHeader,
+			 IN BITMAP_INDEX BitNumber)
 {
     ASSERT(BitNumber < BitMapHeader->SizeOfBitMap);
-    return (BitMapHeader->
-	    Buffer[BitNumber /
-		   _BITCOUNT] >> (BitNumber & (_BITCOUNT - 1))) & 1;
+    return (BitMapHeader->Buffer[BitNumber / _BITCOUNT] >> (BitNumber & (_BITCOUNT - 1))) & 1;
 }
 
-BOOLEAN
-NTAPI
-RtlAreBitsClear(IN PRTL_BITMAP BitMapHeader,
-		IN BITMAP_INDEX StartingIndex, IN BITMAP_INDEX Length)
+NTAPI BOOLEAN RtlAreBitsClear(IN PRTL_BITMAP BitMapHeader,
+			      IN BITMAP_INDEX StartingIndex,
+			      IN BITMAP_INDEX Length)
 {
     /* Verify parameters */
     if ((StartingIndex + Length > BitMapHeader->SizeOfBitMap) ||
@@ -384,10 +362,9 @@ RtlAreBitsClear(IN PRTL_BITMAP BitMapHeader,
 				   Length) >= Length;
 }
 
-BOOLEAN
-NTAPI
-RtlAreBitsSet(IN PRTL_BITMAP BitMapHeader,
-	      IN BITMAP_INDEX StartingIndex, IN BITMAP_INDEX Length)
+NTAPI BOOLEAN RtlAreBitsSet(IN PRTL_BITMAP BitMapHeader,
+			    IN BITMAP_INDEX StartingIndex,
+			    IN BITMAP_INDEX Length)
 {
     /* Verify parameters */
     if ((StartingIndex + Length > BitMapHeader->SizeOfBitMap) ||
@@ -398,7 +375,7 @@ RtlAreBitsSet(IN PRTL_BITMAP BitMapHeader,
 				 Length) >= Length;
 }
 
-BITMAP_INDEX NTAPI RtlNumberOfSetBits(IN PRTL_BITMAP BitMapHeader)
+NTAPI BITMAP_INDEX RtlNumberOfSetBits(IN PRTL_BITMAP BitMapHeader)
 {
     PUCHAR Byte, MaxByte;
     BITMAP_INDEX BitCount = 0;
@@ -419,17 +396,15 @@ BITMAP_INDEX NTAPI RtlNumberOfSetBits(IN PRTL_BITMAP BitMapHeader)
     return BitCount;
 }
 
-BITMAP_INDEX NTAPI RtlNumberOfClearBits(IN PRTL_BITMAP BitMapHeader)
+NTAPI BITMAP_INDEX RtlNumberOfClearBits(IN PRTL_BITMAP BitMapHeader)
 {
     /* Do some math */
     return BitMapHeader->SizeOfBitMap - RtlNumberOfSetBits(BitMapHeader);
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindClearBits(IN PRTL_BITMAP BitMapHeader,
-		 IN BITMAP_INDEX NumberToFind,
-		 IN BITMAP_INDEX HintIndex)
+NTAPI BITMAP_INDEX RtlFindClearBits(IN PRTL_BITMAP BitMapHeader,
+				    IN BITMAP_INDEX NumberToFind,
+				    IN BITMAP_INDEX HintIndex)
 {
     BITMAP_INDEX CurrentBit, Margin, CurrentLength;
 
@@ -486,10 +461,9 @@ retry:
     return MAXINDEX;
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindSetBits(IN PRTL_BITMAP BitMapHeader,
-	       IN BITMAP_INDEX NumberToFind, IN BITMAP_INDEX HintIndex)
+NTAPI BITMAP_INDEX RtlFindSetBits(IN PRTL_BITMAP BitMapHeader,
+				  IN BITMAP_INDEX NumberToFind,
+				  IN BITMAP_INDEX HintIndex)
 {
     BITMAP_INDEX CurrentBit, Margin, CurrentLength;
 
@@ -546,11 +520,9 @@ retry:
     return MAXINDEX;
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindClearBitsAndSet(IN PRTL_BITMAP BitMapHeader,
-		       IN BITMAP_INDEX NumberToFind,
-		       IN BITMAP_INDEX HintIndex)
+NTAPI BITMAP_INDEX RtlFindClearBitsAndSet(IN PRTL_BITMAP BitMapHeader,
+					  IN BITMAP_INDEX NumberToFind,
+					  IN BITMAP_INDEX HintIndex)
 {
     BITMAP_INDEX Position;
 
@@ -567,11 +539,9 @@ RtlFindClearBitsAndSet(IN PRTL_BITMAP BitMapHeader,
     return Position;
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindSetBitsAndClear(IN PRTL_BITMAP BitMapHeader,
-		       IN BITMAP_INDEX NumberToFind,
-		       IN BITMAP_INDEX HintIndex)
+NTAPI BITMAP_INDEX RtlFindSetBitsAndClear(IN PRTL_BITMAP BitMapHeader,
+					  IN BITMAP_INDEX NumberToFind,
+					  IN BITMAP_INDEX HintIndex)
 {
     BITMAP_INDEX Position;
 
@@ -588,11 +558,9 @@ RtlFindSetBitsAndClear(IN PRTL_BITMAP BitMapHeader,
     return Position;
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindNextForwardRunClear(IN PRTL_BITMAP BitMapHeader,
-			   IN BITMAP_INDEX FromIndex,
-			   OUT PBITMAP_INDEX StartingRunIndex)
+NTAPI BITMAP_INDEX RtlFindNextForwardRunClear(IN PRTL_BITMAP BitMapHeader,
+					      IN BITMAP_INDEX FromIndex,
+					      OUT PBITMAP_INDEX StartingRunIndex)
 {
     BITMAP_INDEX Length;
 
@@ -611,11 +579,9 @@ RtlFindNextForwardRunClear(IN PRTL_BITMAP BitMapHeader,
 				   MAXINDEX);
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindNextForwardRunSet(IN PRTL_BITMAP BitMapHeader,
-			 IN BITMAP_INDEX FromIndex,
-			 OUT PBITMAP_INDEX StartingRunIndex)
+NTAPI BITMAP_INDEX RtlFindNextForwardRunSet(IN PRTL_BITMAP BitMapHeader,
+					    IN BITMAP_INDEX FromIndex,
+					    OUT PBITMAP_INDEX StartingRunIndex)
 {
     BITMAP_INDEX Length;
 
@@ -634,19 +600,15 @@ RtlFindNextForwardRunSet(IN PRTL_BITMAP BitMapHeader,
 				 MAXINDEX);
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindFirstRunClear(IN PRTL_BITMAP BitMapHeader,
-		     OUT PBITMAP_INDEX StartingIndex)
+NTAPI BITMAP_INDEX RtlFindFirstRunClear(IN PRTL_BITMAP BitMapHeader,
+					OUT PBITMAP_INDEX StartingIndex)
 {
     return RtlFindNextForwardRunClear(BitMapHeader, 0, StartingIndex);
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindLastBackwardRunClear(IN PRTL_BITMAP BitMapHeader,
-			    IN BITMAP_INDEX FromIndex,
-			    OUT PBITMAP_INDEX StartingRunIndex)
+NTAPI BITMAP_INDEX RtlFindLastBackwardRunClear(IN PRTL_BITMAP BitMapHeader,
+					       IN BITMAP_INDEX FromIndex,
+					       OUT PBITMAP_INDEX StartingRunIndex)
 {
     BITMAP_INDEX Value, InvValue, BitPos;
     PBITMAP_BUFFER Buffer;
@@ -708,12 +670,10 @@ RtlFindLastBackwardRunClear(IN PRTL_BITMAP BitMapHeader,
 }
 
 
-ULONG
-NTAPI
-RtlFindClearRuns(IN PRTL_BITMAP BitMapHeader,
-		 IN PRTL_BITMAP_RUN RunArray,
-		 IN ULONG SizeOfRunArray,
-		 IN BOOLEAN LocateLongestRuns)
+NTAPI ULONG RtlFindClearRuns(IN PRTL_BITMAP BitMapHeader,
+			     IN PRTL_BITMAP_RUN RunArray,
+			     IN ULONG SizeOfRunArray,
+			     IN BOOLEAN LocateLongestRuns)
 {
     BITMAP_INDEX StartingIndex, NumberOfBits, FromIndex = 0, SmallestRun =
 	0;
@@ -782,10 +742,8 @@ RtlFindClearRuns(IN PRTL_BITMAP BitMapHeader,
     return Run;
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindLongestRunClear(IN PRTL_BITMAP BitMapHeader,
-		       IN PBITMAP_INDEX StartingIndex)
+NTAPI BITMAP_INDEX RtlFindLongestRunClear(IN PRTL_BITMAP BitMapHeader,
+					  IN PBITMAP_INDEX StartingIndex)
 {
     BITMAP_INDEX NumberOfBits, Index, MaxNumberOfBits = 0, FromIndex = 0;
 
@@ -812,10 +770,8 @@ RtlFindLongestRunClear(IN PRTL_BITMAP BitMapHeader,
     return MaxNumberOfBits;
 }
 
-BITMAP_INDEX
-NTAPI
-RtlFindLongestRunSet(IN PRTL_BITMAP BitMapHeader,
-		     IN PBITMAP_INDEX StartingIndex)
+NTAPI BITMAP_INDEX RtlFindLongestRunSet(IN PRTL_BITMAP BitMapHeader,
+					IN PBITMAP_INDEX StartingIndex)
 {
     BITMAP_INDEX NumberOfBits, Index, MaxNumberOfBits = 0, FromIndex = 0;
 

@@ -52,14 +52,9 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
 }
 
 /*
- * A FILE_OBJECT is an opened instance of a DEVICE_OBJECT. It therefore
- * makes no sense to open a FILE_OBJECT. We return error this case.
- *
- * TODO: For now we don't allow opening a FILE_OBJECT. This might change
- * depending on how we design the cache manager. For instance, the parse
- * routine of a partition device might return a FILE_OBJECT directly
- * and opening the FILE_OBJECT will yield another file object (both
- * pointing to the same device object).
+ * A FILE_OBJECT is an opened instance of a DEVICE_OBJECT. We haven't
+ * implement file system drivers yet, so for now we simply return success
+ * so the object manager can assign a new handle to the file object.
  */
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
@@ -68,7 +63,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PVOID OpenResponse,
 			       OUT POBJECT *pOpenedInstance)
 {
-    return STATUS_NTOS_BUG;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
@@ -111,7 +106,22 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
                     IN ULONG ShareAccess,
                     IN ULONG OpenOptions)
 {
-    UNIMPLEMENTED;
+    PCSTR FilePath = ObjectAttributes.ObjectNameBuffer;
+    NTSTATUS Status;
+    OPEN_PACKET OpenPacket;
+    OPEN_RESPONSE OpenResponse;
+
+    ASYNC_BEGIN(State);
+    OpenPacket.CreateFileType = CreateFileTypeNone;
+    OpenPacket.CreateOptions = OpenOptions;
+    OpenPacket.FileAttributes = 0;
+    OpenPacket.ShareAccess = ShareAccess;
+    OpenPacket.Disposition = 0;
+
+    /* TODO: We need to implement file system drivers */
+    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, FilePath,
+	     OBJECT_TYPE_DEVICE | OBJECT_TYPE_FILE, &OpenPacket, &OpenResponse, FileHandle);
+    ASYNC_END(Status);
 }
 
 NTSTATUS NtReadFile(IN ASYNC_STATE AsyncState,

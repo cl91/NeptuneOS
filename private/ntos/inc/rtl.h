@@ -16,3 +16,13 @@ static inline PCSTR RtlDuplicateString(IN PCSTR String,
     memcpy(Buf, String, BufLen);
     return Buf;
 }
+
+static inline ULONG RtlNumberOfSetBits(ULONG Integer)
+{
+    return __builtin_popcount(Integer);
+}
+
+static inline ULONG RtlFirstSetBit(ULONG Integer)
+{
+    return __builtin_ffs(Integer);
+}

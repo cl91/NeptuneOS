@@ -113,6 +113,7 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PSYSTEM_THREAD_ENTRY EntryPoint);
 NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN PIO_DRIVER_OBJECT DriverObject,
+			 IN PSECTION ImageSection,
 			 OUT PPROCESS *pProcess);
 NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);

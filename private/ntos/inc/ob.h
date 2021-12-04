@@ -16,18 +16,26 @@
  * is neither true nor false. Here x \el y means that object x is
  * of type y, and S = { x | \phi(x) } is the type of all objects x
  * that satisfy the proposition \phi(x).
+ *
+ * When referencing an object the caller can specify a bit mask
+ * indicating the desired type(s). Specify OBJECT_TYPE_ALL to bypass
+ * type checking.
  */
-typedef enum _OBJECT_TYPE_ENUM {
-    OBJECT_TYPE_DIRECTORY,
-    OBJECT_TYPE_THREAD,
-    OBJECT_TYPE_PROCESS,
-    OBJECT_TYPE_SECTION,
-    OBJECT_TYPE_FILE,
-    OBJECT_TYPE_DEVICE,
-    OBJECT_TYPE_DRIVER,
-    OBJECT_TYPE_TIMER,
-    NUM_OBJECT_TYPES
-} OBJECT_TYPE_ENUM;
+typedef enum _OBJECT_TYPE_MASK {
+    OBJECT_TYPE_DIRECTORY = 1 << 0,
+    OBJECT_TYPE_THREAD = 1 << 1,
+    OBJECT_TYPE_PROCESS = 1 << 2,
+    OBJECT_TYPE_SECTION = 1 << 3,
+    OBJECT_TYPE_FILE = 1 << 4,
+    OBJECT_TYPE_DEVICE = 1 << 5,
+    OBJECT_TYPE_DRIVER = 1 << 6,
+    OBJECT_TYPE_TIMER = 1 << 7,
+    OBJECT_TYPE_ALL = (1 << 8) - 1 /* Used by the object manager routines to
+				    * indicate all types */
+} OBJECT_TYPE_MASK;
+
+/* Increment this when you add a new object type */
+#define MAX_NUM_OBJECT_TYPES	8
 
 /* Object format:
  *
@@ -237,7 +245,7 @@ typedef struct _OBJECT_TYPE_INITIALIZER {
 
 typedef struct _OBJECT_TYPE {
     PCSTR Name;
-    OBJECT_TYPE_ENUM Index;
+    OBJECT_TYPE_MASK Index;
     ULONG ObjectBodySize;
     OBJECT_TYPE_INITIALIZER TypeInfo;
 } OBJECT_TYPE, *POBJECT_TYPE;
@@ -285,11 +293,11 @@ typedef struct _HANDLE_TABLE_ENTRY {
 NTSTATUS ObInitSystemPhase0();
 
 /* create.c */
-NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
+NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_MASK Type,
 			    IN PCSTR TypeName,
 			    IN ULONG ObjectBodySize,
 			    IN OBJECT_TYPE_INITIALIZER Init);
-NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
+NTSTATUS ObCreateObject(IN OBJECT_TYPE_MASK Type,
 			OUT POBJECT *Object,
 			IN PVOID CreationContext);
 
@@ -309,16 +317,19 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 /* obref.c */
 struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
-				 IN OBJECT_TYPE_ENUM Type,
+				 IN OBJECT_TYPE_MASK Type,
 				 OUT POBJECT *Object);
 NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 				   IN HANDLE Handle,
-				   IN OBJECT_TYPE_ENUM Type,
+				   IN OBJECT_TYPE_MASK Type,
 				   OUT POBJECT *pObject);
+NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
+			IN POBJECT Object,
+			OUT HANDLE *pHandle);
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN PCSTR Path,
-			    IN OBJECT_TYPE_ENUM Type,
+			    IN OBJECT_TYPE_MASK Type,
 			    IN PVOID Context,
 			    OUT PVOID OpenResponse,
 			    OUT HANDLE *pHandle);
