@@ -312,12 +312,9 @@ NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 				 ThreadSecurityDescriptor,
 				 TRUE,
 				 ProcessInfo->ImageInformation.ZeroBits,
-				 ProcessInfo->ImageInformation.
-				 MaximumStackSize,
-				 ProcessInfo->ImageInformation.
-				 CommittedStackSize,
-				 ProcessInfo->ImageInformation.
-				 TransferAddress,
+				 ProcessInfo->ImageInformation.MaximumStackSize,
+				 ProcessInfo->ImageInformation.CommittedStackSize,
+				 ProcessInfo->ImageInformation.TransferAddress,
 				 ProcessBasicInfo.PebBaseAddress,
 				 &ProcessInfo->ThreadHandle,
 				 &ProcessInfo->ClientId);

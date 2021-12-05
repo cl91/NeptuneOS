@@ -198,7 +198,7 @@ static inline PMM_AVL_NODE MiAvlGetLastNode(IN PMM_AVL_TREE Tree)
 typedef struct _SECTION_OBJ_CREATE_CONTEXT {
     PIO_FILE_OBJECT FileObject;
     ULONG PageProtection;
-    ULONG Attribute;
+    ULONG Attributes;
     BOOLEAN PhysicalMapping;
 } SECTION_OBJ_CREATE_CONTEXT, *PSECTION_OBJ_CREATE_CONTEXT;
 

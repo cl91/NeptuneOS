@@ -37,7 +37,8 @@ static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
 #define DIE(...) { DbgTrace(__VA_ARGS__); return STATUS_INVALID_IMAGE_FORMAT; }
 static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 				    IN ULONG FileBufferSize,
-				    IN PIMAGE_SECTION_OBJECT ImageSection)
+				    IN PIMAGE_SECTION_OBJECT ImageSection,
+				    OUT MWORD *pSectionSize)
 {
     assert(FileBuffer);
     assert(FileBufferSize);
@@ -291,6 +292,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     SubSectionsArray[0]->SubSectionBase = 0;
     SubSectionsArray[0]->Characteristics = 0;
     InsertTailList(&ImageSection->SubSectionList, &SubSectionsArray[0]->Link);
+    MWORD SectionSize = SubSectionsArray[0]->SubSectionSize;
 
     for (LONG i = 1; i < NumSubSections; i++) {
 	SubSectionsArray[i]->RawDataSize = SectionHeaders[i-1].SizeOfRawData;
@@ -324,22 +326,26 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 	SubSectionsArray[i]->Name[IMAGE_SIZEOF_SHORT_NAME] = '\0';
 
 	InsertTailList(&ImageSection->SubSectionList, &SubSectionsArray[i]->Link);
+	SectionSize += VirtualSize;
     }
 
     ExFreePool(SubSectionsArray);
+    *pSectionSize = SectionSize;
     return STATUS_SUCCESS;
 }
 #undef DIE
 
 static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
-				     OUT PIMAGE_SECTION_OBJECT *pImageSection)
+				     OUT PIMAGE_SECTION_OBJECT *pImageSection,
+				     OUT MWORD *pSectionSize)
 {
     assert(File != NULL);
     assert(pImageSection != NULL);
     MiAllocatePool(ImageSection, IMAGE_SECTION_OBJECT);
     MiInitializeImageSection(ImageSection, File);
 
-    RET_ERR_EX(MiParseImageHeaders((PVOID) File->BufferPtr, File->Size, ImageSection),
+    RET_ERR_EX(MiParseImageHeaders((PVOID) File->BufferPtr, File->Size,
+				   ImageSection, pSectionSize),
 	       ExFreePool(ImageSection));
 
     File->SectionObject.ImageSectionObject = ImageSection;
@@ -354,11 +360,12 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     PSECTION Section = (PSECTION) Object;
     PSECTION_OBJ_CREATE_CONTEXT Ctx = (PSECTION_OBJ_CREATE_CONTEXT)CreaCtx;
     PIO_FILE_OBJECT FileObject = Ctx->FileObject;
-    ULONG Attribute = Ctx->Attribute;
+    ULONG Attributes = Ctx->Attributes;
     ULONG PageProtection = Ctx->PageProtection;
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
     MmAvlInitializeNode(&Section->BasedSectionNode, 0);
+    Section->Attributes = Attributes;
 
     if (PhysicalMapping) {
 	MiPhysicalSection->Flags.PhysicalMemory = 1;
@@ -369,14 +376,14 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     }
 
     /* Only image section is implemented for now */
-    if (!(Attribute & SEC_IMAGE)) {
+    if (!(Attributes & SEC_IMAGE)) {
 	return STATUS_NOT_IMPLEMENTED;
     }
 
     PIMAGE_SECTION_OBJECT ImageSection = FileObject->SectionObject.ImageSectionObject;
 
     if (ImageSection == NULL) {
-	RET_ERR(MiCreateImageFileMap(FileObject, &ImageSection));
+	RET_ERR(MiCreateImageFileMap(FileObject, &ImageSection, &Section->Size));
 	assert(ImageSection != NULL);
     }
 
@@ -423,7 +430,7 @@ NTSTATUS MmSectionInitialization()
 
 NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
 			 IN ULONG PageProtection,
-			 IN ULONG SectionAttribute,
+			 IN ULONG SectionAttributes,
 			 OUT PSECTION *SectionObject)
 {
     assert(SectionObject != NULL);
@@ -433,7 +440,7 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
     SECTION_OBJ_CREATE_CONTEXT CreaCtx = {
 	.FileObject = FileObject,
 	.PageProtection = PageProtection,
-	.Attribute = SectionAttribute
+	.Attributes = SectionAttributes
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section, &CreaCtx));
     assert(Section != NULL);
@@ -621,10 +628,46 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
                         IN ULONG SectionInformationLength,
                         OUT OPTIONAL ULONG *ReturnLength)
 {
-    if (SectionHandle != NULL) {
+    if (SectionHandle == NULL) {
 	return STATUS_INVALID_HANDLE;
     }
-    return STATUS_NOT_IMPLEMENTED;
+    switch (SectionInformationClass) {
+    case SectionBasicInformation:
+	if (SectionInformationLength < sizeof(SECTION_BASIC_INFORMATION)) {
+	    return STATUS_INFO_LENGTH_MISMATCH;
+	}
+	break;
+    case SectionImageInformation:
+	if (SectionInformationLength < sizeof(SECTION_IMAGE_INFORMATION)) {
+	    return STATUS_INFO_LENGTH_MISMATCH;
+	}
+	break;
+    default:
+	return STATUS_INVALID_INFO_CLASS;
+    }
+
+    PSECTION Section = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
+				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
+    PVOID MappedBuffer = NULL;
+    RET_ERR_EX(MmMapUserBuffer(&Thread->Process->VSpace, (MWORD)SectionInformationBuffer,
+			       SectionInformationLength, &MappedBuffer),
+	       ObDereferenceObject(Section));
+
+    if (SectionInformationClass == SectionBasicInformation) {
+	PSECTION_BASIC_INFORMATION Info = (PSECTION_BASIC_INFORMATION)MappedBuffer;
+	if (Section->Flags.Based) {
+	    Info->BaseAddress = (PVOID) Section->BasedSectionNode.Key;
+	} else {
+	    Info->BaseAddress = 0;
+	}
+	Info->Attributes = Section->Attributes;
+	Info->Size.QuadPart = Section->Size;
+    } else {
+	assert(SectionInformationClass == SectionImageInformation);
+	*((PSECTION_IMAGE_INFORMATION)MappedBuffer) = Section->ImageSectionObject->ImageInformation;
+    }
+    return STATUS_SUCCESS;
 }
 
 #ifdef CONFIG_DEBUG_BUILD

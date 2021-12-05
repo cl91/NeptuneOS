@@ -502,7 +502,9 @@ typedef struct _SECTION {
 	struct _DATA_SECTION_OBJECT *DataSectionObject;
     };
     MMSECTION_FLAGS Flags;
+    ULONG Attributes;
     ULONG PageProtection; /* PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, etc. */
+    MWORD Size;
 } SECTION, *PSECTION;
 
 typedef struct _IMAGE_SECTION_OBJECT {
@@ -514,7 +516,6 @@ typedef struct _IMAGE_SECTION_OBJECT {
 } IMAGE_SECTION_OBJECT, *PIMAGE_SECTION_OBJECT;
 
 typedef struct _DATA_SECTION_OBJECT {
-    MWORD SectionSize;
     struct _IO_FILE_OBJECT *FileObject;
 } DATA_SECTION_OBJECT, *PDATA_SECTION_OBJECT;
 
@@ -668,7 +669,7 @@ static inline NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
 			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
-			     EX_DYN_VSPACE_START, (MWORD *)TargetStartAddr,
+			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr,
 			     FALSE);
 }
 
