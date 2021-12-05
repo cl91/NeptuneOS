@@ -63,7 +63,7 @@ static NTSTATUS IopLoadHalDll()
     assert(HalDll != NULL);
 
     PSECTION HalDllSection = NULL;
-    Status = MmCreateSection(HalDll, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+    Status = MmCreateSection(HalDll, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			     &HalDllSection);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

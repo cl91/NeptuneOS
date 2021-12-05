@@ -442,6 +442,7 @@ typedef struct _SECTION {
 	struct _DATA_SECTION_OBJECT *DataSectionObject;
     };
     MMSECTION_FLAGS Flags;
+    ULONG PageProtection; /* PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, etc. */
 } SECTION, *PSECTION;
 
 typedef struct _IMAGE_SECTION_OBJECT {
@@ -527,7 +528,8 @@ MM_MEM_PRESSURE MmQueryMemoryPressure();
 /* section.c */
 NTSTATUS MmSectionInitialization();
 NTSTATUS MmCreateSection(IN struct _IO_FILE_OBJECT *FileObject,
-			 IN MWORD Attribute,
+			 IN ULONG PageProtection,
+			 IN ULONG SectionAttribute,
 			 OUT PSECTION *SectionObject);
 NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,

@@ -52,7 +52,7 @@ static NTSTATUS PspInitializeSystemDll()
     }
     assert(NtdllFile != NULL);
 
-    Status = MmCreateSection(NtdllFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+    Status = MmCreateSection(NtdllFile, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			     &PspSystemDllSection);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

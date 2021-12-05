@@ -12,6 +12,10 @@ static inline NTSTATUS KiMarshalUnicodeString(IN OUT ULONG *MsgBufOffset,
 					      IN PUNICODE_STRING String,
 					      OUT SERVICE_ARGUMENT *Arg)
 {
+    assert(MsgBufOffset != NULL);
+    assert(String != NULL);
+    assert(String->Buffer != NULL);
+    assert(Arg != NULL);
     ULONG BytesWritten = 0;
     if (*MsgBufOffset > SVC_MSGBUF_SIZE) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -30,6 +34,9 @@ static inline NTSTATUS KiMarshalAnsiString(IN OUT ULONG *MsgBufOffset,
 					   IN PCSTR String,
 					   OUT SERVICE_ARGUMENT *Arg)
 {
+    assert(MsgBufOffset != NULL);
+    assert(String != NULL);
+    assert(Arg != NULL);
     ULONG Length = strlen(String) + 1;
     if ((*MsgBufOffset + Length) > SVC_MSGBUF_SIZE) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -57,8 +64,10 @@ static inline NTSTATUS KiMarshalObjectAttributes(IN OUT ULONG *MsgBufOffset,
     *MsgBufOffset += sizeof(HANDLE);
     OFFSET_TO_ARG(*MsgBufOffset, ULONG) = ObjAttr->Attributes;
     *MsgBufOffset += sizeof(ULONG);
-    SERVICE_ARGUMENT StringArg;
-    RET_ERR(KiMarshalUnicodeString(MsgBufOffset, ObjAttr->ObjectName, &StringArg));
+    SERVICE_ARGUMENT StringArg = { .Word = 0 };
+    if (ObjAttr->ObjectName != NULL) {
+	RET_ERR(KiMarshalUnicodeString(MsgBufOffset, ObjAttr->ObjectName, &StringArg));
+    }
     Arg->BufferSize = sizeof(HANDLE) + sizeof(ULONG) + StringArg.BufferSize;
     return STATUS_SUCCESS;
 }

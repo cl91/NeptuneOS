@@ -108,8 +108,12 @@ static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
     if (!KiServiceValidateArgument(MsgWord)) {
 	return FALSE;
     }
-    if (Arg.BufferSize <= (sizeof(HANDLE) + sizeof(ULONG))) {
+    if (Arg.BufferSize < (sizeof(HANDLE) + sizeof(ULONG))) {
 	return FALSE;
+    }
+    /* Object name can be NULL. */
+    if (Arg.BufferSize == (sizeof(HANDLE) + sizeof(ULONG))) {
+	return TRUE;
     }
     PCSTR String = (PCSTR) KiServiceGetArgument(IpcBufferServerAddr, MsgWord);
     if (String[Arg.BufferSize-1] != '\0') {
@@ -137,7 +141,11 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
 	MsgOffset += sizeof(HANDLE);
 	ObjAttr.Attributes = SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, MsgOffset, ULONG);
 	MsgOffset += sizeof(ULONG);
-	ObjAttr.ObjectNameBuffer = &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, MsgOffset, CHAR);
+	if (MsgSize == (sizeof(HANDLE) + sizeof(ULONG))) {
+	    ObjAttr.ObjectNameBuffer = NULL;
+	} else {
+	    ObjAttr.ObjectNameBuffer = &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, MsgOffset, CHAR);
+	}
 	ObjAttr.ObjectNameBufferLength = MsgSize - sizeof(HANDLE) - sizeof(ULONG);
     }
     return ObjAttr;

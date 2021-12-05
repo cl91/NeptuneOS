@@ -4,7 +4,7 @@
 PSECTION MiPhysicalSection;
 
 /*
- * Note: ImageSection must point to zeroed-memory.
+ * Note: Call memset(ImageSection, 0, sizeof(IMAGE_SECTION_OBJECT)) before calling this.
  */
 static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSection,
 					    IN PIO_FILE_OBJECT File)
@@ -13,7 +13,7 @@ static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSectio
 }
 
 /*
- * Note: Subsection must point to zeroed-memory.
+ * Note: Call memset(Subsection, 0, sizeof(SUBSECTION)) before calling this.
  */
 static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
 					  IN PIMAGE_SECTION_OBJECT ImageSection)
@@ -354,7 +354,8 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     PSECTION Section = (PSECTION) Object;
     PSECTION_OBJ_CREATE_CONTEXT Ctx = (PSECTION_OBJ_CREATE_CONTEXT)CreaCtx;
     PIO_FILE_OBJECT FileObject = Ctx->FileObject;
-    MWORD Attribute = Ctx->Attribute;
+    ULONG Attribute = Ctx->Attribute;
+    ULONG PageProtection = Ctx->PageProtection;
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
     MmAvlInitializeNode(&Section->BasedSectionNode, 0);
@@ -372,14 +373,6 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
 	return STATUS_NOT_IMPLEMENTED;
     }
 
-    if (!(Attribute & SEC_RESERVE)) {
-	return STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (!(Attribute & SEC_COMMIT)) {
-	return STATUS_NOT_IMPLEMENTED;
-    }
-
     PIMAGE_SECTION_OBJECT ImageSection = FileObject->SectionObject.ImageSectionObject;
 
     if (ImageSection == NULL) {
@@ -387,7 +380,6 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
 	assert(ImageSection != NULL);
     }
 
-    Section->Flags.File = 1;
     Section->Flags.Image = 1;
     /* For now all sections are committed immediately. */
     Section->Flags.Reserve = 1;
@@ -430,17 +422,18 @@ NTSTATUS MmSectionInitialization()
 }
 
 NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
-			 IN MWORD Attribute,
+			 IN ULONG PageProtection,
+			 IN ULONG SectionAttribute,
 			 OUT PSECTION *SectionObject)
 {
-    assert(FileObject != NULL);
     assert(SectionObject != NULL);
     *SectionObject = NULL;
 
     PSECTION Section = NULL;
     SECTION_OBJ_CREATE_CONTEXT CreaCtx = {
 	.FileObject = FileObject,
-	.Attribute = Attribute
+	.PageProtection = PageProtection,
+	.Attribute = SectionAttribute
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section, &CreaCtx));
     assert(Section != NULL);
@@ -601,10 +594,23 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
                          IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
                          IN OPTIONAL PLARGE_INTEGER MaximumSize,
                          IN ULONG SectionPageProtection,
-                         IN ULONG AllocationAttributes,
+                         IN ULONG SectionAttributes,
                          IN HANDLE FileHandle)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    PIO_FILE_OBJECT FileObject = NULL;
+    if (FileHandle != NULL) {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
+					  OBJECT_TYPE_FILE, (POBJECT *) &FileObject));
+	assert(FileObject != NULL);
+    }
+    PSECTION Section = NULL;
+    RET_ERR_EX(MmCreateSection(FileObject, SectionPageProtection, SectionAttributes,
+			       &Section),
+	       if (FileObject) ObDereferenceObject(FileObject));
+    RET_ERR_EX(ObCreateHandle(Thread->Process, Section, SectionHandle),
+	       /* This will dereference the file object */
+	       ObDereferenceObject(Section));
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtQuerySection(IN ASYNC_STATE State,

@@ -479,7 +479,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     assert(*DllFile != NULL);
 
     PSECTION DllSection = NULL;
-    Status = MmCreateSection(*DllFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+    Status = MmCreateSection(*DllFile, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			     &DllSection);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
@@ -582,7 +582,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     assert(NtdllViewSize != 0);
 
     if (Section == NULL) {
-	RET_ERR(MmCreateSection(ImageFile, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+	RET_ERR(MmCreateSection(ImageFile, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 				&Section));
     } else {
 	ImageFile = Section->ImageSectionObject->FileObject;
@@ -773,7 +773,6 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN PSECTION ImageSection,
 			 OUT PPROCESS *pProcess)
 {
-    assert(ImageFile != NULL);
     assert(pProcess != NULL);
 
     PPROCESS Process = NULL;
