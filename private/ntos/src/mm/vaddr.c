@@ -480,10 +480,10 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
  * On success, the address window will be rounded to the nearest
  * boundary of the underlying lowest-level paging structure.
  */
-NTSTATUS MmEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
-			      IN OUT MWORD *pStartAddr,
-			      IN OUT MWORD *pWindowSize,
-			      IN BOOLEAN Writable)
+static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
+				     IN OUT MWORD *pStartAddr,
+				     IN OUT MWORD *pWindowSize,
+				     IN BOOLEAN Writable)
 {
     assert(VSpace != NULL);
     assert(pStartAddr != NULL);
@@ -583,6 +583,74 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 	RemoveEntryList(&Vad->MirroredMemory.ViewerLink);
     }
     ExFreePool(Vad);
+}
+
+/*
+ * Maps the user buffer in the given virt addr space into another
+ * virt addr space, returning the starting virtual address of the
+ * buffer in the target virt addr space.
+ *
+ * If ReadOnly is TRUE, the target pages will be mapped read-only.
+ * Otherwise the target pages will be mapped read-write.
+ *
+ * If ReadOnly is FALSE, the user buffer must be writable by the user.
+ * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
+ */
+NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
+			   IN MWORD BufferStart,
+			   IN MWORD BufferLength,
+			   IN PVIRT_ADDR_SPACE TargetVSpace,
+			   IN MWORD TargetVaddrStart,
+			   IN MWORD TargetVaddrEnd,
+			   OUT MWORD *TargetStartAddr,
+			   IN BOOLEAN ReadOnly)
+{
+    assert(VSpace != NULL);
+    assert(TargetVSpace != NULL);
+    assert(TargetStartAddr != NULL);
+    MWORD UserWindowStart = BufferStart;
+    MWORD WindowSize = BufferLength;
+    RET_ERR_EX(MiEnsureWindowMapped(VSpace, &UserWindowStart, &WindowSize, !ReadOnly),
+	       {
+		   DbgTrace("User window not mapped [%p, %p)\n",
+			    (PVOID)UserWindowStart, (PVOID)WindowSize);
+		   MmDbgDumpVSpace(VSpace);
+	       });
+
+    MWORD ReserveFlag = MEM_RESERVE_MIRRORED_MEMORY;
+    if (ReadOnly) {
+	ReserveFlag |= MEM_RESERVE_READ_ONLY;
+    }
+    PMMVAD TargetBufferVad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(TargetVSpace,
+				     TargetVaddrStart,
+				     TargetVaddrEnd,
+				     WindowSize,
+				     ReserveFlag,
+				     &TargetBufferVad));
+    assert(TargetBufferVad != NULL);
+    assert(TargetBufferVad->WindowSize == WindowSize);
+
+    MmRegisterMirroredMemory(TargetBufferVad, VSpace, UserWindowStart);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(TargetVSpace, TargetBufferVad->AvlNode.Key,
+				       WindowSize),
+	       MmDeleteVad(TargetBufferVad));
+    *TargetStartAddr = BufferStart - UserWindowStart + TargetBufferVad->AvlNode.Key;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Unmap the user buffer that was previously mapped into the target vaddr space
+ * by MmMapUserBufferEx.
+ */
+VOID MmUnmapUserBufferEx(IN PVIRT_ADDR_SPACE MappedVSpace,
+			 IN MWORD MappedBufferStart)
+{
+    PMMVAD Vad = MmVSpaceFindVadNode(MappedVSpace, MappedBufferStart);
+    assert(Vad != NULL);
+    if (Vad != NULL) {
+	MmDeleteVad(Vad);
+    }
 }
 
 NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,

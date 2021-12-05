@@ -108,6 +108,44 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     MWORD FileSize;
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
+/*
+ * Maps the specified user IO buffer to the driver process's VSpace.
+ *
+ * If ReadOnly is TRUE, the driver pages will be mapped read-only. Otherwise
+ * the driver pages will be mapped read-write.
+ *
+ * If ReadOnly is FALSE, the user IO buffer must be writable by the user.
+ * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
+ */
+static inline NTSTATUS IopMapUserBuffer(IN PPROCESS User,
+					IN PIO_DRIVER_OBJECT Driver,
+					IN MWORD UserBufferStart,
+					IN MWORD UserBufferLength,
+					OUT MWORD *DriverBufferStart,
+					IN BOOLEAN ReadOnly)
+{
+    PVIRT_ADDR_SPACE UserVSpace = &User->VSpace;
+    assert(UserVSpace != NULL);
+    assert(Driver->DriverProcess != NULL);
+    PVIRT_ADDR_SPACE DriverVSpace = &Driver->DriverProcess->VSpace;
+    assert(DriverVSpace != NULL);
+    return MmMapUserBufferEx(UserVSpace, UserBufferStart,
+			     UserBufferLength, DriverVSpace,
+			     USER_IMAGE_REGION_START,
+			     USER_IMAGE_REGION_END,
+			     DriverBufferStart, ReadOnly);
+}
+
+/*
+ * Unmap the user buffer mapped by IopMapUserBuffer
+ */
+static inline  VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
+				       IN MWORD DriverBuffer)
+{
+    assert(Driver != NULL);
+    assert(Driver->DriverProcess != NULL);
+    MmUnmapUserBufferEx(&Driver->DriverProcess->VSpace, DriverBuffer);
+}
 
 /* init.c */
 PSECTION IopHalDllSection;
@@ -140,13 +178,3 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 				   IN PVOID CreaCtx);
-
-/* irp.c */
-NTSTATUS IopMapUserBuffer(IN PPROCESS User,
-			  IN PIO_DRIVER_OBJECT Driver,
-			  IN MWORD UserStartAddr,
-			  IN MWORD UserBufferLength,
-			  OUT MWORD *DriverBufferStart,
-			  IN BOOLEAN ReadOnly);
-VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
-			IN MWORD DriverBuffer);

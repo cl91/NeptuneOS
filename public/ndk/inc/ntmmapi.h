@@ -35,16 +35,55 @@
 #define SEC_GLOBAL		(0x20000000UL)
 #define SEC_LARGE_PAGES		(0x80000000UL)
 
+/*
+ * Memory Information Classes for NtQueryVirtualMemory
+ */
+typedef enum _MEMORY_INFORMATION_CLASS {
+    MemoryBasicInformation,
+    MemoryWorkingSetList,
+    MemorySectionName,
+    MemoryBasicVlmInformation,
+    MemoryWorkingSetExList
+} MEMORY_INFORMATION_CLASS;
+
+/*
+ * Memory Information Types
+ */
+typedef struct _MEMORY_BASIC_INFORMATION {
+    PVOID BaseAddress;
+    PVOID AllocationBase;
+    ULONG AllocationProtect;
+    SIZE_T RegionSize;
+    ULONG State;
+    ULONG Protect;
+    ULONG Type;
+} MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
+
+/*
+ * Section Information Clasess for NtQuerySection
+ */
+typedef enum _SECTION_INFORMATION_CLASS {
+    SectionBasicInformation,
+    SectionImageInformation,
+} SECTION_INFORMATION_CLASS;
+
+/*
+ * Section Information Structures for NtQuerySection
+ */
+typedef struct _SECTION_BASIC_INFORMATION {
+    PVOID BaseAddress;
+    ULONG Attributes;
+    LARGE_INTEGER Size;
+} SECTION_BASIC_INFORMATION, *PSECTION_BASIC_INFORMATION;
+
 typedef struct _SECTION_IMAGE_INFORMATION {
     PVOID TransferAddress;
     ULONG ZeroBits;
     SIZE_T MaximumStackSize;
     SIZE_T CommittedStackSize;
     ULONG SubSystemType;
-    union
-    {
-        struct
-        {
+    union {
+        struct {
             USHORT SubSystemMinorVersion;
             USHORT SubSystemMajorVersion;
         };
@@ -57,11 +96,11 @@ typedef struct _SECTION_IMAGE_INFORMATION {
     BOOLEAN ImageContainsCode;
     union {
 	struct {
-	    UCHAR ComPlusNativeReady:1;
-	    UCHAR ComPlusILOnly:1;
-	    UCHAR ImageDynamicallyRelocated:1;
-	    UCHAR ImageMappedFlat:1;
-	    UCHAR Reserved:4;
+	    UCHAR ComPlusNativeReady : 1;
+	    UCHAR ComPlusILOnly : 1;
+	    UCHAR ImageDynamicallyRelocated : 1;
+	    UCHAR ImageMappedFlat : 1;
+	    UCHAR Reserved : 4;
 	};
 	UCHAR ImageFlags;
     };			   /* Added in longhorn, was BOOLEAN Spare1 */
@@ -69,40 +108,6 @@ typedef struct _SECTION_IMAGE_INFORMATION {
     ULONG ImageFileSize;
     ULONG CheckSum;	/* Added in longhorn, was ULONG Reserved[1] */
 } SECTION_IMAGE_INFORMATION, *PSECTION_IMAGE_INFORMATION;
-
-/*
- * Memory Information Classes for NtQueryVirtualMemory
- */
-typedef enum _MEMORY_INFORMATION_CLASS
-{
-    MemoryBasicInformation,
-    MemoryWorkingSetList,
-    MemorySectionName,
-    MemoryBasicVlmInformation,
-    MemoryWorkingSetExList
-} MEMORY_INFORMATION_CLASS;
-
-/*
- * Memory Information Types
- */
-typedef struct _MEMORY_BASIC_INFORMATION
-{
-    PVOID BaseAddress;
-    PVOID AllocationBase;
-    ULONG AllocationProtect;
-    SIZE_T RegionSize;
-    ULONG State;
-    ULONG Protect;
-    ULONG Type;
-} MEMORY_BASIC_INFORMATION,*PMEMORY_BASIC_INFORMATION;
-
-/*
- * Section Information Clasess for NtQuerySection
- */
-typedef enum _SECTION_INFORMATION_CLASS {
-    SectionBasicInformation,
-    SectionImageInformation,
-} SECTION_INFORMATION_CLASS;
 
 /*
  * Section access rights

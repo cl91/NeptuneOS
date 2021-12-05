@@ -621,6 +621,9 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
                         IN ULONG SectionInformationLength,
                         OUT OPTIONAL ULONG *ReturnLength)
 {
+    if (SectionHandle != NULL) {
+	return STATUS_INVALID_HANDLE;
+    }
     return STATUS_NOT_IMPLEMENTED;
 }
 
