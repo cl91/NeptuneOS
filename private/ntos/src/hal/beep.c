@@ -15,6 +15,7 @@ NTSTATUS HalpMakeBeep(IN ASYNC_STATE AsyncState,
                       IN struct _THREAD *Thread,
                       IN ULONG Frequency)
 {
+    HalVgaPrint("HalpMakeBeep: Frequency %d\n", Frequency);
     SYSTEM_CONTROL_PORT_B_REGISTER SystemControl;
     TIMER_CONTROL_PORT_REGISTER TimerControl;
     ULONG Divider;

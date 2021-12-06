@@ -844,6 +844,14 @@ NTAPI NTSYSAPI NTSTATUS NtCreateFile(OUT PHANDLE FileHandle,
 				     IN ULONG EaLength);
 #define ZwCreateFile NtCreateFile
 
+NTAPI NTSYSAPI NTSTATUS NtOpenFile(OUT PHANDLE FileHandle,
+				   IN ACCESS_MASK DesiredAccess,
+				   IN POBJECT_ATTRIBUTES ObjectAttributes,
+				   OUT PIO_STATUS_BLOCK IoStatusBlock,
+				   IN ULONG ShareAccess,
+				   IN ULONG OpenOptions);
+#define ZwOpenFile NtOpenFile
+
 NTAPI NTSYSAPI NTSTATUS NtReadFile(IN HANDLE FileHandle,
 				   IN OPTIONAL HANDLE Event,
 				   IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
@@ -853,6 +861,7 @@ NTAPI NTSYSAPI NTSTATUS NtReadFile(IN HANDLE FileHandle,
 				   IN ULONG Length,
 				   IN OPTIONAL PLARGE_INTEGER ByteOffset,
 				   IN OPTIONAL PULONG Key);
+#define ZwReadFile NtReadFile
 
 NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
 				    IN OPTIONAL HANDLE Event,
@@ -863,6 +872,7 @@ NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
 				    IN ULONG Length,
 				    IN OPTIONAL PLARGE_INTEGER ByteOffset,
 				    IN OPTIONAL PULONG Key);
+#define ZwWriteFile NtWriteFile
 
 NTAPI NTSYSAPI NTSTATUS NtDeleteFile(IN POBJECT_ATTRIBUTES ObjectAttributes);
 

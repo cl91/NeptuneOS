@@ -14,6 +14,12 @@ static NTSTATUS PspSuspendThread(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
+NTSTATUS PsTerminateThread(IN PTHREAD Thread)
+{
+    /* For now we simply suspend the thread */
+    return PspSuspendThread(Thread);
+}
+
 NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
 			   IN PTHREAD Thread,
                            IN HANDLE ThreadHandle,

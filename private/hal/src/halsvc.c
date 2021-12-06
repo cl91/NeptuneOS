@@ -1,4 +1,4 @@
-#include <hal.h>
+#include <halp.h>
 #include <client_svc_helpers.h>
 
 extern __thread seL4_CPtr KiHalServiceCap;

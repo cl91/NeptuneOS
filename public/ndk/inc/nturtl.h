@@ -14,6 +14,8 @@
 #include <ntseapi.h>
 #include <guiddef.h>
 
+#define _NTURTL_H_
+
 #define MAX_COMPUTERNAME_LENGTH 15
 
 /*
@@ -35,6 +37,47 @@
 #define IS_TEXT_UNICODE_REVERSE_MASK 240
 #define IS_TEXT_UNICODE_NOT_UNICODE_MASK 3840
 #define IS_TEXT_UNICODE_NOT_ASCII_MASK 61440
+
+/* RtlCheckRegistryKey flags */
+#define RTL_REGISTRY_ABSOLUTE             0
+#define RTL_REGISTRY_SERVICES             1
+#define RTL_REGISTRY_CONTROL              2
+#define RTL_REGISTRY_WINDOWS_NT           3
+#define RTL_REGISTRY_DEVICEMAP            4
+#define RTL_REGISTRY_USER                 5
+#define RTL_REGISTRY_MAXIMUM              6
+#define RTL_REGISTRY_HANDLE               0x40000000
+#define RTL_REGISTRY_OPTIONAL             0x80000000
+
+/* RTL_QUERY_REGISTRY_TABLE.Flags */
+#define RTL_QUERY_REGISTRY_SUBKEY         0x00000001
+#define RTL_QUERY_REGISTRY_TOPKEY         0x00000002
+#define RTL_QUERY_REGISTRY_REQUIRED       0x00000004
+#define RTL_QUERY_REGISTRY_NOVALUE        0x00000008
+#define RTL_QUERY_REGISTRY_NOEXPAND       0x00000010
+#define RTL_QUERY_REGISTRY_DIRECT         0x00000020
+#define RTL_QUERY_REGISTRY_DELETE         0x00000040
+#define RTL_QUERY_REGISTRY_TYPECHECK      0x00000100
+
+#define RTL_QUERY_REGISTRY_TYPECHECK_SHIFT 24
+
+typedef NTSTATUS (NTAPI RTL_QUERY_REGISTRY_ROUTINE)(IN PWSTR ValueName,
+						    IN ULONG ValueType,
+						    IN PVOID ValueData,
+						    IN ULONG ValueLength,
+						    IN OPTIONAL PVOID Context,
+						    IN OPTIONAL PVOID EntryContext);
+typedef RTL_QUERY_REGISTRY_ROUTINE *PRTL_QUERY_REGISTRY_ROUTINE;
+
+typedef struct _RTL_QUERY_REGISTRY_TABLE {
+    PRTL_QUERY_REGISTRY_ROUTINE QueryRoutine;
+    ULONG Flags;
+    PCWSTR Name;
+    PVOID EntryContext;
+    ULONG DefaultType;
+    PVOID DefaultData;
+    ULONG DefaultLength;
+} RTL_QUERY_REGISTRY_TABLE, *PRTL_QUERY_REGISTRY_TABLE;
 
 /*
  * String Hash Algorithms
@@ -1807,9 +1850,123 @@ NTAPI NTSYSAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
 					       OUT PLDR_DATA_TABLE_ENTRY *Module);
 
 /*
- * Security Functions
+ * Registry routines
+ */
+NTAPI NTSYSAPI NTSTATUS RtlCheckRegistryKey(IN ULONG RelativeTo,
+				   IN PWSTR Path);
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateRegistryKey(IN ULONG RelativeTo,
+				    IN PWSTR Path);
+
+NTAPI NTSYSAPI NTSTATUS RtlDeleteRegistryValue(IN ULONG RelativeTo,
+				      IN PCWSTR Path,
+				      IN PCWSTR ValueName);
+
+NTAPI NTSYSAPI NTSTATUS RtlWriteRegistryValue(IN ULONG RelativeTo,
+				     IN PCWSTR Path,
+				     IN PCWSTR ValueName,
+				     IN ULONG ValueType,
+				     IN PVOID ValueData,
+				     IN ULONG ValueLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlOpenCurrentUser(IN ACCESS_MASK DesiredAccess,
+				  OUT PHANDLE KeyHandle);
+
+NTAPI NTSYSAPI NTSTATUS RtlFormatCurrentUserKeyPath(OUT PUNICODE_STRING KeyPath);
+
+NTAPI NTSYSAPI NTSTATUS RtlpNtCreateKey(OUT HANDLE KeyHandle,
+			       IN ACCESS_MASK DesiredAccess,
+			       IN POBJECT_ATTRIBUTES ObjectAttributes,
+			       IN ULONG TitleIndex,
+			       IN PUNICODE_STRING Class,
+			       OUT PULONG Disposition);
+
+NTAPI NTSYSAPI NTSTATUS RtlpNtEnumerateSubKey(IN HANDLE KeyHandle,
+				     OUT PUNICODE_STRING SubKeyName,
+				     IN ULONG Index,
+				     IN ULONG Unused);
+
+NTAPI NTSYSAPI NTSTATUS RtlpNtMakeTemporaryKey(IN HANDLE KeyHandle);
+
+NTAPI NTSYSAPI NTSTATUS RtlpNtOpenKey(OUT HANDLE KeyHandle,
+			     IN ACCESS_MASK DesiredAccess,
+			     IN POBJECT_ATTRIBUTES ObjectAttributes,
+			     IN ULONG Unused);
+
+NTAPI NTSYSAPI NTSTATUS RtlpNtQueryValueKey(IN HANDLE KeyHandle,
+				   OUT PULONG Type OPTIONAL,
+				   OUT PVOID Data OPTIONAL,
+				   IN OUT PULONG DataLength OPTIONAL,
+				   IN ULONG Unused);
+
+NTAPI NTSYSAPI NTSTATUS RtlpNtSetValueKey(IN HANDLE KeyHandle,
+				 IN ULONG Type,
+				 IN PVOID Data,
+				 IN ULONG DataLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlQueryRegistryValues(IN ULONG RelativeTo,
+				      IN PCWSTR Path,
+				      IN PRTL_QUERY_REGISTRY_TABLE QueryTable,
+				      IN PVOID Context,
+				      IN PVOID Environment OPTIONAL);
+
+/*
+ * Security routines
  */
 NTAPI NTSYSAPI NTSTATUS RtlAdjustPrivilege(IN ULONG Privilege,
 					   IN BOOLEAN NewValue,
 					   IN BOOLEAN ForThread,
 					   OUT PBOOLEAN OldValue);
+
+NTAPI NTSYSAPI BOOLEAN RtlValidSid(IN PSID Sid);
+
+NTAPI NTSYSAPI ULONG RtlLengthRequiredSid(IN ULONG SubAuthorityCount);
+
+NTAPI NTSYSAPI NTSTATUS RtlInitializeSid(IN PSID Sid,
+					 IN PSID_IDENTIFIER_AUTHORITY IdentifierAuthority,
+					 IN UCHAR SubAuthorityCount);
+
+NTAPI NTSYSAPI PULONG RtlSubAuthoritySid(IN PSID Sid,
+					 IN ULONG SubAuthority);
+
+NTAPI NTSYSAPI PUCHAR RtlSubAuthorityCountSid(IN PSID Sid);
+
+NTAPI NTSYSAPI PSID_IDENTIFIER_AUTHORITY RtlIdentifierAuthoritySid(IN PSID Sid);
+
+NTAPI NTSYSAPI BOOLEAN RtlEqualSid(IN PSID Sid1,
+				   IN PSID Sid2);
+
+NTAPI NTSYSAPI ULONG RtlLengthSid(IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlCopySid(IN ULONG BufferLength,
+				   IN PSID Dest,
+				   IN PSID Src);
+
+NTAPI NTSYSAPI PVOID RtlFreeSid(IN PSID Sid);
+
+NTAPI NTSYSAPI BOOLEAN RtlEqualPrefixSid(IN PSID Sid1,
+					 IN PSID Sid2);
+
+NTAPI NTSYSAPI NTSTATUS RtlCopySidAndAttributesArray(IN ULONG Count,
+						     IN PSID_AND_ATTRIBUTES Src,
+						     IN ULONG SidAreaSize,
+						     IN PSID_AND_ATTRIBUTES Dest,
+						     IN PSID SidArea,
+						     OUT PSID *RemainingSidArea,
+						     OUT PULONG RemainingSidAreaSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlAllocateAndInitializeSid(IN PSID_IDENTIFIER_AUTHORITY IdentifierAuthority,
+						    IN UCHAR SubAuthorityCount,
+						    IN ULONG SubAuthority0,
+						    IN ULONG SubAuthority1,
+						    IN ULONG SubAuthority2,
+						    IN ULONG SubAuthority3,
+						    IN ULONG SubAuthority4,
+						    IN ULONG SubAuthority5,
+						    IN ULONG SubAuthority6,
+						    IN ULONG SubAuthority7,
+						    OUT PSID *Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlConvertSidToUnicodeString(IN PUNICODE_STRING String,
+						     IN PSID Sid,
+						     IN BOOLEAN AllocateBuffer);

@@ -1,4 +1,5 @@
-#include <hal.h>
+#include <halp.h>
+#include "coroutine.h"
 
 /* The IRP object includes the IRP struct itself plus an array of
  * IO_STACK_LOCATION objects. Since we run drivers in their own
@@ -235,22 +236,46 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     IoDbgDumpIoStackLocation(IoGetCurrentIrpStackLocation(Irp));
 }
 
+/*
+ * This function has to be FASTCALL since we pass its argument in register %ecx
+ * (or %rcx in amd64, see coroutine.h).
+ */
+FASTCALL NTSTATUS IopCallDispatchRoutine(IN PIRP_QUEUE_ENTRY Entry) /* %ecx/%rcx */
+{
+    assert(Entry != NULL);
+    PIRP Irp = Entry->Irp;
+    assert(Irp != NULL);
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
+    PDRIVER_DISPATCH DispatchRoutine = IopDriverObject.MajorFunction[IoStack->MajorFunction];
+    NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
+    if (DispatchRoutine != NULL) {
+	Status = DispatchRoutine(DeviceObject, Irp);
+    }
+    return Status;
+}
+
 static VOID IopProcessIrpQueue()
 {
-    assert(IopDriverObject != NULL);
     LoopOverList(Entry, &IopIrpQueue, IRP_QUEUE_ENTRY, Link) {
 	PIRP Irp = Entry->Irp;
 	IoDbgDumpIrp(Irp);
-	/* Detach the IRP from the IRP queue */
-	RemoveEntryList(&Entry->Link);
+	/* Find the first available coroutine stack to use */
+	PVOID Stack = KiGetFirstAvailableCoroutineStack();
+	/* If KiGetFirstAvailableCoroutineStack returns NULL, it means that
+	 * the system is out of memory. Simply stop processing and wait for
+	 * memory to become available in the future. */
+	if (Stack == NULL) {
+	    break;
+	}
+	/* Save the current stack location in case dispatch function changes it */
 	PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-	PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
-	PDRIVER_DISPATCH DispatchRoutine = IopDriverObject->MajorFunction[IoStack->MajorFunction];
-	NTSTATUS Status = STATUS_SUCCESS;
-	if (DispatchRoutine != NULL) {
-	    Status = DispatchRoutine(DeviceObject, Irp);
-	} else {
-	    Status = STATUS_NOT_IMPLEMENTED;
+	/* Switch to the coroutine stack and call the dispatch routine */
+	NTSTATUS Status = IopStartCoroutine(Stack, Entry);
+	/* If the dispatch routine is blocked on waiting for an object,
+	 * suspend the coroutine and process the next IRP. */
+	if (Status == STATUS_ASYNC_PENDING) {
+	    continue;
 	}
 	if (NT_SUCCESS(Irp->IoStatus.Status) && !NT_SUCCESS(Status)) {
 	    /* If the driver did not return error in IoStatus but returned
@@ -285,6 +310,8 @@ static VOID IopProcessIrpQueue()
 	    break;
 	    /* TODO */
 	}
+	/* Detach the IRP from the IRP queue */
+	RemoveEntryList(&Entry->Link);
 	/* Move the IRP into the completed IRP list */
 	InsertTailList(&IopCompletedIrpList, &Entry->Link);
     }
@@ -333,14 +360,12 @@ VOID IopProcessIrp(OUT ULONG *pNumResponses,
 		SrcIrp->ErrorStatus = Status;
 	    }
 	} else if (SrcIrp->Type == IrpTypeNotification) {
-	    /* TODO */
+	    /* Process all Notifications first */
 	} else {
 	    assert(SrcIrp->Type == IrpTypeIoCompleted);
 	    /* TODO */
 	}
     }
-
-    /* Process all Notifications first */
 
     /* Process all queued IRP. Once processed, the IRP gets moved to the completed IRP list. */
     IopProcessIrpQueue();

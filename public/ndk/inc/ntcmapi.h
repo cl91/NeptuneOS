@@ -913,7 +913,7 @@ NTAPI NTSYSAPI NTSTATUS NtCompressKey(IN HANDLE Key);
 NTAPI NTSYSAPI NTSTATUS NtCreateKey(OUT PHANDLE KeyHandle,
 				    IN ACCESS_MASK DesiredAccess,
 				    IN POBJECT_ATTRIBUTES ObjectAttributes,
-				    OPTIONAL ULONG TitleIndex,	/* Reserved */
+				    IN OPTIONAL ULONG TitleIndex,
 				    IN OPTIONAL PUNICODE_STRING Class,
 				    IN ULONG CreateOptions,
 				    OUT OPTIONAL PULONG Disposition);

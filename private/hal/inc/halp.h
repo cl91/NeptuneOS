@@ -7,9 +7,19 @@
 #include <util.h>
 #include <halsvc.h>
 #include <hal_halsvc_gen.h>
+#include <irp.h>
+
+#define TAG_DRIVER_EXTENSION	'EVRD'
+#define TAG_REINIT		'iRoI'
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
+
+/* Prevent the compiler from inlining the function */
+#define NO_INLINE	__attribute__((noinline))
+
+/* Function does not return */
+#define NORETURN	__attribute__((__noreturn__))
 
 #define IopAllocatePoolEx(Ptr, Type, Size, OnError)		\
     Type *Ptr = (Type *) RtlAllocateHeap(RtlGetProcessHeap(),	\
@@ -33,17 +43,6 @@
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
 
 /*
- * An entry in the IRP queue. The ThisIrp handle points to the NTOS Executive's server-side
- * IO_REQUEST_PACKET, attached to the (server-side) device object.
- */
-typedef struct _IRP_QUEUE_ENTRY {
-    GLOBAL_HANDLE ThisIrp; /* Temporarily unique identifier of the IRP object. See halsvc.h */
-    PIRP Irp;		   /* The client-side wdm IRP object allocated on the process heap */
-    LIST_ENTRY Link;	   /* List entry for the IRP queue */
-    PVOID OutputBuffer;	   /* Output buffer provided by the client process, mapped here */
-} IRP_QUEUE_ENTRY, *PIRP_QUEUE_ENTRY;
-
-/*
  * An entry in the list of files created by this driver.
  * The Handle member is a global handle to the NTOS Executive's IO_FILE_OBJECT.
  */
@@ -63,6 +62,16 @@ typedef struct _DEVICE_LIST_ENTRY {
     LIST_ENTRY Link; /* List entry for the list of all known device objects */
 } DEVICE_LIST_ENTRY, *PDEVICE_LIST_ENTRY;
 
+/*
+ * Driver Re-Initialization Entry
+ */
+typedef struct _DRIVER_REINIT_ITEM {
+    LIST_ENTRY ItemEntry;
+    PDRIVER_OBJECT DriverObject;
+    PDRIVER_REINITIALIZE ReinitRoutine;
+    PVOID Context;
+} DRIVER_REINIT_ITEM, *PDRIVER_REINIT_ITEM;
+
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
@@ -77,7 +86,7 @@ VOID IopProcessIrp(OUT ULONG *pNumResponses,
 		   IN ULONG NumRequests);
 
 /* main.c */
-extern PDRIVER_OBJECT IopDriverObject;
+extern DRIVER_OBJECT IopDriverObject;
 
 /* timer.c */
 extern LIST_ENTRY IopTimerList;

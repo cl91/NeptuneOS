@@ -15,12 +15,13 @@ VOID vDbgPrint(PCSTR Format, va_list args)
     seL4_DebugPutString(buf);
 }
 
-VOID DbgPrint(PCSTR Format, ...)
+ULONG DbgPrint(PCSTR Format, ...)
 {
     va_list arglist;
     va_start(arglist, Format);
     vDbgPrint(Format, arglist);
     va_end(arglist);
+    return STATUS_SUCCESS;
 }
 
 VOID _assert(PCSTR str, PCSTR file, unsigned int line)

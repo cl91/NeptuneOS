@@ -25,6 +25,8 @@
 #define NTAPI
 #endif
 
+#define STDAPICALLTYPE		__stdcall
+
 #define DECLSPEC_IMPORT		__declspec(dllimport)
 #define DECLSPEC_NORETURN	__declspec(noreturn)
 

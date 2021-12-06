@@ -22,40 +22,6 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspLoadThreadContext(IN PTHREAD Thread,
-				     IN PTHREAD_CONTEXT Context)
-{
-    assert(Thread != NULL);
-    int Error = seL4_TCB_ReadRegisters(Thread->TreeNode.Cap, 0, 0,
-				       sizeof(THREAD_CONTEXT) / sizeof(MWORD),
-				       Context);
-
-    if (Error != 0) {
-	DbgTrace("seL4_TCB_ReadRegisters failed for thread cap 0x%zx with error %d\n",
-		 Thread->TreeNode.Cap, Error);
-	return SEL4_ERROR(Error);
-    }
-
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS PspSetThreadContext(IN MWORD ThreadCap,
-				    IN PTHREAD_CONTEXT Context)
-{
-    assert(ThreadCap != 0);
-    int Error = seL4_TCB_WriteRegisters(ThreadCap, 0, 0,
-					sizeof(THREAD_CONTEXT) / sizeof(MWORD),
-					Context);
-
-    if (Error != 0) {
-	DbgTrace("seL4_TCB_WriteRegisters failed for thread cap 0x%zx with error %d\n",
-		 ThreadCap, Error);
-	return SEL4_ERROR(Error);
-    }
-
-    return STATUS_SUCCESS;
-}
-
 static NTSTATUS PspSetThreadPriority(IN MWORD ThreadCap,
 				     IN THREAD_PRIORITY Priority)
 {
@@ -164,7 +130,7 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeSystemThreadContext(Thread, &Context, EntryPoint);
-    IF_ERR_GOTO(Fail, Status, PspSetThreadContext(Thread->TreeNode.Cap, &Context));
+    IF_ERR_GOTO(Fail, Status, KeSetThreadContext(Thread->TreeNode.Cap, &Context));
     IF_ERR_GOTO(Fail, Status, PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
     Thread->CurrentPriority = seL4_MaxPrio;
     IF_ERR_GOTO(Fail, Status, PspResumeThread(Thread->TreeNode.Cap));
@@ -287,8 +253,9 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     PPAGING_STRUCTURE IpcBufferClientPage = MmQueryPage(&Process->VSpace,
 							Thread->IpcBufferClientAddr);
     assert(IpcBufferClientPage != NULL);
+    RET_ERR(KeEnableThreadFaultHandler(Thread));
     RET_ERR(PspConfigureThread(Thread->TreeNode.Cap,
-			       0, /* TODO: Fault handler */
+			       Thread->FaultEndpoint->TreeNode.Cap,
 			       Process->CSpace,
 			       &Process->VSpace,
 			       IpcBufferClientPage));
@@ -353,7 +320,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeThreadContext(Thread, &Context);
-    RET_ERR(PspSetThreadContext(Thread->TreeNode.Cap, &Context));
+    RET_ERR(KeSetThreadContext(Thread->TreeNode.Cap, &Context));
     RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
     Thread->CurrentPriority = seL4_MaxPrio;
     RET_ERR(KeEnableSystemServices(Thread));
@@ -537,6 +504,32 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
 	    }
 	}
     }
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Reserve and commit a coroutine stack for the driver process. Drivers can have
+ * many coroutine stacks, each of which has 4 pages of reserved space, and the
+ * middle two pages are committed. The first and last page are left as uncommitted
+ * such that a stack overflow or underflow will trigger an exception.
+ */
+#define DRIVER_COROUTINE_STACK_RESERVE	(4 * PAGE_SIZE)
+#define DRIVER_COROUTINE_STACK_COMMIT	(2 * PAGE_SIZE)
+NTSTATUS PspMapDriverCoroutineStack(IN PPROCESS Process,
+				    IN MWORD *pStackTop)
+{
+    assert(Process != NULL);
+    assert(Process->DriverObject != NULL);
+    assert(pStackTop != NULL);
+
+    PMMVAD Vad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
+				     USER_IMAGE_REGION_END, DRIVER_COROUTINE_STACK_RESERVE,
+				     MEM_RESERVE_OWNED_MEMORY, &Vad));
+    assert(Vad != NULL);
+    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, Vad->AvlNode.Key + PAGE_SIZE,
+				    DRIVER_COROUTINE_STACK_COMMIT));
+    *pStackTop = Vad->AvlNode.Key + PAGE_SIZE + DRIVER_COROUTINE_STACK_COMMIT;
     return STATUS_SUCCESS;
 }
 
@@ -730,6 +723,9 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	DriverObject->OutgoingIrpClientAddr = ClientOutgoingIrpVad->AvlNode.Key;
 	Process->InitInfo.DriverInitInfo.IncomingIrpBuffer = DriverObject->IncomingIrpClientAddr;
 	Process->InitInfo.DriverInitInfo.OutgoingIrpBuffer = DriverObject->OutgoingIrpClientAddr;
+	MWORD InitialCoroutineStackTop = 0;
+	RET_ERR(PspMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
+	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
     }
 
     /* Create the Event objects used by the NTDLL ldr component */

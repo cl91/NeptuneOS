@@ -190,6 +190,14 @@ NTAPI NTSYSAPI CCHAR RtlFindLeastSignificantBit(IN ULONGLONG Set);
     memcpy(Destination, Source, Length)
 
 /*
+ * BOOLEAN RtlEqualMemory(IN VOID UNALIGNED *Destination,
+ *                        IN CONST VOID UNALIGNED *Source,
+ *                        IN SIZE_T Length)
+ */
+#define RtlEqualMemory(Destination, Source, Length)	\
+    (!memcmp(Destination, Source, Length))
+
+/*
  * VOID RtlFillMemory(IN VOID UNALIGNED *Destination,
  *                    IN SIZE_T Length,
  *                    IN UCHAR Fill);

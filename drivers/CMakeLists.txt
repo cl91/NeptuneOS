@@ -34,13 +34,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_LIBRARIES "-lntdll -lhal")
 set(CMAKE_CXX_STANDARD_LIBRARIES "-lntdll -lhal")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -nostdlib -Wl,-subsystem:native -Wl,-entry:DriverEntry")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -nostdlib -Wl,-subsystem:native -Wl,-entry:DriverEntry -Wl,-errorlimit:0")
 
 include(${CMAKE_CURRENT_LIST_DIR}/../tools/cmake/spec2def.cmake)
 
 function(add_driver _name _src)
-    add_library(${_name} SHARED ${_src})
+    add_library(${_name} SHARED ${_src} ${ARGN})
     set_target_properties(${_name} PROPERTIES SUFFIX ".sys")
 endfunction()
 
 add_subdirectory(base)
+add_subdirectory(input)

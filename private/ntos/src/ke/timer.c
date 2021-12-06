@@ -184,11 +184,11 @@ NTSTATUS KiInitTimer()
     InitializeListHead(&KiExpiredTimerList);
     KeCreateMutex(&KiTimerDatabaseLock);
     KeInitializeIpcEndpoint(&KiTimerServiceNotification, &MiNtosCNode, 0,
-			    SERVICE_NOTIFICATION);
+			    SERVICE_TYPE_NOTIFICATION);
     RET_ERR(MmCapTreeDeriveBadgedNode(&KiTimerServiceNotification.TreeNode,
 				      &KiExecutiveServiceEndpoint.TreeNode,
 				      ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
-				      SERVICE_NOTIFICATION));
+				      SERVICE_TYPE_NOTIFICATION));
 
     TIME_FIELDS ClockTime;
     HalQueryRealTimeClock(&ClockTime);

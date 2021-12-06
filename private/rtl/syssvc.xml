@@ -53,6 +53,34 @@
     <parameter annotation="out opt" type="ptr::ULONG" name="SuspendCount" />
   </svc>
 
+  <svc name="NtOpenProcessToken">
+    <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="out" type="ptr::HANDLE" name="TokenHandle" />
+  </svc>
+
+  <svc name="NtOpenProcessTokenEx">
+    <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ULONG" name="HandleAttributes" />
+    <parameter annotation="out" type="ptr::HANDLE" name="TokenHandle" />
+  </svc>
+
+  <svc name="NtOpenThreadToken">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="BOOLEAN" name="OpenAsSelf" />
+    <parameter annotation="out" type="ptr::HANDLE" name="TokenHandle" />
+  </svc>
+
+  <svc name="NtOpenThreadTokenEx">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="BOOLEAN" name="OpenAsSelf" />
+    <parameter annotation="in" type="ULONG" name="HandleAttributes" />
+    <parameter annotation="out" type="ptr::HANDLE" name="TokenHandle" />
+  </svc>
+
   <svc name="NtRaiseHardError">
     <parameter annotation="in" type="NTSTATUS" name="ErrorStatus" />
     <parameter annotation="in" type="ULONG" name="NumberOfParameters" />
@@ -103,6 +131,14 @@
     <parameter annotation="in" type="SYSTEM_INFORMATION_CLASS" name="SystemInformationClass" />
     <parameter annotation="in" type="PVOID" name="SystemInformationBuffer" />
     <parameter annotation="in" type="ULONG" name="SystemInformationLength" />
+    <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
+  </svc>
+
+  <svc name="NtQueryInformationToken">
+    <parameter annotation="in" type="HANDLE" name="TokenHandle" />
+    <parameter annotation="in" type="TOKEN_INFORMATION_CLASS" name="TokenInformationClass" />
+    <parameter annotation="in" type="PVOID" name="TokenInformationBuffer" />
+    <parameter annotation="in" type="ULONG" name="TokenInformationLength" />
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
   </svc>
 
@@ -350,10 +386,14 @@
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
   </svc>
 
-  <svc name="NtPlugPlayControl">
-    <parameter annotation="in" type="PLUGPLAY_CONTROL_CLASS" name="PlugPlayControlClass" />
-    <parameter annotation="in" type="PVOID" name="Buffer" />
-    <parameter annotation="in" type="ULONG" name="BufferSize" />
+  <svc name="NtCreateKey">
+    <parameter annotation="out" type="ptr::HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="ULONG" name="TitleIndex" />
+    <parameter annotation="in opt" type="UnicodeString" name="Class" />
+    <parameter annotation="in" type="ULONG" name="CreateOptions" />
+    <parameter annotation="in opt" type="ptr::ULONG" name="Disposition" />
   </svc>
 
   <svc name="NtQueryValueKey">
@@ -372,6 +412,10 @@
     <parameter annotation="in" type="ULONG" name="Type" />
     <parameter annotation="in" type="PVOID" name="Data" />
     <parameter annotation="in" type="ULONG" name="DataSize" />
+  </svc>
+
+  <svc name="NtDeleteKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
   </svc>
 
   <svc name="NtDeleteValueKey">
@@ -395,6 +439,12 @@
     <parameter annotation="in" type="PVOID" name="InformationBuffer" />
     <parameter annotation="in" type="ULONG" name="BufferSize" />
     <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
+  </svc>
+
+  <svc name="NtPlugPlayControl">
+    <parameter annotation="in" type="PLUGPLAY_CONTROL_CLASS" name="PlugPlayControlClass" />
+    <parameter annotation="in" type="PVOID" name="Buffer" />
+    <parameter annotation="in" type="ULONG" name="BufferSize" />
   </svc>
 
 </services>

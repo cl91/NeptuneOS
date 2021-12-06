@@ -63,7 +63,7 @@ NTAPI NTSTATUS BeepClose(IN PDEVICE_OBJECT DeviceObject,
     /* Check for active timer */
     if (DeviceExtension->TimerActive) {
 	/* Cancel it */
-	if (KeCancelTimer(&DeviceExtension->Timer)) {
+	if (IoCancelTimer(&DeviceExtension->Timer)) {
 	    /* Mark it as cancelled */
 	    DeviceExtension->TimerActive = FALSE;
 	}
@@ -202,7 +202,7 @@ NTAPI VOID BeepUnload(IN PDRIVER_OBJECT DriverObject)
     /* Check if the timer is active */
     if (DeviceExtension->TimerActive) {
 	/* Cancel it */
-	if (KeCancelTimer(&DeviceExtension->Timer)) {
+	if (IoCancelTimer(&DeviceExtension->Timer)) {
 	    /* All done */
 	    DeviceExtension->TimerActive = FALSE;
 	}
@@ -234,7 +234,7 @@ NTAPI VOID BeepStartIo(IN PDEVICE_OBJECT DeviceObject,
 	/* Check if we have an active timer */
 	if (DeviceExtension->TimerActive) {
 	    /* Cancel it */
-	    if (KeCancelTimer(&DeviceExtension->Timer)) {
+	    if (IoCancelTimer(&DeviceExtension->Timer)) {
 		/* Set the state */
 		DeviceExtension->TimerActive = FALSE;
 	    }
@@ -246,7 +246,7 @@ NTAPI VOID BeepStartIo(IN PDEVICE_OBJECT DeviceObject,
 	    Status = STATUS_SUCCESS;
 	    DueTime.QuadPart = BeepParam->Duration * -10000LL;
 	    DeviceExtension->TimerActive = TRUE;
-	    KeSetTimer(&DeviceExtension->Timer, DueTime, &DeviceObject->Dpc);
+	    IoSetTimer(&DeviceExtension->Timer, DueTime, &DeviceObject->Dpc, NULL);
 	} else {
 	    /* Beep has failed */
 	    Status = STATUS_INVALID_PARAMETER;
@@ -294,7 +294,5 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DeviceExtension = DeviceObject->DeviceExtension;
     DeviceExtension->TimerActive = FALSE;
     IoInitializeDpcRequest(DeviceObject, BeepDPC);
-    KeInitializeTimer(&DeviceExtension->Timer);
-
-    return STATUS_SUCCESS;
+    return IoCreateTimer(&DeviceExtension->Timer);
 }

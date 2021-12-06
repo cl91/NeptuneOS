@@ -1,24 +1,10 @@
 #undef __MSVCRT__
-//#include <psdk/ntverp.h>
 
-/* DDK/IFS/NDK Headers */
 #include <excpt.h>
-//#include <setjmp.h>
 #include <nt.h>
-/* #include <ntifs.h> */
-/* #include <arc/arc.h> */
-/* #include <ntndk.h> */
-/* #include <bugcodes.h> */
-
-/* KD Support */
-/* #define NOEXTAPI */
-/* #include <windbgkd.h> */
-/* #include <wdbgexts.h> */
-/* #include <kddll.h> */
 
 #ifdef _M_AMD64
-enum
-{
+enum {
     P1Home = 1 * sizeof(PVOID),
     P2Home = 2 * sizeof(PVOID),
     P3Home = 3 * sizeof(PVOID),
@@ -26,8 +12,7 @@ enum
 };
 #endif
 
-typedef struct
-{
+typedef struct {
     char Type;
     char Name[55];
     ULONGLONG Value;
@@ -57,8 +42,7 @@ __attribute__ ((section(".asmdef")))
 #error Your compiler is not supported.
 #endif
 
-ASMGENDATA Table[] =
-{
+ASMGENDATA Table[] = {
 /* ARCHITECTURE INDEPENDENT CONTSTANTS ***************************************/
 #include "common.template.h"
 /* ARCHITECTURE SPECIFIC CONTSTANTS ******************************************/
@@ -73,4 +57,3 @@ ASMGENDATA Table[] =
     /* End of list */
     {TYPE_END, "", 0}
 };
-

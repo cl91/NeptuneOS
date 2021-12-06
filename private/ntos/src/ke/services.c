@@ -22,11 +22,14 @@ NTSTATUS KiInitExecutiveServices()
 }
 
 static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
-					      IN BOOLEAN HalService)
+					      IN SERVICE_TYPE ServiceType)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     assert(Thread->Process->CSpace != NULL);
+    /* Make sure ServiceType only has the lowest three (four in amd64) bits */
+    assert(GLOBAL_HANDLE_GET_FLAG(ServiceType) == ServiceType);
+    assert(ServiceType != SERVICE_TYPE_NOTIFICATION);
 
     MWORD ReplyCap = 0;
     extern CNODE MiNtosCNode;
@@ -39,12 +42,7 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
 			 MmDeallocateCap(&MiNtosCNode, ReplyCap);
 			 Thread->ReplyEndpoint.TreeNode.Cap = 0;
 		     });
-    MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread);
-    if (HalService) {
-	IPCBadge |= HAL_SERVICE_IPC_BADGE;
-    } else {
-	IPCBadge |= SYSTEM_SERVICE_IPC_BADGE;
-    }
+    MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread) | ServiceType;
     KeInitializeIpcEndpoint(ServiceEndpoint, Thread->Process->CSpace, 0, IPCBadge);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
@@ -55,24 +53,66 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
 		   MmDeallocateCap(&MiNtosCNode, ReplyCap);
 		   Thread->ReplyEndpoint.TreeNode.Cap = 0;
 	       });
-    if (HalService) {
+    if (ServiceType == SERVICE_TYPE_SYSTEM_SERVICE) {
+	Thread->SystemServiceEndpoint = ServiceEndpoint;
+	Thread->InitInfo.SystemServiceCap = ServiceEndpoint->TreeNode.Cap;
+    } else if (ServiceType == SERVICE_TYPE_HAL_SERVICE) {
 	Thread->HalServiceEndpoint = ServiceEndpoint;
 	Thread->InitInfo.HalServiceCap = ServiceEndpoint->TreeNode.Cap;
     } else {
-	Thread->SystemServiceEndpoint = ServiceEndpoint;
-	Thread->InitInfo.SystemServiceCap = ServiceEndpoint->TreeNode.Cap;
+	assert(ServiceType == SERVICE_TYPE_FAULT_HANDLER);
+	Thread->FaultEndpoint = ServiceEndpoint;
     }
     return STATUS_SUCCESS;
 }
 
 NTSTATUS KeEnableSystemServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Thread, FALSE);
+    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_SYSTEM_SERVICE);
 }
 
 NTSTATUS KeEnableHalServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Thread, TRUE);
+    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_HAL_SERVICE);
+}
+
+NTSTATUS KeEnableThreadFaultHandler(IN PTHREAD Thread)
+{
+    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_FAULT_HANDLER);
+}
+
+NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
+			     IN PTHREAD_CONTEXT Context)
+{
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_ReadRegisters(ThreadCap, 0, 0,
+				       sizeof(THREAD_CONTEXT) / sizeof(MWORD),
+				       Context);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_ReadRegisters failed for thread cap 0x%zx with error %d\n",
+		 ThreadCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
+			    IN PTHREAD_CONTEXT Context)
+{
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_WriteRegisters(ThreadCap, 0, 0,
+					sizeof(THREAD_CONTEXT) / sizeof(MWORD),
+					Context);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_WriteRegisters failed for thread cap 0x%zx with error %d\n",
+		 ThreadCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
@@ -173,6 +213,63 @@ static inline VOID KiClearAsyncStack(IN PTHREAD Thread)
 #include <ntos_syssvc_gen.c>
 #include <ntos_halsvc_gen.c>
 
+static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread,
+				       OUT ULONG *pReplyMsgLength,
+				       OUT ULONG *pMsgBufferEnd)
+{
+    if (ReadyThread->HalSvc) {
+	return KiResumeHalService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
+    } else {
+	return KiResumeSystemService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
+    }
+}
+
+static inline PCSTR KiDbgGetFaultName(IN seL4_Fault_t Fault)
+{
+    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
+    case seL4_Fault_NullFault:
+	return "NULL-FAULT";
+    case seL4_Fault_CapFault:
+	return "CAP-FAULT\n";
+    case seL4_Fault_UnknownSyscall:
+	return "UNKNOWN-SYSCALL";
+    case seL4_Fault_UserException:
+	return "USER-EXCEPTION";
+    case seL4_Fault_VMFault:
+	return "VM-FAULT";
+    }
+    return "UNKNOWN-FAULT";
+}
+
+static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault)
+{
+    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
+    case seL4_Fault_NullFault:
+	HalVgaPrint("WTF??? This should never happen.\n");
+	break;
+    case seL4_Fault_CapFault:
+	HalVgaPrint("CAP-FAULT\n");
+	break;
+    case seL4_Fault_UnknownSyscall:
+	HalVgaPrint("UNKNOWN-SYSCALL\n");
+	break;
+    case seL4_Fault_UserException:
+	HalVgaPrint("USER-EXCEPTION\n");
+	break;
+    case seL4_Fault_VMFault:
+	HalVgaPrint("IP\t %p\tADDR\t%p\n"
+		    "PREFETCH %p\tFSR\t%p\n",
+		    (PVOID)seL4_Fault_VMFault_get_IP(Fault),
+		    (PVOID)seL4_Fault_VMFault_get_Addr(Fault),
+		    (PVOID)seL4_Fault_VMFault_get_PrefetchFault(Fault),
+		    (PVOID)seL4_Fault_VMFault_get_FSR(Fault));
+	break;
+    default:
+	HalVgaPrint("WTF??? This should never happen.\n");
+	break;
+    }
+}
+
 VOID KiDispatchExecutiveServices()
 {
     MWORD Badge = 0;
@@ -184,15 +281,38 @@ VOID KiDispatchExecutiveServices()
 	ULONG NumExtraCaps = seL4_MessageInfo_get_extraCaps(Request);
 	DbgTrace("Got message label 0x%x length %d unwrapped caps %d extra caps %d badge 0x%zx\n",
 		 SvcNum, ReqMsgLength, NumUnwrappedCaps, NumExtraCaps, Badge);
-	NTSTATUS Status = STATUS_INVALID_PARAMETER;
-	/* Check if this is a service notification. The timer irq thread generates such a
-	 * notification with seL4_NBWait, to inform us that the expired timer list should
-	 * be checked */
-	if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_NOTIFICATION) {
-	    /* Reject the system service call since the service message is invalid. */
+	if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
+	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
+	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
+	    PPROCESS Process = Thread->Process;
+	    assert(Process != NULL);
+	    assert(Process->ImageFile != NULL);
+	    assert(Process->ImageFile->FileName != NULL);
+	    seL4_Fault_t Fault = seL4_getFault(Request);
+	    HalVgaPrint("\n\n==============================================================================\n"
+			"Unhandled %s in thread %s|%p\n",
+			KiDbgGetFaultName(Fault),
+			Process->ImageFile->FileName, Thread);
+	    KiDbgDumpFault(Fault);
+	    THREAD_CONTEXT Context;
+	    NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
+	    if (!NT_SUCCESS(Status)) {
+		HalVgaPrint("Unable to dump thread context. Error 0x%08x\n", Status);
+	    }
+	    KiDumpThreadContext(&Context);
+	    HalVgaPrint("==============================================================================\n");
+	    Status = PsTerminateThread(Thread);
+	    /* This should always succeed. */
+	    assert(NT_SUCCESS(Status));
+	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_NOTIFICATION) {
+	    /* This is not a service notification so we should process the service message. The
+	     * timer irq thread generates such a notification with seL4_NBWait, to inform us that
+	     * the expired timer list should be checked even though there is no service message. */
 	    ULONG ReplyMsgLength = 1;
 	    ULONG MsgBufferEnd = 0;
 	    SHORT NumApc = 0;
+	    /* Reject the system service call since the service message is invalid. */
+	    NTSTATUS Status = STATUS_INVALID_PARAMETER;
 	    if ((NumUnwrappedCaps != 0) || (NumExtraCaps != 0)) {
 		DbgTrace("Invalid system service message (%d unwrapped caps, %d extra caps)\n",
 			 NumUnwrappedCaps, NumExtraCaps);
@@ -201,12 +321,12 @@ VOID KiDispatchExecutiveServices()
 		assert(Badge != 0);
 		PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 		KiClearAsyncStack(Thread);
-		if (GLOBAL_HANDLE_GET_FLAG(Badge) == HAL_SERVICE_IPC_BADGE) {
+		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_HAL_SERVICE) {
 		    DbgTrace("Got driver call from thread %p\n", Thread);
 		    Status = KiHandleHalService(SvcNum, Thread, ReqMsgLength,
 						&ReplyMsgLength, &MsgBufferEnd);
 		} else {
-		    assert(GLOBAL_HANDLE_GET_FLAG(Badge) == SYSTEM_SERVICE_IPC_BADGE);
+		    assert(GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_SERVICE);
 		    DbgTrace("Got call from thread %p\n", Thread);
 		    Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength,
 						   &ReplyMsgLength, &MsgBufferEnd);
@@ -229,11 +349,7 @@ VOID KiDispatchExecutiveServices()
 	    ULONG ReplyMsgLength = 0;
 	    ULONG MsgBufferEnd = 0;
 	    SHORT NumApc = 0;
-	    if (ReadyThread->HalSvc) {
-		Status = KiResumeHalService(ReadyThread, &ReplyMsgLength, &MsgBufferEnd);
-	    } else {
-		Status = KiResumeSystemService(ReadyThread, &ReplyMsgLength, &MsgBufferEnd);
-	    }
+	    NTSTATUS Status = KiResumeService(ReadyThread, &ReplyMsgLength, &MsgBufferEnd);
 	    /* Regardless of whether the handler function has completed, we should
 	     * remove the thread from the ready list. In the case that the async status
 	     * is still pending (because the handler function has blocked on a different

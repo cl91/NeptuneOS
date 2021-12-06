@@ -1,6 +1,8 @@
 #pragma once
 
+#include <debug.h>
 #include <nt.h>
+#include <structures_gen.h>
 
 static inline ULONG RtlpHashString(PCSTR Str)
 {
@@ -76,3 +78,24 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
 	     *__ReverseLoop_blink = CONTAINING_RECORD((Entry)->Field.Blink, Type, Field); \
 	 &(Entry)->Field != (ListHead); Entry = __ReverseLoop_blink,	\
 	     __ReverseLoop_blink = __CONTAINING_RECORD((__ReverseLoop_blink)->Field.Blink, Type, Field))
+
+PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
+
+#define DbgTrace(...) { DbgPrint("%s:  ", __func__); DbgPrint(__VA_ARGS__); }
+
+#define RET_ERR_EX(Expr, OnError)					\
+    {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\
+	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+		     " error 0x%x\n",					\
+		     #Expr, __func__, __FILE__, __LINE__, Status);	\
+	    {OnError;} return Status; }}
+#define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
+
+#define IF_ERR_GOTO(Label, Status, Expr)				\
+    Status = (Expr);							\
+    if (!NT_SUCCESS(Status)) {						\
+	DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+		 " error 0x%x\n",					\
+		 #Expr, __func__, __FILE__, __LINE__, Status);		\
+	goto Label;							\
+    }

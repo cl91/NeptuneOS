@@ -9,6 +9,19 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
+NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
+                     IN struct _THREAD *Thread,
+                     OUT HANDLE *KeyHandle,
+                     IN ACCESS_MASK DesiredAccess,
+                     IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
+                     IN ULONG TitleIndex,
+                     IN OPTIONAL PCSTR Class,
+                     IN ULONG CreateOptions,
+                     IN OPTIONAL PULONG Disposition)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtQueryValueKey(IN ASYNC_STATE AsyncState,
                          IN PTHREAD Thread,
                          IN HANDLE KeyHandle,
@@ -29,6 +42,13 @@ NTSTATUS NtSetValueKey(IN ASYNC_STATE AsyncState,
                        IN ULONG Type,
                        IN PVOID Data,
                        IN ULONG DataSize)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
+                     IN struct _THREAD *Thread,
+                     IN HANDLE KeyHandle)
 {
     UNIMPLEMENTED;
 }

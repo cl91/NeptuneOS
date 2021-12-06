@@ -2,9 +2,10 @@
  * The main event loop of the driver process
  */
 
-#include <hal.h>
+#include <halp.h>
+#include "coroutine.h"
 
-PDRIVER_OBJECT IopDriverObject;
+DRIVER_OBJECT IopDriverObject;
 
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
 __thread seL4_CPtr KiHalServiceCap;
@@ -36,17 +37,15 @@ const IMAGE_TLS_DIRECTORY _tls_used = {
 
 static NTSTATUS IopCallDriverEntry()
 {
-    assert(IopDriverObject != NULL);
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
     RET_ERR(LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress, &LdrDriverImage));
     PVOID DriverEntry = LdrDriverImage->EntryPoint;
-    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(IopDriverObject, NULL));
+    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, NULL));
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS IopDriverEventLoop()
 {
-    assert(IopDriverObject != NULL);
     ULONG NumResponsePackets = 0;
     while (TRUE) {
 	ULONG NumRequestPackets = 0;
@@ -65,23 +64,16 @@ VOID HalStartup(IN seL4_IPCBuffer *IpcBuffer,
     KiHalServiceCap = HalServiceCap;
     IopIncomingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->IncomingIrpBuffer;
     IopOutgoingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->OutgoingIrpBuffer;
+    KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
     InitializeListHead(&IopIrpQueue);
     InitializeListHead(&IopCompletedIrpList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopTimerList);
 
-    IopDriverObject = (PDRIVER_OBJECT) RtlAllocateHeap(RtlGetProcessHeap(),
-						       HEAP_ZERO_MEMORY,
-						       sizeof(DRIVER_OBJECT));
+    InitializeListHead(&IopDriverObject.ReinitListHead);
 
-    NTSTATUS Status = STATUS_SUCCESS;
-    if (IopDriverObject == NULL) {
-	Status = STATUS_NO_MEMORY;
-	goto fail;
-    }
-
-    Status = IopCallDriverEntry();
+    NTSTATUS Status = IopCallDriverEntry();
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

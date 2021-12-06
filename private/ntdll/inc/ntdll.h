@@ -11,16 +11,6 @@
 #include <image.h>
 #include <util.h>
 
-#define UNIMPLEMENTED
-#define DPRINT DbgPrint
-
-#define ERROR_DBGBREAK(...)			\
-    do {					\
-	DbgPrint("" __VA_ARGS__);		\
-	DbgBreakPoint();			\
-    } while (0)
-
-#define ASSERT(x)	assert(x)
 #define CDECL		__cdecl
 
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)

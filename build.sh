@@ -134,6 +134,7 @@ cmake ../../private/hal \
       -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DGEN_INC_DIR=${PWD}/../ntdll \
       -G Ninja

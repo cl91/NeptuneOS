@@ -3,7 +3,7 @@
 #include <nt.h>
 #include <sel4/sel4.h>
 #include <printf.h>
-#include <debug.h>
+#include <util.h>
 #include <intrin.h>
 #include "mm.h"
 
@@ -13,6 +13,10 @@
 #define NTOS_TLS_AREA_SIZE		(64)
 
 struct _THREAD;
+
+/* Not to be confused with CONTEXT, defined in the NT headers */
+typedef seL4_UserContext THREAD_CONTEXT, *PTHREAD_CONTEXT;
+typedef ULONG THREAD_PRIORITY;
 
 #define LoopOverUntyped(cap, desc, bootinfo)				\
     for (MWORD cap = bootinfo->untyped.start;				\
@@ -568,6 +572,11 @@ VOID KeSetEvent(IN PKEVENT Event);
 struct _IO_DRIVER_OBJECT;
 NTSTATUS KeEnableSystemServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableHalServices(IN struct _THREAD *Thread);
+NTSTATUS KeEnableThreadFaultHandler(IN struct _THREAD *Thread);
+NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
+			     IN PTHREAD_CONTEXT Context);
+NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
+			    IN PTHREAD_CONTEXT Context);
 
 /* ioport.c */
 NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,

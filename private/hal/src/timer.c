@@ -1,63 +1,59 @@
-#include <hal.h>
+#include <halp.h>
 
 LIST_ENTRY IopTimerList;
 
 /*
  * Call the server to create a timer object.
- *
- * Note: If the creation failed (which is unlikely, usually because
- * the server is out of memory), we set the Handle to NULL so all
- * future invocations will fail.
  */
-NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
+NTAPI NTSTATUS IoCreateTimer(OUT PKTIMER Timer)
 {
+    RET_ERR(NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
+			  NULL, NotificationTimer));
     InsertTailList(&IopTimerList, &Timer->TimerListEntry);
     Timer->Dpc = NULL;
-    Timer->Canceled = FALSE;
     Timer->State = FALSE;
-    NTSTATUS Status = NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
-				    NULL, NotificationTimer);
-    if (!NT_SUCCESS(Status)) {
-	assert(FALSE);
-	Timer->Handle = NULL;
-	Timer->Canceled = TRUE;
-    }
+    Timer->Canceled = FALSE;
+    return STATUS_SUCCESS;
 }
 
-static NTAPI VOID KiTimerExpired(IN PVOID TimerContext,
-				 IN ULONG TimerLowValue,
-				 IN LONG TimerHighValue)
+static NTAPI VOID IopTimerExpired(IN PVOID Context,
+				  IN ULONG TimerLowValue,
+				  IN LONG TimerHighValue)
 {
-    PKDPC Dpc = TimerContext;
-    DbgTrace("Timer expired %p\n", Dpc);
-    if (Dpc != NULL) {
-	Dpc->DeferredRoutine(Dpc, Dpc->DeferredContext, Dpc->SystemArgument1,
-			     Dpc->SystemArgument2);
+    PKTIMER Timer = (PKTIMER)Context;
+    DbgTrace("Timer expired %p\n", Timer);
+    assert(Timer != NULL);
+    /* If the timer has already been canceled, do nothing. */
+    if (Timer->Canceled) {
+	return;
+    }
+    if (Timer->Dpc != NULL) {
+	assert(Timer->Dpc->DeferredRoutine != NULL);
+	Timer->Dpc->DeferredRoutine(Timer->Dpc,
+				    Timer->Dpc->DeferredContext,
+				    Timer->Dpc->SystemArgument1,
+				    Timer->Dpc->SystemArgument2);
     }
 }
 
 /*
  * Call the server to set the timer. If the timer was set before,
- * it will be implicitly canceled. Returns the previous state of
- * the timer (TRUE if timer was set before the call).
+ * it will be implicitly canceled. If specified, returns the previous
+ * state of the timer (ie. TRUE if timer was set before the call).
  */
-NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-			 IN LARGE_INTEGER DueTime,
-			 IN OPTIONAL PKDPC Dpc)
+NTAPI NTSTATUS IoSetTimer(IN OUT PKTIMER Timer,
+			  IN LARGE_INTEGER DueTime,
+			  IN OPTIONAL PKDPC Dpc,
+			  OUT OPTIONAL BOOLEAN *pPreviousState)
 {
-    /* On debug build we should find out why the timer creation
-     * failed. On release build we simply return FALSE. */
+    /* On debug build we should find out why the timer handle is NULL.
+     * On release build we simply return STATUS_INVALID_HANDLE. */
     assert(Timer->Handle != NULL);
-    if (Timer->Canceled || (Timer->Handle == NULL)) {
-	return FALSE;
+    if (Timer->Handle == NULL) {
+	return STATUS_INVALID_HANDLE;
     }
-    BOOLEAN PreviousState;
-    NTSTATUS Status = NtSetTimer(Timer->Handle, &DueTime, KiTimerExpired,
-				 Dpc, TRUE, 0, &PreviousState);
-    /* This can fail (due to server running out of memory). Assert in debug
-     * build so we can find out why. */
-    assert(PreviousState == Timer->State);
-    assert(NT_SUCCESS(Status));
+    RET_ERR(NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
+		       Timer, TRUE, 0, pPreviousState));
     Timer->State = TRUE;
-    return PreviousState;
+    return STATUS_SUCCESS;
 }

@@ -77,6 +77,15 @@
 #define IRP_ALLOCATED_FIXED_SIZE          0x04
 #define IRP_LOOKASIDE_ALLOCATION          0x08
 
+/* DRIVER_OBJECT.Flags */
+#define DRVO_UNLOAD_INVOKED               0x00000001
+#define DRVO_LEGACY_DRIVER                0x00000002
+#define DRVO_BUILTIN_DRIVER               0x00000004
+#define DRVO_REINIT_REGISTERED            0x00000008
+#define DRVO_INITIALIZED                  0x00000010
+#define DRVO_BOOTREINIT_REGISTERED        0x00000020
+#define DRVO_LEGACY_RESOURCES             0x00000040
+
 /* DEVICE_OBJECT.Flags */
 #define DO_DEVICE_HAS_NAME                0x00000040
 #define DO_SYSTEM_BOOT_PARTITION          0x00000100
@@ -647,6 +656,14 @@ typedef NTSTATUS (NTAPI IO_COMPLETION_ROUTINE)(IN PDEVICE_OBJECT DeviceObject,
 typedef IO_COMPLETION_ROUTINE *PIO_COMPLETION_ROUTINE;
 
 /*
+ * Driver Extension
+ */
+typedef struct _IO_CLIENT_EXTENSION {
+    struct _IO_CLIENT_EXTENSION *NextExtension;
+    PVOID ClientIdentificationAddress;
+} IO_CLIENT_EXTENSION, *PIO_CLIENT_EXTENSION;
+
+/*
  * Driver object
  */
 typedef struct _DRIVER_OBJECT {
@@ -658,13 +675,22 @@ typedef struct _DRIVER_OBJECT {
     UNICODE_STRING ServiceKeyName;
     UNICODE_STRING DriverName;
     PUNICODE_STRING HardwareDatabase;
-    struct _FAST_IO_DISPATCH *FastIoDispatch;
+    PIO_CLIENT_EXTENSION ClientDriverExtension;
+    LIST_ENTRY ReinitListHead;
+    PFAST_IO_DISPATCH FastIoDispatch;
     PDRIVER_INITIALIZE DriverInit;
     PDRIVER_STARTIO DriverStartIo;
     PDRIVER_ADD_DEVICE AddDevice;
     PDRIVER_UNLOAD DriverUnload;
     PDRIVER_DISPATCH MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 } DRIVER_OBJECT, *PDRIVER_OBJECT;
+
+/*
+ * Driver reinitialize routine
+ */
+typedef VOID (NTAPI *PDRIVER_REINITIALIZE)(IN PDRIVER_OBJECT DriverObject,
+					   IN OPTIONAL PVOID Context,
+					   IN ULONG Count);
 
 typedef struct _IO_SECURITY_CONTEXT {
     ACCESS_MASK DesiredAccess;
@@ -989,13 +1015,14 @@ NTAPI NTSYSAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
 /*
  * Timer routines
  */
-NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
+NTAPI NTSYSAPI NTSTATUS IoCreateTimer(OUT PKTIMER Timer);
 
-NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-				  IN LARGE_INTEGER DueTime,
-				  IN OPTIONAL PKDPC Dpc);
+NTAPI NTSYSAPI NTSTATUS IoSetTimer(IN OUT PKTIMER Timer,
+				   IN LARGE_INTEGER DueTime,
+				   IN OPTIONAL PKDPC Dpc,
+				   OUT OPTIONAL BOOLEAN *pPreviousState);
 
-FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
+FORCEINLINE BOOLEAN IoCancelTimer(IN OUT PKTIMER Timer)
 {
     BOOLEAN PreviousState = Timer->State;
     /* Mark the timer as canceled. The driver process will
@@ -1004,3 +1031,41 @@ FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
     Timer->State = FALSE;
     return PreviousState;
 }
+
+/*
+ * Memory allocation and deallocation.
+ *
+ * PORTING GUIDE: Since we run drivers in their container process
+ * there is no distinction between paged pool and non-paged pool.
+ * To port Windows/ReactOS driver simply remove the first argument
+ * in ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag).
+ */
+static inline PVOID ExAllocatePoolWithTag(IN SIZE_T Size,
+					  IN ULONG Tag)
+{
+    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+}
+
+static inline VOID ExFreePoolWithTag(IN PVOID Pointer,
+				     IN ULONG Tag)
+{
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
+}
+
+/*
+ * Per-driver context area routines
+ */
+NTAPI NTSYSAPI NTSTATUS IoAllocateDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
+							IN PVOID ClientIdentAddr,
+							IN ULONG DriverExtensionSize,
+							OUT PVOID *pDriverExtension);
+
+NTAPI NTSYSAPI PVOID IoGetDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
+						IN PVOID ClientIdentAddr);
+
+/*
+ * Driver reinitialization routine registration
+ */
+NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
+					    IN PDRIVER_REINITIALIZE ReinitRoutine,
+					    IN PVOID Context);

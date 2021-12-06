@@ -54,6 +54,26 @@ add_dependencies(hal rtl)
 target_link_directories(hal PRIVATE ${NDK_LIB_PATH})
 target_link_libraries(hal PRIVATE rtl)
 
+add_library(genincdata MODULE tools/genincdata.c)
+set_entrypoint(genincdata 0)
+target_include_directories(
+    genincdata
+    PRIVATE
+	../../public/ndk/inc
+	../../public/ddk/inc
+	../../public/crt/inc
+	../../public/crt/inc/${Arch}
+	tools
+	inc
+)
+add_dependencies(genincdata rtl)
+add_custom_target(
+    geninc ALL
+    COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/halasm.h
+    DEPENDS genincdata
+)
+add_dependencies(hal geninc)
+
 spec2def(hal hal.spec ${Arch})
 set_dll_def(hal hal.def)
 set_entrypoint(hal HalStartup)

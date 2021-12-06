@@ -75,7 +75,8 @@ target_include_directories(
 add_custom_target(
     geninc ALL
     COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/${GENINC_FILENAME}
-    DEPENDS genincdata)
+    DEPENDS genincdata
+)
 add_dependencies(ntdll geninc)
 add_dependencies(ntdllp geninc)
 

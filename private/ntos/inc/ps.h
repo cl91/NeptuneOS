@@ -18,10 +18,6 @@ compile_assert(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
 
 #define NTOS_PS_TAG		EX_POOL_TAG('n', 't', 'p', 's')
 
-/* Not to be confused with CONTEXT, defined in the NT headers */
-typedef seL4_UserContext THREAD_CONTEXT, *PTHREAD_CONTEXT;
-typedef ULONG THREAD_PRIORITY;
-
 /*
  * Thread object
  */
@@ -33,6 +29,7 @@ typedef struct _THREAD {
     LIST_ENTRY ApcList;
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT HalServiceEndpoint;
+    PIPC_ENDPOINT FaultEndpoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
     MWORD TebClientAddr;
@@ -117,3 +114,6 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 OUT PPROCESS *pProcess);
 NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);
+
+/* kill.c */
+NTSTATUS PsTerminateThread(IN PTHREAD Thread);

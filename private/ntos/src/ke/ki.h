@@ -46,3 +46,6 @@ VOID KiDispatchExecutiveServices();
 /* timer.c */
 VOID KiSignalExpiredTimerList();
 NTSTATUS KiInitTimer();
+
+/* arch/debug.c */
+VOID KiDumpThreadContext(IN PTHREAD_CONTEXT Context);

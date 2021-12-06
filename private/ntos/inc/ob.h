@@ -114,21 +114,29 @@ typedef PVOID POBJECT;
 
 /*
  * We use the offset of an object header pointer from the start of the
- * Executive pool as the global handle (badge) of an object. Since the
+ * Executive pool as the global handle of an object. Since the
  * lowest EX_POOL_BLOCK_SHIFT (== 3 on x86 and 4 on amd64) bits are
  * always zero for any memory allocated on the ExPool we use the lowest
  * bits to indicate the nature of the handle.
  *
+ * For the NTOS executive services we use the global handle of the
+ * thread as the badge of the IPC endpoint to distinguish the sender
+ * of the service messages. Since the lowest three bits of the global
+ * handle are guaranteed to be zero, we are free to use the three bits
+ * to indicate the service type, since there are more than one types
+ * of executive services for a client thread.
+ *
  * Note: the type GLOBAL_HANDLE is defined in rtl/inc/halsvc.h
  *
- * WARNING: Values of GLOBAL_HANDLE_FLAG enum cannot be larger than
- * 1 << EX_POOL_BLOCK_SHIFT
+ * As should be obvious from above, values of SERVICE_TYPE enum cannot
+ * be larger than 1 << EX_POOL_BLOCK_SHIFT.
  */
-typedef enum _GLOBAL_HANDLE_FLAG {
-    SYSTEM_SERVICE_IPC_BADGE = 0,
-    HAL_SERVICE_IPC_BADGE = 1,
-    SERVICE_NOTIFICATION = 3
-} GLOBAL_HANDLE_FLAG;
+typedef enum _SERVICE_TYPE {
+    SERVICE_TYPE_SYSTEM_SERVICE = 0,
+    SERVICE_TYPE_HAL_SERVICE = 1,
+    SERVICE_TYPE_FAULT_HANDLER = 2,
+    SERVICE_TYPE_NOTIFICATION = 3
+} SERVICE_TYPE;
 
 /* For structures that are not managed by the Object Manager (for
  * instance the IO_REQUEST_PACKET and IO_RESPONSE_PACKET) we simply
