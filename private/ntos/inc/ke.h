@@ -571,7 +571,7 @@ VOID KeSetEvent(IN PKEVENT Event);
 /* services.c */
 struct _IO_DRIVER_OBJECT;
 NTSTATUS KeEnableSystemServices(IN struct _THREAD *Thread);
-NTSTATUS KeEnableHalServices(IN struct _THREAD *Thread);
+NTSTATUS KeEnableWdmServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableThreadFaultHandler(IN struct _THREAD *Thread);
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);

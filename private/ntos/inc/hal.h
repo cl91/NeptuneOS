@@ -8,6 +8,14 @@
 #define VGA_FG_COLOR			(VGA_WHITE)
 #define VGA_TEXT_COLOR			(VGA_BG_COLOR | VGA_FG_COLOR)
 
+/* TODO: This is for x86 and PIC only. We don't support IOAPIC yet. */
+#define TIMER_IRQ_LINE		0
+
+/* TODO: Most BIOS set the frequency divider to either 65535 or 0 (representing
+ * 65536). We assume it is 65536. We should really be setting the frequency
+ * divider ourselves. */
+#define TIMER_TICK_PER_SECOND	(1193182 >> 16)
+
 /* init.c */
 NTSTATUS HalInitSystemPhase0(VOID);
 NTSTATUS HalInitSystemPhase1(VOID);

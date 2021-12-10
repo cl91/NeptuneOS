@@ -56,9 +56,9 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
     if (ServiceType == SERVICE_TYPE_SYSTEM_SERVICE) {
 	Thread->SystemServiceEndpoint = ServiceEndpoint;
 	Thread->InitInfo.SystemServiceCap = ServiceEndpoint->TreeNode.Cap;
-    } else if (ServiceType == SERVICE_TYPE_HAL_SERVICE) {
-	Thread->HalServiceEndpoint = ServiceEndpoint;
-	Thread->InitInfo.HalServiceCap = ServiceEndpoint->TreeNode.Cap;
+    } else if (ServiceType == SERVICE_TYPE_WDM_SERVICE) {
+	Thread->WdmServiceEndpoint = ServiceEndpoint;
+	Thread->InitInfo.WdmServiceCap = ServiceEndpoint->TreeNode.Cap;
     } else {
 	assert(ServiceType == SERVICE_TYPE_FAULT_HANDLER);
 	Thread->FaultEndpoint = ServiceEndpoint;
@@ -71,9 +71,9 @@ NTSTATUS KeEnableSystemServices(IN PTHREAD Thread)
     return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_SYSTEM_SERVICE);
 }
 
-NTSTATUS KeEnableHalServices(IN PTHREAD Thread)
+NTSTATUS KeEnableWdmServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_HAL_SERVICE);
+    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_WDM_SERVICE);
 }
 
 NTSTATUS KeEnableThreadFaultHandler(IN PTHREAD Thread)
@@ -211,14 +211,14 @@ static inline VOID KiClearAsyncStack(IN PTHREAD Thread)
 
 /* The actual handling of system services is in the generated file below. */
 #include <ntos_syssvc_gen.c>
-#include <ntos_halsvc_gen.c>
+#include <ntos_wdmsvc_gen.c>
 
 static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread,
 				       OUT ULONG *pReplyMsgLength,
 				       OUT ULONG *pMsgBufferEnd)
 {
-    if (ReadyThread->HalSvc) {
-	return KiResumeHalService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
+    if (ReadyThread->WdmSvc) {
+	return KiResumeWdmService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
     } else {
 	return KiResumeSystemService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
     }
@@ -321,9 +321,9 @@ VOID KiDispatchExecutiveServices()
 		assert(Badge != 0);
 		PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 		KiClearAsyncStack(Thread);
-		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_HAL_SERVICE) {
+		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_WDM_SERVICE) {
 		    DbgTrace("Got driver call from thread %p\n", Thread);
-		    Status = KiHandleHalService(SvcNum, Thread, ReqMsgLength,
+		    Status = KiHandleWdmService(SvcNum, Thread, ReqMsgLength,
 						&ReplyMsgLength, &MsgBufferEnd);
 		} else {
 		    assert(GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_SERVICE);

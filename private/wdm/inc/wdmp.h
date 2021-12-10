@@ -5,8 +5,8 @@
 #include <assert.h>
 #include <debug.h>
 #include <util.h>
-#include <halsvc.h>
-#include <hal_halsvc_gen.h>
+#include <wdmsvc.h>
+#include <wdm_wdmsvc_gen.h>
 #include <irp.h>
 
 #define TAG_DRIVER_EXTENSION	'EVRD'

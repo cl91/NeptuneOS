@@ -1,4 +1,4 @@
-#include <halasm.h>
+#include <wdmasm.h>
 
 /*
  * FASTCALL NTSTATUS IopStartCoroutine(IN PVOID StackTop,   // %ecx

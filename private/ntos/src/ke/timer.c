@@ -1,14 +1,5 @@
 #include "ki.h"
 
-/* TODO: This is for x86 and PIC only. We don't support IOAPIC yet.
- * We need to move the hardware-dependent code into ntos/hal. */
-#define TIMER_IRQ_LINE		0
-
-/* TODO: Most BIOS set the frequency divider to either 65535 or 0 (representing
- * 65536). We assume it is 65536. We should really be setting the frequency
- * divider ourselves. */
-#define TIMER_TICK_PER_SECOND	(1193182 >> 16)
-
 static SYSTEM_THREAD KiTimerIrqThread;
 static IRQ_HANDLER KiTimerIrqHandler;
 static NOTIFICATION KiTimerIrqNotification;

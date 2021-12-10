@@ -2,7 +2,7 @@
 
 #include <nt.h>
 #include <ntos.h>
-#include <halsvc.h>
+#include <wdmsvc.h>
 
 #define NTOS_IO_TAG	(EX_POOL_TAG('n','t','i','o'))
 
@@ -148,7 +148,7 @@ static inline  VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 }
 
 /* init.c */
-PSECTION IopHalDllSection;
+PSECTION IopWdmDllSection;
 
 /* file.c */
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,

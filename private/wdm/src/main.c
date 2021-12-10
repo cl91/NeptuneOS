@@ -2,13 +2,13 @@
  * The main event loop of the driver process
  */
 
-#include <halp.h>
+#include <wdmp.h>
 #include "coroutine.h"
 
 DRIVER_OBJECT IopDriverObject;
 
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
-__thread seL4_CPtr KiHalServiceCap;
+__thread seL4_CPtr KiWdmServiceCap;
 
 ULONG _tls_index;
 
@@ -56,12 +56,12 @@ static NTSTATUS IopDriverEventLoop()
     }
 }
 
-VOID HalStartup(IN seL4_IPCBuffer *IpcBuffer,
-		IN seL4_CPtr HalServiceCap,
+VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
+		IN seL4_CPtr WdmServiceCap,
 		IN PNTDLL_DRIVER_INIT_INFO InitInfo)
 {
     __sel4_ipc_buffer = IpcBuffer;
-    KiHalServiceCap = HalServiceCap;
+    KiWdmServiceCap = WdmServiceCap;
     IopIncomingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->IncomingIrpBuffer;
     IopOutgoingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->OutgoingIrpBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;

@@ -19,7 +19,7 @@ static PTHREAD EiSessionManagerThread;
 static NTSTATUS EiStartSessionManager()
 {
     PIO_FILE_OBJECT SmssExe = NULL;
-    NTSTATUS Status = ObReferenceObjectByName(SMSS_PATH, OBJECT_TYPE_FILE, (POBJECT *) &SmssExe);
+    NTSTATUS Status = ObReferenceObjectByName(SMSS_EXE_PATH, OBJECT_TYPE_FILE, (POBJECT *) &SmssExe);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
@@ -43,7 +43,7 @@ static NTSTATUS EiStartSessionManager()
  fail:
     HalVgaPrint("\nFailed to start Session Manager: ");
     if (SmssExe == NULL) {
-	HalVgaPrint("%s not found", SMSS_PATH);
+	HalVgaPrint("%s not found", SMSS_EXE_PATH);
     } else if (EiSessionManagerProcess == NULL) {
 	HalVgaPrint("process creation returned error 0x%x", Status);
     } else {

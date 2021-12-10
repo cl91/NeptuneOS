@@ -3,7 +3,7 @@
 #include "ke.h"
 #include "mm.h"
 #include "ex.h"
-#include <halsvc.h>
+#include <wdmsvc.h>
 
 /* Unlike in Windows, the ObjectType itself is not a type.
  *
@@ -126,14 +126,14 @@ typedef PVOID POBJECT;
  * to indicate the service type, since there are more than one types
  * of executive services for a client thread.
  *
- * Note: the type GLOBAL_HANDLE is defined in rtl/inc/halsvc.h
+ * Note: the type GLOBAL_HANDLE is defined in rtl/inc/wdmsvc.h
  *
  * As should be obvious from above, values of SERVICE_TYPE enum cannot
  * be larger than 1 << EX_POOL_BLOCK_SHIFT.
  */
 typedef enum _SERVICE_TYPE {
     SERVICE_TYPE_SYSTEM_SERVICE = 0,
-    SERVICE_TYPE_HAL_SERVICE = 1,
+    SERVICE_TYPE_WDM_SERVICE = 1,
     SERVICE_TYPE_FAULT_HANDLER = 2,
     SERVICE_TYPE_NOTIFICATION = 3
 } SERVICE_TYPE;

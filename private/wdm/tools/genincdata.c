@@ -44,7 +44,7 @@ __attribute__ ((section(".asmdef")))
 
 ASMGENDATA Table[] = {
 /* ARCHITECTURE INDEPENDENT CONTSTANTS ***************************************/
-#include "halasm.template.h"
+#include "wdmasm.template.h"
 
     /* End of list */
     {TYPE_END, "", 0}

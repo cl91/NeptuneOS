@@ -1,4 +1,4 @@
-#include <halp.h>
+#include <wdmp.h>
 #include "coroutine.h"
 
 /* The IRP object includes the IRP struct itself plus an array of
@@ -182,7 +182,7 @@ static NTSTATUS IopServerIrpToLocal(IN PIRP_QUEUE_ENTRY QueueEntry,
 		memcpy(Irp->AssociatedIrp.SystemBuffer, Src->Request.Parameters.DeviceIoControl.InputBuffer,
 		       IoStack->Parameters.DeviceIoControl.InputBufferLength);
 	    }
-	    QueueEntry->OutputBuffer = Irp->AssociatedIrp.SystemBuffer;
+	    QueueEntry->OutputBuffer = Src->Request.Parameters.DeviceIoControl.OutputBuffer;
 	}
 	break;
     }

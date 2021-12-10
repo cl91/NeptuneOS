@@ -28,7 +28,7 @@ typedef struct _THREAD {
     LIST_ENTRY ThreadListEntry;
     LIST_ENTRY ApcList;
     PIPC_ENDPOINT SystemServiceEndpoint;
-    PIPC_ENDPOINT HalServiceEndpoint;
+    PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
@@ -52,10 +52,10 @@ typedef struct _THREAD {
     KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */
     ASYNC_STACK AsyncStack; /* Stack of asynchronous state, starting from the service handler */
     ULONG SvcNum;	    /* Saved service number */
-    BOOLEAN HalSvc;	    /* Saved service is HAL service */
+    BOOLEAN WdmSvc;	    /* Saved service is WDM service */
     union {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
-	HAL_SERVICE_PARAMETERS HalSvcParams;
+	WDM_SERVICE_PARAMETERS WdmSvcParams;
     };
 } THREAD, *PTHREAD;
 

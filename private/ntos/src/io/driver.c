@@ -24,9 +24,9 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     assert(Process != NULL);
     Driver->DriverProcess = Process;
 
-    /* Make sure we have loaded hal.dll, even when the driver image does not
+    /* Make sure we have loaded wdm.dll, even when the driver image does not
      * explicitly depend on it. */
-    RET_ERR(PsLoadDll(Process, HAL_DLL_NAME));
+    RET_ERR(PsLoadDll(Process, WDM_DLL_NAME));
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;

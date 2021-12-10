@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This file generates both the system service stubs and the hal service stubs
+# This file generates both the system service stubs and the wdm service stubs
 
 from __future__ import print_function
 from jinja2 import Environment, BaseLoader
@@ -111,9 +111,9 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
             DbgTrace("{{svc.name}} returned async pending status. Suspending thread %p\\n", Thread);
             RET_ERR_EX(KiServiceSaveReplyCap(Thread), assert(STATUS_NTOS_BUG));
             Thread->SvcNum = SvcNum;
-            Thread->HalSvc = {% if halsvc %}TRUE{% else %}FALSE{% endif%};
+            Thread->WdmSvc = {% if wdmsvc %}TRUE{% else %}FALSE{% endif%};
 {%- for param in svc.in_params %}
-            Thread->{%- if halsvc %}HalSvcParams{% else %}SysSvcParams{% endif%}.{{svc.name}}Params.{{param.name}} = {{param.name}};
+            Thread->{%- if wdmsvc %}WdmSvcParams{% else %}SysSvcParams{% endif%}.{{svc.name}}Params.{{param.name}} = {{param.name}};
 {%- endfor %}
         } else {
             DbgTrace("{{svc.name}} returned status 0x%x. Replying to thread %p\\n", Status, Thread);
@@ -150,7 +150,7 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
                         {{resume_func_indent}}OUT ULONG *ReplyMsgLength,
                         {{resume_func_indent}}OUT ULONG *MsgBufferEnd)
 {
-    assert(Thread->HalSvc == {%- if halsvc %}TRUE{% else %}FALSE{% endif%});
+    assert(Thread->WdmSvc == {%- if wdmsvc %}TRUE{% else %}FALSE{% endif%});
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
     ULONG SvcNum = Thread->SvcNum;
     switch (SvcNum) {
@@ -158,7 +158,7 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread,
     case {{svc.enum_tag}}:
     {
 {%- for param in svc.in_params %}
-        {{param.server_decl}} = Thread->{%- if halsvc %}HalSvcParams{% else %}SysSvcParams{% endif%}.{{svc.name}}Params.{{param.name}};
+        {{param.server_decl}} = Thread->{%- if wdmsvc %}WdmSvcParams{% else %}SysSvcParams{% endif%}.{{svc.name}}Params.{{param.name}};
 {%- endfor %}
 {%- for param in svc.out_params %}
 {%- if not param.dir_in %}
@@ -417,7 +417,7 @@ class ServiceParameter:
             raise ValueError("Parameter " + name + ": custom marshaling for output parameter is not yet implemented")
 
 class Service:
-    def __init__(self, name, enum_tag, params, client_only, halsvc):
+    def __init__(self, name, enum_tag, params, client_only, wdmsvc):
         self.name = name
         self.enum_tag = enum_tag
         self.params = params
@@ -426,7 +426,7 @@ class Service:
         self.out_params = [ param for param in params if param.dir_out ]
         self.server_param_indent = " " * (len("NTSTATUS") + len(name) + 2)
         self.msglength = len(params)
-        if len(params) == 0 or halsvc:
+        if len(params) == 0 or wdmsvc:
             self.ntapi = False
         else:
             self.ntapi = True
@@ -435,21 +435,21 @@ class Service:
         else:
             self.client_param_indent = " " * (len("NTSTATUS") + len(name) + 2)
 
-def generate_file(tmplstr, svc_list, out_file, halsvc, server_side):
+def generate_file(tmplstr, svc_list, out_file, wdmsvc, server_side):
     template = Environment(loader=BaseLoader, trim_blocks=False,
                            lstrip_blocks=False).from_string(tmplstr)
-    if halsvc:
-        svc_group = "Hal"
-        svc_group_upper = "HAL"
-        svc_ipc_cap = "KiHalServiceCap"
-        handler_func = "KiHandleHalService"
-        resume_func = "KiResumeHalService"
+    if wdmsvc:
+        svc_group = "Wdm"
+        svc_group_upper = "WDM"
+        svc_ipc_cap = "KiWdmServiceCap"
+        handler_func = "KiHandleWdmService"
+        resume_func = "KiResumeWdmService"
         extra_headers = """
-#include <halsvc.h>
-#include "halsvc_gen.h"
-#include "ntos_halsvc_gen.h"
+#include <wdmsvc.h>
+#include "wdmsvc_gen.h"
+#include "ntos_wdmsvc_gen.h"
 
-extern __thread seL4_CPtr KiHalServiceCap;"""
+extern __thread seL4_CPtr KiWdmServiceCap;"""
     else:
         svc_group = "System"
         svc_group_upper = "SYSTEM"
@@ -469,7 +469,7 @@ extern __thread seL4_CPtr KiSystemServiceCap;"""
                              'resume_func': resume_func,
                              'resume_func_indent': resume_func_indent,
                              'extra_headers': extra_headers,
-                             'halsvc': halsvc
+                             'wdmsvc': wdmsvc
                             })
     out_file.write(data)
 
@@ -477,8 +477,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="""Generate NTOS service headers and stubs""")
     parser.add_argument('--syssvc_xml', type=argparse.FileType('r'),
                         help='Full path of the syssvc.xml file', required=True)
-    parser.add_argument('--halsvc_xml', type=argparse.FileType('r'),
-                        help='Full path of the halsvc.xml file', required=True)
+    parser.add_argument('--wdmsvc_xml', type=argparse.FileType('r'),
+                        help='Full path of the wdmsvc.xml file', required=True)
     parser.add_argument('--out_dir', type=str,
                         help='Output directory for the generated files', required=True)
 
@@ -486,7 +486,7 @@ def parse_args():
 
     return result
 
-def parse_svcxml(xml_file, halsvc):
+def parse_svcxml(xml_file, wdmsvc):
     doc = xml.dom.minidom.parse(xml_file)
     svcs = doc.getElementsByTagName("services")[0]
     svc_list = []
@@ -506,9 +506,9 @@ def parse_svcxml(xml_file, halsvc):
                 ansi_params.append(ServiceParameter(annotation, "AnsiString", param_name))
             else:
                 ansi_params.append(ServiceParameter(annotation, param_type, param_name))
-        svc_list.append(Service(name, enum_tag, params, client_only = False, halsvc = halsvc))
+        svc_list.append(Service(name, enum_tag, params, client_only = False, wdmsvc = wdmsvc))
         if has_unicode_string:
-            svc_list.append(Service(name+"A", enum_tag, ansi_params, client_only = True, halsvc = halsvc))
+            svc_list.append(Service(name+"A", enum_tag, ansi_params, client_only = True, wdmsvc = wdmsvc))
 
     # sanity check
     assert len(svc_list) != 0
@@ -527,39 +527,39 @@ def generate_client_svc_list(svcs):
 
 if __name__ == "__main__":
     args = parse_args()
-    syssvc_list = parse_svcxml(args.syssvc_xml, halsvc = False)
+    syssvc_list = parse_svcxml(args.syssvc_xml, wdmsvc = False)
     server_syssvc_list = [syssvc for syssvc in syssvc_list if not syssvc.client_only]
-    halsvc_list = parse_svcxml(args.halsvc_xml, halsvc = True)
-    server_halsvc_list = [svc for svc in halsvc_list if not svc.client_only]
+    wdmsvc_list = parse_svcxml(args.wdmsvc_xml, wdmsvc = True)
+    server_wdmsvc_list = [svc for svc in wdmsvc_list if not svc.client_only]
 
     svc_params_gen_h = open(os.path.join(args.out_dir, "ntos_svc_params_gen.h"), "w")
-    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_syssvc_list, svc_params_gen_h, halsvc = False, server_side = True)
+    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_syssvc_list, svc_params_gen_h, wdmsvc = False, server_side = True)
     svc_params_gen_h.write("\n\n")
-    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_halsvc_list, svc_params_gen_h, halsvc = True, server_side = True)
+    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_wdmsvc_list, svc_params_gen_h, wdmsvc = True, server_side = True)
 
     syssvc_gen_h = open(os.path.join(args.out_dir, "syssvc_gen.h"), "w")
-    generate_file(SVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, halsvc = False, server_side = True)
+    generate_file(SVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, wdmsvc = False, server_side = True)
 
     ntos_syssvc_gen_h = open(os.path.join(args.out_dir, "ntos_syssvc_gen.h"), "w")
-    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, halsvc = False, server_side = True)
+    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, wdmsvc = False, server_side = True)
     ntos_syssvc_gen_c = open(os.path.join(args.out_dir, "ntos_syssvc_gen.c"), "w")
-    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, halsvc = False, server_side = True)
+    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, wdmsvc = False, server_side = True)
 
     client_syssvc_list = generate_client_svc_list(syssvc_list)
     ntdll_syssvc_gen_h = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.h"), "w")
-    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, halsvc = False, server_side = False)
+    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, wdmsvc = False, server_side = False)
     ntdll_syssvc_gen_c = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.c"), "w")
-    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, halsvc = False, server_side = False)
+    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, wdmsvc = False, server_side = False)
 
-    halsvc_gen_h = open(os.path.join(args.out_dir, "halsvc_gen.h"), "w")
-    generate_file(SVC_GEN_H_TEMPLATE, server_halsvc_list, halsvc_gen_h, halsvc = True, server_side = True)
-    ntos_halsvc_gen_h = open(os.path.join(args.out_dir, "ntos_halsvc_gen.h"), "w")
-    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_halsvc_list, ntos_halsvc_gen_h, halsvc = True, server_side = True)
-    ntos_halsvc_gen_c = open(os.path.join(args.out_dir, "ntos_halsvc_gen.c"), "w")
-    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_halsvc_list, ntos_halsvc_gen_c, halsvc = True, server_side = True)
+    wdmsvc_gen_h = open(os.path.join(args.out_dir, "wdmsvc_gen.h"), "w")
+    generate_file(SVC_GEN_H_TEMPLATE, server_wdmsvc_list, wdmsvc_gen_h, wdmsvc = True, server_side = True)
+    ntos_wdmsvc_gen_h = open(os.path.join(args.out_dir, "ntos_wdmsvc_gen.h"), "w")
+    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_wdmsvc_list, ntos_wdmsvc_gen_h, wdmsvc = True, server_side = True)
+    ntos_wdmsvc_gen_c = open(os.path.join(args.out_dir, "ntos_wdmsvc_gen.c"), "w")
+    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_wdmsvc_list, ntos_wdmsvc_gen_c, wdmsvc = True, server_side = True)
 
-    client_halsvc_list = generate_client_svc_list(halsvc_list)
-    hal_halsvc_gen_h = open(os.path.join(args.out_dir, "hal_halsvc_gen.h"), "w")
-    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, halsvc_list, hal_halsvc_gen_h, halsvc = True, server_side = False)
-    hal_halsvc_gen_c = open(os.path.join(args.out_dir, "hal_halsvc_gen.c"), "w")
-    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, halsvc_list, hal_halsvc_gen_c, halsvc = True, server_side = False)
+    client_wdmsvc_list = generate_client_svc_list(wdmsvc_list)
+    wdm_wdmsvc_gen_h = open(os.path.join(args.out_dir, "wdm_wdmsvc_gen.h"), "w")
+    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, wdmsvc_list, wdm_wdmsvc_gen_h, wdmsvc = True, server_side = False)
+    wdm_wdmsvc_gen_c = open(os.path.join(args.out_dir, "wdm_wdmsvc_gen.c"), "w")
+    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, wdmsvc_list, wdm_wdmsvc_gen_c, wdmsvc = True, server_side = False)

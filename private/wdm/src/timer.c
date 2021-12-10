@@ -1,4 +1,4 @@
-#include <halp.h>
+#include <wdmp.h>
 
 LIST_ENTRY IopTimerList;
 
@@ -52,6 +52,7 @@ NTAPI NTSTATUS IoSetTimer(IN OUT PKTIMER Timer,
     if (Timer->Handle == NULL) {
 	return STATUS_INVALID_HANDLE;
     }
+    Timer->Dpc = Dpc;
     RET_ERR(NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
 		       Timer, TRUE, 0, pPreviousState));
     Timer->State = TRUE;

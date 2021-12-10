@@ -92,7 +92,7 @@ static NTSTATUS LdrpAllocateTls(VOID)
 
 	/* Strictly speaking the .tls section does not need to be a dedicated
 	 * section, and can be merged with other data sections, as long as all
-	 * TLS data remain contiguous in memory. We do this to the hal.dll
+	 * TLS data remain contiguous in memory. We do this to the wdm.dll
 	 * and merge the .tls section and the .data section in order to save memory.
 	 *
 	 * However when generating code clang seems to assume that the tls data
@@ -773,7 +773,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     /* Check whether server has injected dll modules that are not part of the
      * static dependencies of the image and load them. This is used for instance
      * when server loads a driver process and the driver image does not explicitly
-     * specify hal.dll dependency. */
+     * specify wdm.dll dependency. */
     PLOADER_SHARED_DATA LdrShared = (PLOADER_SHARED_DATA) LOADER_SHARED_DATA_CLIENT_ADDR;
     PLDRP_LOADED_MODULE Module = (PLDRP_LOADED_MODULE)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrShared->LoadedModules);
     for (ULONG i = 0; i < LdrShared->LoadedModuleCount; i++) {
@@ -938,17 +938,17 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	Status = LdrpInitializeProcess(&InitInfo);
 
 	if (InitInfo.DriverProcess) {
-	    PLDR_DATA_TABLE_ENTRY HalDllEntry = NULL;
-	    LdrpCheckForLoadedDll("hal.dll", &HalDllEntry);
-	    if (HalDllEntry == NULL) {
+	    PLDR_DATA_TABLE_ENTRY WdmDllEntry = NULL;
+	    LdrpCheckForLoadedDll("wdm.dll", &WdmDllEntry);
+	    if (WdmDllEntry == NULL) {
 		/* This should never happen. Assert in debug build. */
 		assert(FALSE);
-		DbgTrace("Fatal error: driver process does not have hal.dll loaded.\n");
+		DbgTrace("Fatal error: driver process does not have wdm.dll loaded.\n");
 		Status = STATUS_ENTRYPOINT_NOT_FOUND;
 	    } else {
-		EntryPoint = HalDllEntry->EntryPoint;
-		((PHAL_START_ROUTINE)HalDllEntry->EntryPoint)(IpcBuffer,
-							      InitInfo.ThreadInitInfo.HalServiceCap,
+		EntryPoint = WdmDllEntry->EntryPoint;
+		((PWDM_DLL_ENTRYPOINT)WdmDllEntry->EntryPoint)(IpcBuffer,
+							      InitInfo.ThreadInitInfo.WdmServiceCap,
 							      &InitInfo.DriverInitInfo);
 	    }
 	} else {

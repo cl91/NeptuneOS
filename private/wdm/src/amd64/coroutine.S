@@ -1,4 +1,4 @@
-#include <halasm.h>
+#include <wdmasm.h>
 
 .global IopStartCoroutine
 IopStartCoroutine:

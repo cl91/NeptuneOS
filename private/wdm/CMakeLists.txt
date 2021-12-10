@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.7.2)
 
 set(CMAKE_SYSTEM_NAME Windows)
 
-project(hal C ASM)
+project(wdm C ASM)
 
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../rtl)
@@ -49,10 +49,10 @@ rtl_import_project()
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.S)
 
-add_library(hal SHARED ${SRC})
-add_dependencies(hal rtl)
-target_link_directories(hal PRIVATE ${NDK_LIB_PATH})
-target_link_libraries(hal PRIVATE rtl)
+add_library(wdm SHARED ${SRC})
+add_dependencies(wdm rtl)
+target_link_directories(wdm PRIVATE ${NDK_LIB_PATH})
+target_link_libraries(wdm PRIVATE rtl)
 
 add_library(genincdata MODULE tools/genincdata.c)
 set_entrypoint(genincdata 0)
@@ -69,17 +69,17 @@ target_include_directories(
 add_dependencies(genincdata rtl)
 add_custom_target(
     geninc ALL
-    COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/halasm.h
+    COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/wdmasm.h
     DEPENDS genincdata
 )
-add_dependencies(hal geninc)
+add_dependencies(wdm geninc)
 
-spec2def(hal hal.spec ${Arch})
-set_dll_def(hal hal.def)
-set_entrypoint(hal HalStartup)
+spec2def(wdm wdm.spec ${Arch})
+set_dll_def(wdm wdm.def)
+set_entrypoint(wdm WdmStartup)
 
 target_include_directories(
-    hal
+    wdm
     PRIVATE
 	${STRUCTURES_GEN_DIR}
 	${GEN_INC_DIR}

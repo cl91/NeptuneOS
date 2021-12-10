@@ -1,9 +1,9 @@
 #pragma once
 
 #include <services.h>
-#include <halsvc_gen.h>
+#include <wdmsvc_gen.h>
 
-compile_assert(TOO_MANY_HAL_SERVICES, NUMBER_OF_HAL_SERVICES < 0x1000UL);
+compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 
 #define DRIVER_IRP_BUFFER_RESERVE	(64 * 1024)
 #define DRIVER_IRP_BUFFER_COMMIT	(8 * 1024)

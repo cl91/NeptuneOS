@@ -53,33 +53,33 @@ NTSTATUS IoInitSystemPhase0()
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopLoadHalDll()
+static NTSTATUS IopLoadWdmDll()
 {
-    PIO_FILE_OBJECT HalDll = NULL;
-    NTSTATUS Status = ObReferenceObjectByName(HAL_PATH, OBJECT_TYPE_FILE, (POBJECT *) &HalDll);
+    PIO_FILE_OBJECT WdmDll = NULL;
+    NTSTATUS Status = ObReferenceObjectByName(WDM_DLL_PATH, OBJECT_TYPE_FILE, (POBJECT *) &WdmDll);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
-    assert(HalDll != NULL);
+    assert(WdmDll != NULL);
 
-    PSECTION HalDllSection = NULL;
-    Status = MmCreateSection(HalDll, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-			     &HalDllSection);
+    PSECTION WdmDllSection = NULL;
+    Status = MmCreateSection(WdmDll, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+			     &WdmDllSection);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
-    assert(HalDllSection != NULL);
-    assert(HalDllSection->ImageSectionObject != NULL);
-    ObDereferenceObject(HalDllSection);
+    assert(WdmDllSection != NULL);
+    assert(WdmDllSection->ImageSectionObject != NULL);
+    ObDereferenceObject(WdmDllSection);
 
     return STATUS_SUCCESS;
 
  fail:
     HalVgaPrint("\nFatal error: ");
-    if (HalDll == NULL) {
-	HalVgaPrint("%s not found", HAL_PATH);
-    } else if (HalDllSection == NULL) {
-	HalVgaPrint("create section failed for hal.dll with error 0x%x", Status);
+    if (WdmDll == NULL) {
+	HalVgaPrint("%s not found", WDM_DLL_PATH);
+    } else if (WdmDllSection == NULL) {
+	HalVgaPrint("create section failed for wdm.dll with error 0x%x", Status);
     }
     HalVgaPrint("\n\n");
     return Status;
@@ -87,7 +87,7 @@ static NTSTATUS IopLoadHalDll()
 
 NTSTATUS IoInitSystemPhase1()
 {
-    RET_ERR(IopLoadHalDll());
+    RET_ERR(IopLoadWdmDll());
 
     return STATUS_SUCCESS;
 }

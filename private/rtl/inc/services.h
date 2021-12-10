@@ -110,7 +110,7 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 
 typedef struct _NTDLL_THREAD_INIT_INFO {
     MWORD SystemServiceCap;
-    MWORD HalServiceCap;
+    MWORD WdmServiceCap;
 } NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
 
 typedef struct _NTDLL_DRIVER_INIT_INFO {
@@ -137,11 +137,11 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
 
 /*
- * Start routine of hal.dll. In driver processes we don't call the
- * driver entry point directly, and instead call HalStartup. */
-typedef VOID (*PHAL_START_ROUTINE)(IN seL4_IPCBuffer *IpcBuffer,
-				   IN seL4_CPtr HalServiceCap,
-				   IN PNTDLL_DRIVER_INIT_INFO InitInfo);
+ * Entrypoint routine of wdm.dll. In driver processes we don't call the
+ * driver entry point directly, and instead call WdmStartup. */
+typedef VOID (*PWDM_DLL_ENTRYPOINT)(IN seL4_IPCBuffer *IpcBuffer,
+				    IN seL4_CPtr WdmServiceCap,
+				    IN PNTDLL_DRIVER_INIT_INFO InitInfo);
 
 /*
  * System dll TLS index. Executable has TLS index == 0. NTDLL always

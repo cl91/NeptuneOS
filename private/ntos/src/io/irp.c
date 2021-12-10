@@ -1,7 +1,7 @@
 #include "iop.h"
 
 /*
- * Handler function for the HAL service IopRequestIrp. This service should
+ * Handler function for the WDM service IopRequestIrp. This service should
  * only be called in the main event loop thread of the driver process.
  *
  * Check the previous batch of incoming IRPs first and see if any of them
@@ -188,7 +188,7 @@ NTSTATUS IopRequestIrp(IN ASYNC_STATE State,
 		    .FileName = FileName
 		};
 		/* IMPORTANT: FileObjectParameters must be the first member of the Create,
-		 * CreateMailslot, and CreateNamedPipe struct. See halsvc.h */
+		 * CreateMailslot, and CreateNamedPipe struct. See wdmsvc.h */
 		Irp->Request.Parameters.Create.FileObjectParameters = FileObjectParameters;
 		IrpBuffer->Request.Parameters.Create.FileObjectParameters = FileObjectParameters;
 	    }

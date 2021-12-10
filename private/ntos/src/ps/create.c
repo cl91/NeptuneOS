@@ -1,5 +1,5 @@
 #include "psp.h"
-#include <halsvc.h>
+#include <wdmsvc.h>
 
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
@@ -325,7 +325,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     Thread->CurrentPriority = seL4_MaxPrio;
     RET_ERR(KeEnableSystemServices(Thread));
     if (Process->InitInfo.DriverProcess) {
-	RET_ERR(KeEnableHalServices(Thread));
+	RET_ERR(KeEnableWdmServices(Thread));
     }
     PspSetThreadDebugName(Thread);
 
