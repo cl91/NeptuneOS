@@ -26,7 +26,7 @@
  * Temporarily break the rule of not including win32 headers.
  * We can't avoid this. Damn you Bill.
  */
-#include "../../../../public/sdk/winerror.h"
+#include "../../../../public/sdk/inc/winerror.h"
 
 struct error_table {
     DWORD start;
