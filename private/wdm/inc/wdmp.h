@@ -11,6 +11,7 @@
 
 #define TAG_DRIVER_EXTENSION	'EVRD'
 #define TAG_REINIT		'iRoI'
+#define TAG_SYS_BUF		'BSYS'
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
@@ -77,13 +78,15 @@ extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
 
 /* irp.c */
-extern PIO_REQUEST_PACKET IopIncomingIrpBuffer;
-extern PIO_REQUEST_PACKET IopOutgoingIrpBuffer;
+extern PIO_PACKET IopIncomingIoPacketBuffer;
+extern PIO_PACKET IopOutgoingIoPacketBuffer;
 extern LIST_ENTRY IopIrpQueue;
 extern LIST_ENTRY IopFileObjectList;
 extern LIST_ENTRY IopCompletedIrpList;
-VOID IopProcessIrp(OUT ULONG *pNumResponses,
-		   IN ULONG NumRequests);
+extern LIST_ENTRY IopForwardedIrpList;
+extern LIST_ENTRY IopCleanupIrpList;
+VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
+			 IN ULONG NumRequests);
 
 /* main.c */
 extern DRIVER_OBJECT IopDriverObject;

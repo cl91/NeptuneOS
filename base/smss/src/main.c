@@ -21,7 +21,8 @@ static NTSTATUS SmLoadBootDrivers()
 {
     PCSTR DriversToLoad[] = {
 	"\\BootModules\\null.sys",
-	"\\BootModules\\beep.sys"
+	"\\BootModules\\beep.sys",
+	"\\BootModules\\kbdclass.sys"
     };
     for (ULONG i = 0; i < ARRAY_LENGTH(DriversToLoad); i++) {
 	SmPrint("Loading driver %s... ", DriversToLoad[i]);

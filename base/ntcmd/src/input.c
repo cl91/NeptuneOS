@@ -67,7 +67,8 @@ CHAR CurrentPosition = 0;
  * @remarks This routine supports both mouse and keyboard input devices.
  *
  *--*/
-NTSTATUS RtlCliOpenInputDevice(OUT PHANDLE Handle, IN CON_DEVICE_TYPE Type)
+NTSTATUS RtlCliOpenInputDevice(OUT PHANDLE Handle,
+			       IN CON_DEVICE_TYPE Type)
 {
     UNICODE_STRING Driver;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -102,8 +103,7 @@ NTSTATUS RtlCliOpenInputDevice(OUT PHANDLE Handle, IN CON_DEVICE_TYPE Type)
     // Now create an event that will be used to wait on the device
     //
     InitializeObjectAttributes(&ObjectAttributes, NULL, 0, NULL, NULL);
-    Status =
-	NtCreateEvent(&hEvent, EVENT_ALL_ACCESS, &ObjectAttributes, 1, 0);
+    Status = NtCreateEvent(&hEvent, EVENT_ALL_ACCESS, &ObjectAttributes, 1, 0);
 
     //
     // Return the handle
@@ -131,9 +131,9 @@ NTSTATUS RtlCliOpenInputDevice(OUT PHANDLE Handle, IN CON_DEVICE_TYPE Type)
  * @remarks This routine waits for input to be available.
  *
  *--*/
-NTSTATUS
-RtlClipWaitForInput(IN HANDLE hDriver,
-		    IN PVOID Buffer, IN OUT PULONG BufferSize)
+NTSTATUS RtlClipWaitForInput(IN HANDLE hDriver,
+			     IN PVOID Buffer,
+			     IN OUT PULONG BufferSize)
 {
     IO_STATUS_BLOCK Iosb;
     LARGE_INTEGER ByteOffset;
@@ -148,11 +148,8 @@ RtlClipWaitForInput(IN HANDLE hDriver,
     //
     // Try to read the data
     //
-    Status = NtReadFile(hDriver,
-			hEvent,
-			NULL,
-			NULL,
-			&Iosb, Buffer, *BufferSize, &ByteOffset, NULL);
+    Status = NtReadFile(hDriver, hEvent, NULL, NULL, &Iosb,
+			Buffer, *BufferSize, &ByteOffset, NULL);
 
     //
     // Check if data is pending

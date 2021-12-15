@@ -32,11 +32,17 @@
 
 #ifdef _MSC_VER
 #define DECLSPEC_ALIGN(x)	__declspec(align(x))
+#define DECLSPEC_DEPRECATED	__declspec(deprecated)
+#define DEPRECATED(x)		__declspec(deprecated(x))
 #define FORCEINLINE		__forceinline
 #else
 #define DECLSPEC_ALIGN(x)	__attribute__((aligned(x)))
+#define DECLSPEC_DEPRECATED	__attribute__((deprecated))
+#define DEPRECATED(x)		__attribute__((deprecated(x)))
 #define FORCEINLINE		static inline __attribute__((always_inline))
 #endif
+
+#define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg, #repl)))
 
 #if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_)
 #define NTSYSAPI	DECLSPEC_IMPORT

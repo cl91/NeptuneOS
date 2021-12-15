@@ -1,10 +1,11 @@
 #include <wdmp.h>
 
-/* List of all devices created by this driver */
+/* Caches all device objects that have been queried, including
+ * the device objects created by this driver. */
 LIST_ENTRY IopDeviceList;
 
 /*
- * Search the list of all devices created by this driver and return
+ * Search the list of all cached device objects and return
  * the one matching the given GLOBAL_HANDLE. Returns NULL if not found.
  */
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
@@ -15,6 +16,40 @@ PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
 	}
     }
     return NULL;
+}
+
+/*
+ * Search the list of all cached device objects and return the global
+ * handle of the given device object pointer. Returns NULL if not found.
+ */
+GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device)
+{
+    LoopOverList(Entry, &IopDeviceList, DEVICE_LIST_ENTRY, Link) {
+	if (Device == Entry->Object) {
+	    return Entry->Handle;
+	}
+    }
+    return 0;
+}
+
+static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
+					     IN ULONG DevExtSize,
+					     IN IO_DEVICE_OBJECT_INFO DevInfo)
+{
+    DeviceObject->Type = IO_TYPE_DEVICE;
+    DeviceObject->Size = sizeof(DEVICE_OBJECT) + DevExtSize;
+    DeviceObject->DeviceExtension = DevExtSize ? (PVOID)(DeviceObject + 1) : NULL;
+    DeviceObject->DeviceType = DevInfo.DeviceType;
+    DeviceObject->Characteristics = DevInfo.DeviceCharacteristics;
+}
+
+static inline VOID IopInsertDeviceList(IN PDEVICE_OBJECT DeviceObject,
+				       IN GLOBAL_HANDLE DeviceHandle,
+				       IN PDEVICE_LIST_ENTRY DeviceListEntry)
+{
+    DeviceListEntry->Object = DeviceObject;
+    DeviceListEntry->Handle = DeviceHandle;
+    InsertTailList(&IopDeviceList, &DeviceListEntry->Link);
 }
 
 /*
@@ -43,23 +78,23 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     IopAllocatePool(DeviceObject, DEVICE_OBJECT, TotalSize);
     IopAllocateObjectEx(DeviceListEntry, DEVICE_LIST_ENTRY, IopFreePool(DeviceObject));
 
-    DeviceObject->Type = IO_TYPE_DEVICE;
-    DeviceObject->Size = sizeof(DEVICE_OBJECT) + DeviceExtensionSize;
+    IO_DEVICE_OBJECT_INFO DevInfo = {
+	.DeviceType = DeviceType,
+	.DeviceCharacteristics = DeviceCharacteristics
+    };
+    IopInitializeDeviceObject(DeviceObject, DeviceExtensionSize, DevInfo);
     DeviceObject->DriverObject = DriverObject;
-    DeviceObject->DeviceExtension = (PVOID)(DeviceObject + 1);
-    DeviceObject->DeviceType = DeviceType;
-    DeviceObject->Characteristics = DeviceCharacteristics;
-    DeviceObject->StackSize = 1;
     DeviceObject->Flags = DO_DEVICE_INITIALIZING;
     if (Exclusive) {
 	DeviceObject->Flags |= DO_EXCLUSIVE;
     }
     if (DeviceName) {
 	DeviceObject->Flags |= DO_DEVICE_HAS_NAME;
+	RtlDuplicateUnicodeString(0, DeviceName, &DeviceObject->DeviceName);
     }
     KeInitializeDeviceQueue(&DeviceObject->DeviceQueue);
 
-    /* Set the right Sector Size */
+    /* Set the right Sector Size. TODO: Server-side? */
     switch (DeviceType) {
         case FILE_DEVICE_DISK_FILE_SYSTEM:
         case FILE_DEVICE_DISK:
@@ -73,22 +108,115 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
     GLOBAL_HANDLE DeviceHandle = 0;
-    RET_ERR_EX(IopCreateDevice(DeviceName, DeviceType, DeviceCharacteristics,
-			       Exclusive, &DeviceHandle),
+    RET_ERR_EX(IopCreateDevice(DeviceName, &DevInfo, Exclusive, &DeviceHandle),
 	       {
 		   IopFreePool(DeviceObject);
 		   IopFreePool(DeviceListEntry);
 	       });
     assert(DeviceHandle != 0);
-    DeviceListEntry->Object = DeviceObject;
-    DeviceListEntry->Handle = DeviceHandle;
-    InsertTailList(&IopDeviceList, &DeviceListEntry->Link);
+    assert(IopGetDeviceObject(DeviceHandle) == NULL);
+    IopInsertDeviceList(DeviceObject, DeviceHandle, DeviceListEntry);
 
     *pDeviceObject = DeviceObject;
     return STATUS_SUCCESS;
 }
 
 NTAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject)
+{
+}
+
+NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
+					IN ACCESS_MASK DesiredAccess,
+					OUT PFILE_OBJECT *FileObject,
+					OUT PDEVICE_OBJECT *DeviceObject)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*
+ * @implemented
+ *
+ * Call the driver to attach the SourceDevice on top of the device
+ * stack of TargetDevice, returning the previous topmost device
+ * object in the device stack.
+ */
+NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
+						 IN PDEVICE_OBJECT TargetDevice)
+{
+    GLOBAL_HANDLE SourceHandle = IopGetDeviceHandle(SourceDevice);
+    GLOBAL_HANDLE TargetHandle = IopGetDeviceHandle(TargetDevice);
+    if ((SourceHandle == 0) || (TargetHandle == 0)) {
+	assert(FALSE);
+	return NULL;
+    }
+    PDEVICE_OBJECT OldTopDevice = (PDEVICE_OBJECT) ExAllocatePool(sizeof(DEVICE_OBJECT));
+    if (OldTopDevice == NULL) {
+	return NULL;
+    }
+    PDEVICE_LIST_ENTRY DeviceListEntry = (PDEVICE_LIST_ENTRY) ExAllocatePool(sizeof(DEVICE_LIST_ENTRY));
+    if (DeviceListEntry == NULL) {
+	ExFreePool(OldTopDevice);
+	return NULL;
+    }
+    GLOBAL_HANDLE OldTopHandle = 0;
+    IO_DEVICE_OBJECT_INFO DevInfo;
+    if (!NT_SUCCESS(IopIoAttachDeviceToDeviceStack(SourceHandle, TargetHandle,
+						   &OldTopHandle, &DevInfo))) {
+	IopFreePool(OldTopDevice);
+	return NULL;
+    }
+    assert(OldTopHandle != 0);
+    PDEVICE_OBJECT RetVal = IopGetDeviceObject(OldTopHandle);
+    if (RetVal == NULL) {
+	IopInitializeDeviceObject(OldTopDevice, 0, DevInfo);
+	IopInsertDeviceList(OldTopDevice, OldTopHandle, DeviceListEntry);
+	RetVal = OldTopDevice;
+    } else {
+	IopFreePool(OldTopDevice);
+	IopFreePool(DeviceListEntry);
+    }
+    return RetVal;
+}
+
+/*++
+ * @name IoRegisterDeviceInterface
+ * @implemented
+ *
+ * Registers a device interface class, if it has not been previously registered,
+ * and creates a new instance of the interface class, which a driver can
+ * subsequently enable for use by applications or other system components.
+ * Documented in WDK.
+ *
+ * @param PhysicalDeviceObject
+ *        Points to an optional PDO that narrows the search to only the
+ *        device interfaces of the device represented by the PDO
+ *
+ * @param InterfaceClassGuid
+ *        Points to a class GUID specifying the device interface class
+ *
+ * @param ReferenceString
+ *        Optional parameter, pointing to a unicode string. For a full
+ *        description of this rather rarely used param (usually drivers
+ *        pass NULL here) see WDK
+ *
+ * @param SymbolicLinkName
+ *        Pointer to the resulting unicode string
+ *
+ * @return Returns STATUS_SUCCESS if the interface registration is successful.
+ *        Returns STATUS_INVALID_DEVICE_REQUEST if registration failed.
+ *--*/
+NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
+					 IN CONST GUID *InterfaceClassGuid,
+					 IN PUNICODE_STRING ReferenceString OPTIONAL,
+					 OUT PUNICODE_STRING SymbolicLinkName)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*
+ * @implemented
+ */
+NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
 {
 }
 

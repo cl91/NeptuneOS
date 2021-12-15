@@ -42,11 +42,12 @@ typedef struct _THREAD {
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
-    PIO_REQUEST_PACKET PendingIrp; /* IRP that the thread is waiting for a response for.
-				    * There can only be one pending IRP per thread.
-				    * For driver processes, the IRPs from higher-level
-				    * IoCallDriver are queued on the driver object. */
-    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IRP. */
+    PIO_PACKET PendingIoPacket; /* IO packet that the thread is waiting for a response for.
+				 * There can only be one pending IO packet per thread.
+				 * For driver processes, the IO packets from higher-level
+				 * IoCallDriver calls are queued on the driver object.
+				 * The pending IO packet must be of type IoPacketTypeRequest. */
+    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
     KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
     LIST_ENTRY ReadyListLink; /* Links all threads that are ready to be resumed. */
     KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */

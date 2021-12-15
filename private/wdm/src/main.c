@@ -51,8 +51,8 @@ static NTSTATUS IopDriverEventLoop()
 	ULONG NumRequestPackets = 0;
 	/* This should never return error. If it did, something is seriously
 	 * wrong and we should terminate the driver process. */
-	RET_ERR(IopRequestIrp(NumResponsePackets, &NumRequestPackets));
-	IopProcessIrp(&NumResponsePackets, NumRequestPackets);
+	RET_ERR(IopRequestIoPackets(NumResponsePackets, &NumRequestPackets));
+	IopProcessIoPackets(&NumResponsePackets, NumRequestPackets);
     }
 }
 
@@ -62,15 +62,16 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
 {
     __sel4_ipc_buffer = IpcBuffer;
     KiWdmServiceCap = WdmServiceCap;
-    IopIncomingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->IncomingIrpBuffer;
-    IopOutgoingIrpBuffer = (PIO_REQUEST_PACKET) InitInfo->OutgoingIrpBuffer;
+    IopIncomingIoPacketBuffer = (PIO_PACKET) InitInfo->IncomingIoPacketBuffer;
+    IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
     InitializeListHead(&IopIrpQueue);
     InitializeListHead(&IopCompletedIrpList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopTimerList);
-
+    InitializeListHead(&IopForwardedIrpList);
+    InitializeListHead(&IopCleanupIrpList);
     InitializeListHead(&IopDriverObject.ReinitListHead);
 
     NTSTATUS Status = IopCallDriverEntry();

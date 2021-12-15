@@ -37,9 +37,18 @@ extern PVOID KiCoroutineStackChainHead;
 extern PVOID KiCurrentCoroutineStackTop;
 PVOID KiGetFirstAvailableCoroutineStack();
 
+static inline PIRP_QUEUE_ENTRY KiGetCurrentIrpQueueEntry()
+{
+    if (KiCurrentCoroutineStackTop == NULL) {
+	return NULL;
+    }
+    return ((PKI_COROUTINE_STACK)KiCurrentCoroutineStackTop)[-1].CurrentIrp;
+}
+
 /* arch/coroutine.S */
 FASTCALL NTSTATUS IopStartCoroutine(IN PVOID StackTop,
 				    IN PIRP_QUEUE_ENTRY Entry);
+VOID KiYieldCoroutine();
 
 /* irp.c */
 KI_COROUTINE_ENTRYPOINT IopCallDispatchRoutine;

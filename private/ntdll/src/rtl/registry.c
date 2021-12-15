@@ -921,10 +921,8 @@ NTAPI NTSTATUS RtlQueryRegistryValues(IN ULONG RelativeTo,
 		RtlInitUnicodeString(&KeyPath, QueryTable->Name);
 
 		/* Get the key handle */
-		InitializeObjectAttributes(&ObjectAttributes,
-					   &KeyPath,
-					   OBJ_CASE_INSENSITIVE |
-					   OBJ_KERNEL_HANDLE,
+		InitializeObjectAttributes(&ObjectAttributes, &KeyPath,
+					   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 					   KeyHandle, NULL);
 		Status = NtOpenKey(&CurrentKey,
 				   MAXIMUM_ALLOWED, &ObjectAttributes);

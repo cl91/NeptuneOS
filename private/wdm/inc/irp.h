@@ -4,11 +4,11 @@
 #include <wdm.h>
 
 /*
- * An entry in the IRP queue. The ThisIrp handle points to the NTOS Executive's server-side
- * IO_REQUEST_PACKET, attached to the (server-side) device object.
+ * An entry in the IRP queue.
  */
 typedef struct _IRP_QUEUE_ENTRY {
-    ULONG_PTR ThisIrp; /* (Temporarily) unique identifier (GLOBAL_HANDLE) of the IRP object. See halsvc.h */
+    ULONG_PTR OriginatingThread; /* Originating thread, used to disambiguate the Identifier. See halsvc.h */
+    HANDLE Identifier; /* Identifier of the IRP object, temporarily unique up to the originating thread. See halsvc.h */
     PIRP Irp; /* The client-side wdm IRP object allocated on the process heap */
     LIST_ENTRY Link;	/* List entry for the IRP queue */
     PVOID OutputBuffer;	/* Output buffer provided by the client process, mapped here */

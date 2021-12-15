@@ -25,13 +25,3 @@ PVOID KiGetFirstAvailableCoroutineStack()
     }
     return StackTop;
 }
-
-NTAPI NTSTATUS KeWaitForSingleObject(IN PVOID Object,
-				     IN KWAIT_REASON WaitReason,
-				     IN BOOLEAN Alertable,
-				     IN PLARGE_INTEGER Timeout)
-{
-    if (Timeout != NULL) {
-    }
-    return STATUS_NOT_IMPLEMENTED;
-}

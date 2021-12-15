@@ -15,20 +15,20 @@ typedef struct _IO_DRIVER_OBJECT {
     struct _IO_FILE_OBJECT *DriverFile;
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
     struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
-    LIST_ENTRY IrpQueue; /* IRPs queued on this driver object but has not been processed yet. */
-    LIST_ENTRY PendingIrpList;	/* IRPs that have already been moved to driver process's
-				 * incoming IRP buffer. Note that the driver may choose to
-				 * save this IRP to its internal buffer and withhold the
-				 * response until much later (say, after several calls to
-				 * IopRequestIrp). Therefore this list does NOT in general
-				 * equal the IRPs in the driver's in/out IRP buffer. */
-    KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting IRP */
-    KEVENT IrpQueuedEvent;	    /* Signaled when an IRP is queued on the driver object. */
-    MWORD IncomingIrpServerAddr; /* IO Request Packets sent to the driver */
-    MWORD IncomingIrpClientAddr;
-    MWORD OutgoingIrpServerAddr; /* Driver's replies */
-    MWORD OutgoingIrpClientAddr;
-    ULONG NumRequestPackets; /* Number of IO request packets currently in the incoming IRP buffer */
+    LIST_ENTRY IoPacketQueue; /* IO packets queued on this driver object but has not been processed yet. */
+    LIST_ENTRY PendingIoPacketList;	/* IO packets that have already been moved to driver process's
+					 * incoming IO packet buffer. Note that the driver may choose to
+					 * save this IO packet to its internal buffer and withhold the
+					 * response until much later (say, after several calls to
+					 * IopRequestIrp). Therefore this list does NOT in general correspond
+					 * to the IO packets in the driver's in/out IO packet buffer. */
+    KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting IO packet */
+    KEVENT IoPacketQueuedEvent;	    /* Signaled when an IO packet is queued on the driver object. */
+    MWORD IncomingIoPacketsServerAddr; /* IO Request Packets sent to the driver */
+    MWORD IncomingIoPacketsClientAddr;
+    MWORD OutgoingIoPacketsServerAddr; /* Driver's IO response packets */
+    MWORD OutgoingIoPacketsClientAddr;
+    ULONG NumRequestPackets; /* Number of IO request packets currently in the incoming IO packet buffer */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*
@@ -38,8 +38,9 @@ typedef struct _IO_DEVICE_OBJECT {
     PCSTR DeviceName;
     PIO_DRIVER_OBJECT DriverObject;
     LIST_ENTRY DeviceLink; /* Links all devices created by the driver object */
-    DEVICE_TYPE DeviceType;
-    ULONG DeviceCharacteristics;
+    struct _IO_DEVICE_OBJECT *HigherDevice; /* Higher-level device object immediately above this one */
+    struct _IO_DEVICE_OBJECT *LowerDevice; /* Lower-level device object immediately below this one */
+    IO_DEVICE_OBJECT_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 

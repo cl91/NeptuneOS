@@ -8,10 +8,10 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     PCSTR DriverToLoad = Ctx->DriverPath;
     PCSTR DriverName = Ctx->DriverName;
     InitializeListHead(&Driver->DeviceList);
-    InitializeListHead(&Driver->IrpQueue);
-    InitializeListHead(&Driver->PendingIrpList);
+    InitializeListHead(&Driver->IoPacketQueue);
+    InitializeListHead(&Driver->PendingIoPacketList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
-    KeInitializeEvent(&Driver->IrpQueuedEvent, SynchronizationEvent);
+    KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
     PIO_FILE_OBJECT DriverFile = NULL;
     RET_ERR(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, (POBJECT *) &DriverFile));

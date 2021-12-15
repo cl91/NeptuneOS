@@ -7,8 +7,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT) CreaCtx;
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
     PCSTR DeviceName = Ctx->DeviceName;
-    DEVICE_TYPE DeviceType = Ctx->DeviceType;
-    ULONG DeviceCharacteristics = Ctx->DeviceCharacteristics;
+    IO_DEVICE_OBJECT_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->DeviceLink);
 
@@ -31,8 +30,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 
     Device->DriverObject = DriverObject;
     InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
-    Device->DeviceType = DeviceType;
-    Device->DeviceCharacteristics = DeviceCharacteristics;
+    Device->DeviceInfo = DeviceInfo;
     Device->Exclusive = Exclusive;
 
     return STATUS_SUCCESS;
@@ -73,40 +71,40 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	}
     }
 
-    PIO_REQUEST_PACKET Irp = NULL;
-    RET_ERR_EX(IopAllocateIrp(IrpTypeRequest, &Irp), ObDereferenceObject(FileObject));
-    assert(Irp != NULL);
+    PIO_PACKET IoPacket = NULL;
+    RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, &IoPacket), ObDereferenceObject(FileObject));
+    assert(IoPacket != NULL);
 
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
-	Irp->Request.MajorFunction = IRP_MJ_CREATE;
-	Irp->Request.Parameters.Create.Options = OpenPacket->CreateOptions;
-	Irp->Request.Parameters.Create.FileAttributes = OpenPacket->FileAttributes;
-	Irp->Request.Parameters.Create.ShareAccess = OpenPacket->ShareAccess;
+	IoPacket->Request.MajorFunction = IRP_MJ_CREATE;
+	IoPacket->Request.Parameters.Create.Options = OpenPacket->CreateOptions;
+	IoPacket->Request.Parameters.Create.FileAttributes = OpenPacket->FileAttributes;
+	IoPacket->Request.Parameters.Create.ShareAccess = OpenPacket->ShareAccess;
     } else if (OpenPacket->CreateFileType == CreateFileTypeNamedPipe) {
-	Irp->Request.MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
-	Irp->Request.Parameters.CreatePipe.Options = OpenPacket->CreateOptions;
-	Irp->Request.Parameters.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
-	Irp->Request.Parameters.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
+	IoPacket->Request.MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
+	IoPacket->Request.Parameters.CreatePipe.Options = OpenPacket->CreateOptions;
+	IoPacket->Request.Parameters.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
+	IoPacket->Request.Parameters.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
     } else {
 	assert(OpenPacket->CreateFileType == CreateFileTypeMailslot);
-	Irp->Request.MajorFunction = IRP_MJ_CREATE_MAILSLOT;
-	Irp->Request.Parameters.CreateMailslot.Options = OpenPacket->CreateOptions;
-	Irp->Request.Parameters.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
-	Irp->Request.Parameters.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
+	IoPacket->Request.MajorFunction = IRP_MJ_CREATE_MAILSLOT;
+	IoPacket->Request.Parameters.CreateMailslot.Options = OpenPacket->CreateOptions;
+	IoPacket->Request.Parameters.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
+	IoPacket->Request.Parameters.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
     }
 
-    Irp->Request.Device.Object = Device;
-    Irp->Request.File.Object = FileObject;
-    IopQueueIrp(Irp, Driver, Thread);
+    IoPacket->Request.Device.Object = Device;
+    IoPacket->Request.File.Object = FileObject;
+    IopQueueIoPacket(IoPacket, Driver, Thread);
 
     /* For create/open we always wait till the driver has completed the request. */
     AWAIT(KeWaitForSingleObject, State, Thread, &Thread->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed.
-     * Note: The local variable Irp is undefined here. Irp in the previous async block
-     * is stored as Thread's PendingIrp */
-    assert(Thread->PendingIrp->Type == IrpTypeRequest);
-    PIO_FILE_OBJECT FileObject = Thread->PendingIrp->Request.File.Object;
+     * Note: The local variable IoPacket is undefined here. IoPacket in the previous async block
+     * is stored as Thread's PendingIoPacket */
+    assert(Thread->PendingIoPacket->Type == IoPacketTypeRequest);
+    PIO_FILE_OBJECT FileObject = Thread->PendingIoPacket->Request.File.Object;
     assert(FileObject != NULL);
 
     IO_STATUS_BLOCK IoStatus = Thread->IoResponseStatus;
@@ -123,7 +121,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     /* This will free the pending IRP and set the thread pending irp to NULL.
      * At this point the IRP has already been detached from the driver object,
      * so we do not need to remove it from the driver IRP queue here. */
-    IopFreePendingIrp(Thread);
+    IopFreePendingIoPacket(Thread);
     ASYNC_END(Status);
 }
 
@@ -133,8 +131,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
 			 IN PTHREAD Thread,
                          IN OPTIONAL PCSTR DeviceName,
-                         IN DEVICE_TYPE DeviceType,
-                         IN ULONG DeviceCharacteristics,
+                         IN PIO_DEVICE_OBJECT_INFO DeviceInfo,
                          IN BOOLEAN Exclusive,
                          OUT GLOBAL_HANDLE *DeviceHandle)
 {
@@ -146,8 +143,7 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
     DEVICE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DriverObject = Thread->Process->DriverObject,
 	.DeviceName = DeviceName,
-	.DeviceType = DeviceType,
-	.DeviceCharacteristics = DeviceCharacteristics,
+	.DeviceInfo = *DeviceInfo,
 	.Exclusive = Exclusive
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *) &DeviceObject, &CreaCtx));
@@ -158,6 +154,16 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
+                                        IN PTHREAD Thread,
+                                        IN GLOBAL_HANDLE SourceDeviceHandle,
+                                        IN GLOBAL_HANDLE TargetDeviceHandle,
+                                        OUT GLOBAL_HANDLE *PreviousTopDeviceHandle,
+                                        OUT IO_DEVICE_OBJECT_INFO *PreviousTopDeviceInfo)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
                                IN HANDLE FileHandle,
@@ -165,7 +171,7 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
                                IN PIO_APC_ROUTINE ApcRoutine,
                                IN PVOID ApcContext,
                                OUT IO_STATUS_BLOCK *IoStatusBlock,
-                               IN ULONG IoControlCode,
+                               IN ULONG Ioctl,
                                IN PVOID InputBuffer,
                                IN ULONG InputBufferLength,
                                IN PVOID OutputBuffer,
@@ -187,17 +193,17 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     assert(FileObject->DeviceObject->DriverObject != NULL);
     PIO_DRIVER_OBJECT DriverObject = FileObject->DeviceObject->DriverObject;
 
-    PIO_REQUEST_PACKET Irp = NULL;
-    RET_ERR_EX(IopAllocateIrp(IrpTypeRequest, &Irp),
+    PIO_PACKET IoPacket = NULL;
+    RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, &IoPacket),
 	       ObDereferenceObject(FileObject));
-    assert(Irp != NULL);
+    assert(IoPacket != NULL);
 
-    Irp->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
-    Irp->Request.MinorFunction = 0;
-    Irp->Request.Control = 0;
-    Irp->Request.Flags = 0;
-    Irp->Request.Device.Object = FileObject->DeviceObject;
-    Irp->Request.File.Object = FileObject;
+    IoPacket->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
+    IoPacket->Request.MinorFunction = 0;
+    IoPacket->Request.Control = 0;
+    IoPacket->Request.Flags = 0;
+    IoPacket->Request.Device.Object = FileObject->DeviceObject;
+    IoPacket->Request.File.Object = FileObject;
 
     MWORD DriverInputBuffer = 0;
     if ((InputBuffer != NULL) && (InputBufferLength != 0)) {
@@ -206,31 +212,32 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 				    &DriverInputBuffer, TRUE),
 		   {
 		       ObDereferenceObject(FileObject);
-		       ExFreePool(Irp);
+		       ExFreePool(IoPacket);
 		   });
     }
 
     MWORD DriverOutputBuffer = 0;
     if ((OutputBuffer != NULL) && (OutputBufferLength != 0)) {
+	BOOLEAN MapReadOnly = METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT;
 	RET_ERR_EX(IopMapUserBuffer(Thread->Process, DriverObject,
 				    (MWORD) OutputBuffer, OutputBufferLength,
-				    &DriverOutputBuffer, FALSE),
+				    &DriverOutputBuffer, MapReadOnly),
 		   {
 		       ObDereferenceObject(FileObject);
-		       ExFreePool(Irp);
+		       ExFreePool(IoPacket);
 		       if (DriverInputBuffer != 0) {
 			   IopUnmapUserBuffer(DriverObject, DriverInputBuffer);
 		       }
 		   });
     }
 
-    Irp->Request.Parameters.DeviceIoControl.InputBuffer = (PVOID)DriverInputBuffer;
-    Irp->Request.Parameters.DeviceIoControl.OutputBuffer = (PVOID)DriverOutputBuffer;
-    Irp->Request.Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
-    Irp->Request.Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
-    Irp->Request.Parameters.DeviceIoControl.IoControlCode = IoControlCode;
+    IoPacket->Request.Parameters.DeviceIoControl.InputBuffer = (PVOID)DriverInputBuffer;
+    IoPacket->Request.Parameters.DeviceIoControl.OutputBuffer = (PVOID)DriverOutputBuffer;
+    IoPacket->Request.Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
+    IoPacket->Request.Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
+    IoPacket->Request.Parameters.DeviceIoControl.IoControlCode = Ioctl;
 
-    IopQueueIrp(Irp, DriverObject, Thread);
+    IopQueueIoPacket(IoPacket, DriverObject, Thread);
 
     /* Only wait for the IO completion if file is opened with
      * the synchronize flag. Otherwise, return pending status */
@@ -242,8 +249,8 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 	     Thread, &Thread->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed. */
-    assert(Thread->PendingIrp->Type == IrpTypeRequest);
-    PIO_FILE_OBJECT FileObject = Thread->PendingIrp->Request.File.Object;
+    assert(Thread->PendingIoPacket->Type == IoPacketTypeRequest);
+    PIO_FILE_OBJECT FileObject = Thread->PendingIoPacket->Request.File.Object;
     assert(FileObject != NULL);
 
     NTSTATUS Status = Thread->IoResponseStatus.Status;
@@ -256,6 +263,6 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     /* This will free the pending IRP and set the thread pending irp to NULL.
      * At this point the IRP has already been detached from the driver object,
      * so we do not need to remove it from the driver IRP queue here. */
-    IopFreePendingIrp(Thread);
+    IopFreePendingIoPacket(Thread);
     ASYNC_END(Status);
 }

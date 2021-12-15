@@ -114,8 +114,8 @@ typedef struct _NTDLL_THREAD_INIT_INFO {
 } NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
 
 typedef struct _NTDLL_DRIVER_INIT_INFO {
-    MWORD IncomingIrpBuffer;
-    MWORD OutgoingIrpBuffer;
+    MWORD IncomingIoPacketBuffer;
+    MWORD OutgoingIoPacketBuffer;
     MWORD InitialCoroutineStackTop;
 } NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
 

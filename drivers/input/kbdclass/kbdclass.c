@@ -33,15 +33,32 @@ static NTAPI VOID DriverUnload(IN PDRIVER_OBJECT DriverObject)
     // nothing to do here yet
 }
 
-static NTAPI NTSTATUS ForwardIrp(IN PDEVICE_OBJECT DeviceObject,
-				 IN PIRP Irp)
+static inline NTAPI NTSTATUS ForwardIrp(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp,
+					IN BOOLEAN Wait)
 {
     ASSERT(!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO);
     PDEVICE_OBJECT LowerDevice =
 	((PPORT_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
 
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(LowerDevice, Irp);
+    if (Wait) {
+	return IoCallDriverEx(LowerDevice, Irp, NULL);
+    } else {
+	return IoCallDriver(LowerDevice, Irp);
+    }
+}
+
+static NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
+					  IN PIRP Irp)
+{
+    return ForwardIrp(DeviceObject, Irp, FALSE);
+}
+
+static NTAPI NTSTATUS ForwardIrpAndWait(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp)
+{
+    return ForwardIrp(DeviceObject, Irp, TRUE);
 }
 
 static NTAPI NTSTATUS ClassCreate(IN PDEVICE_OBJECT DeviceObject,
@@ -50,7 +67,7 @@ static NTAPI NTSTATUS ClassCreate(IN PDEVICE_OBJECT DeviceObject,
     TRACE_(CLASS_NAME, "IRP_MJ_CREATE\n");
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-	return ForwardIrp(DeviceObject, Irp);
+	return ForwardIrpAndForget(DeviceObject, Irp);
 
     /* FIXME: open all associated Port devices */
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -65,7 +82,7 @@ static NTAPI NTSTATUS ClassClose(IN PDEVICE_OBJECT DeviceObject,
     TRACE_(CLASS_NAME, "IRP_MJ_CLOSE\n");
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-	return ForwardIrp(DeviceObject, Irp);
+	return ForwardIrpAndForget(DeviceObject, Irp);
 
     /* FIXME: close all associated Port devices */
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -80,7 +97,7 @@ static NTAPI NTSTATUS ClassCleanup(IN PDEVICE_OBJECT DeviceObject,
     TRACE_(CLASS_NAME, "IRP_MJ_CLEANUP\n");
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-	return ForwardIrp(DeviceObject, Irp);
+	return ForwardIrpAndForget(DeviceObject, Irp);
 
     /* FIXME: cleanup all associated Port devices */
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -100,7 +117,7 @@ static NTAPI NTSTATUS ClassRead(IN PDEVICE_OBJECT DeviceObject,
     ASSERT(DeviceExtension->Common.IsClassDO);
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-	return ForwardIrp(DeviceObject, Irp);
+	return ForwardIrpAndForget(DeviceObject, Irp);
 
     if (IoGetCurrentIrpStackLocation(Irp)->Parameters.Read.Length < sizeof(KEYBOARD_INPUT_DATA)) {
 	Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
@@ -123,7 +140,7 @@ static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     TRACE_(CLASS_NAME, "IRP_MJ_DEVICE_CONTROL\n");
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
-	return ForwardIrp(DeviceObject, Irp);
+	return ForwardIrpAndForget(DeviceObject, Irp);
 
     //DeviceExtension = (PCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
@@ -135,7 +152,7 @@ static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     {
 	/* FIXME: We hope that all devices will return the same result.
 	 * Ask only the first one */
-	PLIST_ENTRY Head = &((PCLASS_DEVICE_EXTENSION) DeviceObject->DeviceExtension)->ListHead;
+	PLIST_ENTRY Head = &((PCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->ListHead;
 	if (Head->Flink != Head) {
 	    /* We have at least one device */
 	    PPORT_DEVICE_EXTENSION DevExt = CONTAINING_RECORD(Head->Flink,
@@ -160,7 +177,7 @@ static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    NTSTATUS IntermediateStatus;
 
 	    IoGetCurrentIrpStackLocation(Irp)->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-	    IntermediateStatus = ForwardIrp(DevExt->DeviceObject, Irp);
+	    IntermediateStatus = ForwardIrpAndWait(DevExt->DeviceObject, Irp);
 	    if (!NT_SUCCESS(IntermediateStatus))
 		Status = IntermediateStatus;
 	    Entry = Entry->Flink;
@@ -393,19 +410,16 @@ static NTSTATUS FillEntries(IN PDEVICE_OBJECT ClassDeviceObject,
 	RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, DataStart,
 		      NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA));
     } else if (ClassDeviceObject->Flags & DO_DIRECT_IO) {
-	PVOID DestAddress = MmGetSystemAddressForMdlSafe(Irp->MdlAddress);
+	PVOID DestAddress = MmGetSystemAddressForMdl(Irp->MdlAddress);
 	if (DestAddress) {
 	    RtlCopyMemory(DestAddress, DataStart,
 			  NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA));
-	} else
+	} else {
 	    Status = STATUS_UNSUCCESSFUL;
-    } else {
-	__try {
-	    RtlCopyMemory(Irp->UserBuffer, DataStart,
-			  NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA));
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
-	    Status = GetExceptionCode();
 	}
+    } else {
+	RtlCopyMemory(Irp->UserBuffer, DataStart,
+		      NumberOfEntries * sizeof(KEYBOARD_INPUT_DATA));
     }
 
     return Status;
@@ -481,12 +495,6 @@ static NTSTATUS ConnectPortDriver(IN PDEVICE_OBJECT PortDO,
     if (NT_SUCCESS(IoStatus.Status)) {
 	InsertTailList(&((PCLASS_DEVICE_EXTENSION)ClassDO->DeviceExtension)->ListHead,
 		       &((PPORT_DEVICE_EXTENSION)PortDO->DeviceExtension)->ListEntry);
-	if (ClassDO->StackSize <= PortDO->StackSize) {
-	    /* Increase the stack size, in case we have to
-	     * forward some IRPs to the port device object
-	     */
-	    ClassDO->StackSize = PortDO->StackSize + 1;
-	}
     }
 
     return IoStatus.Status;
@@ -550,14 +558,11 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 	return STATUS_SUCCESS;
 
     /* Create new device object */
-    Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION),
-			    NULL, Pdo->DeviceType,
-			    Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ?
-			    FILE_DEVICE_SECURE_OPEN : 0,
+    Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION), NULL, Pdo->DeviceType,
+			    Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ? FILE_DEVICE_SECURE_OPEN : 0,
 			    FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
-	WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08lx\n",
-	      Status);
+	WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08lx\n", Status);
 	goto cleanup;
     }
     IoSetStartIoAttributes(Fdo, TRUE, TRUE);
@@ -712,7 +717,7 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     switch (IrpSp->MinorFunction) {
     case IRP_MN_START_DEVICE:
-	Status = ForwardIrp(DeviceObject, Irp);
+	Status = ForwardIrpAndWait(DeviceObject, Irp);
 	if (NT_SUCCESS(Status)) {
 	    InitializeObjectAttributes(&ObjectAttributes,
 				       &DeviceExtension->InterfaceName,
@@ -948,7 +953,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_POWER] = ClassPower;
     DriverObject->MajorFunction[IRP_MJ_PNP] = ClassPnp;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ClassDeviceControl;
-    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = ForwardIrp;
+    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = ForwardIrpAndForget;
     DriverObject->DriverStartIo = ClassStartIo;
 
     /* We will detect the legacy devices later */

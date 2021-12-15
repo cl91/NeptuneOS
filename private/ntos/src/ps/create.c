@@ -693,36 +693,36 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     RET_ERR(PspMapDependencies(Process, LoaderSharedData, &LoaderDataOffset, ImageFile->BufferPtr));
 
     if (DriverObject != NULL) {
-	PMMVAD ServerIncomingIrpVad = NULL;
-	PMMVAD ClientIncomingIrpVad = NULL;
+	PMMVAD ServerIncomingIoPacketsVad = NULL;
+	PMMVAD ClientIncomingIoPacketsVad = NULL;
 	RET_ERR(PspMapSharedRegion(Process,
-				   EX_DRIVER_IRP_REGION_START,
-				   EX_DRIVER_IRP_REGION_END,
-				   DRIVER_IRP_BUFFER_RESERVE,
-				   DRIVER_IRP_BUFFER_COMMIT,
+				   EX_DRIVER_IO_PACKET_REGION_START,
+				   EX_DRIVER_IO_PACKET_REGION_END,
+				   DRIVER_IO_PACKET_BUFFER_RESERVE,
+				   DRIVER_IO_PACKET_BUFFER_COMMIT,
+				   USER_IMAGE_REGION_START,
+				   USER_IMAGE_REGION_END,
+				   MEM_RESERVE_READ_ONLY,
+				   &ServerIncomingIoPacketsVad,
+				   &ClientIncomingIoPacketsVad));
+	DriverObject->IncomingIoPacketsServerAddr = ServerIncomingIoPacketsVad->AvlNode.Key;
+	DriverObject->IncomingIoPacketsClientAddr = ClientIncomingIoPacketsVad->AvlNode.Key;
+	PMMVAD ServerOutgoingIoPacketsVad = NULL;
+	PMMVAD ClientOutgoingIoPacketsVad = NULL;
+	RET_ERR(PspMapSharedRegion(Process,
+				   EX_DRIVER_IO_PACKET_REGION_START,
+				   EX_DRIVER_IO_PACKET_REGION_END,
+				   DRIVER_IO_PACKET_BUFFER_RESERVE,
+				   DRIVER_IO_PACKET_BUFFER_COMMIT,
 				   USER_IMAGE_REGION_START,
 				   USER_IMAGE_REGION_END,
 				   0,
-				   &ServerIncomingIrpVad,
-				   &ClientIncomingIrpVad));
-	DriverObject->IncomingIrpServerAddr = ServerIncomingIrpVad->AvlNode.Key;
-	DriverObject->IncomingIrpClientAddr = ClientIncomingIrpVad->AvlNode.Key;
-	PMMVAD ServerOutgoingIrpVad = NULL;
-	PMMVAD ClientOutgoingIrpVad = NULL;
-	RET_ERR(PspMapSharedRegion(Process,
-				   EX_DRIVER_IRP_REGION_START,
-				   EX_DRIVER_IRP_REGION_END,
-				   DRIVER_IRP_BUFFER_RESERVE,
-				   DRIVER_IRP_BUFFER_COMMIT,
-				   USER_IMAGE_REGION_START,
-				   USER_IMAGE_REGION_END,
-				   0,
-				   &ServerOutgoingIrpVad,
-				   &ClientOutgoingIrpVad));
-	DriverObject->OutgoingIrpServerAddr = ServerOutgoingIrpVad->AvlNode.Key;
-	DriverObject->OutgoingIrpClientAddr = ClientOutgoingIrpVad->AvlNode.Key;
-	Process->InitInfo.DriverInitInfo.IncomingIrpBuffer = DriverObject->IncomingIrpClientAddr;
-	Process->InitInfo.DriverInitInfo.OutgoingIrpBuffer = DriverObject->OutgoingIrpClientAddr;
+				   &ServerOutgoingIoPacketsVad,
+				   &ClientOutgoingIoPacketsVad));
+	DriverObject->OutgoingIoPacketsServerAddr = ServerOutgoingIoPacketsVad->AvlNode.Key;
+	DriverObject->OutgoingIoPacketsClientAddr = ClientOutgoingIoPacketsVad->AvlNode.Key;
+	Process->InitInfo.DriverInitInfo.IncomingIoPacketBuffer = DriverObject->IncomingIoPacketsClientAddr;
+	Process->InitInfo.DriverInitInfo.OutgoingIoPacketBuffer = DriverObject->OutgoingIoPacketsClientAddr;
 	MWORD InitialCoroutineStackTop = 0;
 	RET_ERR(PspMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;

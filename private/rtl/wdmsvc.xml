@@ -5,13 +5,19 @@
 
   <svc name="IopCreateDevice">
     <parameter annotation="in opt" type="UnicodeString" name="DeviceName" />
-    <parameter annotation="in" type="DEVICE_TYPE" name="DeviceType" />
-    <parameter annotation="in" type="ULONG" name="DeviceCharacteristics" />
+    <parameter annotation="in" type="ptr::IO_DEVICE_OBJECT_INFO" name="DeviceInfo" />
     <parameter annotation="in" type="BOOLEAN" name="Exclusive" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
-  <svc name="IopRequestIrp">
+  <svc name="IopIoAttachDeviceToDeviceStack">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="SourceDeviceHandle" />
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="TargetDeviceHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="PreviousTopDeviceHandle" />
+    <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="PreviousTopDeviceInfo" />
+  </svc>
+
+  <svc name="IopRequestIoPackets">
     <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
   </svc>

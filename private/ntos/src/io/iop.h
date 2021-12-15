@@ -14,34 +14,38 @@
 #define IopAllocateArray(Var, Type, Size)	\
     IopAllocateArrayEx(Var, Type, Size, {})
 
-static inline NTSTATUS IopAllocateIrp(IN IO_REQUEST_PACKET_TYPE Type,
-				      OUT PIO_REQUEST_PACKET *pIrp)
+static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
+					   OUT PIO_PACKET *pIoPacket)
 {
-    assert(pIrp != NULL);
-    IopAllocatePool(Irp, IO_REQUEST_PACKET);
-    Irp->Type = Type;
-    *pIrp = Irp;
+    assert(pIoPacket != NULL);
+    IopAllocatePool(IoPacket, IO_PACKET);
+    IoPacket->Type = Type;
+    *pIoPacket = IoPacket;
     return STATUS_SUCCESS;
 }
 
-static inline VOID IopFreePendingIrp(IN PTHREAD Thread)
+static inline VOID IopFreePendingIoPacket(IN PTHREAD Thread)
 {
-    PIO_REQUEST_PACKET Irp = Thread->PendingIrp;
-    ExFreePool(Irp);
-    Thread->PendingIrp = NULL;
+    PIO_PACKET IoPacket = Thread->PendingIoPacket;
+    ExFreePool(IoPacket);
+    Thread->PendingIoPacket = NULL;
 }
 
-static inline VOID IopQueueIrp(IN PIO_REQUEST_PACKET Irp,
-			       IN PIO_DRIVER_OBJECT Driver,
-			       IN PTHREAD Thread)
+static inline VOID IopQueueIoPacket(IN PIO_PACKET IoPacket,
+				    IN PIO_DRIVER_OBJECT Driver,
+				    IN PTHREAD Thread)
 {
-    /* We can only have exactly one pending IRP per thread */
-    assert(Thread->PendingIrp == NULL);
-    InsertTailList(&Driver->IrpQueue, &Irp->IrpLink);
-    Irp->Thread.Object = Thread;
-    Thread->PendingIrp = Irp;
+    /* We can only queue IO request packets */
+    assert(IoPacket->Type == IoPacketTypeRequest);
+    /* We can only have exactly one pending IO packet per thread */
+    assert(Thread->PendingIoPacket == NULL);
+    InsertTailList(&Driver->IoPacketQueue, &IoPacket->IoPacketLink);
+    IoPacket->Request.OriginatingThread.Object = Thread;
+    /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
+    IoPacket->Request.Identifier = (HANDLE) POINTER_TO_GLOBAL_HANDLE(IoPacket);
+    Thread->PendingIoPacket = IoPacket;
     KeInitializeEvent(&Thread->IoCompletionEvent, NotificationEvent);
-    KeSetEvent(&Driver->IrpQueuedEvent);
+    KeSetEvent(&Driver->IoPacketQueuedEvent);
 }
 
 static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
@@ -93,8 +97,7 @@ typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
 typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
     PIO_DRIVER_OBJECT DriverObject;
     PCSTR DeviceName;
-    DEVICE_TYPE DeviceType;
-    ULONG DeviceCharacteristics;
+    IO_DEVICE_OBJECT_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
 

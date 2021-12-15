@@ -44,4 +44,4 @@ function(add_driver _name _src)
 endfunction()
 
 add_subdirectory(base)
-#add_subdirectory(input)
+add_subdirectory(input)

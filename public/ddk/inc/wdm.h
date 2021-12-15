@@ -4,8 +4,28 @@
 #include <string.h>
 #include <assert.h>
 
-/* We are running in user space. All code are paged code. */
-#define PAGED_CODE()
+/* We are running in user space. */
+FORCEINLINE DECLSPEC_DEPRECATED VOID PAGED_CODE() {}
+
+/*
+ * Returned by IoCallDriver to indicate that the IRP has been
+ * forwarded to the lower-level drivers and has been deallocated
+ * in the current driver.
+ */
+#define STATUS_IRP_FORWARDED		STATUS_PENDING
+
+/*
+ * Returned by IO completion routines to indicate that the system
+ * should continue to execute the higher-level completion routines.
+ *
+ * To stop the IO completion process at this level, return StopCompletion.
+ */
+#define STATUS_CONTINUE_COMPLETION	STATUS_SUCCESS
+
+typedef enum _IO_COMPLETION_ROUTINE_RESULT {
+    ContinueCompletion = STATUS_CONTINUE_COMPLETION,
+    StopCompletion = STATUS_MORE_PROCESSING_REQUIRED
+} IO_COMPLETION_ROUTINE_RESULT, *PIO_COMPLETION_ROUTINE_RESULT;
 
 /* VPB.Flags */
 #define VPB_MOUNTED                       0x0001
@@ -169,6 +189,36 @@
 #define IO_TYPE_CSQ 2
 #define IO_TYPE_CSQ_EX 3
 
+/*
+ * Memory allocation and deallocation.
+ *
+ * PORTING GUIDE: Since we run drivers in their container process
+ * there is no distinction between paged pool and non-paged pool.
+ * To port Windows/ReactOS driver simply remove the first argument
+ * in ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag).
+ */
+FORCEINLINE PVOID ExAllocatePoolWithTag(IN SIZE_T Size,
+					IN ULONG Tag)
+{
+    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+}
+
+FORCEINLINE VOID ExFreePoolWithTag(IN PVOID Pointer,
+				   IN ULONG Tag)
+{
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
+}
+
+FORCEINLINE PVOID ExAllocatePool(IN SIZE_T Size)
+{
+    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+}
+
+FORCEINLINE VOID ExFreePool(IN PVOID Pointer)
+{
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
+}
+
 struct _DEVICE_OBJECT;
 struct _DRIVER_OBJECT;
 struct _IRP;
@@ -251,14 +301,14 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     ULONG Size;
     struct _DRIVER_OBJECT *DriverObject;
     struct _DEVICE_OBJECT *NextDevice;
-    struct _DEVICE_OBJECT *AttachedDevice;
-    struct _DEVICE_OBJECT *AttachedTo;
+    struct _DEVICE_OBJECT *AttachedDevice; /* Higher-level device object immediately above
+					    * the current device object in the device stack */
     struct _IRP *CurrentIrp;
+    UNICODE_STRING DeviceName;
     ULONG Flags;
     ULONG Characteristics;
     PVOID DeviceExtension;
     DEVICE_TYPE DeviceType;
-    CCHAR StackSize;
     ULONG AlignmentRequirement;
     KDEVICE_QUEUE DeviceQueue;
     KDPC Dpc;
@@ -276,12 +326,9 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
 
 typedef struct _MDL {
     struct _MDL *Next;
-    SHORT Size;
     SHORT MdlFlags;
     PVOID MappedSystemVa;
-    PVOID StartVa;
     ULONG ByteCount;
-    ULONG ByteOffset;
 } MDL, *PMDL;
 
 typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
@@ -307,18 +354,9 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     /* IO status block returned by the driver */
     IO_STATUS_BLOCK IoStatus;
 
-    /* Number of IO stack locations associated with this IRP object.
-     * This is a constant member and drivers should never change this. */
-    CHAR StackCount;
-
-    /* Current IO stack location. As opposed to Windows/ReactOS
-     * IO stack location starts from 0 and increases as we "push"
-     * the stack.
-     *
-     * NOTE: Drivers should never access this member directly. Call
-     * the helper functions below (IoGetCurrentIrpStackLocation etc).
-     */
-    CHAR CurrentLocation;
+    /* IO status block supplied by the user that will be populated
+     * once the IRP has been completed. This makes the IRP synchronous. */
+    PIO_STATUS_BLOCK UserIosb;
 
     /* TODO. */
     BOOLEAN PendingReturned;
@@ -363,15 +401,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	PFILE_OBJECT OriginalFileObject;
     } Tail;
 } IRP, *PIRP;
-
-/*
- * USHORT IoSizeOfIrp(IN CCHAR StackSize)
- *
- * Determines the full size of an IRP object given the number of IO stack
- * locations available to the IRP object. 
- */
-#define IoSizeOfIrp(StackSize)						\
-    ((USHORT)(sizeof(IRP) + ((StackSize) * (sizeof(IO_STACK_LOCATION)))))
 
 /*
  * Executive objects. These are simply handles to the server-side objects.
@@ -850,6 +879,89 @@ typedef struct _IO_STACK_LOCATION {
     PVOID Context;
 } IO_STACK_LOCATION, *PIO_STACK_LOCATION;
 
+#define IO_SIZE_OF_IRP	(sizeof(IRP) + sizeof(IO_STACK_LOCATION))
+
+/*
+ * Returns the full size of an IRP object including the header and the
+ * IO stack location.
+ */
+DEPRECATED("IRPs always have exactly one stack location. Use IO_SIZE_OF_IRP instead.")
+FORCEINLINE USHORT IoSizeOfIrp(IN CCHAR StackSize)
+{
+    return IO_SIZE_OF_IRP;
+}
+
+/*
+ * Note: The Irp object must be zeroed before calling this function.
+ *
+ * Porting guide: IRPs always have exactly one stack location, so remove
+ * the PacketSize and StackSize argument if you are porting from ReactOS.
+ */
+FORCEINLINE VOID IoInitializeIrp(IN PIRP Irp)
+{
+    /* Set the Header and other data */
+    Irp->Type = IO_TYPE_IRP;
+    Irp->Size = IO_SIZE_OF_IRP;
+}
+
+/*
+ * Porting guide: IRPs always have exactly one stack location, and we don't
+ * have "pool memory" since we are running in userspace, so remove the
+ * StackSize and ChargeQuota argument if you are porting from ReactOS.
+ */
+FORCEINLINE PIRP IoAllocateIrp()
+{
+    PIRP Irp = (PIRP) ExAllocatePool(IO_SIZE_OF_IRP);
+    if (Irp == NULL) {
+	return NULL;
+    }
+    IoInitializeIrp(Irp);
+    return Irp;
+}
+
+FORCEINLINE VOID IoFreeIrp(IN PIRP Irp)
+{
+    ExFreePool(Irp);
+}
+
+/*
+ * Returns the current (and only) IO stack location pointer. The (only)
+ * IO stack location follows immediately after the IRP header.
+ */
+FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
+{
+    return (PIO_STACK_LOCATION)(Irp + 1);
+}
+
+/*
+ * IO stack location manipulation routines. These are all deprecated and
+ * are effectively no-op since our IRPs always have exactly one stack location.
+ */
+DEPRECATED("IRPs always have exactly one stack location. Remove this.")
+FORCEINLINE VOID IoSkipCurrentIrpStackLocation(IN OUT PIRP Irp)
+{
+}
+
+DEPRECATED("IRPs always have exactly one stack location. Remove this.")
+FORCEINLINE VOID IoCopyCurrentIrpStackLocationToNext(IN OUT PIRP Irp)
+{
+}
+
+DEPRECATED("IRPs always have exactly one stack location. Remove this")
+FORCEINLINE VOID IoSetNextIrpStackLocation(IN OUT PIRP Irp)
+{
+}
+
+DEPRECATED_BY("IRPs always have exactly one stack location.",
+	      IoGetCurrentIrpStackLocation)
+FORCEINLINE PIO_STACK_LOCATION IoGetNextIrpStackLocation(IN PIRP Irp)
+{
+    return IoGetCurrentIrpStackLocation(Irp);
+}
+
+/*
+ * Device object creation routine
+ */
 NTAPI NTSYSAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 				       IN ULONG DeviceExtensionSize,
 				       IN PUNICODE_STRING DeviceName OPTIONAL,
@@ -858,18 +970,61 @@ NTAPI NTSYSAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 				       IN BOOLEAN Exclusive,
 				       OUT PDEVICE_OBJECT *DeviceObject);
 
+/*
+ * Device object deletion routine
+ */
 NTAPI NTSYSAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
+/*
+ * Queries the device name from server and returns the cached local FILE
+ * and DEVICE object.
+ */
+NTAPI NTSYSAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
+						 IN ACCESS_MASK DesiredAccess,
+						 OUT PFILE_OBJECT *FileObject,
+						 OUT PDEVICE_OBJECT *DeviceObject);
 
 /*
- * Returns the current IO stack location pointer.
+ * Attach the SourceDevice on top of the device stack of TargetDevice,
+ * returning the previous topmost device object in the device stack.
  */
-FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
+NTAPI NTSYSAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
+							  IN PDEVICE_OBJECT TargetDevice);
+
+DEPRECATED_BY("Unlike Windows/ReactOS we don't have synchronization issues "
+	      "since drivers run in their own process.",
+	      IoAttachDeviceToDeviceStack)
+FORCEINLINE NTSTATUS
+IoAttachDeviceToDeviceStackSafe(IN PDEVICE_OBJECT SourceDevice,
+				IN PDEVICE_OBJECT TargetDevice,
+				IN OUT PDEVICE_OBJECT *AttachedToDeviceObject)
 {
-    PIO_STACK_LOCATION Stack = (PIO_STACK_LOCATION)(Irp + 1);
-    return &Stack[Irp->CurrentLocation];
+    PDEVICE_OBJECT OldTopDevice = IoAttachDeviceToDeviceStack(SourceDevice,
+							      TargetDevice);
+    if (OldTopDevice == NULL) {
+	/* Nothing found */
+	return STATUS_NO_SUCH_DEVICE;
+    }
+
+    /* Success! */
+    *AttachedToDeviceObject = OldTopDevice;
+    return STATUS_SUCCESS;
 }
+
+/*
+ * Registers a device interface class if it has not been previously registered,
+ * and creates a new instance of the interface class, which a driver can
+ * subsequently enable for use by applications or other system components.
+ */
+NTAPI NTSYSAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
+						  IN CONST GUID *InterfaceClassGuid,
+						  IN PUNICODE_STRING ReferenceString OPTIONAL,
+						  OUT PUNICODE_STRING SymbolicLinkName);
+
+NTAPI NTSYSAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice);
+
+DEPRECATED("Drivers run in userspace and are always paged entirely. Remove this.")
+NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
 
 /*
  * IO DPC routine
@@ -989,6 +1144,11 @@ FORCEINLINE VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
 FORCEINLINE VOID IoCompleteRequest(IN PIRP Irp,
 				   IN CHAR PriorityBoost)
 {
+    assert(Irp != NULL);
+    /* Never complete an IRP with pending status */
+    assert(Irp->IoStatus.Status != STATUS_PENDING);
+    /* -1 is an invalid NTSTATUS */
+    assert(Irp->IoStatus.Status != -1);
     Irp->Completed = TRUE;
     Irp->PriorityBoost = PriorityBoost;
 }
@@ -996,6 +1156,7 @@ FORCEINLINE VOID IoCompleteRequest(IN PIRP Irp,
 /*
  * Mark the current IRP as pending
  */
+DEPRECATED("IRPs no longer need to be marked pending. Remove this.")
 FORCEINLINE VOID IoMarkIrpPending(IN OUT PIRP Irp)
 {
     IoGetCurrentIrpStackLocation((Irp))->Control |= SL_PENDING_RETURNED;
@@ -1033,26 +1194,6 @@ FORCEINLINE BOOLEAN IoCancelTimer(IN OUT PKTIMER Timer)
 }
 
 /*
- * Memory allocation and deallocation.
- *
- * PORTING GUIDE: Since we run drivers in their container process
- * there is no distinction between paged pool and non-paged pool.
- * To port Windows/ReactOS driver simply remove the first argument
- * in ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag).
- */
-static inline PVOID ExAllocatePoolWithTag(IN SIZE_T Size,
-					  IN ULONG Tag)
-{
-    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
-}
-
-static inline VOID ExFreePoolWithTag(IN PVOID Pointer,
-				     IN ULONG Tag)
-{
-    RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
-}
-
-/*
  * Per-driver context area routines
  */
 NTAPI NTSYSAPI NTSTATUS IoAllocateDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
@@ -1069,3 +1210,91 @@ NTAPI NTSYSAPI PVOID IoGetDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
 NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
 					    IN PDRIVER_REINITIALIZE ReinitRoutine,
 					    IN PVOID Context);
+
+/*
+ * Set device StartIo flags
+ */
+FORCEINLINE VOID IoSetStartIoAttributes(IN PDEVICE_OBJECT DeviceObject,
+					IN BOOLEAN DeferredStartIo,
+					IN BOOLEAN NonCancelable)
+{
+    /* Set the flags the caller requested */
+    DeviceObject->StartIoFlags |= (DeferredStartIo) ? DOE_SIO_DEFERRED : 0;
+    DeviceObject->StartIoFlags |= (NonCancelable) ? DOE_SIO_NO_CANCEL : 0;
+}
+
+/*
+ * MDL (memory descriptor list) routines
+ */
+FORCEINLINE PVOID MmGetSystemAddressForMdl(IN PMDL Mdl)
+{
+    return Mdl->MappedSystemVa;
+}
+
+DEPRECATED_BY("Since user buffers are mapped directly into driver process they are always safe to access",
+	      MmGetSystemAddressForMld)
+FORCEINLINE PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl,
+					       IN ULONG Priority)
+{
+    return MmGetSystemAddressForMdl(Mdl);
+}
+
+NTAPI NTSYSAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
+						  IN PDEVICE_OBJECT DeviceObject,
+						  IN PVOID InputBuffer,
+						  IN ULONG InputBufferLength,
+						  IN PVOID OutputBuffer,
+						  IN ULONG OutputBufferLength,
+						  IN BOOLEAN InternalDeviceIoControl,
+						  IN PIO_STATUS_BLOCK IoStatusBlock);
+
+NTAPI NTSYSAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
+						  IN PDEVICE_OBJECT DeviceObject,
+						  IN PVOID Buffer,
+						  IN ULONG Length,
+						  IN PLARGE_INTEGER StartingOffset);
+
+NTAPI NTSYSAPI PIRP IoBuildSynchronousFsdRequest(IN ULONG MajorFunction,
+						 IN PDEVICE_OBJECT DeviceObject,
+						 IN PVOID Buffer,
+						 IN ULONG Length,
+						 IN PLARGE_INTEGER StartingOffset,
+						 IN PIO_STATUS_BLOCK IoStatusBlock);
+
+/*
+ * See private/wdm/src/irp.c for documentation.
+ */
+NTAPI NTSYSAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
+				       IN OUT PIRP Irp,
+				       IN PLARGE_INTEGER Timeout);
+
+/*
+ * Forward the specified IRP to the specified device and return immediately,
+ * with STATUS_IRP_FORWARDED, unless the IRP has supplied a UserIoSb,
+ * in which case the current coroutine is suspended and waits for the
+ * completion of the IRP.
+ */
+FORCEINLINE NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
+				  IN OUT PIRP Irp)
+{
+    LARGE_INTEGER Timeout = { .QuadPart = 0 };
+    return IoCallDriverEx(DeviceObject, Irp, &Timeout);
+}
+
+/*
+ * This was needed by the power manager in Windows XP/ReactOS and is
+ * now deprecated in Windows Vista and later. We follow Vista+.
+ */
+DEPRECATED_BY("Power IRP synchronization is now automatic. You no longer need to call the Po-specific versions",
+	      IoCallDriver)
+FORCEINLINE NTSTATUS PoCallDriver(IN PDEVICE_OBJECT DeviceObject,
+				  IN OUT PIRP Irp)
+{
+    return IoCallDriver(DeviceObject, Irp);
+}
+
+DEPRECATED("Power IRP synchronization is now automatic. Remove this.")
+FORCEINLINE VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
+{
+    /* Do nothing */
+}
