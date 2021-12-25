@@ -94,7 +94,7 @@ i8042ParseSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
 #endif
 
     /* Now loop the hardware table to find a match */
-    for (i = 0; i < ARRAYSIZE(i8042HardwareTable); i++) {
+    for (i = 0; i < _ARRAYSIZE(i8042HardwareTable); i++) {
 	for (j = 0; j < MAX_MATCH_ENTRIES; j++) {
 	    ULONG Type = i8042HardwareTable[i].MatchEntries[j].Type;
 
@@ -102,8 +102,7 @@ i8042ParseSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
 		/* Check for a match */
 		if ((Strings[Type] == NULL) ||
 		    strcmp(i8042HardwareTable[i].MatchEntries[j].String,
-			   Strings[i8042HardwareTable[i].MatchEntries[j].
-				   Type])) {
+			   Strings[i8042HardwareTable[i].MatchEntries[j].Type])) {
 		    /* Does not match, try next entry */
 		    break;
 		}
@@ -138,7 +137,7 @@ i8042StoreSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
 			       &mssmbiosKeyName,
 			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 			       NULL, NULL);
-    Status = ZwCreateKey(&KeyHandle,
+    Status = NtCreateKey(&KeyHandle,
 			 KEY_WRITE,
 			 &ObjectAttributes,
 			 0, NULL, REG_OPTION_VOLATILE, NULL);
@@ -152,22 +151,22 @@ i8042StoreSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
 			       &DataName,
 			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 			       KeyHandle, NULL);
-    Status = ZwCreateKey(&SubKeyHandle,
+    Status = NtCreateKey(&SubKeyHandle,
 			 KEY_WRITE,
 			 &ObjectAttributes,
 			 0, NULL, REG_OPTION_VOLATILE, NULL);
 
     if (!NT_SUCCESS(Status)) {
-	ZwClose(KeyHandle);
+	NtClose(KeyHandle);
 	return;
     }
 
     /* Write value */
-    ZwSetValueKey(SubKeyHandle,
+    NtSetValueKey(SubKeyHandle,
 		  &ValueName, 0, REG_BINARY, SMBiosTables, TableSize);
 
-    ZwClose(SubKeyHandle);
-    ZwClose(KeyHandle);
+    NtClose(SubKeyHandle);
+    NtClose(KeyHandle);
 }
 
 VOID NTAPI i8042InitializeHwHacks(VOID)
@@ -193,7 +192,7 @@ VOID NTAPI i8042InitializeHwHacks(VOID)
 	return;
     }
 
-    AllData = ExAllocatePoolWithTag(PagedPool, BufferSize, 'BTMS');
+    AllData = ExAllocatePoolWithTag(BufferSize, 'BTMS');
     if (AllData == NULL) {
 	DPRINT1("Failed to allocate %lu bytes for SMBIOS tables\n",
 		BufferSize);

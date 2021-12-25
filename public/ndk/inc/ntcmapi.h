@@ -917,6 +917,7 @@ NTAPI NTSYSAPI NTSTATUS NtCreateKey(OUT PHANDLE KeyHandle,
 				    IN OPTIONAL PUNICODE_STRING Class,
 				    IN ULONG CreateOptions,
 				    OUT OPTIONAL PULONG Disposition);
+#define ZwCreateKey NtCreateKey
 
 NTAPI NTSYSAPI NTSTATUS NtDeleteKey(IN HANDLE KeyHandle);
 

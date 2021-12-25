@@ -84,6 +84,7 @@
 @ cdecl memcpy(ptr ptr long)
 @ cdecl memmove(ptr ptr long)
 @ cdecl memset(ptr long long)
+@ cdecl strcmp()
 @ cdecl strchr(str long)
 @ cdecl strlen(str)
 @ cdecl strnlen(str long)

@@ -495,8 +495,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto cleanup;
 	}
-	WorkItemData = ExAllocatePoolWithTag(NonPagedPool,
-					     sizeof(I8042_HOOK_WORKITEM),
+	WorkItemData = ExAllocatePoolWithTag(sizeof(I8042_HOOK_WORKITEM),
 					     I8042PRT_TAG);
 	if (!WorkItemData) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
@@ -508,11 +507,9 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	/* Initialize extension */
 	DeviceExtension->Common.Type = Keyboard;
-	Size =
-	    DeviceExtension->Common.PortDeviceExtension->Settings.
-	    KeyboardDataQueueSize * sizeof(KEYBOARD_INPUT_DATA);
-	DeviceExtension->KeyboardBuffer =
-	    ExAllocatePoolWithTag(NonPagedPool, Size, I8042PRT_TAG);
+	Size = DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize
+	    * sizeof(KEYBOARD_INPUT_DATA);
+	DeviceExtension->KeyboardBuffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
 	if (!DeviceExtension->KeyboardBuffer) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
 	    Status = STATUS_NO_MEMORY;
@@ -758,6 +755,7 @@ NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
 
     INFO_(I8042PRT, "Got: 0x%02x\n", Output);
 
+#if 0
     if (PortDeviceExtension->Settings.CrashOnCtrlScroll) {
 	/* Test for CTRL + SCROLL LOCK twice */
 	static const UCHAR ScanCodes[] = { 0x1d, 0x46, 0xc6, 0x46, 0 };
@@ -796,6 +794,7 @@ NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
 	    }
 	}
     }
+#endif
 
     if (i8042KbdCallIsrHook(DeviceExtension, PortStatus, Output, &ToReturn))
 	return ToReturn;

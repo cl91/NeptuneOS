@@ -81,7 +81,6 @@ typedef struct _PORT_DEVICE_EXTENSION {
     PI8042_MOUSE_EXTENSION MouseExtension;
     INTERRUPT_DATA MouseInterrupt;
     PKINTERRUPT HighestDIRQLInterrupt;
-    KSPIN_LOCK SpinLock;
     KIRQL HighestDirql;
 
     OUTPUT_PACKET Packet;
@@ -100,7 +99,6 @@ typedef struct _I8042_DRIVER_EXTENSION {
 
     PORT_DEVICE_EXTENSION Port;
     LIST_ENTRY DeviceListHead;
-    KSPIN_LOCK DeviceListLock;
 } I8042_DRIVER_EXTENSION, *PI8042_DRIVER_EXTENSION;
 
 typedef enum _I8042_DEVICE_TYPE {
@@ -294,6 +292,8 @@ DRIVER_DISPATCH i8042KbdInternalDeviceControl;
 KSERVICE_ROUTINE i8042KbdInterruptService;
 
 /* i8042prt.c */
+DRIVER_DISPATCH ForwardIrpAndForget;
+DRIVER_DISPATCH ForwardIrpAndWait;
 DRIVER_ADD_DEVICE i8042AddDevice;
 BOOLEAN i8042PacketIsr(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 		       IN UCHAR Output);
@@ -303,10 +303,6 @@ NTSTATUS i8042StartPacket(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 			  IN PUCHAR Bytes,
 			  IN ULONG ByteCount,
 			  IN PIRP Irp);
-
-/* misc.c */
-DRIVER_DISPATCH ForwardIrpAndForget;
-DRIVER_DISPATCH ForwardIrpAndWait;
 
 /* mouse.c */
 VOID i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension,
@@ -368,5 +364,12 @@ enum _FLAGS {
 };
 
 extern ULONG i8042HwFlags;
+
+/* We cannot include win32 headers so define ULongToPtr here */
+static inline void *ULongToPtr(const unsigned long ul)
+{
+    return (void*)((ULONG_PTR)ul);
+}
+#define UlongToPtr ULongToPtr
 
 #endif				/* _I8042PRT_PCH_ */

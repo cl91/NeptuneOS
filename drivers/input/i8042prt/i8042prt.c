@@ -23,6 +23,26 @@ static DRIVER_DISPATCH i8042SystemControl;
 static DRIVER_DISPATCH i8042Power;
 DRIVER_INITIALIZE DriverEntry;
 
+NTAPI NTSTATUS ForwardIrpAndWait(IN PDEVICE_OBJECT DeviceObject,
+				 IN PIRP Irp)
+{
+    PDEVICE_OBJECT LowerDevice = ((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
+    assert(LowerDevice != NULL);
+
+    IoCopyCurrentIrpStackLocationToNext(Irp);
+    return IoCallDriverEx(LowerDevice, Irp, NULL);
+}
+
+NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
+				   IN PIRP Irp)
+{
+    PDEVICE_OBJECT LowerDevice = ((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
+    assert(LowerDevice != NULL);
+
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(LowerDevice, Irp);
+}
+
 NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 			      IN PDEVICE_OBJECT Pdo)
 {
@@ -71,9 +91,8 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 	goto cleanup;
     }
 
-    ExInterlockedInsertTailList(&DriverExtension->DeviceListHead,
-				&DeviceExtension->ListEntry,
-				&DriverExtension->DeviceListLock);
+    InsertTailList(&DriverExtension->DeviceListHead,
+		   &DeviceExtension->ListEntry);
 
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;
@@ -89,32 +108,20 @@ cleanup:
 NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
 				 IN PVOID Context)
 {
-    PI8042_HOOK_WORKITEM WorkItemData;
-    PFDO_DEVICE_EXTENSION FdoDeviceExtension;
-    PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    PDEVICE_OBJECT TopOfStack = NULL;
-    ULONG IoControlCode;
-    PVOID InputBuffer;
-    ULONG InputBufferLength;
-    IO_STATUS_BLOCK IoStatus;
-    KEVENT Event;
-    PIRP NewIrp;
-    NTSTATUS Status;
-
     TRACE_(I8042PRT, "i8042SendHookWorkItem(%p %p)\n", DeviceObject,
 	   Context);
 
-    WorkItemData = (PI8042_HOOK_WORKITEM) Context;
-    FdoDeviceExtension =
-	(PFDO_DEVICE_EXTENSION) DeviceObject->DeviceExtension;
-    PortDeviceExtension = FdoDeviceExtension->PortDeviceExtension;
+    PI8042_HOOK_WORKITEM WorkItemData = (PI8042_HOOK_WORKITEM)Context;
+    PFDO_DEVICE_EXTENSION FdoDeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PPORT_DEVICE_EXTENSION PortDeviceExtension = FdoDeviceExtension->PortDeviceExtension;
 
+    ULONG IoControlCode;
+    PVOID InputBuffer;
+    ULONG InputBufferLength;
     switch (FdoDeviceExtension->Type) {
     case Keyboard:
     {
-	PI8042_KEYBOARD_EXTENSION DeviceExtension;
-	DeviceExtension =
-	    (PI8042_KEYBOARD_EXTENSION) FdoDeviceExtension;
+	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION) FdoDeviceExtension;
 	IoControlCode = IOCTL_INTERNAL_I8042_HOOK_KEYBOARD;
 	InputBuffer = &DeviceExtension->KeyboardHook;
 	InputBufferLength = sizeof(INTERNAL_I8042_HOOK_KEYBOARD);
@@ -122,8 +129,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     }
     case Mouse:
     {
-	PI8042_MOUSE_EXTENSION DeviceExtension;
-	DeviceExtension = (PI8042_MOUSE_EXTENSION) FdoDeviceExtension;
+	PI8042_MOUSE_EXTENSION DeviceExtension = (PI8042_MOUSE_EXTENSION)FdoDeviceExtension;
 	IoControlCode = IOCTL_INTERNAL_I8042_HOOK_MOUSE;
 	InputBuffer = &DeviceExtension->MouseHook;
 	InputBufferLength = sizeof(INTERNAL_I8042_HOOK_MOUSE);
@@ -139,15 +145,15 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     }
     }
 
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-    TopOfStack = IoGetAttachedDeviceReference(DeviceObject);
+    PDEVICE_OBJECT TopOfStack = IoGetAttachedDeviceReference(DeviceObject);
 
-    NewIrp = IoBuildDeviceIoControlRequest(IoControlCode,
-					   TopOfStack,
-					   InputBuffer,
-					   InputBufferLength,
-					   NULL,
-					   0, TRUE, &Event, &IoStatus);
+    IO_STATUS_BLOCK IoStatus;
+    PIRP NewIrp = IoBuildDeviceIoControlRequest(IoControlCode,
+						TopOfStack,
+						InputBuffer,
+						InputBufferLength,
+						NULL,
+						0, TRUE, &IoStatus);
 
     if (!NewIrp) {
 	WARN_(I8042PRT, "IoBuildDeviceIoControlRequest() failed\n");
@@ -155,29 +161,15 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
 	goto cleanup;
     }
 
-    Status = IoCallDriver(TopOfStack, NewIrp);
-    if (Status == STATUS_PENDING) {
-	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-	Status = IoStatus.Status;
-    }
-    if (!NT_SUCCESS(Status)) {
-	WARN_(I8042PRT, "IoCallDriver() failed with status 0x%08lx\n",
-	      Status);
-	goto cleanup;
-    }
+    NTSTATUS Status = IoCallDriverEx(TopOfStack, NewIrp, NULL);
 
     if (FdoDeviceExtension->Type == Keyboard) {
-	PI8042_KEYBOARD_EXTENSION DeviceExtension;
-
-	DeviceExtension = (PI8042_KEYBOARD_EXTENSION) FdoDeviceExtension;
+	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)FdoDeviceExtension;
 	/* Call the hooked initialization if it exists */
 	if (DeviceExtension->KeyboardHook.InitializationRoutine) {
-	    Status =
-		DeviceExtension->KeyboardHook.
-		InitializationRoutine(DeviceExtension->KeyboardHook.
-				      Context, PortDeviceExtension,
-				      i8042SynchReadPort,
-				      i8042SynchWritePortKbd, FALSE);
+	    Status = DeviceExtension->KeyboardHook.InitializationRoutine(
+		DeviceExtension->KeyboardHook.Context, PortDeviceExtension,
+		i8042SynchReadPort, i8042SynchWritePortKbd, FALSE);
 	    if (!NT_SUCCESS(Status)) {
 		WARN_(I8042PRT,
 		      "KeyboardHook.InitializationRoutine() failed with status 0x%08lx\n",
@@ -191,8 +183,6 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     WorkItemData->Irp->IoStatus.Status = STATUS_SUCCESS;
 
 cleanup:
-    if (TopOfStack != NULL)
-	ObDereferenceObject(TopOfStack);
     WorkItemData->Irp->IoStatus.Information = 0;
     IoCompleteRequest(WorkItemData->Irp, IO_NO_INCREMENT);
 
@@ -203,10 +193,7 @@ cleanup:
 static NTAPI VOID i8042StartIo(IN PDEVICE_OBJECT DeviceObject,
 			       IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension;
-
-    DeviceExtension =
-	(PFDO_DEVICE_EXTENSION) DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     switch (DeviceExtension->Type) {
     case Keyboard:
 	i8042KbdStartIo(DeviceObject, Irp);
@@ -226,8 +213,7 @@ static BOOLEAN i8042PacketWrite(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     UCHAR Port = DeviceExtension->PacketPort;
 
     if (Port) {
-	if (!i8042Write(DeviceExtension,
-			DeviceExtension->ControlPort, Port)) {
+	if (!i8042Write(DeviceExtension, DeviceExtension->ControlPort, Port)) {
 	    /* something is really wrong! */
 	    WARN_(I8042PRT, "Failed to send packet byte!\n");
 	    return FALSE;
@@ -248,8 +234,7 @@ BOOLEAN i8042PacketIsr(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     switch (Output) {
     case KBD_RESEND:
 	DeviceExtension->PacketResends++;
-	if (DeviceExtension->PacketResends >
-	    DeviceExtension->Settings.ResendIterations) {
+	if (DeviceExtension->PacketResends > DeviceExtension->Settings.ResendIterations) {
 	    DeviceExtension->Packet.State = Idle;
 	    DeviceExtension->PacketComplete = TRUE;
 	    DeviceExtension->PacketResult = STATUS_IO_TIMEOUT;
@@ -270,8 +255,7 @@ BOOLEAN i8042PacketIsr(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 	DeviceExtension->PacketResends = 0;
     }
 
-    if (DeviceExtension->Packet.CurrentByte >=
-	DeviceExtension->Packet.ByteCount) {
+    if (DeviceExtension->Packet.CurrentByte >= DeviceExtension->Packet.ByteCount) {
 	DeviceExtension->Packet.State = Idle;
 	DeviceExtension->PacketComplete = TRUE;
 	DeviceExtension->PacketResult = STATUS_SUCCESS;
@@ -356,11 +340,8 @@ done:
 static NTAPI NTSTATUS i8042DeviceControl(IN PDEVICE_OBJECT DeviceObject,
 					 IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension;
-
     TRACE_(I8042PRT, "i8042DeviceControl(%p %p)\n", DeviceObject, Irp);
-    DeviceExtension =
-	(PFDO_DEVICE_EXTENSION) DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION) DeviceObject->DeviceExtension;
 
     switch (DeviceExtension->Type) {
     case Keyboard:
@@ -375,20 +356,16 @@ static NTAPI NTSTATUS i8042DeviceControl(IN PDEVICE_OBJECT DeviceObject,
 static NTAPI NTSTATUS i8042InternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 						 IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension;
-    ULONG ControlCode;
     NTSTATUS Status;
 
     TRACE_(I8042PRT, "i8042InternalDeviceControl(%p %p)\n", DeviceObject,
 	   Irp);
-    DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     switch (DeviceExtension->Type) {
     case Unknown:
     {
-	ControlCode =
-	    IoGetCurrentIrpStackLocation(Irp)->Parameters.
-	    DeviceIoControl.IoControlCode;
+	ULONG ControlCode = IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.IoControlCode;
 	switch (ControlCode) {
 	case IOCTL_INTERNAL_KEYBOARD_CONNECT:
 	    Status = i8042KbdInternalDeviceControl(DeviceObject, Irp);
@@ -397,8 +374,7 @@ static NTAPI NTSTATUS i8042InternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    Status = i8042MouInternalDeviceControl(DeviceObject, Irp);
 	    break;
 	default:
-	    ERR_(I8042PRT, "Unknown IO control code 0x%lx\n",
-		 ControlCode);
+	    ERR_(I8042PRT, "Unknown IO control code 0x%lx\n", ControlCode);
 	    ASSERT(FALSE);
 	    Status = STATUS_INVALID_DEVICE_REQUEST;
 	    break;
@@ -443,13 +419,10 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
     PI8042_DRIVER_EXTENSION DriverExtension;
-    NTSTATUS Status;
-
-    Status = IoAllocateDriverObjectExtension(DriverObject,
-					     DriverObject,
-					     sizeof
-					     (I8042_DRIVER_EXTENSION),
-					     (PVOID *) & DriverExtension);
+    NTSTATUS Status = IoAllocateDriverObjectExtension(DriverObject,
+						      DriverObject,
+						      sizeof(I8042_DRIVER_EXTENSION),
+						      (PVOID *) &DriverExtension);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
 	      "IoAllocateDriverObjectExtension() failed with status 0x%08lx\n",
@@ -457,9 +430,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
     RtlZeroMemory(DriverExtension, sizeof(I8042_DRIVER_EXTENSION));
-    KeInitializeSpinLock(&DriverExtension->Port.SpinLock);
     InitializeListHead(&DriverExtension->DeviceListHead);
-    KeInitializeSpinLock(&DriverExtension->DeviceListLock);
 
     Status = RtlDuplicateUnicodeString(RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
 				       RegistryPath,
@@ -480,7 +451,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
-    DriverObject->DriverExtension->AddDevice = i8042AddDevice;
+    DriverObject->AddDevice = i8042AddDevice;
     DriverObject->DriverStartIo = i8042StartIo;
 
     DriverObject->MajorFunction[IRP_MJ_CREATE] = i8042Create;

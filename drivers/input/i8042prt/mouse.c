@@ -412,9 +412,7 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto cleanup;
 	}
-	WorkItemData = ExAllocatePoolWithTag(NonPagedPool,
-					     sizeof
-					     (I8042_HOOK_WORKITEM),
+	WorkItemData = ExAllocatePoolWithTag(sizeof(I8042_HOOK_WORKITEM),
 					     I8042PRT_TAG);
 	if (!WorkItemData) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
@@ -426,11 +424,9 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	/* Initialize extension */
 	DeviceExtension->Common.Type = Mouse;
-	Size =
-	    DeviceExtension->Common.PortDeviceExtension->Settings.
-	    MouseDataQueueSize * sizeof(MOUSE_INPUT_DATA);
-	DeviceExtension->MouseBuffer =
-	    ExAllocatePoolWithTag(NonPagedPool, Size, I8042PRT_TAG);
+	Size = DeviceExtension->Common.PortDeviceExtension->Settings.MouseDataQueueSize
+	    * sizeof(MOUSE_INPUT_DATA);
+	DeviceExtension->MouseBuffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
 	if (!DeviceExtension->MouseBuffer) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
 	    Status = STATUS_NO_MEMORY;
@@ -438,27 +434,22 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	RtlZeroMemory(DeviceExtension->MouseBuffer, Size);
 	DeviceExtension->MouseAttributes.InputDataQueueLength =
-	    DeviceExtension->Common.PortDeviceExtension->Settings.
-	    MouseDataQueueSize;
+	    DeviceExtension->Common.PortDeviceExtension->Settings.MouseDataQueueSize;
 	KeInitializeDpc(&DeviceExtension->DpcMouse, i8042MouDpcRoutine,
 			DeviceExtension);
 	KeInitializeDpc(&DeviceExtension->DpcMouseTimeout,
 			i8042DpcRoutineMouseTimeout, DeviceExtension);
 	KeInitializeTimer(&DeviceExtension->TimerMouseTimeout);
-	DeviceExtension->Common.PortDeviceExtension->MouseExtension =
-	    DeviceExtension;
-	DeviceExtension->Common.PortDeviceExtension->Flags |=
-	    MOUSE_CONNECTED;
+	DeviceExtension->Common.PortDeviceExtension->MouseExtension = DeviceExtension;
+	DeviceExtension->Common.PortDeviceExtension->Flags |= MOUSE_CONNECTED;
 
 	IoMarkIrpPending(Irp);
 	DeviceExtension->MouseState = MouseResetting;
 	DeviceExtension->MouseResetState = ExpectingReset;
 	DeviceExtension->MouseHook.IsrWritePort = i8042MouIsrWritePort;
-	DeviceExtension->MouseHook.QueueMousePacket =
-	    i8042MouQueuePacket;
+	DeviceExtension->MouseHook.QueueMousePacket = i8042MouQueuePacket;
 	DeviceExtension->MouseHook.CallContext = DeviceExtension;
-	IoQueueWorkItem(WorkItem,
-			i8042SendHookWorkItem,
+	IoQueueWorkItem(WorkItem, i8042SendHookWorkItem,
 			DelayedWorkQueue, WorkItemData);
 	Status = STATUS_PENDING;
 	break;

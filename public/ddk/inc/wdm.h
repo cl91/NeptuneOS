@@ -858,6 +858,9 @@ typedef struct _IO_STACK_LOCATION {
 	    ULONG Length;
 	} SetQuota;
 	struct {
+	    DEVICE_RELATION_TYPE Type;
+	} QueryDeviceRelations;
+	struct {
 	    ULONG WhichSpace;
 	    PVOID Buffer;
 	    ULONG Offset;
@@ -866,6 +869,43 @@ typedef struct _IO_STACK_LOCATION {
 	struct {
 	    BOOLEAN Lock;
 	} SetLock;
+	struct {
+	    BUS_QUERY_ID_TYPE IdType;
+	} QueryId;
+	struct {
+	    DEVICE_TEXT_TYPE DeviceTextType;
+	    LCID POINTER_ALIGNMENT LocaleId;
+	} QueryDeviceText;
+	struct {
+	    BOOLEAN InPath;
+	    BOOLEAN Reserved[3];
+	    DEVICE_USAGE_NOTIFICATION_TYPE POINTER_ALIGNMENT Type;
+	} UsageNotification;
+	struct {
+	    SYSTEM_POWER_STATE PowerState;
+	} WaitWake;
+	struct {
+	    PPOWER_SEQUENCE PowerSequence;
+	} PowerSequence;
+	struct {
+	    union {
+		ULONG SystemContext;
+		SYSTEM_POWER_STATE_CONTEXT SystemPowerStateContext;
+	    };
+	    POWER_STATE_TYPE POINTER_ALIGNMENT Type;
+	    POWER_STATE POINTER_ALIGNMENT State;
+	    POWER_ACTION POINTER_ALIGNMENT ShutdownType;
+	} Power;
+	struct {
+	    PCM_RESOURCE_LIST AllocatedResources;
+	    PCM_RESOURCE_LIST AllocatedResourcesTranslated;
+	} StartDevice;
+	struct {
+	    ULONG_PTR ProviderId;
+	    PVOID DataPath;
+	    ULONG BufferSize;
+	    PVOID Buffer;
+	} WMI;
 	struct {
 	    PVOID Argument1;
 	    PVOID Argument2;
@@ -1298,3 +1338,54 @@ FORCEINLINE VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
 {
     /* Do nothing */
 }
+
+/*
+ * IO Work item. This is an opaque object. Drivers should not examine
+ * the content of the struct.
+ */
+typedef struct _IO_WORKITEM *PIO_WORKITEM;
+
+typedef VOID (NTAPI IO_WORKITEM_ROUTINE)(IN PDEVICE_OBJECT DeviceObject,
+					 IN OPTIONAL PVOID Context);
+typedef IO_WORKITEM_ROUTINE *PIO_WORKITEM_ROUTINE;
+
+typedef VOID (NTAPI IO_WORKITEM_ROUTINE_EX)(IN PVOID IoObject,
+					    IN OPTIONAL PVOID Context,
+					    IN PIO_WORKITEM IoWorkItem);
+typedef IO_WORKITEM_ROUTINE_EX *PIO_WORKITEM_ROUTINE_EX;
+
+/*
+ * Work queue type
+ */
+typedef enum _WORK_QUEUE_TYPE {
+    CriticalWorkQueue,
+    DelayedWorkQueue,
+    HyperCriticalWorkQueue,
+    MaximumWorkQueue
+} WORK_QUEUE_TYPE;
+
+/*
+ * Interrupt Object. We keep the name KINTERRUPT to remain compatible
+ * with Windows/ReactOS. This is an opaque object.
+ */
+typedef struct _KINTERRUPT *PKINTERRUPT;
+
+/*
+ * Interrupt request level
+ */
+typedef UCHAR KIRQL, *PKIRQL;
+
+/*
+ * Interrupt mode
+ */
+typedef enum _KINTERRUPT_MODE {
+    LevelSensitive,
+    Latched
+} KINTERRUPT_MODE;
+
+/*
+ * Interrupt service routine
+ */
+typedef BOOLEAN (NTAPI KSERVICE_ROUTINE)(IN PKINTERRUPT Interrupt,
+					 IN PVOID ServiceContext);
+typedef KSERVICE_ROUTINE *PKSERVICE_ROUTINE;
