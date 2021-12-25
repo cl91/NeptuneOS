@@ -6,27 +6,27 @@ NTSTATUS HalpEnableIoPort(USHORT PortNum)
 {
     PLIST_ENTRY InsertAfter = &HalpX86IoPortList;
     /* Traverse the port list and find where we should insert the node */
-    LoopOverList(Entry, &HalpX86IoPortList, HAL_IOPORT, Link) {
-	if (Entry->IoPort.PortNum == PortNum) {
+    LoopOverList(Entry, &HalpX86IoPortList, X86_IOPORT, Link) {
+	if (Entry->PortNum == PortNum) {
 	    return STATUS_SUCCESS;
-	} else if (Entry->IoPort.PortNum < PortNum) {
+	} else if (Entry->PortNum < PortNum) {
 	    InsertAfter = &Entry->Link;
 	} else {
-	    assert(Entry->IoPort.PortNum > PortNum);
+	    assert(Entry->PortNum > PortNum);
 	    break;
 	}
     }
-    HalpAllocatePool(IoPort, HAL_IOPORT);
-    RET_ERR_EX(KeEnableIoPort(PortNum, &IoPort->IoPort),
+    HalpAllocatePool(IoPort, X86_IOPORT);
+    RET_ERR_EX(KeEnableIoPort(PortNum, IoPort),
 	       ExFreePool(IoPort));
     InsertHeadList(InsertAfter, &IoPort->Link);
     return STATUS_SUCCESS;
 }
 
-static inline PHAL_IOPORT HalpFindIoPort(USHORT PortNum)
+static inline PX86_IOPORT HalpFindIoPort(USHORT PortNum)
 {
-    LoopOverList(Entry, &HalpX86IoPortList, HAL_IOPORT, Link) {
-	if (Entry->IoPort.PortNum == PortNum) {
+    LoopOverList(Entry, &HalpX86IoPortList, X86_IOPORT, Link) {
+	if (Entry->PortNum == PortNum) {
 	    return Entry;
 	}
     }
@@ -35,12 +35,12 @@ static inline PHAL_IOPORT HalpFindIoPort(USHORT PortNum)
 
 UCHAR __inbyte(IN USHORT PortNum)
 {
-    PHAL_IOPORT Port = HalpFindIoPort(PortNum);
+    PX86_IOPORT Port = HalpFindIoPort(PortNum);
     if (Port == NULL) {
 	KeBugCheckMsg("Port number 0x%x not initialized.\n", PortNum);
     }
     UCHAR Value;
-    NTSTATUS Status = KeReadPort8(&Port->IoPort, &Value);
+    NTSTATUS Status = KeReadPort8(Port, &Value);
     if (!NT_SUCCESS(Status)) {
 	KeBugCheckMsg("Unable to read from port 0x%x.\n", PortNum);
     }
@@ -50,11 +50,11 @@ UCHAR __inbyte(IN USHORT PortNum)
 VOID __outbyte(IN USHORT PortNum,
 	       IN UCHAR Data)
 {
-    PHAL_IOPORT Port = HalpFindIoPort(PortNum);
+    PX86_IOPORT Port = HalpFindIoPort(PortNum);
     if (Port == NULL) {
 	KeBugCheckMsg("Port number 0x%x not initialized.\n", PortNum);
     }
-    NTSTATUS Status = KeWritePort8(&Port->IoPort, Data);
+    NTSTATUS Status = KeWritePort8(Port, Data);
     if (!NT_SUCCESS(Status)) {
 	KeBugCheckMsg("Unable to write data 0x%02x to port 0x%x.\n",
 		      Data, PortNum);

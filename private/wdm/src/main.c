@@ -72,6 +72,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopTimerList);
     InitializeListHead(&IopForwardedIrpList);
     InitializeListHead(&IopCleanupIrpList);
+    InitializeListHead(&IopX86PortList);
     InitializeListHead(&IopDriverObject.ReinitListHead);
 
     NTSTATUS Status = IopCallDriverEntry();

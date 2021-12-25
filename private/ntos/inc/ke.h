@@ -94,8 +94,9 @@ static inline VOID KeSignalNotification(IN PNOTIFICATION Notification)
  * X86 IO Port
  */
 typedef struct _X86_IOPORT {
-    CAP_TREE_NODE TreeNode; /* capability with which to invoke seL4_X86_IOPort_* */
-    USHORT PortNum;	    /* port number */
+    CAP_TREE_NODE TreeNode; /* Capability with which to invoke seL4_X86_IOPort_* */
+    USHORT PortNum;	    /* Port number */
+    LIST_ENTRY Link;	    /* Links all enabled ports of a process */
 } X86_IOPORT, *PX86_IOPORT;
 
 /*

@@ -73,6 +73,12 @@ typedef struct _DRIVER_REINIT_ITEM {
     PVOID Context;
 } DRIVER_REINIT_ITEM, *PDRIVER_REINIT_ITEM;
 
+typedef struct _X86_IOPORT {
+    MWORD Cap;
+    LIST_ENTRY Link;
+    USHORT PortNum;
+} X86_IOPORT, *PX86_IOPORT;
+
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
@@ -87,6 +93,9 @@ extern LIST_ENTRY IopForwardedIrpList;
 extern LIST_ENTRY IopCleanupIrpList;
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
+
+/* ioport.c */
+extern LIST_ENTRY IopX86PortList;
 
 /* main.c */
 extern DRIVER_OBJECT IopDriverObject;

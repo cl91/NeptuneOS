@@ -12,7 +12,7 @@
 /* INCLUDES ******************************************************************/
 
 #include "i8042prt.h"
-
+#include <hal.h>
 #include <debug.h>
 
 /* FUNCTIONS *****************************************************************/
@@ -22,9 +22,7 @@ VOID i8042Flush(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     UCHAR Ignore;
 
     /* Flush output buffer */
-    while (NT_SUCCESS
-	   (i8042ReadData
-	    (DeviceExtension, KBD_OBF /* | MOU_OBF */ , &Ignore))) {
+    while (NT_SUCCESS(i8042ReadData(DeviceExtension, KBD_OBF /* | MOU_OBF */ , &Ignore))) {
 	KeStallExecutionProcessor(50);
 	TRACE_(I8042PRT, "Output data flushed\n");
     }
@@ -36,14 +34,15 @@ VOID i8042Flush(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     }
 }
 
-BOOLEAN
-i8042IsrWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		  IN UCHAR Value, IN UCHAR SelectCmd OPTIONAL)
+BOOLEAN i8042IsrWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+			  IN UCHAR Value,
+			  IN UCHAR SelectCmd OPTIONAL)
 {
-    if (SelectCmd)
-	if (!i8042Write
-	    (DeviceExtension, DeviceExtension->ControlPort, SelectCmd))
+    if (SelectCmd) {
+	if (!i8042Write(DeviceExtension, DeviceExtension->ControlPort, SelectCmd)) {
 	    return FALSE;
+	}
+    }
 
     return i8042Write(DeviceExtension, DeviceExtension->DataPort, Value);
 }
@@ -51,14 +50,12 @@ i8042IsrWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 /*
  * FUNCTION: Read data from port 0x60
  */
-NTSTATUS
-i8042ReadData(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-	      IN UCHAR StatusFlags, OUT PUCHAR Data)
+NTSTATUS i8042ReadData(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+		       IN UCHAR StatusFlags,
+		       OUT PUCHAR Data)
 {
     UCHAR PortStatus;
-    NTSTATUS Status;
-
-    Status = i8042ReadStatus(DeviceExtension, &PortStatus);
+    NTSTATUS Status = i8042ReadStatus(DeviceExtension, &PortStatus);
     if (!NT_SUCCESS(Status))
 	return Status;
 
@@ -75,9 +72,8 @@ i8042ReadData(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     return STATUS_UNSUCCESSFUL;
 }
 
-NTSTATUS
-i8042ReadStatus(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		OUT PUCHAR Status)
+NTSTATUS i8042ReadStatus(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+			 OUT PUCHAR Status)
 {
     ASSERT(DeviceExtension->ControlPort != NULL);
     *Status = READ_PORT_UCHAR(DeviceExtension->ControlPort);
@@ -87,9 +83,8 @@ i8042ReadStatus(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 /*
  * FUNCTION: Read data from data port
  */
-NTSTATUS
-i8042ReadDataWait(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		  OUT PUCHAR Data)
+NTSTATUS i8042ReadDataWait(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+			   OUT PUCHAR Data)
 {
     ULONG Counter;
     NTSTATUS Status;
@@ -115,9 +110,9 @@ i8042ReadDataWait(IN PPORT_DEVICE_EXTENSION DeviceExtension,
  * is enough this time. Note how MSDN specifies the
  * WaitForAck parameter to be ignored.
  */
-NTSTATUS NTAPI
-i8042SynchReadPort(IN PVOID Context,
-		   OUT PUCHAR Value, IN BOOLEAN WaitForAck)
+NTAPI NTSTATUS i8042SynchReadPort(IN PVOID Context,
+				  OUT PUCHAR Value,
+				  IN BOOLEAN WaitForAck)
 {
     PPORT_DEVICE_EXTENSION DeviceExtension;
 
@@ -178,9 +173,9 @@ i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 /*
  * FUNCTION: Write data to a port, waiting first for it to become ready
  */
-BOOLEAN
-i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-	   IN PUCHAR addr, IN UCHAR data)
+BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+		   IN PUCHAR addr,
+		   IN UCHAR data)
 {
     ULONG Counter;
 
@@ -189,8 +184,7 @@ i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 
     Counter = DeviceExtension->Settings.PollingIterations;
 
-    while ((KBD_IBF & READ_PORT_UCHAR(DeviceExtension->ControlPort)) &&
-	   (Counter--)) {
+    while ((KBD_IBF & READ_PORT_UCHAR(DeviceExtension->ControlPort)) && (Counter--)) {
 	KeStallExecutionProcessor(50);
     }
 

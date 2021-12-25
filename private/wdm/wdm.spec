@@ -21,4 +21,6 @@
 @ stdcall IoCreateTimer(ptr)
 @ stdcall IoSetTimer(ptr long long ptr ptr)
 @ stdcall HalMakeBeep(long)
+@ cdecl __inbyte(long)
+@ cdecl __outbyte(long long)
 @ cdecl _assert(str str long)
