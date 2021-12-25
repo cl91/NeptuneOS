@@ -241,33 +241,56 @@ static inline PCSTR KiDbgGetFaultName(IN seL4_Fault_t Fault)
     return "UNKNOWN-FAULT";
 }
 
-static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault)
+static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
+				  IN KI_DBG_PRINTER DbgPrinter)
 {
     switch (seL4_Fault_get_seL4_FaultType(Fault)) {
     case seL4_Fault_NullFault:
-	HalVgaPrint("WTF??? This should never happen.\n");
+	DbgPrinter("NULL-FAULT\n");
 	break;
     case seL4_Fault_CapFault:
-	HalVgaPrint("CAP-FAULT\n");
+	DbgPrinter("CAP-FAULT\n");
 	break;
     case seL4_Fault_UnknownSyscall:
-	HalVgaPrint("UNKNOWN-SYSCALL\n");
+	DbgPrinter("UNKNOWN-SYSCALL\n");
 	break;
     case seL4_Fault_UserException:
-	HalVgaPrint("USER-EXCEPTION\n");
+	DbgPrinter("USER-EXCEPTION\n");
 	break;
     case seL4_Fault_VMFault:
-	HalVgaPrint("IP\t %p\tADDR\t%p\n"
-		    "PREFETCH %p\tFSR\t%p\n",
-		    (PVOID)seL4_Fault_VMFault_get_IP(Fault),
-		    (PVOID)seL4_Fault_VMFault_get_Addr(Fault),
-		    (PVOID)seL4_Fault_VMFault_get_PrefetchFault(Fault),
-		    (PVOID)seL4_Fault_VMFault_get_FSR(Fault));
+	DbgPrinter("IP\t %p\tADDR\t%p\n"
+		   "PREFETCH %p\tFSR\t%p\n",
+		   (PVOID)seL4_Fault_VMFault_get_IP(Fault),
+		   (PVOID)seL4_Fault_VMFault_get_Addr(Fault),
+		   (PVOID)seL4_Fault_VMFault_get_PrefetchFault(Fault),
+		   (PVOID)seL4_Fault_VMFault_get_FSR(Fault));
 	break;
     default:
-	HalVgaPrint("WTF??? This should never happen.\n");
+	DbgPrinter("WTF??? This should never happen.\n");
 	break;
     }
+}
+
+static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
+			      IN PTHREAD Thread,
+			      IN KI_DBG_PRINTER DbgPrinter)
+{
+    PPROCESS Process = Thread->Process;
+    assert(Process != NULL);
+    assert(Process->ImageFile != NULL);
+    assert(Process->ImageFile->FileName != NULL);
+    DbgPrinter("\n\n==============================================================================\n"
+		"Unhandled %s in thread %s|%p\n",
+		KiDbgGetFaultName(Fault),
+		Process->ImageFile->FileName, Thread);
+    KiDbgDumpFault(Fault, DbgPrinter);
+    THREAD_CONTEXT Context;
+    NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
+    if (!NT_SUCCESS(Status)) {
+	DbgPrinter("Unable to dump thread context. Error 0x%08x\n", Status);
+    }
+    KiDumpThreadContext(&Context, DbgPrinter);
+    DbgPrinter("==============================================================================\n");
 }
 
 VOID KiDispatchExecutiveServices()
@@ -284,30 +307,17 @@ VOID KiDispatchExecutiveServices()
 	if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
 	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
-	    PPROCESS Process = Thread->Process;
-	    assert(Process != NULL);
-	    assert(Process->ImageFile != NULL);
-	    assert(Process->ImageFile->FileName != NULL);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
-	    HalVgaPrint("\n\n==============================================================================\n"
-			"Unhandled %s in thread %s|%p\n",
-			KiDbgGetFaultName(Fault),
-			Process->ImageFile->FileName, Thread);
-	    KiDbgDumpFault(Fault);
-	    THREAD_CONTEXT Context;
-	    NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
-	    if (!NT_SUCCESS(Status)) {
-		HalVgaPrint("Unable to dump thread context. Error 0x%08x\n", Status);
-	    }
-	    KiDumpThreadContext(&Context);
-	    HalVgaPrint("==============================================================================\n");
-	    Status = PsTerminateThread(Thread);
-	    /* This should always succeed. */
-	    assert(NT_SUCCESS(Status));
+#ifdef CONFIG_DEBUG_BUILD
+	    KiDumpThreadFault(Fault, Thread, DbgPrint);
+#endif
+	    KiDumpThreadFault(Fault, Thread, HalVgaPrint);
+	    PsTerminateThread(Thread, STATUS_UNSUCCESSFUL);
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_NOTIFICATION) {
-	    /* This is not a service notification so we should process the service message. The
-	     * timer irq thread generates such a notification with seL4_NBWait, to inform us that
-	     * the expired timer list should be checked even though there is no service message. */
+	    /* The timer irq thread generates service notifications with seL4_NBWait, to inform
+	     * us that the expired timer list should be checked even though there is no service
+	     * message from a client thread. In the case of a service notification, we skip the
+	     * following message processing, as is indicated by the if-condition above. */
 	    ULONG ReplyMsgLength = 1;
 	    ULONG MsgBufferEnd = 0;
 	    SHORT NumApc = 0;
@@ -370,90 +380,3 @@ VOID KiDispatchExecutiveServices()
 	}
     }
 }
-
-#ifdef CONFIG_DEBUG_BUILD
-PCSTR KiDbgErrorCodeToStr(IN int Error)
-{
-    switch (Error) {
-    case seL4_InvalidArgument:
-	return "Invalid argument";
-    case seL4_InvalidCapability:
-	return "Invalid capability";
-    case seL4_IllegalOperation:
-	return "Illegal operation";
-    case seL4_RangeError:
-	return "Range error";
-    case seL4_AlignmentError:
-	return "Alignment error";
-    case seL4_FailedLookup:
-	return "Failed lookup";
-    case seL4_TruncatedMessage:
-	return "Truncated Message";
-    case seL4_DeleteFirst:
-	return "Delete first";
-    case seL4_RevokeFirst:
-	return "Revoke first";
-    case seL4_NotEnoughMemory:
-	return "Not enough memory";
-    }
-
-    return "Unknown error";
-}
-
-VOID KiDbgDumpFailedLookupError()
-{
-    DbgPrint("    Lookup failed for a %s capability.\n", seL4_GetMR(0) ? "source" : "destination");
-    DbgPrint("    Failure type is ");
-    switch (seL4_GetMR(1)) {
-    case seL4_InvalidRoot:
-	DbgPrint("invalid root\n");
-	break;
-    case seL4_MissingCapability:
-	DbgPrint("missing capability (%zd bits left)\n", seL4_GetMR(2));
-	break;
-    case seL4_DepthMismatch:
-	DbgPrint("depth mismatch (%zd bits of CPTR remaining to be decoded,"
-		 " %zd bits that the current CNode being traversed resolved)\n",
-		 seL4_GetMR(2), seL4_GetMR(3));
-	break;
-    case seL4_GuardMismatch:
-	DbgPrint("guard mismatch (%zd bits of CPTR remaining to be decoded,"
-		 " CNode guard is 0x%zx, CNode guard size is %zd)\n",
-		 seL4_GetMR(2), seL4_GetMR(3), seL4_GetMR(4));
-	break;
-    }
-}
-
-VOID KeDbgDumpIPCError(IN int Error)
-{
-    DbgPrint("IPC Error code %d (%s):\n", Error, KiDbgErrorCodeToStr(Error));
-
-    switch (Error) {
-    case seL4_InvalidArgument:
-	DbgPrint("    Invalid argument number is %zd\n", seL4_GetMR(0));
-	break;
-    case seL4_InvalidCapability:
-	DbgPrint("    Invalid capability is 0x%zx\n", seL4_GetMR(0));
-	break;
-    case seL4_IllegalOperation:
-	break;
-    case seL4_RangeError:
-	DbgPrint("    Allowed range: [0x%zx, 0x%zx]\n", seL4_GetMR(0), seL4_GetMR(1));
-	break;
-    case seL4_AlignmentError:
-	break;
-    case seL4_FailedLookup:
-	KiDbgDumpFailedLookupError();
-	break;
-    case seL4_TruncatedMessage:
-	break;
-    case seL4_DeleteFirst:
-	break;
-    case seL4_RevokeFirst:
-	break;
-    case seL4_NotEnoughMemory:
-	DbgPrint("    Amount of memory available: 0x%zx bytes\n", seL4_GetMR(0));
-	break;
-    }
-}
-#endif

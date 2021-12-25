@@ -8,6 +8,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     PCSTR DriverToLoad = Ctx->DriverPath;
     PCSTR DriverName = Ctx->DriverName;
     InitializeListHead(&Driver->DeviceList);
+    InitializeListHead(&Driver->IoPortList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
@@ -92,7 +93,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN PCSTR DriverServiceName)
 {
-    PIO_DRIVER_OBJECT DriverObject = NULL;
+    PIO_DRIVER_OBJECT DriverObject = Thread->NtLoadDriverSavedState.DriverObject;
 
     ASYNC_BEGIN(State);
 
@@ -104,11 +105,59 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 	return Status;
     }
     assert(DriverObject != NULL);
+    Thread->NtLoadDriverSavedState.DriverObject = DriverObject;
 
-    /* The second time that this function is called, DriverObject is actually NULL here,
-     * but that's fine since the event has been recorded into the thread's root wait block. */
     AWAIT(KeWaitForSingleObject, State, Thread,
 	  &DriverObject->InitializationDoneEvent.Header, FALSE);
 
+    /* If the driver initialization failed, inform the caller of the error status */
+    if (DriverObject->MainEventLoopThread == NULL) {
+	return STATUS_UNSUCCESSFUL;
+    }
+    if (!NT_SUCCESS(DriverObject->MainEventLoopThread->ExitStatus)) {
+	return DriverObject->MainEventLoopThread->ExitStatus;
+    }
+    /* This is strictly speaking unnecessary but it's safer to clear the saved state */
+    Thread->NtLoadDriverSavedState.DriverObject = NULL;
+
     ASYNC_END(STATUS_SUCCESS);
+}
+
+NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
+                          IN PTHREAD Thread,
+                          IN USHORT PortNum,
+                          OUT MWORD *Cap)
+{
+    assert(Thread != NULL);
+    assert(Cap != NULL);
+    PPROCESS Process = Thread->Process;
+    assert(Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
+    assert(DriverObject != NULL);
+
+    IopAllocatePool(IoPort, X86_IOPORT);
+    RET_ERR_EX(KeEnableIoPortEx(Process->CSpace, PortNum, IoPort),
+	       ExFreePool(IoPort));
+    InsertTailList(&DriverObject->IoPortList, &IoPort->Link);
+    *Cap = IoPort->TreeNode.Cap;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS IopCreateWorkerThread(IN ASYNC_STATE AsyncState,
+                               IN PTHREAD Thread,
+                               IN PIO_WORKER_THREAD_ENTRY WorkerThreadEntry,
+                               OUT HANDLE *WorkerThreadHandle,
+                               OUT MWORD *WorkerThreadNotification)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
+                                         IN PTHREAD Thread,
+                                         IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY ThreadEntry,
+                                         OUT HANDLE *ThreadHandle,
+                                         OUT MWORD *ThreadNotification,
+                                         OUT MWORD *InterruptMutex)
+{
+    UNIMPLEMENTED;
 }

@@ -32,7 +32,7 @@ static inline VOID HalDisplayString(PCSTR String)
     HalDisplayStringEx(VGA_TEXT_COLOR, String);
 }
 
-static inline __attribute__((format(printf, 1, 2))) VOID HalVgaPrint(PCSTR Format, ...)
+static inline __attribute__((format(printf, 1, 2))) ULONG HalVgaPrint(PCSTR Format, ...)
 {
     char buf[512];
     va_list arglist;
@@ -40,4 +40,5 @@ static inline __attribute__((format(printf, 1, 2))) VOID HalVgaPrint(PCSTR Forma
     vsnprintf(buf, sizeof(buf), Format, arglist);
     va_end(arglist);
     HalDisplayString(buf);
+    return 0;
 }

@@ -109,9 +109,10 @@ typedef enum _ALTERNATIVE_ARCHITECTURE_TYPE {
 /*
  * Shared Kernel User Data
  *
- * This is exposed to user land (on x86 it is at 0x7ffe0000) so we must maintain
- * compatibility with Windows/ReactOS.
+ * This is exposed to user land (for both i386 and amd64 it is at 0x7ffe0000)
+ * so we must maintain compatibility with Windows/ReactOS.
  */
+#include <pshpack4.h>
 typedef struct _KUSER_SHARED_DATA {
     ULONG TickCountLowDeprecated;
     ULONG TickCountMultiplier;
@@ -184,6 +185,7 @@ typedef struct _KUSER_SHARED_DATA {
     ULONG Cookie;
     ULONG CookiePad[1];
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
+#include <poppack.h>
 
 typedef struct DECLSPEC_ALIGN(16) _M128A {
     ULONGLONG Low;

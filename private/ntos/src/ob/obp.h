@@ -2,6 +2,11 @@
 
 #include <ntos.h>
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#define DbgPrint(...)
+#endif
+
 #define NTOS_OB_TAG	(EX_POOL_TAG('n', 't', 'o', 'b'))
 
 #define ObpAllocatePoolEx(Var, Type, Size, OnError)		\
@@ -9,6 +14,11 @@
 
 #define ObpAllocatePool(Var, Type)				\
     ObpAllocatePoolEx(Var, Type, sizeof(Type), {})
+
+#define OBP_DIROBJ_HASH_BUCKETS 37
+typedef struct _OBJECT_DIRECTORY {
+    LIST_ENTRY HashBuckets[OBP_DIROBJ_HASH_BUCKETS];
+} OBJECT_DIRECTORY;
 
 typedef struct _OBJECT_DIRECTORY_ENTRY {
     LIST_ENTRY ChainLink;

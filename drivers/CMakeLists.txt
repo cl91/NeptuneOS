@@ -43,5 +43,6 @@ function(add_driver _name _src)
     set_target_properties(${_name} PROPERTIES SUFFIX ".sys")
 endfunction()
 
+add_subdirectory(lib)
 add_subdirectory(base)
 add_subdirectory(input)

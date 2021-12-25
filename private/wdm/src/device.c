@@ -136,7 +136,7 @@ NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 /*
  * @implemented
  *
- * Call the driver to attach the SourceDevice on top of the device
+ * Call the server to attach the SourceDevice on top of the device
  * stack of TargetDevice, returning the previous topmost device
  * object in the device stack.
  */
@@ -176,6 +176,43 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 	IopFreePool(DeviceListEntry);
     }
     return RetVal;
+}
+
+/*++
+ * @name IoGetAttachedDevice
+ * @implemented
+ *
+ * Returns the pointer to the highest level device object in the device stack
+ * of the given device object. This routine makes a call to the server so
+ * that we always get the most up-to-date device object.
+ */
+NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
+{
+    GLOBAL_HANDLE Handle = IopGetDeviceHandle(DeviceObject);
+    if (Handle == 0) {
+	return NULL;
+    }
+    GLOBAL_HANDLE TopHandle = 0;
+    IO_DEVICE_OBJECT_INFO DevInfo;
+    if (!NT_SUCCESS(IopGetAttachedDevice(Handle, &TopHandle, &DevInfo))) {
+	return NULL;
+    }
+    assert(TopHandle != 0);
+    PDEVICE_OBJECT TopDevice = IopGetDeviceObject(TopHandle);
+    if (TopDevice == NULL) {
+	TopDevice = (PDEVICE_OBJECT)ExAllocatePool(sizeof(DEVICE_OBJECT));
+	if (TopDevice == NULL) {
+	    return NULL;
+	}
+	PDEVICE_LIST_ENTRY DeviceListEntry = (PDEVICE_LIST_ENTRY)ExAllocatePool(sizeof(DEVICE_LIST_ENTRY));
+	if (DeviceListEntry == NULL) {
+	    ExFreePool(TopDevice);
+	    return NULL;
+	}
+	IopInitializeDeviceObject(TopDevice, 0, DevInfo);
+	IopInsertDeviceList(TopDevice, TopHandle, DeviceListEntry);
+    }
+    return TopDevice;
 }
 
 /*++

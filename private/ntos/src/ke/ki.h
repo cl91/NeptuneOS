@@ -10,6 +10,8 @@
 #define KiAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_KE_TAG, OnError)
 
+typedef ULONG (*KI_DBG_PRINTER)(PCSTR Fmt, ...);
+
 static inline VOID KiInitializeIrqHandler(IN PIRQ_HANDLER Self,
 					  IN PCNODE CSpace,
 					  IN MWORD Cap,
@@ -48,4 +50,5 @@ VOID KiSignalExpiredTimerList();
 NTSTATUS KiInitTimer();
 
 /* arch/debug.c */
-VOID KiDumpThreadContext(IN PTHREAD_CONTEXT Context);
+VOID KiDumpThreadContext(IN PTHREAD_CONTEXT Context,
+			 IN KI_DBG_PRINTER DbgPrinter);

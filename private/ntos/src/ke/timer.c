@@ -17,7 +17,7 @@ static PCSTR KiWeekdayString[] = {
 
 /* This is shared between the timer interrupt service and the main thread.
  * You must use interlocked operations to access this! */
-static ULONGLONG POINTER_ALIGNMENT KiTimerTickCount;
+static volatile ULONGLONG POINTER_ALIGNMENT KiTimerTickCount;
 
 /* The absolute system time at the time of system initialization (more
  * specifically, when the KiInitTimer function is executing). This is
@@ -27,13 +27,22 @@ static ULONGLONG POINTER_ALIGNMENT KiTimerTickCount;
 static LARGE_INTEGER KiInitialSystemTime;
 
 /*
- * Convert the number of timer ticks to the system time relative to the
- * beginning of the timer sub-component initialization (KiInitTime). The system
- * time is measured in units of 100 nano-seconds.
+ * Convert the number of timer ticks to the interrput time which is the
+ * time in units of 100 nano-seconds since system startup.
+ */
+static inline ULONGLONG KiTimerTickCountToInterruptTime(IN ULONGLONG TickCount)
+{
+    return TickCount * 10000000 / TIMER_TICK_PER_SECOND;
+}
+
+/*
+ * Convert the number of timer ticks to the system time which is the sum of the
+ * interrupt time plus the system time at the beginning of the timer sub-component
+ * initialization (KiInitTime). The system time is measured in units of 100 nano-seconds.
  */
 static inline ULONGLONG KiTimerTickCountToSystemTime(IN ULONGLONG TickCount)
 {
-    return TickCount * 10000000 / TIMER_TICK_PER_SECOND + KiInitialSystemTime.QuadPart;
+    return KiTimerTickCountToInterruptTime(TickCount) + KiInitialSystemTime.QuadPart;
 }
 
 /* List of all timers */
@@ -104,6 +113,23 @@ static VOID KiTimerInterruptService()
 	}
 	KeWaitOnNotification(&KiTimerIrqNotification);
 	ULONGLONG TimerTicks = InterlockedIncrement64((PLONG64)&KiTimerTickCount);
+	/* Update the time-related members of the KUSER_SHARED_DATA struct. The
+	 * KSYSTEM_TIME structs are updated in a way that the user space can
+	 * read the 64-bit time without interlocked operations: we first write
+	 * High2Time, then LowPart, then the High1Time. The user space can then
+	 * read the High1Time first, then LowPart, then High2Time. If the two
+	 * high times differ, the user space retries the read. */
+	PKUSER_SHARED_DATA UserSharedData = PsGetUserSharedData();
+	if (UserSharedData != NULL) {
+	    ULONGLONG InterruptTime = KiTimerTickCountToInterruptTime(TimerTicks);
+	    UserSharedData->InterruptTime.High2Time = (LONG)(InterruptTime >> 32);
+	    UserSharedData->InterruptTime.LowPart = (ULONG)InterruptTime;
+	    UserSharedData->InterruptTime.High1Time = (LONG)(InterruptTime >> 32);
+	    ULONGLONG SystemTime = KiTimerTickCountToSystemTime(TimerTicks);
+	    UserSharedData->SystemTime.High2Time = (LONG)(SystemTime >> 32);
+	    UserSharedData->SystemTime.LowPart = (ULONG)SystemTime;
+	    UserSharedData->SystemTime.High1Time = (LONG)(SystemTime >> 32);
+	}
 	/* If a timer has a due time smaller than MaxDueTime, then it has expired */
 	ULONGLONG MaxDueTime = KiTimerTickCountToSystemTime(TimerTicks + 1);
 	/* Traverse the queued timer list and see if any of them expired */
@@ -198,6 +224,18 @@ NTSTATUS KiInitTimer()
     return STATUS_SUCCESS;
 }
 
+ULONGLONG KeQuerySystemTime()
+{
+    ULONGLONG TimerTicks = InterlockedCompareExchange64((PLONG64)&KiTimerTickCount, 0, 0);
+    return KiTimerTickCountToSystemTime(TimerTicks);
+}
+
+ULONGLONG KeQueryInterruptTime()
+{
+    ULONGLONG TimerTicks = InterlockedCompareExchange64((PLONG64)&KiTimerTickCount, 0, 0);
+    return KiTimerTickCountToInterruptTime(TimerTicks);
+}
+
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type)
 {
@@ -230,8 +268,7 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
     ULONGLONG AbsoluteDueTime = DueTime.QuadPart;
     /* If DueTime is negative, it is relative to the current system time */
     if (DueTime.QuadPart < 0) {
-	ULONGLONG TimerTicks = InterlockedIncrement64((PLONG64)&KiTimerTickCount);
-	AbsoluteDueTime = -DueTime.QuadPart + KiTimerTickCountToSystemTime(TimerTicks);
+	AbsoluteDueTime = -DueTime.QuadPart + KeQuerySystemTime();
     }
     KiAcquireTimerDatabaseLock();
     Timer->DueTime.QuadPart = AbsoluteDueTime;

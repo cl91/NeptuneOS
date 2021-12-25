@@ -63,6 +63,7 @@ extern char _tdata_start[];
 extern char _tdata_end[];
 
 ULONG KiProcessorCount;
+ULONG KeX86TscFreq;
 
 /*
  * For the initial thread of the NTOS root task the base of the gs/fs
@@ -194,6 +195,8 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
+		KeX86TscFreq = *((uint32_t *)BootInfoHeader);
+		DbgPrint("    tsc freq is %d MHz\n", KeX86TscFreq);
 		break;
 	    case SEL4_BOOTINFO_HEADER_FDT:
 		DbgPrint("    fdt of size 0x%zx\n", BootInfoHeader->len);

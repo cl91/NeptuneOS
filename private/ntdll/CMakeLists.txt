@@ -85,18 +85,18 @@ target_include_directories(
     PRIVATE
 	${STRUCTURES_GEN_DIR}
 	${CMAKE_CURRENT_BINARY_DIR}
-	${CMAKE_CURRENT_LIST_DIR}/inc
-	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/include
-	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/mode_include/${KernelWordSize}
-	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/sel4_plat_include/${KernelPlatform}
-	${CMAKE_CURRENT_LIST_DIR}/../../sel4/libsel4/arch_include/${KernelArch}
-	${LIBSEL4_PE_HEADERS_DIR}/sel4_arch_include
-	${LIBSEL4_PE_HEADERS_DIR}/generated/kernelconfig
-	${LIBSEL4_PE_HEADERS_DIR}/generated/gen_config
-	${LIBSEL4_PE_HEADERS_DIR}/generated/autoconf
-	${LIBSEL4_PE_HEADERS_DIR}/generated/include
-	${LIBSEL4_PE_HEADERS_DIR}/generated/arch_include/${KernelArch}
-	${LIBSEL4_PE_HEADERS_DIR}/generated/sel4_arch_include/${KernelSel4Arch}
+	inc
+	../../sel4/libsel4/include
+	../../sel4/libsel4/mode_include/${KernelWordSize}
+	../../sel4/libsel4/sel4_plat_include/${KernelPlatform}
+	../../sel4/libsel4/arch_include/${KernelArch}
+	${SANITIZED_SEL4_ARCH_INCLUDE_DIR}
+	${SEL4_GENERATED_HEADERS_DIR}/kernel/gen_config
+	${SEL4_GENERATED_HEADERS_DIR}/libsel4/gen_config
+	${SEL4_GENERATED_HEADERS_DIR}/libsel4/autoconf
+	${SEL4_GENERATED_HEADERS_DIR}/libsel4/include
+	${SEL4_GENERATED_HEADERS_DIR}/libsel4/arch_include/${KernelArch}
+	${SEL4_GENERATED_HEADERS_DIR}/libsel4/sel4_arch_include/${KernelSel4Arch}
 )
 target_include_directories(
     ntdllp

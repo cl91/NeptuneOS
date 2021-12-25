@@ -12,7 +12,7 @@ static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self,
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
     assert(Self != NULL);
 
-    for (int i = 0; i < NUMBER_HASH_BUCKETS; i++) {
+    for (int i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
 	InitializeListHead(&Directory->HashBuckets[i]);
     }
     return STATUS_SUCCESS;
@@ -22,7 +22,7 @@ static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self,
 static ULONG ObpDirectoryEntryHashIndex(PCSTR Str)
 {
     ULONG Hash = RtlpHashString(Str);
-    return Hash % NUMBER_HASH_BUCKETS;
+    return Hash % OBP_DIROBJ_HASH_BUCKETS;
 }
 
 /* Looks up a named object under an object directory */
@@ -42,7 +42,7 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     }
 
     ULONG HashIndex = ObpDirectoryEntryHashIndex(Name);
-    assert(HashIndex < NUMBER_HASH_BUCKETS);
+    assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
     *FoundObject = NULL;
     LoopOverList(Entry, &Directory->HashBuckets[HashIndex],
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
@@ -139,7 +139,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     DirectoryEntry->Object = Object;
 
     MWORD HashIndex = ObpDirectoryEntryHashIndex(Name);
-    assert(HashIndex < NUMBER_HASH_BUCKETS);
+    assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
     InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
 
     return STATUS_SUCCESS;

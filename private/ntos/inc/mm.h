@@ -91,8 +91,12 @@
 #define EX_DRIVER_IO_PACKET_REGION_START	(EX_LOADER_SHARED_REGION_START)
 #define EX_DRIVER_IO_PACKET_REGION_SIZE		(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_DRIVER_IO_PACKET_REGION_END		(EX_DRIVER_IO_PACKET_REGION_START + EX_DRIVER_IO_PACKET_REGION_SIZE)
+/* Region where the persistent registry database is mapped */
+#define EX_PERSISTENT_REGISTRY_REGION_START	(EX_DRIVER_IO_PACKET_REGION_END)
+#define EX_PERSISTENT_REGISTRY_REGION_SIZE	(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_PERSISTENT_REGISTRY_REGION_END	(EX_PERSISTENT_REGISTRY_REGION_START + EX_PERSISTENT_REGISTRY_REGION_SIZE)
 /* Region of the dynamically managed Executive virtual address space */
-#define EX_DYN_VSPACE_START			(EX_DRIVER_IO_PACKET_REGION_END)
+#define EX_DYN_VSPACE_START			(EX_PERSISTENT_REGISTRY_REGION_END)
 #define EX_DYN_VSPACE_END			(seL4_UserTop)
 
 #if HYPERSPACE_END > EX_POOL_START
@@ -102,34 +106,30 @@
 /*
  * Capability derivation tree
  *
- * All seL4 kernel objects with a capability are assigned
- * a capability tree node and are inserted into a
- * capability derivation tree, starting from the root
- * untyped from which they are derived. When capabilities
- * are minted, copied, or derived via Untyped_Retype, the
- * new capabilities are inserted into the capability
- * derivation tree as the child of the original capability.
- * When a capability is moved or mutated, the original
- * tree node is updated to have the new capability pointer.
- * When the capability is revoked, its children are deleted
- * and freed (but the tree node itself is not). When the
- * capability is deleted, all its children as well as the
- * node itself are deleted and freed.
+ * All seL4 kernel objects (aka capability) are assigned a capability
+ * derivation tree node which is inserted into a capability derivation
+ * tree, whose the root node is the root untyped capability from which
+ * the child capability is ultimately derived. When capabilities are
+ * minted, copied, or derived via Untyped_Retype, the new capabilities
+ * are inserted into the capability derivation tree as the child of the
+ * original capability. When a capability is moved or mutated, the
+ * original tree node is updated with the new capability pointer. When
+ * the capability is revoked, its children are deleted and freed (but
+ * the node itself is not). When the capability is deleted, all its
+ * children as well as the node itself are deleted and freed.
  *
- * The set of capability derivation trees derived from
- * each root untyped form the capability derivation forest.
- * This forest is organized by the physical address of
- * the untyped caps in an AVL tree, and is stored in the
- * PHY_MEM_DESCRIPTOR struct as RootUntypedForest.
+ * The set of capability derivation trees derived from each root untyped
+ * form the capability derivation forest. This forest is organized by
+ * the physical address of the untyped caps in an AVL tree, and is stored
+ * in the PHY_MEM_DESCRIPTOR struct as RootUntypedForest.
  *
- * Note: a CNode is always the leaf node of a capability
- * derivation tree, since a CNode cannot be minted or mutated.
- * We do not directly copy a CNode capability. When we are
- * in the process of expanding a CNode, we always create a new
- * larger CNode and copy old capabilities into the new one,
- * and then delete the old CNode, releasing both ExPool memories
- * and freeing the untyped memory that the old CNode has claimed.
-*/
+ * Note: a CNode is always the leaf node of a capability derivation tree,
+ * since a CNode cannot be minted or mutated. We do not directly copy a
+ * CNode capability. When we are in the process of expanding a CNode, we
+ * always create a new larger CNode and copy old capabilities into the new
+ * one, and then delete the old CNode, releasing both ExPool memories and
+ * freeing the untyped memory that the old CNode has claimed.
+ */
 
 typedef enum _CAP_TREE_NODE_TYPE {
     CAP_TREE_NODE_CNODE,

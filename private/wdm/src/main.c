@@ -65,6 +65,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     IopIncomingIoPacketBuffer = (PIO_PACKET) InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
+    KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
     InitializeListHead(&IopIrpQueue);
     InitializeListHead(&IopCompletedIrpList);
     InitializeListHead(&IopDeviceList);
@@ -72,7 +73,11 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopTimerList);
     InitializeListHead(&IopForwardedIrpList);
     InitializeListHead(&IopCleanupIrpList);
+    InitializeListHead(&IopX86PortList);
     InitializeListHead(&IopDriverObject.ReinitListHead);
+    RtlInitializeSListHead(&IopWorkItemQueue);
+    RtlInitializeSListHead(&IopDpcQueue);
+    RtlInitializeSListHead(&IopInterruptServiceRoutineList);
 
     NTSTATUS Status = IopCallDriverEntry();
     if (!NT_SUCCESS(Status)) {

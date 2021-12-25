@@ -74,6 +74,8 @@ cmake ../../private/ntos \
       -DTRIPLE=${CLANG_ARCH}-pc-none-elf \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
+      -DSEL4_GENERATED_HEADERS_DIR=${PWD} \
       -DSTRUCTURES_GEN_H_ORIG=${PWD}/kernel/generated/arch/object/structures_gen.h \
       -DSTRUCTURES_GEN_DIR=${PWD} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
@@ -89,22 +91,22 @@ cd ../pe_inc
 echo
 echo "---- Building private PE targets ----"
 echo
-mkdir -p libsel4-pe/generated
-cp ../elf/structures_gen.h libsel4-pe/generated || build_failed
-cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH libsel4-pe/sel4_arch_include || build_failed
-cp -r ../elf/kernel/gen_config libsel4-pe/generated/kernelconfig || build_failed
+mkdir -p {kernel,libsel4}
+cp ../elf/structures_gen.h . || build_failed
+cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH sel4_arch_include || build_failed
+cp -r ../elf/kernel/gen_config kernel || build_failed
 for i in gen_config autoconf include arch_include sel4_arch_include; do
-    cp -r ../elf/libsel4/$i libsel4-pe/generated || build_failed
+    cp -r ../elf/libsel4/$i libsel4 || build_failed
 done
 if [[ $ARCH == "amd64" ]]; then
-    cat <<EOF > libsel4-pe/sel4_arch_include/sel4/sel4_arch/simple_types.h
+    cat <<EOF > sel4_arch_include/sel4/sel4_arch/simple_types.h
 #pragma once
 
 #define SEL4_WORD_IS_UINT64
 #define SEL4_INT64_IS_LONG_LONG
 EOF
-    sed -i '/assert_size_correct(long/d' libsel4-pe/generated/include/interfaces/sel4_client.h || build_failed
-    sed -i '/assert_size_correct(seL4_X86_VMAttributes,/d' libsel4-pe/generated/include/interfaces/sel4_client.h || build_failed
+    sed -i '/assert_size_correct(long/d' libsel4/include/interfaces/sel4_client.h || build_failed
+    sed -i '/assert_size_correct(seL4_X86_VMAttributes,/d' libsel4/include/interfaces/sel4_client.h || build_failed
 fi
 
 # Build ntdll.dll with the PE toolchain
@@ -114,8 +116,9 @@ cmake ../../private/ntdll \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-      -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
-      -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
+      -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PE_INC}/sel4_arch_include" \
+      -DSEL4_GENERATED_HEADERS_DIR="${PE_INC}" \
+      -DSTRUCTURES_GEN_DIR="${PE_INC}" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -G Ninja
@@ -131,8 +134,9 @@ cmake ../../private/wdm \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-      -DLIBSEL4_PE_HEADERS_DIR="${PE_INC}/libsel4-pe" \
-      -DSTRUCTURES_GEN_DIR="${PE_INC}/libsel4-pe/generated" \
+      -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PE_INC}/sel4_arch_include" \
+      -DSEL4_GENERATED_HEADERS_DIR="${PE_INC}" \
+      -DSTRUCTURES_GEN_DIR="${PE_INC}" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
@@ -187,7 +191,8 @@ else
 fi
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
 BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
-DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys input/kbdclass/kbdclass.sys'
+DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys
+input/kbdclass/kbdclass.sys input/i8042prt/i8042prt.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
 done

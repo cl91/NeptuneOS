@@ -125,18 +125,6 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
 #define VGA_CURSOR_CONTROL_PORT		(0x3D4)
 #define VGA_CURSOR_DATA_PORT		(0x3D5)
 
-/*
- * We organize all the x86 ioport used by the platform support
- * subcomponent of ntos (ntos/hal) in a linked list, sorted in
- * their io port number. Since the io port space has 2^16 ports
- * and most of them are not accessed, using a simple table of
- * 2^16 entries is wasteful.
- */
-typedef struct _HAL_IOPORT {
-    X86_IOPORT IoPort;
-    LIST_ENTRY Link;
-} HAL_IOPORT, *PHAL_IOPORT;
-
 #define READ_PORT_UCHAR(PortNum)	__inbyte(PortNum)
 #define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte(PortNum, Data)
 

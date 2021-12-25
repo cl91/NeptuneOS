@@ -54,9 +54,15 @@ typedef struct _THREAD {
     ASYNC_STACK AsyncStack; /* Stack of asynchronous state, starting from the service handler */
     ULONG SvcNum;	    /* Saved service number */
     BOOLEAN WdmSvc;	    /* Saved service is WDM service */
+    NTSTATUS ExitStatus;    /* Exit status of thread */
     union {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
+    };
+    union {
+	struct {
+	    PIO_DRIVER_OBJECT DriverObject;
+	} NtLoadDriverSavedState;
     };
 } THREAD, *PTHREAD;
 
@@ -80,6 +86,8 @@ typedef struct _PROCESS {
     MWORD LoaderSharedDataServerAddr;
     NTDLL_PROCESS_INIT_INFO InitInfo;
     PIO_DRIVER_OBJECT DriverObject; /* TODO: Mini-driver? */
+    NTSTATUS ExitStatus;	    /* Exit status of process */
+    ULONG Cookie;
 } PROCESS, *PPROCESS;
 
 /*
@@ -102,6 +110,7 @@ typedef VOID (*PSYSTEM_THREAD_ENTRY)();
 /* init.c */
 NTSTATUS PsInitSystemPhase0();
 NTSTATUS PsInitSystemPhase1();
+PKUSER_SHARED_DATA PsGetUserSharedData();
 
 /* create.c */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
@@ -117,4 +126,5 @@ NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);
 
 /* kill.c */
-NTSTATUS PsTerminateThread(IN PTHREAD Thread);
+NTSTATUS PsTerminateThread(IN PTHREAD Thread,
+    			   IN NTSTATUS ExitStatus);

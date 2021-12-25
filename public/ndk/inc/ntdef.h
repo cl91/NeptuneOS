@@ -318,6 +318,35 @@ typedef struct _OBJECT_ATTRIBUTES {
     ((((PCHAR)(&(Struct)->Field)) + sizeof((Struct)->Field)) <= (((PCHAR)(Struct))+(Size)))
 
 /*
+ * Additional Helper Macros
+ */
+#define RTL_FIELD_TYPE(type, field)	(((type*)0)->field)
+#define RTL_BITS_OF(sizeOfArg)		(sizeof(sizeOfArg) * 8)
+#define RTL_BITS_OF_FIELD(type, field)	(RTL_BITS_OF(RTL_FIELD_TYPE(type, field)))
+
+#ifdef __GNUC__
+#define RTL_NUMBER_OF(A)						\
+    (({ int _check_array_type[__builtin_types_compatible_p(typeof(A),	\
+		    typeof(&A[0])) ? -1 : 1];				\
+	    (void)_check_array_type; }),				\
+	(sizeof(A)/sizeof((A)[0])))
+#elif defined(__cplusplus)
+extern "C++" {
+    template <typename T, size_t N>
+	static char (& SAFE_RTL_NUMBER_OF(T (&)[N]))[N];
+}
+#define RTL_NUMBER_OF(A)	sizeof(SAFE_RTL_NUMBER_OF(A))
+#else
+#define RTL_NUMBER_OF(A)	(sizeof(A)/sizeof((A)[0]))
+#endif
+
+#define ARRAYSIZE(A)		RTL_NUMBER_OF(A)
+#define _ARRAYSIZE(A)		RTL_NUMBER_OF(A)
+
+#define RTL_NUMBER_OF_FIELD(type, field)		\
+    (RTL_NUMBER_OF(RTL_FIELD_TYPE(type, field)))
+
+/*
  * Alignment macros
  */
 #define ALIGN_DOWN_BY(addr, align)			\
@@ -346,9 +375,6 @@ typedef struct _OBJECT_ATTRIBUTES {
 #define MAX_NATURAL_ALIGNMENT sizeof(ULONG)
 #define MEMORY_ALLOCATION_ALIGNMENT 8
 #endif
-
-#define RTL_BITS_OF(sizeOfArg) (sizeof(sizeOfArg) * 8)
-#define RTL_BITS_OF_FIELD(type, field) (RTL_BITS_OF(RTL_FIELD_TYPE(type, field)))
 
 /*
  * Use intrinsics for 32-bit and 64-bit multiplications

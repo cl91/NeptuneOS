@@ -17,13 +17,42 @@
     <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="PreviousTopDeviceInfo" />
   </svc>
 
+  <svc name="IopGetAttachedDevice">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
+    <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="TopDeviceInfo" />
+  </svc>
+
   <svc name="IopRequestIoPackets">
     <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
   </svc>
 
+  <svc name="IopEnableX86Port">
+    <parameter annotation="in" type="USHORT" name="PortNum" />
+    <parameter annotation="out" type="ptr::MWORD" name="Cap" />
+  </svc>
+
+  <svc name="IopCreateWorkerThread">
+    <parameter annotation="in" type="PIO_WORKER_THREAD_ENTRY" name="WorkerThreadEntry" />
+    <parameter annotation="out" type="ptr::HANDLE" name="WorkerThreadHandle" />
+    <parameter annotation="out" type="ptr::MWORD" name="WorkerThreadNotification" />
+  </svc>
+
+  <svc name="IopCreateInterruptServiceThread">
+    <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="ThreadEntry" />
+    <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
+    <parameter annotation="out" type="ptr::MWORD" name="ThreadNotification" />
+    <parameter annotation="out" type="ptr::MWORD" name="InterruptMutex" />
+  </svc>
+
   <svc name="HalpMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
+  </svc>
+
+  <svc name="IoSetDeviceInterfaceState">
+    <parameter annotation="in" type="UnicodeString" name="SymbolicLinkName" />
+    <parameter annotation="in" type="BOOLEAN" name="Enable" />
   </svc>
 
 </services>

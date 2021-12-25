@@ -268,13 +268,31 @@ typedef KDEFERRED_ROUTINE *PKDEFERRED_ROUTINE;
  * (ie. driver process) side structure. The name KDPC is kept to
  * to ease porting Windows/ReactOS drivers.
  */
-typedef struct _KDPC {
-    LIST_ENTRY DpcListEntry;
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KDPC {
+    SLIST_ENTRY Entry; /* Must be first, or at least aligned by 8 bytes */
     PKDEFERRED_ROUTINE DeferredRoutine;
     PVOID DeferredContext;
     PVOID SystemArgument1;
     PVOID SystemArgument2;
 } KDPC, *PKDPC;
+
+/*
+ * DPC initialization function
+ */
+FORCEINLINE VOID KeInitializeDpc(IN PKDPC Dpc,
+				 IN PKDEFERRED_ROUTINE DeferredRoutine,
+				 IN PVOID DeferredContext)
+{
+    Dpc->DeferredRoutine = DeferredRoutine;
+    Dpc->DeferredContext = DeferredContext;
+}
+
+/*
+ * Insert the DPC to the DPC queue
+ */
+NTAPI NTSYSAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
+					IN PVOID SystemArgument1,
+					IN PVOID SystemArgument2);
 
 /*
  * Device queue. Used for queuing an IRP for serialized IO processing
@@ -294,15 +312,65 @@ typedef struct _KDEVICE_QUEUE_ENTRY {
 } KDEVICE_QUEUE_ENTRY, *PKDEVICE_QUEUE_ENTRY;
 
 /*
+ * Device queue initialization function
+ */
+FORCEINLINE VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
+{
+    assert(Queue != NULL);
+    InitializeListHead(&Queue->DeviceListHead);
+    Queue->Busy = FALSE;
+}
+
+NTAPI NTSYSAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
+					   IN PKDEVICE_QUEUE_ENTRY Entry);
+
+NTAPI NTSYSAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
+						IN PKDEVICE_QUEUE_ENTRY Entry,
+						IN ULONG SortKey);
+
+NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue);
+
+NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
+							     IN ULONG SortKey);
+
+/*
+ * Same as KeRemoveByKeyDeviceQueue, except it doesn't assert if the queue is not busy.
+ * Instead, NULL is returned if queue is not busy.
+ */
+FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVICE_QUEUE Queue,
+								IN ULONG SortKey)
+{
+    assert(Queue != NULL);
+    if (!Queue->Busy) {
+	return NULL;
+    }
+    return KeRemoveByKeyDeviceQueue(Queue, SortKey);
+}
+
+/*
+ * Removes the specified entry from the queue, returning TRUE.
+ * If the entry is not inserted, nothing is done and we return FALSE.
+ */
+FORCEINLINE BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
+					     IN PKDEVICE_QUEUE_ENTRY Entry)
+{
+    assert(Queue != NULL);
+    assert(Queue->Busy);
+    if (Entry->Inserted) {
+        Entry->Inserted = FALSE;
+        RemoveEntryList(&Entry->DeviceListEntry);
+	return TRUE;
+    }
+    return FALSE;
+}
+
+/*
  * Device object.
  */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     SHORT Type;
     ULONG Size;
     struct _DRIVER_OBJECT *DriverObject;
-    struct _DEVICE_OBJECT *NextDevice;
-    struct _DEVICE_OBJECT *AttachedDevice; /* Higher-level device object immediately above
-					    * the current device object in the device stack */
     struct _IRP *CurrentIrp;
     UNICODE_STRING DeviceName;
     ULONG Flags;
@@ -401,6 +469,25 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	PFILE_OBJECT OriginalFileObject;
     } Tail;
 } IRP, *PIRP;
+
+/*
+ * IO DPC routine
+ */
+typedef VOID (NTAPI IO_DPC_ROUTINE)(IN PKDPC Dpc,
+				    IN PDEVICE_OBJECT DeviceObject,
+				    IN OUT PIRP Irp,
+				    IN OPTIONAL PVOID Context);
+typedef IO_DPC_ROUTINE *PIO_DPC_ROUTINE;
+
+/*
+ * Initialize the device object's built-in DPC object
+ */
+FORCEINLINE VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
+					IN PIO_DPC_ROUTINE DpcRoutine)
+{
+    KeInitializeDpc(&DeviceObject->Dpc, (PKDEFERRED_ROUTINE)DpcRoutine,
+		    DeviceObject);
+}
 
 /*
  * Executive objects. These are simply handles to the server-side objects.
@@ -858,6 +945,9 @@ typedef struct _IO_STACK_LOCATION {
 	    ULONG Length;
 	} SetQuota;
 	struct {
+	    DEVICE_RELATION_TYPE Type;
+	} QueryDeviceRelations;
+	struct {
 	    ULONG WhichSpace;
 	    PVOID Buffer;
 	    ULONG Offset;
@@ -866,6 +956,43 @@ typedef struct _IO_STACK_LOCATION {
 	struct {
 	    BOOLEAN Lock;
 	} SetLock;
+	struct {
+	    BUS_QUERY_ID_TYPE IdType;
+	} QueryId;
+	struct {
+	    DEVICE_TEXT_TYPE DeviceTextType;
+	    LCID POINTER_ALIGNMENT LocaleId;
+	} QueryDeviceText;
+	struct {
+	    BOOLEAN InPath;
+	    BOOLEAN Reserved[3];
+	    DEVICE_USAGE_NOTIFICATION_TYPE POINTER_ALIGNMENT Type;
+	} UsageNotification;
+	struct {
+	    SYSTEM_POWER_STATE PowerState;
+	} WaitWake;
+	struct {
+	    PPOWER_SEQUENCE PowerSequence;
+	} PowerSequence;
+	struct {
+	    union {
+		ULONG SystemContext;
+		SYSTEM_POWER_STATE_CONTEXT SystemPowerStateContext;
+	    };
+	    POWER_STATE_TYPE POINTER_ALIGNMENT Type;
+	    POWER_STATE POINTER_ALIGNMENT State;
+	    POWER_ACTION POINTER_ALIGNMENT ShutdownType;
+	} Power;
+	struct {
+	    PCM_RESOURCE_LIST AllocatedResources;
+	    PCM_RESOURCE_LIST AllocatedResourcesTranslated;
+	} StartDevice;
+	struct {
+	    ULONG_PTR ProviderId;
+	    PVOID DataPath;
+	    ULONG BufferSize;
+	    PVOID Buffer;
+	} WMI;
 	struct {
 	    PVOID Argument1;
 	    PVOID Argument2;
@@ -1021,19 +1148,13 @@ NTAPI NTSYSAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDevi
 						  IN PUNICODE_STRING ReferenceString OPTIONAL,
 						  OUT PUNICODE_STRING SymbolicLinkName);
 
+NTAPI NTSYSAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
+						  IN BOOLEAN Enable);
+
 NTAPI NTSYSAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice);
 
 DEPRECATED("Drivers run in userspace and are always paged entirely. Remove this.")
 NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
-
-/*
- * IO DPC routine
- */
-typedef VOID (NTAPI IO_DPC_ROUTINE)(IN PKDPC Dpc,
-				    IN PDEVICE_OBJECT DeviceObject,
-				    IN OUT PIRP Irp,
-				    IN OPTIONAL PVOID Context);
-typedef IO_DPC_ROUTINE *PIO_DPC_ROUTINE;
 
 /*
  * TIMER object. Note: just like KDPC despite being called 'KTIMER'
@@ -1050,57 +1171,36 @@ typedef struct _KTIMER {
 } KTIMER, *PKTIMER;
 
 /*
- * Device queue initialization function
+ * Timer routines
  */
-FORCEINLINE VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
+NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
+
+NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+				  IN LARGE_INTEGER DueTime,
+				  IN OPTIONAL PKDPC Dpc);
+
+/* TODO: Inform the server to actually cancel the timer */
+FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 {
-    assert(Queue != NULL);
-    InitializeListHead(&Queue->DeviceListHead);
-    Queue->Busy = FALSE;
-}
-
-NTAPI NTSYSAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
-					   IN PKDEVICE_QUEUE_ENTRY Entry);
-
-NTAPI NTSYSAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
-						IN PKDEVICE_QUEUE_ENTRY Entry,
-						IN ULONG SortKey);
-
-NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue);
-
-NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
-							     IN ULONG SortKey);
-
-/*
- * Same as KeRemoveByKeyDeviceQueue, except it doesn't assert if the queue is not busy.
- * Instead, NULL is returned if queue is not busy.
- */
-FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVICE_QUEUE Queue,
-								IN ULONG SortKey)
-{
-    assert(Queue != NULL);
-    if (!Queue->Busy) {
-	return NULL;
-    }
-    return KeRemoveByKeyDeviceQueue(Queue, SortKey);
+    BOOLEAN PreviousState = Timer->State;
+    /* Mark the timer as canceled. The driver process will
+     * later inform the server about timer cancellation. */
+    Timer->Canceled = TRUE;
+    Timer->State = FALSE;
+    return PreviousState;
 }
 
 /*
- * Removes the specified entry from the queue, returning TRUE.
- * If the entry is not inserted, nothing is done and we return FALSE.
+ * System time and interrupt time routines
  */
-FORCEINLINE BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
-					     IN PKDEVICE_QUEUE_ENTRY Entry)
-{
-    assert(Queue != NULL);
-    assert(Queue->Busy);
-    if (Entry->Inserted) {
-        Entry->Inserted = FALSE;
-        RemoveEntryList(&Entry->DeviceListEntry);
-	return TRUE;
-    }
-    return FALSE;
-}
+NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
+
+/*
+ * Stalls the current processor for the given microseconds. This is the preferred
+ * routine to call if you want to stall the processor for a small amount of time
+ * without involving the scheduler, for instance, in an interrupt service routine.
+ */
+NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
 
 /*
  * Set the IO cancel routine of the given IRP, returning the previous one.
@@ -1114,27 +1214,6 @@ FORCEINLINE PDRIVER_CANCEL IoSetCancelRoutine(IN OUT PIRP Irp,
     PDRIVER_CANCEL Old = Irp->CancelRoutine;
     Irp->CancelRoutine = CancelRoutine;
     return Old;
-}
-
-/*
- * DPC initialization function
- */
-FORCEINLINE VOID KeInitializeDpc(IN PKDPC Dpc,
-				 IN PKDEFERRED_ROUTINE DeferredRoutine,
-				 IN PVOID DeferredContext)
-{
-    Dpc->DeferredRoutine = DeferredRoutine;
-    Dpc->DeferredContext = DeferredContext;
-}
-
-/*
- * Initialize the device object's built-in DPC object
- */
-FORCEINLINE VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
-					IN PIO_DPC_ROUTINE DpcRoutine)
-{
-    KeInitializeDpc(&DeviceObject->Dpc, (PKDEFERRED_ROUTINE)DpcRoutine,
-		    DeviceObject);
 }
 
 /*
@@ -1172,26 +1251,6 @@ NTAPI NTSYSAPI VOID IoStartPacket(IN PDEVICE_OBJECT DeviceObject,
 
 NTAPI NTSYSAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
 				      IN BOOLEAN Cancelable);
-
-/*
- * Timer routines
- */
-NTAPI NTSYSAPI NTSTATUS IoCreateTimer(OUT PKTIMER Timer);
-
-NTAPI NTSYSAPI NTSTATUS IoSetTimer(IN OUT PKTIMER Timer,
-				   IN LARGE_INTEGER DueTime,
-				   IN OPTIONAL PKDPC Dpc,
-				   OUT OPTIONAL BOOLEAN *pPreviousState);
-
-FORCEINLINE BOOLEAN IoCancelTimer(IN OUT PKTIMER Timer)
-{
-    BOOLEAN PreviousState = Timer->State;
-    /* Mark the timer as canceled. The driver process will
-     * later inform the server about timer cancellation. */
-    Timer->Canceled = TRUE;
-    Timer->State = FALSE;
-    return PreviousState;
-}
 
 /*
  * Per-driver context area routines
@@ -1297,4 +1356,128 @@ DEPRECATED("Power IRP synchronization is now automatic. Remove this.")
 FORCEINLINE VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
 {
     /* Do nothing */
+}
+
+/*
+ * IO Work item. This is an opaque object.
+ */
+typedef struct _IO_WORKITEM *PIO_WORKITEM;
+
+typedef VOID (NTAPI IO_WORKITEM_ROUTINE)(IN PDEVICE_OBJECT DeviceObject,
+					 IN OPTIONAL PVOID Context);
+typedef IO_WORKITEM_ROUTINE *PIO_WORKITEM_ROUTINE;
+
+typedef VOID (NTAPI IO_WORKITEM_ROUTINE_EX)(IN PVOID IoObject,
+					    IN OPTIONAL PVOID Context,
+					    IN PIO_WORKITEM IoWorkItem);
+typedef IO_WORKITEM_ROUTINE_EX *PIO_WORKITEM_ROUTINE_EX;
+
+/*
+ * Work queue type
+ */
+typedef enum _WORK_QUEUE_TYPE {
+    CriticalWorkQueue,
+    DelayedWorkQueue,
+    HyperCriticalWorkQueue,
+    MaximumWorkQueue
+} WORK_QUEUE_TYPE;
+
+/*
+ * Work item allocation
+ */
+NTAPI NTSYSAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject);
+
+/*
+ * Work item deallocation
+ */
+NTAPI NTSYSAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem);
+
+/*
+ * Work item queuing
+ */
+NTAPI NTSYSAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
+				    IN PIO_WORKITEM_ROUTINE WorkerRoutine,
+				    IN WORK_QUEUE_TYPE QueueType,
+				    IN OPTIONAL PVOID Context);
+
+/*
+ * Interrupt Object. We keep the name KINTERRUPT to remain compatible
+ * with Windows/ReactOS. This is an opaque object.
+ */
+typedef struct _KINTERRUPT *PKINTERRUPT;
+
+/*
+ * Interrupt request level
+ */
+typedef UCHAR KIRQL, *PKIRQL;
+
+/*
+ * Interrupt mode
+ */
+typedef enum _KINTERRUPT_MODE {
+    LevelSensitive,
+    Latched
+} KINTERRUPT_MODE;
+
+/*
+ * Interrupt service routine
+ */
+typedef BOOLEAN (NTAPI KSERVICE_ROUTINE)(IN PKINTERRUPT Interrupt,
+					 IN PVOID ServiceContext);
+typedef KSERVICE_ROUTINE *PKSERVICE_ROUTINE;
+
+NTAPI NTSYSAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
+					   IN PKSERVICE_ROUTINE ServiceRoutine,
+					   IN OPTIONAL PVOID ServiceContext,
+					   IN ULONG Vector,
+					   IN KIRQL Irql,
+					   IN KIRQL SynchronizeIrql,
+					   IN KINTERRUPT_MODE InterruptMode,
+					   IN BOOLEAN ShareVector,
+					   IN KAFFINITY ProcessorEnableMask,
+					   IN BOOLEAN FloatingSave);
+
+NTAPI NTSYSAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject);
+
+NTAPI NTSYSAPI VOID IoAcquireInterruptMutex(IN PKINTERRUPT Interrupt);
+
+NTAPI NTSYSAPI VOID IoReleaseInterruptMutex(IN PKINTERRUPT Interrupt);
+
+/*
+ * Interrupt "spinlock" acquisition. This is is actually a mutex. The function
+ * redirects to IoAcquireInterruptMutex and is kept for compatibility with
+ * Windows/ReactOS drivers.
+ */
+DEPRECATED_BY("Interrupt \"spinlock\" is actually a mutex.",
+	      IoAcquireInterruptMutex)
+FORCEINLINE KIRQL KeAcquireInterruptSpinLock(IN PKINTERRUPT Interrupt)
+{
+    IoAcquireInterruptMutex(Interrupt);
+    /* Return PASSIVE_LEVEL */
+    return 0;
+}
+
+/*
+ * Interrupt "spinlock" release. OldIrql is ignored.
+ */
+DEPRECATED_BY("Interrupt \"spinlock\" is actually a mutex.",
+	      IoReleaseInterruptMutex)
+FORCEINLINE VOID KeReleaseInterruptSpinLock(IN PKINTERRUPT Interrupt,
+					    IN KIRQL OldIrql)
+{
+    IoReleaseInterruptMutex(Interrupt);
+}
+
+/*
+ * Returns the pointer to the highest level device object in a device stack
+ */
+NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject);
+
+/*
+ * This is the same function as IoGetAttachedDevice, since we don't have
+ * reference counting for client-side objects.
+ */
+FORCEINLINE PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
+{
+    return IoGetAttachedDevice(DeviceObject);
 }

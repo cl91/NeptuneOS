@@ -15,6 +15,7 @@ typedef struct _IO_DRIVER_OBJECT {
     struct _IO_FILE_OBJECT *DriverFile;
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
     struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
+    LIST_ENTRY IoPortList; /* List of all X86 IO ports enabled for this driver */
     LIST_ENTRY IoPacketQueue; /* IO packets queued on this driver object but has not been processed yet. */
     LIST_ENTRY PendingIoPacketList;	/* IO packets that have already been moved to driver process's
 					 * incoming IO packet buffer. Note that the driver may choose to

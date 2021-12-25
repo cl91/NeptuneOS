@@ -30,12 +30,12 @@ typedef enum _OBJECT_TYPE_MASK {
     OBJECT_TYPE_DEVICE = 1 << 5,
     OBJECT_TYPE_DRIVER = 1 << 6,
     OBJECT_TYPE_TIMER = 1 << 7,
-    OBJECT_TYPE_ALL = (1 << 8) - 1 /* Used by the object manager routines to
-				    * indicate all types */
-} OBJECT_TYPE_MASK;
-
+    OBJECT_TYPE_KEY = 1 << 8,
 /* Increment this when you add a new object type */
-#define MAX_NUM_OBJECT_TYPES	8
+#define MAX_NUM_OBJECT_TYPES 9
+    OBJECT_TYPE_ALL = (1 << MAX_NUM_OBJECT_TYPES) - 1 /* Used by the object manager routines to
+						       * indicate all types */
+} OBJECT_TYPE_MASK;
 
 /* Object format:
  *
@@ -260,10 +260,7 @@ typedef struct _OBJECT_TYPE {
 
 #define OBJ_NAME_PATH_SEPARATOR ('\\')
 
-#define NUMBER_HASH_BUCKETS 37
-typedef struct _OBJECT_DIRECTORY {
-    LIST_ENTRY HashBuckets[NUMBER_HASH_BUCKETS];
-} OBJECT_DIRECTORY, *POBJECT_DIRECTORY;
+typedef struct _OBJECT_DIRECTORY *POBJECT_DIRECTORY;
 
 /*
  * A process's object handle table. All handles are inserted into
