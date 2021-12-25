@@ -22,21 +22,17 @@
 
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define DD_MOUSE_DEVICE_NAME              "\\Device\\PointerClass"
 #define DD_MOUSE_DEVICE_NAME_U            L"\\Device\\PointerClass"
 
-#define IOCTL_MOUSE_QUERY_ATTRIBUTES \
-  CTL_CODE(FILE_DEVICE_MOUSE, 0, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_MOUSE_QUERY_ATTRIBUTES					\
+    CTL_CODE(FILE_DEVICE_MOUSE, 0, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
-#define IOCTL_MOUSE_INSERT_DATA \
-  CTL_CODE(FILE_DEVICE_MOUSE, 1, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_MOUSE_INSERT_DATA						\
+    CTL_CODE(FILE_DEVICE_MOUSE, 1, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 DEFINE_GUID(GUID_DEVINTERFACE_MOUSE, \
-  0x378de44c, 0x56ef, 0x11d1, 0xbc, 0x8c, 0x00, 0xa0, 0xc9, 0x14, 0x05, 0xdd);
+	    0x378de44c, 0x56ef, 0x11d1, 0xbc, 0x8c, 0x00, 0xa0, 0xc9, 0x14, 0x05, 0xdd);
 
 #define GUID_CLASS_MOUSE GUID_DEVINTERFACE_MOUSE /* Obsolete */
 
@@ -74,23 +70,23 @@ DEFINE_GUID(GUID_DEVINTERFACE_MOUSE, \
 #define MOUSE_TERMSRV_SRC_SHADOW          0x100
 
 typedef struct _MOUSE_INPUT_DATA {
-  USHORT UnitId;
-  USHORT Flags;
-  __MINGW_EXTENSION union {
-    ULONG Buttons;
-    __MINGW_EXTENSION struct {
-      USHORT ButtonFlags;
-      USHORT ButtonData;
-    } DUMMYSTRUCTNAME;
-  } DUMMYUNIONNAME;
-  ULONG RawButtons;
-  LONG LastX;
-  LONG LastY;
-  ULONG ExtraInformation;
+    USHORT UnitId;
+    USHORT Flags;
+    union {
+	ULONG Buttons;
+	struct {
+	    USHORT ButtonFlags;
+	    USHORT ButtonData;
+	} DUMMYSTRUCTNAME;
+    } DUMMYUNIONNAME;
+    ULONG RawButtons;
+    LONG LastX;
+    LONG LastY;
+    ULONG ExtraInformation;
 } MOUSE_INPUT_DATA, *PMOUSE_INPUT_DATA;
 
 typedef struct _MOUSE_UNIT_ID_PARAMETER {
-  USHORT UnitId;
+    USHORT UnitId;
 } MOUSE_UNIT_ID_PARAMETER, *PMOUSE_UNIT_ID_PARAMETER;
 
 /* MOUSE_ATTRIBUTES.MouseIdentifier constants */
@@ -106,12 +102,8 @@ typedef struct _MOUSE_UNIT_ID_PARAMETER {
 #define HORIZONTAL_WHEEL_PRESENT          0x8000
 
 typedef struct _MOUSE_ATTRIBUTES {
-  USHORT MouseIdentifier;
-  USHORT NumberOfButtons;
-  USHORT SampleRate;
-  ULONG InputDataQueueLength;
+    USHORT MouseIdentifier;
+    USHORT NumberOfButtons;
+    USHORT SampleRate;
+    ULONG InputDataQueueLength;
 } MOUSE_ATTRIBUTES, *PMOUSE_ATTRIBUTES;
-
-#ifdef __cplusplus
-}
-#endif

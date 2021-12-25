@@ -1,8 +1,8 @@
 #pragma once
 
-//
-// Information Structures for NtPowerInformation
-//
+/*
+ * Information Structures for NtPowerInformation
+ */
 typedef struct _SYSTEM_POWER_INFORMATION {
     ULONG MaxIdlenessAllowed;
     ULONG Idleness;
@@ -10,11 +10,19 @@ typedef struct _SYSTEM_POWER_INFORMATION {
     UCHAR CoolingMode;
 } SYSTEM_POWER_INFORMATION, *PSYSTEM_POWER_INFORMATION;
 
-//
-// Docking states
-//
+/*
+ * Docking states
+ */
 typedef enum _SYSTEM_DOCK_STATE {
     SystemDockStateUnknown,
     SystemUndocked,
     SystemDocked
 } SYSTEM_DOCK_STATE, *PSYSTEM_DOCK_STATE;
+
+/*
+ * Battery reporting scale
+ */
+typedef struct {
+    ULONG Granularity;
+    ULONG Capacity;
+} BATTERY_REPORTING_SCALE, *PBATTERY_REPORTING_SCALE;
