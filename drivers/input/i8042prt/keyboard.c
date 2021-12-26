@@ -37,17 +37,14 @@ static LOCAL_KEYBOARD_INDICATOR_TRANSLATION IndicatorTranslation = {
 
 /* FUNCTIONS *****************************************************************/
 
-static VOID NTAPI i8042KbdQueuePacket(IN PVOID Context)
+static NTAPI VOID i8042KbdQueuePacket(IN PVOID Context)
 {
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
-
-    DeviceExtension = (PI8042_KEYBOARD_EXTENSION) Context;
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)Context;
 
     DeviceExtension->KeyComplete = TRUE;
     DeviceExtension->KeysInBuffer++;
     if (DeviceExtension->KeysInBuffer >
-	DeviceExtension->Common.PortDeviceExtension->Settings.
-	KeyboardDataQueueSize) {
+	DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize) {
 	WARN_(I8042PRT, "Keyboard buffer overflow\n");
 	DeviceExtension->KeysInBuffer--;
     }

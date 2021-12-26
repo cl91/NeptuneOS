@@ -5,15 +5,17 @@ LIST_ENTRY IopTimerList;
 /*
  * Call the server to create a timer object.
  */
-NTAPI NTSTATUS IoCreateTimer(OUT PKTIMER Timer)
+NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
-    RET_ERR(NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
-			  NULL, NotificationTimer));
+    NTSTATUS Status = NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
+				    NULL, NotificationTimer);
+    if (!NT_SUCCESS(Status)) {
+	RtlRaiseStatus(Status);
+    }
     InsertTailList(&IopTimerList, &Timer->TimerListEntry);
     Timer->Dpc = NULL;
     Timer->State = FALSE;
     Timer->Canceled = FALSE;
-    return STATUS_SUCCESS;
 }
 
 static NTAPI VOID IopTimerExpired(IN PVOID Context,
@@ -27,6 +29,7 @@ static NTAPI VOID IopTimerExpired(IN PVOID Context,
     if (Timer->Canceled) {
 	return;
     }
+    Timer->State = FALSE;
     if (Timer->Dpc != NULL) {
 	assert(Timer->Dpc->DeferredRoutine != NULL);
 	Timer->Dpc->DeferredRoutine(Timer->Dpc,
@@ -41,20 +44,19 @@ static NTAPI VOID IopTimerExpired(IN PVOID Context,
  * it will be implicitly canceled. If specified, returns the previous
  * state of the timer (ie. TRUE if timer was set before the call).
  */
-NTAPI NTSTATUS IoSetTimer(IN OUT PKTIMER Timer,
-			  IN LARGE_INTEGER DueTime,
-			  IN OPTIONAL PKDPC Dpc,
-			  OUT OPTIONAL BOOLEAN *pPreviousState)
+NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+			 IN LARGE_INTEGER DueTime,
+			 IN OPTIONAL PKDPC Dpc)
 {
-    /* On debug build we should find out why the timer handle is NULL.
-     * On release build we simply return STATUS_INVALID_HANDLE. */
+    /* On debug build we should find out why the timer handle is NULL */
     assert(Timer->Handle != NULL);
     if (Timer->Handle == NULL) {
-	return STATUS_INVALID_HANDLE;
+	RtlRaiseStatus(STATUS_INVALID_HANDLE);
     }
     Timer->Dpc = Dpc;
-    RET_ERR(NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
-		       Timer, TRUE, 0, pPreviousState));
+    BOOLEAN PreviousState;
+    NTSTATUS Status = NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
+				 Timer, TRUE, 0, &PreviousState);
     Timer->State = TRUE;
-    return STATUS_SUCCESS;
+    return PreviousState;
 }

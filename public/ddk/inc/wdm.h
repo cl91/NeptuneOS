@@ -1216,14 +1216,13 @@ NTAPI NTSYSAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
 /*
  * Timer routines
  */
-NTAPI NTSYSAPI NTSTATUS IoCreateTimer(OUT PKTIMER Timer);
+NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
 
-NTAPI NTSYSAPI NTSTATUS IoSetTimer(IN OUT PKTIMER Timer,
-				   IN LARGE_INTEGER DueTime,
-				   IN OPTIONAL PKDPC Dpc,
-				   OUT OPTIONAL BOOLEAN *pPreviousState);
+NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+				  IN LARGE_INTEGER DueTime,
+				  IN OPTIONAL PKDPC Dpc);
 
-FORCEINLINE BOOLEAN IoCancelTimer(IN OUT PKTIMER Timer)
+FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 {
     BOOLEAN PreviousState = Timer->State;
     /* Mark the timer as canceled. The driver process will
