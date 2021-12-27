@@ -1,6 +1,7 @@
 #include <wdmp.h>
 
 LIST_ENTRY IopTimerList;
+ULONG KiStallScaleFactor;
 
 /*
  * Call the server to create a timer object.
@@ -57,6 +58,45 @@ NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
     BOOLEAN PreviousState;
     NTSTATUS Status = NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
 				 Timer, TRUE, 0, &PreviousState);
+    if (!NT_SUCCESS(Status)) {
+	RtlRaiseStatus(Status);
+    }
     Timer->State = TRUE;
     return PreviousState;
+}
+
+/*
+ * @implemented
+ */
+NTAPI ULONGLONG KeQueryInterruptTime(VOID)
+{
+    LARGE_INTEGER CurrentTime;
+
+    /* Loop until we get a perfect match */
+    for (;;) {
+        /* Read the time value */
+        CurrentTime.HighPart = SharedUserData->InterruptTime.High1Time;
+        CurrentTime.LowPart = SharedUserData->InterruptTime.LowPart;
+        if (CurrentTime.HighPart == SharedUserData->InterruptTime.High2Time)
+	    break;
+        YieldProcessor();
+    }
+
+    /* Return the time value */
+    return CurrentTime.QuadPart;
+}
+
+/*
+ * @implemented
+ */
+NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
+{
+    /* Get the initial time */
+    ULONG64 StartTime = __rdtsc();
+
+    /* Calculate the ending time */
+    ULONG64 EndTime = StartTime + KiStallScaleFactor * MicroSeconds;
+
+    /* Loop until time is elapsed */
+    while (__rdtsc() < EndTime);
 }

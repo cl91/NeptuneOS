@@ -596,6 +596,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     if (DriverObject != NULL) {
 	Process->InitInfo.DriverProcess = TRUE;
+	Process->InitInfo.DriverInitInfo.X86TscFreq = KeX86TscFreq;
 	Process->DriverObject = DriverObject;
     }
 

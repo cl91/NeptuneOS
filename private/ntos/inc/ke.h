@@ -595,6 +595,9 @@ static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
     return KeEnableIoPortEx(&MiNtosCNode, PortNum, IoPort);
 }
 
+/* init.c */
+ULONG KeX86TscFreq;
+
 /* timer.c */
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);

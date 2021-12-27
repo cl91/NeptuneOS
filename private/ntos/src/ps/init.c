@@ -85,10 +85,15 @@ static NTSTATUS PspInitializeSystemDll()
     return Status;
 }
 
-VOID PspPopulateUserSharedData()
+static VOID PspPopulateUserSharedData()
 {
     PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
     /* TODO */
+}
+
+PKUSER_SHARED_DATA PsGetUserSharedData()
+{
+    return (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
 }
 
 NTSTATUS PspMapUserSharedData()

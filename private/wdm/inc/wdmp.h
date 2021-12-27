@@ -19,8 +19,11 @@
 /* Prevent the compiler from inlining the function */
 #define NO_INLINE	__attribute__((noinline))
 
-/* Function does not return */
+/* Inform the compiler that the function does not return */
 #define NORETURN	__attribute__((__noreturn__))
+
+/* Shared kernel data that is accessible from user space */
+#define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
 
 #define IopAllocatePoolEx(Ptr, Type, Size, OnError)		\
     Type *Ptr = (Type *) RtlAllocateHeap(RtlGetProcessHeap(),	\
@@ -102,3 +105,4 @@ extern DRIVER_OBJECT IopDriverObject;
 
 /* timer.c */
 extern LIST_ENTRY IopTimerList;
+extern ULONG KiStallScaleFactor;

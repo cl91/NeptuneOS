@@ -65,6 +65,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     IopIncomingIoPacketBuffer = (PIO_PACKET) InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
+    KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
     InitializeListHead(&IopIrpQueue);
     InitializeListHead(&IopCompletedIrpList);
     InitializeListHead(&IopDeviceList);

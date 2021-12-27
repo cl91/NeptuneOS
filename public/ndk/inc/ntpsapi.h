@@ -4,7 +4,7 @@
 
 #include <ldrtypes.h>
 
-/* This is the same address for both the i386 and amd64 */
+/* This is placed at the same address for both i386 and amd64 */
 #define USER_SHARED_DATA                        0x7FFE0000
 
 /*

@@ -1222,6 +1222,7 @@ NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 				  IN LARGE_INTEGER DueTime,
 				  IN OPTIONAL PKDPC Dpc);
 
+/* TODO: Inform the server to actually cancel the timer */
 FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 {
     BOOLEAN PreviousState = Timer->State;
@@ -1231,6 +1232,18 @@ FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
     Timer->State = FALSE;
     return PreviousState;
 }
+
+/*
+ * System time and interrupt time routines
+ */
+NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
+
+/*
+ * Stalls the current processor for the given microseconds. This is the preferred
+ * routine to call if you want to stall the processor for a small amount of time
+ * without involving the scheduler, for instance, in an interrupt service routine.
+ */
+NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
 
 /*
  * Per-driver context area routines
@@ -1388,3 +1401,16 @@ typedef enum _KINTERRUPT_MODE {
 typedef BOOLEAN (NTAPI KSERVICE_ROUTINE)(IN PKINTERRUPT Interrupt,
 					 IN PVOID ServiceContext);
 typedef KSERVICE_ROUTINE *PKSERVICE_ROUTINE;
+
+NTAPI NTSYSAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
+					   IN PKSERVICE_ROUTINE ServiceRoutine,
+					   IN OPTIONAL PVOID ServiceContext,
+					   IN ULONG Vector,
+					   IN KIRQL Irql,
+					   IN KIRQL SynchronizeIrql,
+					   IN KINTERRUPT_MODE InterruptMode,
+					   IN BOOLEAN ShareVector,
+					   IN KAFFINITY ProcessorEnableMask,
+					   IN BOOLEAN FloatingSave);
+
+NTAPI NTSYSAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject);

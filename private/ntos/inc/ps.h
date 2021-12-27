@@ -102,6 +102,7 @@ typedef VOID (*PSYSTEM_THREAD_ENTRY)();
 /* init.c */
 NTSTATUS PsInitSystemPhase0();
 NTSTATUS PsInitSystemPhase1();
+PKUSER_SHARED_DATA PsGetUserSharedData();
 
 /* create.c */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
