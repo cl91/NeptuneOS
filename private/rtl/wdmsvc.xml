@@ -31,4 +31,9 @@
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>
 
+  <svc name="IoSetDeviceInterfaceState">
+    <parameter annotation="in" type="UnicodeString" name="SymbolicLinkName" />
+    <parameter annotation="in" type="BOOLEAN" name="Enable" />
+  </svc>
+
 </services>

@@ -5,6 +5,7 @@
 @ stdcall IoGetDeviceObjectPointer(ptr long ptr ptr)
 @ stdcall IoAttachDeviceToDeviceStack(ptr ptr)
 @ stdcall IoRegisterDeviceInterface(ptr ptr ptr ptr)
+@ stdcall IoSetDeviceInterfaceState(ptr long)
 @ stdcall IoDetachDevice(ptr)
 @ stdcall IoDeleteDevice(ptr)
 @ stdcall IoStartPacket(ptr ptr ptr ptr)

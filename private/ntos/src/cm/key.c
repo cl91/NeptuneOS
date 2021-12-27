@@ -10,7 +10,7 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
-                     IN struct _THREAD *Thread,
+                     IN PTHREAD Thread,
                      OUT HANDLE *KeyHandle,
                      IN ACCESS_MASK DesiredAccess,
                      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -47,7 +47,7 @@ NTSTATUS NtSetValueKey(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
-                     IN struct _THREAD *Thread,
+                     IN PTHREAD Thread,
                      IN HANDLE KeyHandle)
 {
     UNIMPLEMENTED;

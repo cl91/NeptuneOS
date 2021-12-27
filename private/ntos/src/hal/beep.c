@@ -12,7 +12,7 @@
  * @implemented
  */
 NTSTATUS HalpMakeBeep(IN ASYNC_STATE AsyncState,
-                      IN struct _THREAD *Thread,
+                      IN PTHREAD Thread,
                       IN ULONG Frequency)
 {
     HalVgaPrint("HalpMakeBeep: Frequency %d\n", Frequency);

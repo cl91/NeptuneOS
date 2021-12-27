@@ -104,8 +104,8 @@ RtlInterlockedPushListSList(IN OUT PSLIST_HEADER SListHead,
 
 	/* Try to exchange atomically */
 	Compare = OldHeader.Alignment;
-	OldHeader.Alignment = InterlockedCompareExchange64((PLONGLONG) & SListHead->
-							   Alignment, NewHeader.Alignment,
+	OldHeader.Alignment = InterlockedCompareExchange64((PLONGLONG) &SListHead->Alignment,
+							   NewHeader.Alignment,
 							   Compare);
     } while (OldHeader.Alignment != Compare);
 

@@ -1061,6 +1061,9 @@ NTAPI NTSYSAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDevi
 						  IN PUNICODE_STRING ReferenceString OPTIONAL,
 						  OUT PUNICODE_STRING SymbolicLinkName);
 
+NTAPI NTSYSAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
+						  IN BOOLEAN Enable);
+
 NTAPI NTSYSAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice);
 
 DEPRECATED("Drivers run in userspace and are always paged entirely. Remove this.")
