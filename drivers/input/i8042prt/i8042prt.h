@@ -356,6 +356,7 @@ NTSTATUS ReadRegistryEntries(IN PUNICODE_STRING RegistryPath,
 			     OUT PI8042_SETTINGS Settings);
 
 /* hwhacks.c */
+#if 0
 NTAPI VOID i8042InitializeHwHacks(VOID);
 
 enum _FLAGS {
@@ -364,6 +365,7 @@ enum _FLAGS {
 };
 
 extern ULONG i8042HwFlags;
+#endif
 
 /* We cannot include win32 headers so define ULongToPtr here */
 static inline void *ULongToPtr(const unsigned long ul)

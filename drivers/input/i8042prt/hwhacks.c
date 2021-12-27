@@ -8,6 +8,8 @@
  *              -
  */
 
+#if 0
+
 #include "i8042prt.h"
 #include <wmiguid.h>
 #include <wmidata.h>
@@ -65,12 +67,8 @@ const HARDWARE_TABLE i8042HardwareTable[] = {
 
 };
 
-
-
-static
- VOID
-i8042ParseSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
-		       _In_ ULONG TableSize)
+static VOID i8042ParseSMBiosTables(IN PVOID SMBiosTables,
+				   IN ULONG TableSize)
 {
     ULONG i, j;
     PCHAR Strings[ID_STRINGS_MAX] = { 0 };
@@ -118,14 +116,11 @@ i8042ParseSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
     }
 }
 
-static
- VOID
-i8042StoreSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
-		       _In_ ULONG TableSize)
+static VOID i8042StoreSMBiosTables(IN PVOID SMBiosTables,
+				   IN ULONG TableSize)
 {
-    static UNICODE_STRING mssmbiosKeyName =
-	RTL_CONSTANT_STRING
-	(L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\mssmbios");
+    static UNICODE_STRING mssmbiosKeyName = RTL_CONSTANT_STRING(
+	L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Services\\mssmbios");
     static UNICODE_STRING DataName = RTL_CONSTANT_STRING(L"Data");
     static UNICODE_STRING ValueName = RTL_CONSTANT_STRING(L"SMBiosData");
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -169,7 +164,7 @@ i8042StoreSMBiosTables(_In_reads_bytes_(TableSize) PVOID SMBiosTables,
     NtClose(KeyHandle);
 }
 
-VOID NTAPI i8042InitializeHwHacks(VOID)
+NTAPI VOID i8042InitializeHwHacks(VOID)
 {
     NTSTATUS Status;
     PVOID DataBlockObject;
@@ -218,3 +213,5 @@ VOID NTAPI i8042InitializeHwHacks(VOID)
     /* Free the buffer */
     ExFreePoolWithTag(AllData, 'BTMS');
 }
+
+#endif	/* 0 */

@@ -463,7 +463,8 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = i8042SystemControl;
     DriverObject->MajorFunction[IRP_MJ_PNP] = i8042Pnp;
 
-    i8042InitializeHwHacks();
+    // This is disabled for now since we don't want to implement WMI as of yet.
+    // i8042InitializeHwHacks();
 
     return STATUS_SUCCESS;
 }
