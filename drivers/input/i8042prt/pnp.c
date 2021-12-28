@@ -40,8 +40,7 @@ BOOLEAN i8042ChangeMode(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     UCHAR Value;
     NTSTATUS Status;
 
-    if (!i8042Write
-	(DeviceExtension, DeviceExtension->ControlPort, KBD_READ_MODE)) {
+    if (!i8042Write(DeviceExtension, DeviceExtension->ControlPort, KBD_READ_MODE)) {
 	WARN_(I8042PRT, "Can't read i8042 mode\n");
 	return FALSE;
     }
@@ -55,8 +54,7 @@ BOOLEAN i8042ChangeMode(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     Value &= ~FlagsToDisable;
     Value |= FlagsToEnable;
 
-    if (!i8042Write
-	(DeviceExtension, DeviceExtension->ControlPort, KBD_WRITE_MODE)) {
+    if (!i8042Write(DeviceExtension, DeviceExtension->ControlPort, KBD_WRITE_MODE)) {
 	WARN_(I8042PRT, "Can't set i8042 mode\n");
 	return FALSE;
     }
@@ -87,9 +85,7 @@ static NTSTATUS i8042BasicDetect(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     /* Issue a CTRL_SELF_TEST command to check if this is really an i8042 controller */
     ResendIterations = DeviceExtension->Settings.ResendIterations + 1;
     while (ResendIterations--) {
-	if (!i8042Write
-	    (DeviceExtension, DeviceExtension->ControlPort,
-	     CTRL_SELF_TEST)) {
+	if (!i8042Write(DeviceExtension, DeviceExtension->ControlPort, CTRL_SELF_TEST)) {
 	    WARN_(I8042PRT, "Writing CTRL_SELF_TEST command failed\n");
 	    return STATUS_IO_TIMEOUT;
 	}
@@ -158,8 +154,7 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     UCHAR ReplyByte;
 
     /* First do a mouse line test */
-    if (i8042Write
-	(DeviceExtension, DeviceExtension->ControlPort, MOUSE_LINE_TEST)) {
+    if (i8042Write(DeviceExtension, DeviceExtension->ControlPort, MOUSE_LINE_TEST)) {
 	Status = i8042ReadDataWait(DeviceExtension, &Value);
 
 	if (!NT_SUCCESS(Status) || Value != 0) {

@@ -71,8 +71,8 @@ typedef struct _I8042_MOUSE_EXTENSION *PI8042_MOUSE_EXTENSION;
 #define MOUSE_INITIALIZED    0x80	/* Mouse interrupt is connected */
 
 typedef struct _PORT_DEVICE_EXTENSION {
-    PUCHAR DataPort;		/* Usually 0x60 */
-    PUCHAR ControlPort;		/* Usually 0x64 */
+    USHORT DataPort;		/* Usually 0x60 */
+    USHORT ControlPort;		/* Usually 0x64 */
     I8042_SETTINGS Settings;
     ULONG Flags;
 
@@ -348,7 +348,7 @@ NTAPI NTSTATUS i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 				   IN UCHAR Value,
 				   IN BOOLEAN WaitForAck);
 BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		   IN PUCHAR addr,
+		   IN USHORT addr,
 		   IN UCHAR data);
 
 /* registry.c */

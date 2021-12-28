@@ -174,7 +174,7 @@ i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
  * FUNCTION: Write data to a port, waiting first for it to become ready
  */
 BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		   IN PUCHAR addr,
+		   IN USHORT addr,
 		   IN UCHAR data)
 {
     ULONG Counter;

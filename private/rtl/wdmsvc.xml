@@ -17,6 +17,12 @@
     <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="PreviousTopDeviceInfo" />
   </svc>
 
+  <svc name="IopGetAttachedDevice">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
+    <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="TopDeviceInfo" />
+  </svc>
+
   <svc name="IopRequestIoPackets">
     <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />

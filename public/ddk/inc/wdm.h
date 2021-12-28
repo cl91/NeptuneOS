@@ -300,9 +300,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     SHORT Type;
     ULONG Size;
     struct _DRIVER_OBJECT *DriverObject;
-    struct _DEVICE_OBJECT *NextDevice;
-    struct _DEVICE_OBJECT *AttachedDevice; /* Higher-level device object immediately above
-					    * the current device object in the device stack */
     struct _IRP *CurrentIrp;
     UNICODE_STRING DeviceName;
     ULONG Flags;
@@ -1355,19 +1352,32 @@ FORCEINLINE VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
 }
 
 /*
- * IO Work item. This is an opaque object. Drivers should not examine
- * the content of the struct.
+ * IO Work item.
  */
-typedef struct _IO_WORKITEM *PIO_WORKITEM;
-
+struct _IO_WORKITEM;
 typedef VOID (NTAPI IO_WORKITEM_ROUTINE)(IN PDEVICE_OBJECT DeviceObject,
 					 IN OPTIONAL PVOID Context);
 typedef IO_WORKITEM_ROUTINE *PIO_WORKITEM_ROUTINE;
 
 typedef VOID (NTAPI IO_WORKITEM_ROUTINE_EX)(IN PVOID IoObject,
 					    IN OPTIONAL PVOID Context,
-					    IN PIO_WORKITEM IoWorkItem);
+					    IN struct _IO_WORKITEM *IoWorkItem);
 typedef IO_WORKITEM_ROUTINE_EX *PIO_WORKITEM_ROUTINE_EX;
+
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IO_WORKITEM {
+    SLIST_ENTRY Next;		/* Must be first */
+    union {
+	PDEVICE_OBJECT DeviceObject;
+	PDRIVER_OBJECT DriverObject;
+    };
+    HANDLE WorkerThreadHandle;
+    union {
+	PIO_WORKITEM_ROUTINE WorkerRoutine;
+	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
+    };
+    PVOID Context;
+    BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
+} IO_WORKITEM, *PIO_WORKITEM;
 
 /*
  * Work queue type
@@ -1378,6 +1388,27 @@ typedef enum _WORK_QUEUE_TYPE {
     HyperCriticalWorkQueue,
     MaximumWorkQueue
 } WORK_QUEUE_TYPE;
+
+/*
+ * Work item allocation
+ */
+FORCEINLINE PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
+{
+    PIO_WORKITEM IoWorkItem = ExAllocatePool(sizeof(IO_WORKITEM));
+    if (IoWorkItem == NULL) {
+	return NULL;
+    }
+    IoWorkItem->DeviceObject = DeviceObject;
+    return IoWorkItem;
+}
+
+/*
+ * Work item deallocation
+ */
+FORCEINLINE VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
+{
+    ExFreePool(IoWorkItem);
+}
 
 /*
  * Interrupt Object. We keep the name KINTERRUPT to remain compatible
@@ -1417,3 +1448,17 @@ NTAPI NTSYSAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
 					   IN BOOLEAN FloatingSave);
 
 NTAPI NTSYSAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject);
+
+/*
+ * Returns the pointer to the highest level device object in a device stack
+ */
+NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject);
+
+/*
+ * This is the same function as IoGetAttachedDevice, since we don't have
+ * reference counting for client-side objects.
+ */
+FORCEINLINE PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
+{
+    return IoGetAttachedDevice(DeviceObject);
+}

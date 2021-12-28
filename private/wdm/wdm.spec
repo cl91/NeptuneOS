@@ -4,6 +4,7 @@
 @ stdcall IoGetDriverObjectExtension(ptr ptr)
 @ stdcall IoGetDeviceObjectPointer(ptr long ptr ptr)
 @ stdcall IoAttachDeviceToDeviceStack(ptr ptr)
+@ stdcall IoGetAttachedDevice(ptr)
 @ stdcall IoRegisterDeviceInterface(ptr ptr ptr ptr)
 @ stdcall IoSetDeviceInterfaceState(ptr long)
 @ stdcall IoDetachDevice(ptr)
