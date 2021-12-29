@@ -1352,9 +1352,10 @@ FORCEINLINE VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
 }
 
 /*
- * IO Work item.
+ * IO Work item. This is an opaque object.
  */
-struct _IO_WORKITEM;
+typedef struct _IO_WORKITEM *PIO_WORKITEM;
+
 typedef VOID (NTAPI IO_WORKITEM_ROUTINE)(IN PDEVICE_OBJECT DeviceObject,
 					 IN OPTIONAL PVOID Context);
 typedef IO_WORKITEM_ROUTINE *PIO_WORKITEM_ROUTINE;
@@ -1363,21 +1364,6 @@ typedef VOID (NTAPI IO_WORKITEM_ROUTINE_EX)(IN PVOID IoObject,
 					    IN OPTIONAL PVOID Context,
 					    IN struct _IO_WORKITEM *IoWorkItem);
 typedef IO_WORKITEM_ROUTINE_EX *PIO_WORKITEM_ROUTINE_EX;
-
-typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IO_WORKITEM {
-    SLIST_ENTRY Next;		/* Must be first */
-    union {
-	PDEVICE_OBJECT DeviceObject;
-	PDRIVER_OBJECT DriverObject;
-    };
-    HANDLE WorkerThreadHandle;
-    union {
-	PIO_WORKITEM_ROUTINE WorkerRoutine;
-	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
-    };
-    PVOID Context;
-    BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
-} IO_WORKITEM, *PIO_WORKITEM;
 
 /*
  * Work queue type
@@ -1392,23 +1378,20 @@ typedef enum _WORK_QUEUE_TYPE {
 /*
  * Work item allocation
  */
-FORCEINLINE PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
-{
-    PIO_WORKITEM IoWorkItem = ExAllocatePool(sizeof(IO_WORKITEM));
-    if (IoWorkItem == NULL) {
-	return NULL;
-    }
-    IoWorkItem->DeviceObject = DeviceObject;
-    return IoWorkItem;
-}
+NTAPI NTSYSAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject);
 
 /*
  * Work item deallocation
  */
-FORCEINLINE VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
-{
-    ExFreePool(IoWorkItem);
-}
+NTAPI NTSYSAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem);
+
+/*
+ * Work item queuing
+ */
+NTAPI NTSYSAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
+				    IN PIO_WORKITEM_ROUTINE WorkerRoutine,
+				    IN WORK_QUEUE_TYPE QueueType,
+				    IN OPTIONAL PVOID Context);
 
 /*
  * Interrupt Object. We keep the name KINTERRUPT to remain compatible

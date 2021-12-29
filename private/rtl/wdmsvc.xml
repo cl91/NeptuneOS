@@ -33,6 +33,12 @@
     <parameter annotation="out" type="ptr::MWORD" name="Cap" />
   </svc>
 
+  <svc name="IopCreateWorkerThread">
+    <parameter annotation="in" type="PIO_WORKER_THREAD_ENTRY" name="WorkerThreadEntry" />
+    <parameter annotation="out" type="ptr::HANDLE" name="WorkerThreadHandle" />
+    <parameter annotation="out" type="ptr::MWORD" name="WorkerThreadNotification" />
+  </svc>
+
   <svc name="HalpMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>

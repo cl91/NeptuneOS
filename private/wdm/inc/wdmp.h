@@ -82,6 +82,23 @@ typedef struct _X86_IOPORT {
     USHORT PortNum;
 } X86_IOPORT, *PX86_IOPORT;
 
+/*
+ * IO work item object.
+ */
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IO_WORKITEM {
+    SLIST_ENTRY Entry;	 /* Must be first, or at least aligned by 8 */
+    union {
+	PDEVICE_OBJECT DeviceObject;
+	PDRIVER_OBJECT DriverObject;
+    };
+    union {
+	PIO_WORKITEM_ROUTINE WorkerRoutine;
+	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
+    };
+    PVOID Context;
+    BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
+} IO_WORKITEM;
+
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
@@ -106,3 +123,6 @@ extern DRIVER_OBJECT IopDriverObject;
 /* timer.c */
 extern LIST_ENTRY IopTimerList;
 extern ULONG KiStallScaleFactor;
+
+/* workitem.c */
+extern SLIST_HEADER IopWorkItemQueue;

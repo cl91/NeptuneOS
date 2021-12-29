@@ -223,6 +223,8 @@ typedef struct _IO_PACKET {
 			      * driver's pending IoPacket list. */
 } IO_PACKET, *PIO_PACKET;
 
+typedef VOID (*PIO_WORKER_THREAD_ENTRY)();
+
 #include <poppack.h>
 
 /*
