@@ -22,6 +22,7 @@ static NTSTATUS SmLoadBootDrivers()
     PCSTR DriversToLoad[] = {
 	"\\BootModules\\null.sys",
 	"\\BootModules\\beep.sys",
+	"\\BootModules\\i8042prt.sys",
 	"\\BootModules\\kbdclass.sys"
     };
     for (ULONG i = 0; i < ARRAY_LENGTH(DriversToLoad); i++) {

@@ -415,7 +415,8 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
 			  IN PCSTR DllName,
 			  OUT PIO_FILE_OBJECT *DllFile)
 {
-    DbgTrace("DllName = %s\n", DllName);
+    DbgTrace("Mapping DllName %s for Process %p (%s)\n", DllName, Process,
+	     (Process->ImageFile && Process->ImageFile->FileName) ? Process->ImageFile->FileName : "???");
     assert(LoaderDataOffset != NULL);
     assert(DllFile != NULL);
     MWORD OrigLoaderDataOffset = *LoaderDataOffset;
@@ -488,11 +489,9 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
 				   IN PVOID DllFileBuffer)
 {
     ULONG ImportTableSize = 0;
-    PIMAGE_IMPORT_DESCRIPTOR ImportTable =
-	RtlImageDirectoryEntryToData(DllFileBuffer, FALSE,
-				     IMAGE_DIRECTORY_ENTRY_IMPORT,
-				     &ImportTableSize);
-    DbgTrace("ImportTableSize = 0x%x\n", ImportTableSize);
+    PIMAGE_IMPORT_DESCRIPTOR ImportTable = RtlImageDirectoryEntryToData(DllFileBuffer, FALSE,
+									IMAGE_DIRECTORY_ENTRY_IMPORT,
+									&ImportTableSize);
     SIZE_T ImportDescriptorCount = ImportTableSize / sizeof(IMAGE_IMPORT_DESCRIPTOR);
     for (ULONG i = 0; i < ImportDescriptorCount; i++) {
 	if (ImportTable[i].Name != 0) {

@@ -8,6 +8,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     PCSTR DriverToLoad = Ctx->DriverPath;
     PCSTR DriverName = Ctx->DriverName;
     InitializeListHead(&Driver->DeviceList);
+    InitializeListHead(&Driver->IoPortList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
@@ -111,4 +112,43 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 	  &DriverObject->InitializationDoneEvent.Header, FALSE);
 
     ASYNC_END(STATUS_SUCCESS);
+}
+
+NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
+                          IN PTHREAD Thread,
+                          IN USHORT PortNum,
+                          OUT MWORD *Cap)
+{
+    assert(Thread != NULL);
+    assert(Cap != NULL);
+    PPROCESS Process = Thread->Process;
+    assert(Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
+    assert(DriverObject != NULL);
+
+    IopAllocatePool(IoPort, X86_IOPORT);
+    RET_ERR_EX(KeEnableIoPortEx(Process->CSpace, PortNum, IoPort),
+	       ExFreePool(IoPort));
+    InsertTailList(&DriverObject->IoPortList, &IoPort->Link);
+    *Cap = IoPort->TreeNode.Cap;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS IopCreateWorkerThread(IN ASYNC_STATE AsyncState,
+                               IN PTHREAD Thread,
+                               IN PIO_WORKER_THREAD_ENTRY WorkerThreadEntry,
+                               OUT HANDLE *WorkerThreadHandle,
+                               OUT MWORD *WorkerThreadNotification)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
+                                         IN PTHREAD Thread,
+                                         IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY ThreadEntry,
+                                         OUT HANDLE *ThreadHandle,
+                                         OUT MWORD *ThreadNotification,
+                                         OUT MWORD *InterruptMutex)
+{
+    UNIMPLEMENTED;
 }

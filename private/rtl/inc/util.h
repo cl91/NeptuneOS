@@ -82,7 +82,9 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
 PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 VOID KeDbgDumpIPCError(IN int Error);
 
+#ifndef DbgTrace
 #define DbgTrace(...) { DbgPrint("%s:  ", __func__); DbgPrint(__VA_ARGS__); }
+#endif
 
 #define RET_ERR_EX(Expr, OnError)					\
     {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\

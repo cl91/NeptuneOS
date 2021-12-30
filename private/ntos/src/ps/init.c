@@ -93,6 +93,9 @@ static VOID PspPopulateUserSharedData()
 
 PKUSER_SHARED_DATA PsGetUserSharedData()
 {
+    if (PspUserSharedDataVad == NULL) {
+	return NULL;
+    }
     return (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
 }
 

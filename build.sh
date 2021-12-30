@@ -188,7 +188,8 @@ else
 fi
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
 BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
-DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys input/kbdclass/kbdclass.sys'
+DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys
+input/kbdclass/kbdclass.sys input/i8042prt/i8042prt.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
 done

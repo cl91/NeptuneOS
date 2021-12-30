@@ -2,6 +2,11 @@
 
 #include <ntos.h>
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#define DbgPrint(...)
+#endif
+
 #define NTOS_OB_TAG	(EX_POOL_TAG('n', 't', 'o', 'b'))
 
 #define ObpAllocatePoolEx(Var, Type, Size, OnError)		\

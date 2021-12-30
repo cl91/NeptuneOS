@@ -164,6 +164,15 @@ NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
+NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN GLOBAL_HANDLE DeviceHandle,
+                              OUT GLOBAL_HANDLE *TopDeviceHandle,
+                              OUT IO_DEVICE_OBJECT_INFO *TopDeviceInfo)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS IoSetDeviceInterfaceState(IN ASYNC_STATE AsyncState,
                                    IN PTHREAD Thread,
                                    IN PCSTR SymbolicLinkName,

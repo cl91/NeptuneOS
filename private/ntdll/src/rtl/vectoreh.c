@@ -145,8 +145,7 @@ static PVOID RtlpAddVectoredHandler(IN ULONG FirstHandler,
 	return NULL;
 
     /* Set it up, encoding the pointer for security */
-    VectoredHandlerEntry->VectoredHandler =
-	RtlEncodePointer(VectoredHandler);
+    VectoredHandlerEntry->VectoredHandler = RtlEncodePointer(VectoredHandler);
     VectoredHandlerEntry->Refs = 1;
 
     /* Lock the list before modifying it */
