@@ -19,6 +19,10 @@ NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
     Timer->Canceled = FALSE;
 }
 
+/*
+ * FIXME: TODO This needs to be moved into a coroutine since
+ * the DPC routine may invoke the IoCallDriverEx routine.
+ */
 static NTAPI VOID IopTimerExpired(IN PVOID Context,
 				  IN ULONG TimerLowValue,
 				  IN LONG TimerHighValue)

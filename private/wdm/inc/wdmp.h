@@ -76,6 +76,9 @@ typedef struct _DRIVER_REINIT_ITEM {
     PVOID Context;
 } DRIVER_REINIT_ITEM, *PDRIVER_REINIT_ITEM;
 
+/*
+ * X86 IO port object
+ */
 typedef struct _X86_IOPORT {
     MWORD Cap;
     LIST_ENTRY Link;
@@ -99,6 +102,73 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IO_WORKITEM {
     BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
 } IO_WORKITEM;
 
+/*
+ * Lightweight mutex, used to synchronize data shared between two driver threads.
+ *
+ * This is used to implement what the Windows driver model calls the "interrupt
+ * spinlock", which protects data structures accessed by both the dispatch routines
+ * and the interrupt service routines. We cannot use a spinlock here since our
+ * drivers runs in a userspace process.
+ */
+typedef struct POINTER_ALIGNMENT _KMUTEX {
+    MWORD Notification;		/* Notification capability */
+    LONG Counter;		/* 0 -- Mutex available.
+				 * >= 1 -- Lock is held. Number indicates
+				 * number of contenting threads. */
+} KMUTEX, *PKMUTEX;
+
+static inline VOID KeInitializeMutex(IN PKMUTEX Mutex,
+				     IN MWORD Cap)
+{
+    assert(Mutex != NULL);
+    Mutex->Notification = Cap;
+    Mutex->Counter = 0;
+}
+
+/*
+ * Acquire the lock. If the lock is free, simply acquire the lock and return.
+ * If the lock has already been acquired by another thread, wait on the notification
+ * object.
+ */
+static inline VOID KeAcquireMutex(IN PKMUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    assert(Mutex->Notification != 0);
+    if (InterlockedIncrement(&Mutex->Counter) != 1) {
+	seL4_Wait(Mutex->Notification, NULL);
+    }
+}
+
+/*
+ * Release the mutex that is previously acquired. Note that you must only call
+ * this function after you have acquired the mutex (KeTryAcquireMutex returns TRUE).
+ * On debug build we assert if this has not been enforced.
+ */
+static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    assert(Mutex->Notification != 0);
+    LONG Counter = InterlockedDecrement(&Mutex->Counter);
+    assert(Counter >= 0);
+    if (Counter >= 1) {
+	seL4_Signal(Mutex->Notification);
+    }
+}
+
+/*
+ * Interrupt object.
+ */
+typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
+    SLIST_ENTRY Entry; /* Must be first, or at least aligned by 8 bytes */
+    KMUTEX Mutex;
+    PKSERVICE_ROUTINE ServiceRoutine;
+    PVOID ServiceContext;
+    ULONG Vector;
+    KIRQL Irql;
+    KIRQL SynchronizeIrql;
+    KINTERRUPT_MODE InterruptMode;
+} KINTERRUPT;
+
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
@@ -113,6 +183,10 @@ extern LIST_ENTRY IopForwardedIrpList;
 extern LIST_ENTRY IopCleanupIrpList;
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
+
+/* isr.c */
+extern SLIST_HEADER IopDpcQueue;
+extern SLIST_HEADER IopInterruptServiceRoutineList;
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;

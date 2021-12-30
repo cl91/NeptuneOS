@@ -39,6 +39,13 @@
     <parameter annotation="out" type="ptr::MWORD" name="WorkerThreadNotification" />
   </svc>
 
+  <svc name="IopCreateInterruptServiceThread">
+    <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="ThreadEntry" />
+    <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
+    <parameter annotation="out" type="ptr::MWORD" name="ThreadNotification" />
+    <parameter annotation="out" type="ptr::MWORD" name="InterruptMutex" />
+  </svc>
+
   <svc name="HalpMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>

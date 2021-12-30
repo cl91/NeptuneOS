@@ -443,15 +443,15 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
  * thread, and since interrupts can arrive at any time, we must protect the access of
  * shared data shared by the interrupt handlers and the main event loop thread.
  *
- * The following data structure, KMUTEX, can be used for protecting the timer queue
- * and expired timer list, since they are accessed by both the timer interrupt handler
+ * The following object, KMUTEX, can be used for protecting the timer queue and the
+ * expired timer list, since they are accessed by both the timer interrupt handler
  * and the main event loop thread. The main job of the timer interrupt handler is to
  * update the timer tick count and traverse the timer queue and see if any of them
  * expired, and move the expired timer object to the expired timer list. Since the
- * main event loop might be modifying the timer queue and expired timer list when
+ * main event loop might be modifying the timer queue and the expired timer list when
  * the timer interrupt is signaled (since timer interrupt thread has a higher priority,
  * it gets to preempt the main event loop thread), without synchronization we would
- * have data corruptions sooner or later.
+ * eventually have data corruptions.
  *
  * Our solution is to use a mutex to protect the relevant timer database, and in the
  * timer interrupt handler we will try to acquire the mutex. If it succeeds then we

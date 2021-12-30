@@ -507,16 +507,12 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 		 * will be the data port...
 		 */
 		if (!FoundDataPort) {
-		    PortDeviceExtension->DataPort =
-			ULongToPtr(ResourceDescriptor->u.Port.Start.u.LowPart);
-		    INFO_(I8042PRT, "Found data port: %p\n",
-			  PortDeviceExtension->DataPort);
+		    PortDeviceExtension->DataPort = ResourceDescriptor->u.Port.Start.u.LowPart;
+		    INFO_(I8042PRT, "Found data port: %p\n", PortDeviceExtension->DataPort);
 		    FoundDataPort = TRUE;
 		} else if (!FoundControlPort) {
-		    PortDeviceExtension->ControlPort =
-			ULongToPtr(ResourceDescriptor->u.Port.Start.u.LowPart);
-		    INFO_(I8042PRT, "Found control port: %p\n",
-			  PortDeviceExtension->ControlPort);
+		    PortDeviceExtension->ControlPort = ResourceDescriptor->u.Port.Start.u.LowPart;
+		    INFO_(I8042PRT, "Found control port: %p\n", PortDeviceExtension->ControlPort);
 		    FoundControlPort = TRUE;
 		} else {
 		    /* FIXME: implement PS/2 Active Multiplexing */

@@ -367,11 +367,4 @@ enum _FLAGS {
 extern ULONG i8042HwFlags;
 #endif
 
-/* We cannot include win32 headers so define ULongToPtr here */
-static inline void *ULongToPtr(const unsigned long ul)
-{
-    return (void*)((ULONG_PTR)ul);
-}
-#define UlongToPtr ULongToPtr
-
 #endif				/* _I8042PRT_PCH_ */
