@@ -18,11 +18,11 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
 			   IN NTSTATUS ExitStatus)
 {
     assert(Thread->Process != NULL);
+    Thread->ExitStatus = ExitStatus;
     /* If the thread to terminate is the main event loop of a driver thread,
-     * set the driver status to error and set the InitializationDone event */
+     * set the InitializationDone event to wake up the thread waiting on NtLoadDriver */
     if (Thread->Process->DriverObject != NULL) {
 	PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
-	DriverObject->EventLoopThreadStatus = ExitStatus;
 	KeSetEvent(&DriverObject->InitializationDoneEvent);
     }
     /* For now we simply suspend the thread */

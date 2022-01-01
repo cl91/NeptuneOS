@@ -24,7 +24,6 @@ typedef struct _IO_DRIVER_OBJECT {
 					 * IopRequestIrp). Therefore this list does NOT in general correspond
 					 * to the IO packets in the driver's in/out IO packet buffer. */
     KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting IO packet */
-    NTSTATUS EventLoopThreadStatus; /* The exit status when the event loop thread terminates */
     KEVENT IoPacketQueuedEvent;	    /* Signaled when an IO packet is queued on the driver object. */
     MWORD IncomingIoPacketsServerAddr; /* IO Request Packets sent to the driver */
     MWORD IncomingIoPacketsClientAddr;

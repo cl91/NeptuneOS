@@ -224,6 +224,18 @@ NTSTATUS KiInitTimer()
     return STATUS_SUCCESS;
 }
 
+ULONGLONG KeQuerySystemTime()
+{
+    ULONGLONG TimerTicks = InterlockedCompareExchange64((PLONG64)&KiTimerTickCount, 0, 0);
+    return KiTimerTickCountToSystemTime(TimerTicks);
+}
+
+ULONGLONG KeQueryInterruptTime()
+{
+    ULONGLONG TimerTicks = InterlockedCompareExchange64((PLONG64)&KiTimerTickCount, 0, 0);
+    return KiTimerTickCountToInterruptTime(TimerTicks);
+}
+
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type)
 {
@@ -256,8 +268,7 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
     ULONGLONG AbsoluteDueTime = DueTime.QuadPart;
     /* If DueTime is negative, it is relative to the current system time */
     if (DueTime.QuadPart < 0) {
-	ULONGLONG TimerTicks = InterlockedCompareExchange64((PLONG64)&KiTimerTickCount, 0, 0);
-	AbsoluteDueTime = -DueTime.QuadPart + KiTimerTickCountToSystemTime(TimerTicks);
+	AbsoluteDueTime = -DueTime.QuadPart + KeQuerySystemTime();
     }
     KiAcquireTimerDatabaseLock();
     Timer->DueTime.QuadPart = AbsoluteDueTime;

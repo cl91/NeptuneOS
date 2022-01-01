@@ -733,6 +733,10 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     Process->InitInfo.ProcessHeapLockSemaphore = (HANDLE) 3;
     Process->InitInfo.LoaderHeapLockSemaphore = (HANDLE) 3;
 
+    /* Generate a per-process security cookie */
+    LARGE_INTEGER SystemTime = { .QuadPart = KeQuerySystemTime() };
+    Process->Cookie = KeQueryInterruptTime() ^ SystemTime.LowPart ^ SystemTime.HighPart;
+
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
 
     return STATUS_SUCCESS;

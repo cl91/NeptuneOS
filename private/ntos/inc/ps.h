@@ -54,6 +54,7 @@ typedef struct _THREAD {
     ASYNC_STACK AsyncStack; /* Stack of asynchronous state, starting from the service handler */
     ULONG SvcNum;	    /* Saved service number */
     BOOLEAN WdmSvc;	    /* Saved service is WDM service */
+    NTSTATUS ExitStatus;    /* Exit status of thread */
     union {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
@@ -85,6 +86,8 @@ typedef struct _PROCESS {
     MWORD LoaderSharedDataServerAddr;
     NTDLL_PROCESS_INIT_INFO InitInfo;
     PIO_DRIVER_OBJECT DriverObject; /* TODO: Mini-driver? */
+    NTSTATUS ExitStatus;	    /* Exit status of process */
+    ULONG Cookie;
 } PROCESS, *PPROCESS;
 
 /*

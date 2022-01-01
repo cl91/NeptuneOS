@@ -601,6 +601,8 @@ ULONG KeX86TscFreq;
 /* timer.c */
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);
+ULONGLONG KeQuerySystemTime();
+ULONGLONG KeQueryInterruptTime();
 
 /* ../tests/tests.c */
 VOID KeRunAllTests();
