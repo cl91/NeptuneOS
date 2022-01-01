@@ -27,8 +27,12 @@ static NTSTATUS SmLoadBootDrivers()
     };
     for (ULONG i = 0; i < ARRAY_LENGTH(DriversToLoad); i++) {
 	SmPrint("Loading driver %s... ", DriversToLoad[i]);
-	RET_ERR_EX(NtLoadDriverA(DriversToLoad[i]), SmPrint("FAIL\n"));
-	SmPrint("OK\n");
+	NTSTATUS Status = NtLoadDriverA(DriversToLoad[i]);
+	if (NT_SUCCESS(Status)) {
+	    SmPrint("OK\n");
+	} else {
+	    SmPrint("FAIL\n");
+	}
     }
     return STATUS_SUCCESS;
 }

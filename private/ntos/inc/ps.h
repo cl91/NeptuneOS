@@ -58,6 +58,11 @@ typedef struct _THREAD {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
     };
+    union {
+	struct {
+	    PIO_DRIVER_OBJECT DriverObject;
+	} NtLoadDriverSavedState;
+    };
 } THREAD, *PTHREAD;
 
 /*
@@ -118,4 +123,5 @@ NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);
 
 /* kill.c */
-NTSTATUS PsTerminateThread(IN PTHREAD Thread);
+NTSTATUS PsTerminateThread(IN PTHREAD Thread,
+    			   IN NTSTATUS ExitStatus);

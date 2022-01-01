@@ -93,7 +93,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN PCSTR DriverServiceName)
 {
-    PIO_DRIVER_OBJECT DriverObject = NULL;
+    PIO_DRIVER_OBJECT DriverObject = Thread->NtLoadDriverSavedState.DriverObject;
 
     ASYNC_BEGIN(State);
 
@@ -105,11 +105,15 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 	return Status;
     }
     assert(DriverObject != NULL);
+    Thread->NtLoadDriverSavedState.DriverObject = DriverObject;
 
-    /* The second time that this function is called, DriverObject is actually NULL here,
-     * but that's fine since the event has been recorded into the thread's root wait block. */
     AWAIT(KeWaitForSingleObject, State, Thread,
 	  &DriverObject->InitializationDoneEvent.Header, FALSE);
+
+    /* If the driver initialization failed, inform the caller of the error status */
+    if (!NT_SUCCESS(DriverObject->EventLoopThreadStatus)) {
+	return DriverObject->EventLoopThreadStatus;
+    }
 
     ASYNC_END(STATUS_SUCCESS);
 }

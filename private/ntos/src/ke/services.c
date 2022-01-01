@@ -301,7 +301,7 @@ VOID KiDispatchExecutiveServices()
 	    }
 	    KiDumpThreadContext(&Context);
 	    HalVgaPrint("==============================================================================\n");
-	    Status = PsTerminateThread(Thread);
+	    Status = PsTerminateThread(Thread, STATUS_UNSUCCESSFUL);
 	    /* This should always succeed. */
 	    assert(NT_SUCCESS(Status));
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_NOTIFICATION) {

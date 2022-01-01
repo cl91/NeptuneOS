@@ -14,8 +14,17 @@ static NTSTATUS PspSuspendThread(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PsTerminateThread(IN PTHREAD Thread)
+NTSTATUS PsTerminateThread(IN PTHREAD Thread,
+			   IN NTSTATUS ExitStatus)
 {
+    assert(Thread->Process != NULL);
+    /* If the thread to terminate is the main event loop of a driver thread,
+     * set the driver status to error and set the InitializationDone event */
+    if (Thread->Process->DriverObject != NULL) {
+	PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+	DriverObject->EventLoopThreadStatus = ExitStatus;
+	KeSetEvent(&DriverObject->InitializationDoneEvent);
+    }
     /* For now we simply suspend the thread */
     return PspSuspendThread(Thread);
 }
@@ -25,11 +34,20 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
                            IN HANDLE ThreadHandle,
                            IN NTSTATUS ExitStatus)
 {
+    PTHREAD ThreadToTerminate = NULL;
     if (ThreadHandle == NtCurrentThread()) {
-	PspSuspendThread(Thread);
+	ThreadToTerminate = Thread;
+    } else {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ThreadHandle,
+					  OBJECT_TYPE_THREAD, (POBJECT *) &ThreadToTerminate));
+    }
+    assert(ThreadToTerminate != NULL);
+    PsTerminateThread(ThreadToTerminate, ExitStatus);
+    /* If the current thread is terminating, do not reply to it */
+    if (ThreadHandle == NtCurrentThread()) {
 	return STATUS_NTOS_NO_REPLY;
     }
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
