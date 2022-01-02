@@ -14,13 +14,13 @@
 #include <stddef.h>
 
 #ifdef	__cplusplus
-extern	"C"	{
+extern "C" {
 #endif
 
 typedef struct {
-	intmax_t quot;
-	intmax_t rem;
-	} imaxdiv_t;
+    intmax_t quot;
+    intmax_t rem;
+} imaxdiv_t;
 
 #if !defined(__cplusplus) || defined(__STDC_FORMAT_MACROS)
 
