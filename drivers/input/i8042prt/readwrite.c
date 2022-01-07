@@ -75,7 +75,7 @@ NTSTATUS i8042ReadData(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 NTSTATUS i8042ReadStatus(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 			 OUT PUCHAR Status)
 {
-    ASSERT(DeviceExtension->ControlPort != NULL);
+    ASSERT(DeviceExtension->ControlPort != 0);
     *Status = READ_PORT_UCHAR(DeviceExtension->ControlPort);
     return STATUS_SUCCESS;
 }
@@ -180,7 +180,7 @@ BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     ULONG Counter;
 
     ASSERT(addr);
-    ASSERT(DeviceExtension->ControlPort != NULL);
+    ASSERT(DeviceExtension->ControlPort != 0);
 
     Counter = DeviceExtension->Settings.PollingIterations;
 
@@ -190,7 +190,7 @@ BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 
     if (Counter) {
 	WRITE_PORT_UCHAR(addr, data);
-	INFO_(I8042PRT, "Sent 0x%x to port %p\n", data, addr);
+	INFO_(I8042PRT, "Sent 0x%x to port 0x%x\n", data, addr);
 	return TRUE;
     }
     return FALSE;

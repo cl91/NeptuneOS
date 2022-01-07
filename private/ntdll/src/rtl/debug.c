@@ -9,25 +9,48 @@
 
 #ifdef CONFIG_DEBUG_BUILD
 
-VOID vDbgPrint(PCSTR Format, va_list args)
+VOID vDbgPrint(IN PCSTR Format, IN va_list args)
 {
     char buf[512];
     vsnprintf(buf, sizeof(buf), Format, args);
     seL4_DebugPutString(buf);
 }
 
-VOID DbgPrint(PCSTR Format, ...)
+ULONG DbgPrint(IN PCSTR Format, ...)
 {
     va_list arglist;
     va_start(arglist, Format);
     vDbgPrint(Format, arglist);
     va_end(arglist);
+    return 0;
+}
+
+ULONG DbgPrintEx(IN ULONG ComponentId,
+		 IN ULONG Level,
+		 IN PCSTR Format, ...)
+{
+    va_list arglist;
+    va_start(arglist, Format);
+    vDbgPrint(Format, arglist);
+    va_end(arglist);
+    return 0;
 }
 
 VOID _assert(PCSTR str, PCSTR file, unsigned int line)
 {
     DbgPrint("Assertion %s failed at line %d of file %s\n",
 	     str, line, file);
+    /* Loop forever */
+    while (1);
+}
+
+NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
+		     IN PVOID FileName,
+		     IN ULONG LineNumber,
+		     IN OPTIONAL PCHAR Message)
+{
+    DbgPrint("Assertion %s failed at line %d of file %s: %s\n",
+	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
     /* Loop forever */
     while (1);
 }
@@ -39,7 +62,24 @@ VOID vDbgPrint(PCSTR Format, va_list args)
     /* DO nothing */
 }
 
-VOID DbgPrint(PCSTR Format, ...)
+ULONG DbgPrint(PCSTR Format, ...)
+{
+    /* Do nothing */
+    return 0;
+}
+
+ULONG DbgPrintEx(IN ULONG ComponentId,
+		 IN ULONG Level,
+		 IN PCSTR Format, ...)
+{
+    /* Do nothing */
+    return 0;
+}
+
+NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
+		     IN PVOID FileName,
+		     IN ULONG LineNumber,
+		     IN OPTIONAL PCHAR Message)
 {
     /* Do nothing */
 }

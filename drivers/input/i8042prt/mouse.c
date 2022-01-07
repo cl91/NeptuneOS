@@ -165,7 +165,7 @@ i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension, IN UCHAR Output)
 	break;
 
     default:
-	ERR_(I8042PRT, "Unexpected state 0x%lx!\n",
+	ERR_(I8042PRT, "Unexpected state 0x%x!\n",
 	     DeviceExtension->MouseState);
 	ASSERT(FALSE);
     }
@@ -233,7 +233,7 @@ NTSTATUS i8042MouInitialize(IN PI8042_MOUSE_EXTENSION DeviceExtension)
 			  &Value);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
-	      "Failed to read the response of MOU_ENAB, status 0x%08lx\n",
+	      "Failed to read the response of MOU_ENAB, status 0x%08x\n",
 	      Status);
 	return Status;
     }
@@ -301,39 +301,32 @@ i8042MouDpcRoutine(IN PKDPC Dpc,
     if (!DeviceExtension->MouseComplete)
 	return;
 
-    Irql =
-	KeAcquireInterruptSpinLock(PortDeviceExtension->
-				   HighestDIRQLInterrupt);
+    Irql = KeAcquireInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt);
 
     DeviceExtension->MouseComplete = FALSE;
     MouseInBufferCopy = DeviceExtension->MouseInBuffer;
 
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt,
-			       Irql);
+    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt, Irql);
 
     TRACE_(I8042PRT, "Send a mouse packet\n");
 
     if (!DeviceExtension->MouseData.ClassService)
 	return;
 
-    INFO_(I8042PRT, "Sending %lu mouse move(s)\n", MouseInBufferCopy);
-    (*(PSERVICE_CALLBACK_ROUTINE) DeviceExtension->MouseData.
-     ClassService) (DeviceExtension->MouseData.ClassDeviceObject,
-		    DeviceExtension->MouseBuffer,
-		    DeviceExtension->MouseBuffer + MouseInBufferCopy,
-		    &MouseTransferred);
+    INFO_(I8042PRT, "Sending %u mouse move(s)\n", MouseInBufferCopy);
+    (*(PSERVICE_CALLBACK_ROUTINE)DeviceExtension->MouseData.ClassService)(
+	DeviceExtension->MouseData.ClassDeviceObject,
+	DeviceExtension->MouseBuffer,
+	DeviceExtension->MouseBuffer + MouseInBufferCopy,
+	&MouseTransferred);
 
-    Irql =
-	KeAcquireInterruptSpinLock(PortDeviceExtension->
-				   HighestDIRQLInterrupt);
+    Irql = KeAcquireInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt);
     DeviceExtension->MouseInBuffer -= MouseTransferred;
     if (DeviceExtension->MouseInBuffer)
 	RtlMoveMemory(DeviceExtension->MouseBuffer,
 		      DeviceExtension->MouseBuffer + MouseTransferred,
-		      DeviceExtension->MouseInBuffer *
-		      sizeof(MOUSE_INPUT_DATA));
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt,
-			       Irql);
+		      DeviceExtension->MouseInBuffer * sizeof(MOUSE_INPUT_DATA));
+    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt, Irql);
 }
 
 /* This timer DPC will be called when the mouse reset times out.
@@ -530,7 +523,7 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     default:
     {
 	ERR_(I8042PRT,
-	     "IRP_MJ_INTERNAL_DEVICE_CONTROL / unknown ioctl code 0x%lx\n",
+	     "IRP_MJ_INTERNAL_DEVICE_CONTROL / unknown ioctl code 0x%x\n",
 	     Stack->Parameters.DeviceIoControl.IoControlCode);
 	ASSERT(FALSE);
 	return ForwardIrpAndForget(DeviceObject, Irp);
@@ -885,7 +878,7 @@ i8042MouResetIsr(IN PI8042_MOUSE_EXTENSION DeviceExtension,
 						(PortDeviceExtension->
 						 Settings.
 						 MouseResolution & 0xff));
-	INFO_(I8042PRT, "Mouse resolution %lu\n",
+	INFO_(I8042PRT, "Mouse resolution %u\n",
 	      PortDeviceExtension->Settings.MouseResolution);
 	DeviceExtension->MouseResetState =
 	    ExpectingFinalResolutionValueACK;
@@ -904,7 +897,7 @@ i8042MouResetIsr(IN PI8042_MOUSE_EXTENSION DeviceExtension,
     default:
 	if (DeviceExtension->MouseResetState < 100
 	    || DeviceExtension->MouseResetState > 999)
-	    ERR_(I8042PRT, "MouseResetState went out of range: %lu\n",
+	    ERR_(I8042PRT, "MouseResetState went out of range: %u\n",
 		 DeviceExtension->MouseResetState);
 	return FALSE;
     }
@@ -930,7 +923,7 @@ i8042MouInterruptService(IN PKINTERRUPT Interrupt, PVOID Context)
 	Status = i8042ReadStatus(PortDeviceExtension, &PortStatus);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(I8042PRT,
-		  "i8042ReadStatus() failed with status 0x%08lx\n",
+		  "i8042ReadStatus() failed with status 0x%08x\n",
 		  Status);
 	    return FALSE;
 	}

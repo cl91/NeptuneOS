@@ -14,16 +14,18 @@
 
 #pragma once
 
+#include <dpfilter.h>
+
 #ifndef _NTURTL_H_
 
 __cdecl ULONG DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
-NTSYSAPI __cdecl ULONG DbgPrintEx(IN ULONG ComponentId,
+__cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
 				  IN ULONG Level,
 				  IN PCSTR Format,
 				  ...) __attribute__ ((format(printf, 3, 4)));
 
-NTSYSAPI NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
+NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 			      IN PVOID FileName,
 			      IN ULONG LineNumber,
 			      IN OPTIONAL PCHAR Message);

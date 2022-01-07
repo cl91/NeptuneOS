@@ -2196,11 +2196,14 @@ NTAPI NTSTATUS RtlDuplicateUnicodeString(IN ULONG Flags,
 
 	DestinationString->Buffer = RtlpAllocateStringMemory(DestMaxLength, TAG_USTR);
 
-	if (DestinationString->Buffer == NULL)
+	if (DestinationString->Buffer == NULL) {
 	    return STATUS_NO_MEMORY;
+	}
 
-	RtlCopyMemory(DestinationString->Buffer, SourceString->Buffer,
-		      SourceString->Length);
+	if (SourceString->Buffer && SourceString->Length) {
+	    RtlCopyMemory(DestinationString->Buffer, SourceString->Buffer,
+			  SourceString->Length);
+	}
 	DestinationString->Length = SourceString->Length;
 	DestinationString->MaximumLength = DestMaxLength;
 

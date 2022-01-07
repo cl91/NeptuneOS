@@ -40,7 +40,9 @@ static NTSTATUS IopCallDriverEntry()
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
     RET_ERR(LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress, &LdrDriverImage));
     PVOID DriverEntry = LdrDriverImage->EntryPoint;
-    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, NULL));
+    /* TODO: Fill out registry path from loader information */
+    UNICODE_STRING RegistryPath = { .Buffer = NULL, .Length = 0, .MaximumLength = 0 };
+    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, &RegistryPath));
     return STATUS_SUCCESS;
 }
 

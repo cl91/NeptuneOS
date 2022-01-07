@@ -186,7 +186,7 @@ static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     }
     default:
 	WARN_(CLASS_NAME,
-	      "IRP_MJ_DEVICE_CONTROL / unknown I/O control code 0x%lx\n",
+	      "IRP_MJ_DEVICE_CONTROL / unknown I/O control code 0x%x\n",
 	      IoGetCurrentIrpStackLocation(Irp)->Parameters.
 	      DeviceIoControl.IoControlCode);
 	ASSERT(FALSE);
@@ -330,7 +330,7 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
     }
     Status = RtlAppendUnicodeToString(&DeviceNameU, L"\\Device\\");
     if (!NT_SUCCESS(Status)) {
-	WARN_(CLASS_NAME, "RtlAppendUnicodeToString() failed with status 0x%08lx\n",
+	WARN_(CLASS_NAME, "RtlAppendUnicodeToString() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -338,7 +338,7 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
 					    &DriverExtension->DeviceBaseName);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "RtlAppendUnicodeStringToString() failed with status 0x%08lx\n",
+	      "RtlAppendUnicodeStringToString() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -353,7 +353,7 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
 	    goto cleanup;
 	else if (Status != STATUS_OBJECT_NAME_COLLISION) {
 	    WARN_(CLASS_NAME,
-		  "IoCreateDevice() failed with status 0x%08lx\n", Status);
+		  "IoCreateDevice() failed with status 0x%08x\n", Status);
 	    goto cleanup;
 	}
 	DeviceId++;
@@ -562,7 +562,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 			    Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ? FILE_DEVICE_SECURE_OPEN : 0,
 			    FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
-	WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08lx\n", Status);
+	WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08x\n", Status);
 	goto cleanup;
     }
     IoSetStartIoAttributes(Fdo, TRUE, TRUE);
@@ -576,7 +576,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 					     &DeviceExtension->LowerDevice);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "IoAttachDeviceToDeviceStackSafe() failed with status 0x%08lx\n",
+	      "IoAttachDeviceToDeviceStackSafe() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -595,7 +595,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 					 &DeviceExtension->ClassDO);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(CLASS_NAME,
-		  "CreateClassDeviceObject() failed with status 0x%08lx\n",
+		  "CreateClassDeviceObject() failed with status 0x%08x\n",
 		  Status);
 	    goto cleanup;
 	}
@@ -603,7 +603,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
     Status = ConnectPortDriver(Fdo, DeviceExtension->ClassDO);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "ConnectPortDriver() failed with status 0x%08lx\n", Status);
+	      "ConnectPortDriver() failed with status 0x%08x\n", Status);
 	goto cleanup;
     }
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
@@ -795,7 +795,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
     ULONG Size, ResultLength;
     NTSTATUS Status;
 
-    TRACE_(CLASS_NAME, "SearchForLegacyDrivers(%p %p %lu)\n",
+    TRACE_(CLASS_NAME, "SearchForLegacyDrivers(%p %p %u)\n",
 	   DriverObject, Context, Count);
 
     if (Count != 1)
@@ -808,7 +808,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 				       &PortBaseName);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "RtlDuplicateUnicodeString() failed with status 0x%08lx\n",
+	      "RtlDuplicateUnicodeString() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -834,7 +834,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 	Status = STATUS_SUCCESS;
 	goto cleanup;
     } else if (!NT_SUCCESS(Status)) {
-	WARN_(CLASS_NAME, "NtOpenKey() failed with status 0x%08lx\n",
+	WARN_(CLASS_NAME, "NtOpenKey() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -851,7 +851,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 	Status = STATUS_SUCCESS;
 	goto cleanup;
     } else if (!NT_SUCCESS(Status)) {
-	WARN_(CLASS_NAME, "NtOpenKey() failed with status 0x%08lx\n",
+	WARN_(CLASS_NAME, "NtOpenKey() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -871,7 +871,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 					  &FileObject, &PortDeviceObject);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(CLASS_NAME,
-		  "IoGetDeviceObjectPointer(%wZ) failed with status 0x%08lx\n",
+		  "IoGetDeviceObjectPointer(%wZ) failed with status 0x%08x\n",
 		  &PortName, Status);
 	    continue;
 	}
@@ -881,7 +881,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 	if (!NT_SUCCESS(Status)) {
 	    /* FIXME: Log the error */
 	    WARN_(CLASS_NAME,
-		  "ClassAddDevice() failed with status 0x%08lx\n", Status);
+		  "ClassAddDevice() failed with status 0x%08x\n", Status);
 	}
     }
 
@@ -909,7 +909,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 					     (PVOID *) &DriverExtension);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "IoAllocateDriverObjectExtension() failed with status 0x%08lx\n",
+	      "IoAllocateDriverObjectExtension() failed with status 0x%08x\n",
 	      Status);
 	return Status;
     }
@@ -919,7 +919,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 				       RegistryPath, &DriverExtension->RegistryPath);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "RtlDuplicateUnicodeString() failed with status 0x%08lx\n",
+	      "RtlDuplicateUnicodeString() failed with status 0x%08x\n",
 	      Status);
 	return Status;
     }
@@ -927,7 +927,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     Status = ReadRegistryEntries(RegistryPath, DriverExtension);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
-	      "ReadRegistryEntries() failed with status 0x%08lx\n",
+	      "ReadRegistryEntries() failed with status 0x%08x\n",
 	      Status);
 	return Status;
     }
@@ -937,7 +937,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 					 &DriverExtension->MainClassDeviceObject);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(CLASS_NAME,
-		  "CreateClassDeviceObject() failed with status 0x%08lx\n",
+		  "CreateClassDeviceObject() failed with status 0x%08x\n",
 		  Status);
 	    return Status;
 	}

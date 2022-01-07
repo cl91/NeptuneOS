@@ -37,6 +37,8 @@
 @ stdcall LdrGetProcedureAddress(ptr ptr long ptr)
 @ stdcall LdrFindEntryForAddress(ptr ptr)
 @ varargs DbgPrint(str)
+@ varargs DbgPrintEx(long long str)
+@ stdcall RtlAssert(ptr ptr long ptr)
 @ stdcall RtlCompareMemory(ptr ptr long)
 @ stdcall RtlCompareMemoryUlong(ptr long long)
 @ stdcall RtlFillMemory(ptr long long)

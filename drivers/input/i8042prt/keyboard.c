@@ -112,7 +112,7 @@ NTAPI VOID i8042KbdStartIo(IN PDEVICE_OBJECT DeviceObject,
     }
     default:
     {
-	ERR_(I8042PRT, "Unknown ioctl code 0x%lx\n",
+	ERR_(I8042PRT, "Unknown ioctl code 0x%x\n",
 	     Stack->Parameters.DeviceIoControl.IoControlCode);
 	ASSERT(FALSE);
     }
@@ -187,7 +187,7 @@ static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
 	    if (!NT_SUCCESS(Status)) {
 		/* We can't do more yet, ignore the keypress... */
 		WARN_(I8042PRT,
-		      "IoRegisterDeviceInterface(GUID_DEVICE_SYS_BUTTON) failed with status 0x%08lx\n",
+		      "IoRegisterDeviceInterface(GUID_DEVICE_SYS_BUTTON) failed with status 0x%08x\n",
 		      Status);
 		DeviceExtension->PowerInterfaceName.MaximumLength = 0;
 		return;
@@ -198,7 +198,7 @@ static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
 	    if (!NT_SUCCESS(Status)) {
 		/* Ignore the key press... */
 		WARN_(I8042PRT,
-		      "Disabling interface %wZ failed with status 0x%08lx\n",
+		      "Disabling interface %wZ failed with status 0x%08x\n",
 		      &DeviceExtension->PowerInterfaceName, Status);
 		return;
 	    }
@@ -209,7 +209,7 @@ static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
 	if (!NT_SUCCESS(Status)) {
 	    /* Ignore the key press... */
 	    WARN_(I8042PRT,
-		  "Enabling interface %wZ failed with status 0x%08lx\n",
+		  "Enabling interface %wZ failed with status 0x%08x\n",
 		  &DeviceExtension->PowerInterfaceName, Status);
 	    return;
 	}
@@ -309,22 +309,16 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
     if (!DeviceExtension->KeyboardData.ClassService)
 	return;
 
-    INFO_(I8042PRT, "Sending %lu key(s)\n", KeysInBufferCopy);
+    INFO_(I8042PRT, "Sending %u key(s)\n", KeysInBufferCopy);
     (*(PSERVICE_CALLBACK_ROUTINE)DeviceExtension->KeyboardData.ClassService)(
 	DeviceExtension->KeyboardData.ClassDeviceObject,
 	DeviceExtension->KeyboardBuffer,
 	DeviceExtension->KeyboardBuffer + KeysInBufferCopy,
 	&KeysTransferred);
 
-    /* Validate that the callback didn't change the Irql. */
-    ASSERT(KeGetCurrentIrql() == Irql);
-
-    Irql =
-	KeAcquireInterruptSpinLock(PortDeviceExtension->
-				   HighestDIRQLInterrupt);
+    Irql = KeAcquireInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt);
     DeviceExtension->KeysInBuffer -= KeysTransferred;
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt,
-			       Irql);
+    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt, Irql);
 }
 
 /*
@@ -408,7 +402,7 @@ NTAPI NTSTATUS i8042KbdDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     default:
     {
 	ERR_(I8042PRT,
-	     "IRP_MJ_DEVICE_CONTROL / unknown ioctl code 0x%lx\n",
+	     "IRP_MJ_DEVICE_CONTROL / unknown ioctl code 0x%x\n",
 	     Stack->Parameters.DeviceIoControl.IoControlCode);
 	return ForwardIrpAndForget(DeviceObject, Irp);
     }
@@ -666,7 +660,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     default:
     {
 	ERR_(I8042PRT,
-	     "IRP_MJ_INTERNAL_DEVICE_CONTROL / unknown ioctl code 0x%lx\n",
+	     "IRP_MJ_INTERNAL_DEVICE_CONTROL / unknown ioctl code 0x%x\n",
 	     Stack->Parameters.DeviceIoControl.IoControlCode);
 	ASSERT(FALSE);
 	return ForwardIrpAndForget(DeviceObject, Irp);
@@ -735,7 +729,7 @@ NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
 	Status = i8042ReadStatus(PortDeviceExtension, &PortStatus);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(I8042PRT,
-		  "i8042ReadStatus() failed with status 0x%08lx\n",
+		  "i8042ReadStatus() failed with status 0x%08x\n",
 		  Status);
 	    return FALSE;
 	}

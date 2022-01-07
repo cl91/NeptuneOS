@@ -206,33 +206,33 @@ NTSTATUS ReadRegistryEntries(IN PUNICODE_STRING RegistryPath,
     }
 
     if (NT_SUCCESS(Status)) {
-	INFO_(I8042PRT, "KeyboardDataQueueSize : 0x%lx\n",
+	INFO_(I8042PRT, "KeyboardDataQueueSize : 0x%x\n",
 	      Settings->KeyboardDataQueueSize);
 	INFO_(I8042PRT, "KeyboardDeviceBaseName : %wZ\n",
 	      &Settings->KeyboardDeviceBaseName);
-	INFO_(I8042PRT, "MouseDataQueueSize : 0x%lx\n",
+	INFO_(I8042PRT, "MouseDataQueueSize : 0x%x\n",
 	      Settings->MouseDataQueueSize);
-	INFO_(I8042PRT, "MouseResolution : 0x%lx\n",
+	INFO_(I8042PRT, "MouseResolution : 0x%x\n",
 	      Settings->MouseResolution);
-	INFO_(I8042PRT, "MouseSynchIn100ns : %lu\n",
+	INFO_(I8042PRT, "MouseSynchIn100ns : %u\n",
 	      Settings->MouseSynchIn100ns);
-	INFO_(I8042PRT, "NumberOfButtons : 0x%lx\n",
+	INFO_(I8042PRT, "NumberOfButtons : 0x%x\n",
 	      Settings->NumberOfButtons);
 	INFO_(I8042PRT, "PointerDeviceBaseName : %wZ\n",
 	      &Settings->PointerDeviceBaseName);
-	INFO_(I8042PRT, "PollStatusIterations : 0x%lx\n",
+	INFO_(I8042PRT, "PollStatusIterations : 0x%x\n",
 	      Settings->PollStatusIterations);
-	INFO_(I8042PRT, "OverrideKeyboardType : 0x%lx\n",
+	INFO_(I8042PRT, "OverrideKeyboardType : 0x%x\n",
 	      Settings->OverrideKeyboardType);
-	INFO_(I8042PRT, "OverrideKeyboardSubtype : 0x%lx\n",
+	INFO_(I8042PRT, "OverrideKeyboardSubtype : 0x%x\n",
 	      Settings->OverrideKeyboardSubtype);
-	INFO_(I8042PRT, "PollingIterations : 0x%lx\n",
+	INFO_(I8042PRT, "PollingIterations : 0x%x\n",
 	      Settings->PollingIterations);
-	INFO_(I8042PRT, "PollingIterationsMaximum : %lu\n",
+	INFO_(I8042PRT, "PollingIterationsMaximum : %u\n",
 	      Settings->PollingIterationsMaximum);
-	INFO_(I8042PRT, "ResendIterations : 0x%lx\n",
+	INFO_(I8042PRT, "ResendIterations : 0x%x\n",
 	      Settings->ResendIterations);
-	INFO_(I8042PRT, "SampleRate : %lu\n", Settings->SampleRate);
+	INFO_(I8042PRT, "SampleRate : %u\n", Settings->SampleRate);
     }
 
     return Status;

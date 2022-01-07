@@ -71,7 +71,7 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 			    Pdo->DeviceType, FILE_DEVICE_SECURE_OPEN, TRUE,
 			    &Fdo);
     if (!NT_SUCCESS(Status)) {
-	WARN_(I8042PRT, "IoCreateDevice() failed with status 0x%08lx\n",
+	WARN_(I8042PRT, "IoCreateDevice() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -86,7 +86,7 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 					     &DeviceExtension->LowerDevice);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
-	      "IoAttachDeviceToDeviceStackSafe() failed with status 0x%08lx\n",
+	      "IoAttachDeviceToDeviceStackSafe() failed with status 0x%08x\n",
 	      Status);
 	goto cleanup;
     }
@@ -172,7 +172,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
 		i8042SynchReadPort, i8042SynchWritePortKbd, FALSE);
 	    if (!NT_SUCCESS(Status)) {
 		WARN_(I8042PRT,
-		      "KeyboardHook.InitializationRoutine() failed with status 0x%08lx\n",
+		      "KeyboardHook.InitializationRoutine() failed with status 0x%08x\n",
 		      Status);
 		WorkItemData->Irp->IoStatus.Status = Status;
 		goto cleanup;
@@ -374,7 +374,7 @@ static NTAPI NTSTATUS i8042InternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    Status = i8042MouInternalDeviceControl(DeviceObject, Irp);
 	    break;
 	default:
-	    ERR_(I8042PRT, "Unknown IO control code 0x%lx\n", ControlCode);
+	    ERR_(I8042PRT, "Unknown IO control code 0x%x\n", ControlCode);
 	    ASSERT(FALSE);
 	    Status = STATUS_INVALID_DEVICE_REQUEST;
 	    break;
@@ -425,7 +425,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 						      (PVOID *) &DriverExtension);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
-	      "IoAllocateDriverObjectExtension() failed with status 0x%08lx\n",
+	      "IoAllocateDriverObjectExtension() failed with status 0x%08x\n",
 	      Status);
 	return Status;
     }
@@ -437,7 +437,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 				       &DriverExtension->RegistryPath);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
-	      "DuplicateUnicodeString() failed with status 0x%08lx\n",
+	      "DuplicateUnicodeString() failed with status 0x%08x\n",
 	      Status);
 	return Status;
     }
@@ -446,7 +446,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 				 &DriverExtension->Port.Settings);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
-	      "ReadRegistryEntries() failed with status 0x%08lx\n",
+	      "ReadRegistryEntries() failed with status 0x%08x\n",
 	      Status);
 	return Status;
     }

@@ -1263,7 +1263,17 @@ FORCEINLINE BOOLEAN RtlCheckBit(IN PRTL_BITMAP BitMapHeader,
  * Debug functions
  */
 NTAPI NTSYSAPI VOID DbgBreakPoint(VOID);
-VOID DbgPrint(IN PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
+
+__cdecl NTSYSAPI ULONG DbgPrint(IN PCSTR Format, ...) __attribute__((format(printf, 1, 2)));
+
+__cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
+				  IN ULONG Level,
+				  IN PCSTR Format, ...) __attribute__((format(printf, 3, 4)));
+
+NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
+			      IN PVOID FileName,
+			      IN ULONG LineNumber,
+			      IN OPTIONAL PCHAR Message);
 
 /*
  * Heap Functions

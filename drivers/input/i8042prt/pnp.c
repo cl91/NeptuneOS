@@ -93,7 +93,7 @@ static NTSTATUS i8042BasicDetect(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	Status = i8042ReadDataWait(DeviceExtension, &Value);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(I8042PRT,
-		  "Failed to read CTRL_SELF_TEST response, status 0x%08lx\n",
+		  "Failed to read CTRL_SELF_TEST response, status 0x%08x\n",
 		  Status);
 	    return Status;
 	}
@@ -123,11 +123,11 @@ static VOID i8042DetectKeyboard(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     if (NT_SUCCESS(Status)) {
 	Status = i8042SynchWritePort(DeviceExtension, 0, 0, TRUE);
 	if (!NT_SUCCESS(Status)) {
-	    WARN_(I8042PRT, "Can't finish SET_LEDS (0x%08lx)\n", Status);
+	    WARN_(I8042PRT, "Can't finish SET_LEDS (0x%08x)\n", Status);
 	    return;
 	}
     } else {
-	WARN_(I8042PRT, "Warning: can't write SET_LEDS (0x%08lx)\n",
+	WARN_(I8042PRT, "Warning: can't write SET_LEDS (0x%08x)\n",
 	      Status);
     }
 
@@ -198,7 +198,7 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	} while (Status == STATUS_IO_TIMEOUT && Counter--);
 
 	if (!NT_SUCCESS(Status)) {
-	    WARN_(I8042PRT, "No ACK after mouse reset, status 0x%08lx\n",
+	    WARN_(I8042PRT, "No ACK after mouse reset, status 0x%08x\n",
 		  Status);
 	    goto failure;
 	} else if (Value != ExpectedReply[ReplyByte]) {
@@ -214,7 +214,7 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
-	      "Last byte was not transmitted after mouse reset, status 0x%08lx\n",
+	      "Last byte was not transmitted after mouse reset, status 0x%08x\n",
 	      Status);
 	goto failure;
     } else if (Value != 0x00) {
@@ -255,18 +255,17 @@ static NTSTATUS i8042ConnectKeyboardInterrupt(IN PI8042_KEYBOARD_EXTENSION Devic
     KIRQL DirqlMax = MAX(PortDeviceExtension->KeyboardInterrupt.Dirql,
 			 PortDeviceExtension->MouseInterrupt.Dirql);
 
-    INFO_(I8042PRT, "KeyboardInterrupt.Vector         %lu\n",
+    INFO_(I8042PRT, "KeyboardInterrupt.Vector         %u\n",
 	  PortDeviceExtension->KeyboardInterrupt.Vector);
-    INFO_(I8042PRT, "KeyboardInterrupt.Dirql          %lu\n",
+    INFO_(I8042PRT, "KeyboardInterrupt.Dirql          %u\n",
 	  PortDeviceExtension->KeyboardInterrupt.Dirql);
-    INFO_(I8042PRT, "KeyboardInterrupt.DirqlMax       %lu\n", DirqlMax);
+    INFO_(I8042PRT, "KeyboardInterrupt.DirqlMax       %u\n", DirqlMax);
     INFO_(I8042PRT, "KeyboardInterrupt.InterruptMode  %s\n",
-	  PortDeviceExtension->KeyboardInterrupt.InterruptMode ==
-	  LevelSensitive ? "LevelSensitive" : "Latched");
+	  PortDeviceExtension->KeyboardInterrupt.InterruptMode == LevelSensitive
+	  ? "LevelSensitive" : "Latched");
     INFO_(I8042PRT, "KeyboardInterrupt.ShareInterrupt %s\n",
-	  PortDeviceExtension->KeyboardInterrupt.
-	  ShareInterrupt ? "yes" : "no");
-    INFO_(I8042PRT, "KeyboardInterrupt.Affinity       0x%lx\n",
+	  PortDeviceExtension->KeyboardInterrupt.ShareInterrupt ? "yes" : "no");
+    INFO_(I8042PRT, "KeyboardInterrupt.Affinity       0x%zx\n",
 	  PortDeviceExtension->KeyboardInterrupt.Affinity);
     Status = IoConnectInterrupt(&PortDeviceExtension->KeyboardInterrupt.Object,
 				i8042KbdInterruptService,
@@ -302,16 +301,17 @@ static NTSTATUS i8042ConnectMouseInterrupt(IN PI8042_MOUSE_EXTENSION DeviceExten
     KIRQL DirqlMax = MAX(PortDeviceExtension->KeyboardInterrupt.Dirql,
 			 PortDeviceExtension->MouseInterrupt.Dirql);
 
-    INFO_(I8042PRT, "MouseInterrupt.Vector         %lu\n",
+    INFO_(I8042PRT, "MouseInterrupt.Vector         %u\n",
 	  PortDeviceExtension->MouseInterrupt.Vector);
-    INFO_(I8042PRT, "MouseInterrupt.Dirql          %lu\n",
+    INFO_(I8042PRT, "MouseInterrupt.Dirql          %u\n",
 	  PortDeviceExtension->MouseInterrupt.Dirql);
-    INFO_(I8042PRT, "MouseInterrupt.DirqlMax       %lu\n", DirqlMax);
+    INFO_(I8042PRT, "MouseInterrupt.DirqlMax       %u\n", DirqlMax);
     INFO_(I8042PRT, "MouseInterrupt.InterruptMode  %s\n",
-	  PortDeviceExtension->MouseInterrupt.InterruptMode == LevelSensitive ? "LevelSensitive" : "Latched");
+	  PortDeviceExtension->MouseInterrupt.InterruptMode == LevelSensitive
+	  ? "LevelSensitive" : "Latched");
     INFO_(I8042PRT, "MouseInterrupt.ShareInterrupt %s\n",
 	  PortDeviceExtension->MouseInterrupt.ShareInterrupt ? "yes" : "no");
-    INFO_(I8042PRT, "MouseInterrupt.Affinity       0x%lx\n",
+    INFO_(I8042PRT, "MouseInterrupt.Affinity       0x%zx\n",
 	  PortDeviceExtension->MouseInterrupt.Affinity);
     Status = IoConnectInterrupt(&PortDeviceExtension->MouseInterrupt.Object,
 				i8042MouInterruptService,
@@ -376,13 +376,14 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	Status = i8042BasicDetect(DeviceExtension);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(I8042PRT,
-		  "i8042BasicDetect() failed with status 0x%08lx\n",
+		  "i8042BasicDetect() failed with status 0x%08x\n",
 		  Status);
 	    return STATUS_UNSUCCESSFUL;
 	}
 
 	/* First detect the mouse and then the keyboard!
-	   If we do it the other way round, some systems throw away settings like the keyboard translation, when detecting the mouse. */
+	 * If we do it the other way round, some systems throw away settings
+	 * like the keyboard translation, when detecting the mouse. */
 	TRACE_(I8042PRT, "Detecting mouse\n");
 	i8042DetectMouse(DeviceExtension);
 	TRACE_(I8042PRT, "Detecting keyboard\n");
@@ -405,7 +406,7 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 
 	Status = EnableInterrupts(DeviceExtension, FlagsToDisable, FlagsToEnable);
 	if (!NT_SUCCESS(Status)) {
-	    WARN_(I8042PRT, "EnableInterrupts failed: %lx\n", Status);
+	    WARN_(I8042PRT, "EnableInterrupts failed: %x\n", Status);
 	    DeviceExtension->Flags &= ~(KEYBOARD_PRESENT | MOUSE_PRESENT);
 	    return Status;
 	}
@@ -421,7 +422,7 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	if (NT_SUCCESS(Status)) {
 	    DeviceExtension->Flags |= KEYBOARD_INITIALIZED;
 	} else {
-	    WARN_(I8042PRT, "i8042ConnectKeyboardInterrupt failed: %lx\n",
+	    WARN_(I8042PRT, "i8042ConnectKeyboardInterrupt failed: %x\n",
 		  Status);
 	}
     }
@@ -435,7 +436,7 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	if (NT_SUCCESS(Status)) {
 	    DeviceExtension->Flags |= MOUSE_INITIALIZED;
 	} else {
-	    WARN_(I8042PRT, "i8042ConnectMouseInterrupt failed: %lx\n",
+	    WARN_(I8042PRT, "i8042ConnectMouseInterrupt failed: %x\n",
 		  Status);
 	}
 
@@ -508,20 +509,20 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 		 */
 		if (!FoundDataPort) {
 		    PortDeviceExtension->DataPort = ResourceDescriptor->u.Port.Start.u.LowPart;
-		    INFO_(I8042PRT, "Found data port: %p\n", PortDeviceExtension->DataPort);
+		    INFO_(I8042PRT, "Found data port: 0x%x\n", PortDeviceExtension->DataPort);
 		    FoundDataPort = TRUE;
 		} else if (!FoundControlPort) {
 		    PortDeviceExtension->ControlPort = ResourceDescriptor->u.Port.Start.u.LowPart;
-		    INFO_(I8042PRT, "Found control port: %p\n", PortDeviceExtension->ControlPort);
+		    INFO_(I8042PRT, "Found control port: 0x%x\n", PortDeviceExtension->ControlPort);
 		    FoundControlPort = TRUE;
 		} else {
 		    /* FIXME: implement PS/2 Active Multiplexing */
 		    ERR_(I8042PRT,
-			 "Unhandled I/O ranges provided: 0x%lx\n",
+			 "Unhandled I/O ranges provided: 0x%x\n",
 			 ResourceDescriptor->u.Port.Length);
 		}
 	    } else
-		WARN_(I8042PRT, "Invalid I/O range length: 0x%lx\n",
+		WARN_(I8042PRT, "Invalid I/O range length: 0x%x\n",
 		      ResourceDescriptor->u.Port.Length);
 	    break;
 	}
@@ -538,7 +539,7 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 		InterruptData.InterruptMode = LevelSensitive;
 	    InterruptData.ShareInterrupt =
 		(ResourceDescriptorTranslated->ShareDisposition == CmResourceShareShared);
-	    INFO_(I8042PRT, "Found irq resource: %lu\n",
+	    INFO_(I8042PRT, "Found irq resource: %u\n",
 		  ResourceDescriptor->u.Interrupt.Level);
 	    FoundIrq = TRUE;
 	    break;
@@ -649,7 +650,7 @@ NTSTATUS NTAPI i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	}
 	default:
 	    ERR_(I8042PRT,
-		 "IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / Unknown type 0x%lx\n",
+		 "IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / Unknown type 0x%x\n",
 		 Stack->Parameters.QueryDeviceRelations.Type);
 	    return ForwardIrpAndForget(DeviceObject, Irp);
 	}
