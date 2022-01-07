@@ -611,8 +611,7 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
     /* Start looping */
     while (TRUE) {
 	/* Lookup the FunctionEntry for the current RIP */
-	FunctionEntry =
-	    RtlLookupFunctionEntry(UnwindContext.Rip, &ImageBase, NULL);
+	FunctionEntry = RtlLookupFunctionEntry(UnwindContext.Rip, &ImageBase, NULL);
 	if (FunctionEntry == NULL) {
 	    /* No function entry, so this must be a leaf function. Pop the return address from the stack.
 	       Note: this can happen after the first frame as the result of an exception */

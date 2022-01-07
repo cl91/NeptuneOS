@@ -49,7 +49,6 @@ VOID NTAPI RtlRaiseStatus(IN NTSTATUS Status)
     } else {
 	/* Dispatch the exception */
 	RtlDispatchException(&ExceptionRecord, &Context);
-
 	/* Raise exception if we got here */
 	Status = NtRaiseException(&ExceptionRecord, &Context, FALSE);
     }

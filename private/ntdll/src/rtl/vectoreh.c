@@ -34,19 +34,14 @@ static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 					IN PCONTEXT Context,
 					IN PLIST_ENTRY VectoredHandlerList)
 {
-    PLIST_ENTRY CurrentEntry;
-    PRTL_VECTORED_HANDLER_ENTRY VectoredExceptionHandler;
-    PVECTORED_EXCEPTION_HANDLER VectoredHandler;
     EXCEPTION_POINTERS ExceptionInfo;
-    BOOLEAN HandlerRemoved;
-    LONG HandlerReturn;
 
     /*
      * Initialize these in case there are no entries,
      * or if no one handled the exception
      */
-    HandlerRemoved = FALSE;
-    HandlerReturn = EXCEPTION_CONTINUE_SEARCH;
+    BOOLEAN HandlerRemoved = FALSE;
+    LONG HandlerReturn = EXCEPTION_CONTINUE_SEARCH;
 
     /* Set up the data to pass to the handler */
     ExceptionInfo.ExceptionRecord = ExceptionRecord;
@@ -56,7 +51,8 @@ static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
     RtlEnterCriticalSection(&RtlpVectoredHandlerLock);
 
     /* Loop entries */
-    CurrentEntry = VectoredHandlerList->Flink;
+    PLIST_ENTRY CurrentEntry = VectoredHandlerList->Flink;
+    PRTL_VECTORED_HANDLER_ENTRY VectoredExceptionHandler = NULL;
     while (CurrentEntry != VectoredHandlerList) {
 	/* Get the struct */
 	VectoredExceptionHandler = CONTAINING_RECORD(CurrentEntry,
@@ -74,7 +70,7 @@ static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 	 * if malicious code has altered it. That is, if something has
 	 * set VectoredHandler to a non-encoded pointer
 	 */
-	VectoredHandler =
+	PVECTORED_EXCEPTION_HANDLER VectoredHandler =
 	    RtlDecodePointer(VectoredExceptionHandler->VectoredHandler);
 
 	/* Call the handler */
@@ -123,6 +119,7 @@ static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
     /* Anything to free? */
     if (HandlerRemoved) {
 	/* Get rid of it */
+	assert(VectoredExceptionHandler != NULL);
 	RtlFreeHeap(RtlGetProcessHeap(), 0, VectoredExceptionHandler);
     }
 
@@ -173,20 +170,16 @@ static PVOID RtlpAddVectoredHandler(IN ULONG FirstHandler,
 static ULONG RtlpRemoveVectoredHandler(IN PVOID VectoredHandlerHandle,
 				       IN PLIST_ENTRY VectoredHandlerList)
 {
-    PLIST_ENTRY CurrentEntry;
-    PRTL_VECTORED_HANDLER_ENTRY VectoredExceptionHandler;
-    BOOLEAN HandlerRemoved;
-    BOOLEAN HandlerFound;
-
     /* Initialize these in case we don't find anything */
-    HandlerRemoved = FALSE;
-    HandlerFound = FALSE;
+    BOOLEAN HandlerRemoved = FALSE;
+    BOOLEAN HandlerFound = FALSE;
 
     /* Acquire list lock */
     RtlEnterCriticalSection(&RtlpVectoredHandlerLock);
 
     /* Loop the list */
-    CurrentEntry = VectoredHandlerList->Flink;
+    PLIST_ENTRY CurrentEntry = VectoredHandlerList->Flink;
+    PRTL_VECTORED_HANDLER_ENTRY VectoredExceptionHandler = NULL;
     while (CurrentEntry != VectoredHandlerList) {
 	/* Get the struct */
 	VectoredExceptionHandler = CONTAINING_RECORD(CurrentEntry,
@@ -229,6 +222,7 @@ static ULONG RtlpRemoveVectoredHandler(IN PVOID VectoredHandlerHandle,
     /* Can we free what we found? */
     if (HandlerRemoved) {
 	/* Do it */
+	assert(VectoredExceptionHandler != NULL);
 	RtlFreeHeap(RtlGetProcessHeap(), 0, VectoredExceptionHandler);
     }
 

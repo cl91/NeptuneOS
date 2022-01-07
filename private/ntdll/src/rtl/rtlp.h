@@ -63,6 +63,17 @@ RtlpExecuteHandlerForException(PEXCEPTION_RECORD ExceptionRecord,
 			       PEXCEPTION_ROUTINE ExceptionHandler);
 #endif
 
+/* amd64/unwind.c */
+#ifdef _M_AMD64
+BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
+			   IN OPTIONAL PVOID TargetIp,
+			   IN PEXCEPTION_RECORD ExceptionRecord,
+			   IN PVOID ReturnValue,
+			   IN PCONTEXT ContextRecord,
+			   IN OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable,
+			   IN ULONG Flags);
+#endif
+
 NTAPI EXCEPTION_DISPOSITION
 RtlpExecuteHandlerForUnwind(PEXCEPTION_RECORD ExceptionRecord,
                             PEXCEPTION_REGISTRATION_RECORD RegistrationFrame,
