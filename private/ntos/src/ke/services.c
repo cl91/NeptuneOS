@@ -279,7 +279,7 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
     assert(Process != NULL);
     assert(Process->ImageFile != NULL);
     assert(Process->ImageFile->FileName != NULL);
-    DbgPrinter("\n\n==============================================================================\n"
+    DbgPrinter("\n==============================================================================\n"
 		"Unhandled %s in thread %s|%p\n",
 		KiDbgGetFaultName(Fault),
 		Process->ImageFile->FileName, Thread);
@@ -290,6 +290,19 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 	DbgPrinter("Unable to dump thread context. Error 0x%08x\n", Status);
     }
     KiDumpThreadContext(&Context, DbgPrinter);
+    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", Process->ImageFile->FileName,
+	       Process->ImageBaseAddress, Process->ImageBaseAddress + Process->ImageVirtualSize);
+    /* Dump the loaded modules of the process as well. */
+    PLOADER_SHARED_DATA LdrData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
+    if (LdrData != NULL) {
+	PLDRP_LOADED_MODULE ModuleData = (PLDRP_LOADED_MODULE)((MWORD)LdrData + LdrData->LoadedModules);
+	for (ULONG i = 0; i < LdrData->LoadedModuleCount; i++) {
+	    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", (PCSTR)((MWORD)LdrData + ModuleData->DllName),
+		       (PVOID)ModuleData->ViewBase,
+		       (PVOID)(ModuleData->ViewBase + ModuleData->ViewSize));
+	    ModuleData = (PLDRP_LOADED_MODULE)((MWORD)ModuleData + ModuleData->EntrySize);
+	}
+    }
     DbgPrinter("==============================================================================\n");
 }
 

@@ -401,6 +401,10 @@ static NTSTATUS RtlpGetRegistryHandle(IN ULONG RelativeTo,
 	return STATUS_SUCCESS;
     }
 
+    if (Path == NULL) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
     /* Check for optional flag */
     if (RelativeTo & RTL_REGISTRY_OPTIONAL) {
 	/* Mask it out */

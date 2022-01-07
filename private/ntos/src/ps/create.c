@@ -160,8 +160,8 @@ VOID PspPopulateTeb(IN PTHREAD Thread)
 
 VOID PspPopulatePeb(IN PPROCESS Process)
 {
-    PPEB Peb = (PPEB) Process->PebServerAddr;
-    Peb->ImageBaseAddress = (HMODULE) Process->ImageBaseAddress;
+    PPEB Peb = (PPEB)Process->PebServerAddr;
+    Peb->ImageBaseAddress = (HMODULE)Process->ImageBaseAddress;
     Peb->MaximumNumberOfHeaps = (PAGE_SIZE - sizeof(PEB)) / sizeof(PVOID);
     /* Place the process heap book keeping structures immediately after the PEB */
     Peb->ProcessHeaps = (PPVOID)(Process->PebClientAddr + sizeof(PEB));
@@ -680,7 +680,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     Process->LoaderSharedDataClientAddr = ClientLoaderSharedDataVad->AvlNode.Key;
 
     /* Walk the import table and map the dependencies recursively */
-    PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA) Process->LoaderSharedDataServerAddr;
+    PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
     MWORD LoaderDataOffset = sizeof(LOADER_SHARED_DATA);
     /* TODO: Fix image path and command line */
     RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->ImagePath));
