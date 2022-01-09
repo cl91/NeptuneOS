@@ -59,11 +59,14 @@ typedef struct _THREAD {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
     };
-    union {
-	struct {
-	    PIO_DRIVER_OBJECT DriverObject;
-	} NtLoadDriverSavedState;
-    };
+    struct {
+	PIO_DRIVER_OBJECT DriverObject;
+    } NtLoadDriverSavedState;
+    struct {
+	POBJECT Object;
+	PCSTR Path;
+	BOOLEAN PathIsModified;
+    } ObOpenObjectSavedState;
 } THREAD, *PTHREAD;
 
 /*

@@ -159,9 +159,11 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
+			       IN PCSTR SubPath,
 			       IN PVOID Context,
-			       IN PVOID OpenResponse,
-			       OUT POBJECT *pOpenedInstance);
+			       OUT POBJECT *pOpenedInstance,
+			       OUT PCSTR *pRemainingPath,
+			       IN PVOID OpenResponse);
 NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 			     IN PIO_DEVICE_OBJECT DeviceObject,
 			     IN PVOID BufferPtr,
@@ -174,9 +176,11 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
-				 IN PVOID OpenPacket,
-				 IN PVOID OpenResponse,
-				 OUT POBJECT *pOpenedInstance);
+				 IN PCSTR SubPath,
+				 IN PVOID Context,
+				 OUT POBJECT *pOpenedInstance,
+				 OUT PCSTR *pRemainingPath,
+				 IN PVOID OpenResponse);
 
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,

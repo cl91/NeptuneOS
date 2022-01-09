@@ -21,20 +21,37 @@
  * indicating the desired type(s). Specify OBJECT_TYPE_ALL to bypass
  * type checking.
  */
+typedef enum _OBJECT_TYPE_ENUM {
+    OBJECT_TYPE_DIRECTORY,
+    OBJECT_TYPE_THREAD,
+    OBJECT_TYPE_PROCESS,
+    OBJECT_TYPE_SECTION,
+    OBJECT_TYPE_FILE,
+    OBJECT_TYPE_DEVICE,
+    OBJECT_TYPE_DRIVER,
+    OBJECT_TYPE_TIMER,
+    OBJECT_TYPE_KEY,
+    MAX_NUM_OBJECT_TYPES
+} OBJECT_TYPE_ENUM;
+
+/* Enums larger than an int is undefined in C99 so we restrict
+ * the number of types to 31. This shouldn't be a problem since
+ * (as opposed to Windows/ReactOS) we don't implement Desktop or
+ * WindowStation or any other Win32 objects in the NT Executive. */
+compile_assert(TOO_MANY_TYPES, MAX_NUM_OBJECT_TYPES < 32);
+
+/* Used by the object manager routines to indicate multiple types */
 typedef enum _OBJECT_TYPE_MASK {
-    OBJECT_TYPE_DIRECTORY = 1 << 0,
-    OBJECT_TYPE_THREAD = 1 << 1,
-    OBJECT_TYPE_PROCESS = 1 << 2,
-    OBJECT_TYPE_SECTION = 1 << 3,
-    OBJECT_TYPE_FILE = 1 << 4,
-    OBJECT_TYPE_DEVICE = 1 << 5,
-    OBJECT_TYPE_DRIVER = 1 << 6,
-    OBJECT_TYPE_TIMER = 1 << 7,
-    OBJECT_TYPE_KEY = 1 << 8,
-/* Increment this when you add a new object type */
-#define MAX_NUM_OBJECT_TYPES 9
-    OBJECT_TYPE_ALL = (1 << MAX_NUM_OBJECT_TYPES) - 1 /* Used by the object manager routines to
-						       * indicate all types */
+    OBJECT_TYPE_MASK_DIRECTORY = 1UL << OBJECT_TYPE_DIRECTORY,
+    OBJECT_TYPE_MASK_THREAD = 1UL << OBJECT_TYPE_THREAD,
+    OBJECT_TYPE_MASK_PROCESS = 1UL << OBJECT_TYPE_PROCESS,
+    OBJECT_TYPE_MASK_SECTION = 1UL << OBJECT_TYPE_SECTION,
+    OBJECT_TYPE_MASK_FILE = 1UL << OBJECT_TYPE_FILE,
+    OBJECT_TYPE_MASK_DEVICE = 1UL << OBJECT_TYPE_DEVICE,
+    OBJECT_TYPE_MASK_DRIVER = 1UL << OBJECT_TYPE_DRIVER,
+    OBJECT_TYPE_MASK_TIMER = 1UL << OBJECT_TYPE_TIMER,
+    OBJECT_TYPE_MASK_KEY = 1UL << OBJECT_TYPE_KEY,
+    OBJECT_TYPE_ALL = (1UL << MAX_NUM_OBJECT_TYPES) - 1
 } OBJECT_TYPE_MASK;
 
 /* Object format:
@@ -50,17 +67,61 @@ typedef enum _OBJECT_TYPE_MASK {
  * always pass OBJECT pointers across function boundary, and
  * never pass OBJECT_HEADER pointers.
  *
- * The parse procedure allows the object type to implement the
- * semantics of sub-object. Calling the parse procedure produces
- * a sub-object of the object being called. The parse procedure
+ * In the Windows/ReactOS design, an object type can implement
+ * the semantics of sub-objecting by defining a parse method,
+ * which parses part of the object path to produce a sub-object.
+ * The object manager recursively invokes the parse method when
+ * when opening an object.
+ *
+ * In our design a complication arises due to the fact that we
+ * run the NT Executive in user space. Opening an object may
+ * involve, for instance, queuing an IRP to a driver object and
+ * suspending the Executive service processing for the current
+ * thread. Therefore the "parse" procedure need to take an async
+ * context. On the other hand, for objects that live inside the
+ * NT Executive address space, or for objects that have already
+ * been opened, we need a way to make sure that the "parse"
+ * procedure will never suspend, so that it is safe to call it
+ * when the server does not have an async context at the moment
+ * of calling it.
+ *
+ * The solution we have here is to have two types of "parse"
+ * procedures: one that does not take an async context, and one
+ * that does. The "parse" procedure that does NOT take an async
+ * state is called the parse procedure in our codebase and the
+ * "parse" procedure that DOES take an async state is called the
+ * open procedure. Both take the sub-path being parsed as an
+ * argument and both implement the semantics of sub-objecting.
+ *
+ * The parse procedure will typically examine the cached object
+ * database to locate the sub-object given by the sub-path. These
+ * can include the sub-objects that have already been opened (by
+ * the open procedure) or sub-objects that always live locally
+ * (in the address space of the NT Executive). The parse procedure
  * operates on a global context, meaning that it does not take
  * a PTHREAD parameter and cannot modify THREAD states.
  *
  * On the other hand, the open procedure operates on a thread
  * context, meaning that it takes a PTHREAD parameter and can
- * modify the THREAD states. An open procedure of an object type
- * usually yield an object with a different object type, that
- * represents an opened instance of the original object.
+ * modify the THREAD states. The open procedure will typically
+ * queue an IRP or (asynchronously) query an out-of-process
+ * database to find the specified sub-object. In particular,
+ * if the sub-path being parsed is empty, an open procedure can
+ * return a different object type to implement the semantics of
+ * an opened instance of the original object. This is employed
+ * by the IO manager extensively: opening a DEVICE object gives
+ * a FILE object.
+ *
+ * The object manager provides two public interfaces,
+ * ObReferenceObjectByName and ObOpenObjectByName, to implement
+ * the notion of looking up an object path and opening an object.
+ * ObReferenceObjectByName only calls the parse procedure, and
+ * always returns the pointer to the original object (such as
+ * a DEVICE object), as opposed to the opened instance (such as
+ * a FILE object). ObOpenObjectByName invokes both the parse
+ * and the open procedures, and assigns a handle to the opened
+ * instance. It therefore must be called with an async context,
+ * whereas ObReferenceObjectByName does not need one.
  *
  * The IO subsystem uses the facilities of the object manager
  * extensively. Since opening a device or a file is inherently
@@ -82,10 +143,8 @@ typedef enum _OBJECT_TYPE_MASK {
  * (ie. the src\main.c in \Device\Harddisk0\Partition0\src\main.c)
  * and first invoke the cache manager and see if the file has been
  * previously opened. If it was previously opened, the cached device
- * object is returned immediately. Otherwise, a pseudo-device object
- * representing that the file is being opened is constructed and
- * returned, and the open procedure of pseudo device object is
- * invoked just like the simple case above.
+ * object is returned immediately. Otherwise, the open procedure
+ * is invoked just like the simple case above.
  *
  * On the other hand, closing an object is always a lazy process.
  * We simply flag the object for closing and queues the object
@@ -196,25 +255,7 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
 					 IN PVOID CreationContext);
 
 /*
- * The open routine produces an opened instance of the object,
- * which can be an object of a different object type. For instance,
- * opening a DEVICE object produces a FILE object.
- *
- * Assigning the object handle is not the open routine's concern.
- * The object manager will assign the handle. 
- *
- * The open routine can be null, in which case the opened instance
- * of an object is itself.
- */
-typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
-				       IN struct _THREAD *Thread,
-				       IN POBJECT Self,
-				       IN PVOID Context,
-				       OUT PVOID OpenResponse,
-				       OUT POBJECT *pOpenedInstance);
-
-/*
- * The parse routine is used by the object manager when other
+ * The parse procedure is used by the object manager when other
  * Executive components request an object by a path. It implements
  * the semantics of a subobject identified by a subpath, given by
  * the argument Path. The parse procedure will consume as many
@@ -225,17 +266,52 @@ typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
  * path is empty, or until the object fails to parse a path,
  * whichever occurs earlier.
  *
- * The parse routine can be NULL, in which case the object does
- * not implement the semantics of sub-object.
+ * The parse procedure can be NULL, in which case the object does
+ * not implement the semantics of sub-objecting.
  *
- * The parse routine is not allowed to modify the Path string.
+ * The parse procedure is not allowed to modify the Path string.
  * RemainingPath must point to a sub-string within Path, and does
  * NOT include the leading OBJ_NAME_PATH_SEPARATOR.
  */
 typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
-					OUT POBJECT *Subobject,
-					OUT PCSTR *RemainingPath);
+					IN PVOID ParseContext,
+					OUT POBJECT *pSubobject,
+					OUT PCSTR *pRemainingPath);
+
+/*
+ * The open procedure is similar to the parse procedure in that
+ * it implements the notion of a sub-object given by the sub-path.
+ * The difference from a parse procedure is that an open procedure
+ * takes an async context and can modify the thread object of the
+ * async context. In particular, it can suspend the current thread
+ * and wait for the completion of IO. The open procedure can also
+ * produce an opened instance of the object that has a different
+ * object type from the original object. For instance, opening a
+ * DEVICE object produces a FILE object.
+ *
+ * Assigning the object handle is not the open procedure's concern.
+ * The object manager will assign the handle.
+ *
+ * The open procedure can be NULL, in which case the object does not
+ * support being opened (for instance, FILE object cannot be opened.
+ * since it represents an opened instance of a DEVICE. Only DEVICE
+ * object can be opened). For object types where the opened instance
+ * of an object is simply itself, the object type should supply a
+ * trivial open procedure (but not NULL).
+ *
+ * Like the parse procedure, the open procedure is not allowed to
+ * modify the Path string. RemainingPath must point to a sub-string
+ * within Path, and does NOT include the leading OBJ_NAME_PATH_SEPARATOR.
+ */
+typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
+				       IN struct _THREAD *Thread,
+				       IN POBJECT Self,
+				       IN PCSTR SubPath,
+				       IN PVOID ParseContext,
+				       OUT POBJECT *pOpenedInstance,
+				       OUT PCSTR *pRemainingPath,
+				       OUT PVOID OpenResponse);
 
 /* Insert the given object as the sub-object of Self, with Subpath
  * as the name identifier of said sub-object.
@@ -246,14 +322,14 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Self,
 
 typedef struct _OBJECT_TYPE_INITIALIZER {
     OBJECT_CREATE_METHOD CreateProc;
-    OBJECT_OPEN_METHOD OpenProc;
     OBJECT_PARSE_METHOD ParseProc;
+    OBJECT_OPEN_METHOD OpenProc;
     OBJECT_INSERT_METHOD InsertProc;
 } OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
 
 typedef struct _OBJECT_TYPE {
     PCSTR Name;
-    OBJECT_TYPE_MASK Index;
+    OBJECT_TYPE_ENUM Index;
     ULONG ObjectBodySize;
     OBJECT_TYPE_INITIALIZER TypeInfo;
 } OBJECT_TYPE, *POBJECT_TYPE;
@@ -298,11 +374,11 @@ typedef struct _HANDLE_TABLE_ENTRY {
 NTSTATUS ObInitSystemPhase0();
 
 /* create.c */
-NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_MASK Type,
+NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN PCSTR TypeName,
 			    IN ULONG ObjectBodySize,
 			    IN OBJECT_TYPE_INITIALIZER Init);
-NTSTATUS ObCreateObject(IN OBJECT_TYPE_MASK Type,
+NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *Object,
 			IN PVOID CreationContext);
 
@@ -323,6 +399,7 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_MASK Type,
+				 IN PVOID ParseContext,
 				 OUT POBJECT *Object);
 NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 				   IN HANDLE Handle,
@@ -335,13 +412,7 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN PCSTR Path,
 			    IN OBJECT_TYPE_MASK Type,
-			    IN PVOID Context,
+			    IN PVOID ParseContext,
 			    OUT PVOID OpenResponse,
 			    OUT HANDLE *pHandle);
-NTSTATUS ObOpenObjectByPointer(IN ASYNC_STATE State,
-			       IN struct _THREAD *Thread,
-			       IN POBJECT Object,
-			       IN PVOID Context,
-			       OUT PVOID OpenResponse,
-			       OUT HANDLE *pHandle);
 VOID ObDereferenceObject(IN POBJECT Object);

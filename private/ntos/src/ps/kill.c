@@ -39,7 +39,7 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
 	ThreadToTerminate = Thread;
     } else {
 	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ThreadHandle,
-					  OBJECT_TYPE_THREAD, (POBJECT *) &ThreadToTerminate));
+					  OBJECT_TYPE_MASK_THREAD, (POBJECT *) &ThreadToTerminate));
     }
     assert(ThreadToTerminate != NULL);
     PsTerminateThread(ThreadToTerminate, ExitStatus);

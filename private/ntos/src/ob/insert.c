@@ -29,8 +29,14 @@ NTSTATUS ObInsertObjectByName(IN PCSTR ParentPath,
 			      IN PCSTR Name)
 {
     POBJECT Parent = NULL;
-    RET_ERR(ObpLookupObjectName(ParentPath, &Parent));
+    PCSTR RemainingPath = NULL;
+    RET_ERR(ObpLookupObjectName(ParentPath, NULL, &RemainingPath, &Parent));
     assert(Parent != NULL);
+    assert(RemainingPath != NULL);
+    /* If the parent path cannot be parsed fully, we reject the insertion */
+    if (*RemainingPath != '\0') {
+	return STATUS_OBJECT_PATH_INVALID;
+    }
     RET_ERR(ObInsertObject(Parent, Subobject, Name));
     return STATUS_SUCCESS;
 }

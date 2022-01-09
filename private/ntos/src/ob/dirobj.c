@@ -33,6 +33,7 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     assert(Directory != NULL);
     assert(Name != NULL);
     assert(FoundObject != NULL);
+    DbgTrace("name = %s\n", Name);
 
     /* The object name should never contain OBJ_NAME_PATH_SEPARATOR.
      * The object manager guarantees this, so only check on debug build.
@@ -66,10 +67,12 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
  */
 static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    IN PCSTR Path,
+					    IN PVOID ParseContext,
 					    OUT POBJECT *FoundObject,
 					    OUT PCSTR *RemainingPath)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
+    DbgTrace("Path = %s\n", Path);
     assert(Self != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
@@ -95,6 +98,7 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     /* Look for the named object under the directory. */
     RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Name, FoundObject),
 	       {
+		   DbgTrace("Path %s not found\n", Path);
 		   ExFreePool(Name);
 		   *FoundObject = NULL;
 		   *RemainingPath = Path;
@@ -106,6 +110,7 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     if (**RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
 	(*RemainingPath)++;
     }
+    DbgTrace("RemainingPath = %s\n", *RemainingPath);
     return STATUS_SUCCESS;
 }
 
@@ -117,6 +122,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 					     IN POBJECT Object,
 					     IN PCSTR Name)
 {
+    DbgTrace("Inserting name %s\n", Name);
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
     assert(Self != NULL);
     assert(Name != NULL);
@@ -157,77 +163,6 @@ NTSTATUS ObpInitDirectoryObjectType()
 			      "Directory",
 			      sizeof(OBJECT_DIRECTORY),
 			      TypeInfo);
-}
-
-/*
- * Parse the object path recursively and return the final object
- * to which the path points.
- */
-NTSTATUS ObpLookupObjectName(IN PCSTR Path,
-			     OUT POBJECT *FoundObject)
-{
-    assert(ObpRootObjectDirectory != NULL);
-    assert(Path != NULL);
-    assert(FoundObject != NULL);
-
-    if (Path[0] == '\0') {
-	return STATUS_OBJECT_PATH_SYNTAX_BAD;
-    }
-
-    /* Points to the terminating '\0' charactor of Path */
-    PCSTR LastByte = Path + strlen(Path);
-
-    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. We always
-     * start the lookup from the root directory. Normally user should
-     * specify all paths with a leading OBJ_NAME_PATH_SEPARATOR,
-     * but if a relative path is supplied, the root directory
-     * is understood to be the starting point of the lookup.
-     */
-    if (*Path == OBJ_NAME_PATH_SEPARATOR) {
-	Path++;
-    }
-
-    /* Caller has simply requested the root directory. */
-    if (Path[0] == '\0') {
-	*FoundObject = ObpRootObjectDirectory;
-	return STATUS_SUCCESS;
-    }
-
-    /* Recursively invoke the parse method of the object,
-     * until either the remaining path is empty, or the parse
-     * method fails. */
-    POBJECT Object = ObpRootObjectDirectory;
-    NTSTATUS Status = STATUS_SUCCESS;
-
-    while (TRUE) {
-	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
-	POBJECT Subobject = NULL;
-	PCSTR RemainingPath = Path;
-	OBJECT_PARSE_METHOD ParseProc = ObjectHeader->Type->TypeInfo.ParseProc;
-	if (ParseProc == NULL) {
-	    return STATUS_OBJECT_NAME_NOT_FOUND;
-	}
-	RET_ERR(ParseProc(Object, Path, &Subobject, &RemainingPath));
-	/* It is a programming error if Subobject is NULL */
-	if (Subobject == NULL) {
-	    return STATUS_NTOS_BUG;
-	}
-	/* Remaining path should not have leading OBJ_NAME_PATH_SEPARATOR */
-	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	    return STATUS_NTOS_BUG;
-	}
-	/* Remaining path should also be within the original Path */
-	assert(RemainingPath > Path);
-	assert(RemainingPath <= LastByte);
-	/* If remaining path is empty, we are done. */
-	if (*RemainingPath == '\0') {
-	    *FoundObject = Subobject;
-	    return STATUS_SUCCESS;
-	}
-	/* Else, we keep parsing */
-	Object = Subobject;
-	Path = RemainingPath;
-    }
 }
 
 NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)

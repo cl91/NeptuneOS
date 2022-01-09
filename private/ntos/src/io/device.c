@@ -39,15 +39,24 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
+				 IN PCSTR SubPath,
 				 IN PVOID Context,
-				 IN PVOID OpenResponse,
-				 OUT POBJECT *pOpenedInstance)
+				 OUT POBJECT *pOpenedInstance,
+				 OUT PCSTR *pRemainingPath,
+				 IN PVOID OpenResponse)
 {
     assert(Thread != NULL);
     assert(Object != NULL);
+    assert(SubPath != NULL);
     assert(Context != NULL);
     assert(OpenResponse != NULL);
     assert(pOpenedInstance != NULL);
+
+    /* We haven't implemented file system devices yet */
+    *pRemainingPath = SubPath;
+    if (*SubPath != '\0') {
+	UNIMPLEMENTED;
+    }
 
     /* These must come before ASYNC_BEGIN since they are referenced
      * throughout the whole function (in particular, after the AWAIT call) */
@@ -204,7 +213,7 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     }
     PIO_FILE_OBJECT FileObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
-				      OBJECT_TYPE_FILE, (POBJECT *)&FileObject));
+				      OBJECT_TYPE_MASK_FILE, (POBJECT *)&FileObject));
     assert(FileObject != NULL);
     assert(FileObject->DeviceObject != NULL);
     assert(FileObject->DeviceObject->DriverObject != NULL);

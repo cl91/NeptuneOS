@@ -40,6 +40,34 @@ NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 
 /*
  * This is a temporary function for the ldr component to create the initrd
+ * boot module files. Eventually we will turn them into a proper DEVICE object.
+ */
+NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN POBJECT Object,
+			       IN PCSTR SubPath,
+			       IN PVOID Context,
+			       OUT POBJECT *pOpenedInstance,
+			       OUT PCSTR *pRemainingPath,
+			       IN PVOID OpenResponse)
+{
+    assert(Thread != NULL);
+    assert(Object != NULL);
+    assert(SubPath != NULL);
+    assert(Context != NULL);
+    assert(OpenResponse != NULL);
+    assert(pOpenedInstance != NULL);
+
+    *pRemainingPath = SubPath;
+    if (*SubPath != '\0') {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+    *pOpenedInstance = Object;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * This is a temporary function for the ldr component to create the initrd
  * boot module files. When we finished the cache manager we will use the cc
  * facilities for this.
  */
@@ -49,21 +77,6 @@ NTSTATUS IoCreateFile(IN PCSTR FileName,
 		      OUT PIO_FILE_OBJECT *pFile)
 {
     return IopCreateFileObject(FileName, NULL, BufferPtr, FileSize, pFile);
-}
-
-/*
- * A FILE_OBJECT is an opened instance of a DEVICE_OBJECT. We haven't
- * implement file system drivers yet, so for now we simply return success
- * so the object manager can assign a new handle to the file object.
- */
-NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
-			       IN POBJECT Object,
-			       IN PVOID Context,
-			       IN PVOID OpenResponse,
-			       OUT POBJECT *pOpenedInstance)
-{
-    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
@@ -93,7 +106,7 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     OpenPacket.Disposition = CreateDisposition;
 
     AWAIT_EX(ObOpenObjectByName, Status, State, Thread, DevicePath,
-	     OBJECT_TYPE_DEVICE, &OpenPacket, &OpenResponse, FileHandle);
+	     OBJECT_TYPE_MASK_DEVICE, &OpenPacket, &OpenResponse, FileHandle);
     ASYNC_END(Status);
 }
 
@@ -120,7 +133,8 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 
     /* TODO: We need to implement file system drivers */
     AWAIT_EX(ObOpenObjectByName, Status, State, Thread, FilePath,
-	     OBJECT_TYPE_DEVICE | OBJECT_TYPE_FILE, &OpenPacket, &OpenResponse, FileHandle);
+	     /* Eventually the following mask will be changed to just DEVICE */
+	     OBJECT_TYPE_MASK_DEVICE | OBJECT_TYPE_MASK_FILE, &OpenPacket, &OpenResponse, FileHandle);
     ASYNC_END(Status);
 }
 

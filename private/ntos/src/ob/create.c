@@ -3,15 +3,13 @@
 static OBJECT_TYPE ObpObjectTypes[MAX_NUM_OBJECT_TYPES];
 LIST_ENTRY ObpObjectList;
 
-static inline POBJECT_TYPE ObpGetObjectType(IN OBJECT_TYPE_MASK Type)
+static inline POBJECT_TYPE ObpGetObjectType(IN OBJECT_TYPE_ENUM Type)
 {
-    assert(RtlNumberOfSetBits(Type) == 1);
-    assert(RtlFirstSetBit(Type) != 0);
-    assert(RtlFirstSetBit(Type) <= MAX_NUM_OBJECT_TYPES);
-    return &ObpObjectTypes[RtlFirstSetBit(Type)-1];
+    assert(Type < MAX_NUM_OBJECT_TYPES);
+    return &ObpObjectTypes[Type];
 }
 
-NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_MASK Type,
+NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN PCSTR TypeName,
 			    IN ULONG ObjectBodySize,
 			    IN OBJECT_TYPE_INITIALIZER Init)
@@ -35,7 +33,7 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_MASK Type,
  * initialization procedure of the object type, and insert the object
  * into the global object list.
  */
-NTSTATUS ObCreateObject(IN OBJECT_TYPE_MASK Type,
+NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *Object,
 			IN PVOID CreationContext)
 {
