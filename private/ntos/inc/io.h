@@ -69,6 +69,28 @@ typedef struct _IO_FILE_OBJECT {
     ULONG Flags;
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
+typedef enum _CREATE_FILE_TYPE {
+    CreateFileTypeNone,
+    CreateFileTypeNamedPipe,
+    CreateFileTypeMailslot
+} CREATE_FILE_TYPE;
+
+/*
+ * An open packet is used as a context for opening a Device object so
+ * the device open routine can know what operation is being requested.
+ */
+typedef struct _OPEN_PACKET {
+    CREATE_FILE_TYPE CreateFileType;
+    ULONG CreateOptions;
+    ULONG FileAttributes;
+    ULONG ShareAccess;
+    ULONG Disposition;
+    union {
+	PNAMED_PIPE_CREATE_PARAMETERS NamedPipeCreateParameters;
+	PMAILSLOT_CREATE_PARAMETERS MailslotCreateParameters;
+    };
+} OPEN_PACKET, *POPEN_PACKET;
+
 /*
  * Forward declarations.
  */

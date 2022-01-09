@@ -59,9 +59,19 @@ typedef struct _THREAD {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
     };
-    struct {
-	PIO_DRIVER_OBJECT DriverObject;
-    } NtLoadDriverSavedState;
+    union {
+	/* There can only be one system service at any point, so
+	 * it's safe to put their saved states in one union */
+	struct {
+	    PIO_DRIVER_OBJECT DriverObject;
+	} NtLoadDriverSavedState;
+	struct {
+	    OPEN_PACKET OpenPacket;
+	} NtCreateFileSavedState;
+	struct {
+	    OPEN_PACKET OpenPacket;
+	} NtOpenFileSavedState;
+    };
     struct {
 	POBJECT Object;
 	PCSTR Path;
