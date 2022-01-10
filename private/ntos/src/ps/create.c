@@ -440,8 +440,8 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     DllPath[sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1] = '\\';
     memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
 
-    NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_MASK_FILE,
-					      NULL, (POBJECT *)DllFile);
+    OB_PARSE_CONTEXT ParseContext = { .RequestedTypeMask = OBJECT_TYPE_MASK_FILE };
+    NTSTATUS Status = ObReferenceObjectByName(DllPath, &ParseContext, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

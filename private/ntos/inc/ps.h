@@ -66,16 +66,16 @@ typedef struct _THREAD {
 	    PIO_DRIVER_OBJECT DriverObject;
 	} NtLoadDriverSavedState;
 	struct {
-	    OPEN_PACKET OpenPacket;
+	    IO_OPEN_CONTEXT OpenContext;
 	} NtCreateFileSavedState;
 	struct {
-	    OPEN_PACKET OpenPacket;
+	    IO_OPEN_CONTEXT OpenContext;
 	} NtOpenFileSavedState;
     };
     struct {
 	POBJECT Object;
 	PCSTR Path;
-	BOOLEAN PathIsModified;
+	BOOLEAN Reparsed;
     } ObOpenObjectSavedState;
 } THREAD, *PTHREAD;
 

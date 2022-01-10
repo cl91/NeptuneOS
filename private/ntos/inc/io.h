@@ -92,6 +92,15 @@ typedef struct _OPEN_PACKET {
 } OPEN_PACKET, *POPEN_PACKET;
 
 /*
+ * Extension of the OB_PARSE_CONTEXT.
+ */
+typedef struct _IO_OPEN_CONTEXT {
+    IN OB_PARSE_CONTEXT Header;
+    IN OPEN_PACKET OpenPacket;
+    OUT ULONG_PTR Information; /* IO_STATUS_BLOCK.Information returned by the driver call */
+} IO_OPEN_CONTEXT, *PIO_OPEN_CONTEXT;
+
+/*
  * Forward declarations.
  */
 

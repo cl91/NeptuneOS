@@ -67,7 +67,7 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
  */
 static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    IN PCSTR Path,
-					    IN PVOID ParseContext,
+					    IN POB_PARSE_CONTEXT ParseContext,
 					    OUT POBJECT *FoundObject,
 					    OUT PCSTR *RemainingPath)
 {

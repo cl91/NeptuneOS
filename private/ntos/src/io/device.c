@@ -40,16 +40,14 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
-				 IN PVOID Context,
+				 IN POB_PARSE_CONTEXT ParseContext,
 				 OUT POBJECT *pOpenedInstance,
-				 OUT PCSTR *pRemainingPath,
-				 IN PVOID OpenResponse)
+				 OUT PCSTR *pRemainingPath)
 {
     assert(Thread != NULL);
     assert(Object != NULL);
     assert(SubPath != NULL);
-    assert(Context != NULL);
-    assert(OpenResponse != NULL);
+    assert(ParseContext != NULL);
     assert(pOpenedInstance != NULL);
 
     /* We haven't implemented file system devices yet */
@@ -62,10 +60,16 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
      * throughout the whole function (in particular, after the AWAIT call) */
     PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
     PIO_DRIVER_OBJECT Driver = Device->DriverObject;
+    PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)ParseContext;
+    POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
     assert(Driver != NULL);
-    POPEN_PACKET OpenPacket = (POPEN_PACKET)Context;
 
     ASYNC_BEGIN(State);
+
+    /* Reject the open if the caller specified a different object type */
+    if (!(ParseContext->RequestedTypeMask & OBJECT_TYPE_MASK_DEVICE)) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
 
     PIO_FILE_OBJECT FileObject = NULL;
     RET_ERR(IopCreateFileObject(Device->DeviceName, Device, NULL, 0, &FileObject));
@@ -117,7 +121,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     assert(FileObject != NULL);
 
     IO_STATUS_BLOCK IoStatus = Thread->IoResponseStatus;
-    ((POPEN_RESPONSE)OpenResponse)->Information = IoStatus.Information;
+    OpenContext->Information = IoStatus.Information;
     NTSTATUS Status = IoStatus.Status;
 
     if (NT_SUCCESS(Status)) {

@@ -272,10 +272,16 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
  * The parse procedure is not allowed to modify the Path string.
  * RemainingPath must point to a sub-string within Path, and does
  * NOT include the leading OBJ_NAME_PATH_SEPARATOR.
+ *
+ * The parse procedure should not increase the reference count of
+ * the object. All reference counting is done by the object manager.
  */
+typedef struct _OB_PARSE_CONTEXT {
+    OBJECT_TYPE_MASK RequestedTypeMask;
+} OB_PARSE_CONTEXT, *POB_PARSE_CONTEXT;
 typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
-					IN PVOID ParseContext,
+					IN POB_PARSE_CONTEXT ParseContext,
 					OUT POBJECT *pSubobject,
 					OUT PCSTR *pRemainingPath);
 
@@ -303,15 +309,18 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  * Like the parse procedure, the open procedure is not allowed to
  * modify the Path string. RemainingPath must point to a sub-string
  * within Path, and does NOT include the leading OBJ_NAME_PATH_SEPARATOR.
+ *
+ * Like the parse procedure, the open procedure should not increase the
+ * reference count of the object being opened or the opened instance.
+ * All reference counting is done by the object manager.
  */
 typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
 				       IN struct _THREAD *Thread,
 				       IN POBJECT Self,
 				       IN PCSTR SubPath,
-				       IN PVOID ParseContext,
+				       IN POB_PARSE_CONTEXT ParseContext,
 				       OUT POBJECT *pOpenedInstance,
-				       OUT PCSTR *pRemainingPath,
-				       OUT PVOID OpenResponse);
+				       OUT PCSTR *pRemainingPath);
 
 /* Insert the given object as the sub-object of Self, with Subpath
  * as the name identifier of said sub-object.
@@ -398,8 +407,7 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 /* obref.c */
 struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
-				 IN OBJECT_TYPE_MASK Type,
-				 IN PVOID ParseContext,
+				 IN POB_PARSE_CONTEXT ParseContext,
 				 OUT POBJECT *Object);
 NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 				   IN HANDLE Handle,
@@ -408,11 +416,11 @@ NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			IN POBJECT Object,
 			OUT HANDLE *pHandle);
+VOID ObDereferenceObject(IN POBJECT Object);
+
+/* open.c */
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN PCSTR Path,
-			    IN OBJECT_TYPE_MASK Type,
-			    IN PVOID ParseContext,
-			    OUT PVOID OpenResponse,
+			    IN POB_PARSE_CONTEXT ParseContext,
 			    OUT HANDLE *pHandle);
-VOID ObDereferenceObject(IN POBJECT Object);

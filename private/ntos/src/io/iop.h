@@ -54,14 +54,6 @@ static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
 }
 
 /*
- * Response returned by the driver for the open operation. This is
- * passed into the open routine by pointer.
- */
-typedef struct _OPEN_RESPONSE {
-    ULONG_PTR Information; /* IO_STATUS_BLOCK.Information returned by the driver call */
-} OPEN_RESPONSE, *POPEN_RESPONSE;
-
-/*
  * Creation context for the driver object creation routine
  */
 typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
@@ -138,10 +130,9 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
 			       IN PCSTR SubPath,
-			       IN PVOID Context,
+			       IN POB_PARSE_CONTEXT ParseContext,
 			       OUT POBJECT *pOpenedInstance,
-			       OUT PCSTR *pRemainingPath,
-			       IN PVOID OpenResponse);
+			       OUT PCSTR *pRemainingPath);
 NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 			     IN PIO_DEVICE_OBJECT DeviceObject,
 			     IN PVOID BufferPtr,
@@ -155,10 +146,9 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
-				 IN PVOID Context,
+				 IN POB_PARSE_CONTEXT ParseContext,
 				 OUT POBJECT *pOpenedInstance,
-				 OUT PCSTR *pRemainingPath,
-				 IN PVOID OpenResponse);
+				 OUT PCSTR *pRemainingPath);
 
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
