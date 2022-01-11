@@ -49,3 +49,19 @@ typedef struct _CM_REG_VALUE {
 	PCSTR *StringArray;	/* NULL-terminated */
     };
 } CM_REG_VALUE, *PCM_REG_VALUE;
+
+/* key.c */
+NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
+				IN PVOID CreaCtx);
+NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
+			       IN PCSTR Path,
+			       IN POB_PARSE_CONTEXT ParseContext,
+			       OUT POBJECT *FoundObject,
+			       OUT PCSTR *RemainingPath);
+NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
+			      IN PTHREAD Thread,
+			      IN POBJECT Object,
+			      IN PCSTR SubPath,
+			      IN POB_PARSE_CONTEXT ParseContext,
+			      OUT POBJECT *pOpenedInstance,
+			      OUT PCSTR *pRemainingPath);

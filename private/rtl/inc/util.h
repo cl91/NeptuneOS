@@ -15,6 +15,21 @@ static inline ULONG RtlpHashString(PCSTR Str)
     return Hash;
 }
 
+static inline ULONG RtlpHashStringEx(IN PCSTR Str,
+				     IN ULONG Length) /* Excluding trailing '\0' */
+{
+    ULONG Hash = 5381;
+
+    for (ULONG i = 0; i < Length; i++) {
+	ULONG Chr = Str[i];
+	if (Chr == '\0') {
+	    break;
+	}
+        Hash = ((Hash << 5) + Hash) + Chr; /* Hash * 33 + Chr */
+    }
+    return Hash;
+}
+
 #ifndef _NTOSKRNL_
 #include <nturtl.h>
 static inline NTSTATUS RtlpUtf8ToUnicodeString(IN PVOID Heap,

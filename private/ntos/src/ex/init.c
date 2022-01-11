@@ -87,6 +87,7 @@ NTSTATUS ExInitSystemPhase1()
 {
     RET_ERR(EiCreateObjectTypes());
     RET_ERR(LdrLoadBootModules());
+    RET_ERR(CmInitSystemPhase1());
     RET_ERR(PsInitSystemPhase1());
     RET_ERR(IoInitSystemPhase1());
     RET_ERR(HalInitSystemPhase1());

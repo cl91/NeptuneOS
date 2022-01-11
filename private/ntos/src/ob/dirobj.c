@@ -19,15 +19,17 @@ static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self,
 }
 
 /* Compute the hash index of a given string. */
-static ULONG ObpDirectoryEntryHashIndex(PCSTR Str)
+static ULONG ObpDirectoryEntryHashIndex(IN PCSTR Str,
+					IN ULONG Length) /* Excluding trailing '\0' */
 {
-    ULONG Hash = RtlpHashString(Str);
+    ULONG Hash = RtlpHashStringEx(Str, Length);
     return Hash % OBP_DIROBJ_HASH_BUCKETS;
 }
 
 /* Looks up a named object under an object directory */
 static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 					IN PCSTR Name,
+					IN ULONG Length, /* Excluding trailing '\0' */
 					OUT POBJECT *FoundObject)
 {
     assert(Directory != NULL);
@@ -35,21 +37,14 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     assert(FoundObject != NULL);
     DbgTrace("name = %s\n", Name);
 
-    /* The object name should never contain OBJ_NAME_PATH_SEPARATOR.
-     * The object manager guarantees this, so only check on debug build.
-     */
-    for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
-	assert(*Ptr != OBJ_NAME_PATH_SEPARATOR);
-    }
-
-    ULONG HashIndex = ObpDirectoryEntryHashIndex(Name);
+    ULONG HashIndex = ObpDirectoryEntryHashIndex(Name, Length);
     assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
     *FoundObject = NULL;
     LoopOverList(Entry, &Directory->HashBuckets[HashIndex],
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
 	assert(Entry != NULL);
 	assert(Entry->Name != NULL);
-	if (!strcmp(Name, Entry->Name)) {
+	if (!strncmp(Name, Entry->Name, Length)) {
 	    *FoundObject = Entry->Object;
 	}
     }
@@ -82,28 +77,22 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
      * before the first OBJ_NAME_PATH_SEPARATOR. The remaining path will be
      * whatever is left after the first OBJ_NAME_PATH_SEPARATOR (possibly empty).
      */
-    MWORD NameLength = 0;
-    for (PCSTR Ptr = Path; (*Ptr != '\0') && (*Ptr != OBJ_NAME_PATH_SEPARATOR); Ptr++)
+    ULONG NameLength = 0;
+    for (PCSTR Ptr = Path; (*Ptr != '\0') && (*Ptr != OBJ_NAME_PATH_SEPARATOR); Ptr++) {
 	NameLength++;
-    if (NameLength == 0) {
-	/* This is a programming error since the object manager shall always
-	 * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR.
-	 */
-	return STATUS_NTOS_BUG;
     }
-    ObpAllocatePoolEx(Name, CHAR, NameLength+1, {});
-    memcpy(Name, Path, NameLength);
-    Name[NameLength] = '\0';
+    /* This is a programming error since the object manager shall always
+     * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR.
+     */
+    assert(NameLength != 0);
 
     /* Look for the named object under the directory. */
-    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Name, FoundObject),
+    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, FoundObject),
 	       {
 		   DbgTrace("Path %s not found\n", Path);
-		   ExFreePool(Name);
 		   *FoundObject = NULL;
 		   *RemainingPath = Path;
 	       });
-    ExFreePool(Name);
     *RemainingPath = Path + NameLength;
 
     /* Remaining path does not include leading OBJ_NAME_PATH_SEPARATOR */
@@ -136,15 +125,15 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 	}
     }
 
-    MWORD BufferLength = strlen(Name)+1;
+    MWORD NameLength = strlen(Name);
     ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
-    ObpAllocatePoolEx(NameOwned, CHAR, BufferLength, ExFreePool(DirectoryEntry));
+    ObpAllocatePoolEx(NameOwned, CHAR, NameLength+1, ExFreePool(DirectoryEntry));
     InitializeListHead(&DirectoryEntry->ChainLink);
-    memcpy(NameOwned, Name, BufferLength);
+    memcpy(NameOwned, Name, NameLength+1);
     DirectoryEntry->Name = NameOwned;
     DirectoryEntry->Object = Object;
 
-    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name);
+    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, NameLength);
     assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
     InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
 
@@ -155,8 +144,8 @@ NTSTATUS ObpInitDirectoryObjectType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = ObpDirectoryObjectCreateProc,
-	.OpenProc = NULL,
 	.ParseProc = ObpDirectoryObjectParseProc,
+	.OpenProc = NULL,
 	.InsertProc = ObpDirectoryObjectInsertProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_DIRECTORY,

@@ -17,6 +17,7 @@
 #include "ex.h"
 #include "ob.h"
 #include "io.h"
+#include "cm.h"
 #include "ps.h"
 #include "ldr.h"
 #include "rtl.h"
