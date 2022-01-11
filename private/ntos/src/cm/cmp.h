@@ -2,6 +2,8 @@
 
 #include <ntos.h>
 
+#define NTOS_CM_TAG	(EX_POOL_TAG('n','t','c','m'))
+
 typedef enum _CM_NODE_TYPE {
     CM_NODE_KEY,
     CM_NODE_VALUE
@@ -49,6 +51,16 @@ typedef struct _CM_REG_VALUE {
 	PCSTR *StringArray;	/* NULL-terminated */
     };
 } CM_REG_VALUE, *PCM_REG_VALUE;
+
+/*
+ * Creation context for key object
+ */
+typedef struct _KEY_OBJECT_CREATE_CONTEXT {
+    BOOLEAN Volatile;
+    PCSTR Name;
+    ULONG NameLength;
+    PCM_KEY_OBJECT Parent;
+} KEY_OBJECT_CREATE_CONTEXT, *PKEY_OBJECT_CREATE_CONTEXT;
 
 /* key.c */
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,

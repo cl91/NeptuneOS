@@ -18,9 +18,9 @@ static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self,
     return STATUS_SUCCESS;
 }
 
-/* Compute the hash index of a given string. */
-static ULONG ObpDirectoryEntryHashIndex(IN PCSTR Str,
-					IN ULONG Length) /* Excluding trailing '\0' */
+/* Compute the hash index of the given string. */
+static inline ULONG ObpDirectoryEntryHashIndex(IN PCSTR Str,
+					       IN ULONG Length) /* Excluding trailing '\0' */
 {
     ULONG Hash = RtlpHashStringEx(Str, Length);
     return Hash % OBP_DIROBJ_HASH_BUCKETS;
@@ -35,7 +35,6 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     assert(Directory != NULL);
     assert(Name != NULL);
     assert(FoundObject != NULL);
-    DbgTrace("name = %s\n", Name);
 
     ULONG HashIndex = ObpDirectoryEntryHashIndex(Name, Length);
     assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
@@ -44,7 +43,11 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
 	assert(Entry != NULL);
 	assert(Entry->Name != NULL);
+	if (strlen(Entry->Name) != Length) {
+	    continue;
+	}
 	if (!strncmp(Name, Entry->Name, Length)) {
+	    DbgTrace("Found object name = %s\n", Entry->Name);
 	    *FoundObject = Entry->Object;
 	}
     }
@@ -67,24 +70,13 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    OUT PCSTR *RemainingPath)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
-    DbgTrace("Path = %s\n", Path);
+    DbgTrace("Trying to parse Path = %s\n", Path);
     assert(Self != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
     assert(RemainingPath != NULL);
 
-    /* Extract the name of the sub-object, which will be whatever is
-     * before the first OBJ_NAME_PATH_SEPARATOR. The remaining path will be
-     * whatever is left after the first OBJ_NAME_PATH_SEPARATOR (possibly empty).
-     */
-    ULONG NameLength = 0;
-    for (PCSTR Ptr = Path; (*Ptr != '\0') && (*Ptr != OBJ_NAME_PATH_SEPARATOR); Ptr++) {
-	NameLength++;
-    }
-    /* This is a programming error since the object manager shall always
-     * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR.
-     */
-    assert(NameLength != 0);
+    ULONG NameLength = ObpLocateFirstPathSeparator(Path);
 
     /* Look for the named object under the directory. */
     RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, FoundObject),
@@ -94,12 +86,8 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 		   *RemainingPath = Path;
 	       });
     *RemainingPath = Path + NameLength;
-
-    /* Remaining path does not include leading OBJ_NAME_PATH_SEPARATOR */
-    if (**RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	(*RemainingPath)++;
-    }
-    DbgTrace("RemainingPath = %s\n", *RemainingPath);
+    /* The object manager will skip the leading OBJ_NAME_PATH_SEPARATOR */
+    DbgTrace("Parse successful. RemainingPath = %s\n", *RemainingPath);
     return STATUS_SUCCESS;
 }
 

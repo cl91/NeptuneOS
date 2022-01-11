@@ -379,6 +379,37 @@ typedef struct _HANDLE_TABLE_ENTRY {
  */
 #define HANDLE_VALUE_INC 4
 
+/*
+ * Helper function to locate the first path separator.
+ *
+ * This should only be called within the object type's parse/open routines
+ */
+static inline ULONG ObpLocateFirstPathSeparator(IN PCSTR Path)
+{
+    /* Extract the name of the sub-object, which will be whatever is before
+     * the first OBJ_NAME_PATH_SEPARATOR. The remaining path will be whatever
+     * is left after the first OBJ_NAME_PATH_SEPARATOR (possibly empty). */
+    ULONG NameLength = 0;
+    for (PCSTR Ptr = Path; (*Ptr != '\0') && (*Ptr != OBJ_NAME_PATH_SEPARATOR); Ptr++) {
+	NameLength++;
+    }
+    /* This is a programming error since the object manager shall always
+     * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR. */
+    assert(NameLength != 0);
+    return NameLength;
+}
+
+/*
+ * Helper function to determine if the parse context specifies the correct object type.
+ *
+ * This should only be called within the object type's parse/open routines
+ */
+static inline ULONG ObpParseTypeIsValid(IN POB_PARSE_CONTEXT Context,
+					IN OBJECT_TYPE_ENUM Type)
+{
+    return (1UL << Type) & Context->RequestedTypeMask;
+}
+
 /* init.c */
 NTSTATUS ObInitSystemPhase0();
 

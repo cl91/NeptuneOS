@@ -26,7 +26,7 @@ static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
-    if ((1UL << ObjectHeader->Type->Index) == Type) {
+    if ((1UL << ObjectHeader->Type->Index) & Type) {
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
@@ -73,7 +73,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     }
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
-    if ((1UL << ObjectHeader->Type->Index) & ParseContext->RequestedTypeMask) {
+    if (ObpParseTypeIsValid(ParseContext, ObjectHeader->Type->Index)) {
 	ObpReferenceObject(Object);
 	*pObject = Object;
 	return STATUS_SUCCESS;

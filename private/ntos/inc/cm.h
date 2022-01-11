@@ -3,7 +3,7 @@
 #include <nt.h>
 #include "ob.h"
 
-#define REGISTRY_OBJECT_DIRECTORY	"\\REGISTRY"
+#define REGISTRY_OBJECT_DIRECTORY	"\\Registry"
 
 typedef struct _CM_OPEN_CONTEXT {
     IN OB_PARSE_CONTEXT Header;

@@ -69,12 +69,13 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 	}
 	/* Parse procedure should not return a NULL Subobject (unless reparsing) */
 	assert(Subobject != NULL);
-	/* Remaining path should not have leading OBJ_NAME_PATH_SEPARATOR (unless reparsing) */
-	assert(*RemainingPath != OBJ_NAME_PATH_SEPARATOR);
 	/* Remaining path should also be within the original Path (unless reparsing) */
 	assert(RemainingPath > Path);
 	assert(RemainingPath <= LastByte);
-	/* If all is good, keep going. */
+	/* Skip the leading OBJ_NAME_PATH_SEPARATOR and keep going */
+	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
+	    RemainingPath++;
+	}
 	Object = Subobject;
 	Path = RemainingPath;
     }
@@ -125,6 +126,10 @@ parse:
     if (OBJECT_TO_OBJECT_HEADER(Object)->Type->TypeInfo.ParseProc == NULL) {
 	goto open;
     }
+    /* If the path to be parsed is now empty, we are done parsing. Open the object. */
+    if (*Path == '\0') {
+	goto open;
+    }
     POBJECT Subobject = NULL;
     Status = OBJECT_TO_OBJECT_HEADER(Object)->Type->TypeInfo.ParseProc(
 	Object, Path, ParseContext, &Subobject, &RemainingPath);
@@ -156,17 +161,20 @@ parse:
      * the remaining path is empty. */
     if (Status != STATUS_NTOS_INVOKE_OPEN_ROUTINE) {
 	Object = Subobject;
+	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
+	    RemainingPath++;
+	}
 	Path = RemainingPath;
 	DbgTrace("Parsing sub-path %s\n", Path);
 	goto parse;
     }
-
-open:
     /* If the parse routine has indicated that we must invoke the open routine
      * to fully parse a sub-path, it should set the remaining path to the full
-     * sub-path and the sub-object to the original object being parsed */
+     * sub-path and set the subobject to NULL. */
     assert(Path == RemainingPath);
-    assert(Subobject == Object);
+    assert(Subobject == NULL);
+
+open:
     assert(Object != NULL);
     assert(OBJECT_TO_OBJECT_HEADER(Object)->Type != NULL);
     /* If the object type does not define an open procedure, return error */
@@ -177,14 +185,14 @@ open:
 	goto out;
     }
 
-    /* Save the object to THREAD because we may need to suspend it below. */
-    Thread->ObOpenObjectSavedState.Object = Object;
     /* Increase the reference count of the object so it doesn't get deleted. */
     ObpReferenceObject(Object);
+
+    /* Save the object to THREAD because we may need to suspend it below. */
+    Thread->ObOpenObjectSavedState.Object = Object;
     /* Also save the path to be parsed, since it might have changed due to reparse */
     Thread->ObOpenObjectSavedState.Path = Path;
     Thread->ObOpenObjectSavedState.Reparsed = Reparsed;
-
     /* Call the open procedure, and wait asynchronously. */
     AWAIT_EX(OBJECT_TO_OBJECT_HEADER(Thread->ObOpenObjectSavedState.Object)->Type->TypeInfo.OpenProc,
 	     Status, AsyncState, Thread, Thread->ObOpenObjectSavedState.Object,
@@ -202,6 +210,7 @@ open:
     }
     /* If the open routine did not return error, it should always set the remaining path */
     assert(RemainingPath != NULL);
+
     /* If the open procedure returned REPARSE, start from the very beginning */
     if (NeedReparse(Status)) {
 	/* If reparsing, the open procedure should never touch OpenedInstance */
@@ -234,6 +243,9 @@ open:
     /* If RemainingPath is not empty, invoke the parse routine of the newly
      * opened instance with the remaining path, until the remaining path is empty */
     if (*RemainingPath != '\0') {
+	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
+	    RemainingPath++;
+	}
 	Path = RemainingPath;
 	goto parse;
     }

@@ -3,7 +3,30 @@
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx)
 {
-    UNIMPLEMENTED;
+    assert(Object != NULL);
+    assert(CreaCtx != NULL);
+    PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Object;
+    PKEY_OBJECT_CREATE_CONTEXT Ctx = (PKEY_OBJECT_CREATE_CONTEXT)CreaCtx;
+    Key->Node.Name = RtlDuplicateStringEx(Ctx->Name, Ctx->NameLength,
+					  NTOS_CM_TAG);
+    if (Key->Node.Name == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    Key->Node.Parent = &Ctx->Parent->Node;
+    Key->Node.Type = CM_NODE_KEY;
+    Key->Volatile = Ctx->Volatile;
+    for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
+	InitializeListHead(&Key->HashBuckets[i]);
+    }
+    return STATUS_SUCCESS;
+}
+
+/* Compute the hash index of the given string. */
+static inline ULONG CmpKeyHashIndex(IN PCSTR Str,
+				    IN ULONG Length) /* Excluding trailing '\0' */
+{
+    ULONG Hash = RtlpHashStringEx(Str, Length);
+    return Hash % CM_KEY_HASH_BUCKETS;
 }
 
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
@@ -12,7 +35,51 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       OUT POBJECT *FoundObject,
 			       OUT PCSTR *RemainingPath)
 {
-    UNIMPLEMENTED;
+    assert(Self != NULL);
+    assert(Path != NULL);
+    assert(ParseContext != NULL);
+    assert(FoundObject != NULL);
+    assert(RemainingPath != NULL);
+
+    DbgTrace("Parsing path %s\n", Path);
+
+    if (!ObpParseTypeIsValid(ParseContext, OBJECT_TYPE_KEY)) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
+
+    if (*Path == '\0') {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+
+    PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
+    PCM_OPEN_CONTEXT Context = (PCM_OPEN_CONTEXT)ParseContext;
+    ULONG NameLength = ObpLocateFirstPathSeparator(Path);
+    ULONG HashIndex = CmpKeyHashIndex(Path, NameLength);
+    assert(HashIndex < CM_KEY_HASH_BUCKETS);
+
+    PCM_NODE NodeFound = NULL;
+    LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
+	assert(Node->Name != NULL);
+	if (!strncmp(Path, Node->Name, NameLength)) {
+	    NodeFound = Node;
+	}
+    }
+
+    /* If we did not find the named key object (which includes the
+     * case where the node found is a value node), we pass on to the
+     * open routine for further processing */
+    if (NodeFound == NULL || NodeFound->Type != CM_NODE_KEY) {
+	*FoundObject = NULL;
+	*RemainingPath = Path;
+	DbgTrace("Unable to parse %s. Should invoke open routine.\n", Path);
+	return STATUS_NTOS_INVOKE_OPEN_ROUTINE;
+    }
+
+    /* Else, we return the key object that we have found */
+    *FoundObject = NodeFound;
+    *RemainingPath = Path + NameLength;
+    DbgTrace("Found key %s\n", NodeFound->Name);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
