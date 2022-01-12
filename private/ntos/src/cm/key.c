@@ -1,5 +1,13 @@
 #include "cmp.h"
 
+/* Compute the hash index of the given string. */
+static inline ULONG CmpKeyHashIndex(IN PCSTR Str,
+				    IN ULONG Length) /* Excluding trailing '\0' */
+{
+    ULONG Hash = RtlpHashStringEx(Str, Length);
+    return Hash % CM_KEY_HASH_BUCKETS;
+}
+
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx)
 {
@@ -12,21 +20,22 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
     if (Key->Node.Name == NULL) {
 	return STATUS_NO_MEMORY;
     }
+    for (ULONG i = 0; i < Ctx->NameLength; i++) {
+	assert(Ctx->Name[i] != OBJ_NAME_PATH_SEPARATOR);
+    }
+    assert(Ctx->Parent->Node.Type == CM_NODE_KEY);
     Key->Node.Parent = &Ctx->Parent->Node;
     Key->Node.Type = CM_NODE_KEY;
     Key->Volatile = Ctx->Volatile;
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
 	InitializeListHead(&Key->HashBuckets[i]);
     }
+    if (Ctx->Parent != NULL) {
+	ULONG HashIndex = CmpKeyHashIndex(Ctx->Name, Ctx->NameLength);
+	InsertTailList(&Ctx->Parent->HashBuckets[HashIndex],
+		       &Key->Node.HashLink);
+    }
     return STATUS_SUCCESS;
-}
-
-/* Compute the hash index of the given string. */
-static inline ULONG CmpKeyHashIndex(IN PCSTR Str,
-				    IN ULONG Length) /* Excluding trailing '\0' */
-{
-    ULONG Hash = RtlpHashStringEx(Str, Length);
-    return Hash % CM_KEY_HASH_BUCKETS;
 }
 
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
@@ -37,13 +46,13 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 {
     assert(Self != NULL);
     assert(Path != NULL);
-    assert(ParseContext != NULL);
     assert(FoundObject != NULL);
     assert(RemainingPath != NULL);
 
     DbgTrace("Parsing path %s\n", Path);
 
-    if (!ObpParseTypeIsValid(ParseContext, OBJECT_TYPE_KEY)) {
+    /* Reject the open if the parse context is not CM_OPEN_CONTEXT */
+    if (ParseContext != NULL && ParseContext->Type != PARSE_CONTEXT_KEY_OPEN) {
 	return STATUS_OBJECT_TYPE_MISMATCH;
     }
 
@@ -78,19 +87,68 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     /* Else, we return the key object that we have found */
     *FoundObject = NodeFound;
     *RemainingPath = Path + NameLength;
+    if (Context != NULL && Context->Disposition != NULL) {
+	/* Eventually this will be overwritten by the open proc if a sub-key
+	 * is later created. */
+	*Context->Disposition = REG_OPENED_EXISTING_KEY;
+    }
     DbgTrace("Found key %s\n", NodeFound->Name);
     return STATUS_SUCCESS;
 }
 
 NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
-			      IN POBJECT Object,
-			      IN PCSTR SubPath,
+			      IN POBJECT Self,
+			      IN PCSTR Path,
 			      IN POB_PARSE_CONTEXT ParseContext,
-			      OUT POBJECT *pOpenedInstance,
-			      OUT PCSTR *pRemainingPath)
+			      OUT POBJECT *OpenedInstance,
+			      OUT PCSTR *RemainingPath)
 {
-    UNIMPLEMENTED;
+    assert(Self != NULL);
+    assert(Path != NULL);
+    assert(ParseContext != NULL);
+    assert(OpenedInstance != NULL);
+    assert(RemainingPath != NULL);
+
+    DbgTrace("Opening path %s\n", Path);
+
+    /* Reject the open if the parse context is not CM_OPEN_CONTEXT */
+    if (ParseContext->Type != PARSE_CONTEXT_KEY_OPEN) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
+
+    if (*Path == '\0') {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+
+    PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
+    PCM_OPEN_CONTEXT Context = (PCM_OPEN_CONTEXT)ParseContext;
+
+    /* TODO: Eventually we will implement the on-disk format of registry.
+     * This in the future will be replaced by a database query. */
+    if (!Context->Create) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+
+    /* Create the sub-key object and insert into the parent key */
+    ULONG NameLength = ObpLocateFirstPathSeparator(Path);
+    BOOLEAN Volatile = Context->CreateOptions & REG_OPTION_VOLATILE;
+    PCM_KEY_OBJECT SubKey = NULL;
+    KEY_OBJECT_CREATE_CONTEXT CreaCtx = {
+	.Volatile = Volatile,
+	.Name = Path,
+	.NameLength = NameLength,
+	.Parent = Key
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&SubKey, &CreaCtx));
+
+    *OpenedInstance = SubKey;
+    *RemainingPath = Path + NameLength;
+    if (Context->Disposition != NULL) {
+	*Context->Disposition = REG_CREATED_NEW_KEY;
+    }
+    DbgTrace("Created sub-key %s\n", SubKey->Node.Name);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
@@ -103,10 +161,10 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
     NTSTATUS Status;
 
     ASYNC_BEGIN(AsyncState);
-    Thread->NtOpenKeySavedState.OpenContext.Header.RequestedTypeMask = OBJECT_TYPE_MASK_KEY;
+    Thread->NtOpenKeySavedState.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
     Thread->NtOpenKeySavedState.OpenContext.Create = FALSE;
 
-    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, KeyPath,
+    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, KeyPath, OBJECT_TYPE_KEY,
 	     (POB_PARSE_CONTEXT)&Thread->NtOpenKeySavedState.OpenContext, KeyHandle);
     ASYNC_END(Status);
 }
@@ -119,20 +177,20 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
                      IN ULONG TitleIndex,
                      IN OPTIONAL PCSTR Class,
                      IN ULONG CreateOptions,
-                     IN OPTIONAL PULONG Disposition)
+                     OUT OPTIONAL PULONG Disposition)
 {
     PCSTR KeyPath = ObjectAttributes.ObjectNameBuffer;
     NTSTATUS Status;
 
     ASYNC_BEGIN(AsyncState);
-    Thread->NtCreateKeySavedState.OpenContext.Header.RequestedTypeMask = OBJECT_TYPE_MASK_KEY;
+    Thread->NtCreateKeySavedState.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
     Thread->NtCreateKeySavedState.OpenContext.Create = TRUE;
     Thread->NtCreateKeySavedState.OpenContext.TitleIndex = TitleIndex;
     Thread->NtCreateKeySavedState.OpenContext.Class = Class;
     Thread->NtCreateKeySavedState.OpenContext.CreateOptions = CreateOptions;
     Thread->NtCreateKeySavedState.OpenContext.Disposition = Disposition;
 
-    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, KeyPath,
+    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, KeyPath, OBJECT_TYPE_KEY,
 	     (POB_PARSE_CONTEXT)&Thread->NtCreateKeySavedState.OpenContext, KeyHandle);
     ASYNC_END(Status);
 }

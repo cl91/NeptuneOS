@@ -17,7 +17,7 @@ static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
 
 static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
 					IN HANDLE Handle,
-					IN OBJECT_TYPE_MASK Type,
+					IN OBJECT_TYPE_ENUM Type,
 					OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
@@ -26,7 +26,7 @@ static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
-    if ((1UL << ObjectHeader->Type->Index) & Type) {
+    if (Type == OBJECT_TYPE_ANY || Type == ObjectHeader->Type->Index) {
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
@@ -53,7 +53,12 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+/*
+ * Search the object manager namespace for the specified Path with the
+ * given type (or OBJECT_TYPE_ANY), returning the pointer to the object body.
+ */
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
+				 IN OBJECT_TYPE_ENUM Type,
 				 IN POB_PARSE_CONTEXT ParseContext,
 				 OUT POBJECT *pObject)
 {
@@ -73,7 +78,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     }
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
-    if (ObpParseTypeIsValid(ParseContext, ObjectHeader->Type->Index)) {
+    if (Type == OBJECT_TYPE_ANY || Type == ObjectHeader->Type->Index) {
 	ObpReferenceObject(Object);
 	*pObject = Object;
 	return STATUS_SUCCESS;
@@ -85,7 +90,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 
 NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
 				   IN HANDLE Handle,
-				   IN OBJECT_TYPE_MASK Type,
+				   IN OBJECT_TYPE_ENUM Type,
 				   OUT POBJECT *pObject)
 {
     assert(Process != NULL);

@@ -393,7 +393,7 @@
     <parameter annotation="in" type="ULONG" name="TitleIndex" />
     <parameter annotation="in opt" type="UnicodeString" name="Class" />
     <parameter annotation="in" type="ULONG" name="CreateOptions" />
-    <parameter annotation="in opt" type="ptr::ULONG" name="Disposition" />
+    <parameter annotation="out opt" type="ptr::ULONG" name="Disposition" />
   </svc>
 
   <svc name="NtQueryValueKey">

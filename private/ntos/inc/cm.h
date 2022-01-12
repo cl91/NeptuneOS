@@ -11,7 +11,7 @@ typedef struct _CM_OPEN_CONTEXT {
     IN ULONG TitleIndex;
     IN OPTIONAL PCSTR Class;
     IN ULONG CreateOptions;
-    IN OPTIONAL PULONG Disposition;
+    OUT OPTIONAL PULONG Disposition;
 } CM_OPEN_CONTEXT, *PCM_OPEN_CONTEXT;
 
 /* init.c */

@@ -66,8 +66,8 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     ASYNC_BEGIN(State);
 
-    /* Reject the open if the caller specified a different object type */
-    if (!(ParseContext->RequestedTypeMask & OBJECT_TYPE_MASK_DEVICE)) {
+    /* Reject the open if the parse context is not IO_OPEN_CONTEXT */
+    if (ParseContext->Type != PARSE_CONTEXT_DEVICE_OPEN) {
 	return STATUS_OBJECT_TYPE_MISMATCH;
     }
 
@@ -217,7 +217,7 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     }
     PIO_FILE_OBJECT FileObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
-				      OBJECT_TYPE_MASK_FILE, (POBJECT *)&FileObject));
+				      OBJECT_TYPE_FILE, (POBJECT *)&FileObject));
     assert(FileObject != NULL);
     assert(FileObject->DeviceObject != NULL);
     assert(FileObject->DeviceObject->DriverObject != NULL);

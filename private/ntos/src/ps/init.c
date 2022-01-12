@@ -45,8 +45,7 @@ static NTSTATUS PspInitializeSystemDll()
 {
     /* Create the NTDLL.DLL image section */
     PIO_FILE_OBJECT NtdllFile = NULL;
-    OB_PARSE_CONTEXT ParseContext = { .RequestedTypeMask = OBJECT_TYPE_MASK_FILE };
-    NTSTATUS Status = ObReferenceObjectByName(NTDLL_PATH, &ParseContext,
+    NTSTATUS Status = ObReferenceObjectByName(NTDLL_PATH, OBJECT_TYPE_FILE, NULL,
 					      (POBJECT *) &NtdllFile);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

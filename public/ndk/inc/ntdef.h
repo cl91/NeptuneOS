@@ -72,8 +72,8 @@ typedef wchar_t WCHAR;
 typedef WCHAR *PWCHAR, *PWCH, *PWSTR, *LPWSTR;
 typedef CONST WCHAR *PCWCH, *PCWSTR, *LPCWSTR;
 
-typedef UCHAR BOOLEAN;
-typedef UCHAR BOOL;
+// This differs from Windows (Windows defines BOOLEAN as UCHAR)
+typedef _Bool BOOLEAN, BOOL;
 typedef BOOLEAN *PBOOLEAN;
 #define TRUE (1)
 #define FALSE (0)

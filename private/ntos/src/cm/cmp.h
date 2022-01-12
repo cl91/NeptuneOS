@@ -4,6 +4,12 @@
 
 #define NTOS_CM_TAG	(EX_POOL_TAG('n','t','c','m'))
 
+#define CmpAllocatePoolEx(Var, Type, Size, OnError)		\
+    ExAllocatePoolEx(Var, Type, Size, NTOS_CM_TAG, OnError)
+
+#define CmpAllocateObject(Var, Type)				\
+    CmpAllocatePoolEx(Var, Type, sizeof(Type), {})
+
 typedef enum _CM_NODE_TYPE {
     CM_NODE_KEY,
     CM_NODE_VALUE

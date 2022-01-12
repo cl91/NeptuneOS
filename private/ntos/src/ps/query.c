@@ -456,7 +456,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	Process = Thread->Process;
     } else {
 	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
-					  OBJECT_TYPE_MASK_PROCESS, (POBJECT *) &Process));
+					  OBJECT_TYPE_PROCESS, (POBJECT *) &Process));
     }
     assert(Process != NULL);
 

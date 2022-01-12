@@ -440,8 +440,8 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     DllPath[sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1] = '\\';
     memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
 
-    OB_PARSE_CONTEXT ParseContext = { .RequestedTypeMask = OBJECT_TYPE_MASK_FILE };
-    NTSTATUS Status = ObReferenceObjectByName(DllPath, &ParseContext, (POBJECT *)DllFile);
+    NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE,
+					      NULL, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
@@ -844,7 +844,7 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
     /* When the process exits or is terminated the image section object is
      * dereferenced. */
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
-				      OBJECT_TYPE_MASK_SECTION, (POBJECT *) &Section));
+				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
     assert(Section != NULL);
     if (!Section->Flags.Image) {
 	ObDereferenceObject(Section);

@@ -53,7 +53,6 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(Object != NULL);
     assert(SubPath != NULL);
-    assert(ParseContext != NULL);
     assert(pOpenedInstance != NULL);
 
     *pRemainingPath = SubPath;
@@ -95,14 +94,14 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     NTSTATUS Status;
 
     ASYNC_BEGIN(State);
-    Thread->NtCreateFileSavedState.OpenContext.Header.RequestedTypeMask = OBJECT_TYPE_MASK_DEVICE;
+    Thread->NtCreateFileSavedState.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.CreateOptions = CreateOptions;
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.FileAttributes = FileAttributes;
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.ShareAccess = ShareAccess;
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.Disposition = CreateDisposition;
 
-    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, DevicePath,
+    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, DevicePath, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Thread->NtCreateFileSavedState.OpenContext, FileHandle);
     ASYNC_END(Status);
 }
@@ -120,16 +119,14 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     NTSTATUS Status;
 
     ASYNC_BEGIN(State);
-    /* Eventually the following mask will be changed to just DEVICE */
-    Thread->NtOpenFileSavedState.OpenContext.Header.RequestedTypeMask = OBJECT_TYPE_MASK_DEVICE | OBJECT_TYPE_MASK_FILE,
+    Thread->NtOpenFileSavedState.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.CreateOptions = OpenOptions;
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.FileAttributes = 0;
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.ShareAccess = ShareAccess;
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.Disposition = 0;
 
-    /* TODO: We need to implement file system drivers */
-    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, FilePath,
+    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, FilePath, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Thread->NtOpenFileSavedState.OpenContext, FileHandle);
     ASYNC_END(Status);
 }

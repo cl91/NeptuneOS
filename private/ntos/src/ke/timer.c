@@ -323,7 +323,7 @@ NTSTATUS NtSetTimer(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PTIMER Timer = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, TimerHandle, OBJECT_TYPE_MASK_TIMER, (POBJECT *)&Timer));
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, TimerHandle, OBJECT_TYPE_TIMER, (POBJECT *)&Timer));
     assert(Timer != NULL);
     BOOLEAN PreviousState = KeSetTimer(Timer, *DueTime, Thread, TimerApcRoutine, TimerContext, Period);
     if (pPreviousState != NULL) {

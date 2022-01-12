@@ -31,28 +31,9 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_DRIVER,
     OBJECT_TYPE_TIMER,
     OBJECT_TYPE_KEY,
-    MAX_NUM_OBJECT_TYPES
+    MAX_NUM_OBJECT_TYPES,
+    OBJECT_TYPE_ANY = MAX_NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
-
-/* Enums larger than an int is undefined in C99 so we restrict
- * the number of types to 31. This shouldn't be a problem since
- * (as opposed to Windows/ReactOS) we don't implement Desktop or
- * WindowStation or any other Win32 objects in the NT Executive. */
-compile_assert(TOO_MANY_TYPES, MAX_NUM_OBJECT_TYPES < 32);
-
-/* Used by the object manager routines to indicate multiple types */
-typedef enum _OBJECT_TYPE_MASK {
-    OBJECT_TYPE_MASK_DIRECTORY = 1UL << OBJECT_TYPE_DIRECTORY,
-    OBJECT_TYPE_MASK_THREAD = 1UL << OBJECT_TYPE_THREAD,
-    OBJECT_TYPE_MASK_PROCESS = 1UL << OBJECT_TYPE_PROCESS,
-    OBJECT_TYPE_MASK_SECTION = 1UL << OBJECT_TYPE_SECTION,
-    OBJECT_TYPE_MASK_FILE = 1UL << OBJECT_TYPE_FILE,
-    OBJECT_TYPE_MASK_DEVICE = 1UL << OBJECT_TYPE_DEVICE,
-    OBJECT_TYPE_MASK_DRIVER = 1UL << OBJECT_TYPE_DRIVER,
-    OBJECT_TYPE_MASK_TIMER = 1UL << OBJECT_TYPE_TIMER,
-    OBJECT_TYPE_MASK_KEY = 1UL << OBJECT_TYPE_KEY,
-    OBJECT_TYPE_ALL = (1UL << MAX_NUM_OBJECT_TYPES) - 1
-} OBJECT_TYPE_MASK;
 
 /* Object format:
  *
@@ -276,9 +257,13 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
  * The parse procedure should not increase the reference count of
  * the object. All reference counting is done by the object manager.
  */
+typedef enum _PARSE_CONTEXT_TYPE {
+    PARSE_CONTEXT_DEVICE_OPEN,	/* IO_OPEN_CONTEXT */
+    PARSE_CONTEXT_KEY_OPEN,	/* CM_OPEN_CONTEXT */
+} PARSE_CONTEXT_TYPE;
 typedef struct _OB_PARSE_CONTEXT {
-    OBJECT_TYPE_MASK RequestedTypeMask;
-} OB_PARSE_CONTEXT, *POB_PARSE_CONTEXT;
+    PARSE_CONTEXT_TYPE Type; /* Type of the parse context following the header */
+} OB_PARSE_CONTEXT, *POB_PARSE_CONTEXT;	 /* Header of the object parse context */
 typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
 					IN POB_PARSE_CONTEXT ParseContext,
@@ -399,17 +384,6 @@ static inline ULONG ObpLocateFirstPathSeparator(IN PCSTR Path)
     return NameLength;
 }
 
-/*
- * Helper function to determine if the parse context specifies the correct object type.
- *
- * This should only be called within the object type's parse/open routines
- */
-static inline ULONG ObpParseTypeIsValid(IN POB_PARSE_CONTEXT Context,
-					IN OBJECT_TYPE_ENUM Type)
-{
-    return (1UL << Type) & Context->RequestedTypeMask;
-}
-
 /* init.c */
 NTSTATUS ObInitSystemPhase0();
 
@@ -438,11 +412,12 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
 /* obref.c */
 struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
+				 IN OBJECT_TYPE_ENUM Type,
 				 IN POB_PARSE_CONTEXT ParseContext,
 				 OUT POBJECT *Object);
 NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 				   IN HANDLE Handle,
-				   IN OBJECT_TYPE_MASK Type,
+				   IN OBJECT_TYPE_ENUM Type,
 				   OUT POBJECT *pObject);
 NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			IN POBJECT Object,
@@ -453,5 +428,6 @@ VOID ObDereferenceObject(IN POBJECT Object);
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN PCSTR Path,
+			    IN OBJECT_TYPE_ENUM Type,
 			    IN POB_PARSE_CONTEXT ParseContext,
 			    OUT HANDLE *pHandle);

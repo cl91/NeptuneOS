@@ -91,12 +91,16 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
  * handle to the process if the open procedure has consumed all of Path
  * (ie. RemainingPath is empty).
  *
+ * Type specifies the object type of the handle (ie. specify OBJECT_TYPE_FILE
+ * if you are opening a DEVICE object).
+ *
  * Note: OpenResponse must be large enough to accommodate the open responses
  * of all intermediate open procedure invocations.
  */
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
 			    IN PTHREAD Thread,
 			    IN PCSTR Path,
+			    IN OBJECT_TYPE_ENUM Type,
 			    IN POB_PARSE_CONTEXT ParseContext,
 			    OUT HANDLE *pHandle)
 {
@@ -250,12 +254,18 @@ open:
 	goto parse;
     }
 
-    /* RemainingPath is empty. Open is successful. Assign the handle */
-    RET_ERR_EX(ObCreateHandle(Thread->Process, Object, pHandle),
-	       {
-		   /* TODO: Invoke close procedure of opened instance */
-		   ObDereferenceObject(Object);
-	       });
+    /* RemainingPath is empty. Open is successful. Check the object type. */
+    if (Type == OBJECT_TYPE_ANY || Type == OBJECT_TO_OBJECT_HEADER(Object)->Type->Index) {
+	/* Type is valid. Assign the handle. */
+	Status = ObCreateHandle(Thread->Process, Object, pHandle);
+    } else {
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
+    }
+
+    if (!NT_SUCCESS(Status)) {
+	/* TODO: Invoke close procedure of opened instance */
+	ObDereferenceObject(Object);
+    }
     Status = STATUS_SUCCESS;
 
 out:

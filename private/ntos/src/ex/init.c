@@ -19,8 +19,8 @@ static PTHREAD EiSessionManagerThread;
 static NTSTATUS EiStartSessionManager()
 {
     PIO_FILE_OBJECT SmssExe = NULL;
-    OB_PARSE_CONTEXT ParseContext = { .RequestedTypeMask = OBJECT_TYPE_MASK_FILE };
-    NTSTATUS Status = ObReferenceObjectByName(SMSS_EXE_PATH, &ParseContext, (POBJECT *)&SmssExe);
+    NTSTATUS Status = ObReferenceObjectByName(SMSS_EXE_PATH, OBJECT_TYPE_FILE,
+					      NULL, (POBJECT *)&SmssExe);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

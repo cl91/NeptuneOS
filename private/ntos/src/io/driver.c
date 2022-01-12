@@ -15,8 +15,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
     PIO_FILE_OBJECT DriverFile = NULL;
-    OB_PARSE_CONTEXT ParseContext = { .RequestedTypeMask = OBJECT_TYPE_MASK_FILE };
-    RET_ERR(ObReferenceObjectByName(DriverToLoad, &ParseContext,
+    RET_ERR(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, NULL,
 				    (POBJECT *) &DriverFile));
     assert(DriverFile != NULL);
     Driver->DriverFile = DriverFile;
@@ -71,8 +70,7 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverToLoad,
     DriverObjectPath[BufLength-1] = '\0';
     DbgTrace("Object file %s driver name %s driver object %s\n", DriverToLoad, DriverName, DriverObjectPath);
     PIO_DRIVER_OBJECT DriverObject = NULL;
-    OB_PARSE_CONTEXT ParseContext = { .RequestedTypeMask = OBJECT_TYPE_MASK_DRIVER };
-    if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, &ParseContext,
+    if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, OBJECT_TYPE_DRIVER, NULL,
 					   (POBJECT *)&DriverObject))) {
 	/* Driver is already loaded. */
 	/* TODO: Check if it's the same driver. For now we return SUCCESS */

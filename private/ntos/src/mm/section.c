@@ -607,7 +607,7 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     PIO_FILE_OBJECT FileObject = NULL;
     if (FileHandle != NULL) {
 	RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
-					  OBJECT_TYPE_MASK_FILE, (POBJECT *) &FileObject));
+					  OBJECT_TYPE_FILE, (POBJECT *) &FileObject));
 	assert(FileObject != NULL);
     }
     PSECTION Section = NULL;
@@ -648,7 +648,7 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
 
     PSECTION Section = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
-				      OBJECT_TYPE_MASK_SECTION, (POBJECT *) &Section));
+				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
     PVOID MappedBuffer = NULL;
     RET_ERR_EX(MmMapUserBuffer(&Thread->Process->VSpace, (MWORD)SectionInformationBuffer,
 			       SectionInformationLength, &MappedBuffer),
