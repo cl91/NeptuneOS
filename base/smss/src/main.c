@@ -1,7 +1,7 @@
 #include <smss.h>
 #include <ntddbeep.h>
 
-PCSTR SMSS_BANNER = "\nNeptune OS Session Manager\n\n";
+PCSTR SMSS_BANNER = "\nNeptune OS Session Manager\n";
 
 NTSTATUS SmPrint(PCSTR Format, ...)
 {
@@ -149,7 +149,8 @@ NTSTATUS SmStartCommandPrompt()
 
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
-    SmPrint(SMSS_BANNER);
+    SmPrint("%s\n", SMSS_BANNER);
+    SmInitRegistry();
     SmLoadBootDrivers();
     SmTestNullDriver();
     SmTestBeepDriver(440, 1000);

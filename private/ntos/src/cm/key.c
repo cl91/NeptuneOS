@@ -15,16 +15,17 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
     assert(CreaCtx != NULL);
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Object;
     PKEY_OBJECT_CREATE_CONTEXT Ctx = (PKEY_OBJECT_CREATE_CONTEXT)CreaCtx;
+    for (ULONG i = 0; i < Ctx->NameLength; i++) {
+	assert(Ctx->Name[i] != OBJ_NAME_PATH_SEPARATOR);
+	assert(Ctx->Name[i] != '\0');
+    }
     Key->Node.Name = RtlDuplicateStringEx(Ctx->Name, Ctx->NameLength,
 					  NTOS_CM_TAG);
     if (Key->Node.Name == NULL) {
 	return STATUS_NO_MEMORY;
     }
-    for (ULONG i = 0; i < Ctx->NameLength; i++) {
-	assert(Ctx->Name[i] != OBJ_NAME_PATH_SEPARATOR);
-    }
-    assert(Ctx->Parent->Node.Type == CM_NODE_KEY);
-    Key->Node.Parent = &Ctx->Parent->Node;
+    assert(Ctx->Parent == NULL || Ctx->Parent->Node.Type == CM_NODE_KEY);
+    Key->Node.Parent = Ctx->Parent ? &Ctx->Parent->Node : NULL;
     Key->Node.Type = CM_NODE_KEY;
     Key->Volatile = Ctx->Volatile;
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
