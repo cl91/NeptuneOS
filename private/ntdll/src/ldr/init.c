@@ -764,6 +764,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     if (Peb->ProcessParameters == NULL) {
 	return STATUS_NO_MEMORY;
     }
+    /* For drivers the CommandLine is actually the driver registry path. */
     RET_ERR(LdrpUtf8ToUnicodeString(CommandLine, &Peb->ProcessParameters->CommandLine));
     Peb->ProcessParameters->Flags &= RTL_USER_PROCESS_PARAMETERS_NORMALIZED;
 
@@ -948,8 +949,9 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	    } else {
 		EntryPoint = WdmDllEntry->EntryPoint;
 		((PWDM_DLL_ENTRYPOINT)WdmDllEntry->EntryPoint)(IpcBuffer,
-							      InitInfo.ThreadInitInfo.WdmServiceCap,
-							      &InitInfo.DriverInitInfo);
+							       InitInfo.ThreadInitInfo.WdmServiceCap,
+							       &InitInfo.DriverInitInfo,
+							       &Peb->ProcessParameters->CommandLine);
 	    }
 	} else {
 	    /* Calls the image entry point */

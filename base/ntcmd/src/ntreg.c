@@ -169,17 +169,15 @@ void NtEnumKey(HANDLE hKey)
     PKEY_VALUE_BASIC_INFORMATION pbi;
     PKEY_NODE_INFORMATION pki;
     ULONG ResultLength;
-    UINT i;
 
     RtlCliDisplayString("=========\n");
 
-    i = 0;
+    UINT i = 0;
     memset(buf, 0x00, BUFFER_SIZE);
     pki = (PKEY_NODE_INFORMATION) buf;
 
-    while (STATUS_SUCCESS ==
-	   NtEnumerateKey(hKey, i++, KeyNodeInformation, pki, BUFFER_SIZE,
-			  &ResultLength)) {
+    while (STATUS_SUCCESS == NtEnumerateKey(hKey, i++, KeyNodeInformation,
+					    pki, BUFFER_SIZE, &ResultLength)) {
 	if (pki->NameLength) {
 	    RtlCliDisplayString("[%S]\n", pki->Name);
 	} else {
@@ -194,9 +192,9 @@ void NtEnumKey(HANDLE hKey)
     memset(buf, 0x00, BUFFER_SIZE);
     pbi = (PKEY_VALUE_BASIC_INFORMATION) buf;
 
-    while (STATUS_SUCCESS ==
-	   NtEnumerateValueKey(hKey, i++, KeyValueBasicInformation, pbi,
-			       BUFFER_SIZE, &ResultLength)) {
+    while (STATUS_SUCCESS == NtEnumerateValueKey(hKey, i++,
+						 KeyValueBasicInformation, pbi,
+						 BUFFER_SIZE, &ResultLength)) {
 	RtlCliDisplayString((pbi->Type == REG_SZ)
 			    ? " REG_SZ" : (pbi->Type == REG_MULTI_SZ)
 			    ? " REG_MULTI_SZ" : (pbi->Type == REG_DWORD)

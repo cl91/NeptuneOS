@@ -12,23 +12,13 @@
 #include <assert.h>
 #include "mi.h"
 
-/* Change below to DbgTrace(__VA_ARGS__) to enable tracing */
-#define AVLTRACE(...)
-#define PRINTNODE(Node)	    AVLTRACE(#Node " (%p) key is %p\n", Node, (PVOID) (Node ? Node->Key : 0))
-
-static inline PMM_AVL_NODE MiAvlGetParent(PMM_AVL_NODE Node)
-{
-    MWORD ParentWord = Node->Parent;
-    ParentWord &= ~((MWORD) 0x3ULL);
-    return (PMM_AVL_NODE) ParentWord;
-}
-
-static inline BOOLEAN MiAvlIsRightChild(PMM_AVL_NODE Node)
-{
-    PMM_AVL_NODE Parent = MiAvlGetParent(Node);
-    assert(Parent != NULL);
-    return Parent->RightChild == Node;
-}
+#define AVLTRACE(...)	DbgTrace(__VA_ARGS__)
+#define PRINTNODE(Node)							\
+    if (Node) {								\
+	AVLTRACE(#Node " (%p) key is %p\n", Node, (PVOID)Node->Key);	\
+    } else {								\
+	AVLTRACE(#Node " is (nil)\n");					\
+    }
 
 typedef enum _AVL_NODE_BALANCE {
     LEFT_HEAVY = -1,
@@ -282,9 +272,13 @@ PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
 }
 
 /*
- * Returns Node with largest key such that
- * Node->Key <= input Key
- * Returns NULL if no such node is found
+ * Returns Node with largest key such that Node->Key <= input Key.
+ *
+ * In other words, if the tree has a node with the given key, this routine
+ * returns that node. Otherwise, pretend that a node with the given key is
+ * inserted into the tree, and this routine returns its previous node.
+ *
+ * Returns NULL if no such node is found.
  *
  * Note: don't use this to find the parent node if you want to insert into tree.
  * Use MiAvlTreeFindNodeOrParent instead.
@@ -299,7 +293,7 @@ PMM_AVL_NODE MiAvlTreeFindNodeOrPrev(IN PMM_AVL_TREE Tree,
     if (Parent->Key <= Key) {
 	return Parent;
     }
-    return MiAvlGetPrevNode(Tree, Parent);
+    return MiAvlGetPrevNode(Parent);
 }
 
 /*
@@ -364,6 +358,11 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 			 IN PMM_AVL_NODE Parent,
 			 IN PMM_AVL_NODE Node)
 {
+    assert(Tree != NULL);
+    assert(Node != NULL);
+    DbgTrace("Inserting node %p (key %p) parent %p (key %p) to tree %p\n",
+	     Node, (PVOID)Node->Key, Parent,
+	     Parent ? (PVOID)Parent->Key : NULL, Tree);
     Node->LeftChild = NULL;
     Node->RightChild = NULL;
 
@@ -371,8 +370,6 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
     if (Tree->BalancedRoot == NULL || Parent == NULL) {
 	Tree->BalancedRoot = Node;
 	Node->Parent = 0;
-	assert(IsListEmpty(&Tree->NodeList));
-	InsertHeadList(&Tree->NodeList, &Node->ListEntry);
 	return;
     }
 
@@ -382,11 +379,9 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
     } else if (Node->Key < Parent->Key) {
 	assert(Parent->LeftChild == NULL);
 	Parent->LeftChild = Node;
-	InsertTailList(&Parent->ListEntry, &Node->ListEntry);
     } else {
 	assert(Parent->RightChild == NULL);
 	Parent->RightChild = Node;
-	InsertHeadList(&Parent->ListEntry, &Node->ListEntry);
     }
     MiAvlSetParent(Node, Parent);
 
@@ -435,6 +430,8 @@ static VOID MiAvlTreeSimpleRemove(IN PMM_AVL_TREE Tree,
     assert(Node->LeftChild == NULL || Node->RightChild == NULL);
     PMM_AVL_NODE Child = Node->LeftChild ? Node->LeftChild : Node->RightChild;
     PMM_AVL_NODE Parent = MiAvlGetParent(Node);
+    DbgTrace("Removing %p parent %p (key %p)\n", (PVOID)Node->Key,
+	     Parent, Parent ? (PVOID)Parent->Key : NULL);
     if (Child != NULL) {
 	MiAvlSetParent(Child, Parent);
     }
@@ -442,8 +439,10 @@ static VOID MiAvlTreeSimpleRemove(IN PMM_AVL_TREE Tree,
 	Tree->BalancedRoot = Child;
     } else {
 	if (MiAvlIsRightChild(Node)) {
+	    DbgTrace("HereR\n");
 	    Parent->RightChild = Child;
 	} else {
+	    DbgTrace("HereL\n");
 	    Parent->LeftChild = Child;
 	}
     }
@@ -467,31 +466,24 @@ static VOID MiAvlTreeSimpleRemove(IN PMM_AVL_TREE Tree,
 VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
 			 IN PMM_AVL_NODE Node)
 {
-    /* Remove the node from the linear list first */
-    RemoveEntryList(&Node->ListEntry);
+    DbgTrace("Removing node %p (key %p) from tree %p\n",
+	     Node, (PVOID)Node->Key, Tree);
+    MmAvlDumpTree(Tree);
 
-    /* Case 1: Node has fewer than two children. Simply unlink the node. */
     PMM_AVL_NODE DeleteNode = NULL;
     if ((Node->LeftChild == NULL) || (Node->RightChild == NULL)) {
+	/* Case 1: Node has fewer than two children. Simply unlink the node. */
 	DeleteNode = Node;
-    }
-
-    /* Case 2: Otherwise, check if one side is longer, and mark the immediate
-     * predecessor/successor for deletion. */
-    if ((DeleteNode == NULL) && (MiAvlGetBalance(Node) == RIGHT_HEAVY)) {
-        /* Pick the successor which will be the longest side in this case */
-        DeleteNode = Node->RightChild;
-        while (DeleteNode->LeftChild != NULL) {
-	    DeleteNode = DeleteNode->LeftChild;
+    } else {
+	/* Case 2: Otherwise, check if one side is longer, and mark the immediate
+	 * predecessor/successor for deletion. */
+	if (MiAvlGetBalance(Node) == RIGHT_HEAVY) {
+	    /* Pick the successor which will be the longest side in this case */
+	    DeleteNode = MiAvlGetNextNode(Node);
+	} else {
+	    /* Pick the predecessor which will be the longest side in this case */
+	    DeleteNode = MiAvlGetNextNode(Node);
 	}
-	assert(DeleteNode == LIST_ENTRY_TO_MM_AVL_NODE(&Node->ListEntry.Blink));
-    } else if (DeleteNode == NULL) {
-        /* Pick the predecessor which will be the longest side in this case */
-        DeleteNode = Node->LeftChild;
-        while (DeleteNode->RightChild != NULL) {
-	    DeleteNode = DeleteNode->RightChild;
-	}
-	assert(DeleteNode == LIST_ENTRY_TO_MM_AVL_NODE(&Node->ListEntry.Flink));
     }
 
     /* Unlink the DeleteNode from the tree. Note that DeleteNode must have at
@@ -524,7 +516,9 @@ VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
         }
 
         /* Choose which balance factor to use based on which side we're on */
-        Balance = MiAvlIsRightChild(ParentNode) ? RIGHT_HEAVY : LEFT_HEAVY;
+	if (MiAvlGetParent(ParentNode) != NULL) {
+	    Balance = MiAvlIsRightChild(ParentNode) ? RIGHT_HEAVY : LEFT_HEAVY;
+	}
 
         /* Iterate up the tree */
         ParentNode = MiAvlGetParent(ParentNode);
@@ -549,6 +543,8 @@ VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
 	Node->LeftChild = Node->RightChild = NULL;
 	Node->Parent = 0;
     }
+    DbgTrace("Done!\n");
+    MmAvlDumpTree(Tree);
 }
 
 typedef struct _TRUNK {
@@ -609,18 +605,24 @@ VOID MmAvlDumpTree(PMM_AVL_TREE tree)
     MiAvlTreePrintTree(tree->BalancedRoot, NULL, TRUE);
 }
 
-VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree)
+static VOID MiAvlVisitTree(IN PMM_AVL_NODE Node)
 {
-    LoopOverList(Node, &tree->NodeList, MM_AVL_NODE, ListEntry) {
-	DbgPrint("%p ", (PVOID) Node->Key);
-    }
+    DbgPrint("%p ", (PVOID) Node->Key);
 }
 
-VOID MmAvlVisitTreeLinear(PMM_AVL_TREE Tree, PMM_AVL_TREE_VISITOR Visitor)
+VOID MmAvlVisitTreeLinear(PMM_AVL_TREE Tree,
+			  PMM_AVL_TREE_VISITOR Visitor)
 {
     assert(Tree != NULL);
     assert(Visitor != NULL);
-    LoopOverList(Node, &Tree->NodeList, MM_AVL_NODE, ListEntry) {
+    PMM_AVL_NODE Node = MiAvlGetFirstNode(Tree);
+    while (Node != NULL) {
 	Visitor(Node);
+	Node = MiAvlGetNextNode(Node);
     }
+}
+
+VOID MmAvlDumpTreeLinear(PMM_AVL_TREE Tree)
+{
+    MmAvlVisitTreeLinear(Tree, MiAvlVisitTree);
 }

@@ -90,7 +90,6 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
                       IN OPTIONAL PVOID EaBuffer,
                       IN ULONG EaLength)
 {
-    PCSTR DevicePath = ObjectAttributes.ObjectNameBuffer;
     NTSTATUS Status;
 
     ASYNC_BEGIN(State);
@@ -101,7 +100,7 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.ShareAccess = ShareAccess;
     Thread->NtCreateFileSavedState.OpenContext.OpenPacket.Disposition = CreateDisposition;
 
-    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, DevicePath, OBJECT_TYPE_FILE,
+    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, ObjectAttributes, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Thread->NtCreateFileSavedState.OpenContext, FileHandle);
     ASYNC_END(Status);
 }
@@ -115,7 +114,6 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
                     IN ULONG ShareAccess,
                     IN ULONG OpenOptions)
 {
-    PCSTR FilePath = ObjectAttributes.ObjectNameBuffer;
     NTSTATUS Status;
 
     ASYNC_BEGIN(State);
@@ -126,7 +124,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.ShareAccess = ShareAccess;
     Thread->NtOpenFileSavedState.OpenContext.OpenPacket.Disposition = 0;
 
-    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, FilePath, OBJECT_TYPE_FILE,
+    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, ObjectAttributes, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Thread->NtOpenFileSavedState.OpenContext, FileHandle);
     ASYNC_END(Status);
 }

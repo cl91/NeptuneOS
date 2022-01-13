@@ -26,9 +26,11 @@
 @ stdcall NtDelayExecution(long ptr)
 @ stdcall NtOpenKey(ptr long ptr)
 @ stdcall NtCreateKey(ptr long ptr long ptr long long)
+@ stdcall NtCreateKeyA(ptr long ptr long ptr long long)
 @ stdcall NtDeleteKey(long)
 @ stdcall NtQueryValueKey(long long long long long long)
-@ stdcall NtSetValueKey(long long long long long long)
+@ stdcall NtSetValueKey(ptr ptr long long ptr long)
+@ stdcall NtSetValueKeyA(ptr ptr long long ptr long)
 @ stdcall NtDeleteValueKey(long ptr)
 @ stdcall NtEnumerateKey (long long long long long long)
 @ stdcall NtEnumerateValueKey(long long long long long long)
@@ -73,6 +75,7 @@
 @ stdcall RtlCopyUnicodeString(ptr ptr)
 @ stdcall RtlAppendUnicodeToString(ptr wstr)
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)
+@ stdcall RtlUnicodeToUTF8N(ptr long ptr ptr long)
 @ stdcall RtlAnsiStringToUnicodeString(ptr ptr long)
 @ stdcall RtlFreeAnsiString(long)
 @ stdcall RtlAdjustPrivilege(long long long ptr)
@@ -108,5 +111,6 @@
 @ varargs _snprintf(ptr long str) snprintf
 @ varargs _snwprintf(ptr long wstr)
 @ varargs swprintf(ptr wstr)
+@ cdecl _assert(str str long)
 @ cdecl -arch=x86_64,arm __chkstk()
 @ extern -arch=i386 _chkstk

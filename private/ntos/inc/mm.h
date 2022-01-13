@@ -212,10 +212,7 @@ typedef struct _MM_AVL_NODE {
     struct _MM_AVL_NODE *LeftChild;
     struct _MM_AVL_NODE *RightChild;
     MWORD Key; /* key is usually address, page number, or large page number */
-    LIST_ENTRY ListEntry; /* all node ordered linearly according to key */
 } MM_AVL_NODE, *PMM_AVL_NODE;
-
-#define LIST_ENTRY_TO_MM_AVL_NODE(Entry)	CONTAINING_RECORD(Entry, MM_AVL_NODE, ListEntry)
 
 static inline VOID MmAvlInitializeNode(PMM_AVL_NODE Node,
 				       MWORD Key)
@@ -223,7 +220,6 @@ static inline VOID MmAvlInitializeNode(PMM_AVL_NODE Node,
     Node->Parent = 0;
     Node->LeftChild = Node->RightChild = NULL;
     Node->Key = Key;
-    Node->ListEntry.Flink = Node->ListEntry.Blink = NULL;
 }
 
 /*
@@ -231,13 +227,11 @@ static inline VOID MmAvlInitializeNode(PMM_AVL_NODE Node,
  */
 typedef struct _MM_AVL_TREE {
     PMM_AVL_NODE BalancedRoot;
-    LIST_ENTRY NodeList;       /* ordered linearly according to key */
 } MM_AVL_TREE, *PMM_AVL_TREE;
 
 static inline VOID MmAvlInitializeTree(IN PMM_AVL_TREE Tree)
 {
     Tree->BalancedRoot = NULL;
-    InitializeListHead(&Tree->NodeList);
 }
 
 /*
@@ -436,7 +430,6 @@ typedef struct _VIRT_ADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
     MWORD ASIDPool;
     MM_AVL_TREE VadTree;
-    PMMVAD CachedVad;		/* Speed up look up */
     PPAGING_STRUCTURE RootPagingStructure;
     LIST_ENTRY ViewerList;	/* List of all VADs that mirror pages in this VSpace */
 } VIRT_ADDR_SPACE, *PVIRT_ADDR_SPACE;
@@ -456,7 +449,6 @@ typedef struct _PHY_MEM_DESCRIPTOR {
     MM_AVL_TREE RootUntypedForest; /* Root untyped forest organized by their starting phy addr.
 				    * Note that RootUntypedForest represents both the cap derivation
 				    * forest as well as the AVL tree of all untyped caps. */
-    PUNTYPED CachedRootUntyped; /* Speed up look up */
 } PHY_MEM_DESCRIPTOR, *PPHY_MEM_DESCRIPTOR;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -674,10 +666,28 @@ static inline NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 /*
- * Unmap the user buffer mapped by MmMapUserBuffer
+ * Maps the user buffer in the given virt addr space into the server
+ * virt addr space, returning the starting virtual address of the
+ * buffer in the server virt addr space. The pages will be mapped
+ * read-only. User buffer is not required to be writable by the user.
  */
-static inline VOID MmUnmapUserBuffer(IN MWORD MappedBufferStart)
+static inline NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
+					 IN MWORD BufferStart,
+					 IN MWORD BufferLength,
+					 OUT PVOID *TargetStartAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmUnmapUserBufferEx(&MiNtosVaddrSpace, MappedBufferStart);
+    return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
+			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
+			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr,
+			     TRUE);
+}
+
+/*
+ * Unmap the user buffer mapped by MmMapUserBuffer
+ */
+static inline VOID MmUnmapUserBuffer(IN PVOID MappedBufferStart)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmUnmapUserBufferEx(&MiNtosVaddrSpace, (MWORD)MappedBufferStart);
 }

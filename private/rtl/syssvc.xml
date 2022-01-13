@@ -383,13 +383,13 @@
   <svc name="NtOpenKey">
     <parameter annotation="out" type="ptr::HANDLE" name="KeyHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
-    <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
   </svc>
 
   <svc name="NtCreateKey">
     <parameter annotation="out" type="ptr::HANDLE" name="KeyHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
-    <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
     <parameter annotation="in" type="ULONG" name="TitleIndex" />
     <parameter annotation="in opt" type="UnicodeString" name="Class" />
     <parameter annotation="in" type="ULONG" name="CreateOptions" />
@@ -405,7 +405,7 @@
     <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
   </svc>
 
-  <svc name="NtSetValueKey">
+  <svc name="CmSetValueKey">
     <parameter annotation="in" type="HANDLE" name="KeyHandle" />
     <parameter annotation="in" type="UnicodeString" name="ValueName" />
     <parameter annotation="in" type="ULONG" name="TitleIndex" />

@@ -817,11 +817,6 @@ NTAPI NTSYSAPI NTSTATUS RtlDnsHostNameToComputerName(PUNICODE_STRING ComputerNam
 						     PUNICODE_STRING DnsHostName,
 						     BOOLEAN AllocateComputerNameString);
 
-NTAPI NTSYSAPI NTSTATUS RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
-					  ULONG *uni_bytes_written,
-					  const CHAR *utf8_src,
-					  ULONG utf8_bytes);
-
 /*
  * Unicode string inline functions
  */

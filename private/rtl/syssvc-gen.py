@@ -282,6 +282,7 @@ CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBuffe
             *{{param.name}} = ({{param.base_type}}) seL4_GetMR({{loop.index}});
 {%- endif %}
         }
+{%- endfor %}
         if (NumApc != 0) {
             BOOLEAN MoreToCome = NumApc < 0;
             if (NumApc < 0) {
@@ -294,7 +295,6 @@ CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBuffe
                 NtTestAlert();
             }
         }
-{%- endfor %}
     }
     return Status;
 }
@@ -396,6 +396,15 @@ class ServiceParameter:
             self.marshal_func = "KiMarshalObjectAttributes"
             self.validate_func = "KiValidateObjectAttributes"
             self.unmarshal_func = "KiUnmarshalObjectAttributes"
+        elif param_type == "AnsiObjectAttributes":
+            self.custom_marshaling = True
+            self.is_ptr = True
+            self.server_type = "OB_OBJECT_ATTRIBUTES"
+            self.server_decl = "OB_OBJECT_ATTRIBUTES " + name
+            self.client_decl = "POBJECT_ATTRIBUTES_ANSI " + name
+            self.marshal_func = "KiMarshalObjectAttributesA"
+            self.validate_func = "KiValidateObjectAttributesA"
+            self.unmarshal_func = "KiUnmarshalObjectAttributesA"
         else:
             self.custom_marshaling = False
             if self.dir_out:
@@ -504,6 +513,9 @@ def parse_svcxml(xml_file, wdmsvc):
             if param_type == "UnicodeString":
                 has_unicode_string = True
                 ansi_params.append(ServiceParameter(annotation, "AnsiString", param_name))
+            elif param_type == "ObjectAttributes":
+                has_unicode_string = True
+                ansi_params.append(ServiceParameter(annotation, "AnsiObjectAttributes", param_name))
             else:
                 ansi_params.append(ServiceParameter(annotation, param_type, param_name))
         svc_list.append(Service(name, enum_tag, params, client_only = False, wdmsvc = wdmsvc))

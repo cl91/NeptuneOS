@@ -35,14 +35,13 @@ const IMAGE_TLS_DIRECTORY _tls_used = {
     (ULONG_PTR) &_tls_index, 0, 0, 0
 };
 
-static NTSTATUS IopCallDriverEntry()
+static NTSTATUS IopCallDriverEntry(IN PUNICODE_STRING RegistryPath)
 {
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
     RET_ERR(LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress, &LdrDriverImage));
     PVOID DriverEntry = LdrDriverImage->EntryPoint;
-    /* TODO: Fill out registry path from loader information */
-    UNICODE_STRING RegistryPath = { .Buffer = NULL, .Length = 0, .MaximumLength = 0 };
-    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, &RegistryPath));
+    DbgTrace("Registry path %wZ\n", RegistryPath);
+    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, RegistryPath));
     return STATUS_SUCCESS;
 }
 
@@ -60,7 +59,8 @@ static NTSTATUS IopDriverEventLoop()
 
 VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
 		IN seL4_CPtr WdmServiceCap,
-		IN PNTDLL_DRIVER_INIT_INFO InitInfo)
+		IN PNTDLL_DRIVER_INIT_INFO InitInfo,
+		IN PUNICODE_STRING RegistryPath)
 {
     __sel4_ipc_buffer = IpcBuffer;
     KiWdmServiceCap = WdmServiceCap;
@@ -81,7 +81,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     RtlInitializeSListHead(&IopDpcQueue);
     RtlInitializeSListHead(&IopInterruptServiceRoutineList);
 
-    NTSTATUS Status = IopCallDriverEntry();
+    NTSTATUS Status = IopCallDriverEntry(RegistryPath);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

@@ -81,6 +81,7 @@ typedef struct _THREAD {
     };
     struct {
 	POBJECT Object;
+	POBJECT UserRootDirectory;
 	PCSTR Path;
 	BOOLEAN Reparsed;
     } ObOpenObjectSavedState;

@@ -322,32 +322,28 @@ typedef enum _CM_SHARE_DISPOSITION {
 #define KEY_WOW64_64KEY         (0x0100)
 #define KEY_WOW64_RES           (0x0300)
 
-#define KEY_READ                ((STANDARD_RIGHTS_READ       |\
-                                  KEY_QUERY_VALUE            |\
-                                  KEY_ENUMERATE_SUB_KEYS     |\
-                                  KEY_NOTIFY)                 \
-                                  &                           \
-                                 (~SYNCHRONIZE))
+#define KEY_READ                ((STANDARD_RIGHTS_READ       |	\
+                                  KEY_QUERY_VALUE            |	\
+                                  KEY_ENUMERATE_SUB_KEYS     |	\
+                                  KEY_NOTIFY)			\
+				 & (~SYNCHRONIZE))
 
-#define KEY_WRITE               ((STANDARD_RIGHTS_WRITE      |\
-                                  KEY_SET_VALUE              |\
-                                  KEY_CREATE_SUB_KEY)         \
-                                  &                           \
-                                 (~SYNCHRONIZE))
+#define KEY_WRITE               ((STANDARD_RIGHTS_WRITE      |	\
+                                  KEY_SET_VALUE              |	\
+                                  KEY_CREATE_SUB_KEY)		\
+				 & (~SYNCHRONIZE))
 
-#define KEY_EXECUTE             ((KEY_READ)                   \
-                                  &                           \
-                                 (~SYNCHRONIZE))
+#define KEY_EXECUTE             ((KEY_READ)		\
+				 & (~SYNCHRONIZE))
 
-#define KEY_ALL_ACCESS          ((STANDARD_RIGHTS_ALL        |\
-                                  KEY_QUERY_VALUE            |\
-                                  KEY_SET_VALUE              |\
-                                  KEY_CREATE_SUB_KEY         |\
-                                  KEY_ENUMERATE_SUB_KEYS     |\
-                                  KEY_NOTIFY                 |\
-                                  KEY_CREATE_LINK)            \
-                                  &                           \
-                                 (~SYNCHRONIZE))
+#define KEY_ALL_ACCESS          ((STANDARD_RIGHTS_ALL        |	\
+                                  KEY_QUERY_VALUE            |	\
+                                  KEY_SET_VALUE              |	\
+                                  KEY_CREATE_SUB_KEY         |	\
+                                  KEY_ENUMERATE_SUB_KEYS     |	\
+                                  KEY_NOTIFY                 |	\
+                                  KEY_CREATE_LINK)		\
+				 & (~SYNCHRONIZE))
 
 /* Registry Open/Create Options */
 #define REG_OPTION_RESERVED         (0x00000000L)
@@ -357,18 +353,18 @@ typedef enum _CM_SHARE_DISPOSITION {
 #define REG_OPTION_BACKUP_RESTORE   (0x00000004L)
 #define REG_OPTION_OPEN_LINK        (0x00000008L)
 
-#define REG_LEGAL_OPTION            \
-                (REG_OPTION_RESERVED            |\
-                 REG_OPTION_NON_VOLATILE        |\
-                 REG_OPTION_VOLATILE            |\
-                 REG_OPTION_CREATE_LINK         |\
-                 REG_OPTION_BACKUP_RESTORE      |\
-                 REG_OPTION_OPEN_LINK)
+#define REG_LEGAL_OPTION			\
+    (REG_OPTION_RESERVED            |		\
+     REG_OPTION_NON_VOLATILE        |		\
+     REG_OPTION_VOLATILE            |		\
+     REG_OPTION_CREATE_LINK         |		\
+     REG_OPTION_BACKUP_RESTORE      |		\
+     REG_OPTION_OPEN_LINK)
 
-#define REG_OPEN_LEGAL_OPTION       \
-                (REG_OPTION_RESERVED            |\
-                 REG_OPTION_BACKUP_RESTORE      |\
-                 REG_OPTION_OPEN_LINK)
+#define REG_OPEN_LEGAL_OPTION			\
+    (REG_OPTION_RESERVED            |		\
+     REG_OPTION_BACKUP_RESTORE      |		\
+     REG_OPTION_OPEN_LINK)
 
 #define REG_STANDARD_FORMAT            1
 #define REG_LATEST_FORMAT              2
@@ -401,10 +397,10 @@ typedef enum _CM_SHARE_DISPOSITION {
 #define REG_NOTIFY_CHANGE_SECURITY      (0x00000008L)
 
 #define REG_LEGAL_CHANGE_FILTER                 \
-                (REG_NOTIFY_CHANGE_NAME          |\
-                 REG_NOTIFY_CHANGE_ATTRIBUTES    |\
-                 REG_NOTIFY_CHANGE_LAST_SET      |\
-                 REG_NOTIFY_CHANGE_SECURITY)
+    (REG_NOTIFY_CHANGE_NAME          |		\
+     REG_NOTIFY_CHANGE_ATTRIBUTES    |		\
+     REG_NOTIFY_CHANGE_LAST_SET      |		\
+     REG_NOTIFY_CHANGE_SECURITY)
 
 
 //
@@ -542,7 +538,9 @@ typedef struct _KEY_SET_VIRTUALIZATION_INFORMATION {
     ULONG Reserved:29;
 } KEY_SET_VIRTUALIZATION_INFORMATION, *PKEY_SET_VIRTUALIZATION_INFORMATION;
 
-
+//
+// NtQueryKey Information
+//
 typedef struct _KEY_FULL_INFORMATION {
     LARGE_INTEGER LastWriteTime;
     ULONG TitleIndex;
@@ -554,14 +552,13 @@ typedef struct _KEY_FULL_INFORMATION {
     ULONG Values;
     ULONG MaxValueNameLen;
     ULONG MaxValueDataLen;
-    WCHAR Class[1];
+    WCHAR Class[];
 } KEY_FULL_INFORMATION, *PKEY_FULL_INFORMATION;
 
 typedef struct _KEY_NAME_INFORMATION {
     ULONG NameLength;
-    WCHAR Name[1];
+    WCHAR Name[];
 } KEY_NAME_INFORMATION, *PKEY_NAME_INFORMATION;
-
 
 typedef struct _KEY_NODE_INFORMATION {
     LARGE_INTEGER LastWriteTime;
@@ -569,7 +566,7 @@ typedef struct _KEY_NODE_INFORMATION {
     ULONG ClassOffset;
     ULONG ClassLength;
     ULONG NameLength;
-    WCHAR Name[1];
+    WCHAR Name[];
 } KEY_NODE_INFORMATION, *PKEY_NODE_INFORMATION;
 
 typedef struct _KEY_VALUE_ENTRY {
@@ -583,21 +580,20 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
     ULONG TitleIndex;
     ULONG Type;
     ULONG DataLength;
-    UCHAR Data[1];
+    UCHAR Data[];
 } KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
 
 typedef struct _KEY_VALUE_PARTIAL_INFORMATION_ALIGN64 {
     ULONG Type;
     ULONG DataLength;
-    UCHAR Data[1];
-} KEY_VALUE_PARTIAL_INFORMATION_ALIGN64,
-    *PKEY_VALUE_PARTIAL_INFORMATION_ALIGN64;
+    UCHAR Data[];
+} KEY_VALUE_PARTIAL_INFORMATION_ALIGN64, *PKEY_VALUE_PARTIAL_INFORMATION_ALIGN64;
 
 typedef struct _KEY_VALUE_BASIC_INFORMATION {
     ULONG TitleIndex;
     ULONG Type;
     ULONG NameLength;
-    WCHAR Name[1];
+    WCHAR Name[];
 } KEY_VALUE_BASIC_INFORMATION, *PKEY_VALUE_BASIC_INFORMATION;
 
 typedef struct _KEY_VALUE_FULL_INFORMATION {
@@ -606,14 +602,14 @@ typedef struct _KEY_VALUE_FULL_INFORMATION {
     ULONG DataOffset;
     ULONG DataLength;
     ULONG NameLength;
-    WCHAR Name[1];
+    WCHAR Name[];
 } KEY_VALUE_FULL_INFORMATION, *PKEY_VALUE_FULL_INFORMATION;
 
 typedef struct _KEY_BASIC_INFORMATION {
     LARGE_INTEGER LastWriteTime;
     ULONG TitleIndex;
     ULONG NameLength;
-    WCHAR Name[1];
+    WCHAR Name[];
 } KEY_BASIC_INFORMATION, *PKEY_BASIC_INFORMATION;
 
 //
@@ -632,10 +628,10 @@ typedef struct _PLUGPLAY_EVENT_BLOCK {
 	    WCHAR SymbolicLinkName[ANYSIZE_ARRAY];
 	} DeviceClass;
 	struct {
-	    WCHAR DeviceIds[ANYSIZE_ARRAY];
+	    WCHAR DeviceIds[1];
 	} TargetDevice;
 	struct {
-	    WCHAR DeviceId[ANYSIZE_ARRAY];
+	    WCHAR DeviceId[1];
 	} InstallDevice;
 	struct {
 	    PVOID NotificationStructure;
@@ -798,7 +794,6 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
 	    ULONG Vector;
 	    KAFFINITY Affinity;
 	} Interrupt;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
 	struct {
 	    union {
 		struct {
@@ -814,7 +809,6 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
 		} Translated;
 	    };
 	} MessageInterrupt;
-#endif
 	struct {
 	    PHYSICAL_ADDRESS Start;
 	    ULONG Length;
@@ -837,7 +831,6 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
 	    ULONG Reserved1;
 	    ULONG Reserved2;
 	} DeviceSpecificData;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
 	struct {
 	    PHYSICAL_ADDRESS Start;
 	    ULONG Length40;
@@ -850,7 +843,6 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
 	    PHYSICAL_ADDRESS Start;
 	    ULONG Length64;
 	} Memory64;
-#endif
     } u;
 } CM_PARTIAL_RESOURCE_DESCRIPTOR, *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 
@@ -858,7 +850,7 @@ typedef struct _CM_PARTIAL_RESOURCE_LIST {
     USHORT Version;
     USHORT Revision;
     ULONG Count;
-    CM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptors[1];
+    CM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptors[];
 } CM_PARTIAL_RESOURCE_LIST, *PCM_PARTIAL_RESOURCE_LIST;
 
 //
@@ -872,7 +864,7 @@ typedef struct _CM_FULL_RESOURCE_DESCRIPTOR {
 
 typedef struct _CM_RESOURCE_LIST {
     ULONG Count;
-    CM_FULL_RESOURCE_DESCRIPTOR List[1];
+    CM_FULL_RESOURCE_DESCRIPTOR List[];
 } CM_RESOURCE_LIST, *PCM_RESOURCE_LIST;
 
 //
@@ -918,6 +910,14 @@ NTAPI NTSYSAPI NTSTATUS NtCreateKey(OUT PHANDLE KeyHandle,
 				    IN ULONG CreateOptions,
 				    OUT OPTIONAL PULONG Disposition);
 #define ZwCreateKey NtCreateKey
+
+NTAPI NTSYSAPI NTSTATUS NtCreateKeyA(OUT HANDLE *KeyHandle,
+				     IN ACCESS_MASK DesiredAccess,
+				     IN OPTIONAL POBJECT_ATTRIBUTES_ANSI ObjectAttributes,
+				     IN ULONG TitleIndex,
+				     IN OPTIONAL PCSTR Class,
+				     IN ULONG CreateOptions,
+				     OUT OPTIONAL ULONG *Disposition);
 
 NTAPI NTSYSAPI NTSTATUS NtDeleteKey(IN HANDLE KeyHandle);
 
@@ -1059,12 +1059,13 @@ NTAPI NTSYSAPI NTSTATUS NtSetValueKey(IN HANDLE KeyHandle,
 				      IN PVOID Data,
 				      IN ULONG DataSize);
 
+NTAPI NTSYSAPI NTSTATUS NtSetValueKeyA(IN HANDLE KeyHandle,
+				       IN PCSTR ValueName,
+				       IN OPTIONAL ULONG TitleIndex,
+				       IN ULONG Type,
+				       IN PVOID Data,
+				       IN ULONG DataSize);
+
 NTAPI NTSYSAPI NTSTATUS NtUnloadKey(IN POBJECT_ATTRIBUTES KeyObjectAttributes);
-
-NTAPI NTSYSAPI NTSTATUS NtUnloadKey2(IN POBJECT_ATTRIBUTES TargetKey,
-				     IN ULONG Flags);
-
-NTAPI NTSYSAPI NTSTATUS NtUnloadKeyEx(IN POBJECT_ATTRIBUTES TargetKey,
-				      IN HANDLE Event);
 
 #endif	/* NTOSKRNL */

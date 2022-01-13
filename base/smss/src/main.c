@@ -17,26 +17,6 @@ NTSTATUS SmPrint(PCSTR Format, ...)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS SmLoadBootDrivers()
-{
-    PCSTR DriversToLoad[] = {
-	"\\BootModules\\null.sys",
-	"\\BootModules\\beep.sys",
-	"\\BootModules\\i8042prt.sys",
-	"\\BootModules\\kbdclass.sys"
-    };
-    for (ULONG i = 0; i < ARRAY_LENGTH(DriversToLoad); i++) {
-	SmPrint("Loading driver %s... ", DriversToLoad[i]);
-	NTSTATUS Status = NtLoadDriverA(DriversToLoad[i]);
-	if (NT_SUCCESS(Status)) {
-	    SmPrint("OK\n");
-	} else {
-	    SmPrint("FAIL\n");
-	}
-    }
-    return STATUS_SUCCESS;
-}
-
 /*
  * Call the beep.sys driver to make a beep of given frequency (in Hz)
  * and duration (in ms)
@@ -151,7 +131,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     SmPrint("%s\n", SMSS_BANNER);
     SmInitRegistry();
-    SmLoadBootDrivers();
+    SmInitHardwareDatabase();
     SmTestNullDriver();
     SmTestBeepDriver(440, 1000);
 

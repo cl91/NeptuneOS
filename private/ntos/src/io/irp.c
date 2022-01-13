@@ -47,7 +47,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 		if (CompletedIrp == NULL) {
 		    DbgTrace("Received response packet from driver %s with invalid IRP identifier %p:%p."
 			     " Dumping all IO packets in the driver's pending IO packet list.\n",
-			     DriverObject->DriverImageName, OriginatingThread, OriginalIrp);
+			     DriverObject->DriverImagePath, OriginatingThread, OriginalIrp);
 		    LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
 			IoDbgDumpIoPacket(PendingIoPacket, FALSE);
 		    }
@@ -75,7 +75,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 
 	    default:
 		DbgTrace("Invalid IO message type from driver %s. Type is %d.\n",
-			 DriverObject->DriverImageName, Response[i].ClientMsg.Type);
+			 DriverObject->DriverImagePath, Response[i].ClientMsg.Type);
 	    }
 	} break;
 
@@ -85,7 +85,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 
 	default:
 	    DbgTrace("Received invalid response packet from driver %s. Dumping it now.\n",
-		     DriverObject->DriverImageName);
+		     DriverObject->DriverImagePath);
 	    IoDbgDumpIoPacket(&Response[i], TRUE);
 	}
     }

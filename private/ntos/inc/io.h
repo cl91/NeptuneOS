@@ -10,7 +10,8 @@ struct _IO_FILE_OBJECT;
  * Server-side object of the client side DRIVER_OBJECT.
  */
 typedef struct _IO_DRIVER_OBJECT {
-    PCSTR DriverImageName;
+    PCSTR DriverImagePath;
+    PCSTR DriverRegistryPath;
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
     struct _IO_FILE_OBJECT *DriverFile;
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */

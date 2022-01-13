@@ -94,8 +94,10 @@ NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
 				   OUT POBJECT *pObject)
 {
     assert(Process != NULL);
-    assert(Handle != NULL);
     assert(pObject != NULL);
+    if (Handle == NULL) {
+	return STATUS_INVALID_HANDLE;
+    }
     RET_ERR(ObpLookupObjectHandleEx(Process, Handle, Type, pObject));
     ObpReferenceObject(*pObject);
     return STATUS_SUCCESS;

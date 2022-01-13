@@ -1,13 +1,5 @@
 #include "cmp.h"
 
-/* Compute the hash index of the given string. */
-static inline ULONG CmpKeyHashIndex(IN PCSTR Str,
-				    IN ULONG Length) /* Excluding trailing '\0' */
-{
-    ULONG Hash = RtlpHashStringEx(Str, Length);
-    return Hash % CM_KEY_HASH_BUCKETS;
-}
-
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx)
 {
@@ -19,22 +11,12 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 	assert(Ctx->Name[i] != OBJ_NAME_PATH_SEPARATOR);
 	assert(Ctx->Name[i] != '\0');
     }
-    Key->Node.Name = RtlDuplicateStringEx(Ctx->Name, Ctx->NameLength,
-					  NTOS_CM_TAG);
-    if (Key->Node.Name == NULL) {
-	return STATUS_NO_MEMORY;
-    }
-    assert(Ctx->Parent == NULL || Ctx->Parent->Node.Type == CM_NODE_KEY);
-    Key->Node.Parent = Ctx->Parent ? &Ctx->Parent->Node : NULL;
     Key->Node.Type = CM_NODE_KEY;
     Key->Volatile = Ctx->Volatile;
+    RET_ERR(CmpInsertNamedNode(Ctx->Parent, &Key->Node,
+			       Ctx->Name, Ctx->NameLength));
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
 	InitializeListHead(&Key->HashBuckets[i]);
-    }
-    if (Ctx->Parent != NULL) {
-	ULONG HashIndex = CmpKeyHashIndex(Ctx->Name, Ctx->NameLength);
-	InsertTailList(&Ctx->Parent->HashBuckets[HashIndex],
-		       &Key->Node.HashLink);
     }
     return STATUS_SUCCESS;
 }
@@ -64,16 +46,7 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
     PCM_OPEN_CONTEXT Context = (PCM_OPEN_CONTEXT)ParseContext;
     ULONG NameLength = ObpLocateFirstPathSeparator(Path);
-    ULONG HashIndex = CmpKeyHashIndex(Path, NameLength);
-    assert(HashIndex < CM_KEY_HASH_BUCKETS);
-
-    PCM_NODE NodeFound = NULL;
-    LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
-	assert(Node->Name != NULL);
-	if (!strncmp(Path, Node->Name, NameLength)) {
-	    NodeFound = Node;
-	}
-    }
+    PCM_NODE NodeFound = CmpGetNamedNode(Key, Path, NameLength);
 
     /* If we did not find the named key object (which includes the
      * case where the node found is a value node), we pass on to the
@@ -118,8 +91,12 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 	return STATUS_OBJECT_TYPE_MISMATCH;
     }
 
+    /* Parse routine has successfully located the in-memory key object.
+     * Simply return it. */
     if (*Path == '\0') {
-	return STATUS_OBJECT_NAME_INVALID;
+	*OpenedInstance = Self;
+	*RemainingPath = Path;
+	return STATUS_SUCCESS;
     }
 
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
@@ -152,20 +129,37 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
+{
+    DbgTrace("Dumping key %s\n", Key->Node.Name);
+    for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
+        LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
+	    assert(Node->Name != NULL);
+	    if (Node->Type == CM_NODE_KEY) {
+		DbgPrint(    "KEY %s\n", Node->Name);
+	    } else if (Node->Type == CM_NODE_VALUE) {
+		DbgPrint(    "VALUE %s ", Node->Name);
+		CmpDbgDumpValue((PCM_REG_VALUE)Node);
+	    }
+	}
+    }
+}
+
 NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
                    IN PTHREAD Thread,
                    OUT HANDLE *KeyHandle,
                    IN ACCESS_MASK DesiredAccess,
                    IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    PCSTR KeyPath = ObjectAttributes.ObjectNameBuffer;
     NTSTATUS Status;
 
     ASYNC_BEGIN(AsyncState);
+    DbgTrace("Trying to open key %s root directory %p\n",
+	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
     Thread->NtOpenKeySavedState.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
     Thread->NtOpenKeySavedState.OpenContext.Create = FALSE;
 
-    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, KeyPath, OBJECT_TYPE_KEY,
+    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, ObjectAttributes, OBJECT_TYPE_KEY,
 	     (POB_PARSE_CONTEXT)&Thread->NtOpenKeySavedState.OpenContext, KeyHandle);
     ASYNC_END(Status);
 }
@@ -180,10 +174,11 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
                      IN ULONG CreateOptions,
                      OUT OPTIONAL PULONG Disposition)
 {
-    PCSTR KeyPath = ObjectAttributes.ObjectNameBuffer;
     NTSTATUS Status;
 
     ASYNC_BEGIN(AsyncState);
+    DbgTrace("Trying to create key %s root directory %p\n",
+	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
     Thread->NtCreateKeySavedState.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
     Thread->NtCreateKeySavedState.OpenContext.Create = TRUE;
     Thread->NtCreateKeySavedState.OpenContext.TitleIndex = TitleIndex;
@@ -191,48 +186,9 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     Thread->NtCreateKeySavedState.OpenContext.CreateOptions = CreateOptions;
     Thread->NtCreateKeySavedState.OpenContext.Disposition = Disposition;
 
-    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, KeyPath, OBJECT_TYPE_KEY,
+    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, ObjectAttributes, OBJECT_TYPE_KEY,
 	     (POB_PARSE_CONTEXT)&Thread->NtCreateKeySavedState.OpenContext, KeyHandle);
     ASYNC_END(Status);
-}
-
-NTSTATUS NtQueryValueKey(IN ASYNC_STATE AsyncState,
-                         IN PTHREAD Thread,
-                         IN HANDLE KeyHandle,
-                         IN PCSTR ValueName,
-                         IN KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-                         IN PVOID InformationBuffer,
-                         IN ULONG BufferSize,
-                         OUT ULONG *ResultLength)
-{
-    UNIMPLEMENTED;
-}
-
-NTSTATUS NtSetValueKey(IN ASYNC_STATE AsyncState,
-                       IN PTHREAD Thread,
-                       IN HANDLE KeyHandle,
-                       IN PCSTR ValueName,
-                       IN ULONG TitleIndex,
-                       IN ULONG Type,
-                       IN PVOID Data,
-                       IN ULONG DataSize)
-{
-    UNIMPLEMENTED;
-}
-
-NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
-                     IN PTHREAD Thread,
-                     IN HANDLE KeyHandle)
-{
-    UNIMPLEMENTED;
-}
-
-NTSTATUS NtDeleteValueKey(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
-                          IN HANDLE KeyHandle,
-                          IN PCSTR ValueName)
-{
-    UNIMPLEMENTED;
 }
 
 NTSTATUS NtEnumerateKey(IN ASYNC_STATE AsyncState,
@@ -247,14 +203,9 @@ NTSTATUS NtEnumerateKey(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtEnumerateValueKey(IN ASYNC_STATE AsyncState,
-                             IN PTHREAD Thread,
-                             IN HANDLE KeyHandle,
-                             IN ULONG Index,
-                             IN KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-                             IN PVOID InformationBuffer,
-                             IN ULONG BufferSize,
-                             OUT ULONG *ResultLength)
+NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
+                     IN PTHREAD Thread,
+                     IN HANDLE KeyHandle)
 {
     UNIMPLEMENTED;
 }

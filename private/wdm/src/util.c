@@ -13,21 +13,6 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
     return Module->DllBase;
 }
 
-#ifndef NDEBUG
-VOID _assert(PCSTR str, PCSTR file, unsigned int line)
-{
-    DbgPrint("Assertion %s failed at line %d of file %s\n",
-	     str, line, file);
-    /* Loop forever */
-    while (1);
-}
-#else
-VOID _assert(PCSTR str, PCSTR file, unsigned int line)
-{
-    /* Do nothing */
-}
-#endif
-
 /*
  * For libsel4, required in both debug and release build.
  */

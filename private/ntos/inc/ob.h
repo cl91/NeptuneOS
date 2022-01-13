@@ -427,7 +427,7 @@ VOID ObDereferenceObject(IN POBJECT Object);
 /* open.c */
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
-			    IN PCSTR Path,
+			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			    IN OBJECT_TYPE_ENUM Type,
 			    IN POB_PARSE_CONTEXT ParseContext,
 			    OUT HANDLE *pHandle);

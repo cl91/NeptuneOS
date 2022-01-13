@@ -156,7 +156,7 @@ typedef union _ULARGE_INTEGER {
 #define DUMMYSTRUCTNAME5
 #define DUMMYUNIONNAME
 #define DUMMYUNIONNAME2
-#define ANYSIZE_ARRAY	1
+#define ANYSIZE_ARRAY
 
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
 #define C_ASSERT(expr) extern char (*c_assert(void)) [(expr) ? 1 : -1]
@@ -294,6 +294,15 @@ typedef struct _OBJECT_ATTRIBUTES {
     PVOID SecurityDescriptor;
     PVOID SecurityQualityOfService;
 } OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
+
+typedef struct _OBJECT_ATTRIBUTES_ANSI {
+    ULONG Length;
+    HANDLE RootDirectory;
+    PCSTR ObjectName;	// UTF-8 encoded, NUL-terminated
+    ULONG Attributes;
+    PVOID SecurityDescriptor;
+    PVOID SecurityQualityOfService;
+} OBJECT_ATTRIBUTES_ANSI, *POBJECT_ATTRIBUTES_ANSI;
 
 /*
  * Returns the byte offset of a field in a structure of the given type.

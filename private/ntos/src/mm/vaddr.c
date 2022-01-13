@@ -12,7 +12,6 @@ VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
     Self->VSpaceCap = RootPagingStructure->TreeNode.Cap;
     Self->RootPagingStructure = RootPagingStructure;
     Self->ASIDPool = 0;
-    Self->CachedVad = NULL;
     MmAvlInitializeTree(&Self->VadTree);
     InitializeListHead(&Self->ViewerList);
 }
@@ -79,12 +78,8 @@ PMMVAD MmVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD VirtAddr)
 {
     PMM_AVL_TREE Tree = &VSpace->VadTree;
-    if (VSpace->CachedVad != NULL && MiVadNodeContainsAddr(VSpace->CachedVad, VirtAddr)) {
-	return VSpace->CachedVad;
-    }
     PMMVAD Node = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrPrev(Tree, VirtAddr));
     if (Node != NULL && MiVadNodeContainsAddr(Node, VirtAddr)) {
-	VSpace->CachedVad = Node;
 	return Node;
     }
     return NULL;
@@ -99,7 +94,7 @@ static inline PMMVAD MiVadGetNextNode(IN PMMVAD Vad)
 {
     assert(Vad != NULL);
     assert(Vad->VSpace != NULL);
-    return MM_AVL_NODE_TO_VAD(MiAvlGetNextNode(&Vad->VSpace->VadTree, &Vad->AvlNode));
+    return MM_AVL_NODE_TO_VAD(MiAvlGetNextNode(&Vad->AvlNode));
 }
 
 /*
@@ -111,7 +106,7 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
 {
     assert(Vad != NULL);
     assert(Vad->VSpace != NULL);
-    return MM_AVL_NODE_TO_VAD(MiAvlGetPrevNode(&Vad->VSpace->VadTree, &Vad->AvlNode));
+    return MM_AVL_NODE_TO_VAD(MiAvlGetPrevNode(&Vad->AvlNode));
 }
 
 /*
@@ -281,7 +276,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     /* Unable to find an unused address window */
-    // MmDbgDumpVSpace(VSpace);
+    MmDbgDumpVSpace(VSpace);
     return STATUS_CONFLICTING_ADDRESSES;
 
 Insert:
@@ -400,12 +395,12 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     PMMVAD Vad = MmVSpaceFindVadNode(VSpace, StartAddr);
     if (Vad == NULL) {
 	DbgTrace("Error: Must reserve address window before committing.\n");
-	// MmDbgDumpVSpace(VSpace);
+	MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
     if (Vad->Flags.NoAccess) {
 	DbgTrace("Error: Committing a NoAccess Vad.\n");
-	// MmDbgDumpVSpace(VSpace);
+	MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -492,7 +487,7 @@ static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
     MWORD EndAddr = PAGE_ALIGN_UP(StartAddr + *pWindowSize);
     MWORD CurrentAddr = StartAddr;
     while (CurrentAddr < EndAddr) {
-	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, StartAddr);
+	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
 	if (Page == NULL) {
 	    return STATUS_NOT_COMMITTED;
 	}
@@ -571,6 +566,7 @@ static BOOLEAN MiEnsureNoViewers(IN PMMVAD Vad)
  */
 VOID MmDeleteVad(IN PMMVAD Vad)
 {
+    DbgTrace("Deleting vad %p key %p\n", Vad, (PVOID)Vad->AvlNode.Key);
     assert(Vad != NULL);
     /* Make sure that there is no viewer VADs mirroring us */
     assert(MiEnsureNoViewers(Vad));

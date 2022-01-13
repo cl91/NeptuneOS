@@ -57,7 +57,8 @@ static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
  * Creation context for the driver object creation routine
  */
 typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
-    PCSTR DriverPath;
+    PCSTR DriverImagePath;
+    PCSTR DriverServicePath;
     PCSTR DriverName;
 } DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
 

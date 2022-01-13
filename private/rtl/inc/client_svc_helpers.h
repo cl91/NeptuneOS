@@ -71,3 +71,27 @@ static inline NTSTATUS KiMarshalObjectAttributes(IN OUT ULONG *MsgBufOffset,
     Arg->BufferSize = sizeof(HANDLE) + sizeof(ULONG) + StringArg.BufferSize;
     return STATUS_SUCCESS;
 }
+
+/*
+ * Serialize OBJECT_ATTRIBUTES_ANSI into the executive service message buffer.
+ *
+ * Layout:
+ *
+ * [HANDLE RootDirectory] [ULONG Attributes] [Serialized PCSTR ObjectName]
+ */
+static inline NTSTATUS KiMarshalObjectAttributesA(IN OUT ULONG *MsgBufOffset,
+						  IN POBJECT_ATTRIBUTES_ANSI ObjAttr,
+						  OUT SERVICE_ARGUMENT *Arg)
+{
+    Arg->BufferStart = *MsgBufOffset;
+    OFFSET_TO_ARG(*MsgBufOffset, HANDLE) = ObjAttr->RootDirectory;
+    *MsgBufOffset += sizeof(HANDLE);
+    OFFSET_TO_ARG(*MsgBufOffset, ULONG) = ObjAttr->Attributes;
+    *MsgBufOffset += sizeof(ULONG);
+    SERVICE_ARGUMENT StringArg = { .Word = 0 };
+    if (ObjAttr->ObjectName != NULL) {
+	RET_ERR(KiMarshalAnsiString(MsgBufOffset, ObjAttr->ObjectName, &StringArg));
+    }
+    Arg->BufferSize = sizeof(HANDLE) + sizeof(ULONG) + StringArg.BufferSize;
+    return STATUS_SUCCESS;
+}

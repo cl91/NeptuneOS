@@ -22,6 +22,9 @@
 	(p)->SecurityQualityOfService = NULL;		\
     }
 
+/* You can use InitializeObjectAttributes for OBJECT_ATTRIBUTES_ANSI */
+C_ASSERT(sizeof(OBJECT_ATTRIBUTES) == sizeof(OBJECT_ATTRIBUTES_ANSI));
+
 #define OBJECT_TYPE_CREATE                0x0001
 #define OBJECT_TYPE_ALL_ACCESS            (STANDARD_RIGHTS_REQUIRED | 0x1)
 

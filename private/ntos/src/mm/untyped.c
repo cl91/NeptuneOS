@@ -19,7 +19,6 @@ VOID MiInitializeUntyped(IN PUNTYPED Untyped,
 VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem)
 {
     MmAvlInitializeTree(&PhyMem->RootUntypedForest);
-    PhyMem->CachedRootUntyped = NULL;
     InitializeListHead(&PhyMem->SmallUntypedList);
     InitializeListHead(&PhyMem->MediumUntypedList);
     InitializeListHead(&PhyMem->LargeUntypedList);
@@ -197,14 +196,9 @@ static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 				  IN MWORD PhyAddr)
 {
     PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
-    if (PhyMem->CachedRootUntyped != NULL
-	&& MiUntypedContainsPhyAddr(PhyMem->CachedRootUntyped, PhyAddr)) {
-	return PhyMem->CachedRootUntyped;
-    }
     PMM_AVL_NODE Node = MiAvlTreeFindNodeOrPrev(Tree, PhyAddr);
     PUNTYPED Parent = MM_AVL_NODE_TO_UNTYPED(Node);
     if (Parent != NULL && MiUntypedContainsPhyAddr(Parent, PhyAddr)) {
-	PhyMem->CachedRootUntyped = Parent;
 	return Parent;
     }
     return NULL;
@@ -262,19 +256,19 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 {
     MWORD StartPhyAddr = RootUntyped->AvlNode.Key;
     PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
-    PMM_AVL_NODE Node = MiAvlTreeFindNodeOrParent(Tree, StartPhyAddr);
-    PUNTYPED Parent = Node ? CONTAINING_RECORD(Node, UNTYPED, AvlNode) : NULL;
+    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, StartPhyAddr);
+    PUNTYPED ParentUntyped = CONTAINING_RECORD(Parent, UNTYPED, AvlNode);
 
     /* Reject the insertion if the root untyped to be inserted overlaps
      * with its parent node within the AVL tree. This should never happen
      * and in case it did, it would be a programming error.
      */
     if (Parent != NULL &&
-	MiAvlNodeOverlapsAddrWindow(Node, 1ULL << Parent->Log2Size,
+	MiAvlNodeOverlapsAddrWindow(Parent, 1ULL << ParentUntyped->Log2Size,
 				    StartPhyAddr, 1ULL << RootUntyped->Log2Size)) {
 	return STATUS_NTOS_BUG;
     }
-    MiAvlTreeInsertNode(Tree, &Parent->AvlNode, &RootUntyped->AvlNode);
+    MiAvlTreeInsertNode(Tree, Parent, &RootUntyped->AvlNode);
     return STATUS_SUCCESS;
 }
 

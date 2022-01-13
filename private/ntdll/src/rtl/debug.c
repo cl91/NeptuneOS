@@ -76,6 +76,11 @@ ULONG DbgPrintEx(IN ULONG ComponentId,
     return 0;
 }
 
+VOID _assert(PCSTR str, PCSTR file, unsigned int line)
+{
+    /* Do nothing */
+}
+
 NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
 		     IN PVOID FileName,
 		     IN ULONG LineNumber,

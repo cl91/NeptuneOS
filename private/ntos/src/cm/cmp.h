@@ -2,6 +2,11 @@
 
 #include <ntos.h>
 
+/* Change this to 0 to enable debug tracing */
+#if 0
+#define DbgPrint(...)
+#endif
+
 #define NTOS_CM_TAG	(EX_POOL_TAG('n','t','c','m'))
 
 #define CmpAllocatePoolEx(Var, Type, Size, OnError)		\
@@ -24,7 +29,7 @@ typedef enum _CM_NODE_TYPE {
 typedef struct _CM_NODE {
     PCSTR Name;
     LIST_ENTRY HashLink;
-    struct _CM_NODE *Parent;
+    struct _CM_KEY_OBJECT *Parent;
     CM_NODE_TYPE Type;
 } CM_NODE, *PCM_NODE;
 
@@ -42,6 +47,53 @@ typedef struct _CM_KEY_OBJECT {
     BOOLEAN Volatile;
 } CM_KEY_OBJECT, *PCM_KEY_OBJECT;
 
+/* Compute the hash index of the given string. */
+static inline ULONG CmpKeyHashIndex(IN PCSTR Str,
+				    IN ULONG Length) /* Excluding trailing '\0' */
+{
+    ULONG Hash = RtlpHashStringEx(Str, Length);
+    return Hash % CM_KEY_HASH_BUCKETS;
+}
+
+static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
+				       IN PCSTR Name,
+				       IN OPTIONAL ULONG NameLength)
+{
+    ULONG HashIndex = CmpKeyHashIndex(Name,
+				      NameLength ? NameLength : strlen(Name));
+    assert(HashIndex < CM_KEY_HASH_BUCKETS);
+
+    PCM_NODE NodeFound = NULL;
+    LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
+	assert(Node->Name != NULL);
+	if (!strncmp(Name, Node->Name, NameLength)) {
+	    NodeFound = Node;
+	}
+    }
+    return NodeFound;
+}
+
+static inline NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
+					  IN PCM_NODE Node,
+					  IN PCSTR NodeName,
+					  IN OPTIONAL ULONG NameLength)
+{
+    if (NameLength == 0) {
+	NameLength = strlen(NodeName);
+    }
+    Node->Name = RtlDuplicateStringEx(NodeName, NameLength, NTOS_CM_TAG);
+    if (Node->Name == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    assert(Parent == NULL || Parent->Node.Type == CM_NODE_KEY);
+    Node->Parent = Parent;
+    if (Parent != NULL) {
+	ULONG HashIndex = CmpKeyHashIndex(NodeName, NameLength);
+	InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
+    }
+    return STATUS_SUCCESS;
+}
+
 /*
  * Registry value
  */
@@ -49,12 +101,12 @@ typedef struct _CM_REG_VALUE {
     CM_NODE Node;		/* Hash-table entry for the parent key */
     ULONG Type;			/* REG_NONE, REG_SZ, etc */
     union {
-	PCSTR String;		/* UTF-8, NUL-terminated */
 	ULONG Dword;
 	ULONGLONG Qword;
-	PCM_NODE RegLink;
-	PCHAR Binary;
-	PCSTR *StringArray;	/* NULL-terminated */
+	struct {
+	    PVOID Data;		/* Must be first in this struct */
+	    ULONG DataSize;
+	};
     };
 } CM_REG_VALUE, *PCM_REG_VALUE;
 
@@ -83,3 +135,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN POB_PARSE_CONTEXT ParseContext,
 			      OUT POBJECT *pOpenedInstance,
 			      OUT PCSTR *pRemainingPath);
+VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key);
+
+/* value.c */
+VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value);

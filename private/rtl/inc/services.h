@@ -93,8 +93,7 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 #define STATUS_ASYNC_PENDING			ASYNC_INFORMATION(1)
 #define STATUS_NTOS_BUG				NTOS_ERROR(1)
 #define STATUS_NTOS_NO_REPLY			NTOS_INFORMATION(2)
-#define STATUS_NTOS_DRIVER_ALREADY_LOADED	NTOS_INFORMATION(3)
-#define STATUS_NTOS_INVOKE_OPEN_ROUTINE		NTOS_INFORMATION(4)
+#define STATUS_NTOS_INVOKE_OPEN_ROUTINE		NTOS_INFORMATION(3)
 
 /*
  * Ipc buffer, where the seL4 IPC buffer is placed at the very beginning,
@@ -143,7 +142,8 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
  * driver entry point directly, and instead call WdmStartup. */
 typedef VOID (*PWDM_DLL_ENTRYPOINT)(IN seL4_IPCBuffer *IpcBuffer,
 				    IN seL4_CPtr WdmServiceCap,
-				    IN PNTDLL_DRIVER_INIT_INFO InitInfo);
+				    IN PNTDLL_DRIVER_INIT_INFO InitInfo,
+				    IN PUNICODE_STRING DriverRegistryPath);
 
 /*
  * System dll TLS index. Executable has TLS index == 0. NTDLL always
@@ -176,7 +176,8 @@ typedef struct _LOADER_SHARED_DATA {
     MWORD LoadedModuleCount;
     MWORD ImagePath; /* Offset to the full path of the image file */
     MWORD ImageName; /* Offset to the base name of image (eg smss.exe) */
-    MWORD CommandLine; /* Offset to the command line when creating this process */
+    MWORD CommandLine; /* For user processes, this is the command line.
+			* For drivers, this is the driver service registry key */
     MWORD LoadedModules; /* Offset to the start of loaded module entries */
 } LOADER_SHARED_DATA, *PLOADER_SHARED_DATA;
 

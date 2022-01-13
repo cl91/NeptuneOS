@@ -7,6 +7,7 @@
 #if 1
 #undef DbgTrace
 #define DbgTrace(...)
+#define DbgPrint(...)
 #endif
 
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)
@@ -129,26 +130,58 @@ static inline VOID MiInitializeVadNode(IN PMMVAD Node,
 }
 
 #define LoopOverVadTree(Vad, VSpace, Statement)				\
-    LoopOverList(_LoopOverVadTree_tmp_Node, &VSpace->VadTree.NodeList,	\
-		 MM_AVL_NODE, ListEntry) {				\
-    PMMVAD Vad = MM_AVL_NODE_TO_VAD(_LoopOverVadTree_tmp_Node);		\
-    Statement; }
+    for (PMM_AVL_NODE Node = MiAvlGetFirstNode(&VSpace->VadTree);	\
+	 Node != NULL; Node = MiAvlGetNextNode(Node)) {			\
+	PMMVAD Vad = MM_AVL_NODE_TO_VAD(Node);				\
+	Statement;							\
+    }
+
+static inline PMM_AVL_NODE MiAvlGetParent(PMM_AVL_NODE Node)
+{
+    MWORD ParentWord = Node->Parent;
+    ParentWord &= ~((MWORD) 0x3ULL);
+    return (PMM_AVL_NODE) ParentWord;
+}
+
+static inline BOOLEAN MiAvlIsRightChild(PMM_AVL_NODE Node)
+{
+    PMM_AVL_NODE Parent = MiAvlGetParent(Node);
+    assert(Parent != NULL);
+    return Parent->RightChild == Node;
+}
+
+static inline BOOLEAN MiAvlIsLeftChild(PMM_AVL_NODE Node)
+{
+    PMM_AVL_NODE Parent = MiAvlGetParent(Node);
+    assert(Parent != NULL);
+    return Parent->LeftChild == Node;
+}
 
 /*
  * Returns the next node in the AVL tree, ordered linearly.
  *
  * If Node is the last node in the tree, returns NULL.
  */
-static inline PMM_AVL_NODE MiAvlGetNextNode(IN PMM_AVL_TREE Tree,
-					    IN PMM_AVL_NODE Node)
+static inline PMM_AVL_NODE MiAvlGetNextNode(IN PMM_AVL_NODE Node)
 {
-    assert(Tree != NULL);
     assert(Node != NULL);
-    PLIST_ENTRY Flink = Node->ListEntry.Flink;
-    if (Flink == &Tree->NodeList) {
+    MWORD Key = Node->Key;
+    if (Node->RightChild == NULL) {
+	while (MiAvlGetParent(Node) != NULL) {
+	    Node = MiAvlGetParent(Node);
+	    assert(Node->Key != Key);
+	    if (Node->Key > Key) {
+		return Node;
+	    }
+	}
 	return NULL;
     }
-    return LIST_ENTRY_TO_MM_AVL_NODE(Flink);
+    Node = Node->RightChild;
+    assert(Node != NULL);
+    while (Node->LeftChild != NULL) {
+	Node = Node->LeftChild;
+    }
+    return Node;
 }
 
 /*
@@ -156,16 +189,25 @@ static inline PMM_AVL_NODE MiAvlGetNextNode(IN PMM_AVL_TREE Tree,
  *
  * If Node is the first node in the tree, returns NULL.
  */
-static inline PMM_AVL_NODE MiAvlGetPrevNode(IN PMM_AVL_TREE Tree,
-					    IN PMM_AVL_NODE Node)
+static inline PMM_AVL_NODE MiAvlGetPrevNode(IN PMM_AVL_NODE Node)
 {
-    assert(Tree != NULL);
     assert(Node != NULL);
-    PLIST_ENTRY Blink = Node->ListEntry.Blink;
-    if (Blink == &Tree->NodeList) {
+    MWORD Key = Node->Key;
+    if (Node->LeftChild == NULL) {
+	while (MiAvlGetParent(Node) != NULL) {
+	    Node = MiAvlGetParent(Node);
+	    assert(Node->Key != Key);
+	    if (Node->Key < Key) {
+		return Node;
+	    }
+	}
 	return NULL;
     }
-    return LIST_ENTRY_TO_MM_AVL_NODE(Blink);
+    Node = Node->LeftChild;
+    while (Node->RightChild != NULL) {
+	Node = Node->RightChild;
+    }
+    return Node;
 }
 
 static inline BOOLEAN MiAvlTreeIsEmpty(IN PMM_AVL_TREE Tree)
@@ -174,22 +216,28 @@ static inline BOOLEAN MiAvlTreeIsEmpty(IN PMM_AVL_TREE Tree)
     return Tree->BalancedRoot == NULL;
 }
 
-static inline PMM_AVL_NODE MiAvlGetLastNode(IN PMM_AVL_TREE Tree)
+static inline PMM_AVL_NODE MiAvlGetFirstNode(IN PMM_AVL_TREE Tree)
 {
-    if (IsListEmpty(&Tree->NodeList)) {
+    PMM_AVL_NODE Node = Tree->BalancedRoot;
+    if (Node == NULL) {
 	return NULL;
     }
-    assert(Tree->NodeList.Blink != NULL);
-    PMM_AVL_NODE Last = CONTAINING_RECORD(Tree->NodeList.Blink,
-					  MM_AVL_NODE, ListEntry);
-#ifdef CONFIG_DEBUG_BUILD
+    while (Node->LeftChild != NULL) {
+	Node = Node->LeftChild;
+    }
+    return Node;
+}
+
+static inline PMM_AVL_NODE MiAvlGetLastNode(IN PMM_AVL_TREE Tree)
+{
     PMM_AVL_NODE Node = Tree->BalancedRoot;
+    if (Node == NULL) {
+	return NULL;
+    }
     while (Node->RightChild != NULL) {
 	Node = Node->RightChild;
     }
-    assert(Last == Node);
-#endif
-    return Last;
+    return Node;
 }
 
 /*

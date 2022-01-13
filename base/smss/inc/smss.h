@@ -1,4 +1,5 @@
 #include <nt.h>
+#include <assert.h>
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
@@ -23,4 +24,15 @@
 NTSTATUS SmPrint(PCSTR Format, ...) __attribute__((format(printf, 1, 2)));
 
 /* reg.c */
+NTSTATUS SmCreateRegistryKey(IN PCSTR Path,
+			     IN BOOLEAN Volatile,
+			     OUT HANDLE *Handle);
+NTSTATUS SmSetRegKeyValue(IN HANDLE KeyHandle,
+			  IN PCSTR ValueName,
+			  IN ULONG Type,
+			  IN PVOID Data,
+			  IN ULONG DataSize);
 NTSTATUS SmInitRegistry();
+
+/* hw.c */
+NTSTATUS SmInitHardwareDatabase();

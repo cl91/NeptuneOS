@@ -86,43 +86,51 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
 }
 
 /*
- * Open the given path by first invoking the parse procedures and then
+ * Open the given object by first invoking the parse procedures and then
  * invoking the open procedures, the latter of which can sleep. Assign
- * handle to the process if the open procedure has consumed all of Path
- * (ie. RemainingPath is empty).
+ * handle to the process if the open procedure has consumed all of specified
+ * object path (ie. RemainingPath is empty).
  *
  * Type specifies the object type of the handle (ie. specify OBJECT_TYPE_FILE
  * if you are opening a DEVICE object).
- *
- * Note: OpenResponse must be large enough to accommodate the open responses
- * of all intermediate open procedure invocations.
  */
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
 			    IN PTHREAD Thread,
-			    IN PCSTR Path,
+			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			    IN OBJECT_TYPE_ENUM Type,
 			    IN POB_PARSE_CONTEXT ParseContext,
 			    OUT HANDLE *pHandle)
 {
     assert(ObpRootObjectDirectory != NULL);
     assert(Thread != NULL);
-    assert(Path != NULL);
-    assert(Path[0] != '\0');
+    assert(Thread->Process != NULL);
     assert(pHandle != NULL);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
     BOOLEAN Reparsed = FALSE;	/* TRUE if Path has been set to a newly allocated string */
     POBJECT OpenedInstance = NULL;
+    PCSTR Path = ObjectAttributes.ObjectNameBuffer;
     PCSTR RemainingPath = NULL;
     POBJECT Object = ObpRootObjectDirectory;
+    POBJECT UserRootDirectory = NULL;
 
     ASYNC_BEGIN(AsyncState);
-    /* TODO: Relative path. */
-    if (Path[0] != OBJ_NAME_PATH_SEPARATOR) {
-	UNIMPLEMENTED;
+    /* If caller has specified a root directory, the object path must be relative */
+    if (ObjectAttributes.RootDirectory != NULL && Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+    /* Get the root directory if user has specified one. Otherwise, default to the
+     * global root object directory. */
+    if (ObjectAttributes.RootDirectory != NULL) {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ObjectAttributes.RootDirectory,
+					  OBJECT_TYPE_ANY, &UserRootDirectory));
+	assert(UserRootDirectory != NULL);
+	Object = UserRootDirectory;
     }
     /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
-    Path++;
+    if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	Path++;
+    }
 
 parse:
     /* Invoke the parse procedure first. If there isn't a parse procedure,
@@ -145,17 +153,25 @@ parse:
      * new path utill it finds the actual object */
     if (NeedReparse(Status)) {
 	/* If Path has been set to a newly allocated string due to a previous
-	 * reparse, we need to free it since we are overwriting it below with
-	 * the new string (allocated by the parse routine). */
+	 * reparse, we need to free it since we are overwriting the Path pointer
+	 * below with the ptr to the new string (allocated by the parse routine). */
 	if (Reparsed) {
 	    ExFreePool(Path);
 	}
 	/* The RemainingPath is now the new string to be parsed. It is allocated
 	 * by the parse routine. We must free it ourselves later. */
 	Path = RemainingPath;
+	/* If we have an absolute path, reparse should start from the global root directory */
+	if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	    Object = ObpRootObjectDirectory;
+	    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
+	    Path++;
+	}
+	/* Otherwise, for a relative path reparse should start from the current object.
+	 * In this case we do not need to do anything. */
+	DbgTrace("Reparsing with new path %s\n", Path);
 	/* Set Reparsed to TRUE so that we remember to free the new string */
 	Reparsed = TRUE;
-	DbgTrace("Reparsing with new path %s\n", Path);
 	goto parse;
     }
     /* If we get here, either the parse routine has successfully parsed (part
@@ -194,6 +210,7 @@ open:
 
     /* Save the object to THREAD because we may need to suspend it below. */
     Thread->ObOpenObjectSavedState.Object = Object;
+    Thread->ObOpenObjectSavedState.UserRootDirectory = UserRootDirectory;
     /* Also save the path to be parsed, since it might have changed due to reparse */
     Thread->ObOpenObjectSavedState.Path = Path;
     Thread->ObOpenObjectSavedState.Reparsed = Reparsed;
@@ -204,6 +221,7 @@ open:
 	     ParseContext, &OpenedInstance, &RemainingPath);
     /* Restore saved local variables as soon as the async function returned */
     Object = Thread->ObOpenObjectSavedState.Object;
+    UserRootDirectory = Thread->ObOpenObjectSavedState.UserRootDirectory;
     Path = Thread->ObOpenObjectSavedState.Path;
     Reparsed = Thread->ObOpenObjectSavedState.Reparsed;
 
@@ -220,22 +238,23 @@ open:
 	/* If reparsing, the open procedure should never touch OpenedInstance */
 	assert(OpenedInstance == NULL);
 	/* If the saved path has been previously set to a new reparse string,
-	 * we should free it since the reparse string is allocated by the parse routine */
+	 * we should free it since we will no longer refer to the old saved path */
 	if (Reparsed) {
 	    ExFreePool(Path);
 	}
-	/* Decrease the reference count of the object since we don't refer to it anymore */
-	ObDereferenceObject(Object);
-	Object = ObpRootObjectDirectory;
 	Path = RemainingPath;
+	/* If we have an absolute path, reparse should start from the global root directory */
+	if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	    Object = ObpRootObjectDirectory;
+	    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
+	    Path++;
+	    /* Decrease the reference count of the object since we don't refer to it anymore */
+	    ObDereferenceObject(Object);
+	}
+	/* Otherwise, for a relative path reparse should start from the current object.
+	 * In this case we do not need to do anything. */
 	Reparsed = TRUE;
 	DbgTrace("Reparsing with new path %s\n", Path);
-	/* TODO: Relative path. */
-	if (Path[0] != OBJ_NAME_PATH_SEPARATOR) {
-	    UNIMPLEMENTED;
-	}
-	/* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
-	Path++;
 	goto parse;
     }
 
@@ -272,9 +291,13 @@ out:
     if (Reparsed) {
 	ExFreePool(Path);
     }
+    if (UserRootDirectory != NULL) {
+	ObDereferenceObject(UserRootDirectory);
+    }
     /* Clear the saved states in THREAD. This is strictly speaking not necessary
      * but we just want to be on the safe side. */
     Thread->ObOpenObjectSavedState.Object = NULL;
+    Thread->ObOpenObjectSavedState.UserRootDirectory = NULL;
     Thread->ObOpenObjectSavedState.Path = NULL;
     Thread->ObOpenObjectSavedState.Reparsed = FALSE;
     ASYNC_END(Status);

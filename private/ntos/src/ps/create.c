@@ -683,10 +683,20 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     /* Walk the import table and map the dependencies recursively */
     PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
     MWORD LoaderDataOffset = sizeof(LOADER_SHARED_DATA);
-    /* TODO: Fix image path and command line */
-    RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->ImagePath));
-    RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->ImageName));
-    RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName, &LoaderSharedData->CommandLine));
+    RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName,
+			     &LoaderSharedData->ImageName));
+    if (DriverObject != NULL) {
+	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, DriverObject->DriverImagePath,
+				 &LoaderSharedData->ImagePath));
+	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, DriverObject->DriverRegistryPath,
+				 &LoaderSharedData->CommandLine));
+    } else {
+	/* TODO: Fix image path and command line */
+	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName,
+				 &LoaderSharedData->ImagePath));
+	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->FileName,
+				 &LoaderSharedData->CommandLine));
+    }
     LoaderSharedData->LoadedModuleCount = 1;
     LoaderSharedData->LoadedModules = LoaderDataOffset;
     RET_ERR(PspPopulateLoaderSharedData(Process, &LoaderDataOffset,
