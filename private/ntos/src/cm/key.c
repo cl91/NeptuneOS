@@ -13,6 +13,8 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
     }
     Key->Node.Type = CM_NODE_KEY;
     Key->Volatile = Ctx->Volatile;
+    /* When Ctx->Parent is NULL, the routine below will simply initialize
+     * the key name to Ctx->Name. */
     RET_ERR(CmpInsertNamedNode(Ctx->Parent, &Key->Node,
 			       Ctx->Name, Ctx->NameLength));
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {

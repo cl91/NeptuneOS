@@ -307,8 +307,15 @@ typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
 				       OUT POBJECT *pOpenedInstance,
 				       OUT PCSTR *pRemainingPath);
 
-/* Insert the given object as the sub-object of Self, with Subpath
- * as the name identifier of said sub-object.
+/*
+ * The insert procedure inserts the sub-object into the object, with
+ * Subpath as the name identifier of said sub-object.
+ *
+ * So far only the directory object supports insertion. The idea here
+ * is that in general object types should implement the insert method
+ * only if it supports inserting sub-objects outside its own namespace.
+ * If this turns out to be too specific, we will remove this and change
+ * ObInsertObjectByName to ObInsertObjectToDirectory.
  */
 typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Self,
 					 IN POBJECT Subobject,

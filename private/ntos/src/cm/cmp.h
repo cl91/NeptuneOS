@@ -73,7 +73,10 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
     return NodeFound;
 }
 
-static inline NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
+/*
+ * Set the node name and if Parent is not NULL, link the node to parent.
+ */
+static inline NTSTATUS CmpInsertNamedNode(IN OPTIONAL PCM_KEY_OBJECT Parent,
 					  IN PCM_NODE Node,
 					  IN PCSTR NodeName,
 					  IN OPTIONAL ULONG NameLength)
