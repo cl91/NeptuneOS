@@ -1,13 +1,12 @@
 #include "psp.h"
 
-static NTSTATUS PspSuspendThread(IN PTHREAD Thread)
+static NTSTATUS PspSuspendThread(IN MWORD Cap)
 {
-    assert(Thread != NULL);
-    int Error = seL4_TCB_Suspend(Thread->TreeNode.Cap);
+    int Error = seL4_TCB_Suspend(Cap);
 
     if (Error != 0) {
 	DbgTrace("seL4_TCB_Suspend failed for thread cap 0x%zx with error %d\n",
-		 Thread->TreeNode.Cap, Error);
+		 Cap, Error);
 	return SEL4_ERROR(Error);
     }
 
@@ -26,7 +25,13 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
 	KeSetEvent(&DriverObject->InitializationDoneEvent);
     }
     /* For now we simply suspend the thread */
-    return PspSuspendThread(Thread);
+    return PspSuspendThread(Thread->TreeNode.Cap);
+}
+
+NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread)
+{
+    /* For now we simply suspend the thread */
+    return PspSuspendThread(Thread->TreeNode.Cap);
 }
 
 NTSTATUS NtTerminateThread(IN ASYNC_STATE State,

@@ -3,47 +3,56 @@
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 
+NTSTATUS KiCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
+{
+    PUNTYPED Untyped = NULL;
+    RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
+    assert(Untyped != NULL);
+    KeInitializeIpcEndpoint(Endpoint, Untyped->TreeNode.CSpace, 0, 0);
+    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
+				  &Endpoint->TreeNode),
+	       MmReleaseUntyped(Untyped));
+    assert(Endpoint->TreeNode.Cap != 0);
+    return STATUS_SUCCESS;
+}
+
 /*
  * Create the IPC endpoint for the system services. This IPC endpoint
  * is then badged via seL4_CNode_Mint. Also initialize the ready thread list.
  */
 NTSTATUS KiInitExecutiveServices()
 {
-    PUNTYPED Untyped = NULL;
-    RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
-    assert(Untyped != NULL);
-    KeInitializeIpcEndpoint(&KiExecutiveServiceEndpoint, Untyped->TreeNode.CSpace, 0, 0);
-    RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
-				  &KiExecutiveServiceEndpoint.TreeNode),
-	       MmReleaseUntyped(Untyped));
-    assert(KiExecutiveServiceEndpoint.TreeNode.Cap != 0);
+    RET_ERR(KiCreateEndpoint(&KiExecutiveServiceEndpoint));
     InitializeListHead(&KiReadyThreadList);
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
-					      IN SERVICE_TYPE ServiceType)
+/*
+ * Reserves the reply cap in the NTOS Executive CSpace and creates
+ * an IPC endpoint derived from the Executive service endpoint with
+ * the given IPC badge. The IPC endpoint cap is in the given CSpace.
+ */
+static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
+					      OUT PIPC_ENDPOINT *pServiceEndpoint,
+					      IN PCNODE CSpace,
+					      IN MWORD IPCBadge)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
-    assert(Thread->Process->CSpace != NULL);
-    /* Make sure ServiceType only has the lowest three (four in amd64) bits */
-    assert(GLOBAL_HANDLE_GET_FLAG(ServiceType) == ServiceType);
-    assert(ServiceType != SERVICE_TYPE_NOTIFICATION);
+    assert(ReplyEndpoint != NULL);
+    assert(pServiceEndpoint != NULL);
+    assert(CSpace != NULL);
 
     MWORD ReplyCap = 0;
     extern CNODE MiNtosCNode;
     RET_ERR(MmAllocateCapRange(&MiNtosCNode, &ReplyCap, 1));
     assert(ReplyCap != 0);
-    KeInitializeIpcEndpoint(&Thread->ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
+    KeInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
 
     KiAllocatePoolEx(ServiceEndpoint, IPC_ENDPOINT,
 		     {
 			 MmDeallocateCap(&MiNtosCNode, ReplyCap);
-			 Thread->ReplyEndpoint.TreeNode.Cap = 0;
+			 ReplyEndpoint->TreeNode.Cap = 0;
 		     });
-    MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread) | ServiceType;
-    KeInitializeIpcEndpoint(ServiceEndpoint, Thread->Process->CSpace, 0, IPCBadge);
+    KeInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, IPCBadge);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
 					 ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
@@ -51,8 +60,31 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
 	       {
 		   ExFreePool(ServiceEndpoint);
 		   MmDeallocateCap(&MiNtosCNode, ReplyCap);
-		   Thread->ReplyEndpoint.TreeNode.Cap = 0;
+		   ReplyEndpoint->TreeNode.Cap = 0;
 	       });
+
+    *pServiceEndpoint = ServiceEndpoint;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
+					      IN SERVICE_TYPE ServiceType)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->CSpace != NULL);
+    assert(ServiceType < MAX_NUM_SERVICE_TYPES);
+    assert(ServiceType != SERVICE_TYPE_NOTIFICATION);
+    assert(ServiceType != SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER);
+
+    MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread) | ServiceType;
+    PIPC_ENDPOINT ServiceEndpoint = NULL;
+    RET_ERR(KiEnableClientServiceEndpoint(&Thread->ReplyEndpoint,
+					  &ServiceEndpoint,
+					  Thread->Process->CSpace,
+					  IPCBadge));
+    assert(ServiceEndpoint != NULL);
+
     if (ServiceType == SERVICE_TYPE_SYSTEM_SERVICE) {
 	Thread->SystemServiceEndpoint = ServiceEndpoint;
 	Thread->InitInfo.SystemServiceCap = ServiceEndpoint->TreeNode.Cap;
@@ -68,17 +100,33 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PTHREAD Thread,
 
 NTSTATUS KeEnableSystemServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_SYSTEM_SERVICE);
+    return KiEnableThreadServiceEndpoint(Thread, SERVICE_TYPE_SYSTEM_SERVICE);
 }
 
 NTSTATUS KeEnableWdmServices(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_WDM_SERVICE);
+    return KiEnableThreadServiceEndpoint(Thread, SERVICE_TYPE_WDM_SERVICE);
 }
 
 NTSTATUS KeEnableThreadFaultHandler(IN PTHREAD Thread)
 {
-    return KiEnableClientServiceEndpoint(Thread, SERVICE_TYPE_FAULT_HANDLER);
+    return KiEnableThreadServiceEndpoint(Thread, SERVICE_TYPE_FAULT_HANDLER);
+}
+
+NTSTATUS KeEnableSystemThreadFaultHandler(IN PSYSTEM_THREAD Thread)
+{
+    assert(Thread != NULL);
+    extern CNODE MiNtosCNode;
+
+    MWORD IPCBadge = POINTER_TO_GLOBAL_HANDLE(Thread) | SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER;
+    PIPC_ENDPOINT ServiceEndpoint = NULL;
+    RET_ERR(KiEnableClientServiceEndpoint(&Thread->ReplyEndpoint,
+					  &Thread->FaultEndpoint,
+					  &MiNtosCNode,
+					  IPCBadge));
+    assert(Thread->FaultEndpoint != NULL);
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
@@ -224,53 +272,6 @@ static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread,
     }
 }
 
-static inline PCSTR KiDbgGetFaultName(IN seL4_Fault_t Fault)
-{
-    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
-    case seL4_Fault_NullFault:
-	return "NULL-FAULT";
-    case seL4_Fault_CapFault:
-	return "CAP-FAULT\n";
-    case seL4_Fault_UnknownSyscall:
-	return "UNKNOWN-SYSCALL";
-    case seL4_Fault_UserException:
-	return "USER-EXCEPTION";
-    case seL4_Fault_VMFault:
-	return "VM-FAULT";
-    }
-    return "UNKNOWN-FAULT";
-}
-
-static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
-				  IN KI_DBG_PRINTER DbgPrinter)
-{
-    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
-    case seL4_Fault_NullFault:
-	DbgPrinter("NULL-FAULT\n");
-	break;
-    case seL4_Fault_CapFault:
-	DbgPrinter("CAP-FAULT\n");
-	break;
-    case seL4_Fault_UnknownSyscall:
-	DbgPrinter("UNKNOWN-SYSCALL\n");
-	break;
-    case seL4_Fault_UserException:
-	DbgPrinter("USER-EXCEPTION\n");
-	break;
-    case seL4_Fault_VMFault:
-	DbgPrinter("IP\t %p\tADDR\t%p\n"
-		   "PREFETCH %p\tFSR\t%p\n",
-		   (PVOID)seL4_Fault_VMFault_get_IP(Fault),
-		   (PVOID)seL4_Fault_VMFault_get_Addr(Fault),
-		   (PVOID)seL4_Fault_VMFault_get_PrefetchFault(Fault),
-		   (PVOID)seL4_Fault_VMFault_get_FSR(Fault));
-	break;
-    default:
-	DbgPrinter("WTF??? This should never happen.\n");
-	break;
-    }
-}
-
 static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 			      IN PTHREAD Thread,
 			      IN KI_DBG_PRINTER DbgPrinter)
@@ -306,6 +307,23 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
     DbgPrinter("==============================================================================\n");
 }
 
+static VOID KiDumpSystemThreadFault(IN seL4_Fault_t Fault,
+				    IN PSYSTEM_THREAD Thread,
+				    IN KI_DBG_PRINTER DbgPrinter)
+{
+    DbgPrinter("\n==============================================================================\n"
+		"Unhandled %s in thread NTOS|%p\n",
+		KiDbgGetFaultName(Fault), Thread);
+    KiDbgDumpFault(Fault, DbgPrinter);
+    THREAD_CONTEXT Context;
+    NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
+    if (!NT_SUCCESS(Status)) {
+	DbgPrinter("Unable to dump thread context. Error 0x%08x\n", Status);
+    }
+    KiDumpThreadContext(&Context, DbgPrinter);
+    DbgPrinter("==============================================================================\n");
+}
+
 VOID KiDispatchExecutiveServices()
 {
     MWORD Badge = 0;
@@ -326,6 +344,15 @@ VOID KiDispatchExecutiveServices()
 #endif
 	    KiDumpThreadFault(Fault, Thread, HalVgaPrint);
 	    PsTerminateThread(Thread, STATUS_UNSUCCESSFUL);
+	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
+	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
+	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_POINTER(Badge);
+	    seL4_Fault_t Fault = seL4_getFault(Request);
+#ifdef CONFIG_DEBUG_BUILD
+	    KiDumpSystemThreadFault(Fault, Thread, DbgPrint);
+#endif
+	    KiDumpSystemThreadFault(Fault, Thread, HalVgaPrint);
+	    PsTerminateSystemThread(Thread);
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_NOTIFICATION) {
 	    /* The timer irq thread generates service notifications with seL4_NBWait, to inform
 	     * us that the expired timer list should be checked even though there is no service

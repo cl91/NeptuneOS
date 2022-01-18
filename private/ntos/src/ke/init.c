@@ -260,6 +260,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     ExInitSystemPhase0(bootinfo);
     HalDisplayString(OS_BANNER "    ");
     BUGCHECK_IF_ERR(KiInitExecutiveServices());
+    BUGCHECK_IF_ERR(KiInitBugCheck());
     BUGCHECK_IF_ERR(KiInitTimer());
     BUGCHECK_IF_ERR(ExInitSystemPhase1());
 

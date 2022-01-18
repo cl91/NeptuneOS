@@ -119,6 +119,8 @@ typedef struct _PROCESS {
  */
 typedef struct _SYSTEM_THREAD {
     CAP_TREE_NODE TreeNode;
+    IPC_ENDPOINT ReplyEndpoint;
+    PIPC_ENDPOINT FaultEndpoint;
     PCSTR DebugName;
     PVOID TlsBase;	 /* TLS base of the thread's TLS region */
     PVOID IpcBuffer;	 /* Address of the thread's seL4 IPC buffer */
@@ -149,3 +151,4 @@ NTSTATUS PsLoadDll(IN PPROCESS Process,
 /* kill.c */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,
     			   IN NTSTATUS ExitStatus);
+NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread);

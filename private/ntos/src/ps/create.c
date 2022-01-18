@@ -102,8 +102,9 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     PPAGING_STRUCTURE IpcBufferPage = MmQueryPage(&MiNtosVaddrSpace,
 						  IpcBufferVad->AvlNode.Key);
     assert(IpcBufferPage != NULL);
+    IF_ERR_GOTO(Fail, Status, KeEnableSystemThreadFaultHandler(Thread));
     IF_ERR_GOTO(Fail, Status, PspConfigureThread(Thread->TreeNode.Cap,
-						 0, /* TODO: Fault handler */
+						 Thread->FaultEndpoint->TreeNode.Cap,
 						 &MiNtosCNode,
 						 &MiNtosVaddrSpace,
 						 IpcBufferPage));

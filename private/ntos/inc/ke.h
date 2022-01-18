@@ -13,6 +13,7 @@
 #define NTOS_TLS_AREA_SIZE		(64)
 
 struct _THREAD;
+struct _SYSTEM_THREAD;
 
 /* Not to be confused with CONTEXT, defined in the NT headers */
 typedef seL4_UserContext THREAD_CONTEXT, *PTHREAD_CONTEXT;
@@ -574,6 +575,7 @@ struct _IO_DRIVER_OBJECT;
 NTSTATUS KeEnableSystemServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableWdmServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableThreadFaultHandler(IN struct _THREAD *Thread);
+NTSTATUS KeEnableSystemThreadFaultHandler(IN struct _SYSTEM_THREAD *Thread);
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);
 NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
