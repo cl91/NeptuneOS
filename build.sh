@@ -239,14 +239,18 @@ else
     build_failed
 fi
 
+echo
+echo "---- Stripping symbols for ${BUILD_TYPE} build ----"
+echo
 if [[ ${BUILD_TYPE} == Release ]]; then
-    echo
-    echo "---- Stripping symbols for release build ----"
-    echo
     cp kernel kernel-no-strip
     cp ntos ntos-no-strip
-    strip kernel
-    strip ntos
+    strip kernel && strip ntos
+    if [[ $? == 0 ]]; then
+	echo "Success."
+    fi
+else
+    strip kernel -o kernel-stripped && strip ntos -o ntos-stripped
     if [[ $? == 0 ]]; then
 	echo "Success."
     fi
