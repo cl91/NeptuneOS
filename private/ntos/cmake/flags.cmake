@@ -21,7 +21,7 @@ if((${CMAKE_BUILD_TYPE} STREQUAL "Release") OR (${CMAKE_BUILD_TYPE} STREQUAL "Mi
 endif()
 mark_as_advanced(UserLinkerGCSections)
 
-# The NT Executive task and all device driver tasks cannot use FPU registers,
+# The NT Executive task and device driver tasks cannot use FPU registers,
 # since we do not handle FPU context saving when switching threads.
 # TODO: Profile +fpu vs -fpu context switching cost.
 add_compile_options(
@@ -53,4 +53,10 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(kernel.elf PRIVATE "-Wno-error=uninitialized")
     target_compile_options(kernel.elf PRIVATE "-Wno-error=shift-negative-value")
     set(CMAKE_AR "llvm-ar" CACHE FILEPATH "Archiver")
+endif()
+
+# This prevents the i386 target from generating the popcnt instructions since
+# this isn't added until Nehalem (Core i7 first gen)
+if(Arch STREQUAL "i386")
+    add_compile_options(-march=i686)
 endif()
