@@ -3,6 +3,7 @@
 
 static ULONG HalpVgaCursorPositionHorizontal;
 static ULONG HalpVgaCursorPositionVertical;
+static BOOLEAN HalpVgaInitialized;
 
 static VOID HalpVgaDisableCursor()
 {
@@ -25,6 +26,10 @@ static VOID HalpVgaScrollLine()
 
 VOID HalDisplayStringEx(UCHAR Color, PCSTR String)
 {
+    /* If we are not even initialized, simply return. */
+    if (!HalpVgaInitialized) {
+	return;
+    }
     while (*String != 0) {
 	volatile PCHAR Video = (volatile PCHAR)
 	    (VGA_VIDEO_PAGE_VADDR + 2 * (VGA_MODE_HORIZONTAL
@@ -81,5 +86,6 @@ NTSTATUS HalpInitVga()
     RET_ERR(HalpInitVgaIoPort());
     HalpVgaDisableCursor();
     HalpVgaClearScreen();
+    HalpVgaInitialized = TRUE;
     return STATUS_SUCCESS;
 }
