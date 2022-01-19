@@ -87,6 +87,11 @@ typedef const RTL_BITMAP *PCRTL_BITMAP;
 #define RTL_MAX_DRIVE_LETTERS 32
 #define RTL_DRIVE_LETTER_VALID (USHORT)0x0001
 
+/*
+ * Thread and Process Start Routines for RtlCreateUserThread/Process
+ */
+typedef ULONG (NTAPI *PTHREAD_START_ROUTINE)(PVOID Parameter);
+
 typedef struct _RTL_USER_PROCESS_PARAMETERS {
     ULONG MaximumLength;
     ULONG Length;

@@ -41,6 +41,9 @@ LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
 PLDR_DATA_TABLE_ENTRY LdrpNtdllEntry;
 
+/* Used by LdrLoadDll to show currently initializing dll name */
+PLDR_DATA_TABLE_ENTRY LdrpCurrentDllInitializer;
+
 RTL_BITMAP TlsBitMap;
 RTL_BITMAP TlsExpansionBitMap;
 RTL_BITMAP FlsBitMap;
@@ -70,16 +73,6 @@ RTL_CRITICAL_SECTION FastPebLock;
 #define DEFAULT_SECURITY_COOKIE 0x00002B992DDFA232ll
 #else
 #define DEFAULT_SECURITY_COOKIE 0xBB40E64E
-#endif
-
-#ifdef _M_IX86
-#define INSTRUCTION_POINTER Eip
-#define FIRST_PARAMETER	    Ecx
-#elif defined(_M_AMD64)
-#define INSTRUCTION_POINTER Rip
-#define FIRST_PARAMETER	    Rcx
-#else
-#error "Unsupported architecture"
 #endif
 
 /* FUNCTIONS *****************************************************************/
@@ -374,189 +367,127 @@ static VOID LdrpCallTlsInitializers(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     }
 }
 
+static ULONG LdrpGetInitializationModuleCount(VOID)
+{
+    ULONG ModulesCount = 0;
+    /* Traverse the init list */
+    PLIST_ENTRY ListHead = &NtCurrentPeb()->LdrData->InInitializationOrderModuleList;
+    PLIST_ENTRY Entry = ListHead->Flink;
+    while (Entry != ListHead) {
+	/* Get the loader entry */
+	PLDR_DATA_TABLE_ENTRY LdrEntry = CONTAINING_RECORD(Entry,
+							   LDR_DATA_TABLE_ENTRY,
+							   InInitializationOrderLinks);
+
+	/* Check for modules with entry point count but not processed yet */
+	if ((LdrEntry->EntryPoint) && !(LdrEntry->Flags & LDRP_ENTRY_PROCESSED)) {
+	    /* Increase counter */
+	    ModulesCount++;
+	}
+
+	/* Advance to the next entry */
+	Entry = Entry->Flink;
+    }
+
+    /* Return final count */
+    return ModulesCount;
+}
+
 static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 {
-#if 0
-    PLDR_DATA_TABLE_ENTRY LocalArray[16];
-    PLIST_ENTRY ListHead;
-    PLIST_ENTRY NextEntry;
-    PLDR_DATA_TABLE_ENTRY LdrEntry, *LdrRootEntry, OldInitializer;
-    PVOID EntryPoint;
-    ULONG Count, i;
-    NTSTATUS Status = STATUS_SUCCESS;
     PPEB Peb = NtCurrentPeb();
-    ULONG BreakOnDllLoad;
-    BOOLEAN DllStatus;
 
     DPRINT("LdrpRunInitializeRoutines() called for %wZ (%p/%p)\n",
 	   &LdrpImageEntry->BaseDllName,
 	   NtCurrentTeb()->RealClientId.UniqueProcess,
 	   NtCurrentTeb()->RealClientId.UniqueThread);
 
-    /* Get the number of entries to call */
-    if ((Count = LdrpClearLoadInProgress())) {
-	/* Check if we can use our local buffer */
-	if (Count > 16) {
-	    /* Allocate space for all the entries */
-	    LdrRootEntry = RtlAllocateHeap(LdrpHeap,
-					   0,
-					   Count * sizeof(*LdrRootEntry));
-	    if (!LdrRootEntry)
-		return STATUS_NO_MEMORY;
-	} else {
-	    /* Use our local array */
-	    LdrRootEntry = LocalArray;
-	}
-    } else {
-	/* Don't need one */
-	LdrRootEntry = NULL;
-    }
-
-    /* Show debug message */
-    DPRINT1("[%p,%p] LDR: Real INIT LIST for Process %wZ\n",
-	    NtCurrentTeb()->RealClientId.UniqueThread,
-	    NtCurrentTeb()->RealClientId.UniqueProcess,
-	    &Peb->ProcessParameters->ImagePathName);
-
-    /* Loop in order */
-    ListHead = &Peb->LdrData->InInitializationOrderModuleList;
-    NextEntry = ListHead->Flink;
-    i = 0;
+    /* Loop in initialization order */
+    PLIST_ENTRY ListHead = &Peb->LdrData->InInitializationOrderModuleList;
+    PLIST_ENTRY NextEntry = ListHead->Flink;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
     while (NextEntry != ListHead) {
 	/* Get the Data Entry */
 	LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY,
 				     InInitializationOrderLinks);
 
-	/* Check if we have a Root Entry */
-	if (LdrRootEntry) {
-	    /* Check flags */
-	    if (!(LdrEntry->Flags & LDRP_ENTRY_PROCESSED)) {
-		/* Setup the Cookie for the DLL */
-		LdrpInitSecurityCookie(LdrEntry);
+	/* Check flags */
+	if (!(LdrEntry->Flags & LDRP_ENTRY_PROCESSED)) {
+	    /* Setup the Cookie for the DLL */
+	    LdrpInitSecurityCookie(LdrEntry);
 
-		/* Check for valid entrypoint */
-		if (LdrEntry->EntryPoint) {
-		    /* Write in array */
-		    ASSERT(i < Count);
-		    LdrRootEntry[i] = LdrEntry;
+	    /* Are we being debugged? */
+	    ULONG BreakOnDllLoad = 0;
+	    if (Peb->BeingDebugged || Peb->ReadImageFileExecOptions) {
+		/* Check if we should break on load */
+		if (!NT_SUCCESS(LdrQueryImageFileExecutionOptions(&LdrEntry->BaseDllName,
+								  L"BreakOnDllLoad",
+								  REG_DWORD,
+								  &BreakOnDllLoad,
+								  sizeof(ULONG),
+								  NULL))) {
+		    BreakOnDllLoad = 0;
+		}
+	    }
 
-		    /* Display debug message */
-		    DPRINT1("[%p,%p] LDR: %wZ init routine %p\n",
-			    NtCurrentTeb()->RealClientId.UniqueThread,
-			    NtCurrentTeb()->RealClientId.UniqueProcess,
-			    &LdrEntry->FullDllName,
-			    LdrEntry->EntryPoint);
-		    i++;
+	    /* Break if aksed */
+	    if (BreakOnDllLoad) {
+		/* Check if we should show a message */
+		DPRINT1("LDR: %wZ loaded.", &LdrEntry->BaseDllName);
+		DPRINT1(" - About to call init routine at %p\n", LdrEntry->EntryPoint);
+
+		/* Break in debugger */
+		DbgBreakPoint();
+	    }
+
+	    /* Check for valid entrypoint */
+	    if (LdrEntry->EntryPoint) {
+		DPRINT1("[%p,%p] LDR: %wZ init routine %p\n",
+			NtCurrentTeb()->RealClientId.UniqueThread,
+			NtCurrentTeb()->RealClientId.UniqueProcess,
+			&LdrEntry->FullDllName, LdrEntry->EntryPoint);
+		/* Save the old Dll Initializer and write the current one */
+		PLDR_DATA_TABLE_ENTRY OldInitializer = LdrpCurrentDllInitializer;
+		LdrpCurrentDllInitializer = LdrEntry;
+
+		BOOLEAN DllStatus;
+		_SEH2_TRY {
+		    /* Check if it has TLS */
+		    if (LdrEntry->TlsIndex && Context) {
+			/* Call TLS */
+			LdrpCallTlsInitializers(LdrEntry, DLL_PROCESS_ATTACH);
+		    }
+
+		    /* Call the Entrypoint */
+		    DPRINT1("%wZ - Calling entry point at %p for DLL_PROCESS_ATTACH\n",
+			    &LdrEntry->BaseDllName, LdrEntry->EntryPoint);
+		    DllStatus = LdrpCallInitRoutine(LdrEntry->EntryPoint,
+						    LdrEntry->DllBase,
+						    DLL_PROCESS_ATTACH,
+						    Context);
+		} _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+		    DllStatus = FALSE;
+		    DPRINT1("WARNING: Exception 0x%x during LdrpCallInitRoutine(DLL_PROCESS_ATTACH) for %wZ\n",
+			    _SEH2_GetExceptionCode(), &LdrEntry->BaseDllName);
+		}
+
+		/* Save the Current DLL Initializer */
+		LdrpCurrentDllInitializer = OldInitializer;
+
+		/* Mark the entry as processed */
+		LdrEntry->Flags |= LDRP_PROCESS_ATTACH_CALLED;
+
+		/* Fail if DLL init failed */
+		if (!DllStatus) {
+		    DPRINT1("LDR: DLL_PROCESS_ATTACH for dll \"%wZ\" (InitRoutine: %p) failed\n",
+			    &LdrEntry->BaseDllName, LdrEntry->EntryPoint);
+		    return STATUS_DLL_INIT_FAILED;
 		}
 	    }
 	}
 
-	/* Set the flag */
+	/* Set the flag to indicate that the entry has been processed */
 	LdrEntry->Flags |= LDRP_ENTRY_PROCESSED;
-	NextEntry = NextEntry->Flink;
-    }
-
-    Status = STATUS_SUCCESS;
-
-    /* No root entry? return */
-    if (!LdrRootEntry)
-	return Status;
-
-    /* Loop */
-    i = 0;
-    while (i < Count) {
-	/* Get an entry */
-	LdrEntry = LdrRootEntry[i];
-
-	/* FIXME: Verify NX Compat */
-
-	/* Move to next entry */
-	i++;
-
-	/* Get its entrypoint */
-	EntryPoint = LdrEntry->EntryPoint;
-
-	/* Are we being debugged? */
-	BreakOnDllLoad = 0;
-	if (Peb->BeingDebugged || Peb->ReadImageFileExecOptions) {
-	    /* Check if we should break on load */
-	    Status = LdrQueryImageFileExecutionOptions(&LdrEntry->BaseDllName,
-						       L"BreakOnDllLoad",
-						       REG_DWORD,
-						       &BreakOnDllLoad,
-						       sizeof(ULONG), NULL);
-	    if (!NT_SUCCESS(Status))
-		BreakOnDllLoad = 0;
-
-	    /* Reset status back to STATUS_SUCCESS */
-	    Status = STATUS_SUCCESS;
-	}
-
-	/* Break if aksed */
-	if (BreakOnDllLoad) {
-	    /* Check if we should show a message */
-	    DPRINT1("LDR: %wZ loaded.", &LdrEntry->BaseDllName);
-	    DPRINT1(" - About to call init routine at %p\n", EntryPoint);
-
-	    /* Break in debugger */
-	    DbgBreakPoint();
-	}
-
-	/* Make sure we have an entrypoint */
-	if (EntryPoint) {
-	    /* Save the old Dll Initializer and write the current one */
-	    OldInitializer = LdrpCurrentDllInitializer;
-	    LdrpCurrentDllInitializer = LdrEntry;
-
-	    _SEH2_TRY {
-		/* Check if it has TLS */
-		if (LdrEntry->TlsIndex && Context) {
-		    /* Call TLS */
-		    LdrpCallTlsInitializers(LdrEntry, DLL_PROCESS_ATTACH);
-		}
-
-		/* Call the Entrypoint */
-		DPRINT1("%wZ - Calling entry point at %p for DLL_PROCESS_ATTACH\n",
-			&LdrEntry->BaseDllName, EntryPoint);
-		DllStatus = LdrpCallInitRoutine(EntryPoint,
-						LdrEntry->DllBase,
-						DLL_PROCESS_ATTACH,
-						Context);
-	    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-		DllStatus = FALSE;
-		DPRINT1("WARNING: Exception 0x%x during LdrpCallInitRoutine(DLL_PROCESS_ATTACH) for %wZ\n",
-			_SEH2_GetExceptionCode(), &LdrEntry->BaseDllName);
-	    }
-
-	    /* Save the Current DLL Initializer */
-	    LdrpCurrentDllInitializer = OldInitializer;
-
-	    /* Mark the entry as processed */
-	    LdrEntry->Flags |= LDRP_PROCESS_ATTACH_CALLED;
-
-	    /* Fail if DLL init failed */
-	    if (!DllStatus) {
-		DPRINT1("LDR: DLL_PROCESS_ATTACH for dll \"%wZ\" (InitRoutine: %p) failed\n",
-			&LdrEntry->BaseDllName, EntryPoint);
-
-		Status = STATUS_DLL_INIT_FAILED;
-		goto Quickie;
-	    }
-	}
-    }
-
-    /* Loop in order */
-    ListHead = &Peb->LdrData->InInitializationOrderModuleList;
-    NextEntry = NextEntry->Flink;
-    while (NextEntry != ListHead) {
-	/* Get the Data Entry */
-	LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY,
-				     InInitializationOrderLinks);
-
-	/* FIXME: Verify NX Compat */
-	// LdrpCheckNXCompatibility()
-
-	/* Next entry */
 	NextEntry = NextEntry->Flink;
     }
 
@@ -570,18 +501,6 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 	}
     }
 
-Quickie:
-
-    /* Check if the array is in the heap */
-    if (LdrRootEntry != LocalArray) {
-	/* Free the array */
-	RtlFreeHeap(LdrpHeap, 0, LdrRootEntry);
-    }
-
-    /* Return to caller */
-    DPRINT("LdrpRunInitializeRoutines() done\n");
-    return Status;
-#endif
     return STATUS_SUCCESS;
 }
 
@@ -801,6 +720,8 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	return STATUS_INVALID_IMAGE_FORMAT;
     }
     assert(LdrpNtdllEntry != NULL);
+    /* ntdll.dll does not have DllMain so we mark its entry point as NULL */
+    LdrpNtdllEntry->EntryPoint = NULL;
 
     /* Initialize TLS */
     RET_ERR_EX(LdrpInitializeTls(),
@@ -813,10 +734,13 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	DbgBreakPoint();
     }
 
-    /* Now call the Init Routines */
-    RET_ERR_EX(LdrpRunInitializeRoutines(NULL /* TODO: FIXME Context */),
-	       DPRINT1("LDR: LdrpProcessInitialization failed running initialization routines; status %x\n",
-		       Status));
+    if (!InitInfo->DriverProcess) {
+	/* Now call the Init Routines (DllMain, TLS callbacks), unless we are a driver process.
+	 * Driver processes do not load regular dlls (driver images do not have DllMain) */
+	RET_ERR_EX(LdrpRunInitializeRoutines(&InitInfo->ThreadInitInfo.InitialContext),
+		   DPRINT1("LDR: LdrpProcessInitialization failed running initialization routines; status %x\n",
+			   Status));
+    }
 
     /* Check if we have a user-defined Post Process Routine */
     if (Peb->PostProcessInitRoutine) {
@@ -935,7 +859,7 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	   NtCurrentTeb()->RealClientId.UniqueThread);
 
     /* Check if we have already setup LDR data */
-    PVOID EntryPoint = 0;
+    PTHREAD_START_ROUTINE EntryPoint = 0;
     NTSTATUS Status = STATUS_SUCCESS;
     if (!Peb->LdrData) {
 	/* At process startup the process init info is placed at the beginning
@@ -959,7 +883,7 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 		DbgTrace("Fatal error: driver process does not have wdm.dll loaded.\n");
 		Status = STATUS_ENTRYPOINT_NOT_FOUND;
 	    } else {
-		EntryPoint = WdmDllEntry->EntryPoint;
+		EntryPoint = (PTHREAD_START_ROUTINE)WdmDllEntry->EntryPoint;
 		((PWDM_DLL_ENTRYPOINT)WdmDllEntry->EntryPoint)(IpcBuffer,
 							       InitInfo.ThreadInitInfo.WdmServiceCap,
 							       &InitInfo.DriverInitInfo,
@@ -968,14 +892,12 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	} else {
 	    /* Call the supplied thread entry point if specifed. Otherwise call the image entry point */
 	    PVOID Parameter;
-	    if (InitInfo.ThreadInitInfo.InitialContext.INSTRUCTION_POINTER != 0) {
-		EntryPoint = (PVOID)InitInfo.ThreadInitInfo.InitialContext.INSTRUCTION_POINTER;
-		Parameter = (PVOID)InitInfo.ThreadInitInfo.InitialContext.FIRST_PARAMETER;
-	    } else {
+	    KeGetEntryPointFromThreadContext(&InitInfo.ThreadInitInfo.InitialContext, &EntryPoint, &Parameter);
+	    if (EntryPoint == 0) {
 		EntryPoint = LdrpImageEntry->EntryPoint;
 		Parameter = Peb;
 	    }
-	    ((PTHREAD_START_ROUTINE)EntryPoint)(Parameter);
+	    (*EntryPoint)(Parameter);
 	}
     } else if (Peb->InheritedAddressSpace) {
 	/* Loader data is there... is this a fork() ? */
@@ -996,9 +918,9 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	/* This is a new thread initializing */
 	Status = LdrpInitializeThread();
 	/* Call thread entry point */
-	EntryPoint = (PVOID)InitInfo.InitialContext.INSTRUCTION_POINTER;
-	PVOID Parameter = (PVOID)InitInfo.InitialContext.FIRST_PARAMETER;
-	((PTHREAD_START_ROUTINE)EntryPoint)(Parameter);
+	PVOID Parameter;
+	KeGetEntryPointFromThreadContext(&InitInfo.InitialContext, &EntryPoint, &Parameter);
+	(*EntryPoint)(Parameter);
     }
 
     /* Bail out if initialization has failed */
@@ -1019,7 +941,7 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	RtlRaiseStatus(Status);
     }
 
-    /* The thread entry point should never return. Shutdown the thread if it does. */
+    /* The thread entry point should never return. Shutdown the thread if it did. */
     DPRINT1("LDR: Thread entry point %p returned for thread %p of process %p, shutting down thread\n",
 	    EntryPoint, NtCurrentTeb()->RealClientId.UniqueThread,
 	    NtCurrentTeb()->RealClientId.UniqueProcess);
@@ -1031,7 +953,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
  */
 NTAPI NTSTATUS LdrShutdownProcess(VOID)
 {
-#if 0
     PPEB Peb = NtCurrentPeb();
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     PLIST_ENTRY NextEntry, ListHead;
@@ -1106,7 +1027,7 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
     /* Release the lock */
     RtlLeaveCriticalSection(&LdrpLoaderLock);
     DPRINT("LdrpShutdownProcess() done\n");
-#endif
+
     return STATUS_SUCCESS;
 }
 
@@ -1115,7 +1036,6 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
  */
 NTAPI NTSTATUS LdrShutdownThread(VOID)
 {
-#if 0
     PPEB Peb = NtCurrentPeb();
     PTEB Teb = NtCurrentTeb();
     PLDR_DATA_TABLE_ENTRY LdrEntry;
@@ -1236,6 +1156,5 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
     }
 
     DPRINT("LdrShutdownThread() done\n");
-#endif
     return STATUS_SUCCESS;
 }

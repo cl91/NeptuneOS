@@ -303,6 +303,16 @@ typedef struct _TEB_ACTIVE_FRAME {
 } TEB_ACTIVE_FRAME, *PTEB_ACTIVE_FRAME;
 
 typedef VOID (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE)(VOID);
+typedef VOID (NTAPI *PFLS_CALLBACK_FUNCTION)(PVOID);
+
+/*
+ * Fiber local storage data
+ */
+#define RTL_FLS_MAXIMUM_AVAILABLE 128
+typedef struct _RTL_FLS_DATA {
+    LIST_ENTRY ListEntry;
+    PVOID Data[RTL_FLS_MAXIMUM_AVAILABLE];
+} RTL_FLS_DATA, *PRTL_FLS_DATA;
 
 /* For ELF targets we need the packed attribute since clang puts extra spaces otherwise */
 #include <pshpack4.h>
@@ -371,10 +381,11 @@ typedef struct _PEB {                                                 /* win32/w
     PVOID                            SystemDefaultActivationData;       /* 200/308 */
     PVOID                            SystemAssemblyStorageMap;          /* 204/310 */
     SIZE_T                           MinimumStackCommit;                /* 208/318 */
-    PVOID                           *FlsCallback;                       /* 20c/320 */
+    PFLS_CALLBACK_FUNCTION          *FlsCallback;                       /* 20c/320 */
     LIST_ENTRY                       FlsListHead;                       /* 210/328 */
     PRTL_BITMAP                      FlsBitmap;                         /* 218/338 */
     ULONG                            FlsBitmapBits[4];                  /* 21c/340 */
+    ULONG                            FlsHighIndex;                      /* 22c/350 */
 } PEB, *PPEB;
 #include <poppack.h>
 
@@ -448,7 +459,15 @@ typedef struct _TEB {                                             /* win32/win64
     PVOID                        Instrumentation[16];               /* f2c/16b8 */
     PVOID                        WinSockData;                       /* f6c/1738 */
     ULONG                        GdiBatchCount;                     /* f70/1740 */
-    ULONG                        Spare2;                            /* f74/1744 */
+    union {
+	struct {
+	    BOOLEAN              InDbgPrint;                        /* f74/1744 */
+	    BOOLEAN              FreeStackOnTermination;            /* f75/1745 */
+	    BOOLEAN              HasFiberData;                      /* f76/1746 */
+	    UCHAR                IdealProcessor;                    /* f77/1747 */
+	};
+	ULONG                    IdealProcessorValue;               /* f74/1744 */
+    };
     ULONG                        GuaranteedStackBytes;              /* f78/1748 */
     PVOID                        ReservedForPerf;                   /* f7c/1750 */
     PVOID                        ReservedForOle;                    /* f80/1758 */
@@ -466,7 +485,7 @@ typedef struct _TEB {                                             /* win32/win64
     ULONG                        HeapVirtualAffinity;               /* fa8/17b0 */
     PVOID                        CurrentTransactionHandle;          /* fac/17b8 */
     TEB_ACTIVE_FRAME            *ActiveFrame;                       /* fb0/17c0 */
-    PVOID                       *FlsData;                           /* fb4/17c8 */
+    PRTL_FLS_DATA                FlsData;                           /* fb4/17c8 */
 } TEB, *PTEB;
 #include <poppack.h>
 

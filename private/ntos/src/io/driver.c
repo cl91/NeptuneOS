@@ -176,7 +176,35 @@ NTSTATUS IopCreateWorkerThread(IN ASYNC_STATE AsyncState,
                                OUT HANDLE *WorkerThreadHandle,
                                OUT MWORD *WorkerThreadNotification)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->DriverObject != NULL);
+    assert(WorkerThreadHandle != NULL);
+    assert(WorkerThreadNotification != NULL);
+    IopAllocatePool(WorkerThread, WORKER_THREAD);
+    RET_ERR_EX(KeCreateNotificationEx(&WorkerThread->Notification,
+				      Thread->Process->CSpace),
+	       ExFreePool(WorkerThread));
+    CONTEXT Context;
+    memset(&Context, 0, sizeof(CONTEXT));
+    KeSetThreadContextFromEntryPoint(&Context, EntryPoint,
+				     (PVOID)WorkerThread->Notification.TreeNode.Cap);
+    RET_ERR_EX(PsCreateThread(Thread->Process, &Context, NULL,
+			      FALSE, &WorkerThread->Thread),
+	       {
+		   KeDestroyNotification(&WorkerThread->Notification);
+		   ExFreePool(WorkerThread);
+	       });
+    assert(WorkerThread->Thread != NULL);
+    RET_ERR_EX(ObCreateHandle(Thread->Process,
+			      WorkerThread->Thread, WorkerThreadHandle),
+	       {
+		   ObDereferenceObject(WorkerThread->Thread);
+		   KeDestroyNotification(&WorkerThread->Notification);
+		   ExFreePool(WorkerThread);
+	       });
+    *WorkerThreadNotification = WorkerThread->Notification.TreeNode.Cap;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
@@ -186,5 +214,49 @@ NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
                                          OUT MWORD *ThreadNotification,
                                          OUT MWORD *InterruptMutex)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->DriverObject != NULL);
+    assert(ThreadHandle != NULL);
+    assert(ThreadNotification != NULL);
+    assert(InterruptMutex != NULL);
+    IopAllocatePool(IsrThread, INTERRUPT_SERVICE_THREAD);
+    RET_ERR_EX(KeCreateNotification(&IsrThread->Notification),
+	       ExFreePool(IsrThread));
+    RET_ERR_EX(MmCapTreeDeriveBadgedNode(&IsrThread->ClientNotification.TreeNode,
+					 &IsrThread->Notification.TreeNode,
+					 seL4_AllRights, 0),
+	       {
+		   KeDestroyNotification(&IsrThread->Notification);
+		   ExFreePool(IsrThread);
+	       });
+    CONTEXT Context;
+    memset(&Context, 0, sizeof(CONTEXT));
+    KeSetThreadContextFromEntryPoint(&Context, EntryPoint,
+				     (PVOID)IsrThread->ClientNotification.TreeNode.Cap);
+    RET_ERR_EX(KeCreateNotificationEx(&IsrThread->InterruptMutex,
+				      Thread->Process->CSpace),
+	       {
+		   KeDestroyNotification(&IsrThread->Notification);
+		   ExFreePool(IsrThread);
+	       });
+    RET_ERR_EX(PsCreateThread(Thread->Process, &Context, NULL,
+			      FALSE, &IsrThread->Thread),
+	       {
+		   KeDestroyNotification(&IsrThread->Notification);
+		   KeDestroyNotification(&IsrThread->InterruptMutex);
+		   ExFreePool(IsrThread);
+	       });
+    assert(IsrThread->Thread != NULL);
+    RET_ERR_EX(ObCreateHandle(Thread->Process,
+			      IsrThread->Thread, ThreadHandle),
+	       {
+		   ObDereferenceObject(IsrThread->Thread);
+		   KeDestroyNotification(&IsrThread->Notification);
+		   KeDestroyNotification(&IsrThread->InterruptMutex);
+		   ExFreePool(IsrThread);
+	       });
+    *ThreadNotification = IsrThread->ClientNotification.TreeNode.Cap;
+    *InterruptMutex = IsrThread->InterruptMutex.TreeNode.Cap;
+    return STATUS_SUCCESS;
 }

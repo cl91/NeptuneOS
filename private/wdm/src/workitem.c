@@ -25,8 +25,11 @@ NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
     ExFreePool(IoWorkItem);
 }
 
-static VOID IopWorkerThreadEntry()
+static NTAPI ULONG IopWorkerThreadEntry(PVOID NotificationCap)
 {
+    DbgTrace("NotificationCap is %p\n", NotificationCap);
+    while (TRUE) ;
+    return 0;
 }
 
 /*

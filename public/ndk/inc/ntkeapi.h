@@ -168,6 +168,7 @@ typedef struct _KUSER_SHARED_DATA {
 	    ULONG DbgSEHValidationEnabled:1;
 	    ULONG SpareBits:25;
 	};
+	ULONG TraceLogging;
     };
     ULONG DataFlagsPad[1];
     ULONGLONG TestRetInstruction;

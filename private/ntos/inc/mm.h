@@ -189,6 +189,8 @@ typedef struct _CNODE {
     ULONG TotalUsed;		/* Number of used slots */
 } CNODE, *PCNODE;
 
+#define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
+
 static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
 					   IN CAP_TREE_NODE_TYPE Type,
 					   IN MWORD Cap,

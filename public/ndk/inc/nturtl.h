@@ -178,11 +178,6 @@ typedef struct _RTL_PROCESS_MODULES {
 #define RTL_USER_PROCESS_PARAMETERS_NX                      0x20000
 
 /*
- * Thread and Process Start Routines for RtlCreateUserThread/Process
- */
-typedef ULONG (NTAPI *PTHREAD_START_ROUTINE)(PVOID Parameter);
-
-/*
  * End of Exception List
  */
 #define EXCEPTION_CHAIN_END		((PEXCEPTION_REGISTRATION_RECORD)-1)
@@ -197,16 +192,6 @@ typedef RTLP_UNHANDLED_EXCEPTION_FILTER *PRTLP_UNHANDLED_EXCEPTION_FILTER;
  * Handler during Vectored RTL Exceptions
  */
 typedef LONG (NTAPI *PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS ExceptionPointers);
-
-/*
- * Fiber local storage data
- */
-#define RTL_FLS_MAXIMUM_AVAILABLE 128
-typedef struct _RTL_FLS_DATA
-{
-    LIST_ENTRY ListEntry;
-    PVOID Data[RTL_FLS_MAXIMUM_AVAILABLE];
-} RTL_FLS_DATA, *PRTL_FLS_DATA;
 
 /*
  * Thread local storage slots
@@ -705,6 +690,20 @@ NTAPI NTSYSAPI PVOID RtlImageRvaToVa(IN PIMAGE_NT_HEADERS NtHeader,
 				     IN PVOID BaseAddress,
 				     IN ULONG Rva,
 				     IN PIMAGE_SECTION_HEADER *SectionHeader);
+
+NTAPI NTSYSAPI NTSTATUS LdrQueryImageFileKeyOption(IN HANDLE KeyHandle,
+						   IN PCWSTR ValueName,
+						   IN ULONG Type,
+						   OUT PVOID Buffer,
+						   IN ULONG BufferSize,
+						   OUT OPTIONAL PULONG ReturnedLength);
+
+NTAPI NTSYSAPI NTSTATUS LdrQueryImageFileExecutionOptions(IN PUNICODE_STRING SubKey,
+							  IN PCWSTR ValueName,
+							  IN ULONG ValueSize,
+							  OUT PVOID Buffer,
+							  IN ULONG BufferSize,
+							  OUT OPTIONAL PULONG ReturnedLength);
 
 /*
  * Unicode string functions

@@ -10,8 +10,11 @@ static HANDLE IopInterruptServiceThreadHandle;
 static MWORD IopInterruptServiceNotification;
 static MWORD IopInterruptServiceMutex;
 
-static VOID IopInterruptServiceThreadEntry()
+static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID NotificationCap)
 {
+    DbgTrace("NotificationCap is %p\n", NotificationCap);
+    while (TRUE) ;
+    return 0;
 }
 
 NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,

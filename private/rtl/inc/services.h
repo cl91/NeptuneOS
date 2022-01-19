@@ -108,6 +108,32 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
 #define NTDLL_LOADER_HEAP_COMMIT	(4 * PAGE_SIZE)
 
+#ifdef _M_IX86
+#define INSTRUCTION_POINTER	Eip
+#define FIRST_PARAMETER		Ecx
+#elif defined(_M_AMD64)
+#define INSTRUCTION_POINTER	Rip
+#define FIRST_PARAMETER		Rcx
+#else
+#error "Unsupported architecture"
+#endif
+
+static inline VOID KeSetThreadContextFromEntryPoint(OUT PCONTEXT Context,
+						    IN PTHREAD_START_ROUTINE EntryPoint,
+						    IN PVOID Parameter)
+{
+    Context->INSTRUCTION_POINTER = (ULONG_PTR)EntryPoint;
+    Context->FIRST_PARAMETER = (ULONG_PTR)Parameter;
+}
+
+static inline VOID KeGetEntryPointFromThreadContext(IN PCONTEXT Context,
+						    OUT PTHREAD_START_ROUTINE *EntryPoint,
+						    OUT PVOID *Parameter)
+{
+    *EntryPoint = (PVOID)Context->INSTRUCTION_POINTER;
+    *Parameter = (PVOID)Context->FIRST_PARAMETER;
+}
+
 typedef struct _NTDLL_THREAD_INIT_INFO {
     MWORD SystemServiceCap;
     MWORD WdmServiceCap;

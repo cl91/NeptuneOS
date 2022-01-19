@@ -50,6 +50,12 @@ static NTSTATUS PspResumeThread(IN MWORD ThreadCap)
     return STATUS_SUCCESS;
 }
 
+NTSTATUS PsResumeThread(IN PTHREAD Thread)
+{
+    assert(Thread != NULL);
+    return PspResumeThread(Thread->TreeNode.Cap);
+}
+
 /*
  * Startup function for system threads. This is the common entry point for
  * all system threads. We simply set the seL4 IPC buffer and branch to the
@@ -229,13 +235,11 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     PTHREAD Thread = (PTHREAD) Object;
     PTHREAD_CREATION_CONTEXT Ctx = (PTHREAD_CREATION_CONTEXT)CreaCtx;
     PPROCESS Process = Ctx->Process;
+    assert(Ctx != NULL);
 
     /* Unless you are creating the initial thread of a process, you must specify
-     * the thread context and initial TEB */
-    if (Process->InitThread != NULL) {
-	assert(Ctx->Context != NULL);
-	assert(Ctx->InitialTeb != NULL);
-    }
+     * the thread context */
+    assert(Process->InitThread == NULL || Ctx->Context != NULL);
 
     if (Ctx->InitialTeb != NULL &&
 	(Ctx->InitialTeb->StackBase == NULL || Ctx->InitialTeb->StackLimit == NULL ||

@@ -108,8 +108,6 @@ static inline VOID MiInitializeCNode(IN PCNODE Self,
     Self->UsedMap = UsedMap;
 }
 
-#define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
-
 /*
  * Note: Node must point to zeroed-memory!
  */

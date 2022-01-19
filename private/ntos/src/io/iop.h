@@ -83,6 +83,24 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*
+ * Worker thread of a driver object
+ */
+typedef struct _WORKER_THREAD {
+    PTHREAD Thread;
+    NOTIFICATION Notification;	/* Client side capability */
+} WORKER_THREAD, *PWORKER_THREAD;
+
+/*
+ * Interrupt service thread of a driver object
+ */
+typedef struct _INTERRUPT_SERVICE_THREAD {
+    PTHREAD Thread;
+    NOTIFICATION Notification;	     /* Server side capability */
+    NOTIFICATION ClientNotification; /* Client side capability */
+    NOTIFICATION InterruptMutex;     /* Client side capability */
+} INTERRUPT_SERVICE_THREAD, *PINTERRUPT_SERVICE_THREAD;
+
+/*
  * Maps the specified user IO buffer to the driver process's VSpace.
  *
  * If ReadOnly is TRUE, the driver pages will be mapped read-only. Otherwise

@@ -31,6 +31,7 @@ typedef struct _THREAD {
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;
+    PVOID EntryPoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
     MWORD TebClientAddr;
@@ -150,6 +151,7 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 OUT PPROCESS *pProcess);
 NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);
+NTSTATUS PsResumeThread(IN PTHREAD Thread);
 
 /* kill.c */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,

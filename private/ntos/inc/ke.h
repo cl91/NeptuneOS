@@ -68,17 +68,38 @@ static inline VOID KeInitializeNotification(IN PNOTIFICATION Self,
     Self->Badge = Badge;
 }
 
-static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
+static inline NTSTATUS KeCreateNotificationEx(IN PNOTIFICATION Notification,
+					      IN PCNODE CSpace)
 {
     PUNTYPED Untyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_NotificationBits, &Untyped));
     assert(Untyped != NULL);
-    KeInitializeNotification(Notification, Untyped->TreeNode.CSpace, 0, 0);
+    KeInitializeNotification(Notification, CSpace, 0, 0);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_NotificationObject,
 				  seL4_NotificationBits,
 				  &Notification->TreeNode),
 	       MmReleaseUntyped(Untyped));
     return STATUS_SUCCESS;
+}
+
+static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
+{
+    extern CNODE MiNtosCNode;
+    return KeCreateNotificationEx(Notification, &MiNtosCNode);
+}
+
+/*
+ * This destroys the notification object but do not free the pool memory.
+ * All descendant notification objects are destroyed as well.
+ */
+static inline NTSTATUS KeDestroyNotification(IN PNOTIFICATION Notification)
+{
+    PCAP_TREE_NODE Node = Notification->TreeNode.Parent;
+    while (Node->Type != CAP_TREE_NODE_UNTYPED) {
+	Node = Node->Parent;
+    }
+    assert(Node != NULL);
+    return MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Node));
 }
 
 static inline VOID KeWaitOnNotification(IN PNOTIFICATION Notification)
