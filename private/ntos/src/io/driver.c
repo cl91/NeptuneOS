@@ -37,7 +37,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
-    RET_ERR(PsCreateThread(Process, &Thread));
+    RET_ERR(PsCreateThread(Process, NULL, NULL, FALSE, &Thread));
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
 
@@ -172,7 +172,7 @@ NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
 
 NTSTATUS IopCreateWorkerThread(IN ASYNC_STATE AsyncState,
                                IN PTHREAD Thread,
-                               IN PIO_WORKER_THREAD_ENTRY WorkerThreadEntry,
+                               IN PIO_WORKER_THREAD_ENTRY EntryPoint,
                                OUT HANDLE *WorkerThreadHandle,
                                OUT MWORD *WorkerThreadNotification)
 {
@@ -181,7 +181,7 @@ NTSTATUS IopCreateWorkerThread(IN ASYNC_STATE AsyncState,
 
 NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
                                          IN PTHREAD Thread,
-                                         IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY ThreadEntry,
+                                         IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
                                          OUT HANDLE *ThreadHandle,
                                          OUT MWORD *ThreadNotification,
                                          OUT MWORD *InterruptMutex)

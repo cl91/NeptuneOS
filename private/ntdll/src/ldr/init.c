@@ -72,6 +72,16 @@ RTL_CRITICAL_SECTION FastPebLock;
 #define DEFAULT_SECURITY_COOKIE 0xBB40E64E
 #endif
 
+#ifdef _M_IX86
+#define INSTRUCTION_POINTER Eip
+#define FIRST_PARAMETER	    Ecx
+#elif defined(_M_AMD64)
+#define INSTRUCTION_POINTER Rip
+#define FIRST_PARAMETER	    Rcx
+#else
+#error "Unsupported architecture"
+#endif
+
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -906,7 +916,9 @@ static NTSTATUS LdrpInitializeThread()
 
 /*
  * On process startup, NTDLL_PROCESS_INIT_INFO is placed at the beginning
- * of IpcBuffer.
+ * of IpcBuffer. Likewise, on thread startup, NTDLL_THRED_INIT_INFO is
+ * placed at the beginning of IpcBuffer.
+ *
  */
 FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 			     IN PPVOID SystemDllTlsRegion)
@@ -954,9 +966,16 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 							       &Peb->ProcessParameters->CommandLine);
 	    }
 	} else {
-	    /* Calls the image entry point */
-	    EntryPoint = LdrpImageEntry->EntryPoint;
-	    ((PTHREAD_START_ROUTINE)LdrpImageEntry->EntryPoint)(Peb);
+	    /* Call the supplied thread entry point if specifed. Otherwise call the image entry point */
+	    PVOID Parameter;
+	    if (InitInfo.ThreadInitInfo.InitialContext.INSTRUCTION_POINTER != 0) {
+		EntryPoint = (PVOID)InitInfo.ThreadInitInfo.InitialContext.INSTRUCTION_POINTER;
+		Parameter = (PVOID)InitInfo.ThreadInitInfo.InitialContext.FIRST_PARAMETER;
+	    } else {
+		EntryPoint = LdrpImageEntry->EntryPoint;
+		Parameter = Peb;
+	    }
+	    ((PTHREAD_START_ROUTINE)EntryPoint)(Parameter);
 	}
     } else if (Peb->InheritedAddressSpace) {
 	/* Loader data is there... is this a fork() ? */
@@ -965,7 +984,7 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	Status = STATUS_NOT_IMPLEMENTED;
 	UNIMPLEMENTED;
     } else {
-	/* At process startup the process init info is placed at the beginning
+	/* At thread startup the thread init info is placed at the beginning
 	 * of the ipc buffer. */
 	NTDLL_THREAD_INIT_INFO InitInfo = *((PNTDLL_THREAD_INIT_INFO)(IpcBuffer));
 	/* Now that the init info has been copied to the stack, clear the original. */
@@ -976,8 +995,10 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 
 	/* This is a new thread initializing */
 	Status = LdrpInitializeThread();
-	/* TODO: Call thread entry point */
-	/* EntryPoint = ...; */
+	/* Call thread entry point */
+	EntryPoint = (PVOID)InitInfo.InitialContext.INSTRUCTION_POINTER;
+	PVOID Parameter = (PVOID)InitInfo.InitialContext.FIRST_PARAMETER;
+	((PTHREAD_START_ROUTINE)EntryPoint)(Parameter);
     }
 
     /* Bail out if initialization has failed */

@@ -34,13 +34,13 @@
   </svc>
 
   <svc name="IopCreateWorkerThread">
-    <parameter annotation="in" type="PIO_WORKER_THREAD_ENTRY" name="WorkerThreadEntry" />
+    <parameter annotation="in" type="PIO_WORKER_THREAD_ENTRY" name="EntryPoint" />
     <parameter annotation="out" type="ptr::HANDLE" name="WorkerThreadHandle" />
     <parameter annotation="out" type="ptr::MWORD" name="WorkerThreadNotification" />
   </svc>
 
   <svc name="IopCreateInterruptServiceThread">
-    <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="ThreadEntry" />
+    <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="EntryPoint" />
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
     <parameter annotation="out" type="ptr::MWORD" name="ThreadNotification" />
     <parameter annotation="out" type="ptr::MWORD" name="InterruptMutex" />

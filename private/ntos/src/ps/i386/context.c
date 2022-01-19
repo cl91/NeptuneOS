@@ -7,13 +7,13 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Thread->Process != NULL);
     assert(Thread->IpcBufferClientAddr != 0);
     assert(Thread->TebClientAddr);
-    assert(Thread->StackTop);
+    assert(Thread->InitialStackTop);
     assert(Context != NULL);
     Context->ecx = Thread->IpcBufferClientAddr;
     Context->edx = Thread->SystemDllTlsBase;
     Context->eip = (MWORD) PspSystemDllSection->ImageSectionObject->ImageInformation.TransferAddress;
-    Context->esp = Thread->StackTop;
-    Context->ebp = Thread->StackTop;
+    Context->esp = Thread->InitialStackTop;
+    Context->ebp = Thread->InitialStackTop;
     Context->fs_base = Thread->TebClientAddr;
 }
 

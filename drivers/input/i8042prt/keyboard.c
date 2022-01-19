@@ -84,25 +84,19 @@ NTAPI VOID i8042KbdStartIo(IN PDEVICE_OBJECT DeviceObject,
     {
 	TRACE_(I8042PRT, "IOCTL_KEYBOARD_SET_INDICATORS\n");
 	INFO_(I8042PRT, "Leds: {%s%s%s }\n",
-	      DeviceExtension->KeyboardIndicators.
-	      LedFlags & KEYBOARD_CAPS_LOCK_ON ? " CAPSLOCK" : "",
-	      DeviceExtension->KeyboardIndicators.
-	      LedFlags & KEYBOARD_NUM_LOCK_ON ? " NUMLOCK" : "",
-	      DeviceExtension->KeyboardIndicators.
-	      LedFlags & KEYBOARD_SCROLL_LOCK_ON ? " SCROLLLOCK" : "");
+	      DeviceExtension->KeyboardIndicators.LedFlags & KEYBOARD_CAPS_LOCK_ON ? " CAPSLOCK" : "",
+	      DeviceExtension->KeyboardIndicators.LedFlags & KEYBOARD_NUM_LOCK_ON ? " NUMLOCK" : "",
+	      DeviceExtension->KeyboardIndicators.LedFlags & KEYBOARD_SCROLL_LOCK_ON ? " SCROLLLOCK" : "");
 
 	PortDeviceExtension->PacketBuffer[0] = KBD_CMD_SET_LEDS;
 	PortDeviceExtension->PacketBuffer[1] = 0;
-	if (DeviceExtension->KeyboardIndicators.
-	    LedFlags & KEYBOARD_CAPS_LOCK_ON)
+	if (DeviceExtension->KeyboardIndicators.LedFlags & KEYBOARD_CAPS_LOCK_ON)
 	    PortDeviceExtension->PacketBuffer[1] |= KBD_LED_CAPS;
 
-	if (DeviceExtension->KeyboardIndicators.
-	    LedFlags & KEYBOARD_NUM_LOCK_ON)
+	if (DeviceExtension->KeyboardIndicators.LedFlags & KEYBOARD_NUM_LOCK_ON)
 	    PortDeviceExtension->PacketBuffer[1] |= KBD_LED_NUM;
 
-	if (DeviceExtension->KeyboardIndicators.
-	    LedFlags & KEYBOARD_SCROLL_LOCK_ON)
+	if (DeviceExtension->KeyboardIndicators.LedFlags & KEYBOARD_SCROLL_LOCK_ON)
 	    PortDeviceExtension->PacketBuffer[1] |= KBD_LED_SCROLL;
 
 	i8042StartPacket(PortDeviceExtension,
@@ -132,15 +126,13 @@ static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 
     Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
 
-    if (DeviceExtension->Packet.State == Idle
-	&& DeviceExtension->PacketComplete) {
+    if (DeviceExtension->Packet.State == Idle && DeviceExtension->PacketComplete) {
 	FinishIrp = TRUE;
 	Result = DeviceExtension->PacketResult;
 	DeviceExtension->PacketComplete = FALSE;
     }
 
-    KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt,
-			       Irql);
+    KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
 
     if (!FinishIrp)
 	return;

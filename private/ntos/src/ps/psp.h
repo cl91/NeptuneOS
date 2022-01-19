@@ -26,16 +26,19 @@ static inline PIMAGE_NT_HEADERS PspImageNtHeader(IN PVOID FileBuffer)
  * Creation context for the thread object creation routine
  */
 typedef struct _THREAD_CREATION_CONTEXT {
-    PPROCESS Process;
+    IN PPROCESS Process;
+    IN PCONTEXT Context;
+    IN PINITIAL_TEB InitialTeb;
+    IN BOOLEAN CreateSuspended;
 } THREAD_CREATION_CONTEXT, *PTHREAD_CREATION_CONTEXT;
 
 /*
  * Creation context for the process object creation routine
  */
 typedef struct _PROCESS_CREATION_CONTEXT {
-    PIO_FILE_OBJECT ImageFile;
-    PIO_DRIVER_OBJECT DriverObject;
-    PSECTION ImageSection;
+    IN PIO_FILE_OBJECT ImageFile;
+    IN PIO_DRIVER_OBJECT DriverObject;
+    IN PSECTION ImageSection;
 } PROCESS_CREATION_CONTEXT, *PPROCESS_CREATION_CONTEXT;
 
 /* arch/context.c */

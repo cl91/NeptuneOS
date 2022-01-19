@@ -283,9 +283,9 @@ typedef struct _ACTIVATION_CONTEXT_STACK {
 typedef struct _INITIAL_TEB {
     PVOID PreviousStackBase;
     PVOID PreviousStackLimit;
-    PVOID StackBase;
-    PVOID StackLimit;
-    PVOID AllocatedStackBase;
+    PVOID StackBase;		/* Top of the initial stack */
+    PVOID StackLimit;		/* Bottom of the initial committed stack */
+    PVOID AllocatedStackBase;	/* Bottom of the initial stack reserve */
 } INITIAL_TEB, *PINITIAL_TEB;
 
 /*

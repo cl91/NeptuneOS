@@ -25,37 +25,16 @@ NTAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
     RtlZeroMemory(ThreadContext, sizeof(*ThreadContext));
 
     /* Initialize StartAddress and Stack */
-    ThreadContext->Rip = (ULONG64) ThreadStartAddress;
-    ThreadContext->Rsp = (ULONG64) StackBase - 6 * sizeof(PVOID);
-
-    /* Align stack by 16 and substract 8 (unaligned on function entry) */
-    ThreadContext->Rsp &= ~15;
-    ThreadContext->Rsp -= 8;
+    ThreadContext->Rip = (ULONG64)ThreadStartAddress;
 
     /* Enable Interrupts */
     ThreadContext->EFlags = EFLAGS_INTERRUPT_MASK;
 
     /* Set start parameter */
-    ThreadContext->Rcx = (ULONG64) ThreadStartParam;
+    ThreadContext->Rcx = (ULONG64)ThreadStartParam;
 
-    /* Set the Selectors */
-    if ((LONG64) ThreadStartAddress < 0) {
-	/* Initialize kernel mode segments */
-	ThreadContext->SegCs = 0;
-	ThreadContext->SegDs = 0;
-	ThreadContext->SegEs = 0;
-	ThreadContext->SegFs = 0;
-	ThreadContext->SegGs = (ULONG_PTR) NtCurrentTeb();
-	ThreadContext->SegSs = 0;
-    } else {
-	/* Initialize user mode segments */
-	ThreadContext->SegCs = 0;
-	ThreadContext->SegDs = 0;
-	ThreadContext->SegEs = 0;
-	ThreadContext->SegFs = 0;
-	ThreadContext->SegGs = (ULONG_PTR) NtCurrentTeb();
-	ThreadContext->SegSs = 0;
-    }
+    /* Initialize user mode segments */
+    ThreadContext->SegGs = (ULONG_PTR)NtCurrentTeb();
 
     /* Only the basic Context is initialized */
     ThreadContext->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS;

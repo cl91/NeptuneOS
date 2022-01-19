@@ -76,7 +76,7 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
     /* Reserve memory for the stack */
     Stack = 0;
     Status = NtAllocateVirtualMemory(ProcessHandle,
-				     (PVOID *) & Stack,
+				     (PVOID *) &Stack,
 				     StackZeroBits,
 				     &StackReserve,
 				     MEM_RESERVE, PAGE_READWRITE);
@@ -103,7 +103,7 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
 
     /* Allocate memory for the stack */
     Status = NtAllocateVirtualMemory(ProcessHandle,
-				     (PVOID *) & Stack,
+				     (PVOID *) &Stack,
 				     0,
 				     &StackCommit,
 				     MEM_COMMIT, PAGE_READWRITE);
@@ -129,8 +129,7 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
 	    return Status;
 
 	/* Update the Stack Limit keeping in mind the Guard Page */
-	InitialTeb->StackLimit =
-	    (PVOID) ((ULONG_PTR) InitialTeb->StackLimit + GuardPageSize);
+	InitialTeb->StackLimit = (PVOID)((ULONG_PTR)InitialTeb->StackLimit + GuardPageSize);
     }
 
     /* We are done! */
@@ -211,26 +210,21 @@ NTAPI NTSTATUS RtlCreateUserThread(IN HANDLE ProcessHandle,
     CONTEXT Context;
 
     /* First, we'll create the Stack */
-    Status = RtlpCreateUserStack(ProcessHandle,
-				 StackReserve,
-				 StackCommit, StackZeroBits, &InitialTeb);
+    Status = RtlpCreateUserStack(ProcessHandle, StackReserve, StackCommit,
+				 StackZeroBits, &InitialTeb);
     if (!NT_SUCCESS(Status))
 	return Status;
 
     /* Next, we'll set up the Initial Context */
-    RtlInitializeContext(ProcessHandle,
-			 &Context,
-			 Parameter, StartAddress, InitialTeb.StackBase);
+    RtlInitializeContext(ProcessHandle, &Context, Parameter,
+			 StartAddress, InitialTeb.StackBase);
 
     /* We are now ready to create the Kernel Thread Object */
     InitializeObjectAttributes(&ObjectAttributes,
 			       NULL, 0, NULL, SecurityDescriptor);
-    Status = NtCreateThread(&Handle,
-			    THREAD_ALL_ACCESS,
-			    &ObjectAttributes,
-			    ProcessHandle,
-			    &ThreadCid,
-			    &Context, &InitialTeb, CreateSuspended);
+    Status = NtCreateThread(&Handle, THREAD_ALL_ACCESS, &ObjectAttributes,
+			    ProcessHandle, &ThreadCid, &Context,
+			    &InitialTeb, CreateSuspended);
     if (!NT_SUCCESS(Status)) {
 	/* Free the stack */
 	RtlpFreeUserStack(ProcessHandle, &InitialTeb);

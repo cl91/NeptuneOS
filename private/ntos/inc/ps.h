@@ -36,9 +36,9 @@ typedef struct _THREAD {
     MWORD TebClientAddr;
     MWORD TebServerAddr;
     MWORD SystemDllTlsBase; /* Address in the client's virtual address space */
-    MWORD StackTop;
-    MWORD StackReserve;
-    MWORD StackCommit;
+    MWORD InitialStackTop;
+    MWORD InitialStackReserve;
+    MWORD InitialStackCommit;
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
@@ -137,6 +137,9 @@ PKUSER_SHARED_DATA PsGetUserSharedData();
 
 /* create.c */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
+                        IN PCONTEXT ThreadContext,
+                        IN PINITIAL_TEB InitialTeb,
+                        IN BOOLEAN CreateSuspended,
 			OUT PTHREAD *pThread);
 NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PCSTR DebugName,

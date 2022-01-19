@@ -153,10 +153,17 @@ Fail:
 
 VOID PspPopulateTeb(IN PTHREAD Thread)
 {
+    assert(Thread != NULL);
+    assert(Thread->InitialStackTop > Thread->InitialStackCommit);
+    assert(Thread->InitialStackTop > Thread->InitialStackReserve);
+    assert(Thread->InitialStackReserve >= Thread->InitialStackCommit);
     PTEB Teb = (PTEB) Thread->TebServerAddr;
     Teb->ThreadLocalStoragePointer = (PVOID) Thread->SystemDllTlsBase;
     Teb->NtTib.Self = (PNT_TIB) Thread->TebClientAddr;
     Teb->ProcessEnvironmentBlock = (PPEB) Thread->Process->PebClientAddr;
+    Teb->NtTib.StackBase = (PVOID)Thread->InitialStackTop;
+    Teb->NtTib.StackLimit = (PVOID)(Thread->InitialStackTop - Thread->InitialStackCommit);
+    Teb->DeallocationStack = (PVOID)(Thread->InitialStackTop - Thread->InitialStackReserve);
 }
 
 VOID PspPopulatePeb(IN PPROCESS Process)
@@ -223,6 +230,23 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     PTHREAD_CREATION_CONTEXT Ctx = (PTHREAD_CREATION_CONTEXT)CreaCtx;
     PPROCESS Process = Ctx->Process;
 
+    /* Unless you are creating the initial thread of a process, you must specify
+     * the thread context and initial TEB */
+    if (Process->InitThread != NULL) {
+	assert(Ctx->Context != NULL);
+	assert(Ctx->InitialTeb != NULL);
+    }
+
+    if (Ctx->InitialTeb != NULL &&
+	(Ctx->InitialTeb->StackBase == NULL || Ctx->InitialTeb->StackLimit == NULL ||
+	 Ctx->InitialTeb->AllocatedStackBase == NULL ||
+	 /* Stack reserve must be at least stack commit */
+	 Ctx->InitialTeb->AllocatedStackBase > Ctx->InitialTeb->StackLimit ||
+	 /* Stack commit cannot be zero */
+	 Ctx->InitialTeb->StackLimit >= Ctx->InitialTeb->StackBase)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
     PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
@@ -261,22 +285,6 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 			       &Process->VSpace,
 			       IpcBufferClientPage));
 
-    ULONG StackReserve = Process->ImageSection->ImageSectionObject->ImageInformation.MaximumStackSize;
-    ULONG StackCommit = Process->ImageSection->ImageSectionObject->ImageInformation.CommittedStackSize;
-    if (StackCommit > StackReserve) {
-	StackCommit = StackReserve;
-    }
-    PMMVAD StackVad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, THREAD_STACK_START,
-				     HIGHEST_USER_ADDRESS, StackReserve,
-				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES, &StackVad));
-    assert(StackVad != NULL);
-    Thread->StackTop = StackVad->AvlNode.Key + StackVad->WindowSize;
-    Thread->StackReserve = StackReserve;
-    Thread->StackCommit = StackCommit;
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, Thread->StackTop - StackCommit, StackCommit),
-	       MmDeleteVad(StackVad));
-
     if (Process->InitThread == NULL) {
 	/* Thread is the initial thread in the process. Use the .tls subsection
 	 * of the mapped NTDLL PE image for SystemDll TLS region */
@@ -299,30 +307,65 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	Thread->SystemDllTlsBase = SystemDllTlsVad->AvlNode.Key;
     }
 
+    if (Ctx->InitialTeb == NULL) {
+	ULONG StackReserve = Process->ImageSection->ImageSectionObject->ImageInformation.MaximumStackSize;
+	ULONG StackCommit = Process->ImageSection->ImageSectionObject->ImageInformation.CommittedStackSize;
+	if (StackCommit > StackReserve) {
+	    StackCommit = StackReserve;
+	}
+	PMMVAD StackVad = NULL;
+	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, THREAD_STACK_START,
+					 HIGHEST_USER_ADDRESS, StackReserve,
+					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
+					 &StackVad));
+	assert(StackVad != NULL);
+	Thread->InitialStackTop = StackVad->AvlNode.Key + StackVad->WindowSize;
+	Thread->InitialStackReserve = StackReserve;
+	Thread->InitialStackCommit = StackCommit;
+	RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace,
+					   Thread->InitialStackTop - StackCommit,
+					   StackCommit),
+		   MmDeleteVad(StackVad));
+	/* TODO: Implement COMMIT_ON_DEMAND */
+    } else {
+	Thread->InitialStackTop = (MWORD)Ctx->InitialTeb->StackBase;
+	Thread->InitialStackReserve = Ctx->InitialTeb->StackBase - Ctx->InitialTeb->AllocatedStackBase;
+	Thread->InitialStackCommit = Ctx->InitialTeb->StackBase - Ctx->InitialTeb->StackLimit;
+    }
+
     /* Allocate and populate the Thread Environment Block */
     PMMVAD ServerTebVad = NULL;
     PMMVAD ClientTebVad = NULL;
-    RET_ERR_EX(PspMapSharedRegion(Process,
-				  EX_PEB_TEB_REGION_START,
-				  EX_PEB_TEB_REGION_END,
-				  sizeof(TEB),
-				  sizeof(TEB),
-				  WIN32_TEB_START,
-				  WIN32_TEB_END,
-				  MEM_RESERVE_TOP_DOWN,
-				  &ServerTebVad,
-				  &ClientTebVad),
-	       ObDereferenceObject(Thread));
+    RET_ERR(PspMapSharedRegion(Process,
+			       EX_PEB_TEB_REGION_START,
+			       EX_PEB_TEB_REGION_END,
+			       sizeof(TEB),
+			       sizeof(TEB),
+			       WIN32_TEB_START,
+			       WIN32_TEB_END,
+			       MEM_RESERVE_TOP_DOWN,
+			       &ServerTebVad,
+			       &ClientTebVad));
     Thread->TebServerAddr = ServerTebVad->AvlNode.Key;
     Thread->TebClientAddr = ClientTebVad->AvlNode.Key;
     /* Populate the Thread Environment Block */
     PspPopulateTeb(Thread);
 
+    /* Note that this is the initial thread context immediately after a new thread
+     * starts running (ie. immediately after LdrInitializeThunk is jumped into),
+     * not to be confused with the initial context specified in Ctx->Context.
+     * The latter is the thread context that ntdll will load once it has finished
+     * thread initialization. */
     THREAD_CONTEXT Context;
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeThreadContext(Thread, &Context);
     RET_ERR(KeSetThreadContext(Thread->TreeNode.Cap, &Context));
     RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
+    /* Thread->InitInfo.InitialContext is initialized as zero so if the caller
+     * did not supply Ctx->Context we simply leave InitialContext as zero. */
+    if (Ctx->Context != NULL) {
+	Thread->InitInfo.InitialContext = *(Ctx->Context);
+    }
     Thread->CurrentPriority = seL4_MaxPrio;
     RET_ERR(KeEnableSystemServices(Thread));
     if (Process->InitInfo.DriverProcess) {
@@ -333,13 +376,15 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     if (Process->InitThread == NULL) {
 	/* Populate the process init info used by ntdll on process startup */
 	Process->InitInfo.ThreadInitInfo = Thread->InitInfo;
-	*((PNTDLL_PROCESS_INIT_INFO) Thread->IpcBufferServerAddr) = Process->InitInfo;
+	*((PNTDLL_PROCESS_INIT_INFO)Thread->IpcBufferServerAddr) = Process->InitInfo;
     } else {
 	/* Populate the thread init info used by ntdll on process startup */
-	*((PNTDLL_THREAD_INIT_INFO) Thread->IpcBufferServerAddr) = Thread->InitInfo;
+	*((PNTDLL_THREAD_INIT_INFO)Thread->IpcBufferServerAddr) = Thread->InitInfo;
     }
 
-    RET_ERR(PspResumeThread(Thread->TreeNode.Cap));
+    if (!Ctx->CreateSuspended) {
+	RET_ERR(PspResumeThread(Thread->TreeNode.Cap));
+    }
 
     if (Process->InitThread == NULL) {
 	Process->InitThread = Thread;
@@ -755,6 +800,9 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 }
 
 NTSTATUS PsCreateThread(IN PPROCESS Process,
+                        IN PCONTEXT ThreadContext,
+                        IN PINITIAL_TEB InitialTeb,
+                        IN BOOLEAN CreateSuspended,
 			OUT PTHREAD *pThread)
 {
     assert(Process != NULL);
@@ -773,7 +821,10 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 
     PTHREAD Thread = NULL;
     THREAD_CREATION_CONTEXT CreaCtx = {
-	.Process = Process
+	.Process = Process,
+	.Context = ThreadContext,
+	.InitialTeb = InitialTeb,
+	.CreateSuspended = CreateSuspended
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread, &CreaCtx));
     *pThread = Thread;
@@ -829,7 +880,32 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
                         IN PINITIAL_TEB InitialTeb,
                         IN BOOLEAN CreateSuspended)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+
+    PPROCESS Process = NULL;
+    if (ProcessHandle == NtCurrentProcess()) {
+	Process = Thread->Process;
+    } else {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
+					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
+    }
+    assert(Process != NULL);
+
+    PTHREAD CreatedThread = NULL;
+    RET_ERR_EX(PsCreateThread(Process, ThreadContext, InitialTeb,
+			      CreateSuspended, &CreatedThread),
+	       if (ProcessHandle != NtCurrentProcess()) {
+		   ObDereferenceObject(Process);
+	       });
+    RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, ThreadHandle),
+	       {
+		   ObDereferenceObject(CreatedThread);
+		   if (ProcessHandle != NtCurrentProcess()) {
+		       ObDereferenceObject(Process);
+		   }
+	       });
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtCreateProcess(IN ASYNC_STATE State,

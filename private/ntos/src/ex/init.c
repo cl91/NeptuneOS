@@ -32,7 +32,7 @@ static NTSTATUS EiStartSessionManager()
     }
     assert(EiSessionManagerProcess != NULL);
 
-    Status = PsCreateThread(EiSessionManagerProcess,
+    Status = PsCreateThread(EiSessionManagerProcess, NULL, NULL, FALSE,
 			    &EiSessionManagerThread);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

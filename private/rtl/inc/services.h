@@ -111,6 +111,7 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 typedef struct _NTDLL_THREAD_INIT_INFO {
     MWORD SystemServiceCap;
     MWORD WdmServiceCap;
+    CONTEXT InitialContext;
 } NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
 
 typedef struct _NTDLL_DRIVER_INIT_INFO {
