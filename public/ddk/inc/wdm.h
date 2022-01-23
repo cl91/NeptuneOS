@@ -785,8 +785,8 @@ typedef struct _IO_CLIENT_EXTENSION {
 typedef struct _DRIVER_OBJECT {
     SHORT Type;
     SHORT Size;
-    PDEVICE_OBJECT DeviceObject;
     ULONG Flags;
+    PDEVICE_OBJECT DeviceObject;
     PVOID DriverStart;
     UNICODE_STRING ServiceKeyName;
     UNICODE_STRING DriverName;

@@ -74,6 +74,7 @@ typedef struct _DRIVER_REINIT_ITEM {
     PDRIVER_OBJECT DriverObject;
     PDRIVER_REINITIALIZE ReinitRoutine;
     PVOID Context;
+    ULONG Count;
 } DRIVER_REINIT_ITEM, *PDRIVER_REINIT_ITEM;
 
 /*

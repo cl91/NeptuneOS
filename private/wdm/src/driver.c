@@ -84,6 +84,7 @@ NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
     ReinitItem->DriverObject = DriverObject;
     ReinitItem->ReinitRoutine = ReinitRoutine;
     ReinitItem->Context = Context;
+    ReinitItem->Count = 0;
 
     /* Set the Driver Object flag and insert the entry into the list */
     DriverObject->Flags |= DRVO_REINIT_REGISTERED;

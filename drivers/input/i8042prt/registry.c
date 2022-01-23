@@ -193,11 +193,8 @@ NTSTATUS ReadRegistryEntries(IN PUNICODE_STRING RegistryPath,
 	Settings->ResendIterations = DefaultResendIterations;
 	Settings->SampleRate = DefaultSampleRate;
 	Settings->CrashOnCtrlScroll = DefaultCrashOnCtrlScroll;
-	if (!RtlCreateUnicodeString
-	    (&Settings->KeyboardDeviceBaseName,
-	     DefaultKeyboardDeviceBaseName)
-	    || !RtlCreateUnicodeString(&Settings->PointerDeviceBaseName,
-				       DefaultPointerDeviceBaseName)) {
+	if (!RtlCreateUnicodeString(&Settings->KeyboardDeviceBaseName, DefaultKeyboardDeviceBaseName)
+	    || !RtlCreateUnicodeString(&Settings->PointerDeviceBaseName, DefaultPointerDeviceBaseName)) {
 	    WARN_(I8042PRT, "RtlCreateUnicodeString() failed\n");
 	    Status = STATUS_NO_MEMORY;
 	} else {

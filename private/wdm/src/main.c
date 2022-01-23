@@ -45,6 +45,15 @@ static NTSTATUS IopCallDriverEntry(IN PUNICODE_STRING RegistryPath)
     return STATUS_SUCCESS;
 }
 
+static VOID IopCallReinitRoutines()
+{
+    IopDriverObject.Flags &= ~DRVO_REINIT_REGISTERED;
+    LoopOverList(Entry, &IopDriverObject.ReinitListHead, DRIVER_REINIT_ITEM, ItemEntry) {
+	Entry->Count++;
+	Entry->ReinitRoutine(Entry->DriverObject, Entry->Context, Entry->Count);
+    }
+}
+
 static NTSTATUS IopDriverEventLoop()
 {
     ULONG NumResponsePackets = 0;
@@ -85,6 +94,8 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
+
+    IopCallReinitRoutines();
 
     Status = IopDriverEventLoop();
 

@@ -385,7 +385,7 @@ cleanup:
     Fdo->Flags |= DO_BUFFERED_IO;	/* FIXME: Why is it needed for 1st stage setup? */
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
-    /* Add entry entry to HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP\[DeviceBaseName] */
+    /* Add entry entry to HKEY_LOCAL_MACHINE\Hardware\DeviceMap\[DeviceBaseName] */
     RtlWriteRegistryValue(RTL_REGISTRY_DEVICEMAP,
 			  DriverExtension->DeviceBaseName.Buffer,
 			  DeviceExtension->DeviceName,
@@ -524,7 +524,7 @@ static VOID DestroyPortDriver(IN PDEVICE_OBJECT PortDO)
     /* Remove from ClassDeviceExtension->ListHead list */
     RemoveEntryList(&DeviceExtension->ListEntry);
 
-    /* Remove entry from HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP\[DeviceBaseName] */
+    /* Remove entry from HKEY_LOCAL_MACHINE\Hardware\DeviceMap\[DeviceBaseName] */
     RtlDeleteRegistryValue(RTL_REGISTRY_DEVICEMAP,
 			   DriverExtension->DeviceBaseName.Buffer,
 			   ClassDeviceExtension->DeviceName);
@@ -784,7 +784,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 					 IN PVOID Context,	/* PCLASS_DRIVER_EXTENSION */
 					 IN ULONG Count)
 {
-    UNICODE_STRING DeviceMapKeyU = RTL_CONSTANT_STRING(L"\\REGISTRY\\MACHINE\\HARDWARE\\DEVICEMAP");
+    UNICODE_STRING DeviceMapKeyU = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\Hardware\\DeviceMap");
     PCLASS_DRIVER_EXTENSION DriverExtension;
     UNICODE_STRING PortBaseName = { 0, 0, NULL };
     PKEY_VALUE_BASIC_INFORMATION KeyValueInformation = NULL;
@@ -824,13 +824,13 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 	goto cleanup;
     }
 
-    /* Open HKEY_LOCAL_MACHINE\HARDWARE\DEVICEMAP */
+    /* Open HKEY_LOCAL_MACHINE\Hardware\DeviceMap */
     InitializeObjectAttributes(&ObjectAttributes, &DeviceMapKeyU,
 			       OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
 			       NULL, NULL);
     Status = NtOpenKey(&hDeviceMapKey, 0, &ObjectAttributes);
     if (Status == STATUS_OBJECT_NAME_NOT_FOUND) {
-	INFO_(CLASS_NAME, "HKLM\\HARDWARE\\DEVICEMAP is non-existent\n");
+	INFO_(CLASS_NAME, "HKLM\\Hardware\\DeviceMap is non-existent\n");
 	Status = STATUS_SUCCESS;
 	goto cleanup;
     } else if (!NT_SUCCESS(Status)) {
@@ -846,7 +846,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
     Status = NtOpenKey(&hPortKey, KEY_QUERY_VALUE, &ObjectAttributes);
     if (Status == STATUS_OBJECT_NAME_NOT_FOUND) {
 	INFO_(CLASS_NAME,
-	      "HKLM\\HARDWARE\\DEVICEMAP\\%wZ is non-existent\n",
+	      "HKLM\\Hardware\\DeviceMap\\%wZ is non-existent\n",
 	      &PortBaseName);
 	Status = STATUS_SUCCESS;
 	goto cleanup;
