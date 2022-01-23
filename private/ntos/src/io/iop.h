@@ -131,8 +131,8 @@ static inline NTSTATUS IopMapUserBuffer(IN PPROCESS User,
 /*
  * Unmap the user buffer mapped by IopMapUserBuffer
  */
-static inline  VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
-				       IN MWORD DriverBuffer)
+static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
+				      IN MWORD DriverBuffer)
 {
     assert(Driver != NULL);
     assert(Driver->DriverProcess != NULL);
@@ -140,7 +140,28 @@ static inline  VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 }
 
 /* init.c */
-PSECTION IopWdmDllSection;
+extern LIST_ENTRY IopDriverList;
+
+/*
+ * Returns the device object of the given device handle, optionally
+ * checking whether the device belongs to the driver object
+ */
+static inline PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
+						   IN PIO_DRIVER_OBJECT DriverObject)
+{
+    /* Traverse the list of all driver objects, and check if there is a match */
+    LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
+	LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	    if ((MWORD)DevObj == GLOBAL_HANDLE_TO_POINTER(DeviceHandle)) {
+		if (DriverObject != NULL) {
+		    return DrvObj == DriverObject ? DevObj : NULL;
+		}
+		return DevObj;
+	    }
+	}
+    }
+    return NULL;
+}
 
 /* file.c */
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
@@ -172,3 +193,4 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 				   IN PVOID CreaCtx);
+

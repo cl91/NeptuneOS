@@ -174,7 +174,30 @@ NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
                                         OUT GLOBAL_HANDLE *PreviousTopDeviceHandle,
                                         OUT IO_DEVICE_OBJECT_INFO *PreviousTopDeviceInfo)
 {
-    UNIMPLEMENTED;
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT SrcDev = IopGetDeviceObject(SourceDeviceHandle, DriverObject);
+    PIO_DEVICE_OBJECT TgtDev = IopGetDeviceObject(TargetDeviceHandle, NULL);
+    if (SrcDev == NULL || TgtDev == NULL) {
+	/* This shouldn't happen since we check the validity of device handles before */
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    PIO_DEVICE_OBJECT PrevTop = TgtDev;
+    while (PrevTop->AttachedDevice != NULL) {
+	PrevTop = PrevTop->AttachedDevice;
+    }
+    /* Detech the source device from the previous device stack (if any) */
+    if (SrcDev->AttachedTo != NULL) {
+	assert(SrcDev->AttachedTo->AttachedDevice == SrcDev);
+	SrcDev->AttachedTo->AttachedDevice = NULL;
+    }
+    SrcDev->AttachedTo = PrevTop;
+    PrevTop->AttachedDevice = SrcDev;
+    *PreviousTopDeviceHandle = POINTER_TO_GLOBAL_HANDLE(PrevTop);
+    *PreviousTopDeviceInfo = PrevTop->DeviceInfo;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
@@ -183,7 +206,16 @@ NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
                               OUT IO_DEVICE_OBJECT_INFO *TopDeviceInfo)
 {
-    UNIMPLEMENTED;
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
+    while (Device->AttachedDevice != NULL) {
+	Device = Device->AttachedDevice;
+    }
+    *TopDeviceHandle = POINTER_TO_GLOBAL_HANDLE(Device);
+    *TopDeviceInfo = Device->DeviceInfo;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS IoSetDeviceInterfaceState(IN ASYNC_STATE AsyncState,

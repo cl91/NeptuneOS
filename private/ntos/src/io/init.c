@@ -1,5 +1,7 @@
 #include "iop.h"
 
+LIST_ENTRY IopDriverList;
+
 static NTSTATUS IopCreateFileType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -44,6 +46,7 @@ static NTSTATUS IopCreateDriverType()
 
 NTSTATUS IoInitSystemPhase0()
 {
+    InitializeListHead(&IopDriverList);
     RET_ERR(IopCreateFileType());
     RET_ERR(IopCreateDeviceType());
     RET_ERR(IopCreateDriverType());

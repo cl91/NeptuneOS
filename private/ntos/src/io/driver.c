@@ -43,6 +43,8 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 
     /* Insert the driver object to the \Driver object directory. */
     RET_ERR(ObInsertObjectByName(DRIVER_OBJECT_DIRECTORY, Driver, DriverName));
+    /* Add the driver to the list of all drivers */
+    InsertTailList(&IopDriverList, &Driver->DriverLink);
 
     return STATUS_SUCCESS;
 }

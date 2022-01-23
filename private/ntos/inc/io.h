@@ -12,6 +12,7 @@ struct _IO_FILE_OBJECT;
 typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverImagePath;
     PCSTR DriverRegistryPath;
+    LIST_ENTRY DriverLink;    /* Links all driver objects currently existing */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
     struct _IO_FILE_OBJECT *DriverFile;
     struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
@@ -35,13 +36,30 @@ typedef struct _IO_DRIVER_OBJECT {
 
 /*
  * Server-side object of the client side DEVICE_OBJECT
+ *
+ * IRP flows from higher-level device to lower-level device in a device stack,
+ * terminating in the lowest device object, or aka physical device object (PDO).
+ *
+ *   ------------------
+ *   | AttachedDevice |          IRP flow
+ *   ------------------             |
+ *           |                     \|/
+ *          \|/
+ *   ------------------
+ *   |  DeviceObject  |
+ *   ------------------
+ *           |
+ *          \|/
+ *   ------------------
+ *   |   AttachedTo   |
+ *   ------------------
  */
 typedef struct _IO_DEVICE_OBJECT {
     PCSTR DeviceName;
     PIO_DRIVER_OBJECT DriverObject;
-    LIST_ENTRY DeviceLink; /* Links all devices created by the driver object */
-    struct _IO_DEVICE_OBJECT *HigherDevice; /* Higher-level device object immediately above this one */
-    struct _IO_DEVICE_OBJECT *LowerDevice; /* Lower-level device object immediately below this one */
+    LIST_ENTRY DeviceLink; /* Links all devices created by this driver object */
+    struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
+    struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
     IO_DEVICE_OBJECT_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
