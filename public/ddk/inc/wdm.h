@@ -1341,6 +1341,19 @@ FORCEINLINE NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
 }
 
 /*
+ * @implemented
+ *
+ * Forward the IRP to the device object and wait for its completion.
+ */
+FORCEINLINE BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
+					      IN PIRP Irp)
+{
+    NTSTATUS Status = IoCallDriverEx(DeviceObject, Irp, NULL);
+    assert(Status == Irp->IoStatus.Status);
+    return TRUE;
+}
+
+/*
  * This was needed by the power manager in Windows XP/ReactOS and is
  * now deprecated in Windows Vista and later. We follow Vista+.
  */

@@ -3,8 +3,77 @@
  * PROJECT:         ReactOS Keyboard class driver
  * FILE:            drivers/kbdclass/kbdclass.c
  * PURPOSE:         Keyboard class driver
- *
  * PROGRAMMERS:     Hervé Poussineau (hpoussin@reactos.org)
+ *
+ * NOTES:
+ *   The kbdclass driver sits above the keyboard port driver
+ * (such as i8042prt) that implements the common interface for
+ * keyboard devices. The userspace can then request keyboard
+ * data via the \Device\KeyboardClass0 (etc.) device objects.
+ *
+ * There are multiple device objects that are involved here.
+ * Below is a schematic diagram of the case where parameter
+ * ConnectMultiplePorts is set to one. In this case the kbdclass
+ * driver exposes a single device object \Device\KeyboardClass0
+ * that controls multiple port drivers.
+ *
+ * |---------------------------------|
+ * |            kbdclass             |
+ * |---------------------------------|
+ *        ClassDO      ---->   FDO        -----      FDO       -----  etc..
+ * \Device\KeyboardClass0   [unnamed]             [unnamed]
+ *                              ^                     ^
+ *                              |                     |
+ *                        |------------|         |--------|
+ *                        |  i8042prt  |         | inport |
+ *                        |------------|         |--------|
+ *                             FDO
+ *                   [unnamed, symbolic link]
+ *                              ^
+ *                              |
+ *                        |------------|          |-----------|
+ *                        |  i8042prt  |          |  pnp.sys  |
+ *                        |------------|          |-----------|
+ *                             PDO   ============  Enumerated
+ *                          [unnamed]              by root bus
+ *
+ * The ClassDO aggravates the read requests from userland and
+ * forward them to the individual FDOs created from the port
+ * FDOs, which in turn forward them to the port PDOs. Unlike
+ * Windows the port drivers manage their own data buffer and
+ * fill them as keyboard interrupt comes. On Windows the class
+ * driver implements a ClassCallback which the port driver
+ * will then call in their interrupt service routines. Since
+ * on NeptuneOS drivers run in their own address space this
+ * is not possible, so instead we simply let the port driver
+ * manage their own keyboard data buffer and let the class
+ * driver forward the read requests to the port driver.
+ *
+ * In the case where ConnectMultiplePorts is set to zero, on
+ * Windows/ReactOS there will be one ClassDO for each port FDO.
+ * Since we have eliminated ClassCallback here in NeptuneOS, we
+ * can simply merge ClassDO and the unnamed class FDO (created
+ * by kbdclass) above as a single device object, as follows.
+ *
+ *  |-----------------------|
+ *  |       kbdclass        |
+ *  |-----------------------|
+ *        FDO (ClassDO)
+ *   \Device\KeyboardClass0
+ *             ^
+ *             |
+ *       |------------|
+ *       |  i8042prt  |
+ *       |------------|
+ *            FDO
+ *   [unnamed, symbolic link]
+ *             ^
+ *             |
+ *       |------------|          |-----------|
+ *       |  i8042prt  |          |  pnp.sys  |
+ *       |------------|          |-----------|
+ *            PDO   ============  Enumerated
+ *         [unnamed]              by root bus
  */
 
 #include "kbdclass.h"
@@ -25,40 +94,22 @@ static DRIVER_STARTIO ClassStartIo;
 static DRIVER_CANCEL ClassCancelRoutine;
 
 static NTSTATUS HandleReadIrp(IN PDEVICE_OBJECT DeviceObject,
-			      IN PIRP Irp,
-			      IN BOOLEAN IsInStartIo);
+			      IN PIRP Irp);
 
 static NTAPI VOID DriverUnload(IN PDRIVER_OBJECT DriverObject)
 {
     // nothing to do here yet
 }
 
-static inline NTAPI NTSTATUS ForwardIrp(IN PDEVICE_OBJECT DeviceObject,
-					IN PIRP Irp,
-					IN BOOLEAN Wait)
+static NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
+					  IN PIRP Irp)
 {
     ASSERT(!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO);
     PDEVICE_OBJECT LowerDevice =
 	((PPORT_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
 
     IoSkipCurrentIrpStackLocation(Irp);
-    if (Wait) {
-	return IoCallDriverEx(LowerDevice, Irp, NULL);
-    } else {
-	return IoCallDriver(LowerDevice, Irp);
-    }
-}
-
-static NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
-					  IN PIRP Irp)
-{
-    return ForwardIrp(DeviceObject, Irp, FALSE);
-}
-
-static NTAPI NTSTATUS ForwardIrpAndWait(IN PDEVICE_OBJECT DeviceObject,
-					IN PIRP Irp)
-{
-    return ForwardIrp(DeviceObject, Irp, TRUE);
+    return IoCallDriver(LowerDevice, Irp);
 }
 
 static NTAPI NTSTATUS ClassCreate(IN PDEVICE_OBJECT DeviceObject,
@@ -127,7 +178,7 @@ static NTAPI NTSTATUS ClassRead(IN PDEVICE_OBJECT DeviceObject,
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
-    Status = HandleReadIrp(DeviceObject, Irp, FALSE);
+    Status = HandleReadIrp(DeviceObject, Irp);
     return Status;
 }
 
@@ -174,12 +225,15 @@ static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	while (Entry != Head) {
 	    PPORT_DEVICE_EXTENSION DevExt = CONTAINING_RECORD(Entry, PORT_DEVICE_EXTENSION,
 							      ListEntry);
-	    NTSTATUS IntermediateStatus;
 
 	    IoGetCurrentIrpStackLocation(Irp)->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-	    IntermediateStatus = ForwardIrpAndWait(DevExt->DeviceObject, Irp);
-	    if (!NT_SUCCESS(IntermediateStatus))
-		Status = IntermediateStatus;
+	    if (IoForwardIrpSynchronously(DevExt->LowerDevice, Irp)) {
+		if (!NT_SUCCESS(Irp->IoStatus.Status)) {
+		    Status = Irp->IoStatus.Status;
+		}
+	    } else {
+		Status = STATUS_UNSUCCESSFUL;
+	    }
 	    Entry = Entry->Flink;
 	}
 	break;
@@ -464,7 +518,7 @@ static NTAPI BOOLEAN ClassCallback(IN PDEVICE_OBJECT ClassDeviceObject,
 
 	/* Complete pending IRP (if any) */
 	if (ClassDeviceExtension->PendingIrp)
-	    HandleReadIrp(ClassDeviceObject, ClassDeviceExtension->PendingIrp, FALSE);
+	    HandleReadIrp(ClassDeviceObject, ClassDeviceExtension->PendingIrp);
     }
 
     TRACE_(CLASS_NAME, "Leaving ClassCallback()\n");
@@ -544,23 +598,20 @@ static VOID DestroyPortDriver(IN PDEVICE_OBJECT PortDO)
 static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 				     IN PDEVICE_OBJECT Pdo)
 {
-    PCLASS_DRIVER_EXTENSION DriverExtension;
+    PCLASS_DRIVER_EXTENSION DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
     PDEVICE_OBJECT Fdo = NULL;
     PPORT_DEVICE_EXTENSION DeviceExtension = NULL;
-    NTSTATUS Status;
 
     TRACE_(CLASS_NAME, "ClassAddDevice called. Pdo = 0x%p\n", Pdo);
-
-    DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
 
     if (Pdo == NULL)
 	/* We may get a NULL Pdo at the first call as we're a legacy driver. Ignore it */
 	return STATUS_SUCCESS;
 
     /* Create new device object */
-    Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION), NULL, Pdo->DeviceType,
-			    Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ? FILE_DEVICE_SECURE_OPEN : 0,
-			    FALSE, &Fdo);
+    NTSTATUS Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION), NULL, Pdo->DeviceType,
+				     Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ? FILE_DEVICE_SECURE_OPEN : 0,
+				     FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08x\n", Status);
 	goto cleanup;
@@ -572,8 +623,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
     DeviceExtension->Common.IsClassDO = FALSE;
     DeviceExtension->DeviceObject = Fdo;
     DeviceExtension->PnpState = dsStopped;
-    Status = IoAttachDeviceToDeviceStackSafe(Fdo, Pdo,
-					     &DeviceExtension->LowerDevice);
+    Status = IoAttachDeviceToDeviceStackSafe(Fdo, Pdo, &DeviceExtension->LowerDevice);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
 	      "IoAttachDeviceToDeviceStackSafe() failed with status 0x%08x\n",
@@ -651,8 +701,7 @@ static NTAPI VOID ClassCancelRoutine(IN PDEVICE_OBJECT DeviceObject,
 }
 
 static NTSTATUS HandleReadIrp(IN PDEVICE_OBJECT DeviceObject,
-			      IN PIRP Irp,
-			      IN BOOLEAN IsInStartIo)
+			      IN PIRP Irp)
 {
     PCLASS_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     NTSTATUS Status;
@@ -711,26 +760,30 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PPORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK Iosb;
     NTSTATUS Status;
 
     switch (IrpSp->MinorFunction) {
     case IRP_MN_START_DEVICE:
-	Status = ForwardIrpAndWait(DeviceObject, Irp);
+	if (IoForwardIrpSynchronously(DeviceExtension->LowerDevice, Irp)) {
+	    Status = Irp->IoStatus.Status;
+	} else {
+	    Status = STATUS_UNSUCCESSFUL;
+	}
 	if (NT_SUCCESS(Status)) {
+	    OBJECT_ATTRIBUTES ObjectAttributes;
+	    IO_STATUS_BLOCK Iosb;
 	    InitializeObjectAttributes(&ObjectAttributes,
 				       &DeviceExtension->InterfaceName,
-				       OBJ_CASE_INSENSITIVE |
-				       OBJ_KERNEL_HANDLE, NULL, NULL);
-
+				       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+				       NULL, NULL);
 	    Status = NtOpenFile(&DeviceExtension->FileHandle,
 				FILE_READ_DATA,
 				&ObjectAttributes, &Iosb, 0, 0);
 	    if (!NT_SUCCESS(Status))
 		DeviceExtension->FileHandle = NULL;
-	} else
+	} else {
 	    DeviceExtension->FileHandle = NULL;
+	}
 	Irp->IoStatus.Status = Status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return Status;
@@ -754,7 +807,7 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return Status;
 
     default:
-	Status = Irp->IoStatus.Status;
+	Status = STATUS_NOT_SUPPORTED;
 	break;
     }
 
@@ -777,7 +830,7 @@ static NTAPI VOID ClassStartIo(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     ASSERT(DeviceExtension->Common.IsClassDO);
 
-    HandleReadIrp(DeviceObject, Irp, TRUE);
+    HandleReadIrp(DeviceObject, Irp);
 }
 
 static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,

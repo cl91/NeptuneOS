@@ -464,7 +464,13 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
  * happens locally. The behaviors described above with regards to (a)synchronous
  * IRP forwarding still apply.
  *
- * NOTE: This function can only be called inside a coroutine.
+ * NOTE: This function can only be called inside a coroutine. In particular,
+ * you cannot call IoCallDriver(Ex) in a DPC or StartIO routine. On Windows/ReactOS
+ * StartIO routines run in DISPATCH_LEVEL (same as DPC routines), and Microsoft
+ * discourages higher-level drivers from calling lower-level drivers in StartIO
+ * routines [1]. On NeptuneOS this becomes a hard error.
+ *
+ * [1] docs.microsoft.com/en-us/windows-hardware/drivers/kernel/startio-routines-in-higher-level-drivers
  */
 NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 			      IN OUT PIRP Irp,

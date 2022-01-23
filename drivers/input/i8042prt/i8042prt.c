@@ -23,16 +23,6 @@ static DRIVER_DISPATCH i8042SystemControl;
 static DRIVER_DISPATCH i8042Power;
 DRIVER_INITIALIZE DriverEntry;
 
-NTAPI NTSTATUS ForwardIrpAndWait(IN PDEVICE_OBJECT DeviceObject,
-				 IN PIRP Irp)
-{
-    PDEVICE_OBJECT LowerDevice = ((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
-    assert(LowerDevice != NULL);
-
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    return IoCallDriverEx(LowerDevice, Irp, NULL);
-}
-
 NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
 				   IN PIRP Irp)
 {

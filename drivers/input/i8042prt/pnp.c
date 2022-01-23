@@ -610,11 +610,11 @@ static VOID i8042RemoveDevice(IN PDEVICE_OBJECT DeviceObject)
 
 NTSTATUS NTAPI i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
+    PFDO_DEVICE_EXTENSION FdoExtension = DeviceObject->DeviceExtension;
     ULONG_PTR Information = 0;
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     ULONG MinorFunction = Stack->MinorFunction;
-    I8042_DEVICE_TYPE DeviceType =
-	((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->Type;
+    I8042_DEVICE_TYPE DeviceType = FdoExtension->Type;
     NTSTATUS Status;
 
     switch (MinorFunction) {
@@ -624,13 +624,19 @@ NTSTATUS NTAPI i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	/* Call lower driver (if any) */
 	if (DeviceType != PhysicalDeviceObject) {
-	    Status = ForwardIrpAndWait(DeviceObject, Irp);
-	    if (NT_SUCCESS(Status))
-		Status = i8042PnpStartDevice(DeviceObject,
-					     Stack->Parameters.StartDevice.AllocatedResources,
-					     Stack->Parameters.StartDevice.AllocatedResourcesTranslated);
-	} else
+	    Status = STATUS_UNSUCCESSFUL;
+
+	    if (IoForwardIrpSynchronously(FdoExtension->LowerDevice, Irp)) {
+		Status = Irp->IoStatus.Status;
+		if (NT_SUCCESS(Status)) {
+		    Status = i8042PnpStartDevice(DeviceObject,
+						 Stack->Parameters.StartDevice.AllocatedResources,
+						 Stack->Parameters.StartDevice.AllocatedResourcesTranslated);
+		}
+	    }
+	} else {
 	    Status = STATUS_SUCCESS;
+	}
 	break;
     }
     case IRP_MN_QUERY_DEVICE_RELATIONS:	/* (optional) 0x07 */
