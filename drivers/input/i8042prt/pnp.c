@@ -600,15 +600,14 @@ static VOID i8042RemoveDevice(IN PDEVICE_OBJECT DeviceObject)
     PI8042_DRIVER_EXTENSION DriverExtension =
 	(PI8042_DRIVER_EXTENSION)IoGetDriverObjectExtension(DeviceObject->DriverObject,
 							    DeviceObject->DriverObject);
-    PFDO_DEVICE_EXTENSION DeviceExtension =
-	(PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     RemoveEntryList(&DeviceExtension->ListEntry);
     IoDetachDevice(DeviceExtension->LowerDevice);
     IoDeleteDevice(DeviceObject);
 }
 
-NTSTATUS NTAPI i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTAPI NTSTATUS i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PFDO_DEVICE_EXTENSION FdoExtension = DeviceObject->DeviceExtension;
     ULONG_PTR Information = 0;
@@ -623,19 +622,15 @@ NTSTATUS NTAPI i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	TRACE_(I8042PRT, "IRP_MJ_PNP / IRP_MN_START_DEVICE\n");
 
 	/* Call lower driver (if any) */
-	if (DeviceType != PhysicalDeviceObject) {
-	    Status = STATUS_UNSUCCESSFUL;
+	Status = STATUS_UNSUCCESSFUL;
 
-	    if (IoForwardIrpSynchronously(FdoExtension->LowerDevice, Irp)) {
-		Status = Irp->IoStatus.Status;
-		if (NT_SUCCESS(Status)) {
-		    Status = i8042PnpStartDevice(DeviceObject,
-						 Stack->Parameters.StartDevice.AllocatedResources,
-						 Stack->Parameters.StartDevice.AllocatedResourcesTranslated);
-		}
+	if (IoForwardIrpSynchronously(FdoExtension->LowerDevice, Irp)) {
+	    Status = Irp->IoStatus.Status;
+	    if (NT_SUCCESS(Status)) {
+		Status = i8042PnpStartDevice(DeviceObject,
+					     Stack->Parameters.StartDevice.AllocatedResources,
+					     Stack->Parameters.StartDevice.AllocatedResourcesTranslated);
 	    }
-	} else {
-	    Status = STATUS_SUCCESS;
 	}
 	break;
     }
@@ -655,10 +650,12 @@ NTSTATUS NTAPI i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    return ForwardIrpAndForget(DeviceObject, Irp);
 	}
 	default:
+	{
 	    ERR_(I8042PRT,
 		 "IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / Unknown type 0x%x\n",
 		 Stack->Parameters.QueryDeviceRelations.Type);
 	    return ForwardIrpAndForget(DeviceObject, Irp);
+	}
 	}
 	break;
     }

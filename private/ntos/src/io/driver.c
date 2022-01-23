@@ -146,7 +146,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
     if (!NT_SUCCESS(DriverObject->MainEventLoopThread->ExitStatus)) {
 	return DriverObject->MainEventLoopThread->ExitStatus;
     }
-    /* This is strictly speaking unnecessary but it's safer to clear the saved state */
+    /* This is strictly speaking unnecessary but it makes debugging easier */
     Thread->NtLoadDriverSavedState.DriverObject = NULL;
 
     ASYNC_END(STATUS_SUCCESS);

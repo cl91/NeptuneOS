@@ -147,10 +147,10 @@ typedef struct _OBJECT_HEADER {
 typedef PVOID POBJECT;
 
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
-    ((POBJECT)(((MWORD)(Ptr)) + sizeof(OBJECT_HEADER)))
+    ((Ptr) == NULL ? NULL : (POBJECT)(((MWORD)(Ptr)) + sizeof(OBJECT_HEADER)))
 
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
-    ((POBJECT_HEADER)(((MWORD)(Ptr)) - sizeof(OBJECT_HEADER)))
+    ((Ptr) == NULL ? NULL : (POBJECT_HEADER)(((MWORD)(Ptr)) - sizeof(OBJECT_HEADER)))
 
 /*
  * We use the offset of an object header pointer from the start of the
@@ -158,6 +158,10 @@ typedef PVOID POBJECT;
  * lowest EX_POOL_BLOCK_SHIFT (== 3 on x86 and 4 on amd64) bits are
  * always zero for any memory allocated on the ExPool we use the lowest
  * bits to indicate the nature of the handle.
+ *
+ * We could alternatively just use the server-side pointer as the global
+ * handle. The reason for the current scheme is to aid debugging (so
+ * we can know that we are passing a server-side object to client).
  *
  * For the NTOS executive services we use the global handle of the
  * thread as the badge of the IPC endpoint to distinguish the sender
@@ -183,9 +187,9 @@ typedef enum _SERVICE_TYPE {
 compile_assert(TOO_MANY_SERVICE_TYPES, MAX_NUM_SERVICE_TYPES <= (1 << EX_POOL_BLOCK_SHIFT));
 
 /* For structures that are not managed by the Object Manager (for
- * instance the IO_REQUEST_PACKET and IO_RESPONSE_PACKET) we simply
- * take the offset of the pointer from EX_POOL_START */
-#define POINTER_TO_GLOBAL_HANDLE(Ptr)	((MWORD)(Ptr) - EX_POOL_START)
+ * instance IO_PACKET and IO_DEVICE_OBJECT) we simply take the offset
+ * of the pointer from EX_POOL_START */
+#define POINTER_TO_GLOBAL_HANDLE(Ptr)	(((Ptr) == NULL) ? 0 : ((MWORD)(Ptr) - EX_POOL_START))
 
 /* For objects managed by the Object Manager, use the offset of the
  * object header from the ExPool start address */
@@ -198,9 +202,10 @@ compile_assert(TOO_MANY_SERVICE_TYPES, MAX_NUM_SERVICE_TYPES <= (1 << EX_POOL_BL
  * EX_POOL_MAX_SIZE
  */
 #define GLOBAL_HANDLE_TO_POINTER(Handle)				\
-    ((MWORD)((((((MWORD)(Handle) >> EX_POOL_BLOCK_SHIFT)		\
-		<< EX_POOL_BLOCK_SHIFT)					\
-	       & (EX_POOL_MAX_SIZE - 1)) + EX_POOL_START)))
+    ((Handle) == 0 ? NULL :						\
+	((PVOID)((((((MWORD)(Handle) >> EX_POOL_BLOCK_SHIFT)		\
+		    << EX_POOL_BLOCK_SHIFT)				\
+		   & (EX_POOL_MAX_SIZE - 1)) + EX_POOL_START))))
 
 #define GLOBAL_HANDLE_TO_OBJECT(Handle)					\
     OBJECT_HEADER_TO_OBJECT(GLOBAL_HANDLE_TO_POINTER(Handle))

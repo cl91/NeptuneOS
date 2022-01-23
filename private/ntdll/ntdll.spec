@@ -34,6 +34,7 @@
 @ stdcall NtDeleteValueKey(long ptr)
 @ stdcall NtEnumerateKey (long long long long long long)
 @ stdcall NtEnumerateValueKey(long long long long long long)
+@ stdcall NtPlugPlayInitialize()
 @ stdcall NtPlugPlayControl(ptr ptr long)
 @ stdcall NtTestAlert()
 @ stdcall LdrGetProcedureAddress(ptr ptr long ptr)

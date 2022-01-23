@@ -655,6 +655,46 @@ typedef struct _PLUGPLAY_EVENT_BLOCK {
 } PLUGPLAY_EVENT_BLOCK, *PPLUGPLAY_EVENT_BLOCK;
 
 //
+// PNP Bus Query ID Type
+//
+typedef enum _BUS_QUERY_ID_TYPE {
+    BusQueryDeviceID,
+    BusQueryHardwareIDs,
+    BusQueryCompatibleIDs,
+    BusQueryInstanceID,
+    BusQueryDeviceSerialNumber,
+    BusQueryContainerID
+} BUS_QUERY_ID_TYPE, *PBUS_QUERY_ID_TYPE;
+
+typedef enum _DEVICE_TEXT_TYPE {
+    DeviceTextDescription,
+    DeviceTextLocationInformation
+} DEVICE_TEXT_TYPE, *PDEVICE_TEXT_TYPE;
+
+typedef enum _DEVICE_USAGE_NOTIFICATION_TYPE {
+    DeviceUsageTypeUndefined,
+    DeviceUsageTypePaging,
+    DeviceUsageTypeHibernation,
+    DeviceUsageTypeDumpFile,
+    DeviceUsageTypeBoot,
+    DeviceUsageTypePostDisplay,
+    DeviceUsageTypeGuestAssigned,
+} DEVICE_USAGE_NOTIFICATION_TYPE;
+
+//
+// PNP Query Device Relation Type
+//
+typedef enum _DEVICE_RELATION_TYPE {
+    BusRelations,
+    EjectionRelations,
+    PowerRelations,
+    RemovalRelations,
+    TargetDeviceRelation,
+    SingleBusRelations,
+    TransportRelations
+} DEVICE_RELATION_TYPE, *PDEVICE_RELATION_TYPE;
+
+//
 // Plug and Play Control Classes
 //
 
@@ -662,8 +702,7 @@ typedef struct _PLUGPLAY_EVENT_BLOCK {
 typedef struct _PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA {
     UNICODE_STRING DeviceInstance;
     ULONG Flags;
-} PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA,
-    *PPLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA;
+} PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA, *PPLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA;
 
 // PlugPlayControlRegisterNewDevice (0x1)
 // PlugPlayControlDeregisterDevice (0x2)
@@ -674,8 +713,7 @@ typedef struct _PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA {
 // PlugPlayControlHaltDevice (0x15)
 typedef struct _PLUGPLAY_CONTROL_DEVICE_CONTROL_DATA {
     UNICODE_STRING DeviceInstance;
-} PLUGPLAY_CONTROL_DEVICE_CONTROL_DATA,
-    *PPLUGPLAY_CONTROL_DEVICE_CONTROL_DATA;
+} PLUGPLAY_CONTROL_DEVICE_CONTROL_DATA, *PPLUGPLAY_CONTROL_DEVICE_CONTROL_DATA;
 
 // PlugPlayControlQueryAndRemoveDevice (0x06)
 typedef struct _PLUGPLAY_CONTROL_QUERY_REMOVE_DATA {
@@ -897,6 +935,17 @@ typedef struct _CM_DISK_GEOMETRY_DEVICE_DATA {
 
 #ifndef _NTOSKRNL_
 
+NTSYSAPI NTSTATUS NtPlugPlayInitialize();
+
+NTAPI NTSYSAPI NTSTATUS NtPlugPlayControl(IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
+					  IN OUT PVOID Buffer,
+					  IN ULONG BufferSize);
+
+NTAPI NTSYSAPI NTSTATUS NtGetPlugPlayEvent(IN ULONG Reserved1,
+					   IN ULONG Reserved2,
+					   OUT PPLUGPLAY_EVENT_BLOCK Buffer,
+					   IN ULONG BufferSize);
+
 NTAPI NTSYSAPI NTSTATUS NtCompactKeys(IN ULONG Count,
 				      IN PHANDLE KeyArray);
 
@@ -940,27 +989,15 @@ NTAPI NTSYSAPI NTSTATUS NtEnumerateValueKey(IN HANDLE KeyHandle,
 
 NTAPI NTSYSAPI NTSTATUS NtFlushKey(IN HANDLE KeyHandle);
 
-NTAPI NTSYSAPI NTSTATUS NtGetPlugPlayEvent(IN ULONG Reserved1,
-					   IN ULONG Reserved2,
-					   OUT PPLUGPLAY_EVENT_BLOCK Buffer,
-					   IN ULONG BufferSize);
-
 NTAPI NTSYSAPI NTSTATUS NtInitializeRegistry(IN USHORT Flag);
 
 NTAPI NTSYSAPI NTSTATUS NtLoadKey(IN POBJECT_ATTRIBUTES KeyObjectAttributes,
 				  IN POBJECT_ATTRIBUTES FileObjectAttributes);
 
-NTAPI NTSYSAPI NTSTATUS NtLoadKey2(IN POBJECT_ATTRIBUTES KeyObjectAttributes,
-				   IN POBJECT_ATTRIBUTES FileObjectAttributes,
-				   IN ULONG Flags);
-
 NTAPI NTSYSAPI NTSTATUS NtLoadKeyEx(IN POBJECT_ATTRIBUTES TargetKey,
 				    IN POBJECT_ATTRIBUTES SourceFile,
 				    IN ULONG Flags,
 				    IN HANDLE TrustClassKey);
-
-NTAPI NTSYSAPI NTSTATUS NtLockProductActivationKeys(IN PULONG pPrivateVer,
-						    IN PULONG pSafeMode);
 
 NTAPI NTSYSAPI NTSTATUS NtLockRegistryKey(IN HANDLE KeyHandle);
 
@@ -991,10 +1028,6 @@ NTAPI NTSYSAPI NTSTATUS NtNotifyChangeMultipleKeys(IN HANDLE MasterKeyHandle,
 NTAPI NTSYSAPI NTSTATUS NtOpenKey(OUT PHANDLE KeyHandle,
 				  IN ACCESS_MASK DesiredAccess,
 				  IN POBJECT_ATTRIBUTES ObjectAttributes);
-
-NTAPI NTSYSAPI NTSTATUS NtPlugPlayControl(IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
-					  IN OUT PVOID Buffer,
-					  IN ULONG BufferSize);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryKey(IN HANDLE KeyHandle,
 				   IN KEY_INFORMATION_CLASS KeyInformationClass,

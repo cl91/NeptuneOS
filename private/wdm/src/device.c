@@ -34,7 +34,7 @@ GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device)
 
 static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 					     IN ULONG DevExtSize,
-					     IN IO_DEVICE_OBJECT_INFO DevInfo)
+					     IN IO_DEVICE_INFO DevInfo)
 {
     DeviceObject->Type = IO_TYPE_DEVICE;
     DeviceObject->Size = sizeof(DEVICE_OBJECT) + DevExtSize;
@@ -78,7 +78,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     IopAllocatePool(DeviceObject, DEVICE_OBJECT, TotalSize);
     IopAllocateObjectEx(DeviceListEntry, DEVICE_LIST_ENTRY, IopFreePool(DeviceObject));
 
-    IO_DEVICE_OBJECT_INFO DevInfo = {
+    IO_DEVICE_INFO DevInfo = {
 	.DeviceType = DeviceType,
 	.DeviceCharacteristics = DeviceCharacteristics
     };
@@ -159,7 +159,7 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 	return NULL;
     }
     GLOBAL_HANDLE OldTopHandle = 0;
-    IO_DEVICE_OBJECT_INFO DevInfo;
+    IO_DEVICE_INFO DevInfo;
     if (!NT_SUCCESS(IopIoAttachDeviceToDeviceStack(SourceHandle, TargetHandle,
 						   &OldTopHandle, &DevInfo))) {
 	IopFreePool(OldTopDevice);
@@ -193,7 +193,7 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
 	return NULL;
     }
     GLOBAL_HANDLE TopHandle = 0;
-    IO_DEVICE_OBJECT_INFO DevInfo;
+    IO_DEVICE_INFO DevInfo;
     if (!NT_SUCCESS(IopGetAttachedDevice(Handle, &TopHandle, &DevInfo))) {
 	return NULL;
     }

@@ -27,8 +27,9 @@ static struct {
 } BootDrivers[] = {
     { "null", 0, NULL },
     { "beep", 0, NULL },
-    { "i8042prt", ARRAY_LENGTH(I8042prtParameters), I8042prtParameters },
-    { "kbdclass", ARRAY_LENGTH(KbdclassParameters), KbdclassParameters }
+    { "pnp", 0, NULL },
+    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters },
+    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters }
 };
 
 static NTSTATUS SmInitBootDriverConfigs()
@@ -37,7 +38,7 @@ static NTSTATUS SmInitBootDriverConfigs()
     CHAR ParametersKeyPath[256];
     CHAR ImagePath[128];
     RET_ERR(SmCreateRegistryKey(SERVICE_KEY_PATH, FALSE, NULL));
-    for (ULONG i = 0; i < ARRAY_LENGTH(BootDrivers); i++) {
+    for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
 	snprintf(ServiceFullPath, sizeof(ServiceFullPath),
 		 SERVICE_KEY_PATH "\\%s", BootDrivers[i].ServiceName);
 	snprintf(ParametersKeyPath, sizeof(ParametersKeyPath),
@@ -75,17 +76,19 @@ static NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
     return STATUS_SUCCESS;
 }
 
-static VOID SmLoadBootDrivers()
+static NTSTATUS SmInitPnp()
 {
-    for (ULONG i = 0; i < ARRAY_LENGTH(BootDrivers); i++) {
-	SmLoadDriver(BootDrivers[i].ServiceName);
-    }
+    RET_ERR(SmLoadDriver("pnp"));
+    RET_ERR_EX(NtPlugPlayInitialize(),
+	       SmPrint("Failed to initialize the Plug and"
+		       " Play subsystem. Status = 0x%x\n", Status));
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS SmInitHardwareDatabase()
 {
     RET_ERR(SmCreateRegistryKey(HARDWARE_KEY_PATH, TRUE, NULL));
     RET_ERR(SmInitBootDriverConfigs());
-    SmLoadBootDrivers();
+    RET_ERR(SmInitPnp());
     return STATUS_SUCCESS;
 }

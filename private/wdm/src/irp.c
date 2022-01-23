@@ -14,7 +14,8 @@ LIST_ENTRY IopCleanupIrpList;
 /* List of all file objects created by this driver */
 LIST_ENTRY IopFileObjectList;
 
-static inline NTSTATUS IopCreateFileObject(IN PFILE_OBJECT_CREATE_PARAMETERS Params,
+static inline NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
+					   IN PFILE_OBJECT_CREATE_PARAMETERS Params,
 					   IN GLOBAL_HANDLE Handle,
 					   OUT PFILE_LIST_ENTRY *pFileListEntry)
 {
@@ -24,7 +25,8 @@ static inline NTSTATUS IopCreateFileObject(IN PFILE_OBJECT_CREATE_PARAMETERS Par
     IopAllocateObject(FileObject, FILE_OBJECT);
     IopAllocateObjectEx(FileListEntry, FILE_LIST_ENTRY, IopFreePool(FileObject));
     UNICODE_STRING FileName;
-    RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(), Params->FileName, &FileName),
+    RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
+				       (PCHAR)IoPacket + Params->FileNameOffset, &FileName),
 	       {
 		   IopFreePool(FileObject);
 		   IopFreePool(FileListEntry);
@@ -155,15 +157,11 @@ static NTSTATUS IopServerIoPacketToLocal(IN PIRP_QUEUE_ENTRY QueueEntry,
     if ((Src->Request.MajorFunction == IRP_MJ_CREATE) ||
 	(Src->Request.MajorFunction == IRP_MJ_CREATE_MAILSLOT) ||
 	(Src->Request.MajorFunction == IRP_MJ_CREATE_NAMED_PIPE)) {
-	RET_ERR(IopCreateFileObject(&Src->Request.Parameters.Create.FileObjectParameters,
+	RET_ERR(IopCreateFileObject(Src, &Src->Request.Parameters.Create.FileObjectParameters,
 				    Src->Request.File.Handle, &FileListEntry));
 	FileObject = FileListEntry->Object;
     } else {
 	FileObject = IopGetFileObject(Src->Request.File.Handle);
-    }
-    if (FileObject == NULL) {
-	assert(FALSE);
-	return STATUS_INVALID_HANDLE;
     }
 
     IoInitializeIrp(Irp);
@@ -222,21 +220,79 @@ static NTSTATUS IopServerIoPacketToLocal(IN PIRP_QUEUE_ENTRY QueueEntry,
 				       OutputBufferLength));
 	break;
     }
+    case IRP_MJ_PNP:
+    {
+	switch (Src->Request.MinorFunction) {
+	case IRP_MN_QUERY_DEVICE_RELATIONS:
+	    IoStack->Parameters.QueryDeviceRelations.Type = Src->Request.Parameters.QueryDeviceRelations.Type;
+	    break;
+	default:
+	    UNIMPLEMENTED;
+	    return STATUS_NOT_IMPLEMENTED;
+	}
+	break;
+    }
+    default:
+	UNIMPLEMENTED;
+	return STATUS_NOT_IMPLEMENTED;
     }
 
     return STATUS_SUCCESS;
 }
 
-static VOID IopLocalIrpToServer(IN PIRP_QUEUE_ENTRY IrpQueueEntry,
-				IN PIO_PACKET Dest)
+static BOOLEAN IopLocalIrpToServer(IN PIRP_QUEUE_ENTRY IrpQueueEntry,
+				   IN PIO_PACKET Dest,
+				   IN ULONG BufferSize)
 {
-    memset(Dest, 0, sizeof(IO_PACKET));
+    ULONG Size = sizeof(IO_PACKET);
+    PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(IrpQueueEntry->Irp);
+    if (IoSp->MajorFunction == IRP_MJ_PNP) {
+	if (IoSp->MinorFunction == IRP_MN_QUERY_DEVICE_RELATIONS) {
+	    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)IrpQueueEntry->Irp->IoStatus.Information;
+	    ULONG ResponseOffset = FIELD_OFFSET(IO_PACKET, ClientMsg.Parameters.IoCompleted.ResponseData);
+	    assert(sizeof(IO_PACKET) > ResponseOffset);
+	    ULONG MaxCount = (sizeof(IO_PACKET) - ResponseOffset)/sizeof(GLOBAL_HANDLE);
+	    if (Relations->Count > MaxCount) {
+		Size += (Relations->Count - MaxCount) * sizeof(GLOBAL_HANDLE);
+	    }
+	}
+    }
+    if (BufferSize < Size) {
+	return FALSE;
+    }
+    memset(Dest, 0, Size);
     /* TODO: Implement the case for IoCallDriver */
     Dest->Type = IoPacketTypeClientMessage;
+    Dest->Size = Size;
     Dest->ClientMsg.Type = IoCliMsgIoCompleted;
     Dest->ClientMsg.Parameters.IoCompleted.OriginatingThread = IrpQueueEntry->OriginatingThread;
     Dest->ClientMsg.Parameters.IoCompleted.OriginalIrp = IrpQueueEntry->Identifier;
     Dest->ClientMsg.Parameters.IoCompleted.IoStatus = IrpQueueEntry->Irp->IoStatus;
+    switch (IoSp->MajorFunction) {
+    case IRP_MJ_PNP:
+    {
+	switch (IoSp->MinorFunction) {
+	case IRP_MN_QUERY_DEVICE_RELATIONS:
+	{
+	    /* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count. ResponseData[] are the GLOBAL_HANDLE
+	     * of the device objects in DEVICE_RELATIONS.Objects. */
+	    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)IrpQueueEntry->Irp->IoStatus.Information;
+	    Dest->ClientMsg.Parameters.IoCompleted.IoStatus.Information = Relations->Count;
+	    for (ULONG i = 0; i < Relations->Count; i++) {
+		Dest->ClientMsg.Parameters.IoCompleted.ResponseData[i] = IopGetDeviceHandle(Relations->Objects[i]);
+		Dest->ClientMsg.Parameters.IoCompleted.ResponseDataSize = Relations->Count * sizeof(GLOBAL_HANDLE);
+	    }
+	    IopFreePool(Relations);
+	} break;
+	default:
+	    break;
+	}
+	break;
+    }
+    default:
+	break;
+    }
+    return TRUE;
 }
 
 VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
@@ -260,6 +316,18 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.DeviceIoControl.IoControlCode,
 		 Stack->Parameters.DeviceIoControl.Type3InputBuffer);
 	break;
+    case IRP_MJ_PNP:
+	switch (Stack->MinorFunction) {
+	case IRP_MN_QUERY_DEVICE_RELATIONS:
+	    DbgPrint("    PNP  QUERY-DEVICE-RELATIONS  Type %s\n",
+		     IopDbgDeviceRelationTypeStr(Stack->Parameters.QueryDeviceRelations.Type));
+	    break;
+	default:
+	    DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
+	}
+	break;
+    default:
+	DbgPrint("    UNKNOWN-MAJOR-FUNCTION\n");
     }
 }
 
@@ -373,9 +441,9 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests)
 {
     ULONG ErrorResponseCount = 0;
+    PIO_PACKET SrcIoPacket = IopIncomingIoPacketBuffer;
     for (ULONG i = 0; i < NumRequests; i++) {
 	/* TODO: Call Fast IO routines if available */
-	PIO_PACKET SrcIoPacket = &IopIncomingIoPacketBuffer[i];
 	if (SrcIoPacket->Type == IoPacketTypeRequest) {
 	    /* Allocate, populate, and queue the driver-side IRP from server-side
 	     * IO packet in the incoming buffer. Once this is done, the information
@@ -386,7 +454,9 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	     * outgoing packet buffer here since the outgoing buffer has the same
 	     * size as the incoming buffer. */
 	    if (!NT_SUCCESS(Status)) {
+		/* Since all response packet has the same size we can use the array syntax */
 		IopOutgoingIoPacketBuffer[ErrorResponseCount].Type = IoPacketTypeClientMessage;
+		IopOutgoingIoPacketBuffer[ErrorResponseCount].Size = sizeof(IO_PACKET);
 		IopOutgoingIoPacketBuffer[ErrorResponseCount].ClientMsg.Type = IoCliMsgIoCompleted;
 		IopOutgoingIoPacketBuffer[ErrorResponseCount].ClientMsg.Parameters.IoCompleted.OriginatingThread =
 		    SrcIoPacket->Request.OriginatingThread.Handle;
@@ -402,6 +472,7 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	    DbgPrint("Invalid IO packet type %d\n", SrcIoPacket->Type);
 	    assert(FALSE);
 	}
+	SrcIoPacket = (PIO_PACKET)((MWORD)SrcIoPacket + SrcIoPacket->Size);
     }
 
     /* Process all queued IRP. Once processed, the IRP gets moved to the completed IRP list. */
@@ -410,27 +481,31 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
     /* Since the incoming buffer and outgoing buffer have the same size we should never
      * run out of outgoing buffer at this point. */
     assert(ErrorResponseCount <= DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET));
+    ULONG RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ErrorResponseCount * sizeof(IO_PACKET);
+    ULONG ResponseCount = 0;
     /* Move the finished IRPs to the outgoing buffer. */
-    ULONG EntryCount = GetListLength(&IopCompletedIrpList);
-    if ((ErrorResponseCount + EntryCount) * sizeof(IO_PACKET) > DRIVER_IO_PACKET_BUFFER_COMMIT) {
-	/* TODO: Commit more memory */
-	EntryCount = DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET) - ErrorResponseCount;
-    }
-    PIRP_QUEUE_ENTRY Entry = CONTAINING_RECORD(IopCompletedIrpList.Flink,
-					       IRP_QUEUE_ENTRY, Link);
-    PIRP_QUEUE_ENTRY NextEntry = NULL;
-    for (ULONG i = 0; i < EntryCount; i++, Entry = NextEntry) {
-	/* Save the next entry since we will be deleting this entry */
-	NextEntry = CONTAINING_RECORD(Entry->Link.Flink, IRP_QUEUE_ENTRY, Link);
+    PIO_PACKET DestIrp = IopOutgoingIoPacketBuffer + ErrorResponseCount;
+    LoopOverList(Entry, &IopCompletedIrpList, IRP_QUEUE_ENTRY, Link) {
+	/* IopLocalIrpToServer will return FALSE if remaining size is too small for the IO packet */
+	if (!IopLocalIrpToServer(Entry, DestIrp, RemainingBufferSize)) {
+	    break;
+	}
 	/* Detach this entry from the completed IRP list */
 	RemoveEntryList(&Entry->Link);
-	PIO_PACKET DestIrp = &IopOutgoingIoPacketBuffer[i + ErrorResponseCount];
-	IopLocalIrpToServer(Entry, DestIrp);
 	/* This will free the IRP as well */
 	IopFreeIrpQueueEntry(Entry);
+	assert(DestIrp->Size >= sizeof(IO_PACKET));
+	assert(RemainingBufferSize >= DestIrp->Size);
+	if (RemainingBufferSize <= DestIrp->Size) {
+	    break;
+	}
+	IoDbgDumpIoPacket(DestIrp, TRUE);
+	DestIrp = (PIO_PACKET)((MWORD)DestIrp + DestIrp->Size);
+	RemainingBufferSize -= DestIrp->Size;
+	ResponseCount++;
     }
 
-    *pNumResponses = ErrorResponseCount + EntryCount;
+    *pNumResponses = ErrorResponseCount + ResponseCount;
 }
 
 /*

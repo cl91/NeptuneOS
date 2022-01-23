@@ -9,6 +9,7 @@
 #include <ntdef.h>
 #include <ntstatus.h>
 #include <intrin.h>
+#include <debug.h>
 #include <ntkeapi.h>
 #include <ntrtl.h>
 #include <ntseapi.h>

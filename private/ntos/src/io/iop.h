@@ -15,20 +15,42 @@
     IopAllocateArrayEx(Var, Type, Size, {})
 
 static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
+					   IN ULONG Size,
 					   OUT PIO_PACKET *pIoPacket)
 {
     assert(pIoPacket != NULL);
-    IopAllocatePool(IoPacket, IO_PACKET);
+    assert(Size >= sizeof(IO_PACKET));
+    ExAllocatePoolEx(IoPacket, IO_PACKET, Size, NTOS_IO_TAG, {});
     IoPacket->Type = Type;
+    IoPacket->Size = Size;
     *pIoPacket = IoPacket;
     return STATUS_SUCCESS;
+}
+
+static inline VOID IopDetachPendingIoPacketFromThread(IN PTHREAD Thread)
+{
+    assert(Thread->PendingIoPacket != NULL);
+    Thread->PendingIoPacket = NULL;
 }
 
 static inline VOID IopFreePendingIoPacket(IN PTHREAD Thread)
 {
     PIO_PACKET IoPacket = Thread->PendingIoPacket;
+    assert(IoPacket != NULL);
     ExFreePool(IoPacket);
     Thread->PendingIoPacket = NULL;
+    if (Thread->IoResponseData != NULL) {
+	ExFreePool(Thread->IoResponseData);
+	Thread->IoResponseData = NULL;
+    }
+}
+
+static inline VOID IopFreeIoResponseData(IN PTHREAD Thread)
+{
+    if (Thread->IoResponseData != NULL) {
+	ExFreePool(Thread->IoResponseData);
+	Thread->IoResponseData = NULL;
+    }
 }
 
 static inline VOID IopQueueIoPacket(IN PIO_PACKET IoPacket,
@@ -68,7 +90,7 @@ typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
 typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
     PIO_DRIVER_OBJECT DriverObject;
     PCSTR DeviceName;
-    IO_DEVICE_OBJECT_INFO DeviceInfo;
+    IO_DEVICE_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
 
@@ -152,7 +174,7 @@ static inline PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle
     /* Traverse the list of all driver objects, and check if there is a match */
     LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
 	LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	    if ((MWORD)DevObj == GLOBAL_HANDLE_TO_POINTER(DeviceHandle)) {
+	    if (DevObj == GLOBAL_HANDLE_TO_POINTER(DeviceHandle)) {
 		if (DriverObject != NULL) {
 		    return DrvObj == DriverObject ? DevObj : NULL;
 		}

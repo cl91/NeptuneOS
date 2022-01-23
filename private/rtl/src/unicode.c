@@ -1,8 +1,6 @@
 #include <nt.h>
 #include <string.h>
 
-#define assert(x)
-
 /******************************************************************************
  * RtlUnicodeToUTF8N [NTDLL.@]
  *

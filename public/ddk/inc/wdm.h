@@ -380,12 +380,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     ULONG AlignmentRequirement;
     KDEVICE_QUEUE DeviceQueue;
     KDPC Dpc;
-    ULONG ActiveThreadCount;
     PSECURITY_DESCRIPTOR SecurityDescriptor;
     USHORT SectorSize;
     ULONG PowerFlags;
     ULONG ExtensionFlags;
-    struct _DEVICE_NODE *DeviceNode;
     LONG StartIoCount;
     LONG StartIoKey;
     ULONG StartIoFlags;
@@ -1494,3 +1492,11 @@ FORCEINLINE PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT Device
 {
     return IoGetAttachedDevice(DeviceObject);
 }
+
+/*
+ * PNP device relation list, which is simply an array of (physical) device objects.
+ */
+typedef struct _DEVICE_RELATIONS {
+    ULONG Count;
+    PDEVICE_OBJECT Objects[];
+} DEVICE_RELATIONS, *PDEVICE_RELATIONS;

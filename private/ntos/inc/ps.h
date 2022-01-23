@@ -50,6 +50,7 @@ typedef struct _THREAD {
 				 * IoCallDriver calls are queued on the driver object.
 				 * The pending IO packet must be of type IoPacketTypeRequest. */
     IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
+    PVOID IoResponseData; /* Response data to the pending IO packet. Can be NULL if allocation failed. */
     KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
     LIST_ENTRY ReadyListLink; /* Links all threads that are ready to be resumed. */
     KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */
@@ -62,11 +63,17 @@ typedef struct _THREAD {
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
     };
     union {
-	/* There can only be one system service being served at any point, so
+	/* TODO: We need to fix this for recursive async calls. We should merge the
+	 * saved local variable areas with AsyncStack.
+	 * There can only be one system service being served at any point, so
 	 * it's safe to put their saved states in one union */
 	struct {
 	    PIO_DRIVER_OBJECT DriverObject;
 	} NtLoadDriverSavedState;
+	struct {
+	    PIO_DRIVER_OBJECT PnpDriver;
+	    PIO_DEVICE_OBJECT RootEnumerator;
+	} NtPnpInitSavedState;
 	struct {
 	    IO_OPEN_CONTEXT OpenContext;
 	} NtCreateFileSavedState;

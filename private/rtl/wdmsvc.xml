@@ -5,7 +5,7 @@
 
   <svc name="IopCreateDevice">
     <parameter annotation="in opt" type="UnicodeString" name="DeviceName" />
-    <parameter annotation="in" type="ptr::IO_DEVICE_OBJECT_INFO" name="DeviceInfo" />
+    <parameter annotation="in" type="ptr::IO_DEVICE_INFO" name="DeviceInfo" />
     <parameter annotation="in" type="BOOLEAN" name="Exclusive" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
@@ -14,13 +14,13 @@
     <parameter annotation="in" type="GLOBAL_HANDLE" name="SourceDeviceHandle" />
     <parameter annotation="in" type="GLOBAL_HANDLE" name="TargetDeviceHandle" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="PreviousTopDeviceHandle" />
-    <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="PreviousTopDeviceInfo" />
+    <parameter annotation="out complex" type="ptr::IO_DEVICE_INFO" name="PreviousTopDeviceInfo" />
   </svc>
 
   <svc name="IopGetAttachedDevice">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
-    <parameter annotation="out complex" type="ptr::IO_DEVICE_OBJECT_INFO" name="TopDeviceInfo" />
+    <parameter annotation="out complex" type="ptr::IO_DEVICE_INFO" name="TopDeviceInfo" />
   </svc>
 
   <svc name="IopRequestIoPackets">

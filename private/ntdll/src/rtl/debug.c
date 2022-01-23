@@ -40,6 +40,10 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
 {
     DbgPrint("Assertion %s failed at line %d of file %s\n",
 	     str, line, file);
+    char buf[512];
+    snprintf(buf, sizeof(buf), "Assertion %s failed at line %d of file %s\n",
+	     str, line, file);
+    NtDisplayStringA(buf);
     /* Loop forever */
     while (1);
 }
@@ -51,6 +55,10 @@ NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
 {
     DbgPrint("Assertion %s failed at line %d of file %s: %s\n",
 	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
+    char buf[512];
+    snprintf(buf, sizeof(buf), "Assertion %s failed at line %d of file %s: %s\n",
+	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
+    NtDisplayStringA(buf);
     /* Loop forever */
     while (1);
 }

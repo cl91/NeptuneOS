@@ -104,8 +104,7 @@ typedef struct _I8042_DRIVER_EXTENSION {
 typedef enum _I8042_DEVICE_TYPE {
     Unknown,
     Keyboard,
-    Mouse,
-    PhysicalDeviceObject
+    Mouse
 } I8042_DEVICE_TYPE, *PI8042_DEVICE_TYPE;
 
 typedef struct _FDO_DEVICE_EXTENSION {

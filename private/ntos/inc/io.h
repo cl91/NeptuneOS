@@ -31,7 +31,6 @@ typedef struct _IO_DRIVER_OBJECT {
     MWORD IncomingIoPacketsClientAddr;
     MWORD OutgoingIoPacketsServerAddr; /* Driver's IO response packets */
     MWORD OutgoingIoPacketsClientAddr;
-    ULONG NumRequestPackets; /* Number of IO request packets currently in the incoming IO packet buffer */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*
@@ -60,7 +59,7 @@ typedef struct _IO_DEVICE_OBJECT {
     LIST_ENTRY DeviceLink; /* Links all devices created by this driver object */
     struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
     struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
-    IO_DEVICE_OBJECT_INFO DeviceInfo;
+    IO_DEVICE_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 
@@ -120,15 +119,25 @@ typedef struct _IO_OPEN_CONTEXT {
 } IO_OPEN_CONTEXT, *PIO_OPEN_CONTEXT;
 
 /*
+ * CAREFUL: This is a macro. Make sure all arguments are variables
+ * rather than statements because they are evaluated multiple times.
+ */
+#define IoCallDriver(AsyncState, Thread, IoPacket, Driver)	\
+    IopQueueIoPacket(IoPacket, Driver, Thread);			\
+    AWAIT(KeWaitForSingleObject, AsyncState, Thread,		\
+	  &Thread->IoCompletionEvent.Header, FALSE);		\
+    assert(IoPacket == Thread->PendingIoPacket);
+
+/*
  * Forward declarations.
  */
 
-/* init.c */
-NTSTATUS IoInitSystemPhase0();
-NTSTATUS IoInitSystemPhase1();
-
-/* create.c */
+/* file.c */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
 		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
 		      OUT PIO_FILE_OBJECT *pFile);
+
+/* init.c */
+NTSTATUS IoInitSystemPhase0();
+NTSTATUS IoInitSystemPhase1();

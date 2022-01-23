@@ -2,8 +2,6 @@
 
 #include <services.h>
 
-#define ARRAY_LENGTH(x)		(sizeof(x) / sizeof((x)[0]))
-
 #undef UNIMPLEMENTED
 #define UNIMPLEMENTED					\
     {							\

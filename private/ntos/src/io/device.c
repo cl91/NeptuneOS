@@ -7,7 +7,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT) CreaCtx;
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
     PCSTR DeviceName = Ctx->DeviceName;
-    IO_DEVICE_OBJECT_INFO DeviceInfo = Ctx->DeviceInfo;
+    IO_DEVICE_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->DeviceLink);
 
@@ -85,25 +85,45 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     }
 
     PIO_PACKET IoPacket = NULL;
-    RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, &IoPacket), ObDereferenceObject(FileObject));
+    ULONG FileNameLength = strlen(FileObject->FileName);
+    ULONG IoPacketSize = sizeof(IO_PACKET) + FileNameLength + 1;
+    RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, IoPacketSize, &IoPacket),
+	       ObDereferenceObject(FileObject));
     assert(IoPacket != NULL);
+
+    /* For IO packets involving the creation of file objects, we need to pass FILE_OBJECT_CREATE_PARAMETERS
+     * so the client can record the file object information there */
+    memcpy(IoPacket+1, FileObject->FileName, FileNameLength + 1);
+    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
+	.ReadAccess = FileObject->ReadAccess,
+	.WriteAccess = FileObject->WriteAccess,
+	.DeleteAccess = FileObject->DeleteAccess,
+	.SharedRead = FileObject->SharedRead,
+	.SharedWrite = FileObject->SharedWrite,
+	.SharedDelete = FileObject->SharedDelete,
+	.Flags = FileObject->Flags,
+	.FileNameOffset = sizeof(IO_PACKET)
+    };
 
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
 	IoPacket->Request.MajorFunction = IRP_MJ_CREATE;
 	IoPacket->Request.Parameters.Create.Options = OpenPacket->CreateOptions;
 	IoPacket->Request.Parameters.Create.FileAttributes = OpenPacket->FileAttributes;
 	IoPacket->Request.Parameters.Create.ShareAccess = OpenPacket->ShareAccess;
+	IoPacket->Request.Parameters.Create.FileObjectParameters = FileObjectParameters;
     } else if (OpenPacket->CreateFileType == CreateFileTypeNamedPipe) {
 	IoPacket->Request.MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
 	IoPacket->Request.Parameters.CreatePipe.Options = OpenPacket->CreateOptions;
 	IoPacket->Request.Parameters.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
 	IoPacket->Request.Parameters.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
+	IoPacket->Request.Parameters.CreatePipe.FileObjectParameters = FileObjectParameters;
     } else {
 	assert(OpenPacket->CreateFileType == CreateFileTypeMailslot);
 	IoPacket->Request.MajorFunction = IRP_MJ_CREATE_MAILSLOT;
 	IoPacket->Request.Parameters.CreateMailslot.Options = OpenPacket->CreateOptions;
 	IoPacket->Request.Parameters.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
 	IoPacket->Request.Parameters.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
+	IoPacket->Request.Parameters.CreateMailslot.FileObjectParameters = FileObjectParameters;
     }
 
     IoPacket->Request.Device.Object = Device;
@@ -144,7 +164,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
 			 IN PTHREAD Thread,
                          IN OPTIONAL PCSTR DeviceName,
-                         IN PIO_DEVICE_OBJECT_INFO DeviceInfo,
+                         IN PIO_DEVICE_INFO DeviceInfo,
                          IN BOOLEAN Exclusive,
                          OUT GLOBAL_HANDLE *DeviceHandle)
 {
@@ -172,7 +192,7 @@ NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
                                         IN GLOBAL_HANDLE SourceDeviceHandle,
                                         IN GLOBAL_HANDLE TargetDeviceHandle,
                                         OUT GLOBAL_HANDLE *PreviousTopDeviceHandle,
-                                        OUT IO_DEVICE_OBJECT_INFO *PreviousTopDeviceInfo)
+                                        OUT IO_DEVICE_INFO *PreviousTopDeviceInfo)
 {
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
@@ -204,7 +224,7 @@ NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
                               IN PTHREAD Thread,
                               IN GLOBAL_HANDLE DeviceHandle,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
-                              OUT IO_DEVICE_OBJECT_INFO *TopDeviceInfo)
+                              OUT IO_DEVICE_INFO *TopDeviceInfo)
 {
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
@@ -256,7 +276,7 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     PIO_DRIVER_OBJECT DriverObject = FileObject->DeviceObject->DriverObject;
 
     PIO_PACKET IoPacket = NULL;
-    RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, &IoPacket),
+    RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket),
 	       ObDereferenceObject(FileObject));
     assert(IoPacket != NULL);
 

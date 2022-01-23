@@ -447,4 +447,7 @@
     <parameter annotation="in" type="ULONG" name="BufferSize" />
   </svc>
 
+  <svc name="NtPlugPlayInitialize">
+  </svc>
+
 </services>

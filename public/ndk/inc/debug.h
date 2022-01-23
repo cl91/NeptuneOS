@@ -16,7 +16,7 @@
 
 #include <dpfilter.h>
 
-#ifndef _NTURTL_H_
+#ifdef _NTOSKRNL_
 
 __cdecl ULONG DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
@@ -30,7 +30,7 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 			      IN ULONG LineNumber,
 			      IN OPTIONAL PCHAR Message);
 
-#endif /* !defined(_NTURTL_H_) */
+#endif /* defined(_NTOSKRNL_) */
 
 #ifndef __RELFILE__
 #define __RELFILE__ __FILE__

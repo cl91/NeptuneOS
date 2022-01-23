@@ -173,6 +173,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
+GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device);
 
 /* irp.c */
 extern PIO_PACKET IopIncomingIoPacketBuffer;

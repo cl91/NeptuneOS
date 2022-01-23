@@ -222,6 +222,8 @@ typedef ULONG DEVICE_TYPE;
 #define FILE_DEVICE_HOLOGRAPHIC           0x0000005b
 #define FILE_DEVICE_SDFXHCI               0x0000005c
 #define FILE_DEVICE_UCMUCSI               0x0000005d
+/* This is not present on Windows and is specific to NeptuneOS */
+#define FILE_DEVICE_ROOT_ENUMERATOR       0x00001000
 
 /* DEVICE_OBJECT.Characteristics */
 #define FILE_REMOVABLE_MEDIA              0x00000001
@@ -822,43 +824,6 @@ typedef VOID (NTAPI *PIO_APC_ROUTINE)(IN PVOID ApcContext,
 #define DEVICE_TYPE_FROM_CTL_CODE(ctl)	(((ULONG) (ctl & 0xffff0000)) >> 16)
 
 #define METHOD_FROM_CTL_CODE(ctrlCode)	((ULONG)(ctrlCode & 3))
-
-/*
- * PNP Manager enums
- */
-typedef enum _BUS_QUERY_ID_TYPE {
-    BusQueryDeviceID,
-    BusQueryHardwareIDs,
-    BusQueryCompatibleIDs,
-    BusQueryInstanceID,
-    BusQueryDeviceSerialNumber,
-    BusQueryContainerID
-} BUS_QUERY_ID_TYPE, *PBUS_QUERY_ID_TYPE;
-
-typedef enum _DEVICE_TEXT_TYPE {
-    DeviceTextDescription,
-    DeviceTextLocationInformation
-} DEVICE_TEXT_TYPE, *PDEVICE_TEXT_TYPE;
-
-typedef enum _DEVICE_USAGE_NOTIFICATION_TYPE {
-    DeviceUsageTypeUndefined,
-    DeviceUsageTypePaging,
-    DeviceUsageTypeHibernation,
-    DeviceUsageTypeDumpFile,
-    DeviceUsageTypeBoot,
-    DeviceUsageTypePostDisplay,
-    DeviceUsageTypeGuestAssigned,
-} DEVICE_USAGE_NOTIFICATION_TYPE;
-
-typedef enum _DEVICE_RELATION_TYPE {
-    BusRelations,
-    EjectionRelations,
-    PowerRelations,
-    RemovalRelations,
-    TargetDeviceRelation,
-    SingleBusRelations,
-    TransportRelations
-} DEVICE_RELATION_TYPE, *PDEVICE_RELATION_TYPE;
 
 /*
  * System service interface of the IO manager.

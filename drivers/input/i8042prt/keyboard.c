@@ -419,22 +419,17 @@ NTAPI VOID i8042InitializeKeyboardAttributes(PI8042_KEYBOARD_EXTENSION DeviceExt
 
     KeyboardAttributes = &DeviceExtension->KeyboardAttributes;
 
-    KeyboardAttributes->KeyboardIdentifier.Type =
-	(UCHAR) Settings->OverrideKeyboardType;
-    KeyboardAttributes->KeyboardIdentifier.Subtype =
-	(UCHAR) Settings->OverrideKeyboardSubtype;
+    KeyboardAttributes->KeyboardIdentifier.Type = (UCHAR) Settings->OverrideKeyboardType;
+    KeyboardAttributes->KeyboardIdentifier.Subtype = (UCHAR) Settings->OverrideKeyboardSubtype;
     KeyboardAttributes->NumberOfFunctionKeys = 4;
     KeyboardAttributes->NumberOfIndicators = 3;
     KeyboardAttributes->NumberOfKeysTotal = 101;
-    KeyboardAttributes->InputDataQueueLength =
-	Settings->KeyboardDataQueueSize;
+    KeyboardAttributes->InputDataQueueLength = Settings->KeyboardDataQueueSize;
     KeyboardAttributes->KeyRepeatMinimum.UnitId = 0;
-    KeyboardAttributes->KeyRepeatMinimum.Rate =
-	(USHORT) Settings->SampleRate;
+    KeyboardAttributes->KeyRepeatMinimum.Rate = (USHORT) Settings->SampleRate;
     KeyboardAttributes->KeyRepeatMinimum.Delay = 0;
     KeyboardAttributes->KeyRepeatMinimum.UnitId = 0;
-    KeyboardAttributes->KeyRepeatMinimum.Rate =
-	(USHORT) Settings->SampleRate;
+    KeyboardAttributes->KeyRepeatMinimum.Rate = (USHORT) Settings->SampleRate;
     KeyboardAttributes->KeyRepeatMinimum.Delay = 0;
 }
 
@@ -444,14 +439,11 @@ NTAPI VOID i8042InitializeKeyboardAttributes(PI8042_KEYBOARD_EXTENSION DeviceExt
 NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 					     IN PIRP Irp)
 {
-    PIO_STACK_LOCATION Stack;
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)DeviceObject->DeviceExtension;
     NTSTATUS Status;
 
-    Stack = IoGetCurrentIrpStackLocation(Irp);
     Irp->IoStatus.Information = 0;
-    DeviceExtension =
-	(PI8042_KEYBOARD_EXTENSION) DeviceObject->DeviceExtension;
 
     switch (Stack->Parameters.DeviceIoControl.IoControlCode) {
     case IOCTL_INTERNAL_KEYBOARD_CONNECT:
@@ -467,9 +459,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    goto cleanup;
 	}
 
-	DeviceExtension->KeyboardData =
-	    *((PCONNECT_DATA) Stack->Parameters.DeviceIoControl.
-	      Type3InputBuffer);
+	DeviceExtension->KeyboardData = *((PCONNECT_DATA)Stack->Parameters.DeviceIoControl.Type3InputBuffer);
 
 	/* Send IOCTL_INTERNAL_I8042_HOOK_KEYBOARD to device stack */
 	WorkItem = IoAllocateWorkItem(DeviceObject);
@@ -490,8 +480,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	/* Initialize extension */
 	DeviceExtension->Common.Type = Keyboard;
-	Size = DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize
-	    * sizeof(KEYBOARD_INPUT_DATA);
+	Size = DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize * sizeof(KEYBOARD_INPUT_DATA);
 	DeviceExtension->KeyboardBuffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
 	if (!DeviceExtension->KeyboardBuffer) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
@@ -599,8 +588,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	/* We should check the UnitID, but it's kind of pointless as
 	 * all keyboards are supposed to have the same one
 	 */
-	if (Stack->Parameters.DeviceIoControl.OutputBufferLength <
-	    sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION)) {
+	if (Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION)) {
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	} else {
 	    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
@@ -618,8 +606,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	TRACE_(I8042PRT,
 	       "IRP_MJ_INTERNAL_DEVICE_CONTROL / IOCTL_KEYBOARD_QUERY_INDICATORS\n");
 
-	if (Stack->Parameters.DeviceIoControl.OutputBufferLength <
-	    sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
+	if (Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	} else {
 	    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
@@ -636,8 +623,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	TRACE_(I8042PRT,
 	       "IRP_MJ_INTERNAL_DEVICE_CONTROL / IOCTL_KEYBOARD_SET_INDICATORS\n");
 
-	if (Stack->Parameters.DeviceIoControl.InputBufferLength <
-	    sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
+	if (Stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	} else {
 	    RtlCopyMemory(&DeviceExtension->KeyboardIndicators,

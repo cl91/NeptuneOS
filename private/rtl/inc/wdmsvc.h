@@ -1,5 +1,6 @@
 #pragma once
 
+#include <nt.h>
 #include <services.h>
 #include <wdmsvc_gen.h>
 
@@ -8,23 +9,26 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 #define DRIVER_IO_PACKET_BUFFER_RESERVE	(64 * 1024)
 #define DRIVER_IO_PACKET_BUFFER_COMMIT	(8 * 1024)
 
+#define PNP_ROOT_BUS_DRIVER	"\\Driver\\pnp"
+#define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
+
 /*
  * Global handle type.
  *
  * See ntos/inc/ob.h
  */
-typedef MWORD GLOBAL_HANDLE;
+typedef MWORD GLOBAL_HANDLE, *PGLOBAL_HANDLE;
 
-/* Make sure we match MSVC's struct packing */
+/* Make sure the struct packing matches on both ELF and PE targets */
 #include <pshpack4.h>
 
 /*
  * Device object information shared between server and client drivers
  */
-typedef struct _IO_DEVICE_OBJECT_INFO {
+typedef struct _IO_DEVICE_INFO {
     DEVICE_TYPE DeviceType;
     ULONG DeviceCharacteristics;
-} IO_DEVICE_OBJECT_INFO, *PIO_DEVICE_OBJECT_INFO;
+} IO_DEVICE_INFO, *PIO_DEVICE_INFO;
 
 /*
  * Parameters for NtCreateMailslotFile/NtCreateNamedPipeFile
@@ -47,8 +51,8 @@ typedef struct _NAMED_PIPE_CREATE_PARAMETERS {
     BOOLEAN TimeoutSpecified;
 } NAMED_PIPE_CREATE_PARAMETERS, *PNAMED_PIPE_CREATE_PARAMETERS;
 
-/* Parameters to communicate with client drivers about file object creation,
- * passed by CREATE, CREATE_MAILSLOT, CREATE_NAMED_PIPE
+/*
+ * Parameters for CREATE, CREATE_MAILSLOT, and CREATE_NAMED_PIPE
  */
 typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
     BOOLEAN ReadAccess;
@@ -58,7 +62,8 @@ typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
     BOOLEAN SharedWrite;
     BOOLEAN SharedDelete;
     ULONG Flags;
-    PCSTR FileName; /* CLIENT Pointer to the file name buffer. NUL-terminated. */
+    ULONG FileNameOffset; /* Offset to the NUL-terminated file name buffer,
+			   * starting from the beginning of the IO packet. */
 } FILE_OBJECT_CREATE_PARAMETERS, *PFILE_OBJECT_CREATE_PARAMETERS;
 
 /*
@@ -111,19 +116,19 @@ typedef struct _IO_REQUEST_PARAMETERS {
 			* packets that have already been processed. */
     union {
 	struct {
-	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters; /* Must be first. See ntos/irp.c */
+	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters;
 	    ULONG Options;
 	    ULONG FileAttributes;
 	    ULONG ShareAccess;
 	} Create;
 	struct {
-	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters; /* Must be first */
+	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters;
 	    ULONG Options;
 	    USHORT ShareAccess;
 	    NAMED_PIPE_CREATE_PARAMETERS Parameters;
 	} CreatePipe;
 	struct {
-	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters; /* Must be first */
+	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters;
 	    ULONG Options;
 	    USHORT ShareAccess;
 	    MAILSLOT_CREATE_PARAMETERS Parameters;
@@ -145,6 +150,12 @@ typedef struct _IO_REQUEST_PARAMETERS {
 	    ULONG OutputBufferLength;
 	    ULONG IoControlCode;
 	} DeviceIoControl;
+	struct {
+	    DEVICE_RELATION_TYPE Type;
+	} QueryDeviceRelations;
+	struct {
+	    BUS_QUERY_ID_TYPE IdType;
+	} QueryId;
     } Parameters;
 } IO_REQUEST_PARAMETERS, *PIO_REQUEST_PARAMETERS;
 
@@ -152,7 +163,8 @@ typedef struct _IO_REQUEST_PARAMETERS {
  * Message type of server messages
  */
 typedef enum _IO_SERVER_MESSAGE_TYPE {
-    IoSrvMsgIoCompleted
+    IoSrvMsgIoCompleted,
+    IoSrvMsgAddDevice
 } IO_SERVER_MESSAGE_TYPE;
 
 /*
@@ -167,8 +179,14 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
 					      * disambiguate the IRP that is being completed. */
 	    HANDLE OriginalIrp;	/* Unique up to each OriginatingThread */
 	    IO_STATUS_BLOCK IoStatus; /* Final status of the IO operation */
+	    ULONG ResponseDataSize;
+	    ULONG_PTR ResponseData[];
 	} IoCompleted; /* Used for notifying a client driver that an IRP that it has requested
 			* or forwarded is now completed. */
+	struct {
+	    GLOBAL_HANDLE PhysicalDeviceObject;
+	    IO_DEVICE_INFO PhysicalDeviceInfo;
+	} AddDevice; /* Used by the PNP manager to inform the driver to add a new device */
     } Parameters;
 } IO_PACKET_SERVER_MESSAGE, *PIO_PACKET_SERVER_MESSAGE;
 
@@ -192,6 +210,8 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 					      * disambiguate the IRP being completed */
 	    HANDLE OriginalIrp;	/* The OriginalIrp handle of the IRP being completed. */
 	    IO_STATUS_BLOCK IoStatus;
+	    ULONG ResponseDataSize;
+	    ULONG_PTR ResponseData[];
 	} IoCompleted;
 	struct {
 	    GLOBAL_HANDLE OriginatingThread; /* Driver must set this to the Thread.Handle
@@ -212,15 +232,16 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
  */
 typedef struct _IO_PACKET {
     IO_PACKET_TYPE Type;
-    union {
-	IO_REQUEST_PARAMETERS Request; /* Type == IoPacketTypeRequest */
-	IO_PACKET_SERVER_MESSAGE ServerMsg; /* For Type == IoPacketTypeServerMessage */
-	IO_PACKET_CLIENT_MESSAGE ClientMsg; /* For Type == IoPacketTypeClientMessage */
-    };
+    ULONG Size;	/* Size of the IO packet in bytes. This includes all the trailing data. */
     LIST_ENTRY IoPacketLink; /* List entry for either IoPacketQueue or PendingIoPacketList
 			      * of the driver object. This is only valid when the IoPacket
 			      * object is being queued on the driver object or is in the
 			      * driver's pending IoPacket list. */
+    union {
+	IO_REQUEST_PARAMETERS Request; /* Type == IoPacketTypeRequest */
+	IO_PACKET_SERVER_MESSAGE ServerMsg; /* For Type == IoPacketTypeServerMessage */
+	IO_PACKET_CLIENT_MESSAGE ClientMsg; /* For Type == IoPacketTypeClientMessage */
+    }; /* This must be at the end of the struct since it might have variable length */
 } IO_PACKET, *PIO_PACKET;
 
 typedef PTHREAD_START_ROUTINE PIO_WORKER_THREAD_ENTRY;
@@ -231,9 +252,9 @@ typedef PTHREAD_START_ROUTINE PIO_INTERRUPT_SERVICE_THREAD_ENTRY;
 /*
  * Inline functions
  */
-static inline VOID IoDbgDumpFileObjectCreateParameters(IN PFILE_OBJECT_CREATE_PARAMETERS Params)
+static inline VOID IoDbgDumpFileObjectCreateParameters(IN PIO_PACKET IoPacket,
+						       IN PFILE_OBJECT_CREATE_PARAMETERS Params)
 {
-    /* CAREFUL: We must not read FileName directly. It's a CLIENT pointer! */
     DbgPrint("ReadAccess %s WriteAccess %s DeleteAccess %s SharedRead %s "
 	     "SharedWrite %s SharedDelete %s Flags 0x%08x FileName %p\n",
 	     Params->ReadAccess ? "TRUE" : "FALSE",
@@ -242,13 +263,34 @@ static inline VOID IoDbgDumpFileObjectCreateParameters(IN PFILE_OBJECT_CREATE_PA
 	     Params->SharedRead ? "TRUE" : "FALSE",
 	     Params->SharedWrite ? "TRUE" : "FALSE",
 	     Params->SharedDelete ? "TRUE" : "FALSE",
-	     Params->Flags, Params->FileName);
+	     Params->Flags, (PUCHAR)IoPacket + Params->FileNameOffset);
+}
+
+static inline PCSTR IopDbgDeviceRelationTypeStr(IN DEVICE_RELATION_TYPE Type)
+{
+    switch (Type) {
+    case BusRelations:
+	return "BusRelations";
+    case EjectionRelations:
+	return "EjectionRelations";
+    case PowerRelations:
+	return "PowerRelations";
+    case RemovalRelations:
+	return "RemovalRelations";
+    case TargetDeviceRelation:
+	return "TargetDeviceRelation";
+    case SingleBusRelations:
+	return "SingleBusRelations";
+    case TransportRelations:
+	return "TransportRelations";
+    }
+    return "UNKNOWN";
 }
 
 static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 				     IN BOOLEAN ClientSide)
 {
-    DbgTrace("Dumping IO Packet %p size %zd\n", IoPacket, sizeof(IO_PACKET));
+    DbgTrace("Dumping IO Packet %p size %zd\n", IoPacket, IoPacket->Size);
     DbgPrint("    TYPE: ");
     switch (IoPacket->Type) {
     case IoPacketTypeRequest:
@@ -275,7 +317,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->Request.Parameters.Create.FileAttributes,
 		     IoPacket->Request.Parameters.Create.ShareAccess);
 	    DbgPrint("        FileObjectCreateParameters ");
-	    IoDbgDumpFileObjectCreateParameters(&IoPacket->Request.Parameters.Create.FileObjectParameters);
+	    IoDbgDumpFileObjectCreateParameters(IoPacket,
+						&IoPacket->Request.Parameters.Create.FileObjectParameters);
+	    break;
 	case IRP_MJ_DEVICE_CONTROL:
 	    DbgPrint("    DEVICE-CONTROL  IoControlCode %d InputBuffer %p Length 0x%x OutputBuffer %p Length 0x%x\n",
 		     IoPacket->Request.Parameters.DeviceIoControl.IoControlCode,
@@ -283,6 +327,19 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->Request.Parameters.DeviceIoControl.InputBufferLength,
 		     IoPacket->Request.Parameters.DeviceIoControl.OutputBuffer,
 		     IoPacket->Request.Parameters.DeviceIoControl.OutputBufferLength);
+	    break;
+	case IRP_MJ_PNP:
+	    switch (IoPacket->Request.MinorFunction) {
+	    case IRP_MN_QUERY_DEVICE_RELATIONS:
+		DbgPrint("    PNP  QUERY-DEVICE-RELATIONS  Type %s\n",
+			 IopDbgDeviceRelationTypeStr(IoPacket->Request.Parameters.QueryDeviceRelations.Type));
+		break;
+	    default:
+		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
+	    }
+	    break;
+	default:
+	    DbgPrint("    UNKNOWN-MAJOR-FUNCTION\n");
 	}
 	if (ClientSide) {
 	    DbgPrint("    DeviceHandle %p FileHandle %p ThreadHandle %p Identifier %p\n",
@@ -300,18 +357,22 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
     } else if (IoPacket->Type == IoPacketTypeServerMessage) {
 	switch (IoPacket->ServerMsg.Type) {
 	case IoSrvMsgIoCompleted:
-	    DbgPrint("    ThreadHandle %p Identifier %p\n",
+	    DbgPrint("    SERVER-MSG IO-COMPLETED ThreadHandle %p Identifier %p\n",
 		     (PVOID)IoPacket->ServerMsg.Parameters.IoCompleted.OriginatingThread,
 		     IoPacket->ServerMsg.Parameters.IoCompleted.OriginalIrp);
 	    DbgPrint("    Final IO status 0x%08x Information %p\n",
 		     IoPacket->ServerMsg.Parameters.IoCompleted.IoStatus.Status,
 		     (PVOID)IoPacket->ServerMsg.Parameters.IoCompleted.IoStatus.Information);
 	    break;
+	case IoSrvMsgAddDevice:
+	    DbgPrint("    SERVER-MSG ADD-DEVICE PDO %p\n",
+		     (PVOID)IoPacket->ServerMsg.Parameters.AddDevice.PhysicalDeviceObject);
+	    break;
 	}
     } else if (IoPacket->Type == IoPacketTypeClientMessage) {
 	switch (IoPacket->ClientMsg.Type) {
 	case IoCliMsgIoCompleted:
-	    DbgPrint("    ThreadHandle %p Identifier %p\n",
+	    DbgPrint("    CLIENT-MSG IO-COMPLETED ThreadHandle %p Identifier %p\n",
 		     (PVOID)IoPacket->ClientMsg.Parameters.IoCompleted.OriginatingThread,
 		     IoPacket->ClientMsg.Parameters.IoCompleted.OriginalIrp);
 	    DbgPrint("    Final IO status 0x%08x Information %p\n",
@@ -319,7 +380,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     (PVOID)IoPacket->ClientMsg.Parameters.IoCompleted.IoStatus.Information);
 	    break;
 	case IoCliMsgForwardIrp:
-	    DbgPrint("    ThreadHandle %p Identifier %p\n",
+	    DbgPrint("    CLIENT-MSG FORWARD-IRP ThreadHandle %p Identifier %p\n",
 		     (PVOID)IoPacket->ClientMsg.Parameters.IoCompleted.OriginatingThread,
 		     IoPacket->ClientMsg.Parameters.IoCompleted.OriginalIrp);
 	    DbgPrint("    DeviceObject %p NotifyCompletion %s\n",

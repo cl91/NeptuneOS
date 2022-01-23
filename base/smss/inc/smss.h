@@ -18,8 +18,6 @@
     UNICODE_STRING Name = { .Length = Len, .MaximumLength = Len,	\
 	.Buffer = Ptr }
 
-#define ARRAY_LENGTH(x)		(sizeof(x) / sizeof((x)[0]))
-
 /* main.c */
 NTSTATUS SmPrint(PCSTR Format, ...) __attribute__((format(printf, 1, 2)));
 
