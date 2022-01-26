@@ -262,6 +262,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 
     Thread->Process = Process;
     InitializeListHead(&Thread->ThreadListEntry);
+    InitializeListHead(&Thread->PendingIrpList);
     InitializeListHead(&Thread->ApcList);
 
     PMMVAD ServerIpcBufferVad = NULL;

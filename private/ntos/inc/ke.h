@@ -248,8 +248,7 @@ typedef struct _ASYNC_STATE {
  * The following macros that start with an underscore shall not be
  * called directly.
  */
-#define _ASYNC_GET_MACRO_3(_1, _2, _3, NAME, ...) NAME
-#define _ASYNC_GET_MACRO_1(_1, NAME, ...) NAME
+#define _ASYNC_GET_MACRO(_1, _2, _3, NAME, ...) NAME
 #define _ASYNC_GET_FRAME(state)						\
     ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack) +			\
 			  (state).StackTop - sizeof(ASYNC_STACK_FRAME)))
@@ -303,8 +302,8 @@ typedef struct _ASYNC_STATE {
  *     @param Locals The local variables that are saved across async calls
  */
 #define ASYNC_BEGIN(...)						\
-    _ASYNC_GET_MACRO_3(__VA_ARGS__, _ASYNC_BEGIN_LOCALS, ,		\
-		       _ASYNC_BEGIN_NO_LOCALS)(__VA_ARGS__);		\
+    _ASYNC_GET_MACRO(__VA_ARGS__, _ASYNC_BEGIN_LOCALS, ,		\
+		     _ASYNC_BEGIN_NO_LOCALS)(__VA_ARGS__);		\
     _ASYNC_BEGIN_COMMON(__VA_ARGS__)
 
 /**
@@ -464,6 +463,8 @@ typedef struct _DISPATCHER_HEADER {
     EVENT_TYPE EventType;
 } DISPATCHER_HEADER, *PDISPATCHER_HEADER;
 
+typedef PDISPATCHER_HEADER (*KE_DISPATCHER_ITERATOR)(PVOID IteratorContext);
+
 static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
 						IN EVENT_TYPE EventType)
 {
@@ -487,6 +488,27 @@ static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
  * that must be satisfied for the thread to wake up. Once it is satisfied, the system
  * service dispatcher will invoke the reply capability stored in the THREAD object
  * to resume the thread.
+ *
+ * A schematic diagram is as follows:
+ *
+ *   |--------- |             |------------|
+ *   |  THREAD  |             |  THREAD    |
+ *   |----------|             |------------|
+ *   |   Root   |             | Root Wait  |
+ *   |   Wait   |             | Block TY=  |
+ *   |   Block  |             |  WaitAll   |
+ *   |TY=WaitOne|             |  WaitAll   |
+ *   |----------|             |SubBlockList|--->|--------|---->|--------|
+ *     |   ^-------------     |------------|    |SubBlock|     |SubBlock|<----------------
+ *    \|/               |                       |--------|     |--------|                |
+ *   |---------------|  |                           ^  |            |                    |
+ *   |  DISPATCHER   |  |                           |  |            |Dispatcher          |
+ *   |---------------|  |                           |  |           \|/                   |
+ *   | WaitBlockList |-------------------------------  |     |---------------|           |
+ *   |---------------|                                 |     |  DISPATCHER   |           |
+ *          ^                                          |     |---------------|           |
+ *          |                 Dispatcher               |     | WaitBlockList |------------
+ *          -------------------------------------------|     |---------------|
  */
 typedef struct _KWAIT_BLOCK {
     struct _THREAD *Thread;
@@ -645,8 +667,8 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 				  IN struct _THREAD *Thread,
 				  IN BOOLEAN Alertable,
 				  IN WAIT_TYPE WaitType,
-				  IN ULONG Count,
-				  ...);
+				  IN KE_DISPATCHER_ITERATOR Iterator,
+				  IN PVOID IteratorContext);
 NTSTATUS KeQueueApcToThread(IN struct _THREAD *Thread,
 			    IN PKAPC_ROUTINE ApcRoutine,
 			    IN PVOID SystemArgument1,

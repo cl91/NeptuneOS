@@ -27,46 +27,70 @@ static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
     return STATUS_SUCCESS;
 }
 
-static inline VOID IopDetachPendingIoPacketFromThread(IN PTHREAD Thread)
+static inline NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
+					     OUT PPENDING_IRP *pPendingIrp)
 {
-    assert(Thread->PendingIoPacket != NULL);
-    Thread->PendingIoPacket = NULL;
+    assert(pPendingIrp != NULL);
+    IopAllocatePool(PendingIrp, PENDING_IRP);
+    PendingIrp->IoPacket = IoPacket;
+    *pPendingIrp = PendingIrp;
+    return STATUS_SUCCESS;
 }
 
-static inline VOID IopFreePendingIoPacket(IN PTHREAD Thread)
+static inline VOID IopDetachPendingIrpFromThread(IN PPENDING_IRP PendingIrp)
 {
-    PIO_PACKET IoPacket = Thread->PendingIoPacket;
-    assert(IoPacket != NULL);
-    ExFreePool(IoPacket);
-    Thread->PendingIoPacket = NULL;
-    if (Thread->IoResponseData != NULL) {
-	ExFreePool(Thread->IoResponseData);
-	Thread->IoResponseData = NULL;
+    RemoveEntryList(&PendingIrp->Link);
+}
+
+static inline VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
+{
+    if (PendingIrp->IoResponseData != NULL) {
+	ExFreePool(PendingIrp->IoResponseData);
+	PendingIrp->IoResponseData = NULL;
     }
 }
 
-static inline VOID IopFreeIoResponseData(IN PTHREAD Thread)
+/*
+ * Detach the given pending IRP from the thread that it has been queued on.
+ * Free the IO response data, and delete both the IO packet struct and the
+ * PENDING_IRP struct itself.
+ */
+static inline VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
 {
-    if (Thread->IoResponseData != NULL) {
-	ExFreePool(Thread->IoResponseData);
-	Thread->IoResponseData = NULL;
+    IopDetachPendingIrpFromThread(PendingIrp);
+    IopFreeIoResponseData(PendingIrp);
+    if (PendingIrp->IoPacket != NULL) {
+	ExFreePool(PendingIrp->IoPacket);
     }
+    ExFreePool(PendingIrp);
 }
 
-static inline VOID IopQueueIoPacket(IN PIO_PACKET IoPacket,
+static inline PPENDING_IRP IopGetPendingIrp(IN PTHREAD Thread,
+					    IN PIO_PACKET IoPacket)
+{
+    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
+	if (PendingIrp->IoPacket == IoPacket) {
+	    return PendingIrp;
+	}
+    }
+    return NULL;
+}
+
+static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
 				    IN PIO_DRIVER_OBJECT Driver,
 				    IN PTHREAD Thread)
 {
     /* We can only queue IO request packets */
-    assert(IoPacket->Type == IoPacketTypeRequest);
-    /* We can only have exactly one pending IO packet per thread */
-    assert(Thread->PendingIoPacket == NULL);
-    InsertTailList(&Driver->IoPacketQueue, &IoPacket->IoPacketLink);
-    IoPacket->Request.OriginatingThread.Object = Thread;
+    assert(PendingIrp != NULL);
+    assert(PendingIrp->IoPacket != NULL);
+    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+    /* Queue the IRP to the driver */
+    InsertTailList(&Driver->IoPacketQueue, &PendingIrp->IoPacket->IoPacketLink);
+    PendingIrp->IoPacket->Request.OriginatingThread.Object = Thread;
     /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
-    IoPacket->Request.Identifier = (HANDLE) POINTER_TO_GLOBAL_HANDLE(IoPacket);
-    Thread->PendingIoPacket = IoPacket;
-    KeInitializeEvent(&Thread->IoCompletionEvent, NotificationEvent);
+    PendingIrp->IoPacket->Request.Identifier = (HANDLE)POINTER_TO_GLOBAL_HANDLE(PendingIrp->IoPacket);
+    InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
+    KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
     KeSetEvent(&Driver->IoPacketQueuedEvent);
 }
 

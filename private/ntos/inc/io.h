@@ -87,6 +87,25 @@ typedef struct _IO_FILE_OBJECT {
     ULONG Flags;
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
+/*
+ * This represents a pending IRP that is queued on a THREAD object.
+ * When we queue an IRP on a THREAD we add this to the THREAD's pending IRP
+ * list and queue the IRP to the driver object's IoPacketQueue.
+ *
+ * Note: do not confuse this with the driver object's PendingIoPacketList.
+ * That list is used to keep track of the IO packets that have been sent
+ * over to the driver.
+ */
+typedef struct _PENDING_IRP {
+    PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
+			  * The pending IO packet must be of type IoPacketTypeRequest. */
+    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
+    PVOID IoResponseData; /* Response data to the pending IO packet. NULL if not supplied
+			   * or if server-side allocation failed. */
+    LIST_ENTRY Link;	  /* List link for THREAD.PendingIrpList */
+    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
+} PENDING_IRP, *PPENDING_IRP;
+
 typedef enum _CREATE_FILE_TYPE {
     CreateFileTypeNone,
     CreateFileTypeNamedPipe,
@@ -117,15 +136,6 @@ typedef struct _IO_OPEN_CONTEXT {
     IN OPEN_PACKET OpenPacket;
     OUT ULONG_PTR Information; /* IO_STATUS_BLOCK.Information returned by the driver call */
 } IO_OPEN_CONTEXT, *PIO_OPEN_CONTEXT;
-
-/*
- * CAREFUL: This is a macro. Make sure all arguments are variables
- * rather than statements because they are evaluated multiple times.
- */
-#define IoCallDriver(AsyncState, Locals, Thread, IoPacket, Driver)	\
-    IopQueueIoPacket(IoPacket, Driver, Thread);				\
-    AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread,		\
-	  &Thread->IoCompletionEvent.Header, FALSE)
 
 /*
  * Forward declarations.

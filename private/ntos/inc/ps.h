@@ -26,7 +26,7 @@ typedef struct _THREAD {
     CAP_TREE_NODE TreeNode;
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
-    LIST_ENTRY ThreadListEntry;
+    LIST_ENTRY ThreadListEntry;	/* List link for the PROCESS object's ThreadList */
     LIST_ENTRY ApcList;
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
@@ -44,17 +44,11 @@ typedef struct _THREAD {
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
-    PIO_PACKET PendingIoPacket; /* IO packet that the thread is waiting for a response for.
-				 * There can only be one pending IO packet per thread.
-				 * For driver processes, the IO packets from higher-level
-				 * IoCallDriver calls are queued on the driver object.
-				 * The pending IO packet must be of type IoPacketTypeRequest. */
-    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
-    PVOID IoResponseData; /* Response data to the pending IO packet. Can be NULL if allocation failed. */
-    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
+    LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The pending IO packet
+				 * must be of type IoPacketTypeRequest. */
     LIST_ENTRY ReadyListLink; /* Links all threads that are ready to be resumed. */
     KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */
-    ASYNC_STACK AsyncStack; /* Stack of asynchronous state, starting from the service handler */
+    ASYNC_STACK AsyncStack; /* Stack of asynchronous call frames, starting from the service handler */
     ULONG SvcNum;	    /* Saved service number */
     BOOLEAN WdmSvc;	    /* Saved service is WDM service */
     NTSTATUS ExitStatus;    /* Exit status of thread */

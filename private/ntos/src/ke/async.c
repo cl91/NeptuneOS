@@ -20,48 +20,35 @@ static inline VOID KiInitializeSingleWaitBlock(IN PKWAIT_BLOCK WaitBlock,
     WaitBlock->Dispatcher = DispatcherObject;
 }
 
-static inline NTSTATUS KiCreateWaitBlockChain(IN PTHREAD Thread,
-					      IN WAIT_TYPE WaitType,
-					      IN ULONG NumWaitBlocks,
-					      IN va_list args)
-{
-    assert(Thread != NULL);
-    assert(WaitType != WaitOne);
-    assert(NumWaitBlocks != 0);
-    PKWAIT_BLOCK RootBlock = &Thread->RootWaitBlock;
-    RootBlock->Thread = Thread;
-    RootBlock->WaitType = WaitType;
-    InitializeListHead(&RootBlock->SubBlockList);
-    KiAllocateArray(WaitBlocks, PKWAIT_BLOCK, NumWaitBlocks, {});
-    for (ULONG i = 0; i < NumWaitBlocks; i++) {
-	KiAllocatePoolEx(WaitBlock, KWAIT_BLOCK,
-			 {
-			     for (ULONG j = 0; j < NumWaitBlocks; j++) {
-				 if (WaitBlocks[j] != NULL) {
-				     ExFreePool(WaitBlocks[j]);
-				 }
-			     }
-			     ExFreePool(WaitBlocks);
-			 });
-	WaitBlocks[i] = WaitBlock;
-    }
-    for (ULONG i = 0; i < NumWaitBlocks; i++) {
-	PDISPATCHER_HEADER DispatcherObject = va_arg(args, PDISPATCHER_HEADER);
-	KiInitializeSingleWaitBlock(WaitBlocks[i], Thread, DispatcherObject);
-	InsertTailList(&RootBlock->SubBlockList, &WaitBlocks[i]->SiblingLink);
-    }
-    ExFreePool(WaitBlocks);
-    return STATUS_SUCCESS;
-}
-
 static inline VOID KiFreeWaitBlockChain(IN PTHREAD Thread)
 {
     assert(Thread != NULL);
     assert(Thread->RootWaitBlock.WaitType != WaitOne);
     LoopOverList(WaitBlock, &Thread->RootWaitBlock.SubBlockList, KWAIT_BLOCK, SiblingLink) {
+	RemoveEntryList(&WaitBlock->DispatcherLink);
 	RemoveEntryList(&WaitBlock->SiblingLink);
 	ExFreePool(WaitBlock);
     }
+}
+
+static inline NTSTATUS KiCreateWaitBlockChain(IN PTHREAD Thread,
+					      IN WAIT_TYPE WaitType,
+					      IN KE_DISPATCHER_ITERATOR Iterator,
+					      IN PVOID IteratorContext)
+{
+    assert(Thread != NULL);
+    assert(WaitType != WaitOne);
+    PKWAIT_BLOCK RootBlock = &Thread->RootWaitBlock;
+    RootBlock->Thread = Thread;
+    RootBlock->WaitType = WaitType;
+    InitializeListHead(&RootBlock->SubBlockList);
+    PDISPATCHER_HEADER DispatcherObject;
+    while ((DispatcherObject = Iterator(IteratorContext)) != NULL) {
+	KiAllocatePoolEx(WaitBlock, KWAIT_BLOCK, KiFreeWaitBlockChain(Thread));
+	KiInitializeSingleWaitBlock(WaitBlock, Thread, DispatcherObject);
+	InsertTailList(&RootBlock->SubBlockList, &WaitBlock->SiblingLink);
+    }
+    return STATUS_SUCCESS;
 }
 
 static inline VOID KiInitializeApc(IN PKAPC Apc,
@@ -164,8 +151,8 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 				  IN PTHREAD Thread,
 				  IN BOOLEAN Alertable,
 				  IN WAIT_TYPE WaitType,
-				  IN ULONG Count,
-				  ...)
+				  IN KE_DISPATCHER_ITERATOR Iterator,
+				  IN PVOID IteratorContext)
 {
     assert(Thread != NULL);
     ASYNC_BEGIN(State);
@@ -173,11 +160,7 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     /* This is the first time that this function is being called. Build the
      * wait block chain and suspend the thread. */
     assert(Thread->Suspended == FALSE);
-    va_list args;
-    va_start(args, Count);
-    RET_ERR_EX(KiCreateWaitBlockChain(Thread, WaitType, Count, args),
-	       va_end(args));
-    va_end(args);
+    RET_ERR(KiCreateWaitBlockChain(Thread, WaitType, Iterator, IteratorContext));
     Thread->Suspended = TRUE;
     Thread->Alertable = Alertable;
 
