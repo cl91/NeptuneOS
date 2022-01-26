@@ -347,8 +347,8 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 	/* TODO: Event, APC and IO completion port... */
 	return STATUS_PENDING;
     }
-    AWAIT_COND(IopFileIsSynchronous(FileObject), KeWaitForSingleObject, State,
-	       Locals, Thread, &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+    AWAIT_IF(IopFileIsSynchronous(FileObject), KeWaitForSingleObject, State,
+	     Locals, Thread, &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed. */
     PIO_FILE_OBJECT FileObject = Locals.PendingIrp->IoPacket->Request.File.Object;

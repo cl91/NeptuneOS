@@ -140,7 +140,7 @@ typedef struct _IRQ_HANDLER {
  * via ASYNC_BEGIN!
  *
  * RULES:
- * 1. AWAIT, AWAIT_EX, AWAIT_COND, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
+ * 1. AWAIT, AWAIT_EX, AWAIT_IF, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
  *    always be in the outermost scope explicitly. In other words, the following
  *    is strictly forbidden:
  *        if (...) {
@@ -148,7 +148,7 @@ typedef struct _IRQ_HANDLER {
  *        }
  *    This is a programming error: the if-condition is a no-op and the AWAIT
  *    statement is always evaluated. Unfortunately the compiler cannot catch this.
- *    Instead, use AWAIT_COND if you want to await conditionally.
+ *    Instead, use AWAIT_IF if you want to await conditionally.
  *
  * 2. Use the ASYNC_BEGIN macro to define local variables that need to be
  *    saved across async function calls. This generally applies to IN variables
@@ -278,10 +278,17 @@ typedef struct _ASYNC_STATE {
     ASYNC_DUMP(state);							\
     switch (_ASYNC_GET_LINENUM(state)) {				\
     case 0: {
-#define _ASYNC_SAVE_LOCALS(state, locals)	\
-    _ASYNC_GET_LOCALS(state) = locals
-#define _ASYNC_RESTORE_LOCALS(state, locals)	\
-    locals = _ASYNC_GET_LOCALS(state)
+/* This is magic! */
+#define _ASYNC_MAKE_EMPTY_ARG_			,
+#define _ASYNC_GET_SECOND_ARG(x, y,...)		y
+#define _ASYNC_DEFERRED_EXPAND(x, ...)		\
+    _ASYNC_GET_SECOND_ARG(x, __VA_ARGS__)
+#define _ASYNC_SAVE_LOCALS(state, locals)				\
+    _ASYNC_DEFERRED_EXPAND(_ASYNC_MAKE_EMPTY_ARG##locals,		\
+			   _ASYNC_GET_LOCALS(state) = locals, )
+#define _ASYNC_RESTORE_LOCALS(state, locals)			\
+    _ASYNC_DEFERRED_EXPAND(_ASYNC_MAKE_EMPTY_ARG##locals,	\
+			   locals = _ASYNC_GET_LOCALS(state), )
 
 /**
  * Mark the start of an async subroutine
@@ -330,6 +337,16 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
 /**
  * Wait for the completion of the asynchronous function
  *
+ * @param func Function to call
+ * @param state Async state of the current function
+ * @param locals Saved local variables declared in ASYNC_BEGIN.
+ *        If empty, use _
+ *
+ * Examples:
+ *     AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread, ...)
+ *   If no local variables are being saved, use _ in place of Locals:
+ *     AWAIT(KeWaitForSingleObject, AsyncState, _, Thread, ...)
+ *
  * A note about __LINE__: It doesn't matter if the macro definition is
  * written in multiple lines. One might wonder if the macro invocations
  * should be written in the same line. Compilers can differ greatly
@@ -341,38 +358,28 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
  *
  * [1] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94535
  */
-#define AWAIT_NO_LOCALS(func, state, ...)			\
-    } case __LINE__: {						\
-    if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	return _KI_ASYNC_YIELD(state, __LINE__)
 #define AWAIT(func, state, locals, ...)				\
     _ASYNC_SAVE_LOCALS(state, locals);				\
-    AWAIT_NO_LOCALS(func, state __VA_OPT__(,) __VA_ARGS__);	\
+    } case __LINE__: {						\
+    if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	return _KI_ASYNC_YIELD(state, __LINE__);		\
     _ASYNC_RESTORE_LOCALS(state, locals)
 
 /**
  * Wait for the completion of the asynchronous function and store its return status
  */
-#define AWAIT_EX_NO_LOCALS(status, func, state, ...)			\
-    } case __LINE__: {							\
-    if (!KiAsyncIsDone(status = func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	return _KI_ASYNC_YIELD(state, __LINE__)
 #define AWAIT_EX(status, func, state, locals, ...)			\
     _ASYNC_SAVE_LOCALS(state, locals);					\
-    AWAIT_EX_NO_LOCALS(status, func, state __VA_OPT__(,) __VA_ARGS__);	\
+    } case __LINE__: {							\
+    if (!KiAsyncIsDone(status = func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	return _KI_ASYNC_YIELD(state, __LINE__);			\
     _ASYNC_RESTORE_LOCALS(state, locals)
 
 /**
- * IMPORTANT: You MUST use the following macros, AWAIT_COND if you want to await
+ * IMPORTANT: You MUST use the following macros, AWAIT_if if you want to await
  * conditionally. Enclosing the AWAIT statement in an if-statement is INCORRECT!
  */
-#define AWAIT_COND_NO_LOCALS(cond, func, state, ...)			\
-    if (cond) {								\
-    case __LINE__:							\
-	if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	    return _KI_ASYNC_YIELD(state, __LINE__);			\
-    } } {
-#define AWAIT_COND(cond, func, state, locals, ...)			\
+#define AWAIT_IF(cond, func, state, locals, ...)			\
     if (cond) {								\
 	_ASYNC_SAVE_LOCALS(state, locals);				\
     case __LINE__:							\
@@ -386,15 +393,7 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
  * and get the return status. Enclosing the AWAIT_EX statement in an if-statement
  * is INCORRECT!
  */
-#define AWAIT_EX_COND_NO_LOCALS(cond, status, func, state, ...)		\
-    if (cond) {								\
-    case __LINE__:							\
-	if (!KiAsyncIsDone(status =					\
-			   func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	    return _KI_ASYNC_YIELD(state, __LINE__);			\
-    }									\
-    } {
-#define AWAIT_EX_COND(cond, status, func, state, locals, ...)		\
+#define AWAIT_EX_IF(cond, status, func, state, locals, ...)		\
     if (cond) {								\
 	_ASYNC_SAVE_LOCALS(state, locals);				\
     case __LINE__:							\

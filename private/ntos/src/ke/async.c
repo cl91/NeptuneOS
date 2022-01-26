@@ -34,16 +34,19 @@ static inline VOID KiFreeWaitBlockChain(IN PTHREAD Thread)
 static inline NTSTATUS KiCreateWaitBlockChain(IN PTHREAD Thread,
 					      IN WAIT_TYPE WaitType,
 					      IN KE_DISPATCHER_ITERATOR Iterator,
-					      IN PVOID IteratorContext)
+					      IN PVOID IteratorContext,
+					      OUT BOOLEAN *NonEmpty)
 {
     assert(Thread != NULL);
     assert(WaitType != WaitOne);
+    assert(NonEmpty != NULL);
     PKWAIT_BLOCK RootBlock = &Thread->RootWaitBlock;
     RootBlock->Thread = Thread;
     RootBlock->WaitType = WaitType;
     InitializeListHead(&RootBlock->SubBlockList);
     PDISPATCHER_HEADER DispatcherObject;
     while ((DispatcherObject = Iterator(IteratorContext)) != NULL) {
+	*NonEmpty = TRUE;
 	KiAllocatePoolEx(WaitBlock, KWAIT_BLOCK, KiFreeWaitBlockChain(Thread));
 	KiInitializeSingleWaitBlock(WaitBlock, Thread, DispatcherObject);
 	InsertTailList(&RootBlock->SubBlockList, &WaitBlock->SiblingLink);
@@ -160,7 +163,13 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     /* This is the first time that this function is being called. Build the
      * wait block chain and suspend the thread. */
     assert(Thread->Suspended == FALSE);
-    RET_ERR(KiCreateWaitBlockChain(Thread, WaitType, Iterator, IteratorContext));
+    BOOLEAN NonEmpty = FALSE;
+    RET_ERR(KiCreateWaitBlockChain(Thread, WaitType, Iterator, IteratorContext,
+				   &NonEmpty));
+    /* If the wait block chain is empty, do not wait and simply return. */
+    if (!NonEmpty) {
+	return STATUS_SUCCESS;
+    }
     Thread->Suspended = TRUE;
     Thread->Alertable = Alertable;
 

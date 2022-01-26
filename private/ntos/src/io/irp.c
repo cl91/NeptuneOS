@@ -1,5 +1,39 @@
 #include "iop.h"
 
+typedef struct _PENDING_IRP_ITERATOR_CONTEXT {
+    PLIST_ENTRY ListHead;
+    PLIST_ENTRY CurrentEntry;
+} PENDING_IRP_ITERATOR_CONTEXT, *PPENDING_IRP_ITERATOR_CONTEXT;
+
+static PDISPATCHER_HEADER IopPendingIrpIterator(IN PVOID Context)
+{
+    PPENDING_IRP_ITERATOR_CONTEXT Ctx = (PPENDING_IRP_ITERATOR_CONTEXT)Context;
+    assert(Ctx != NULL);
+    assert(Ctx->ListHead != NULL);
+    assert(Ctx->CurrentEntry != NULL);
+    if (Ctx->CurrentEntry->Flink == Ctx->ListHead) {
+	return NULL;
+    }
+    PPENDING_IRP PendingIrp = CONTAINING_RECORD(Ctx->CurrentEntry->Flink,
+						PENDING_IRP, Link);
+    return &PendingIrp->IoCompletionEvent.Header;
+}
+
+NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
+				      IN PTHREAD Thread,
+				      IN BOOLEAN Alertable,
+				      IN WAIT_TYPE WaitType)
+{
+    ASYNC_BEGIN(State, Locals, {
+	    PENDING_IRP_ITERATOR_CONTEXT Ctx;
+	});
+    Locals.Ctx.ListHead = &Thread->PendingIrpList;
+    Locals.Ctx.CurrentEntry = Thread->PendingIrpList.Flink;
+    AWAIT(KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
+	  WaitType, IopPendingIrpIterator, &Locals.Ctx);
+    ASYNC_END(STATUS_SUCCESS);
+}
+
 /*
  * Handler function for the WDM service IopRequestIoPackets. This service should
  * only be called in the main event loop thread of the driver process.
@@ -111,8 +145,8 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 
     /* Now process the driver's queued IO packets and forward them to the driver's
      * incoming IO packet buffer. */
-    AWAIT_EX_NO_LOCALS(Status, KeWaitForSingleObject, State, Thread,
-		       &DriverObject->IoPacketQueuedEvent.Header, TRUE);
+    AWAIT_EX(Status, KeWaitForSingleObject, State, _, Thread,
+	     &DriverObject->IoPacketQueuedEvent.Header, TRUE);
 
     /* Determine how many packets we can send in one go since the driver IO packet
      * buffer has a finite size. This includes potentially the FileName buffer.
