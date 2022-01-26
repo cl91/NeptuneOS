@@ -57,10 +57,17 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
     ULONG DeviceCount = Locals.PendingIrp->IoResponseStatus.Information;
     PGLOBAL_HANDLE DeviceHandles = (PGLOBAL_HANDLE)Locals.PendingIrp->IoResponseData;
     HalVgaPrint("Enumerating Plug and Play devices...\n");
+    IopAllocateArrayEx(DeviceObjects, PIO_DEVICE_OBJECTS, DeviceCount,
+		       {
+			   IopCleanupPendingIrp(Locals.PendingIrp);
+			   ObDereferenceObject(Locals.RootEnumerator);
+			   ObDereferenceObject(Locals.PnpDriver);
+		       });
     for (ULONG i = 0; i < DeviceCount; i++) {
-	HalVgaPrint("  Device object %p\n", GLOBAL_HANDLE_TO_OBJECT(DeviceHandles[i]));
+	DeviceObjects[i] = GLOBAL_HANDLE_TO_OBJECT(DeviceHandles[i]);
     }
     IopCleanupPendingIrp(Locals.PendingIrp);
+
     ASYNC_END(STATUS_SUCCESS);
 }
 

@@ -215,7 +215,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(PNP_ROOT_ENUMERATOR_U);
     PDEVICE_OBJECT RootEnumerator;
     NTSTATUS Status = IoCreateDevice(DriverObject, 0, &DeviceName,
-				     FILE_DEVICE_ROOT_ENUMERATOR, 0, FALSE,
+				     FILE_DEVICE_BUS_EXTENDER, 0, FALSE,
 				     &RootEnumerator);
 
     if (!NT_SUCCESS(Status))

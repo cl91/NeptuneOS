@@ -222,8 +222,6 @@ typedef ULONG DEVICE_TYPE;
 #define FILE_DEVICE_HOLOGRAPHIC           0x0000005b
 #define FILE_DEVICE_SDFXHCI               0x0000005c
 #define FILE_DEVICE_UCMUCSI               0x0000005d
-/* This is not present on Windows and is specific to NeptuneOS */
-#define FILE_DEVICE_ROOT_ENUMERATOR       0x00001000
 
 /* DEVICE_OBJECT.Characteristics */
 #define FILE_REMOVABLE_MEDIA              0x00000001
