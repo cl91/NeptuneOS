@@ -16,8 +16,6 @@ if((${CMAKE_BUILD_TYPE} STREQUAL "Release") OR (${CMAKE_BUILD_TYPE} STREQUAL "Mi
         add_compile_options(-ffunction-sections -fdata-sections)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections ")
     endif()
-
-    add_compile_options(-DNDEBUG)
 endif()
 mark_as_advanced(UserLinkerGCSections)
 
@@ -41,6 +39,10 @@ add_compile_options(
 )
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_FLAGS_DEBUG "-g -O0 -D_DEBUG -DDBG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG" CACHE STRING "" FORCE)
 set(LinkPageSize "0x1000" CACHE STRING "Page size to be used for linker")
 mark_as_advanced(LinkPageSize)
 set(

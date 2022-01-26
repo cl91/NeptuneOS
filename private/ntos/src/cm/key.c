@@ -155,14 +155,17 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(AsyncState);
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    CM_OPEN_CONTEXT OpenContext;
+	});
     DbgTrace("Trying to open key %s root directory %p\n",
 	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
-    Thread->NtOpenKeySavedState.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
-    Thread->NtOpenKeySavedState.OpenContext.Create = FALSE;
+    Locals.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
+    Locals.OpenContext.Create = FALSE;
 
-    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, ObjectAttributes, OBJECT_TYPE_KEY,
-	     (POB_PARSE_CONTEXT)&Thread->NtOpenKeySavedState.OpenContext, KeyHandle);
+    AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals, Thread,
+	     ObjectAttributes, OBJECT_TYPE_KEY,
+	     (POB_PARSE_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(Status);
 }
 
@@ -178,18 +181,21 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(AsyncState);
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    CM_OPEN_CONTEXT OpenContext;
+	});
     DbgTrace("Trying to create key %s root directory %p\n",
 	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
-    Thread->NtCreateKeySavedState.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
-    Thread->NtCreateKeySavedState.OpenContext.Create = TRUE;
-    Thread->NtCreateKeySavedState.OpenContext.TitleIndex = TitleIndex;
-    Thread->NtCreateKeySavedState.OpenContext.Class = Class;
-    Thread->NtCreateKeySavedState.OpenContext.CreateOptions = CreateOptions;
-    Thread->NtCreateKeySavedState.OpenContext.Disposition = Disposition;
+    Locals.OpenContext.Header.Type = PARSE_CONTEXT_KEY_OPEN;
+    Locals.OpenContext.Create = TRUE;
+    Locals.OpenContext.TitleIndex = TitleIndex;
+    Locals.OpenContext.Class = Class;
+    Locals.OpenContext.CreateOptions = CreateOptions;
+    Locals.OpenContext.Disposition = Disposition;
 
-    AWAIT_EX(ObOpenObjectByName, Status, AsyncState, Thread, ObjectAttributes, OBJECT_TYPE_KEY,
-	     (POB_PARSE_CONTEXT)&Thread->NtCreateKeySavedState.OpenContext, KeyHandle);
+    AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals,
+	     Thread, ObjectAttributes, OBJECT_TYPE_KEY,
+	     (POB_PARSE_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(Status);
 }
 

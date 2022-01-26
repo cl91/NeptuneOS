@@ -110,8 +110,8 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 
     /* Now process the driver's queued IO packets and forward them to the driver's
      * incoming IO packet buffer. */
-    AWAIT_EX(KeWaitForSingleObject, Status, State, Thread,
-	     &DriverObject->IoPacketQueuedEvent.Header, TRUE);
+    AWAIT_EX_NO_LOCALS(Status, KeWaitForSingleObject, State, Thread,
+		       &DriverObject->IoPacketQueuedEvent.Header, TRUE);
 
     /* Determine how many packets we can send in one go since the driver IO packet
      * buffer has a finite size. This includes potentially the FileName buffer.
@@ -143,7 +143,6 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	 * replaced by the client-side GLOBAL_HANDLE */
 	if (IoPacket->Type == IoPacketTypeRequest) {
 	    assert(IoPacket->Request.Device.Object != NULL);
-	    assert(IoPacket->Request.File.Object != NULL);
 	    assert(IoPacket->Request.OriginatingThread.Object != NULL);
 	    Dest->Request.Device.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.Device.Object);
 	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.File.Object);

@@ -125,29 +125,26 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN PCSTR DriverServiceName)
 {
-    PIO_DRIVER_OBJECT DriverObject = Thread->NtLoadDriverSavedState.DriverObject;
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_DRIVER_OBJECT DriverObject;
+	});
 
-    ASYNC_BEGIN(State);
-
-    NTSTATUS Status = IoLoadDriver(DriverServiceName, &DriverObject);
+    NTSTATUS Status = IoLoadDriver(DriverServiceName, &Locals.DriverObject);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    assert(DriverObject != NULL);
-    Thread->NtLoadDriverSavedState.DriverObject = DriverObject;
+    assert(Locals.DriverObject != NULL);
 
-    AWAIT(KeWaitForSingleObject, State, Thread,
-	  &DriverObject->InitializationDoneEvent.Header, FALSE);
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE);
 
     /* If the driver initialization failed, inform the caller of the error status */
-    if (DriverObject->MainEventLoopThread == NULL) {
+    if (Locals.DriverObject->MainEventLoopThread == NULL) {
 	return STATUS_UNSUCCESSFUL;
     }
-    if (!NT_SUCCESS(DriverObject->MainEventLoopThread->ExitStatus)) {
-	return DriverObject->MainEventLoopThread->ExitStatus;
+    if (!NT_SUCCESS(Locals.DriverObject->MainEventLoopThread->ExitStatus)) {
+	return Locals.DriverObject->MainEventLoopThread->ExitStatus;
     }
-    /* This is strictly speaking unnecessary but it makes debugging easier */
-    Thread->NtLoadDriverSavedState.DriverObject = NULL;
 
     ASYNC_END(STATUS_SUCCESS);
 }

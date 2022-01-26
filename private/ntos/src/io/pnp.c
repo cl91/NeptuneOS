@@ -27,26 +27,25 @@ static VOID IopPopulateQueryIdRequest(IN PIO_PACKET IoPacket,
 NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 			      IN PTHREAD Thread)
 {
-    PIO_DRIVER_OBJECT PnpDriver = Thread->NtPnpInitSavedState.PnpDriver;
-    PIO_DEVICE_OBJECT RootEnumerator = Thread->NtPnpInitSavedState.RootEnumerator;
-    ASYNC_BEGIN(AsyncState);
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    PIO_DRIVER_OBJECT PnpDriver;
+	    PIO_DEVICE_OBJECT RootEnumerator;
+	});
     RET_ERR(ObReferenceObjectByName(PNP_ROOT_BUS_DRIVER, OBJECT_TYPE_DRIVER,
-				    NULL, (POBJECT *)&PnpDriver));
+				    NULL, (POBJECT *)&Locals.PnpDriver));
     RET_ERR(ObReferenceObjectByName(PNP_ROOT_ENUMERATOR, OBJECT_TYPE_DEVICE,
-				    NULL, (POBJECT *)&RootEnumerator));
-    Thread->NtPnpInitSavedState.PnpDriver = PnpDriver;
-    Thread->NtPnpInitSavedState.RootEnumerator = RootEnumerator;
+				    NULL, (POBJECT *)&Locals.RootEnumerator));
     PIO_PACKET IoPacket = NULL;
     RET_ERR_EX(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket),
 	       {
-		   ObDereferenceObject(RootEnumerator);
-		   ObDereferenceObject(PnpDriver);
+		   ObDereferenceObject(Locals.RootEnumerator);
+		   ObDereferenceObject(Locals.PnpDriver);
 	       });
     assert(IoPacket != NULL);
-    IopPopulateQueryDeviceRelationsRequest(IoPacket, RootEnumerator, BusRelations);
+    IopPopulateQueryDeviceRelationsRequest(IoPacket, Locals.RootEnumerator, BusRelations);
 
     /* This implies an async wait */
-    IoCallDriver(AsyncState, Thread, IoPacket, PnpDriver);
+    IoCallDriver(AsyncState, Locals, Thread, IoPacket, Locals.PnpDriver);
 
     NTSTATUS Status = Thread->IoResponseStatus.Status;
     if (!NT_SUCCESS(Status)) {

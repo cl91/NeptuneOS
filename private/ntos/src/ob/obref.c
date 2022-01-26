@@ -83,8 +83,8 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
-    DbgTrace("Object path %s lookup type mismatch: expected mask 0x%x found type %d\n",
-	     Path, ParseContext->RequestedTypeMask, ObjectHeader->Type->Index);
+    DbgTrace("Object path %s lookup type mismatch: expected type 0x%x found type %d\n",
+	     Path, Type, ObjectHeader->Type->Index);
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 

@@ -131,7 +131,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     IopQueueIoPacket(IoPacket, Driver, Thread);
 
     /* For create/open we always wait till the driver has completed the request. */
-    AWAIT(KeWaitForSingleObject, State, Thread, &Thread->IoCompletionEvent.Header, FALSE);
+    AWAIT_NO_LOCALS(KeWaitForSingleObject, State, Thread, &Thread->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed.
      * Note: The local variable IoPacket is undefined here. IoPacket in the previous async block
@@ -327,8 +327,8 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 	/* TODO: Event, APC and IO completion port... */
 	return STATUS_PENDING;
     }
-    AWAIT_IF(IopFileIsSynchronous(FileObject), KeWaitForSingleObject, State,
-	     Thread, &Thread->IoCompletionEvent.Header, FALSE);
+    AWAIT_COND_NO_LOCALS(IopFileIsSynchronous(FileObject), KeWaitForSingleObject, State,
+			 Thread, &Thread->IoCompletionEvent.Header, FALSE);
 
     /* This is the starting point when the function is resumed. */
     assert(Thread->PendingIoPacket->Type == IoPacketTypeRequest);

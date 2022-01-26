@@ -62,37 +62,6 @@ typedef struct _THREAD {
 	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
 	WDM_SERVICE_PARAMETERS WdmSvcParams;
     };
-    union {
-	/* TODO: We need to fix this for recursive async calls. We should merge the
-	 * saved local variable areas with AsyncStack.
-	 * There can only be one system service being served at any point, so
-	 * it's safe to put their saved states in one union */
-	struct {
-	    PIO_DRIVER_OBJECT DriverObject;
-	} NtLoadDriverSavedState;
-	struct {
-	    PIO_DRIVER_OBJECT PnpDriver;
-	    PIO_DEVICE_OBJECT RootEnumerator;
-	} NtPnpInitSavedState;
-	struct {
-	    IO_OPEN_CONTEXT OpenContext;
-	} NtCreateFileSavedState;
-	struct {
-	    IO_OPEN_CONTEXT OpenContext;
-	} NtOpenFileSavedState;
-	struct {
-	    CM_OPEN_CONTEXT OpenContext;
-	} NtCreateKeySavedState;
-	struct {
-	    CM_OPEN_CONTEXT OpenContext;
-	} NtOpenKeySavedState;
-    };
-    struct {
-	POBJECT Object;
-	POBJECT UserRootDirectory;
-	PCSTR Path;
-	BOOLEAN Reparsed;
-    } ObOpenObjectSavedState;
 } THREAD, *PTHREAD;
 
 /*

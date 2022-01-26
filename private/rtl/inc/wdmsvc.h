@@ -290,7 +290,7 @@ static inline PCSTR IopDbgDeviceRelationTypeStr(IN DEVICE_RELATION_TYPE Type)
 static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 				     IN BOOLEAN ClientSide)
 {
-    DbgTrace("Dumping IO Packet %p size %zd\n", IoPacket, IoPacket->Size);
+    DbgTrace("Dumping IO Packet %p size %d\n", IoPacket, IoPacket->Size);
     DbgPrint("    TYPE: ");
     switch (IoPacket->Type) {
     case IoPacketTypeRequest:

@@ -92,16 +92,19 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(State);
-    Thread->NtCreateFileSavedState.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
-    Thread->NtCreateFileSavedState.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
-    Thread->NtCreateFileSavedState.OpenContext.OpenPacket.CreateOptions = CreateOptions;
-    Thread->NtCreateFileSavedState.OpenContext.OpenPacket.FileAttributes = FileAttributes;
-    Thread->NtCreateFileSavedState.OpenContext.OpenPacket.ShareAccess = ShareAccess;
-    Thread->NtCreateFileSavedState.OpenContext.OpenPacket.Disposition = CreateDisposition;
+    ASYNC_BEGIN(State, Locals, {
+	    IO_OPEN_CONTEXT OpenContext;
+	});
+    Locals.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
+    Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
+    Locals.OpenContext.OpenPacket.CreateOptions = CreateOptions;
+    Locals.OpenContext.OpenPacket.FileAttributes = FileAttributes;
+    Locals.OpenContext.OpenPacket.ShareAccess = ShareAccess;
+    Locals.OpenContext.OpenPacket.Disposition = CreateDisposition;
 
-    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, ObjectAttributes, OBJECT_TYPE_FILE,
-	     (POB_PARSE_CONTEXT)&Thread->NtCreateFileSavedState.OpenContext, FileHandle);
+    AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
+	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
+	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
     ASYNC_END(Status);
 }
 
@@ -116,16 +119,19 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(State);
-    Thread->NtOpenFileSavedState.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
-    Thread->NtOpenFileSavedState.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
-    Thread->NtOpenFileSavedState.OpenContext.OpenPacket.CreateOptions = OpenOptions;
-    Thread->NtOpenFileSavedState.OpenContext.OpenPacket.FileAttributes = 0;
-    Thread->NtOpenFileSavedState.OpenContext.OpenPacket.ShareAccess = ShareAccess;
-    Thread->NtOpenFileSavedState.OpenContext.OpenPacket.Disposition = 0;
+    ASYNC_BEGIN(State, Locals, {
+	    IO_OPEN_CONTEXT OpenContext;
+	});
+    Locals.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
+    Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
+    Locals.OpenContext.OpenPacket.CreateOptions = OpenOptions;
+    Locals.OpenContext.OpenPacket.FileAttributes = 0;
+    Locals.OpenContext.OpenPacket.ShareAccess = ShareAccess;
+    Locals.OpenContext.OpenPacket.Disposition = 0;
 
-    AWAIT_EX(ObOpenObjectByName, Status, State, Thread, ObjectAttributes, OBJECT_TYPE_FILE,
-	     (POB_PARSE_CONTEXT)&Thread->NtOpenFileSavedState.OpenContext, FileHandle);
+    AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
+	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
+	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
     ASYNC_END(Status);
 }
 

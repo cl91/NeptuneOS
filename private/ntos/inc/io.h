@@ -122,11 +122,10 @@ typedef struct _IO_OPEN_CONTEXT {
  * CAREFUL: This is a macro. Make sure all arguments are variables
  * rather than statements because they are evaluated multiple times.
  */
-#define IoCallDriver(AsyncState, Thread, IoPacket, Driver)	\
-    IopQueueIoPacket(IoPacket, Driver, Thread);			\
-    AWAIT(KeWaitForSingleObject, AsyncState, Thread,		\
-	  &Thread->IoCompletionEvent.Header, FALSE);		\
-    assert(IoPacket == Thread->PendingIoPacket);
+#define IoCallDriver(AsyncState, Locals, Thread, IoPacket, Driver)	\
+    IopQueueIoPacket(IoPacket, Driver, Thread);				\
+    AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread,		\
+	  &Thread->IoCompletionEvent.Header, FALSE)
 
 /*
  * Forward declarations.

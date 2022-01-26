@@ -136,10 +136,11 @@ typedef struct _IRQ_HANDLER {
  * (This is inspired by protothread [1] and async.h from naasking [2].)
  *
  * IMPORTANT NOTE: Be careful with async functions. Local variables are not
- * preserved when async functions are suspended and resumed!
+ * preserved when async functions are suspended and resumed unless defined
+ * via ASYNC_BEGIN!
  *
  * RULES:
- * 1. AWAIT, AWAIT_EX, AWAIT_IF, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
+ * 1. AWAIT, AWAIT_EX, AWAIT_COND, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
  *    always be in the outermost scope explicitly. In other words, the following
  *    is strictly forbidden:
  *        if (...) {
@@ -147,15 +148,16 @@ typedef struct _IRQ_HANDLER {
  *        }
  *    This is a programming error: the if-condition is a no-op and the AWAIT
  *    statement is always evaluated. Unfortunately the compiler cannot catch this.
- *    Instead, use AWAIT_IF if you want to await conditionally.
+ *    Instead, use AWAIT_COND if you want to await conditionally.
  *
- * 2. Since local variables are not saved when async functions are suspended,
- *    you need to save them manually (if you need to refer to them after the
- *    initial async function call).
+ * 2. Use the ASYNC_BEGIN macro to define local variables that need to be
+ *    saved across async function calls. This generally applies to IN variables
+ *    of an async functions. OUT variables should not be saved across async
+ *    calls and should not be defined this way. For IN OUT variables it is best
+ *    to manually manage variable saving.
  *
- * 3. It is probably a good idea to make sure that most async functions only
- *    have one AWAIT (and friends) or ASYNC_YIELD. Async functions with more
- *    than one AWAIT (and friends) require extra attention.
+ *
+ * DESCRIPTION:
  *
  * When the NTOS server gets a client NTAPI request, it is often the case that
  * the request cannot be immediately satisfied. For instance, the client may
@@ -191,7 +193,7 @@ typedef struct _IRQ_HANDLER {
  * [2] https://github.com/naasking/async.h
  */
 
-#define ASYNC_MAX_CALL_STACK	32
+#define ASYNC_MAX_CALL_STACK	(256 * sizeof(MWORD))
 
 /*
  * Starting from the top level function (ie. a service handler), all
@@ -201,7 +203,7 @@ typedef struct _IRQ_HANDLER {
  * stack is empty.
  */
 typedef struct _ASYNC_STACK {
-    ULONG Stack[ASYNC_MAX_CALL_STACK]; /* Stack of line numbers from which execution is to be resumed */
+    CHAR Stack[ASYNC_MAX_CALL_STACK]; /* Stack of line numbers from which execution is to be resumed */
 } ASYNC_STACK, *PASYNC_STACK;
 
 /*
@@ -214,7 +216,7 @@ typedef struct _ASYNC_STACK {
  */
 typedef struct _ASYNC_STATE {
     PASYNC_STACK AsyncStack;
-    LONG StackTop; /* Points to the async status of the current call frame */
+    ULONG StackTop; /* Points to the async status of the current call frame */
 } ASYNC_STATE;
 
 #define KI_DEFINE_INIT_ASYNC_STATE(state, thread)	\
@@ -223,29 +225,87 @@ typedef struct _ASYNC_STATE {
 	.StackTop = 0					\
     }
 
-/*
+/**
  * Dump the async state of the function
  */
 #define ASYNC_DUMP(state)						\
     DbgTrace("Dumping async state for thread %p: Stack top %d. "	\
 	     "Async states:",						\
 	     CONTAINING_RECORD(state.AsyncStack, THREAD, AsyncStack),	\
-	     state.StackTop);						\
-    for (LONG __async_tmp_i = 0;					\
-	 __async_tmp_i < state.StackTop;				\
-	 __async_tmp_i++) {						\
-	DbgPrint(" %d", state.AsyncStack->Stack[__async_tmp_i]);	\
+	     (state).StackTop);						\
+    for (ULONG StackPtr = 0;						\
+	 StackPtr < ((state).StackTop - sizeof(ASYNC_STACK_FRAME)); ) {	\
+	PASYNC_STACK_FRAME Frame = (PASYNC_STACK_FRAME)(		\
+	    (MWORD)((state).AsyncStack) + StackPtr);			\
+	DbgPrint(" frame size %d line num %d",				\
+		 Frame->Size, Frame->LineNum);				\
+	assert(Frame->Size != 0);					\
+	StackPtr += Frame->Size;					\
     }									\
     DbgPrint("\n")
 
+/*
+ * The following macros that start with an underscore shall not be
+ * called directly.
+ */
+#define _ASYNC_GET_MACRO_3(_1, _2, _3, NAME, ...) NAME
+#define _ASYNC_GET_MACRO_1(_1, NAME, ...) NAME
+#define _ASYNC_GET_FRAME(state)						\
+    ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack) +			\
+			  (state).StackTop - sizeof(ASYNC_STACK_FRAME)))
+#define _ASYNC_GET_NEXT_FRAME(state)					\
+    ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack			\
+				  + (state).StackTop)))
+#define _ASYNC_GET_LINENUM(state)		\
+    (_ASYNC_GET_FRAME(state)->LineNum)
+#define _ASYNC_GET_LOCALS(state)		\
+    (_ASYNC_GET_FRAME(state)->Locals)
+#define _ASYNC_BEGIN_NO_LOCALS(state)					\
+    typedef struct POINTER_ALIGNMENT _ASYNC_STACK_FRAME {		\
+	ULONG LineNum;							\
+	ULONG Size;							\
+    } ASYNC_STACK_FRAME, *PASYNC_STACK_FRAME
+#define _ASYNC_BEGIN_LOCALS(state, locals, vars)			\
+    struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS vars locals;		\
+    typedef struct POINTER_ALIGNMENT _ASYNC_STACK_FRAME {		\
+	ULONG LineNum;							\
+	ULONG Size;							\
+	struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS Locals;		\
+    } ASYNC_STACK_FRAME, *PASYNC_STACK_FRAME;				\
+    locals = _ASYNC_GET_NEXT_FRAME(state)->Locals
+#define _ASYNC_BEGIN_COMMON(state, ...)					\
+    _ASYNC_GET_NEXT_FRAME(state)->Size = sizeof(ASYNC_STACK_FRAME);	\
+    (state).StackTop += sizeof(ASYNC_STACK_FRAME);			\
+    ASYNC_DUMP(state);							\
+    switch (_ASYNC_GET_LINENUM(state)) {				\
+    case 0: {
+#define _ASYNC_SAVE_LOCALS(state, locals)	\
+    _ASYNC_GET_LOCALS(state) = locals
+#define _ASYNC_RESTORE_LOCALS(state, locals)	\
+    locals = _ASYNC_GET_LOCALS(state)
+
 /**
  * Mark the start of an async subroutine
- * @param thread The thread on which the function is being executed
+ *
+ * There are two valid syntax:
+ *
+ *   Without defining local variables:
+ *     ASYNC_BEGIN(AsyncState);
+ *     @param AsyncState The current async state
+ *
+ *   Defining local variables:
+ *     ASYNC_BEGIN(AsyncState, Locals, {
+ *         ULONG Local1;
+ *         ULONG Local2;
+ *         ...
+ *     });
+ *     @param AsyncState The current async state
+ *     @param Locals The local variables that are saved across async calls
  */
-#define ASYNC_BEGIN(state)						\
-    (state).StackTop++;							\
-    ASYNC_DUMP(state);							\
-    switch (KiAsyncGetLineNum(state)) { case 0: {
+#define ASYNC_BEGIN(...)						\
+    _ASYNC_GET_MACRO_3(__VA_ARGS__, _ASYNC_BEGIN_LOCALS, ,		\
+		       _ASYNC_BEGIN_NO_LOCALS)(__VA_ARGS__);		\
+    _ASYNC_BEGIN_COMMON(__VA_ARGS__)
 
 /**
  * Mark the end of a async subroutine.
@@ -256,23 +316,24 @@ typedef struct _ASYNC_STATE {
     assert(!IS_ASYNC_STATUS(status));			\
     return status; }					\
     default:						\
-    KeBugCheckMsg("Asynchronous function has "		\
-		  "encountered a hard error.\n");	\
+    KeBugCheckMsg("BUGBUG! Async function error.\n");	\
     return STATUS_UNSUCCESSFUL; }
 
 /**
  * Check if async subroutine is done
  * @param status The NTSTATUS returned by the async function
  */
-#define ASYNC_IS_DONE(status)			\
-    ((status) != STATUS_ASYNC_PENDING)
+static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
+{
+    return Status != STATUS_ASYNC_PENDING;
+}
 
 /**
  * Wait for the completion of the asynchronous function
  *
  * A note about __LINE__: It doesn't matter if the macro definition is
- * written in multiple lines. However, it is preferable that the macro
- * invocation be written in the same line. Compilers can differ greatly
+ * written in multiple lines. One might wonder if the macro invocations
+ * should be written in the same line. Compilers can differ greatly
  * in terms of what the __LINE__ macro expands to. For instance, see
  * this bug report [1]. That being said, as long as it is consistent
  * there should be no problem writing AWAIT macro invocations in multiple
@@ -281,84 +342,97 @@ typedef struct _ASYNC_STATE {
  *
  * [1] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94535
  */
-#define AWAIT(func, state, ...)					\
+#define AWAIT_NO_LOCALS(func, state, ...)			\
     } case __LINE__: {						\
-    if (!ASYNC_IS_DONE(func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	return KiAsyncYield(state, __LINE__)
+    if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	return _KI_ASYNC_YIELD(state, __LINE__)
+#define AWAIT(func, state, locals, ...)				\
+    _ASYNC_SAVE_LOCALS(state, locals);				\
+    AWAIT_NO_LOCALS(func, state __VA_OPT__(,) __VA_ARGS__);	\
+    _ASYNC_RESTORE_LOCALS(state, locals)
 
 /**
  * Wait for the completion of the asynchronous function and store its return status
  */
-#define AWAIT_EX(func, status, state, ...)				\
+#define AWAIT_EX_NO_LOCALS(status, func, state, ...)			\
     } case __LINE__: {							\
-    if (!ASYNC_IS_DONE(status = func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	return KiAsyncYield(state, __LINE__)
+    if (!KiAsyncIsDone(status = func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	return _KI_ASYNC_YIELD(state, __LINE__)
+#define AWAIT_EX(status, func, state, locals, ...)			\
+    _ASYNC_SAVE_LOCALS(state, locals);					\
+    AWAIT_EX_NO_LOCALS(status, func, state __VA_OPT__(,) __VA_ARGS__);	\
+    _ASYNC_RESTORE_LOCALS(state, locals)
 
 /**
- * IMPORTANT: You MUST use the following macros, AWAIT_IF if you want to await
+ * IMPORTANT: You MUST use the following macros, AWAIT_COND if you want to await
  * conditionally. Enclosing the AWAIT statement in an if-statement is INCORRECT!
  */
-#define AWAIT_IF(cond, func, state, ...)				\
+#define AWAIT_COND_NO_LOCALS(cond, func, state, ...)			\
     if (cond) {								\
     case __LINE__:							\
-	if (!ASYNC_IS_DONE(func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	    return KiAsyncYield(state, __LINE__); } } {
+	if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	    return _KI_ASYNC_YIELD(state, __LINE__);			\
+    } } {
+#define AWAIT_COND(cond, func, state, locals, ...)			\
+    if (cond) {								\
+	_ASYNC_SAVE_LOCALS(state, locals);				\
+    case __LINE__:							\
+	if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	    return _KI_ASYNC_YIELD(state, __LINE__);			\
+	_ASYNC_RESTORE_LOCALS(state, locals);				\
+    } } {
 
 /**
  * IMPORTANT: You MUST use the following macros if you want to await conditionally
  * and get the return status. Enclosing the AWAIT_EX statement in an if-statement
  * is INCORRECT!
  */
-#define AWAIT_EX_IF(cond, func, status, state, ...)			\
+#define AWAIT_EX_COND_NO_LOCALS(cond, status, func, state, ...)		\
     if (cond) {								\
     case __LINE__:							\
-	if (!ASYNC_IS_DONE(status =					\
+	if (!KiAsyncIsDone(status =					\
 			   func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	    return KiAsyncYield(state, __LINE__); } } {
+	    return _KI_ASYNC_YIELD(state, __LINE__);			\
+    }									\
+    } {
+#define AWAIT_EX_COND(cond, status, func, state, locals, ...)		\
+    if (cond) {								\
+	_ASYNC_SAVE_LOCALS(state, locals);				\
+    case __LINE__:							\
+	if (!KiAsyncIsDone(status =					\
+			   func(state __VA_OPT__(,) __VA_ARGS__)))	\
+	    return _KI_ASYNC_YIELD(state, __LINE__);			\
+	_ASYNC_RESTORE_LOCALS(state, locals);				\
+    } } {
 
 /**
  * Yield execution
  */
 #define ASYNC_YIELD(state)			\
-    return KiAsyncYield(state, __LINE__);	\
+    return _KI_ASYNC_YIELD(state, __LINE__);	\
     } case __LINE__: {
 
 /* bugcheck.c */
 VOID KeBugCheckMsg(IN PCSTR Format, ...);
 
-/*
- * Returns the line number from which the current async function should
- * resume execution. For a new async stack frame, we use zero as the line
- * number since __LINE__ is always greater than 0 for any (reasonable)
- * translation unit.
- */
-static inline LONG KiAsyncGetLineNum(ASYNC_STATE State)
+static inline VOID KiCheckAsyncStack(IN ASYNC_STATE State)
 {
     if (State.StackTop <= 0) {
-	KeBugCheckMsg("BUGBUG Asynchronous function has underflown its call stack.\n");
+	KeBugCheckMsg("BUGBUG Async call stack underflow.\n");
     }
     if (State.StackTop >= ASYNC_MAX_CALL_STACK) {
-	KeBugCheckMsg("BUGBUG Asynchronous function has overflown its call stack.\n");
+	KeBugCheckMsg("BUGBUG Async call stack overflow.\n");
     }
-    return State.AsyncStack->Stack[State.StackTop-1];
 }
 
 /*
  * Record the line number from which to resume the async function and
  * return async pending status.
  */
-static inline NTSTATUS KiAsyncYield(ASYNC_STATE State, LONG LineNum)
-{
-    if (State.StackTop <= 0) {
-	KeBugCheckMsg("BUGBUG Asynchronous function has underflown its call stack.\n");
-    }
-    if (State.StackTop >= ASYNC_MAX_CALL_STACK) {
-	KeBugCheckMsg("BUGBUG Asynchronous function has overflown its call stack.\n");
-    }
-    State.AsyncStack->Stack[State.StackTop-1] = LineNum;
-    return STATUS_ASYNC_PENDING;
-}
-
+#define _KI_ASYNC_YIELD(State, LineNum)				\
+    (KiCheckAsyncStack(State),					\
+     _ASYNC_GET_LINENUM(State) = LineNum,			\
+     STATUS_ASYNC_PENDING)
 
 /*
  * Synchronization Primitives
