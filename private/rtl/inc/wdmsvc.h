@@ -287,6 +287,25 @@ static inline PCSTR IopDbgDeviceRelationTypeStr(IN DEVICE_RELATION_TYPE Type)
     return "UNKNOWN";
 }
 
+static inline PCSTR IopDbgQueryIdTypeStr(IN BUS_QUERY_ID_TYPE IdType)
+{
+    switch (IdType) {
+    case BusQueryDeviceID:
+	return "BusQueryDeviceID";
+    case BusQueryHardwareIDs:
+	return "BusQueryHardwareIDs";
+    case BusQueryCompatibleIDs:
+	return "BusQueryCompatibleIDs";
+    case BusQueryInstanceID:
+	return "BusQueryInstanceID";
+    case BusQueryDeviceSerialNumber:
+	return "BusQueryDeviceSerialNumber";
+    case BusQueryContainerID:
+	return "BusQueryContainerID";
+    }
+    return "UNKNOWN";
+}
+
 static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 				     IN BOOLEAN ClientSide)
 {
@@ -333,6 +352,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    case IRP_MN_QUERY_DEVICE_RELATIONS:
 		DbgPrint("    PNP  QUERY-DEVICE-RELATIONS  Type %s\n",
 			 IopDbgDeviceRelationTypeStr(IoPacket->Request.Parameters.QueryDeviceRelations.Type));
+		break;
+	    case IRP_MN_QUERY_ID:
+		DbgPrint("    PNP  QUERY-ID  Type %s\n",
+			 IopDbgQueryIdTypeStr(IoPacket->Request.Parameters.QueryId.IdType));
 		break;
 	    default:
 		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");

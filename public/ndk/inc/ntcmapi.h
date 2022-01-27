@@ -497,8 +497,6 @@ typedef enum _PLUGPLAY_EVENT_CATEGORY {
     MaxPlugEventCategory
 } PLUGPLAY_EVENT_CATEGORY;
 
-typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
-
 //
 // Information Structures for NtQueryKeyInformation
 //

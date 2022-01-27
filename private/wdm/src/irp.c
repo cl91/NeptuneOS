@@ -226,6 +226,9 @@ static NTSTATUS IopServerIoPacketToLocal(IN PIRP_QUEUE_ENTRY QueueEntry,
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    IoStack->Parameters.QueryDeviceRelations.Type = Src->Request.Parameters.QueryDeviceRelations.Type;
 	    break;
+	case IRP_MN_QUERY_ID:
+	    IoStack->Parameters.QueryId.IdType = Src->Request.Parameters.QueryId.IdType;
+	    break;
 	default:
 	    UNIMPLEMENTED;
 	    return STATUS_NOT_IMPLEMENTED;
@@ -247,20 +250,38 @@ static BOOLEAN IopLocalIrpToServer(IN PIRP_QUEUE_ENTRY IrpQueueEntry,
     ULONG Size = sizeof(IO_PACKET);
     PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(IrpQueueEntry->Irp);
     if (IoSp->MajorFunction == IRP_MJ_PNP) {
-	if (IoSp->MinorFunction == IRP_MN_QUERY_DEVICE_RELATIONS) {
+	switch (IoSp->MinorFunction) {
+	case IRP_MN_QUERY_DEVICE_RELATIONS:
+	{
 	    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)IrpQueueEntry->Irp->IoStatus.Information;
 	    ULONG ResponseOffset = FIELD_OFFSET(IO_PACKET, ClientMsg.Parameters.IoCompleted.ResponseData);
 	    assert(sizeof(IO_PACKET) > ResponseOffset);
 	    ULONG MaxCount = (sizeof(IO_PACKET) - ResponseOffset)/sizeof(GLOBAL_HANDLE);
-	    if (Relations->Count > MaxCount) {
+	    if (Relations != NULL && Relations->Count > MaxCount) {
 		Size += (Relations->Count - MaxCount) * sizeof(GLOBAL_HANDLE);
 	    }
+	}
+	break;
+
+	case IRP_MN_QUERY_ID:
+	{
+	    /* For UTF-16 strings that are legal device IDs its characters are always within ASCII */
+	    if (IrpQueueEntry->Irp->IoStatus.Information != 0) {
+		Size += wcslen((PWSTR)IrpQueueEntry->Irp->IoStatus.Information) + 1;
+	    }
+	}
+	break;
+
+	default:
+	    UNIMPLEMENTED;
+	    return FALSE;
 	}
     }
     if (BufferSize < Size) {
 	return FALSE;
     }
     memset(Dest, 0, Size);
+
     /* TODO: Implement the case for IoCallDriver */
     Dest->Type = IoPacketTypeClientMessage;
     Dest->Size = Size;
@@ -268,22 +289,42 @@ static BOOLEAN IopLocalIrpToServer(IN PIRP_QUEUE_ENTRY IrpQueueEntry,
     Dest->ClientMsg.Parameters.IoCompleted.OriginatingThread = IrpQueueEntry->OriginatingThread;
     Dest->ClientMsg.Parameters.IoCompleted.OriginalIrp = IrpQueueEntry->Identifier;
     Dest->ClientMsg.Parameters.IoCompleted.IoStatus = IrpQueueEntry->Irp->IoStatus;
+
     switch (IoSp->MajorFunction) {
     case IRP_MJ_PNP:
     {
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
-	{
-	    /* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count. ResponseData[] are the GLOBAL_HANDLE
-	     * of the device objects in DEVICE_RELATIONS.Objects. */
-	    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)IrpQueueEntry->Irp->IoStatus.Information;
-	    Dest->ClientMsg.Parameters.IoCompleted.IoStatus.Information = Relations->Count;
-	    for (ULONG i = 0; i < Relations->Count; i++) {
-		Dest->ClientMsg.Parameters.IoCompleted.ResponseData[i] = IopGetDeviceHandle(Relations->Objects[i]);
+	    if (IrpQueueEntry->Irp->IoStatus.Information != 0) {
+		/* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count. ResponseData[] are the GLOBAL_HANDLE
+		 * of the device objects in DEVICE_RELATIONS.Objects. */
+		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)IrpQueueEntry->Irp->IoStatus.Information;
+		Dest->ClientMsg.Parameters.IoCompleted.IoStatus.Information = Relations->Count;
+		for (ULONG i = 0; i < Relations->Count; i++) {
+		    Dest->ClientMsg.Parameters.IoCompleted.ResponseData[i] = IopGetDeviceHandle(Relations->Objects[i]);
+		}
 		Dest->ClientMsg.Parameters.IoCompleted.ResponseDataSize = Relations->Count * sizeof(GLOBAL_HANDLE);
+		IopFreePool(Relations);
 	    }
-	    IopFreePool(Relations);
-	} break;
+	    break;
+
+	case IRP_MN_QUERY_ID:
+	    if (IrpQueueEntry->Irp->IoStatus.Information != 0) {
+		/* ResponseData[] is the UTF-8 string of the device id.
+		 * ResponseDataSize is the size of the string including terminating NUL.
+		 * Dest->...IoStatus.Information is cleared. */
+		PWSTR String = (PWSTR)IrpQueueEntry->Irp->IoStatus.Information;
+		ULONG ResponseDataSize = wcslen(String) + 1;
+		Dest->ClientMsg.Parameters.IoCompleted.IoStatus.Information = 0;
+		Dest->ClientMsg.Parameters.IoCompleted.ResponseDataSize = ResponseDataSize;
+		PCHAR DestStr = (PCHAR)Dest->ClientMsg.Parameters.IoCompleted.ResponseData;
+		for (ULONG i = 0; i < ResponseDataSize; i++) {
+		    DestStr[i] = (CHAR)String[i];
+		}
+		IopFreePool(String);
+	    }
+	    break;
+
 	default:
 	    break;
 	}
@@ -292,6 +333,7 @@ static BOOLEAN IopLocalIrpToServer(IN PIRP_QUEUE_ENTRY IrpQueueEntry,
     default:
 	break;
     }
+
     return TRUE;
 }
 
@@ -321,6 +363,10 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    DbgPrint("    PNP  QUERY-DEVICE-RELATIONS  Type %s\n",
 		     IopDbgDeviceRelationTypeStr(Stack->Parameters.QueryDeviceRelations.Type));
+	    break;
+	case IRP_MN_QUERY_ID:
+	    DbgPrint("    PNP  QUERY-ID  Type %s\n",
+		     IopDbgQueryIdTypeStr(Stack->Parameters.QueryId.IdType));
 	    break;
 	default:
 	    DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");

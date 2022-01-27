@@ -823,6 +823,114 @@ typedef VOID (NTAPI *PIO_APC_ROUTINE)(IN PVOID ApcContext,
 
 #define METHOD_FROM_CTL_CODE(ctrlCode)	((ULONG)(ctrlCode & 3))
 
+typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
+
+enum _IRQ_DEVICE_POLICY {
+    IrqPolicyMachineDefault = 0,
+    IrqPolicyAllCloseProcessors,
+    IrqPolicyOneCloseProcessor,
+    IrqPolicyAllProcessorsInMachine,
+    IrqPolicySpecifiedProcessors,
+    IrqPolicySpreadMessagesAcrossAllProcessors
+};
+
+#ifdef NT_PROCESSOR_GROUPS
+typedef USHORT IRQ_DEVICE_POLICY, *PIRQ_DEVICE_POLICY;
+#define IrqPolicyAllProcessorsInGroup IrqPolicyAllProcessorsInMachine
+#else
+typedef ULONG IRQ_DEVICE_POLICY, *PIRQ_DEVICE_POLICY;
+#endif
+
+typedef enum _IRQ_PRIORITY {
+    IrqPriorityUndefined = 0,
+    IrqPriorityLow,
+    IrqPriorityNormal,
+    IrqPriorityHigh
+} IRQ_PRIORITY, *PIRQ_PRIORITY;
+
+typedef enum _IRQ_GROUP_POLICY {
+    GroupAffinityAllGroupZero = 0,
+    GroupAffinityDontCare
+} IRQ_GROUP_POLICY, *PIRQ_GROUP_POLICY;
+
+/* IO_RESOURCE_DESCRIPTOR.Option */
+#define IO_RESOURCE_PREFERRED             0x01
+#define IO_RESOURCE_DEFAULT               0x02
+#define IO_RESOURCE_ALTERNATIVE           0x08
+
+typedef struct _IO_RESOURCE_DESCRIPTOR {
+    UCHAR Option;
+    UCHAR Type;
+    UCHAR ShareDisposition;
+    UCHAR Spare1;
+    USHORT Flags;
+    USHORT Spare2;
+    union {
+	struct {
+	    ULONG Length;
+	    ULONG Alignment;
+	    PHYSICAL_ADDRESS MinimumAddress;
+	    PHYSICAL_ADDRESS MaximumAddress;
+	} Port;
+	struct {
+	    ULONG Length;
+	    ULONG Alignment;
+	    PHYSICAL_ADDRESS MinimumAddress;
+	    PHYSICAL_ADDRESS MaximumAddress;
+	} Memory;
+	struct {
+	    ULONG MinimumVector;
+	    ULONG MaximumVector;
+#if defined(NT_PROCESSOR_GROUPS)
+	    IRQ_DEVICE_POLICY AffinityPolicy;
+	    USHORT Group;
+#else
+	    IRQ_DEVICE_POLICY AffinityPolicy;
+#endif
+	    IRQ_PRIORITY PriorityPolicy;
+	    KAFFINITY TargetedProcessors;
+	} Interrupt;
+	struct {
+	    ULONG MinimumChannel;
+	    ULONG MaximumChannel;
+	} Dma;
+	struct {
+	    ULONG Length;
+	    ULONG Alignment;
+	    PHYSICAL_ADDRESS MinimumAddress;
+	    PHYSICAL_ADDRESS MaximumAddress;
+	} Generic;
+	struct {
+	    ULONG Length;
+	    ULONG MinBusNumber;
+	    ULONG MaxBusNumber;
+	    ULONG Reserved;
+	} BusNumber;
+	struct {
+	    ULONG Priority;
+	    ULONG Reserved1;
+	    ULONG Reserved2;
+	} ConfigData;
+    } u;
+} IO_RESOURCE_DESCRIPTOR, *PIO_RESOURCE_DESCRIPTOR;
+
+typedef struct _IO_RESOURCE_LIST {
+    USHORT Version;
+    USHORT Revision;
+    ULONG Count;
+    IO_RESOURCE_DESCRIPTOR Descriptors[1];
+} IO_RESOURCE_LIST, *PIO_RESOURCE_LIST;
+
+typedef struct _IO_RESOURCE_REQUIREMENTS_LIST {
+    ULONG ListSize;
+    INTERFACE_TYPE InterfaceType;
+    ULONG BusNumber;
+    ULONG SlotNumber;
+    ULONG Reserved[3];
+    ULONG AlternativeLists;
+    IO_RESOURCE_LIST List[1];
+} IO_RESOURCE_REQUIREMENTS_LIST, *PIO_RESOURCE_REQUIREMENTS_LIST;
+
 /*
  * System service interface of the IO manager.
  */

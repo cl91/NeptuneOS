@@ -220,7 +220,7 @@
 /** Deprecated ***************************************************************/
 
 #ifdef __GNUC__
-#define _CRT_DEPRECATE_TEXT(_Text) __attribute__ ((deprecated))
+#define _CRT_DEPRECATE_TEXT(_Text) __attribute__((deprecated(_Text)))
 #elif defined(_MSC_VER)
 #define _CRT_DEPRECATE_TEXT(_Text) __declspec(deprecated(_Text))
 #else

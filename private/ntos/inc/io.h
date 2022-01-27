@@ -59,6 +59,7 @@ typedef struct _IO_DEVICE_OBJECT {
     LIST_ENTRY DeviceLink; /* Links all devices created by this driver object */
     struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
     struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
+    struct _DEVICE_NODE *DeviceNode;
     IO_DEVICE_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
@@ -86,6 +87,19 @@ typedef struct _IO_FILE_OBJECT {
     BOOLEAN SharedDelete;
     ULONG Flags;
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
+
+/*
+ * Device Node
+ */
+typedef struct _DEVICE_NODE {
+    PIO_DEVICE_OBJECT PhyDevObj;
+    PCSTR DeviceId;
+    PCSTR InstanceId;
+    PCSTR DriverService;
+    struct _DEVICE_NODE *Parent;
+    LIST_ENTRY ChildrenList;
+    LIST_ENTRY SiblingLink;
+} DEVICE_NODE, *PDEVICE_NODE;
 
 /*
  * This represents a pending IRP that is queued on a THREAD object.

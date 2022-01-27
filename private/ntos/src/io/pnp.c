@@ -1,5 +1,107 @@
 #include "iop.h"
 
+static PDEVICE_NODE IopRootDeviceNode;
+
+static inline VOID IopInitializeDeviceNode(IN PDEVICE_NODE DeviceNode,
+					   IN PIO_DEVICE_OBJECT DeviceObject,
+					   IN OPTIONAL PDEVICE_NODE ParentNode)
+{
+    assert(DeviceNode != NULL);
+    assert(DeviceObject != NULL);
+    /* Locate the lowest device object */
+    PIO_DEVICE_OBJECT Pdo = DeviceObject;
+    while (Pdo->AttachedTo != NULL) {
+	Pdo = Pdo->AttachedTo;
+    }
+    DeviceNode->PhyDevObj = Pdo;
+    DeviceNode->Parent = ParentNode;
+    InitializeListHead(&DeviceNode->ChildrenList);
+    if (ParentNode != NULL) {
+	InsertTailList(&ParentNode->ChildrenList, &DeviceNode->SiblingLink);
+    }
+    DeviceObject = Pdo;
+    while (DeviceObject != NULL) {
+	DeviceObject->DeviceNode = DeviceNode;
+	DeviceObject = DeviceObject->AttachedDevice;
+    }
+}
+
+static inline NTSTATUS IopCreateDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject,
+					   IN OPTIONAL PDEVICE_NODE ParentNode,
+					   OUT OPTIONAL PDEVICE_NODE *pDevNode)
+{
+    IopAllocatePool(DeviceNode, DEVICE_NODE);
+    IopInitializeDeviceNode(DeviceNode, DeviceObject, ParentNode);
+    if (pDevNode) {
+	*pDevNode = DeviceNode;
+    }
+    return STATUS_SUCCESS;
+}
+
+static inline VOID IopFreeDeviceNode(IN PDEVICE_NODE DeviceNode)
+{
+}
+
+static inline NTSTATUS IopDeviceNodeSetDeviceId(IN PDEVICE_NODE DeviceNode,
+						IN PCSTR DeviceId,
+						IN BUS_QUERY_ID_TYPE IdType)
+{
+    assert(DeviceNode != NULL);
+    switch (IdType) {
+    case BusQueryDeviceID:
+	assert(DeviceNode->DeviceId == NULL);
+	DeviceNode->DeviceId = RtlDuplicateString(DeviceId, NTOS_IO_TAG);
+	if (DeviceNode->DeviceId == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	break;
+    case BusQueryInstanceID:
+	assert(DeviceNode->InstanceId == NULL);
+	DeviceNode->InstanceId = RtlDuplicateString(DeviceId, NTOS_IO_TAG);
+	if (DeviceNode->InstanceId == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	break;
+    default:
+	DbgTrace("Invalid id type %d\n", IdType);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopCreateBusDeviceNode(IN PIO_DRIVER_OBJECT DriverObject,
+				       IN PCSTR BusDeviceId,
+				       IN PCSTR BusInstanceId,
+				       IN PIO_DEVICE_OBJECT BusFdo,
+				       IN OPTIONAL ULONG DeviceCount,
+				       IN OPTIONAL PGLOBAL_HANDLE DeviceHandles,
+				       IN OPTIONAL PDEVICE_NODE ParentDeviceNode,
+				       OUT PDEVICE_NODE *pDeviceNode)
+{
+    assert(DriverObject != NULL);
+    assert(BusFdo != NULL);
+    assert(DeviceCount == 0 || DeviceHandles != NULL);
+    assert(pDeviceNode != NULL);
+    PDEVICE_NODE BusDeviceNode = NULL;
+    RET_ERR(IopCreateDeviceNode(BusFdo, ParentDeviceNode, &BusDeviceNode));
+    assert(BusDeviceNode != NULL);
+    RET_ERR(IopDeviceNodeSetDeviceId(BusDeviceNode, BusDeviceId, BusQueryDeviceID));
+    RET_ERR(IopDeviceNodeSetDeviceId(BusDeviceNode, BusInstanceId, BusQueryInstanceID));
+    for (ULONG i = 0; i < DeviceCount; i++) {
+	PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandles[i],
+							    DriverObject);
+	if (DeviceObject == NULL) {
+	    DbgTrace("Invalid device handle %p received for driver object %p\n",
+		     (PVOID)DeviceHandles[i], DriverObject);
+	    return STATUS_NO_SUCH_DEVICE;
+	}
+	RET_ERR(IopCreateDeviceNode(DeviceObject, BusDeviceNode, NULL));
+    }
+    *pDeviceNode = BusDeviceNode;
+    return STATUS_SUCCESS;
+}
+
 static VOID IopPopulateQueryDeviceRelationsRequest(IN PIO_PACKET IoPacket,
 						   IN PIO_DEVICE_OBJECT BusDevice,
 						   IN DEVICE_RELATION_TYPE Type)
@@ -22,59 +124,70 @@ static VOID IopPopulateQueryIdRequest(IN PIO_PACKET IoPacket,
 
 static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
 						    IN PIO_DRIVER_OBJECT BusDriver,
-						    IN PIO_DEVICE_OBJECT BusDevice,
+						    IN PIO_DEVICE_OBJECT Enumerator,
 						    IN DEVICE_RELATION_TYPE Type,
 						    OUT PPENDING_IRP *PendingIrp)
 {
     PIO_PACKET IoPacket = NULL;
     RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
     assert(IoPacket != NULL);
-    IopPopulateQueryDeviceRelationsRequest(IoPacket, BusDevice, Type);
+    IopPopulateQueryDeviceRelationsRequest(IoPacket, Enumerator, Type);
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, PendingIrp),
 	       ExFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, BusDriver, Thread);
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopQueueQueryIdRequest(IN PTHREAD Thread,
-				       IN PIO_DRIVER_OBJECT BusDriver,
-				       IN ULONG DeviceCount,
-				       IN PIO_DEVICE_OBJECT *DeviceObjects,
-				       IN BUS_QUERY_ID_TYPE IdType)
+static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
+						      IN PDEVICE_NODE EnumeratorNode,
+						      IN BUS_QUERY_ID_TYPE IdType)
 {
-    for (ULONG i = 0; i < DeviceCount; i++) {
+    LoopOverList(ChildNode, &EnumeratorNode->ChildrenList, DEVICE_NODE, SiblingLink) {
 	PIO_PACKET IoPacket = NULL;
 	RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
 	assert(IoPacket != NULL);
-	IopPopulateQueryIdRequest(IoPacket, DeviceObjects[i], IdType);
+	IopPopulateQueryIdRequest(IoPacket, ChildNode->PhyDevObj, IdType);
 	PPENDING_IRP PendingIrp = NULL;
 	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, &PendingIrp),
 		   ExFreePool(IoPacket));
 	assert(PendingIrp != NULL);
-	IopQueueIoPacket(PendingIrp, BusDriver, Thread);
+	IopQueueIoPacket(PendingIrp, ChildNode->PhyDevObj->DriverObject, Thread);
     }
     return STATUS_SUCCESS;
 }
 
-/*
- * Validate the device handles and convert them into device object pointers.
- */
-C_ASSERT(sizeof(GLOBAL_HANDLE) == sizeof(PIO_DEVICE_OBJECT));
-static NTSTATUS IopDeviceHandlesToDeviceObjects(IN PIO_DRIVER_OBJECT DriverObject,
-						IN ULONG DeviceCount,
-						IN PGLOBAL_HANDLE DeviceHandles)
+static inline PCSTR IopSanitizeName(IN PCSTR Name)
 {
-    for (ULONG i = 0; i < DeviceCount; i++) {
-	PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandles[i],
-							    DriverObject);
-	if (DeviceObject == NULL) {
-	    DbgTrace("No such device handle %p for driver object %p\n",
-		     (PVOID)DeviceHandles[i], DriverObject);
-	    return STATUS_NO_SUCH_DEVICE;
-	}
-	DeviceHandles[i] = (GLOBAL_HANDLE)DeviceObject;
+    return Name ? Name : "????";
+}
+
+static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
+			       IN PCSTR EnumeratedBy,
+			       IN ULONG IndentLevel)
+{
+    CHAR Indent[32];
+    if (IndentLevel >= ARRAYSIZE(Indent)) {
+	IndentLevel = ARRAYSIZE(Indent)-1;
     }
-    return STATUS_SUCCESS;
+    for (ULONG i = 0; i < IndentLevel; i++) {
+	Indent[i] = ' ';
+    }
+    Indent[IndentLevel] = '\0';
+    HalVgaPrint("%sFound device \\%s\\%s\\%s\n", Indent,
+		IopSanitizeName(EnumeratedBy),
+		IopSanitizeName(DeviceNode->DeviceId),
+		IopSanitizeName(DeviceNode->InstanceId));
+}
+
+#define DEVICE_TREE_INDENTATION	2
+static VOID IopPrintDeviceTree(IN PDEVICE_NODE RootDeviceNode,
+			       IN ULONG IndentLevel)
+{
+    LoopOverList(DeviceNode, &RootDeviceNode->ChildrenList, DEVICE_NODE, SiblingLink) {
+	PCSTR ParentDeviceName = DeviceNode->Parent ? DeviceNode->Parent->DeviceId : "HTREE";
+	IopPrintDeviceNode(DeviceNode, ParentDeviceName, IndentLevel);
+	IopPrintDeviceTree(DeviceNode, IndentLevel + DEVICE_TREE_INDENTATION);
+    }
 }
 
 /*
@@ -91,6 +204,7 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 	    PPENDING_IRP PendingIrp;
 	});
     assert(IsListEmpty(&Thread->PendingIrpList));
+    assert(IopRootDeviceNode == NULL);
     Locals.PnpDriver = NULL;
     Locals.RootEnumerator = NULL;
     Locals.PendingIrp = NULL;
@@ -102,6 +216,7 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 					NULL, (POBJECT *)&Locals.RootEnumerator));
 
     /* Ask the root bus driver about its child devices */
+    HalVgaPrint("Enumerating Plug and Play devices...\n");
     IF_ERR_GOTO(out, Status,
 		IopQueueQueryDeviceRelationsRequest(Thread, Locals.PnpDriver,
 						    Locals.RootEnumerator, BusRelations,
@@ -125,29 +240,50 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
     Locals.PendingIrp->IoResponseData = NULL;
     IopCleanupPendingIrp(Locals.PendingIrp);
 
-    /* Validate the device handles supplied by the client and convert them into device objects */
+    /* Create the root device node and insert the child device nodes under it */
     IF_ERR_GOTO(out, Status,
-		IopDeviceHandlesToDeviceObjects(Locals.PnpDriver, DeviceCount, DeviceHandles));
-    PIO_DEVICE_OBJECT *DeviceObjects = (PIO_DEVICE_OBJECT *)DeviceHandles;
+		IopCreateBusDeviceNode(Locals.PnpDriver, "Root", "0", Locals.RootEnumerator,
+				       DeviceCount, DeviceHandles, NULL,
+				       &IopRootDeviceNode));
+    assert(IopRootDeviceNode != NULL);
 
     /* Send the QUERY_ID requests to the physical device objects */
-    HalVgaPrint("Enumerating Plug and Play devices...\n");
     IF_ERR_GOTO(out, Status,
-		IopQueueQueryIdRequest(Thread, Locals.PnpDriver,
-				       DeviceCount, DeviceObjects, BusQueryDeviceID));
+		IopQueueBusQueryChildDeviceIdRequests(Thread, IopRootDeviceNode,
+						      BusQueryDeviceID));
     IF_ERR_GOTO(out, Status,
-		IopQueueQueryIdRequest(Thread, Locals.PnpDriver,
-				       DeviceCount, DeviceObjects, BusQueryInstanceID));
+		IopQueueBusQueryChildDeviceIdRequests(Thread, IopRootDeviceNode,
+						      BusQueryInstanceID));
     AWAIT(IopThreadWaitForIoCompletion, AsyncState, Locals, Thread, FALSE, WaitAll);
+
+    /* Record the device IDs that the bus driver has provided */
+    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
+	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+	assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_PNP);
+	assert(PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_ID);
+	BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.Parameters.QueryId.IdType;
+	PIO_DEVICE_OBJECT DeviceObject = PendingIrp->IoPacket->Request.Device.Object;
+	PDEVICE_NODE DeviceNode = DeviceObject->DeviceNode;
+	assert(DeviceNode != NULL);
+	IF_ERR_GOTO(out, Status,
+		    IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType));
+    }
+    IopPrintDeviceTree(IopRootDeviceNode, 2);
 
     Status = STATUS_SUCCESS;
 
 out:
-    if (Locals.RootEnumerator) {
-	ObDereferenceObject(Locals.RootEnumerator);
-    }
-    if (Locals.PnpDriver) {
-	ObDereferenceObject(Locals.PnpDriver);
+    if (!NT_SUCCESS(Status)) {
+	if (IopRootDeviceNode) {
+	    IopFreeDeviceNode(IopRootDeviceNode);
+	    IopRootDeviceNode = NULL;
+	}
+	if (Locals.RootEnumerator) {
+	    ObDereferenceObject(Locals.RootEnumerator);
+	}
+	if (Locals.PnpDriver) {
+	    ObDereferenceObject(Locals.PnpDriver);
+	}
     }
     IopCleanupPendingIrpList(Thread);
 
