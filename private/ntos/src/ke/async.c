@@ -105,9 +105,9 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
 	    DispatcherObject->Signaled = FALSE;
 	}
 	if (Alertable && !KiApcQueueIsEmpty(Thread)) {
-	    return STATUS_USER_APC;
+	    ASYNC_RETURN(State, STATUS_USER_APC);
 	} else {
-	    return STATUS_SUCCESS;
+	    ASYNC_RETURN(State, STATUS_SUCCESS);
 	}
     }
 
@@ -115,7 +115,7 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
     Thread->Suspended = TRUE;
     Thread->Alertable = Alertable;
 
-    ASYNC_YIELD(State);
+    ASYNC_YIELD(State, _);
 
     /* If the control flow gets here it means that we are being called a second
      * time by the system service dispatcher. Remove the dispatcher object from
@@ -137,10 +137,10 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
     /* If the thread is in an alertable wait and the APC queue is not empty, return
      * STATUS_USER_APC so that the client side stub function can deliver the APCs */
     if (Alertable && !KiApcQueueIsEmpty(Thread)) {
-	return STATUS_USER_APC;
+	ASYNC_RETURN(State, STATUS_USER_APC);
     }
 
-    ASYNC_END(STATUS_SUCCESS);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 /*
@@ -164,16 +164,16 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
      * wait block chain and suspend the thread. */
     assert(Thread->Suspended == FALSE);
     BOOLEAN NonEmpty = FALSE;
-    RET_ERR(KiCreateWaitBlockChain(Thread, WaitType, Iterator, IteratorContext,
-				   &NonEmpty));
+    ASYNC_RET_ERR(State, KiCreateWaitBlockChain(Thread, WaitType, Iterator,
+						IteratorContext, &NonEmpty));
     /* If the wait block chain is empty, do not wait and simply return. */
     if (!NonEmpty) {
-	return STATUS_SUCCESS;
+	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
     Thread->Suspended = TRUE;
     Thread->Alertable = Alertable;
 
-    ASYNC_YIELD(State);
+    ASYNC_YIELD(State, _);
 
     /* If the control flow gets here it means that we are being called a second
      * time by the system service dispatcher. Remove the dispatcher object from
@@ -199,10 +199,10 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     /* If the thread is in an alertable wait and the APC queue is not empty, return
      * STATUS_USER_APC so that the client side stub function can deliver the APCs */
     if (Alertable && !KiApcQueueIsEmpty(Thread)) {
-	return STATUS_USER_APC;
+	ASYNC_RETURN(State, STATUS_USER_APC);
     }
 
-    ASYNC_END(STATUS_SUCCESS);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 /*
@@ -212,6 +212,8 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
  */
 static inline VOID KiResumeThread(IN PTHREAD Thread)
 {
+    DbgTrace("Resuming thread %s|%p\n",
+	     Thread->Process->ImageFile->FileName, Thread);
     /* Make sure we aren't already in the ready list. */
     LoopOverList(Entry, &KiReadyThreadList, THREAD, ReadyListLink) {
 	if (Entry == Thread) {
@@ -326,8 +328,10 @@ SHORT KiDeliverApc(IN PTHREAD Thread,
  */
 VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
 {
+    DbgTrace("Signaling dispatcher %p\n", Dispatcher);
     assert(Dispatcher != NULL);
     if (Dispatcher->Signaled) {
+	DbgTrace("Dispatcher %p already signaled\n", Dispatcher);
 	return;
     }
     if (Dispatcher->EventType == NotificationEvent) {

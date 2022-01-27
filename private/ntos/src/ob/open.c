@@ -124,13 +124,15 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
 
     /* If caller has specified a root directory, the object path must be relative */
     if (ObjectAttributes.RootDirectory != NULL && Locals.Path[0] == OBJ_NAME_PATH_SEPARATOR) {
-	return STATUS_OBJECT_NAME_INVALID;
+	ASYNC_RETURN(AsyncState, STATUS_OBJECT_NAME_INVALID);
     }
     /* Get the root directory if user has specified one. Otherwise, default to the
      * global root object directory. */
     if (ObjectAttributes.RootDirectory != NULL) {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ObjectAttributes.RootDirectory,
-					  OBJECT_TYPE_ANY, &Locals.UserRootDirectory));
+	ASYNC_RET_ERR(AsyncState, ObReferenceObjectByHandle(Thread->Process,
+							    ObjectAttributes.RootDirectory,
+							    OBJECT_TYPE_ANY,
+							    &Locals.UserRootDirectory));
 	assert(Locals.UserRootDirectory != NULL);
 	Locals.Object = Locals.UserRootDirectory;
     }
@@ -290,5 +292,5 @@ out:
     if (Locals.UserRootDirectory != NULL) {
 	ObDereferenceObject(Locals.UserRootDirectory);
     }
-    ASYNC_END(Status);
+    ASYNC_END(AsyncState, Status);
 }

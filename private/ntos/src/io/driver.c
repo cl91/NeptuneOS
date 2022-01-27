@@ -131,7 +131,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 
     NTSTATUS Status = IoLoadDriver(DriverServiceName, &Locals.DriverObject);
     if (!NT_SUCCESS(Status)) {
-	return Status;
+	ASYNC_RETURN(State, Status);
     }
     assert(Locals.DriverObject != NULL);
 
@@ -140,13 +140,13 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 
     /* If the driver initialization failed, inform the caller of the error status */
     if (Locals.DriverObject->MainEventLoopThread == NULL) {
-	return STATUS_UNSUCCESSFUL;
+	ASYNC_RETURN(State, STATUS_UNSUCCESSFUL);
     }
     if (!NT_SUCCESS(Locals.DriverObject->MainEventLoopThread->ExitStatus)) {
-	return Locals.DriverObject->MainEventLoopThread->ExitStatus;
+	ASYNC_RETURN(State, Locals.DriverObject->MainEventLoopThread->ExitStatus);
     }
 
-    ASYNC_END(STATUS_SUCCESS);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,

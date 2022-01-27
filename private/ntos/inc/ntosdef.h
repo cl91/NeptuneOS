@@ -5,8 +5,16 @@
 #undef UNIMPLEMENTED
 #define UNIMPLEMENTED					\
     {							\
+	COMPILE_CHECK_ASYNC_RETURN;			\
 	HalVgaPrint("%s UNIMPLEMENTED\n", __func__);	\
 	return STATUS_NOT_IMPLEMENTED;			\
+    }
+
+#define UNIMPLEMENTED_ASYNC(State)			\
+    {							\
+	COMPILE_CHECK_ASYNC_FRAME_SIZE;			\
+	HalVgaPrint("%s UNIMPLEMENTED\n", __func__);	\
+	ASYNC_RETURN(State, STATUS_NOT_IMPLEMENTED);	\
     }
 
 #if defined(CONFIG_DEBUG_BUILD)

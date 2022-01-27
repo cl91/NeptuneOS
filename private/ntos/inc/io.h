@@ -100,6 +100,7 @@ typedef struct _PENDING_IRP {
     PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
 			  * The pending IO packet must be of type IoPacketTypeRequest. */
     IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
+    ULONG IoResponseDataSize; /* Size of the response data to the pending IO packet. */
     PVOID IoResponseData; /* Response data to the pending IO packet. NULL if not supplied
 			   * or if server-side allocation failed. */
     LIST_ENTRY Link;	  /* List link for THREAD.PendingIrpList */

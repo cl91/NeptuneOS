@@ -30,14 +30,34 @@
 
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
 
+/*
+ * This can only be called in non-async functions
+ */
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
     {} Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
     if ((Var) == NULL) {						\
 	DbgPrint("Allocation of 0x%zx bytes for variable %s of type"	\
 		 " (%s *) failed in function %s @ %s:%d\n",		\
-		 (MWORD) Size, #Var, #Type, __func__, __FILE__, __LINE__); \
-	{OnError;} return STATUS_NO_MEMORY; }
+		 (MWORD) Size, #Var, #Type,				\
+		 __func__, __FILE__, __LINE__);				\
+	{OnError;}							\
+	COMPILE_CHECK_ASYNC_RETURN;					\
+	return STATUS_NO_MEMORY;					\
+    }
 
+/*
+ * This can only be called inside async functions
+ */
+#define ExAllocatePoolAsync(State, Var, Type, Size, Tag, OnError)	\
+    {} Type *Var = (Type *)ExAllocatePoolWithTag(Size, Tag);		\
+    if ((Var) == NULL) {						\
+	DbgPrint("Allocation of 0x%zx bytes for variable %s of type"	\
+		 " (%s *) failed in function %s @ %s:%d\n",		\
+		 (MWORD) Size, #Var, #Type,				\
+		 __func__, __FILE__, __LINE__);				\
+	{OnError;}							\
+	ASYNC_RETURN(State, STATUS_NO_MEMORY);				\
+    }
 
 /*
  * Creation context for the timer object creation routine

@@ -65,6 +65,13 @@ static inline VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
     ExFreePool(PendingIrp);
 }
 
+static inline VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
+{
+    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
+	IopCleanupPendingIrp(PendingIrp);
+    }
+}
+
 static inline PPENDING_IRP IopGetPendingIrp(IN PTHREAD Thread,
 					    IN PIO_PACKET IoPacket)
 {
@@ -195,19 +202,31 @@ extern LIST_ENTRY IopDriverList;
 static inline PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
 						   IN PIO_DRIVER_OBJECT DriverObject)
 {
-    /* Traverse the list of all driver objects, and check if there is a match */
-    LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
-	LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	    if (DevObj == GLOBAL_HANDLE_TO_POINTER(DeviceHandle)) {
-		if (DriverObject != NULL) {
-		    return DrvObj == DriverObject ? DevObj : NULL;
-		}
+    /* If driver object is not NULL, only check its device for a match */
+    if (DriverObject != NULL) {
+	LoopOverList(DevObj, &DriverObject->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	    if (DevObj == GLOBAL_HANDLE_TO_OBJECT(DeviceHandle)) {
 		return DevObj;
+	    }
+	}
+    } else {
+	/* Traverse the list of all driver objects, and check if there is a match */
+	LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
+	    LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+		if (DevObj == GLOBAL_HANDLE_TO_OBJECT(DeviceHandle)) {
+		    return DevObj;
+		}
 	    }
 	}
     }
     return NULL;
 }
+
+/* irp.c */
+NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
+				      IN PTHREAD Thread,
+				      IN BOOLEAN Alertable,
+				      IN WAIT_TYPE WaitType);
 
 /* file.c */
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,

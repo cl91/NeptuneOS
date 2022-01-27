@@ -105,7 +105,7 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
-    ASYNC_END(Status);
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtOpenFile(IN ASYNC_STATE State,
@@ -132,7 +132,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
-    ASYNC_END(Status);
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtReadFile(IN ASYNC_STATE AsyncState,

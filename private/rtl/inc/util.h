@@ -101,12 +101,30 @@ VOID KeDbgDumpIPCError(IN int Error);
 #define DbgTrace(...) { DbgPrint("%s:  ", __func__); DbgPrint(__VA_ARGS__); }
 #endif
 
+/*
+ * This will generate a compile-time error if the function is marked
+ * as async.
+ */
+typedef char __ASYNC_RETURN_CHECK_HELPER;
+#define COMPILE_CHECK_ASYNC_RETURN					\
+    { compile_assert(ERROR_YOU_MUST_USE_ASYNC_RETURN,			\
+		     sizeof(__ASYNC_RETURN_CHECK_HELPER) == 1); }
+
+/*
+ * This macro shall not be used inside an async function. Use
+ * ASYNC_RET_ERR_EX instead
+ */
 #define RET_ERR_EX(Expr, OnError)					\
+    COMPILE_CHECK_ASYNC_RETURN;						\
     {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\
 	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
 		     " error 0x%x\n",					\
 		     #Expr, __func__, __FILE__, __LINE__, Status);	\
 	    {OnError;} return Status; }}
+/*
+ * This macro shall not be used inside an async function. Use
+ * ASYNC_RET_ERR instead
+ */
 #define RET_ERR(Expr)	RET_ERR_EX(Expr, {})
 
 #define IF_ERR_GOTO(Label, Status, Expr)				\

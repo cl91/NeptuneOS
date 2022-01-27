@@ -252,9 +252,11 @@ static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
-static inline VOID KiClearAsyncStack(IN PTHREAD Thread)
+static inline VOID KiCheckAsyncStackEmpty(IN PTHREAD Thread)
 {
-    memset(&Thread->AsyncStack, 0, sizeof(ASYNC_STACK));
+    for (ULONG i = 0; i < ARRAYSIZE(Thread->AsyncStack.Stack); i++) {
+	assert(Thread->AsyncStack.Stack[i] == 0);
+    }
 }
 
 /* The actual handling of system services is in the generated file below. */
@@ -370,7 +372,11 @@ VOID KiDispatchExecutiveServices()
 		/* Thread is always a valid pointer since the client cannot modify the badge */
 		assert(Badge != 0);
 		PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
-		KiClearAsyncStack(Thread);
+		/* On debug build we check that the async function has correctly poped the
+		 * async stack (by using ASYNC_RETURN rather than return). This should have
+		 * been caught by the KiCheckAsyncStackEmpty when we reply to the client but
+		 * we want to make sure (async calls are hard to debug!). */
+		KiCheckAsyncStackEmpty(Thread);
 		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_WDM_SERVICE) {
 		    DbgTrace("Got driver call from thread %p\n", Thread);
 		    Status = KiHandleWdmService(SvcNum, Thread, ReqMsgLength,
@@ -385,6 +391,11 @@ VOID KiDispatchExecutiveServices()
 		if (Status == STATUS_USER_APC) {
 		    NumApc = KiDeliverApc(Thread, MsgBufferEnd);
 		}
+		if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
+		    /* Before we reply to the client, on debug build we check that the async function has
+		     * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
+		    KiCheckAsyncStackEmpty(Thread);
+		}
 	    }
 	    if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
 		seL4_SetMR(0, (MWORD) Status);
@@ -395,7 +406,9 @@ VOID KiDispatchExecutiveServices()
 	KiSignalExpiredTimerList();
 	/* Check if any other thread is awaken and attempt to continue the execution of
 	 * its service handler from the saved context. */
-	LoopOverList(ReadyThread, &KiReadyThreadList, THREAD, ReadyListLink) {
+	while (!IsListEmpty(&KiReadyThreadList)) {
+	    PTHREAD ReadyThread = CONTAINING_RECORD(KiReadyThreadList.Flink,
+						    THREAD, ReadyListLink);
 	    ULONG ReplyMsgLength = 0;
 	    ULONG MsgBufferEnd = 0;
 	    SHORT NumApc = 0;
@@ -411,6 +424,9 @@ VOID KiDispatchExecutiveServices()
 		if (Status == STATUS_USER_APC) {
 		    NumApc = KiDeliverApc(ReadyThread, MsgBufferEnd);
 		}
+		/* Before we reply to the client, on debug build we check that the async function has
+		 * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
+		KiCheckAsyncStackEmpty(ReadyThread);
 		/* We return the service status via the zeroth message register and
 		 * the number of APCs via the label of the message */
 		seL4_SetMR(0, (MWORD) Status);

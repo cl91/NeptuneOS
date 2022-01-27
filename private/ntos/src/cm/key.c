@@ -166,7 +166,7 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
     AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals, Thread,
 	     ObjectAttributes, OBJECT_TYPE_KEY,
 	     (POB_PARSE_CONTEXT)&Locals.OpenContext, KeyHandle);
-    ASYNC_END(Status);
+    ASYNC_END(AsyncState, Status);
 }
 
 NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
@@ -196,7 +196,7 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_KEY,
 	     (POB_PARSE_CONTEXT)&Locals.OpenContext, KeyHandle);
-    ASYNC_END(Status);
+    ASYNC_END(AsyncState, Status);
 }
 
 NTSTATUS NtEnumerateKey(IN ASYNC_STATE AsyncState,

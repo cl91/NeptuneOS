@@ -156,6 +156,10 @@ typedef struct _IRQ_HANDLER {
  *    calls and should not be defined this way. For IN OUT variables it is best
  *    to manually manage variable saving.
  *
+ * 3. Use ASYNC_RETURN when you need to return a status from an async function.
+ *    Simply using the C return statement is INCORRECT!
+ *
+ * 4. You must end all async function with ASYNC_END. Otherwise it won't compile.
  *
  * DESCRIPTION:
  *
@@ -198,7 +202,8 @@ typedef struct _IRQ_HANDLER {
 /*
  * Starting from the top level function (ie. a service handler), all
  * async function calls push onto the top of the ASYNC_STACK their
- * own async status word (ie. line number from which to resume execution).
+ * own async status word (ie. line number from which to resume execution),
+ * followed by the local variables that must be preserved across async calls.
  * At the entry of the service handler, StackTop is 0, indicating that the
  * stack is empty.
  */
@@ -229,15 +234,18 @@ typedef struct _ASYNC_STATE {
  * Dump the async state of the function
  */
 #define ASYNC_DUMP(state)						\
-    DbgTrace("Dumping async state for thread %p: Stack top %d. "	\
-	     "Async states:",						\
-	     CONTAINING_RECORD(state.AsyncStack, THREAD, AsyncStack),	\
-	     (state).StackTop);						\
-    for (ULONG StackPtr = 0;						\
-	 StackPtr < ((state).StackTop - sizeof(ASYNC_STACK_FRAME)); ) {	\
+    {									\
+	PTHREAD Thread = CONTAINING_RECORD(state.AsyncStack,		\
+					   THREAD, AsyncStack);		\
+	DbgTrace("Async state for thread %s|%p: Stack top %d. "		\
+		 "Async stack:",					\
+		 Thread->Process->ImageFile->FileName, Thread,		\
+		 (state).StackTop);					\
+    }									\
+    for (ULONG StackPtr = 0; StackPtr < (state).StackTop; ) {		\
 	PASYNC_STACK_FRAME Frame = (PASYNC_STACK_FRAME)(		\
 	    (MWORD)((state).AsyncStack) + StackPtr);			\
-	DbgPrint(" frame size %d line num %d",				\
+	DbgPrint(" (FS %d LN %d)",					\
 		 Frame->Size, Frame->LineNum);				\
 	assert(Frame->Size != 0);					\
 	StackPtr += Frame->Size;					\
@@ -253,8 +261,8 @@ typedef struct _ASYNC_STATE {
     ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack) +			\
 			  (state).StackTop - sizeof(ASYNC_STACK_FRAME)))
 #define _ASYNC_GET_NEXT_FRAME(state)					\
-    ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack			\
-				  + (state).StackTop)))
+    ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack)			\
+			  + (state).StackTop))
 #define _ASYNC_GET_LINENUM(state)		\
     (_ASYNC_GET_FRAME(state)->LineNum)
 #define _ASYNC_GET_LOCALS(state)		\
@@ -272,7 +280,10 @@ typedef struct _ASYNC_STATE {
 	struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS Locals;		\
     } ASYNC_STACK_FRAME, *PASYNC_STACK_FRAME;				\
     locals = _ASYNC_GET_NEXT_FRAME(state)->Locals
+/* We define an unused typedef below so in non-async functions we can
+ * generate an error if certain macros (RET_ERR, RET_ERR_EX) are used */
 #define _ASYNC_BEGIN_COMMON(state, ...)					\
+    typedef ASYNC_STACK_FRAME __ASYNC_RETURN_CHECK_HELPER;		\
     _ASYNC_GET_NEXT_FRAME(state)->Size = sizeof(ASYNC_STACK_FRAME);	\
     (state).StackTop += sizeof(ASYNC_STACK_FRAME);			\
     ASYNC_DUMP(state);							\
@@ -280,7 +291,7 @@ typedef struct _ASYNC_STATE {
     case 0: {
 /* This is magic! */
 #define _ASYNC_MAKE_EMPTY_ARG_			,
-#define _ASYNC_GET_SECOND_ARG(x, y,...)		y
+#define _ASYNC_GET_SECOND_ARG(x, y, ...)	y
 #define _ASYNC_DEFERRED_EXPAND(x, ...)		\
     _ASYNC_GET_SECOND_ARG(x, __VA_ARGS__)
 #define _ASYNC_SAVE_LOCALS(state, locals)				\
@@ -314,15 +325,52 @@ typedef struct _ASYNC_STATE {
     _ASYNC_BEGIN_COMMON(__VA_ARGS__)
 
 /**
- * Mark the end of a async subroutine.
- * @param Status The NTSTATUS to return to the caller. Must not be from
- * the async facility.
+ * Check that we are inside an ASYNC_BEGIN ASYNC_END block
  */
-#define ASYNC_END(status)				\
-    assert(!IS_ASYNC_STATUS(status));			\
-    return status; }					\
-    default:						\
-    KeBugCheckMsg("BUGBUG! Async function error.\n");	\
+#define COMPILE_CHECK_ASYNC_FRAME_SIZE					\
+    { compile_assert(ERROR_YOU_MUST_USE_NON_ASYNC_RETURN,		\
+		     sizeof(__ASYNC_RETURN_CHECK_HELPER) ==		\
+		     sizeof(ASYNC_STACK_FRAME)); }
+
+/**
+ * Return a status from the async function.
+ *
+ * IMPORTANT: You must use ASYNC_RETURN to return from an async function.
+ *    Simply doing return Status is INCORRECT!
+ */
+#define ASYNC_RETURN(state, status)					\
+    COMPILE_CHECK_ASYNC_FRAME_SIZE;					\
+    assert(!IS_ASYNC_STATUS(status));					\
+    memset(_ASYNC_GET_FRAME(state), 0, sizeof(ASYNC_STACK_FRAME));	\
+    return status;
+
+/**
+ * Use these instead of RET_ERR and RET_ERR_EX inside async functions
+ */
+#define ASYNC_RET_ERR_EX(State, Expr, OnError)				\
+    COMPILE_CHECK_ASYNC_FRAME_SIZE;					\
+    {									\
+	NTSTATUS Status = (Expr);					\
+	if (!NT_SUCCESS(Status)) {					\
+	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+		     " error 0x%x\n",					\
+		     #Expr, __func__, __FILE__, __LINE__, Status);	\
+	    {OnError;}							\
+	    ASYNC_RETURN(State, Status);				\
+	}								\
+    }
+#define ASYNC_RET_ERR(State, Expr)	ASYNC_RET_ERR_EX(State, Expr, {})
+
+/**
+ * Mark the end of a async subroutine.
+ * @param state The async state of the current function.
+ * @param status The NTSTATUS to return to the caller. Must not be an
+ *        async status.
+ */
+#define ASYNC_END(state, status)				\
+    ASYNC_RETURN(state, status); }				\
+    default:							\
+    KeBugCheckMsg("BUGBUG! Async function error.\n");		\
     return STATUS_UNSUCCESSFUL; }
 
 /**
@@ -376,7 +424,7 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
     _ASYNC_RESTORE_LOCALS(state, locals)
 
 /**
- * IMPORTANT: You MUST use the following macros, AWAIT_if if you want to await
+ * IMPORTANT: You MUST use the following macros, AWAIT_IF if you want to await
  * conditionally. Enclosing the AWAIT statement in an if-statement is INCORRECT!
  */
 #define AWAIT_IF(cond, func, state, locals, ...)			\
@@ -406,9 +454,11 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
 /**
  * Yield execution
  */
-#define ASYNC_YIELD(state)			\
+#define ASYNC_YIELD(state, locals)		\
+    _ASYNC_SAVE_LOCALS(state, locals);		\
     return _KI_ASYNC_YIELD(state, __LINE__);	\
-    } case __LINE__: {
+    } case __LINE__: {				\
+    _ASYNC_RESTORE_LOCALS(state, locals);
 
 /* bugcheck.c */
 VOID KeBugCheckMsg(IN PCSTR Format, ...);

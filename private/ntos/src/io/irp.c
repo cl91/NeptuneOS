@@ -14,8 +14,8 @@ static PDISPATCHER_HEADER IopPendingIrpIterator(IN PVOID Context)
     if (Ctx->CurrentEntry->Flink == Ctx->ListHead) {
 	return NULL;
     }
-    PPENDING_IRP PendingIrp = CONTAINING_RECORD(Ctx->CurrentEntry->Flink,
-						PENDING_IRP, Link);
+    PPENDING_IRP PendingIrp = CONTAINING_RECORD(Ctx->CurrentEntry, PENDING_IRP, Link);
+    Ctx->CurrentEntry = Ctx->CurrentEntry->Flink;
     return &PendingIrp->IoCompletionEvent.Header;
 }
 
@@ -25,13 +25,13 @@ NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
 				      IN WAIT_TYPE WaitType)
 {
     ASYNC_BEGIN(State, Locals, {
-	    PENDING_IRP_ITERATOR_CONTEXT Ctx;
+	    IN OUT PENDING_IRP_ITERATOR_CONTEXT Ctx;
 	});
     Locals.Ctx.ListHead = &Thread->PendingIrpList;
     Locals.Ctx.CurrentEntry = Thread->PendingIrpList.Flink;
     AWAIT(KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
 	  WaitType, IopPendingIrpIterator, &Locals.Ctx);
-    ASYNC_END(STATUS_SUCCESS);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 /*
@@ -102,6 +102,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 		if (PendingIrp != NULL) {
 		    PendingIrp->IoResponseStatus = Response->ClientMsg.Parameters.IoCompleted.IoStatus;
 		    ULONG ResponseDataSize = Response->ClientMsg.Parameters.IoCompleted.ResponseDataSize;
+		    PendingIrp->IoResponseDataSize = ResponseDataSize;
 		    if (ResponseDataSize) {
 			PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize, NTOS_IO_TAG);
 			if (PendingIrp->IoResponseData != NULL) {
@@ -131,7 +132,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	} break;
 
 	case IoPacketTypeRequest: {
-	    UNIMPLEMENTED;
+	    UNIMPLEMENTED_ASYNC(State);
 	} break;
 
 	default:
@@ -184,15 +185,17 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	    Dest->Request.OriginatingThread.Handle =
 		OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.OriginatingThread.Object);
 	}
+	IoDbgDumpIoPacket(Dest, TRUE);
+	Dest = (PIO_PACKET)((MWORD)Dest + IoPacket->Size);
+	PIO_PACKET NextIoPacket = CONTAINING_RECORD(IoPacket->IoPacketLink.Flink,
+						    IO_PACKET, IoPacketLink);
 	/* Move this IoPacket from the driver's IO packet queue to its pending IO packet list */
 	RemoveEntryList(&IoPacket->IoPacketLink);
 	InsertTailList(&DriverObject->PendingIoPacketList, &IoPacket->IoPacketLink);
-	IoDbgDumpIoPacket(Dest, TRUE);
-	Dest = (PIO_PACKET)((MWORD)Dest + IoPacket->Size);
-	IoPacket = CONTAINING_RECORD(IoPacket->IoPacketLink.Flink, IO_PACKET, IoPacketLink);
+	IoPacket = NextIoPacket;
     }
     *pNumRequestPackets = NumRequestPackets;
 
     /* Returns APC status if the alertable wait above returned APC status */
-    ASYNC_END(Status);
+    ASYNC_END(State, Status);
 }

@@ -69,6 +69,13 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     assert(DriverObject != NULL);
     assert(pDeviceObject != NULL);
 
+    /* We don't support creating device objects for a different driver. This will
+     * probably never be supported so we simply return error. */
+    if (DriverObject != &IopDriverObject) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
     /* Both device object and device extension are aligned by MEMORY_ALLOCATION_ALIGNMENT */
     SIZE_T AlignedDevExtSize = ALIGN_UP_BY(DeviceExtensionSize,
 					   MEMORY_ALLOCATION_ALIGNMENT);
