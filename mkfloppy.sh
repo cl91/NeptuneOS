@@ -78,7 +78,7 @@ NTOSTMP=$(mktemp /tmp/neptuneos-ntos.XXXXXXXX)
 gzip -c $IMAGEDIR/$KERNEL > $KERNELTMP
 gzip -c $IMAGEDIR/$NTOS > $NTOSTMP
 
-echo "This script will now ask for your root password, because eVeRyThInG iS a fIlE"
+echo "This script will now ask for your password, because eVeRyThInG iS a fIlE"
 sudo mount $FLOPPYIMG $FLOPPYOUT
 sudo cp $KERNELTMP $FLOPPYOUT/kernel
 sudo cp $NTOSTMP $FLOPPYOUT/ntos
