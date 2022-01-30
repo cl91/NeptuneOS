@@ -95,10 +95,15 @@ typedef struct _DEVICE_NODE {
     PIO_DEVICE_OBJECT PhyDevObj;
     PCSTR DeviceId;
     PCSTR InstanceId;
-    PCSTR DriverService;
     struct _DEVICE_NODE *Parent;
     LIST_ENTRY ChildrenList;
     LIST_ENTRY SiblingLink;
+    PCSTR DriverServiceName;
+    ULONG UpperFilterCount;
+    ULONG LowerFilterCount;
+    PCSTR *UpperFilters;
+    PCSTR *LowerFilters;
+    BOOLEAN DriverLoaded;
 } DEVICE_NODE, *PDEVICE_NODE;
 
 /*

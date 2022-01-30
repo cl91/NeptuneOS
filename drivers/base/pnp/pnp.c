@@ -14,11 +14,11 @@
 
 typedef struct _PNP_DEVICE {
     // Device ID
-    UNICODE_STRING DeviceID;
+    PCWSTR DeviceID;
     // Instance ID
-    UNICODE_STRING InstanceID;
+    PCWSTR InstanceID;
     // Device description
-    UNICODE_STRING DeviceDescription;
+    PCWSTR DeviceDescription;
     // Resource requirement list
     PIO_RESOURCE_REQUIREMENTS_LIST ResourceRequirementsList;
     // Associated resource list
@@ -31,8 +31,8 @@ typedef struct _PNP_DEVICE_EXTENSION {
 } PNP_DEVICE_EXTENSION, *PPNP_DEVICE_EXTENSION;
 
 static PNP_DEVICE I8042DeviceInfo = {
-    .DeviceID = RTL_CONSTANT_STRING(L"PNP0303"),
-    .InstanceID = RTL_CONSTANT_STRING(L"0")
+    .DeviceID = L"PNP0303",
+    .InstanceID = L"0"
 };
 
 /*
@@ -157,12 +157,19 @@ static NTSTATUS PnpDeviceQueryId(IN PDEVICE_OBJECT Pdo,
     switch (IdType) {
         case BusQueryDeviceID:
 	{
+	    WCHAR Buffer[128];
+	    ULONG Length = _snwprintf(Buffer, ARRAYSIZE(Buffer), L"Root\\%s",
+				      DeviceExtension->DeviceInfo->DeviceID);
+	    UNICODE_STRING StringBuffer = {
+		.Buffer = Buffer,
+		.Length = Length * sizeof(WCHAR),
+		.MaximumLength = Length * sizeof(WCHAR)
+	    };
             UNICODE_STRING String;
             DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_ID / BusQueryDeviceID\n");
 
             Status = RtlDuplicateUnicodeString(RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
-					       &DeviceExtension->DeviceInfo->DeviceID,
-					       &String);
+					       &StringBuffer, &String);
             Irp->IoStatus.Information = (ULONG_PTR)String.Buffer;
             break;
 	}
@@ -174,12 +181,10 @@ static NTSTATUS PnpDeviceQueryId(IN PDEVICE_OBJECT Pdo,
 
         case BusQueryInstanceID:
 	{
-            UNICODE_STRING String;
             DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_ID / BusQueryInstanceID\n");
 
-            Status = RtlDuplicateUnicodeString(RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
-					       &DeviceExtension->DeviceInfo->InstanceID,
-					       &String);
+	    UNICODE_STRING String;
+	    Status = RtlCreateUnicodeString(&String, DeviceExtension->DeviceInfo->InstanceID);
             Irp->IoStatus.Information = (ULONG_PTR)String.Buffer;
             break;
 	}

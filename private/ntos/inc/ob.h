@@ -344,6 +344,12 @@ typedef struct _OBJECT_TYPE {
     OBJECT_TYPE_INITIALIZER TypeInfo;
 } OBJECT_TYPE, *POBJECT_TYPE;
 
+static inline BOOLEAN ObObjectIsType(IN POBJECT Object,
+				     IN OBJECT_TYPE_ENUM Type)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->Type->Index == Type;
+}
+
 #define OBJ_NAME_PATH_SEPARATOR ('\\')
 
 typedef struct _OBJECT_DIRECTORY *POBJECT_DIRECTORY;

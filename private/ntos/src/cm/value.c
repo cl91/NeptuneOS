@@ -251,11 +251,19 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS CmReadKeyValue(IN PCSTR KeyPath,
-			IN PCSTR Value,
-			OUT POBJECT *KeyObject,
-			OUT ULONG *Type,
-			OUT PVOID *Data)
+/*
+ * Read the value under the specified registry key. Key must be loaded
+ * into the memory before calling.
+ *
+ * NOTE: This routine returns a pointer into the in-memory registry data.
+ * You must call ObDereferenceObject on the key object once you are done
+ * with the value.
+ */
+NTSTATUS CmReadKeyValueByPath(IN PCSTR KeyPath,
+			      IN PCSTR Value,
+			      OUT POBJECT *KeyObject,
+			      OUT ULONG *Type,
+			      OUT PVOID *Data)
 {
     PCM_KEY_OBJECT Key = NULL;
     RET_ERR(ObReferenceObjectByName(KeyPath, OBJECT_TYPE_KEY, NULL, (POBJECT *)&Key));
@@ -271,6 +279,27 @@ NTSTATUS CmReadKeyValue(IN PCSTR KeyPath,
     assert(ValueObj->Type != REG_QWORD);
 #endif
     *KeyObject = Key;
+    *Type = ValueObj->Type;
+    *Data = ValueObj->Data;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS CmReadKeyValueByPointer(IN POBJECT KeyObject,
+				 IN PCSTR Value,
+				 OUT ULONG *Type,
+				 OUT PVOID *Data)
+{
+    if (!ObObjectIsType(KeyObject, OBJECT_TYPE_KEY)) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    PCM_NODE Node = CmpGetNamedNode(KeyObject, Value, 0);
+    if (Node == NULL || Node->Type != CM_NODE_VALUE) {
+	return Node == NULL ? STATUS_OBJECT_NAME_NOT_FOUND : STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    PCM_REG_VALUE ValueObj = (PCM_REG_VALUE)Node;
+#ifdef _M_IX86
+    assert(ValueObj->Type != REG_QWORD);
+#endif
     *Type = ValueObj->Type;
     *Data = ValueObj->Data;
     return STATUS_SUCCESS;

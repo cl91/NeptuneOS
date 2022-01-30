@@ -53,8 +53,8 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
  * The driver service registry key must already be loaded when this
  * routine is called.
  */
-NTSTATUS IoLoadDriver(IN PCSTR DriverServicePath,
-		      OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject)
+NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
+		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject)
 {
     /* Find the driver service basename, ie. "null" in
      * "\\Registry\\Machine\\CurrentControlSet\\Services\\null" */
@@ -96,8 +96,8 @@ NTSTATUS IoLoadDriver(IN PCSTR DriverServicePath,
     ULONG RegValueType;
     PCSTR DriverImagePath = NULL;
     POBJECT KeyObject = NULL;
-    RET_ERR(CmReadKeyValue(DriverServicePath, "ImagePath", &KeyObject,
-			   &RegValueType, (PPVOID)&DriverImagePath));
+    RET_ERR(CmReadKeyValueByPath(DriverServicePath, "ImagePath", &KeyObject,
+				 &RegValueType, (PPVOID)&DriverImagePath));
     assert(KeyObject != NULL);
     if (RegValueType != REG_SZ && RegValueType != REG_EXPAND_SZ) {
 	ObDereferenceObject(KeyObject);
@@ -129,7 +129,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 	    PIO_DRIVER_OBJECT DriverObject;
 	});
 
-    NTSTATUS Status = IoLoadDriver(DriverServiceName, &Locals.DriverObject);
+    NTSTATUS Status = IopLoadDriver(DriverServiceName, &Locals.DriverObject);
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
     }

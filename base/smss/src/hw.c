@@ -2,7 +2,11 @@
 
 #define HARDWARE_KEY_PATH	"\\Registry\\Machine\\Hardware"
 #define SERVICE_KEY_PATH	"\\Registry\\Machine\\CurrentControlSet\\Services"
+#define CLASS_KEY_PATH		"\\Registry\\Machine\\CurrentControlSet\\Control\\Class"
+#define ENUM_KEY_PATH		"\\Registry\\Machine\\CurrentControlSet\\Enum"
 #define PARAMETERS_KEY_NAME	"Parameters"
+
+#define KBDCLASS_GUID		"{4D36E96B-E325-11CE-BFC1-08002BE10318}"
 
 typedef struct _DRIVER_SERVICE_PARAMETER {
     PCSTR Name;
@@ -24,12 +28,24 @@ static struct {
     PCSTR ServiceName;
     ULONG_PTR ServiceParameterCount;
     PDRIVER_SERVICE_PARAMETER ServiceParameters;
+    PCSTR DeviceId;
+    PCSTR InstanceId;
+    PCSTR ClassGuid;
 } BootDrivers[] = {
-    { "null", 0, NULL },
-    { "beep", 0, NULL },
-    { "pnp", 0, NULL },
-    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters },
-    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters }
+    { "null", 0, NULL, NULL, NULL, NULL },
+    { "beep", 0, NULL, NULL, NULL, NULL },
+    { "pnp", 0, NULL, "HTREE\\ROOT", "0", NULL },
+    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters, "Root\\PNP0303", "0", KBDCLASS_GUID },
+    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL }
+};
+
+static struct {
+    PCSTR ClassName;
+    PCSTR ClassGuid;
+    PCSTR LowerFilters;		/* MULTI_SZ */
+    PCSTR UpperFilters;		/* MULTI_SZ */
+} ClassDrivers[] = {
+    { "Keyboard", KBDCLASS_GUID, NULL, "kbdclass\0" }
 };
 
 static NTSTATUS SmInitBootDriverConfigs()
@@ -59,6 +75,39 @@ static NTSTATUS SmInitBootDriverConfigs()
 				     BootDrivers[i].ServiceParameters[j].Type,
 				     BootDrivers[i].ServiceParameters[j].Data,
 				     BootDrivers[i].ServiceParameters[j].DataSize));
+	}
+	if (BootDrivers[i].DeviceId != NULL) {
+	    assert(BootDrivers[i].InstanceId != NULL);
+	    CHAR EnumKeyPath[256];
+	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s\\%s",
+		     BootDrivers[i].DeviceId, BootDrivers[i].InstanceId);
+	    HANDLE EnumKey = NULL;
+	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, &EnumKey));
+	    assert(EnumKey != NULL);
+	    RET_ERR(SmSetRegKeyValue(EnumKey, "Service", REG_SZ,
+				     (PVOID)BootDrivers[i].ServiceName, 0));
+	    if (BootDrivers[i].ClassGuid != NULL) {
+		RET_ERR(SmSetRegKeyValue(EnumKey, "ClassGUID", REG_SZ,
+					 (PVOID)BootDrivers[i].ClassGuid, 0));
+	    }
+	}
+    }
+    CHAR ClassKeyPath[256];
+    for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
+	snprintf(ClassKeyPath, sizeof(ClassKeyPath), CLASS_KEY_PATH "\\%s",
+		 ClassDrivers[i].ClassGuid);
+	HANDLE ClassKey = NULL;
+	RET_ERR(SmCreateRegistryKey(ClassKeyPath, FALSE, &ClassKey));
+	assert(ClassKey != NULL);
+	RET_ERR(SmSetRegKeyValue(ClassKey, "Class", REG_SZ,
+				 (PVOID)ClassDrivers[i].ClassName, 0));
+	if (ClassDrivers[i].LowerFilters != NULL) {
+	    RET_ERR(SmSetRegKeyValue(ClassKey, "LowerFilters", REG_MULTI_SZ,
+				     (PVOID)ClassDrivers[i].LowerFilters, 0));
+	}
+	if (ClassDrivers[i].UpperFilters != NULL) {
+	    RET_ERR(SmSetRegKeyValue(ClassKey, "UpperFilters", REG_MULTI_SZ,
+				     (PVOID)ClassDrivers[i].UpperFilters, 0));
 	}
     }
     return STATUS_SUCCESS;

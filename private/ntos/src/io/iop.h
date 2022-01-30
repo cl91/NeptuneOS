@@ -258,4 +258,5 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 				   IN PVOID CreaCtx);
-
+NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
+		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject);

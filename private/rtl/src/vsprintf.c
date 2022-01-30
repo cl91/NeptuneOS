@@ -294,6 +294,7 @@ enum format_type {
     FORMAT_TYPE_PRECISION,
     FORMAT_TYPE_CHAR,
     FORMAT_TYPE_STR,
+    FORMAT_TYPE_WIDE_STR,
     FORMAT_TYPE_PTR,
     FORMAT_TYPE_PERCENT_CHAR,
     FORMAT_TYPE_INVALID,
@@ -655,7 +656,7 @@ static int format_decode(const char *fmt, struct printf_spec *spec)
 	return ++fmt - start;
 
     case 's':
-	spec->type = FORMAT_TYPE_STR;
+	spec->type = spec->flags & WIDE ? FORMAT_TYPE_WIDE_STR : FORMAT_TYPE_STR;
 	return ++fmt - start;
 
     case 'p':
@@ -791,6 +792,26 @@ static char *string(char *buf, char *end, const char *s,
     return string_nocheck(buf, end, s, spec);
 }
 
+/* Handle wide string from a well known address. */
+unsigned int wstring_nocheck(char *buf, char *end, const WCHAR *s, unsigned int length)
+{
+    unsigned int utf8_bytes_written = 0;
+    RtlUnicodeToUTF8N(buf, end - buf, &utf8_bytes_written, s, length);
+    if ((utf8_bytes_written > 0) && (buf[utf8_bytes_written-1] == '\0')) {
+	utf8_bytes_written--;
+    }
+    return utf8_bytes_written;
+}
+
+static char *wstring(char *buf, char *end, const WCHAR *s,
+		     struct printf_spec spec)
+{
+    if (check_pointer(&buf, end, s, spec))
+	return buf;
+
+    return buf + wstring_nocheck(buf, end, s, sizeof(WCHAR) * wcslen(s));
+}
+
 static char *pointer(char *buf, char *end, void *ptr)
 {
     return special_hex_number(buf, end, (uintptr_t)ptr, sizeof(ptr));
@@ -801,13 +822,7 @@ static char *unicode_string(char *buf, char *end, PUNICODE_STRING uni_str)
     if (uni_str == NULL || uni_str->Buffer == NULL) {
 	return buf;
     }
-    unsigned int utf8_bytes_written = 0;
-    RtlUnicodeToUTF8N(buf, end - buf, &utf8_bytes_written,
-		      uni_str->Buffer, uni_str->Length);
-    if ((utf8_bytes_written > 0) && (buf[utf8_bytes_written-1] == '\0')) {
-	utf8_bytes_written--;
-    }
-    return buf + utf8_bytes_written;
+    return buf + wstring_nocheck(buf, end, uni_str->Buffer, uni_str->Length);
 }
 
 static char *ansi_string(char *buf, char *end, PANSI_STRING ani_str)
@@ -915,6 +930,10 @@ static int vsnprintf_impl(char *buf, size_t size, const char *fmt, va_list args)
 
 	case FORMAT_TYPE_STR:
 	    str = string(str, end, va_arg(args, char *), spec);
+	    break;
+
+	case FORMAT_TYPE_WIDE_STR:
+	    str = wstring(str, end, va_arg(args, WCHAR *), spec);
 	    break;
 
 	case FORMAT_TYPE_UNICODE_STRING:

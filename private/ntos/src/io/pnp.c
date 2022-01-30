@@ -1,5 +1,9 @@
 #include "iop.h"
 
+#define REG_SERVICE_KEY	"\\Registry\\Machine\\CurrentControlSet\\Services"
+#define REG_CLASS_KEY	"\\Registry\\Machine\\CurrentControlSet\\Control\\Class"
+#define REG_ENUM_KEY	"\\Registry\\Machine\\CurrentControlSet\\Enum"
+
 static PDEVICE_NODE IopRootDeviceNode;
 
 static inline VOID IopInitializeDeviceNode(IN PDEVICE_NODE DeviceNode,
@@ -66,6 +70,248 @@ static inline NTSTATUS IopDeviceNodeSetDeviceId(IN PDEVICE_NODE DeviceNode,
 	DbgTrace("Invalid id type %d\n", IdType);
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_SUCCESS;
+}
+
+static inline VOID IopFreeFilterDriverNames(IN ULONG Count,
+					    IN PCSTR *Names)
+{
+    for (ULONG i = 0; i < Count; i++) {
+	ExFreePool(Names[i]);
+    }
+    ExFreePool(Names);
+}
+
+static inline ULONG IopGetStringCount(IN PCSTR MultiSz)
+{
+    ULONG Count = 0;
+    if (MultiSz != NULL) {
+	PCSTR Ptr = MultiSz;
+	while (*Ptr != '\0') {
+	    ULONG Length = strlen(Ptr);
+	    Count++;
+	    Ptr += Length + 1;	/* NUL-terminated strings */
+	}
+    }
+    return Count;
+}
+
+static inline NTSTATUS IopAllocateNames(IN PCSTR MultiSz,
+					IN PCSTR *Names)
+{
+    ULONG Count = 0;
+    if (MultiSz != NULL) {
+	PCSTR Ptr = MultiSz;
+	ULONG Length = strlen(Ptr);
+	Names[Count] = RtlDuplicateString(Ptr, NTOS_IO_TAG);
+	if (Names[Count] == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	Ptr += Length + 1;
+	Count++;
+    }
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Device filters come before class filters and are loaded before them.
+ */
+static NTSTATUS IopAllocateFilterDriverNames(IN PCSTR DeviceFilters,
+					     IN PCSTR ClassFilters,
+					     OUT ULONG *pFilterCount,
+					     OUT PCSTR **pFilterDriverNames)
+{
+    ULONG DeviceFilterCount = IopGetStringCount(DeviceFilters);
+    ULONG FilterCount = DeviceFilterCount + IopGetStringCount(ClassFilters);
+
+    if (FilterCount == 0) {
+	return STATUS_SUCCESS;
+    }
+
+    /* Count the number of strings (excluding the empty string) */
+    PCSTR *FilterDriverNames = ExAllocatePoolWithTag(sizeof(PCSTR) * FilterCount,
+						     NTOS_IO_TAG);
+    if (FilterDriverNames == NULL) {
+	goto err;
+    }
+    if (!NT_SUCCESS(IopAllocateNames(DeviceFilters, FilterDriverNames))) {
+	goto err;
+    }
+    if (!NT_SUCCESS(IopAllocateNames(ClassFilters,
+				     FilterDriverNames + DeviceFilterCount))) {
+	goto err;
+    }
+    *pFilterCount = FilterCount;
+    *pFilterDriverNames = FilterDriverNames;
+    return STATUS_SUCCESS;
+
+err:
+    if (FilterDriverNames != NULL) {
+	for (ULONG i = 0; i < FilterCount; i++) {
+	    if (FilterDriverNames[i] != NULL) {
+		ExFreePool(FilterDriverNames[i]);
+	    }
+	}
+	ExFreePool(FilterDriverNames);
+    }
+    return STATUS_NO_MEMORY;
+}
+
+static PCSTR IopGetMultiSz(IN POBJECT Key,
+			   IN PCSTR Value)
+{
+    ULONG RegValueType = 0;
+    PCSTR MultiSz = NULL;
+    if (NT_SUCCESS(CmReadKeyValueByPointer(Key, Value, &RegValueType, (PPVOID)&MultiSz))) {
+	if (RegValueType != REG_MULTI_SZ) {
+	    return NULL;
+	}
+    }
+    return MultiSz;
+}
+
+static PCSTR IopGetRegSz(IN POBJECT Key,
+			 IN PCSTR Value)
+{
+    ULONG RegValueType = 0;
+    PCSTR RegSz = NULL;
+    if (NT_SUCCESS(CmReadKeyValueByPointer(Key, Value, &RegValueType, (PPVOID)&RegSz))) {
+	if (RegValueType != REG_SZ) {
+	    return NULL;
+	}
+    }
+    assert(RegSz != NULL);
+    return RegSz;
+}
+
+static inline NTSTATUS IopLoadDriverByBaseName(IN PCSTR BaseName)
+{
+    CHAR DriverService[256];
+    snprintf(DriverService, sizeof(DriverService), REG_SERVICE_KEY "\\%s",
+	     BaseName);
+    return IopLoadDriver(DriverService, NULL);
+}
+
+/*
+ * A note about driver loading order: device lower filters are loaded
+ * first, followed by class lower filers, and then the function driver
+ * itself, and then device upper filters, and finally class upper filters.
+ * Don't ask me why. Microsoft made it this way.
+ */
+static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
+{
+    assert(DeviceNode != NULL);
+    assert(DeviceNode->DeviceId != NULL);
+    assert(DeviceNode->InstanceId != NULL);
+    if (DeviceNode->DriverLoaded) {
+	return STATUS_SUCCESS;
+    }
+
+    /* If previous attempts at driver loading failed, we want to clear the
+     * driver service name and filter driver names, just in case that these
+     * have changed. */
+    if (DeviceNode->DriverServiceName != NULL) {
+	ExFreePool(DeviceNode->DriverServiceName);
+	DeviceNode->DriverServiceName = NULL;
+    }
+    if (DeviceNode->UpperFilters != NULL) {
+	IopFreeFilterDriverNames(DeviceNode->UpperFilterCount,
+				 DeviceNode->UpperFilters);
+	DeviceNode->UpperFilterCount = 0;
+	DeviceNode->UpperFilters = NULL;
+    }
+    if (DeviceNode->LowerFilters != NULL) {
+	IopFreeFilterDriverNames(DeviceNode->LowerFilterCount,
+				 DeviceNode->LowerFilters);
+	DeviceNode->LowerFilterCount = 0;
+	DeviceNode->LowerFilters = NULL;
+    }
+
+    /* Query the device enum key to find the driver service to load */
+    NTSTATUS Status = STATUS_SUCCESS;
+    POBJECT EnumKey = NULL;
+    CHAR EnumKeyPath[256];
+    snprintf(EnumKeyPath, sizeof(EnumKeyPath), REG_ENUM_KEY "\\%s\\%s",
+	     DeviceNode->DeviceId, DeviceNode->InstanceId);
+    ULONG RegValueType;
+    PCSTR DriverServiceName = NULL;
+    RET_ERR(CmReadKeyValueByPath(EnumKeyPath, "Service", &EnumKey,
+				 &RegValueType, (PPVOID)&DriverServiceName));
+    assert(EnumKey != NULL);
+    if (RegValueType != REG_SZ) {
+	Status = STATUS_DRIVER_UNABLE_TO_LOAD;
+	goto out;
+    }
+    assert(DriverServiceName != NULL);
+    DeviceNode->DriverServiceName = RtlDuplicateString(DriverServiceName, NTOS_IO_TAG);
+    if (DeviceNode->DriverServiceName == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
+    /* Also query the upper and lower device filter drivers */
+    PCSTR DeviceUpperFilterNames = IopGetMultiSz(EnumKey, "UpperFilters");
+    PCSTR DeviceLowerFilterNames = IopGetMultiSz(EnumKey, "LowerFilters");
+
+    /* Query the class key to find the upper and lower class filters */
+    PCSTR ClassGuid = IopGetRegSz(EnumKey, "ClassGUID");
+    PCSTR ClassUpperFilterNames = NULL;
+    PCSTR ClassLowerFilterNames = NULL;
+    POBJECT ClassKey = NULL;
+    if (ClassGuid != NULL) {
+	CHAR ClassKeyPath[256];
+	snprintf(ClassKeyPath, sizeof(ClassKeyPath), REG_CLASS_KEY "\\%s",
+		 ClassGuid);
+	IF_ERR_GOTO(out, Status,
+		    ObReferenceObjectByName(ClassKeyPath, OBJECT_TYPE_KEY, NULL, &ClassKey));
+	ClassUpperFilterNames = IopGetMultiSz(ClassKey, "UpperFilters");
+	ClassLowerFilterNames = IopGetMultiSz(EnumKey, "LowerFilters");
+    }
+
+    /* Record the filter driver names in the device node */
+    IF_ERR_GOTO(out, Status,
+		IopAllocateFilterDriverNames(DeviceUpperFilterNames,
+					     ClassUpperFilterNames,
+					     &DeviceNode->UpperFilterCount,
+					     &DeviceNode->UpperFilters));
+    IF_ERR_GOTO(out, Status,
+		IopAllocateFilterDriverNames(DeviceLowerFilterNames,
+					     ClassLowerFilterNames,
+					     &DeviceNode->LowerFilterCount,
+					     &DeviceNode->LowerFilters));
+
+    /* Load lower filters first */
+    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
+	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->LowerFilters[i]));
+    }
+    /* Load function driver next */
+    IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->DriverServiceName));
+    /* Finally, load upper filters */
+    for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
+	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->UpperFilters[i]));
+    }
+
+    DeviceNode->DriverLoaded = TRUE;
+    Status = STATUS_SUCCESS;
+out:
+    /* Dereference the enum key object because the CmReadKeyValueByPath routine
+     * increases its reference count. */
+    if (EnumKey != NULL) {
+	ObDereferenceObject(EnumKey);
+    }
+    if (ClassKey != NULL) {
+	ObDereferenceObject(ClassKey);
+    }
+    return Status;
+}
+
+static NTSTATUS IopDeviceTreeLoadDrivers(IN PDEVICE_NODE RootDeviceNode)
+{
+    assert(RootDeviceNode != NULL);
+    RET_ERR(IopDeviceNodeLoadDriver(RootDeviceNode));
+    LoopOverList(ChildNode, &RootDeviceNode->ChildrenList, DEVICE_NODE, SiblingLink) {
+	RET_ERR(IopDeviceTreeLoadDrivers(ChildNode));
     }
     return STATUS_SUCCESS;
 }
@@ -162,7 +408,6 @@ static inline PCSTR IopSanitizeName(IN PCSTR Name)
 }
 
 static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
-			       IN PCSTR EnumeratedBy,
 			       IN ULONG IndentLevel)
 {
     CHAR Indent[32];
@@ -173,10 +418,27 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 	Indent[i] = ' ';
     }
     Indent[IndentLevel] = '\0';
-    HalVgaPrint("%sFound device \\%s\\%s\\%s\n", Indent,
-		IopSanitizeName(EnumeratedBy),
+    HalVgaPrint("%sFound device \\%s\\%s.", Indent,
 		IopSanitizeName(DeviceNode->DeviceId),
 		IopSanitizeName(DeviceNode->InstanceId));
+    if (DeviceNode->DriverLoaded) {
+	assert(DeviceNode->DriverServiceName != NULL);
+	if (DeviceNode->UpperFilterCount != 0 || DeviceNode->LowerFilterCount != 0) {
+	    HalVgaPrint(" Loaded drivers:");
+	    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
+		HalVgaPrint(" %s", DeviceNode->LowerFilters[i]);
+	    }
+	    HalVgaPrint(" %s", DeviceNode->DriverServiceName);
+	    for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
+		HalVgaPrint(" %s", DeviceNode->UpperFilters[i]);
+	    }
+	    HalVgaPrint("\n");
+	} else {
+	    HalVgaPrint(" Driver %s loaded.\n", DeviceNode->DriverServiceName);
+	}
+    } else if (DeviceNode->DriverServiceName != NULL) {
+	HalVgaPrint(" FAILED to load driver %s\n", DeviceNode->DriverServiceName);
+    }
 }
 
 #define DEVICE_TREE_INDENTATION	2
@@ -184,8 +446,7 @@ static VOID IopPrintDeviceTree(IN PDEVICE_NODE RootDeviceNode,
 			       IN ULONG IndentLevel)
 {
     LoopOverList(DeviceNode, &RootDeviceNode->ChildrenList, DEVICE_NODE, SiblingLink) {
-	PCSTR ParentDeviceName = DeviceNode->Parent ? DeviceNode->Parent->DeviceId : "HTREE";
-	IopPrintDeviceNode(DeviceNode, ParentDeviceName, IndentLevel);
+	IopPrintDeviceNode(DeviceNode, IndentLevel);
 	IopPrintDeviceTree(DeviceNode, IndentLevel + DEVICE_TREE_INDENTATION);
     }
 }
@@ -242,10 +503,11 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 
     /* Create the root device node and insert the child device nodes under it */
     IF_ERR_GOTO(out, Status,
-		IopCreateBusDeviceNode(Locals.PnpDriver, "Root", "0", Locals.RootEnumerator,
+		IopCreateBusDeviceNode(Locals.PnpDriver, "HTREE\\ROOT", "0", Locals.RootEnumerator,
 				       DeviceCount, DeviceHandles, NULL,
 				       &IopRootDeviceNode));
     assert(IopRootDeviceNode != NULL);
+    IopRootDeviceNode->DriverLoaded = TRUE;
 
     /* Send the QUERY_ID requests to the physical device objects */
     IF_ERR_GOTO(out, Status,
@@ -268,6 +530,11 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 	IF_ERR_GOTO(out, Status,
 		    IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType));
     }
+
+    /* Load the device drivers for the root device node and all its children */
+    IopDeviceTreeLoadDrivers(IopRootDeviceNode);
+
+    /* Inform the user of the device enumeration result */
     IopPrintDeviceTree(IopRootDeviceNode, 2);
 
     Status = STATUS_SUCCESS;

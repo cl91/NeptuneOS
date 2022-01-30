@@ -18,8 +18,12 @@ typedef struct _CM_OPEN_CONTEXT {
 NTSTATUS CmInitSystemPhase1();
 
 /* value.c */
-NTSTATUS CmReadKeyValue(IN PCSTR KeyPath,
-			IN PCSTR Value,
-			OUT POBJECT *KeyObject,
-			OUT ULONG *Type,
-			OUT PVOID *Data);
+NTSTATUS CmReadKeyValueByPath(IN PCSTR KeyPath,
+			      IN PCSTR Value,
+			      OUT POBJECT *KeyObject,
+			      OUT ULONG *Type,
+			      OUT PVOID *Data);
+NTSTATUS CmReadKeyValueByPointer(IN POBJECT KeyObject,
+				 IN PCSTR Value,
+				 OUT ULONG *Type,
+				 OUT PVOID *Data);
