@@ -1,7 +1,7 @@
 #undef __MSVCRT__
 
 #include <nt.h>
-#include <irp.h>
+#include <private_ntstatus.h>
 
 #ifdef _M_AMD64
 enum {

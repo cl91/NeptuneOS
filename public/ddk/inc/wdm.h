@@ -251,6 +251,10 @@ typedef struct _FILE_OBJECT {
     BOOLEAN SharedDelete;
     ULONG Flags;
     UNICODE_STRING FileName;
+    struct {
+        ULONG_PTR Handle;   /* Unique handle supplied by the server */
+	LIST_ENTRY Link; /* List entry for the list of all known file objects */
+    } Private;	   /* Drivers shall not access this struct directly */
 } FILE_OBJECT, *PFILE_OBJECT;
 
 /*
@@ -388,6 +392,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     LONG StartIoKey;
     ULONG StartIoFlags;
     PVPB Vpb;
+    struct {
+	ULONG_PTR Handle;   /* Unique handle supplied by the server */
+	LIST_ENTRY Link; /* List entry for the list of all known device objects */
+    } Private;		 /* Drivers shall not access this struct directly */
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
 
 typedef struct _MDL {
@@ -442,6 +450,26 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 
     /* User buffer for NEITHER_IO */
     PVOID UserBuffer;
+
+    struct {
+	ULONG_PTR OriginalRequestor; /* Original requestor handle, used for
+				      * disambiguating the Identifier. */
+	HANDLE Identifier; /* Identifier of the IRP object, temporarily
+			    * unique up to the original requestor. */
+	PVOID OutputBuffer; /* Output buffer provided by the client
+			     * process, mapped here */
+	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList
+			     * and CleanupIrpList */
+	LIST_ENTRY ReplyListEntry;  /* List entry for the ReplyIrpList */
+	PDEVICE_OBJECT ForwardedTo; /* Device object that the IRP is
+				     * being forwarded to */
+	PVOID ForwardedBy;   /* Either an IRP or an AddDevice request,
+			      * that called IoCallDriver on this IRP */
+	PVOID CoroutineStackTop; /* Stack top of the coroutine stack
+				  * that this queue entry is using */
+	BOOLEAN NotifyCompletion; /* TRUE if the server will notify the
+				   * completion of this forwarded IRP. */
+    } Private;	   /* Drivers shall not access this struct directly */
 
     /* Porting guide: in the original Windows/ReactOS definition
      * this is a union of the following struct with other things.
@@ -1215,29 +1243,19 @@ FORCEINLINE PDRIVER_CANCEL IoSetCancelRoutine(IN OUT PIRP Irp,
 }
 
 /*
- * Complete the IRP. We simply mark the IRP as completed and the
- * IO manager will inform the NTOS server of IRP completion.
+ * Mark the current IRP as pending
  */
-FORCEINLINE VOID IoCompleteRequest(IN PIRP Irp,
-				   IN CHAR PriorityBoost)
+FORCEINLINE VOID IoMarkIrpPending(IN OUT PIRP Irp)
 {
-    assert(Irp != NULL);
-    /* Never complete an IRP with pending status */
-    assert(Irp->IoStatus.Status != STATUS_PENDING);
-    /* -1 is an invalid NTSTATUS */
-    assert(Irp->IoStatus.Status != -1);
-    Irp->Completed = TRUE;
-    Irp->PriorityBoost = PriorityBoost;
+    assert(!Irp->Completed);
+    IoGetCurrentIrpStackLocation((Irp))->Control |= SL_PENDING_RETURNED;
 }
 
 /*
- * Mark the current IRP as pending
+ * Complete the given IRP
  */
-DEPRECATED("IRPs no longer need to be marked pending. Remove this.")
-FORCEINLINE VOID IoMarkIrpPending(IN OUT PIRP Irp)
-{
-    IoGetCurrentIrpStackLocation((Irp))->Control |= SL_PENDING_RETURNED;
-}
+NTAPI NTSYSAPI VOID IoCompleteRequest(IN PIRP Irp,
+				      IN CHAR PriorityBoost);
 
 /*
  * Start the IO packet.
@@ -1327,7 +1345,7 @@ NTAPI NTSYSAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 
 /*
  * Forward the specified IRP to the specified device and return immediately,
- * with STATUS_IRP_FORWARDED, unless the IRP has supplied a UserIoSb,
+ * with STATUS_IRP_FORWARDED, unless the IRP has supplied a UserIosb,
  * in which case the current coroutine is suspended and waits for the
  * completion of the IRP.
  */

@@ -2289,9 +2289,8 @@ NTAPI PVOID RtlAllocateHeap(IN PVOID HeapPtr,
  * @implemented
  */
 BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
-			  ULONG Flags,	/* [in] Heap freeing flags */
-			  PVOID Ptr	/* [in] Address of memory to free */
-			  )
+		    ULONG Flags,	/* [in] Heap freeing flags */
+		    PVOID Ptr)	/* [in] Address of memory to free */
 {
     PHEAP Heap;
     PHEAP_ENTRY HeapEntry;

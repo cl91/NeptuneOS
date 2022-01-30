@@ -16,6 +16,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Driver->IoPortList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
+    InitializeListHead(&Driver->ForwardedIrpList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
@@ -85,8 +86,11 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
     PIO_DRIVER_OBJECT DriverObject = NULL;
     if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, OBJECT_TYPE_DRIVER, NULL,
 					   (POBJECT *)&DriverObject))) {
-	/* Driver is already loaded. For now we return SUCCESS. */
+	/* Driver is already loaded. We increase the reference count and return SUCCESS. */
 	ExFreePool(DriverObjectPath);
+	if (pDriverObject) {
+	    *pDriverObject = DriverObject;
+	}
 	return STATUS_SUCCESS;
     }
     ExFreePool(DriverObjectPath);
@@ -258,4 +262,14 @@ NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
     *ThreadNotification = IsrThread->ClientNotification.TreeNode.Cap;
     *InterruptMutex = IsrThread->InterruptMutex.TreeNode.Cap;
     return STATUS_SUCCESS;
+}
+
+NTSTATUS IopCreateCoroutineStack(IN ASYNC_STATE State,
+				 IN PTHREAD Thread,
+				 OUT PVOID *pStackTop)
+{
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->DriverObject != NULL);
+    return PsMapDriverCoroutineStack(Thread->Process,
+				     (MWORD *)pStackTop);
 }

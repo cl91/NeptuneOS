@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define DbgTrace(...) { DbgPrint("%s:  ", __func__); DbgPrint(__VA_ARGS__); }
+#define DbgTrace(...) { DbgPrint("SMSS %s:  ", __func__); DbgPrint(__VA_ARGS__); }
 
 #define RET_ERR_EX(Expr, OnError)					\
     {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\

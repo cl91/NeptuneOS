@@ -555,7 +555,7 @@ VOID MmDeallocateCap(IN PCNODE CNode,
 		     IN MWORD Cap);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
-VOID MmDeleteCNode(PCNODE CNode);
+VOID MmDeleteCNode(IN PCNODE CNode);
 NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,

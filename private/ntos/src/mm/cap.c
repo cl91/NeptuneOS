@@ -75,6 +75,19 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     }
     DbgPrint("Cap 0x%zx (Type %s seL4 Cap %s)", Node->Cap, Type, CapType);
 }
+
+VOID MmDbgDumpCNode(IN PCNODE CNode)
+{
+    DbgTrace("Dumping CNode %p\n", CNode);
+    DbgPrint("    TREE-NODE ");
+    MmDbgDumpCapTreeNode(&CNode->TreeNode);
+    DbgPrint("\n    Log2Size %d  Depth %d\n  TotalUsed %d\n    UsedMap",
+	     CNode->Log2Size, CNode->Depth, CNode->TotalUsed);
+    for (ULONG i = 0; i < (1 << CNode->Log2Size) / MWORD_BITS; i++) {
+	DbgPrint("  %p", (PVOID)CNode->UsedMap[i]);
+    }
+    DbgPrint("\n");
+}
 #endif
 
 /* Allocate a continuous range of capability slots */

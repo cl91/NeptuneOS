@@ -1,5 +1,7 @@
 #include <wdmasm.h>
 
+#error "This needs to be rewritten"
+
 .global IopStartCoroutine
 IopStartCoroutine:
     /* KiCurrentCoroutineStackTop = StackTop (%rcx); */

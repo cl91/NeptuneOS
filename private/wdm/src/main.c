@@ -5,6 +5,7 @@
 #include <wdmp.h>
 #include "coroutine.h"
 
+PCSTR IopDbgTraceModuleName = "WDM";
 DRIVER_OBJECT IopDriverObject;
 
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -54,6 +55,9 @@ static VOID IopCallReinitRoutines()
     }
 }
 
+/*
+ * This is the main event loop of the driver process
+ */
 static NTSTATUS IopDriverEventLoop()
 {
     ULONG NumResponsePackets = 0;
@@ -77,18 +81,45 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
-    InitializeListHead(&IopIrpQueue);
-    InitializeListHead(&IopCompletedIrpList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopTimerList);
-    InitializeListHead(&IopForwardedIrpList);
+    InitializeListHead(&IopIrpQueue);
+    InitializeListHead(&IopReplyIrpList);
+    InitializeListHead(&IopPendingIrpList);
     InitializeListHead(&IopCleanupIrpList);
+    InitializeListHead(&IopAddDeviceRequestList);
+    InitializeListHead(&IopSuspendedAddDeviceRequestList);
+    InitializeListHead(&IopCompletedAddDeviceRequestList);
     InitializeListHead(&IopX86PortList);
     InitializeListHead(&IopDriverObject.ReinitListHead);
     RtlInitializeSListHead(&IopWorkItemQueue);
     RtlInitializeSListHead(&IopDpcQueue);
     RtlInitializeSListHead(&IopInterruptServiceRoutineList);
+
+    /* Set the IopDbgTraceModuleName to the driver base name */
+    if (RegistryPath != NULL && RegistryPath->Length > 2) {
+	ULONG BaseNameStart = RegistryPath->Length / sizeof(WCHAR);
+	if (RegistryPath->Buffer[BaseNameStart] == L'\0') {
+	    BaseNameStart--;
+	}
+	if (RegistryPath->Buffer[BaseNameStart] == L'\\') {
+	    BaseNameStart--;
+	}
+	while (BaseNameStart != 0 && RegistryPath->Buffer[BaseNameStart] != L'\\') {
+	    BaseNameStart--;
+	}
+	BaseNameStart++;
+	assert(RegistryPath->Length/sizeof(WCHAR) > BaseNameStart);
+	ULONG StrLen = RegistryPath->Length/sizeof(WCHAR) - BaseNameStart;
+	PCHAR Name = RtlAllocateHeap(RtlGetProcessHeap(),
+				     HEAP_ZERO_MEMORY,
+				     StrLen+1);
+	for (ULONG i = 0; i < StrLen; i++) {
+	    Name[i] = (CHAR) RegistryPath->Buffer[BaseNameStart+i];
+	}
+	IopDbgTraceModuleName = Name;
+    }
 
     NTSTATUS Status = IopCallDriverEntry(RegistryPath);
     if (!NT_SUCCESS(Status)) {

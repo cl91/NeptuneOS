@@ -42,7 +42,7 @@
 #define FORCEINLINE		static inline __attribute__((always_inline))
 #endif
 
-#define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg, #repl)))
+#define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg " Use " #repl ".", #repl)))
 
 #if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_)
 #define NTSYSAPI	DECLSPEC_IMPORT

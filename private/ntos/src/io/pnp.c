@@ -185,12 +185,13 @@ static PCSTR IopGetRegSz(IN POBJECT Key,
     return RegSz;
 }
 
-static inline NTSTATUS IopLoadDriverByBaseName(IN PCSTR BaseName)
+static inline NTSTATUS IopLoadDriverByBaseName(IN PCSTR BaseName,
+					       OUT PIO_DRIVER_OBJECT *DriverObject)
 {
     CHAR DriverService[256];
     snprintf(DriverService, sizeof(DriverService), REG_SERVICE_KEY "\\%s",
 	     BaseName);
-    return IopLoadDriver(DriverService, NULL);
+    return IopLoadDriver(DriverService, DriverObject);
 }
 
 /*
@@ -215,17 +216,17 @@ static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
 	ExFreePool(DeviceNode->DriverServiceName);
 	DeviceNode->DriverServiceName = NULL;
     }
-    if (DeviceNode->UpperFilters != NULL) {
+    if (DeviceNode->UpperFilterDriverNames != NULL) {
 	IopFreeFilterDriverNames(DeviceNode->UpperFilterCount,
-				 DeviceNode->UpperFilters);
+				 DeviceNode->UpperFilterDriverNames);
 	DeviceNode->UpperFilterCount = 0;
-	DeviceNode->UpperFilters = NULL;
+	DeviceNode->UpperFilterDriverNames = NULL;
     }
-    if (DeviceNode->LowerFilters != NULL) {
+    if (DeviceNode->LowerFilterDriverNames != NULL) {
 	IopFreeFilterDriverNames(DeviceNode->LowerFilterCount,
-				 DeviceNode->LowerFilters);
+				 DeviceNode->LowerFilterDriverNames);
 	DeviceNode->LowerFilterCount = 0;
-	DeviceNode->LowerFilters = NULL;
+	DeviceNode->LowerFilterDriverNames = NULL;
     }
 
     /* Query the device enum key to find the driver service to load */
@@ -274,22 +275,43 @@ static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
 		IopAllocateFilterDriverNames(DeviceUpperFilterNames,
 					     ClassUpperFilterNames,
 					     &DeviceNode->UpperFilterCount,
-					     &DeviceNode->UpperFilters));
+					     &DeviceNode->UpperFilterDriverNames));
     IF_ERR_GOTO(out, Status,
 		IopAllocateFilterDriverNames(DeviceLowerFilterNames,
 					     ClassLowerFilterNames,
 					     &DeviceNode->LowerFilterCount,
-					     &DeviceNode->LowerFilters));
+					     &DeviceNode->LowerFilterDriverNames));
 
-    /* Load lower filters first */
-    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
-	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->LowerFilters[i]));
+    /* Load lower filter drivers first */
+    if (DeviceNode->LowerFilterCount != 0) {
+	DeviceNode->LowerFilterDrivers = (PIO_DRIVER_OBJECT *)ExAllocatePoolWithTag(
+	    sizeof(PIO_DRIVER_OBJECT) * DeviceNode->LowerFilterCount, NTOS_IO_TAG);
+	if (DeviceNode->LowerFilterDrivers == NULL) {
+	    Status = STATUS_NO_MEMORY;
+	    goto out;
+	}
     }
+    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
+	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->LowerFilterDriverNames[i],
+							 &DeviceNode->LowerFilterDrivers[i]));
+    }
+
     /* Load function driver next */
-    IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->DriverServiceName));
-    /* Finally, load upper filters */
+    IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->DriverServiceName,
+						     &DeviceNode->FunctionDriverObject));
+
+    /* Finally, load upper filter drivers */
+    if (DeviceNode->UpperFilterCount != 0) {
+	DeviceNode->UpperFilterDrivers = (PIO_DRIVER_OBJECT *)ExAllocatePoolWithTag(
+	    sizeof(PIO_DRIVER_OBJECT) * DeviceNode->UpperFilterCount, NTOS_IO_TAG);
+	if (DeviceNode->UpperFilterDrivers == NULL) {
+	    Status = STATUS_NO_MEMORY;
+	    goto out;
+	}
+    }
     for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
-	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->UpperFilters[i]));
+	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->UpperFilterDriverNames[i],
+							 &DeviceNode->UpperFilterDrivers[i]));
     }
 
     DeviceNode->DriverLoaded = TRUE;
@@ -344,6 +366,8 @@ static NTSTATUS IopCreateBusDeviceNode(IN PIO_DRIVER_OBJECT DriverObject,
 	}
 	RET_ERR(IopCreateDeviceNode(DeviceObject, BusDeviceNode, NULL));
     }
+    BusDeviceNode->FunctionDriverObject = DriverObject;
+    /* TODO: Bus filter drivers */
     *pDeviceNode = BusDeviceNode;
     return STATUS_SUCCESS;
 }
@@ -355,7 +379,7 @@ static VOID IopPopulateQueryDeviceRelationsRequest(IN PIO_PACKET IoPacket,
     IoPacket->Request.MajorFunction = IRP_MJ_PNP;
     IoPacket->Request.MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS;
     IoPacket->Request.Device.Object = BusDevice;
-    IoPacket->Request.Parameters.QueryDeviceRelations.Type = Type;
+    IoPacket->Request.QueryDeviceRelations.Type = Type;
 }
 
 static VOID IopPopulateQueryIdRequest(IN PIO_PACKET IoPacket,
@@ -365,7 +389,7 @@ static VOID IopPopulateQueryIdRequest(IN PIO_PACKET IoPacket,
     IoPacket->Request.MajorFunction = IRP_MJ_PNP;
     IoPacket->Request.MinorFunction = IRP_MN_QUERY_ID;
     IoPacket->Request.Device.Object = ChildPhyDev;
-    IoPacket->Request.Parameters.QueryId.IdType = IdType;
+    IoPacket->Request.QueryId.IdType = IdType;
 }
 
 static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
@@ -378,7 +402,7 @@ static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
     RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
     assert(IoPacket != NULL);
     IopPopulateQueryDeviceRelationsRequest(IoPacket, Enumerator, Type);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
 	       ExFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, BusDriver, Thread);
     return STATUS_SUCCESS;
@@ -394,12 +418,113 @@ static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
 	assert(IoPacket != NULL);
 	IopPopulateQueryIdRequest(IoPacket, ChildNode->PhyDevObj, IdType);
 	PPENDING_IRP PendingIrp = NULL;
-	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, &PendingIrp),
+	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
 		   ExFreePool(IoPacket));
 	assert(PendingIrp != NULL);
 	IopQueueIoPacket(PendingIrp, ChildNode->PhyDevObj->DriverObject, Thread);
     }
     return STATUS_SUCCESS;
+}
+
+static inline NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
+						IN PDEVICE_NODE DeviceNode,
+						IN PIO_DRIVER_OBJECT DriverObject,
+						OUT PPENDING_IRP *pPendingIrp)
+{
+    PIO_DEVICE_OBJECT PhyDevObj = DeviceNode->PhyDevObj;
+    PIO_PACKET IoPacket = NULL;
+    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
+    assert(IoPacket != NULL);
+    IoPacket->Request.MajorFunction = IRP_MJ_ADD_DEVICE;
+    IoPacket->Request.Device.Object = PhyDevObj;
+    IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
+    PPENDING_IRP PendingIrp = NULL;
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
+	       ExFreePool(IoPacket));
+    assert(PendingIrp != NULL);
+    IopQueueIoPacket(PendingIrp, DriverObject, Thread);
+    *pPendingIrp = PendingIrp;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopDeviceNodeAddDevice(IN ASYNC_STATE AsyncState,
+				       IN PTHREAD Thread,
+				       PDEVICE_NODE DeviceNode)
+{
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    PIO_DRIVER_OBJECT DriverObject;
+	    PPENDING_IRP PendingIrp;
+	    ULONG LowerFilterCount;
+	    ULONG UpperFilterCount;
+	    BOOLEAN FunctionDriverLoaded;
+	});
+
+    Locals.LowerFilterCount = 0;
+    Locals.UpperFilterCount = 0;
+    Locals.FunctionDriverLoaded = FALSE;
+
+check:
+    if (Locals.LowerFilterCount < DeviceNode->LowerFilterCount) {
+	Locals.DriverObject = DeviceNode->LowerFilterDrivers[Locals.LowerFilterCount++];
+	goto load;
+    }
+    if (!Locals.FunctionDriverLoaded && DeviceNode->FunctionDriverObject != NULL) {
+	Locals.DriverObject = DeviceNode->FunctionDriverObject;
+	Locals.FunctionDriverLoaded = TRUE;
+	goto load;
+    }
+    if (Locals.UpperFilterCount < DeviceNode->UpperFilterCount) {
+	Locals.DriverObject = DeviceNode->UpperFilterDrivers[Locals.UpperFilterCount++];
+	goto load;
+    }
+    Status = STATUS_SUCCESS;
+    goto end;
+
+load:
+    assert(Locals.DriverObject != NULL);
+    IF_ERR_GOTO(end, Status, IopQueueAddDeviceRequest(Thread, DeviceNode,
+						      Locals.DriverObject,
+						      &Locals.PendingIrp));
+    AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    if (!NT_SUCCESS(Status)) {
+	goto end;
+    }
+    goto check;
+
+end:
+    ASYNC_END(AsyncState, Status);
+}
+
+static NTSTATUS IopDeviceTreeAddDevices(IN ASYNC_STATE AsyncState,
+					IN PTHREAD Thread,
+					PDEVICE_NODE RootDeviceNode)
+{
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    PDEVICE_NODE ChildNode;
+	});
+
+    if (IsListEmpty(&RootDeviceNode->ChildrenList)) {
+	goto end;
+    }
+    Locals.ChildNode = CONTAINING_RECORD(RootDeviceNode->ChildrenList.Flink,
+					 DEVICE_NODE, SiblingLink);
+more:
+    AWAIT_EX(Status, IopDeviceNodeAddDevice, AsyncState, Locals, Thread, Locals.ChildNode);
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(AsyncState, Status);
+    }
+    if (Locals.ChildNode->SiblingLink.Flink != &RootDeviceNode->ChildrenList) {
+	Locals.ChildNode = CONTAINING_RECORD(Locals.ChildNode->SiblingLink.Flink,
+					     DEVICE_NODE, SiblingLink);
+	goto more;
+    }
+
+end:
+    ASYNC_END(AsyncState, Status);
 }
 
 static inline PCSTR IopSanitizeName(IN PCSTR Name)
@@ -426,11 +551,11 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 	if (DeviceNode->UpperFilterCount != 0 || DeviceNode->LowerFilterCount != 0) {
 	    HalVgaPrint(" Loaded drivers:");
 	    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
-		HalVgaPrint(" %s", DeviceNode->LowerFilters[i]);
+		HalVgaPrint(" %s", DeviceNode->LowerFilterDriverNames[i]);
 	    }
 	    HalVgaPrint(" %s", DeviceNode->DriverServiceName);
 	    for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
-		HalVgaPrint(" %s", DeviceNode->UpperFilters[i]);
+		HalVgaPrint(" %s", DeviceNode->UpperFilterDriverNames[i]);
 	    }
 	    HalVgaPrint("\n");
 	} else {
@@ -523,7 +648,7 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
 	assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_PNP);
 	assert(PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_ID);
-	BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.Parameters.QueryId.IdType;
+	BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.QueryId.IdType;
 	PIO_DEVICE_OBJECT DeviceObject = PendingIrp->IoPacket->Request.Device.Object;
 	PDEVICE_NODE DeviceNode = DeviceObject->DeviceNode;
 	assert(DeviceNode != NULL);
@@ -533,6 +658,13 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 
     /* Load the device drivers for the root device node and all its children */
     IopDeviceTreeLoadDrivers(IopRootDeviceNode);
+
+    /* Send the AddDevice request to the drivers. Note that we need to wait for lower drivers
+     * to complete the request before we can continue sending AddDevice to higher drivers. */
+    AWAIT_EX(Status, IopDeviceTreeAddDevices, AsyncState, Locals, Thread, IopRootDeviceNode);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
 
     /* Inform the user of the device enumeration result */
     IopPrintDeviceTree(IopRootDeviceNode, 2);

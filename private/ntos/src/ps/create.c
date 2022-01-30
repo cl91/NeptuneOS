@@ -566,8 +566,8 @@ static NTSTATUS PspMapDependencies(IN PPROCESS Process,
  */
 #define DRIVER_COROUTINE_STACK_RESERVE	(4 * PAGE_SIZE)
 #define DRIVER_COROUTINE_STACK_COMMIT	(2 * PAGE_SIZE)
-NTSTATUS PspMapDriverCoroutineStack(IN PPROCESS Process,
-				    IN MWORD *pStackTop)
+NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
+				   OUT MWORD *pStackTop)
 {
     assert(Process != NULL);
     assert(Process->DriverObject != NULL);
@@ -786,7 +786,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	Process->InitInfo.DriverInitInfo.IncomingIoPacketBuffer = DriverObject->IncomingIoPacketsClientAddr;
 	Process->InitInfo.DriverInitInfo.OutgoingIoPacketBuffer = DriverObject->OutgoingIoPacketsClientAddr;
 	MWORD InitialCoroutineStackTop = 0;
-	RET_ERR(PspMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
+	RET_ERR(PsMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
     }
 

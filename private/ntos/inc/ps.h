@@ -122,6 +122,8 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);
 NTSTATUS PsResumeThread(IN PTHREAD Thread);
+NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
+				   OUT MWORD *pStackTop);
 
 /* kill.c */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,

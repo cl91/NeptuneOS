@@ -10,9 +10,9 @@ LIST_ENTRY IopDeviceList;
  */
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
 {
-    LoopOverList(Entry, &IopDeviceList, DEVICE_LIST_ENTRY, Link) {
-	if (Handle == Entry->Handle) {
-	    return Entry->Object;
+    LoopOverList(Object, &IopDeviceList, DEVICE_OBJECT, Private.Link) {
+	if (Handle == Object->Private.Handle) {
+	    return Object;
 	}
     }
     return NULL;
@@ -20,36 +20,52 @@ PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
 
 /*
  * Search the list of all cached device objects and return the global
- * handle of the given device object pointer. Returns NULL if not found.
+ * handle of the given device object pointer.
  */
 GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device)
 {
-    LoopOverList(Entry, &IopDeviceList, DEVICE_LIST_ENTRY, Link) {
-	if (Device == Entry->Object) {
-	    return Entry->Handle;
-	}
-    }
-    return 0;
+    return Device ? Device->Private.Handle : 0;
 }
 
+/*
+ * NOTE: If DriverObject is NULL, it means that this device is created by
+ * a foreign driver. Otherwise it must be the local driver object.
+ */
 static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 					     IN ULONG DevExtSize,
-					     IN IO_DEVICE_INFO DevInfo)
+					     IN IO_DEVICE_INFO DevInfo,
+					     IN GLOBAL_HANDLE DeviceHandle,
+					     IN PDRIVER_OBJECT DriverObject)
 {
+    assert(DriverObject == NULL || DriverObject == &IopDriverObject);
     DeviceObject->Type = IO_TYPE_DEVICE;
     DeviceObject->Size = sizeof(DEVICE_OBJECT) + DevExtSize;
+    DeviceObject->DriverObject = DriverObject;
     DeviceObject->DeviceExtension = DevExtSize ? (PVOID)(DeviceObject + 1) : NULL;
     DeviceObject->DeviceType = DevInfo.DeviceType;
     DeviceObject->Characteristics = DevInfo.DeviceCharacteristics;
+    DeviceObject->Private.Handle = DeviceHandle;
+    assert(IopGetDeviceObject(DeviceHandle) == NULL);
+    InsertTailList(&IopDeviceList, &DeviceObject->Private.Link);
 }
 
-static inline VOID IopInsertDeviceList(IN PDEVICE_OBJECT DeviceObject,
-				       IN GLOBAL_HANDLE DeviceHandle,
-				       IN PDEVICE_LIST_ENTRY DeviceListEntry)
+/*
+ * Get the device handle if device has already been created. Otherwise,
+ * create the device and return the device object. Return NULL if out of memory.
+ */
+PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
+					  IN IO_DEVICE_INFO DevInfo)
 {
-    DeviceListEntry->Object = DeviceObject;
-    DeviceListEntry->Handle = DeviceHandle;
-    InsertTailList(&IopDeviceList, &DeviceListEntry->Link);
+    PDEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle);
+    if (DeviceObject == NULL) {
+	DeviceObject = (PDEVICE_OBJECT)ExAllocatePool(sizeof(DEVICE_OBJECT));
+	if (DeviceObject == NULL) {
+	    return NULL;
+	}
+	IopInitializeDeviceObject(DeviceObject, 0, DevInfo, DeviceHandle, NULL);
+    }
+    assert(DeviceObject != NULL);
+    return DeviceObject;
 }
 
 /*
@@ -83,14 +99,20 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     /* The driver-specific device extension follows the DEVICE_OBJECT */
     SIZE_T TotalSize = sizeof(DEVICE_OBJECT) + AlignedDevExtSize;
     IopAllocatePool(DeviceObject, DEVICE_OBJECT, TotalSize);
-    IopAllocateObjectEx(DeviceListEntry, DEVICE_LIST_ENTRY, IopFreePool(DeviceObject));
 
     IO_DEVICE_INFO DevInfo = {
 	.DeviceType = DeviceType,
 	.DeviceCharacteristics = DeviceCharacteristics
     };
-    IopInitializeDeviceObject(DeviceObject, DeviceExtensionSize, DevInfo);
-    DeviceObject->DriverObject = DriverObject;
+
+    GLOBAL_HANDLE DeviceHandle = 0;
+    RET_ERR_EX(IopCreateDevice(DeviceName, &DevInfo, Exclusive, &DeviceHandle),
+	       IopFreePool(DeviceObject));
+    assert(DeviceHandle != 0);
+    assert(IopGetDeviceObject(DeviceHandle) == NULL);
+
+    IopInitializeDeviceObject(DeviceObject, DeviceExtensionSize,
+			      DevInfo, DeviceHandle, &IopDriverObject);
     DeviceObject->Flags = DO_DEVICE_INITIALIZING;
     if (Exclusive) {
 	DeviceObject->Flags |= DO_EXCLUSIVE;
@@ -113,16 +135,6 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
             /* The default is 2048 bytes */
             DeviceObject->SectorSize = 2048;
     }
-
-    GLOBAL_HANDLE DeviceHandle = 0;
-    RET_ERR_EX(IopCreateDevice(DeviceName, &DevInfo, Exclusive, &DeviceHandle),
-	       {
-		   IopFreePool(DeviceObject);
-		   IopFreePool(DeviceListEntry);
-	       });
-    assert(DeviceHandle != 0);
-    assert(IopGetDeviceObject(DeviceHandle) == NULL);
-    IopInsertDeviceList(DeviceObject, DeviceHandle, DeviceListEntry);
 
     *pDeviceObject = DeviceObject;
     return STATUS_SUCCESS;
@@ -160,11 +172,6 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
     if (OldTopDevice == NULL) {
 	return NULL;
     }
-    PDEVICE_LIST_ENTRY DeviceListEntry = (PDEVICE_LIST_ENTRY) ExAllocatePool(sizeof(DEVICE_LIST_ENTRY));
-    if (DeviceListEntry == NULL) {
-	ExFreePool(OldTopDevice);
-	return NULL;
-    }
     GLOBAL_HANDLE OldTopHandle = 0;
     IO_DEVICE_INFO DevInfo;
     if (!NT_SUCCESS(IopIoAttachDeviceToDeviceStack(SourceHandle, TargetHandle,
@@ -175,12 +182,10 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
     assert(OldTopHandle != 0);
     PDEVICE_OBJECT RetVal = IopGetDeviceObject(OldTopHandle);
     if (RetVal == NULL) {
-	IopInitializeDeviceObject(OldTopDevice, 0, DevInfo);
-	IopInsertDeviceList(OldTopDevice, OldTopHandle, DeviceListEntry);
+	IopInitializeDeviceObject(OldTopDevice, 0, DevInfo, OldTopHandle, NULL);
 	RetVal = OldTopDevice;
     } else {
 	IopFreePool(OldTopDevice);
-	IopFreePool(DeviceListEntry);
     }
     return RetVal;
 }
@@ -205,21 +210,7 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
 	return NULL;
     }
     assert(TopHandle != 0);
-    PDEVICE_OBJECT TopDevice = IopGetDeviceObject(TopHandle);
-    if (TopDevice == NULL) {
-	TopDevice = (PDEVICE_OBJECT)ExAllocatePool(sizeof(DEVICE_OBJECT));
-	if (TopDevice == NULL) {
-	    return NULL;
-	}
-	PDEVICE_LIST_ENTRY DeviceListEntry = (PDEVICE_LIST_ENTRY)ExAllocatePool(sizeof(DEVICE_LIST_ENTRY));
-	if (DeviceListEntry == NULL) {
-	    ExFreePool(TopDevice);
-	    return NULL;
-	}
-	IopInitializeDeviceObject(TopDevice, 0, DevInfo);
-	IopInsertDeviceList(TopDevice, TopHandle, DeviceListEntry);
-    }
-    return TopDevice;
+    return IopGetDeviceObjectOrCreate(TopHandle, DevInfo);
 }
 
 /*++

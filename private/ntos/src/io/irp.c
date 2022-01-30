@@ -34,6 +34,222 @@ NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
+static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
+						  IN PIO_DRIVER_OBJECT DriverObject)
+{
+    GLOBAL_HANDLE OriginalRequestor = Response->ClientMsg.IoCompleted.OriginalRequestor;
+    HANDLE IrpIdentifier = Response->ClientMsg.IoCompleted.Identifier;
+    /* Check the driver's pending IO packet list to see if OriginalIrp is valid */
+    PIO_PACKET CompletedIrp = IopLocateIrpInDriverPendingList(DriverObject,
+							      OriginalRequestor,
+							      IrpIdentifier);
+    if (CompletedIrp == NULL) {
+	IopDumpDriverPendingIoPacketList(DriverObject,
+					 OriginalRequestor,
+					 IrpIdentifier);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* IRP identifier is valid. Detach the IO packet from the driver's pending IO packet list. */
+    RemoveEntryList(&CompletedIrp->IoPacketLink);
+    PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor, CompletedIrp);
+    /* If the IRP identifier is valid, PendingIrp should never be NULL. We assert on
+     * debug build and return error on release build. */
+    if (PendingIrp == NULL) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    /* The PENDING_IRP must be top-most (ie. not forwarded from a higher-level driver) */
+    assert(PendingIrp->ForwardedFrom == NULL);
+    /* Locate the lowest-level driver object in the IRP flow */
+    while (PendingIrp->ForwardedTo != NULL) {
+	PendingIrp = PendingIrp->ForwardedTo;
+    }
+    /* Find the THREAD or DRIVER object at this level */
+    POBJECT Requestor = PendingIrp->Requestor;
+    if (ObObjectIsType(Requestor, OBJECT_TYPE_THREAD)) {
+	/* The original requestor is a THREAD object */
+	assert(PendingIrp->ForwardedFrom == NULL);
+	assert(PendingIrp->IoResponseData == NULL);
+	/* Copy the IO response data to the server. */
+	PendingIrp->IoResponseStatus = Response->ClientMsg.IoCompleted.IoStatus;
+	ULONG ResponseDataSize = Response->ClientMsg.IoCompleted.ResponseDataSize;
+	PendingIrp->IoResponseDataSize = ResponseDataSize;
+	if (ResponseDataSize) {
+	    PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize, NTOS_IO_TAG);
+	    if (PendingIrp->IoResponseData != NULL) {
+		memcpy(PendingIrp->IoResponseData,
+		       Response->ClientMsg.IoCompleted.ResponseData,
+		       ResponseDataSize);
+	    }
+	}
+	/* Wake the THREAD object up */
+	KeSetEvent(&PendingIrp->IoCompletionEvent);
+    } else {
+	/* Otherwise, it must be a driver object. Reply to the driver. */
+	assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER));
+	PIO_DRIVER_OBJECT RequestorDriver = (PIO_DRIVER_OBJECT)Requestor;
+	/* Drivers cannot send IRPs to itself */
+	assert(RequestorDriver != DriverObject);
+
+	/* Allocate a new IO packet of type ServerMessage */
+	PIO_PACKET SrvMsg = NULL;
+	RET_ERR(IopAllocateIoPacket(IoPacketTypeServerMessage, Response->Size, &SrvMsg));
+	/* Copy the IO response to the new IO packet */
+	assert(SrvMsg != NULL);
+	SrvMsg->ServerMsg.Type = IoSrvMsgIoCompleted;
+	SrvMsg->ServerMsg.IoCompleted = Response->ClientMsg.IoCompleted;
+	if (SrvMsg->ServerMsg.IoCompleted.ResponseDataSize != 0) {
+	    memcpy(SrvMsg->ServerMsg.IoCompleted.ResponseData,
+		   Response->ClientMsg.IoCompleted.ResponseData,
+		   Response->ClientMsg.IoCompleted.ResponseDataSize);
+	}
+	/* If the requestor is the original requestor, set the OriginalRequestor
+	 * field to NULL since driver objects set this field to NULL when they
+	 * request a new IRP */
+	if (PendingIrp->ForwardedFrom == NULL) {
+	    assert(Requestor == IopLocateIrpInOriginalRequestor(OriginalRequestor,
+								CompletedIrp)->Requestor);
+	    SrvMsg->ServerMsg.IoCompleted.OriginalRequestor = 0;
+	}
+
+	/* Add the IO packet to the driver IO packet queue */
+	InsertTailList(&RequestorDriver->IoPacketQueue, &SrvMsg->IoPacketLink);
+	/* Signal the driver that an IO packet has been queued */
+	KeSetEvent(&RequestorDriver->IoPacketQueuedEvent);
+	/* Detach the PENDING_IRP from the driver's ForwardedIrpList */
+	RemoveEntryList(&PendingIrp->Link);
+	assert(PendingIrp->ForwardedTo == NULL);
+	if (PendingIrp->ForwardedFrom == NULL) {
+	    /* If the PENDING_IRP is the top-level one (ie. the original requestor),
+	     * free the original IO_PACKET */
+	    assert(PendingIrp->IoPacket != NULL);
+	    ExFreePool(PendingIrp->IoPacket);
+	} else {
+	    /* Otherwise, detach the PENDING_IRP from the IRP stack */
+	    PendingIrp->ForwardedFrom->ForwardedTo = NULL;
+	}
+	/* In either cases, we want to free the PENDING_IRP itself */
+	ExFreePool(PendingIrp);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
+						 IN PIO_DRIVER_OBJECT DriverObject)
+{
+    assert(Msg != NULL);
+    assert(Msg->Type == IoPacketTypeClientMessage);
+    assert(Msg->ClientMsg.Type == IoCliMsgForwardIrp);
+
+    /* Locate the IO_PACKET and DeviceObject specified in the ForwardIrp message */
+    GLOBAL_HANDLE OriginalRequestor = Msg->ClientMsg.ForwardIrp.OriginalRequestor;
+    HANDLE IrpIdentifier = Msg->ClientMsg.ForwardIrp.Identifier;
+    PIO_PACKET Irp = IopLocateIrpInDriverPendingList(DriverObject,
+						     OriginalRequestor,
+						     IrpIdentifier);
+    if (Irp == NULL) {
+	IopDumpDriverPendingIoPacketList(DriverObject,
+					 OriginalRequestor,
+					 IrpIdentifier);
+	return STATUS_INVALID_PARAMETER;
+    }
+    GLOBAL_HANDLE DeviceHandle = Msg->ClientMsg.ForwardIrp.DeviceObject;
+    PIO_DEVICE_OBJECT ForwardedTo = IopGetDeviceObject(DeviceHandle,
+						       NULL);
+    if (ForwardedTo == NULL) {
+	DbgTrace("Driver %s sent ForwardIrp message with invalid device handle %p\n",
+		 DriverObject->DriverImagePath, (PVOID)DeviceHandle);
+	return STATUS_INVALID_PARAMETER;
+    }
+    assert(ForwardedTo->DriverObject != NULL);
+
+    /* If client has requested completion notification, in addition to
+     * moving the IO_PACKET from the source driver object to the target
+     * driver, we also create a PENDING_IRP that links to the existing
+     * PENDING_IRP */
+    if (Msg->ClientMsg.ForwardIrp.NotifyCompletion) {
+	PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor,
+								  Irp);
+	/* If the IRP identifier is valid, PendingIrp should never be NULL. */
+	assert(PendingIrp != NULL);
+	/* On release build we simply drop the completion notification. It's
+	 * better than crashing the Executive */
+	if (PendingIrp != NULL) {
+	    PPENDING_IRP NewPendingIrp = NULL;
+	    IopAllocatePendingIrp(Irp, ForwardedTo->DriverObject, &NewPendingIrp);
+	    NewPendingIrp->ForwardedFrom = PendingIrp;
+	    PendingIrp->ForwardedTo = NewPendingIrp;
+	    InsertTailList(&ForwardedTo->DriverObject->ForwardedIrpList, &NewPendingIrp->Link);
+	}
+    }
+
+    /* Move the original IO_PACKET from DriverObject to ForwardedTo */
+    RemoveEntryList(&Irp->IoPacketLink);
+    InsertTailList(&ForwardedTo->DriverObject->IoPacketQueue, &Irp->IoPacketLink);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
+					  IN PIO_DRIVER_OBJECT DriverObject)
+{
+    PIO_PACKET IoPacket = NULL;
+    IopAllocateIoPacket(IoPacketTypeRequest, Src->Size, &IoPacket);
+    assert(IoPacket != NULL);
+    memcpy(IoPacket, Src, Src->Size);
+    PIO_DEVICE_OBJECT ForwardedTo = IopGetDeviceObject(Src->Request.Device.Handle, NULL);
+    assert(ForwardedTo != NULL);
+    assert(IoPacket->Request.Identifier != NULL);
+    if (ForwardedTo == NULL || IoPacket->Request.Identifier == NULL) {
+	IoDbgDumpIoPacket(Src, TRUE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    assert(ForwardedTo->DriverObject != NULL);
+    IoPacket->Request.Device.Object = ForwardedTo;
+    IoPacket->Request.File.Object = IopGetFileObject(Src->Request.File.Handle);
+    IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(DriverObject);
+    PPENDING_IRP PendingIrp = NULL;
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, DriverObject, &PendingIrp),
+	       ExFreePool(IoPacket));
+    assert(PendingIrp != NULL);
+
+    /* Map the input/output buffers from source driver to target driver */
+    switch (Src->Request.MajorFunction) {
+    case IRP_MJ_DEVICE_CONTROL:
+    case IRP_MJ_INTERNAL_DEVICE_CONTROL:
+	assert(DriverObject->DriverProcess != NULL);
+	RET_ERR_EX(IopMapUserBuffer(DriverObject->DriverProcess, ForwardedTo->DriverObject,
+				    (MWORD)Src->Request.DeviceIoControl.InputBuffer,
+				    Src->Request.DeviceIoControl.InputBufferLength,
+				    (MWORD *)&IoPacket->Request.DeviceIoControl.InputBuffer, TRUE),
+		   {
+		       ExFreePool(IoPacket);
+		       ExFreePool(PendingIrp);
+		   });
+	RET_ERR_EX(IopMapUserBuffer(DriverObject->DriverProcess, ForwardedTo->DriverObject,
+				    (MWORD)Src->Request.DeviceIoControl.OutputBuffer,
+				    Src->Request.DeviceIoControl.OutputBufferLength,
+				    (MWORD *)&IoPacket->Request.DeviceIoControl.OutputBuffer, FALSE),
+		   {
+		       ExFreePool(IoPacket);
+		       ExFreePool(PendingIrp);
+		       IopUnmapUserBuffer(ForwardedTo->DriverObject,
+					  (MWORD)IoPacket->Request.DeviceIoControl.InputBuffer);
+		   });
+	break;
+
+    default:
+	UNIMPLEMENTED;
+    }
+
+    InsertTailList(&DriverObject->ForwardedIrpList, &PendingIrp->Link);
+    InsertTailList(&ForwardedTo->DriverObject->IoPacketQueue, &IoPacket->IoPacketLink);
+    KeSetEvent(&ForwardedTo->DriverObject->IoPacketQueuedEvent);
+
+    return STATUS_SUCCESS;
+}
+
 /*
  * Handler function for the WDM service IopRequestIoPackets. This service should
  * only be called in the main event loop thread of the driver process.
@@ -67,80 +283,38 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	    assert(FALSE);
 	    break;
 	}
+
 	switch (Response->Type) {
-	case IoPacketTypeClientMessage: {
+	case IoPacketTypeClientMessage:
 	    switch (Response->ClientMsg.Type) {
-	    case IoCliMsgIoCompleted: {
-		PTHREAD OriginatingThread = (PTHREAD)
-		    GLOBAL_HANDLE_TO_OBJECT(Response->ClientMsg.Parameters.IoCompleted.OriginatingThread);
-		HANDLE OriginalIrp = Response->ClientMsg.Parameters.IoCompleted.OriginalIrp;
-		/* Check the driver's pending IO packet list to see if OriginalIrp is valid */
-		PIO_PACKET CompletedIrp = NULL;
-		LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
-		    /* The IO packets in the pending IO packet list must be of type IoPacketTypeRequest.
-		     * We never put IoPacketTypeClientMessage etc into the pending IO packet list */
-		    assert(PendingIoPacket->Type == IoPacketTypeRequest);
-		    if ((PendingIoPacket->Request.OriginatingThread.Object == OriginatingThread) &&
-			(PendingIoPacket->Request.Identifier == OriginalIrp)) {
-			CompletedIrp = PendingIoPacket;
-		    }
-		}
-		if (CompletedIrp == NULL) {
-		    DbgTrace("Received response packet from driver %s with invalid IRP identifier %p:%p."
-			     " Dumping all IO packets in the driver's pending IO packet list.\n",
-			     DriverObject->DriverImagePath, OriginatingThread, OriginalIrp);
-		    LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
-			IoDbgDumpIoPacket(PendingIoPacket, FALSE);
-		    }
-		    continue;
-		}
+	    case IoCliMsgIoCompleted:
+		Status = IopHandleIoCompletedClientMessage(Response, DriverObject);
+		break;
 
-		/* OriginalIrp is valid. Detach the IO packet from the driver's pending IO packet list. */
-		RemoveEntryList(&CompletedIrp->IoPacketLink);
-		PPENDING_IRP PendingIrp = IopGetPendingIrp(OriginatingThread, CompletedIrp);
-		/* If the IRP was queued on the thread, wake it up. */
-		if (PendingIrp != NULL) {
-		    PendingIrp->IoResponseStatus = Response->ClientMsg.Parameters.IoCompleted.IoStatus;
-		    ULONG ResponseDataSize = Response->ClientMsg.Parameters.IoCompleted.ResponseDataSize;
-		    PendingIrp->IoResponseDataSize = ResponseDataSize;
-		    if (ResponseDataSize) {
-			PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize, NTOS_IO_TAG);
-			if (PendingIrp->IoResponseData != NULL) {
-			    memcpy(PendingIrp->IoResponseData,
-				   Response->ClientMsg.Parameters.IoCompleted.ResponseData,
-				   ResponseDataSize);
-			}
-		    }
-		    KeSetEvent(&PendingIrp->IoCompletionEvent);
-		} else {
-		    /* Else, the original IRP was generated by a driver object via IoCallDriverEx.
-		     * Add the IRP to its completed IRP list, so later we can inform the driver object
-		     * of the completion of the IRP. */
-		    assert(OriginatingThread->Process != NULL);
-		    PIO_DRIVER_OBJECT DriverObject = OriginatingThread->Process->DriverObject;
-		    /* TODO */
-		}
-	    } break;
-
-	    case IoCliMsgForwardIrp: {
-	    } break;
+	    case IoCliMsgForwardIrp:
+		Status = IopHandleForwardIrpClientMessage(Response, DriverObject);
+		break;
 
 	    default:
 		DbgTrace("Invalid IO message type from driver %s. Type is %d.\n",
 			 DriverObject->DriverImagePath, Response->ClientMsg.Type);
+		Status = STATUS_INVALID_PARAMETER;
 	    }
-	} break;
+	    break;
 
-	case IoPacketTypeRequest: {
-	    UNIMPLEMENTED_ASYNC(State);
-	} break;
+	case IoPacketTypeRequest:
+	    Status = IopHandleIoRequestMessage(Response, DriverObject);
+	    break;
 
 	default:
 	    DbgTrace("Received invalid response packet from driver %s. Dumping it now.\n",
 		     DriverObject->DriverImagePath);
 	    IoDbgDumpIoPacket(Response, TRUE);
-	    assert(FALSE);
+	    Status = STATUS_INVALID_PARAMETER;
 	}
+	/* If the routines above returned error, there isn't a lot we can do
+	 * other than simply ignoring the error and continue processing. */
+	assert(NT_SUCCESS(Status));
 	Response = (PIO_PACKET)((MWORD)Response + Response->Size);
     }
 
@@ -179,19 +353,23 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	 * replaced by the client-side GLOBAL_HANDLE */
 	if (IoPacket->Type == IoPacketTypeRequest) {
 	    assert(IoPacket->Request.Device.Object != NULL);
-	    assert(IoPacket->Request.OriginatingThread.Object != NULL);
+	    assert(IoPacket->Request.OriginalRequestor != 0);
 	    Dest->Request.Device.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.Device.Object);
 	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.File.Object);
-	    Dest->Request.OriginatingThread.Handle =
-		OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.OriginatingThread.Object);
 	}
 	IoDbgDumpIoPacket(Dest, TRUE);
 	Dest = (PIO_PACKET)((MWORD)Dest + IoPacket->Size);
 	PIO_PACKET NextIoPacket = CONTAINING_RECORD(IoPacket->IoPacketLink.Flink,
 						    IO_PACKET, IoPacketLink);
-	/* Move this IoPacket from the driver's IO packet queue to its pending IO packet list */
+	/* Detach this IoPacket from the driver's IO packet queue */
 	RemoveEntryList(&IoPacket->IoPacketLink);
-	InsertTailList(&DriverObject->PendingIoPacketList, &IoPacket->IoPacketLink);
+	if (IoPacket->Type == IoPacketTypeRequest) {
+	    /* If this is a request packet, move it to the driver's pending IO packet list */
+	    InsertTailList(&DriverObject->PendingIoPacketList, &IoPacket->IoPacketLink);
+	} else {
+	    /* Else, clean up this IO packet since we do not expect a reply */
+	    ExFreePool(IoPacket);
+	}
 	IoPacket = NextIoPacket;
     }
     *pNumRequestPackets = NumRequestPackets;

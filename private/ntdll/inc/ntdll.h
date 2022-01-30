@@ -1,5 +1,7 @@
 #pragma once
 
+#define RTLP_DBGTRACE_MODULE_NAME	"NTDLL"
+
 #include <string.h>
 #include <stdint.h>
 #include <nt.h>

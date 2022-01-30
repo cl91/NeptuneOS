@@ -2,6 +2,8 @@
 
 #include <kernel/gen_config.h>
 
+#define RTLP_DBGTRACE_MODULE_NAME	"NTOS"
+
 #include <nt.h>
 #include <assert.h>
 #include <compile_assert.h>
@@ -29,6 +31,7 @@
 
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
+VOID MmDbgDumpCNode(IN PCNODE CNode);
 VOID MmDbgDumpUntypedInfo();
 VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
 VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
@@ -39,6 +42,7 @@ VOID KeDbgDumpIPCError(IN int Error);
 VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
 #else
 #define MmDbgDumpCapTreeNode(x)
+#define MmDbgDumpCNode(x)
 #define MmDbgDumpUntypedInfo()
 #define MmDbgDumpPagingStructure(x)
 #define MmDbgDumpPagingStructureRecursively(x)

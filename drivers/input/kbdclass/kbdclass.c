@@ -185,15 +185,12 @@ static NTAPI NTSTATUS ClassRead(IN PDEVICE_OBJECT DeviceObject,
 static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 					 IN PIRP Irp)
 {
-    //PCLASS_DEVICE_EXTENSION DeviceExtension;
     NTSTATUS Status = STATUS_NOT_SUPPORTED;
 
     TRACE_(CLASS_NAME, "IRP_MJ_DEVICE_CONTROL\n");
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
 	return ForwardIrpAndForget(DeviceObject, Irp);
-
-    //DeviceExtension = (PCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     switch (IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.IoControlCode) {
     case IOCTL_KEYBOARD_QUERY_ATTRIBUTES:
@@ -258,9 +255,7 @@ static NTAPI NTSTATUS ClassPower(IN PDEVICE_OBJECT DeviceObject,
 				 IN PIRP Irp)
 {
     NTSTATUS Status;
-    PPORT_DEVICE_EXTENSION DeviceExtension;
-
-    DeviceExtension = DeviceObject->DeviceExtension;
+    PPORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     if (!DeviceExtension->Common.IsClassDO) {
 	/* Forward port DO IRPs to lower device */
 	PoStartNextPowerIrp(Irp);
@@ -364,7 +359,6 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
     UNICODE_STRING DeviceNameU;
     PWSTR DeviceIdW = NULL;	/* Pointer into DeviceNameU.Buffer */
     PDEVICE_OBJECT Fdo;
-    PCLASS_DEVICE_EXTENSION DeviceExtension;
     NTSTATUS Status;
 
     TRACE_(CLASS_NAME, "CreateClassDeviceObject(0x%p)\n", DriverObject);
@@ -421,7 +415,7 @@ cleanup:
 	return Status;
     }
 
-    DeviceExtension = (PCLASS_DEVICE_EXTENSION) Fdo->DeviceExtension;
+    PCLASS_DEVICE_EXTENSION DeviceExtension = (PCLASS_DEVICE_EXTENSION)Fdo->DeviceExtension;
     RtlZeroMemory(DeviceExtension, sizeof(CLASS_DEVICE_EXTENSION));
     DeviceExtension->Common.IsClassDO = TRUE;
     DeviceExtension->DriverExtension = DriverExtension;
@@ -600,7 +594,6 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 {
     PCLASS_DRIVER_EXTENSION DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
     PDEVICE_OBJECT Fdo = NULL;
-    PPORT_DEVICE_EXTENSION DeviceExtension = NULL;
 
     TRACE_(CLASS_NAME, "ClassAddDevice called. Pdo = 0x%p\n", Pdo);
 
@@ -618,7 +611,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
     }
     IoSetStartIoAttributes(Fdo, TRUE, TRUE);
 
-    DeviceExtension = (PPORT_DEVICE_EXTENSION) Fdo->DeviceExtension;
+    PPORT_DEVICE_EXTENSION DeviceExtension = (PPORT_DEVICE_EXTENSION)Fdo->DeviceExtension;
     RtlZeroMemory(DeviceExtension, sizeof(PORT_DEVICE_EXTENSION));
     DeviceExtension->Common.IsClassDO = FALSE;
     DeviceExtension->DeviceObject = Fdo;

@@ -3,7 +3,7 @@
 
 #include <wdm.h>
 #include <kbdmou.h>
-#include <ntdd8042.h>
+#include "ntdd8042.h"
 
 /*-----------------------------------------------------
  * Structures

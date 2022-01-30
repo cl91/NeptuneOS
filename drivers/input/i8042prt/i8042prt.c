@@ -48,8 +48,8 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 									   DriverObject);
 
     if (Pdo == NULL) {
-	/* We're getting a NULL Pdo at the first call as
-	 * we are a legacy driver. Ignore it */
+	/* This should never happen. Ignore it in release build and assert on debug build */
+	assert(FALSE);
 	return STATUS_SUCCESS;
     }
 

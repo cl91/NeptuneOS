@@ -15,6 +15,7 @@
 @ stdcall IoBuildAsynchronousFsdRequest(long ptr ptr long ptr)
 @ stdcall IoBuildSynchronousFsdRequest(long ptr ptr long ptr ptr)
 @ stdcall IoCallDriverEx(ptr ptr ptr)
+@ stdcall IoCompleteRequest(ptr long)
 @ stdcall IoConnectInterrupt(ptr ptr ptr long long long long long long long)
 @ stdcall IoDisconnectInterrupt(ptr)
 @ stdcall IoAllocateWorkItem(ptr)

@@ -20,7 +20,7 @@ add_compile_options(
     --target=${TRIPLE}
     -D_NTSYSTEM_
 )
-set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG -DDBG" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG -DDBG -UNDEBUG" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
@@ -63,6 +63,7 @@ target_include_directories(
 	../../public/ddk/inc
 	../../public/crt/inc
 	../../public/crt/inc/${Arch}
+	../rtl/inc
 	tools
 	inc
 )

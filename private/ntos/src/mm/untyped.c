@@ -44,11 +44,11 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
     assert(ObjCap);
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				      ObjType, ObjBits,
-				      NTEX_CNODE_CAP,
 				      TreeNode->CSpace->TreeNode.Cap,
-				      0, ObjCap, 1);
+				      0, 0, ObjCap, 1);
     if (Error != seL4_NoError) {
 	MmDeallocateCap(TreeNode->CSpace, ObjCap);
+	MmDbgDumpCNode(TreeNode->CSpace);
 	return SEL4_ERROR(Error);
     }
     TreeNode->Cap = ObjCap;

@@ -1,5 +1,7 @@
 #include "iop.h"
 
+LIST_ENTRY IopFileObjectList;
+
 /*
  * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
  */
@@ -13,6 +15,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     File->FileName = Ctx->FileName;
     File->BufferPtr = Ctx->BufferPtr;
     File->Size = Ctx->FileSize;
+    InsertTailList(&IopFileObjectList, &File->Link);
 
     return STATUS_SUCCESS;
 }

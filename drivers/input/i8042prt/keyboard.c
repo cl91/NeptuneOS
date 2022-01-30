@@ -506,6 +506,8 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	DeviceExtension->Common.PortDeviceExtension->Flags |= KEYBOARD_CONNECTED;
 
 	i8042InitializeKeyboardAttributes(DeviceExtension);
+	Status = STATUS_SUCCESS;
+	break;
 
 	IoMarkIrpPending(Irp);
 	/* FIXME: DeviceExtension->KeyboardHook.IsrWritePort = ; */

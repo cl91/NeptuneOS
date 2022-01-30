@@ -46,6 +46,10 @@
     <parameter annotation="out" type="ptr::MWORD" name="InterruptMutex" />
   </svc>
 
+  <svc name="IopCreateCoroutineStack">
+    <parameter annotation="out" type="ptr::PVOID" name="StackTop" />
+  </svc>
+
   <svc name="HalpMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>

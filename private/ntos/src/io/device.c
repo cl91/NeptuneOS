@@ -114,28 +114,28 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
 	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE;
-	Locals.IoPacket->Request.Parameters.Create.Options = OpenPacket->CreateOptions;
-	Locals.IoPacket->Request.Parameters.Create.FileAttributes = OpenPacket->FileAttributes;
-	Locals.IoPacket->Request.Parameters.Create.ShareAccess = OpenPacket->ShareAccess;
-	Locals.IoPacket->Request.Parameters.Create.FileObjectParameters = FileObjectParameters;
+	Locals.IoPacket->Request.Create.Options = OpenPacket->CreateOptions;
+	Locals.IoPacket->Request.Create.FileAttributes = OpenPacket->FileAttributes;
+	Locals.IoPacket->Request.Create.ShareAccess = OpenPacket->ShareAccess;
+	Locals.IoPacket->Request.Create.FileObjectParameters = FileObjectParameters;
     } else if (OpenPacket->CreateFileType == CreateFileTypeNamedPipe) {
 	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
-	Locals.IoPacket->Request.Parameters.CreatePipe.Options = OpenPacket->CreateOptions;
-	Locals.IoPacket->Request.Parameters.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
-	Locals.IoPacket->Request.Parameters.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
-	Locals.IoPacket->Request.Parameters.CreatePipe.FileObjectParameters = FileObjectParameters;
+	Locals.IoPacket->Request.CreatePipe.Options = OpenPacket->CreateOptions;
+	Locals.IoPacket->Request.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
+	Locals.IoPacket->Request.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
+	Locals.IoPacket->Request.CreatePipe.FileObjectParameters = FileObjectParameters;
     } else {
 	assert(OpenPacket->CreateFileType == CreateFileTypeMailslot);
 	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE_MAILSLOT;
-	Locals.IoPacket->Request.Parameters.CreateMailslot.Options = OpenPacket->CreateOptions;
-	Locals.IoPacket->Request.Parameters.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
-	Locals.IoPacket->Request.Parameters.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
-	Locals.IoPacket->Request.Parameters.CreateMailslot.FileObjectParameters = FileObjectParameters;
+	Locals.IoPacket->Request.CreateMailslot.Options = OpenPacket->CreateOptions;
+	Locals.IoPacket->Request.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
+	Locals.IoPacket->Request.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
+	Locals.IoPacket->Request.CreateMailslot.FileObjectParameters = FileObjectParameters;
     }
 
     Locals.IoPacket->Request.Device.Object = Device;
     Locals.IoPacket->Request.File.Object = Locals.FileObject;
-    IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, &Locals.PendingIrp));
+    IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
     IopQueueIoPacket(Locals.PendingIrp, Driver, Thread);
 
     /* For create/open we always wait till the driver has completed the request. */
@@ -225,7 +225,7 @@ NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
     }
     SrcDev->AttachedTo = PrevTop;
     PrevTop->AttachedDevice = SrcDev;
-    *PreviousTopDeviceHandle = POINTER_TO_GLOBAL_HANDLE(PrevTop);
+    *PreviousTopDeviceHandle = OBJECT_TO_GLOBAL_HANDLE(PrevTop);
     *PreviousTopDeviceInfo = PrevTop->DeviceInfo;
     return STATUS_SUCCESS;
 }
@@ -243,7 +243,7 @@ NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
     while (Device->AttachedDevice != NULL) {
 	Device = Device->AttachedDevice;
     }
-    *TopDeviceHandle = POINTER_TO_GLOBAL_HANDLE(Device);
+    *TopDeviceHandle = OBJECT_TO_GLOBAL_HANDLE(Device);
     *TopDeviceInfo = Device->DeviceInfo;
     return STATUS_SUCCESS;
 }
@@ -305,29 +305,25 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     Locals.IoPacket->Request.Device.Object = Locals.FileObject->DeviceObject;
     Locals.IoPacket->Request.File.Object = Locals.FileObject;
 
-    if ((InputBuffer != NULL) && (InputBufferLength != 0)) {
-	IF_ERR_GOTO(out, Status,
-		    IopMapUserBuffer(Thread->Process, Locals.DriverObject,
-				     (MWORD) InputBuffer, InputBufferLength,
-				     &Locals.DriverInputBuffer, TRUE));
-    }
-
-    if ((OutputBuffer != NULL) && (OutputBufferLength != 0)) {
-	BOOLEAN MapReadOnly = METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT;
-	IF_ERR_GOTO(out, Status,
-		    IopMapUserBuffer(Thread->Process, Locals.DriverObject,
-				     (MWORD) OutputBuffer, OutputBufferLength,
-				     &Locals.DriverOutputBuffer, MapReadOnly));
-    }
-
-    Locals.IoPacket->Request.Parameters.DeviceIoControl.InputBuffer = (PVOID)Locals.DriverInputBuffer;
-    Locals.IoPacket->Request.Parameters.DeviceIoControl.OutputBuffer = (PVOID)Locals.DriverOutputBuffer;
-    Locals.IoPacket->Request.Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
-    Locals.IoPacket->Request.Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
-    Locals.IoPacket->Request.Parameters.DeviceIoControl.IoControlCode = Ioctl;
+    IF_ERR_GOTO(out, Status,
+		IopMapUserBuffer(Thread->Process, Locals.DriverObject,
+				 (MWORD) InputBuffer, InputBufferLength,
+				 &Locals.DriverInputBuffer, TRUE));
 
     IF_ERR_GOTO(out, Status,
-		IopAllocatePendingIrp(Locals.IoPacket, &Locals.PendingIrp));
+		IopMapUserBuffer(Thread->Process, Locals.DriverObject,
+				 (MWORD) OutputBuffer, OutputBufferLength,
+				 &Locals.DriverOutputBuffer,
+				 METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT));
+
+    Locals.IoPacket->Request.DeviceIoControl.InputBuffer = (PVOID)Locals.DriverInputBuffer;
+    Locals.IoPacket->Request.DeviceIoControl.OutputBuffer = (PVOID)Locals.DriverOutputBuffer;
+    Locals.IoPacket->Request.DeviceIoControl.InputBufferLength = InputBufferLength;
+    Locals.IoPacket->Request.DeviceIoControl.OutputBufferLength = OutputBufferLength;
+    Locals.IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
+
+    IF_ERR_GOTO(out, Status,
+		IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
     IopQueueIoPacket(Locals.PendingIrp, Locals.DriverObject, Thread);
 
     /* Only wait for the IO completion if file is opened with
@@ -347,12 +343,8 @@ out:
 	/* The IO request has returned a error status. Clean up the file object. */
 	ObDereferenceObject(Locals.FileObject);
     }
-    if (Locals.DriverInputBuffer != 0) {
-	IopUnmapUserBuffer(Locals.DriverObject, Locals.DriverInputBuffer);
-    }
-    if (Locals.DriverOutputBuffer != 0) {
-	IopUnmapUserBuffer(Locals.DriverObject, Locals.DriverOutputBuffer);
-    }
+    IopUnmapUserBuffer(Locals.DriverObject, Locals.DriverInputBuffer);
+    IopUnmapUserBuffer(Locals.DriverObject, Locals.DriverOutputBuffer);
     if (Locals.PendingIrp == NULL & Locals.IoPacket != NULL) {
 	ExFreePool(Locals.IoPacket);
     } else {

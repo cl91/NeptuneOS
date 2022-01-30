@@ -52,6 +52,9 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
     /* Get the Stack */
     PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
 
+    /* Set the Device Object */
+    StackPtr->DeviceObject = DeviceObject;
+
     /* Set the DevCtl Type */
     StackPtr->MajorFunction = InternalDeviceIoControl ?
 	IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
@@ -89,6 +92,9 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 
     /* Get the Stack */
     PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
+
+    /* Set the Device Object */
+    StackPtr->DeviceObject = DeviceObject;
 
     /* Write the Major function and then deal with it */
     StackPtr->MajorFunction = (UCHAR) MajorFunction;

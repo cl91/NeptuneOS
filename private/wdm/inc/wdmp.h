@@ -4,10 +4,13 @@
 #include <wdm.h>
 #include <assert.h>
 #include <debug.h>
+
+extern PCSTR IopDbgTraceModuleName;
+#define RTLP_DBGTRACE_MODULE_NAME	IopDbgTraceModuleName
+
 #include <util.h>
 #include <wdmsvc.h>
 #include <wdm_wdmsvc_gen.h>
-#include <irp.h>
 
 #define TAG_DRIVER_EXTENSION	'EVRD'
 #define TAG_REINIT		'iRoI'
@@ -47,24 +50,19 @@
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
 
 /*
- * An entry in the list of files created by this driver.
- * The Handle member is a global handle to the NTOS Executive's IO_FILE_OBJECT.
+ * A PNP AddDevice request from the server.
  */
-typedef struct _FILE_LIST_ENTRY {
-    PFILE_OBJECT Object;    /* Points to the driver readable object */
-    GLOBAL_HANDLE Handle;   /* Unique handle supplied by the server */
-    LIST_ENTRY Link; /* List entry for the list of all known file objects */
-} FILE_LIST_ENTRY, *PFILE_LIST_ENTRY;
-
-/*
- * An entry in the list of devices created by this driver.
- * The Handle member is a global handle to the NTOS Executive's IO_DEVICE_OBJECT.
- */
-typedef struct _DEVICE_LIST_ENTRY {
-    PDEVICE_OBJECT Object;  /* Points to the driver readable object */
-    GLOBAL_HANDLE Handle;   /* Unique handle supplied by the server */
-    LIST_ENTRY Link; /* List entry for the list of all known device objects */
-} DEVICE_LIST_ENTRY, *PDEVICE_LIST_ENTRY;
+typedef struct _ADD_DEVICE_REQUEST {
+    SHORT Type;
+    USHORT Size;
+    NTSTATUS Status;
+    PDEVICE_OBJECT PhyDevObj;
+    PDRIVER_ADD_DEVICE AddDevice;
+    LIST_ENTRY Link;
+    PVOID CoroutineStackTop;
+    ULONG_PTR OriginalRequestor;
+    HANDLE Identifier;
+} ADD_DEVICE_REQUEST, *PADD_DEVICE_REQUEST;
 
 /*
  * Driver Re-Initialization Entry
@@ -174,15 +172,20 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
 GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device);
+PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
+					  IN IO_DEVICE_INFO DevInfo);
 
 /* irp.c */
 extern PIO_PACKET IopIncomingIoPacketBuffer;
 extern PIO_PACKET IopOutgoingIoPacketBuffer;
 extern LIST_ENTRY IopIrpQueue;
 extern LIST_ENTRY IopFileObjectList;
-extern LIST_ENTRY IopCompletedIrpList;
-extern LIST_ENTRY IopForwardedIrpList;
+extern LIST_ENTRY IopReplyIrpList;
+extern LIST_ENTRY IopPendingIrpList;
 extern LIST_ENTRY IopCleanupIrpList;
+extern LIST_ENTRY IopAddDeviceRequestList;
+extern LIST_ENTRY IopSuspendedAddDeviceRequestList;
+extern LIST_ENTRY IopCompletedAddDeviceRequestList;
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
 
@@ -202,3 +205,8 @@ extern ULONG KiStallScaleFactor;
 
 /* workitem.c */
 extern SLIST_HEADER IopWorkItemQueue;
+
+static inline BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
+{
+    return DeviceObject->DriverObject == &IopDriverObject;
+}
