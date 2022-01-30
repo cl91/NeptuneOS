@@ -139,5 +139,7 @@ NTSTATUS SmInitHardwareDatabase()
     RET_ERR(SmCreateRegistryKey(HARDWARE_KEY_PATH, TRUE, NULL));
     RET_ERR(SmInitBootDriverConfigs());
     RET_ERR(SmInitPnp());
+    RET_ERR(SmLoadDriver("null"));
+    RET_ERR(SmLoadDriver("beep"));
     return STATUS_SUCCESS;
 }

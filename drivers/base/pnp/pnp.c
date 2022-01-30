@@ -9,6 +9,7 @@
 
 #include <assert.h>
 #include <wdm.h>
+#include <wchar.h>
 
 #define PNP_ROOT_ENUMERATOR_U	L"\\Device\\pnp"
 
