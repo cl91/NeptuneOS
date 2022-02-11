@@ -402,7 +402,7 @@ static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
     RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
     assert(IoPacket != NULL);
     IopPopulateQueryDeviceRelationsRequest(IoPacket, Enumerator, Type);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, Enumerator, PendingIrp),
 	       ExFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, BusDriver, Thread);
     return STATUS_SUCCESS;
@@ -418,7 +418,7 @@ static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
 	assert(IoPacket != NULL);
 	IopPopulateQueryIdRequest(IoPacket, ChildNode->PhyDevObj, IdType);
 	PPENDING_IRP PendingIrp = NULL;
-	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
+	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, ChildNode->PhyDevObj, &PendingIrp),
 		   ExFreePool(IoPacket));
 	assert(PendingIrp != NULL);
 	IopQueueIoPacket(PendingIrp, ChildNode->PhyDevObj->DriverObject, Thread);
@@ -439,7 +439,7 @@ static inline NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
     IoPacket->Request.Device.Object = PhyDevObj;
     IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
     PPENDING_IRP PendingIrp = NULL;
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PhyDevObj, &PendingIrp),
 	       ExFreePool(IoPacket));
     assert(PendingIrp != NULL);
     IopQueueIoPacket(PendingIrp, DriverObject, Thread);

@@ -122,6 +122,7 @@ typedef struct _PENDING_IRP {
     PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
 			  * The pending IO packet must be of type IoPacketTypeRequest. */
     POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level */
+    PIO_DEVICE_OBJECT DeviceObject; /* Original device object at this level */
     LIST_ENTRY Link; /* List entry for THREAD.PendingIrpList or DRIVER.ForwardedIrpList */
     struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP has been forwarded to. */
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
@@ -148,12 +149,17 @@ static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
 
 static inline NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
 					     IN POBJECT Requestor,
+					     IN PIO_DEVICE_OBJECT DeviceObject,
 					     OUT PPENDING_IRP *pPendingIrp)
 {
+    assert(IoPacket != NULL);
+    assert(Requestor != NULL);
+    assert(DeviceObject != NULL);
     assert(pPendingIrp != NULL);
     IopAllocatePool(PendingIrp, PENDING_IRP);
     PendingIrp->IoPacket = IoPacket;
     PendingIrp->Requestor = Requestor;
+    PendingIrp->DeviceObject = DeviceObject;
     assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER) ||
 	   ObObjectIsType(Requestor, OBJECT_TYPE_THREAD));
     *pPendingIrp = PendingIrp;

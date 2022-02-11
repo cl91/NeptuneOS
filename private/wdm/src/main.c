@@ -93,7 +93,8 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopCompletedAddDeviceRequestList);
     InitializeListHead(&IopX86PortList);
     InitializeListHead(&IopDriverObject.ReinitListHead);
-    RtlInitializeSListHead(&IopWorkItemQueue);
+    InitializeListHead(&IopWorkItemQueue);
+    InitializeListHead(&IopSuspendedWorkItemList);
     RtlInitializeSListHead(&IopDpcQueue);
     RtlInitializeSListHead(&IopInterruptServiceRoutineList);
 

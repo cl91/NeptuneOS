@@ -83,14 +83,20 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 		       ResponseDataSize);
 	    }
 	}
+	/* Set the device object in the Irp to the original device object */
+	assert(PendingIrp->IoPacket != NULL);
+	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+	assert(PendingIrp->DeviceObject != NULL);
+	PendingIrp->IoPacket->Request.Device.Object = PendingIrp->DeviceObject;
 	/* Wake the THREAD object up */
 	KeSetEvent(&PendingIrp->IoCompletionEvent);
     } else {
 	/* Otherwise, it must be a driver object. Reply to the driver. */
 	assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER));
+	/* Note that since a lower driver can create an IRP and send it to
+	 * a higher-level driver, which can in turn forward this IRP back to the
+	 * lower driver, the Requestor may in fact be equal to DriverObject. */
 	PIO_DRIVER_OBJECT RequestorDriver = (PIO_DRIVER_OBJECT)Requestor;
-	/* Drivers cannot send IRPs to itself */
-	assert(RequestorDriver != DriverObject);
 
 	/* Allocate a new IO packet of type ServerMessage */
 	PIO_PACKET SrvMsg = NULL;
@@ -137,7 +143,7 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 }
 
 static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
-						 IN PIO_DRIVER_OBJECT DriverObject)
+						 IN PIO_DRIVER_OBJECT SourceDriver)
 {
     assert(Msg != NULL);
     assert(Msg->Type == IoPacketTypeClientMessage);
@@ -146,21 +152,24 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
     /* Locate the IO_PACKET and DeviceObject specified in the ForwardIrp message */
     GLOBAL_HANDLE OriginalRequestor = Msg->ClientMsg.ForwardIrp.OriginalRequestor;
     HANDLE IrpIdentifier = Msg->ClientMsg.ForwardIrp.Identifier;
-    PIO_PACKET Irp = IopLocateIrpInDriverPendingList(DriverObject,
+    PIO_PACKET Irp = IopLocateIrpInDriverPendingList(SourceDriver,
 						     OriginalRequestor,
 						     IrpIdentifier);
-    if (Irp == NULL) {
-	IopDumpDriverPendingIoPacketList(DriverObject,
+    if (Irp == NULL || Irp->Type != IoPacketTypeRequest) {
+	IopDumpDriverPendingIoPacketList(SourceDriver,
 					 OriginalRequestor,
 					 IrpIdentifier);
+	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
+    PIO_DEVICE_OBJECT ForwardedFrom = Irp->Request.Device.Object;
+    assert(ForwardedFrom != NULL);
     GLOBAL_HANDLE DeviceHandle = Msg->ClientMsg.ForwardIrp.DeviceObject;
     PIO_DEVICE_OBJECT ForwardedTo = IopGetDeviceObject(DeviceHandle,
 						       NULL);
     if (ForwardedTo == NULL) {
 	DbgTrace("Driver %s sent ForwardIrp message with invalid device handle %p\n",
-		 DriverObject->DriverImagePath, (PVOID)DeviceHandle);
+		 SourceDriver->DriverImagePath, (PVOID)DeviceHandle);
 	return STATUS_INVALID_PARAMETER;
     }
     assert(ForwardedTo->DriverObject != NULL);
@@ -178,16 +187,20 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	 * better than crashing the Executive */
 	if (PendingIrp != NULL) {
 	    PPENDING_IRP NewPendingIrp = NULL;
-	    IopAllocatePendingIrp(Irp, ForwardedTo->DriverObject, &NewPendingIrp);
+	    IopAllocatePendingIrp(Irp, SourceDriver, ForwardedFrom, &NewPendingIrp);
 	    NewPendingIrp->ForwardedFrom = PendingIrp;
 	    PendingIrp->ForwardedTo = NewPendingIrp;
-	    InsertTailList(&ForwardedTo->DriverObject->ForwardedIrpList, &NewPendingIrp->Link);
+	    InsertTailList(&SourceDriver->ForwardedIrpList, &NewPendingIrp->Link);
 	}
     }
 
-    /* Move the original IO_PACKET from DriverObject to ForwardedTo */
+    /* Move the original IO_PACKET from SourceDriver to ForwardedTo and wake the
+     * target driver up */
     RemoveEntryList(&Irp->IoPacketLink);
     InsertTailList(&ForwardedTo->DriverObject->IoPacketQueue, &Irp->IoPacketLink);
+    /* Set the Device object of the Irp to be the new device (ForwardedTo) */
+    Irp->Request.Device.Object = ForwardedTo;
+    KeSetEvent(&ForwardedTo->DriverObject->IoPacketQueuedEvent);
     return STATUS_SUCCESS;
 }
 
@@ -198,19 +211,19 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     IopAllocateIoPacket(IoPacketTypeRequest, Src->Size, &IoPacket);
     assert(IoPacket != NULL);
     memcpy(IoPacket, Src, Src->Size);
-    PIO_DEVICE_OBJECT ForwardedTo = IopGetDeviceObject(Src->Request.Device.Handle, NULL);
-    assert(ForwardedTo != NULL);
+    PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(Src->Request.Device.Handle, NULL);
+    assert(DeviceObject != NULL);
     assert(IoPacket->Request.Identifier != NULL);
-    if (ForwardedTo == NULL || IoPacket->Request.Identifier == NULL) {
+    if (DeviceObject == NULL || IoPacket->Request.Identifier == NULL) {
 	IoDbgDumpIoPacket(Src, TRUE);
 	return STATUS_INVALID_PARAMETER;
     }
-    assert(ForwardedTo->DriverObject != NULL);
-    IoPacket->Request.Device.Object = ForwardedTo;
+    assert(DeviceObject->DriverObject != NULL);
+    IoPacket->Request.Device.Object = DeviceObject;
     IoPacket->Request.File.Object = IopGetFileObject(Src->Request.File.Handle);
     IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(DriverObject);
     PPENDING_IRP PendingIrp = NULL;
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, DriverObject, &PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, DriverObject, DeviceObject, &PendingIrp),
 	       ExFreePool(IoPacket));
     assert(PendingIrp != NULL);
 
@@ -219,7 +232,7 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
 	assert(DriverObject->DriverProcess != NULL);
-	RET_ERR_EX(IopMapUserBuffer(DriverObject->DriverProcess, ForwardedTo->DriverObject,
+	RET_ERR_EX(IopMapUserBuffer(DriverObject->DriverProcess, DeviceObject->DriverObject,
 				    (MWORD)Src->Request.DeviceIoControl.InputBuffer,
 				    Src->Request.DeviceIoControl.InputBufferLength,
 				    (MWORD *)&IoPacket->Request.DeviceIoControl.InputBuffer, TRUE),
@@ -227,14 +240,14 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
 		       ExFreePool(IoPacket);
 		       ExFreePool(PendingIrp);
 		   });
-	RET_ERR_EX(IopMapUserBuffer(DriverObject->DriverProcess, ForwardedTo->DriverObject,
+	RET_ERR_EX(IopMapUserBuffer(DriverObject->DriverProcess, DeviceObject->DriverObject,
 				    (MWORD)Src->Request.DeviceIoControl.OutputBuffer,
 				    Src->Request.DeviceIoControl.OutputBufferLength,
 				    (MWORD *)&IoPacket->Request.DeviceIoControl.OutputBuffer, FALSE),
 		   {
 		       ExFreePool(IoPacket);
 		       ExFreePool(PendingIrp);
-		       IopUnmapUserBuffer(ForwardedTo->DriverObject,
+		       IopUnmapUserBuffer(DeviceObject->DriverObject,
 					  (MWORD)IoPacket->Request.DeviceIoControl.InputBuffer);
 		   });
 	break;
@@ -244,8 +257,8 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     }
 
     InsertTailList(&DriverObject->ForwardedIrpList, &PendingIrp->Link);
-    InsertTailList(&ForwardedTo->DriverObject->IoPacketQueue, &IoPacket->IoPacketLink);
-    KeSetEvent(&ForwardedTo->DriverObject->IoPacketQueuedEvent);
+    InsertTailList(&DeviceObject->DriverObject->IoPacketQueue, &IoPacket->IoPacketLink);
+    KeSetEvent(&DeviceObject->DriverObject->IoPacketQueuedEvent);
 
     return STATUS_SUCCESS;
 }
@@ -354,6 +367,8 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	if (IoPacket->Type == IoPacketTypeRequest) {
 	    assert(IoPacket->Request.Device.Object != NULL);
 	    assert(IoPacket->Request.OriginalRequestor != 0);
+	    assert(IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
+		   IoPacket->Request.Device.Object->DriverObject == DriverObject);
 	    Dest->Request.Device.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.Device.Object);
 	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.File.Object);
 	}

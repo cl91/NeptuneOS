@@ -33,12 +33,6 @@
     <parameter annotation="out" type="ptr::MWORD" name="Cap" />
   </svc>
 
-  <svc name="IopCreateWorkerThread">
-    <parameter annotation="in" type="PIO_WORKER_THREAD_ENTRY" name="EntryPoint" />
-    <parameter annotation="out" type="ptr::HANDLE" name="WorkerThreadHandle" />
-    <parameter annotation="out" type="ptr::MWORD" name="WorkerThreadNotification" />
-  </svc>
-
   <svc name="IopCreateInterruptServiceThread">
     <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="EntryPoint" />
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />

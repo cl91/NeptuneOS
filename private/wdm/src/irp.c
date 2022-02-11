@@ -69,8 +69,6 @@
 #include <wdmp.h>
 #include "coroutine.h"
 
-#define IOP_TYPE_ADD_DEVICE_REQUEST	0xad
-
 PIO_PACKET IopIncomingIoPacketBuffer;
 PIO_PACKET IopOutgoingIoPacketBuffer;
 /* List of all IRPs queued to this driver */
@@ -89,8 +87,10 @@ LIST_ENTRY IopSuspendedAddDeviceRequestList;
 LIST_ENTRY IopCompletedAddDeviceRequestList;
 /* List of all file objects created by this driver */
 LIST_ENTRY IopFileObjectList;
-
-static PVOID IopCurrentIrpOrAddDeviceReq;
+/* Current IO object being processed. This can be an IRP, an AddDevice
+ * request, or an IO workitem. These are identified by the common header
+ * {Type, Size}. */
+PVOID IopCurrentObject;
 
 static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
 				   IN PLIST_ENTRY Entry)
@@ -528,11 +528,9 @@ static BOOLEAN IopPopulateIoRequestMessage(IN PIO_PACKET Dest,
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     PDEVICE_OBJECT DeviceObject = Irp->Private.ForwardedTo;
     assert(DeviceObject != NULL);
-    assert(DeviceObject != IoStack->DeviceObject);
     assert(DeviceObject->DriverObject == NULL);
     assert(DeviceObject->Private.Handle != 0);
     assert(IoStack->DeviceObject != NULL);
-    assert(IopDeviceObjectIsLocal(IoStack->DeviceObject));
     assert(Irp->Private.OriginalRequestor == 0);
     ULONG Size = sizeof(IO_PACKET);
     if (BufferSize < Size) {
@@ -590,8 +588,9 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 {
     DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 	     Stack->MajorFunction, Stack->MinorFunction, Stack->Flags, Stack->Control);
-    DbgPrint("    DeviceObject %p(%p) FileObject %p(%p) CompletionRoutine %p Context %p\n",
+    DbgPrint("    DeviceObject %p(%p, ext %p) FileObject %p(%p) CompletionRoutine %p Context %p\n",
 	     Stack->DeviceObject, (PVOID)IopGetDeviceHandle(Stack->DeviceObject),
+	     Stack->DeviceObject ? Stack->DeviceObject->DeviceExtension : NULL,
 	     Stack->FileObject, (PVOID)IopGetFileHandle(Stack->FileObject),
 	     Stack->CompletionRoutine, Stack->Context);
     switch (Stack->MajorFunction) {
@@ -639,9 +638,11 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p OutputBuffer %p\n",
 	     (PVOID)Irp->Private.OriginalRequestor, Irp->Private.Identifier,
 	     Irp->Private.OutputBuffer);
-    DbgPrint("    PRIV CoroutineStackTop %p ForwardedTo %p(%p) ForwardedBy %p NotifyCompletion %s\n",
+    DbgPrint("    PRIV CoroutineStackTop %p ForwardedTo %p(%p, ext %p) "
+	     "ForwardedBy %p NotifyCompletion %s\n",
 	     Irp->Private.CoroutineStackTop, Irp->Private.ForwardedTo,
 	     (PVOID)IopGetDeviceHandle(Irp->Private.ForwardedTo),
+	     Irp->Private.ForwardedTo ? Irp->Private.ForwardedTo->DeviceExtension : NULL,
 	     Irp->Private.ForwardedBy, Irp->Private.NotifyCompletion ? "TRUE" : "FALSE");
     IoDbgDumpIoStackLocation(IoGetCurrentIrpStackLocation(Irp));
 }
@@ -732,15 +733,14 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 		 * if we are completing a server-originated IRP (ie. we are not
 		 * completing an IRP that we sent out ourselves). */
 		IopCompleteIrp(Irp);
-		/* Also resume or complete the IRP or AddDevice request that was
+		/* Also resume the object (IRP, AddDevice request, or IO workitem) that was
 		 * pending due to this IRP. */
 		if (Irp->Private.ForwardedBy != NULL) {
 		    PADD_DEVICE_REQUEST Req = (PADD_DEVICE_REQUEST)Irp->Private.ForwardedBy;
 		    if (Req->Type == IOP_TYPE_ADD_DEVICE_REQUEST) {
 			RemoveEntryList(&Req->Link);
 			InsertTailList(&IopAddDeviceRequestList, &Req->Link);
-		    } else {
-			assert(Req->Type == IO_TYPE_IRP);
+		    } else if (Req->Type == IO_TYPE_IRP) {
 			/* Note: this has nothing to do with the public member MasterIrp
 			 * (Irp.AssociatedIrp.MasterIrp). That one is for driver use. */
 			PIRP MasterIrp = (PIRP) Req;
@@ -751,6 +751,12 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 			/* Move the master IRP back to the queue so it will be resumed */
 			RemoveEntryList(&MasterIrp->Private.Link);
 			InsertTailList(&IopIrpQueue, &MasterIrp->Private.Link);
+		    } else {
+			assert(Req->Type == IOP_TYPE_WORKITEM);
+			PIO_WORKITEM WorkItem = (PIO_WORKITEM) Req;
+			/* Move the IO workitem back to the queue so it will be resumed */
+			RemoveEntryList(&WorkItem->Link);
+			InsertTailList(&IopWorkItemQueue, &WorkItem->Link);
 		    }
 		}
 	    } else {
@@ -775,7 +781,7 @@ static VOID IopProcessIrpQueue()
     LoopOverList(Irp, &IopIrpQueue, IRP, Private.Link) {
 	IoDbgDumpIrp(Irp);
 	NTSTATUS Status = STATUS_NTOS_BUG;
-	IopCurrentIrpOrAddDeviceReq = Irp;
+	IopCurrentObject = Irp;
 	if (Irp->Private.CoroutineStackTop == NULL) {
 	    /* Find the first available coroutine stack to use */
 	    PVOID Stack = KiGetFirstAvailableCoroutineStack();
@@ -796,7 +802,7 @@ static VOID IopProcessIrpQueue()
 		     KiGetCoroutineSavedSP(Irp->Private.CoroutineStackTop));
 	    Status = KiResumeCoroutine(Irp->Private.CoroutineStackTop);
 	}
-	IopCurrentIrpOrAddDeviceReq = NULL;
+	IopCurrentObject = NULL;
 	/* If the dispatch function returns without suspending the coroutine,
 	 * release the coroutine stack and set the IRP coroutine stack to NULL */
 	if (Status != STATUS_ASYNC_PENDING) {
@@ -846,8 +852,8 @@ FASTCALL NTSTATUS IopCallAddDeviceRoutine(IN PVOID Context) /* %ecx/%rcx */
 {
     PADD_DEVICE_REQUEST Req = (PADD_DEVICE_REQUEST)Context;
     assert(Req != NULL);
-    assert(Req->Type != 0);
-    assert(Req->Size != 0);
+    assert(Req->Type == IOP_TYPE_ADD_DEVICE_REQUEST);
+    assert(Req->Size == sizeof(ADD_DEVICE_REQUEST));
     assert(Req->AddDevice != NULL);
     assert(Req->PhyDevObj != NULL);
     assert(Req->CoroutineStackTop != NULL);
@@ -861,7 +867,7 @@ static VOID IopProcessAddDeviceRequests()
 {
     NTSTATUS Status = STATUS_NTOS_BUG;
     LoopOverList(Req, &IopAddDeviceRequestList, ADD_DEVICE_REQUEST, Link) {
-	IopCurrentIrpOrAddDeviceReq = Req;
+	IopCurrentObject = Req;
 	if (Req->CoroutineStackTop == NULL) {
 	    /* If we are not resuming a previous AddDevice invocation,
 	     * Find the first available coroutine stack to use */
@@ -883,7 +889,7 @@ static VOID IopProcessAddDeviceRequests()
 		     KiGetCoroutineSavedSP(Req->CoroutineStackTop));
 	    Status = KiResumeCoroutine(Req->CoroutineStackTop);
 	}
-	IopCurrentIrpOrAddDeviceReq = NULL;
+	IopCurrentObject = NULL;
 	RemoveEntryList(&Req->Link);
 	/* If the AddDevice routine is blocked on waiting for an object,
 	 * suspend the coroutine and process the next AddDevice request. */
@@ -1015,6 +1021,17 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	if (Irp->Private.ForwardedTo != NULL) {
 	    assert(!IopDeviceObjectIsLocal(Irp->Private.ForwardedTo));
 	    assert(Irp->Private.ForwardedTo->DriverObject == NULL);
+	}
+    }
+
+    /* Now process the IO work item queue */
+    IopProcessWorkItemQueue();
+
+    /* Traverse the pending IRP list to see if any of them was completed by the
+     * IO work item. If it was, move it to the reply list and the cleanup list. */
+    LoopOverList(Irp, &IopPendingIrpList, IRP, Private.Link) {
+	if (Irp->Completed) {
+	    IopCompleteIrp(Irp);
 	}
     }
 
@@ -1163,7 +1180,6 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
     assert(Irp != NULL);
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     assert(IoStack->DeviceObject != NULL);
-    assert(IopDeviceObjectIsLocal(IoStack->DeviceObject));
     if (IopDeviceObjectIsLocal(DeviceObject)) {
 	/* If we are forwarding this IRP to a local device object, just call
 	 * the dispatch routine directly. */
@@ -1227,8 +1243,8 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
     assert(KiCurrentCoroutineStackTop != NULL);
     /* Record the current Irp or AddDevice request so we know which IRP to
      * wake up when we receive a IoCompleted message for this IRP */
-    if (IopCurrentIrpOrAddDeviceReq != Irp) {
-	Irp->Private.ForwardedBy = IopCurrentIrpOrAddDeviceReq;
+    if (IopCurrentObject != Irp) {
+	Irp->Private.ForwardedBy = IopCurrentObject;
     }
     DbgTrace("Suspending coroutine stack %p\n", KiCurrentCoroutineStackTop);
     /* Yield the current coroutine to the main thread. The control flow will

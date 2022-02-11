@@ -137,6 +137,9 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
     *pDeviceObject = DeviceObject;
+    DbgTrace("Created device object %p handle %p extension %p name %ws\n",
+	     DeviceObject, (PVOID)DeviceHandle, DeviceObject->DeviceExtension,
+	     DeviceName ? DeviceName->Buffer : L"NONAME");
     return STATUS_SUCCESS;
 }
 

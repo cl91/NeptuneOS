@@ -338,7 +338,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->Request.Device.Object,
 		     IoPacket->Request.File.Object);
 	}
-	DbgPrint(" ThreadObject %p Identifier %p\n",
+	DbgPrint(" OriginalRequestor %p Identifier %p\n",
 		 (PVOID)IoPacket->Request.OriginalRequestor,
 		 IoPacket->Request.Identifier);
 	DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
@@ -387,10 +387,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
     } else if (IoPacket->Type == IoPacketTypeServerMessage) {
 	switch (IoPacket->ServerMsg.Type) {
 	case IoSrvMsgIoCompleted:
-	    DbgPrint("    SERVER-MSG IO-COMPLETED ThreadHandle %p Identifier %p\n",
+	    DbgPrint("    SERVER-MSG IO-COMPLETED OriginalRequestor %p Identifier %p "
+		     "Final IO status 0x%08x Information %p\n",
 		     (PVOID)IoPacket->ServerMsg.IoCompleted.OriginalRequestor,
-		     IoPacket->ServerMsg.IoCompleted.Identifier);
-	    DbgPrint("    Final IO status 0x%08x Information %p\n",
+		     IoPacket->ServerMsg.IoCompleted.Identifier,
 		     IoPacket->ServerMsg.IoCompleted.IoStatus.Status,
 		     (PVOID)IoPacket->ServerMsg.IoCompleted.IoStatus.Information);
 	    break;
@@ -398,18 +398,18 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
     } else if (IoPacket->Type == IoPacketTypeClientMessage) {
 	switch (IoPacket->ClientMsg.Type) {
 	case IoCliMsgIoCompleted:
-	    DbgPrint("    CLIENT-MSG IO-COMPLETED ThreadHandle %p Identifier %p\n",
+	    DbgPrint("    CLIENT-MSG IO-COMPLETED OriginalRequestor %p Identifier %p "
+		     "Final IO status 0x%08x Information %p\n",
 		     (PVOID)IoPacket->ClientMsg.IoCompleted.OriginalRequestor,
-		     IoPacket->ClientMsg.IoCompleted.Identifier);
-	    DbgPrint("    Final IO status 0x%08x Information %p\n",
+		     IoPacket->ClientMsg.IoCompleted.Identifier,
 		     IoPacket->ClientMsg.IoCompleted.IoStatus.Status,
 		     (PVOID)IoPacket->ClientMsg.IoCompleted.IoStatus.Information);
 	    break;
 	case IoCliMsgForwardIrp:
-	    DbgPrint("    CLIENT-MSG FORWARD-IRP ThreadHandle %p Identifier %p\n",
+	    DbgPrint("    CLIENT-MSG FORWARD-IRP OriginalRequestor %p Identifier %p "
+		     "DeviceHandle %p NotifyCompletion %s\n",
 		     (PVOID)IoPacket->ClientMsg.IoCompleted.OriginalRequestor,
-		     IoPacket->ClientMsg.IoCompleted.Identifier);
-	    DbgPrint("    DeviceObject %p NotifyCompletion %s\n",
+		     IoPacket->ClientMsg.IoCompleted.Identifier,
 		     (PVOID)IoPacket->ClientMsg.ForwardIrp.DeviceObject,
 		     IoPacket->ClientMsg.ForwardIrp.NotifyCompletion ? "TRUE" : "FALSE");
 	    break;

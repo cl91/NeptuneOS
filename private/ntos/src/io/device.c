@@ -135,7 +135,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     Locals.IoPacket->Request.Device.Object = Device;
     Locals.IoPacket->Request.File.Object = Locals.FileObject;
-    IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
+    IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, Device, &Locals.PendingIrp));
     IopQueueIoPacket(Locals.PendingIrp, Driver, Thread);
 
     /* For create/open we always wait till the driver has completed the request. */
@@ -323,7 +323,8 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     Locals.IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
 
     IF_ERR_GOTO(out, Status,
-		IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
+		IopAllocatePendingIrp(Locals.IoPacket, Thread, Locals.FileObject->DeviceObject,
+				      &Locals.PendingIrp));
     IopQueueIoPacket(Locals.PendingIrp, Locals.DriverObject, Thread);
 
     /* Only wait for the IO completion if file is opened with

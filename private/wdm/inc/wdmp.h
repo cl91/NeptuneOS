@@ -50,6 +50,12 @@ extern PCSTR IopDbgTraceModuleName;
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
 
 /*
+ * Private IO types
+ */
+#define IOP_TYPE_WORKITEM		0xa0
+#define IOP_TYPE_ADD_DEVICE_REQUEST	0xad
+
+/*
  * A PNP AddDevice request from the server.
  */
 typedef struct _ADD_DEVICE_REQUEST {
@@ -87,12 +93,12 @@ typedef struct _X86_IOPORT {
 /*
  * IO work item object.
  */
-typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IO_WORKITEM {
-    SLIST_ENTRY Entry;	 /* Must be first, or at least aligned by 8 */
-    union {
-	PDEVICE_OBJECT DeviceObject;
-	PDRIVER_OBJECT DriverObject;
-    };
+typedef struct _IO_WORKITEM {
+    SHORT Type;
+    USHORT Size;
+    LIST_ENTRY Link;
+    PDEVICE_OBJECT DeviceObject;
+    PVOID CoroutineStackTop;
     union {
 	PIO_WORKITEM_ROUTINE WorkerRoutine;
 	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
@@ -186,6 +192,7 @@ extern LIST_ENTRY IopCleanupIrpList;
 extern LIST_ENTRY IopAddDeviceRequestList;
 extern LIST_ENTRY IopSuspendedAddDeviceRequestList;
 extern LIST_ENTRY IopCompletedAddDeviceRequestList;
+extern PVOID IopCurrentObject;
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
 
@@ -204,7 +211,9 @@ extern LIST_ENTRY IopTimerList;
 extern ULONG KiStallScaleFactor;
 
 /* workitem.c */
-extern SLIST_HEADER IopWorkItemQueue;
+extern LIST_ENTRY IopWorkItemQueue;
+extern LIST_ENTRY IopSuspendedWorkItemList;
+VOID IopProcessWorkItemQueue();
 
 static inline BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
 {

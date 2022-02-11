@@ -173,43 +173,6 @@ NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopCreateWorkerThread(IN ASYNC_STATE AsyncState,
-                               IN PTHREAD Thread,
-                               IN PIO_WORKER_THREAD_ENTRY EntryPoint,
-                               OUT HANDLE *WorkerThreadHandle,
-                               OUT MWORD *WorkerThreadNotification)
-{
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
-    assert(Thread->Process->DriverObject != NULL);
-    assert(WorkerThreadHandle != NULL);
-    assert(WorkerThreadNotification != NULL);
-    IopAllocatePool(WorkerThread, WORKER_THREAD);
-    RET_ERR_EX(KeCreateNotificationEx(&WorkerThread->Notification,
-				      Thread->Process->CSpace),
-	       ExFreePool(WorkerThread));
-    CONTEXT Context;
-    memset(&Context, 0, sizeof(CONTEXT));
-    KeSetThreadContextFromEntryPoint(&Context, EntryPoint,
-				     (PVOID)WorkerThread->Notification.TreeNode.Cap);
-    RET_ERR_EX(PsCreateThread(Thread->Process, &Context, NULL,
-			      FALSE, &WorkerThread->Thread),
-	       {
-		   KeDestroyNotification(&WorkerThread->Notification);
-		   ExFreePool(WorkerThread);
-	       });
-    assert(WorkerThread->Thread != NULL);
-    RET_ERR_EX(ObCreateHandle(Thread->Process,
-			      WorkerThread->Thread, WorkerThreadHandle),
-	       {
-		   ObDereferenceObject(WorkerThread->Thread);
-		   KeDestroyNotification(&WorkerThread->Notification);
-		   ExFreePool(WorkerThread);
-	       });
-    *WorkerThreadNotification = WorkerThread->Notification.TreeNode.Cap;
-    return STATUS_SUCCESS;
-}
-
 NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
                                          IN PTHREAD Thread,
                                          IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
