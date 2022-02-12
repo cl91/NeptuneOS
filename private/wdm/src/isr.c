@@ -6,6 +6,7 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
     PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
     __sel4_ipc_buffer = Interrupt->ThreadIpcBuffer;
+    KiWdmServiceCap = Interrupt->WdmServiceCap;
     assert(Interrupt->ServiceRoutine != NULL);
     while (TRUE) {
 	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
@@ -16,6 +17,8 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 	}
 	seL4_Wait(Interrupt->NotificationCap, NULL);
 	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
+	/* Signal the main thread to check for DPC queue and IO work item queue */
+	IopNotifyMainThread();
     }
     return 0;
 }
@@ -74,6 +77,7 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				ShareVector,
 				IopInterruptServiceThreadEntry,
 				InterruptObject,
+				&InterruptObject->WdmServiceCap,
 				&InterruptObject->ThreadCap,
 				&InterruptObject->ThreadIpcBuffer,
 				&InterruptObject->IrqHandlerCap,

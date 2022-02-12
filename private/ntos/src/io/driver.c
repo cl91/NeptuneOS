@@ -236,6 +236,7 @@ NTSTATUS IopConnectInterrupt(IN ASYNC_STATE AsyncState,
 			     IN BOOLEAN ShareVector,
 			     IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 			     IN PVOID ClientSideContext, /* Context as in EntryPoint(Context) */
+			     OUT MWORD *WdmServiceCap,
 			     OUT MWORD *ThreadCap,
 			     OUT PVOID *ThreadIpcBuffer,
 			     OUT MWORD *IrqHandler,
@@ -261,6 +262,7 @@ NTSTATUS IopConnectInterrupt(IN ASYNC_STATE AsyncState,
 				 Thread->Process->CSpace));
     Svc->Vector = Vector;
 
+    *WdmServiceCap = Svc->IsrThread->WdmServiceEndpoint->TreeNode.Cap;
     *ThreadCap = Svc->IsrThreadClientCap.Cap;
     *ThreadIpcBuffer = (PVOID)Svc->IsrThread->IpcBufferClientAddr;
     *IrqHandler = Svc->IrqHandler.TreeNode.Cap;
@@ -277,4 +279,14 @@ NTSTATUS IopCreateCoroutineStack(IN ASYNC_STATE State,
     assert(Thread->Process->DriverObject != NULL);
     return PsMapDriverCoroutineStack(Thread->Process,
 				     (MWORD *)pStackTop);
+}
+
+NTSTATUS IopNotifyMainThread(IN ASYNC_STATE State,
+			     IN PTHREAD Thread)
+{
+    assert(Thread->Process != NULL);
+    assert(Thread->Process->DriverObject != NULL);
+    /* Signal the driver to check for DPC queue and IO work item queue */
+    KeSetEvent(&Thread->Process->DriverObject->IoPacketQueuedEvent);
+    return STATUS_SUCCESS;
 }
