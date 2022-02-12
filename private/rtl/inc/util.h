@@ -95,7 +95,12 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
 	     __ReverseLoop_blink = __CONTAINING_RECORD((__ReverseLoop_blink)->Field.Blink, Type, Field))
 
 PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
+
+#if defined(CONFIG_DEBUG_BUILD) || defined(DEBUG)
 VOID KeDbgDumpIPCError(IN int Error);
+#else
+#define KeDbgDumpIPCError(x)
+#endif
 
 #ifndef DbgTrace
 #define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RTLP_DBGTRACE_MODULE_NAME, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
