@@ -187,6 +187,8 @@ NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
     assert(ThreadNotification != NULL);
     assert(InterruptMutex != NULL);
     IopAllocatePool(IsrThread, INTERRUPT_SERVICE_THREAD);
+    KeInitializeNotification(&IsrThread->ClientNotification,
+			     Thread->Process->CSpace, 0, 0);
     RET_ERR_EX(KeCreateNotification(&IsrThread->Notification),
 	       ExFreePool(IsrThread));
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&IsrThread->ClientNotification.TreeNode,
