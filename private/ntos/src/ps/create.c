@@ -56,6 +56,12 @@ NTSTATUS PsResumeThread(IN PTHREAD Thread)
     return PspResumeThread(Thread->TreeNode.Cap);
 }
 
+NTSTATUS PsResumeSystemThread(IN PSYSTEM_THREAD Thread)
+{
+    assert(Thread != NULL);
+    return PspResumeThread(Thread->TreeNode.Cap);
+}
+
 /*
  * Startup function for system threads. This is the common entry point for
  * all system threads. We simply set the seL4 IPC buffer and branch to the
@@ -77,7 +83,8 @@ VOID PspSystemThreadStartup(IN seL4_IPCBuffer *IpcBuffer,
 
 NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PCSTR DebugName,
-			      IN PSYSTEM_THREAD_ENTRY EntryPoint)
+			      IN PSYSTEM_THREAD_ENTRY EntryPoint,
+			      IN BOOLEAN Suspended)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     extern CNODE MiNtosCNode;
@@ -91,11 +98,13 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     IF_ERR_GOTO(Fail, Status, MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
 						 seL4_TCBBits, &Thread->TreeNode));
 
-#ifdef CONFIG_DEBUG_BUILD
     assert(DebugName != NULL);
     assert(DebugName[0] != '\0');
+#ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(Thread->TreeNode.Cap, DebugName);
 #endif
+    Thread->DebugName = DebugName;
+    Thread->EntryPoint = EntryPoint;
 
     PMMVAD IpcBufferVad = NULL;
     IF_ERR_GOTO(Fail, Status,
@@ -140,7 +149,9 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     IF_ERR_GOTO(Fail, Status, KeSetThreadContext(Thread->TreeNode.Cap, &Context));
     IF_ERR_GOTO(Fail, Status, PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
     Thread->CurrentPriority = seL4_MaxPrio;
-    IF_ERR_GOTO(Fail, Status, PspResumeThread(Thread->TreeNode.Cap));
+    if (!Suspended) {
+	IF_ERR_GOTO(Fail, Status, PspResumeThread(Thread->TreeNode.Cap));
+    }
 
     return STATUS_SUCCESS;
 
@@ -217,7 +228,6 @@ static inline NTSTATUS PspMapSharedRegion(IN PPROCESS Process,
 
 static inline VOID PspSetThreadDebugName(IN PTHREAD Thread)
 {
-#ifdef CONFIG_DEBUG_BUILD
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     assert(Thread->Process->ImageFile != NULL);
@@ -225,7 +235,12 @@ static inline VOID PspSetThreadDebugName(IN PTHREAD Thread)
     char NameBuf[seL4_MsgMaxLength * sizeof(MWORD)];
     /* We use the thread object addr to distinguish threads. */
     snprintf(NameBuf, sizeof(NameBuf), "%s|%p", Thread->Process->ImageFile->FileName, Thread);
-    seL4_DebugNameThread(Thread->TreeNode.Cap, NameBuf);
+    Thread->DebugName = RtlDuplicateString(NameBuf, NTOS_PS_TAG);
+    if (Thread->DebugName == NULL) {
+	Thread->DebugName = "UNKNOWN THREAD";
+    }
+#ifdef CONFIG_DEBUG_BUILD
+    seL4_DebugNameThread(Thread->TreeNode.Cap, Thread->DebugName);
 #endif
 }
 

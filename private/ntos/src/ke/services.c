@@ -314,8 +314,8 @@ static VOID KiDumpSystemThreadFault(IN seL4_Fault_t Fault,
 				    IN KI_DBG_PRINTER DbgPrinter)
 {
     DbgPrinter("\n==============================================================================\n"
-		"Unhandled %s in thread NTOS|%p\n",
-		KiDbgGetFaultName(Fault), Thread);
+	       "Unhandled %s in thread %s (thread obj %p thread entry %p)\n",
+	       KiDbgGetFaultName(Fault), Thread->DebugName, Thread, Thread->EntryPoint);
     KiDbgDumpFault(Fault, DbgPrinter);
     THREAD_CONTEXT Context;
     NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);

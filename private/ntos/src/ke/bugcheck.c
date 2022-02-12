@@ -101,9 +101,10 @@ static NTSTATUS KiSetThreadSpace(IN MWORD ThreadCap,
 NTSTATUS KiInitBugCheck()
 {
     extern CNODE MiNtosCNode;
-    RET_ERR(PsCreateSystemThread(&KiBugCheckThread, "NTOS Bugcheck", KiBugCheckSystem));
+    RET_ERR(PsCreateSystemThread(&KiBugCheckThread, "NTOS Bugcheck", KiBugCheckSystem, TRUE));
     RET_ERR(KiCreateEndpoint(&KiExecutiveThreadFaultHandler));
     RET_ERR(KiSetThreadSpace(seL4_CapInitThreadTCB, KiExecutiveThreadFaultHandler.TreeNode.Cap,
 			     &MiNtosCNode, seL4_CapInitThreadVSpace));
+    RET_ERR(PsResumeSystemThread(&KiBugCheckThread));
     return STATUS_SUCCESS;
 }

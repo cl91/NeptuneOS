@@ -127,7 +127,7 @@ static NTSTATUS KiEnableTimerInterruptService()
 		   MmCapTreeDeleteNode(&KiTimerIrqHandler.TreeNode);
 	       });
     RET_ERR_EX(PsCreateSystemThread(&KiTimerIrqThread, "NTOS Timer ISR",
-				    KiTimerInterruptService),
+				    KiTimerInterruptService, FALSE),
 	       {
 		   MmCapTreeDeleteNode(&KiTimerIrqNotification.TreeNode);
 		   MmCapTreeDeleteNode(&KiTimerIrqHandler.TreeNode);

@@ -19,7 +19,7 @@ static inline PCSTR KiDbgGetFaultName(IN seL4_Fault_t Fault)
     case seL4_Fault_NullFault:
 	return "NULL-FAULT";
     case seL4_Fault_CapFault:
-	return "CAP-FAULT\n";
+	return "CAP-FAULT";
     case seL4_Fault_UnknownSyscall:
 	return "UNKNOWN-SYSCALL";
     case seL4_Fault_UserException:

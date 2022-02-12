@@ -31,6 +31,7 @@ typedef struct _THREAD {
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;
+    PCSTR DebugName;
     PVOID EntryPoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
@@ -92,6 +93,7 @@ typedef struct _SYSTEM_THREAD {
     CAP_TREE_NODE TreeNode;
     IPC_ENDPOINT ReplyEndpoint;
     PIPC_ENDPOINT FaultEndpoint;
+    PVOID EntryPoint;
     PCSTR DebugName;
     PVOID TlsBase;	 /* TLS base of the thread's TLS region */
     PVOID IpcBuffer;	 /* Address of the thread's seL4 IPC buffer */
@@ -114,7 +116,8 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 			OUT PTHREAD *pThread);
 NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PCSTR DebugName,
-			      IN PSYSTEM_THREAD_ENTRY EntryPoint);
+			      IN PSYSTEM_THREAD_ENTRY EntryPoint,
+			      IN BOOLEAN Suspended);
 NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 			 IN PIO_DRIVER_OBJECT DriverObject,
 			 IN PSECTION ImageSection,
@@ -122,6 +125,7 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 NTSTATUS PsLoadDll(IN PPROCESS Process,
 		   IN PCSTR DllName);
 NTSTATUS PsResumeThread(IN PTHREAD Thread);
+NTSTATUS PsResumeSystemThread(IN PSYSTEM_THREAD Thread);
 NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 				   OUT MWORD *pStackTop);
 
