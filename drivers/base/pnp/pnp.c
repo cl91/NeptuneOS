@@ -22,18 +22,58 @@ typedef struct _PNP_DEVICE {
     PCWSTR DeviceDescription;
     // Resource requirement list
     PIO_RESOURCE_REQUIREMENTS_LIST ResourceRequirementsList;
-    // Associated resource list
-    PCM_RESOURCE_LIST ResourceList;
-    ULONG ResourceListSize;
 } PNP_DEVICE, *PPNP_DEVICE;
 
 typedef struct _PNP_DEVICE_EXTENSION {
     PPNP_DEVICE DeviceInfo; /* If NULL, device is the root enumerator */
 } PNP_DEVICE_EXTENSION, *PPNP_DEVICE_EXTENSION;
 
+IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
+    {
+	.Option = IO_RESOURCE_PREFERRED,
+	.Type = CmResourceTypeInterrupt,
+	.ShareDisposition = CmResourceShareDeviceExclusive,
+	.Flags = 0,
+	.u = {
+	    .Interrupt = {
+		.MinimumVector = 1, /* IRQ1 is the first keyboard IRQ */
+		.MaximumVector = 1
+	    }
+	}
+    },
+
+    {
+	.Option = IO_RESOURCE_PREFERRED,
+	.Type = CmResourceTypePort,
+	.ShareDisposition = CmResourceShareDeviceExclusive,
+	.Flags = CM_RESOURCE_PORT_IO,
+	.u = {
+	    .Port = {
+		.Length = 1,
+		.MinimumAddress = 0x60, /* Data port must be first */
+		.MaximumAddress = 0x60
+	    }
+	}
+    },
+
+    {
+	.Option = IO_RESOURCE_PREFERRED,
+	.Type = CmResourceTypePort,
+	.ShareDisposition = CmResourceShareDeviceExclusive,
+	.Flags = CM_RESOURCE_PORT_IO,
+	.u = {
+	    .Port = {
+		.Length = 1,
+		.MinimumAddress = 0x64, /* Control port must be first */
+		.MaximumAddress = 0x64
+	    }
+	}
+    },
+};
+
 static PNP_DEVICE I8042DeviceInfo = {
     .DeviceID = L"PNP0303",
-    .InstanceID = L"0"
+    .InstanceID = L"0",
 };
 
 /*
@@ -144,7 +184,22 @@ static NTSTATUS PnpDeviceQueryResources(IN PDEVICE_OBJECT DeviceObject,
 static NTSTATUS PnpDeviceQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObject,
 						   IN PIRP Irp)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    PPNP_DEVICE_EXTENSION DeviceExtension = (PPNP_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    assert(DeviceExtension != NULL);
+    assert(DeviceExtension->DeviceInfo != NULL);
+    PIO_RESOURCE_REQUIREMENTS_LIST ResList = DeviceExtension->DeviceInfo->ResourceRequirementsList;
+
+    if (ResList) {
+        /* Copy existing resource requirement list */
+	PIO_RESOURCE_REQUIREMENTS_LIST Dest =  ExAllocatePool(ResList->ListSize);
+        if (!Dest)
+            return STATUS_NO_MEMORY;
+        RtlCopyMemory(Dest, ResList, ResList->ListSize);
+        Irp->IoStatus.Information = (ULONG_PTR)Dest;
+    } else {
+	Irp->IoStatus.Information = 0;
+    }
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS PnpDeviceQueryId(IN PDEVICE_OBJECT Pdo,
@@ -359,6 +414,19 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
     UNREFERENCED_PARAMETER(RegistryPath);
+
+    ULONG Size = MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE + sizeof(I8042ResourceDescriptors);
+    PIO_RESOURCE_REQUIREMENTS_LIST ResList = (PIO_RESOURCE_REQUIREMENTS_LIST)ExAllocatePool(Size);
+    if (ResList == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    ResList->ListSize = Size;
+    ResList->List[0].Version = 1;
+    ResList->List[0].Revision = 1;
+    ResList->List[0].Count = ARRAYSIZE(I8042ResourceDescriptors);
+    memcpy((PCHAR)ResList + MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE,
+	   I8042ResourceDescriptors, sizeof(I8042ResourceDescriptors));
+    I8042DeviceInfo.ResourceRequirementsList = ResList;
 
     /* Create the root enumerator device object */
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(PNP_ROOT_ENUMERATOR_U);

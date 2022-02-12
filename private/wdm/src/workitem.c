@@ -4,6 +4,16 @@
 LIST_ENTRY IopWorkItemQueue;
 LIST_ENTRY IopSuspendedWorkItemList;
 
+static inline BOOLEAN IopWorkItemIsInQueue(IN PIO_WORKITEM Item)
+{
+    LoopOverList(WorkItem, &IopWorkItemQueue, IO_WORKITEM, Link) {
+	if (Item == WorkItem) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+
 /*
  * @implemented
  */
@@ -24,6 +34,7 @@ NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
  */
 NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
 {
+    memset(IoWorkItem, 0xab, sizeof(IO_WORKITEM));
     ExFreePool(IoWorkItem);
 }
 
@@ -41,9 +52,12 @@ NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
 			   IN WORK_QUEUE_TYPE QueueType,
 			   IN OPTIONAL PVOID Context)
 {
+    DbgTrace("Queuing workitem %p worker routine %p\n", IoWorkItem, WorkerRoutine);
     assert(IoWorkItem != NULL);
     /* We want to make sure that all work items are dequeued before re-queuing them */
     assert(IoWorkItem->WorkerRoutine == NULL);
+    assert(!IopWorkItemIsInQueue(IoWorkItem));
+    assert(IoWorkItem->CoroutineStackTop == NULL);
     IoWorkItem->WorkerRoutine = WorkerRoutine;
     IoWorkItem->Context = Context;
     IoWorkItem->ExtendedRoutine = FALSE;
@@ -74,9 +88,15 @@ FASTCALL NTSTATUS IopCallWorkItemRoutine(IN PVOID Context) /* %ecx/%rcx */
 VOID IopProcessWorkItemQueue()
 {
     NTSTATUS Status = STATUS_NTOS_BUG;
+
     LoopOverList(WorkItem, &IopWorkItemQueue, IO_WORKITEM, Link) {
 	IopCurrentObject = WorkItem;
-	if (WorkItem->CoroutineStackTop == NULL) {
+	/* In either cases below we will unlink the work item from the queue.
+	 * The reason for doing it so early is because the worker routine
+	 * will delete the work item once it is done. */
+	RemoveEntryList(&WorkItem->Link);
+	PVOID CoroutineStack = WorkItem->CoroutineStackTop;
+	if (CoroutineStack == NULL) {
 	    /* We are starting a new workitem. Find a coroutine stack. */
 	    PVOID Stack = KiGetFirstAvailableCoroutineStack();
 	    /* If KiGetFirstAvailableCoroutineStack returns NULL, it means that
@@ -86,6 +106,7 @@ VOID IopProcessWorkItemQueue()
 		return;
 	    }
 	    WorkItem->CoroutineStackTop = Stack;
+	    CoroutineStack = Stack;
 	    /* Switch to the coroutine stack and call the dispatch routine */
 	    DbgTrace("Switching to coroutine stack top %p for WorkItem routine %p\n",
 		     Stack, WorkItem);
@@ -93,28 +114,43 @@ VOID IopProcessWorkItemQueue()
 	} else {
 	    /* We are resuming a suspended workitem. */
 	    DbgTrace("Resuming coroutine stack top %p for workitem routine %p. Saved SP %p\n",
-		     WorkItem->CoroutineStackTop, WorkItem,
-		     KiGetCoroutineSavedSP(WorkItem->CoroutineStackTop));
-	    Status = KiResumeCoroutine(WorkItem->CoroutineStackTop);
+		     CoroutineStack, WorkItem, KiGetCoroutineSavedSP(CoroutineStack));
+	    Status = KiResumeCoroutine(CoroutineStack);
 	}
 	IopCurrentObject = NULL;
-	RemoveEntryList(&WorkItem->Link);
+	assert(CoroutineStack != NULL);
 	/* If the workitem routine is blocked on waiting for an object,
 	 * suspend the coroutine and process the next workitem. */
 	if (Status == STATUS_ASYNC_PENDING) {
-	    DbgTrace("Suspending workitm routine %p, coroutine stack %p, saved SP %p\n",
-		     WorkItem, WorkItem->CoroutineStackTop,
-		     KiGetCoroutineSavedSP(WorkItem->CoroutineStackTop));
-	    assert(KiGetCoroutineSavedSP(WorkItem->CoroutineStackTop) != NULL);
+	    assert(WorkItem->CoroutineStackTop == CoroutineStack);
+	    DbgTrace("Suspending workitem routine %p, coroutine stack %p, saved SP %p\n",
+		     WorkItem, CoroutineStack, KiGetCoroutineSavedSP(CoroutineStack));
+	    assert(KiGetCoroutineSavedSP(CoroutineStack) != NULL);
 	    InsertTailList(&IopSuspendedWorkItemList, &WorkItem->Link);
 	} else {
 	    /* Otherwise, the workitem routine has completed. Release the
-	     * coroutine stack. Note that we shouldn't delete the workitem
-	     * object here since the driver is supposed to do that (the
-	     * workitem object may be statically allocated). */
+	     * coroutine stack. Note that the workitem may have already been
+	     * deleted by the worker routine so we cannot refer to it. */
 	    assert(Status != STATUS_PENDING);
-	    assert(WorkItem->CoroutineStackTop != NULL);
-	    KiReleaseCoroutineStack(WorkItem->CoroutineStackTop);
+	    KiReleaseCoroutineStack(CoroutineStack);
 	}
+    }
+}
+
+VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem)
+{
+    DbgTrace("Dumping workitem %p\n", WorkItem);
+    if (WorkItem != NULL) {
+	if (WorkItem->Type != IOP_TYPE_WORKITEM || WorkItem->Size != sizeof(IO_WORKITEM)) {
+	    DbgPrint("    INVALID HEADER Type %d Size %d\n", WorkItem->Type,
+		     WorkItem->Size);
+	} else {
+	    DbgPrint("    Device object %p(%p) CoroutineStackTop %p WorkerRoutine %p ExtendedRoutine %s\n",
+		     WorkItem->DeviceObject, (PVOID)IopGetDeviceHandle(WorkItem->DeviceObject),
+		     WorkItem->CoroutineStackTop, WorkItem->WorkerRoutine,
+		     WorkItem->ExtendedRoutine ? "TRUE" : "FALSE");
+	}
+    } else {
+	DbgPrint("    (nil)\n");
     }
 }

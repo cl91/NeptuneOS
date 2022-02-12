@@ -117,9 +117,15 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 	    assert(Requestor == IopLocateIrpInOriginalRequestor(OriginalRequestor,
 								CompletedIrp)->Requestor);
 	    SrvMsg->ServerMsg.IoCompleted.OriginalRequestor = 0;
+	} else {
+	    /* Otherwise, this is an intermediate requestor. Move the completed
+	     * IRP to its pending IRP list so when it replies we know that its
+	     * identifier pair is valid. The original requestor never replies
+	     * to the IoCompleted server message so we do not do this. */
+	    InsertTailList(&RequestorDriver->PendingIoPacketList, &CompletedIrp->IoPacketLink);
 	}
 
-	/* Add the IO packet to the driver IO packet queue */
+	/* Add the server message IO packet to the driver IO packet queue */
 	InsertTailList(&RequestorDriver->IoPacketQueue, &SrvMsg->IoPacketLink);
 	/* Signal the driver that an IO packet has been queued */
 	KeSetEvent(&RequestorDriver->IoPacketQueuedEvent);

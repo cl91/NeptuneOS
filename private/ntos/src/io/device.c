@@ -240,9 +240,7 @@ NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
-    while (Device->AttachedDevice != NULL) {
-	Device = Device->AttachedDevice;
-    }
+    Device = IopGetTopDevice(Device);
     *TopDeviceHandle = OBJECT_TO_GLOBAL_HANDLE(Device);
     *TopDeviceInfo = Device->DeviceInfo;
     return STATUS_SUCCESS;

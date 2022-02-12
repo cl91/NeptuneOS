@@ -167,6 +167,11 @@ typedef struct _IO_REQUEST_PARAMETERS {
 	struct {
 	    BUS_QUERY_ID_TYPE IdType;
 	} QueryId;
+	struct {
+	    ULONG ResourceListSize;
+	    ULONG TranslatedListSize;
+	    CHAR Data[]; /* The translated list always follows the non-translated list */
+	} StartDevice;
     };
 } IO_REQUEST_PARAMETERS, *PIO_REQUEST_PARAMETERS;
 
@@ -377,6 +382,14 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		DbgPrint("    PNP  QUERY-ID  Type %s\n",
 			 IopDbgQueryIdTypeStr(IoPacket->Request.QueryId.IdType));
 		break;
+	    case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+		DbgPrint("    PNP  QUERY-RESOURCE-REQUIREMENTS\n");
+		break;
+	    case IRP_MN_START_DEVICE:
+		DbgPrint("    PNP  START-DEVICE  ResourceListSize %d TranslatedListSize %d\n",
+			 IoPacket->Request.StartDevice.ResourceListSize,
+			 IoPacket->Request.StartDevice.TranslatedListSize);
+		break;
 	    default:
 		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
 	    }
@@ -388,22 +401,24 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	switch (IoPacket->ServerMsg.Type) {
 	case IoSrvMsgIoCompleted:
 	    DbgPrint("    SERVER-MSG IO-COMPLETED OriginalRequestor %p Identifier %p "
-		     "Final IO status 0x%08x Information %p\n",
+		     "Final IO status 0x%08x Information %p ResponseDataSize 0x%x\n",
 		     (PVOID)IoPacket->ServerMsg.IoCompleted.OriginalRequestor,
 		     IoPacket->ServerMsg.IoCompleted.Identifier,
 		     IoPacket->ServerMsg.IoCompleted.IoStatus.Status,
-		     (PVOID)IoPacket->ServerMsg.IoCompleted.IoStatus.Information);
+		     (PVOID)IoPacket->ServerMsg.IoCompleted.IoStatus.Information,
+		     IoPacket->ServerMsg.IoCompleted.ResponseDataSize);
 	    break;
 	}
     } else if (IoPacket->Type == IoPacketTypeClientMessage) {
 	switch (IoPacket->ClientMsg.Type) {
 	case IoCliMsgIoCompleted:
 	    DbgPrint("    CLIENT-MSG IO-COMPLETED OriginalRequestor %p Identifier %p "
-		     "Final IO status 0x%08x Information %p\n",
+		     "Final IO status 0x%08x Information %p ResponseDataSize 0x%x\n",
 		     (PVOID)IoPacket->ClientMsg.IoCompleted.OriginalRequestor,
 		     IoPacket->ClientMsg.IoCompleted.Identifier,
 		     IoPacket->ClientMsg.IoCompleted.IoStatus.Status,
-		     (PVOID)IoPacket->ClientMsg.IoCompleted.IoStatus.Information);
+		     (PVOID)IoPacket->ClientMsg.IoCompleted.IoStatus.Information,
+		     IoPacket->ServerMsg.IoCompleted.ResponseDataSize);
 	    break;
 	case IoCliMsgForwardIrp:
 	    DbgPrint("    CLIENT-MSG FORWARD-IRP OriginalRequestor %p Identifier %p "

@@ -195,6 +195,7 @@ extern LIST_ENTRY IopCompletedAddDeviceRequestList;
 extern PVOID IopCurrentObject;
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
+VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
 extern SLIST_HEADER IopDpcQueue;
@@ -214,6 +215,7 @@ extern ULONG KiStallScaleFactor;
 extern LIST_ENTRY IopWorkItemQueue;
 extern LIST_ENTRY IopSuspendedWorkItemList;
 VOID IopProcessWorkItemQueue();
+VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);
 
 static inline BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
 {

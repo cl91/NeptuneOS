@@ -918,7 +918,7 @@ typedef struct _IO_RESOURCE_LIST {
     USHORT Version;
     USHORT Revision;
     ULONG Count;
-    IO_RESOURCE_DESCRIPTOR Descriptors[1];
+    IO_RESOURCE_DESCRIPTOR Descriptors[];
 } IO_RESOURCE_LIST, *PIO_RESOURCE_LIST;
 
 typedef struct _IO_RESOURCE_REQUIREMENTS_LIST {
@@ -928,8 +928,11 @@ typedef struct _IO_RESOURCE_REQUIREMENTS_LIST {
     ULONG SlotNumber;
     ULONG Reserved[3];
     ULONG AlternativeLists;
-    IO_RESOURCE_LIST List[1];
+    IO_RESOURCE_LIST List[];
 } IO_RESOURCE_REQUIREMENTS_LIST, *PIO_RESOURCE_REQUIREMENTS_LIST;
+
+#define MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE			\
+    (sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST))
 
 /*
  * System service interface of the IO manager.

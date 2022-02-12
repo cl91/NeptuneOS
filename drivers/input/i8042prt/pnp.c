@@ -175,12 +175,12 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     /*
      * The implementation of the "Mouse Reset" command differs much from chip to chip.
      *
-     * By default, the first byte is an ACK, when the mouse is plugged in and working and NACK when it's not.
+     * By default, the first byte is an ACK when the mouse is plugged in and working, and NACK when it's not.
      * On success, the next bytes are 0xAA and 0x00.
      *
      * But on some systems (like ECS K7S5A Pro, SiS 735 chipset), we always get an ACK and 0xAA.
-     * Only the last byte indicates, whether a mouse is plugged in.
-     * It is either sent or not, so there is no byte, which indicates a failure here.
+     * Only the last byte indicates whether a mouse is plugged in.
+     * It is either sent or not, so if there is no byte, it indicates a failure here.
      *
      * After the Mouse Reset command was issued, it usually takes some time until we get a response.
      * So get the first two bytes in a loop.
@@ -504,8 +504,8 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	{
 	    if (ResourceDescriptor->u.Port.Length == 1) {
 		/* We assume that the first resource will
-		 * be the control port and the second one
-		 * will be the data port...
+		 * be the data port and the second one
+		 * will be the control port...
 		 */
 		if (!FoundDataPort) {
 		    PortDeviceExtension->DataPort = ResourceDescriptor->u.Port.Start.u.LowPart;

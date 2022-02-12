@@ -98,7 +98,7 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 VOID KeDbgDumpIPCError(IN int Error);
 
 #ifndef DbgTrace
-#define DbgTrace(...) { DbgPrint("%s %s:  ", RTLP_DBGTRACE_MODULE_NAME, __func__); DbgPrint(__VA_ARGS__); }
+#define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RTLP_DBGTRACE_MODULE_NAME, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
 #endif
 
 /*

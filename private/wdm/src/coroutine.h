@@ -49,6 +49,7 @@ typedef NTSTATUS (FASTCALL *KI_COROUTINE_ENTRYPOINT)(IN PVOID Context);
 extern PVOID KiCoroutineStackChainHead;
 extern PVOID KiCurrentCoroutineStackTop;
 PVOID KiGetFirstAvailableCoroutineStack();
+VOID KiDbgDumpCoroutineStacks();
 
 static inline VOID KiReleaseCoroutineStack(PVOID StackTop)
 {

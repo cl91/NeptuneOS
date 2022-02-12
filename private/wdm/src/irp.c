@@ -314,6 +314,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	IoStack->Parameters.Create.ShareAccess = Src->Request.Create.ShareAccess;
 	IoStack->Parameters.Create.EaLength = 0;
 	break;
+
     case IRP_MJ_CREATE_NAMED_PIPE:
 	IoStack->Parameters.CreatePipe.SecurityContext = NULL;
 	IoStack->Parameters.CreatePipe.Options = Src->Request.CreatePipe.Options;
@@ -325,6 +326,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	*NamedPipeCreateParameters = Src->Request.CreatePipe.Parameters;
 	IoStack->Parameters.CreatePipe.Parameters = NamedPipeCreateParameters;
 	break;
+
     case IRP_MJ_CREATE_MAILSLOT:
 	IoStack->Parameters.CreateMailslot.SecurityContext = NULL;
 	IoStack->Parameters.CreateMailslot.Options = Src->Request.CreateMailslot.Options;
@@ -336,6 +338,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	*MailslotCreateParameters = Src->Request.CreateMailslot.Parameters;
 	IoStack->Parameters.CreateMailslot.Parameters = MailslotCreateParameters;
 	break;
+
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
     {
@@ -352,15 +355,47 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 				       OutputBufferLength));
 	break;
     }
+
     case IRP_MJ_PNP:
     {
 	switch (Src->Request.MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    IoStack->Parameters.QueryDeviceRelations.Type = Src->Request.QueryDeviceRelations.Type;
 	    break;
+
 	case IRP_MN_QUERY_ID:
 	    IoStack->Parameters.QueryId.IdType = Src->Request.QueryId.IdType;
 	    break;
+
+	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	    /* No parameters to marshal. Do nothing. */
+	    break;
+
+	case IRP_MN_START_DEVICE:
+	    if (Src->Request.StartDevice.ResourceListSize != 0) {
+		IoStack->Parameters.StartDevice.AllocatedResources =
+		    RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
+				    Src->Request.StartDevice.ResourceListSize);
+		if (IoStack->Parameters.StartDevice.AllocatedResources == NULL) {
+		    return STATUS_NO_MEMORY;
+		}
+		memcpy(IoStack->Parameters.StartDevice.AllocatedResources,
+		       Src->Request.StartDevice.Data,
+		       Src->Request.StartDevice.ResourceListSize);
+	    }
+	    if (Src->Request.StartDevice.TranslatedListSize != 0) {
+		IoStack->Parameters.StartDevice.AllocatedResourcesTranslated =
+		    RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
+				    Src->Request.StartDevice.TranslatedListSize);
+		if (IoStack->Parameters.StartDevice.AllocatedResourcesTranslated == NULL) {
+		    return STATUS_NO_MEMORY;
+		}
+		memcpy(IoStack->Parameters.StartDevice.AllocatedResourcesTranslated,
+		       &Src->Request.StartDevice.Data[Src->Request.StartDevice.ResourceListSize],
+		       Src->Request.StartDevice.TranslatedListSize);
+	    }
+	    break;
+
 	default:
 	    UNIMPLEMENTED;
 	    return STATUS_NOT_IMPLEMENTED;
@@ -373,6 +408,20 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
     }
 
     return STATUS_SUCCESS;
+}
+
+/*
+ * This will also free the memory allocated when creating the IRP
+ * (in IopPopulateLocalIrpFromServerIoPacket);
+ */
+static inline VOID IopDeleteIrp(PIRP Irp)
+{
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    if (IoStack->MajorFunction == IRP_MJ_PNP && IoStack->MinorFunction == IRP_MN_START_DEVICE) {
+	IopFreePool(IoStack->Parameters.StartDevice.AllocatedResources);
+	IopFreePool(IoStack->Parameters.StartDevice.AllocatedResourcesTranslated);
+    }
+    IopFreePool(Irp);
 }
 
 static VOID IopPopulateIoCompletedMessageFromIoStatus(IN PIO_PACKET Dest,
@@ -398,35 +447,46 @@ static BOOLEAN IopPopulateIoCompletedMessageFromLocalIrp(IN PIO_PACKET Dest,
 							 IN PIRP Irp,
 							 IN ULONG BufferSize)
 {
-    ULONG Size = sizeof(IO_PACKET);
+    ULONG Size = FIELD_OFFSET(IO_PACKET, ClientMsg.IoCompleted.ResponseData);
     PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(Irp);
     if (IoSp->MajorFunction == IRP_MJ_PNP) {
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
-	{
-	    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
-	    ULONG ResponseOffset = FIELD_OFFSET(IO_PACKET, ClientMsg.IoCompleted.ResponseData);
-	    assert(sizeof(IO_PACKET) > ResponseOffset);
-	    ULONG MaxCount = (sizeof(IO_PACKET) - ResponseOffset)/sizeof(GLOBAL_HANDLE);
-	    if (Relations != NULL && Relations->Count > MaxCount) {
-		Size += (Relations->Count - MaxCount) * sizeof(GLOBAL_HANDLE);
+	    if (Irp->IoStatus.Information != 0) {
+		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
+		Size += Relations->Count * sizeof(GLOBAL_HANDLE);
 	    }
-	}
-	break;
+	    break;
 
 	case IRP_MN_QUERY_ID:
-	{
 	    /* For UTF-16 strings that are legal device IDs its characters are always within ASCII */
 	    if (Irp->IoStatus.Information != 0) {
 		Size += wcslen((PWSTR)Irp->IoStatus.Information) + 1;
 	    }
-	}
-	break;
+	    break;
+
+	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	    if (Irp->IoStatus.Information != 0) {
+		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+		if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
+		    assert(FALSE);
+		    return STATUS_INVALID_PARAMETER;
+		}
+		Size += Res->ListSize;
+	    }
+	    break;
+
+	case IRP_MN_START_DEVICE:
+	    /* Do nothing */
+	    break;
 
 	default:
 	    UNIMPLEMENTED;
 	    return FALSE;
 	}
+    }
+    if (Size < sizeof(IO_PACKET)) {
+	Size = sizeof(IO_PACKET);
     }
     if (BufferSize < Size) {
 	return FALSE;
@@ -454,11 +514,13 @@ static BOOLEAN IopPopulateIoCompletedMessageFromLocalIrp(IN PIO_PACKET Dest,
 		 * of the device objects in DEVICE_RELATIONS.Objects. */
 		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
 		Dest->ClientMsg.IoCompleted.IoStatus.Information = Relations->Count;
+		PGLOBAL_HANDLE Data = (PGLOBAL_HANDLE)Dest->ClientMsg.IoCompleted.ResponseData;
 		for (ULONG i = 0; i < Relations->Count; i++) {
-		    Dest->ClientMsg.IoCompleted.ResponseData[i] = IopGetDeviceHandle(Relations->Objects[i]);
+		    Data[i] = IopGetDeviceHandle(Relations->Objects[i]);
 		}
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = Relations->Count * sizeof(GLOBAL_HANDLE);
 		IopFreePool(Relations);
+		Irp->IoStatus.Information = 0;
 	    }
 	    break;
 
@@ -476,7 +538,27 @@ static BOOLEAN IopPopulateIoCompletedMessageFromLocalIrp(IN PIO_PACKET Dest,
 		    DestStr[i] = (CHAR)String[i];
 		}
 		IopFreePool(String);
+		Irp->IoStatus.Information = 0;
 	    }
+	    break;
+
+	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	    if (Irp->IoStatus.Information != 0) {
+		/* ResponseData[] is the IO_RESOURCE_REQUIREMENTS_LIST, copied verbatim.
+		 * ResponseDataSize is its size in bytes.
+		 * Dest->...IoStatus.Information is cleared. */
+		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+		ULONG ResponseDataSize = Res->ListSize;
+		Dest->ClientMsg.IoCompleted.IoStatus.Information = 0;
+		Dest->ClientMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
+		memcpy(Dest->ClientMsg.IoCompleted.ResponseData, Res, ResponseDataSize);
+		IopFreePool(Res);
+		Irp->IoStatus.Information = 0;
+	    }
+	    break;
+
+	case IRP_MN_START_DEVICE:
+	    /* Do nothing */
 	    break;
 
 	default:
@@ -619,6 +701,19 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    DbgPrint("    PNP  QUERY-ID  Type %s\n",
 		     IopDbgQueryIdTypeStr(Stack->Parameters.QueryId.IdType));
 	    break;
+	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	    DbgPrint("    PNP  QUERY-RESOURCE-REQUIREMENTS\n");
+	    break;
+	case IRP_MN_START_DEVICE:
+	    DbgPrint("    PNP  START-DEVICE  AllocatedResources %p (count %d) "
+		     "AllocatedResourcesTranslated %p (count %d)\n",
+		     Stack->Parameters.StartDevice.AllocatedResources,
+		     Stack->Parameters.StartDevice.AllocatedResources ?
+		     Stack->Parameters.StartDevice.AllocatedResources->List[0].PartialResourceList.Count : 0,
+		     Stack->Parameters.StartDevice.AllocatedResourcesTranslated,
+		     Stack->Parameters.StartDevice.AllocatedResourcesTranslated ?
+		     Stack->Parameters.StartDevice.AllocatedResourcesTranslated->List[0].PartialResourceList.Count : 0);
+	    break;
 	default:
 	    DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
 	}
@@ -630,7 +725,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 
 VOID IoDbgDumpIrp(IN PIRP Irp)
 {
-    DbgTrace("Dumping IRP %p size %d\n", Irp, Irp->Size);
+    DbgTrace("Dumping IRP %p type %d size %d\n", Irp, Irp->Type, Irp->Size);
     DbgPrint("    MdlAddress %p Flags 0x%08x IO Stack Location %p\n",
 	     Irp->MdlAddress, Irp->Flags, IoGetCurrentIrpStackLocation(Irp));
     DbgPrint("    IO Status Block Status 0x%08x Information %p\n",
@@ -738,9 +833,11 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 		if (Irp->Private.ForwardedBy != NULL) {
 		    PADD_DEVICE_REQUEST Req = (PADD_DEVICE_REQUEST)Irp->Private.ForwardedBy;
 		    if (Req->Type == IOP_TYPE_ADD_DEVICE_REQUEST) {
+			assert(Req->Size == sizeof(ADD_DEVICE_REQUEST));
 			RemoveEntryList(&Req->Link);
 			InsertTailList(&IopAddDeviceRequestList, &Req->Link);
 		    } else if (Req->Type == IO_TYPE_IRP) {
+			assert(Req->Size >= sizeof(IO_PACKET));
 			/* Note: this has nothing to do with the public member MasterIrp
 			 * (Irp.AssociatedIrp.MasterIrp). That one is for driver use. */
 			PIRP MasterIrp = (PIRP) Req;
@@ -752,12 +849,17 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 			RemoveEntryList(&MasterIrp->Private.Link);
 			InsertTailList(&IopIrpQueue, &MasterIrp->Private.Link);
 		    } else {
-			assert(Req->Type == IOP_TYPE_WORKITEM);
 			PIO_WORKITEM WorkItem = (PIO_WORKITEM) Req;
+			assert(WorkItem->Type == IOP_TYPE_WORKITEM);
+			assert(WorkItem->Size == sizeof(IO_WORKITEM));
 			/* Move the IO workitem back to the queue so it will be resumed */
+			DbgTrace("Inserting work item %p back to the queue\n", WorkItem);
 			RemoveEntryList(&WorkItem->Link);
 			InsertTailList(&IopWorkItemQueue, &WorkItem->Link);
 		    }
+		    /* Set the pended object pointer to NULL. This is strictly speaking
+		     * unnecessary but we want to make debugging easier. */
+		    Irp->Private.ForwardedBy = NULL;
 		}
 	    } else {
 		/* Else, we move the Irp back to the IRP queue so the coroutine
@@ -1090,7 +1192,7 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
     /* Clean up the list of IRPs marked for deletion */
     LoopOverList(Irp, &IopCleanupIrpList, IRP, Private.Link) {
 	RemoveEntryList(&Irp->Private.Link);
-	IopFreePool(Irp);
+	IopDeleteIrp(Irp);
     }
 
     *pNumResponses = ResponseCount;

@@ -32,7 +32,9 @@ typedef struct _DEVICE_NODE {
     PIO_DRIVER_OBJECT FunctionDriverObject;
     PIO_DRIVER_OBJECT *UpperFilterDrivers;
     PIO_DRIVER_OBJECT *LowerFilterDrivers;
+    PCM_RESOURCE_LIST Resources;
     BOOLEAN DriverLoaded;
+    BOOLEAN DeviceStarted;
 } DEVICE_NODE, *PDEVICE_NODE;
 
 /*
@@ -442,6 +444,15 @@ static inline PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle
 	}
     }
     return NULL;
+}
+
+static inline PIO_DEVICE_OBJECT IopGetTopDevice(IN PIO_DEVICE_OBJECT Device)
+{
+    assert(Device != NULL);
+    while (Device->AttachedDevice != NULL) {
+	Device = Device->AttachedDevice;
+    }
+    return Device;
 }
 
 /* irp.c */

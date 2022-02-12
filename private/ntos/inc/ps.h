@@ -44,8 +44,8 @@ typedef struct _THREAD {
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
-    LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The pending IO packet
-				 * must be of type IoPacketTypeRequest. */
+    LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The objects of this list
+				 * are PENDING_IRP. List entry is PENDING_IRP.Link. */
     LIST_ENTRY ReadyListLink; /* Links all threads that are ready to be resumed. */
     KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */
     ASYNC_STACK AsyncStack; /* Stack of asynchronous call frames, starting from the service handler */
