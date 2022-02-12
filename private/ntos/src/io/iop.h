@@ -360,14 +360,17 @@ typedef struct _WORKER_THREAD {
 } WORKER_THREAD, *PWORKER_THREAD;
 
 /*
- * Interrupt service thread of a driver object
+ * Interrupt service of a driver object
  */
-typedef struct _INTERRUPT_SERVICE_THREAD {
-    PTHREAD Thread;
-    NOTIFICATION Notification;	     /* Server side capability */
-    NOTIFICATION ClientNotification; /* Client side capability */
-    NOTIFICATION InterruptMutex;     /* Client side capability */
-} INTERRUPT_SERVICE_THREAD, *PINTERRUPT_SERVICE_THREAD;
+typedef struct _INTERRUPT_SERVICE {
+    ULONG Vector;
+    LIST_ENTRY Link;
+    IRQ_HANDLER IrqHandler;
+    PTHREAD IsrThread;
+    CAP_TREE_NODE IsrThreadClientCap; /* Client side cap of the ISR thread cap */
+    NOTIFICATION Notification;	      /* Client side capability */
+    NOTIFICATION InterruptMutex;      /* Client side capability */
+} INTERRUPT_SERVICE, *PINTERRUPT_SERVICE;
 
 /*
  * Maps the specified user IO buffer to the driver process's VSpace.

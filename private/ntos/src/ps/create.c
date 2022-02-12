@@ -255,7 +255,8 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
     assert(TcbUntyped->TreeNode.CSpace != NULL);
-    Thread->TreeNode.CSpace = TcbUntyped->TreeNode.CSpace;
+    MmInitializeCapTreeNode(&Thread->TreeNode, CAP_TREE_NODE_TCB,
+			    0, TcbUntyped->TreeNode.CSpace, NULL);
     RET_ERR_EX(MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
 				  seL4_TCBBits, &Thread->TreeNode),
 	       MmReleaseUntyped(TcbUntyped));

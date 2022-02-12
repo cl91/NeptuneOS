@@ -732,9 +732,9 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 	    HalVgaPrint(" Driver %s loaded.", DeviceNode->DriverServiceName);
 	}
 	if (DeviceNode->DeviceStarted) {
-	    HalVgaPrint(". Device started.\n");
+	    HalVgaPrint(". STARTED.\n");
 	} else {
-	    HalVgaPrint(". Device failed to start.\n");
+	    HalVgaPrint(". START FAIL.\n");
 	}
     } else if (DeviceNode->DriverServiceName != NULL) {
 	HalVgaPrint(" FAILED to load driver %s\n", DeviceNode->DriverServiceName);

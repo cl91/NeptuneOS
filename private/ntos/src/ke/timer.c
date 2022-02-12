@@ -65,41 +65,6 @@ static inline VOID KiReleaseTimerDatabaseLock()
     KeReleaseMutex(&KiTimerDatabaseLock);
 }
 
-static NTSTATUS KiCreateIrqHandler(IN PIRQ_HANDLER IrqHandler,
-				   IN MWORD IrqLine)
-{
-    extern CNODE MiNtosCNode;
-    assert(IrqHandler != NULL);
-    MWORD Cap = 0;
-    RET_ERR(MmAllocateCap(&MiNtosCNode, &Cap));
-    assert(Cap != 0);
-    int Error = seL4_IRQControl_Get(seL4_CapIRQControl, IrqLine,
-				    MiNtosCNode.TreeNode.Cap,
-				    Cap, MiNtosCNode.Depth);
-    if (Error != 0) {
-	MmDeallocateCap(&MiNtosCNode, Cap);
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
-    }
-    KiInitializeIrqHandler(IrqHandler, &MiNtosCNode, Cap, IrqLine);
-    assert(Cap == IrqHandler->TreeNode.Cap);
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS KiConnectIrqNotification(IN PIRQ_HANDLER IrqHandler,
-					 IN PNOTIFICATION Notification)
-{
-    assert(IrqHandler != NULL);
-    assert(Notification != NULL);
-    int Error = seL4_IRQHandler_SetNotification(IrqHandler->TreeNode.Cap,
-						Notification->TreeNode.Cap);
-    if (Error != 0) {
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
-    }
-    return STATUS_SUCCESS;
-}
-
 /*
  * Entry point for the timer interrupt service thread
  */
@@ -153,10 +118,10 @@ static VOID KiTimerInterruptService()
 
 static NTSTATUS KiEnableTimerInterruptService()
 {
-    RET_ERR(KiCreateIrqHandler(&KiTimerIrqHandler, TIMER_IRQ_LINE));
+    RET_ERR(KeCreateIrqHandler(&KiTimerIrqHandler, TIMER_IRQ_LINE));
     RET_ERR_EX(KeCreateNotification(&KiTimerIrqNotification),
 	       MmCapTreeDeleteNode(&KiTimerIrqHandler.TreeNode));
-    RET_ERR_EX(KiConnectIrqNotification(&KiTimerIrqHandler, &KiTimerIrqNotification),
+    RET_ERR_EX(KeConnectIrqNotification(&KiTimerIrqHandler, &KiTimerIrqNotification),
 	       {
 		   MmCapTreeDeleteNode(&KiTimerIrqNotification.TreeNode);
 		   MmCapTreeDeleteNode(&KiTimerIrqHandler.TreeNode);

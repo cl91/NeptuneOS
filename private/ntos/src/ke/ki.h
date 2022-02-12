@@ -12,18 +12,6 @@
 
 typedef ULONG (*KI_DBG_PRINTER)(PCSTR Fmt, ...);
 
-static inline VOID KiInitializeIrqHandler(IN PIRQ_HANDLER Self,
-					  IN PCNODE CSpace,
-					  IN MWORD Cap,
-					  IN MWORD Irq)
-{
-    assert(Self != NULL);
-    assert(CSpace != NULL);
-    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_IRQ_HANDLER, Cap,
-			    CSpace, NULL);
-    Self->Irq = Irq;
-}
-
 /* Helper function for dumping fault name */
 static inline PCSTR KiDbgGetFaultName(IN seL4_Fault_t Fault)
 {

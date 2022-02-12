@@ -96,7 +96,6 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopWorkItemQueue);
     InitializeListHead(&IopSuspendedWorkItemList);
     RtlInitializeSListHead(&IopDpcQueue);
-    RtlInitializeSListHead(&IopInterruptServiceRoutineList);
 
     /* Set the IopDbgTraceModuleName to the driver base name */
     if (RegistryPath != NULL && RegistryPath->Length > 2) {

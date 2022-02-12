@@ -33,10 +33,15 @@
     <parameter annotation="out" type="ptr::MWORD" name="Cap" />
   </svc>
 
-  <svc name="IopCreateInterruptServiceThread">
+  <svc name="IopConnectInterrupt">
+    <parameter annotation="in" type="ULONG" name="Vector" />
+    <parameter annotation="in" type="BOOLEAN" name="ShareVector" />
     <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="EntryPoint" />
-    <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
-    <parameter annotation="out" type="ptr::MWORD" name="ThreadNotification" />
+    <parameter annotation="in" type="PVOID" name="ClientSideContext" />
+    <parameter annotation="out" type="ptr::MWORD" name="ThreadCap" />
+    <parameter annotation="out" type="ptr::PVOID" name="ThreadIpcBuffer" />
+    <parameter annotation="out" type="ptr::MWORD" name="IrqHandler" />
+    <parameter annotation="out" type="ptr::MWORD" name="InterruptNotification" />
     <parameter annotation="out" type="ptr::MWORD" name="InterruptMutex" />
   </svc>
 

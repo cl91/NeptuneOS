@@ -17,6 +17,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     InitializeListHead(&Driver->ForwardedIrpList);
+    InitializeListHead(&Driver->InterruptServiceList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
@@ -173,59 +174,98 @@ NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopCreateInterruptServiceThread(IN ASYNC_STATE AsyncState,
-                                         IN PTHREAD Thread,
-                                         IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
-                                         OUT HANDLE *ThreadHandle,
-                                         OUT MWORD *ThreadNotification,
-                                         OUT MWORD *InterruptMutex)
+static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObject,
+						IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
+						IN PVOID ClientSideContext,
+						OUT PINTERRUPT_SERVICE *pSvc)
+{
+    assert(DriverObject != NULL);
+    assert(DriverObject->DriverProcess != NULL);
+    assert(pSvc != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    IopAllocatePool(Svc, INTERRUPT_SERVICE);
+
+    /* Create a notification for client side to use as the interrupt notification */
+    IF_ERR_GOTO(out, Status,
+		KeCreateNotificationEx(&Svc->Notification,
+				       DriverObject->DriverProcess->CSpace));
+
+    CONTEXT Context;
+    memset(&Context, 0, sizeof(CONTEXT));
+    KeSetThreadContextFromEntryPoint(&Context, EntryPoint, ClientSideContext);
+
+    /* Also create the mutex object (which is simply a notification) for the
+     * client side to synchronize data access between ISR and the rest of the driver. */
+    IF_ERR_GOTO(out, Status,
+		KeCreateNotificationEx(&Svc->InterruptMutex,
+				       DriverObject->DriverProcess->CSpace));
+
+    IF_ERR_GOTO(out, Status,
+		PsCreateThread(DriverObject->DriverProcess, &Context, NULL,
+			       TRUE, &Svc->IsrThread));
+    assert(Svc->IsrThread != NULL);
+    Svc->IsrThreadClientCap.CSpace = DriverObject->DriverProcess->CSpace;
+    IF_ERR_GOTO(out, Status,
+		MmCapTreeDeriveBadgedNode(&Svc->IsrThreadClientCap,
+					  &Svc->IsrThread->TreeNode,
+					  seL4_AllRights, 0));
+    InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
+    *pSvc = Svc;
+    return STATUS_SUCCESS;
+
+out:
+    if (Svc != NULL) {
+	assert(Svc->IsrThreadClientCap.Cap == 0);
+	if (Svc->IsrThread != NULL) {
+	    ObDereferenceObject(Svc->IsrThread);
+	}
+	if (Svc->Notification.TreeNode.Cap != 0) {
+	    KeDestroyNotification(&Svc->Notification);
+	}
+	if (Svc->InterruptMutex.TreeNode.Cap != 0) {
+	    KeDestroyNotification(&Svc->InterruptMutex);
+	}
+	ExFreePool(Svc);
+    }
+    return Status;
+}
+
+NTSTATUS IopConnectInterrupt(IN ASYNC_STATE AsyncState,
+			     IN PTHREAD Thread,
+			     IN ULONG Vector,
+			     IN BOOLEAN ShareVector,
+			     IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
+			     IN PVOID ClientSideContext, /* Context as in EntryPoint(Context) */
+			     OUT MWORD *ThreadCap,
+			     OUT PVOID *ThreadIpcBuffer,
+			     OUT MWORD *IrqHandler,
+			     OUT MWORD *InterruptNotification,
+			     OUT MWORD *InterruptMutex)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     assert(Thread->Process->DriverObject != NULL);
-    assert(ThreadHandle != NULL);
-    assert(ThreadNotification != NULL);
-    assert(InterruptMutex != NULL);
-    IopAllocatePool(IsrThread, INTERRUPT_SERVICE_THREAD);
-    KeInitializeNotification(&IsrThread->ClientNotification,
-			     Thread->Process->CSpace, 0, 0);
-    RET_ERR_EX(KeCreateNotification(&IsrThread->Notification),
-	       ExFreePool(IsrThread));
-    RET_ERR_EX(MmCapTreeDeriveBadgedNode(&IsrThread->ClientNotification.TreeNode,
-					 &IsrThread->Notification.TreeNode,
-					 seL4_AllRights, 0),
-	       {
-		   KeDestroyNotification(&IsrThread->Notification);
-		   ExFreePool(IsrThread);
-	       });
-    CONTEXT Context;
-    memset(&Context, 0, sizeof(CONTEXT));
-    KeSetThreadContextFromEntryPoint(&Context, EntryPoint,
-				     (PVOID)IsrThread->ClientNotification.TreeNode.Cap);
-    RET_ERR_EX(KeCreateNotificationEx(&IsrThread->InterruptMutex,
-				      Thread->Process->CSpace),
-	       {
-		   KeDestroyNotification(&IsrThread->Notification);
-		   ExFreePool(IsrThread);
-	       });
-    RET_ERR_EX(PsCreateThread(Thread->Process, &Context, NULL,
-			      FALSE, &IsrThread->Thread),
-	       {
-		   KeDestroyNotification(&IsrThread->Notification);
-		   KeDestroyNotification(&IsrThread->InterruptMutex);
-		   ExFreePool(IsrThread);
-	       });
-    assert(IsrThread->Thread != NULL);
-    RET_ERR_EX(ObCreateHandle(Thread->Process,
-			      IsrThread->Thread, ThreadHandle),
-	       {
-		   ObDereferenceObject(IsrThread->Thread);
-		   KeDestroyNotification(&IsrThread->Notification);
-		   KeDestroyNotification(&IsrThread->InterruptMutex);
-		   ExFreePool(IsrThread);
-	       });
-    *ThreadNotification = IsrThread->ClientNotification.TreeNode.Cap;
-    *InterruptMutex = IsrThread->InterruptMutex.TreeNode.Cap;
+    if (ShareVector) {
+	UNIMPLEMENTED;
+    }
+
+    /* Create the interrupt service thread, together with the interrupt notification
+     * and interrupt mutex object */
+    PINTERRUPT_SERVICE Svc = NULL;
+    RET_ERR(IopCreateInterruptServiceThread(Thread->Process->DriverObject,
+					    EntryPoint, ClientSideContext, &Svc));
+    assert(Svc != NULL);
+
+    /* Connect the given interrupt vector to the interrupt thread */
+    RET_ERR(KeCreateIrqHandlerEx(&Svc->IrqHandler, Vector,
+				 Thread->Process->CSpace));
+    Svc->Vector = Vector;
+
+    *ThreadCap = Svc->IsrThreadClientCap.Cap;
+    *ThreadIpcBuffer = (PVOID)Svc->IsrThread->IpcBufferClientAddr;
+    *IrqHandler = Svc->IrqHandler.TreeNode.Cap;
+    *InterruptNotification = Svc->Notification.TreeNode.Cap;
+    *InterruptMutex = Svc->InterruptMutex.TreeNode.Cap;
     return STATUS_SUCCESS;
 }
 

@@ -38,7 +38,6 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
 VOID MmDbgDumpSection(IN PSECTION Section);
 VOID MmDbgDumpVad(PMMVAD Vad);
 VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
-VOID KeDbgDumpIPCError(IN int Error);
 VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
 #else
 #define MmDbgDumpCapTreeNode(x)
@@ -49,6 +48,5 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
 #define MmDbgDumpSection(x)
 #define MmDbgDumpVad(x)
 #define MmDbgDumpVSpace(x)
-#define KeDbgDumpIPCError(x)
 #define IoDbgDumpFileObject(x)
 #endif

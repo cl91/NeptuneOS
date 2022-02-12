@@ -129,6 +129,17 @@ typedef struct _IRQ_HANDLER {
     MWORD Irq;
 } IRQ_HANDLER, *PIRQ_HANDLER;
 
+static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
+					  IN PCNODE CSpace,
+					  IN MWORD Cap,
+					  IN MWORD Irq)
+{
+    assert(Self != NULL);
+    assert(CSpace != NULL);
+    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_IRQ_HANDLER, Cap,
+			    CSpace, NULL);
+    Self->Irq = Irq;
+}
 
 /*
  * Asynchronous routine helpers
@@ -765,6 +776,20 @@ static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
 
 /* init.c */
 ULONG KeX86TscFreq;
+
+/* irq.c */
+NTSTATUS KeCreateIrqHandlerEx(IN PIRQ_HANDLER IrqHandler,
+			      IN MWORD IrqLine,
+			      IN PCNODE CSpace);
+NTSTATUS KeConnectIrqNotification(IN PIRQ_HANDLER IrqHandler,
+				  IN PNOTIFICATION Notification);
+
+NTSTATUS KeCreateIrqHandler(IN PIRQ_HANDLER IrqHandler,
+			    IN MWORD IrqLine)
+{
+    extern CNODE MiNtosCNode;
+    return KeCreateIrqHandlerEx(IrqHandler, IrqLine, &MiNtosCNode);
+}
 
 /* timer.c */
 VOID KeInitializeTimer(IN PTIMER Timer,

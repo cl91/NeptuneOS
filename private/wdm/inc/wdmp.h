@@ -172,6 +172,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
     KIRQL Irql;
     KIRQL SynchronizeIrql;
     KINTERRUPT_MODE InterruptMode;
+    MWORD ThreadCap;
+    PVOID ThreadIpcBuffer;
+    MWORD IrqHandlerCap;
+    MWORD NotificationCap;
 } KINTERRUPT;
 
 /* device.c */
@@ -199,7 +203,6 @@ VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
 extern SLIST_HEADER IopDpcQueue;
-extern SLIST_HEADER IopInterruptServiceRoutineList;
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;

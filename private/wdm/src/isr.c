@@ -1,20 +1,52 @@
 #include <wdmp.h>
 
 DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopDpcQueue;
-DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopInterruptServiceRoutineList;
 
-/* For now all interrupt service routines run in the same thread.
- * Eventually we will have different threads for different IRQL.
- */
-static HANDLE IopInterruptServiceThreadHandle;
-static MWORD IopInterruptServiceNotification;
-static MWORD IopInterruptServiceMutex;
-
-static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID NotificationCap)
+static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
-    DbgTrace("NotificationCap is %p\n", NotificationCap);
-    while (TRUE) ;
+    PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
+    __sel4_ipc_buffer = Interrupt->ThreadIpcBuffer;
+    assert(Interrupt->ServiceRoutine != NULL);
+    while (TRUE) {
+	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
+	if (AckError != 0) {
+	    DbgTrace("Failed to ACK IRQ handler cap %d for vector %d. Error:",
+		     Interrupt->IrqHandlerCap, Interrupt->Vector);
+	    KeDbgDumpIPCError(AckError);
+	}
+	seL4_Wait(Interrupt->NotificationCap, NULL);
+	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
+    }
     return 0;
+}
+
+static inline NTSTATUS PspResumeThread(IN MWORD ThreadCap)
+{
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_Resume(ThreadCap);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_Resume failed for thread cap 0x%zx with error %d\n",
+		 ThreadCap, Error);
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
+					 IN MWORD NotificationCap)
+{
+    assert(IrqHandlerCap != 0);
+    assert(NotificationCap != 0);
+    int Error = seL4_IRQHandler_SetNotification(IrqHandlerCap,
+						NotificationCap);
+    if (Error != 0) {
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
 }
 
 NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
@@ -29,15 +61,6 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				  IN BOOLEAN FloatingSave)
 {
     assert(pInterruptObject);
-    if (IopInterruptServiceThreadHandle == NULL) {
-	RET_ERR(IopCreateInterruptServiceThread(IopInterruptServiceThreadEntry,
-						&IopInterruptServiceThreadHandle,
-						&IopInterruptServiceNotification,
-						&IopInterruptServiceMutex));
-    }
-    assert(IopInterruptServiceThreadHandle != NULL);
-    assert(IopInterruptServiceNotification != 0);
-    assert(IopInterruptServiceMutex != 0);
     IopAllocateObject(InterruptObject, KINTERRUPT);
     InterruptObject->ServiceRoutine = ServiceRoutine;
     InterruptObject->ServiceContext = ServiceContext;
@@ -45,8 +68,36 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     InterruptObject->Irql = Irql;
     InterruptObject->SynchronizeIrql = SynchronizeIrql;
     InterruptObject->InterruptMode = InterruptMode;
-    RtlInterlockedPushEntrySList(&IopInterruptServiceRoutineList,
-				 &InterruptObject->Entry);
+
+    MWORD MutexCap = 0;
+    RET_ERR(IopConnectInterrupt(Vector,
+				ShareVector,
+				IopInterruptServiceThreadEntry,
+				InterruptObject,
+				&InterruptObject->ThreadCap,
+				&InterruptObject->ThreadIpcBuffer,
+				&InterruptObject->IrqHandlerCap,
+				&InterruptObject->NotificationCap,
+				&MutexCap));
+    assert(InterruptObject->ThreadCap != 0);
+    assert(InterruptObject->ThreadIpcBuffer != 0);
+    assert(InterruptObject->IrqHandlerCap != 0);
+    assert(InterruptObject->NotificationCap != 0);
+    assert(MutexCap != 0);
+    KeInitializeMutex(&InterruptObject->Mutex, MutexCap);
+
+    DbgTrace("Created interrupt object %p ThreadCap %d IpcBuffer %p "
+	     "IrqHandler %d Notification %d Mutex %d\n",
+	     InterruptObject, InterruptObject->ThreadCap,
+	     InterruptObject->ThreadIpcBuffer,
+	     InterruptObject->IrqHandlerCap,
+	     InterruptObject->NotificationCap,
+	     InterruptObject->Mutex.Notification);
+    RET_ERR_EX(KiConnectIrqNotification(InterruptObject->IrqHandlerCap,
+					InterruptObject->NotificationCap),
+	       IoDisconnectInterrupt(InterruptObject));
+    RET_ERR_EX(PspResumeThread(InterruptObject->ThreadCap),
+	       IoDisconnectInterrupt(InterruptObject));
     *pInterruptObject = InterruptObject;
     return STATUS_SUCCESS;
 }

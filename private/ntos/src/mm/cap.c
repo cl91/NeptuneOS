@@ -347,6 +347,7 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 		   MmDeallocateCap(NewNode->CSpace, NewCap));
     }
     NewNode->Cap = NewCap;
+    NewNode->Type = OldNode->Type;
 
     /* Add new node as the child of the old node. */
     MmCapTreeNodeSetParent(NewNode, OldNode);
