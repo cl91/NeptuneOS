@@ -854,8 +854,9 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 			assert(WorkItem->Size == sizeof(IO_WORKITEM));
 			/* Move the IO workitem back to the queue so it will be resumed */
 			DbgTrace("Inserting work item %p back to the queue\n", WorkItem);
-			RemoveEntryList(&WorkItem->Link);
-			InsertTailList(&IopWorkItemQueue, &WorkItem->Link);
+			assert(IopWorkItemIsInSuspendedList(WorkItem));
+			RemoveEntryList(&WorkItem->SuspendedListEntry);
+			RtlInterlockedPushEntrySList(&IopWorkItemQueue, &WorkItem->QueueEntry);
 		    }
 		    /* Set the pended object pointer to NULL. This is strictly speaking
 		     * unnecessary but we want to make debugging easier. */

@@ -96,8 +96,9 @@ typedef struct _X86_IOPORT {
 typedef struct _IO_WORKITEM {
     SHORT Type;
     USHORT Size;
-    LIST_ENTRY Link;
     PDEVICE_OBJECT DeviceObject;
+    SLIST_ENTRY DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) QueueEntry;
+    LIST_ENTRY SuspendedListEntry;
     PVOID CoroutineStackTop;
     union {
 	PIO_WORKITEM_ROUTINE WorkerRoutine;
@@ -164,14 +165,13 @@ static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
  * Interrupt object.
  */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
-    SLIST_ENTRY Entry; /* Must be first, or at least aligned by 8 bytes */
-    KMUTEX Mutex;
-    PKSERVICE_ROUTINE ServiceRoutine;
-    PVOID ServiceContext;
     ULONG Vector;
     KIRQL Irql;
     KIRQL SynchronizeIrql;
     KINTERRUPT_MODE InterruptMode;
+    KMUTEX Mutex;
+    PKSERVICE_ROUTINE ServiceRoutine;
+    PVOID ServiceContext;
     MWORD WdmServiceCap;
     MWORD ThreadCap;
     PVOID ThreadIpcBuffer;
@@ -217,9 +217,10 @@ extern LIST_ENTRY IopTimerList;
 extern ULONG KiStallScaleFactor;
 
 /* workitem.c */
-extern LIST_ENTRY IopWorkItemQueue;
+extern SLIST_HEADER IopWorkItemQueue;
 extern LIST_ENTRY IopSuspendedWorkItemList;
 VOID IopProcessWorkItemQueue();
+BOOLEAN IopWorkItemIsInSuspendedList(IN PIO_WORKITEM Item);
 VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);
 
 static inline BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)

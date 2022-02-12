@@ -1,12 +1,13 @@
 #include <wdmp.h>
 #include "coroutine.h"
 
-LIST_ENTRY IopWorkItemQueue;
+DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopWorkItemQueue;
 LIST_ENTRY IopSuspendedWorkItemList;
 
-static inline BOOLEAN IopWorkItemIsInQueue(IN PIO_WORKITEM Item)
+BOOLEAN IopWorkItemIsInSuspendedList(IN PIO_WORKITEM Item)
 {
-    LoopOverList(WorkItem, &IopWorkItemQueue, IO_WORKITEM, Link) {
+    LoopOverList(WorkItem, &IopSuspendedWorkItemList, IO_WORKITEM,
+		 SuspendedListEntry) {
 	if (Item == WorkItem) {
 	    return TRUE;
 	}
@@ -56,12 +57,11 @@ NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
     assert(IoWorkItem != NULL);
     /* We want to make sure that all work items are dequeued before re-queuing them */
     assert(IoWorkItem->WorkerRoutine == NULL);
-    assert(!IopWorkItemIsInQueue(IoWorkItem));
     assert(IoWorkItem->CoroutineStackTop == NULL);
     IoWorkItem->WorkerRoutine = WorkerRoutine;
     IoWorkItem->Context = Context;
     IoWorkItem->ExtendedRoutine = FALSE;
-    InsertTailList(&IopWorkItemQueue, &IoWorkItem->Link);
+    RtlInterlockedPushEntrySList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
 }
 
 /*
@@ -89,12 +89,12 @@ VOID IopProcessWorkItemQueue()
 {
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    LoopOverList(WorkItem, &IopWorkItemQueue, IO_WORKITEM, Link) {
+    PSLIST_ENTRY Entry;
+    while ((Entry = RtlInterlockedPopEntrySList(&IopWorkItemQueue)) != NULL) {
+	PIO_WORKITEM WorkItem = CONTAINING_RECORD(Entry, IO_WORKITEM, QueueEntry);
 	IopCurrentObject = WorkItem;
-	/* In either cases below we will unlink the work item from the queue.
-	 * The reason for doing it so early is because the worker routine
-	 * will delete the work item once it is done. */
-	RemoveEntryList(&WorkItem->Link);
+	/* The worker routine may delete the work item once it is done
+	 * so we need to save the coroutine stacktop in case that happens. */
 	PVOID CoroutineStack = WorkItem->CoroutineStackTop;
 	if (CoroutineStack == NULL) {
 	    /* We are starting a new workitem. Find a coroutine stack. */
@@ -126,7 +126,7 @@ VOID IopProcessWorkItemQueue()
 	    DbgTrace("Suspending workitem routine %p, coroutine stack %p, saved SP %p\n",
 		     WorkItem, CoroutineStack, KiGetCoroutineSavedSP(CoroutineStack));
 	    assert(KiGetCoroutineSavedSP(CoroutineStack) != NULL);
-	    InsertTailList(&IopSuspendedWorkItemList, &WorkItem->Link);
+	    InsertTailList(&IopSuspendedWorkItemList, &WorkItem->SuspendedListEntry);
 	} else {
 	    /* Otherwise, the workitem routine has completed. Release the
 	     * coroutine stack. Note that the workitem may have already been
