@@ -79,7 +79,7 @@ static NTSTATUS IopLoadWdmDll()
 
     return STATUS_SUCCESS;
 
- fail:
+fail:
     HalVgaPrint("\nFatal error: ");
     if (WdmDll == NULL) {
 	HalVgaPrint("%s not found", WDM_DLL_PATH);

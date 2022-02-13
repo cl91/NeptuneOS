@@ -196,6 +196,29 @@ static inline GLOBAL_HANDLE IopGetFileHandle(IN PFILE_OBJECT File)
     return File ? File->Private.Handle : 0;
 }
 
+static inline NTSTATUS IopMarshalIoBuffers(IN PIRP Irp,
+					   IN PVOID Buffer,
+					   IN ULONG BufferLength)
+{
+    if (BufferLength == 0 || Buffer == NULL) {
+	return STATUS_SUCCESS;
+    }
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    ULONG DeviceFlags = IoStack->DeviceObject->Flags;
+    if (DeviceFlags & DO_BUFFERED_IO) {
+	Irp->AssociatedIrp.SystemBuffer = Buffer;
+    } else if (DeviceFlags & DO_DIRECT_IO) {
+	IopAllocateObject(Mdl, MDL);
+	Mdl->MappedSystemVa = Buffer;
+	Mdl->ByteCount = BufferLength;
+	Irp->MdlAddress = Mdl;
+    } else {
+	/* NEITHER_IO */
+	Irp->UserBuffer = Buffer;
+    }
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS IopMarshalIoctlBuffers(IN PIRP Irp,
 				       IN ULONG Ioctl,
 				       IN PVOID InputBuffer,
@@ -263,6 +286,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 	break;
     }
     case IRP_MJ_CREATE:
+    case IRP_MJ_READ:
     case IRP_MJ_PNP:
 	/* Do nothing */
 	break;
@@ -339,19 +363,30 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	IoStack->Parameters.CreateMailslot.Parameters = MailslotCreateParameters;
 	break;
 
+    case IRP_MJ_READ:
+    {
+	PVOID Buffer = (PVOID)Src->Request.OutputBuffer;
+	ULONG BufferLength = Src->Request.OutputBufferLength;
+	IoStack->Parameters.Read.Length = BufferLength;
+	IoStack->Parameters.Read.Key = Src->Request.Read.Key;
+	IoStack->Parameters.Read.ByteOffset = Src->Request.Read.ByteOffset;
+	RET_ERR(IopMarshalIoBuffers(Irp, Buffer, BufferLength));
+	break;
+    }
+
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
     {
 	ULONG Ioctl = Src->Request.DeviceIoControl.IoControlCode;
-	PVOID InputBuffer = Src->Request.DeviceIoControl.InputBuffer;
-	ULONG InputBufferLength = Src->Request.DeviceIoControl.InputBufferLength;
-	ULONG OutputBufferLength = Src->Request.DeviceIoControl.OutputBufferLength;
+	PVOID InputBuffer = (PVOID)Src->Request.InputBuffer;
+	ULONG InputBufferLength = Src->Request.InputBufferLength;
+	ULONG OutputBufferLength = Src->Request.OutputBufferLength;
 	IoStack->Parameters.DeviceIoControl.IoControlCode = Ioctl;
 	IoStack->Parameters.DeviceIoControl.Type3InputBuffer = InputBuffer;
 	IoStack->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
 	IoStack->Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
 	RET_ERR(IopMarshalIoctlBuffers(Irp, Ioctl, InputBuffer, InputBufferLength,
-				       Src->Request.DeviceIoControl.OutputBuffer,
+				       (PVOID)Src->Request.OutputBuffer,
 				       OutputBufferLength));
 	break;
     }
@@ -398,12 +433,14 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 
 	default:
 	    UNIMPLEMENTED;
+	    assert(FALSE);
 	    return STATUS_NOT_IMPLEMENTED;
 	}
 	break;
     }
     default:
 	UNIMPLEMENTED;
+	assert(FALSE);
 	return STATUS_NOT_IMPLEMENTED;
     }
 
@@ -482,6 +519,7 @@ static BOOLEAN IopPopulateIoCompletedMessageFromLocalIrp(IN PIO_PACKET Dest,
 
 	default:
 	    UNIMPLEMENTED;
+	    assert(FALSE);
 	    return FALSE;
 	}
     }
@@ -651,10 +689,10 @@ static BOOLEAN IopPopulateIoRequestMessage(IN PIO_PACKET Dest,
 		OutputBuffer = Irp->MdlAddress->MappedSystemVa;
 	    }
 	}
-	Dest->Request.DeviceIoControl.InputBuffer = InputBuffer;
-	Dest->Request.DeviceIoControl.OutputBuffer = OutputBuffer;
-	Dest->Request.DeviceIoControl.InputBufferLength = InputBufferLength;
-	Dest->Request.DeviceIoControl.OutputBufferLength = OutputBufferLength;
+	Dest->Request.InputBuffer = (MWORD)InputBuffer;
+	Dest->Request.OutputBuffer = (MWORD)OutputBuffer;
+	Dest->Request.InputBufferLength = InputBufferLength;
+	Dest->Request.OutputBufferLength = OutputBufferLength;
 	Dest->Request.DeviceIoControl.IoControlCode = Ioctl;
 	break;
     }
@@ -681,6 +719,11 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.Create.SecurityContext, Stack->Parameters.Create.Options,
 		 Stack->Parameters.Create.FileAttributes, Stack->Parameters.Create.ShareAccess,
 		 Stack->Parameters.Create.EaLength);
+	break;
+    case IRP_MJ_READ:
+	DbgPrint("    READ  Length 0x%x Key 0x%x ByteOffset 0x%llx\n",
+		 Stack->Parameters.Read.Length, Stack->Parameters.Read.Key,
+		 Stack->Parameters.Read.ByteOffset.QuadPart);
 	break;
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
@@ -1104,7 +1147,10 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	SrcIoPacket = (PIO_PACKET)((MWORD)SrcIoPacket + SrcIoPacket->Size);
     }
 
-    /* Process the AddDevice requests first. Normally there should only be one
+    /* Process all the queued DPC objects first. */
+    IopProcessDpcQueue();
+
+    /* Process the AddDevice requests. Normally there should only be one
      * such request, but we make it flexible here. */
     IopProcessAddDeviceRequests();
 

@@ -30,3 +30,6 @@ typedef struct _EX_POOL {
     MWORD HeapEnd;
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
 } EX_POOL, *PEX_POOL;
+
+/* event.c */
+NTSTATUS EiInitEventObject();

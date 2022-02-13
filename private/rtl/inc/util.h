@@ -98,13 +98,19 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 
 #if defined(CONFIG_DEBUG_BUILD) || defined(DEBUG)
 VOID KeDbgDumpIPCError(IN int Error);
-#else
-#define KeDbgDumpIPCError(x)
-#endif
 
 #ifndef DbgTrace
 #define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RTLP_DBGTRACE_MODULE_NAME, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
 #endif
+
+#else
+#define KeDbgDumpIPCError(x)
+
+#ifndef DbgTrace
+#define DbgTrace(...)
+#endif
+
+#endif	/* DEBUG */
 
 /*
  * This will generate a compile-time error if the function is marked

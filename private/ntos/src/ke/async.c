@@ -361,7 +361,7 @@ VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
 NTSTATUS NtTestAlert(IN ASYNC_STATE State,
 		     IN PTHREAD Thread)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtContinue(IN ASYNC_STATE State,
@@ -369,14 +369,5 @@ NTSTATUS NtContinue(IN ASYNC_STATE State,
                     IN PCONTEXT Context,
                     IN BOOLEAN TestAlert)
 {
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
-                               IN HANDLE ObjectHandle,
-                               IN BOOLEAN Alertable,
-                               IN OPTIONAL PLARGE_INTEGER TimeOut)
-{
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }

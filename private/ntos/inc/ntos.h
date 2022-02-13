@@ -12,8 +12,8 @@
 #include <debug.h>
 #include <image.h>
 #include <util.h>
+#include <services.h>
 
-#include "ntosdef.h"
 #include "ke.h"
 #include "mm.h"
 #include "ex.h"
@@ -29,6 +29,33 @@
 #include <ntos_syssvc_gen.h>
 #include <ntos_wdmsvc_gen.h>
 
+#define UNIMPLEMENTED_ROUTINE				\
+    DbgTrace("Routine is unimplemented\n");		\
+    HalVgaPrint("%s UNIMPLEMENTED\n", __func__);
+
+#define UNIMPLEMENTED					\
+    {							\
+	COMPILE_CHECK_ASYNC_RETURN;			\
+	UNIMPLEMENTED_ROUTINE;				\
+	return STATUS_NOT_IMPLEMENTED;			\
+    }
+
+#define UNIMPLEMENTED_ASYNC(State)			\
+    {							\
+	COMPILE_CHECK_ASYNC_FRAME_SIZE;			\
+	UNIMPLEMENTED_ROUTINE;				\
+	ASYNC_RETURN(State, STATUS_NOT_IMPLEMENTED);	\
+    }
+
+#if defined(CONFIG_DEBUG_BUILD)
+VOID vDbgPrint(PCSTR Format, va_list args);
+#endif
+
+#define assert_ret(expr)	if (!(expr)) { return STATUS_NTOS_BUG; }
+
+/*
+ * Debug helper functions
+ */
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
 VOID MmDbgDumpCNode(IN PCNODE CNode);
@@ -50,3 +77,9 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
 #define MmDbgDumpVSpace(x)
 #define IoDbgDumpFileObject(x)
 #endif
+
+/*
+ * Additional alignment macros
+ */
+#define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))
+#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN(addr, type))

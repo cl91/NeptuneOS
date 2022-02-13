@@ -204,6 +204,7 @@ VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
 extern SLIST_HEADER IopDpcQueue;
+VOID IopProcessDpcQueue();
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;

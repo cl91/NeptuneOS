@@ -623,7 +623,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     /* We haven't implemented process inheritance yet */
     if ((Section == NULL) && (ImageFile == NULL)) {
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     }
 
     RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &Process->CSpace));

@@ -38,7 +38,7 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
 
 NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 /*
@@ -74,8 +74,8 @@ static inline BOOLEAN MiVadNodeContainsAddr(IN PMMVAD Vad,
 /*
  * Returns the VAD node that contains the supplied virtual address.
  */
-PMMVAD MmVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
-			   IN MWORD VirtAddr)
+static PMMVAD MiVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
+				  IN MWORD VirtAddr)
 {
     PMM_AVL_TREE Tree = &VSpace->VadTree;
     PMMVAD Node = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrPrev(Tree, VirtAddr));
@@ -392,7 +392,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     WindowSize = PAGE_ALIGN_UP(WindowSize);
     assert_ret(StartAddr + WindowSize > StartAddr);
 
-    PMMVAD Vad = MmVSpaceFindVadNode(VSpace, StartAddr);
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, StartAddr);
     if (Vad == NULL) {
 	DbgTrace("Error: Must reserve address window before committing.\n");
 	MmDbgDumpVSpace(VSpace);
@@ -410,7 +410,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 		 "(requested [%p, %p) found VAD [%p, %p))\n",
 		 (PVOID) StartAddr, (PVOID)(StartAddr + WindowSize),
 		 (PVOID) Vad->AvlNode.Key, (PVOID) (Vad->AvlNode.Key + Vad->WindowSize));
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     }
 
     PAGING_RIGHTS Rights = (Vad->Flags.ReadOnly) ? MM_RIGHTS_RO : MM_RIGHTS_RW;
@@ -419,7 +419,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	/* This will set CommitmentSize to the size of the VAD */
 	RET_ERR(MiCommitImageVad(Vad));
     } else if (Vad->Flags.FileMap) {
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     } else if (Vad->Flags.PhysicalMapping) {
 	for (MWORD Committed = 0; Committed < WindowSize; Committed += PAGE_SIZE) {
 	    MWORD PhyAddr = StartAddr - Vad->AvlNode.Key +
@@ -452,7 +452,7 @@ PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
 
-    PMMVAD Vad = MmVSpaceFindVadNode(VSpace, VirtAddr);
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, VirtAddr);
     if (Vad == NULL) {
 	return NULL;
     }
@@ -642,8 +642,9 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 VOID MmUnmapUserBufferEx(IN PVIRT_ADDR_SPACE MappedVSpace,
 			 IN MWORD MappedBufferStart)
 {
-    PMMVAD Vad = MmVSpaceFindVadNode(MappedVSpace, MappedBufferStart);
+    PMMVAD Vad = MiVSpaceFindVadNode(MappedVSpace, MappedBufferStart);
     assert(Vad != NULL);
+    assert(MiVadNodeContainsAddr(Vad, MappedBufferStart));
     if (Vad != NULL) {
 	MmDeleteVad(Vad);
     }
@@ -659,7 +660,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
                                  IN ULONG Protect)
 {
     if (ProcessHandle != NtCurrentProcess()) {
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     }
 
     PVIRT_ADDR_SPACE VSpace = &Thread->Process->VSpace;
@@ -711,7 +712,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     }
     /* These are not implemented yet */
     if ((AllocationType & (MEM_RESET | MEM_PHYSICAL | MEM_WRITE_WATCH))) {
-        return STATUS_NOT_IMPLEMENTED;
+        UNIMPLEMENTED;
     }
 
     PMMVAD Vad = NULL;
@@ -758,7 +759,7 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
                              IN OUT SIZE_T *RegionSize,
                              IN ULONG FreeType)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
@@ -769,7 +770,7 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
                               IN ULONG NumberOfBytesToWrite,
                               OUT ULONG *NumberOfBytesWritten)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 
@@ -781,7 +782,7 @@ NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
                              IN ULONG NumberOfBytesToRead,
                              OUT SIZE_T *NumberOfBytesRead)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueryVirtualMemory(IN ASYNC_STATE State,
@@ -793,7 +794,7 @@ NTSTATUS NtQueryVirtualMemory(IN ASYNC_STATE State,
                               IN ULONG MemoryInformationLength,
                               OUT OPTIONAL ULONG *ReturnLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
@@ -804,7 +805,7 @@ NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
                                 IN ULONG NewAccessProtection,
                                 OUT OPTIONAL ULONG *OldAccessProtection)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 #ifdef CONFIG_DEBUG_BUILD

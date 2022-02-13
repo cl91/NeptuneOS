@@ -15,15 +15,12 @@
 
 /* FUNCTIONS *****************************************************************/
 
-VOID
-i8042MouHandlePs2pp(IN PI8042_MOUSE_EXTENSION DeviceExtension,
-		    IN UCHAR Input)
+VOID i8042MouHandlePs2pp(IN PI8042_MOUSE_EXTENSION DeviceExtension,
+			 IN UCHAR Input)
 {
     UCHAR PktType;
-    PMOUSE_INPUT_DATA MouseInput;
-
-    MouseInput =
-	DeviceExtension->MouseBuffer + DeviceExtension->MouseInBuffer;
+    PMOUSE_INPUT_DATA MouseInput = DeviceExtension->Common.Buffer +
+	DeviceExtension->Common.EntriesInBuffer;
 
     /* First, collect 3 bytes for a packet
      * We can detect out-of-sync only by checking

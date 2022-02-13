@@ -437,8 +437,6 @@ static NTSTATUS MiCreateSharedPage(IN PPAGING_STRUCTURE OldPage,
     assert(NewVSpace);
     assert(pNewPage);
     assert(OldPage->TreeNode.Parent != NULL);
-    /* We should only call MiCreateSharedPage on owner memories */
-    assert(OldPage->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
 
     if (!MiPagingTypeIsPageOrLargePage(OldPage->Type)) {
 	return STATUS_NTOS_BUG;

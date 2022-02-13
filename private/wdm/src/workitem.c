@@ -35,7 +35,6 @@ NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
  */
 NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
 {
-    memset(IoWorkItem, 0xab, sizeof(IO_WORKITEM));
     ExFreePool(IoWorkItem);
 }
 

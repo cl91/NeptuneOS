@@ -1,4 +1,5 @@
 #include <nt.h>
+#include <ntddkbd.h>
 #include <assert.h>
 #include <stdarg.h>
 #include <string.h>
@@ -17,6 +18,27 @@
 #define DECLARE_UNICODE_STRING(Name, Ptr, Len)				\
     UNICODE_STRING Name = { .Length = Len, .MaximumLength = Len,	\
 	.Buffer = Ptr }
+
+typedef struct _KBD_RECORD {
+    USHORT wVirtualScanCode;
+    ULONG dwControlKeyState;
+    UCHAR AsciiChar;
+    BOOLEAN bKeyDown;
+} KBD_RECORD, *PKBD_RECORD;
+
+#define RIGHT_ALT_PRESSED     0x0001	// the right alt key is pressed.
+#define LEFT_ALT_PRESSED      0x0002	// the left alt key is pressed.
+#define RIGHT_CTRL_PRESSED    0x0004	// the right ctrl key is pressed.
+#define LEFT_CTRL_PRESSED     0x0008	// the left ctrl key is pressed.
+#define SHIFT_PRESSED         0x0010	// the shift key is pressed.
+#define NUMLOCK_ON            0x0020	// the numlock light is on.
+#define SCROLLLOCK_ON         0x0040	// the scrolllock light is on.
+#define CAPSLOCK_ON           0x0080	// the capslock light is on.
+#define ENHANCED_KEY          0x0100	// the key is enhanced.
+
+/* keytrans.c */
+VOID IntTranslateKey(IN PKEYBOARD_INPUT_DATA InputData,
+		     OUT KBD_RECORD *kbd_rec);
 
 /* main.c */
 NTSTATUS SmPrint(PCSTR Format, ...) __attribute__((format(printf, 1, 2)));

@@ -42,11 +42,11 @@ static NTAPI VOID i8042KbdQueuePacket(IN PVOID Context)
     PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)Context;
 
     DeviceExtension->KeyComplete = TRUE;
-    DeviceExtension->KeysInBuffer++;
-    if (DeviceExtension->KeysInBuffer >
+    DeviceExtension->Common.EntriesInBuffer++;
+    if (DeviceExtension->Common.EntriesInBuffer >
 	DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize) {
 	WARN_(I8042PRT, "Keyboard buffer overflow\n");
-	DeviceExtension->KeysInBuffer--;
+	DeviceExtension->Common.EntriesInBuffer--;
     }
 
     TRACE_(I8042PRT, "Irq completes key\n");
@@ -71,13 +71,9 @@ NTAPI NTSTATUS i8042SynchWritePortKbd(IN PVOID Context,
 NTAPI VOID i8042KbdStartIo(IN PDEVICE_OBJECT DeviceObject,
 			   IN PIRP Irp)
 {
-    PIO_STACK_LOCATION Stack;
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
-    PPORT_DEVICE_EXTENSION PortDeviceExtension;
-
-    Stack = IoGetCurrentIrpStackLocation(Irp);
-    DeviceExtension = (PI8042_KEYBOARD_EXTENSION)DeviceObject->DeviceExtension;
-    PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    PPORT_DEVICE_EXTENSION PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
 
     switch (Stack->Parameters.DeviceIoControl.IoControlCode) {
     case IOCTL_KEYBOARD_SET_INDICATORS:
@@ -116,7 +112,6 @@ NTAPI VOID i8042KbdStartIo(IN PDEVICE_OBJECT DeviceObject,
 static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 {
     BOOLEAN FinishIrp = FALSE;
-    KIRQL Irql;
     NTSTATUS Result = STATUS_INTERNAL_ERROR;	/* Shouldn't happen */
 
     /* If the interrupt happens before this is setup, the key
@@ -124,7 +119,7 @@ static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     if (!DeviceExtension->HighestDIRQLInterrupt)
 	return;
 
-    Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
+    IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
 
     if (DeviceExtension->Packet.State == Idle && DeviceExtension->PacketComplete) {
 	FinishIrp = TRUE;
@@ -132,7 +127,7 @@ static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	DeviceExtension->PacketComplete = FALSE;
     }
 
-    KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
+    IoReleaseInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
 
     if (!FinishIrp)
 	return;
@@ -149,13 +144,11 @@ static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
 				     IN PVOID Context)
 {
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = Context;
     PIRP WaitingIrp;
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(DeviceObject);
-
-    DeviceExtension = Context;
 
     /* See http://blogs.msdn.com/doronh/archive/2006/09/08/746961.aspx */
 
@@ -223,10 +216,10 @@ static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
 /* Return TRUE if it was a power key */
 static BOOLEAN HandlePowerKeys(IN PI8042_KEYBOARD_EXTENSION DeviceExtension)
 {
-    PKEYBOARD_INPUT_DATA InputData;
+    PKEYBOARD_INPUT_DATA InputData = (PKEYBOARD_INPUT_DATA)DeviceExtension->Common.Buffer
+	+ DeviceExtension->Common.EntriesInBuffer - 1;
     ULONG KeyPress;
 
-    InputData = DeviceExtension->KeyboardBuffer + DeviceExtension->KeysInBuffer - 1;
     if (!(InputData->Flags & KEY_E0))
 	return FALSE;
 
@@ -261,18 +254,12 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
 				     IN PVOID SystemArgument1,
 				     IN PVOID SystemArgument2)
 {
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
-    PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    ULONG KeysTransferred = 0;
-    ULONG KeysInBufferCopy;
-    KIRQL Irql;
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = DeferredContext;
+    PPORT_DEVICE_EXTENSION PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
 
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
     UNREFERENCED_PARAMETER(SystemArgument2);
-
-    DeviceExtension = DeferredContext;
-    PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
 
     if (HandlePowerKeys(DeviceExtension)) {
 	DeviceExtension->KeyComplete = FALSE;
@@ -282,35 +269,10 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
     i8042PacketDpc(PortDeviceExtension);
     if (!DeviceExtension->KeyComplete)
 	return;
-    /* We got the interrupt as it was being enabled, too bad */
-    if (!PortDeviceExtension->HighestDIRQLInterrupt)
-	return;
-
-    Irql =
-	KeAcquireInterruptSpinLock(PortDeviceExtension->
-				   HighestDIRQLInterrupt);
 
     DeviceExtension->KeyComplete = FALSE;
-    KeysInBufferCopy = DeviceExtension->KeysInBuffer;
-
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt,
-			       Irql);
-
-    TRACE_(I8042PRT, "Send a key\n");
-
-    if (!DeviceExtension->KeyboardData.ClassService)
-	return;
-
-    INFO_(I8042PRT, "Sending %u key(s)\n", KeysInBufferCopy);
-    (*(PSERVICE_CALLBACK_ROUTINE)DeviceExtension->KeyboardData.ClassService)(
-	DeviceExtension->KeyboardData.ClassDeviceObject,
-	DeviceExtension->KeyboardBuffer,
-	DeviceExtension->KeyboardBuffer + KeysInBufferCopy,
-	&KeysTransferred);
-
-    Irql = KeAcquireInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt);
-    DeviceExtension->KeysInBuffer -= KeysTransferred;
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt, Irql);
+    assert(DeviceExtension == DeviceExtension->Common.Fdo->DeviceExtension);
+    ProcessPendingReadIrps(DeviceExtension->Common.Fdo);
 }
 
 /*
@@ -319,13 +281,10 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
 NTAPI NTSTATUS i8042KbdDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 				     IN PIRP Irp)
 {
-    PIO_STACK_LOCATION Stack;
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
-    NTSTATUS Status;
-
-    Stack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     Irp->IoStatus.Information = 0;
-    DeviceExtension = (PI8042_KEYBOARD_EXTENSION) DeviceObject->DeviceExtension;
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    NTSTATUS Status;
 
     switch (Stack->Parameters.DeviceIoControl.IoControlCode) {
     case IOCTL_GET_SYS_BUTTON_CAPS:
@@ -410,14 +369,9 @@ NTAPI NTSTATUS i8042KbdDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 NTAPI VOID i8042InitializeKeyboardAttributes(PI8042_KEYBOARD_EXTENSION DeviceExtension)
 {
-    PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    PI8042_SETTINGS Settings;
-    PKEYBOARD_ATTRIBUTES KeyboardAttributes;
-
-    PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
-    Settings = &PortDeviceExtension->Settings;
-
-    KeyboardAttributes = &DeviceExtension->KeyboardAttributes;
+    PPORT_DEVICE_EXTENSION PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
+    PI8042_SETTINGS Settings = &PortDeviceExtension->Settings;
+    PKEYBOARD_ATTRIBUTES KeyboardAttributes = &DeviceExtension->KeyboardAttributes;
 
     KeyboardAttributes->KeyboardIdentifier.Type = (UCHAR) Settings->OverrideKeyboardType;
     KeyboardAttributes->KeyboardIdentifier.Subtype = (UCHAR) Settings->OverrideKeyboardSubtype;
@@ -481,13 +435,13 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	/* Initialize extension */
 	DeviceExtension->Common.Type = Keyboard;
 	Size = DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize * sizeof(KEYBOARD_INPUT_DATA);
-	DeviceExtension->KeyboardBuffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
-	if (!DeviceExtension->KeyboardBuffer) {
+	DeviceExtension->Common.Buffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
+	if (!DeviceExtension->Common.Buffer) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
 	    Status = STATUS_NO_MEMORY;
 	    goto cleanup;
 	}
-	RtlZeroMemory(DeviceExtension->KeyboardBuffer, Size);
+	RtlZeroMemory(DeviceExtension->Common.Buffer, Size);
 	KeInitializeDpc(&DeviceExtension->DpcKeyboard,
 			i8042KbdDpcRoutine, DeviceExtension);
 	DeviceExtension->PowerWorkItem = IoAllocateWorkItem(DeviceObject);
@@ -517,8 +471,8 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	break;
 
     cleanup:
-	if (DeviceExtension->KeyboardBuffer)
-	    ExFreePoolWithTag(DeviceExtension->KeyboardBuffer, I8042PRT_TAG);
+	if (DeviceExtension->Common.Buffer)
+	    ExFreePoolWithTag(DeviceExtension->Common.Buffer, I8042PRT_TAG);
 	if (DeviceExtension->PowerWorkItem)
 	    IoFreeWorkItem(DeviceExtension->PowerWorkItem);
 	if (DeviceExtension->DebugWorkItem)
@@ -670,11 +624,9 @@ static BOOLEAN i8042KbdCallIsrHook(IN PI8042_KEYBOARD_EXTENSION DeviceExtension,
     if (DeviceExtension->KeyboardHook.IsrRoutine) {
 	HookReturn = DeviceExtension->KeyboardHook.IsrRoutine(
 	    DeviceExtension->KeyboardHook.Context,
-	    DeviceExtension->KeyboardBuffer + DeviceExtension->KeysInBuffer,
+	    DeviceExtension->Common.Buffer + DeviceExtension->Common.EntriesInBuffer,
 	    &DeviceExtension->Common.PortDeviceExtension->Packet,
-	    Status,
-	    &Input,
-	    &HookContinue,
+	    Status, &Input, &HookContinue,
 	    &DeviceExtension->KeyboardScanState);
 
 	if (!HookContinue) {
@@ -688,20 +640,17 @@ static BOOLEAN i8042KbdCallIsrHook(IN PI8042_KEYBOARD_EXTENSION DeviceExtension,
 NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
 				       IN PVOID Context)
 {
-    PI8042_KEYBOARD_EXTENSION DeviceExtension;
-    PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    PKEYBOARD_INPUT_DATA InputData;
-    ULONG Counter;
     UCHAR PortStatus = 0, Output = 0;
     BOOLEAN ToReturn = FALSE;
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(Interrupt);
 
-    DeviceExtension = Context;
-    PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
-    InputData = DeviceExtension->KeyboardBuffer + DeviceExtension->KeysInBuffer;
-    Counter = PortDeviceExtension->Settings.PollStatusIterations;
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = Context;
+    PPORT_DEVICE_EXTENSION PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
+    PKEYBOARD_INPUT_DATA InputData = (PKEYBOARD_INPUT_DATA)DeviceExtension->Common.Buffer +
+	DeviceExtension->Common.EntriesInBuffer;
+    ULONG Counter = PortDeviceExtension->Settings.PollStatusIterations;
 
     while (Counter) {
 	Status = i8042ReadStatus(PortDeviceExtension, &PortStatus);

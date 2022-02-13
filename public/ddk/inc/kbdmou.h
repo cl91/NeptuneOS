@@ -78,15 +78,7 @@
   CTL_CODE(FILE_DEVICE_MOUSE, 0x0400, METHOD_NEITHER, FILE_ANY_ACCESS)
 
 typedef struct _CONNECT_DATA {
-  PDEVICE_OBJECT ClassDeviceObject;
-  PVOID ClassService;
+    ULONG Dummy;
 } CONNECT_DATA, *PCONNECT_DATA;
-
-typedef VOID
-(STDAPICALLTYPE *PSERVICE_CALLBACK_ROUTINE)(
-  IN PVOID NormalContext,
-  IN PVOID SystemArgument1,
-  IN PVOID SystemArgument2,
-  IN OUT PVOID SystemArgument3);
 
 #include <wmidata.h>

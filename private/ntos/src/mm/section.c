@@ -62,7 +62,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     /* The buffer doesn't contain the full optional header: read it from the file */
     if (FileBufferSize < SectionHeadersOffset) {
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     }
 
     /* Read information from the optional header */
@@ -196,7 +196,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     }
     /* Make sure we have read the entire section header table into memory. */
     if (FileBufferSize < AllHeadersSize) {
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     }
 
     /*
@@ -377,7 +377,7 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
 
     /* Only image section is implemented for now */
     if (!(Attributes & SEC_IMAGE)) {
-	return STATUS_NOT_IMPLEMENTED;
+	UNIMPLEMENTED;
     }
 
     PIMAGE_SECTION_OBJECT ImageSection = FileObject->SectionObject.ImageSectionObject;
@@ -591,7 +591,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	assert((ViewSize != NULL) && (*ViewSize));
 	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress, *ViewSize);
     }
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtCreateSection(IN ASYNC_STATE State,

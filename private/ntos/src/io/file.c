@@ -1,4 +1,5 @@
 #include "iop.h"
+#include "helpers.h"
 
 LIST_ENTRY IopFileObjectList;
 
@@ -138,10 +139,10 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     ASYNC_END(State, Status);
 }
 
-NTSTATUS NtReadFile(IN ASYNC_STATE AsyncState,
+NTSTATUS NtReadFile(IN ASYNC_STATE State,
                     IN PTHREAD Thread,
                     IN HANDLE FileHandle,
-                    IN HANDLE Event,
+                    IN HANDLE EventHandle,
                     IN PIO_APC_ROUTINE ApcRoutine,
                     IN PVOID ApcContext,
                     OUT IO_STATUS_BLOCK *IoStatusBlock,
@@ -150,7 +151,24 @@ NTSTATUS NtReadFile(IN ASYNC_STATE AsyncState,
                     IN OPTIONAL PLARGE_INTEGER ByteOffset,
                     IN OPTIONAL PULONG Key)
 {
-    UNIMPLEMENTED;
+    IO_SERVICE_PROLOGUE(State, Locals, FileObject, EventObject,
+			IoPacket, PendingIrp);
+
+    Locals.IoPacket->Request.MajorFunction = IRP_MJ_READ;
+    Locals.IoPacket->Request.MinorFunction = 0;
+    Locals.IoPacket->Request.OutputBuffer = (MWORD)Buffer;
+    Locals.IoPacket->Request.OutputBufferLength = BufferLength;
+    Locals.IoPacket->Request.Read.Key = Key ? *Key : 0;
+    if (ByteOffset != NULL) {
+	Locals.IoPacket->Request.Read.ByteOffset = *ByteOffset;
+    }
+
+    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject,
+			EventObject, IoPacket, PendingIrp);
+
+out:
+    IO_SERVICE_CLEANUP(Status, Locals, FileObject,
+		       EventObject, IoPacket, PendingIrp);
 }
 
 NTSTATUS NtWriteFile(IN ASYNC_STATE AsyncState,

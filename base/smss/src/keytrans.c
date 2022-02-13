@@ -36,7 +36,7 @@
  * @{
  */
 
-#include "precomp.h"
+#include "smss.h"
 
 typedef struct _SCANTOASCII {
     USHORT ScanCode;

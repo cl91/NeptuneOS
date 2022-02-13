@@ -2,6 +2,20 @@
 
 DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopDpcQueue;
 
+VOID IopProcessDpcQueue()
+{
+    PSLIST_ENTRY Entry;
+    while ((Entry = RtlInterlockedPopEntrySList(&IopDpcQueue)) != NULL) {
+	PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, Entry);
+	if (Dpc->DeferredRoutine != NULL) {
+	    Dpc->DeferredRoutine(Dpc,
+				 Dpc->DeferredContext,
+				 Dpc->SystemArgument1,
+				 Dpc->SystemArgument1);
+	}
+    }
+}
+
 static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
     PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
@@ -16,7 +30,9 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 	    KeDbgDumpIPCError(AckError);
 	}
 	seL4_Wait(Interrupt->NotificationCap, NULL);
+	IoAcquireInterruptMutex(Interrupt);
 	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
+	IoReleaseInterruptMutex(Interrupt);
 	/* Signal the main thread to check for DPC queue and IO work item queue */
 	IopNotifyMainThread();
     }
@@ -111,9 +127,8 @@ NTAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject)
 }
 
 /*
- * As opposed to Windows/ReactOS we allow DPC objects to be queued
- * multiple times because it can be safely done. This can simplify
- * driver ISR code.
+ * As is in Windows/ReactOS you cannot queue DPC objects multiple
+ * times.
  */
 NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 			       IN PVOID SystemArgument1,

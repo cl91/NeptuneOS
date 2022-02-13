@@ -1,4 +1,5 @@
 #include "iop.h"
+#include "helpers.h"
 
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
@@ -136,7 +137,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     Locals.IoPacket->Request.Device.Object = Device;
     Locals.IoPacket->Request.File.Object = Locals.FileObject;
     IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, Device, &Locals.PendingIrp));
-    IopQueueIoPacket(Locals.PendingIrp, Driver, Thread);
+    IopQueueIoPacket(Locals.PendingIrp, Thread);
 
     /* For create/open we always wait till the driver has completed the request. */
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
@@ -257,7 +258,7 @@ NTSTATUS IoSetDeviceInterfaceState(IN ASYNC_STATE AsyncState,
 NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
                                IN HANDLE FileHandle,
-                               IN HANDLE Event,
+                               IN HANDLE EventHandle,
                                IN PIO_APC_ROUTINE ApcRoutine,
                                IN PVOID ApcContext,
                                OUT IO_STATUS_BLOCK *IoStatusBlock,
@@ -267,90 +268,21 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
                                IN PVOID OutputBuffer,
                                IN ULONG OutputBufferLength)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
-    NTSTATUS Status = STATUS_NTOS_BUG;
-
-    ASYNC_BEGIN(State, Locals, {
-	    PIO_FILE_OBJECT FileObject;
-	    PIO_DRIVER_OBJECT DriverObject;
-	    PIO_PACKET IoPacket;
-	    MWORD DriverInputBuffer;
-	    MWORD DriverOutputBuffer;
-	    PPENDING_IRP PendingIrp;
-	});
-
-    if (FileHandle == NULL) {
-	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
-    }
-    IF_ERR_GOTO(out, Status,
-		ObReferenceObjectByHandle(Thread->Process, FileHandle, OBJECT_TYPE_FILE,
-					  (POBJECT *)&Locals.FileObject));
-    assert(Locals.FileObject != NULL);
-    assert(Locals.FileObject->DeviceObject != NULL);
-    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
-    Locals.DriverObject = Locals.FileObject->DeviceObject->DriverObject;
-
-    IF_ERR_GOTO(out, Status,
-		IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET),
-				    &Locals.IoPacket));
-    assert(Locals.IoPacket != NULL);
+    IO_SERVICE_PROLOGUE(State, Locals, FileObject, EventObject,
+			IoPacket, PendingIrp);
 
     Locals.IoPacket->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
     Locals.IoPacket->Request.MinorFunction = 0;
-    Locals.IoPacket->Request.Control = 0;
-    Locals.IoPacket->Request.Flags = 0;
-    Locals.IoPacket->Request.Device.Object = Locals.FileObject->DeviceObject;
-    Locals.IoPacket->Request.File.Object = Locals.FileObject;
-
-    IF_ERR_GOTO(out, Status,
-		IopMapUserBuffer(Thread->Process, Locals.DriverObject,
-				 (MWORD) InputBuffer, InputBufferLength,
-				 &Locals.DriverInputBuffer, TRUE));
-
-    IF_ERR_GOTO(out, Status,
-		IopMapUserBuffer(Thread->Process, Locals.DriverObject,
-				 (MWORD) OutputBuffer, OutputBufferLength,
-				 &Locals.DriverOutputBuffer,
-				 METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT));
-
-    Locals.IoPacket->Request.DeviceIoControl.InputBuffer = (PVOID)Locals.DriverInputBuffer;
-    Locals.IoPacket->Request.DeviceIoControl.OutputBuffer = (PVOID)Locals.DriverOutputBuffer;
-    Locals.IoPacket->Request.DeviceIoControl.InputBufferLength = InputBufferLength;
-    Locals.IoPacket->Request.DeviceIoControl.OutputBufferLength = OutputBufferLength;
+    Locals.IoPacket->Request.InputBuffer = (MWORD)InputBuffer;
+    Locals.IoPacket->Request.OutputBuffer = (MWORD)OutputBuffer;
+    Locals.IoPacket->Request.InputBufferLength = InputBufferLength;
+    Locals.IoPacket->Request.OutputBufferLength = OutputBufferLength;
     Locals.IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
 
-    IF_ERR_GOTO(out, Status,
-		IopAllocatePendingIrp(Locals.IoPacket, Thread, Locals.FileObject->DeviceObject,
-				      &Locals.PendingIrp));
-    IopQueueIoPacket(Locals.PendingIrp, Locals.DriverObject, Thread);
-
-    /* Only wait for the IO completion if file is opened with
-     * the synchronize flag. Otherwise, return pending status */
-    if (!IopFileIsSynchronous(Locals.FileObject)) {
-	/* TODO: Event, APC and IO completion port... */
-	ASYNC_RETURN(State, STATUS_PENDING);
-    }
-    AWAIT_IF(IopFileIsSynchronous(Locals.FileObject), KeWaitForSingleObject, State,
-	     Locals, Thread, &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
-
-    /* This is the starting point when the function is resumed. */
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject,
+			EventObject, IoPacket, PendingIrp);
 
 out:
-    if (!NT_SUCCESS(Status) && Locals.FileObject != NULL) {
-	/* The IO request has returned a error status. Clean up the file object. */
-	ObDereferenceObject(Locals.FileObject);
-    }
-    IopUnmapUserBuffer(Locals.DriverObject, Locals.DriverInputBuffer);
-    IopUnmapUserBuffer(Locals.DriverObject, Locals.DriverOutputBuffer);
-    if (Locals.PendingIrp == NULL & Locals.IoPacket != NULL) {
-	ExFreePool(Locals.IoPacket);
-    } else {
-	/* This will free the pending IRP and detach the pending irp from the thread.
-	 * At this point the IRP has already been detached from the driver object,
-	 * so we do not need to remove it from the driver IRP queue here. */
-	IopCleanupPendingIrp(Locals.PendingIrp);
-    }
-    ASYNC_END(State, Status);
+    IO_SERVICE_CLEANUP(Status, Locals, FileObject,
+		       EventObject, IoPacket, PendingIrp);
 }

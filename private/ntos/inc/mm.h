@@ -3,7 +3,7 @@
 #include <nt.h>
 #include <string.h>
 #include <assert.h>
-#include "ntosdef.h"
+#include <services.h>
 
 #define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
 
@@ -601,8 +601,6 @@ NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);
 NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self);
-PMMVAD MmVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
-			   IN MWORD VirtAddr);
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace);
 NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,

@@ -412,7 +412,7 @@ NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
                                   IN ULONG SystemInformationLength,
                                   OUT OPTIONAL ULONG *ReturnLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueryPerformanceCounter(IN ASYNC_STATE State,
@@ -420,7 +420,7 @@ NTSTATUS NtQueryPerformanceCounter(IN ASYNC_STATE State,
                                    OUT LARGE_INTEGER *PerformanceCounter,
                                    OUT OPTIONAL LARGE_INTEGER *PerformanceFrequency)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
@@ -652,6 +652,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
     case ProcessHandleTracing:
 	DPRINT1("Handle tracing Not implemented: %lx\n",
 		ProcessInformationClass);
+	UNIMPLEMENTED_ROUTINE;
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
 
@@ -687,22 +688,26 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
     case ProcessLdtInformation:
 	DPRINT1("VDM/16-bit not implemented: %x\n",
 		ProcessInformationClass);
+	UNIMPLEMENTED_ROUTINE;
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
 
     case ProcessWorkingSetWatch:
 	DPRINT1("WS Watch Not implemented: %x\n",
 		ProcessInformationClass);
+	UNIMPLEMENTED_ROUTINE;
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
 
     case ProcessPooledUsageAndLimits:
 	DPRINT1("Pool limits Not implemented: %x\n",
 		ProcessInformationClass);
+	UNIMPLEMENTED_ROUTINE;
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
 
     default:
+	UNIMPLEMENTED_ROUTINE;
 	Status = STATUS_NOT_IMPLEMENTED;
     }
 
@@ -721,7 +726,7 @@ NTSTATUS NtQueryInformationThread(IN ASYNC_STATE State,
                                   IN ULONG ThreadInformationLength,
                                   OUT OPTIONAL ULONG *ReturnLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtSetInformationProcess(IN ASYNC_STATE State,
@@ -731,7 +736,7 @@ NTSTATUS NtSetInformationProcess(IN ASYNC_STATE State,
                                  IN PVOID ProcessInformationBuffer,
                                  IN ULONG ProcessInformationLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtSetInformationThread(IN ASYNC_STATE State,
@@ -741,5 +746,5 @@ NTSTATUS NtSetInformationThread(IN ASYNC_STATE State,
                                 IN PVOID ThreadInformationBuffer,
                                 IN ULONG ThreadInformationLength)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }

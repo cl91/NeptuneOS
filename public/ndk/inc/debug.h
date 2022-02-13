@@ -18,6 +18,7 @@
 
 #ifdef _NTOSKRNL_
 
+#if defined(DBG) || defined(_DEBUG) || defined(DEBUG)
 __cdecl ULONG DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
 __cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
@@ -29,8 +30,13 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 			      IN PVOID FileName,
 			      IN ULONG LineNumber,
 			      IN OPTIONAL PCHAR Message);
+#else
+#define DbgPrint(...)
+#define DbgPrintEx(...)
+#define RtlAssert(...)
+#endif	/* DEBUG */
 
-#endif /* defined(_NTOSKRNL_) */
+#endif /* _NTOSKRNL_ */
 
 #ifndef __RELFILE__
 #define __RELFILE__ __FILE__
@@ -90,8 +96,10 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 
 #endif
 
+#ifndef _NTOSKRNL_
 #define UNIMPLEMENTED         __NOTICE(WARNING, "is UNIMPLEMENTED!\n")
 #define UNIMPLEMENTED_ONCE    do { static int bWarnedOnce = 0; if (!bWarnedOnce) { bWarnedOnce++; UNIMPLEMENTED; } } while (0)
+#endif
 
 #define ERR_(ch, fmt, ...)    DbgPrintEx(DPFLTR_##ch##_ID, DPFLTR_ERROR_LEVEL, "(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
 #define WARN_(ch, fmt, ...)   DbgPrintEx(DPFLTR_##ch##_ID, DPFLTR_WARNING_LEVEL, "(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
@@ -106,8 +114,11 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 #else /* not DBG */
 
 /* On non-debug builds, we never show these */
+#ifndef _NTOSKRNL_
 #define UNIMPLEMENTED
 #define UNIMPLEMENTED_ONCE
+#endif
+
 #if defined(_MSC_VER)
 #define DPRINT1   __noop
 #define DPRINT    __noop

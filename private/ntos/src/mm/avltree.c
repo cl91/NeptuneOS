@@ -363,6 +363,7 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 {
     assert(Tree != NULL);
     assert(Node != NULL);
+    assert(Parent == NULL || Parent->LeftChild == NULL || Parent->RightChild == NULL);
     DbgTrace("Inserting node %p (key %p) parent %p (key %p) to tree %p\n",
 	     Node, (PVOID)Node->Key, Parent,
 	     Parent ? (PVOID)Parent->Key : NULL, Tree);

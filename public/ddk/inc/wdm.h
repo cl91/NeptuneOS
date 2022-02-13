@@ -1144,9 +1144,6 @@ NTAPI NTSYSAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 NTAPI NTSYSAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 							  IN PDEVICE_OBJECT TargetDevice);
 
-DEPRECATED_BY("Unlike Windows/ReactOS we don't have synchronization issues "
-	      "since drivers run in their own process.",
-	      IoAttachDeviceToDeviceStack)
 FORCEINLINE NTSTATUS
 IoAttachDeviceToDeviceStackSafe(IN PDEVICE_OBJECT SourceDevice,
 				IN PDEVICE_OBJECT TargetDevice,

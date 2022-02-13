@@ -9,5 +9,5 @@ NTSTATUS NtRaiseHardError(IN ASYNC_STATE State,
                           IN HARDERROR_RESPONSE_OPTION ResponseOption,
                           OUT HARDERROR_RESPONSE *Response)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }

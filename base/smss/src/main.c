@@ -80,8 +80,8 @@ static NTSTATUS SmTestNullDriver()
     return STATUS_SUCCESS;
 }
 
-VOID SmTestBeepDriver(IN ULONG Freq,
-		      IN ULONG Duration)
+static VOID SmTestBeepDriver(IN ULONG Freq,
+			     IN ULONG Duration)
 {
     SmPrint("Testing beep driver with frequency %d Hz duration %d ms...\n",
 	    Freq, Duration);
@@ -91,6 +91,99 @@ VOID SmTestBeepDriver(IN ULONG Freq,
     } else {
 	SmPrint("FAILED.\n\n");
     }
+}
+
+static NTSTATUS SmOpenKeyboard(IN PCWSTR ClassDeviceName,
+			       OUT PHANDLE Keyboard,
+			       OUT PHANDLE Event)
+{
+    UNICODE_STRING ClassDevice;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK Iosb;
+    NTSTATUS Status;
+
+    RtlInitUnicodeString(&ClassDevice, ClassDeviceName);
+    InitializeObjectAttributes(&ObjectAttributes,
+			       &ClassDevice, OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+    //
+    // Open a handle to the keyboard class device
+    //
+    Status = NtCreateFile(Keyboard,
+			  SYNCHRONIZE | GENERIC_READ | FILE_READ_ATTRIBUTES,
+			  &ObjectAttributes, &Iosb,
+			  NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN,
+			  FILE_DIRECTORY_FILE, NULL, 0);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    //
+    // Now create an event that will be used to wait on the device
+    //
+    InitializeObjectAttributes(&ObjectAttributes, NULL, 0, NULL, NULL);
+    Status = NtCreateEvent(Event, EVENT_ALL_ACCESS, &ObjectAttributes, 1, 0);
+
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS SmWaitForInput(IN HANDLE Keyboard,
+			       IN HANDLE Event,
+			       IN PVOID Buffer,
+			       IN OUT PULONG BufferSize)
+{
+    IO_STATUS_BLOCK Iosb;
+    LARGE_INTEGER ByteOffset;
+    NTSTATUS Status;
+
+    //
+    // Clean up the I/O Status block and read from byte 0
+    //
+    RtlZeroMemory(&Iosb, sizeof(Iosb));
+    RtlZeroMemory(&ByteOffset, sizeof(ByteOffset));
+
+    //
+    // Try to read the data
+    //
+    Status = NtReadFile(Keyboard, Event, NULL, NULL, &Iosb,
+			Buffer, *BufferSize, &ByteOffset, NULL);
+
+    //
+    // Check if data is pending
+    //
+    if (Status == STATUS_PENDING) {
+	//
+	// Wait on the data to be read
+	//
+	Status = NtWaitForSingleObject(Event, TRUE, NULL);
+    }
+
+    //
+    // Return status and how much data was read
+    //
+    *BufferSize = (ULONG) Iosb.Information;
+    return Status;
+}
+
+static CHAR SmGetChar(IN HANDLE Keyboard,
+		      IN HANDLE Event)
+{
+    KEYBOARD_INPUT_DATA KeyboardData;
+    KBD_RECORD kbd_rec;
+    ULONG BufferLength = sizeof(KEYBOARD_INPUT_DATA);
+
+    SmWaitForInput(Keyboard, Event, &KeyboardData, &BufferLength);
+
+    IntTranslateKey(&KeyboardData, &kbd_rec);
+
+    if (!kbd_rec.bKeyDown) {
+	return (-1);
+    }
+    return kbd_rec.AsciiChar;
 }
 
 NTSTATUS SmStartCommandPrompt()
@@ -135,6 +228,25 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmTestNullDriver();
     SmTestBeepDriver(440, 1000);
 
+    PCWSTR ClassDeviceName = L"\\Device\\KeyboardClass0";
+    HANDLE Keyboard = NULL;
+    HANDLE Event = NULL;
+    NTSTATUS Status = SmOpenKeyboard(ClassDeviceName, &Keyboard, &Event);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Unable to open %ws. Status = 0x%x\n",
+		ClassDeviceName, Status);
+	goto out;
+    }
+    assert(Keyboard != NULL);
+    assert(Event != NULL);
+
+    SmPrint("Reading keyboard input...\n");
+    while (TRUE) {
+	CHAR c = SmGetChar(Keyboard, Event);
+	SmPrint("%c", c);
+    }
+
+out:
     if (!NT_SUCCESS(SmStartCommandPrompt())) {
 	SmPrint("Failed to launch native command prompt. System halted.\n");
     }

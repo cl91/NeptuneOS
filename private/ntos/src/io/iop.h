@@ -124,10 +124,13 @@ typedef struct _PENDING_IRP {
     PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
 			  * The pending IO packet must be of type IoPacketTypeRequest. */
     POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level */
-    PIO_DEVICE_OBJECT DeviceObject; /* Original device object at this level */
+    PIO_DEVICE_OBJECT DeviceObject; /* Original device object at this level. The device object
+				     * in the IRP is always from the driver currently handling it */
     LIST_ENTRY Link; /* List entry for THREAD.PendingIrpList or DRIVER.ForwardedIrpList */
     struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP has been forwarded to. */
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
+    MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
+    MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
     /* ---- The following members are for THREAD objects only ---- */
     KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
     IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
@@ -268,14 +271,13 @@ static inline VOID IopDumpDriverPendingIoPacketList(IN PIO_DRIVER_OBJECT DriverO
     }
 }
 
-static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
-				    IN PIO_DRIVER_OBJECT Driver,
-				    IN PTHREAD Thread)
+/*
+ * DO NOT call this directly!
+ */
+static inline VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
+				      IN PIO_DRIVER_OBJECT Driver,
+				      IN PTHREAD Thread)
 {
-    /* We can only queue IO request packets */
-    assert(PendingIrp != NULL);
-    assert(PendingIrp->IoPacket != NULL);
-    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
     /* Queue the IRP to the driver */
     InsertTailList(&Driver->IoPacketQueue, &PendingIrp->IoPacket->IoPacketLink);
     PendingIrp->IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(Thread);
@@ -284,6 +286,39 @@ static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
     InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
     KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
     KeSetEvent(&Driver->IoPacketQueuedEvent);
+}
+
+static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
+				    IN PTHREAD Thread)
+{
+    /* We can only queue IO request packets */
+    assert(PendingIrp != NULL);
+    assert(PendingIrp->IoPacket != NULL);
+    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+    assert(PendingIrp->IoPacket->Request.MajorFunction != IRP_MJ_ADD_DEVICE);
+    assert(PendingIrp->DeviceObject != NULL);
+    PIO_DRIVER_OBJECT Driver = PendingIrp->DeviceObject->DriverObject;
+    assert(Driver != NULL);
+    IopQueueIoPacketEx(PendingIrp, Driver, Thread);
+}
+
+/*
+ * For AddDevice request we use the Device member of the IRP to store
+ * the handle to the physical device object, which will (usually) have
+ * a different driver object than the one we are sending it to.
+ */
+static inline VOID IopQueueAddDeviceRequest(IN PPENDING_IRP PendingIrp,
+					    IN PIO_DRIVER_OBJECT Driver,
+					    IN PTHREAD Thread)
+{
+    /* We can only queue AddDevice request packets */
+    assert(PendingIrp != NULL);
+    assert(PendingIrp->IoPacket != NULL);
+    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+    assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE);
+    assert(PendingIrp->DeviceObject != NULL);
+    assert(Driver != NULL);
+    IopQueueIoPacketEx(PendingIrp, Driver, Thread);
 }
 
 static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
@@ -372,50 +407,6 @@ typedef struct _INTERRUPT_SERVICE {
     NOTIFICATION InterruptMutex;      /* Client side capability */
 } INTERRUPT_SERVICE, *PINTERRUPT_SERVICE;
 
-/*
- * Maps the specified user IO buffer to the driver process's VSpace.
- *
- * If ReadOnly is TRUE, the driver pages will be mapped read-only. Otherwise
- * the driver pages will be mapped read-write.
- *
- * If ReadOnly is FALSE, the user IO buffer must be writable by the user.
- * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
- */
-static inline NTSTATUS IopMapUserBuffer(IN PPROCESS User,
-					IN PIO_DRIVER_OBJECT Driver,
-					IN MWORD UserBufferStart,
-					IN MWORD UserBufferLength,
-					OUT MWORD *DriverBufferStart,
-					IN BOOLEAN ReadOnly)
-{
-    PVIRT_ADDR_SPACE UserVSpace = &User->VSpace;
-    assert(UserVSpace != NULL);
-    assert(Driver->DriverProcess != NULL);
-    PVIRT_ADDR_SPACE DriverVSpace = &Driver->DriverProcess->VSpace;
-    assert(DriverVSpace != NULL);
-    if (UserBufferStart != 0 && UserBufferLength != 0) {
-	return MmMapUserBufferEx(UserVSpace, UserBufferStart,
-				 UserBufferLength, DriverVSpace,
-				 USER_IMAGE_REGION_START,
-				 USER_IMAGE_REGION_END,
-				 DriverBufferStart, ReadOnly);
-    }
-    return STATUS_SUCCESS;
-}
-
-/*
- * Unmap the user buffer mapped by IopMapUserBuffer
- */
-static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
-				      IN MWORD DriverBuffer)
-{
-    assert(Driver != NULL);
-    assert(Driver->DriverProcess != NULL);
-    if (DriverBuffer != 0) {
-	MmUnmapUserBufferEx(&Driver->DriverProcess->VSpace, DriverBuffer);
-    }
-}
-
 /* init.c */
 extern LIST_ENTRY IopDriverList;
 
@@ -463,6 +454,9 @@ NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
 				      IN PTHREAD Thread,
 				      IN BOOLEAN Alertable,
 				      IN WAIT_TYPE WaitType);
+NTSTATUS IopMapIoBuffers(IN PPROCESS SourceProcess,
+			 IN PPENDING_IRP PendingIrp,
+			 IN BOOLEAN OutputIsReadOnly);
 
 /* file.c */
 extern LIST_ENTRY IopFileObjectList;

@@ -1,5 +1,4 @@
-#include <ntos.h>
-#include <sel4/sel4.h>
+#include "ei.h"
 
 NTSTATUS ExInitSystemPhase0(seL4_BootInfo *bootinfo)
 {
@@ -80,6 +79,7 @@ static NTSTATUS EiCreateTimerType()
 static NTSTATUS EiCreateObjectTypes()
 {
     RET_ERR(EiCreateTimerType());
+    RET_ERR(EiInitEventObject());
     return STATUS_SUCCESS;
 }
 

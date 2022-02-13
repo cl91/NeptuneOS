@@ -35,8 +35,7 @@ static NTAPI VOID IopTimerExpired(IN PVOID Context,
 	return;
     }
     Timer->State = FALSE;
-    if (Timer->Dpc != NULL) {
-	assert(Timer->Dpc->DeferredRoutine != NULL);
+    if (Timer->Dpc != NULL && Timer->Dpc->DeferredRoutine != NULL) {
 	Timer->Dpc->DeferredRoutine(Timer->Dpc,
 				    Timer->Dpc->DeferredContext,
 				    Timer->Dpc->SystemArgument1,

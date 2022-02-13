@@ -363,7 +363,6 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     UCHAR FlagsToDisable = 0;
     UCHAR FlagsToEnable = 0;
-    KIRQL Irql;
 
     if (DeviceExtension->DataPort == 0) {
 	/* Unable to do something at the moment */
@@ -441,7 +440,7 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	}
 
 	/* Start the mouse */
-	Irql = KeAcquireInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt);
+	IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
 	/* HACK: the mouse has already been reset in i8042DetectMouse. This second
 	   reset prevents some touchpads/mice from working (Dell D531, D600).
 	   See CORE-6901 */
@@ -451,7 +450,7 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	    i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
 	}
 #endif
-	KeReleaseInterruptSpinLock(DeviceExtension->HighestDIRQLInterrupt, Irql);
+	IoReleaseInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
     }
 
     return Status;

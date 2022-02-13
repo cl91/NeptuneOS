@@ -36,7 +36,7 @@ typedef struct _COMMON_DEVICE_EXTENSION {
 typedef struct _PORT_DEVICE_EXTENSION {
     COMMON_DEVICE_EXTENSION Common;
 
-    LIST_ENTRY ListEntry;
+    LIST_ENTRY PortDeviceListEntry;
     PDEVICE_OBJECT DeviceObject;
     PORT_DEVICE_STATE PnpState;
     PDEVICE_OBJECT LowerDevice;
@@ -50,7 +50,7 @@ typedef struct _CLASS_DEVICE_EXTENSION {
 
     PCLASS_DRIVER_EXTENSION DriverExtension;
 
-    LIST_ENTRY ListHead;
+    LIST_ENTRY PortDeviceList;
     PIRP PendingIrp;
     SIZE_T InputCount;
     PKEYBOARD_INPUT_DATA PortData;

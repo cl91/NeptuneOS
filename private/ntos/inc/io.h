@@ -85,6 +85,7 @@ typedef struct _IO_FILE_OBJECT {
     PVOID BufferPtr;
     MWORD Size;
     LIST_ENTRY Link;
+    PEVENT_OBJECT Event;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;

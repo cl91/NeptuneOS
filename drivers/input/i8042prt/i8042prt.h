@@ -1,5 +1,4 @@
-#ifndef _I8042PRT_PCH_
-#define _I8042PRT_PCH_
+#pragma once
 
 #include <wdm.h>
 #include <kbdmou.h>
@@ -120,6 +119,14 @@ typedef struct _FDO_DEVICE_EXTENSION {
     // Current state of the driver
     DEVICE_STATE PnpState;
 
+    /* The IRP_MJ_READ IRP queued on this device */
+    LIST_ENTRY PendingReadIrpList;
+
+    /* Either PKEYBOARD_INPUT_DATA or PMOUSE_INPUT_DATA */
+    PVOID Buffer;
+    /* Number of KEYBOARD/MOUSE_INPUT_DATA structs in Buffer */
+    ULONG EntriesInBuffer;
+
     PPORT_DEVICE_EXTENSION PortDeviceExtension;
 } FDO_DEVICE_EXTENSION, *PFDO_DEVICE_EXTENSION;
 
@@ -135,8 +142,6 @@ typedef struct _I8042_KEYBOARD_EXTENSION {
 
     KEYBOARD_SCAN_STATE KeyboardScanState;
     BOOLEAN KeyComplete;
-    PKEYBOARD_INPUT_DATA KeyboardBuffer;
-    ULONG KeysInBuffer;
 
     /* Power keys items */
     ULONG ReportedCaps;
@@ -170,8 +175,6 @@ typedef struct _I8042_MOUSE_EXTENSION {
     MOUSE_STATE MouseState;
     BOOLEAN MouseComplete;
     MOUSE_RESET_SUBSTATE MouseResetState;
-    PMOUSE_INPUT_DATA MouseBuffer;
-    ULONG MouseInBuffer;
     USHORT MouseButtonState;
     ULARGE_INTEGER MousePacketStartTime;
 
@@ -303,6 +306,8 @@ NTSTATUS i8042StartPacket(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 			  IN ULONG ByteCount,
 			  IN PIRP Irp);
 
+VOID ProcessPendingReadIrps(IN PDEVICE_OBJECT DeviceObject);
+
 /* mouse.c */
 VOID i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension,
 		    IN UCHAR Output);
@@ -366,4 +371,8 @@ enum _FLAGS {
 extern ULONG i8042HwFlags;
 #endif
 
-#endif				/* _I8042PRT_PCH_ */
+#define LoopOverList(Entry, ListHead, Type, Field)                      \
+    for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
+             *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \
+         &(Entry)->Field != (ListHead); Entry = __LoopOverList_flink,   \
+             __LoopOverList_flink = CONTAINING_RECORD((__LoopOverList_flink)->Field.Flink, Type, Field))

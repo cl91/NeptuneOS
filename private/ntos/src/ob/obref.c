@@ -132,15 +132,13 @@ VOID ObDereferenceObject(IN POBJECT Object)
 }
 
 /*
- * We should always do lazy close and just flag the object
- * for closing and inform driver of object closure whenever
- * the driver asks for more IRPs.
+ * We should always implement lazy close. For now this does nothing.
  */
 NTSTATUS NtClose(IN ASYNC_STATE State,
 		 IN PTHREAD Thread,
 		 IN HANDLE Handle)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
@@ -153,5 +151,5 @@ NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
                            IN BOOLEAN InheritHandle,
                            IN ULONG Options)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    UNIMPLEMENTED;
 }

@@ -46,26 +46,23 @@ static VOID NTAPI i8042MouQueuePacket(IN PVOID Context)
     DeviceExtension = (PI8042_MOUSE_EXTENSION) Context;
 
     DeviceExtension->MouseComplete = TRUE;
-    DeviceExtension->MouseInBuffer++;
-    if (DeviceExtension->MouseInBuffer >=
-	DeviceExtension->Common.PortDeviceExtension->Settings.
-	MouseDataQueueSize) {
+    DeviceExtension->Common.EntriesInBuffer++;
+    if (DeviceExtension->Common.EntriesInBuffer >=
+	DeviceExtension->Common.PortDeviceExtension->Settings.MouseDataQueueSize) {
 	WARN_(I8042PRT, "Mouse buffer overflow\n");
-	DeviceExtension->MouseInBuffer--;
+	DeviceExtension->Common.EntriesInBuffer--;
     }
 
     TRACE_(I8042PRT, "Irq completes mouse packet\n");
     KeInsertQueueDpc(&DeviceExtension->DpcMouse, NULL, NULL);
 }
 
-VOID
-i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension, IN UCHAR Output)
+VOID i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension,
+		    IN UCHAR Output)
 {
-    PMOUSE_INPUT_DATA MouseInput;
+    PMOUSE_INPUT_DATA MouseInput = DeviceExtension->Common.Buffer +
+	DeviceExtension->Common.EntriesInBuffer;;
     CHAR Scroll;
-
-    MouseInput =
-	DeviceExtension->MouseBuffer + DeviceExtension->MouseInBuffer;
 
     switch (DeviceExtension->MouseState) {
     case MouseIdle:
@@ -129,9 +126,7 @@ i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension, IN UCHAR Output)
 				  MOUSE_LEFT_BUTTON_DOWN |
 				  MOUSE_RIGHT_BUTTON_DOWN |
 				  MOUSE_MIDDLE_BUTTON_DOWN);
-	    DeviceExtension->MouseHook.QueueMousePacket(DeviceExtension->
-							MouseHook.
-							CallContext);
+	    DeviceExtension->MouseHook.QueueMousePacket(DeviceExtension->MouseHook.CallContext);
 	    DeviceExtension->MouseState = MouseIdle;
 	} else {
 	    DeviceExtension->MouseState = ZMovement;
@@ -175,19 +170,13 @@ i8042MouHandle(IN PI8042_MOUSE_EXTENSION DeviceExtension, IN UCHAR Output)
  * Updates ButtonFlags according to RawButtons and a saved state;
  * Only takes in account the bits that are set in Mask
  */
-VOID
-i8042MouHandleButtons(IN PI8042_MOUSE_EXTENSION DeviceExtension,
-		      IN USHORT Mask)
+VOID i8042MouHandleButtons(IN PI8042_MOUSE_EXTENSION DeviceExtension,
+			   IN USHORT Mask)
 {
-    PMOUSE_INPUT_DATA MouseInput;
-    USHORT NewButtonData;
-    USHORT ButtonDiff;
-
-    MouseInput =
-	DeviceExtension->MouseBuffer + DeviceExtension->MouseInBuffer;
-    NewButtonData = (USHORT) (MouseInput->RawButtons & Mask);
-    ButtonDiff =
-	(NewButtonData ^ DeviceExtension->MouseButtonState) & Mask;
+    PMOUSE_INPUT_DATA MouseInput = DeviceExtension->Common.Buffer +
+	DeviceExtension->Common.EntriesInBuffer;
+    USHORT NewButtonData = (USHORT)(MouseInput->RawButtons & Mask);
+    USHORT ButtonDiff = (NewButtonData ^ DeviceExtension->MouseButtonState) & Mask;
 
     /* Note that the defines are such:
      * MOUSE_LEFT_BUTTON_DOWN 1
@@ -202,9 +191,7 @@ i8042MouHandleButtons(IN PI8042_MOUSE_EXTENSION DeviceExtension,
 	  MouseInput->ButtonFlags & MOUSE_LEFT_BUTTON_DOWN,
 	  MouseInput->ButtonFlags & MOUSE_LEFT_BUTTON_UP);
 
-    DeviceExtension->MouseButtonState =
-	(DeviceExtension->
-	 MouseButtonState & ~Mask) | (NewButtonData & Mask);
+    DeviceExtension->MouseButtonState = (DeviceExtension->MouseButtonState & ~Mask) | (NewButtonData & Mask);
 }
 
 /* Does final initializations for the mouse. This method
@@ -212,7 +199,6 @@ i8042MouHandleButtons(IN PI8042_MOUSE_EXTENSION DeviceExtension,
  */
 NTSTATUS i8042MouInitialize(IN PI8042_MOUSE_EXTENSION DeviceExtension)
 {
-    NTSTATUS Status;
     UCHAR Value;
 
     /* Enable the PS/2 mouse port */
@@ -221,16 +207,14 @@ NTSTATUS i8042MouInitialize(IN PI8042_MOUSE_EXTENSION DeviceExtension)
 	       MOUSE_ENAB);
 
     /* Enable the mouse */
-    if (!i8042IsrWritePort
-	(DeviceExtension->Common.PortDeviceExtension, MOU_ENAB,
-	 CTRL_WRITE_MOUSE)) {
+    if (!i8042IsrWritePort(DeviceExtension->Common.PortDeviceExtension, MOU_ENAB,
+			   CTRL_WRITE_MOUSE)) {
 	WARN_(I8042PRT, "Failed to enable mouse!\n");
 	return STATUS_IO_DEVICE_ERROR;
     }
 
-    Status =
-	i8042ReadDataWait(DeviceExtension->Common.PortDeviceExtension,
-			  &Value);
+    NTSTATUS Status = i8042ReadDataWait(DeviceExtension->Common.PortDeviceExtension,
+					&Value);
     if (!NT_SUCCESS(Status)) {
 	WARN_(I8042PRT,
 	      "Failed to read the response of MOU_ENAB, status 0x%08x\n",
@@ -247,15 +231,13 @@ NTSTATUS i8042MouInitialize(IN PI8042_MOUSE_EXTENSION DeviceExtension)
     return STATUS_IO_DEVICE_ERROR;
 }
 
-static VOID NTAPI
-i8042MouDpcRoutine(IN PKDPC Dpc,
-		   IN PVOID DeferredContext,
-		   IN PVOID SystemArgument1, IN PVOID SystemArgument2)
+static NTAPI VOID i8042MouDpcRoutine(IN PKDPC Dpc,
+				     IN PVOID DeferredContext,
+				     IN PVOID SystemArgument1,
+				     IN PVOID SystemArgument2)
 {
     PI8042_MOUSE_EXTENSION DeviceExtension;
     PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    ULONG MouseTransferred = 0;
-    ULONG MouseInBufferCopy;
     KIRQL Irql;
     LARGE_INTEGER Timeout;
 
@@ -294,54 +276,29 @@ i8042MouDpcRoutine(IN PKDPC Dpc,
     }
 
     default:
-	;			/* nothing, don't want a warning */
+	break;
     }
 
     /* Should be unlikely */
     if (!DeviceExtension->MouseComplete)
 	return;
 
-    Irql = KeAcquireInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt);
-
     DeviceExtension->MouseComplete = FALSE;
-    MouseInBufferCopy = DeviceExtension->MouseInBuffer;
-
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt, Irql);
-
-    TRACE_(I8042PRT, "Send a mouse packet\n");
-
-    if (!DeviceExtension->MouseData.ClassService)
-	return;
-
-    INFO_(I8042PRT, "Sending %u mouse move(s)\n", MouseInBufferCopy);
-    (*(PSERVICE_CALLBACK_ROUTINE)DeviceExtension->MouseData.ClassService)(
-	DeviceExtension->MouseData.ClassDeviceObject,
-	DeviceExtension->MouseBuffer,
-	DeviceExtension->MouseBuffer + MouseInBufferCopy,
-	&MouseTransferred);
-
-    Irql = KeAcquireInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt);
-    DeviceExtension->MouseInBuffer -= MouseTransferred;
-    if (DeviceExtension->MouseInBuffer)
-	RtlMoveMemory(DeviceExtension->MouseBuffer,
-		      DeviceExtension->MouseBuffer + MouseTransferred,
-		      DeviceExtension->MouseInBuffer * sizeof(MOUSE_INPUT_DATA));
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt, Irql);
+    assert(DeviceExtension == DeviceExtension->Common.Fdo->DeviceExtension);
+    ProcessPendingReadIrps(DeviceExtension->Common.Fdo);
 }
 
 /* This timer DPC will be called when the mouse reset times out.
  * I'll just send the 'disable mouse port' command to the controller
  * and say the mouse doesn't exist.
  */
-static VOID NTAPI
-i8042DpcRoutineMouseTimeout(IN PKDPC Dpc,
-			    IN PVOID DeferredContext,
-			    IN PVOID SystemArgument1,
-			    IN PVOID SystemArgument2)
+static NTAPI VOID i8042DpcRoutineMouseTimeout(IN PKDPC Dpc,
+					      IN PVOID DeferredContext,
+					      IN PVOID SystemArgument1,
+					      IN PVOID SystemArgument2)
 {
     PI8042_MOUSE_EXTENSION DeviceExtension;
     PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    KIRQL Irql;
 
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
@@ -351,24 +308,21 @@ i8042DpcRoutineMouseTimeout(IN PKDPC Dpc,
     DeviceExtension = DeferredContext;
     PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
 
-    Irql =
-	KeAcquireInterruptSpinLock(PortDeviceExtension->
-				   HighestDIRQLInterrupt);
+    IoAcquireInterruptMutex(PortDeviceExtension->HighestDIRQLInterrupt);
 
     WARN_(I8042PRT, "Mouse initialization timeout! (substate %x)\n",
 	  DeviceExtension->MouseResetState);
 
     PortDeviceExtension->Flags &= ~MOUSE_PRESENT;
 
-    KeReleaseInterruptSpinLock(PortDeviceExtension->HighestDIRQLInterrupt,
-			       Irql);
+    IoReleaseInterruptMutex(PortDeviceExtension->HighestDIRQLInterrupt);
 }
 
 /*
  * Runs the mouse IOCTL_INTERNAL dispatch.
  */
-NTSTATUS NTAPI
-i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTAPI NTSTATUS i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+					     IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     PI8042_MOUSE_EXTENSION DeviceExtension;
@@ -388,15 +342,12 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 	TRACE_(I8042PRT,
 	       "IRP_MJ_INTERNAL_DEVICE_CONTROL / IOCTL_INTERNAL_MOUSE_CONNECT\n");
-	if (Stack->Parameters.DeviceIoControl.InputBufferLength !=
-	    sizeof(CONNECT_DATA)) {
+	if (Stack->Parameters.DeviceIoControl.InputBufferLength != sizeof(CONNECT_DATA)) {
 	    Status = STATUS_INVALID_PARAMETER;
 	    goto cleanup;
 	}
 
-	DeviceExtension->MouseData =
-	    *((PCONNECT_DATA) Stack->Parameters.DeviceIoControl.
-	      Type3InputBuffer);
+	DeviceExtension->MouseData = *((PCONNECT_DATA) Stack->Parameters.DeviceIoControl.Type3InputBuffer);
 
 	/* Send IOCTL_INTERNAL_I8042_HOOK_MOUSE to device stack */
 	WorkItem = IoAllocateWorkItem(DeviceObject);
@@ -419,13 +370,13 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	DeviceExtension->Common.Type = Mouse;
 	Size = DeviceExtension->Common.PortDeviceExtension->Settings.MouseDataQueueSize
 	    * sizeof(MOUSE_INPUT_DATA);
-	DeviceExtension->MouseBuffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
-	if (!DeviceExtension->MouseBuffer) {
+	DeviceExtension->Common.Buffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
+	if (!DeviceExtension->Common.Buffer) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
 	    Status = STATUS_NO_MEMORY;
 	    goto cleanup;
 	}
-	RtlZeroMemory(DeviceExtension->MouseBuffer, Size);
+	RtlZeroMemory(DeviceExtension->Common.Buffer, Size);
 	DeviceExtension->MouseAttributes.InputDataQueueLength =
 	    DeviceExtension->Common.PortDeviceExtension->Settings.MouseDataQueueSize;
 	KeInitializeDpc(&DeviceExtension->DpcMouse, i8042MouDpcRoutine,
@@ -448,8 +399,8 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	break;
 
     cleanup:
-	if (DeviceExtension->MouseBuffer)
-	    ExFreePoolWithTag(DeviceExtension->MouseBuffer,
+	if (DeviceExtension->Common.Buffer)
+	    ExFreePoolWithTag(DeviceExtension->Common.Buffer,
 			      I8042PRT_TAG);
 	if (WorkItem)
 	    IoFreeWorkItem(WorkItem);
@@ -478,9 +429,7 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    Status = STATUS_INVALID_PARAMETER;
 	    break;
 	}
-	MouseHook =
-	    (PINTERNAL_I8042_HOOK_MOUSE) Stack->Parameters.
-	    DeviceIoControl.Type3InputBuffer;
+	MouseHook = (PINTERNAL_I8042_HOOK_MOUSE)Stack->Parameters.DeviceIoControl.Type3InputBuffer;
 
 	DeviceExtension->MouseHook.Context = MouseHook->Context;
 	if (MouseHook->IsrRoutine)
@@ -492,15 +441,13 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     }
     case IOCTL_INTERNAL_I8042_MOUSE_WRITE_BUFFER:
     {
-	DPRINT1
-	    ("IOCTL_INTERNAL_I8042_MOUSE_WRITE_BUFFER not implemented\n");
+	DPRINT1("IOCTL_INTERNAL_I8042_MOUSE_WRITE_BUFFER not implemented\n");
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
     }
     case IOCTL_INTERNAL_I8042_MOUSE_START_INFORMATION:
     {
-	DPRINT1
-	    ("IOCTL_INTERNAL_I8042_MOUSE_START_INFORMATION not implemented\n");
+	DPRINT1("IOCTL_INTERNAL_I8042_MOUSE_START_INFORMATION not implemented\n");
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
     }
@@ -514,8 +461,7 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    break;
 	}
 
-	*(PMOUSE_ATTRIBUTES) Irp->AssociatedIrp.SystemBuffer =
-	    DeviceExtension->MouseAttributes;
+	*(PMOUSE_ATTRIBUTES)Irp->AssociatedIrp.SystemBuffer = DeviceExtension->MouseAttributes;
 	Irp->IoStatus.Information = sizeof(MOUSE_ATTRIBUTES);
 	Status = STATUS_SUCCESS;
 	break;
@@ -547,8 +493,7 @@ i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
  * generally unlucky). Also note the input parsing routine where we
  * drop invalid input packets.
  */
-static VOID
-i8042MouInputTestTimeout(IN PI8042_MOUSE_EXTENSION DeviceExtension)
+static VOID i8042MouInputTestTimeout(IN PI8042_MOUSE_EXTENSION DeviceExtension)
 {
     ULARGE_INTEGER Now;
 
@@ -578,30 +523,21 @@ i8042MouInputTestTimeout(IN PI8042_MOUSE_EXTENSION DeviceExtension)
  * we should return (indicating to the system wether someone else
  * should try to handle the interrupt)
  */
-static BOOLEAN
-i8042MouCallIsrHook(IN PI8042_MOUSE_EXTENSION DeviceExtension,
-		    IN UCHAR Status, IN UCHAR Input, OUT PBOOLEAN ToReturn)
+static BOOLEAN i8042MouCallIsrHook(IN PI8042_MOUSE_EXTENSION DeviceExtension,
+				   IN UCHAR Status,
+				   IN UCHAR Input,
+				   OUT PBOOLEAN ToReturn)
 {
-    BOOLEAN HookReturn, HookContinue;
-
-    HookContinue = FALSE;
+    BOOLEAN HookReturn, HookContinue = FALSE;
 
     if (DeviceExtension->MouseHook.IsrRoutine) {
-	HookReturn =
-	    DeviceExtension->MouseHook.IsrRoutine(DeviceExtension->
-						  MouseHook.Context,
-						  DeviceExtension->
-						  MouseBuffer +
-						  DeviceExtension->
-						  MouseInBuffer,
-						  &DeviceExtension->Common.
-						  PortDeviceExtension->
-						  Packet, Status, &Input,
-						  &HookContinue,
-						  &DeviceExtension->
-						  MouseState,
-						  &DeviceExtension->
-						  MouseResetState);
+	HookReturn = DeviceExtension->MouseHook.IsrRoutine(
+	    DeviceExtension->MouseHook.Context,
+	    DeviceExtension->Common.Buffer + DeviceExtension->Common.EntriesInBuffer,
+	    &DeviceExtension->Common.PortDeviceExtension->Packet,
+	    Status, &Input, &HookContinue,
+	    &DeviceExtension->MouseState,
+	    &DeviceExtension->MouseResetState);
 
 	if (!HookContinue) {
 	    *ToReturn = HookReturn;
@@ -611,9 +547,9 @@ i8042MouCallIsrHook(IN PI8042_MOUSE_EXTENSION DeviceExtension,
     return FALSE;
 }
 
-static BOOLEAN
-i8042MouResetIsr(IN PI8042_MOUSE_EXTENSION DeviceExtension,
-		 IN UCHAR Status, IN UCHAR Value)
+static BOOLEAN i8042MouResetIsr(IN PI8042_MOUSE_EXTENSION DeviceExtension,
+				IN UCHAR Status,
+				IN UCHAR Value)
 {
     PPORT_DEVICE_EXTENSION PortDeviceExtension;
     BOOLEAN ToReturn = FALSE;
@@ -903,8 +839,8 @@ i8042MouResetIsr(IN PI8042_MOUSE_EXTENSION DeviceExtension,
     }
 }
 
-BOOLEAN NTAPI
-i8042MouInterruptService(IN PKINTERRUPT Interrupt, PVOID Context)
+NTAPI BOOLEAN i8042MouInterruptService(IN PKINTERRUPT Interrupt,
+				       PVOID Context)
 {
     PI8042_MOUSE_EXTENSION DeviceExtension;
     PPORT_DEVICE_EXTENSION PortDeviceExtension;

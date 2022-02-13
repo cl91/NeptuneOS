@@ -108,6 +108,14 @@ typedef struct _IO_REQUEST_PARAMETERS {
     UCHAR Control;
     IO_DEVICE_OBJECT_PTR Device;
     IO_FILE_OBJECT_PTR File;
+    MWORD InputBuffer; /* Client-side pointer! When creating a new IRP, this is in the original
+			* requestor's address space. When the IRP is queued on a driver object,
+			* this is the buffer address mapped in the driver address space. The
+			* original address is saved in the PENDING_IRP struct. Same goes for
+			* the output buffer below. */
+    MWORD OutputBuffer;
+    ULONG InputBufferLength;
+    ULONG OutputBufferLength;
     GLOBAL_HANDLE OriginalRequestor; /* Original thread or driver object that requested this IRP.
 				      * Together with Identifier, this uniquely identifies the IRP
 				      * among all IRPs being processed by the system at a given time.
@@ -145,20 +153,14 @@ typedef struct _IO_REQUEST_PARAMETERS {
 	    MAILSLOT_CREATE_PARAMETERS Parameters;
 	} CreateMailslot;
 	struct {
-	    ULONG Length;
 	    ULONG Key;
 	    LARGE_INTEGER ByteOffset;
 	} Read;
 	struct {
-	    ULONG Length;
 	    ULONG Key;
 	    LARGE_INTEGER ByteOffset;
 	} Write;
 	struct {
-	    PVOID InputBuffer;	/* Client-side pointer! */
-	    PVOID OutputBuffer;	/* Client-side pointer! */
-	    ULONG InputBufferLength;
-	    ULONG OutputBufferLength;
 	    ULONG IoControlCode;
 	} DeviceIoControl;
 	struct {
@@ -346,6 +348,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	DbgPrint(" OriginalRequestor %p Identifier %p\n",
 		 (PVOID)IoPacket->Request.OriginalRequestor,
 		 IoPacket->Request.Identifier);
+	DbgPrint("    InputBuffer %p Length %p OutputBuffer %p Length %p\n",
+		 (PVOID)IoPacket->Request.InputBuffer, (PVOID)IoPacket->Request.InputBufferLength,
+		 (PVOID)IoPacket->Request.OutputBuffer, (PVOID)IoPacket->Request.OutputBufferLength);
 	DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 		 IoPacket->Request.MajorFunction, IoPacket->Request.MinorFunction,
 		 IoPacket->Request.Flags, IoPacket->Request.Control);
@@ -362,15 +367,15 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    IoDbgDumpFileObjectCreateParameters(IoPacket,
 						&IoPacket->Request.Create.FileObjectParameters);
 	    break;
+	case IRP_MJ_READ:
+	    DbgPrint("    READ  Key 0x%x ByteOffset 0x%llx\n",
+		     IoPacket->Request.Read.Key, IoPacket->Request.Read.ByteOffset.QuadPart);
+	    break;
 	case IRP_MJ_DEVICE_CONTROL:
 	case IRP_MJ_INTERNAL_DEVICE_CONTROL:
-	    DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x InputBuffer %p Length 0x%x OutputBuffer %p Length 0x%x\n",
+	    DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x\n",
 		     IoPacket->Request.MajorFunction == IRP_MJ_DEVICE_CONTROL ? "" : "INTERNAL-",
-		     IoPacket->Request.DeviceIoControl.IoControlCode,
-		     IoPacket->Request.DeviceIoControl.InputBuffer,
-		     IoPacket->Request.DeviceIoControl.InputBufferLength,
-		     IoPacket->Request.DeviceIoControl.OutputBuffer,
-		     IoPacket->Request.DeviceIoControl.OutputBufferLength);
+		     IoPacket->Request.DeviceIoControl.IoControlCode);
 	    break;
 	case IRP_MJ_PNP:
 	    switch (IoPacket->Request.MinorFunction) {

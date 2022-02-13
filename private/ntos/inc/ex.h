@@ -4,7 +4,6 @@
 #include <sel4/sel4.h>
 #include "ke.h"
 #include "mm.h"
-#include "ntosdef.h"
 
 /* Since we use the object header's offset from the start of Executive pool as the
  * unique global object handle (badge), and on i386 the seL4 kernel ignores the highest
@@ -29,6 +28,14 @@
 #define EX_POOL_GET_TAG3(Tag)			((CHAR)(((Tag) >> 24) & 0x7fUL))
 
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
+
+/*
+ * Event object. This is the Executive object for KEVENT.
+ */
+typedef struct _EVENT_OBJECT {
+    KEVENT Event;
+    LIST_ENTRY Link;
+} EVENT_OBJECT, *PEVENT_OBJECT;
 
 /*
  * This can only be called in non-async functions

@@ -606,6 +606,12 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
     KiInitializeDispatcherHeader(&Event->Header, EventType);
 }
 
+static inline VOID KeSetEvent(IN PKEVENT Event)
+{
+    VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
+    KiSignalDispatcherObject(&Event->Header);
+}
+
 /*
  * Lightweight mutex, mainly used for protecting concurrent access to timer database
  * (but is not restricted to the timer database: any data structure that is accessed
