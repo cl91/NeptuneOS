@@ -72,7 +72,7 @@ static NTSTATUS PspInitializeSystemDll()
 
     return STATUS_SUCCESS;
 
- fail:
+fail:
     HalVgaPrint("\nFatal error: ");
     if (NtdllFile == NULL) {
 	HalVgaPrint("%s not found", NTDLL_PATH);
