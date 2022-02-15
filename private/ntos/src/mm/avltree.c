@@ -168,6 +168,8 @@ static BOOLEAN MiAvlTreeRebalanceNode(PMM_AVL_TREE Tree,
     } else {
         R = S->LeftChild;
     }
+    assert(R != NULL);
+    assert(a != BALANCED);
 
     /*
       Case 1: Single Rotation. (Step A8, A10)
@@ -240,6 +242,7 @@ static BOOLEAN MiAvlTreeRebalanceNode(PMM_AVL_TREE Tree,
     */
     MiAvlTreeRotateNode(Tree, R);
     MiAvlSetBalance(R, -a);
+    assert(MiAvlGetBalance(S) == a);
     return TRUE;
 }
 
@@ -398,7 +401,7 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 	    a = RIGHT_HEAVY;
 	}
 	SCHAR b = MiAvlGetBalance(S);
-	if (b == 0) {
+	if (b == BALANCED) {
 	    /* Tree just became unbalanced, but no rebalancing needed yet */
 	    MiAvlSetBalance(S, a);
 	    /* Continue going up the tree */
@@ -419,7 +422,7 @@ VOID MiAvlTreeInsertNode(IN PMM_AVL_TREE Tree,
 }
 
 /*
- * Unlink the Node from the given AVL Tree, with complete disregard to balance.
+ * Simply unlink the Node from the given AVL Tree, without adjusting balance.
  * The Node is assumed to have at most one child.
  *
  * This function should never be called by anyone except MiAvlTreeRemoveNode
@@ -430,8 +433,6 @@ static VOID MiAvlTreeSimpleRemove(IN PMM_AVL_TREE Tree,
     assert(Node->LeftChild == NULL || Node->RightChild == NULL);
     PMM_AVL_NODE Child = Node->LeftChild ? Node->LeftChild : Node->RightChild;
     PMM_AVL_NODE Parent = MiAvlGetParent(Node);
-    DbgTrace("Removing %p parent %p (key %p)\n", (PVOID)Node->Key,
-	     Parent, Parent ? (PVOID)Parent->Key : NULL);
     if (Child != NULL) {
 	MiAvlSetParent(Child, Parent);
     }
@@ -439,10 +440,8 @@ static VOID MiAvlTreeSimpleRemove(IN PMM_AVL_TREE Tree,
 	Tree->BalancedRoot = Child;
     } else {
 	if (MiAvlIsRightChild(Node)) {
-	    DbgTrace("HereR\n");
 	    Parent->RightChild = Child;
 	} else {
-	    DbgTrace("HereL\n");
 	    Parent->LeftChild = Child;
 	}
     }
@@ -491,8 +490,12 @@ VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
 
     /* Unlink the DeleteNode from the tree. Note that DeleteNode must have at
      * most one child. */
+    assert(DeleteNode->LeftChild == NULL || DeleteNode->RightChild == NULL);
     PMM_AVL_NODE ParentNode = MiAvlGetParent(DeleteNode);
-    AVL_NODE_BALANCE Balance = DeleteNode->LeftChild ? LEFT_HEAVY : RIGHT_HEAVY;
+    AVL_NODE_BALANCE Balance;
+    if (ParentNode != NULL) {
+	Balance = MiAvlIsLeftChild(DeleteNode) ? LEFT_HEAVY : RIGHT_HEAVY;
+    }
     MiAvlTreeSimpleRemove(Tree, DeleteNode);
 
     /* Rebalance the tree */
@@ -539,7 +542,7 @@ VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
 	if (Node->RightChild != NULL) {
 	    MiAvlSetParent(Node->RightChild, DeleteNode);
 	}
-	MiAvlSetParent(DeleteNode, MiAvlGetParent(Node));
+	DeleteNode->Parent = Node->Parent;
 	if (MiAvlGetParent(Node) == NULL) {
 	    Tree->BalancedRoot = DeleteNode;
 	} else if (MiAvlIsRightChild(Node)) {
@@ -599,7 +602,15 @@ static void MiAvlTreePrintTree(PMM_AVL_NODE Root,
     }
 
     MiAvlTreeShowTrunks(&Trunk);
-    DbgPrint("%05zx\n", Root->Key >> PAGE_LOG2SIZE);
+    CHAR c;
+    if (MiAvlGetBalance(Root) == BALANCED) {
+	c = '|';
+    } else if (MiAvlGetBalance(Root) == LEFT_HEAVY) {
+	c = '-';
+    } else if (MiAvlGetBalance(Root) == RIGHT_HEAVY) {
+	c = '+';
+    }
+    DbgPrint("%05zx%c\n", Root->Key >> PAGE_LOG2SIZE, c);
 
     if (Prev)
         Prev->Str = PrevStr;
