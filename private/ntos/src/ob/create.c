@@ -49,7 +49,8 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 
     RET_ERR_EX(ObjectType->TypeInfo.CreateProc(*Object, CreationContext),
 	       {
-		   ObpDeleteObject(*Object);
+		   /* TODO: Invoke the delete routine to clean up the
+		    * partially created object. */
 		   ExFreePool(ObjectHeader);
 		   *Object = NULL;
 	       });
