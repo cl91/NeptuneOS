@@ -131,9 +131,11 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 				       SYSTEM_THREAD_STACK_RESERVE, MEM_RESERVE_OWNED_MEMORY,
 				       &StackVad));
     assert(StackVad != NULL);
+    assert(SYSTEM_THREAD_STACK_RESERVE >= (2 * PAGE_SIZE + SYSTEM_THREAD_STACK_COMMIT));
+    /* There is one uncommitted page above and one uncommitted page below every system thread stack */
     IF_ERR_GOTO(Fail, Status,
-		MmCommitVirtualMemory(StackVad->AvlNode.Key, SYSTEM_THREAD_STACK_COMMIT));
-    Thread->StackTop = (PVOID)(StackVad->AvlNode.Key + SYSTEM_THREAD_STACK_COMMIT);
+		MmCommitVirtualMemory(StackVad->AvlNode.Key + PAGE_SIZE, SYSTEM_THREAD_STACK_COMMIT));
+    Thread->StackTop = (PVOID)(StackVad->AvlNode.Key + PAGE_SIZE + SYSTEM_THREAD_STACK_COMMIT);
 
     PspAllocateArrayEx(TlsBase, CHAR, NTOS_TLS_AREA_SIZE,
 		       {

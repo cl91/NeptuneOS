@@ -57,11 +57,12 @@
 #define SYSTEM_THREAD_REGION_START		(0x0e000000ULL)
 #define SYSTEM_THREAD_REGION_SIZE		(0x01000000ULL)
 #define SYSTEM_THREAD_REGION_END		(SYSTEM_THREAD_REGION_START + SYSTEM_THREAD_REGION_SIZE)
-/* We can have a maximum of 16MB/16KB == 1024 system threads */
+/* We can have a maximum of 16MB/32KB == 512 system threads */
 #define SYSTEM_THREAD_IPC_RESERVE		(2 * PAGE_SIZE)
 #define SYSTEM_THREAD_IPC_COMMIT		(PAGE_SIZE)
-#define SYSTEM_THREAD_STACK_RESERVE		(2 * PAGE_SIZE)
-#define SYSTEM_THREAD_STACK_COMMIT		(PAGE_SIZE)
+/* There is one uncommitted page above and below every system stack */
+#define SYSTEM_THREAD_STACK_RESERVE		(4 * PAGE_SIZE)
+#define SYSTEM_THREAD_STACK_COMMIT		(2 * PAGE_SIZE)
 /* Hyperspace is 16MB */
 #define HYPERSPACE_START			(SYSTEM_THREAD_REGION_END)
 /* We have LARGE_PAGE_SIZE / PAGE_SIZE slots for 4K pages in the hyperspace */
