@@ -446,6 +446,9 @@ static VOID MiAvlTreeSimpleRemove(IN PMM_AVL_TREE Tree,
 	    Parent->LeftChild = Child;
 	}
     }
+    Node->Parent = 0;
+    Node->LeftChild = NULL;
+    Node->RightChild = NULL;
 }
 
 /*
@@ -530,20 +533,25 @@ VOID MiAvlTreeRemoveNode(IN PMM_AVL_TREE Tree,
     if (Node != DeleteNode) {
 	DeleteNode->LeftChild = Node->LeftChild;
 	DeleteNode->RightChild = Node->RightChild;
+	if (Node->LeftChild != NULL) {
+	    MiAvlSetParent(Node->LeftChild, DeleteNode);
+	}
+	if (Node->RightChild != NULL) {
+	    MiAvlSetParent(Node->RightChild, DeleteNode);
+	}
 	MiAvlSetParent(DeleteNode, MiAvlGetParent(Node));
 	if (MiAvlGetParent(Node) == NULL) {
 	    Tree->BalancedRoot = DeleteNode;
+	} else if (MiAvlIsRightChild(Node)) {
+	    MiAvlGetParent(Node)->RightChild = DeleteNode;
 	} else {
-	    if (MiAvlIsRightChild(Node)) {
-		MiAvlGetParent(Node)->RightChild = DeleteNode;
-	    } else {
-		MiAvlGetParent(Node)->LeftChild = DeleteNode;
-	    }
+	    assert(MiAvlIsLeftChild(Node));
+	    MiAvlGetParent(Node)->LeftChild = DeleteNode;
 	}
 	Node->LeftChild = Node->RightChild = NULL;
 	Node->Parent = 0;
     }
-    DbgTrace("Done!\n");
+    DbgTrace("After deletion\n");
     MmAvlDumpTree(Tree);
 }
 
