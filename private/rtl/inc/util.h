@@ -96,7 +96,7 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
 
 PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 
-#if defined(CONFIG_DEBUG_BUILD) || defined(DEBUG)
+#if defined(CONFIG_DEBUG_BUILD) || defined(DEBUG) || defined(DBG) || defined(_DEBUG)
 VOID KeDbgDumpIPCError(IN int Error);
 
 #ifndef DbgTrace
