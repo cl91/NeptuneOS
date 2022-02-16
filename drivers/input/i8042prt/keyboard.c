@@ -41,7 +41,6 @@ static NTAPI VOID i8042KbdQueuePacket(IN PVOID Context)
 {
     PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)Context;
 
-    DeviceExtension->KeyComplete = TRUE;
     DeviceExtension->Common.EntriesInBuffer++;
     if (DeviceExtension->Common.EntriesInBuffer >
 	DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize) {
@@ -262,15 +261,11 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
     UNREFERENCED_PARAMETER(SystemArgument2);
 
     if (HandlePowerKeys(DeviceExtension)) {
-	DeviceExtension->KeyComplete = FALSE;
 	return;
     }
 
     i8042PacketDpc(PortDeviceExtension);
-    if (!DeviceExtension->KeyComplete)
-	return;
 
-    DeviceExtension->KeyComplete = FALSE;
     assert(DeviceExtension == DeviceExtension->Common.Fdo->DeviceExtension);
     ProcessPendingReadIrps(DeviceExtension->Common.Fdo);
 }
@@ -761,8 +756,7 @@ NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
     InputData->MakeCode = Output & 0x7f;
     InputData->Reserved = 0;
 
-    DeviceExtension->KeyboardHook.QueueKeyboardPacket(DeviceExtension->KeyboardHook.
-						      CallContext);
+    DeviceExtension->KeyboardHook.QueueKeyboardPacket(DeviceExtension->KeyboardHook.CallContext);
 
     return TRUE;
 }
