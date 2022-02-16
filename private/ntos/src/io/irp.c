@@ -310,8 +310,12 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 
     PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor,
 							      Irp);
-    /* If the IRP identifier is valid, PendingIrp should never be NULL. */
-    assert(PendingIrp != NULL);
+    /* If the IRP identifier is valid, PendingIrp should never be NULL. We assert on
+     * debug build and return error on release build. */
+    if (PendingIrp == NULL) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
 
     /* If client has requested completion notification, in addition to
      * moving the IO_PACKET from the source driver object to the target

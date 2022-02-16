@@ -178,7 +178,11 @@ static VOID SmGetKeyboardInput(IN HANDLE Keyboard,
 
     while (TRUE) {
 	BufferLength = sizeof(KeyboardData);
-	SmWaitForInput(Keyboard, Event, &KeyboardData, &BufferLength);
+	NTSTATUS Status = SmWaitForInput(Keyboard, Event, &KeyboardData, &BufferLength);
+	if (!NT_SUCCESS(Status)) {
+	    SmPrint("\nUnable to read keyboard input. Status = 0x%x\n", Status);
+	    break;
+	};
 	for (ULONG i = 0; i < BufferLength / sizeof(KEYBOARD_INPUT_DATA); i++) {
 	    IntTranslateKey(&KeyboardData[i], &kbd_rec);
 	    if (kbd_rec.bKeyDown) {

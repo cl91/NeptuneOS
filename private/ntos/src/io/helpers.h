@@ -57,10 +57,15 @@
     /* Note here the IO buffers in the driver address space are freed	\
      * when the server received the IoCompleted message, so we don't	\
      * need to free them manually. */					\
-    IF_ERR_GOTO(out, Status,						\
-		IopMapIoBuffers(Thread->Process,			\
-				Locals.PendingIrp, FALSE));		\
-    IopQueueIoPacket(Locals.PendingIrp, Thread);			\
+    Status = IopMapIoBuffers(Thread->Process,				\
+			     Locals.PendingIrp, FALSE);			\
+    if (NT_SUCCESS(Status)) {						\
+	IopQueueIoPacket(Locals.PendingIrp, Thread);			\
+    } else {								\
+	ExFreePool(Locals.PendingIrp);					\
+	Locals.PendingIrp = NULL;					\
+	goto out;							\
+    }									\
 									\
     /* For now every Read is synchronous. We need to figure out how we	\
      * pass IO_STATUS_BLOCK back to the userspace safely. The idea is	\

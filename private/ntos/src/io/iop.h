@@ -171,11 +171,6 @@ static inline NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
     return STATUS_SUCCESS;
 }
 
-static inline VOID IopDetachPendingIrpFromThread(IN PPENDING_IRP PendingIrp)
-{
-    RemoveEntryList(&PendingIrp->Link);
-}
-
 static inline VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
 {
     if (PendingIrp->IoResponseData != NULL) {
@@ -191,7 +186,7 @@ static inline VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
  */
 static inline VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
 {
-    IopDetachPendingIrpFromThread(PendingIrp);
+    RemoveEntryList(&PendingIrp->Link);
     IopFreeIoResponseData(PendingIrp);
     if (PendingIrp->IoPacket != NULL) {
 	ExFreePool(PendingIrp->IoPacket);
