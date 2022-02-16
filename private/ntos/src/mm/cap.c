@@ -100,7 +100,10 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
     *StartCap = 0;
 
     ULONG CNodeSize = 1ULL << CNode->Log2Size;
+    /* This usually indicate a memory leak or resource leak.
+     * We assert in debug build */
     if (CNode->TotalUsed >= CNodeSize) {
+	assert(FALSE);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -118,8 +121,10 @@ Lookup:
 	}
 	Index++;
     }
-    /* We don't have enough free slots */
+    /* We don't have enough free slots. This usually indicate a memory
+     * leak or resource leak. We assert in debug build. */
     if (Index >= MaxIndex) {
+	assert(FALSE);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     /* Check whether the next (NumberRequested-1) bits are

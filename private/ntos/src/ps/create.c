@@ -528,6 +528,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE,
 					      NULL, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
+	DbgTrace("Unable to find dll %s\n", DllPath);
 	goto fail;
     }
     assert(*DllFile != NULL);

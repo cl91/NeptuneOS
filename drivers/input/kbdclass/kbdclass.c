@@ -599,7 +599,8 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	} else {
 	    Status = STATUS_UNSUCCESSFUL;
 	}
-	if (NT_SUCCESS(Status)) {
+	if (NT_SUCCESS(Status) && DeviceExtension->InterfaceName.Buffer != NULL &&
+	    DeviceExtension->InterfaceName.Buffer[0] != L'\0') {
 	    OBJECT_ATTRIBUTES ObjectAttributes;
 	    IO_STATUS_BLOCK Iosb;
 	    InitializeObjectAttributes(&ObjectAttributes,

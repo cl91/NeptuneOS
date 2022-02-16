@@ -100,8 +100,13 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 VOID KeDbgDumpIPCError(IN int Error);
 
 #ifndef DbgTrace
-#define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RTLP_DBGTRACE_MODULE_NAME, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
-#endif
+#if defined(_NTOSKRNL_) || defined(_NTDLL_)
+extern PCSTR RtlpDbgTraceModuleName;
+#else
+extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;
+#endif	/* _NTOSKRNL_ */
+#define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RtlpDbgTraceModuleName, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
+#endif	/* DbgTrace */
 
 #else
 #define KeDbgDumpIPCError(x)
@@ -128,7 +133,7 @@ typedef char __ASYNC_RETURN_CHECK_HELPER;
 #define RET_ERR_EX(Expr, OnError)					\
     COMPILE_CHECK_ASYNC_RETURN;						\
     {NTSTATUS Status = (Expr); if (!NT_SUCCESS(Status)) {		\
-	    DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+	    DbgTrace("Expression %s in function %s @ %s:%d returned"	\
 		     " error 0x%x\n",					\
 		     #Expr, __func__, __FILE__, __LINE__, Status);	\
 	    {OnError;} return Status; }}
@@ -141,7 +146,7 @@ typedef char __ASYNC_RETURN_CHECK_HELPER;
 #define IF_ERR_GOTO(Label, Status, Expr)				\
     Status = (Expr);							\
     if (!NT_SUCCESS(Status)) {						\
-	DbgPrint("Expression %s in function %s @ %s:%d returned"	\
+	DbgTrace("Expression %s in function %s @ %s:%d returned"	\
 		 " error 0x%x\n",					\
 		 #Expr, __func__, __FILE__, __LINE__, Status);		\
 	goto Label;							\

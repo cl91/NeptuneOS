@@ -406,7 +406,7 @@ static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
     RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
     assert(IoPacket != NULL);
     IopPopulateQueryDeviceRelationsRequest(IoPacket, DeviceObject, Type);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, DeviceObject, PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
 	       ExFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, Thread);
     return STATUS_SUCCESS;
@@ -422,7 +422,7 @@ static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
 	assert(IoPacket != NULL);
 	IopPopulateQueryIdRequest(IoPacket, ChildNode->PhyDevObj, IdType);
 	PPENDING_IRP PendingIrp = NULL;
-	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, ChildNode->PhyDevObj, &PendingIrp),
+	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
 		   ExFreePool(IoPacket));
 	assert(PendingIrp != NULL);
 	IopQueueIoPacket(PendingIrp, Thread);
@@ -443,7 +443,7 @@ static inline NTSTATUS IopDeviceNodeQueueAddDeviceRequest(IN PTHREAD Thread,
     IoPacket->Request.Device.Object = PhyDevObj;
     IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
     PPENDING_IRP PendingIrp = NULL;
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PhyDevObj, &PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
 	       ExFreePool(IoPacket));
     assert(PendingIrp != NULL);
     IopQueueAddDeviceRequest(PendingIrp, DriverObject, Thread);
@@ -539,7 +539,7 @@ static NTSTATUS IopQueueQueryResourceRequirementsRequest(IN PTHREAD Thread,
     RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
     assert(IoPacket != NULL);
     IopPopulatePnpRequest(IoPacket, ChildPhyDev, IRP_MN_QUERY_RESOURCE_REQUIREMENTS);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, ChildPhyDev, PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
 	       ExFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, Thread);
     return STATUS_SUCCESS;
@@ -601,7 +601,7 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
     IoPacket->Request.StartDevice.TranslatedListSize = ResSize;
     memcpy(IoPacket->Request.StartDevice.Data, Res, ResSize);
     memcpy(&IoPacket->Request.StartDevice.Data[ResSize], Res, ResSize);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, DeviceObject, PendingIrp),
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
 	       ExFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, Thread);
     return STATUS_SUCCESS;

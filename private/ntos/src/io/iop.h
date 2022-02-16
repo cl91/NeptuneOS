@@ -124,19 +124,25 @@ typedef struct _PENDING_IRP {
     PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
 			  * The pending IO packet must be of type IoPacketTypeRequest. */
     POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level */
-    PIO_DEVICE_OBJECT DeviceObject; /* Original device object at this level. The device object
-				     * in the IRP is always from the driver currently handling it */
     LIST_ENTRY Link; /* List entry for THREAD.PendingIrpList or DRIVER.ForwardedIrpList */
     struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP has been forwarded to. */
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
     MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
     MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
-    /* ---- The following members are for THREAD objects only ---- */
-    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
-    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
-    ULONG IoResponseDataSize; /* Size of the response data to the pending IO packet. */
-    PVOID IoResponseData; /* Response data to the pending IO packet. NULL if not supplied
-			   * or if server-side allocation failed. */
+    union {
+	struct {
+	    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
+	    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
+	    ULONG IoResponseDataSize; /* Size of the response data to the pending IO packet. */
+	    PVOID IoResponseData; /* Response data to the pending IO packet. NULL if not supplied
+				   * or if server-side allocation failed. */
+	};    /* This is only valid if Requestor is a THREAD object */
+	PIO_DEVICE_OBJECT PreviousDeviceObject; /* Device object of this IRP before it is forwarded
+						 * (this is called ForwardedFrom in irp.c). The device
+						 * object in the IRP is always from the driver currently
+						 * handling it (ie. the device it has been forwarded to).
+						 * This is only valid if Requestor is a DRIVER object. */
+    };
 } PENDING_IRP, *PPENDING_IRP;
 
 static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
@@ -154,17 +160,15 @@ static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
 
 static inline NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
 					     IN POBJECT Requestor,
-					     IN PIO_DEVICE_OBJECT DeviceObject,
 					     OUT PPENDING_IRP *pPendingIrp)
 {
     assert(IoPacket != NULL);
     assert(Requestor != NULL);
-    assert(DeviceObject != NULL);
     assert(pPendingIrp != NULL);
     IopAllocatePool(PendingIrp, PENDING_IRP);
     PendingIrp->IoPacket = IoPacket;
     PendingIrp->Requestor = Requestor;
-    PendingIrp->DeviceObject = DeviceObject;
+    PendingIrp->PreviousDeviceObject = NULL;
     assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER) ||
 	   ObObjectIsType(Requestor, OBJECT_TYPE_THREAD));
     *pPendingIrp = PendingIrp;
@@ -291,8 +295,7 @@ static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
     assert(PendingIrp->IoPacket != NULL);
     assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
     assert(PendingIrp->IoPacket->Request.MajorFunction != IRP_MJ_ADD_DEVICE);
-    assert(PendingIrp->DeviceObject != NULL);
-    PIO_DRIVER_OBJECT Driver = PendingIrp->DeviceObject->DriverObject;
+    PIO_DRIVER_OBJECT Driver = PendingIrp->IoPacket->Request.Device.Object->DriverObject;
     assert(Driver != NULL);
     IopQueueIoPacketEx(PendingIrp, Driver, Thread);
 }
@@ -311,7 +314,6 @@ static inline VOID IopQueueAddDeviceRequest(IN PPENDING_IRP PendingIrp,
     assert(PendingIrp->IoPacket != NULL);
     assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
     assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE);
-    assert(PendingIrp->DeviceObject != NULL);
     assert(Driver != NULL);
     IopQueueIoPacketEx(PendingIrp, Driver, Thread);
 }
@@ -449,8 +451,7 @@ NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
 				      IN PTHREAD Thread,
 				      IN BOOLEAN Alertable,
 				      IN WAIT_TYPE WaitType);
-NTSTATUS IopMapIoBuffers(IN PPROCESS SourceProcess,
-			 IN PPENDING_IRP PendingIrp,
+NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 			 IN BOOLEAN OutputIsReadOnly);
 
 /* file.c */

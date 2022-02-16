@@ -52,13 +52,11 @@
 			    IoStatusBlock)				\
     IF_ERR_GOTO(out, Status,						\
 		IopAllocatePendingIrp(Locals.IoPacket, Thread,		\
-				      Locals.FileObject->DeviceObject,	\
 				      &Locals.PendingIrp));		\
     /* Note here the IO buffers in the driver address space are freed	\
      * when the server received the IoCompleted message, so we don't	\
      * need to free them manually. */					\
-    Status = IopMapIoBuffers(Thread->Process,				\
-			     Locals.PendingIrp, FALSE);			\
+    Status = IopMapIoBuffers(Locals.PendingIrp, FALSE);			\
     if (NT_SUCCESS(Status)) {						\
 	IopQueueIoPacket(Locals.PendingIrp, Thread);			\
     } else {								\

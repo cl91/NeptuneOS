@@ -5,7 +5,6 @@
 #include <wdmp.h>
 #include "coroutine.h"
 
-PCSTR IopDbgTraceModuleName = "WDM";
 DRIVER_OBJECT IopDriverObject;
 
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -97,30 +96,6 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopSuspendedWorkItemList);
     InitializeListHead(&IopDpcQueue);
     KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
-
-    /* Set the IopDbgTraceModuleName to the driver base name */
-    if (RegistryPath != NULL && RegistryPath->Length > 2) {
-	ULONG BaseNameStart = RegistryPath->Length / sizeof(WCHAR);
-	if (RegistryPath->Buffer[BaseNameStart] == L'\0') {
-	    BaseNameStart--;
-	}
-	if (RegistryPath->Buffer[BaseNameStart] == L'\\') {
-	    BaseNameStart--;
-	}
-	while (BaseNameStart != 0 && RegistryPath->Buffer[BaseNameStart] != L'\\') {
-	    BaseNameStart--;
-	}
-	BaseNameStart++;
-	assert(RegistryPath->Length/sizeof(WCHAR) > BaseNameStart);
-	ULONG StrLen = RegistryPath->Length/sizeof(WCHAR) - BaseNameStart;
-	PCHAR Name = RtlAllocateHeap(RtlGetProcessHeap(),
-				     HEAP_ZERO_MEMORY,
-				     StrLen+1);
-	for (ULONG i = 0; i < StrLen; i++) {
-	    Name[i] = (CHAR) RegistryPath->Buffer[BaseNameStart+i];
-	}
-	IopDbgTraceModuleName = Name;
-    }
 
     NTSTATUS Status = IopCallDriverEntry(RegistryPath);
     if (!NT_SUCCESS(Status)) {

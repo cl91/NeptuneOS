@@ -65,7 +65,7 @@ static inline NTSTATUS KiMarshalObjectAttributes(IN OUT ULONG *MsgBufOffset,
     OFFSET_TO_ARG(*MsgBufOffset, ULONG) = ObjAttr->Attributes;
     *MsgBufOffset += sizeof(ULONG);
     SERVICE_ARGUMENT StringArg = { .Word = 0 };
-    if (ObjAttr->ObjectName != NULL) {
+    if (ObjAttr->ObjectName != NULL && ObjAttr->ObjectName->Buffer != NULL) {
 	RET_ERR(KiMarshalUnicodeString(MsgBufOffset, ObjAttr->ObjectName, &StringArg));
     }
     Arg->BufferSize = sizeof(HANDLE) + sizeof(ULONG) + StringArg.BufferSize;

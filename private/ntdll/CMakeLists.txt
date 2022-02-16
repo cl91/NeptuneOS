@@ -18,6 +18,7 @@ add_compile_options(
     -mno-sse
     -mno-mmx
     --target=${TRIPLE}
+    -D_NTDLL_
     -D_NTSYSTEM_
 )
 set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG" CACHE STRING "" FORCE)

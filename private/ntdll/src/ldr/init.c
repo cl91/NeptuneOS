@@ -34,6 +34,8 @@ __thread seL4_CPtr KiSystemServiceCap;
 
 /* GLOBALS *******************************************************************/
 
+PCSTR RtlpDbgTraceModuleName = "UNKNOWN";
+
 BOOLEAN LdrpShutdownInProgress;
 HANDLE LdrpShutdownThreadId;
 
@@ -578,7 +580,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 									   IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG, &ConfigSize);
 
     /* Setup the Process Heap Parameters */
-    RTL_HEAP_PARAMETERS ProcessHeapParams;    
+    RTL_HEAP_PARAMETERS ProcessHeapParams;
     RtlZeroMemory(&ProcessHeapParams, sizeof(RTL_HEAP_PARAMETERS));
     ULONG ProcessHeapFlags = HEAP_GROWABLE;
     ProcessHeapParams.Length = sizeof(RTL_HEAP_PARAMETERS);
@@ -689,6 +691,14 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     PCSTR ImagePath = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImagePath);
     PCSTR ImageName = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImageName);
     PCSTR CommandLine = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->CommandLine);
+    /* Set the IopDbgTraceModuleName to the image base name */
+    if (ImageName != NULL && ImageName[0] != '\0') {
+	PCHAR Name = RtlAllocateHeap(LdrpHeap, 0, strlen(ImageName) + 1);
+	if (Name != NULL) {
+	    memcpy(Name, ImageName, strlen(ImageName) + 1);
+	}
+	RtlpDbgTraceModuleName = Name;
+    }
     Peb->ProcessParameters = RtlAllocateHeap(LdrpHeap, 0, sizeof(RTL_USER_PROCESS_PARAMETERS));
     if (Peb->ProcessParameters == NULL) {
 	return STATUS_NO_MEMORY;

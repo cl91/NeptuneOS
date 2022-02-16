@@ -2,8 +2,6 @@
 
 #include <kernel/gen_config.h>
 
-#define RTLP_DBGTRACE_MODULE_NAME	"NTOS"
-
 #include <nt.h>
 #include <assert.h>
 #include <compile_assert.h>

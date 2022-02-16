@@ -115,3 +115,4 @@
 @ cdecl _assert(str str long)
 @ cdecl -arch=x86_64,arm __chkstk()
 @ extern -arch=i386 _chkstk
+@ extern RtlpDbgTraceModuleName

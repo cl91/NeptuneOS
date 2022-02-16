@@ -4,6 +4,8 @@
 #include <sel4/arch/bootinfo_types.h>
 #include "ki.h"
 
+PCSTR RtlpDbgTraceModuleName = "NTOS";
+
 /* Minimum alignment for TLS across all platforms. */
 #define MIN_ALIGN_BYTES 8
 #define MIN_ALIGNED __aligned(MIN_ALIGN_BYTES)

@@ -2,45 +2,53 @@ ENTRY(_KiSystemStartup)
 
 SECTIONS
 {
-  . = 0x00100000;
-  .text :
+    . = 0x00100000;
+    .text :
     {
-        _text_start = . ;
+	_text_start = . ;
 	*(.text)
 	_text_end = . ;
     }
-  .rodata :
+    .rodata :
     {
-        _rodata_start = . ;
+	. = ALIGN(4096) ;
+	_rodata_start = . ;
 	*(.rodata)
 	_rodata_end = . ;
-	. = ALIGN(8) ;
+    }
+    .initcpio :
+    {
+	. = ALIGN(4096) ;
 	_initcpio_start = . ;
 	*(initcpio)
 	_initcpio_end = . ;
     }
-  .data :
+    .data :
     {
-        _data_start = . ;
+	. = ALIGN(4096) ;
+	_data_start = . ;
 	*(.data)
 	_data_end = . ;
     }
-  .tdata :
+    .bss :
     {
-        _tdata_start = . ;
-        *(.tdata .tdata.* .gnu.linkonce.td.*)
-        _tdata_end = . ;
-    }
-  .bss :
-    {
-        _bss_start = . ;
+	. = ALIGN(32) ;
+	_bss_start = . ;
 	*(.bss)
 	_bss_end = . ;
     }
-  .tbss :
+    .tdata :
     {
-        _tbss_start = . ;
-        *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon)
-        _tbss_end = . ;
+	. = ALIGN(4096) ;
+	_tdata_start = . ;
+	*(.tdata .tdata.* .gnu.linkonce.td.*)
+	_tdata_end = . ;
+    }
+    .tbss :
+    {
+	. = ALIGN(32) ;
+	_tbss_start = . ;
+	*(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon)
+	_tbss_end = . ;
     }
 }

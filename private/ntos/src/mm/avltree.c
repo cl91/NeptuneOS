@@ -12,6 +12,13 @@
 #include <assert.h>
 #include "mi.h"
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#undef DbgTrace
+#define DbgTrace(...)
+#define DbgPrint(...)
+#endif
+
 #define AVLTRACE(...)	DbgTrace(__VA_ARGS__)
 #define PRINTNODE(Node)							\
     if (Node) {								\

@@ -117,9 +117,13 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
 	    BOOLEAN Reparsed;
 	});
 
+    if (ObjectAttributes.ObjectNameBuffer == NULL && ObjectAttributes.RootDirectory == NULL) {
+	ASYNC_RETURN(AsyncState, STATUS_OBJECT_NAME_INVALID);
+    }
+
     Locals.Object = ObpRootObjectDirectory;
     Locals.UserRootDirectory = NULL;
-    Locals.Path = ObjectAttributes.ObjectNameBuffer;
+    Locals.Path = ObjectAttributes.ObjectNameBuffer ? ObjectAttributes.ObjectNameBuffer : "";
     Locals.Reparsed = FALSE;	/* TRUE if Path has been set to a newly allocated string */
 
     /* If caller has specified a root directory, the object path must be relative */
