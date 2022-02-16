@@ -176,6 +176,7 @@ NTSTATUS KiInitTimer()
     HalQueryRealTimeClock(&ClockTime);
     BOOLEAN RtcTimeOk = RtlTimeFieldsToTime(&ClockTime, &KiInitialSystemTime);
     RET_ERR(KiEnableTimerInterruptService());
+    RET_ERR(PsSetSystemThreadPriority(&KiTimerIrqThread, TIMER_INTERRUPT_LEVEL));
     if (!RtcTimeOk || (ClockTime.Weekday < 0) || (ClockTime.Weekday > 6)) {
 	HalVgaPrint("Corrupt CMOS clock: %d-%02d-%02d %02d:%02d:%02d\n\n",
 		   ClockTime.Year, ClockTime.Month, ClockTime.Day, ClockTime.Hour,

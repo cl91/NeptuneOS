@@ -175,6 +175,7 @@ NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
 }
 
 static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObject,
+						IN ULONG Vector,
 						IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 						IN PVOID ClientSideContext,
 						OUT PINTERRUPT_SERVICE *pSvc)
@@ -206,16 +207,27 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObjec
     assert(Svc->IsrThread != NULL);
     Svc->IsrThreadClientCap.CSpace = DriverObject->DriverProcess->CSpace;
     IF_ERR_GOTO(out, Status,
+		PsSetThreadPriority(Svc->IsrThread, DEVICE_INTERRUPT_MIN_LEVEL + Vector));
+    IF_ERR_GOTO(out, Status,
 		MmCapTreeDeriveBadgedNode(&Svc->IsrThreadClientCap,
 					  &Svc->IsrThread->TreeNode,
 					  seL4_AllRights, 0));
     InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
+
+    /* Connect the given interrupt vector to the interrupt thread */
+    IF_ERR_GOTO(out, Status,
+		KeCreateIrqHandlerEx(&Svc->IrqHandler, Vector,
+				     Svc->IsrThread->Process->CSpace));
+    Svc->Vector = Vector;
+
     *pSvc = Svc;
     return STATUS_SUCCESS;
 
 out:
     if (Svc != NULL) {
-	assert(Svc->IsrThreadClientCap.Cap == 0);
+	if (Svc->IsrThreadClientCap.Cap != 0) {
+	    MmCapTreeDeleteNode(&Svc->IsrThreadClientCap);
+	}
 	if (Svc->IsrThread != NULL) {
 	    ObDereferenceObject(Svc->IsrThread);
 	}
@@ -253,14 +265,9 @@ NTSTATUS IopConnectInterrupt(IN ASYNC_STATE AsyncState,
     /* Create the interrupt service thread, together with the interrupt notification
      * and interrupt mutex object */
     PINTERRUPT_SERVICE Svc = NULL;
-    RET_ERR(IopCreateInterruptServiceThread(Thread->Process->DriverObject,
+    RET_ERR(IopCreateInterruptServiceThread(Thread->Process->DriverObject, Vector,
 					    EntryPoint, ClientSideContext, &Svc));
     assert(Svc != NULL);
-
-    /* Connect the given interrupt vector to the interrupt thread */
-    RET_ERR(KeCreateIrqHandlerEx(&Svc->IrqHandler, Vector,
-				 Thread->Process->CSpace));
-    Svc->Vector = Vector;
 
     *WdmServiceCap = Svc->IsrThread->WdmServiceEndpoint->TreeNode.Cap;
     *ThreadCap = Svc->IsrThreadClientCap.Cap;

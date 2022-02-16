@@ -17,7 +17,11 @@ struct _SYSTEM_THREAD;
 
 /* Not to be confused with CONTEXT, defined in the NT headers */
 typedef seL4_UserContext THREAD_CONTEXT, *PTHREAD_CONTEXT;
-typedef ULONG THREAD_PRIORITY;
+typedef enum _THREAD_PRIORITY {
+    PASSIVE_LEVEL = 1,
+    DEVICE_INTERRUPT_MIN_LEVEL = 10,
+    TIMER_INTERRUPT_LEVEL = 255
+} THREAD_PRIORITY;
 
 #define LoopOverUntyped(cap, desc, bootinfo)				\
     for (MWORD cap = bootinfo->untyped.start;				\

@@ -36,6 +36,22 @@ static NTSTATUS PspSetThreadPriority(IN MWORD ThreadCap,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS PsSetThreadPriority(IN PTHREAD Thread,
+			     IN THREAD_PRIORITY Priority)
+{
+    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, Priority));
+    Thread->CurrentPriority = Priority;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS PsSetSystemThreadPriority(IN PSYSTEM_THREAD Thread,
+				   IN THREAD_PRIORITY Priority)
+{
+    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, Priority));
+    Thread->CurrentPriority = Priority;
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS PspResumeThread(IN MWORD ThreadCap)
 {
     assert(ThreadCap != 0);
@@ -149,8 +165,8 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeSystemThreadContext(Thread, &Context, EntryPoint);
     IF_ERR_GOTO(Fail, Status, KeSetThreadContext(Thread->TreeNode.Cap, &Context));
-    IF_ERR_GOTO(Fail, Status, PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
-    Thread->CurrentPriority = seL4_MaxPrio;
+    IF_ERR_GOTO(Fail, Status, PspSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
+    Thread->CurrentPriority = PASSIVE_LEVEL;
     if (!Suspended) {
 	IF_ERR_GOTO(Fail, Status, PspResumeThread(Thread->TreeNode.Cap));
     }
@@ -383,13 +399,13 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeThreadContext(Thread, &Context);
     RET_ERR(KeSetThreadContext(Thread->TreeNode.Cap, &Context));
-    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, seL4_MaxPrio));
+    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
     /* Thread->InitInfo.InitialContext is initialized as zero so if the caller
      * did not supply Ctx->Context we simply leave InitialContext as zero. */
     if (Ctx->Context != NULL) {
 	Thread->InitInfo.InitialContext = *(Ctx->Context);
     }
-    Thread->CurrentPriority = seL4_MaxPrio;
+    Thread->CurrentPriority = PASSIVE_LEVEL;
     RET_ERR(KeEnableSystemServices(Thread));
     if (Process->InitInfo.DriverProcess) {
 	RET_ERR(KeEnableWdmServices(Thread));

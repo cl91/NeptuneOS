@@ -129,6 +129,10 @@ NTSTATUS PsResumeThread(IN PTHREAD Thread);
 NTSTATUS PsResumeSystemThread(IN PSYSTEM_THREAD Thread);
 NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 				   OUT MWORD *pStackTop);
+NTSTATUS PsSetThreadPriority(IN PTHREAD Thread,
+			     IN THREAD_PRIORITY Priority);
+NTSTATUS PsSetSystemThreadPriority(IN PSYSTEM_THREAD Thread,
+				   IN THREAD_PRIORITY Priority);
 
 /* kill.c */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,
