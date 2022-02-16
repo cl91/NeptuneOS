@@ -101,6 +101,7 @@ typedef struct _NTDLL_DRIVER_INIT_INFO {
     MWORD OutgoingIoPacketBuffer;
     MWORD InitialCoroutineStackTop;
     MWORD X86TscFreq;
+    MWORD DpcMutexCap;
 } NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
 
 typedef struct _NTDLL_PROCESS_INIT_INFO {

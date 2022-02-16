@@ -272,12 +272,13 @@ typedef KDEFERRED_ROUTINE *PKDEFERRED_ROUTINE;
  * (ie. driver process) side structure. The name KDPC is kept to
  * to ease porting Windows/ReactOS drivers.
  */
-typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KDPC {
-    SLIST_ENTRY Entry; /* Must be first, or at least aligned by 8 bytes */
+typedef struct _KDPC {
+    LIST_ENTRY Entry;
     PKDEFERRED_ROUTINE DeferredRoutine;
     PVOID DeferredContext;
     PVOID SystemArgument1;
     PVOID SystemArgument2;
+    BOOLEAN Queued;
 } KDPC, *PKDPC;
 
 /*

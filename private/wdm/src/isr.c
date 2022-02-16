@@ -1,19 +1,61 @@
 #include <wdmp.h>
 
-DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopDpcQueue;
+LIST_ENTRY IopDpcQueue;
+KMUTEX IopDpcMutex;
 
 VOID IopProcessDpcQueue()
 {
-    PSLIST_ENTRY Entry;
-    while ((Entry = RtlInterlockedPopEntrySList(&IopDpcQueue)) != NULL) {
-	PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, Entry);
-	if (Dpc->DeferredRoutine != NULL) {
-	    Dpc->DeferredRoutine(Dpc,
-				 Dpc->DeferredContext,
-				 Dpc->SystemArgument1,
-				 Dpc->SystemArgument1);
-	}
+    PLIST_ENTRY Entry;
+    PKDPC Dpc;
+    KeAcquireMutex(&IopDpcMutex);
+    Entry = IopDpcQueue.Flink;
+Next:
+    if (Entry == &IopDpcQueue) {
+	KeReleaseMutex(&IopDpcMutex);
+	return;
     }
+    Dpc = CONTAINING_RECORD(Entry, KDPC, Entry);
+    assert(Dpc->Queued);
+    KeReleaseMutex(&IopDpcMutex);
+
+    if (Dpc->DeferredRoutine != NULL) {
+	Dpc->DeferredRoutine(Dpc,
+			     Dpc->DeferredContext,
+			     Dpc->SystemArgument1,
+			     Dpc->SystemArgument1);
+    }
+
+    KeAcquireMutex(&IopDpcMutex);
+    Entry = Entry->Flink;
+    Dpc->Queued = FALSE;
+    RemoveEntryList(&Dpc->Entry);
+    goto Next;
+}
+
+/*
+ * As is in Windows/ReactOS you cannot queue DPC objects multiple
+ * times. This routine returns false if the DPC object has already
+ * been queued.
+ */
+NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
+			       IN PVOID SystemArgument1,
+			       IN PVOID SystemArgument2)
+{
+    BOOLEAN Queued = FALSE;
+    KeAcquireMutex(&IopDpcMutex);
+    if (!Dpc->Queued) {
+	DbgTrace("Inserting DPC %p args %p %p\n",
+		 Dpc, SystemArgument1, SystemArgument2);
+	Dpc->SystemArgument1 = SystemArgument1;
+	Dpc->SystemArgument2 = SystemArgument2;
+	InsertTailList(&IopDpcQueue, &Dpc->Entry);
+	Dpc->Queued = TRUE;
+	Queued = TRUE;
+    } else {
+	DbgTrace("DPC %p already inserted. Not inserting\n", Dpc);
+    }
+    KeReleaseMutex(&IopDpcMutex);
+    return Queued;
 }
 
 static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
@@ -124,20 +166,6 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 
 NTAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject)
 {
-}
-
-/*
- * As is in Windows/ReactOS you cannot queue DPC objects multiple
- * times.
- */
-NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
-			       IN PVOID SystemArgument1,
-			       IN PVOID SystemArgument2)
-{
-    Dpc->SystemArgument1 = SystemArgument1;
-    Dpc->SystemArgument2 = SystemArgument2;
-    RtlInterlockedPushEntrySList(&IopDpcQueue, &Dpc->Entry);
-    return TRUE;
 }
 
 NTAPI VOID IoAcquireInterruptMutex(IN PKINTERRUPT Interrupt)

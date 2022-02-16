@@ -806,6 +806,8 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	MWORD InitialCoroutineStackTop = 0;
 	RET_ERR(PsMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
+	RET_ERR(KeCreateNotificationEx(&Process->DpcMutex, Process->CSpace));
+	Process->InitInfo.DriverInitInfo.DpcMutexCap = Process->DpcMutex.TreeNode.Cap;
     }
 
     /* Create the Event objects used by the NTDLL ldr component */

@@ -113,8 +113,8 @@ typedef struct _IO_WORKITEM {
  *
  * This is used to implement what the Windows driver model calls the "interrupt
  * spinlock", which protects data structures accessed by both the dispatch routines
- * and the interrupt service routines. We cannot use a spinlock here since our
- * drivers runs in a userspace process.
+ * and the interrupt service routines. We don't want to use spinlocks here since our
+ * drivers runs in a userspace process (and may get scheduled out).
  */
 typedef struct POINTER_ALIGNMENT _KMUTEX {
     MWORD Notification;		/* Notification capability */
@@ -203,7 +203,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
-extern SLIST_HEADER IopDpcQueue;
+extern LIST_ENTRY IopDpcQueue;
+extern KMUTEX IopDpcMutex;
 VOID IopProcessDpcQueue();
 
 /* ioport.c */

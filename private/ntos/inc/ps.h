@@ -81,6 +81,7 @@ typedef struct _PROCESS {
     PIO_DRIVER_OBJECT DriverObject; /* TODO: Mini-driver? */
     NTSTATUS ExitStatus;	    /* Exit status of process */
     ULONG Cookie;
+    NOTIFICATION DpcMutex;
 } PROCESS, *PPROCESS;
 
 /*
