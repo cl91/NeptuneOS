@@ -169,21 +169,24 @@ static NTSTATUS SmWaitForInput(IN HANDLE Keyboard,
     return Status;
 }
 
-static CHAR SmGetChar(IN HANDLE Keyboard,
-		      IN HANDLE Event)
+static VOID SmGetKeyboardInput(IN HANDLE Keyboard,
+			       IN HANDLE Event)
 {
-    KEYBOARD_INPUT_DATA KeyboardData;
+    KEYBOARD_INPUT_DATA KeyboardData[8];
     KBD_RECORD kbd_rec;
-    ULONG BufferLength = sizeof(KEYBOARD_INPUT_DATA);
+    ULONG BufferLength;
 
-    SmWaitForInput(Keyboard, Event, &KeyboardData, &BufferLength);
-
-    IntTranslateKey(&KeyboardData, &kbd_rec);
-
-    if (!kbd_rec.bKeyDown) {
-	return (-1);
+    while (TRUE) {
+	BufferLength = sizeof(KeyboardData);
+	SmWaitForInput(Keyboard, Event, &KeyboardData, &BufferLength);
+	for (ULONG i = 0; i < BufferLength / sizeof(KEYBOARD_INPUT_DATA); i++) {
+	    IntTranslateKey(&KeyboardData[i], &kbd_rec);
+	    if (kbd_rec.bKeyDown) {
+		CHAR c = kbd_rec.AsciiChar;
+		SmPrint("%c", c);
+	    }
+	}
     }
-    return kbd_rec.AsciiChar;
 }
 
 NTSTATUS SmStartCommandPrompt()
@@ -241,10 +244,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     assert(Event != NULL);
 
     SmPrint("Reading keyboard input...\n");
-    while (TRUE) {
-	CHAR c = SmGetChar(Keyboard, Event);
-	SmPrint("%c", c);
-    }
+    SmGetKeyboardInput(Keyboard, Event);
 
 out:
     if (!NT_SUCCESS(SmStartCommandPrompt())) {

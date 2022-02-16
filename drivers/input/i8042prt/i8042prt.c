@@ -455,7 +455,6 @@ static NTAPI NTSTATUS i8042HandleReadIrp(IN PDEVICE_OBJECT DeviceObject,
 	return Status;
     }
 
-
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     ASSERT(IoStack->MajorFunction == IRP_MJ_READ);
 
