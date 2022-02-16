@@ -503,6 +503,7 @@ VOID ProcessPendingReadIrps(IN PDEVICE_OBJECT DeviceObject)
     LoopOverList(Irp, &DeviceExtension->PendingReadIrpList, IRP, Tail.ListEntry) {
 	RemoveEntryList(&Irp->Tail.ListEntry);
 	if (i8042HandleReadIrp(DeviceObject, Irp) == STATUS_PENDING) {
+	    InsertTailList(&DeviceExtension->PendingReadIrpList, &Irp->Tail.ListEntry);
 	    break;
 	}
     }
