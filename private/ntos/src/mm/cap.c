@@ -167,7 +167,7 @@ VOID MmDeallocateCap(IN PCNODE CNode,
 
     ClearBit(CNode->UsedMap, Cap);
     CNode->RecentFree = Cap;
-    CNode->TotalUsed++;
+    CNode->TotalUsed--;
 }
 
 /*
