@@ -279,8 +279,8 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     Locals.IoPacket->Request.OutputBufferLength = OutputBufferLength;
     Locals.IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
 
-    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject,
-			EventObject, IoPacket, PendingIrp);
+    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject, EventObject,
+			IoPacket, PendingIrp, IoStatusBlock);
 
 out:
     IO_SERVICE_CLEANUP(Status, Locals, FileObject,

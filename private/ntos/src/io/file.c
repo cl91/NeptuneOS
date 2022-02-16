@@ -109,6 +109,10 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
+    if (IoStatusBlock != NULL) {
+	IoStatusBlock->Status = Status;
+	IoStatusBlock->Information = Locals.OpenContext.Information;
+    }
     ASYNC_END(State, Status);
 }
 
@@ -136,6 +140,10 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
 	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
+    if (IoStatusBlock != NULL) {
+	IoStatusBlock->Status = Status;
+	IoStatusBlock->Information = Locals.OpenContext.Information;
+    }
     ASYNC_END(State, Status);
 }
 
@@ -163,8 +171,8 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
 	Locals.IoPacket->Request.Read.ByteOffset = *ByteOffset;
     }
 
-    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject,
-			EventObject, IoPacket, PendingIrp);
+    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject, EventObject,
+			IoPacket, PendingIrp, IoStatusBlock);
 
 out:
     IO_SERVICE_CLEANUP(Status, Locals, FileObject,

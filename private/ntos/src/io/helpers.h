@@ -48,7 +48,8 @@
     Locals.IoPacket->Request.File.Object = Locals.FileObject
 
 #define IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject,		\
-			    EventObject, IoPacket, PendingIrp)		\
+			    EventObject, IoPacket, PendingIrp,		\
+			    IoStatusBlock)				\
     IF_ERR_GOTO(out, Status,						\
 		IopAllocatePendingIrp(Locals.IoPacket, Thread,		\
 				      Locals.FileObject->DeviceObject,	\
@@ -74,6 +75,9 @@
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);		\
 									\
     /* This is the starting point when the function is resumed. */	\
+    if (IoStatusBlock != NULL) {					\
+	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;		\
+    }									\
     Status = Locals.PendingIrp->IoResponseStatus.Status
 
 #define IO_SERVICE_CLEANUP(Status, Locals, FileObject,			\
