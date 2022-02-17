@@ -67,7 +67,7 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
     while (TRUE) {
 	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
 	if (AckError != 0) {
-	    DbgTrace("Failed to ACK IRQ handler cap %d for vector %d. Error:",
+	    DbgTrace("Failed to ACK IRQ handler cap %zd for vector %d. Error:",
 		     Interrupt->IrqHandlerCap, Interrupt->Vector);
 	    KeDbgDumpIPCError(AckError);
 	}
@@ -148,8 +148,8 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     assert(MutexCap != 0);
     KeInitializeMutex(&InterruptObject->Mutex, MutexCap);
 
-    DbgTrace("Created interrupt object %p ThreadCap %d IpcBuffer %p "
-	     "IrqHandler %d Notification %d Mutex %d\n",
+    DbgTrace("Created interrupt object %p ThreadCap %zd IpcBuffer %p "
+	     "IrqHandler %zd Notification %zd Mutex %zd\n",
 	     InterruptObject, InterruptObject->ThreadCap,
 	     InterruptObject->ThreadIpcBuffer,
 	     InterruptObject->IrqHandlerCap,

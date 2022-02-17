@@ -291,6 +291,7 @@ Insert:
     VadFlags.LargePages = !!(Flags & MEM_RESERVE_LARGE_PAGES);
     VadFlags.OwnedMemory = !!(Flags & MEM_RESERVE_OWNED_MEMORY);
     VadFlags.MirroredMemory = !!(Flags & MEM_RESERVE_MIRRORED_MEMORY);
+    VadFlags.CommitOnDemand = !!(Flags & MEM_COMMIT_ON_DEMAND);
     MiInitializeVadNode(Vad, VSpace, VirtAddr, WindowSize, VadFlags);
 
     if (pVad != NULL) {
@@ -648,6 +649,26 @@ VOID MmUnmapUserBufferEx(IN PVIRT_ADDR_SPACE MappedVSpace,
     if (Vad != NULL) {
 	MmDeleteVad(Vad);
     }
+}
+
+/*
+ * Check the process VSpace to see if the faulting address is in
+ * a COMMIT_ON_DEMAND page. If it is, try to commit the page and
+ * if successful, return TRUE so the thread can be resumed.
+ *
+ * Otherwise return FALSE.
+ */
+BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
+			      IN MWORD Addr)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    PMMVAD Vad = MiVSpaceFindVadNode(&Thread->Process->VSpace, Addr);
+    if (Vad == NULL || !Vad->Flags.CommitOnDemand) {
+	return FALSE;
+    }
+    return NT_SUCCESS(MmCommitVirtualMemoryEx(&Thread->Process->VSpace,
+					      PAGE_ALIGN(Addr), PAGE_SIZE));
 }
 
 NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,

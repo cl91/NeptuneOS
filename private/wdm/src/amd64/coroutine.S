@@ -1,9 +1,12 @@
 #include <wdmasm.h>
 
-#error "This needs to be rewritten"
-
-.global IopStartCoroutine
-IopStartCoroutine:
+/*
+ * NTSTATUS KiStartCoroutine(IN PVOID StackTop,                        // %rcx
+ *                           IN KI_COROUTINE_ENTRYPOINT EntryPoint,    // %rdx
+ *                           IN PVOID Context)                         // %r8
+ */
+.global KiStartCoroutine
+KiStartCoroutine:
     /* KiCurrentCoroutineStackTop = StackTop (%rcx); */
     mov %rcx, KiCurrentCoroutineStackTop
     /* Save all callee-saved (non-clobbered) registers */
@@ -15,36 +18,34 @@ IopStartCoroutine:
     push %r13
     push %r14
     push %r15
+    /* Save the master thread stack pointer */
+    mov %rsp, -0x20(%rcx)
+    /* Save the address of the label 1 below so KiYieldCoroutine
+     * knowns where to jump to */
+    movq $1f, -0x18(%rcx)
     /* Switch to the stack pointer given by StackTop (%rcx). */
-    mov %rsp, %rax
     mov %rcx, %rsp
-    /* Copy the CurrentIrp queue entry pointer (%rdx) to %rcx */
-    mov %rdx, %rcx
-    /* Skip the NextStackTop pointer */
-    sub $0x8, %rsp
-    /* Save the CurrentIrp queue entry pointer */
-    push %rcx
-    /* Save the return address for KiCoroutineYield to jump to */
-    push $1f
-    /* Save the old stack pointer */
-    push %rax
-    /*
-     * In the Microsoft x64 calling convention, it is the caller's
-     * responsibility to allocate 32 bytes of shadow space on the
-     * stack right before calling the function (regardless of the
-     * actual number of parameters used), and to pop the stack
+    /* Skip the KI_COROUTINE_STACK struct and the shadow space.
+     *
+     * Note: In the Microsoft x64 calling convention, it is the
+     * caller's responsibility to allocate 32 bytes of shadow space
+     * on the stack right before calling the function (regardless
+     * of the actual number of parameters used), and to pop the stack
      * after the call. The shadow space is used to spill RCX, RDX,
-     * R8, and R9, but must be made available to all functions,
-     * even those with fewer than four parameters.
+     * R8, and R9, but must be made available to all functions, even
+     * those with fewer than four parameters.
      */
-    sub $0x20, %rsp
-    call IopCallDispatchRoutine
-    /* Skip the shadow space. */
+    sub $0x40, %rsp
+    /* Call the coroutine entry point */
+    mov %r8, %rcx
+    call *%rdx
+    /* Skip the shadow space */
     add $0x20, %rsp
-    /* Restore the old stack pointer. */
+    /* Restore the old stack pointer. Note after the coroutine
+     * is suspended and later resumed, this stack pointer refers
+     * to the stack frame of KiResumeCoroutine rather than
+     * KiStartCoroutine. */
     pop %rsp
-    /* Restore %rcx from KiCurrentCoroutineStackTop */
-    movq KiCurrentCoroutineStackTop, %rcx
 1:  /* Restore all callee-saved (non-clobbered) registers.
      * Note this is where KiCoroutineYield jumps to */
     pop %r15
@@ -55,8 +56,6 @@ IopStartCoroutine:
     pop %rdi
     pop %rsi
     pop %rbx
-    /* ((PKI_COROUTINE_STACK)StackTop)[-1].CurrentIrp = NULL; */
-    movq $0, -0x10(%rcx)
     /* KiCurrentCoroutineStackTop = NULL; */
     movq $0, KiCurrentCoroutineStackTop
     /* Pop %rip */
@@ -78,19 +77,43 @@ KiYieldCoroutine:
     push %r15
     /* Load the current coroutine stack top to %rcx */
     movq KiCurrentCoroutineStackTop, %rcx
-    /* Load the CurrentIrp queue entry to %rax */
-    movq -0x10(%rcx), %rax
-    /* Save the current stack pointer and instruction pointer
-     * to the current IRP queue entry being processed */
-    movq %rsp, IrpSavedStackPointer(%rax)
-    movq $1f, IrpSavedInstructionPointer(%rax)
-    /* Restore the stack pointer and instruction pointer
-     * saved by IopStartCoroutine. */
+    /* Save the current stack pointer */
+    movq %rsp, -0x10(%rcx)
+    /* Restore the stack pointer of the master thread. This is
+     * saved by either KiStartCoroutine or KiResumeCoroutine */
     movq -0x20(%rcx), %rsp
-    /* Note that after this instruction the control flow is
-     * transfered to the label 1 of IopStartCoroutine */
+    /* Tell the master thread that we are not done yet. */
+    movq $STATUS_ASYNC_PENDING, %rax
+    /* Jump back to the address stored previously. This address is
+     * provided by either KiStartCoroutine or KiResumeCoroutine */
     jmp *-0x18(%rcx)
-1:  /* Restore all callee-saved (non-clobbered) registers */
+
+/*
+ * NTSTATUS KiResumeCoroutine(IN PVOID StackTop)   // %rcx
+ */
+.global KiResumeCoroutine
+KiResumeCoroutine:
+    /* KiCurrentCoroutineStackTop = StackTop (%rcx); */
+    mov %rcx, KiCurrentCoroutineStackTop
+    /* Save all callee-saved (non-clobbered) registers */
+    push %rbx
+    push %rsi
+    push %rdi
+    push %rbp
+    push %r12
+    push %r13
+    push %r14
+    push %r15
+    /* Save the master thread stack pointer */
+    mov %rsp, -0x20(%rcx)
+    /* Save the address to the label 1 below so KiYieldCoroutine
+     * knowns where to jump to */
+    movq $1f, -0x18(%rcx)
+    /* Load the saved coroutine stack pointer */
+    mov -0x10(%rcx), %rsp
+    /* We are back to the coroutine stack now. Restore all the
+     * callee-saved (non-clobbered) registers that KiYieldCoroutine
+     * has saved */
     pop %r15
     pop %r14
     pop %r13
@@ -99,3 +122,19 @@ KiYieldCoroutine:
     pop %rdi
     pop %rsi
     pop %rbx
+    /* Return to whoever was calling KiYieldCoroutine */
+    ret
+1:  /* Restore all the callee-saved (non-clobbered) registers
+     * Note this is where KiCoroutineYield jumps to. */
+    pop %r15
+    pop %r14
+    pop %r13
+    pop %r12
+    pop %rbp
+    pop %rdi
+    pop %rsi
+    pop %rbx
+    /* KiCurrentCoroutineStackTop = NULL; */
+    movq $0, KiCurrentCoroutineStackTop
+    /* Pop %rip */
+    ret

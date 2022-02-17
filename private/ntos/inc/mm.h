@@ -298,6 +298,7 @@ typedef union _MMVAD_FLAGS {
 	ULONG LargePages : 1; /* Use large pages when possible */
 	ULONG OwnedMemory : 1; /* True if pages are owned by this VSpace */
 	ULONG MirroredMemory : 1; /* True if this VAD is a mirror of another VAD */
+	ULONG CommitOnDemand : 1; /* Memory will be committed as they are accessed */
     };
     ULONG Word;
 } MMVAD_FLAGS;
@@ -320,10 +321,8 @@ typedef union _MMVAD_FLAGS {
 /* Find unused address window only. Do not actually insert the VAD into the
  * process address space */
 #define MEM_RESERVE_NO_INSERT		(0x1UL << 9)
-
-/* Flags that can be passed into MmCommitVirtualMemoryEx */
-/* When committing owned memory, map all viewer address windows as well */
-#define MEM_COMMIT_SYNC_VIEWERS		(0x1UL << 9)
+/* Memory pages are committed as they are accessed. This is used for stack pages. */
+#define MEM_COMMIT_ON_DEMAND		(0x1UL << 10)
 
 typedef struct _MMVAD {
     MM_AVL_NODE AvlNode; /* starting virtual address of the node, 4K aligned */
@@ -629,6 +628,9 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN BOOLEAN ReadOnly);
 VOID MmUnmapUserBufferEx(IN PVIRT_ADDR_SPACE MappedVSpace,
 			 IN MWORD MappedBufferStart);
+struct _THREAD;
+BOOLEAN MmHandleThreadVmFault(IN struct _THREAD *Thread,
+			      IN MWORD Addr);
 
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
 					      IN OPTIONAL MWORD EndAddr,

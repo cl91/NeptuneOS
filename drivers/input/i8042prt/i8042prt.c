@@ -414,7 +414,7 @@ static NTSTATUS FillEntries(IN PDEVICE_OBJECT DeviceObject,
 			    IN SIZE_T NumberOfEntries,
 			    IN SIZE_T EntrySize)
 {
-    INFO_(I8042PRT, "FillEntries %d entries\n", NumberOfEntries);
+    INFO_(I8042PRT, "FillEntries %zd entries\n", NumberOfEntries);
     NTSTATUS Status = STATUS_SUCCESS;
     SIZE_T Size = NumberOfEntries * EntrySize;
 

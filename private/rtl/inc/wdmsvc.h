@@ -348,9 +348,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	DbgPrint(" OriginalRequestor %p Identifier %p\n",
 		 (PVOID)IoPacket->Request.OriginalRequestor,
 		 IoPacket->Request.Identifier);
-	DbgPrint("    InputBuffer %p Length %p OutputBuffer %p Length %p\n",
-		 (PVOID)IoPacket->Request.InputBuffer, (PVOID)IoPacket->Request.InputBufferLength,
-		 (PVOID)IoPacket->Request.OutputBuffer, (PVOID)IoPacket->Request.OutputBufferLength);
+	DbgPrint("    InputBuffer %p Length 0x%x OutputBuffer %p Length 0x%x\n",
+		 (PVOID)IoPacket->Request.InputBuffer, IoPacket->Request.InputBufferLength,
+		 (PVOID)IoPacket->Request.OutputBuffer, IoPacket->Request.OutputBufferLength);
 	DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 		 IoPacket->Request.MajorFunction, IoPacket->Request.MinorFunction,
 		 IoPacket->Request.Flags, IoPacket->Request.Control);

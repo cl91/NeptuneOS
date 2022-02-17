@@ -77,7 +77,7 @@ static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 {
     assert(Driver != NULL);
     assert(Driver->DriverProcess != NULL);
-    DbgTrace("Unmapping driver %s (VSpace cap 0x%x) buffer %p\n",
+    DbgTrace("Unmapping driver %s (VSpace cap 0x%zx) buffer %p\n",
 	     Driver->DriverImagePath, Driver->DriverProcess->VSpace.VSpaceCap,
 	     (PVOID)DriverBuffer);
     if (DriverBuffer != 0) {

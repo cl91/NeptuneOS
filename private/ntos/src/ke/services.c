@@ -326,6 +326,22 @@ static VOID KiDumpSystemThreadFault(IN seL4_Fault_t Fault,
     DbgPrinter("==============================================================================\n");
 }
 
+/*
+ * Attempt to handle the thread fault. Return TRUE if the fault is
+ * handled and thread should be resumed. Return FALSE if the fault
+ * cannot be handled and the thread should be terminated.
+ */
+static BOOLEAN KiHandleThreadFault(IN PTHREAD Thread,
+				   IN seL4_Fault_t Fault)
+{
+    assert(Thread != NULL);
+    if (seL4_Fault_get_seL4_FaultType(Fault) == seL4_Fault_VMFault) {
+	MWORD Addr = seL4_Fault_VMFault_get_Addr(Fault);
+	return MmHandleThreadVmFault(Thread, Addr);
+    }
+    return FALSE;
+}
+
 VOID KiDispatchExecutiveServices()
 {
     MWORD Badge = 0;
@@ -341,11 +357,16 @@ VOID KiDispatchExecutiveServices()
 	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
+	    BOOLEAN Handled = KiHandleThreadFault(Thread, Fault);
+	    if (!Handled) {
 #ifdef CONFIG_DEBUG_BUILD
-	    KiDumpThreadFault(Fault, Thread, DbgPrint);
+		KiDumpThreadFault(Fault, Thread, DbgPrint);
 #endif
-	    KiDumpThreadFault(Fault, Thread, HalVgaPrint);
-	    PsTerminateThread(Thread, STATUS_UNSUCCESSFUL);
+		KiDumpThreadFault(Fault, Thread, HalVgaPrint);
+		PsTerminateThread(Thread, STATUS_UNSUCCESSFUL);
+	    } else {
+		seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 0));
+	    }
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
 	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
 	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_POINTER(Badge);

@@ -60,7 +60,7 @@ _KiStartCoroutine:
     ret
 
 /*
- * VOID KiYieldCoroutine()
+ * KiYieldCoroutine()
  */
 .global _KiYieldCoroutine
 _KiYieldCoroutine:
@@ -74,12 +74,12 @@ _KiYieldCoroutine:
     /* Save the current stack pointer */
     movl %esp, -0x8(%ecx)
     /* Restore the stack pointer of the master thread. This is
-     * saved by either IopStartCoroutine or KiResumeCoroutine */
+     * saved by either KiStartCoroutine or KiResumeCoroutine */
     movl -0x10(%ecx), %esp
     /* Tell the master thread that we are not done yet. */
     movl $STATUS_ASYNC_PENDING, %eax
-    /* Jump back to the address stored previously. This is provided
-     * by either KiStartCoroutine or KiResumeCoroutine */
+    /* Jump back to the address stored previously. This address is
+     * provided by either KiStartCoroutine or KiResumeCoroutine */
     jmp *-0xc(%ecx)
 
 /*
@@ -101,16 +101,17 @@ _KiYieldCoroutine:
     movl $1f, -0xc(%ecx)
     /* Load the saved coroutine stack pointer */
     mov -0x8(%ecx), %esp
-    /* We are back to the coroutine stack now. Restore all callee-saved
-     * (non-clobbered) registers that KiYieldCoroutine has saved */
+    /* We are back to the coroutine stack now. Restore all the
+     * callee-saved (non-clobbered) registers that KiYieldCoroutine
+     * has saved */
     pop %ebp
     pop %edi
     pop %esi
     pop %ebx
     /* Return to whoever was calling KiYieldCoroutine */
     ret
-1:  /* Restore all callee-saved (non-clobbered) registers.
-     * Note this is where KiCoroutineYield jumps to */
+1:  /* Restore all the callee-saved (non-clobbered) registers.
+     * Note this is where KiCoroutineYield jumps to. */
     pop %ebp
     pop %edi
     pop %esi

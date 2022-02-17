@@ -355,7 +355,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	PMMVAD StackVad = NULL;
 	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, THREAD_STACK_START,
 					 HIGHEST_USER_ADDRESS, StackReserve,
-					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
+					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES | MEM_COMMIT_ON_DEMAND,
 					 &StackVad));
 	assert(StackVad != NULL);
 	Thread->InitialStackTop = StackVad->AvlNode.Key + StackVad->WindowSize;
@@ -365,7 +365,6 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 					   Thread->InitialStackTop - StackCommit,
 					   StackCommit),
 		   MmDeleteVad(StackVad));
-	/* TODO: Implement COMMIT_ON_DEMAND */
     } else {
 	Thread->InitialStackTop = (MWORD)Ctx->InitialTeb->StackBase;
 	Thread->InitialStackReserve = Ctx->InitialTeb->StackBase - Ctx->InitialTeb->AllocatedStackBase;
