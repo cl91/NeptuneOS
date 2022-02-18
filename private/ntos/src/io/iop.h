@@ -129,20 +129,18 @@ typedef struct _PENDING_IRP {
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
     MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
     MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
-    union {
-	struct {
-	    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
-	    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
-	    ULONG IoResponseDataSize; /* Size of the response data to the pending IO packet. */
-	    PVOID IoResponseData; /* Response data to the pending IO packet. NULL if not supplied
-				   * or if server-side allocation failed. */
-	};    /* This is only valid if Requestor is a THREAD object */
-	PIO_DEVICE_OBJECT PreviousDeviceObject; /* Device object of this IRP before it is forwarded
-						 * (this is called ForwardedFrom in irp.c). The device
-						 * object in the IRP is always from the driver currently
-						 * handling it (ie. the device it has been forwarded to).
-						 * This is only valid if Requestor is a DRIVER object. */
-    };
+    /* ---- The following four members are only valid if Requestor is a THREAD object ---- */
+    KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
+    IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */
+    ULONG IoResponseDataSize; /* Size of the response data to the pending IO packet. */
+    PVOID IoResponseData; /* Response data to the pending IO packet. NULL if not supplied
+			   * or if server-side allocation failed. */
+    /* ---- The following member is only valid if Requestor is a DRIVER object ---- */
+    PIO_DEVICE_OBJECT PreviousDeviceObject; /* Device object of this IRP before it is forwarded
+					     * (this is called ForwardedFrom in irp.c). The device
+					     * object in the IRP is always from the driver currently
+					     * handling it (ie. the device it has been forwarded to).
+					     * This is only valid if Requestor is a DRIVER object. */
 } PENDING_IRP, *PPENDING_IRP;
 
 static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,

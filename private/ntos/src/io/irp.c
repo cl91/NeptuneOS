@@ -369,7 +369,8 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	PendingIrp = PendingIrp->ForwardedTo;
     }
     if (PendingIrp->PreviousDeviceObject != NULL) {
-	DbgTrace("Lowest level PendingIrp->PreviousDeviceObject->DriverObject = %s\n",
+	DbgTrace("Lowest level PendingIrp->PreviousDeviceObject = %p DriverObject = %p DriverImagePath = %s\n",
+		 PendingIrp->PreviousDeviceObject, PendingIrp->PreviousDeviceObject->DriverObject,
 		 PendingIrp->PreviousDeviceObject->DriverObject->DriverImagePath);
     }
 
