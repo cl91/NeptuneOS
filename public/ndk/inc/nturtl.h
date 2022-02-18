@@ -1153,21 +1153,6 @@ NTAPI NTSYSAPI VOID RtlFillMemoryUlonglong(PVOID Destination,
 #endif // _M_AMD64
 
 /*
- * VOID RtlMoveMemory(IN VOID UNALIGNED *Destination,
- *                    IN CONST VOID UNALIGNED *Source,
- *                    IN SIZE_T Length);
- */
-#define RtlMoveMemory(Destination, Source, Length)	\
-    memmove(Destination, Source, Length)
-
-/*
- * VOID RtlZeroMemory(IN VOID UNALIGNED *Destination,
- *                    IN SIZE_T Length)
- */
-#define RtlZeroMemory(Destination, Length)	\
-    memset(Destination, 0, Length)
-
-/*
  * Bitmap routines
  */
 

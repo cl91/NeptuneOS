@@ -74,9 +74,6 @@ VOID KiHaltSystem(IN PCSTR Format, ...);
 	    KiHaltSystem("Unrecoverable error at %s @ %s line %d: Error Code 0x%x. System halted.\n", \
 			 __func__, __FILE__, __LINE__, Error);}}
 
-/* init.c */
-ULONG KiProcessorCount;
-
 /* services.c */
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;

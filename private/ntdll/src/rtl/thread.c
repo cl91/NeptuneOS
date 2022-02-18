@@ -25,9 +25,7 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
     SYSTEM_BASIC_INFORMATION SystemBasicInfo;
     PIMAGE_NT_HEADERS Headers;
     ULONG_PTR Stack;
-    BOOLEAN UseGuard;
-    ULONG Dummy;
-    SIZE_T MinimumStackCommit, GuardPageSize;
+    SIZE_T MinimumStackCommit;
 
     /* Get some memory information */
     Status = NtQuerySystemInformation(SystemBasicInformation,
@@ -79,9 +77,11 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
 				     (PVOID *) &Stack,
 				     StackZeroBits,
 				     &StackReserve,
-				     MEM_RESERVE, PAGE_READWRITE);
+				     MEM_RESERVE | MEM_COMMIT_ON_DEMAND,
+				     PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
 	return Status;
+    DPRINT("Reserved stack at %p, size 0x%x\n", (PVOID)Stack, StackReserve);
 
     /* Now set up some basic Initial TEB Parameters */
     InitialTeb->AllocatedStackBase = (PVOID) Stack;
@@ -92,45 +92,8 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
     /* Update the stack position */
     Stack += StackReserve - StackCommit;
 
-    /* Check if we can add a guard page */
-    if (StackReserve >= StackCommit + SystemBasicInfo.PageSize) {
-	Stack -= SystemBasicInfo.PageSize;
-	StackCommit += SystemBasicInfo.PageSize;
-	UseGuard = TRUE;
-    } else {
-	UseGuard = FALSE;
-    }
-
-    /* Allocate memory for the stack */
-    Status = NtAllocateVirtualMemory(ProcessHandle,
-				     (PVOID *) &Stack,
-				     0,
-				     &StackCommit,
-				     MEM_COMMIT, PAGE_READWRITE);
-    if (!NT_SUCCESS(Status)) {
-	GuardPageSize = 0;
-	NtFreeVirtualMemory(ProcessHandle, (PVOID *) & Stack,
-			    &GuardPageSize, MEM_RELEASE);
-	return Status;
-    }
-
     /* Now set the current Stack Limit */
     InitialTeb->StackLimit = (PVOID) Stack;
-
-    /* Create a guard page if needed */
-    if (UseGuard) {
-	GuardPageSize = SystemBasicInfo.PageSize;
-	Status = NtProtectVirtualMemory(ProcessHandle,
-					(PVOID *) & Stack,
-					&GuardPageSize,
-					PAGE_GUARD | PAGE_READWRITE,
-					&Dummy);
-	if (!NT_SUCCESS(Status))
-	    return Status;
-
-	/* Update the Stack Limit keeping in mind the Guard Page */
-	InitialTeb->StackLimit = (PVOID)((ULONG_PTR)InitialTeb->StackLimit + GuardPageSize);
-    }
 
     /* We are done! */
     return STATUS_SUCCESS;

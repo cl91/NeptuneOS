@@ -405,16 +405,6 @@ static inline NTSTATUS DefaultQueryInfoBufferCheck(ULONG Class,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
-                                  IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
-                                  IN PVOID SystemInformationBuffer,
-                                  IN ULONG SystemInformationLength,
-                                  OUT OPTIONAL ULONG *ReturnLength)
-{
-    UNIMPLEMENTED;
-}
-
 NTSTATUS NtQueryPerformanceCounter(IN ASYNC_STATE State,
 				   IN PTHREAD Thread,
                                    OUT LARGE_INTEGER *PerformanceCounter,
@@ -463,18 +453,19 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
     /* Check the information class */
     NTSTATUS Status = STATUS_SUCCESS;
     switch (ProcessInformationClass) {
-#if 0
     case ProcessBasicInformation:
+    {
 	/* Basic process information */
 	PPROCESS_BASIC_INFORMATION ProcessBasicInfo = (PPROCESS_BASIC_INFORMATION)ProcessInformation;
 	ProcessBasicInfo->ExitStatus = Process->ExitStatus;
-	ProcessBasicInfo->PebBaseAddress = Process->Peb;
-	ProcessBasicInfo->AffinityMask = Process->Pcb.Affinity;
-	ProcessBasicInfo->UniqueProcessId = (ULONG_PTR) Process->UniqueProcessId;
-	ProcessBasicInfo->InheritedFromUniqueProcessId = (ULONG_PTR) Process->InheritedFromUniqueProcessId;
-	ProcessBasicInfo->BasePriority = Process->Pcb.BasePriority;
+	ProcessBasicInfo->PebBaseAddress = (PPEB)Process->PebClientAddr;
+	ProcessBasicInfo->AffinityMask = Process->AffinityMask;
+	ProcessBasicInfo->UniqueProcessId = OBJECT_TO_GLOBAL_HANDLE(Process);
+	ProcessBasicInfo->InheritedFromUniqueProcessId = Process->InheritedFromUniqueProcessId;
+	ProcessBasicInfo->BasePriority = Process->BasePriority;
 	break;
-
+    }
+#if 0
     case ProcessQuotaLimits:
 	/* Process quota limits */
 	PQUOTA_LIMITS QuotaLimits = (PQUOTA_LIMITS)ProcessInformation;

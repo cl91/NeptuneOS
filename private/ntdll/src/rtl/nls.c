@@ -192,8 +192,8 @@ NTAPI VOID RtlInitNlsTables(IN PUSHORT AnsiTableBase,
 	RtlInitCodePageTable(AnsiTableBase, &NlsTable->AnsiTableInfo);
 	RtlInitCodePageTable(OemTableBase, &NlsTable->OemTableInfo);
 
-	NlsTable->UpperCaseTable = (PUSHORT) CaseTableBase + 2;
-	NlsTable->LowerCaseTable = (PUSHORT) CaseTableBase + *((PUSHORT) CaseTableBase + 1) + 2;
+	NlsTable->UpperCaseTable = CaseTableBase + 2;
+	NlsTable->LowerCaseTable = CaseTableBase + 2 + CaseTableBase[1];
     }
 }
 

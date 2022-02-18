@@ -32,7 +32,7 @@ static LARGE_INTEGER KiInitialSystemTime;
  */
 static inline ULONGLONG KiTimerTickCountToInterruptTime(IN ULONGLONG TickCount)
 {
-    return TickCount * 10000000 / TIMER_TICK_PER_SECOND;
+    return TickCount * TIMER_RESOLUTION_IN_100NS;
 }
 
 /*

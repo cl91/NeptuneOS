@@ -350,10 +350,8 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     //
     // Show banner
     //
-    RtlCliDisplayString("Native Shell [Version " __NCLI_VER__ "] ("
+    RtlCliDisplayString("Neptune OS Native Command Prompt [Version " __NCLI_VER__ "] ("
 			__DATE__ " " __TIME__ ")\n");
-    RtlCliDisplayString("(C) Copyright 2010-2011 amdf\n");
-    RtlCliDisplayString("(C) Copyright 2006 TinyKRNL Project\n\n");
     RtlCliDisplayString("Type \"help\".\n\n");
 
     //

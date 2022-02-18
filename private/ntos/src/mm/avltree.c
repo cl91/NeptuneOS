@@ -17,6 +17,8 @@
 #undef DbgTrace
 #define DbgTrace(...)
 #define DbgPrint(...)
+#else
+#include <dbgtrace.h>
 #endif
 
 #define AVLTRACE(...)	DbgTrace(__VA_ARGS__)

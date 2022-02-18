@@ -319,7 +319,7 @@ static NTSTATUS RtlpCallQueryRegistryRoutine(IN PRTL_QUERY_REGISTRY_TABLE QueryT
 
 			/* Notify debugger */
 			DPRINT1("RTL: Expand variables for %wZ failed - "
-				"Status == %lx Size %x > %x <%x>\n",
+				"Status == %x Size %x > %x <%x>\n",
 				&Source,
 				Status,
 				*InfoSize,
@@ -327,7 +327,7 @@ static NTSTATUS RtlpCallQueryRegistryRoutine(IN PRTL_QUERY_REGISTRY_TABLE QueryT
 		    } else {
 			/* Notify debugger */
 			DPRINT1("RTL: Expand variables for %wZ failed - "
-				"Status == %lx\n", &Source, Status);
+				"Status == %x\n", &Source, Status);
 		    }
 
 		    /* Return the status */

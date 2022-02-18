@@ -16,6 +16,8 @@
  * divider ourselves. */
 #define TIMER_TICK_PER_SECOND	(1193182 >> 16)
 
+#define TIMER_RESOLUTION_IN_100NS	(10000000 / TIMER_TICK_PER_SECOND)
+
 /* init.c */
 NTSTATUS HalInitSystemPhase0(VOID);
 NTSTATUS HalInitSystemPhase1(VOID);

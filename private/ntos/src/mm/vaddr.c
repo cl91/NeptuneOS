@@ -2,6 +2,15 @@
 
 #include "mi.h"
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#undef DbgTrace
+#define DbgTrace(...)
+#define DbgPrint(...)
+#else
+#include <dbgtrace.h>
+#endif
+
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
 			IN PPAGING_STRUCTURE RootPagingStructure)
 {
@@ -293,6 +302,9 @@ Insert:
     VadFlags.MirroredMemory = !!(Flags & MEM_RESERVE_MIRRORED_MEMORY);
     VadFlags.CommitOnDemand = !!(Flags & MEM_COMMIT_ON_DEMAND);
     MiInitializeVadNode(Vad, VSpace, VirtAddr, WindowSize, VadFlags);
+    if (VadFlags.CommitOnDemand) {
+	DbgTrace("Commit on demand\n");
+    }
 
     if (pVad != NULL) {
 	*pVad = Vad;
@@ -663,8 +675,11 @@ BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
+    DbgTrace("Attempt to handle VM-FAULT of thread %s at %p\n",
+	     Thread->DebugName, (PVOID)Addr);
     PMMVAD Vad = MiVSpaceFindVadNode(&Thread->Process->VSpace, Addr);
     if (Vad == NULL || !Vad->Flags.CommitOnDemand) {
+	MmDbgDumpVSpace(&Thread->Process->VSpace);
 	return FALSE;
     }
     return NT_SUCCESS(MmCommitVirtualMemoryEx(&Thread->Process->VSpace,
@@ -680,11 +695,20 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
                                  IN ULONG AllocationType,
                                  IN ULONG Protect)
 {
+    PPROCESS Process = NULL;
     if (ProcessHandle != NtCurrentProcess()) {
-	UNIMPLEMENTED;
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
+					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
+    } else {
+	Process = Thread->Process;
     }
-
-    PVIRT_ADDR_SPACE VSpace = &Thread->Process->VSpace;
+    assert(Process != NULL);
+    PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
+    DbgTrace("Process %s VSpace cap 0x%zx base address %p zerobits %d "
+	     "region size 0x%zx allocation type 0x%x protect 0x%x\n",
+	     Process->ImageFile ? Process->ImageFile->FileName : "",
+	     VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, ZeroBits,
+	     RegionSize ? *RegionSize : 0, AllocationType, Protect);
 
     /* On 64-bit systems the ZeroBits parameter is interpreted as a bit mask if it is
      * greater than 32. Convert the bit mask to the number of bits in that case. */
@@ -698,38 +722,53 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     }
 #endif
 
+    NTSTATUS Status = STATUS_INTERNAL_ERROR;
     if (ZeroBits > MM_MAXIMUM_ZERO_BITS) {
-        return STATUS_INVALID_PARAMETER_3;
+        Status = STATUS_INVALID_PARAMETER_3;
+	goto out;
     }
 
     /* Determine the address window in which we would like to search for unused region */
     if (RegionSize == NULL || *RegionSize == 0) {
-        return STATUS_INVALID_PARAMETER_4;
+        Status = STATUS_INVALID_PARAMETER_4;
+	goto out;
     }
     MWORD WindowSize = PAGE_ALIGN_UP(*RegionSize);
     MWORD StartAddr = LOWEST_USER_ADDRESS;
     MWORD EndAddr = HIGHEST_USER_ADDRESS;
-    if (BaseAddress != NULL || *BaseAddress != NULL) {
+    if (BaseAddress != NULL && *BaseAddress != NULL) {
 	StartAddr = (MWORD)(*BaseAddress);
 	EndAddr = StartAddr + WindowSize;
     }
 
     /* Validate the AllocationType argument */
     if ((AllocationType & (MEM_COMMIT | MEM_RESERVE | MEM_RESET)) == 0) {
-        return STATUS_INVALID_PARAMETER_5;
+        Status = STATUS_INVALID_PARAMETER_5;
+	goto out;
     }
     if ((AllocationType & MEM_RESET) && (AllocationType != MEM_RESET)) {
-        return STATUS_INVALID_PARAMETER_5;
+        Status = STATUS_INVALID_PARAMETER_5;
+	goto out;
     }
     if (AllocationType & MEM_LARGE_PAGES) {
         /* Large page allocations MUST be committed */
         if (!(AllocationType & MEM_COMMIT)) {
-            return STATUS_INVALID_PARAMETER_5;
+            Status = STATUS_INVALID_PARAMETER_5;
+	    goto out;
         }
         /* These flags are not allowed with large page allocations */
         if (AllocationType & (MEM_PHYSICAL | MEM_RESET | MEM_WRITE_WATCH)) {
-            return STATUS_INVALID_PARAMETER_5;
+            Status = STATUS_INVALID_PARAMETER_5;
+	    goto out;
         }
+    }
+    if (AllocationType & MEM_COMMIT_ON_DEMAND) {
+	if (!(AllocationType & MEM_RESERVE) || (AllocationType & MEM_COMMIT) ||
+	    (AllocationType & MEM_RESET) || (AllocationType & MEM_PHYSICAL) ||
+	    (AllocationType & MEM_WRITE_WATCH)) {
+            Status = STATUS_INVALID_PARAMETER_5;
+	    goto out;
+	}
     }
     /* These are not implemented yet */
     if ((AllocationType & (MEM_RESET | MEM_PHYSICAL | MEM_WRITE_WATCH))) {
@@ -737,7 +776,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     }
 
     PMMVAD Vad = NULL;
-    if (AllocationType & MEM_RESERVE) {
+    if ((AllocationType & MEM_RESERVE) || BaseAddress == NULL || *BaseAddress == NULL) {
 	MWORD Flags = MEM_RESERVE_OWNED_MEMORY;
 	if (AllocationType & MEM_LARGE_PAGES) {
 	    Flags |= MEM_RESERVE_LARGE_PAGES;
@@ -745,32 +784,39 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 	if (AllocationType & MEM_TOP_DOWN) {
 	    Flags |= MEM_RESERVE_TOP_DOWN;
 	}
-	RET_ERR(MmReserveVirtualMemoryEx(VSpace, StartAddr, EndAddr,
-					 WindowSize, Flags, &Vad));
+	if (AllocationType & MEM_COMMIT_ON_DEMAND) {
+	    DbgTrace("Commit on demand\n");
+	    Flags |= MEM_COMMIT_ON_DEMAND;
+	}
+	IF_ERR_GOTO(out, Status,
+		    MmReserveVirtualMemoryEx(VSpace, StartAddr, EndAddr,
+					     WindowSize, Flags, &Vad));
+	StartAddr = Vad->AvlNode.Key;
+	WindowSize = Vad->WindowSize;
+	EndAddr = StartAddr + WindowSize;
     }
 
     if (AllocationType & MEM_COMMIT) {
-	RET_ERR_EX(MmCommitVirtualMemoryEx(VSpace, StartAddr, WindowSize),
-		   if ((Vad != NULL) && (AllocationType & MEM_RESERVE)) {
-		       MmDeleteVad(Vad);
-		   });
+	IF_ERR_GOTO(out, Status,
+		    MmCommitVirtualMemoryEx(VSpace, StartAddr, WindowSize));
     }
 
     if (BaseAddress != NULL) {
-	if (Vad != NULL) {
-	    *BaseAddress = (PVOID) Vad->AvlNode.Key;
-	} else {
-	    *BaseAddress = (PVOID) StartAddr;
-	}
+	*BaseAddress = (PVOID) StartAddr;
     }
 
-    if (Vad != NULL) {
-	*RegionSize = Vad->WindowSize;
-    } else {
-	*RegionSize = WindowSize;
-    }
+    *RegionSize = WindowSize;
 
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+out:
+    if (!NT_SUCCESS(Status) && (Vad != NULL) && (AllocationType & MEM_RESERVE)) {
+	MmDeleteVad(Vad);
+    }
+    if (ProcessHandle != NtCurrentProcess()) {
+	assert(Process != NULL);
+	ObDereferenceObject(Process);
+    }
+    return Status;
 }
 
 NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
@@ -789,9 +835,48 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
                               IN PVOID BaseAddress,
                               IN PVOID Buffer,
                               IN ULONG NumberOfBytesToWrite,
-                              OUT ULONG *NumberOfBytesWritten)
+                              OUT OPTIONAL ULONG *NumberOfBytesWritten)
 {
-    UNIMPLEMENTED;
+    PPROCESS Process = NULL;
+    if (ProcessHandle != NtCurrentProcess()) {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
+					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
+    } else {
+	Process = Thread->Process;
+    }
+    assert(Process != NULL);
+    PVIRT_ADDR_SPACE TargetVSpace = &Process->VSpace;
+    DbgTrace("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%x\n",
+	     Process->ImageFile ? Process->ImageFile->FileName : "",
+	     TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
+    PVOID MappedSourceBuffer = NULL;
+    NTSTATUS Status = STATUS_INTERNAL_ERROR;
+    IF_ERR_GOTO(out, Status,
+		MmMapUserBuffer(&Thread->Process->VSpace, (MWORD)Buffer,
+				NumberOfBytesToWrite, &MappedSourceBuffer));
+    assert(MappedSourceBuffer != NULL);
+    PVOID MappedTargetBuffer = NULL;
+    IF_ERR_GOTO(out, Status,
+		MmMapUserBuffer(TargetVSpace, (MWORD)BaseAddress,
+				NumberOfBytesToWrite, &MappedTargetBuffer));
+    assert(MappedTargetBuffer != NULL);
+    memcpy(MappedTargetBuffer, MappedSourceBuffer, NumberOfBytesToWrite);
+    if (NumberOfBytesWritten != NULL) {
+	*NumberOfBytesWritten = NumberOfBytesToWrite;
+    }
+    Status = STATUS_SUCCESS;
+out:
+    if (MappedTargetBuffer != NULL) {
+	MmUnmapUserBuffer(MappedTargetBuffer);
+    }
+    if (MappedSourceBuffer != NULL) {
+	MmUnmapUserBuffer(MappedSourceBuffer);
+    }
+    if (ProcessHandle != NtCurrentProcess()) {
+	assert(Process != NULL);
+	ObDereferenceObject(Process);
+    }
+    return Status;
 }
 
 

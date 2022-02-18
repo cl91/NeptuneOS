@@ -321,8 +321,6 @@ typedef union _MMVAD_FLAGS {
 /* Find unused address window only. Do not actually insert the VAD into the
  * process address space */
 #define MEM_RESERVE_NO_INSERT		(0x1UL << 9)
-/* Memory pages are committed as they are accessed. This is used for stack pages. */
-#define MEM_COMMIT_ON_DEMAND		(0x1UL << 10)
 
 typedef struct _MMVAD {
     MM_AVL_NODE AvlNode; /* starting virtual address of the node, 4K aligned */
@@ -536,6 +534,9 @@ typedef struct _SUBSECTION {
 /* init.c */
 NTSTATUS MmInitSystemPhase0(IN seL4_BootInfo *bootinfo);
 NTSTATUS MmInitSystemPhase1();
+extern MWORD MmNumberOfPhysicalPages;
+extern MWORD MmLowestPhysicalPage;
+extern MWORD MmHighestPhysicalPage;
 
 /* avltree.c */
 PMM_AVL_NODE MmAvlTreeFindNode(IN PMM_AVL_TREE Tree,

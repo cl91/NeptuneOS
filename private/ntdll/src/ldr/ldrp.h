@@ -26,6 +26,10 @@ static inline VOID LdrpFreeUnicodeString(IN UNICODE_STRING String)
     return RtlpFreeUnicodeString(LdrpHeap, String);
 }
 
+/* nlsdata.c */
+extern UCHAR LdrpCp1252NlsData[];
+extern UCHAR LdrpUnicodeCaseTableData[];
+
 /* pe.c */
 ULONG LdrpRelocateImage(IN PVOID BaseAddress,
 			IN PCCH  LoaderName,

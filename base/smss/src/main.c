@@ -206,7 +206,7 @@ NTSTATUS SmStartCommandPrompt()
 						 NULL, NULL, ProcessEnv, NULL, NULL,
 						 NULL, NULL);
     if (!NT_SUCCESS(Status)) {
-	SmPrint("RtlCreateProcessParameters failed\n");
+	SmPrint("RtlCreateProcessParameters failed with status 0x%x\n", Status);
 	return STATUS_UNSUCCESSFUL;
     }
 
@@ -214,13 +214,13 @@ NTSTATUS SmStartCommandPrompt()
 				  ProcessParams, NULL, NULL, NULL, FALSE,
 				  NULL, NULL, &ProcessInfo);
     if (!NT_SUCCESS(Status)) {
-	SmPrint("RtlCreateUserProcess failed\n");
+	SmPrint("RtlCreateUserProcess failed with status 0x%x\n", Status);
 	return STATUS_UNSUCCESSFUL;
     }
 
     Status = NtResumeThread(ProcessInfo.ThreadHandle, NULL);
     if (!NT_SUCCESS(Status)) {
-	SmPrint("NtResumeThread failed\n");
+	SmPrint("NtResumeThread failed with status 0x%x\n", Status);
 	return STATUS_UNSUCCESSFUL;
     }
 
@@ -235,22 +235,6 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmTestNullDriver();
     SmTestBeepDriver(440, 1000);
 
-    PCWSTR ClassDeviceName = L"\\Device\\KeyboardClass0";
-    HANDLE Keyboard = NULL;
-    HANDLE Event = NULL;
-    NTSTATUS Status = SmOpenKeyboard(ClassDeviceName, &Keyboard, &Event);
-    if (!NT_SUCCESS(Status)) {
-	SmPrint("Unable to open %ws. Status = 0x%x\n",
-		ClassDeviceName, Status);
-	goto out;
-    }
-    assert(Keyboard != NULL);
-    assert(Event != NULL);
-
-    SmPrint("Reading keyboard input...\n");
-    SmGetKeyboardInput(Keyboard, Event);
-
-out:
     if (!NT_SUCCESS(SmStartCommandPrompt())) {
 	SmPrint("Failed to launch native command prompt. System halted.\n");
     }

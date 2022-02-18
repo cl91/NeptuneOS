@@ -158,7 +158,5 @@ BOOLEAN SetUnicodeString(UNICODE_STRING * pustrRet, WCHAR * pwszData);
 BOOLEAN DisplayString(WCHAR * pwszData);
 HANDLE InitHeapMemory(void);
 BOOLEAN DeinitHeapMemory(HANDLE hHeap);
-PVOID kmalloc(HANDLE hHeap, int nSize);
-BOOLEAN kfree(HANDLE hHeap, PVOID pMemory);
 BOOLEAN AppendString(WCHAR * pszInput, WCHAR * pszAppend);
 UINT GetStringLength(WCHAR * pszInput);

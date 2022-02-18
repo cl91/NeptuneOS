@@ -24,6 +24,10 @@
 #define MEM_WRITE_WATCH		(0x00200000UL)
 #define MEM_PHYSICAL		(0x00400000UL)
 #define MEM_LARGE_PAGES		(0x20000000UL)
+/* This is a Neptune-OS specific extension, which is used to reserve
+ * stack memory and commit them as they are accessed. Do not use in
+ * user applications. */
+#define MEM_COMMIT_ON_DEMAND	(0x80000000UL)
 
 #define SEC_BASED		(0x00200000UL)
 #define SEC_NO_CHANGE		(0x00400000UL)

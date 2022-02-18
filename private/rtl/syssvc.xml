@@ -169,7 +169,7 @@
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
     <parameter annotation="in" type="PVOID" name="Buffer" />
     <parameter annotation="in" type="ULONG" name="NumberOfBytesToWrite" />
-    <parameter annotation="out" type="ptr::ULONG" name="NumberOfBytesWritten" />
+    <parameter annotation="out opt" type="ptr::ULONG" name="NumberOfBytesWritten" />
   </svc>
 
   <svc name="NtReadVirtualMemory">

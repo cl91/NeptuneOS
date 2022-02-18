@@ -11,16 +11,16 @@ WCHAR *NtRegGetRootPath(H_KEY hkRoot)
     } else if (hkRoot == HKEY_CLASSES_ROOT) {
 	return L"\\Registry\\Machine\\SOFTWARE\\Classes";
     } else if (hkRoot == HKEY_CURRENT_CONFIG) {
-	return
-	    L"\\Registry\\Machine\\System\\CurrentControlSet\\Hardware Profiles\\Current";
+	return L"\\Registry\\Machine\\System\\CurrentControlSet\\Hardware Profiles\\Current";
     } else if (hkRoot == HKEY_USERS) {
 	return L"\\Registry\\User";
     }
     return NULL;
 }
 
-
-BOOLEAN NtRegOpenKey(HANDLE * phKey, H_KEY hkRoot, WCHAR * pwszSubKey,
+BOOLEAN NtRegOpenKey(HANDLE *phKey,
+		     H_KEY hkRoot,
+		     WCHAR *pwszSubKey,
 		     ACCESS_MASK DesiredAccess)
 {
     NTSTATUS nRet = 0;
@@ -59,8 +59,11 @@ BOOLEAN NtRegOpenKey(HANDLE * phKey, H_KEY hkRoot, WCHAR * pwszSubKey,
     return TRUE;
 }
 
-BOOLEAN NtRegWriteValue(HANDLE hKey, WCHAR * pwszValueName, PVOID pData,
-			ULONG uLength, DWORD dwRegType)
+BOOLEAN NtRegWriteValue(HANDLE hKey,
+			WCHAR *pwszValueName,
+			PVOID pData,
+			ULONG uLength,
+			DWORD dwRegType)
 {
     UNICODE_STRING ustrValueName;
     NTSTATUS nRet;
@@ -78,20 +81,23 @@ BOOLEAN NtRegWriteValue(HANDLE hKey, WCHAR * pwszValueName, PVOID pData,
     return TRUE;
 }
 
-BOOLEAN NtRegWriteString(HANDLE hKey, WCHAR * pwszValueName,
-			 WCHAR * pwszValue)
+BOOLEAN NtRegWriteString(HANDLE hKey,
+			 WCHAR *pwszValueName,
+			 WCHAR *pwszValue)
 {
     BOOLEAN bRet = FALSE;
 
-    bRet = NtRegWriteValue(hKey, pwszValueName,
+    bRet = NtRegWriteValue(hKey,
+			   pwszValueName,
 			   pwszValue,
-			   (GetStringLength(pwszValue) +
-			    1) * sizeof(WCHAR), REG_SZ);
+			   (GetStringLength(pwszValue) + 1) * sizeof(WCHAR),
+			   REG_SZ);
 
     return bRet;
 }
 
-BOOLEAN NtRegDeleteValue(HANDLE hKey, WCHAR * pwszValueName)
+BOOLEAN NtRegDeleteValue(HANDLE hKey,
+			 WCHAR *pwszValueName)
 {
     UNICODE_STRING ustrValueName;
     int nRet = 0;
@@ -107,9 +113,9 @@ BOOLEAN NtRegDeleteValue(HANDLE hKey, WCHAR * pwszValueName)
 }
 
 BOOLEAN NtRegReadValue(HANDLE hKey, HANDLE hHeapHandle,
-		       WCHAR * pszValueName,
-		       PKEY_VALUE_PARTIAL_INFORMATION * pRetBuffer,
-		       ULONG * pRetBufferSize)
+		       WCHAR *pszValueName,
+		       PKEY_VALUE_PARTIAL_INFORMATION *pRetBuffer,
+		       ULONG *pRetBufferSize)
 {
     UNICODE_STRING ustrValueName;
     BYTE *pBuffer = NULL;
@@ -121,23 +127,22 @@ BOOLEAN NtRegReadValue(HANDLE hKey, HANDLE hHeapHandle,
     SetUnicodeString(&ustrValueName, pszValueName);
 
     for (i = 0; i < 4096; i++) {
-	pBuffer = kmalloc(hHeapHandle, uSize);
+	pBuffer = RtlAllocateHeap(hHeapHandle, 0, uSize);
 
-	ntStatus =
-	    NtQueryValueKey(hKey, &ustrValueName,
-			    KeyValuePartialInformation, pBuffer, uSize,
-			    &uRetSize);
+	ntStatus = NtQueryValueKey(hKey, &ustrValueName,
+				   KeyValuePartialInformation, pBuffer, uSize,
+				   &uRetSize);
 
 	if (ntStatus == STATUS_SUCCESS) {
 	    break;
 	} else if (ntStatus == STATUS_INVALID_PARAMETER) {
-	    kfree(hHeapHandle, pBuffer);
+	    RtlFreeHeap(hHeapHandle, 0, pBuffer);
 	    pBuffer = NULL;
 
 	    return FALSE;
 	}
 
-	kfree(hHeapHandle, pBuffer);
+	RtlFreeHeap(hHeapHandle, 0, pBuffer);
 	pBuffer = NULL;
 
 	uSize += 4;

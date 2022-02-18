@@ -245,9 +245,8 @@ HANDLE InitHeapMemory(void)
     // Init Heap Memory
     memset(&sHeapDef, 0, sizeof(RTL_HEAP_PARAMETERS));
     sHeapDef.Length = sizeof(RTL_HEAP_PARAMETERS);
-    hHeap =
-	RtlCreateHeap(HEAP_GROWABLE, NULL, 0x100000, 0x1000, NULL,
-		      &sHeapDef);
+    hHeap = RtlCreateHeap(HEAP_GROWABLE, NULL, 0x100000, 0x1000, NULL,
+			  &sHeapDef);
 
     return hHeap;
 }
@@ -263,23 +262,8 @@ BOOLEAN DeinitHeapMemory(HANDLE hHeap)
     return FALSE;
 }
 
-PVOID kmalloc(HANDLE hHeap, int nSize)
-{
-    // if you wanna set new memory to zero, use HEAP_ZERO_MEMORY.
-    PVOID pRet = RtlAllocateHeap(hHeap, 0, nSize);
-
-    return pRet;
-}
-
-BOOLEAN kfree(HANDLE hHeap, PVOID pMemory)
-{
-    BOOLEAN bRet = RtlFreeHeap(hHeap, 0, pMemory);
-
-    return bRet;
-}
-
-
-BOOLEAN AppendString(WCHAR * pszInput, WCHAR * pszAppend)
+BOOLEAN AppendString(WCHAR *pszInput,
+		     WCHAR *pszAppend)
 {
     int i, nAppendIndex;
 
@@ -319,7 +303,8 @@ UINT GetStringLength(WCHAR * pszInput)
 }
 
 // Note: This function allocates memory for "us" variable.
-void FillUnicodeStringWithAnsi(OUT PUNICODE_STRING us, IN PCHAR as)
+void FillUnicodeStringWithAnsi(OUT PUNICODE_STRING us,
+			       IN PCHAR as)
 {
     ANSI_STRING ansi_string;
 

@@ -192,6 +192,21 @@ NTAPI NTSYSAPI CCHAR RtlFindLeastSignificantBit(IN ULONGLONG Set);
  */
 
 /*
+ * VOID RtlMoveMemory(IN VOID UNALIGNED *Destination,
+ *                    IN CONST VOID UNALIGNED *Source,
+ *                    IN SIZE_T Length);
+ */
+#define RtlMoveMemory(Destination, Source, Length)	\
+    memmove(Destination, Source, Length)
+
+/*
+ * VOID RtlZeroMemory(IN VOID UNALIGNED *Destination,
+ *                    IN SIZE_T Length)
+ */
+#define RtlZeroMemory(Destination, Length)	\
+    memset(Destination, 0, Length)
+
+/*
  * VOID RtlCopyMemory(IN VOID UNALIGNED *Destination,
  *                    IN CONST VOID UNALIGNED *Source,
  *                    IN SIZE_T Length);

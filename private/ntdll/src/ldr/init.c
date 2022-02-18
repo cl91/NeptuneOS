@@ -34,7 +34,7 @@ __thread seL4_CPtr KiSystemServiceCap;
 
 /* GLOBALS *******************************************************************/
 
-PCSTR RtlpDbgTraceModuleName = "UNKNOWN";
+PCSTR RtlpDbgTraceModuleName = "NTDLL";
 
 BOOLEAN LdrpShutdownInProgress;
 HANDLE LdrpShutdownThreadId;
@@ -469,7 +469,7 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 						    Context);
 		} _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
 		    DllStatus = FALSE;
-		    DPRINT1("WARNING: Exception 0x%x during LdrpCallInitRoutine(DLL_PROCESS_ATTACH) for %wZ\n",
+		    DPRINT1("WARNING: Exception 0x%lx during LdrpCallInitRoutine(DLL_PROCESS_ATTACH) for %wZ\n",
 			    _SEH2_GetExceptionCode(), &LdrEntry->BaseDllName);
 		}
 
@@ -660,6 +660,9 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     Peb->FastPebLock = &FastPebLock;
 
     /* Initialize NLS data */
+    Peb->AnsiCodePageData = (PUSHORT)LdrpCp1252NlsData;
+    Peb->OemCodePageData = (PUSHORT)LdrpCp1252NlsData;
+    Peb->UnicodeCaseTableData = (PUSHORT)LdrpUnicodeCaseTableData;
     RtlInitNlsTables(Peb->AnsiCodePageData,
 		     Peb->OemCodePageData,
 		     Peb->UnicodeCaseTableData, &LdrpNlsTable);
@@ -687,6 +690,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     PebLdr.Initialized = TRUE;
 
     /* Populate the Process Parameters structure */
+    DPRINT("Populating process parameters\n");
     PLOADER_SHARED_DATA LdrSharedData = (PLOADER_SHARED_DATA) LOADER_SHARED_DATA_CLIENT_ADDR;
     PCSTR ImagePath = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImagePath);
     PCSTR ImageName = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImageName);
@@ -1015,7 +1019,7 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
 		    LdrpCallInitRoutine(EntryPoint, LdrEntry->DllBase,
 					DLL_PROCESS_DETACH, (PVOID) 1);
 		} _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-		    DPRINT1("WARNING: Exception 0x%x during LdrpCallInitRoutine(DLL_PROCESS_DETACH) for %wZ\n",
+		    DPRINT1("WARNING: Exception 0x%lx during LdrpCallInitRoutine(DLL_PROCESS_DETACH) for %wZ\n",
 			    _SEH2_GetExceptionCode(), &LdrEntry->BaseDllName);
 		}
 	    }
@@ -1104,7 +1108,7 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
 						DLL_THREAD_DETACH, NULL);
 			}
 		    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-			DPRINT1("WARNING: Exception 0x%x during LdrpCallInitRoutine(DLL_THREAD_DETACH) for %wZ\n",
+			DPRINT1("WARNING: Exception 0x%lx during LdrpCallInitRoutine(DLL_THREAD_DETACH) for %wZ\n",
 				_SEH2_GetExceptionCode(),
 				&LdrEntry->BaseDllName);
 		    }

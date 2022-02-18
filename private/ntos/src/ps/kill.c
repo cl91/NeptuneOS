@@ -68,7 +68,22 @@ NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
                         IN HANDLE ThreadHandle,
                         OUT OPTIONAL ULONG *SuspendCount)
 {
-    UNIMPLEMENTED;
+    PTHREAD ThreadToResume = NULL;
+    if (ThreadHandle == NtCurrentThread()) {
+	return STATUS_INVALID_PARAMETER_1;
+    } else {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ThreadHandle,
+					  OBJECT_TYPE_THREAD, (POBJECT *) &ThreadToResume));
+    }
+    assert(ThreadToResume != NULL);
+    NTSTATUS Status = STATUS_INTERNAL_ERROR;
+    IF_ERR_GOTO(out, Status, PsResumeThread(ThreadToResume));
+    Status = STATUS_SUCCESS;
+out:
+    if (ThreadToResume != NULL) {
+	ObDereferenceObject(ThreadToResume);
+    }
+    return Status;
 }
 
 NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,

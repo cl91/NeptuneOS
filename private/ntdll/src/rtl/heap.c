@@ -1500,7 +1500,7 @@ FORCEINLINE VOID RtlpSetHeapParameters(IN PRTL_HEAP_PARAMETERS Parameters)
 
 static VOID RtlpNormalizeHeapParameters(IN OUT ULONG *Flags,
 					IN PRTL_HEAP_PARAMETERS Parameters)
-{    
+{
     /* Check validation flags */
     if (!(*Flags & HEAP_SKIP_VALIDATION_CHECKS) && (*Flags & ~HEAP_CREATE_VALID_MASK)) {
 	DPRINT1("Invalid flags 0x%08x, fixing...\n", *Flags);
@@ -1537,7 +1537,7 @@ static inline NTSTATUS LdrpCreateHeap(IN PVOID Heap,
 				      IN SIZE_T HeapCommit,
 				      IN HANDLE HeapLockSemaphore,
 				      IN PRTL_HEAP_PARAMETERS Parameters)
-{    
+{
     /* Set appropriate heap flags and heap parameters */
     RtlpNormalizeHeapParameters(&HeapFlags, Parameters);
 
@@ -1562,6 +1562,7 @@ NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
     /* Initialize the process heaps list protecting lock */
     RtlpInitializeCriticalSection(&RtlpProcessHeapListLock, InitInfo->ProcessHeapListLockSemaphore, 0);
 
+    DPRINT("Creating process heap\n");
     RET_ERR(LdrpCreateHeap((PVOID) InitInfo->ProcessHeapStart, ProcessHeapFlags,
 			   InitInfo->ProcessHeapReserve,
 			   InitInfo->ProcessHeapCommit,
@@ -1569,6 +1570,7 @@ NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
 			   ProcessHeapParams));
     Peb->ProcessHeap = (HANDLE) InitInfo->ProcessHeapStart;
 
+    DPRINT("Creating loader heap\n");
     RTL_HEAP_PARAMETERS LoaderHeapParams;
     RtlZeroMemory(&LoaderHeapParams, sizeof(LoaderHeapParams));
     ULONG LoaderHeapFlags = HEAP_GROWABLE | HEAP_CLASS_1;

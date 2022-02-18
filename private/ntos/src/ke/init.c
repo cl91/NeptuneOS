@@ -64,7 +64,7 @@ extern char _tbss_end[];
 extern char _tdata_start[];
 extern char _tdata_end[];
 
-ULONG KiProcessorCount;
+ULONG KeProcessorCount;
 ULONG KeX86TscFreq;
 
 /*
@@ -237,6 +237,32 @@ static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
     }
 }
 
+static void KiRecordPhysicalMemoryInfo(seL4_BootInfo *bootinfo)
+{
+    seL4_SlotRegion untyped = bootinfo->untyped;
+    MWORD LowestPage = MAXULONG_PTR;
+    MWORD HighestPage = 0;
+    MWORD NumPages = 0;
+
+    for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
+        seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
+	if (!desc->isDevice) {
+	    if (desc->sizeBits >= PAGE_LOG2SIZE) {
+		NumPages += 1 << (desc->sizeBits - PAGE_LOG2SIZE);
+	    }
+	    if (desc->paddr > HighestPage) {
+		HighestPage = desc->paddr;
+	    }
+	    if (desc->paddr < LowestPage) {
+		LowestPage = desc->paddr;
+	    }
+	}
+    }
+    MmLowestPhysicalPage = LowestPage;
+    MmHighestPhysicalPage = HighestPage;
+    MmNumberOfPhysicalPages = NumPages;
+}
+
 static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 {
     KiDumpBootInfoStruct(bootinfo);
@@ -249,9 +275,9 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
-    KiProcessorCount = bootinfo->numNodes;
-    if (KiProcessorCount == 0) {
-	KiProcessorCount = 1;
+    KeProcessorCount = bootinfo->numNodes;
+    if (KeProcessorCount == 0) {
+	KeProcessorCount = 1;
     }
 
 #ifdef CONFIG_DEBUG_BUILD
@@ -259,6 +285,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiDumpBootInfoAll(bootinfo);
 #endif
 
+    KiRecordPhysicalMemoryInfo(bootinfo);
     ExInitSystemPhase0(bootinfo);
     HalDisplayString(OS_BANNER "    ");
     BUGCHECK_IF_ERR(KiInitExecutiveServices());

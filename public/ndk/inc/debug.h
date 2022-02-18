@@ -73,25 +73,19 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 #if DBG
 
 /* These are always printed */
-#define DPRINT1(fmt, ...) do {						\
-        if (DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)) \
-            DbgPrint("(%s:%d) DbgPrint() failed!\n", __RELFILE__, __LINE__); \
-    } while (0)
+#define DPRINT1(fmt, ...)	DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
 
 /* These are printed only if NDEBUG is NOT defined */
 #ifndef NDEBUG
 
-#define DPRINT(fmt, ...) do {						\
-	if (DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)) \
-	    DbgPrint("(%s:%d) DbgPrint() failed!\n", __RELFILE__, __LINE__); \
-    } while (0)
+#define DPRINT(fmt, ...)	DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
 
 #else
 
 #if defined(_MSC_VER)
 #define DPRINT   __noop
 #else
-#define DPRINT(...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
+#define DPRINT(...)
 #endif
 
 #endif
@@ -133,18 +127,18 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 #define TRACE__(ch, ...)   __noop
 #define INFO__(ch, ...)    __noop
 #else
-#define DPRINT1(...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define DPRINT(...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
+#define DPRINT1(...)
+#define DPRINT(...)
 
-#define ERR_(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define WARN_(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define TRACE_(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define INFO_(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
+#define ERR_(ch, ...)
+#define WARN_(ch, ...)
+#define TRACE_(ch, ...)
+#define INFO_(ch, ...)
 
-#define ERR__(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define WARN__(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define TRACE__(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
-#define INFO__(ch, ...) do { if(0) { DbgPrint(__VA_ARGS__); } } while(0)
+#define ERR__(ch, ...)
+#define WARN__(ch, ...)
+#define TRACE__(ch, ...)
+#define INFO__(ch, ...)
 #endif /* _MSC_VER */
 
 #endif /* not DBG */

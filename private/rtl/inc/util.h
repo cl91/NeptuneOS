@@ -98,24 +98,11 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 
 #if defined(CONFIG_DEBUG_BUILD) || defined(DEBUG) || defined(DBG) || defined(_DEBUG)
 VOID KeDbgDumpIPCError(IN int Error);
-
-#ifndef DbgTrace
-#if defined(_NTOSKRNL_) || defined(_NTDLL_)
-extern PCSTR RtlpDbgTraceModuleName;
-#else
-extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;
-#endif	/* _NTOSKRNL_ */
-#define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RtlpDbgTraceModuleName, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
-#endif	/* DbgTrace */
-
 #else
 #define KeDbgDumpIPCError(x)
-
-#ifndef DbgTrace
-#define DbgTrace(...)
-#endif
-
 #endif	/* DEBUG */
+
+#include "dbgtrace.h"
 
 /*
  * This will generate a compile-time error if the function is marked
