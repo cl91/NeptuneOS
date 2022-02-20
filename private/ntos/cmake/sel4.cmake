@@ -25,11 +25,6 @@ set(KernelFPU FXSAVE CACHE STRING "")
 set(KernelHugePage OFF CACHE BOOL "")
 set(KernelIRQController "PIC" CACHE STRING "")
 
-include(${KERNEL_PATH}/configs/seL4Config.cmake)
-
-sel4_import_kernel()
-sel4_import_libsel4()
-
 # For small memory systems, reduce the root cnode size.
 # For large memory systems, increase the root cnode size.
 # The numbers below are for a moderate system (256MB for x32, 4G for x64).
@@ -50,3 +45,8 @@ elseif(KernelSel4Arch STREQUAL "x86_64")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${KernelSel4Arch}")
 endif()
+
+include(${KERNEL_PATH}/configs/seL4Config.cmake)
+
+sel4_import_kernel()
+sel4_import_libsel4()
