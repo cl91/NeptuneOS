@@ -49,6 +49,15 @@ Revision History:
 
 #include "mi.h"
 
+/* Change this to 0 to enable debug tracing */
+#if 0
+#undef DbgTrace
+#define DbgTrace(...)
+#define DbgPrint(...)
+#else
+#include <dbgtrace.h>
+#endif
+
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
@@ -100,9 +109,11 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
     *StartCap = 0;
 
     ULONG CNodeSize = 1ULL << CNode->Log2Size;
+    MWORD CNodeMask = CNodeSize - 1;
     /* This usually indicate a memory leak or resource leak.
      * We assert in debug build */
     if (CNode->TotalUsed >= CNodeSize) {
+	MmDbgDumpCNode(CNode);
 	assert(FALSE);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -116,7 +127,7 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
 Lookup:
     /* Skip the bits that are used */
     while (Index < MaxIndex) {
-	if (!GetBit(CNode->UsedMap, Index % CNodeSize)) {
+	if (!GetBit(CNode->UsedMap, Index & CNodeMask)) {
 	    break;
 	}
 	Index++;
@@ -124,6 +135,7 @@ Lookup:
     /* We don't have enough free slots. This usually indicate a memory
      * leak or resource leak. We assert in debug build. */
     if (Index >= MaxIndex) {
+	MmDbgDumpCNode(CNode);
 	assert(FALSE);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -131,14 +143,14 @@ Lookup:
      * free (the bit pointed by Index is already free) */
     for (ULONG i = 1; i < NumberRequested; i++) {
 	Index++;
-	if (GetBit(CNode->UsedMap, Index % CNodeSize)) {
+	if (GetBit(CNode->UsedMap, Index & CNodeMask)) {
 	    /* Not enough consecutive free bits here, go back */
 	    goto Lookup;
 	}
     }
     /* We found enough free slots. Index now points to the last bit
      * in the consecutive free slots. However, it might be the case
-     * that Index % CNodeSize has wrapped back to zero while the index
+     * that Index & CNodeMask has wrapped back to zero while the index
      * to the first bit (Index-NumberRequested+1) has not, and the
      * slots are not actually consecutive. Go back in this case. */
     if ((Index-NumberRequested+1) < CNodeSize && Index >= CNodeSize) {
@@ -147,15 +159,15 @@ Lookup:
     /* We found enough free slots that are actually consecutive.
      * Mark them as used and return them to the user. */
     CNode->TotalUsed += NumberRequested;
-    *StartCap = (Index-NumberRequested+1) % CNodeSize;
+    *StartCap = (Index-NumberRequested+1) & CNodeMask;
     for (ULONG i = Index-NumberRequested+1; i <= Index; i++) {
-	assert(!GetBit(CNode->UsedMap, i)); /* Bug if asserted. */
-	SetBit(CNode->UsedMap, i);
+	assert(!GetBit(CNode->UsedMap, i & CNodeMask)); /* Bug if asserted. */
+	SetBit(CNode->UsedMap, i & CNodeMask);
     }
     /* To speed up lookup, we advance the RecentFree to point to
      * the bit after Index, since the old RecentFree no longer
      * points to a free bit. */
-    CNode->RecentFree = (Index+1) % CNodeSize;
+    CNode->RecentFree = (Index+1) & CNodeMask;
 
     return STATUS_SUCCESS;
 }
