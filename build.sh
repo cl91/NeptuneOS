@@ -121,6 +121,7 @@ cmake ../../private/ntdll \
       -DSTRUCTURES_GEN_DIR="${PE_INC}" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -G Ninja
 ninja || build_failed
 cp ntdll.lib ../ndk_lib || build_failed
@@ -141,6 +142,7 @@ cmake ../../private/wdm \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DGEN_INC_DIR=${PWD}/../ntdll \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -G Ninja
 ninja || build_failed
 cp wdm.lib ../ddk_lib || build_failed
@@ -155,6 +157,7 @@ cmake ../../base \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -G Ninja
 ninja || build_failed
 
@@ -169,6 +172,7 @@ cmake ../../drivers \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DDDK_LIB_PATH=${PWD}/../ddk_lib \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -G Ninja
 ninja || build_failed
 

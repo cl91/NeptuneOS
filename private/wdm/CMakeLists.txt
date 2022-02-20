@@ -18,6 +18,7 @@ add_compile_options(
     -mno-sse
     -mno-mmx
     --target=${TRIPLE}
+    -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
     -D_NTSYSTEM_
 )
 set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG -DDBG -UNDEBUG" CACHE STRING "" FORCE)

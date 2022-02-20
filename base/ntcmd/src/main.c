@@ -34,7 +34,7 @@ HANDLE hKeyboard;
 HANDLE hHeap;
 HANDLE hKey;
 
-#define __NCLI_VER__ "0.12 x86"
+#define NTCMD_BANNER "Neptune OS Native Command Prompt [Version " VER_PRODUCTVERSION_STRING "]\n"
 
 WCHAR *helpstr[] = {
      L"\n"
@@ -350,8 +350,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     //
     // Show banner
     //
-    RtlCliDisplayString("Neptune OS Native Command Prompt [Version " __NCLI_VER__ "] ("
-			__DATE__ " " __TIME__ ")\n");
+    RtlCliDisplayString(NTCMD_BANNER);
     RtlCliDisplayString("Type \"help\".\n\n");
 
     //

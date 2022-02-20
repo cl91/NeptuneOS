@@ -1,7 +1,7 @@
 #include <smss.h>
 #include <ntddbeep.h>
 
-PCSTR SMSS_BANNER = "\nNeptune OS Session Manager\n";
+PCSTR SMSS_BANNER = "\nNeptune OS Session Manager Version [" VER_PRODUCTVERSION_STRING "]\n";
 
 NTSTATUS SmPrint(PCSTR Format, ...)
 {

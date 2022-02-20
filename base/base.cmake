@@ -11,6 +11,7 @@ add_compile_options(
     -mno-sse
     -mno-mmx
     --target=${TRIPLE}
+    -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
 )
 
 include_directories(

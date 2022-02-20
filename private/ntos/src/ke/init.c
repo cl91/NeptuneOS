@@ -271,7 +271,7 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
     DbgPrint("\n");
 }
 
-#define OS_BANNER	"Neptune OS v0.0.1 (" GIT_HEAD_SHA_SHORT ")"
+#define OS_BANNER	"Neptune OS [Version " VER_PRODUCTVERSION_STRING "]"
 
 void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiInitRootThread(bootinfo);
