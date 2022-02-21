@@ -714,6 +714,23 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     RET_ERR(LdrpLoadRootModule(Peb->ImageBaseAddress, ImagePath, ImageName, &LdrpImageEntry));
     Peb->ProcessParameters->ImagePathName = LdrpImageEntry->FullDllName;
 
+    /* For now we will hard-code the CurrentDirectory to \BootModules */
+    RtlInitUnicodeString(&Peb->ProcessParameters->CurrentDirectory.DosPath, L"C:\\");
+    UNICODE_STRING NtName;
+    RtlInitUnicodeString(&NtName, L"\\BootModules");
+    OBJECT_ATTRIBUTES ObjAttr;
+    InitializeObjectAttributes(&ObjAttr, &NtName,
+			       OBJ_CASE_INSENSITIVE | OBJ_INHERIT,
+			       NULL, NULL);
+    IO_STATUS_BLOCK IoStatusBlock;
+    RET_ERR(NtOpenFile(&Peb->ProcessParameters->CurrentDirectory.Handle,
+		       SYNCHRONIZE | FILE_TRAVERSE, &ObjAttr, &IoStatusBlock,
+		       FILE_SHARE_READ | FILE_SHARE_WRITE,
+		       FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT));
+    if (!NT_SUCCESS(IoStatusBlock.Status)) {
+	return IoStatusBlock.Status;
+    }
+
     /* Check whether server has injected dll modules that are not part of the
      * static dependencies of the image and load them. This is used for instance
      * when server loads a driver process and the driver image does not explicitly
@@ -888,30 +905,32 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
 	/* Initialize the Process */
 	Status = LdrpInitializeProcess(&InitInfo);
 
-	if (InitInfo.DriverProcess) {
-	    PLDR_DATA_TABLE_ENTRY WdmDllEntry = NULL;
-	    LdrpCheckForLoadedDll("wdm.dll", &WdmDllEntry);
-	    if (WdmDllEntry == NULL) {
-		/* This should never happen. Assert in debug build. */
-		assert(FALSE);
-		DbgTrace("Fatal error: driver process does not have wdm.dll loaded.\n");
-		Status = STATUS_ENTRYPOINT_NOT_FOUND;
+	if (NT_SUCCESS(Status)) {
+	    if (InitInfo.DriverProcess) {
+		PLDR_DATA_TABLE_ENTRY WdmDllEntry = NULL;
+		LdrpCheckForLoadedDll("wdm.dll", &WdmDllEntry);
+		if (WdmDllEntry == NULL) {
+		    /* This should never happen. Assert in debug build. */
+		    assert(FALSE);
+		    DbgTrace("Fatal error: driver process does not have wdm.dll loaded.\n");
+		    Status = STATUS_ENTRYPOINT_NOT_FOUND;
+		} else {
+		    EntryPoint = (PTHREAD_START_ROUTINE)WdmDllEntry->EntryPoint;
+		    ((PWDM_DLL_ENTRYPOINT)WdmDllEntry->EntryPoint)(IpcBuffer,
+								   InitInfo.ThreadInitInfo.WdmServiceCap,
+								   &InitInfo.DriverInitInfo,
+								   &Peb->ProcessParameters->CommandLine);
+		}
 	    } else {
-		EntryPoint = (PTHREAD_START_ROUTINE)WdmDllEntry->EntryPoint;
-		((PWDM_DLL_ENTRYPOINT)WdmDllEntry->EntryPoint)(IpcBuffer,
-							       InitInfo.ThreadInitInfo.WdmServiceCap,
-							       &InitInfo.DriverInitInfo,
-							       &Peb->ProcessParameters->CommandLine);
+		/* Call the supplied thread entry point if specifed. Otherwise call the image entry point */
+		PVOID Parameter;
+		KeGetEntryPointFromThreadContext(&InitInfo.ThreadInitInfo.InitialContext, &EntryPoint, &Parameter);
+		if (EntryPoint == 0) {
+		    EntryPoint = LdrpImageEntry->EntryPoint;
+		    Parameter = Peb;
+		}
+		(*EntryPoint)(Parameter);
 	    }
-	} else {
-	    /* Call the supplied thread entry point if specifed. Otherwise call the image entry point */
-	    PVOID Parameter;
-	    KeGetEntryPointFromThreadContext(&InitInfo.ThreadInitInfo.InitialContext, &EntryPoint, &Parameter);
-	    if (EntryPoint == 0) {
-		EntryPoint = LdrpImageEntry->EntryPoint;
-		Parameter = Peb;
-	    }
-	    (*EntryPoint)(Parameter);
 	}
     } else if (Peb->InheritedAddressSpace) {
 	/* Loader data is there... is this a fork() ? */

@@ -841,8 +841,7 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 
     /* Lock the PEB to get the current directory */
     RtlAcquirePebLock();
-    CurDirName =
-	&NtCurrentPeb()->ProcessParameters->CurrentDirectory.DosPath;
+    CurDirName = &NtCurrentPeb()->ProcessParameters->CurrentDirectory.DosPath;
 
     switch (*PathType) {
     case RtlPathTypeUncAbsolute:	/* \\foo   */
@@ -1275,9 +1274,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 	Status = RtlInitUnicodeStringEx(&PartNameString, *PartName);
 	if (NT_SUCCESS(Status)) {
 	    /* Set the partial name */
-	    *PartName =
-		&NewBuffer[LengthChars -
-			   (PartNameString.Length / sizeof(WCHAR))];
+	    *PartName = &NewBuffer[LengthChars - (PartNameString.Length / sizeof(WCHAR))];
 	} else {
 	    /* Fail */
 	    RtlFreeHeap(RtlGetProcessHeap(), 0, NewBuffer);
@@ -1296,8 +1293,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 	/* Check if the input path itself was relative */
 	if (InputPathType == RtlPathTypeRelative) {
 	    /* Get current directory */
-	    CurrentDirectory =
-		&(NtCurrentPeb()->ProcessParameters->CurrentDirectory);
+	    CurrentDirectory = &(NtCurrentPeb()->ProcessParameters->CurrentDirectory);
 	    if (CurrentDirectory->Handle) {
 		Status = RtlInitUnicodeStringEx(&FullPath, Buffer);
 		if (!NT_SUCCESS(Status)) {
@@ -1313,29 +1309,21 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 		}
 
 		/* File is in current directory */
-		if (RtlEqualUnicodeString
-		    (&FullPath, &CurrentDirectory->DosPath, TRUE)) {
+		if (RtlEqualUnicodeString(&FullPath, &CurrentDirectory->DosPath, TRUE)) {
 		    /* Make relative name string */
 		    RelativeName->RelativeName.Buffer =
-			(PWSTR) ((ULONG_PTR) NewBuffer + PrefixLength +
-				 FullPath.Length -
-				 PrefixCut * sizeof(WCHAR));
-		    RelativeName->RelativeName.Length =
-			(USHORT) (PathLength - FullPath.Length);
+			(PWSTR) ((ULONG_PTR) NewBuffer + PrefixLength + FullPath.Length - PrefixCut * sizeof(WCHAR));
+		    RelativeName->RelativeName.Length = (USHORT) (PathLength - FullPath.Length);
 		    /* If relative name starts with \, skip it */
-		    if (RelativeName->RelativeName.Buffer[0] ==
-			OBJ_NAME_PATH_SEPARATOR) {
+		    if (RelativeName->RelativeName.Buffer[0] == OBJ_NAME_PATH_SEPARATOR) {
 			RelativeName->RelativeName.Buffer++;
 			RelativeName->RelativeName.Length -= sizeof(WCHAR);
 		    }
-		    RelativeName->RelativeName.MaximumLength =
-			RelativeName->RelativeName.Length;
-		    DPRINT("RelativeName: %wZ\n",
-			   &(RelativeName->RelativeName));
+		    RelativeName->RelativeName.MaximumLength = RelativeName->RelativeName.Length;
+		    DPRINT("RelativeName: %wZ\n", &(RelativeName->RelativeName));
 
 		    if (!HaveRelative) {
-			RelativeName->ContainingDirectory =
-			    CurrentDirectory->Handle;
+			RelativeName->ContainingDirectory = CurrentDirectory->Handle;
 			return Status;
 		    }
 
@@ -1345,8 +1333,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 			InterlockedIncrement(&RtlpCurDirRef->RefCount);
 		    }
 
-		    RelativeName->ContainingDirectory =
-			CurrentDirectory->Handle;
+		    RelativeName->ContainingDirectory = CurrentDirectory->Handle;
 		}
 	    }
 	}

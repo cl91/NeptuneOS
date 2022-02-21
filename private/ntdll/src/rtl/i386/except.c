@@ -83,8 +83,7 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 	ASSERT(RegistrationFrame != NULL);
 
 	/* Find out where it ends */
-	RegistrationFrameEnd = (ULONG_PTR) RegistrationFrame +
-	    sizeof(EXCEPTION_REGISTRATION_RECORD);
+	RegistrationFrameEnd = (ULONG_PTR) RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
 	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR) RegistrationFrame < StackLow) ||

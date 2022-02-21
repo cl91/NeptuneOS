@@ -127,6 +127,19 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 {
     NTSTATUS Status;
 
+    /* We haven't implemented file systems yet so we hard-code the logic
+     * for directory files. */
+    if (OpenOptions & FILE_DIRECTORY_FILE) {
+	POBJECT_DIRECTORY Dir = NULL;
+	RET_ERR(ObReferenceObjectByName(ObjectAttributes.ObjectNameBuffer,
+					OBJECT_TYPE_DIRECTORY, NULL,
+					(POBJECT *)&Dir));
+	assert(Dir != NULL);
+	RET_ERR_EX(ObCreateHandle(Thread->Process, Dir, FileHandle),
+		   ObDereferenceObject(Dir));
+	return STATUS_SUCCESS;
+    }
+
     ASYNC_BEGIN(State, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
 	});
