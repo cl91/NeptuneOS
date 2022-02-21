@@ -449,14 +449,20 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 					  OBJECT_TYPE_PROCESS, (POBJECT *) &Process));
     }
     assert(Process != NULL);
+    PVOID ProcessInformationMapped = NULL;
+    NTSTATUS Status;
+    IF_ERR_GOTO(out, Status, MmMapUserBuffer(&Thread->Process->VSpace,
+					     (MWORD)ProcessInformation,
+					     ProcessInformationLength,
+					     &ProcessInformationMapped));
 
     /* Check the information class */
-    NTSTATUS Status = STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
     switch (ProcessInformationClass) {
     case ProcessBasicInformation:
     {
 	/* Basic process information */
-	PPROCESS_BASIC_INFORMATION ProcessBasicInfo = (PPROCESS_BASIC_INFORMATION)ProcessInformation;
+	PPROCESS_BASIC_INFORMATION ProcessBasicInfo = (PPROCESS_BASIC_INFORMATION)ProcessInformationMapped;
 	ProcessBasicInfo->ExitStatus = Process->ExitStatus;
 	ProcessBasicInfo->PebBaseAddress = (PPEB)Process->PebClientAddr;
 	ProcessBasicInfo->AffinityMask = Process->AffinityMask;
@@ -468,7 +474,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 #if 0
     case ProcessQuotaLimits:
 	/* Process quota limits */
-	PQUOTA_LIMITS QuotaLimits = (PQUOTA_LIMITS)ProcessInformation;
+	PQUOTA_LIMITS QuotaLimits = (PQUOTA_LIMITS)ProcessInformationMapped;
 	/* Set max/min working set sizes */
 	QuotaLimits->MaximumWorkingSetSize = Process->Vm.MaximumWorkingSetSize << PAGE_SHIFT;
 	QuotaLimits->MinimumWorkingSetSize = Process->Vm.MinimumWorkingSetSize << PAGE_SHIFT;
@@ -493,13 +499,13 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	PROCESS_VALUES ProcessValues;
 	/* Query IO counters from the process */
 	KeQueryValuesProcess(&Process->Pcb, &ProcessValues);
-	RtlCopyMemory(ProcessInformation, &ProcessValues.IoInfo,
+	RtlCopyMemory(ProcessInformationMapped, &ProcessValues.IoInfo,
 		      sizeof(IO_COUNTERS));
 	break;
 
     case ProcessTimes:
 	/* Timing */
-	PKERNEL_USER_TIMES ProcessTime = (PKERNEL_USER_TIMES)ProcessInformation;
+	PKERNEL_USER_TIMES ProcessTime = (PKERNEL_USER_TIMES)ProcessInformationMapped;
 	ULONG UserTime;
 	ULONG KernelTime = KeQueryRuntimeProcess(&Process->Pcb, &UserTime);
 	ProcessTime->CreateTime = Process->CreateTime;
@@ -510,25 +516,25 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 
     case ProcessDebugPort:
 	/* Return whether or not we have a process debug port */
-	*(PHANDLE) ProcessInformation = Process->DebugPort ? (HANDLE)-1 : NULL;
+	*(PHANDLE) ProcessInformationMapped = Process->DebugPort ? (HANDLE)-1 : NULL;
 	break;
 
     case ProcessHandleCount:
 	/* Count the number of handles this process has */
 	ULONG HandleCount = ObGetProcessHandleCount(Process);
-	*(PULONG) ProcessInformation = HandleCount;
+	*(PULONG) ProcessInformationMapped = HandleCount;
 	break;
 
     case ProcessSessionInformation:
 	/* Session ID for the process */
-	PPROCESS_SESSION_INFORMATION SessionInfo = (PPROCESS_SESSION_INFORMATION)ProcessInformation;
+	PPROCESS_SESSION_INFORMATION SessionInfo = (PPROCESS_SESSION_INFORMATION)ProcessInformationMapped;
 	/* Write back the Session ID */
 	SessionInfo->SessionId = PsGetProcessSessionId(Process);
 	break;
 
     case ProcessVmCounters:
 	/* Virtual Memory Statistics */
-	PVM_COUNTERS VmCounters = (PVM_COUNTERS)ProcessInformation;
+	PVM_COUNTERS VmCounters = (PVM_COUNTERS)ProcessInformationMapped;
 	/* Return data from PROCESS */
 	VmCounters->PeakVirtualSize = Process->PeakVirtualSize;
 	VmCounters->VirtualSize = Process->VirtualSize;
@@ -546,18 +552,18 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 
     case ProcessDefaultHardErrorMode:
 	/* Hard Error Processing Mode */
-	*(PULONG) ProcessInformation = Process->DefaultHardErrorProcessing;
+	*(PULONG) ProcessInformationMapped = Process->DefaultHardErrorProcessing;
 	break;
 
     case ProcessPriorityBoost:
 	/* Priority Boosting status */
-	*(PULONG) ProcessInformation = Process->Pcb.DisableBoost ? TRUE : FALSE;
+	*(PULONG) ProcessInformationMapped = Process->Pcb.DisableBoost ? TRUE : FALSE;
 	break;
 
     case ProcessDeviceMap:
 	/* DOS Device Map */
 	if (ProcessInformationLength == sizeof(PROCESS_DEVICEMAP_INFORMATION_EX)) {
-	    PPROCESS_DEVICEMAP_INFORMATION_EX DeviceMapEx = ProcessInformation;
+	    PPROCESS_DEVICEMAP_INFORMATION_EX DeviceMapEx = ProcessInformationMapped;
 	    ULONG Flags = DeviceMapEx->Flags;
 	    /* Only one flag is supported and it needs LUID mappings */
 	    if ((Flags & ~PROCESS_LUID_DOSDEVICES_ONLY) != 0 || !ObIsLUIDDeviceMapsEnabled()) {
@@ -576,12 +582,12 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	/* Set the return length */
 	Length = ProcessInformationLength;
 	/* Query the device map information */
-	Status = ObQueryDeviceMapInformation(Process, ProcessInformation, Flags);
+	Status = ObQueryDeviceMapInformation(Process, ProcessInformationMapped, Flags);
 	break;
 
     case ProcessPriorityClass:
 	/* Priority class */
-	PPROCESS_PRIORITY_CLASS PsPriorityClass = (PPROCESS_PRIORITY_CLASS)ProcessInformation;
+	PPROCESS_PRIORITY_CLASS PsPriorityClass = (PPROCESS_PRIORITY_CLASS)ProcessInformationMapped;
 	/* Return current priority class */
 	PsPriorityClass->PriorityClass = Process->PriorityClass;
 	PsPriorityClass->Foreground = FALSE;
@@ -598,10 +604,10 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	    /* Make sure it's large enough */
 	    if (Length <= ProcessInformationLength) {
 		/* Copy it */
-		RtlCopyMemory(ProcessInformation, ImageName, Length);
+		RtlCopyMemory(ProcessInformationMapped, ImageName, Length);
 		/* Update pointer. TODO: This must be converted to client pointer */
 		/* FIXME!!! */
-		//((POBJECT_NAME_INFORMATION)ProcessInformation)->Buffer = 0;
+		//((POBJECT_NAME_INFORMATION)ProcessInformationMapped)->Buffer = 0;
 	    } else {
 		/* Buffer too small */
 		Status = STATUS_INFO_LENGTH_MISMATCH;
@@ -613,23 +619,23 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 
     case ProcessDebugFlags:
 	/* Return the debug flag state */
-	*(PULONG) ProcessInformation = Process->NoDebugInherit ? 0 : 1;
+	*(PULONG) ProcessInformationMapped = Process->NoDebugInherit ? 0 : 1;
 	break;
 
     case ProcessBreakOnTermination:
 	/* Return the BreakOnTermination state */
-	*(PULONG) ProcessInformation = Process->BreakOnTermination;
+	*(PULONG) ProcessInformationMapped = Process->BreakOnTermination;
 	break;
 #endif
 
     case ProcessCookie:
 	/* Per-process security cookie */
-	*(PULONG) ProcessInformation = Process->Cookie;
+	*(PULONG) ProcessInformationMapped = Process->Cookie;
 	break;
 
 #if 0
     case ProcessImageInformation:
-	MmGetImageInformation((PSECTION_IMAGE_INFORMATION)ProcessInformation);
+	MmGetImageInformation((PSECTION_IMAGE_INFORMATION)ProcessInformationMapped);
 	break;
 
     case ProcessDebugObjectHandle:
@@ -637,7 +643,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	HANDLE DebugPort = 0;
 	Status = DbgkOpenProcessDebugPort(Process, &DebugPort);
 	/* Return debug port's handle */
-	*(PHANDLE) ProcessInformation = DebugPort;
+	*(PHANDLE) ProcessInformationMapped = DebugPort;
 	break;
 
     case ProcessHandleTracing:
@@ -649,12 +655,12 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 
     case ProcessLUIDDeviceMapsEnabled:
 	/* Query Ob */
-	*(PULONG) ProcessInformation = ObIsLUIDDeviceMapsEnabled();
+	*(PULONG) ProcessInformationMapped = ObIsLUIDDeviceMapsEnabled();
 	break;
 
     case ProcessWx86Information:
 	/* Return if the flag is set */
-	*(PULONG) ProcessInformation = (ULONG) Process->VdmAllowed;
+	*(PULONG) ProcessInformationMapped = (ULONG) Process->VdmAllowed;
 	break;
 
     case ProcessWow64Information:
@@ -665,14 +671,14 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 #else
 	Wow64 = 0;
 #endif
-	*(PULONG_PTR) ProcessInformation = Wow64;
+	*(PULONG_PTR) ProcessInformationMapped = Wow64;
 	break;
 
     case ProcessExecuteFlags:
 	/* Get the options */
 	ULONG ExecuteOptions = 0
 	Status = MmGetExecuteOptions(&ExecuteOptions);
-	*(PULONG) ProcessInformation = ExecuteOptions;
+	*(PULONG) ProcessInformationMapped = ExecuteOptions;
 	break;
 #endif
 
@@ -702,7 +708,13 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	Status = STATUS_NOT_IMPLEMENTED;
     }
 
-    ObDereferenceObject(Process);
+out:
+    if (ProcessInformationMapped != NULL) {
+	MmUnmapUserBuffer(ProcessInformationMapped);
+    }
+    if (ProcessHandle != NtCurrentProcess()) {
+	ObDereferenceObject(Process);
+    }
     if ((ReturnLength) && (Length)) {
 	*ReturnLength = Length;
     }

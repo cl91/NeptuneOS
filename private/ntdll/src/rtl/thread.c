@@ -81,7 +81,7 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
 				     PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
 	return Status;
-    DPRINT("Reserved stack at %p, size 0x%x\n", (PVOID)Stack, StackReserve);
+    DPRINT("Reserved stack at %p, size 0x%zx\n", (PVOID)Stack, StackReserve);
 
     /* Now set up some basic Initial TEB Parameters */
     InitialTeb->AllocatedStackBase = (PVOID) Stack;

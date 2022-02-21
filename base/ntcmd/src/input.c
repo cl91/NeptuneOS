@@ -30,11 +30,6 @@ Revision History:
 #include "precomp.h"
 
 //
-// FIXME: Temporary here
-//
-NTSTATUS RtlClipBackspace(VOID);
-
-//
 // Event to wait on for keyboard input
 //
 HANDLE hEvent;
@@ -42,7 +37,6 @@ HANDLE hEvent;
 //
 // Raw keyboard character buffer
 //
-//KEYBOARD_INPUT_DATA CurrentCharBuffer[20];
 ULONG CurrentChar = 0;
 
 //
@@ -246,17 +240,11 @@ PCHAR RtlCliGetLine(IN HANDLE hDriver)
 	    // Make sure we don't back-space beyond the limit
 	    //
 	    if (CurrentPosition) {
-		// This was a backspace. NtDisplayString does not handle this, so
-		// we unfortunately have to rely on a hack. First we erase the
-		// entire line.
+		// This was a backspace. As opposed to Windows/ReactOS, our
+		// NtDisplayString does handle this, so just call NtDisplayString
+		// to erase the previous character.
 		//
-		RtlCliPutChar('\r');
-
-		//
-		// Now we have to call in the display subsystem to redisplay the
-		// current text buffer. (NOT the current line input buffer!)
-		//
-		RtlClipBackspace();
+		RtlCliPutChar('\b');
 
 		//
 		// Now we do the only thing we're supposed to do, which is to

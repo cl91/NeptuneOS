@@ -1,3 +1,5 @@
+These are outdated! I'll update this later!
+
 Root task is ntsvc, "NT Executive Services"
 ntsvc manages global, privileged data structures, such as global object database
 ntsvc performs privileged data structure manipulations, such as process and thread creation and deletion

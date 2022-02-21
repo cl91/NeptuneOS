@@ -36,22 +36,23 @@ HANDLE hKey;
 
 #define NTCMD_BANNER "Neptune OS Native Command Prompt [Version " VER_PRODUCTVERSION_STRING "]\n"
 
-WCHAR *helpstr[] = {
-     L"\n"
-     L"cd X     - Change directory to X    md X     - Make directory X\n"
-     L"copy X Y - Copy file X to Y         poweroff - Power off PC\n"
-     L"dir      - Show directory contents  pwd      - Print working directory\n"
-     L"del X    - Delete file X            reboot   - Reboot PC\n"
-     L"devtree  - Dump device tree         shutdown - Shutdown PC\n"
-     L"\x0000",
-
-     L"exit     - Exit shell               sysinfo  - Dump system information\n"
-     L"lm       - List modules             vid      - Test screen output\n"
-     L"lp       - List processes           move X Y - Move file X to Y\n"
-     L"\n"
-     L"If a command is not in the list, it is treated as an executable name\n"
-     L"\n" L"\x0000"
-};
+PCSTR helpstr =
+    "\n"
+    "cd X     - Change directory to X    md X     - Make directory X\n"
+    "copy X Y - Copy file X to Y         poweroff - Power off PC\n"
+    "dir      - Show directory contents  pwd      - Print working directory\n"
+    "del X    - Delete file X            reboot   - Reboot PC\n"
+    "devtree  - Dump device tree         shutdown - Shutdown PC\n"
+    "exit     - Exit shell               sysinfo  - Dump system information\n"
+    "lm       - List modules             vid      - Test screen output\n"
+    "lp       - List processes           move X Y - Move file X to Y\n"
+    "\n"
+    "If a command is not in the list, it is treated as an executable name\n"
+    "\n"
+    "Note: we haven't implemented file system yet so pretty much none of the\n"
+    "commands above works right now. However, the keyboard stack is working.\n"
+    "This includes the keyboard class driver and the PS/2 port driver.\n"
+    "\n";
 
 /*++
  * @name RtlClipProcessMessage
@@ -101,8 +102,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	    RtlCliDisplayString("Arg %d: %s\n", i, xargv[i]);
 	}
     } else if (!_strnicmp(Command, "help", 4)) {
-	RtlCliDisplayString("%S", helpstr[0]);
-	RtlCliDisplayString("%S", helpstr[1]);
+	RtlCliDisplayString("%s", helpstr);
     } else if (!_strnicmp(Command, "lm", 2)) {
 	//
 	// List Modules (!lm)
@@ -376,7 +376,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 	//
 	// Make sure there's actually a command
 	//
-	if (*Command) {
+	if (Command && *Command) {
 	    //
 	    // Process the command and do a new line again.
 	    //

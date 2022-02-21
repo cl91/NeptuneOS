@@ -45,8 +45,20 @@ VOID HalDisplayStringEx(UCHAR Color, PCSTR String)
 	    HalpVgaCursorPositionHorizontal >>= 3;
 	    HalpVgaCursorPositionHorizontal <<= 3;
 	} else if (Chr == '\n') {
+	    if (HalpVgaCursorPositionHorizontal < VGA_MODE_HORIZONTAL) {
+		HalpVgaCursorPositionVertical++;
+	    }
 	    HalpVgaCursorPositionHorizontal = 0;
-	    HalpVgaCursorPositionVertical++;
+	} else if (Chr == '\b') {
+	    Video--;
+	    *Video-- = Color;
+	    *Video = ' ';
+	    if (HalpVgaCursorPositionHorizontal == 0) {
+		HalpVgaCursorPositionVertical--;
+		HalpVgaCursorPositionHorizontal = VGA_MODE_HORIZONTAL - 1;
+	    } else {
+		HalpVgaCursorPositionHorizontal--;
+	    }
 	}
 	String++;
 	if (HalpVgaCursorPositionHorizontal >= VGA_MODE_HORIZONTAL) {

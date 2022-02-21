@@ -704,11 +704,11 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     }
     assert(Process != NULL);
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
-    DbgTrace("Process %s VSpace cap 0x%zx base address %p zerobits %d "
+    DbgTrace("Process %s VSpace cap 0x%zx base address %p zerobits 0x%zx "
 	     "region size 0x%zx allocation type 0x%x protect 0x%x\n",
 	     Process->ImageFile ? Process->ImageFile->FileName : "",
-	     VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, ZeroBits,
-	     RegionSize ? *RegionSize : 0, AllocationType, Protect);
+	     VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)ZeroBits,
+	     RegionSize ? (MWORD)*RegionSize : 0, AllocationType, Protect);
 
     /* On 64-bit systems the ZeroBits parameter is interpreted as a bit mask if it is
      * greater than 32. Convert the bit mask to the number of bits in that case. */
@@ -826,7 +826,7 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
                              IN OUT SIZE_T *RegionSize,
                              IN ULONG FreeType)
 {
-    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
