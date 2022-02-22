@@ -23,7 +23,7 @@ do not follow the standard Windows driver communication protocol (ie. passing IR
 when you need to call another driver) and instead just passes pointers around and
 calls into other drivers directly. In Neptune OS unless it's a driver-minidriver pair
 we always run "kernel" drivers in their separate processes so it is not possible to
-do so.
+do that.
 
 The status of the project right now is that we have implemented enough NT primitives
 to load a basic keyboard driver stack, which includes the keyboard class driver
