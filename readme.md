@@ -1,7 +1,7 @@
 # Neptune OS: a WinNT personality of the seL4 microkernel
 
 Neptune OS is a Windows NT personality of the seL4 microkernel. It implements what
-Microsoft calls the "NT Executive", the upper layer of the Windows kernel NTOSKRNL,
+Microsoft calls the "NT Executive", the upper layer of the Windows kernel `NTOSKRNL`,
 as a user process under the seL4 microkernel. The NT Executive implements the so-called
 NT Native API, the native system call interface of Windows upon which the more familiar
 Win32 API is built. These are exposed to the user mode via stub functions in `NTDLL.DLL`
