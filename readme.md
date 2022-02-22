@@ -28,8 +28,14 @@ do so.
 The status of the project right now is that we have implemented enough NT primitives
 to load a basic keyboard driver stack, which includes the keyboard class driver
 `kbdclass.sys` and the PS/2 port driver `i8042prt.sys`, as well as a basic command
-prompt `ntcmd.exe`, taken from the ReactOS project. The entire system fits in a
-floppy and can be downloaded from LINK. You can also build it yourself, the procedure
+prompt `ntcmd.exe`, taken from the ReactOS project. Pretty much none of the shell
+command actually work but the keyboard stack is stable. The debug builds might be
+a bit slow because we generate too much debug logs. You can turn these off in the
+code (see `private/ntos/inc`). We also include a `beep.sys` driver which makes an
+annoying sound on the PC speaker. You will need to unmute to hear it (especially if
+you use `pulseaudio`). All drivers run in user space! The entire system fits in a
+floppy and can be downloaded from [Release v0.1.0001](https://github.com/cl91/NeptuneOS/releases/tag/v0.1.0001).
+You can also build it yourself, the procedure
 of which is described in the next section.
 
 ## Building
