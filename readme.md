@@ -4,11 +4,11 @@ Neptune OS is a Windows NT personality of the seL4 microkernel. It implements wh
 Microsoft calls the "NT Executive", the upper layer of the Windows kernel NTOSKRNL,
 as a user process under the seL4 microkernel. The NT Executive implements the so-called
 NT Native API, the native system call interface of Windows upon which the more familiar
-Win32 API is built. These are exposed to the user mode via stub functions in NTDLL.DLL
-(a somewhat redundant name if you ask me) with names such as NtCreateProcess. The NT
+Win32 API is built. These are exposed to the user mode via stub functions in `NTDLL.DLL`
+(a somewhat redundant name if you ask me) with names such as `NtCreateProcess`. The NT
 Executive is also responsible for the Windows kernel driver interface (known as the
-Windows driver model), which includes functions like IoConnectInterrupt and IoCallDriver.
-On Windows these are loaded into kernel mode and linked with the NTOSKRNL.EXE image.
+Windows driver model), which includes functions like `IoConnectInterrupt` and `IoCallDriver`.
+On Windows these are loaded into kernel mode and linked with the `NTOSKRNL.EXE` image.
 On Neptune OS, we run all the Windows kernel driver in user mode and they communicate
 with the NT Executive process via standard seL4 IPC primitives.
 
