@@ -158,7 +158,7 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			   Status = STATUS_NO_MEMORY;
 			   goto Fail;
 		       });
-    Thread->TlsBase = TlsBase - sizeof(ULONGLONG);
+    Thread->TlsBase = TlsBase + NTOS_TLS_AREA_SIZE - sizeof(ULONGLONG);
     *((PPVOID)(Thread->TlsBase)) = Thread->TlsBase;
 
     THREAD_CONTEXT Context;
