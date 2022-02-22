@@ -6,7 +6,7 @@ static NOTIFICATION KiTimerIrqNotification;
 static IPC_ENDPOINT KiTimerServiceNotification;
 
 static PCSTR KiWeekdayString[] = {
-    "Suny",
+    "Sun",
     "Mon",
     "Tue",
     "Wed",
