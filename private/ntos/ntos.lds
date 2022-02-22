@@ -35,6 +35,7 @@ SECTIONS
 	. = ALIGN(32) ;
 	_bss_start = . ;
 	*(.bss)
+	*(.stack)
 	_bss_end = . ;
     }
     .tdata :

@@ -35,7 +35,7 @@ _KiSystemStartup:
 1:
 	jmp  1b
 
-.section .bss
+.section .stack
 .global __stack_base
 .global __stack_top
 __stack_base:
