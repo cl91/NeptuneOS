@@ -7,7 +7,7 @@
  *
  * NOTES:
  *   The kbdclass driver sits above the keyboard port driver
- * (such as i8042prt) that implements the common interface for
+ * (such as i8042prt) and implements the common interface for
  * keyboard devices. The userspace can then request keyboard
  * data via the \Device\KeyboardClass0 (etc.) device objects.
  *

@@ -64,7 +64,7 @@ IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
 	.u = {
 	    .Port = {
 		.Length = 1,
-		.MinimumAddress = 0x64, /* Control port must be first */
+		.MinimumAddress = 0x64, /* Control port must be second */
 		.MaximumAddress = 0x64
 	    }
 	}
