@@ -12,18 +12,17 @@ On Windows these are loaded into kernel mode and linked with the `NTOSKRNL.EXE` 
 On Neptune OS, we run all the Windows kernel driver in user mode and they communicate
 with the NT Executive process via standard seL4 IPC primitives.
 
-The eventual goal of the Neptune OS project is to implement enough NT native API and
-Windows driver interface such that a ReactOS user land can be ported under Neptune OS,
-as well as most ReactOS kernel drivers. In theory we should be able to achieve binary
-compatibility with native Windows user executables provided that our implementation
-of the NT Native API is sufficiently faithful. We should also be able to achieve a
-high degree of source code compatibility with Windows kernel drivers. The main obstacle
-of achieving binary compatibility of kernel drivers is that many Windows kernel drivers
-do not follow the standard Windows driver communication protocol (ie. passing IRPs
-when you need to call another driver) and instead just passes pointers around and
-calls into other drivers directly. In Neptune OS unless it's a driver-minidriver pair
-we always run "kernel" drivers in their separate processes so it is not possible to
-do that.
+The eventual goal of the Neptune OS project is to implement enough NT semantics such
+that a ReactOS user land can be ported under Neptune OS, as well as most ReactOS kernel
+drivers. In theory we should be able to achieve binary compatibility with native Windows
+executables provided that our implementation of the NT Native API is sufficiently faithful.
+We should also be able to achieve a high degree of source code compatibility with Windows
+kernel drivers. The main obstacle of achieving binary compatibility of kernel drivers is
+that many Windows kernel drivers do not follow the standard Windows driver communication
+protocol (ie. passing IRPs when you need to call another driver) and instead just passes
+pointers around and calls into other drivers directly. In Neptune OS unless it's a
+driver-minidriver pair we always run "kernel" drivers in their separate processes so it
+is not possible to do that.
 
 The status of the project right now is that we have implemented enough NT primitives
 to load a basic keyboard driver stack, which includes the keyboard class driver
