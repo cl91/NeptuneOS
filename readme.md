@@ -19,8 +19,8 @@ executables provided that our implementation of the NT Native API is sufficientl
 We should also be able to achieve a high degree of source code compatibility with Windows
 kernel drivers. The main obstacle of achieving binary compatibility of kernel drivers is
 that many Windows kernel drivers do not follow the standard Windows driver communication
-protocol (ie. passing IRPs when you need to call another driver) and instead just passes
-pointers around and calls into other drivers directly. In Neptune OS unless it's a
+protocol (ie. passing IRPs when you need to call another driver) and instead just pass
+pointers around and call into other drivers directly. In Neptune OS unless it's a
 driver-minidriver pair we always run "kernel" drivers in their separate processes so it
 is not possible to do that.
 
