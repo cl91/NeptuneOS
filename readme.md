@@ -77,5 +77,5 @@ operating system which comprises of a microkernel that implements basic process 
 memory management as well as IPC, and on top of which a "NT Executive" is implemented.
 The NT Executive is
 ...write this later. This section is unfinished. TODO! We hope to demonstrate that with
-modern progress in microkernel design that it is indeed possible to realize the original
+modern progress in microkernel design it is indeed possible to realize the original
 NT design as an object oriented, message-passing based, client-server model microkernel OS.
