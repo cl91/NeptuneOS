@@ -136,6 +136,12 @@ NTSTATUS RtlCliListDrivers(VOID)
     //
     Status = NtQuerySystemInformation(SystemModuleInformation,
 				      ModuleInfo, Size, NULL);
+
+    if (!NT_SUCCESS(Status)) {
+        RtlCliDisplayString("**** FAILED TO QUERY SYSTEM INFORMATION");
+        return Status;
+    }
+
     //
     // Display Header
     //
