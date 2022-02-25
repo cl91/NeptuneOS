@@ -787,6 +787,10 @@ static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
 /* init.c */
 extern ULONG KeX86TscFreq;
 extern ULONG KeProcessorCount;
+extern ULONG KeProcessorArchitecture;
+extern ULONG KeProcessorLevel;
+extern ULONG KeProcessorRevision;
+extern ULONG KeFeatureBits;
 
 /* irq.c */
 NTSTATUS KeCreateIrqHandlerEx(IN PIRQ_HANDLER IrqHandler,
