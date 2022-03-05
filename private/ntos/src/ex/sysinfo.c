@@ -42,6 +42,28 @@ QSI_DEF(SystemBasicInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 1 - Processor Information */
+QSI_DEF(SystemProcessorInformation)
+{
+    PSYSTEM_PROCESSOR_INFORMATION Spi = (PSYSTEM_PROCESSOR_INFORMATION) Buffer;
+
+    *ReqSize = sizeof(SYSTEM_PROCESSOR_INFORMATION);
+
+    /* Check user buffer's size */
+    if (Size != sizeof(SYSTEM_PROCESSOR_INFORMATION)) {
+	return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    RtlZeroMemory(Spi, Size);
+    Spi->ProcessorArchitecture = KeProcessorArchitecture;
+    Spi->ProcessorLevel = KeProcessorLevel;
+    Spi->ProcessorRevision = KeProcessorRevision;
+    Spi->MaximumProcessors = 0;
+    Spi->ProcessorFeatureBits = KeFeatureBits;
+    return STATUS_SUCCESS;
+}
+
+
 /* Class 3 - Time Of Day Information */
 QSI_DEF(SystemTimeOfDayInformation)
 {
@@ -98,7 +120,7 @@ typedef
 static
  QSSI_CALLS CallQS[] = {
     SI_QX(SystemBasicInformation),
-    NULL,    /* SI_QX(SystemProcessorInformation) */
+    SI_QX(SystemProcessorInformation),
     NULL,    /* SI_QX(SystemPerformanceInformation) */
     SI_QX(SystemTimeOfDayInformation),
     NULL,    /* SI_QX(SystemPathInformation) */
