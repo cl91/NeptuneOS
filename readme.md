@@ -46,7 +46,7 @@ jinja2
 future
 ply
 ```
-You will also need `cmake`, `clang`, and `lld` as a basic toolchain. The build
+You will also need `cmake`, `clang`, `llvm` and `lld` as a basic toolchain. The build
 system will need compilers that can generate both ELF and PE targets. `clang` is a
 native cross compiler so this is not a problem. If you want to use `gcc` there is
 a `gcc` profile although it's not tested so it probably doesn't work. You will also
