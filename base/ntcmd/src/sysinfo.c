@@ -361,10 +361,15 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     //
     // Display CPU Information
     //
+    PCSTR ProcessorArchitecture = "Unknown";
+    if (ProcInfo.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
+	ProcessorArchitecture = "x86";
+    } else if (ProcInfo.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) {
+	ProcessorArchitecture = "amd64";
+    }
     RtlCliDisplayString("[CPU] %s Family %d Model %x Stepping %x. "
 			"Feature Bits: 0x%X NX: 0x%x\n",
-			(ProcInfo.ProcessorArchitecture ==
-			 PROCESSOR_ARCHITECTURE_INTEL) ? "x86" : "Unknown",
+			ProcessorArchitecture,
 			ProcInfo.ProcessorLevel,
 			ProcInfo.ProcessorRevision >> 8,
 			ProcInfo.ProcessorRevision & 0xFF,
