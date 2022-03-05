@@ -101,8 +101,7 @@ QSI_DEF(SystemTimeOfDayInformation)
 }
 
 /* Query/Set Calls Table */
-typedef
-    struct _QSSI_CALLS {
+typedef struct _QSSI_CALLS {
     NTSTATUS(*Query) (PVOID, ULONG, PULONG);
     NTSTATUS(*Set) (PVOID, ULONG);
 } QSSI_CALLS;
@@ -117,85 +116,84 @@ typedef
 #define SI_XS(n) {NULL,SSI_USE(n)}
 #define SI_XX(n) {NULL,NULL}
 
-static
- QSSI_CALLS CallQS[] = {
+static QSSI_CALLS CallQS[] = {
     SI_QX(SystemBasicInformation),
     SI_QX(SystemProcessorInformation),
-    NULL,    /* SI_QX(SystemPerformanceInformation) */
+    SI_XX(SystemPerformanceInformation),    /* SI_QX(SystemPerformanceInformation) */
     SI_QX(SystemTimeOfDayInformation),
-    NULL,    /* SI_QX(SystemPathInformation) */
-    NULL,    /* SI_QX(SystemProcessInformation) */
-    NULL,    /* SI_QX(SystemCallCountInformation) */
-    NULL,    /* SI_QX(SystemDeviceInformation) */
-    NULL,    /* SI_QX(SystemProcessorPerformanceInformation) */
-    NULL,    /* SI_QS(SystemFlagsInformation) */
-    NULL,    /* SI_QX(SystemCallTimeInformation) */	/* should be SI_XX */
-    NULL,    /* SI_QX(SystemModuleInformation) */
-    NULL,    /* SI_QX(SystemLocksInformation) */
-    NULL,    /* SI_QX(SystemStackTraceInformation) */	/* should be SI_XX */
-    NULL,    /* SI_QX(SystemPagedPoolInformation) */	/* should be SI_XX */
-    NULL,    /* SI_QX(SystemNonPagedPoolInformation) */	/* should be SI_XX */
-    NULL,    /* SI_QX(SystemHandleInformation) */
-    NULL,    /* SI_QX(SystemObjectInformation) */
-    NULL,    /* SI_QX(SystemPageFileInformation) */
-    NULL,    /* SI_QX(SystemVdmInstemulInformation) */
-    NULL,    /* SI_QX(SystemVdmBopInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QS(SystemFileCacheInformation) */
-    NULL,    /* SI_QX(SystemPoolTagInformation) */
-    NULL,    /* SI_QX(SystemInterruptInformation) */
-    NULL,    /* SI_QS(SystemDpcBehaviourInformation) */
-    NULL,    /* SI_QX(SystemFullMemoryInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_XS(SystemLoadGdiDriverInformation) */
-    NULL,    /* SI_XS(SystemUnloadGdiDriverInformation) */
-    NULL,    /* SI_QS(SystemTimeAdjustmentInformation) */
-    NULL,    /* SI_QX(SystemSummaryMemoryInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemNextEventIdInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemPerformanceTraceInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemCrashDumpInformation) */
-    NULL,    /* SI_QX(SystemExceptionInformation) */
-    NULL,    /* SI_QX(SystemCrashDumpStateInformation) */
-    NULL,    /* SI_QX(SystemKernelDebuggerInformation) */
-    NULL,    /* SI_QX(SystemContextSwitchInformation) */
-    NULL,    /* SI_QS(SystemRegistryQuotaInformation) */
-    NULL,    /* SI_XS(SystemExtendServiceTableInformation) */
-    NULL,    /* SI_XS(SystemPrioritySeperation) */
-    NULL,    /* SI_QX(SystemVerifierAddDriverInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemVerifierRemoveDriverInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemProcessorIdleInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemLegacyDriverInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QS(SystemCurrentTimeZoneInformation) */	/* it should be SI_QX */
-    NULL,    /* SI_QX(SystemLookasideInformation) */
-    NULL,    /* SI_XS(SystemTimeSlipNotification) */
-    NULL,    /* SI_XS(SystemSessionCreate) */
-    NULL,    /* SI_XS(SystemSessionDetach) */
-    NULL,    /* SI_QX(SystemSessionInformation) */	/* it should be SI_XX */
-    NULL,    /* SI_QX(SystemRangeStartInformation) */
-    NULL,    /* SI_QS(SystemVerifierInformation) */
-    NULL,    /* SI_XS(SystemVerifierThunkExtend) */
-    NULL,    /* SI_QX(SystemSessionProcessesInformation) */
-    NULL,    /* SI_XS(SystemLoadGdiDriverInSystemSpaceInformation) */
-    NULL,    /* SI_QX(SystemNumaProcessorMap) */
-    NULL,    /* SI_QX(SystemPrefetcherInformation) */
-    NULL,    /* SI_QX(SystemExtendedProcessInformation) */
-    NULL,    /* SI_QX(SystemRecommendedSharedDataAlignment) */
-    NULL,    /* SI_XX(SystemComPlusPackage) */
-    NULL,    /* SI_QX(SystemNumaAvailableMemory) */
-    NULL,    /* SI_XX(SystemProcessorPowerInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemEmulationBasicInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemEmulationProcessorInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_QX(SystemExtendedHandleInformation) */
-    NULL,    /* SI_XX(SystemLostDelayedWriteInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemBigPoolInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemSessionPoolTagInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemSessionMappedViewInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemHotpatchInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_QX(SystemObjectSecurityMode) */
-    NULL,    /* SI_XX(SystemWatchdogTimerHandler) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemWatchdogTimerInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_QX(SystemLogicalProcessorInformation) */
-    NULL,    /* SI_XX(SystemWow64SharedInformation) */	/* FIXME: not implemented */
-    NULL,    /* SI_XX(SystemRegisterFirmwareTableInformationHandler) */	/* FIXME: not implemented */
-    NULL,    /* SI_QX(SystemFirmwareTableInformation) */
+    SI_XX(SystemPathInformation),    /* SI_QX(SystemPathInformation) */
+    SI_XX(SystemProcessInformation),    /* SI_QX(SystemProcessInformation) */
+    SI_XX(SystemCallCountInformation),    /* SI_QX(SystemCallCountInformation) */
+    SI_XX(SystemDeviceInformation),    /* SI_QX(SystemDeviceInformation) */
+    SI_XX(SystemProcessorPerformanceInformation),    /* SI_QX(SystemProcessorPerformanceInformation) */
+    SI_XX(SystemFlagsInformation),    /* SI_QS(SystemFlagsInformation) */
+    SI_XX(SystemCallTimeInformation),    /* SI_QX(SystemCallTimeInformation) */	/* should be SI_XX */
+    SI_XX(SystemModuleInformation),    /* SI_QX(SystemModuleInformation) */
+    SI_XX(SystemLocksInformation),    /* SI_QX(SystemLocksInformation) */
+    SI_XX(SystemStackTraceInformation),    /* SI_QX(SystemStackTraceInformation) */	/* should be SI_XX */
+    SI_XX(SystemPagedPoolInformation),    /* SI_QX(SystemPagedPoolInformation) */	/* should be SI_XX */
+    SI_XX(SystemNonPagedPoolInformation),    /* SI_QX(SystemNonPagedPoolInformation) */	/* should be SI_XX */
+    SI_XX(SystemHandleInformation),    /* SI_QX(SystemHandleInformation) */
+    SI_XX(SystemObjectInformation),    /* SI_QX(SystemObjectInformation) */
+    SI_XX(SystemPageFileInformation),    /* SI_QX(SystemPageFileInformation) */
+    SI_XX(SystemVdmInstemulInformation),    /* SI_QX(SystemVdmInstemulInformation) */
+    SI_XX(SystemVdmBopInformation),    /* SI_QX(SystemVdmBopInformation) */	/* it should be SI_XX */
+    SI_XX(SystemFileCacheInformation),    /* SI_QS(SystemFileCacheInformation) */
+    SI_XX(SystemPoolTagInformation),    /* SI_QX(SystemPoolTagInformation) */
+    SI_XX(SystemInterruptInformation),    /* SI_QX(SystemInterruptInformation) */
+    SI_XX(SystemDpcBehaviourInformation),    /* SI_QS(SystemDpcBehaviourInformation) */
+    SI_XX(SystemFullMemoryInformation),    /* SI_QX(SystemFullMemoryInformation) */	/* it should be SI_XX */
+    SI_XX(SystemLoadGdiDriverInformation),    /* SI_XS(SystemLoadGdiDriverInformation) */
+    SI_XX(SystemUnloadGdiDriverInformation),    /* SI_XS(SystemUnloadGdiDriverInformation) */
+    SI_XX(SystemTimeAdjustmentInformation),    /* SI_QS(SystemTimeAdjustmentInformation) */
+    SI_XX(SystemSummaryMemoryInformation),    /* SI_QX(SystemSummaryMemoryInformation) */	/* it should be SI_XX */
+    SI_XX(SystemNextEventIdInformation),    /* SI_QX(SystemNextEventIdInformation) */	/* it should be SI_XX */
+    SI_XX(SystemPerformanceTraceInformation),    /* SI_QX(SystemPerformanceTraceInformation) */	/* it should be SI_XX */
+    SI_XX(SystemCrashDumpInformation),    /* SI_QX(SystemCrashDumpInformation) */
+    SI_XX(SystemExceptionInformation),    /* SI_QX(SystemExceptionInformation) */
+    SI_XX(SystemCrashDumpStateInformation),    /* SI_QX(SystemCrashDumpStateInformation) */
+    SI_XX(SystemKernelDebuggerInformation),    /* SI_QX(SystemKernelDebuggerInformation) */
+    SI_XX(SystemContextSwitchInformation),    /* SI_QX(SystemContextSwitchInformation) */
+    SI_XX(SystemRegistryQuotaInformation),    /* SI_QS(SystemRegistryQuotaInformation) */
+    SI_XX(SystemExtendServiceTableInformation),    /* SI_XS(SystemExtendServiceTableInformation) */
+    SI_XX(SystemPrioritySeperation),    /* SI_XS(SystemPrioritySeperation) */
+    SI_XX(SystemVerifierAddDriverInformation),    /* SI_QX(SystemVerifierAddDriverInformation) */	/* it should be SI_XX */
+    SI_XX(SystemVerifierRemoveDriverInformation),    /* SI_QX(SystemVerifierRemoveDriverInformation) */	/* it should be SI_XX */
+    SI_XX(SystemProcessorIdleInformation),    /* SI_QX(SystemProcessorIdleInformation) */	/* it should be SI_XX */
+    SI_XX(SystemLegacyDriverInformation),    /* SI_QX(SystemLegacyDriverInformation) */	/* it should be SI_XX */
+    SI_XX(SystemCurrentTimeZoneInformation),    /* SI_QS(SystemCurrentTimeZoneInformation) */	/* it should be SI_QX */
+    SI_XX(SystemLookasideInformation),    /* SI_QX(SystemLookasideInformation) */
+    SI_XX(SystemTimeSlipNotification),    /* SI_XS(SystemTimeSlipNotification) */
+    SI_XX(SystemSessionCreate),    /* SI_XS(SystemSessionCreate) */
+    SI_XX(SystemSessionDetach),    /* SI_XS(SystemSessionDetach) */
+    SI_XX(SystemSessionInformation),    /* SI_QX(SystemSessionInformation) */	/* it should be SI_XX */
+    SI_XX(SystemRangeStartInformation),    /* SI_QX(SystemRangeStartInformation) */
+    SI_XX(SystemVerifierInformation),    /* SI_QS(SystemVerifierInformation) */
+    SI_XX(SystemVerifierThunkExtend),    /* SI_XS(SystemVerifierThunkExtend) */
+    SI_XX(SystemSessionProcessesInformation),    /* SI_QX(SystemSessionProcessesInformation) */
+    SI_XX(SystemLoadGdiDriverInSystemSpaceInformation),    /* SI_XS(SystemLoadGdiDriverInSystemSpaceInformation) */
+    SI_XX(SystemNumaProcessorMap),    /* SI_QX(SystemNumaProcessorMap) */
+    SI_XX(SystemPrefetcherInformation),    /* SI_QX(SystemPrefetcherInformation) */
+    SI_XX(SystemExtendedProcessInformation),    /* SI_QX(SystemExtendedProcessInformation) */
+    SI_XX(SystemRecommendedSharedDataAlignment),    /* SI_QX(SystemRecommendedSharedDataAlignment) */
+    SI_XX(SystemComPlusPackage),    /* SI_XX(SystemComPlusPackage) */
+    SI_XX(SystemNumaAvailableMemory),    /* SI_QX(SystemNumaAvailableMemory) */
+    SI_XX(SystemProcessorPowerInformation),	/* FIXME: not implemented */
+    SI_XX(SystemEmulationBasicInformation),	/* FIXME: not implemented */
+    SI_XX(SystemEmulationProcessorInformation),	/* FIXME: not implemented */
+    SI_XX(SystemExtendedHandleInformation),    /* SI_QX(SystemExtendedHandleInformation) */
+    SI_XX(SystemLostDelayedWriteInformation),	/* FIXME: not implemented */
+    SI_XX(SystemBigPoolInformation),	/* FIXME: not implemented */
+    SI_XX(SystemSessionPoolTagInformation),	/* FIXME: not implemented */
+    SI_XX(SystemSessionMappedViewInformation),	/* FIXME: not implemented */
+    SI_XX(SystemHotpatchInformation),	/* FIXME: not implemented */
+    SI_XX(SystemObjectSecurityMode),    /* SI_QX(SystemObjectSecurityMode) */
+    SI_XX(SystemWatchdogTimerHandler),	/* FIXME: not implemented */
+    SI_XX(SystemWatchdogTimerInformation),	/* FIXME: not implemented */
+    SI_XX(SystemLogicalProcessorInformation),    /* SI_QX(SystemLogicalProcessorInformation) */
+    SI_XX(SystemWow64SharedInformation),	/* FIXME: not implemented */
+    SI_XX(SystemRegisterFirmwareTableInformationHandler),	/* FIXME: not implemented */
+    SI_XX(SystemFirmwareTableInformation),    /* SI_QX(SystemFirmwareTableInformation) */
 };
 
 C_ASSERT(SystemBasicInformation == 0);

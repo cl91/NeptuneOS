@@ -71,31 +71,6 @@ ULONG KeProcessorRevision;
 ULONG KeFeatureBits;
 ULONG KeX86TscFreq;
 
-#if __i386__
-#define __cpuid(__leaf, __eax, __ebx, __ecx, __edx) \
-    __asm("cpuid" : "=a"(__eax), "=b" (__ebx), "=c"(__ecx), "=d"(__edx) \
-                  : "0"(__leaf))
-
-#define __cpuid_count(__leaf, __count, __eax, __ebx, __ecx, __edx) \
-    __asm("cpuid" : "=a"(__eax), "=b" (__ebx), "=c"(__ecx), "=d"(__edx) \
-                  : "0"(__leaf), "2"(__count))
-#else
-/* x86-64 uses %rbx as the base register, so preserve it. */
-#define __cpuid(__leaf, __eax, __ebx, __ecx, __edx) \
-    __asm("  xchgq  %%rbx,%q1\n" \
-          "  cpuid\n" \
-          "  xchgq  %%rbx,%q1" \
-        : "=a"(__eax), "=r" (__ebx), "=c"(__ecx), "=d"(__edx) \
-        : "0"(__leaf))
-
-#define __cpuid_count(__leaf, __count, __eax, __ebx, __ecx, __edx) \
-    __asm("  xchgq  %%rbx,%q1\n" \
-          "  cpuid\n" \
-          "  xchgq  %%rbx,%q1" \
-        : "=a"(__eax), "=r" (__ebx), "=c"(__ecx), "=d"(__edx) \
-        : "0"(__leaf), "2"(__count))
-#endif
-
 /*
  * For the initial thread of the NTOS root task the base of the gs/fs
  * segment (on i386/amd64 respectively) is set to the end of the static
@@ -304,14 +279,20 @@ static void KiFillProcessorInformation()
 {
     /* Call cpuid to fill in other CPU info
      * mode 1 => get extended family id, model id, proc type, family id, model and stepping id */
-    unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
-    __cpuid(1, eax, ebx, ecx, edx);
+    unsigned int CPUInfo[4];
+    __cpuid(CPUInfo, 1);
+#ifdef _M_IX86
     KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;
-    KeProcessorLevel = (eax & 0x0F00);
+#elif defined(_M_AMD64)
+    KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
+#else
+#error "Unsupported architecture"
+#endif
+    KeProcessorLevel = (CPUInfo[0] & 0x0F00);
     KeProcessorLevel >>= 8;
-    KeProcessorRevision = (eax & 0x00F0);
+    KeProcessorRevision = (CPUInfo[0] & 0x00F0);
     KeProcessorRevision <<= 4;
-    KeProcessorRevision += (eax & 0x0F00);
+    KeProcessorRevision += (CPUInfo[0] & 0x0F00);
     KeProcessorRevision &= 0x0F0F;
     /* TODO: translate various cpuid information into Microsoft FeatureBits.
      * See reactos work on this part */
