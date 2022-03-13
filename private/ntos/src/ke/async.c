@@ -27,7 +27,7 @@ static inline VOID KiFreeWaitBlockChain(IN PTHREAD Thread)
     LoopOverList(WaitBlock, &Thread->RootWaitBlock.SubBlockList, KWAIT_BLOCK, SiblingLink) {
 	RemoveEntryList(&WaitBlock->DispatcherLink);
 	RemoveEntryList(&WaitBlock->SiblingLink);
-	ExFreePool(WaitBlock);
+	KiFreePool(WaitBlock);
     }
 }
 
@@ -253,7 +253,7 @@ BOOLEAN KeRemoveQueuedApc(IN PKAPC Apc)
 	return FALSE;
     }
     RemoveEntryList(&Apc->ThreadApcListEntry);
-    ExFreePool(Apc);
+    KiFreePool(Apc);
     return TRUE;
 }
 

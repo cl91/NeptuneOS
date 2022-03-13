@@ -137,6 +137,7 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_HAL_TAG, OnError)
 #define HalpAllocateArray(Var, Type, Size)	\
     HalpAllocateArrayEx(Var, Type, Size, {})
+#define HalpFreePool(Var) ExFreePoolWithTag(Var, NTOS_HAL_TAG)
 
 /* beep.c */
 NTSTATUS HalpInitBeep(VOID);

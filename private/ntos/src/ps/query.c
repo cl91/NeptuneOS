@@ -613,7 +613,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 		Status = STATUS_INFO_LENGTH_MISMATCH;
 	    }
 	    /* Free the image path */
-	    ExFreePool(ImageName);
+	    PspFreePool(ImageName);
 	}
 	break;
 

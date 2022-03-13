@@ -51,7 +51,7 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 	       {
 		   /* TODO: Invoke the delete routine to clean up the
 		    * partially created object. */
-		   ExFreePool(ObjectHeader);
+		   ObpFreePool(ObjectHeader);
 		   *Object = NULL;
 	       });
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);

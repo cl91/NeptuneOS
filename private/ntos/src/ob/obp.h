@@ -15,6 +15,8 @@
 #define ObpAllocatePool(Var, Type)				\
     ObpAllocatePoolEx(Var, Type, sizeof(Type), {})
 
+#define ObpFreePool(Var) ExFreePoolWithTag(Var, NTOS_OB_TAG)
+
 #define OBP_DIROBJ_HASH_BUCKETS 37
 typedef struct _OBJECT_DIRECTORY {
     LIST_ENTRY HashBuckets[OBP_DIROBJ_HASH_BUCKETS];

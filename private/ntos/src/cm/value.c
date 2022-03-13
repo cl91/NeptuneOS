@@ -32,7 +32,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
 	PVOID SavedData = ExAllocatePoolWithTag(DataSize, NTOS_CM_TAG);
 	if (SavedData == NULL) {
 	    if (NewValue) {
-		ExFreePool(Value);
+		CmpFreePool(Value);
 	    }
 	    return STATUS_NO_MEMORY;
 	}
@@ -46,7 +46,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     if (NewValue) {
 	Value->Node.Type = CM_NODE_VALUE;
 	RET_ERR_EX(CmpInsertNamedNode(Key, &Value->Node, ValueName, 0),
-		   ExFreePool(Value));
+		   CmpFreePool(Value));
     }
     return STATUS_SUCCESS;
 }

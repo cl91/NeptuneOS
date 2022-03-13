@@ -105,12 +105,15 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     extern CNODE MiNtosCNode;
     assert(Thread != NULL);
-    Thread->TreeNode.CSpace = &MiNtosCNode;
 
     PUNTYPED TcbUntyped = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
 
     IF_ERR_GOTO(Fail, Status, MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
+    Thread->TreeNode.CSpace = &MiNtosCNode;
+    assert(TcbUntyped->TreeNode.CSpace == &MiNtosCNode);
+    MmInitializeCapTreeNode(&Thread->TreeNode, CAP_TREE_NODE_TCB,
+			    0, &MiNtosCNode, NULL);
     IF_ERR_GOTO(Fail, Status, MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
 						 seL4_TCBBits, &Thread->TreeNode));
 
@@ -560,7 +563,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     return STATUS_SUCCESS;
 
  fail:
-    ExFreePool(DllPath);
+    PspFreePool(DllPath);
     if (DllSection != NULL) {
 	ObDereferenceObject(DllSection);
     }

@@ -109,7 +109,7 @@ VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
 
     /* TODO: Invoke the delete routine */
     RemoveEntryList(&ObjectHeader->ObjectLink);
-    ExFreePool(ObjectHeader);
+    ObpFreePool(ObjectHeader);
 }
 
 VOID ObDereferenceObject(IN POBJECT Object)

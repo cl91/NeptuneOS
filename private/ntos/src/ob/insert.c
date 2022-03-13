@@ -75,8 +75,8 @@ NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
     ParentPath[SepIndex+1] = '\0';
     PCSTR ObjectName = &AbsolutePath[SepIndex+1];
     RET_ERR_EX(ObInsertObjectByName(ParentPath, Object, ObjectName),
-	       ExFreePool(ParentPath));
-    ExFreePool(ParentPath);
+	       ObpFreePool(ParentPath));
+    ObpFreePool(ParentPath);
 
     return STATUS_SUCCESS;
 }

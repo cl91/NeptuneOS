@@ -10,6 +10,7 @@
 #define PspAllocateArrayEx(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size),			\
 		     NTOS_PS_TAG, OnError)
+#define PspFreePool(Var) ExFreePoolWithTag(Var, NTOS_PS_TAG)
 
 /* Unsafe: no validation. Must be called after image file is fully mapped
  * into server address space and validated to be a PE image. */

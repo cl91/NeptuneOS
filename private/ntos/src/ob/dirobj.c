@@ -115,7 +115,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 
     MWORD NameLength = strlen(Name);
     ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
-    ObpAllocatePoolEx(NameOwned, CHAR, NameLength+1, ExFreePool(DirectoryEntry));
+    ObpAllocatePoolEx(NameOwned, CHAR, NameLength+1, ObpFreePool(DirectoryEntry));
     InitializeListHead(&DirectoryEntry->ChainLink);
     memcpy(NameOwned, Name, NameLength+1);
     DirectoryEntry->Name = NameOwned;

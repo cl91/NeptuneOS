@@ -57,7 +57,9 @@ VOID vDbgPrint(PCSTR Format, va_list args);
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
 VOID MmDbgDumpCNode(IN PCNODE CNode);
-VOID MmDbgDumpUntypedInfo();
+VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Root,
+		      IN LONG Indentation);
+VOID MmDbgDumpUntypedForest();
 VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
 VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
 VOID MmDbgDumpSection(IN PSECTION Section);
@@ -67,7 +69,8 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
 #else
 #define MmDbgDumpCapTreeNode(x)
 #define MmDbgDumpCNode(x)
-#define MmDbgDumpUntypedInfo()
+#define MmDbgDumpCapTree(x, y)
+#define MmDbgDumpUntypedForest()
 #define MmDbgDumpPagingStructure(x)
 #define MmDbgDumpPagingStructureRecursively(x)
 #define MmDbgDumpSection(x)

@@ -307,13 +307,13 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 	    /* If the PENDING_IRP is the top-level one (ie. the original requestor),
 	     * free the original IO_PACKET */
 	    assert(PendingIrp->IoPacket != NULL);
-	    ExFreePool(PendingIrp->IoPacket);
+	    IopFreePool(PendingIrp->IoPacket);
 	} else {
 	    /* Otherwise, detach the PENDING_IRP from the IRP stack */
 	    PendingIrp->ForwardedFrom->ForwardedTo = NULL;
 	}
 	/* In either cases, we want to free the PENDING_IRP itself */
-	ExFreePool(PendingIrp);
+	IopFreePool(PendingIrp);
     }
 
     return STATUS_SUCCESS;
@@ -408,7 +408,7 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 		       assert(PendingIrp->ForwardedFrom != NULL);
 		       PendingIrp->ForwardedFrom->ForwardedTo = NULL;
 		       RemoveEntryList(&PendingIrp->Link);
-		       ExFreePool(PendingIrp);
+		       IopFreePool(PendingIrp);
 		   }
 	       });
 
@@ -440,14 +440,14 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(DriverObject);
     PPENDING_IRP PendingIrp = NULL;
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, DriverObject, &PendingIrp),
-	       ExFreePool(IoPacket));
+	       IopFreePool(IoPacket));
     assert(PendingIrp != NULL);
 
     /* Map the input/output buffers from source driver to target driver */
     RET_ERR_EX(IopMapIoBuffers(PendingIrp, FALSE),
 	       {
-		   ExFreePool(IoPacket);
-		   ExFreePool(PendingIrp);
+		   IopFreePool(IoPacket);
+		   IopFreePool(PendingIrp);
 	       });
 
     InsertTailList(&DriverObject->ForwardedIrpList, &PendingIrp->Link);
@@ -583,7 +583,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	    InsertTailList(&DriverObject->PendingIoPacketList, &IoPacket->IoPacketLink);
 	} else {
 	    /* Else, clean up this IO packet since we do not expect a reply */
-	    ExFreePool(IoPacket);
+	    IopFreePool(IoPacket);
 	}
 	IoPacket = NextIoPacket;
     }

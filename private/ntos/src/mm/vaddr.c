@@ -31,7 +31,7 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
     MiAllocatePool(RootPagingStructure, PAGING_STRUCTURE);
     PUNTYPED VSpaceUntyped = NULL;
     RET_ERR_EX(MmRequestUntyped(seL4_VSpaceBits, &VSpaceUntyped),
-	       ExFreePool(RootPagingStructure));
+	       MiFreePool(RootPagingStructure));
     MiInitializePagingStructure(RootPagingStructure, NULL, NULL, 0,
 				0, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
 				TRUE, MM_RIGHTS_RW);
@@ -39,7 +39,7 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
 				  seL4_VSpaceBits, &RootPagingStructure->TreeNode),
 	       {
 		   MmReleaseUntyped(VSpaceUntyped);
-		   ExFreePool(RootPagingStructure);
+		   MiFreePool(RootPagingStructure);
 	       });
     MiInitializeVSpace(Self, RootPagingStructure);
     return STATUS_SUCCESS;
@@ -536,14 +536,25 @@ static VOID MiUncommitVad(IN PMMVAD Vad)
     MWORD CurrentAddr = Vad->AvlNode.Key;
     MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
     while (CurrentAddr < EndAddr) {
+	/* Note here the Page can be any level of paging structure, ie.
+	 * page table, page directory, PDPT, or PML4 */
 	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
-	if ((Page != NULL) && MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	    MiUncommitPage(Page);
+	if (Page == NULL) {
+	    /* We never delete the root paging structure so this should never be NULL */
+	    assert(FALSE);
+	    return;
 	}
-	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
-	assert(CurrentAddr <= PageEndAddr);
-	CurrentAddr = PageEndAddr;
-	ExFreePool(Page);
+	if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	    MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	    DbgTrace("CurrentAddr %p PageEndAddr %p\n", (PVOID)CurrentAddr,
+		     (PVOID)PageEndAddr);
+	    assert(CurrentAddr <= PageEndAddr);
+	    CurrentAddr = PageEndAddr;
+	    MiUncommitPage(Page);
+	    MiFreePool(Page);
+	} else {
+	    CurrentAddr += PAGE_SIZE;
+	}
     }
 }
 
@@ -559,14 +570,21 @@ static BOOLEAN MiEnsureNoViewers(IN PMMVAD Vad)
     MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
     while (CurrentAddr < EndAddr) {
 	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
-	if ((Page != NULL) && MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	if (Page == NULL) {
+	    /* We never delete the root paging structure so this should never be NULL */
+	    assert(FALSE);
+	    return TRUE;
+	}
+	if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
 	    if (!IsListEmpty(&Page->TreeNode.ChildrenList)) {
 		return FALSE;
 	    }
+	    MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	    assert(CurrentAddr <= PageEndAddr);
+	    CurrentAddr = PageEndAddr;
+	} else {
+	    CurrentAddr += PAGE_SIZE;
 	}
-	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
-	assert(CurrentAddr <= PageEndAddr);
-	CurrentAddr = PageEndAddr;
     }
     return TRUE;
 }
@@ -591,7 +609,7 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 	assert(!IsListEmpty(&Vad->MirroredMemory.ViewerLink));
 	RemoveEntryList(&Vad->MirroredMemory.ViewerLink);
     }
-    ExFreePool(Vad);
+    MiFreePool(Vad);
 }
 
 /*

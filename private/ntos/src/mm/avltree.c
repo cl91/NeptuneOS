@@ -347,12 +347,14 @@ VOID MmAvlTreeAppendNode(IN PMM_AVL_TREE Tree,
     assert(Tree != NULL);
     assert(Node != NULL);
     assert(Increment != 0);
+    DbgTrace("append node %p to tree %p\n", Node, Tree);
     if (MiAvlTreeIsEmpty(Tree)) {
 	Node->Key = Increment;
 	MiAvlTreeInsertNode(Tree, NULL, Node);
     } else {
 	/* Find the last node in the tree */
 	PMM_AVL_NODE Last = MiAvlGetLastNode(Tree);
+	DbgTrace("got last node %p key 0x%zx\n", Last, Last->Key);
 	assert(Last != NULL);
 	Node->Key = Last->Key + Increment;
 	if (Node->Key < Last->Key) {

@@ -9,6 +9,7 @@
 #define KiAllocatePool(Var, Type)	KiAllocatePoolEx(Var, Type, {})
 #define KiAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_KE_TAG, OnError)
+#define KiFreePool(Var) ExFreePoolWithTag(Var, NTOS_KE_TAG)
 
 typedef ULONG (*KI_DBG_PRINTER)(PCSTR Fmt, ...);
 

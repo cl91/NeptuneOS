@@ -83,4 +83,5 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
 			  IN LONG NumPages);
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
 			    IN ULONG Tag);
-VOID ExFreePool(IN PCVOID Ptr);
+VOID ExFreePoolWithTag(IN PCVOID Ptr,
+		       IN ULONG Tag);

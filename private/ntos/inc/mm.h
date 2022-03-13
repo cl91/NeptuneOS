@@ -143,7 +143,12 @@ typedef enum _CAP_TREE_NODE_TYPE {
     CAP_TREE_NODE_IRQ_HANDLER
 } CAP_TREE_NODE_TYPE;
 
-/* Describes a node in the Capability Derivation Tree */
+/*
+ * Node in the Capability Derivation Tree
+ *
+ * IMPORTANT: This must be the first member for all objects in the
+ * CAP_TREE_NODE_TYPE.
+ */
 typedef struct _CAP_TREE_NODE {
     CAP_TREE_NODE_TYPE Type;
     MWORD Cap;
@@ -157,6 +162,8 @@ static inline VOID MmCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
 					  IN PCAP_TREE_NODE Parent)
 {
     assert(Self != NULL);
+    assert(Self != Parent);
+    assert(Self->Parent == NULL);
     Self->Parent = Parent;
     if (Parent != NULL) {
 	InsertTailList(&Parent->ChildrenList, &Self->SiblingLink);
@@ -165,6 +172,9 @@ static inline VOID MmCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
 
 static inline VOID MmCapTreeNodeRemoveFromParent(IN PCAP_TREE_NODE Node)
 {
+    assert(Node->SiblingLink.Flink != NULL);
+    assert(Node->SiblingLink.Blink != NULL);
+    assert(!IsListEmpty(&Node->SiblingLink));
     RemoveEntryList(&Node->SiblingLink);
     Node->Parent = NULL;
 }
@@ -397,11 +407,11 @@ typedef seL4_CapRights_t PAGING_RIGHTS;
 typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
 
 typedef struct _PAGING_STRUCTURE {
-    CAP_TREE_NODE TreeNode;
-    MM_AVL_NODE AvlNode;
-    struct _PAGING_STRUCTURE *SuperStructure;
-    MM_AVL_TREE SubStructureTree;
-    MWORD VSpaceCap;
+    CAP_TREE_NODE TreeNode; /* Cap tree node of the page cap. Must be first member. */
+    MM_AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree, Key is virt addr */
+    struct _PAGING_STRUCTURE *SuperStructure; /* Parent structure, so for page it's page table, etc. */
+    MM_AVL_TREE SubStructureTree; /* Substructure tree, so for page table it's pages in it, etc */
+    MWORD VSpaceCap; /* Cap of the VSpace that this paging structure is mapped into */
     PAGING_STRUCTURE_TYPE Type;
     BOOLEAN Mapped;
     PAGING_RIGHTS Rights;

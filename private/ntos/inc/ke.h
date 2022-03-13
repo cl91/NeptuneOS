@@ -34,7 +34,7 @@ typedef enum _THREAD_PRIORITY {
  * IPC Endpoint
  */
 typedef struct _IPC_ENDPOINT {
-    CAP_TREE_NODE TreeNode;
+    CAP_TREE_NODE TreeNode;	/* Must be first member */
     MWORD Badge;
 } IPC_ENDPOINT, *PIPC_ENDPOINT;
 
@@ -56,7 +56,7 @@ static inline VOID KeInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
  * Notification Object
  */
 typedef struct _NOTIFICATION {
-    CAP_TREE_NODE TreeNode;
+    CAP_TREE_NODE TreeNode;	/* Must be first member */
     MWORD Badge;
 } NOTIFICATION, *PNOTIFICATION;
 
@@ -120,7 +120,7 @@ static inline VOID KeSignalNotification(IN PNOTIFICATION Notification)
  * X86 IO Port
  */
 typedef struct _X86_IOPORT {
-    CAP_TREE_NODE TreeNode; /* Capability with which to invoke seL4_X86_IOPort_* */
+    CAP_TREE_NODE TreeNode; /* Must be first member */
     USHORT PortNum;	    /* Port number */
     LIST_ENTRY Link;	    /* Links all enabled ports of a process */
 } X86_IOPORT, *PX86_IOPORT;
@@ -129,7 +129,7 @@ typedef struct _X86_IOPORT {
  * IRQ Handler
  */
 typedef struct _IRQ_HANDLER {
-    CAP_TREE_NODE TreeNode;
+    CAP_TREE_NODE TreeNode;	/* Must be first member */
     MWORD Irq;
 } IRQ_HANDLER, *PIRQ_HANDLER;
 
@@ -476,7 +476,7 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
     _ASYNC_RESTORE_LOCALS(state, locals);
 
 /* bugcheck.c */
-VOID KeBugCheckMsg(IN PCSTR Format, ...);
+VOID KeBugCheckMsg(IN PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
 static inline VOID KiCheckAsyncStack(IN ASYNC_STATE State)
 {

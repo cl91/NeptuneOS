@@ -197,7 +197,7 @@ static VOID MiPagingInsertSubStructure(IN PPAGING_STRUCTURE Self,
 /*
  * Remove the given paging structure from its parent structure (if available).
  */
-static VOID MiPagingRemoveFromParent(IN PPAGING_STRUCTURE Self)
+static inline VOID MiPagingRemoveFromParentStructure(IN PPAGING_STRUCTURE Self)
 {
     assert(Self != NULL);
     PPAGING_STRUCTURE Parent = Self->SuperStructure;
@@ -249,7 +249,7 @@ static VOID MiFreePagingStructure(PPAGING_STRUCTURE Page)
 	MiAvlTreeRemoveNode(&Page->SuperStructure->SubStructureTree, &Page->AvlNode);
 	Page->SuperStructure = NULL;
     }
-    ExFreePool(Page);
+    MiFreePool(Page);
 }
 
 static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
@@ -366,7 +366,7 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
 
     /* Remove the paging structure from its parent paging structure (if available) */
     Page->Mapped = FALSE;
-    MiPagingRemoveFromParent(Page);
+    MiPagingRemoveFromParentStructure(Page);
 
     DbgTrace("Successfully unmapped cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 	     Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
@@ -376,18 +376,22 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
 /*
  * Unmap the page and revoke its page cap. Detach the cap tree node of
  * the page object from the cap derivation tree. Note that this does not
- * unlink the children of this cap tree node from their parents. The caller
- * can still access all the derived objects of this cap tree node via the
- * cap tree node's ChildrenList.
+ * unlink the cap tree children of this page cap. The caller can still
+ * access all the derived page caps of this page cap via the cap tree
+ * node's ChildrenList.
  */
 VOID MiUncommitPage(IN PPAGING_STRUCTURE Page)
 {
     assert(Page != NULL);
     assert(MiPagingTypeIsPageOrLargePage(Page->Type));
+    /* Leaf-level paging structure should not have substructures */
+    assert(Page->SubStructureTree.BalancedRoot == NULL);
+    /* We want to make sure that the page isn't being mapped elsewhere */
+    assert(IsListEmpty(&Page->TreeNode.ChildrenList));
     /* This should never fail. On debug build we assert if it did. */
     NTSTATUS Status = MiUnmapPagingStructure(Page);
     assert(NT_SUCCESS(Status));
-    /* Revoke the capability cap */
+    /* Delete the capability cap */
     Status = MmCapTreeDeleteNode(&Page->TreeNode);
     assert(NT_SUCCESS(Status));
     /* Detach from the cap derivation tree */
@@ -548,6 +552,8 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
 
     /* Unmap the page and modify the paging structure to have the new parameters */
     RET_ERR_EX(MiUnmapPagingStructure(Page), MiFreePagingStructure(Page));
+    /* This is necessary because MmCapTreeNodeSetParent requires empty parent */
+    MmCapTreeNodeRemoveFromParent(&Page->TreeNode);
     MiInitializePagingStructure(Page, &Untyped->TreeNode, ParentPaging, VSpaceCap,
 				Page->TreeNode.Cap, VirtAddr, Type, FALSE, Rights);
 

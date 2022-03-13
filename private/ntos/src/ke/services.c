@@ -58,7 +58,7 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
 					 ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
 					 IPCBadge),
 	       {
-		   ExFreePool(ServiceEndpoint);
+		   KiFreePool(ServiceEndpoint);
 		   MmDeallocateCap(&MiNtosCNode, ReplyCap);
 		   ReplyEndpoint->TreeNode.Cap = 0;
 	       });

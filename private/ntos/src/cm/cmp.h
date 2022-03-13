@@ -15,6 +15,8 @@
 #define CmpAllocateObject(Var, Type)				\
     CmpAllocatePoolEx(Var, Type, sizeof(Type), {})
 
+#define CmpFreePool(Var) ExFreePoolWithTag(Var, NTOS_CM_TAG)
+
 typedef enum _CM_NODE_TYPE {
     CM_NODE_KEY,
     CM_NODE_VALUE

@@ -52,7 +52,9 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 	return SEL4_ERROR(Error);
     }
     TreeNode->Cap = ObjCap;
-    MmCapTreeNodeSetParent(TreeNode, &Untyped->TreeNode);
+    if (TreeNode->Parent == NULL) {
+	MmCapTreeNodeSetParent(TreeNode, &Untyped->TreeNode);
+    }
     return STATUS_SUCCESS;
 }
 
@@ -167,11 +169,11 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     for (LONG i = 0; i < NumSplits; i++) {
 	MWORD LeftCap, RightCap;
 	MiAllocatePool(LeftChild, UNTYPED);
-	MiAllocatePoolEx(RightChild, UNTYPED, ExFreePool(LeftChild));
+	MiAllocatePoolEx(RightChild, UNTYPED, MiFreePool(LeftChild));
 	RET_ERR_EX(MiSplitUntyped(Untyped, LeftChild, RightChild),
 		   {
-		       ExFreePool(LeftChild);
-		       ExFreePool(RightChild);
+		       MiFreePool(LeftChild);
+		       MiFreePool(RightChild);
 		   });
 	MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChild);
 	Untyped = LeftChild;
@@ -230,11 +232,11 @@ NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
     for (LONG i = NumSplits-1; i >= 0; i--) {
 	if (!MiCapTreeNodeHasChildren(&(*IoUntyped)->TreeNode)) {
 	    MiAllocatePool(Child0, UNTYPED);
-	    MiAllocatePoolEx(Child1, UNTYPED, ExFreePool(Child0));
+	    MiAllocatePoolEx(Child1, UNTYPED, MiFreePool(Child0));
 	    RET_ERR_EX(MiSplitUntyped(*IoUntyped, Child0, Child1),
 		       {
-			   ExFreePool(Child0);
-			   ExFreePool(Child1);
+			   MiFreePool(Child0);
+			   MiFreePool(Child1);
 		       });
 	}
 	assert(MiCapTreeNodeChildrenCount(&(*IoUntyped)->TreeNode) == 2);
@@ -285,10 +287,16 @@ NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped)
 }
 
 #ifdef CONFIG_DEBUG_BUILD
-VOID MmDbgDumpUntypedInfo()
+static VOID MiDbgDumpUntyped(IN PMM_AVL_NODE Node)
+{
+    PUNTYPED Untyped = MM_AVL_NODE_TO_UNTYPED(Node);
+    MmDbgDumpCapTree(&Untyped->TreeNode, 4);
+}
+
+VOID MmDbgDumpUntypedForest()
 {
     PLIST_ENTRY SmallUntypedList = &MiPhyMemDescriptor.SmallUntypedList;
-    DbgPrint("Dumping untyped information:\n");
+    DbgPrint("Dumping all untyped caps:\n");
     DbgPrint("  Small free untyped:\n");
     LoopOverList(Untyped, SmallUntypedList, UNTYPED, FreeListEntry) {
 	DbgPrint("    cap = %zd  log2(size) = %d\n",
@@ -306,8 +314,9 @@ VOID MmDbgDumpUntypedInfo()
 	DbgPrint("    cap = %zd  log2(size) = %d\n",
 		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
-    DbgPrint("  Root untyped forest linearly:\n");
-    MmAvlDumpTreeLinear(&MiPhyMemDescriptor.RootUntypedForest);
+    DbgPrint("  Root untyped forest:\n");
+    MmAvlVisitTreeLinear(&MiPhyMemDescriptor.RootUntypedForest,
+			 MiDbgDumpUntyped);
     DbgPrint("  Root untyped forest as an AVL tree ordered by physical address:\n");
     MmAvlDumpTree(&MiPhyMemDescriptor.RootUntypedForest);
 }

@@ -169,7 +169,7 @@ parse:
 	 * reparse, we need to free it since we are overwriting the Path pointer
 	 * below with the ptr to the new string (allocated by the parse routine). */
 	if (Locals.Reparsed) {
-	    ExFreePool(Locals.Path);
+	    ObpFreePool(Locals.Path);
 	}
 	/* The RemainingPath is now the new string to be parsed. It is allocated
 	 * by the parse routine. We must free it ourselves later. */
@@ -242,7 +242,7 @@ open:
 	/* If the saved path has been previously set to a new reparse string,
 	 * we should free it since we will no longer refer to the old saved path */
 	if (Locals.Reparsed) {
-	    ExFreePool(Locals.Path);
+	    ObpFreePool(Locals.Path);
 	}
 	Locals.Path = RemainingPath;
 	/* If we have an absolute path, reparse should start from the global root directory */
@@ -291,7 +291,7 @@ open:
 
 out:
     if (Locals.Reparsed) {
-	ExFreePool(Locals.Path);
+	ObpFreePool(Locals.Path);
     }
     if (Locals.UserRootDirectory != NULL) {
 	ObDereferenceObject(Locals.UserRootDirectory);

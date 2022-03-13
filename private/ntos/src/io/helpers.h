@@ -60,7 +60,7 @@
     if (NT_SUCCESS(Status)) {						\
 	IopQueueIoPacket(Locals.PendingIrp, Thread);			\
     } else {								\
-	ExFreePool(Locals.PendingIrp);					\
+	IopFreePool(Locals.PendingIrp);					\
 	Locals.PendingIrp = NULL;					\
 	goto out;							\
     }									\
@@ -94,7 +94,7 @@
 	ObDereferenceObject(Locals.EventObject);			\
     }									\
     if (Locals.PendingIrp == NULL & Locals.IoPacket != NULL) {		\
-	ExFreePool(Locals.IoPacket);					\
+	IopFreePool(Locals.IoPacket);					\
     }									\
     /* This will free the pending IRP and detach the pending irp	\
      * from the thread. At this point the IRP has already been		\

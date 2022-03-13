@@ -71,12 +71,18 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 	Type = "CNODE";
     } else if (Node->Type == CAP_TREE_NODE_UNTYPED) {
 	Type = "UNTYPED";
+    } else if (Node->Type == CAP_TREE_NODE_TCB) {
+	Type = "TCB";
     } else if (Node->Type == CAP_TREE_NODE_PAGING_STRUCTURE) {
 	Type = "PAGING";
     } else if (Node->Type == CAP_TREE_NODE_ENDPOINT) {
 	Type = "ENDPOINT";
+    } else if (Node->Type == CAP_TREE_NODE_NOTIFICATION) {
+	Type = "NOTIFICATION";
     } else if (Node->Type == CAP_TREE_NODE_X86_IOPORT) {
 	Type = "X86_IOPORT";
+    } else if (Node->Type == CAP_TREE_NODE_IRQ_HANDLER) {
+	Type = "IRQ_HANDLER";
     }
     PCSTR CapType = RtlDbgCapTypeToStr(seL4_DebugCapIdentify(Node->Cap));
     if (Node->CSpace != &MiNtosCNode) {
@@ -96,6 +102,22 @@ VOID MmDbgDumpCNode(IN PCNODE CNode)
 	DbgPrint("  %p", (PVOID)CNode->UsedMap[i]);
     }
     DbgPrint("\n");
+}
+
+#define MI_DBG_CAP_TREE_INDENTATION	2
+
+VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Node,
+		      IN LONG Indentation)
+{
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("Node %p, CL.FL %p CL.BL %p SL.FL %p SL.BL %p   ",
+	     Node, Node->ChildrenList.Flink, Node->ChildrenList.Blink,
+	     Node->SiblingLink.Flink, Node->SiblingLink.Blink);
+    MmDbgDumpCapTreeNode(Node);
+    DbgPrint("\n");
+    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
+	MmDbgDumpCapTree(Child, Indentation + MI_DBG_CAP_TREE_INDENTATION);
+    }
 }
 #endif
 
@@ -205,13 +227,13 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
     MiAllocateArray(UsedMap, MWORD, (MWORD)((1ULL << Log2Size) / MWORD_BITS),
 		    {
 			MmReleaseUntyped(Untyped);
-			ExFreePool(CNode);
+			MiFreePool(CNode);
 		    });
     MiInitializeCNode(CNode, 0, Log2Size, Log2Size, &MiNtosCNode, NULL, UsedMap);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_CapTableObject,
 				  Log2Size, &CNode->TreeNode),
 	       {
-		   ExFreePool(UsedMap);
+		   MiFreePool(UsedMap);
 		   MmReleaseUntyped(Untyped);
 	       });
     *pCNode = CNode;
@@ -220,7 +242,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 }
 
 /*
- * Revoke the capability of the specified CNode and release its untyped memory
+ * Delete the capability of the specified CNode and release its untyped memory
  * for reuse. Delete its book-keeping information.
  *
  * The initial root task CNode should never be destroyed.
@@ -237,7 +259,7 @@ VOID MmDeleteCNode(IN PCNODE CNode)
     /* The parent of a CNode should always be an untyped. BUG! */
     assert(CNode->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
 
-    ExFreePool(CNode->UsedMap);
+    MiFreePool(CNode->UsedMap);
     /* This will free the CNode struct itself from the ExPool */
     MmReleaseUntyped(TREE_NODE_TO_UNTYPED(CNode->TreeNode.Parent));
 }
@@ -301,6 +323,14 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
     return STATUS_SUCCESS;
 }
 
+/*
+ * Invoke seL4_CNode_Delete on a cap node. This will recursively delete
+ * all the derived capabilities of the given cap.
+ *
+ * NOTE: CNode_Invoke will delete all the derived caps but not the cap
+ * itself. CNode_Delete will delete the cap itself. We call CNode_Delete
+ * here.
+ */
 static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
@@ -317,6 +347,19 @@ static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS MiCapTreeDeallocateCap(IN PCAP_TREE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CSpace != NULL);
+    assert(Node->Cap);
+    MmDeallocateCap(Node->CSpace, Node->Cap);
+    Node->Cap = 0;
+    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
+	RET_ERR(MiCapTreeDeallocateCap(Child));
+    }
+    return STATUS_SUCCESS;
+}
+
 /*
  * Invoke CNode_Delete on the node cap and deallocate the node cap and all its cap
  * tree descendants. Note that we don't unlink the node from its parent since this
@@ -328,11 +371,7 @@ NTSTATUS MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
     RET_ERR(MiDeleteCap(Node));
-    MmDeallocateCap(Node->CSpace, Node->Cap);
-    Node->Cap = 0;
-    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
-	RET_ERR(MmCapTreeDeleteNode(Child));
-    }
+    RET_ERR(MiCapTreeDeallocateCap(Node));
     return STATUS_SUCCESS;
 }
 
@@ -345,10 +384,8 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     assert(OldNode != NULL);
     assert(NewNode->CSpace != NULL);
     assert(OldNode->CSpace != NULL);
-
-    if (NewNode->Cap != 0) {
-	return STATUS_NTOS_BUG;
-    }
+    assert(NewNode->Cap == 0);
+    assert(NewNode->Parent == NULL || NewNode->Parent == OldNode);
 
     MWORD NewCap = 0;
     RET_ERR(MmAllocateCapRange(NewNode->CSpace, &NewCap, 1));
@@ -367,7 +404,9 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     NewNode->Type = OldNode->Type;
 
     /* Add new node as the child of the old node. */
-    MmCapTreeNodeSetParent(NewNode, OldNode);
+    if (NewNode->Parent == NULL) {
+	MmCapTreeNodeSetParent(NewNode, OldNode);
+    }
 
     return STATUS_SUCCESS;
 }

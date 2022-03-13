@@ -13,6 +13,7 @@
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_IO_TAG, OnError)
 #define IopAllocateArray(Var, Type, Size)	\
     IopAllocateArrayEx(Var, Type, Size, {})
+#define IopFreePool(Var) ExFreePoolWithTag(Var, NTOS_IO_TAG)
 
 /*
  * Device Node for the PNP manager
@@ -176,7 +177,7 @@ static inline NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
 static inline VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
 {
     if (PendingIrp->IoResponseData != NULL) {
-	ExFreePool(PendingIrp->IoResponseData);
+	IopFreePool(PendingIrp->IoResponseData);
 	PendingIrp->IoResponseData = NULL;
     }
 }
@@ -191,9 +192,9 @@ static inline VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
     RemoveEntryList(&PendingIrp->Link);
     IopFreeIoResponseData(PendingIrp);
     if (PendingIrp->IoPacket != NULL) {
-	ExFreePool(PendingIrp->IoPacket);
+	IopFreePool(PendingIrp->IoPacket);
     }
-    ExFreePool(PendingIrp);
+    IopFreePool(PendingIrp);
 }
 
 static inline VOID IopCleanupPendingIrpList(IN PTHREAD Thread)

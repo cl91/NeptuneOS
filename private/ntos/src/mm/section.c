@@ -274,9 +274,9 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 				 if (SubSectionsArray[j] == NULL) {
 				     return STATUS_NTOS_BUG;
 				 }
-				 ExFreePool(SubSectionsArray[j]);
+				 MiFreePool(SubSectionsArray[j]);
 			     }
-			     ExFreePool(SubSectionsArray);
+			     MiFreePool(SubSectionsArray);
 			 });
 	MiInitializeSubSection(SubSection, ImageSection);
 	SubSectionsArray[i] = SubSection;
@@ -329,7 +329,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 	SectionSize += VirtualSize;
     }
 
-    ExFreePool(SubSectionsArray);
+    MiFreePool(SubSectionsArray);
     *pSectionSize = SectionSize;
     return STATUS_SUCCESS;
 }
@@ -346,7 +346,7 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 
     RET_ERR_EX(MiParseImageHeaders((PVOID) File->BufferPtr, File->Size,
 				   ImageSection, pSectionSize),
-	       ExFreePool(ImageSection));
+	       MiFreePool(ImageSection));
 
     File->SectionObject.ImageSectionObject = ImageSection;
     ImageSection->FileObject = File;
@@ -485,7 +485,7 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	BaseAddress = ImageVad->AvlNode.Key;
 	assert(BaseAddress >= USER_IMAGE_REGION_START);
 	assert(BaseAddress < USER_IMAGE_REGION_END);
-	ExFreePool(ImageVad);
+	MiFreePool(ImageVad);
     }
 
     /* For each subsection of the image section object, create a VAD that points

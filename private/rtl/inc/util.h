@@ -104,6 +104,13 @@ VOID KeDbgDumpIPCError(IN int Error);
 
 #include "dbgtrace.h"
 
+static inline VOID RtlDbgPrintIndentation(IN LONG Indentation)
+{
+    for (LONG i = 0; i < Indentation; i++) {
+	DbgPrint(" ");
+    }
+}
+
 /*
  * This will generate a compile-time error if the function is marked
  * as async.

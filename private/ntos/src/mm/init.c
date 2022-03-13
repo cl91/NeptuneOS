@@ -280,7 +280,7 @@ static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 {
     MiAllocatePool(Untyped, UNTYPED);
     MiInitializeUntyped(Untyped, &MiNtosCNode, NULL, Cap, PhyAddr, Log2Size, IsDevice);
-    RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), ExFreePool(Untyped));
+    RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), MiFreePool(Untyped));
     if (!IsDevice) {
 	MiInsertFreeUntyped(PhyMem, Untyped);
     }

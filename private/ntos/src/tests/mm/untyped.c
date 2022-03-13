@@ -3,5 +3,5 @@
 VOID MmRunUntypedTests()
 {
     DbgPrint("mm: Running untyped tests...");
-    MmDbgDumpUntypedInfo();
+    MmDbgDumpUntypedForest();
 }

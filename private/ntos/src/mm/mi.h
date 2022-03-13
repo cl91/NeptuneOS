@@ -32,6 +32,7 @@ typedef struct _MM_INIT_INFO {
 #define MiAllocatePool(Var, Type)	MiAllocatePoolEx(Var, Type, {})
 #define MiAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
+#define MiFreePool(Var) ExFreePoolWithTag(Var, NTOS_MM_TAG)
 
 static inline BOOLEAN MiCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
 {
@@ -233,6 +234,8 @@ static inline PMM_AVL_NODE MiAvlGetLastNode(IN PMM_AVL_TREE Tree)
 	return NULL;
     }
     while (Node->RightChild != NULL) {
+	DbgTrace("Node %p key 0x%zx RightChild %p key 0x%zx\n", Node, Node->Key,
+		 Node->RightChild, Node->RightChild->Key);
 	Node = Node->RightChild;
     }
     return Node;

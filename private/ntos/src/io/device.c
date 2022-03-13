@@ -25,7 +25,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 	/* If the client has supplied a device name, insert the device
 	 * object into the global object namespace, with the given path. */
 	RET_ERR_EX(ObInsertObjectByPath(DeviceName, Device),
-		   ExFreePool(DeviceNameCopy));
+		   IopFreePool(DeviceNameCopy));
 	Device->DeviceName = DeviceNameCopy;
     }
 
@@ -159,7 +159,7 @@ out:
 	ObDereferenceObject(Locals.FileObject);
     }
     if (Locals.PendingIrp == NULL && Locals.IoPacket != NULL) {
-	ExFreePool(Locals.IoPacket);
+	IopFreePool(Locals.IoPacket);
     } else {
 	/* This will free the pending IRP and detach the pending irp from the thread.
 	 * At this point the IRP has already been detached from the driver object,

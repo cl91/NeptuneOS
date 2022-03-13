@@ -18,7 +18,7 @@ NTSTATUS HalpEnableIoPort(USHORT PortNum)
     }
     HalpAllocatePool(IoPort, X86_IOPORT);
     RET_ERR_EX(KeEnableIoPort(PortNum, IoPort),
-	       ExFreePool(IoPort));
+	       HalpFreePool(IoPort));
     InsertHeadList(InsertAfter, &IoPort->Link);
     return STATUS_SUCCESS;
 }

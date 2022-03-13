@@ -88,13 +88,13 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
     if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, OBJECT_TYPE_DRIVER, NULL,
 					   (POBJECT *)&DriverObject))) {
 	/* Driver is already loaded. We increase the reference count and return SUCCESS. */
-	ExFreePool(DriverObjectPath);
+	IopFreePool(DriverObjectPath);
 	if (pDriverObject) {
 	    *pDriverObject = DriverObject;
 	}
 	return STATUS_SUCCESS;
     }
-    ExFreePool(DriverObjectPath);
+    IopFreePool(DriverObjectPath);
 
     /* Read the ImagePath value from the driver service registry key.
      * The key must be loaded in memory at this point. */
@@ -168,7 +168,7 @@ NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
 
     IopAllocatePool(IoPort, X86_IOPORT);
     RET_ERR_EX(KeEnableIoPortEx(Process->CSpace, PortNum, IoPort),
-	       ExFreePool(IoPort));
+	       IopFreePool(IoPort));
     InsertTailList(&DriverObject->IoPortList, &IoPort->Link);
     *Cap = IoPort->TreeNode.Cap;
     return STATUS_SUCCESS;
@@ -205,7 +205,8 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObjec
 		PsCreateThread(DriverObject->DriverProcess, &Context, NULL,
 			       TRUE, &Svc->IsrThread));
     assert(Svc->IsrThread != NULL);
-    Svc->IsrThreadClientCap.CSpace = DriverObject->DriverProcess->CSpace;
+    MmInitializeCapTreeNode(&Svc->IsrThreadClientCap, CAP_TREE_NODE_TCB,
+			    0, DriverObject->DriverProcess->CSpace, NULL);
     IF_ERR_GOTO(out, Status,
 		PsSetThreadPriority(Svc->IsrThread, DEVICE_INTERRUPT_MIN_LEVEL + Vector));
     IF_ERR_GOTO(out, Status,
@@ -237,7 +238,7 @@ out:
 	if (Svc->InterruptMutex.TreeNode.Cap != 0) {
 	    KeDestroyNotification(&Svc->InterruptMutex);
 	}
-	ExFreePool(Svc);
+	IopFreePool(Svc);
     }
     return Status;
 }

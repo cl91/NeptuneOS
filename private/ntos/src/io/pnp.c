@@ -78,9 +78,9 @@ static inline VOID IopFreeFilterDriverNames(IN ULONG Count,
 					    IN PCSTR *Names)
 {
     for (ULONG i = 0; i < Count; i++) {
-	ExFreePool(Names[i]);
+	IopFreePool(Names[i]);
     }
-    ExFreePool(Names);
+    IopFreePool(Names);
 }
 
 static inline ULONG IopGetStringCount(IN PCSTR MultiSz)
@@ -150,10 +150,10 @@ err:
     if (FilterDriverNames != NULL) {
 	for (ULONG i = 0; i < FilterCount; i++) {
 	    if (FilterDriverNames[i] != NULL) {
-		ExFreePool(FilterDriverNames[i]);
+		IopFreePool(FilterDriverNames[i]);
 	    }
 	}
-	ExFreePool(FilterDriverNames);
+	IopFreePool(FilterDriverNames);
     }
     return STATUS_NO_MEMORY;
 }
@@ -213,7 +213,7 @@ static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
      * driver service name and filter driver names, just in case that these
      * have changed. */
     if (DeviceNode->DriverServiceName != NULL) {
-	ExFreePool(DeviceNode->DriverServiceName);
+	IopFreePool(DeviceNode->DriverServiceName);
 	DeviceNode->DriverServiceName = NULL;
     }
     if (DeviceNode->UpperFilterDriverNames != NULL) {
@@ -407,7 +407,7 @@ static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
     assert(IoPacket != NULL);
     IopPopulateQueryDeviceRelationsRequest(IoPacket, DeviceObject, Type);
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
-	       ExFreePool(IoPacket));
+	       IopFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, Thread);
     return STATUS_SUCCESS;
 }
@@ -423,7 +423,7 @@ static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
 	IopPopulateQueryIdRequest(IoPacket, ChildNode->PhyDevObj, IdType);
 	PPENDING_IRP PendingIrp = NULL;
 	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
-		   ExFreePool(IoPacket));
+		   IopFreePool(IoPacket));
 	assert(PendingIrp != NULL);
 	IopQueueIoPacket(PendingIrp, Thread);
     }
@@ -444,7 +444,7 @@ static inline NTSTATUS IopDeviceNodeQueueAddDeviceRequest(IN PTHREAD Thread,
     IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
     PPENDING_IRP PendingIrp = NULL;
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
-	       ExFreePool(IoPacket));
+	       IopFreePool(IoPacket));
     assert(PendingIrp != NULL);
     IopQueueAddDeviceRequest(PendingIrp, DriverObject, Thread);
     *pPendingIrp = PendingIrp;
@@ -540,7 +540,7 @@ static NTSTATUS IopQueueQueryResourceRequirementsRequest(IN PTHREAD Thread,
     assert(IoPacket != NULL);
     IopPopulatePnpRequest(IoPacket, ChildPhyDev, IRP_MN_QUERY_RESOURCE_REQUIREMENTS);
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
-	       ExFreePool(IoPacket));
+	       IopFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, Thread);
     return STATUS_SUCCESS;
 }
@@ -602,7 +602,7 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
     memcpy(IoPacket->Request.StartDevice.Data, Res, ResSize);
     memcpy(&IoPacket->Request.StartDevice.Data[ResSize], Res, ResSize);
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
-	       ExFreePool(IoPacket));
+	       IopFreePool(IoPacket));
     IopQueueIoPacket(*PendingIrp, Thread);
     return STATUS_SUCCESS;
 }
@@ -615,7 +615,7 @@ static NTSTATUS IopDeviceNodeAssignResources(IN PDEVICE_NODE Node,
 	return STATUS_SUCCESS;
     }
     if (Node->Resources != NULL) {
-	ExFreePool(Node->Resources);
+	IopFreePool(Node->Resources);
     }
     if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
 	return STATUS_INVALID_PARAMETER;

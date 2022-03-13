@@ -23,7 +23,7 @@ compile_assert(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
  * Thread object
  */
 typedef struct _THREAD {
-    CAP_TREE_NODE TreeNode;
+    CAP_TREE_NODE TreeNode;	/* Must be first member */
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;	/* List link for the PROCESS object's ThreadList */
