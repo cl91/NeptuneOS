@@ -498,13 +498,19 @@ static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
     assert(pWindowSize != NULL);
     MWORD StartAddr = *pStartAddr;
     MWORD EndAddr = PAGE_ALIGN_UP(StartAddr + *pWindowSize);
+    assert(StartAddr < EndAddr);
+    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, StartAddr);
+    if (Page != NULL) {
+	StartAddr = Page->AvlNode.Key;
+    }
     MWORD CurrentAddr = StartAddr;
     while (CurrentAddr < EndAddr) {
-	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
 	if (Page == NULL) {
 	    return STATUS_NOT_COMMITTED;
 	}
 	if (!Page->Mapped) {
+	    /* We should never put an unmapped page in a paging substructure tree */
+	    assert(FALSE);
 	    return STATUS_NOT_COMMITTED;
 	}
 	if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
@@ -514,11 +520,10 @@ static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PAGE_PROTECTION;
 	}
 	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	/* Make sure we don't overflow */
 	assert(CurrentAddr <= PageEndAddr);
-	if (StartAddr == CurrentAddr) {
-	    StartAddr = Page->AvlNode.Key;
-	}
 	CurrentAddr = PageEndAddr;
+	Page = MiGetNextPagingStructure(Page);
     }
     *pStartAddr = StartAddr;
     *pWindowSize = CurrentAddr - StartAddr;
@@ -533,28 +538,15 @@ static VOID MiUncommitVad(IN PMMVAD Vad)
 {
     PVIRT_ADDR_SPACE VSpace = Vad->VSpace;
     assert(VSpace != NULL);
-    MWORD CurrentAddr = Vad->AvlNode.Key;
     MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
-    while (CurrentAddr < EndAddr) {
-	/* Note here the Page can be any level of paging structure, ie.
-	 * page table, page directory, PDPT, or PML4 */
-	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
-	if (Page == NULL) {
-	    /* We never delete the root paging structure so this should never be NULL */
-	    assert(FALSE);
-	    return;
-	}
-	if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	    MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
-	    DbgTrace("CurrentAddr %p PageEndAddr %p\n", (PVOID)CurrentAddr,
-		     (PVOID)PageEndAddr);
-	    assert(CurrentAddr <= PageEndAddr);
-	    CurrentAddr = PageEndAddr;
-	    MiUncommitPage(Page);
-	    MiFreePool(Page);
-	} else {
-	    CurrentAddr += PAGE_SIZE;
-	}
+    /* Note that despite the name, Page can be any level of paging structure, ie.
+     * page table, page directory, PDPT, or PML4 */
+    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, Vad->AvlNode.Key);
+    while (Page != NULL && Page->AvlNode.Key < EndAddr) {
+	PPAGING_STRUCTURE Next = MiGetNextPagingStructure(Page);
+	MiUncommitPage(Page);
+	MiFreePool(Page);
+	Page = Next;
     }
 }
 
@@ -566,25 +558,16 @@ static BOOLEAN MiEnsureNoViewers(IN PMMVAD Vad)
 {
     PVIRT_ADDR_SPACE VSpace = Vad->VSpace;
     assert(VSpace != NULL);
-    MWORD CurrentAddr = Vad->AvlNode.Key;
     MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
-    while (CurrentAddr < EndAddr) {
-	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
-	if (Page == NULL) {
-	    /* We never delete the root paging structure so this should never be NULL */
-	    assert(FALSE);
-	    return TRUE;
-	}
+    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, Vad->AvlNode.Key);
+    while (Page != NULL && Page->AvlNode.Key < EndAddr) {
+	PPAGING_STRUCTURE Next = MiGetNextPagingStructure(Page);
 	if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
 	    if (!IsListEmpty(&Page->TreeNode.ChildrenList)) {
 		return FALSE;
 	    }
-	    MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
-	    assert(CurrentAddr <= PageEndAddr);
-	    CurrentAddr = PageEndAddr;
-	} else {
-	    CurrentAddr += PAGE_SIZE;
 	}
+	Page = Next;
     }
     return TRUE;
 }

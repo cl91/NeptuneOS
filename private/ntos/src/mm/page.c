@@ -379,11 +379,13 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
  * unlink the cap tree children of this page cap. The caller can still
  * access all the derived page caps of this page cap via the cap tree
  * node's ChildrenList.
+ *
+ * Page can be a PAGE or LARGE_PAGE, or any leaf paging structure (eg.
+ * an empty page table).
  */
 VOID MiUncommitPage(IN PPAGING_STRUCTURE Page)
 {
     assert(Page != NULL);
-    assert(MiPagingTypeIsPageOrLargePage(Page->Type));
     /* Leaf-level paging structure should not have substructures */
     assert(Page->SubStructureTree.BalancedRoot == NULL);
     /* We want to make sure that the page isn't being mapped elsewhere */
@@ -587,6 +589,45 @@ PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     return Paging;
+}
+
+/*
+ * Get the next adjacent lowest-level paging structure. In other words, suppose
+ * we have
+ *
+ *       |----------------|
+ *       | PAGE DIRECTORY |
+ *       |----------------|
+ *          |         |  |_____________________
+ *          |         |                       |
+ *   |------------|  |------------|    |------------|
+ *   |PAGE TABLE 0|  |PAGE TABLE 1|    |PAGE TABLE 2|
+ *   |------------|  |------------|    |------------|
+ *     |     |                               |
+ * |-----| |-----|                        |-----|
+ * |PAGE0| |PAGE1|                        |PAGE2|
+ * |-----| |-----|                        |-----|
+ *
+ * Calling MiGetNextPagingStructure on Page0 will return Page1, while calling
+ * it on Page1 will return PageTable1, and calling it on PageTable1 will return
+ * Page2.
+ */
+PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page)
+{
+    PPAGING_STRUCTURE Next;
+    do {
+	if (Page == NULL) {
+	    return NULL;
+	}
+	Next = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetNextNode(&Page->AvlNode));
+	Page = Page->SuperStructure;
+    } while (Next == NULL);
+    assert(Next != NULL);
+    while (MiAvlGetFirstNode(&Next->SubStructureTree) != NULL) {
+	Next = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetFirstNode(&Next->SubStructureTree));
+    }
+    assert(Next != NULL);
+    return Next;
 }
 
 static NTSTATUS MiCommitPrivatePage(IN PVIRT_ADDR_SPACE VSpace,

@@ -356,6 +356,7 @@ NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
 PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 					IN MWORD VirtAddr);
+PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page);
 NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
 			     IN MWORD StartAddr,
 			     IN MWORD WindowSize,
