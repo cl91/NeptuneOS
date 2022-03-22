@@ -318,7 +318,7 @@ def camel_case_to_upper_snake_case(name):
 # and user passed a NULL-argument, then stub function returns immediately
 # with STATUS_INVALID_PARAMETER, without calling the server.
 #
-# Since output parameters alwasy have is_ptr == True we use complex_type
+# Since output parameters always have is_ptr == True we use complex_type
 # == True to distinguish the case where it needs to be passed via the
 # system service message buffer. If an output parameter is not marked
 # complex (the default) it will be passed via the message register (in
