@@ -166,10 +166,24 @@ static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
  *    Instead, use AWAIT_IF if you want to await conditionally.
  *
  * 2. Use the ASYNC_BEGIN macro to define local variables that need to be
- *    saved across async function calls. This generally applies to IN variables
- *    of an async functions. OUT variables should not be saved across async
- *    calls and should not be defined this way. For IN OUT variables it is best
- *    to manually manage variable saving.
+ *    saved across async function calls. Note that since variable restoration
+ *    happens after the async function has returned, you should not pass local
+ *    variables defined inside the ASYNC_BEGIN macro as OUT or IN OUT variables
+ *    of an async function. In other words, the following is NOT correct:
+ *
+ *    VOID AsyncFcn(IN ASYNC_STATE AsyncState,
+ *                  OUT ULONG *pVar);
+ *    ASYNC_BEGIN(AsyncState, Locals, {
+ *        ULONG Var;
+ *    });
+ *    AWAIT(AsyncFcn, AsyncState, Locals, &Locals.Var);
+ *
+ *    This is because Locals.Var gets overwritten by the variable restoration
+ *    macro _ASYNC_RESTORE_LOCALS once the AsyncFcn has returned. The correct
+ *    way is to define Var as an ordinary variable outside the ASYNC_BEGIN:
+ *
+ *    ULONG Var;
+ *    AWAIT(AsyncFcn, AsyncState, Locals, &Var);
  *
  * 3. Use ASYNC_RETURN when you need to return a status from an async function.
  *    Simply using the C return statement is INCORRECT!
