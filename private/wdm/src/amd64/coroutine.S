@@ -8,7 +8,7 @@
 .global KiStartCoroutine
 KiStartCoroutine:
     /* KiCurrentCoroutineStackTop = StackTop (%rcx); */
-    mov %rcx, KiCurrentCoroutineStackTop
+    movq %rcx, KiCurrentCoroutineStackTop(%rip)
     /* Save all callee-saved (non-clobbered) registers */
     push %rbx
     push %rsi
@@ -19,10 +19,11 @@ KiStartCoroutine:
     push %r14
     push %r15
     /* Save the master thread stack pointer */
-    mov %rsp, -0x20(%rcx)
+    movq %rsp, -0x20(%rcx)
     /* Save the address of the label 1 below so KiYieldCoroutine
      * knowns where to jump to */
-    movq $1f, -0x18(%rcx)
+    leaq 1f(%rip), %rax
+    movq %rax, -0x18(%rcx)
     /* Switch to the stack pointer given by StackTop (%rcx). */
     mov %rcx, %rsp
     /* Skip the KI_COROUTINE_STACK struct and the shadow space.
@@ -47,7 +48,7 @@ KiStartCoroutine:
      * KiStartCoroutine. */
     pop %rsp
 1:  /* Restore all callee-saved (non-clobbered) registers.
-     * Note this is where KiCoroutineYield jumps to */
+     * Note this is where KiYieldCoroutine jumps to */
     pop %r15
     pop %r14
     pop %r13
@@ -57,7 +58,7 @@ KiStartCoroutine:
     pop %rsi
     pop %rbx
     /* KiCurrentCoroutineStackTop = NULL; */
-    movq $0, KiCurrentCoroutineStackTop
+    movq $0, KiCurrentCoroutineStackTop(%rip)
     /* Pop %rip */
     ret
 
@@ -76,7 +77,7 @@ KiYieldCoroutine:
     push %r14
     push %r15
     /* Load the current coroutine stack top to %rcx */
-    movq KiCurrentCoroutineStackTop, %rcx
+    movq KiCurrentCoroutineStackTop(%rip), %rcx
     /* Save the current stack pointer */
     movq %rsp, -0x10(%rcx)
     /* Restore the stack pointer of the master thread. This is
@@ -94,7 +95,7 @@ KiYieldCoroutine:
 .global KiResumeCoroutine
 KiResumeCoroutine:
     /* KiCurrentCoroutineStackTop = StackTop (%rcx); */
-    mov %rcx, KiCurrentCoroutineStackTop
+    movq %rcx, KiCurrentCoroutineStackTop(%rip)
     /* Save all callee-saved (non-clobbered) registers */
     push %rbx
     push %rsi
@@ -105,12 +106,13 @@ KiResumeCoroutine:
     push %r14
     push %r15
     /* Save the master thread stack pointer */
-    mov %rsp, -0x20(%rcx)
+    movq %rsp, -0x20(%rcx)
     /* Save the address to the label 1 below so KiYieldCoroutine
      * knowns where to jump to */
-    movq $1f, -0x18(%rcx)
+    leaq 1f(%rip), %rax
+    movq %rax, -0x18(%rcx)
     /* Load the saved coroutine stack pointer */
-    mov -0x10(%rcx), %rsp
+    movq -0x10(%rcx), %rsp
     /* We are back to the coroutine stack now. Restore all the
      * callee-saved (non-clobbered) registers that KiYieldCoroutine
      * has saved */
@@ -125,7 +127,7 @@ KiResumeCoroutine:
     /* Return to whoever was calling KiYieldCoroutine */
     ret
 1:  /* Restore all the callee-saved (non-clobbered) registers
-     * Note this is where KiCoroutineYield jumps to. */
+     * Note this is where KiYieldCoroutine jumps to. */
     pop %r15
     pop %r14
     pop %r13
@@ -135,6 +137,6 @@ KiResumeCoroutine:
     pop %rsi
     pop %rbx
     /* KiCurrentCoroutineStackTop = NULL; */
-    movq $0, KiCurrentCoroutineStackTop
+    movq $0, KiCurrentCoroutineStackTop(%rip)
     /* Pop %rip */
     ret
