@@ -415,6 +415,23 @@ VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
     }
 }
 
+/*
+ * Detach the given cap tree node from the capability derivation tree
+ * and release its parent untyped (if any).
+ */
+VOID MmCapTreeReleaseNode(IN PCAP_TREE_NODE Node)
+{
+    PCAP_TREE_NODE Parent = Node->Parent;
+    MmCapTreeNodeRemoveFromParent(Node);
+    /* If the parent cap tree node is an untyped cap, release it */
+    if (Parent != NULL && Parent->Type == CAP_TREE_NODE_UNTYPED) {
+	/* An untyped cap can only have exactly one derived cap
+	 * if it is retyped into a typed cap. */
+	assert(!MmCapTreeNodeHasChildren(Parent));
+	MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Parent));
+    }
+}
+
 NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,

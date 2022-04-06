@@ -392,8 +392,9 @@ VOID MiUncommitPage(IN PPAGING_STRUCTURE Page)
     assert(IsListEmpty(&Page->TreeNode.ChildrenList));
     /* Remove the AVL node of the page from its AVL tree */
     MiPagingRemoveFromParentStructure(Page);
-    /* Detach the cap node from the cap derivation tree */
-    MmCapTreeNodeRemoveFromParent(&Page->TreeNode);
+    /* Detach the cap node from the cap derivation tree and release its
+     * parent untyped (if any) */
+    MmCapTreeReleaseNode(&Page->TreeNode);
     /* Delete the page cap and deallocate the cap slot in the cnode */
     MmCapTreeDeleteNode(&Page->TreeNode);
 }

@@ -594,6 +594,7 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN MWORD Badge);
 VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node);
 VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node);
+VOID MmCapTreeReleaseNode(IN PCAP_TREE_NODE Node);
 
 static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
 				     OUT MWORD *Cap)

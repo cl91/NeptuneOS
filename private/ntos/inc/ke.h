@@ -102,12 +102,9 @@ static inline VOID KeDeleteNotification(IN PNOTIFICATION Notification)
     assert(Notification != NULL);
     assert(MmCapTreeNodeHasChildren(&Notification->TreeNode));
     MmCapTreeDeleteNode(&Notification->TreeNode);
-    PCAP_TREE_NODE Parent = Notification->TreeNode.Parent;
-    MmCapTreeNodeRemoveFromParent(&Notification->TreeNode);
-    if (Parent != NULL && Parent->Type == CAP_TREE_NODE_UNTYPED &&
-	MmCapTreeNodeHasChildren(Parent)) {
-	MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Parent));
-    }
+    /* Detach the cap node from the cap derivation tree and release its
+     * parent untyped (if any) */
+    MmCapTreeReleaseNode(&Notification->TreeNode);
 }
 
 static inline VOID KeWaitOnNotification(IN PNOTIFICATION Notification)
