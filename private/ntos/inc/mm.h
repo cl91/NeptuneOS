@@ -179,6 +179,21 @@ static inline VOID MmCapTreeNodeRemoveFromParent(IN PCAP_TREE_NODE Node)
     Node->Parent = NULL;
 }
 
+static inline BOOLEAN MmCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
+{
+    return !IsListEmpty(&Node->ChildrenList);
+}
+
+static inline ULONG MmCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
+{
+    return GetListLength(&Node->ChildrenList);
+}
+
+static inline ULONG MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
+{
+    return GetListLength(&Node->SiblingLink);
+}
+
 /*
  * A CNode represents a table of capability slots. It is
  * created by retyping a suitably-sized untyped capability.
@@ -259,7 +274,12 @@ static inline VOID MmAvlInitializeTree(IN PMM_AVL_TREE Tree)
  */
 typedef struct _UNTYPED {
     CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MM_AVL_NODE AvlNode;	/* Node ordered by physical address */
+    MM_AVL_NODE AvlNode;	/* Node ordered by physical address.
+				 * For root untyped this is inserted into
+				 * the root untyped forest. For non-root
+				 * untyped the AvlNode.Key is used for book-
+				 * keeping purpose only and the AVL node is
+				 * not actually inserted into any AVL tree. */
     LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
     LONG Log2Size;
     BOOLEAN IsDevice;
@@ -572,7 +592,8 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,
 				   IN MWORD Badge);
-NTSTATUS MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node);
+VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node);
+VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node);
 
 static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
 				     OUT MWORD *Cap)
@@ -583,7 +604,7 @@ static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
 /* untyped.c */
 NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 			  OUT PUNTYPED *pUntyped);
-NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped);
+VOID MmReleaseUntyped(IN PUNTYPED Untyped);
 NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,

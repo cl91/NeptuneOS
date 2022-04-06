@@ -251,7 +251,7 @@ VOID MmDeleteCNode(IN PCNODE CNode)
 {
     /* A CNode should always be the leaf node of a capability derivation tree.
      * On debug build we assert if this requirement has not been maintained. */
-    assert(!MiCapTreeNodeHasChildren(&CNode->TreeNode));
+    assert(!MmCapTreeNodeHasChildren(&CNode->TreeNode));
     /* We should never delete the root task CNode */
     assert(CNode != &MiNtosCNode);
     /* All CNode are retyped from the untyped memory, so must have a parent */
@@ -325,11 +325,12 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
 
 /*
  * Invoke seL4_CNode_Delete on a cap node. This will recursively delete
- * all the derived capabilities of the given cap.
+ * all the derived capabilities of the given cap in addition to the node
+ * itself.
  *
- * NOTE: CNode_Invoke will delete all the derived caps but not the cap
- * itself. CNode_Delete will delete the cap itself. We call CNode_Delete
- * here.
+ * NOTE: CNode_Revoke will delete all the derived caps but not the cap
+ * itself. CNode_Delete will delete the cap itself as well as all its
+ * children.
  */
 static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
 {
@@ -347,7 +348,27 @@ static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS MiCapTreeDeallocateCap(IN PCAP_TREE_NODE Node)
+/*
+ * Invoke seL4_CNode_Revoke on a cap node. This will recursively delete
+ * all the derived capabilities of the given cap but not the cap itself.
+ */
+static NTSTATUS MiRevokeCap(IN PCAP_TREE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CSpace != NULL);
+    assert(Node->Cap);
+    PCNODE CSpace = Node->CSpace;
+    int Error = seL4_CNode_Revoke(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
+    if (Error != 0) {
+	DbgTrace("CNode_Revoke(0x%zx, 0x%zx, %d) failed with error %d\n",
+		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
+static VOID MiCapTreeDeallocateCap(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
     assert(Node->CSpace != NULL);
@@ -355,24 +376,43 @@ static NTSTATUS MiCapTreeDeallocateCap(IN PCAP_TREE_NODE Node)
     MmDeallocateCap(Node->CSpace, Node->Cap);
     Node->Cap = 0;
     LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
-	RET_ERR(MiCapTreeDeallocateCap(Child));
+	MiCapTreeDeallocateCap(Child);
     }
-    return STATUS_SUCCESS;
 }
 
 /*
  * Invoke CNode_Delete on the node cap and deallocate the node cap and all its cap
- * tree descendants. Note that we don't unlink the node from its parent since this
+ * tree descendants. Note that we don't modify the cap tree structure itself as this
  * would prevent the upstream caller from accessing the children.
  */
-NTSTATUS MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
+VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
-    RET_ERR(MiDeleteCap(Node));
-    RET_ERR(MiCapTreeDeallocateCap(Node));
-    return STATUS_SUCCESS;
+    /* This should always succeed. On debug build we assert if it didn't. */
+    NTSTATUS Status = MiDeleteCap(Node);
+    assert(NT_SUCCESS(Status));
+    MiCapTreeDeallocateCap(Node);
+}
+
+/*
+ * Invoke CNode_Revoke on the node cap and deallocate the cap slots of all its
+ * cap tree descendants (but not the node itself). Note that we don't modify
+ * the cap tree structure itself as this would prevent the upstream caller from
+ * accessing the children.
+ */
+VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CSpace != NULL);
+    assert(Node->Cap);
+    /* This should always succeed. On debug build we assert if it didn't. */
+    NTSTATUS Status = MiRevokeCap(Node);
+    assert(NT_SUCCESS(Status));
+    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
+	MiCapTreeDeallocateCap(Child);
+    }
 }
 
 NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,

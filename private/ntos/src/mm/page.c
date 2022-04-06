@@ -388,16 +388,14 @@ VOID MiUncommitPage(IN PPAGING_STRUCTURE Page)
     assert(Page != NULL);
     /* Leaf-level paging structure should not have substructures */
     assert(Page->SubStructureTree.BalancedRoot == NULL);
-    /* We want to make sure that the page isn't being mapped elsewhere */
+    /* Make sure that the page isn't being mapped elsewhere */
     assert(IsListEmpty(&Page->TreeNode.ChildrenList));
-    /* This should never fail. On debug build we assert if it did. */
-    NTSTATUS Status = MiUnmapPagingStructure(Page);
-    assert(NT_SUCCESS(Status));
-    /* Delete the capability cap */
-    Status = MmCapTreeDeleteNode(&Page->TreeNode);
-    assert(NT_SUCCESS(Status));
-    /* Detach from the cap derivation tree */
+    /* Remove the AVL node of the page from its AVL tree */
+    MiPagingRemoveFromParentStructure(Page);
+    /* Detach the cap node from the cap derivation tree */
     MmCapTreeNodeRemoveFromParent(&Page->TreeNode);
+    /* Delete the page cap and deallocate the cap slot in the cnode */
+    MmCapTreeDeleteNode(&Page->TreeNode);
 }
 
 MM_MEM_PRESSURE MmQueryMemoryPressure()
@@ -822,7 +820,7 @@ NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     PPAGING_STRUCTURE Page = NULL;
-    if (!MiCapTreeNodeHasChildren(&IoUntyped->TreeNode)) {
+    if (!MmCapTreeNodeHasChildren(&IoUntyped->TreeNode)) {
 	/* TODO: If Rights != MM_RIGHTS_RW, first create a page cap with full rights,
 	 * and then derive the cap with less rights. This is to make sure that future
 	 * calls to MiCommitIoPage with higher rights do not fail.

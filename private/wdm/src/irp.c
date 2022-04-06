@@ -92,20 +92,6 @@ LIST_ENTRY IopFileObjectList;
  * {Type, Size}. */
 PVOID IopCurrentObject;
 
-static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
-				   IN PLIST_ENTRY Entry)
-{
-    assert(List != NULL);
-    assert(Entry != NULL);
-    assert(List->Flink != NULL);
-    for (PLIST_ENTRY p = List->Flink; p != List; p = p->Flink) {
-	if (p == Entry) {
-	    return TRUE;
-	}
-    }
-    return FALSE;
-}
-
 static inline VOID IopAssertIrpLists(IN PIRP Irp)
 {
     assert(!ListHasEntry(&IopReplyIrpList, &Irp->Private.Link));

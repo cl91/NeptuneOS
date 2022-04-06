@@ -94,16 +94,20 @@ static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
 
 /*
  * This destroys the notification object but do not free the pool memory.
- * All descendant notification objects are destroyed as well.
+ *
+ * IMPORTANT: The notification being destroyed cannot have any derived cap.
  */
-static inline NTSTATUS KeDestroyNotification(IN PNOTIFICATION Notification)
+static inline VOID KeDeleteNotification(IN PNOTIFICATION Notification)
 {
-    PCAP_TREE_NODE Node = Notification->TreeNode.Parent;
-    while (Node->Type != CAP_TREE_NODE_UNTYPED) {
-	Node = Node->Parent;
+    assert(Notification != NULL);
+    assert(MmCapTreeNodeHasChildren(&Notification->TreeNode));
+    MmCapTreeDeleteNode(&Notification->TreeNode);
+    PCAP_TREE_NODE Parent = Notification->TreeNode.Parent;
+    MmCapTreeNodeRemoveFromParent(&Notification->TreeNode);
+    if (Parent != NULL && Parent->Type == CAP_TREE_NODE_UNTYPED &&
+	MmCapTreeNodeHasChildren(Parent)) {
+	MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Parent));
     }
-    assert(Node != NULL);
-    return MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Node));
 }
 
 static inline VOID KeWaitOnNotification(IN PNOTIFICATION Notification)

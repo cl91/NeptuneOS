@@ -81,7 +81,7 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
     assert(RightChild != NULL);
     assert(Src->TreeNode.CSpace != NULL);
 
-    if (MiCapTreeNodeHasChildren(&Src->TreeNode)) {
+    if (MmCapTreeNodeHasChildren(&Src->TreeNode)) {
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -230,7 +230,7 @@ NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
     *IoUntyped = RootIoUntyped;
     LONG NumSplits = RootIoUntyped->Log2Size - PAGE_LOG2SIZE;
     for (LONG i = NumSplits-1; i >= 0; i--) {
-	if (!MiCapTreeNodeHasChildren(&(*IoUntyped)->TreeNode)) {
+	if (!MmCapTreeNodeHasChildren(&(*IoUntyped)->TreeNode)) {
 	    MiAllocatePool(Child0, UNTYPED);
 	    MiAllocatePoolEx(Child1, UNTYPED, MiFreePool(Child0));
 	    RET_ERR_EX(MiSplitUntyped(*IoUntyped, Child0, Child1),
@@ -239,7 +239,7 @@ NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			   MiFreePool(Child1);
 		       });
 	}
-	assert(MiCapTreeNodeChildrenCount(&(*IoUntyped)->TreeNode) == 2);
+	assert(MmCapTreeNodeChildrenCount(&(*IoUntyped)->TreeNode) == 2);
 	PUNTYPED Child0 = MiCapTreeGetFirstChildTyped(*IoUntyped, UNTYPED);
 	PUNTYPED Child1 = MiCapTreeGetSecondChildTyped(*IoUntyped, UNTYPED);
 	if (MiUntypedContainsPhyAddr(Child0, PhyAddr)) {
@@ -275,15 +275,53 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 }
 
 /*
- * Revoke all child objects of the specified untyped and return
- * the untyped to the free untyped lists, possibly merging with
- * sibling untyped memories.
+ * If the sibling of the given untyped cap has any derived cap, or if
+ * the parent node of the untyped cap node is NULL, simply return the
+ * untyped to the free untyped list (unless the untyped cap is an IO
+ * untyped, aka device untyped, in which case we do nothing).
+ *
+ * Otherwise, detach the sibling from the free list, revoke the parent
+ * cap (this will delete both the given untyped cap and its sibling but
+ * does not delete the parent cap itself), detach both untyped cap node
+ * from the cap tree, free their pool memory, and recursively call this
+ * routine on the parent.
+ *
+ * IMPORTANT: The given Untyped must not have any derived cap.
  */
-NTSTATUS MmReleaseUntyped(IN PUNTYPED Untyped)
+VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 {
-    /* TODO: Revoke child objects */
-    /* TODO: Merge untyped recursively if possible and add to free list */
-    return STATUS_SUCCESS;
+    assert(Untyped != NULL);
+    assert(!MmCapTreeNodeHasChildren(&Untyped->TreeNode));
+    assert(MmCapTreeNodeSiblingCount(&Untyped->TreeNode) <= 2);
+    assert(!ListHasEntry(&MiPhyMemDescriptor.SmallUntypedList, &Untyped->FreeListEntry));
+    assert(!ListHasEntry(&MiPhyMemDescriptor.MediumUntypedList, &Untyped->FreeListEntry));
+    assert(!ListHasEntry(&MiPhyMemDescriptor.LargeUntypedList, &Untyped->FreeListEntry));
+    PCAP_TREE_NODE SiblingNode = MiCapTreeGetNextSibling(&Untyped->TreeNode);
+    if (SiblingNode != NULL && !MmCapTreeNodeHasChildren(SiblingNode)) {
+	assert(Untyped->TreeNode.Parent != NULL);
+	assert(Untyped->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
+	assert(SiblingNode->Type == CAP_TREE_NODE_UNTYPED);
+	assert(SiblingNode->Parent != NULL);
+	assert(SiblingNode->Parent == Untyped->TreeNode.Parent);
+	PUNTYPED ParentUntyped = TREE_NODE_TO_UNTYPED(SiblingNode->Parent);
+	PUNTYPED SiblingUntyped = TREE_NODE_TO_UNTYPED(SiblingNode);
+	assert(SiblingUntyped->IsDevice == Untyped->IsDevice);
+	assert(SiblingUntyped->IsDevice
+	       || ListHasEntry(&MiPhyMemDescriptor.SmallUntypedList, &SiblingUntyped->FreeListEntry)
+	       || ListHasEntry(&MiPhyMemDescriptor.MediumUntypedList, &SiblingUntyped->FreeListEntry)
+	       || ListHasEntry(&MiPhyMemDescriptor.LargeUntypedList, &SiblingUntyped->FreeListEntry));
+	MmCapTreeRevokeNode(Untyped->TreeNode.Parent);
+	MmCapTreeNodeRemoveFromParent(&Untyped->TreeNode);
+	MmCapTreeNodeRemoveFromParent(SiblingNode);
+	if (!SiblingUntyped->IsDevice) {
+	    RemoveEntryList(&SiblingUntyped->FreeListEntry);
+	}
+	MiFreePool(Untyped);
+	MiFreePool(SiblingUntyped);
+	MmReleaseUntyped(ParentUntyped);
+    } else if (!Untyped->IsDevice) {
+	MiInsertFreeUntyped(&MiPhyMemDescriptor, Untyped);
+    }
 }
 
 #ifdef CONFIG_DEBUG_BUILD

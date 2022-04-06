@@ -34,30 +34,34 @@ typedef struct _MM_INIT_INFO {
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 #define MiFreePool(Var) ExFreePoolWithTag(Var, NTOS_MM_TAG)
 
-static inline BOOLEAN MiCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
-{
-    return !IsListEmpty(&Node->ChildrenList);
-}
-
-static inline ULONG MiCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
-{
-    return GetListLength(&Node->ChildrenList);
-}
-
 static inline PCAP_TREE_NODE MiCapTreeNodeGetFirstChild(IN PCAP_TREE_NODE Node)
 {
-    assert(MiCapTreeNodeHasChildren(Node));
+    assert(MmCapTreeNodeHasChildren(Node));
     return CONTAINING_RECORD(Node->ChildrenList.Flink, CAP_TREE_NODE, SiblingLink);
 }
 
 static inline PCAP_TREE_NODE MiCapTreeNodeGetSecondChild(IN PCAP_TREE_NODE Node)
 {
-    assert(MiCapTreeNodeChildrenCount(Node) == 2);
+    assert(MmCapTreeNodeChildrenCount(Node) == 2);
     return CONTAINING_RECORD(Node->ChildrenList.Flink->Flink, CAP_TREE_NODE, SiblingLink);
 }
 
 #define MiCapTreeGetFirstChildTyped(Obj, Type)	(CONTAINING_RECORD(MiCapTreeNodeGetFirstChild(&(Obj)->TreeNode), Type, TreeNode))
 #define MiCapTreeGetSecondChildTyped(Obj, Type)	(CONTAINING_RECORD(MiCapTreeNodeGetSecondChild(&(Obj)->TreeNode), Type, TreeNode))
+
+static inline PCAP_TREE_NODE MiCapTreeGetNextSibling(IN PCAP_TREE_NODE Node)
+{
+    assert(Node->SiblingLink.Flink != NULL);
+    assert(Node->SiblingLink.Blink != NULL);
+    if (Node->Parent == NULL) {
+	return NULL;
+    }
+    assert(!IsListEmpty(&Node->SiblingLink));
+    if (Node->SiblingLink.Flink == &Node->Parent->ChildrenList) {
+	return NULL;
+    }
+    return CONTAINING_RECORD(Node->SiblingLink.Flink, CAP_TREE_NODE, SiblingLink);
+}
 
 /*
  * Helper functions for MWORD array as bitmaps

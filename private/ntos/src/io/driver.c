@@ -233,10 +233,10 @@ out:
 	    ObDereferenceObject(Svc->IsrThread);
 	}
 	if (Svc->Notification.TreeNode.Cap != 0) {
-	    KeDestroyNotification(&Svc->Notification);
+	    KeDeleteNotification(&Svc->Notification);
 	}
 	if (Svc->InterruptMutex.TreeNode.Cap != 0) {
-	    KeDestroyNotification(&Svc->InterruptMutex);
+	    KeDeleteNotification(&Svc->InterruptMutex);
 	}
 	IopFreePool(Svc);
     }

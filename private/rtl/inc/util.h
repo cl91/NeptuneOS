@@ -82,6 +82,20 @@ static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
     return Length;
 }
 
+static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
+				   IN PLIST_ENTRY Entry)
+{
+    assert(List != NULL);
+    assert(Entry != NULL);
+    assert(List->Flink != NULL);
+    for (PLIST_ENTRY p = List->Flink; p != List; p = p->Flink) {
+	if (p == Entry) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+
 #define LoopOverList(Entry, ListHead, Type, Field)			\
     for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
 	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \
