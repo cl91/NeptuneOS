@@ -310,7 +310,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KiFillProcessorInformation();
 
 #ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugNameThread(NTEX_TCB_CAP, "NTOS Executive");
+    seL4_DebugNameThread(NTOS_TCB_CAP, "NTOS Executive");
     KiDumpBootInfoAll(bootinfo);
 #endif
 

@@ -26,7 +26,7 @@ static NTSTATUS PspSetThreadPriority(IN MWORD ThreadCap,
 				     IN THREAD_PRIORITY Priority)
 {
     assert(ThreadCap != 0);
-    int Error = seL4_TCB_SetPriority(ThreadCap, NTEX_TCB_CAP, Priority);
+    int Error = seL4_TCB_SetPriority(ThreadCap, NTOS_TCB_CAP, Priority);
 
     if (Error != 0) {
 	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %d\n",

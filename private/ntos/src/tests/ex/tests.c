@@ -4,5 +4,5 @@ VOID ExRunPoolTests();
 
 VOID ExRunTests()
 {
-    ExRunPoolTests();
+//    ExRunPoolTests();
 }

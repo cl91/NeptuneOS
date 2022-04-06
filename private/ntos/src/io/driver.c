@@ -210,9 +210,9 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObjec
     IF_ERR_GOTO(out, Status,
 		PsSetThreadPriority(Svc->IsrThread, DEVICE_INTERRUPT_MIN_LEVEL + Vector));
     IF_ERR_GOTO(out, Status,
-		MmCapTreeDeriveBadgedNode(&Svc->IsrThreadClientCap,
-					  &Svc->IsrThread->TreeNode,
-					  seL4_AllRights, 0));
+		MmCapTreeCopyNode(&Svc->IsrThreadClientCap,
+				  &Svc->IsrThread->TreeNode,
+				  seL4_AllRights));
     InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
 
     /* Connect the given interrupt vector to the interrupt thread */

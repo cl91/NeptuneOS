@@ -58,6 +58,10 @@ Revision History:
 #include <dbgtrace.h>
 #endif
 
+#define LoopOverChildren(Child, Node)		\
+    LoopOverList(Child, &(Node)->ChildrenList,	\
+		 CAP_TREE_NODE, SiblingLink)
+
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
@@ -115,7 +119,7 @@ VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Node,
 	     Node->SiblingLink.Flink, Node->SiblingLink.Blink);
     MmDbgDumpCapTreeNode(Node);
     DbgPrint("\n");
-    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
+    LoopOverChildren(Child, Node) {
 	MmDbgDumpCapTree(Child, Indentation + MI_DBG_CAP_TREE_INDENTATION);
     }
 }
@@ -256,12 +260,15 @@ VOID MmDeleteCNode(IN PCNODE CNode)
     assert(CNode != &MiNtosCNode);
     /* All CNode are retyped from the untyped memory, so must have a parent */
     assert(CNode->TreeNode.Parent != NULL);
-    /* The parent of a CNode should always be an untyped. BUG! */
+    /* The parent of a CNode should always be an untyped. */
     assert(CNode->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
 
     MiFreePool(CNode->UsedMap);
-    /* This will free the CNode struct itself from the ExPool */
-    MmReleaseUntyped(TREE_NODE_TO_UNTYPED(CNode->TreeNode.Parent));
+    /* Delete the cap tree node. This will release the untyped cap from which
+     * the cnode cap is derived. */
+    MmCapTreeDeleteNode(&CNode->TreeNode);
+    /* Free the pool memory of the CNode structure */
+    MiFreePool(CNode);
 }
 
 /*
@@ -324,13 +331,10 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
 }
 
 /*
- * Invoke seL4_CNode_Delete on a cap node. This will recursively delete
- * all the derived capabilities of the given cap in addition to the node
- * itself.
+ * Invoke seL4_CNode_Delete on a cap node.
  *
- * NOTE: CNode_Revoke will delete all the derived caps but not the cap
- * itself. CNode_Delete will delete the cap itself as well as all its
- * children.
+ * Note: for a TCB or CNODE cap, this will delete all the caps in the CNODE
+ * or TCB. Otherwise, it only delete the cap itself (but not its CDT children).
  */
 static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
 {
@@ -368,22 +372,13 @@ static NTSTATUS MiRevokeCap(IN PCAP_TREE_NODE Node)
     return STATUS_SUCCESS;
 }
 
-static VOID MiCapTreeDeallocateCap(IN PCAP_TREE_NODE Node)
-{
-    assert(Node != NULL);
-    assert(Node->CSpace != NULL);
-    assert(Node->Cap);
-    MmDeallocateCap(Node->CSpace, Node->Cap);
-    Node->Cap = 0;
-    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
-	MiCapTreeDeallocateCap(Child);
-    }
-}
-
 /*
- * Invoke CNode_Delete on the node cap and deallocate the node cap and all its cap
- * tree descendants. Note that we don't modify the cap tree structure itself as this
- * would prevent the upstream caller from accessing the children.
+ * Detach the cap node from its cap tree parent and invoke CNode_Delete
+ * on the cap node. If the node has any cap tree children, the children
+ * are re-parented as the children of the parent of the cap node. Finally,
+ * if the parent is an untyped node and the untyped node now has no children,
+ * we release the untyped node. This will recursively merge all unused
+ * adjacent untyped caps.
  */
 VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 {
@@ -393,7 +388,36 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     /* This should always succeed. On debug build we assert if it didn't. */
     NTSTATUS Status = MiDeleteCap(Node);
     assert(NT_SUCCESS(Status));
-    MiCapTreeDeallocateCap(Node);
+    MmDeallocateCap(Node->CSpace, Node->Cap);
+    Node->Cap = 0;
+    PCAP_TREE_NODE Parent = Node->Parent;
+    if (Parent != NULL) {
+	MiCapTreeRemoveFromParent(Node);
+    }
+    LoopOverChildren(Child, Node) {
+	MiCapTreeRemoveFromParent(Child);
+	if (Parent != NULL) {
+	    MiCapTreeNodeSetParent(Child, Parent);
+	}
+    }
+    /* If the parent cap tree node is an untyped cap and it has no children,
+       release it */
+    if (Parent != NULL && Parent->Type == CAP_TREE_NODE_UNTYPED
+	&& !MmCapTreeNodeHasChildren(Parent)) {
+	MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Parent));
+    }
+}
+
+static VOID MiCapTreeDeallocateCapRecursively(IN PCAP_TREE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CSpace != NULL);
+    assert(Node->Cap);
+    MmDeallocateCap(Node->CSpace, Node->Cap);
+    Node->Cap = 0;
+    LoopOverChildren(Child, Node) {
+	MiCapTreeDeallocateCapRecursively(Child);
+    }
 }
 
 /*
@@ -402,7 +426,7 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
  * the cap tree structure itself as this would prevent the upstream caller from
  * accessing the children.
  */
-VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
+VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
     assert(Node->CSpace != NULL);
@@ -410,28 +434,122 @@ VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
     /* This should always succeed. On debug build we assert if it didn't. */
     NTSTATUS Status = MiRevokeCap(Node);
     assert(NT_SUCCESS(Status));
-    LoopOverList(Child, &Node->ChildrenList, CAP_TREE_NODE, SiblingLink) {
-	MiCapTreeDeallocateCap(Child);
+    LoopOverChildren(Child, Node) {
+	MiCapTreeDeallocateCapRecursively(Child);
     }
 }
 
 /*
- * Detach the given cap tree node from the capability derivation tree
- * and release its parent untyped (if any).
+ * Allocate a new cap slot and copy the old cap into the new cap slot.
+ *
+ * IMPORTANT NOTES:
+ *
+ * The way that seL4 builds capability derivation trees is quite subtle
+ * in certain cases: for instance, if an original cap to an object (the
+ * cap that you get from Untyped_Retype) is copied, the new cap is a CDT
+ * (capability derivation tree) child of the original cap. However, further
+ * copies of both the original cap and the copy would create siblings of
+ * the copied cap (ie. children of the original cap). This however does
+ * not apply to untyped caps. Copying an untyped cap always creates a CDT
+ * child of the untyped cap. Additionally, once an untyped cap has a CDT
+ * child it cannot be derived any further. This implies that if one copies
+ * Untyped0 to Untyped1, further attempts to copy Untyped0 will result
+ * in error (IPC Error code 9: Revoke first). Likewise, trying to retype
+ * the original cap Untyped0 will result in IPC error 10: Not enough memory
+ * once it has been copied to Untyped1.
+ *
+ * One further exception to the general rule above is that IPC endpoints
+ * and notification caps both support an additional layer of capability
+ * derivation tree, via the badged cap. Badging an endpoint or notification
+ * creates a CDT child node of the original unbadged cap node. See the
+ * comments in MmCapTreeDeriveBadgedNode for details.
+ *
+ * In NeptuneOS, to simplify system construction we explicitly disallow
+ * copying untyped caps. Furthermore, since copying the original cap
+ * creates children, while copying the derived cap creates siblings, we
+ * need to distinguish original caps from their copies. This can be done
+ * by noting that for unbadged caps, the original cap must be the sole
+ * descendant of an untyped cap, while the derived cap must be a descendant
+ * of a typed cap (ie. any cap that is not an untyped cap). For badged caps,
+ * the original cap must be a descendant of an unbadged cap of the same type,
+ * while further copies of the badged cap are descendants of a badged cap
+ * of the same type.
+ *
+ * The simple rules above to distinguish original caps are in fact NOT
+ * correct after the original cap node has been deleted, in which case
+ * copying a derived cap will create a child node of the derived node (instead
+ * of a sibling). This is only problematic when we try to revoke the derived
+ * node (it would not work since the original cap has been deleted. Revoking
+ * only works on original caps). In practice the only time we call revoke
+ * is on untyped caps (in MmReleaseUntyped), so this is not a problem.
  */
-VOID MmCapTreeReleaseNode(IN PCAP_TREE_NODE Node)
+NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
+			   IN PCAP_TREE_NODE OldNode,
+			   IN seL4_CapRights_t NewRights)
 {
-    PCAP_TREE_NODE Parent = Node->Parent;
-    MmCapTreeNodeRemoveFromParent(Node);
-    /* If the parent cap tree node is an untyped cap, release it */
-    if (Parent != NULL && Parent->Type == CAP_TREE_NODE_UNTYPED) {
-	/* An untyped cap can only have exactly one derived cap
-	 * if it is retyped into a typed cap. */
-	assert(!MmCapTreeNodeHasChildren(Parent));
-	MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Parent));
+    assert(NewNode != NULL);
+    assert(OldNode != NULL);
+    assert(NewNode->CSpace != NULL);
+    assert(OldNode->CSpace != NULL);
+    assert(NewNode->Cap == 0);
+    /* We never copy untyped caps so OldNode always have a parent */
+    assert(OldNode->Parent != NULL);
+    /* NewNode cannot have a parent */
+    assert(NewNode->Parent == NULL);
+    /* We explicitly disallow copying untyped caps */
+    assert(OldNode->Type != CAP_TREE_NODE_UNTYPED);
+    /* We also explicitly disallow copying cnode caps because we never
+     * need to do that. */
+    assert(OldNode->Type != CAP_TREE_NODE_CNODE);
+
+    MWORD NewCap = 0;
+    RET_ERR(MmAllocateCapRange(NewNode->CSpace, &NewCap, 1));
+    assert(NewCap != 0);
+
+    RET_ERR_EX(MiCopyCap(NewNode->CSpace, NewCap, OldNode->CSpace,
+			 OldNode->Cap, NewRights),
+	       MmDeallocateCap(NewNode->CSpace, NewCap));
+    NewNode->Cap = NewCap;
+    NewNode->Type = OldNode->Type;
+
+    /* Check whether the old node is an original cap */
+    BOOLEAN AddAsSibling = (OldNode->Badge == 0) ?
+	(OldNode->Parent->Type != CAP_TREE_NODE_UNTYPED) :
+	(OldNode->Parent->Badge != 0);
+    /* For badged node the parent should have the same node type */
+    assert(OldNode->Badge == 0 || OldNode->Parent->Type == OldNode->Type);
+
+    if (AddAsSibling) {
+	/* Make sure the old node has the same type as its parent */
+	assert(OldNode->Parent->Type == OldNode->Type);
+	/* Add new node as the sibling of the old node */
+	MiCapTreeNodeSetParent(NewNode, OldNode->Parent);
+    } else {
+	/* Add new node as the child of the old node. */
+	MiCapTreeNodeSetParent(NewNode, OldNode);
     }
+
+    return STATUS_SUCCESS;
 }
 
+/*
+ * Allocate a cap slot and mint the old node into the new cap slot
+ * with a new badge.
+ *
+ * We enforce the following rules:
+ *
+ *   1. Badge cannot be zero. To derive into an unbadged node, use
+ *      MmCapTreeCopyNode.
+ *   2. The old node must not have already been badged.
+ *   3. Only IPC endpoint and notification caps can be badged.
+ *   4. Only the original cap can be badged. In other words, if you
+ *      copy original endpoint cap Ep0 to Ep1, you cannot badge Ep1.
+ *      This is not a seL4 restriction but to simplify our algorithms.
+ *
+ * See also comments on MmCapTreeCopyNode. As opposed to copying a
+ * node, badging a node always creates a CDT child node of the original
+ * unbadged node.
+ */
 NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,
@@ -439,30 +557,37 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 {
     assert(NewNode != NULL);
     assert(OldNode != NULL);
+    assert(OldNode->Type == CAP_TREE_NODE_ENDPOINT ||
+	   OldNode->Type == CAP_TREE_NODE_NOTIFICATION);
     assert(NewNode->CSpace != NULL);
     assert(OldNode->CSpace != NULL);
     assert(NewNode->Cap == 0);
+    assert(OldNode->Badge == 0);
+    assert(NewNode->Badge == 0);
+    assert(OldNode->Parent != NULL);
+    assert(OldNode->Parent->Type == CAP_TREE_NODE_UNTYPED);
     assert(NewNode->Parent == NULL || NewNode->Parent == OldNode);
+    assert(Badge != 0);
 
     MWORD NewCap = 0;
     RET_ERR(MmAllocateCapRange(NewNode->CSpace, &NewCap, 1));
     assert(NewCap != 0);
 
-    if (Badge == 0) {
-	RET_ERR_EX(MiCopyCap(NewNode->CSpace, NewCap, OldNode->CSpace,
-			     OldNode->Cap, NewRights),
-		   MmDeallocateCap(NewNode->CSpace, NewCap));
-    } else {
-	RET_ERR_EX(MiMintCap(NewNode->CSpace, NewCap, OldNode->CSpace,
-			     OldNode->Cap, NewRights, Badge),
-		   MmDeallocateCap(NewNode->CSpace, NewCap));
-    }
+    RET_ERR_EX(MiMintCap(NewNode->CSpace, NewCap, OldNode->CSpace,
+			 OldNode->Cap, NewRights, Badge),
+	       MmDeallocateCap(NewNode->CSpace, NewCap));
     NewNode->Cap = NewCap;
     NewNode->Type = OldNode->Type;
+    NewNode->Badge = Badge;
 
-    /* Add new node as the child of the old node. */
+    /* Add new node as the child of the old node. Note that since we
+     * disallow badging derived nodes, the badged node is always the
+     * CDT child of the unbadged node. (If we instead allow badging
+     * derived nodes, we need to perform the same algorithm as in
+     * MmCapTreeCopyNode to determine if the unbadged node is the
+     * original cap or a derived cap.) */
     if (NewNode->Parent == NULL) {
-	MmCapTreeNodeSetParent(NewNode, OldNode);
+	MiCapTreeNodeSetParent(NewNode, OldNode);
     }
 
     return STATUS_SUCCESS;

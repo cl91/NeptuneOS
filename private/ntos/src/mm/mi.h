@@ -34,6 +34,15 @@ typedef struct _MM_INIT_INFO {
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 #define MiFreePool(Var) ExFreePoolWithTag(Var, NTOS_MM_TAG)
 
+static inline VOID MiCapTreeRemoveFromParent(IN PCAP_TREE_NODE Node)
+{
+    assert(Node->SiblingLink.Flink != NULL);
+    assert(Node->SiblingLink.Blink != NULL);
+    assert(!IsListEmpty(&Node->SiblingLink));
+    RemoveEntryList(&Node->SiblingLink);
+    Node->Parent = NULL;
+}
+
 static inline PCAP_TREE_NODE MiCapTreeNodeGetFirstChild(IN PCAP_TREE_NODE Node)
 {
     assert(MmCapTreeNodeHasChildren(Node));
@@ -264,6 +273,9 @@ extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
 extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 extern CNODE MiNtosCNode;
 
+/* cap.c */
+VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node);
+
 /* untyped.c */
 VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem);
 VOID MiInitializeUntyped(IN PUNTYPED Untyped,
@@ -360,6 +372,7 @@ NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
 PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 					IN MWORD VirtAddr);
+PPAGING_STRUCTURE MiGetFirstPage(IN PPAGING_STRUCTURE Page);
 PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page);
 NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
 			     IN MWORD StartAddr,
@@ -378,7 +391,12 @@ NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD PhyAddr,
 			IN MWORD VirtAddr,
 			IN PAGING_RIGHTS Rights);
-VOID MiUncommitPage(IN PPAGING_STRUCTURE Page);
+VOID MiDestroyPage(IN PPAGING_STRUCTURE Page);
+
+static inline BOOLEAN MiPagingTypeIsRoot(IN PAGING_STRUCTURE_TYPE Type)
+{
+    return Type == PAGING_TYPE_ROOT_PAGING_STRUCTURE;
+}
 
 static inline BOOLEAN MiPagingTypeIsPage(IN PAGING_STRUCTURE_TYPE Type)
 {

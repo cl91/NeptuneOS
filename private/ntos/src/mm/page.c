@@ -131,9 +131,8 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
 				 IN BOOLEAN Mapped,
 				 IN PAGING_RIGHTS Rights)
 {
-    MmInitializeCapTreeNode(&Page->TreeNode, CAP_TREE_NODE_PAGING_STRUCTURE, Cap,
-			    ParentNode ? ParentNode->CSpace : &MiNtosCNode,
-			    ParentNode);
+    MmInitializeCapTreeNode(&Page->TreeNode, CAP_TREE_NODE_PAGING_STRUCTURE,
+			    Cap, &MiNtosCNode, ParentNode);
     MmAvlInitializeNode(&Page->AvlNode, MiSanitizeAlignment(Type, VirtAddr));
     Page->SuperStructure = SuperStructure;
     MmAvlInitializeTree(&Page->SubStructureTree);
@@ -182,8 +181,8 @@ static VOID MiPagingInsertSubStructure(IN PPAGING_STRUCTURE Self,
     PMM_AVL_TREE Tree = &Self->SubStructureTree;
     MWORD VirtAddr = SubStructure->AvlNode.Key;
     PMM_AVL_NODE Super = MiAvlTreeFindNodeOrParent(Tree, VirtAddr);
-    if (Super != NULL && MiPagingStructureContainsAddr(
-	    MM_AVL_NODE_TO_PAGING_STRUCTURE(Super), VirtAddr)) {
+    if (Super != NULL &&
+	MiPagingStructureContainsAddr(MM_AVL_NODE_TO_PAGING_STRUCTURE(Super), VirtAddr)) {
 	DbgTrace("Assertion triggered. Dumping PAGING_STRUCTURE Super:\n");
 	MmDbgDumpPagingStructure(MM_AVL_NODE_TO_PAGING_STRUCTURE(Super));
 	DbgTrace("Dumping PAGING_STRUCTURE SubStructure:\n");
@@ -243,7 +242,7 @@ static NTSTATUS MiRetypeIntoPagingStructure(PPAGING_STRUCTURE Page)
 
 static VOID MiFreePagingStructure(PPAGING_STRUCTURE Page)
 {
-    MmCapTreeNodeRemoveFromParent(&Page->TreeNode);
+    MiCapTreeRemoveFromParent(&Page->TreeNode);
     assert(MiAvlTreeIsEmpty(&Page->SubStructureTree));
     if (Page->SuperStructure) {
 	MiAvlTreeRemoveNode(&Page->SuperStructure->SubStructureTree, &Page->AvlNode);
@@ -374,29 +373,39 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
 }
 
 /*
- * Unmap the page and revoke its page cap. Detach the cap tree node of
- * the page object from the cap derivation tree. Note that this does not
- * unlink the cap tree children of this page cap. The caller can still
- * access all the derived page caps of this page cap via the cap tree
- * node's ChildrenList.
+ * Unmap the page and delete its page cap. Detach the cap tree node of
+ * the page object from the cap derivation tree. If the page cap has any
+ * derived cap tree node, the cap tree children are re-parented as the
+ * children of the parent of the cap node. If the parent untyped of the
+ * page cap has no children left, it is released. Finally, pool memory
+ * for the paging structure is freed, and if the parent paging structure
+ * (ie. for page it's page table, etc) is empty, destroy it too. This
+ * is recursive, until we reach the root paging structure, which is NOT
+ * deleted.
  *
  * Page can be a PAGE or LARGE_PAGE, or any leaf paging structure (eg.
  * an empty page table).
  */
-VOID MiUncommitPage(IN PPAGING_STRUCTURE Page)
+VOID MiDestroyPage(IN PPAGING_STRUCTURE Page)
 {
     assert(Page != NULL);
     /* Leaf-level paging structure should not have substructures */
     assert(Page->SubStructureTree.BalancedRoot == NULL);
-    /* Make sure that the page isn't being mapped elsewhere */
-    assert(IsListEmpty(&Page->TreeNode.ChildrenList));
+    PPAGING_STRUCTURE ParentPaging = Page->SuperStructure;
     /* Remove the AVL node of the page from its AVL tree */
     MiPagingRemoveFromParentStructure(Page);
-    /* Detach the cap node from the cap derivation tree and release its
-     * parent untyped (if any) */
-    MmCapTreeReleaseNode(&Page->TreeNode);
-    /* Delete the page cap and deallocate the cap slot in the cnode */
+    /* Delete the page cap and deallocate the cap slot in the cspace.
+     * This will automatically unmap it from the VSpace (if mapped).
+     * This will also release the parent untyped cap if the page cap
+     * is the only reference to the page */
     MmCapTreeDeleteNode(&Page->TreeNode);
+    /* Free the pool memory */
+    MiFreePool(Page);
+    if (ParentPaging != NULL &&
+	ParentPaging->Type != PAGING_TYPE_ROOT_PAGING_STRUCTURE &&
+	ParentPaging->SubStructureTree.BalancedRoot == NULL) {
+	MiDestroyPage(ParentPaging);
+    }
 }
 
 MM_MEM_PRESSURE MmQueryMemoryPressure()
@@ -459,11 +468,13 @@ static NTSTATUS MiCreateSharedPage(IN PPAGING_STRUCTURE OldPage,
     }
 
     MiAllocatePool(NewPage, PAGING_STRUCTURE);
-    MiInitializePagingStructure(NewPage, &OldPage->TreeNode, NULL,
+    MiInitializePagingStructure(NewPage, NULL, NULL,
 				NewVSpace->VSpaceCap, 0, NewVirtAddr,
 				OldPage->Type, FALSE, NewRights);
-    RET_ERR_EX(MmCapTreeDeriveBadgedNode(&NewPage->TreeNode, &OldPage->TreeNode,
-					 NewRights, 0),
+    /* Note that the new page cap has the same rights as the old page cap.
+     * The page access rights (RW/RO) are set when we map the page. */
+    RET_ERR_EX(MmCapTreeCopyNode(&NewPage->TreeNode, &OldPage->TreeNode,
+				 seL4_AllRights),
 	       MiFreePagingStructure(NewPage));
     *pNewPage = NewPage;
 
@@ -542,7 +553,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     }
     PPAGING_STRUCTURE Page = NULL;
     RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, HyperspaceAddr,
-				    NTEX_VSPACE_CAP, MM_RIGHTS_RW, &Page));
+				    NTOS_VSPACE_CAP, MM_RIGHTS_RW, &Page));
     assert(Page != NULL);
     RET_ERR_EX(MiMapSuperStructure(Page, &MiNtosVaddrSpace, NULL),
 	       MiFreePagingStructure(Page));
@@ -554,7 +565,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     /* Unmap the page and modify the paging structure to have the new parameters */
     RET_ERR_EX(MiUnmapPagingStructure(Page), MiFreePagingStructure(Page));
     /* This is necessary because MmCapTreeNodeSetParent requires empty parent */
-    MmCapTreeNodeRemoveFromParent(&Page->TreeNode);
+    MiCapTreeRemoveFromParent(&Page->TreeNode);
     MiInitializePagingStructure(Page, &Untyped->TreeNode, ParentPaging, VSpaceCap,
 				Page->TreeNode.Cap, VirtAddr, Type, FALSE, Rights);
 
@@ -566,7 +577,8 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
 
 /*
  * Returns the lowest-level PAGING_STRUCTURE pointer to the page at given virtual address.
- * Returns NULL if virtual address is unmapped.
+ *
+ * Returns NULL if virtual address is unmapped. Otherwise this routine never returns NULL.
  */
 PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 					IN MWORD VirtAddr)
@@ -586,8 +598,25 @@ PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 	}
 	Paging = SubStructure;
     }
+    assert(Paging != NULL);
 
     return Paging;
+}
+
+/*
+ * Get the first page within the given paging structure (page table, etc.).
+ *
+ * If the given paging structure it a leaf node (ie. a page, large page, or an
+ * empty page table, etc), return itself.
+ */
+PPAGING_STRUCTURE MiGetFirstPage(IN PPAGING_STRUCTURE Page)
+{
+    assert(Page != NULL);
+    while (MiAvlGetFirstNode(&Page->SubStructureTree) != NULL) {
+	Page = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetFirstNode(&Page->SubStructureTree));
+    }
+    assert(Page != NULL);
+    return Page;
 }
 
 /*
@@ -607,9 +636,9 @@ PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
  * |PAGE0| |PAGE1|                        |PAGE2|
  * |-----| |-----|                        |-----|
  *
- * Calling MiGetNextPagingStructure on Page0 will return Page1, while calling
- * it on Page1 will return PageTable1, and calling it on PageTable1 will return
- * Page2.
+ * Calling MiGetNextPagingStructure on Page0 will return Page1, while calling it
+ * on Page1 will return PageTable1, and calling it on PageTable1 will return Page2.
+ * Calling it on PageTable0 will return PageTable1.
  */
 PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page)
 {
@@ -621,12 +650,7 @@ PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page)
 	Next = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetNextNode(&Page->AvlNode));
 	Page = Page->SuperStructure;
     } while (Next == NULL);
-    assert(Next != NULL);
-    while (MiAvlGetFirstNode(&Next->SubStructureTree) != NULL) {
-	Next = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetFirstNode(&Next->SubStructureTree));
-    }
-    assert(Next != NULL);
-    return Next;
+    return Next ? MiGetFirstPage(Next) : NULL;
 }
 
 static NTSTATUS MiCommitPrivatePage(IN PVIRT_ADDR_SPACE VSpace,

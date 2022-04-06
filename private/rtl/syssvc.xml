@@ -122,7 +122,7 @@
 
   <svc name="NtFreeVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
-    <parameter annotation="in" type="PVOID" name="BaseAddress" />
+    <parameter annotation="in out" type="ptr::PVOID" name="BaseAddress" />
     <parameter annotation="in out" type="ptr::SIZE_T" name="RegionSize" />
     <parameter annotation="in" type="ULONG" name="FreeType" />
   </svc>

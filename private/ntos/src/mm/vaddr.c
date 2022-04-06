@@ -531,59 +531,63 @@ static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 /*
- * Uncommit the given VAD. This can only be called when there is
- * no viewers mirroring any of the pages in this VAD.
+ * De-commit the given address window. The actual StartAddr and WindowSize are returned.
  */
-static VOID MiUncommitVad(IN PMMVAD Vad)
+static VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
+			     IN OUT MWORD *StartAddr,
+			     IN OUT MWORD *WindowSize)
 {
-    PVIRT_ADDR_SPACE VSpace = Vad->VSpace;
-    assert(VSpace != NULL);
-    MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
+    *StartAddr = PAGE_ALIGN(*StartAddr);
+    MWORD EndAddr = PAGE_ALIGN_UP(*StartAddr + *WindowSize);
     /* Note that despite the name, Page can be any level of paging structure, ie.
      * page table, page directory, PDPT, or PML4 */
-    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, Vad->AvlNode.Key);
+    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, *StartAddr);
+    /* We never de-commit root paging structures */
+    if (Page == NULL || MiPagingTypeIsRoot(Page->Type)) {
+	/* Do nothing as the virtual address space is empty */
+	return;
+    }
+    if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	*StartAddr = Page->AvlNode.Key;
+    } else {
+	Page = MiGetFirstPage(Page);
+	if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	    Page = MiGetNextPagingStructure(Page);
+	}
+    }
     while (Page != NULL && Page->AvlNode.Key < EndAddr) {
 	PPAGING_STRUCTURE Next = MiGetNextPagingStructure(Page);
-	MiUncommitPage(Page);
-	MiFreePool(Page);
+	if (Next == NULL) {
+	    *WindowSize = Page->AvlNode.Key + MiPagingWindowSize(Page->Type) - *StartAddr;
+	}
+	MiDestroyPage(Page);
 	Page = Next;
     }
 }
 
 /*
- * Returns TRUE if there is no viewer VADs that mirror any memory pages in
- * this VAD.
+ * Uncommit the given VAD. This does not delete the VAD itself.
  */
-static BOOLEAN MiEnsureNoViewers(IN PMMVAD Vad)
+static VOID MiUncommitVad(IN PMMVAD Vad)
 {
-    PVIRT_ADDR_SPACE VSpace = Vad->VSpace;
-    assert(VSpace != NULL);
-    MWORD EndAddr = PAGE_ALIGN_UP(Vad->AvlNode.Key + Vad->WindowSize);
-    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, Vad->AvlNode.Key);
-    while (Page != NULL && Page->AvlNode.Key < EndAddr) {
-	PPAGING_STRUCTURE Next = MiGetNextPagingStructure(Page);
-	if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	    if (!IsListEmpty(&Page->TreeNode.ChildrenList)) {
-		return FALSE;
-	    }
-	}
-	Page = Next;
-    }
-    return TRUE;
+    assert(Vad != NULL);
+    assert(Vad->VSpace != NULL);
+    MWORD StartAddr = Vad->AvlNode.Key;
+    MWORD WindowSize = Vad->WindowSize;
+    MiUncommitWindow(Vad->VSpace, &StartAddr, &WindowSize);
 }
 
 /*
  * Uncommit the pages in the VAD, detach it from its VSpace (and its master
  * VSpace if there is one) and free the Vad data structure from the ExPool.
- * This can only be called when there are no viewers mirroring any of the
- * memory pages in this VAD.
+ *
+ * NOTE: If there are viewers (whether in this VSpace or in a different one)
+ * mirroring pages of this VAD, those mirrored pages will NOT be uncommitted.
  */
 VOID MmDeleteVad(IN PMMVAD Vad)
 {
     DbgTrace("Deleting vad %p key %p\n", Vad, (PVOID)Vad->AvlNode.Key);
     assert(Vad != NULL);
-    /* Make sure that there is no viewer VADs mirroring us */
-    assert(MiEnsureNoViewers(Vad));
     MiUncommitVad(Vad);
     MiAvlTreeRemoveNode(&Vad->VSpace->VadTree, &Vad->AvlNode);
     if (Vad->Flags.MirroredMemory) {
@@ -823,11 +827,84 @@ out:
 NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
 			     IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
-                             IN PVOID BaseAddress,
+                             IN OUT PVOID *BaseAddress,
                              IN OUT SIZE_T *RegionSize,
                              IN ULONG FreeType)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    assert(Thread != NULL);
+    assert(BaseAddress != NULL);
+    assert(RegionSize != NULL);
+
+    /*
+     * Only two flags are supported, exclusively.
+     */
+    if (FreeType != MEM_RELEASE && FreeType != MEM_DECOMMIT) {
+        DPRINT1("Invalid FreeType (0x%08x)\n", FreeType);
+        return STATUS_INVALID_PARAMETER_4;
+    }
+
+    /* Get the process object refereed by ProcessHandle */
+    PPROCESS Process = NULL;
+    if (ProcessHandle != NtCurrentProcess()) {
+	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
+					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
+    } else {
+	Process = Thread->Process;
+    }
+    assert(Process != NULL);
+    PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
+    DbgTrace("Process %s VSpace cap 0x%zx base address %p region size 0x%zx free type 0x%x\n",
+	     Process->ImageFile ? Process->ImageFile->FileName : "",
+	     VSpace->VSpaceCap, *BaseAddress, *RegionSize, FreeType);
+
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, (MWORD)*BaseAddress);
+    if (Vad == NULL) {
+	DbgTrace("Invalid base address %p\n", *BaseAddress);
+	Status = STATUS_INVALID_PARAMETER_2;
+	goto out;
+    }
+
+    if (FreeType == MEM_RELEASE) {
+	/* According to M$ documentation if free type is MEM_RELEASE, the
+	 * *BaseAddress parameter must be the exact same address that was
+	 * originally returned by NtAllocateVirtualMemory (ie. it must equal
+	 * the starting address of the VAD representing the reserved space).
+	 * Additionally, *RegionSize must be zero. */
+	if ((MWORD)*BaseAddress != Vad->AvlNode.Key) {
+	    DbgTrace("Base address does not equal start of reserved space %p\n",
+		     Vad->AvlNode.Key);
+	    Status = STATUS_INVALID_PARAMETER_2;
+	    goto out;
+	}
+	if (*RegionSize != 0) {
+	    DbgTrace("Region size must be zero\n");
+	    Status = STATUS_INVALID_PARAMETER_3;
+	    goto out;
+	}
+	*RegionSize = Vad->WindowSize;
+	MmDeleteVad(Vad);
+    } else if (*BaseAddress == (PVOID)Vad->AvlNode.Key && *RegionSize == 0) {
+	assert(FreeType == MEM_DECOMMIT);
+	*RegionSize = Vad->WindowSize;
+	MiUncommitVad(Vad);
+    } else {
+	assert(FreeType == MEM_DECOMMIT);
+	MiUncommitWindow(VSpace, (MWORD *)BaseAddress, (MWORD *)RegionSize);
+    }
+
+    Status = STATUS_SUCCESS;
+
+out:
+    if (ProcessHandle != NtCurrentProcess()) {
+	assert(Process != NULL);
+	ObDereferenceObject(Process);
+    }
+    if (!NT_SUCCESS(Status)) {
+	DbgTrace("NtFreeVirtualMemory failed with status 0x%x\n", Status);
+	MmDbgDumpVSpace(VSpace);
+    }
+    return Status;
 }
 
 NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,

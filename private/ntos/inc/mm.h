@@ -18,8 +18,8 @@
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define IS_LARGE_PAGE_ALIGNED(p)	(((MWORD)(p)) == LARGE_PAGE_ALIGN(p))
 
-#define NTEX_CNODE_CAP			(seL4_CapInitThreadCNode)
-#define NTEX_VSPACE_CAP			(seL4_CapInitThreadVSpace)
+#define NTOS_CNODE_CAP			(seL4_CapInitThreadCNode)
+#define NTOS_VSPACE_CAP			(seL4_CapInitThreadVSpace)
 
 #ifdef _M_IX86
 #define MWORD_LOG2SIZE			(2)
@@ -152,32 +152,12 @@ typedef enum _CAP_TREE_NODE_TYPE {
 typedef struct _CAP_TREE_NODE {
     CAP_TREE_NODE_TYPE Type;
     MWORD Cap;
+    MWORD Badge;
     struct _CNODE *CSpace;
     struct _CAP_TREE_NODE *Parent;
     LIST_ENTRY ChildrenList;	/* List head of the sibling list of children */
     LIST_ENTRY SiblingLink;	/* Chains all siblings together */
 } CAP_TREE_NODE, *PCAP_TREE_NODE;
-
-static inline VOID MmCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
-					  IN PCAP_TREE_NODE Parent)
-{
-    assert(Self != NULL);
-    assert(Self != Parent);
-    assert(Self->Parent == NULL);
-    Self->Parent = Parent;
-    if (Parent != NULL) {
-	InsertTailList(&Parent->ChildrenList, &Self->SiblingLink);
-    }
-}
-
-static inline VOID MmCapTreeNodeRemoveFromParent(IN PCAP_TREE_NODE Node)
-{
-    assert(Node->SiblingLink.Flink != NULL);
-    assert(Node->SiblingLink.Blink != NULL);
-    assert(!IsListEmpty(&Node->SiblingLink));
-    RemoveEntryList(&Node->SiblingLink);
-    Node->Parent = NULL;
-}
 
 static inline BOOLEAN MmCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
 {
@@ -218,6 +198,18 @@ typedef struct _CNODE {
 
 #define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
 
+static inline VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
+					  IN PCAP_TREE_NODE Parent)
+{
+    assert(Self != NULL);
+    assert(Self != Parent);
+    assert(Self->Parent == NULL);
+    Self->Parent = Parent;
+    if (Parent != NULL) {
+	InsertTailList(&Parent->ChildrenList, &Self->SiblingLink);
+    }
+}
+
 static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
 					   IN CAP_TREE_NODE_TYPE Type,
 					   IN MWORD Cap,
@@ -230,7 +222,7 @@ static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
     Self->CSpace = CSpace;
     InitializeListHead(&Self->ChildrenList);
     InitializeListHead(&Self->SiblingLink);
-    MmCapTreeNodeSetParent(Self, Parent);
+    MiCapTreeNodeSetParent(Self, Parent);
 }
 
 /*
@@ -588,13 +580,14 @@ VOID MmDeallocateCap(IN PCNODE CNode,
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
 VOID MmDeleteCNode(IN PCNODE CNode);
+NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
+			   IN PCAP_TREE_NODE OldNode,
+			   IN seL4_CapRights_t NewRights);
 NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN PCAP_TREE_NODE OldNode,
 				   IN seL4_CapRights_t NewRights,
 				   IN MWORD Badge);
 VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node);
-VOID MmCapTreeRevokeNode(IN PCAP_TREE_NODE Node);
-VOID MmCapTreeReleaseNode(IN PCAP_TREE_NODE Node);
 
 static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
 				     OUT MWORD *Cap)

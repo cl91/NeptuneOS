@@ -104,7 +104,7 @@ static inline VOID KeDeleteNotification(IN PNOTIFICATION Notification)
     MmCapTreeDeleteNode(&Notification->TreeNode);
     /* Detach the cap node from the cap derivation tree and release its
      * parent untyped (if any) */
-    MmCapTreeReleaseNode(&Notification->TreeNode);
+    MmCapTreeDeleteNode(&Notification->TreeNode);
 }
 
 static inline VOID KeWaitOnNotification(IN PNOTIFICATION Notification)

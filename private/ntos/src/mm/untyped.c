@@ -1,5 +1,14 @@
 #include "mi.h"
 
+/* Change this to 0 to enable debug tracing */
+#if 1
+#undef DbgTrace
+#define DbgTrace(...)
+#define DbgPrint(...)
+#else
+#include <dbgtrace.h>
+#endif
+
 VOID MiInitializeUntyped(IN PUNTYPED Untyped,
 			 IN PCNODE CSpace,
 			 IN OPTIONAL PUNTYPED Parent,
@@ -49,11 +58,12 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
     if (Error != seL4_NoError) {
 	MmDeallocateCap(TreeNode->CSpace, ObjCap);
 	MmDbgDumpCNode(TreeNode->CSpace);
+	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
     TreeNode->Cap = ObjCap;
     if (TreeNode->Parent == NULL) {
-	MmCapTreeNodeSetParent(TreeNode, &Untyped->TreeNode);
+	MiCapTreeNodeSetParent(TreeNode, &Untyped->TreeNode);
     }
     return STATUS_SUCCESS;
 }
@@ -64,7 +74,7 @@ NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
 			   IN MWORD DestCap)
 {
     MWORD Error = seL4_Untyped_Retype(SrcCap, seL4_UntypedObject,
-				      SrcLog2Size-1, NTEX_CNODE_CAP,
+				      SrcLog2Size-1, NTOS_CNODE_CAP,
 				      DestCSpace, 0, DestCap, 2);
     if (Error) {
 	return SEL4_ERROR(Error);
@@ -118,8 +128,8 @@ VOID MiInsertFreeUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 }
 
 /* Find the smallest untyped that is at least of the given log2size. */
-static PUNTYPED MiFindSmallestUntypedOfLog2Size(IN PLIST_ENTRY ListHead,
-						   IN LONG Log2Size)
+static PUNTYPED MiFindSmallestUntyped(IN PLIST_ENTRY ListHead,
+				      IN LONG Log2Size)
 {
     LONG SmallestLog2Size = 255;
     PUNTYPED DesiredUntyped = NULL;
@@ -138,25 +148,25 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 {
     PUNTYPED Untyped = NULL;
     if (Log2Size >= LARGE_PAGE_LOG2SIZE) {
-	Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.LargeUntypedList,
-						  Log2Size);
+	Untyped = MiFindSmallestUntyped(&MiPhyMemDescriptor.LargeUntypedList,
+					Log2Size);
     } else if (Log2Size >= PAGE_LOG2SIZE) {
-	Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.MediumUntypedList,
-						  Log2Size);
+	Untyped = MiFindSmallestUntyped(&MiPhyMemDescriptor.MediumUntypedList,
+					Log2Size);
 	if (Untyped == NULL) {
-	    Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.LargeUntypedList,
-						      Log2Size);
+	    Untyped = MiFindSmallestUntyped(&MiPhyMemDescriptor.LargeUntypedList,
+					    Log2Size);
 	}
     } else {
-	Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.SmallUntypedList,
-						  Log2Size);
+	Untyped = MiFindSmallestUntyped(&MiPhyMemDescriptor.SmallUntypedList,
+					Log2Size);
 	if (Untyped == NULL) {
-	    Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.MediumUntypedList,
-						      Log2Size);
+	    Untyped = MiFindSmallestUntyped(&MiPhyMemDescriptor.MediumUntypedList,
+					    Log2Size);
 	}
 	if (Untyped == NULL) {
-	    Untyped = MiFindSmallestUntypedOfLog2Size(&MiPhyMemDescriptor.LargeUntypedList,
-						      Log2Size);
+	    Untyped = MiFindSmallestUntyped(&MiPhyMemDescriptor.LargeUntypedList,
+					    Log2Size);
 	}
     }
     if (Untyped == NULL) {
@@ -286,7 +296,9 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
  * from the cap tree, free their pool memory, and recursively call this
  * routine on the parent.
  *
- * IMPORTANT: The given Untyped must not have any derived cap.
+ * IMPORTANT: The given Untyped must not have any derived cap. After
+ * calling this routine, Untyped may have been freed and you should
+ * NOT access it.
  */
 VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 {
@@ -310,9 +322,9 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 	       || ListHasEntry(&MiPhyMemDescriptor.SmallUntypedList, &SiblingUntyped->FreeListEntry)
 	       || ListHasEntry(&MiPhyMemDescriptor.MediumUntypedList, &SiblingUntyped->FreeListEntry)
 	       || ListHasEntry(&MiPhyMemDescriptor.LargeUntypedList, &SiblingUntyped->FreeListEntry));
-	MmCapTreeRevokeNode(Untyped->TreeNode.Parent);
-	MmCapTreeNodeRemoveFromParent(&Untyped->TreeNode);
-	MmCapTreeNodeRemoveFromParent(SiblingNode);
+	MiCapTreeRevokeNode(Untyped->TreeNode.Parent);
+	MiCapTreeRemoveFromParent(&Untyped->TreeNode);
+	MiCapTreeRemoveFromParent(SiblingNode);
 	if (!SiblingUntyped->IsDevice) {
 	    RemoveEntryList(&SiblingUntyped->FreeListEntry);
 	}
