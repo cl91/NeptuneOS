@@ -9,6 +9,10 @@ extern UCHAR _binary_initcpio_size[];
 NTSTATUS LdrLoadBootModules()
 {
     RET_ERR(ObCreateDirectory(BOOTMODULE_OBJECT_DIRECTORY));
+    POBJECT BootModuleDirectory = NULL;
+    RET_ERR(ObReferenceObjectByName(BOOTMODULE_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,
+				    NULL, &BootModuleDirectory));
+    assert(BootModuleDirectory != NULL);
 
     struct cpio_info cpio;
     int error = cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
@@ -43,11 +47,11 @@ NTSTATUS LdrLoadBootModules()
 
 	/* Create FILE object and insert into object directory */
 	PIO_FILE_OBJECT File = NULL;
-	RET_ERR(IoCreateFile(FileNames[i], (PVOID) FileContent, FileSize, &File));
+	RET_ERR(IoCreateFile(FileNames[i], BootModuleDirectory,
+			     (PVOID) FileContent, FileSize, &File));
 	assert(File != NULL);
-	RET_ERR_EX(ObInsertObjectByName(BOOTMODULE_OBJECT_DIRECTORY, File, FileNames[i]),
-		   ObDereferenceObject(File));
     }
+    ObDereferenceObject(BootModuleDirectory);
 
     return STATUS_SUCCESS;
 }

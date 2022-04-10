@@ -22,6 +22,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 }
 
 NTSTATUS IopCreateFileObject(IN PCSTR FileName,
+			     IN POBJECT ParentDirectory,
 			     IN PIO_DEVICE_OBJECT DeviceObject,
 			     IN PVOID BufferPtr,
 			     IN MWORD FileSize,
@@ -35,7 +36,8 @@ NTSTATUS IopCreateFileObject(IN PCSTR FileName,
 	.BufferPtr = BufferPtr,
 	.FileSize = FileSize
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File, ParentDirectory,
+			   ParentDirectory ? FileName : NULL, 0, &CreaCtx));
     assert(File != NULL);
 
     *pFile = File;
@@ -50,7 +52,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
 			       IN PCSTR SubPath,
-			       IN POB_PARSE_CONTEXT ParseContext,
+			       IN POB_OPEN_CONTEXT OpenContext,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath)
 {
@@ -67,17 +69,27 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+VOID IopFileObjectDeleteProc(IN POBJECT Self)
+{
+}
+
 /*
  * This is a temporary function for the ldr component to create the initrd
  * boot module files. When we finished the cache manager we will use the cc
  * facilities for this.
+ *
+ * If ParentDirectory is not NULL, the file object is inserted under it as
+ * a sub-object. Otherwise, the file object created is a no-name object and
+ * is not part of any namespace (as far as the object manager is concerned).
  */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
+		      IN POBJECT ParentDirectory,
 		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
 		      OUT PIO_FILE_OBJECT *pFile)
 {
-    return IopCreateFileObject(FileName, NULL, BufferPtr, FileSize, pFile);
+    return IopCreateFileObject(FileName, ParentDirectory, NULL,
+			       BufferPtr, FileSize, pFile);
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
@@ -99,7 +111,7 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
 	});
-    Locals.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
+    Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
     Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
     Locals.OpenContext.OpenPacket.CreateOptions = CreateOptions;
     Locals.OpenContext.OpenPacket.FileAttributes = FileAttributes;
@@ -108,7 +120,7 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
-	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FileHandle);
     if (IoStatusBlock != NULL) {
 	IoStatusBlock->Status = Status;
 	IoStatusBlock->Information = Locals.OpenContext.Information;
@@ -143,7 +155,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
 	});
-    Locals.OpenContext.Header.Type = PARSE_CONTEXT_DEVICE_OPEN;
+    Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
     Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
     Locals.OpenContext.OpenPacket.CreateOptions = OpenOptions;
     Locals.OpenContext.OpenPacket.FileAttributes = 0;
@@ -152,7 +164,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
-	     (POB_PARSE_CONTEXT)&Locals.OpenContext, FileHandle);
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FileHandle);
     if (IoStatusBlock != NULL) {
 	IoStatusBlock->Status = Status;
 	IoStatusBlock->Information = Locals.OpenContext.Information;

@@ -368,10 +368,10 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     Section->Attributes = Attributes;
 
     if (PhysicalMapping) {
-	MiPhysicalSection->Flags.PhysicalMemory = 1;
+	Section->Flags.PhysicalMemory = 1;
 	/* Physical section is always committed immediately. */
-	MiPhysicalSection->Flags.Reserve = 1;
-	MiPhysicalSection->Flags.Commit = 1;
+	Section->Flags.Reserve = 1;
+	Section->Flags.Commit = 1;
 	return STATUS_SUCCESS;
     }
 
@@ -396,6 +396,10 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
+{
+}
+
 NTSTATUS MmSectionInitialization()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -403,6 +407,8 @@ NTSTATUS MmSectionInitialization()
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.DeleteProc = MiSectionObjectDeleteProc
     };
     RET_ERR(ObCreateObjectType(OBJECT_TYPE_SECTION,
 			       "Section",
@@ -422,7 +428,8 @@ NTSTATUS MmSectionInitialization()
     SECTION_OBJ_CREATE_CONTEXT Ctx = {
 	.PhysicalMapping = TRUE
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection, &Ctx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection,
+			   NULL, NULL, 0, &Ctx));
     assert(MiPhysicalSection != NULL);
 
     return STATUS_SUCCESS;
@@ -442,7 +449,8 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
 	.PageProtection = PageProtection,
 	.Attributes = SectionAttributes
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section,
+			   NULL, NULL, 0, &CreaCtx));
     assert(Section != NULL);
 
     *SectionObject = Section;

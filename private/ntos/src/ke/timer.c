@@ -217,7 +217,8 @@ NTSTATUS KeCreateTimer(IN TIMER_TYPE TimerType,
     TIMER_OBJ_CREATE_CONTEXT CreaCtx = {
 	.Type = TimerType
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_TIMER, (POBJECT *) &Timer, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_TIMER, (POBJECT *) &Timer,
+			   NULL, NULL, 0, &CreaCtx));
     assert(Timer != NULL);
     *pTimer = Timer;
     return STATUS_SUCCESS;

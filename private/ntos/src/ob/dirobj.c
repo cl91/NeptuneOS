@@ -65,7 +65,6 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
  */
 static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    IN PCSTR Path,
-					    IN POB_PARSE_CONTEXT ParseContext,
 					    OUT POBJECT *FoundObject,
 					    OUT PCSTR *RemainingPath)
 {
@@ -128,6 +127,16 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     return STATUS_SUCCESS;
 }
 
+static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Parent,
+					 IN POBJECT Subobject,
+					 IN PCSTR Subpath)
+{
+}
+
+static VOID ObpDirectoryObjectDeleteProc(IN POBJECT Self)
+{
+}
+
 NTSTATUS ObpInitDirectoryObjectType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -135,6 +144,8 @@ NTSTATUS ObpInitDirectoryObjectType()
 	.ParseProc = ObpDirectoryObjectParseProc,
 	.OpenProc = NULL,
 	.InsertProc = ObpDirectoryObjectInsertProc,
+	.RemoveProc = ObpDirectoryObjectRemoveProc,
+	.DeleteProc = ObpDirectoryObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_DIRECTORY,
 			      "Directory",
@@ -146,11 +157,8 @@ NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 {
     POBJECT_DIRECTORY Directory = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
-			   (POBJECT *) &Directory, NULL));
+			   (POBJECT *) &Directory,
+			   NULL, DirectoryPath, 0, NULL));
     assert(Directory != NULL);
-
-    RET_ERR_EX(ObInsertObjectByPath(DirectoryPath, Directory),
-	       ObDereferenceObject(Directory));
-
     return STATUS_SUCCESS;
 }

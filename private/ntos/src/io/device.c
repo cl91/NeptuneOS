@@ -7,27 +7,9 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT) Object;
     PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT) CreaCtx;
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
-    PCSTR DeviceName = Ctx->DeviceName;
     IO_DEVICE_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->DeviceLink);
-
-    /* If the client has supplied a non-empty DeviceName, record it */
-    if ((DeviceName != NULL) && (DeviceName[0] != '\0')) {
-	/* DeviceName must be a full path */
-	if (DeviceName[0] != OBJ_NAME_PATH_SEPARATOR) {
-	    return STATUS_INVALID_PARAMETER_1;
-	}
-	PCSTR DeviceNameCopy = RtlDuplicateString(DeviceName, NTOS_IO_TAG);
-	if (DeviceNameCopy == NULL) {
-	    return STATUS_NO_MEMORY;
-	}
-	/* If the client has supplied a device name, insert the device
-	 * object into the global object namespace, with the given path. */
-	RET_ERR_EX(ObInsertObjectByPath(DeviceName, Device),
-		   IopFreePool(DeviceNameCopy));
-	Device->DeviceName = DeviceNameCopy;
-    }
 
     Device->DriverObject = DriverObject;
     InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
@@ -41,14 +23,14 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
-				 IN POB_PARSE_CONTEXT ParseContext,
+				 IN POB_OPEN_CONTEXT Context,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath)
 {
     assert(Thread != NULL);
     assert(Object != NULL);
     assert(SubPath != NULL);
-    assert(ParseContext != NULL);
+    assert(Context != NULL);
     assert(pOpenedInstance != NULL);
 
     /* We haven't implemented file system devices yet */
@@ -61,7 +43,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
      * throughout the whole function (in particular, after the AWAIT call) */
     PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
     PIO_DRIVER_OBJECT Driver = Device->DriverObject;
-    PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)ParseContext;
+    PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
     POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
     assert(Driver != NULL);
 
@@ -75,14 +57,15 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	});
 
     /* Reject the open if the parse context is not IO_OPEN_CONTEXT */
-    if (ParseContext->Type != PARSE_CONTEXT_DEVICE_OPEN) {
+    if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
 	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
     }
 
     IF_ERR_GOTO(out, Status,
-		IopCreateFileObject(Device->DeviceName, Device, NULL, 0,
+		IopCreateFileObject(ObGetObjectName(Device), NULL, Device, NULL, 0,
 				    &Locals.FileObject));
     assert(Locals.FileObject != NULL);
+    assert(Locals.FileObject->FileName != NULL);
 
     /* Check if this is Synch I/O and set the sync flag accordingly */
     if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) {
@@ -169,6 +152,10 @@ out:
     ASYNC_END(State, Status);
 }
 
+VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
+{
+}
+
 /*
  * Note: DeviceName must be a full path.
  */
@@ -186,11 +173,11 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
     PIO_DEVICE_OBJECT DeviceObject = NULL;
     DEVICE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DriverObject = Thread->Process->DriverObject,
-	.DeviceName = DeviceName,
 	.DeviceInfo = *DeviceInfo,
 	.Exclusive = Exclusive
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *) &DeviceObject, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *) &DeviceObject,
+			   NULL, DeviceName, 0, &CreaCtx));
     assert(DeviceObject != NULL);
 
     *DeviceHandle = OBJECT_TO_GLOBAL_HANDLE(DeviceObject);

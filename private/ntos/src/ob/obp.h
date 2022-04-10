@@ -44,11 +44,8 @@ static inline void ObpReferenceObject(POBJECT Object)
 /* dirobj.c */
 NTSTATUS ObpInitDirectoryObjectType();
 
-/* obref.c */
-VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader);
-
 /* open.c */
-NTSTATUS ObpLookupObjectName(IN PCSTR Path,
-			     IN POB_PARSE_CONTEXT ParseContext,
+NTSTATUS ObpLookupObjectName(IN POBJECT DirectoryObject,
+			     IN PCSTR Path,
 			     OUT PCSTR *pRemainingPath,
 			     OUT POBJECT *FoundObject);

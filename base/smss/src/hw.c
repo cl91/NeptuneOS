@@ -1,10 +1,13 @@
 #include <smss.h>
 
-#define HARDWARE_KEY_PATH	"\\Registry\\Machine\\Hardware"
-#define SERVICE_KEY_PATH	"\\Registry\\Machine\\CurrentControlSet\\Services"
-#define CLASS_KEY_PATH		"\\Registry\\Machine\\CurrentControlSet\\Control\\Class"
-#define ENUM_KEY_PATH		"\\Registry\\Machine\\CurrentControlSet\\Enum"
-#define PARAMETERS_KEY_NAME	"Parameters"
+#define HARDWARE_KEY_PATH			"\\Registry\\Machine\\Hardware"
+#define DEVICEMAP_KEY_PATH			HARDWARE_KEY_PATH "\\DeviceMap"
+#define CURRENT_CONTROL_SET_KEY_PATH		"\\Registry\\Machine\\CurrentControlSet"
+#define SERVICE_KEY_PATH			CURRENT_CONTROL_SET_KEY_PATH "\\Services"
+#define CURRENT_CONTROL_SET_CONTROL_KEY_PATH	CURRENT_CONTROL_SET_KEY_PATH "\\Control"
+#define CLASS_KEY_PATH				CURRENT_CONTROL_SET_CONTROL_KEY_PATH "\\Class"
+#define ENUM_KEY_PATH				CURRENT_CONTROL_SET_KEY_PATH "\\Enum"
+#define PARAMETERS_KEY_NAME			"Parameters"
 
 #define KBDCLASS_GUID		"{4D36E96B-E325-11CE-BFC1-08002BE10318}"
 
@@ -28,15 +31,16 @@ static struct {
     PCSTR ServiceName;
     ULONG_PTR ServiceParameterCount;
     PDRIVER_SERVICE_PARAMETER ServiceParameters;
+    PCSTR BusId;
     PCSTR DeviceId;
     PCSTR InstanceId;
     PCSTR ClassGuid;
 } BootDrivers[] = {
-    { "null", 0, NULL, NULL, NULL, NULL },
-    { "beep", 0, NULL, NULL, NULL, NULL },
-    { "pnp", 0, NULL, "HTREE\\ROOT", "0", NULL },
-    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters, "Root\\PNP0303", "0", KBDCLASS_GUID },
-    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL }
+    { "null", 0, NULL, NULL, NULL, NULL, NULL },
+    { "beep", 0, NULL, NULL, NULL, NULL, NULL },
+    { "pnp", 0, NULL, "HTREE", "ROOT", "0", NULL },
+    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters, "Root", "PNP0303", "0", KBDCLASS_GUID },
+    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL, NULL }
 };
 
 static struct {
@@ -53,7 +57,6 @@ static NTSTATUS SmInitBootDriverConfigs()
     CHAR ServiceFullPath[256];
     CHAR ParametersKeyPath[256];
     CHAR ImagePath[128];
-    RET_ERR(SmCreateRegistryKey(SERVICE_KEY_PATH, FALSE, NULL));
     for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
 	snprintf(ServiceFullPath, sizeof(ServiceFullPath),
 		 SERVICE_KEY_PATH "\\%s", BootDrivers[i].ServiceName);
@@ -76,11 +79,19 @@ static NTSTATUS SmInitBootDriverConfigs()
 				     BootDrivers[i].ServiceParameters[j].Data,
 				     BootDrivers[i].ServiceParameters[j].DataSize));
 	}
-	if (BootDrivers[i].DeviceId != NULL) {
+	if (BootDrivers[i].BusId != NULL) {
+	    assert(BootDrivers[i].DeviceId != NULL);
 	    assert(BootDrivers[i].InstanceId != NULL);
 	    CHAR EnumKeyPath[256];
+	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s",
+		     BootDrivers[i].BusId);
+	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, NULL));
 	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s\\%s",
-		     BootDrivers[i].DeviceId, BootDrivers[i].InstanceId);
+		     BootDrivers[i].BusId, BootDrivers[i].DeviceId);
+	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, NULL));
+	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s\\%s\\%s",
+		     BootDrivers[i].BusId, BootDrivers[i].DeviceId,
+		     BootDrivers[i].InstanceId);
 	    HANDLE EnumKey = NULL;
 	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, &EnumKey));
 	    assert(EnumKey != NULL);
@@ -137,6 +148,13 @@ static NTSTATUS SmInitPnp()
 NTSTATUS SmInitHardwareDatabase()
 {
     RET_ERR(SmCreateRegistryKey(HARDWARE_KEY_PATH, TRUE, NULL));
+    RET_ERR(SmCreateRegistryKey(DEVICEMAP_KEY_PATH, TRUE, NULL));
+    RET_ERR(SmCreateRegistryKey(CURRENT_CONTROL_SET_KEY_PATH, FALSE, NULL));
+    RET_ERR(SmCreateRegistryKey(SERVICE_KEY_PATH, FALSE, NULL));
+    RET_ERR(SmCreateRegistryKey(CURRENT_CONTROL_SET_CONTROL_KEY_PATH, FALSE, NULL));
+    RET_ERR(SmCreateRegistryKey(CLASS_KEY_PATH, FALSE, NULL));
+    RET_ERR(SmCreateRegistryKey(ENUM_KEY_PATH, FALSE, NULL));
+
     RET_ERR(SmInitBootDriverConfigs());
     RET_ERR(SmInitPnp());
     RET_ERR(SmLoadDriver("null"));

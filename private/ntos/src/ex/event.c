@@ -18,6 +18,10 @@ static NTSTATUS EiEventObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+static VOID EiEventObjectDeleteProc(IN POBJECT Self)
+{
+}
+
 static NTSTATUS EiCreateEventType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -25,6 +29,8 @@ static NTSTATUS EiCreateEventType()
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.DeleteProc = EiEventObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_EVENT,
 			      "Event",
@@ -50,7 +56,8 @@ NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
     EVENT_OBJ_CREATE_CONTEXT Ctx = {
 	.EventType = EventType
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)&Event, &Ctx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)&Event,
+			   NULL, NULL, 0, &Ctx));
     assert(Event != NULL);
     RET_ERR_EX(ObCreateHandle(Thread->Process, Event, EventHandle),
 	       ObDereferenceObject(Event));

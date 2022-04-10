@@ -6,7 +6,9 @@ static NTSTATUS CmpCreateKeyType()
 	.CreateProc = CmpKeyObjectCreateProc,
 	.ParseProc = CmpKeyObjectParseProc,
 	.OpenProc = CmpKeyObjectOpenProc,
-	.InsertProc = NULL,
+	.InsertProc = CmpKeyObjectInsertProc,
+	.RemoveProc = CmpKeyObjectRemoveProc,
+	.DeleteProc = CmpKeyObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_KEY,
 			      "Key",
@@ -18,18 +20,19 @@ NTSTATUS CmInitSystemPhase1()
 {
     RET_ERR(CmpCreateKeyType());
     RET_ERR(ObCreateDirectory(REGISTRY_OBJECT_DIRECTORY));
+    POBJECT RegistryDirectory = NULL;
+    RET_ERR(ObReferenceObjectByName(REGISTRY_OBJECT_DIRECTORY,
+				    OBJECT_TYPE_DIRECTORY, NULL,
+				    &RegistryDirectory));
+    assert(RegistryDirectory != NULL);
     PCM_KEY_OBJECT Key = NULL;
     KEY_OBJECT_CREATE_CONTEXT Ctx = {
 	.Volatile = FALSE,
-	.Name = "Machine",
-	.NameLength = sizeof("Machine")-1,
-	.Parent = NULL
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key, &Ctx));
-    RET_ERR(ObInsertObjectByPath(REGISTRY_OBJECT_DIRECTORY "\\Machine", Key));
-    Ctx.Name = "User";
-    Ctx.NameLength = sizeof("User")-1;
-    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key, &Ctx));
-    RET_ERR(ObInsertObjectByPath(REGISTRY_OBJECT_DIRECTORY "\\User", Key));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key,
+			   RegistryDirectory, "Machine", 0, &Ctx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key,
+			   RegistryDirectory, "User", 0, &Ctx));
+    ObDereferenceObject(RegistryDirectory);
     return STATUS_SUCCESS;
 }

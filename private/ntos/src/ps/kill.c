@@ -1,5 +1,13 @@
 #include "psp.h"
 
+VOID PspThreadObjectDeleteProc(IN POBJECT Object)
+{
+}
+
+VOID PspProcessObjectDeleteProc(IN POBJECT Object)
+{
+}
+
 static NTSTATUS PspSuspendThread(IN MWORD Cap)
 {
     int Error = seL4_TCB_Suspend(Cap);

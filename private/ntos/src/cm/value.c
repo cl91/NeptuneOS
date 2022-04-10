@@ -16,6 +16,11 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     if (Value == NULL) {
 	return STATUS_NO_MEMORY;
     }
+    Value->Name = RtlDuplicateString(ValueName, NTOS_CM_TAG);
+    if (Value->Name == NULL) {
+	CmpFreePool(Value);
+	return STATUS_NO_MEMORY;
+    }
     Value->Type = Type;
     switch (Type) {
     case REG_DWORD:
@@ -45,8 +50,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     }
     if (NewValue) {
 	Value->Node.Type = CM_NODE_VALUE;
-	RET_ERR_EX(CmpInsertNamedNode(Key, &Value->Node, ValueName, 0),
-		   CmpFreePool(Value));
+	CmpInsertNamedNode(Key, &Value->Node, Value->Name);
     }
     return STATUS_SUCCESS;
 }
@@ -110,7 +114,7 @@ static NTSTATUS CmpMarshalValueData(IN PCM_REG_VALUE Value,
 				    IN OPTIONAL ULONG Alignment)
 {
     DbgTrace("Marshaling value data for value %s data type %d\n",
-	     Value->Node.Name, Value->Type);
+	     Value->Name, Value->Type);
     assert(Alignment == 0 || Alignment == 4 || Alignment == 8);
     if (Alignment != 0) {
 	*CurrentOffset = ALIGN_UP_BY(*CurrentOffset, Alignment);
@@ -184,7 +188,7 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 	ULONG NameStart = sizeof(KEY_VALUE_BASIC_INFORMATION);
 	Info->TitleIndex = 0;
 	Info->Type = Value->Type;
-	RET_ERR(CmpMarshalString(Value->Node.Name, 0, Info, &NameStart,
+	RET_ERR(CmpMarshalString(Value->Name, 0, Info, &NameStart,
 				 &Info->NameLength, BufferSize, 0));
 	ResultLength = NameStart + Info->NameLength;
     }
@@ -200,7 +204,7 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 	ULONG DataOffset = sizeof(KEY_VALUE_FULL_INFORMATION);
 	Info->TitleIndex = 0;
 	Info->Type = Value->Type;
-	RET_ERR(CmpMarshalString(Value->Node.Name, 0, Info, &DataOffset,
+	RET_ERR(CmpMarshalString(Value->Name, 0, Info, &DataOffset,
 				 &Info->NameLength, BufferSize, Alignment));
 	DataOffset += Info->NameLength;
 	assert(DataOffset <= BufferSize);
@@ -307,6 +311,7 @@ NTSTATUS CmReadKeyValueByPointer(IN POBJECT KeyObject,
 
 VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 {
+    DbgPrint(    "VALUE %s ", Value->Name);
     switch (Value->Type) {
     case REG_NONE:
 	DbgPrint("TYPE REG_NONE\n");

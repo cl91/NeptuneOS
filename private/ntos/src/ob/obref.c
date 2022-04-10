@@ -59,13 +59,13 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
  */
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
-				 IN POB_PARSE_CONTEXT ParseContext,
+				 IN POBJECT RootDirectory,
 				 OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
     POBJECT Object = NULL;
     PCSTR RemainingPath = NULL;
-    NTSTATUS Status = ObpLookupObjectName(Path, ParseContext, &RemainingPath, &Object);
+    NTSTATUS Status = ObpLookupObjectName(RootDirectory, Path, &RemainingPath, &Object);
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Object look up failed for %s\n", Path);
 	return Status;
@@ -103,11 +103,24 @@ NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
-VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
+static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
 {
     assert(ObjectHeader != NULL);
+    assert(ObjectHeader->Type != NULL);
+    assert(ObjectHeader->Type->TypeInfo.DeleteProc != NULL);
 
-    /* TODO: Invoke the delete routine */
+    POBJECT Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
+    if (ObjectHeader->ParentObject != NULL) {
+	assert(ObjectHeader->ObjectName != NULL);
+	assert(ObjectHeader->Type->TypeInfo.RemoveProc != NULL);
+	ObjectHeader->Type->TypeInfo.RemoveProc(ObjectHeader->ParentObject,
+						Object,
+						ObjectHeader->ObjectName);
+	ObpFreePool(ObjectHeader->ObjectName);
+	ObjectHeader->ParentObject = NULL;
+	ObjectHeader->ObjectName = NULL;
+    }
+    ObjectHeader->Type->TypeInfo.DeleteProc(Object);
     RemoveEntryList(&ObjectHeader->ObjectLink);
     ObpFreePool(ObjectHeader);
 }
@@ -117,22 +130,17 @@ VOID ObDereferenceObject(IN POBJECT Object)
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader != NULL);
+    /* Refcount should never be zero at the time of calling ObDereferenceObject. */
+    assert(ObjectHeader->RefCount > 0);
 
     ObjectHeader->RefCount--;
-    if (ObjectHeader->RefCount < 0) {
-       /* This is a programming error since refcount should never
-        * be zero at the time of calling ObDereferenceObject.
-        */
-       assert(FALSE);
-       ObjectHeader->RefCount = 0;
-    }
-    if (ObjectHeader->RefCount == 0) {
+    if (ObjectHeader->RefCount <= 0) {
 	ObpDeleteObject(ObjectHeader);
     }
 }
 
 /*
- * We should always implement lazy close. For now this does nothing.
+ * We should implement lazy close. For now this does nothing.
  */
 NTSTATUS NtClose(IN ASYNC_STATE State,
 		 IN PTHREAD Thread,

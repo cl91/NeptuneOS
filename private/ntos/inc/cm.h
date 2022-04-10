@@ -6,7 +6,7 @@
 #define REGISTRY_OBJECT_DIRECTORY	"\\Registry"
 
 typedef struct _CM_OPEN_CONTEXT {
-    IN OB_PARSE_CONTEXT Header;
+    IN OB_OPEN_CONTEXT Header;
     IN BOOLEAN Create;
     IN ULONG TitleIndex;
     IN OPTIONAL PCSTR Class;

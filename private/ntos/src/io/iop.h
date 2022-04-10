@@ -348,7 +348,7 @@ typedef struct _OPEN_PACKET {
  * Extension of the OB_PARSE_CONTEXT.
  */
 typedef struct _IO_OPEN_CONTEXT {
-    IN OB_PARSE_CONTEXT Header;
+    IN OB_OPEN_CONTEXT Header;
     IN OPEN_PACKET OpenPacket;
     OUT ULONG_PTR Information; /* IO_STATUS_BLOCK.Information returned by the driver call */
 } IO_OPEN_CONTEXT, *PIO_OPEN_CONTEXT;
@@ -359,7 +359,6 @@ typedef struct _IO_OPEN_CONTEXT {
 typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
     PCSTR DriverImagePath;
     PCSTR DriverServicePath;
-    PCSTR DriverName;
 } DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
 
 /*
@@ -367,7 +366,6 @@ typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
  */
 typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
     PIO_DRIVER_OBJECT DriverObject;
-    PCSTR DeviceName;
     IO_DEVICE_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
@@ -461,10 +459,12 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
 			       IN PCSTR SubPath,
-			       IN POB_PARSE_CONTEXT ParseContext,
+			       IN POB_OPEN_CONTEXT ParseContext,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath);
+VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateFileObject(IN PCSTR FileName,
+			     IN POBJECT ParentDirectory,
 			     IN PIO_DEVICE_OBJECT DeviceObject,
 			     IN PVOID BufferPtr,
 			     IN MWORD FileSize,
@@ -493,12 +493,14 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
-				 IN POB_PARSE_CONTEXT ParseContext,
+				 IN POB_OPEN_CONTEXT ParseContext,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath);
+VOID IopDeviceObjectDeleteProc(IN POBJECT Self);
 
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 				   IN PVOID CreaCtx);
+VOID IopDriverObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject);

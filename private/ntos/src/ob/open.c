@@ -6,42 +6,49 @@ static inline BOOLEAN NeedReparse(IN NTSTATUS Status)
 }
 
 /*
- * Parse the object path by recursively invoke the parse procedures
- * and return the final object to which the path points, in which
- * case the remaining path is empty, or until either the object does
- * not have a parse procedure or if the parse procedure returns
- * STATUS_NTOS_INVOKE_OPEN_ROUTINE. The remaining path points to
- * the sub-path that is yet to be parsed.
+ * Parse the object path by recursively invoking the parse procedures,
+ * starting from the given directory object, and return the final
+ * object to which the path points, in which case the remaining path
+ * is empty, or until either the object does not have a parse procedure
+ * or if the parse procedure returns STATUS_NTOS_INVOKE_OPEN_ROUTINE.
+ * The remaining path points to the sub-path that is yet to be parsed.
+ *
+ * Directory object can be NULL, in which case the root object directory
+ * is assumed. In this case you must specify an absolute path (one
+ * that starts with the OBJ_NAME_PATH_SEPARATOR).
  *
  * If the parse procedure returns error, the resulting object of the
  * last successful parse is returned, as well as the remaining path
- * that is yet to be parsed.
+ * that is yet to be parsed. The remaining path does NOT include the
+ * leading OBJ_NAME_PATH_SEPARATOR. The remaining path returned is
+ * never NULL, likewise for FoundObject.
  *
  * If at any point the parse procedure returned STATUS_REPARSE or
  * STATUS_REPARSE_OBJECT, the remaining path is set to the full path
  * of the new path to be parsed, and the object manager restarts the
  * new parse from the very beginning.
+ *
+ * Note that you should not free the remaining path returned by this
+ * routine. If you need to store the string returned by the remaining
+ * path, you should make a copy.
  */
-NTSTATUS ObpLookupObjectName(IN PCSTR Path,
-			     IN POB_PARSE_CONTEXT ParseContext,
+NTSTATUS ObpLookupObjectName(IN POBJECT DirectoryObject,
+			     IN PCSTR Path,
 			     OUT PCSTR *pRemainingPath,
 			     OUT POBJECT *FoundObject)
 {
     assert(ObpRootObjectDirectory != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
+    assert(DirectoryObject != NULL || Path[0] == OBJ_NAME_PATH_SEPARATOR);
 
-    /* We always start the lookup from the root directory.
-     * It is an error to specify a relative path. */
-    if (Path[0] != OBJ_NAME_PATH_SEPARATOR) {
-	return STATUS_OBJECT_PATH_SYNTAX_BAD;
+    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
+    if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	Path++;
     }
 
     /* Points to the terminating '\0' charactor of Path */
     PCSTR LastByte = Path + strlen(Path);
-
-    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
-    Path++;
 
     /* Recursively invoke the parse procedure of the object, until
      * one of the following is true:
@@ -49,34 +56,41 @@ NTSTATUS ObpLookupObjectName(IN PCSTR Path,
      *   2. The parse procedure returns a failure status
      *   3. The parse procedure is NULL
      *   4. The parse procedure returns STATUS_NTOS_INVOKE_OPEN_ROUTINE
-     *   5. The parse procedure returns STATUS_REPARSE or STATUS_REPARSE_OBJECT
      */
-    POBJECT Object = ObpRootObjectDirectory;
+    POBJECT Object = DirectoryObject ? DirectoryObject : ObpRootObjectDirectory;
     NTSTATUS Status = STATUS_SUCCESS;
 
     while (*Path != '\0') {
 	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
 	OBJECT_PARSE_METHOD ParseProc = ObjectHeader->Type->TypeInfo.ParseProc;
 	if (ParseProc == NULL) {
+	    /* The object type does not support subobject or namespace */
+	    Status = STATUS_OBJECT_TYPE_MISMATCH;
 	    break;
 	}
 	POBJECT Subobject = NULL;
 	PCSTR RemainingPath = NULL;
-	Status = ParseProc(Object, Path, ParseContext, &Subobject, &RemainingPath);
-	if (!NT_SUCCESS(Status) || NeedReparse(Status) ||
-	    Status == STATUS_NTOS_INVOKE_OPEN_ROUTINE) {
+	Status = ParseProc(Object, Path, &Subobject, &RemainingPath);
+	if (!NT_SUCCESS(Status) || Status == STATUS_NTOS_INVOKE_OPEN_ROUTINE) {
 	    break;
 	}
-	/* Parse procedure should not return a NULL Subobject (unless reparsing) */
-	assert(Subobject != NULL);
-	/* Remaining path should also be within the original Path (unless reparsing) */
-	assert(RemainingPath > Path);
-	assert(RemainingPath <= LastByte);
-	/* Skip the leading OBJ_NAME_PATH_SEPARATOR and keep going */
+	assert(RemainingPath != NULL);
+	/* If the parse procedure returned REPARSE, it will set Subobject to the new
+	 * root object and remaining path to the new path to be parsed */
+	if (!NeedReparse(Status)) {
+	    /* Parse procedure should not return a NULL Subobject (unless reparsing) */
+	    assert(Subobject != NULL);
+	    /* Remaining path should also be within the original Path (unless reparsing) */
+	    assert(RemainingPath > Path);
+	    assert(RemainingPath <= LastByte);
+	}
+	/* Skip the leading OBJ_NAME_PATH_SEPARATOR if there is one */
 	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
 	    RemainingPath++;
 	}
-	Object = Subobject;
+	/* If the parse routine returned REPARSE, it can set the subobject to NULL
+	 * to indicate parsing from the root object directory */
+	Object = Subobject ? Subobject : ObpRootObjectDirectory;
 	Path = RemainingPath;
     }
 
@@ -98,7 +112,7 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
 			    IN PTHREAD Thread,
 			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			    IN OBJECT_TYPE_ENUM Type,
-			    IN POB_PARSE_CONTEXT ParseContext,
+			    IN POB_OPEN_CONTEXT OpenContext,
 			    OUT HANDLE *pHandle)
 {
     assert(ObpRootObjectDirectory != NULL);
@@ -157,7 +171,7 @@ parse:
     }
     POBJECT Subobject = NULL;
     Status = OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.ParseProc(
-	Locals.Object, Locals.Path, ParseContext, &Subobject, &RemainingPath);
+	Locals.Object, Locals.Path, &Subobject, &RemainingPath);
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Parsing path %s failed\n", Locals.Path);
 	goto out;
@@ -225,7 +239,7 @@ open:
     AWAIT_EX(Status,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc,
 	     AsyncState, Locals, Thread, Locals.Object, Locals.Path,
-	     ParseContext, &OpenedInstance, &RemainingPath);
+	     OpenContext, &OpenedInstance, &RemainingPath);
 
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Opening subpath %s failed\n", Locals.Path);

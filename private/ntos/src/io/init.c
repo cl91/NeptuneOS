@@ -9,6 +9,8 @@ static NTSTATUS IopCreateFileType()
 	.ParseProc = NULL,
 	.OpenProc = IopFileObjectOpenProc,
 	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.DeleteProc = IopFileObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_FILE,
 			      "File",
@@ -23,6 +25,8 @@ static NTSTATUS IopCreateDeviceType()
 	.ParseProc = NULL,
 	.OpenProc = IopDeviceObjectOpenProc,
 	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.DeleteProc = IopDeviceObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_DEVICE,
 			      "Device",
@@ -37,6 +41,8 @@ static NTSTATUS IopCreateDriverType()
 	.ParseProc = NULL,
 	.OpenProc = NULL,
 	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.DeleteProc = IopDriverObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_DRIVER,
 			      "Driver",

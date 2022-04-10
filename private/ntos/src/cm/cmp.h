@@ -29,7 +29,6 @@ typedef enum _CM_NODE_TYPE {
  * CM_REG_VALUE.
  */
 typedef struct _CM_NODE {
-    PCSTR Name;
     LIST_ENTRY HashLink;
     struct _CM_KEY_OBJECT *Parent;
     CM_NODE_TYPE Type;
@@ -41,70 +40,40 @@ typedef struct _CM_NODE {
 #define CM_KEY_HASH_BUCKETS	37
 
 /*
- * Registry Key object
+ * Registry Key object. This is the object body of OBJECT_TYPE_KEY.
  */
 typedef struct _CM_KEY_OBJECT {
-    CM_NODE Node;		/* Hash-table entry for the parent key */
+    CM_NODE Node; /* Hash-table entry for the parent key. Must be first */
     LIST_ENTRY HashBuckets[CM_KEY_HASH_BUCKETS];
     BOOLEAN Volatile;
 } CM_KEY_OBJECT, *PCM_KEY_OBJECT;
 
 /* Compute the hash index of the given string. */
-static inline ULONG CmpKeyHashIndex(IN PCSTR Str,
-				    IN ULONG Length) /* Excluding trailing '\0' */
+static inline ULONG CmpKeyHashIndex(IN PCSTR Str)
 {
-    ULONG Hash = RtlpHashStringEx(Str, Length);
+    ULONG Hash = RtlpHashString(Str);
     return Hash % CM_KEY_HASH_BUCKETS;
 }
 
-static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
-				       IN PCSTR Name,
-				       IN OPTIONAL ULONG NameLength)
-{
-    ULONG HashIndex = CmpKeyHashIndex(Name,
-				      NameLength ? NameLength : strlen(Name));
-    assert(HashIndex < CM_KEY_HASH_BUCKETS);
-
-    PCM_NODE NodeFound = NULL;
-    LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
-	assert(Node->Name != NULL);
-	if (!strncmp(Name, Node->Name, NameLength)) {
-	    NodeFound = Node;
-	}
-    }
-    return NodeFound;
-}
-
 /*
- * Set the node name and if Parent is not NULL, link the node to parent.
+ * Compute the hash index of the given string up to the given length.
+ *
+ * The length does not include the trailing '\0'.
  */
-static inline NTSTATUS CmpInsertNamedNode(IN OPTIONAL PCM_KEY_OBJECT Parent,
-					  IN PCM_NODE Node,
-					  IN PCSTR NodeName,
-					  IN OPTIONAL ULONG NameLength)
+static inline ULONG CmpKeyHashIndexEx(IN PCSTR Str,
+				      IN ULONG Length)
 {
-    if (NameLength == 0) {
-	NameLength = strlen(NodeName);
-    }
-    Node->Name = RtlDuplicateStringEx(NodeName, NameLength, NTOS_CM_TAG);
-    if (Node->Name == NULL) {
-	return STATUS_NO_MEMORY;
-    }
-    assert(Parent == NULL || Parent->Node.Type == CM_NODE_KEY);
-    Node->Parent = Parent;
-    if (Parent != NULL) {
-	ULONG HashIndex = CmpKeyHashIndex(NodeName, NameLength);
-	InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
-    }
-    return STATUS_SUCCESS;
+    ULONG Hash = RtlpHashStringEx(Str, Length);
+    return Hash % CM_KEY_HASH_BUCKETS;
 }
 
 /*
  * Registry value
  */
 typedef struct _CM_REG_VALUE {
-    CM_NODE Node;		/* Hash-table entry for the parent key */
-    ULONG Type;			/* REG_NONE, REG_SZ, etc */
+    CM_NODE Node; /* Hash-table entry for the parent key. Must be first */
+    PCSTR Name;	  /* Allocated on the ExPool. Owned by this object */
+    ULONG Type;	  /* REG_NONE, REG_SZ, etc */
     union {
 	ULONG Dword;
 	ULONGLONG Qword;
@@ -115,31 +84,71 @@ typedef struct _CM_REG_VALUE {
     };
 } CM_REG_VALUE, *PCM_REG_VALUE;
 
+static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
+				       IN PCSTR Name,
+				       IN OPTIONAL ULONG NameLength)
+{
+    if (NameLength == 0) {
+	NameLength = strlen(Name);
+    }
+    ULONG HashIndex = CmpKeyHashIndexEx(Name, NameLength);
+    assert(HashIndex < CM_KEY_HASH_BUCKETS);
+
+    PCM_NODE NodeFound = NULL;
+    LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
+	assert(Node->Type == CM_NODE_KEY || Node->Type == CM_NODE_VALUE);
+	PCSTR NodeName = Node->Type == CM_NODE_KEY ?
+	    ObGetObjectName(Node) : ((PCM_REG_VALUE)Node)->Name;
+	if (!strncmp(Name, NodeName, NameLength)) {
+	    NodeFound = Node;
+	}
+    }
+    return NodeFound;
+}
+
+/*
+ * Link the node to parent.
+ */
+static inline VOID CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
+				      IN PCM_NODE Node,
+				      IN PCSTR NodeName)
+{
+    assert(Parent != NULL);
+    assert(ObObjectIsType(Parent, OBJECT_TYPE_KEY));
+    assert(Parent->Node.Type == CM_NODE_KEY);
+    Node->Parent = Parent;
+    ULONG HashIndex = CmpKeyHashIndex(NodeName);
+    InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
+}
+
 /*
  * Creation context for key object
  */
 typedef struct _KEY_OBJECT_CREATE_CONTEXT {
     BOOLEAN Volatile;
-    PCSTR Name;
-    ULONG NameLength;
-    PCM_KEY_OBJECT Parent;
 } KEY_OBJECT_CREATE_CONTEXT, *PKEY_OBJECT_CREATE_CONTEXT;
 
 /* key.c */
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx);
+NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
+				IN POBJECT Subobject,
+				IN PCSTR Subpath);
+VOID CmpKeyObjectRemoveProc(IN POBJECT Parent,
+			    IN POBJECT Subobject,
+			    IN PCSTR Subpath);
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       IN PCSTR Path,
-			       IN POB_PARSE_CONTEXT ParseContext,
 			       OUT POBJECT *FoundObject,
 			       OUT PCSTR *RemainingPath);
 NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
 			      IN POBJECT Object,
 			      IN PCSTR SubPath,
-			      IN POB_PARSE_CONTEXT ParseContext,
+			      IN POB_OPEN_CONTEXT OpenContext,
 			      OUT POBJECT *pOpenedInstance,
 			      OUT PCSTR *pRemainingPath);
+VOID CmpKeyObjectDeleteProc(IN POBJECT Self);
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key);
 
 /* value.c */

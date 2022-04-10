@@ -5,6 +5,14 @@
 #include "ex.h"
 #include <wdmsvc.h>
 
+/*
+ * Private flags for object creation. See public/ndk/inc/ntobapi.h
+ * for public flags. See ntos/src/ob/create.c for details.
+ */
+#define OBJ_NO_PARSE	0x1000L
+
+C_ASSERT((OBJ_VALID_ATTRIBUTES & OBJ_NO_PARSE) == 0);
+
 /* Unlike in Windows, the ObjectType itself is not a type.
  *
  * Windows has ObpTypeObjectType which denotes the type of all
@@ -133,25 +141,33 @@ typedef enum _OBJECT_TYPE_ENUM {
  * closure IRP to the driver process (if it's created by a driver).
  * The close routine does not wait for the driver's response and
  * is therefore synchronous. This simplifies the error paths,
- * especially in a asynchronous function.
+ * especially in an asynchronous function.
  *
  * All object methods operate with in-process pointers. Assigning
  * HANDLEs to opened objects is done by the object manager itself.
  */
+typedef PVOID POBJECT;
 typedef struct _OBJECT_HEADER {
     struct _OBJECT_TYPE *Type;
     LIST_ENTRY ObjectLink;
     LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
+    POBJECT ParentObject; /* Parent object under which this object is inserted */
+    PCSTR ObjectName; /* Sub-path of this object under the parent object.
+		       * This is always allocated on the ExPool by the object
+		       * manager and owned by this object. */
     LONG RefCount;
 } OBJECT_HEADER, *POBJECT_HEADER;
-
-typedef PVOID POBJECT;
 
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
     ((Ptr) == NULL ? NULL : (POBJECT)(((MWORD)(Ptr)) + sizeof(OBJECT_HEADER)))
 
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
     ((Ptr) == NULL ? NULL : (POBJECT_HEADER)(((MWORD)(Ptr)) - sizeof(OBJECT_HEADER)))
+
+static inline PCSTR ObGetObjectName(IN POBJECT Object)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->ObjectName;
+}
 
 /*
  * We use the offset of an object header pointer from the start of the
@@ -267,16 +283,8 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
  * The parse procedure should not increase the reference count of
  * the object. All reference counting is done by the object manager.
  */
-typedef enum _PARSE_CONTEXT_TYPE {
-    PARSE_CONTEXT_DEVICE_OPEN,	/* IO_OPEN_CONTEXT */
-    PARSE_CONTEXT_KEY_OPEN,	/* CM_OPEN_CONTEXT */
-} PARSE_CONTEXT_TYPE;
-typedef struct _OB_PARSE_CONTEXT {
-    PARSE_CONTEXT_TYPE Type; /* Type of the parse context following the header */
-} OB_PARSE_CONTEXT, *POB_PARSE_CONTEXT;	 /* Header of the object parse context */
 typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
-					IN POB_PARSE_CONTEXT ParseContext,
 					OUT POBJECT *pSubobject,
 					OUT PCSTR *pRemainingPath);
 
@@ -309,33 +317,64 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  * reference count of the object being opened or the opened instance.
  * All reference counting is done by the object manager.
  */
+typedef enum _OPEN_CONTEXT_TYPE {
+    OPEN_CONTEXT_DEVICE_OPEN,	/* IO_OPEN_CONTEXT */
+    OPEN_CONTEXT_KEY_OPEN,	/* CM_OPEN_CONTEXT */
+} OPEN_CONTEXT_TYPE;
+typedef struct _OB_OPEN_CONTEXT {
+    OPEN_CONTEXT_TYPE Type; /* Type of the parse context following the header */
+} OB_OPEN_CONTEXT, *POB_OPEN_CONTEXT;	 /* Header of the object parse context */
 typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
 				       IN struct _THREAD *Thread,
 				       IN POBJECT Self,
 				       IN PCSTR SubPath,
-				       IN POB_PARSE_CONTEXT ParseContext,
+				       IN POB_OPEN_CONTEXT OpenContext,
 				       OUT POBJECT *pOpenedInstance,
 				       OUT PCSTR *pRemainingPath);
 
 /*
- * The insert procedure inserts the sub-object into the object, with
- * Subpath as the name identifier of said sub-object.
- *
- * So far only the directory object supports insertion. The idea here
- * is that in general object types should implement the insert method
- * only if it supports inserting sub-objects outside its own namespace.
- * If this turns out to be too specific, we will remove this and change
- * ObInsertObjectByName to ObInsertObjectToDirectory.
+ * The insert procedure inserts the given object (Subobject) as the
+ * sub-object into the parent object (Parent), with Subpath as the
+ * identifier name of the sub-object. The insert procedure is called
+ * during object creation, where user can specify the parent object
+ * and name of the object as part of the object attributes. The insert
+ * procedure should not increase the reference count as it is done
+ * by the object manager.
  */
-typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Self,
+typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Parent,
 					 IN POBJECT Subobject,
 					 IN PCSTR Subpath);
+
+/*
+ * The remove procedure is the opposite of the insert procedure and
+ * removes the subobject from the parent object. It is called during
+ * object deletion and likewise should not decrease the reference count
+ * of the object as it is done by the object manager.
+ *
+ * The remove procedure cannot be NULL if the insert procedure is
+ * supplied.
+ */
+typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Parent,
+				     IN POBJECT Subobject,
+				     IN PCSTR Subpath);
+
+/*
+ * The delete procedure releases the resources of an object. It is
+ * called when the user deletes an object, or when object creation
+ * fails. Therefore the delete procedure must be able to clean up
+ * partially created objects. The delete procedure should not free
+ * the pool memory of the object itself. This is done by the object
+ * manager. The delete procedure cannot be NULL.
+ */
+typedef VOID (*OBJECT_DELETE_METHOD)(IN POBJECT Self);
 
 typedef struct _OBJECT_TYPE_INITIALIZER {
     OBJECT_CREATE_METHOD CreateProc;
     OBJECT_PARSE_METHOD ParseProc;
     OBJECT_OPEN_METHOD OpenProc;
     OBJECT_INSERT_METHOD InsertProc;
+    OBJECT_REMOVE_METHOD RemoveProc;
+    OBJECT_DELETE_METHOD DeleteProc;
 } OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
 
 typedef struct _OBJECT_TYPE {
@@ -351,6 +390,7 @@ static inline BOOLEAN ObObjectIsType(IN POBJECT Object,
     return OBJECT_TO_OBJECT_HEADER(Object)->Type->Index == Type;
 }
 
+/* This overrides the definition in public/ndk/inc/ntobapi.h */
 #define OBJ_NAME_PATH_SEPARATOR ('\\')
 
 typedef struct _OBJECT_DIRECTORY *POBJECT_DIRECTORY;
@@ -407,6 +447,22 @@ static inline ULONG ObpLocateFirstPathSeparator(IN PCSTR Path)
     return NameLength;
 }
 
+/*
+ * Helper function to determine if the given path has a path separator.
+ *
+ * This should only be called within the object type's parse/open routines
+ */
+static inline BOOLEAN ObpPathHasSeparator(IN PCSTR Path)
+{
+    while (*Path != '\0') {
+	if (*Path == OBJ_NAME_PATH_SEPARATOR) {
+	    return TRUE;
+	}
+	Path++;
+    }
+    return FALSE;
+}
+
 /* init.c */
 NTSTATUS ObInitSystemPhase0();
 
@@ -417,26 +473,19 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN OBJECT_TYPE_INITIALIZER Init);
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *Object,
+			IN POBJECT DirectoryObject,
+			IN PCSTR Subpath,
+			IN ULONG Flags,
 			IN PVOID CreationContext);
 
 /* dirobj.c */
 NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath);
 
-/* insert.c */
-NTSTATUS ObInsertObject(IN POBJECT Parent,
-			IN POBJECT Subobject,
-			IN PCSTR Name);
-NTSTATUS ObInsertObjectByName(IN PCSTR ParentPath,
-			      IN POBJECT Subobject,
-			      IN PCSTR Name);
-NTSTATUS ObInsertObjectByPath(IN PCSTR AbsolutePath,
-			      IN POBJECT Object);
-
 /* obref.c */
 struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
-				 IN POB_PARSE_CONTEXT ParseContext,
+				 IN POBJECT RootDirectory,
 				 OUT POBJECT *Object);
 NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 				   IN HANDLE Handle,
@@ -452,5 +501,5 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			    IN OBJECT_TYPE_ENUM Type,
-			    IN POB_PARSE_CONTEXT ParseContext,
+			    IN POB_OPEN_CONTEXT OpenContext,
 			    OUT HANDLE *pHandle);

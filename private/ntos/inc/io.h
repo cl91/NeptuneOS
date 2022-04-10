@@ -59,7 +59,6 @@ typedef struct _IO_DRIVER_OBJECT {
  *   ------------------
  */
 typedef struct _IO_DEVICE_OBJECT {
-    PCSTR DeviceName;
     PIO_DRIVER_OBJECT DriverObject;
     LIST_ENTRY DeviceLink; /* Links all devices created by this driver object */
     struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
@@ -101,6 +100,7 @@ typedef struct _IO_FILE_OBJECT {
 
 /* file.c */
 NTSTATUS IoCreateFile(IN PCSTR FileName,
+		      IN POBJECT ParentDirectory,
 		      IN PVOID BufferPtr,
 		      IN MWORD FileSize,
 		      OUT PIO_FILE_OBJECT *pFile);

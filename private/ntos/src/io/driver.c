@@ -6,7 +6,6 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT) Object;
     PDRIVER_OBJ_CREATE_CONTEXT Ctx = (PDRIVER_OBJ_CREATE_CONTEXT)CreaCtx;
     PCSTR DriverToLoad = Ctx->DriverImagePath;
-    PCSTR DriverName = Ctx->DriverName;
     Driver->DriverImagePath = RtlDuplicateString(DriverToLoad, NTOS_IO_TAG);
     Driver->DriverRegistryPath = RtlDuplicateString(Ctx->DriverServicePath, NTOS_IO_TAG);
     if (Driver->DriverImagePath == NULL || Driver->DriverRegistryPath == NULL) {
@@ -21,6 +20,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
+    /* TODO: FIXME We need to dereference the file in the delete routine */
     PIO_FILE_OBJECT DriverFile = NULL;
     RET_ERR(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, NULL,
 				    (POBJECT *) &DriverFile));
@@ -43,12 +43,14 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
 
-    /* Insert the driver object to the \Driver object directory. */
-    RET_ERR(ObInsertObjectByName(DRIVER_OBJECT_DIRECTORY, Driver, DriverName));
     /* Add the driver to the list of all drivers */
     InsertTailList(&IopDriverList, &Driver->DriverLink);
 
     return STATUS_SUCCESS;
+}
+
+VOID IopDriverObjectDeleteProc(IN POBJECT Self)
+{
 }
 
 /*
@@ -58,6 +60,12 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject)
 {
+    /* Get the object directory for all driver objects */
+    POBJECT DriverObjectDirectory = NULL;
+    RET_ERR(ObReferenceObjectByName(DRIVER_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,
+				    NULL, &DriverObjectDirectory));
+    assert(DriverObjectDirectory != NULL);
+
     /* Find the driver service basename, ie. "null" in
      * "\\Registry\\Machine\\CurrentControlSet\\Services\\null" */
     SIZE_T PathLen = strlen(DriverServicePath);
@@ -75,50 +83,51 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* Check \Driver object directory for all loaded drivers */
-    MWORD BufLength = sizeof(DRIVER_OBJECT_DIRECTORY) + (PathLen - SepIndex) + 1;
-    IopAllocateArray(DriverObjectPath, CHAR, BufLength);
-    memcpy(DriverObjectPath, DRIVER_OBJECT_DIRECTORY, sizeof(DRIVER_OBJECT_DIRECTORY)-1);
-    DriverObjectPath[sizeof(DRIVER_OBJECT_DIRECTORY)-1] = OBJ_NAME_PATH_SEPARATOR;
-    memcpy(&DriverObjectPath[sizeof(DRIVER_OBJECT_DIRECTORY)], DriverName, PathLen - SepIndex);
-    DriverObjectPath[BufLength-1] = '\0';
-    DbgTrace("Object file %s driver name %s driver object %s\n",
-	     DriverServicePath, DriverName, DriverObjectPath);
-    PIO_DRIVER_OBJECT DriverObject = NULL;
-    if (NT_SUCCESS(ObReferenceObjectByName(DriverObjectPath, OBJECT_TYPE_DRIVER, NULL,
-					   (POBJECT *)&DriverObject))) {
-	/* Driver is already loaded. We increase the reference count and return SUCCESS. */
-	IopFreePool(DriverObjectPath);
-	if (pDriverObject) {
-	    *pDriverObject = DriverObject;
-	}
-	return STATUS_SUCCESS;
-    }
-    IopFreePool(DriverObjectPath);
-
     /* Read the ImagePath value from the driver service registry key.
      * The key must be loaded in memory at this point. */
     ULONG RegValueType;
     PCSTR DriverImagePath = NULL;
     POBJECT KeyObject = NULL;
-    RET_ERR(CmReadKeyValueByPath(DriverServicePath, "ImagePath", &KeyObject,
-				 &RegValueType, (PPVOID)&DriverImagePath));
+    RET_ERR_EX(CmReadKeyValueByPath(DriverServicePath, "ImagePath", &KeyObject,
+				    &RegValueType, (PPVOID)&DriverImagePath),
+	       ObDereferenceObject(DriverObjectDirectory));
     assert(KeyObject != NULL);
     if (RegValueType != REG_SZ && RegValueType != REG_EXPAND_SZ) {
 	ObDereferenceObject(KeyObject);
+	ObDereferenceObject(DriverObjectDirectory);
 	return STATUS_OBJECT_NAME_INVALID;
     }
     assert(DriverImagePath != NULL);
 
-    /* Allocate the DriverObject */
+    /* Create the driver object */
+    PIO_DRIVER_OBJECT DriverObject = NULL;
     DRIVER_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DriverImagePath = DriverImagePath,
 	.DriverServicePath = DriverServicePath,
-	.DriverName = DriverName
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *) &DriverObject, &CreaCtx));
-    assert(DriverObject != NULL);
+    /* The object manager will check the \Driver object directory for all loaded
+     * drivers and reject the creation if the driver has already been loaded.
+     * In this case ObCreateObject returns OBJECT_NAME_COLLISION. */
+    NTSTATUS Status = ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *) &DriverObject,
+				     DriverObjectDirectory, DriverName, 0,
+				     &CreaCtx);
+    /* If the caller requested the driver object, in the case where driver has
+     * already been loaded we will need to get its pointer manually. */
+    if (Status == STATUS_OBJECT_NAME_COLLISION && pDriverObject) {
+	Status = ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
+					 DriverObjectDirectory,
+					 (POBJECT *) &DriverObject);
+	/* Loading an already loaded driver does NOT increase its reference
+	 * count, so decrease the reference count increased by the call above. */
+	ObDereferenceObject(DriverObject);
+    }
+    /* Regardless of success or error, we need to dereference the driver object
+     * directory and key object because we increased their reference count above. */
+    ObDereferenceObject(DriverObjectDirectory);
     ObDereferenceObject(KeyObject);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
 
     if (pDriverObject) {
 	*pDriverObject = DriverObject;

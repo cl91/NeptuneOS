@@ -62,6 +62,10 @@ static NTSTATUS EiTimerObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+static VOID EiTimerObjectDeleteProc(IN POBJECT Self)
+{
+}
+
 static NTSTATUS EiCreateTimerType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -69,6 +73,8 @@ static NTSTATUS EiCreateTimerType()
 	.OpenProc = NULL,
 	.ParseProc = NULL,
 	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.DeleteProc = EiTimerObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_TIMER,
 			      "Timer",

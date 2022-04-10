@@ -870,7 +870,8 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	.InitialTeb = InitialTeb,
 	.CreateSuspended = CreateSuspended
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread,
+			   NULL, NULL, 0, &CreaCtx));
     *pThread = Thread;
     return STATUS_SUCCESS;
 }
@@ -888,7 +889,8 @@ NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
 	.DriverObject = DriverObject,
 	.ImageSection = ImageSection
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process,
+			   NULL, NULL, 0, &CreaCtx));
     *pProcess = Process;
     return STATUS_SUCCESS;
 }
