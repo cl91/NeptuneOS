@@ -30,7 +30,8 @@ static inline ULONG ObpDirectoryEntryHashIndex(IN PCSTR Str,
 static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 					IN PCSTR Name,
 					IN ULONG Length, /* Excluding trailing '\0' */
-					OUT POBJECT *FoundObject)
+					OUT POBJECT *FoundObject,
+					OUT OPTIONAL POBJECT_DIRECTORY_ENTRY *DirectoryEntry)
 {
     assert(Directory != NULL);
     assert(Name != NULL);
@@ -42,13 +43,17 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     LoopOverList(Entry, &Directory->HashBuckets[HashIndex],
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
 	assert(Entry != NULL);
-	assert(Entry->Name != NULL);
-	if (strlen(Entry->Name) != Length) {
+	assert(Entry->Object != NULL);
+	if (strlen(ObGetObjectName(Entry->Object)) != Length) {
 	    continue;
 	}
-	if (!strncmp(Name, Entry->Name, Length)) {
-	    DbgTrace("Found object name = %s\n", Entry->Name);
+	if (!strncmp(Name, ObGetObjectName(Entry->Object), Length)) {
+	    DbgTrace("Found object name = %s\n",
+		     ObGetObjectName(Entry->Object));
 	    *FoundObject = Entry->Object;
+	    if (DirectoryEntry != NULL) {
+		*DirectoryEntry = Entry;
+	    }
 	}
     }
 
@@ -78,7 +83,7 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     ULONG NameLength = ObpLocateFirstPathSeparator(Path);
 
     /* Look for the named object under the directory. */
-    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, FoundObject),
+    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, FoundObject, NULL),
 	       {
 		   DbgTrace("Path %s not found\n", Path);
 		   *FoundObject = NULL;
@@ -108,33 +113,70 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
 	if (*Ptr == OBJ_NAME_PATH_SEPARATOR) {
 	    DbgTrace("Inserting name %s failed\n", Name);
-	    return STATUS_OBJECT_PATH_SYNTAX_BAD;
+	    /* This usually means that the user did not create the intermediate
+	     * directory object. We return OBJECT_NAME_NOT_FOUND in this case. */
+	    return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
     }
 
-    MWORD NameLength = strlen(Name);
     ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
-    ObpAllocatePoolEx(NameOwned, CHAR, NameLength+1, ObpFreePool(DirectoryEntry));
-    InitializeListHead(&DirectoryEntry->ChainLink);
-    memcpy(NameOwned, Name, NameLength+1);
-    DirectoryEntry->Name = NameOwned;
     DirectoryEntry->Object = Object;
 
-    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, NameLength);
+    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, strlen(Name));
     assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
     InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
 
     return STATUS_SUCCESS;
 }
 
+static inline VOID ObpObjectDirectoryRemoveEntry(IN POBJECT_DIRECTORY_ENTRY Entry)
+{
+    if (Entry != NULL) {
+	RemoveEntryList(&Entry->ChainLink);
+	ObpFreePool(Entry);
+    }
+}
+
+/*
+ * Called when the object manager attempts to remove an object
+ * under the object directory
+ */
 static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Parent,
 					 IN POBJECT Subobject,
 					 IN PCSTR Subpath)
 {
+    assert(ObObjectIsType(Parent, OBJECT_TYPE_DIRECTORY));
+    POBJECT FoundObject = NULL;
+    POBJECT_DIRECTORY_ENTRY DirectoryEntry = NULL;
+    NTSTATUS Status = ObpLookupDirectoryEntry((POBJECT_DIRECTORY)Parent,
+					      Subpath, strlen(Subpath),
+					      &FoundObject,
+					      &DirectoryEntry);
+    assert(NT_SUCCESS(Status));
+    assert(FoundObject == Subobject);
+    assert(DirectoryEntry != NULL);
+    ObpObjectDirectoryRemoveEntry(DirectoryEntry);
 }
 
+/*
+ * Called when the object manager attempts to delete the object
+ * directory
+ */
 static VOID ObpDirectoryObjectDeleteProc(IN POBJECT Self)
 {
+    assert(ObObjectIsType(Self, OBJECT_TYPE_DIRECTORY));
+    POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY)Self;
+    /* For each object in this object directory we unlink them
+     * from the object directory. */
+    for (ULONG i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
+        LoopOverList(Entry, &Directory->HashBuckets[i],
+		     OBJECT_DIRECTORY_ENTRY, ChainLink) {
+	    /* TODO: For symbolic links we will delete the symbolic link object */
+	    ObpObjectDirectoryRemoveEntry(Entry);
+	}
+    }
+    /* We don't need to free the directory object here since
+     * the object manager does that for us */
 }
 
 NTSTATUS ObpInitDirectoryObjectType()

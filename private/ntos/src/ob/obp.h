@@ -24,7 +24,6 @@ typedef struct _OBJECT_DIRECTORY {
 
 typedef struct _OBJECT_DIRECTORY_ENTRY {
     LIST_ENTRY ChainLink;
-    PCSTR Name;	   /* Owned by this struct, allocated on the expool */
     POBJECT Object;
 } OBJECT_DIRECTORY_ENTRY, *POBJECT_DIRECTORY_ENTRY;
 
