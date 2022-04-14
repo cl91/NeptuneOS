@@ -246,17 +246,22 @@ typedef struct _OB_OBJECT_ATTRIBUTES {
 } OB_OBJECT_ATTRIBUTES, *POB_OBJECT_ATTRIBUTES;
 
 /*
- * The creation routine initializes the object given the creation context.
+ * The create routine initializes the object given the create context.
  * Self points to the beginning of the object body.
  *
- * If the creation routine returned an error status, the object's deletion
+ * If the create routine returned an error status, the object's deletion
  * routine will be invoked. The object is then freed from the ExPool.
- * It is the creation routine and the deletion routine's responsibilities
- * to make sure that when creation routine returns error, the object is in
- * a well-defined state and the deletion routine can correctly delete the object.
+ * It is the create routine and the deletion routine's responsibilities
+ * to make sure that when create routine returns error, the object is
+ * in a well-defined state and the deletion routine can correctly delete
+ * the object.
  *
- * The creation routine cannot be NULL. The object manager will
- * reject such object types during object type registration.
+ * The create routine cannot be NULL. The object manager will reject
+ * such object types during object type registration.
+ *
+ * If the object body stores pointers to other objects, the create routine
+ * should increase the reference count of those objects. Likewise, the
+ * delete routine should decrease the reference count of these objects.
  */
 typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
 					 IN PVOID CreationContext);
@@ -365,6 +370,9 @@ typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Parent,
  * partially created objects. The delete procedure should not free
  * the pool memory of the object itself. This is done by the object
  * manager. The delete procedure cannot be NULL.
+ *
+ * If the object body stores pointers to other objects, the delete
+ * routine should decrease the reference count of those objects.
  */
 typedef VOID (*OBJECT_DELETE_METHOD)(IN POBJECT Self);
 
@@ -461,6 +469,18 @@ static inline BOOLEAN ObpPathHasSeparator(IN PCSTR Path)
 	Path++;
     }
     return FALSE;
+}
+
+/* This should only be called by the object manager */
+static inline void ObpReferenceObjectHeader(POBJECT_HEADER ObjectHeader)
+{
+    ObjectHeader->RefCount++;
+}
+
+/* This should only be called in the create routine of an object */
+static inline void ObpReferenceObject(POBJECT Object)
+{
+    ObpReferenceObjectHeader(OBJECT_TO_OBJECT_HEADER(Object));
 }
 
 /* init.c */

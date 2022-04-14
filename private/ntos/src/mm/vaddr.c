@@ -588,8 +588,14 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 {
     DbgTrace("Deleting vad %p key %p\n", Vad, (PVOID)Vad->AvlNode.Key);
     assert(Vad != NULL);
+    assert(Vad->VSpace != NULL);
+    assert(MiVSpaceFindVadNode(Vad->VSpace, Vad->AvlNode.Key) == Vad);
     MiUncommitVad(Vad);
     MiAvlTreeRemoveNode(&Vad->VSpace->VadTree, &Vad->AvlNode);
+    if (Vad->SectionLink.Flink != NULL) {
+	assert(Vad->SectionLink.Blink != NULL);
+	RemoveEntryList(&Vad->SectionLink);
+    }
     if (Vad->Flags.MirroredMemory) {
 	assert(Vad->MirroredMemory.ViewerLink.Flink != NULL);
 	assert(Vad->MirroredMemory.ViewerLink.Blink != NULL);
@@ -873,7 +879,7 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
 	 * Additionally, *RegionSize must be zero. */
 	if ((MWORD)*BaseAddress != Vad->AvlNode.Key) {
 	    DbgTrace("Base address does not equal start of reserved space %p\n",
-		     Vad->AvlNode.Key);
+		     (PVOID)Vad->AvlNode.Key);
 	    Status = STATUS_INVALID_PARAMETER_2;
 	    goto out;
 	}

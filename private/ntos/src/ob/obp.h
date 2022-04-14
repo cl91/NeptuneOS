@@ -30,16 +30,6 @@ typedef struct _OBJECT_DIRECTORY_ENTRY {
 extern LIST_ENTRY ObpObjectList;
 extern POBJECT_DIRECTORY ObpRootObjectDirectory;
 
-static inline void ObpReferenceObjectHeader(POBJECT_HEADER ObjectHeader)
-{
-    ObjectHeader->RefCount++;
-}
-
-static inline void ObpReferenceObject(POBJECT Object)
-{
-    ObpReferenceObjectHeader(OBJECT_TO_OBJECT_HEADER(Object));
-}
-
 /* dirobj.c */
 NTSTATUS ObpInitDirectoryObjectType();
 

@@ -345,14 +345,16 @@ typedef union _MMVAD_FLAGS {
 #define MEM_RESERVE_NO_INSERT		(0x1UL << 9)
 
 typedef struct _MMVAD {
-    MM_AVL_NODE AvlNode; /* starting virtual address of the node, 4K aligned */
+    MM_AVL_NODE AvlNode; /* Starting virtual address of the node, 4K aligned */
     struct _VIRT_ADDR_SPACE *VSpace;
-    MWORD WindowSize;		/* rounded up to 4K page boundary */
+    MWORD WindowSize;		/* Rounded up to 4K page boundary */
     MMVAD_FLAGS Flags;
+    LIST_ENTRY SectionLink;	/* List entry for SECTION.VadList.
+				 * If the VAD does not map a section view, this is NULL. */
     union {
 	struct {
 	    struct _SECTION *Section;
-	    MWORD SectionOffset; /* rounded down to 4K page boundary */
+	    MWORD SectionOffset; /* Rounded down to 4K page boundary */
 	} DataSectionView;
 	struct {
 	    struct _SUBSECTION *SubSection;
@@ -516,6 +518,8 @@ typedef struct _SECTION {
 	struct _IMAGE_SECTION_OBJECT *ImageSectionObject;
 	struct _DATA_SECTION_OBJECT *DataSectionObject;
     };
+    LIST_ENTRY VadList;	/* List of VADs that map a view of this section
+			 * For image section, this includes all subsections. */
     MMSECTION_FLAGS Flags;
     ULONG Attributes;
     ULONG PageProtection; /* PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, etc. */

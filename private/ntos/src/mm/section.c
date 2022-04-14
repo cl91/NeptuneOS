@@ -365,6 +365,7 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
     MmAvlInitializeNode(&Section->BasedSectionNode, 0);
+    InitializeListHead(&Section->VadList);
     Section->Attributes = Attributes;
 
     if (PhysicalMapping) {
@@ -398,6 +399,12 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
 
 static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 {
+    assert(ObObjectIsType(Self, OBJECT_TYPE_SECTION));
+    PSECTION Section = (PSECTION)Self;
+    /* Unmap all the mapped view of this section */
+    LoopOverList(Vad, &Section->VadList, MMVAD, SectionLink) {
+	MmDeleteVad(Vad);
+    }
 }
 
 NTSTATUS MmSectionInitialization()
@@ -457,7 +464,24 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
     return STATUS_SUCCESS;
 }
 
+/*
+ * Append the list pointed to by ListToAppend to ListHead.
+ *
+ * Note that this is different from the standard AppendTailList.
+ * Here ListToAppend is the list head of the list to be appended.
+ */
+static inline VOID MiAppendTailList(IN PLIST_ENTRY ListHead,
+				    IN PLIST_ENTRY ListToAppend)
+{
+    ListHead->Blink->Flink = ListToAppend->Flink;
+    ListToAppend->Flink->Blink = ListHead->Blink;
+    ListHead->Blink = ListToAppend->Blink;
+    ListToAppend->Blink->Flink = ListHead;
+    InvalidateListEntry(ListToAppend);
+}
+
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
+					IN PLIST_ENTRY SectionVadList,
 					IN PIMAGE_SECTION_OBJECT ImageSection,
 					IN OUT OPTIONAL MWORD *pBaseAddress,
 					OUT OPTIONAL MWORD *pImageVirtualSize,
@@ -493,9 +517,18 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	BaseAddress = ImageVad->AvlNode.Key;
 	assert(BaseAddress >= USER_IMAGE_REGION_START);
 	assert(BaseAddress < USER_IMAGE_REGION_END);
+	/* Since we have specified MEM_RESERVE_NO_INSERT above we can simply
+	 * free the pool memory of ImageVad here. Calling MmDeleteVad is
+	 * in fact INCORRECT here as the VAD has never been inserted. */
 	MiFreePool(ImageVad);
     }
 
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    /* We create a list to keep track of all the VADs for the subsections,
+     * such that when mapping failed (say due to out of memory or cap slot)
+     * we can clean up correctly. */
+    LIST_ENTRY VadList;
+    InitializeListHead(&VadList);
     /* For each subsection of the image section object, create a VAD that points
      * to the subsection, and commit the memory pages of that subsection. */
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
@@ -518,19 +551,22 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	if (SubSection->RawDataSize >= (LARGE_PAGE_SIZE - PAGE_SIZE)) {
 	    Flags |= MEM_RESERVE_LARGE_PAGES;
 	}
-	RET_ERR_EX(MmReserveVirtualMemoryEx(VSpace, BaseAddress + SubSection->SubSectionBase,
-					    0, SubSection->SubSectionSize, Flags, &Vad),
-		   {
-		       /* TODO: Clean up when error */
-		   });
+	IF_ERR_GOTO(err, Status,
+		    MmReserveVirtualMemoryEx(VSpace, BaseAddress + SubSection->SubSectionBase,
+					     0, SubSection->SubSectionSize, Flags, &Vad));
 	assert(Vad != NULL);
 	Vad->ImageSectionView.SubSection = SubSection;
 
-	RET_ERR_EX(MiCommitImageVad(Vad),
-		   {
-		       /* TODO: Clean up when error */
-		   });
+	Status = MiCommitImageVad(Vad);
+	if (!NT_SUCCESS(Status)) {
+	    MmDeleteVad(Vad);
+	    goto err;
+	}
+	InsertTailList(&VadList, &Vad->SectionLink);
     }
+
+    /* All subsections mapped successfully. Add the VADs to the vad list of the section */
+    MiAppendTailList(SectionVadList, &VadList);
 
     if (pBaseAddress != NULL) {
 	if (*pBaseAddress != 0) {
@@ -543,6 +579,12 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	*pImageVirtualSize = ImageVirtualSize;
     }
     return STATUS_SUCCESS;
+
+err:
+    LoopOverList(Vad, &VadList, MMVAD, SectionLink) {
+	MmDeleteVad(Vad);
+    }
+    return Status;
 }
 
 static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
@@ -587,7 +629,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PARAMETER;
 	}
 	MWORD ImageVirtualSize;
-	RET_ERR(MiMapViewOfImageSection(VSpace, Section->ImageSectionObject,
+	RET_ERR(MiMapViewOfImageSection(VSpace, &Section->VadList, Section->ImageSectionObject,
 					BaseAddress, &ImageVirtualSize, AlwaysWritable));
 	if (ViewSize != NULL) {
 	    *ViewSize = ImageVirtualSize;
@@ -612,20 +654,29 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
                          IN ULONG SectionAttributes,
                          IN HANDLE FileHandle)
 {
+    assert(SectionHandle != NULL);
     PIO_FILE_OBJECT FileObject = NULL;
     if (FileHandle != NULL) {
 	RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
 					  OBJECT_TYPE_FILE, (POBJECT *) &FileObject));
 	assert(FileObject != NULL);
     }
+
     PSECTION Section = NULL;
-    RET_ERR_EX(MmCreateSection(FileObject, SectionPageProtection, SectionAttributes,
-			       &Section),
-	       if (FileObject) ObDereferenceObject(FileObject));
-    RET_ERR_EX(ObCreateHandle(Thread->Process, Section, SectionHandle),
-	       /* This will dereference the file object */
-	       ObDereferenceObject(Section));
-    return STATUS_SUCCESS;
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    IF_ERR_GOTO(out, Status, MmCreateSection(FileObject, SectionPageProtection,
+					     SectionAttributes, &Section));
+    assert(Section != NULL);
+    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Section, SectionHandle));
+
+out:
+    if (FileObject != NULL) {
+	ObDereferenceObject(FileObject);
+    }
+    if (!NT_SUCCESS(Status)) {
+	ObDereferenceObject(Section);
+    }
+    return Status;
 }
 
 NTSTATUS NtQuerySection(IN ASYNC_STATE State,
@@ -675,6 +726,7 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
 	assert(SectionInformationClass == SectionImageInformation);
 	*((PSECTION_IMAGE_INFORMATION)MappedBuffer) = Section->ImageSectionObject->ImageInformation;
     }
+    ObDereferenceObject(Section);
     return STATUS_SUCCESS;
 }
 
