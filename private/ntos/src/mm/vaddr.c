@@ -45,6 +45,14 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
     return STATUS_SUCCESS;
 }
 
+/*
+ * Delete all paging structures in the VSpace (including the root paging
+ * structure) but do NOT free the pool memory of Self.
+ *
+ * NOTE: We always use the term 'Destroy' to refer to releasing resources
+ * of an object WITHOUT freeing its pool memory. The term 'Delete' is used
+ * for the case where we release its resources AND free its pool memory.
+ */
 NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
 {
     UNIMPLEMENTED;
@@ -560,7 +568,7 @@ static VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
 	if (Next == NULL) {
 	    *WindowSize = Page->AvlNode.Key + MiPagingWindowSize(Page->Type) - *StartAddr;
 	}
-	MiDestroyPage(Page);
+	MiDeletePage(Page);
 	Page = Next;
     }
 }

@@ -391,7 +391,7 @@ NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD PhyAddr,
 			IN MWORD VirtAddr,
 			IN PAGING_RIGHTS Rights);
-VOID MiDestroyPage(IN PPAGING_STRUCTURE Page);
+VOID MiDeletePage(IN PPAGING_STRUCTURE Page);
 
 static inline BOOLEAN MiPagingTypeIsRoot(IN PAGING_STRUCTURE_TYPE Type)
 {

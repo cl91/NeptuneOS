@@ -27,7 +27,14 @@ typedef struct _THREAD {
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
     LIST_ENTRY ThreadListEntry;	/* List link for the PROCESS object's ThreadList */
-    LIST_ENTRY ApcList;
+    LIST_ENTRY QueuedApcList; /* List of all queued APCs. Note the objects in this
+			       * list are the APC objects that have been queued on
+			       * this THREAD object (not just registered, but queued
+			       * due to, say, timer expiry). */
+    LIST_ENTRY TimerApcList; /* List of all registered timer APCs. Note the objects in
+			      * this list are the TIMER objects. Note additionally that
+			      * the APCs here may or may not be queued (this depends on
+			      * whether they have expired). */
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;

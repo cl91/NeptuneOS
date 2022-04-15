@@ -239,9 +239,13 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
     }
     KiAcquireTimerDatabaseLock();
     Timer->DueTime.QuadPart = AbsoluteDueTime;
+    if (Timer->ApcThread != NULL) {
+	RemoveEntryList(&Timer->ThreadLink);
+    }
     Timer->ApcThread = ApcThread;
     Timer->ApcRoutine = TimerApcRoutine;
     Timer->ApcContext = TimerApcContext;
+    InsertTailList(&ApcThread->TimerApcList, &Timer->ThreadLink);
     Timer->Period = Period;
     /* If the timer is already set, compute the new due time and return TRUE */
     if (Timer->State) {
@@ -254,6 +258,33 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
     InsertTailList(&KiQueuedTimerList, &Timer->QueueEntry);
     KiReleaseTimerDatabaseLock();
     return FALSE;
+}
+
+BOOLEAN KeCancelTimer(IN PTIMER Timer)
+{
+    BOOLEAN State;
+    KiAcquireTimerDatabaseLock();
+    State = Timer->State;
+    if (State) {
+	RemoveEntryList(&Timer->QueueEntry);
+    }
+    Timer->State = FALSE;
+    KiReleaseTimerDatabaseLock();
+    return State;
+}
+
+VOID KeDestroyTimer(IN PTIMER Timer)
+{
+    KeCancelTimer(Timer);
+    /* Signal the dispatcher header one last time so any thread that
+     * is blocked on this timer gets resumed. We don't deliver APC
+     * though because the timer technically didn't expire. */
+    KiSignalDispatcherObject(&Timer->Header);
+    KiDestroyDispatcherHeader(&Timer->Header);
+    if (Timer->ApcThread != NULL) {
+	RemoveEntryList(&Timer->ThreadLink);
+    }
+    RemoveEntryList(&Timer->ListEntry);
 }
 
 NTSTATUS NtCreateTimer(IN ASYNC_STATE State,

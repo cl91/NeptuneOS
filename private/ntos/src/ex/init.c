@@ -64,6 +64,9 @@ static NTSTATUS EiTimerObjectCreateProc(IN POBJECT Object,
 
 static VOID EiTimerObjectDeleteProc(IN POBJECT Self)
 {
+    assert(ObObjectIsType(Self, OBJECT_TYPE_TIMER));
+    PTIMER Timer = (PTIMER)Self;
+    KeDestroyTimer(Timer);
 }
 
 static NTSTATUS EiCreateTimerType()

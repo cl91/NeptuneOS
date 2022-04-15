@@ -386,7 +386,7 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
  * Page can be a PAGE or LARGE_PAGE, or any leaf paging structure (eg.
  * an empty page table).
  */
-VOID MiDestroyPage(IN PPAGING_STRUCTURE Page)
+VOID MiDeletePage(IN PPAGING_STRUCTURE Page)
 {
     assert(Page != NULL);
     /* Leaf-level paging structure should not have substructures */
@@ -404,7 +404,7 @@ VOID MiDestroyPage(IN PPAGING_STRUCTURE Page)
     if (ParentPaging != NULL &&
 	ParentPaging->Type != PAGING_TYPE_ROOT_PAGING_STRUCTURE &&
 	ParentPaging->SubStructureTree.BalancedRoot == NULL) {
-	MiDestroyPage(ParentPaging);
+	MiDeletePage(ParentPaging);
     }
 }
 

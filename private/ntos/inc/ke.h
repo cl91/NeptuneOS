@@ -576,7 +576,7 @@ static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
  *   |   Root   |             | Root Wait  |
  *   |   Wait   |             | Block TY=  |
  *   |   Block  |             |  WaitAll   |
- *   |TY=WaitOne|             |  WaitAll   |
+ *   |TY=WaitOne|             |            |
  *   |----------|             |SubBlockList|--->|--------|---->|--------|
  *     |   ^-------------     |------------|    |SubBlock|     |SubBlock|<----------------
  *    \|/               |                       |--------|     |--------|                |
@@ -732,8 +732,9 @@ typedef struct _TIMER {
     DISPATCHER_HEADER Header;
     ULARGE_INTEGER DueTime;	/* Absolute due time in units of 100ns */
     struct _THREAD *ApcThread;
-    PTIMER_APC_ROUTINE ApcRoutine;
-    PVOID ApcContext;
+    LIST_ENTRY ThreadLink; /* List entry for the ApcThread's TimerApcList */
+    PTIMER_APC_ROUTINE ApcRoutine; /* Pointer in client address space! */
+    PVOID ApcContext;		   /* Pointer in client address space! */
     LIST_ENTRY ListEntry;	/* List entry for KiTimerList */
     union {
 	LIST_ENTRY QueueEntry;  /* List entry for KiQueuedTimerList */
@@ -824,6 +825,8 @@ NTSTATUS KeCreateIrqHandler(IN PIRQ_HANDLER IrqHandler,
 /* timer.c */
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);
+BOOLEAN KeCancelTimer(IN PTIMER Timer);
+VOID KeDestroyTimer(IN PTIMER Timer);
 ULONGLONG KeQuerySystemTime();
 ULONGLONG KeQueryInterruptTime();
 
