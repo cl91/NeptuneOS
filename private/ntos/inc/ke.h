@@ -544,6 +544,9 @@ typedef struct _DISPATCHER_HEADER {
 
 typedef PDISPATCHER_HEADER (*KE_DISPATCHER_ITERATOR)(PVOID IteratorContext);
 
+/*
+ * This function is private to the KE component. Do not call it outside KE.
+ */
 static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
 						IN EVENT_TYPE EventType)
 {
@@ -629,6 +632,15 @@ static inline VOID KeSetEvent(IN PKEVENT Event)
 {
     VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
     KiSignalDispatcherObject(&Event->Header);
+}
+
+static inline VOID KeDestroyEvent(IN PKEVENT Event)
+{
+    /* Signal the event one last time so any thread that is blocked
+     * on this timer gets resumed. */
+    KeSetEvent(Event);
+    VOID KiDestroyDispatcherHeader(IN PDISPATCHER_HEADER Header);
+    KiDestroyDispatcherHeader(&Event->Header);
 }
 
 /*

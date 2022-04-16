@@ -140,6 +140,10 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+/*
+ * TODO: We will need to figure out how to distinguish closing a
+ * handle vs deleting a key from the registry.
+ */
 VOID CmpKeyObjectDeleteProc(IN POBJECT Self)
 {
 }
