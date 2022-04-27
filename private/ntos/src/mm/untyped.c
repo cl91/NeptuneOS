@@ -90,10 +90,7 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
     assert(LeftChild != NULL);
     assert(RightChild != NULL);
     assert(Src->TreeNode.CSpace != NULL);
-
-    if (MmCapTreeNodeHasChildren(&Src->TreeNode)) {
-	return STATUS_INVALID_PARAMETER;
-    }
+    assert(!MmCapTreeNodeHasChildren(&Src->TreeNode));
 
     MWORD NewCap = 0;
     RET_ERR(MmAllocateCapRange(Src->TreeNode.CSpace, &NewCap, 2));

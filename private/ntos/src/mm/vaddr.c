@@ -614,6 +614,41 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 }
 
 /*
+ * Search for a suitable address window in the specified region of the target
+ * address space and map the source window into it (up to the specified commit
+ * size), returning the resulting VAD in the target address space.
+ */
+NTSTATUS MmMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
+			   IN MWORD SrcWindowStart,
+			   IN MWORD SrcWindowSize,
+			   IN PVIRT_ADDR_SPACE TargetVSpace,
+			   IN MWORD TargetVaddrStart,
+			   IN MWORD TargetVaddrEnd,
+			   IN MWORD TargetReserveFlag,
+			   IN MWORD TargetCommitSize,
+			   OUT PMMVAD *pTargetVad)
+{
+    assert(pTargetVad != NULL);
+    PMMVAD TargetVad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(TargetVSpace,
+				     TargetVaddrStart,
+				     TargetVaddrEnd,
+				     SrcWindowSize,
+				     MEM_RESERVE_MIRRORED_MEMORY | TargetReserveFlag,
+				     &TargetVad));
+    assert(TargetVad != NULL);
+    assert(TargetVad->WindowSize == SrcWindowSize);
+
+    MmRegisterMirroredMemory(TargetVad, SrcVSpace, SrcWindowStart);
+    RET_ERR_EX(MmCommitVirtualMemoryEx(TargetVSpace, TargetVad->AvlNode.Key,
+				       TargetCommitSize),
+	       MmDeleteVad(TargetVad));
+
+    *pTargetVad = TargetVad;
+    return STATUS_SUCCESS;
+}
+
+/*
  * Maps the user buffer in the given virt addr space into another
  * virt addr space, returning the starting virtual address of the
  * buffer in the target virt addr space.
@@ -645,38 +680,26 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 		   MmDbgDumpVSpace(VSpace);
 	       });
 
-    MWORD ReserveFlag = MEM_RESERVE_MIRRORED_MEMORY;
-    if (ReadOnly) {
-	ReserveFlag |= MEM_RESERVE_READ_ONLY;
-    }
     PMMVAD TargetBufferVad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(TargetVSpace,
-				     TargetVaddrStart,
-				     TargetVaddrEnd,
-				     WindowSize,
-				     ReserveFlag,
-				     &TargetBufferVad));
-    assert(TargetBufferVad != NULL);
-    assert(TargetBufferVad->WindowSize == WindowSize);
-
-    MmRegisterMirroredMemory(TargetBufferVad, VSpace, UserWindowStart);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(TargetVSpace, TargetBufferVad->AvlNode.Key,
-				       WindowSize),
-	       MmDeleteVad(TargetBufferVad));
+    RET_ERR(MmMapSharedRegion(VSpace, UserWindowStart, WindowSize,
+			      TargetVSpace, TargetVaddrStart,
+			      TargetVaddrEnd,
+			      ReadOnly ? MEM_RESERVE_READ_ONLY : 0,
+			      WindowSize, &TargetBufferVad));
     *TargetStartAddr = BufferStart - UserWindowStart + TargetBufferVad->AvlNode.Key;
     return STATUS_SUCCESS;
 }
 
 /*
- * Unmap the user buffer that was previously mapped into the target vaddr space
- * by MmMapUserBufferEx.
+ * Unmap the memory region that was previously mapped into the target
+ * address space.
  */
-VOID MmUnmapUserBufferEx(IN PVIRT_ADDR_SPACE MappedVSpace,
-			 IN MWORD MappedBufferStart)
+VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
+		   IN MWORD MappedRegionStart)
 {
-    PMMVAD Vad = MiVSpaceFindVadNode(MappedVSpace, MappedBufferStart);
+    PMMVAD Vad = MiVSpaceFindVadNode(MappedVSpace, MappedRegionStart);
     assert(Vad != NULL);
-    assert(MiVadNodeContainsAddr(Vad, MappedBufferStart));
+    assert(MiVadNodeContainsAddr(Vad, MappedRegionStart));
     if (Vad != NULL) {
 	MmDeleteVad(Vad);
     }
@@ -758,6 +781,15 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     if (BaseAddress != NULL && *BaseAddress != NULL) {
 	StartAddr = (MWORD)(*BaseAddress);
 	EndAddr = StartAddr + WindowSize;
+	/* Make sure specified address window is with client manageable region */
+	if (StartAddr > HIGHEST_USER_ADDRESS) {
+	    Status = STATUS_INVALID_PARAMETER_2;
+	    goto out;
+	}
+	if (EndAddr > HIGHEST_USER_ADDRESS) {
+	    Status = STATUS_INVALID_PARAMETER_4;
+	    goto out;
+	}
     }
 
     /* Validate the AllocationType argument */
@@ -855,6 +887,12 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
     if (FreeType != MEM_RELEASE && FreeType != MEM_DECOMMIT) {
         DPRINT1("Invalid FreeType (0x%08x)\n", FreeType);
         return STATUS_INVALID_PARAMETER_4;
+    }
+
+    /* You can only free memory pages within the client manageable region */
+    if ((MWORD)(*BaseAddress) > HIGHEST_USER_ADDRESS) {
+        DPRINT1("Base address above user address space\n");
+	return STATUS_INVALID_PARAMETER_2;
     }
 
     /* Get the process object refereed by ProcessHandle */

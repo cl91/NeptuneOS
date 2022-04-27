@@ -81,7 +81,7 @@ static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 	     Driver->DriverImagePath, Driver->DriverProcess->VSpace.VSpaceCap,
 	     (PVOID)DriverBuffer);
     if (DriverBuffer != 0) {
-	MmUnmapUserBufferEx(&Driver->DriverProcess->VSpace, DriverBuffer);
+	MmUnmapRegion(&Driver->DriverProcess->VSpace, DriverBuffer);
     }
 }
 

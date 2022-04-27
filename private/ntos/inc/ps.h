@@ -50,6 +50,7 @@ typedef struct _THREAD {
     MWORD InitialStackCommit;
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
+    BOOLEAN InitialThread;
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
     LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The objects of this list
@@ -70,7 +71,8 @@ typedef struct _THREAD {
  * Process object
  */
 typedef struct _PROCESS {
-    PTHREAD InitThread;
+    BOOLEAN Initialized; /* FALSE when process is first created. TRUE once
+			  * the initial thread has been successfully created. */
     LIST_ENTRY ThreadList;
     PCNODE CSpace;
     HANDLE_TABLE HandleTable;

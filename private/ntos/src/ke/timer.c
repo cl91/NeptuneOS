@@ -275,6 +275,7 @@ BOOLEAN KeCancelTimer(IN PTIMER Timer)
 
 VOID KeDestroyTimer(IN PTIMER Timer)
 {
+    assert(Timer != NULL);
     KeCancelTimer(Timer);
     /* Signal the dispatcher header one last time so any thread that
      * is blocked on this timer gets resumed. We don't deliver APC

@@ -34,6 +34,11 @@ typedef seL4_Word MWORD;
 #define WIN32_TEB_START			(USER_IMAGE_REGION_END)
 #define WIN32_TEB_END			(0xbffdf000ULL)
 #define WIN32_PEB_START			(WIN32_TEB_END)
+/* This is the end of client-manageable user space. The address space
+ * between USER_ADDRESS_END and seL4_UserTop is reserved for private
+ * data structures that the NTOS server maps into client address space. */
+#define USER_ADDRESS_END		(0xc0000000ULL)
+#define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 /* Size of system dll tls region per thread is determined by the size
  * of the .tls section of the NTDLL.DLL image. */
 #define SYSTEM_DLL_TLS_REGION_START	(0xc0010000ULL)
@@ -42,8 +47,6 @@ typedef seL4_Word MWORD;
 #define IPC_BUFFER_START		(0xd0000000ULL)
 #define IPC_BUFFER_END			(0xdfff0000ULL)
 #define LOADER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
-#define USER_ADDRESS_END		(0xe0000000ULL)
-#define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 
 #if KUSER_SHARED_DATA_CLIENT_ADDR >= USER_ADDRESS_END
 #error "User shared data must be within user address space"
@@ -57,7 +60,9 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
  */
 #define IPC_BUFFER_RESERVE		(16 * PAGE_SIZE)
 #define IPC_BUFFER_COMMIT		(PAGE_SIZE)
-#define LOADER_SHARED_DATA_RESERVE	(USER_ADDRESS_END - LOADER_SHARED_DATA_CLIENT_ADDR)
+
+/* Loader data shared between the server and NTDLL */
+#define LOADER_SHARED_DATA_RESERVE	(0x10000ULL)
 #define LOADER_SHARED_DATA_COMMIT	(PAGE_SIZE)
 
 /* Private heap reserved for the Ldr component of NTDLL */

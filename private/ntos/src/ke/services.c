@@ -17,6 +17,20 @@ NTSTATUS KiCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
 }
 
 /*
+ * This destroys the endpoint object but does not free the pool memory.
+ *
+ * IMPORTANT: The endpoint being destroyed cannot have any derived cap.
+ */
+static VOID KiDestroyEndpoint(IN PIPC_ENDPOINT Endpoint)
+{
+    assert(Endpoint != NULL);
+    assert(!MmCapTreeNodeHasChildren(&Endpoint->TreeNode));
+    /* Detach the cap node from the cap derivation tree and release its
+     * parent untyped (if any) */
+    MmCapTreeDeleteNode(&Endpoint->TreeNode);
+}
+
+/*
  * Create the IPC endpoint for the system services. This IPC endpoint
  * is then badged via seL4_CNode_Mint. Also initialize the ready thread list.
  */
@@ -28,9 +42,16 @@ NTSTATUS KiInitExecutiveServices()
 }
 
 /*
- * Reserves the reply cap in the NTOS Executive CSpace and creates
- * an IPC endpoint derived from the Executive service endpoint with
- * the given IPC badge. The IPC endpoint cap is in the given CSpace.
+ * If the reply endpoint cap has not been reserved, reserves the reply cap
+ * in the NTOS Executive CSpace and creates an IPC endpoint derived from
+ * the Executive service endpoint with the given IPC badge. Otherwise, just
+ * create the service endpoint.
+ *
+ * Note that since all service types share the same reply type (and are
+ * derived from the same master endpoint in the NTOS Executive CSpace), we
+ * only need to reserve one reply endpoint for each thread.
+ *
+ * The IPC endpoint cap is created in the specified CSpace.
  */
 static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
 					      OUT PIPC_ENDPOINT *pServiceEndpoint,
@@ -43,25 +64,19 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
 
     MWORD ReplyCap = 0;
     extern CNODE MiNtosCNode;
-    RET_ERR(MmAllocateCapRange(&MiNtosCNode, &ReplyCap, 1));
-    assert(ReplyCap != 0);
-    KeInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
+    if (ReplyEndpoint->TreeNode.Cap == 0) {
+	RET_ERR(MmAllocateCapRange(&MiNtosCNode, &ReplyCap, 1));
+	assert(ReplyCap != 0);
+	KeInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
+    }
 
-    KiAllocatePoolEx(ServiceEndpoint, IPC_ENDPOINT,
-		     {
-			 MmDeallocateCap(&MiNtosCNode, ReplyCap);
-			 ReplyEndpoint->TreeNode.Cap = 0;
-		     });
+    KiAllocatePool(ServiceEndpoint, IPC_ENDPOINT);
     KeInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, IPCBadge);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
 					 ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
 					 IPCBadge),
-	       {
-		   KiFreePool(ServiceEndpoint);
-		   MmDeallocateCap(&MiNtosCNode, ReplyCap);
-		   ReplyEndpoint->TreeNode.Cap = 0;
-	       });
+	       KiFreePool(ServiceEndpoint));
 
     *pServiceEndpoint = ServiceEndpoint;
     return STATUS_SUCCESS;
@@ -103,11 +118,43 @@ NTSTATUS KeEnableSystemServices(IN PTHREAD Thread)
     return KiEnableThreadServiceEndpoint(Thread, SERVICE_TYPE_SYSTEM_SERVICE);
 }
 
+VOID KiDeleteThreadEndpoint(IN OPTIONAL PIPC_ENDPOINT Endpoint)
+{
+    if (Endpoint != NULL) {
+	KiDestroyEndpoint(Endpoint);
+	KiFreePool(Endpoint);
+    }
+}
+
+/*
+ * This will delete all the client-side service endpoints and release the
+ * reply cap (in the NTOS CSpace) previously reserved for the thread.
+ *
+ * Note this is called by the delete routine of the THREAD object so it should
+ * not assert when the endpoint is NULL.
+ */
+VOID KeDisableThreadServices(IN PTHREAD Thread)
+{
+    extern CNODE MiNtosCNode;
+    if (Thread->ReplyEndpoint.TreeNode.Cap != 0) {
+	MmDeallocateCap(&MiNtosCNode, Thread->ReplyEndpoint.TreeNode.Cap);
+    }
+    KiDeleteThreadEndpoint(Thread->SystemServiceEndpoint);
+    KiDeleteThreadEndpoint(Thread->WdmServiceEndpoint);
+    KiDeleteThreadEndpoint(Thread->FaultEndpoint);
+}
+
+/*
+ * Enable the WDM service endpoint.
+ */
 NTSTATUS KeEnableWdmServices(IN PTHREAD Thread)
 {
     return KiEnableThreadServiceEndpoint(Thread, SERVICE_TYPE_WDM_SERVICE);
 }
 
+/*
+ * Enable the thread fault handler endpoint.
+ */
 NTSTATUS KeEnableThreadFaultHandler(IN PTHREAD Thread)
 {
     return KiEnableThreadServiceEndpoint(Thread, SERVICE_TYPE_FAULT_HANDLER);

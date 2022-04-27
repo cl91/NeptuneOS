@@ -656,8 +656,17 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD TargetVaddrEnd,
 			   OUT MWORD *TargetStartAddr,
 			   IN BOOLEAN ReadOnly);
-VOID MmUnmapUserBufferEx(IN PVIRT_ADDR_SPACE MappedVSpace,
-			 IN MWORD MappedBufferStart);
+NTSTATUS MmMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
+			   IN MWORD SrcWindowStart,
+			   IN MWORD SrcWindowSize,
+			   IN PVIRT_ADDR_SPACE TargetVSpace,
+			   IN MWORD TargetVaddrStart,
+			   IN MWORD TargetVaddrEnd,
+			   IN MWORD TargetReserveFlag,
+			   IN MWORD TargetCommitSize,
+			   OUT PMMVAD *TargetVad);
+VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
+		   IN MWORD MappedRegionStart);
 struct _THREAD;
 BOOLEAN MmHandleThreadVmFault(IN struct _THREAD *Thread,
 			      IN MWORD Addr);
@@ -718,10 +727,20 @@ static inline NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 /*
- * Unmap the user buffer mapped by MmMapUserBuffer
+ * Unmap the server address window specified by the start address.
+ * This will look up the VAD corresponding to the window start and
+ * delete the VAD.
  */
-static inline VOID MmUnmapUserBuffer(IN PVOID MappedBufferStart)
+static inline VOID MmUnmapServerRegion(IN MWORD WindowStart)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmUnmapUserBufferEx(&MiNtosVaddrSpace, (MWORD)MappedBufferStart);
+    return MmUnmapRegion(&MiNtosVaddrSpace, WindowStart);
+}
+
+/*
+ * Unmaps the the user buffer mapped by MmMapUserBuffer.
+ */
+static inline VOID MmUnmapUserBuffer(IN PVOID UserBuffer)
+{
+    return MmUnmapServerRegion((MWORD)UserBuffer);
 }

@@ -93,15 +93,14 @@ static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
 }
 
 /*
- * This destroys the notification object but do not free the pool memory.
+ * This destroys the notification object but does not free the pool memory.
  *
  * IMPORTANT: The notification being destroyed cannot have any derived cap.
  */
 static inline VOID KeDeleteNotification(IN PNOTIFICATION Notification)
 {
     assert(Notification != NULL);
-    assert(MmCapTreeNodeHasChildren(&Notification->TreeNode));
-    MmCapTreeDeleteNode(&Notification->TreeNode);
+    assert(!MmCapTreeNodeHasChildren(&Notification->TreeNode));
     /* Detach the cap node from the cap derivation tree and release its
      * parent untyped (if any) */
     MmCapTreeDeleteNode(&Notification->TreeNode);
@@ -772,6 +771,7 @@ NTSTATUS KeQueueApcToThread(IN struct _THREAD *Thread,
 			    IN PVOID SystemArgument1,
 			    IN PVOID SystemArgument2,
 			    IN PVOID SystemArgument3);
+BOOLEAN KeRemoveQueuedApc(IN PKAPC Apc);
 
 /* bugcheck.c */
 VOID KeBugCheck(IN PCSTR Function,
@@ -791,6 +791,7 @@ NTSTATUS KeEnableSystemServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableWdmServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableThreadFaultHandler(IN struct _THREAD *Thread);
 NTSTATUS KeEnableSystemThreadFaultHandler(IN struct _SYSTEM_THREAD *Thread);
+VOID KeDisableThreadServices(IN struct _THREAD *Thread);
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);
 NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,

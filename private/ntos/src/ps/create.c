@@ -213,41 +213,7 @@ VOID PspPopulatePeb(IN PPROCESS Process)
     Peb->ProcessHeaps = (PPVOID)(Process->PebClientAddr + sizeof(PEB));
 }
 
-static inline NTSTATUS PspMapSharedRegion(IN PPROCESS Process,
-					  IN MWORD ServerStart,
-					  IN MWORD ServerEnd,
-					  IN MWORD ReserveSize,
-					  IN MWORD CommitSize,
-					  IN MWORD ClientStart,
-					  IN MWORD ClientEnd,
-					  IN MWORD ClientReserveFlag,
-					  OUT PMMVAD *ServerVad,
-					  OUT PMMVAD *ClientVad)
-{
-    RET_ERR(MmReserveVirtualMemory(ServerStart, ServerEnd, ReserveSize,
-				   MEM_RESERVE_OWNED_MEMORY, ServerVad));
-    assert(*ServerVad != NULL);
-    assert((*ServerVad)->AvlNode.Key != 0);
-    RET_ERR_EX(MmCommitVirtualMemory((*ServerVad)->AvlNode.Key, CommitSize),
-	       MmDeleteVad(*ServerVad));
-
-    RET_ERR_EX(MmReserveVirtualMemoryEx(&Process->VSpace, ClientStart, ClientEnd,
-					ReserveSize, MEM_RESERVE_MIRRORED_MEMORY | ClientReserveFlag,
-					ClientVad),
-	       MmDeleteVad(*ServerVad));
-    assert(*ClientVad != NULL);
-    assert((*ClientVad)->AvlNode.Key != 0);
-    MmRegisterMirroredVad(*ClientVad, *ServerVad);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, (*ClientVad)->AvlNode.Key, CommitSize),
-	       {
-		   MmDeleteVad(*ServerVad);
-		   MmDeleteVad(*ClientVad);
-	       });
-
-    return STATUS_SUCCESS;
-}
-
-static inline VOID PspSetThreadDebugName(IN PTHREAD Thread)
+static inline NTSTATUS PspSetThreadDebugName(IN PTHREAD Thread)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
@@ -256,13 +222,54 @@ static inline VOID PspSetThreadDebugName(IN PTHREAD Thread)
     char NameBuf[seL4_MsgMaxLength * sizeof(MWORD)];
     /* We use the thread object addr to distinguish threads. */
     snprintf(NameBuf, sizeof(NameBuf), "%s|%p", Thread->Process->ImageFile->FileName, Thread);
-    Thread->DebugName = RtlDuplicateString(NameBuf, NTOS_PS_TAG);
-    if (Thread->DebugName == NULL) {
-	Thread->DebugName = "UNKNOWN THREAD";
+    PCSTR DebugName = RtlDuplicateString(NameBuf, NTOS_PS_TAG);
+    if (DebugName == NULL) {
+	return STATUS_NO_MEMORY;
     }
+    Thread->DebugName = DebugName;
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(Thread->TreeNode.Cap, Thread->DebugName);
 #endif
+    return STATUS_SUCCESS;
+}
+
+
+static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
+				   IN MWORD ServerStart,
+				   IN MWORD ServerEnd,
+				   IN MWORD ReserveSize,
+				   IN MWORD CommitSize,
+				   IN MWORD ClientStart,
+				   IN MWORD ClientEnd,
+				   IN MWORD ClientReserveFlag,
+				   OUT PMMVAD *pServerVad,
+				   OUT PMMVAD *ClientVad)
+{
+    PMMVAD ServerVad = NULL;
+    RET_ERR(MmReserveVirtualMemory(ServerStart, ServerEnd, ReserveSize,
+				   MEM_RESERVE_OWNED_MEMORY, &ServerVad));
+    assert(ServerVad != NULL);
+    assert(ServerVad->AvlNode.Key != 0);
+    RET_ERR_EX(MmCommitVirtualMemory(ServerVad->AvlNode.Key, CommitSize),
+	       MmDeleteVad(ServerVad));
+
+    RET_ERR_EX(MmMapSharedRegion(ServerVad->VSpace,
+				 ServerVad->AvlNode.Key,
+				 ServerVad->WindowSize,
+				 &ClientProcess->VSpace,
+				 ClientStart,
+				 ClientEnd,
+				 ClientReserveFlag,
+				 CommitSize,
+				 ClientVad),
+	       MmDeleteVad(ServerVad));
+    assert(*ClientVad != NULL);
+    assert((*ClientVad)->AvlNode.Key != 0);
+    assert((*ClientVad)->WindowSize == ServerVad->WindowSize);
+
+    *pServerVad = ServerVad;
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
@@ -275,7 +282,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 
     /* Unless you are creating the initial thread of a process, you must specify
      * the thread context */
-    assert(Process->InitThread == NULL || Ctx->Context != NULL);
+    assert(!Process->Initialized || Ctx->Context != NULL);
 
     if (Ctx->InitialTeb != NULL &&
 	(Ctx->InitialTeb->StackBase == NULL || Ctx->InitialTeb->StackLimit == NULL ||
@@ -298,10 +305,16 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	       MmReleaseUntyped(TcbUntyped));
 
     Thread->Process = Process;
+    ObpReferenceObject(Process);
     InitializeListHead(&Thread->ThreadListEntry);
     InitializeListHead(&Thread->PendingIrpList);
     InitializeListHead(&Thread->QueuedApcList);
     InitializeListHead(&Thread->TimerApcList);
+
+    Thread->InitialThread = !Process->Initialized;
+    InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);
+
+    RET_ERR(PspSetThreadDebugName(Thread));
 
     PMMVAD ServerIpcBufferVad = NULL;
     PMMVAD ClientIpcBufferVad = NULL;
@@ -328,7 +341,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 			       &Process->VSpace,
 			       IpcBufferClientPage));
 
-    if (Process->InitThread == NULL) {
+    if (Thread->InitialThread) {
 	/* Thread is the initial thread in the process. Use the .tls subsection
 	 * of the mapped NTDLL PE image for SystemDll TLS region */
 	assert(PspSystemDllTlsSubsection != NULL);
@@ -413,9 +426,8 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     if (Process->InitInfo.DriverProcess) {
 	RET_ERR(KeEnableWdmServices(Thread));
     }
-    PspSetThreadDebugName(Thread);
 
-    if (Process->InitThread == NULL) {
+    if (Thread->InitialThread) {
 	/* Populate the process init info used by ntdll on process startup */
 	Process->InitInfo.ThreadInitInfo = Thread->InitInfo;
 	*((PNTDLL_PROCESS_INIT_INFO)Thread->IpcBufferServerAddr) = Process->InitInfo;
@@ -428,10 +440,10 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	RET_ERR(PspResumeThread(Thread->TreeNode.Cap));
     }
 
-    if (Process->InitThread == NULL) {
-	Process->InitThread = Thread;
+    if (Thread->InitialThread) {
+	assert(!Process->Initialized);
+	Process->Initialized = TRUE;
     }
-    InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);
 
     return STATUS_SUCCESS;
 }
