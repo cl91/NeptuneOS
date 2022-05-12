@@ -32,7 +32,7 @@ set(KernelIRQController "PIC" CACHE STRING "")
 # On x64 each CNode slot costs 32 bytes. 2^20 slots cost 32M.
 if(KernelSel4Arch STREQUAL "ia32")
     set(Arch "i386" CACHE STRING "")
-    set(KernelFSGSBase msr CACHE STRING "")
+    set(KernelFSGSBase gdt CACHE STRING "")
     set(KernelSetTLSBaseSelf ON CACHE BOOL "")
     set(KernelRootCNodeSizeBits 18 CACHE STRING "")
     set(KernelMaxNumBootinfoUntypedCaps 230 CACHE STRING "")
