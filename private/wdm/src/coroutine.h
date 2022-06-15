@@ -1,5 +1,7 @@
 #pragma once
 
+/* TODO: SEH (especially on amd64) */
+
 /*
  * This is placed at the top of the coroutine stack. The top of the
  * stack is a pointer to the stack top of the next coroutine stack,

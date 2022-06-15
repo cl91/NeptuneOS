@@ -1032,15 +1032,15 @@ NTAPI NTSYSAPI VOID RtlUnwindEx(IN PVOID TargetFrame OPTIONAL,
 				IN PVOID ReturnValue,
 				IN PCONTEXT ContextRecord,
 				IN PUNWIND_HISTORY_TABLE HistoryTable OPTIONAL);
+
+NTAPI NTSYSAPI VOID RtlRestoreContext(IN PCONTEXT ContextRecord,
+				      OUT OPTIONAL PEXCEPTION_RECORD ExceptionRecord);
 #endif
 
 NTAPI NTSYSAPI PVOID RtlPcToFileHeader(IN PVOID PcValue,
 				       OUT PVOID* BaseOfImage);
 
 NTAPI NTSYSAPI VOID RtlCaptureContext(OUT PCONTEXT ContextRecord);
-
-NTSYSAPI VOID RtlRestoreContext(PCONTEXT ContextRecord,
-				PEXCEPTION_RECORD ExceptionRecord);
 
 NTAPI NTSYSAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 					    IN PCONTEXT Context);

@@ -1,3 +1,6 @@
+HEADER("TEB offsets (duplicates Te* definitions!)"),
+OFFSET(TebExceptionAddress, TEB, ExceptionAddress),
+
 HEADER("Argument Home Address"),
 CONSTANT(P1Home),
 CONSTANT(P2Home),
@@ -11,6 +14,7 @@ OFFSET(EXCEPTION_RECORD_ExceptionRecord, EXCEPTION_RECORD, ExceptionRecord),
 OFFSET(EXCEPTION_RECORD_ExceptionAddress, EXCEPTION_RECORD, ExceptionAddress),
 OFFSET(EXCEPTION_RECORD_NumberParameters, EXCEPTION_RECORD, NumberParameters),
 OFFSET(EXCEPTION_RECORD_ExceptionInformation, EXCEPTION_RECORD, ExceptionInformation),
+SIZE(EXCEPTION_RECORD_LENGTH, EXCEPTION_RECORD),
 
 HEADER("CONTEXT offsets"),
 OFFSET(CxP1Home, CONTEXT, P1Home),

@@ -28,7 +28,7 @@ static inline NTSTATUS RtlpSafeCopyMemory(OUT VOID UNALIGNED *Destination,
 					  IN SIZE_T Length)
 {
     __try {
-        RtlCopyMemory((PVOID) Destination, (PCVOID) Source, Length);
+        RtlCopyMemory((PVOID)Destination, (PCVOID)Source, Length);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return _SEH2_GetExceptionCode();
     }
@@ -45,6 +45,12 @@ static inline WCHAR *strchrW(const WCHAR *str, WCHAR ch)
     } while (*str++);
     return NULL;
 }
+
+/* debug.c */
+ULONG RtlpVgaPrint(IN PCSTR Format, ...);
+
+/* exception.c */
+VOID RtlpDumpContext(IN PCONTEXT pc);
 
 /*
  * Exception handling helper routines

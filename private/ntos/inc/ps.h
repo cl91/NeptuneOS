@@ -19,6 +19,9 @@ compile_assert(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
 
 #define NTOS_PS_TAG		EX_POOL_TAG('n', 't', 'p', 's')
 
+/* Symbol name for the ntdll user exception entry point */
+#define USER_EXCEPTION_DISPATCHER_NAME "KiUserExceptionDispatcher"
+
 /*
  * Thread object
  */

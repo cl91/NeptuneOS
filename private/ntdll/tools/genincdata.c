@@ -31,6 +31,7 @@ typedef struct {
 #define OFFSET(name, struct, member) {TYPE_CONSTANT, #name, FIELD_OFFSET(struct, member)}
 #define RELOFFSET(name, struct, member, to) {TYPE_CONSTANT, #name, FIELD_OFFSET(struct, member) - FIELD_OFFSET(struct, to)}
 #define SIZE(name, struct) {TYPE_CONSTANT, #name, sizeof(struct)}
+#define SIZE_ALIGN_UP(name, struct, align) {TYPE_CONSTANT, #name, ALIGN_UP_BY(sizeof(struct), align)}
 #define HEADER(x) {TYPE_HEADER, x, 0}
 
 #if defined(_MSC_VER)

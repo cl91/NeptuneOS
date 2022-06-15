@@ -18,6 +18,7 @@ add_compile_options(
     -mno-sse
     -mno-mmx
     --target=${TRIPLE}
+    -fasync-exceptions
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
     -D_NTSYSTEM_
 )
@@ -25,7 +26,7 @@ set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG -DDBG=1 -UNDEBUG" CA
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -fno-asynchronous-unwind-tables -ftls-model=global-dynamic")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -ftls-model=global-dynamic")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)

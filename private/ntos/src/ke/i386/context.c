@@ -19,3 +19,19 @@ VOID KiDumpThreadContext(IN PTHREAD_CONTEXT Context,
 	       (PVOID)Context->gs_base,
 	       (PVOID)Context->eflags);
 }
+
+VOID KiPopulateUserExceptionContext(IN PCONTEXT UserCtx,
+				    IN PTHREAD_CONTEXT Ctx)
+{
+    UserCtx->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    UserCtx->Edi = Ctx->edi;
+    UserCtx->Esi = Ctx->esi;
+    UserCtx->Ebx = Ctx->ebx;
+    UserCtx->Edx = Ctx->edx;
+    UserCtx->Ecx = Ctx->ecx;
+    UserCtx->Eax = Ctx->eax;
+    UserCtx->Ebp = Ctx->ebp;
+    UserCtx->Eip = Ctx->eip;
+    UserCtx->EFlags = Ctx->eflags;
+    UserCtx->Esp = Ctx->esp;
+}

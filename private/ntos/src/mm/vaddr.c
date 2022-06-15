@@ -429,8 +429,8 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	(StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize)) {
 	DbgTrace("Committing addresses spanning multiple VADs is not implemented yet "
 		 "(requested [%p, %p) found VAD [%p, %p))\n",
-		 (PVOID) StartAddr, (PVOID)(StartAddr + WindowSize),
-		 (PVOID) Vad->AvlNode.Key, (PVOID) (Vad->AvlNode.Key + Vad->WindowSize));
+		 (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize),
+		 (PVOID)Vad->AvlNode.Key, (PVOID)(Vad->AvlNode.Key + Vad->WindowSize));
 	UNIMPLEMENTED;
     }
 
@@ -457,6 +457,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				    Vad->Flags.LargePages, NULL, 0));
     } else {
 	/* Should never reach this */
+	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
 
@@ -536,6 +537,31 @@ static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
     *pStartAddr = StartAddr;
     *pWindowSize = CurrentAddr - StartAddr;
     return STATUS_SUCCESS;
+}
+
+/*
+ * Check if the specified address window [StartAddr, EndAddr) is committed
+ * with read-write access. If not, try to commit the address window with
+ * read-write access.
+ */
+NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
+			     IN MWORD StartAddr,
+			     IN MWORD WindowSize)
+{
+    MWORD EndAddr = PAGE_ALIGN_UP(StartAddr + WindowSize);
+    StartAddr = PAGE_ALIGN(StartAddr);
+    assert(StartAddr < EndAddr);
+    MWORD CurrentAddr = StartAddr;
+    while (CurrentAddr < EndAddr) {
+	NTSTATUS Status = MmCommitVirtualMemoryEx(VSpace, CurrentAddr, PAGE_SIZE);
+	if (!NT_SUCCESS(Status) && (Status != STATUS_ALREADY_COMMITTED)) {
+	    return Status;
+	}
+	CurrentAddr += PAGE_SIZE;
+    }
+    /* We need to call MiEnsureWindowMapped because the memory committed
+     * above might be read-only. */
+    return MiEnsureWindowMapped(VSpace, &StartAddr, &WindowSize, TRUE);
 }
 
 /*

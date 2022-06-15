@@ -1,5 +1,12 @@
 #include "ki.h"
 
+/* GCC assumes that stack is always 16-byte aligned before calling a function
+ * (before the return address is pushed onto the stack). Do not change this. */
+#define GCC_STACK_ALIGNMENT		(16)
+
+/* ps/init.c */
+extern MWORD PspUserExceptionDispatcherAddress;
+
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 
@@ -323,6 +330,7 @@ static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread,
 
 static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 			      IN PTHREAD Thread,
+			      IN BOOLEAN Unhandled,
 			      IN KI_DBG_PRINTER DbgPrinter)
 {
     PPROCESS Process = Thread->Process;
@@ -330,9 +338,10 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
     assert(Process->ImageFile != NULL);
     assert(Process->ImageFile->FileName != NULL);
     DbgPrinter("\n==============================================================================\n"
-		"Unhandled %s in thread %s|%p\n",
-		KiDbgGetFaultName(Fault),
-		Process->ImageFile->FileName, Thread);
+		"%s %s in thread %s|%p\n",
+	       Unhandled ? "Unhandled" : "Caught",
+	       KiDbgGetFaultName(Fault),
+	       Process->ImageFile->FileName, Thread);
     KiDbgDumpFault(Fault, DbgPrinter);
     THREAD_CONTEXT Context;
     NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
@@ -361,7 +370,7 @@ static VOID KiDumpSystemThreadFault(IN seL4_Fault_t Fault,
 				    IN KI_DBG_PRINTER DbgPrinter)
 {
     DbgPrinter("\n==============================================================================\n"
-	       "Unhandled %s in thread %s (thread obj %p thread entry %p)\n",
+	       "Unhandled %s in system thread %s (thread obj %p thread entry %p)\n",
 	       KiDbgGetFaultName(Fault), Thread->DebugName, Thread, Thread->EntryPoint);
     KiDbgDumpFault(Fault, DbgPrinter);
     THREAD_CONTEXT Context;
@@ -373,20 +382,134 @@ static VOID KiDumpSystemThreadFault(IN seL4_Fault_t Fault,
     DbgPrinter("==============================================================================\n");
 }
 
+#define MIN_USER_EXCEPTION_STACK    (256)
+
 /*
- * Attempt to handle the thread fault. Return TRUE if the fault is
- * handled and thread should be resumed. Return FALSE if the fault
- * cannot be handled and the thread should be terminated.
+ * Attempt to handle the thread fault. Return STATUS_SUCCESS if the
+ * fault is handled and thread should be resumed. Return error if the
+ * fault cannot be handled and the thread should be terminated.
  */
-static BOOLEAN KiHandleThreadFault(IN PTHREAD Thread,
-				   IN seL4_Fault_t Fault)
+static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
+				    IN seL4_Fault_t Fault)
 {
     assert(Thread != NULL);
-    if (seL4_Fault_get_seL4_FaultType(Fault) == seL4_Fault_VMFault) {
-	MWORD Addr = seL4_Fault_VMFault_get_Addr(Fault);
-	return MmHandleThreadVmFault(Thread, Addr);
+
+    ULONG ExceptionCode = KI_VM_FAULT_CODE;
+    MWORD ExceptionAddress = 0;
+    MWORD ExceptionParameter = 0;
+    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
+    case seL4_Fault_VMFault:
+	/* For VM fault the first exception parameter is the vm address that
+	 * the client was trying to access. */
+	ExceptionParameter = seL4_Fault_VMFault_get_Addr(Fault);
+	/* Check if the VM fault should be handled transparently, without
+	 * ever involving the client side. */
+	if (MmHandleThreadVmFault(Thread, ExceptionParameter)) {
+	    DbgTrace("VM fault handled transparently. Restarting thread.\n");
+	    /* VM fault is handled transparently. Restart the thread. */
+	    return STATUS_SUCCESS;
+	}
+	ExceptionAddress = seL4_Fault_VMFault_get_IP(Fault);
+	break;
+    case seL4_Fault_UserException:
+	ExceptionCode = seL4_Fault_UserException_get_Number(Fault);
+	ExceptionAddress = seL4_Fault_UserException_get_FaultIP(Fault);
+	ExceptionParameter = seL4_Fault_UserException_get_Code(Fault);
+	break;
+    /* Anything other than user exception or vm fault will simply
+     * terminate the thread. */
+    case seL4_Fault_CapFault:
+	return STATUS_INVALID_HANDLE;
+    case seL4_Fault_UnknownSyscall:
+	return STATUS_INVALID_SYSTEM_SERVICE;
+    case seL4_Fault_NullFault:
+    default:
+	return STATUS_UNSUCCESSFUL;
     }
-    return FALSE;
+
+    /* Note this code path corresponds to the FirstChance == TRUE logic
+     * in the KiDispatchException function of the Windows/ReactOS code
+     * (ntoskrnl/ke/i386/exp.c in ReactOS). The second chance exception
+     * handling is done in NtRaiseException. */
+    THREAD_CONTEXT Context;
+    RET_ERR(KeLoadThreadContext(Thread->TreeNode.Cap, &Context));
+    MWORD StackPointer = Context._STACK_POINTER;
+    MWORD AlignedStackPointer = ALIGN_DOWN_BY(StackPointer, GCC_STACK_ALIGNMENT);
+    MWORD ContextSize = ALIGN_UP_BY(sizeof(CONTEXT), GCC_STACK_ALIGNMENT);
+    MWORD ExceptionRecordSize = ALIGN_UP_BY(sizeof(EXCEPTION_RECORD), GCC_STACK_ALIGNMENT);
+    /* In addition to the CONTEXT and EXCEPTION_RECORD we also include
+     * the minimal stack space needed to handle an exception. */
+    MWORD MinFreeUserStack = ContextSize + ExceptionRecordSize + MIN_USER_EXCEPTION_STACK;
+
+    /* Check if the user stack is valid and has enough space. If ok,
+     * map the user stack into server address space so we can copy the
+     * exception context onto the user stack. If not, try committing more
+     * space. If that fails, then we have no choice but to terminate the process. */
+    if (AlignedStackPointer < MinFreeUserStack) {
+	return STATUS_NO_MEMORY;
+    }
+    MWORD WindowSize = MinFreeUserStack + StackPointer - AlignedStackPointer;
+    PCHAR MappedUserStack = 0;
+    NTSTATUS Status = MmMapUserBuffer(&Thread->Process->VSpace,
+				      AlignedStackPointer - MinFreeUserStack,
+				      WindowSize,
+				      (PPVOID)&MappedUserStack);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_NOT_COMMITTED)) {
+	return Status;
+    } else if (Status == STATUS_NOT_COMMITTED) {
+	/* If the user stack is reserved but not committed, try committing more
+	 * space, and then attempt to map the user buffer for a second time. */
+	RET_ERR(MmTryCommitWindowRW(&Thread->Process->VSpace,
+				    AlignedStackPointer - MinFreeUserStack,
+				    WindowSize));
+	RET_ERR(MmMapUserBuffer(&Thread->Process->VSpace,
+				AlignedStackPointer - MinFreeUserStack,
+				WindowSize,
+				(PPVOID)&MappedUserStack));
+    }
+
+    /* If we got here, the user stack must have been mapped successfully. */
+    assert(MappedUserStack != NULL);
+    /*
+     * The stack organization is as follows (left is lower address):
+     *
+     * |------------------------|------------------------|
+     * |MIN_USER_EXCEPTION_STACK|CONTEXT|EXCEPTION_RECORD|
+     * |------------------------|------------------------|
+     * ^                        ^                        ^
+     * ^                        NewStackPointer          AlignedStackPointer
+     * ^
+     * MappedUserStack (in server address space)
+     *
+     * Pointer to ExceptionRecord is passed via FASTCALL_FIRST_PARAM (ecx/rcx).
+     * Pointer to Context is passed via FASTCALL_SECOND_PARAM (edx/rdx).
+     *
+     * Note: The Windows AMD64 ABI does NOT have the 128-byte red zone that
+     * the SystemV AMD64 ABI has. Therefore we are free to clobber the stack
+     * space below %rsp.
+     */
+    PCONTEXT UserContext = (PCONTEXT)(MappedUserStack + MIN_USER_EXCEPTION_STACK);
+    memset(UserContext, 0, ContextSize + ExceptionRecordSize);
+    KiPopulateUserExceptionContext(UserContext, &Context);
+    PEXCEPTION_RECORD ExceptionRecord = (PEXCEPTION_RECORD)
+	(MappedUserStack + MIN_USER_EXCEPTION_STACK + ContextSize);
+    ExceptionRecord->ExceptionCode = ExceptionCode;
+    ExceptionRecord->ExceptionAddress = (PVOID)ExceptionAddress;
+    ExceptionRecord->NumberParameters = 1;
+    ExceptionRecord->ExceptionInformation[0] = ExceptionParameter;
+
+    /* Set the thread context to dispatch to KiUserExceptionDispatcher */
+    MWORD NewStackPointer = AlignedStackPointer - ExceptionRecordSize - ContextSize;
+    Context._FASTCALL_FIRST_PARAM = AlignedStackPointer - ExceptionRecordSize;
+    Context._FASTCALL_SECOND_PARAM = NewStackPointer;
+    Context._STACK_POINTER = NewStackPointer;
+    Context._INSTRUCTION_POINTER = PspUserExceptionDispatcherAddress;
+    RET_ERR_EX(KeSetThreadContext(Thread->TreeNode.Cap, &Context),
+	       MmUnmapUserBuffer(MappedUserStack));
+    MmUnmapUserBuffer(MappedUserStack);
+    DbgTrace("Dispatched thread %s to ntdll!" USER_EXCEPTION_DISPATCHER_NAME "\n",
+	     Thread->DebugName);
+    return STATUS_SUCCESS;
 }
 
 VOID KiDispatchExecutiveServices()
@@ -401,21 +524,24 @@ VOID KiDispatchExecutiveServices()
 	DbgTrace("Got message label 0x%x length %d unwrapped caps %d extra caps %d badge 0x%zx\n",
 		 SvcNum, ReqMsgLength, NumUnwrappedCaps, NumExtraCaps, Badge);
 	if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
-	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
+	    /* The thread has faulted. */
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
-	    BOOLEAN Handled = KiHandleThreadFault(Thread, Fault);
-	    if (!Handled) {
 #ifdef CONFIG_DEBUG_BUILD
-		KiDumpThreadFault(Fault, Thread, DbgPrint);
+	    KiDumpThreadFault(Fault, Thread, FALSE, DbgPrint);
 #endif
-		KiDumpThreadFault(Fault, Thread, HalVgaPrint);
-		PsTerminateThread(Thread, STATUS_UNSUCCESSFUL);
+	    NTSTATUS Status = KiHandleThreadFault(Thread, Fault);
+	    if (!NT_SUCCESS(Status)) {
+		/* The fault cannot be handled. Printe a message and terminate the thread. */
+		KiDumpThreadFault(Fault, Thread, TRUE, HalVgaPrint);
+		PsTerminateThread(Thread, Status);
 	    } else {
+		/* The fault has been either handled or we are dispatching user SEH.
+		 * Restart the thread. */
 		seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 0));
 	    }
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
-	    /* The thread has faulted. For now we simply print a message and terminate the thread. */
+	    /* The thread has faulted. For system services we always terminate the thread. */
 	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_POINTER(Badge);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
 #ifdef CONFIG_DEBUG_BUILD

@@ -14,8 +14,7 @@
 extern "C" {
 #endif
 
-typedef enum _EXCEPTION_DISPOSITION
-{
+typedef enum _EXCEPTION_DISPOSITION {
     ExceptionContinueExecution,
     ExceptionContinueSearch,
     ExceptionNestedException,

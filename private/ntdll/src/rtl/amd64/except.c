@@ -48,15 +48,6 @@ NTAPI VOID RtlRaiseException(IN PEXCEPTION_RECORD ExceptionRecord)
 }
 
 /*
- * @unimplemented
- */
-NTAPI PVOID RtlpGetExceptionAddress(VOID)
-{
-    UNIMPLEMENTED;
-    return NULL;
-}
-
-/*
  * @implemented
  */
 NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
@@ -74,8 +65,10 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
     /* Call the internal unwind routine */
     BOOLEAN Handled = RtlpUnwindInternal(NULL,	// TargetFrame
 					 NULL,	// TargetIp
-					 ExceptionRecord, 0,	// ReturnValue
-					 ContextRecord, NULL,	// HistoryTable
+					 ExceptionRecord,
+					 0,	// ReturnValue
+					 ContextRecord,
+					 NULL,	// HistoryTable
 					 UNW_FLAG_EHANDLER);
 
     /* In user mode, call any registered vectored continue handlers */

@@ -71,20 +71,41 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 
 #ifdef _M_IX86
 #define INSTRUCTION_POINTER	Eip
-#define FIRST_PARAMETER		Ecx
+#define STACK_POINTER		Esp
+#define BASE_POINTER		Ebp
+#define FLAGS_REGISTER		EFlags
+#define FASTCALL_FIRST_PARAM	Ecx
+#define FASTCALL_SECOND_PARAM	Edx
+#define _INSTRUCTION_POINTER	eip
+#define _STACK_POINTER		esp
+#define _FLAGS_REGISTER		eflags
+#define _FASTCALL_FIRST_PARAM	ecx
+#define _FASTCALL_SECOND_PARAM	edx
 #elif defined(_M_AMD64)
 #define INSTRUCTION_POINTER	Rip
-#define FIRST_PARAMETER		Rcx
+#define STACK_POINTER		Rsp
+#define BASE_POINTER		Rbp
+#define FLAGS_REGISTER		RFlags
+#define FASTCALL_FIRST_PARAM	Rcx
+#define FASTCALL_SECOND_PARAM	Rdx
+#define _INSTRUCTION_POINTER	rip
+#define _STACK_POINTER		rsp
+#define _FLAGS_REGISTER		rflags
+#define _FASTCALL_FIRST_PARAM	rcx
+#define _FASTCALL_SECOND_PARAM	rdx
 #else
 #error "Unsupported architecture"
 #endif
+
+/* This is used to distinguish VM faults from user exceptions. See ntos/ke/services.c */
+#define KI_VM_FAULT_CODE	(0xFFFF)
 
 static inline VOID KeSetThreadContextFromEntryPoint(OUT PCONTEXT Context,
 						    IN PTHREAD_START_ROUTINE EntryPoint,
 						    IN PVOID Parameter)
 {
     Context->INSTRUCTION_POINTER = (ULONG_PTR)EntryPoint;
-    Context->FIRST_PARAMETER = (ULONG_PTR)Parameter;
+    Context->FASTCALL_FIRST_PARAM = (ULONG_PTR)Parameter;
 }
 
 static inline VOID KeGetEntryPointFromThreadContext(IN PCONTEXT Context,
@@ -92,7 +113,7 @@ static inline VOID KeGetEntryPointFromThreadContext(IN PCONTEXT Context,
 						    OUT PVOID *Parameter)
 {
     *EntryPoint = (PVOID)Context->INSTRUCTION_POINTER;
-    *Parameter = (PVOID)Context->FIRST_PARAMETER;
+    *Parameter = (PVOID)Context->FASTCALL_FIRST_PARAM;
 }
 
 typedef struct _NTDLL_THREAD_INIT_INFO {

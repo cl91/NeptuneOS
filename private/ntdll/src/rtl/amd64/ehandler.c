@@ -5,131 +5,181 @@
  * COPYRIGHT:   Copyright 2018-2021 Timo Kreuzer <timo.kreuzer@reactos.org>
 */
 
-#include <ntdll.h>
+#include "../rtlp.h"
 
-EXCEPTION_DISPOSITION
-__C_specific_handler(struct _EXCEPTION_RECORD *ExceptionRecord,
-		     void *EstablisherFrame,
-		     struct _CONTEXT *ContextRecord,
-		     struct _DISPATCHER_CONTEXT *DispatcherContext)
+/* Change this to 1 to disable debug trace */
+#if 0
+#undef DbgTrace
+#define DbgTrace(...)
+#define RtlpDumpContext(...)
+#endif
+
+VOID RtlpDumpDispatcherContext(IN PDISPATCHER_CONTEXT DispatcherContext)
 {
-    PSCOPE_TABLE ScopeTable;
-    ULONG i, BeginAddress, EndAddress, Handler;
-    ULONG64 ImageBase, JumpTarget, IpOffset, TargetIpOffset;
-    EXCEPTION_POINTERS ExceptionPointers;
-    PTERMINATION_HANDLER TerminationHandler;
-    PEXCEPTION_FILTER ExceptionFilter;
-    LONG FilterResult;
+    DbgTrace("Dumping dispatcher context %p\n", DispatcherContext);
+    if (DispatcherContext != NULL) {
+	DbgPrint("    ControlPc = %p\n"
+		 "    ImageBase =  %p\n"
+		 "    FunctionEntry = %p\n"
+		 "    EstablisherFrame = %p\n"
+		 "    TargetIp = %p\n"
+		 "    ContextRecord = %p\n"
+		 "    LanguageHandler = %p\n"
+		 "    HandlerData = %p\n"
+		 "    HistoryTable = %p\n"
+		 "    ScopeIndex = %d\n",
+		 (PVOID)DispatcherContext->ControlPc,
+		 (PVOID)DispatcherContext->ImageBase,
+		 DispatcherContext->FunctionEntry,
+		 (PVOID)DispatcherContext->EstablisherFrame,
+		 (PVOID)DispatcherContext->TargetIp,
+		 DispatcherContext->ContextRecord,
+		 DispatcherContext->LanguageHandler,
+		 DispatcherContext->HandlerData,
+		 DispatcherContext->HistoryTable,
+		 DispatcherContext->ScopeIndex);
+	if (DispatcherContext->ContextRecord != NULL) {
+	    DbgPrint("  ContextRecord is\n");
+	    RtlpDumpContext(DispatcherContext->ContextRecord);
+	}
+    }
+}
+
+VOID RtlpDumpScopeTable(IN PSCOPE_TABLE ScopeTable)
+{
+    DbgTrace("Dumping scope table %p. Count = %d\n",
+	     ScopeTable, ScopeTable ? ScopeTable->Count : 0);
+    if (ScopeTable != NULL) {
+	for (ULONG i = 0; i < ScopeTable->Count; i++) {
+	    DbgPrint("   BeginAddress 0x%.8x EndAddress 0x%.8x "
+		     "HandlerAddress 0x%.8x JumpTarget 0x%.8x\n",
+		     ScopeTable->ScopeRecord[i].BeginAddress,
+		     ScopeTable->ScopeRecord[i].EndAddress,
+		     ScopeTable->ScopeRecord[i].HandlerAddress,
+		     ScopeTable->ScopeRecord[i].JumpTarget);
+	}
+    }
+}
+
+EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
+					   PVOID EstablisherFrame,
+					   PCONTEXT ContextRecord,
+					   PDISPATCHER_CONTEXT DispatcherContext)
+{
+    DbgTrace("ExceptionRecord %p EstablisherFrame %p ContextRecord %p\n",
+	     ExceptionRecord, EstablisherFrame, ContextRecord);
+    RtlpDumpContext(ContextRecord);
+    RtlpDumpDispatcherContext(DispatcherContext);
 
     /* Set up the EXCEPTION_POINTERS */
-    ExceptionPointers.ExceptionRecord = ExceptionRecord;
-    ExceptionPointers.ContextRecord = ContextRecord;
+    EXCEPTION_POINTERS ExceptionPointers = {
+	.ExceptionRecord = ExceptionRecord,
+	.ContextRecord = ContextRecord
+    };
 
     /* Get the image base */
-    ImageBase = (ULONG64)DispatcherContext->ImageBase;
+    ULONG64 ImageBase = (ULONG64)DispatcherContext->ImageBase;
 
     /* Get the image base relative instruction pointers */
-    IpOffset = DispatcherContext->ControlPc - ImageBase;
-    TargetIpOffset = DispatcherContext->TargetIp - ImageBase;
+    ULONG64 IpOffset = DispatcherContext->ControlPc - ImageBase;
+    ULONG64 TargetIpOffset = DispatcherContext->TargetIp - ImageBase;
 
     /* Get the scope table and current index */
-    ScopeTable = (PSCOPE_TABLE)DispatcherContext->HandlerData;
+    PSCOPE_TABLE ScopeTable = (PSCOPE_TABLE)DispatcherContext->HandlerData;
+    RtlpDumpScopeTable(ScopeTable);
 
     /* Loop while we have scope table entries */
-    while (DispatcherContext->ScopeIndex < ScopeTable->Count)
-    {
-        /* Use i as index and update the dispatcher context */
-        i = DispatcherContext->ScopeIndex++;
+    while (DispatcherContext->ScopeIndex < ScopeTable->Count) {
+	/* Use i as index and update the dispatcher context */
+	ULONG i = DispatcherContext->ScopeIndex++;
 
-        /* Get the start and end of the scrope */
-        BeginAddress = ScopeTable->ScopeRecord[i].BeginAddress;
-        EndAddress = ScopeTable->ScopeRecord[i].EndAddress;
+	/* Get the start and end of the scope */
+	ULONG BeginAddress = ScopeTable->ScopeRecord[i].BeginAddress;
+	ULONG EndAddress = ScopeTable->ScopeRecord[i].EndAddress;
+	DbgTrace("IpOffset 0x%llx BeginAddress 0x%x EndAddress 0x%x\n",
+		 IpOffset, BeginAddress, EndAddress);
 
-        /* Skip this scope if we are not within the bounds */
-        if ((IpOffset < BeginAddress) || (IpOffset >= EndAddress))
-        {
-            continue;
-        }
+	/* Skip this scope if we are not within the bounds */
+	if ((IpOffset < BeginAddress) || (IpOffset >= EndAddress)) {
+	    continue;
+	}
 
-        /* Check if this is an unwind */
-        if (ExceptionRecord->ExceptionFlags & EXCEPTION_UNWIND)
-        {
-            /* Check if this is a target unwind */
-            if (ExceptionRecord->ExceptionFlags & EXCEPTION_TARGET_UNWIND)
-            {
-                /* Check if the target is within the scope itself */
-                if ((TargetIpOffset >= BeginAddress) &&
-                    (TargetIpOffset <  EndAddress))
-                {
-                    return ExceptionContinueSearch;
-                }
-            }
+	/* Check if this is an unwind */
+	if (ExceptionRecord->ExceptionFlags & EXCEPTION_UNWIND) {
+	    DbgTrace("Exception record is unwind\n");
+	    /* Check if this is a target unwind */
+	    if (ExceptionRecord->ExceptionFlags & EXCEPTION_TARGET_UNWIND) {
+		/* Check if the target is within the scope itself */
+		if ((TargetIpOffset >= BeginAddress) && (TargetIpOffset < EndAddress)) {
+		    return ExceptionContinueSearch;
+		}
+	    }
 
-            /* Check if this is a termination handler / finally function */
-            if (ScopeTable->ScopeRecord[i].JumpTarget == 0)
-            {
-                /* Call the handler */
-                Handler = ScopeTable->ScopeRecord[i].HandlerAddress;
-                TerminationHandler = (PTERMINATION_HANDLER)(ImageBase + Handler);
-                TerminationHandler(TRUE, EstablisherFrame);
-            }
-            else if (ScopeTable->ScopeRecord[i].JumpTarget == TargetIpOffset)
-            {
-                return ExceptionContinueSearch;
-            }
-        }
-        else
-        {
-            /* We are only unterested in exception handlers */
-            if (ScopeTable->ScopeRecord[i].JumpTarget == 0)
-            {
-                continue;
-            }
+	    /* Check if this is a termination handler / finally function */
+	    if (ScopeTable->ScopeRecord[i].JumpTarget == 0) {
+		/* Call the handler */
+		ULONG Handler = ScopeTable->ScopeRecord[i].HandlerAddress;
+		PTERMINATION_HANDLER TerminationHandler = (PTERMINATION_HANDLER)(ImageBase + Handler);
+		TerminationHandler(TRUE, EstablisherFrame);
+	    } else if (ScopeTable->ScopeRecord[i].JumpTarget == TargetIpOffset) {
+		return ExceptionContinueSearch;
+	    }
+	} else {
+	    DbgTrace("Exception record is HANDLER\n");
+	    /* We are only interested in exception handlers */
+	    if (ScopeTable->ScopeRecord[i].JumpTarget == 0) {
+		continue;
+	    }
 
-            /* This is an exception filter, get the handler address */
-            Handler = ScopeTable->ScopeRecord[i].HandlerAddress;
+	    /* This is an exception filter, get the handler address */
+	    ULONG Handler = ScopeTable->ScopeRecord[i].HandlerAddress;
+	    DbgTrace("Handler = 0x%x\n", Handler);
 
-            /* Check for hardcoded EXCEPTION_EXECUTE_HANDLER */
-            if (Handler == EXCEPTION_EXECUTE_HANDLER)
-            {
-                /* This is our result */
-                FilterResult = EXCEPTION_EXECUTE_HANDLER;
-            }
-            else
-            {
-                /* Otherwise we need to call the handler */
-                ExceptionFilter = (PEXCEPTION_FILTER)(ImageBase + Handler);
-                FilterResult = ExceptionFilter(&ExceptionPointers, EstablisherFrame);
-            }
+	    /* Check for hardcoded EXCEPTION_EXECUTE_HANDLER */
+	    LONG FilterResult;
+	    if (Handler == EXCEPTION_EXECUTE_HANDLER) {
+		/* This is our result */
+		FilterResult = EXCEPTION_EXECUTE_HANDLER;
+	    } else {
+		/* Otherwise we need to call the handler */
+		PEXCEPTION_FILTER ExceptionFilter = (PEXCEPTION_FILTER)(ImageBase + Handler);
+		FilterResult = ExceptionFilter(&ExceptionPointers, EstablisherFrame);
+	    }
+	    DbgTrace("FilterResult is %d\n", FilterResult);
 
-            if (FilterResult == EXCEPTION_CONTINUE_EXECUTION)
-            {
-                return ExceptionContinueExecution;
-            }
+	    if (FilterResult == EXCEPTION_CONTINUE_EXECUTION) {
+		return ExceptionContinueExecution;
+	    }
 
-            if (FilterResult == EXCEPTION_EXECUTE_HANDLER)
-            {
-                JumpTarget = (ImageBase + ScopeTable->ScopeRecord[i].JumpTarget);
+	    if (FilterResult == EXCEPTION_EXECUTE_HANDLER) {
+		ULONG64 JumpTarget = ImageBase + ScopeTable->ScopeRecord[i].JumpTarget;
 
-                /* Unwind to the target address (This does not return) */
-                RtlUnwindEx(EstablisherFrame,
-                            (PVOID)JumpTarget,
-                            ExceptionRecord,
-                            UlongToPtr(ExceptionRecord->ExceptionCode),
-                            DispatcherContext->ContextRecord,
-                            DispatcherContext->HistoryTable);
+		/* Unwind to the target address to execute the exception handler
+		 * (ie. the stmt as in __except (fltr) { stmt; } ). This will
+		 * initiate a collided unwind and if successful, should not return
+		 * (instead control will transfer to the jump target, typically an
+		 * exception handler). */
+		RtlUnwindEx(EstablisherFrame,
+			    (PVOID)JumpTarget,
+			    ExceptionRecord,
+			    UlongToPtr(ExceptionRecord->ExceptionCode),
+			    DispatcherContext->ContextRecord,
+			    DispatcherContext->HistoryTable);
 
-                /* Should not get here */
-                __debugbreak();
-            }
-        }
+		/* If we got here, the unwind above has failed (for instance, it has
+		 * hit KiUserExceptionDispatcher which is logically the end of a call
+		 * stack, because it is not called by any function but dispatched by
+		 * the server). Raise a debug breakpoint exception. */
+		__debugbreak();
+	    }
+	}
     }
 
     /* Reached the end of the scope table */
     return ExceptionContinueSearch;
 }
 
-void _local_unwind(void* frame, void* target)
+void _local_unwind(void *frame, void *target)
 {
     RtlUnwind(frame, target, NULL, 0);
 }

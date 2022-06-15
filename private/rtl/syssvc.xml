@@ -11,11 +11,6 @@
     <parameter annotation="in" type="HANDLE" name="Handle" />
   </svc>
 
-  <svc name="NtContinue">
-    <parameter annotation="in" type="ptr::CONTEXT" name="Context" />
-    <parameter annotation="in" type="BOOLEAN" name="TestAlert" />
-  </svc>
-
   <svc name="NtCreateThread">
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />

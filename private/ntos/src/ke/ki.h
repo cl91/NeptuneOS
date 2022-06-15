@@ -31,6 +31,13 @@ static inline PCSTR KiDbgGetFaultName(IN seL4_Fault_t Fault)
     return "UNKNOWN-FAULT";
 }
 
+#ifdef _M_IX86
+static inline MWORD seL4_Fault_UserException_get_FLAGS(IN seL4_Fault_t Fault)
+{
+    return seL4_Fault_UserException_get_EFLAGS(Fault);
+}
+#endif
+
 /* Helper function for dumping thread fault */
 static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
 				  IN KI_DBG_PRINTER DbgPrinter)
@@ -46,7 +53,13 @@ static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
 	DbgPrinter("UNKNOWN-SYSCALL\n");
 	break;
     case seL4_Fault_UserException:
-	DbgPrinter("USER-EXCEPTION\n");
+	DbgPrinter("NUMBER 0x%zx CODE 0x%zx FLAGS 0x%zx "
+		   "IP %p STACK %p\n",
+		   (PVOID)seL4_Fault_UserException_get_Number(Fault),
+		   (PVOID)seL4_Fault_UserException_get_Code(Fault),
+		   (PVOID)seL4_Fault_UserException_get_FLAGS(Fault),
+		   (PVOID)seL4_Fault_UserException_get_FaultIP(Fault),
+		   (PVOID)seL4_Fault_UserException_get_Stack(Fault));
 	break;
     case seL4_Fault_VMFault:
 	DbgPrinter("IP\t %p\tADDR\t%p\n"
@@ -87,6 +100,8 @@ VOID KiDispatchExecutiveServices();
 VOID KiSignalExpiredTimerList();
 NTSTATUS KiInitTimer();
 
-/* arch/debug.c */
+/* arch/context.c */
 VOID KiDumpThreadContext(IN PTHREAD_CONTEXT Context,
 			 IN KI_DBG_PRINTER DbgPrinter);
+VOID KiPopulateUserExceptionContext(IN PCONTEXT UserCtx,
+				    IN PTHREAD_CONTEXT Ctx);

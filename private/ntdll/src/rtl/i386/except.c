@@ -78,17 +78,16 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
     RegistrationFrame = RtlpGetExceptionList();
 
     /* Now loop every frame */
-    while (RegistrationFrame != EXCEPTION_CHAIN_END) {
-	/* Registration chain entries are never NULL */
-	ASSERT(RegistrationFrame != NULL);
-
+    while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
 	/* Find out where it ends */
-	RegistrationFrameEnd = (ULONG_PTR) RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
+	DbgTrace("Handling exception registration frame %p\n", RegistrationFrame);
+	RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
 	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR) RegistrationFrame < StackLow) ||
 	    ((ULONG_PTR) RegistrationFrame & 0x3)) {
 	    /* Set invalid stack and bail out */
+	    DbgTrace("Invalid registration frame %p\n", RegistrationFrame);
 	    ExceptionRecord->ExceptionFlags |= EXCEPTION_STACK_INVALID;
 	    return FALSE;
 	}
@@ -106,8 +105,8 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 						     RegistrationFrame,
 						     Context,
 						     &DispatcherContext,
-						     RegistrationFrame->
-						     Handler);
+						     RegistrationFrame->Handler);
+	DbgTrace("Exception handler returned disposition %d\n", Disposition);
 
 	/* Check if this is a nested frame */
 	if (RegistrationFrame == NestedFrame) {
@@ -118,18 +117,14 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 
 	/* Handle the dispositions */
 	switch (Disposition) {
-	    /* Continue execution */
+	/* Continue execution */
 	case ExceptionContinueExecution:
-	{
 	    /* Check if it was non-continuable */
-	    if (ExceptionRecord->
-		ExceptionFlags & EXCEPTION_NONCONTINUABLE) {
+	    if (ExceptionRecord->ExceptionFlags & EXCEPTION_NONCONTINUABLE) {
 		/* Set up the exception record */
 		ExceptionRecord2.ExceptionRecord = ExceptionRecord;
-		ExceptionRecord2.ExceptionCode =
-		    STATUS_NONCONTINUABLE_EXCEPTION;
-		ExceptionRecord2.ExceptionFlags =
-		    EXCEPTION_NONCONTINUABLE;
+		ExceptionRecord2.ExceptionCode = STATUS_NONCONTINUABLE_EXCEPTION;
+		ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
 		ExceptionRecord2.NumberParameters = 0;
 
 		/* Raise the exception */
@@ -141,7 +136,6 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 		/* Execution continues */
 		return TRUE;
 	    }
-	}
 
 	/* Continue searching */
 	case ExceptionContinueSearch:
@@ -151,9 +145,8 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 	    }
 	    break;
 
-	    /* Nested exception */
+	/* Nested exception */
 	case ExceptionNestedException:
-	{
 	    /* Turn the nested flag on */
 	    ExceptionRecord->ExceptionFlags |= EXCEPTION_NESTED_CALL;
 
@@ -163,11 +156,9 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 		NestedFrame = DispatcherContext.RegistrationPointer;
 	    }
 	    break;
-	}
 
 	/* Anything else */
 	default:
-	{
 	    /* Set up the exception record */
 	    ExceptionRecord2.ExceptionRecord = ExceptionRecord;
 	    ExceptionRecord2.ExceptionCode = STATUS_INVALID_DISPOSITION;
@@ -176,8 +167,6 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 
 	    /* Raise the exception */
 	    RtlRaiseException(&ExceptionRecord2);
-	    break;
-	}
 	}
 
 	/* Go to the next frame */
@@ -227,19 +216,17 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	ExceptionRecord->ExceptionFlags |= EXCEPTION_UNWINDING;
     } else {
 	/* Set the Exit Unwind flag as well */
-	ExceptionRecord->ExceptionFlags |= (EXCEPTION_UNWINDING |
-					    EXCEPTION_EXIT_UNWIND);
+	ExceptionRecord->ExceptionFlags |= EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND;
     }
 
     /* Now capture the context */
     Context = &LocalContext;
-    LocalContext.ContextFlags = CONTEXT_INTEGER |
-	CONTEXT_CONTROL | CONTEXT_SEGMENTS;
+    LocalContext.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
     RtlpCaptureContext(Context);
 
     /* Pop the current arguments off */
-    Context->Esp += sizeof(TargetFrame) +
-	sizeof(TargetIp) + sizeof(ExceptionRecord) + sizeof(ReturnValue);
+    Context->Esp += sizeof(TargetFrame) + sizeof(TargetIp) +
+	sizeof(ExceptionRecord) + sizeof(ReturnValue);
 
     /* Set the new value for EAX */
     Context->Eax = (ULONG) ReturnValue;
@@ -248,17 +235,16 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
     RegistrationFrame = RtlpGetExceptionList();
 
     /* Now loop every frame */
-    while (RegistrationFrame != EXCEPTION_CHAIN_END) {
-	/* Registration chain entries are never NULL */
-	ASSERT(RegistrationFrame != NULL);
-
+    while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
+	DbgTrace("Unwinding exception registration frame %p\n", RegistrationFrame);
 	/* If this is the target */
-	if (RegistrationFrame == TargetFrame)
+	if (RegistrationFrame == TargetFrame) {
+	    DbgTrace("Hit target frame. Stop unwinding.\n");
 	    NtContinue(Context, FALSE);
+	}
 
 	/* Check if the frame is too low */
-	if ((TargetFrame) &&
-	    ((ULONG_PTR) TargetFrame < (ULONG_PTR) RegistrationFrame)) {
+	if (TargetFrame && ((ULONG_PTR)TargetFrame < (ULONG_PTR)RegistrationFrame)) {
 	    /* Create an invalid unwind exception */
 	    ExceptionRecord2.ExceptionCode = STATUS_INVALID_UNWIND_TARGET;
 	    ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
@@ -270,12 +256,11 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	}
 
 	/* Find out where it ends */
-	RegistrationFrameEnd = (ULONG_PTR) RegistrationFrame +
-	    sizeof(EXCEPTION_REGISTRATION_RECORD);
+	RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
-	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR) RegistrationFrame < StackLow) ||
-	    ((ULONG_PTR) RegistrationFrame & 0x3)) {
+	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR)RegistrationFrame < StackLow) ||
+	    ((ULONG_PTR)RegistrationFrame & 0x3)) {
 	    /* Create an invalid stack exception */
 	    ExceptionRecord2.ExceptionCode = STATUS_BAD_STACK;
 	    ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
@@ -290,38 +275,31 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 						      RegistrationFrame,
 						      Context,
 						      &DispatcherContext,
-						      RegistrationFrame->
-						      Handler);
+						      RegistrationFrame->Handler);
+	    DbgTrace("Exception handler returned disposition %d\n", Disposition);
 
 	    switch (Disposition) {
-		/* Continue searching */
+	    /* Continue searching */
 	    case ExceptionContinueSearch:
 		break;
 
-		/* Collision */
+	    /* Collision */
 	    case ExceptionCollidedUnwind:
-	    {
 		/* Get the original frame */
-		RegistrationFrame =
-		    DispatcherContext.RegistrationPointer;
+		RegistrationFrame = DispatcherContext.RegistrationPointer;
 		break;
-	    }
 
 	    /* Anything else */
 	    default:
-	    {
 		/* Set up the exception record */
 		ExceptionRecord2.ExceptionRecord = ExceptionRecord;
-		ExceptionRecord2.ExceptionCode =
-		    STATUS_INVALID_DISPOSITION;
-		ExceptionRecord2.ExceptionFlags =
-		    EXCEPTION_NONCONTINUABLE;
+		ExceptionRecord2.ExceptionCode = STATUS_INVALID_DISPOSITION;
+		ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
 		ExceptionRecord2.NumberParameters = 0;
 
 		/* Raise the exception */
 		RtlRaiseException(&ExceptionRecord2);
 		break;
-	    }
 	    }
 
 	    /* Go to the next frame */
@@ -335,6 +313,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 
     /* Check if we reached the end */
     if (TargetFrame == EXCEPTION_CHAIN_END) {
+	DbgTrace("Reached end of exception chain. Stop unwinding.\n");
 	/* Unwind completed, so we don't exit */
 	NtContinue(Context, FALSE);
     } else {

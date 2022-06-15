@@ -1,10 +1,10 @@
 /*
  * COPYRIGHT: See COPYING in the top level directory
  * PROJECT: ReactOS Runtime Library(RTL)
- * FILE: lib/rtl/i386/except_asm . s
- * PURPOSE: User -mode exception support for IA-32
- * PROGRAMMERS: Alex Ionescu(alex@relsoft . net)
- * Stefan Ginsberg(stefan . ginsberg@reactos . org)
+ * FILE: lib/rtl/i386/except_asm.s
+ * PURPOSE: User-mode exception support for IA-32
+ * PROGRAMMERS: Alex Ionescu(alex@relsoft.net)
+ * Stefan Ginsberg(stefan.ginsberg@reactos.org)
 */
 
 /* INCLUDES******************************************************************/
@@ -74,14 +74,6 @@ _RtlpCaptureContext@4:
     movl $0, CONTEXT_EDI(%ebx)
 
 CaptureRest:
-    /* Capture the segment registers */
-    mov %cs, CONTEXT_SEGCS(%ebx)
-    mov %ds, CONTEXT_SEGDS(%ebx)
-    mov %es, CONTEXT_SEGES(%ebx)
-    mov %fs, CONTEXT_SEGFS(%ebx)
-    mov %gs, CONTEXT_SEGGS(%ebx)
-    mov %ss, CONTEXT_SEGSS(%ebx)
-
     /* Capture flags */
     pushfd
     pop CONTEXT_EFLAGS(%ebx)
@@ -171,7 +163,7 @@ _RtlpExecuteHandler2@20:
     push 12(%ebp)
     push 8(%ebp)
     mov 24(%ebp), %ecx
-    call *(%ecx)
+    call *%ecx
 
     /* Unlink us */
     mov %fs:TEB_EXCEPTION_LIST, %esp

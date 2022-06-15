@@ -44,5 +44,5 @@ NTAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
     ThreadContext->Eip = (ULONG) ThreadStartAddress;
 
     /* Only the basic Context is initialized */
-    ThreadContext->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
+    ThreadContext->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
 }

@@ -17,9 +17,7 @@
 .code64
 
 /*
- * VOID
- * RtlCaptureContext(
- *     _Out_ PCONTEXT ContextRecord@<rcx>);
+ * VOID RtlCaptureContext(OUT PCONTEXT ContextRecord@<rcx>);
  */
 .global RtlCaptureContext
 .PROC RtlCaptureContext
@@ -33,7 +31,7 @@
     mov [rcx + CxRax], rax
 
     /* Set ContextFlags */
-    mov dword ptr [rcx + CxContextFlags], (CONTEXT_FULL or CONTEXT_SEGMENTS)
+    mov dword ptr [rcx + CxContextFlags], CONTEXT_FULL
 
     /* Store the basic register context */
     mov [rcx + CxRcx], rcx
@@ -61,14 +59,6 @@
 
     /* Load former stack pointer in rax */
     lea rax, [rsp + 16]
-
-    /* Store segment selectors */
-    mov [rcx + CxSegCs], cs
-    mov [rcx + CxSegDs], ds
-    mov [rcx + CxSegEs], es
-    mov [rcx + CxSegFs], fs
-    mov [rcx + CxSegGs], gs
-    mov [rcx + CxSegSs], ss
 
     /* Store stack pointer */
     mov [rcx + CxRsp], rax
@@ -109,9 +99,8 @@
 
 /*
  * VOID NTAPI
- * RtlRestoreContext(
- *     _In_ PCONTEXT ContextRecord@<rcx>,
- *     PEXCEPTION_RECORD *ExceptionRecord@<rdx>);
+ * RtlRestoreContext(IN PCONTEXT ContextRecord@<rcx>,
+ *                   IN PEXCEPTION_RECORD *ExceptionRecord@<rdx>);
  */
 .global RtlRestoreContext
 .PROC RtlRestoreContext
@@ -178,21 +167,9 @@
     mov r14, [rcx + CxR14]
     mov r15, [rcx + CxR15]
 
-    /* Restore segment selectors */
-    mov ds, [rcx + CxSegDs] // FIXME: WOW64 context?
-    mov es, [rcx + CxSegEs]
-    mov fs, [rcx + CxSegFs]
-    //mov gs, [rcx + CxSegGs]
-    //mov ss, [rcx + CxSegSs]
-
     /* Restore the registers we used */
     mov r8,  [rcx + CxR8]
     mov r9,  [rcx + CxR9]
-
-    /* Check if we go to a different cs */
-    mov ax, cs
-    cmp [rcx + CxSegCs], ax
-    jne ReturnFar
 
     /* Restore rax and rcx */
     mov rax, [rcx + CxRax]
@@ -210,31 +187,4 @@
     /* Return and fix up the stack */
     ret 8
 
-ReturnFar:
-
-    /* Put cs on the stack for the far return */
-    mov ax, [rcx + CxSegCs]
-    mov [rdx - 1 * 8], ax
-
-    /* Load ss */
-    mov ss, [rcx + CxSegSs]
-
-    /* Restore rax and rcx */
-    mov rax, [rcx + CxRax]
-    mov rcx, [rcx + CxRcx]
-
-    /* Switch to the target stack */
-    lea rsp, [rdx - 4 * 8]
-
-    /* Pop rdx from the stack */
-    pop rdx
-
-    /* Pop Eflags from the stack */
-    popfq
-
-    /* Return far */
-    retf
-
 .ENDP
-
-

@@ -79,8 +79,7 @@ NTAPI USHORT RtlCaptureStackBackTrace(IN ULONG FramesToSkip,
 	return 0;
 
     /* Do the back trace */
-    FrameCount =
-	RtlWalkFrameChain(Frames, FramesToCapture + FramesToSkip, 0);
+    FrameCount = RtlWalkFrameChain(Frames, FramesToCapture + FramesToSkip, 0);
 
     /* Make sure we're not skipping all of them */
     if (FrameCount <= FramesToSkip)
@@ -131,120 +130,178 @@ static const char *_module_name_from_addr(const void *addr,
 #endif
 }
 
+typedef ULONG (*RTLP_DBG_PRINTER)(PCSTR Fmt, ...);
 
-static VOID _dump_context(PCONTEXT pc)
+static VOID RtlpDumpContextEx(IN PCONTEXT pc,
+			      IN RTLP_DBG_PRINTER DbgPrinter)
 {
 #ifdef _M_IX86
     /*
      * Print out the CPU registers
      */
-    DbgPrint("CS:EIP %x:%x\n", pc->SegCs & 0xffff, pc->Eip);
-    DbgPrint("DS %x ES %x FS %x GS %x\n", pc->SegDs & 0xffff,
-	     pc->SegEs & 0xffff, pc->SegFs & 0xffff, pc->SegGs & 0xfff);
-    DbgPrint("EAX: %.8x   EBX: %.8x   ECX: %.8x\n", pc->Eax, pc->Ebx,
-	     pc->Ecx);
-    DbgPrint("EDX: %.8x   EBP: %.8x   ESI: %.8x   ESP: %.8x\n", pc->Edx,
-	     pc->Ebp, pc->Esi, pc->Esp);
-    DbgPrint("EDI: %.8x   EFLAGS: %.8x\n", pc->Edi, pc->EFlags);
+    DbgPrinter("EIP: %.8x   EFLAGS: %.8x\n",
+	       pc->Eip, pc->EFlags);
+    DbgPrinter("EAX: %.8x   EBX: %.8x   ECX: %.8x   EDX: %.8x\n",
+	       pc->Eax, pc->Ebx, pc->Ecx, pc->Edx);
+    DbgPrinter("EDI: %.8x   ESI: %.8x   EBP: %.8x   ESP: %.8x\n",
+	       pc->Edi, pc->Esi, pc->Ebp, pc->Esp);
 #elif defined(_M_AMD64)
-    DbgPrint("CS:RIP %x:%I64x\n", pc->SegCs & 0xffff, pc->Rip);
-    DbgPrint("DS %x ES %x FS %x GS %x\n", pc->SegDs & 0xffff,
-	     pc->SegEs & 0xffff, pc->SegFs & 0xffff, pc->SegGs & 0xfff);
-    DbgPrint("RAX: %I64x   RBX: %I64x   RCX: %I64x RDI: %I64x\n", pc->Rax,
-	     pc->Rbx, pc->Rcx, pc->Rdi);
-    DbgPrint("RDX: %I64x   RBP: %I64x   RSI: %I64x   RSP: %I64x\n",
-	     pc->Rdx, pc->Rbp, pc->Rsi, pc->Rsp);
-    DbgPrint("R8: %I64x   R9: %I64x   R10: %I64x   R11: %I64x\n", pc->R8,
-	     pc->R9, pc->R10, pc->R11);
-    DbgPrint("R12: %I64x   R13: %I64x   R14: %I64x   R15: %I64x\n",
-	     pc->R12, pc->R13, pc->R14, pc->R15);
-    DbgPrint("EFLAGS: %.8x\n", pc->EFlags);
+    DbgPrinter("RIP: %.16llx   RSP: %.16llx   EFLAGS: %.8x\n",
+	       pc->Rip, pc->Rsp, pc->EFlags);
+    DbgPrinter("RAX: %.16llx   RBX: %.16llx   RCX: %.16llx\n",
+	       pc->Rax, pc->Rbx, pc->Rcx);
+    DbgPrinter("RDX: %.16llx   RDI: %.16llx   RSI: %.16llx\n",
+	       pc->Rdx, pc->Rdi, pc->Rsi);
+    DbgPrinter("RBP: %.16llx   R8:  %.16llx   R9:  %.16llx\n",
+	       pc->Rbp, pc->R8, pc->R9);
+    DbgPrinter("R10: %.16llx   R11: %.16llx   R12: %.16llx\n",
+	       pc->R10, pc->R11, pc->R12);
+    DbgPrinter("R13: %.16llx   R14: %.16llx   R15: %.16llx\n",
+	       pc->R13, pc->R14, pc->R15);
 #elif defined(_M_ARM)
-    DbgPrint("Pc: %lx   Lr: %lx   Sp: %lx    Cpsr: %lx\n", pc->Pc, pc->Lr,
-	     pc->Sp, pc->Cpsr);
-    DbgPrint("R0: %lx   R1: %lx   R2: %lx    R3: %lx\n", pc->R0, pc->R1,
-	     pc->R2, pc->R3);
-    DbgPrint("R4: %lx   R5: %lx   R6: %lx    R7: %lx\n", pc->R4, pc->R5,
-	     pc->R6, pc->R7);
-    DbgPrint("R8: %lx   R9: %lx  R10: %lx   R11: %lx\n", pc->R8, pc->R9,
-	     pc->R10, pc->R11);
-    DbgPrint("R12: %lx\n", pc->R12);
+    DbgPrinter("Pc: %lx   Lr: %lx   Sp: %lx    Cpsr: %lx\n", pc->Pc, pc->Lr,
+	       pc->Sp, pc->Cpsr);
+    DbgPrinter("R0: %lx   R1: %lx   R2: %lx    R3: %lx\n", pc->R0, pc->R1,
+	       pc->R2, pc->R3);
+    DbgPrinter("R4: %lx   R5: %lx   R6: %lx    R7: %lx\n", pc->R4, pc->R5,
+	       pc->R6, pc->R7);
+    DbgPrinter("R8: %lx   R9: %lx  R10: %lx   R11: %lx\n", pc->R8, pc->R9,
+	       pc->R10, pc->R11);
+    DbgPrinter("R12: %lx\n", pc->R12);
 #else
 #error "Unknown architecture"
 #endif
 }
 
-static VOID PrintStackTrace(struct _EXCEPTION_POINTERS *ExceptionInfo)
+static PCSTR RtlpExceptionCodeToString(IN ULONG ExceptionCode)
+{
+    switch (ExceptionCode) {
+    case STATUS_INTEGER_DIVIDE_BY_ZERO:
+	return "STATUS_INTEGER_DIVIDE_BY_ZERO";
+    case STATUS_SINGLE_STEP:
+	return "STATUS_SINGLE_STEP";
+    case STATUS_UNSUCCESSFUL:
+	return "STATUS_UNSUCCESSFUL";
+    case STATUS_BREAKPOINT:
+	return "STATUS_BREAKPOINT";
+    case STATUS_INTEGER_OVERFLOW:
+	return "STATUS_INTEGER_OVERFLOW";
+    case STATUS_ARRAY_BOUNDS_EXCEEDED:
+	return "STATUS_ARRAY_BOUNDS_EXCEEDED";
+    case STATUS_ILLEGAL_INSTRUCTION:
+	return "STATUS_ILLEGAL_INSTRUCTION";
+    case STATUS_INVALID_LOCK_SEQUENCE:
+	return "STATUS_INVALID_LOCK_SEQUENCE";
+    case STATUS_ACCESS_VIOLATION:
+	return "STATUS_ACCESS_VIOLATION";
+    default:
+	return "???";
+    }
+}
+
+/* TODO: wdm.dll coroutine stack */
+static inline BOOLEAN IsStackPtrOk(IN PVOID Ptr)
+{
+    PTEB Teb = NtCurrentTeb();
+    return (Ptr >= Teb->NtTib.StackLimit) && (Ptr < Teb->NtTib.StackBase);
+}
+
+VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
+			   IN BOOLEAN Unhandled,
+			   IN RTLP_DBG_PRINTER DbgPrinter)
 {
     PVOID StartAddr;
     CHAR szMod[128] = "";
     PEXCEPTION_RECORD ExceptionRecord = ExceptionInfo->ExceptionRecord;
     PCONTEXT ContextRecord = ExceptionInfo->ContextRecord;
+    PLOADER_SHARED_DATA LdrSharedData = (PLOADER_SHARED_DATA)LOADER_SHARED_DATA_CLIENT_ADDR;
 
     /* Print a stack trace. */
-    DbgPrint("Unhandled exception\n");
-    DbgPrint("ExceptionCode:    %8x\n", ExceptionRecord->ExceptionCode);
+    DbgPrinter("\n==============================================================================\n");
+    DbgPrinter("%s exception 0x%x (%s) in process %s (PID/TID %p/%p)\n",
+	       Unhandled ? "Unhandled" : "Caught",
+	       ExceptionRecord->ExceptionCode,
+	       RtlpExceptionCodeToString(ExceptionRecord->ExceptionCode),
+	       (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImageName),
+	       NtCurrentTeb()->RealClientId.UniqueProcess,
+	       NtCurrentTeb()->RealClientId.UniqueThread);
 
-    if ((NTSTATUS) ExceptionRecord->ExceptionCode ==
-	STATUS_ACCESS_VIOLATION
-	&& ExceptionRecord->NumberParameters == 2) {
-	DbgPrint("Faulting Address: %8zx\n",
-		 ExceptionRecord->ExceptionInformation[1]);
+    if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
+	ExceptionRecord->NumberParameters == 2) {
+	DbgPrinter("Faulting Address: %8zx\n",
+		   ExceptionRecord->ExceptionInformation[1]);
     }
 
     /* Trace the wine special error and show the modulename and functionname */
-    if (ExceptionRecord->ExceptionCode ==
-	0x80000100 /* EXCEPTION_WINE_STUB */  &&
+    if (ExceptionRecord->ExceptionCode == 0x80000100 /* EXCEPTION_WINE_STUB */ &&
 	ExceptionRecord->NumberParameters == 2) {
-	DbgPrint("Missing function: %s!%s\n",
-		 (PSZ) ExceptionRecord->ExceptionInformation[0],
-		 (PSZ) ExceptionRecord->ExceptionInformation[1]);
+	DbgPrinter("Missing function: %s!%s\n",
+		   (PSZ) ExceptionRecord->ExceptionInformation[0],
+		   (PSZ) ExceptionRecord->ExceptionInformation[1]);
     }
 
-    _dump_context(ContextRecord);
+    RtlpDumpContextEx(ContextRecord, DbgPrinter);
     _module_name_from_addr(ExceptionRecord->ExceptionAddress, &StartAddr,
 			   szMod, sizeof(szMod));
-    DbgPrint("Address:\n   %p+%-8zx   %s\n", (PVOID) StartAddr,
-	     (ULONG_PTR) ExceptionRecord->ExceptionAddress -
-	     (ULONG_PTR) StartAddr, szMod);
+    DbgPrinter("Address:\n   %p+%-8zx   %s\n", (PVOID)StartAddr,
+	       (ULONG_PTR)ExceptionRecord->ExceptionAddress - (ULONG_PTR)StartAddr,
+	       szMod);
+
+    /* Don't print the stack content on screen due to screen size limitation. */
+    if (DbgPrinter != RtlpVgaPrint) {
+	DbgPrinter("Stack:\n");
+	PPVOID Stack = (PPVOID)ContextRecord->STACK_POINTER;
+	for (INT i = 0; i < 32 && IsStackPtrOk(Stack+i); i++) {
+	    DbgPrinter("   %p: %p\n", &Stack[i], Stack[i]);
+	}
+    }
+
+    DbgPrinter("Backtrace:\n");
 #ifdef _M_IX86
-    DbgPrint("Frames:\n");
+    __try {
+	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->BASE_POINTER;
 
-    _SEH2_TRY {
-	UINT i;
-	PULONG Frame = (PULONG) ContextRecord->Ebp;
-
-	for (i = 0; Frame[1] != 0 && Frame[1] != 0xdeadbeef && i < 128;
-	     i++) {
-	    //if (IsBadReadPtr((PVOID) Frame[1], 4))
+	for (UINT i = 0; i < 16 && IsStackPtrOk(Frame) && IsStackPtrOk(Frame+1); i++) {
 	    if (Frame[1] == 0) {
-		DbgPrint("   %8x%9s   %s\n", Frame[1], "<invalid address>",
-			 " ");
+		DbgPrinter("   <invalid address>\n");
 	    } else {
 		_module_name_from_addr((const void *) Frame[1], &StartAddr,
 				       szMod, sizeof(szMod));
-		DbgPrint("   %p+%-8x   %s\n",
-			 (PVOID) StartAddr,
-			 (ULONG_PTR) Frame[1] - (ULONG_PTR) StartAddr,
-			 szMod);
+		DbgPrinter("   %p+%.8x   %s\n", (PVOID)StartAddr,
+			   Frame[1] - (ULONG_PTR)StartAddr, szMod);
 	    }
 
 	    if (Frame[0] == 0)
 		break;
-	    //if (IsBadReadPtr((PVOID) Frame[0], sizeof(*Frame) * 2))
-	    //break;
 
-	    Frame = (PULONG) Frame[0];
+	    Frame = (PULONG_PTR) Frame[0];
 	}
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+	DbgPrinter("<error dumping stack trace: 0x%lx>\n", GetExceptionCode());
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-	DbgPrint("<error dumping stack trace: 0x%lx>\n",
-		 _SEH2_GetExceptionCode());
-    }
-    _SEH2_END;
+#else
+    DbgPrinter("   NOT IMPLEMENTED YET\n");
 #endif
+
+    DbgPrinter("==============================================================================\n");
 }
 
+VOID RtlpDumpContext(IN PCONTEXT pc)
+{
+    RtlpDumpContextEx(pc, DbgPrint);
+}
+
+VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
+			 IN BOOLEAN Unhandled)
+{
+    RtlpPrintStackTraceEx(ExceptionInfo, Unhandled, DbgPrint);
+}
+
+VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
+			    IN BOOLEAN Unhandled)
+{
+    RtlpPrintStackTraceEx(ExceptionInfo, Unhandled, RtlpVgaPrint);
+}
 
 /*
  * @unimplemented
@@ -253,7 +310,7 @@ NTAPI LONG RtlUnhandledExceptionFilter(IN PEXCEPTION_POINTERS ExceptionInfo)
 {
     /* This is used by the security cookie checks, and also called externally */
     UNIMPLEMENTED;
-    PrintStackTrace(ExceptionInfo);
+    RtlpPrintStackTrace(ExceptionInfo, TRUE);
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -265,7 +322,7 @@ NTAPI LONG RtlUnhandledExceptionFilter2(IN PEXCEPTION_POINTERS ExceptionInfo,
 {
     /* This is used by the security cookie checks, and also called externally */
     UNIMPLEMENTED;
-    PrintStackTrace(ExceptionInfo);
+    RtlpPrintStackTrace(ExceptionInfo, TRUE);
     return EXCEPTION_CONTINUE_SEARCH;
 }
 

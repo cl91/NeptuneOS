@@ -200,8 +200,10 @@ VOID PspPopulateTeb(IN PTHREAD Thread)
     Teb->NtTib.Self = (PNT_TIB) Thread->TebClientAddr;
     Teb->ProcessEnvironmentBlock = (PPEB) Thread->Process->PebClientAddr;
     Teb->NtTib.StackBase = (PVOID)Thread->InitialStackTop;
-    Teb->NtTib.StackLimit = (PVOID)(Thread->InitialStackTop - Thread->InitialStackCommit);
-    Teb->DeallocationStack = (PVOID)(Thread->InitialStackTop - Thread->InitialStackReserve);
+    /* Note that since we have marked the stack of the initial thread as
+     * commit-on-demand, the stack limit should be the whole stack. */
+    Teb->NtTib.StackLimit = Teb->DeallocationStack =
+	(PVOID)(Thread->InitialStackTop - Thread->InitialStackReserve);
 }
 
 VOID PspPopulatePeb(IN PPROCESS Process)

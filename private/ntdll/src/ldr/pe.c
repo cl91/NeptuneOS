@@ -376,7 +376,7 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
     /* Return it for the caller */
     *DataTableEntry = LdrEntry;
 
-    /* Check if we loaded somewhere else */
+    /* Check if we are loaded somewhere else */
     ULONG_PTR ImageBase = (ULONG_PTR) NtHeaders->OptionalHeader.ImageBase;
     if ((ULONG_PTR)ViewBase != ImageBase) {
 	DPRINT("LDR: LdrpMapDll Relocating Image Name %s (%p-%p -> %p-%p)\n",

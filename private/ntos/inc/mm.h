@@ -640,6 +640,9 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
 				 IN MWORD WindowSize);
+NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
+			     IN MWORD StartAddr,
+			     IN MWORD WindowSize);
 PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
 			      IN MWORD VirtAddr);
 VOID MmRegisterMirroredVad(IN PMMVAD Viewer,

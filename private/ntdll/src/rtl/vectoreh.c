@@ -12,6 +12,7 @@
 
 RTL_CRITICAL_SECTION RtlpVectoredHandlerLock;
 LIST_ENTRY RtlpVectoredExceptionList, RtlpVectoredContinueList;
+static BOOLEAN RtlpVectoredExceptionInitialized;
 
 typedef struct _RTL_VECTORED_HANDLER_ENTRY {
     LIST_ENTRY ListEntry;
@@ -28,13 +29,16 @@ VOID RtlpInitializeVectoredExceptionHandling(IN PNTDLL_PROCESS_INIT_INFO InitInf
 				  InitInfo->VectoredHandlerLockSemaphore, 0);
     InitializeListHead(&RtlpVectoredExceptionList);
     InitializeListHead(&RtlpVectoredContinueList);
+    RtlpVectoredExceptionInitialized = TRUE;
 }
 
 static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 					IN PCONTEXT Context,
 					IN PLIST_ENTRY VectoredHandlerList)
 {
-    EXCEPTION_POINTERS ExceptionInfo;
+    if (!RtlpVectoredExceptionInitialized) {
+	return FALSE;
+    }
 
     /*
      * Initialize these in case there are no entries,
@@ -44,8 +48,10 @@ static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
     LONG HandlerReturn = EXCEPTION_CONTINUE_SEARCH;
 
     /* Set up the data to pass to the handler */
-    ExceptionInfo.ExceptionRecord = ExceptionRecord;
-    ExceptionInfo.ContextRecord = Context;
+    EXCEPTION_POINTERS ExceptionInfo = {
+	.ExceptionRecord = ExceptionRecord,
+	.ContextRecord = Context
+    };
 
     /* Grab the lock */
     RtlEnterCriticalSection(&RtlpVectoredHandlerLock);
@@ -58,6 +64,7 @@ static BOOLEAN RtlpCallVectoredHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 	VectoredExceptionHandler = CONTAINING_RECORD(CurrentEntry,
 						     RTL_VECTORED_HANDLER_ENTRY,
 						     ListEntry);
+	DbgPrint("VectoredExceptionHandler %p\n", VectoredExceptionHandler);
 
 	/* Reference it so it doesn't go away while we are using it */
 	VectoredExceptionHandler->Refs++;
@@ -131,13 +138,13 @@ static PVOID RtlpAddVectoredHandler(IN ULONG FirstHandler,
 				    IN PVECTORED_EXCEPTION_HANDLER VectoredHandler,
 				    IN PLIST_ENTRY VectoredHandlerList)
 {
-    PRTL_VECTORED_HANDLER_ENTRY VectoredHandlerEntry;
+    if (!RtlpVectoredExceptionInitialized) {
+	return NULL;
+    }
 
     /* Allocate our structure */
-    VectoredHandlerEntry = RtlAllocateHeap(RtlGetProcessHeap(),
-					   0,
-					   sizeof
-					   (RTL_VECTORED_HANDLER_ENTRY));
+    PRTL_VECTORED_HANDLER_ENTRY VectoredHandlerEntry =
+	RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(RTL_VECTORED_HANDLER_ENTRY));
     if (!VectoredHandlerEntry)
 	return NULL;
 
@@ -170,6 +177,10 @@ static PVOID RtlpAddVectoredHandler(IN ULONG FirstHandler,
 static ULONG RtlpRemoveVectoredHandler(IN PVOID VectoredHandlerHandle,
 				       IN PLIST_ENTRY VectoredHandlerList)
 {
+    if (!RtlpVectoredExceptionInitialized) {
+	return 0;
+    }
+
     /* Initialize these in case we don't find anything */
     BOOLEAN HandlerRemoved = FALSE;
     BOOLEAN HandlerFound = FALSE;

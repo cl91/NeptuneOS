@@ -89,10 +89,8 @@ NTAPI NTSTATUS RtlpCreateUserStack(IN HANDLE ProcessHandle,
     InitialTeb->PreviousStackBase = NULL;
     InitialTeb->PreviousStackLimit = NULL;
 
-    /* Update the stack position */
-    Stack += StackReserve - StackCommit;
-
-    /* Now set the current Stack Limit */
+    /* Now set the current Stack Limit. Note that since we marked the stack
+     * as commit-on-demand the stack limit should be the whole stack. */
     InitialTeb->StackLimit = (PVOID) Stack;
 
     /* We are done! */

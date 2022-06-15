@@ -412,11 +412,3 @@ NTSTATUS NtTestAlert(IN ASYNC_STATE State,
 {
     UNIMPLEMENTED;
 }
-
-NTSTATUS NtContinue(IN ASYNC_STATE State,
-		    IN PTHREAD Thread,
-                    IN PCONTEXT Context,
-                    IN BOOLEAN TestAlert)
-{
-    UNIMPLEMENTED;
-}

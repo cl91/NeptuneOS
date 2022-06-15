@@ -33,15 +33,18 @@ NTAPI PVOID RtlPcToFileHeader(IN PVOID PcValue,
     PLDR_DATA_TABLE_ENTRY Module;
     PVOID ImageBase = NULL;
 
+    if (NtCurrentPeb()->LdrData == NULL || !NtCurrentPeb()->LdrData->Initialized) {
+	return NULL;
+    }
+
     RtlEnterCriticalSection (NtCurrentPeb()->LoaderLock);
     ModuleListHead = &NtCurrentPeb()->LdrData->InLoadOrderModuleList;
     Entry = ModuleListHead->Flink;
-    while (Entry != ModuleListHead) {
+    while (Entry != NULL && Entry != ModuleListHead) {
         Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 
         if ((ULONG_PTR)PcValue >= (ULONG_PTR)Module->DllBase &&
-                (ULONG_PTR)PcValue < (ULONG_PTR)Module->DllBase + Module->SizeOfImage)
-        {
+	    (ULONG_PTR)PcValue < (ULONG_PTR)Module->DllBase + Module->SizeOfImage) {
             ImageBase = Module->DllBase;
             break;
         }

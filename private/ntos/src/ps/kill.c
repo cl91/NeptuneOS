@@ -104,6 +104,8 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
 			   IN NTSTATUS ExitStatus)
 {
     assert(Thread->Process != NULL);
+    DbgTrace("Terminating thread %p with status 0x%08x\n",
+	     Thread->DebugName, ExitStatus);
     Thread->ExitStatus = ExitStatus;
     /* If the thread to terminate is the main event loop of a driver thread,
      * set the InitializationDone event to wake up the thread waiting on NtLoadDriver */

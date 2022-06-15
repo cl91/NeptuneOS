@@ -37,7 +37,7 @@ NTAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
     ThreadContext->SegGs = (ULONG_PTR)NtCurrentTeb();
 
     /* Only the basic Context is initialized */
-    ThreadContext->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS;
+    ThreadContext->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
 
     return;
 }

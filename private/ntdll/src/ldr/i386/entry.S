@@ -3,21 +3,6 @@
 .section .text
 .global _LdrInitializeThunk
 _LdrInitializeThunk:
-    mov %esp, %ebp
-
-    /*
-     * GCC expects that a C function is always entered via a call
-     * instruction and that the stack is 16-byte aligned before such an
-     * instruction (leaving it 16-byte aligned + 1 word from the
-     * implicit push when the function is entered).
-     *
-     * If additional items are pushed onto the stack, the stack must be
-     * manually re-aligned before pushing the arguments for the
-     * call instruction to LdrpInitialize.
-     */
-    sub  $0xc, %esp
-    push %ebp
-
     /*
      * The virtual address of the IPC buffer is in %ecx
      * The system dll tls region address is in %edx
@@ -25,8 +10,13 @@ _LdrInitializeThunk:
     call @LdrpInitialize@8
 
     /* Should not return. */
-1:
-    jmp  1b
+1:  jmp  1b
+
+.global _KiUserExceptionDispatcher
+_KiUserExceptionDispatcher:
+    call @KiDispatchUserException@8
+    /* Should not return. */
+1:  jmp 1b
 
 /* Must match offset of ThreadLocalStoragePointer in TEB struct */
 .global __tls_array

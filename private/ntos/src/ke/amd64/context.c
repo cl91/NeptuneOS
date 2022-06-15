@@ -34,3 +34,27 @@ VOID KiDumpThreadContext(IN PTHREAD_CONTEXT Context,
 	       (PVOID)Context->gs_base,
 	       (PVOID)Context->rflags);
 }
+
+VOID KiPopulateUserExceptionContext(IN PCONTEXT UserCtx,
+				    IN PTHREAD_CONTEXT Ctx)
+{
+    UserCtx->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    UserCtx->EFlags = Ctx->rflags;
+    UserCtx->Rax = Ctx->rax;
+    UserCtx->Rcx = Ctx->rcx;
+    UserCtx->Rdx = Ctx->rdx;
+    UserCtx->Rbx = Ctx->rbx;
+    UserCtx->Rsp = Ctx->rsp;
+    UserCtx->Rbp = Ctx->rbp;
+    UserCtx->Rsi = Ctx->rsi;
+    UserCtx->Rdi = Ctx->rdi;
+    UserCtx->R8 = Ctx->r8;
+    UserCtx->R9 = Ctx->r9;
+    UserCtx->R10 = Ctx->r10;
+    UserCtx->R11 = Ctx->r11;
+    UserCtx->R12 = Ctx->r12;
+    UserCtx->R13 = Ctx->r13;
+    UserCtx->R14 = Ctx->r14;
+    UserCtx->R15 = Ctx->r15;
+    UserCtx->Rip = Ctx->rip;
+}

@@ -1,5 +1,7 @@
 /*
- * Derived from reactos/sdk/lib/crt/misc/i386/seh.S
+ * C Runtime Support for Structured Exception Handling
+ *
+ * Derived from reactos/sdk/lib/pseh/i386/seh.S
  */
 
 /* INCLUDES******************************************************************/
@@ -78,7 +80,7 @@ __global_unwind2:
     /* Call unwind */
     push $0
     push $0
-    push glu_return
+    push $glu_return
     push 8(%ebp)
     call _RtlUnwind@16
 
@@ -170,7 +172,6 @@ __NLG_Return2:
 
 unwind_return:
     /* Cleanup SEH */
-    /* Work around clang limitation by switching to AT&T syntax temporarily */
     pop %fs:0x0
     add $16, %esp
     pop %edi
@@ -213,7 +214,7 @@ __except_handler2:
 
 except_loop2:
     /* Validate try level */
-    cmp -1, %esi
+    cmp $-1, %esi
     je except_search2
 
     /* Check if this is the termination handler */
@@ -279,7 +280,7 @@ except_search2:
 except_unwind2:
     push %ebp
     mov 16(%ebx), %ebp
-    push -1
+    push $-1
     push %ebx
     call __local_unwind2
     add $8, %esp
@@ -323,21 +324,21 @@ PARAM_Context = 16
     jnz except_unwind3
 
     /* Save exception pointers structure */
-    mov %eax, (-8 + EXCEPTION_POINTERS_EXCEPTION_RECORD)(%ebp)
+    mov %eax, (EXCEPTION_POINTERS_EXCEPTION_RECORD - 8)(%ebp)
     mov PARAM_Context(%ebp), %eax
-    mov %eax, (-8 + EXCEPTION_POINTERS_CONTEXT_RECORD)(%ebp)
+    mov %eax, (EXCEPTION_POINTERS_CONTEXT_RECORD - 8)(%ebp)
     lea -8(%ebp), %eax
-    mov %eax, (-SEH_FRAME_PreviousRecord + SEH_FRAME_unused)(%ebx)
+    mov %eax, (SEH_FRAME_unused - SEH_FRAME_PreviousRecord)(%ebx)
 
     /* Get the try level and scope table */
-    mov (-SEH_FRAME_PreviousRecord + SEH_FRAME_Disable)(%ebx), %esi
-    mov (-SEH_FRAME_PreviousRecord + SEH_FRAME_SEHTable)(%ebx), %edi
+    mov (SEH_FRAME_Disable - SEH_FRAME_PreviousRecord)(%ebx), %esi
+    mov (SEH_FRAME_SEHTable - SEH_FRAME_PreviousRecord)(%ebx), %edi
 
     /* FIXME: Validate the SEH exception */
 
 except_loop3:
     /* Validate try level */
-    cmp -1, %esi
+    cmp $-1, %esi
     je except_search3
 
     /* Check if this is the termination handler */
@@ -346,10 +347,10 @@ except_loop3:
     test %eax, %eax
     jz except_continue3
 
-    /* Save registers clear them all */
+    /* Save registers and clear them all */
     push %esi
     push %ebp
-    lea -SEH_FRAME_PreviousRecord + SEH_FRAME_OriginalEbp(%ebx), %ebp
+    lea (SEH_FRAME_OriginalEbp - SEH_FRAME_PreviousRecord)(%ebx), %ebp
     xor %ebx, %ebx
     xor %ecx, %ecx
     xor %edx, %edx
@@ -357,7 +358,7 @@ except_loop3:
     xor %edi, %edi
 
     /* Call the filter and restore our registers */
-    call *(%eax)
+    call *%eax
     pop %ebp
     pop %esi
 
@@ -367,14 +368,14 @@ except_loop3:
     jz except_continue3
     js except_dismiss3
 
-    /* So call, this is an accept the termination handlers */
+    /* So this is an accept, call the termination handlers */
     mov (SEH_FRAME_SEHTable - SEH_FRAME_PreviousRecord)(%ebx), %edi
     push %ebx
     call __global_unwind2
     add $4, %esp
 
     /* Restore %ebp */
-    lea (SEH_FRAME_OriginalEbp -SEH_FRAME_PreviousRecord)(%ebx), %ebp
+    lea (SEH_FRAME_OriginalEbp - SEH_FRAME_PreviousRecord)(%ebx), %ebp
 
     /* Do local unwind */
     push %esi
@@ -396,13 +397,13 @@ except_loop3:
     xor %edx, %edx
     xor %esi, %esi
     xor %edi, %edi
-    call *(%eax)
+    call *%eax
 
 except_continue3:
     /* Reload try level and except again */
     mov (SEH_FRAME_SEHTable - SEH_FRAME_PreviousRecord)(%ebx), %edi
-    lea (%esi,%esi,2), %ecx
-    mov (%edi,%ecx,4), %esi
+    lea (%esi, %esi, 2), %ecx
+    mov (%edi, %ecx, 4), %esi
     jmp except_loop3
 
 except_dismiss3:

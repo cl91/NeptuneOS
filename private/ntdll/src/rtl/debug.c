@@ -109,3 +109,19 @@ VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
     /* Loop forever */
     while (1);
 }
+
+static VOID vRtlpVgaPrint(IN PCSTR Format, IN va_list args)
+{
+    char buf[512];
+    vsnprintf(buf, sizeof(buf), Format, args);
+    NtDisplayStringA(buf);
+}
+
+ULONG RtlpVgaPrint(IN PCSTR Format, ...)
+{
+    va_list arglist;
+    va_start(arglist, Format);
+    vRtlpVgaPrint(Format, arglist);
+    va_end(arglist);
+    return 0;
+}
