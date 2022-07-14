@@ -57,13 +57,6 @@ NTAPI VOID RtlGetCallersAddress(OUT PVOID *CallersAddress,
 NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 				   IN PCONTEXT Context)
 {
-    PEXCEPTION_REGISTRATION_RECORD RegistrationFrame, NestedFrame = NULL;
-    DISPATCHER_CONTEXT DispatcherContext;
-    EXCEPTION_RECORD ExceptionRecord2;
-    EXCEPTION_DISPOSITION Disposition;
-    ULONG_PTR StackLow, StackHigh;
-    ULONG_PTR RegistrationFrameEnd;
-
     /* Perform vectored exception handling for user mode */
     if (RtlCallVectoredExceptionHandlers(ExceptionRecord, Context)) {
 	/* Exception handled, now call vectored continue handlers */
@@ -74,14 +67,16 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
     }
 
     /* Get the current stack limits and registration frame */
+    ULONG_PTR StackLow, StackHigh;
     RtlpGetStackLimits(&StackLow, &StackHigh);
-    RegistrationFrame = RtlpGetExceptionList();
+    PEXCEPTION_REGISTRATION_RECORD RegistrationFrame = RtlpGetExceptionList();
+    PEXCEPTION_REGISTRATION_RECORD NestedFrame = NULL;
 
     /* Now loop every frame */
     while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
 	/* Find out where it ends */
 	DbgTrace("Handling exception registration frame %p\n", RegistrationFrame);
-	RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
+	ULONG_PTR RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
 	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR) RegistrationFrame < StackLow) ||
@@ -91,7 +86,7 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 	    ExceptionRecord->ExceptionFlags |= EXCEPTION_STACK_INVALID;
 	    return FALSE;
 	}
-	//
+//
 	// TODO: Implement and call here RtlIsValidHandler(RegistrationFrame->Handler)
 	// for supporting SafeSEH functionality, see the following articles:
 	// https://www.optiv.com/blog/old-meets-new-microsoft-windows-safeseh-incompatibility
@@ -101,11 +96,12 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 	/* Check if logging is enabled */
 
 	/* Call the handler */
-	Disposition = RtlpExecuteHandlerForException(ExceptionRecord,
-						     RegistrationFrame,
-						     Context,
-						     &DispatcherContext,
-						     RegistrationFrame->Handler);
+	DISPATCHER_CONTEXT DispatcherContext;
+	EXCEPTION_DISPOSITION Disposition = RtlpExecuteHandlerForException(ExceptionRecord,
+									   RegistrationFrame,
+									   Context,
+									   &DispatcherContext,
+									   RegistrationFrame->Handler);
 	DbgTrace("Exception handler returned disposition %d\n", Disposition);
 
 	/* Check if this is a nested frame */
@@ -122,10 +118,12 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 	    /* Check if it was non-continuable */
 	    if (ExceptionRecord->ExceptionFlags & EXCEPTION_NONCONTINUABLE) {
 		/* Set up the exception record */
-		ExceptionRecord2.ExceptionRecord = ExceptionRecord;
-		ExceptionRecord2.ExceptionCode = STATUS_NONCONTINUABLE_EXCEPTION;
-		ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
-		ExceptionRecord2.NumberParameters = 0;
+		EXCEPTION_RECORD ExceptionRecord2 = {
+		    .ExceptionRecord = ExceptionRecord,
+		    .ExceptionCode = STATUS_NONCONTINUABLE_EXCEPTION,
+		    .ExceptionFlags = EXCEPTION_NONCONTINUABLE,
+		    .NumberParameters = 0
+		};
 
 		/* Raise the exception */
 		RtlRaiseException(&ExceptionRecord2);
@@ -159,14 +157,18 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
 
 	/* Anything else */
 	default:
+	{
 	    /* Set up the exception record */
-	    ExceptionRecord2.ExceptionRecord = ExceptionRecord;
-	    ExceptionRecord2.ExceptionCode = STATUS_INVALID_DISPOSITION;
-	    ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
-	    ExceptionRecord2.NumberParameters = 0;
+	    EXCEPTION_RECORD ExceptionRecord2 = {
+		.ExceptionRecord = ExceptionRecord,
+		.ExceptionCode = STATUS_INVALID_DISPOSITION,
+		.ExceptionFlags = EXCEPTION_NONCONTINUABLE,
+		.NumberParameters = 0
+	    };
 
 	    /* Raise the exception */
 	    RtlRaiseException(&ExceptionRecord2);
+	}
 	}
 
 	/* Go to the next frame */
@@ -185,24 +187,18 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 		     IN PEXCEPTION_RECORD ExceptionRecord OPTIONAL,
 		     IN PVOID ReturnValue)
 {
-    PEXCEPTION_REGISTRATION_RECORD RegistrationFrame, OldFrame;
-    DISPATCHER_CONTEXT DispatcherContext;
     EXCEPTION_RECORD ExceptionRecord2, ExceptionRecord3;
-    EXCEPTION_DISPOSITION Disposition;
-    ULONG_PTR StackLow, StackHigh;
-    ULONG_PTR RegistrationFrameEnd;
-    CONTEXT LocalContext;
-    PCONTEXT Context;
 
-    /* Get the current stack limits */
+    /* Capture the current stack limits */
+    ULONG_PTR StackLow, StackHigh;
     RtlpGetStackLimits(&StackLow, &StackHigh);
 
-    /* Check if we don't have an exception record */
+    /* If the caller did not supply an exception record, setup a local one */
     if (!ExceptionRecord) {
 	/* Overwrite the argument */
 	ExceptionRecord = &ExceptionRecord3;
 
-	/* Setup a local one */
+	/* Setup the local exception record */
 	ExceptionRecord3.ExceptionFlags = 0;
 	ExceptionRecord3.ExceptionCode = STATUS_UNWIND;
 	ExceptionRecord3.ExceptionRecord = NULL;
@@ -210,29 +206,37 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	ExceptionRecord3.NumberParameters = 0;
     }
 
-    /* Check if we have a frame */
-    if (TargetFrame) {
-	/* Set it as unwinding */
-	ExceptionRecord->ExceptionFlags |= EXCEPTION_UNWINDING;
-    } else {
-	/* Set the Exit Unwind flag as well */
-	ExceptionRecord->ExceptionFlags |= EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND;
+    /* Set the UNWINDING exception flag */
+    ExceptionRecord->ExceptionFlags |= EXCEPTION_UNWINDING;
+    /* If the target frame is not specified, set the Exit Unwind flag as well */
+    if (!TargetFrame) {
+	ExceptionRecord->ExceptionFlags |= EXCEPTION_EXIT_UNWIND;
     }
 
-    /* Now capture the context */
-    Context = &LocalContext;
-    LocalContext.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
-    RtlpCaptureContext(Context);
-
-    /* Pop the current arguments off */
-    Context->Esp += sizeof(TargetFrame) + sizeof(TargetIp) +
-	sizeof(ExceptionRecord) + sizeof(ReturnValue);
-
-    /* Set the new value for EAX */
-    Context->Eax = (ULONG) ReturnValue;
+    /* Build a local context record which captures the stack frame
+     * of the caller of RtlUnwind. This is so that once the unwinding
+     * is finished we can jump back to the caller as if we have
+     * "returned" from RtlUnwind.
+     *
+     * Note in ReactOS/Windows this is accomplished by calling a
+     * private function RtlpCaptureContext, which captures the stack
+     * frame of the caller. RtlpCaptureContext (as well as its public
+     * counterpart, RtlCaptureContext) depends on the compiler NOT
+     * omitting the frame pointer of RtlUnwind. There doesn't seem
+     * to be a reliable way to turn this off under Clang/LLVM, so
+     * we instead make use of the compiler builtins.
+     */
+    CONTEXT LocalContext = {
+	.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL,
+	.Eax = (ULONG)ReturnValue,
+	.Eip = (ULONG)_ReturnAddress(),
+	.Ebp = (ULONG)__builtin_frame_address(1),
+	.Esp = (ULONG)_AddressOfReturnAddress() + sizeof(PVOID) + sizeof(TargetFrame) +
+	       sizeof(TargetIp) + sizeof(ExceptionRecord) + sizeof(ReturnValue)
+    };
 
     /* Get the current frame */
-    RegistrationFrame = RtlpGetExceptionList();
+    PEXCEPTION_REGISTRATION_RECORD RegistrationFrame = RtlpGetExceptionList();
 
     /* Now loop every frame */
     while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
@@ -240,7 +244,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	/* If this is the target */
 	if (RegistrationFrame == TargetFrame) {
 	    DbgTrace("Hit target frame. Stop unwinding.\n");
-	    NtContinue(Context, FALSE);
+	    NtContinue(&LocalContext, FALSE);
 	}
 
 	/* Check if the frame is too low */
@@ -256,7 +260,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	}
 
 	/* Find out where it ends */
-	RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
+	ULONG_PTR RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
 	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR)RegistrationFrame < StackLow) ||
@@ -271,11 +275,12 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	    RtlRaiseException(&ExceptionRecord2);
 	} else {
 	    /* Call the handler */
-	    Disposition = RtlpExecuteHandlerForUnwind(ExceptionRecord,
-						      RegistrationFrame,
-						      Context,
-						      &DispatcherContext,
-						      RegistrationFrame->Handler);
+	    DISPATCHER_CONTEXT DispatcherContext;
+	    EXCEPTION_DISPOSITION Disposition = RtlpExecuteHandlerForUnwind(ExceptionRecord,
+									    RegistrationFrame,
+									    &LocalContext,
+									    &DispatcherContext,
+									    RegistrationFrame->Handler);
 	    DbgTrace("Exception handler returned disposition %d\n", Disposition);
 
 	    switch (Disposition) {
@@ -303,7 +308,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	    }
 
 	    /* Go to the next frame */
-	    OldFrame = RegistrationFrame;
+	    PEXCEPTION_REGISTRATION_RECORD OldFrame = RegistrationFrame;
 	    RegistrationFrame = RegistrationFrame->Next;
 
 	    /* Remove this handler */
@@ -315,10 +320,10 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
     if (TargetFrame == EXCEPTION_CHAIN_END) {
 	DbgTrace("Reached end of exception chain. Stop unwinding.\n");
 	/* Unwind completed, so we don't exit */
-	NtContinue(Context, FALSE);
+	NtContinue(&LocalContext, FALSE);
     } else {
 	/* This is an exit_unwind or the frame wasn't present in the list */
-	NtRaiseException(ExceptionRecord, Context, FALSE);
+	NtRaiseException(ExceptionRecord, &LocalContext, FALSE);
     }
 }
 

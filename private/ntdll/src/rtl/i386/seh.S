@@ -45,7 +45,7 @@ _unwind_handler:
     mov $DISPOSITION_CONTINUE_SEARCH, %eax
     jz unwind_handler_return
 
-    /* We do, have a collision a local unwind */
+    /* We have a collision. Do a local unwind */
     mov 20(%esp), %eax
     push %ebp
     mov 16(%eax), %ebp
@@ -222,7 +222,7 @@ except_loop2:
     cmpl $0, 4(%edi,%ecx,4)
     jz except_continue2
 
-    /* Save then, registers and call filter restore them */
+    /* Save registers, call filter, and then restore them */
     push %esi
     push %ebp
     mov 16(%ebx), %ebp
@@ -236,7 +236,7 @@ except_loop2:
     jz except_continue2
     js except_dismiss2
 
-    /* So call, this is an accept the termination handlers */
+    /* So this is an accept. Call the termination handlers */
     mov 8(%ebx), %edi
     push %ebx
     call __global_unwind2
@@ -299,6 +299,27 @@ except_return2:
     pop %ebp
     ret
 
+/*
+ * ROUTINE DESCRIPTION:
+ *     C-language specific exception handler. This is installed
+ *     by MSVC (or any compatible compiler) as the generic SEH
+ *     exception handler for all functions with a __try/__except
+ *     or __try/__finally construct. It is invoked by the system
+ *     in RtlpExecuteHandlerForException or RtlpExecuteHandlerForUnwind.
+ *
+ * PROTOTYPE:
+ *
+ *     EXCEPTION_DISPOSITION NTAPI
+ *     __except_handler3(IN OUT PEXCEPTION_RECORD ExceptionRecord,
+ *                       IN PVOID EstablisherFrame,
+ *                       IN OUT PCONTEXT ContextRecord,
+ *                       IN PVOID DispatcherContext);
+ *
+ * ARGUMENTS:
+ *    See RtlDispatchException and RtlUnwind for the arguments
+ *    passed by the system during exception dispatching and unwinding.
+ *
+ */
 __except_handler3:
 PARAM_ExceptionRecord = 8
 PARAM_RegistrationFrame = 12
@@ -365,10 +386,26 @@ except_loop3:
     /* Restore %ebx and check the result */
     mov PARAM_RegistrationFrame(%ebp), %ebx
     test %eax, %eax
+    /* If the return value of the exception filter is zero (ie.
+     * EXCEPTION_CONTINUE_SEARCH, note that this is different from
+     * ExceptionContinueSearch, which is defined as one), continue
+     * the search at the next (ie. outer) try level. */
     jz except_continue3
+    /* If the return value of the exception filter is negative
+     * (typically -1, ie. EXCEPTION_CONTINUE_EXECUTION), exit the
+     * loop and return from the C-language exception handler with
+     * the disposition ExceptionContinueExecution. */
     js except_dismiss3
 
-    /* So this is an accept, call the termination handlers */
+    /* If neither cases above is true, the return value of the
+     * exception filter (typically EXCEPTION_EXECUTE_HANDLER)
+     * indicates that we need to execute the __except block.
+     * Before doing that, we need to perform a global unwind
+     * followed by a local unwind such that all termination
+     * handlers (__finally blocks) up to this SEH scope will be
+     * executed. This will also ensure that the stack pointer
+     * points to the frame that corresponds to the __except
+     * block to be executed. */
     mov (SEH_FRAME_SEHTable - SEH_FRAME_PreviousRecord)(%ebx), %edi
     push %ebx
     call __global_unwind2
