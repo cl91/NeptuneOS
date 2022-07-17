@@ -23,6 +23,7 @@ mark_as_advanced(UserLinkerGCSections)
 # since we do not handle FPU context saving when switching threads.
 # TODO: Profile +fpu vs -fpu context switching cost.
 add_compile_options(
+    -Wall
     -nostdinc
     -fno-pic
     -fno-pie

@@ -142,8 +142,7 @@ NTAPI NTSTATUS RtlAppendStringToString(IN PSTRING Destination,
     USHORT SourceLength = Source->Length;
 
     if (SourceLength) {
-	if (Destination->Length + SourceLength >
-	    Destination->MaximumLength) {
+	if (Destination->Length + SourceLength > Destination->MaximumLength) {
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
 

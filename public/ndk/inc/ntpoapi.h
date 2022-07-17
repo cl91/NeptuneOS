@@ -91,3 +91,44 @@ typedef union _SYSTEM_POWER_STATE_CONTEXT {
     };
     ULONG ContextAsUlong;
 } SYSTEM_POWER_STATE_CONTEXT, *PSYSTEM_POWER_STATE_CONTEXT;
+
+
+/*
+ * Device capabilities
+ */
+typedef struct _DEVICE_CAPABILITIES {
+    USHORT Size;
+    USHORT Version;
+    ULONG DeviceD1:1;
+    ULONG DeviceD2:1;
+    ULONG LockSupported:1;
+    ULONG EjectSupported:1;
+    ULONG Removable:1;
+    ULONG DockDevice:1;
+    ULONG UniqueID:1;
+    ULONG SilentInstall:1;
+    ULONG RawDeviceOK:1;
+    ULONG SurpriseRemovalOK:1;
+    ULONG WakeFromD0:1;
+    ULONG WakeFromD1:1;
+    ULONG WakeFromD2:1;
+    ULONG WakeFromD3:1;
+    ULONG HardwareDisabled:1;
+    ULONG NonDynamic:1;
+    ULONG WarmEjectSupported:1;
+    ULONG NoDisplayInUI:1;
+    ULONG Reserved1:1;
+    ULONG WakeFromInterrupt:1;
+    ULONG SecureDevice:1;
+    ULONG ChildOfVgaEnabledBridge:1;
+    ULONG DecodeIoOnBoot:1;
+    ULONG Reserved:9;
+    ULONG Address;
+    ULONG UINumber;
+    DEVICE_POWER_STATE DeviceState[PowerSystemMaximum];
+    SYSTEM_POWER_STATE SystemWake;
+    DEVICE_POWER_STATE DeviceWake;
+    ULONG D1Latency;
+    ULONG D2Latency;
+    ULONG D3Latency;
+} DEVICE_CAPABILITIES, *PDEVICE_CAPABILITIES;

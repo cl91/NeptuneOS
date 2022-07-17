@@ -10,6 +10,7 @@ list(APPEND CMAKE_MODULE_PATH
 include(${CMAKE_CURRENT_LIST_DIR}/../../tools/cmake/spec2def.cmake)
 
 add_compile_options(
+    -Wall
     -nostdinc
     -fno-pic
     -fno-pie

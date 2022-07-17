@@ -5,6 +5,7 @@ set(CMAKE_SYSTEM_NAME Windows)
 project(drivers)
 
 add_compile_options(
+    -Wall
     -nostdinc
     -fno-pic
     -fno-pie
@@ -48,3 +49,4 @@ endfunction()
 add_subdirectory(lib)
 add_subdirectory(base)
 add_subdirectory(input)
+add_subdirectory(storage)

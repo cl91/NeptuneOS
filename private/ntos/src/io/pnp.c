@@ -430,10 +430,10 @@ static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
-static inline NTSTATUS IopDeviceNodeQueueAddDeviceRequest(IN PTHREAD Thread,
-						IN PDEVICE_NODE DeviceNode,
-						IN PIO_DRIVER_OBJECT DriverObject,
-						OUT PPENDING_IRP *pPendingIrp)
+static NTSTATUS IopDeviceNodeQueueAddDeviceRequest(IN PTHREAD Thread,
+						   IN PDEVICE_NODE DeviceNode,
+						   IN PIO_DRIVER_OBJECT DriverObject,
+						   OUT PPENDING_IRP *pPendingIrp)
 {
     PIO_DEVICE_OBJECT PhyDevObj = DeviceNode->PhyDevObj;
     PIO_PACKET IoPacket = NULL;
@@ -847,7 +847,7 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 	goto out;
     }
 
-    /* Inform the user of the device enumeration result */
+    /* Inform the user of device enumeration results */
     IopPrintDeviceTree(IopRootDeviceNode, 2);
 
     Status = STATUS_SUCCESS;

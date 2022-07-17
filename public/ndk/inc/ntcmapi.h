@@ -755,8 +755,7 @@ typedef struct _PLUGPLAY_CONTROL_RELATED_DEVICE_DATA {
     ULONG Relation;
     PWCHAR RelatedDeviceInstance;
     ULONG RelatedDeviceInstanceLength;
-} PLUGPLAY_CONTROL_RELATED_DEVICE_DATA,
-    *PPLUGPLAY_CONTROL_RELATED_DEVICE_DATA;
+} PLUGPLAY_CONTROL_RELATED_DEVICE_DATA, *PPLUGPLAY_CONTROL_RELATED_DEVICE_DATA;
 
 // PlugPlayControlDeviceStatus (0x0E)
 typedef struct _PLUGPLAY_CONTOL_STATUS_DATA {
@@ -930,6 +929,30 @@ typedef struct _CM_DISK_GEOMETRY_DEVICE_DATA {
 } CM_DISK_GEOMETRY_DEVICE_DATA, *PCM_DISK_GEOMETRY_DEVICE_DATA;
 
 #include <poppack.h>
+
+/*
+ * Floppy device data
+ */
+typedef struct _CM_FLOPPY_DEVICE_DATA {
+    USHORT Version;
+    USHORT Revision;
+    CHAR Size[8];
+    ULONG MaxDensity;
+    ULONG MountDensity;
+    UCHAR StepRateHeadUnloadTime;
+    UCHAR HeadLoadTime;
+    UCHAR MotorOffTime;
+    UCHAR SectorLengthCode;
+    UCHAR SectorPerTrack;
+    UCHAR ReadWriteGapLength;
+    UCHAR DataTransferLength;
+    UCHAR FormatGapLength;
+    UCHAR FormatFillCharacter;
+    UCHAR HeadSettleTime;
+    UCHAR MotorSettleTime;
+    UCHAR MaximumTrackValue;
+    UCHAR DataTransferRate;
+} CM_FLOPPY_DEVICE_DATA, *PCM_FLOPPY_DEVICE_DATA;
 
 #ifndef _NTOSKRNL_
 

@@ -975,6 +975,9 @@ typedef struct _IO_STACK_LOCATION {
 	    DEVICE_RELATION_TYPE Type;
 	} QueryDeviceRelations;
 	struct {
+	    PDEVICE_CAPABILITIES Capabilities;
+	} DeviceCapabilities;
+	struct {
 	    ULONG WhichSpace;
 	    PVOID Buffer;
 	    ULONG Offset;
@@ -1516,3 +1519,90 @@ typedef struct _DEVICE_RELATIONS {
     ULONG Count;
     PDEVICE_OBJECT Objects[];
 } DEVICE_RELATIONS, *PDEVICE_RELATIONS;
+
+/*
+ * Controller or peripheral type.
+ */
+typedef enum _CONFIGURATION_TYPE {
+    ArcSystem,
+    CentralProcessor,
+    FloatingPointProcessor,
+    PrimaryIcache,
+    PrimaryDcache,
+    SecondaryIcache,
+    SecondaryDcache,
+    SecondaryCache,
+    EisaAdapter,
+    TcAdapter,
+    ScsiAdapter,
+    DtiAdapter,
+    MultiFunctionAdapter,
+    DiskController,
+    TapeController,
+    CdromController,
+    WormController,
+    SerialController,
+    NetworkController,
+    DisplayController,
+    ParallelController,
+    PointerController,
+    KeyboardController,
+    AudioController,
+    OtherController,
+    DiskPeripheral,
+    FloppyDiskPeripheral,
+    TapePeripheral,
+    ModemPeripheral,
+    MonitorPeripheral,
+    PrinterPeripheral,
+    PointerPeripheral,
+    KeyboardPeripheral,
+    TerminalPeripheral,
+    OtherPeripheral,
+    LinePeripheral,
+    NetworkPeripheral,
+    SystemMemory,
+    DockingInformation,
+    RealModeIrqRoutingTable,
+    RealModePCIEnumeration,
+    MaximumType
+} CONFIGURATION_TYPE, *PCONFIGURATION_TYPE;
+
+/*
+ * Call-back routine for IoQueryDeviceDescription
+ */
+typedef NTSTATUS (NTAPI *PIO_QUERY_DEVICE_ROUTINE)(IN PVOID Context,
+						   IN PUNICODE_STRING PathName,
+						   IN INTERFACE_TYPE BusType,
+						   IN ULONG BusNumber,
+						   IN PKEY_VALUE_FULL_INFORMATION *BusInformation,
+						   IN CONFIGURATION_TYPE ControllerType,
+						   IN ULONG ControllerNumber,
+						   IN PKEY_VALUE_FULL_INFORMATION *ControllerInformation,
+						   IN CONFIGURATION_TYPE PeripheralType,
+						   IN ULONG PeripheralNumber,
+						   IN PKEY_VALUE_FULL_INFORMATION *PeripheralInformation);
+
+/*
+ * Specifies the data format returned by IoQueryDeviceDescription.
+ */
+typedef enum _IO_QUERY_DEVICE_DATA_FORMAT {
+    IoQueryDeviceIdentifier = 0,
+    IoQueryDeviceConfigurationData,
+    IoQueryDeviceComponentInformation,
+    IoQueryDeviceMaxData
+} IO_QUERY_DEVICE_DATA_FORMAT, *PIO_QUERY_DEVICE_DATA_FORMAT;
+
+/*
+ * Retrieves hardware configuration information about a given bus,
+ * controller or peripheral object (or any combination thereof) from
+ * the \Registry\Machine\Hardware\Description tree
+ */
+NTAPI NTSYSAPI NTSTATUS IoQueryDeviceDescription(IN OPTIONAL PINTERFACE_TYPE BusType,
+						 IN OPTIONAL PULONG BusNumber,
+						 IN OPTIONAL PCONFIGURATION_TYPE ControllerType,
+						 IN OPTIONAL PULONG ControllerNumber,
+						 IN OPTIONAL PCONFIGURATION_TYPE PeripheralType,
+						 IN OPTIONAL PULONG PeripheralNumber,
+						 IN PIO_QUERY_DEVICE_ROUTINE CalloutRoutine,
+						 IN OUT OPTIONAL PVOID Context);

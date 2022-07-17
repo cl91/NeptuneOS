@@ -934,6 +934,7 @@ typedef struct _IO_RESOURCE_REQUIREMENTS_LIST {
 #define MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE			\
     (sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST))
 
+
 /*
  * System service interface of the IO manager.
  */
