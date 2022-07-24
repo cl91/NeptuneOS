@@ -1,9 +1,5 @@
 #include <string.h>
 
-#ifdef _MSC_VER
-#pragma function(memcpy)
-#endif /* _MSC_VER */
-
 #pragma weak memcpy
 
 /* NOTE: This code is a duplicate of memmove implementation! */

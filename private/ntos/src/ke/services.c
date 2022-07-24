@@ -173,7 +173,6 @@ NTSTATUS KeEnableSystemThreadFaultHandler(IN PSYSTEM_THREAD Thread)
     extern CNODE MiNtosCNode;
 
     MWORD IPCBadge = POINTER_TO_GLOBAL_HANDLE(Thread) | SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER;
-    PIPC_ENDPOINT ServiceEndpoint = NULL;
     RET_ERR(KiEnableClientServiceEndpoint(&Thread->ReplyEndpoint,
 					  &Thread->FaultEndpoint,
 					  &MiNtosCNode,

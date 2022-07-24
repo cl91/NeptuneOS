@@ -589,10 +589,11 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 #define VALID_CONFIG_FIELD(Name) (ConfigSize >= (FIELD_OFFSET(IMAGE_LOAD_CONFIG_DIRECTORY, Name) + sizeof(LoadConfig->Name)))
     /* The 'original' load config ends after SecurityCookie */
     if ((LoadConfig) && ConfigSize && (VALID_CONFIG_FIELD(SecurityCookie) || ConfigSize == LoadConfig->Size)) {
-	if (ConfigSize != sizeof(IMAGE_LOAD_CONFIG_DIRECTORY))
+	if (ConfigSize != sizeof(IMAGE_LOAD_CONFIG_DIRECTORY)) {
 	    DPRINT1("WARN: Accepting different LOAD_CONFIG size!\n");
-	else
+	} else {
 	    DPRINT1("Applying LOAD_CONFIG\n");
+	}
 
 	if (VALID_CONFIG_FIELD(GlobalFlagsSet) && LoadConfig->GlobalFlagsSet)
 	    Peb->NtGlobalFlag |= LoadConfig->GlobalFlagsSet;
@@ -882,7 +883,6 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     SystemDllTlsRegion[SYSTEMDLL_TLS_INDEX] = SystemDllTlsRegion;
     __sel4_ipc_buffer = IpcBuffer;
 
-    PTEB Teb = NtCurrentTeb();
     PPEB Peb = NtCurrentPeb();
 
     DPRINT("LdrpInitialize() process %p thread %p\n",

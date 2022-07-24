@@ -22,7 +22,6 @@ NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
     assert(ObObjectIsType(Parent, OBJECT_TYPE_KEY));
     assert(ObObjectIsType(Subobject, OBJECT_TYPE_KEY));
     assert(!ObpPathHasSeparator(Subpath));
-    PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Parent;
     PCM_KEY_OBJECT SubKey = (PCM_KEY_OBJECT)Subobject;
     CmpInsertNamedNode(Parent, &SubKey->Node, Subpath);
     return STATUS_SUCCESS;

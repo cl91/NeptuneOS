@@ -233,7 +233,9 @@ CLIENT_SVC_GEN_C_TEMPLATE = """static inline VOID KiDeliverApc(IN MWORD IpcBuffe
 {%- endif %}{%- endfor %})
 {
     seL4_MessageInfo_t Request = seL4_MessageInfo_new({{svc.enum_tag}}, 0, 0, {{svc.msglength}});
+{%- if svc.in_params_need_msgbuf %}
     ULONG MsgBufOffset = 0;
+{%- endif %}
 {%- for param in svc.params %}
 {%- if param.is_ptr and not param.optional %}
     if ({{param.name}} == NULL) {
@@ -435,6 +437,10 @@ class Service:
         self.out_params = [ param for param in params if param.dir_out ]
         self.server_param_indent = " " * (len("NTSTATUS") + len(name) + 2)
         self.msglength = len(params)
+        self.in_params_need_msgbuf = False
+        for param in self.in_params:
+            if param.is_ptr or param.custom_marshaling:
+                self.in_params_need_msgbuf = True
         if len(params) == 0 or wdmsvc:
             self.ntapi = False
         else:

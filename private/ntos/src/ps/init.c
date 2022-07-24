@@ -199,7 +199,7 @@ fail:
 
 static VOID PspPopulateUserSharedData()
 {
-    PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
+    UNUSED PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
     /* TODO */
 }
 

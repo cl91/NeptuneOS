@@ -1,11 +1,9 @@
 #pragma once
 
-#include <ntos.h>
+/* Comment this to enable debug tracing */
+#define NDEBUG
 
-/* Change this to 0 to enable debug tracing */
-#if 1
-#define DbgPrint(...)
-#endif
+#include <ntos.h>
 
 #define NTOS_OB_TAG	(EX_POOL_TAG('n', 't', 'o', 'b'))
 

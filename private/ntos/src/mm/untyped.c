@@ -1,14 +1,5 @@
 #include "mi.h"
 
-/* Change this to 0 to enable debug tracing */
-#if 1
-#undef DbgTrace
-#define DbgTrace(...)
-#define DbgPrint(...)
-#else
-#include <dbgtrace.h>
-#endif
-
 VOID MiInitializeUntyped(IN PUNTYPED Untyped,
 			 IN PCNODE CSpace,
 			 IN OPTIONAL PUNTYPED Parent,
@@ -174,7 +165,6 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     assert(NumSplits >= 0);
     RemoveEntryList(&Untyped->FreeListEntry);
     for (LONG i = 0; i < NumSplits; i++) {
-	MWORD LeftCap, RightCap;
 	MiAllocatePool(LeftChild, UNTYPED);
 	MiAllocatePoolEx(RightChild, UNTYPED, MiFreePool(LeftChild));
 	RET_ERR_EX(MiSplitUntyped(Untyped, LeftChild, RightChild),

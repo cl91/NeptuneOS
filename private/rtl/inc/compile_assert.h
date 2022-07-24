@@ -2,7 +2,7 @@
 
 /* Create an assert that will trigger a compile error if it fails. */
 #define compile_assert(name, expr) \
-        typedef int __assert_failed_##name[(expr) ? 1 : -1];
+        typedef int __assert_failed_##name[(expr) ? 1 : -1] __attribute__((unused));
 
 /*
  * The following code generates a compile-time error if the type size is not

@@ -182,8 +182,6 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
  */
 static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
 {
-    MWORD StartPageCap = InitInfo->UserImageFrameCapStart;
-    MWORD EndPageCap = StartPageCap + InitInfo->NumUserImageFrames;
     MWORD PageTableCapStart = InitInfo->UserPagingStructureCapStart;
 
 #ifdef _M_AMD64
@@ -290,7 +288,6 @@ static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
 {
     extern char _text_start[];
-    seL4_SlotRegion UntypedCaps = bootinfo->untyped;
     MWORD InitUntyped = 0;
     MWORD InitUntypedPhyAddr = 0;
     LONG Log2Size = 128;

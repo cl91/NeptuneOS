@@ -40,10 +40,6 @@
 #undef vprintf
 #undef vwprintf
 
-#ifdef _MSC_VER
-#pragma function(_wcsset)
-#endif
-
 #define strcmpW(s1,s2) wcscmp((s1),(s2))
 #define strlenW(s) wcslen((s))
 

@@ -49,15 +49,6 @@ Revision History:
 
 #include "mi.h"
 
-/* Change this to 0 to enable debug tracing */
-#if 1
-#undef DbgTrace
-#define DbgTrace(...)
-#define DbgPrint(...)
-#else
-#include <dbgtrace.h>
-#endif
-
 #define LoopOverChildren(Child, Node)		\
     LoopOverList(Child, &(Node)->ChildrenList,	\
 		 CAP_TREE_NODE, SiblingLink)

@@ -15,14 +15,6 @@
 
 /* MACROS *******************************************************************/
 
-#define DECLARE_TEMP_STRING(Name, BufSize)		\
-    WCHAR _TempBuffer_#Name[BufSize];			\
-    UNICODE_STRING Name = {				\
-	.MaximumLength = sizeof(_TempBuffer_#Name),	\
-	.Length = 0,					\
-	.Buffer = _TempBuffer_#Name			\
-    }
-
 #define TAG_IO_RESOURCE        'CRSR'
 
 /* GLOBALS *******************************************************************/
@@ -91,6 +83,194 @@ static PWSTR ArcTypes[] = {
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /*
+ * Append "\\%d" to the given unicode string, where %d is the given integer.
+ */
+static NTSTATUS IopAppendIntegerSubKey(OUT PUNICODE_STRING String,
+				       IN ULONG Integer)
+{
+    WCHAR TempBuffer[16];
+    UNICODE_STRING TempString = {
+	.MaximumLength = sizeof(TempBuffer),
+	.Length = 0,
+	.Buffer = TempBuffer
+    };
+
+    RET_ERR(RtlIntegerToUnicodeString(Integer, 10, &TempString));
+
+    RET_ERR(RtlAppendUnicodeToString(String, L"\\"));
+    RET_ERR(RtlAppendUnicodeStringToString(String, &TempString));
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopAppendArcTypeSubKey(IN PUNICODE_STRING String,
+				       IN CONFIGURATION_TYPE Type)
+{
+    assert(Type < ARRAYSIZE(ArcTypes));
+    RET_ERR(RtlAppendUnicodeToString(String, L"\\"));
+    RET_ERR(RtlAppendUnicodeToString(String, ArcTypes[Type]));
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Query the registry and find out how many subkeys the given key has
+ */
+static NTSTATUS IopGetSubKeyCount(IN PUNICODE_STRING Key,
+				  OUT ULONG *SubKeyCount)
+{
+    assert(Key != NULL);
+    assert(SubKeyCount != NULL);
+
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, Key,
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+    HANDLE KeyHandle = NULL;
+    PKEY_FULL_INFORMATION FullInfo = NULL;
+    NTSTATUS Status = NtOpenKey(&KeyHandle, KEY_READ, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    /* Find out how much buffer space we should allocate */
+    ULONG LenFullInfo = 0;
+    Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, 0, &LenFullInfo);
+    if (!NT_SUCCESS(Status) || LenFullInfo == 0) {
+	goto out;
+    }
+
+    /* Allocate the key information buffer */
+    FullInfo = ExAllocatePoolWithTag(LenFullInfo, TAG_IO_RESOURCE);
+    if (FullInfo == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
+    /* Get the Key Full Information */
+    Status = NtQueryKey(KeyHandle, KeyFullInformation,
+			FullInfo, LenFullInfo, &LenFullInfo);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    *SubKeyCount= FullInfo->SubKeys;
+
+out:
+    if (KeyHandle != NULL) {
+	NtClose(KeyHandle);
+    }
+    if (FullInfo != NULL) {
+	ExFreePoolWithTag(FullInfo, TAG_IO_RESOURCE);
+    }
+    return Status;
+}
+
+/*
+ * If the caller has specified the controller/peripheral number,
+ * use it. Otherwise, read the subkey count from the registry.
+ */
+static NTSTATUS IopGetConfigurationCount(IN PULONG SpecifiedNumber,
+					 IN PUNICODE_STRING ConfigKey,
+					 OUT ULONG *Number,
+					 OUT ULONG *MaxNumber)
+{
+    if (SpecifiedNumber && *SpecifiedNumber) {
+	*Number = *SpecifiedNumber;
+	*MaxNumber = *Number + 1;
+    } else {
+	*Number = 0;
+	RET_ERR(IopGetSubKeyCount(ConfigKey, MaxNumber));
+    }
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Read the configuration data for the given controller/peripheral.
+ *
+ * The Information array must have exactly three elements and must be zero initialized.
+ */
+static NTSTATUS IopGetConfigurationData(IN PUNICODE_STRING RegKey,
+					OUT PKEY_VALUE_FULL_INFORMATION *Information)
+{
+    assert(RegKey != NULL);
+    assert(Information != NULL);
+    assert(Information[0] == NULL);
+    assert(Information[1] == NULL);
+    assert(Information[2] == NULL);
+
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, RegKey,
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+    HANDLE KeyHandle = NULL;
+    NTSTATUS Status = NtOpenKey(&KeyHandle, KEY_READ, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    PWSTR SubkeyNames[] = {
+	L"Identifier",
+	L"Configuration Data",
+	L"Component Information"
+    };
+
+    /* Read the configuration data from registry */
+    for (ULONG i = 0; i < ARRAYSIZE(SubkeyNames); i++) {
+	UNICODE_STRING SubkeyString;
+	RtlInitUnicodeString(&SubkeyString, SubkeyNames[i]);
+
+	/* Find out how much buffer space we need */
+	ULONG BufferSize = 0;
+	Status = NtQueryValueKey(KeyHandle, &SubkeyString,
+				 KeyValueFullInformation, NULL, 0,
+				 &BufferSize);
+	if (!NT_SUCCESS(Status)) {
+	    goto cleanup;
+	}
+	assert(BufferSize != 0);
+
+	/* Allocate the required buffer space */
+	Information[i] = ExAllocatePoolWithTag(BufferSize,
+					       TAG_IO_RESOURCE);
+	if (Information[i] == NULL) {
+	    Status = STATUS_NO_MEMORY;
+	    goto cleanup;
+	}
+
+	/* Get the configuration information */
+	Status = NtQueryValueKey(KeyHandle, &SubkeyString,
+				 KeyValueFullInformation,
+				 Information[i],
+				 BufferSize,
+				 &BufferSize);
+	/* We should never get these errors because we asked for the
+	 * correct buffer size before. */
+	assert(Status != STATUS_BUFFER_TOO_SMALL);
+	assert(Status != STATUS_BUFFER_OVERFLOW);
+	if (!NT_SUCCESS(Status)) {
+	    goto cleanup;
+	}
+    }
+
+    /* If we got here, everything went well */
+    Status = STATUS_SUCCESS;
+    goto out;
+
+cleanup:
+    for (ULONG i = 0; i < ARRAYSIZE(SubkeyNames); i++) {
+	if (Information[i] != NULL) {
+	    ExFreePoolWithTag(Information[i], TAG_IO_RESOURCE);
+	}
+    }
+
+out:
+    if (KeyHandle != NULL) {
+	NtClose(KeyHandle);
+    }
+    return Status;
+}
+
+/*
  * IopQueryDeviceDescription
  *
  * FUNCTION:
@@ -115,333 +295,111 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 {
     assert(Query != NULL);
     assert(Query->ControllerType != NULL);
-    assert(*Query->ControllerType < ARRAY_SIZE(ArcTypes));
-
-    /* Peripheral Stuff */
-    UNICODE_STRING PeripheralString;
-    HANDLE PeripheralKeyHandle;
-    PKEY_FULL_INFORMATION PeripheralFullInformation;
-    PKEY_VALUE_FULL_INFORMATION PeripheralInformation[3] = { NULL, NULL, NULL };
-    ULONG PeripheralNumber;
-    ULONG PeripheralLoop;
-    ULONG MaximumPeripheralNumber;
-
-    /* Global Registry Stuff */
-    PWSTR Strings[3] = {
-	L"Identifier",
-	L"Configuration Data",
-	L"Component Information"
-    };
 
     /* Add Controller Name to String */
-    UNICODE_STRING ControllerRootRegName = RootKey;
-    RET_ERR(RtlAppendUnicodeToString(&ControllerRootRegName, L"\\"));
-    RET_ERR(RtlAppendUnicodeToString(&ControllerRootRegName,
-				     ArcTypes[*Query->ControllerType]));
+    UNICODE_STRING ControllerRootKey = RootKey;
+    RET_ERR(IopAppendArcTypeSubKey(&ControllerRootKey,
+				   *Query->ControllerType));
 
-    /* If the caller has specified the controller number, use it.
-     * Otherwise, read the controller number from the registry. */
+    /* Get the number of controllers */
     ULONG ControllerNumber;
     ULONG MaximumControllerNumber;
-    if (Query->ControllerNumber && *(Query->ControllerNumber)) {
-	ControllerNumber = *Query->ControllerNumber;
-	MaximumControllerNumber = ControllerNumber + 1;
-    } else {
-	/* Query the registry and find out how many Controllers there are */
-	OBJECT_ATTRIBUTES ObjectAttributes;
-	InitializeObjectAttributes(&ObjectAttributes,
-				   &ControllerRootRegName,
-				   OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-	HANDLE KeyHandle = NULL;
-	NTSTATUS Status = NtOpenKey(&KeyHandle, KEY_READ, &ObjectAttributes);
-	if (!NT_SUCCESS(Status)) {
-	    goto out;
-	}
-
-	/* Find out how much buffer space we should allocate */
-	ULONG LenFullInfo = 0;
-	Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, 0, &LenFullInfo);
-	if (!NT_SUCCESS(Status) || LenFullInfo == 0) {
-	    goto out;
-	}
-
-	/* Allocate the key information buffer */
-	PKEY_FULL_INFORMATION FullInfo = ExAllocatePoolWithTag(LenFullInfo,
-							       TAG_IO_RESOURCE);
-	if (FullInfo == NULL) {
-	    Status = STATUS_NO_MEMORY;
-	    goto out;
-	}
-
-	/* Get the Key Full Information */
-	Status = NtQueryKey(KeyHandle, KeyFullInformation,
-			    FullInfo, LenFullInfo, &LenFullInfo);
-	if (!NT_SUCCESS(Status)) {
-	    goto out;
-	}
-
-	/* Find out Controller Numbers */
-	ControllerNumber = 0;
-	MaximumControllerNumber = FullInfo->SubKeys;
-
-    out:
-	if (KeyHandle != NULL) {
-	    NtClose(KeyHandle);
-	}
-	if (FullInfo != NULL) {
-	    ExFreePoolWithTag(FullInfo, TAG_IO_RESOURCE);
-	}
-	if (!NT_SUCCESS(Status)) {
-	    return Status;
-	}
-    }
-
-    /* Save String */
-    UNICODE_STRING ControllerRegName = ControllerRootRegName;
+    RET_ERR(IopGetConfigurationCount(Query->ControllerNumber,
+				     &ControllerRootKey,
+				     &ControllerNumber,
+				     &MaximumControllerNumber));
 
     /* Loop through controllers */
     for (; ControllerNumber < MaximumControllerNumber; ControllerNumber++) {
-	/* Load String */
-	ControllerRootRegName = ControllerRegName;
+	/* Append the controller number subkey to the root controller key */
+	UNICODE_STRING RegKey = ControllerRootKey;
+	RET_ERR(IopAppendIntegerSubKey(&RegKey, ControllerNumber));
 
-	/* Controller Number to Registry String */
-	DECLARE_TEMP_STRING(TempString, 16);
-	RET_ERR(RtlIntegerToUnicodeString(ControllerNumber, 10, &TempString));
+	PKEY_VALUE_FULL_INFORMATION ControllerInformation[] = { NULL, NULL, NULL };
+	RET_ERR(IopGetConfigurationData(&RegKey, ControllerInformation));
 
-	/* Create String */
-	RET_ERR(RtlAppendUnicodeToString(&ControllerRootRegName, L"\\"));
-	RET_ERR(RtlAppendUnicodeStringToString(&ControllerRootRegName,
-					       &TempString));
-
-	/* Open the Registry Key */
-	OBJECT_ATTRIBUTES ObjectAttributes;
-	InitializeObjectAttributes(&ObjectAttributes,
-				   &ControllerRootRegName,
-				   OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-	NTSTATUS Status = NtOpenKey(&ControllerKeyHandle, KEY_READ, &ObjectAttributes);
-
-	/* Read the Configuration Data... */
-	if (!NT_SUCCESS(Status)) {
-	    goto out;
-	}
-
-	PKEY_VALUE_FULL_INFORMATION ControllerInformation[3] = { NULL, NULL, NULL };
-	for (ULONG i = 0; i < ARRAY_SIZE(ControllerInformation); i++) {
-	    /* Identifier String First */
-	    UNICODE_STRING ControllerString;
-	    RtlInitUnicodeString(&ControllerString, Strings[i]);
-
-	    /* How much buffer space */
-	    Status = NtQueryValueKey(ControllerKeyHandle, &ControllerString,
-				     KeyValueFullInformation, NULL, 0,
-				     &LenKeyFullInformation);
-
-	    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL
-		&& Status != STATUS_BUFFER_OVERFLOW)
-		continue;
-
-	    /* Allocate it */
-	    ControllerInformation[i] = ExAllocatePoolWithTag(LenKeyFullInformation,
-							     TAG_IO_RESOURCE);
-
-	    /* Get the Information */
-	    Status = NtQueryValueKey(ControllerKeyHandle, &ControllerString,
-				     KeyValueFullInformation,
-				     ControllerInformation[i],
-				     LenKeyFullInformation,
-				     &LenKeyFullInformation);
-	}
-
-	    /* Clean Up */
-	    NtClose(ControllerKeyHandle);
-	    ControllerKeyHandle = NULL;
-	}
-
-	/* Something messed up */
-	if (!NT_SUCCESS(Status))
-	    goto EndLoop;
-
-	/* We now have Bus *AND* Controller Information.. is it enough? */
+	/* We now have Bus *AND* Controller Information. Is it enough? */
+	NTSTATUS Status = STATUS_SUCCESS;
 	if (!Query->PeripheralType || !(*Query->PeripheralType)) {
 	    Status = Query->CalloutRoutine(Query->Context,
-					   &ControllerRootRegName,
+					   &RegKey,
 					   *Query->BusType,
 					   Bus,
 					   BusInformation,
 					   *Query->ControllerType,
 					   ControllerNumber,
 					   ControllerInformation,
-					   0, 0, NULL);
-	    goto EndLoop;
+					   0,
+					   0,
+					   NULL);
+	    goto cleanup;
 	}
 
 	/* Not enough...caller also wants peripheral name */
-	Status = RtlAppendUnicodeToString(&ControllerRootRegName, L"\\");
-	Status |= RtlAppendUnicodeToString(&ControllerRootRegName,
-					   ArcTypes[*Query->PeripheralType]);
+	IF_ERR_GOTO(cleanup, Status,
+		    IopAppendArcTypeSubKey(&RegKey, *Query->PeripheralType));
 
-	/* Something messed up */
-	if (!NT_SUCCESS(Status))
-	    goto EndLoop;
-
-	/* Set the Peripheral Number if specified */
-	if (Query->PeripheralNumber && *Query->PeripheralNumber) {
-	    PeripheralNumber = *Query->PeripheralNumber;
-	    MaximumPeripheralNumber = PeripheralNumber + 1;
-	} else {
-	    /* Find out how many Peripheral Numbers there are */
-	    InitializeObjectAttributes(&ObjectAttributes,
-				       &ControllerRootRegName,
-				       OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-	    Status = NtOpenKey(&PeripheralKeyHandle, KEY_READ,
-			       &ObjectAttributes);
-
-	    if (NT_SUCCESS(Status)) {
-		/* How much buffer space */
-		NtQueryKey(PeripheralKeyHandle, KeyFullInformation, NULL,
-			   0, &LenFullInformation);
-
-		/* Allocate it */
-		PeripheralFullInformation = ExAllocatePoolWithTag(LenFullInformation,
-								  TAG_IO_RESOURCE);
-
-		/* Get the Information */
-		Status = NtQueryKey(PeripheralKeyHandle, KeyFullInformation,
-				    PeripheralFullInformation,
-				    LenFullInformation, &LenFullInformation);
-		NtClose(PeripheralKeyHandle);
-		PeripheralKeyHandle = NULL;
-	    }
-
-	    /* No controller was found, bail out but clean up first */
-	    if (!NT_SUCCESS(Status)) {
-		Status = STATUS_SUCCESS;
-		goto EndLoop;
-	    }
-
-	    /* Find out Peripheral Number */
-	    PeripheralNumber = 0;
-	    MaximumPeripheralNumber = PeripheralFullInformation->SubKeys;
-
-	    /* Free Memory */
-	    ExFreePoolWithTag(PeripheralFullInformation, TAG_IO_RESOURCE);
-	    PeripheralFullInformation = NULL;
-	}
-
-	/* Save Name */
-	ControllerRegName = ControllerRootRegName;
+	ULONG PeripheralNumber;
+	ULONG MaximumPeripheralNumber;
+	IF_ERR_GOTO(cleanup, Status,
+		    IopGetConfigurationCount(Query->PeripheralNumber,
+					     &RegKey, &PeripheralNumber,
+					     &MaximumPeripheralNumber));
 
 	/* Loop through Peripherals */
 	for (; PeripheralNumber < MaximumPeripheralNumber; PeripheralNumber++) {
-	    /* Restore Name */
-	    ControllerRootRegName = ControllerRegName;
+	    /* Append the Peripheral Number to the registry key string */
+	    UNICODE_STRING PeripheralKey = RegKey;
+	    IF_ERR_GOTO(cleanup, Status,
+			IopAppendIntegerSubKey(&PeripheralKey,
+					       PeripheralNumber));
 
-	    /* Peripheral Number to Registry String */
-	    DECLARE_TEMP_STRING(TempString, 16);
-	    Status = RtlIntegerToUnicodeString(PeripheralNumber, 10,
-					       &TempString);
+	    PKEY_VALUE_FULL_INFORMATION PeripheralInformation[3] = { NULL, NULL, NULL };
+	    IF_ERR_GOTO(cleanup, Status,
+			IopGetConfigurationData(&PeripheralKey,
+						PeripheralInformation));
 
-	    /* Create String */
-	    Status |= RtlAppendUnicodeToString(&ControllerRootRegName, L"\\");
-	    Status |= RtlAppendUnicodeStringToString(&ControllerRootRegName,
-						     &TempString);
+            /* We now have everything the caller could possibly want */
+	    Status = Query->CalloutRoutine(Query->Context,
+					   &PeripheralKey,
+					   *Query->BusType,
+					   Bus,
+					   BusInformation,
+					   *Query->ControllerType,
+					   ControllerNumber,
+					   ControllerInformation,
+					   *Query->PeripheralType,
+					   PeripheralNumber,
+					   PeripheralInformation);
 
-	    /* Something messed up */
-	    if (!NT_SUCCESS(Status))
-		break;
-
-	    /* Open the Registry Key */
-	    InitializeObjectAttributes(&ObjectAttributes,
-				       &ControllerRootRegName,
-				       OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-	    Status = NtOpenKey(&PeripheralKeyHandle, KEY_READ,
-			       &ObjectAttributes);
-
-	    if (NT_SUCCESS(Status)) {
-		for (PeripheralLoop = 0; PeripheralLoop < 3; PeripheralLoop++) {
-		    /* Identifier String First */
-		    RtlInitUnicodeString(&PeripheralString,
-					 Strings[PeripheralLoop]);
-
-		    /* How much buffer space */
-		    Status = NtQueryValueKey(PeripheralKeyHandle,
-					     &PeripheralString,
-					     KeyValueFullInformation, NULL, 0,
-					     &LenKeyFullInformation);
-
-		    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL
-			&& Status != STATUS_BUFFER_OVERFLOW) {
-			PeripheralInformation[PeripheralLoop] = NULL;
-			continue;
-		    }
-
-		    /* Allocate it */
-		    PeripheralInformation[PeripheralLoop] = ExAllocatePoolWithTag(LenKeyFullInformation,
-										  TAG_IO_RESOURCE);
-
-		    /* Get the Information */
-		    Status = NtQueryValueKey(PeripheralKeyHandle,
-					     &PeripheralString,
-					     KeyValueFullInformation,
-					     PeripheralInformation
-					     [PeripheralLoop],
-					     LenKeyFullInformation,
-					     &LenKeyFullInformation);
+	    /* Cleanup the peripheral information */
+	    for (ULONG i = 0; i < ARRAYSIZE(PeripheralInformation); i++) {
+		if (PeripheralInformation[i] != NULL) {
+		    ExFreePoolWithTag(PeripheralInformation[i], TAG_IO_RESOURCE);
 		}
+	    }
 
-		/* Clean Up */
-		NtClose(PeripheralKeyHandle);
-		PeripheralKeyHandle = NULL;
-
-		/* We now have everything the caller could possibly want */
-		if (NT_SUCCESS(Status)) {
-		    Status = Query->CalloutRoutine(Query->Context,
-						   &ControllerRootRegName,
-						   *Query->BusType,
-						   Bus,
-						   BusInformation,
-						   *Query->ControllerType,
-						   ControllerNumber,
-						   ControllerInformation,
-						   *Query->PeripheralType,
-						   PeripheralNumber,
-						   PeripheralInformation);
-		}
-
-		/* Free the allocated memory */
-		for (PeripheralLoop = 0; PeripheralLoop < 3; PeripheralLoop++) {
-		    if (PeripheralInformation[PeripheralLoop]) {
-			ExFreePoolWithTag(PeripheralInformation[PeripheralLoop],
-					  TAG_IO_RESOURCE);
-			PeripheralInformation[PeripheralLoop] = NULL;
-		    }
-		}
-
-		/* Something Messed up */
-		if (!NT_SUCCESS(Status))
-		    break;
+	    /* If callout routine returned error, we should clean up and return */
+	    if (!NT_SUCCESS(Status)) {
+		goto cleanup;
 	    }
 	}
 
-    EndLoop:
-	/* Free the allocated memory */
-	for (ULONG i = 0; i < 3; i++) {
-	    if (ControllerInformation[i]) {
+    cleanup:
+	for (ULONG i = 0; i < ARRAYSIZE(ControllerInformation); i++) {
+	    if (ControllerInformation[i] != NULL) {
 		ExFreePoolWithTag(ControllerInformation[i], TAG_IO_RESOURCE);
-		ControllerInformation[i] = NULL;
 	    }
 	}
 
-	/* Something Messed up */
-	if (!NT_SUCCESS(Status))
-	    break;
+	/* If something messed up, break from the loop and return.
+	 * Otherwise continue the loop and move on to the next controller. */
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
     }
 
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -496,7 +454,7 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
 
     /* Allocate it */
     FullInformation =
-	ExAllocatePoolWithTag(PagedPool, LenFullInformation,
+	ExAllocatePoolWithTag(LenFullInformation,
 			      TAG_IO_RESOURCE);
 
     if (!FullInformation)
@@ -515,7 +473,7 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
 
 	/* Allocate it */
 	BasicInformation =
-	    ExAllocatePoolWithTag(PagedPool, LenBasicInformation,
+	    ExAllocatePoolWithTag(LenBasicInformation,
 				  TAG_IO_RESOURCE);
     }
 
@@ -595,7 +553,7 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
 
 		/* Allocate it */
 		BusInformation[SubBusLoop] =
-		    ExAllocatePoolWithTag(PagedPool, LenKeyFullInformation,
+		    ExAllocatePoolWithTag(LenKeyFullInformation,
 					  TAG_IO_RESOURCE);
 
 		/* Get the Information */
@@ -757,7 +715,7 @@ static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartit
 				      SYMBOLIC_LINK_QUERY,
 				      &ObjectAttributes);
     if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed to open symlink %wZ, Status=%lx\n",
+	DPRINT("Failed to open symlink %wZ, Status=%x\n",
 	       NtSystemPartitionDeviceName, Status);
 	return;
     }
@@ -773,10 +731,10 @@ static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartit
     Status = NtQuerySymbolicLinkObject(LinkHandle, &LinkTarget, NULL);
 
     /* We are done with symbolic link */
-    ObCloseHandle(LinkHandle, KernelMode);
+    NtClose(LinkHandle);
 
     if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed querying symlink %wZ, Status=%lx\n",
+	DPRINT("Failed querying symlink %wZ, Status=%x\n",
 	       NtSystemPartitionDeviceName, Status);
 	return;
     }
@@ -790,7 +748,7 @@ static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartit
 				  &CmRegistryMachineSystemName,
 				  KEY_ALL_ACCESS);
     if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed to open HKLM\\SYSTEM, Status=%lx\n", Status);
+	DPRINT("Failed to open HKLM\\SYSTEM, Status=%x\n", Status);
 	return;
     }
 
@@ -804,10 +762,10 @@ static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartit
 				    REG_OPTION_NON_VOLATILE, NULL);
 
     /* We're done with HKLM\SYSTEM */
-    ObCloseHandle(RegistryHandle, KernelMode);
+    NtClose(RegistryHandle);
 
     if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed opening/creating Setup key, Status=%lx\n", Status);
+	DPRINT("Failed opening/creating Setup key, Status=%x\n", Status);
 	return;
     }
 
@@ -822,7 +780,7 @@ static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartit
 			   LinkTarget.Buffer,
 			   LinkTarget.Length + sizeof(WCHAR));
     if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed writing SystemPartition value, Status=%lx\n",
+	DPRINT("Failed writing SystemPartition value, Status=%x\n",
 	       Status);
     }
 
@@ -848,11 +806,11 @@ static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartit
 			   OsLoaderPathName->Length +
 			   sizeof(UNICODE_NULL));
     if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed writing OsLoaderPath value, Status=%lx\n", Status);
+	DPRINT("Failed writing OsLoaderPath value, Status=%x\n", Status);
     }
 
     /* We're finally done! */
-    ObCloseHandle(KeyHandle, KernelMode);
+    NtClose(KeyHandle);
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
@@ -909,19 +867,19 @@ NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
 
     PCM_RESOURCE_LIST ResourceList = DeviceList ? DeviceList : DriverList;
 
-    NTSTATUS Status = 0//IopDetectResourceConflict(ResourceList, FALSE, NULL);
-    if (Status == STATUS_CONFLICTING_ADDRESSES) {
-	*ConflictDetected = TRUE;
+    NTSTATUS Status = 0;//IopDetectResourceConflict(ResourceList, FALSE, NULL);
+	if (Status == STATUS_CONFLICTING_ADDRESSES) {
+	    *ConflictDetected = TRUE;
 
-	if (!OverrideConflict) {
-	    DPRINT1("Denying an attempt to claim resources currently in use by another device!\n");
-	    return STATUS_CONFLICTING_ADDRESSES;
-	} else {
-	    DPRINT1("Proceeding with conflicting resources\n");
+	    if (!OverrideConflict) {
+		DPRINT1("Denying an attempt to claim resources currently in use by another device!\n");
+		return STATUS_CONFLICTING_ADDRESSES;
+	    } else {
+		DPRINT1("Proceeding with conflicting resources\n");
+	    }
+	} else if (!NT_SUCCESS(Status)) {
+	    return Status;
 	}
-    } else if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
 
     /* TODO: Claim resources in registry */
 
@@ -968,7 +926,7 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN OPTIONAL PINTERFACE_TYPE BusType,
     RootRegKey.Length = 0;
     RootRegKey.MaximumLength = 2048;
     RootRegKey.Buffer =
-	ExAllocatePoolWithTag(PagedPool, RootRegKey.MaximumLength,
+	ExAllocatePoolWithTag(RootRegKey.MaximumLength,
 			      TAG_IO_RESOURCE);
     RtlAppendUnicodeToString(&RootRegKey,
 			     L"\\REGISTRY\\MACHINE\\HARDWARE\\DESCRIPTION\\SYSTEM");

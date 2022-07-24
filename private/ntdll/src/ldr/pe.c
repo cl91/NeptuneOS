@@ -403,9 +403,8 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
 	    }
 
 	    /* Can't relocate user32 or kernel32 */
-	    BOOLEAN RelocatableDll = TRUE;
 	    if (!strcasecmp(DllName, "user32.dll") || !strcasecmp(DllName, "kernel32.dll")) {
-		RelocatableDll = FALSE;
+		return STATUS_ILLEGAL_DLL_RELOCATION;
 	    }
 
 	    /* Do the relocation */
@@ -799,7 +798,6 @@ NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
     PIMAGE_IMPORT_BY_NAME ImportName = NULL;
     PIMAGE_EXPORT_DIRECTORY ExportDir;
     ULONG ExportDirSize, Length;
-    PLIST_ENTRY Entry;
 
     DPRINT1("LDR: LdrGetProcedureAddress by ");
 
@@ -907,14 +905,12 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 			    IN BOOLEAN EntriesValid)
 {
     PVOID Iat;
-    NTSTATUS Status;
     PIMAGE_THUNK_DATA OriginalThunk, FirstThunk;
     PIMAGE_NT_HEADERS NtHeader;
     PIMAGE_SECTION_HEADER SectionHeader;
     PIMAGE_EXPORT_DIRECTORY ExportDirectory;
     PCSTR ImportName;
-    ULONG ForwarderChain, Rva, OldProtect, IatSize, ExportSize;
-    SIZE_T ImportSize;
+    ULONG ForwarderChain, Rva, IatSize, ExportSize;
 
     DPRINT("LdrpSnapIAT(%wZ %wZ %p %u)\n", &ExportLdrEntry->BaseDllName,
 	   &ImportLdrEntry->BaseDllName, IatEntry, EntriesValid);
@@ -938,7 +934,6 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 				       TRUE,
 				       IMAGE_DIRECTORY_ENTRY_IAT,
 				       &IatSize);
-    ImportSize = IatSize;
 
     /* Check if we don't have one */
     if (!Iat) {
@@ -986,9 +981,6 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 		     &ImportLdrEntry->BaseDllName, ImportLdrEntry->DllBase);
 	    return STATUS_INVALID_IMAGE_FORMAT;
 	}
-
-	/* Set the right size */
-	ImportSize = IatSize;
     }
 
     /* Check if the Thunks are already valid */
@@ -1015,16 +1007,17 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	    ForwarderChain = (ULONG) FirstThunk->u1.Ordinal;
 
 	    /* Snap the thunk */
-	    Status = LdrpSnapThunk(ExportLdrEntry->DllBase,
-				   ImportLdrEntry->DllBase,
-				   OriginalThunk,
-				   FirstThunk,
-				   ExportDirectory,
-				   ExportSize, TRUE, ImportName);
+	    NTSTATUS Status = LdrpSnapThunk(ExportLdrEntry->DllBase,
+					    ImportLdrEntry->DllBase,
+					    OriginalThunk,
+					    FirstThunk,
+					    ExportDirectory,
+					    ExportSize, TRUE, ImportName);
 
 	    /* If we messed up, exit */
-	    if (!NT_SUCCESS(Status))
-		break;
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
 
 	    /* Move to the next thunk */
 	    FirstThunk++;
@@ -1052,16 +1045,17 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	/* Loop while it's valid */
 	while (OriginalThunk->u1.AddressOfData) {
 	    /* Snap the Thunk */
-	    Status = LdrpSnapThunk(ExportLdrEntry->DllBase,
-				   ImportLdrEntry->DllBase,
-				   OriginalThunk,
-				   FirstThunk,
-				   ExportDirectory,
-				   ExportSize, TRUE, ImportName);
+	    NTSTATUS Status = LdrpSnapThunk(ExportLdrEntry->DllBase,
+					    ImportLdrEntry->DllBase,
+					    OriginalThunk,
+					    FirstThunk,
+					    ExportDirectory,
+					    ExportSize, TRUE, ImportName);
 
-	    /* If we failed the snap, break out */
-	    if (!NT_SUCCESS(Status))
-		break;
+	    /* If we failed the snap, return */
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
 
 	    /* Next thunks */
 	    OriginalThunk++;
@@ -1069,8 +1063,7 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	}
     }
 
-    /* Return to Caller */
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,

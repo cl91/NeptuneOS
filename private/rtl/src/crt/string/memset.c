@@ -1,10 +1,6 @@
 
 #include <string.h>
 
-#ifdef _MSC_VER
-#pragma function(memset)
-#endif /* _MSC_VER */
-
 #pragma weak memset
 
 void* __cdecl memset(void* src, int val, size_t count)

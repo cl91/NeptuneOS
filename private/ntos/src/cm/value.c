@@ -252,6 +252,10 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 	DPRINT1("Caller requested unknown class: %d\n", InfoClass);
 	return STATUS_INVALID_PARAMETER;
     }
+
+    if (pResultLength) {
+	*pResultLength = ResultLength;
+    }
     return STATUS_SUCCESS;
 }
 

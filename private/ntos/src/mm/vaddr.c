@@ -1,15 +1,8 @@
-/* Routines for virtual address space management */
+/*
+ * Routines for virtual address space management
+ */
 
 #include "mi.h"
-
-/* Change this to 0 to enable debug tracing */
-#if 1
-#undef DbgTrace
-#define DbgTrace(...)
-#define DbgPrint(...)
-#else
-#include <dbgtrace.h>
-#endif
 
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
 			IN PPAGING_STRUCTURE RootPagingStructure)
@@ -1006,12 +999,12 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
 	     Process->ImageFile ? Process->ImageFile->FileName : "",
 	     TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
     PVOID MappedSourceBuffer = NULL;
-    NTSTATUS Status = STATUS_INTERNAL_ERROR;
+    PVOID MappedTargetBuffer = NULL;
+    NTSTATUS Status;
     IF_ERR_GOTO(out, Status,
 		MmMapUserBuffer(&Thread->Process->VSpace, (MWORD)Buffer,
 				NumberOfBytesToWrite, &MappedSourceBuffer));
     assert(MappedSourceBuffer != NULL);
-    PVOID MappedTargetBuffer = NULL;
     IF_ERR_GOTO(out, Status,
 		MmMapUserBuffer(TargetVSpace, (MWORD)BaseAddress,
 				NumberOfBytesToWrite, &MappedTargetBuffer));

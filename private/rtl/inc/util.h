@@ -116,7 +116,13 @@ VOID KeDbgDumpIPCError(IN int Error);
 #define KeDbgDumpIPCError(x)
 #endif	/* DEBUG */
 
-#include "dbgtrace.h"
+#if defined(_NTOSKRNL_) || defined(_NTDLL_)
+extern PCSTR RtlpDbgTraceModuleName;
+#else
+extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;
+#endif
+
+#define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RtlpDbgTraceModuleName, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
 
 static inline VOID RtlDbgPrintIndentation(IN LONG Indentation)
 {

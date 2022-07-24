@@ -107,8 +107,10 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     assert(Thread != NULL);
 
     PUNTYPED TcbUntyped = NULL;
-    NTSTATUS Status = STATUS_SUCCESS;
+    PMMVAD IpcBufferVad = NULL;
+    PMMVAD StackVad = NULL;
 
+    NTSTATUS Status;
     IF_ERR_GOTO(Fail, Status, MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
     Thread->TreeNode.CSpace = &MiNtosCNode;
     assert(TcbUntyped->TreeNode.CSpace == &MiNtosCNode);
@@ -125,7 +127,6 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     Thread->DebugName = DebugName;
     Thread->EntryPoint = EntryPoint;
 
-    PMMVAD IpcBufferVad = NULL;
     IF_ERR_GOTO(Fail, Status,
 		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
 				       SYSTEM_THREAD_IPC_RESERVE, MEM_RESERVE_OWNED_MEMORY,
@@ -144,7 +145,6 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 						 IpcBufferPage));
     Thread->IpcBuffer = (PVOID)IpcBufferVad->AvlNode.Key;
 
-    PMMVAD StackVad = NULL;
     IF_ERR_GOTO(Fail, Status,
 		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
 				       SYSTEM_THREAD_STACK_RESERVE, MEM_RESERVE_OWNED_MEMORY,
@@ -542,6 +542,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     DllPath[sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1] = '\\';
     memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
 
+    PSECTION DllSection = NULL;
     NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE,
 					      NULL, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
@@ -550,7 +551,6 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     }
     assert(*DllFile != NULL);
 
-    PSECTION DllSection = NULL;
     Status = MmCreateSection(*DllFile, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			     &DllSection);
     if (!NT_SUCCESS(Status)) {
@@ -577,7 +577,7 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
 
     return STATUS_SUCCESS;
 
- fail:
+fail:
     PspFreePool(DllPath);
     if (DllSection != NULL) {
 	ObDereferenceObject(DllSection);

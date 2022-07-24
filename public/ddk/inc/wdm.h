@@ -1606,3 +1606,17 @@ NTAPI NTSYSAPI NTSTATUS IoQueryDeviceDescription(IN OPTIONAL PINTERFACE_TYPE Bus
 						 IN OPTIONAL PULONG PeripheralNumber,
 						 IN PIO_QUERY_DEVICE_ROUTINE CalloutRoutine,
 						 IN OUT OPTIONAL PVOID Context);
+
+typedef struct _CONFIGURATION_INFORMATION {
+    ULONG DiskCount;
+    ULONG FloppyCount;
+    ULONG CdRomCount;
+    ULONG TapeCount;
+    ULONG ScsiPortCount;
+    ULONG SerialCount;
+    ULONG ParallelCount;
+    BOOLEAN AtDiskPrimaryAddressClaimed;
+    BOOLEAN AtDiskSecondaryAddressClaimed;
+    ULONG Version;
+    ULONG MediumChangerCount;
+} CONFIGURATION_INFORMATION, *PCONFIGURATION_INFORMATION;

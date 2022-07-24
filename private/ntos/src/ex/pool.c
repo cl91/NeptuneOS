@@ -1,11 +1,7 @@
-#include "ei.h"
+/* Comment this to enable debug tracing */
+#define NDEBUG
 
-/* Change this to 1 to enable more debugging logs */
-#if 0
-#define EiDbgTracePool(...)	DbgTrace(__VA_ARGS__)
-#else
-#define EiDbgTracePool(...)
-#endif
+#include "ei.h"
 
 /* Returns Ceil(x/y) for unsigned integers x and y */
 #define RtlDivCeilUnsigned(x,y)	(((x)+(y)-1)/(y))
@@ -105,6 +101,8 @@ static VOID EiDbgDumpPool()
     }
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wframe-address"
 static VOID EiAssertPool(IN PCSTR Expr,
 			 IN PCSTR File,
 			 IN ULONG Line)
@@ -129,6 +127,7 @@ static VOID EiAssertPool(IN PCSTR Expr,
 		  __builtin_return_address(3),
 		  __builtin_return_address(4));
 }
+#pragma GCC diagnostic pop
 
 /* Add the free page to the FreeLists */
 static inline VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
@@ -136,8 +135,8 @@ static inline VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
 					IN USHORT PreviousSize,
 					IN USHORT BlockSize)
 {
-    EiDbgTracePool("Adding free space %p PS %d BS %d to pool\n", (PVOID)Addr,
-		   PreviousSize, BlockSize);
+    DbgTrace("Adding free space %p PS %d BS %d to pool\n", (PVOID)Addr,
+	     PreviousSize, BlockSize);
     /* Make sure PoolHeader->Used is not set. */
     assert(*((PPVOID)Addr) == 0);
     PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) Addr;
@@ -248,12 +247,12 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN MWORD NumberOfBytes,
 				   IN ULONG Tag)
 {
-    EiDbgTracePool("Trying to allocate %zd bytes tag %c%c%c%c\n",
-		   NumberOfBytes,
-		   EX_POOL_GET_TAG0(Tag),
-		   EX_POOL_GET_TAG1(Tag),
-		   EX_POOL_GET_TAG2(Tag),
-		   EX_POOL_GET_TAG3(Tag));
+    DbgTrace("Trying to allocate %zd bytes tag %c%c%c%c\n",
+	     NumberOfBytes,
+	     EX_POOL_GET_TAG0(Tag),
+	     EX_POOL_GET_TAG1(Tag),
+	     EX_POOL_GET_TAG2(Tag),
+	     EX_POOL_GET_TAG3(Tag));
     if (NumberOfBytes == 0) {
 	return NULL;
     }
@@ -293,9 +292,9 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     PLIST_ENTRY FreeEntry = Pool->FreeLists[FreeListIndex].Flink;
     MWORD BlockStart = (MWORD) FreeEntry;
     PEX_POOL_HEADER PoolHeader = EX_POOL_BLOCK_TO_HEADER(BlockStart);
-    EiDbgTracePool("PoolHeader %p PS %d BS %d USED %s\n", PoolHeader,
-		   PoolHeader->PreviousSize, PoolHeader->BlockSize,
-		   PoolHeader->Used ? "TRUE" : "FALSE");
+    DbgTrace("PoolHeader %p PS %d BS %d USED %s\n", PoolHeader,
+	     PoolHeader->PreviousSize, PoolHeader->BlockSize,
+	     PoolHeader->Used ? "TRUE" : "FALSE");
     assert(!PoolHeader->Used);
     RemoveEntryList(FreeEntry);
     InvalidateListEntry(FreeEntry);
@@ -321,22 +320,22 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
      * someone is still accessing this data after it has been freed. */
     for (ULONG i = 0; i < NumberOfBytes; i++) {
 	if (((PCHAR)BlockStart)[i]) {
-	    EiDbgTracePool("block start %p block size %d tag %c%c%c%c addr %p "
-			   "data 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
-			   (PVOID)BlockStart, PoolHeader->BlockSize,
-			   EX_POOL_GET_TAG0(Tag),
-			   EX_POOL_GET_TAG1(Tag),
-			   EX_POOL_GET_TAG2(Tag),
-			   EX_POOL_GET_TAG3(Tag),
-			   &((PCHAR)BlockStart)[i],
-			   ((PUCHAR)BlockStart)[i],
-			   ((PUCHAR)BlockStart)[i+1],
-			   ((PUCHAR)BlockStart)[i+2],
-			   ((PUCHAR)BlockStart)[i+3],
-			   ((PUCHAR)BlockStart)[i+4],
-			   ((PUCHAR)BlockStart)[i+5],
-			   ((PUCHAR)BlockStart)[i+6],
-			   ((PUCHAR)BlockStart)[i+7]);
+	    DbgTrace("block start %p block size %d tag %c%c%c%c addr %p "
+		     "data 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+		     (PVOID)BlockStart, PoolHeader->BlockSize,
+		     EX_POOL_GET_TAG0(Tag),
+		     EX_POOL_GET_TAG1(Tag),
+		     EX_POOL_GET_TAG2(Tag),
+		     EX_POOL_GET_TAG3(Tag),
+		     &((PCHAR)BlockStart)[i],
+		     ((PUCHAR)BlockStart)[i],
+		     ((PUCHAR)BlockStart)[i+1],
+		     ((PUCHAR)BlockStart)[i+2],
+		     ((PUCHAR)BlockStart)[i+3],
+		     ((PUCHAR)BlockStart)[i+4],
+		     ((PUCHAR)BlockStart)[i+5],
+		     ((PUCHAR)BlockStart)[i+6],
+		     ((PUCHAR)BlockStart)[i+7]);
 	}
 	assert(((PCHAR)BlockStart)[i] == 0);
     }
@@ -344,8 +343,8 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     /* On release build we simply clean the memory */
     memset((PVOID)BlockStart, 0, NumberOfBytes);
 #endif
-    EiDbgTracePool("Allocated block start %p PS %d BS %d\n",
-		   (PVOID)BlockStart, PoolHeader->PreviousSize, PoolHeader->BlockSize);
+    DbgTrace("Allocated block start %p PS %d BS %d\n",
+	     (PVOID)BlockStart, PoolHeader->PreviousSize, PoolHeader->BlockSize);
     return (PVOID) BlockStart;
 }
 
@@ -363,31 +362,31 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 {
     assert(Pool != NULL);
     assert(Ptr != NULL);
-    EiDbgTracePool("Freeing %p tag %c%c%c%c\n", Ptr,
-		   EX_POOL_GET_TAG0(Tag),
-		   EX_POOL_GET_TAG1(Tag),
-		   EX_POOL_GET_TAG2(Tag),
-		   EX_POOL_GET_TAG3(Tag));
+    DbgTrace("Freeing %p tag %c%c%c%c\n", Ptr,
+	     EX_POOL_GET_TAG0(Tag),
+	     EX_POOL_GET_TAG1(Tag),
+	     EX_POOL_GET_TAG2(Tag),
+	     EX_POOL_GET_TAG3(Tag));
     PEX_POOL_HEADER Header = EX_POOL_BLOCK_TO_HEADER(Ptr);
     assert(Header->Used);
     /* Check if tag is correct */
     assert(Header->Tag == Tag);
-    EiDbgTracePool("Header %p PS %d BS %d\n", Header, Header->PreviousSize, Header->BlockSize);
+    DbgTrace("Header %p PS %d BS %d\n", Header, Header->PreviousSize, Header->BlockSize);
     PEX_POOL_HEADER Prev = EiGetPrevPoolHeader(Header);
-    EiDbgTracePool("Prev %p PS %d BS %d\n", Prev, Prev ? Prev->PreviousSize : 0,
-		   Prev ? Prev->BlockSize : 0);
+    DbgTrace("Prev %p PS %d BS %d\n", Prev, Prev ? Prev->PreviousSize : 0,
+	     Prev ? Prev->BlockSize : 0);
     PEX_POOL_HEADER Next = EiGetNextPoolHeader(Header);
-    EiDbgTracePool("Next %p PS %d BS %d\n", Next, Next ? Next->PreviousSize : 0,
-		   Next ? Next->BlockSize : 0);
+    DbgTrace("Next %p PS %d BS %d\n", Next, Next ? Next->PreviousSize : 0,
+	     Next ? Next->BlockSize : 0);
     /* We also need to update the next block after Next in the case where we merge
      * the current free block with Next. */
     PEX_POOL_HEADER NextNext = Next ? EiGetNextPoolHeader(Next) : NULL;
-    EiDbgTracePool("NextNext %p PS %d BS %d\n", NextNext,
-		   NextNext ? NextNext->PreviousSize : 0,
-		   NextNext ? NextNext->BlockSize : 0);
+    DbgTrace("NextNext %p PS %d BS %d\n", NextNext,
+	     NextNext ? NextNext->PreviousSize : 0,
+	     NextNext ? NextNext->BlockSize : 0);
     /* If the previous block is free, merge it with the current block */
     if (Prev != NULL && !Prev->Used) {
-	EiDbgTracePool("Merging with Prev\n");
+	DbgTrace("Merging with Prev\n");
 	RemoveEntryList(&EX_POOL_HEADER_TO_BLOCK(Prev)->FreeListEntry);
 	Prev->BlockSize += 1 + Header->BlockSize;
 	Header = Prev;
@@ -397,7 +396,7 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
     }
     /* If the next block is free, merge it with the current block */
     if (Next != NULL && !Next->Used) {
-	EiDbgTracePool("Merging with Next\n");
+	DbgTrace("Merging with Next\n");
 	RemoveEntryList(&EX_POOL_HEADER_TO_BLOCK(Next)->FreeListEntry);
 	Header->BlockSize += 1 + Next->BlockSize;
 	if (NextNext != NULL) {
@@ -405,20 +404,20 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 	}
     }
     /* Clear the memory of the block */
-    EiDbgTracePool("clearing memory %p size 0x%llx\n", EX_POOL_HEADER_TO_BLOCK(Header),
-		   Header->BlockSize * EX_POOL_SMALLEST_BLOCK);
+    DbgTrace("clearing memory %p size 0x%llx\n", EX_POOL_HEADER_TO_BLOCK(Header),
+	     Header->BlockSize * EX_POOL_SMALLEST_BLOCK);
     memset(EX_POOL_HEADER_TO_BLOCK(Header), 0, Header->BlockSize * EX_POOL_SMALLEST_BLOCK);
     /* Insert the block to the free list */
     Header->Used = FALSE;
     PLIST_ENTRY FreeEntry = &EX_POOL_HEADER_TO_BLOCK(Header)->FreeListEntry;
     assert(Header->BlockSize <= EX_POOL_FREE_LISTS);
     InsertHeadList(&Pool->FreeLists[Header->BlockSize - 1], FreeEntry);
-    EiDbgTracePool("Prev %p PS %d BS %d Header %p PS %d BS %d Next %p PS %d BS %d NextNext %p PS %d BS %d\n",
-		   Prev, Prev ? Prev->PreviousSize : 0, Prev ? Prev->BlockSize : 0,
-		   Header, Header ? Header->PreviousSize : 0, Header ? Header->BlockSize : 0,
-		   Next, Next ? Next->PreviousSize : 0, Next ? Next->BlockSize : 0,
-		   NextNext, NextNext ? NextNext->PreviousSize : 0,
-		   NextNext ? NextNext->BlockSize : 0);
+    DbgTrace("Prev %p PS %d BS %d Header %p PS %d BS %d Next %p PS %d BS %d NextNext %p PS %d BS %d\n",
+	     Prev, Prev ? Prev->PreviousSize : 0, Prev ? Prev->BlockSize : 0,
+	     Header, Header ? Header->PreviousSize : 0, Header ? Header->BlockSize : 0,
+	     Next, Next ? Next->PreviousSize : 0, Next ? Next->BlockSize : 0,
+	     NextNext, NextNext ? NextNext->PreviousSize : 0,
+	     NextNext ? NextNext->BlockSize : 0);
 }
 
 /*

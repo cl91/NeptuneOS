@@ -8,25 +8,13 @@
  *   TAOCP Section 6.2.3 Balanced Trees
  */
 
-#include <ntos.h>
-#include <assert.h>
 #include "mi.h"
 
-/* Change this to 0 to enable debug tracing */
-#if 1
-#undef DbgTrace
-#define DbgTrace(...)
-#define DbgPrint(...)
-#else
-#include <dbgtrace.h>
-#endif
-
-#define AVLTRACE(...)	DbgTrace(__VA_ARGS__)
 #define PRINTNODE(Node)							\
     if (Node) {								\
-	AVLTRACE(#Node " (%p) key is %p\n", Node, (PVOID)Node->Key);	\
+	DbgTrace(#Node " (%p) key is %p\n", Node, (PVOID)Node->Key);	\
     } else {								\
-	AVLTRACE(#Node " is (nil)\n");					\
+	DbgTrace(#Node " is (nil)\n");					\
     }
 
 typedef enum _AVL_NODE_BALANCE {
@@ -619,7 +607,8 @@ static void MiAvlTreePrintTree(PMM_AVL_NODE Root,
 	c = '|';
     } else if (MiAvlGetBalance(Root) == LEFT_HEAVY) {
 	c = '-';
-    } else if (MiAvlGetBalance(Root) == RIGHT_HEAVY) {
+    } else {
+	assert(MiAvlGetBalance(Root) == RIGHT_HEAVY);
 	c = '+';
     }
     DbgPrint("%05zx%c\n", Root->Key >> PAGE_LOG2SIZE, c);

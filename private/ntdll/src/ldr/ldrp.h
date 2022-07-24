@@ -1,12 +1,9 @@
 #pragma once
 
-#include <ntdll.h>
+/* Comment this to enable debug tracing */
+#define NDEBUG
 
-/* Change this to 0 to enable debug tracing */
-#if 1
-#undef DbgTrace
-#define DbgTrace(...)
-#endif
+#include <ntdll.h>
 
 #define LDRP_HASH_TABLE_ENTRIES 32
 #define LDRP_GET_HASH_ENTRY(x) (RtlpHashString((x)) & (LDRP_HASH_TABLE_ENTRIES - 1))

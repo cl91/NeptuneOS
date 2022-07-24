@@ -219,7 +219,6 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
 {
     seL4_SlotRegion slots = bootinfo->userImageFrames;
-    char buf[64];
 
     DbgPrint("Initial root task user image frames:\n"
 	     "    frame cap = [%zd, %zd] ([0x%zx, 0x%zx]) paddr = [%p, %p]\n",

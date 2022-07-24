@@ -215,8 +215,6 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
      */
     MWORD PreviousSectionEnd = ALIGN_UP_BY(AllHeadersSize, SectionAlignment);
     for (ULONG i = 0; i < NtHeader->FileHeader.NumberOfSections; i++) {
-        ULONG Characteristics;
-
         /* Validate alignment */
         if (!IS_ALIGNED_BY(SectionHeaders[i].VirtualAddress, SectionAlignment)) {
             DIE("Section %u VirtualAddress is not aligned\n", i);
@@ -361,7 +359,6 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     PSECTION_OBJ_CREATE_CONTEXT Ctx = (PSECTION_OBJ_CREATE_CONTEXT)CreaCtx;
     PIO_FILE_OBJECT FileObject = Ctx->FileObject;
     ULONG Attributes = Ctx->Attributes;
-    ULONG PageProtection = Ctx->PageProtection;
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
     MmAvlInitializeNode(&Section->BasedSectionNode, 0);

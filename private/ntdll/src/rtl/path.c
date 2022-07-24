@@ -437,12 +437,10 @@ static SIZE_T RtlpSkipUNCPrefix(PCWSTR FileNameBuffer)
     return (UncPath - FileNameBuffer);
 }
 
-static NTSTATUS RtlpApplyLengthFunction(IN ULONG Flags,
-					IN ULONG Type,
-					IN PVOID UnicodeStringOrUnicodeStringBuffer,
-					IN NTSTATUS(NTAPI *LengthFunction)(ULONG,
-									   PUNICODE_STRING,
-									   PULONG))
+NTAPI NTSTATUS RtlpApplyLengthFunction(IN ULONG Flags,
+				       IN ULONG Type,
+				       IN PVOID UnicodeStringOrUnicodeStringBuffer,
+				       IN NTSTATUS (NTAPI *LengthFunction)(ULONG, PUNICODE_STRING, PULONG))
 {
     NTSTATUS Status;
     PUNICODE_STRING String;

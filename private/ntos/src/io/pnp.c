@@ -231,6 +231,9 @@ static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
 
     /* Query the device enum key to find the driver service to load */
     NTSTATUS Status = STATUS_SUCCESS;
+    /* ClassKey and EnumKey must be declared before the first goto statement
+     * otherwise they would not be correctly initialized (because goto skips them). */
+    POBJECT ClassKey = NULL;
     POBJECT EnumKey = NULL;
     CHAR EnumKeyPath[256];
     snprintf(EnumKeyPath, sizeof(EnumKeyPath), REG_ENUM_KEY "\\%s\\%s",
@@ -259,7 +262,6 @@ static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
     PCSTR ClassGuid = IopGetRegSz(EnumKey, "ClassGUID");
     PCSTR ClassUpperFilterNames = NULL;
     PCSTR ClassLowerFilterNames = NULL;
-    POBJECT ClassKey = NULL;
     if (ClassGuid != NULL) {
 	CHAR ClassKeyPath[256];
 	snprintf(ClassKeyPath, sizeof(ClassKeyPath), REG_CLASS_KEY "\\%s",

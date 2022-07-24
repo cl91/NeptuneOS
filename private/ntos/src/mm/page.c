@@ -805,7 +805,6 @@ NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 	     OwnerVSpace->VSpaceCap, (PVOID) ViewerStartAddr,
 	     (PVOID) (ViewerStartAddr + WindowSize), ViewerVSpace->VSpaceCap);
 
-    MWORD RemainingSize = WindowSize;
     MWORD Offset = 0;
     while (Offset < WindowSize) {
 	PPAGING_STRUCTURE NewPage = NULL;

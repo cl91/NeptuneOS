@@ -14,11 +14,13 @@
 
 #pragma once
 
+#include <stdarg.h>
 #include <dpfilter.h>
 
 #ifdef _NTOSKRNL_
 
-#if defined(DBG) || defined(_DEBUG) || defined(DEBUG)
+#if (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) && !defined(NDEBUG)
+
 __cdecl ULONG DbgPrint(PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
 
 __cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
@@ -30,10 +32,28 @@ NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
 			      IN PVOID FileName,
 			      IN ULONG LineNumber,
 			      IN OPTIONAL PCHAR Message);
+
 #else
-#define DbgPrint(...)
-#define DbgPrintEx(...)
-#define RtlAssert(...)
+
+FORCEINLINE ULONG DbgPrint(IN PCSTR Format, ...)
+{
+    return 0;
+}
+
+FORCEINLINE ULONG DbgPrintEx(IN ULONG ComponentId,
+			     IN ULONG Level,
+			     IN PCSTR Format, ...)
+{
+    return 0;
+}
+
+FORCEINLINE VOID RtlAssert(IN PVOID FailedAssertion,
+			   IN PVOID FileName,
+			   IN ULONG LineNumber,
+			   IN OPTIONAL PCHAR Message)
+{
+}
+
 #endif	/* DEBUG */
 
 #endif /* _NTOSKRNL_ */

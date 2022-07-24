@@ -226,6 +226,8 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
      * to be a reliable way to turn this off under Clang/LLVM, so
      * we instead make use of the compiler builtins.
      */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wframe-address"
     CONTEXT LocalContext = {
 	.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL,
 	.Eax = (ULONG)ReturnValue,
@@ -234,6 +236,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	.Esp = (ULONG)_AddressOfReturnAddress() + sizeof(PVOID) + sizeof(TargetFrame) +
 	       sizeof(TargetIp) + sizeof(ExceptionRecord) + sizeof(ReturnValue)
     };
+#pragma GCC diagnostic pop
 
     /* Get the current frame */
     PEXCEPTION_REGISTRATION_RECORD RegistrationFrame = RtlpGetExceptionList();
