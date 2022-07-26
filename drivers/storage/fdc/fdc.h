@@ -37,7 +37,7 @@
  *       Created by parent bus driver as  |              |----------------|
  *       a result of QueryBusRelations    |<-------------| Parent bus FDO |
  *                                                       |----------------|
- *                  
+ *
  *
  * When the system starts up (or whenever the user asks the PnP manager
  * to enumerate the PnP devices present in the system) the parent bus
@@ -74,7 +74,7 @@
  * class driver, and expose \Device\Floppyn for each enumerated drive.
 
  * The code is adapted from storage\floppy\fdc and storage\floppy\floppy
- * (at least at the time of writing) in the ReactOS source tree.
+ * in the ReactOS source tree.
  *
  * [0] https://wiki.osdev.org/Floppy_Disk_Controller
  */

@@ -45,8 +45,6 @@ DRIVER_DISPATCH BeepCreate;
 NTAPI NTSTATUS BeepCreate(IN PDEVICE_OBJECT DeviceObject,
 			  IN PIRP Irp)
 {
-    PDEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-
     /* Complete the request */
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;

@@ -71,7 +71,6 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 			    IN PIRP Irp)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    PFILE_OBJECT FileObject = IoStack->FileObject;
 
     /* Get the file object and check what kind of request this is */
     switch (IoStack->MajorFunction) {

@@ -225,6 +225,17 @@ NTSTATUS NtEnumerateKey(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
+NTSTATUS NtQueryKey(IN ASYNC_STATE AsyncState,
+                    IN PTHREAD Thread,
+                    IN HANDLE KeyHandle,
+                    IN KEY_INFORMATION_CLASS KeyInformationClass,
+                    IN PVOID InformationBuffer,
+                    IN ULONG BufferSize,
+                    OUT ULONG *ResultLength)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
                      IN PTHREAD Thread,
                      IN HANDLE KeyHandle)

@@ -237,8 +237,6 @@ static NTAPI VOID i8042MouDpcRoutine(IN PKDPC Dpc,
 				     IN PVOID SystemArgument2)
 {
     PI8042_MOUSE_EXTENSION DeviceExtension;
-    PPORT_DEVICE_EXTENSION PortDeviceExtension;
-    KIRQL Irql;
     LARGE_INTEGER Timeout;
 
     UNREFERENCED_PARAMETER(Dpc);
@@ -247,7 +245,6 @@ static NTAPI VOID i8042MouDpcRoutine(IN PKDPC Dpc,
 
     __analysis_assume(DeferredContext != NULL);
     DeviceExtension = DeferredContext;
-    PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
 
     switch (DeviceExtension->MouseTimeoutState) {
     case TimeoutStart:

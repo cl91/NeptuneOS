@@ -32,8 +32,9 @@
 @ stdcall NtSetValueKey(ptr ptr long long ptr long)
 @ stdcall NtSetValueKeyA(ptr ptr long long ptr long)
 @ stdcall NtDeleteValueKey(long ptr)
-@ stdcall NtEnumerateKey (long long long long long long)
+@ stdcall NtEnumerateKey(long long long long long long)
 @ stdcall NtEnumerateValueKey(long long long long long long)
+@ stdcall NtQueryKey(long long ptr long ptr)
 @ stdcall NtPlugPlayInitialize()
 @ stdcall NtPlugPlayControl(ptr ptr long)
 @ stdcall NtTestAlert()
@@ -75,6 +76,7 @@
 @ stdcall RtlDuplicateUnicodeString(long ptr ptr)
 @ stdcall RtlCopyUnicodeString(ptr ptr)
 @ stdcall RtlAppendUnicodeToString(ptr wstr)
+@ stdcall RtlIntegerToUnicodeString(long long ptr)
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)
 @ stdcall RtlUnicodeToUTF8N(ptr long ptr ptr long)
 @ stdcall RtlAnsiStringToUnicodeString(ptr ptr long)
@@ -107,6 +109,7 @@
 @ cdecl wcsncpy_s(wstr long wstr long)
 @ cdecl wcscat_s(wstr long wstr)
 @ cdecl wcsncat_s(wstr long wstr long)
+@ cdecl wcsncmp(wstr wstr long)
 @ cdecl _strnicmp(str str long)
 @ cdecl _vsnprintf(ptr long str ptr) vsnprintf
 @ varargs _snprintf(ptr long str) snprintf

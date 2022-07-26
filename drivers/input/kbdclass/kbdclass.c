@@ -70,7 +70,6 @@ static DRIVER_DISPATCH ClassRead;
 static DRIVER_DISPATCH ClassDeviceControl;
 static DRIVER_DISPATCH ClassPower;
 static DRIVER_ADD_DEVICE ClassAddDevice;
-static DRIVER_STARTIO ClassStartIo;
 
 static NTAPI VOID DriverUnload(IN PDRIVER_OBJECT DriverObject)
 {
@@ -469,8 +468,6 @@ static NTSTATUS ConnectPortDriver(IN PDEVICE_OBJECT PortDO,
 /* Send IOCTL_INTERNAL_*_DISCONNECT to port + destroy the Port DO */
 static VOID DestroyPortDriver(IN PDEVICE_OBJECT PortDO)
 {
-    NTSTATUS Status;
-
     TRACE_(CLASS_NAME, "Destroying PortDO %p\n", PortDO);
 
     PPORT_DEVICE_EXTENSION DeviceExtension = (PPORT_DEVICE_EXTENSION)PortDO->DeviceExtension;
@@ -484,7 +481,7 @@ static VOID DestroyPortDriver(IN PDEVICE_OBJECT PortDO)
 					     PortDO, NULL, 0, NULL, 0, TRUE,
 					     &IoStatus);
     if (Irp) {
-	Status = IoCallDriver(PortDO, Irp);
+	IoCallDriver(PortDO, Irp);
     }
 
     /* Remove from ClassDeviceExtension->PortDeviceList list */

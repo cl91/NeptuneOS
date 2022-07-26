@@ -13,9 +13,8 @@
 NTSTATUS CreateNativeProcess(IN PCWSTR file_name, IN PCWSTR cmd_line,
 			     OUT PHANDLE hProcess)
 {
-    UNICODE_STRING fname, nt_file;
+    UNICODE_STRING nt_file;
     PCWSTR file_part;
-    UNICODE_STRING EnvString, NullString, UnicodeSystemDriveString;
     NTSTATUS status;		// Status
     UNICODE_STRING imgname;	// ImageName
     UNICODE_STRING imgpath;	// Nt ImagePath

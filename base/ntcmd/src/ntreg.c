@@ -24,7 +24,6 @@ BOOLEAN NtRegOpenKey(HANDLE *phKey,
 		     ACCESS_MASK DesiredAccess)
 {
     NTSTATUS nRet = 0;
-    HANDLE hReg = 0;
     UNICODE_STRING ustrKeyName;
     WCHAR wszKeyName[4096] = { 0, };
     WCHAR *pwszRootKey = NULL;
@@ -169,7 +168,6 @@ BOOLEAN NtRegCloseKey(HANDLE hKey)
 
 void NtEnumKey(HANDLE hKey)
 {
-    NTSTATUS nRet = 0;
     char buf[BUFFER_SIZE];
     PKEY_VALUE_BASIC_INFORMATION pbi;
     PKEY_NODE_INFORMATION pki;

@@ -16,6 +16,7 @@
 /* MACROS *******************************************************************/
 
 #define TAG_IO_RESOURCE        'CRSR'
+#define DEVICE_DESCRIPTION_KEY L"\\REGISTRY\\MACHINE\\HARDWARE\\DESCRIPTION\\SYSTEM"
 
 /* GLOBALS *******************************************************************/
 
@@ -103,7 +104,10 @@ static NTSTATUS IopAppendIntegerSubKey(OUT PUNICODE_STRING String,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopAppendArcTypeSubKey(IN PUNICODE_STRING String,
+/*
+ * Append "\\ArcType[Type]" for the specified configuration type
+ */
+static NTSTATUS IopAppendArcTypeSubKey(OUT PUNICODE_STRING String,
 				       IN CONFIGURATION_TYPE Type)
 {
     assert(Type < ARRAYSIZE(ArcTypes));
@@ -113,28 +117,32 @@ static NTSTATUS IopAppendArcTypeSubKey(IN PUNICODE_STRING String,
 }
 
 /*
+ * Open the specified registry key
+ */
+static inline NTSTATUS IopOpenKey(IN UNICODE_STRING Key,
+				  OUT HANDLE *KeyHandle)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, &Key,
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+    return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
+}
+
+/*
  * Query the registry and find out how many subkeys the given key has
  */
-static NTSTATUS IopGetSubKeyCount(IN PUNICODE_STRING Key,
+static NTSTATUS IopGetSubKeyCount(IN UNICODE_STRING Key,
 				  OUT ULONG *SubKeyCount)
 {
-    assert(Key != NULL);
     assert(SubKeyCount != NULL);
 
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    InitializeObjectAttributes(&ObjectAttributes, Key,
-			       OBJ_CASE_INSENSITIVE, NULL, NULL);
-
     HANDLE KeyHandle = NULL;
-    PKEY_FULL_INFORMATION FullInfo = NULL;
-    NTSTATUS Status = NtOpenKey(&KeyHandle, KEY_READ, &ObjectAttributes);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
+    RET_ERR(IopOpenKey(Key, &KeyHandle));
 
     /* Find out how much buffer space we should allocate */
+    PKEY_FULL_INFORMATION FullInfo = NULL;
     ULONG LenFullInfo = 0;
-    Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, 0, &LenFullInfo);
+    NTSTATUS Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, 0, &LenFullInfo);
     if (!NT_SUCCESS(Status) || LenFullInfo == 0) {
 	goto out;
     }
@@ -156,9 +164,8 @@ static NTSTATUS IopGetSubKeyCount(IN PUNICODE_STRING Key,
     *SubKeyCount= FullInfo->SubKeys;
 
 out:
-    if (KeyHandle != NULL) {
-	NtClose(KeyHandle);
-    }
+    assert(KeyHandle != NULL);
+    NtClose(KeyHandle);
     if (FullInfo != NULL) {
 	ExFreePoolWithTag(FullInfo, TAG_IO_RESOURCE);
     }
@@ -170,7 +177,7 @@ out:
  * use it. Otherwise, read the subkey count from the registry.
  */
 static NTSTATUS IopGetConfigurationCount(IN PULONG SpecifiedNumber,
-					 IN PUNICODE_STRING ConfigKey,
+					 IN UNICODE_STRING ConfigKey,
 					 OUT ULONG *Number,
 					 OUT ULONG *MaxNumber)
 {
@@ -184,48 +191,58 @@ static NTSTATUS IopGetConfigurationCount(IN PULONG SpecifiedNumber,
     return STATUS_SUCCESS;
 }
 
+static PWSTR ConfigurationValueNames[] = {
+    L"Identifier",
+    L"Configuration Data",
+    L"Component Information"
+};
+
+#define CONFIGURATION_DATA_IDX		1
+
+/*
+ * Free the configuration information allocated previously. Information must
+ * have exactly three elements. The Information array itself is not freed.
+ */
+static VOID IopFreeConfigurationInformation(IN PKEY_VALUE_FULL_INFORMATION *Information)
+{
+    for (ULONG i = 0; i < ARRAYSIZE(ConfigurationValueNames); i++) {
+	if (Information[i] != NULL) {
+	    ExFreePoolWithTag(Information[i], TAG_IO_RESOURCE);
+	}
+    }
+}
+
 /*
  * Read the configuration data for the given controller/peripheral.
  *
  * The Information array must have exactly three elements and must be zero initialized.
  */
-static NTSTATUS IopGetConfigurationData(IN PUNICODE_STRING RegKey,
-					OUT PKEY_VALUE_FULL_INFORMATION *Information)
+static NTSTATUS IopGetConfigurationInformation(IN UNICODE_STRING RegKey,
+					       OUT PKEY_VALUE_FULL_INFORMATION *Information)
 {
-    assert(RegKey != NULL);
     assert(Information != NULL);
     assert(Information[0] == NULL);
     assert(Information[1] == NULL);
     assert(Information[2] == NULL);
 
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    InitializeObjectAttributes(&ObjectAttributes, RegKey,
-			       OBJ_CASE_INSENSITIVE, NULL, NULL);
-
     HANDLE KeyHandle = NULL;
-    NTSTATUS Status = NtOpenKey(&KeyHandle, KEY_READ, &ObjectAttributes);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
-
-    PWSTR SubkeyNames[] = {
-	L"Identifier",
-	L"Configuration Data",
-	L"Component Information"
-    };
+    RET_ERR(IopOpenKey(RegKey, &KeyHandle));
+    assert(KeyHandle != NULL);
 
     /* Read the configuration data from registry */
-    for (ULONG i = 0; i < ARRAYSIZE(SubkeyNames); i++) {
-	UNICODE_STRING SubkeyString;
-	RtlInitUnicodeString(&SubkeyString, SubkeyNames[i]);
+    NTSTATUS Status = STATUS_SUCCESS;
+    for (ULONG i = 0; i < ARRAYSIZE(ConfigurationValueNames); i++) {
+	UNICODE_STRING ValueString;
+	RtlInitUnicodeString(&ValueString, ConfigurationValueNames[i]);
 
 	/* Find out how much buffer space we need */
 	ULONG BufferSize = 0;
-	Status = NtQueryValueKey(KeyHandle, &SubkeyString,
+	Status = NtQueryValueKey(KeyHandle, &ValueString,
 				 KeyValueFullInformation, NULL, 0,
 				 &BufferSize);
-	if (!NT_SUCCESS(Status)) {
-	    goto cleanup;
+	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL &&
+	    Status != STATUS_BUFFER_OVERFLOW) {
+	    goto out;
 	}
 	assert(BufferSize != 0);
 
@@ -234,11 +251,11 @@ static NTSTATUS IopGetConfigurationData(IN PUNICODE_STRING RegKey,
 					       TAG_IO_RESOURCE);
 	if (Information[i] == NULL) {
 	    Status = STATUS_NO_MEMORY;
-	    goto cleanup;
+	    goto out;
 	}
 
 	/* Get the configuration information */
-	Status = NtQueryValueKey(KeyHandle, &SubkeyString,
+	Status = NtQueryValueKey(KeyHandle, &ValueString,
 				 KeyValueFullInformation,
 				 Information[i],
 				 BufferSize,
@@ -248,25 +265,19 @@ static NTSTATUS IopGetConfigurationData(IN PUNICODE_STRING RegKey,
 	assert(Status != STATUS_BUFFER_TOO_SMALL);
 	assert(Status != STATUS_BUFFER_OVERFLOW);
 	if (!NT_SUCCESS(Status)) {
-	    goto cleanup;
+	    goto out;
 	}
     }
 
     /* If we got here, everything went well */
     Status = STATUS_SUCCESS;
-    goto out;
-
-cleanup:
-    for (ULONG i = 0; i < ARRAYSIZE(SubkeyNames); i++) {
-	if (Information[i] != NULL) {
-	    ExFreePoolWithTag(Information[i], TAG_IO_RESOURCE);
-	}
-    }
 
 out:
-    if (KeyHandle != NULL) {
-	NtClose(KeyHandle);
+    if (!NT_SUCCESS(Status)) {
+	IopFreeConfigurationInformation(Information);
     }
+    assert(KeyHandle != NULL);
+    NtClose(KeyHandle);
     return Status;
 }
 
@@ -280,7 +291,6 @@ out:
  * ARGUMENTS:
  *     Query          - What the parent function wants.
  *     RootKey        - Which key to look in
- *     RootKeyHandle  - Handle to the key
  *     Bus            - Bus Number.
  *     BusInformation - The Configuration Information Sent
  *
@@ -289,9 +299,8 @@ out:
  */
 static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 					  IN UNICODE_STRING RootKey,
-					  IN HANDLE RootKeyHandle,
 					  IN ULONG Bus,
-					  OUT PKEY_VALUE_FULL_INFORMATION *BusInformation)
+					  IN PKEY_VALUE_FULL_INFORMATION *BusInformation)
 {
     assert(Query != NULL);
     assert(Query->ControllerType != NULL);
@@ -305,7 +314,7 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
     ULONG ControllerNumber;
     ULONG MaximumControllerNumber;
     RET_ERR(IopGetConfigurationCount(Query->ControllerNumber,
-				     &ControllerRootKey,
+				     ControllerRootKey,
 				     &ControllerNumber,
 				     &MaximumControllerNumber));
 
@@ -316,10 +325,11 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 	RET_ERR(IopAppendIntegerSubKey(&RegKey, ControllerNumber));
 
 	PKEY_VALUE_FULL_INFORMATION ControllerInformation[] = { NULL, NULL, NULL };
-	RET_ERR(IopGetConfigurationData(&RegKey, ControllerInformation));
+	RET_ERR(IopGetConfigurationInformation(RegKey, ControllerInformation));
 
-	/* We now have Bus *AND* Controller Information. Is it enough? */
 	NTSTATUS Status = STATUS_SUCCESS;
+	/* We now have Bus and Controller Information. If caller did not
+	 * supply a peripheral type, call the callback routine and get out. */
 	if (!Query->PeripheralType || !(*Query->PeripheralType)) {
 	    Status = Query->CalloutRoutine(Query->Context,
 					   &RegKey,
@@ -335,7 +345,7 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 	    goto cleanup;
 	}
 
-	/* Not enough...caller also wants peripheral name */
+	/* Otherwise, continue querying the peripheral keys. */
 	IF_ERR_GOTO(cleanup, Status,
 		    IopAppendArcTypeSubKey(&RegKey, *Query->PeripheralType));
 
@@ -343,7 +353,7 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 	ULONG MaximumPeripheralNumber;
 	IF_ERR_GOTO(cleanup, Status,
 		    IopGetConfigurationCount(Query->PeripheralNumber,
-					     &RegKey, &PeripheralNumber,
+					     RegKey, &PeripheralNumber,
 					     &MaximumPeripheralNumber));
 
 	/* Loop through Peripherals */
@@ -356,8 +366,8 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 
 	    PKEY_VALUE_FULL_INFORMATION PeripheralInformation[3] = { NULL, NULL, NULL };
 	    IF_ERR_GOTO(cleanup, Status,
-			IopGetConfigurationData(&PeripheralKey,
-						PeripheralInformation));
+			IopGetConfigurationInformation(PeripheralKey,
+						       PeripheralInformation));
 
             /* We now have everything the caller could possibly want */
 	    Status = Query->CalloutRoutine(Query->Context,
@@ -372,14 +382,11 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 					   PeripheralNumber,
 					   PeripheralInformation);
 
-	    /* Cleanup the peripheral information */
-	    for (ULONG i = 0; i < ARRAYSIZE(PeripheralInformation); i++) {
-		if (PeripheralInformation[i] != NULL) {
-		    ExFreePoolWithTag(PeripheralInformation[i], TAG_IO_RESOURCE);
-		}
-	    }
+	    /* Cleanup the peripheral information, regardless of the return
+	     * status of the callout routine.  */
+	    IopFreeConfigurationInformation(PeripheralInformation);
 
-	    /* If callout routine returned error, we should clean up and return */
+	    /* If callout routine returned error, we should exit the loop */
 	    if (!NT_SUCCESS(Status)) {
 		goto cleanup;
 	    }
@@ -403,414 +410,178 @@ static NTSTATUS IopQueryDeviceDescription(IN PIO_QUERY Query,
 }
 
 /*
+ * Open the key and find out how many subkeys the specified registry key has,
+ * as well as the buffer space needed to hold the largest KEY_BASIC_INFORMATION
+ * for the subkeys. Note that KEY_BASIC_INFORMATION includes the key name.
+ */
+static NTSTATUS IopGetSubKeyInfo(IN UNICODE_STRING Key,
+				 OUT HANDLE *KeyHandle,
+				 OUT ULONG *SubKeyCount,
+				 OUT ULONG *SubKeyBufferSize)
+{
+    assert(KeyHandle != NULL);
+    assert(SubKeyCount != NULL);
+    assert(SubKeyBufferSize != NULL);
+
+    /* Open a handle to the registry key */
+    RET_ERR(IopOpenKey(Key, KeyHandle));
+    assert(*KeyHandle != NULL);
+
+    /* Query the key to find out the buffer size we need for KeyFullInformation */
+    ULONG LenFullInfo = 0;
+    NTSTATUS Status = NtQueryKey(*KeyHandle, KeyFullInformation, NULL, 0,
+				 &LenFullInfo);
+
+    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL &&
+	Status != STATUS_BUFFER_OVERFLOW) {
+	goto out;
+    }
+    assert(LenFullInfo != 0);
+
+    /* Allocate the buffer */
+    PKEY_FULL_INFORMATION FullInfo = ExAllocatePoolWithTag(LenFullInfo,
+							   TAG_IO_RESOURCE);
+
+    if (!FullInfo) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
+    /* Query the key again to get the full information of the key */
+    Status = NtQueryKey(*KeyHandle, KeyFullInformation,
+			FullInfo, LenFullInfo, &LenFullInfo);
+
+    if (NT_SUCCESS(Status)) {
+	*SubKeyCount = FullInfo->SubKeys;
+	*SubKeyBufferSize = FullInfo->MaxNameLen + sizeof(KEY_BASIC_INFORMATION);
+    }
+
+    ExFreePoolWithTag(FullInfo, TAG_IO_RESOURCE);
+out:
+    if (!NT_SUCCESS(Status)) {
+	NtClose(*KeyHandle);
+    }
+    return Status;
+}
+
+/*
  * IopQueryBusDescription
  *
  * FUNCTION:
  *      Reads and returns Hardware information from the appropriate hardware
- *      registry key. Helper sub of IoQueryDeviceDescription. Has two modes
- *      of operation, either looking for Root Bus Types or for sub-Bus
- *      information.
+ *      registry key. Helper sub of IoQueryDeviceDescription.
  *
  * ARGUMENTS:
  *      Query         - What the parent function wants.
  *      RootKey	      - Which key to look in
- *      RootKeyHandle - Handle to the key
  *      Bus           - Bus Number.
- *      KeyIsRoot     - Whether we are looking for Root Bus Types or
- *                      information under them.
  *
  * RETURNS:
  *      Status
  */
 static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
 				       IN UNICODE_STRING RootKey,
-				       IN HANDLE RootKeyHandle,
-				       OUT PULONG Bus,
-				       IN BOOLEAN KeyIsRoot)
+				       OUT PULONG Bus)
 {
-    NTSTATUS Status;
-    ULONG BusLoop;
-    UNICODE_STRING SubRootRegName;
-    UNICODE_STRING BusString;
-    UNICODE_STRING SubBusString;
-    ULONG LenBasicInformation = 0;
-    ULONG LenFullInformation;
-    ULONG LenKeyFullInformation;
-    ULONG LenKey;
-    HANDLE SubRootKeyHandle;
-    PKEY_FULL_INFORMATION FullInformation;
-    PKEY_BASIC_INFORMATION BasicInformation = NULL;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    PKEY_VALUE_FULL_INFORMATION BusInformation[3] = { NULL, NULL, NULL };
+    assert(Query != NULL);
+    assert(Query->BusType != NULL);
 
-    /* How much buffer space */
-    Status =
-	NtQueryKey(RootKeyHandle, KeyFullInformation, NULL, 0,
-		   &LenFullInformation);
-
-    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL
-	&& Status != STATUS_BUFFER_OVERFLOW)
-	return Status;
-
-    /* Allocate it */
-    FullInformation =
-	ExAllocatePoolWithTag(LenFullInformation,
-			      TAG_IO_RESOURCE);
-
-    if (!FullInformation)
-	return STATUS_NO_MEMORY;
-
-    /* Get the Information */
-    Status =
-	NtQueryKey(RootKeyHandle, KeyFullInformation, FullInformation,
-		   LenFullInformation, &LenFullInformation);
-
-    /* Everything was fine */
-    if (NT_SUCCESS(Status)) {
-	/* Buffer needed for all the keys under this one */
-	LenBasicInformation =
-	    FullInformation->MaxNameLen + sizeof(KEY_BASIC_INFORMATION);
-
-	/* Allocate it */
-	BasicInformation =
-	    ExAllocatePoolWithTag(LenBasicInformation,
-				  TAG_IO_RESOURCE);
+    HANDLE RootKeyHandle = NULL;
+    ULONG SubKeyCount = 0;
+    ULONG SubKeyBufferSize = 0;
+    RET_ERR(IopGetSubKeyInfo(RootKey, &RootKeyHandle, &SubKeyCount, &SubKeyBufferSize));
+    assert(RootKeyHandle != NULL);
+    if (SubKeyCount == 0) {
+	/* The device description database should never have a bus key without any
+	 * subkeys, so this is an error. On debug build we stop and find out why. */
+	assert(FALSE);
+	return STATUS_NO_MORE_ENTRIES;
+    }
+    PKEY_BASIC_INFORMATION BasicInfo = ExAllocatePoolWithTag(SubKeyBufferSize,
+							     TAG_IO_RESOURCE);
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (BasicInfo == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
     }
 
-    /* Deallocate the old Buffer */
-    ExFreePoolWithTag(FullInformation, TAG_IO_RESOURCE);
+    /* Loop through the subkeys to try to find the specified bus */
+    for (ULONG BusLoop = 0; BusLoop < SubKeyCount; BusLoop++) {
+	Status = NtEnumerateKey(RootKeyHandle, BusLoop,
+				KeyBasicInformation, BasicInfo,
+				SubKeyBufferSize, &SubKeyBufferSize);
 
-    /* Try to find a Bus */
-    for (BusLoop = 0; NT_SUCCESS(Status); BusLoop++) {
-	/* Bus parameter was passed and number was matched */
-	if ((Query->BusNumber) && (*(Query->BusNumber)) == *Bus)
-	    break;
-
-	/* Enumerate the Key */
-	Status = NtEnumerateKey(RootKeyHandle,
-				BusLoop,
-				KeyBasicInformation,
-				BasicInformation,
-				LenBasicInformation, &LenKey);
-
-	/* Everything enumerated */
-	if (!NT_SUCCESS(Status))
-	    break;
-
-	/* What Bus are we going to go down? (only check if this is a Root Key) */
-	if (KeyIsRoot) {
-	    if (wcsncmp
-		(BasicInformation->Name, L"MultifunctionAdapter",
-		 BasicInformation->NameLength / 2)
-		&& wcsncmp(BasicInformation->Name, L"EisaAdapter",
-			   BasicInformation->NameLength / 2)
-		&& wcsncmp(BasicInformation->Name, L"TcAdapter",
-			   BasicInformation->NameLength / 2)) {
-		/* Nothing found, check next */
-		continue;
-	    }
-	}
-
-	/* Enumerate the Bus. */
-	BusString.Buffer = BasicInformation->Name;
-	BusString.Length = (USHORT) BasicInformation->NameLength;
-	BusString.MaximumLength = (USHORT) BasicInformation->NameLength;
-
-	/* Open a handle to the Root Registry Key */
-	InitializeObjectAttributes(&ObjectAttributes,
-				   &BusString,
-				   OBJ_CASE_INSENSITIVE,
-				   RootKeyHandle, NULL);
-
-	Status = NtOpenKey(&SubRootKeyHandle, KEY_READ, &ObjectAttributes);
-
-	/* Go on if we can't */
+	/* We shouldn't get an error here, but if we did, something
+	 * is seriously wrong, but continue anyway. */
+	assert(NT_SUCCESS(Status));
 	if (!NT_SUCCESS(Status))
 	    continue;
 
-	/* Key opened. Create the path */
-	SubRootRegName = RootKey;
-	RtlAppendUnicodeToString(&SubRootRegName, L"\\");
-	RtlAppendUnicodeStringToString(&SubRootRegName, &BusString);
+	/* Append the bus name to the registry path so we can pass
+	 * it onto the recursive call below. */
+	UNICODE_STRING BusName = {
+	    .Buffer = BasicInfo->Name,
+	    .Length = (USHORT)BasicInfo->NameLength,
+	    .MaximumLength = (USHORT)BasicInfo->NameLength
+	};
+	UNICODE_STRING SubKey = RootKey;
+	Status = RtlAppendUnicodeToString(&SubKey, L"\\");
+	if (!NT_SUCCESS(Status)) {
+	    continue;
+	}
+	Status = RtlAppendUnicodeStringToString(&SubKey, &BusName);
+	if (!NT_SUCCESS(Status)) {
+	    continue;
+	}
 
-	if (!KeyIsRoot) {
-	    /* Parsing a SubBus-key */
-	    int SubBusLoop;
-	    PWSTR Strings[3] = {
-		L"Identifier",
-		L"Configuration Data",
-		L"Component Information"
-	    };
+	PKEY_VALUE_FULL_INFORMATION BusInfo[] = { NULL, NULL, NULL };
+	Status = IopGetConfigurationInformation(SubKey, BusInfo);
+	if (!NT_SUCCESS(Status)) {
+	    continue;
+	}
 
-	    for (SubBusLoop = 0; SubBusLoop < 3; SubBusLoop++) {
-		/* Identifier String First */
-		RtlInitUnicodeString(&SubBusString, Strings[SubBusLoop]);
+	/* Check the Configuration Data value for the bus type and bus number */
+	if (BusInfo[CONFIGURATION_DATA_IDX] != NULL &&
+	    BusInfo[CONFIGURATION_DATA_IDX]->DataLength != 0 &&
+	    (((PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)BusInfo[CONFIGURATION_DATA_IDX] +
+					     BusInfo[CONFIGURATION_DATA_IDX]->DataOffset))->InterfaceType
+	     == *(Query->BusType))) {
+	    /* Found a bus */
+	    (*Bus)++;
 
-		/* How much buffer space */
-		NtQueryValueKey(SubRootKeyHandle, &SubBusString,
-				KeyValueFullInformation, NULL, 0,
-				&LenKeyFullInformation);
-
-		/* Allocate it */
-		BusInformation[SubBusLoop] =
-		    ExAllocatePoolWithTag(LenKeyFullInformation,
-					  TAG_IO_RESOURCE);
-
-		/* Get the Information */
-		Status =
-		    NtQueryValueKey(SubRootKeyHandle, &SubBusString,
-				    KeyValueFullInformation,
-				    BusInformation[SubBusLoop],
-				    LenKeyFullInformation,
-				    &LenKeyFullInformation);
-	    }
-
-	    if (NT_SUCCESS(Status)) {
-		/* Do we have something */
-		if (BusInformation[1] != NULL &&
-		    BusInformation[1]->DataLength != 0 &&
-		    /* Does it match what we want? */
-		    (((PCM_FULL_RESOURCE_DESCRIPTOR)
-		      ((ULONG_PTR) BusInformation[1] +
-		       BusInformation[1]->DataOffset))->InterfaceType ==
-		     *(Query->BusType))) {
-		    /* Found a bus */
-		    (*Bus)++;
-
-		    /* Is it the bus we wanted */
-		    if (Query->BusNumber == NULL
-			|| *(Query->BusNumber) == *Bus) {
-			/* If we don't want Controller Information, we're done... call the callback */
-			if (Query->ControllerType == NULL) {
-			    Status = Query->CalloutRoutine(Query->Context,
-							   &SubRootRegName,
-							   *(Query->
-							     BusType),
-							   *Bus,
-							   BusInformation,
-							   0, 0, NULL, 0,
-							   0, NULL);
-			} else {
-			    /* We want Controller Info...get it */
-			    Status =
-				IopQueryDeviceDescription(Query,
-							  SubRootRegName,
-							  RootKeyHandle,
-							  *Bus,
-							  (PKEY_VALUE_FULL_INFORMATION
-							   *)
-							  BusInformation);
-			}
-		    }
+	    /* Is it the bus we wanted */
+	    if (Query->BusNumber == NULL || *(Query->BusNumber) == *Bus) {
+		/* If we don't want Controller Information, we're done... call the callback */
+		if (Query->ControllerType == NULL) {
+		    Status = Query->CalloutRoutine(Query->Context, &SubKey,
+						   *Query->BusType, *Bus, BusInfo,
+						   0, 0, NULL, 0, 0, NULL);
+		} else {
+		    /* We want Controller Info...get it */
+		    Status = IopQueryDeviceDescription(Query, SubKey, *Bus, BusInfo);
 		}
-	    }
-
-	    /* Free the allocated memory */
-	    for (SubBusLoop = 0; SubBusLoop < 3; SubBusLoop++) {
-		if (BusInformation[SubBusLoop]) {
-		    ExFreePoolWithTag(BusInformation[SubBusLoop],
-				      TAG_IO_RESOURCE);
-		    BusInformation[SubBusLoop] = NULL;
-		}
-	    }
-
-	    /* Exit the Loop if we found the bus */
-	    if (Query->BusNumber != NULL && *(Query->BusNumber) == *Bus) {
-		NtClose(SubRootKeyHandle);
-		SubRootKeyHandle = NULL;
-		continue;
 	    }
 	}
+
+	IopFreeConfigurationInformation(BusInfo);
 
 	/* Enumerate the buses below us recursively if we haven't found the bus yet */
-	Status =
-	    IopQueryBusDescription(Query, SubRootRegName, SubRootKeyHandle,
-				   Bus, !KeyIsRoot);
-
-	/* Everything enumerated */
-	if (Status == STATUS_NO_MORE_ENTRIES)
-	    Status = STATUS_SUCCESS;
-
-	NtClose(SubRootKeyHandle);
-	SubRootKeyHandle = NULL;
-    }
-
-    /* Free the last remaining Allocated Memory */
-    if (BasicInformation)
-	ExFreePoolWithTag(BasicInformation, TAG_IO_RESOURCE);
-
-    return Status;
-}
-
-static NTSTATUS IopFetchConfigurationInformation(OUT PWSTR * SymbolicLinkList,
-						 IN GUID Guid,
-						 IN ULONG ExpectedInterfaces,
-						 IN PULONG Interfaces)
-{
-    NTSTATUS Status;
-    ULONG IntInterfaces = 0;
-    PWSTR IntSymbolicLinkList;
-
-    /* Get the associated enabled interfaces with the given GUID */
-    Status = IoGetDeviceInterfaces(&Guid, NULL, 0, SymbolicLinkList);
-    if (!NT_SUCCESS(Status)) {
-	/* Zero output and leave */
-	if (SymbolicLinkList != 0) {
-	    *SymbolicLinkList = 0;
+	if (Query->BusNumber == NULL || *Query->BusNumber != *Bus) {
+	    Status = IopQueryBusDescription(Query, SubKey, Bus);
+	} else if (Query->BusNumber != NULL || *Query->BusNumber == *Bus) {
+	    /* On the other hand, if the caller specified a bus number and we
+	     * have found it, we should stop looking and break out of the loop. */
+	    break;
 	}
-
-	return STATUS_UNSUCCESSFUL;
     }
 
-    IntSymbolicLinkList = *SymbolicLinkList;
-
-    /* Count the number of enabled interfaces by counting the number of symbolic links */
-    while (*IntSymbolicLinkList != UNICODE_NULL) {
-	IntInterfaces++;
-	IntSymbolicLinkList +=
-	    wcslen(IntSymbolicLinkList) +
-	    (sizeof(UNICODE_NULL) / sizeof(WCHAR));
-    }
-
-    /* Matching result will define the result */
-    Status =
-	(IntInterfaces >=
-	 ExpectedInterfaces) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
-    /* Finally, give back to the caller the number of found interfaces */
-    *Interfaces = IntInterfaces;
+    assert(BasicInfo != NULL);
+    ExFreePoolWithTag(BasicInfo, TAG_IO_RESOURCE);
+out:
+    assert(RootKeyHandle != NULL);
+    NtClose(RootKeyHandle);
 
     return Status;
-}
-
-static VOID IopStoreSystemPartitionInformation(IN PUNICODE_STRING NtSystemPartitionDeviceName,
-					       IN PUNICODE_STRING OsLoaderPathName)
-{
-    NTSTATUS Status;
-    UNICODE_STRING LinkTarget, KeyName;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    HANDLE LinkHandle, RegistryHandle, KeyHandle;
-    WCHAR LinkTargetBuffer[256];
-    UNICODE_STRING CmRegistryMachineSystemName =
-	RTL_CONSTANT_STRING(L"\\Registry\\Machine\\SYSTEM");
-
-    ASSERT(NtSystemPartitionDeviceName->MaximumLength >=
-	   NtSystemPartitionDeviceName->Length + sizeof(WCHAR));
-    ASSERT(NtSystemPartitionDeviceName->
-	   Buffer[NtSystemPartitionDeviceName->Length / sizeof(WCHAR)] ==
-	   UNICODE_NULL);
-    ASSERT(OsLoaderPathName->MaximumLength >=
-	   OsLoaderPathName->Length + sizeof(WCHAR));
-    ASSERT(OsLoaderPathName->
-	   Buffer[OsLoaderPathName->Length / sizeof(WCHAR)] ==
-	   UNICODE_NULL);
-
-    /* First define needed stuff to open NtSystemPartitionDeviceName symbolic link */
-    InitializeObjectAttributes(&ObjectAttributes,
-			       NtSystemPartitionDeviceName,
-			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-			       NULL, NULL);
-
-    /* Open NtSystemPartitionDeviceName symbolic link */
-    Status = NtOpenSymbolicLinkObject(&LinkHandle,
-				      SYMBOLIC_LINK_QUERY,
-				      &ObjectAttributes);
-    if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed to open symlink %wZ, Status=%x\n",
-	       NtSystemPartitionDeviceName, Status);
-	return;
-    }
-
-    /* Prepare the string that will receive where symbolic link points to */
-    LinkTarget.Length = 0;
-    /* We will zero the end of the string after having received it */
-    LinkTarget.MaximumLength =
-	sizeof(LinkTargetBuffer) - sizeof(UNICODE_NULL);
-    LinkTarget.Buffer = LinkTargetBuffer;
-
-    /* Query target */
-    Status = NtQuerySymbolicLinkObject(LinkHandle, &LinkTarget, NULL);
-
-    /* We are done with symbolic link */
-    NtClose(LinkHandle);
-
-    if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed querying symlink %wZ, Status=%x\n",
-	       NtSystemPartitionDeviceName, Status);
-	return;
-    }
-
-    /* As promised, we zero the end */
-    LinkTarget.Buffer[LinkTarget.Length / sizeof(WCHAR)] = UNICODE_NULL;
-
-    /* Open registry to save data (HKLM\SYSTEM) */
-    Status = IopOpenRegistryKeyEx(&RegistryHandle,
-				  NULL,
-				  &CmRegistryMachineSystemName,
-				  KEY_ALL_ACCESS);
-    if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed to open HKLM\\SYSTEM, Status=%x\n", Status);
-	return;
-    }
-
-    /* Open or create the Setup subkey where we'll store in */
-    RtlInitUnicodeString(&KeyName, L"Setup");
-
-    Status = IopCreateRegistryKeyEx(&KeyHandle,
-				    RegistryHandle,
-				    &KeyName,
-				    KEY_ALL_ACCESS,
-				    REG_OPTION_NON_VOLATILE, NULL);
-
-    /* We're done with HKLM\SYSTEM */
-    NtClose(RegistryHandle);
-
-    if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed opening/creating Setup key, Status=%x\n", Status);
-	return;
-    }
-
-    /* Prepare first data writing... */
-    RtlInitUnicodeString(&KeyName, L"SystemPartition");
-
-    /* Write SystemPartition value which is the target of the symbolic link */
-    Status = NtSetValueKey(KeyHandle,
-			   &KeyName,
-			   0,
-			   REG_SZ,
-			   LinkTarget.Buffer,
-			   LinkTarget.Length + sizeof(WCHAR));
-    if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed writing SystemPartition value, Status=%x\n",
-	       Status);
-    }
-
-    /* Prepare for second data writing... */
-    RtlInitUnicodeString(&KeyName, L"OsLoaderPath");
-
-    /* Remove trailing slash if any (one slash only excepted) */
-    if (OsLoaderPathName->Length > sizeof(WCHAR) &&
-	OsLoaderPathName->
-	Buffer[(OsLoaderPathName->Length / sizeof(WCHAR)) - 1] ==
-	OBJ_NAME_PATH_SEPARATOR) {
-	OsLoaderPathName->Length -= sizeof(WCHAR);
-	OsLoaderPathName->Buffer[OsLoaderPathName->Length /
-				 sizeof(WCHAR)] = UNICODE_NULL;
-    }
-
-    /* Then, write down data */
-    Status = NtSetValueKey(KeyHandle,
-			   &KeyName,
-			   0,
-			   REG_SZ,
-			   OsLoaderPathName->Buffer,
-			   OsLoaderPathName->Length +
-			   sizeof(UNICODE_NULL));
-    if (!NT_SUCCESS(Status)) {
-	DPRINT("Failed writing OsLoaderPath value, Status=%x\n", Status);
-    }
-
-    /* We're finally done! */
-    NtClose(KeyHandle);
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
@@ -865,7 +636,7 @@ NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    PCM_RESOURCE_LIST ResourceList = DeviceList ? DeviceList : DriverList;
+//    PCM_RESOURCE_LIST ResourceList = DeviceList ? DeviceList : DriverList;
 
     NTSTATUS Status = 0;//IopDetectResourceConflict(ResourceList, FALSE, NULL);
 	if (Status == STATUS_CONFLICTING_ADDRESSES) {
@@ -893,10 +664,18 @@ NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
  *     Reads and returns Hardware information from the appropriate hardware registry key.
  *
  * ARGUMENTS:
- *     BusType          - MCA, ISA, EISA...specifies the Bus Type
- *     BusNumber	- Which bus of above should be queried
- *     ControllerType	- Specifices the Controller Type
- *     ControllerNumber	- Which of the controllers to query.
+ *     BusType          - Specifies the Bus Type, ie. MCA, ISA, EISA, etc.
+ *     BusNumber	- Optionally specifies which of the bus above should be queried.
+ *                        If not specified, all buses of the above type will be queried.
+ *     ControllerType	- Optionally specifices the controller type. If not specified, only
+ *                        the bus information will be queried.
+ *     ControllerNumber	- Optionally specifies which of the controllers to query. If not
+ *                        specified, all controllers of the specified type will be queried.
+ *     PeripheralType -   Optionally specifies the peripheral type. If not specified, only
+ *                        the bus information and (optionally) the controller information
+ *                        will be queried.
+ *     PeripheralNumber - Optionally specifies which of the peripherals to query. If not
+ *                        specified, all peripherals of the specified type will be queried.
  *     CalloutRoutine	- Which function to call for each valid query.
  *     Context          - Value to pass to the callback.
  *
@@ -906,7 +685,7 @@ NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
  * STATUS:
  *     @implemented
  */
-NTAPI NTSTATUS IoQueryDeviceDescription(IN OPTIONAL PINTERFACE_TYPE BusType,
+NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 					IN OPTIONAL PULONG BusNumber,
 					IN OPTIONAL PCONFIGURATION_TYPE ControllerType,
 					IN OPTIONAL PULONG ControllerNumber,
@@ -915,49 +694,120 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN OPTIONAL PINTERFACE_TYPE BusType,
 					IN PIO_QUERY_DEVICE_ROUTINE CalloutRoutine,
 					IN OUT OPTIONAL PVOID Context)
 {
-    NTSTATUS Status;
-    ULONG BusLoopNumber = -1;	/* Root Bus */
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    UNICODE_STRING RootRegKey;
-    HANDLE RootRegHandle;
-    IO_QUERY Query;
-
-    /* Set up the String */
-    RootRegKey.Length = 0;
-    RootRegKey.MaximumLength = 2048;
-    RootRegKey.Buffer =
-	ExAllocatePoolWithTag(RootRegKey.MaximumLength,
-			      TAG_IO_RESOURCE);
-    RtlAppendUnicodeToString(&RootRegKey,
-			     L"\\REGISTRY\\MACHINE\\HARDWARE\\DESCRIPTION\\SYSTEM");
-
-    /* Open a handle to the Root Registry Key */
-    InitializeObjectAttributes(&ObjectAttributes,
-			       &RootRegKey,
-			       OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-    Status = NtOpenKey(&RootRegHandle, KEY_READ, &ObjectAttributes);
-
-    if (NT_SUCCESS(Status)) {
-	/* Use a helper function to loop though this key and get the info */
-	Query.BusType = BusType;
-	Query.BusNumber = BusNumber;
-	Query.ControllerType = ControllerType;
-	Query.ControllerNumber = ControllerNumber;
-	Query.PeripheralType = PeripheralType;
-	Query.PeripheralNumber = PeripheralNumber;
-	Query.CalloutRoutine = CalloutRoutine;
-	Query.Context = Context;
-	Status =
-	    IopQueryBusDescription(&Query, RootRegKey, RootRegHandle,
-				   &BusLoopNumber, TRUE);
-
-	/* Close registry */
-	NtClose(RootRegHandle);
+    if (BusType == NULL) {
+	return STATUS_INVALID_PARAMETER;
     }
 
-    /* Free Memory */
-    ExFreePoolWithTag(RootRegKey.Buffer, TAG_IO_RESOURCE);
+    /* Set up the string for the root registry key. Note that this string
+     * buffer is reused during the registry queries below. We simply
+     * modify the string Length to append and truncate the string. */
+    UNICODE_STRING RootKey = {
+	.Length = 0,
+	.MaximumLength = 2048,
+	.Buffer = NULL
+    };
+    HANDLE RootKeyHandle = NULL;
+
+    RootKey.Buffer = ExAllocatePoolWithTag(RootKey.MaximumLength,
+					   TAG_IO_RESOURCE);
+    if (RootKey.Buffer == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+
+    NTSTATUS Status;
+    PKEY_BASIC_INFORMATION BasicInfo = NULL;
+    IF_ERR_GOTO(out, Status, RtlAppendUnicodeToString(&RootKey,
+						      DEVICE_DESCRIPTION_KEY));
+
+    /* Open a handle to the root registry key and find out how many subkeys
+     * the root key has, as well as the buffer space we need. */
+    ULONG SubKeyCount = 0;
+    ULONG SubKeyBufferSize = 0;
+    IF_ERR_GOTO(out, Status,
+		IopGetSubKeyInfo(RootKey, &RootKeyHandle,
+				 &SubKeyCount, &SubKeyBufferSize));
+    BasicInfo = ExAllocatePoolWithTag(SubKeyBufferSize,
+				      TAG_IO_RESOURCE);
+    if (BasicInfo == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
+    /* Enumerate each subkey to find the specified bus type and bus number */
+    for (ULONG BusLoop = 0; BusLoop < SubKeyCount; BusLoop++) {
+	/* Enumerate the Key */
+	Status = NtEnumerateKey(RootKeyHandle, BusLoop, KeyBasicInformation,
+				BasicInfo, SubKeyBufferSize, &SubKeyBufferSize);
+
+	/* We shouldn't get an error here, but if we did, something
+	 * is seriously wrong, but continue anyway. */
+	assert(NT_SUCCESS(Status));
+	if (!NT_SUCCESS(Status))
+	    continue;
+
+	/* We are only interested the following three adapter types so skip anything
+	 * that isn't on the list. You ask me why? Windows does this so we do too. */
+	PCWSTR AdapterNames[] = {
+	    L"MultifunctionAdapter",
+	    L"EisaAdapter",
+	    L"TcAdapter"
+	};
+	BOOLEAN Skip = TRUE;
+	for (ULONG i = 0; i < ARRAYSIZE(AdapterNames); i++) {
+	    Skip &= !!wcsncmp(BasicInfo->Name, AdapterNames[i],
+			      BasicInfo->NameLength / sizeof(WCHAR));
+	}
+	if (Skip) {
+	    continue;
+	}
+
+	/* Append the bus name to to the registry path so we can pass
+	 * it onto the helper function below. */
+	UNICODE_STRING BusName = {
+	    .Buffer = BasicInfo->Name,
+	    .Length = (USHORT)BasicInfo->NameLength,
+	    .MaximumLength = (USHORT)BasicInfo->NameLength
+	};
+	UNICODE_STRING SubKey = RootKey;
+	Status = RtlAppendUnicodeToString(&SubKey, L"\\");
+	if (!NT_SUCCESS(Status)) {
+	    continue;
+	}
+	Status = RtlAppendUnicodeStringToString(&SubKey, &BusName);
+	if (!NT_SUCCESS(Status)) {
+	    continue;
+	}
+
+	/* Call the helper function to enumerate the buses below us recursively
+	 * until we find the bus number specified by the caller. This will also
+	 * invoke the specified callback routine appropriately. */
+	IO_QUERY Query = {
+	    .BusType = BusType,
+	    .BusNumber = BusNumber,
+	    .ControllerType = ControllerType,
+	    .ControllerNumber = ControllerNumber,
+	    .PeripheralType = PeripheralType,
+	    .PeripheralNumber = PeripheralNumber,
+	    .CalloutRoutine = CalloutRoutine,
+	    .Context = Context
+	};
+	ULONG Bus = -1;		/* Indicates root bus */
+	Status = IopQueryBusDescription(&Query, SubKey, &Bus);
+
+	/* Caller specified a bus number and we have found it. Return success. */
+	if (BusNumber != NULL && *BusNumber == Bus) {
+	    break;
+	}
+    }
+
+out:
+    if (BasicInfo != NULL) {
+	ExFreePoolWithTag(BasicInfo, TAG_IO_RESOURCE);
+    }
+    if (RootKeyHandle != NULL) {
+	NtClose(RootKeyHandle);
+    }
+    ExFreePoolWithTag(RootKey.Buffer, TAG_IO_RESOURCE);
 
     return Status;
 }

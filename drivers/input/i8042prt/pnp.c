@@ -596,9 +596,6 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 
 static VOID i8042RemoveDevice(IN PDEVICE_OBJECT DeviceObject)
 {
-    PI8042_DRIVER_EXTENSION DriverExtension =
-	(PI8042_DRIVER_EXTENSION)IoGetDriverObjectExtension(DeviceObject->DriverObject,
-							    DeviceObject->DriverObject);
     PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     RemoveEntryList(&DeviceExtension->ListEntry);
@@ -612,7 +609,6 @@ NTAPI NTSTATUS i8042Pnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     ULONG_PTR Information = 0;
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     ULONG MinorFunction = Stack->MinorFunction;
-    I8042_DEVICE_TYPE DeviceType = FdoExtension->Type;
     NTSTATUS Status;
 
     switch (MinorFunction) {

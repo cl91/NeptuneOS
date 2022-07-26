@@ -50,8 +50,8 @@ IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
 	.u = {
 	    .Port = {
 		.Length = 1,
-		.MinimumAddress = 0x60, /* Data port must be first */
-		.MaximumAddress = 0x60
+		.MinimumAddress = { .QuadPart = 0x60ULL }, /* Data port must be first */
+		.MaximumAddress = { .QuadPart = 0x60ULL }
 	    }
 	}
     },
@@ -64,8 +64,8 @@ IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
 	.u = {
 	    .Port = {
 		.Length = 1,
-		.MinimumAddress = 0x64, /* Control port must be second */
-		.MaximumAddress = 0x64
+		.MinimumAddress = { .QuadPart = 0x64ULL }, /* Control port must be second */
+		.MaximumAddress = { .QuadPart = 0x64ULL }
 	    }
 	}
     },
@@ -208,7 +208,7 @@ static NTSTATUS PnpDeviceQueryId(IN PDEVICE_OBJECT Pdo,
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     PPNP_DEVICE_EXTENSION DeviceExtension = (PPNP_DEVICE_EXTENSION)Pdo->DeviceExtension;
     BUS_QUERY_ID_TYPE IdType = IrpSp->Parameters.QueryId.IdType;
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_INVALID_DEVICE_REQUEST;
 
     switch (IdType) {
         case BusQueryDeviceID:
@@ -246,7 +246,6 @@ static NTSTATUS PnpDeviceQueryId(IN PDEVICE_OBJECT Pdo,
 	}
 
         default:
-	    Status = STATUS_INVALID_DEVICE_REQUEST;
             DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_ID / unknown query id type 0x%x\n", IdType);
     }
 

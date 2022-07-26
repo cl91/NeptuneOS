@@ -43,7 +43,7 @@ ULONG CurrentChar = 0;
 // Input buffer
 //
 CHAR Line[1024];
-CHAR CurrentPosition = 0;
+INT CurrentPosition = 0;
 
 /*++
  * @name RtlCliOpenInputDevice
@@ -208,7 +208,6 @@ CHAR RtlCliGetChar(IN HANDLE hDriver)
 PCHAR RtlCliGetLine(IN HANDLE hDriver)
 {
     CHAR Char;
-    BOOLEAN First = FALSE;
 
     //memset(Line, 0x00, 1024);
 

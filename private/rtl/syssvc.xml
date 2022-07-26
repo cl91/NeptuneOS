@@ -436,6 +436,14 @@
     <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
   </svc>
 
+  <svc name="NtQueryKey">
+    <parameter annotation="in" type="HANDLE" name="KeyHandle" />
+    <parameter annotation="in" type="KEY_INFORMATION_CLASS" name="KeyInformationClass" />
+    <parameter annotation="in" type="PVOID" name="InformationBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferSize" />
+    <parameter annotation="out" type="ptr::ULONG" name="ResultLength" />
+  </svc>
+
   <svc name="NtPlugPlayControl">
     <parameter annotation="in" type="PLUGPLAY_CONTROL_CLASS" name="PlugPlayControlClass" />
     <parameter annotation="in" type="PVOID" name="Buffer" />

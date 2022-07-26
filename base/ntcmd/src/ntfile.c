@@ -10,7 +10,6 @@ BOOLEAN NtFileOpenDirectory(HANDLE * phRetFile, WCHAR * pwszFileName,
     HANDLE hFile;
     UNICODE_STRING ustrFileName;
     IO_STATUS_BLOCK IoStatusBlock;
-    ULONG CreateDisposition = 0;
     WCHAR wszFileName[1024] = L"\\??\\";
     OBJECT_ATTRIBUTES ObjectAttributes;
 
@@ -22,6 +21,7 @@ BOOLEAN NtFileOpenDirectory(HANDLE * phRetFile, WCHAR * pwszFileName,
 			       &ustrFileName,
 			       OBJ_CASE_INSENSITIVE, NULL, NULL);
 
+    ULONG CreateDisposition = 0;
     if (bWrite) {
 	if (bOverwrite) {
 	    CreateDisposition = FILE_OVERWRITE_IF;
@@ -36,7 +36,7 @@ BOOLEAN NtFileOpenDirectory(HANDLE * phRetFile, WCHAR * pwszFileName,
 		 FILE_LIST_DIRECTORY | SYNCHRONIZE |
 		 FILE_OPEN_FOR_BACKUP_INTENT, &ObjectAttributes,
 		 &IoStatusBlock, 0, FILE_ATTRIBUTE_NORMAL,
-		 FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_CREATE,
+		 FILE_SHARE_READ | FILE_SHARE_WRITE, CreateDisposition,
 		 FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE, NULL,
 		 0);
 

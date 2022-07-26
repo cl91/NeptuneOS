@@ -52,6 +52,7 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
     ULONG DeviceExtensionSize = MAX(sizeof(I8042_KEYBOARD_EXTENSION),
 				    sizeof(I8042_MOUSE_EXTENSION));
     PDEVICE_OBJECT Fdo = NULL;
+    PFDO_DEVICE_EXTENSION DeviceExtension = NULL;
     NTSTATUS Status = IoCreateDevice(DriverObject, DeviceExtensionSize, NULL,
 				     Pdo->DeviceType, FILE_DEVICE_SECURE_OPEN, TRUE,
 				     &Fdo);
@@ -61,7 +62,7 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 	goto cleanup;
     }
 
-    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)Fdo->DeviceExtension;
+    DeviceExtension = (PFDO_DEVICE_EXTENSION)Fdo->DeviceExtension;
     RtlZeroMemory(DeviceExtension, DeviceExtensionSize);
     DeviceExtension->Type = Unknown;
     DeviceExtension->Fdo = Fdo;

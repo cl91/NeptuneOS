@@ -160,7 +160,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	RtlCliPowerOff();
     } else if (!_strnicmp(Command, "vid", 6)) {
 	UINT j;
-	WCHAR i, w;
+	WCHAR w;
 	UNICODE_STRING us;
 
 	LARGE_INTEGER delay;
@@ -341,7 +341,6 @@ VOID RtlClipDisplayPrompt(VOID)
  *--*/
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
-    NTSTATUS Status;
     PCHAR Command;
 
     hHeap = InitHeapMemory();
@@ -356,7 +355,11 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     //
     // Setup keyboard input
     //
-    Status = RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
+    NTSTATUS Status = RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("Unable to open keyboard. Error 0x%.8x\n", Status);
+	goto end;
+    }
 
     //
     // Show initial prompt
@@ -390,6 +393,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 	continue;
     }
 
+end:
     DeinitHeapMemory(hHeap);
     NtTerminateProcess(NtCurrentProcess(), 0);
 }
