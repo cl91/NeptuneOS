@@ -40,7 +40,8 @@ static struct {
     { "beep", 0, NULL, NULL, NULL, NULL, NULL },
     { "pnp", 0, NULL, "HTREE", "ROOT", "0", NULL },
     { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters, "Root", "PNP0303", "0", KBDCLASS_GUID },
-    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL, NULL }
+    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL, NULL },
+    { "fdc", 0, NULL, "Root", "PNP0700", "0", NULL },
 };
 
 static struct {

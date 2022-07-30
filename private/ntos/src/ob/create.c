@@ -102,15 +102,35 @@ static NTSTATUS ObpInsertObject(IN POBJECT DirectoryObject,
  */
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *pObject,
-			IN POBJECT DirectoryObject,
-			IN PCSTR Subpath,
+			IN OPTIONAL POBJECT DirectoryObject,
+			IN OPTIONAL PCSTR Subpath,
 			IN ULONG Flags,
 			IN PVOID CreationContext)
 {
     assert(pObject != NULL);
+    /* If a sub-path is given, it cannot be empty. */
+    assert(Subpath == NULL || Subpath[0] != '\0');
+    /* If a directory object is specified, a valid sub-path is needed. */
+    assert(DirectoryObject == NULL || Subpath != NULL);
     POBJECT_TYPE ObjectType = ObpGetObjectType(Type);
     assert(ObjectType->TypeInfo.CreateProc != NULL);
     assert(ObjectType->TypeInfo.DeleteProc != NULL);
+
+    /* If we are given a sub-path to insert into, make sure there isn't
+     * already an object there. */
+    if (Subpath != NULL) {
+	POBJECT Object = NULL;
+	NTSTATUS Status = ObReferenceObjectByName(Subpath,
+						  OBJECT_TYPE_ANY,
+						  DirectoryObject,
+						  &Object);
+	if (Object != NULL) {
+	    ObDereferenceObject(Object);
+	}
+	if (NT_SUCCESS(Status)) {
+	    return STATUS_OBJECT_NAME_COLLISION;
+	}
+    }
 
     MWORD TotalSize = sizeof(OBJECT_HEADER) + ObjectType->ObjectBodySize;
     ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER, TotalSize, {});

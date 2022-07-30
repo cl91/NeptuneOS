@@ -197,7 +197,6 @@ static PWSTR ConfigurationValueNames[] = {
     L"Component Information"
 };
 
-#define CONFIGURATION_DATA_IDX		1
 
 /*
  * Free the configuration information allocated previously. Information must
@@ -541,10 +540,10 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
 	}
 
 	/* Check the Configuration Data value for the bus type and bus number */
-	if (BusInfo[CONFIGURATION_DATA_IDX] != NULL &&
-	    BusInfo[CONFIGURATION_DATA_IDX]->DataLength != 0 &&
-	    (((PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)BusInfo[CONFIGURATION_DATA_IDX] +
-					     BusInfo[CONFIGURATION_DATA_IDX]->DataOffset))->InterfaceType
+	if (BusInfo[IoQueryDeviceConfigurationData] != NULL &&
+	    BusInfo[IoQueryDeviceConfigurationData]->DataLength != 0 &&
+	    (((PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)BusInfo[IoQueryDeviceConfigurationData] +
+					     BusInfo[IoQueryDeviceConfigurationData]->DataOffset))->InterfaceType
 	     == *(Query->BusType))) {
 	    /* Found a bus */
 	    (*Bus)++;

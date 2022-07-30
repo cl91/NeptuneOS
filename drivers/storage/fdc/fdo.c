@@ -128,8 +128,7 @@ static NTAPI NTSTATUS FdcFdoConfigCallback(PVOID Context,
 	    &ControllerResourceDescriptor->PartialResourceList.PartialDescriptors[i];
 
 	if (PartialDescriptor->Type == CmResourceTypePort) {
-	    if ((PUCHAR) (ULONG_PTR) PartialDescriptor->u.Port.Start.
-		QuadPart == DeviceExtension->ControllerInfo.BaseAddress)
+	    if ((PUCHAR)PartialDescriptor->u.Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress)
 		ControllerFound = TRUE;
 	}
     }

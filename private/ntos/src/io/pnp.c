@@ -181,7 +181,6 @@ static PCSTR IopGetRegSz(IN POBJECT Key,
 	    return NULL;
 	}
     }
-    assert(RegSz != NULL);
     return RegSz;
 }
 
