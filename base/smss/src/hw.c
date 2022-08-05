@@ -139,7 +139,6 @@ static NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
 
 static NTSTATUS SmInitPnp()
 {
-    RET_ERR(SmLoadDriver("pnp"));
     RET_ERR_EX(NtPlugPlayInitialize(),
 	       SmPrint("Failed to initialize the Plug and"
 		       " Play subsystem. Status = 0x%x\n", Status));

@@ -782,7 +782,7 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     assert(Context != NULL);
     PIRP Irp = (PIRP)Context;
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    /* Irp cannot be have been forwarded to a different driver. */
+    /* Irp cannot have been forwarded to a different driver. */
     assert(Irp->Private.ForwardedTo == NULL);
     PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject != NULL);

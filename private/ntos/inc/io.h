@@ -63,7 +63,7 @@ typedef struct _IO_DEVICE_OBJECT {
     LIST_ENTRY DeviceLink; /* Links all devices created by this driver object */
     struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
     struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
-    struct _DEVICE_NODE *DeviceNode;
+    struct _DEVICE_NODE *DeviceNode; /* Only PDOs in PnP drivers have this. Otherwise NULL. */
     IO_DEVICE_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;

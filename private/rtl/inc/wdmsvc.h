@@ -9,7 +9,6 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 #define DRIVER_IO_PACKET_BUFFER_RESERVE	(64 * 1024)
 #define DRIVER_IO_PACKET_BUFFER_COMMIT	(8 * 1024)
 
-#define PNP_ROOT_BUS_DRIVER	"\\Driver\\pnp"
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 
 /*
@@ -75,7 +74,11 @@ typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
 } FILE_OBJECT_CREATE_PARAMETERS, *PFILE_OBJECT_CREATE_PARAMETERS;
 
 /*
- * IO packet type that is being sent between NTOS server and drivers
+ * IO packet type that is being sent between NTOS server and drivers.
+ *
+ * The difference between IoPacketTypeRequest and Server/Client message is that
+ * server/client messages do not require any reply, while IoPacketTypeRequest
+ * generates a reply that the requestor (either the server or a client driver) expects.
  */
 typedef enum _IO_PACKET_TYPE {
     IoPacketTypeRequest, /* An IO request packet, from either an NT client or a driver */

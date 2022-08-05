@@ -1,6 +1,6 @@
 /*++
 
-Copyright (c) 2077  Definitely-Not-Micro$oft Corporation
+Copyright (c) 2022  Dr. Chang Liu, PhD.
 
 Module Name:
 
@@ -116,7 +116,7 @@ VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Node,
 }
 #endif
 
-/* Allocate a continuous range of capability slots */
+/* Allocate a contiguous range of capability slots */
 NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
 			    OUT MWORD *StartCap,
 			    IN LONG NumberRequested)

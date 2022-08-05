@@ -1,34 +1,38 @@
 #include "iop.h"
 
 typedef struct _PENDING_IRP_ITERATOR_CONTEXT {
-    PLIST_ENTRY ListHead;
-    PLIST_ENTRY CurrentEntry;
+    PPENDING_IRP *PendingIrps;
+    ULONG CurrentIndex;
+    ULONG IrpCount;
 } PENDING_IRP_ITERATOR_CONTEXT, *PPENDING_IRP_ITERATOR_CONTEXT;
 
 static PDISPATCHER_HEADER IopPendingIrpIterator(IN PVOID Context)
 {
     PPENDING_IRP_ITERATOR_CONTEXT Ctx = (PPENDING_IRP_ITERATOR_CONTEXT)Context;
     assert(Ctx != NULL);
-    assert(Ctx->ListHead != NULL);
-    assert(Ctx->CurrentEntry != NULL);
-    if (Ctx->CurrentEntry->Flink == Ctx->ListHead) {
+    assert(Ctx->PendingIrps != NULL);
+    assert(Ctx->IrpCount != 0);
+    assert(Ctx->CurrentIndex <= Ctx->IrpCount);
+    if (Ctx->CurrentIndex >= Ctx->IrpCount) {
 	return NULL;
     }
-    PPENDING_IRP PendingIrp = CONTAINING_RECORD(Ctx->CurrentEntry, PENDING_IRP, Link);
-    Ctx->CurrentEntry = Ctx->CurrentEntry->Flink;
+    PPENDING_IRP PendingIrp = Ctx->PendingIrps[Ctx->CurrentIndex++];
     return &PendingIrp->IoCompletionEvent.Header;
 }
 
-NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
-				      IN PTHREAD Thread,
-				      IN BOOLEAN Alertable,
-				      IN WAIT_TYPE WaitType)
+NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
+					 IN PTHREAD Thread,
+					 IN BOOLEAN Alertable,
+					 IN WAIT_TYPE WaitType,
+					 IN PPENDING_IRP *PendingIrps,
+					 IN ULONG IrpCount)
 {
     ASYNC_BEGIN(State, Locals, {
 	    IN OUT PENDING_IRP_ITERATOR_CONTEXT Ctx;
 	});
-    Locals.Ctx.ListHead = &Thread->PendingIrpList;
-    Locals.Ctx.CurrentEntry = Thread->PendingIrpList.Flink;
+    Locals.Ctx.PendingIrps = PendingIrps;
+    Locals.Ctx.CurrentIndex = 0;
+    Locals.Ctx.IrpCount = IrpCount;
     AWAIT(KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
 	  WaitType, IopPendingIrpIterator, &Locals.Ctx);
     ASYNC_END(State, STATUS_SUCCESS);
@@ -565,8 +569,9 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	/* Massage the client-side copy of the IO packet so all server pointers are
 	 * replaced by the client-side GLOBAL_HANDLE */
 	if (IoPacket->Type == IoPacketTypeRequest) {
-	    assert(IoPacket->Request.Device.Object != NULL);
 	    assert(IoPacket->Request.OriginalRequestor != 0);
+	    assert(IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
+		   IoPacket->Request.Device.Object != NULL);
 	    assert(IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
 		   IoPacket->Request.Device.Object->DriverObject == DriverObject);
 	    Dest->Request.Device.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.Device.Object);

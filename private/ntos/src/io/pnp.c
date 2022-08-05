@@ -1,42 +1,135 @@
+/*
+  Copyright (c) 2022  Dr. Chang Liu, PhD.
+
+Module Name:
+
+    pnp.c
+
+Abstract:
+
+    This module implements the PnP Manager of the IO subsystem. Central
+    to the PnP manager is a data structure called a device node, which
+    represents either a device (such as a keyboard, a PCI bus, or a
+    software-emulated device such as a virtual CD drive), or a single
+    function on a multi-functional card (such as the MIDI synth function
+    on a sound chip). Except for the root device node, a device node is
+    always enumerated by a parent node, which represents the bus to
+    which the child device is connected. This makes the set of all
+    device nodes on a system into a tree, called the device tree.
+
+    The root node itself is created by the PnP manager and represents
+    the device node for the root PnP enumerator driver (configured by
+    smss to be pnp.sys). The root enumerator enumerates devices that
+    cannot announce themselves. These include all legacy (non-PnP)
+    devices configured by the smss, as well as the ACPI HAL. The ACPI
+    driver will query the system ACPI tables to enumerate the primary
+    system bus as well as other motherboard resources, which in turn
+    causes their drivers to be loaded and their device nodes enumerated.
+    By recursively enumerating the root device node, the device tree of
+    the entire system is built. This is done on system startup, and can
+    be trigger by user space via NtPlugPlayControl.
+
+    At any given time, the state of a device node is represented by
+    the enum DEVICE_NODE_STATE. Actions such as enumerating node,
+    loading drivers, adding devices, starting devices, removing
+    devices, etc will cause the device node to transit to another
+    state. The transitions form a state machine, described below.
+    The PnP manager uses a circular buffer for each device node to
+    keep track of the state transition history of the node.
+
+
+    DEVICE NODE STATE MACHINE
+
+    0 (DeviceNodeUnspecified) ---> DeviceNodeInitialized
+      When a device node is created, it is initialized to be in the
+    state DeviceNodeInitialized. DeviceNodeUnspecified represents an
+    invalid state.
+
+    DeviceNodeInitialized ---> DeviceNodeDriversLoaded
+    When...
+ */
+
 #include "iop.h"
 
 #define REG_SERVICE_KEY	"\\Registry\\Machine\\CurrentControlSet\\Services"
 #define REG_CLASS_KEY	"\\Registry\\Machine\\CurrentControlSet\\Control\\Class"
 #define REG_ENUM_KEY	"\\Registry\\Machine\\CurrentControlSet\\Enum"
 
+/*
+ * Device node state.
+ */
+typedef enum _DEVICE_NODE_STATE {
+    DeviceNodeUnspecified,
+    DeviceNodeInitialized,
+    DeviceNodeLoadDriverFailed,
+    DeviceNodeDriversLoaded,
+    DeviceNodeAddDeviceFailed,
+    DeviceNodeDevicesAdded,
+    DeviceNodeResourcesAssignmentFailed,
+    DeviceNodeResourcesAssigned,
+    DeviceNodeStartPending,
+    DeviceNodeStartCompletion,
+    DeviceNodeStartPostWork,
+    DeviceNodeStartFailed,
+    DeviceNodeStarted,
+    DeviceNodeQueryStopped,
+    DeviceNodeStopped,
+    DeviceNodeRestartCompletion,
+    DeviceNodeEnumeratePending,
+    DeviceNodeEnumerateFailed,
+    DeviceNodeEnumerateCompletion,
+    DeviceNodeAwaitingQueuedDeletion,
+    DeviceNodeAwaitingQueuedRemoval,
+    DeviceNodeQueryRemoved,
+    DeviceNodeRemovePendingCloses,
+    DeviceNodeRemoved,
+    DeviceNodeDeletePendingCloses,
+    DeviceNodeDeleted,
+    MaxDeviceNodeState
+} DEVICE_NODE_STATE, *PDEVICE_NODE_STATE;
+
+#define DEVNODE_HISTORY_SIZE	(16)	/* must be a multiple of two */
+
+/*
+ * Device Node for the PNP manager
+ */
+typedef struct _DEVICE_NODE {
+    DEVICE_NODE_STATE StateHistory[DEVNODE_HISTORY_SIZE];
+    ULONG CurrentState;		/* Index into StateHistory */
+    NTSTATUS ErrorStatus;
+    PIO_DEVICE_OBJECT PhyDevObj;
+    PCSTR DeviceId;
+    PCSTR InstanceId;
+    struct _DEVICE_NODE *Parent;
+    LIST_ENTRY ChildrenList;
+    LIST_ENTRY SiblingLink;
+    PCSTR DriverServiceName;
+    ULONG UpperFilterCount;
+    ULONG LowerFilterCount;
+    PCSTR *UpperFilterDriverNames;
+    PCSTR *LowerFilterDriverNames;
+    PIO_DRIVER_OBJECT FunctionDriverObject;
+    PIO_DRIVER_OBJECT *UpperFilterDrivers;
+    PIO_DRIVER_OBJECT *LowerFilterDrivers;
+    PCM_RESOURCE_LIST Resources;
+} DEVICE_NODE, *PDEVICE_NODE;
+
 static PDEVICE_NODE IopRootDeviceNode;
 
-static inline VOID IopInitializeDeviceNode(IN PDEVICE_NODE DeviceNode,
-					   IN PIO_DEVICE_OBJECT DeviceObject,
-					   IN OPTIONAL PDEVICE_NODE ParentNode)
+/*
+ * The created device node is in the DeviceNodeUnspecified state.
+ */
+static inline NTSTATUS IopCreateDeviceNode(IN OPTIONAL PDEVICE_NODE ParentNode,
+					   OUT PDEVICE_NODE *pDevNode)
 {
-    assert(DeviceNode != NULL);
-    assert(DeviceObject != NULL);
-    /* Locate the lowest device object */
-    PIO_DEVICE_OBJECT Pdo = DeviceObject;
-    while (Pdo->AttachedTo != NULL) {
-	Pdo = Pdo->AttachedTo;
-    }
-    DeviceNode->PhyDevObj = Pdo;
+    assert(pDevNode != NULL);
+    IopAllocatePool(DeviceNode, DEVICE_NODE);
     DeviceNode->Parent = ParentNode;
     InitializeListHead(&DeviceNode->ChildrenList);
     if (ParentNode != NULL) {
 	InsertTailList(&ParentNode->ChildrenList, &DeviceNode->SiblingLink);
     }
-    DeviceObject = Pdo;
-    while (DeviceObject != NULL) {
-	DeviceObject->DeviceNode = DeviceNode;
-	DeviceObject = DeviceObject->AttachedDevice;
-    }
-}
-
-static inline NTSTATUS IopCreateDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject,
-					   IN OPTIONAL PDEVICE_NODE ParentNode,
-					   OUT OPTIONAL PDEVICE_NODE *pDevNode)
-{
-    IopAllocatePool(DeviceNode, DEVICE_NODE);
-    IopInitializeDeviceNode(DeviceNode, DeviceObject, ParentNode);
-    if (pDevNode) {
+    if (pDevNode != NULL) {
 	*pDevNode = DeviceNode;
     }
     return STATUS_SUCCESS;
@@ -44,6 +137,84 @@ static inline NTSTATUS IopCreateDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject,
 
 static inline VOID IopFreeDeviceNode(IN PDEVICE_NODE DeviceNode)
 {
+    assert(DeviceNode != NULL);
+    assert(IsListEmpty(&DeviceNode->ChildrenList));
+    if (DeviceNode->Parent != NULL) {
+	RemoveEntryList(&DeviceNode->SiblingLink);
+    }
+    if (DeviceNode->DeviceId != NULL) {
+	IopFreePool(DeviceNode->DeviceId);
+    }
+    if (DeviceNode->InstanceId != NULL) {
+	IopFreePool(DeviceNode->InstanceId);
+    }
+    if (DeviceNode->Resources != NULL) {
+	IopFreePool(DeviceNode->Resources);
+    }
+    IopFreePool(DeviceNode);
+}
+
+static inline DEVICE_NODE_STATE IopDeviceNodeGetCurrentState(IN PDEVICE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CurrentState < DEVNODE_HISTORY_SIZE);
+    return Node->StateHistory[Node->CurrentState % DEVNODE_HISTORY_SIZE];
+}
+
+static inline DEVICE_NODE_STATE IopDeviceNodeGetPreviousState(IN PDEVICE_NODE Node)
+{
+    assert(Node != NULL);
+    assert(Node->CurrentState < DEVNODE_HISTORY_SIZE);
+    return Node->StateHistory[(Node->CurrentState - 1) % DEVNODE_HISTORY_SIZE];
+}
+
+static inline VOID IopDeviceNodeSetCurrentState(IN PDEVICE_NODE Node,
+						IN DEVICE_NODE_STATE State)
+{
+    assert(Node != NULL);
+    assert(Node->CurrentState < DEVNODE_HISTORY_SIZE);
+    Node->CurrentState++;
+    Node->CurrentState %= DEVNODE_HISTORY_SIZE;
+    Node->StateHistory[Node->CurrentState] = State;
+}
+
+/*
+ * Call this if you need to get the device node of a device object.
+ * DO NOT just do DeviceObject->DeviceNode since we only keep track
+ * of device nodes for PDOs (lowest device object in a device stack).
+ */
+static inline PDEVICE_NODE IopGetDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject)
+{
+    assert(DeviceObject != NULL);
+    /* Locate the lowest device object */
+    PIO_DEVICE_OBJECT Pdo = DeviceObject;
+    while (Pdo->AttachedTo != NULL) {
+	Pdo = Pdo->AttachedTo;
+	assert(Pdo != NULL);
+    }
+    return Pdo->DeviceNode;
+}
+
+/*
+ * Set the device node of a device object by finding its PDO (lowest
+ * device object in the device stack) and set its DeviceNode member.
+ */
+static inline VOID IopSetDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject,
+				    IN PDEVICE_NODE DeviceNode)
+{
+    assert(DeviceObject != NULL);
+    assert(DeviceNode != NULL);
+    assert(DeviceNode->PhyDevObj == NULL);
+    /* Locate the lowest device object */
+    PIO_DEVICE_OBJECT Pdo = DeviceObject;
+    while (Pdo != NULL && Pdo->AttachedTo != NULL) {
+	assert(Pdo->DeviceNode == NULL);
+	Pdo = Pdo->AttachedTo;
+	assert(Pdo != NULL);
+    }
+    assert(Pdo->DeviceNode == NULL);
+    Pdo->DeviceNode = DeviceNode;
+    DeviceNode->PhyDevObj = Pdo;
 }
 
 static inline NTSTATUS IopDeviceNodeSetDeviceId(IN PDEVICE_NODE DeviceNode,
@@ -199,13 +370,13 @@ static inline NTSTATUS IopLoadDriverByBaseName(IN PCSTR BaseName,
  * itself, and then device upper filters, and finally class upper filters.
  * Don't ask me why. Microsoft made it this way.
  */
-static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
+static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
 {
     assert(DeviceNode != NULL);
     assert(DeviceNode->DeviceId != NULL);
     assert(DeviceNode->InstanceId != NULL);
-    if (DeviceNode->DriverLoaded) {
-	return STATUS_SUCCESS;
+    if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeInitialized) {
+	return STATUS_INVALID_DEVICE_STATE;
     }
 
     /* If previous attempts at driver loading failed, we want to clear the
@@ -315,9 +486,14 @@ static NTSTATUS IopDeviceNodeLoadDriver(IN PDEVICE_NODE DeviceNode)
 							 &DeviceNode->UpperFilterDrivers[i]));
     }
 
-    DeviceNode->DriverLoaded = TRUE;
     Status = STATUS_SUCCESS;
 out:
+    if (NT_SUCCESS(Status)) {
+        IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeDriversLoaded);
+    } else {
+        IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeLoadDriverFailed);
+	DeviceNode->ErrorStatus = Status;
+    }
     /* Dereference the enum key object because the CmReadKeyValueByPath routine
      * increases its reference count. */
     if (EnumKey != NULL) {
@@ -327,50 +503,6 @@ out:
 	ObDereferenceObject(ClassKey);
     }
     return Status;
-}
-
-static NTSTATUS IopDeviceTreeLoadDrivers(IN PDEVICE_NODE RootDeviceNode)
-{
-    assert(RootDeviceNode != NULL);
-    RET_ERR(IopDeviceNodeLoadDriver(RootDeviceNode));
-    LoopOverList(ChildNode, &RootDeviceNode->ChildrenList, DEVICE_NODE, SiblingLink) {
-	RET_ERR(IopDeviceTreeLoadDrivers(ChildNode));
-    }
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS IopCreateBusDeviceNode(IN PIO_DRIVER_OBJECT DriverObject,
-				       IN PCSTR BusDeviceId,
-				       IN PCSTR BusInstanceId,
-				       IN PIO_DEVICE_OBJECT BusFdo,
-				       IN OPTIONAL ULONG DeviceCount,
-				       IN OPTIONAL PGLOBAL_HANDLE DeviceHandles,
-				       IN OPTIONAL PDEVICE_NODE ParentDeviceNode,
-				       OUT PDEVICE_NODE *pDeviceNode)
-{
-    assert(DriverObject != NULL);
-    assert(BusFdo != NULL);
-    assert(DeviceCount == 0 || DeviceHandles != NULL);
-    assert(pDeviceNode != NULL);
-    PDEVICE_NODE BusDeviceNode = NULL;
-    RET_ERR(IopCreateDeviceNode(BusFdo, ParentDeviceNode, &BusDeviceNode));
-    assert(BusDeviceNode != NULL);
-    RET_ERR(IopDeviceNodeSetDeviceId(BusDeviceNode, BusDeviceId, BusQueryDeviceID));
-    RET_ERR(IopDeviceNodeSetDeviceId(BusDeviceNode, BusInstanceId, BusQueryInstanceID));
-    for (ULONG i = 0; i < DeviceCount; i++) {
-	PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandles[i],
-							    DriverObject);
-	if (DeviceObject == NULL) {
-	    DbgTrace("Invalid device handle %p received for driver object %p\n",
-		     (PVOID)DeviceHandles[i], DriverObject);
-	    return STATUS_NO_SUCH_DEVICE;
-	}
-	RET_ERR(IopCreateDeviceNode(DeviceObject, BusDeviceNode, NULL));
-    }
-    BusDeviceNode->FunctionDriverObject = DriverObject;
-    /* TODO: Bus filter drivers */
-    *pDeviceNode = BusDeviceNode;
-    return STATUS_SUCCESS;
 }
 
 static inline VOID IopPopulatePnpRequest(IN PIO_PACKET IoPacket,
@@ -413,28 +545,30 @@ static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopQueueBusQueryChildDeviceIdRequests(IN PTHREAD Thread,
-						      IN PDEVICE_NODE EnumeratorNode,
-						      IN BUS_QUERY_ID_TYPE IdType)
+static NTSTATUS IopQueueBusQueryIdRequest(IN PTHREAD Thread,
+					  IN PIO_DEVICE_OBJECT ChildPhyDev,
+					  IN BUS_QUERY_ID_TYPE IdType,
+					  OUT OPTIONAL PPENDING_IRP *pPendingIrp)
 {
-    LoopOverList(ChildNode, &EnumeratorNode->ChildrenList, DEVICE_NODE, SiblingLink) {
-	PIO_PACKET IoPacket = NULL;
-	RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
-	assert(IoPacket != NULL);
-	IopPopulateQueryIdRequest(IoPacket, ChildNode->PhyDevObj, IdType);
-	PPENDING_IRP PendingIrp = NULL;
-	RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
-		   IopFreePool(IoPacket));
-	assert(PendingIrp != NULL);
-	IopQueueIoPacket(PendingIrp, Thread);
+    PIO_PACKET IoPacket = NULL;
+    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
+    assert(IoPacket != NULL);
+    IopPopulateQueryIdRequest(IoPacket, ChildPhyDev, IdType);
+    PPENDING_IRP PendingIrp = NULL;
+    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
+	       IopFreePool(IoPacket));
+    assert(PendingIrp != NULL);
+    IopQueueIoPacket(PendingIrp, Thread);
+    if (pPendingIrp != NULL) {
+	*pPendingIrp = PendingIrp;
     }
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopDeviceNodeQueueAddDeviceRequest(IN PTHREAD Thread,
-						   IN PDEVICE_NODE DeviceNode,
-						   IN PIO_DRIVER_OBJECT DriverObject,
-						   OUT PPENDING_IRP *pPendingIrp)
+static NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
+					 IN PDEVICE_NODE DeviceNode,
+					 IN PIO_DRIVER_OBJECT DriverObject,
+					 OUT PPENDING_IRP *pPendingIrp)
 {
     PIO_DEVICE_OBJECT PhyDevObj = DeviceNode->PhyDevObj;
     PIO_PACKET IoPacket = NULL;
@@ -442,93 +576,88 @@ static NTSTATUS IopDeviceNodeQueueAddDeviceRequest(IN PTHREAD Thread,
     assert(IoPacket != NULL);
     IoPacket->Request.MajorFunction = IRP_MJ_ADD_DEVICE;
     IoPacket->Request.Device.Object = PhyDevObj;
-    IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
+    if (PhyDevObj != NULL) {
+	IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
+    }
     PPENDING_IRP PendingIrp = NULL;
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
 	       IopFreePool(IoPacket));
     assert(PendingIrp != NULL);
-    IopQueueAddDeviceRequest(PendingIrp, DriverObject, Thread);
+    IopQueueIoPacketEx(PendingIrp, DriverObject, Thread);
     *pPendingIrp = PendingIrp;
     return STATUS_SUCCESS;
 }
 
+/*
+ * For each upper-filter/function/lower-filter driver, call the AddDevice
+ * routine of the driver object. (Of course, here "call" means queuing the
+ * IRP and wait for driver response. We are a micro-kernel OS.) Note that
+ * we need to wait for lower drivers to complete the request before we can
+ * continue sending AddDevice to higher drivers.
+ */
 static NTSTATUS IopDeviceNodeAddDevice(IN ASYNC_STATE AsyncState,
 				       IN PTHREAD Thread,
-				       PDEVICE_NODE DeviceNode)
+				       IN PDEVICE_NODE DeviceNode)
 {
-    NTSTATUS Status = STATUS_NTOS_BUG;
+    NTSTATUS Status;
     ASYNC_BEGIN(AsyncState, Locals, {
 	    PIO_DRIVER_OBJECT DriverObject;
 	    PPENDING_IRP PendingIrp;
 	    ULONG LowerFilterCount;
 	    ULONG UpperFilterCount;
-	    BOOLEAN FunctionDriverLoaded;
+	    BOOLEAN FunctionDriverCalled;
 	});
-
+    Locals.PendingIrp = NULL;
     Locals.LowerFilterCount = 0;
     Locals.UpperFilterCount = 0;
-    Locals.FunctionDriverLoaded = FALSE;
+    Locals.FunctionDriverCalled = FALSE;
+
+    if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDriversLoaded) {
+	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
+    }
 
 check:
     if (Locals.LowerFilterCount < DeviceNode->LowerFilterCount) {
 	Locals.DriverObject = DeviceNode->LowerFilterDrivers[Locals.LowerFilterCount++];
-	goto load;
+	goto call;
     }
-    if (!Locals.FunctionDriverLoaded && DeviceNode->FunctionDriverObject != NULL) {
+    if (!Locals.FunctionDriverCalled && DeviceNode->FunctionDriverObject != NULL) {
 	Locals.DriverObject = DeviceNode->FunctionDriverObject;
-	Locals.FunctionDriverLoaded = TRUE;
-	goto load;
+	Locals.FunctionDriverCalled = TRUE;
+	goto call;
     }
     if (Locals.UpperFilterCount < DeviceNode->UpperFilterCount) {
 	Locals.DriverObject = DeviceNode->UpperFilterDrivers[Locals.UpperFilterCount++];
-	goto load;
+	goto call;
     }
     Status = STATUS_SUCCESS;
     goto end;
 
-load:
+call:
     assert(Locals.DriverObject != NULL);
-    IF_ERR_GOTO(end, Status, IopDeviceNodeQueueAddDeviceRequest(Thread, DeviceNode,
-								Locals.DriverObject,
-								&Locals.PendingIrp));
+    IF_ERR_GOTO(end, Status, IopQueueAddDeviceRequest(Thread, DeviceNode,
+						      Locals.DriverObject,
+						      &Locals.PendingIrp));
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
     if (!NT_SUCCESS(Status)) {
 	goto end;
     }
+    IopCleanupPendingIrp(Locals.PendingIrp);
+    Locals.PendingIrp = NULL;
     goto check;
 
 end:
-    ASYNC_END(AsyncState, Status);
-}
-
-static NTSTATUS IopDeviceTreeAddDevices(IN ASYNC_STATE AsyncState,
-					IN PTHREAD Thread,
-					PDEVICE_NODE RootDeviceNode)
-{
-    NTSTATUS Status = STATUS_NTOS_BUG;
-    ASYNC_BEGIN(AsyncState, Locals, {
-	    PDEVICE_NODE ChildNode;
-	});
-
-    if (IsListEmpty(&RootDeviceNode->ChildrenList)) {
-	goto end;
+    if (NT_SUCCESS(Status)) {
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeDevicesAdded);
+    } else {
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeAddDeviceFailed);
+	DeviceNode->ErrorStatus = Status;
     }
-    Locals.ChildNode = CONTAINING_RECORD(RootDeviceNode->ChildrenList.Flink,
-					 DEVICE_NODE, SiblingLink);
-more:
-    AWAIT_EX(Status, IopDeviceNodeAddDevice, AsyncState, Locals, Thread, Locals.ChildNode);
-    if (!NT_SUCCESS(Status)) {
-	ASYNC_RETURN(AsyncState, Status);
+    if (Locals.PendingIrp != NULL) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
     }
-    if (Locals.ChildNode->SiblingLink.Flink != &RootDeviceNode->ChildrenList) {
-	Locals.ChildNode = CONTAINING_RECORD(Locals.ChildNode->SiblingLink.Flink,
-					     DEVICE_NODE, SiblingLink);
-	goto more;
-    }
-
-end:
     ASYNC_END(AsyncState, Status);
 }
 
@@ -577,6 +706,76 @@ static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DE
     return Res;
 }
 
+static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
+					     IN PTHREAD Thread,
+					     IN PDEVICE_NODE DeviceNode)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    PPENDING_IRP PendingIrp;
+	});
+    Locals.PendingIrp = NULL;
+
+    if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDevicesAdded) {
+	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
+    }
+
+    IF_ERR_GOTO(out, Status,
+		IopQueueQueryResourceRequirementsRequest(Thread, DeviceNode->PhyDevObj,
+							 &Locals.PendingIrp));
+    AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    if (!NT_SUCCESS(Status)) {
+	DbgTrace("Failed to query device resource requirements for %s\\%s. Status = 0x%x\n",
+		 DeviceNode->DeviceId, DeviceNode->InstanceId,
+		 Status);
+	goto out;
+    }
+
+    PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Locals.PendingIrp->IoResponseData;
+    if (Res == NULL) {
+	Status = STATUS_SUCCESS;
+	goto out;
+    }
+    if (DeviceNode->Resources != NULL) {
+	IopFreePool(DeviceNode->Resources);
+    }
+    if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+    ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
+	Res->List[0].Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+    DeviceNode->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
+    if (DeviceNode->Resources == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+    DeviceNode->Resources->Count = 1;
+    DeviceNode->Resources->List[0].InterfaceType = Res->InterfaceType;
+    DeviceNode->Resources->List[0].BusNumber = Res->BusNumber;
+    DeviceNode->Resources->List[0].PartialResourceList.Version = Res->List[0].Version;
+    DeviceNode->Resources->List[0].PartialResourceList.Revision = Res->List[0].Revision;
+    DeviceNode->Resources->List[0].PartialResourceList.Count = Res->List[0].Count;
+    for (ULONG i = 0; i < Res->List[0].Count; i++) {
+	DeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors[i] =
+	    IopAssignResource(Res->List[0].Descriptors[i]);
+    }
+    Status = STATUS_SUCCESS;
+
+out:
+    if (!NT_SUCCESS(Status)) {
+	DbgTrace("Failed to assign resources for device node %s\\%s. Status = 0x%x\n",
+		 DeviceNode->DeviceId, DeviceNode->InstanceId, Status);
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeResourcesAssignmentFailed);
+	DeviceNode->ErrorStatus = Status;
+    } else {
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeResourcesAssigned);
+    }
+    ASYNC_END(AsyncState, Status);
+}
+
 static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
 					   IN PDEVICE_NODE DeviceNode,
 					   OUT PPENDING_IRP *PendingIrp)
@@ -608,94 +807,282 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopDeviceNodeAssignResources(IN PDEVICE_NODE Node,
-					     IN PVOID Data)
+static NTSTATUS IopDeviceNodeStartDevice(IN ASYNC_STATE AsyncState,
+					 IN PTHREAD Thread,
+					 IN PDEVICE_NODE DeviceNode)
 {
-    PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Data;
-    if (Res == NULL) {
-	return STATUS_SUCCESS;
-    }
-    if (Node->Resources != NULL) {
-	IopFreePool(Node->Resources);
-    }
-    if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
-	Res->List[0].Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-    Node->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
-    if (Node->Resources == NULL) {
-	return STATUS_NO_MEMORY;
-    }
-    Node->Resources->Count = 1;
-    Node->Resources->List[0].InterfaceType = Res->InterfaceType;
-    Node->Resources->List[0].BusNumber = Res->BusNumber;
-    Node->Resources->List[0].PartialResourceList.Version = Res->List[0].Version;
-    Node->Resources->List[0].PartialResourceList.Revision = Res->List[0].Revision;
-    Node->Resources->List[0].PartialResourceList.Count = Res->List[0].Count;
-    for (ULONG i = 0; i < Res->List[0].Count; i++) {
-	Node->Resources->List[0].PartialResourceList.PartialDescriptors[i] =
-	    IopAssignResource(Res->List[0].Descriptors[i]);
-    }
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS IopDeviceTreeAssignResources(IN ASYNC_STATE AsyncState,
-					     IN PTHREAD Thread,
-					     PDEVICE_NODE RootDeviceNode)
-{
-    NTSTATUS Status = STATUS_NTOS_BUG;
+    NTSTATUS Status;
     ASYNC_BEGIN(AsyncState, Locals, {
-	    PDEVICE_NODE ChildNode;
 	    PPENDING_IRP PendingIrp;
 	});
+    Locals.PendingIrp = NULL;
 
-    if (IsListEmpty(&RootDeviceNode->ChildrenList)) {
-	goto end;
+    if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeResourcesAssigned) {
+	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
     }
 
-    /* Query the bus driver for device resource requirements */
-    Locals.ChildNode = CONTAINING_RECORD(RootDeviceNode->ChildrenList.Flink,
-					 DEVICE_NODE, SiblingLink);
-more:
+    IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeStartPending);
+
     IF_ERR_GOTO(end, Status,
-		IopQueueQueryResourceRequirementsRequest(Thread, Locals.ChildNode->PhyDevObj,
-							 &Locals.PendingIrp));
+		IopQueueStartDeviceRequest(Thread, DeviceNode, &Locals.PendingIrp));
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
-    if (!NT_SUCCESS(Status)) {
-	DbgTrace("Failed to query device resource requirements for %s\\%s. Status = 0x%x\n",
-		 Locals.ChildNode->DeviceId, Locals.ChildNode->InstanceId,
-		 Status);
-	/* TODO: Set the device node state to error */
-	assert(FALSE);
-	goto more;
-    }
-    IF_ERR_GOTO(end, Status,
-		IopDeviceNodeAssignResources(Locals.ChildNode,
-					     Locals.PendingIrp->IoResponseData));
-    IF_ERR_GOTO(end, Status,
-		IopQueueStartDeviceRequest(Thread, Locals.ChildNode,
-					   &Locals.PendingIrp));
-    AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
-	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
+
+end:
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Failed to start device node %s\\%s. Status = 0x%x\n",
-		 Locals.ChildNode->DeviceId, Locals.ChildNode->InstanceId,
-		 Status);
-	assert(FALSE);
+		 DeviceNode->DeviceId, DeviceNode->InstanceId, Status);
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeStartFailed);
+	DeviceNode->ErrorStatus = Status;
     } else {
-	Locals.ChildNode->DeviceStarted = TRUE;
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeStarted);
     }
-    if (Locals.ChildNode->SiblingLink.Flink != &RootDeviceNode->ChildrenList) {
+    ASYNC_END(AsyncState, Status);
+}
+
+/*
+ * Send the query relations IRP to the device node and create child device nodes.
+ *
+ * The device node must be in the DeviceNodeStarted state. The device node must
+ * not have any children.
+ */
+static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
+				       IN PTHREAD Thread,
+				       IN PDEVICE_NODE DevNode)
+{
+    assert(DevNode != NULL);
+    NTSTATUS Status;
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    PPENDING_IRP PendingIrp;
+	    PPENDING_IRP *PendingIrps;
+	    ULONG DeviceCount;
+	});
+    Locals.PendingIrp = NULL;
+    Locals.PendingIrps = NULL;
+    Locals.DeviceCount = 0;
+
+    if (IopDeviceNodeGetCurrentState(DevNode) != DeviceNodeStarted) {
+	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
+    }
+
+    /* TODO: We need to figure out re-enumeration. */
+    if (!IsListEmpty(&DevNode->ChildrenList)) {
+	assert(FALSE);
+	ASYNC_RETURN(AsyncState, STATUS_NOT_IMPLEMENTED);
+    }
+
+    IopDeviceNodeSetCurrentState(DevNode, DeviceNodeEnumeratePending);
+
+    /* Ask the device node about its child devices */
+    IF_ERR_GOTO(out, Status,
+		IopQueueQueryDeviceRelationsRequest(Thread, IopGetTopDevice(DevNode->PhyDevObj),
+						    BusRelations, &Locals.PendingIrp));
+    AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+
+    /* Get the PDO device handles from the response data */
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Locals.DeviceCount = Locals.PendingIrp->IoResponseStatus.Information;
+    PGLOBAL_HANDLE DeviceHandles = (PGLOBAL_HANDLE)Locals.PendingIrp->IoResponseData;
+    /* In the case where server has run out of memory, IoResponseData will be NULL but
+     * IoResponseDataSize is not zero. Otherwise, it means that the device node does not
+     * have any child devices. */
+    if (DeviceHandles == NULL) {
+	Status = Locals.PendingIrp->IoResponseDataSize != 0 ? STATUS_NO_MEMORY : STATUS_SUCCESS;
+	goto out;
+    }
+
+    /* Note that we can't free the PendingIrp here because DeviceHandles refers to it.
+     * PendingIrp will be freed at the end of the routine. Now allocate the PPENDING_IRP
+     * array so we can query the child devices of their IDs. Note that we need two pointers
+     * for each child device because we need to send two IRPs each. */
+    Locals.PendingIrps = (PPENDING_IRP *)ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * 2 * Locals.DeviceCount,
+							       NTOS_IO_TAG);
+    if (Locals.PendingIrps == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
+    /* Build the child device nodes and send the QUERY_ID requests to the child devices. */
+    for (ULONG i = 0; i < Locals.DeviceCount; i++) {
+	PIO_DRIVER_OBJECT DriverObject = IopGetTopDevice(DevNode->PhyDevObj)->DriverObject;
+	assert(DriverObject != NULL);
+	PIO_DEVICE_OBJECT ChildPhyDev = IopGetDeviceObject(DeviceHandles[i],
+							   DriverObject);
+	if (ChildPhyDev == NULL) {
+	    DbgTrace("Invalid device handle %p received for driver object %p\n",
+		     (PVOID)DeviceHandles[i], DriverObject);
+	    Status = STATUS_NO_SUCH_DEVICE;
+	    goto out;
+	}
+	PDEVICE_NODE ChildNode = NULL;
+	IF_ERR_GOTO(out, Status, IopCreateDeviceNode(DevNode, &ChildNode));
+	assert(ChildNode != NULL);
+	IopSetDeviceNode(ChildPhyDev, ChildNode);
+	IF_ERR_GOTO(out, Status,
+		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryDeviceID,
+					      &Locals.PendingIrps[2*i]));
+	IF_ERR_GOTO(out, Status,
+		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryInstanceID,
+					      &Locals.PendingIrps[2*i+1]));
+    }
+    AWAIT(IopWaitForMultipleIoCompletions, AsyncState, Locals, Thread,
+	  FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount);
+
+    /* Set the device IDs of the child nodes. */
+    for (ULONG i = 0; i < 2 * Locals.DeviceCount; i++) {
+	PPENDING_IRP PendingIrp = Locals.PendingIrps[i];
+	assert(PendingIrp != NULL);
+	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+	assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_PNP);
+	assert(PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_ID);
+	BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.QueryId.IdType;
+	PIO_DEVICE_OBJECT DeviceObject = PendingIrp->IoPacket->Request.Device.Object;
+	PDEVICE_NODE DeviceNode = IopGetDeviceNode(DeviceObject);
+	assert(DeviceNode != NULL);
+	IF_ERR_GOTO(out, Status,
+		    IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType));
+	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeInitialized);
+    }
+
+    /* All done! */
+    Status = STATUS_SUCCESS;
+
+out:
+    if (NT_SUCCESS(Status)) {
+	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeEnumerateCompletion);
+    } else {
+	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeEnumerateFailed);
+	DevNode->ErrorStatus = Status;
+	/* If any child devices were created during the enumeration, delete them. */
+	LoopOverList(ChildDev, &DevNode->ChildrenList, DEVICE_NODE, SiblingLink) {
+	    IopFreeDeviceNode(ChildDev);
+	}
+    }
+    if (Locals.PendingIrp != NULL) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    if (Locals.PendingIrps != NULL) {
+	for (ULONG i = 0; i < Locals.DeviceCount; i++) {
+	    if (Locals.PendingIrps[i] != NULL) {
+		IopCleanupPendingIrp(Locals.PendingIrps[i]);
+	    }
+	}
+	IopFreePool(Locals.PendingIrps);
+    }
+    ASYNC_END(AsyncState, Status);
+}
+
+typedef NTSTATUS (*PDEVICE_NODE_VISITOR_EX)(IN ASYNC_STATE AsyncState,
+					    IN PTHREAD Thread,
+					    IN PDEVICE_NODE DeviceNode,
+					    IN PVOID Context);
+
+/*
+ * Traverse the child device nodes of the given device node (but not the node
+ * itself) and apply the visitor to it. If StopOnError is set to TRUE, the
+ * traversal will stop if the visitor returned error at any point.
+ *
+ * If StopOnError is FALSE, the routine returns success regardless of whether
+ * any error is encountered during the traversal. Otherwise error status is
+ * returned if an error is encountered.
+ */
+static NTSTATUS IopDeviceNodeTraverseChildrenEx(IN ASYNC_STATE AsyncState,
+						IN PTHREAD Thread,
+						IN PDEVICE_NODE DeviceNode,
+						IN PDEVICE_NODE_VISITOR_EX Visitor,
+						IN PVOID Context,
+						IN BOOLEAN StopOnError)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(AsyncState, Locals, {
+	    PDEVICE_NODE ChildNode;
+	});
+
+    if (IsListEmpty(&DeviceNode->ChildrenList)) {
+	Status = STATUS_SUCCESS;
+	goto end;
+    }
+    Locals.ChildNode = CONTAINING_RECORD(DeviceNode->ChildrenList.Flink,
+					 DEVICE_NODE, SiblingLink);
+more:
+    AWAIT_EX(Status, Visitor, AsyncState, Locals, Thread, Locals.ChildNode, Context);
+    if (StopOnError && !NT_SUCCESS(Status)) {
+	ASYNC_RETURN(AsyncState, Status);
+    }
+    if (Locals.ChildNode->SiblingLink.Flink != &DeviceNode->ChildrenList) {
 	Locals.ChildNode = CONTAINING_RECORD(Locals.ChildNode->SiblingLink.Flink,
 					     DEVICE_NODE, SiblingLink);
 	goto more;
     }
 
 end:
+    ASYNC_END(AsyncState, StopOnError ? Status : STATUS_SUCCESS);
+}
+
+typedef NTSTATUS (*PDEVICE_NODE_VISITOR)(IN ASYNC_STATE AsyncState,
+					 IN PTHREAD Thread,
+					 IN PDEVICE_NODE DeviceNode);
+
+static NTSTATUS IopDeviceNodeVisit(IN ASYNC_STATE AsyncState,
+				   IN PTHREAD Thread,
+				   IN PDEVICE_NODE DeviceNode,
+				   IN PVOID Context)
+{
+    PDEVICE_NODE_VISITOR Visitor = (PDEVICE_NODE_VISITOR)Context;
+    return Visitor(AsyncState, Thread, DeviceNode);
+}
+
+static NTSTATUS IopDeviceNodeTraverseChildren(IN ASYNC_STATE AsyncState,
+					      IN PTHREAD Thread,
+					      IN PDEVICE_NODE DeviceNode,
+					      IN PDEVICE_NODE_VISITOR Visitor)
+{
+    return IopDeviceNodeTraverseChildrenEx(AsyncState, Thread, DeviceNode,
+					   IopDeviceNodeVisit, Visitor, FALSE);
+}
+
+/*
+ * Recursively enumerate the device tree and start devices. This will build the
+ * entire device tree from the enumeration config in the registry.
+ */
+static NTSTATUS IopDeviceTreeEnumerate(IN ASYNC_STATE AsyncState,
+				       IN PTHREAD Thread,
+				       IN PDEVICE_NODE DeviceNode)
+{
+    assert(DeviceNode != NULL);
+    NTSTATUS Status;
+    ASYNC_BEGIN(AsyncState);
+
+    /* We ignore the errors of the following function calls. This is ok since these
+     * functions will not process the device node if it's not in the correct state. */
+    IopDeviceNodeLoadDrivers(DeviceNode);
+    AWAIT(IopDeviceNodeAddDevice, AsyncState, _, Thread, DeviceNode);
+    AWAIT(IopDeviceNodeAssignResources, AsyncState, _, Thread, DeviceNode);
+    AWAIT(IopDeviceNodeStartDevice, AsyncState, _, Thread, DeviceNode);
+
+    /* If the device is not in the Started state, we can't enumerate it so get out. */
+    if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeStarted) {
+	Status = STATUS_INVALID_DEVICE_STATE;
+	goto out;
+    }
+
+    /* Now enumerate the device node. This will build child device nodes. */
+    AWAIT_EX(Status, IopDeviceNodeEnumerate, AsyncState, _, Thread, DeviceNode);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    /* For each child node, recursively enumerate it. This will build the entire
+     * device tree in a depth-first fashion. */
+    AWAIT_EX(Status, IopDeviceNodeTraverseChildren, AsyncState, _, Thread,
+	     DeviceNode, IopDeviceTreeEnumerate);
+
+out:
     ASYNC_END(AsyncState, Status);
 }
 
@@ -718,7 +1105,7 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
     HalVgaPrint("%sFound device \\%s\\%s.", Indent,
 		IopSanitizeName(DeviceNode->DeviceId),
 		IopSanitizeName(DeviceNode->InstanceId));
-    if (DeviceNode->DriverLoaded) {
+    if (IopDeviceNodeGetCurrentState(DeviceNode) >= DeviceNodeDriversLoaded) {
 	assert(DeviceNode->DriverServiceName != NULL);
 	if (DeviceNode->UpperFilterCount != 0 || DeviceNode->LowerFilterCount != 0) {
 	    HalVgaPrint(" Loaded drivers:");
@@ -730,9 +1117,9 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 		HalVgaPrint(" %s", DeviceNode->UpperFilterDriverNames[i]);
 	    }
 	} else {
-	    HalVgaPrint(" Driver %s loaded.", DeviceNode->DriverServiceName);
+	    HalVgaPrint(" Loaded driver %s.", DeviceNode->DriverServiceName);
 	}
-	if (DeviceNode->DeviceStarted) {
+	if (IopDeviceNodeGetCurrentState(DeviceNode) >= DeviceNodeStarted) {
 	    HalVgaPrint(". STARTED.\n");
 	} else {
 	    HalVgaPrint(". START FAIL.\n");
@@ -753,124 +1140,126 @@ static VOID IopPrintDeviceTree(IN PDEVICE_NODE RootDeviceNode,
 }
 
 /*
- * Before calling this system service the session manager must have
- * already loaded the root enumerator driver pnp.sys.
+ * Before calling this system service the session manager needs to
+ * initialize the hardware database in the registry.
  */
 NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 			      IN PTHREAD Thread)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(AsyncState, Locals, {
-	    PIO_DRIVER_OBJECT PnpDriver;
-	    PIO_DEVICE_OBJECT RootEnumerator;
-	    PPENDING_IRP PendingIrp;
-	});
-    assert(IsListEmpty(&Thread->PendingIrpList));
-    assert(IopRootDeviceNode == NULL);
-    Locals.PnpDriver = NULL;
-    Locals.RootEnumerator = NULL;
-    Locals.PendingIrp = NULL;
+    ASYNC_BEGIN(AsyncState);
+
+    /* We can only be called once (typically during system startup). */
+    if (IopRootDeviceNode != NULL) {
+	ASYNC_RETURN(AsyncState, STATUS_INVALID_SYSTEM_SERVICE);
+    }
+
+    HalVgaPrint("Enumerating Plug and Play devices...\n");
+
+    /* Create the root device node. This is the device node for the root PnP enumerator. */
+    IF_ERR_GOTO(out, Status, IopCreateDeviceNode(NULL, &IopRootDeviceNode));
+    assert(IopRootDeviceNode != NULL);
+
+    /* Set the device and instance ID of the root enumerator. */
     IF_ERR_GOTO(out, Status,
-		ObReferenceObjectByName(PNP_ROOT_BUS_DRIVER, OBJECT_TYPE_DRIVER,
-					NULL, (POBJECT *)&Locals.PnpDriver));
+		IopDeviceNodeSetDeviceId(IopRootDeviceNode, "HTREE\\ROOT", BusQueryDeviceID));
+    IF_ERR_GOTO(out, Status,
+		IopDeviceNodeSetDeviceId(IopRootDeviceNode, "0", BusQueryInstanceID));
+
+    /* Load the root PnP enumerator driver and call AddDevice to create the root enumerator. */
+    IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeInitialized);
+    IF_ERR_GOTO(out, Status, IopDeviceNodeLoadDrivers(IopRootDeviceNode));
+    AWAIT_EX(Status, IopDeviceNodeAddDevice, AsyncState, _, Thread, IopRootDeviceNode);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    /* We need to manually set the PDO of the root device node */
+    PIO_DEVICE_OBJECT RootEnumerator = NULL;
     IF_ERR_GOTO(out, Status,
 		ObReferenceObjectByName(PNP_ROOT_ENUMERATOR, OBJECT_TYPE_DEVICE,
-					NULL, (POBJECT *)&Locals.RootEnumerator));
+					NULL, (POBJECT *)&RootEnumerator));
+    assert(RootEnumerator != NULL);
+    IopSetDeviceNode(RootEnumerator, IopRootDeviceNode);
 
-    /* Ask the root bus driver about its child devices */
-    HalVgaPrint("Enumerating Plug and Play devices...\n");
-    assert(Locals.RootEnumerator->DriverObject == Locals.PnpDriver);
-    IF_ERR_GOTO(out, Status,
-		IopQueueQueryDeviceRelationsRequest(Thread, Locals.RootEnumerator, BusRelations,
-						    &Locals.PendingIrp));
-    AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread,
-	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+    /* The root enumerator does not need any resource assignment, so set its
+     * device node state to Started to skip that. */
+    IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeStarted);
 
-    /* Get the PDO device handles from the response data */
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
-    if (!NT_SUCCESS(Status)) {
-	ASYNC_RETURN(AsyncState, Status);
-    }
-    ULONG DeviceCount = Locals.PendingIrp->IoResponseStatus.Information;
-    PGLOBAL_HANDLE DeviceHandles = (PGLOBAL_HANDLE)Locals.PendingIrp->IoResponseData;
-    /* IoResponseData can be NULL in which case the server most likely has run out of memory.
-     * Otherwise, it means that bus driver does not have any child devices. Weird flex but ok. */
-    if (DeviceHandles == NULL) {
-	Status = Locals.PendingIrp->IoResponseDataSize != 0 ? STATUS_NO_MEMORY : STATUS_SUCCESS;
-	goto out;
-    }
-    Locals.PendingIrp->IoResponseData = NULL;
-    IopCleanupPendingIrp(Locals.PendingIrp);
-
-    /* Create the root device node and insert the child device nodes under it */
-    IF_ERR_GOTO(out, Status,
-		IopCreateBusDeviceNode(Locals.PnpDriver, "HTREE\\ROOT", "0", Locals.RootEnumerator,
-				       DeviceCount, DeviceHandles, NULL,
-				       &IopRootDeviceNode));
-    assert(IopRootDeviceNode != NULL);
-    IopRootDeviceNode->DriverLoaded = TRUE;
-
-    /* Send the QUERY_ID requests to the physical device objects */
-    IF_ERR_GOTO(out, Status,
-		IopQueueBusQueryChildDeviceIdRequests(Thread, IopRootDeviceNode,
-						      BusQueryDeviceID));
-    IF_ERR_GOTO(out, Status,
-		IopQueueBusQueryChildDeviceIdRequests(Thread, IopRootDeviceNode,
-						      BusQueryInstanceID));
-    AWAIT(IopThreadWaitForIoCompletion, AsyncState, Locals, Thread, FALSE, WaitAll);
-
-    /* Record the device IDs that the bus driver has provided */
-    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
-	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
-	assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_PNP);
-	assert(PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_ID);
-	BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.QueryId.IdType;
-	PIO_DEVICE_OBJECT DeviceObject = PendingIrp->IoPacket->Request.Device.Object;
-	PDEVICE_NODE DeviceNode = DeviceObject->DeviceNode;
-	assert(DeviceNode != NULL);
-	IF_ERR_GOTO(out, Status,
-		    IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType));
-    }
-
-    /* Load the device drivers for the root device node and all its children */
-    IopDeviceTreeLoadDrivers(IopRootDeviceNode);
-
-    /* Send the AddDevice request to the drivers. Note that we need to wait for lower drivers
-     * to complete the request before we can continue sending AddDevice to higher drivers. */
-    AWAIT_EX(Status, IopDeviceTreeAddDevices, AsyncState, Locals, Thread, IopRootDeviceNode);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
-
-    /* Ask the bus driver for device resource requirements, assign resources, and start devices */
-    AWAIT_EX(Status, IopDeviceTreeAssignResources, AsyncState, Locals, Thread, IopRootDeviceNode);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
+    /* Recursively enumerate the root node and start all boot devices.
+     * This will build the entire boot-time device tree. */
+    AWAIT_EX(Status, IopDeviceTreeEnumerate, AsyncState, _, Thread, IopRootDeviceNode);
 
     /* Inform the user of device enumeration results */
     IopPrintDeviceTree(IopRootDeviceNode, 2);
 
-    Status = STATUS_SUCCESS;
+    ASYNC_RETURN(AsyncState, STATUS_SUCCESS);
 
 out:
-    if (!NT_SUCCESS(Status)) {
-	if (IopRootDeviceNode) {
-	    IopFreeDeviceNode(IopRootDeviceNode);
-	    IopRootDeviceNode = NULL;
-	}
-	if (Locals.RootEnumerator) {
-	    ObDereferenceObject(Locals.RootEnumerator);
-	}
-	if (Locals.PnpDriver) {
-	    ObDereferenceObject(Locals.PnpDriver);
-	}
+    if (IopRootDeviceNode) {
+	IopFreeDeviceNode(IopRootDeviceNode);
+	IopRootDeviceNode = NULL;
     }
-    IopCleanupPendingIrpList(Thread);
 
     ASYNC_END(AsyncState, Status);
 }
 
+/*
+ * NtPlugPlayControl
+ *
+ * A function for doing various Plug & Play operations from user mode.
+ *
+ * Parameters
+ *    PlugPlayControlClass
+ *       0x00   Reenumerate device tree
+ *
+ *              Buffer points to UNICODE_STRING decribing the instance
+ *              path (like "HTREE\ROOT\0" or "Root\ACPI_HAL\0000"). For
+ *              more information about instance paths see !devnode command
+ *              in kernel debugger or look at "Inside Windows 2000" book,
+ *              chapter "Driver Loading, Initialization, and Installation".
+ *
+ *       0x01   Register new device
+ *       0x02   Deregister device
+ *       0x03   Initialize device
+ *       0x04   Start device
+ *       0x06   Query and remove device
+ *       0x07   User response
+ *
+ *              Called after processing the message from NtGetPlugPlayEvent.
+ *
+ *       0x08   Generate legacy device
+ *       0x09   Get interface device list
+ *       0x0A   Get property data
+ *       0x0B   Device class association (Registration)
+ *       0x0C   Get related device
+ *       0x0D   Get device interface alias
+ *       0x0E   Get/set/clear device status
+ *       0x0F   Get device depth
+ *       0x10   Query device relations
+ *       0x11   Query target device relation
+ *       0x12   Query conflict list
+ *       0x13   Retrieve dock data
+ *       0x14   Reset device
+ *       0x15   Halt device
+ *       0x16   Get blocked driver data
+ *
+ *    Buffer
+ *       The buffer contains information that is specific to each control
+ *       code. The buffer is read-only.
+ *
+ *    BufferSize
+ *       Size of the buffer pointed by the Buffer parameter. If the
+ *       buffer size specifies incorrect value for specified control
+ *       code, error ??? is returned.
+ *
+ * Return Values
+ *    STATUS_PRIVILEGE_NOT_HELD
+ *    STATUS_SUCCESS
+ *    ...
+ *
+ * @unimplemented
+ */
 NTSTATUS NtPlugPlayControl(IN ASYNC_STATE AsyncState,
                            IN PTHREAD Thread,
                            IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,

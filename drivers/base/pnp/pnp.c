@@ -482,6 +482,21 @@ static NTSTATUS PnpBuildDeviceRequirementLists()
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS NTAPI PnpAddDevice(IN PDRIVER_OBJECT DriverObject,
+				   IN PDEVICE_OBJECT Pdo)
+{
+    DPRINT("PnpAddDevice()\n");
+
+    ASSERT(DriverObject);
+
+    /* Create the root enumerator device object */
+    UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(PNP_ROOT_ENUMERATOR_U);
+    PDEVICE_OBJECT RootEnumerator;
+    return IoCreateDevice(DriverObject, sizeof(PNP_DEVICE_EXTENSION),
+			  &DeviceName, FILE_DEVICE_BUS_EXTENDER, 0, FALSE,
+			  &RootEnumerator);
+}
+
 NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
@@ -493,17 +508,8 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
-    /* Create the root enumerator device object */
-    UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(PNP_ROOT_ENUMERATOR_U);
-    PDEVICE_OBJECT RootEnumerator;
-    Status = IoCreateDevice(DriverObject, sizeof(PNP_DEVICE_EXTENSION),
-			    &DeviceName, FILE_DEVICE_BUS_EXTENDER, 0, FALSE,
-			    &RootEnumerator);
-
-    if (!NT_SUCCESS(Status))
-	return Status;
-
     DriverObject->MajorFunction[IRP_MJ_PNP] = PnpDispatch;
+    DriverObject->AddDevice = PnpAddDevice;
 
     return STATUS_SUCCESS;
 }

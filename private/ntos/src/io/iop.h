@@ -16,29 +16,6 @@
 #define IopFreePool(Var) ExFreePoolWithTag(Var, NTOS_IO_TAG)
 
 /*
- * Device Node for the PNP manager
- */
-typedef struct _DEVICE_NODE {
-    PIO_DEVICE_OBJECT PhyDevObj;
-    PCSTR DeviceId;
-    PCSTR InstanceId;
-    struct _DEVICE_NODE *Parent;
-    LIST_ENTRY ChildrenList;
-    LIST_ENTRY SiblingLink;
-    PCSTR DriverServiceName;
-    ULONG UpperFilterCount;
-    ULONG LowerFilterCount;
-    PCSTR *UpperFilterDriverNames;
-    PCSTR *LowerFilterDriverNames;
-    PIO_DRIVER_OBJECT FunctionDriverObject;
-    PIO_DRIVER_OBJECT *UpperFilterDrivers;
-    PIO_DRIVER_OBJECT *LowerFilterDrivers;
-    PCM_RESOURCE_LIST Resources;
-    BOOLEAN DriverLoaded;
-    BOOLEAN DeviceStarted;
-} DEVICE_NODE, *PDEVICE_NODE;
-
-/*
  * The PENDING_IRP represents a pending IRP that is queued by either a THREAD object
  * or a DRIVER object. There are several possible scenarios when it comes to IRP
  * flow. These are
@@ -299,24 +276,6 @@ static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
     IopQueueIoPacketEx(PendingIrp, Driver, Thread);
 }
 
-/*
- * For AddDevice request we use the Device member of the IRP to store
- * the handle to the physical device object, which will (usually) have
- * a different driver object than the one we are sending it to.
- */
-static inline VOID IopQueueAddDeviceRequest(IN PPENDING_IRP PendingIrp,
-					    IN PIO_DRIVER_OBJECT Driver,
-					    IN PTHREAD Thread)
-{
-    /* We can only queue AddDevice request packets */
-    assert(PendingIrp != NULL);
-    assert(PendingIrp->IoPacket != NULL);
-    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
-    assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE);
-    assert(Driver != NULL);
-    IopQueueIoPacketEx(PendingIrp, Driver, Thread);
-}
-
 static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
 {
     return !!(File->Flags & FO_SYNCHRONOUS_IO);
@@ -444,10 +403,12 @@ static inline PIO_DEVICE_OBJECT IopGetTopDevice(IN PIO_DEVICE_OBJECT Device)
 }
 
 /* irp.c */
-NTSTATUS IopThreadWaitForIoCompletion(IN ASYNC_STATE State,
-				      IN PTHREAD Thread,
-				      IN BOOLEAN Alertable,
-				      IN WAIT_TYPE WaitType);
+NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
+					 IN PTHREAD Thread,
+					 IN BOOLEAN Alertable,
+					 IN WAIT_TYPE WaitType,
+					 IN PPENDING_IRP *PendingIrps,
+					 IN ULONG IrpCount);
 NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 			 IN BOOLEAN OutputIsReadOnly);
 

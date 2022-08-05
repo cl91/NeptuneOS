@@ -155,6 +155,7 @@ static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
  * via ASYNC_BEGIN!
  *
  * RULES:
+ *
  * 1. AWAIT, AWAIT_EX, AWAIT_IF, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
  *    always be in the outermost scope explicitly. In other words, the following
  *    is strictly forbidden:
@@ -165,32 +166,44 @@ static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
  *    statement is always evaluated. Unfortunately the compiler cannot catch this.
  *    Instead, use AWAIT_IF if you want to await conditionally.
  *
- * 2. Use the ASYNC_BEGIN macro to define local variables that need to be
- *    saved across async function calls. Note that since variable restoration
- *    happens after the async function has returned, you should not pass local
- *    variables defined inside the ASYNC_BEGIN macro as OUT or IN OUT variables
- *    of an async function. In other words, the following is NOT correct:
+ * 2. Use the ASYNC_BEGIN macro to define local variables that need to be saved
+ *    when the async function suspends. The local variables defined this way will
+ *    be restored when the async function resumes. Note that since this restoration
+ *    happens after the body of the await statement has returned, you should NOT
+ *    pass local variables defined inside the ASYNC_BEGIN macro as OUT or IN OUT
+ *    variables of another async function. In other words, suppose we have the
+ *    following async function:
  *
- *    VOID AsyncFcn(IN ASYNC_STATE AsyncState,
- *                  OUT ULONG *pVar);
- *    ASYNC_BEGIN(AsyncState, Locals, {
+ *        VOID AsyncFcn(IN ASYNC_STATE AsyncState,
+ *                      OUT ULONG *pVar);
+ *
+ *    and (in another async function) we tried to pass an async local variable
+ *    to it as an OUT variable and wait for it to complete:
+ *
+ *        ASYNC_BEGIN(AsyncState, Locals, {
+ *            ULONG Var;
+ *        });
+ *        AWAIT(AsyncFcn, AsyncState, Locals, &Locals.Var);
+ *
+ *    THIS IS INCORRECT! This is due to the fact that Locals.Var gets overwritten
+ *    by the variable restoration macro _ASYNC_RESTORE_LOCALS (see below), as
+ *    soon as the AsyncFcn has returned.
+ *
+ *    The correct way is to achieve this is to define Var as an ordinary variable
+ *    outside the ASYNC_BEGIN macro:
+ *
  *        ULONG Var;
- *    });
- *    AWAIT(AsyncFcn, AsyncState, Locals, &Locals.Var);
+ *        AWAIT(AsyncFcn, AsyncState, Locals, &Var);
  *
- *    This is because Locals.Var gets overwritten by the variable restoration
- *    macro _ASYNC_RESTORE_LOCALS once the AsyncFcn has returned. The correct
- *    way is to define Var as an ordinary variable outside the ASYNC_BEGIN:
- *
- *    ULONG Var;
- *    AWAIT(AsyncFcn, AsyncState, Locals, &Var);
+ *    and manually save and restore Var if it is needed to survive another AWAIT
+ *    call.
  *
  * 3. Use ASYNC_RETURN when you need to return a status from an async function.
  *    Simply using the C return statement is INCORRECT!
  *
  * 4. You must end all async function with ASYNC_END. Otherwise it won't compile.
  *
- * DESCRIPTION:
+ * HOW THIS WORKS:
  *
  * When the NTOS server gets a client NTAPI request, it is often the case that
  * the request cannot be immediately satisfied. For instance, the client may
@@ -211,7 +224,7 @@ static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
  * it is necessary for the benefit of readability to devise a way to automate
  * the writing of boilerplate asynchronous state management code. The basic idea
  * is for any function that can be called asynchronously, we add an additional
- * input parameter of type ASYNC_STATE as the first parameter of the function. This
+ * IN parameter of type ASYNC_STATE as the first parameter of the function. This
  * parameter keeps track of the progress that the asynchronous subroutine has made
  * up till the point that it must block. When the async function needs to block and
  * wait for the completion of an external event, it returns the line number from
@@ -237,7 +250,7 @@ static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
  * stack is empty.
  */
 typedef struct _ASYNC_STACK {
-    CHAR Stack[ASYNC_MAX_CALL_STACK]; /* Stack of line numbers from which execution is to be resumed */
+    CHAR Stack[ASYNC_MAX_CALL_STACK];
 } ASYNC_STACK, *PASYNC_STACK;
 
 /*
@@ -282,7 +295,7 @@ typedef struct _ASYNC_STATE {
     DbgPrint("\n")
 
 /*
- * The following macros that start with an underscore shall not be
+ * The following macros that start with an underscore shall never be
  * called directly.
  */
 #define _ASYNC_GET_MACRO(_1, _2, _3, NAME, ...) NAME
@@ -365,7 +378,7 @@ typedef struct _ASYNC_STATE {
  * Return a status from the async function.
  *
  * IMPORTANT: You must use ASYNC_RETURN to return from an async function.
- *    Simply doing return Status is INCORRECT!
+ *    Simply writing "return Status;" is INCORRECT!
  */
 #define ASYNC_RETURN(state, status)					\
     COMPILE_CHECK_ASYNC_FRAME_SIZE;					\
@@ -573,7 +586,7 @@ static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
  * A schematic diagram is as follows:
  *
  *   |--------- |             |------------|
- *   |  THREAD  |             |  THREAD    |
+ *   |  THREAD  |             |   THREAD   |
  *   |----------|             |------------|
  *   |   Root   |             | Root Wait  |
  *   |   Wait   |             | Block TY=  |
@@ -610,7 +623,7 @@ typedef struct _KWAIT_BLOCK {
  *
  * Note: you may wonder why we didn't call it "Executive" Event, since we are
  * in the NTOS executive. The reason is to match WinNT/ReactOS. Additionally,
- * for both the original Windows design and our seL4-based NTOS, the ke component
+ * in both the original Windows design and our seL4-based NTOS, the ke component
  * is supposed to be a thin wrapper around native hardward constructs (or seL4
  * constructs in our case), and the ex component contains objects that are
  * implemented using primitives in ke. Since KEVENT is simply a small header,

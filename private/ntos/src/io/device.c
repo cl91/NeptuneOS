@@ -206,7 +206,7 @@ NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
     while (PrevTop->AttachedDevice != NULL) {
 	PrevTop = PrevTop->AttachedDevice;
     }
-    /* Detech the source device from the previous device stack (if any) */
+    /* Detach the source device from the previous device stack (if any) */
     if (SrcDev->AttachedTo != NULL) {
 	assert(SrcDev->AttachedTo->AttachedDevice == SrcDev);
 	SrcDev->AttachedTo->AttachedDevice = NULL;
