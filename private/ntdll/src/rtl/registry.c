@@ -377,7 +377,7 @@ static PVOID RtlpAllocDeallocQueryBuffer(IN OPTIONAL PSIZE_T BufferSize,
     if (BufferSize) {
 	/* Allocate */
 	Buffer = RtlpAllocateMemory(*BufferSize, TAG_RTLREGISTRY);
-	if (!(Buffer) && (Status))
+	if (!Buffer && Status)
 	    *Status = STATUS_NO_MEMORY;
     }
 

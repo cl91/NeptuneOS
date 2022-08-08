@@ -56,10 +56,29 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
 
 /*
  * Ipc buffer, where the seL4 IPC buffer is placed at the very beginning,
- * followed by the system service message buffer.
+ * followed by the system service message buffer. We leave one page in
+ * between IPC buffers so buffer overrun is caught as an exception.
  */
-#define IPC_BUFFER_RESERVE		(16 * PAGE_SIZE)
+#define IPC_BUFFER_RESERVE		(2 * PAGE_SIZE)
 #define IPC_BUFFER_COMMIT		(PAGE_SIZE)
+
+/*
+ * IPC buffer cannot exceed 16K because we use a SHORT to represent
+ * the buffer argument offset and size. In x64 this can be changed
+ * but I don't see the point of having more than 16KB IPC buffer.
+ */
+#if IPC_BUFFER_RESERVE > 0xFFFF
+#error "IPC buffer too large"
+#endif
+
+/*
+ * Maximum amount of data we can pass in the IRP itself. If user buffer
+ * exceeds this size, we will directly map user buffer into server or
+ * driver address space. This cannot exceed the service message buffer
+ * size, and should be reasonably small (but not too small), such that
+ * the overhead of mapping and unmapping exceeds the overhead of copy.
+ */
+#define IRP_DATA_BUFFER_SIZE	1024
 
 /* Loader data shared between the server and NTDLL */
 #define LOADER_SHARED_DATA_RESERVE	(0x10000ULL)
@@ -197,7 +216,9 @@ typedef struct _LOADER_SHARED_DATA {
 
 /* Service message buffer sits immediately after the seL4 IPC buffer */
 #define SEL4_IPC_BUFFER_SIZE	(1UL << seL4_IPCBufferSizeBits)
-#define SVC_MSGBUF_SIZE		((1UL << seL4_PageBits) - SEL4_IPC_BUFFER_SIZE)
+#define SVC_MSGBUF_SIZE		(IPC_BUFFER_COMMIT - SEL4_IPC_BUFFER_SIZE)
+/* Alignment of the data structures passed via the service message buffer */
+#define SVC_MSGBUF_ALIGN	(16)
 
 /*
  * Points to a buffer (within the service message buffer) which stores
@@ -214,15 +235,6 @@ typedef union _SERVICE_ARGUMENT {
 
 assert_size_correct(SERVICE_ARGUMENT, MWORD_BYTES);
 
-static inline BOOLEAN KiServiceValidateArgument(IN MWORD MsgWord)
-{
-    SERVICE_ARGUMENT Arg = { .Word = MsgWord };
-    if (((ULONG)(Arg.BufferStart) + Arg.BufferSize) > SVC_MSGBUF_SIZE) {
-	return FALSE;
-    }
-    return TRUE;
-}
-
 #define SVC_MSGBUF_OFFSET_TO_ARG(IpcBufAddr, Offset, Type) (*((Type *)(IpcBufAddr + SEL4_IPC_BUFFER_SIZE + (Offset))))
 
 static inline PVOID KiServiceGetArgument(IN MWORD IpcBufferAddr,
@@ -233,25 +245,6 @@ static inline PVOID KiServiceGetArgument(IN MWORD IpcBufferAddr,
     }
     SERVICE_ARGUMENT Arg = { .Word = MsgWord };
     return &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, Arg.BufferStart, VOID);
-}
-
-static inline NTSTATUS KiServiceMarshalArgument(IN MWORD IpcBufferAddr,
-						IN OUT ULONG *MsgBufOffset,
-						IN PVOID Argument,
-						IN MWORD ArgSize,
-						OUT SERVICE_ARGUMENT *SvcArg)
-{
-    if (*MsgBufOffset > SVC_MSGBUF_SIZE) {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    if (SVC_MSGBUF_SIZE - *MsgBufOffset < ArgSize) {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    memcpy(&SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, *MsgBufOffset, VOID), Argument, ArgSize);
-    SvcArg->BufferStart = *MsgBufOffset;
-    SvcArg->BufferSize = ArgSize;
-    *MsgBufOffset += ArgSize;
-    return STATUS_SUCCESS;
 }
 
 /*
@@ -269,7 +262,7 @@ typedef struct _APC_OBJECT {
     PVOID ApcContext[3];
 } APC_OBJECT, *PAPC_OBJECT;
 
-#define MAX_APC_COUNT_PER_DELIVERY	16
+#define MAX_APC_PER_DELIVERY	16
 
 /*
  * We use a SHORT to indicate the number of APCs being delivered.

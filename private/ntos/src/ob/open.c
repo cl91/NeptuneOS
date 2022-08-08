@@ -48,7 +48,7 @@ NTSTATUS ObpLookupObjectName(IN POBJECT DirectoryObject,
     }
 
     /* Points to the terminating '\0' charactor of Path */
-    PCSTR LastByte = Path + strlen(Path);
+    UNUSED PCSTR LastByte = Path + strlen(Path);
 
     /* Recursively invoke the parse procedure of the object, until
      * one of the following is true:

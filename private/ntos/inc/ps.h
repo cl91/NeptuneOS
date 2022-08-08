@@ -63,11 +63,10 @@ typedef struct _THREAD {
     ASYNC_STACK AsyncStack; /* Stack of asynchronous call frames, starting from the service handler */
     ULONG SvcNum;	    /* Saved service number */
     BOOLEAN WdmSvc;	    /* Saved service is WDM service */
+    ULONG MsgBufferEnd;	    /* Offset to the end of the message buffer after all parameters
+			     * have been marshaled (but before any APC objects are marshaled).*/
     NTSTATUS ExitStatus;    /* Exit status of thread */
-    union {
-	SYSTEM_SERVICE_PARAMETERS SysSvcParams;
-	WDM_SERVICE_PARAMETERS WdmSvcParams;
-    };
+    SAVED_SERVICE_PARAMETERS SavedParams;
 } THREAD, *PTHREAD;
 
 /*

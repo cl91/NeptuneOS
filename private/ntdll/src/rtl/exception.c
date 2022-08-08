@@ -21,10 +21,13 @@ PRTLP_UNHANDLED_EXCEPTION_FILTER RtlpUnhandledExceptionFilter;
 
 #ifdef _M_AMD64
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winfinite-recursion"
+
 /*
  * @implemented
  */
-VOID NTAPI RtlRaiseStatus(IN NTSTATUS Status)
+NTAPI VOID RtlRaiseStatus(IN NTSTATUS Status)
 {
     EXCEPTION_RECORD ExceptionRecord;
     CONTEXT Context;
@@ -57,7 +60,9 @@ VOID NTAPI RtlRaiseStatus(IN NTSTATUS Status)
     RtlRaiseStatus(Status);
 }
 
-#endif
+#pragma GCC diagnostic pop
+
+#endif	/* _M_AMD64 */
 
 /*
  * @implemented
@@ -173,6 +178,7 @@ static VOID RtlpDumpContextEx(IN PCONTEXT pc,
 #endif
 }
 
+/* TODO: We need to generated this from ntstatus.h */
 static PCSTR RtlpExceptionCodeToString(IN ULONG ExceptionCode)
 {
     switch (ExceptionCode) {

@@ -60,9 +60,8 @@ VOID KiDestroyDispatcherHeader(IN PDISPATCHER_HEADER Header)
 	     * it must be a sub-block of a wait block chain. In this case
 	     * we free the wait block, and if it is the last sub-block of
 	     * its root wait block, we invalidate the root wait block. */
-	    PKWAIT_BLOCK RootWaitBlock = &WaitBlock->Thread->RootWaitBlock;
-	    assert(RootWaitBlock->Thread == WaitBlock->Thread);
-	    assert(RootWaitBlock->WaitType != WaitOne);
+	    assert(WaitBlock->Thread->RootWaitBlock.Thread == WaitBlock->Thread);
+	    assert(WaitBlock->Thread->RootWaitBlock.WaitType != WaitOne);
 	    KiFreeWaitBlock(WaitBlock);
 	    /* Note that even though the root wait block might have become
 	     * empty at this point, we don't want to invalidate the root wait
@@ -345,29 +344,35 @@ static inline BOOLEAN KiShouldWakeThread(IN PTHREAD Thread)
 
 /*
  * Iterate over the queued APC list of the thread and deliver the APC
- * object via the thread's service message buffer.
+ * object via the thread's service message buffer, starting at the specified
+ * message buffer offset. Return the number of APCs delivered.
  *
- * If the thread APC list is not empty after MAX_APC_COUNT_PER_DELIVERY
- * of APCs is delivered (meaning the thread has more than MAX_APC_COUNT
- * _PER_DELIVERY APCs queued at the beginning of this function), then
- * -MAX_APC_COUNT_PER_DELIVERY is returned.
+ * If we cannot deliver all APCs in one go, MoreToCome is set to TRUE.
  */
-SHORT KiDeliverApc(IN PTHREAD Thread,
-		   IN ULONG MsgBufferEnd)
+ULONG KiDeliverApc(IN PTHREAD Thread,
+		   IN ULONG MsgBufOffset,
+		   OUT BOOLEAN *MoreToCome)
 {
-    SHORT NumApc = 0;
+    assert(MsgBufOffset <= SVC_MSGBUF_SIZE);
+    assert(MoreToCome != NULL);
+    ULONG NumApc = 0;
     PAPC_OBJECT DestApc = &SVC_MSGBUF_OFFSET_TO_ARG(Thread->IpcBufferServerAddr,
-						    MsgBufferEnd, APC_OBJECT);
+						    MsgBufOffset, APC_OBJECT);
+    ULONG MaxNumApc = (SVC_MSGBUF_SIZE - MsgBufOffset) / sizeof(APC_OBJECT);
+    if (MaxNumApc > MAX_APC_PER_DELIVERY) {
+	MaxNumApc = MAX_APC_PER_DELIVERY;
+    }
     LoopOverList(Apc, &Thread->QueuedApcList, KAPC, ThreadApcListEntry) {
+	if (NumApc >= MaxNumApc) {
+	    break;
+	}
 	assert(Apc->Inserted);
 	DestApc[NumApc] = Apc->Object;
 	KeRemoveQueuedApc(Apc);
 	NumApc++;
-	if (NumApc >= MAX_APC_COUNT_PER_DELIVERY) {
-	    break;
-	}
     }
-    return IsListEmpty(&Thread->QueuedApcList) ? NumApc : -NumApc;
+    *MoreToCome = !IsListEmpty(&Thread->QueuedApcList);
+    return NumApc;
 }
 
 /*

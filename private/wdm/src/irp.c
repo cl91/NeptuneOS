@@ -92,6 +92,8 @@ LIST_ENTRY IopFileObjectList;
  * {Type, Size}. */
 PVOID IopCurrentObject;
 
+#if DBG
+
 static inline VOID IopAssertIrpLists(IN PIRP Irp)
 {
     assert(!ListHasEntry(&IopReplyIrpList, &Irp->Private.Link));
@@ -123,6 +125,8 @@ static inline BOOLEAN IrpIsInCleanupList(IN PIRP Irp)
     IopAssertIrpLists(Irp);
     return ListHasEntry(&IopCleanupIrpList, &Irp->Private.Link);
 }
+
+#endif	/* DBG */
 
 static inline NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 					   IN PFILE_OBJECT_CREATE_PARAMETERS Params,
@@ -603,7 +607,7 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
 					    IN PIRP Irp,
 					    IN ULONG BufferSize)
 {
-    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    UNUSED PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     PDEVICE_OBJECT DeviceObject = Irp->Private.ForwardedTo;
     assert(DeviceObject != NULL);
     assert(DeviceObject != IoStack->DeviceObject);

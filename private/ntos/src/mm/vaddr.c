@@ -986,6 +986,8 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
                               IN ULONG NumberOfBytesToWrite,
                               OUT OPTIONAL ULONG *NumberOfBytesWritten)
 {
+    assert(Buffer != NULL);
+    assert(NumberOfBytesToWrite != 0);
     PPROCESS Process = NULL;
     if (ProcessHandle != NtCurrentProcess()) {
 	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
@@ -998,18 +1000,13 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
     DbgTrace("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%x\n",
 	     Process->ImageFile ? Process->ImageFile->FileName : "",
 	     TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
-    PVOID MappedSourceBuffer = NULL;
     PVOID MappedTargetBuffer = NULL;
     NTSTATUS Status;
-    IF_ERR_GOTO(out, Status,
-		MmMapUserBuffer(&Thread->Process->VSpace, (MWORD)Buffer,
-				NumberOfBytesToWrite, &MappedSourceBuffer));
-    assert(MappedSourceBuffer != NULL);
     IF_ERR_GOTO(out, Status,
 		MmMapUserBuffer(TargetVSpace, (MWORD)BaseAddress,
 				NumberOfBytesToWrite, &MappedTargetBuffer));
     assert(MappedTargetBuffer != NULL);
-    memcpy(MappedTargetBuffer, MappedSourceBuffer, NumberOfBytesToWrite);
+    memcpy(MappedTargetBuffer, Buffer, NumberOfBytesToWrite);
     if (NumberOfBytesWritten != NULL) {
 	*NumberOfBytesWritten = NumberOfBytesToWrite;
     }
@@ -1017,9 +1014,6 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
 out:
     if (MappedTargetBuffer != NULL) {
 	MmUnmapUserBuffer(MappedTargetBuffer);
-    }
-    if (MappedSourceBuffer != NULL) {
-	MmUnmapUserBuffer(MappedSourceBuffer);
     }
     if (ProcessHandle != NtCurrentProcess()) {
 	assert(Process != NULL);
@@ -1033,7 +1027,7 @@ NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
 			     IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
                              IN PVOID BaseAddress,
-                             IN PVOID Buffer,
+                             OUT PVOID Buffer,
                              IN ULONG NumberOfBytesToRead,
                              OUT SIZE_T *NumberOfBytesRead)
 {

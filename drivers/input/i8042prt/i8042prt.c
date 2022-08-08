@@ -383,6 +383,7 @@ static NTAPI NTSTATUS i8042InternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
+#if DBG
 static inline BOOLEAN IrpIsInPendingReadQueue(IN PIRP Irp,
 					      IN PFDO_DEVICE_EXTENSION DevExt)
 {
@@ -393,11 +394,12 @@ static inline BOOLEAN IrpIsInPendingReadQueue(IN PIRP Irp,
     }
     return FALSE;
 }
+#endif
 
 static NTAPI VOID i8042CancelReadIrp(IN PDEVICE_OBJECT DeviceObject,
 				     IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    UNUSED PFDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
 
     TRACE_(I8042PRT, "i8042CancelRoutine(DeviceObject %p, Irp %p)\n",
 	   DeviceObject, Irp);

@@ -705,13 +705,9 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
     PSECTION Section = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
 				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
-    PVOID MappedBuffer = NULL;
-    RET_ERR_EX(MmMapUserBuffer(&Thread->Process->VSpace, (MWORD)SectionInformationBuffer,
-			       SectionInformationLength, &MappedBuffer),
-	       ObDereferenceObject(Section));
 
     if (SectionInformationClass == SectionBasicInformation) {
-	PSECTION_BASIC_INFORMATION Info = (PSECTION_BASIC_INFORMATION)MappedBuffer;
+	PSECTION_BASIC_INFORMATION Info = (PSECTION_BASIC_INFORMATION)SectionInformationBuffer;
 	if (Section->Flags.Based) {
 	    Info->BaseAddress = (PVOID) Section->BasedSectionNode.Key;
 	} else {
@@ -721,7 +717,7 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
 	Info->Size.QuadPart = Section->Size;
     } else {
 	assert(SectionInformationClass == SectionImageInformation);
-	*((PSECTION_IMAGE_INFORMATION)MappedBuffer) = Section->ImageSectionObject->ImageInformation;
+	*((PSECTION_IMAGE_INFORMATION)SectionInformationBuffer) = Section->ImageSectionObject->ImageInformation;
     }
     ObDereferenceObject(Section);
     return STATUS_SUCCESS;

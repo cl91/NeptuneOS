@@ -114,6 +114,34 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
+static void KiRecordPhysicalMemoryInfo(seL4_BootInfo *bootinfo)
+{
+    seL4_SlotRegion untyped = bootinfo->untyped;
+    MWORD LowestPage = MAXULONG_PTR;
+    MWORD HighestPage = 0;
+    MWORD NumPages = 0;
+
+    for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
+        seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
+	if (!desc->isDevice) {
+	    if (desc->sizeBits >= PAGE_LOG2SIZE) {
+		NumPages += 1 << (desc->sizeBits - PAGE_LOG2SIZE);
+	    }
+	    if (desc->paddr > HighestPage) {
+		HighestPage = desc->paddr;
+	    }
+	    if (desc->paddr < LowestPage) {
+		LowestPage = desc->paddr;
+	    }
+	}
+    }
+    MmLowestPhysicalPage = LowestPage;
+    MmHighestPhysicalPage = HighestPage;
+    MmNumberOfPhysicalPages = NumPages;
+}
+
+#ifdef CONFIG_DEBUG_BUILD
+
 static char *KiDumpBootInfoSlotRegion(char *buf,
 				      size_t size,
 				      seL4_SlotRegion *sl)
@@ -240,32 +268,6 @@ static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
     }
 }
 
-static void KiRecordPhysicalMemoryInfo(seL4_BootInfo *bootinfo)
-{
-    seL4_SlotRegion untyped = bootinfo->untyped;
-    MWORD LowestPage = MAXULONG_PTR;
-    MWORD HighestPage = 0;
-    MWORD NumPages = 0;
-
-    for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
-        seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
-	if (!desc->isDevice) {
-	    if (desc->sizeBits >= PAGE_LOG2SIZE) {
-		NumPages += 1 << (desc->sizeBits - PAGE_LOG2SIZE);
-	    }
-	    if (desc->paddr > HighestPage) {
-		HighestPage = desc->paddr;
-	    }
-	    if (desc->paddr < LowestPage) {
-		LowestPage = desc->paddr;
-	    }
-	}
-    }
-    MmLowestPhysicalPage = LowestPage;
-    MmHighestPhysicalPage = HighestPage;
-    MmNumberOfPhysicalPages = NumPages;
-}
-
 static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 {
     KiDumpBootInfoStruct(bootinfo);
@@ -273,6 +275,8 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
     KiDumpUntypedMemoryInfo(bootinfo);
     DbgPrint("\n");
 }
+
+#endif	/* CONFIG_DEBUG_BUILD */
 
 static void KiFillProcessorInformation()
 {

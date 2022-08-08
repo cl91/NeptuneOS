@@ -216,6 +216,37 @@ NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
     return STATUS_SUCCESS;
 }
 
+static inline BOOLEAN KiServiceValidateArgument(IN MWORD MsgWord,
+						IN OPTIONAL ULONG Size,
+						IN BOOLEAN Optional)
+{
+    if (MsgWord == 0) {
+	return Optional;
+    }
+    SERVICE_ARGUMENT Arg = { .Word = MsgWord };
+    if (Arg.BufferStart > SVC_MSGBUF_SIZE) {
+	DbgTrace("Argument is outside service message buffer: start offset 0x%x\n",
+		 Arg.BufferStart);
+	return FALSE;
+    }
+    if (!IS_ALIGNED_BY(Arg.BufferStart, SVC_MSGBUF_ALIGN)) {
+	DbgTrace("Argument buffer un-aligned: buffer offset 0x%x\n",
+		 Arg.BufferStart);
+	return FALSE;
+    }
+    if (((ULONG)(Arg.BufferStart) + Arg.BufferSize) > SVC_MSGBUF_SIZE) {
+	DbgTrace("Argument buffer too large: start 0x%x, size 0x%x\n",
+		 Arg.BufferStart, Arg.BufferSize);
+	return FALSE;
+    }
+    if (Size && Arg.BufferSize != Size) {
+	DbgTrace("Invalid argument size: expected 0x%x, got 0x%x\n",
+		 Size, Arg.BufferSize);
+	return FALSE;
+    }
+    return TRUE;
+}
+
 static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
 					      IN MWORD MsgWord,
 					      IN BOOLEAN Optional)
@@ -224,12 +255,13 @@ static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
     if (MsgWord == 0) {
 	return Optional;
     }
-
+    /* Validate the buffer offset */
     SERVICE_ARGUMENT Arg = { .Word = MsgWord };
-    if (!KiServiceValidateArgument(MsgWord)) {
+    if (!KiServiceValidateArgument(MsgWord, 0, FALSE)) {
 	return FALSE;
     }
     PCSTR String = (PCSTR) KiServiceGetArgument(IpcBufferServerAddr, MsgWord);
+    /* Validate that the string is NUL-terminated */
     if (String[Arg.BufferSize-1] != '\0') {
 	return FALSE;
     }
@@ -244,11 +276,12 @@ static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
     if (MsgWord == 0) {
 	return Optional;
     }
-
+    /* Validate the buffer offset */
     SERVICE_ARGUMENT Arg = { .Word = MsgWord };
-    if (!KiServiceValidateArgument(MsgWord)) {
+    if (!KiServiceValidateArgument(MsgWord, 0, FALSE)) {
 	return FALSE;
     }
+    /* Validate the buffer size */
     if (Arg.BufferSize < (sizeof(HANDLE) + sizeof(ULONG))) {
 	return FALSE;
     }
@@ -292,6 +325,79 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
     return ObjAttr;
 }
 
+/*
+ * Returns TRUE if the pointer falls in the service message buffer
+ * of the given thread
+ */
+static inline BOOLEAN KiPtrInSvcMsgBuf(IN MWORD Ptr,
+				       IN PTHREAD Thread)
+{
+    return (Ptr >= Thread->IpcBufferClientAddr) &&
+	(Ptr < (Thread->IpcBufferClientAddr + IPC_BUFFER_COMMIT));
+}
+
+static inline NTSTATUS KiServiceMapBuffer5(IN PTHREAD Thread,
+					   OUT BOOLEAN *Mapped,
+					   OUT PVOID *ServerAddress,
+					   IN MWORD ClientAddress,
+					   IN MWORD BufferLength)
+{
+    if (BufferLength == 0) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    if (KiPtrInSvcMsgBuf(ClientAddress, Thread)) {
+	MWORD MsgBufOffset = ClientAddress - Thread->IpcBufferClientAddr;
+	if (MsgBufOffset >= SVC_MSGBUF_SIZE) {
+	    assert(FALSE);
+	    return STATUS_INVALID_USER_BUFFER;
+	}
+	*ServerAddress = (PVOID)(Thread->IpcBufferServerAddr + MsgBufOffset);
+	*Mapped = FALSE;
+    } else {
+	RET_ERR(MmMapUserBuffer(&Thread->Process->VSpace, ClientAddress,
+				BufferLength, ServerAddress));
+	*Mapped = TRUE;
+    }
+    return STATUS_SUCCESS;
+}
+
+static inline NTSTATUS KiServiceMapBuffer6(IN PTHREAD Thread,
+					   OUT BOOLEAN *Mapped,
+					   OUT PVOID *ServerAddress,
+					   IN MWORD ClientAddress,
+					   IN MWORD BufferLength,
+					   IN UNUSED MWORD BufferType)
+{
+    return KiServiceMapBuffer5(Thread, Mapped, ServerAddress, ClientAddress, BufferLength);
+}
+
+static inline VOID KiServiceUnmapBuffer3(IN BOOLEAN Mapped,
+					 IN PVOID ServerAddress,
+					 IN UNUSED ULONG BufferSize)
+{
+    if (Mapped) {
+	assert(ServerAddress != NULL);
+	MmUnmapUserBuffer(ServerAddress);
+    }
+}
+
+static inline VOID KiServiceUnmapBuffer4(IN BOOLEAN Mapped,
+					 IN PVOID ServerAddress,
+					 IN ULONG BufferSize,
+					 IN UNUSED MWORD BufferType)
+{
+    KiServiceUnmapBuffer3(Mapped, ServerAddress, BufferSize);
+}
+
+#define KI_GET_7TH_ARG(_1,_2,_3,_4,_5,_6,_7,...)	_7
+#define KiServiceMapBuffer(...)				\
+    KI_GET_7TH_ARG(__VA_ARGS__, KiServiceMapBuffer6,	\
+		   KiServiceMapBuffer5)(__VA_ARGS__)
+#define KI_GET_5TH_ARG(_1,_2,_3,_4,_5,...)	_5
+#define KiServiceUnmapBuffer(...)			\
+    KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmapBuffer4,	\
+		   KiServiceUnmapBuffer3)(__VA_ARGS__)
+
 static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
 {
     assert(Thread->ReplyEndpoint.TreeNode.CSpace != NULL);
@@ -316,14 +422,12 @@ static inline VOID KiCheckAsyncStackEmpty(IN PTHREAD Thread)
 #include <ntos_syssvc_gen.c>
 #include <ntos_wdmsvc_gen.c>
 
-static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread,
-				       OUT ULONG *pReplyMsgLength,
-				       OUT ULONG *pMsgBufferEnd)
+static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread)
 {
     if (ReadyThread->WdmSvc) {
-	return KiResumeWdmService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
+	return KiResumeWdmService(ReadyThread);
     } else {
-	return KiResumeSystemService(ReadyThread, pReplyMsgLength, pMsgBufferEnd);
+	return KiResumeSystemService(ReadyThread);
     }
 }
 
@@ -511,6 +615,21 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
     return STATUS_SUCCESS;
 }
 
+static inline VOID KiReplyThread(IN PTHREAD Thread,
+				 IN NTSTATUS Status,
+				 IN ULONG NumApc,
+				 IN BOOLEAN MoreToCome)
+{
+    seL4_SetMR(0, Status);
+    seL4_SetMR(1, NumApc);
+    seL4_SetMR(2, MoreToCome);
+    if (Thread != NULL) {
+	seL4_Send(Thread->ReplyEndpoint.TreeNode.Cap, seL4_MessageInfo_new(0, 0, 0, 3));
+    } else {
+	seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 3));
+    }
+}
+
 VOID KiDispatchExecutiveServices()
 {
     MWORD Badge = 0;
@@ -531,7 +650,7 @@ VOID KiDispatchExecutiveServices()
 #endif
 	    NTSTATUS Status = KiHandleThreadFault(Thread, Fault);
 	    if (!NT_SUCCESS(Status)) {
-		/* The fault cannot be handled. Printe a message and terminate the thread. */
+		/* The fault cannot be handled. Print a message and terminate the thread. */
 		KiDumpThreadFault(Fault, Thread, TRUE, HalVgaPrint);
 		PsTerminateThread(Thread, Status);
 	    } else {
@@ -540,7 +659,7 @@ VOID KiDispatchExecutiveServices()
 		seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 0));
 	    }
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
-	    /* The thread has faulted. For system services we always terminate the thread. */
+	    /* The system thread has faulted. For system threads we always terminate the thread. */
 	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_POINTER(Badge);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
 #ifdef CONFIG_DEBUG_BUILD
@@ -553,14 +672,14 @@ VOID KiDispatchExecutiveServices()
 	     * us that the expired timer list should be checked even though there is no service
 	     * message from a client thread. In the case of a service notification, we skip the
 	     * following message processing, as is indicated by the if-condition above. */
-	    ULONG ReplyMsgLength = 1;
 	    ULONG MsgBufferEnd = 0;
-	    SHORT NumApc = 0;
-	    /* Reject the system service call since the service message is invalid. */
-	    NTSTATUS Status = STATUS_INVALID_PARAMETER;
+	    ULONG NumApc = 0;
+	    BOOLEAN MoreToCome = FALSE;
+	    /* Reject the system service call if the service message is invalid. */
 	    if ((NumUnwrappedCaps != 0) || (NumExtraCaps != 0)) {
 		DbgTrace("Invalid system service message (%d unwrapped caps, %d extra caps)\n",
 			 NumUnwrappedCaps, NumExtraCaps);
+		KiReplyThread(NULL, STATUS_INVALID_SYSTEM_SERVICE, 0, FALSE);
 	    } else {
 		/* Thread is always a valid pointer since the client cannot modify the badge */
 		assert(Badge != 0);
@@ -570,29 +689,28 @@ VOID KiDispatchExecutiveServices()
 		 * been caught by the KiCheckAsyncStackEmpty when we reply to the client but
 		 * we want to make sure (async calls are hard to debug!). */
 		KiCheckAsyncStackEmpty(Thread);
+		NTSTATUS Status;
+		BOOLEAN ReplyCapSaved = FALSE;
 		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_WDM_SERVICE) {
 		    DbgTrace("Got driver call from thread %p\n", Thread);
 		    Status = KiHandleWdmService(SvcNum, Thread, ReqMsgLength,
-						&ReplyMsgLength, &MsgBufferEnd);
+						&MsgBufferEnd, &ReplyCapSaved);
 		} else {
 		    assert(GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_SERVICE);
 		    DbgTrace("Got call from thread %p\n", Thread);
 		    Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength,
-						   &ReplyMsgLength, &MsgBufferEnd);
+						   &MsgBufferEnd, &ReplyCapSaved);
 		}
 		/* If the service handler returned USER APC status, we should deliver APCs */
 		if (Status == STATUS_USER_APC) {
-		    NumApc = KiDeliverApc(Thread, MsgBufferEnd);
+		    NumApc = KiDeliverApc(Thread, MsgBufferEnd, &MoreToCome);
 		}
 		if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
 		    /* Before we reply to the client, on debug build we check that the async function has
 		     * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
 		    KiCheckAsyncStackEmpty(Thread);
+		    KiReplyThread(ReplyCapSaved ? Thread : NULL, Status, NumApc, MoreToCome);
 		}
-	    }
-	    if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
-		seL4_SetMR(0, (MWORD) Status);
-		seL4_Reply(seL4_MessageInfo_new((USHORT)NumApc, 0, 0, ReplyMsgLength));
 	    }
 	}
 	/* Check the expired timer list and wake up any thread that is waiting on them */
@@ -602,10 +720,7 @@ VOID KiDispatchExecutiveServices()
 	while (!IsListEmpty(&KiReadyThreadList)) {
 	    PTHREAD ReadyThread = CONTAINING_RECORD(KiReadyThreadList.Flink,
 						    THREAD, ReadyListLink);
-	    ULONG ReplyMsgLength = 0;
-	    ULONG MsgBufferEnd = 0;
-	    SHORT NumApc = 0;
-	    NTSTATUS Status = KiResumeService(ReadyThread, &ReplyMsgLength, &MsgBufferEnd);
+	    NTSTATUS Status = KiResumeService(ReadyThread);
 	    /* Regardless of whether the handler function has completed, we should
 	     * remove the thread from the ready list. In the case that the async status
 	     * is still pending (because the handler function has blocked on a different
@@ -613,18 +728,18 @@ VOID KiDispatchExecutiveServices()
 	    RemoveEntryList(&ReadyThread->ReadyListLink);
 	    /* Reply to the thread if the handler function has completed */
 	    if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
+		ULONG NumApc = 0;
+		BOOLEAN MoreToCome = FALSE;
 		/* If the service handler returned USER APC status, we should deliver APCs */
 		if (Status == STATUS_USER_APC) {
-		    NumApc = KiDeliverApc(ReadyThread, MsgBufferEnd);
+		    NumApc = KiDeliverApc(ReadyThread, ReadyThread->MsgBufferEnd, &MoreToCome);
 		}
 		/* Before we reply to the client, on debug build we check that the async function has
 		 * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
 		KiCheckAsyncStackEmpty(ReadyThread);
 		/* We return the service status via the zeroth message register and
 		 * the number of APCs via the label of the message */
-		seL4_SetMR(0, (MWORD) Status);
-		seL4_Send(ReadyThread->ReplyEndpoint.TreeNode.Cap,
-			  seL4_MessageInfo_new((USHORT)NumApc, 0, 0, ReplyMsgLength));
+		KiReplyThread(ReadyThread, Status, NumApc, MoreToCome);
 	    }
 	}
     }

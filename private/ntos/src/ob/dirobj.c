@@ -148,10 +148,10 @@ static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Parent,
     assert(ObObjectIsType(Parent, OBJECT_TYPE_DIRECTORY));
     POBJECT FoundObject = NULL;
     POBJECT_DIRECTORY_ENTRY DirectoryEntry = NULL;
-    NTSTATUS Status = ObpLookupDirectoryEntry((POBJECT_DIRECTORY)Parent,
-					      Subpath, strlen(Subpath),
-					      &FoundObject,
-					      &DirectoryEntry);
+    UNUSED NTSTATUS Status = ObpLookupDirectoryEntry((POBJECT_DIRECTORY)Parent,
+						     Subpath, strlen(Subpath),
+						     &FoundObject,
+						     &DirectoryEntry);
     assert(NT_SUCCESS(Status));
     assert(FoundObject == Subobject);
     assert(DirectoryEntry != NULL);

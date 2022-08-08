@@ -1117,7 +1117,7 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 		HalVgaPrint(" %s", DeviceNode->UpperFilterDriverNames[i]);
 	    }
 	} else {
-	    HalVgaPrint(" Loaded driver %s.", DeviceNode->DriverServiceName);
+	    HalVgaPrint(" Loaded driver %s", DeviceNode->DriverServiceName);
 	}
 	if (IopDeviceNodeGetCurrentState(DeviceNode) >= DeviceNodeStarted) {
 	    HalVgaPrint(". STARTED.\n");

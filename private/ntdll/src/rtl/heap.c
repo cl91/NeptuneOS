@@ -1877,7 +1877,7 @@ static PHEAP_ENTRY RtlpSplitEntry(PHEAP Heap,
     UCHAR FreeFlags, EntryFlags = HEAP_ENTRY_BUSY;
     PHEAP_ENTRY InUseEntry;
     SIZE_T FreeSize;
-    UCHAR SegmentOffset;
+    UNUSED UCHAR SegmentOffset;
 
     /* Add extra flags in case of settable user value feature is requested,
        or there is a tag (small or normal) or there is a request to
@@ -2416,7 +2416,7 @@ BOOLEAN RtlpGrowBlockInPlace(IN PHEAP Heap,
     PHEAP_FREE_ENTRY FreeEntry, UnusedEntry, FollowingEntry;
     SIZE_T FreeSize, PrevSize, TailPart, AddedSize = 0;
     PHEAP_ENTRY_EXTRA OldExtra, NewExtra;
-    UCHAR SegmentOffset;
+    UNUSED UCHAR SegmentOffset;
 
     /* We can't grow beyond specified threshold */
     if (Index > Heap->VirtualMemoryThreshold)
@@ -2677,7 +2677,7 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
     SIZE_T RemainderBytes, ExtraSize;
     PHEAP_VIRTUAL_ALLOC_ENTRY VirtualAllocBlock;
     EXCEPTION_RECORD ExceptionRecord;
-    UCHAR SegmentOffset;
+    UNUSED UCHAR SegmentOffset;
 
     /* Return success in case of a null pointer */
     if (!Ptr) {

@@ -6,9 +6,11 @@
  *
  * This is used by vsprintf.c which is needed by the NTOS server.
  */
-NTSTATUS NTAPI RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
-                                 ULONG *utf8_bytes_written,
-                                 const WCHAR *uni_src, ULONG uni_bytes)
+NTSTATUS NTAPI RtlUnicodeToUTF8N(OUT OPTIONAL CHAR *utf8_dest,
+				 IN ULONG utf8_bytes_max,
+                                 OUT ULONG *utf8_bytes_written,
+                                 IN const WCHAR *uni_src,
+				 IN ULONG uni_bytes)
 {
     NTSTATUS status;
     ULONG i;
@@ -96,7 +98,7 @@ NTSTATUS NTAPI RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
 /******************************************************************************
  * RtlUTF8ToUnicodeN [NTDLL.@]
  */
-NTSTATUS NTAPI RtlUTF8ToUnicodeN(OUT WCHAR *uni_dest,
+NTSTATUS NTAPI RtlUTF8ToUnicodeN(OUT OPTIONAL WCHAR *uni_dest,
 				 IN ULONG uni_bytes_max,
                                  OUT ULONG *uni_bytes_written,
                                  IN const CHAR *utf8_src,

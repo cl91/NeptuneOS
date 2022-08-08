@@ -19,12 +19,6 @@ extern PCSTR IopDbgTraceModuleName;
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
-/* Prevent the compiler from inlining the function */
-#define NO_INLINE	__attribute__((noinline))
-
-/* Inform the compiler that the function does not return */
-#define NORETURN	__attribute__((__noreturn__))
-
 /* Shared kernel data that is accessible from user space */
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
 

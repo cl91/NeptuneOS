@@ -377,7 +377,7 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
     /* This should always succeed. On debug build we assert if it didn't. */
-    NTSTATUS Status = MiDeleteCap(Node);
+    UNUSED NTSTATUS Status = MiDeleteCap(Node);
     assert(NT_SUCCESS(Status));
     MmDeallocateCap(Node->CSpace, Node->Cap);
     Node->Cap = 0;
@@ -423,7 +423,7 @@ VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
     /* This should always succeed. On debug build we assert if it didn't. */
-    NTSTATUS Status = MiRevokeCap(Node);
+    UNUSED NTSTATUS Status = MiRevokeCap(Node);
     assert(NT_SUCCESS(Status));
     LoopOverChildren(Child, Node) {
 	MiCapTreeDeallocateCapRecursively(Child);

@@ -1101,8 +1101,7 @@ NTAPI NTSYSAPI NTSTATUS NtSaveMergedKeys(IN HANDLE HighPrecedenceKeyHandle,
 					 IN HANDLE FileHandle);
 
 NTAPI NTSYSAPI NTSTATUS NtSetInformationKey(IN HANDLE KeyHandle,
-					    IN _Strict_type_match_
-					    KEY_SET_INFORMATION_CLASS KeySetInformationClass,
+					    IN KEY_SET_INFORMATION_CLASS KeySetInformationClass,
 					    IN PVOID KeySetInformation,
 					    IN ULONG KeySetInformationLength);
 

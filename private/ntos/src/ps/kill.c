@@ -45,7 +45,7 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 
     /* Clean up the APC objects queued to this thread */
     LoopOverList(Apc, &Thread->QueuedApcList, KAPC, ThreadApcListEntry) {
-	BOOLEAN Inserted = KeRemoveQueuedApc(Apc);
+	UNUSED BOOLEAN Inserted = KeRemoveQueuedApc(Apc);
 	assert(Inserted);
     }
 

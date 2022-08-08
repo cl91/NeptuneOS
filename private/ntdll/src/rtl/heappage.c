@@ -425,14 +425,12 @@ BOOLEAN RtlpDphWritePageHeapBlockInformation(PDPH_HEAP_ROOT DphRoot,
 VOID RtlpDphPlaceOnBusyList(PDPH_HEAP_ROOT DphRoot,
 			    PDPH_HEAP_BLOCK DphNode)
 {
-    BOOLEAN NewElement;
-    PVOID AddressUserData;
-
     DPRINT("RtlpDphPlaceOnBusyList(%p %p)\n", DphRoot, DphNode);
 
     /* Add it to the AVL busy nodes table */
     DphRoot->NodeToAllocate = DphNode;
-    AddressUserData =
+    BOOLEAN NewElement;
+    UNUSED PVOID AddressUserData =
 	RtlInsertElementGenericTableAvl(&DphRoot->BusyNodesTable,
 					&DphNode->pUserAllocation,
 					sizeof(ULONG_PTR), &NewElement);
@@ -597,12 +595,10 @@ VOID RtlpDphRemoveFromAvailableList(PDPH_HEAP_ROOT DphRoot,
 VOID RtlpDphRemoveFromBusyList(PDPH_HEAP_ROOT DphRoot,
 			       PDPH_HEAP_BLOCK Node)
 {
-    BOOLEAN ElementPresent;
-
     DPRINT("RtlpDphRemoveFromBusyList(%p %p)\n", DphRoot, Node);
 
     /* Delete it from busy nodes table */
-    ElementPresent =
+    UNUSED BOOLEAN ElementPresent =
 	RtlDeleteElementGenericTableAvl(&DphRoot->BusyNodesTable,
 					&Node->pUserAllocation);
     ASSERT(ElementPresent == TRUE);
@@ -671,28 +667,24 @@ VOID RtlpDphCoalesceNodeIntoAvailable(PDPH_HEAP_ROOT DphRoot,
 	InsertHeadList(AvailListHead, &Node->AvailableEntry);
     } else {
 	/* Check the previous node and merge if possible */
-	if (PrevNode->pVirtualBlock + PrevNode->nVirtualBlockSize ==
-	    Node->pVirtualBlock) {
+	if (PrevNode->pVirtualBlock + PrevNode->nVirtualBlockSize == Node->pVirtualBlock) {
 	    /* Check they actually belong to the same virtual memory block */
-	    NTSTATUS Status;
 	    MEMORY_BASIC_INFORMATION MemoryBasicInfo;
 
-	    Status = NtQueryVirtualMemory(NtCurrentProcess(),
-					  Node->pVirtualBlock,
-					  MemoryBasicInformation,
-					  &MemoryBasicInfo,
-					  sizeof(MemoryBasicInfo), NULL);
+	    UNUSED NTSTATUS Status = NtQueryVirtualMemory(NtCurrentProcess(),
+							  Node->pVirtualBlock,
+							  MemoryBasicInformation,
+							  &MemoryBasicInfo,
+							  sizeof(MemoryBasicInfo), NULL);
 
 	    /* There is no way this can fail, we committed this memory! */
 	    ASSERT(NT_SUCCESS(Status));
 
-	    if ((PUCHAR) MemoryBasicInfo.AllocationBase <=
-		PrevNode->pVirtualBlock) {
+	    if ((PUCHAR)MemoryBasicInfo.AllocationBase <= PrevNode->pVirtualBlock) {
 		/* They are adjacent, and from the same VM region. - merge! */
 		PrevNode->nVirtualBlockSize += Node->nVirtualBlockSize;
 		RtlpDphReturnNodeToUnusedList(DphRoot, Node);
 		DphRoot->nAvailableAllocations--;
-
 		Node = PrevNode;
 	    } else {
 		/* Insert after PrevNode */
@@ -714,21 +706,18 @@ VOID RtlpDphCoalesceNodeIntoAvailable(PDPH_HEAP_ROOT DphRoot,
 	    if (Node->pVirtualBlock + Node->nVirtualBlockSize ==
 		NextNode->pVirtualBlock) {
 		/* Check they actually belong to the same virtual memory block */
-		NTSTATUS Status;
 		MEMORY_BASIC_INFORMATION MemoryBasicInfo;
-
-		Status = NtQueryVirtualMemory(NtCurrentProcess(),
-					      NextNode->pVirtualBlock,
-					      MemoryBasicInformation,
-					      &MemoryBasicInfo,
-					      sizeof(MemoryBasicInfo),
-					      NULL);
+		UNUSED NTSTATUS Status = NtQueryVirtualMemory(NtCurrentProcess(),
+							      NextNode->pVirtualBlock,
+							      MemoryBasicInformation,
+							      &MemoryBasicInfo,
+							      sizeof(MemoryBasicInfo),
+							      NULL);
 
 		/* There is no way this can fail, we committed this memory! */
 		ASSERT(NT_SUCCESS(Status));
 
-		if ((PUCHAR) MemoryBasicInfo.AllocationBase <=
-		    Node->pVirtualBlock) {
+		if ((PUCHAR) MemoryBasicInfo.AllocationBase <= Node->pVirtualBlock) {
 		    /* They are adjacent - merge! */
 		    Node->nVirtualBlockSize += NextNode->nVirtualBlockSize;
 

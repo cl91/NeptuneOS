@@ -1,5 +1,6 @@
 #include "mi.h"
 
+#if DBG
 static inline PCSTR MiPagingTypeToStr(PAGING_STRUCTURE_TYPE Type)
 {
     if (Type == PAGING_TYPE_PAGE) {
@@ -18,6 +19,7 @@ static inline PCSTR MiPagingTypeToStr(PAGING_STRUCTURE_TYPE Type)
     assert(FALSE);
     return 0;
 }
+#endif
 
 /*
  * Sanitize the virtual address such that it is aligned with

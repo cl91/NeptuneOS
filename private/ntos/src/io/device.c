@@ -42,10 +42,9 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     /* These must come before ASYNC_BEGIN since they are referenced
      * throughout the whole function (in particular, after the AWAIT call) */
     PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
-    PIO_DRIVER_OBJECT Driver = Device->DriverObject;
     PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
     POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
-    assert(Driver != NULL);
+    assert(Device->DriverObject != NULL);
 
     /* This is initialized to STATUS_NTOS_BUG so we can catch bugs */
     NTSTATUS Status = STATUS_NTOS_BUG;

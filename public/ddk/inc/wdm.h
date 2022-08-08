@@ -4,6 +4,8 @@
 #include <string.h>
 #include <assert.h>
 
+#define UNUSED	__attribute__((unused))
+
 /* We are running in user space. */
 FORCEINLINE DECLSPEC_DEPRECATED VOID PAGED_CODE() {}
 
@@ -1365,7 +1367,7 @@ FORCEINLINE NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
 FORCEINLINE BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
 					      IN PIRP Irp)
 {
-    NTSTATUS Status = IoCallDriverEx(DeviceObject, Irp, NULL);
+    UNUSED NTSTATUS Status = IoCallDriverEx(DeviceObject, Irp, NULL);
     assert(Status == Irp->IoStatus.Status);
     return TRUE;
 }

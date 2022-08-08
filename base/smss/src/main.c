@@ -39,10 +39,11 @@ static BOOLEAN SmBeep(IN ULONG dwFreq,
 				   FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
 				   0, NULL, 0);
     if (!NT_SUCCESS(Status)) {
+	DbgTrace("NtCreateFile returned error status 0x%x\n", Status);
 	return FALSE;
     }
 
-    /* check the parameters */
+    /* Check the parameters */
     if ((dwFreq >= 0x25 && dwFreq <= 0x7FFF) || (dwFreq == 0x0 && dwDuration == 0x0)) {
 	BEEP_SET_PARAMETERS BeepSetParameters;
 	/* Set beep data */
@@ -53,7 +54,13 @@ static BOOLEAN SmBeep(IN ULONG dwFreq,
 	Status = NtDeviceIoControlFile(hBeep, NULL, NULL, NULL, &IoStatusBlock,
 				       IOCTL_BEEP_SET, &BeepSetParameters,
 				       sizeof(BeepSetParameters), NULL, 0);
+	if (!NT_SUCCESS(Status)) {
+	    DbgTrace("NtDeviceIoControlFile returned error status 0x%x\n",
+		     Status);
+	}
     } else {
+	DbgTrace("Invalid beep parameter freq %d duration %d\n",
+		 dwFreq, dwDuration);
 	Status = STATUS_INVALID_PARAMETER;
     }
 

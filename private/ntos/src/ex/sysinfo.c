@@ -220,27 +220,16 @@ NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
 	return STATUS_INVALID_INFO_CLASS;
     }
 
-    PVOID MappedUserBuffer = NULL;
-    RET_ERR(MmMapUserBuffer(&Thread->Process->VSpace,
-			    (MWORD)SystemInformationBuffer,
-			    SystemInformationLength,
-			    &MappedUserBuffer));
-    assert(MappedUserBuffer != NULL);
-
     if (CallQS[SystemInformationClass].Query != NULL) {
 	/* Hand the request to a subhandler */
 	ULONG CapturedResultLength = 0;
-	Status = CallQS[SystemInformationClass].Query(MappedUserBuffer,
+	Status = CallQS[SystemInformationClass].Query(SystemInformationBuffer,
 						      SystemInformationLength,
 						      &CapturedResultLength);
 
 	/* Save the result length to the caller */
 	if (ReturnLength)
 	    *ReturnLength = CapturedResultLength;
-    }
-
-    if (MappedUserBuffer != NULL) {
-	MmUnmapUserBuffer(MappedUserBuffer);
     }
 
     return Status;
