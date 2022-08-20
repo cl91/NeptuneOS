@@ -33,6 +33,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     case REG_BINARY:
     case REG_LINK:
     case REG_MULTI_SZ:
+    case REG_FULL_RESOURCE_DESCRIPTOR:
 	assert(DataSize != 0);
 	PVOID SavedData = ExAllocatePoolWithTag(DataSize, NTOS_CM_TAG);
 	if (SavedData == NULL) {

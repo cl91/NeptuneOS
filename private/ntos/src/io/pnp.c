@@ -700,6 +700,12 @@ static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DE
 	Res.u.Interrupt.Affinity = Desc.u.Interrupt.TargetedProcessors;
 	break;
 
+    case CmResourceTypeDma:
+	/* Assign the first available DMA channel */
+	Res.u.Dma.Channel = Desc.u.Dma.MinimumChannel;
+	Res.u.Dma.Port = 0;
+	break;
+
     default:
 	assert(FALSE);
     }

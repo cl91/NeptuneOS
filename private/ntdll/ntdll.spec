@@ -76,6 +76,7 @@
 @ stdcall RtlDuplicateUnicodeString(long ptr ptr)
 @ stdcall RtlCopyUnicodeString(ptr ptr)
 @ stdcall RtlAppendUnicodeToString(ptr wstr)
+@ stdcall RtlIntegerToChar(long long long ptr)
 @ stdcall RtlIntegerToUnicodeString(long long ptr)
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)
 @ stdcall RtlUnicodeToUTF8N(ptr long ptr ptr long)
@@ -110,6 +111,8 @@
 @ cdecl wcscat_s(wstr long wstr)
 @ cdecl wcsncat_s(wstr long wstr long)
 @ cdecl wcsncmp(wstr wstr long)
+@ cdecl _strcmpi(str str) _stricmp
+@ cdecl _stricmp(str str)
 @ cdecl _strnicmp(str str long)
 @ cdecl _vsnprintf(ptr long str ptr) vsnprintf
 @ varargs _snprintf(ptr long str) snprintf
