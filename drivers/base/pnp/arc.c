@@ -244,6 +244,8 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
 				  &ObjectAttributes, 0,
 				  NULL, 0, &Disposition);
     if (!NT_SUCCESS(Status)) {
+	TRACE_(PNPMGR, "Unable to create key %wZ\n",
+	       &CmTypeName[Component->Type]);
 	return Status;
     }
 
@@ -273,8 +275,10 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
 	NtClose(ParentHandle);
 
 	/* Fail if the key couldn't be created, and make sure it's a new key */
-	if (!NT_SUCCESS(Status))
+	if (!NT_SUCCESS(Status)) {
+	    TRACE_(PNPMGR, "Unable to create key %wZ\n", &KeyName);
 	    return Status;
+	}
 	ASSERT(Disposition == REG_CREATED_NEW_KEY);
     }
 
@@ -374,16 +378,13 @@ static NTSTATUS ArcSetupConfigurationTree(IN PCONFIGURATION_COMPONENT_DATA Curre
 					  OUT PCM_FULL_RESOURCE_DESCRIPTOR ConfigurationData,
 					  IN ULONG ConfigurationDataSize)
 {
-    PCONFIGURATION_COMPONENT Component;
     USHORT DeviceIndexTable[MaximumType + 1] = { 0 };
     ULONG Interface = InterfaceType, Bus = BusNumber, i;
-    NTSTATUS Status;
-    HANDLE NewHandle;
 
     /* Loop each entry */
     while (CurrentEntry) {
 	/* Check if this is an adapter */
-	Component = &CurrentEntry->ComponentEntry;
+	PCONFIGURATION_COMPONENT Component = &CurrentEntry->ComponentEntry;
 	if ((Component->Class == AdapterClass) &&
 	    (CurrentEntry->Parent->ComponentEntry.Class == SystemClass)) {
 	    /* Check what kind of adapter it is */
@@ -436,26 +437,26 @@ static NTSTATUS ArcSetupConfigurationTree(IN PCONFIGURATION_COMPONENT_DATA Curre
 	/* Dump information on the component */
 
 	/* Setup the hardware node */
-	Status = ArcInitializeRegistryNode(CurrentEntry,
-					   ParentHandle,
-					   &NewHandle,
-					   Interface,
-					   Bus,
-					   DeviceIndexTable,
-					   ConfigurationData,
-					   ConfigurationDataSize);
+	HANDLE NewHandle;
+	NTSTATUS Status = ArcInitializeRegistryNode(CurrentEntry,
+						    ParentHandle,
+						    &NewHandle,
+						    Interface,
+						    Bus,
+						    DeviceIndexTable,
+						    ConfigurationData,
+						    ConfigurationDataSize);
 	if (!NT_SUCCESS(Status))
 	    return Status;
 
 	/* Check for children */
 	if (CurrentEntry->Child) {
-	    /* Recurse child */
+	    /* Recursively setup the child tree */
 	    Status = ArcSetupConfigurationTree(CurrentEntry->Child,
 					       NewHandle, Interface, Bus,
 					       ConfigurationData,
 					       ConfigurationDataSize);
 	    if (!NT_SUCCESS(Status)) {
-		/* Fail */
 		NtClose(NewHandle);
 		return Status;
 	    }
@@ -496,6 +497,7 @@ NTSTATUS ArcSetupHardwareDescriptionDatabase(IN PCONFIGURATION_COMPONENT_DATA Co
     ULONG ConfigurationAreaSize = 4 * PAGE_SIZE;
     PCM_FULL_RESOURCE_DESCRIPTOR ConfigurationData = ExAllocatePool(ConfigurationAreaSize);
     if (!ConfigurationData) {
+	TRACE_(PNPMGR, "Unable to allocate resource descriptor\n");
 	NtClose(KeyHandle);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

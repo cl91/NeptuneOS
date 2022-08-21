@@ -125,6 +125,7 @@ static inline NTSTATUS IopOpenKey(IN UNICODE_STRING Key,
     OBJECT_ATTRIBUTES ObjectAttributes;
     InitializeObjectAttributes(&ObjectAttributes, &Key,
 			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+    TRACE_(NTOSPNP, "Opening key %wZ\n", &Key);
     return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
 }
 
@@ -433,6 +434,7 @@ static NTSTATUS IopGetSubKeyInfo(IN UNICODE_STRING Key,
 
     if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL &&
 	Status != STATUS_BUFFER_OVERFLOW) {
+	TRACE_(PNPMGR, "NtQueryKey returned error status 0x%x", Status);
 	goto out;
     }
     assert(LenFullInfo != 0);

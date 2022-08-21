@@ -99,7 +99,7 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
 	assert(Node->Type == CM_NODE_KEY || Node->Type == CM_NODE_VALUE);
 	PCSTR NodeName = Node->Type == CM_NODE_KEY ?
 	    ObGetObjectName(Node) : ((PCM_REG_VALUE)Node)->Name;
-	if (!strncmp(Name, NodeName, NameLength)) {
+	if (!_strnicmp(Name, NodeName, NameLength)) {
 	    NodeFound = Node;
 	}
     }
@@ -139,12 +139,14 @@ VOID CmpKeyObjectRemoveProc(IN POBJECT Parent,
 			    IN PCSTR Subpath);
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       IN PCSTR Path,
+			       IN BOOLEAN CaseInsensitive,
 			       OUT POBJECT *FoundObject,
 			       OUT PCSTR *RemainingPath);
 NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
 			      IN POBJECT Object,
 			      IN PCSTR SubPath,
+			      IN ULONG Attributes,
 			      IN POB_OPEN_CONTEXT OpenContext,
 			      OUT POBJECT *pOpenedInstance,
 			      OUT PCSTR *pRemainingPath);

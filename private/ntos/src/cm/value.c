@@ -275,7 +275,7 @@ NTSTATUS CmReadKeyValueByPath(IN PCSTR KeyPath,
 			      OUT PVOID *Data)
 {
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByName(KeyPath, OBJECT_TYPE_KEY, NULL, (POBJECT *)&Key));
+    RET_ERR(ObReferenceObjectByName(KeyPath, OBJECT_TYPE_KEY, NULL, FALSE, (POBJECT *)&Key));
     assert(Key != NULL);
     CmpDbgDumpKey(Key);
     PCM_NODE Node = CmpGetNamedNode(Key, Value, 0);

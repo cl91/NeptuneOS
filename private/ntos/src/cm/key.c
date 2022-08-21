@@ -33,8 +33,16 @@ VOID CmpKeyObjectRemoveProc(IN POBJECT Parent,
 {
 }
 
+/*
+ * Parse routine for the KEY object. This is invoked when the
+ * object manager looks for a KEY object that is already loaded
+ * into memory. Note that since the Windows registry is always
+ * case-insensitive, the CaseInsensitive parameter is ignored
+ * and all name lookups are case insensitive.
+ */
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       IN PCSTR Path,
+			       IN BOOLEAN CaseInsensitive,
 			       OUT POBJECT *FoundObject,
 			       OUT PCSTR *RemainingPath)
 {
@@ -78,6 +86,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
 			      IN POBJECT Self,
 			      IN PCSTR Path,
+			      IN ULONG Attributes,
 			      IN POB_OPEN_CONTEXT OpenContext,
 			      OUT POBJECT *OpenedInstance,
 			      OUT PCSTR *RemainingPath)
@@ -141,7 +150,8 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 
 /*
  * TODO: We will need to figure out how to distinguish closing a
- * handle vs deleting a key from the registry.
+ * handle vs deleting a key from the registry. This is done via
+ * the object manager's OBJ_PERMANENT attribute.
  */
 VOID CmpKeyObjectDeleteProc(IN POBJECT Self)
 {
@@ -170,15 +180,20 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
     NTSTATUS Status;
 
     ASYNC_BEGIN(AsyncState, Locals, {
+	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    CM_OPEN_CONTEXT OpenContext;
 	});
     DbgTrace("Trying to open key %s root directory %p\n",
 	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
+    /* Windows registry is always case insensitive so we set the
+     * OBJ_CASE_INSENSITIVE even if the client did not. */
+    Locals.ObjectAttributes = ObjectAttributes;
+    Locals.ObjectAttributes.Attributes |= OBJ_CASE_INSENSITIVE;
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_KEY_OPEN;
     Locals.OpenContext.Create = FALSE;
 
     AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals, Thread,
-	     ObjectAttributes, OBJECT_TYPE_KEY,
+	     Locals.ObjectAttributes, OBJECT_TYPE_KEY,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(AsyncState, Status);
 }
@@ -196,10 +211,15 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     NTSTATUS Status;
 
     ASYNC_BEGIN(AsyncState, Locals, {
+	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    CM_OPEN_CONTEXT OpenContext;
 	});
     DbgTrace("Trying to create key %s root directory %p\n",
 	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
+    /* Windows registry is always case insensitive so we set the
+     * OBJ_CASE_INSENSITIVE even if the client did not. */
+    Locals.ObjectAttributes = ObjectAttributes;
+    Locals.ObjectAttributes.Attributes |= OBJ_CASE_INSENSITIVE;
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_KEY_OPEN;
     Locals.OpenContext.Create = TRUE;
     Locals.OpenContext.TitleIndex = TitleIndex;
@@ -208,7 +228,7 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     Locals.OpenContext.Disposition = Disposition;
 
     AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals,
-	     Thread, ObjectAttributes, OBJECT_TYPE_KEY,
+	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_KEY,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(AsyncState, Status);
 }

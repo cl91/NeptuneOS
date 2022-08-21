@@ -30,6 +30,7 @@ static inline ULONG ObpDirectoryEntryHashIndex(IN PCSTR Str,
 static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 					IN PCSTR Name,
 					IN ULONG Length, /* Excluding trailing '\0' */
+					IN BOOLEAN CaseInsensitive,
 					OUT POBJECT *FoundObject,
 					OUT OPTIONAL POBJECT_DIRECTORY_ENTRY *DirectoryEntry)
 {
@@ -44,10 +45,12 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
 	assert(Entry != NULL);
 	assert(Entry->Object != NULL);
+	DbgTrace("Checking object %s\n", ObGetObjectName(Entry->Object));
 	if (strlen(ObGetObjectName(Entry->Object)) != Length) {
 	    continue;
 	}
-	if (!strncmp(Name, ObGetObjectName(Entry->Object), Length)) {
+	INT (*Comparer)(PCSTR, PCSTR, ULONG) = CaseInsensitive ? _strnicmp : strncmp;
+	if (!Comparer(Name, ObGetObjectName(Entry->Object), Length)) {
 	    DbgTrace("Found object name = %s\n",
 		     ObGetObjectName(Entry->Object));
 	    *FoundObject = Entry->Object;
@@ -70,11 +73,13 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
  */
 static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    IN PCSTR Path,
+					    IN BOOLEAN CaseInsensitive,
 					    OUT POBJECT *FoundObject,
 					    OUT PCSTR *RemainingPath)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
-    DbgTrace("Trying to parse Path = %s\n", Path);
+    DbgTrace("Trying to parse Path = %s case-%s\n", Path,
+	     CaseInsensitive ? "insensitively" : "sensitively");
     assert(Self != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
@@ -83,7 +88,7 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     ULONG NameLength = ObpLocateFirstPathSeparator(Path);
 
     /* Look for the named object under the directory. */
-    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, FoundObject, NULL),
+    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, CaseInsensitive, FoundObject, NULL),
 	       {
 		   DbgTrace("Path %s not found\n", Path);
 		   *FoundObject = NULL;
@@ -150,7 +155,7 @@ static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Parent,
     POBJECT_DIRECTORY_ENTRY DirectoryEntry = NULL;
     UNUSED NTSTATUS Status = ObpLookupDirectoryEntry((POBJECT_DIRECTORY)Parent,
 						     Subpath, strlen(Subpath),
-						     &FoundObject,
+						     FALSE, &FoundObject,
 						     &DirectoryEntry);
     assert(NT_SUCCESS(Status));
     assert(FoundObject == Subobject);

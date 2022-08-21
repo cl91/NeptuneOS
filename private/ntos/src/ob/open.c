@@ -34,6 +34,7 @@ static inline BOOLEAN NeedReparse(IN NTSTATUS Status)
  */
 NTSTATUS ObpLookupObjectName(IN POBJECT DirectoryObject,
 			     IN PCSTR Path,
+			     IN BOOLEAN CaseInsensitive,
 			     OUT PCSTR *pRemainingPath,
 			     OUT POBJECT *FoundObject)
 {
@@ -70,7 +71,7 @@ NTSTATUS ObpLookupObjectName(IN POBJECT DirectoryObject,
 	}
 	POBJECT Subobject = NULL;
 	PCSTR RemainingPath = NULL;
-	Status = ParseProc(Object, Path, &Subobject, &RemainingPath);
+	Status = ParseProc(Object, Path, CaseInsensitive, &Subobject, &RemainingPath);
 	if (!NT_SUCCESS(Status) || Status == STATUS_NTOS_INVOKE_OPEN_ROUTINE) {
 	    break;
 	}
@@ -171,7 +172,9 @@ parse:
     }
     POBJECT Subobject = NULL;
     Status = OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.ParseProc(
-	Locals.Object, Locals.Path, &Subobject, &RemainingPath);
+	Locals.Object, Locals.Path,
+	!!(ObjectAttributes.Attributes & OBJ_CASE_INSENSITIVE),
+	&Subobject, &RemainingPath);
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Parsing path %s failed\n", Locals.Path);
 	goto out;
@@ -239,7 +242,7 @@ open:
     AWAIT_EX(Status,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc,
 	     AsyncState, Locals, Thread, Locals.Object, Locals.Path,
-	     OpenContext, &OpenedInstance, &RemainingPath);
+	     ObjectAttributes.Attributes, OpenContext, &OpenedInstance, &RemainingPath);
 
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Opening subpath %s failed\n", Locals.Path);

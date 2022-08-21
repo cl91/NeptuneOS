@@ -3,13 +3,21 @@
 #include <debug.h>
 #include <nt.h>
 #include <structures_gen.h>
+#include "ctype_inline.h"
 
+/*
+ * Compute the hash of the given string. Note that string
+ * is converted into lower-case first and then have its
+ * hash value computed. The case conversion only applies
+ * to English letters (ASCII).
+ */
 static inline ULONG RtlpHashString(PCSTR Str)
 {
     ULONG Hash = 5381;
     ULONG Chr;
 
-    while ((Chr = (UCHAR) *Str++) != '\0') {
+    while ((Chr = (UCHAR)*Str++) != '\0') {
+	Chr = tolower(Chr);
         Hash = ((Hash << 5) + Hash) + Chr; /* Hash * 33 + Chr */
     }
     return Hash;
@@ -25,6 +33,7 @@ static inline ULONG RtlpHashStringEx(IN PCSTR Str,
 	if (Chr == '\0') {
 	    break;
 	}
+ 	Chr = tolower(Chr);
         Hash = ((Hash << 5) + Hash) + Chr; /* Hash * 33 + Chr */
     }
     return Hash;

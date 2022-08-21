@@ -543,8 +543,8 @@ static NTSTATUS PspMapDll(IN PPROCESS Process,
     memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
 
     PSECTION DllSection = NULL;
-    NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE,
-					      NULL, (POBJECT *)DllFile);
+    NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE, NULL,
+					      FALSE, (POBJECT *)DllFile);
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Unable to find dll %s\n", DllPath);
 	goto fail;

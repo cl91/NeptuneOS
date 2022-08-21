@@ -23,6 +23,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
+				 IN ULONG Attributes,
 				 IN POB_OPEN_CONTEXT Context,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath)

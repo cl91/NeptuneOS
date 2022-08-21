@@ -19,7 +19,7 @@ static NTSTATUS EiStartSessionManager()
 {
     PIO_FILE_OBJECT SmssExe = NULL;
     NTSTATUS Status = ObReferenceObjectByName(SMSS_EXE_PATH, OBJECT_TYPE_FILE,
-					      NULL, (POBJECT *)&SmssExe);
+					      NULL, FALSE, (POBJECT *)&SmssExe);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

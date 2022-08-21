@@ -46,6 +46,14 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
  * COLLISION. Otherwise, the insert procedure is invoked on the
  * final parse result and its result is returned.
  *
+ * Supplying the OBJ_NO_PARSE flag circumvents the object name
+ * collision checks built into the object manager. The caller must
+ * perform this check by itself to ensure that the object being
+ * inserted does not have a name conflict.
+ *
+ * If the OBJ_CASE_INSENSITIVE flag is supplied, the object name
+ * collision checks are done case-insensitively. 
+ *
  * The directory object can be NULL, in which case the root object
  * directory is assumed. In this case you must specify an absolute
  * path.
@@ -68,7 +76,9 @@ static NTSTATUS ObpInsertObject(IN POBJECT DirectoryObject,
 	/* Note that we don't check the return value of the lookup here,
 	 * because we rely on the remaining path to determine whether the
 	 * path has been fully parsed. */
-	ObpLookupObjectName(DirectoryObject, Name, &RemainingPath, &Parent);
+	ObpLookupObjectName(DirectoryObject, Name,
+			    !!(Flags & OBJ_CASE_INSENSITIVE),
+			    &RemainingPath, &Parent);
 	assert(Parent != NULL);
 	assert(RemainingPath != NULL);
 	/* If the remaining path is empty, it means that there is already an
@@ -123,7 +133,7 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 	NTSTATUS Status = ObReferenceObjectByName(Subpath,
 						  OBJECT_TYPE_ANY,
 						  DirectoryObject,
-						  &Object);
+						  FALSE, &Object);
 	if (Object != NULL) {
 	    ObDereferenceObject(Object);
 	}

@@ -60,12 +60,14 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
 				 IN POBJECT RootDirectory,
+				 IN BOOLEAN CaseInsensitive,
 				 OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
     POBJECT Object = NULL;
     PCSTR RemainingPath = NULL;
-    NTSTATUS Status = ObpLookupObjectName(RootDirectory, Path, &RemainingPath, &Object);
+    NTSTATUS Status = ObpLookupObjectName(RootDirectory, Path, CaseInsensitive,
+					  &RemainingPath, &Object);
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Object look up failed for %s\n", Path);
 	return Status;

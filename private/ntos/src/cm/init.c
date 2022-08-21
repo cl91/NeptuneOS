@@ -23,7 +23,7 @@ NTSTATUS CmInitSystemPhase1()
     POBJECT RegistryDirectory = NULL;
     RET_ERR(ObReferenceObjectByName(REGISTRY_OBJECT_DIRECTORY,
 				    OBJECT_TYPE_DIRECTORY, NULL,
-				    &RegistryDirectory));
+				    FALSE, &RegistryDirectory));
     assert(RegistryDirectory != NULL);
     PCM_KEY_OBJECT Key = NULL;
     KEY_OBJECT_CREATE_CONTEXT Ctx = {

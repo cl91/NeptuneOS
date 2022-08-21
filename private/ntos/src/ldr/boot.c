@@ -11,7 +11,7 @@ NTSTATUS LdrLoadBootModules()
     RET_ERR(ObCreateDirectory(BOOTMODULE_OBJECT_DIRECTORY));
     POBJECT BootModuleDirectory = NULL;
     RET_ERR(ObReferenceObjectByName(BOOTMODULE_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,
-				    NULL, &BootModuleDirectory));
+				    NULL, FALSE, &BootModuleDirectory));
     assert(BootModuleDirectory != NULL);
 
     struct cpio_info cpio;

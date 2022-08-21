@@ -219,7 +219,6 @@ static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    TRACE_(ISAPNP, "Created key: DiskController\\0\n");
 
     RtlZeroMemory(PartialResourceList, Size);
     PartialResourceList->Version = 1;
@@ -310,6 +309,7 @@ static NTSTATUS IsaPnpInitHwDb()
 	return Status;
     }
 
+    /* TODO: We need to free the memories allocated above. */
     return ArcSetupHardwareDescriptionDatabase(SystemKey);
 }
 

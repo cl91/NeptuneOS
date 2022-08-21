@@ -282,14 +282,17 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
  * not implement the semantics of sub-objecting.
  *
  * The parse procedure is not allowed to modify the Path string.
- * RemainingPath must point to a sub-string within Path, and does
- * NOT include the leading OBJ_NAME_PATH_SEPARATOR.
+ * RemainingPath must point to a sub-string within Path (unless
+ * the REPARSE status is returned, in which case RemainingPath
+ * points to the new path to be parsed), and does NOT include the
+ * leading OBJ_NAME_PATH_SEPARATOR.
  *
  * The parse procedure should not increase the reference count of
  * the object. All reference counting is done by the object manager.
  */
 typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
+					IN BOOLEAN CaseInsensitive,
 					OUT POBJECT *pSubobject,
 					OUT PCSTR *pRemainingPath);
 
@@ -316,7 +319,9 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  *
  * Like the parse procedure, the open procedure is not allowed to
  * modify the Path string. RemainingPath must point to a sub-string
- * within Path, and does NOT include the leading OBJ_NAME_PATH_SEPARATOR.
+ * within Path (unless the REPARSE status is returned, in which case
+ * RemainingPath points to the new path to be parsed), and does NOT
+ * include the leading OBJ_NAME_PATH_SEPARATOR.
  *
  * Like the parse procedure, the open procedure should not increase the
  * reference count of the object being opened or the opened instance.
@@ -333,6 +338,7 @@ typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
 				       IN struct _THREAD *Thread,
 				       IN POBJECT Self,
 				       IN PCSTR SubPath,
+				       IN ULONG Attributes,
 				       IN POB_OPEN_CONTEXT OpenContext,
 				       OUT POBJECT *pOpenedInstance,
 				       OUT PCSTR *pRemainingPath);
@@ -506,6 +512,7 @@ struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
 				 IN POBJECT RootDirectory,
+				 IN BOOLEAN CaseInsensitive,
 				 OUT POBJECT *Object);
 NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 				   IN HANDLE Handle,

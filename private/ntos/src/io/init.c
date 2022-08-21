@@ -67,7 +67,7 @@ static NTSTATUS IopLoadWdmDll()
 {
     PIO_FILE_OBJECT WdmDll = NULL;
     NTSTATUS Status = ObReferenceObjectByName(WDM_DLL_PATH, OBJECT_TYPE_FILE,
-					      NULL, (POBJECT *) &WdmDll);
+					      NULL, FALSE, (POBJECT *) &WdmDll);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

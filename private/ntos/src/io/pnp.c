@@ -437,7 +437,7 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
 	snprintf(ClassKeyPath, sizeof(ClassKeyPath), REG_CLASS_KEY "\\%s",
 		 ClassGuid);
 	IF_ERR_GOTO(out, Status,
-		    ObReferenceObjectByName(ClassKeyPath, OBJECT_TYPE_KEY, NULL, &ClassKey));
+		    ObReferenceObjectByName(ClassKeyPath, OBJECT_TYPE_KEY, NULL, FALSE, &ClassKey));
 	ClassUpperFilterNames = IopGetMultiSz(ClassKey, "UpperFilters");
 	ClassLowerFilterNames = IopGetMultiSz(EnumKey, "LowerFilters");
     }
@@ -1123,7 +1123,7 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 		HalVgaPrint(" %s", DeviceNode->UpperFilterDriverNames[i]);
 	    }
 	} else {
-	    HalVgaPrint(" Loaded driver %s", DeviceNode->DriverServiceName);
+	    HalVgaPrint(" Loaded driver: %s", DeviceNode->DriverServiceName);
 	}
 	if (IopDeviceNodeGetCurrentState(DeviceNode) >= DeviceNodeStarted) {
 	    HalVgaPrint(". STARTED.\n");
@@ -1184,7 +1184,7 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
     PIO_DEVICE_OBJECT RootEnumerator = NULL;
     IF_ERR_GOTO(out, Status,
 		ObReferenceObjectByName(PNP_ROOT_ENUMERATOR, OBJECT_TYPE_DEVICE,
-					NULL, (POBJECT *)&RootEnumerator));
+					NULL, FALSE, (POBJECT *)&RootEnumerator));
     assert(RootEnumerator != NULL);
     IopSetDeviceNode(RootEnumerator, IopRootDeviceNode);
 

@@ -36,5 +36,6 @@ NTSTATUS ObpInitDirectoryObjectType();
 /* open.c */
 NTSTATUS ObpLookupObjectName(IN POBJECT DirectoryObject,
 			     IN PCSTR Path,
+			     IN BOOLEAN CaseInsensitive,
 			     OUT PCSTR *pRemainingPath,
 			     OUT POBJECT *FoundObject);

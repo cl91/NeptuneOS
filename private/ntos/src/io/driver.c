@@ -23,7 +23,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     /* TODO: FIXME We need to dereference the file in the delete routine */
     PIO_FILE_OBJECT DriverFile = NULL;
     RET_ERR(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, NULL,
-				    (POBJECT *) &DriverFile));
+				    FALSE, (POBJECT *) &DriverFile));
     assert(DriverFile != NULL);
     Driver->DriverFile = DriverFile;
 
@@ -63,7 +63,7 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
     /* Get the object directory for all driver objects */
     POBJECT DriverObjectDirectory = NULL;
     RET_ERR(ObReferenceObjectByName(DRIVER_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,
-				    NULL, &DriverObjectDirectory));
+				    FALSE, NULL, &DriverObjectDirectory));
     assert(DriverObjectDirectory != NULL);
 
     /* Find the driver service basename, ie. "null" in
@@ -115,7 +115,7 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
      * already been loaded we will need to get its pointer manually. */
     if (Status == STATUS_OBJECT_NAME_COLLISION && pDriverObject) {
 	Status = ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
-					 DriverObjectDirectory,
+					 DriverObjectDirectory, FALSE,
 					 (POBJECT *) &DriverObject);
 	/* Loading an already loaded driver does NOT increase its reference
 	 * count, so decrease the reference count increased by the call above. */

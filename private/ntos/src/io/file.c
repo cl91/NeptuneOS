@@ -52,6 +52,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
 			       IN PCSTR SubPath,
+			       IN ULONG Attributes,
 			       IN POB_OPEN_CONTEXT OpenContext,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath)
@@ -145,6 +146,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 	POBJECT_DIRECTORY Dir = NULL;
 	Status = ObReferenceObjectByName(ObjectAttributes.ObjectNameBuffer,
 					 OBJECT_TYPE_DIRECTORY, NULL,
+					 !!(ObjectAttributes.Attributes & OBJ_CASE_INSENSITIVE),
 					 (POBJECT *)&Dir);
 	if (!NT_SUCCESS(Status)) {
 	    goto out;

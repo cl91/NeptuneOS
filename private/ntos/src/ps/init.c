@@ -148,7 +148,7 @@ static NTSTATUS PspInitializeSystemDll()
     /* Create the NTDLL.DLL image section */
     PIO_FILE_OBJECT NtdllFile = NULL;
     NTSTATUS Status = ObReferenceObjectByName(NTDLL_PATH, OBJECT_TYPE_FILE, NULL,
-					      (POBJECT *) &NtdllFile);
+					      TRUE, (POBJECT *) &NtdllFile);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
