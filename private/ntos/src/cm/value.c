@@ -376,7 +376,7 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
     DbgTrace("Querying value %s for key handle %p\n", ValueName, KeyHandle);
     assert(Thread->Process != NULL);
     if (BufferSize == 0) {
-	return STATUS_INVALID_PARAMETER;
+	return STATUS_INVALID_PARAMETER_5;
     }
     if ((KeyValueInformationClass == KeyValueFullInformationAlign64 ||
 	 KeyValueInformationClass == KeyValuePartialInformationAlign64)
@@ -387,11 +387,12 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
-    RET_ERR_EX(CmpQueryValueKey(Key, ValueName, KeyValueInformationClass,
-				OutputBuffer, BufferSize, ResultLength),
-	       ObDereferenceObject(Key));
+    NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
+				       KeyValueInformationClass,
+				       OutputBuffer, BufferSize,
+				       ResultLength);
     ObDereferenceObject(Key);
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /*

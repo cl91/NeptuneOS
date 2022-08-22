@@ -45,6 +45,17 @@ typedef struct _CM_NODE {
 typedef struct _CM_KEY_OBJECT {
     CM_NODE Node; /* Hash-table entry for the parent key. Must be first */
     LIST_ENTRY HashBuckets[CM_KEY_HASH_BUCKETS];
+    LARGE_INTEGER LastWriteTime;
+    PVOID ClassData;
+    ULONG ClassLength;
+    ULONG MaxNameLength;
+    ULONG MaxClassLength;
+    ULONG MaxValueNameLength;
+    ULONG MaxValueDataLength;
+    ULONG StableSubKeyCount;
+    ULONG VolatileSubKeyCount;
+    ULONG ValueCount;
+    ULONG UserFlags;
     BOOLEAN Volatile;
 } CM_KEY_OBJECT, *PCM_KEY_OBJECT;
 
@@ -106,6 +117,20 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
     return NodeFound;
 }
 
+static inline ULONG CmpGetValueDataLength(IN PCM_REG_VALUE Value)
+{
+    assert(Value != NULL);
+    if (Value->Type == REG_DWORD || Value->Type == REG_DWORD_BIG_ENDIAN) {
+	return sizeof(ULONG);
+    } else if (Value->Type == REG_QWORD) {
+	return sizeof(ULONGLONG);
+    } else if (Value->Type == REG_NONE) {
+	return 0;
+    } else {
+	return Value->DataSize;
+    }
+}
+
 /*
  * Link the node to parent.
  */
@@ -119,6 +144,32 @@ static inline VOID CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
     Node->Parent = Parent;
     ULONG HashIndex = CmpKeyHashIndex(NodeName);
     InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
+    ULONG NameLen = strlen(NodeName);
+    if (NameLen > Parent->MaxNameLength) {
+	Parent->MaxNameLength = NameLen;
+    }
+    if (Node->Type == CM_NODE_KEY) {
+	PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Node;
+	if (Key->Volatile) {
+	    Parent->VolatileSubKeyCount++;
+	} else {
+	    Parent->StableSubKeyCount++;
+	}
+	if (Key->ClassLength > Parent->MaxClassLength) {
+	    Parent->MaxClassLength = Key->ClassLength;
+	}
+    } else {
+	assert(Node->Type == CM_NODE_VALUE);
+	Parent->ValueCount++;
+	PCM_REG_VALUE Value = (PCM_REG_VALUE)Node;
+	ULONG ValueDataLen = CmpGetValueDataLength(Value);
+	if (NameLen > Parent->MaxValueNameLength) {
+	    Parent->MaxValueNameLength = NameLen;
+	}
+	if (ValueDataLen > Parent->MaxValueDataLength) {
+	    Parent->MaxValueDataLength = ValueDataLen;
+	}
+    }
 }
 
 /*

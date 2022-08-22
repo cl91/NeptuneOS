@@ -16,9 +16,6 @@ extern PCSTR IopDbgTraceModuleName;
 #define TAG_REINIT		'iRoI'
 #define TAG_SYS_BUF		'BSYS'
 
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-
 /* Shared kernel data that is accessible from user space */
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
 

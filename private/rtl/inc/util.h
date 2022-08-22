@@ -5,6 +5,9 @@
 #include <structures_gen.h>
 #include "ctype_inline.h"
 
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+
 /*
  * Compute the hash of the given string. Note that string
  * is converted into lower-case first and then have its

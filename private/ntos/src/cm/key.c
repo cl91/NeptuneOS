@@ -157,6 +157,301 @@ VOID CmpKeyObjectDeleteProc(IN POBJECT Self)
 {
 }
 
+static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
+				IN KEY_INFORMATION_CLASS KeyInformationClass,
+				OUT PVOID KeyInformation,
+				IN ULONG Length,
+				OUT ULONG *ResultLength,
+				IN BOOLEAN Utf16)
+{
+    ULONG NameLength = strlen(ObGetObjectName(Node));
+    if (Utf16) {
+	RET_ERR(RtlUTF8ToUnicodeN(NULL, 0, &NameLength,
+				  ObGetObjectName(Node), NameLength));
+    }
+
+    /* Check what kind of information is being requested */
+    NTSTATUS Status = STATUS_SUCCESS;
+    switch (KeyInformationClass) {
+    case KeyBasicInformation:
+    {
+	/* This is the size we need */
+	ULONG Size = FIELD_OFFSET(KEY_BASIC_INFORMATION, Name) + NameLength;
+
+	/* And this is the minimum we can work with */
+	ULONG MinimumSize = FIELD_OFFSET(KEY_BASIC_INFORMATION, Name);
+
+	/* Let the caller know and assume success */
+	*ResultLength = Size;
+
+	/* Check if the bufer we got is too small */
+	if (Length < MinimumSize) {
+	    /* Let the caller know and fail */
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
+	}
+
+	/* Copy the basic information */
+	PKEY_BASIC_INFORMATION Info = KeyInformation;
+	Info->LastWriteTime = Node->LastWriteTime;
+	Info->TitleIndex = 0;
+	Info->NameLength = NameLength;
+
+	/* Only the name is left */
+	ULONG SizeLeft = Length - MinimumSize;
+	Size = NameLength;
+
+	/* Check if we don't have enough space for the name */
+	if (SizeLeft < Size) {
+	    /* Truncate the name we'll return, and tell the caller */
+	    Size = SizeLeft;
+	    Status = STATUS_BUFFER_OVERFLOW;
+	}
+
+	/* Copy the key name */
+	if (Utf16) {
+	    Status = RtlUTF8ToUnicodeN(Info->Name, Size, &NameLength,
+				       ObGetObjectName(Node), Size);
+	} else {
+	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
+	}
+    }
+    break;
+
+    case KeyNodeInformation:
+    {
+	/* Calculate the size we need */
+	ULONG Size = FIELD_OFFSET(KEY_NODE_INFORMATION, Name) +
+	    NameLength + Node->ClassLength;
+
+	/* And the minimum size we can support */
+	ULONG MinimumSize = FIELD_OFFSET(KEY_NODE_INFORMATION, Name);
+
+	/* Return the size to the caller and assume succes */
+	*ResultLength = Size;
+
+	/* Check if the caller's buffer is too small */
+	if (Length < MinimumSize) {
+	    /* Let them know, and fail */
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
+	}
+
+	/* Copy the node information */
+	PKEY_NODE_INFORMATION Info = KeyInformation;
+	Info->LastWriteTime = Node->LastWriteTime;
+	Info->TitleIndex = 0;
+	Info->ClassLength = Node->ClassLength;
+	Info->NameLength = NameLength;
+
+	/* Now the name is left */
+	ULONG SizeLeft = Length - MinimumSize;
+	Size = NameLength;
+
+	/* Check if the name can fit entirely */
+	if (SizeLeft < Size) {
+	    /* It can't, we'll have to truncate. Tell the caller */
+	    Size = SizeLeft;
+	    Status = STATUS_BUFFER_OVERFLOW;
+	}
+
+	/* Copy the key object name */
+	if (Utf16) {
+	    Status = RtlUTF8ToUnicodeN(Info->Name, Size, &NameLength,
+				       ObGetObjectName(Node), Size);
+	} else {
+	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
+	}
+
+	/* Check if the node has a class */
+	if (Node->ClassLength > 0) {
+	    /* Set the class offset */
+	    ULONG Offset = FIELD_OFFSET(KEY_NODE_INFORMATION, Name) + NameLength;
+	    Offset = ALIGN_UP_BY(Offset, sizeof(ULONG));
+	    Info->ClassOffset = Offset;
+
+	    /* Check if we can copy anything */
+	    if (Length > Offset) {
+		/* Copy the class data */
+		RtlCopyMemory((PUCHAR)Info + Offset,
+			      Node->ClassData,
+			      min(Node->ClassLength, Length - Offset));
+	    }
+
+	    /* Check if the buffer was large enough */
+	    if (Length < Offset + Node->ClassLength) {
+		Status = STATUS_BUFFER_OVERFLOW;
+	    }
+	} else {
+	    /* It doesn't, so set offset to -1, not 0! */
+	    Info->ClassOffset = 0xFFFFFFFF;
+	}
+    }
+    break;
+
+    case KeyFullInformation:
+    {
+	/* This is the size we need */
+	ULONG Size = FIELD_OFFSET(KEY_FULL_INFORMATION, Class) +
+	    Node->ClassLength;
+
+	/* This is what we can work with */
+	ULONG MinimumSize = FIELD_OFFSET(KEY_FULL_INFORMATION, Class);
+
+	/* Return it to caller and assume success */
+	*ResultLength = Size;
+
+	/* Check if the caller's buffer is to small */
+	if (Length < MinimumSize) {
+	    /* Let them know and fail */
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
+	}
+
+	/* Now copy the full information */
+	PKEY_FULL_INFORMATION Info = KeyInformation;
+	Info->LastWriteTime = Node->LastWriteTime;
+	Info->TitleIndex = 0;
+	Info->ClassLength = Node->ClassLength;
+	Info->SubKeys = Node->StableSubKeyCount + Node->VolatileSubKeyCount;
+	Info->Values = Node->ValueCount;
+	Info->MaxNameLen = Node->MaxNameLength;
+	Info->MaxClassLen = Node->MaxClassLength;
+	Info->MaxValueNameLen = Node->MaxValueNameLength;
+	Info->MaxValueDataLen = Node->MaxValueDataLength;
+
+	/* Check if we have a class */
+	if (Node->ClassLength > 0) {
+	    /* Set the class offset */
+	    ULONG Offset = FIELD_OFFSET(KEY_FULL_INFORMATION, Class);
+	    Info->ClassOffset = Offset;
+
+	    /* Copy the class data */
+	    ASSERT(Length >= Offset);
+	    RtlCopyMemory(Info->Class, Node->ClassData,
+			  min(Node->ClassLength, Length - Offset));
+
+	    /* Check if the buffer was large enough */
+	    if (Length < Offset + Node->ClassLength) {
+		Status = STATUS_BUFFER_OVERFLOW;
+	    }
+	} else {
+	    /* We don't have a class, so set offset to -1, not 0! */
+	    Info->ClassOffset = 0xFFFFFFFF;
+	}
+    }
+    break;
+
+    case KeyNameInformation:
+    {
+	/* This is the size we need */
+	ULONG Size = FIELD_OFFSET(KEY_NAME_INFORMATION, Name) + NameLength;
+
+	/* And this is the minimum we can work with */
+	ULONG MinimumSize = FIELD_OFFSET(KEY_NAME_INFORMATION, Name);
+
+	/* Let the caller know and assume success */
+	*ResultLength = Size;
+
+	/* Check if the bufer we got is too small */
+	if (Length < MinimumSize) {
+	    /* Let the caller know and fail */
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
+	}
+
+	/* Copy the name information */
+	PKEY_NAME_INFORMATION Info = KeyInformation;
+	Info->NameLength = NameLength;
+
+	/* Check if we don't have enough space for the name */
+	ULONG SizeLeft = Length - MinimumSize;
+	Size = NameLength;
+	if (SizeLeft < Size) {
+	    /* Truncate the name we'll return, and tell the caller */
+	    Size = SizeLeft;
+	    Status = STATUS_BUFFER_OVERFLOW;
+	}
+
+	/* Copy the key name */
+	if (Utf16) {
+	    Status = RtlUTF8ToUnicodeN(Info->Name, Size, &NameLength,
+				       ObGetObjectName(Node), Size);
+	} else {
+	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
+	}
+    }
+
+    default:
+	/* Any other class that got sent here is invalid! */
+	Status = STATUS_INVALID_PARAMETER;
+	break;
+    }
+
+    return Status;
+}
+
+static NTSTATUS CmpQueryFlagsInformation(IN PCM_KEY_OBJECT Key,
+					 OUT PVOID Info,
+					 IN ULONG Length,
+					 OUT ULONG *ResultLength)
+{
+    PKEY_USER_FLAGS_INFORMATION KeyFlagsInfo = Info;
+
+    /* Validate the buffer size */
+    *ResultLength = sizeof(*KeyFlagsInfo);
+    if (Length < *ResultLength) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    /* Copy the user flags. */
+    KeyFlagsInfo->UserFlags = Key->UserFlags;
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS CmpQueryKey(IN PCM_KEY_OBJECT Key,
+			    IN KEY_INFORMATION_CLASS KeyInformationClass,
+			    OUT OPTIONAL PVOID KeyInformation,
+			    IN ULONG Length,
+			    OUT PULONG ResultLength,
+			    IN BOOLEAN Utf16)
+{
+    NTSTATUS Status;
+
+    switch (KeyInformationClass) {
+    case KeyFullInformation:
+    case KeyBasicInformation:
+    case KeyNodeInformation:
+	Status = CmpQueryKeyData(Key,
+				 KeyInformationClass,
+				 KeyInformation,
+				 Length,
+				 ResultLength, Utf16);
+	break;
+
+    case KeyCachedInformation:
+	/* TODO! */
+	Status = STATUS_NOT_IMPLEMENTED;
+	break;
+
+    case KeyFlagsInformation:
+	Status = CmpQueryFlagsInformation(Key,
+					  KeyInformation,
+					  Length,
+					  ResultLength);
+	break;
+
+    default:
+	/* Illegal class. Print message and fail */
+	DPRINT1("Unsupported class: %d!\n", KeyInformationClass);
+	Status = STATUS_INVALID_INFO_CLASS;
+	break;
+    }
+
+    return Status;
+}
+
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
 {
     DbgTrace("Dumping key %s\n", ObGetObjectName(Key));
@@ -238,7 +533,7 @@ NTSTATUS NtEnumerateKey(IN ASYNC_STATE AsyncState,
                         IN HANDLE KeyHandle,
                         IN ULONG Index,
                         IN KEY_INFORMATION_CLASS KeyInformationClass,
-                        IN PVOID InformationBuffer,
+                        OUT OPTIONAL PVOID InformationBuffer,
                         IN ULONG BufferSize,
                         OUT ULONG *ResultLength)
 {
@@ -249,22 +544,42 @@ NTSTATUS NtQueryKeyW(IN ASYNC_STATE AsyncState,
 		     IN PTHREAD Thread,
 		     IN HANDLE KeyHandle,
 		     IN KEY_INFORMATION_CLASS KeyInformationClass,
-		     IN PVOID InformationBuffer,
+		     OUT OPTIONAL PVOID OutputBuffer,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    UNIMPLEMENTED;
+    DbgTrace("Querying key information for key handle %p\n", KeyHandle);
+    assert(Thread->Process != NULL);
+
+    PCM_KEY_OBJECT Key = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
+    assert(Key != NULL);
+    NTSTATUS Status = CmpQueryKey(Key, KeyInformationClass, OutputBuffer,
+				  BufferSize, ResultLength, TRUE);
+    ObDereferenceObject(Key);
+    return Status;
 }
 
 NTSTATUS NtQueryKeyA(IN ASYNC_STATE AsyncState,
 		     IN PTHREAD Thread,
 		     IN HANDLE KeyHandle,
 		     IN KEY_INFORMATION_CLASS KeyInformationClass,
-		     IN PVOID InformationBuffer,
+		     OUT OPTIONAL PVOID OutputBuffer,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    UNIMPLEMENTED;
+    DbgTrace("Querying key information for key handle %p\n", KeyHandle);
+    assert(Thread->Process != NULL);
+
+    PCM_KEY_OBJECT Key = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
+    assert(Key != NULL);
+    NTSTATUS Status = CmpQueryKey(Key, KeyInformationClass, OutputBuffer,
+				  BufferSize, ResultLength, FALSE);
+    ObDereferenceObject(Key);
+    return Status;
 }
 
 NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,

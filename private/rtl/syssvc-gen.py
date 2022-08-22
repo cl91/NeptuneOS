@@ -316,11 +316,11 @@ CLIENT_SVC_GEN_C_TEMPLATE = """
 {%- endfor %}
     seL4_SetMR({{svc.msglength-1}}, MsgBufOffset);
     UNUSED seL4_MessageInfo_t Reply = seL4_Call({{svc_ipc_cap}}, Request);
+    assert(seL4_MessageInfo_get_length(Reply) == 3);
     Status = seL4_GetMR(0);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL) {
         goto ClientPostMarshaling;
     }
-    assert(seL4_MessageInfo_get_length(Reply) == 3);
     ULONG NumApc = seL4_GetMR(1);
     BOOLEAN MoreToCome = seL4_GetMR(2);
 {%- for param in svc.params %}
