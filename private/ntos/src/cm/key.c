@@ -12,6 +12,7 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
 	InitializeListHead(&Key->HashBuckets[i]);
     }
+    InitializeListHead(&Key->SubKeyList);
     return STATUS_SUCCESS;
 }
 
@@ -22,8 +23,10 @@ NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
     assert(ObObjectIsType(Parent, OBJECT_TYPE_KEY));
     assert(ObObjectIsType(Subobject, OBJECT_TYPE_KEY));
     assert(!ObpPathHasSeparator(Subpath));
+    PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Parent;
     PCM_KEY_OBJECT SubKey = (PCM_KEY_OBJECT)Subobject;
     CmpInsertNamedNode(Parent, &SubKey->Node, Subpath);
+    InsertTailList(&Key->SubKeyList, &SubKey->SubKeyListEntry);
     return STATUS_SUCCESS;
 }
 
@@ -60,6 +63,9 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
     ULONG NameLength = ObpLocateFirstPathSeparator(Path);
+    if (NameLength == 0) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
     PCM_NODE NodeFound = CmpGetNamedNode(Key, Path, NameLength);
 
     /* If we did not find the named key object, we pass on to the
@@ -164,10 +170,15 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 				OUT ULONG *ResultLength,
 				IN BOOLEAN Utf16)
 {
-    ULONG NameLength = strlen(ObGetObjectName(Node));
+    ULONG Utf8Length = strlen(ObGetObjectName(Node));
+    ULONG NameLength = Utf8Length;
     if (Utf16) {
-	RET_ERR(RtlUTF8ToUnicodeN(NULL, 0, &NameLength,
-				  ObGetObjectName(Node), NameLength));
+	NTSTATUS Status = RtlUTF8ToUnicodeN(NULL, 0, &NameLength,
+					    ObGetObjectName(Node),
+					    NameLength);
+	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
+	    return Status;
+	}
     }
 
     /* Check what kind of information is being requested */
@@ -187,6 +198,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the bufer we got is too small */
 	if (Length < MinimumSize) {
 	    /* Let the caller know and fail */
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -204,14 +216,16 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if we don't have enough space for the name */
 	if (SizeLeft < Size) {
 	    /* Truncate the name we'll return, and tell the caller */
+	    DbgTrace("Need buffer size 0x%x got sizeleft 0x%x\n",
+		     Size, SizeLeft);
 	    Size = SizeLeft;
 	    Status = STATUS_BUFFER_OVERFLOW;
 	}
 
 	/* Copy the key name */
 	if (Utf16) {
-	    Status = RtlUTF8ToUnicodeN(Info->Name, Size, &NameLength,
-				       ObGetObjectName(Node), Size);
+	    RtlUTF8ToUnicodeN(Info->Name, Size, &Size,
+			      ObGetObjectName(Node), Utf8Length);
 	} else {
 	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
 	}
@@ -233,6 +247,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the caller's buffer is too small */
 	if (Length < MinimumSize) {
 	    /* Let them know, and fail */
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -251,14 +266,16 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the name can fit entirely */
 	if (SizeLeft < Size) {
 	    /* It can't, we'll have to truncate. Tell the caller */
+	    DbgTrace("Need buffer size 0x%x got sizeleft 0x%x\n",
+		     Size, SizeLeft);
 	    Size = SizeLeft;
 	    Status = STATUS_BUFFER_OVERFLOW;
 	}
 
 	/* Copy the key object name */
 	if (Utf16) {
-	    Status = RtlUTF8ToUnicodeN(Info->Name, Size, &NameLength,
-				       ObGetObjectName(Node), Size);
+	    RtlUTF8ToUnicodeN(Info->Name, Size, &Size,
+			      ObGetObjectName(Node), Utf8Length);
 	} else {
 	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
 	}
@@ -304,6 +321,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the caller's buffer is to small */
 	if (Length < MinimumSize) {
 	    /* Let them know and fail */
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -314,11 +332,18 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	Info->TitleIndex = 0;
 	Info->ClassLength = Node->ClassLength;
 	Info->SubKeys = Node->StableSubKeyCount + Node->VolatileSubKeyCount;
+	assert(Info->SubKeys == GetListLength(&Node->SubKeyList));
 	Info->Values = Node->ValueCount;
-	Info->MaxNameLen = Node->MaxNameLength;
+	if (Utf16) {
+	    Info->MaxNameLen = Node->MaxUtf16NameLength;
+	    Info->MaxValueNameLen = Node->MaxUtf16ValueNameLength;
+	    Info->MaxValueDataLen = Node->MaxUtf16ValueDataLength;
+	} else {
+	    Info->MaxNameLen = Node->MaxNameLength;
+	    Info->MaxValueNameLen = Node->MaxValueNameLength;
+	    Info->MaxValueDataLen = Node->MaxValueDataLength;
+	}
 	Info->MaxClassLen = Node->MaxClassLength;
-	Info->MaxValueNameLen = Node->MaxValueNameLength;
-	Info->MaxValueDataLen = Node->MaxValueDataLength;
 
 	/* Check if we have a class */
 	if (Node->ClassLength > 0) {
@@ -356,6 +381,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the bufer we got is too small */
 	if (Length < MinimumSize) {
 	    /* Let the caller know and fail */
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -369,14 +395,16 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	Size = NameLength;
 	if (SizeLeft < Size) {
 	    /* Truncate the name we'll return, and tell the caller */
+	    DbgTrace("Need buffer size 0x%x got sizeleft 0x%x\n",
+		     Size, SizeLeft);
 	    Size = SizeLeft;
 	    Status = STATUS_BUFFER_OVERFLOW;
 	}
 
 	/* Copy the key name */
 	if (Utf16) {
-	    Status = RtlUTF8ToUnicodeN(Info->Name, Size, &NameLength,
-				       ObGetObjectName(Node), Size);
+	    RtlUTF8ToUnicodeN(Info->Name, Size, &Size,
+			      ObGetObjectName(Node), Utf8Length);
 	} else {
 	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
 	}
@@ -401,6 +429,7 @@ static NTSTATUS CmpQueryFlagsInformation(IN PCM_KEY_OBJECT Key,
     /* Validate the buffer size */
     *ResultLength = sizeof(*KeyFlagsInfo);
     if (Length < *ResultLength) {
+	DbgTrace("Need buffer size 0x%x got 0x%x\n", Length, *ResultLength);
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -417,12 +446,15 @@ static NTSTATUS CmpQueryKey(IN PCM_KEY_OBJECT Key,
 			    OUT PULONG ResultLength,
 			    IN BOOLEAN Utf16)
 {
+    DbgTrace("Querying key %s infoclass %d bufsize 0x%x\n",
+	     ObGetObjectName(Key), KeyInformationClass, Length);
     NTSTATUS Status;
 
     switch (KeyInformationClass) {
     case KeyFullInformation:
     case KeyBasicInformation:
     case KeyNodeInformation:
+    case KeyNameInformation:
 	Status = CmpQueryKeyData(Key,
 				 KeyInformationClass,
 				 KeyInformation,
@@ -450,6 +482,35 @@ static NTSTATUS CmpQueryKey(IN PCM_KEY_OBJECT Key,
     }
 
     return Status;
+}
+
+static NTSTATUS CmpEnumerateKey(IN PCM_KEY_OBJECT Key,
+				IN ULONG Index,
+				IN KEY_INFORMATION_CLASS KeyInformationClass,
+				OUT OPTIONAL PVOID InformationBuffer,
+				IN ULONG BufferSize,
+				OUT ULONG *ResultLength,
+				IN BOOLEAN Utf16)
+{
+    /* Reject classes we don't know about */
+    if ((KeyInformationClass != KeyBasicInformation) &&
+        (KeyInformationClass != KeyNodeInformation)  &&
+        (KeyInformationClass != KeyFullInformation)) {
+        return STATUS_INVALID_PARAMETER_3;
+    }
+    CmpDbgDumpKey(Key);
+
+    /* Find the Index-th (zero-based) sub-key */
+    PCM_KEY_OBJECT SubKey = GetIndexedElementOfList(&Key->SubKeyList, Index,
+						    CM_KEY_OBJECT, SubKeyListEntry);
+    if (SubKey == NULL) {
+	return STATUS_NO_MORE_ENTRIES;
+    }
+    CmpDbgDumpKey(SubKey);
+
+    /* Returned the key information for the sub-key */
+    return CmpQueryKey(SubKey, KeyInformationClass, InformationBuffer,
+		       BufferSize, ResultLength, Utf16);
 }
 
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
@@ -528,16 +589,53 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     ASYNC_END(AsyncState, Status);
 }
 
-NTSTATUS NtEnumerateKey(IN ASYNC_STATE AsyncState,
-                        IN PTHREAD Thread,
-                        IN HANDLE KeyHandle,
-                        IN ULONG Index,
-                        IN KEY_INFORMATION_CLASS KeyInformationClass,
-                        OUT OPTIONAL PVOID InformationBuffer,
-                        IN ULONG BufferSize,
-                        OUT ULONG *ResultLength)
+NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE AsyncState,
+			 IN PTHREAD Thread,
+			 IN HANDLE KeyHandle,
+			 IN ULONG Index,
+			 IN KEY_INFORMATION_CLASS KeyInformationClass,
+			 OUT OPTIONAL PVOID InformationBuffer,
+			 IN ULONG BufferSize,
+			 OUT ULONG *ResultLength)
 {
-    UNIMPLEMENTED;
+    DbgTrace("KeyHandle 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
+	     KeyHandle, Index, KeyInformationClass, BufferSize);
+    assert(Thread->Process != NULL);
+
+    PCM_KEY_OBJECT Key = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
+    assert(Key != NULL);
+    NTSTATUS Status = CmpEnumerateKey(Key, Index, KeyInformationClass,
+				      InformationBuffer, BufferSize,
+				      ResultLength, TRUE);
+    ObDereferenceObject(Key);
+    return Status;
+}
+
+
+NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE AsyncState,
+			 IN PTHREAD Thread,
+			 IN HANDLE KeyHandle,
+			 IN ULONG Index,
+			 IN KEY_INFORMATION_CLASS KeyInformationClass,
+			 OUT OPTIONAL PVOID InformationBuffer,
+			 IN ULONG BufferSize,
+			 OUT ULONG *ResultLength)
+{
+    DbgTrace("NtEnumerateKey() KY 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
+	     KeyHandle, Index, KeyInformationClass, BufferSize);
+    assert(Thread->Process != NULL);
+
+    PCM_KEY_OBJECT Key = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
+    assert(Key != NULL);
+    NTSTATUS Status = CmpEnumerateKey(Key, Index, KeyInformationClass,
+				      InformationBuffer, BufferSize,
+				      ResultLength, FALSE);
+    ObDereferenceObject(Key);
+    return Status;
 }
 
 NTSTATUS NtQueryKeyW(IN ASYNC_STATE AsyncState,
@@ -548,7 +646,8 @@ NTSTATUS NtQueryKeyW(IN ASYNC_STATE AsyncState,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    DbgTrace("Querying key information for key handle %p\n", KeyHandle);
+    DbgTrace("Querying key information class %d for key handle %p bufsize 0x%x\n",
+	     KeyInformationClass, KeyHandle, BufferSize);
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;

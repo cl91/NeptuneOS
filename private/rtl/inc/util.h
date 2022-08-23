@@ -118,7 +118,30 @@ static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
     for (Type *Entry = CONTAINING_RECORD((ListHead)->Blink, Type, Field), \
 	     *__ReverseLoop_blink = CONTAINING_RECORD((Entry)->Field.Blink, Type, Field); \
 	 &(Entry)->Field != (ListHead); Entry = __ReverseLoop_blink,	\
-	     __ReverseLoop_blink = __CONTAINING_RECORD((__ReverseLoop_blink)->Field.Blink, Type, Field))
+	     __ReverseLoop_blink = CONTAINING_RECORD((__ReverseLoop_blink)->Field.Blink, Type, Field))
+
+static inline PLIST_ENTRY GetNthEntryList(IN PLIST_ENTRY ListHead,
+					  IN ULONG Index)
+{
+    assert(ListHead != NULL);
+    PLIST_ENTRY Entry = ListHead->Flink;
+    for (ULONG i = 0; i < Index; i++) {
+	assert(Entry != NULL);
+	if (Entry == NULL || Entry == ListHead) {
+	    return NULL;
+	}
+	Entry = Entry->Flink;
+    }
+    return Entry;
+}
+
+/* This uses a GCC extension (statement expressions). */
+#define GetIndexedElementOfList(ListHead, Index, Type, Field)		\
+    ({									\
+	PLIST_ENTRY Entry = GetNthEntryList(ListHead, Index);           \
+	(Entry == NULL) ? NULL : CONTAINING_RECORD(Entry, Type, Field); \
+    })
+
 
 PCSTR RtlDbgCapTypeToStr(cap_tag_t Type);
 

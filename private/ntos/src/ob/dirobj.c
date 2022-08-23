@@ -86,6 +86,9 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     assert(RemainingPath != NULL);
 
     ULONG NameLength = ObpLocateFirstPathSeparator(Path);
+    if (NameLength == 0) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
 
     /* Look for the named object under the directory. */
     RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, CaseInsensitive, FoundObject, NULL),

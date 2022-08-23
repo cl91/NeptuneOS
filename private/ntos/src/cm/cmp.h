@@ -1,9 +1,9 @@
 #pragma once
 
 /* Comment this to enable debug tracing on debug build */
-#ifndef NDEBUG
-#define NDEBUG
-#endif
+/* #ifndef NDEBUG */
+/* #define NDEBUG */
+/* #endif */
 
 #include <ntos.h>
 
@@ -45,13 +45,18 @@ typedef struct _CM_NODE {
 typedef struct _CM_KEY_OBJECT {
     CM_NODE Node; /* Hash-table entry for the parent key. Must be first */
     LIST_ENTRY HashBuckets[CM_KEY_HASH_BUCKETS];
+    LIST_ENTRY SubKeyList;
+    LIST_ENTRY SubKeyListEntry;	/* List entry of parent's SubKeyList */
     LARGE_INTEGER LastWriteTime;
     PVOID ClassData;
     ULONG ClassLength;
-    ULONG MaxNameLength;
+    ULONG MaxNameLength;	/* Does NOT include trailing NUL. Same below. */
+    ULONG MaxUtf16NameLength;
     ULONG MaxClassLength;
     ULONG MaxValueNameLength;
+    ULONG MaxUtf16ValueNameLength;
     ULONG MaxValueDataLength;
+    ULONG MaxUtf16ValueDataLength;
     ULONG StableSubKeyCount;
     ULONG VolatileSubKeyCount;
     ULONG ValueCount;
@@ -85,12 +90,16 @@ typedef struct _CM_REG_VALUE {
     CM_NODE Node; /* Hash-table entry for the parent key. Must be first */
     PCSTR Name;	  /* Allocated on the ExPool. Owned by this object */
     ULONG Type;	  /* REG_NONE, REG_SZ, etc */
+    ULONG NameLength;	   /* Does NOT include trailing NUL */
+    ULONG Utf16NameLength; /* Does NOT include training UNICODE NUL */
     union {
 	ULONG Dword;
 	ULONGLONG Qword;
 	struct {
 	    PVOID Data;		/* Must be first in this struct */
 	    ULONG DataSize;
+	    ULONG Utf16DataSize; /* Size of the string data if it were converted
+				  * into UTF16. Same as DataSize if not string. */
 	};
     };
 } CM_REG_VALUE, *PCM_REG_VALUE;
@@ -117,7 +126,8 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
     return NodeFound;
 }
 
-static inline ULONG CmpGetValueDataLength(IN PCM_REG_VALUE Value)
+static inline ULONG CmpGetValueDataLength(IN PCM_REG_VALUE Value,
+					  IN BOOLEAN Utf16)
 {
     assert(Value != NULL);
     if (Value->Type == REG_DWORD || Value->Type == REG_DWORD_BIG_ENDIAN) {
@@ -127,7 +137,7 @@ static inline ULONG CmpGetValueDataLength(IN PCM_REG_VALUE Value)
     } else if (Value->Type == REG_NONE) {
 	return 0;
     } else {
-	return Value->DataSize;
+	return Utf16 ? Value->Utf16DataSize : Value->DataSize;
     }
 }
 
@@ -145,8 +155,16 @@ static inline VOID CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
     ULONG HashIndex = CmpKeyHashIndex(NodeName);
     InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
     ULONG NameLen = strlen(NodeName);
+    ULONG Utf16NameLen = 0;
+    RtlUTF8ToUnicodeN(NULL, 0, &Utf16NameLen, NodeName, NameLen);
+    if (Utf16NameLen < NameLen * sizeof(WCHAR)) {
+	Utf16NameLen = NameLen * sizeof(WCHAR);
+    }
     if (NameLen > Parent->MaxNameLength) {
 	Parent->MaxNameLength = NameLen;
+    }
+    if (Utf16NameLen > Parent->MaxUtf16NameLength) {
+	Parent->MaxUtf16NameLength = Utf16NameLen;
     }
     if (Node->Type == CM_NODE_KEY) {
 	PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Node;
@@ -162,12 +180,21 @@ static inline VOID CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
 	assert(Node->Type == CM_NODE_VALUE);
 	Parent->ValueCount++;
 	PCM_REG_VALUE Value = (PCM_REG_VALUE)Node;
-	ULONG ValueDataLen = CmpGetValueDataLength(Value);
+	Value->NameLength = NameLen;
+	Value->Utf16NameLength = Utf16NameLen;
+	ULONG ValueDataLen = CmpGetValueDataLength(Value, FALSE);
+	ULONG Utf16ValueDataLen = CmpGetValueDataLength(Value, TRUE);
 	if (NameLen > Parent->MaxValueNameLength) {
 	    Parent->MaxValueNameLength = NameLen;
 	}
+	if (Utf16NameLen > Parent->MaxUtf16ValueNameLength) {
+	    Parent->MaxUtf16ValueNameLength = Utf16NameLen;
+	}
 	if (ValueDataLen > Parent->MaxValueDataLength) {
 	    Parent->MaxValueDataLength = ValueDataLen;
+	}
+	if (Utf16ValueDataLen > Parent->MaxUtf16ValueDataLength) {
+	    Parent->MaxUtf16ValueDataLength = Utf16ValueDataLen;
 	}
     }
 }

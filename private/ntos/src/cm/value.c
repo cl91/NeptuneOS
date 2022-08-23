@@ -6,6 +6,15 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
 			       IN PVOID Data,
 			       IN ULONG DataSize)
 {
+    ULONG Utf16DataSize = DataSize;
+    if (Type == REG_SZ || Type == REG_MULTI_SZ || Type == REG_LINK || Type == REG_EXPAND_SZ) {
+	NTSTATUS Status = RtlUTF8ToUnicodeN(NULL, 0, &Utf16DataSize,
+					    Data, DataSize);
+	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
+	    return Status;
+	}
+    }
+
     PCM_NODE Node = CmpGetNamedNode(Key, ValueName, 0);
     if (Node != NULL && Node->Type != CM_NODE_VALUE) {
 	return STATUS_OBJECT_TYPE_MISMATCH;
@@ -33,6 +42,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     case REG_BINARY:
     case REG_LINK:
     case REG_MULTI_SZ:
+    case REG_EXPAND_SZ:
     case REG_FULL_RESOURCE_DESCRIPTOR:
 	assert(DataSize != 0);
 	PVOID SavedData = ExAllocatePoolWithTag(DataSize, NTOS_CM_TAG);
@@ -44,6 +54,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
 	}
 	Value->Data = SavedData;
 	Value->DataSize = DataSize;
+	Value->Utf16DataSize = Utf16DataSize;
 	memcpy(Value->Data, Data, DataSize);
 	break;
     default:
@@ -56,94 +67,42 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     return STATUS_SUCCESS;
 }
 
-/*
- * Marshal the given UTF-8 string into UTF-16LE string. If the input
- * string is NUL-terminated, the output string will also be, and vice
- * versa.
- *
- * @param String
- *   UTF-8 string to be marshaled.
- * @param StringSize
- *   Size of the UTF-8 string in bytes, including the terminating NUL.
- *   If zero, this routine will calculate StringSize using strlen.
- * @param InfoBuffer
- *   Start of the KEY_VALUE_INFORMATION buffer
- * @param CurrentOffset
- *   Pointer to the current data offset. If alignment is specified,
- *   *CurrentOffset will be aligned up by the given alignment. The
- *   aligned data offset is returned via the same argument.
- * @param DataLength
- *   Length of the resulting UTF-16LE string, including the terminating
- *   NUL if the input is NUL-terminated.
- * @param BufferSize
- *   Size of the KEY_VALUE_INFORMATION buffer. This routine will not
- *   write more than BufferSize bytes.
- * @param Alignment
- *   If not zero, specifies the alignment of the start of the marshaled
- *   data. Alignment can only be 4 or 8.
- */
-static NTSTATUS CmpMarshalString(IN PCSTR String,
-				 IN OPTIONAL ULONG StringSize,
-				 IN PVOID InfoBuffer,
-				 IN OUT ULONG *CurrentOffset,
-				 OUT ULONG *DataLength,
-				 IN ULONG BufferSize,
-				 IN OPTIONAL ULONG Alignment)
-{
-    DbgTrace("Marshaling string %s Info BufferSize is 0x%x *CurrentOffset 0x%x\n",
-	     String, BufferSize, *CurrentOffset);
-    assert(Alignment == 0 || Alignment == 4 || Alignment == 8);
-    if (Alignment != 0) {
-	*CurrentOffset = ALIGN_UP_BY(*CurrentOffset, Alignment);
-    }
-    if (*CurrentOffset >= BufferSize) {
-	return STATUS_BUFFER_TOO_SMALL;
-    }
-    if (StringSize == 0) {
-	StringSize = strlen(String) + 1;
-    }
-    return RtlUTF8ToUnicodeN((PWSTR)((PCHAR)InfoBuffer + *CurrentOffset),
-			     BufferSize - *CurrentOffset, DataLength,
-			     String, StringSize);
-}
-
 static NTSTATUS CmpMarshalValueData(IN PCM_REG_VALUE Value,
 				    IN PVOID InfoBuffer,
-				    IN OUT ULONG *CurrentOffset,
-				    OUT ULONG *DataLength,
-				    IN ULONG BufferSize,
-				    IN OPTIONAL ULONG Alignment)
+				    IN ULONG DataOffset,
+				    IN BOOLEAN Utf16)
 {
     DbgTrace("Marshaling value data for value %s data type %d\n",
 	     Value->Name, Value->Type);
-    assert(Alignment == 0 || Alignment == 4 || Alignment == 8);
-    if (Alignment != 0) {
-	*CurrentOffset = ALIGN_UP_BY(*CurrentOffset, Alignment);
-    }
-    if (*CurrentOffset >= BufferSize) {
-	return STATUS_BUFFER_TOO_SMALL;
-    }
-
+    PVOID Data = (PCHAR)InfoBuffer + DataOffset;
     switch (Value->Type) {
+    case REG_NONE:
+	break;
     case REG_DWORD:
-	if (BufferSize - *CurrentOffset < sizeof(ULONG)) {
-	    return STATUS_BUFFER_TOO_SMALL;
-	}
-	*(PULONG)((ULONG_PTR)InfoBuffer + *CurrentOffset) = Value->Dword;
+	*(PULONG)Data = Value->Dword;
 	break;
     case REG_QWORD:
-	if (BufferSize - *CurrentOffset < sizeof(ULONGLONG)) {
-	    return STATUS_BUFFER_TOO_SMALL;
-	}
-	*(PULONG)((ULONG_PTR)InfoBuffer + *CurrentOffset) = Value->Qword;
+	*(PULONG)Data = Value->Qword;
 	break;
     case REG_SZ:
     case REG_EXPAND_SZ:
     case REG_LINK:
     case REG_MULTI_SZ:
-	RET_ERR(CmpMarshalString((PCSTR)Value->Data, Value->DataSize,
-				 InfoBuffer, CurrentOffset, DataLength,
-				 BufferSize, 0));
+	if (Utf16) {
+	    UNUSED ULONG BytesWritten = 0;
+	    RET_ERR(RtlUTF8ToUnicodeN(Data, Value->Utf16DataSize, &BytesWritten,
+				      Value->Data, Value->DataSize));
+	    assert(Value->Utf16DataSize == BytesWritten);
+	} else {
+	    memcpy(Data, Value->Data, Value->DataSize);
+	}
+	break;
+    case REG_BINARY:
+    case REG_RESOURCE_LIST:
+    case REG_FULL_RESOURCE_DESCRIPTOR:
+    case REG_RESOURCE_REQUIREMENTS_LIST:
+	memcpy(Data, Value->Data, Value->DataSize);
+	break;
     default:
 	UNIMPLEMENTED;
     }
@@ -155,8 +114,10 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 				 IN KEY_VALUE_INFORMATION_CLASS InfoClass,
 				 IN PVOID OutputBuffer,
 				 IN ULONG BufferSize,
-				 OUT OPTIONAL ULONG *pResultLength)
+				 OUT ULONG *ResultLength,
+				 IN BOOLEAN Utf16)
 {
+    assert(ResultLength != NULL);
     PCM_NODE Node = CmpGetNamedNode(Key, ValueName, 0);
     if (Node == NULL) {
 	return STATUS_OBJECT_NAME_NOT_FOUND;
@@ -178,20 +139,24 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 #endif
 
     PCM_REG_VALUE Value = (PCM_REG_VALUE)Node;
-    ULONG ResultLength = 0;
     switch (InfoClass) {
     case KeyValueBasicInformation:
     {
 	PKEY_VALUE_BASIC_INFORMATION Info = (PKEY_VALUE_BASIC_INFORMATION)OutputBuffer;
-	if (BufferSize <= sizeof(KEY_VALUE_BASIC_INFORMATION)) {
+	*ResultLength = sizeof(KEY_VALUE_BASIC_INFORMATION) + (Utf16 ? Value->Utf16NameLength : (Value->NameLength + 1));
+	if (BufferSize < *ResultLength) {
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", *ResultLength, BufferSize);
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
-	ULONG NameStart = sizeof(KEY_VALUE_BASIC_INFORMATION);
 	Info->TitleIndex = 0;
 	Info->Type = Value->Type;
-	RET_ERR(CmpMarshalString(Value->Name, 0, Info, &NameStart,
-				 &Info->NameLength, BufferSize, 0));
-	ResultLength = NameStart + Info->NameLength;
+	if (Utf16) {
+	    UNUSED ULONG Unused = 0;
+	    RET_ERR(RtlUTF8ToUnicodeN(Info->Name, Value->Utf16NameLength,
+				      &Unused, Value->Name, Value->NameLength));
+	} else {
+	    memcpy(Info->Name, Value->Name, Value->NameLength + 1);
+	}
     }
     break;
 
@@ -199,37 +164,46 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     case KeyValueFullInformationAlign64:
     {
 	PKEY_VALUE_FULL_INFORMATION Info = (PKEY_VALUE_FULL_INFORMATION)OutputBuffer;
-	if (BufferSize <= sizeof(KEY_VALUE_FULL_INFORMATION)) {
+	ULONG NameOffset = ALIGN_UP_BY(sizeof(KEY_VALUE_FULL_INFORMATION), Alignment);
+	ULONG NameLength = Utf16 ? Value->Utf16NameLength : (Value->NameLength + 1);
+	ULONG DataOffset = NameOffset + ALIGN_UP_BY(NameLength, Alignment);
+	ULONG DataLength = CmpGetValueDataLength(Value, Utf16);
+	*ResultLength = DataOffset + DataLength;
+	if (BufferSize < *ResultLength) {
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", *ResultLength, BufferSize);
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
-	ULONG DataOffset = sizeof(KEY_VALUE_FULL_INFORMATION);
 	Info->TitleIndex = 0;
 	Info->Type = Value->Type;
-	RET_ERR(CmpMarshalString(Value->Name, 0, Info, &DataOffset,
-				 &Info->NameLength, BufferSize, Alignment));
-	DataOffset += Info->NameLength;
-	assert(DataOffset <= BufferSize);
-	if (DataOffset >= BufferSize) {
-	    return STATUS_BUFFER_TOO_SMALL;
+	Info->DataOffset = DataOffset;
+	Info->DataLength = DataLength;
+	Info->NameLength = NameLength;
+	if (Utf16) {
+	    RET_ERR(RtlUTF8ToUnicodeN((PWSTR)((PCHAR)Info + NameOffset),
+				      Value->Utf16NameLength, &NameLength,
+				      Value->Name, Value->NameLength));
+	    assert(NameLength == Value->Utf16NameLength);
+	} else {
+	    memcpy((PCHAR)Info + NameOffset, Value->Name, Value->NameLength + 1);
 	}
-	RET_ERR(CmpMarshalValueData(Value, Info, &DataOffset, &Info->DataLength,
-				    BufferSize, Alignment));
-	ResultLength = DataOffset + Info->DataLength;
+	RET_ERR(CmpMarshalValueData(Value, Info, DataOffset, Utf16));
     }
     break;
 
     case KeyValuePartialInformation:
     {
 	PKEY_VALUE_PARTIAL_INFORMATION Info = (PKEY_VALUE_PARTIAL_INFORMATION)OutputBuffer;
-	if (BufferSize <= sizeof(KEY_VALUE_PARTIAL_INFORMATION)) {
+	ULONG DataOffset = sizeof(KEY_VALUE_PARTIAL_INFORMATION);
+	ULONG DataLength = CmpGetValueDataLength(Value, Utf16);
+	*ResultLength = DataOffset + DataLength;
+	if (BufferSize < *ResultLength) {
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", *ResultLength, BufferSize);
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
-	ULONG DataOffset = sizeof(KEY_VALUE_PARTIAL_INFORMATION);
 	Info->TitleIndex = 0;
 	Info->Type = Value->Type;
-	RET_ERR(CmpMarshalValueData(Value, Info, &DataOffset, &Info->DataLength,
-				    BufferSize, Alignment));
-	ResultLength = DataOffset + Info->DataLength;
+	Info->DataLength = DataLength;
+	RET_ERR(CmpMarshalValueData(Value, Info, DataOffset, Utf16));
     }
     break;
 
@@ -237,14 +211,16 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     {
 	PKEY_VALUE_PARTIAL_INFORMATION_ALIGN64 Info =
 	    (PKEY_VALUE_PARTIAL_INFORMATION_ALIGN64)OutputBuffer;
-	if (BufferSize <= sizeof(KEY_VALUE_PARTIAL_INFORMATION_ALIGN64)) {
+	ULONG DataOffset = sizeof(KEY_VALUE_PARTIAL_INFORMATION_ALIGN64);
+	ULONG DataLength = CmpGetValueDataLength(Value, Utf16);
+	*ResultLength = DataOffset + DataLength;
+	if (BufferSize < *ResultLength) {
+	    DbgTrace("Need buffer size 0x%x got 0x%x\n", *ResultLength, BufferSize);
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
-	ULONG DataOffset = sizeof(KEY_VALUE_PARTIAL_INFORMATION_ALIGN64);
 	Info->Type = Value->Type;
-	RET_ERR(CmpMarshalValueData(Value, Info, &DataOffset, &Info->DataLength,
-				    BufferSize, Alignment));
-	ResultLength = DataOffset + Info->DataLength;
+	Info->DataLength = DataLength;
+	RET_ERR(CmpMarshalValueData(Value, Info, DataOffset, Utf16));
     }
     break;
 
@@ -254,9 +230,6 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    if (pResultLength) {
-	*pResultLength = ResultLength;
-    }
     return STATUS_SUCCESS;
 }
 
@@ -373,11 +346,9 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
 			  IN ULONG BufferSize,
 			  OUT ULONG *ResultLength)
 {
-    DbgTrace("Querying value %s for key handle %p\n", ValueName, KeyHandle);
+    DbgTrace("Querying value %s for key handle %p KVIC %x bufsize 0x%x\n",
+	     ValueName, KeyHandle, KeyValueInformationClass, BufferSize);
     assert(Thread->Process != NULL);
-    if (BufferSize == 0) {
-	return STATUS_INVALID_PARAMETER_5;
-    }
     if ((KeyValueInformationClass == KeyValueFullInformationAlign64 ||
 	 KeyValueInformationClass == KeyValuePartialInformationAlign64)
 	&& (ALIGN_DOWN_POINTER(OutputBuffer, ULONGLONG) != OutputBuffer)) {
@@ -390,7 +361,7 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
     NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
 				       KeyValueInformationClass,
 				       OutputBuffer, BufferSize,
-				       ResultLength);
+				       ResultLength, TRUE);
     ObDereferenceObject(Key);
     return Status;
 }
@@ -408,7 +379,24 @@ NTSTATUS NtQueryValueKeyA(IN ASYNC_STATE AsyncState,
 			  IN ULONG BufferSize,
 			  OUT ULONG *ResultLength)
 {
-    UNIMPLEMENTED;
+    DbgTrace("Querying value %s for key handle %p KVIC %x bufsize 0x%x\n",
+	     ValueName, KeyHandle, KeyValueInformationClass, BufferSize);
+    assert(Thread->Process != NULL);
+    if ((KeyValueInformationClass == KeyValueFullInformationAlign64 ||
+	 KeyValueInformationClass == KeyValuePartialInformationAlign64)
+	&& (ALIGN_DOWN_POINTER(OutputBuffer, ULONGLONG) != OutputBuffer)) {
+	return STATUS_DATATYPE_MISALIGNMENT;
+    }
+    PCM_KEY_OBJECT Key = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
+    assert(Key != NULL);
+    NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
+				       KeyValueInformationClass,
+				       OutputBuffer, BufferSize,
+				       ResultLength, FALSE);
+    ObDereferenceObject(Key);
+    return Status;
 }
 
 /*

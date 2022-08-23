@@ -745,11 +745,9 @@ class BufferMarshaller(BaseMarshaller):
         p.check_null = not p.optional
         p.client_marshaled_param = self.format(pp, "{{p.name}}Arg.Word")
         p.client_pre_marshaling = self.format(pp, "SERVICE_ARGUMENT {{p.name}}Arg = { .Word = 0 };")
-        p.client_marshaling = self.format(pp, """if ({{p.name}} != NULL) {
-    Status = {{client_marshal_func}}({{p.name}}, {{sp.name}}{% if tp %}, {{tp.name}}{% endif %}, &{{p.name}}Arg, &{{sp.name}}Arg{% if tp %}, &{{tp.name}}Arg{% endif %}, {% if p.dir_in %}TRUE{% else %}FALSE{% endif %}, &MsgBufOffset);
-    if (!NT_SUCCESS(Status)) {
-        goto ClientPostMarshaling;
-    }
+        p.client_marshaling = self.format(pp, """Status = {{client_marshal_func}}({{p.name}}, {{sp.name}}{% if tp %}, {{tp.name}}{% endif %}, &{{p.name}}Arg, &{{sp.name}}Arg{% if tp %}, &{{tp.name}}Arg{% endif %}, {% if p.dir_in %}TRUE{% else %}FALSE{% endif %}, &MsgBufOffset);
+if (!NT_SUCCESS(Status)) {
+    goto ClientPostMarshaling;
 }""")
         p.client_post_marshaling = self.format(pp, """{%- if client_post_marshal_func %}
 {{client_post_marshal_func}}({{p.name}}, {{p.name}}Arg, {{sp.name}}Arg{% if tp %}, {{tp.name}}Arg{% endif %});

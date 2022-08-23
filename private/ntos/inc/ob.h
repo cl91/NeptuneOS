@@ -455,9 +455,6 @@ static inline ULONG ObpLocateFirstPathSeparator(IN PCSTR Path)
     for (PCSTR Ptr = Path; (*Ptr != '\0') && (*Ptr != OBJ_NAME_PATH_SEPARATOR); Ptr++) {
 	NameLength++;
     }
-    /* This is a programming error since the object manager shall always
-     * call the parse method without the leading OBJ_NAME_PATH_SEPARATOR. */
-    assert(NameLength != 0);
     return NameLength;
 }
 

@@ -352,7 +352,7 @@ static NTSTATUS CmpMarshalRegDataA(IN PVOID Data,
     return STATUS_SUCCESS;
 }
 
-static inline NTSTATUS CmpMarshalKeyValueInfoBuffer(IN PVOID ClientBuffer,
+static inline NTSTATUS CmpMarshalKeyValueInfoBuffer(IN OPTIONAL PVOID ClientBuffer,
 						    IN ULONG BufferSize,
 						    IN KEY_VALUE_INFORMATION_CLASS InfoClass,
 						    OUT SERVICE_ARGUMENT *BufferArg,
@@ -361,17 +361,14 @@ static inline NTSTATUS CmpMarshalKeyValueInfoBuffer(IN PVOID ClientBuffer,
 						    IN BOOLEAN Copy,
 						    OUT ULONG *MsgBufOffset)
 {
-    if (BufferSize == 0) {
-	return STATUS_INVALID_PARAMETER;
-    }
     if ((InfoClass == KeyValueFullInformationAlign64 ||
 	 InfoClass == KeyValuePartialInformationAlign64)
 	&& (ALIGN_DOWN_POINTER(ClientBuffer, ULONGLONG) != ClientBuffer)) {
 	return STATUS_DATATYPE_MISALIGNMENT;
     }
+    TypeArg->Word = InfoClass;
     RET_ERR(KiServiceMarshalBuffer(ClientBuffer, BufferSize, BufferArg,
 				   SizeArg, Copy, MsgBufOffset));
-    TypeArg->Word = InfoClass;
     return STATUS_SUCCESS;
 }
 

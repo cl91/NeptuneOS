@@ -1,5 +1,6 @@
 #include <nt.h>
 #include <string.h>
+#include <util.h>
 
 /******************************************************************************
  * RtlUnicodeToUTF8N [NTDLL.@]

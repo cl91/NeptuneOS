@@ -125,7 +125,7 @@ static inline BOOLEAN KiPtrInSvcMsgBuf(IN PVOID Ptr)
 	((MWORD)Ptr < ((MWORD)__sel4_ipc_buffer + IPC_BUFFER_COMMIT));
 }
 
-static inline NTSTATUS KiServiceMarshalBuffer(IN PVOID ClientBuffer,
+static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,
 					      IN MWORD BufferSize,
 					      OUT SERVICE_ARGUMENT *BufferArg,
 					      OUT SERVICE_ARGUMENT *SizeArg,
@@ -136,7 +136,13 @@ static inline NTSTATUS KiServiceMarshalBuffer(IN PVOID ClientBuffer,
 	return STATUS_INVALID_USER_BUFFER;
     }
     if (BufferSize == 0) {
-	return STATUS_INVALID_PARAMETER;
+	/* Some system services accepts a zero BufferSize. Service will
+	 * typically set the result size to the correct buffer size so
+	 * client can allocate the right amount of memory. */
+	return ClientBuffer != NULL ? STATUS_INVALID_PARAMETER : STATUS_SUCCESS;
+    }
+    if (ClientBuffer == NULL) {
+	return BufferSize ? STATUS_INVALID_PARAMETER : STATUS_SUCCESS;
     }
     /* If the buffer size exceeds what we can carry with the IRP,
      * or if it cannot fit into the service message buffer, simply

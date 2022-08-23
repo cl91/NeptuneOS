@@ -144,9 +144,11 @@ static NTSTATUS IopGetSubKeyCount(IN UNICODE_STRING Key,
     PKEY_FULL_INFORMATION FullInfo = NULL;
     ULONG LenFullInfo = 0;
     NTSTATUS Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, 0, &LenFullInfo);
-    if (!NT_SUCCESS(Status) || LenFullInfo == 0) {
+    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL &&
+	Status != STATUS_BUFFER_OVERFLOW) {
 	goto out;
     }
+    assert(LenFullInfo != 0);
 
     /* Allocate the key information buffer */
     FullInfo = ExAllocatePoolWithTag(LenFullInfo, TAG_IO_RESOURCE);
@@ -754,6 +756,7 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 	    L"TcAdapter"
 	};
 	BOOLEAN Skip = TRUE;
+	TRACE_(PNPMGR, "Got adapter name %ws\n", BasicInfo->Name);
 	for (ULONG i = 0; i < ARRAYSIZE(AdapterNames); i++) {
 	    Skip &= !!wcsncmp(BasicInfo->Name, AdapterNames[i],
 			      BasicInfo->NameLength / sizeof(WCHAR));
