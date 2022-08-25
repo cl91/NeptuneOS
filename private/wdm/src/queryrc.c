@@ -242,9 +242,12 @@ static NTSTATUS IopGetConfigurationInformation(IN UNICODE_STRING RegKey,
 	Status = NtQueryValueKey(KeyHandle, &ValueString,
 				 KeyValueFullInformation, NULL, 0,
 				 &BufferSize);
+	/* If we get an error, simply continue looking at the next
+	 * information data. Information[i] will be left as NULL. */
 	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL &&
 	    Status != STATUS_BUFFER_OVERFLOW) {
-	    goto out;
+	    Status = STATUS_SUCCESS;
+	    continue;
 	}
 	assert(BufferSize != 0);
 
@@ -266,9 +269,7 @@ static NTSTATUS IopGetConfigurationInformation(IN UNICODE_STRING RegKey,
 	 * correct buffer size before. */
 	assert(Status != STATUS_BUFFER_TOO_SMALL);
 	assert(Status != STATUS_BUFFER_OVERFLOW);
-	if (!NT_SUCCESS(Status)) {
-	    goto out;
-	}
+	/* We ignore the error above and simply continue */
     }
 
     /* If we got here, everything went well */
@@ -495,9 +496,6 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
     RET_ERR(IopGetSubKeyInfo(RootKey, &RootKeyHandle, &SubKeyCount, &SubKeyBufferSize));
     assert(RootKeyHandle != NULL);
     if (SubKeyCount == 0) {
-	/* The device description database should never have a bus key without any
-	 * subkeys, so this is an error. On debug build we stop and find out why. */
-	assert(FALSE);
 	return STATUS_NO_MORE_ENTRIES;
     }
     PKEY_BASIC_INFORMATION BasicInfo = ExAllocatePoolWithTag(SubKeyBufferSize,

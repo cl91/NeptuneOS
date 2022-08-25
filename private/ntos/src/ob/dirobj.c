@@ -49,7 +49,7 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 	if (strlen(ObGetObjectName(Entry->Object)) != Length) {
 	    continue;
 	}
-	INT (*Comparer)(PCSTR, PCSTR, ULONG) = CaseInsensitive ? _strnicmp : strncmp;
+	INT (*Comparer)(PCSTR, PCSTR, ULONG_PTR) = CaseInsensitive ? _strnicmp : strncmp;
 	if (!Comparer(Name, ObGetObjectName(Entry->Object), Length)) {
 	    DbgTrace("Found object name = %s\n",
 		     ObGetObjectName(Entry->Object));

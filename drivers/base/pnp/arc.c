@@ -201,9 +201,6 @@ NTSTATUS ArcCreateComponentKey(IN PCONFIGURATION_COMPONENT_DATA SystemNode,
     /* Set configuration data */
     if (ResourceList) {
 	ArcSetConfigurationData(ComponentData, ResourceList, Size);
-	if (!NT_SUCCESS(Status)) {
-	    return Status;
-	}
     }
 
     /* Return the child */
@@ -211,21 +208,34 @@ NTSTATUS ArcCreateComponentKey(IN PCONFIGURATION_COMPONENT_DATA SystemNode,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA CurrentEntry,
-					  IN HANDLE NodeHandle,
-					  OUT PHANDLE NewHandle,
-					  IN INTERFACE_TYPE InterfaceType,
-					  IN ULONG BusNumber,
-					  IN PUSHORT DeviceIndexTable,
-					  OUT PCM_FULL_RESOURCE_DESCRIPTOR ConfigurationData,
-					  IN ULONG ConfigurationDataSize)
+VOID ArcDestroySystemKey(IN PCONFIGURATION_COMPONENT_DATA SystemNode)
 {
-    UNICODE_STRING KeyName, ValueName, ValueData;
+    assert(SystemNode != NULL);
+    if (SystemNode->Child != NULL) {
+	ArcDestroySystemKey(SystemNode->Child);
+    }
+    if (SystemNode->Sibling != NULL) {
+	ArcDestroySystemKey(SystemNode->Sibling);
+    }
+    if (SystemNode->ComponentEntry.Identifier != NULL) {
+	ExFreePool(SystemNode->ComponentEntry.Identifier);
+    }
+    if (SystemNode->ConfigurationData != NULL) {
+	ExFreePool(SystemNode->ConfigurationData);
+    }
+    ExFreePool(SystemNode);
+}
+
+static NTSTATUS ArcSetupRegistryNode(IN PCONFIGURATION_COMPONENT_DATA CurrentEntry,
+				     IN HANDLE NodeHandle,
+				     OUT PHANDLE NewHandle,
+				     IN INTERFACE_TYPE InterfaceType,
+				     IN ULONG BusNumber,
+				     IN PUSHORT DeviceIndexTable)
+{
     HANDLE KeyHandle = NULL;
-    ANSI_STRING TempString;
-    CHAR TempBuffer[12];
-    WCHAR Buffer[12];
-    ULONG Disposition, Length = 0;
+    PCM_FULL_RESOURCE_DESCRIPTOR ConfigurationData = NULL;
+    ULONG Disposition;
 
     /* Get the component */
     PCONFIGURATION_COMPONENT Component = &CurrentEntry->ComponentEntry;
@@ -249,8 +259,14 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
 	return Status;
     }
 
-    /* Check if this is anything but a system class component */
+    /* If this is anything but a system class component, then
+     * create a subkey with the device index as the name (ie.
+     * "0" in "DiskController\\0".) */
     if (Component->Class != SystemClass) {
+	UNICODE_STRING KeyName;
+	ANSI_STRING TempString;
+	CHAR TempBuffer[16];
+	WCHAR Buffer[16];
 	/* Build the sub-component string */
 	RtlIntegerToChar(DeviceIndexTable[Component->Type]++,
 			 10, 12, TempBuffer);
@@ -269,6 +285,8 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
 				   &KeyName,
 				   OBJ_CASE_INSENSITIVE,
 				   ParentHandle, NULL);
+	TRACE_(PNPMGR, "Trying to create key %wZ\\%wZ\n",
+	       &CmTypeName[Component->Type], &KeyName);
 	Status = NtCreateKey(&KeyHandle,
 			     KEY_READ | KEY_WRITE,
 			     &ObjectAttributes, 0, NULL, 0, &Disposition);
@@ -283,15 +301,20 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
     }
 
     /* Setup the component information key */
+    UNICODE_STRING ValueName;
     RtlInitUnicodeString(&ValueName, L"Component Information");
+    TRACE_(PNPMGR, "Trying to set %wZ for component %wZ\n",
+	   &ValueName, &CmTypeName[Component->Type]);
     Status = NtSetValueKey(KeyHandle,
 			   &ValueName,
 			   0,
 			   REG_BINARY,
 			   &Component->Flags,
-			   FIELD_OFFSET(CONFIGURATION_COMPONENT, ConfigurationDataLength) -
-			   FIELD_OFFSET(CONFIGURATION_COMPONENT, Flags));
+			   FIELD_OFFSET(CONFIGURATION_COMPONENT, ConfigurationDataLength)
+			   - FIELD_OFFSET(CONFIGURATION_COMPONENT, Flags));
     if (!NT_SUCCESS(Status)) {
+	TRACE_(PNPMGR, "Error setting %wZ for compoent %wZ. Status = 0x%x\n",
+	       &ValueName, &CmTypeName[Component->Type], Status);
 	goto out;
     }
 
@@ -299,7 +322,9 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
     if (Component->IdentifierLength) {
 	/* Build the string and convert it to Unicode */
 	RtlInitUnicodeString(&ValueName, L"Identifier");
+	ANSI_STRING TempString;
 	RtlInitAnsiString(&TempString, Component->Identifier);
+	UNICODE_STRING ValueData;
 	Status = RtlAnsiStringToUnicodeString(&ValueData,
 					      &TempString, TRUE);
 	if (!NT_SUCCESS(Status)) {
@@ -307,6 +332,8 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
 	}
 
 	/* Save the identifier in the registry */
+	TRACE_(PNPMGR, "Trying to set %wZ for component %wZ\n",
+	       &ValueName, &CmTypeName[Component->Type]);
 	Status = NtSetValueKey(KeyHandle,
 			       &ValueName,
 			       0,
@@ -315,6 +342,8 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
 			       ValueData.Length + sizeof(UNICODE_NULL));
 	RtlFreeUnicodeString(&ValueData);
 	if (!NT_SUCCESS(Status)) {
+	    TRACE_(PNPMGR, "Error setting %wZ for component %wZ. Status = 0x%x\n",
+		   &ValueName, &CmTypeName[Component->Type], Status);
 	    goto out;
 	}
     }
@@ -322,29 +351,26 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
     /* Setup the configuration data string */
     RtlInitUnicodeString(&ValueName, L"Configuration Data");
 
+    ULONG ConfigDataSize = FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList) +
+	(CurrentEntry->ConfigurationData ? Component->ConfigurationDataLength :
+	 FIELD_OFFSET(CM_PARTIAL_RESOURCE_LIST, PartialDescriptors));
+    ConfigurationData = ExAllocatePool(ConfigDataSize);
+    if (ConfigurationData == NULL) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
     /* Check if we got configuration data */
     if (CurrentEntry->ConfigurationData) {
-	/* Calculate the total length and check if it fits into our buffer */
-	Length = Component->ConfigurationDataLength +
-	    FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList);
-	if (Length > ConfigurationDataSize) {
-	    ASSERTMSG("Component too large -- need reallocation!\n",
-		      FALSE);
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	    goto out;
-	} else {
-	    /* Copy the data */
-	    RtlCopyMemory(&ConfigurationData->PartialResourceList.Version,
-			  CurrentEntry->ConfigurationData,
-			  Component->ConfigurationDataLength);
-	}
+	/* Copy the configuration data */
+	RtlCopyMemory(&ConfigurationData->PartialResourceList.Version,
+		      CurrentEntry->ConfigurationData,
+		      Component->ConfigurationDataLength);
     } else {
 	/* No configuration data, setup defaults */
 	ConfigurationData->PartialResourceList.Version = 0;
 	ConfigurationData->PartialResourceList.Revision = 0;
 	ConfigurationData->PartialResourceList.Count = 0;
-	Length = FIELD_OFFSET(CM_PARTIAL_RESOURCE_LIST, PartialDescriptors) +
-	    FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList);
     }
 
     /* Set the interface type and bus number */
@@ -352,12 +378,22 @@ static NTSTATUS ArcInitializeRegistryNode(IN PCONFIGURATION_COMPONENT_DATA Curre
     ConfigurationData->BusNumber = BusNumber;
 
     /* Save the actual data */
+    TRACE_(PNPMGR, "Trying to set %wZ for component %wZ\n",
+	   &ValueName, &CmTypeName[Component->Type]);
     Status = NtSetValueKey(KeyHandle,
 			   &ValueName,
 			   0,
 			   REG_FULL_RESOURCE_DESCRIPTOR,
-			   ConfigurationData, Length);
+			   ConfigurationData, ConfigDataSize);
+    if (!NT_SUCCESS(Status)) {
+	TRACE_(PNPMGR, "Error setting %wZ for component %wZ. Status = 0x%x\n",
+	       &ValueName, &CmTypeName[Component->Type], Status);
+    }
+
 out:
+    if (ConfigurationData != NULL) {
+	ExFreePool(ConfigurationData);
+    }
     if (!NT_SUCCESS(Status) && KeyHandle != NULL) {
 	/* Fail */
 	NtClose(KeyHandle);
@@ -374,9 +410,7 @@ out:
 static NTSTATUS ArcSetupConfigurationTree(IN PCONFIGURATION_COMPONENT_DATA CurrentEntry,
 					  IN HANDLE ParentHandle,
 					  IN INTERFACE_TYPE InterfaceType,
-					  IN ULONG BusNumber,
-					  OUT PCM_FULL_RESOURCE_DESCRIPTOR ConfigurationData,
-					  IN ULONG ConfigurationDataSize)
+					  IN ULONG BusNumber)
 {
     USHORT DeviceIndexTable[MaximumType + 1] = { 0 };
     ULONG Interface = InterfaceType, Bus = BusNumber, i;
@@ -409,7 +443,7 @@ static NTSTATUS ArcSetupConfigurationTree(IN PCONFIGURATION_COMPONENT_DATA Curre
 		    for (i = 0; CmpMultifunctionTypes[i].Identifier; i++) {
 			/* Check for a name match */
 			if (!_stricmp(CmpMultifunctionTypes[i].Identifier,
-				     Component->Identifier)) {
+				      Component->Identifier)) {
 			    /* Match found */
 			    break;
 			}
@@ -438,14 +472,12 @@ static NTSTATUS ArcSetupConfigurationTree(IN PCONFIGURATION_COMPONENT_DATA Curre
 
 	/* Setup the hardware node */
 	HANDLE NewHandle;
-	NTSTATUS Status = ArcInitializeRegistryNode(CurrentEntry,
-						    ParentHandle,
-						    &NewHandle,
-						    Interface,
-						    Bus,
-						    DeviceIndexTable,
-						    ConfigurationData,
-						    ConfigurationDataSize);
+	NTSTATUS Status = ArcSetupRegistryNode(CurrentEntry,
+					       ParentHandle,
+					       &NewHandle,
+					       Interface,
+					       Bus,
+					       DeviceIndexTable);
 	if (!NT_SUCCESS(Status))
 	    return Status;
 
@@ -453,9 +485,7 @@ static NTSTATUS ArcSetupConfigurationTree(IN PCONFIGURATION_COMPONENT_DATA Curre
 	if (CurrentEntry->Child) {
 	    /* Recursively setup the child tree */
 	    Status = ArcSetupConfigurationTree(CurrentEntry->Child,
-					       NewHandle, Interface, Bus,
-					       ConfigurationData,
-					       ConfigurationDataSize);
+					       NewHandle, Interface, Bus);
 	    if (!NT_SUCCESS(Status)) {
 		NtClose(NewHandle);
 		return Status;
@@ -493,21 +523,10 @@ NTSTATUS ArcSetupHardwareDescriptionDatabase(IN PCONFIGURATION_COMPONENT_DATA Co
     /* Nobody should've created this key yet! */
     ASSERT(Disposition == REG_CREATED_NEW_KEY);
 
-    /* Allocate the configuration data buffer */
-    ULONG ConfigurationAreaSize = 4 * PAGE_SIZE;
-    PCM_FULL_RESOURCE_DESCRIPTOR ConfigurationData = ExAllocatePool(ConfigurationAreaSize);
-    if (!ConfigurationData) {
-	TRACE_(PNPMGR, "Unable to allocate resource descriptor\n");
-	NtClose(KeyHandle);
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
     /* Setup the configuration tree */
-    Status = ArcSetupConfigurationTree(ConfigurationRoot, KeyHandle, -1, -1,
-				       ConfigurationData, ConfigurationAreaSize);
+    Status = ArcSetupConfigurationTree(ConfigurationRoot, KeyHandle, -1, -1);
 
-    /* Free the buffer, close our handle and return status */
-    ExFreePool(ConfigurationData);
+    /* Close our handle and return status */
     NtClose(KeyHandle);
     return Status;
 }

@@ -144,28 +144,15 @@ static PNP_DEVICE PnpDevices[] = {
     }
 };
 
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-
-/*
- * For now we will simply hard-code the 1.44MB A: drive. Eventually this
- * should be done by the ACPI enumerator which will invoke the _FDE ACPI
- * method to enumerate the floopy disk controllers present on the system.
- * Note that on Windows for BIOS systems there is an additional mechanism
- * for floppy disk controller detection, via the BIOS INT 0x1e. On NT 5.x
- * and before this is done by ntdetect.com which was loaded and invoked
- * by NTLDR prior to loading the NTOSKRNL (on ReactOS ntdetect is part of
- * the ReactOS loader freeldr). This is removed in Vista+. On Neptune OS
- * we do not plan to support this type of FDC enumeration. Only ACPI will
- * be supported.
- */
-static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
+static NTSTATUS IsaPnpSetupFdcControllerKey(IN PCONFIGURATION_COMPONENT_DATA BusKey,
+					    OUT PCONFIGURATION_COMPONENT_DATA *ControllerKey)
 {
     /* We need to build the configuration manager partial resource list first
      * becasue the PnpDevices array has the IO manager version. */
-    ULONG Size = max(sizeof(CM_PARTIAL_RESOURCE_LIST) + 3 * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR), sizeof(CM_PARTIAL_RESOURCE_LIST) + sizeof(CM_FLOPPY_DEVICE_DATA));
+    ULONG Size = sizeof(CM_PARTIAL_RESOURCE_LIST) + ARRAYSIZE(FdcResourceDescriptors) * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
     PCM_PARTIAL_RESOURCE_LIST PartialResourceList = ExAllocatePool(Size);
     if (PartialResourceList == NULL) {
-        ERR_(ISAPNP, "Failed to allocate resource descriptor\n");
+        ERR_(ISAPNP, "Failed to allocate resource list\n");
         return STATUS_NO_MEMORY;
     }
 
@@ -173,7 +160,7 @@ static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
     RtlZeroMemory(PartialResourceList, Size);
     PartialResourceList->Version = 1;
     PartialResourceList->Revision = 1;
-    PartialResourceList->Count = 3;
+    PartialResourceList->Count = ARRAYSIZE(FdcResourceDescriptors);
 
     for (ULONG i = 0; i < ARRAYSIZE(FdcResourceDescriptors); i++) {
 	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor = &PartialResourceList->PartialDescriptors[i];
@@ -205,19 +192,26 @@ static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
     }
 
     /* Create floppy disk controller */
-    PCONFIGURATION_COMPONENT_DATA ControllerKey = NULL;
-    NTSTATUS Status = ArcCreateComponentKey(BusKey,
-					    ControllerClass,
-					    DiskController,
-					    Output | Input,
-					    0x0,
-					    0xFFFFFFFF,
-					    NULL,
-					    PartialResourceList,
-					    Size,
-					    &ControllerKey);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
+    return ArcCreateComponentKey(BusKey,
+				 ControllerClass,
+				 DiskController,
+				 Output | Input,
+				 0x0,
+				 0xFFFFFFFF,
+				 NULL,
+				 PartialResourceList,
+				 Size,
+				 ControllerKey);
+}
+
+static NTSTATUS IsaPnpSetupFdcPeripheralKey(IN PCONFIGURATION_COMPONENT_DATA BusKey,
+					    IN PCONFIGURATION_COMPONENT_DATA ControllerKey)
+{
+    ULONG Size = sizeof(CM_PARTIAL_RESOURCE_LIST) + sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) + sizeof(CM_FLOPPY_DEVICE_DATA);
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList = ExAllocatePool(Size);
+    if (PartialResourceList == NULL) {
+        ERR_(ISAPNP, "Failed to allocate resource list\n");
+        return STATUS_NO_MEMORY;
     }
 
     RtlZeroMemory(PartialResourceList, Size);
@@ -230,14 +224,15 @@ static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
     PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
     PartialDescriptor->u.DeviceSpecificData.DataSize = sizeof(CM_FLOPPY_DEVICE_DATA);
 
-    PCM_FLOPPY_DEVICE_DATA FloppyData = (PVOID)(((ULONG_PTR)PartialResourceList) + sizeof(CM_PARTIAL_RESOURCE_LIST));
+    /* Floppy data follows immediately after the partial descriptor above. */
+    PCM_FLOPPY_DEVICE_DATA FloppyData = (PCM_FLOPPY_DEVICE_DATA)&PartialResourceList->PartialDescriptors[1];
     UCHAR FloppyType = 4;
     ULONG MaxDensity[6] = {0, 360, 1200, 720, 1440, 2880};
     FloppyData->Version = 2;
     FloppyData->Revision = 0;
     FloppyData->MaxDensity = MaxDensity[FloppyType];
     FloppyData->MountDensity = 0;
-    /* From OSDEV wiki: HUT ("Head Unload Time") is he time the controller
+    /* From OSDEV wiki: HUT ("Head Unload Time") is the time the controller
      * should wait before deactivating the head. To calculate the value for
      * the HUT setting from a given time, use
      *   HUT_value = milliseconds * data_rate / 8000000.
@@ -262,6 +257,28 @@ static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
 				 &PeripheralKey);
 }
 
+/*
+ * For now we will simply hard-code the 1.44MB A: drive. Eventually this
+ * should be done by the ACPI enumerator which will invoke the _FDE ACPI
+ * method to enumerate the floopy disk controllers present on the system.
+ * Note that on Windows for BIOS systems there is an additional mechanism
+ * for floppy disk controller detection, via the BIOS INT 0x1e. On NT 5.x
+ * and before this is done by ntdetect.com which was loaded and invoked
+ * by NTLDR prior to loading the NTOSKRNL (on ReactOS ntdetect is part of
+ * the ReactOS loader freeldr). This is removed in Vista+. On Neptune OS
+ * we do not plan to support this type of FDC enumeration. Only ACPI will
+ * be supported.
+ */
+static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
+{
+    PCONFIGURATION_COMPONENT_DATA ControllerKey = NULL;
+    NTSTATUS Status = IsaPnpSetupFdcControllerKey(BusKey, &ControllerKey);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    return IsaPnpSetupFdcPeripheralKey(BusKey, ControllerKey);
+}
+
 static NTSTATUS IsaPnpInitHwDb()
 {
     PCONFIGURATION_COMPONENT_DATA SystemKey = NULL;
@@ -277,7 +294,8 @@ static NTSTATUS IsaPnpInitHwDb()
     PartialResourceList = ExAllocatePool(Size);
     if (PartialResourceList == NULL) {
         ERR_(ISAPNP, "Failed to allocate resource descriptor\n");
-        return STATUS_NO_MEMORY;
+        Status = STATUS_NO_MEMORY;
+	goto out;
     }
 
     /* Initialize resource descriptor */
@@ -287,7 +305,7 @@ static NTSTATUS IsaPnpInitHwDb()
     PartialResourceList->Count = 0;
 
     /* Create new bus key */
-    PCONFIGURATION_COMPONENT_DATA BusKey;
+    PCONFIGURATION_COMPONENT_DATA BusKey = NULL;
     Status = ArcCreateComponentKey(SystemKey,
 				   AdapterClass,
 				   MultiFunctionAdapter,
@@ -300,17 +318,22 @@ static NTSTATUS IsaPnpInitHwDb()
 				   &BusKey);
     if (!NT_SUCCESS(Status)) {
         ERR_(ISAPNP, "Failed to create ISA bus key, status = 0x%x\n", Status);
-	return Status;
+	goto out;
     }
 
     Status = IsaPnpDetectFDC(BusKey);
     if (!NT_SUCCESS(Status)) {
         ERR_(ISAPNP, "Failed to detect floppy disk controllers, error = 0x%x\n", Status);
-	return Status;
+	goto out;
     }
 
-    /* TODO: We need to free the memories allocated above. */
-    return ArcSetupHardwareDescriptionDatabase(SystemKey);
+    Status = ArcSetupHardwareDescriptionDatabase(SystemKey);
+
+out:
+    if (SystemKey != NULL) {
+	ArcDestroySystemKey(SystemKey);
+    }
+    return Status;
 }
 
 /*

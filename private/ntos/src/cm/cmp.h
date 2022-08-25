@@ -1,9 +1,9 @@
 #pragma once
 
 /* Comment this to enable debug tracing on debug build */
-/* #ifndef NDEBUG */
-/* #define NDEBUG */
-/* #endif */
+#ifndef NDEBUG
+#define NDEBUG
+#endif
 
 #include <ntos.h>
 

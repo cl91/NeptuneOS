@@ -287,9 +287,112 @@ NTSTATUS CmReadKeyValueByPointer(IN POBJECT KeyObject,
     return STATUS_SUCCESS;
 }
 
+static PCSTR CmpDbgInterfaceTypes[] = {
+    "Internal",
+    "Isa",
+    "Eisa",
+    "MicroChannel",
+    "TurboChannel",
+    "PCIBus",
+    "VMEBus",
+    "NuBus",
+    "PCMCIABus",
+    "CBus",
+    "MPIBus",
+    "MPSABus",
+    "ProcessorInternal",
+    "InternalPowerBus",
+    "PNPISABus",
+    "PNPBus",
+    "MaximumInterfaceType"
+};
+
+static PCSTR CmpDbgInterfaceTypeToStr(IN INTERFACE_TYPE Type)
+{
+    if (Type <= 0 || Type > MaximumInterfaceType) {
+	return "Undefined";
+    }
+    return CmpDbgInterfaceTypes[Type];
+}
+
+static VOID CmpDbgDumpPartialResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc,
+						IN ULONG Indent)
+{
+    RtlDbgPrintIndentation(Indent);
+    DbgPrint("TYPE %d SHARE-DISPOSITION %d FLAGS 0x%x\n",
+	     Desc->Type, Desc->ShareDisposition, Desc->Flags);
+    RtlDbgPrintIndentation(Indent + 2);
+    switch (Desc->Type) {
+    case CmResourceTypeNull:
+	DbgPrint("NULL-RESOURCE\n");
+	break;
+    case CmResourceTypePort:
+	DbgPrint("PORT Start 0x%llx Length 0x%x\n",
+		 Desc->u.Port.Start.QuadPart, Desc->u.Port.Length);
+	break;
+    case CmResourceTypeInterrupt:
+	DbgPrint("INTERRUPT Level 0x%x Vector 0x%x Affinity 0x%x\n",
+		 Desc->u.Interrupt.Level, Desc->u.Interrupt.Vector,
+		 Desc->u.Interrupt.Affinity);
+	break;
+    case CmResourceTypeMemory:
+	DbgPrint("MEMORY Start 0x%llx Length 0x%x\n",
+		 Desc->u.Memory.Start.QuadPart, Desc->u.Memory.Length);
+	break;
+    case CmResourceTypeDma:
+	DbgPrint("DMA Channel 0x%x Port 0x%x Reserved1 0x%x\n",
+		 Desc->u.Dma.Channel, Desc->u.Dma.Port,
+		 Desc->u.Dma.Reserved1);
+	break;
+    case CmResourceTypeDeviceSpecific:
+	DbgPrint("DEVICE-SPECIFIC DataSize 0x%x Reserved1 0x%x Reserved2 0x%x\n",
+		 Desc->u.DeviceSpecificData.DataSize,
+		 Desc->u.DeviceSpecificData.Reserved1,
+		 Desc->u.DeviceSpecificData.Reserved2);
+	break;
+    case CmResourceTypeBusNumber:
+	DbgPrint("BUS-NUMBER Start 0x%x Length 0x%x Reserved 0x%x\n",
+		 Desc->u.BusNumber.Start, Desc->u.BusNumber.Length,
+		 Desc->u.BusNumber.Reserved);
+	break;
+    case CmResourceTypeMemoryLarge:
+	DbgPrint("MEMORY-LARGE\n");
+	break;
+    case CmResourceTypeConfigData:
+	DbgPrint("CONFIG-DATA\n");
+	break;
+    case CmResourceTypeDevicePrivate:
+	DbgPrint("DEVICE-PRIVATE\n");
+	break;
+    case CmResourceTypePcCardConfig:
+	DbgPrint("PC-CARD-CONFIG\n");
+	break;
+    case CmResourceTypeMfCardConfig:
+	DbgPrint("MF-CARD-CONFIG\n");
+	break;
+    }
+}
+
+static VOID CmpDbgDumpFullResourceDescriptor(IN PCM_FULL_RESOURCE_DESCRIPTOR Desc,
+					     IN ULONG Indent)
+{
+    RtlDbgPrintIndentation(Indent);
+    DbgPrint("INTERFACE-TYPE %s BUS-NUMBER %d\n",
+	     CmpDbgInterfaceTypeToStr(Desc->InterfaceType), Desc->BusNumber);
+    RtlDbgPrintIndentation(Indent);
+    DbgPrint("PARTIAL-RESOURCE-LIST Version %d Revision %d Count %d\n",
+	     Desc->PartialResourceList.Version,
+	     Desc->PartialResourceList.Revision,
+	     Desc->PartialResourceList.Count);
+    for (ULONG i = 0; i < Desc->PartialResourceList.Count; i++) {
+	CmpDbgDumpPartialResourceDescriptor(&Desc->PartialResourceList.PartialDescriptors[i],
+					    Indent + 2);
+    }
+}
+
 VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 {
-    DbgPrint(    "VALUE %s ", Value->Name);
+    DbgPrint("  VALUE %s ", Value->Name);
     switch (Value->Type) {
     case REG_NONE:
 	DbgPrint("TYPE REG_NONE\n");
@@ -301,7 +404,7 @@ VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 	DbgPrint("TYPE REG_EXPAND_SZ DATA %s\n", (PCSTR)Value->Data);
 	break;
     case REG_BINARY:
-	DbgPrint("TYPE REG_BINARY DATA %p\n", Value->Data);
+	DbgPrint("TYPE REG_BINARY DATA-PTR %p\n", Value->Data);
 	break;
     case REG_DWORD:
 	DbgPrint("TYPE REG_DWORD DATA 0x%x\n", Value->Dword);
@@ -316,10 +419,18 @@ VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 	DbgPrint("TYPE REG_MULTI_SZ\n");
 	break;
     case REG_RESOURCE_LIST:
-	DbgPrint("TYPE REG_RESOURCE_LIST\n");
+    {
+	PCM_RESOURCE_LIST ResList = (PCM_RESOURCE_LIST)Value->Data;
+	DbgPrint("TYPE REG_RESOURCE_LIST Count %d\n",
+		 ResList->Count);
+	for (ULONG i = 0; i < ResList->Count; i++) {
+	    CmpDbgDumpFullResourceDescriptor(&ResList->List[i], 6);
+	}
+    }
 	break;
     case REG_FULL_RESOURCE_DESCRIPTOR:
 	DbgPrint("TYPE REG_FULL_RESOURCE_DESCRIPTOR\n");
+	CmpDbgDumpFullResourceDescriptor((PCM_FULL_RESOURCE_DESCRIPTOR)Value->Data, 6);
 	break;
     case REG_RESOURCE_REQUIREMENTS_LIST:
 	DbgPrint("TYPE REG_RESOURCE_REQUIREMENTS_LIST\n");
@@ -328,7 +439,7 @@ VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 	DbgPrint("TYPE REG_QWORD DATA 0x%llx\n", Value->Qword);
 	break;
     default:
-	DbgPrint("TYPE UNKNOWN!\n");
+	DbgPrint("TYPE UNKNOWN\n");
     }
 }
 
@@ -358,6 +469,7 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
     RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
+    CmpDbgDumpKey(Key);
     NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
 				       KeyValueInformationClass,
 				       OutputBuffer, BufferSize,
@@ -449,6 +561,7 @@ NTSTATUS NtSetValueKey(IN ASYNC_STATE AsyncState,
 	       {
 		   ObDereferenceObject(Key);
 	       });
+    CmpDbgDumpKey(Key);
     ObDereferenceObject(Key);
     return STATUS_SUCCESS;
 }

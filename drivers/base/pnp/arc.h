@@ -54,4 +54,5 @@ NTSTATUS ArcCreateComponentKey(IN PCONFIGURATION_COMPONENT_DATA SystemNode,
 			       IN PCM_PARTIAL_RESOURCE_LIST ResourceList,
 			       IN ULONG Size,
 			       OUT PCONFIGURATION_COMPONENT_DATA *ComponentKey);
+VOID ArcDestroySystemKey(IN PCONFIGURATION_COMPONENT_DATA SystemNode);
 NTSTATUS ArcSetupHardwareDescriptionDatabase(IN PCONFIGURATION_COMPONENT_DATA ConfigurationRoot);

@@ -123,19 +123,26 @@ static NTAPI NTSTATUS FdcFdoConfigCallback(PVOID Context,
     PCM_FULL_RESOURCE_DESCRIPTOR ControllerResourceDescriptor =
 	(PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)ControllerFullDescriptor + ControllerFullDescriptor->DataOffset);
 
+    DPRINT("Got %d controller partial resource list(s).\n", ControllerResourceDescriptor->PartialResourceList.Count);
     for (ULONG i = 0; i < ControllerResourceDescriptor->PartialResourceList.Count; i++) {
 	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor =
 	    &ControllerResourceDescriptor->PartialResourceList.PartialDescriptors[i];
-
+	DPRINT("Got partial resource descriptor type %d\n", PartialDescriptor->Type);
 	if (PartialDescriptor->Type == CmResourceTypePort) {
-	    if ((PUCHAR)PartialDescriptor->u.Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress)
+	    DPRINT("Got fdc controller port address 0x%llx. Checking if it matches.\n",
+		   PartialDescriptor->u.Port.Start.QuadPart);
+	    if ((PUCHAR)PartialDescriptor->u.Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress) {
 		ControllerFound = TRUE;
+		DPRINT("Matches!\n");
+	    }
 	}
     }
 
     /* Leave, if the enumerated controller is not the one represented by the FDO */
-    if (ControllerFound == FALSE)
+    if (ControllerFound == FALSE) {
+	DPRINT("No floppy disk controller found!\n");
 	return STATUS_SUCCESS;
+    }
 
     /* Get the peripheral resources */
     PKEY_VALUE_FULL_INFORMATION PeripheralFullDescriptor =
@@ -144,12 +151,16 @@ static NTAPI NTSTATUS FdcFdoConfigCallback(PVOID Context,
 	(PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)PeripheralFullDescriptor + PeripheralFullDescriptor->DataOffset);
 
     /* Learn about drives attached to the controller */
+    DPRINT("Got %d peripheral partial resource list(s).\n", PeripheralResourceDescriptor->PartialResourceList.Count);
     for (ULONG i = 0; i < PeripheralResourceDescriptor->PartialResourceList.Count; i++) {
 	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor =
 	    &PeripheralResourceDescriptor->PartialResourceList.PartialDescriptors[i];
 
-	if (PartialDescriptor->Type != CmResourceTypeDeviceSpecific)
+	if (PartialDescriptor->Type != CmResourceTypeDeviceSpecific) {
+	    DPRINT("Peripheral partial resource descriptor is type %d. Skipping\n",
+		   PartialDescriptor->Type);
 	    continue;
+	}
 
 	PCM_FLOPPY_DEVICE_DATA FloppyDeviceData = (PCM_FLOPPY_DEVICE_DATA)(PartialDescriptor + 1);
 
