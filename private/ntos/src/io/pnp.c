@@ -376,6 +376,8 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
     assert(DeviceNode->DeviceId != NULL);
     assert(DeviceNode->InstanceId != NULL);
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeInitialized) {
+	DbgTrace("Device node state is %d. Not loading drivers.\n",
+		 IopDeviceNodeGetCurrentState(DeviceNode));
 	return STATUS_INVALID_DEVICE_STATE;
     }
 
@@ -613,6 +615,8 @@ static NTSTATUS IopDeviceNodeAddDevice(IN ASYNC_STATE AsyncState,
     Locals.FunctionDriverCalled = FALSE;
 
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDriversLoaded) {
+	DbgTrace("Device node state is %d. Not adding device.\n",
+		 IopDeviceNodeGetCurrentState(DeviceNode));
 	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
     }
 
@@ -635,9 +639,13 @@ check:
 
 call:
     assert(Locals.DriverObject != NULL);
+    if (Locals.DriverObject->AddDeviceCalled) {
+	goto check;
+    }
     IF_ERR_GOTO(end, Status, IopQueueAddDeviceRequest(Thread, DeviceNode,
 						      Locals.DriverObject,
 						      &Locals.PendingIrp));
+    Locals.DriverObject->AddDeviceCalled = TRUE;
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
@@ -723,6 +731,8 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
     Locals.PendingIrp = NULL;
 
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDevicesAdded) {
+	DbgTrace("Device node state is %d. Not assigning resources.\n",
+		 IopDeviceNodeGetCurrentState(DeviceNode));
 	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
     }
 
@@ -824,6 +834,8 @@ static NTSTATUS IopDeviceNodeStartDevice(IN ASYNC_STATE AsyncState,
     Locals.PendingIrp = NULL;
 
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeResourcesAssigned) {
+	DbgTrace("Device node state is %d. Not starting device.\n",
+		 IopDeviceNodeGetCurrentState(DeviceNode));
 	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
     }
 
@@ -869,6 +881,8 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
     Locals.DeviceCount = 0;
 
     if (IopDeviceNodeGetCurrentState(DevNode) != DeviceNodeStarted) {
+	DbgTrace("Device node state is %d. Not enumerating.\n",
+		 IopDeviceNodeGetCurrentState(DevNode));
 	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
     }
 

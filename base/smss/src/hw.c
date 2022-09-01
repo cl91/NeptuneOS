@@ -42,6 +42,7 @@ static struct {
     { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters, "Root", "PNP0303", "0", KBDCLASS_GUID },
     { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL, NULL },
     { "fdc", 0, NULL, "Root", "PNP0700", "0", NULL },
+    { "fdc", 0, NULL, "FDC", "GENERIC_FLOPPY_DRIVE", "00", NULL },
 };
 
 static struct {
