@@ -3,7 +3,7 @@ Minimal System Requirements
 
 For i386 systems (should probably be called i686):
 
-1. CPU: At least a Pentium 2 or equivalent: the default clang target is i686 which can generate instructions not implemented by 386, 486, and Pentium.
+1. CPU: At least a Pentium 2 or equivalent: the default clang target is i686 which can generate instructions not implemented by 386, 486, and Pentium. Also, on x86 the seL4 kernel assumes that the processor supports global pages (bit PGE in CR4). This is only supported in Pentium Pro (i686) and later. There is no way to disable this at compile time (see assembly routine `enable_paging` in `sel4/src/arch/x86/32/head.S`).
 2. RAM: 32MB should be safe, can probably go lower.
 3. VGA-compatible graphics controller.
 4. PC BIOS or compatible. We haven't implemented UEFI yet although this shouldn't take too much work. The only thing needed is drawing text on the linear framebuffer. We might also support coreboot linear framebuffer.
