@@ -147,6 +147,7 @@ typedef struct _NTDLL_DRIVER_INIT_INFO {
     MWORD InitialCoroutineStackTop;
     MWORD X86TscFreq;
     MWORD DpcMutexCap;
+    IO_GLOBAL_MUTEX SystemAdapterMutex;
 } NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
 
 typedef struct _NTDLL_PROCESS_INIT_INFO {

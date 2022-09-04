@@ -432,6 +432,8 @@ VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
 
 /*
  * Allocate a new cap slot and copy the old cap into the new cap slot.
+ * The new node must have already been initialized (via MmInitializeCapTreeNode)
+ * with the desired CSpace to copy the old cap into.
  *
  * IMPORTANT NOTES:
  *

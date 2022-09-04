@@ -26,6 +26,26 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
  */
 typedef MWORD GLOBAL_HANDLE, *PGLOBAL_HANDLE;
 
+/*
+ * Global mutex type.
+ *
+ * This is used internally by wdm.dll to ensure exclusive access to
+ * the system DMA adapter. It is simply a notification object in seL4.
+ * We cannot use a KMUTEX object because it is restricted to the same
+ * driver, whereas a global mutex can be shared across different drivers.
+ */
+typedef MWORD IO_GLOBAL_MUTEX;
+
+static inline VOID IopAcquireGlobalMutex(IN IO_GLOBAL_MUTEX Mutex)
+{
+    seL4_Wait(Mutex);
+}
+
+static inline VOID IopReleaseGlobalMutex(IN IO_GLOBAL_MUTEX Mutex)
+{
+    seL4_Signal(Mutex);
+}
+
 /* Make sure the struct packing matches on both ELF and PE targets */
 #include <pshpack4.h>
 

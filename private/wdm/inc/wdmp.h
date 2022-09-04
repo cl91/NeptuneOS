@@ -177,6 +177,12 @@ GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device);
 PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 					  IN IO_DEVICE_INFO DevInfo);
 
+/* dma.c */
+VOID HalpInitDma(IN IO_GLOBAL_MUTEX SystemAdapterMutex);
+
+/* event.c */
+extern LIST_ENTRY IopEventList;
+
 /* irp.c */
 extern PIO_PACKET IopIncomingIoPacketBuffer;
 extern PIO_PACKET IopOutgoingIoPacketBuffer;

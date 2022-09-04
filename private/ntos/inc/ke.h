@@ -795,9 +795,6 @@ VOID KeBugCheck(IN PCSTR Function,
 #define BUGCHECK_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { \
 	    KeBugCheck(__func__, __FILE__, __LINE__, Error);}}
 
-/* event.c */
-VOID KeSetEvent(IN PKEVENT Event);
-
 /* services.c */
 struct _IO_DRIVER_OBJECT;
 NTSTATUS KeEnableSystemServices(IN struct _THREAD *Thread);

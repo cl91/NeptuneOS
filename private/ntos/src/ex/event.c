@@ -79,6 +79,21 @@ NTSTATUS NtSetEvent(IN ASYNC_STATE State,
     UNIMPLEMENTED;
 }
 
+NTSTATUS NtResetEvent(IN ASYNC_STATE State,
+		      IN PTHREAD Thread,
+		      IN HANDLE EventHandle,
+		      OUT OPTIONAL LONG *PreviousState)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtClearEvent(IN ASYNC_STATE State,
+		      IN PTHREAD Thread,
+		      IN HANDLE EventHandle)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
                                IN HANDLE ObjectHandle,

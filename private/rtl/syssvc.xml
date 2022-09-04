@@ -98,6 +98,15 @@
     <parameter annotation="out opt" type="ptr::LONG" name="PreviousState" />
   </svc>
 
+  <svc name="NtResetEvent">
+    <parameter annotation="in" type="HANDLE" name="EventHandle" />
+    <parameter annotation="out opt" type="ptr::LONG" name="PreviousState" />
+  </svc>
+
+  <svc name="NtClearEvent">
+    <parameter annotation="in" type="HANDLE" name="EventHandle" />
+  </svc>
+
   <svc name="NtTestAlert" />
 
   <svc name="NtWaitForSingleObject">

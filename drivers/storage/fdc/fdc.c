@@ -4,21 +4,24 @@
  * FILE:           drivers/storage/fdc/fdc/fdc.c
  * PURPOSE:        Main Driver Routines
  * PROGRAMMERS:    Eric Kohl
+ *                 Vizzini (vizzini@plasmic.com)
+ * REVISIONS:
+ *                 15-Feb-2004 vizzini - Created
+ * NOTES:
+ *  - This driver is only designed to work with ISA-bus floppy controllers.  This
+ *    won't work on PCI-based controllers or on anything else with level-sensitive
+ *    interrupts without modification.  I don't think these controllers exist.
+ *
+ * ---- Support for proper media detection ----
+ * TODO: Handle MFM flag
+ * TODO: Un-hardcode the data rate from various places
+ * TODO: Proper media detection (right now we're hardcoded to 1.44)
+ * TODO: Media detection based on sector 1
  */
 
 /* INCLUDES *******************************************************************/
 
 #include "fdc.h"
-
-/* GLOBALS ********************************************************************/
-
-/*
- * Global controller info structures.  Each controller gets one.  Since the system
- * will probably have only one, with four being a very unlikely maximum, a static
- * global array is easiest to deal with.
- */
-static CONTROLLER_INFO gControllerInfo[MAX_CONTROLLERS];
-static ULONG gNumberOfControllers = 0;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -95,6 +98,47 @@ static NTAPI NTSTATUS FdcClose(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_SUCCESS;
 }
 
+static NTAPI NTSTATUS FdcReadWrite(IN PDEVICE_OBJECT DeviceObject,
+				   IN PIRP Irp)
+{
+    PCOMMON_DEVICE_EXTENSION Common = DeviceObject->DeviceExtension;
+
+    DPRINT("FdcReadWrite()\n");
+    if (Common->IsFDO) {
+	ERR_(FLOPPY, "You can only send ReadWrite to the PDO\n");
+	Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+	Irp->IoStatus.Information = 0;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    } else if (!Irp->MdlAddress) {
+	WARN_(FLOPPY,
+	      "FdcReadWrite(): MDL not found in IRP - Completing with STATUS_INVALID_PARAMETER\n");
+	Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+	Irp->IoStatus.Information = 0;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    } else {
+	PPDO_DEVICE_EXTENSION DeviceExtension = (PPDO_DEVICE_EXTENSION)Common;
+	ReadWrite(DeviceExtension->DriveInfo, Irp);
+    }
+    return Irp->IoStatus.Status;
+}
+
+static NTAPI NTSTATUS FdcDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+				       IN PIRP Irp)
+{
+    PCOMMON_DEVICE_EXTENSION Common = DeviceObject->DeviceExtension;
+
+    DPRINT("FdcDeviceControl()\n");
+    if (Common->IsFDO) {
+	ERR_(FLOPPY, "You can only send DeviceIoControl to the PDO\n");
+	Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    } else {
+	PPDO_DEVICE_EXTENSION DeviceExtension = (PPDO_DEVICE_EXTENSION)Common;
+	DeviceIoctl(DeviceExtension->DriveInfo, Irp);
+    }
+    return Irp->IoStatus.Status;
+}
+
 static NTAPI NTSTATUS FdcPnp(IN PDEVICE_OBJECT DeviceObject,
 			     IN PIRP Irp)
 {
@@ -140,7 +184,9 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     DriverObject->MajorFunction[IRP_MJ_CREATE] = FdcCreate;
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = FdcClose;
-//    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = FdcDeviceControl;
+    DriverObject->MajorFunction[IRP_MJ_READ] = FdcReadWrite;
+    DriverObject->MajorFunction[IRP_MJ_WRITE] = FdcReadWrite;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = FdcDeviceControl;
     DriverObject->MajorFunction[IRP_MJ_PNP] = FdcPnp;
     DriverObject->MajorFunction[IRP_MJ_POWER] = FdcPower;
 

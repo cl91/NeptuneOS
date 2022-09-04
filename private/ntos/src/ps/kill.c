@@ -85,6 +85,7 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 
 VOID PspProcessObjectDeleteProc(IN POBJECT Object)
 {
+    /* TODO */
 }
 
 static NTSTATUS PspSuspendThread(IN MWORD Cap)

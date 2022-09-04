@@ -1192,7 +1192,7 @@ NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
  * include files under public/ddk.
  */
 typedef struct _KTIMER {
-    HANDLE Handle;
+    HANDLE Handle;		/* Must be first member */
     LIST_ENTRY TimerListEntry;
     PKDPC Dpc;
     BOOLEAN State;		/* TRUE if the timer is set. */
@@ -1230,6 +1230,32 @@ NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
  * without involving the scheduler, for instance, in an interrupt service routine.
  */
 NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
+
+/*
+ * EVENT object.
+ */
+typedef struct _KEVENT {
+    HANDLE Handle;		/* Must be first member */
+    LIST_ENTRY EventListEntry;
+    EVENT_TYPE Type;
+    BOOLEAN State;
+} KEVENT, *PKEVENT;
+
+NTAPI NTSYSAPI VOID KeInitializeEvent(OUT PKEVENT Event,
+				      IN EVENT_TYPE Type,
+				      IN BOOLEAN InitialState);
+
+NTAPI NTSYSAPI LONG KeSetEvent(IN PKEVENT Event);
+
+NTAPI NTSYSAPI LONG KeResetEvent(IN PKEVENT Event);
+
+NTAPI NTSYSAPI VOID KeClearEvent(IN PKEVENT Event);
+
+/* As should be apparent from the code below, the only objects
+ * waitable are those that has HANDLE as the first member. These
+ * include KTIMER, KEVENT, EPROCESS, etc. */
+#define KeWaitForSingleObject(obj, _1, _2, alert, timeout)	\
+    NtWaitForSingleObject(*((PHANDLE)(obj)), alert, timeout)
 
 /*
  * Set the IO cancel routine of the given IRP, returning the previous one.
@@ -1458,6 +1484,7 @@ typedef BOOLEAN (NTAPI KSERVICE_ROUTINE)(IN PKINTERRUPT Interrupt,
 					 IN PVOID ServiceContext);
 typedef KSERVICE_ROUTINE *PKSERVICE_ROUTINE;
 
+/* Porting guide: Remove the Spinlock argument. */
 NTAPI NTSYSAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
 					   IN PKSERVICE_ROUTINE ServiceRoutine,
 					   IN OPTIONAL PVOID ServiceContext,

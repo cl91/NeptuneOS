@@ -82,8 +82,8 @@ static NTSTATUS FdcPdoQueryId(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
-NTAPI NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject,
-			 IN PIRP Irp)
+NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject,
+		   IN PIRP Irp)
 {
     ULONG_PTR Information = 0;
 
@@ -142,6 +142,9 @@ NTAPI NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject,
 
     case IRP_MN_START_DEVICE:
 	DPRINT("IRP_MN_START_DEVICE received\n");
+	/* We don't need to do anything here since all the work has been done
+	 * in the FDO dispatch routine. */
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_QUERY_STOP_DEVICE:

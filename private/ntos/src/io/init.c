@@ -1,6 +1,7 @@
 #include "iop.h"
 
 LIST_ENTRY IopDriverList;
+static NOTIFICATION IopSystemAdapterMutex;
 
 static NTSTATUS IopCreateFileType()
 {
@@ -98,6 +99,7 @@ fail:
 
 NTSTATUS IoInitSystemPhase1()
 {
+    RET_ERR(KeCreateNotification(&IopSystemAdapterMutex));
     RET_ERR(IopLoadWdmDll());
 
     return STATUS_SUCCESS;

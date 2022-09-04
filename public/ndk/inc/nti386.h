@@ -1,6 +1,7 @@
 #pragma once
 
 #define PAGE_SIZE			0x1000
+#define PAGE_SHIFT			12L
 
 #define MAXIMUM_SUPPORTED_EXTENSION	512
 #define SIZE_OF_80387_REGISTERS		80

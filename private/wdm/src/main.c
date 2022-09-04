@@ -82,6 +82,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
+    InitializeListHead(&IopEventList);
     InitializeListHead(&IopTimerList);
     InitializeListHead(&IopIrpQueue);
     InitializeListHead(&IopReplyIrpList);
@@ -96,6 +97,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopSuspendedWorkItemList);
     InitializeListHead(&IopDpcQueue);
     KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
+    HalpInitDma(InitInfo->SystemAdapterMutex);
 
     NTSTATUS Status = IopCallDriverEntry(RegistryPath);
     if (!NT_SUCCESS(Status)) {

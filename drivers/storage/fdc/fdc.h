@@ -82,6 +82,9 @@
 #pragma once
 
 #include <wdm.h>
+#include <hal.h>
+#include <ntdddisk.h>
+#include <mountdev.h>
 #include <debug.h>
 
 #define MAX_ARC_PATH_LEN 255
@@ -104,12 +107,13 @@
  * 1.44M    3 1/2   80      2      18       2       18        14        F0
  */
 
-#define GEOMETRY_144_MEDIATYPE F3_1Pt44_512
-#define GEOMETRY_144_CYLINDERS 80
-#define GEOMETRY_144_TRACKSPERCYLINDER 2
-#define GEOMETRY_144_SECTORSPERTRACK 18
-#define GEOMETRY_144_BYTESPERSECTOR 512
+#define GEOMETRY_144_MEDIATYPE	F3_1Pt44_512
+#define GEOMETRY_144_CYLINDERS	80
+#define GEOMETRY_144_TRACKSPERCYLINDER	2
+#define GEOMETRY_144_SECTORSPERTRACK	18
+#define GEOMETRY_144_BYTESPERSECTOR	512
 
+#define MAX_DEVICE_NAME		256
 
 /*
  * Drive info
@@ -117,16 +121,17 @@
 struct _CONTROLLER_INFO;
 typedef struct _DRIVE_INFO {
     struct _CONTROLLER_INFO *ControllerInfo;
-    UCHAR UnitNumber;		/* 0,1,2,3 */
-    ULONG PeripheralNumber;
-    PDEVICE_OBJECT DeviceObject;
-    CM_FLOPPY_DEVICE_DATA FloppyDeviceData;
+    UCHAR                    UnitNumber;		/* 0,1,2,3 */
+    ULONG                    PeripheralNumber;
+    PDEVICE_OBJECT           DeviceObject;
+    CM_FLOPPY_DEVICE_DATA    FloppyDeviceData;
 //    LARGE_INTEGER            MotorStartTime;
-//    DISK_GEOMETRY            DiskGeometry;
-//    UCHAR                    BytesPerSectorCode;
+    DISK_GEOMETRY            DiskGeometry;
+    UCHAR                    BytesPerSectorCode;
+    WCHAR                    DeviceNameBuffer[MAX_DEVICE_NAME];
 //    WCHAR                    SymLinkBuffer[MAX_DEVICE_NAME];
 //    WCHAR                    ArcPathBuffer[MAX_ARC_PATH_LEN];
-//    ULONG                    DiskChangeCount;
+    ULONG                    DiskChangeCount;
 //    BOOLEAN                  Initialized;
 } DRIVE_INFO, *PDRIVE_INFO;
 
@@ -134,34 +139,31 @@ typedef struct _DRIVE_INFO {
  * Controller info
  */
 typedef struct _CONTROLLER_INFO {
-    BOOLEAN Populated;
-//    BOOLEAN          Initialized;
-//    ULONG            ControllerNumber;
-//    INTERFACE_TYPE   InterfaceType;
-//    ULONG            BusNumber;
-//    ULONG            Level;
-//    KIRQL            MappedLevel;
-//    ULONG            Vector;
-//    ULONG            MappedVector;
-//    KINTERRUPT_MODE  InterruptMode;
-    PUCHAR BaseAddress;
-//    ULONG            Dma;
-//    ULONG            MapRegisters;
-//    PVOID            MapRegisterBase;
+    BOOLEAN          Populated;
+    BOOLEAN          Initialized;
+    ULONG            ControllerNumber;
+    INTERFACE_TYPE   InterfaceType;
+    ULONG            BusNumber;
+    ULONG            Level;
+    ULONG            Vector;
+    KINTERRUPT_MODE  InterruptMode;
+    KAFFINITY        Affinity;
+    BOOLEAN          ShareInterrupt;
+    PUCHAR           BaseAddress;
+    ULONG            Dma;
+    ULONG            MapRegisters;
+    PVOID            MapRegisterBase;
 //    BOOLEAN          Master;
-//    KEVENT           SynchEvent;
-//    KDPC             Dpc;
-//    PKINTERRUPT      InterruptObject;
-//    PADAPTER_OBJECT  AdapterObject;
-    UCHAR NumberOfDrives;
-//    BOOLEAN          ImpliedSeeks;
-    DRIVE_INFO DriveInfo[MAX_DRIVES_PER_CONTROLLER];
-//    PDRIVE_INFO      CurrentDrive;
-//    BOOLEAN          Model30;
-//    KEVENT           MotorStoppedEvent;
-//    KTIMER           MotorTimer;
-//    KDPC             MotorStopDpc;
-//    BOOLEAN          StopDpcQueued;
+    KEVENT           SynchEvent;
+    PKINTERRUPT      InterruptObject;
+    PADAPTER_OBJECT  AdapterObject;
+    UCHAR            NumberOfDrives;
+    BOOLEAN          ImpliedSeeks;
+    DRIVE_INFO       DriveInfo[MAX_DRIVES_PER_CONTROLLER];
+    BOOLEAN          Model30;
+    KTIMER           MotorTimer;
+    KDPC             MotorStopDpc;
+    BOOLEAN          MotorStopCanceled;
 } CONTROLLER_INFO, *PCONTROLLER_INFO;
 
 
@@ -215,7 +217,23 @@ typedef struct _PDO_DEVICE_EXTENSION {
 #define FDC_TAG 'acdF'
 
 /* fdo.c */
-NTSTATUS NTAPI FdcFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS FdcFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS WaitForControllerInterrupt(PCONTROLLER_INFO ControllerInfo,
+				    PLARGE_INTEGER Timeout);
+VOID StartMotor(PDRIVE_INFO DriveInfo);
+VOID StopMotor(PCONTROLLER_INFO ControllerInfo);
+NTSTATUS Recalibrate(PDRIVE_INFO DriveInfo);
 
 /* pdo.c */
-NTSTATUS NTAPI FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+
+/* rw.h */
+VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp);
+NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo, BOOLEAN OneShot);
+NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS ResetChangeFlag(PDRIVE_INFO DriveInfo);
+
+/* ioctl.h */
+VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp);
+
+#include "hw.h"

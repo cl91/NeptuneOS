@@ -371,6 +371,35 @@ extern "C++" {
 #define ALIGN_DOWN_POINTER(ptr, type)		ALIGN_DOWN_POINTER_BY((ptr), sizeof(type))
 #define ALIGN_UP_POINTER(ptr, type)		ALIGN_UP_POINTER_BY((ptr), sizeof(type))
 
+/* ULONG
+ * BYTES_TO_PAGES(
+ *     _In_ ULONG Size)
+ *
+ * Note: This needs to be like this to avoid overflows!
+ */
+#define BYTES_TO_PAGES(Size)						\
+    (((Size) >> PAGE_SHIFT) + (((Size) & (PAGE_SIZE - 1)) != 0))
+
+/* ULONG_PTR
+ * ROUND_TO_PAGES(
+ *     _In_ ULONG_PTR Size)
+ */
+#define ROUND_TO_PAGES(Size)					\
+    (((ULONG_PTR) (Size) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
+
+/* ULONG
+ * ADDRESS_AND_SIZE_TO_SPAN_PAGES(
+ *     _In_ PVOID Va,
+ *     _In_ ULONG Size)
+ */
+#define ADDRESS_AND_SIZE_TO_SPAN_PAGES(_Va, _Size)		\
+    ((ULONG) ((((ULONG_PTR) (_Va) & (PAGE_SIZE - 1))		\
+	       + (_Size) + (PAGE_SIZE - 1)) >> PAGE_SHIFT))
+
+#define COMPUTE_PAGES_SPANNED(Va, Size)		\
+    ADDRESS_AND_SIZE_TO_SPAN_PAGES(Va,Size)
+
+
 #if defined(_WIN64)
 #define POINTER_ALIGNMENT DECLSPEC_ALIGN(8)
 #else

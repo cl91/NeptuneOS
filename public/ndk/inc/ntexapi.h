@@ -858,6 +858,14 @@ NTAPI NTSYSAPI NTSTATUS NtCreateEvent(OUT PHANDLE EventHandle,
 				      IN EVENT_TYPE EventType,
 				      IN BOOLEAN InitialState);
 
+NTAPI NTSYSAPI NTSTATUS NtSetEvent(IN HANDLE EventHandle,
+				   OUT OPTIONAL PLONG PreviousState);
+
+NTAPI NTSYSAPI NTSTATUS NtClearEvent(IN HANDLE EventHandle);
+
+NTAPI NTSYSAPI NTSTATUS NtResetEvent(IN HANDLE EventHandle,
+				     OUT OPTIONAL PLONG NumberOfWaitingThreads);
+
 NTAPI NTSYSAPI NTSTATUS NtSetDefaultLocale(IN BOOLEAN UserProfile,
 					   IN LCID DefaultLocaleId);
 
