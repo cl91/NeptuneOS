@@ -70,6 +70,11 @@ To create the boot floopy, type
 You might need to type your password because the script needs to invoke `sudo`.
 eVeRYtHiNg iS a fILe!!!
 
+### Cross-compiling
+We use the LLVM toolchain so cross-compiling in theory should simply work without any special handling. In practice, on `i386`/`amd64` the linker script for the final seL4 kernel executable relies on features that only the GNU LD linker supports, so we cannot use the LLVM linker (LLD) to link the seL4 kernel. This means that you will need the GNU LD cross-linkers for the target triples `i686-pc-linux-gnu` and `x86_64-pc-linux-gnu` installed in the usual place (`/usr/bin`) so `clang` can find them and invoke them correctly when linking the seL4 kernel. The PE part of the toolchain is completely self-contained and requires no special handling when cross-compiling (it is already a cross-toolchain because we are targeting Windows on a Linux host).
+
+Cross-compiling is tested on Archlinux running on Loongarch64 (Loongson 3A5000 processor) with `llvm-14` and seems to generate the correct code. Please open an issue if you run into any problem.
+
 ## Architecture
 
 The story is that allegedly Windows NT was originally intended to be a microkernel

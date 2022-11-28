@@ -51,7 +51,6 @@ set(
 )
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(-fuse-ld=lld)
     target_compile_options(kernel.elf PRIVATE "-Wno-error=uninitialized")
     target_compile_options(kernel.elf PRIVATE "-Wno-error=shift-negative-value")
     set(CMAKE_AR "llvm-ar" CACHE FILEPATH "Archiver")

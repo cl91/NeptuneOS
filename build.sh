@@ -1,3 +1,4 @@
+# Default architecture and build type
 ARCH=i386
 BUILD_TYPE=Debug
 TOOLCHAIN=llvm
@@ -8,10 +9,9 @@ else
     ARCH_SUFFIX="-m64"
 fi
 
-if [[ $TOOLCHAIN == "llvm" ]]; then
-    RTLIB=$(clang -print-libgcc-file-name -rtlib=compiler-rt $ARCH_SUFFIX)
-else
-    RTLIB=$(gcc -print-libgcc-file-name $ARCH_SUFFIX)
+if [[ $TOOLCHAIN != "llvm" ]]; then
+    echo "There is a GCC build profile but it is totally untested. Use LLVM toolchain unless you want to try to make GCC work."
+    exit 1
 fi
 
 if [[ ${1,,} == "release" || ${2,,} == "release" ]]; then
@@ -25,9 +25,11 @@ fi
 if [[ ${ARCH} == "i386" ]]; then
     CLANG_ARCH=i686
     SEL4_ARCH=ia32
+    RTLIB_ARCH=i386
 elif [[ ${ARCH} == "amd64" ]]; then
     CLANG_ARCH=x86_64
     SEL4_ARCH=x86_64
+    RTLIB_ARCH=x86_64
 else
     echo "Unsupported arch ${ARCH}"
     exit 1
@@ -50,6 +52,7 @@ echo "     Building ${BUILD_TYPE} version for ${ARCH}"
 echo "####################################################"
 
 cd "$(dirname "$0")"
+RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
 mkdir -p $BUILDDIR/{host,elf,pe_inc,ntdll,wdm,base,drivers,initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
@@ -71,7 +74,7 @@ echo
 echo "---- Building ELF targets ----"
 echo
 cmake ../../private/ntos \
-      -DTRIPLE=${CLANG_ARCH}-pc-none-elf \
+      -DTRIPLE=${CLANG_ARCH}-pc-linux-gnu \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
@@ -210,7 +213,7 @@ done
 { for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
 { for i in ${DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
 cpio -H newc -o < image-list > initcpio
-objcopy --input binary --output ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
+llvm-objcopy -I binary -O ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o
 if [[ $? == 0 ]]; then
@@ -246,15 +249,16 @@ fi
 echo
 echo "---- Stripping symbols for ${BUILD_TYPE} build ----"
 echo
+STRIP=llvm-strip
 if [[ ${BUILD_TYPE} == Release ]]; then
     cp kernel kernel-no-strip
     cp ntos ntos-no-strip
-    strip kernel && strip ntos
+    $STRIP kernel && $STRIP ntos
     if [[ $? == 0 ]]; then
 	echo "Success."
     fi
 else
-    strip kernel -o kernel-stripped && strip ntos -o ntos-stripped
+    $STRIP kernel -o kernel-stripped && $STRIP ntos -o ntos-stripped
     if [[ $? == 0 ]]; then
 	echo "Success."
     fi
