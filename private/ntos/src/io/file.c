@@ -143,13 +143,21 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
      * for directory files. */
     if (OpenOptions & FILE_DIRECTORY_FILE) {
 	POBJECT_DIRECTORY Dir = NULL;
-	RET_ERR(ObReferenceObjectByName(ObjectAttributes.ObjectNameBuffer,
-					OBJECT_TYPE_DIRECTORY, NULL,
-					(POBJECT *)&Dir));
+	Status = ObReferenceObjectByName(ObjectAttributes.ObjectNameBuffer,
+					 OBJECT_TYPE_DIRECTORY, NULL,
+					 (POBJECT *)&Dir);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
 	assert(Dir != NULL);
-	RET_ERR_EX(ObCreateHandle(Thread->Process, Dir, FileHandle),
-		   ObDereferenceObject(Dir));
-	return STATUS_SUCCESS;
+	Status = ObCreateHandle(Thread->Process, Dir, FileHandle);
+	ObDereferenceObject(Dir);
+    out:
+	if (IoStatusBlock != NULL) {
+	    IoStatusBlock->Status = Status;
+	    IoStatusBlock->Information = 0;
+	}
+	return Status;
     }
 
     ASYNC_BEGIN(State, Locals, {
