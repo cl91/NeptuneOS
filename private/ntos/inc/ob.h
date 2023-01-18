@@ -40,6 +40,7 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_TIMER,
     OBJECT_TYPE_KEY,
     OBJECT_TYPE_EVENT,
+    OBJECT_TYPE_SYSTEM_ADAPTER,	/* System DMA adapter object */
     MAX_NUM_OBJECT_TYPES,
     OBJECT_TYPE_ANY = MAX_NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
@@ -72,8 +73,7 @@ typedef enum _OBJECT_TYPE_ENUM {
  * NT Executive address space, or for objects that have already
  * been opened, we need a way to make sure that the "parse"
  * procedure will never suspend, so that it is safe to call it
- * when the server does not have an async context at the moment
- * of calling it.
+ * when the server does not have an async context in that moment.
  *
  * The solution we have here is to have two types of "parse"
  * procedures: one that does not take an async context, and one
@@ -375,7 +375,7 @@ typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Parent,
  * fails. Therefore the delete procedure must be able to clean up
  * partially created objects. The delete procedure should not free
  * the pool memory of the object itself. This is done by the object
- * manager. The delete procedure cannot be NULL.
+ * manager. The delete procedure can be NULL.
  *
  * If the object body stores pointers to other objects, the delete
  * routine should decrease the reference count of those objects.

@@ -110,6 +110,7 @@ typedef uint64_t UINT64,  *PUINT64;
 #define MAXULONG_PTR	(~((ULONG_PTR)0))
 #define MAXLONG_PTR	((LONG_PTR)(MAXULONG_PTR >> 1))
 #define MINLONG_PTR	(~MAXLONG_PTR)
+#define MAXLONG		(0x7fffffff)
 #define MAXLONGLONG	(0x7fffffffffffffffLL)
 #define MAXULONG	(0xffffffffUL)
 
@@ -370,6 +371,13 @@ extern "C++" {
 #define ALIGN_UP(addr, type)			ALIGN_UP_BY((addr), sizeof(type))
 #define ALIGN_DOWN_POINTER(ptr, type)		ALIGN_DOWN_POINTER_BY((ptr), sizeof(type))
 #define ALIGN_UP_POINTER(ptr, type)		ALIGN_UP_POINTER_BY((ptr), sizeof(type))
+
+/* ULONG
+ * BYTE_OFFSET(
+ *     _In_ PVOID Va)
+ */
+#define BYTE_OFFSET(Va)					\
+  ((ULONG) ((ULONG_PTR)(Va) & (PAGE_SIZE - 1)))
 
 /* ULONG
  * BYTES_TO_PAGES(

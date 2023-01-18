@@ -9,10 +9,8 @@
 
 #define PAGE_TABLE_OBJ_LOG2SIZE		(seL4_PageTableBits)
 #define PAGE_TABLE_WINDOW_LOG2SIZE	(seL4_PageBits + seL4_PageDirIndexBits)
-#define LARGE_PAGE_LOG2SIZE		(seL4_LargePageBits)
 #define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageDirBits)
 #define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
-#define LARGE_PAGE_SIZE			(1ULL << LARGE_PAGE_LOG2SIZE)
 
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))

@@ -93,7 +93,6 @@ typedef struct _PROCESS {
     NTSTATUS ExitStatus;	    /* Exit status of process */
     ULONG Cookie;
     NOTIFICATION DpcMutex;
-    NOTIFICATION SystemAdapterMutex;
     /* TODO: */
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;

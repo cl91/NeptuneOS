@@ -109,7 +109,6 @@ static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
 {
     assert(ObjectHeader != NULL);
     assert(ObjectHeader->Type != NULL);
-    assert(ObjectHeader->Type->TypeInfo.DeleteProc != NULL);
 
     POBJECT Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
     if (ObjectHeader->ParentObject != NULL) {
@@ -122,7 +121,9 @@ static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
 	ObjectHeader->ParentObject = NULL;
 	ObjectHeader->ObjectName = NULL;
     }
-    ObjectHeader->Type->TypeInfo.DeleteProc(Object);
+    if (ObjectHeader->Type->TypeInfo.DeleteProc != NULL) {
+	ObjectHeader->Type->TypeInfo.DeleteProc(Object);
+    }
     RemoveEntryList(&ObjectHeader->ObjectLink);
     ObpFreePool(ObjectHeader);
 }

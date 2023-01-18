@@ -97,7 +97,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopSuspendedWorkItemList);
     InitializeListHead(&IopDpcQueue);
     KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
-    HalpInitDma(InitInfo->SystemAdapterMutex);
+    HalpInitDma();
 
     NTSTATUS Status = IopCallDriverEntry(RegistryPath);
     if (!NT_SUCCESS(Status)) {

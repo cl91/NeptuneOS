@@ -63,12 +63,12 @@
  * RETURNS:
  *     KeepObject, because that's what the DDK says to do
  */
-static IO_ALLOCATION_ACTION MapRegisterCallback(PDEVICE_OBJECT DeviceObject,
-						PIRP Irp,
-						PVOID MapRegisterBase,
-						PVOID Context)
+static NTAPI IO_ALLOCATION_ACTION MapRegisterCallback(PDEVICE_OBJECT DeviceObject,
+						      PIRP Irp,
+						      PVOID MapRegisterBase,
+						      PVOID Context)
 {
-    PCONTROLLER_INFO ControllerInfo = (PCONTROLLER_INFO) Context;
+    PCONTROLLER_INFO ControllerInfo = (PCONTROLLER_INFO)Context;
     UNREFERENCED_PARAMETER(DeviceObject);
     UNREFERENCED_PARAMETER(Irp);
 
@@ -460,13 +460,14 @@ out:
  *     DeviceObject: DeviceObject that is the target of the IRP
  *     Irp: IRP to process
  * RETURNS:
- *     STATUS_VERIFY_REQUIRED if the media has changed and we need the filesystems to re-synch
- *     STATUS_SUCCESS otherwise
+ *     STATUS_VERIFY_REQUIRED if the media has changed and we need the filesystems
+ *     to re-synch. STATUS_SUCCESS otherwise.
  * NOTES:
  *     - Must be called at PASSIVE_LEVEL
  *
  * DETAILS:
- *  This routine manages the whole process of servicing a read or write request.  It goes like this:
+ *  This routine manages the whole process of servicing a read or write request.  It
+ *  goes like this:
  *    1) Check the DO_VERIFY_VOLUME flag and return if it's set
  *    2) Check the disk change line and notify the OS if it's set and return
  *    3) Detect the media if we haven't already
@@ -581,62 +582,75 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
     /*
      * Set up DMA transfer
      *
+     * NOTE: These apply to the original ReactOS DMA. In Neptune OS DMA is implemented
+     * slightly differently (see below, and private/wdm/src/dma.c). We leave the notes
+     * here as a reference.
+     *
      * This is as good of a place as any to document something that used to confuse me
-     * greatly (and I even wrote some of the kernel's DMA code, so if it confuses me, it
-     * probably confuses at least a couple of other people too).
+     * greatly (and I even wrote some of the kernel's DMA code, so if it confuses me,
+     * it probably confuses at least a couple of other people too).
      *
-     * MmGetMdlVirtualAddress() returns the virtual address, as mapped in the buffer's original
-     * process context, of the MDL.  In other words:  say you start with a buffer at address X, then
-     * you build an MDL out of that buffer called Mdl. If you call MmGetMdlVirtualAddress(Mdl), it
-     * will return X.
+     * MmGetMdlVirtualAddress() returns the virtual address, as mapped in the buffer's
+     * original process context, of the MDL.  In other words:  say you start with a
+     * buffer at address X, then you build an MDL out of that buffer called Mdl. If you
+     * call MmGetMdlVirtualAddress(Mdl), it will return X.
      *
-     * There are two parameters that the function looks at to produce X again, given the MDL:  the
-     * first is the StartVa, which is the base virtual address of the page that the buffer starts
-     * in.  If your buffer's virtual address is 0x12345678, StartVa will be 0x12345000, assuming 4K pages
-     * (which is (almost) always the case on x86).  Note well: this address is only valid in the
-     * process context that you initially built the MDL from.  The physical pages that make up
-     * the MDL might perhaps be mapped in other process contexts too (or even in the system space,
-     * above 0x80000000 (default; 0xc0000000 on current ReactOS or /3GB Windows)), but it will
-     * (possibly) be mapped at a different address.
+     * There are two parameters that the function looks at to produce X again, given
+     * the MDL: the first is the StartVa, which is the base virtual address of the page
+     * that the buffer starts in.  If your buffer's virtual address is 0x12345678,
+     * StartVa will be 0x12345000, assuming 4K pages (which is (almost) always the case
+     * on x86).  Note well: this address is only valid in the process context that you
+     * initially built the MDL from.  The physical pages that make up the MDL might
+     * perhaps be mapped in other process contexts too (or even in the system space,
+     * above 0x80000000 (default; 0xc0000000 on current ReactOS or /3GB Windows)), but
+     * it will (possibly) be mapped at a different address.
      *
-     * The second parameter is the ByteOffset.  Given an original buffer address of 0x12345678,
-     * the ByteOffset would be 0x678.  Because MDLs can only describe full pages (and therefore
-     * StartVa always points to the start address of a page), the ByteOffset must be used to
-     * find the real start of the buffer.
+     * The second parameter is the ByteOffset.  Given an original buffer address of
+     * 0x12345678, the ByteOffset would be 0x678.  Because MDLs can only describe full
+     * pages (and therefore StartVa always points to the start address of a page), the
+     * ByteOffset must be used to find the real start of the buffer.
      *
-     * In general, if you add the StartVa and ByteOffset together, you get back your original
-     * buffer pointer, which you are free to use if you're sure you're in the right process
-     * context.  You could tell by accessing the (hidden and not-to-be-used) Process member of
-     * the MDL, but in general, if you have to ask whether or not you are in the right context,
-     * then you shouldn't be using this address for anything anyway.  There are also security implications
-     * (big ones, really, I wouldn't kid about this) to directly accessing a user's buffer by VA, so
-     * Don't Do That.
+     * In general, if you add the StartVa and ByteOffset together, you get back your
+     * original buffer pointer, which you are free to use if you're sure you're in the
+     * right process context. You could tell by accessing the (hidden and not-to-be-used)
+     * Process member of the MDL, but in general, if you have to ask whether or not you
+     * are in the right context, then you shouldn't be using this address for anything
+     * anyway.  There are also security implications (big ones, really, I wouldn't kid
+     * about this) to directly accessing a user's buffer by VA, so Don't Do That.
+     * (NOTE: On Neptune OS the Process member simply doesn't exist. See below.)
      *
-     * There is a somewhat weird but very common use of the virtual address associated with a MDL
-     * that pops up often in the context of DMA.  DMA APIs (particularly MapTransfer()) need to
-     * know where the memory is that they should DMA into and out of.  This memory is described
-     * by a MDL.  The controller eventually needs to know a physical address on the host side,
-     * which is generally a 32-bit linear address (on x86), and not just a page address.  Therefore,
-     * the DMA APIs look at the ByteOffset field of the MDL to reconstruct the real address that
-     * should be programmed into the DMA controller.
+     * There is a somewhat weird but very common use of the virtual address associated
+     * with a MDL that pops up often in the context of DMA.  DMA APIs (particularly
+     * MapTransfer()) need to know where the memory is that they should DMA into and out
+     * of.  This memory is described by a MDL.  The controller eventually needs to know
+     * a physical address on the host side, which is generally a 32-bit linear address
+     * (on x86), and not just a page address.  Therefore, the DMA APIs look at the
+     * ByteOffset field of the MDL to reconstruct the real address that should be
+     * programmed into the DMA controller.
      *
-     * It is often the case that a transfer needs to be broken down over more than one DMA operation,
-     * particularly when it is a big transfer and the HAL doesn't give you enough map registers
-     * to map the whole thing at once.  Therefore, the APIs need a way to tell how far into the MDL
-     * they should look to transfer the next chunk of bytes.  Now, Microsoft could have designed
-     * MapTransfer to take a  "MDL offset" argument, starting with 0, for how far into the buffer to
-     * start, but it didn't.  Instead, MapTransfer asks for the virtual address of the MDL as an "index" into
-     * the MDL.  The way it computes how far into the page to start the transfer is by masking off all but
-     * the bottom 12 bits (on x86) of the number you supply as the CurrentVa and using *that* as the
-     * ByteOffset instead of the one in the MDL.  (OK, this varies a bit by OS and version, but this
-     * is the effect).
+     * It is often the case that a transfer needs to be broken down over more than one
+     * DMA operation, particularly when it is a big transfer and the HAL doesn't give
+     * you enough map registers to map the whole thing at once.  Therefore, the APIs
+     * need a way to tell how far into the MDL they should look to transfer the next
+     * chunk of bytes.  Now, Microsoft could have designed MapTransfer to take a "MDL
+     * offset" argument, starting with 0, for how far into the buffer to start, but it
+     * didn't.  Instead, MapTransfer asks for the virtual address of the MDL as an
+     * "index" into the MDL.  The way it computes how far into the page to start the
+     * transfer is by masking off all but the bottom 12 bits (on x86) of the number you
+     * supply as the CurrentVa and using *that* as the ByteOffset instead of the one
+     * in the MDL.  (OK, this varies a bit by OS and version, but this is the effect).
      *
-     * In other words, you get a number back from MmGetMdlVirtualAddress that represents the start of your
-     * buffer, and you pass it to the first MapTransfer call.  Then, for each successive operation
-     * on the same buffer, you increment that address to point to the next spot in the MDL that
-     * you want to DMA to/from.  The fact that the virtual address you're manipulating is probably not
-     * mapped into the process context that you're running in is irrelevant, since it's only being
-     * used to index into the MDL.
+     * In other words, you get a number back from MmGetMdlVirtualAddress that represents
+     * the start of your buffer, and you pass it to the first MapTransfer call.  Then,
+     * for each successive operation on the same buffer, you increment that address to
+     * point to the next spot in the MDL that you want to DMA to/from.  The fact that
+     * the virtual address you're manipulating is probably not mapped into the process
+     * context that you're running in is irrelevant, since it's only being used to
+     * index into the MDL.
+     *
+     * TODO: Add info on Neptune OS MDL and DMA. Our MmGetMdlVirtualAddress() always
+     * returns NULL and our MDL doesn't have the Process member (you aren't supposed to
+     * access it anyway).
      */
 
     /* Get map registers for DMA */
@@ -656,8 +670,8 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
     /*
      * Read from (or write to) the device
      *
-     * This has to be called in a loop, as you can only transfer data to/from a single track at
-     * a time.
+     * This has to be called in a loop, as you can only transfer data to/from a
+     * single track at a time.
      */
     TransferByteOffset = 0;
     while (TransferByteOffset < Length) {
@@ -668,7 +682,7 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
 	UCHAR CurrentTransferSectors;
 
 	INFO_(FLOPPY,
-	      "ReadWrite(): iterating in while (TransferByteOffset = 0x%x of 0x%x total) - allocating %d registers\n",
+	      "ReadWrite(): iterating in while (TransferByteOffset = 0x%zx of 0x%x total) - allocating %d registers\n",
 	      TransferByteOffset, Length, DriveInfo->ControllerInfo->MapRegisters);
 
 	KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);

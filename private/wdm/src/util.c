@@ -14,6 +14,89 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
 }
 
 /*
+ * @name MmGetMdlPhysicalAddress
+ *
+ * Returns the physical address corresponding to the specified offset
+ * within the MDL.
+ *
+ * @param Mdl
+ *        MDL to query
+ * @param StartVa
+ *        Index into the MDL, with respect to MmGetMdlVirtualAddress
+ *
+ * @remarks
+ *    Note that this function doesn't exist in Windows/ReactOS and is
+ *    an Neptune OS addition.
+ */
+NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
+					       IN PVOID StartVa)
+{
+    ULONG_PTR Rva = (ULONG_PTR)StartVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
+    ULONG_PTR CurrentRva = 0;
+    PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
+    for (int i = 0; i < Mdl->PfnCount; i++) {
+	ULONG PageCount = (Mdl->PfnEntries[i] >> MDL_PFN_ATTR_BITS) & MDL_PFN_PAGE_COUNT_MASK;
+	SIZE_T PageSize = (Mdl->PfnEntries[i] & MDL_PFN_ATTR_LARGE_PAGE) ? PAGE_SIZE : LARGE_PAGE_SIZE;
+	ULONG_PTR NextRva = CurrentRva + PageCount * PageSize;
+	if (CurrentRva <= Rva && Rva < NextRva) {
+	    PhyAddr.QuadPart = (Mdl->PfnEntries[i] >> PAGE_SHIFT) << PAGE_SHIFT;
+	    break;
+	}
+    }
+    assert(PhyAddr.QuadPart != 0);
+    return PhyAddr;
+}
+
+/*
+ * @name MmGetMdlPhysicallyContiguousRegion
+ *
+ * Returns the size of the physically contiguous region starting from the
+ * specified virtual address (with respect to MmGetMdlVirtualAddress) of
+ * the MDL. If BoundAddrMul is not NULL, it defines what is considered
+ * "physically contiguous".
+ *
+ * @param Mdl
+ *        MDL to query
+ * @param StartVa
+ *        Index into the MDL, with respect to MmGetMdlVirtualAddress
+ * @param BoundAddrBits
+ *        If this is non-zero, it will define the boundary addresses
+ *        across which pages are considered physically non-contiguous.
+ *        For instance, if 16 is specified here, addresses 0x1FFFF and
+ *        0x20000 are considered non-contiguous. If specified, this
+ *        must be at least PAGE_SHIFT (12).
+ *
+ * @remarks
+ *    This doesn't exist in Windows/ReactOS and is Neptune OS only.
+ */
+NTAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
+					      IN PVOID StartVa,
+					      IN ULONG BoundAddrBits)
+{
+    ULONG_PTR Rva = (ULONG_PTR)StartVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
+    ULONG_PTR CurrentRva = 0;
+    for (int i = 0; i < Mdl->PfnCount; i++) {
+	ULONG PageCount = (Mdl->PfnEntries[i] >> MDL_PFN_ATTR_BITS) & MDL_PFN_PAGE_COUNT_MASK;
+	SIZE_T PageSize = (Mdl->PfnEntries[i] & MDL_PFN_ATTR_LARGE_PAGE) ? PAGE_SIZE : LARGE_PAGE_SIZE;
+	ULONG_PTR NextRva = CurrentRva + PageCount * PageSize;
+	if (CurrentRva <= Rva && Rva < NextRva) {
+	    if (BoundAddrBits >= PAGE_SHIFT) {
+		BoundAddrBits -= PAGE_SHIFT;
+		ULONG_PTR Pfn = Mdl->PfnEntries[i] >> PAGE_SHIFT;
+		ULONG_PTR PfnEnd = Pfn + (PageCount * PageSize >> PAGE_SHIFT);
+		if ((Pfn ^ PfnEnd) & ~((1ULL << BoundAddrBits) - 1)) {
+		    PfnEnd = ((Pfn >> BoundAddrBits) + 1) << BoundAddrBits;
+		    return (PfnEnd - Pfn) * PAGE_SIZE;
+		}
+	    }
+	    return PageCount * PageSize;
+	}
+    }
+    assert(FALSE);
+    return 0;
+}
+
+/*
  * For libsel4, required in both debug and release build.
  */
 VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)

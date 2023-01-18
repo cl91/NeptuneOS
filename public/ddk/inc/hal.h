@@ -503,7 +503,7 @@ FORCEINLINE PHYSICAL_ADDRESS IoMapTransfer(IN PDMA_ADAPTER DmaAdapter,
 /* Flush the memory region described by an MDL from caches of all processors.
  * On x86 and amd64 this is a NOOP because these architectures maintain cache
  * coherency without programmer's manual intervention. */
-#if defined(_M_X86) || defined(_M_AMD64)
+#if defined(_M_IX86) || defined(_M_AMD64)
 FORCEINLINE VOID KeFlushIoBuffers(IN PMDL Mdl,
 				  IN BOOLEAN ReadOperation,
 				  IN BOOLEAN DmaOperation)
@@ -551,11 +551,9 @@ FORCEINLINE ULONG HalGetDmaAlignment(IN PDMA_ADAPTER DmaAdapter)
     return GetDmaAlignment(DmaAdapter);
 }
 
-typedef struct _ADAPTER_OBJECT *PADAPTER_OBJECT;
-
-NTAPI NTSYSAPI PADAPTER_OBJECT HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
+NTAPI NTSYSAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
 					     OUT PULONG NumberOfMapRegisters);
 
-NTAPI NTSYSAPI VOID HalPutDmaAdapter(IN PADAPTER_OBJECT DmaAdapter);
+NTAPI NTSYSAPI VOID HalPutDmaAdapter(IN PDMA_ADAPTER DmaAdapter);
 
 NTAPI NTSYSAPI BOOLEAN HalMakeBeep(IN ULONG Frequency);

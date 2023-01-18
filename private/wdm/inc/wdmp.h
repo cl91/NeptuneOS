@@ -2,6 +2,7 @@
 
 #include <nt.h>
 #include <wdm.h>
+#include <hal.h>
 #include <assert.h>
 #include <debug.h>
 
@@ -178,7 +179,7 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 					  IN IO_DEVICE_INFO DevInfo);
 
 /* dma.c */
-VOID HalpInitDma(IN IO_GLOBAL_MUTEX SystemAdapterMutex);
+VOID HalpInitDma(VOID);
 
 /* event.c */
 extern LIST_ENTRY IopEventList;

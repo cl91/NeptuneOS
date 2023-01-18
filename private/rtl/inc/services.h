@@ -13,6 +13,8 @@ typedef seL4_Word MWORD;
 #define MWORD_BITS			(MWORD_BYTES * 8)
 
 #define PAGE_LOG2SIZE			(seL4_PageBits)
+#define LARGE_PAGE_LOG2SIZE		(seL4_LargePageBits)
+#define LARGE_PAGE_SIZE			(1ULL << LARGE_PAGE_LOG2SIZE)
 #define PAGE_ALIGN(p)			((MWORD)(p) & ~(PAGE_SIZE - 1))
 #define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
 #define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
@@ -147,7 +149,6 @@ typedef struct _NTDLL_DRIVER_INIT_INFO {
     MWORD InitialCoroutineStackTop;
     MWORD X86TscFreq;
     MWORD DpcMutexCap;
-    IO_GLOBAL_MUTEX SystemAdapterMutex;
 } NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
 
 typedef struct _NTDLL_PROCESS_INIT_INFO {

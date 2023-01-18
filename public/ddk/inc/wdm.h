@@ -401,11 +401,20 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     } Private;		 /* Drivers shall not access this struct directly */
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
 
+/*
+ * Memory Descriptor List (MDL)
+ *
+ * An MDL describes a virtually contiguous (but not necessarily physically
+ * contiguous) I/O buffer.
+ */
 typedef struct _MDL {
     struct _MDL *Next;
-    SHORT MdlFlags;
     PVOID MappedSystemVa;
     ULONG ByteCount;
+    ULONG ByteOffset;
+    SHORT MdlFlags;
+    USHORT PfnCount;		/* Number of entries in PfnEntries */
+    ULONG_PTR PfnEntries[];
 } MDL, *PMDL;
 
 typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
@@ -485,7 +494,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	     * queue. This is optional. The driver can also use
 	     * the StartIo routine to serialize IO processing. */
 	    KDEVICE_QUEUE_ENTRY DeviceQueueEntry;
-	    /* If the driver does not use device queue, these are
+	    /* If driver does not use the device queue, these are
 	     * available for driver use */
 	    PVOID DriverContext[4];
 	};
@@ -1343,6 +1352,22 @@ FORCEINLINE PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl,
     return MmGetSystemAddressForMdl(Mdl);
 }
 
+/* Since for driver processes, MDLs are always mapped into "system address space",
+ * this routine always returns NULL. The only use for this is to obtain an offset
+ * into the IO buffer for the CurrentVa parameter of IoMapTransfer. */
+FORCEINLINE PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
+{
+    UNREFERENCED_PARAMETER(Mdl);
+    return NULL;
+}
+
+NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
+					       IN PVOID StartVa);
+
+NTAPI NTSYSAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
+						       IN PVOID StartVa,
+						       IN ULONG BoundAddrBits);
+
 NTAPI NTSYSAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 						  IN PDEVICE_OBJECT DeviceObject,
 						  IN PVOID InputBuffer,
@@ -1649,3 +1674,10 @@ typedef struct _CONFIGURATION_INFORMATION {
     ULONG Version;
     ULONG MediumChangerCount;
 } CONFIGURATION_INFORMATION, *PCONFIGURATION_INFORMATION;
+
+/*
+ * Porting guide: remove the WaitMode parameter as all wait happens
+ * in user mode.
+ */
+NTAPI NTSYSAPI NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
+					       IN PLARGE_INTEGER Interval);

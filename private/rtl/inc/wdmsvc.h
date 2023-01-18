@@ -12,6 +12,29 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 
 /*
+ * Defines the structure of the page frame database following an MDL
+ *
+ * ULONG_PTR PfnEntry;
+ * |==============================================================|
+ * | STARTING PHYSICAL PAGE FRAME NUMBER | PAGE COUNT | ATTR BITS |
+ * |--------------------------------------------------------------|
+ * | 32/63 .......................... 12 | 11 ..... 2 |  1 ... 0  |
+ * |==============================================================|
+ *
+ * If bit 0 is set, all pages frames in this pfn entry are large pages.
+ * Otherwise they are all 4K pages.
+ */
+#define MDL_PFN_ATTR_BITS	(2)
+#define MDL_PFN_PAGE_COUNT_BITS	(10)
+#define MDL_PFN_ATTR_MASK	((1UL << (MDL_PFN_ATTR_BITS+1)) - 1)
+#define MDL_PFN_PAGE_COUNT_MASK	((1UL << (MDL_PFN_PAGE_COUNT_BITS+1)) - 1)
+#define MDL_PFN_ATTR_LARGE_PAGE	(0x1)
+
+#if (MDL_PFN_ATTR_BITS + MDL_PFN_PAGE_COUNT_BITS) > PAGE_LOG2SIZE
+#error "Invalid encoding for MDL page frame database"
+#endif
+
+/*
  * This is our custom IRP major function which shall never be seen by client drivers
  */
 #define IRP_MJ_ADD_DEVICE	(IRP_MJ_MAXIMUM_FUNCTION + 1)
@@ -25,26 +48,6 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
  * See ntos/inc/ob.h
  */
 typedef MWORD GLOBAL_HANDLE, *PGLOBAL_HANDLE;
-
-/*
- * Global mutex type.
- *
- * This is used internally by wdm.dll to ensure exclusive access to
- * the system DMA adapter. It is simply a notification object in seL4.
- * We cannot use a KMUTEX object because it is restricted to the same
- * driver, whereas a global mutex can be shared across different drivers.
- */
-typedef MWORD IO_GLOBAL_MUTEX;
-
-static inline VOID IopAcquireGlobalMutex(IN IO_GLOBAL_MUTEX Mutex)
-{
-    seL4_Wait(Mutex);
-}
-
-static inline VOID IopReleaseGlobalMutex(IN IO_GLOBAL_MUTEX Mutex)
-{
-    seL4_Signal(Mutex);
-}
 
 /* Make sure the struct packing matches on both ELF and PE targets */
 #include <pshpack4.h>

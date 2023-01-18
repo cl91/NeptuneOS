@@ -21,9 +21,7 @@
 #define DPRINT1 DbgTrace
 
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
-#define PAGE_ROUND_DOWN(x)	ROUND_DOWN(x, PAGE_SIZE)
 #define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
-#define PAGE_ROUND_UP(x)	ROUND_UP(x, PAGE_SIZE)
 
 /* We cannot include win32 headers so define ULongToPtr here */
 static inline void *ULongToPtr(const unsigned long ul)

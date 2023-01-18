@@ -108,6 +108,14 @@ static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
     return FALSE;
 }
 
+#define GetPrevEntryList(List, Type, Field, ListHead)	\
+    ((List)->Blink == (ListHead) ? NULL :		\
+     CONTAINING_RECORD((List)->Blink, Type, Field))
+
+#define GetNextEntryList(List, Type, Field, ListHead)	\
+    ((List)->Flink == (ListHead) ? NULL :		\
+     CONTAINING_RECORD((List)->Flink, Type, Field))
+
 #define LoopOverList(Entry, ListHead, Type, Field)			\
     for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
 	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \

@@ -17,7 +17,6 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
     assert(TypeName != NULL);
     assert(ObjectBodySize != 0);
     assert(Init.CreateProc != NULL);
-    assert(Init.DeleteProc != NULL);
     /* The remove procedure cannot be NULL if the insert procedure
      * is supplied. */
     if (Init.InsertProc != NULL) {
@@ -124,7 +123,6 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
     assert(DirectoryObject == NULL || Subpath != NULL);
     POBJECT_TYPE ObjectType = ObpGetObjectType(Type);
     assert(ObjectType->TypeInfo.CreateProc != NULL);
-    assert(ObjectType->TypeInfo.DeleteProc != NULL);
 
     /* If we are given a sub-path to insert into, make sure there isn't
      * already an object there. */
@@ -151,7 +149,9 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 
     RET_ERR_EX(ObjectType->TypeInfo.CreateProc(Object, CreationContext),
 	       {
-		   ObjectType->TypeInfo.DeleteProc(Object);
+		   if (ObjectType->TypeInfo.DeleteProc != NULL) {
+		       ObjectType->TypeInfo.DeleteProc(Object);
+		   }
 		   ObpFreePool(ObjectHeader);
 	       });
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);

@@ -128,3 +128,11 @@ typedef struct _SECTION_IMAGE_INFORMATION {
                             SECTION_MAP_READ |                      \
                             SECTION_MAP_EXECUTE |                   \
                             SECTION_EXTEND_SIZE)
+
+/*
+ * Page-Rounding Macros
+ */
+#define PAGE_ROUND_DOWN(x)			\
+    (((ULONG_PTR)(x))&(~(PAGE_SIZE-1)))
+#define PAGE_ROUND_UP(x)					\
+    ((((ULONG_PTR)(x)) + PAGE_SIZE-1) & (~(PAGE_SIZE-1)))

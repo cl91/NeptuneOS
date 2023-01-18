@@ -11,522 +11,233 @@
  */
 
 /**
- * @page Original ReactOS DMA Implementation Notes
+ * @page DMA Implementation Notes
  *
- * These are the notes from the original ReactOS implementation of the x86
- * DMA (as part of the x86 HAL), left here as reference. We made several
- * modifications to the ReactOS DMA implementation. These changes are detailed
- * below, following the ReactOS notes.
+ * These are adapted from the notes in the original ReactOS implementation of
+ * the x86 DMA (as part of the x86 HAL). We made several important modifications
+ * to the ReactOS DMA implementation. These are discussed in details below.
  *
  * Concepts:
+ *
+ * - Bus-master / Slave DMA
+ *
+ *   Slave DMA is a term used for DMA transfers done by the system (E)ISA
+ *   controller as opposed to transfers mastered by the device itself
+ *   (hence the name). Slave DMA is a relic of the old ISA bus. For modern
+ *   PCI/PCI-Express buses there is no dedicated DMA controller, and all
+ *   PCI(E) devices can access the physical memory either directly or via
+ *   an IOMMU. This mode of DMA is called bus-mastering DMA because in this
+ *   case the devices become the master of the bus data transfer.
+ *
+ *   For devices that support bus mastering DMA with scatter gather, very
+ *   little is needed on the software side. We simply find out the physical
+ *   addresses of the IO buffers and pass them to the devices. This in general
+ *   has higher performance and is therefore the preferred, modern approach
+ *   to DMA transfers. (For bus master devices without scatter gather, we
+ *   allocate a common buffer to encompass the MDL. See below for details.)
+ *
+ *   For slave DMA, special care is taken to actually access the system
+ *   controller and handle the transfers. The relevant code is in
+ *   HalpDmaGetSystemAdapter, HalpReadDmaCounter, HalpFlushAdapterBuffers
+ *   and HalpMapTransfer.
  *
  * - Map register
  *
  *   Abstract encapsulation of physically contiguous buffer that resides
- *   in memory accessible by both the DMA device / controller and the system.
+ *   in memory accessible by both the DMA device/controller and the system.
  *   The map registers are allocated and distributed on demand and are
  *   scarce resource.
  *
  *   The actual use of map registers is to allow transfers from/to buffer
- *   located in physical memory at address inaccessible by the DMA device /
- *   controller directly. For such transfers the map register buffers
- *   are used as intermediate data storage.
+ *   located in physical memory at address inaccessible by the DMA device/
+ *   controller directly. For such transfers the map register buffers are
+ *   used as intermediate "bounce buffers". This technique is called 'double
+ *   buffering'. There are three common cases: 1) for the ISA bus, its DMA
+ *   controller can only access the lowest 16MB (24-bit) physical address
+ *   space, and 2) on 64bit systems, some 32-bit PCI devices can only access
+ *   the lowest 4GB physical address space, and finally 3) if the driver
+ *   indicates that the device does not support scatter/gather, we need to
+ *   allocate an intermediate buffer that encompasses the entire data buffer
+ *   described by the MDL.
  *
- * - Master adapter
+ * - Map register control (Windows uses the term 'master adapter')
  *
  *   A container for map registers (typically corresponding to one physical
- *   bus connection type). There can be master adapters for 24-bit address
- *   ranges, 32-bit address ranges, etc. Every time a new DMA adapter is
- *   created it's associated with a corresponding master adapter that
- *   is used for any map register allocation requests.
- *
- * - Bus-master / Slave DMA
- *
- *   Slave DMA is term used for DMA transfers done by the system (E)ISA
- *   controller as opposed to transfers mastered by the device itself
- *   (hence the name).
- *
- *   For slave DMA special care is taken to actually access the system
- *   controller and handle the transfers. The relevant code is in
- *   HalpDmaInitializeEisaAdapter, HalpReadDmaCounter, HalpFlushAdapterBuffers
- *   and HalpMapTransfer.
+ *   bus connection type). Windows uses the term 'master adapter' for these.
+ *   We feel that this is somewhat confusing as this is an orthogonal concept
+ *   to 'bus mastering DMA' (in fact, most bus mastering DMA transfers do
+ *   not need map registers). This is a singleton object for the entire driver
+ *   process. When the driver tries to allocate a common buffer, it will be
+ *   done through the map register control object that takes care of freeing
+ *   them later.
  *
  * Implementation:
  *
  * - Allocation of map registers
  *
- *   Initial set of map registers is allocated on the system start to
- *   ensure that low memory won't get filled up later. Additional map
- *   registers are allocated as needed by HalpGrowMapBuffers. This
- *   routine is called on two places:
- *
- *   - HalGetAdapter, since we're at PASSIVE_LEVEL and it's known that
- *     more map registers will probably be needed.
- *   - HalpAllocateAdapterChannel (indirectly using HalpGrowMapBufferWorker
- *     since we're at DISPATCH_LEVEL and call HalpGrowMapBuffers directly)
- *     when no more map registers are free.
- *
- *   Note that even if no more map registers can be allocated it's not
- *   the end of the world. The adapters waiting for free map registers
- *   are queued in the master adapter's queue and once one driver hands
- *   back it's map registers (using HalpFreeMapRegisters or indirectly using
- *   the execution routine callback in HalpAllocateAdapterChannel) the
- *   queue gets processed and the map registers are reassigned.
- *
- *
- * @page Neptune OS DMA Implementation Notes
- *
- * - Allocation of map registers
- *
- *   We allocate the map registers on server side. When the client tries to
- *   allocate map registers, HalpAllocateAdapterChannel first checks if there
- *   are free map registers on the client side and use them if there are. If
- *   not, it calls server to allocate the map registers. When the client frees
+ *   We allocate the map registers by requesting the server. When the client
+ *   tries to allocate map registers, HalpAllocateAdapterChannel first checks if
+ *   there are free map registers on the client side and use them if there are.
+ *   If not, it calls server to allocate more map registers. When the client frees
  *   the map registers, instead of returning them back to the server right away,
  *   HalpFreeAdapterChannel marks them as freed so future allocations do not
  *   have to make a trip to the server. Only when the server notifies the client
  *   that it is running low on map registers will we actually return the map
  *   registers back to the server.
  *
- *   Allocations are done synchronously. There is no need for work items (it
- *   won't work anyway because work items are executed in the main thread).
+ *   Allocations are done synchronously. There is no need for work items as
+ *   opposed to the ReactOS implementation (work items won't work for this
+ *   purpose because work items are executed in the main thread). This vastly
+ *   simplifies the implementation.
+ *
+ *   The server always allocates memory from high addresses first. In other words
+ *   the server always allocates memory above 4GB if it's available, and failing
+ *   that will attempt to allocate memory between 16MB and 4GB. Only when all
+ *   memories above 16MB are exhausted will the server attempt to allocate memory
+ *   below the 16MB limit. This ensures that on system with sufficient RAM we
+ *   always will be able to allocate map registers.
+ *
+ *   Note that even if no more map registers can be allocated at the moment it's
+ *   not the end of the world. The adapters waiting for free map registers are
+ *   queuedin the server's queue and once one driver hands back its map registers
+ *   (by responding to the server message to release unused map registers) the
+ *   queue gets processed and the map registers are reassigned.
+ *
+ * - EISA Support
+ *
+ *   Since Neptune OS requires at least a Pentium II, we have removed the
+ *   support for the EISA bus in the original ReactOS DMA implementation.
+ *   The older ISA bus is still supported because it is used by the floppy
+ *   controller and some sound cards such as Sound Blaster. However its
+ *   function is limited to the first 8 DMA channel with slave DMA mode. No
+ *   ISA bus mastering devices are supported.
+ *
+ * - IgnoreCount
+ *   Some (E)ISA DMA controllers cannot accurately maintain the DMA progress
+ *   counters. Microsoft therefore added the IgnoreCount member of the device
+ *   description structure which the driver author can specify so the system
+ *   will ignore what the DMA progress counter reports and maintain the counter
+ *   manually. Since reading the DMA progress counter requires a trip to the
+ *   server, we have deciced to always ignore the DMA controller's progress
+ *   counter.
  */
 
 /* INCLUDES *****************************************************************/
 
 #include <wdmp.h>
+#include "haldma.h"
 
-/* Bus type is always MACHINE_TYPE_ISA == 0. We don't plan to support EISA. */
-static ULONG HalpBusType;
-/* This is always FALSE == 0. We don't plan to support EISA but will leave the EISA code
- * here just in case we want to support it later. EISA and MCA machines are incredibly
- * rare these days. */
-static BOOLEAN HalpEisaDma;
-
-static const ULONG_PTR HalpEisaPortPage[8] = {
-    FIELD_OFFSET(DMA_PAGE, Channel0),
-    FIELD_OFFSET(DMA_PAGE, Channel1),
-    FIELD_OFFSET(DMA_PAGE, Channel2),
-    FIELD_OFFSET(DMA_PAGE, Channel3),
-    0,
-    FIELD_OFFSET(DMA_PAGE, Channel5),
-    FIELD_OFFSET(DMA_PAGE, Channel6),
-    FIELD_OFFSET(DMA_PAGE, Channel7)
-};
-
+/* List of all DMA adapter objects of this driver */
 static LIST_ENTRY HalpDmaAdapterList;
-static PADAPTER_OBJECT HalpEisaAdapter[8];
-static SYSTEM_DMA_ADAPTER HalpSystemAdapter;
+
+/* Map register control object */
+static MAP_REGISTER_CONTROL HalpDmaMapRegCtrl;
+
+/* System adapter objects. These are uninitialized after driver startup and
+ * are initialized on-demand. */
+static SYSTEM_DMA_ADAPTER HalpDmaSystemAdapters[8];
 
 /* Forward declaration. See end of file for definition. */
 static DMA_OPERATIONS HalpDmaOperations;
+NTAPI VOID HalpFreeAdapterChannel(IN PDMA_ADAPTER DmaAdapter);
 
-#define MAP_BASE_SW_SG	    1
 #define MAX_SG_ELEMENTS	    0x10
-#define MAX_MAP_REGISTERS   64
 
 #define TAG_DMA ' AMD'
 
 /* FUNCTIONS *****************************************************************/
 
-VOID HalpInitDma(IN IO_GLOBAL_MUTEX SystemAdapterMutex)
-{
-    if (HalpBusType == MACHINE_TYPE_EISA) {
-	/*
-	 * Check if Extended DMA is available. We're just going to do a random
-	 * read and write.
-	 */
-	WRITE_PORT_UCHAR(UlongToPtr(FIELD_OFFSET(EISA_CONTROL, DmaController2Pages.Channel2)), 0x2A);
-	if (READ_PORT_UCHAR(UlongToPtr(FIELD_OFFSET(EISA_CONTROL, DmaController2Pages.Channel2))) == 0x2A) {
-	    DPRINT1("Machine supports EISA DMA. Bus type: %lu\n", HalpBusType);
-	    HalpEisaDma = TRUE;
-	}
-    }
-
-    /*
-     * Intialize all the global variables and the system DMA adapter.
-     */
-    InitializeListHead(&HalpDmaAdapterList);
-    InitializeListHead(&HalpSystemAdapter.MapRegisterList);
-    HalpSystemAdapter.GlobalMutex = SystemAdapterMutex;
-}
-
 /**
- * @name HalpGetAdapterMaximumPhysicalAddress
+ * @name HalpInitMapRegControl
  *
- * Get the maximum physical address acceptable by the device represented
- * by the passed DMA adapter.
- */
-NTAPI PHYSICAL_ADDRESS HalpGetAdapterMaximumPhysicalAddress(IN PADAPTER_OBJECT AdapterObject)
-{
-    PHYSICAL_ADDRESS HighestAddress = { .QuadPart = 0xFFFFFF };
-
-    if (AdapterObject->MasterDevice) {
-	if (AdapterObject->Dma64BitAddresses) {
-	    HighestAddress.QuadPart = 0xFFFFFFFFFFFFFFFFULL;
-	} else if (AdapterObject->Dma32BitAddresses) {
-	    HighestAddress.QuadPart = 0xFFFFFFFF;
-	}
-    }
-
-    return HighestAddress;
-}
-
-/**
- * @name HalpGrowMapBuffers
- *
- * Allocate initial, or additional, map buffers for DMA master adapter.
- *
- * @param MasterAdapter
- *        DMA master adapter to allocate buffers for.
- * @param SizeOfMapBuffers
- *        Size of the map buffers to allocate (not including the size
- *        already allocated).
- */
-NTAPI BOOLEAN HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
-				 IN ULONG SizeOfMapBuffers)
-{
-    PVOID VirtualAddress;
-    PHYSICAL_ADDRESS PhysicalAddress;
-    PHYSICAL_ADDRESS HighestAcceptableAddress;
-    PHYSICAL_ADDRESS LowestAcceptableAddress;
-    PHYSICAL_ADDRESS BoundryAddressMultiple;
-    KIRQL OldIrql;
-    ULONG MapRegisterCount;
-
-    /* Check if enough map register slots are available. */
-    MapRegisterCount = BYTES_TO_PAGES(SizeOfMapBuffers);
-    if (MapRegisterCount + AdapterObject->NumberOfMapRegisters > MAX_MAP_REGISTERS) {
-	DPRINT("No more map register slots available! (Current: %d | Requested: %d | Limit: %d)\n",
-	       AdapterObject->NumberOfMapRegisters, MapRegisterCount,
-	       MAX_MAP_REGISTERS);
-	return FALSE;
-    }
-
-    /*
-     * Allocate memory for the new map registers. For 32-bit adapters we use
-     * two passes in order not to waste scare resource (low memory).
-     */
-    HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
-    LowestAcceptableAddress.HighPart = 0;
-    LowestAcceptableAddress.LowPart = HighestAcceptableAddress.LowPart == 0xFFFFFFFF ? 0x1000000 : 0;
-    BoundryAddressMultiple.QuadPart = 0;
-
-    VirtualAddress = MmAllocateContiguousMemorySpecifyCache(MapRegisterCount << PAGE_SHIFT,
-							    LowestAcceptableAddress,
-							    HighestAcceptableAddress,
-							    BoundryAddressMultiple,
-							    MmNonCached);
-    if (!VirtualAddress && LowestAcceptableAddress.LowPart) {
-	LowestAcceptableAddress.LowPart = 0;
-	VirtualAddress = MmAllocateContiguousMemorySpecifyCache(MapRegisterCount << PAGE_SHIFT,
-								LowestAcceptableAddress,
-								HighestAcceptableAddress,
-								BoundryAddressMultiple,
-								MmNonCached);
-    }
-
-    if (!VirtualAddress)
-	return FALSE;
-
-    PhysicalAddress = MmGetPhysicalAddress(VirtualAddress);
-
-    /*
-     * All the following must be done with the master adapter lock held
-     * to prevent corruption.
-     */
-    KeAcquireSpinLock(&AdapterObject->SpinLock, &OldIrql);
-
-    /*
-     * Setup map register entries for the buffer allocated. Each entry has
-     * a virtual and physical address and corresponds to PAGE_SIZE large
-     * buffer.
-     */
-    if (MapRegisterCount > 0) {
-	PROS_MAP_REGISTER_ENTRY CurrentEntry, PreviousEntry;
-
-	CurrentEntry = AdapterObject->MapRegisterBase + AdapterObject->NumberOfMapRegisters;
-	do {
-	    /*
-	     * Leave one entry free for every non-contiguous memory region
-	     * in the map register bitmap. This ensures that we can search
-	     * using RtlFindClearBits for contiguous map register regions.
-	     *
-	     * Also for non-EISA DMA leave one free entry for every 64Kb
-	     * break, because the DMA controller can handle only coniguous
-	     * 64Kb regions.
-	     */
-	    if (CurrentEntry != AdapterObject->MapRegisterBase) {
-		PreviousEntry = CurrentEntry - 1;
-		if ((PreviousEntry->PhysicalAddress.LowPart + PAGE_SIZE) == PhysicalAddress.LowPart) {
-		    if (!HalpEisaDma) {
-			if ((PreviousEntry->PhysicalAddress.LowPart ^ PhysicalAddress.LowPart) & 0xFFFF0000) {
-			    CurrentEntry++;
-			    AdapterObject->NumberOfMapRegisters++;
-			}
-		    }
-		} else {
-		    CurrentEntry++;
-		    AdapterObject->NumberOfMapRegisters++;
-		}
-	    }
-
-	    RtlClearBit(AdapterObject->MapRegisters,
-			(ULONG)(CurrentEntry - AdapterObject->MapRegisterBase));
-	    CurrentEntry->VirtualAddress = VirtualAddress;
-	    CurrentEntry->PhysicalAddress = PhysicalAddress;
-
-	    PhysicalAddress.LowPart += PAGE_SIZE;
-	    VirtualAddress = (PVOID)((ULONG_PTR)VirtualAddress + PAGE_SIZE);
-
-	    CurrentEntry++;
-	    AdapterObject->NumberOfMapRegisters++;
-	    MapRegisterCount--;
-	} while (MapRegisterCount);
-    }
-
-    KeReleaseSpinLock(&AdapterObject->SpinLock, OldIrql);
-
-    return TRUE;
-}
-
-/**
- * @name HalpDmaAllocateMasterAdapter
- *
- * Helper routine to allocate and initialize master adapter object and its
- * associated map register buffers.
+ * Helper routine to initialize the map register control object. The initial
+ * map register control object has no map registers allocated.
  *
  * @see HalpInitDma
  */
-PADAPTER_OBJECT NTAPI HalpDmaAllocateMasterAdapter(VOID)
+static VOID HalpInitMapRegCtrl(IN PMAP_REGISTER_CONTROL MapRegCtrl)
 {
-    PADAPTER_OBJECT MasterAdapter;
-    ULONG Size, SizeOfBitmap;
-
-    SizeOfBitmap = MAX_MAP_REGISTERS;
-    Size = sizeof(ADAPTER_OBJECT);
-    Size += sizeof(RTL_BITMAP);
-    Size += (SizeOfBitmap + 7) >> 3;
-
-    MasterAdapter = ExAllocatePoolWithTag(NonPagedPool, Size, TAG_DMA);
-    if (!MasterAdapter)
-	return NULL;
-
-    RtlZeroMemory(MasterAdapter, Size);
-
-    KeInitializeSpinLock(&MasterAdapter->SpinLock);
-    InitializeListHead(&MasterAdapter->AdapterQueue);
-
-    MasterAdapter->MapRegisters = (PVOID) (MasterAdapter + 1);
-    RtlInitializeBitMap(MasterAdapter->MapRegisters,
-			(PULONG) (MasterAdapter->MapRegisters + 1),
-			SizeOfBitmap);
-    RtlSetAllBits(MasterAdapter->MapRegisters);
-    MasterAdapter->NumberOfMapRegisters = 0;
-    MasterAdapter->CommittedMapRegisters = 0;
-
-    MasterAdapter->MapRegisterBase = ExAllocatePoolWithTag(SizeOfBitmap * sizeof(ROS_MAP_REGISTER_ENTRY),
-							   TAG_DMA);
-    if (!MasterAdapter->MapRegisterBase) {
-	ExFreePool(MasterAdapter);
-	return NULL;
-    }
-
-    RtlZeroMemory(MasterAdapter->MapRegisterBase,
-		  SizeOfBitmap * sizeof(ROS_MAP_REGISTER_ENTRY));
-    if (!HalpGrowMapBuffers(MasterAdapter, 0x10000)) {
-	ExFreePool(MasterAdapter);
-	return NULL;
-    }
-
-    return MasterAdapter;
+    InitializeListHead(&MapRegCtrl->List);
 }
 
 /**
- * @name HalpDmaAllocateChildAdapter
+ * @name HalpInitDma
  *
- * Helper routine of HalGetAdapter. Allocate child adapter object and
- * fill out some basic fields.
+ * Intialize all the global variables and the map register control objects.
+ * This is called during driver initialization.
  *
- * @see HalGetAdapter
+ * @see WdmStartup
  */
-static PADAPTER_OBJECT HalpDmaAllocateChildAdapter(IN ULONG NumberOfMapRegisters,
-						   IN PDEVICE_DESCRIPTION DeviceDescription)
+VOID HalpInitDma()
 {
-    PADAPTER_OBJECT AdapterObject;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    NTSTATUS Status;
-    HANDLE Handle;
-
-    InitializeObjectAttributes(&ObjectAttributes,
-			       NULL,
-			       OBJ_KERNEL_HANDLE | OBJ_PERMANENT,
-			       NULL, NULL);
-
-    Status = ObCreateObject(KernelMode,
-			    IoAdapterObjectType,
-			    &ObjectAttributes,
-			    KernelMode,
-			    NULL,
-			    sizeof(ADAPTER_OBJECT),
-			    0, 0, (PVOID) &AdapterObject);
-    if (!NT_SUCCESS(Status))
-	return NULL;
-
-    RtlZeroMemory(AdapterObject, sizeof(ADAPTER_OBJECT));
-
-    Status = ObInsertObject(AdapterObject,
-			    NULL,
-			    FILE_READ_DATA | FILE_WRITE_DATA,
-			    0, NULL, &Handle);
-    if (!NT_SUCCESS(Status))
-	return NULL;
-
-    ObReferenceObject(AdapterObject);
-
-    ZwClose(Handle);
-
-    AdapterObject->DmaHeader.Version = (USHORT) DeviceDescription->Version;
-    AdapterObject->DmaHeader.Size = sizeof(ADAPTER_OBJECT);
-    AdapterObject->DmaHeader.DmaOperations = &HalpDmaOperations;
-    AdapterObject->MapRegistersPerChannel = 1;
-    AdapterObject->Dma32BitAddresses = DeviceDescription->Dma32BitAddresses;
-    AdapterObject->ChannelNumber = 0xFF;
-    AdapterObject->MasterAdapter = HalpMasterAdapter;
-    KeInitializeDeviceQueue(&AdapterObject->ChannelWaitQueue);
-
-    return AdapterObject;
+    InitializeListHead(&HalpDmaAdapterList);
+    HalpInitMapRegCtrl(&HalpDmaMapRegCtrl);
 }
 
 /**
- * @name HalpDmaInitializeEisaAdapter
+ * @name HalpDmaGetSystemAdapter
  *
  * Setup DMA modes and extended modes for (E)ISA DMA adapter object.
  */
-static BOOLEAN HalpDmaInitializeEisaAdapter(IN PADAPTER_OBJECT AdapterObject,
-					    IN PDEVICE_DESCRIPTION DeviceDescription)
+static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
 {
-    UCHAR Controller;
+    assert(Desc->DmaChannel < 8);
+    assert(Desc->DmaChannel != 4);
+    assert(!Desc->Master);
+
+    UCHAR Controller = (Desc->DmaChannel & 4) ? 2 : 1;
+
+    /*
+     * Validate setup for non-busmaster DMA adapter. Secondary controller
+     * supports only 16-bit transfers and main controller supports only
+     * 8-bit transfers. Anything else is invalid.
+     */
+    BOOLEAN Width16Bits = FALSE;
+    if (Controller != 1 || Desc->DmaWidth != Width8Bits) {
+	return FALSE;
+    } else if (Controller == 2 && Desc->DmaWidth == Width16Bits) {
+	Width16Bits = TRUE;
+    }
+
+    PSYSTEM_DMA_ADAPTER SystemAdapter = &HalpDmaSystemAdapters[Desc->DmaChannel];
+    if (!SystemAdapter->Handle) {
+	if (!NT_SUCCESS(HalpDmaOpenSystemAdapter(Desc->DmaChannel,
+						 &SystemAdapter->Handle))) {
+	    return NULL;
+	}
+    }
+    assert(SystemAdapter->Handle != NULL);
+
     DMA_MODE DmaMode = { { 0 } };
-    DMA_EXTENDED_MODE ExtendedMode = { { 0 } };
-    PVOID AdapterBaseVa;
-
-    Controller = (DeviceDescription->DmaChannel & 4) ? 2 : 1;
-
-    if (Controller == 1) {
-	AdapterBaseVa = UlongToPtr(FIELD_OFFSET(EISA_CONTROL, DmaController1));
-    } else {
-	AdapterBaseVa = UlongToPtr(FIELD_OFFSET(EISA_CONTROL, DmaController2));
-    }
-
-    AdapterObject->AdapterNumber = Controller;
-    AdapterObject->ChannelNumber = (UCHAR)(DeviceDescription->DmaChannel & 3);
-    AdapterObject->PagePort = (PUCHAR)HalpEisaPortPage[DeviceDescription->DmaChannel];
-    AdapterObject->Width16Bits = FALSE;
-    AdapterObject->AdapterBaseVa = AdapterBaseVa;
-
-    if (HalpEisaDma) {
-	ExtendedMode.ChannelNumber = AdapterObject->ChannelNumber;
-
-	switch (DeviceDescription->DmaSpeed) {
-	case Compatible:
-	    ExtendedMode.TimingMode = COMPATIBLE_TIMING;
-	    break;
-	case TypeA:
-	    ExtendedMode.TimingMode = TYPE_A_TIMING;
-	    break;
-	case TypeB:
-	    ExtendedMode.TimingMode = TYPE_B_TIMING;
-	    break;
-	case TypeC:
-	    ExtendedMode.TimingMode = BURST_TIMING;
-	    break;
-	default:
-	    return FALSE;
-	}
-
-	switch (DeviceDescription->DmaWidth) {
-	case Width8Bits:
-	    ExtendedMode.TransferSize = B_8BITS;
-	    break;
-	case Width16Bits:
-	    ExtendedMode.TransferSize = B_16BITS;
-	    break;
-	case Width32Bits:
-	    ExtendedMode.TransferSize = B_32BITS;
-	    break;
-	default:
-	    return FALSE;
-	}
-
-	if (Controller == 1) {
-	    WRITE_PORT_UCHAR(UlongToPtr(FIELD_OFFSET(EISA_CONTROL, DmaExtendedMode1)),
-			     ExtendedMode.Byte);
-	} else {
-	    WRITE_PORT_UCHAR(UlongToPtr(FIELD_OFFSET(EISA_CONTROL, DmaExtendedMode2)),
-			     ExtendedMode.Byte);
-	}
-    } else {
-	/*
-	 * Validate setup for non-busmaster DMA adapter. Secondary controller
-	 * supports only 16-bit transfers and main controller supports only
-	 * 8-bit transfers. Anything else is invalid.
-	 */
-	if (!DeviceDescription->Master) {
-	    if (Controller == 2 && DeviceDescription->DmaWidth == Width16Bits) {
-		AdapterObject->Width16Bits = TRUE;
-	    } else if (Controller != 1 || DeviceDescription->DmaWidth != Width8Bits) {
-		return FALSE;
-	    }
-	}
-    }
-
-    DmaMode.Channel = AdapterObject->ChannelNumber;
-    DmaMode.AutoInitialize = DeviceDescription->AutoInitialize;
+    DmaMode.Channel = Desc->DmaChannel & 3;
+    DmaMode.AutoInitialize = Desc->AutoInitialize;
 
     /*
      * Set the DMA request mode.
      *
-     * For (E)ISA bus master devices just unmask (enable) the DMA channel
-     * and set it to cascade mode. Otherwise just select the right one
-     * bases on the passed device description.
+     * For (E)ISA bus master devices we need to unmask (enable) the DMA
+     * channel and set it to cascade mode. This requires IO accesses (via
+     * READ_PORT_UCHAR etc) which necessitates a trip to the server.
+     * Fortunately we don't support (E)ISA bus master devices so we don't
+     * need to do this and can simply select the right one bases on the
+     * specified device description.
      */
-    if (DeviceDescription->Master) {
-	DmaMode.RequestMode = CASCADE_REQUEST_MODE;
-	if (Controller == 1) {
-	    /* Set the Request Data */
-	    WRITE_PORT_UCHAR(&((PDMA1_CONTROL)AdapterBaseVa)->Mode,
-			     DmaMode.Byte);
-
-	    /* Unmask DMA Channel */
-	    WRITE_PORT_UCHAR(&((PDMA1_CONTROL) AdapterBaseVa)->SingleMask,
-			     AdapterObject->ChannelNumber | DMA_CLEARMASK);
-	} else {
-	    /* Set the Request Data */
-	    WRITE_PORT_UCHAR(&((PDMA2_CONTROL) AdapterBaseVa)->Mode,
-			     DmaMode.Byte);
-
-	    /* Unmask DMA Channel */
-	    WRITE_PORT_UCHAR(&((PDMA2_CONTROL) AdapterBaseVa)->SingleMask,
-			     AdapterObject->ChannelNumber | DMA_CLEARMASK);
-	}
+    if (Desc->DemandMode) {
+	DmaMode.RequestMode = DEMAND_REQUEST_MODE;
     } else {
-	if (DeviceDescription->DemandMode) {
-	    DmaMode.RequestMode = DEMAND_REQUEST_MODE;
-	} else {
-	    DmaMode.RequestMode = SINGLE_REQUEST_MODE;
-	}
+	DmaMode.RequestMode = SINGLE_REQUEST_MODE;
     }
 
-    AdapterObject->AdapterMode = DmaMode;
+    SystemAdapter->AdapterMode = DmaMode;
+    SystemAdapter->Width16Bits = Width16Bits;
 
-    return TRUE;
+    return SystemAdapter;
 }
 
 /**
  * @name HalGetAdapter
  *
- * Allocate an adapter object for DMA device.
+ * Create an adapter object for the given DMA device.
  *
  * @param DeviceDescription
  *        Structure describing the attributes of the device.
@@ -538,150 +249,519 @@ static BOOLEAN HalpDmaInitializeEisaAdapter(IN PADAPTER_OBJECT AdapterObject,
  *
  * @implemented
  */
-NTAPI PADAPTER_OBJECT HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
+NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
 				    OUT PULONG NumberOfMapRegisters)
 {
-    PADAPTER_OBJECT AdapterObject = NULL;
-    BOOLEAN EisaAdapter;
-    ULONG MapRegisters;
-    ULONG MaximumLength;
-    KIRQL OldIrql;
-
     /* Validate parameters in device description */
-    if (DeviceDescription->Version > DEVICE_DESCRIPTION_VERSION2)
+    if (DeviceDescription->Version > DEVICE_DESCRIPTION_VERSION2) {
 	return NULL;
-
-    /*
-     * See if we're going to use ISA/EISA DMA adapter. These adapters are
-     * special since they're reused.
-     *
-     * Also note that we check for channel number since there are only 8 DMA
-     * channels on ISA, so any request above this requires new adapter.
-     */
-    if (DeviceDescription->InterfaceType == Eisa || DeviceDescription->InterfaceType == Isa) {
-	EisaAdapter = DeviceDescription->DmaChannel < 8;
-    } else {
-	EisaAdapter = !DeviceDescription->Master;
     }
-
-    /*
-     * Disallow creating adapter for ISA/EISA DMA channel 4 since it's used
-     * for cascading the controllers and it's not available for software use.
-     */
-    if (EisaAdapter && DeviceDescription->DmaChannel == 4)
+    /* Dma64BitAddresses implies Dma32BitAddresses */
+    if (DeviceDescription->Dma64BitAddresses && !DeviceDescription->Dma32BitAddresses) {
 	return NULL;
+    }
 
     /*
-     * Calculate the number of map registers.
+     * See if we're going to use ISA DMA controller. We do not support EISA,
+     * so only the first 8 channels are available. We also do not support ISA
+     * bus mastering devices, so any request for a bus mastering adapter is
+     * denied. Likewise, ISA devices can only access the lowest 16MB of RAM,
+     * so 32-bit and 64-bit devices are rejected as well,
      *
-     * - For EISA and PCI scatter/gather no map registers are needed.
-     * - For ISA slave scatter/gather one map register is needed.
-     * - For all other cases the number of map registers depends on
-     *   DeviceDescription->MaximumLength.
+     * We also disallow creating adapter for ISA/EISA DMA channel 4 since it's
+     * used for cascading the controllers and not available for software use.
      */
-    MaximumLength = DeviceDescription->MaximumLength & MAXLONG;
-    if (DeviceDescription->ScatterGather && (DeviceDescription->InterfaceType == Eisa ||
-					     DeviceDescription->InterfaceType == PCIBus)) {
-	MapRegisters = 0;
-    } else if (DeviceDescription->ScatterGather && !DeviceDescription->Master) {
-	MapRegisters = 1;
-    } else {
-	/*
-	 * In the equation below the additional map register added by
-	 * the "+1" accounts for the case when a transfer does not start
-	 * at a page-aligned address.
-	 */
-	MapRegisters = BYTES_TO_PAGES(MaximumLength) + 1;
-	if (MapRegisters > 16)
-	    MapRegisters = 16;
-    }
-
-    /*
-     * Acquire the DMA lock that is used to protect the EISA adapter array.
-     */
-    KeWaitForSingleObject(&HalpDmaLock, Executive, KernelMode, FALSE, NULL);
-
-    /*
-     * Now we must get ahold of the adapter object. For first eight ISA/EISA
-     * channels there are static adapter objects that are reused and updated
-     * on succesive HalGetAdapter calls. For other cases a new adapter object
-     * is always created and added to the DMA adapter list (HalpDmaAdapterList).
-     */
-    if (EisaAdapter) {
-	AdapterObject = HalpEisaAdapter[DeviceDescription->DmaChannel];
-	if (AdapterObject) {
-	    if (AdapterObject->NeedsMapRegisters && MapRegisters > AdapterObject->MapRegistersPerChannel) {
-		AdapterObject->MapRegistersPerChannel = MapRegisters;
-	    }
-	}
-    }
-
-    if (AdapterObject == NULL) {
-	AdapterObject = HalpDmaAllocateChildAdapter(MapRegisters, DeviceDescription);
-	if (AdapterObject == NULL) {
-	    KeSetEvent(&HalpDmaLock, 0, 0);
+    if (DeviceDescription->InterfaceType == Eisa) {
+	return NULL;
+    } else if (DeviceDescription->InterfaceType == Isa) {
+	if (DeviceDescription->DmaChannel >= 8) {
 	    return NULL;
 	}
-
-	if (EisaAdapter) {
-	    HalpEisaAdapter[DeviceDescription->DmaChannel] = AdapterObject;
+	if (DeviceDescription->DmaChannel == 4) {
+	    return NULL;
 	}
-
-	if (MapRegisters > 0) {
-	    AdapterObject->NeedsMapRegisters = TRUE;
-	    AdapterObject->MapRegistersPerChannel = MapRegisters;
-	} else {
-	    AdapterObject->NeedsMapRegisters = FALSE;
-	    if (DeviceDescription->Master) {
-		AdapterObject->MapRegistersPerChannel = BYTES_TO_PAGES(MaximumLength) + 1;
-	    } else {
-		AdapterObject->MapRegistersPerChannel = 1;
-	    }
+	if (DeviceDescription->Master) {
+	    return NULL;
+	}
+	if (DeviceDescription->Dma32BitAddresses) {
+	    return NULL;
+	}
+	if (DeviceDescription->Dma64BitAddresses) {
+	    return NULL;
+	}
+    } else {
+	/* For non-ISA devices, it must be able to access at least the lowest
+	 * 4GB of physical memory. We reject the DMA operation if otherwise. */
+	if (!DeviceDescription->Dma32BitAddresses) {
+	    return NULL;
 	}
     }
 
-    /*
-     * Release the DMA lock. HalpEisaAdapter will no longer be touched,
-     * so we don't need it.
-     */
-    KeSetEvent(&HalpDmaLock, 0, 0);
+    /* Now allocate the adapter object */
+    PADAPTER_OBJECT AdapterObject = ExAllocatePool(sizeof(ADAPTER_OBJECT));
+    if (AdapterObject == NULL) {
+	return NULL;
+    }
 
-    if (!EisaAdapter) {
-	/* If it's not one of the static adapters, add it to the list */
-	KeAcquireSpinLock(&HalpDmaAdapterListLock, &OldIrql);
-	InsertTailList(&HalpDmaAdapterList, &AdapterObject->AdapterList);
-	KeReleaseSpinLock(&HalpDmaAdapterListLock, OldIrql);
+    /* Initialize the common DMA header */
+    AdapterObject->DmaHeader.Version = (USHORT)DeviceDescription->Version;
+    AdapterObject->DmaHeader.Size = sizeof(ADAPTER_OBJECT);
+    AdapterObject->DmaHeader.DmaOperations = &HalpDmaOperations;
+
+    /*
+     * For first eight ISA/EISA channels we need to create the system DMA adapter
+     * objects if they haven't been created yet.
+     */
+    if (DeviceDescription->InterfaceType == Isa) {
+	AdapterObject->SystemAdapter = HalpDmaGetSystemAdapter(DeviceDescription);
+	if (AdapterObject->SystemAdapter == NULL) {
+	    ExFreePool(AdapterObject);
+	    return NULL;
+	}
     }
 
     /*
      * Setup the values in the adapter object that are common for all
      * types of buses.
      */
-    if (DeviceDescription->Version >= DEVICE_DESCRIPTION_VERSION1) {
-	AdapterObject->IgnoreCount = DeviceDescription->IgnoreCount;
-    } else {
-	AdapterObject->IgnoreCount = 0;
-    }
-
-    AdapterObject->Dma32BitAddresses = DeviceDescription->Dma32BitAddresses;
     AdapterObject->Dma64BitAddresses = DeviceDescription->Dma64BitAddresses;
     AdapterObject->ScatterGather = DeviceDescription->ScatterGather;
-    AdapterObject->MasterDevice = DeviceDescription->Master;
-    *NumberOfMapRegisters = AdapterObject->MapRegistersPerChannel;
 
     /*
-     * For non-(E)ISA adapters we have already done all the work. On the
-     * other hand for (E)ISA adapters we must still setup the DMA modes
-     * and prepare the controller.
+     * Calculate the maximum number of map registers the device can (or need
+     * to) allocate. If the device does not support scatter-gather, or if we
+     * are on a 64-bit system but the device can only access the lowest 4GB
+     * of physical memory, then a contiguous intermediate buffer might be needed
+     * depending whether the MDL is physically contiguous. In this case the
+     * number of map registers we need is determined by the IO buffers' maximum
+     * size, which is specified by the MaximumLength member of the device
+     * description. Additionally, for ISA devices this is capped to 64KB because
+     * the ISA DMA controller can only access one 64KB bank per DMA transfer.
+     *
+     * Otherwise, for ISA devices one map register is needed (for ISA devices,
+     * supporting scatter gather means that the ISA DMA controller can be paused
+     * between page transfers, so we will just transfer one page at a time),
+     * and for PCI(E) devices no map register is needed.
      */
-    if (EisaAdapter) {
-	if (!HalpDmaInitializeEisaAdapter(AdapterObject, DeviceDescription)) {
-	    ObDereferenceObject(AdapterObject);
-	    return NULL;
+    ULONG MaximumLength = DeviceDescription->MaximumLength & MAXLONG;
+    if (!DeviceDescription->ScatterGather ||
+	(sizeof(PCHAR) == 8 && !DeviceDescription->Dma64BitAddresses)) {
+	/*
+	 * In the equation below the additional map register added by
+	 * the "+1" accounts for the case when a transfer does not start
+	 * at a page-aligned address.
+	 */
+	AdapterObject->MaxMapRegs = BYTES_TO_PAGES(MaximumLength) + 1;
+	/* The ISA DMA controller cannot perform DMA transfers that cross the
+	 * 64KB boundary, so in this case at most 16 map registers can be
+	 * allocated. PCI devices do not have this limitation. */
+	if (AdapterObject->SystemAdapter && AdapterObject->MaxMapRegs > 16) {
+	    AdapterObject->MaxMapRegs = 16;
+	}
+    } else {
+	AdapterObject->MaxMapRegs = (DeviceDescription->InterfaceType == Isa) ? 1 : 0;
+    }
+
+    if (AdapterObject->MaxMapRegs) {
+	*NumberOfMapRegisters = AdapterObject->MaxMapRegs;
+    } else {
+	/* If the device does not need any map registers, the ReactOS implementation
+	 * actually returns a non-zero value for the NumberOfMapRegisters parameter
+	 * despite the fact that future DMA operations will ignore this parameter.
+	 * I'm not sure why this is needed but it seems that some drivers expect
+	 * this to be non-zero, so we will follow the ReactOS implementation here. */
+	*NumberOfMapRegisters = BYTES_TO_PAGES(MaximumLength) + 1;
+    }
+
+    InitializeListHead(&AdapterObject->MapRegisterList);
+    InsertTailList(&HalpDmaAdapterList, &AdapterObject->Link);
+
+    return &AdapterObject->DmaHeader;
+}
+
+/**
+ * @name HalpGetAdapterMaximumPhysicalAddress
+ *
+ * Determine the maximal physical address that an adapter object can access.
+ * The DMA subsystem can the use this information to allocate the correct
+ * intermediate buffers if the device needs double buffering for DMA.
+ *
+ * @remarks
+ *    Note that on 64bit systems, if a PCI device needs double buffering we
+ *    will only use the lowest 4GB of physical memory as intermediate buffers.
+ *    This appears to be the Windows behavior and is indeed what ReactOS
+ *    implements. My guess for the reason behind this is that although the
+ *    device driver author has indicated that the device supports 64-bit
+ *    addressing, possibly from reading its datasheet, it is sometimes the
+ *    case that the manufacturer didn't actually implement 64-bit addressing
+ *    properly (despite what the datasheet might have claimed). So our guess
+ *    is that because the dominant form of PCI(E) DMA is scatter/gather bus
+ *    mastering DMA, if the hardware manufacturer didn't bother to implement
+ *    scatter/gather (the only case for a 64-bit-capable PCI device to need
+ *    map registers), then it probably did a half-assed job implementing
+ *    64-bit addressing as well, so let's play it safe. If this proves to be
+ *    unnecessary, we can always change it.
+ */
+static PHYSICAL_ADDRESS HalpGetAdapterMaximumPhysicalAddress(IN PADAPTER_OBJECT Adpt)
+{
+    PHYSICAL_ADDRESS Addr = { .QuadPart = 0xFFFFFF };
+    if (!Adpt->SystemAdapter) {
+	Addr.QuadPart = (!Adpt->MaxMapRegs && Adpt->Dma64BitAddresses) ?
+	    0xFFFFFFFFFFFFFFFFULL : 0xFFFFFFFF;
+    }
+    return Addr;
+}
+
+/**
+ * @name HalpGetAdapterBoundaryAddressBits
+ *
+ * Determine the maximum size (in bits) of physically contiguous memory
+ * that the adapter can access in a single DMA transfer. For ISA slave DMA
+ * devices the 64KB boundary mustn't be crossed since the ISA DMA controller
+ * wouldn't be able to handle it. For PCI bus-master DMA devices the buffer
+ * mustn't cross the 4GB boundary. I don't quite understand the reasoning
+ * behind the latter limitation (it seems to me that 64-bit PCI devices can
+ * cross the 4GB boundary just fine), but this is what ReactOS does so I'm
+ * going to follow ReactOS. If this proves to be too limiting, we can always
+ * change it.
+ */
+static ULONG HalpGetAdapterBoundaryAddressBits(IN PADAPTER_OBJECT Adpt)
+{
+    return Adpt->SystemAdapter ? 16 : 32;
+}
+
+/**
+ * @name HalpAllocateMapRegisters
+ *
+ * Allocate map registers for DMA adapter.
+ *
+ * @param AdapterObject
+ *        Adapter object to allocate map registers for.
+ * @param Count
+ *        Number of contiguous 4K pages to allocate
+ * @param pMapReg
+ *        On success, returns the allocated map register object
+ */
+static NTSTATUS HalpAllocateMapRegisters(IN PADAPTER_OBJECT AdapterObject,
+					 IN ULONG Count,
+					 OUT PMAP_REGISTER_ENTRY *pMapReg)
+{
+    assert(AdapterObject != NULL);
+    IopAllocateObject(MapReg, MAP_REGISTER_ENTRY);
+    PHYSICAL_ADDRESS HighestAddr = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
+
+    /* Check if there are free map registers. Note that since the list is ordered
+     * by physical address (lower physical address first), as soon as we found a
+     * suitable map register entry we can terminate the loop. */
+    ReverseLoopOverList(Entry, &HalpDmaMapRegCtrl.List, MAP_REGISTER_ENTRY, Link) {
+	ULONGLONG EndAddr = Entry->PhyBase.QuadPart + ((ULONGLONG)Count << PAGE_SHIFT);
+	if (!Entry->AssignedAdapter && (Entry->Count >= Count) &&
+	    (HighestAddr.QuadPart < EndAddr)) {
+	    /* Found one. Split the map register entry if there are left overs */
+	    if (Entry->Count > Count) {
+		ULONGLONG LeftOver = ((ULONGLONG)Entry->Count - Count) << PAGE_SHIFT;
+		Entry->Count -= Count;
+		/* Insert MapReg after Entry */
+		InsertHeadList(&Entry->Link, &MapReg->Link);
+		MapReg->VirtBase = (PVOID)((ULONG_PTR)Entry->VirtBase + LeftOver);
+		MapReg->PhyBase.QuadPart = Entry->PhyBase.QuadPart + LeftOver;
+		MapReg->Count = Count;
+	    } else {
+		ExFreePool(MapReg);
+		MapReg = Entry;
+	    }
+	    /* Assign the map register to the adapter object */
+	    MapReg->AssignedAdapter = AdapterObject;
+	    InsertHeadList(&AdapterObject->MapRegisterList, &MapReg->AdapterLink);
+	    *pMapReg = MapReg;
+	    return STATUS_SUCCESS;
 	}
     }
 
-    return AdapterObject;
+    /* No more free map registers. We must now request the server to allocate
+     * new map registers. The server will always try to allocate high memory
+     * when it's available, so as not to waste scarce resource (low memory). */
+    PHYSICAL_ADDRESS LowestAddr = { .QuadPart = 0 };
+    ULONG BoundAddrBits = HalpGetAdapterBoundaryAddressBits(AdapterObject);
+    RET_ERR_EX(HalpAllocateDmaBuffer(Count << PAGE_SHIFT, &LowestAddr, &HighestAddr,
+				     BoundAddrBits, &MapReg->VirtBase, &MapReg->PhyBase),
+	       ExFreePool(MapReg));
+    assert(MapReg->VirtBase != NULL);
+    assert(MapReg->PhyBase.QuadPart != 0);
+
+    /* Setup the map register entry for the buffer allocated. Note we keep the
+     * list of all map registers ordered by their physical address. */
+    PLIST_ENTRY Node = &HalpDmaMapRegCtrl.List;
+    LoopOverList(Entry, &HalpDmaMapRegCtrl.List, MAP_REGISTER_ENTRY, Link) {
+	if (Entry->PhyBase.QuadPart > MapReg->PhyBase.QuadPart) {
+	    Node = &Entry->Link;
+	    break;
+	}
+    }
+    InsertTailList(Node, &MapReg->Link);
+    InsertHeadList(&AdapterObject->MapRegisterList, &MapReg->AdapterLink);
+    MapReg->AssignedAdapter = AdapterObject;
+    MapReg->Count = Count;
+    *pMapReg = MapReg;
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @name HalpFreeMapRegisters
+ *
+ * Free map registers reserved by the system for a DMA. Note that this
+ * is the exported (via DMA_OPERATIONS) function that the driver should
+ * call if its map register callback returns DeallocateObjectKeepRegisters.
+ *
+ * @param AdapterObject
+ *        DMA adapter to free map registers on.
+ * @param MapRegisterBase
+ *        Handle to map registers to free. This must match the value passed
+ *        to the map register callback in AllocateAdapterChannel.
+ * @param NumberOfRegisters
+ *        Number of map registers to be freed. This value must match the number
+ *        specified in an earlier call to AllocateAdapterChannel.
+ *
+ * @implemented
+ */
+NTAPI VOID HalpFreeMapRegisters(IN PDMA_ADAPTER DmaAdapter,
+				IN PVOID MapRegisterBase,
+				IN ULONG NumberOfMapRegisters)
+{
+    PMAP_REGISTER_ENTRY MapReg = (PMAP_REGISTER_ENTRY)MapRegisterBase;
+    assert((PADAPTER_OBJECT)DmaAdapter == MapReg->AssignedAdapter);
+    assert(NumberOfMapRegisters == MapReg->Count);
+    /* Detach the map register from the adapter map register list */
+    RemoveEntryList(&MapReg->AdapterLink);
+    MapReg->AssignedAdapter = NULL;
+    MapReg->Keep = FALSE;
+
+    /* Merge the adjacent free map registers. Note that both the virtual
+     * address windows and physical address windows must be adjacent. */
+    PMAP_REGISTER_ENTRY Prev = GetPrevEntryList(&MapReg->Link, MAP_REGISTER_ENTRY,
+						Link, &HalpDmaMapRegCtrl.List);
+    if (Prev != NULL && !Prev->AssignedAdapter &&
+	(Prev->VirtBase + ((ULONG_PTR)Prev->Count << PAGE_SHIFT) == MapReg->VirtBase) &&
+	(Prev->PhyBase.QuadPart + ((ULONGLONG)Prev->Count << PAGE_SHIFT) == MapReg->PhyBase.QuadPart)) {
+	assert(!Prev->Keep);
+	RemoveEntryList(&Prev->Link);
+	MapReg->VirtBase = Prev->VirtBase;
+	MapReg->PhyBase = Prev->PhyBase;
+	MapReg->Count += Prev->Count;
+	ExFreePool(Prev);
+    }
+
+    PMAP_REGISTER_ENTRY Next = GetNextEntryList(&MapReg->Link, MAP_REGISTER_ENTRY,
+						Link, &HalpDmaMapRegCtrl.List);
+    if (Next != NULL && !Next->AssignedAdapter &&
+	(MapReg->VirtBase + ((ULONG_PTR)MapReg->Count << PAGE_SHIFT) == Next->VirtBase) &&
+	(MapReg->PhyBase.QuadPart + ((ULONGLONG)MapReg->Count << PAGE_SHIFT) == Next->PhyBase.QuadPart)) {
+	assert(!Next->Keep);
+	RemoveEntryList(&Next->Link);
+	MapReg->Count += Next->Count;
+	ExFreePool(Next);
+    }
+}
+
+/**
+ * @name HalpAllocateCommonBuffer
+ *
+ * Allocates memory that is visible to both the processor(s) and the DMA
+ * device. Note that the buffers allocated by this function aren't freed
+ * when the adapter object is released (via FreeAdapterChannel). The only
+ * way to free the buffers allocated here is by calling FreeCommonBuffer.
+ *
+ * @param AdapterObject
+ *        Adapter object to allocate the common buffer for.
+ * @param Length
+ *        Number of bytes to allocate.
+ * @param PhysicalAddress
+ *        Physical address the driver can use to access the buffer.
+ * @param CacheEnabled
+ *        Specifies if the memory can be cached. According to Microsoft, on
+ *        real NT systems this parameter is ignored. The operating system
+ *        determines whether to enable cached memory in the common buffer
+ *        that is to be allocated. That decision is based on the processor
+ *        architecture and device bus. On i386 and amd64 cached memory is
+ *        always enabled and it is assumed that all DMA operations performed
+ *        by a device are coherent with the relevant CPU caches, which might
+ *        be caching that memory. On arm and arm64, the operating system does
+ *        not automatically enable cached memory for all devices and relies
+ *        on the ACPI_CCA method for each device to determine whether the
+ *        device is cache-coherent.
+ *
+ *        Since we only support i386 and amd64, we will follow NT and ignore
+ *        this parameter. On Windows, if driver needs to disable caching, it
+ *        will call AllocateCommonBufferEx instead. This function is not yet
+ *        implemented on Neptune OS.
+ *
+ * @return The base virtual address of the memory allocated or NULL on failure.
+ *
+ * @see HalpFreeCommonBuffer
+ *
+ * @implemented
+ */
+NTAPI PVOID HalpAllocateCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
+				     IN ULONG Length,
+				     OUT PPHYSICAL_ADDRESS PhysicalAddress,
+				     IN BOOLEAN CacheEnabled)
+{
+    UNREFERENCED_PARAMETER(CacheEnabled);
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+
+    PMAP_REGISTER_ENTRY MapReg = NULL;
+    if (!NT_SUCCESS(HalpAllocateMapRegisters(AdapterObject,
+					     PAGE_ROUND_UP(Length) >> PAGE_SHIFT,
+					     &MapReg))) {
+	return NULL;
+    }
+    assert(MapReg != NULL);
+    /* Mark the map reg as Keep so it won't get freed by FreeAdapterChannel */
+    MapReg->Keep = TRUE;
+    *PhysicalAddress = MapReg->PhyBase;
+
+    return MapReg->VirtBase;
+}
+
+/**
+ * @name HalpFreeCommonBuffer
+ *
+ * Free common buffer allocated with HalpAllocateCommonBuffer.
+ *
+ * @see HalpAllocateCommonBuffer
+ *
+ * @implemented
+ */
+NTAPI VOID HalpFreeCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
+				IN ULONG Length,
+				IN PHYSICAL_ADDRESS PhysicalAddress,
+				IN PVOID VirtualAddress,
+				IN BOOLEAN CacheEnabled)
+{
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    LoopOverList(MapReg, &AdapterObject->MapRegisterList,
+		 MAP_REGISTER_ENTRY, AdapterLink) {
+	if (MapReg->VirtBase == VirtualAddress) {
+	    assert(MapReg->PhyBase.QuadPart == PhysicalAddress.QuadPart);
+	    assert(MapReg->Count == (PAGE_ROUND_UP(Length) << PAGE_SHIFT));
+	    HalpFreeMapRegisters(DmaAdapter, MapReg, MapReg->Count);
+	}
+    }
+    assert(FALSE);
+}
+
+/**
+ * @name HalpAllocateAdapterChannel
+ *
+ * Setup map registers for an adapter object.
+ *
+ * @param AdapterObject
+ *        Pointer to an ADAPTER_OBJECT to set up.
+ * @param DeviceObject
+ *        Device object to allocate adapter channel for.
+ * @param NumberOfMapRegisters
+ *        Number of map registers requested.
+ * @param ExecutionRoutine
+ *        Callback to call when map registers are allocated.
+ * @param Context
+ *        Context to be used with ExecutionRoutine.
+ *
+ * @return
+ *    If not enough map registers can be allocated then the error
+ *    STATUS_INSUFFICIENT_RESOURCES is returned. If the function
+ *    succeeds or the callback is queued for later delivering then
+ *    STATUS_SUCCESS is returned.
+ *
+ * @see HalpFreeAdapterChannel
+ *
+ * @implemented
+ */
+NTAPI NTSTATUS HalpAllocateAdapterChannel(IN PDMA_ADAPTER DmaAdapter,
+					  IN PDEVICE_OBJECT DeviceObject,
+					  IN ULONG NumberOfMapRegisters,
+					  IN PDRIVER_CONTROL ExecutionRoutine,
+					  IN PVOID Context)
+{
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    if (!AdapterObject || !DeviceObject || !ExecutionRoutine) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    PMAP_REGISTER_ENTRY MapReg = NULL;
+    if (NumberOfMapRegisters && AdapterObject->MaxMapRegs) {
+	if (NumberOfMapRegisters > AdapterObject->MaxMapRegs) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RET_ERR(HalpAllocateMapRegisters(AdapterObject, NumberOfMapRegisters, &MapReg));
+	assert(MapReg != NULL);
+    }
+
+    ULONG Result = ExecutionRoutine(DeviceObject, DeviceObject->CurrentIrp,
+				    MapReg, Context);
+
+    /*
+     * Possible return values:
+     *
+     * - KeepObject
+     *   Don't free any resources, the ADAPTER_OBJECT is still in use and
+     *   the caller will call HalpFreeAdapterChannel later.
+     *
+     * - DeallocateObject
+     *   Deallocate the map registers and release the ADAPTER_OBJECT, so
+     *   someone else can use it.
+     *
+     * - DeallocateObjectKeepRegisters
+     *   Release the ADAPTER_OBJECT, but hang on to the map registers. The
+     *   client will later call HalpFreeMapRegisters.
+     *
+     * NOTE:
+     * HalpFreeAdapterChannel runs the queue, so it must be called unless
+     * the adapter object is not to be freed.
+     */
+    if (Result == DeallocateObject) {
+	HalpFreeAdapterChannel(DmaAdapter);
+    } else if (Result == DeallocateObjectKeepRegisters) {
+	if (MapReg) {
+	    MapReg->Keep = TRUE;
+	}
+	HalpFreeAdapterChannel(DmaAdapter);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @name HalpFreeAdapterChannel
+ *
+ * Free DMA resources allocated by HalpAllocateAdapterChannel.
+ *
+ * @param AdapterObject
+ *        Adapter object with resources to free.
+ *
+ * @remarks
+ *    This function releases map registers assigned to the DMA adapter,
+ *    unless the map register is marked as Keep.
+ *
+ * @see HalpAllocateAdapterChannel
+ *
+ * @implemented
+ */
+NTAPI VOID HalpFreeAdapterChannel(IN PDMA_ADAPTER DmaAdapter)
+{
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    LoopOverList(MapReg, &AdapterObject->MapRegisterList,
+		 MAP_REGISTER_ENTRY, AdapterLink) {
+	/*
+	 * If the map register callback returned DeallocateObjectKeepRegisters,
+	 * or if the common buffer was allocated by AllocateCommonBuffer, then
+	 * MapReg->Keep will be set to TRUE and in this case we don't free the
+	 * map register here. Driver code will free it later.
+	 */
+	if (!MapReg->Keep) {
+	    HalpFreeMapRegisters(DmaAdapter, MapReg, MapReg->Count);
+	}
+    }
 }
 
 /**
@@ -696,7 +776,7 @@ NTAPI PDMA_ADAPTER HalpGetDmaAdapter(IN PVOID Context,
 				     IN PDEVICE_DESCRIPTION DeviceDescription,
 				     OUT PULONG NumberOfMapRegisters)
 {
-    return &HalGetAdapter(DeviceDescription, NumberOfMapRegisters)->DmaHeader;
+    return HalGetAdapter(DeviceDescription, NumberOfMapRegisters);
 }
 
 /**
@@ -707,101 +787,319 @@ NTAPI PDMA_ADAPTER HalpGetDmaAdapter(IN PVOID Context,
  *
  * @see HalGetAdapter
  */
-NTAPI VOID HalpPutDmaAdapter(IN PADAPTER_OBJECT AdapterObject)
+NTAPI VOID HalpPutDmaAdapter(IN PDMA_ADAPTER DmaAdapter)
 {
-    KIRQL OldIrql;
-    if (AdapterObject->ChannelNumber == 0xFF) {
-	KeAcquireSpinLock(&HalpDmaAdapterListLock, &OldIrql);
-	RemoveEntryList(&AdapterObject->AdapterList);
-	KeReleaseSpinLock(&HalpDmaAdapterListLock, OldIrql);
-    }
-
-    ObDereferenceObject(AdapterObject);
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    RemoveEntryList(&AdapterObject->Link);
+    HalpFreeAdapterChannel(DmaAdapter);
+    ExFreePool(AdapterObject);
 }
 
 /**
- * @name HalpAllocateCommonBuffer
+ * @name HalpCopyBufferMap
  *
- * Allocates memory that is visible to both the processor(s) and the DMA
- * device.
+ * Helper function for copying data from/to map register buffers.
+ *
+ * @param Mdl
+ *        MDL to copy data to/from.
+ * @param MapReg
+ *        Map register to copy data from/to.
+ * @param CurrentVa
+ *        Index into the specified Mdl indicating the start of the transfer.
+ *        This is with respect to MmGetMdlVirtualAddress(Mdl), which is
+ *        always NULL on Neptune OS (on Windows it is generally not).
+ * @param Length
+ *        Length of the data being copied.
+ * @param WriteToDevice
+ *        If FALSE (meaning that we are reading from the device), data
+ *        will be copied from the map registers to the MDL. Otherwise,
+ *        data will be copied from the MDL to the map registers.
+ *
+ * @see HalpMapTransfer, HalpFlushAdapterBuffers
+ */
+NTAPI VOID HalpCopyBufferMap(IN PMDL Mdl,
+			     IN PMAP_REGISTER_ENTRY MapReg,
+			     IN PVOID CurrentVa,
+			     IN ULONG Length,
+			     IN BOOLEAN WriteToDevice)
+{
+    ULONG_PTR CurrentAddress = (ULONG_PTR)MmGetSystemAddressForMdl(Mdl) +
+	(ULONG_PTR)CurrentVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
+    ULONG ByteOffset = BYTE_OFFSET(CurrentAddress);
+    PVOID MapRegData = (PVOID)((ULONG_PTR)MapReg->VirtBase + ByteOffset);
+
+    if (WriteToDevice) {
+	RtlCopyMemory(MapRegData, (PVOID)CurrentAddress, Length);
+    } else {
+	RtlCopyMemory((PVOID)CurrentAddress, MapRegData, Length);
+    }
+}
+
+/**
+ * @name HalpMapTransfer
+ *
+ * Map a DMA for transfer and do the DMA if it's a slave.
  *
  * @param AdapterObject
- *        Adapter object representing the bus master or system dma controller.
+ *        Adapter object to do the DMA on. Bus-master may pass NULL.
+ * @param Mdl
+ *        MDL for the IO buffer to DMA in to or out of.
+ * @param MapRegisterBase
+ *        Handle to map registers to use for this dma.
+ * @param CurrentVa
+ *        Index into Mdl to transfer into/out of. This is with respect
+ *        to MmGetMdlVirtualAddress(Mdl) (which on Neptune OS always
+ *        returns NULL).
  * @param Length
- *        Number of bytes to allocate.
- * @param LogicalAddress
- *        Logical address the driver can use to access the buffer. Note this
- *        term is different from the "logical address" in the Intel architecture
- *        manual. Here "logical address" == physical address in Intel manual.
- * @param CacheEnabled
- *        Specifies if the memory can be cached.
+ *        Length of the DMA transfer. This will be updated to the number
+ *        of bytes actually transferred by this function.
+ * @param WriteToDevice
+ *        TRUE if it's an output DMA, FALSE otherwise.
  *
- * @return The base virtual address of the memory allocated or NULL on failure.
+ * @return
+ *    A physical address that can be used to program a DMA controller. It's
+ *    not meaningful for slave DMA device.
  *
  * @remarks
- *    On real NT x86 systems the CacheEnabled parameter is ignored. We honor it
- *    instead. If it proves to cause problems we will change it.
- *
- * @see HalpFreeCommonBuffer
+ *    This function does a copyover to physically contiguous memory represented
+ *    by the map registers if needed. If the buffer described by MDL can be
+ *    used as is then no copyover is done. If it's a slave transfer, this
+ *    function actually performs it.
  *
  * @implemented
  */
-NTAPI PVOID HalpAllocateCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
-				     IN ULONG Length,
-				     IN PPHYSICAL_ADDRESS LogicalAddress,
-				     IN BOOLEAN CacheEnabled)
+NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PDMA_ADAPTER DmaAdapter,
+				       IN PMDL Mdl,
+				       IN PVOID MapRegisterBase,
+				       IN PVOID CurrentVa,
+				       IN OUT PULONG Length,
+				       IN BOOLEAN WriteToDevice)
 {
-    PHYSICAL_ADDRESS LowestAcceptableAddress = { .QuadPart = 0 };
-    PHYSICAL_ADDRESS HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
-    PHYSICAL_ADDRESS BoundryAddressMultiple = { .QuadPart = 0 };
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    assert(AdapterObject != NULL);
+
+    /* Physical address corresponding to the transfer start page and offset. */
+    PHYSICAL_ADDRESS PhysicalAddress = MmGetMdlPhysicalAddress(Mdl, CurrentVa);
+
+    /* Calculate the maximum possible size of one single DMA transfer. This
+     * consists of pages that are physically contiguous and don't cross the
+     * adapter boundary (64KB for ISA controllers and 4GB for PCI devices). */
+    ULONG BoundAddrBits = HalpGetAdapterBoundaryAddressBits(AdapterObject);
+    ULONG TransferLength = MmGetMdlPhysicallyContiguousSize(Mdl, CurrentVa,
+							    BoundAddrBits);
+
+    /* Special case for bus master adapters with S/G support. We can directly
+     * use the buffer specified by the MDL, so not much work has to be done.
+     * Just return the passed VA's corresponding physical address and update
+     * length to the number of physically contiguous bytes found. */
+    if (MapRegisterBase == NULL) {
+	if (TransferLength < *Length)
+	    *Length = TransferLength;
+	return PhysicalAddress;
+    }
 
     /*
-     * For bus-master DMA devices the buffer mustn't cross 4Gb boundary. For
-     * slave DMA devices the 64Kb boundary mustn't be crossed since the
-     * controller wouldn't be able to handle it.
+     * The code below applies to slave DMA adapters and bus master adapters
+     * without hardware S/G support. Both of these may require map registers.
      */
-    if (AdapterObject->MasterDevice) {
-	BoundryAddressMultiple.HighPart = 1;
+    PMAP_REGISTER_ENTRY MapReg = (PMAP_REGISTER_ENTRY)MapRegisterBase;
+
+    /*
+     * Determine whether we actually need map registers.
+     *
+     * If we're about to simulate software S/G and not all the pages are
+     * physically contiguous then we must use the map registers to store
+     * the data and allow the whole transfer to proceed at once.
+     *
+     * Otherwise, if the physical address of the MDL buffer exceeds the
+     * highest physical address limit of the device, we must likewise use
+     * map registers as an intermediate buffer.
+     *
+     * If neither of the above is true, then no map register is needed.
+     */
+    AdapterObject->UseMapRegisters = FALSE;
+    if (!AdapterObject->ScatterGather && (TransferLength < *Length)) {
+	AdapterObject->UseMapRegisters = TRUE;
     } else {
-	BoundryAddressMultiple.LowPart = 0x10000;
+	PHYSICAL_ADDRESS HighAddr = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
+	if ((PhysicalAddress.QuadPart + TransferLength) > HighAddr.QuadPart) {
+	    AdapterObject->UseMapRegisters = TRUE;
+	}
     }
 
-    PVOID VirtualAddress = NULL;
-    if (!NT_SUCCESS(MmAllocateContiguousMemorySpecifyCache(Length,
-							   LowestAcceptableAddress,
-							   HighestAcceptableAddress,
-							   BoundryAddressMultiple,
-							   CacheEnabled ? MmCached : MmNonCached,
-							   &VirtualAddress,
-							   LogicalAddress))) {
-	return NULL;
+    /* If we are using map registers, update the physical address and
+     * determine the new maximum possible transfer length. */
+    ULONG ByteOffset = BYTE_OFFSET(CurrentVa);
+    if (AdapterObject->UseMapRegisters) {
+	PhysicalAddress = MapReg->PhyBase;
+	PhysicalAddress.QuadPart += ByteOffset;
+	TransferLength = MapReg->Count * PAGE_SIZE - ByteOffset;
     }
 
-    return VirtualAddress;
+    /* If the maximum transfer length exceeds what the caller needs to
+     * transfer, cap it to the user specified length. */
+    if (TransferLength > *Length) {
+	TransferLength = *Length;
+    }
+
+    /* If we decided to use the map registers (see above) and we're about
+     * to transfer data to the device then copy the buffers into the map
+     * register memory. */
+    if (AdapterObject->UseMapRegisters && WriteToDevice) {
+	HalpCopyBufferMap(Mdl, MapReg, CurrentVa, TransferLength, WriteToDevice);
+    }
+
+    /* Return the length of transfer that actually takes place. */
+    *Length = TransferLength;
+
+    /* If we're doing slave (system) DMA, program the (E)ISA controller
+     * to actually start the transfer. */
+    if (AdapterObject->SystemAdapter) {
+	DMA_MODE AdapterMode = AdapterObject->SystemAdapter->AdapterMode;
+
+	if (WriteToDevice) {
+	    AdapterMode.TransferType = WRITE_TRANSFER;
+	} else {
+	    AdapterMode.TransferType = READ_TRANSFER;
+	    RtlZeroMemory((PUCHAR)MapReg->VirtBase + ByteOffset, TransferLength);
+	}
+
+	USHORT TransferOffset = (USHORT)PhysicalAddress.LowPart;
+	if (AdapterObject->SystemAdapter->Width16Bits) {
+	    TransferLength >>= 1;
+	    TransferOffset >>= 1;
+	}
+
+	assert(TransferLength != 0);
+	assert((TransferLength >> 16) == 0);
+	assert((PhysicalAddress.LowPart >> 24) == 0);
+	assert(PhysicalAddress.HighPart == 0);
+	HalpDmaStartTransfer(AdapterObject->SystemAdapter->Handle, AdapterMode.Byte,
+			     TransferOffset, TransferLength,
+			     PhysicalAddress.LowPart >> 16);
+    }
+
+    /* Return physical address of the buffer with data that is used for the
+     * transfer. It can either point inside the Mdl that was passed by the
+     * caller or into the map registers if the Mdl buffer can't be used
+     * directly. */
+    return PhysicalAddress;
 }
 
 /**
- * @name HalpFreeCommonBuffer
+ * @name HalpFlushAdapterBuffers
  *
- * Free common buffer allocated with HalpAllocateCommonBuffer.
+ * Flush any data remaining in the DMA controller's memory into the host
+ * memory.
  *
- * @see HalpAllocateCommonBuffer
+ * @param AdapterObject
+ *        The adapter object to flush.
+ * @param Mdl
+ *        Original MDL to flush data into.
+ * @param MapReg
+ *        Map register entry that was just used by HalpMapTransfer, etc.
+ * @param CurrentVa
+ *        Offset into Mdl to be flushed into, same as was passed to
+ *        HalpMapTransfer.
+ * @param Length
+ *        Length of the buffer to be flushed into.
+ * @param WriteToDevice
+ *        TRUE if it's a write, FALSE if it's a read.
+ *
+ * @return TRUE in all cases.
+ *
+ * @remarks
+ *    This copies data from the map register-backed buffer to the user's
+ *    target buffer. Data are not in the user buffer until this function
+ *    is called.
+ *    For slave DMA transfers the controller channel is masked effectively
+ *    stopping the current transfer.
+ *
+ * @implemented.
+ */
+NTAPI BOOLEAN HalpFlushAdapterBuffers(IN PDMA_ADAPTER DmaAdapter,
+				      IN PMDL Mdl,
+				      IN PVOID MapReg,
+				      IN PVOID CurrentVa,
+				      IN ULONG Length,
+				      IN BOOLEAN WriteToDevice)
+{
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    ASSERT(AdapterObject);
+
+    /* No map register is needed. Simply return. Note that this can never
+     * happen for slave DMA. */
+    if (MapReg == NULL)
+	return TRUE;
+
+    /* If we are doing slave DMA, mask out (disable) the DMA channel. */
+    if (AdapterObject->SystemAdapter) {
+	HalpDmaDisableChannel(AdapterObject->SystemAdapter->Handle);
+    }
+
+    /* We only need to flush the map registers if we are reading from a device. */
+    if (AdapterObject->UseMapRegisters && !WriteToDevice) {
+	HalpCopyBufferMap(Mdl, (PMAP_REGISTER_ENTRY)MapReg, CurrentVa, Length, FALSE);
+    }
+
+    return TRUE;
+}
+
+/**
+ * @name HalpFlushCommonBuffer
  *
  * @implemented
  */
-NTAPI VOID HalpFreeCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
-				IN ULONG Length,
-				IN PHYSICAL_ADDRESS LogicalAddress,
-				IN PVOID VirtualAddress,
-				IN BOOLEAN CacheEnabled)
+NTAPI BOOLEAN HalpFlushCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
+				    IN ULONG Length,
+				    IN PHYSICAL_ADDRESS PhysicalAddress,
+				    IN PVOID VirtualAddress)
 {
-    MmFreeContiguousMemorySpecifyCache(VirtualAddress, Length,
-				       CacheEnabled ? MmCached : MmNonCached);
+    /* Function always returns true */
+    return TRUE;
+}
+
+/**
+ * @name HalpDmaGetDmaAlignment
+ *
+ * Internal routine to return the DMA alignment requirement. It's exported
+ * using the DMA_OPERATIONS interface by HalGetAdapter.
+ *
+ * @see HalGetAdapter
+ */
+NTAPI ULONG HalpDmaGetDmaAlignment(IN PDMA_ADAPTER DmaAdapter)
+{
+    return 1;
+}
+
+/**
+ * @name HalpReadDmaCounter
+ *
+ * Read DMA operation progress counter.
+ *
+ * @implemented
+ */
+NTAPI ULONG HalpReadDmaCounter(IN PDMA_ADAPTER DmaAdapter)
+{
+    PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
+    if (!AdapterObject->SystemAdapter) {
+	return 0;
+    }
+
+    ULONG Count = 0;
+    HalpDmaReadProgressCounter(AdapterObject->SystemAdapter->Handle, &Count);
+
+    Count++;
+    Count &= 0xffff;
+    if (AdapterObject->SystemAdapter->Width16Bits)
+	Count *= 2;
+
+    return Count;
 }
 
 typedef struct _SCATTER_GATHER_CONTEXT {
     BOOLEAN UsingUserBuffer;
-    PADAPTER_OBJECT AdapterObject;
+    PDMA_ADAPTER AdapterObject;
     PMDL Mdl;
     PUCHAR CurrentVa;
     ULONG Length;
@@ -809,7 +1107,6 @@ typedef struct _SCATTER_GATHER_CONTEXT {
     PVOID AdapterListControlContext, MapRegisterBase;
     ULONG MapRegisterCount;
     BOOLEAN WriteToDevice;
-    WAIT_CONTEXT_BLOCK Wcb;
 } SCATTER_GATHER_CONTEXT, *PSCATTER_GATHER_CONTEXT;
 
 NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
@@ -818,7 +1115,7 @@ NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT Dev
 							   IN PVOID Context)
 {
     PSCATTER_GATHER_CONTEXT AdapterControlContext = Context;
-    PADAPTER_OBJECT AdapterObject = AdapterControlContext->AdapterObject;
+    PDMA_ADAPTER AdapterObject = AdapterControlContext->AdapterObject;
     ULONG ElementCount = 0, RemainingLength = AdapterControlContext->Length;
     PUCHAR CurrentVa = AdapterControlContext->CurrentVa;
 
@@ -870,95 +1167,7 @@ NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT Dev
     return DeallocateObjectKeepRegisters;
 }
 
-/**
- * @name HalpGetScatterGatherList
- *
- * Creates a scatter-gather list to be using in scatter/gather DMA
- *
- * @param AdapterObject
- *        Adapter object representing the bus master or system dma controller.
- * @param DeviceObject
- *        The device target for DMA.
- * @param Mdl
- *        The MDL that describes the buffer to be mapped.
- * @param CurrentVa
- *        The current VA in the buffer to be mapped for transfer.
- * @param Length
- *        Specifies the length of data in bytes to be mapped.
- * @param ExecutionRoutine
- *        A caller supplied AdapterListControl routine to be called when DMA is available.
- * @param Context
- *        Context passed to the AdapterListControl routine.
- * @param WriteToDevice
- *        Indicates direction of DMA operation.
- *
- * @return The status of the operation.
- *
- * @see HalpBuildScatterGatherList
- *
- * @implemented
- */
-NTAPI NTSTATUS HalpGetScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
-					IN PDEVICE_OBJECT DeviceObject,
-					IN PMDL Mdl,
-					IN PVOID CurrentVa,
-					IN ULONG Length,
-					IN PDRIVER_LIST_CONTROL ExecutionRoutine,
-					IN PVOID Context,
-					IN BOOLEAN WriteToDevice)
-{
-    return HalpBuildScatterGatherList(AdapterObject, DeviceObject, Mdl, CurrentVa, Length,
-				      ExecutionRoutine, Context, WriteToDevice, NULL, 0);
-}
-
-/**
- * @name HalpPutScatterGatherList
- *
- * Frees a scatter-gather list allocated from HalpBuildScatterGatherList
- *
- * @param AdapterObject
- *        Adapter object representing the bus master or system dma controller.
- * @param ScatterGather
- *        The scatter/gather list to be freed.
- * @param WriteToDevice
- *        Indicates direction of DMA operation.
- *
- * @return None
- *
- * @see HalpBuildScatterGatherList
- *
- * @implemented
- */
-NTAPI VOID HalpPutScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
-				    IN PSCATTER_GATHER_LIST ScatterGather,
-				    IN BOOLEAN WriteToDevice)
-{
-    PSCATTER_GATHER_CONTEXT AdapterControlContext = ScatterGather->Reserved;
-
-    for (ULONG i = 0; i < ScatterGather->NumberOfElements; i++) {
-	HalpFlushAdapterBuffers(AdapterObject,
-				AdapterControlContext->Mdl,
-				AdapterControlContext->MapRegisterBase,
-				AdapterControlContext->CurrentVa,
-				ScatterGather->Elements[i].Length,
-				AdapterControlContext->WriteToDevice);
-	AdapterControlContext->CurrentVa += ScatterGather->Elements[i].Length;
-    }
-
-    HalpFreeMapRegisters(AdapterObject,
-			 AdapterControlContext->MapRegisterBase,
-			 AdapterControlContext->MapRegisterCount);
-
-    ExFreePoolWithTag(ScatterGather, TAG_DMA);
-
-    /* If this is our buffer, release it */
-    if (!AdapterControlContext->UsingUserBuffer)
-	ExFreePoolWithTag(AdapterControlContext, TAG_DMA);
-
-    DPRINT("S/G DMA has finished!\n");
-}
-
-NTAPI NTSTATUS HalpCalculateScatterGatherListSize(IN PADAPTER_OBJECT AdapterObject,
+NTAPI NTSTATUS HalpCalculateScatterGatherListSize(IN PDMA_ADAPTER DmaAdapter,
 						  IN PMDL Mdl OPTIONAL,
 						  IN PVOID CurrentVa,
 						  IN ULONG Length,
@@ -983,7 +1192,7 @@ NTAPI NTSTATUS HalpCalculateScatterGatherListSize(IN PADAPTER_OBJECT AdapterObje
  *
  * Creates a scatter-gather list to be using in scatter/gather DMA
  *
- * @param AdapterObject
+ * @param DmaAdapter
  *        Adapter object representing the bus master or system dma controller.
  * @param DeviceObject
  *        The device target for DMA.
@@ -1012,7 +1221,7 @@ NTAPI NTSTATUS HalpCalculateScatterGatherListSize(IN PADAPTER_OBJECT AdapterObje
  *
  * @implemented
  */
-NTAPI NTSTATUS HalpBuildScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
+NTAPI NTSTATUS HalpBuildScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
 					  IN PDEVICE_OBJECT DeviceObject,
 					  IN PMDL Mdl,
 					  IN PVOID CurrentVa,
@@ -1028,12 +1237,8 @@ NTAPI NTSTATUS HalpBuildScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
     PSCATTER_GATHER_CONTEXT ScatterGatherContext;
     BOOLEAN UsingUserBuffer;
 
-    Status = HalpCalculateScatterGatherListSize(AdapterObject,
-						Mdl,
-						CurrentVa,
-						Length,
-						&SgSize,
-						&NumberOfMapRegisters);
+    Status = HalpCalculateScatterGatherListSize(DmaAdapter, Mdl, CurrentVa, Length,
+						&SgSize, &NumberOfMapRegisters);
     if (!NT_SUCCESS(Status))
 	return Status;
 
@@ -1055,7 +1260,7 @@ NTAPI NTSTATUS HalpBuildScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
 
     /* Fill the scatter-gather context */
     ScatterGatherContext->UsingUserBuffer = UsingUserBuffer;
-    ScatterGatherContext->AdapterObject = AdapterObject;
+    ScatterGatherContext->AdapterObject = DmaAdapter;
     ScatterGatherContext->Mdl = Mdl;
     ScatterGatherContext->CurrentVa = CurrentVa;
     ScatterGatherContext->Length = Length;
@@ -1064,14 +1269,11 @@ NTAPI NTSTATUS HalpBuildScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
     ScatterGatherContext->AdapterListControlContext = Context;
     ScatterGatherContext->WriteToDevice = WriteToDevice;
 
-    ScatterGatherContext->Wcb.DeviceObject = DeviceObject;
-    ScatterGatherContext->Wcb.DeviceContext = (PVOID)ScatterGatherContext;
-    ScatterGatherContext->Wcb.CurrentIrp = DeviceObject->CurrentIrp;
-
-    Status = HalpAllocateAdapterChannel(AdapterObject,
-					&ScatterGatherContext->Wcb,
+    Status = HalpAllocateAdapterChannel(DmaAdapter,
+					DeviceObject,
 					NumberOfMapRegisters,
-					HalpScatterGatherAdapterControl);
+					HalpScatterGatherAdapterControl,
+					ScatterGatherContext);
 
     if (!NT_SUCCESS(Status)) {
 	if (!UsingUserBuffer) {
@@ -1083,961 +1285,92 @@ NTAPI NTSTATUS HalpBuildScatterGatherList(IN PADAPTER_OBJECT AdapterObject,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS HalpBuildMdlFromScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
-						 IN PSCATTER_GATHER_LIST ScatterGather,
-						 IN PMDL OriginalMdl,
-						 OUT PMDL *TargetMdl)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
 /**
- * @name HalpDmaGetDmaAlignment
+ * @name HalpGetScatterGatherList
  *
- * Internal routine to return the DMA alignment requirement. It's exported
- * using the DMA_OPERATIONS interface by HalGetAdapter.
+ * Creates a scatter-gather list to be using in scatter/gather DMA
  *
- * @see HalGetAdapter
- */
-NTAPI ULONG HalpDmaGetDmaAlignment(IN PADAPTER_OBJECT AdapterObject)
-{
-    return 1;
-}
-
-/*
- * @name HalpReadDmaCounter
- *
- * Read DMA operation progress counter.
- *
- * @implemented
- */
-NTAPI ULONG HalpReadDmaCounter(IN PADAPTER_OBJECT AdapterObject)
-{
-    KIRQL OldIrql;
-    ULONG Count, OldCount;
-
-    ASSERT(!AdapterObject->MasterDevice);
-
-    /*
-     * Acquire the master adapter lock since we're going to mess with the
-     * system DMA controller registers and we really don't want anyone
-     * to do the same at the same time.
-     */
-    KeAcquireSpinLock(&AdapterObject->MasterAdapter->SpinLock, &OldIrql);
-
-    /* Send the request to the specific controller. */
-    if (AdapterObject->AdapterNumber == 1) {
-	PDMA1_CONTROL DmaControl1 = AdapterObject->AdapterBaseVa;
-
-	Count = 0xffff00;
-	do {
-	    OldCount = Count;
-
-	    /* Send Reset */
-	    WRITE_PORT_UCHAR(&DmaControl1->ClearBytePointer, 0);
-
-	    /* Read Count */
-	    Count = READ_PORT_UCHAR(&DmaControl1->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount);
-	    Count |= READ_PORT_UCHAR(&DmaControl1->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount) << 8;
-	} while (0xffff00 & (OldCount ^ Count));
-    } else {
-	PDMA2_CONTROL DmaControl2 = AdapterObject->AdapterBaseVa;
-
-	Count = 0xffff00;
-	do {
-	    OldCount = Count;
-
-	    /* Send Reset */
-	    WRITE_PORT_UCHAR(&DmaControl2->ClearBytePointer, 0);
-
-	    /* Read Count */
-	    Count = READ_PORT_UCHAR(&DmaControl2->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount);
-	    Count |= READ_PORT_UCHAR(&DmaControl2->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount) << 8;
-	} while (0xffff00 & (OldCount ^ Count));
-    }
-
-    KeReleaseSpinLock(&AdapterObject->MasterAdapter->SpinLock, OldIrql);
-
-    Count++;
-    Count &= 0xffff;
-    if (AdapterObject->Width16Bits)
-	Count *= 2;
-
-    return Count;
-}
-
-/**
- * @name HalpAllocateAdapterChannel
- *
- * Setup map registers for an adapter object.
- *
- * @param AdapterObject
- *        Pointer to an ADAPTER_OBJECT to set up.
- * @param WaitContextBlock
- *        Context block to be used with ExecutionRoutine.
- * @param NumberOfMapRegisters
- *        Number of map registers requested.
+ * @param DmaAdapter
+ *        Adapter object representing the bus master or system dma controller.
+ * @param DeviceObject
+ *        The device target for DMA.
+ * @param Mdl
+ *        The MDL that describes the buffer to be mapped.
+ * @param CurrentVa
+ *        The current VA in the buffer to be mapped for transfer.
+ * @param Length
+ *        Specifies the length of data in bytes to be mapped.
  * @param ExecutionRoutine
- *        Callback to call when map registers are allocated.
- *
- * @return
- *    If not enough map registers can be allocated then
- *    STATUS_INSUFFICIENT_RESOURCES is returned. If the function
- *    succeeds or the callback is queued for later delivering then
- *    STATUS_SUCCESS is returned.
- *
- * @see HalpFreeAdapterChannel
- *
- * @implemented
- */
-NTAPI NTSTATUS HalpAllocateAdapterChannel(IN PADAPTER_OBJECT AdapterObject,
-					  IN PWAIT_CONTEXT_BLOCK WaitContextBlock,
-					  IN ULONG NumberOfMapRegisters,
-					  IN PDRIVER_CONTROL ExecutionRoutine)
-{
-    PADAPTER_OBJECT MasterAdapter;
-    PGROW_WORK_ITEM WorkItem;
-    ULONG Index = MAXULONG;
-    ULONG Result;
-    KIRQL OldIrql;
-
-    ASSERT(KeGetCurrentIrql() == DISPATCH_LEVEL);
-
-    /* Set up the wait context block in case we can't run right away. */
-    WaitContextBlock->DeviceRoutine = ExecutionRoutine;
-    WaitContextBlock->NumberOfMapRegisters = NumberOfMapRegisters;
-
-    /* Returns true if queued, else returns false and sets the queue to busy */
-    if (KeInsertDeviceQueue(&AdapterObject->ChannelWaitQueue,
-			    &WaitContextBlock->WaitQueueEntry)) {
-	return STATUS_SUCCESS;
-    }
-
-    MasterAdapter = AdapterObject->MasterAdapter;
-
-    AdapterObject->NumberOfMapRegisters = NumberOfMapRegisters;
-    AdapterObject->CurrentWcb = WaitContextBlock;
-
-    if ((NumberOfMapRegisters) && (AdapterObject->NeedsMapRegisters)) {
-	if (NumberOfMapRegisters > AdapterObject->MapRegistersPerChannel) {
-	    AdapterObject->NumberOfMapRegisters = 0;
-	    HalpFreeAdapterChannel(AdapterObject);
-	    return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	/*
-	 * Get the map registers. This is partly complicated by the fact
-	 * that new map registers can only be allocated at PASSIVE_LEVEL
-	 * and we're currently at DISPATCH_LEVEL. The following code has
-	 * two code paths:
-	 *
-	 * - If there is no adapter queued for map register allocation,
-	 *   try to see if enough contiguous map registers are present.
-	 *   In case they're we can just get them and proceed further.
-	 *
-	 * - If some adapter is already present in the queue we must
-	 *   respect the order of adapters asking for map registers and
-	 *   so the fast case described above can't take place.
-	 *   This case is also entered if not enough coniguous map
-	 *   registers are present.
-	 *
-	 *   A work queue item is allocated and queued, the adapter is
-	 *   also queued into the master adapter queue. The worker
-	 *   routine does the job of allocating the map registers at
-	 *   PASSIVE_LEVEL and calling the ExecutionRoutine.
-	 */
-
-	KeAcquireSpinLock(&MasterAdapter->SpinLock, &OldIrql);
-
-	if (IsListEmpty(&MasterAdapter->AdapterQueue)) {
-	    Index = RtlFindClearBitsAndSet(MasterAdapter->MapRegisters,
-					   NumberOfMapRegisters, 0);
-	    if (Index != MAXULONG) {
-		AdapterObject->MapRegisterBase = MasterAdapter->MapRegisterBase + Index;
-		if (!AdapterObject->ScatterGather) {
-		    AdapterObject->MapRegisterBase =
-			(PROS_MAP_REGISTER_ENTRY)((ULONG_PTR)AdapterObject->MapRegisterBase |
-						  MAP_BASE_SW_SG);
-		}
-	    }
-	}
-
-	if (Index == MAXULONG) {
-	    InsertTailList(&MasterAdapter->AdapterQueue,
-			   &AdapterObject->AdapterQueue);
-
-	    WorkItem = ExAllocatePoolWithTag(NonPagedPool,
-					     sizeof(GROW_WORK_ITEM),
-					     TAG_DMA);
-	    if (WorkItem) {
-		ExInitializeWorkItem(&WorkItem->WorkQueueItem,
-				     HalpGrowMapBufferWorker, WorkItem);
-		WorkItem->AdapterObject = AdapterObject;
-		WorkItem->NumberOfMapRegisters = NumberOfMapRegisters;
-
-		ExQueueWorkItem(&WorkItem->WorkQueueItem,
-				DelayedWorkQueue);
-	    }
-
-	    KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-
-	    return STATUS_SUCCESS;
-	}
-
-	KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-    } else {
-	AdapterObject->MapRegisterBase = NULL;
-	AdapterObject->NumberOfMapRegisters = 0;
-    }
-
-    AdapterObject->CurrentWcb = WaitContextBlock;
-
-    Result = ExecutionRoutine(WaitContextBlock->DeviceObject,
-			      WaitContextBlock->CurrentIrp,
-			      AdapterObject->MapRegisterBase,
-			      WaitContextBlock->DeviceContext);
-
-    /*
-     * Possible return values:
-     *
-     * - KeepObject
-     *   Don't free any resources, the ADAPTER_OBJECT is still in use and
-     *   the caller will call HalpFreeAdapterChannel later.
-     *
-     * - DeallocateObject
-     *   Deallocate the map registers and release the ADAPTER_OBJECT, so
-     *   someone else can use it.
-     *
-     * - DeallocateObjectKeepRegisters
-     *   Release the ADAPTER_OBJECT, but hang on to the map registers. The
-     *   client will later call HalpFreeMapRegisters.
-     *
-     * NOTE:
-     * HalpFreeAdapterChannel runs the queue, so it must be called unless
-     * the adapter object is not to be freed.
-     */
-    if (Result == DeallocateObject) {
-	HalpFreeAdapterChannel(AdapterObject);
-    } else if (Result == DeallocateObjectKeepRegisters) {
-	AdapterObject->NumberOfMapRegisters = 0;
-	HalpFreeAdapterChannel(AdapterObject);
-    }
-
-    return STATUS_SUCCESS;
-}
-
-/**
- * @name HalpFreeAdapterChannel
- *
- * Free DMA resources allocated by HalpAllocateAdapterChannel.
- *
- * @param AdapterObject
- *        Adapter object with resources to free.
- *
- * @remarks
- *    This function releases map registers assigned to the DMA adapter.
- *    After releasing the adapter, it checks the adapter's queue and runs
- *    each queued device object in series until the queue is empty. This
- *    is the only way the device queue is emptied.
- *
- * @see HalpAllocateAdapterChannel
- *
- * @implemented
- */
-NTAPI VOID HalpFreeAdapterChannel(IN PADAPTER_OBJECT AdapterObject)
-{
-    PADAPTER_OBJECT MasterAdapter;
-    PKDEVICE_QUEUE_ENTRY DeviceQueueEntry;
-    PWAIT_CONTEXT_BLOCK WaitContextBlock;
-    ULONG Index = MAXULONG;
-    ULONG Result;
-    KIRQL OldIrql;
-
-    MasterAdapter = AdapterObject->MasterAdapter;
-
-    for (;;) {
-	/*
-	 * To keep map registers, call here with AdapterObject->
-	 * NumberOfMapRegisters set to zero. This trick is used in
-	 * HalpAllocateAdapterChannel for example.
-	 */
-	if (AdapterObject->NumberOfMapRegisters) {
-	    HalpFreeMapRegisters(AdapterObject,
-				 AdapterObject->MapRegisterBase,
-				 AdapterObject->NumberOfMapRegisters);
-	}
-
-	DeviceQueueEntry =
-	    KeRemoveDeviceQueue(&AdapterObject->ChannelWaitQueue);
-	if (!DeviceQueueEntry)
-	    break;
-
-	WaitContextBlock = CONTAINING_RECORD(DeviceQueueEntry,
-					     WAIT_CONTEXT_BLOCK,
-					     WaitQueueEntry);
-
-	AdapterObject->CurrentWcb = WaitContextBlock;
-	AdapterObject->NumberOfMapRegisters =
-	    WaitContextBlock->NumberOfMapRegisters;
-
-	if ((WaitContextBlock->NumberOfMapRegisters)
-	    && (AdapterObject->MasterAdapter)) {
-	    KeAcquireSpinLock(&MasterAdapter->SpinLock, &OldIrql);
-
-	    if (IsListEmpty(&MasterAdapter->AdapterQueue)) {
-		Index = RtlFindClearBitsAndSet(MasterAdapter->MapRegisters,
-					       WaitContextBlock->NumberOfMapRegisters, 0);
-		if (Index != MAXULONG) {
-		    AdapterObject->MapRegisterBase =
-			MasterAdapter->MapRegisterBase + Index;
-		    if (!AdapterObject->ScatterGather) {
-			AdapterObject->MapRegisterBase =
-			    (PROS_MAP_REGISTER_ENTRY)((ULONG_PTR)AdapterObject->MapRegisterBase |
-						      MAP_BASE_SW_SG);
-		    }
-		}
-	    }
-
-	    if (Index == MAXULONG) {
-		InsertTailList(&MasterAdapter->AdapterQueue,
-			       &AdapterObject->AdapterQueue);
-		KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-		break;
-	    }
-
-	    KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-	} else {
-	    AdapterObject->MapRegisterBase = NULL;
-	    AdapterObject->NumberOfMapRegisters = 0;
-	}
-
-	/* Call the adapter control routine. */
-	Result =
-	    ((PDRIVER_CONTROL) WaitContextBlock->
-	     DeviceRoutine) (WaitContextBlock->DeviceObject,
-			     WaitContextBlock->CurrentIrp,
-			     AdapterObject->MapRegisterBase,
-			     WaitContextBlock->DeviceContext);
-	switch (Result) {
-	case KeepObject:
-	    /*
-	     * We're done until the caller manually calls HalpFreeAdapterChannel
-	     * or HalpFreeMapRegisters.
-	     */
-	    return;
-
-	case DeallocateObjectKeepRegisters:
-	    /*
-	     * Hide the map registers so they aren't deallocated next time
-	     * around.
-	     */
-	    AdapterObject->NumberOfMapRegisters = 0;
-	    break;
-
-	default:
-	    break;
-	}
-    }
-}
-
-/**
- * @name HalpFreeMapRegisters
- *
- * Free map registers reserved by the system for a DMA.
- *
- * @param AdapterObject
- *        DMA adapter to free map registers on.
- * @param MapRegisterBase
- *        Handle to map registers to free.
- * @param NumberOfRegisters
- *        Number of map registers to be freed.
- *
- * @implemented
- */
-NTAPI VOID HalpFreeMapRegisters(IN PADAPTER_OBJECT AdapterObject,
-				IN PVOID MapRegisterBase,
-				IN ULONG NumberOfMapRegisters)
-{
-    PADAPTER_OBJECT MasterAdapter = AdapterObject->MasterAdapter;
-    PLIST_ENTRY ListEntry;
-    KIRQL OldIrql;
-    ULONG Index;
-    ULONG Result;
-
-    ASSERT(KeGetCurrentIrql() == DISPATCH_LEVEL);
-
-    if (!MasterAdapter || !MapRegisterBase)
-	return;
-
-    KeAcquireSpinLock(&MasterAdapter->SpinLock, &OldIrql);
-
-    if (NumberOfMapRegisters != 0) {
-	PROS_MAP_REGISTER_ENTRY RealMapRegisterBase;
-
-	RealMapRegisterBase =
-	    (PROS_MAP_REGISTER_ENTRY)((ULONG_PTR)MapRegisterBase & ~MAP_BASE_SW_SG);
-	RtlClearBits(MasterAdapter->MapRegisters,
-		     (ULONG)(RealMapRegisterBase - MasterAdapter->MapRegisterBase),
-		     NumberOfMapRegisters);
-    }
-
-    /*
-     * Now that we freed few map registers it's time to look at the master
-     * adapter queue and see if there is someone waiting for map registers.
-     */
-    while (!IsListEmpty(&MasterAdapter->AdapterQueue)) {
-	ListEntry = RemoveHeadList(&MasterAdapter->AdapterQueue);
-	AdapterObject = CONTAINING_RECORD(ListEntry, ADAPTER_OBJECT,
-					  AdapterQueue);
-
-	Index = RtlFindClearBitsAndSet(MasterAdapter->MapRegisters,
-				       AdapterObject->NumberOfMapRegisters,
-				       0);
-	if (Index == MAXULONG) {
-	    InsertHeadList(&MasterAdapter->AdapterQueue, ListEntry);
-	    break;
-	}
-
-	KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-
-	AdapterObject->MapRegisterBase =
-	    MasterAdapter->MapRegisterBase + Index;
-	if (!AdapterObject->ScatterGather) {
-	    AdapterObject->MapRegisterBase =
-		(PROS_MAP_REGISTER_ENTRY)((ULONG_PTR)AdapterObject->MapRegisterBase |
-					  MAP_BASE_SW_SG);
-	}
-
-	Result = AdapterObject->CurrentWcb->DeviceRoutine(AdapterObject->CurrentWcb->DeviceObject,
-							  AdapterObject->CurrentWcb->CurrentIrp,
-							  AdapterObject->MapRegisterBase,
-							  AdapterObject->CurrentWcb->DeviceContext);
-	switch (Result) {
-	case DeallocateObjectKeepRegisters:
-	    AdapterObject->NumberOfMapRegisters = 0;
-	    /* fall through */
-
-	case DeallocateObject:
-	    if (AdapterObject->NumberOfMapRegisters) {
-		KeAcquireSpinLock(&MasterAdapter->SpinLock, &OldIrql);
-		RtlClearBits(MasterAdapter->MapRegisters,
-			     (ULONG)(AdapterObject->MapRegisterBase - MasterAdapter->MapRegisterBase),
-			     AdapterObject->NumberOfMapRegisters);
-		KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-	    }
-
-	    HalpFreeAdapterChannel(AdapterObject);
-	    break;
-
-	default:
-	    break;
-	}
-
-	KeAcquireSpinLock(&MasterAdapter->SpinLock, &OldIrql);
-    }
-
-    KeReleaseSpinLock(&MasterAdapter->SpinLock, OldIrql);
-}
-
-/**
- * @name HalpCopyBufferMap
- *
- * Helper function for copying data from/to map register buffers.
- *
- * @see HalpFlushAdapterBuffers, HalpMapTransfer
- */
-NTAPI VOID HalpCopyBufferMap(IN PMDL Mdl,
-			     IN PROS_MAP_REGISTER_ENTRY MapRegisterBase,
-			     IN PVOID CurrentVa,
-			     IN ULONG Length,
-			     IN BOOLEAN WriteToDevice)
-{
-    ULONG CurrentLength;
-    ULONG_PTR CurrentAddress;
-    ULONG ByteOffset;
-    PVOID VirtualAddress;
-
-    VirtualAddress = MmGetSystemAddressForMdlSafe(Mdl, HighPagePriority);
-    if (!VirtualAddress) {
-	/*
-	 * NOTE: On real NT a mechanism with reserved pages is implemented
-	 * to handle this case in a slow, but graceful non-fatal way.
-	 */
-	KeBugCheckEx(HAL_MEMORY_ALLOCATION, PAGE_SIZE, 0,
-		     (ULONG_PTR) __FILE__, 0);
-    }
-
-    CurrentAddress = (ULONG_PTR)VirtualAddress +
-	(ULONG_PTR)CurrentVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
-
-    while (Length > 0) {
-	ByteOffset = BYTE_OFFSET(CurrentAddress);
-	CurrentLength = PAGE_SIZE - ByteOffset;
-	if (CurrentLength > Length)
-	    CurrentLength = Length;
-
-	if (WriteToDevice) {
-	    RtlCopyMemory((PVOID)((ULONG_PTR)MapRegisterBase->VirtualAddress + ByteOffset),
-			  (PVOID)CurrentAddress,
-			  CurrentLength);
-	} else {
-	    RtlCopyMemory((PVOID)CurrentAddress,
-			  (PVOID)((ULONG_PTR)MapRegisterBase->VirtualAddress + ByteOffset),
-			  CurrentLength);
-	}
-
-	Length -= CurrentLength;
-	CurrentAddress += CurrentLength;
-	MapRegisterBase++;
-    }
-}
-
-/**
- * @name HalpFlushAdapterBuffers
- *
- * Flush any data remaining in the DMA controller's memory into the host
- * memory.
- *
- * @param AdapterObject
- *        The adapter object to flush.
- * @param Mdl
- *        Original MDL to flush data into.
- * @param MapRegisterBase
- *        Map register base that was just used by HalpMapTransfer, etc.
- * @param CurrentVa
- *        Offset into Mdl to be flushed into, same as was passed to
- *        HalpMapTransfer.
- * @param Length
- *        Length of the buffer to be flushed into.
+ *        A caller supplied AdapterListControl routine to be called when DMA is available.
+ * @param Context
+ *        Context passed to the AdapterListControl routine.
  * @param WriteToDevice
- *        TRUE if it's a write, FALSE if it's a read.
+ *        Indicates direction of DMA operation.
  *
- * @return TRUE in all cases.
+ * @return The status of the operation.
  *
- * @remarks
- *    This copies data from the map register-backed buffer to the user's
- *    target buffer. Data are not in the user buffer until this function
- *    is called.
- *    For slave DMA transfers the controller channel is masked effectively
- *    stopping the current transfer.
+ * @see HalpBuildScatterGatherList
  *
- * @unimplemented.
+ * @implemented
  */
-NTAPI BOOLEAN HalpFlushAdapterBuffers(IN PADAPTER_OBJECT AdapterObject,
-				      IN PMDL Mdl,
-				      IN PVOID MapRegisterBase,
-				      IN PVOID CurrentVa,
-				      IN ULONG Length,
-				      IN BOOLEAN WriteToDevice)
+NTAPI NTSTATUS HalpGetScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
+					IN PDEVICE_OBJECT DeviceObject,
+					IN PMDL Mdl,
+					IN PVOID CurrentVa,
+					IN ULONG Length,
+					IN PDRIVER_LIST_CONTROL ExecutionRoutine,
+					IN PVOID Context,
+					IN BOOLEAN WriteToDevice)
 {
-    BOOLEAN SlaveDma = FALSE;
-    PROS_MAP_REGISTER_ENTRY RealMapRegisterBase;
-    PHYSICAL_ADDRESS HighestAcceptableAddress;
-    PHYSICAL_ADDRESS PhysicalAddress;
-    PPFN_NUMBER MdlPagesPtr;
-
-    /* Sanity checks */
-    ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
-    ASSERT(AdapterObject);
-
-    if (!AdapterObject->MasterDevice) {
-	/* Mask out (disable) the DMA channel. */
-	if (AdapterObject->AdapterNumber == 1) {
-	    PDMA1_CONTROL DmaControl1 = AdapterObject->AdapterBaseVa;
-	    WRITE_PORT_UCHAR(&DmaControl1->SingleMask,
-			     AdapterObject->ChannelNumber | DMA_SETMASK);
-	} else {
-	    PDMA2_CONTROL DmaControl2 = AdapterObject->AdapterBaseVa;
-	    WRITE_PORT_UCHAR(&DmaControl2->SingleMask,
-			     AdapterObject->ChannelNumber | DMA_SETMASK);
-	}
-	SlaveDma = TRUE;
-    }
-
-    /* This can happen if the device supports hardware scatter/gather. */
-    if (MapRegisterBase == NULL)
-	return TRUE;
-
-    RealMapRegisterBase = (PROS_MAP_REGISTER_ENTRY)((ULONG_PTR)MapRegisterBase & ~MAP_BASE_SW_SG);
-
-    if (!WriteToDevice) {
-	if ((ULONG_PTR) MapRegisterBase & MAP_BASE_SW_SG) {
-	    if (RealMapRegisterBase->Counter != MAXULONG) {
-		if ((SlaveDma) && !(AdapterObject->IgnoreCount)) {
-		    Length -= HalpReadDmaCounter(AdapterObject);
-		}
-	    }
-	    HalpCopyBufferMap(Mdl,
-			      RealMapRegisterBase,
-			      CurrentVa, Length, FALSE);
-	} else {
-	    MdlPagesPtr = MmGetMdlPfnArray(Mdl);
-	    MdlPagesPtr += ((ULONG_PTR)CurrentVa - (ULONG_PTR)Mdl->StartVa) >> PAGE_SHIFT;
-
-	    PhysicalAddress.QuadPart = *MdlPagesPtr << PAGE_SHIFT;
-	    PhysicalAddress.QuadPart += BYTE_OFFSET(CurrentVa);
-
-	    HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
-	    if ((PhysicalAddress.QuadPart + Length) > HighestAcceptableAddress.QuadPart) {
-		HalpCopyBufferMap(Mdl, RealMapRegisterBase, CurrentVa, Length, FALSE);
-	    }
-	}
-    }
-
-    RealMapRegisterBase->Counter = 0;
-
-    return TRUE;
+    return HalpBuildScatterGatherList(DmaAdapter, DeviceObject, Mdl, CurrentVa, Length,
+				      ExecutionRoutine, Context, WriteToDevice, NULL, 0);
 }
 
 /**
- * @name HalpMapTransfer
+ * @name HalpPutScatterGatherList
  *
- * Map a DMA for transfer and do the DMA if it's a slave.
+ * Frees a scatter-gather list allocated from HalpBuildScatterGatherList
  *
- * @param AdapterObject
- *        Adapter object to do the DMA on. Bus-master may pass NULL.
- * @param Mdl
- *        Locked-down user buffer to DMA in to or out of.
- * @param MapRegisterBase
- *        Handle to map registers to use for this dma.
- * @param CurrentVa
- *        Index into Mdl to transfer into/out of.
- * @param Length
- *        Length of transfer. Number of bytes actually transferred on
- *        output.
+ * @param DmaAdapter
+ *        Adapter object representing the bus master or system dma controller.
+ * @param ScatterGather
+ *        The scatter/gather list to be freed.
  * @param WriteToDevice
- *        TRUE if it's an output DMA, FALSE otherwise.
+ *        Indicates direction of DMA operation.
  *
- * @return
- *    A logical address that can be used to program a DMA controller, it's
- *    not meaningful for slave DMA device.
+ * @return None
  *
- * @remarks
- *    This function does a copyover to contiguous memory <16MB represented
- *    by the map registers if needed. If the buffer described by MDL can be
- *    used as is no copyover is done.
- *    If it's a slave transfer, this function actually performs it.
+ * @see HalpBuildScatterGatherList
  *
  * @implemented
  */
-NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PADAPTER_OBJECT AdapterObject,
-				       IN PMDL Mdl,
-				       IN PVOID MapRegisterBase,
-				       IN PVOID CurrentVa,
-				       IN OUT PULONG Length,
-				       IN BOOLEAN WriteToDevice)
+NTAPI VOID HalpPutScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
+				    IN PSCATTER_GATHER_LIST ScatterGather,
+				    IN BOOLEAN WriteToDevice)
 {
-    PPFN_NUMBER MdlPagesPtr;
-    PFN_NUMBER MdlPage1, MdlPage2;
-    ULONG ByteOffset;
-    ULONG TransferOffset;
-    ULONG TransferLength;
-    BOOLEAN UseMapRegisters;
-    PROS_MAP_REGISTER_ENTRY RealMapRegisterBase;
-    PHYSICAL_ADDRESS PhysicalAddress;
-    PHYSICAL_ADDRESS HighestAcceptableAddress;
-    ULONG Counter;
-    DMA_MODE AdapterMode;
-    KIRQL OldIrql;
+    PSCATTER_GATHER_CONTEXT AdapterControlContext = (PSCATTER_GATHER_CONTEXT)ScatterGather->Reserved;
 
-    /*
-     * Precalculate some values that are used in all cases.
-     *
-     * ByteOffset is offset inside the page at which the transfer starts.
-     * MdlPagesPtr is pointer inside the MDL page chain at the page where the
-     *             transfer start.
-     * PhysicalAddress is physical address corresponding to the transfer
-     *                 start page and offset.
-     * TransferLength is the initial length of the transfer, which is reminder
-     *                of the first page. The actual value is calculated below.
-     *
-     * Note that all the variables can change during the processing which
-     * takes place below. These are just initial values.
-     */
-    ByteOffset = BYTE_OFFSET(CurrentVa);
-
-    MdlPagesPtr = MmGetMdlPfnArray(Mdl);
-    MdlPagesPtr += ((ULONG_PTR)CurrentVa - (ULONG_PTR)Mdl->StartVa) >> PAGE_SHIFT;
-
-    PhysicalAddress.QuadPart = *MdlPagesPtr << PAGE_SHIFT;
-    PhysicalAddress.QuadPart += ByteOffset;
-
-    TransferLength = PAGE_SIZE - ByteOffset;
-
-    /*
-     * Special case for bus master adapters with S/G support. We can directly
-     * use the buffer specified by the MDL, so not much work has to be done.
-     *
-     * Just return the passed VA's corresponding physical address and update
-     * length to the number of physically contiguous bytes found. Also
-     * pages crossing the 4Gb boundary aren't considered physically contiguous.
-     */
-    if (MapRegisterBase == NULL) {
-	while (TransferLength < *Length) {
-	    MdlPage1 = *MdlPagesPtr;
-	    MdlPage2 = *(MdlPagesPtr + 1);
-	    if (MdlPage1 + 1 != MdlPage2)
-		break;
-	    if ((MdlPage1 ^ MdlPage2) & ~0xFFFFF)
-		break;
-	    TransferLength += PAGE_SIZE;
-	    MdlPagesPtr++;
-	}
-
-	if (TransferLength < *Length)
-	    *Length = TransferLength;
-
-	return PhysicalAddress;
+    for (ULONG i = 0; i < ScatterGather->NumberOfElements; i++) {
+	HalpFlushAdapterBuffers(DmaAdapter,
+				AdapterControlContext->Mdl,
+				AdapterControlContext->MapRegisterBase,
+				AdapterControlContext->CurrentVa,
+				ScatterGather->Elements[i].Length,
+				AdapterControlContext->WriteToDevice);
+	AdapterControlContext->CurrentVa += ScatterGather->Elements[i].Length;
     }
 
-    /*
-     * The code below applies to slave DMA adapters and bus master adapters
-     * without hardward S/G support.
-     */
-    RealMapRegisterBase = (PROS_MAP_REGISTER_ENTRY)((ULONG_PTR)MapRegisterBase &
-						    ~MAP_BASE_SW_SG);
+    HalpFreeMapRegisters(DmaAdapter,
+			 AdapterControlContext->MapRegisterBase,
+			 AdapterControlContext->MapRegisterCount);
 
-    /*
-     * Try to calculate the size of the transfer. We can only transfer
-     * pages that are physically contiguous and that don't cross the
-     * 64Kb boundary (this limitation applies only for ISA controllers).
-     */
-    while (TransferLength < *Length) {
-	MdlPage1 = *MdlPagesPtr;
-	MdlPage2 = *(MdlPagesPtr + 1);
-	if (MdlPage1 + 1 != MdlPage2)
-	    break;
-	if (!HalpEisaDma && ((MdlPage1 ^ MdlPage2) & ~0xF))
-	    break;
-	TransferLength += PAGE_SIZE;
-	MdlPagesPtr++;
-    }
+    ExFreePoolWithTag(ScatterGather, TAG_DMA);
 
-    if (TransferLength > *Length)
-	TransferLength = *Length;
+    /* If this is our buffer, release it */
+    if (!AdapterControlContext->UsingUserBuffer)
+	ExFreePoolWithTag(AdapterControlContext, TAG_DMA);
 
-    /*
-     * If we're about to simulate software S/G and not all the pages are
-     * physically contiguous then we must use the map registers to store
-     * the data and allow the whole transfer to proceed at once.
-     */
-    if (((ULONG_PTR)MapRegisterBase & MAP_BASE_SW_SG) && (TransferLength < *Length)) {
-	UseMapRegisters = TRUE;
-	PhysicalAddress = RealMapRegisterBase->PhysicalAddress;
-	PhysicalAddress.QuadPart += ByteOffset;
-	TransferLength = *Length;
-	RealMapRegisterBase->Counter = MAXULONG;
-	Counter = 0;
-    } else {
-	/*
-	 * This is ordinary DMA transfer, so just update the progress
-	 * counters. These are used by HalpFlushAdapterBuffers to track
-	 * the transfer progress.
-	 */
-	UseMapRegisters = FALSE;
-	Counter = RealMapRegisterBase->Counter;
-	RealMapRegisterBase->Counter += BYTES_TO_PAGES(ByteOffset + TransferLength);
-
-	/*
-	 * Check if the buffer doesn't exceed the highest physical address
-	 * limit of the device. In that case we must use the map registers to
-	 * store the data.
-	 */
-	HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
-	if ((PhysicalAddress.QuadPart + TransferLength) > HighestAcceptableAddress.QuadPart) {
-	    UseMapRegisters = TRUE;
-	    PhysicalAddress = RealMapRegisterBase[Counter].PhysicalAddress;
-	    PhysicalAddress.QuadPart += ByteOffset;
-	    if ((ULONG_PTR)MapRegisterBase & MAP_BASE_SW_SG) {
-		RealMapRegisterBase->Counter = MAXULONG;
-		Counter = 0;
-	    }
-	}
-    }
-
-    /*
-     * If we decided to use the map registers (see above) and we're about
-     * to transfer data to the device then copy the buffers into the map
-     * register memory.
-     */
-    if (UseMapRegisters && WriteToDevice) {
-	HalpCopyBufferMap(Mdl, RealMapRegisterBase + Counter,
-			  CurrentVa, TransferLength, WriteToDevice);
-    }
-
-    /*
-     * Return the length of transfer that actually takes place.
-     */
-    *Length = TransferLength;
-
-    /*
-     * If we're doing slave (system) DMA then program the (E)ISA controller
-     * to actually start the transfer.
-     */
-    if (AdapterObject && !AdapterObject->MasterDevice) {
-	AdapterMode = AdapterObject->AdapterMode;
-
-	if (WriteToDevice) {
-	    AdapterMode.TransferType = WRITE_TRANSFER;
-	} else {
-	    AdapterMode.TransferType = READ_TRANSFER;
-	    if (AdapterObject->IgnoreCount) {
-		RtlZeroMemory((PUCHAR)RealMapRegisterBase[Counter].VirtualAddress + ByteOffset,
-			      TransferLength);
-	    }
-	}
-
-	TransferOffset = PhysicalAddress.LowPart & 0xFFFF;
-	if (AdapterObject->Width16Bits) {
-	    TransferLength >>= 1;
-	    TransferOffset >>= 1;
-	}
-
-	KeAcquireSpinLock(&AdapterObject->MasterAdapter->SpinLock,
-			  &OldIrql);
-
-	if (AdapterObject->AdapterNumber == 1) {
-	    PDMA1_CONTROL DmaControl1 = AdapterObject->AdapterBaseVa;
-
-	    /* Reset Register */
-	    WRITE_PORT_UCHAR(&DmaControl1->ClearBytePointer, 0);
-
-	    /* Set the Mode */
-	    WRITE_PORT_UCHAR(&DmaControl1->Mode, AdapterMode.Byte);
-
-	    /* Set the Offset Register */
-	    WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseAddress,
-			     (UCHAR)TransferOffset);
-	    WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseAddress,
-			     (UCHAR)(TransferOffset >> 8));
-
-	    /* Set the Page Register */
-	    WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL, DmaController1Pages),
-			     (UCHAR)(PhysicalAddress.LowPart >> 16));
-	    if (HalpEisaDma) {
-		WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL, DmaController2Pages),
-				 0);
-	    }
-
-	    /* Set the Length */
-	    WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount,
-			     (UCHAR)(TransferLength - 1));
-	    WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount,
-			     (UCHAR)((TransferLength - 1) >> 8));
-
-	    /* Unmask the Channel */
-	    WRITE_PORT_UCHAR(&DmaControl1->SingleMask,
-			     AdapterObject->ChannelNumber | DMA_CLEARMASK);
-	} else {
-	    PDMA2_CONTROL DmaControl2 = AdapterObject->AdapterBaseVa;
-
-	    /* Reset Register */
-	    WRITE_PORT_UCHAR(&DmaControl2->ClearBytePointer, 0);
-
-	    /* Set the Mode */
-	    WRITE_PORT_UCHAR(&DmaControl2->Mode, AdapterMode.Byte);
-
-	    /* Set the Offset Register */
-	    WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseAddress,
-			     (UCHAR)(TransferOffset));
-	    WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseAddress,
-			     (UCHAR)(TransferOffset >> 8));
-
-	    /* Set the Page Register */
-	    WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL, DmaController1Pages),
-			     (UCHAR)(PhysicalAddress.u.LowPart >> 16));
-	    if (HalpEisaDma) {
-		WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL, DmaController2Pages),
-				 0);
-	    }
-
-	    /* Set the Length */
-	    WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount,
-			     (UCHAR)(TransferLength - 1));
-	    WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[AdapterObject->ChannelNumber].DmaBaseCount,
-			     (UCHAR)((TransferLength - 1) >> 8));
-
-	    /* Unmask the Channel */
-	    WRITE_PORT_UCHAR(&DmaControl2->SingleMask,
-			     AdapterObject->ChannelNumber | DMA_CLEARMASK);
-	}
-
-	KeReleaseSpinLock(&AdapterObject->MasterAdapter->SpinLock,
-			  OldIrql);
-    }
-
-    /*
-     * Return physical address of the buffer with data that is used for the
-     * transfer. It can either point inside the Mdl that was passed by the
-     * caller or into the map registers if the Mdl buffer can't be used
-     * directly.
-     */
-    return PhysicalAddress;
-}
-
-/**
- * @name HalpFlushCommonBuffer
- *
- * @implemented
- */
-NTAPI BOOLEAN HalpFlushCommonBuffer(IN PADAPTER_OBJECT AdapterObject,
-				    IN ULONG Length,
-				    IN PHYSICAL_ADDRESS LogicalAddress,
-				    IN PVOID VirtualAddress)
-{
-    /* Function always returns true */
-    return TRUE;
-}
-
-/*
- * This needs to be removed. This is only used in case of system crashing by
- * disk drivers when generating crash dumps.
- * @implemented
- */
-NTAPI PVOID HalAllocateCrashDumpRegisters(IN PADAPTER_OBJECT AdapterObject,
-					  IN OUT PULONG NumberOfMapRegisters)
-{
-    PADAPTER_OBJECT MasterAdapter = AdapterObject->MasterAdapter;
-    ULONG MapRegisterNumber;
-
-    /* Check if it needs map registers */
-    if (AdapterObject->NeedsMapRegisters) {
-	/* Check if we have enough */
-	if (*NumberOfMapRegisters > AdapterObject->MapRegistersPerChannel) {
-	    /* We don't, fail */
-	    AdapterObject->NumberOfMapRegisters = 0;
-	    return NULL;
-	}
-
-	/* Try to find free map registers */
-	MapRegisterNumber = RtlFindClearBitsAndSet(MasterAdapter->MapRegisters,
-						   *NumberOfMapRegisters, 0);
-
-	/* Check if nothing was found */
-	if (MapRegisterNumber == MAXULONG) {
-	    /* No free registers found, so use the base registers */
-	    RtlSetBits(MasterAdapter->MapRegisters, 0, *NumberOfMapRegisters);
-	    MapRegisterNumber = 0;
-	}
-
-	/* Calculate the new base */
-	AdapterObject->MapRegisterBase = (PROS_MAP_REGISTER_ENTRY)
-	    (MasterAdapter->MapRegisterBase + MapRegisterNumber);
-
-	/* Check if scatter gather isn't supported */
-	if (!AdapterObject->ScatterGather) {
-	    /* Set the flag */
-	    AdapterObject->MapRegisterBase = (PROS_MAP_REGISTER_ENTRY)
-		((ULONG_PTR)AdapterObject->MapRegisterBase | MAP_BASE_SW_SG);
-	}
-    } else {
-	AdapterObject->MapRegisterBase = NULL;
-	AdapterObject->NumberOfMapRegisters = 0;
-    }
-
-    /* Return the base */
-    return AdapterObject->MapRegisterBase;
+    DPRINT("S/G DMA has finished!\n");
 }
 
 static DMA_OPERATIONS HalpDmaOperations = {
@@ -2056,5 +1389,4 @@ static DMA_OPERATIONS HalpDmaOperations = {
     .PutScatterGatherList = HalpPutScatterGatherList,
     .CalculateScatterGatherList = HalpCalculateScatterGatherListSize,
     .BuildScatterGatherList = HalpBuildScatterGatherList,
-    .BuildMdlFromScat = HalpBuildMdlFromScatterGatherList
 };

@@ -107,8 +107,8 @@
  * 1.44M    3 1/2   80      2      18       2       18        14        F0
  */
 
-#define GEOMETRY_144_MEDIATYPE	F3_1Pt44_512
-#define GEOMETRY_144_CYLINDERS	80
+#define GEOMETRY_144_MEDIATYPE		F3_1Pt44_512
+#define GEOMETRY_144_CYLINDERS		80
 #define GEOMETRY_144_TRACKSPERCYLINDER	2
 #define GEOMETRY_144_SECTORSPERTRACK	18
 #define GEOMETRY_144_BYTESPERSECTOR	512
@@ -156,7 +156,7 @@ typedef struct _CONTROLLER_INFO {
 //    BOOLEAN          Master;
     KEVENT           SynchEvent;
     PKINTERRUPT      InterruptObject;
-    PADAPTER_OBJECT  AdapterObject;
+    PDMA_ADAPTER     AdapterObject;
     UCHAR            NumberOfDrives;
     BOOLEAN          ImpliedSeeks;
     DRIVE_INFO       DriveInfo[MAX_DRIVES_PER_CONTROLLER];

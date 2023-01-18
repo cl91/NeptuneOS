@@ -842,12 +842,6 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
 	RET_ERR(KeCreateNotificationEx(&Process->DpcMutex, Process->CSpace));
 	Process->InitInfo.DriverInitInfo.DpcMutexCap = Process->DpcMutex.TreeNode.Cap;
-	MmInitializeCapTreeNode(&Process->SystemDmaMutex, 0, 0, Process->CSpace, NULL);
-	extern NOTIFICATION IopSystemAdapterMutex; /* This is defined in io/init.c */
-	assert(IopSystemAdapterMutex.TreeNode.Cap != 0);
-	RET_ERR(MmCapTreeCopyNode(&Process->SystemAdapterMutex, &IopSystemAdapterMutex,
-				  seL4_AllRights));
-	Process->InitInfo.DriverInitInfo.SystemAdapterMutex = Process->SystemAdapterMutex.TreeNode.Cap;
     }
 
     /* Create the Event objects used by the NTDLL ldr component */

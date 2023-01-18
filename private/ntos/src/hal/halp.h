@@ -125,8 +125,8 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
 #define VGA_CURSOR_CONTROL_PORT		(0x3D4)
 #define VGA_CURSOR_DATA_PORT		(0x3D5)
 
-#define READ_PORT_UCHAR(PortNum)	__inbyte(PortNum)
-#define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte(PortNum, Data)
+#define READ_PORT_UCHAR(PortNum)	__inbyte((ULONG_PTR)(PortNum))
+#define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte((ULONG_PTR)(PortNum), Data)
 
 #define NTOS_HAL_TAG	(EX_POOL_TAG('n','h','a','l'))
 
@@ -144,6 +144,9 @@ NTSTATUS HalpInitBeep(VOID);
 
 /* cmos.c */
 NTSTATUS HalpInitCmos(VOID);
+
+/* dma.c */
+NTSTATUS HalpDmaInit(VOID);
 
 /* init.c */
 NTSTATUS HalpEnableIoPort(USHORT PortNum);
