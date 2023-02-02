@@ -194,15 +194,19 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
      */
     BOOLEAN Width16Bits = FALSE;
     if (Controller != 1 || Desc->DmaWidth != Width8Bits) {
-	return FALSE;
+	DPRINT("Invalid width for system DMA controller\n");
+	return NULL;
     } else if (Controller == 2 && Desc->DmaWidth == Width16Bits) {
 	Width16Bits = TRUE;
     }
 
     PSYSTEM_DMA_ADAPTER SystemAdapter = &HalpDmaSystemAdapters[Desc->DmaChannel];
     if (!SystemAdapter->Handle) {
-	if (!NT_SUCCESS(HalpDmaOpenSystemAdapter(Desc->DmaChannel,
-						 &SystemAdapter->Handle))) {
+	NTSTATUS Status = HalpDmaOpenSystemAdapter(Desc->DmaChannel,
+						   &SystemAdapter->Handle);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT("Unable to open system adapter for channel %d, err 0x%x\n",
+		   Desc->DmaChannel, Status);
 	    return NULL;
 	}
     }
@@ -250,7 +254,7 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
  * @implemented
  */
 NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
-				    OUT PULONG NumberOfMapRegisters)
+				 OUT PULONG NumberOfMapRegisters)
 {
     /* Validate parameters in device description */
     if (DeviceDescription->Version > DEVICE_DESCRIPTION_VERSION2) {
@@ -272,27 +276,37 @@ NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
      * used for cascading the controllers and not available for software use.
      */
     if (DeviceDescription->InterfaceType == Eisa) {
+	DPRINT("Extended ISA is unsupported. Only ISA is supported.\n");
 	return NULL;
     } else if (DeviceDescription->InterfaceType == Isa) {
 	if (DeviceDescription->DmaChannel >= 8) {
+	    DPRINT("Invalid DMA channel %d for ISA bus\n",
+		   DeviceDescription->DmaChannel);
 	    return NULL;
 	}
 	if (DeviceDescription->DmaChannel == 4) {
+	    DPRINT("Invalid DMA channel %d for ISA bus\n",
+		   DeviceDescription->DmaChannel);
 	    return NULL;
 	}
 	if (DeviceDescription->Master) {
+	    DPRINT("ISA bus mastering is unsupported.\n");
 	    return NULL;
 	}
 	if (DeviceDescription->Dma32BitAddresses) {
+	    DPRINT("ISA devices cannot not be 32-bit.\n");
 	    return NULL;
 	}
 	if (DeviceDescription->Dma64BitAddresses) {
+	    DPRINT("ISA devices cannot not be 64-bit.\n");
 	    return NULL;
 	}
     } else {
 	/* For non-ISA devices, it must be able to access at least the lowest
 	 * 4GB of physical memory. We reject the DMA operation if otherwise. */
 	if (!DeviceDescription->Dma32BitAddresses) {
+	    DPRINT("Non-ISA device (iface type %d) must be at least 32-bit.\n",
+		   DeviceDescription->InterfaceType);
 	    return NULL;
 	}
     }
@@ -300,6 +314,7 @@ NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
     /* Now allocate the adapter object */
     PADAPTER_OBJECT AdapterObject = ExAllocatePool(sizeof(ADAPTER_OBJECT));
     if (AdapterObject == NULL) {
+	DPRINT("Unable to allocate adapter object.\n");
 	return NULL;
     }
 

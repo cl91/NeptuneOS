@@ -72,5 +72,6 @@ NTSTATUS HalInitSystemPhase0(VOID)
 NTSTATUS HalInitSystemPhase1(VOID)
 {
     RET_ERR(HalpInitBeep());
+    RET_ERR(HalpInitDma());
     return STATUS_SUCCESS;
 }

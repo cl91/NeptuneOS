@@ -93,8 +93,6 @@ RtlpCheckLogException(IN PEXCEPTION_RECORD ExceptionRecord,
                       IN PVOID ContextData,
                       IN ULONG Size);
 
-NTAPI VOID RtlpCaptureContext(OUT PCONTEXT ContextRecord);
-
 /* util.c */
 NTAPI BOOLEAN RtlpCheckForActiveDebugger(VOID);
 

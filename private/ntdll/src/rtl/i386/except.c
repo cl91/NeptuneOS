@@ -214,17 +214,18 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
     }
 
     /* Build a local context record which captures the stack frame
-     * of the caller of RtlUnwind. This is so that once the unwinding
-     * is finished we can jump back to the caller as if we have
+     * of the caller of RtlUnwind. This is so that once unwinding
+     * is finished we can jump back to the caller as if we had just
      * "returned" from RtlUnwind.
      *
-     * Note in ReactOS/Windows this is accomplished by calling a
-     * private function RtlpCaptureContext, which captures the stack
-     * frame of the caller. RtlpCaptureContext (as well as its public
-     * counterpart, RtlCaptureContext) depends on the compiler NOT
-     * omitting the frame pointer of RtlUnwind. There doesn't seem
-     * to be a reliable way to turn this off under Clang/LLVM, so
-     * we instead make use of the compiler builtins.
+     * Note in ReactOS/Windows this is implemented differently. They
+     * accomplish this by calling a private function RtlpCaptureContext,
+     * which captures the stack frame of the caller. RtlpCaptureContext
+     * (as well as its public counterpart, RtlCaptureContext) depends
+     * on the compiler NOT omitting the frame pointer of RtlUnwind.
+     * There doesn't seem to be a compiler option to do this (turning
+     * off frame pointer omission for one single function), so we
+     * just call the compiler builtins (_ReturnAddress etc).
      */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-address"

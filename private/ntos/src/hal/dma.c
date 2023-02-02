@@ -250,7 +250,7 @@ NTSTATUS IopAdapterObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpDmaInit()
+NTSTATUS HalpInitDma()
 {
     /* Create the system adapter object type */
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -261,13 +261,13 @@ NTSTATUS HalpDmaInit()
 	.RemoveProc = NULL,
 	.DeleteProc = NULL
     };
-    return ObCreateObjectType(OBJECT_TYPE_SYSTEM_ADAPTER, "Adapter",
-			      sizeof(HAL_SYSTEM_ADAPTER), TypeInfo);
+    RET_ERR(ObCreateObjectType(OBJECT_TYPE_SYSTEM_ADAPTER, "Adapter",
+			       sizeof(HAL_SYSTEM_ADAPTER), TypeInfo));
 
     /* Create the system adapter objects. There is one for each ISA DMA
      * channel, except channel 4. */
     ADAPTER_OBJ_CREATE_CTX Ctx;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < ARRAYSIZE(HalpEisaSystemAdapters); i++) {
 	if (i == 4) {
 	    continue;
 	}

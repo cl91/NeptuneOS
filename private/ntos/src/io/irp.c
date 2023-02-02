@@ -56,7 +56,7 @@ static inline NTSTATUS IopMapUserBuffer(IN PPROCESS User,
 {
     PVIRT_ADDR_SPACE UserVSpace = &User->VSpace;
     assert(UserVSpace != NULL);
-    DbgTrace("Mapping user buffer %p from vspace cap 0x%zx into driver %s \n",
+    DbgTrace("Mapping user buffer %p from vspace cap 0x%zx into driver %s\n",
 	     (PVOID)UserBufferStart, UserVSpace->VSpaceCap, Driver->DriverImagePath);
     assert(Driver->DriverProcess != NULL);
     PVIRT_ADDR_SPACE DriverVSpace = &Driver->DriverProcess->VSpace;

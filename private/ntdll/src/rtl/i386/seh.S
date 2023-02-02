@@ -1,7 +1,7 @@
 /*
  * C Runtime Support for Structured Exception Handling
  *
- * Derived from reactos/sdk/lib/pseh/i386/seh.S
+ * This code is derived from reactos/sdk/lib/pseh/i386/seh.S
  */
 
 /* INCLUDES******************************************************************/

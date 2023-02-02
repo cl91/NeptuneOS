@@ -8,14 +8,14 @@ Module Name:
 Abstract:
 
     This module implements the PnP Manager of the IO subsystem. Central
-    to the PnP manager is a data structure called a device node, which
+    to the PnP manager is a data structure called device node, which
     represents either a device (such as a keyboard, a PCI bus, or a
     software-emulated device such as a virtual CD drive), or a single
     function on a multi-functional card (such as the MIDI synth function
     on a sound chip). Except for the root device node, a device node is
     always enumerated by a parent node, which represents the bus to
     which the child device is connected. This makes the set of all
-    device nodes on a system into a tree, called the device tree.
+    device nodes on a system into a tree, namely the device tree.
 
     The root node itself is created by the PnP manager and represents
     the device node for the root PnP enumerator driver (configured by

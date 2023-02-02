@@ -140,8 +140,8 @@ NTSTATUS WaitForControllerInterrupt(PCONTROLLER_INFO ControllerInfo,
  *     STATUS_SUCCESS on successful starting of the process
  *     STATUS_IO_DEVICE_ERROR if it fails
  * NOTES:
- *     - Sometimes you have to do two recalibrations, particularly if the disk has <80 tracks.
- *     - PAGED_CODE because we wait
+ *     - Sometimes you have to do two recalibrations, particularly if the disk has
+ *       fewer than 80 tracks.
  */
 NTSTATUS Recalibrate(PDRIVE_INFO DriveInfo)
 {
@@ -208,23 +208,27 @@ out:
  * RETURNS:
  *     TRUE in all cases (see notes)
  * NOTES:
- *     - Because in our architecture interrupt service routines can block (or do pretty much anything
- *       it wants really), we simply set the event here in the ISR. There is no need for DPC here.
+ *     - Because in our architecture interrupt service routines can block (or do
+ *       pretty much anything it wants really), we simply set the event here in
+ *       the ISR. There is no need for DPC here.
  * ORIGINAL REACTOS NOTES:
- *     - We should always be the target of the interrupt, being an edge-triggered ISA interrupt, but
- *       this won't be the case with a level-sensitive system like PCI
- *     - Note that it probably doesn't matter if the interrupt isn't dismissed, as it's edge-triggered.
- *       It probably won't keep re-interrupting.
- *     - There are two different ways to dismiss a floppy interrupt.  If the command has a result phase
- *       (see intel datasheet), you dismiss the interrupt by reading the first data byte.  If it does
- *       not, you dismiss the interrupt by doing a Sense Interrupt command.  Again, because it's edge-
- *       triggered, this is safe to not do here, as we can just wait for the DPC.
- *     - Either way, we don't want to do this here.  The controller shouldn't interrupt again, so we'll
- *       schedule a DPC to take care of it.
- *     - This driver really cannot share interrupts, as I don't know how to conclusively say
- *       whether it was our controller that interrupted or not.  I just have to assume that any time
- *       my ISR gets called, it was my board that called it.  Dumb design, yes, but it goes back to
- *       the semantics of ISA buses.  That, and I don't know much about ISA drivers. :-)
+ *     - We should always be the target of the interrupt, being an edge-triggered
+ *       ISA interrupt, but this won't be the case with a level-sensitive system
+ *       like PCI
+ *     - Note that it probably doesn't matter if the interrupt isn't dismissed, as
+ *       it's edge-triggered. It probably won't keep re-interrupting.
+ *     - There are two different ways to dismiss a floppy interrupt.  If the command
+ *       has a result phase (see intel datasheet), you dismiss the interrupt by
+ *       reading the first data byte.  If it does not, you dismiss the interrupt by
+ *       doing a Sense Interrupt command.  Again, because it's edge-triggered, this
+ *       is safe to not do here, as we can just wait for the DPC.
+ *     - Either way, we don't want to do this here.  The controller shouldn't
+ *       interrupt again, so we'll schedule a DPC to take care of it.
+ *     - This driver really cannot share interrupts, as I don't know how to
+ *       conclusively say whether it was our controller that interrupted or not.
+ *       I just have to assume that any time my ISR gets called, it was my board
+ *       that called it.  Dumb design, yes, but it goes back to the semantics of
+ *       ISA buses.  That, and I don't know much about ISA drivers. :-)
  *       UPDATE: The high bit of Status Register A seems to work on non-AT controllers.
  *     - Called at DIRQL
  */
@@ -239,11 +243,13 @@ static NTAPI BOOLEAN Isr(PKINTERRUPT Interrupt, PVOID ServiceContext)
     TRACE_(FLOPPY, "ISR called\n");
 
     /*
-     * Due to the stupidity of the drive/controller relationship on the floppy drive, only one device object
-     * can have an active interrupt pending.  Due to the nature of these IRPs, though, there will only ever
-     * be one thread expecting an interrupt at a time, and furthermore, Interrupts (outside of spurious ones)
-     * won't ever happen unless a thread is expecting them.  Therefore, all we have to do is signal an event
-     * and we're done.
+     * Due to the stupidity of the drive/controller relationship on the
+     * floppy drive, only one device object can have an active interrupt
+     * pending.  Due to the nature of these IRPs, though, there will only
+     * ever be one thread expecting an interrupt at a time, and furthermore,
+     * Interrupts (outside of spurious ones) won't ever happen unless a
+     * thread is expecting them.  Therefore, all we have to do is signal
+     * an event and we're done.
      */
     KeSetEvent(&ControllerInfo->SynchEvent);
 
@@ -328,22 +334,27 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
 	/*
 	 * FIXME: Figure out the answer to the below
 	 *
-	 * I must admit that I'm really confused about the Model 30 issue.  At least one
-	 * important bit (the disk change bit in the DIR) is flipped if this is a Model 30
-	 * controller.  However, at least one other floppy driver believes that there are only
-	 * two computers that are guaranteed to have a Model 30 controller:
+	 * I must admit that I'm really confused about the Model 30 issue.
+	 * At least one important bit (the disk change bit in the DIR) is
+	 * flipped if this is a Model 30 controller.  However, at least one
+	 * other floppy driver believes that there are only two computers
+	 * that are guaranteed to have a Model 30 controller:
 	 *  - IBM Thinkpad 750
 	 *  - IBM PS2e
 	 *
-	 * ...and another driver only lists a config option for "thinkpad", that flips
-	 * the change line.  A third driver doesn't mention the Model 30 issue at all.
+	 * ...and another driver only lists a config option for "thinkpad",
+	 * that flips the change line.  A third driver doesn't mention the
+	 * Model 30 issue at all.
 	 *
-	 * What I can't tell is whether or not the average, run-of-the-mill computer now has
-	 * a Model 30 controller.  For the time being, I'm going to wire this to FALSE,
-	 * and just not support the computers mentioned above, while I try to figure out
-	 * how ubiquitous these newfangled 30 thingies are.
+	 * What I can't tell is whether or not the average, run-of-the-mill
+	 * computer now has a Model 30 controller.  For the time being, I'm
+	 * going to wire this to FALSE, and just not support the computers
+	 * mentioned above, while I try to figure out how ubiquitous these
+	 * newfangled 30 thingies are.
+	 *
+	 * Neptune OS Note: since we need at least a Pentium II, we don't
+	 * have to worry about any of these.
 	 */
-	//ControllerInfo->Model30 = TRUE;
 	ControllerInfo->Model30 = FALSE;
     } else {
 	INFO_(FLOPPY,
@@ -386,8 +397,9 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
     KeInitializeTimer(&ControllerInfo->MotorTimer);
 
     /*
-     * Recalibrate each drive on the controller (depends on StartMotor, which depends on the timer stuff above)
-     * We don't even know if there is a disk in the drive, so this may not work, but that's OK.
+     * Recalibrate each drive on the controller (depends on StartMotor,
+     * which depends on the timer stuff above). We don't even know if
+     * there is a disk in the drive, so this may not work, but that's OK.
      */
     for (int i = 0; i < ControllerInfo->NumberOfDrives; i++) {
 	INFO_(FLOPPY,
@@ -400,155 +412,6 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
 	  "InitController: done initializing; returning STATUS_SUCCESS\n");
 
     return STATUS_SUCCESS;
-}
-
-static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
-				  IN PCM_RESOURCE_LIST ResourceList,
-				  IN PCM_RESOURCE_LIST ResourceListTranslated)
-{
-    DPRINT("FdcFdoStartDevice called\n");
-
-    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-
-    ASSERT(DeviceExtension);
-
-    if (ResourceList == NULL || ResourceListTranslated == NULL) {
-	DPRINT1("No allocated resources sent to driver\n");
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    if (ResourceList->Count != 1) {
-	DPRINT1("Wrong number of allocated resources sent to driver\n");
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    if (ResourceList->List[0].PartialResourceList.Version != 1 ||
-	ResourceList->List[0].PartialResourceList.Revision != 1 ||
-	ResourceListTranslated->List[0].PartialResourceList.Version != 1 ||
-	ResourceListTranslated->List[0].PartialResourceList.Revision != 1) {
-	DPRINT1("Revision mismatch: %u.%u != 1.1 or %u.%u != 1.1\n",
-		ResourceList->List[0].PartialResourceList.Version,
-		ResourceList->List[0].PartialResourceList.Revision,
-		ResourceListTranslated->List[0].PartialResourceList.Version,
-		ResourceListTranslated->List[0].PartialResourceList.Revision);
-	return STATUS_REVISION_MISMATCH;
-    }
-
-    BOOLEAN FoundPort = FALSE;
-    BOOLEAN FoundInterrupt = FALSE;
-    BOOLEAN FoundDma = FALSE;
-    for (ULONG i = 0; i < ResourceList->List[0].PartialResourceList.Count; i++) {
-	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor =
-	    &ResourceList->List[0].PartialResourceList.PartialDescriptors[i];
-	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptorTranslated =
-	    &ResourceListTranslated->List[0].PartialResourceList.PartialDescriptors[i];
-
-	switch (PartialDescriptor->Type) {
-	case CmResourceTypePort:
-	    DPRINT("Port: 0x%x (%u)\n",
-		   PartialDescriptor->u.Port.Start.u.LowPart,
-		   PartialDescriptor->u.Port.Length);
-	    if (PartialDescriptor->u.Port.Length >= 6) {
-		DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)PartialDescriptor->u.Port.Start.QuadPart;
-		assert(!FoundPort);
-		FoundPort = TRUE;
-	    }
-	    break;
-
-	case CmResourceTypeInterrupt:
-	    DPRINT("Interrupt: Level %u  Vector %u\n",
-		   PartialDescriptor->u.Interrupt.Level,
-		   PartialDescriptor->u.Interrupt.Vector);
-	    DeviceExtension->ControllerInfo.Level = (KIRQL)PartialDescriptorTranslated->u.Interrupt.Level;
-	    DeviceExtension->ControllerInfo.Vector = PartialDescriptorTranslated->u.Interrupt.Vector;
-	    DeviceExtension->ControllerInfo.Affinity = PartialDescriptorTranslated->u.Interrupt.Affinity;
-	    if (PartialDescriptorTranslated->Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
-		DeviceExtension->ControllerInfo.InterruptMode = Latched;
-	    } else {
-		DeviceExtension->ControllerInfo.InterruptMode = LevelSensitive;
-	    }
-	    DeviceExtension->ControllerInfo.ShareInterrupt = (PartialDescriptorTranslated->ShareDisposition == CmResourceShareShared);
-	    assert(!FoundInterrupt);
-	    FoundInterrupt = TRUE;
-	    break;
-
-	case CmResourceTypeDma:
-	    DPRINT("Dma: Channel %u\n", PartialDescriptor->u.Dma.Channel);
-	    DeviceExtension->ControllerInfo.Dma = PartialDescriptorTranslated->u.Dma.Channel;
-	    assert(!FoundDma);
-	    FoundDma = TRUE;
-	    break;
-	}
-    }
-
-    if (!FoundPort || !FoundInterrupt || !FoundDma) {
-	if (!FoundPort) {
-	    ERR_(FLOPPY, "PnP manager did not supply a port resource\n");
-	}
-	if (!FoundInterrupt) {
-	    ERR_(FLOPPY, "PnP manager did not supply an interupt resource\n");
-	}
-	if (!FoundDma) {
-	    ERR_(FLOPPY, "PnP manager did not supply a DMA resource\n");
-	}
-	assert(FALSE);
-	return STATUS_NO_SUCH_DEVICE;
-    }
-
-    /* 1: Connect the interrupt
-     * NOTE: We cannot share our interrupt, even on level-triggered buses.
-     * See Isr() for details. */
-    NTSTATUS Status = IoConnectInterrupt(&DeviceExtension->ControllerInfo.InterruptObject,
-					 Isr,
-					 &DeviceExtension->ControllerInfo,
-					 DeviceExtension->ControllerInfo.Vector,
-					 DeviceExtension->ControllerInfo.Level,
-					 DeviceExtension->ControllerInfo.Level,
-					 DeviceExtension->ControllerInfo.InterruptMode,
-					 FALSE,
-					 DeviceExtension->ControllerInfo.Affinity,
-					 FALSE);
-    if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY, "FdcFdoStartDevice: unable to connect interrupt\n");
-	return Status;
-    }
-
-    /* 2: Set up DMA */
-    DEVICE_DESCRIPTION DeviceDescription = {
-	.Version = DEVICE_DESCRIPTION_VERSION,
-	.DmaChannel = DeviceExtension->ControllerInfo.Dma,
-	.InterfaceType = DeviceExtension->ControllerInfo.InterfaceType,
-	.BusNumber = DeviceExtension->ControllerInfo.BusNumber,
-	.MaximumLength = 2 * 18 * 512, /* based on a 1.44MB floppy */
-	.DmaWidth = (DeviceExtension->ControllerInfo.Dma > 3) ? Width16Bits : Width8Bits /* DMA 0,1,2,3 are 8-bit; 4,5,6,7 are 16-bit (4 is chain I think) */
-    };
-
-    DeviceExtension->ControllerInfo.AdapterObject = HalGetAdapter(&DeviceDescription,
-								  &DeviceExtension->ControllerInfo.MapRegisters);
-
-    if (!DeviceExtension->ControllerInfo.AdapterObject) {
-	WARN_(FLOPPY,
-	      "FdcFdoStartDevice: unable to allocate an adapter object\n");
-	Status = STATUS_NO_SUCH_DEVICE;
-	goto err;
-    }
-
-    /* 3: Initialize the new controller */
-    Status = InitController(&DeviceExtension->ControllerInfo);
-    if (NT_SUCCESS(Status)) {
-	WARN_(FLOPPY,
-	      "FdcFdoStartDevice(): Unable to set up controller - initialization failed\n");
-	goto err;
-    }
-
-    /* 4: Set the controller's initialized flag so we know to release stuff in Unload */
-    DeviceExtension->ControllerInfo.Initialized = TRUE;
-
-    return STATUS_SUCCESS;
-
-err:
-    IoDisconnectInterrupt(DeviceExtension->ControllerInfo.InterruptObject);
-    return Status;
 }
 
 static NTAPI NTSTATUS FdcFdoConfigCallback(PVOID Context,
@@ -651,6 +514,174 @@ static NTAPI NTSTATUS FdcFdoConfigCallback(PVOID Context,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
+				  IN PCM_RESOURCE_LIST ResourceList,
+				  IN PCM_RESOURCE_LIST ResourceListTranslated)
+{
+    DPRINT("FdcFdoStartDevice called\n");
+
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+
+    ASSERT(DeviceExtension);
+
+    if (ResourceList == NULL || ResourceListTranslated == NULL) {
+	DPRINT1("No allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (ResourceList->Count != 1) {
+	DPRINT1("Wrong number of allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (ResourceList->List[0].PartialResourceList.Version != 1 ||
+	ResourceList->List[0].PartialResourceList.Revision != 1 ||
+	ResourceListTranslated->List[0].PartialResourceList.Version != 1 ||
+	ResourceListTranslated->List[0].PartialResourceList.Revision != 1) {
+	DPRINT1("Revision mismatch: %u.%u != 1.1 or %u.%u != 1.1\n",
+		ResourceList->List[0].PartialResourceList.Version,
+		ResourceList->List[0].PartialResourceList.Revision,
+		ResourceListTranslated->List[0].PartialResourceList.Version,
+		ResourceListTranslated->List[0].PartialResourceList.Revision);
+	return STATUS_REVISION_MISMATCH;
+    }
+
+    BOOLEAN FoundPort = FALSE;
+    BOOLEAN FoundInterrupt = FALSE;
+    BOOLEAN FoundDma = FALSE;
+    for (ULONG i = 0; i < ResourceList->List[0].PartialResourceList.Count; i++) {
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor =
+	    &ResourceList->List[0].PartialResourceList.PartialDescriptors[i];
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptorTranslated =
+	    &ResourceListTranslated->List[0].PartialResourceList.PartialDescriptors[i];
+
+	switch (PartialDescriptor->Type) {
+	case CmResourceTypePort:
+	    DPRINT("Port: 0x%x (%u)\n",
+		   PartialDescriptor->u.Port.Start.u.LowPart,
+		   PartialDescriptor->u.Port.Length);
+	    if (PartialDescriptor->u.Port.Length >= 6) {
+		DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)PartialDescriptor->u.Port.Start.QuadPart;
+		assert(!FoundPort);
+		FoundPort = TRUE;
+	    }
+	    break;
+
+	case CmResourceTypeInterrupt:
+	    DPRINT("Interrupt: Level %u  Vector %u\n",
+		   PartialDescriptor->u.Interrupt.Level,
+		   PartialDescriptor->u.Interrupt.Vector);
+	    DeviceExtension->ControllerInfo.Level = (KIRQL)PartialDescriptorTranslated->u.Interrupt.Level;
+	    DeviceExtension->ControllerInfo.Vector = PartialDescriptorTranslated->u.Interrupt.Vector;
+	    DeviceExtension->ControllerInfo.Affinity = PartialDescriptorTranslated->u.Interrupt.Affinity;
+	    if (PartialDescriptorTranslated->Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
+		DeviceExtension->ControllerInfo.InterruptMode = Latched;
+	    } else {
+		DeviceExtension->ControllerInfo.InterruptMode = LevelSensitive;
+	    }
+	    DeviceExtension->ControllerInfo.ShareInterrupt = (PartialDescriptorTranslated->ShareDisposition == CmResourceShareShared);
+	    assert(!FoundInterrupt);
+	    FoundInterrupt = TRUE;
+	    break;
+
+	case CmResourceTypeDma:
+	    DPRINT("Dma: Channel %u\n", PartialDescriptor->u.Dma.Channel);
+	    DeviceExtension->ControllerInfo.Dma = PartialDescriptorTranslated->u.Dma.Channel;
+	    assert(!FoundDma);
+	    FoundDma = TRUE;
+	    break;
+	}
+    }
+
+    if (!FoundPort || !FoundInterrupt || !FoundDma) {
+	if (!FoundPort) {
+	    ERR_(FLOPPY, "PnP manager did not supply a port resource\n");
+	}
+	if (!FoundInterrupt) {
+	    ERR_(FLOPPY, "PnP manager did not supply an interupt resource\n");
+	}
+	if (!FoundDma) {
+	    ERR_(FLOPPY, "PnP manager did not supply a DMA resource\n");
+	}
+	assert(FALSE);
+	return STATUS_NO_SUCH_DEVICE;
+    }
+
+    /* 0: Query the registry for floppy controller information. On real
+     * NT (5.x and before) systems this is enumerated by ntdetect.com.
+     * On Vista+ I believe this has been removed and replaced by ACPI.
+     * For now on Neptune OS this is hard-coded by pnp.sys until real
+     * ACPI enumeration (via the _FDE method) is implemented. */
+    INTERFACE_TYPE InterfaceType = Isa;
+    CONFIGURATION_TYPE ControllerType = DiskController;
+    CONFIGURATION_TYPE PeripheralType = FloppyDiskPeripheral;
+    NTSTATUS Status = IoQueryDeviceDescription(&InterfaceType,
+					       NULL,
+					       &ControllerType,
+					       NULL,
+					       &PeripheralType,
+					       NULL,
+					       FdcFdoConfigCallback,
+					       DeviceExtension);
+    if (!NT_SUCCESS(Status) && (Status != STATUS_NO_MORE_ENTRIES))
+	return Status;
+
+    /* 1: Connect the interrupt
+     * NOTE: We cannot share our interrupt, even on level-triggered buses.
+     * See Isr() for details. */
+    Status = IoConnectInterrupt(&DeviceExtension->ControllerInfo.InterruptObject,
+				Isr,
+				&DeviceExtension->ControllerInfo,
+				DeviceExtension->ControllerInfo.Vector,
+				DeviceExtension->ControllerInfo.Level,
+				DeviceExtension->ControllerInfo.Level,
+				DeviceExtension->ControllerInfo.InterruptMode,
+				FALSE,
+				DeviceExtension->ControllerInfo.Affinity,
+				FALSE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(FLOPPY, "FdcFdoStartDevice: unable to connect interrupt\n");
+	return Status;
+    }
+
+    /* 2: Set up DMA */
+    DEVICE_DESCRIPTION DeviceDescription = {
+	.Version = DEVICE_DESCRIPTION_VERSION,
+	.DmaChannel = DeviceExtension->ControllerInfo.Dma,
+	.InterfaceType = DeviceExtension->ControllerInfo.InterfaceType,
+	.BusNumber = DeviceExtension->ControllerInfo.BusNumber,
+	.MaximumLength = 2 * 18 * 512, /* based on a 1.44MB floppy */
+	.DmaWidth = (DeviceExtension->ControllerInfo.Dma > 3) ? Width16Bits : Width8Bits /* DMA 0,1,2,3 are 8-bit; 4,5,6,7 are 16-bit (4 is chain I think) */
+    };
+
+    DeviceExtension->ControllerInfo.AdapterObject = HalGetAdapter(&DeviceDescription,
+								  &DeviceExtension->ControllerInfo.MapRegisters);
+
+    if (!DeviceExtension->ControllerInfo.AdapterObject) {
+	WARN_(FLOPPY,
+	      "FdcFdoStartDevice: unable to allocate an adapter object\n");
+	Status = STATUS_NO_SUCH_DEVICE;
+	goto err;
+    }
+
+    /* 3: Initialize the new controller */
+    Status = InitController(&DeviceExtension->ControllerInfo);
+    if (NT_SUCCESS(Status)) {
+	WARN_(FLOPPY,
+	      "FdcFdoStartDevice(): Unable to set up controller - initialization failed\n");
+	goto err;
+    }
+
+    /* 4: Set the controller's initialized flag so we know to release stuff in Unload */
+    DeviceExtension->ControllerInfo.Initialized = TRUE;
+
+    return STATUS_SUCCESS;
+
+err:
+    IoDisconnectInterrupt(DeviceExtension->ControllerInfo.InterruptObject);
+    return Status;
+}
+
 static NTSTATUS PciCreateHardwareIDsString(PUNICODE_STRING HardwareIDs)
 {
     WCHAR Buffer[256];
@@ -695,50 +726,34 @@ static NTSTATUS PciCreateInstanceIDString(PUNICODE_STRING InstanceID,
 static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 					OUT PDEVICE_RELATIONS *DeviceRelations)
 {
-    PPDO_DEVICE_EXTENSION PdoDeviceExtension;
-    INTERFACE_TYPE InterfaceType = Isa;
-    CONFIGURATION_TYPE ControllerType = DiskController;
-    CONFIGURATION_TYPE PeripheralType = FloppyDiskPeripheral;
-    PDRIVE_INFO DriveInfo;
-    UNICODE_STRING DeviceName;
-    ULONG DeviceNumber = 0;
-
     DPRINT("FdcFdoQueryBusRelations() called\n");
 
-    PFDO_DEVICE_EXTENSION FdoDeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-
-    NTSTATUS Status = IoQueryDeviceDescription(&InterfaceType,
-					       NULL,
-					       &ControllerType,
-					       NULL,
-					       &PeripheralType,
-					       NULL,
-					       FdcFdoConfigCallback,
-					       FdoDeviceExtension);
-    if (!NT_SUCCESS(Status) && (Status != STATUS_NO_MORE_ENTRIES))
-	return Status;
+    PFDO_DEVICE_EXTENSION FdoDevExt = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     ULONG Size = sizeof(DEVICE_RELATIONS) + sizeof(PDEVICE_OBJECT) *
-	FdoDeviceExtension->ControllerInfo.NumberOfDrives;
+	FdoDevExt->ControllerInfo.NumberOfDrives;
     PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(Size);
     if (Relations == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    Relations->Count = FdoDeviceExtension->ControllerInfo.NumberOfDrives;
+    Relations->Count = FdoDevExt->ControllerInfo.NumberOfDrives;
 
-    for (ULONG i = 0; i < FdoDeviceExtension->ControllerInfo.NumberOfDrives; i++) {
-	DriveInfo = &FdoDeviceExtension->ControllerInfo.DriveInfo[i];
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG DeviceNumber = 0;
+    for (ULONG i = 0; i < FdoDevExt->ControllerInfo.NumberOfDrives; i++) {
+	PDRIVE_INFO DriveInfo = &FdoDevExt->ControllerInfo.DriveInfo[i];
 
 	if (DriveInfo->DeviceObject == NULL) {
 	    PDEVICE_OBJECT Pdo;
 	    do {
 		swprintf(DriveInfo->DeviceNameBuffer, L"\\Device\\Floppy%u", DeviceNumber++);
+		UNICODE_STRING DeviceName;
 		RtlInitUnicodeString(&DeviceName, DriveInfo->DeviceNameBuffer);
 		DPRINT("Device name: %S\n", DriveInfo->DeviceNameBuffer);
 
 		/* Create physical device object */
-		Status = IoCreateDevice(FdoDeviceExtension->Common.DeviceObject->DriverObject,
+		Status = IoCreateDevice(FdoDevExt->Common.DeviceObject->DriverObject,
 					sizeof(PDO_DEVICE_EXTENSION),
 					&DeviceName, FILE_DEVICE_DISK,
 					FILE_DEVICE_SECURE_OPEN | FILE_REMOVABLE_MEDIA | FILE_FLOPPY_DISKETTE,
@@ -754,39 +769,39 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 
 	    DriveInfo->DeviceObject = Pdo;
 
-	    PdoDeviceExtension = (PPDO_DEVICE_EXTENSION) Pdo->DeviceExtension;
-	    RtlZeroMemory(PdoDeviceExtension,
+	    PPDO_DEVICE_EXTENSION PdoDevExt = (PPDO_DEVICE_EXTENSION)Pdo->DeviceExtension;
+	    RtlZeroMemory(PdoDevExt,
 			  sizeof(PDO_DEVICE_EXTENSION));
 
-	    PdoDeviceExtension->Common.IsFDO = FALSE;
-	    PdoDeviceExtension->Common.DeviceObject = Pdo;
+	    PdoDevExt->Common.IsFDO = FALSE;
+	    PdoDevExt->Common.DeviceObject = Pdo;
 
-	    PdoDeviceExtension->Fdo = FdoDeviceExtension->Common.DeviceObject;
-	    PdoDeviceExtension->DriveInfo = DriveInfo;
+	    PdoDevExt->Fdo = FdoDevExt->Common.DeviceObject;
+	    PdoDevExt->DriveInfo = DriveInfo;
 
 	    Pdo->Flags |= DO_DIRECT_IO;
 	    Pdo->Flags |= DO_POWER_PAGABLE;
 	    Pdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
 	    /* Add Device ID string */
-	    RtlCreateUnicodeString(&PdoDeviceExtension->DeviceId,
+	    RtlCreateUnicodeString(&PdoDevExt->DeviceId,
 				   L"FDC\\GENERIC_FLOPPY_DRIVE");
-	    DPRINT("DeviceID: %S\n", PdoDeviceExtension->DeviceId.Buffer);
+	    DPRINT("DeviceID: %S\n", PdoDevExt->DeviceId.Buffer);
 
 	    /* Add Hardware IDs string */
-	    Status = PciCreateHardwareIDsString(&PdoDeviceExtension->HardwareIds);
+	    Status = PciCreateHardwareIDsString(&PdoDevExt->HardwareIds);
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
 
 	    /* Add Compatible IDs string */
-	    Status = PciCreateCompatibleIDsString(&PdoDeviceExtension->CompatibleIds);
+	    Status = PciCreateCompatibleIDsString(&PdoDevExt->CompatibleIds);
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
 
 	    /* Add Instance ID string */
-	    Status = PciCreateInstanceIDString(&PdoDeviceExtension->InstanceId,
+	    Status = PciCreateInstanceIDString(&PdoDevExt->InstanceId,
 					       DriveInfo->PeripheralNumber);
 	    if (!NT_SUCCESS(Status)) {
 		break;

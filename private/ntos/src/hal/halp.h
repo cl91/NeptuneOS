@@ -146,7 +146,7 @@ NTSTATUS HalpInitBeep(VOID);
 NTSTATUS HalpInitCmos(VOID);
 
 /* dma.c */
-NTSTATUS HalpDmaInit(VOID);
+NTSTATUS HalpInitDma(VOID);
 
 /* init.c */
 NTSTATUS HalpEnableIoPort(USHORT PortNum);

@@ -56,8 +56,13 @@ _RtlpSetExceptionList@4:
  *     Note that this is not used by RtlUnwind. We only expose this
  *     because it is a public function.
  *
- *     Also note that in order for this function to work correctly, the
- *     caller must not have its frame pointer omitted.
+ *     Also note that in order for this function to work correctly,
+ *     the caller must NOT have its frame pointer omitted. Since most
+ *     modern compilers WILL omit the frame pointers, you are strongly
+ *     advised to NOT call this function unless you are sure the frame
+ *     pointer is not omitted. RtlRaiseStatus and RtlRaiseException do
+ *     call this function, but they are asm functions and set up their
+ *     frame pointers manually, so there is no danger.
  *
  * SCHEMATIC DIAGRAM OF THE CAPTURED STACK FRAME:
  *

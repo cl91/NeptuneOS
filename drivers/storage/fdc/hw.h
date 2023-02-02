@@ -39,7 +39,7 @@
 #define FLOPPY_DEFAULT_IRQ              0x6
 #define FDC_PORT_BYTES                  0x8
 
-/* Register offsets from base address (usually 0x3f8)  */
+/* Register offsets from base address (usually 0x3f0)  */
 #define STATUS_REGISTER_A               0x0	/* Read; PS/2 Only */
 #define STATUS_REGISTER_B               0x1	/* Read; PS/2 Only */
 #define DIGITAL_OUTPUT_REGISTER         0x2	/* Read/Write */
