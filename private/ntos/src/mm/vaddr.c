@@ -716,6 +716,8 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
 		   IN MWORD MappedRegionStart)
 {
+    DbgTrace("Unmapping region starting %p for vspace cap 0x%zx\n",
+	     (PVOID)MappedRegionStart, MappedVSpace->VSpaceCap);
     PMMVAD Vad = MiVSpaceFindVadNode(MappedVSpace, MappedRegionStart);
     assert(Vad != NULL);
     assert(MiVadNodeContainsAddr(Vad, MappedRegionStart));

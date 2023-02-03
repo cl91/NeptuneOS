@@ -25,7 +25,9 @@ VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem)
 }
 
 /*
- * Retype the untyped memory into a seL4 kernel object.
+ * Retype the untyped memory into a seL4 kernel object. The untyped
+ * must either not have any children or only have the new TreeNode
+ * as the sole child node.
  */
 NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
@@ -34,10 +36,14 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 {
     assert(Untyped != NULL);
     assert(Untyped->TreeNode.CSpace != NULL);
+    assert(Untyped->TreeNode.Cap != 0);
     assert(TreeNode->CSpace != NULL);
     assert(TreeNode->Cap == 0);
-    assert((TreeNode->Parent == NULL) ||
-	   (TreeNode->Parent == &Untyped->TreeNode));
+    if (TreeNode->Parent == NULL) {
+	assert(!MmCapTreeNodeHasChildren(&Untyped->TreeNode));
+    } else {
+	assert(TreeNode->Parent == &Untyped->TreeNode);
+    }
 
     MWORD ObjCap = 0;
     RET_ERR(MmAllocateCapRange(TreeNode->CSpace, &ObjCap, 1));
@@ -47,9 +53,11 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 				      TreeNode->CSpace->TreeNode.Cap,
 				      0, 0, ObjCap, 1);
     if (Error != seL4_NoError) {
-	MmDeallocateCap(TreeNode->CSpace, ObjCap);
+	MmDbgDumpCapTree(&Untyped->TreeNode, 0);
 	MmDbgDumpCNode(TreeNode->CSpace);
+	MmDbgDumpUntypedForest();
 	KeDbgDumpIPCError(Error);
+	MmDeallocateCap(TreeNode->CSpace, ObjCap);
 	return SEL4_ERROR(Error);
     }
     TreeNode->Cap = ObjCap;
@@ -160,6 +168,7 @@ NTSTATUS MmRequestUntyped(IN LONG Log2Size,
     if (Untyped == NULL) {
 	return STATUS_NO_MEMORY;
     }
+    MmDbgDumpCapTree(&Untyped->TreeNode, 0);
 
     LONG NumSplits = Untyped->Log2Size - Log2Size;
     assert(NumSplits >= 0);
@@ -295,6 +304,8 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
     assert(!ListHasEntry(&MiPhyMemDescriptor.SmallUntypedList, &Untyped->FreeListEntry));
     assert(!ListHasEntry(&MiPhyMemDescriptor.MediumUntypedList, &Untyped->FreeListEntry));
     assert(!ListHasEntry(&MiPhyMemDescriptor.LargeUntypedList, &Untyped->FreeListEntry));
+    DbgTrace("Releasing untyped cap 0x%zx\n", Untyped->TreeNode.Cap);
+    MmDbgDumpCapTree(&Untyped->TreeNode, 0);
     /* It appears that we have to call Revoke on the untyped cap, regardless
      * of whether the children of the untyped have been deleted (we always
      * delete the children before releasing the untyped, but it seems that
@@ -343,19 +354,19 @@ VOID MmDbgDumpUntypedForest()
     DbgPrint("Dumping all untyped caps:\n");
     DbgPrint("  Small free untyped:\n");
     LoopOverList(Untyped, SmallUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = %zd  log2(size) = %d\n",
+	DbgPrint("    cap = 0x%zx  log2(size) = %d\n",
 		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY MediumUntypedList = &MiPhyMemDescriptor.MediumUntypedList;
     DbgPrint("  Medium free untyped:\n");
     LoopOverList(Untyped, MediumUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = %zd  log2(size) = %d\n",
+	DbgPrint("    cap = 0x%zx  log2(size) = %d\n",
 		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY LargeUntypedList = &MiPhyMemDescriptor.LargeUntypedList;
     DbgPrint("  Large free untyped:\n");
     LoopOverList(Untyped, LargeUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = %zd  log2(size) = %d\n",
+	DbgPrint("    cap = 0x%zx  log2(size) = %d\n",
 		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     DbgPrint("  Root untyped forest:\n");

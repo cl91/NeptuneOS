@@ -97,6 +97,14 @@ VOID MmDbgDumpCNode(IN PCNODE CNode)
 	DbgPrint("  %p", (PVOID)CNode->UsedMap[i]);
     }
     DbgPrint("\n");
+    if (CNode->TreeNode.CSpace == &MiNtosCNode) {
+	for (ULONG i = 0; i < (1 << CNode->Log2Size); i++) {
+	    if (GetBit(CNode->UsedMap, i)) {
+		DbgPrint("Cap 0x%x Type %s\n", i,
+			 RtlDbgCapTypeToStr(seL4_DebugCapIdentify(i)));
+	    }
+	}
+    }
 }
 
 #define MI_DBG_CAP_TREE_INDENTATION	2
@@ -186,6 +194,7 @@ Lookup:
      * points to a free bit. */
     CNode->RecentFree = (Index+1) & CNodeMask;
 
+    DbgTrace("Allocated %d cap(s) starting 0x%zx\n", NumberRequested, *StartCap);
     return STATUS_SUCCESS;
 }
 
@@ -198,6 +207,7 @@ VOID MmDeallocateCap(IN PCNODE CNode,
     assert(CNode->UsedMap != NULL);
     assert(GetBit(CNode->UsedMap, Cap) == TRUE);
     assert(Cap != 0);		/* Freeing the null cap is a bug. */
+    DbgTrace("Decallocating 0x%zx\n", Cap);
 
     ClearBit(CNode->UsedMap, Cap);
     CNode->RecentFree = Cap;
@@ -333,11 +343,15 @@ static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
     PCNODE CSpace = Node->CSpace;
+    DbgTrace("Deleting cap 0x%zx for cspace 0x%zx\n",
+	     Node->Cap, CSpace->TreeNode.Cap);
     int Error = seL4_CNode_Delete(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
     if (Error != 0) {
 	DbgTrace("CNode_Delete(0x%zx, 0x%zx, %d) failed with error %d\n",
 		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
 	KeDbgDumpIPCError(Error);
+	/* This should always succeed. On debug build we assert if it didn't. */
+	assert(FALSE);
 	return SEL4_ERROR(Error);
     }
     return STATUS_SUCCESS;
@@ -354,10 +368,14 @@ static NTSTATUS MiRevokeCap(IN PCAP_TREE_NODE Node)
     assert(Node->Cap);
     PCNODE CSpace = Node->CSpace;
     int Error = seL4_CNode_Revoke(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
+    DbgTrace("Revoking cap 0x%zx for cspace 0x%zx\n",
+	     Node->Cap, CSpace->TreeNode.Cap);
     if (Error != 0) {
 	DbgTrace("CNode_Revoke(0x%zx, 0x%zx, %d) failed with error %d\n",
 		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
 	KeDbgDumpIPCError(Error);
+	/* This should always succeed. On debug build we assert if it didn't. */
+	assert(FALSE);
 	return SEL4_ERROR(Error);
     }
     return STATUS_SUCCESS;
@@ -376,9 +394,13 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     assert(Node != NULL);
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
-    /* This should always succeed. On debug build we assert if it didn't. */
-    UNUSED NTSTATUS Status = MiDeleteCap(Node);
-    assert(NT_SUCCESS(Status));
+    DbgTrace("Before deleting cap 0x%zx\n", Node->Cap);
+    if (Node->Parent != NULL) {
+	MmDbgDumpCapTree(Node->Parent, 0);
+    } else {
+	MmDbgDumpCapTree(Node, 0);
+    }
+    MiDeleteCap(Node);
     MmDeallocateCap(Node->CSpace, Node->Cap);
     Node->Cap = 0;
     PCAP_TREE_NODE Parent = Node->Parent;
@@ -390,6 +412,12 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 	if (Parent != NULL) {
 	    MiCapTreeNodeSetParent(Child, Parent);
 	}
+    }
+    DbgTrace("After deletion: ");
+    if (Parent != NULL) {
+	MmDbgDumpCapTree(Parent, 0);
+    } else {
+	DbgTrace("Node had no parent\n");
     }
     /* If the parent cap tree node is an untyped cap and it has no children,
        release it */

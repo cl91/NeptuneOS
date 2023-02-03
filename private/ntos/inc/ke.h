@@ -627,7 +627,9 @@ typedef struct _KWAIT_BLOCK {
  * is supposed to be a thin wrapper around native hardward constructs (or seL4
  * constructs in our case), and the ex component contains objects that are
  * implemented using primitives in ke. Since KEVENT is simply a small header,
- * it belongs to ke more than it does ex.
+ * it belongs to ke more than it does ex. Also, in ex there is an EVENT_OBJECT
+ * which wraps around KEVENT and expose it to the user space, the name KEVENT
+ * is more appropriate here as it emphasizes the ke component.
  */
 typedef struct _KEVENT {
     DISPATCHER_HEADER Header;

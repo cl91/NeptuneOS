@@ -318,8 +318,10 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
     Page->Mapped = TRUE;
     MiPagingInsertSubStructure(Page->SuperStructure, Page);
 
-    DbgTrace("Successfully mapped cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
-	     Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
+    DbgTrace("Successfully mapped cap 0x%zx (parent cap 0x%zx) into "
+	     "vspacecap 0x%zx at vaddr %p\n",
+	     Page->TreeNode.Cap, Page->TreeNode.Parent->Cap,
+	     Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
     return STATUS_SUCCESS;
 }
 
@@ -369,8 +371,10 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
     Page->Mapped = FALSE;
     MiPagingRemoveFromParentStructure(Page);
 
-    DbgTrace("Successfully unmapped cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
-	     Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
+    DbgTrace("Successfully unmapped cap 0x%zx (parent cap 0x%zx) "
+	     "from vspacecap 0x%zx originally at vaddr %p\n",
+	     Page->TreeNode.Cap, Page->TreeNode.Parent->Cap,
+	     Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
     return STATUS_SUCCESS;
 }
 
@@ -393,6 +397,8 @@ VOID MiDeletePage(IN PPAGING_STRUCTURE Page)
     assert(Page != NULL);
     /* Leaf-level paging structure should not have substructures */
     assert(Page->SubStructureTree.BalancedRoot == NULL);
+    DbgTrace("Deleting page cap 0x%zx of vspace cap 0x%zx\n",
+	     Page->TreeNode.Cap, Page->VSpaceCap);
     PPAGING_STRUCTURE ParentPaging = Page->SuperStructure;
     /* Remove the AVL node of the page from its AVL tree */
     MiPagingRemoveFromParentStructure(Page);
