@@ -76,7 +76,17 @@ NTSTATUS NtSetEvent(IN ASYNC_STATE State,
                     IN HANDLE EventHandle,
                     OUT OPTIONAL LONG *PreviousState)
 {
-    UNIMPLEMENTED;
+    PEVENT_OBJECT EventObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, EventHandle,
+				      OBJECT_TYPE_EVENT,
+				      (POBJECT *)&EventObject));
+    assert(EventObject != NULL);
+    if (PreviousState) {
+	*PreviousState = EventObject->Event.Header.Signaled;
+    }
+    KeSetEvent(&EventObject->Event);
+    ObDereferenceObject(EventObject);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtResetEvent(IN ASYNC_STATE State,
@@ -84,14 +94,31 @@ NTSTATUS NtResetEvent(IN ASYNC_STATE State,
 		      IN HANDLE EventHandle,
 		      OUT OPTIONAL LONG *PreviousState)
 {
-    UNIMPLEMENTED;
+    PEVENT_OBJECT EventObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, EventHandle,
+				      OBJECT_TYPE_EVENT,
+				      (POBJECT *)&EventObject));
+    assert(EventObject != NULL);
+    if (PreviousState) {
+	*PreviousState = EventObject->Event.Header.Signaled;
+    }
+    KeResetEvent(&EventObject->Event);
+    ObDereferenceObject(EventObject);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtClearEvent(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN HANDLE EventHandle)
 {
-    UNIMPLEMENTED;
+    PEVENT_OBJECT EventObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread->Process, EventHandle,
+				      OBJECT_TYPE_EVENT,
+				      (POBJECT *)&EventObject));
+    assert(EventObject != NULL);
+    KeResetEvent(&EventObject->Event);
+    ObDereferenceObject(EventObject);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,

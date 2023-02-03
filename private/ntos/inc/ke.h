@@ -648,6 +648,11 @@ static inline VOID KeSetEvent(IN PKEVENT Event)
     KiSignalDispatcherObject(&Event->Header);
 }
 
+static inline VOID KeResetEvent(IN PKEVENT Event)
+{
+    Event->Header.Signaled = FALSE;
+}
+
 static inline VOID KeDestroyEvent(IN PKEVENT Event)
 {
     /* Signal the event one last time so any thread that is blocked
