@@ -647,7 +647,7 @@ call:
 						      &Locals.PendingIrp));
     Locals.DriverObject->AddDeviceCalled = TRUE;
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
-	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
     if (!NT_SUCCESS(Status)) {
 	goto end;
@@ -740,7 +740,7 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 		IopQueueQueryResourceRequirementsRequest(Thread, DeviceNode->PhyDevObj,
 							 &Locals.PendingIrp));
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
-	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Failed to query device resource requirements for %s\\%s. Status = 0x%x\n",
@@ -844,7 +844,7 @@ static NTSTATUS IopDeviceNodeStartDevice(IN ASYNC_STATE AsyncState,
     IF_ERR_GOTO(end, Status,
 		IopQueueStartDeviceRequest(Thread, DeviceNode, &Locals.PendingIrp));
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
-	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
 
 end:
@@ -899,7 +899,7 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 		IopQueueQueryDeviceRelationsRequest(Thread, IopGetTopDevice(DevNode->PhyDevObj),
 						    BusRelations, &Locals.PendingIrp));
     AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread,
-	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
     /* Get the PDO device handles from the response data */
     Status = Locals.PendingIrp->IoResponseStatus.Status;

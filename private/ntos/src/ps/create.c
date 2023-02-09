@@ -312,6 +312,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Thread->PendingIrpList);
     InitializeListHead(&Thread->QueuedApcList);
     InitializeListHead(&Thread->TimerApcList);
+    KeInitializeTimer(&Thread->WaitTimer, SynchronizationTimer);
 
     Thread->InitialThread = !Process->Initialized;
     InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);

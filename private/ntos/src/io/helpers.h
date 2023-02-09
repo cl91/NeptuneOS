@@ -75,7 +75,7 @@
 									\
     AWAIT(KeWaitForSingleObject, State,					\
 	  Locals, Thread,						\
-	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);		\
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);	\
 									\
     /* This is the starting point when the function is resumed. */	\
     if (IoStatusBlock != NULL) {					\

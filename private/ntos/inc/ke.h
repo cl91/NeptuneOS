@@ -543,18 +543,16 @@ static inline VOID KiCheckAsyncStack(IN ASYNC_STATE State)
  * thread list and resumed by the executive service dispatcher.
  */
 typedef enum _WAIT_TYPE {
-    WaitOne,
     WaitAny,
     WaitAll
 } WAIT_TYPE;
 
 typedef struct _DISPATCHER_HEADER {
-    LIST_ENTRY WaitBlockList;	/* Points to the list of KWAIT_BLOCK chained by its DispatcherLink */
+    LIST_ENTRY WaitBlockList;	/* List of KWAIT_BLOCK satisfied when this
+				 * dispatcher object is signaled. */
     BOOLEAN Signaled;
     EVENT_TYPE EventType;
 } DISPATCHER_HEADER, *PDISPATCHER_HEADER;
-
-typedef PDISPATCHER_HEADER (*KE_DISPATCHER_ITERATOR)(PVOID IteratorContext);
 
 /*
  * This function is private to the KE component. Do not call it outside KE.
@@ -571,51 +569,44 @@ static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
 /*
  * A wait block represents a boolean condition that is satisfied when a dispatcher
  * object is signaled. Wait blocks form a boolean formula via logical disjunction
- * (or) and logical conjunction (and). In memory this is represented via sub-blocks
- * linked via the SiblingLink of the SubBlockList of the parent wait block. The
- * WaitType determines whether a given wait block is a conjunction (WaitAll) of its
- * sub-blocks or a disjunction (WaitAny) of its sub-blocks. For a leaf-node wait
- * block, the WaitType is WaitOne and the SubBlockList is replaced by DispatcherLink
- * which chains all wait blocks satisfied by a given dispatcher object.
+ * (or) and logical conjunction (and). The WaitType member determines whether a
+ * given wait block is a conjunction (WaitAll) or a disjunction (WaitAny) of its
+ * dispatcher object with the Next member (if Next is NULL, it is simply ignored).
  *
  * The root wait block of the THREAD object represents the master boolean formula
  * that must be satisfied for the thread to wake up. Once it is satisfied, the system
  * service dispatcher will invoke the reply capability stored in the THREAD object
  * to resume the thread.
  *
- * A schematic diagram is as follows:
+ * A schematic diagram is as follows. Here Thread0 has a single wait block in the
+ * master boolean formula, while Thread1 has several. 
  *
  *   |--------- |             |------------|
- *   |  THREAD  |             |   THREAD   |
+ *   | THREAD0  |             |  THREAD1   |
  *   |----------|             |------------|
  *   |   Root   |             | Root Wait  |
  *   |   Wait   |             | Block TY=  |
  *   |   Block  |             |  WaitAll   |
- *   |TY=WaitOne|             |            |
- *   |----------|             |SubBlockList|--->|--------|---->|--------|
- *     |   ^-------------     |------------|    |SubBlock|     |SubBlock|<----------------
- *    \|/               |                       |--------|     |--------|                |
- *   |---------------|  |                           ^  |            |                    |
- *   |  DISPATCHER   |  |                           |  |            |Dispatcher          |
- *   |---------------|  |                           |  |           \|/                   |
- *   | WaitBlockList |-------------------------------  |     |---------------|           |
- *   |---------------|                                 |     |  DISPATCHER   |           |
- *          ^                                          |     |---------------|           |
- *          |                 Dispatcher               |     | WaitBlockList |------------
+ *   |TY=WaitAny|             |            |
+ *   |----------|             |    Next    |--->|---------|     |---------|
+ *     |   ^-------------     |------------|    |WaitBlock|     |WaitBlock|<-----------
+ *     |                |                       |  Next   |---->|   Next  |->(nil)    |
+ *    \|/               |                       |---------|     |---------|           |
+ *   |---------------|  |                           ^  |            |                 |
+ *   |  DISPATCHER   |  |                           |  |            |Dispatcher       |
+ *   |---------------|  |                           |  |           \|/                |
+ *   | WaitBlockList |-------------------------------  |     |---------------|        |
+ *   |---------------|                                 |     |  DISPATCHER   |        |
+ *          ^                                          |     |---------------|        |
+ *          |                 Dispatcher               |     | WaitBlockList |---------
  *          -------------------------------------------|     |---------------|
  */
 typedef struct _KWAIT_BLOCK {
     struct _THREAD *Thread;
-    WAIT_TYPE WaitType;	/* For WaitOne, the union below is DispatcherLink. */
-    union {
-	LIST_ENTRY SubBlockList; /* Chains all sub-blocks via SiblingLink */
-	struct {
-	    LIST_ENTRY DispatcherLink; /* List entry for DISPATCHER_HEADER.WaitBlockList */
-	    PDISPATCHER_HEADER Dispatcher; /* The dispatcher object of this wait block */
-	};
-    };
-    LIST_ENTRY SiblingLink; /* List entry for KWAIT_BLOCK.SubBlockList */
-    BOOLEAN Satisfied; /* Initially FALSE. TRUE when the dispatcher object is signaled. */
+    WAIT_TYPE WaitType;
+    LIST_ENTRY DispatcherLink; /* List entry for DISPATCHER_HEADER.WaitBlockList */
+    PDISPATCHER_HEADER Dispatcher; /* The dispatcher object of this wait block */
+    struct _KWAIT_BLOCK *Next; /* The right-side of the logical operator */
 } KWAIT_BLOCK, *PKWAIT_BLOCK;
 
 /*
@@ -658,8 +649,8 @@ static inline VOID KeDestroyEvent(IN PKEVENT Event)
     /* Signal the event one last time so any thread that is blocked
      * on this timer gets resumed. */
     KeSetEvent(Event);
-    VOID KiDestroyDispatcherHeader(IN PDISPATCHER_HEADER Header);
-    KiDestroyDispatcherHeader(&Event->Header);
+    VOID KiDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
+    KiDetachDispatcherObject(&Event->Header);
 }
 
 /*
@@ -779,13 +770,15 @@ typedef struct _TIMER {
 NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
 			       IN struct _THREAD *Thread,
 			       IN PDISPATCHER_HEADER DispatcherObject,
-			       IN BOOLEAN Alertable);
+			       IN BOOLEAN Alertable,
+			       IN OPTIONAL PLARGE_INTEGER TimeOut);
 NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 				  IN struct _THREAD *Thread,
 				  IN BOOLEAN Alertable,
 				  IN WAIT_TYPE WaitType,
-				  IN KE_DISPATCHER_ITERATOR Iterator,
-				  IN PVOID IteratorContext);
+				  IN PDISPATCHER_HEADER *DispatcherObjects,
+				  IN ULONG DispatcherCount,
+				  IN OPTIONAL PLARGE_INTEGER TimeOut);
 NTSTATUS KeQueueApcToThread(IN struct _THREAD *Thread,
 			    IN PKAPC_ROUTINE ApcRoutine,
 			    IN PVOID SystemArgument1,
@@ -856,9 +849,24 @@ NTSTATUS KeCreateIrqHandler(IN PIRQ_HANDLER IrqHandler,
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);
 BOOLEAN KeCancelTimer(IN PTIMER Timer);
+BOOLEAN KeSetTimer(IN PTIMER Timer,
+		   IN LARGE_INTEGER DueTime,
+		   IN struct _THREAD *ApcThread,
+		   IN PTIMER_APC_ROUTINE TimerApcRoutine,
+		   IN PVOID TimerApcContext,
+		   IN LONG Period);
 VOID KeDestroyTimer(IN PTIMER Timer);
 ULONGLONG KeQuerySystemTime(VOID);
 ULONGLONG KeQueryInterruptTime(VOID);
+
+/* Remove the timer from the timer queue. Note that you normally should
+ * call KeDestroyTimer instead, which will take care of properly signaling
+ * threads that are still waiting on it. This is only used by the thread
+ * object deletion routine to remove the WaitTimer of the thread. */
+static inline VOID KeRemoveTimer(IN PTIMER Timer)
+{
+    RemoveEntryList(&Timer->ListEntry);
+}
 
 /* ../tests/tests.c */
 VOID KeRunAllTests(VOID);

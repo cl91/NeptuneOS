@@ -398,10 +398,15 @@ typedef struct _OBJECT_TYPE {
     OBJECT_TYPE_INITIALIZER TypeInfo;
 } OBJECT_TYPE, *POBJECT_TYPE;
 
+static inline OBJECT_TYPE_ENUM ObObjectGetType(IN POBJECT Object)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->Type->Index;
+}
+
 static inline BOOLEAN ObObjectIsType(IN POBJECT Object,
 				     IN OBJECT_TYPE_ENUM Type)
 {
-    return OBJECT_TO_OBJECT_HEADER(Object)->Type->Index == Type;
+    return ObObjectGetType(Object) == Type;
 }
 
 /* This overrides the definition in public/ndk/inc/ntobapi.h */

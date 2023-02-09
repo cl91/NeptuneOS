@@ -1,25 +1,5 @@
 #include "iop.h"
 
-typedef struct _PENDING_IRP_ITERATOR_CONTEXT {
-    PPENDING_IRP *PendingIrps;
-    ULONG CurrentIndex;
-    ULONG IrpCount;
-} PENDING_IRP_ITERATOR_CONTEXT, *PPENDING_IRP_ITERATOR_CONTEXT;
-
-static PDISPATCHER_HEADER IopPendingIrpIterator(IN PVOID Context)
-{
-    PPENDING_IRP_ITERATOR_CONTEXT Ctx = (PPENDING_IRP_ITERATOR_CONTEXT)Context;
-    assert(Ctx != NULL);
-    assert(Ctx->PendingIrps != NULL);
-    assert(Ctx->IrpCount != 0);
-    assert(Ctx->CurrentIndex <= Ctx->IrpCount);
-    if (Ctx->CurrentIndex >= Ctx->IrpCount) {
-	return NULL;
-    }
-    PPENDING_IRP PendingIrp = Ctx->PendingIrps[Ctx->CurrentIndex++];
-    return &PendingIrp->IoCompletionEvent.Header;
-}
-
 NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 					 IN PTHREAD Thread,
 					 IN BOOLEAN Alertable,
@@ -28,13 +8,24 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 					 IN ULONG IrpCount)
 {
     ASYNC_BEGIN(State, Locals, {
-	    IN OUT PENDING_IRP_ITERATOR_CONTEXT Ctx;
+	    PDISPATCHER_HEADER *DspObjs;
 	});
-    Locals.Ctx.PendingIrps = PendingIrps;
-    Locals.Ctx.CurrentIndex = 0;
-    Locals.Ctx.IrpCount = IrpCount;
+    if (!IrpCount) {
+	ASYNC_RETURN(State, STATUS_SUCCESS);
+    }
+    Locals.DspObjs = (PDISPATCHER_HEADER *)ExAllocatePoolWithTag(sizeof(PVOID)*IrpCount,
+								 NTOS_IO_TAG);
+    if (Locals.DspObjs == NULL) {
+	ASYNC_RETURN(State, STATUS_NO_MEMORY);
+    }
+    for (ULONG i = 0; i < IrpCount; i++) {
+	assert(PendingIrps[i] != NULL);
+	Locals.DspObjs[i] = &PendingIrps[i]->IoCompletionEvent.Header;
+    }
     AWAIT(KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
-	  WaitType, IopPendingIrpIterator, &Locals.Ctx);
+	  WaitType, Locals.DspObjs, IrpCount, NULL);
+    assert(Locals.DspObjs != NULL);
+    ExFreePoolWithTag(Locals.DspObjs, NTOS_IO_TAG);
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
@@ -538,7 +529,7 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
     /* Now process the driver's queued IO packets and forward them to the driver's
      * incoming IO packet buffer. */
     AWAIT_EX(Status, KeWaitForSingleObject, State, _, Thread,
-	     &DriverObject->IoPacketQueuedEvent.Header, TRUE);
+	     &DriverObject->IoPacketQueuedEvent.Header, TRUE, NULL);
 
     /* Determine how many packets we can send in one go since the driver IO packet
      * buffer has a finite size. This includes potentially the FileName buffer.

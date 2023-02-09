@@ -121,11 +121,59 @@ NTSTATUS NtClearEvent(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+/* If the object is a dispatcher object, return the dispatcher header.
+ * Otherwise return NULL. */
+static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
+{
+    switch (ObObjectGetType(Object)) {
+    case OBJECT_TYPE_DIRECTORY:
+    case OBJECT_TYPE_THREAD:
+    case OBJECT_TYPE_PROCESS:
+    case OBJECT_TYPE_SECTION:
+    case OBJECT_TYPE_FILE:
+    case OBJECT_TYPE_DEVICE:
+    case OBJECT_TYPE_DRIVER:
+    case OBJECT_TYPE_TIMER:
+    case OBJECT_TYPE_KEY:
+	/* TODO: These are all dispatcher objects. We should be
+	 * able to sleep on them. This is not implemented yet. */
+	assert(FALSE);
+	return NULL;
+    case OBJECT_TYPE_EVENT:
+	return &((PEVENT_OBJECT)Object)->Event.Header;
+    case OBJECT_TYPE_SYSTEM_ADAPTER:
+	/* System adapters are not dispatcher objects. */
+	return NULL;
+    default:
+	/* This should never happen. Either we added a new object
+	 * type and forgot to update the cases above, or something
+	 * is seriously wrong. */
+	assert(FALSE);
+	return NULL;
+    }
+}
+
 NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
                                IN HANDLE ObjectHandle,
                                IN BOOLEAN Alertable,
                                IN OPTIONAL PLARGE_INTEGER TimeOut)
 {
-    UNIMPLEMENTED;
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	    POBJECT Object;
+	    PDISPATCHER_HEADER DispatcherObject;
+	});
+    ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread->Process, ObjectHandle,
+						   OBJECT_TYPE_ANY, &Locals.Object));
+    Locals.DispatcherObject = EiObjectGetDispatcherHeader(Locals.Object);
+    if (!Locals.DispatcherObject) {
+	ObDereferenceObject(Locals.Object);
+	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
+    }
+
+    AWAIT_EX(Status, KeWaitForSingleObject, State, Locals,
+	     Thread, Locals.DispatcherObject, Alertable, TimeOut);
+    ObDereferenceObject(Locals.Object);
+    ASYNC_END(State, Status);
 }

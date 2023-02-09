@@ -1315,6 +1315,11 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 			      IN OUT PIRP Irp,
 			      IN PLARGE_INTEGER Timeout)
 {
+    /* TODO: The case with a non-zero timeout is NOT implemented yet. This is not
+     * used frequently so we are good so far. To implement this, add a new Timeout
+     * member to the Irp->Private struct and inform the server of the timeout. We
+     * will need to calculate the absolute time if timeout is relative. */
+    assert(Timeout == NULL || Timeout->QuadPart == 0);
     assert(DeviceObject != NULL);
     assert(Irp != NULL);
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);

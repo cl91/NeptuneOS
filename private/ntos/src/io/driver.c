@@ -150,7 +150,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
     assert(Locals.DriverObject != NULL);
 
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
-	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE);
+	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE, NULL);
 
     /* If the driver initialization failed, inform the caller of the error status */
     if (Locals.DriverObject->MainEventLoopThread == NULL) {

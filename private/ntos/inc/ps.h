@@ -59,7 +59,9 @@ typedef struct _THREAD {
     LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The objects of this list
 				 * are PENDING_IRP. List entry is PENDING_IRP.Link. */
     LIST_ENTRY ReadyListLink; /* Links all threads that are ready to be resumed. */
-    KWAIT_BLOCK RootWaitBlock; /* Root wait condition to satisfy in order to unblock the thread. */
+    KWAIT_BLOCK RootWaitBlock; /* Master equation to satisfy to unblock the thread. */
+    KWAIT_BLOCK TimerWaitBlock;	/* Wait block for the WaitTimer object. */
+    TIMER WaitTimer;  /* Timer object used by KeWaitForSingleObject */
     ASYNC_STACK AsyncStack; /* Stack of asynchronous call frames, starting from the service handler */
     ULONG SvcNum;	    /* Saved service number */
     BOOLEAN WdmSvc;	    /* Saved service is WDM service */

@@ -43,6 +43,9 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
     assert(!IsListEmpty(&Thread->ThreadListEntry));
     RemoveEntryList(&Thread->ThreadListEntry);
 
+    /* Remove the wait timer used by KeWaitForSingleObject from the timer queue */
+    KeRemoveTimer(&Thread->WaitTimer);
+
     /* Clean up the APC objects queued to this thread */
     LoopOverList(Apc, &Thread->QueuedApcList, KAPC, ThreadApcListEntry) {
 	UNUSED BOOLEAN Inserted = KeRemoveQueuedApc(Apc);

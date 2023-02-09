@@ -124,7 +124,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     /* For create/open we always wait till the driver has completed the request. */
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
-	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE);
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
     /* This is the starting point when the function is resumed. */
     assert(Locals.FileObject != NULL);

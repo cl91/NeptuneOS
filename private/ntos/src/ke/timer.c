@@ -281,11 +281,11 @@ VOID KeDestroyTimer(IN PTIMER Timer)
      * is blocked on this timer gets resumed. We don't deliver APC
      * though because the timer technically didn't expire. */
     KiSignalDispatcherObject(&Timer->Header);
-    KiDestroyDispatcherHeader(&Timer->Header);
+    KiDetachDispatcherObject(&Timer->Header);
     if (Timer->ApcThread != NULL) {
 	RemoveEntryList(&Timer->ThreadLink);
     }
-    RemoveEntryList(&Timer->ListEntry);
+    KeRemoveTimer(Timer);
 }
 
 NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
