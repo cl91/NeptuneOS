@@ -227,22 +227,8 @@ static inline unsigned char BitScanReverse(unsigned int *Index,
 /*
  * System information
 */
-FORCEINLINE void __cpuid(unsigned int CPUInfo[4],
-			 unsigned int InfoType)
-{
-    __asm__ __volatile__("cpuid"
-			 : "=a" (CPUInfo[0]), "=b" (CPUInfo[1]), "=c" (CPUInfo[2]), "=d" (CPUInfo[3])
-			 : "a" (InfoType));
-}
-
-FORCEINLINE void __cpuidex(unsigned int CPUInfo[4],
-			   unsigned int InfoType,
-			   unsigned int ECXValue)
-{
-    __asm__ __volatile__("cpuid" :
-			 "=a" (CPUInfo[0]), "=b" (CPUInfo[1]), "=c" (CPUInfo[2]), "=d" (CPUInfo[3])
-			 : "a" (InfoType), "c" (ECXValue));
-}
+void __cpuid(int CPUInfo[4], int InfoType);
+void __cpuidex(int CPUInfo[4], int InfoType, int ECXValue);
 
 #ifdef _M_IX86
 

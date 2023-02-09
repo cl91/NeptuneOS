@@ -282,7 +282,7 @@ static void KiFillProcessorInformation()
 {
     /* Call cpuid to fill in other CPU info
      * mode 1 => get extended family id, model id, proc type, family id, model and stepping id */
-    unsigned int CPUInfo[4];
+    int CPUInfo[4];
     __cpuid(CPUInfo, 1);
 #ifdef _M_IX86
     KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;

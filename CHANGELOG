@@ -1,0 +1,16 @@
+# Changelog
+
+## Release [v0.1]
+
+- Initial release
+
+## Release [v0.2]
+
+- Update seL4 to upstream release 12.1.0
+- Update toolchain to llvm/clang-15
+- Implement Structured Exception Handling (SEH)
+- Object manager improvements: object deletion, symbolic link, case-insensitivity
+- More NT system services are implemented: Events, Registry, Virtual Memory
+- Implement hardware configuration database (part of the volatile registry of NT)
+- Implement DMA Subsystem: ISA slave DMA, PCI bus mastering, software scatter/gather
+- Port the floppy driver from ReactOS.
