@@ -59,11 +59,13 @@ static NTSTATUS NTAPI FdcAddDevice(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
+    KeInitializeEvent(&DeviceExtension->ControllerInfo.SynchEvent,
+		      NotificationEvent, FALSE);
+
     Fdo->Flags |= DO_DIRECT_IO;
     Fdo->Flags |= DO_POWER_PAGABLE;
 
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
-
     return STATUS_SUCCESS;
 }
 

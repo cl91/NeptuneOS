@@ -666,7 +666,7 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 
     /* 3: Initialize the new controller */
     Status = InitController(&DeviceExtension->ControllerInfo);
-    if (NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY,
 	      "FdcFdoStartDevice(): Unable to set up controller - initialization failed\n");
 	goto err;
