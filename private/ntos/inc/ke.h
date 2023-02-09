@@ -850,8 +850,8 @@ VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);
 BOOLEAN KeCancelTimer(IN PTIMER Timer);
 VOID KeDestroyTimer(IN PTIMER Timer);
-ULONGLONG KeQuerySystemTime();
-ULONGLONG KeQueryInterruptTime();
+ULONGLONG KeQuerySystemTime(VOID);
+ULONGLONG KeQueryInterruptTime(VOID);
 
 /* ../tests/tests.c */
-VOID KeRunAllTests();
+VOID KeRunAllTests(VOID);

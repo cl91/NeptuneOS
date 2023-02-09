@@ -190,7 +190,7 @@ NTSTATUS KiInitTimer()
     return STATUS_SUCCESS;
 }
 
-ULONGLONG KeQuerySystemTime()
+ULONGLONG KeQuerySystemTime(VOID)
 {
     ULONGLONG TimerTicks = InterlockedCompareExchange64((PLONG64)&KiTimerTickCount, 0, 0);
     return KiTimerTickCountToSystemTime(TimerTicks);

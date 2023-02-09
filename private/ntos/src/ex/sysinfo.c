@@ -79,7 +79,7 @@ QSI_DEF(SystemTimeOfDayInformation)
     }
 
     /* Get current time */
-    KeQuerySystemTime(&CurrentTime);
+    CurrentTime.QuadPart = KeQuerySystemTime();
 
     /* Zero local buffer */
     RtlZeroMemory(&Sti, sizeof(SYSTEM_TIMEOFDAY_INFORMATION));
