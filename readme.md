@@ -59,11 +59,17 @@ we include the seL4 kernel as a submodule) and then run
 ./build.sh [amd64] [release]
 ```
 If you don't specify `amd64`, then it's an `i686` build. If you don't specify
-`release`, then it's a debug build. To simulate using qemu, run
+`release`, then it's a debug build. To simulate using QEMU, run
 ```
-./run.sh [amd64] [release]
+./run.sh [amd64] [release] [extra-qemu-args]
 ```
-To create the boot floopy, type
+Extra arguments are passed to QEMU. For instance, to run the `i386` release
+build with PC speaker enabled in QEMU you can pass the following (this assumes
+you are using a recent QEMU version and have pulseaudio)
+```
+./run.sh release -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0
+```
+To create boot floopies, type
 ```
 ./mkfloopy.sh [amd64] [release]
 ```
