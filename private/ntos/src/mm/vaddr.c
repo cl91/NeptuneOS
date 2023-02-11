@@ -58,7 +58,7 @@ NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
  */
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace)
 {
-    /* TODO: Create ASID pool if not enough ASID slots */
+    /* TODO: Create ASID pool if there are not enough ASID slots */
     int Error = seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
 					 VaddrSpace->VSpaceCap);
 
@@ -130,6 +130,10 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
  * If unaligned, address window will be aligned at 4K page boundary.
  *
  * If unspecified (ie. zero), EndAddr will be set to StartAddr + WindowSize
+ *
+ * If the MEM_RESERVE_LARGE_PAGES flag is specified and WindowSize is at least
+ * one large page size, then we will attempt to locate an address window that
+ * starts at the large page boundary (failing so, a regular search will be conducted).
  */
 NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,
@@ -140,8 +144,26 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
     assert(WindowSize != 0);
+    /* These will be used in the large page case when we re-attempt a regular search */
+    MWORD OrigStartAddr = StartAddr;
+    MWORD OrigWindowSize = WindowSize;
+
     StartAddr = PAGE_ALIGN(StartAddr);
     WindowSize = PAGE_ALIGN_UP(WindowSize);
+    BOOLEAN TryLargePages = (Flags & MEM_RESERVE_LARGE_PAGES) &&
+	(WindowSize >= LARGE_PAGE_SIZE);
+    if (TryLargePages) {
+	StartAddr = LARGE_PAGE_ALIGN_UP(StartAddr);
+	WindowSize = LARGE_PAGE_ALIGN_UP(WindowSize);
+	/* If after alignment, the address window to search becomes empty, then
+	 * we won't try large pages. */
+	if (EndAddr && (StartAddr + WindowSize > EndAddr)) {
+	    TryLargePages = FALSE;
+	    StartAddr = PAGE_ALIGN(OrigStartAddr);
+	    WindowSize = PAGE_ALIGN_UP(OrigWindowSize);
+	}
+    }
+
     /* We shouldn't align EndAddr since EndAddr might be MAX_ULONGPTR */
     if (Flags & MEM_RESERVE_TOP_DOWN) {
 	assert(EndAddr != 0);
@@ -151,6 +173,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    EndAddr = StartAddr + WindowSize;
 	}
     }
+
     DbgTrace("Finding an address window of size 0x%zx within [%p, %p) for vspacecap 0x%zx\n",
 	     WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, VSpace ? VSpace->VSpaceCap : 0);
     assert(StartAddr < EndAddr);
@@ -197,26 +220,37 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	assert(!(Flags & MEM_RESERVE_IMAGE_MAP));
     }
 
+    MWORD VirtAddr;
+    PMMVAD Parent;
+retry:
     /* Locate the first unused address window */
-    MWORD VirtAddr = (Flags & MEM_RESERVE_TOP_DOWN) ? EndAddr : StartAddr;
-    PMM_AVL_TREE Tree = &VSpace->VadTree;
-    PMMVAD Parent = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrParent(Tree, VirtAddr));
+    VirtAddr = (Flags & MEM_RESERVE_TOP_DOWN) ? EndAddr : StartAddr;
+    Parent = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrParent(&VSpace->VadTree,
+								 VirtAddr));
+    /* Address space is empty. */
     if (Parent == NULL) {
 	goto Insert;
     }
 
     if (Flags & MEM_RESERVE_TOP_DOWN) {
-	/* If there is enough space between Parent and EndAddr,
-	 * insert after Parent. */
-	if (Parent->AvlNode.Key + Parent->WindowSize <= EndAddr) {
-	    goto Insert;
+	/* If the EndAddr is smaller than or equal to Parent, then we can just
+	 * start searching at Parent. However if not, we need to see if there
+	 * is enough space between Parent and EndAddr. If there is, we can just
+	 * insert there. */
+	if (Parent->AvlNode.Key < EndAddr) {
+	    MWORD CurrentAddr = EndAddr - WindowSize;
+	    if (TryLargePages) {
+		CurrentAddr = LARGE_PAGE_ALIGN(CurrentAddr);
+	    }
+	    if (Parent->AvlNode.Key + Parent->WindowSize <= CurrentAddr) {
+		goto Insert;
+	    } else {
+		/* Else, retreat to the address immediately before Parent,
+		 * unless EndAddr is already smaller than start of Parent */
+		VirtAddr = Parent->AvlNode.Key;
+	    }
 	}
-	/* Else, retreat to the address immediately before Parent,
-	 * unless EndAddr is already smaller than start of Parent */
-	if (EndAddr >= Parent->AvlNode.Key) {
-	    VirtAddr = Parent->AvlNode.Key;
-	}
-	/* And start searching from higher address to lower address
+	/* Now start searching from higher address to lower address
 	 * for an unused address window till we reach StartAddr */
 	while (VirtAddr - WindowSize >= StartAddr) {
 	    if (VirtAddr - WindowSize >= VirtAddr) {
@@ -228,18 +262,25 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 		/* Everything from StartAddr to VirtAddr is unused.
 		 * Simply insert before Parent. */
 		VirtAddr -= WindowSize;
+		if (TryLargePages) {
+		    VirtAddr = LARGE_PAGE_ALIGN(VirtAddr);
+		}
 		goto Insert;
 	    }
 	    /* VAD windows should never overlap */
 	    assert((Prev->AvlNode.Key + Prev->WindowSize) <= Parent->AvlNode.Key);
-	    if (Prev->AvlNode.Key + Prev->WindowSize <= VirtAddr - WindowSize) {
+	    MWORD CurrentAddr = VirtAddr - WindowSize;
+	    if (TryLargePages) {
+		CurrentAddr = LARGE_PAGE_ALIGN(CurrentAddr);
+	    }
+	    if (Prev->AvlNode.Key + Prev->WindowSize <= CurrentAddr) {
 		/* Found an unused address window. Now determine whether we insert
 		 * as the right child of Prev or as left child of Parent */
 		if (Parent->AvlNode.LeftChild != NULL) {
 		    assert(Prev->AvlNode.RightChild == NULL);
 		    Parent = Prev;
 		}
-		VirtAddr -= WindowSize;
+		VirtAddr = CurrentAddr;
 		goto Insert;
 	    }
 	    /* Otherwise keep going */
@@ -247,17 +288,18 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    VirtAddr = Prev->AvlNode.Key;
 	}
     } else {
-	/* If there is enough space between StartAddr and Parent,
-	 * insert before Parent. */
-	if (StartAddr + WindowSize <= Parent->AvlNode.Key) {
-	    goto Insert;
-	}
-	/* Else, advance to the address immediately after Parent, unless
-	 * StartAddr is already bigger than the end of Parent VAD */
+	/* If StartAddr is larger than or equal to Parent, we can just
+	 * start searching at Parent. Otherwise, check if there is enough
+	 * space between StartAddr and Parent, and insert there if there is. */
 	if (StartAddr < Parent->AvlNode.Key + Parent->WindowSize) {
-	    VirtAddr = Parent->AvlNode.Key + Parent->WindowSize;
+	    if (StartAddr + WindowSize <= Parent->AvlNode.Key) {
+		goto Insert;
+	    } else {
+		/* Else, advance to the address immediately after Parent */
+		VirtAddr = Parent->AvlNode.Key + Parent->WindowSize;
+	    }
 	}
-	/* And start searching for unused window till we reach EndAddr */
+	/* Now start searching for unused window till we reach EndAddr */
 	while (VirtAddr + WindowSize <= EndAddr) {
 	    if (VirtAddr + WindowSize < VirtAddr) {
 		/* addr window overflows */
@@ -282,10 +324,20 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	    }
 	    Parent = Next;
 	    VirtAddr = Next->AvlNode.Key + Next->WindowSize;
+	    if (TryLargePages) {
+		VirtAddr = LARGE_PAGE_ALIGN_UP(VirtAddr);
+	    }
 	}
     }
 
-    /* Unable to find an unused address window */
+    /* Unable to find an unused address window. Now try without large pages */
+    if (TryLargePages) {
+	TryLargePages = FALSE;
+	StartAddr = PAGE_ALIGN(OrigStartAddr);
+	WindowSize = PAGE_ALIGN_UP(OrigWindowSize);
+	goto retry;
+    }
+    /* Now we really don't have any free address window. Return error. */
     MmDbgDumpVSpace(VSpace);
     return STATUS_CONFLICTING_ADDRESSES;
 
@@ -388,6 +440,27 @@ NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
     return STATUS_SUCCESS;
 }
 
+/* Map the physical memory window into the given VSpace. */
+static NTSTATUS MiCommitIoMemory(IN PVIRT_ADDR_SPACE VSpace,
+				 IN MWORD PhyAddr,
+				 IN MWORD VirtAddr,
+				 IN MWORD WindowSize,
+				 IN PAGING_RIGHTS Rights,
+				 IN BOOLEAN LargePage)
+{
+    assert(VSpace != NULL);
+    assert(WindowSize != 0);
+    for (MWORD Committed = 0; Committed < WindowSize;
+	 Committed += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE)) {
+	if (WindowSize - Committed < LARGE_PAGE_SIZE) {
+	    LargePage = FALSE;
+	}
+	RET_ERR(MiCommitIoPage(VSpace, PhyAddr + Committed, VirtAddr + Committed,
+			       Rights, &LargePage));
+    }
+    return STATUS_SUCCESS;
+}
+
 /*
  * Commit the virtual memory window [StartAddr, StartAddr + WindowSize). The
  * address window must have been already reserved and have not been committed
@@ -404,7 +477,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     DbgTrace("Trying to commit [%p, %p)\n", (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize));
     StartAddr = PAGE_ALIGN(StartAddr);
     WindowSize = PAGE_ALIGN_UP(WindowSize);
-    assert_ret(StartAddr + WindowSize > StartAddr);
+    assert(StartAddr + WindowSize > StartAddr);
 
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, StartAddr);
     if (Vad == NULL) {
@@ -435,11 +508,12 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     } else if (Vad->Flags.FileMap) {
 	UNIMPLEMENTED;
     } else if (Vad->Flags.PhysicalMapping) {
-	for (MWORD Committed = 0; Committed < WindowSize; Committed += PAGE_SIZE) {
-	    MWORD PhyAddr = StartAddr - Vad->AvlNode.Key +
-		Vad->PhysicalSectionView.PhysicalBase + Committed;
-	    RET_ERR(MiCommitIoPage(Vad->VSpace, PhyAddr, StartAddr + Committed, Rights));
+	if (Vad->PhysicalSectionView.RootUntyped) {
+	    assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
 	}
+	MWORD PhyAddr = StartAddr - Vad->AvlNode.Key + Vad->PhysicalSectionView.PhysicalBase;
+	RET_ERR(MiCommitIoMemory(Vad->VSpace, PhyAddr, StartAddr, WindowSize,
+				 Rights, Vad->Flags.LargePages));
     } else if (Vad->Flags.MirroredMemory) {
 	assert(Vad->MirroredMemory.Master != NULL);
 	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
@@ -628,6 +702,9 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 	assert(Vad->MirroredMemory.ViewerLink.Blink != NULL);
 	assert(!IsListEmpty(&Vad->MirroredMemory.ViewerLink));
 	RemoveEntryList(&Vad->MirroredMemory.ViewerLink);
+    } else if (Vad->Flags.PhysicalMapping && Vad->PhysicalSectionView.RootUntyped) {
+	/* MiUncommitVad should have already freed the untyped, so just check that. */
+	assert(MiUntypedIsInFreeLists(Vad->PhysicalSectionView.RootUntyped));
     }
     MiFreePool(Vad);
 }
@@ -747,6 +824,41 @@ BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
     }
     return NT_SUCCESS(MmCommitVirtualMemoryEx(&Thread->Process->VSpace,
 					      PAGE_ALIGN(Addr), PAGE_SIZE));
+}
+
+/*
+ * Allocate physically contiguous memory of given size. The physical memory
+ * allocated is always aligned on the smallest power of two that is at least
+ * the given size. In other words, let n be the smallest n such that
+ * 2^n >= Length, then the returned physical address is always aligned by 2^n.
+ */
+NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
+					      IN ULONG Length,
+					      IN MWORD HighestPhyAddr,
+					      OUT MWORD *VirtAddr,
+					      OUT MWORD *PhyAddr)
+{
+    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
+    PMMVAD Vad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
+				     USER_IMAGE_REGION_END, Length, Flags, &Vad));
+    assert(Vad != NULL);
+    PUNTYPED Untyped = NULL;
+    ULONG Log2Size = 0;
+    while ((1ULL << Log2Size) < Length) {
+	Log2Size++;
+    }
+    RET_ERR_EX(MmRequestUntypedEx(Log2Size, HighestPhyAddr, &Untyped),
+	       MmDeleteVad(Vad));
+    assert(Vad->Flags.PhysicalMapping);
+    Vad->PhysicalSectionView.PhysicalBase = Untyped->AvlNode.Key;
+    Vad->PhysicalSectionView.RootUntyped = Untyped;
+    RET_ERR_EX(MmCommitVirtualMemoryEx(VSpace, Vad->AvlNode.Key, Length),
+	       MmDeleteVad(Vad));
+    MiInsertFreeUntyped(&MiPhyMemDescriptor, Untyped);
+    *VirtAddr = Vad->AvlNode.Key;
+    *PhyAddr = Untyped->AvlNode.Key;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
@@ -928,7 +1040,7 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
     DbgTrace("Process %s VSpace cap 0x%zx base address %p region size 0x%zx free type 0x%x\n",
 	     Process->ImageFile ? Process->ImageFile->FileName : "",
-	     VSpace->VSpaceCap, *BaseAddress, *RegionSize, FreeType);
+	     VSpace->VSpaceCap, *BaseAddress, (MWORD)*RegionSize, FreeType);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, (MWORD)*BaseAddress);

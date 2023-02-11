@@ -56,6 +56,9 @@ static inline PCAP_TREE_NODE MiCapTreeNodeGetSecondChild(IN PCAP_TREE_NODE Node)
 #define MiCapTreeGetFirstChildTyped(Obj, Type)	(CONTAINING_RECORD(MiCapTreeNodeGetFirstChild(&(Obj)->TreeNode), Type, TreeNode))
 #define MiCapTreeGetSecondChildTyped(Obj, Type)	(CONTAINING_RECORD(MiCapTreeNodeGetSecondChild(&(Obj)->TreeNode), Type, TreeNode))
 
+#define CapTreeLoopOverChildren(Child, Node)				\
+    LoopOverList(Child, &(Node)->ChildrenList, CAP_TREE_NODE, SiblingLink)
+
 static inline PCAP_TREE_NODE MiCapTreeGetNextSibling(IN PCAP_TREE_NODE Node)
 {
     assert(Node->SiblingLink.Flink != NULL);
@@ -289,11 +292,21 @@ NTSTATUS MiSplitUntypedCap(IN MWORD SrcCap,
 			   IN MWORD DestCap);
 VOID MiInsertFreeUntyped(PPHY_MEM_DESCRIPTOR PhyMem,
 			 PUNTYPED Untyped);
-NTSTATUS MiRequestIoUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
-			    IN MWORD PhyAddr,
-			    OUT PUNTYPED *IoUntyped);
+NTSTATUS MiGetUntypedAtPhyAddr(IN PPHY_MEM_DESCRIPTOR PhyMem,
+			       IN MWORD PhyAddr,
+			       IN LONG Log2Size,
+			       OUT PUNTYPED *Untyped);
 NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			     IN PUNTYPED RootUntyped);
+
+/* Returns TRUE if the untyped is in one of the free lists */
+static inline BOOLEAN MiUntypedIsInFreeLists(IN PUNTYPED Untyped)
+{
+    return ListHasEntry(&MiPhyMemDescriptor.LowMemUntypedList, &Untyped->FreeListEntry) ||
+	ListHasEntry(&MiPhyMemDescriptor.SmallUntypedList, &Untyped->FreeListEntry) ||
+	ListHasEntry(&MiPhyMemDescriptor.MediumUntypedList, &Untyped->FreeListEntry) ||
+	ListHasEntry(&MiPhyMemDescriptor.LargeUntypedList, &Untyped->FreeListEntry);
+}
 
 /* avltree.c */
 PMM_AVL_NODE MiAvlTreeFindNodeOrParent(IN PMM_AVL_TREE Tree,
@@ -388,7 +401,8 @@ NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD PhyAddr,
 			IN MWORD VirtAddr,
-			IN PAGING_RIGHTS Rights);
+			IN PAGING_RIGHTS Rights,
+			IN OUT BOOLEAN *LargePage);
 VOID MiDeletePage(IN PPAGING_STRUCTURE Page);
 
 static inline BOOLEAN MiPagingTypeIsRoot(IN PAGING_STRUCTURE_TYPE Type)

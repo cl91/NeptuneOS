@@ -166,7 +166,6 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
     RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, Page));
     RET_ERR(MmReserveVirtualMemory(EX_POOL_START, 0, EX_POOL_MAX_SIZE,
 				   MEM_RESERVE_OWNED_MEMORY, NULL));
-    /* TODO: Commit */
 
     return STATUS_SUCCESS;
 }

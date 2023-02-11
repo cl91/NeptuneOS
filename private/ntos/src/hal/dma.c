@@ -116,8 +116,8 @@ typedef struct _DMA_CHANNEL_STOP {
 } DMA_CHANNEL_STOP, *PDMA_CHANNEL_STOP;
 
 /* This structure defines the I/O Map of the 82537 controller.
- * We don't support EISA (just ISA) so the extended DMA fields
- * are never used. */
+ * We don't support EISA (only ISA is supported) so the extended
+ * DMA fields are never used. */
 typedef struct _EISA_CONTROL {
     /* DMA Controller 1 */
     DMA1_CONTROL DmaController1; /* 00h-0Fh */
@@ -214,7 +214,7 @@ static const ULONG_PTR HalpEisaPortPage[8] = {
  * System DMA Adapter object. This is the object that multiplexes
  * the (E)ISA DMA controller for client drivers. There is one singleton
  * object for each ISA DMA channel 0-7, except channel 4 which is
- * used for cascading and is unavailable for device use.
+ * used for cascading and is therefore unavailable for device use.
  */
 typedef struct _HAL_SYSYEM_ADAPTER {
     PVOID AdapterBaseVa;
@@ -451,11 +451,25 @@ NTSTATUS HalpDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
 NTSTATUS HalpAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
                                IN PTHREAD Thread,
                                IN ULONG Length,
-                               IN PPHYSICAL_ADDRESS LowestAddr,
                                IN PPHYSICAL_ADDRESS HighestAddr,
-                               IN ULONG BoundryAddressBits,
-                               OUT PVOID *VirtAddr,
-                               OUT PHYSICAL_ADDRESS *PhyAddr)
+                               IN ULONG BoundaryAddressBits,
+                               OUT PVOID *pVirtAddr,
+                               OUT PHYSICAL_ADDRESS *pPhyAddr)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    /* Length cannot be larger than the contiguous bank that the
+     * DMA controller/device can access. For instance, if the
+     * DMA adapter is the ISA DMA controller, than Length must
+     * be less than 64KB (BoundaryAddressBits == 16). */
+    if (Length > (1ULL << BoundaryAddressBits)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    MWORD VirtAddr = 0;
+    MWORD PhyAddr = 0;
+    RET_ERR(MmAllocatePhysicallyContiguousMemory(&Thread->Process->VSpace,
+						 Length,
+						 HighestAddr->QuadPart,
+						 &VirtAddr, &PhyAddr));
+    *pVirtAddr = (PVOID)VirtAddr;
+    pPhyAddr->QuadPart = PhyAddr;
+    return STATUS_SUCCESS;
 }

@@ -64,9 +64,8 @@
 
   <svc name="HalpAllocateDmaBuffer">
     <parameter annotation="in" type="ULONG" name="Length" />
-    <parameter annotation="in" type="ptr::PHYSICAL_ADDRESS" name="LowestAddr" />
     <parameter annotation="in" type="ptr::PHYSICAL_ADDRESS" name="HighestAddr" />
-    <parameter annotation="in" type="ULONG" name="BoundryAddressBits" />
+    <parameter annotation="in" type="ULONG" name="BoundaryAddressBits" />
     <parameter annotation="out" type="ptr::PVOID" name="VirtAddr" />
     <parameter annotation="out" type="ptr::PHYSICAL_ADDRESS" name="PhyAddr" />
   </svc>

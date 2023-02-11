@@ -496,10 +496,9 @@ static NTSTATUS HalpAllocateMapRegisters(IN PADAPTER_OBJECT AdapterObject,
     /* No more free map registers. We must now request the server to allocate
      * new map registers. The server will always try to allocate high memory
      * when it's available, so as not to waste scarce resource (low memory). */
-    PHYSICAL_ADDRESS LowestAddr = { .QuadPart = 0 };
     ULONG BoundAddrBits = HalpGetAdapterBoundaryAddressBits(AdapterObject);
-    RET_ERR_EX(HalpAllocateDmaBuffer(Count << PAGE_SHIFT, &LowestAddr, &HighestAddr,
-				     BoundAddrBits, &MapReg->VirtBase, &MapReg->PhyBase),
+    RET_ERR_EX(HalpAllocateDmaBuffer(Count << PAGE_SHIFT, &HighestAddr, BoundAddrBits,
+				     &MapReg->VirtBase, &MapReg->PhyBase),
 	       ExFreePool(MapReg));
     assert(MapReg->VirtBase != NULL);
     assert(MapReg->PhyBase.QuadPart != 0);

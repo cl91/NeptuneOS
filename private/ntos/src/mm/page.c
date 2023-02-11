@@ -416,11 +416,6 @@ VOID MiDeletePage(IN PPAGING_STRUCTURE Page)
     }
 }
 
-MM_MEM_PRESSURE MmQueryMemoryPressure()
-{
-    return MM_MEM_PRESSURE_SUFFICIENT_MEMORY;
-}
-
 /*
  * Create a paging structure of the given type from the supplied untyped cap
  * and initialize the paging structure. The virtual address is rounded down
@@ -833,26 +828,48 @@ NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 
 /*
  * Map one page of physical memory at specified physical address into the specified
- * virtual address, optionally returning the paging structure pointer.
+ * virtual address. If *UseLargePage is TRUE, then we will attempt to map one large
+ * page will be mapped. If unsuccessful, a 4K page will be mapped, and *UseLargePage
+ * is set to FALSE on return.
  */
 NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD PhyAddr,
 			IN MWORD VirtAddr,
-			IN PAGING_RIGHTS Rights)
+			IN PAGING_RIGHTS Rights,
+			IN OUT BOOLEAN *LargePage)
 {
     assert(IS_PAGE_ALIGNED(PhyAddr));
     assert(IS_PAGE_ALIGNED(VirtAddr));
-    PhyAddr = PAGE_ALIGN(PhyAddr);
-    VirtAddr = PAGE_ALIGN(VirtAddr);
+    if (*LargePage) {
+	*LargePage = IS_LARGE_PAGE_ALIGNED(PhyAddr) && IS_LARGE_PAGE_ALIGNED(VirtAddr);
+    }
 
-    PUNTYPED IoUntyped;
-    RET_ERR(MiRequestIoUntyped(&MiPhyMemDescriptor, PhyAddr, &IoUntyped));
-    if (IoUntyped->Log2Size != PAGE_LOG2SIZE) {
-	return STATUS_NTOS_BUG;
+    PUNTYPED Untyped;
+retry:
+    RET_ERR(MiGetUntypedAtPhyAddr(&MiPhyMemDescriptor, PhyAddr,
+				  *LargePage ? LARGE_PAGE_LOG2SIZE : PAGE_LOG2SIZE,
+				  &Untyped));
+    /* We need to make sure that if the untyped has cap tree descendants, they can
+     * only be page caps. In particular, untyped caps with untyped descendants cannot
+     * be retyped into page caps so the mapping below will fail. */
+    if (MmCapTreeNodeHasChildren(&Untyped->TreeNode)) {
+	PCAP_TREE_NODE Child = MiCapTreeNodeGetFirstChild(&Untyped->TreeNode);
+	if (Child->Type != CAP_TREE_NODE_PAGING_STRUCTURE) {
+	    if (*LargePage && (Child->Type == CAP_TREE_NODE_UNTYPED)) {
+		/* In the large page case, we will attempt to map a 4K page instead */
+		*LargePage = FALSE;
+		goto retry;
+	    } else {
+		/* In the 4K page case, the untyped caps with non-Page descendants are
+		 * used by the system internally. We do not allow clients to map them. */
+		return STATUS_INVALID_PARAMETER;
+	    }
+	}
     }
 
     PPAGING_STRUCTURE Page = NULL;
-    if (!MmCapTreeNodeHasChildren(&IoUntyped->TreeNode)) {
+    PAGING_STRUCTURE_TYPE PageTy = *LargePage ? PAGING_TYPE_LARGE_PAGE : PAGING_TYPE_PAGE;
+    if (!MmCapTreeNodeHasChildren(&Untyped->TreeNode)) {
 	/* TODO: If Rights != MM_RIGHTS_RW, first create a page cap with full rights,
 	 * and then derive the cap with less rights. This is to make sure that future
 	 * calls to MiCommitIoPage with higher rights do not fail.
@@ -861,15 +878,19 @@ NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
 	 * memory we don't do this because owners should have authority over how
 	 * its memory can be mapped by viewers. In other words if owner maps the page
 	 * as read-only, no viewer should be able to modify it. */
-	RET_ERR(MiCreatePagingStructure(PAGING_TYPE_PAGE, IoUntyped, NULL, VirtAddr,
+	RET_ERR(MiCreatePagingStructure(PageTy, Untyped, NULL, VirtAddr,
 					VSpace->VSpaceCap, Rights, &Page));
-    } else {
-	assert(MiCapTreeNodeGetFirstChild(&IoUntyped->TreeNode)->Type
-	       == CAP_TREE_NODE_PAGING_STRUCTURE);
-	PPAGING_STRUCTURE OldPage = MiCapTreeGetFirstChildTyped(IoUntyped,
+    } else if (MiCapTreeNodeGetFirstChild(&Untyped->TreeNode)->Type
+	       == CAP_TREE_NODE_PAGING_STRUCTURE) {
+	PPAGING_STRUCTURE OldPage = MiCapTreeGetFirstChildTyped(Untyped,
 								PAGING_STRUCTURE);
-	assert(Page->Type == PAGING_TYPE_PAGE);
+	if (Page->Type != PageTy) {
+	    return STATUS_INVALID_PARAMETER;
+	}
 	RET_ERR(MiCreateSharedPage(OldPage, VSpace, VirtAddr, Rights, &Page));
+    } else {
+	/* This cannot happen since we checked above, but return error anyway. */
+	return STATUS_INVALID_PARAMETER;
     }
 
     assert(Page != NULL);

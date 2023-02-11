@@ -14,6 +14,7 @@
 
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
+#define LARGE_PAGE_ALIGN_UP(p)		(LARGE_PAGE_ALIGN((MWORD)(p)+LARGE_PAGE_SIZE-1))
 #define IS_LARGE_PAGE_ALIGNED(p)	(((MWORD)(p)) == LARGE_PAGE_ALIGN(p))
 
 #define NTOS_CNODE_CAP			(seL4_CapInitThreadCNode)
@@ -327,7 +328,7 @@ typedef union _MMVAD_FLAGS {
 #define MEM_RESERVE_NO_ACCESS		(0x1UL)
 #define MEM_RESERVE_READ_ONLY		(0x1UL << 1)
 /* If the VAD is neither an image map/file map nor a physical map, it would be
- * what Windows calls "page-file backed section", in other words just memory. */
+ * what Windows calls a "page-file backed section", in other words just memory. */
 #define MEM_RESERVE_IMAGE_MAP		(0x1UL << 2)
 #define MEM_RESERVE_FILE_MAP		(0x1UL << 3)
 #define MEM_RESERVE_PHYSICAL_MAPPING	(0x1UL << 4)
@@ -348,7 +349,8 @@ typedef struct _MMVAD {
     MWORD WindowSize;		/* Rounded up to 4K page boundary */
     MMVAD_FLAGS Flags;
     LIST_ENTRY SectionLink;	/* List entry for SECTION.VadList.
-				 * If the VAD does not map a section view, this is NULL. */
+				 * If the VAD does not map a section
+				 * view, this is NULL. */
     union {
 	struct {
 	    struct _SECTION *Section;
@@ -358,11 +360,17 @@ typedef struct _MMVAD {
 	    struct _SUBSECTION *SubSection;
 	} ImageSectionView;
 	struct {
-	    MWORD PhysicalBase;	/* Base of the physical address window to map, 4K aligned */
-	} PhysicalSectionView;	/* Physical section is neither owned or mirrored memory */
+	    MWORD PhysicalBase;	/* Base of the physical address window
+				 * to map, 4K aligned */
+	    PUNTYPED RootUntyped; /* Root untyped from which the physical memory
+				   * of this VAD is allocated. This is only used
+				   * in the case of map register memory. */
+	} PhysicalSectionView;	/* Physical section is neither owned
+				 * or mirrored memory */
     };
     struct {
-	struct _VIRT_ADDR_SPACE *Master; /* The VSpace that is been mapped into this VSpace */
+	struct _VIRT_ADDR_SPACE *Master; /* The VSpace that is been mapped
+					  * into this VSpace */
 	MWORD StartAddr; /* Starting virtual address in the master vspace */
 	LIST_ENTRY ViewerLink;	/* List entry for master VSpace's ViewerList */
     } MirroredMemory;
@@ -466,6 +474,7 @@ typedef struct _VIRT_ADDR_SPACE {
  * small, medium, and large, to speed up resource allocations.
  */
 typedef struct _PHY_MEM_DESCRIPTOR {
+    LIST_ENTRY LowMemUntypedList; /* Untyped with physical memory below MM_ISA_DMA_LIMIT. */
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
@@ -479,6 +488,12 @@ typedef enum _MM_MEM_PRESSURE {
     MM_MEM_PRESSURE_LOW_MEMORY,
     MM_MEM_PRESSURE_CRITICALLY_LOW_MEMORY
 } MM_MEM_PRESSURE;
+
+/* This defines what we consider as the "low memory region" of the physical address
+ * space. These memories are reserved for 16-bit ISA devices and not allocated until
+ * all high memory is exhausted. ISA DMA can only access the lowest 16MB of the
+ * physical address space so we need to be extra frugal. */
+#define MM_ISA_DMA_LIMIT	(16 * 1024 * 1024)
 
 /*
  * Section object.
@@ -598,13 +613,20 @@ static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
 }
 
 /* untyped.c */
-NTSTATUS MmRequestUntyped(IN LONG Log2Size,
-			  OUT PUNTYPED *pUntyped);
+NTSTATUS MmRequestUntypedEx(IN LONG Log2Size,
+			    IN MWORD HighestPhyAddr,
+			    OUT PUNTYPED *pUntyped);
 VOID MmReleaseUntyped(IN PUNTYPED Untyped);
 NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjType,
 			    IN MWORD ObjBits,
 			    IN PCAP_TREE_NODE TreeNode);
+
+static inline NTSTATUS MmRequestUntyped(IN LONG Log2Size,
+					OUT PUNTYPED *pUntyped)
+{
+    return MmRequestUntypedEx(Log2Size, 0, pUntyped);
+}
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
@@ -638,6 +660,11 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
 				 IN MWORD WindowSize);
+NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
+					      IN ULONG Length,
+					      IN MWORD HighestPhyAddr,
+					      OUT MWORD *VirtAddr,
+					      OUT MWORD *PhyAddr);
 NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 			     IN MWORD StartAddr,
 			     IN MWORD WindowSize);

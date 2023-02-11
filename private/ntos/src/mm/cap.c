@@ -49,10 +49,6 @@ Revision History:
 
 #include "mi.h"
 
-#define LoopOverChildren(Child, Node)		\
-    LoopOverList(Child, &(Node)->ChildrenList,	\
-		 CAP_TREE_NODE, SiblingLink)
-
 #ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
@@ -118,7 +114,7 @@ VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Node,
 	     Node->SiblingLink.Flink, Node->SiblingLink.Blink);
     MmDbgDumpCapTreeNode(Node);
     DbgPrint("\n");
-    LoopOverChildren(Child, Node) {
+    CapTreeLoopOverChildren(Child, Node) {
 	MmDbgDumpCapTree(Child, Indentation + MI_DBG_CAP_TREE_INDENTATION);
     }
 }
@@ -407,7 +403,7 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     if (Parent != NULL) {
 	MiCapTreeRemoveFromParent(Node);
     }
-    LoopOverChildren(Child, Node) {
+    CapTreeLoopOverChildren(Child, Node) {
 	MiCapTreeRemoveFromParent(Child);
 	if (Parent != NULL) {
 	    MiCapTreeNodeSetParent(Child, Parent);
@@ -434,7 +430,7 @@ static VOID MiCapTreeDeallocateCapRecursively(IN PCAP_TREE_NODE Node)
     assert(Node->Cap);
     MmDeallocateCap(Node->CSpace, Node->Cap);
     Node->Cap = 0;
-    LoopOverChildren(Child, Node) {
+    CapTreeLoopOverChildren(Child, Node) {
 	MiCapTreeDeallocateCapRecursively(Child);
     }
 }
@@ -453,7 +449,7 @@ VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
     /* This should always succeed. On debug build we assert if it didn't. */
     UNUSED NTSTATUS Status = MiRevokeCap(Node);
     assert(NT_SUCCESS(Status));
-    LoopOverChildren(Child, Node) {
+    CapTreeLoopOverChildren(Child, Node) {
 	MiCapTreeDeallocateCapRecursively(Child);
     }
 }
