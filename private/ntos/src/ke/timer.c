@@ -138,7 +138,11 @@ static NTSTATUS KiEnableTimerInterruptService()
 static inline VOID KiSignalExpiredTimer(IN PTIMER Timer)
 {
     KiSignalDispatcherObject(&Timer->Header);
-    if (Timer->ApcRoutine != NULL) {
+    /* Note here ApcThread can become NULL while ApcRoutine is not NULL.
+     * This can happen when a thread object is deleted before the timer
+     * object is (the thread object deletion routine will set ApcThread
+     * to NULL to remove the thread from the timer APC queue). */
+    if (Timer->ApcThread && Timer->ApcRoutine) {
 	KeQueueApcToThread(Timer->ApcThread, (PKAPC_ROUTINE) Timer->ApcRoutine,
 			   Timer->ApcContext, (PVOID)((ULONG_PTR)Timer->DueTime.LowPart),
 			   (PVOID)((ULONG_PTR)Timer->DueTime.HighPart));
