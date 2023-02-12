@@ -334,7 +334,8 @@ static NTSTATUS RWComputeCHS(IN PDRIVE_INFO DriveInfo,
  */
 NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
-    PDRIVE_INFO DriveInfo = DeviceObject->DeviceExtension;
+    PPDO_DEVICE_EXTENSION DevExt = DeviceObject->DeviceExtension;
+    PDRIVE_INFO DriveInfo = DevExt->DriveInfo;
 
     TRACE_(FLOPPY, "SignalMediaChanged called\n");
 
@@ -342,7 +343,7 @@ NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     NTSTATUS Status;
     /* If volume is not mounted, do NOT set verify and return STATUS_IO_DEVICE_ERROR */
-    if (!(DeviceObject->Vpb->Flags & VPB_MOUNTED)) {
+    if (DeviceObject->Vpb && !(DeviceObject->Vpb->Flags & VPB_MOUNTED)) {
 	Status = STATUS_IO_DEVICE_ERROR;
     } else {
 	/* Notify the filesystem that it will need to verify the volume */
@@ -518,7 +519,7 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
      * Check the change line, and if it's set, return
      */
     StartMotor(DriveInfo);
-    Status = HwDiskChanged(DeviceObject->DeviceExtension, &DiskChanged);
+    Status = HwDiskChanged(DriveInfo, &DiskChanged);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY,
 	      "ReadWrite(): unable to detect disk change, error = 0x%x\n", Status);
