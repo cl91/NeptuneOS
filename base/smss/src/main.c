@@ -94,10 +94,50 @@ static VOID SmTestBeepDriver(IN ULONG Freq,
 	    Freq, Duration);
     BOOLEAN BeepSuccess = SmBeep(Freq, Duration);
     if (BeepSuccess) {
-	SmPrint("Success. You should hear a beep.\n\n");
+	SmPrint("Success. You should hear a beep.\n");
     } else {
-	SmPrint("FAILED.\n\n");
+	SmPrint("FAILED.\n");
     }
+}
+
+static UCHAR Buffer[1440 * 1024];
+
+static NTSTATUS SmTestFloppyDriver()
+{
+    HANDLE hFloppy;
+    UNICODE_STRING FloppyDevice;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK IoStatusBlock;
+
+    /* Open the device */
+    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0");
+    InitializeObjectAttributes(&ObjectAttributes, &FloppyDevice, 0, NULL, NULL);
+    RET_ERR_EX(NtCreateFile(&hFloppy, FILE_READ_DATA | FILE_WRITE_DATA,
+			    &ObjectAttributes, &IoStatusBlock, NULL, 0,
+			    FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
+			    0, NULL, 0),
+	       SmPrint("Failed to create device handle for fdc.sys. Status = 0x%x\n", Status));
+
+    LARGE_INTEGER ByteOffset;
+    RtlZeroMemory(&ByteOffset, sizeof(ByteOffset));
+
+    /* Try to read the data */
+    SmPrint("Reading floppy... ");
+    RET_ERR_EX(NtReadFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
+			  Buffer, sizeof(Buffer), &ByteOffset, NULL),
+	       SmPrint("FAILED. Status = 0x%x\n", Status));
+
+    SmPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",
+	    Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
+
+    for (ULONG i = 0; i < ARRAYSIZE(Buffer) / 16; i++) {
+	PUSHORT Row = (PUSHORT)(Buffer + 16*i);
+	DbgPrint("%07x %04x %04x %04x %04x %04x %04x %04x %04x\n",
+		 16*i, Row[0], Row[1], Row[2], Row[3],
+		 Row[4], Row[5], Row[6], Row[7]);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS SmOpenKeyboard(IN PCWSTR ClassDeviceName,
@@ -241,6 +281,8 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmInitHardwareDatabase();
     SmTestNullDriver();
     SmTestBeepDriver(440, 1000);
+    SmTestFloppyDriver();
+    SmPrint("\n");
 
     if (!NT_SUCCESS(SmStartCommandPrompt())) {
 	SmPrint("Failed to launch native command prompt. System halted.\n");
