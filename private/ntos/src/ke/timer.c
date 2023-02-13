@@ -236,6 +236,10 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
 		   IN LONG Period)
 {
     assert(Timer != NULL);
+    if (ApcThread == NULL) {
+	assert(TimerApcRoutine == NULL);
+	assert(TimerApcContext == NULL);
+    }
     ULONGLONG AbsoluteDueTime = DueTime.QuadPart;
     /* If DueTime is negative, it is relative to the current system time */
     if (DueTime.QuadPart < 0) {
@@ -249,7 +253,9 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
     Timer->ApcThread = ApcThread;
     Timer->ApcRoutine = TimerApcRoutine;
     Timer->ApcContext = TimerApcContext;
-    InsertTailList(&ApcThread->TimerApcList, &Timer->ThreadLink);
+    if (ApcThread != NULL) {
+	InsertTailList(&ApcThread->TimerApcList, &Timer->ThreadLink);
+    }
     Timer->Period = Period;
     /* If the timer is already set, compute the new due time and return TRUE */
     if (Timer->State) {
