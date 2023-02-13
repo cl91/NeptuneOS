@@ -65,6 +65,16 @@ static inline VOID KiReleaseTimerDatabaseLock()
     KeReleaseMutex(&KiTimerDatabaseLock);
 }
 
+static inline BOOLEAN KiTimerIsQueued(IN PTIMER Timer)
+{
+    return ListHasEntry(&KiQueuedTimerList, &Timer->QueueEntry);
+}
+
+static inline BOOLEAN KiTimerIsExpired(IN PTIMER Timer)
+{
+    return ListHasEntry(&KiExpiredTimerList, &Timer->ExpiredListEntry);
+}
+
 /*
  * Entry point for the timer interrupt service thread
  */
@@ -265,7 +275,9 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
     /* If the timer is not set, queue it and return FALSE. Note that if the timer
      * state is not set it is guaranteed to be in neither the timer queue or the
      * expired timer list. */
+    assert(!KiTimerIsQueued(Timer) && !KiTimerIsExpired(Timer));
     InsertTailList(&KiQueuedTimerList, &Timer->QueueEntry);
+    Timer->State = TRUE;
     KiReleaseTimerDatabaseLock();
     return FALSE;
 }
@@ -276,7 +288,10 @@ BOOLEAN KeCancelTimer(IN PTIMER Timer)
     KiAcquireTimerDatabaseLock();
     State = Timer->State;
     if (State) {
+	assert(KiTimerIsQueued(Timer) || KiTimerIsExpired(Timer));
 	RemoveEntryList(&Timer->QueueEntry);
+    } else {
+	assert(!KiTimerIsQueued(Timer) && !KiTimerIsExpired(Timer));
     }
     Timer->State = FALSE;
     KiReleaseTimerDatabaseLock();
