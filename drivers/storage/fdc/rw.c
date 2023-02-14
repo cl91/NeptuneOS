@@ -53,6 +53,8 @@
 
 #include "fdc.h"
 
+#define ALIGNED_BY(p, align)	((ULONG_PTR)(p) == ALIGN_DOWN_BY(p, align))
+
 /*
  * FUNCTION: Acquire map registers in prep for DMA
  * ARGUMENTS:
@@ -571,6 +573,14 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
 	WriteToDevice = TRUE;
     }
 
+    /* We can only read or write whole sectors, so reject the read/write if
+     * Length is not a multiple of the sector size. */
+    assert(DriveInfo->DiskGeometry.BytesPerSector != 0);
+    if (!Length || !ALIGNED_BY(Length, DriveInfo->DiskGeometry.BytesPerSector)) {
+	Status = STATUS_INVALID_BUFFER_SIZE;
+	goto stop;
+    }
+
     /*
      * FIXME:
      *   FloppyDeviceData.ReadWriteGapLength specify the value for the physical drive.
@@ -649,9 +659,8 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
      * context that you're running in is irrelevant, since it's only being used to
      * index into the MDL.
      *
-     * TODO: Add info on Neptune OS MDL and DMA. Our MmGetMdlVirtualAddress() always
-     * returns NULL and our MDL doesn't have the Process member (you aren't supposed to
-     * access it anyway).
+     * Note: On Neptune OS MmGetMdlVirtualAddress() always returns NULL and the MDL
+     * doesn't have the Process member (you aren't supposed to access it anyway).
      */
 
     /* Get map registers for DMA */
