@@ -235,8 +235,10 @@ typedef struct _ADAPTER_OBJ_CREATE_CTX {
     UCHAR DmaChannel;
 } ADAPTER_OBJ_CREATE_CTX, *PADAPTER_OBJ_CREATE_CTX;
 
-NTSTATUS IopAdapterObjectCreateProc(IN POBJECT Object,
-				    IN PVOID CreaCtx)
+#define ENABLE_PORT(p)	HalpEnableIoPort((USHORT)(ULONG_PTR)(p))
+
+NTSTATUS HalpAdapterObjectCreateProc(IN POBJECT Object,
+				     IN PVOID CreaCtx)
 {
     PHAL_SYSTEM_ADAPTER AdapterObject = (PHAL_SYSTEM_ADAPTER)Object;
     PADAPTER_OBJ_CREATE_CTX Ctx = (PADAPTER_OBJ_CREATE_CTX)CreaCtx;
@@ -247,6 +249,27 @@ NTSTATUS IopAdapterObjectCreateProc(IN POBJECT Object,
     AdapterObject->AdapterNumber = Controller;
     AdapterObject->ChannelNumber = (UCHAR)(Ctx->DmaChannel & 3);
     AdapterObject->PagePort = (PUCHAR)HalpEisaPortPage[Ctx->DmaChannel];
+    UCHAR Channel = AdapterObject->ChannelNumber;
+    if (Controller == 1) {
+	PDMA1_CONTROL Ctrl = BaseVa1;
+	RET_ERR(ENABLE_PORT(&Ctrl->ClearBytePointer));
+	RET_ERR(ENABLE_PORT(&Ctrl->Mode));
+	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress));
+	RET_ERR(ENABLE_PORT(AdapterObject->PagePort +
+			    FIELD_OFFSET(EISA_CONTROL, DmaController1Pages)));
+	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseCount));
+	RET_ERR(ENABLE_PORT(&Ctrl->SingleMask));
+    } else {
+	assert(Controller == 2);
+	PDMA2_CONTROL Ctrl = BaseVa2;
+	RET_ERR(ENABLE_PORT(&Ctrl->ClearBytePointer));
+	RET_ERR(ENABLE_PORT(&Ctrl->Mode));
+	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress));
+	RET_ERR(ENABLE_PORT(AdapterObject->PagePort +
+			    FIELD_OFFSET(EISA_CONTROL, DmaController1Pages)));
+	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseCount));
+	RET_ERR(ENABLE_PORT(&Ctrl->SingleMask));
+    }
     return STATUS_SUCCESS;
 }
 
@@ -254,7 +277,7 @@ NTSTATUS HalpInitDma()
 {
     /* Create the system adapter object type */
     OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = IopAdapterObjectCreateProc,
+	.CreateProc = HalpAdapterObjectCreateProc,
 	.ParseProc = NULL,
 	.OpenProc = NULL,
 	.InsertProc = NULL,
