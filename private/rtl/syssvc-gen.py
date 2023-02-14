@@ -221,7 +221,7 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
 {%- endfor %}
         } else {
 ServerPostMarshaling_{{svc.server_name}}:
-            DbgTrace("{{svc.server_name}} returned status 0x%x. Replying to thread %p\\n", Status, Thread);
+            DbgTrace("{{svc.server_name}} returned status 0x%x. %s to thread %p\\n", Status, Status == STATUS_NTOS_NO_REPLY ? "Not replying" : "Replying", Thread);
 {%- for param in svc.params %}
 {%- if param.server_post_marshaling %}
             {{param.server_post_marshaling|indent(12, False)}}
@@ -257,7 +257,7 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread)
         if (Status == STATUS_ASYNC_PENDING) {
             DbgTrace("{{svc.server_name}} returned async pending status. Suspending thread %p\\n", Thread);
         } else {
-            DbgTrace("{{svc.server_name}} returned status 0x%x. Replying to thread %p\\n", Status, Thread);
+            DbgTrace("{{svc.server_name}} returned status 0x%x. %s to thread %p\\n", Status, Status == STATUS_NTOS_NO_REPLY ? "Not replying" : "Replying", Thread);
 {%- for param in svc.params %}
 {%- if param.server_post_marshaling %}
             {{param.server_post_marshaling|indent(12, False)}}
