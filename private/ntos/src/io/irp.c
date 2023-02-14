@@ -29,6 +29,16 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
+/* Returns the number of PFN entry needed for the MDL of the specified buffer */
+static ULONG IopGetBufferPfnCount(IN PPROCESS Process,
+				  IN MWORD Buffer,
+				  IN MWORD BufferLength)
+{
+    ULONG PfnCount = 0;
+    MmGeneratePageFrameDatabase(NULL, Process, Buffer, BufferLength, &PfnCount);
+    return PfnCount;
+}
+
 /*
  * Maps the specified user IO buffer to the driver process's VSpace.
  *
@@ -113,6 +123,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
     MWORD DriverInputBuffer = 0;
     DbgTrace("Mapping input buffer %p from process vad 0x%zx\n",
 	     (PVOID)InputBuffer, RequestorProcess->VSpace.VSpaceCap);
+    ULONG InputBufferPfnCount = 0;
+    ULONG OutputBufferPfnCount = 0;
     if (InputBuffer && InputBufferLength) {
 	RET_ERR(IopMapUserBuffer(RequestorProcess, DriverObject,
 				 InputBuffer, InputBufferLength,
@@ -121,6 +133,9 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 	DbgTrace("Mapped input buffer %p into driver %s at %p\n",
 		 (PVOID)InputBuffer, DriverObject->DriverImagePath,
 		 (PVOID)DriverInputBuffer);
+	InputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
+						   InputBuffer,
+						   InputBufferLength);
     }
 
     MWORD DriverOutputBuffer = 0;
@@ -135,9 +150,14 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 	DbgTrace("Mapped output buffer %p into driver %s at %p\n",
 		 (PVOID)OutputBuffer, DriverObject->DriverImagePath,
 		 (PVOID)DriverOutputBuffer);
+	OutputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
+						    OutputBuffer,
+						    OutputBufferLength);
     }
     PendingIrp->IoPacket->Request.InputBuffer = DriverInputBuffer;
     PendingIrp->IoPacket->Request.OutputBuffer = DriverOutputBuffer;
+    PendingIrp->IoPacket->Request.InputBufferPfnCount = InputBufferPfnCount;
+    PendingIrp->IoPacket->Request.OutputBufferPfnCount = OutputBufferPfnCount;
     PendingIrp->InputBuffer = InputBuffer;
     PendingIrp->OutputBuffer = OutputBuffer;
     return STATUS_SUCCESS;
@@ -187,17 +207,20 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
     }
     assert(CompletedIrp->Type == IoPacketTypeRequest);
 
-    /* IRP identifier is valid. Detach the IO packet from the driver's pending IO packet list. */
+    /* IRP identifier is valid. Detach the IO packet from the
+     * driver's pending IO packet list. */
     RemoveEntryList(&CompletedIrp->IoPacketLink);
-    PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor, CompletedIrp);
-    /* If the IRP identifier is valid, PendingIrp should never be NULL. We assert on
-     * debug build and return error on release build. */
+    PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor,
+							      CompletedIrp);
+    /* If the IRP identifier is valid, PendingIrp should never be NULL.
+     * We assert on debug build and return error on release build. */
     if (PendingIrp == NULL) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
     assert(PendingIrp->IoPacket == CompletedIrp);
-    /* The PENDING_IRP must be top-most (ie. not forwarded from a higher-level driver) */
+    /* The PENDING_IRP must be top-most (ie. not forwarded from
+     * a higher-level driver) */
     assert(PendingIrp->ForwardedFrom == NULL);
     /* AddDevice requests require special handling */
     if (CompletedIrp->Request.MajorFunction == IRP_MJ_ADD_DEVICE) {
@@ -240,7 +263,8 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 	ULONG ResponseDataSize = Response->ClientMsg.IoCompleted.ResponseDataSize;
 	PendingIrp->IoResponseDataSize = ResponseDataSize;
 	if (ResponseDataSize) {
-	    PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize, NTOS_IO_TAG);
+	    PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize,
+							       NTOS_IO_TAG);
 	    if (PendingIrp->IoResponseData != NULL) {
 		memcpy(PendingIrp->IoResponseData,
 		       Response->ClientMsg.IoCompleted.ResponseData,
@@ -259,7 +283,8 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 
 	/* Allocate a new IO packet of type ServerMessage */
 	PIO_PACKET SrvMsg = NULL;
-	RET_ERR(IopAllocateIoPacket(IoPacketTypeServerMessage, Response->Size, &SrvMsg));
+	RET_ERR(IopAllocateIoPacket(IoPacketTypeServerMessage,
+				    Response->Size, &SrvMsg));
 	/* Copy the IO response to the new IO packet */
 	assert(SrvMsg != NULL);
 	SrvMsg->ServerMsg.Type = IoSrvMsgIoCompleted;
@@ -281,7 +306,8 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
 	     * IRP to its pending IRP list so when it replies we know that its
 	     * identifier pair is valid. The original requestor never replies
 	     * to the IoCompleted server message so we do not do this. */
-	    InsertTailList(&RequestorDriver->PendingIoPacketList, &CompletedIrp->IoPacketLink);
+	    InsertTailList(&RequestorDriver->PendingIoPacketList,
+			   &CompletedIrp->IoPacketLink);
 	    /* Also restore the device object of the completed IRP to the previous
 	     * device object (before this IRP is forwarded to the DriverObject) */
 	    assert(PendingIrp->PreviousDeviceObject != NULL);
@@ -321,8 +347,10 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
     assert(Msg->Type == IoPacketTypeClientMessage);
     assert(Msg->ClientMsg.Type == IoCliMsgForwardIrp);
     DbgTrace("Got ForwardIrp message from driver %s forwarding IRP (%p:%p) to device handle %p\n",
-	     SourceDriver->DriverImagePath, (PVOID)Msg->ClientMsg.ForwardIrp.OriginalRequestor,
-	     Msg->ClientMsg.ForwardIrp.Identifier, (PVOID)Msg->ClientMsg.ForwardIrp.DeviceObject);
+	     SourceDriver->DriverImagePath,
+	     (PVOID)Msg->ClientMsg.ForwardIrp.OriginalRequestor,
+	     Msg->ClientMsg.ForwardIrp.Identifier,
+	     (PVOID)Msg->ClientMsg.ForwardIrp.DeviceObject);
 
     /* Locate the IO_PACKET and DeviceObject specified in the ForwardIrp message */
     GLOBAL_HANDLE OriginalRequestor = Msg->ClientMsg.ForwardIrp.OriginalRequestor;
@@ -533,13 +561,18 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 
     /* Determine how many packets we can send in one go since the driver IO packet
      * buffer has a finite size. This includes potentially the FileName buffer.
-     * The rest of the IO packets in the IO packet queue are skipped and left in the queue.
-     * Hopefully next time there is enough space. */
+     * The rest of the IO packets in the IO packet queue are skipped and left in
+     * the queue. Hopefully next time there is enough space. */
     ULONG NumRequestPackets = 0;
     ULONG TotalSendSize = 0;
     LoopOverList(IoPacket, &DriverObject->IoPacketQueue, IO_PACKET, IoPacketLink) {
 	assert(IoPacket->Size >= sizeof(IO_PACKET));
-	TotalSendSize += IoPacket->Size;
+	TotalSendSize += ALIGN_UP_BY(IoPacket->Size, sizeof(ULONG_PTR));
+	/* For IO request packets we need extra space for the page frame database */
+	if (IoPacket->Type == IoPacketTypeRequest) {
+	    TotalSendSize += (IoPacket->Request.InputBufferPfnCount +
+			      IoPacket->Request.OutputBufferPfnCount) * sizeof(ULONG_PTR);
+	}
 	if (TotalSendSize > DRIVER_IO_PACKET_BUFFER_COMMIT) {
 	    /* TODO: Commit more memory in this case. Make sure to commit the outgoing
 	     * buffer memory as well since we assume that the outgoing buffer has the
@@ -552,13 +585,20 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
     }
 
     /* Copy the current IO packet queue to the driver's incoming IO packet buffer. */
-    PIO_PACKET IoPacket = CONTAINING_RECORD(DriverObject->IoPacketQueue.Flink, IO_PACKET, IoPacketLink);
+    PIO_PACKET IoPacket = CONTAINING_RECORD(DriverObject->IoPacketQueue.Flink,
+					    IO_PACKET, IoPacketLink);
     PIO_PACKET Dest = (PIO_PACKET)DriverObject->IncomingIoPacketsServerAddr;
     for (ULONG i = 0; i < NumRequestPackets; i++) {
 	/* Copy this IoPacket to the driver's incoming IO packet buffer */
 	memcpy(Dest, IoPacket, IoPacket->Size);
-	/* Massage the client-side copy of the IO packet so all server pointers are
-	 * replaced by the client-side GLOBAL_HANDLE */
+	/* Align the IO packet size up to pointer alignment so the page frame
+	 * database (if any) and the next IoPacket is pointer aligned. */
+	ULONG IoPacketSize = ALIGN_UP_BY(IoPacket->Size, sizeof(ULONG_PTR));
+	/* Massage the client-side copy of the IO packet so all server pointers
+	 * are replaced by the client-side GLOBAL_HANDLE, and generate the page
+	 * frame database for the MDLs. Note we only need to send the page frame
+	 * database from the server to the client. Client never needs to send
+	 * PFN database to the server (server ignores them if it did). */
 	if (IoPacket->Type == IoPacketTypeRequest) {
 	    assert(IoPacket->Request.OriginalRequestor != 0);
 	    assert(IoPacket->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
@@ -567,15 +607,35 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 		   IoPacket->Request.Device.Object->DriverObject == DriverObject);
 	    Dest->Request.Device.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.Device.Object);
 	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.File.Object);
+	    if (Dest->Request.InputBufferPfnCount) {
+		Dest->Request.InputBufferPfn = IoPacketSize;
+		MmGeneratePageFrameDatabase((PULONG_PTR)((MWORD)Dest + IoPacketSize),
+					    DriverObject->DriverProcess,
+					    Dest->Request.InputBuffer,
+					    Dest->Request.InputBufferLength,
+					    &Dest->Request.InputBufferPfnCount);
+		IoPacketSize += Dest->Request.InputBufferPfnCount * sizeof(ULONG_PTR);
+	    }
+	    if (Dest->Request.OutputBufferPfnCount) {
+		Dest->Request.OutputBufferPfn = IoPacketSize;
+		MmGeneratePageFrameDatabase((PULONG_PTR)((MWORD)Dest + IoPacketSize),
+					    DriverObject->DriverProcess,
+					    Dest->Request.OutputBuffer,
+					    Dest->Request.OutputBufferLength,
+					    &Dest->Request.OutputBufferPfnCount);
+		IoPacketSize += Dest->Request.OutputBufferPfnCount * sizeof(ULONG_PTR);
+	    }
 	}
+	Dest->Size = IoPacketSize;
 	IoDbgDumpIoPacket(Dest, TRUE);
-	Dest = (PIO_PACKET)((MWORD)Dest + IoPacket->Size);
+	Dest = (PIO_PACKET)((MWORD)Dest + IoPacketSize);
 	PIO_PACKET NextIoPacket = CONTAINING_RECORD(IoPacket->IoPacketLink.Flink,
 						    IO_PACKET, IoPacketLink);
 	/* Detach this IoPacket from the driver's IO packet queue */
 	RemoveEntryList(&IoPacket->IoPacketLink);
 	if (IoPacket->Type == IoPacketTypeRequest) {
-	    /* If this is a request packet, move it to the driver's pending IO packet list */
+	    /* If this is a request packet, move it to the driver's
+	     * pending IO packet list */
 	    InsertTailList(&DriverObject->PendingIoPacketList, &IoPacket->IoPacketLink);
 	} else {
 	    /* Else, clean up this IO packet since we do not expect a reply */

@@ -668,8 +668,15 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 			     IN MWORD StartAddr,
 			     IN MWORD WindowSize);
-PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
-			      IN MWORD VirtAddr);
+PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
+				IN MWORD VirtAddr,
+				IN BOOLEAN LargePage);
+struct _PROCESS;
+VOID MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
+				 IN struct _PROCESS *Process,
+				 IN MWORD Buffer,
+				 IN MWORD BufferLength,
+				 OUT ULONG *pPfnCount);
 VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
 			   IN PMMVAD MasterVad);
 VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
@@ -715,6 +722,12 @@ static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
+}
+
+static inline PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
+					    IN MWORD VirtAddr)
+{
+    return MmQueryPageEx(VSpace, VirtAddr, FALSE);
 }
 
 /*

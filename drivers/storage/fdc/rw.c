@@ -727,7 +727,7 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
 	 * TODO: Support the MT bit
 	 */
 	INFO_(FLOPPY,
-	      "ReadWrite(): computing number of sectors to transfer (StartSector 0x%x): ",
+	      "ReadWrite(): computing number of sectors to transfer (StartSector 0x%x).\n",
 	      StartSector);
 
 	/* 1-based sector number */

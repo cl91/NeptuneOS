@@ -623,6 +623,27 @@ PPAGING_STRUCTURE MiGetFirstPage(IN PPAGING_STRUCTURE Page)
 }
 
 /*
+ * For pages or large pages, this function returns its physical address.
+ * For non-leaf paging structures, this function returns the physical address
+ * of the untyped memory from which this paging structure was derived.
+ */
+MWORD MiGetPhysicalAddress(IN PPAGING_STRUCTURE Page)
+{
+    PCAP_TREE_NODE Parent = Page->TreeNode.Parent;
+    while (Parent != NULL) {
+	if (Parent->Type == CAP_TREE_NODE_UNTYPED) {
+	    break;
+	}
+	Parent = Parent->Parent;
+    }
+    if (!Parent) {
+	assert(FALSE);
+	return 0;
+    }
+    return TREE_NODE_TO_UNTYPED(Parent)->AvlNode.Key;
+}
+
+/*
  * Get the next adjacent lowest-level paging structure. In other words, suppose
  * we have
  *
@@ -951,6 +972,7 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
 	} else {
 	    DbgPrint("(error)");
 	}
+	DbgPrint("  == %p", (PVOID)MiGetPhysicalAddress(Paging));
     }
     DbgPrint("\n");
     MmAvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);

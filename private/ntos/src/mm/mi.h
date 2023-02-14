@@ -383,6 +383,7 @@ NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
 PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 					IN MWORD VirtAddr);
+MWORD MiGetPhysicalAddress(IN PPAGING_STRUCTURE Page);
 PPAGING_STRUCTURE MiGetFirstPage(IN PPAGING_STRUCTURE Page);
 PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page);
 NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
@@ -413,6 +414,11 @@ static inline BOOLEAN MiPagingTypeIsRoot(IN PAGING_STRUCTURE_TYPE Type)
 static inline BOOLEAN MiPagingTypeIsPage(IN PAGING_STRUCTURE_TYPE Type)
 {
     return Type == PAGING_TYPE_PAGE;
+}
+
+static inline BOOLEAN MiPagingTypeIsLargePage(IN PAGING_STRUCTURE_TYPE Type)
+{
+    return Type == PAGING_TYPE_LARGE_PAGE;
 }
 
 static inline BOOLEAN MiPagingTypeIsPageOrLargePage(IN PAGING_STRUCTURE_TYPE Type)

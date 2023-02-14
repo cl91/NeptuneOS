@@ -331,7 +331,8 @@ NTSTATUS HalpDmaStartTransfer(IN ASYNC_STATE AsyncState,
 			 (UCHAR)(TransferOffset >> 8));
 
 	/* Set the Page Register */
-	WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL, DmaController1Pages),
+	WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL,
+								DmaController1Pages),
 			 HighByte);
 
 	/* Set the Length */
@@ -358,7 +359,8 @@ NTSTATUS HalpDmaStartTransfer(IN ASYNC_STATE AsyncState,
 			 (UCHAR)(TransferOffset >> 8));
 
 	/* Set the Page Register */
-	WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL, DmaController1Pages),
+	WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL,
+								DmaController1Pages),
 			 HighByte);
 
 	/* Set the Length */

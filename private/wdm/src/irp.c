@@ -186,9 +186,27 @@ static inline GLOBAL_HANDLE IopGetFileHandle(IN PFILE_OBJECT File)
     return File ? File->Private.Handle : 0;
 }
 
+static inline NTSTATUS IopAllocateMdl(IN PVOID Buffer,
+				      IN ULONG BufferLength,
+				      IN PULONG_PTR PfnDb,
+				      IN ULONG PfnCount,
+				      OUT PMDL *pMdl)
+{
+    ULONG MdlSize = sizeof(MDL) + PfnCount * sizeof(ULONG_PTR);
+    IopAllocatePool(Mdl, MDL, MdlSize);
+    Mdl->MappedSystemVa = Buffer;
+    Mdl->ByteCount = BufferLength;
+    Mdl->PfnCount = PfnCount;
+    memcpy(Mdl->PfnEntries, PfnDb, PfnCount * sizeof(ULONG_PTR));
+    *pMdl = Mdl;
+    return STATUS_SUCCESS;
+}
+
 static inline NTSTATUS IopMarshalIoBuffers(IN PIRP Irp,
 					   IN PVOID Buffer,
-					   IN ULONG BufferLength)
+					   IN ULONG BufferLength,
+					   IN PULONG_PTR PfnDb,
+					   IN ULONG PfnCount)
 {
     if (BufferLength == 0 || Buffer == NULL) {
 	return STATUS_SUCCESS;
@@ -198,11 +216,9 @@ static inline NTSTATUS IopMarshalIoBuffers(IN PIRP Irp,
     if (DeviceFlags & DO_BUFFERED_IO) {
 	Irp->AssociatedIrp.SystemBuffer = Buffer;
     } else if (DeviceFlags & DO_DIRECT_IO) {
-	IopAllocateObject(Mdl, MDL);
-	Mdl->MappedSystemVa = Buffer;
-	Mdl->ByteCount = BufferLength;
-	Irp->MdlAddress = Mdl;
-    } else {
+	RET_ERR(IopAllocateMdl(Buffer, BufferLength, PfnDb, PfnCount,
+			       &Irp->MdlAddress));
+   } else {
 	/* NEITHER_IO */
 	Irp->UserBuffer = Buffer;
     }
@@ -214,7 +230,9 @@ static NTSTATUS IopMarshalIoctlBuffers(IN PIRP Irp,
 				       IN PVOID InputBuffer,
 				       IN ULONG InputBufferLength,
 				       IN PVOID OutputBuffer,
-				       IN ULONG OutputBufferLength)
+				       IN ULONG OutputBufferLength,
+				       IN PULONG_PTR OutputBufferPfnDb,
+				       IN ULONG OutputBufferPfnCount)
 {
     if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED) {
 	ULONG SystemBufferLength = max(InputBufferLength, OutputBufferLength);
@@ -232,10 +250,9 @@ static NTSTATUS IopMarshalIoctlBuffers(IN PIRP Irp,
 	/* Direct IO: METHOD_IN_DIRECT or METHOD_OUT_DIRECT */
 	Irp->AssociatedIrp.SystemBuffer = InputBuffer;
 	if (OutputBufferLength != 0) {
-	    IopAllocateObject(Mdl, MDL);
-	    Mdl->MappedSystemVa = OutputBuffer;
-	    Mdl->ByteCount = OutputBufferLength;
-	    Irp->MdlAddress = Mdl;
+	    RET_ERR(IopAllocateMdl(OutputBuffer, OutputBufferLength,
+				   OutputBufferPfnDb, OutputBufferPfnCount,
+				   &Irp->MdlAddress));
 	}
     }
     return STATUS_SUCCESS;
@@ -357,10 +374,12 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
     {
 	PVOID Buffer = (PVOID)Src->Request.OutputBuffer;
 	ULONG BufferLength = Src->Request.OutputBufferLength;
+	PULONG_PTR PfnDb = (PULONG_PTR)((MWORD)Src + Src->Request.OutputBufferPfn);
+	ULONG PfnCount = Src->Request.OutputBufferPfnCount;
 	IoStack->Parameters.Read.Length = BufferLength;
 	IoStack->Parameters.Read.Key = Src->Request.Read.Key;
 	IoStack->Parameters.Read.ByteOffset = Src->Request.Read.ByteOffset;
-	RET_ERR(IopMarshalIoBuffers(Irp, Buffer, BufferLength));
+	RET_ERR(IopMarshalIoBuffers(Irp, Buffer, BufferLength, PfnDb, PfnCount));
 	break;
     }
 
@@ -371,13 +390,16 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	PVOID InputBuffer = (PVOID)Src->Request.InputBuffer;
 	ULONG InputBufferLength = Src->Request.InputBufferLength;
 	ULONG OutputBufferLength = Src->Request.OutputBufferLength;
+	/* For DIRECT_IO only the output buffer has the MDL generated. */
+	PULONG_PTR PfnDb = (PULONG_PTR)((MWORD)Src + Src->Request.OutputBufferPfn);
+	ULONG PfnCount = Src->Request.OutputBufferPfnCount;
 	IoStack->Parameters.DeviceIoControl.IoControlCode = Ioctl;
 	IoStack->Parameters.DeviceIoControl.Type3InputBuffer = InputBuffer;
 	IoStack->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
 	IoStack->Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
 	RET_ERR(IopMarshalIoctlBuffers(Irp, Ioctl, InputBuffer, InputBufferLength,
 				       (PVOID)Src->Request.OutputBuffer,
-				       OutputBufferLength));
+				       OutputBufferLength, PfnDb, PfnCount));
 	break;
     }
 

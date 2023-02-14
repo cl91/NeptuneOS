@@ -988,6 +988,7 @@ NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PDMA_ADAPTER DmaAdapter,
 	assert((TransferLength >> 16) == 0);
 	assert((PhysicalAddress.LowPart >> 24) == 0);
 	assert(PhysicalAddress.HighPart == 0);
+	/* Call the server to start the DMA transfer. */
 	HalpDmaStartTransfer(AdapterObject->SystemAdapter->Handle, AdapterMode.Byte,
 			     TransferOffset, TransferLength,
 			     PhysicalAddress.LowPart >> 16);

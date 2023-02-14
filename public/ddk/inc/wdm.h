@@ -413,7 +413,7 @@ typedef struct _MDL {
     ULONG ByteCount;
     ULONG ByteOffset;
     SHORT MdlFlags;
-    USHORT PfnCount;		/* Number of entries in PfnEntries */
+    ULONG PfnCount;		/* Number of entries in PfnEntries */
     ULONG_PTR PfnEntries[];
 } MDL, *PMDL;
 
