@@ -837,14 +837,22 @@ NTAPI VOID HalpCopyBufferMap(IN PMDL Mdl,
 			     IN ULONG Length,
 			     IN BOOLEAN WriteToDevice)
 {
-    ULONG_PTR CurrentAddress = (ULONG_PTR)MmGetSystemAddressForMdl(Mdl) +
-	(ULONG_PTR)CurrentVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
-    ULONG ByteOffset = BYTE_OFFSET(CurrentAddress);
-    PVOID MapRegData = (PVOID)((ULONG_PTR)MapReg->VirtBase + ByteOffset);
+    DbgTrace("MdlSystemVa = %p CurrentVa = %p Length = 0x%x WriteToDevice = %d\n",
+	     MmGetSystemAddressForMdl(Mdl), CurrentVa, Length, WriteToDevice);
+    /* Compute the offset of CurrentVa against the start of the MDL. Since
+     * on Neptune OS MmGetMdlVirtualAddress() always returns NULL, this is
+     * simply CurrentVa. */
+    ULONG_PTR OffsetInMdl = (ULONG_PTR)CurrentVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
+    ULONG_PTR CurrentAddress = (ULONG_PTR)MmGetSystemAddressForMdl(Mdl) + OffsetInMdl;
+    PVOID MapRegData = (PVOID)((ULONG_PTR)MapReg->VirtBase + OffsetInMdl);
 
     if (WriteToDevice) {
+	DbgTrace("Copying 0x%x bytes from buffer %p to map reg %p\n", Length,
+		 (PVOID)CurrentAddress, MapRegData);
 	RtlCopyMemory(MapRegData, (PVOID)CurrentAddress, Length);
     } else {
+	DbgTrace("Copying 0x%x bytes from map reg %p to buffer %p\n", Length,
+		 MapRegData, (PVOID)CurrentAddress);
 	RtlCopyMemory((PVOID)CurrentAddress, MapRegData, Length);
     }
 }
