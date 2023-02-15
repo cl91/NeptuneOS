@@ -823,7 +823,8 @@ NTAPI VOID HalpPutDmaAdapter(IN PDMA_ADAPTER DmaAdapter)
  *        This is with respect to MmGetMdlVirtualAddress(Mdl), which is
  *        always NULL on Neptune OS (on Windows it is generally not).
  * @param Length
- *        Length of the data being copied.
+ *        Length of the data being copied. CurrentVa + Length should
+ *        not exceed the end of the MDL.
  * @param WriteToDevice
  *        If FALSE (meaning that we are reading from the device), data
  *        will be copied from the map registers to the MDL. Otherwise,
@@ -844,16 +845,17 @@ NTAPI VOID HalpCopyBufferMap(IN PMDL Mdl,
      * simply CurrentVa. */
     ULONG_PTR OffsetInMdl = (ULONG_PTR)CurrentVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
     ULONG_PTR CurrentAddress = (ULONG_PTR)MmGetSystemAddressForMdl(Mdl) + OffsetInMdl;
-    PVOID MapRegData = (PVOID)((ULONG_PTR)MapReg->VirtBase + OffsetInMdl);
+    PVOID MapRegBase = (PVOID)((ULONG_PTR)MapReg->VirtBase);
+    assert(OffsetInMdl + Length <= Mdl->ByteCount);
 
     if (WriteToDevice) {
 	DbgTrace("Copying 0x%x bytes from buffer %p to map reg %p\n", Length,
-		 (PVOID)CurrentAddress, MapRegData);
-	RtlCopyMemory(MapRegData, (PVOID)CurrentAddress, Length);
+		 (PVOID)CurrentAddress, MapRegBase);
+	RtlCopyMemory(MapRegBase, (PVOID)CurrentAddress, Length);
     } else {
 	DbgTrace("Copying 0x%x bytes from map reg %p to buffer %p\n", Length,
-		 MapRegData, (PVOID)CurrentAddress);
-	RtlCopyMemory((PVOID)CurrentAddress, MapRegData, Length);
+		 MapRegBase, (PVOID)CurrentAddress);
+	RtlCopyMemory((PVOID)CurrentAddress, MapRegBase, Length);
     }
 }
 

@@ -411,8 +411,6 @@ typedef struct _MDL {
     struct _MDL *Next;
     PVOID MappedSystemVa;
     ULONG ByteCount;
-    ULONG ByteOffset;
-    SHORT MdlFlags;
     ULONG PfnCount;		/* Number of entries in PfnEntries */
     ULONG_PTR PfnEntries[];
 } MDL, *PMDL;
