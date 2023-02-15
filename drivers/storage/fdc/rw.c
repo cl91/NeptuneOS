@@ -458,19 +458,17 @@ out:
 }
 
 /*
- * FUNCTION: Handle the first phase of a read or write IRP
+ * FUNCTION: Handle a read or write IRP
  * ARGUMENTS:
  *     DeviceObject: DeviceObject that is the target of the IRP
  *     Irp: IRP to process
  * RETURNS:
  *     STATUS_VERIFY_REQUIRED if the media has changed and we need the filesystems
  *     to re-synch. STATUS_SUCCESS otherwise.
- * NOTES:
- *     - Must be called at PASSIVE_LEVEL
  *
  * DETAILS:
- *  This routine manages the whole process of servicing a read or write request.  It
- *  goes like this:
+ *  This routine manages the whole process of servicing a read or write request.
+ *  It goes like this:
  *    1) Check the DO_VERIFY_VOLUME flag and return if it's set
  *    2) Check the disk change line and notify the OS if it's set and return
  *    3) Detect the media if we haven't already
@@ -593,9 +591,8 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
     /*
      * Set up DMA transfer
      *
-     * NOTE: These apply to the original ReactOS DMA. In Neptune OS DMA is implemented
-     * slightly differently (see below, and private/wdm/src/dma.c). We leave the notes
-     * here as a reference.
+     * NOTE: These are from the original ReactOS code and are still largely correct
+     * in Neptune OS, so we will leave them here as a reference. ENDNOTE.
      *
      * This is as good of a place as any to document something that used to confuse me
      * greatly (and I even wrote some of the kernel's DMA code, so if it confuses me,
@@ -723,7 +720,8 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
 	/*
 	 * Compute last sector
 	 *
-	 * We can only ask for a transfer up to the end of the track.  Then we have to re-seek and do more.
+	 * We can only ask for a transfer up to the end of the track.
+	 * Then we have to re-seek and do more.
 	 * TODO: Support the MT bit
 	 */
 	INFO_(FLOPPY,

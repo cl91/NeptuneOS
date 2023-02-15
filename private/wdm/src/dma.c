@@ -192,12 +192,12 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
      * supports only 16-bit transfers and main controller supports only
      * 8-bit transfers. Anything else is invalid.
      */
-    BOOLEAN Width16Bits = FALSE;
-    if (Controller != 1 || Desc->DmaWidth != Width8Bits) {
+    if (Controller == 1 && Desc->DmaWidth != Width8Bits) {
 	DPRINT("Invalid width for system DMA controller\n");
 	return NULL;
-    } else if (Controller == 2 && Desc->DmaWidth == Width16Bits) {
-	Width16Bits = TRUE;
+    } else if (Controller == 2 && Desc->DmaWidth != Width16Bits) {
+	DPRINT("Invalid width for system DMA controller\n");
+	return NULL;
     }
 
     PSYSTEM_DMA_ADAPTER SystemAdapter = &HalpDmaSystemAdapters[Desc->DmaChannel];
@@ -233,7 +233,7 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
     }
 
     SystemAdapter->AdapterMode = DmaMode;
-    SystemAdapter->Width16Bits = Width16Bits;
+    SystemAdapter->Width16Bits = Controller == 2;
 
     return SystemAdapter;
 }
@@ -953,11 +953,9 @@ NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PDMA_ADAPTER DmaAdapter,
 
     /* If we are using map registers, update the physical address and
      * determine the new maximum possible transfer length. */
-    ULONG ByteOffset = BYTE_OFFSET(CurrentVa);
     if (AdapterObject->UseMapRegisters) {
 	PhysicalAddress = MapReg->PhyBase;
-	PhysicalAddress.QuadPart += ByteOffset;
-	TransferLength = MapReg->Count * PAGE_SIZE - ByteOffset;
+	TransferLength = MapReg->Count * PAGE_SIZE;
     }
 
     /* If the maximum transfer length exceeds what the caller needs to
@@ -985,7 +983,7 @@ NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PDMA_ADAPTER DmaAdapter,
 	    AdapterMode.TransferType = WRITE_TRANSFER;
 	} else {
 	    AdapterMode.TransferType = READ_TRANSFER;
-	    RtlZeroMemory((PUCHAR)MapReg->VirtBase + ByteOffset, TransferLength);
+	    RtlZeroMemory((PUCHAR)MapReg->VirtBase, TransferLength);
 	}
 
 	USHORT TransferOffset = (USHORT)PhysicalAddress.LowPart;
