@@ -5,7 +5,7 @@
  * loop thread of NTOS has faulted. For now we simply dump the
  * thread context and halt the system. In the future we will
  * initiate a debugger connection. */
-static SYSTEM_THREAD KiBugCheckThread;
+static PSYSTEM_THREAD KiBugCheckThread;
 static IPC_ENDPOINT KiExecutiveThreadFaultHandler;
 
 static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
@@ -101,10 +101,15 @@ static NTSTATUS KiSetThreadSpace(IN MWORD ThreadCap,
 NTSTATUS KiInitBugCheck()
 {
     extern CNODE MiNtosCNode;
-    RET_ERR(PsCreateSystemThread(&KiBugCheckThread, "NTOS Bugcheck", KiBugCheckSystem, TRUE));
+    KiBugCheckThread = (PSYSTEM_THREAD)ExAllocatePoolWithTag(sizeof(SYSTEM_THREAD),
+							     NTOS_KE_TAG);
+    if (KiBugCheckThread == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    RET_ERR(PsCreateSystemThread(KiBugCheckThread, "NTOS Bugcheck", KiBugCheckSystem, TRUE));
     RET_ERR(KiCreateEndpoint(&KiExecutiveThreadFaultHandler));
     RET_ERR(KiSetThreadSpace(seL4_CapInitThreadTCB, KiExecutiveThreadFaultHandler.TreeNode.Cap,
 			     &MiNtosCNode, seL4_CapInitThreadVSpace));
-    RET_ERR(PsResumeSystemThread(&KiBugCheckThread));
+    RET_ERR(PsResumeSystemThread(KiBugCheckThread));
     return STATUS_SUCCESS;
 }

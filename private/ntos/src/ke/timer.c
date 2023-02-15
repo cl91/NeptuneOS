@@ -1,6 +1,6 @@
 #include "ki.h"
 
-static SYSTEM_THREAD KiTimerIrqThread;
+static PSYSTEM_THREAD KiTimerIrqThread;
 static IRQ_HANDLER KiTimerIrqHandler;
 static NOTIFICATION KiTimerIrqNotification;
 static IPC_ENDPOINT KiTimerServiceNotification;
@@ -136,7 +136,7 @@ static NTSTATUS KiEnableTimerInterruptService()
 		   MmCapTreeDeleteNode(&KiTimerIrqNotification.TreeNode);
 		   MmCapTreeDeleteNode(&KiTimerIrqHandler.TreeNode);
 	       });
-    RET_ERR_EX(PsCreateSystemThread(&KiTimerIrqThread, "NTOS Timer ISR",
+    RET_ERR_EX(PsCreateSystemThread(KiTimerIrqThread, "NTOS Timer ISR",
 				    KiTimerInterruptService, FALSE),
 	       {
 		   MmCapTreeDeleteNode(&KiTimerIrqNotification.TreeNode);
@@ -179,6 +179,11 @@ NTSTATUS KiInitTimer()
     InitializeListHead(&KiQueuedTimerList);
     InitializeListHead(&KiExpiredTimerList);
     KeCreateMutex(&KiTimerDatabaseLock);
+    KiTimerIrqThread = (PSYSTEM_THREAD)ExAllocatePoolWithTag(sizeof(SYSTEM_THREAD),
+							     NTOS_KE_TAG);
+    if (KiTimerIrqThread == NULL) {
+	return STATUS_NO_MEMORY;
+    }
     KeInitializeIpcEndpoint(&KiTimerServiceNotification, &MiNtosCNode, 0,
 			    SERVICE_TYPE_NOTIFICATION);
     RET_ERR(MmCapTreeDeriveBadgedNode(&KiTimerServiceNotification.TreeNode,
@@ -190,7 +195,7 @@ NTSTATUS KiInitTimer()
     HalQueryRealTimeClock(&ClockTime);
     BOOLEAN RtcTimeOk = RtlTimeFieldsToTime(&ClockTime, &KiInitialSystemTime);
     RET_ERR(KiEnableTimerInterruptService());
-    RET_ERR(PsSetSystemThreadPriority(&KiTimerIrqThread, TIMER_INTERRUPT_LEVEL));
+    RET_ERR(PsSetSystemThreadPriority(KiTimerIrqThread, TIMER_INTERRUPT_LEVEL));
     if (!RtcTimeOk || (ClockTime.Weekday < 0) || (ClockTime.Weekday > 6)) {
 	HalVgaPrint("Corrupt CMOS clock: %d-%02d-%02d %02d:%02d:%02d\n\n",
 		   ClockTime.Year, ClockTime.Month, ClockTime.Day, ClockTime.Hour,

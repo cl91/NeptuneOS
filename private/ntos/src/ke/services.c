@@ -95,7 +95,7 @@ static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     assert(Thread->Process->CSpace != NULL);
-    assert(ServiceType < MAX_NUM_SERVICE_TYPES);
+    assert(ServiceType < NUM_SERVICE_TYPES);
     assert(ServiceType != SERVICE_TYPE_NOTIFICATION);
     assert(ServiceType != SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER);
 
@@ -172,7 +172,9 @@ NTSTATUS KeEnableSystemThreadFaultHandler(IN PSYSTEM_THREAD Thread)
     assert(Thread != NULL);
     extern CNODE MiNtosCNode;
 
-    MWORD IPCBadge = POINTER_TO_GLOBAL_HANDLE(Thread) | SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER;
+    MWORD Handle = POINTER_TO_GLOBAL_HANDLE(Thread);
+    assert(Handle != 0);
+    MWORD IPCBadge = Handle | SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER;
     RET_ERR(KiEnableClientServiceEndpoint(&Thread->ReplyEndpoint,
 					  &Thread->FaultEndpoint,
 					  &MiNtosCNode,

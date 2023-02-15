@@ -176,9 +176,10 @@ static inline PCSTR ObGetObjectName(IN POBJECT Object)
  * always zero for any memory allocated on the ExPool we use the lowest
  * bits to indicate the nature of the handle.
  *
- * We could alternatively just use the server-side pointer as the global
- * handle. The reason for the current scheme is to aid debugging (so
- * we can know that we are passing a server-side object to client).
+ * We cannot just use the server-side pointer as the global handle.
+ * The reason is that on i386, the highest bits of the badge are ignored
+ * by seL4, due to the way that seL4 implements IPC on i386. On amd64
+ * there is presumably no such limitation, but we need to be portable.
  *
  * For the NTOS executive services we use the global handle of the
  * thread as the badge of the IPC endpoint to distinguish the sender
@@ -190,7 +191,10 @@ static inline PCSTR ObGetObjectName(IN POBJECT Object)
  * Note: the type GLOBAL_HANDLE is defined in rtl/inc/wdmsvc.h
  *
  * As should be obvious from above, values of SERVICE_TYPE enum cannot
- * be larger than 1 << EX_POOL_BLOCK_SHIFT.
+ * be larger than 1 << EX_POOL_BLOCK_SHIFT. Also, you can only assign
+ * global handles for objects allocated on the ExPool. Objects allocated
+ * statically cannot have global handles, because their address lies
+ * below the start of ExPool.
  */
 typedef enum _SERVICE_TYPE {
     SERVICE_TYPE_SYSTEM_SERVICE,
@@ -198,15 +202,16 @@ typedef enum _SERVICE_TYPE {
     SERVICE_TYPE_FAULT_HANDLER,
     SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER,
     SERVICE_TYPE_NOTIFICATION,
-    MAX_NUM_SERVICE_TYPES
+    NUM_SERVICE_TYPES
 } SERVICE_TYPE;
 
-compile_assert(TOO_MANY_SERVICE_TYPES, MAX_NUM_SERVICE_TYPES <= (1 << EX_POOL_BLOCK_SHIFT));
+compile_assert(TOO_MANY_SERVICE_TYPES, NUM_SERVICE_TYPES <= (1 << EX_POOL_BLOCK_SHIFT));
 
 /* For structures that are not managed by the Object Manager (for
  * instance IO_PACKET and IO_DEVICE_OBJECT) we simply take the offset
  * of the pointer from EX_POOL_START */
-#define POINTER_TO_GLOBAL_HANDLE(Ptr)	(((Ptr) == NULL) ? 0 : ((MWORD)(Ptr) - EX_POOL_START))
+#define POINTER_TO_GLOBAL_HANDLE(Ptr)		\
+    ObpPtrToGlobalHandle((MWORD)(Ptr))
 
 /* For objects managed by the Object Manager, use the offset of the
  * object header from the ExPool start address */
@@ -229,6 +234,18 @@ compile_assert(TOO_MANY_SERVICE_TYPES, MAX_NUM_SERVICE_TYPES <= (1 << EX_POOL_BL
 
 #define GLOBAL_HANDLE_GET_FLAG(Handle)			\
     ((MWORD)Handle & ((1 << EX_POOL_BLOCK_SHIFT) - 1))
+
+static inline MWORD ObpPtrToGlobalHandle(IN MWORD Ptr)
+{
+    if (Ptr < EX_POOL_START) {
+	return 0;
+    }
+    MWORD Handle = Ptr - EX_POOL_START;
+    if (GLOBAL_HANDLE_GET_FLAG(Handle)) {
+	return 0;
+    }
+    return Handle;
+}
 
 /*
  * Equivalent of NT's OBJECT_ATTRIBUTES, except we make it easier to
