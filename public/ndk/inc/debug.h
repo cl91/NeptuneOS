@@ -28,10 +28,10 @@ __cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
 				  IN PCSTR Format,
 				  ...) __attribute__ ((format(printf, 3, 4)));
 
-NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
-			      IN PVOID FileName,
-			      IN ULONG LineNumber,
-			      IN OPTIONAL PCHAR Message);
+NTAPI NTSYSAPI ULONG RtlAssert(IN PVOID FailedAssertion,
+			       IN PVOID FileName,
+			       IN ULONG LineNumber,
+			       IN OPTIONAL PCHAR Message);
 
 #else
 
@@ -47,11 +47,12 @@ FORCEINLINE ULONG DbgPrintEx(IN ULONG ComponentId,
     return 0;
 }
 
-FORCEINLINE VOID RtlAssert(IN PVOID FailedAssertion,
-			   IN PVOID FileName,
-			   IN ULONG LineNumber,
-			   IN OPTIONAL PCHAR Message)
+FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
+			    IN PVOID FileName,
+			    IN ULONG LineNumber,
+			    IN OPTIONAL PCHAR Message)
 {
+    return 0;
 }
 
 #endif	/* DEBUG */
@@ -64,7 +65,7 @@ FORCEINLINE VOID RtlAssert(IN PVOID FailedAssertion,
 
 #ifndef assert
 #if DBG && !defined(NASSERT)
-#define assert(x) if (!(x)) { RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, (PCHAR)""); }
+#define assert(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, (PCHAR)""))
 #else
 #define assert(x) ((VOID) 0)
 #endif
@@ -72,7 +73,7 @@ FORCEINLINE VOID RtlAssert(IN PVOID FailedAssertion,
 
 #ifndef ASSERT
 #if DBG && !defined(NASSERT)
-#define ASSERT(x) if (!(x)) { RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, (PCHAR)""); }
+#define ASSERT(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, (PCHAR)""))
 #else
 #define ASSERT(x) ((VOID) 0)
 #endif
@@ -80,7 +81,7 @@ FORCEINLINE VOID RtlAssert(IN PVOID FailedAssertion,
 
 #ifndef ASSERTMSG
 #if DBG && !defined(NASSERT)
-#define ASSERTMSG(m, x) if (!(x)) { RtlAssert((PVOID)#x, __RELFILE__, __LINE__, m); }
+#define ASSERTMSG(m, x) ((x) || RtlAssert((PVOID)#x, __RELFILE__, __LINE__, m))
 #else
 #define ASSERTMSG(m, x) ((VOID) 0)
 #endif

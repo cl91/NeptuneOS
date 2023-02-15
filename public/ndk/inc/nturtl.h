@@ -1249,10 +1249,10 @@ __cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
 				  IN ULONG Level,
 				  IN PCSTR Format, ...) __attribute__((format(printf, 3, 4)));
 
-NTAPI NTSYSAPI VOID RtlAssert(IN PVOID FailedAssertion,
-			      IN PVOID FileName,
-			      IN ULONG LineNumber,
-			      IN OPTIONAL PCHAR Message);
+NTAPI NTSYSAPI ULONG RtlAssert(IN PVOID FailedAssertion,
+			       IN PVOID FileName,
+			       IN ULONG LineNumber,
+			       IN OPTIONAL PCHAR Message);
 
 /*
  * Heap Functions

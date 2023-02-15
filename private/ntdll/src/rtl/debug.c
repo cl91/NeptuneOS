@@ -48,10 +48,10 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
     while (1);
 }
 
-NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
-		     IN PVOID FileName,
-		     IN ULONG LineNumber,
-		     IN OPTIONAL PCHAR Message)
+NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
+		      IN PVOID FileName,
+		      IN ULONG LineNumber,
+		      IN OPTIONAL PCHAR Message)
 {
     DbgPrint("Assertion %s failed at line %d of file %s: %s\n",
 	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
@@ -61,6 +61,7 @@ NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
     NtDisplayStringA(buf);
     /* Loop forever */
     while (1);
+    return 0;
 }
 
 #else
@@ -89,12 +90,12 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
     /* Do nothing */
 }
 
-NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
+NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 		     IN PVOID FileName,
 		     IN ULONG LineNumber,
 		     IN OPTIONAL PCHAR Message)
 {
-    /* Do nothing */
+    return 0;
 }
 
 #endif

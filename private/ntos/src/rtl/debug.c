@@ -32,15 +32,16 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
     while (1) ;
 }
 
-NTAPI VOID RtlAssert(IN PVOID FailedAssertion,
-		     IN PVOID FileName,
-		     IN ULONG LineNumber,
-		     IN OPTIONAL PCHAR Message)
+NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
+		      IN PVOID FileName,
+		      IN ULONG LineNumber,
+		      IN OPTIONAL PCHAR Message)
 {
     KeBugCheckMsg("Assertion %s failed at line %d of file %s: %s\n",
 		  (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
     /* Loop forever */
     while (1);
+    return 0;
 }
 
 #endif
