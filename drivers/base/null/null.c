@@ -10,10 +10,6 @@
 
 #include <wdm.h>
 
-/* GLOBALS *******************************************************************/
-
-FAST_IO_DISPATCH FastIoDispatch;
-
 /* FUNCTIONS *****************************************************************/
 
 NTAPI NTSTATUS NullQueryFileInformation(OUT PVOID Buffer,
@@ -152,15 +148,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL] = NullDispatch;
     DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] = NullDispatch;
     DriverObject->DriverUnload = NullUnload;
-
-    /* Initialize the fast I/O dispatch table */
-    RtlZeroMemory(&FastIoDispatch, sizeof(FastIoDispatch));
-    FastIoDispatch.SizeOfFastIoDispatch = sizeof(FastIoDispatch);
-
-    /* Setup our pointers */
-    FastIoDispatch.FastIoRead = NullRead;
-    FastIoDispatch.FastIoWrite = NullWrite;
-    DriverObject->FastIoDispatch = &FastIoDispatch;
 
     /* Return success */
     return STATUS_SUCCESS;
