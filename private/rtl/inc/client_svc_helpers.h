@@ -6,7 +6,8 @@
 
 #include <services.h>
 
-#define OFFSET_TO_ARG(Offset, Type) SVC_MSGBUF_OFFSET_TO_ARG((ULONG_PTR)(__sel4_ipc_buffer), Offset, Type)
+#define OFFSET_TO_ARG(Offset, Type)				\
+    SVC_MSGBUF_OFFSET_TO_ARG(__sel4_ipc_buffer, Offset, Type)
 
 static inline NTSTATUS KiServiceMarshalArgument(OUT SERVICE_ARGUMENT *SvcArg,
 						IN OPTIONAL PVOID Argument,
@@ -20,7 +21,7 @@ static inline NTSTATUS KiServiceMarshalArgument(OUT SERVICE_ARGUMENT *SvcArg,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
     if (Argument != NULL) {
-	memcpy(&OFFSET_TO_ARG(*MsgBufOffset, VOID), Argument, ArgSize);
+	memcpy(&OFFSET_TO_ARG(*MsgBufOffset, CHAR), Argument, ArgSize);
     }
     SvcArg->BufferStart = *MsgBufOffset;
     SvcArg->BufferSize = ArgSize;
@@ -154,7 +155,7 @@ static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,
     } else {
 	/* Otherwise, for IN parameters we copy the client data to the
 	 * IPC buffer. For OUT parameters we simply allocate space. */
-	BufferArg->Word = (MWORD)&OFFSET_TO_ARG(*MsgBufOffset, VOID);
+	BufferArg->Word = (MWORD)&OFFSET_TO_ARG(*MsgBufOffset, CHAR);
 	if (InParam) {
 	    memcpy((PVOID)BufferArg->Word, ClientBuffer, BufferSize);
 	}
@@ -170,9 +171,9 @@ static inline VOID KiServiceUnmarshalBuffer(IN PVOID ClientBuffer,
 {
     assert(ClientBuffer != NULL);
     if (KiPtrInSvcMsgBuf((PVOID)BufferArg.Word)) {
-	assert(BufferArg.Word >= (MWORD)&OFFSET_TO_ARG(0, VOID));
-	assert(BufferArg.Word < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, VOID));
-	assert(BufferArg.Word + BufferSize < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, VOID));
+	assert(BufferArg.Word >= (MWORD)&OFFSET_TO_ARG(0, CHAR));
+	assert(BufferArg.Word < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
+	assert(BufferArg.Word + BufferSize < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
 	memcpy(ClientBuffer, (PVOID)BufferArg.Word, BufferSize);
     }
 }

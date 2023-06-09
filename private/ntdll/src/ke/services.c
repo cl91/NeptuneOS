@@ -228,7 +228,7 @@ static NTSTATUS CmpMarshalRegData(IN PVOID Data,
 	 * fits in the message buffer, then marshal them there. Otherwise allocate
 	 * a buffer from the process heap. */
 	if (*MsgBufOffset + BufferSize < MAX_MSG_BUF_OFFSET) {
-	    Buffer = &OFFSET_TO_ARG(*MsgBufOffset, VOID);
+	    Buffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
 	    MarshaledDataSize = BufferSize;
 	} else {
 	    Buffer = CmpAllocateHeap(BufferSize);
@@ -241,7 +241,7 @@ static NTSTATUS CmpMarshalRegData(IN PVOID Data,
 		   CmpFreeHeap(Buffer));
 	DataSize = BufferSize;
     } else if (*MsgBufOffset + DataSize < MAX_MSG_BUF_OFFSET) {
-	Buffer = &OFFSET_TO_ARG(*MsgBufOffset, VOID);
+	Buffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
 	memcpy(Buffer, Data, DataSize);
 	MarshaledDataSize = DataSize;
     }
@@ -341,7 +341,7 @@ static NTSTATUS CmpMarshalRegDataA(IN PVOID Data,
     PVOID Buffer = Data;
     ULONG MarshaledDataSize = 0;
     if (*MsgBufOffset + DataSize < MAX_MSG_BUF_OFFSET) {
-	Buffer = &OFFSET_TO_ARG(*MsgBufOffset, VOID);
+	Buffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
 	memcpy(Buffer, Data, DataSize);
 	MarshaledDataSize = DataSize;
     }

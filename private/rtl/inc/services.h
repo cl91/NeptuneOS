@@ -237,7 +237,8 @@ typedef union _SERVICE_ARGUMENT {
 
 assert_size_correct(SERVICE_ARGUMENT, MWORD_BYTES);
 
-#define SVC_MSGBUF_OFFSET_TO_ARG(IpcBufAddr, Offset, Type) (*((Type *)(IpcBufAddr + SEL4_IPC_BUFFER_SIZE + (Offset))))
+#define SVC_MSGBUF_OFFSET_TO_ARG(IpcBufAddr, Offset, Type)		\
+    (*((Type *)((ULONG_PTR)(IpcBufAddr) + SEL4_IPC_BUFFER_SIZE + (Offset))))
 
 static inline PVOID KiServiceGetArgument(IN MWORD IpcBufferAddr,
 					 IN MWORD MsgWord)
@@ -246,7 +247,7 @@ static inline PVOID KiServiceGetArgument(IN MWORD IpcBufferAddr,
 	return NULL;
     }
     SERVICE_ARGUMENT Arg = { .Word = MsgWord };
-    return &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, Arg.BufferStart, VOID);
+    return &SVC_MSGBUF_OFFSET_TO_ARG(IpcBufferAddr, Arg.BufferStart, CHAR);
 }
 
 /*
