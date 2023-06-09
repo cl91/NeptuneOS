@@ -212,7 +212,7 @@ done
 { for i in ${PE_COPY_LIST}; do echo $(basename $i); done } > image-list
 { for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
 { for i in ${DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
-cpio -H newc -o < image-list > initcpio
+cpio -H newc -o < image-list > initcpio || build_failed
 llvm-objcopy -I binary -O ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o

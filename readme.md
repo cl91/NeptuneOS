@@ -39,19 +39,22 @@ of which is described in the next section.
 
 ## Building
 
-You will need to build under Linux (seL4 doesn't build in any other operating system).
+You will need to build under Linux (seL4 doesn't build under any other operating system).
 You will need the following Python dependencies, and probably more.
 ```
 jinja2
 future
 ply
+setuptools
+six
 ```
 You will also need `cmake`, `clang`, `llvm` and `lld` as a basic toolchain. `clang`
 is a native cross compiler that can generate both ELF and PE targets. GCC is not
 supported but in theory can be made to work. You will need both an ELF toolchain
 and a PE toolchain (and probably a ton of patience) if you want to make GCC work.
 Have a look at `build.sh` for the build script. The preferred clang version is 15
-but recent versions should all work.
+but recent versions should all work. You also need the `cpio` utility for building
+the initcpio.
 
 Clone the project first (make sure you use `git clone --recurse-submodules` since
 we include the seL4 kernel as a submodule) and then run
