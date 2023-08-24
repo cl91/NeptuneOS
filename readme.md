@@ -1,6 +1,6 @@
 # Neptune OS: a WinNT personality of the seL4 microkernel
 
-Neptune OS is a Windows NT personality of the seL4 microkernel. It implements what
+Neptune OS is a Windows NT personality for the seL4 microkernel. It implements what
 Microsoft calls the "NT Executive", the upper layer of the Windows kernel `NTOSKRNL.EXE`,
 as a user process under the seL4 microkernel. The NT Executive implements the so-called
 NT Native API, the native system call interface of Windows upon which the more familiar
@@ -24,6 +24,8 @@ pointers around and call into other drivers directly. In Neptune OS unless it's 
 driver-minidriver pair we always run "kernel" drivers in their separate processes so it
 is not possible to do that.
 
+## Project Status
+
 The status of the project right now is that we have implemented enough NT primitives
 to load a basic keyboard driver stack, which includes the keyboard class driver
 `kbdclass.sys` and the PS/2 port driver `i8042prt.sys`, as well as a basic command
@@ -33,9 +35,35 @@ a bit slow because we generate too much debug logs. You can turn these off in th
 code (see `private/ntos/inc`). We also include a `beep.sys` driver which makes an
 annoying sound on the PC speaker. You will need to unmute to hear it (especially if
 you use `pulseaudio`). All drivers run in user space! The entire system fits in a
-floppy and can be downloaded from [Release v0.1.0001](https://github.com/cl91/NeptuneOS/releases/tag/v0.1.0001).
-You can also build it yourself, the procedure
-of which is described in the next section.
+floppy and can be downloaded from [Release v0.1.0001](https://github.com/cl91/NeptuneOS/releases/tag/v0.1.0001). You can also build it yourself. See the section on (Building)[#building].
+
+## Minimal System Requirements
+
+For i386 systems (should probably be called i686):
+
+1. CPU: At least a Pentium 2 or equivalent: the default clang target is i686 which
+   can generate instructions not implemented by 386, 486, and Pentium. Also, on x86
+   the seL4 kernel assumes that the processor supports global pages (bit PGE in CR4).
+   This is only supported in Pentium Pro (i686) and later. There is no way to disable
+   this at compile time (see assembly routine `enable_paging` in `sel4/src/arch/x86/32/head.S`).
+2. RAM: 32MB should be safe, can probably go lower.
+3. VGA-compatible graphics controller.
+4. PC BIOS or compatible. We haven't implemented UEFI yet although this shouldn't take
+   too much work. The only thing needed is drawing text on the linear framebuffer.
+   We might also support coreboot linear framebuffer.
+
+For amd64 systems:
+
+1. CPU: At least Intel Ivy Bridge or equivalent: the default seL4 kernel is built with
+   the `fsgsbase` instruction enabled. This is only supported on Ivy Bridge and later.
+   To run amd64 builds on earlier CPUs you can disable fsgsbase instruction in
+   `private/ntos/cmake/sel4.cmake`. Also we require cmpxchg16b, which is available since
+   Nehalem, and quite possibly earlier (earlier Core 2 processors might need a microcode
+   update).
+2. RAM: 128MB should be safe, can probably go lower.
+3. VGA-compatible graphics controller.
+4. Legacy BIOS booting. Most UEFI firmware can boot from legacy BIOS boot loaders by
+   enabling a setting.
 
 ## Building
 
@@ -54,7 +82,9 @@ supported but in theory can be made to work. You will need both an ELF toolchain
 and a PE toolchain (and probably a ton of patience) if you want to make GCC work.
 Have a look at `build.sh` for the build script. The preferred clang version is 15
 but recent versions should all work. You also need the `cpio` utility for building
-the initcpio.
+the initcpio. Finally, for the boot floppy and boot iso you will need the following
+tools: `syslinux` (for boot floppy), `grub` and `xorriso` (for boot iso), and
+`mtools` (for both).
 
 Clone the project first (make sure you use `git clone --recurse-submodules` since
 we include the seL4 kernel as a submodule) and then run
@@ -80,16 +110,24 @@ You might need to type your password because the script needs to invoke `sudo`.
 eVeRYtHiNg iS a fILe!!!
 
 ### Cross-compiling
-We use the LLVM toolchain so cross-compiling in theory should simply work without any special handling. In practice, on `i386`/`amd64` the linker script for the final seL4 kernel executable relies on features that only the GNU LD linker supports, so we cannot use the LLVM linker (LLD) to link the seL4 kernel. This means that you will need the GNU LD cross-linkers for the target triples `i686-pc-linux-gnu` and `x86_64-pc-linux-gnu` installed in the usual place (`/usr/bin`) so `clang` can find them and invoke them correctly when linking the seL4 kernel. The PE part of the toolchain is completely self-contained and requires no special handling when cross-compiling (it is already a cross-toolchain because we are targeting Windows on a Linux host).
+We use the LLVM toolchain so cross-compiling in theory should simply work without any
+special handling. In practice, on `i386`/`amd64` the linker script for the final seL4
+kernel executable relies on features that only the GNU LD linker supports, so we cannot
+use the LLVM linker (LLD) to link the seL4 kernel. This means that you will need the GNU
+LD cross-linkers for the target triples `i686-pc-linux-gnu` and `x86_64-pc-linux-gnu`
+installed in the usual place (`/usr/bin`) so `clang` can find them and invoke them
+correctly when linking the seL4 kernel. The PE part of the toolchain is completely
+self-contained and requires no special handling when cross-compiling (it is already
+a cross-toolchain because we are targeting Windows on a Linux host).
 
-Cross-compiling is tested on Archlinux running on Loongarch64 (Loongson 3A5000 processor) with `llvm-14` and seems to generate the correct code. Please open an issue if you run into any problem.
+Cross-compiling is tested on Archlinux running on Loongarch64 (Loongson 3A5000
+processor) with `llvm-14` and seems to generate the correct code. Please open an
+issue if you run into any problem.
 
-## Architecture
+## Documentations
 
-The story is that allegedly Windows NT was originally intended to be a microkernel
-operating system which comprises of a microkernel that implements basic process and
-memory management as well as IPC, and on top of which a "NT Executive" is implemented.
-The NT Executive is
-...write this later. This section is unfinished. TODO! We hope to demonstrate that with
-modern progress in microkernel design it is indeed possible to realize the original
-NT design as an object oriented, message-passing based, client-server model microkernel OS.
+Documentations are located under the `docs` directory. For developers and those interested
+in understanding the inner workings of Neptune OS, read the `Developer-Guide.md` which
+starts with an architectural overview of the operating system and proceeds to explain
+the various design decisions of individual OS components. It also contains the driver
+porting guide for those interested in porting drivers from ReactOS.

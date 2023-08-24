@@ -32,7 +32,9 @@
  * necessary
  */
 NTSTATUS NextCluster(PDEVICE_EXTENSION DeviceExt,
-		     ULONG FirstCluster, PULONG CurrentCluster, BOOLEAN Extend)
+		     ULONG FirstCluster,
+		     PULONG CurrentCluster,
+		     BOOLEAN Extend)
 {
     if (FirstCluster == 1) {
 	(*CurrentCluster) += DeviceExt->FatInfo.SectorsPerCluster;

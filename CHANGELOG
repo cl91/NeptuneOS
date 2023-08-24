@@ -2,15 +2,21 @@
 
 ## Release [v0.1]
 
-- Initial release
+	- Initial release featuring basic NT Native API, Native Shell and a keyboard driver
+	stack (kbdclass.sys and i8042prt.sys).
 
 ## Release [v0.2]
 
-- Update seL4 to upstream release 12.1.0
-- Update toolchain to llvm/clang-15
-- Implement Structured Exception Handling (SEH)
-- Object manager improvements: object deletion, symbolic link, case-insensitivity
-- More NT system services are implemented: Events, Registry, Virtual Memory
-- Implement hardware configuration database (part of the volatile registry of NT)
-- Implement DMA Subsystem: ISA slave DMA, PCI bus mastering, software scatter/gather
-- Port the floppy driver from ReactOS.
+	- Update seL4 to upstream release 12.1.0
+	- Update toolchain to llvm/clang-15
+	- Implement Structured Exception Handling (SEH)
+	- Object manager improvements: object deletion, symbolic link, case-insensitivity
+	- More NT system services are implemented: Events, Registry, Virtual Memory
+	- Implement hardware configuration database (part of the volatile registry of NT)
+	- Implement DMA Subsystem: ISA slave DMA, PCI bus mastering, software scatter/gather
+	- Port the floppy driver from ReactOS.
+	-	Add documentations for architectural overview, component design, and driver porting
+	-	Implement the Cache Manager, including the server-side facility inside the NT
+	Executive and client-side API exposed to file system drivers
+	- Implement server-side facilities for file systems and port the FAT file system
+	driver from ReactOS

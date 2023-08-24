@@ -579,7 +579,7 @@ static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
  * to resume the thread.
  *
  * A schematic diagram is as follows. Here Thread0 has a single wait block in the
- * master boolean formula, while Thread1 has several. 
+ * master boolean formula, while Thread1 has several.
  *
  *   |--------- |             |------------|
  *   | THREAD0  |             |  THREAD1   |
