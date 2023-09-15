@@ -8,7 +8,7 @@ Module Name:
 Abstract:
 
     This module implements the PnP Manager of the IO subsystem. Central
-    to the PnP manager is a data structure called device node, which
+    to the PnP manager is a data structure called the device node, which
     represents either a device (such as a keyboard, a PCI bus, or a
     software-emulated device such as a virtual CD drive), or a single
     function on a multi-functional card (such as the MIDI synth function
@@ -1085,7 +1085,7 @@ static NTSTATUS IopDeviceTreeEnumerate(IN ASYNC_STATE AsyncState,
     AWAIT(IopDeviceNodeAssignResources, AsyncState, _, Thread, DeviceNode);
     AWAIT(IopDeviceNodeStartDevice, AsyncState, _, Thread, DeviceNode);
 
-    /* If the device is not in the Started state, we can't enumerate it so get out. */
+    /* If the device is not in the Started state, we can't enumerate it so exit. */
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeStarted) {
 	Status = STATUS_INVALID_DEVICE_STATE;
 	goto out;

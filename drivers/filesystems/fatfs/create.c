@@ -27,7 +27,7 @@ VOID Fat8Dot3ToString(PFAT_DIR_ENTRY pEntry, PUNICODE_STRING NameU)
     StringA.Buffer = cString;
     for (StringA.Length = 0;
 	 StringA.Length < 8 && StringA.Buffer[StringA.Length] != ' ';
-	 StringA.Length++);
+	 StringA.Length++) ;
     StringA.MaximumLength = StringA.Length;
 
     RtlOemStringToUnicodeString(NameU, &StringA, FALSE);
@@ -50,7 +50,7 @@ VOID Fat8Dot3ToString(PFAT_DIR_ENTRY pEntry, PUNICODE_STRING NameU)
 	StringA.Buffer = &cString[8];
 	for (StringA.Length = 0;
 	     StringA.Length < 3 && StringA.Buffer[StringA.Length] != ' ';
-	     StringA.Length++);
+	     StringA.Length++) ;
 	StringA.MaximumLength = StringA.Length;
 	RtlOemStringToUnicodeString(NameU, &StringA, FALSE);
 	if (BooleanFlagOn(pEntry->lCase, FAT_CASE_LOWER_EXT)) {
@@ -123,12 +123,9 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 		startIndex += 2;
 	    }
 	    if (startIndex >= DirContext->DirIndex) {
-		RtlCopyUnicodeString(&DirContext->LongNameU,
-				     &rcFcb->LongNameU);
-		RtlCopyUnicodeString(&DirContext->ShortNameU,
-				     &rcFcb->ShortNameU);
-		RtlCopyMemory(&DirContext->DirEntry, &rcFcb->entry,
-			      sizeof(DIR_ENTRY));
+		RtlCopyUnicodeString(&DirContext->LongNameU, &rcFcb->LongNameU);
+		RtlCopyUnicodeString(&DirContext->ShortNameU, &rcFcb->ShortNameU);
+		RtlCopyMemory(&DirContext->DirEntry, &rcFcb->entry, sizeof(DIR_ENTRY));
 		DirContext->StartIndex = rcFcb->startIndex;
 		DirContext->DirIndex = rcFcb->dirIndex;
 		DPRINT("FindFile: new Name %wZ, DirIndex %u (%u)\n",
@@ -166,7 +163,8 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 	}
 	if (DirContext->LongNameU.Length == 0 ||
 	    DirContext->ShortNameU.Length == 0) {
-	    DPRINT1("WARNING: File system corruption detected. You may need to run a disk repair utility.\n");
+	    DPRINT1("WARNING: File system corruption detected. "
+		    "You may need to run a disk repair utility.\n");
 	    if (FatGlobalData->Flags & FAT_BREAK_ON_CORRUPTION) {
 		ASSERT(DirContext->LongNameU.Length != 0 &&
 		       DirContext->ShortNameU.Length != 0);
@@ -178,8 +176,7 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 	    Found = FsRtlIsNameInExpression(&FileToFindUpcase,
 					    &DirContext->LongNameU, TRUE, NULL)
 		|| FsRtlIsNameInExpression(&FileToFindUpcase,
-					   &DirContext->ShortNameU, TRUE,
-					   NULL);
+					   &DirContext->ShortNameU, TRUE, NULL);
 	} else {
 	    Found = FsRtlAreNamesEqual(&DirContext->LongNameU, FileToFindU,
 				       TRUE, NULL)
@@ -235,7 +232,7 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 			    PFILE_OBJECT FileObject,
 			    ULONG RequestedDisposition,
 			    ULONG RequestedOptions,
-			    PFATFCB * ParentFcb)
+			    PFATFCB *ParentFcb)
 {
     PFATFCB Fcb;
     NTSTATUS Status;
@@ -245,7 +242,6 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 
     if (FileObject->RelatedFileObject) {
 	DPRINT("'%wZ'\n", &FileObject->RelatedFileObject->FileName);
-
 	*ParentFcb = FileObject->RelatedFileObject->FsContext;
     } else {
 	*ParentFcb = NULL;
@@ -266,7 +262,7 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 	FatGrabFCB(DeviceExt, *ParentFcb);
     }
 
-    /*  try first to find an existing FCB in memory  */
+    /* Try first to find an existing FCB in memory. */
     DPRINT("Checking for existing FCB in memory\n");
 
     Status = FatGetFCBForFile(DeviceExt, ParentFcb, &Fcb, PathNameU);
@@ -310,42 +306,6 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 	return STATUS_CANNOT_DELETE;
     }
 
-    /* If that one was marked for closing, remove it */
-    if (BooleanFlagOn(Fcb->Flags, FCB_DELAYED_CLOSE)) {
-	BOOLEAN ConcurrentDeletion;
-	PFAT_CLOSE_CONTEXT CloseContext;
-
-	/* Get the context */
-	CloseContext = Fcb->CloseContext;
-	/* Is someone already taking over? */
-	if (CloseContext != NULL) {
-	    ConcurrentDeletion = FALSE;
-	    /* Lock list */
-	    ExAcquireFastMutex(&FatGlobalData->CloseMutex);
-	    /* Check whether it was already removed, if not, do it */
-	    if (!IsListEmpty(&CloseContext->CloseListEntry)) {
-		RemoveEntryList(&CloseContext->CloseListEntry);
-		--FatGlobalData->CloseCount;
-		ConcurrentDeletion = TRUE;
-	    }
-	    ExReleaseFastMutex(&FatGlobalData->CloseMutex);
-
-	    /* It's not delayed anymore! */
-	    ClearFlag(Fcb->Flags, FCB_DELAYED_CLOSE);
-	    /* Release the extra reference (would have been removed by IRP_MJ_CLOSE) */
-	    FatReleaseFCB(DeviceExt, Fcb);
-	    Fcb->CloseContext = NULL;
-	    /* If no concurrent deletion, free work item */
-	    if (!ConcurrentDeletion) {
-		ExFreeToPagedLookasideList(&FatGlobalData->
-					   CloseContextLookasideList,
-					   CloseContext);
-	    }
-	}
-
-	DPRINT("Reusing delayed close FCB for %wZ\n", &Fcb->PathNameU);
-    }
-
     DPRINT("Attaching FCB to fileObject\n");
     Status = FatAttachFCBToFileObject(DeviceExt, Fcb, FileObject);
     if (!NT_SUCCESS(Status)) {
@@ -386,8 +346,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     FileObject = Stack->FileObject;
     DeviceExt = DeviceObject->DeviceExtension;
 
-    if (BooleanFlagOn
-	(Stack->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
+    if (BooleanFlagOn(Stack->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
 	return STATUS_NOT_IMPLEMENTED;
     }
 
@@ -411,8 +370,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     if (FileObject->FileName.Length == 0 &&
 	(FileObject->RelatedFileObject == NULL ||
 	 FileObject->RelatedFileObject->FsContext2 != NULL ||
-	 FileObject->RelatedFileObject->FsContext == DeviceExt->VolumeFcb))
-    {
+	 FileObject->RelatedFileObject->FsContext == DeviceExt->VolumeFcb)) {
 	DPRINT("Volume opening\n");
 
 	if (RequestedDisposition != FILE_OPEN &&
@@ -535,13 +493,13 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	FatAddToStat(DeviceExt, Fat.CreateHits, 1);
 
-	ParentFcb = (FileObject->RelatedFileObject != NULL) ? FileObject->RelatedFileObject->FsContext : NULL;
+	ParentFcb = (FileObject->RelatedFileObject != NULL) ?
+	    FileObject->RelatedFileObject->FsContext : NULL;
 	if (ParentFcb) {
 	    FatGrabFCB(DeviceExt, ParentFcb);
 	}
 
-	Status = FatGetFCBForFile(DeviceExt, &ParentFcb, &TargetFcb,
-				  &PathNameU);
+	Status = FatGetFCBForFile(DeviceExt, &ParentFcb, &TargetFcb, &PathNameU);
 	if (NT_SUCCESS(Status)) {
 	    FatReleaseFCB(DeviceExt, TargetFcb);
 	    Irp->IoStatus.Information = FILE_EXISTS;
@@ -583,11 +541,10 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    FileObject->FileName.MaximumLength = PathNameU.MaximumLength;
 #endif
 	} else {
-	    /* This is a relative open and we have only the filename, so open the parent directory
-	     * It is in RelatedFileObject
+	    /* This is a relative open and we have only the filename, so
+	     * open the parent directory. It is in RelatedFileObject.
 	     */
 	    ASSERT(FileObject->RelatedFileObject != NULL);
-
 	    /* No need to modify the FO, it already has the name */
 	}
 
@@ -601,16 +558,14 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    ASSERT(pFcb == ParentFcb);
 
 	    if (pFcb->OpenHandleCount == 0) {
-		IoSetShareAccess(Stack->Parameters.Create.SecurityContext->
-				 DesiredAccess,
+		IoSetShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 				 Stack->Parameters.Create.ShareAccess,
 				 FileObject, &pFcb->FCBShareAccess);
 	    } else {
-		Status = IoCheckShareAccess(Stack->Parameters.Create.
-					    SecurityContext->DesiredAccess,
-					    Stack->Parameters.Create.
-					    ShareAccess, FileObject,
-					    &pFcb->FCBShareAccess, FALSE);
+		Status = IoCheckShareAccess(
+		    Stack->Parameters.Create.SecurityContext->DesiredAccess,
+		    Stack->Parameters.Create.ShareAccess, FileObject,
+		    &pFcb->FCBShareAccess, FALSE);
 		if (!NT_SUCCESS(Status)) {
 		    FatCloseFile(DeviceExt, FileObject);
 		    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
@@ -661,10 +616,9 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return Status;
     }
 
-    Attributes = (Stack->Parameters.Create.
-		  FileAttributes & (FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_SYSTEM |
-				    FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_DIRECTORY
-				    | FILE_ATTRIBUTE_READONLY));
+    Attributes = Stack->Parameters.Create.FileAttributes &
+	(FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN
+	 | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY);
 
     /* If the file open failed then create the required file */
     if (!NT_SUCCESS(Status)) {
@@ -868,13 +822,11 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		FatUpdateEntry(DeviceExt, pFcb);
 	    }
 
-	    ExAcquireResourceExclusiveLite(&(pFcb->MainResource), TRUE);
 	    Status = FatSetAllocationSizeInformation(FileObject,
 						     pFcb,
 						     DeviceExt,
 						     &Irp->Overlay.
 						     AllocationSize);
-	    ExReleaseResourceLite(&(pFcb->MainResource));
 	    if (!NT_SUCCESS(Status)) {
 		FatCloseFile(DeviceExt, FileObject);
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
@@ -955,10 +907,7 @@ NTSTATUS FatCreate(PFAT_IRP_CONTEXT IrpContext)
     }
 
     IrpContext->Irp->IoStatus.Information = 0;
-    ExAcquireResourceExclusiveLite(&IrpContext->DeviceExt->DirResource,
-				   TRUE);
     Status = FatCreateFile(IrpContext->DeviceObject, IrpContext->Irp);
-    ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
 
     if (NT_SUCCESS(Status))
 	IrpContext->PriorityBoost = IO_DISK_INCREMENT;

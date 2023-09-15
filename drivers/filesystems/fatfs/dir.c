@@ -75,7 +75,7 @@ BOOLEAN FsdSystemTimeToDosDateTime(PDEVICE_EXTENSION DeviceExt,
     return TRUE;
 }
 
-#define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
+#define ULONG_ROUND_UP_32(x)   ROUND_UP_32((x), (sizeof(ULONG)))
 
 static NTSTATUS FatGetFileNamesInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 					   PFILE_NAMES_INFORMATION pInfo,
@@ -104,7 +104,7 @@ static NTSTATUS FatGetFileNamesInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 
 	    if (BytesToCopy == DirContext->LongNameU.Length) {
 		pInfo->NextEntryOffset =
-		    ULONG_ROUND_UP(sizeof(FILE_NAMES_INFORMATION) + BytesToCopy);
+		    ULONG_ROUND_UP_32(sizeof(FILE_NAMES_INFORMATION) + BytesToCopy);
 		Status = STATUS_SUCCESS;
 	    }
 	}
@@ -142,7 +142,7 @@ static NTSTATUS FatGetFileDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 
 	    if (BytesToCopy == DirContext->LongNameU.Length) {
 		pInfo->NextEntryOffset =
-		    ULONG_ROUND_UP(sizeof(FILE_DIRECTORY_INFORMATION) + BytesToCopy);
+		    ULONG_ROUND_UP_32(sizeof(FILE_DIRECTORY_INFORMATION) + BytesToCopy);
 		Status = STATUS_SUCCESS;
 	    }
 	}
@@ -176,8 +176,8 @@ static NTSTATUS FatGetFileDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
 		pInfo->AllocationSize.u.HighPart = 0;
 		pInfo->AllocationSize.u.LowPart =
-		    ROUND_UP(DirContext->DirEntry.FatX.FileSize,
-			     DeviceExt->FatInfo.BytesPerCluster);
+		    ROUND_UP_32(DirContext->DirEntry.FatX.FileSize,
+				DeviceExt->FatInfo.BytesPerCluster);
 	    }
 
 	    pInfo->FileAttributes = DirContext->DirEntry.FatX.Attrib & 0x3f;
@@ -207,8 +207,8 @@ static NTSTATUS FatGetFileDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
 		pInfo->AllocationSize.u.HighPart = 0;
 		pInfo->AllocationSize.u.LowPart =
-		    ROUND_UP(DirContext->DirEntry.Fat.FileSize,
-			     DeviceExt->FatInfo.BytesPerCluster);
+		    ROUND_UP_32(DirContext->DirEntry.Fat.FileSize,
+				DeviceExt->FatInfo.BytesPerCluster);
 	    }
 
 	    pInfo->FileAttributes = DirContext->DirEntry.Fat.Attrib & 0x3f;
@@ -249,7 +249,7 @@ static NTSTATUS FatGetFileFullDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirCont
 
 	    if (BytesToCopy == DirContext->LongNameU.Length) {
 		pInfo->NextEntryOffset =
-		    ULONG_ROUND_UP(sizeof(FILE_FULL_DIR_INFORMATION) + BytesToCopy);
+		    ULONG_ROUND_UP_32(sizeof(FILE_FULL_DIR_INFORMATION) + BytesToCopy);
 		Status = STATUS_SUCCESS;
 	    }
 	}
@@ -277,8 +277,8 @@ static NTSTATUS FatGetFileFullDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirCont
 	    /* Make allocsize a rounded up multiple of BytesPerCluster */
 	    pInfo->AllocationSize.u.HighPart = 0;
 	    pInfo->AllocationSize.u.LowPart =
-		ROUND_UP(DirContext->DirEntry.FatX.FileSize,
-			 DeviceExt->FatInfo.BytesPerCluster);
+		ROUND_UP_32(DirContext->DirEntry.FatX.FileSize,
+			    DeviceExt->FatInfo.BytesPerCluster);
 	    pInfo->FileAttributes = DirContext->DirEntry.FatX.Attrib & 0x3f;
 	} else {
 	    FsdDosDateTimeToSystemTime(DeviceExt,
@@ -300,8 +300,8 @@ static NTSTATUS FatGetFileFullDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirCont
 	    /* Make allocsize a rounded up multiple of BytesPerCluster */
 	    pInfo->AllocationSize.u.HighPart = 0;
 	    pInfo->AllocationSize.u.LowPart =
-		ROUND_UP(DirContext->DirEntry.Fat.FileSize,
-			 DeviceExt->FatInfo.BytesPerCluster);
+		ROUND_UP_32(DirContext->DirEntry.Fat.FileSize,
+			    DeviceExt->FatInfo.BytesPerCluster);
 	    pInfo->FileAttributes = DirContext->DirEntry.Fat.Attrib & 0x3f;
 	}
     }
@@ -338,7 +338,7 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 
 	    if (BytesToCopy == DirContext->LongNameU.Length) {
 		pInfo->NextEntryOffset =
-		    ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + BytesToCopy);
+		    ULONG_ROUND_UP_32(sizeof(FILE_BOTH_DIR_INFORMATION) + BytesToCopy);
 		Status = STATUS_SUCCESS;
 	    }
 	}
@@ -370,8 +370,8 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
 		pInfo->AllocationSize.u.HighPart = 0;
 		pInfo->AllocationSize.u.LowPart =
-		    ROUND_UP(DirContext->DirEntry.FatX.FileSize,
-			     DeviceExt->FatInfo.BytesPerCluster);
+		    ROUND_UP_32(DirContext->DirEntry.FatX.FileSize,
+				DeviceExt->FatInfo.BytesPerCluster);
 	    }
 
 	    pInfo->FileAttributes = DirContext->DirEntry.FatX.Attrib & 0x3f;
@@ -408,8 +408,8 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
 		pInfo->AllocationSize.u.HighPart = 0;
 		pInfo->AllocationSize.u.LowPart =
-		    ROUND_UP(DirContext->DirEntry.Fat.FileSize,
-			     DeviceExt->FatInfo.BytesPerCluster);
+		    ROUND_UP_32(DirContext->DirEntry.Fat.FileSize,
+				DeviceExt->FatInfo.BytesPerCluster);
 	    }
 
 	    pInfo->FileAttributes = DirContext->DirEntry.Fat.Attrib & 0x3f;
@@ -453,27 +453,6 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 #endif
     Buffer = FatGetUserBuffer(IrpContext->Irp, FALSE);
 
-    if (!ExAcquireResourceExclusiveLite(&IrpContext->DeviceExt->DirResource,
-					BooleanFlagOn(IrpContext->Flags,
-						      IRPCONTEXT_CANWAIT))) {
-	Status = FatLockUserBuffer(IrpContext->Irp, BufferLength, IoWriteAccess);
-	if (NT_SUCCESS(Status))
-	    Status = STATUS_PENDING;
-
-	return Status;
-    }
-
-    if (!ExAcquireResourceSharedLite(&pFcb->MainResource,
-				     BooleanFlagOn(IrpContext->Flags,
-						   IRPCONTEXT_CANWAIT))) {
-	ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
-	Status = FatLockUserBuffer(IrpContext->Irp, BufferLength, IoWriteAccess);
-	if (NT_SUCCESS(Status))
-	    Status = STATUS_PENDING;
-
-	return Status;
-    }
-
     /* Obtain the callers parameters */
     pSearchPattern = (PUNICODE_STRING)Stack->Parameters.QueryDirectory.FileName;
     FileInformationClass = Stack->Parameters.QueryDirectory.FileInformationClass;
@@ -493,8 +472,6 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 		ExAllocatePoolWithTag(pCcb->SearchPattern.MaximumLength,
 				      TAG_SEARCH);
 	    if (!pCcb->SearchPattern.Buffer) {
-		ExReleaseResourceLite(&pFcb->MainResource);
-		ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
 	    RtlCopyUnicodeString(&pCcb->SearchPattern, pSearchPattern);
@@ -506,8 +483,6 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 	pCcb->SearchPattern.Buffer = ExAllocatePoolWithTag(2 * sizeof(WCHAR),
 							   TAG_SEARCH);
 	if (!pCcb->SearchPattern.Buffer) {
-	    ExReleaseResourceLite(&pFcb->MainResource);
-	    ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	pCcb->SearchPattern.Buffer[0] = L'*';
@@ -612,32 +587,7 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 	IrpContext->Irp->IoStatus.Information = Written;
     }
 
-    ExReleaseResourceLite(&pFcb->MainResource);
-    ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
-
     return Status;
-}
-
-NTSTATUS FatNotifyChangeDirectory(PFAT_IRP_CONTEXT IrpContext)
-{
-    PVCB pVcb;
-    PFATFCB pFcb;
-    PIO_STACK_LOCATION Stack;
-    Stack = IrpContext->Stack;
-    pVcb = IrpContext->DeviceExt;
-    pFcb = (PFATFCB) IrpContext->FileObject->FsContext;
-
-    FsRtlNotifyFullChangeDirectory(pVcb->NotifySync, &(pVcb->NotifyList),
-				   IrpContext->FileObject->FsContext2,
-				   (PSTRING)(&pFcb->PathNameU),
-				   BooleanFlagOn(Stack->Flags, SL_WATCH_TREE), FALSE,
-				   Stack->Parameters.NotifyDirectory.CompletionFilter,
-				   IrpContext->Irp, NULL, NULL);
-
-    /* We won't handle IRP completion */
-    IrpContext->Flags &= ~IRPCONTEXT_COMPLETE;
-
-    return STATUS_PENDING;
 }
 
 /*
@@ -655,7 +605,10 @@ NTSTATUS FatDirectoryControl(PFAT_IRP_CONTEXT IrpContext)
 	break;
 
     case IRP_MN_NOTIFY_CHANGE_DIRECTORY:
-	Status = FatNotifyChangeDirectory(IrpContext);
+	/* Directory notify change is now implemented on server side. The IRP
+	 * minor code is reserved for future use (probaby to let the file system
+	 * driver know about the notify change request from the user). */
+	Status = STATUS_UNIMPLEMENTED;
 	break;
 
     default:
@@ -666,10 +619,7 @@ NTSTATUS FatDirectoryControl(PFAT_IRP_CONTEXT IrpContext)
 	break;
     }
 
-    if (Status == STATUS_PENDING &&
-	BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_COMPLETE)) {
-	return FatMarkIrpContextForQueue(IrpContext);
-    }
+    assert(Status != STATUS_PENDING);
 
     return Status;
 }

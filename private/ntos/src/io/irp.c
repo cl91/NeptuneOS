@@ -276,9 +276,9 @@ static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
     } else {
 	/* Otherwise, it must be a driver object. Reply to the driver. */
 	assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER));
-	/* Note that since a lower driver can create an IRP and send it to
-	 * a higher-level driver, which can in turn forward this IRP back to the
-	 * lower driver, the Requestor may in fact be equal to DriverObject. */
+	/* Note that since a lower driver can create an IRP and send it to a
+	 * higher-level driver, which can in turn reflect this IRP back to the
+	 * lower driver, the Requestor can sometimes be equal to DriverObject. */
 	PIO_DRIVER_OBJECT RequestorDriver = (PIO_DRIVER_OBJECT)Requestor;
 
 	/* Allocate a new IO packet of type ServerMessage */

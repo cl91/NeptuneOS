@@ -111,7 +111,7 @@ BOOLEAN FATXIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 	    __try {
 		CcMapData(Fcb->FileObject, &FileOffset,
 			  sizeof(FATX_DIR_ENTRY), MAP_WAIT, &Context,
-			  (PVOID *) & FatXDirEntry);
+			  (PVOID *)&FatXDirEntry);
 	    } __except(EXCEPTION_EXECUTE_HANDLER) {
 		return TRUE;
 	    }
@@ -182,15 +182,13 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	_SEH2_TRY {
+	__try {
 	    CcMapData(pDirFcb->FileObject, &FileOffset, PAGE_SIZE,
 		      MAP_WAIT, pContext, pPage);
-	}
-	_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    *pContext = NULL;
-	    _SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+	    return STATUS_NO_MORE_ENTRIES;
 	}
-	_SEH2_END;
     }
 
     fatDirEntry = (PFAT_DIR_ENTRY)(*pPage) + DirContext->DirIndex % FAT_ENTRIES_PER_PAGE;
@@ -221,18 +219,15 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 		    return STATUS_NO_MORE_ENTRIES;
 		}
 
-		_SEH2_TRY {
+		__try {
 		    CcMapData(pDirFcb->FileObject, &FileOffset, PAGE_SIZE,
 			      MAP_WAIT, pContext, pPage);
-		}
-		_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+		} __except(EXCEPTION_EXECUTE_HANDLER) {
 		    *pContext = NULL;
-		    _SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+		    return STATUS_NO_MORE_ENTRIES;
 		}
-		_SEH2_END;
 
-		fatDirEntry =
-		    (PFAT_DIR_ENTRY) (*pPage) +
+		fatDirEntry = (PFAT_DIR_ENTRY) (*pPage) +
 		    DirContext->DirIndex % FAT_ENTRIES_PER_PAGE;
 		longNameEntry = (slot *) fatDirEntry;
 	    } else {
@@ -256,15 +251,13 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 		    return STATUS_NO_MORE_ENTRIES;
 		}
 
-		_SEH2_TRY {
+		__try {
 		    CcMapData(pDirFcb->FileObject, &FileOffset, PAGE_SIZE,
 			      MAP_WAIT, pContext, pPage);
-		}
-		_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+		} __except(EXCEPTION_EXECUTE_HANDLER) {
 		    *pContext = NULL;
-		    _SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+		    return STATUS_NO_MORE_ENTRIES;
 		}
-		_SEH2_END;
 
 		fatDirEntry = (PFAT_DIR_ENTRY) * pPage;
 		longNameEntry = (slot *) * pPage;
@@ -378,15 +371,13 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    _SEH2_TRY {
+	    __try {
 		CcMapData(pDirFcb->FileObject, &FileOffset, PAGE_SIZE,
 			  MAP_WAIT, pContext, pPage);
-	    }
-	    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+	    } __except(EXCEPTION_EXECUTE_HANDLER) {
 		*pContext = NULL;
-		_SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+		return STATUS_NO_MORE_ENTRIES;
 	    }
-	    _SEH2_END;
 
 	    fatDirEntry = (PFAT_DIR_ENTRY) * pPage;
 	    longNameEntry = (slot *) * pPage;
@@ -414,11 +405,8 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-FATXGetNextDirEntry(PVOID * pContext,
-		    PVOID * pPage,
-		    IN PFATFCB pDirFcb,
-		    PFAT_DIRENTRY_CONTEXT DirContext, BOOLEAN First)
+NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB pDirFcb,
+			     PFAT_DIRENTRY_CONTEXT DirContext, BOOLEAN First)
 {
     LARGE_INTEGER FileOffset;
     PFATX_DIR_ENTRY fatxDirEntry;
@@ -478,19 +466,16 @@ FATXGetNextDirEntry(PVOID * pContext,
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	_SEH2_TRY {
+	__try {
 	    CcMapData(pDirFcb->FileObject, &FileOffset, PAGE_SIZE,
 		      MAP_WAIT, pContext, pPage);
-	}
-	_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    *pContext = NULL;
-	    _SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+	    return STATUS_NO_MORE_ENTRIES;
 	}
-	_SEH2_END;
     }
 
-    fatxDirEntry =
-	(PFATX_DIR_ENTRY) (*pPage) + DirIndex % FATX_ENTRIES_PER_PAGE;
+    fatxDirEntry = (PFATX_DIR_ENTRY)(*pPage) + DirIndex % FATX_ENTRIES_PER_PAGE;
 
     DirContext->StartIndex = DirContext->DirIndex;
 
@@ -517,15 +502,13 @@ FATXGetNextDirEntry(PVOID * pContext,
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    _SEH2_TRY {
+	    __try {
 		CcMapData(pDirFcb->FileObject, &FileOffset, PAGE_SIZE,
 			  MAP_WAIT, pContext, pPage);
-	    }
-	    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+	    } __except(EXCEPTION_EXECUTE_HANDLER) {
 		*pContext = NULL;
-		_SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+		return STATUS_NO_MORE_ENTRIES;
 	    }
-	    _SEH2_END;
 
 	    fatxDirEntry = (PFATX_DIR_ENTRY) * pPage;
 	} else {

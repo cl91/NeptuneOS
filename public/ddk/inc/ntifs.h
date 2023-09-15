@@ -132,3 +132,13 @@ typedef struct _NTFS_STATISTICS {
 #define BooleanFlagOn(Flags, SingleFlag)    ((BOOLEAN)((((Flags) & (SingleFlag)) != 0)))
 #define SetFlag(Flags, SetOfFlags)	    ((Flags) |= (SetOfFlags))
 #define ClearFlag(Flags, SetOfFlags)	    ((Flags) &= ~(SetOfFlags))
+
+typedef struct _SHARE_ACCESS {
+    ULONG OpenCount;
+    ULONG Readers;
+    ULONG Writers;
+    ULONG Deleters;
+    ULONG SharedRead;
+    ULONG SharedWrite;
+    ULONG SharedDelete;
+} SHARE_ACCESS, *PSHARE_ACCESS;

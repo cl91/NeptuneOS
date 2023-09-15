@@ -1312,15 +1312,6 @@ NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
     SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IrpContext->Stack->Parameters.QueryFile.Length;
 
-    if (!BooleanFlagOn(FCB->Flags, FCB_IS_PAGE_FILE)) {
-	if (!ExAcquireResourceSharedLite(&FCB->MainResource,
-					 BooleanFlagOn(IrpContext->Flags,
-						       IRPCONTEXT_CANWAIT)))
-	{
-	    return FatMarkIrpContextForQueue(IrpContext);
-	}
-    }
-
     switch (FileInformationClass) {
     case FileStandardInformation:
 	Status = FatGetStandardInformation(FCB,
@@ -1382,10 +1373,6 @@ NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
 	Status = STATUS_INVALID_PARAMETER;
     }
 
-    if (!BooleanFlagOn(FCB->Flags, FCB_IS_PAGE_FILE)) {
-	ExReleaseResourceLite(&FCB->MainResource);
-    }
-
     ULONG Information = 0;
     if (NT_SUCCESS(Status) || Status == STATUS_BUFFER_OVERFLOW) {
 	Information = IrpContext->Stack->Parameters.QueryFile.Length - BufferLength;
@@ -1404,7 +1391,6 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
     PFATFCB FCB;
     NTSTATUS Status = STATUS_SUCCESS;
     PVOID SystemBuffer;
-    BOOLEAN LockDir;
 
     /* PRECONDITION */
     ASSERT(IrpContext);
@@ -1443,35 +1429,7 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 	DPRINT("Can set file size\n");
     }
 
-    LockDir = FALSE;
-    if (FileInformationClass == FileRenameInformation
-	|| FileInformationClass == FileAllocationInformation
-	|| FileInformationClass == FileEndOfFileInformation
-	|| FileInformationClass == FileBasicInformation) {
-	LockDir = TRUE;
-    }
-
     PDEVICE_EXTENSION DevExt = IrpContext->DeviceObject->DeviceExtension;
-
-    if (LockDir) {
-	if (!ExAcquireResourceExclusiveLite(&DevExt->DirResource,
-					    BooleanFlagOn(IrpContext->Flags,
-							  IRPCONTEXT_CANWAIT))) {
-	    return FatMarkIrpContextForQueue(IrpContext);
-	}
-    }
-
-    if (!BooleanFlagOn(FCB->Flags, FCB_IS_PAGE_FILE)) {
-	if (!ExAcquireResourceExclusiveLite(&FCB->MainResource,
-					    BooleanFlagOn(IrpContext->Flags,
-							  IRPCONTEXT_CANWAIT))) {
-	    if (LockDir) {
-		ExReleaseResourceLite(&DevExt->DirResource);
-	    }
-
-	    return FatMarkIrpContextForQueue(IrpContext);
-	}
-    }
 
     switch (FileInformationClass) {
     case FilePositionInformation:
@@ -1513,14 +1471,6 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 
     default:
 	Status = STATUS_NOT_SUPPORTED;
-    }
-
-    if (!BooleanFlagOn(FCB->Flags, FCB_IS_PAGE_FILE)) {
-	ExReleaseResourceLite(&FCB->MainResource);
-    }
-
-    if (LockDir) {
-	ExReleaseResourceLite(&DevExt->DirResource);
     }
 
     IrpContext->Irp->IoStatus.Information = 0;

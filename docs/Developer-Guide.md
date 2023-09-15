@@ -40,11 +40,15 @@ client-server style microkernel OS.
 | win32			 | Win32 Subsystem (native exes)   |
 | shell			 | Win32 applications (win32 exes) |
 
-All code that makes seL4 calls and refers to seL4 headers should go under `private`. No code outside `private` can make any seL4 system calls or include any seL4 headers.
+All code that makes seL4 calls and refers to seL4 headers should go under `private`.
+No code outside `private` can make any seL4 system calls or include any seL4 headers.
 
-All executables and DLLs under `base` and `win32` are native NT clients. Projects under `base` cannot include Win32 headers. Projects under `win32` can (and typically do) include Win32 headers.
+All executables and DLLs under `base` and `win32` are native NT clients. Projects under
+`base` cannot include Win32 headers. Projects under `win32` can (and typically do) include
+Win32 headers.
 
-All executables and DLLs under `shell` are Win32 applications. Projects under `shell` should not make native NT api calls (although we don't explicitly forbid this).
+All executables and DLLs under `shell` are Win32 applications. Projects under `shell`
+should not make native NT api calls (although we don't explicitly forbid this).
 
 ## NT Executive Components
 
@@ -60,7 +64,7 @@ Due to the fact that file system drivers run in their separate processes, signif
 simplications can be achieved in terms of file system driver writing, especially in
 terms of caching and synchronization.
 
-Cache manager: in Windows/ReactOS architecture, file system drivers must work together
+Cache manager: in the Windows NT architecture, file system drivers must work together
 with the NT cache manager in the NT Executive in a complicated manner to implement
 caching for the system. In Neptune OS the file system drivers act exclusively as
 clients to the cache manager. Typically only when the file system driver accesses the
@@ -81,10 +85,10 @@ Additionally on Windows, the flow of IRPs often goes from the IO manager to the 
 system driver, and then gets reflected back to the IO manager, which in turn redirects
 the IRP to the file system driver for a second time, typically with some flags adjusted.
 This recursive behavior is OK for Windows since drivers run in kernel mode. On a microkernel
-operating system such as Neptune OS, this would incur unacceptable performance penalties
-and is therefore disallowed. On Neptune OS the flow of IRPs is always uni-directional
-and goes from the IO manager in the Executive, to the file system driver, and then to
-the underlying secondary disk driver.
+operating system such as Neptune OS, this would incur unacceptable performance penalties.
+On Neptune OS, by design the flow of IRPs is always uni-directional and goes from the
+IO manager in the Executive, to the file system driver, and then to the underlying
+secondary disk driver.
 
 Synchronization: in Windows/ReactOS, most file system drivers will need to carefully
 guard concurrent write operations in order to maintain consistency of data. Typically
@@ -103,7 +107,48 @@ Summary of issues mentioned above. Guide to porting drivers from ReactOS and Win
 
 #### Low-level Device Drivers
 
+Synchronization:
+
+KEVENT (only between different threads within the same driver process)
+ERESOURCE (removed)
+
+Queuing IRP:
+A common pattern in Windows/ReactOS drivers is that the driver will queue an IRP to an
+internal queue when IRPs come in faster than they can be processed by the driver. Common
+mechanisms include the StartIo routine, device queues, interlocked queues, and cancel-safe
+queues. These are generally speaking unnecessary on Neptune OS as the Executive limits
+the rate of IRP flows to a driver by setting an upper limit to the incoming driver IRP
+buffer. Low-level drivers should generally process IRPs synchronously. If the device is
+busy processing the IRP, the device should simply wait till the device finishes. This does
+NOT negatively impact system responsiveness since drivers run in their own separate process.
+That being said, the StartIo mechanism is still present on Neptune OS in order to make
+driver porting easier.
+
+Work items:
+In addition to queuing IRPs due to rate limits, it is a common pattern on Windows/ReactOS
+for DPCs to queue a lengthy processing task to a system worker thread, which runs at
+a lower IRQL. This is also generally speaking unnecessary since DPCs are processed in the
+same thread as regular IRPs. That being said, Neptune OS drivers can use work items to run
+long tasks that are of lower priority than regular IRP processing.
+
 #### File System Drivers
+
+Concurrency:
+Since all IRPs are processed in a single thread unless they are moved to a work queue,
+you can remove the KSPIN_LOCK, FAST_MUTEX, or similar locks that protect data structures
+that are only accessed by the main IRP processing thread. If you have data structures
+that are accessed by the interrupt service thread, or by the worker thread, you DO need
+to keep the relevant locks. Otherwise synchronization issues will arise in SMP systems.
+However, you should generally avoid queuing IRPs in a work queue as we explained above.
+
+In particular DPCs are processed in the same thread as the IRPs (albeit with a higher
+priority), so you do not need any special synchronization considerations for DPCs.
+
+FCB:
+1. For the common FCB header, remove SECTION_OBJECT_POINTERS as it is no longer needed.
+   You only need the FsRtl common FCB header.
+2. Remove FILE_LOCK and related objects.
+3. Remove all ERESOURCE objects.
 
 Read IRP:
 
@@ -127,3 +172,19 @@ Fast I/O
 
 Fast I/O is now handled transparently by the Executive. Therefore the fast I/O related
 fields in the common FSB header are removed.
+
+Directory Control IRP
+
+The IRP_MN_NOTIFY_CHANGE_DIRECTORY minor code is now handled automatically by the
+server. You no longer have to handle this in the file system driver. In the future
+this IRP minor code may be reused to report the user request for directory change
+notification to the filesystem driver.
+
+Lock User Buffer
+
+User buffers are always locked for IO. You do not need to explicitly lock the user
+buffers using MmProbeAndLockPages.
+
+FsRtlEnterFileSystem and FsRtlExitFileSystem
+
+These are no longer needed since drivers run in userspace.

@@ -41,7 +41,7 @@ static NTAPI NTSTATUS FatReadWritePartialCompletion(IN PDEVICE_OBJECT DeviceObje
 	IrpContext->Irp->IoStatus.Status = Irp->IoStatus.Status;
     }
 
-    if (!InterlockedDecrement((PLONG) & IrpContext->RefCount) &&
+    if (!InterlockedDecrement((PLONG)&IrpContext->RefCount) &&
 	BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_PENDINGRETURNED)) {
 	KeSetEvent(&IrpContext->Event, IO_NO_INCREMENT, FALSE);
     }
@@ -179,7 +179,7 @@ again:
 	KeInitializeEvent(&IrpContext->Event, NotificationEvent, FALSE);
 	IrpContext->RefCount = 1;
     } else {
-	InterlockedIncrement((PLONG) & IrpContext->RefCount);
+	InterlockedIncrement((PLONG)&IrpContext->RefCount);
     }
 
     DPRINT("Calling IO Driver... with irp %p\n", Irp);

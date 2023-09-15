@@ -48,9 +48,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	return Status;
     }
 
-    FatInfo.FixedMedia = DiskGeometry.MediaType == FixedMedia ? TRUE : FALSE;
-    if (DiskGeometry.MediaType == FixedMedia
-	|| DiskGeometry.MediaType == RemovableMedia) {
+    FatInfo.FixedMedia = (DiskGeometry.MediaType == FixedMedia);
+    if (DiskGeometry.MediaType == FixedMedia || DiskGeometry.MediaType == RemovableMedia) {
 	// We have found a hard disk
 	Size = sizeof(PARTITION_INFORMATION);
 	Status = FatBlockDeviceIoControl(DeviceToMount,
@@ -155,8 +154,7 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	    }
 
 	    if (*RecognizedFS &&
-		Boot->BytesPerSector * Boot->SectorsPerCluster > 64 * 1024)
-	    {
+		Boot->BytesPerSector * Boot->SectorsPerCluster > 64 * 1024) {
 		DPRINT1("ClusterSize %d\n",
 			Boot->BytesPerSector * Boot->SectorsPerCluster);
 		*RecognizedFS = FALSE;
@@ -171,7 +169,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 		FatInfo.BytesPerSector = Boot->BytesPerSector;
 		FatInfo.SectorsPerCluster = Boot->SectorsPerCluster;
 		FatInfo.BytesPerCluster = FatInfo.BytesPerSector * FatInfo.SectorsPerCluster;
-		FatInfo.rootDirectorySectors = ((Boot->RootEntries * 32) + Boot->BytesPerSector - 1) / Boot->BytesPerSector;
+		FatInfo.rootDirectorySectors = ((Boot->RootEntries * 32) + Boot->BytesPerSector
+						- 1) / Boot->BytesPerSector;
 		FatInfo.rootStart = FatInfo.FATStart +
 		    FatInfo.FATCount * FatInfo.FATSectors;
 		FatInfo.dataStart = FatInfo.rootStart + FatInfo.rootDirectorySectors;
@@ -206,10 +205,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 				  sizeof(FatInfo.VolumeLabel));
 		}
 
-		if (PartitionInfoIsValid &&
-		    FatInfo.Sectors >
-		    PartitionInfo.PartitionLength.QuadPart /
-		    FatInfo.BytesPerSector) {
+		if (PartitionInfoIsValid && FatInfo.Sectors >
+		    PartitionInfo.PartitionLength.QuadPart / FatInfo.BytesPerSector) {
 		    *RecognizedFS = FALSE;
 		}
 
@@ -284,19 +281,16 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 		    FatInfo.FatType = FATX32;
 		}
 		FatInfo.VolumeID = BootFatX->VolumeID;
-		FatInfo.FATStart = sizeof(struct _BootSectorFatX) /
-		    DiskGeometry.BytesPerSector;
+		FatInfo.FATStart = sizeof(struct _BootSectorFatX) / DiskGeometry.BytesPerSector;
 		FatInfo.FATCount = BootFatX->FATCount;
-		FatInfo.FATSectors =
-		    ROUND_UP(FatInfo.Sectors / FatInfo.SectorsPerCluster *
-			     (FatInfo.FatType == FATX16 ? 2 : 4), 4096) /
+		FatInfo.FATSectors = ROUND_UP_32(FatInfo.Sectors / FatInfo.SectorsPerCluster *
+						 (FatInfo.FatType == FATX16 ? 2 : 4), 4096) /
 		    FatInfo.BytesPerSector;
-		FatInfo.rootStart = FatInfo.FATStart +
-		    FatInfo.FATCount * FatInfo.FATSectors;
+		FatInfo.rootStart = FatInfo.FATStart + FatInfo.FATCount * FatInfo.FATSectors;
 		FatInfo.RootCluster = (FatInfo.rootStart - 1) / FatInfo.SectorsPerCluster;
 		FatInfo.dataStart = FatInfo.rootStart + FatInfo.rootDirectorySectors;
-		FatInfo.NumberOfClusters = (FatInfo.Sectors -
-					    FatInfo.dataStart) / FatInfo.SectorsPerCluster;
+		FatInfo.NumberOfClusters = (FatInfo.Sectors - FatInfo.dataStart) /
+		    FatInfo.SectorsPerCluster;
 
 		if (pFatInfo && *RecognizedFS) {
 		    *pFatInfo = FatInfo;
@@ -356,13 +350,11 @@ static NTSTATUS ReadVolumeLabel(PVOID Device,
 	   ASSERT();
 	*/
 
-	ExAcquireResourceExclusiveLite(&DeviceExt->DirResource, TRUE);
 	pFcb = FatOpenRootFCB(DeviceExt);
-	ExReleaseResourceLite(&DeviceExt->DirResource);
 
 	__try {
 	    CcMapData(pFcb->FileObject, &FileOffset, SizeDirEntry,
-		      MAP_WAIT, &Context, (PVOID *) & Entry);
+		      MAP_WAIT, &Context, (PVOID *)&Entry);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    Status = _SEH2_GetExceptionCode();
 	}
@@ -413,7 +405,7 @@ static NTSTATUS ReadVolumeLabel(PVOID Device,
 		    __try {
 			CcMapData(pFcb->FileObject, &FileOffset,
 				  SizeDirEntry, MAP_WAIT, &Context,
-				  (PVOID *) & Entry);
+				  (PVOID *)&Entry);
 		    } __except(EXCEPTION_EXECUTE_HANDLER) {
 			Status = _SEH2_GetExceptionCode();
 		    }
@@ -439,9 +431,7 @@ static NTSTATUS ReadVolumeLabel(PVOID Device,
     }
 
     if (!NoCache) {
-	ExAcquireResourceExclusiveLite(&DeviceExt->DirResource, TRUE);
 	FatReleaseFCB(DeviceExt, pFcb);
-	ExReleaseResourceLite(&DeviceExt->DirResource);
     }
 
     return STATUS_SUCCESS;
@@ -502,30 +492,21 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     }
     DPRINT("FAT: Recognized volume\n");
     Status = IoCreateDevice(FatGlobalData->DriverObject,
-			    ROUND_UP(sizeof(DEVICE_EXTENSION),
-				     sizeof(ULONG)) +
+			    ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG)) +
 			    sizeof(HASHENTRY *) * HashTableSize, NULL,
 			    FILE_DEVICE_DISK_FILE_SYSTEM,
-			    DeviceToMount->Characteristics, FALSE,
-			    &DeviceObject);
+			    DeviceToMount->Characteristics, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	goto ByeBye;
     }
 
     DeviceExt = DeviceObject->DeviceExtension;
-    RtlZeroMemory(DeviceExt,
-		  ROUND_UP(sizeof(DEVICE_EXTENSION),
-			   sizeof(ULONG)) +
+    RtlZeroMemory(DeviceExt, ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG)) +
 		  sizeof(HASHENTRY *) * HashTableSize);
-    DeviceExt->FcbHashTable = (HASHENTRY **) ((ULONG_PTR) DeviceExt +
-					      ROUND_UP(sizeof(DEVICE_EXTENSION), sizeof(ULONG)));
+    DeviceExt->FcbHashTable = (HASHENTRY **)(
+	(ULONG_PTR) DeviceExt + ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG)));
     DeviceExt->HashTableSize = HashTableSize;
     DeviceExt->VolumeDevice = DeviceObject;
-
-    KeInitializeSpinLock(&DeviceExt->OverflowQueueSpinLock);
-    InitializeListHead(&DeviceExt->OverflowQueue);
-    DeviceExt->OverflowQueueCount = 0;
-    DeviceExt->PostedRequestCount = 0;
 
     /* use same vpb as device disk */
     DeviceObject->Vpb = Vpb;
@@ -594,9 +575,6 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     DPRINT("FsDeviceObject %p\n", DeviceObject);
 
-    /* Initialize this resource early ... it's used in FatCleanup */
-    ExInitializeResourceLite(&DeviceExt->DirResource);
-
     DeviceExt->IoVPB = DeviceObject->Vpb;
     DeviceExt->SpareVPB = ExAllocatePoolWithTag(sizeof(VPB), TAG_VPB);
     if (DeviceExt->SpareVPB == NULL) {
@@ -649,7 +627,6 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     DeviceExt->LastAvailableCluster = 2;
     CountAvailableClusters(DeviceExt, NULL);
-    ExInitializeResourceLite(&DeviceExt->FatResource);
 
     InitializeListHead(&DeviceExt->FcbListHead);
 
@@ -666,10 +643,7 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     VolumeFcb->RFCB.AllocationSize = VolumeFcb->RFCB.FileSize;
     DeviceExt->VolumeFcb = VolumeFcb;
 
-    ExAcquireResourceExclusiveLite(&FatGlobalData->VolumeListLock, TRUE);
-    InsertHeadList(&FatGlobalData->VolumeListHead,
-		   &DeviceExt->VolumeListEntry);
-    ExReleaseResourceLite(&FatGlobalData->VolumeListLock);
+    InsertHeadList(&FatGlobalData->VolumeListHead, &DeviceExt->VolumeListEntry);
 
     /* read serial number */
     DeviceObject->Vpb->SerialNumber = DeviceExt->FatInfo.VolumeID;
@@ -861,8 +835,6 @@ static NTSTATUS FatGetRetrievalPointers(PFAT_IRP_CONTEXT IrpContext)
 
     Fcb = FileObject->FsContext;
 
-    ExAcquireResourceSharedLite(&Fcb->MainResource, TRUE);
-
     Vcn = ((PSTARTING_VCN_INPUT_BUFFER) Stack->Parameters.DeviceIoControl.
 	   Type3InputBuffer)->StartingVcn;
     RetrievalPointers = IrpContext->Irp->UserBuffer;
@@ -919,8 +891,6 @@ static NTSTATUS FatGetRetrievalPointers(PFAT_IRP_CONTEXT IrpContext)
     Status = STATUS_SUCCESS;
 
 ByeBye:
-    ExReleaseResourceLite(&Fcb->MainResource);
-
     return Status;
 }
 
@@ -1158,8 +1128,6 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
     FsRtlNotifyVolumeEvent(IrpContext->Stack->FileObject,
 			   FSRTL_VOLUME_DISMOUNT);
 
-    ExAcquireResourceExclusiveLite(&DeviceExt->FatResource, TRUE);
-
     /* Flush volume & files */
     FatFlushVolume(DeviceExt, (PFATFCB) FileObject->FsContext);
 
@@ -1192,8 +1160,6 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 #ifndef ENABLE_SWAPOUT
     IrpContext->DeviceObject->Vpb->Flags &= ~VPB_MOUNTED;
 #endif
-
-    ExReleaseResourceLite(&DeviceExt->FatResource);
 
     return STATUS_SUCCESS;
 }

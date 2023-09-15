@@ -100,7 +100,7 @@ PFATFCB FatNewFCB(PDEVICE_EXTENSION pVCB, PUNICODE_STRING pFileNameU)
 
     DPRINT("'%wZ'\n", pFileNameU);
 
-    rcFCB = ExAllocateFromNPagedLookasideList(&FatGlobalData->FcbLookasideList);
+    rcFCB = ExAllocateFromLookasideList(&FatGlobalData->FcbLookasideList);
     if (rcFCB == NULL) {
 	return NULL;
     }
@@ -113,13 +113,7 @@ PFATFCB FatNewFCB(PDEVICE_EXTENSION pVCB, PUNICODE_STRING pFileNameU)
     rcFCB->Hash.Hash = FatNameHash(0, &rcFCB->PathNameU);
     rcFCB->Hash.self = rcFCB;
     rcFCB->ShortHash.self = rcFCB;
-    ExInitializeResourceLite(&rcFCB->PagingIoResource);
-    ExInitializeResourceLite(&rcFCB->MainResource);
     FsRtlInitializeFileLock(&rcFCB->FileLock, NULL, NULL);
-    ExInitializeFastMutex(&rcFCB->LastMutex);
-    rcFCB->RFCB.PagingIoResource = &rcFCB->PagingIoResource;
-    rcFCB->RFCB.Resource = &rcFCB->MainResource;
-    rcFCB->RFCB.IsFastIoPossible = FastIoIsNotPossible;
     InitializeListHead(&rcFCB->ParentListHead);
 
     return rcFCB;
@@ -175,7 +169,7 @@ static NTSTATUS FatMakeFullName(PFATFCB directoryFCB,
     if (PathNameLength > LONGNAME_MAX_LENGTH * sizeof(WCHAR)) {
 	return STATUS_OBJECT_NAME_INVALID;
     }
-    PathNameBuffer = ExAllocatePoolWithTag(NonPagedPool, PathNameLength + sizeof(WCHAR),
+    PathNameBuffer = ExAllocatePoolWithTag(PathNameLength + sizeof(WCHAR),
 					   TAG_FCB);
     if (!PathNameBuffer) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -203,7 +197,7 @@ VOID FatDestroyCCB(PFATCCB pCcb)
     if (pCcb->SearchPattern.Buffer) {
 	ExFreePoolWithTag(pCcb->SearchPattern.Buffer, TAG_SEARCH);
     }
-    ExFreeToNPagedLookasideList(&FatGlobalData->CcbLookasideList, pCcb);
+    ExFreeToLookasideList(&FatGlobalData->CcbLookasideList, pCcb);
 }
 
 VOID FatDestroyFCB(PFATFCB pFCB)
@@ -225,10 +219,8 @@ VOID FatDestroyFCB(PFATFCB pFCB)
 	RemoveEntryList(&pFCB->ParentListEntry);
     }
     ExFreePool(pFCB->PathNameBuffer);
-    ExDeleteResourceLite(&pFCB->PagingIoResource);
-    ExDeleteResourceLite(&pFCB->MainResource);
     ASSERT(IsListEmpty(&pFCB->ParentListHead));
-    ExFreeToNPagedLookasideList(&FatGlobalData->FcbLookasideList, pFCB);
+    ExFreeToLookasideList(&FatGlobalData->FcbLookasideList, pFCB);
 }
 
 BOOLEAN FatFCBIsRoot(PFATFCB FCB)
@@ -241,8 +233,6 @@ VOID FatGrabFCB(PDEVICE_EXTENSION pVCB, PFATFCB pFCB)
 {
     DPRINT("Grabbing FCB at %p: %wZ, refCount:%d\n",
 	   pFCB, &pFCB->PathNameU, pFCB->RefCount);
-
-    ASSERT(ExIsResourceAcquiredExclusive(&pVCB->DirResource));
 
     ASSERT(!BooleanFlagOn(pFCB->Flags, FCB_IS_FAT));
     ASSERT(pFCB != pVCB->VolumeFcb
@@ -257,8 +247,6 @@ VOID FatReleaseFCB(PDEVICE_EXTENSION pVCB, PFATFCB pFCB)
 
     DPRINT("Releasing FCB at %p: %wZ, refCount:%d\n",
 	   pFCB, &pFCB->PathNameU, pFCB->RefCount);
-
-    ASSERT(ExIsResourceAcquiredExclusive(&pVCB->DirResource));
 
     while (pFCB) {
 	ULONG RefCount;
@@ -611,8 +599,7 @@ NTSTATUS FatAttachFCBToFileObject(PDEVICE_EXTENSION vcb,
     }
 #endif
 
-    newCCB = ExAllocateFromNPagedLookasideList(&FatGlobalData->
-					       CcbLookasideList);
+    newCCB = ExAllocateFromLookasideList(&FatGlobalData->CcbLookasideList);
     if (newCCB == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

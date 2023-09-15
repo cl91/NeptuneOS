@@ -29,14 +29,12 @@ static NTSTATUS FatFlushFile(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 	IoStatus.Status = STATUS_SUCCESS;
     }
 
-    ExAcquireResourceExclusiveLite(&DeviceExt->DirResource, TRUE);
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_DIRTY)) {
 	Status = FatUpdateEntry(DeviceExt, Fcb);
 	if (!NT_SUCCESS(Status)) {
 	    IoStatus.Status = Status;
 	}
     }
-    ExReleaseResourceLite(&DeviceExt->DirResource);
 
     return IoStatus.Status;
 }
@@ -60,9 +58,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 	Fcb = CONTAINING_RECORD(ListEntry, FATFCB, FcbListEntry);
 	ListEntry = ListEntry->Flink;
 	if (!FatFCBIsDirectory(Fcb)) {
-	    ExAcquireResourceExclusiveLite(&Fcb->MainResource, TRUE);
 	    Status = FatFlushFile(DeviceExt, Fcb);
-	    ExReleaseResourceLite(&Fcb->MainResource);
 	    if (!NT_SUCCESS(Status)) {
 		DPRINT1("FatFlushFile failed, status = %x\n", Status);
 		ReturnStatus = Status;
@@ -76,9 +72,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 	Fcb = CONTAINING_RECORD(ListEntry, FATFCB, FcbListEntry);
 	ListEntry = ListEntry->Flink;
 	if (FatFCBIsDirectory(Fcb)) {
-	    ExAcquireResourceExclusiveLite(&Fcb->MainResource, TRUE);
 	    Status = FatFlushFile(DeviceExt, Fcb);
-	    ExReleaseResourceLite(&Fcb->MainResource);
 	    if (!NT_SUCCESS(Status)) {
 		DPRINT1("FatFlushFile failed, status = %x\n", Status);
 		ReturnStatus = Status;
@@ -89,9 +83,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 
     Fcb = (PFATFCB) DeviceExt->FATFileObject->FsContext;
 
-    ExAcquireResourceExclusiveLite(&DeviceExt->FatResource, TRUE);
     Status = FatFlushFile(DeviceExt, Fcb);
-    ExReleaseResourceLite(&DeviceExt->FatResource);
 
     /* Prepare an IRP to flush device buffers */
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_FLUSH_BUFFERS,
@@ -140,14 +132,9 @@ NTSTATUS FatFlush(PFAT_IRP_CONTEXT IrpContext)
     ASSERT(Fcb);
 
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME)) {
-	ExAcquireResourceExclusiveLite(&IrpContext->DeviceExt->DirResource,
-				       TRUE);
 	Status = FatFlushVolume(IrpContext->DeviceExt, Fcb);
-	ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
     } else {
-	ExAcquireResourceExclusiveLite(&Fcb->MainResource, TRUE);
 	Status = FatFlushFile(IrpContext->DeviceExt, Fcb);
-	ExReleaseResourceLite(&Fcb->MainResource);
     }
 
     IrpContext->Irp->IoStatus.Information = 0;

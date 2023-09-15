@@ -10,12 +10,9 @@
  * it still works (and delete old code ;-)) */
 #define VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
 
-#define ROUND_DOWN(n, align)	(((ULONG)(n)) & ~((align)-1L))
-
-#define ROUND_UP(n, align)	ROUND_DOWN(((ULONG)(n))+(align)-1, (align))
-
+#define ROUND_DOWN_32(n, align)	(((ULONG)(n)) & ~((align)-1L))
+#define ROUND_UP_32(n, align)	ROUND_DOWN_32(((ULONG)(n))+(align)-1, (align))
 #define ROUND_DOWN_64(n, align)	(((ULONGLONG)(n)) & ~((align) - 1LL))
-
 #define ROUND_UP_64(n, align)	ROUND_DOWN_64(((ULONGLONG)(n))+(align)-1LL, (align))
 
 #include <pshpack1.h>
@@ -225,9 +222,9 @@ typedef struct {
     ULONG FATStart;
     ULONG FATCount;
     ULONG FATSectors;
-    ULONG rootDirectorySectors;
-    ULONG rootStart;
-    ULONG dataStart;
+    ULONG RootDirectorySectors;
+    ULONG RootStart;
+    ULONG DataStart;
     ULONG RootCluster;
     ULONG SectorsPerCluster;
     ULONG BytesPerSector;
@@ -246,31 +243,31 @@ struct _FAT_CLOSE_CONTEXT;
 
 typedef struct _HASHENTRY {
     ULONG Hash;
-    struct _FATFCB *self;
-    struct _HASHENTRY *next;
+    struct _FATFCB *Self;
+    struct _HASHENTRY *Next;
 } HASHENTRY;
 
-typedef struct DEVICE_EXTENSION *PDEVICE_EXTENSION;
+typedef struct _DEVICE_EXTENSION *PDEVICE_EXTENSION;
 
-typedef NTSTATUS(*PGET_NEXT_CLUSTER) (PDEVICE_EXTENSION, ULONG, PULONG);
-typedef NTSTATUS(*PFIND_AND_MARK_AVAILABLE_CLUSTER) (PDEVICE_EXTENSION,
+typedef NTSTATUS (*PGET_NEXT_CLUSTER)(PDEVICE_EXTENSION, ULONG, PULONG);
+typedef NTSTATUS (*PFIND_AND_MARK_AVAILABLE_CLUSTER)(PDEVICE_EXTENSION,
 						     PULONG);
-typedef NTSTATUS(*PWRITE_CLUSTER) (PDEVICE_EXTENSION, ULONG, ULONG,
+typedef NTSTATUS (*PWRITE_CLUSTER)(PDEVICE_EXTENSION, ULONG, ULONG,
 				   PULONG);
 
-typedef BOOLEAN(*PIS_DIRECTORY_EMPTY) (PDEVICE_EXTENSION,
+typedef BOOLEAN (*PIS_DIRECTORY_EMPTY)(PDEVICE_EXTENSION,
 				       struct _FATFCB *);
-typedef NTSTATUS(*PADD_ENTRY) (PDEVICE_EXTENSION, PUNICODE_STRING,
+typedef NTSTATUS (*PADD_ENTRY)(PDEVICE_EXTENSION, PUNICODE_STRING,
 			       struct _FATFCB **, struct _FATFCB *,
 			       ULONG, UCHAR, struct _FAT_MOVE_CONTEXT *);
-typedef NTSTATUS(*PDEL_ENTRY) (PDEVICE_EXTENSION, struct _FATFCB *,
+typedef NTSTATUS (*PDEL_ENTRY)(PDEVICE_EXTENSION, struct _FATFCB *,
 			       struct _FAT_MOVE_CONTEXT *);
-typedef NTSTATUS(*PGET_NEXT_DIR_ENTRY) (PVOID *, PVOID *,
+typedef NTSTATUS (*PGET_NEXT_DIR_ENTRY)(PVOID *, PVOID *,
 					struct _FATFCB *,
 					struct _FAT_DIRENTRY_CONTEXT *,
 					BOOLEAN);
-typedef NTSTATUS(*PGET_DIRTY_STATUS) (PDEVICE_EXTENSION, PBOOLEAN);
-typedef NTSTATUS(*PSET_DIRTY_STATUS) (PDEVICE_EXTENSION, BOOLEAN);
+typedef NTSTATUS (*PGET_DIRTY_STATUS)(PDEVICE_EXTENSION, PBOOLEAN);
+typedef NTSTATUS (*PSET_DIRTY_STATUS)(PDEVICE_EXTENSION, BOOLEAN);
 
 typedef struct _FAT_DISPATCH {
     PIS_DIRECTORY_EMPTY IsDirectoryEmpty;
@@ -286,11 +283,7 @@ typedef struct _STATISTICS {
     UCHAR Pad[((STATISTICS_SIZE_NO_PAD + 0x3f) & ~0x3f) - STATISTICS_SIZE_NO_PAD];
 } STATISTICS, *PSTATISTICS;
 
-typedef struct DEVICE_EXTENSION {
-    ERESOURCE DirResource;
-    ERESOURCE FatResource;
-
-    KSPIN_LOCK FcbListLock;
+typedef struct _DEVICE_EXTENSION {
     LIST_ENTRY FcbListHead;
     ULONG HashTableSize;
     struct _HASHENTRY **FcbHashTable;
@@ -307,12 +300,6 @@ typedef struct DEVICE_EXTENSION {
     struct _FATFCB *RootFcb;
     PSTATISTICS Statistics;
 
-    /* Overflow request queue */
-    KSPIN_LOCK OverflowQueueSpinLock;
-    LIST_ENTRY OverflowQueue;
-    ULONG OverflowQueueCount;
-    ULONG PostedRequestCount;
-
     /* Pointers to functions for manipulating FAT. */
     PGET_NEXT_CLUSTER GetNextCluster;
     PFIND_AND_MARK_AVAILABLE_CLUSTER FindAndMarkAvailableCluster;
@@ -324,7 +311,7 @@ typedef struct DEVICE_EXTENSION {
 
     LIST_ENTRY VolumeListEntry;
 
-    /* Notifications */
+    /* Notifications. TODO: Remove this and move to server side. */
     LIST_ENTRY NotifyList;
     PNOTIFY_SYNC NotifySync;
 
@@ -339,42 +326,38 @@ typedef struct DEVICE_EXTENSION {
     FAT_DISPATCH Dispatch;
 } DEVICE_EXTENSION, VCB, *PVCB;
 
-FORCEINLINE
-BOOLEAN FatIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, struct _FATFCB *Fcb)
+FORCEINLINE BOOLEAN FatIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt,
+					struct _FATFCB *Fcb)
 {
     return DeviceExt->Dispatch.IsDirectoryEmpty(DeviceExt, Fcb);
 }
 
-FORCEINLINE
-NTSTATUS
-FatAddEntry(PDEVICE_EXTENSION DeviceExt,
-	    PUNICODE_STRING NameU,
-	    struct _FATFCB **Fcb,
-	    struct _FATFCB *ParentFcb,
-	    ULONG RequestedOptions,
-	    UCHAR ReqAttr, struct _FAT_MOVE_CONTEXT *MoveContext)
+FORCEINLINE NTSTATUS FatAddEntry(PDEVICE_EXTENSION DeviceExt,
+				 PUNICODE_STRING NameU,
+				 struct _FATFCB **Fcb,
+				 struct _FATFCB *ParentFcb,
+				 ULONG RequestedOptions,
+				 UCHAR ReqAttr,
+				 struct _FAT_MOVE_CONTEXT *MoveContext)
 {
     return DeviceExt->Dispatch.AddEntry(DeviceExt, NameU, Fcb, ParentFcb,
 					RequestedOptions, ReqAttr,
 					MoveContext);
 }
 
-FORCEINLINE
-NTSTATUS
-FatDelEntry(PDEVICE_EXTENSION DeviceExt,
-	    struct _FATFCB *Fcb, struct _FAT_MOVE_CONTEXT *MoveContext)
+FORCEINLINE NTSTATUS FatDelEntry(PDEVICE_EXTENSION DeviceExt,
+				 struct _FATFCB *Fcb,
+				 struct _FAT_MOVE_CONTEXT *MoveContext)
 {
     return DeviceExt->Dispatch.DelEntry(DeviceExt, Fcb, MoveContext);
 }
 
-FORCEINLINE
-NTSTATUS
-FatGetNextDirEntry(PDEVICE_EXTENSION DeviceExt,
-		   PVOID * pContext,
-		   PVOID * pPage,
-		   struct _FATFCB *pDirFcb,
-		   struct _FAT_DIRENTRY_CONTEXT *DirContext,
-		   BOOLEAN First)
+FORCEINLINE NTSTATUS FatGetNextDirEntry(PDEVICE_EXTENSION DeviceExt,
+					PVOID *pContext,
+					PVOID *pPage,
+					struct _FATFCB *pDirFcb,
+					struct _FAT_DIRENTRY_CONTEXT *DirContext,
+					BOOLEAN First)
 {
     return DeviceExt->Dispatch.GetNextDirEntry(pContext, pPage, pDirFcb,
 					       DirContext, First);
@@ -387,19 +370,11 @@ typedef struct {
     PDEVICE_OBJECT DeviceObject;
     ULONG Flags;
     ULONG NumberProcessors;
-    ERESOURCE VolumeListLock;
     LIST_ENTRY VolumeListHead;
-    NPAGED_LOOKASIDE_LIST FcbLookasideList;
-    NPAGED_LOOKASIDE_LIST CcbLookasideList;
-    NPAGED_LOOKASIDE_LIST IrpContextLookasideList;
-    PAGED_LOOKASIDE_LIST CloseContextLookasideList;
+    LOOKASIDE_LIST FcbLookasideList;
+    LOOKASIDE_LIST CcbLookasideList;
+    LOOKASIDE_LIST IrpContextLookasideList;
     CACHE_MANAGER_CALLBACKS CacheMgrCallbacks;
-    FAST_MUTEX CloseMutex;
-    ULONG CloseCount;
-    LIST_ENTRY CloseListHead;
-    BOOLEAN CloseWorkerRunning;
-    PIO_WORKITEM CloseWorkItem;
-    BOOLEAN ShutdownStarted;
 } FAT_GLOBAL_DATA, *PFAT_GLOBAL_DATA;
 
 extern PFAT_GLOBAL_DATA FatGlobalData;
@@ -410,7 +385,6 @@ extern PFAT_GLOBAL_DATA FatGlobalData;
 #define FCB_IS_PAGE_FILE        0x0008
 #define FCB_IS_VOLUME           0x0010
 #define FCB_IS_DIRTY            0x0020
-#define FCB_DELAYED_CLOSE       0x0040
 #ifdef KDBG
 #define FCB_CLEANED_UP          0x0080
 #define FCB_CLOSED              0x0100
@@ -419,15 +393,11 @@ extern PFAT_GLOBAL_DATA FatGlobalData;
 #define NODE_TYPE_FCB ((CSHORT)0x0502)
 
 typedef struct _FATFCB {
-    /* FCB header required by ROS/NT */
+    /* Required common FCB header */
     FSRTL_COMMON_FCB_HEADER RFCB;
-    SECTION_OBJECT_POINTERS SectionObjectPointers;
-    ERESOURCE MainResource;
-    ERESOURCE PagingIoResource;
-    /* End of FCB header required by ROS/NT */
 
     /* Directory entry for this file or directory */
-    DIR_ENTRY entry;
+    DIR_ENTRY Entry;
 
     /* Pointer to attributes in entry */
     PUCHAR Attributes;
@@ -459,8 +429,8 @@ typedef struct _FATFCB {
     /* List of FCB's for the parent */
     LIST_ENTRY ParentListEntry;
 
-    /* pointer to the parent fcb */
-    struct _FATFCB *parentFcb;
+    /* Pointer to the parent fcb */
+    struct _FATFCB *ParentFcb;
 
     /* List for the children */
     LIST_ENTRY ParentListHead;
@@ -468,14 +438,14 @@ typedef struct _FATFCB {
     /* Flags for the fcb */
     ULONG Flags;
 
-    /* pointer to the file object which has initialized the fcb */
+    /* Pointer to the file object which has initialized the fcb */
     PFILE_OBJECT FileObject;
 
     /* Directory index for the short name entry */
-    ULONG dirIndex;
+    ULONG DirIndex;
 
     /* Directory index where the long name starts */
-    ULONG startIndex;
+    ULONG StartIndex;
 
     /* Share access for the file object */
     SHARE_ACCESS FCBShareAccess;
@@ -489,19 +459,13 @@ typedef struct _FATFCB {
     /* Entry into the hash table for the path + short name */
     HASHENTRY ShortHash;
 
-    /* List of byte-range locks for this file */
-    FILE_LOCK FileLock;
-
     /*
      * Optimization: caching of last read/write cluster+offset pair. Can't
      * be in FATCCB because it must be reset everytime the allocated clusters
      * change.
      */
-    FAST_MUTEX LastMutex;
     ULONG LastCluster;
     ULONG LastOffset;
-
-    struct _FAT_CLOSE_CONTEXT *CloseContext;
 } FATFCB, *PFATFCB;
 
 #define CCB_DELETE_ON_CLOSE     0x0001
@@ -518,7 +482,6 @@ typedef struct _FATCCB {
 #define TAG_CCB  'CtaF'
 #define TAG_FCB  'FtaF'
 #define TAG_IRP  'ItaF'
-#define TAG_CLOSE 'xtaF'
 #define TAG_STATS 'VtaF'
 #define TAG_BUFFER 'OtaF'
 #define TAG_VPB 'vtaF'
@@ -540,24 +503,19 @@ typedef struct __DOSDATE {
     USHORT Year:7;
 } DOSDATE, *PDOSDATE;
 
-#define IRPCONTEXT_CANWAIT          0x0001
-#define IRPCONTEXT_COMPLETE         0x0002
-#define IRPCONTEXT_QUEUE            0x0004
-#define IRPCONTEXT_PENDINGRETURNED  0x0008
-#define IRPCONTEXT_DEFERRED_WRITE   0x0010
+#define IRPCONTEXT_PENDINGRETURNED  0x0001
+#define IRPCONTEXT_DEFERRED_WRITE   0x0002
 
 typedef struct {
     PIRP Irp;
     PDEVICE_OBJECT DeviceObject;
     PDEVICE_EXTENSION DeviceExt;
-    ULONG Flags;
-    WORK_QUEUE_ITEM WorkQueueItem;
     PIO_STACK_LOCATION Stack;
+    PFILE_OBJECT FileObject;
+    ULONG Flags;
     UCHAR MajorFunction;
     UCHAR MinorFunction;
-    PFILE_OBJECT FileObject;
     ULONG RefCount;
-    KEVENT Event;
     CCHAR PriorityBoost;
 } FAT_IRP_CONTEXT, *PFAT_IRP_CONTEXT;
 
@@ -578,20 +536,17 @@ typedef struct _FAT_MOVE_CONTEXT {
     BOOLEAN InPlace;
 } FAT_MOVE_CONTEXT, *PFAT_MOVE_CONTEXT;
 
-typedef struct _FAT_CLOSE_CONTEXT {
-    PDEVICE_EXTENSION Vcb;
-    PFATFCB Fcb;
-    LIST_ENTRY CloseListEntry;
-} FAT_CLOSE_CONTEXT, *PFAT_CLOSE_CONTEXT;
-
-FORCEINLINE NTSTATUS FatMarkIrpContextForQueue(PFAT_IRP_CONTEXT IrpContext)
+FORCEINLINE BOOLEAN FatIsLongIllegal(WCHAR c)
 {
-    PULONG Flags = &IrpContext->Flags;
+    const WCHAR *long_illegals = L"\"*\\<>/?:|";
+    return wcschr(long_illegals, c) ? TRUE : FALSE;
+}
 
-    *Flags &= ~IRPCONTEXT_COMPLETE;
-    *Flags |= IRPCONTEXT_QUEUE;
-
-    return STATUS_PENDING;
+FORCEINLINE BOOLEAN IsDotOrDotDot(PCUNICODE_STRING Name)
+{
+    return ((Name->Length == sizeof(WCHAR) && Name->Buffer[0] == L'.') ||
+	    (Name->Length == 2 * sizeof(WCHAR) && Name->Buffer[0] == L'.'
+	     && Name->Buffer[1] == L'.'));
 }
 
 FORCEINLINE BOOLEAN FatFCBIsDirectory(PFATFCB FCB)
@@ -618,12 +573,10 @@ FORCEINLINE VOID FatReportChange(IN PDEVICE_EXTENSION DeviceExt,
 				&(DeviceExt->NotifyList),
 				(PSTRING) & Fcb->PathNameU,
 				Fcb->PathNameU.Length - Fcb->LongNameU.Length,
-				NULL, NULL,
-				FilterMatch, Action, NULL);
+				NULL, NULL, FilterMatch, Action, NULL);
 }
 
-#define FatAddToStat(Vcb, Stat, Inc)					\
-    {									\
+#define FatAddToStat(Vcb, Stat, Inc) {					\
 	PSTATISTICS Stats = &(Vcb)->Statistics[KeGetCurrentProcessorNumber() % FatGlobalData->NumberProcessors]; \
 	Stats->Stat += Inc;						\
     }
@@ -659,6 +612,8 @@ NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
 NTSTATUS FatCleanup(PFAT_IRP_CONTEXT IrpContext);
 
 /* close.c */
+BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
+			    IN BOOLEAN Create);
 NTSTATUS FatClose(PFAT_IRP_CONTEXT IrpContext);
 NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt,
 		      PFILE_OBJECT FileObject);
@@ -767,7 +722,14 @@ NTSTATUS Fat32SetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
 			     BOOLEAN DirtyStatus);
 NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DeviceExt);
 
+/* fatfs.c */
+PVOID FatGetUserBuffer(IN PIRP Irp,
+		       IN BOOLEAN Paging);
+
 /* fcb.c */
+VOID FatSplitPathName(PUNICODE_STRING PathNameU,
+		      PUNICODE_STRING DirNameU,
+		      PUNICODE_STRING FileNameU);
 PFATFCB FatNewFCB(PDEVICE_EXTENSION pVCB, PUNICODE_STRING pFileNameU);
 NTSTATUS FatSetFCBNewDirName(PDEVICE_EXTENSION pVCB,
 			     PFATFCB Fcb, PFATFCB ParentFcb);
@@ -821,27 +783,6 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb);
 /* fsctl.c */
 NTSTATUS FatFileSystemControl(PFAT_IRP_CONTEXT IrpContext);
 
-/* iface.c */
-NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
-			   IN PUNICODE_STRING RegistryPath);
-
-/* misc.c */
-DRIVER_DISPATCH FatBuildRequest;
-NTSTATUS NTAPI FatBuildRequest(PDEVICE_OBJECT DeviceObject,
-			       PIRP Irp);
-PVOID FatGetUserBuffer(IN PIRP Irp,
-		       IN BOOLEAN Paging);
-NTSTATUS FatLockUserBuffer(IN PIRP Irp,
-			   IN ULONG Length,
-			   IN LOCK_OPERATION Operation);
-BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
-			    IN BOOLEAN Create);
-VOID FatReportChange(IN PDEVICE_EXTENSION DeviceExt,
-		     IN PFATFCB Fcb,
-		     IN ULONG FilterMatch,
-		     IN ULONG Action);
-VOID NTAPI FatHandleDeferredWrite(IN PVOID IrpContext, IN PVOID Unused);
-
 /* pnp.c */
 NTSTATUS FatPnp(PFAT_IRP_CONTEXT IrpContext);
 
@@ -856,13 +797,6 @@ NTSTATUS NextCluster(PDEVICE_EXTENSION DeviceExt,
 /* shutdown.c */
 DRIVER_DISPATCH FatShutdown;
 NTSTATUS NTAPI FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-
-/* string.c */
-VOID FatSplitPathName(PUNICODE_STRING PathNameU,
-		      PUNICODE_STRING DirNameU,
-		      PUNICODE_STRING FileNameU);
-BOOLEAN FatIsLongIllegal(WCHAR c);
-BOOLEAN IsDotOrDotDot(PCUNICODE_STRING Name);
 
 /* volume.c */
 NTSTATUS FatQueryVolumeInformation(PFAT_IRP_CONTEXT IrpContext);

@@ -418,14 +418,6 @@ NTSTATUS FatQueryVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
 
     DPRINT("FatQueryVolumeInformation(IrpContext %p)\n", IrpContext);
 
-    if (!ExAcquireResourceSharedLite
-	(&((PDEVICE_EXTENSION) IrpContext->DeviceObject->DeviceExtension)->
-	 DirResource, BooleanFlagOn(IrpContext->Flags,
-				    IRPCONTEXT_CANWAIT))) {
-	DPRINT1("DirResource failed!\n");
-	return FatMarkIrpContextForQueue(IrpContext);
-    }
-
     /* INITIALIZATION */
     FsInformationClass = IrpContext->Stack->Parameters.QueryVolume.FsInformationClass;
     BufferLength = IrpContext->Stack->Parameters.QueryVolume.Length;
@@ -467,8 +459,6 @@ NTSTATUS FatQueryVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
 	RC = STATUS_NOT_SUPPORTED;
     }
 
-    ExReleaseResourceLite(&((PDEVICE_EXTENSION)IrpContext->DeviceObject->DeviceExtension)->DirResource);
-
     IrpContext->Irp->IoStatus.Information =
 	IrpContext->Stack->Parameters.QueryVolume.Length - BufferLength;
 
@@ -492,13 +482,6 @@ NTSTATUS FatSetVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
 
     DPRINT("FatSetVolumeInformation(IrpContext %p)\n", IrpContext);
 
-    if (!ExAcquireResourceExclusiveLite
-	(&((PDEVICE_EXTENSION) IrpContext->DeviceObject->DeviceExtension)->
-	 DirResource, BooleanFlagOn(IrpContext->Flags,
-				    IRPCONTEXT_CANWAIT))) {
-	return FatMarkIrpContextForQueue(IrpContext);
-    }
-
     FsInformationClass = Stack->Parameters.SetVolume.FsInformationClass;
     BufferLength = Stack->Parameters.SetVolume.Length;
     SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
@@ -517,12 +500,7 @@ NTSTATUS FatSetVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
 	Status = STATUS_NOT_SUPPORTED;
     }
 
-    ExReleaseResourceLite(&
-			  ((PDEVICE_EXTENSION) IrpContext->DeviceObject->
-			   DeviceExtension)->DirResource);
     IrpContext->Irp->IoStatus.Information = 0;
 
     return Status;
 }
-
-/* EOF */

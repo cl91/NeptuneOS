@@ -1,7 +1,7 @@
 #include "ldrp.h"
 
 /*
- * This can only be called after caller has validated the image.
+ * This can only be called after the caller has validated the image.
  */
 PIMAGE_NT_HEADERS NTAPI RtlImageNtHeader(IN PVOID Base)
 {

@@ -42,21 +42,12 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     DPRINT("FatShutdown(DeviceObject %p, Irp %p)\n", DeviceObject, Irp);
 
-    FsRtlEnterFileSystem();
-
-    /* FIXME: block new mount requests */
-    FatGlobalData->ShutdownStarted = TRUE;
-
     if (DeviceObject == FatGlobalData->DeviceObject) {
 	Irp->IoStatus.Status = STATUS_SUCCESS;
-	ExAcquireResourceExclusiveLite(&FatGlobalData->VolumeListLock,
-				       TRUE);
 	ListEntry = FatGlobalData->VolumeListHead.Flink;
 	while (ListEntry != &FatGlobalData->VolumeListHead) {
 	    DeviceExt = CONTAINING_RECORD(ListEntry, VCB, VolumeListEntry);
 	    ListEntry = ListEntry->Flink;
-
-	    ExAcquireResourceExclusiveLite(&DeviceExt->DirResource, TRUE);
 
 	    /* Flush volume & files */
 	    Status = FatFlushVolume(DeviceExt, DeviceExt->VolumeFcb);
@@ -79,7 +70,6 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    } else {
 		DPRINT1("FatFlushVolume failed, status = %x\n", Status);
 	    }
-	    ExReleaseResourceLite(&DeviceExt->DirResource);
 
 	    /* Unmount the logical volume */
 #ifdef ENABLE_SWAPOUT
@@ -89,9 +79,6 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    if (!NT_SUCCESS(Status))
 		Irp->IoStatus.Status = Status;
 	}
-	ExReleaseResourceLite(&FatGlobalData->VolumeListLock);
-
-	/* FIXME: Free all global acquired resources */
 
 	Status = Irp->IoStatus.Status;
     } else {
@@ -101,8 +88,6 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-    FsRtlExitFileSystem();
 
     return Status;
 }

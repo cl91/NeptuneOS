@@ -14,7 +14,41 @@
 
 PFAT_GLOBAL_DATA FatGlobalData;
 
+const char *MajorFunctionNames[] = {
+    "IRP_MJ_CREATE",
+    "IRP_MJ_CREATE_NAMED_PIPE",
+    "IRP_MJ_CLOSE",
+    "IRP_MJ_READ",
+    "IRP_MJ_WRITE",
+    "IRP_MJ_QUERY_INFORMATION",
+    "IRP_MJ_SET_INFORMATION",
+    "IRP_MJ_QUERY_EA",
+    "IRP_MJ_SET_EA",
+    "IRP_MJ_FLUSH_BUFFERS",
+    "IRP_MJ_QUERY_VOLUME_INFORMATION",
+    "IRP_MJ_SET_VOLUME_INFORMATION",
+    "IRP_MJ_DIRECTORY_CONTROL",
+    "IRP_MJ_FILE_SYSTEM_CONTROL",
+    "IRP_MJ_DEVICE_CONTROL",
+    "IRP_MJ_INTERNAL_DEVICE_CONTROL",
+    "IRP_MJ_SHUTDOWN",
+    "IRP_MJ_LOCK_CONTROL",
+    "IRP_MJ_CLEANUP",
+    "IRP_MJ_CREATE_MAILSLOT",
+    "IRP_MJ_QUERY_SECURITY",
+    "IRP_MJ_SET_SECURITY",
+    "IRP_MJ_POWER",
+    "IRP_MJ_SYSTEM_CONTROL",
+    "IRP_MJ_DEVICE_CHANGE",
+    "IRP_MJ_QUERY_QUOTA",
+    "IRP_MJ_SET_QUOTA",
+    "IRP_MJ_PNP",
+    "IRP_MJ_MAXIMUM_FUNCTION"
+};
+
 /* FUNCTIONS ****************************************************************/
+
+static DRIVER_DISPATCH FatBuildRequest;
 
 /*
  * FUNCTION: Called by the system to initialize the driver
@@ -32,11 +66,8 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    Status = IoCreateDevice(DriverObject,
-			    sizeof(FAT_GLOBAL_DATA),
-			    &DeviceName,
-			    FILE_DEVICE_DISK_FILE_SYSTEM,
-			    0, FALSE, &DeviceObject);
+    Status = IoCreateDevice(DriverObject, sizeof(FAT_GLOBAL_DATA), &DeviceName,
+			    FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -50,34 +81,17 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
      * has been detected:
      FatGlobalData->Flags = FAT_BREAK_ON_CORRUPTION; */
 
-    /* Delayed close support */
-    ExInitializeFastMutex(&FatGlobalData->CloseMutex);
-    InitializeListHead(&FatGlobalData->CloseListHead);
-    FatGlobalData->CloseCount = 0;
-    FatGlobalData->CloseWorkerRunning = FALSE;
-    FatGlobalData->ShutdownStarted = FALSE;
-    FatGlobalData->CloseWorkItem = IoAllocateWorkItem(DeviceObject);
-    if (FatGlobalData->CloseWorkItem == NULL) {
-	IoDeleteDevice(DeviceObject);
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
     DeviceObject->Flags |= DO_DIRECT_IO;
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_CREATE] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_READ] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_WRITE] = FatBuildRequest;
-    DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL] =
-	FatBuildRequest;
-    DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] =
-	FatBuildRequest;
+    DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL] = FatBuildRequest;
+    DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION] = FatBuildRequest;
-    DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL] =
-	FatBuildRequest;
-    DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] =
-	FatBuildRequest;
-    DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION] =
-	FatBuildRequest;
+    DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL] = FatBuildRequest;
+    DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = FatBuildRequest;
+    DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_SHUTDOWN] = FatShutdown;
     DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = FatBuildRequest;
@@ -88,32 +102,192 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->DriverUnload = NULL;
 
     /* Cache manager */
-    FatGlobalData->CacheMgrCallbacks.AcquireForLazyWrite =
-	FatAcquireForLazyWrite;
-    FatGlobalData->CacheMgrCallbacks.ReleaseFromLazyWrite =
-	FatReleaseFromLazyWrite;
-    FatGlobalData->CacheMgrCallbacks.AcquireForReadAhead =
-	FatAcquireForLazyWrite;
-    FatGlobalData->CacheMgrCallbacks.ReleaseFromReadAhead =
-	FatReleaseFromLazyWrite;
+    FatGlobalData->CacheMgrCallbacks.AcquireForLazyWrite = FatAcquireForLazyWrite;
+    FatGlobalData->CacheMgrCallbacks.ReleaseFromLazyWrite = FatReleaseFromLazyWrite;
+    FatGlobalData->CacheMgrCallbacks.AcquireForReadAhead = FatAcquireForLazyWrite;
+    FatGlobalData->CacheMgrCallbacks.ReleaseFromReadAhead = FatReleaseFromLazyWrite;
 
     /* Private lists */
-    ExInitializeNPagedLookasideList(&FatGlobalData->FcbLookasideList,
-				    NULL, NULL, 0, sizeof(FATFCB),
-				    TAG_FCB, 0);
-    ExInitializeNPagedLookasideList(&FatGlobalData->CcbLookasideList, NULL,
-				    NULL, 0, sizeof(FATCCB), TAG_CCB, 0);
-    ExInitializeNPagedLookasideList(&FatGlobalData->
-				    IrpContextLookasideList, NULL, NULL, 0,
-				    sizeof(FAT_IRP_CONTEXT), TAG_IRP, 0);
-    ExInitializePagedLookasideList(&FatGlobalData->
-				   CloseContextLookasideList, NULL, NULL,
-				   0, sizeof(FAT_CLOSE_CONTEXT),
-				   TAG_CLOSE, 0);
+    ExInitializeLookasideList(&FatGlobalData->FcbLookasideList,
+			      NULL, NULL, 0, sizeof(FATFCB), TAG_FCB, 0);
+    ExInitializeLookasideList(&FatGlobalData->CcbLookasideList, NULL,
+			      NULL, 0, sizeof(FATCCB), TAG_CCB, 0);
+    ExInitializeLookasideList(&FatGlobalData->IrpContextLookasideList,
+			      NULL, NULL, 0, sizeof(FAT_IRP_CONTEXT), TAG_IRP, 0);
 
-    ExInitializeResourceLite(&FatGlobalData->VolumeListLock);
     InitializeListHead(&FatGlobalData->VolumeListHead);
     IoRegisterFileSystem(DeviceObject);
 
     return STATUS_SUCCESS;
+}
+
+static PFAT_IRP_CONTEXT FatAllocateIrpContext(PDEVICE_OBJECT DeviceObject,
+					      PIRP Irp)
+{
+    /*PIO_STACK_LOCATION Stack; */
+    UCHAR MajorFunction;
+
+    DPRINT("FatAllocateIrpContext(DeviceObject %p, Irp %p)\n",
+	   DeviceObject, Irp);
+
+    ASSERT(DeviceObject);
+    ASSERT(Irp);
+
+    PFAT_IRP_CONTEXT IrpContext =
+	ExAllocateFromLookasideList(&FatGlobalData->IrpContextLookasideList);
+    if (IrpContext) {
+	RtlZeroMemory(IrpContext, sizeof(FAT_IRP_CONTEXT));
+	IrpContext->Irp = Irp;
+	IrpContext->DeviceObject = DeviceObject;
+	IrpContext->DeviceExt = DeviceObject->DeviceExtension;
+	IrpContext->Stack = IoGetCurrentIrpStackLocation(Irp);
+	ASSERT(IrpContext->Stack);
+	MajorFunction = IrpContext->MajorFunction = IrpContext->Stack->MajorFunction;
+	IrpContext->MinorFunction = IrpContext->Stack->MinorFunction;
+	IrpContext->FileObject = IrpContext->Stack->FileObject;
+
+	IrpContext->RefCount = 0;
+	IrpContext->PriorityBoost = IO_NO_INCREMENT;
+    }
+    return IrpContext;
+}
+
+static VOID FatFreeIrpContext(PFAT_IRP_CONTEXT IrpContext)
+{
+    ASSERT(IrpContext);
+    ExFreeToLookasideList(&FatGlobalData->IrpContextLookasideList, IrpContext);
+}
+
+static NTAPI NTSTATUS FatBuildRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    NTSTATUS Status;
+    PFAT_IRP_CONTEXT IrpContext;
+
+    DPRINT("FatBuildRequest (DeviceObject %p, Irp %p)\n", DeviceObject, Irp);
+
+    ASSERT(DeviceObject);
+    ASSERT(Irp);
+
+    IrpContext = FatAllocateIrpContext(DeviceObject, Irp);
+    if (IrpContext == NULL) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	Irp->IoStatus.Status = Status;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    } else {
+	Status = FatDispatchRequest(IrpContext);
+    }
+    return Status;
+}
+
+static NTSTATUS FatDeviceControl(IN PFAT_IRP_CONTEXT IrpContext)
+{
+    IoSkipCurrentIrpStackLocation(IrpContext->Irp);
+
+    return IoCallDriver(IrpContext->DeviceExt->StorageDevice,
+			IrpContext->Irp);
+}
+
+static NTSTATUS FatDispatchRequest(IN PFAT_IRP_CONTEXT IrpContext)
+{
+    NTSTATUS Status;
+    BOOLEAN QueueIrp, CompleteIrp;
+
+    DPRINT("FatDispatchRequest (IrpContext %p), is called for %s\n",
+	   IrpContext, IrpContext->MajorFunction >= IRP_MJ_MAXIMUM_FUNCTION ? "????" :
+	   MajorFunctionNames[IrpContext->MajorFunction]);
+
+    ASSERT(IrpContext);
+
+    switch (IrpContext->MajorFunction) {
+    case IRP_MJ_CLOSE:
+	Status = FatClose(IrpContext);
+	break;
+
+    case IRP_MJ_CREATE:
+	Status = FatCreate(IrpContext);
+	break;
+
+    case IRP_MJ_READ:
+	Status = FatRead(IrpContext);
+	break;
+
+    case IRP_MJ_WRITE:
+	Status = FatWrite(&IrpContext);
+	break;
+
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+	Status = FatFileSystemControl(IrpContext);
+	break;
+
+    case IRP_MJ_QUERY_INFORMATION:
+	Status = FatQueryInformation(IrpContext);
+	break;
+
+    case IRP_MJ_SET_INFORMATION:
+	Status = FatSetInformation(IrpContext);
+	break;
+
+    case IRP_MJ_DIRECTORY_CONTROL:
+	Status = FatDirectoryControl(IrpContext);
+	break;
+
+    case IRP_MJ_QUERY_VOLUME_INFORMATION:
+	Status = FatQueryVolumeInformation(IrpContext);
+	break;
+
+    case IRP_MJ_SET_VOLUME_INFORMATION:
+	Status = FatSetVolumeInformation(IrpContext);
+	break;
+
+    case IRP_MJ_LOCK_CONTROL:
+	/* File lock control is implemented on the server side. */
+	Status = UNIMPLEMENTED;
+	break;
+
+    case IRP_MJ_DEVICE_CONTROL:
+	Status = FatDeviceControl(IrpContext);
+	break;
+
+    case IRP_MJ_CLEANUP:
+	Status = FatCleanup(IrpContext);
+	break;
+
+    case IRP_MJ_FLUSH_BUFFERS:
+	Status = FatFlush(IrpContext);
+	break;
+
+    case IRP_MJ_PNP:
+	Status = FatPnp(IrpContext);
+	break;
+
+    default:
+	DPRINT1("Unexpected major function %x\n",
+		IrpContext->MajorFunction);
+	Status = STATUS_DRIVER_INTERNAL_ERROR;
+    }
+
+    if (IrpContext != NULL) {
+	if (Status != STATUS_PENDING) {
+	    /* If IRP is not forwarded, complete the IRP. */
+	    IrpContext->Irp->IoStatus.Status = Status;
+	    IoCompleteRequest(IrpContext->Irp, IrpContext->PriorityBoost);
+	}
+	/* In either case we need to free the IRP context. */
+	FatFreeIrpContext(IrpContext);
+    }
+
+    return Status;
+}
+
+PVOID FatGetUserBuffer(IN PIRP Irp, IN BOOLEAN Paging)
+{
+    ASSERT(Irp);
+
+    if (Irp->MdlAddress) {
+	return MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
+					    (Paging ? HighPagePriority :
+					     NormalPagePriority));
+    } else {
+	return Irp->UserBuffer;
+    }
 }

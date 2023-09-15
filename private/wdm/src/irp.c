@@ -53,13 +53,13 @@
  *  The allowed combinations of dispatch routine return status and
  *  IRP processing are
  *
- *  1) IoMarkIrpPending, then put the IRP to some context like queue
- *     where it will be pended, then "return STATUS_PENDING".
+ *  1) call IoMarkIrpPending, then queue the IRP to some driver-defined queue
+ *     where it will be pended, then return STATUS_PENDING.
  *
  *  2) Fill Irp->IoStatus, call IoCompleteRequest, return the same
- *     status code as was put to Irp->IoStatus.Status. Note that a) you
+ *     status code as was set in Irp->IoStatus.Status. Note that a) you
  *     cannot touch the IRP after IoCompleteRequest and b) you cannot
- *     put STATUS_PENDING to Irp->IoStatus.Status.
+ *     set Irp->IoStatus.Status to STATUS_PENDING.
  *
  *  3) "return IoCallDriver", without ever calling IoMarkIrpPending.
  *

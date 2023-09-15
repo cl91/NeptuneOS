@@ -12,18 +12,197 @@
 
 /* FUNCTIONS ****************************************************************/
 
-VOID FatCommonCloseFile(PDEVICE_EXTENSION DeviceExt, PFATFCB pFcb)
+BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
+			    IN BOOLEAN Force)
 {
+    KIRQL OldIrql;
+    ULONG UnCleanCount;
+    PVPB Vpb;
+    BOOLEAN Delete;
+
+    DPRINT1("FatCheckForDismount(%p, %u)\n", DeviceExt, Force);
+
+    /* If the VCB is OK (not under uninitialization) and we don't
+     * force dismount, do nothing */
+    if (BooleanFlagOn(DeviceExt->Flags, VCB_GOOD) && !Force) {
+	return FALSE;
+    }
+
+    /*
+     * NOTE: In their *CheckForDismount() function, our 3rd-party FS drivers
+     * as well as MS' fastfat, perform a comparison check of the current VCB's
+     * VPB ReferenceCount with some sort of "dangling"/"residual" open count,
+     * depending on whether or not we are in IRP_MJ_CREATE.
+     * It seems to be related to the fact that the volume root directory as
+     * well as auxiliary data stream(s) are still opened, and only these are
+     * allowed to be opened at that moment. After analysis it appears that for
+     * the ReactOS' Fatfs, this number is equal to "2".
+     */
+    UnCleanCount = 2;
+
+    /* Lock VPB */
+    IoAcquireVpbSpinLock(&OldIrql);
+
+    /* Reference it and check if a create is being done */
+    Vpb = DeviceExt->IoVPB;
+    DPRINT("Vpb->ReferenceCount = %d\n", Vpb->ReferenceCount);
+    if (Vpb->ReferenceCount != UnCleanCount
+	|| DeviceExt->OpenHandleCount != 0) {
+	/* If we force-unmount, copy the VPB to our local own to prepare later dismount */
+	if (Force && Vpb->RealDevice->Vpb == Vpb
+	    && DeviceExt->SpareVPB != NULL) {
+	    RtlZeroMemory(DeviceExt->SpareVPB, sizeof(VPB));
+	    DeviceExt->SpareVPB->Type = IO_TYPE_VPB;
+	    DeviceExt->SpareVPB->Size = sizeof(VPB);
+	    DeviceExt->SpareVPB->RealDevice = DeviceExt->IoVPB->RealDevice;
+	    DeviceExt->SpareVPB->DeviceObject = NULL;
+	    DeviceExt->SpareVPB->Flags =
+		DeviceExt->IoVPB->Flags & VPB_REMOVE_PENDING;
+	    DeviceExt->IoVPB->RealDevice->Vpb = DeviceExt->SpareVPB;
+	    DeviceExt->SpareVPB = NULL;
+	    DeviceExt->IoVPB->Flags |= VPB_PERSISTENT;
+
+	    /* We are uninitializing, the VCB cannot be used anymore */
+	    ClearFlag(DeviceExt->Flags, VCB_GOOD);
+	}
+
+	/* Don't do anything for now */
+	Delete = FALSE;
+    } else {
+	/* Otherwise, delete the volume */
+	Delete = TRUE;
+
+	/* Swap the VPB with our local own */
+	if (Vpb->RealDevice->Vpb == Vpb && DeviceExt->SpareVPB != NULL) {
+	    RtlZeroMemory(DeviceExt->SpareVPB, sizeof(VPB));
+	    DeviceExt->SpareVPB->Type = IO_TYPE_VPB;
+	    DeviceExt->SpareVPB->Size = sizeof(VPB);
+	    DeviceExt->SpareVPB->RealDevice = DeviceExt->IoVPB->RealDevice;
+	    DeviceExt->SpareVPB->DeviceObject = NULL;
+	    DeviceExt->SpareVPB->Flags =
+		DeviceExt->IoVPB->Flags & VPB_REMOVE_PENDING;
+	    DeviceExt->IoVPB->RealDevice->Vpb = DeviceExt->SpareVPB;
+	    DeviceExt->SpareVPB = NULL;
+	    DeviceExt->IoVPB->Flags |= VPB_PERSISTENT;
+
+	    /* We are uninitializing, the VCB cannot be used anymore */
+	    ClearFlag(DeviceExt->Flags, VCB_GOOD);
+	}
+
+	/*
+	 * We defer setting the VPB's DeviceObject to NULL for later because
+	 * we want to handle the closing of the internal opened meta-files.
+	 */
+
+	/* Clear the mounted and locked flags in the VPB */
+	ClearFlag(Vpb->Flags, VPB_MOUNTED | VPB_LOCKED);
+    }
+
+    /* Release lock and return status */
+    IoReleaseVpbSpinLock(OldIrql);
+
+    /* If we were to delete, delete volume */
+    if (Delete) {
+	LARGE_INTEGER Zero = { { 0, 0 }
+	};
+	PFATFCB Fcb;
+
+	/* We are uninitializing, the VCB cannot be used anymore */
+	ClearFlag(DeviceExt->Flags, VCB_GOOD);
+
+	/* Invalidate and close the internal opened meta-files */
+	if (DeviceExt->RootFcb) {
+	    Fcb = DeviceExt->RootFcb;
+	    CcUninitializeCacheMap(Fcb->FileObject, &Zero, NULL);
+	    ObDereferenceObject(Fcb->FileObject);
+	    DeviceExt->RootFcb = NULL;
+	    FatDestroyFCB(Fcb);
+	}
+	if (DeviceExt->VolumeFcb) {
+	    Fcb = DeviceExt->VolumeFcb;
+#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
+	    CcUninitializeCacheMap(Fcb->FileObject, &Zero, NULL);
+	    ObDereferenceObject(Fcb->FileObject);
+#endif
+	    DeviceExt->VolumeFcb = NULL;
+	    FatDestroyFCB(Fcb);
+	}
+	if (DeviceExt->FATFileObject) {
+	    Fcb = DeviceExt->FATFileObject->FsContext;
+	    CcUninitializeCacheMap(DeviceExt->FATFileObject, &Zero, NULL);
+	    DeviceExt->FATFileObject->FsContext = NULL;
+	    ObDereferenceObject(DeviceExt->FATFileObject);
+	    DeviceExt->FATFileObject = NULL;
+	    FatDestroyFCB(Fcb);
+	}
+
+	/*
+	 * Now that the closing of the internal opened meta-files has been
+	 * handled, we can now set the VPB's DeviceObject to NULL.
+	 */
+	Vpb->DeviceObject = NULL;
+
+	/* If we have a local VPB, we'll have to delete it
+	 * but we won't dismount us - something went bad before
+	 */
+	if (DeviceExt->SpareVPB) {
+	    ExFreePool(DeviceExt->SpareVPB);
+	}
+	/* Otherwise, delete any of the available VPB if its reference count is zero */
+	else if (DeviceExt->IoVPB->ReferenceCount == 0) {
+	    ExFreePool(DeviceExt->IoVPB);
+	}
+
+	/* Remove the volume from the list */
+	RemoveEntryList(&DeviceExt->VolumeListEntry);
+
+	/* Uninitialize the notify synchronization object */
+	FsRtlNotifyUninitializeSync(&DeviceExt->NotifySync);
+
+	/* Release resources */
+	ExFreePoolWithTag(DeviceExt->Statistics, TAG_STATS);
+
+	/* Dismount our device if possible */
+	ObDereferenceObject(DeviceExt->StorageDevice);
+	IoDeleteDevice(DeviceExt->VolumeDevice);
+    }
+
+    return Delete;
+}
+
+/*
+ * FUNCTION: Closes a file
+ */
+NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    DPRINT("FatCloseFile(DeviceExt %p, FileObject %p)\n",
+	   DeviceExt, FileObject);
+
+    /* FIXME : update entry in directory? */
+    PFATFCB pFcb = (PFATFCB) (FileObject->FsContext);
+    PFATCCB pCcb = (PFATCCB) (FileObject->FsContext2);
+
+    if (pFcb == NULL) {
+	return STATUS_SUCCESS;
+    }
+
+    BOOLEAN IsVolume = BooleanFlagOn(pFcb->Flags, FCB_IS_VOLUME);
+
+    if (pCcb) {
+	FatDestroyCCB(pCcb);
+    }
+
     /* Nothing to do for volumes or for the FAT file object */
     if (BooleanFlagOn(pFcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
 	return;
     }
 
-    /* If cache is still initialized, release it
+    /* If cache is still initialized, release it.
      * This only affects directories
      */
-    if (pFcb->OpenHandleCount == 0
-	&& BooleanFlagOn(pFcb->Flags, FCB_CACHE_INITIALIZED)) {
+    if (!pFcb->OpenHandleCount && BooleanFlagOn(pFcb->Flags, FCB_CACHE_INITIALIZED)) {
 	PFILE_OBJECT tmpFileObject;
 	tmpFileObject = pFcb->FileObject;
 	if (tmpFileObject != NULL) {
@@ -39,142 +218,9 @@ VOID FatCommonCloseFile(PDEVICE_EXTENSION DeviceExt, PFATFCB pFcb)
 
     /* Release the FCB, we likely cause its deletion */
     FatReleaseFCB(DeviceExt, pFcb);
-}
-
-VOID NTAPI FatCloseWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
-{
-    PLIST_ENTRY Entry;
-    PFATFCB pFcb;
-    PDEVICE_EXTENSION Vcb;
-    PFAT_CLOSE_CONTEXT CloseContext;
-    BOOLEAN ConcurrentDeletion;
-
-    /* Start removing work items */
-    ExAcquireFastMutex(&FatGlobalData->CloseMutex);
-    while (!IsListEmpty(&FatGlobalData->CloseListHead)) {
-	Entry = RemoveHeadList(&FatGlobalData->CloseListHead);
-	CloseContext =
-	    CONTAINING_RECORD(Entry, FAT_CLOSE_CONTEXT, CloseListEntry);
-
-	/* One less */
-	--FatGlobalData->CloseCount;
-	/* Reset its entry to detect concurrent deletions */
-	InitializeListHead(&CloseContext->CloseListEntry);
-	ExReleaseFastMutex(&FatGlobalData->CloseMutex);
-
-	/* Get the elements */
-	Vcb = CloseContext->Vcb;
-	pFcb = CloseContext->Fcb;
-	ExAcquireResourceExclusiveLite(&Vcb->DirResource, TRUE);
-	/* If it didn't got deleted in between */
-	if (BooleanFlagOn(pFcb->Flags, FCB_DELAYED_CLOSE)) {
-	    /* Close it! */
-	    DPRINT("Late closing: %wZ\n", &pFcb->PathNameU);
-	    ClearFlag(pFcb->Flags, FCB_DELAYED_CLOSE);
-	    pFcb->CloseContext = NULL;
-	    FatCommonCloseFile(Vcb, pFcb);
-	    ConcurrentDeletion = FALSE;
-	} else {
-	    /* Otherwise, mark not to delete it */
-	    ConcurrentDeletion = TRUE;
-	}
-	ExReleaseResourceLite(&Vcb->DirResource);
-
-	/* If we were the fastest, delete the context */
-	if (!ConcurrentDeletion) {
-	    ExFreeToPagedLookasideList(&FatGlobalData->
-				       CloseContextLookasideList,
-				       CloseContext);
-	}
-
-	/* Lock again the list */
-	ExAcquireFastMutex(&FatGlobalData->CloseMutex);
-    }
-
-    /* We're done, bye! */
-    FatGlobalData->CloseWorkerRunning = FALSE;
-    ExReleaseFastMutex(&FatGlobalData->CloseMutex);
-}
-
-NTSTATUS FatPostCloseFile(PDEVICE_EXTENSION DeviceExt,
-			  PFILE_OBJECT FileObject)
-{
-    PFAT_CLOSE_CONTEXT CloseContext;
-
-    /* Allocate a work item */
-    CloseContext =
-	ExAllocateFromPagedLookasideList(&FatGlobalData->
-					 CloseContextLookasideList);
-    if (CloseContext == NULL) {
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    /* Set relevant fields */
-    CloseContext->Vcb = DeviceExt;
-    CloseContext->Fcb = FileObject->FsContext;
-    CloseContext->Fcb->CloseContext = CloseContext;
-
-    /* Acquire the lock to insert in list */
-    ExAcquireFastMutex(&FatGlobalData->CloseMutex);
-
-    /* One more element */
-    InsertTailList(&FatGlobalData->CloseListHead,
-		   &CloseContext->CloseListEntry);
-    ++FatGlobalData->CloseCount;
-
-    /* If we have more than 16 items in list, and no worker thread
-     * start a new one
-     */
-    if (FatGlobalData->CloseCount > 16
-	&& !FatGlobalData->CloseWorkerRunning) {
-	FatGlobalData->CloseWorkerRunning = TRUE;
-	IoQueueWorkItem(FatGlobalData->CloseWorkItem, FatCloseWorker,
-			CriticalWorkQueue, NULL);
-    }
-
-    /* We're done */
-    ExReleaseFastMutex(&FatGlobalData->CloseMutex);
-
-    return STATUS_SUCCESS;
-}
-
-/*
- * FUNCTION: Closes a file
- */
-NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
-{
-    PFATFCB pFcb;
-    PFATCCB pCcb;
-    BOOLEAN IsVolume;
-    NTSTATUS Status = STATUS_SUCCESS;
-
-    DPRINT("FatCloseFile(DeviceExt %p, FileObject %p)\n",
-	   DeviceExt, FileObject);
-
-    /* FIXME : update entry in directory? */
-    pCcb = (PFATCCB) (FileObject->FsContext2);
-    pFcb = (PFATFCB) (FileObject->FsContext);
-
-    if (pFcb == NULL) {
-	return STATUS_SUCCESS;
-    }
-
-    IsVolume = BooleanFlagOn(pFcb->Flags, FCB_IS_VOLUME);
-
-    if (pCcb) {
-	FatDestroyCCB(pCcb);
-    }
-
-    /* If we have to close immediately, or if delaying failed, close */
-    if (FatGlobalData->ShutdownStarted
-	|| !BooleanFlagOn(pFcb->Flags, FCB_DELAYED_CLOSE)
-	|| !NT_SUCCESS(FatPostCloseFile(DeviceExt, FileObject))) {
-	FatCommonCloseFile(DeviceExt, pFcb);
-    }
 
     FileObject->FsContext2 = NULL;
     FileObject->FsContext = NULL;
-    FileObject->SectionObjectPointer = NULL;
 
 #ifdef ENABLE_SWAPOUT
     if (IsVolume && DeviceExt->OpenHandleCount == 0) {
@@ -200,14 +246,8 @@ NTSTATUS FatClose(PFAT_IRP_CONTEXT IrpContext)
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_SUCCESS;
     }
-    if (!ExAcquireResourceExclusiveLite
-	(&IrpContext->DeviceExt->DirResource,
-	 BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT))) {
-	return FatMarkIrpContextForQueue(IrpContext);
-    }
 
     Status = FatCloseFile(IrpContext->DeviceExt, IrpContext->FileObject);
-    ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
 
     IrpContext->Irp->IoStatus.Information = 0;
 

@@ -42,9 +42,6 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	    IoRemoveShareAccess(FileObject, &pFcb->FCBShareAccess);
 	}
     } else {
-	ExAcquireResourceExclusiveLite(&pFcb->MainResource, TRUE);
-	ExAcquireResourceExclusiveLite(&pFcb->PagingIoResource, TRUE);
-
 	pCcb = FileObject->FsContext2;
 	if (BooleanFlagOn(pCcb->Flags, CCB_DELETE_ON_CLOSE)) {
 	    pFcb->Flags |= FCB_DELETE_PENDING;
@@ -57,15 +54,6 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 
 	pFcb->OpenHandleCount--;
 	DeviceExt->OpenHandleCount--;
-
-	if (!FatFCBIsDirectory(pFcb) &&
-	    FsRtlAreThereCurrentFileLocks(&pFcb->FileLock)) {
-	    /* remove all locks this process have on this file */
-	    FsRtlFastUnlockAll(&pFcb->FileLock,
-			       FileObject,
-			       IoGetRequestorProcess(IrpContext->Irp),
-			       NULL);
-	}
 
 	if (BooleanFlagOn(pFcb->Flags, FCB_IS_DIRTY)) {
 	    FatUpdateEntry(DeviceExt, pFcb);
@@ -111,39 +99,12 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	if (pFcb->OpenHandleCount != 0) {
 	    IoRemoveShareAccess(FileObject, &pFcb->FCBShareAccess);
 	}
-/* FIXME: causes FS corruption and breaks selfhosting/testbots and so on */
-#if 0
-	/* If that's the last open handle we just closed, try to see whether
-	 * we can delay close operation
-	 */
-	else if (!BooleanFlagOn(pFcb->Flags, FCB_DELETE_PENDING)
-		 && !BooleanFlagOn(pFcb->Flags, FCB_IS_PAGE_FILE)
-		 && !BooleanFlagOn(pFcb->Flags, FCB_IS_FAT)
-		 && !BooleanFlagOn(pFcb->Flags, FCB_IS_VOLUME)) {
-	    /* This is only allowed if that's a directory with no open files
-	     * OR if it's a file with no section opened
-	     */
-	    if ((FatFCBIsDirectory(pFcb)
-		 && IsListEmpty(&pFcb->ParentListHead))
-		|| (!FatFCBIsDirectory(pFcb)
-		    && FileObject->SectionObjectPointer->
-		    DataSectionObject == NULL
-		    && FileObject->SectionObjectPointer->
-		    ImageSectionObject == NULL)) {
-		DPRINT("Delaying close of: %wZ\n", &pFcb->PathNameU);
-		SetFlag(pFcb->Flags, FCB_DELAYED_CLOSE);
-	    }
-	}
-#endif
 
 	FileObject->Flags |= FO_CLEANUP_COMPLETE;
 #ifdef KDBG
 	pFcb->Flags |= FCB_CLEANED_UP;
 #endif
 
-	ExReleaseResourceLite(&pFcb->PagingIoResource);
-	ExReleaseResourceLite(&pFcb->MainResource);
-    }
 
 #ifdef ENABLE_SWAPOUT
     if (IsVolume && BooleanFlagOn(DeviceExt->Flags, VCB_DISMOUNT_PENDING)) {
@@ -159,8 +120,6 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
  */
 NTSTATUS FatCleanup(PFAT_IRP_CONTEXT IrpContext)
 {
-    BOOLEAN Deleted;
-
     DPRINT("FatCleanup(DeviceObject %p, Irp %p)\n",
 	   IrpContext->DeviceObject, IrpContext->Irp);
 
@@ -169,11 +128,7 @@ NTSTATUS FatCleanup(PFAT_IRP_CONTEXT IrpContext)
 	return STATUS_SUCCESS;
     }
 
-    ExAcquireResourceExclusiveLite(&IrpContext->DeviceExt->DirResource,
-				   TRUE);
-    Deleted = FatCleanupFile(IrpContext);
-    if (!Deleted)
-	ExReleaseResourceLite(&IrpContext->DeviceExt->DirResource);
+    FatCleanupFile(IrpContext);
 
     IrpContext->Irp->IoStatus.Information = 0;
     return STATUS_SUCCESS;

@@ -463,7 +463,6 @@ NTSTATUS CountAvailableClusters(PDEVICE_EXTENSION DeviceExt,
 				PLARGE_INTEGER Clusters)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    ExAcquireResourceExclusiveLite(&DeviceExt->FatResource, TRUE);
     if (!DeviceExt->AvailableClustersValid) {
 	if (DeviceExt->FatInfo.FatType == FAT12)
 	    Status = Fat12CountAvailableClusters(DeviceExt);
@@ -476,7 +475,6 @@ NTSTATUS CountAvailableClusters(PDEVICE_EXTENSION DeviceExt,
     if (Clusters != NULL) {
 	Clusters->QuadPart = DeviceExt->AvailableClusters;
     }
-    ExReleaseResourceLite(&DeviceExt->FatResource);
 
     return Status;
 }
@@ -609,7 +607,6 @@ NTSTATUS WriteCluster(PDEVICE_EXTENSION DeviceExt,
     NTSTATUS Status;
     ULONG OldValue;
 
-    ExAcquireResourceExclusiveLite(&DeviceExt->FatResource, TRUE);
     Status = DeviceExt->WriteCluster(DeviceExt, ClusterToWrite, NewValue,
 				     &OldValue);
     if (DeviceExt->AvailableClustersValid) {
@@ -618,7 +615,6 @@ NTSTATUS WriteCluster(PDEVICE_EXTENSION DeviceExt,
 	else if (OldValue == 0 && NewValue)
 	    InterlockedDecrement((PLONG) & DeviceExt->AvailableClusters);
     }
-    ExReleaseResourceLite(&DeviceExt->FatResource);
     return Status;
 }
 
@@ -652,9 +648,7 @@ NTSTATUS GetNextCluster(PDEVICE_EXTENSION DeviceExt,
 	return STATUS_FILE_CORRUPT_ERROR;
     }
 
-    ExAcquireResourceSharedLite(&DeviceExt->FatResource, TRUE);
     Status = DeviceExt->GetNextCluster(DeviceExt, CurrentCluster, NextCluster);
-    ExReleaseResourceLite(&DeviceExt->FatResource);
 
     return Status;
 }
@@ -672,7 +666,6 @@ NTSTATUS GetNextClusterExtend(PDEVICE_EXTENSION DeviceExt,
     DPRINT("GetNextClusterExtend(DeviceExt %p, CurrentCluster %x)\n",
 	   DeviceExt, CurrentCluster);
 
-    ExAcquireResourceExclusiveLite(&DeviceExt->FatResource, TRUE);
     /*
      * If the file hasn't any clusters allocated then we need special
      * handling
@@ -680,12 +673,10 @@ NTSTATUS GetNextClusterExtend(PDEVICE_EXTENSION DeviceExt,
     if (CurrentCluster == 0) {
 	Status = DeviceExt->FindAndMarkAvailableCluster(DeviceExt, &NewCluster);
 	if (!NT_SUCCESS(Status)) {
-	    ExReleaseResourceLite(&DeviceExt->FatResource);
 	    return Status;
 	}
 
 	*NextCluster = NewCluster;
-	ExReleaseResourceLite(&DeviceExt->FatResource);
 	return STATUS_SUCCESS;
     }
 
@@ -697,7 +688,6 @@ NTSTATUS GetNextClusterExtend(PDEVICE_EXTENSION DeviceExt,
 	   mark it as end of file */
 	Status = DeviceExt->FindAndMarkAvailableCluster(DeviceExt, &NewCluster);
 	if (!NT_SUCCESS(Status)) {
-	    ExReleaseResourceLite(&DeviceExt->FatResource);
 	    return Status;
 	}
 
@@ -707,7 +697,6 @@ NTSTATUS GetNextClusterExtend(PDEVICE_EXTENSION DeviceExt,
 	*NextCluster = NewCluster;
     }
 
-    ExReleaseResourceLite(&DeviceExt->FatResource);
     return Status;
 }
 
@@ -731,9 +720,7 @@ NTSTATUS GetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
      * we're really low-level and shouldn't happent that often
      * And call the appropriate function
      */
-    ExAcquireResourceSharedLite(&DeviceExt->FatResource, TRUE);
     Status = DeviceExt->GetDirtyStatus(DeviceExt, DirtyStatus);
-    ExReleaseResourceLite(&DeviceExt->FatResource);
 
     return Status;
 }
@@ -899,9 +886,7 @@ NTSTATUS SetDirtyStatus(PDEVICE_EXTENSION DeviceExt, BOOLEAN DirtyStatus)
      * And call the appropriate function
      * Acquire exclusive because we will modify ondisk value
      */
-    ExAcquireResourceExclusiveLite(&DeviceExt->FatResource, TRUE);
     Status = DeviceExt->SetDirtyStatus(DeviceExt, DirtyStatus);
-    ExReleaseResourceLite(&DeviceExt->FatResource);
 
     return Status;
 }

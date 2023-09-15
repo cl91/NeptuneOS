@@ -438,7 +438,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     /* IO status block returned by the driver */
     IO_STATUS_BLOCK IoStatus;
 
-    /* IO status block supplied by the user that will be populated
+    /* IO status block supplied by the client driver that will be populated
      * once the IRP has been completed. This makes the IRP synchronous. */
     PIO_STATUS_BLOCK UserIosb;
 
@@ -531,10 +531,6 @@ FORCEINLINE VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
 typedef struct _EPROCESS {
     HANDLE Handle;
 } EPROCESS, *PEPROCESS;
-
-typedef struct _ERESOURCE {
-    HANDLE Handle;
-} ERESOURCE, *PERESOURCE;
 
 /*
  * Driver entry point
@@ -812,7 +808,7 @@ typedef struct _IO_STACK_LOCATION {
     PDEVICE_OBJECT DeviceObject;
     PFILE_OBJECT FileObject;
     PIO_COMPLETION_ROUTINE CompletionRoutine;
-    PVOID Context;
+    PVOID Context; /* Driver-defined context for the IO Completion routine */
 } IO_STACK_LOCATION, *PIO_STACK_LOCATION;
 
 #define IO_SIZE_OF_IRP	(sizeof(IRP) + sizeof(IO_STACK_LOCATION))
