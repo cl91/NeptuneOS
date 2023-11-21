@@ -368,10 +368,6 @@ typedef struct DECLSPEC_ALIGN(16) _SLIST_ENTRY {
     struct _SLIST_ENTRY *Next;
 } SLIST_ENTRY, *PSLIST_ENTRY;
 
-typedef struct _SLIST_ENTRY32 {
-    ULONG Next;
-} SLIST_ENTRY32, *PSLIST_ENTRY32;
-
 typedef union DECLSPEC_ALIGN(16) _SLIST_HEADER {
     struct {
 	ULONGLONG Alignment;
@@ -403,22 +399,11 @@ typedef union DECLSPEC_ALIGN(16) _SLIST_HEADER {
     } HeaderX64;
 } SLIST_HEADER, *PSLIST_HEADER;
 
-typedef union _SLIST_HEADER32 {
-    ULONGLONG Alignment;
-    struct {
-	SLIST_ENTRY32 Next;
-	USHORT Depth;
-	USHORT Sequence;
-    };
-} SLIST_HEADER32, *PSLIST_HEADER32;
-
 #else  /* WIN32 */
 
 #define SLIST_ENTRY SINGLE_LIST_ENTRY
 #define _SLIST_ENTRY _SINGLE_LIST_ENTRY
 #define PSLIST_ENTRY PSINGLE_LIST_ENTRY
-
-typedef SLIST_ENTRY SLIST_ENTRY32, *PSLIST_ENTRY32;
 
 typedef union _SLIST_HEADER {
     ULONGLONG Alignment;
@@ -428,8 +413,6 @@ typedef union _SLIST_HEADER {
 	USHORT Sequence;
     };
 } SLIST_HEADER, *PSLIST_HEADER;
-
-typedef SLIST_HEADER SLIST_HEADER32, *PSLIST_HEADER32;
 
 #endif /* defined(_WIN64) */
 
@@ -1012,6 +995,27 @@ NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeToOemN(OUT PCHAR OemString,
 					       OUT PULONG ResultSize OPTIONAL,
 					       IN PCWCH UnicodeString,
 					       IN ULONG UnicodeSize);
+
+/*
+ * DOS 8.3 File Name Helper Routines
+ */
+typedef struct _GENERATE_NAME_CONTEXT {
+    USHORT Checksum;
+    BOOLEAN CheckSumInserted;
+    UCHAR NameLength;		/* Must be <= 8 */
+    WCHAR NameBuffer[8];
+    ULONG ExtensionLength;	/* Must be <= 4 */
+    WCHAR ExtensionBuffer[4];
+    ULONG LastIndexValue;
+} GENERATE_NAME_CONTEXT, *PGENERATE_NAME_CONTEXT;
+
+NTAPI NTSYSAPI VOID RtlGenerate8dot3Name(IN PUNICODE_STRING Name,
+					 IN BOOLEAN AllowExtendedCharacters,
+					 IN OUT PGENERATE_NAME_CONTEXT Context,
+					 OUT PUNICODE_STRING Name8dot3);
+NTAPI NTSYSAPI BOOLEAN RtlIsNameLegalDOS8Dot3(IN PCUNICODE_STRING Name,
+					      IN OUT POEM_STRING OemName,
+					      OUT OPTIONAL PBOOLEAN NameContainsSpaces);
 
 /*
  * Structured exception handling routines
@@ -1822,6 +1826,9 @@ NTAPI NTSYSAPI VOID RtlTimeToTimeFields(IN PLARGE_INTEGER Time,
 
 NTAPI NTSYSAPI NTSTATUS RtlSystemTimeToLocalTime(IN PLARGE_INTEGER SystemTime,
 						 OUT PLARGE_INTEGER LocalTime);
+
+NTAPI NTSYSAPI NTSTATUS RtlLocalTimeToSystemTime(IN PLARGE_INTEGER LocalTime,
+						 OUT PLARGE_INTEGER SystemTime);
 
 /*
  * Loader routines

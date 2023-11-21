@@ -28,7 +28,6 @@ NTSTATUS FatPnp(PFAT_IRP_CONTEXT IrpContext)
 	break;
 
     default:
-	IoSkipCurrentIrpStackLocation(IrpContext->Irp);
 	Vcb = (PVCB)IrpContext->Stack->DeviceObject->DeviceExtension;
 	Status = IoCallDriver(Vcb->StorageDevice, IrpContext->Irp);
     }

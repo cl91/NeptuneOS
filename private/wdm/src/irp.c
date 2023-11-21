@@ -6,44 +6,44 @@
  * This file implements driver IRP processing. There are several cases that we need to handle here:
  *
  * Case 1:
- * |------------------| Copy |----------| Dispatch fcn. returns  |--------------| ----> Deleted once replied
- * | IncomingIoPacket | ---> | IrpQueue | ---------------------> |  CleanupIrp  |
- * |------------------|      |----------| immed. w. non-PENDING  |--------------| Copy  |------------------|
- *                                                               |   ReplyIrp   | ----> | OutgoingIoPacket |
- *                                                               |--------------|       |------------------|
+ * |------------------| Copy |----------| Dispatch fcn. returns  |------------------| ----> Deleted once replied
+ * | IncomingIoPacket | ---> | IrpQueue | ---------------------> |  CleanupIrpList  |
+ * |------------------|      |----------| immed. w. non-PENDING  |------------------| Copy  |------------------|
+ *                                                               |   ReplyIrpList   | ----> | OutgoingIoPacket |
+ *                                                               |------------------|       |------------------|
  * Case 2:
- * |------------------| Copy |----------| Dispatch returns PENDING      |------------| ----> Deleted once forwarded
- * | IncomingIoPacket | ---> | IrpQueue | ----------------------------> | CleanupIrp |
- * |------------------|      |----------| IRP not marked pending and    |------------| Forward  |------------------|
- *                                        has no IO completion routine  |  ReplyIrp  | -------> | OutgoingIoPacket |
- *                                                                      |------------|          |------------------|
+ * |------------------| Copy |----------| Dispatch returns PENDING      |----------------| ----> Deleted once forwarded
+ * | IncomingIoPacket | ---> | IrpQueue | ----------------------------> | CleanupIrpList |
+ * |------------------|      |----------| IRP not marked pending and    |----------------| Forward  |------------------|
+ *                                        has no IO completion routine  |  ReplyIrpList  | -------> | OutgoingIoPacket |
+ *                                                                      |----------------|          |------------------|
  *
  * Note: on debug build we assert if dispatch routine returns STATUS_PENDING but does not mark
  * IRP pending or set an IO completion routine or forward the IRP via IoCallDriver. See [1].
  *
  * Case 3:
- * |------------------| Copy |----------| Dispatch returns PENDING   |------------|-----------|
- * | IncomingIoPacket | ---> | IrpQueue | -------------------------> | PendingIrp | ReplyIrp? |
- * |------------------|      |----------| IRP marked pending or has  |------------|-----------|
- *                                        IO completion routine set         |           |
- *                                                                          |           |
+ * |------------------| Copy |----------| Dispatch returns PENDING   |----------------|---------------|
+ * | IncomingIoPacket | ---> | IrpQueue | -------------------------> | PendingIrpList | ReplyIrpList? |
+ * |------------------|      |----------| IRP marked pending or has  |----------------|---------------|
+ *                                        IO completion routine set         |               |
+ *                                                                          |               |
  *             IoCompleteRequest called <-----------------------------------|      Queued if forwarded via IoCallDriver
  *          or IoCompleted message received                                        Otherwise empty
  *                       |
  *                      \|/
- *                |--------------| ----> Deleted once replied to server
- *                |  CleanupIrp  |
- *                |--------------| Copy  |------------------|
- *                |   ReplyIrp   | ----> | OutgoingIoPacket |
- *                |--------------|       |------------------|
+ *                |------------------| ----> Deleted once replied to server
+ *                |  CleanupIrpList  |
+ *                |------------------| Copy  |------------------|
+ *                |   ReplyIrpList   | ----> | OutgoingIoPacket |
+ *                |------------------|       |------------------|
  *
  * Case 4:
- * |------------------| Copy |----------| Dispatch ret. ASYNC_PENDING   |------------|-----------|
- * | IncomingIoPacket | ---> | IrpQueue | ----------------------------> | PendingIrp | ReplyIrp? |
- * |------------------|      |----------|                               |------------|-----------|
- *                                                                             |           |
- *         IoCompleted message received <--------------------------------------|           |
- *                        |                                                               \|/
+ * |------------------| Copy |----------| Dispatch ret. ASYNC_PENDING   |----------------|---------------|
+ * | IncomingIoPacket | ---> | IrpQueue | ----------------------------> | PendingIrpList | ReplyIrpList? |
+ * |------------------|      |----------|                               |----------------|---------------|
+ *                                                                             |               |
+ *         IoCompleted message received <--------------------------------------|               |
+ *                        |                                                                   \|/
  *                       \|/                                     Queued if this IRP itself is forwarded via IoCallDriver
  *                   |----------|                                Empty if a new IRP is forwarded via IoCallDriver
  *                   | IrpQueue | ----> Resumes coroutine
@@ -884,7 +884,7 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 		 * completing an IRP that we sent out ourselves). */
 		IopCompleteIrp(Irp);
 		/* Also resume the object (IRP, AddDevice request, or IO workitem) that was
-		 * pending due to this IRP. */
+		 * pending due to the driver calling IoCallDriver on this IRP. */
 		if (Irp->Private.ForwardedBy != NULL) {
 		    PADD_DEVICE_REQUEST Req = (PADD_DEVICE_REQUEST)Irp->Private.ForwardedBy;
 		    if (Req->Type == IOP_TYPE_ADD_DEVICE_REQUEST) {
@@ -893,16 +893,14 @@ static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
 			InsertTailList(&IopAddDeviceRequestList, &Req->Link);
 		    } else if (Req->Type == IO_TYPE_IRP) {
 			assert(Req->Size >= sizeof(IO_PACKET));
-			/* Note: this has nothing to do with the public member MasterIrp
-			 * (Irp.AssociatedIrp.MasterIrp). That one is for driver use. */
-			PIRP MasterIrp = (PIRP) Req;
-			/* Master IRPs cannot have a master IRP */
-			assert(MasterIrp->Private.ForwardedBy == NULL);
-			/* Master IRP must have been suspended in a coroutine */
-			assert(MasterIrp->Private.CoroutineStackTop != NULL);
-			/* Move the master IRP back to the queue so it will be resumed */
-			RemoveEntryList(&MasterIrp->Private.Link);
-			InsertTailList(&IopIrpQueue, &MasterIrp->Private.Link);
+			PIRP PendingIrp = (PIRP) Req;
+			/* This pending IRP should not have been forwarded by another IRP */
+			assert(PendingIrp->Private.ForwardedBy == NULL);
+			/* The pending IRP must have been suspended in a coroutine */
+			assert(PendingIrp->Private.CoroutineStackTop != NULL);
+			/* Move the pending IRP back to the queue so it will be resumed */
+			RemoveEntryList(&PendingIrp->Private.Link);
+			InsertTailList(&IopIrpQueue, &PendingIrp->Private.Link);
 		    } else {
 			PIO_WORKITEM WorkItem = (PIO_WORKITEM) Req;
 			assert(WorkItem->Type == IOP_TYPE_WORKITEM);

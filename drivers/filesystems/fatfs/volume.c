@@ -21,16 +21,16 @@ static NTSTATUS FsdGetFsVolumeInformation(PDEVICE_OBJECT DeviceObject,
 
     DPRINT("FsdGetFsVolumeInformation()\n");
     DPRINT("FsVolumeInfo = %p\n", FsVolumeInfo);
-    DPRINT("BufferLength %lu\n", *BufferLength);
+    DPRINT("BufferLength %u\n", *BufferLength);
 
-    DPRINT("Required length %lu\n",
-	   FIELD_OFFSET(FILE_FS_VOLUME_INFORMATION,
-			VolumeLabel) +
+    DPRINT("Required length %u\n",
+	   FIELD_OFFSET(FILE_FS_VOLUME_INFORMATION, VolumeLabel) +
 	   DeviceObject->Vpb->VolumeLabelLength);
-    DPRINT("LabelLength %hu\n", DeviceObject->Vpb->VolumeLabelLength);
-    DPRINT("Label %.*S\n",
-	   DeviceObject->Vpb->VolumeLabelLength / sizeof(WCHAR),
-	   DeviceObject->Vpb->VolumeLabel);
+    DPRINT("LabelLength %hu\nLabel ", DeviceObject->Vpb->VolumeLabelLength);
+    for (int i = 0; i < DeviceObject->Vpb->VolumeLabelLength; i++) {
+	DPRINT("%wc", DeviceObject->Vpb->VolumeLabel[i]);
+    }
+    DPRINT("\n");
 
     ASSERT(*BufferLength >= sizeof(FILE_FS_VOLUME_INFORMATION));
     *BufferLength -= FIELD_OFFSET(FILE_FS_VOLUME_INFORMATION, VolumeLabel);
@@ -54,16 +54,16 @@ static NTSTATUS FsdGetFsVolumeInformation(PDEVICE_OBJECT DeviceObject,
 
     if (FatVolumeIsFatX(DeviceExt)) {
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   DeviceExt->VolumeFcb->entry.FatX.
+				   DeviceExt->VolumeFcb->Entry.FatX.
 				   CreationDate,
-				   DeviceExt->VolumeFcb->entry.FatX.
+				   DeviceExt->VolumeFcb->Entry.FatX.
 				   CreationTime,
 				   &FsVolumeInfo->VolumeCreationTime);
     } else {
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   DeviceExt->VolumeFcb->entry.Fat.
+				   DeviceExt->VolumeFcb->Entry.Fat.
 				   CreationDate,
-				   DeviceExt->VolumeFcb->entry.Fat.
+				   DeviceExt->VolumeFcb->Entry.Fat.
 				   CreationTime,
 				   &FsVolumeInfo->VolumeCreationTime);
     }
@@ -71,7 +71,7 @@ static NTSTATUS FsdGetFsVolumeInformation(PDEVICE_OBJECT DeviceObject,
     FsVolumeInfo->SupportsObjects = FALSE;
 
     DPRINT("Finished FsdGetFsVolumeInformation()\n");
-    DPRINT("BufferLength %lu\n", *BufferLength);
+    DPRINT("BufferLength %u\n", *BufferLength);
 
     return Status;
 }
@@ -86,7 +86,7 @@ static NTSTATUS FsdGetFsAttributeInformation(PDEVICE_EXTENSION DeviceExt,
 
     DPRINT("FsdGetFsAttributeInformation()\n");
     DPRINT("FsAttributeInfo = %p\n", AttrInfo);
-    DPRINT("BufferLength %lu\n", *BufferLength);
+    DPRINT("BufferLength %u\n", *BufferLength);
 
     ASSERT(*BufferLength >= sizeof(FILE_FS_ATTRIBUTE_INFORMATION));
     *BufferLength -= FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName);
@@ -112,7 +112,7 @@ static NTSTATUS FsdGetFsAttributeInformation(PDEVICE_EXTENSION DeviceExt,
     }
 
     Length = wcslen(pName) * sizeof(WCHAR);
-    DPRINT("Required length %lu\n",
+    DPRINT("Required length %u\n",
 	   (FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) +
 	    Length));
 
@@ -134,7 +134,7 @@ static NTSTATUS FsdGetFsAttributeInformation(PDEVICE_EXTENSION DeviceExt,
     DPRINT("Finished FsdGetFsAttributeInformation()\n");
 
     *BufferLength -= Length;
-    DPRINT("BufferLength %lu\n", *BufferLength);
+    DPRINT("BufferLength %u\n", *BufferLength);
 
     return Status;
 }
@@ -174,8 +174,8 @@ static NTSTATUS FsdGetFsDeviceInformation(PDEVICE_OBJECT DeviceObject,
 {
     DPRINT("FsdGetFsDeviceInformation()\n");
     DPRINT("FsDeviceInfo = %p\n", FsDeviceInfo);
-    DPRINT("BufferLength %lu\n", *BufferLength);
-    DPRINT("Required length %lu\n", sizeof(FILE_FS_DEVICE_INFORMATION));
+    DPRINT("BufferLength %u\n", *BufferLength);
+    DPRINT("Required length %u\n", sizeof(FILE_FS_DEVICE_INFORMATION));
 
     ASSERT(*BufferLength >= sizeof(FILE_FS_DEVICE_INFORMATION));
 
@@ -185,7 +185,7 @@ static NTSTATUS FsdGetFsDeviceInformation(PDEVICE_OBJECT DeviceObject,
     DPRINT("FsdGetFsDeviceInformation() finished.\n");
 
     *BufferLength -= sizeof(FILE_FS_DEVICE_INFORMATION);
-    DPRINT("BufferLength %lu\n", *BufferLength);
+    DPRINT("BufferLength %u\n", *BufferLength);
 
     return STATUS_SUCCESS;
 }
@@ -311,14 +311,12 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 
     /* Search existing volume entry on disk */
     FileOffset.QuadPart = 0;
-    _SEH2_TRY {
+    __try {
 	CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
 		  PIN_WAIT, &Context, (PVOID *) & Entry);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+	Status = GetExceptionCode();
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-	Status = _SEH2_GetExceptionCode();
-    }
-    _SEH2_END;
 
     if (NT_SUCCESS(Status)) {
 	while (TRUE) {
@@ -340,15 +338,13 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	    if ((DirIndex % EntriesPerPage) == 0) {
 		CcUnpinData(Context);
 		FileOffset.u.LowPart += PAGE_SIZE;
-		_SEH2_TRY {
+		__try {
 		    CcPinRead(pRootFcb->FileObject, &FileOffset,
 			      SizeDirEntry, PIN_WAIT, &Context,
 			      (PVOID *) & Entry);
+		} __except(EXCEPTION_EXECUTE_HANDLER) {
+		    Status = GetExceptionCode();
 		}
-		_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-		    Status = _SEH2_GetExceptionCode();
-		}
-		_SEH2_END;
 
 		if (!NT_SUCCESS(Status)) {
 		    Context = NULL;
@@ -371,14 +367,12 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	    FileOffset.u.LowPart = VolumeLabelDirIndex * SizeDirEntry;
 
 	    Status = STATUS_SUCCESS;
-	    _SEH2_TRY {
+	    __try {
 		CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
 			  PIN_WAIT, &Context, (PVOID *) & Entry);
+	    } __except(EXCEPTION_EXECUTE_HANDLER) {
+		Status = GetExceptionCode();
 	    }
-	    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-		Status = _SEH2_GetExceptionCode();
-	    }
-	    _SEH2_END;
 
 	    if (NT_SUCCESS(Status)) {
 		RtlCopyMemory(Entry, &VolumeLabelDirEntry, SizeDirEntry);

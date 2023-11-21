@@ -221,6 +221,11 @@ FORCEINLINE VOID ExFreePool(IN PVOID Pointer)
     RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
 }
 
+/*
+ * Object manager routines
+ */
+FORCEINLINE VOID ObDereferenceObject(IN PVOID Obj) { /* TODO */ }
+
 struct _DEVICE_OBJECT;
 struct _DRIVER_OBJECT;
 struct _IRP;
@@ -243,6 +248,10 @@ typedef struct _FILE_OBJECT {
     SHORT Type;
     SHORT Size;
     struct _DEVICE_OBJECT *DeviceObject;
+    PVOID FsContext;
+    PVOID FsContext2;
+    PVPB Vpb;
+    struct _FILE_OBJECT *RelatedFileObject;
     BOOLEAN LockOperation;
     BOOLEAN DeletePending;
     BOOLEAN ReadAccess;
@@ -1445,3 +1454,78 @@ typedef struct _CONFIGURATION_INFORMATION {
  */
 NTAPI NTSYSAPI NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
 					       IN PLARGE_INTEGER Interval);
+
+/*
+ * Look-aside list
+ */
+#define LOOKASIDE_ALIGN DECLSPEC_CACHEALIGN
+typedef PVOID (NTAPI *PALLOCATE_FUNCTION)(IN SIZE_T NumberOfBytes,
+					  IN ULONG Tag);
+typedef VOID (NTAPI *PFREE_FUNCTION)(IN PVOID Buffer);
+
+typedef struct LOOKASIDE_ALIGN _LOOKASIDE_LIST {
+    union {
+        SLIST_HEADER ListHead;
+        SINGLE_LIST_ENTRY SingleListHead;
+    };
+    USHORT Depth;
+    USHORT MaximumDepth;
+    ULONG TotalAllocates;
+    union {
+        ULONG AllocateMisses;
+        ULONG AllocateHits;
+    };
+    ULONG TotalFrees;
+    union {
+        ULONG FreeMisses;
+        ULONG FreeHits;
+    };
+    ULONG Tag;
+    ULONG Size;
+    PALLOCATE_FUNCTION Allocate;
+    PFREE_FUNCTION Free;
+    LIST_ENTRY ListEntry;
+    ULONG LastTotalAllocates;
+    union {
+        ULONG LastAllocateMisses;
+        ULONG LastAllocateHits;
+    };
+    ULONG Future[2];
+} LOOKASIDE_LIST, *PLOOKASIDE_LIST;
+
+NTAPI NTSYSAPI VOID ExInitializeLookasideList(OUT PLOOKASIDE_LIST Lookaside,
+					      IN OPTIONAL PALLOCATE_FUNCTION Allocate,
+					      IN OPTIONAL PFREE_FUNCTION Free,
+					      IN ULONG Flags,
+					      IN SIZE_T Size,
+					      IN ULONG Tag,
+					      IN USHORT Depth);
+
+FORCEINLINE PVOID ExAllocateFromLookasideList(IN OUT PLOOKASIDE_LIST Lookaside)
+{
+    Lookaside->TotalAllocates += 1;
+    PVOID Entry = RtlInterlockedPopEntrySList(&Lookaside->ListHead);
+    if (Entry == NULL) {
+	Lookaside->AllocateMisses += 1;
+	assert(Lookaside->Allocate != NULL);
+	Entry = Lookaside->Allocate(Lookaside->Size, Lookaside->Tag);
+    }
+    return Entry;
+}
+
+FORCEINLINE USHORT ExQueryDepthSList(IN PSLIST_HEADER SListHead)
+{
+    return (USHORT)SListHead->Depth;
+}
+
+FORCEINLINE VOID ExFreeToLookasideList(IN OUT PLOOKASIDE_LIST Lookaside,
+				       IN PVOID Entry)
+{
+    Lookaside->TotalFrees++;
+    if (ExQueryDepthSList(&Lookaside->ListHead) >= Lookaside->Depth) {
+	Lookaside->FreeMisses++;
+	Lookaside->Free(Entry);
+    } else {
+	RtlInterlockedPushEntrySList(&Lookaside->ListHead, (PSLIST_ENTRY)Entry);
+    }
+}

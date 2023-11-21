@@ -15,7 +15,6 @@
 BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 			    IN BOOLEAN Force)
 {
-    KIRQL OldIrql;
     ULONG UnCleanCount;
     PVPB Vpb;
     BOOLEAN Delete;
@@ -39,9 +38,6 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
      * the ReactOS' Fatfs, this number is equal to "2".
      */
     UnCleanCount = 2;
-
-    /* Lock VPB */
-    IoAcquireVpbSpinLock(&OldIrql);
 
     /* Reference it and check if a create is being done */
     Vpb = DeviceExt->IoVPB;
@@ -98,9 +94,6 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	ClearFlag(Vpb->Flags, VPB_MOUNTED | VPB_LOCKED);
     }
 
-    /* Release lock and return status */
-    IoReleaseVpbSpinLock(OldIrql);
-
     /* If we were to delete, delete volume */
     if (Delete) {
 	LARGE_INTEGER Zero = { { 0, 0 }
@@ -113,26 +106,24 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	/* Invalidate and close the internal opened meta-files */
 	if (DeviceExt->RootFcb) {
 	    Fcb = DeviceExt->RootFcb;
-	    CcUninitializeCacheMap(Fcb->FileObject, &Zero, NULL);
+	    CcUninitializeCacheMap(Fcb->FileObject, &Zero);
 	    ObDereferenceObject(Fcb->FileObject);
 	    DeviceExt->RootFcb = NULL;
 	    FatDestroyFCB(Fcb);
 	}
 	if (DeviceExt->VolumeFcb) {
 	    Fcb = DeviceExt->VolumeFcb;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-	    CcUninitializeCacheMap(Fcb->FileObject, &Zero, NULL);
+	    CcUninitializeCacheMap(Fcb->FileObject, &Zero);
 	    ObDereferenceObject(Fcb->FileObject);
-#endif
 	    DeviceExt->VolumeFcb = NULL;
 	    FatDestroyFCB(Fcb);
 	}
-	if (DeviceExt->FATFileObject) {
-	    Fcb = DeviceExt->FATFileObject->FsContext;
-	    CcUninitializeCacheMap(DeviceExt->FATFileObject, &Zero, NULL);
-	    DeviceExt->FATFileObject->FsContext = NULL;
-	    ObDereferenceObject(DeviceExt->FATFileObject);
-	    DeviceExt->FATFileObject = NULL;
+	if (DeviceExt->FatFileObject) {
+	    Fcb = DeviceExt->FatFileObject->FsContext;
+	    CcUninitializeCacheMap(DeviceExt->FatFileObject, &Zero);
+	    DeviceExt->FatFileObject->FsContext = NULL;
+	    ObDereferenceObject(DeviceExt->FatFileObject);
+	    DeviceExt->FatFileObject = NULL;
 	    FatDestroyFCB(Fcb);
 	}
 
@@ -155,9 +146,6 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 
 	/* Remove the volume from the list */
 	RemoveEntryList(&DeviceExt->VolumeListEntry);
-
-	/* Uninitialize the notify synchronization object */
-	FsRtlNotifyUninitializeSync(&DeviceExt->NotifySync);
 
 	/* Release resources */
 	ExFreePoolWithTag(DeviceExt->Statistics, TAG_STATS);
@@ -196,7 +184,7 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 
     /* Nothing to do for volumes or for the FAT file object */
     if (BooleanFlagOn(pFcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
-	return;
+	return STATUS_SUCCESS;
     }
 
     /* If cache is still initialized, release it.
@@ -207,7 +195,7 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 	tmpFileObject = pFcb->FileObject;
 	if (tmpFileObject != NULL) {
 	    pFcb->FileObject = NULL;
-	    CcUninitializeCacheMap(tmpFileObject, NULL, NULL);
+	    CcUninitializeCacheMap(tmpFileObject, NULL);
 	    ClearFlag(pFcb->Flags, FCB_CACHE_INITIALIZED);
 	    ObDereferenceObject(tmpFileObject);
 	}

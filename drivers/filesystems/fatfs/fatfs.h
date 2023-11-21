@@ -3,179 +3,193 @@
 #include <ntifs.h>
 #include <ntdddisk.h>
 
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+
 #define ENABLE_SWAPOUT
 
-/* FIXME: because volume is not cached, we have to perform direct IOs
- * The day this is fixed, just comment out that line, and check
- * it still works (and delete old code ;-)) */
-#define VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-
+#define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
 #define ROUND_DOWN_32(n, align)	(((ULONG)(n)) & ~((align)-1L))
 #define ROUND_UP_32(n, align)	ROUND_DOWN_32(((ULONG)(n))+(align)-1, (align))
 #define ROUND_DOWN_64(n, align)	(((ULONGLONG)(n)) & ~((align) - 1LL))
 #define ROUND_UP_64(n, align)	ROUND_DOWN_64(((ULONGLONG)(n))+(align)-1LL, (align))
 
-#include <pshpack1.h>
-struct _BootSector {
-    unsigned char magic0, res0, magic1;
-    unsigned char OEMName[8];
-    unsigned short BytesPerSector;
-    unsigned char SectorsPerCluster;
-    unsigned short ReservedSectors;
-    unsigned char FATCount;
-    unsigned short RootEntries, Sectors;
-    unsigned char Media;
-    unsigned short FATSectors, SectorsPerTrack, Heads;
-    unsigned long HiddenSectors, SectorsHuge;
-    unsigned char Drive, Res1, Sig;
-    unsigned long VolumeID;
-    unsigned char VolumeLabel[11], SysType[8];
-    unsigned char Res2[448];
-    unsigned short Signatur1;
-};
+/* DOS File Attributes */
+#define _A_NORMAL 0x00
+#define _A_RDONLY 0x01
+#define _A_HIDDEN 0x02
+#define _A_SYSTEM 0x04
+#define _A_VOLID  0x08
+#define _A_SUBDIR 0x10
+#define _A_ARCH   0x20
 
-struct _BootSector32 {
-    unsigned char magic0, res0, magic1;	// 0
-    unsigned char OEMName[8];	// 3
-    unsigned short BytesPerSector;	// 11
-    unsigned char SectorsPerCluster;	// 13
-    unsigned short ReservedSectors;	// 14
-    unsigned char FATCount;	// 16
-    unsigned short RootEntries, Sectors;	// 17
-    unsigned char Media;	// 21
-    unsigned short FATSectors, SectorsPerTrack, Heads;	// 22
-    unsigned long HiddenSectors, SectorsHuge;	// 28
-    unsigned long FATSectors32;	// 36
-    unsigned short ExtFlag;	// 40
-    unsigned short FSVersion;	// 42
-    unsigned long RootCluster;	// 44
-    unsigned short FSInfoSector;	// 48
-    unsigned short BootBackup;	// 50
-    unsigned char Res3[12];	// 52
-    unsigned char Drive;	// 64
-    unsigned char Res4;		// 65
-    unsigned char ExtBootSignature;	// 66
-    unsigned long VolumeID;	// 67
-    unsigned char VolumeLabel[11], SysType[8];	// 71
-    unsigned char Res2[420];	// 90
-    unsigned short Signature1;	// 510
-};
+#include <pshpack1.h>
+typedef struct _BOOT_SECTOR {
+    UCHAR  Magic0, Res0, Magic1;
+    UCHAR  OEMName[8];
+    USHORT BytesPerSector;
+    UCHAR  SectorsPerCluster;
+    USHORT ReservedSectors;
+    UCHAR  FATCount;
+    USHORT RootEntries;
+    USHORT Sectors;
+    UCHAR  Media;
+    USHORT FatSectors;
+    USHORT SectorsPerTrack;
+    USHORT Heads;
+    ULONG  HiddenSectors;
+    ULONG  SectorsHuge;
+    UCHAR  Drive, Res1, Sig;
+    ULONG  VolumeID;
+    UCHAR  VolumeLabel[11];
+    UCHAR  SysType[8];
+    UCHAR  Res2[448];
+    USHORT Signature1;
+} BOOT_SECTOR, *PBOOT_SECTOR;
+
+typedef struct _BOOT_SECTOR_FAT32 {
+    UCHAR  Magic0, Res0, Magic1;	       // 0
+    UCHAR  OEMName[8];			       // 3
+    USHORT BytesPerSector;		       // 11
+    UCHAR  SectorsPerCluster;		       // 13
+    USHORT ReservedSectors;		       // 14
+    UCHAR  FATCount;			       // 16
+    USHORT RootEntries;			       // 17
+    USHORT Sectors;			       // 19
+    UCHAR  Media;			       // 21
+    USHORT FatSectors;			       // 22
+    USHORT SectorsPerTrack;		       // 24
+    USHORT Heads;			       // 26
+    ULONG  HiddenSectors;		       // 28
+    ULONG  SectorsHuge;			       // 32
+    ULONG  FatSectors32;		       // 36
+    USHORT ExtFlag;			       // 40
+    USHORT FSVersion;			       // 42
+    ULONG  RootCluster;			       // 44
+    USHORT FSInfoSector;		       // 48
+    USHORT BootBackup;			       // 50
+    UCHAR  Res3[12];			       // 52
+    UCHAR  Drive;			       // 64
+    UCHAR  Res4;			       // 65
+    UCHAR  ExtBootSignature;		       // 66
+    ULONG  VolumeID;			       // 67
+    UCHAR  VolumeLabel[11];		       // 71
+    UCHAR  SysType[8];			       // 82
+    UCHAR  Res2[420];			       // 90
+    USHORT Signature1;			       // 510
+} BOOT_SECTOR_FAT32, *PBOOT_SECTOR_FAT32;
 
 #define FAT_DIRTY_BIT 0x01
 
-struct _BootSectorFatX {
-    unsigned char SysType[4];	// 0
-    unsigned long VolumeID;	// 4
-    unsigned long SectorsPerCluster;	// 8
-    unsigned short FATCount;	// 12
-    unsigned long Unknown;	// 14
-    unsigned char Unused[4078];	// 18
-};
+typedef struct _BOOT_SECTOR_FATX {
+    UCHAR  SysType[4];		// 0
+    ULONG  VolumeID;		// 4
+    ULONG  SectorsPerCluster;	// 8
+    USHORT FATCount;		// 12
+    ULONG  Unknown;		// 14
+    UCHAR  Unused[4078];	// 18
+} BOOT_SECTOR_FATX, *PBOOT_SECTOR_FATX;
 
-struct _FsInfoSector {
-    unsigned long ExtBootSignature2;	// 0
-    unsigned char Res6[480];	// 4
-    unsigned long FSINFOSignature;	// 484
-    unsigned long FreeCluster;	// 488
-    unsigned long NextCluster;	// 492
-    unsigned char Res7[12];	// 496
-    unsigned long Signatur2;	// 508
-};
+typedef struct _FSINFO_SECTOR {
+    ULONG ExtBootSignature2;	// 0
+    UCHAR Res6[480];		// 4
+    ULONG FSINFOSignature;	// 484
+    ULONG FreeCluster;		// 488
+    ULONG NextCluster;		// 492
+    UCHAR Res7[12];		// 496
+    ULONG Signatur2;		// 508
+} FSINFO_SECTOR, *PFSINFO_SECTOR;
 
-typedef struct _BootSector BootSector;
-
-struct _FATDirEntry {
+typedef struct _FAT_DIR_ENTRY {
     union {
 	struct {
-	    unsigned char Filename[8], Ext[3];
+	    UCHAR Filename[8], Ext[3];
 	};
-	unsigned char ShortName[11];
+	UCHAR ShortName[11];
     };
-    unsigned char Attrib;
-    unsigned char lCase;
-    unsigned char CreationTimeMs;
-    unsigned short CreationTime, CreationDate, AccessDate;
+    UCHAR Attrib;
+    UCHAR Case;
+    UCHAR CreationTimeMs;
+    USHORT CreationTime, CreationDate, AccessDate;
     union {
-	unsigned short FirstClusterHigh;	// FAT32
-	unsigned short ExtendedAttributes;	// FAT12/FAT16
+	USHORT FirstClusterHigh;   // FAT32
+	USHORT ExtendedAttributes; // FAT12/FAT16
     };
-    unsigned short UpdateTime;	//time create/update
-    unsigned short UpdateDate;	//date create/update
-    unsigned short FirstCluster;
-    unsigned long FileSize;
-};
+    USHORT UpdateTime;		// Time Create/Update
+    USHORT UpdateDate;		// Date Create/Update
+    USHORT FirstCluster;
+    ULONG FileSize;
+} FAT_DIR_ENTRY, *PFAT_DIR_ENTRY;
+
+typedef struct _FATX_DIR_ENTRY {
+    UCHAR FilenameLength;	// 0
+    UCHAR Attrib;	// 1
+    UCHAR Filename[42];	// 2
+    ULONG FirstCluster;	// 44
+    ULONG FileSize;	// 48
+    USHORT UpdateTime;	// 52
+    USHORT UpdateDate;	// 54
+    USHORT CreationTime;	// 56
+    USHORT CreationDate;	// 58
+    USHORT AccessTime;	// 60
+    USHORT AccessDate;	// 62
+} FATX_DIR_ENTRY, *PFATX_DIR_ENTRY;
+
+typedef union _DIR_ENTRY {
+    FAT_DIR_ENTRY Fat;
+    FATX_DIR_ENTRY FatX;
+} DIR_ENTRY, *PDIR_ENTRY;
 
 #define FAT_EAFILE  "EA DATA. SF"
 
-typedef struct _EAFileHeader FAT_EA_FILE_HEADER, *PFAT_EA_FILE_HEADER;
+typedef struct _FAT_EA_FILE_HEADER {
+    USHORT Signature;	// ED
+    USHORT Unknown[15];
+    USHORT EASetTable[240];
+} FAT_EA_FILE_HEADER, *PFAT_EA_FILE_HEADER;
 
-struct _EAFileHeader {
-    unsigned short Signature;	// ED
-    unsigned short Unknown[15];
-    unsigned short EASetTable[240];
-};
-
-typedef struct _EASetHeader FAT_EA_SET_HEADER, *PFAT_EA_SET_HEADER;
-
-struct _EASetHeader {
-    unsigned short Signature;	// EA
-    unsigned short Offset;	// relative offset, same value as in the EASetTable
-    unsigned short Unknown1[2];
-    char TargetFileName[12];
-    unsigned short Unknown2[3];
-    unsigned int EALength;
+typedef struct _FAT_EA_SET_HEADER {
+    USHORT Signature;	// EA
+    USHORT Offset;	// Relative offset, same value as in the EASetTable
+    USHORT Unknown1[2];
+    CHAR   TargetFileName[12];
+    USHORT Unknown2[3];
+    UINT   EALength;
     // EA Header
-};
+} FAT_EA_SET_HEADER, *PFAT_EA_SET_HEADER;
 
-typedef struct _EAHeader FAT_EA_HEADER, *PFAT_EA_HEADER;
-
-struct _EAHeader {
-    unsigned char Unknown;
-    unsigned char EANameLength;
-    unsigned short EAValueLength;
+typedef struct _FAT_EA_HEADER {
+    UCHAR  Unknown;
+    UCHAR  EANameLength;
+    USHORT EAValueLength;
     // Name Data
     // Value Data
-};
+} FAT_EA_HEADER, *PFAT_EA_HEADER;
 
-typedef struct _FATDirEntry FAT_DIR_ENTRY, *PFAT_DIR_ENTRY;
-
-struct _FATXDirEntry {
-    unsigned char FilenameLength;	// 0
-    unsigned char Attrib;	// 1
-    unsigned char Filename[42];	// 2
-    unsigned long FirstCluster;	// 44
-    unsigned long FileSize;	// 48
-    unsigned short UpdateTime;	// 52
-    unsigned short UpdateDate;	// 54
-    unsigned short CreationTime;	// 56
-    unsigned short CreationDate;	// 58
-    unsigned short AccessTime;	// 60
-    unsigned short AccessDate;	// 62
-};
-
-struct _slot {
-    unsigned char id;		// sequence number for slot
-    WCHAR name0_4[5];		// first 5 characters in name
-    unsigned char attr;		// attribute byte
-    unsigned char reserved;	// always 0
-    unsigned char alias_checksum;	// checksum for 8.3 alias
-    WCHAR name5_10[6];		// 6 more characters in name
-    unsigned char start[2];	// starting cluster number
-    WCHAR name11_12[2];		// last 2 characters in name
-};
-
-typedef struct _slot slot;
+typedef struct _SLOT {
+    UCHAR Id;			// Sequence number for slot
+    WCHAR Name0_4[5];		// First five characters in name
+    UCHAR Attr;			// Attribute byte
+    UCHAR Reserved;		// Always zero
+    UCHAR AliasChecksum;	// Checksum for 8.3 alias
+    WCHAR Name5_10[6];		// Six more characters in name
+    UCHAR Start[2];		// Starting cluster number
+    WCHAR Name11_12[2];		// Last two characters in name
+} SLOT, *PSLOT;
 
 #include <poppack.h>
 
-#define FAT_CASE_LOWER_BASE	8	// base is lower case
-#define FAT_CASE_LOWER_EXT 	16	// extension is lower case
+#define FAT_CASE_LOWER_BASE	8	// Base is lower case
+#define FAT_CASE_LOWER_EXT 	16	// Extension is lower case
 
-#define LONGNAME_MAX_LENGTH 	256	// max length for a long filename
+#define LONGNAME_MAX_LENGTH 	256	// Max length for a long filename
 
-#define ENTRY_DELETED(IsFatX, DirEntry) (IsFatX ? FATX_ENTRY_DELETED(&((DirEntry)->FatX)) : FAT_ENTRY_DELETED(&((DirEntry)->Fat)))
-#define ENTRY_VOLUME(IsFatX, DirEntry) (IsFatX ? FATX_ENTRY_VOLUME(&((DirEntry)->FatX)) : FAT_ENTRY_VOLUME(&((DirEntry)->Fat)))
-#define ENTRY_END(IsFatX, DirEntry) (IsFatX ? FATX_ENTRY_END(&((DirEntry)->FatX)) : FAT_ENTRY_END(&((DirEntry)->Fat)))
+#define ENTRY_DELETED(IsFatX, DirEntry)					\
+    (IsFatX ? FATX_ENTRY_DELETED(&((DirEntry)->FatX)) : FAT_ENTRY_DELETED(&((DirEntry)->Fat)))
+#define ENTRY_VOLUME(IsFatX, DirEntry)					\
+    (IsFatX ? FATX_ENTRY_VOLUME(&((DirEntry)->FatX)) : FAT_ENTRY_VOLUME(&((DirEntry)->Fat)))
+#define ENTRY_END(IsFatX, DirEntry)					\
+    (IsFatX ? FATX_ENTRY_END(&((DirEntry)->FatX)) : FAT_ENTRY_END(&((DirEntry)->Fat)))
 
 #define FAT_ENTRY_DELETED(DirEntry)  ((DirEntry)->Filename[0] == 0xe5)
 #define FAT_ENTRY_END(DirEntry)      ((DirEntry)->Filename[0] == 0)
@@ -187,17 +201,8 @@ typedef struct _slot slot;
 #define FATX_ENTRY_LONG(DirEntry)    (FALSE)
 #define FATX_ENTRY_VOLUME(DirEntry)  (((DirEntry)->Attrib & 0x1f) == 0x08)
 
-#define FAT_ENTRIES_PER_PAGE   (PAGE_SIZE / sizeof (FAT_DIR_ENTRY))
-#define FATX_ENTRIES_PER_PAGE  (PAGE_SIZE / sizeof (FATX_DIR_ENTRY))
-
-typedef struct _FATXDirEntry FATX_DIR_ENTRY, *PFATX_DIR_ENTRY;
-
-union _DIR_ENTRY {
-    FAT_DIR_ENTRY Fat;
-    FATX_DIR_ENTRY FatX;
-};
-
-typedef union _DIR_ENTRY DIR_ENTRY, *PDIR_ENTRY;
+#define FAT_ENTRIES_PER_PAGE   (PAGE_SIZE / sizeof(FAT_DIR_ENTRY))
+#define FATX_ENTRIES_PER_PAGE  (PAGE_SIZE / sizeof(FATX_DIR_ENTRY))
 
 #define BLOCKSIZE 512
 
@@ -216,24 +221,24 @@ typedef union _DIR_ENTRY DIR_ENTRY, *PDIR_ENTRY;
 /* VCB condition state */
 #define VCB_GOOD                0x0010	/* If not set, the VCB is improper for usage */
 
-typedef struct {
-    ULONG VolumeID;
-    CHAR VolumeLabel[11];
-    ULONG FATStart;
-    ULONG FATCount;
-    ULONG FATSectors;
-    ULONG RootDirectorySectors;
-    ULONG RootStart;
-    ULONG DataStart;
-    ULONG RootCluster;
-    ULONG SectorsPerCluster;
-    ULONG BytesPerSector;
-    ULONG BytesPerCluster;
-    ULONG NumberOfClusters;
-    ULONG FatType;
-    ULONG Sectors;
+typedef struct _FATINFO {
+    ULONG   VolumeID;
+    CHAR    VolumeLabel[11];
+    ULONG   FATStart;
+    ULONG   FATCount;
+    ULONG   FatSectors;
+    ULONG   RootDirectorySectors;
+    ULONG   RootStart;
+    ULONG   DataStart;
+    ULONG   RootCluster;
+    ULONG   SectorsPerCluster;
+    ULONG   BytesPerSector;
+    ULONG   BytesPerCluster;
+    ULONG   NumberOfClusters;
+    ULONG   FatType;
+    ULONG   Sectors;
     BOOLEAN FixedMedia;
-    ULONG FSInfoSector;
+    ULONG   FSInfoSector;
 } FATINFO, *PFATINFO;
 
 struct _FATFCB;
@@ -245,7 +250,7 @@ typedef struct _HASHENTRY {
     ULONG Hash;
     struct _FATFCB *Self;
     struct _HASHENTRY *Next;
-} HASHENTRY;
+} HASHENTRY, *PHASHENTRY;
 
 typedef struct _DEVICE_EXTENSION *PDEVICE_EXTENSION;
 
@@ -286,11 +291,11 @@ typedef struct _STATISTICS {
 typedef struct _DEVICE_EXTENSION {
     LIST_ENTRY FcbListHead;
     ULONG HashTableSize;
-    struct _HASHENTRY **FcbHashTable;
+    PHASHENTRY *FcbHashTable;
 
     PDEVICE_OBJECT VolumeDevice;
     PDEVICE_OBJECT StorageDevice;
-    PFILE_OBJECT FATFileObject;
+    PFILE_OBJECT FatFileObject;
     FATINFO FatInfo;
     ULONG LastAvailableCluster;
     ULONG AvailableClusters;
@@ -310,10 +315,6 @@ typedef struct _DEVICE_EXTENSION {
     ULONG BaseDateYear;
 
     LIST_ENTRY VolumeListEntry;
-
-    /* Notifications. TODO: Remove this and move to server side. */
-    LIST_ENTRY NotifyList;
-    PNOTIFY_SYNC NotifySync;
 
     /* Incremented on IRP_MJ_CREATE, decremented on IRP_MJ_CLOSE */
     ULONG OpenHandleCount;
@@ -365,7 +366,7 @@ FORCEINLINE NTSTATUS FatGetNextDirEntry(PDEVICE_EXTENSION DeviceExt,
 
 #define FAT_BREAK_ON_CORRUPTION 1
 
-typedef struct {
+typedef struct _FAT_GLOBAL_DATA {
     PDRIVER_OBJECT DriverObject;
     PDEVICE_OBJECT DeviceObject;
     ULONG Flags;
@@ -374,7 +375,6 @@ typedef struct {
     LOOKASIDE_LIST FcbLookasideList;
     LOOKASIDE_LIST CcbLookasideList;
     LOOKASIDE_LIST IrpContextLookasideList;
-    CACHE_MANAGER_CALLBACKS CacheMgrCallbacks;
 } FAT_GLOBAL_DATA, *PFAT_GLOBAL_DATA;
 
 extern PFAT_GLOBAL_DATA FatGlobalData;
@@ -394,7 +394,7 @@ extern PFAT_GLOBAL_DATA FatGlobalData;
 
 typedef struct _FATFCB {
     /* Required common FCB header */
-    FSRTL_COMMON_FCB_HEADER RFCB;
+    FSRTL_COMMON_FCB_HEADER Base;
 
     /* Directory entry for this file or directory */
     DIR_ENTRY Entry;
@@ -472,10 +472,8 @@ typedef struct _FATFCB {
 
 typedef struct _FATCCB {
     LARGE_INTEGER CurrentByteOffset;
-    ULONG Flags;
-    /* for DirectoryControl */
-    ULONG Entry;
-    /* for DirectoryControl */
+    ULONG Flags;		/* For DirectoryControl */
+    ULONG Entry;		/* For DirectoryControl */
     UNICODE_STRING SearchPattern;
 } FATCCB, *PFATCCB;
 
@@ -506,7 +504,7 @@ typedef struct __DOSDATE {
 #define IRPCONTEXT_PENDINGRETURNED  0x0001
 #define IRPCONTEXT_DEFERRED_WRITE   0x0002
 
-typedef struct {
+typedef struct _FAT_IRP_CONTEXT {
     PIRP Irp;
     PDEVICE_OBJECT DeviceObject;
     PDEVICE_EXTENSION DeviceExt;
@@ -569,44 +567,22 @@ FORCEINLINE VOID FatReportChange(IN PDEVICE_EXTENSION DeviceExt,
 				 IN ULONG FilterMatch,
 				 IN ULONG Action)
 {
+#if 0
+    /* TODO: We need to either handle file notifications entirely on server-side,
+     * or have the client report the file changes to the server at the same time
+     * of IRP reply, so to avoid an extra trip to the server. */
     FsRtlNotifyFullReportChange(DeviceExt->NotifySync,
 				&(DeviceExt->NotifyList),
 				(PSTRING) & Fcb->PathNameU,
 				Fcb->PathNameU.Length - Fcb->LongNameU.Length,
 				NULL, NULL, FilterMatch, Action, NULL);
+#endif
 }
 
 #define FatAddToStat(Vcb, Stat, Inc) {					\
-	PSTATISTICS Stats = &(Vcb)->Statistics[KeGetCurrentProcessorNumber() % FatGlobalData->NumberProcessors]; \
+	PSTATISTICS Stats = &(Vcb)->Statistics[NtGetCurrentProcessorNumber() % FatGlobalData->NumberProcessors]; \
 	Stats->Stat += Inc;						\
     }
-
-/* blockdev.c */
-NTSTATUS FatReadDisk(IN PDEVICE_OBJECT pDeviceObject,
-		     IN PLARGE_INTEGER ReadOffset,
-		     IN ULONG ReadLength,
-		     IN PUCHAR Buffer,
-		     IN BOOLEAN Override);
-NTSTATUS FatReadDiskPartial(IN PFAT_IRP_CONTEXT IrpContext,
-			    IN PLARGE_INTEGER ReadOffset,
-			    IN ULONG ReadLength,
-			    IN ULONG BufferOffset,
-			    IN BOOLEAN Wait);
-NTSTATUS FatWriteDisk(IN PDEVICE_OBJECT pDeviceObject,
-		      IN PLARGE_INTEGER WriteOffset,
-		      IN ULONG WriteLength,
-		      IN OUT PUCHAR Buffer, IN BOOLEAN Override);
-NTSTATUS FatWriteDiskPartial(IN PFAT_IRP_CONTEXT IrpContext,
-			     IN PLARGE_INTEGER WriteOffset,
-			     IN ULONG WriteLength,
-			     IN ULONG BufferOffset, IN BOOLEAN Wait);
-NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
-				 IN ULONG CtlCode,
-				 IN PVOID InputBuffer,
-				 IN ULONG InputBufferSize,
-				 IN OUT PVOID OutputBuffer,
-				 IN OUT PULONG pOutputBufferSize,
-				 IN BOOLEAN Override);
 
 /* cleanup.c */
 NTSTATUS FatCleanup(PFAT_IRP_CONTEXT IrpContext);
@@ -781,6 +757,13 @@ NTSTATUS FatFlush(PFAT_IRP_CONTEXT IrpContext);
 NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb);
 
 /* fsctl.c */
+NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
+				 IN ULONG CtlCode,
+				 IN PVOID InputBuffer,
+				 IN ULONG InputBufferSize,
+				 IN OUT PVOID OutputBuffer,
+				 IN OUT PULONG pOutputBufferSize,
+				 IN BOOLEAN Override);
 NTSTATUS FatFileSystemControl(PFAT_IRP_CONTEXT IrpContext);
 
 /* pnp.c */

@@ -48,9 +48,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	}
 
 	/* Notify about the cleanup */
-	FsRtlNotifyCleanup(IrpContext->DeviceExt->NotifySync,
-			   &(IrpContext->DeviceExt->NotifyList),
-			   FileObject->FsContext2);
+	FsRtlNotifyCleanup(FileObject);
 
 	pFcb->OpenHandleCount--;
 	DeviceExt->OpenHandleCount--;
@@ -69,20 +67,20 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 		tmpFileObject = pFcb->FileObject;
 		if (tmpFileObject != NULL) {
 		    pFcb->FileObject = NULL;
-		    CcUninitializeCacheMap(tmpFileObject, NULL, NULL);
+		    CcUninitializeCacheMap(tmpFileObject, NULL);
 		    ClearFlag(pFcb->Flags, FCB_CACHE_INITIALIZED);
 		    ObDereferenceObject(tmpFileObject);
 		}
 
-		pFcb->RFCB.ValidDataLength.QuadPart = 0;
-		pFcb->RFCB.FileSize.QuadPart = 0;
-		pFcb->RFCB.AllocationSize.QuadPart = 0;
+		pFcb->Base.ValidDataLength.QuadPart = 0;
+		pFcb->Base.FileSize.QuadPart = 0;
+		pFcb->Base.AllocationSize.QuadPart = 0;
 	    }
 	}
 
 	/* Uninitialize the cache (should be done even if caching
 	 * was never initialized) */
-	CcUninitializeCacheMap(FileObject, &pFcb->RFCB.FileSize, NULL);
+	CcUninitializeCacheMap(FileObject, &pFcb->Base.FileSize);
 
 	if (BooleanFlagOn(pFcb->Flags, FCB_DELETE_PENDING) &&
 	    pFcb->OpenHandleCount == 0) {
@@ -104,7 +102,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 #ifdef KDBG
 	pFcb->Flags |= FCB_CLEANED_UP;
 #endif
-
+    }
 
 #ifdef ENABLE_SWAPOUT
     if (IsVolume && BooleanFlagOn(DeviceExt->Flags, VCB_DISMOUNT_PENDING)) {

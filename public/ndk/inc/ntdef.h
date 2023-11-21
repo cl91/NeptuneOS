@@ -42,6 +42,14 @@
 #define FORCEINLINE		static inline __attribute__((always_inline))
 #endif
 
+#if defined(_AMD64_) || defined(_X86_)
+#define SYSTEM_CACHE_ALIGNMENT_SIZE 64
+#else
+#define SYSTEM_CACHE_ALIGNMENT_SIZE 128
+#endif
+
+#define DECLSPEC_CACHEALIGN DECLSPEC_ALIGN(SYSTEM_CACHE_ALIGNMENT_SIZE)
+
 #define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg " Use " #repl ".", #repl)))
 
 #if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_)

@@ -12,13 +12,13 @@
 
 /* FUNCTIONS *****************************************************************/
 
-VOID Fat8Dot3ToString(PFAT_DIR_ENTRY pEntry, PUNICODE_STRING NameU)
+VOID Fat8Dot3ToString(PFAT_DIR_ENTRY Entry, PUNICODE_STRING NameU)
 {
     OEM_STRING StringA;
     USHORT Length;
     CHAR cString[12];
 
-    RtlCopyMemory(cString, pEntry->ShortName, 11);
+    RtlCopyMemory(cString, Entry->ShortName, 11);
     cString[11] = 0;
     if (cString[0] == 0x05) {
 	cString[0] = 0xe5;
@@ -32,14 +32,14 @@ VOID Fat8Dot3ToString(PFAT_DIR_ENTRY pEntry, PUNICODE_STRING NameU)
 
     RtlOemStringToUnicodeString(NameU, &StringA, FALSE);
 
-    if (BooleanFlagOn(pEntry->lCase, FAT_CASE_LOWER_BASE)) {
+    if (BooleanFlagOn(Entry->Case, FAT_CASE_LOWER_BASE)) {
 	RtlDowncaseUnicodeString(NameU, NameU, FALSE);
     }
 
     if (cString[8] != ' ') {
 	Length = NameU->Length;
 	NameU->Buffer += Length / sizeof(WCHAR);
-	if (!FAT_ENTRY_VOLUME(pEntry)) {
+	if (!FAT_ENTRY_VOLUME(Entry)) {
 	    Length += sizeof(WCHAR);
 	    NameU->Buffer[0] = L'.';
 	    NameU->Buffer++;
@@ -53,7 +53,7 @@ VOID Fat8Dot3ToString(PFAT_DIR_ENTRY pEntry, PUNICODE_STRING NameU)
 	     StringA.Length++) ;
 	StringA.MaximumLength = StringA.Length;
 	RtlOemStringToUnicodeString(NameU, &StringA, FALSE);
-	if (BooleanFlagOn(pEntry->lCase, FAT_CASE_LOWER_EXT)) {
+	if (BooleanFlagOn(Entry->Case, FAT_CASE_LOWER_EXT)) {
 	    RtlDowncaseUnicodeString(NameU, NameU, FALSE);
 	}
 	NameU->Buffer -= Length / sizeof(WCHAR);
@@ -79,7 +79,6 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
     NTSTATUS Status;
     PVOID Context = NULL;
     PVOID Page;
-    PFATFCB rcFcb;
     BOOLEAN Found;
     UNICODE_STRING PathNameU;
     UNICODE_STRING FileToFindUpcase;
@@ -91,8 +90,7 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
     DPRINT("FindFile: Path %wZ\n", &Parent->PathNameU);
 
     PathNameBufferLength = LONGNAME_MAX_LENGTH * sizeof(WCHAR);
-    PathNameBuffer = ExAllocatePoolWithTag(NonPagedPool,
-					   PathNameBufferLength + sizeof(WCHAR),
+    PathNameBuffer = ExAllocatePoolWithTag(PathNameBufferLength + sizeof(WCHAR),
 					   TAG_NAME);
     if (!PathNameBuffer) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -116,18 +114,18 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 	}
 	RtlAppendUnicodeStringToString(&PathNameU, FileToFindU);
 	PathNameU.Buffer[PathNameU.Length / sizeof(WCHAR)] = 0;
-	rcFcb = FatGrabFCBFromTable(DeviceExt, &PathNameU);
-	if (rcFcb) {
-	    ULONG startIndex = rcFcb->startIndex;
+	PFATFCB Fcb = FatGrabFCBFromTable(DeviceExt, &PathNameU);
+	if (Fcb) {
+	    ULONG StartIndex = Fcb->StartIndex;
 	    if (IsFatX && !FatFCBIsRoot(Parent)) {
-		startIndex += 2;
+		StartIndex += 2;
 	    }
-	    if (startIndex >= DirContext->DirIndex) {
-		RtlCopyUnicodeString(&DirContext->LongNameU, &rcFcb->LongNameU);
-		RtlCopyUnicodeString(&DirContext->ShortNameU, &rcFcb->ShortNameU);
-		RtlCopyMemory(&DirContext->DirEntry, &rcFcb->entry, sizeof(DIR_ENTRY));
-		DirContext->StartIndex = rcFcb->startIndex;
-		DirContext->DirIndex = rcFcb->dirIndex;
+	    if (StartIndex >= DirContext->DirIndex) {
+		RtlCopyUnicodeString(&DirContext->LongNameU, &Fcb->LongNameU);
+		RtlCopyUnicodeString(&DirContext->ShortNameU, &Fcb->ShortNameU);
+		RtlCopyMemory(&DirContext->DirEntry, &Fcb->Entry, sizeof(DIR_ENTRY));
+		DirContext->StartIndex = Fcb->StartIndex;
+		DirContext->DirIndex = Fcb->DirIndex;
 		DPRINT("FindFile: new Name %wZ, DirIndex %u (%u)\n",
 		       &DirContext->LongNameU, DirContext->DirIndex,
 		       DirContext->StartIndex);
@@ -136,7 +134,7 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 		DPRINT("FCB not found for %wZ\n", &PathNameU);
 		Status = STATUS_UNSUCCESSFUL;
 	    }
-	    FatReleaseFCB(DeviceExt, rcFcb);
+	    FatReleaseFCB(DeviceExt, Fcb);
 	    ExFreePoolWithTag(PathNameBuffer, TAG_NAME);
 	    return Status;
 	}
@@ -194,11 +192,11 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 		RtlAppendUnicodeStringToString(&PathNameU,
 					       &DirContext->LongNameU);
 		PathNameU.Buffer[PathNameU.Length / sizeof(WCHAR)] = 0;
-		rcFcb = FatGrabFCBFromTable(DeviceExt, &PathNameU);
-		if (rcFcb != NULL) {
-		    RtlCopyMemory(&DirContext->DirEntry, &rcFcb->entry,
+		PFATFCB Fcb = FatGrabFCBFromTable(DeviceExt, &PathNameU);
+		if (Fcb != NULL) {
+		    RtlCopyMemory(&DirContext->DirEntry, &Fcb->Entry,
 				  sizeof(DIR_ENTRY));
-		    FatReleaseFCB(DeviceExt, rcFcb);
+		    FatReleaseFCB(DeviceExt, Fcb);
 		}
 	    }
 	    DPRINT("%u\n", DirContext->LongNameU.Length);
@@ -252,7 +250,7 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 					 IOCTL_DISK_CHECK_VERIFY,
 					 NULL, 0, NULL, 0, FALSE);
 	if (!NT_SUCCESS(Status)) {
-	    DPRINT("Status %lx\n", Status);
+	    DPRINT("Status %x\n", Status);
 	    *ParentFcb = NULL;
 	    return Status;
 	}
@@ -324,7 +322,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     NTSTATUS Status = STATUS_SUCCESS;
     PDEVICE_EXTENSION DeviceExt;
     ULONG RequestedDisposition, RequestedOptions;
-    PFATFCB pFcb = NULL;
+    PFATFCB Fcb = NULL;
     PFATFCB ParentFcb = NULL;
     PFATCCB pCcb = NULL;
     PWCHAR c, last;
@@ -338,7 +336,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     /* Unpack the various parameters. */
     Stack = IoGetCurrentIrpStackLocation(Irp);
-    RequestedDisposition = ((Stack->Parameters.Create.Options >> 24) & 0xff);
+    RequestedDisposition = (Stack->Parameters.Create.Options >> 24) & 0xff;
     RequestedOptions = Stack->Parameters.Create.Options & FILE_VALID_OPTION_FLAGS;
     PagingFileCreate = BooleanFlagOn(Stack->Flags, SL_OPEN_PAGING_FILE);
     OpenTargetDir = BooleanFlagOn(Stack->Flags, SL_OPEN_TARGET_DIRECTORY);
@@ -395,28 +393,25 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	FatAddToStat(DeviceExt, Fat.CreateHits, 1);
 
-	pFcb = DeviceExt->VolumeFcb;
+	Fcb = DeviceExt->VolumeFcb;
 
-	if (pFcb->OpenHandleCount == 0) {
-	    IoSetShareAccess(Stack->Parameters.Create.SecurityContext->
-			     DesiredAccess,
+	if (Fcb->OpenHandleCount == 0) {
+	    IoSetShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 			     Stack->Parameters.Create.ShareAccess,
-			     FileObject, &pFcb->FCBShareAccess);
+			     FileObject, &Fcb->FCBShareAccess);
 	} else {
-	    Status = IoCheckShareAccess(Stack->Parameters.Create.
-					SecurityContext->DesiredAccess,
+	    Status = IoCheckShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 					Stack->Parameters.Create.ShareAccess,
-					FileObject, &pFcb->FCBShareAccess,
-					TRUE);
+					FileObject, &Fcb->FCBShareAccess, TRUE);
 	    if (!NT_SUCCESS(Status)) {
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		return Status;
 	    }
 	}
 
-	FatAttachFCBToFileObject(DeviceExt, pFcb, FileObject);
+	FatAttachFCBToFileObject(DeviceExt, Fcb, FileObject);
 	DeviceExt->OpenHandleCount++;
-	pFcb->OpenHandleCount++;
+	Fcb->OpenHandleCount++;
 	FatAddToStat(DeviceExt, Fat.SuccessfulCreates, 1);
 
 	Irp->IoStatus.Information = FILE_OPENED;
@@ -554,18 +549,18 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	}
 
 	if (NT_SUCCESS(Status)) {
-	    pFcb = FileObject->FsContext;
-	    ASSERT(pFcb == ParentFcb);
+	    Fcb = FileObject->FsContext;
+	    ASSERT(Fcb == ParentFcb);
 
-	    if (pFcb->OpenHandleCount == 0) {
+	    if (Fcb->OpenHandleCount == 0) {
 		IoSetShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 				 Stack->Parameters.Create.ShareAccess,
-				 FileObject, &pFcb->FCBShareAccess);
+				 FileObject, &Fcb->FCBShareAccess);
 	    } else {
 		Status = IoCheckShareAccess(
 		    Stack->Parameters.Create.SecurityContext->DesiredAccess,
 		    Stack->Parameters.Create.ShareAccess, FileObject,
-		    &pFcb->FCBShareAccess, FALSE);
+		    &Fcb->FCBShareAccess, FALSE);
 		if (!NT_SUCCESS(Status)) {
 		    FatCloseFile(DeviceExt, FileObject);
 		    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
@@ -578,7 +573,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		pCcb->Flags |= CCB_DELETE_ON_CLOSE;
 	    }
 
-	    pFcb->OpenHandleCount++;
+	    Fcb->OpenHandleCount++;
 	    DeviceExt->OpenHandleCount++;
 	} else if (ParentFcb != NULL) {
 	    FatReleaseFCB(DeviceExt, ParentFcb);
@@ -641,30 +636,29 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		return STATUS_OBJECT_NAME_INVALID;
 	    }
-	    Status = FatAddEntry(DeviceExt, &FileNameU, &pFcb, ParentFcb,
+	    Status = FatAddEntry(DeviceExt, &FileNameU, &Fcb, ParentFcb,
 				 RequestedOptions, Attributes, NULL);
 	    FatReleaseFCB(DeviceExt, ParentFcb);
 	    if (NT_SUCCESS(Status)) {
-		Status = FatAttachFCBToFileObject(DeviceExt, pFcb, FileObject);
+		Status = FatAttachFCBToFileObject(DeviceExt, Fcb, FileObject);
 		if (!NT_SUCCESS(Status)) {
-		    FatReleaseFCB(DeviceExt, pFcb);
+		    FatReleaseFCB(DeviceExt, Fcb);
 		    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		    return Status;
 		}
 
 		Irp->IoStatus.Information = FILE_CREATED;
-		FatSetAllocationSizeInformation(FileObject,
-						pFcb,
-						DeviceExt,
-						&Irp->Overlay.
-						AllocationSize);
+#if 0		/* TODO! */
+		FatSetAllocationSizeInformation(FileObject, Fcb, DeviceExt,
+						&Irp->Overlay.AllocationSize);
+#endif
 		FatSetExtendedAttributes(FileObject,
 					 Irp->AssociatedIrp.SystemBuffer,
 					 Stack->Parameters.Create.
 					 EaLength);
 
 		if (PagingFileCreate) {
-		    pFcb->Flags |= FCB_IS_PAGE_FILE;
+		    Fcb->Flags |= FCB_IS_PAGE_FILE;
 		    SetFlag(DeviceExt->Flags, VCB_IS_SYS_OR_HAS_PAGE);
 		}
 	    } else {
@@ -681,12 +675,12 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    FatReleaseFCB(DeviceExt, ParentFcb);
 	}
 
-	pFcb = FileObject->FsContext;
+	Fcb = FileObject->FsContext;
 
 	/* Otherwise fail if the caller wanted to create a new file  */
 	if (RequestedDisposition == FILE_CREATE) {
 	    FatCloseFile(DeviceExt, FileObject);
-	    if (TrailingBackslash && !FatFCBIsDirectory(pFcb)) {
+	    if (TrailingBackslash && !FatFCBIsDirectory(Fcb)) {
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		return STATUS_OBJECT_NAME_INVALID;
 	    }
@@ -695,12 +689,10 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    return STATUS_OBJECT_NAME_COLLISION;
 	}
 
-	if (pFcb->OpenHandleCount != 0) {
-	    Status = IoCheckShareAccess(Stack->Parameters.Create.
-					SecurityContext->DesiredAccess,
+	if (Fcb->OpenHandleCount != 0) {
+	    Status = IoCheckShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 					Stack->Parameters.Create.ShareAccess,
-					FileObject, &pFcb->FCBShareAccess,
-					FALSE);
+					FileObject, &Fcb->FCBShareAccess, FALSE);
 	    if (!NT_SUCCESS(Status)) {
 		FatCloseFile(DeviceExt, FileObject);
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
@@ -712,43 +704,39 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	 * Check the file has the requested attributes
 	 */
 	if (BooleanFlagOn(RequestedOptions, FILE_NON_DIRECTORY_FILE) &&
-	    FatFCBIsDirectory(pFcb)) {
+	    FatFCBIsDirectory(Fcb)) {
 	    FatCloseFile(DeviceExt, FileObject);
 	    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 	    return STATUS_FILE_IS_A_DIRECTORY;
 	}
 	if (BooleanFlagOn(RequestedOptions, FILE_DIRECTORY_FILE) &&
-	    !FatFCBIsDirectory(pFcb)) {
+	    !FatFCBIsDirectory(Fcb)) {
 	    FatCloseFile(DeviceExt, FileObject);
 	    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 	    return STATUS_NOT_A_DIRECTORY;
 	}
-	if (TrailingBackslash && !FatFCBIsDirectory(pFcb)) {
+	if (TrailingBackslash && !FatFCBIsDirectory(Fcb)) {
 	    FatCloseFile(DeviceExt, FileObject);
 	    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 	    return STATUS_OBJECT_NAME_INVALID;
 	}
-#ifndef USE_ROS_CC_AND_FS
-	if (!FatFCBIsDirectory(pFcb)) {
-	    if (BooleanFlagOn
-		(Stack->Parameters.Create.SecurityContext->DesiredAccess,
-		 FILE_WRITE_DATA) || RequestedDisposition == FILE_OVERWRITE
+#if 0 /* ifndef USE_ROS_CC_AND_FS */
+	if (!FatFCBIsDirectory(Fcb)) {
+	    if (BooleanFlagOn(Stack->Parameters.Create.SecurityContext->DesiredAccess,
+			      FILE_WRITE_DATA)
+		|| RequestedDisposition == FILE_OVERWRITE
 		|| RequestedDisposition == FILE_OVERWRITE_IF
 		|| (RequestedOptions & FILE_DELETE_ON_CLOSE)) {
-		if (!MmFlushImageSection
-		    (&pFcb->SectionObjectPointers, MmFlushForWrite)) {
-		    DPRINT1("%wZ\n", &pFcb->PathNameU);
+		if (!MmFlushImageSection(&Fcb->SectionObjectPointers, MmFlushForWrite)) {
+		    DPRINT1("%wZ\n", &Fcb->PathNameU);
 		    DPRINT1("%d %d %d\n",
-			    Stack->Parameters.Create.SecurityContext->
-			    DesiredAccess & FILE_WRITE_DATA,
+			    Stack->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA,
 			    RequestedDisposition == FILE_OVERWRITE,
 			    RequestedDisposition == FILE_OVERWRITE_IF);
 		    FatCloseFile(DeviceExt, FileObject);
 		    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
-		    return (BooleanFlagOn
-			    (RequestedOptions,
-			     FILE_DELETE_ON_CLOSE)) ? STATUS_CANNOT_DELETE
-			: STATUS_SHARING_VIOLATION;
+		    return (BooleanFlagOn(RequestedOptions, FILE_DELETE_ON_CLOSE)) ?
+			STATUS_CANNOT_DELETE : STATUS_SHARING_VIOLATION;
 		}
 	    }
 	}
@@ -762,18 +750,18 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	     *   is held in memory. Try to remove the fileobject
 	     *   from cache manager and use the fcb.
 	     */
-	    if (pFcb->RefCount > 1) {
-		if (!BooleanFlagOn(pFcb->Flags, FCB_IS_PAGE_FILE)) {
+	    if (Fcb->RefCount > 1) {
+		if (!BooleanFlagOn(Fcb->Flags, FCB_IS_PAGE_FILE)) {
 		    FatCloseFile(DeviceExt, FileObject);
 		    FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		    return STATUS_INVALID_PARAMETER;
 		}
 	    } else {
-		pFcb->Flags |= FCB_IS_PAGE_FILE;
+		Fcb->Flags |= FCB_IS_PAGE_FILE;
 		SetFlag(DeviceExt->Flags, VCB_IS_SYS_OR_HAS_PAGE);
 	    }
 	} else {
-	    if (BooleanFlagOn(pFcb->Flags, FCB_IS_PAGE_FILE)) {
+	    if (BooleanFlagOn(Fcb->Flags, FCB_IS_PAGE_FILE)) {
 		FatCloseFile(DeviceExt, FileObject);
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		return STATUS_INVALID_PARAMETER;
@@ -783,55 +771,48 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if (RequestedDisposition == FILE_OVERWRITE ||
 	    RequestedDisposition == FILE_OVERWRITE_IF ||
 	    RequestedDisposition == FILE_SUPERSEDE) {
-	    if ((BooleanFlagOn(*pFcb->Attributes, FILE_ATTRIBUTE_HIDDEN)
+	    if ((BooleanFlagOn(*Fcb->Attributes, FILE_ATTRIBUTE_HIDDEN)
 		 && !BooleanFlagOn(Attributes, FILE_ATTRIBUTE_HIDDEN))
-		|| (BooleanFlagOn(*pFcb->Attributes, FILE_ATTRIBUTE_SYSTEM)
-		    && !BooleanFlagOn(Attributes,
-				      FILE_ATTRIBUTE_SYSTEM))) {
+		|| (BooleanFlagOn(*Fcb->Attributes, FILE_ATTRIBUTE_SYSTEM)
+		    && !BooleanFlagOn(Attributes, FILE_ATTRIBUTE_SYSTEM))) {
 		FatCloseFile(DeviceExt, FileObject);
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		return STATUS_ACCESS_DENIED;
 	    }
 
-	    if (!FatFCBIsDirectory(pFcb)) {
+	    if (!FatFCBIsDirectory(Fcb)) {
 		LARGE_INTEGER SystemTime;
 
 		if (RequestedDisposition == FILE_SUPERSEDE) {
-		    *pFcb->Attributes = Attributes;
+		    *Fcb->Attributes = Attributes;
 		} else {
-		    *pFcb->Attributes |= Attributes;
+		    *Fcb->Attributes |= Attributes;
 		}
-		*pFcb->Attributes |= FILE_ATTRIBUTE_ARCHIVE;
+		*Fcb->Attributes |= FILE_ATTRIBUTE_ARCHIVE;
 
-		KeQuerySystemTime(&SystemTime);
+		NtQuerySystemTime(&SystemTime);
 		if (FatVolumeIsFatX(DeviceExt)) {
-		    FsdSystemTimeToDosDateTime(DeviceExt,
-					       &SystemTime,
-					       &pFcb->entry.FatX.
-					       UpdateDate,
-					       &pFcb->entry.FatX.
-					       UpdateTime);
+		    FsdSystemTimeToDosDateTime(DeviceExt, &SystemTime,
+					       &Fcb->Entry.FatX.UpdateDate,
+					       &Fcb->Entry.FatX.UpdateTime);
 		} else {
-		    FsdSystemTimeToDosDateTime(DeviceExt,
-					       &SystemTime,
-					       &pFcb->entry.Fat.UpdateDate,
-					       &pFcb->entry.Fat.
-					       UpdateTime);
+		    FsdSystemTimeToDosDateTime(DeviceExt, &SystemTime,
+					       &Fcb->Entry.Fat.UpdateDate,
+					       &Fcb->Entry.Fat.UpdateTime);
 		}
 
-		FatUpdateEntry(DeviceExt, pFcb);
+		FatUpdateEntry(DeviceExt, Fcb);
 	    }
 
-	    Status = FatSetAllocationSizeInformation(FileObject,
-						     pFcb,
-						     DeviceExt,
-						     &Irp->Overlay.
-						     AllocationSize);
+#if 0				/* TODO! */
+	    Status = FatSetAllocationSizeInformation(FileObject, Fcb, DeviceExt,
+						     &Irp->Overlay.AllocationSize);
 	    if (!NT_SUCCESS(Status)) {
 		FatCloseFile(DeviceExt, FileObject);
 		FatAddToStat(DeviceExt, Fat.FailedCreates, 1);
 		return Status;
 	    }
+#endif
 	}
 
 	if (RequestedDisposition == FILE_SUPERSEDE) {
@@ -844,13 +825,12 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	}
     }
 
-    if (pFcb->OpenHandleCount == 0) {
-	IoSetShareAccess(Stack->Parameters.Create.SecurityContext->
-			 DesiredAccess,
+    if (Fcb->OpenHandleCount == 0) {
+	IoSetShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 			 Stack->Parameters.Create.ShareAccess, FileObject,
-			 &pFcb->FCBShareAccess);
+			 &Fcb->FCBShareAccess);
     } else {
-	IoUpdateShareAccess(FileObject, &pFcb->FCBShareAccess);
+	IoUpdateShareAccess(FileObject, &Fcb->FCBShareAccess);
     }
 
     pCcb = FileObject->FsContext2;
@@ -859,20 +839,18 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     }
 
     if (Irp->IoStatus.Information == FILE_CREATED) {
-	FatReportChange(DeviceExt,
-			pFcb,
-			(FatFCBIsDirectory(pFcb) ?
-			 FILE_NOTIFY_CHANGE_DIR_NAME :
+	FatReportChange(DeviceExt, Fcb,
+			(FatFCBIsDirectory(Fcb) ? FILE_NOTIFY_CHANGE_DIR_NAME :
 			 FILE_NOTIFY_CHANGE_FILE_NAME), FILE_ACTION_ADDED);
     } else if (Irp->IoStatus.Information == FILE_OVERWRITTEN
 	       || Irp->IoStatus.Information == FILE_SUPERSEDED) {
-	FatReportChange(DeviceExt, pFcb,
+	FatReportChange(DeviceExt, Fcb,
 			FILE_NOTIFY_CHANGE_LAST_WRITE |
 			FILE_NOTIFY_CHANGE_ATTRIBUTES |
 			FILE_NOTIFY_CHANGE_SIZE, FILE_ACTION_MODIFIED);
     }
 
-    pFcb->OpenHandleCount++;
+    Fcb->OpenHandleCount++;
     DeviceExt->OpenHandleCount++;
 
     /* FIXME : test write access if requested */

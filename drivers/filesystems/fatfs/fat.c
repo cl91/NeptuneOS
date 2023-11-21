@@ -38,7 +38,7 @@ NTSTATUS Fat32GetNextCluster(PDEVICE_EXTENSION DeviceExt,
     __try {
 	if (!CcMapData(DeviceExt->FatFileObject, &Offset, ChunkSize, MAP_WAIT,
 		       &Context, &BaseAddress)) {
-	    NT_ASSERT(FALSE);
+	    assert(FALSE);
 	    return STATUS_UNSUCCESSFUL;
 	}
     } __except(EXCEPTION_EXECUTE_HANDLER) {
@@ -280,7 +280,7 @@ NTSTATUS Fat32FindAndMarkAvailableCluster(PDEVICE_EXTENSION DeviceExt,
 
     for (ULONG j = 0; j < 2; j++) {
 	for (ULONG i = StartCluster; i < FatLength;) {
-	    LARGE_INTEGER Offset.QuadPart = ROUND_DOWN(i * 4, ChunkSize);
+	    LARGE_INTEGER Offset = { .QuadPart = ROUND_DOWN(i * 4, ChunkSize) };
 	    PVOID BaseAddress, Context;
 	    __try {
 		CcPinRead(DeviceExt->FatFileObject, &Offset, ChunkSize,
@@ -624,8 +624,8 @@ NTSTATUS WriteCluster(PDEVICE_EXTENSION DeviceExt,
  */
 ULONGLONG ClusterToSector(PDEVICE_EXTENSION DeviceExt, ULONG Cluster)
 {
-    return DeviceExt->FatInfo.dataStart +
-	((ULONGLONG) (Cluster - 2) * DeviceExt->FatInfo.SectorsPerCluster);
+    return DeviceExt->FatInfo.DataStart +
+	((ULONGLONG)(Cluster - 2) * DeviceExt->FatInfo.SectorsPerCluster);
 
 }
 
@@ -730,55 +730,28 @@ NTSTATUS Fat16GetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
 {
     LARGE_INTEGER Offset;
     ULONG Length;
-#ifdef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    NTSTATUS Status;
-#else
     PVOID Context;
-#endif
-    struct _BootSector *Sector;
+    PBOOT_SECTOR Sector;
 
     /* We'll read the bootsector at 0 */
     Offset.QuadPart = 0;
     Length = DeviceExt->FatInfo.BytesPerSector;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    /* Go through Cc for this */
+
+    /* Go through Cc to read the disk */
     __try {
 	CcPinRead(DeviceExt->VolumeFcb->FileObject, &Offset, Length,
 		  PIN_WAIT, &Context, (PVOID *)&Sector);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return GetExceptionCode();
     }
-#else
-    /* No Cc, do it the old way:
-     * - Allocate a big enough buffer
-     * - And read the disk
-     */
-    Sector = ExAllocatePoolWithTag(NonPagedPool, Length, TAG_BUFFER);
-    if (Sector == NULL) {
-	*DirtyStatus = TRUE;
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = FatReadDisk(DeviceExt->StorageDevice, &Offset, Length,
-			 (PUCHAR) Sector, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	*DirtyStatus = TRUE;
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-	return Status;
-    }
-#endif
 
     /* Make sure we have a boot sector...
      * FIXME: This check is a bit lame and should be improved
      */
-    if (Sector->Signatur1 != 0xaa55) {
+    if (Sector->Signature1 != 0xaa55) {
 	/* Set we are dirty so that we don't attempt anything */
 	*DirtyStatus = TRUE;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
 	CcUnpinData(Context);
-#else
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
 	return STATUS_DISK_CORRUPT_ERROR;
     }
 
@@ -788,11 +761,7 @@ NTSTATUS Fat16GetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
     else
 	*DirtyStatus = FALSE;
 
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
     CcUnpinData(Context);
-#else
-    ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
     return STATUS_SUCCESS;
 }
 
@@ -800,43 +769,20 @@ NTSTATUS Fat32GetDirtyStatus(PDEVICE_EXTENSION DeviceExt, PBOOLEAN DirtyStatus)
 {
     LARGE_INTEGER Offset;
     ULONG Length;
-#ifdef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    NTSTATUS Status;
-#else
     PVOID Context;
-#endif
-    struct _BootSector32 *Sector;
+    PBOOT_SECTOR_FAT32 Sector;
 
     /* We'll read the bootsector at 0 */
     Offset.QuadPart = 0;
     Length = DeviceExt->FatInfo.BytesPerSector;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    /* Go through Cc for this */
+
+    /* Go through Cc to read the disk */
     __try {
 	CcPinRead(DeviceExt->VolumeFcb->FileObject, &Offset, Length,
 		  PIN_WAIT, &Context, (PVOID *) & Sector);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return GetExceptionCode();
     }
-#else
-    /* No Cc, do it the old way:
-     * - Allocate a big enough buffer
-     * - And read the disk
-     */
-    Sector = ExAllocatePoolWithTag(NonPagedPool, Length, TAG_BUFFER);
-    if (Sector == NULL) {
-	*DirtyStatus = TRUE;
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = FatReadDisk(DeviceExt->StorageDevice, &Offset, Length,
-			 (PUCHAR) Sector, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	*DirtyStatus = TRUE;
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-	return Status;
-    }
-#endif
 
     /* Make sure we have a boot sector...
      * FIXME: This check is a bit lame and should be improved
@@ -844,11 +790,7 @@ NTSTATUS Fat32GetDirtyStatus(PDEVICE_EXTENSION DeviceExt, PBOOLEAN DirtyStatus)
     if (Sector->Signature1 != 0xaa55) {
 	/* Set we are dirty so that we don't attempt anything */
 	*DirtyStatus = TRUE;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
 	CcUnpinData(Context);
-#else
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
 	return STATUS_DISK_CORRUPT_ERROR;
     }
 
@@ -858,11 +800,7 @@ NTSTATUS Fat32GetDirtyStatus(PDEVICE_EXTENSION DeviceExt, PBOOLEAN DirtyStatus)
     else
 	*DirtyStatus = FALSE;
 
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
     CcUnpinData(Context);
-#else
-    ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
     return STATUS_SUCCESS;
 }
 
@@ -895,51 +833,26 @@ NTSTATUS Fat16SetDirtyStatus(PDEVICE_EXTENSION DeviceExt, BOOLEAN DirtyStatus)
 {
     LARGE_INTEGER Offset;
     ULONG Length;
-#ifdef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    NTSTATUS Status;
-#else
     PVOID Context;
-#endif
-    struct _BootSector *Sector;
+    PBOOT_SECTOR Sector;
 
     /* We'll read (and then write) the bootsector at 0 */
     Offset.QuadPart = 0;
     Length = DeviceExt->FatInfo.BytesPerSector;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    /* Go through Cc for this */
+
+    /* Go through Cc to read the disk */
     __try {
 	CcPinRead(DeviceExt->VolumeFcb->FileObject, &Offset, Length,
 		  PIN_WAIT, &Context, (PVOID *) & Sector);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return GetExceptionCode();
     }
-#else
-    /* No Cc, do it the old way:
-     * - Allocate a big enough buffer
-     * - And read the disk
-     */
-    Sector = ExAllocatePoolWithTag(NonPagedPool, Length, TAG_BUFFER);
-    if (Sector == NULL) {
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = FatReadDisk(DeviceExt->StorageDevice, &Offset, Length,
-			 (PUCHAR) Sector, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-	return Status;
-    }
-#endif
 
     /* Make sure we have a boot sector...
      * FIXME: This check is a bit lame and should be improved
      */
-    if (Sector->Signatur1 != 0xaa55) {
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
+    if (Sector->Signature1 != 0xaa55) {
 	CcUnpinData(Context);
-#else
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
 	return STATUS_DISK_CORRUPT_ERROR;
     }
 
@@ -952,70 +865,37 @@ NTSTATUS Fat16SetDirtyStatus(PDEVICE_EXTENSION DeviceExt, BOOLEAN DirtyStatus)
 	Sector->Res1 |= FAT_DIRTY_BIT;
     }
 
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
     /* Mark boot sector dirty so that it gets written to the disk */
     CcSetDirtyPinnedData(Context, NULL);
     CcUnpinData(Context);
     return STATUS_SUCCESS;
-#else
-    /* Write back the boot sector to the disk */
-    Status = FatWriteDisk(DeviceExt->StorageDevice, &Offset, Length,
-			  (PUCHAR) Sector, FALSE);
-    ExFreePoolWithTag(Sector, TAG_BUFFER);
-    return Status;
-#endif
 }
 
 NTSTATUS Fat32SetDirtyStatus(PDEVICE_EXTENSION DeviceExt, BOOLEAN DirtyStatus)
 {
     LARGE_INTEGER Offset;
     ULONG Length;
-#ifdef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    NTSTATUS Status;
-#else
     PVOID Context;
-#endif
-    struct _BootSector32 *Sector;
+    PBOOT_SECTOR_FAT32 Sector;
 
     /* We'll read (and then write) the bootsector at 0 */
     Offset.QuadPart = 0;
     Length = DeviceExt->FatInfo.BytesPerSector;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    /* Go through Cc for this */
+
+    /* Go through Cc to read the disk */
     __try {
 	CcPinRead(DeviceExt->VolumeFcb->FileObject, &Offset, Length,
-		  PIN_WAIT, &Context, (PVOID *) & Sector);
+		  PIN_WAIT, &Context, (PVOID *)&Sector);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return GetExceptionCode();
     }
-#else
-    /* No Cc, do it the old way:
-     * - Allocate a big enough buffer
-     * - And read the disk
-     */
-    Sector = ExAllocatePoolWithTag(NonPagedPool, Length, TAG_BUFFER);
-    if (Sector == NULL) {
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = FatReadDisk(DeviceExt->StorageDevice, &Offset, Length,
-			 (PUCHAR) Sector, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-	return Status;
-    }
-#endif
 
     /* Make sure we have a boot sector...
      * FIXME: This check is a bit lame and should be improved
      */
     if (Sector->Signature1 != 0xaa55) {
 	ASSERT(FALSE);
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
 	CcUnpinData(Context);
-#else
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
 	return STATUS_DISK_CORRUPT_ERROR;
     }
 
@@ -1028,30 +908,18 @@ NTSTATUS Fat32SetDirtyStatus(PDEVICE_EXTENSION DeviceExt, BOOLEAN DirtyStatus)
 	Sector->Res4 |= FAT_DIRTY_BIT;
     }
 
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
     /* Mark boot sector dirty so that it gets written to the disk */
     CcSetDirtyPinnedData(Context, NULL);
     CcUnpinData(Context);
     return STATUS_SUCCESS;
-#else
-    /* Write back the boot sector to the disk */
-    Status = FatWriteDisk(DeviceExt->StorageDevice, &Offset, Length,
-			  (PUCHAR) Sector, FALSE);
-    ExFreePoolWithTag(Sector, TAG_BUFFER);
-    return Status;
-#endif
 }
 
 NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DeviceExt)
 {
     LARGE_INTEGER Offset;
     ULONG Length;
-#ifdef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    NTSTATUS Status;
-#else
     PVOID Context;
-#endif
-    struct _FsInfoSector *Sector;
+    PFSINFO_SECTOR Sector;
 
     if (!DeviceExt->AvailableClustersValid) {
 	return STATUS_INVALID_PARAMETER;
@@ -1061,59 +929,30 @@ NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DeviceExt)
     Offset.QuadPart = DeviceExt->FatInfo.FSInfoSector *
 	DeviceExt->FatInfo.BytesPerSector;
     Length = DeviceExt->FatInfo.BytesPerSector;
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
-    /* Go through Cc for this */
+
+    /* Go through Cc to read the disk */
     __try {
 	CcPinRead(DeviceExt->VolumeFcb->FileObject, &Offset, Length,
-		  PIN_WAIT, &Context, (PVOID *) & Sector);
+		  PIN_WAIT, &Context, (PVOID *)&Sector);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return GetExceptionCode();
     }
-#else
-    /* No Cc, do it the old way:
-     * - Allocate a big enough buffer
-     * - And read the disk
-     */
-    Sector = ExAllocatePoolWithTag(NonPagedPool, Length, TAG_BUFFER);
-    if (Sector == NULL) {
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = FatReadDisk(DeviceExt->StorageDevice, &Offset, Length,
-			 (PUCHAR) Sector, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-	return Status;
-    }
-#endif
 
     /* Make sure we have a FSINFO sector */
     if (Sector->ExtBootSignature2 != 0x41615252 ||
 	Sector->FSINFOSignature != 0x61417272 ||
 	Sector->Signatur2 != 0xaa550000) {
 	ASSERT(FALSE);
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
 	CcUnpinData(Context);
-#else
-	ExFreePoolWithTag(Sector, TAG_BUFFER);
-#endif
 	return STATUS_DISK_CORRUPT_ERROR;
     }
 
     /* Update the free clusters count */
-    Sector->FreeCluster = InterlockedCompareExchange((PLONG) & DeviceExt->AvailableClusters,
+    Sector->FreeCluster = InterlockedCompareExchange((PLONG)&DeviceExt->AvailableClusters,
 						     0, 0);
 
-#ifndef VOLUME_IS_NOT_CACHED_WORK_AROUND_IT
     /* Mark FSINFO sector dirty so that it gets written to the disk */
     CcSetDirtyPinnedData(Context, NULL);
     CcUnpinData(Context);
     return STATUS_SUCCESS;
-#else
-    /* Write back the FSINFO sector to the disk */
-    Status = FatWriteDisk(DeviceExt->StorageDevice, &Offset, Length,
-			  (PUCHAR) Sector, FALSE);
-    ExFreePoolWithTag(Sector, TAG_BUFFER);
-    return Status;
-#endif
 }

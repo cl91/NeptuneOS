@@ -76,7 +76,8 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
     RtlZeroMemory(FatGlobalData, sizeof(FAT_GLOBAL_DATA));
     FatGlobalData->DriverObject = DriverObject;
     FatGlobalData->DeviceObject = DeviceObject;
-    FatGlobalData->NumberProcessors = KeNumberProcessors;
+    /* TODO: We need to figure out SMP (one queue per processor?) */
+    FatGlobalData->NumberProcessors = 1;
     /* Enable this to enter the debugger when file system corruption
      * has been detected:
      FatGlobalData->Flags = FAT_BREAK_ON_CORRUPTION; */
@@ -101,12 +102,6 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     DriverObject->DriverUnload = NULL;
 
-    /* Cache manager */
-    FatGlobalData->CacheMgrCallbacks.AcquireForLazyWrite = FatAcquireForLazyWrite;
-    FatGlobalData->CacheMgrCallbacks.ReleaseFromLazyWrite = FatReleaseFromLazyWrite;
-    FatGlobalData->CacheMgrCallbacks.AcquireForReadAhead = FatAcquireForLazyWrite;
-    FatGlobalData->CacheMgrCallbacks.ReleaseFromReadAhead = FatReleaseFromLazyWrite;
-
     /* Private lists */
     ExInitializeLookasideList(&FatGlobalData->FcbLookasideList,
 			      NULL, NULL, 0, sizeof(FATFCB), TAG_FCB, 0);
@@ -124,9 +119,6 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
 static PFAT_IRP_CONTEXT FatAllocateIrpContext(PDEVICE_OBJECT DeviceObject,
 					      PIRP Irp)
 {
-    /*PIO_STACK_LOCATION Stack; */
-    UCHAR MajorFunction;
-
     DPRINT("FatAllocateIrpContext(DeviceObject %p, Irp %p)\n",
 	   DeviceObject, Irp);
 
@@ -142,7 +134,7 @@ static PFAT_IRP_CONTEXT FatAllocateIrpContext(PDEVICE_OBJECT DeviceObject,
 	IrpContext->DeviceExt = DeviceObject->DeviceExtension;
 	IrpContext->Stack = IoGetCurrentIrpStackLocation(Irp);
 	ASSERT(IrpContext->Stack);
-	MajorFunction = IrpContext->MajorFunction = IrpContext->Stack->MajorFunction;
+	IrpContext->MajorFunction = IrpContext->Stack->MajorFunction;
 	IrpContext->MinorFunction = IrpContext->Stack->MinorFunction;
 	IrpContext->FileObject = IrpContext->Stack->FileObject;
 
@@ -158,31 +150,8 @@ static VOID FatFreeIrpContext(PFAT_IRP_CONTEXT IrpContext)
     ExFreeToLookasideList(&FatGlobalData->IrpContextLookasideList, IrpContext);
 }
 
-static NTAPI NTSTATUS FatBuildRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
-{
-    NTSTATUS Status;
-    PFAT_IRP_CONTEXT IrpContext;
-
-    DPRINT("FatBuildRequest (DeviceObject %p, Irp %p)\n", DeviceObject, Irp);
-
-    ASSERT(DeviceObject);
-    ASSERT(Irp);
-
-    IrpContext = FatAllocateIrpContext(DeviceObject, Irp);
-    if (IrpContext == NULL) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	Irp->IoStatus.Status = Status;
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    } else {
-	Status = FatDispatchRequest(IrpContext);
-    }
-    return Status;
-}
-
 static NTSTATUS FatDeviceControl(IN PFAT_IRP_CONTEXT IrpContext)
 {
-    IoSkipCurrentIrpStackLocation(IrpContext->Irp);
-
     return IoCallDriver(IrpContext->DeviceExt->StorageDevice,
 			IrpContext->Irp);
 }
@@ -190,7 +159,6 @@ static NTSTATUS FatDeviceControl(IN PFAT_IRP_CONTEXT IrpContext)
 static NTSTATUS FatDispatchRequest(IN PFAT_IRP_CONTEXT IrpContext)
 {
     NTSTATUS Status;
-    BOOLEAN QueueIrp, CompleteIrp;
 
     DPRINT("FatDispatchRequest (IrpContext %p), is called for %s\n",
 	   IrpContext, IrpContext->MajorFunction >= IRP_MJ_MAXIMUM_FUNCTION ? "????" :
@@ -279,14 +247,33 @@ static NTSTATUS FatDispatchRequest(IN PFAT_IRP_CONTEXT IrpContext)
     return Status;
 }
 
+static NTSTATUS FatBuildRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    NTSTATUS Status;
+    PFAT_IRP_CONTEXT IrpContext;
+
+    DPRINT("FatBuildRequest (DeviceObject %p, Irp %p)\n", DeviceObject, Irp);
+
+    ASSERT(DeviceObject);
+    ASSERT(Irp);
+
+    IrpContext = FatAllocateIrpContext(DeviceObject, Irp);
+    if (IrpContext == NULL) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	Irp->IoStatus.Status = Status;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    } else {
+	Status = FatDispatchRequest(IrpContext);
+    }
+    return Status;
+}
+
 PVOID FatGetUserBuffer(IN PIRP Irp, IN BOOLEAN Paging)
 {
     ASSERT(Irp);
 
     if (Irp->MdlAddress) {
-	return MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
-					    (Paging ? HighPagePriority :
-					     NormalPagePriority));
+	return MmGetSystemAddressForMdl(Irp->MdlAddress);
     } else {
 	return Irp->UserBuffer;
     }

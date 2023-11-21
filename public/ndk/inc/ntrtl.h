@@ -174,6 +174,9 @@ static inline HANDLE NtCurrentThread(VOID)
     return ((HANDLE)(LONG_PTR)(-2));
 }
 
+/*
+ * Unicode and UTF-8 Conversion Routines
+ */
 NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
 					  ULONG *utf8_bytes_written,
 					  const WCHAR *uni_src, ULONG uni_bytes);

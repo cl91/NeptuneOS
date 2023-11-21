@@ -41,6 +41,7 @@
 @ stdcall KeClearEvent(ptr)
 @ stdcall HalMakeBeep(long)
 @ stdcall HalGetAdapter(ptr ptr)
+@ stdcall FsRtlDoesNameContainWildCards(ptr)
 @ cdecl __inbyte(long)
 @ cdecl __outbyte(long long)
 @ cdecl _assert(str str long)

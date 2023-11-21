@@ -2,6 +2,7 @@
 
 #include <nt.h>
 #include <wdm.h>
+#include <ntifs.h>
 #include <hal.h>
 #include <assert.h>
 #include <debug.h>

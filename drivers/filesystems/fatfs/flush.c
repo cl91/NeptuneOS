@@ -23,9 +23,9 @@ static NTSTATUS FatFlushFile(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
     DPRINT("FatFlushFile(DeviceExt %p, Fcb %p) for '%wZ'\n", DeviceExt,
 	   Fcb, &Fcb->PathNameU);
 
-    CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
+    CcFlushCache(&Fcb->Base, NULL, 0, &IoStatus);
     if (IoStatus.Status == STATUS_INVALID_PARAMETER) {
-	/* FIXME: Caching was possible not initialized */
+	/* FIXME: Caching was probably not initialized */
 	IoStatus.Status = STATUS_SUCCESS;
     }
 
@@ -45,7 +45,6 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
     PFATFCB Fcb;
     NTSTATUS Status, ReturnStatus = STATUS_SUCCESS;
     PIRP Irp;
-    KEVENT Event;
     IO_STATUS_BLOCK IoStatusBlock;
 
     DPRINT("FatFlushVolume(DeviceExt %p, VolumeFcb %p)\n", DeviceExt,
@@ -81,23 +80,16 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 	/* FIXME: Stop flushing if this is a removable media and the media was removed */
     }
 
-    Fcb = (PFATFCB) DeviceExt->FATFileObject->FsContext;
+    Fcb = (PFATFCB) DeviceExt->FatFileObject->FsContext;
 
     Status = FatFlushFile(DeviceExt, Fcb);
 
     /* Prepare an IRP to flush device buffers */
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_FLUSH_BUFFERS,
 				       DeviceExt->StorageDevice,
-				       NULL, 0, NULL, &Event,
-				       &IoStatusBlock);
+				       NULL, 0, NULL, &IoStatusBlock);
     if (Irp != NULL) {
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
-
 	Status = IoCallDriver(DeviceExt->StorageDevice, Irp);
-	if (Status == STATUS_PENDING) {
-	    KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-	    Status = IoStatusBlock.Status;
-	}
 
 	/* Ignore device not supporting flush operation */
 	if (Status == STATUS_INVALID_DEVICE_REQUEST) {

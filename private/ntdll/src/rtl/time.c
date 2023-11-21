@@ -15,6 +15,23 @@
 /*
  * @implemented
  */
+NTAPI NTSTATUS RtlLocalTimeToSystemTime(IN PLARGE_INTEGER LocalTime,
+					OUT PLARGE_INTEGER SystemTime)
+{
+    SYSTEM_TIMEOFDAY_INFORMATION TimeInformation;
+    NTSTATUS Status = NtQuerySystemInformation(SystemTimeOfDayInformation, &TimeInformation,
+					       sizeof(TimeInformation), NULL);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    SystemTime->QuadPart = LocalTime->QuadPart + TimeInformation.TimeZoneBias.QuadPart;
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * @implemented
+ */
 NTAPI NTSTATUS RtlSystemTimeToLocalTime(IN PLARGE_INTEGER SystemTime,
 					OUT PLARGE_INTEGER LocalTime)
 {

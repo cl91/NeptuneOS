@@ -258,4 +258,6 @@ NTAPI NTSYSAPI NTSTATUS NtDelayExecution(IN BOOLEAN Alertable,
 
 NTAPI NTSYSAPI ULONG NtGetCurrentProcessorNumber(VOID);
 
+NTAPI NTSYSAPI NTSTATUS NtQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
+
 #endif

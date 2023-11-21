@@ -19,17 +19,11 @@
  */
 /* #define DEBUG_VERIFY_OFFSET_CACHING */
 
-/* Arbitrary, taken from MS FastFAT, should be
- * refined given what we experience in common
- * out of stack operations
- */
-#define OVERFLOW_READ_THRESHOLD 0xE00
-
 /* FUNCTIONS *****************************************************************/
 
 /*
  * Return the next cluster in a FAT chain, possibly extending the chain if
- * necessary
+ * necessary.
  */
 NTSTATUS NextCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 		     PULONG CurrentCluster, BOOLEAN Extend)
@@ -50,24 +44,25 @@ NTSTATUS NextCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 NTSTATUS OffsetToCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 			 ULONG FileOffset, PULONG Cluster, BOOLEAN Extend)
 {
-    DPRINT("OffsetToCluster(DeviceExt %x, Fcb %x, FirstCluster %x,"
-	   " FileOffset %x, Cluster %x, Extend %d)\n", DeviceExt,
-	   Fcb, FirstCluster, FileOffset, Cluster, Extend);
+    DPRINT("OffsetToCluster(DeviceExt %p, FirstCluster %x,"
+	   " FileOffset %x, Cluster %p, Extend %d)\n", DeviceExt,
+	   FirstCluster, FileOffset, Cluster, Extend);
 
     if (FirstCluster == 0) {
 	DbgPrint("OffsetToCluster is called with FirstCluster = 0!\n");
 	ASSERT(FALSE);
     }
 
+    PFATINFO FatInfo = &DeviceExt->FatInfo;
     if (FirstCluster == 1) {
 	/* root of FAT16 or FAT12 */
-	*Cluster = DeviceExt->FatInfo.rootStart + FileOffset
-	    / DeviceExt->FatInfo.BytesPerCluster * DeviceExt->FatInfo.SectorsPerCluster;
+	*Cluster = FatInfo->RootStart + FileOffset
+	    / FatInfo->BytesPerCluster * FatInfo->SectorsPerCluster;
 	return STATUS_SUCCESS;
     } else {
 	ULONG CurrentCluster = FirstCluster;
 	if (Extend) {
-	    for (ULONG i = 0; i < FileOffset / DeviceExt->FatInfo.BytesPerCluster; i++) {
+	    for (ULONG i = 0; i < FileOffset / FatInfo->BytesPerCluster; i++) {
 		NTSTATUS Status = GetNextClusterExtend(DeviceExt, CurrentCluster,
 						       &CurrentCluster);
 		if (!NT_SUCCESS(Status))
@@ -75,7 +70,7 @@ NTSTATUS OffsetToCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 	    }
 	    *Cluster = CurrentCluster;
 	} else {
-	    for (ULONG i = 0; i < FileOffset / DeviceExt->FatInfo.BytesPerCluster; i++) {
+	    for (ULONG i = 0; i < FileOffset / FatInfo->BytesPerCluster; i++) {
 		NTSTATUS Status = GetNextCluster(DeviceExt, CurrentCluster,
 						 &CurrentCluster);
 		if (!NT_SUCCESS(Status))
@@ -126,7 +121,7 @@ static NTSTATUS FatReadFileData(PFAT_IRP_CONTEXT IrpContext, ULONG Length,
     BytesPerSector = DeviceExt->FatInfo.BytesPerSector;
     BytesPerCluster = DeviceExt->FatInfo.BytesPerCluster;
 
-    ASSERT((ReadOffset.QuadPart + Length) <= ROUND_UP_64(Fcb->RFCB.FileSize.QuadPart,
+    ASSERT((ReadOffset.QuadPart + Length) <= ROUND_UP_64(Fcb->Base.FileSize.QuadPart,
 							 BytesPerSector));
     ASSERT(ReadOffset.u.LowPart % BytesPerSector == 0);
     ASSERT(Length % BytesPerSector == 0);
@@ -156,16 +151,16 @@ static NTSTATUS FatReadFileData(PFAT_IRP_CONTEXT IrpContext, ULONG Length,
     }
 
     /* Find the first cluster */
-    FirstCluster = CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->entry);
+    FirstCluster = CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
 
     if (FirstCluster == 1) {
 	/* Directory of FAT12/16 needs a special handling */
 	if (ReadOffset.u.LowPart + Length >
-	    DeviceExt->FatInfo.rootDirectorySectors * BytesPerSector) {
-	    Length = DeviceExt->FatInfo.rootDirectorySectors * BytesPerSector -
+	    DeviceExt->FatInfo.RootDirectorySectors * BytesPerSector) {
+	    Length = DeviceExt->FatInfo.RootDirectorySectors * BytesPerSector -
 		ReadOffset.u.LowPart;
 	}
-	ReadOffset.u.LowPart += DeviceExt->FatInfo.rootStart * BytesPerSector;
+	ReadOffset.u.LowPart += DeviceExt->FatInfo.RootStart * BytesPerSector;
 
 	/* Fire up the read command */
 	Status = FatReadDiskPartial(IrpContext, &ReadOffset, Length, 0, TRUE);
@@ -301,7 +296,7 @@ static NTSTATUS FatWriteFileData(PFAT_IRP_CONTEXT IrpContext,
 	   IrpContext->FileObject, Length, WriteOffset.QuadPart,
 	   &Fcb->PathNameU);
 
-    ASSERT(WriteOffset.QuadPart + Length <= Fcb->RFCB.AllocationSize.QuadPart);
+    ASSERT(WriteOffset.QuadPart + Length <= Fcb->Base.AllocationSize.QuadPart);
     ASSERT(WriteOffset.u.LowPart % BytesPerSector == 0);
     ASSERT(Length % BytesPerSector == 0);
 
@@ -324,7 +319,7 @@ static NTSTATUS FatWriteFileData(PFAT_IRP_CONTEXT IrpContext,
 		DPRINT1("FAT writing failed, Status %x\n", Status);
 		break;
 	    }
-	    WriteOffset.u.LowPart += Fcb->RFCB.FileSize.u.LowPart;
+	    WriteOffset.u.LowPart += Fcb->Base.FileSize.u.LowPart;
 	}
 
 	if (InterlockedDecrement((PLONG) & IrpContext->RefCount) != 0) {
@@ -341,12 +336,12 @@ static NTSTATUS FatWriteFileData(PFAT_IRP_CONTEXT IrpContext,
     /*
      * Find the first cluster
      */
-    FirstCluster = CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->entry);
+    FirstCluster = CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
 
     if (FirstCluster == 1) {
-	ASSERT(WriteOffset.u.LowPart + Length <= DeviceExt->FatInfo.rootDirectorySectors * BytesPerSector);
+	ASSERT(WriteOffset.u.LowPart + Length <= DeviceExt->FatInfo.RootDirectorySectors * BytesPerSector);
 	// Directory of FAT12/16 needs a special handling
-	WriteOffset.u.LowPart += DeviceExt->FatInfo.rootStart * BytesPerSector;
+	WriteOffset.u.LowPart += DeviceExt->FatInfo.RootStart * BytesPerSector;
 	// Fire up the write command
 	Status = FatWriteDiskPartial(IrpContext, &WriteOffset, Length, 0, TRUE);
 	return Status;
@@ -447,125 +442,14 @@ static NTSTATUS FatWriteFileData(PFAT_IRP_CONTEXT IrpContext,
     return Status;
 }
 
-NTSTATUS FatCommonRead(PFAT_IRP_CONTEXT IrpContext)
-{
-    PFATFCB Fcb;
-    PVOID Buffer;
-    NTSTATUS Status;
-    ULONG Length = 0;
-    ULONG BytesPerSector;
-    LARGE_INTEGER ByteOffset;
-    ULONG ReturnedLength = 0;
-    BOOLEAN PagingIo, CanWait, IsVolume, NoCache;
-
-    PagingIo = BooleanFlagOn(IrpContext->Irp->Flags, IRP_PAGING_IO);
-    CanWait = BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT);
-    NoCache = BooleanFlagOn(IrpContext->Irp->Flags, IRP_NOCACHE);
-    Fcb = IrpContext->FileObject->FsContext;
-    IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
-
-    ByteOffset = IrpContext->Stack->Parameters.Read.ByteOffset;
-    Length = IrpContext->Stack->Parameters.Read.Length;
-    BytesPerSector = IrpContext->DeviceExt->FatInfo.BytesPerSector;
-
-    if (!PagingIo && FsRtlAreThereCurrentFileLocks(&Fcb->FileLock)) {
-	if (!FsRtlCheckLockForReadAccess(&Fcb->FileLock, IrpContext->Irp)) {
-	    return STATUS_FILE_LOCK_CONFLICT;
-	}
-    }
-
-    Buffer = FatGetUserBuffer(IrpContext->Irp, PagingIo);
-
-    if (!PagingIo && !NoCache && !IsVolume) {
-	// cached read
-	Status = STATUS_SUCCESS;
-	if (ByteOffset.u.LowPart + Length > Fcb->RFCB.FileSize.u.LowPart) {
-	    Length = Fcb->RFCB.FileSize.u.LowPart - ByteOffset.u.LowPart;
-	    Status = /*STATUS_END_OF_FILE */ STATUS_SUCCESS;
-	}
-
-	FatAddToStat(IrpContext->DeviceExt, Base.UserFileReads, 1);
-	FatAddToStat(IrpContext->DeviceExt, Base.UserFileReadBytes,
-		     Length);
-
-	_try {
-	    if (IrpContext->FileObject->PrivateCacheMap == NULL) {
-		CcInitializeCacheMap(IrpContext->FileObject,
-				     (PCC_FILE_SIZES) (&Fcb->RFCB.
-						       AllocationSize),
-				     FALSE,
-				     &(FatGlobalData->CacheMgrCallbacks),
-				     Fcb);
-	    }
-
-	    if (!CcCopyRead(IrpContext->FileObject,
-			    &ByteOffset,
-			    Length,
-			    CanWait, Buffer, &IrpContext->Irp->IoStatus)) {
-		ASSERT(!CanWait);
-		Status = STATUS_PENDING;
-		goto ByeBye;
-	    }
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
-	    Status = GetExceptionCode();
-	    goto ByeBye;
-	}
-
-	if (!NT_SUCCESS(IrpContext->Irp->IoStatus.Status)) {
-	    Status = IrpContext->Irp->IoStatus.Status;
-	}
-    } else {
-	// non cached read
-	Status = FatLockUserBuffer(IrpContext->Irp, Length, IoWriteAccess);
-	if (!NT_SUCCESS(Status)) {
-	    goto ByeBye;
-	}
-
-	if (ByteOffset.QuadPart + Length >
-	    ROUND_UP_64(Fcb->RFCB.FileSize.QuadPart, BytesPerSector)) {
-	    Length = (ULONG)(ROUND_UP_64(Fcb->RFCB.FileSize.QuadPart,
-					 BytesPerSector) - ByteOffset.QuadPart);
-	}
-
-	if (!IsVolume) {
-	    FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedReads, 1);
-	    FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedReadBytes,
-			 Length);
-	} else {
-	    FatAddToStat(IrpContext->DeviceExt, Base.MetaDataReads, 1);
-	    FatAddToStat(IrpContext->DeviceExt, Base.MetaDataReadBytes,
-			 Length);
-	}
-
-	Status = FatReadFileData(IrpContext, Length, ByteOffset, &ReturnedLength);
-	if (NT_SUCCESS(Status)) {
-	    IrpContext->Irp->IoStatus.Information = ReturnedLength;
-	}
-    }
-
-ByeBye:
-    return Status;
-}
-
 NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 {
-    NTSTATUS Status;
-    PFATFCB Fcb;
-    ULONG Length = 0;
-    LARGE_INTEGER ByteOffset;
-    ULONG BytesPerSector;
-    BOOLEAN PagingIo, IsVolume, NoCache;
-
     ASSERT(IrpContext);
-
     DPRINT("FatRead(IrpContext %p)\n", IrpContext);
-
     ASSERT(IrpContext->DeviceObject);
 
-    PagingIo = BooleanFlagOn(IrpContext->Irp->Flags, IRP_PAGING_IO);
-    NoCache = BooleanFlagOn(IrpContext->Irp->Flags, IRP_NOCACHE);
-
     // This request is not allowed on the main device object
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
     if (IrpContext->DeviceObject == FatGlobalData->DeviceObject) {
 	DPRINT("FatRead is called with the main device object.\n");
 	Status = STATUS_INVALID_DEVICE_REQUEST;
@@ -574,15 +458,14 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 
     ASSERT(IrpContext->DeviceExt);
     ASSERT(IrpContext->FileObject);
-    Fcb = IrpContext->FileObject->FsContext;
+    PFATFCB Fcb = IrpContext->FileObject->FsContext;
     ASSERT(Fcb);
 
-    IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
+    BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
 
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_PAGE_FILE)) {
 	PFATINFO FatInfo = &IrpContext->DeviceExt->FatInfo;
-	IrpContext->Stack->Parameters.Read.ByteOffset.QuadPart += FatInfo->dataStart * FatInfo->BytesPerSector;
-	IoSkipCurrentIrpStackLocation(IrpContext->Irp);
+	IrpContext->Stack->Parameters.Read.ByteOffset.QuadPart += FatInfo->DataStart * FatInfo->BytesPerSector;
 	DPRINT("Read from page file, disk offset %I64x\n",
 	       IrpContext->Stack->Parameters.Read.ByteOffset.QuadPart);
 	Status = IoCallDriver(IrpContext->DeviceExt->StorageDevice,
@@ -592,19 +475,14 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 
     DPRINT("<%wZ>\n", &Fcb->PathNameU);
 
-    ByteOffset = IrpContext->Stack->Parameters.Read.ByteOffset;
-    Length = IrpContext->Stack->Parameters.Read.Length;
-    BytesPerSector = IrpContext->DeviceExt->FatInfo.BytesPerSector;
-
-    /* fail if file is a directory and no paged read */
-    if (FatFCBIsDirectory(Fcb) && !PagingIo) {
-	Status = STATUS_INVALID_PARAMETER;
-	goto ByeBye;
-    }
+    LARGE_INTEGER ByteOffset = IrpContext->Stack->Parameters.Read.ByteOffset;
+    ULONG Length = IrpContext->Stack->Parameters.Read.Length;
+    ULONG BytesPerSector = IrpContext->DeviceExt->FatInfo.BytesPerSector;
 
     DPRINT("'%wZ', Offset: %u, Length %u\n", &Fcb->PathNameU,
 	   ByteOffset.u.LowPart, Length);
 
+    /* Fatfs does not support files larger than 4GB. */
     if (ByteOffset.u.HighPart && !IsVolume) {
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
@@ -616,32 +494,44 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	goto ByeBye;
     }
 
-    if (ByteOffset.QuadPart >= Fcb->RFCB.FileSize.QuadPart) {
+    if (ByteOffset.QuadPart >= Fcb->Base.FileSize.QuadPart) {
 	IrpContext->Irp->IoStatus.Information = 0;
 	Status = STATUS_END_OF_FILE;
 	goto ByeBye;
     }
 
-    if (NoCache || PagingIo || IsVolume) {
-	if (ByteOffset.u.LowPart % BytesPerSector != 0 || Length % BytesPerSector != 0) {
-	    DPRINT("%u %u\n", ByteOffset.u.LowPart, Length);
-	    // non cached read must be sector aligned
-	    Status = STATUS_INVALID_PARAMETER;
-	    goto ByeBye;
-	}
+    if ((ByteOffset.u.LowPart % BytesPerSector) || (Length % BytesPerSector)) {
+	// read must be sector aligned
+	DPRINT("unaligned read: byte offset %u length %u\n",
+	       ByteOffset.u.LowPart, Length);
+	Status = STATUS_INVALID_PARAMETER;
+	goto ByeBye;
     }
 
-    Status = FatCommonRead(IrpContext);
+    PVOID Buffer = FatGetUserBuffer(IrpContext->Irp, PagingIo);
+    if (ByteOffset.QuadPart + Length >
+	ROUND_UP_64(Fcb->Base.FileSize.QuadPart, BytesPerSector)) {
+	Length = (ULONG)(ROUND_UP_64(Fcb->Base.FileSize.QuadPart,
+				     BytesPerSector) - ByteOffset.QuadPart);
+    }
+
+    if (!IsVolume) {
+	FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedReads, 1);
+	FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedReadBytes, Length);
+    } else {
+	FatAddToStat(IrpContext->DeviceExt, Base.MetaDataReads, 1);
+	FatAddToStat(IrpContext->DeviceExt, Base.MetaDataReadBytes, Length);
+    }
+
+    ULONG ReturnedLength;
+    Status = FatReadFileData(IrpContext, Length, ByteOffset, &ReturnedLength);
+    if (NT_SUCCESS(Status)) {
+	IrpContext->Irp->IoStatus.Information = ReturnedLength;
+    }
 
 ByeBye:
     DPRINT("%x\n", Status);
-    assert(Status != STATUS_PENDING);
     IrpContext->Irp->IoStatus.Status = Status;
-    if (BooleanFlagOn(IrpContext->FileObject->Flags, FO_SYNCHRONOUS_IO)
-	&& !PagingIo && (NT_SUCCESS(Status) || Status == STATUS_END_OF_FILE)) {
-	IrpContext->FileObject->CurrentByteOffset.QuadPart = ByteOffset.QuadPart +
-	    IrpContext->Irp->IoStatus.Information;
-    }
     if (NT_SUCCESS(Status)) {
 	IrpContext->PriorityBoost = IO_DISK_INCREMENT;
     }
@@ -651,26 +541,13 @@ ByeBye:
 NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 {
     PFAT_IRP_CONTEXT IrpContext = *pIrpContext;
-    PFATFCB Fcb;
-    LARGE_INTEGER ByteOffset;
-    LARGE_INTEGER OldFileSize;
-    NTSTATUS Status = STATUS_SUCCESS;
-    ULONG Length = 0;
-    PVOID Buffer;
-    ULONG BytesPerSector;
-    BOOLEAN PagingIo, CanWait, IsVolume, IsFAT, NoCache;
 
     ASSERT(IrpContext);
-
     DPRINT("FatWrite(IrpContext %p)\n", IrpContext);
-
     ASSERT(IrpContext->DeviceObject);
 
-    PagingIo = BooleanFlagOn(IrpContext->Irp->Flags, IRP_PAGING_IO);
-    CanWait = BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT);
-    NoCache = BooleanFlagOn(IrpContext->Irp->Flags, IRP_NOCACHE);
-
     // This request is not allowed on the main device object
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
     if (IrpContext->DeviceObject == FatGlobalData->DeviceObject) {
 	DPRINT("FatWrite is called with the main device object.\n");
 	Status = STATUS_INVALID_DEVICE_REQUEST;
@@ -679,17 +556,16 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 
     ASSERT(IrpContext->DeviceExt);
     ASSERT(IrpContext->FileObject);
-    Fcb = IrpContext->FileObject->FsContext;
+    PFATFCB Fcb = IrpContext->FileObject->FsContext;
     ASSERT(Fcb);
 
-    IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
-    IsFAT = BooleanFlagOn(Fcb->Flags, FCB_IS_FAT);
+    BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
+    BOOLEAN IsFAT = BooleanFlagOn(Fcb->Flags, FCB_IS_FAT);
 
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_PAGE_FILE)) {
 	PFATINFO FatInfo = &IrpContext->DeviceExt->FatInfo;
 	IrpContext->Stack->Parameters.Write.ByteOffset.QuadPart +=
-	    FatInfo->dataStart * FatInfo->BytesPerSector;
-	IoSkipCurrentIrpStackLocation(IrpContext->Irp);
+	    FatInfo->DataStart * FatInfo->BytesPerSector;
 	DPRINT("Write to page file, disk offset %I64x\n",
 	       IrpContext->Stack->Parameters.Write.ByteOffset.QuadPart);
 	Status = IoCallDriver(IrpContext->DeviceExt->StorageDevice,
@@ -705,13 +581,13 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	goto ByeBye;
     }
 
-    ByteOffset = IrpContext->Stack->Parameters.Write.ByteOffset;
+    LARGE_INTEGER ByteOffset = IrpContext->Stack->Parameters.Write.ByteOffset;
     if (ByteOffset.u.LowPart == FILE_WRITE_TO_END_OF_FILE &&
 	ByteOffset.u.HighPart == -1) {
-	ByteOffset.QuadPart = Fcb->RFCB.FileSize.QuadPart;
+	ByteOffset.QuadPart = Fcb->Base.FileSize.QuadPart;
     }
-    Length = IrpContext->Stack->Parameters.Write.Length;
-    BytesPerSector = IrpContext->DeviceExt->FatInfo.BytesPerSector;
+    ULONG Length = IrpContext->Stack->Parameters.Write.Length;
+    ULONG BytesPerSector = IrpContext->DeviceExt->FatInfo.BytesPerSector;
 
     if (ByteOffset.u.HighPart && !IsVolume) {
 	Status = STATUS_INVALID_PARAMETER;
@@ -719,23 +595,23 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
     }
 
     if (IsFAT || IsVolume || FatDirEntryGetFirstCluster(IrpContext->DeviceExt,
-							&Fcb->entry) == 1) {
-	if (ByteOffset.QuadPart + Length > Fcb->RFCB.FileSize.QuadPart) {
+							&Fcb->Entry) == 1) {
+	if (ByteOffset.QuadPart + Length > Fcb->Base.FileSize.QuadPart) {
 	    // we can't extend the FAT, the volume or the root on FAT12/FAT16
 	    Status = STATUS_END_OF_FILE;
 	    goto ByeBye;
 	}
     }
 
-    if (PagingIo || NoCache || IsVolume) {
-	if (ByteOffset.u.LowPart % BytesPerSector != 0 || Length % BytesPerSector != 0) {
-	    // non cached write must be sector aligned
-	    Status = STATUS_INVALID_PARAMETER;
-	    goto ByeBye;
-	}
+    if ((ByteOffset.u.LowPart % BytesPerSector) || (Length % BytesPerSector)) {
+	// write must be sector aligned
+	DPRINT("unaligned write: byte offset %u length %u\n",
+	       ByteOffset.u.LowPart, Length);
+	Status = STATUS_INVALID_PARAMETER;
+	goto ByeBye;
     }
 
-    OldFileSize = Fcb->RFCB.FileSize;
+    LARGE_INTEGER OldFileSize = Fcb->Base.FileSize;
 
     if (Length == 0) {
 	/* Update last write time */
@@ -744,52 +620,21 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	goto Metadata;
     }
 
-    if (PagingIo) {
-	if (ByteOffset.u.LowPart + Length > Fcb->RFCB.AllocationSize.u.LowPart) {
-	    Status = STATUS_INVALID_PARAMETER;
-	    goto ByeBye;
-	}
-
-	if (ByteOffset.u.LowPart + Length >
-	    ROUND_UP_32(Fcb->RFCB.AllocationSize.u.LowPart, BytesPerSector)) {
-	    Length = ROUND_UP_32(Fcb->RFCB.FileSize.u.LowPart,
-				 BytesPerSector) - ByteOffset.u.LowPart;
-	}
+    if (ByteOffset.u.LowPart + Length > Fcb->Base.AllocationSize.u.LowPart) {
+	Status = STATUS_INVALID_PARAMETER;
+	goto ByeBye;
     }
 
-    if (!NoCache && !CcCanIWrite(IrpContext->FileObject, Length, CanWait,
-				 BooleanFlagOn(IrpContext->Flags,
-					       IRPCONTEXT_DEFERRED_WRITE)))
-    {
-	BOOLEAN Retrying;
-
-	Retrying = BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_DEFERRED_WRITE);
-	SetFlag(IrpContext->Flags, IRPCONTEXT_DEFERRED_WRITE);
-
-	IoMarkIrpPending(IrpContext->Irp);
-	Status = STATUS_PENDING;
-
-	DPRINT1("Deferring write for Irp %p, context %p!\n",
-		IrpContext->Irp, IrpContext);
-	CcDeferWrite(IrpContext->FileObject, FatHandleDeferredWrite,
-		     IrpContext, NULL, Length, Retrying);
-	*pIrpContext = NULL;
-
-	return Status;
+    if (ByteOffset.u.LowPart + Length >
+	ROUND_UP_32(Fcb->Base.AllocationSize.u.LowPart, BytesPerSector)) {
+	Length = ROUND_UP_32(Fcb->Base.FileSize.u.LowPart,
+			     BytesPerSector) - ByteOffset.u.LowPart;
     }
 
-    if (!CanWait && !IsVolume) {
-	if (ByteOffset.u.LowPart + Length >
-	    Fcb->RFCB.AllocationSize.u.LowPart) {
-	    Status = STATUS_PENDING;
-	    goto ByeBye;
-	}
-    }
-
-    Buffer = FatGetUserBuffer(IrpContext->Irp, PagingIo);
+    PVOID Buffer = FatGetUserBuffer(IrpContext->Irp, PagingIo);
 
     if (!IsFAT && !IsVolume && !PagingIo &&
-	ByteOffset.u.LowPart + Length > Fcb->RFCB.FileSize.u.LowPart) {
+	ByteOffset.u.LowPart + Length > Fcb->Base.FileSize.u.LowPart) {
 	LARGE_INTEGER AllocationSize;
 
 	AllocationSize.QuadPart = ByteOffset.u.LowPart + Length;
@@ -802,90 +647,46 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	}
     }
 
-    if (!NoCache && !PagingIo && !IsVolume) {
-	// cached write
+    if (ByteOffset.QuadPart > OldFileSize.QuadPart) {
+	CcZeroData(IrpContext->FileObject, &OldFileSize, &ByteOffset,
+		   TRUE);
+    }
 
-	FatAddToStat(IrpContext->DeviceExt, Base.UserFileWrites, 1);
-	FatAddToStat(IrpContext->DeviceExt, Base.UserFileWriteBytes,
-		     Length);
-
-	_try {
-	    if (IrpContext->FileObject->PrivateCacheMap == NULL) {
-		CcInitializeCacheMap(IrpContext->FileObject,
-				     (PCC_FILE_SIZES) (&Fcb->RFCB.
-						       AllocationSize),
-				     FALSE,
-				     &FatGlobalData->CacheMgrCallbacks,
-				     Fcb);
-	    }
-
-	    if (ByteOffset.QuadPart > OldFileSize.QuadPart) {
-		CcZeroData(IrpContext->FileObject, &OldFileSize,
-			   &ByteOffset, TRUE);
-	    }
-
-	    if (CcCopyWrite(IrpContext->FileObject,
-			    &ByteOffset, Length, TRUE /*CanWait */ ,
-			    Buffer)) {
-		IrpContext->Irp->IoStatus.Information = Length;
-		Status = STATUS_SUCCESS;
-	    } else {
-		ASSERT(FALSE /*!CanWait */ );
-		Status = STATUS_UNSUCCESSFUL;
-	    }
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
-	    Status = GetExceptionCode();
-	}
+    if (!IsVolume) {
+	FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWrites, 1);
+	FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWriteBytes, Length);
     } else {
-	// non cached write
-	Status = FatLockUserBuffer(IrpContext->Irp, Length, IoReadAccess);
-	if (!NT_SUCCESS(Status)) {
-	    Status = STATUS_INVALID_USER_BUFFER;
-	    goto ByeBye;
-	}
+	FatAddToStat(IrpContext->DeviceExt, Base.MetaDataWrites, 1);
+	FatAddToStat(IrpContext->DeviceExt, Base.MetaDataWriteBytes, Length);
+    }
 
-	if (ByteOffset.QuadPart > OldFileSize.QuadPart) {
-	    CcZeroData(IrpContext->FileObject, &OldFileSize, &ByteOffset,
-		       TRUE);
-	}
-
-	if (!IsVolume) {
-	    FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWrites, 1);
-	    FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWriteBytes,
-			 Length);
-	} else {
-	    FatAddToStat(IrpContext->DeviceExt, Base.MetaDataWrites, 1);
-	    FatAddToStat(IrpContext->DeviceExt, Base.MetaDataWriteBytes,
-			 Length);
-	}
-
-	Status = FatWriteFileData(IrpContext, Length, ByteOffset);
-	if (NT_SUCCESS(Status)) {
-	    IrpContext->Irp->IoStatus.Information = Length;
-	}
+    Status = FatWriteFileData(IrpContext, Length, ByteOffset);
+    if (NT_SUCCESS(Status)) {
+	IrpContext->Irp->IoStatus.Information = Length;
     }
 
 Metadata:
+    /* TODO: this should be done on server side */
     if (!PagingIo && !IsFAT && !IsVolume) {
 	if (!FatFCBIsDirectory(Fcb)) {
 	    LARGE_INTEGER SystemTime;
 	    ULONG Filter;
 
 	    // set dates and times
-	    KeQuerySystemTime(&SystemTime);
+	    NtQuerySystemTime(&SystemTime);
 	    if (FatVolumeIsFatX(IrpContext->DeviceExt)) {
 		FsdSystemTimeToDosDateTime(IrpContext->DeviceExt,
 					   &SystemTime,
-					   &Fcb->entry.FatX.UpdateDate,
-					   &Fcb->entry.FatX.UpdateTime);
-		Fcb->entry.FatX.AccessDate = Fcb->entry.FatX.UpdateDate;
-		Fcb->entry.FatX.AccessTime = Fcb->entry.FatX.UpdateTime;
+					   &Fcb->Entry.FatX.UpdateDate,
+					   &Fcb->Entry.FatX.UpdateTime);
+		Fcb->Entry.FatX.AccessDate = Fcb->Entry.FatX.UpdateDate;
+		Fcb->Entry.FatX.AccessTime = Fcb->Entry.FatX.UpdateTime;
 	    } else {
 		FsdSystemTimeToDosDateTime(IrpContext->DeviceExt,
 					   &SystemTime,
-					   &Fcb->entry.Fat.UpdateDate,
-					   &Fcb->entry.Fat.UpdateTime);
-		Fcb->entry.Fat.AccessDate = Fcb->entry.Fat.UpdateDate;
+					   &Fcb->Entry.Fat.UpdateDate,
+					   &Fcb->Entry.Fat.UpdateTime);
+		Fcb->Entry.Fat.AccessDate = Fcb->Entry.Fat.UpdateDate;
 	    }
 	    /* set date and times to dirty */
 	    Fcb->Flags |= FCB_IS_DIRTY;
@@ -902,13 +703,7 @@ Metadata:
 
 ByeBye:
     DPRINT("%x\n", Status);
-    assert(Status != STATUS_PENDING);
     IrpContext->Irp->IoStatus.Status = Status;
-    if (BooleanFlagOn(IrpContext->FileObject->Flags, FO_SYNCHRONOUS_IO)
-	&& !PagingIo && NT_SUCCESS(Status)) {
-	IrpContext->FileObject->CurrentByteOffset.QuadPart = ByteOffset.QuadPart +
-	    IrpContext->Irp->IoStatus.Information;
-    }
     if (NT_SUCCESS(Status)) {
 	IrpContext->PriorityBoost = IO_DISK_INCREMENT;
     }

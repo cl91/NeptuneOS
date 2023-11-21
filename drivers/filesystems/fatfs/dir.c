@@ -37,7 +37,7 @@ BOOLEAN FsdDosDateTimeToSystemTime(PDEVICE_EXTENSION DeviceExt,
     TimeFields.Year = (CSHORT)(DeviceExt->BaseDateYear + pddate->Year);
 
     RtlTimeFieldsToTime(&TimeFields, &LocalTime);
-    ExLocalTimeToSystemTime(&LocalTime, SystemTime);
+    RtlLocalTimeToSystemTime(&LocalTime, SystemTime);
 
     return TRUE;
 }
@@ -56,7 +56,7 @@ BOOLEAN FsdSystemTimeToDosDateTime(PDEVICE_EXTENSION DeviceExt,
     if (SystemTime == NULL)
 	return FALSE;
 
-    ExSystemTimeToLocalTime(SystemTime, &LocalTime);
+    RtlSystemTimeToLocalTime(SystemTime, &LocalTime);
     RtlTimeToTimeFields(&LocalTime, &TimeFields);
 
     if (pdtime) {
@@ -608,7 +608,7 @@ NTSTATUS FatDirectoryControl(PFAT_IRP_CONTEXT IrpContext)
 	/* Directory notify change is now implemented on server side. The IRP
 	 * minor code is reserved for future use (probaby to let the file system
 	 * driver know about the notify change request from the user). */
-	Status = STATUS_UNIMPLEMENTED;
+	Status = STATUS_NOT_IMPLEMENTED;
 	break;
 
     default:
