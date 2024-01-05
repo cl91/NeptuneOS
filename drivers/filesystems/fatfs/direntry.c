@@ -9,21 +9,16 @@
 
 #include "fatfs.h"
 
-ULONG FatDirEntryGetFirstCluster(PDEVICE_EXTENSION pDeviceExt,
-				 PDIR_ENTRY pFatDirEntry)
+ULONG FatDirEntryGetFirstCluster(PDEVICE_EXTENSION DevExt,
+				 PDIR_ENTRY DirEnt)
 {
-    ULONG cluster;
-
-    if (pDeviceExt->FatInfo.FatType == FAT32) {
-	cluster = pFatDirEntry->Fat.FirstCluster |
-	    (pFatDirEntry->Fat.FirstClusterHigh << 16);
-    } else if (FatVolumeIsFatX(pDeviceExt)) {
-	cluster = pFatDirEntry->FatX.FirstCluster;
+    if (DevExt->FatInfo.FatType == FAT32) {
+	return DirEnt->Fat.FirstCluster | ((ULONG)DirEnt->Fat.FirstClusterHigh << 16);
+    } else if (FatVolumeIsFatX(DevExt)) {
+	return DirEnt->FatX.FirstCluster;
     } else {
-	cluster = pFatDirEntry->Fat.FirstCluster;
+	return DirEnt->Fat.FirstCluster;
     }
-
-    return cluster;
 }
 
 BOOLEAN FATIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)

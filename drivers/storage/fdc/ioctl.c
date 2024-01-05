@@ -64,8 +64,8 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	INFO_(FLOPPY, "IOCTL_DISK_GET_MEDIA_TYPES Called\n");
 
 	if (OutputLength < sizeof(DISK_GEOMETRY)) {
-	    INFO_(FLOPPY,
-		  "IOCTL_DISK_GET_MEDIA_TYPES: insufficient buffer; returning STATUS_INVALID_PARAMETER\n");
+	    INFO_(FLOPPY, "IOCTL_DISK_GET_MEDIA_TYPES: insufficient buffer; "
+		  "returning STATUS_INVALID_PARAMETER\n");
 	    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
 	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	    return;
@@ -91,11 +91,6 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
     /*
      * Now, check to see if the volume needs to be verified.  If so,
      * return STATUS_VERIFY_REQUIRED.
-     *
-     * NOTE:  This code, which is outside of the switch and if/else blocks,
-     * will implicity catch and correctly service IOCTL_DISK_CHECK_VERIFY.
-     * Therefore if we see one below in the switch, we can return STATUS_SUCCESS
-     * immediately.
      */
     if (DriveInfo->DeviceObject->Flags & DO_VERIFY_VOLUME
 	&& !(Stack->Flags & SL_OVERRIDE_VERIFY_VOLUME)) {
@@ -116,8 +111,8 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
      * Check the change line, and if it's set, return
      */
     if (HwDiskChanged(DriveInfo, &DiskChanged) != STATUS_SUCCESS) {
-	WARN_(FLOPPY,
-	      "DeviceIoctl(): unable to sense disk change; completing with STATUS_UNSUCCESSFUL\n");
+	WARN_(FLOPPY, "DeviceIoctl(): unable to sense disk change; "
+	      "completing with STATUS_UNSUCCESSFUL\n");
 	Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
 	Irp->IoStatus.Information = 0;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -126,16 +121,12 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
     }
 
     if (DiskChanged) {
-	INFO_(FLOPPY,
-	      "DeviceIoctl(): detected disk changed; signalling media change and completing\n");
+	INFO_(FLOPPY, "DeviceIoctl(): detected disk changed; signalling "
+	      "media change and completing\n");
 	SignalMediaChanged(DriveInfo->DeviceObject, Irp);
 
-	/*
-	 * Just guessing here - I have a choice of returning NO_MEDIA or VERIFY_REQUIRED.  If there's
-	 * really no disk in the drive, I'm thinking I can save time by just reporting that fact, rather
-	 * than forcing windows to ask me twice.  If this doesn't work, we'll need to split this up and
-	 * handle the CHECK_VERIFY IOCTL separately.
-	 */
+	/* If there's really no disk in the drive, save time by reporting
+	 * just that, rather than having the system ask me twice. */
 	if (ResetChangeFlag(DriveInfo) == STATUS_NO_MEDIA_IN_DEVICE)
 	    Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
 
@@ -187,13 +178,16 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 		Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
 		Irp->IoStatus.Information = 0;
 	    } else {
-		*((PULONG) OutputBuffer) = DriveInfo->DiskChangeCount;
+		*((PULONG)OutputBuffer) = DriveInfo->DiskChangeCount;
 		Irp->IoStatus.Status = STATUS_SUCCESS;
 		Irp->IoStatus.Information = sizeof(ULONG);
 	    }
 	} else {
 	    Irp->IoStatus.Status = STATUS_SUCCESS;
 	    Irp->IoStatus.Information = 0;
+	}
+	if (NT_SUCCESS(Irp->IoStatus.Status)) {
+	    DriveInfo->DeviceObject->Flags &= ~DO_VERIFY_VOLUME;
 	}
 	break;
 
@@ -219,8 +213,8 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	break;
 
     case IOCTL_DISK_GET_PARTITION_INFO:
-	INFO_(FLOPPY,
-	      "IOCTL_DISK_GET_PARTITION_INFO Called; not supported by a floppy driver\n");
+	INFO_(FLOPPY, "IOCTL_DISK_GET_PARTITION_INFO Called; "
+	      "not supported by floppy drives\n");
 	Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
 	Irp->IoStatus.Information = 0;
 	break;
@@ -233,7 +227,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	}
 
 	UniqueId = Irp->AssociatedIrp.SystemBuffer;
-	UniqueId->UniqueIdLength = (USHORT)wcslen(&DriveInfo->DeviceNameBuffer[0]) * sizeof(WCHAR);
+	UniqueId->UniqueIdLength = (USHORT)wcslen(DriveInfo->DeviceNameBuffer) * sizeof(WCHAR);
 
 	if (OutputLength < FIELD_OFFSET(MOUNTDEV_UNIQUE_ID, UniqueId) + UniqueId->UniqueIdLength) {
 	    Irp->IoStatus.Status = STATUS_BUFFER_OVERFLOW;
@@ -241,7 +235,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	    break;
 	}
 
-	RtlCopyMemory(UniqueId->UniqueId, &DriveInfo->DeviceNameBuffer[0],
+	RtlCopyMemory(UniqueId->UniqueId, DriveInfo->DeviceNameBuffer,
 		      UniqueId->UniqueIdLength);
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -256,7 +250,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	}
 
 	Name = Irp->AssociatedIrp.SystemBuffer;
-	Name->NameLength = (USHORT)wcslen(&DriveInfo->DeviceNameBuffer[0]) * sizeof(WCHAR);
+	Name->NameLength = (USHORT)wcslen(DriveInfo->DeviceNameBuffer) * sizeof(WCHAR);
 
 	if (OutputLength < FIELD_OFFSET(MOUNTDEV_NAME, Name) + Name->NameLength) {
 	    Irp->IoStatus.Status = STATUS_BUFFER_OVERFLOW;

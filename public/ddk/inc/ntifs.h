@@ -153,6 +153,12 @@ typedef struct _RETRIEVAL_POINTERS_BUFFER {
 NTAPI NTSYSAPI VOID IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject);
 
 /*
+ * Stream File Object Creation Routine
+ */
+NTAPI NTSYSAPI PFILE_OBJECT IoCreateStreamFileObject(IN OPTIONAL PFILE_OBJECT FileObject,
+						     IN OPTIONAL PDEVICE_OBJECT DeviceObject);
+
+/*
  * Access Control Types
  */
 typedef struct _SHARE_ACCESS {
@@ -255,41 +261,51 @@ typedef struct _CC_FILE_SIZES {
 #define PIN_CALLER_TRACKS_DIRTY_DATA    (32)
 #define PIN_HIGH_PRIORITY               (64)
 
-#define MAP_WAIT                        1
-#define MAP_NO_READ                     (16)
-#define MAP_HIGH_PRIORITY               (64)
+/* These must be defined to be the same flags used in the CcPinRead
+ * interface, since CcMapData is now synonymous with CcPinRead. */
+#define MAP_WAIT                        (PIN_WAIT)
+#define MAP_NO_READ                     (PIN_NO_READ)
+#define MAP_HIGH_PRIORITY               (PIN_HIGH_PRIORITY)
 
 /*
  * Cache Manager Routines
  */
-NTAPI NTSYSAPI VOID CcInitializeCacheMap(IN PFILE_OBJECT FileObject,
-					 IN PCC_FILE_SIZES FileSizes,
-					 IN BOOLEAN PinAccess,
-					 IN PVOID LazyWriteContext);
+NTAPI NTSYSAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject,
+					     IN PCC_FILE_SIZES FileSizes,
+					     IN BOOLEAN PinAccess,
+					     IN PVOID LazyWriteContext);
 NTAPI NTSYSAPI BOOLEAN CcUninitializeCacheMap(IN PFILE_OBJECT FileObject,
 					      IN OPTIONAL PLARGE_INTEGER TruncateSize);
-NTAPI NTSYSAPI BOOLEAN CcMapData(IN PFILE_OBJECT FileObject,
-				 IN PLARGE_INTEGER FileOffset,
-				 IN ULONG Length,
-				 IN ULONG Flags,
-				 OUT PVOID *Bcb,
-				 OUT PVOID *Buffer);
-NTAPI NTSYSAPI BOOLEAN CcPinRead(IN PFILE_OBJECT FileObject,
-				 IN PLARGE_INTEGER FileOffset,
-				 IN ULONG Length,
-				 IN ULONG Flags,
-				 OUT PVOID *Bcb,
-				 OUT PVOID *Buffer);
+NTAPI NTSYSAPI NTSTATUS CcPinRead(IN PFILE_OBJECT FileObject,
+				  IN PLARGE_INTEGER FileOffset,
+				  IN ULONG Length,
+				  IN ULONG Flags,
+				  OUT PVOID *Bcb,
+				  OUT PVOID *Buffer);
 NTAPI NTSYSAPI VOID CcSetDirtyPinnedData(IN PVOID BcbVoid,
 					 IN OPTIONAL PLARGE_INTEGER Lsn);
 NTAPI NTSYSAPI VOID CcUnpinData(IN PVOID Bcb);
-NTAPI NTSYSAPI BOOLEAN CcZeroData(IN PFILE_OBJECT FileObject,
-				  IN PLARGE_INTEGER StartOffset,
-				  IN PLARGE_INTEGER EndOffset,
-				  IN BOOLEAN Wait);
+NTAPI NTSYSAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
+				   IN PLARGE_INTEGER StartOffset,
+				   IN PLARGE_INTEGER EndOffset,
+				   IN BOOLEAN Wait);
 NTAPI NTSYSAPI VOID CcSetFileSizes(IN PFILE_OBJECT FileObject,
 				   IN PCC_FILE_SIZES FileSizes);
-NTAPI NTSYSAPI VOID CcFlushCache(IN PFSRTL_COMMON_FCB_HEADER Fcb,
-				 IN OPTIONAL PLARGE_INTEGER FileOffset,
-				 IN ULONG Length,
-				 OUT OPTIONAL PIO_STATUS_BLOCK IoStatus);
+
+/* On Neptune OS, CcMapData is synonymous with CcPinRead. On Windows
+ * they are not (CcMapData is a more restrictive function there). */
+FORCEINLINE NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
+			       IN PLARGE_INTEGER FileOffset,
+			       IN ULONG Length,
+			       IN ULONG Flags,
+			       OUT PVOID *Bcb,
+			       OUT PVOID *Buffer) {
+    return CcPinRead(FileObject, FileOffset, Length, Flags, Bcb, Buffer);
+}
+
+/* On Neptune OS, CcFlushCache is a no-op. File system drivers do not need
+ * to manually flush caches and in general should not do so. */
+FORCEINLINE VOID CcFlushCache(IN PFSRTL_COMMON_FCB_HEADER Fcb,
+			      IN OPTIONAL PLARGE_INTEGER FileOffset,
+			      IN ULONG Length,
+			      OUT OPTIONAL PIO_STATUS_BLOCK IoStatus) {}

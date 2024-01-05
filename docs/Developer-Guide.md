@@ -188,3 +188,14 @@ buffers using MmProbeAndLockPages.
 FsRtlEnterFileSystem and FsRtlExitFileSystem
 
 These are no longer needed since drivers run in userspace.
+
+Detecting and Responding to Media Changes in Removable Drives
+
+When detecting media change (usually during processing of Read/Write/DeviceIoctl
+IRPs) the driver should complete the IRP either with STATUS_MEDIA_CHANGED or
+STATUS_NO_MEDIA_IN_DEVICE. Driver should then mark the relevant device object
+with DO_VERIFY_REQUIRED so it knows to complete all future IRPs with STATUS_VERIFY_REQUIRED
+(unless the IRP is marked with SL_OVERRIDE_VERIFY_VOLUME explicitly to disable this
+logic), until such time that it receives a CHECK_VERIFY Ioctl or VERIFY_VOLUME Fsctl,
+at which point it can clear the DO_VERIFY_REQUIRED and proceed with normal IO
+proceeding.

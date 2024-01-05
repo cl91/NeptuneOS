@@ -13,19 +13,13 @@
 
 static NTSTATUS FatDiskShutDown(PVCB Vcb)
 {
-    PIRP Irp;
-    NTSTATUS Status;
     IO_STATUS_BLOCK IoStatus;
-
-    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_SHUTDOWN, Vcb->StorageDevice,
-				       NULL, 0, NULL, &IoStatus);
-    if (Irp) {
-	Status = IoCallDriver(Vcb->StorageDevice, Irp);
-    } else {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
+    PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_SHUTDOWN, Vcb->StorageDevice,
+					    NULL, 0, NULL, &IoStatus);
+    if (!Irp) {
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    return Status;
+    return IoCallDriver(Vcb->StorageDevice, Irp);
 }
 
 NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)

@@ -109,10 +109,21 @@ typedef enum _IO_COMPLETION_ROUTINE_RESULT {
 #define DRVO_LEGACY_RESOURCES             0x00000040
 
 /* DEVICE_OBJECT.Flags */
+#define DO_UNLOAD_PENDING                 0x00000001
+#define DO_VERIFY_VOLUME                  0x00000002
+#define DO_BUFFERED_IO                    0x00000004
+#define DO_EXCLUSIVE                      0x00000008
+#define DO_DIRECT_IO                      0x00000010
+#define DO_MAP_IO_BUFFER                  0x00000020
 #define DO_DEVICE_HAS_NAME                0x00000040
+#define DO_DEVICE_INITIALIZING            0x00000080
 #define DO_SYSTEM_BOOT_PARTITION          0x00000100
 #define DO_LONG_TERM_REQUESTS             0x00000200
 #define DO_NEVER_LAST_DEVICE              0x00000400
+#define DO_SHUTDOWN_REGISTERED            0x00000800
+#define DO_BUS_ENUMERATED_DEVICE          0x00001000
+#define DO_POWER_PAGABLE                  0x00002000
+#define DO_POWER_INRUSH                   0x00004000
 #define DO_LOW_PRIORITY_FILESYSTEM        0x00010000
 #define DO_SUPPORTS_TRANSACTIONS          0x00040000
 #define DO_FORCE_NEITHER_IO               0x00080000
@@ -120,19 +131,6 @@ typedef enum _IO_COMPLETION_ROUTINE_RESULT {
 #define DO_SYSTEM_SYSTEM_PARTITION        0x00200000
 #define DO_SYSTEM_CRITICAL_PARTITION      0x00400000
 #define DO_DISALLOW_EXECUTE               0x00800000
-
-/* DEVICE_OBJECT.Flags */
-#define DO_UNLOAD_PENDING                 0x00000001
-#define DO_VERIFY_VOLUME                  0x00000002
-#define DO_BUFFERED_IO                    0x00000004
-#define DO_EXCLUSIVE                      0x00000008
-#define DO_DIRECT_IO                      0x00000010
-#define DO_MAP_IO_BUFFER                  0x00000020
-#define DO_DEVICE_INITIALIZING            0x00000080
-#define DO_SHUTDOWN_REGISTERED            0x00000800
-#define DO_BUS_ENUMERATED_DEVICE          0x00001000
-#define DO_POWER_PAGABLE                  0x00002000
-#define DO_POWER_INRUSH                   0x00004000
 
 /* DEVICE_OBJECT.AlignmentRequirement */
 #define FILE_BYTE_ALIGNMENT             0x00000000
@@ -469,6 +467,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 
     /* User buffer for NEITHER_IO */
     PVOID UserBuffer;
+
+    /* Initial allocation size of the file object associated with the IRP.
+     * This is only set for IRP_MJ_CREATE and is a read-only member. */
+    LARGE_INTEGER AllocationSize;
 
     struct {
 	ULONG_PTR OriginalRequestor; /* Original requestor handle, used for

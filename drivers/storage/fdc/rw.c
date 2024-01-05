@@ -165,20 +165,20 @@ NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo, BOOLEAN OneShot)
 	/* clear any spurious interrupts */
 	KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);
 
-	/* Try to read an ID */
-	if (HwReadId(DriveInfo, 0) != STATUS_SUCCESS) {	/* read the first ID we find, from head 0 */
+	/* Try to read an ID. Read the first ID we find, from head 0. */
+	if (HwReadId(DriveInfo, 0) != STATUS_SUCCESS) {
 	    WARN_(FLOPPY, "RWDetermineMediaType(): ReadId failed\n");
-	    return STATUS_UNSUCCESSFUL;	/* if we can't even write to the controller, it's hopeless */
+	    /* if we can't even write to the controller, it's hopeless */
+	    return STATUS_UNSUCCESSFUL;
 	}
 
 	/* Wait for the ReadID to finish */
 	NTSTATUS Status = WaitForControllerInterrupt(DriveInfo->ControllerInfo,
 						     &Timeout);
 
-	if (Status == STATUS_TIMEOUT || HwReadIdResult(DriveInfo->ControllerInfo, NULL,
-						       NULL) != STATUS_SUCCESS) {
-	    WARN_(FLOPPY,
-		  "RWDetermineMediaType(): ReadIdResult failed; continuing\n");
+	if (Status == STATUS_TIMEOUT ||
+	    HwReadIdResult(DriveInfo->ControllerInfo, NULL, NULL) != STATUS_SUCCESS) {
+	    WARN_(FLOPPY, "RWDetermineMediaType(): ReadIdResult failed\n");
 	    if (OneShot) {
 		break;
 	    } else {
@@ -295,21 +295,26 @@ static NTSTATUS RWComputeCHS(IN PDRIVE_INFO DriveInfo,
 	   DiskByteOffset);
 
     /* First calculate the 1-based "absolute sector" based on the byte offset */
-    ASSERT(!(DiskByteOffset % DriveInfo->DiskGeometry.BytesPerSector));	/* FIXME: Only handle full sector transfers atm */
+    /* FIXME: Only handle full sector transfers atm */
+    ASSERT(!(DiskByteOffset % DriveInfo->DiskGeometry.BytesPerSector));
 
-    /* AbsoluteSector is zero-based to make the math a little easier */
-    AbsoluteSector = DiskByteOffset / DriveInfo->DiskGeometry.BytesPerSector;	/* Num full sectors */
+    /* Num of full sectors. AbsoluteSector is zero-based to make the
+     * math a little easier */
+    AbsoluteSector = DiskByteOffset / DriveInfo->DiskGeometry.BytesPerSector;
 
     /* Cylinder number is floor(AbsoluteSector / SectorsPerCylinder) */
     *Cylinder = (CHAR)(AbsoluteSector / SectorsPerCylinder);
 
     /* Head number is 0 if the sector within the cylinder < SectorsPerTrack; 1 otherwise */
-    *Head = AbsoluteSector % SectorsPerCylinder < DriveInfo->DiskGeometry.SectorsPerTrack ? 0 : 1;
+    if ((AbsoluteSector % SectorsPerCylinder) < DriveInfo->DiskGeometry.SectorsPerTrack) {
+	*Head = 0;
+    } else {
+	*Head = 1;
+    }
 
-    /*
-     * Sector number is the sector within the cylinder if on head 0; that minus SectorsPerTrack if it's on head 1
-     * (lots of casts to placate msvc).  1-based!
-     */
+    /* Sector number is the sector within the cylinder if on head 0;
+     * that minus SectorsPerTrack if it's on head 1
+     * (lots of casts to placate msvc).  1-based! */
     *Sector = (UCHAR)(AbsoluteSector % SectorsPerCylinder) + 1 -
 	*Head * (UCHAR)DriveInfo->DiskGeometry.SectorsPerTrack;
 
@@ -330,8 +335,9 @@ static NTSTATUS RWComputeCHS(IN PDRIVE_INFO DriveInfo,
  *     DeviceObject: DeviceObject associated with the IRP
  *     Irp: IRP that we're failing due to change
  * NOTES:
- *     - This procedure is documented in the DDK by "Notifying the File System of Possible Media Changes",
- *       "IoSetHardErrorOrVerifyDevice", and by "Responding to Check-Verify Requests from the File System".
+ *     - This procedure is documented in the DDK by "Notifying the File System of
+ *       Possible Media Changes", and by "Responding to Check-Verify Requests from
+ *       the File System".
  *     - Callable at <= DISPATCH_LEVEL
  */
 NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp)
@@ -343,28 +349,13 @@ NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     DriveInfo->DiskChangeCount++;
 
-    NTSTATUS Status;
-    /* If volume is not mounted, do NOT set verify and return STATUS_IO_DEVICE_ERROR */
-    if (DeviceObject->Vpb && !(DeviceObject->Vpb->Flags & VPB_MOUNTED)) {
-	Status = STATUS_IO_DEVICE_ERROR;
-    } else {
-	/* Notify the filesystem that it will need to verify the volume */
-	DeviceObject->Flags |= DO_VERIFY_VOLUME;
-	Status = STATUS_VERIFY_REQUIRED;
-    }
-    return Status;
+    /* Remind ourselves that we need to return STATUS_VERIFY_REQUIRED for
+     * all future IRPs until device is verified again. */
+    DriveInfo->DeviceObject->Flags |= DO_VERIFY_VOLUME;
+    NTSTATUS Status = STATUS_MEDIA_CHANGED;
+    Irp->IoStatus.Status = Status;
 
-    /*
-     * If this is a user-based, threaded request, let the IO manager know to pop up a box asking
-     * the user to supply the correct media, but only if the error (which we just picked out above)
-     * is deemed by the IO manager to be "user induced".  The reason we don't just unconditionally
-     * call IoSetHardError... is because MS might change the definition of "user induced" some day,
-     * and we don't want to have to remember to re-code this.
-     *
-     * NOTE: we will move this to the server side.
-     */
-    /* if (Irp->Tail.Overlay.Thread && IoIsErrorUserInduced(Irp->IoStatus.Status)) */
-    /* 	IoSetHardErrorOrVerifyDevice(Irp, DeviceObject); */
+    return Status;
 }
 
 /*
@@ -400,9 +391,8 @@ NTSTATUS ResetChangeFlag(PDRIVE_INFO DriveInfo)
     /* Seek to 1 */
     NTSTATUS Status = HwSeek(DriveInfo, 1);
     if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY,
-	      "ResetChangeFlag(): HwSeek failed with error 0x%x; returning STATUS_IO_DEVICE_ERROR\n",
-	      Status);
+	WARN_(FLOPPY, "ResetChangeFlag(): HwSeek failed with error 0x%x; "
+	      "returning STATUS_IO_DEVICE_ERROR\n", Status);
 	goto err;
     }
 
@@ -419,9 +409,8 @@ NTSTATUS ResetChangeFlag(PDRIVE_INFO DriveInfo)
     /* Seek back to 0 */
     Status = HwSeek(DriveInfo, 0);
     if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY,
-	      "ResetChangeFlag(): HwSeek failed with error 0x%x; returning STATUS_IO_DEVICE_ERROR\n",
-	      Status);
+	WARN_(FLOPPY, "ResetChangeFlag(): HwSeek failed with error 0x%x; "
+	      "returning STATUS_IO_DEVICE_ERROR\n", Status);
 	goto err;
     }
 
@@ -438,9 +427,8 @@ NTSTATUS ResetChangeFlag(PDRIVE_INFO DriveInfo)
     /* Check the change bit */
     Status = HwDiskChanged(DriveInfo, &DiskChanged);
     if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY,
-	      "ResetChangeFlag(): HwDiskChanged failed with error 0x%x; returning STATUS_IO_DEVICE_ERROR\n",
-	      Status);
+	WARN_(FLOPPY, "ResetChangeFlag(): HwDiskChanged failed with error 0x%x; "
+	      "returning STATUS_IO_DEVICE_ERROR\n", Status);
 	goto err;
     }
 
@@ -463,8 +451,10 @@ out:
  *     DeviceObject: DeviceObject that is the target of the IRP
  *     Irp: IRP to process
  * RETURNS:
- *     STATUS_VERIFY_REQUIRED if the media has changed and we need the filesystems
- *     to re-synch. STATUS_SUCCESS otherwise.
+ *     STATUS_MEDIA_CHANGED if we detected a media change. STATUS_NO_MEDIA_IN_DEVICE
+ *     if there is no media in the device. STATUS_VERIFY_REQUIRED if the media has
+ *     changed and we haven't verified the new disk. Otherwise return STATUS_SUCCESS
+ *     if IO succeeded and the relevant error status if not.
  *
  * DETAILS:
  *  This routine manages the whole process of servicing a read or write request.
@@ -498,7 +488,7 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
 	   (Stack->MajorFunction == IRP_MJ_READ ?
 	    Stack->Parameters.Read.Length : Stack->Parameters.Write.Length),
 	   (Stack->MajorFunction == IRP_MJ_READ ?
-	    Stack->Parameters.Read.ByteOffset.u.LowPart : Stack->Parameters.Write.ByteOffset.u.LowPart));
+	    Stack->Parameters.Read.ByteOffset.LowPart : Stack->Parameters.Write.ByteOffset.LowPart));
 
     /* Default return codes */
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
@@ -508,9 +498,10 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
      * Check to see if the volume needs to be verified.  If so,
      * we can get out of here quickly.
      */
-    if (DeviceObject->Flags & DO_VERIFY_VOLUME && !(Stack->Flags & SL_OVERRIDE_VERIFY_VOLUME)) {
-	INFO_(FLOPPY,
-	      "ReadWritePassive(): DO_VERIFY_VOLUME set; Completing with STATUS_VERIFY_REQUIRED\n");
+    if (DeviceObject->Flags & DO_VERIFY_VOLUME &&
+	!(Stack->Flags & SL_OVERRIDE_VERIFY_VOLUME)) {
+	INFO_(FLOPPY, "ReadWrite(): DO_VERIFY_VOLUME set; "
+	      "Completing with STATUS_VERIFY_REQUIRED\n");
 	Status = STATUS_VERIFY_REQUIRED;
 	goto out;
     }
@@ -521,22 +512,19 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
     StartMotor(DriveInfo);
     Status = HwDiskChanged(DriveInfo, &DiskChanged);
     if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY,
-	      "ReadWrite(): unable to detect disk change, error = 0x%x\n", Status);
+	WARN_(FLOPPY, "ReadWrite(): unable to detect disk change, "
+	      "error = 0x%x\n", Status);
 	goto stop;
     }
 
     if (DiskChanged) {
-	INFO_(FLOPPY,
-	      "ReadWrite(): signalling media changed; Completing with STATUS_MEDIA_CHANGED\n");
-
 	Status = SignalMediaChanged(DeviceObject, Irp);
 
-	/*
-	 * Guessing at something... see ioctl.c for more info
-	 */
 	if (ResetChangeFlag(DriveInfo) == STATUS_NO_MEDIA_IN_DEVICE)
 	    Status = STATUS_NO_MEDIA_IN_DEVICE;
+
+	INFO_(FLOPPY, "ReadWrite(): signalling media changed; "
+	      "Completing with status 0x%x\n", Status);
 
 	goto stop;
     }
@@ -547,14 +535,14 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
     if (DriveInfo->DiskGeometry.MediaType == Unknown) {
 	Status = RWDetermineMediaType(DriveInfo, FALSE);
 	if (!NT_SUCCESS(Status)) {
-	    WARN_(FLOPPY,
-		  "ReadWrite(): unable to determine media type, error = 0x%x\n", Status);
+	    WARN_(FLOPPY, "ReadWrite(): unable to determine media type, "
+		  "error = 0x%x\n", Status);
 	    goto stop;
 	}
 
 	if (DriveInfo->DiskGeometry.MediaType == Unknown) {
-	    WARN_(FLOPPY,
-		  "ReadWrite(): Unknown media in drive; completing with STATUS_UNRECOGNIZED_MEDIA\n");
+	    WARN_(FLOPPY, "ReadWrite(): Unknown media in drive; "
+		  "completing with STATUS_UNRECOGNIZED_MEDIA\n");
 	    Status = STATUS_UNRECOGNIZED_MEDIA;
 	    goto stop;
 	}

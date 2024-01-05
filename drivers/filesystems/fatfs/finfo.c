@@ -100,7 +100,7 @@ static NTSTATUS FatSetPositionInformation(PFILE_OBJECT FileObject,
     DPRINT("PositionInfo %p\n", PositionInfo);
     /* TODO: This should be handled on server side. */
     /* DPRINT("Setting position %u\n", */
-    /* 	   PositionInfo->CurrentByteOffset.u.LowPart); */
+    /* 	   PositionInfo->CurrentByteOffset.LowPart); */
 
     /* FileObject->CurrentByteOffset.QuadPart = PositionInfo->CurrentByteOffset.QuadPart; */
 
@@ -1088,62 +1088,61 @@ static NTSTATUS FatGetAllInformation(PFILE_OBJECT FileObject,
     return Status;
 }
 
-static VOID UpdateFileSize(PFILE_OBJECT FileObject,
-			   PFATFCB Fcb, ULONG Size, ULONG ClusterSize, BOOLEAN IsFatX)
+static VOID UpdateFileSize(IN PFILE_OBJECT FileObject,
+			   IN PFATFCB Fcb,
+			   IN ULONG FileSize,
+			   IN ULONG ClusterSize,
+			   IN BOOLEAN IsFatX)
 {
-    if (Size > 0) {
-	Fcb->Base.AllocationSize.QuadPart = ROUND_UP_64(Size, ClusterSize);
+    if (FileSize > 0) {
+	Fcb->Base.AllocationSize.QuadPart = ROUND_UP_64(FileSize, ClusterSize);
     } else {
 	Fcb->Base.AllocationSize.QuadPart = (LONGLONG) 0;
     }
     if (!FatFCBIsDirectory(Fcb)) {
 	if (IsFatX)
-	    Fcb->Entry.FatX.FileSize = Size;
+	    Fcb->Entry.FatX.FileSize = FileSize;
 	else
-	    Fcb->Entry.Fat.FileSize = Size;
+	    Fcb->Entry.Fat.FileSize = FileSize;
     }
-    Fcb->Base.FileSize.QuadPart = Size;
-    Fcb->Base.ValidDataLength.QuadPart = Size;
+    Fcb->Base.FileSize.QuadPart = FileSize;
+    Fcb->Base.ValidDataLength.QuadPart = FileSize;
 
-    CcSetFileSizes(FileObject,
-		   (PCC_FILE_SIZES) & Fcb->Base.AllocationSize);
+    CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Base.AllocationSize);
 }
 
-NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
-					 PFATFCB Fcb,
-					 PDEVICE_EXTENSION DeviceExt,
-					 PLARGE_INTEGER AllocationSize)
+NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
+				   IN PFATFCB Fcb,
+				   IN PDEVICE_EXTENSION DeviceExt,
+				   IN PLARGE_INTEGER FileSize)
 {
-    ULONG OldSize;
-    ULONG Cluster, FirstCluster;
-    NTSTATUS Status;
-
+    BOOLEAN IsFatX = FatVolumeIsFatX(DeviceExt);
+    ULONG OldSize = IsFatX ? Fcb->Entry.FatX.FileSize : Fcb->Entry.Fat.FileSize;
+    ULONG NewSize = FileSize->LowPart;
     ULONG ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
-    ULONG NewSize = AllocationSize->u.LowPart;
-    ULONG NCluster;
-    BOOLEAN AllocSizeChanged = FALSE, IsFatX = FatVolumeIsFatX(DeviceExt);
+    LARGE_INTEGER NewAllocSize = {
+	.QuadPart = ROUND_UP_64(FileSize->QuadPart, ClusterSize)
+    };
 
-    DPRINT("FatSetAllocationSizeInformation(File <%wZ>, AllocationSize %d %u)\n",
-	   &Fcb->PathNameU, AllocationSize->HighPart,
-	   AllocationSize->LowPart);
+    DPRINT("FatSetFileSizeInformation(File <%wZ>, FileSize %d %u)\n",
+	   &Fcb->PathNameU, FileSize->HighPart, FileSize->LowPart);
 
-    if (IsFatX)
-	OldSize = Fcb->Entry.FatX.FileSize;
-    else
-	OldSize = Fcb->Entry.Fat.FileSize;
-
-    if (AllocationSize->u.HighPart > 0) {
-	return STATUS_INVALID_PARAMETER;
+    if (NewAllocSize.HighPart > 0) {
+	return STATUS_END_OF_FILE;
     }
 
     if (OldSize == NewSize) {
 	return STATUS_SUCCESS;
     }
 
-    FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
+    ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
 
-    if (NewSize > Fcb->Base.AllocationSize.u.LowPart) {
-	AllocSizeChanged = TRUE;
+    if (NewAllocSize.LowPart == Fcb->Base.AllocationSize.LowPart) {
+	/* Allocation size is not changed. Simply update the file size. */
+	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
+    } else if (NewAllocSize.LowPart > Fcb->Base.AllocationSize.LowPart) {
+	/* New allocation size is larger, so we need to find more space. */
+	NTSTATUS Status;
 	if (FirstCluster == 0) {
 	    Fcb->LastCluster = Fcb->LastOffset = 0;
 	    Status = NextCluster(DeviceExt, FirstCluster, &FirstCluster, TRUE);
@@ -1156,6 +1155,7 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 		return STATUS_DISK_FULL;
 	    }
 
+	    ULONG Cluster, NCluster;
 	    Status = OffsetToCluster(DeviceExt, FirstCluster,
 				     ROUND_DOWN(NewSize - 1, ClusterSize),
 				     &NCluster, TRUE);
@@ -1163,10 +1163,8 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 		/* disk is full */
 		NCluster = Cluster = FirstCluster;
 		Status = STATUS_SUCCESS;
-		while (NT_SUCCESS(Status) && Cluster != 0xffffffff
-		       && Cluster > 1) {
-		    Status = NextCluster(DeviceExt, FirstCluster, &NCluster,
-					 FALSE);
+		while (NT_SUCCESS(Status) && Cluster != 0xffffffff && Cluster > 1) {
+		    Status = NextCluster(DeviceExt, FirstCluster, &NCluster, FALSE);
 		    WriteCluster(DeviceExt, Cluster, 0);
 		    Cluster = NCluster;
 		}
@@ -1185,19 +1183,20 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 		}
 	    }
 	} else {
+	    ULONG Cluster;
 	    if (Fcb->LastCluster > 0) {
-		if (Fcb->Base.AllocationSize.u.LowPart - ClusterSize == Fcb->LastOffset) {
+		if (Fcb->Base.AllocationSize.LowPart - ClusterSize == Fcb->LastOffset) {
 		    Cluster = Fcb->LastCluster;
 		    Status = STATUS_SUCCESS;
 		} else {
 		    Status = OffsetToCluster(DeviceExt, Fcb->LastCluster,
-					     Fcb->Base.AllocationSize.u.LowPart -
+					     Fcb->Base.AllocationSize.LowPart -
 					     ClusterSize - Fcb->LastOffset,
 					     &Cluster, FALSE);
 		}
 	    } else {
 		Status = OffsetToCluster(DeviceExt, FirstCluster,
-					 Fcb->Base.AllocationSize.u.LowPart - ClusterSize,
+					 Fcb->Base.AllocationSize.LowPart - ClusterSize,
 					 &Cluster, FALSE);
 	    }
 
@@ -1206,10 +1205,11 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 	    }
 
 	    Fcb->LastCluster = Cluster;
-	    Fcb->LastOffset = Fcb->Base.AllocationSize.u.LowPart - ClusterSize;
+	    Fcb->LastOffset = Fcb->Base.AllocationSize.LowPart - ClusterSize;
 
 	    /* FIXME: Check status */
 	    /* Cluster points now to the last cluster within the chain */
+	    ULONG NCluster;
 	    Status = OffsetToCluster(DeviceExt, Cluster,
 				     ROUND_DOWN(NewSize-1,ClusterSize) - Fcb->LastOffset,
 				     &NCluster, TRUE);
@@ -1227,9 +1227,9 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 		return STATUS_DISK_FULL;
 	    }
 	}
-	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize,
-		       FatVolumeIsFatX(DeviceExt));
-    } else if (NewSize + ClusterSize <= Fcb->Base.AllocationSize.u.LowPart) {
+	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
+    } else {
+	/* New allocation size is smaller, so we need to shrink the file. */
 	DPRINT("Check for the ability to set file size\n");
 #if 0				/* TODO! */
 	if (!MmCanFileBeTruncated(FileObject->SectionObjectPointer,
@@ -1240,11 +1240,11 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 #endif
 	DPRINT("Can set file size\n");
 
-	AllocSizeChanged = TRUE;
 	/* FIXME: Use the cached cluster/offset better way. */
 	Fcb->LastCluster = Fcb->LastOffset = 0;
-	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize,
-		       FatVolumeIsFatX(DeviceExt));
+	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
+	NTSTATUS Status;
+	ULONG Cluster, NCluster;
 	if (NewSize > 0) {
 	    Status = OffsetToCluster(DeviceExt, FirstCluster,
 				     ROUND_DOWN(NewSize - 1, ClusterSize),
@@ -1258,11 +1258,9 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 	    if (IsFatX) {
 		Fcb->Entry.FatX.FirstCluster = 0;
 	    } else {
+		Fcb->Entry.Fat.FirstCluster = 0;
 		if (DeviceExt->FatInfo.FatType == FAT32) {
-		    Fcb->Entry.Fat.FirstCluster = 0;
 		    Fcb->Entry.Fat.FirstClusterHigh = 0;
-		} else {
-		    Fcb->Entry.Fat.FirstCluster = 0;
 		}
 	    }
 
@@ -1279,14 +1277,11 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
 	if (DeviceExt->FatInfo.FatType == FAT32) {
 	    Fat32UpdateFreeClustersCount(DeviceExt);
 	}
-    } else {
-	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize,
-		       FatVolumeIsFatX(DeviceExt));
     }
 
     /* Update the on-disk directory entry */
     Fcb->Flags |= FCB_IS_DIRTY;
-    if (AllocSizeChanged) {
+    if (NewAllocSize.LowPart != Fcb->Base.AllocationSize.LowPart) {
 	FatUpdateEntry(DeviceExt, Fcb);
 
 	FatReportChange(DeviceExt, Fcb, FILE_NOTIFY_CHANGE_SIZE,
@@ -1300,82 +1295,65 @@ NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
  */
 NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
 {
-    FILE_INFORMATION_CLASS FileInformationClass;
-    PFATFCB FCB;
-
-    NTSTATUS Status = STATUS_SUCCESS;
-    PVOID SystemBuffer;
-    ULONG BufferLength;
-
-    /* PRECONDITION */
     ASSERT(IrpContext);
 
-    /* INITIALIZATION */
-    FileInformationClass = IrpContext->Stack->Parameters.QueryFile.FileInformationClass;
-    FCB = (PFATFCB) IrpContext->FileObject->FsContext;
+    FILE_INFORMATION_CLASS Info = IrpContext->Stack->Parameters.QueryFile.FileInformationClass;
+    PFATFCB Fcb = IrpContext->FileObject->FsContext;
 
     DPRINT("FatQueryInformation is called for '%s'\n",
-	   FileInformationClass >= FileMaximumInformation -
-	   1 ? "????" : FileInformationClassNames[FileInformationClass]);
+	   (Info >= FileMaximumInformation - 1) ? "????" : FileInformationClassNames[Info]);
 
-    if (FCB == NULL) {
+    if (Fcb == NULL) {
 	DPRINT1("IRP_MJ_QUERY_INFORMATION without FCB!\n");
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_INVALID_PARAMETER;
     }
 
-    SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
-    BufferLength = IrpContext->Stack->Parameters.QueryFile.Length;
+    PVOID SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    ULONG BufferLength = IrpContext->Stack->Parameters.QueryFile.Length;
 
-    switch (FileInformationClass) {
+    NTSTATUS Status = STATUS_SUCCESS;
+    switch (Info) {
     case FileStandardInformation:
-	Status = FatGetStandardInformation(FCB,
-					   SystemBuffer, &BufferLength);
+	Status = FatGetStandardInformation(Fcb, SystemBuffer, &BufferLength);
 	break;
 
     case FilePositionInformation:
-	Status = FatGetPositionInformation(IrpContext->FileObject,
-					   FCB,
+	Status = FatGetPositionInformation(IrpContext->FileObject, Fcb,
 					   IrpContext->DeviceExt,
 					   SystemBuffer, &BufferLength);
 	break;
 
     case FileBasicInformation:
-	Status = FatGetBasicInformation(IrpContext->FileObject,
-					FCB,
+	Status = FatGetBasicInformation(IrpContext->FileObject, Fcb,
 					IrpContext->DeviceExt,
 					SystemBuffer, &BufferLength);
 	break;
 
     case FileNameInformation:
-	Status = FatGetNameInformation(IrpContext->FileObject,
-				       FCB,
+	Status = FatGetNameInformation(IrpContext->FileObject, Fcb,
 				       IrpContext->DeviceExt,
 				       SystemBuffer, &BufferLength);
 	break;
 
     case FileInternalInformation:
-	Status = FatGetInternalInformation(FCB,
-					   IrpContext->DeviceExt,
+	Status = FatGetInternalInformation(Fcb,IrpContext->DeviceExt,
 					   SystemBuffer, &BufferLength);
 	break;
 
     case FileNetworkOpenInformation:
-	Status = FatGetNetworkOpenInformation(FCB,
-					      IrpContext->DeviceExt,
+	Status = FatGetNetworkOpenInformation(Fcb, IrpContext->DeviceExt,
 					      SystemBuffer, &BufferLength);
 	break;
 
     case FileAllInformation:
-	Status = FatGetAllInformation(IrpContext->FileObject,
-				      FCB,
+	Status = FatGetAllInformation(IrpContext->FileObject, Fcb,
 				      IrpContext->DeviceExt,
 				      SystemBuffer, &BufferLength);
 	break;
 
     case FileEaInformation:
-	Status = FatGetEaInformation(IrpContext->FileObject,
-				     FCB,
+	Status = FatGetEaInformation(IrpContext->FileObject, Fcb,
 				     IrpContext->DeviceExt,
 				     SystemBuffer, &BufferLength);
 	break;
@@ -1402,29 +1380,20 @@ NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
  */
 NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 {
-    FILE_INFORMATION_CLASS FileInformationClass;
-    PFATFCB FCB;
-    NTSTATUS Status = STATUS_SUCCESS;
-    PVOID SystemBuffer;
-
-    /* PRECONDITION */
     ASSERT(IrpContext);
-
     DPRINT("FatSetInformation(IrpContext %p)\n", IrpContext);
 
-    /* INITIALIZATION */
-    FileInformationClass = IrpContext->Stack->Parameters.SetFile.FileInformationClass;
-    FCB = (PFATFCB) IrpContext->FileObject->FsContext;
-    SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    FILE_INFORMATION_CLASS Info = IrpContext->Stack->Parameters.SetFile.FileInformationClass;
+    PFATFCB Fcb = (PFATFCB) IrpContext->FileObject->FsContext;
+    PVOID SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
 
     DPRINT("FatSetInformation is called for '%s'\n",
-	   (FileInformationClass >= (FileMaximumInformation - 1)) ?
-	   "????" : FileInformationClassNames[FileInformationClass]);
+	   (Info >= (FileMaximumInformation - 1)) ? "????" : FileInformationClassNames[Info]);
 
-    DPRINT("FileInformationClass %d\n", FileInformationClass);
+    DPRINT("FileInformationClass %d\n", Info);
     DPRINT("SystemBuffer %p\n", SystemBuffer);
 
-    if (FCB == NULL) {
+    if (Fcb == NULL) {
 	DPRINT1("IRP_MJ_SET_INFORMATION without FCB!\n");
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_INVALID_PARAMETER;
@@ -1434,7 +1403,7 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
        the file size would be allowed.  If not, we bail with the right error.
        We must do this before acquiring the lock. */
 #if 0			/* TODO! */
-    if (FileInformationClass == FileEndOfFileInformation) {
+    if (Info == FileEndOfFileInformation) {
 	DPRINT("Check for the ability to set file size\n");
 	if (!MmCanFileBeTruncated(IrpContext->FileObject->SectionObjectPointer,
 				  (PLARGE_INTEGER)SystemBuffer)) {
@@ -1446,44 +1415,32 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
     }
 #endif
 
-    PDEVICE_EXTENSION DevExt = IrpContext->DeviceObject->DeviceExtension;
+    PFILE_OBJECT FileObj = IrpContext->FileObject;
+    PDEVICE_EXTENSION DevExt = IrpContext->DeviceExt;
+    NTSTATUS Status = STATUS_SUCCESS;
 
-    switch (FileInformationClass) {
+    switch (Info) {
     case FilePositionInformation:
-	Status = FatSetPositionInformation(IrpContext->FileObject,
-					   SystemBuffer);
+	Status = FatSetPositionInformation(FileObj, SystemBuffer);
 	break;
 
     case FileDispositionInformation:
-	Status = FatSetDispositionInformation(IrpContext->FileObject,
-					      FCB,
-					      IrpContext->DeviceExt,
-					      SystemBuffer);
+	Status = FatSetDispositionInformation(FileObj, Fcb, DevExt, SystemBuffer);
 	break;
 
     case FileAllocationInformation:
     case FileEndOfFileInformation:
-	Status = FatSetAllocationSizeInformation(IrpContext->FileObject,
-						 FCB,
-						 IrpContext->DeviceExt,
-						 (PLARGE_INTEGER)
-						 SystemBuffer);
+	Status = FatSetFileSizeInformation(FileObj, Fcb, DevExt,
+					   (PLARGE_INTEGER)SystemBuffer);
 	break;
 
     case FileBasicInformation:
-	Status = FatSetBasicInformation(IrpContext->FileObject,
-					FCB,
-					IrpContext->DeviceExt,
-					SystemBuffer);
+	Status = FatSetBasicInformation(FileObj, Fcb, DevExt, SystemBuffer);
 	break;
 
     case FileRenameInformation:
-	Status = FatSetRenameInformation(IrpContext->FileObject,
-					 FCB,
-					 IrpContext->DeviceExt,
-					 SystemBuffer,
-					 IrpContext->Stack->Parameters.
-					 SetFile.FileObject);
+	Status = FatSetRenameInformation(FileObj, Fcb, DevExt, SystemBuffer,
+					 IrpContext->Stack->Parameters.SetFile.FileObject);
 	break;
 
     default:

@@ -21,8 +21,9 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
  * | 32/63 .......................... 12 | 11 ..... 2 |  1 ... 0  |
  * |==============================================================|
  *
- * If bit 0 is set, all pages frames in this pfn entry are large pages.
- * Otherwise they are all 4K pages.
+ * If bit 0 is set, all pages frames in this pfn entry are large pages
+ * (second lowest level of page size offered by the architecture).
+ * Otherwise they are all pages with the lowest level of page size.
  */
 #define MDL_PFN_ATTR_BITS	(2)
 #define MDL_PFN_PAGE_COUNT_BITS	(10)
@@ -147,7 +148,7 @@ typedef struct _IO_REQUEST_PARAMETERS {
 			   * an offset from the beginning of the IO_PACKET */
     ULONG InputBufferPfnCount;
     ULONG OutputBufferPfn; /* Page frame database of the output buffer. This is
-			   * an offset from the beginning of the IO_PACKET */
+			    * an offset from the beginning of the IO_PACKET */
     ULONG OutputBufferPfnCount;
     GLOBAL_HANDLE OriginalRequestor; /* Original thread or driver object that
 				      * requested this IRP. Together with
@@ -275,6 +276,11 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 	    GLOBAL_HANDLE DeviceObject;
 	    BOOLEAN NotifyCompletion; /* TRUE if the client driver wants the server to
 				       * notify it after the IRP has been processed. */
+	    LARGE_INTEGER NewOffset; /* For IRP_MJ_READ and IRP_MJ_WRITE, this stores
+				      * the ByteOffset of the IRP being forwarded. */
+	    ULONG NewLength; /* For IRP_MJ_READ and IRP_MJ_WRITE, this stores the new
+			      * Length of the requested read/write. It must be less than
+			      * or equal to the original length parameter. */
 	} ForwardIrp;
     };
 } IO_PACKET_CLIENT_MESSAGE, *PIO_PACKET_CLIENT_MESSAGE;

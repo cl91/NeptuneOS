@@ -54,17 +54,13 @@ static NTSTATUS FsdGetFsVolumeInformation(PDEVICE_OBJECT DeviceObject,
 
     if (FatVolumeIsFatX(DeviceExt)) {
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   DeviceExt->VolumeFcb->Entry.FatX.
-				   CreationDate,
-				   DeviceExt->VolumeFcb->Entry.FatX.
-				   CreationTime,
+				   DeviceExt->VolumeFcb->Entry.FatX.CreationDate,
+				   DeviceExt->VolumeFcb->Entry.FatX.CreationTime,
 				   &FsVolumeInfo->VolumeCreationTime);
     } else {
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   DeviceExt->VolumeFcb->Entry.Fat.
-				   CreationDate,
-				   DeviceExt->VolumeFcb->Entry.Fat.
-				   CreationTime,
+				   DeviceExt->VolumeFcb->Entry.Fat.CreationDate,
+				   DeviceExt->VolumeFcb->Entry.Fat.CreationTime,
 				   &FsVolumeInfo->VolumeCreationTime);
     }
 
@@ -113,8 +109,7 @@ static NTSTATUS FsdGetFsAttributeInformation(PDEVICE_EXTENSION DeviceExt,
 
     Length = wcslen(pName) * sizeof(WCHAR);
     DPRINT("Required length %u\n",
-	   (FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) +
-	    Length));
+	   FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) + Length);
 
     if (*BufferLength < Length) {
 	Status = STATUS_BUFFER_OVERFLOW;
@@ -124,9 +119,7 @@ static NTSTATUS FsdGetFsAttributeInformation(PDEVICE_EXTENSION DeviceExt,
     }
 
     AttrInfo->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_UNICODE_ON_DISK;
-
     AttrInfo->MaximumComponentNameLength = 255;
-
     AttrInfo->FileSystemNameLength = Length;
 
     RtlCopyMemory(AttrInfo->FileSystemName, pName, Length);
@@ -220,7 +213,7 @@ static NTSTATUS FsdGetFsFullSizeInformation(PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
-
+/* TODO: This needs cleaning up. */
 static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 					 PFILE_FS_LABEL_INFORMATION FsLabelInfo)
 {
@@ -247,8 +240,7 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
     DeviceExt = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
     IsFatX = FatVolumeIsFatX(DeviceExt);
 
-    if (sizeof(DeviceObject->Vpb->VolumeLabel) <
-	FsLabelInfo->VolumeLabelLength) {
+    if (sizeof(DeviceObject->Vpb->VolumeLabel) < FsLabelInfo->VolumeLabelLength) {
 	return STATUS_NAME_TOO_LONG;
     }
 
@@ -286,16 +278,13 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	VolumeLabelDirEntry.FatX.Attrib = _A_VOLID;
     } else {
 	RtlCopyMemory(VolumeLabelDirEntry.Fat.Filename, cString,
-		      max(sizeof(VolumeLabelDirEntry.Fat.Filename),
-			  LabelLen));
+		      max(sizeof(VolumeLabelDirEntry.Fat.Filename), LabelLen));
 	if (LabelLen > sizeof(VolumeLabelDirEntry.Fat.Filename)) {
 	    memset(VolumeLabelDirEntry.Fat.Ext, ' ',
 		   sizeof(VolumeLabelDirEntry.Fat.Ext));
 	    RtlCopyMemory(VolumeLabelDirEntry.Fat.Ext,
-			  cString +
-			  sizeof(VolumeLabelDirEntry.Fat.Filename),
-			  LabelLen -
-			  sizeof(VolumeLabelDirEntry.Fat.Filename));
+			  cString + sizeof(VolumeLabelDirEntry.Fat.Filename),
+			  LabelLen - sizeof(VolumeLabelDirEntry.Fat.Filename));
 	} else {
 	    memset(&VolumeLabelDirEntry.Fat.Filename[LabelLen], ' ',
 		   sizeof(VolumeLabelDirEntry.Fat.Filename) - LabelLen);
@@ -311,11 +300,10 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 
     /* Search existing volume entry on disk */
     FileOffset.QuadPart = 0;
-    __try {
-	CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
-		  PIN_WAIT, &Context, (PVOID *) & Entry);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-	Status = GetExceptionCode();
+    Status = CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
+		       PIN_WAIT, &Context, (PVOID *)&Entry);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
     }
 
     if (NT_SUCCESS(Status)) {
@@ -338,14 +326,9 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	    if ((DirIndex % EntriesPerPage) == 0) {
 		CcUnpinData(Context);
 		FileOffset.u.LowPart += PAGE_SIZE;
-		__try {
-		    CcPinRead(pRootFcb->FileObject, &FileOffset,
-			      SizeDirEntry, PIN_WAIT, &Context,
-			      (PVOID *) & Entry);
-		} __except(EXCEPTION_EXECUTE_HANDLER) {
-		    Status = GetExceptionCode();
-		}
-
+		Status = CcPinRead(pRootFcb->FileObject, &FileOffset,
+				   SizeDirEntry, PIN_WAIT, &Context,
+				   (PVOID *)&Entry);
 		if (!NT_SUCCESS(Status)) {
 		    Context = NULL;
 		    break;
@@ -366,13 +349,8 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	    FileOffset.u.HighPart = 0;
 	    FileOffset.u.LowPart = VolumeLabelDirIndex * SizeDirEntry;
 
-	    Status = STATUS_SUCCESS;
-	    __try {
-		CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
-			  PIN_WAIT, &Context, (PVOID *) & Entry);
-	    } __except(EXCEPTION_EXECUTE_HANDLER) {
-		Status = GetExceptionCode();
-	    }
+	    Status = CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
+			       PIN_WAIT, &Context, (PVOID *)&Entry);
 
 	    if (NT_SUCCESS(Status)) {
 		RtlCopyMemory(Entry, &VolumeLabelDirEntry, SizeDirEntry);
@@ -429,9 +407,8 @@ NTSTATUS FatQueryVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
 	break;
 
     case FileFsAttributeInformation:
-	RC = FsdGetFsAttributeInformation(IrpContext->DeviceObject->
-					  DeviceExtension, SystemBuffer,
-					  &BufferLength);
+	RC = FsdGetFsAttributeInformation(IrpContext->DeviceObject->DeviceExtension,
+					  SystemBuffer, &BufferLength);
 	break;
 
     case FileFsSizeInformation:

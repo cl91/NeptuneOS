@@ -9,11 +9,10 @@
 
 #include "fatfs.h"
 
-NTSTATUS FatFCBInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb)
+NTSTATUS FatFCBInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 {
     PFILE_OBJECT FileObject;
     PFATCCB NewCCB;
-    NTSTATUS Status;
 
     /* Don't re-initialize if already done */
     if (BooleanFlagOn(Fcb->Flags, FCB_CACHE_INITIALIZED)) {
@@ -25,22 +24,20 @@ NTSTATUS FatFCBInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb)
 
     FileObject = IoCreateStreamFileObject(NULL, Vcb->StorageDevice);
     if (FileObject == NULL) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	goto Quit;
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 #ifdef KDBG
-    if (DebugFile.Buffer != NULL
-	&& FsRtlIsNameInExpression(&DebugFile, &Fcb->LongNameU, FALSE,
-				   NULL)) {
+    if (DebugFile.Buffer && FsRtlIsNameInExpression(&DebugFile, &Fcb->LongNameU,
+						    FALSE, NULL)) {
 	DPRINT1("Attaching %p to %p (%d)\n", Fcb, FileObject,
 		Fcb->RefCount);
     }
 #endif
 
+    NTSTATUS Status;
     NewCCB = ExAllocateFromLookasideList(&FatGlobalData->CcbLookasideList);
     if (NewCCB == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
-	ObDereferenceObject(FileObject);
 	goto Quit;
     }
     RtlZeroMemory(NewCCB, sizeof(FATCCB));
@@ -50,15 +47,13 @@ NTSTATUS FatFCBInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb)
     FileObject->Vpb = Vcb->IoVPB;
     Fcb->FileObject = FileObject;
 
-    __try {
-	CcInitializeCacheMap(FileObject, (PCC_FILE_SIZES)(&Fcb->Base.AllocationSize),
-			     TRUE, Fcb);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-	Status = GetExceptionCode();
+    Status = CcInitializeCacheMap(FileObject,
+				  (PCC_FILE_SIZES)(&Fcb->Base.AllocationSize),
+				  TRUE, Fcb);
+    if (!NT_SUCCESS(Status)) {
 	Fcb->FileObject = NULL;
 	ExFreeToLookasideList(&FatGlobalData->CcbLookasideList, NewCCB);
-	ObDereferenceObject(FileObject);
-	return Status;
+	goto Quit;
     }
 
     FatGrabFCB(Vcb, Fcb);
@@ -66,7 +61,9 @@ NTSTATUS FatFCBInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb)
     Status = STATUS_SUCCESS;
 
 Quit:
-
+    if (!NT_SUCCESS(Status) && FileObject) {
+	ObDereferenceObject(FileObject);
+    }
     return Status;
 }
 
@@ -105,14 +102,13 @@ NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt, IN PFATFCB Fcb)
 	return Status;
     }
 
-    Offset.u.HighPart = 0;
-    Offset.u.LowPart = DirIndex * SizeDirEntry;
-    __try {
-	CcPinRead(Fcb->ParentFcb->FileObject, &Offset, SizeDirEntry,
-		  PIN_WAIT, &Context, (PVOID *) & PinEntry);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
+    Offset.HighPart = 0;
+    Offset.LowPart = DirIndex * SizeDirEntry;
+    Status = CcPinRead(Fcb->ParentFcb->FileObject, &Offset, SizeDirEntry,
+		       PIN_WAIT, &Context, (PVOID *)&PinEntry);
+    if (!NT_SUCCESS(Status)) {
 	DPRINT1("Failed write to \'%wZ\'.\n", &Fcb->ParentFcb->PathNameU);
-	return GetExceptionCode();
+	return Status;
     }
 
     Fcb->Flags &= ~FCB_IS_DIRTY;
@@ -150,14 +146,14 @@ NTSTATUS FatRenameEntry(IN PDEVICE_EXTENSION DeviceExt,
 
 	/* Open associated dir entry */
 	StartIndex = Fcb->StartIndex;
-	Offset.u.HighPart = 0;
-	Offset.u.LowPart = (StartIndex * sizeof(FATX_DIR_ENTRY) / PAGE_SIZE) * PAGE_SIZE;
+	Offset.HighPart = 0;
+	Offset.LowPart = (StartIndex * sizeof(FATX_DIR_ENTRY) / PAGE_SIZE) * PAGE_SIZE;
 	__try {
 	    CcPinRead(Fcb->ParentFcb->FileObject, &Offset, PAGE_SIZE,
 		      PIN_WAIT, &Context, (PVOID *) & pDirEntry);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    DPRINT1("CcPinRead(Offset %x:%x, Length %d) failed\n",
-		    Offset.u.HighPart, Offset.u.LowPart, PAGE_SIZE);
+		    Offset.HighPart, Offset.LowPart, PAGE_SIZE);
 	    return GetExceptionCode();
 	}
 
@@ -220,7 +216,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	return FALSE;
     }
 
-    Count = DirFcb->Base.FileSize.u.LowPart / SizeDirEntry;
+    Count = DirFcb->Base.FileSize.LowPart / SizeDirEntry;
     Size = DeviceExt->FatInfo.BytesPerCluster / SizeDirEntry;
     for (i = 0; i < Count; i++, pFatEntry = (PDIR_ENTRY)((ULONG_PTR)pFatEntry + SizeDirEntry)) {
 	if (Context == NULL || (i % Size) == 0) {
@@ -234,7 +230,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	    } __except(EXCEPTION_EXECUTE_HANDLER) {
 		return FALSE;
 	    }
-	    FileOffset.u.LowPart += DeviceExt->FatInfo.BytesPerCluster;
+	    FileOffset.LowPart += DeviceExt->FatInfo.BytesPerCluster;
 	}
 
 	if (ENTRY_END(IsFatX, pFatEntry)) {
@@ -268,18 +264,18 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 		/* We can't extend a root directory on a FAT12/FAT16/FATX partition */
 		return FALSE;
 	    }
-	    AllocationSize.QuadPart = DirFcb->Base.FileSize.u.LowPart +
+	    AllocationSize.QuadPart = DirFcb->Base.FileSize.LowPart +
 		DeviceExt->FatInfo.BytesPerCluster;
-	    Status = FatSetAllocationSizeInformation(DirFcb->FileObject,
-						     DirFcb, DeviceExt,
-						     &AllocationSize);
+	    Status = FatSetFileSizeInformation(DirFcb->FileObject,
+					       DirFcb, DeviceExt,
+					       &AllocationSize);
 	    if (!NT_SUCCESS(Status)) {
 		return FALSE;
 	    }
 
 	    /* Clear the new dir cluster */
-	    FileOffset.u.LowPart = (ULONG)(DirFcb->Base.FileSize.QuadPart -
-					   DeviceExt->FatInfo.BytesPerCluster);
+	    FileOffset.LowPart = (ULONG)(DirFcb->Base.FileSize.QuadPart -
+					 DeviceExt->FatInfo.BytesPerCluster);
 	    __try {
 		CcPinRead(DirFcb->FileObject, &FileOffset,
 			  DeviceExt->FatInfo.BytesPerCluster, PIN_WAIT,
@@ -296,7 +292,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 			      DeviceExt->FatInfo.BytesPerCluster);
 	} else if (*pStart + NumSlots < Count) {
 	    /* Clear the entry after the last new entry */
-	    FileOffset.u.LowPart = (*pStart + NumSlots) * SizeDirEntry;
+	    FileOffset.LowPart = (*pStart + NumSlots) * SizeDirEntry;
 	    __try {
 		CcPinRead(DirFcb->FileObject, &FileOffset, SizeDirEntry,
 			  PIN_WAIT, &Context, (PVOID *) & pFatEntry);

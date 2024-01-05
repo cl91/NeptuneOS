@@ -422,10 +422,8 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    LONG BufferLength = 0;
     PUNICODE_STRING pSearchPattern = NULL;
     FILE_INFORMATION_CLASS FileInformationClass;
-    PUCHAR Buffer = NULL;
     PFILE_NAMES_INFORMATION Buffer0 = NULL;
     PFATFCB pFcb;
     PFATCCB pCcb;
@@ -441,17 +439,8 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
     pCcb = (PFATCCB) IrpContext->FileObject->FsContext2;
     pFcb = (PFATFCB) IrpContext->FileObject->FsContext;
 
-    /* Determine Buffer for result : */
-    BufferLength = Stack->Parameters.QueryDirectory.Length;
-#if 0
-    /* Do not probe the user buffer until SEH is available */
-    if (IrpContext->Irp->RequestorMode != KernelMode &&
-	IrpContext->Irp->MdlAddress == NULL &&
-	IrpContext->Irp->UserBuffer != NULL) {
-	ProbeForWrite(IrpContext->Irp->UserBuffer, BufferLength, 1);
-    }
-#endif
-    Buffer = FatGetUserBuffer(IrpContext->Irp, FALSE);
+    LONG BufferLength = Stack->Parameters.QueryDirectory.Length;
+    PUCHAR Buffer = IrpContext->Irp->UserBuffer;
 
     /* Obtain the callers parameters */
     pSearchPattern = (PUNICODE_STRING)Stack->Parameters.QueryDirectory.FileName;

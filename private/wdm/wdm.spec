@@ -42,6 +42,8 @@
 @ stdcall HalMakeBeep(long)
 @ stdcall HalGetAdapter(ptr ptr)
 @ stdcall FsRtlDoesNameContainWildCards(ptr)
+@ stdcall FsRtlIsNameInExpression(ptr ptr long wstr)
+@ stdcall FsRtlAreNamesEqual(ptr ptr long wstr)
 @ cdecl __inbyte(long)
 @ cdecl __outbyte(long long)
 @ cdecl _assert(str str long)

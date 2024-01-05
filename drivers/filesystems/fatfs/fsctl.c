@@ -21,50 +21,26 @@ extern FAT_DISPATCH FatDispatch;
 static NTSTATUS FatReadDisk(IN PDEVICE_OBJECT DeviceObject,
 			    IN PLARGE_INTEGER ReadOffset,
 			    IN ULONG ReadLength,
-			    IN OUT PUCHAR Buffer,
-			    IN BOOLEAN Override)
+			    OUT PUCHAR Buffer,
+			    IN BOOLEAN OverrideVerify)
 {
-    PIO_STACK_LOCATION Stack;
-    PIRP Irp;
-    IO_STATUS_BLOCK IoStatus;
-    NTSTATUS Status;
-
-again:
     DPRINT("FatReadDisk(DeviceObject %p, Offset %I64x, Length %u, Buffer %p)\n",
 	   DeviceObject, ReadOffset->QuadPart, ReadLength, Buffer);
 
-    DPRINT("Building synchronous FSD Request...\n");
-    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer,
-				       ReadLength, ReadOffset, &IoStatus);
+    IO_STATUS_BLOCK IoStatus;
+    PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer,
+					    ReadLength, ReadOffset, &IoStatus);
     if (Irp == NULL) {
 	DPRINT("IoBuildSynchronousFsdRequest failed\n");
-	return STATUS_UNSUCCESSFUL;
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    if (Override) {
-	Stack = IoGetCurrentIrpStackLocation(Irp);
-	Stack->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+    if (OverrideVerify) {
+	IoGetCurrentIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
     }
 
     DPRINT("Calling IO Driver... with irp %p\n", Irp);
-    Status = IoCallDriver(DeviceObject, Irp);
-
-    if (Status == STATUS_VERIFY_REQUIRED) {
-	PDEVICE_OBJECT DeviceToVerify;
-
-	DPRINT1("Media change detected!\n");
-
-	/* Find the device to verify and reset the thread field to empty value again. */
-#if 0	/* TODO! */
-	DeviceToVerify = IoGetDeviceToVerify();
-	IoSetDeviceToVerify(PsGetCurrentThread(), NULL);
-	Status = IoVerifyVolume(DeviceToVerify, FALSE);
-	if (NT_SUCCESS(Status)) {
-	    DPRINT1("Volume verification successful; Reissuing read request\n");
-	    goto again;
-	}
-#endif
-    }
+    NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
 
     if (!NT_SUCCESS(Status)) {
 	DPRINT("IO failed!!! FatReadDisk : Error code: %x\n", Status);
@@ -76,108 +52,87 @@ again:
     return STATUS_SUCCESS;
 }
 
-/* TODO: Merge this with FatReadDisk */
 NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
 				 IN ULONG CtlCode,
-				 IN PVOID InputBuffer OPTIONAL,
+				 IN OPTIONAL PVOID InputBuffer,
 				 IN ULONG InputBufferSize,
-				 IN OUT PVOID OutputBuffer OPTIONAL,
-				 IN OUT PULONG OutputBufferSize,
-				 IN BOOLEAN Override)
+				 OUT OPTIONAL PVOID OutputBuffer,
+				 OUT PULONG OutputBufferSize,
+				 IN BOOLEAN OverrideVerify)
 {
-    PIO_STACK_LOCATION Stack;
-    PIRP Irp;
-    IO_STATUS_BLOCK IoStatus;
-    NTSTATUS Status;
-
     DPRINT("FatBlockDeviceIoControl(DeviceObject %p, CtlCode %x, "
 	   "InputBuffer %p, InputBufferSize %x, OutputBuffer %p, "
 	   "OutputBufferSize %p (%x)\n", DeviceObject, CtlCode,
 	   InputBuffer, InputBufferSize, OutputBuffer, OutputBufferSize,
 	   OutputBufferSize ? *OutputBufferSize : 0);
 
-again:
-    DPRINT("Building device I/O control request ...\n");
-    Irp = IoBuildDeviceIoControlRequest(CtlCode, DeviceObject, InputBuffer,
-					InputBufferSize, OutputBuffer,
-					(OutputBufferSize) ? *OutputBufferSize : 0,
-					FALSE, &IoStatus);
+    IO_STATUS_BLOCK IoStatus;
+    PIRP Irp = IoBuildDeviceIoControlRequest(CtlCode, DeviceObject, InputBuffer,
+					     InputBufferSize, OutputBuffer,
+					     OutputBufferSize ? *OutputBufferSize : 0,
+					     FALSE, &IoStatus);
     if (Irp == NULL) {
 	DPRINT("IoBuildDeviceIoControlRequest failed\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    if (Override) {
-	Stack = IoGetCurrentIrpStackLocation(Irp);
-	Stack->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+    if (OverrideVerify) {
+	IoGetCurrentIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
     }
 
     DPRINT("Calling IO Driver... with irp %p\n", Irp);
-    Status = IoCallDriver(DeviceObject, Irp);
-
-    if (Status == STATUS_VERIFY_REQUIRED) {
-	PDEVICE_OBJECT DeviceToVerify;
-
-	DPRINT1("Media change detected!\n");
-
-	/* Find the device to verify and reset the thread field to empty value again. */
-#if 0	/* TODO! */
-	DeviceToVerify = IoGetDeviceToVerify(PsGetCurrentThread());
-	IoSetDeviceToVerify(PsGetCurrentThread(), NULL);
-	Status = IoVerifyVolume(DeviceToVerify, FALSE);
-
-	if (NT_SUCCESS(Status)) {
-	    DPRINT1("Volume verification successful; Reissuing IOCTL request\n");
-	    goto again;
-	}
-#endif
-    }
+    NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
 
     if (OutputBufferSize) {
 	*OutputBufferSize = IoStatus.Information;
     }
 
     DPRINT("Returning Status %x\n", Status);
-
     return Status;
+}
+
+FORCEINLINE BOOLEAN ValidateValue(IN ULONG Val,
+				  IN ULONG *Set,
+				  IN ULONG Size)
+{
+    for (ULONG i = 0; i < Size; i++) {
+	if (Val == Set[i]) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
 }
 
 static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 				 PBOOLEAN RecognizedFS,
 				 PFATINFO pFatInfo,
-				 BOOLEAN Override)
+				 BOOLEAN OverrideVerify)
 {
-    NTSTATUS Status;
-    PARTITION_INFORMATION PartitionInfo;
-    DISK_GEOMETRY DiskGeometry;
-    FATINFO FatInfo;
-    ULONG Size;
-    ULONG Sectors;
-    LARGE_INTEGER Offset;
-    PBOOT_SECTOR Boot;
-    PBOOT_SECTOR_FATX BootFatX;
-    BOOLEAN PartitionInfoIsValid = FALSE;
-
     DPRINT("FatHasFileSystem\n");
 
     *RecognizedFS = FALSE;
 
-    Size = sizeof(DISK_GEOMETRY);
-    Status = FatBlockDeviceIoControl(DeviceToMount,
-				     IOCTL_DISK_GET_DRIVE_GEOMETRY,
-				     NULL, 0, &DiskGeometry, &Size, Override);
+    ULONG Size = sizeof(DISK_GEOMETRY);
+    DISK_GEOMETRY DiskGeometry;
+    NTSTATUS Status = FatBlockDeviceIoControl(DeviceToMount,
+					      IOCTL_DISK_GET_DRIVE_GEOMETRY,
+					      NULL, 0, &DiskGeometry,
+					      &Size, OverrideVerify);
     if (!NT_SUCCESS(Status)) {
 	DPRINT("FatBlockDeviceIoControl failed (%x)\n", Status);
 	return Status;
     }
 
-    FatInfo.FixedMedia = (DiskGeometry.MediaType == FixedMedia);
-    if (DiskGeometry.MediaType == FixedMedia || DiskGeometry.MediaType == RemovableMedia) {
+    FATINFO FatInfo = { .FixedMedia = (DiskGeometry.MediaType == FixedMedia) };
+    BOOLEAN PartitionInfoIsValid = FALSE;
+    PARTITION_INFORMATION PartitionInfo;
+    if (FatInfo.FixedMedia || DiskGeometry.MediaType == RemovableMedia) {
 	// We have found a hard disk
 	Size = sizeof(PARTITION_INFORMATION);
 	Status = FatBlockDeviceIoControl(DeviceToMount,
 					 IOCTL_DISK_GET_PARTITION_INFO,
-					 NULL, 0, &PartitionInfo, &Size, Override);
+					 NULL, 0, &PartitionInfo,
+					 &Size, OverrideVerify);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT("FatBlockDeviceIoControl failed (%x)\n", Status);
 	    return Status;
@@ -192,263 +147,211 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	DPRINT("PartitionNumber     %u\n", PartitionInfo.PartitionNumber);
 	DPRINT("PartitionType       %u\n", PartitionInfo.PartitionType);
 	DPRINT("BootIndicator       %u\n", PartitionInfo.BootIndicator);
-	DPRINT("RecognizedPartition %u\n",
-	       PartitionInfo.RecognizedPartition);
+	DPRINT("RecognizedPartition %u\n", PartitionInfo.RecognizedPartition);
 	DPRINT("RewritePartition    %u\n", PartitionInfo.RewritePartition);
 	if (PartitionInfo.PartitionType) {
-	    if (PartitionInfo.PartitionType == PARTITION_FAT_12 ||
-		PartitionInfo.PartitionType == PARTITION_FAT_16 ||
-		PartitionInfo.PartitionType == PARTITION_HUGE ||
-		PartitionInfo.PartitionType == PARTITION_FAT32 ||
-		PartitionInfo.PartitionType == PARTITION_FAT32_XINT13 ||
-		PartitionInfo.PartitionType == PARTITION_XINT13) {
-		PartitionInfoIsValid = TRUE;
-		*RecognizedFS = TRUE;
-	    }
+	    ULONG ValidPartitionTypes[] = {
+		PARTITION_FAT_12, PARTITION_FAT_16, PARTITION_HUGE,
+		PARTITION_FAT32, PARTITION_FAT32_XINT13, PARTITION_XINT13
+	    };
+	    PartitionInfoIsValid = ValidateValue(PartitionInfo.PartitionType,
+						 ValidPartitionTypes,
+						 ARRAYSIZE(ValidPartitionTypes));
 	} else if (DiskGeometry.MediaType == RemovableMedia &&
 		   PartitionInfo.PartitionNumber > 0 &&
 		   PartitionInfo.StartingOffset.QuadPart == 0 &&
 		   PartitionInfo.PartitionLength.QuadPart > 0) {
-	    /* This is possible a removable media formated as super floppy */
+	    /* This is possible (a removable media formated as super floppy) */
 	    PartitionInfoIsValid = TRUE;
-	    *RecognizedFS = TRUE;
 	}
+    }
+
+    /* Even if PartitionInfoIsValid is FALSE, we will still check if
+     * the boot sector is a FAT boot sector. This mostly applies to floppy
+     * and ZIP disks formatted using the FAT file system. */
+    PBOOT_SECTOR Boot = ExAllocatePoolWithTag(DiskGeometry.BytesPerSector,
+					      TAG_BUFFER);
+    if (Boot == NULL) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Try to recognize FAT12/FAT16/FAT32 partitions */
+    LARGE_INTEGER Offset = { .QuadPart = 0 };
+    Status = FatReadDisk(DeviceToMount, &Offset, DiskGeometry.BytesPerSector,
+			 (PUCHAR)Boot, OverrideVerify);
+    ULONG ValidBytesPerSector[] = { 512, 1024, 2048, 4096 };
+    ULONG ValidMedia[] = { 0xf0, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff };
+    ULONG ValidSectorsPerCluster[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+    if (!NT_SUCCESS(Status) || Boot->Signature1 != 0xaa55 ||
+	!ValidateValue(Boot->BytesPerSector, ValidBytesPerSector,
+		       ARRAYSIZE(ValidBytesPerSector)) ||
+	!(Boot->FATCount == 1 || Boot->FATCount == 2) ||
+	!ValidateValue(Boot->Media, ValidMedia, ARRAYSIZE(ValidMedia)) ||
+	!ValidateValue(Boot->SectorsPerCluster, ValidSectorsPerCluster,
+		       ARRAYSIZE(ValidSectorsPerCluster)) ||
+	!(Boot->BytesPerSector * Boot->SectorsPerCluster <= 64 * 1024)) {
+	goto CheckFatX;
+    }
+
+    FatInfo.VolumeID = Boot->VolumeID;
+    FatInfo.FatStart = Boot->ReservedSectors;
+    FatInfo.FATCount = Boot->FATCount;
+    FatInfo.BytesPerSector = Boot->BytesPerSector;
+    FatInfo.SectorsPerCluster = Boot->SectorsPerCluster;
+    FatInfo.FatSectors = Boot->FatSectors ? Boot-> FatSectors :
+	((PBOOT_SECTOR_FAT32)Boot)->FatSectors32;
+    FatInfo.BytesPerCluster = FatInfo.BytesPerSector * FatInfo.SectorsPerCluster;
+    FatInfo.RootDirectorySectors = (Boot->RootEntries * 32 + Boot->BytesPerSector - 1)
+	/ Boot->BytesPerSector;
+    FatInfo.RootStart = FatInfo.FatStart + FatInfo.FATCount * FatInfo.FatSectors;
+    FatInfo.DataStart = FatInfo.RootStart + FatInfo.RootDirectorySectors;
+    ULONG Sectors = Boot->Sectors ? Boot->Sectors : Boot->SectorsHuge;
+    FatInfo.Sectors = Sectors;
+    Sectors -= Boot->ReservedSectors + FatInfo.FATCount * FatInfo.FatSectors
+	+ FatInfo.RootDirectorySectors;
+    FatInfo.NumberOfClusters = Sectors / Boot->SectorsPerCluster;
+    if (FatInfo.NumberOfClusters < 4085) {
+	DPRINT("FAT12\n");
+	FatInfo.FatType = FAT12;
+	FatInfo.RootCluster = (FatInfo.RootStart - 1) / FatInfo.SectorsPerCluster;
+	RtlCopyMemory(&FatInfo.VolumeLabel, &Boot->VolumeLabel,
+		      sizeof(FatInfo.VolumeLabel));
+    } else if (FatInfo.NumberOfClusters >= 65525) {
+	DPRINT("FAT32\n");
+	FatInfo.FatType = FAT32;
+	FatInfo.RootCluster = ((PBOOT_SECTOR_FAT32)Boot)->RootCluster;
+	FatInfo.RootStart = FatInfo.DataStart +
+	    ((FatInfo.RootCluster - 2) * FatInfo.SectorsPerCluster);
+	FatInfo.VolumeID = ((PBOOT_SECTOR_FAT32)Boot)->VolumeID;
+	FatInfo.FSInfoSector = ((PBOOT_SECTOR_FAT32)Boot)->FSInfoSector;
+	RtlCopyMemory(&FatInfo.VolumeLabel,
+		      &((PBOOT_SECTOR_FAT32)Boot)->VolumeLabel,
+		      sizeof(FatInfo.VolumeLabel));
     } else {
-	*RecognizedFS = TRUE;
+	DPRINT("FAT16\n");
+	FatInfo.FatType = FAT16;
+	FatInfo.RootCluster = FatInfo.RootStart / FatInfo.SectorsPerCluster;
+	RtlCopyMemory(&FatInfo.VolumeLabel, &Boot->VolumeLabel,
+		      sizeof(FatInfo.VolumeLabel));
     }
 
-    if (*RecognizedFS) {
-	Boot = ExAllocatePoolWithTag(DiskGeometry.BytesPerSector, TAG_BUFFER);
-	if (Boot == NULL) {
-	    return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	Offset.QuadPart = 0;
-
-	/* Try to recognize FAT12/FAT16/FAT32 partitions */
-	Status = FatReadDisk(DeviceToMount, &Offset,
-			     DiskGeometry.BytesPerSector, (PUCHAR)Boot,
-			     Override);
-	if (NT_SUCCESS(Status)) {
-	    if (Boot->Signature1 != 0xaa55) {
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS &&
-		Boot->BytesPerSector != 512 &&
-		Boot->BytesPerSector != 1024 &&
-		Boot->BytesPerSector != 2048 &&
-		Boot->BytesPerSector != 4096) {
-		DPRINT1("BytesPerSector %u\n", Boot->BytesPerSector);
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS &&
-		Boot->FATCount != 1 && Boot->FATCount != 2) {
-		DPRINT1("FATCount %u\n", Boot->FATCount);
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS &&
-		Boot->Media != 0xf0 &&
-		Boot->Media != 0xf8 &&
-		Boot->Media != 0xf9 &&
-		Boot->Media != 0xfa &&
-		Boot->Media != 0xfb &&
-		Boot->Media != 0xfc &&
-		Boot->Media != 0xfd &&
-		Boot->Media != 0xfe && Boot->Media != 0xff) {
-		DPRINT1("Media             %02x\n", Boot->Media);
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS &&
-		Boot->SectorsPerCluster != 1 &&
-		Boot->SectorsPerCluster != 2 &&
-		Boot->SectorsPerCluster != 4 &&
-		Boot->SectorsPerCluster != 8 &&
-		Boot->SectorsPerCluster != 16 &&
-		Boot->SectorsPerCluster != 32 &&
-		Boot->SectorsPerCluster != 64 &&
-		Boot->SectorsPerCluster != 128) {
-		DPRINT1("SectorsPerCluster %02x\n", Boot->SectorsPerCluster);
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS &&
-		Boot->BytesPerSector * Boot->SectorsPerCluster > 64 * 1024) {
-		DPRINT1("ClusterSize %d\n",
-			Boot->BytesPerSector * Boot->SectorsPerCluster);
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS) {
-		FatInfo.VolumeID = Boot->VolumeID;
-		FatInfo.FATStart = Boot->ReservedSectors;
-		FatInfo.FATCount = Boot->FATCount;
-		FatInfo.FatSectors = Boot->FatSectors ? Boot-> FatSectors :
-		    ((PBOOT_SECTOR_FAT32)Boot)->FatSectors32;
-		FatInfo.BytesPerSector = Boot->BytesPerSector;
-		FatInfo.SectorsPerCluster = Boot->SectorsPerCluster;
-		FatInfo.BytesPerCluster = FatInfo.BytesPerSector * FatInfo.SectorsPerCluster;
-		FatInfo.RootDirectorySectors = (Boot->RootEntries * 32 + Boot->BytesPerSector - 1)
-		    / Boot->BytesPerSector;
-		FatInfo.RootStart = FatInfo.FATStart + FatInfo.FATCount * FatInfo.FatSectors;
-		FatInfo.DataStart = FatInfo.RootStart + FatInfo.RootDirectorySectors;
-		FatInfo.Sectors = Sectors = Boot->Sectors ? Boot->Sectors : Boot->SectorsHuge;
-		Sectors -= Boot->ReservedSectors + FatInfo.FATCount * FatInfo.FatSectors
-		    + FatInfo.RootDirectorySectors;
-		FatInfo.NumberOfClusters = Sectors / Boot->SectorsPerCluster;
-		if (FatInfo.NumberOfClusters < 4085) {
-		    DPRINT("FAT12\n");
-		    FatInfo.FatType = FAT12;
-		    FatInfo.RootCluster = (FatInfo.RootStart - 1) / FatInfo.SectorsPerCluster;
-		    RtlCopyMemory(&FatInfo.VolumeLabel, &Boot->VolumeLabel,
-				  sizeof(FatInfo.VolumeLabel));
-		} else if (FatInfo.NumberOfClusters >= 65525) {
-		    DPRINT("FAT32\n");
-		    FatInfo.FatType = FAT32;
-		    FatInfo.RootCluster = ((PBOOT_SECTOR_FAT32)Boot)->RootCluster;
-		    FatInfo.RootStart = FatInfo.DataStart +
-			((FatInfo.RootCluster - 2) * FatInfo.SectorsPerCluster);
-		    FatInfo.VolumeID = ((PBOOT_SECTOR_FAT32)Boot)->VolumeID;
-		    FatInfo.FSInfoSector = ((PBOOT_SECTOR_FAT32)Boot)->FSInfoSector;
-		    RtlCopyMemory(&FatInfo.VolumeLabel,
-				  &((PBOOT_SECTOR_FAT32)Boot)->VolumeLabel,
-				  sizeof(FatInfo.VolumeLabel));
-		} else {
-		    DPRINT("FAT16\n");
-		    FatInfo.FatType = FAT16;
-		    FatInfo.RootCluster = FatInfo.RootStart / FatInfo.SectorsPerCluster;
-		    RtlCopyMemory(&FatInfo.VolumeLabel, &Boot->VolumeLabel,
-				  sizeof(FatInfo.VolumeLabel));
-		}
-
-		if (PartitionInfoIsValid && FatInfo.Sectors >
-		    PartitionInfo.PartitionLength.QuadPart / FatInfo.BytesPerSector) {
-		    *RecognizedFS = FALSE;
-		}
-
-		if (pFatInfo && *RecognizedFS) {
-		    *pFatInfo = FatInfo;
-		}
-	    }
-	}
-
-	ExFreePoolWithTag(Boot, TAG_BUFFER);
+    if (PartitionInfoIsValid && FatInfo.Sectors >
+	PartitionInfo.PartitionLength.QuadPart / FatInfo.BytesPerSector) {
+	goto CheckFatX;
     }
 
-    if (!*RecognizedFS && PartitionInfoIsValid) {
-	BootFatX = ExAllocatePoolWithTag(sizeof(BOOT_SECTOR_FATX), TAG_BUFFER);
-	if (BootFatX == NULL) {
-	    *RecognizedFS = FALSE;
-	    return STATUS_INSUFFICIENT_RESOURCES;
-	}
+    /* We have a valid FAT12/16/32 file system! */
+    *RecognizedFS = TRUE;
+    if (pFatInfo) {
+	*pFatInfo = FatInfo;
+    }
+    ExFreePoolWithTag(Boot, TAG_BUFFER);
+    return STATUS_SUCCESS;
 
-	Offset.QuadPart = 0;
+CheckFatX:
+    ExFreePoolWithTag(Boot, TAG_BUFFER);
 
-	/* Try to recognize FATX16/FATX32 partitions (Xbox) */
-	Status = FatReadDisk(DeviceToMount, &Offset,
-			     sizeof(BOOT_SECTOR_FATX), (PUCHAR)BootFatX, Override);
-	if (NT_SUCCESS(Status)) {
-	    *RecognizedFS = TRUE;
-	    if (BootFatX->SysType[0] != 'F' ||
-		BootFatX->SysType[1] != 'A' ||
-		BootFatX->SysType[2] != 'T' ||
-		BootFatX->SysType[3] != 'X') {
-		DPRINT1("SysType %02X%02X%02X%02X (%c%c%c%c)\n",
-			BootFatX->SysType[0], BootFatX->SysType[1],
-			BootFatX->SysType[2], BootFatX->SysType[3],
-			isprint(BootFatX->SysType[0]) ? BootFatX->SysType[0] : '.',
-			isprint(BootFatX->SysType[1]) ? BootFatX->SysType[1] : '.',
-			isprint(BootFatX->SysType[2]) ? BootFatX->SysType[2] : '.',
-			isprint(BootFatX->SysType[3]) ? BootFatX->SysType[3] : '.');
-
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS &&
-		BootFatX->SectorsPerCluster != 1 &&
-		BootFatX->SectorsPerCluster != 2 &&
-		BootFatX->SectorsPerCluster != 4 &&
-		BootFatX->SectorsPerCluster != 8 &&
-		BootFatX->SectorsPerCluster != 16 &&
-		BootFatX->SectorsPerCluster != 32 &&
-		BootFatX->SectorsPerCluster != 64 &&
-		BootFatX->SectorsPerCluster != 128) {
-		DPRINT1("SectorsPerCluster %u\n", BootFatX->SectorsPerCluster);
-		*RecognizedFS = FALSE;
-	    }
-
-	    if (*RecognizedFS) {
-		FatInfo.BytesPerSector = DiskGeometry.BytesPerSector;
-		FatInfo.SectorsPerCluster = BootFatX->SectorsPerCluster;
-		FatInfo.RootDirectorySectors = BootFatX->SectorsPerCluster;
-		FatInfo.BytesPerCluster = BootFatX->SectorsPerCluster *
-		    DiskGeometry.BytesPerSector;
-		FatInfo.Sectors = (ULONG)(PartitionInfo.PartitionLength.QuadPart /
-					  DiskGeometry.BytesPerSector);
-		if (FatInfo.Sectors / FatInfo.SectorsPerCluster < 65525) {
-		    DPRINT("FATX16\n");
-		    FatInfo.FatType = FATX16;
-		} else {
-		    DPRINT("FATX32\n");
-		    FatInfo.FatType = FATX32;
-		}
-		FatInfo.VolumeID = BootFatX->VolumeID;
-		FatInfo.FATStart = sizeof(BOOT_SECTOR_FATX) / DiskGeometry.BytesPerSector;
-		FatInfo.FATCount = BootFatX->FATCount;
-		FatInfo.FatSectors = ROUND_UP_32(FatInfo.Sectors / FatInfo.SectorsPerCluster *
-						 (FatInfo.FatType == FATX16 ? 2 : 4), 4096) /
-		    FatInfo.BytesPerSector;
-		FatInfo.RootStart = FatInfo.FATStart + FatInfo.FATCount * FatInfo.FatSectors;
-		FatInfo.RootCluster = (FatInfo.RootStart - 1) / FatInfo.SectorsPerCluster;
-		FatInfo.DataStart = FatInfo.RootStart + FatInfo.RootDirectorySectors;
-		FatInfo.NumberOfClusters = (FatInfo.Sectors - FatInfo.DataStart) /
-		    FatInfo.SectorsPerCluster;
-
-		if (pFatInfo && *RecognizedFS) {
-		    *pFatInfo = FatInfo;
-		}
-	    }
-	}
-	ExFreePoolWithTag(BootFatX, TAG_BUFFER);
+    /* XBox hard drives must have a partition table, so return error
+     * if partition info is invalid. */
+    if (!PartitionInfoIsValid) {
+	return STATUS_UNRECOGNIZED_VOLUME;
     }
 
+    PBOOT_SECTOR_FATX BootFatX = ExAllocatePoolWithTag(sizeof(BOOT_SECTOR_FATX),
+						       TAG_BUFFER);
+    if (BootFatX == NULL) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Try to recognize FATX16/FATX32 partitions (Xbox) */
+    Offset.QuadPart = 0;
+    Status = FatReadDisk(DeviceToMount, &Offset, sizeof(BOOT_SECTOR_FATX),
+			 (PUCHAR)BootFatX, OverrideVerify);
+    if (!NT_SUCCESS(Status)) {
+	goto Exit;
+    }
+
+    if (BootFatX->SysType[0] != 'F' ||
+	BootFatX->SysType[1] != 'A' ||
+	BootFatX->SysType[2] != 'T' ||
+	BootFatX->SysType[3] != 'X') {
+	DPRINT1("SysType %02X%02X%02X%02X (%c%c%c%c)\n",
+		BootFatX->SysType[0], BootFatX->SysType[1],
+		BootFatX->SysType[2], BootFatX->SysType[3],
+		isprint(BootFatX->SysType[0]) ? BootFatX->SysType[0] : '.',
+		isprint(BootFatX->SysType[1]) ? BootFatX->SysType[1] : '.',
+		isprint(BootFatX->SysType[2]) ? BootFatX->SysType[2] : '.',
+		isprint(BootFatX->SysType[3]) ? BootFatX->SysType[3] : '.');
+	goto Exit;
+    }
+
+    if (!ValidateValue(BootFatX->SectorsPerCluster, ValidSectorsPerCluster,
+		       ARRAYSIZE(ValidSectorsPerCluster))) {
+	DPRINT1("Invalid SectorsPerCluster %u\n", BootFatX->SectorsPerCluster);
+	goto Exit;
+    }
+
+    FatInfo.BytesPerSector = DiskGeometry.BytesPerSector;
+    FatInfo.SectorsPerCluster = BootFatX->SectorsPerCluster;
+    FatInfo.RootDirectorySectors = BootFatX->SectorsPerCluster;
+    FatInfo.BytesPerCluster = BootFatX->SectorsPerCluster *
+	DiskGeometry.BytesPerSector;
+    FatInfo.Sectors = (ULONG)(PartitionInfo.PartitionLength.QuadPart /
+				      DiskGeometry.BytesPerSector);
+    if (FatInfo.Sectors / FatInfo.SectorsPerCluster < 65525) {
+	DPRINT("FATX16\n");
+	FatInfo.FatType = FATX16;
+    } else {
+	DPRINT("FATX32\n");
+	FatInfo.FatType = FATX32;
+    }
+    FatInfo.VolumeID = BootFatX->VolumeID;
+    FatInfo.FatStart = sizeof(BOOT_SECTOR_FATX) / DiskGeometry.BytesPerSector;
+    FatInfo.FATCount = BootFatX->FATCount;
+    FatInfo.FatSectors = ROUND_UP_32(FatInfo.Sectors / FatInfo.SectorsPerCluster *
+				     (FatInfo.FatType == FATX16 ? 2 : 4), 4096) /
+	FatInfo.BytesPerSector;
+    FatInfo.RootStart = FatInfo.FatStart + FatInfo.FATCount * FatInfo.FatSectors;
+    FatInfo.RootCluster = (FatInfo.RootStart - 1) / FatInfo.SectorsPerCluster;
+    FatInfo.DataStart = FatInfo.RootStart + FatInfo.RootDirectorySectors;
+    FatInfo.NumberOfClusters = (FatInfo.Sectors - FatInfo.DataStart) /
+	FatInfo.SectorsPerCluster;
+
+    /* We have a valid FATX file system! */
+    *RecognizedFS = TRUE;
+    if (pFatInfo) {
+	*pFatInfo = FatInfo;
+    }
+
+Exit:
+    ExFreePoolWithTag(BootFatX, TAG_BUFFER);
     DPRINT("FatHasFileSystem done\n");
     return Status;
 }
 
 /*
  * FUNCTION: Read the volume label
- * WARNING: Read this comment carefully before using it (and using it wrong)
- * Device parameter is expected to be the lower DO is start isn't 0
- *                  otherwise, it is expected to be the VCB is start is 0
- * Start parameter is expected to be, in bytes, the beginning of the root start.
- *                 Set it to 0 if you wish to use the associated FCB with caching.
- *                 In that specific case, Device parameter is expected to be the VCB!
- * VolumeLabel parameter is expected to be a preallocated UNICODE_STRING (ie, with buffer)
- *                       Its buffer has to be able to contain MAXIMUM_VOLUME_LABEL_LENGTH bytes
+ * WARNING: Read this comment carefully before using this function.
+ *
+ * If Start is zero, we access the underlying disk through the cache manager.
+ * In this case the Device pointer must point to a Volume Control Block.
+ *
+ * If Start is not zero, we access the underlying disk by calling the storage
+ * device driver directly. In this case, the Device pointer must point to
+ * the storage device object, and Start is the file offset (in bytes) within
+ * the volume of the root directory entry.
+ *
+ * VolumeLabel parameter is expected to be a preallocated UNICODE_STRING (ie,
+ * with a valid buffer pointer). The buffer must be able to contain at least
+ * MAXIMUM_VOLUME_LABEL_LENGTH bytes.
  */
-static NTSTATUS ReadVolumeLabel(PVOID Device,
-				ULONG Start,
-				BOOLEAN IsFatX,
-				PUNICODE_STRING VolumeLabel)
+static NTSTATUS ReadVolumeLabel(IN PVOID Device,
+				IN ULONG Start,
+				IN BOOLEAN IsFatX,
+				OUT PUNICODE_STRING VolumeLabel)
 {
-    PDEVICE_EXTENSION DeviceExt;
-    PDEVICE_OBJECT DeviceObject;
-    PVOID Context = NULL;
-    ULONG DirIndex = 0;
-    PDIR_ENTRY Entry;
-    PFATFCB pFcb;
-    LARGE_INTEGER FileOffset;
     ULONG SizeDirEntry;
     ULONG EntriesPerPage;
-    OEM_STRING StringO;
-    BOOLEAN NoCache = (Start != 0);
-    PVOID Buffer;
-    NTSTATUS Status = STATUS_SUCCESS;
-
     if (IsFatX) {
 	SizeDirEntry = sizeof(FATX_DIR_ENTRY);
 	EntriesPerPage = FATX_ENTRIES_PER_PAGE;
@@ -457,99 +360,84 @@ static NTSTATUS ReadVolumeLabel(PVOID Device,
 	EntriesPerPage = FAT_ENTRIES_PER_PAGE;
     }
 
-    FileOffset.QuadPart = Start;
-    if (!NoCache) {
-	DeviceExt = Device;
-
-	/* FIXME: Check we really have a VCB
-	   ASSERT();
-	*/
-
-	pFcb = FatOpenRootFCB(DeviceExt);
-
-	__try {
-	    CcMapData(pFcb->FileObject, &FileOffset, SizeDirEntry,
-		      MAP_WAIT, &Context, (PVOID *)&Entry);
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
-	    Status = GetExceptionCode();
-	}
+    PFATFCB pFcb = NULL;
+    PVOID Buffer = NULL;
+    if (!Start) {
+	/* FIXME: Check we really have a VCB */
+	pFcb = FatOpenRootFCB((PDEVICE_EXTENSION)Device);
     } else {
-	DeviceObject = Device;
-
-	ASSERT(DeviceObject->Type == 3);
-
 	Buffer = ExAllocatePoolWithTag(PAGE_SIZE, TAG_DIRENT);
-	if (Buffer != NULL) {
-	    Status = FatReadDisk(DeviceObject, &FileOffset, PAGE_SIZE,
-				 (PUCHAR) Buffer, TRUE);
-	    if (!NT_SUCCESS(Status)) {
-		ExFreePoolWithTag(Buffer, TAG_DIRENT);
+	if (Buffer == NULL) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+    }
+
+    LARGE_INTEGER FileOffset = { .QuadPart = Start };
+    PVOID Context = NULL;
+    ULONG DirIndex = 0;
+    PDIR_ENTRY Entry;
+    NTSTATUS Status = STATUS_SUCCESS;
+    while (TRUE) {
+	/* When we cross a page boundary (including at the very start),
+	 * read one page off the disk, either via the cache manager or
+	 * by calling the underlying storage driver. */
+	if ((DirIndex % EntriesPerPage) == 0) {
+	    if (!Start) {
+		if (Context) {
+		    CcUnpinData(Context);
+		    Context = NULL;
+		}
+		Status = CcMapData(pFcb->FileObject, &FileOffset,
+				   SizeDirEntry, MAP_WAIT, &Context,
+				   (PVOID *)&Entry);
 	    } else {
+		Status = FatReadDisk((PDEVICE_OBJECT)Device, &FileOffset,
+				     PAGE_SIZE, (PUCHAR)Buffer, TRUE);
 		Entry = Buffer;
 	    }
-	} else {
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	}
-    }
-
-    if (NT_SUCCESS(Status)) {
-	while (TRUE) {
-	    if (ENTRY_VOLUME(IsFatX, Entry)) {
-		/* copy volume label */
-		if (IsFatX) {
-		    StringO.Buffer = (PCHAR) Entry->FatX.Filename;
-		    StringO.MaximumLength = StringO.Length = Entry->FatX.FilenameLength;
-		    RtlOemStringToUnicodeString(VolumeLabel, &StringO,
-						FALSE);
-		} else {
-		    Fat8Dot3ToString(&Entry->Fat, VolumeLabel);
-		}
+	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
-	    if (ENTRY_END(IsFatX, Entry)) {
-		break;
-	    }
-	    DirIndex++;
-	    Entry = (PDIR_ENTRY) ((ULONG_PTR) Entry + SizeDirEntry);
-	    if ((DirIndex % EntriesPerPage) == 0) {
-		FileOffset.u.LowPart += PAGE_SIZE;
-
-		if (!NoCache) {
-		    CcUnpinData(Context);
-
-		    __try {
-			CcMapData(pFcb->FileObject, &FileOffset,
-				  SizeDirEntry, MAP_WAIT, &Context,
-				  (PVOID *)&Entry);
-		    } __except(EXCEPTION_EXECUTE_HANDLER) {
-			Status = GetExceptionCode();
-		    }
-		    if (!NT_SUCCESS(Status)) {
-			Context = NULL;
-			break;
-		    }
-		} else {
-		    Status = FatReadDisk(DeviceObject, &FileOffset, PAGE_SIZE,
-					 (PUCHAR) Buffer, TRUE);
-		    if (!NT_SUCCESS(Status)) {
-			break;
-		    }
-		    Entry = Buffer;
-		}
-	    }
 	}
-	if (Context) {
-	    CcUnpinData(Context);
-	} else if (NoCache) {
-	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
+
+	/* Check if the directory entry contains the volume label */
+	if (ENTRY_VOLUME(IsFatX, Entry)) {
+	    /* Copy volume label */
+	    if (IsFatX) {
+		OEM_STRING StringO;
+		StringO.Buffer = (PCHAR)Entry->FatX.Filename;
+		StringO.Length = Entry->FatX.FilenameLength;
+		StringO.MaximumLength = StringO.Length;
+		RtlOemStringToUnicodeString(VolumeLabel, &StringO, FALSE);
+	    } else {
+		Fat8Dot3ToString(&Entry->Fat, VolumeLabel);
+	    }
+	    Status = STATUS_SUCCESS;
+	    break;
+	}
+	if (ENTRY_END(IsFatX, Entry)) {
+	    VolumeLabel->Length = 0;
+	    Status = STATUS_SUCCESS;
+	    break;
+	}
+	DirIndex++;
+	Entry = (PDIR_ENTRY)((ULONG_PTR)Entry + SizeDirEntry);
+	if ((DirIndex % EntriesPerPage) == 0) {
+	    FileOffset.QuadPart += PAGE_SIZE;
 	}
     }
 
-    if (!NoCache) {
-	FatReleaseFCB(DeviceExt, pFcb);
+    if (pFcb) {
+	FatReleaseFCB((PDEVICE_EXTENSION)Device, pFcb);
+    }
+    if (Context) {
+	CcUnpinData(Context);
+    }
+    if (Buffer) {
+	ExFreePoolWithTag(Buffer, TAG_DIRENT);
     }
 
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 
@@ -558,46 +446,34 @@ static NTSTATUS ReadVolumeLabel(PVOID Device,
  */
 static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 {
-    PDEVICE_OBJECT DeviceObject = NULL;
-    PDEVICE_EXTENSION DeviceExt = NULL;
-    BOOLEAN RecognizedFS;
-    NTSTATUS Status;
-    PFATFCB Fcb = NULL;
-    PFATFCB VolumeFcb = NULL;
-    PDEVICE_OBJECT DeviceToMount;
-    PVPB Vpb;
-    UNICODE_STRING NameU = RTL_CONSTANT_STRING(L"\\$$Fat$$");
-    UNICODE_STRING VolumeNameU = RTL_CONSTANT_STRING(L"\\$$Volume$$");
-    UNICODE_STRING VolumeLabelU;
-    ULONG HashTableSize;
-    ULONG i;
-    FATINFO FatInfo;
-    BOOLEAN Dirty;
-
     DPRINT("FatMount(IrpContext %p)\n", IrpContext);
 
     ASSERT(IrpContext);
 
+    /* This IRP must be sent to the device object representing the file
+     * system itself (ie. the \FatX device created in DriverEntry). */
     if (IrpContext->DeviceObject != FatGlobalData->DeviceObject) {
-	Status = STATUS_INVALID_DEVICE_REQUEST;
-	goto ByeBye;
+	return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    DeviceToMount = IrpContext->Stack->Parameters.MountVolume.DeviceObject;
-    Vpb = IrpContext->Stack->Parameters.MountVolume.Vpb;
+    /* DeviceToMount is the underlying storage device object. */
+    PDEVICE_OBJECT DeviceToMount = IrpContext->Stack->Parameters.MountVolume.DeviceObject;
+    PVPB Vpb = IrpContext->Stack->Parameters.MountVolume.Vpb;
 
-    Status = FatHasFileSystem(DeviceToMount, &RecognizedFS, &FatInfo, FALSE);
+    BOOLEAN RecognizedFS;
+    FATINFO FatInfo;
+    NTSTATUS Status = FatHasFileSystem(DeviceToMount, &RecognizedFS, &FatInfo, FALSE);
     if (!NT_SUCCESS(Status)) {
-	goto ByeBye;
+	return Status;
     }
 
     if (RecognizedFS == FALSE) {
 	DPRINT("FAT: Unrecognized Volume\n");
-	Status = STATUS_UNRECOGNIZED_VOLUME;
-	goto ByeBye;
+	return STATUS_UNRECOGNIZED_VOLUME;
     }
 
     /* Use prime numbers for the table size */
+    ULONG HashTableSize;
     if (FatInfo.FatType == FAT12) {
 	HashTableSize = 4099;	// 4096 = 4 * 1024
     } else if (FatInfo.FatType == FAT16 || FatInfo.FatType == FATX16) {
@@ -605,25 +481,26 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     } else {
 	HashTableSize = 65537;	// 65536 = 64 * 1024;
     }
-    DPRINT("FAT: Recognized volume\n");
-    Status = IoCreateDevice(FatGlobalData->DriverObject,
-			    ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG)) +
-			    sizeof(HASHENTRY *) * HashTableSize, NULL,
-			    FILE_DEVICE_DISK_FILE_SYSTEM,
+    DPRINT("FAT: Recognized volume!\n");
+
+    /* Create the volume device object. Read/write IRPs are sent to this device. */
+    PDEVICE_OBJECT DeviceObject;
+    ULONG DevExtStructSize = ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG));
+    ULONG DevExtFullSize = DevExtStructSize + sizeof(PHASHENTRY) * HashTableSize;
+    Status = IoCreateDevice(FatGlobalData->DriverObject, DevExtFullSize,
+			    NULL, FILE_DEVICE_DISK_FILE_SYSTEM,
 			    DeviceToMount->Characteristics, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status)) {
-	goto ByeBye;
+	return Status;
     }
 
-    DeviceExt = DeviceObject->DeviceExtension;
-    RtlZeroMemory(DeviceExt, ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG)) +
-		  sizeof(HASHENTRY *) * HashTableSize);
-    DeviceExt->FcbHashTable = (HASHENTRY **)(
-	(ULONG_PTR) DeviceExt + ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG)));
+    PDEVICE_EXTENSION DeviceExt = DeviceObject->DeviceExtension;
+    RtlZeroMemory(DeviceExt, DevExtFullSize);
+    DeviceExt->FcbHashTable = (PHASHENTRY *)((ULONG_PTR)DeviceExt + DevExtStructSize);
     DeviceExt->HashTableSize = HashTableSize;
     DeviceExt->VolumeDevice = DeviceObject;
 
-    /* use same vpb as device disk */
+    /* Use the same vpb as the underlying storage device object */
     DeviceObject->Vpb = Vpb;
     DeviceToMount->Vpb = Vpb;
 
@@ -638,35 +515,6 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     DPRINT("DataStart:          %u\n", DeviceExt->FatInfo.DataStart);
     if (DeviceExt->FatInfo.FatType == FAT32) {
 	DPRINT("RootCluster:        %u\n", DeviceExt->FatInfo.RootCluster);
-    }
-
-    switch (DeviceExt->FatInfo.FatType) {
-    case FAT12:
-	DeviceExt->GetNextCluster = Fat12GetNextCluster;
-	DeviceExt->FindAndMarkAvailableCluster = Fat12FindAndMarkAvailableCluster;
-	DeviceExt->WriteCluster = Fat12WriteCluster;
-	/* We don't define dirty bit functions here
-	 * FAT12 doesn't have such bit and they won't get called
-	 */
-	break;
-
-    case FAT16:
-    case FATX16:
-	DeviceExt->GetNextCluster = Fat16GetNextCluster;
-	DeviceExt->FindAndMarkAvailableCluster = Fat16FindAndMarkAvailableCluster;
-	DeviceExt->WriteCluster = Fat16WriteCluster;
-	DeviceExt->GetDirtyStatus = Fat16GetDirtyStatus;
-	DeviceExt->SetDirtyStatus = Fat16SetDirtyStatus;
-	break;
-
-    case FAT32:
-    case FATX32:
-	DeviceExt->GetNextCluster = Fat32GetNextCluster;
-	DeviceExt->FindAndMarkAvailableCluster = Fat32FindAndMarkAvailableCluster;
-	DeviceExt->WriteCluster = Fat32WriteCluster;
-	DeviceExt->GetDirtyStatus = Fat32GetDirtyStatus;
-	DeviceExt->SetDirtyStatus = Fat32SetDirtyStatus;
-	break;
     }
 
     if (DeviceExt->FatInfo.FatType == FATX16 ||
@@ -685,34 +533,36 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     DeviceExt->StorageDevice->Vpb->DeviceObject = DeviceObject;
     DeviceExt->StorageDevice->Vpb->RealDevice = DeviceExt->StorageDevice;
     DeviceExt->StorageDevice->Vpb->Flags |= VPB_MOUNTED;
-    /* TODO! DeviceObject->StackSize = DeviceExt->StorageDevice->StackSize + 1; */
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
     DPRINT("FsDeviceObject %p\n", DeviceObject);
 
+    /* Record the VPB in the device object, and create a spare VPB.
+     * Both are used by the dismount logic. */
     DeviceExt->IoVPB = DeviceObject->Vpb;
     DeviceExt->SpareVPB = ExAllocatePoolWithTag(sizeof(VPB), TAG_VPB);
+    PFATFCB Fcb = NULL;
     if (DeviceExt->SpareVPB == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }
 
-    DeviceExt->Statistics = ExAllocatePoolWithTag(sizeof(STATISTICS) * FatGlobalData->NumberProcessors,
-						  TAG_STATS);
+    ULONG StatisticsSize = sizeof(STATISTICS) * FatGlobalData->NumberProcessors;
+    DeviceExt->Statistics = ExAllocatePoolWithTag(StatisticsSize, TAG_STATS);
     if (DeviceExt->Statistics == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }
 
-    RtlZeroMemory(DeviceExt->Statistics,
-		  sizeof(STATISTICS) * FatGlobalData->NumberProcessors);
-    for (i = 0; i < FatGlobalData->NumberProcessors; ++i) {
+    RtlZeroMemory(DeviceExt->Statistics, StatisticsSize);
+    for (ULONG i = 0; i < FatGlobalData->NumberProcessors; ++i) {
 	DeviceExt->Statistics[i].Base.FileSystemType = FILESYSTEM_STATISTICS_TYPE_FAT;
 	DeviceExt->Statistics[i].Base.Version = 1;
 	DeviceExt->Statistics[i].Base.SizeOfCompleteStructure = sizeof(STATISTICS);
     }
 
     DeviceExt->FatFileObject = IoCreateStreamFileObject(NULL, DeviceExt->StorageDevice);
+    UNICODE_STRING NameU = RTL_CONSTANT_STRING(L"\\$$Fat$$");
     Fcb = FatNewFCB(DeviceExt, &NameU);
     if (Fcb == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -727,15 +577,15 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     Fcb->FileObject = DeviceExt->FatFileObject;
 
     Fcb->Flags = FCB_IS_FAT;
-    Fcb->Base.FileSize.QuadPart = DeviceExt->FatInfo.FatSectors * DeviceExt->FatInfo.BytesPerSector;
+    Fcb->Base.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.FatSectors *
+	DeviceExt->FatInfo.BytesPerSector;
     Fcb->Base.ValidDataLength = Fcb->Base.FileSize;
     Fcb->Base.AllocationSize = Fcb->Base.FileSize;
 
-    __try {
-	CcInitializeCacheMap(DeviceExt->FatFileObject,
-			     (PCC_FILE_SIZES)(&Fcb->Base.AllocationSize), TRUE, Fcb);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-	Status = GetExceptionCode();
+    Status = CcInitializeCacheMap(DeviceExt->FatFileObject,
+				  (PCC_FILE_SIZES)(&Fcb->Base.AllocationSize),
+				  TRUE, Fcb);
+    if (!NT_SUCCESS(Status)) {
 	goto ByeBye;
     }
 
@@ -744,14 +594,15 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     InitializeListHead(&DeviceExt->FcbListHead);
 
-    VolumeFcb = FatNewFCB(DeviceExt, &VolumeNameU);
+    UNICODE_STRING VolumeNameU = RTL_CONSTANT_STRING(L"\\$$Volume$$");
+    PFATFCB VolumeFcb = FatNewFCB(DeviceExt, &VolumeNameU);
     if (VolumeFcb == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }
 
     VolumeFcb->Flags = FCB_IS_VOLUME;
-    VolumeFcb->Base.FileSize.QuadPart = (LONGLONG) DeviceExt->FatInfo.Sectors *
+    VolumeFcb->Base.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.Sectors *
 	DeviceExt->FatInfo.BytesPerSector;
     VolumeFcb->Base.ValidDataLength = VolumeFcb->Base.FileSize;
     VolumeFcb->Base.AllocationSize = VolumeFcb->Base.FileSize;
@@ -759,28 +610,32 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     InsertHeadList(&FatGlobalData->VolumeListHead, &DeviceExt->VolumeListEntry);
 
-    /* read serial number */
+    /* Read serial number */
     DeviceObject->Vpb->SerialNumber = DeviceExt->FatInfo.VolumeID;
 
-    /* read volume label */
-    VolumeLabelU.Buffer = DeviceObject->Vpb->VolumeLabel;
-    VolumeLabelU.Length = 0;
-    VolumeLabelU.MaximumLength = sizeof(DeviceObject->Vpb->VolumeLabel);
-    ReadVolumeLabel(DeviceExt, 0, FatVolumeIsFatX(DeviceExt),
-		    &VolumeLabelU);
+    /* Read volume label */
+    UNICODE_STRING VolumeLabelU = {
+	.Buffer = DeviceObject->Vpb->VolumeLabel,
+	.Length = 0,
+	.MaximumLength = sizeof(DeviceObject->Vpb->VolumeLabel)
+    };
+    ReadVolumeLabel(DeviceExt, 0, FatVolumeIsFatX(DeviceExt), &VolumeLabelU);
     Vpb->VolumeLabelLength = VolumeLabelU.Length;
 
-    /* read dirty bit status */
+    /* Read dirty bit status */
+    BOOLEAN Dirty;
     Status = GetDirtyStatus(DeviceExt, &Dirty);
-    if (NT_SUCCESS(Status)) {
-	/* The volume wasn't dirty, it was properly dismounted */
-	if (!Dirty) {
-	    /* Mark it dirty now! */
-	    SetDirtyStatus(DeviceExt, TRUE);
-	    VolumeFcb->Flags |= VCB_CLEAR_DIRTY;
-	} else {
-	    DPRINT1("Mounting a dirty volume\n");
-	}
+    if (!NT_SUCCESS(Status)) {
+	goto ByeBye;
+    }
+
+    /* The volume wasn't dirty, it was properly dismounted */
+    if (!Dirty) {
+	/* Mark it dirty now! */
+	SetDirtyStatus(DeviceExt, TRUE);
+	VolumeFcb->Flags |= VCB_CLEAR_DIRTY;
+    } else {
+	DPRINT1("Mounting a dirty volume\n");
     }
 
     VolumeFcb->Flags |= VCB_IS_DIRTY;
@@ -795,32 +650,29 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     FsRtlNotifyVolumeEvent(DeviceExt->FatFileObject, FSRTL_VOLUME_MOUNT);
 
     DPRINT("Mount success\n");
-
-    Status = STATUS_SUCCESS;
+    return STATUS_SUCCESS;
 
 ByeBye:
-    if (!NT_SUCCESS(Status)) {
-	/* Cleanup */
-	if (DeviceExt && DeviceExt->FatFileObject) {
-	    LARGE_INTEGER Zero = { { 0, 0 }
-	    };
-	    PFATCCB Ccb = (PFATCCB) DeviceExt->FatFileObject->FsContext2;
-
-	    CcUninitializeCacheMap(DeviceExt->FatFileObject, &Zero);
-	    ObDereferenceObject(DeviceExt->FatFileObject);
-	    if (Ccb)
-		FatDestroyCCB(Ccb);
-	    DeviceExt->FatFileObject = NULL;
-	}
-	if (Fcb)
-	    FatDestroyFCB(Fcb);
-	if (DeviceExt && DeviceExt->SpareVPB)
-	    ExFreePoolWithTag(DeviceExt->SpareVPB, TAG_VPB);
-	if (DeviceExt && DeviceExt->Statistics)
-	    ExFreePoolWithTag(DeviceExt->Statistics, TAG_STATS);
-	if (DeviceObject)
-	    IoDeleteDevice(DeviceObject);
+    /* Cleanup */
+    assert(DeviceObject);
+    assert(DeviceExt);
+    if (DeviceExt->FatFileObject) {
+	LARGE_INTEGER Zero = { { 0, 0 }
+	};
+	PFATCCB Ccb = (PFATCCB)DeviceExt->FatFileObject->FsContext2;
+	CcUninitializeCacheMap(DeviceExt->FatFileObject, &Zero);
+	ObDereferenceObject(DeviceExt->FatFileObject);
+	if (Ccb)
+	    FatDestroyCCB(Ccb);
+	DeviceExt->FatFileObject = NULL;
     }
+    if (Fcb)
+	FatDestroyFCB(Fcb);
+    if (DeviceExt->SpareVPB)
+	ExFreePoolWithTag(DeviceExt->SpareVPB, TAG_VPB);
+    if (DeviceExt->Statistics)
+	ExFreePoolWithTag(DeviceExt->Statistics, TAG_STATS);
+    IoDeleteDevice(DeviceObject);
 
     return Status;
 }
@@ -831,77 +683,63 @@ ByeBye:
  */
 static NTSTATUS FatVerify(PFAT_IRP_CONTEXT IrpContext)
 {
-    PDEVICE_OBJECT DeviceToVerify;
-    NTSTATUS Status;
-    FATINFO FatInfo;
-    BOOLEAN RecognizedFS;
-    PDEVICE_EXTENSION DeviceExt;
-    BOOLEAN AllowRaw;
-    PVPB Vpb;
-    ULONG ChangeCount, BufSize = sizeof(ChangeCount);
-
     DPRINT("FatVerify(IrpContext %p)\n", IrpContext);
 
-    DeviceToVerify = IrpContext->Stack->Parameters.VerifyVolume.DeviceObject;
-    DeviceExt = DeviceToVerify->DeviceExtension;
-    Vpb = IrpContext->Stack->Parameters.VerifyVolume.Vpb;
-    AllowRaw = BooleanFlagOn(IrpContext->Stack->Flags, SL_ALLOW_RAW_MOUNT);
+    PDEVICE_OBJECT DeviceToVerify = IrpContext->Stack->Parameters.VerifyVolume.DeviceObject;
+    PDEVICE_EXTENSION DeviceExt = DeviceToVerify->DeviceExtension;
+    PVPB Vpb = IrpContext->Stack->Parameters.VerifyVolume.Vpb;
+    BOOLEAN AllowRaw = BooleanFlagOn(IrpContext->Stack->Flags, SL_ALLOW_RAW_MOUNT);
 
-    if (!BooleanFlagOn(Vpb->RealDevice->Flags, DO_VERIFY_VOLUME)) {
-	DPRINT("Already verified\n");
-	return STATUS_SUCCESS;
-    }
-
-    Status = FatBlockDeviceIoControl(DeviceExt->StorageDevice,
-				     IOCTL_DISK_CHECK_VERIFY,
-				     NULL,
-				     0, &ChangeCount, &BufSize, TRUE);
+    ULONG ChangeCount, BufSize = sizeof(ChangeCount);
+    NTSTATUS Status = FatBlockDeviceIoControl(DeviceExt->StorageDevice,
+					      IOCTL_DISK_CHECK_VERIFY, NULL,
+					      0, &ChangeCount, &BufSize, TRUE);
     if (!NT_SUCCESS(Status) && Status != STATUS_VERIFY_REQUIRED) {
 	DPRINT("FatBlockDeviceIoControl() failed (Status %x)\n", Status);
-	Status = (AllowRaw ? STATUS_WRONG_VOLUME : Status);
-    } else {
-	Status = FatHasFileSystem(DeviceExt->StorageDevice, &RecognizedFS,
-				  &FatInfo, TRUE);
-	if (!NT_SUCCESS(Status) || RecognizedFS == FALSE) {
-	    if (NT_SUCCESS(Status) || AllowRaw) {
-		Status = STATUS_WRONG_VOLUME;
-	    }
-	} else if (sizeof(FATINFO) == RtlCompareMemory(&FatInfo, &DeviceExt->FatInfo,
-						       sizeof(FATINFO))) {
-	    WCHAR BufferU[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];
-	    UNICODE_STRING VolumeLabelU;
-	    UNICODE_STRING VpbLabelU;
-
-	    VolumeLabelU.Buffer = BufferU;
-	    VolumeLabelU.Length = 0;
-	    VolumeLabelU.MaximumLength = sizeof(BufferU);
-	    Status = ReadVolumeLabel(DeviceExt->StorageDevice,
-				     FatInfo.RootStart * FatInfo.BytesPerSector,
-				     (FatInfo.FatType >= FATX16),
-				     &VolumeLabelU);
-	    if (!NT_SUCCESS(Status)) {
-		if (AllowRaw) {
-		    Status = STATUS_WRONG_VOLUME;
-		}
-	    } else {
-		VpbLabelU.Buffer = Vpb->VolumeLabel;
-		VpbLabelU.Length = Vpb->VolumeLabelLength;
-		VpbLabelU.MaximumLength = sizeof(Vpb->VolumeLabel);
-
-		if (RtlCompareUnicodeString
-		    (&VpbLabelU, &VolumeLabelU, FALSE) != 0) {
-		    Status = STATUS_WRONG_VOLUME;
-		} else {
-		    DPRINT1("Same volume\n");
-		}
-	    }
-	} else {
-	    Status = STATUS_WRONG_VOLUME;
-	}
+	return AllowRaw ? STATUS_WRONG_VOLUME : Status;
     }
 
-    Vpb->RealDevice->Flags &= ~DO_VERIFY_VOLUME;
+    /* At this point the underlying disk driver should have DO_VERIFY_VOLUME
+     * cleared, but just to make sure we set SL_OVERRIDE_VERIFY_VOLUME. */
+    FATINFO FatInfo;
+    BOOLEAN RecognizedFS;
+    Status = FatHasFileSystem(DeviceExt->StorageDevice, &RecognizedFS,
+			      &FatInfo, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	goto err;
+    }
 
+    if (!RecognizedFS || RtlCompareMemory(&FatInfo, &DeviceExt->FatInfo,
+					  sizeof(FATINFO)) != sizeof(FATINFO)) {
+	return STATUS_WRONG_VOLUME;
+    }
+
+    WCHAR BufferU[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];
+    UNICODE_STRING VolumeLabelU;
+    UNICODE_STRING VpbLabelU;
+    VolumeLabelU.Buffer = BufferU;
+    VolumeLabelU.Length = 0;
+    VolumeLabelU.MaximumLength = sizeof(BufferU);
+    Status = ReadVolumeLabel(DeviceExt->StorageDevice,
+			     FatInfo.RootStart * FatInfo.BytesPerSector,
+			     FatInfo.FatType >= FATX16, &VolumeLabelU);
+    if (!NT_SUCCESS(Status)) {
+	goto err;
+    }
+
+    VpbLabelU.Buffer = Vpb->VolumeLabel;
+    VpbLabelU.Length = Vpb->VolumeLabelLength;
+    VpbLabelU.MaximumLength = sizeof(Vpb->VolumeLabel);
+    if (RtlCompareUnicodeString(&VpbLabelU, &VolumeLabelU, FALSE) != 0) {
+	return STATUS_WRONG_VOLUME;
+    }
+    DPRINT1("Same volume\n");
+    return STATUS_SUCCESS;
+
+err:
+    if (AllowRaw) {
+	Status = STATUS_WRONG_VOLUME;
+    }
     return Status;
 }
 
@@ -912,96 +750,71 @@ static NTSTATUS FatGetVolumeBitmap(PFAT_IRP_CONTEXT IrpContext)
     return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-
 static NTSTATUS FatGetRetrievalPointers(PFAT_IRP_CONTEXT IrpContext)
 {
-    PIO_STACK_LOCATION Stack;
-    LARGE_INTEGER Vcn;
-    PRETRIEVAL_POINTERS_BUFFER RetrievalPointers;
-    PFILE_OBJECT FileObject;
-    ULONG MaxExtentCount;
-    PFATFCB Fcb;
-    PDEVICE_EXTENSION DeviceExt;
-    ULONG FirstCluster;
-    ULONG CurrentCluster;
-    ULONG LastCluster;
-    NTSTATUS Status;
-
     DPRINT("FatGetRetrievalPointers(IrpContext %p)\n", IrpContext);
 
-    DeviceExt = IrpContext->DeviceExt;
-    FileObject = IrpContext->FileObject;
-    Stack = IrpContext->Stack;
-    if (Stack->Parameters.DeviceIoControl.InputBufferLength <
-	sizeof(STARTING_VCN_INPUT_BUFFER)
-	|| Stack->Parameters.DeviceIoControl.Type3InputBuffer == NULL) {
+    PDEVICE_EXTENSION DeviceExt = IrpContext->DeviceExt;
+    PFILE_OBJECT FileObject = IrpContext->FileObject;
+    PIO_STACK_LOCATION Stack = IrpContext->Stack;
+    ULONG InputBufferLength = Stack->Parameters.DeviceIoControl.InputBufferLength;
+    PSTARTING_VCN_INPUT_BUFFER VcnBuffer = Stack->Parameters.DeviceIoControl.Type3InputBuffer;
+    ULONG OutputBufferLength = Stack->Parameters.DeviceIoControl.OutputBufferLength;
+    PRETRIEVAL_POINTERS_BUFFER RetrPtrs = IrpContext->Irp->UserBuffer;
+
+    if (!VcnBuffer || InputBufferLength < sizeof(STARTING_VCN_INPUT_BUFFER)) {
 	return STATUS_INVALID_PARAMETER;
     }
-
-    if (IrpContext->Irp->UserBuffer == NULL ||
-	Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(RETRIEVAL_POINTERS_BUFFER)) {
+    if (!RetrPtrs || OutputBufferLength < sizeof(RETRIEVAL_POINTERS_BUFFER)) {
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
-    Fcb = FileObject->FsContext;
+    PFATFCB Fcb = FileObject->FsContext;
+    LARGE_INTEGER Vcn = VcnBuffer->StartingVcn;
 
-    Vcn = ((PSTARTING_VCN_INPUT_BUFFER) Stack->Parameters.DeviceIoControl.
-	   Type3InputBuffer)->StartingVcn;
-    RetrievalPointers = IrpContext->Irp->UserBuffer;
+    ULONG MaxExtentCount = (OutputBufferLength - sizeof(RETRIEVAL_POINTERS_BUFFER)) /
+			    sizeof(RetrPtrs->Extents[0]);
 
-    MaxExtentCount = ((Stack->Parameters.DeviceIoControl.OutputBufferLength -
-		       sizeof(RetrievalPointers->ExtentCount) -
-		       sizeof(RetrievalPointers->StartingVcn)) /
-		      sizeof(RetrievalPointers->Extents[0]));
-
-    if (Vcn.QuadPart >= Fcb->Base.AllocationSize.QuadPart /
-	DeviceExt->FatInfo.BytesPerCluster) {
-	Status = STATUS_INVALID_PARAMETER;
-	goto ByeBye;
+    if (Vcn.QuadPart >= Fcb->Base.AllocationSize.QuadPart / DeviceExt->FatInfo.BytesPerCluster) {
+	return STATUS_INVALID_PARAMETER;
     }
 
-    CurrentCluster = FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
-    Status = OffsetToCluster(DeviceExt, FirstCluster,
-			     Vcn.u.LowPart * DeviceExt->FatInfo.BytesPerCluster,
-			     &CurrentCluster, FALSE);
+    ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
+    ULONG CurrentCluster = FirstCluster;
+    NTSTATUS Status = OffsetToCluster(DeviceExt, FirstCluster,
+				      Vcn.LowPart * DeviceExt->FatInfo.BytesPerCluster,
+				      &CurrentCluster, FALSE);
     if (!NT_SUCCESS(Status)) {
-	goto ByeBye;
+	return Status;
     }
 
-    RetrievalPointers->StartingVcn = Vcn;
-    RetrievalPointers->ExtentCount = 0;
-    RetrievalPointers->Extents[0].Lcn.u.HighPart = 0;
-    RetrievalPointers->Extents[0].Lcn.u.LowPart = CurrentCluster - 2;
-    LastCluster = 0;
-    while (CurrentCluster != 0xffffffff
-	   && RetrievalPointers->ExtentCount < MaxExtentCount) {
+    RetrPtrs->StartingVcn = Vcn;
+    RetrPtrs->ExtentCount = 0;
+    RetrPtrs->Extents[0].Lcn.HighPart = 0;
+    RetrPtrs->Extents[0].Lcn.LowPart = CurrentCluster-2;
+
+    ULONG LastCluster = 0;
+    while (CurrentCluster != 0xffffffff && RetrPtrs->ExtentCount < MaxExtentCount) {
 	LastCluster = CurrentCluster;
 	Status = NextCluster(DeviceExt, CurrentCluster, &CurrentCluster, FALSE);
 	Vcn.QuadPart++;
 	if (!NT_SUCCESS(Status)) {
-	    goto ByeBye;
+	    return Status;
 	}
 
 	if (LastCluster + 1 != CurrentCluster) {
-	    RetrievalPointers->Extents[RetrievalPointers->ExtentCount].
-		NextVcn = Vcn;
-	    RetrievalPointers->ExtentCount++;
-	    if (RetrievalPointers->ExtentCount < MaxExtentCount) {
-		RetrievalPointers->Extents[RetrievalPointers->ExtentCount].
-		    Lcn.u.HighPart = 0;
-		RetrievalPointers->Extents[RetrievalPointers->ExtentCount].
-		    Lcn.u.LowPart = CurrentCluster - 2;
+	    RetrPtrs->Extents[RetrPtrs->ExtentCount].NextVcn = Vcn;
+	    RetrPtrs->ExtentCount++;
+	    if (RetrPtrs->ExtentCount < MaxExtentCount) {
+		RetrPtrs->Extents[RetrPtrs->ExtentCount].Lcn.HighPart = 0;
+		RetrPtrs->Extents[RetrPtrs->ExtentCount].Lcn.LowPart = CurrentCluster-2;
 	    }
 	}
     }
 
     IrpContext->Irp->IoStatus.Information = sizeof(RETRIEVAL_POINTERS_BUFFER) +
-	(sizeof(RetrievalPointers->Extents[0]) *
-	 (RetrievalPointers->ExtentCount - 1));
-    Status = STATUS_SUCCESS;
-
-ByeBye:
-    return Status;
+	sizeof(RetrPtrs->Extents[0]) * RetrPtrs->ExtentCount;
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS FatMoveFile(PFAT_IRP_CONTEXT IrpContext)
@@ -1237,7 +1050,7 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 			   FSRTL_VOLUME_DISMOUNT);
 
     /* Flush volume & files */
-    FatFlushVolume(DeviceExt, (PFATFCB) FileObject->FsContext);
+    FatFlushVolume(DeviceExt, (PFATFCB)FileObject->FsContext);
 
     /* The volume is now clean */
     if (BooleanFlagOn(DeviceExt->VolumeFcb->Flags, VCB_CLEAR_DIRTY) &&

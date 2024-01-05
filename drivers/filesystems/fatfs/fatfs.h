@@ -39,7 +39,9 @@ typedef struct _BOOT_SECTOR {
     USHORT Heads;
     ULONG  HiddenSectors;
     ULONG  SectorsHuge;
-    UCHAR  Drive, Res1, Sig;
+    UCHAR  Drive;
+    UCHAR  Res1;
+    UCHAR  Sig;
     ULONG  VolumeID;
     UCHAR  VolumeLabel[11];
     UCHAR  SysType[8];
@@ -224,7 +226,7 @@ typedef struct _SLOT {
 typedef struct _FATINFO {
     ULONG   VolumeID;
     CHAR    VolumeLabel[11];
-    ULONG   FATStart;
+    ULONG   FatStart;
     ULONG   FATCount;
     ULONG   FatSectors;
     ULONG   RootDirectorySectors;
@@ -254,12 +256,6 @@ typedef struct _HASHENTRY {
 
 typedef struct _DEVICE_EXTENSION *PDEVICE_EXTENSION;
 
-typedef NTSTATUS (*PGET_NEXT_CLUSTER)(PDEVICE_EXTENSION, ULONG, PULONG);
-typedef NTSTATUS (*PFIND_AND_MARK_AVAILABLE_CLUSTER)(PDEVICE_EXTENSION,
-						     PULONG);
-typedef NTSTATUS (*PWRITE_CLUSTER)(PDEVICE_EXTENSION, ULONG, ULONG,
-				   PULONG);
-
 typedef BOOLEAN (*PIS_DIRECTORY_EMPTY)(PDEVICE_EXTENSION,
 				       struct _FATFCB *);
 typedef NTSTATUS (*PADD_ENTRY)(PDEVICE_EXTENSION, PUNICODE_STRING,
@@ -271,8 +267,6 @@ typedef NTSTATUS (*PGET_NEXT_DIR_ENTRY)(PVOID *, PVOID *,
 					struct _FATFCB *,
 					struct _FAT_DIRENTRY_CONTEXT *,
 					BOOLEAN);
-typedef NTSTATUS (*PGET_DIRTY_STATUS)(PDEVICE_EXTENSION, PBOOLEAN);
-typedef NTSTATUS (*PSET_DIRTY_STATUS)(PDEVICE_EXTENSION, BOOLEAN);
 
 typedef struct _FAT_DISPATCH {
     PIS_DIRECTORY_EMPTY IsDirectoryEmpty;
@@ -304,13 +298,6 @@ typedef struct _DEVICE_EXTENSION {
     struct _FATFCB *VolumeFcb;
     struct _FATFCB *RootFcb;
     PSTATISTICS Statistics;
-
-    /* Pointers to functions for manipulating FAT. */
-    PGET_NEXT_CLUSTER GetNextCluster;
-    PFIND_AND_MARK_AVAILABLE_CLUSTER FindAndMarkAvailableCluster;
-    PWRITE_CLUSTER WriteCluster;
-    PGET_DIRTY_STATUS GetDirtyStatus;
-    PSET_DIRTY_STATUS SetDirtyStatus;
 
     ULONG BaseDateYear;
 
@@ -641,31 +628,8 @@ NTSTATUS FatSetExtendedAttributes(PFILE_OBJECT FileObject,
 				  PVOID Ea, ULONG EaLength);
 
 /* fat.c */
-NTSTATUS Fat12GetNextCluster(PDEVICE_EXTENSION DeviceExt,
-			     ULONG CurrentCluster,
-			     PULONG NextCluster);
-NTSTATUS Fat12FindAndMarkAvailableCluster(PDEVICE_EXTENSION DeviceExt,
-					  PULONG Cluster);
-NTSTATUS Fat12WriteCluster(PDEVICE_EXTENSION DeviceExt,
-			   ULONG ClusterToWrite,
-			   ULONG NewValue,
-			   PULONG OldValue);
-NTSTATUS Fat16GetNextCluster(PDEVICE_EXTENSION DeviceExt,
-			     ULONG CurrentCluster,
-			     PULONG NextCluster);
-NTSTATUS Fat16FindAndMarkAvailableCluster(PDEVICE_EXTENSION DeviceExt,
-					  PULONG Cluster);
-NTSTATUS Fat16WriteCluster(PDEVICE_EXTENSION DeviceExt,
-			   ULONG ClusterToWrite,
-			   ULONG NewValue,
-			   PULONG OldValue);
-NTSTATUS Fat32GetNextCluster(PDEVICE_EXTENSION DeviceExt,
-			     ULONG CurrentCluster,
-			     PULONG NextCluster);
-NTSTATUS Fat32FindAndMarkAvailableCluster(PDEVICE_EXTENSION DeviceExt,
-					  PULONG Cluster);
-NTSTATUS Fat32WriteCluster(PDEVICE_EXTENSION DeviceExt,
-			   ULONG ClusterToWrite, ULONG NewValue, PULONG OldValue);
+NTSTATUS FindAndMarkAvailableCluster(PDEVICE_EXTENSION DeviceExt,
+				     PULONG Cluster);
 NTSTATUS OffsetToCluster(PDEVICE_EXTENSION DeviceExt,
 			 ULONG FirstCluster,
 			 ULONG FileOffset,
@@ -686,21 +650,9 @@ NTSTATUS WriteCluster(PDEVICE_EXTENSION DeviceExt,
 		      ULONG NewValue);
 NTSTATUS GetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
 			PBOOLEAN DirtyStatus);
-NTSTATUS Fat16GetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
-			     PBOOLEAN DirtyStatus);
-NTSTATUS Fat32GetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
-			     PBOOLEAN DirtyStatus);
 NTSTATUS SetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
 			BOOLEAN DirtyStatus);
-NTSTATUS Fat16SetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
-			     BOOLEAN DirtyStatus);
-NTSTATUS Fat32SetDirtyStatus(PDEVICE_EXTENSION DeviceExt,
-			     BOOLEAN DirtyStatus);
 NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DeviceExt);
-
-/* fatfs.c */
-PVOID FatGetUserBuffer(IN PIRP Irp,
-		       IN BOOLEAN Paging);
 
 /* fcb.c */
 VOID FatSplitPathName(PUNICODE_STRING PathNameU,
@@ -747,10 +699,10 @@ NTSTATUS FatGetBasicInformation(PFILE_OBJECT FileObject,
 				PULONG BufferLength);
 NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext);
 NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext);
-NTSTATUS FatSetAllocationSizeInformation(PFILE_OBJECT FileObject,
-					 PFATFCB Fcb,
-					 PDEVICE_EXTENSION DeviceExt,
-					 PLARGE_INTEGER AllocationSize);
+NTSTATUS FatSetFileSizeInformation(PFILE_OBJECT FileObject,
+				   PFATFCB Fcb,
+				   PDEVICE_EXTENSION DeviceExt,
+				   PLARGE_INTEGER FileSize);
 
 /* flush.c */
 NTSTATUS FatFlush(PFAT_IRP_CONTEXT IrpContext);
