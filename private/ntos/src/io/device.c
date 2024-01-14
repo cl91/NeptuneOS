@@ -4,12 +4,12 @@
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
 {
-    PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT) Object;
-    PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT) CreaCtx;
+    PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
+    PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT)CreaCtx;
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
     IO_DEVICE_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
-    InitializeListHead(&Device->DeviceLink);
+    InitializeListHead(&Device->OpenFileList);
 
     Device->DriverObject = DriverObject;
     InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
@@ -17,6 +17,70 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     Device->Exclusive = Exclusive;
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
+				  IN PCSTR Path,
+				  IN BOOLEAN CaseInsensitive,
+				  OUT POBJECT *FoundObject,
+				  OUT PCSTR *RemainingPath)
+{
+    assert(Self != NULL);
+    assert(Path != NULL);
+    assert(FoundObject != NULL);
+    assert(RemainingPath != NULL);
+    assert(*Path != OBJ_NAME_PATH_SEPARATOR);
+
+    PIO_DEVICE_OBJECT DevObj = (PIO_DEVICE_OBJECT)Self;
+    DbgTrace("Device %p trying to parse Path = %s case-%s\n", Self, Path,
+	     CaseInsensitive ? "insensitively" : "sensitively");
+
+    if (DevObj->Subobjects) {
+	return ObParseObjectByName(DevObj->Subobjects, Path, CaseInsensitive,
+				   FoundObject, RemainingPath);
+    }
+
+    return STATUS_OBJECT_PATH_NOT_FOUND;
+}
+
+NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
+				   IN POBJECT Object,
+				   IN PCSTR Path)
+{
+    PIO_DEVICE_OBJECT DevObj = (PIO_DEVICE_OBJECT)Self;
+    assert(Self != NULL);
+    assert(Path != NULL);
+    assert(Object != NULL);
+    DbgTrace("Inserting subobject %p (path %s) for device object %p\n",
+	     Object, Path, Self);
+
+    /* Object path must not be empty. */
+    if (*Path == '\0') {
+	DbgTrace("Cannot insert empty path\n");
+	return STATUS_OBJECT_PATH_INVALID;
+    }
+
+    /* Object path must not be absolute. */
+    if (*Path == OBJ_NAME_PATH_SEPARATOR) {
+	DbgTrace("Cannot insert absolute path %s\n", Path);
+	return STATUS_OBJECT_PATH_INVALID;
+    }
+
+    if (!DevObj->Subobjects) {
+	RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
+			       (POBJECT *)&DevObj->Subobjects, NULL));
+    }
+
+    assert(DevObj->Subobjects);
+    return ObInsertObject(DevObj->Subobjects, Object, Path, 0);
+}
+
+VOID IopDeviceObjectRemoveProc(IN POBJECT Parent,
+			       IN POBJECT Subobject,
+			       IN PCSTR Subpath)
+{
+    /* We don't need to do anything here because the remove proc of the
+     * directory object will take care of removing the subobject for us. */
 }
 
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
@@ -34,11 +98,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     assert(Context != NULL);
     assert(pOpenedInstance != NULL);
 
-    /* We haven't implemented file system devices yet */
     *pRemainingPath = SubPath;
-    if (*SubPath != '\0') {
-	UNIMPLEMENTED;
-    }
 
     /* These must come before ASYNC_BEGIN since they are referenced
      * throughout the whole function (in particular, after the AWAIT call) */
@@ -52,6 +112,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     ASYNC_BEGIN(State, Locals, {
 	    PIO_FILE_OBJECT FileObject;
+	    PCSTR FileName;
 	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
 	});
@@ -61,11 +122,16 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
     }
 
+    /* If the device object is a volume object, make sure the file system is mounted. */
+    AWAIT_EX(Status, IopMountVolume, State, Locals, Thread, Device);
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(State, Status);
+    }
+    assert(!IopIsVolumeDevice(Device) || IopIsVolumeMounted(Device));
+
     IF_ERR_GOTO(out, Status,
-		IopCreateFileObject(ObGetObjectName(Device), NULL, Device, NULL, 0,
-				    &Locals.FileObject));
+		IopCreateMasterFileObject(SubPath, Device, &Locals.FileObject));
     assert(Locals.FileObject != NULL);
-    assert(Locals.FileObject->FileName != NULL);
 
     /* Check if this is Synch I/O and set the sync flag accordingly */
     if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) {
@@ -76,15 +142,18 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	}
     }
 
-    ULONG FileNameLength = strlen(Locals.FileObject->FileName);
+    ULONG FileNameLength = strlen(SubPath);
     ULONG IoPacketSize = sizeof(IO_PACKET) + FileNameLength + 1;
     IF_ERR_GOTO(out, Status,
 		IopAllocateIoPacket(IoPacketTypeRequest, IoPacketSize, &Locals.IoPacket));
     assert(Locals.IoPacket != NULL);
 
-    /* For IO packets involving the creation of file objects, we need to pass FILE_OBJECT_CREATE_PARAMETERS
-     * so the client can record the file object information there */
-    memcpy(Locals.IoPacket+1, Locals.FileObject->FileName, FileNameLength + 1);
+    /* For IO packets involving the creation of file objects, we need to pass
+     * FILE_OBJECT_CREATE_PARAMETERS to the client driver so it can record the
+     * file object information there */
+    if (FileNameLength) {
+	memcpy(Locals.IoPacket+1, SubPath, FileNameLength + 1);
+    }
     FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
 	.ReadAccess = Locals.FileObject->ReadAccess,
 	.WriteAccess = Locals.FileObject->WriteAccess,
@@ -93,7 +162,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	.SharedWrite = Locals.FileObject->SharedWrite,
 	.SharedDelete = Locals.FileObject->SharedDelete,
 	.Flags = Locals.FileObject->Flags,
-	.FileNameOffset = sizeof(IO_PACKET)
+	.FileNameOffset = FileNameLength ? sizeof(IO_PACKET) : 0
     };
 
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
@@ -154,6 +223,7 @@ out:
 
 VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 {
+    /* TODO! */
 }
 
 /*
@@ -176,8 +246,11 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
 	.DeviceInfo = *DeviceInfo,
 	.Exclusive = Exclusive
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *) &DeviceObject,
-			   NULL, DeviceName, 0, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_DEVICE, (POBJECT *)&DeviceObject, &CreaCtx));
+    if (DeviceName) {
+	RET_ERR_EX(ObInsertObject(NULL, DeviceObject, DeviceName, 0),
+		   ObDereferenceObject(DeviceObject));
+    }
     assert(DeviceObject != NULL);
 
     *DeviceHandle = OBJECT_TO_GLOBAL_HANDLE(DeviceObject);

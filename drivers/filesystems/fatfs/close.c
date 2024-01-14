@@ -109,14 +109,14 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	    CcUninitializeCacheMap(Fcb->FileObject, &Zero);
 	    ObDereferenceObject(Fcb->FileObject);
 	    DeviceExt->RootFcb = NULL;
-	    FatDestroyFCB(Fcb);
+	    FatDestroyFcb(Fcb);
 	}
 	if (DeviceExt->VolumeFcb) {
 	    Fcb = DeviceExt->VolumeFcb;
 	    CcUninitializeCacheMap(Fcb->FileObject, &Zero);
 	    ObDereferenceObject(Fcb->FileObject);
 	    DeviceExt->VolumeFcb = NULL;
-	    FatDestroyFCB(Fcb);
+	    FatDestroyFcb(Fcb);
 	}
 	if (DeviceExt->FatFileObject) {
 	    Fcb = DeviceExt->FatFileObject->FsContext;
@@ -124,7 +124,7 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	    DeviceExt->FatFileObject->FsContext = NULL;
 	    ObDereferenceObject(DeviceExt->FatFileObject);
 	    DeviceExt->FatFileObject = NULL;
-	    FatDestroyFCB(Fcb);
+	    FatDestroyFcb(Fcb);
 	}
 
 	/*
@@ -179,7 +179,7 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
     BOOLEAN IsVolume = BooleanFlagOn(pFcb->Flags, FCB_IS_VOLUME);
 
     if (pCcb) {
-	FatDestroyCCB(pCcb);
+	FatDestroyCcb(pCcb);
     }
 
     /* Nothing to do for volumes or for the FAT file object */
@@ -205,7 +205,7 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 #endif
 
     /* Release the FCB, we likely cause its deletion */
-    FatReleaseFCB(DeviceExt, pFcb);
+    FatReleaseFcb(DeviceExt, pFcb);
 
     FileObject->FsContext2 = NULL;
     FileObject->FsContext = NULL;

@@ -4,7 +4,7 @@
 #include "precomp.h"
 #include "ntfile.h"
 
-BOOLEAN NtFileOpenDirectory(HANDLE * phRetFile, WCHAR * pwszFileName,
+BOOLEAN NtFileOpenDirectory(HANDLE *phRetFile, WCHAR *pwszFileName,
 			    BOOLEAN bWrite, BOOLEAN bOverwrite)
 {
     HANDLE hFile;
@@ -45,7 +45,7 @@ BOOLEAN NtFileOpenDirectory(HANDLE * phRetFile, WCHAR * pwszFileName,
     return TRUE;
 }
 
-BOOLEAN NtFileOpenFile(HANDLE * phRetFile, WCHAR * pwszFileName,
+BOOLEAN NtFileOpenFile(HANDLE *phRetFile, WCHAR *pwszFileName,
 		       BOOLEAN bWrite, BOOLEAN bOverwrite)
 {
     HANDLE hFile;
@@ -74,11 +74,10 @@ BOOLEAN NtFileOpenFile(HANDLE * phRetFile, WCHAR * pwszFileName,
 	CreateDisposition = FILE_OPEN;
     }
 
-    ntStatus =
-	NtCreateFile(&hFile, GENERIC_WRITE | SYNCHRONIZE | GENERIC_READ,
-		     &ObjectAttributes, &IoStatusBlock, 0,
-		     FILE_ATTRIBUTE_NORMAL, 0, CreateDisposition,
-		     FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+    ntStatus = NtCreateFile(&hFile, GENERIC_WRITE | SYNCHRONIZE | GENERIC_READ,
+			    &ObjectAttributes, &IoStatusBlock, 0,
+			    FILE_ATTRIBUTE_NORMAL, 0, CreateDisposition,
+			    FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
 
     if (!NT_SUCCESS(ntStatus)) {
 	RtlCliDisplayString("NtCreateFile() failed 0x%.8X\n", ntStatus);
@@ -91,7 +90,7 @@ BOOLEAN NtFileOpenFile(HANDLE * phRetFile, WCHAR * pwszFileName,
 }
 
 BOOLEAN NtFileWriteFile(HANDLE hFile, LPVOID lpData, DWORD dwBufferSize,
-			DWORD * pRetWrittenSize)
+			DWORD *pRetWrittenSize)
 {
     IO_STATUS_BLOCK sIoStatus;
     NTSTATUS ntStatus = 0;
@@ -111,7 +110,7 @@ BOOLEAN NtFileWriteFile(HANDLE hFile, LPVOID lpData, DWORD dwBufferSize,
     return FALSE;
 }
 
-BOOLEAN NtFileCopyFile(WCHAR * pszSrc, WCHAR * pszDst)
+BOOLEAN NtFileCopyFile(WCHAR *pszSrc, WCHAR *pszDst)
 {
     HANDLE hSrc = NULL;
     HANDLE hDst = NULL;
@@ -177,7 +176,7 @@ BOOLEAN NtFileCopyFile(WCHAR * pszSrc, WCHAR * pszDst)
 }
 
 BOOLEAN NtFileReadFile(HANDLE hFile, LPVOID pOutBuffer,
-		       DWORD dwOutBufferSize, DWORD * pRetReadedSize)
+		       DWORD dwOutBufferSize, DWORD *pRetReadedSize)
 {
     IO_STATUS_BLOCK sIoStatus;
     NTSTATUS ntStatus = 0;
@@ -197,7 +196,7 @@ BOOLEAN NtFileReadFile(HANDLE hFile, LPVOID pOutBuffer,
     return FALSE;
 }
 
-BOOLEAN NtFileGetFilePosition(HANDLE hFile, LONGLONG * pRetCurrentPosition)
+BOOLEAN NtFileGetFilePosition(HANDLE hFile, LONGLONG *pRetCurrentPosition)
 {
     IO_STATUS_BLOCK sIoStatus;
     FILE_POSITION_INFORMATION sFilePosition;
@@ -220,7 +219,7 @@ BOOLEAN NtFileGetFilePosition(HANDLE hFile, LONGLONG * pRetCurrentPosition)
     return FALSE;
 }
 
-BOOLEAN NtFileGetFileSize(HANDLE hFile, LONGLONG * pRetFileSize)
+BOOLEAN NtFileGetFileSize(HANDLE hFile, LONGLONG *pRetFileSize)
 {
     IO_STATUS_BLOCK sIoStatus;
     FILE_STANDARD_INFORMATION sFileInfo;
@@ -338,10 +337,9 @@ BOOLEAN NtFileCreateDirectory(PCWSTR dirname)
 }
 
 /*
-lpExistingFileName - full path in DOS format
-lpNewFileName - full path in DOS format, or filename
-*/
-
+ * lpExistingFileName - full path in DOS format
+ * lpNewFileName - full path in DOS format, or filename
+ */
 BOOLEAN NtFileMoveFile(IN LPCWSTR lpExistingFileName,
 		       IN LPCWSTR lpNewFileName, BOOLEAN ReplaceIfExists)
 {

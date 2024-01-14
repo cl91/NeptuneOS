@@ -1,45 +1,64 @@
 #include "iop.h"
 #include "helpers.h"
 
-LIST_ENTRY IopFileObjectList;
-
 /*
  * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
  */
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx)
 {
+    assert(CreaCtx);
     PIO_FILE_OBJECT File = (PIO_FILE_OBJECT)Object;
     PFILE_OBJ_CREATE_CONTEXT Ctx = (PFILE_OBJ_CREATE_CONTEXT)CreaCtx;
 
+    if (!Ctx->FileName || *Ctx->FileName == '\0' || Ctx->NoNewFcb) {
+	File->Fcb = NULL;
+    } else if (Ctx->Fcb) {
+	File->Fcb = Ctx->Fcb;
+    } else {
+	IopAllocatePool(Fcb, IO_FILE_CONTROL_BLOCK);
+	File->Fcb = Fcb;
+	Fcb->FileName = Ctx->FileName;
+	Fcb->FileSize = Ctx->FileSize;
+	Fcb->BufferPtr = Ctx->BufferPtr;
+    }
+
     File->DeviceObject = Ctx->DeviceObject;
-    File->FileName = Ctx->FileName;
-    File->BufferPtr = Ctx->BufferPtr;
-    File->Size = Ctx->FileSize;
-    InsertTailList(&IopFileObjectList, &File->Link);
+    if (Ctx->DeviceObject) {
+	InsertTailList(&Ctx->DeviceObject->OpenFileList, &File->DeviceLink);
+    }
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopCreateFileObject(IN PCSTR FileName,
-			     IN POBJECT ParentDirectory,
-			     IN PIO_DEVICE_OBJECT DeviceObject,
-			     IN PVOID BufferPtr,
-			     IN MWORD FileSize,
-			     OUT PIO_FILE_OBJECT *pFile)
+/*
+ * Create a "master" file object for a newly opened device object. If
+ * FileName is not an empty string (typically when the device object is
+ * a volume object belonging to a file system), the file object will
+ * be inserted under the device object using the file name as sub-path.
+ */
+NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
+				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   OUT PIO_FILE_OBJECT *pFile)
 {
-    assert(pFile != NULL);
+    assert(FileName);
+    assert(DeviceObject);
+    assert(pFile);
     PIO_FILE_OBJECT File = NULL;
     FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DeviceObject = DeviceObject,
 	.FileName = FileName,
-	.BufferPtr = BufferPtr,
-	.FileSize = FileSize
+	.BufferPtr = NULL,
+	.FileSize = 0,
+	.Fcb = NULL,
+	.NoNewFcb = FALSE
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *) &File, ParentDirectory,
-			   ParentDirectory ? FileName : NULL, 0, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
-
+    if (*FileName != '\0') {
+	RET_ERR_EX(ObInsertObject(DeviceObject, File, FileName, 0),
+		   ObDereferenceObject(File));
+    }
     *pFile = File;
     return STATUS_SUCCESS;
 }
@@ -75,22 +94,41 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 }
 
 /*
- * This is a temporary function for the ldr component to create the initrd
- * boot module files. When we finished the cache manager we will use the cc
- * facilities for this.
+ * This is a helper function for the ldr component to create the initrd
+ * boot module files. These files do not have a corresponding device object
+ * because they are not managed by any file system.
  *
  * If ParentDirectory is not NULL, the file object is inserted under it as
  * a sub-object. Otherwise, the file object created is a no-name object and
  * is not part of any namespace (as far as the object manager is concerned).
  */
-NTSTATUS IoCreateFile(IN PCSTR FileName,
-		      IN POBJECT ParentDirectory,
-		      IN PVOID BufferPtr,
-		      IN MWORD FileSize,
-		      OUT PIO_FILE_OBJECT *pFile)
+NTSTATUS IoCreateDevicelessFile(IN PCSTR FileName,
+				IN OPTIONAL POBJECT ParentDirectory,
+				IN PVOID BufferPtr,
+				IN MWORD FileSize,
+				OUT PIO_FILE_OBJECT *pFile)
 {
-    return IopCreateFileObject(FileName, ParentDirectory, NULL,
-			       BufferPtr, FileSize, pFile);
+    assert(FileName);
+    assert(BufferPtr);
+    assert(FileSize);
+    assert(pFile);
+    PIO_FILE_OBJECT File = NULL;
+    FILE_OBJ_CREATE_CONTEXT CreaCtx = {
+	.DeviceObject = NULL,
+	.FileName = FileName,
+	.BufferPtr = BufferPtr,
+	.FileSize = FileSize,
+	.Fcb = NULL,
+	.NoNewFcb = FALSE
+    };
+    RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
+    assert(File != NULL);
+    if (ParentDirectory) {
+	RET_ERR_EX(ObInsertObject(ParentDirectory, File, FileName, 0),
+		   ObDereferenceObject(File));
+    }
+    *pFile = File;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
@@ -303,10 +341,13 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 	return;
     }
     DbgPrint("    DeviceObject = %p\n", File->DeviceObject);
-    DbgPrint("    FileName = %s\n", File->FileName);
-    DbgPrint("    ImageSectionObject = %p\n", File->SectionObject.ImageSectionObject);
-    DbgPrint("    DataSectionObject = %p\n", File->SectionObject.DataSectionObject);
-    DbgPrint("    BufferPtr = %p\n", (PVOID) File->BufferPtr);
-    DbgPrint("    Size = 0x%zx\n", File->Size);
+    DbgPrint("    Fcb = %p\n", File->Fcb);
+    if (File->Fcb) {
+	DbgPrint("    FileName = %s\n", File->Fcb->FileName);
+	DbgPrint("    FileSize = 0x%zx\n", File->Fcb->FileSize);
+	DbgPrint("    BufferPtr = %p\n", (PVOID)File->Fcb->BufferPtr);
+	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
+	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);
+    }
 }
 #endif

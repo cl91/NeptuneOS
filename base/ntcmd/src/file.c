@@ -124,7 +124,7 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
     // NextEntryOffset of the next structure), then temporarly clear it so
     // that the RtlCliDisplayString can treat it as a null-terminated string
     //
-    Null = (PWCHAR) ((PBYTE) DirInfo->FileName + DirInfo->FileNameLength);
+    Null = (PWCHAR)((PBYTE) DirInfo->FileName + DirInfo->FileNameLength);
     Save = *Null;
     *Null = 0;
 
@@ -158,7 +158,8 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
 
     if (DirInfo->ShortNameLength) {
 	memset(ShortString, 0x00, (12 + 1) * sizeof(WCHAR));
-	wcsncpy_s(ShortString, sizeof(ShortString)/sizeof(WCHAR), DirInfo->ShortName, short_size);
+	wcsncpy_s(ShortString, sizeof(ShortString)/sizeof(WCHAR),
+		  DirInfo->ShortName, short_size);
     } else {
 	_snwprintf(ShortString, sizeof(ShortString)/sizeof(WCHAR), L" ");
     }
@@ -171,14 +172,9 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
     }
 
     RtlCliDisplayString("%02d.%02d.%04d %02d:%02d %s %9s %-28S %12S\n",
-			Time.Day,
-			Time.Month,
-			Time.Year,
-			Time.Hour,
-			Time.Minute,
-			DirInfo->
-			FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "<DIR>"
-			: "     ", SizeString, FileString, ShortString);
+			Time.Day, Time.Month, Time.Year, Time.Hour, Time.Minute,
+			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "<DIR>" : "     ",
+			SizeString, FileString, ShortString);
 
     //
     // Restore the character that was here before
@@ -318,7 +314,7 @@ NTSTATUS RtlCliListDirectory(VOID)
 
 	    if (++i > 20) {
 		i = 0;
-		RtlCliDisplayString("Continue listing (Y/N):");
+		RtlCliDisplayString("Continue listing (Y/N): ");
 		while (TRUE) {
 		    c = RtlCliGetChar(hKeyboard);
 		    if (c == 'n' || c == 'N') {
@@ -340,8 +336,7 @@ NTSTATUS RtlCliListDirectory(VOID)
 	    //
 	    // Move to the next one
 	    //
-	    Entry = (PFILE_BOTH_DIR_INFORMATION) ((ULONG_PTR) Entry +
-						  Entry->NextEntryOffset);
+	    Entry = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Entry + Entry->NextEntryOffset);
 	}
 
 	//

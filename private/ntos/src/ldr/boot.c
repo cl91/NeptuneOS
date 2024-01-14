@@ -47,8 +47,8 @@ NTSTATUS LdrLoadBootModules()
 
 	/* Create FILE object and insert into object directory */
 	PIO_FILE_OBJECT File = NULL;
-	RET_ERR(IoCreateFile(FileNames[i], BootModuleDirectory,
-			     (PVOID) FileContent, FileSize, &File));
+	RET_ERR(IoCreateDevicelessFile(FileNames[i], BootModuleDirectory,
+				       (PVOID)FileContent, FileSize, &File));
 	assert(File != NULL);
     }
     ObDereferenceObject(BootModuleDirectory);

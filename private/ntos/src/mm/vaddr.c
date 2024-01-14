@@ -410,19 +410,20 @@ VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
 
 NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 {
-    assert(Vad != NULL);
-    assert(Vad->VSpace != NULL);
+    assert(Vad);
+    assert(Vad->VSpace);
     assert(Vad->Flags.ImageMap);
     assert(Vad->Flags.OwnedMemory || Vad->Flags.MirroredMemory);
     assert(IS_PAGE_ALIGNED(Vad->AvlNode.Key));
     assert(IS_PAGE_ALIGNED(Vad->WindowSize));
     assert(Vad->AvlNode.Key + Vad->WindowSize > Vad->AvlNode.Key);
-    assert(Vad->ImageSectionView.SubSection != NULL);
-    assert(Vad->ImageSectionView.SubSection->ImageSection != NULL);
-    assert(Vad->ImageSectionView.SubSection->ImageSection->FileObject != NULL);
+    assert(Vad->ImageSectionView.SubSection);
+    assert(Vad->ImageSectionView.SubSection->ImageSection);
+    assert(Vad->ImageSectionView.SubSection->ImageSection->FileObject);
+    assert(Vad->ImageSectionView.SubSection->ImageSection->FileObject->Fcb);
 
     PAGING_RIGHTS Rights = Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
-    PVOID FileBuffer = Vad->ImageSectionView.SubSection->ImageSection->FileObject->BufferPtr;
+    PVOID FileBuffer = Vad->ImageSectionView.SubSection->ImageSection->FileObject->Fcb->BufferPtr;
     PVOID DataBuffer = FileBuffer + Vad->ImageSectionView.SubSection->FileOffset;
     MWORD DataSize = Vad->ImageSectionView.SubSection->RawDataSize;
     /* TODO: Use shared pages for PE headers and read-only sections. */
@@ -957,7 +958,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
     DbgTrace("Process %s VSpace cap 0x%zx base address %p zerobits 0x%zx "
 	     "region size 0x%zx allocation type 0x%x protect 0x%x\n",
-	     Process->ImageFile ? Process->ImageFile->FileName : "",
+	     Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
 	     VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)ZeroBits,
 	     RegionSize ? (MWORD)*RegionSize : 0, AllocationType, Protect);
 
@@ -1115,7 +1116,7 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
     assert(Process != NULL);
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
     DbgTrace("Process %s VSpace cap 0x%zx base address %p region size 0x%zx free type 0x%x\n",
-	     Process->ImageFile ? Process->ImageFile->FileName : "",
+	     Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
 	     VSpace->VSpaceCap, *BaseAddress, (MWORD)*RegionSize, FreeType);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
@@ -1188,7 +1189,7 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
     assert(Process != NULL);
     PVIRT_ADDR_SPACE TargetVSpace = &Process->VSpace;
     DbgTrace("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%x\n",
-	     Process->ImageFile ? Process->ImageFile->FileName : "",
+	     Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
 	     TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
     PVOID MappedTargetBuffer = NULL;
     NTSTATUS Status;

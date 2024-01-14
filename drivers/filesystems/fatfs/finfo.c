@@ -76,7 +76,7 @@ NTSTATUS FatGetStandardInformation(PFATFCB FCB,
     ASSERT(StandardInfo != NULL);
     ASSERT(FCB != NULL);
 
-    if (FatFCBIsDirectory(FCB)) {
+    if (FatFcbIsDirectory(FCB)) {
 	StandardInfo->AllocationSize.QuadPart = 0;
 	StandardInfo->EndOfFile.QuadPart = 0;
 	StandardInfo->Directory = TRUE;
@@ -159,7 +159,7 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 						   FILE_ATTRIBUTE_DIRECTORY |
 						   FILE_ATTRIBUTE_READONLY));
 
-	if (FatFCBIsDirectory(FCB)) {
+	if (FatFcbIsDirectory(FCB)) {
 	    if (BooleanFlagOn(BasicInfo->FileAttributes, FILE_ATTRIBUTE_TEMPORARY)) {
 		DPRINT("Setting temporary attribute on a directory!\n");
 		return STATUS_INVALID_PARAMETER;
@@ -329,11 +329,11 @@ static NTSTATUS FatSetDispositionInformation(PFILE_OBJECT FileObject,
 	return STATUS_SUCCESS;
     }
 
-    if (FatFCBIsReadOnly(FCB)) {
+    if (FatFcbIsReadOnly(FCB)) {
 	return STATUS_CANNOT_DELETE;
     }
 
-    if (FatFCBIsRoot(FCB) || IsDotOrDotDot(&FCB->LongNameU)) {
+    if (FatFcbIsRoot(FCB) || IsDotOrDotDot(&FCB->LongNameU)) {
 	/* we cannot delete a '.', '..' or the root directory */
 	return STATUS_ACCESS_DENIED;
     }
@@ -346,7 +346,7 @@ static NTSTATUS FatSetDispositionInformation(PFILE_OBJECT FileObject,
     }
 #endif
 
-    if (FatFCBIsDirectory(FCB) && !FatIsDirectoryEmpty(DeviceExt, FCB)) {
+    if (FatFcbIsDirectory(FCB) && !FatIsDirectoryEmpty(DeviceExt, FCB)) {
 	/* can't delete a non-empty directory */
 
 	return STATUS_DIRECTORY_NOT_EMPTY;
@@ -374,7 +374,7 @@ static NTSTATUS FatPrepareTargetForRename(IN PDEVICE_EXTENSION DeviceExt,
 
     *Deleted = FALSE;
     /* Try to open target */
-    Status = FatGetFCBForFile(DeviceExt, ParentFCB, &TargetFcb, NewName);
+    Status = FatGetFcbForFile(DeviceExt, ParentFCB, &TargetFcb, NewName);
     /* If it exists */
     if (NT_SUCCESS(Status)) {
 	DPRINT("Target file %wZ exists. FCB Flags %08x\n", NewName,
@@ -382,11 +382,11 @@ static NTSTATUS FatPrepareTargetForRename(IN PDEVICE_EXTENSION DeviceExt,
 	/* Check whether we are allowed to replace */
 	if (ReplaceIfExists) {
 	    /* If that's a directory or a read-only file, we're not allowed */
-	    if (FatFCBIsDirectory(TargetFcb) || FatFCBIsReadOnly(TargetFcb)) {
+	    if (FatFcbIsDirectory(TargetFcb) || FatFcbIsReadOnly(TargetFcb)) {
 		DPRINT("And this is a readonly file!\n");
-		FatReleaseFCB(DeviceExt, *ParentFCB);
+		FatReleaseFcb(DeviceExt, *ParentFCB);
 		*ParentFCB = NULL;
-		FatReleaseFCB(DeviceExt, TargetFcb);
+		FatReleaseFcb(DeviceExt, TargetFcb);
 		return STATUS_OBJECT_NAME_COLLISION;
 	    }
 
@@ -397,9 +397,9 @@ static NTSTATUS FatPrepareTargetForRename(IN PDEVICE_EXTENSION DeviceExt,
 		if (!MmFlushImageSection(TargetFcb->FileObject->SectionObjectPointer,
 					 MmFlushForDelete)) {
 		    DPRINT("MmFlushImageSection failed.\n");
-		    FatReleaseFCB(DeviceExt, *ParentFCB);
+		    FatReleaseFcb(DeviceExt, *ParentFCB);
 		    *ParentFCB = NULL;
-		    FatReleaseFCB(DeviceExt, TargetFcb);
+		    FatReleaseFcb(DeviceExt, TargetFcb);
 		    return STATUS_ACCESS_DENIED;
 		}
 #endif
@@ -411,22 +411,22 @@ static NTSTATUS FatPrepareTargetForRename(IN PDEVICE_EXTENSION DeviceExt,
 	    /* If we are here, ensure the file isn't open by anyone! */
 	    if (TargetFcb->OpenHandleCount != 0) {
 		DPRINT("There are still open handles for this file.\n");
-		FatReleaseFCB(DeviceExt, *ParentFCB);
+		FatReleaseFcb(DeviceExt, *ParentFCB);
 		*ParentFCB = NULL;
-		FatReleaseFCB(DeviceExt, TargetFcb);
+		FatReleaseFcb(DeviceExt, TargetFcb);
 		return STATUS_ACCESS_DENIED;
 	    }
 
 	    /* Effectively delete old file to allow renaming */
 	    DPRINT("Effectively deleting the file.\n");
 	    FatDelEntry(DeviceExt, TargetFcb, NULL);
-	    FatReleaseFCB(DeviceExt, TargetFcb);
+	    FatReleaseFcb(DeviceExt, TargetFcb);
 	    *Deleted = TRUE;
 	    return STATUS_SUCCESS;
 	} else {
-	    FatReleaseFCB(DeviceExt, *ParentFCB);
+	    FatReleaseFcb(DeviceExt, *ParentFCB);
 	    *ParentFCB = NULL;
-	    FatReleaseFCB(DeviceExt, TargetFcb);
+	    FatReleaseFcb(DeviceExt, TargetFcb);
 	    return STATUS_OBJECT_NAME_COLLISION;
 	}
     } else if (*ParentFCB != NULL) {
@@ -453,7 +453,7 @@ static BOOLEAN IsThereAChildOpened(PFATFCB FCB)
 	    return TRUE;
 	}
 
-	if (FatFCBIsDirectory(VolFCB)
+	if (FatFcbIsDirectory(VolFCB)
 	    && !IsListEmpty(&VolFCB->ParentListHead)) {
 	    if (IsThereAChildOpened(VolFCB)) {
 		return TRUE;
@@ -480,11 +480,11 @@ static VOID FatRenameChildFCB(PDEVICE_EXTENSION DeviceExt, PFATFCB FCB)
 	DPRINT("Found %wZ with still %u references (parent: %u)!\n",
 	       &Child->PathNameU, Child->RefCount, FCB->RefCount);
 
-	Status = FatSetFCBNewDirName(DeviceExt, Child, FCB);
+	Status = FatSetFcbNewDirName(DeviceExt, Child, FCB);
 	if (!NT_SUCCESS(Status))
 	    continue;
 
-	if (FatFCBIsDirectory(Child)) {
+	if (FatFcbIsDirectory(Child)) {
 	    FatRenameChildFCB(DeviceExt, Child);
 	}
     }
@@ -525,7 +525,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	   DeviceExt, RenameInfo, TargetFileObject);
 
     /* Disallow renaming root */
-    if (FatFCBIsRoot(FCB)) {
+    if (FatFcbIsRoot(FCB)) {
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -710,7 +710,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	RtlCopyUnicodeString(&NewName,
 			     &((PFATFCB)TargetFileObject->FsContext)->PathNameU);
 	/* If \, it's already backslash terminated, don't add it */
-	if (!FatFCBIsRoot(TargetFileObject->FsContext)) {
+	if (!FatFcbIsRoot(TargetFileObject->FsContext)) {
 	    NewName.Buffer[NewName.Length / sizeof(WCHAR)] = L'\\';
 	    NewName.Length += sizeof(WCHAR);
 	}
@@ -728,7 +728,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	goto Cleanup;
     }
 
-    if (FatFCBIsDirectory(FCB) && !IsListEmpty(&FCB->ParentListHead)) {
+    if (FatFcbIsDirectory(FCB) && !IsListEmpty(&FCB->ParentListHead)) {
 	if (IsThereAChildOpened(FCB)) {
 	    Status = STATUS_ACCESS_DENIED;
 	    ASSERT(OldReferences == FCB->ParentFcb->RefCount);
@@ -747,7 +747,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	if (FsRtlAreNamesEqual(&SourceFile, &NewFile, TRUE, NULL)) {
 	    FatReportChange(DeviceExt,
 			    FCB,
-			    (FatFCBIsDirectory(FCB) ?
+			    (FatFcbIsDirectory(FCB) ?
 			     FILE_NOTIFY_CHANGE_DIR_NAME :
 			     FILE_NOTIFY_CHANGE_FILE_NAME),
 			    FILE_ACTION_RENAMED_OLD_NAME);
@@ -755,7 +755,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	    if (NT_SUCCESS(Status)) {
 		FatReportChange(DeviceExt,
 				FCB,
-				(FatFCBIsDirectory(FCB) ?
+				(FatFcbIsDirectory(FCB) ?
 				 FILE_NOTIFY_CHANGE_DIR_NAME :
 				 FILE_NOTIFY_CHANGE_FILE_NAME),
 				FILE_ACTION_RENAMED_NEW_NAME);
@@ -763,7 +763,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	} else {
 	    /* Try to find target */
 	    ParentFCB = FCB->ParentFcb;
-	    FatGrabFCB(DeviceExt, ParentFCB);
+	    FatGrabFcb(DeviceExt, ParentFCB);
 	    Status = FatPrepareTargetForRename(DeviceExt,
 					       &ParentFCB,
 					       &NewFile,
@@ -777,7 +777,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 
 	    FatReportChange(DeviceExt,
 			    FCB,
-			    (FatFCBIsDirectory(FCB) ?
+			    (FatFcbIsDirectory(FCB) ?
 			     FILE_NOTIFY_CHANGE_DIR_NAME :
 			     FILE_NOTIFY_CHANGE_FILE_NAME),
 			    (DeletedTarget ? FILE_ACTION_REMOVED :
@@ -797,7 +797,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 		} else {
 		    FatReportChange(DeviceExt,
 				    FCB,
-				    (FatFCBIsDirectory(FCB) ?
+				    (FatFcbIsDirectory(FCB) ?
 				     FILE_NOTIFY_CHANGE_DIR_NAME :
 				     FILE_NOTIFY_CHANGE_FILE_NAME),
 				    FILE_ACTION_RENAMED_NEW_NAME);
@@ -832,7 +832,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 
 	FatReportChange(DeviceExt,
 			FCB,
-			(FatFCBIsDirectory(FCB) ?
+			(FatFcbIsDirectory(FCB) ?
 			 FILE_NOTIFY_CHANGE_DIR_NAME :
 			 FILE_NOTIFY_CHANGE_FILE_NAME),
 			FILE_ACTION_REMOVED);
@@ -851,7 +851,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	    } else {
 		FatReportChange(DeviceExt,
 				FCB,
-				(FatFCBIsDirectory(FCB) ?
+				(FatFcbIsDirectory(FCB) ?
 				 FILE_NOTIFY_CHANGE_DIR_NAME :
 				 FILE_NOTIFY_CHANGE_FILE_NAME),
 				FILE_ACTION_ADDED);
@@ -859,7 +859,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	}
     }
 
-    if (NT_SUCCESS(Status) && FatFCBIsDirectory(FCB)) {
+    if (NT_SUCCESS(Status) && FatFcbIsDirectory(FCB)) {
 	FatRenameChildFCB(DeviceExt, FCB);
     }
 
@@ -867,7 +867,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
     ASSERT(NewReferences == ParentFCB->RefCount - 1);	// new file
 Cleanup:
     if (ParentFCB != NULL)
-	FatReleaseFCB(DeviceExt, ParentFCB);
+	FatReleaseFcb(DeviceExt, ParentFCB);
     if (NewName.Buffer != NULL)
 	ExFreePoolWithTag(NewName.Buffer, TAG_NAME);
     if (RenameInfo->RootDirectory != NULL)
@@ -990,7 +990,7 @@ static NTSTATUS FatGetNetworkOpenInformation(PFATFCB Fcb,
 	NetworkInfo->ChangeTime.QuadPart = NetworkInfo->LastWriteTime.QuadPart;
     }
 
-    if (FatFCBIsDirectory(Fcb)) {
+    if (FatFcbIsDirectory(Fcb)) {
 	NetworkInfo->EndOfFile.QuadPart = 0L;
 	NetworkInfo->AllocationSize.QuadPart = 0L;
     } else {
@@ -1099,7 +1099,7 @@ static VOID UpdateFileSize(IN PFILE_OBJECT FileObject,
     } else {
 	Fcb->Base.AllocationSize.QuadPart = (LONGLONG) 0;
     }
-    if (!FatFCBIsDirectory(Fcb)) {
+    if (!FatFcbIsDirectory(Fcb)) {
 	if (IsFatX)
 	    Fcb->Entry.FatX.FileSize = FileSize;
 	else

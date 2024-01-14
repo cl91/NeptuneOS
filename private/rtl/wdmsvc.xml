@@ -53,6 +53,10 @@
   <svc name="IopNotifyMainThread">
   </svc>
 
+  <svc name="IopRegisterFileSystem">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
+  </svc>
+
   <svc name="HalpMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>

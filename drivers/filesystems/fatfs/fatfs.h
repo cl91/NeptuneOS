@@ -410,10 +410,10 @@ typedef struct _FATFCB {
     /* Reference count */
     LONG RefCount;
 
-    /* List of FCB's for this volume */
+    /* List of FCBs for this volume */
     LIST_ENTRY FcbListEntry;
 
-    /* List of FCB's for the parent */
+    /* List of FCBs for the parent */
     LIST_ENTRY ParentListEntry;
 
     /* Pointer to the parent fcb */
@@ -422,10 +422,10 @@ typedef struct _FATFCB {
     /* List for the children */
     LIST_ENTRY ParentListHead;
 
-    /* Flags for the fcb */
+    /* Flags for the FCB */
     ULONG Flags;
 
-    /* Pointer to the file object which has initialized the fcb */
+    /* Pointer to the file object which has initialized the FCB */
     PFILE_OBJECT FileObject;
 
     /* Directory index for the short name entry */
@@ -435,7 +435,7 @@ typedef struct _FATFCB {
     ULONG StartIndex;
 
     /* Share access for the file object */
-    SHARE_ACCESS FCBShareAccess;
+    SHARE_ACCESS FcbShareAccess;
 
     /* Incremented on IRP_MJ_CREATE, decremented on IRP_MJ_CLEANUP */
     ULONG OpenHandleCount;
@@ -446,11 +446,9 @@ typedef struct _FATFCB {
     /* Entry into the hash table for the path + short name */
     HASHENTRY ShortHash;
 
-    /*
-     * Optimization: caching of last read/write cluster+offset pair. Can't
+    /* Optimization: caching of last read/write cluster+offset pair. Can't
      * be in FATCCB because it must be reset everytime the allocated clusters
-     * change.
-     */
+     * change. */
     ULONG LastCluster;
     ULONG LastOffset;
 } FATFCB, *PFATFCB;
@@ -534,12 +532,12 @@ FORCEINLINE BOOLEAN IsDotOrDotDot(PCUNICODE_STRING Name)
 	     && Name->Buffer[1] == L'.'));
 }
 
-FORCEINLINE BOOLEAN FatFCBIsDirectory(PFATFCB FCB)
+FORCEINLINE BOOLEAN FatFcbIsDirectory(PFATFCB FCB)
 {
     return BooleanFlagOn(*FCB->Attributes, FILE_ATTRIBUTE_DIRECTORY);
 }
 
-FORCEINLINE BOOLEAN FatFCBIsReadOnly(PFATFCB FCB)
+FORCEINLINE BOOLEAN FatFcbIsReadOnly(PFATFCB FCB)
 {
     return BooleanFlagOn(*FCB->Attributes, FILE_ATTRIBUTE_READONLY);
 }
@@ -557,7 +555,7 @@ FORCEINLINE VOID FatReportChange(IN PDEVICE_EXTENSION DeviceExt,
 #if 0
     /* TODO: We need to either handle file notifications entirely on server-side,
      * or have the client report the file changes to the server at the same time
-     * of IRP reply, so to avoid an extra trip to the server. */
+     * of IRP reply, in order to avoid an extra trip to the server. */
     FsRtlNotifyFullReportChange(DeviceExt->NotifySync,
 				&(DeviceExt->NotifyList),
 				(PSTRING) & Fcb->PathNameU,
@@ -607,19 +605,19 @@ ULONG FatDirEntryGetFirstCluster(PDEVICE_EXTENSION pDeviceExt,
 				 PDIR_ENTRY pDirEntry);
 
 /* dirwr.c */
-NTSTATUS FatFCBInitializeCacheFromVolume(PVCB vcb, PFATFCB fcb);
+NTSTATUS FatFcbInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb);
 NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt,
-			PFATFCB pFcb);
+			PFATFCB Fcb);
 BOOLEAN FatFindDirSpace(PDEVICE_EXTENSION DeviceExt,
-			PFATFCB pDirFcb,
-			ULONG nbSlots,
+			PFATFCB DirFcb,
+			ULONG Slots,
 			PULONG start);
 NTSTATUS FatRenameEntry(IN PDEVICE_EXTENSION DeviceExt,
-			IN PFATFCB pFcb,
+			IN PFATFCB Fcb,
 			IN PUNICODE_STRING FileName,
 			IN BOOLEAN CaseChangeOnly);
 NTSTATUS FatMoveEntry(IN PDEVICE_EXTENSION DeviceExt,
-		      IN PFATFCB pFcb,
+		      IN PFATFCB Fcb,
 		      IN PUNICODE_STRING FileName,
 		      IN PFATFCB ParentFcb);
 
@@ -658,35 +656,35 @@ NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DeviceExt);
 VOID FatSplitPathName(PUNICODE_STRING PathNameU,
 		      PUNICODE_STRING DirNameU,
 		      PUNICODE_STRING FileNameU);
-PFATFCB FatNewFCB(PDEVICE_EXTENSION pVCB, PUNICODE_STRING pFileNameU);
-NTSTATUS FatSetFCBNewDirName(PDEVICE_EXTENSION pVCB,
+PFATFCB FatNewFcb(PDEVICE_EXTENSION Vcb, PUNICODE_STRING FileNameU);
+NTSTATUS FatSetFcbNewDirName(PDEVICE_EXTENSION Vcb,
 			     PFATFCB Fcb, PFATFCB ParentFcb);
-NTSTATUS FatUpdateFCB(PDEVICE_EXTENSION pVCB,
+NTSTATUS FatUpdateFcb(PDEVICE_EXTENSION Vcb,
 		      PFATFCB Fcb,
 		      PFAT_DIRENTRY_CONTEXT DirContext,
 		      PFATFCB ParentFcb);
-VOID FatDestroyFCB(PFATFCB pFCB);
-VOID FatDestroyCCB(PFATCCB pCcb);
-VOID FatGrabFCB(PDEVICE_EXTENSION pVCB, PFATFCB pFCB);
-VOID FatReleaseFCB(PDEVICE_EXTENSION pVCB, PFATFCB pFCB);
-PFATFCB FatGrabFCBFromTable(PDEVICE_EXTENSION pDeviceExt,
-			    PUNICODE_STRING pFileNameU);
-PFATFCB FatMakeRootFCB(PDEVICE_EXTENSION pVCB);
-PFATFCB FatOpenRootFCB(PDEVICE_EXTENSION pVCB);
-BOOLEAN FatFCBIsDirectory(PFATFCB FCB);
-BOOLEAN FatFCBIsRoot(PFATFCB FCB);
-NTSTATUS FatAttachFCBToFileObject(PDEVICE_EXTENSION vcb,
-				  PFATFCB fcb, PFILE_OBJECT fileObject);
-NTSTATUS FatDirFindFile(PDEVICE_EXTENSION pVCB,
-			PFATFCB parentFCB,
-			PUNICODE_STRING FileToFindU, PFATFCB * fileFCB);
-NTSTATUS FatGetFCBForFile(PDEVICE_EXTENSION pVCB,
-			  PFATFCB * pParentFCB,
-			  PFATFCB * pFCB, PUNICODE_STRING pFileNameU);
-NTSTATUS FatMakeFCBFromDirEntry(PVCB vcb,
-				PFATFCB directoryFCB,
+VOID FatDestroyFcb(PFATFCB Fcb);
+VOID FatDestroyCcb(PFATCCB Ccb);
+VOID FatGrabFcb(PDEVICE_EXTENSION Vcb, PFATFCB Fcb);
+VOID FatReleaseFcb(PDEVICE_EXTENSION Vcb, PFATFCB Fcb);
+PFATFCB FatGrabFcbFromTable(PDEVICE_EXTENSION DeviceExt,
+			    PUNICODE_STRING FileNameU);
+PFATFCB FatMakeRootFcb(PDEVICE_EXTENSION Vcb);
+PFATFCB FatOpenRootFcb(PDEVICE_EXTENSION Vcb);
+BOOLEAN FatFcbIsDirectory(PFATFCB Fcb);
+BOOLEAN FatFcbIsRoot(PFATFCB Fcb);
+NTSTATUS FatAttachFcbToFileObject(PDEVICE_EXTENSION Vcb,
+				  PFATFCB Fcb, PFILE_OBJECT FileObject);
+NTSTATUS FatDirFindFile(PDEVICE_EXTENSION Vcb,
+			PFATFCB ParentFcb,
+			PUNICODE_STRING FileToFindU, PFATFCB *FileFcb);
+NTSTATUS FatGetFcbForFile(PDEVICE_EXTENSION Vcb,
+			  PFATFCB *pParentFcb,
+			  PFATFCB *pFcb, PUNICODE_STRING FileNameU);
+NTSTATUS FatMakeFcbFromDirEntry(PVCB Vcb,
+				PFATFCB DirectoryFcb,
 				PFAT_DIRENTRY_CONTEXT DirContext,
-				PFATFCB * fileFCB);
+				PFATFCB *FileFcb);
 
 /* finfo.c */
 NTSTATUS FatGetStandardInformation(PFATFCB FCB,

@@ -292,8 +292,8 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	VolumeLabelDirEntry.Fat.Attrib = _A_VOLID;
     }
 
-    pRootFcb = FatOpenRootFCB(DeviceExt);
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, pRootFcb);
+    pRootFcb = FatOpenRootFcb(DeviceExt);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, pRootFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -361,7 +361,7 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	}
     }
 
-    FatReleaseFCB(DeviceExt, pRootFcb);
+    FatReleaseFcb(DeviceExt, pRootFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }

@@ -439,14 +439,15 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 			      IN KI_DBG_PRINTER DbgPrinter)
 {
     PPROCESS Process = Thread->Process;
-    assert(Process != NULL);
-    assert(Process->ImageFile != NULL);
-    assert(Process->ImageFile->FileName != NULL);
+    assert(Process);
+    assert(Process->ImageFile);
+    assert(Process->ImageFile->Fcb);
+    assert(Process->ImageFile->Fcb->FileName);
     DbgPrinter("\n==============================================================================\n"
 		"%s %s in thread %s|%p\n",
 	       Unhandled ? "Unhandled" : "Caught",
 	       KiDbgGetFaultName(Fault),
-	       Process->ImageFile->FileName, Thread);
+	       Process->ImageFile->Fcb->FileName, Thread);
     KiDbgDumpFault(Fault, DbgPrinter);
     THREAD_CONTEXT Context;
     NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
@@ -454,7 +455,7 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 	DbgPrinter("Unable to dump thread context. Error 0x%08x\n", Status);
     }
     KiDumpThreadContext(&Context, DbgPrinter);
-    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", Process->ImageFile->FileName,
+    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", Process->ImageFile->Fcb->FileName,
 	       Process->ImageBaseAddress, Process->ImageBaseAddress + Process->ImageVirtualSize);
     /* Dump the loaded modules of the process as well. */
     PLOADER_SHARED_DATA LdrData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;

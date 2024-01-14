@@ -337,16 +337,18 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 				     OUT PIMAGE_SECTION_OBJECT *pImageSection,
 				     OUT MWORD *pSectionSize)
 {
-    assert(File != NULL);
-    assert(pImageSection != NULL);
+    assert(File);
+    assert(File->Fcb);
+    assert(pImageSection);
     MiAllocatePool(ImageSection, IMAGE_SECTION_OBJECT);
     MiInitializeImageSection(ImageSection, File);
 
-    RET_ERR_EX(MiParseImageHeaders((PVOID) File->BufferPtr, File->Size,
+    RET_ERR_EX(MiParseImageHeaders((PVOID)File->Fcb->BufferPtr, File->Fcb->FileSize,
 				   ImageSection, pSectionSize),
 	       MiFreePool(ImageSection));
 
-    File->SectionObject.ImageSectionObject = ImageSection;
+    assert(File->Fcb);
+    File->Fcb->ImageSectionObject = ImageSection;
     ImageSection->FileObject = File;
     *pImageSection = ImageSection;
     return STATUS_SUCCESS;
@@ -378,7 +380,8 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
 	UNIMPLEMENTED;
     }
 
-    PIMAGE_SECTION_OBJECT ImageSection = FileObject->SectionObject.ImageSectionObject;
+    assert(FileObject->Fcb);
+    PIMAGE_SECTION_OBJECT ImageSection = FileObject->Fcb->ImageSectionObject;
 
     if (ImageSection == NULL) {
 	RET_ERR(MiCreateImageFileMap(FileObject, &ImageSection, &Section->Size));
@@ -432,8 +435,7 @@ NTSTATUS MmSectionInitialization()
     SECTION_OBJ_CREATE_CONTEXT Ctx = {
 	.PhysicalMapping = TRUE
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &MiPhysicalSection,
-			   NULL, NULL, 0, &Ctx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *)&MiPhysicalSection, &Ctx));
     assert(MiPhysicalSection != NULL);
 
     return STATUS_SUCCESS;
@@ -453,8 +455,7 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
 	.PageProtection = PageProtection,
 	.Attributes = SectionAttributes
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *) &Section,
-			   NULL, NULL, 0, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_SECTION, (POBJECT *)&Section, &CreaCtx));
     assert(Section != NULL);
 
     *SectionObject = Section;

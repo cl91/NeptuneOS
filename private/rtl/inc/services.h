@@ -258,11 +258,18 @@ typedef VOID (NTAPI *PKAPC_ROUTINE)(IN PVOID SystemArgument1,
 				    IN PVOID SystemArgument3);
 
 /*
+ * APC Type
+ */
+#define APC_TYPE_KAPC	0
+#define APC_TYPE_IO	1
+
+/*
  * APC object that is passed by the service handlers
  */
 typedef struct _APC_OBJECT {
+    MWORD ApcType;
     PKAPC_ROUTINE ApcRoutine;
-    PVOID ApcContext[3];
+    PVOID ApcContext[6];
 } APC_OBJECT, *PAPC_OBJECT;
 
 #define MAX_APC_PER_DELIVERY	16

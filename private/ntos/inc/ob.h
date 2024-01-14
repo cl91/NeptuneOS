@@ -111,7 +111,18 @@ typedef enum _OBJECT_TYPE_ENUM {
  * a FILE object). ObOpenObjectByName invokes both the parse
  * and the open procedures, and assigns a handle to the opened
  * instance. It therefore must be called with an async context,
- * whereas ObReferenceObjectByName does not need one.
+ * whereas ObReferenceObjectByName does not need one. This also
+ * means that an additional semantic difference between the
+ * parse routine and the open routine is that the open routine
+ * expects the opened instance to be assigned a handle after
+ * a successful open (although the open routine itself does not
+ * need to be concerned with handle assignment), while the parse
+ * routine does not expect so. Generally speaking, parsing is
+ * a non-invasive procedure where in case of error, one can simply
+ * throw the parsed object away, while opening is an "invasive"
+ * routine where one must take care of properly closing an opened
+ * instance when one is done with the opened object (or in the
+ * case of an error).
  *
  * The IO subsystem uses the facilities of the object manager
  * extensively. Since opening a device or a file is inherently
@@ -128,7 +139,7 @@ typedef enum _OBJECT_TYPE_ENUM {
  * whether the open is synchronous or asynchronous, either wait
  * on the IO completion event or return STATUS_PENDING.
  *
- * For a more complex device such as a partition device, its parse
+ * For a more complex device such as a volume object, its parse
  * procedure will take the remaining path after the device name
  * (ie. the src\main.c in \Device\Harddisk0\Partition0\src\main.c)
  * and first invoke the cache manager and see if the file has been
@@ -145,6 +156,7 @@ typedef enum _OBJECT_TYPE_ENUM {
  *
  * All object methods operate with in-process pointers. Assigning
  * HANDLEs to opened objects is done by the object manager itself.
+ * Open routines do not need to be concered with handle assignment.
  */
 typedef PVOID POBJECT;
 typedef struct _OBJECT_HEADER {
@@ -152,7 +164,8 @@ typedef struct _OBJECT_HEADER {
     LIST_ENTRY ObjectLink;
     LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
     POBJECT ParentObject; /* Parent object under which this object is inserted */
-    PCSTR ObjectName; /* Sub-path of this object under the parent object.
+    PCSTR ObjectName; /* Sub-path of this object under the parent object, set
+		       * when ObInsertObject inserts the object under a path.
 		       * This is always allocated on the ExPool by the object
 		       * manager and owned by this object. */
     LONG RefCount;
@@ -427,6 +440,9 @@ static inline BOOLEAN ObObjectIsType(IN POBJECT Object,
 }
 
 /* This overrides the definition in public/ndk/inc/ntobapi.h */
+#ifdef OBJ_NAME_PATH_SEPARATOR
+#undef OBJ_NAME_PATH_SEPARATOR
+#endif
 #define OBJ_NAME_PATH_SEPARATOR ('\\')
 
 typedef struct _OBJECT_DIRECTORY *POBJECT_DIRECTORY;
@@ -518,10 +534,11 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 			    IN OBJECT_TYPE_INITIALIZER Init);
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *Object,
-			IN POBJECT DirectoryObject,
-			IN PCSTR Subpath,
-			IN ULONG Flags,
 			IN PVOID CreationContext);
+NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
+			IN POBJECT Object,
+			IN PCSTR Path,
+			IN ULONG Flags);
 
 /* dirobj.c */
 NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath);
@@ -540,9 +557,15 @@ NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
 NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			IN POBJECT Object,
 			OUT HANDLE *pHandle);
+VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
 
 /* open.c */
+NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
+			     IN PCSTR Path,
+			     IN BOOLEAN CaseInsensitive,
+			     OUT POBJECT *FoundObject,
+			     OUT PCSTR *pRemainingPath);
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 			    IN struct _THREAD *Thread,
 			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,

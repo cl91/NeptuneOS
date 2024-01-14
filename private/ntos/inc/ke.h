@@ -281,7 +281,7 @@ typedef struct _ASYNC_STATE {
 					   THREAD, AsyncStack);		\
 	DbgTrace("Async state for thread %s|%p: Stack top %d. "		\
 		 "Async stack:",					\
-		 Thread->Process->ImageFile->FileName, Thread,		\
+		 Thread->Process->ImageFile->Fcb->FileName, Thread,	\
 		 (state).StackTop);					\
     }									\
     for (ULONG StackPtr = 0; StackPtr < (state).StackTop; ) {		\

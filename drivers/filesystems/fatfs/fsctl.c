@@ -271,10 +271,8 @@ CheckFatX:
 	goto Exit;
     }
 
-    if (BootFatX->SysType[0] != 'F' ||
-	BootFatX->SysType[1] != 'A' ||
-	BootFatX->SysType[2] != 'T' ||
-	BootFatX->SysType[3] != 'X') {
+    if (BootFatX->SysType[0] != 'F' || BootFatX->SysType[1] != 'A' ||
+	BootFatX->SysType[2] != 'T' || BootFatX->SysType[3] != 'X') {
 	DPRINT1("SysType %02X%02X%02X%02X (%c%c%c%c)\n",
 		BootFatX->SysType[0], BootFatX->SysType[1],
 		BootFatX->SysType[2], BootFatX->SysType[3],
@@ -364,7 +362,7 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
     PVOID Buffer = NULL;
     if (!Start) {
 	/* FIXME: Check we really have a VCB */
-	pFcb = FatOpenRootFCB((PDEVICE_EXTENSION)Device);
+	pFcb = FatOpenRootFcb((PDEVICE_EXTENSION)Device);
     } else {
 	Buffer = ExAllocatePoolWithTag(PAGE_SIZE, TAG_DIRENT);
 	if (Buffer == NULL) {
@@ -428,7 +426,7 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
     }
 
     if (pFcb) {
-	FatReleaseFCB((PDEVICE_EXTENSION)Device, pFcb);
+	FatReleaseFcb((PDEVICE_EXTENSION)Device, pFcb);
     }
     if (Context) {
 	CcUnpinData(Context);
@@ -563,13 +561,13 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     DeviceExt->FatFileObject = IoCreateStreamFileObject(NULL, DeviceExt->StorageDevice);
     UNICODE_STRING NameU = RTL_CONSTANT_STRING(L"\\$$Fat$$");
-    Fcb = FatNewFCB(DeviceExt, &NameU);
+    Fcb = FatNewFcb(DeviceExt, &NameU);
     if (Fcb == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }
 
-    Status = FatAttachFCBToFileObject(DeviceExt, Fcb, DeviceExt->FatFileObject);
+    Status = FatAttachFcbToFileObject(DeviceExt, Fcb, DeviceExt->FatFileObject);
     if (!NT_SUCCESS(Status))
 	goto ByeBye;
 
@@ -595,7 +593,7 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     InitializeListHead(&DeviceExt->FcbListHead);
 
     UNICODE_STRING VolumeNameU = RTL_CONSTANT_STRING(L"\\$$Volume$$");
-    PFATFCB VolumeFcb = FatNewFCB(DeviceExt, &VolumeNameU);
+    PFATFCB VolumeFcb = FatNewFcb(DeviceExt, &VolumeNameU);
     if (VolumeFcb == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
@@ -663,11 +661,11 @@ ByeBye:
 	CcUninitializeCacheMap(DeviceExt->FatFileObject, &Zero);
 	ObDereferenceObject(DeviceExt->FatFileObject);
 	if (Ccb)
-	    FatDestroyCCB(Ccb);
+	    FatDestroyCcb(Ccb);
 	DeviceExt->FatFileObject = NULL;
     }
     if (Fcb)
-	FatDestroyFCB(Fcb);
+	FatDestroyFcb(Fcb);
     if (DeviceExt->SpareVPB)
 	ExFreePoolWithTag(DeviceExt->SpareVPB, TAG_VPB);
     if (DeviceExt->Statistics)
@@ -932,7 +930,7 @@ static NTSTATUS FatLockOrUnlockVolume(PFAT_IRP_CONTEXT IrpContext,
 		}
 
 		/* Not a dir? We're no longer at boot */
-		if (!FatFCBIsDirectory(Fcb)) {
+		if (!FatFcbIsDirectory(Fcb)) {
 		    ForceLock = FALSE;
 		    break;
 		}
@@ -1070,7 +1068,7 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 	else if (Fcb == DeviceExt->VolumeFcb)
 	    DeviceExt->VolumeFcb = NULL;
 
-	FatDestroyFCB(Fcb);
+	FatDestroyFcb(Fcb);
     }
 
     /* We are uninitializing, the VCB cannot be used anymore */

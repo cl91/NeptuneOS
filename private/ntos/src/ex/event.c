@@ -60,8 +60,7 @@ NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
     EVENT_OBJ_CREATE_CONTEXT Ctx = {
 	.EventType = EventType
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)&Event,
-			   NULL, NULL, 0, &Ctx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)&Event, &Ctx));
     assert(Event != NULL);
     RET_ERR_EX(ObCreateHandle(Thread->Process, Event, EventHandle),
 	       ObDereferenceObject(Event));

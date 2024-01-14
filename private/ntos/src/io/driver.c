@@ -105,21 +105,21 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 	.DriverImagePath = DriverImagePath,
 	.DriverServicePath = DriverServicePath,
     };
-    /* The object manager will check the \Driver object directory for all loaded
-     * drivers and reject the creation if the driver has already been loaded.
-     * In this case ObCreateObject returns OBJECT_NAME_COLLISION. */
-    NTSTATUS Status = ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *) &DriverObject,
-				     DriverObjectDirectory, DriverName, 0,
-				     &CreaCtx);
-    /* If the caller requested the driver object, in the case where driver has
-     * already been loaded we will need to get its pointer manually. */
-    if (Status == STATUS_OBJECT_NAME_COLLISION && pDriverObject) {
-	Status = ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
-					 DriverObjectDirectory, FALSE,
-					 (POBJECT *) &DriverObject);
+    /* Check the \Driver object directory for all loaded drivers and
+     * create the driver object if it has not yet been loaded. */
+    NTSTATUS Status = ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
+					      DriverObjectDirectory, FALSE,
+					      (POBJECT *)&DriverObject);
+    if (NT_SUCCESS(Status)) {
 	/* Loading an already loaded driver does NOT increase its reference
 	 * count, so decrease the reference count increased by the call above. */
 	ObDereferenceObject(DriverObject);
+    } else {
+	Status = ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *)&DriverObject, &CreaCtx);
+	if (NT_SUCCESS(Status)) {
+	    Status = ObInsertObject(DriverObjectDirectory, DriverObject, DriverName,
+				    OBJ_NO_PARSE);
+	}
     }
     /* Regardless of success or error, we need to dereference the driver object
      * directory and key object because we increased their reference count above. */

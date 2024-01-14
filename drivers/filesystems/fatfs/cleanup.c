@@ -39,7 +39,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	DeviceExt->OpenHandleCount--;
 
 	if (pFcb->OpenHandleCount != 0) {
-	    IoRemoveShareAccess(FileObject, &pFcb->FCBShareAccess);
+	    IoRemoveShareAccess(FileObject, &pFcb->FcbShareAccess);
 	}
     } else {
 	pCcb = FileObject->FsContext2;
@@ -59,7 +59,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 
 	if (BooleanFlagOn(pFcb->Flags, FCB_DELETE_PENDING) &&
 	    pFcb->OpenHandleCount == 0) {
-	    if (FatFCBIsDirectory(pFcb) &&
+	    if (FatFcbIsDirectory(pFcb) &&
 		!FatIsDirectoryEmpty(DeviceExt, pFcb)) {
 		pFcb->Flags &= ~FCB_DELETE_PENDING;
 	    } else {
@@ -88,14 +88,14 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 
 	    FatReportChange(DeviceExt,
 			    pFcb,
-			    (FatFCBIsDirectory(pFcb) ?
+			    (FatFcbIsDirectory(pFcb) ?
 			     FILE_NOTIFY_CHANGE_DIR_NAME :
 			     FILE_NOTIFY_CHANGE_FILE_NAME),
 			    FILE_ACTION_REMOVED);
 	}
 
 	if (pFcb->OpenHandleCount != 0) {
-	    IoRemoveShareAccess(FileObject, &pFcb->FCBShareAccess);
+	    IoRemoveShareAccess(FileObject, &pFcb->FcbShareAccess);
 	}
 
 	FileObject->Flags |= FO_CLEANUP_COMPLETE;

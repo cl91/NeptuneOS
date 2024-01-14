@@ -22,10 +22,10 @@ static NTSTATUS IopCreateDeviceType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = IopDeviceObjectCreateProc,
-	.ParseProc = NULL,
+	.ParseProc = IopDeviceObjectParseProc,
 	.OpenProc = IopDeviceObjectOpenProc,
-	.InsertProc = NULL,
-	.RemoveProc = NULL,
+	.InsertProc = IopDeviceObjectInsertProc,
+	.RemoveProc = IopDeviceObjectRemoveProc,
 	.DeleteProc = IopDeviceObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_DEVICE,
@@ -53,7 +53,6 @@ static NTSTATUS IopCreateDriverType()
 NTSTATUS IoInitSystemPhase0()
 {
     InitializeListHead(&IopDriverList);
-    InitializeListHead(&IopFileObjectList);
     RET_ERR(IopCreateFileType());
     RET_ERR(IopCreateDeviceType());
     RET_ERR(IopCreateDriverType());
@@ -99,6 +98,7 @@ fail:
 NTSTATUS IoInitSystemPhase1()
 {
     RET_ERR(IopLoadWdmDll());
+    RET_ERR(IopInitFileSystem());
 
     return STATUS_SUCCESS;
 }

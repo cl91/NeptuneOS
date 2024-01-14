@@ -51,8 +51,7 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 	}
 	INT (*Comparer)(PCSTR, PCSTR, ULONG_PTR) = CaseInsensitive ? _strnicmp : strncmp;
 	if (!Comparer(Name, ObGetObjectName(Entry->Object), Length)) {
-	    DbgTrace("Found object name = %s\n",
-		     ObGetObjectName(Entry->Object));
+	    DbgTrace("Found object name = %s\n", ObGetObjectName(Entry->Object));
 	    *FoundObject = Entry->Object;
 	    if (DirectoryEntry != NULL) {
 		*DirectoryEntry = Entry;
@@ -77,7 +76,7 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    OUT POBJECT *FoundObject,
 					    OUT PCSTR *RemainingPath)
 {
-    POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
+    POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY)Self;
     DbgTrace("Trying to parse Path = %s case-%s\n", Path,
 	     CaseInsensitive ? "insensitively" : "sensitively");
     assert(Self != NULL);
@@ -91,7 +90,8 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     }
 
     /* Look for the named object under the directory. */
-    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength, CaseInsensitive, FoundObject, NULL),
+    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength,
+				       CaseInsensitive, FoundObject, NULL),
 	       {
 		   DbgTrace("Path %s not found\n", Path);
 		   *FoundObject = NULL;
@@ -206,9 +206,19 @@ NTSTATUS ObpInitDirectoryObjectType()
 NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 {
     POBJECT_DIRECTORY Directory = NULL;
-    RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
-			   (POBJECT *) &Directory,
-			   NULL, DirectoryPath, 0, NULL));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY, (POBJECT *)&Directory, NULL));
     assert(Directory != NULL);
+    RET_ERR_EX(ObInsertObject(NULL, Directory, DirectoryPath, 0),
+	       ObDereferenceObject(Directory));
     return STATUS_SUCCESS;
+}
+
+/* Return the number of subobjects in a directory object */
+SIZE_T ObDirectoryGetObjectCount(IN POBJECT_DIRECTORY DirObj)
+{
+    SIZE_T ObjectCount = 0;
+    for (int i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
+	ObjectCount += GetListLength(&DirObj->HashBuckets[i]);
+    }
+    return ObjectCount;
 }

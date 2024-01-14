@@ -85,9 +85,9 @@ static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
     ListEntry->Flink = ListEntry->Blink = NULL;
 }
 
-static inline ULONG GetListLength(IN PLIST_ENTRY ListEntry)
+static inline SIZE_T GetListLength(IN PLIST_ENTRY ListEntry)
 {
-    ULONG Length = 0;
+    SIZE_T Length = 0;
     for (PLIST_ENTRY Ptr = ListEntry->Flink; Ptr != ListEntry; Ptr = Ptr->Flink) {
 	Length++;
     }

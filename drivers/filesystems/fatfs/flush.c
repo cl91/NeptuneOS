@@ -10,7 +10,6 @@
 
 #include "fatfs.h"
 
-#define NDEBUG
 #include <debug.h>
 
 /* FUNCTIONS ****************************************************************/
@@ -56,7 +55,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
     while (ListEntry != &DeviceExt->FcbListHead) {
 	Fcb = CONTAINING_RECORD(ListEntry, FATFCB, FcbListEntry);
 	ListEntry = ListEntry->Flink;
-	if (!FatFCBIsDirectory(Fcb)) {
+	if (!FatFcbIsDirectory(Fcb)) {
 	    Status = FatFlushFile(DeviceExt, Fcb);
 	    if (!NT_SUCCESS(Status)) {
 		DPRINT1("FatFlushFile failed, status = %x\n", Status);
@@ -70,7 +69,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
     while (ListEntry != &DeviceExt->FcbListHead) {
 	Fcb = CONTAINING_RECORD(ListEntry, FATFCB, FcbListEntry);
 	ListEntry = ListEntry->Flink;
-	if (FatFCBIsDirectory(Fcb)) {
+	if (FatFcbIsDirectory(Fcb)) {
 	    Status = FatFlushFile(DeviceExt, Fcb);
 	    if (!NT_SUCCESS(Status)) {
 		DPRINT1("FatFlushFile failed, status = %x\n", Status);

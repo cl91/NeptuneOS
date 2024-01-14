@@ -33,72 +33,83 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
 }
 
 /*
- * Insert the given object as a subobject of the parent object,
- * with a name identifier. The subobject can later be retrieved
- * by calling the parse routine of the parent object with the
- * supplied name identifier.
+ * Insert the given object as a subobject under the directory
+ * object with the given path. The subobject can later be retrieved
+ * by calling the parse routine on the directory object with the
+ * supplied path.
  *
  * Unless the OBJ_NO_PARSE flag is specified, the parse procedure
  * is invoked first on the directory object and will parse the
  * subpath until it cannot be parsed. If the remaining path is now
- * empty, object insertion fails and we return STATUS_OBJECT_NAME_
- * COLLISION. Otherwise, the insert procedure is invoked on the
- * final parse result and its result is returned.
+ * empty, object insertion fails and we return STATUS_OBJECT_NAME_COLLISION.
+ * Otherwise, the insert procedure is invoked on the final parse
+ * result and its result is returned.
  *
- * Supplying the OBJ_NO_PARSE flag circumvents the object name
- * collision checks built into the object manager. The caller must
- * perform this check by itself to ensure that the object being
- * inserted does not have a name conflict.
+ * Supplying the OBJ_NO_PARSE flag circumvents the parse procedure
+ * above. In this case the insertion routine is called directly.
  *
  * If the OBJ_CASE_INSENSITIVE flag is supplied, the object name
- * collision checks are done case-insensitively. 
+ * collision checks are done case-insensitively.
  *
  * The directory object can be NULL, in which case the root object
  * directory is assumed. In this case you must specify an absolute
  * path.
  */
-static NTSTATUS ObpInsertObject(IN POBJECT DirectoryObject,
-				IN POBJECT Subobject,
-				IN PCSTR Name,
-				IN ULONG Flags,
-				OUT POBJECT *pParentObject,
-				OUT PCSTR *pRemainingPath)
+NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
+			IN POBJECT Object,
+			IN PCSTR Path,
+			IN ULONG Flags)
 {
-    assert(Subobject != NULL);
-    assert(Name != NULL);
-    assert(pParentObject != NULL);
-    assert(pRemainingPath != NULL);
+    assert(Object != NULL);
+    assert(Path != NULL);
+    ObRemoveObject(Object);
 
     POBJECT Parent = DirectoryObject ? DirectoryObject : ObpRootObjectDirectory;
-    PCSTR RemainingPath = Name;
+    PCSTR RemainingPath = Path;
     if (!(Flags & OBJ_NO_PARSE)) {
 	/* Note that we don't check the return value of the lookup here,
 	 * because we rely on the remaining path to determine whether the
 	 * path has been fully parsed. */
-	ObpLookupObjectName(DirectoryObject, Name,
+	ObParseObjectByName(DirectoryObject, Path,
 			    !!(Flags & OBJ_CASE_INSENSITIVE),
-			    &RemainingPath, &Parent);
+			    &Parent, &RemainingPath);
 	assert(Parent != NULL);
 	assert(RemainingPath != NULL);
-	/* If the remaining path is empty, it means that there is already an
-	 * object with the given path. In this case we reject the insertion. */
-	if (*RemainingPath == '\0') {
-	    return STATUS_OBJECT_NAME_COLLISION;
-	}
     }
-    assert(*RemainingPath != OBJ_NAME_PATH_SEPARATOR);
+    if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
+	RemainingPath++;
+    }
+    /* If the remaining path is empty, it means that there is already an
+     * object with the given path. In this case we reject the insertion. */
+    if (*RemainingPath == '\0') {
+	return STATUS_OBJECT_NAME_COLLISION;
+    }
+
+    /* The ObjectName of the object header is owned by the object
+     * so we need to allocate storage for it. When the object is
+     * deleted, the ObjectName is freed by the object manager. */
+    PCSTR ObjectName = RtlDuplicateString(RemainingPath, NTOS_OB_TAG);
+    if (!ObjectName) {
+	return STATUS_NO_MEMORY;
+    }
 
     POBJECT_HEADER ParentHeader = OBJECT_TO_OBJECT_HEADER(Parent);
     assert(ParentHeader != NULL);
+    assert(ParentHeader->Type != NULL);
 
+    DbgTrace("Inserting subobject %p under object %p with name %s\n",
+	     Object, Parent, ObjectName);
     OBJECT_INSERT_METHOD InsertProc = ParentHeader->Type->TypeInfo.InsertProc;
     if (InsertProc == NULL) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    RET_ERR(InsertProc(Parent, Subobject, RemainingPath));
-    *pParentObject = Parent;
-    *pRemainingPath = RemainingPath;
+    RET_ERR_EX(InsertProc(Parent, Object, ObjectName),
+	       ObpFreePool(ObjectName));
+
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
+    ObjectHeader->ParentObject = Parent;
+    ObjectHeader->ObjectName = ObjectName;
     return STATUS_SUCCESS;
 }
 
@@ -106,39 +117,15 @@ static NTSTATUS ObpInsertObject(IN POBJECT DirectoryObject,
  * Request the correct amount of memory (object header + body)
  * from the Executive Pool (allocated memory is zeroed by ExPool), invoke the
  * initialization procedure of the object type, and insert the object
- * into the global object list. If specified, will also insert the object
- * under the given sub-path of the directory object.
+ * into the global object list.
  */
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *pObject,
-			IN OPTIONAL POBJECT DirectoryObject,
-			IN OPTIONAL PCSTR Subpath,
-			IN ULONG Flags,
 			IN PVOID CreationContext)
 {
     assert(pObject != NULL);
-    /* If a sub-path is given, it cannot be empty. */
-    assert(Subpath == NULL || Subpath[0] != '\0');
-    /* If a directory object is specified, a valid sub-path is needed. */
-    assert(DirectoryObject == NULL || Subpath != NULL);
     POBJECT_TYPE ObjectType = ObpGetObjectType(Type);
     assert(ObjectType->TypeInfo.CreateProc != NULL);
-
-    /* If we are given a sub-path to insert into, make sure there isn't
-     * already an object there. */
-    if (Subpath != NULL) {
-	POBJECT Object = NULL;
-	NTSTATUS Status = ObReferenceObjectByName(Subpath,
-						  OBJECT_TYPE_ANY,
-						  DirectoryObject,
-						  FALSE, &Object);
-	if (Object != NULL) {
-	    ObDereferenceObject(Object);
-	}
-	if (NT_SUCCESS(Status)) {
-	    return STATUS_OBJECT_NAME_COLLISION;
-	}
-    }
 
     MWORD TotalSize = sizeof(OBJECT_HEADER) + ObjectType->ObjectBodySize;
     ObpAllocatePoolEx(ObjectHeader, OBJECT_HEADER, TotalSize, {});
@@ -149,6 +136,11 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 
     RET_ERR_EX(ObjectType->TypeInfo.CreateProc(Object, CreationContext),
 	       {
+		   /* Due to the sometimes complicated process of cleaning up
+		    * a partially created object, we allow the create proc to
+		    * fail without fully cleaning up. We will invoke the delete
+		    * routine in this case, so the delete routine must be able
+		    * to clean up a partially created object. */
 		   if (ObjectType->TypeInfo.DeleteProc != NULL) {
 		       ObjectType->TypeInfo.DeleteProc(Object);
 		   }
@@ -157,31 +149,6 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);
     ObpReferenceObjectHeader(ObjectHeader);
 
-    if (Subpath != NULL) {
-	POBJECT Parent = NULL;
-	PCSTR Name = NULL;
-	assert(*Subpath != '\0');
-	RET_ERR_EX(ObpInsertObject(DirectoryObject, Object,
-				   Subpath, Flags, &Parent, &Name),
-		   ObDereferenceObject(Object));
-	assert(Parent != NULL);
-	assert(Name != NULL);
-	/* The ObjectName of the object header is owned by the object
-	 * so we need to allocate storage for it. When the object is
-	 * deleted, the ObjectName is freed by the object manager. */
-	PCSTR ObjectName = RtlDuplicateString(Name, NTOS_OB_TAG);
-	if (ObjectName == NULL) {
-	    /* We failed to allocate the object name. In this case
-	     * we will need to invoke the remove routine to remove
-	     * it from the parent object that we just inserted into. */
-	    assert(ObjectType->TypeInfo.RemoveProc != NULL);
-	    ObjectType->TypeInfo.RemoveProc(Parent, Object, Name);
-	    ObDereferenceObject(Object);
-	    return STATUS_NO_MEMORY;
-	}
-	ObjectHeader->ParentObject = Parent;
-	ObjectHeader->ObjectName = ObjectName;
-    }
     *pObject = Object;
     return STATUS_SUCCESS;
 }

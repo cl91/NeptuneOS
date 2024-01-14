@@ -150,7 +150,7 @@ typedef struct _RETRIEVAL_POINTERS_BUFFER {
 /*
  * File System Registration Routine
  */
-NTAPI NTSYSAPI VOID IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject);
+NTAPI NTSYSAPI NTSTATUS IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject);
 
 /*
  * Stream File Object Creation Routine

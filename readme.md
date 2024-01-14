@@ -48,9 +48,12 @@ For i386 systems (should probably be called i686):
    this at compile time (see assembly routine `enable_paging` in `sel4/src/arch/x86/32/head.S`).
 2. RAM: 32MB should be safe, can probably go lower.
 3. VGA-compatible graphics controller.
-4. PC BIOS or compatible. We haven't implemented UEFI yet although this shouldn't take
-   too much work. The only thing needed is drawing text on the linear framebuffer.
-   We might also support coreboot linear framebuffer.
+4. PS2 keyboard.
+5. PC BIOS or compatible, with a conformant ACPI implementation. This is more of a seL4
+   requirement as it needs at least ACPI 3.0 for detecting the number of CPU cores. Note
+   that most early 32-bit era PCs don't necessarily have a conformant ACPI (let alone
+   ACPI 3.0) implementation, so this pretty much restricts you to Core 2 Duo era machines.
+   Thinkpad X60 is a 32-bit laptop that has been tested to work.
 
 For amd64 systems:
 
@@ -63,7 +66,11 @@ For amd64 systems:
 2. RAM: 128MB should be safe, can probably go lower.
 3. VGA-compatible graphics controller.
 4. Legacy BIOS booting. Most UEFI firmware can boot from legacy BIOS boot loaders by
-   enabling a setting.
+   enabling a setting. We haven't implemented UEFI booting yet although this shouldn't
+   take too much work. The only thing needed is drawing text on the linear framebuffer.
+   We might also want to support coreboot linear framebuffer.
+
+For `amd64` machines, Thinkpad X230 has been tested to work.
 
 ## Building
 

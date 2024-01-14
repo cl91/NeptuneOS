@@ -29,7 +29,7 @@ BOOLEAN FATIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
     ULONG Index, MaxIndex;
     NTSTATUS Status;
 
-    if (FatFCBIsRoot(Fcb)) {
+    if (FatFcbIsRoot(Fcb)) {
 	Index = 0;
     } else {
 	Index = 2;
@@ -38,7 +38,7 @@ BOOLEAN FATIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
     FileOffset.QuadPart = 0;
     MaxIndex = Fcb->Base.FileSize.u.LowPart / sizeof(FAT_DIR_ENTRY);
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, Fcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb);
     if (!NT_SUCCESS(Status)) {
 	return FALSE;
     }
@@ -92,7 +92,7 @@ BOOLEAN FATXIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
     FileOffset.QuadPart = 0;
     MaxIndex = Fcb->Base.FileSize.u.LowPart / sizeof(FATX_DIR_ENTRY);
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, Fcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb);
     if (!NT_SUCCESS(Status)) {
 	return FALSE;
     }
@@ -161,7 +161,7 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
     FileOffset.u.LowPart = ROUND_DOWN(DirContext->DirIndex * sizeof(FAT_DIR_ENTRY),
 				      PAGE_SIZE);
 
-    NTSTATUS Status = FatFCBInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
+    NTSTATUS Status = FatFcbInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -415,7 +415,7 @@ NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
 
     UNREFERENCED_PARAMETER(First);
 
-    if (!FatFCBIsRoot(DirFcb)) {
+    if (!FatFcbIsRoot(DirFcb)) {
 	/* need to add . and .. entries */
 	switch (DirContext->DirIndex) {
 	case 0:		/* entry . */
@@ -447,7 +447,7 @@ NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
     }
 
     Status =
-	FatFCBInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
+	FatFcbInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }

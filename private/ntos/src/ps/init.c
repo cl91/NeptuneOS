@@ -173,7 +173,7 @@ static NTSTATUS PspInitializeSystemDll()
     }
 
     ULONG ExportRva = 0;
-    IF_ERR_GOTO(fail, Status, PspLookupExportRva(NtdllFile->BufferPtr,
+    IF_ERR_GOTO(fail, Status, PspLookupExportRva(NtdllFile->Fcb->BufferPtr,
 						 USER_EXCEPTION_DISPATCHER_NAME,
 						 &ExportRva));
     assert(ExportRva != 0);

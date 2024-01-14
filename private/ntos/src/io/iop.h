@@ -333,10 +333,12 @@ typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
  * Creation context for the file object creation routine
  */
 typedef struct _FILE_OBJ_CREATE_CONTEXT {
-    PCSTR FileName;
     PIO_DEVICE_OBJECT DeviceObject;
+    PCSTR FileName;
     PVOID BufferPtr;
     MWORD FileSize;
+    PIO_FILE_CONTROL_BLOCK Fcb;
+    BOOLEAN NoNewFcb;
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*
@@ -413,7 +415,6 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 			 IN BOOLEAN OutputIsReadOnly);
 
 /* file.c */
-extern LIST_ENTRY IopFileObjectList;
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx);
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
@@ -425,22 +426,21 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath);
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
-NTSTATUS IopCreateFileObject(IN PCSTR FileName,
-			     IN POBJECT ParentDirectory,
-			     IN PIO_DEVICE_OBJECT DeviceObject,
-			     IN PVOID BufferPtr,
-			     IN MWORD FileSize,
-			     OUT PIO_FILE_OBJECT *pFile);
+NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
+				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   OUT PIO_FILE_OBJECT *pFile);
 
 /*
- * Returns the file object of the given global handle
+ * Returns the file object with the given global handle
  */
-static inline PIO_FILE_OBJECT IopGetFileObject(IN GLOBAL_HANDLE Handle)
+static inline PIO_FILE_OBJECT IopGetFileObject(IN PIO_DEVICE_OBJECT DevObj,
+					       IN GLOBAL_HANDLE Handle)
 {
+    assert(DevObj);
     if (Handle == 0) {
 	return NULL;
     }
-    LoopOverList(FileObj, &IopFileObjectList, IO_FILE_OBJECT, Link) {
+    LoopOverList(FileObj, &DevObj->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
 	if (FileObj == GLOBAL_HANDLE_TO_OBJECT(Handle)) {
 	    return FileObj;
 	}
@@ -451,6 +451,17 @@ static inline PIO_FILE_OBJECT IopGetFileObject(IN GLOBAL_HANDLE Handle)
 /* device.c */
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx);
+NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
+				  IN PCSTR Path,
+				  IN BOOLEAN CaseInsensitive,
+				  OUT POBJECT *FoundObject,
+				  OUT PCSTR *RemainingPath);
+NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
+				   IN POBJECT Object,
+				   IN PCSTR Path);
+VOID IopDeviceObjectRemoveProc(IN POBJECT Parent,
+			       IN POBJECT Subobject,
+			       IN PCSTR Subpath);
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
@@ -467,3 +478,20 @@ NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 VOID IopDriverObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject);
+
+/* volume.c */
+NTSTATUS IopInitFileSystem();
+NTSTATUS IopMountVolume(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
+			IN PIO_DEVICE_OBJECT DevObj);
+
+FORCEINLINE BOOLEAN IopIsVolumeDevice(IN PIO_DEVICE_OBJECT DevObj)
+{
+    DEVICE_TYPE Type = DevObj->DeviceInfo.DeviceType;
+    return Type == FILE_DEVICE_DISK || Type == FILE_DEVICE_CD_ROM || Type == FILE_DEVICE_TAPE;
+}
+
+FORCEINLINE BOOLEAN IopIsVolumeMounted(IN PIO_DEVICE_OBJECT DevObj)
+{
+    return IopIsVolumeDevice(DevObj) && DevObj->Vcb && DevObj->Vcb->Mounted;
+}

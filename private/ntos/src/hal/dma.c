@@ -296,8 +296,7 @@ NTSTATUS HalpInitDma()
 	}
 	Ctx.DmaChannel = i;
 	RET_ERR(ObCreateObject(OBJECT_TYPE_SYSTEM_ADAPTER,
-			       (POBJECT *)&HalpEisaSystemAdapters[i], NULL,
-			       NULL, 0, &Ctx));
+			       (POBJECT *)&HalpEisaSystemAdapters[i], &Ctx));
 	assert(HalpEisaSystemAdapters[i] != NULL);
     }
 

@@ -93,7 +93,6 @@ LIST_ENTRY IopFileObjectList;
 PVOID IopCurrentObject;
 
 #if DBG
-
 static inline VOID IopAssertIrpLists(IN PIRP Irp)
 {
     assert(!ListHasEntry(&IopReplyIrpList, &Irp->Private.Link));
@@ -125,7 +124,6 @@ static inline BOOLEAN IrpIsInCleanupList(IN PIRP Irp)
     IopAssertIrpLists(Irp);
     return ListHasEntry(&IopCleanupIrpList, &Irp->Private.Link);
 }
-
 #endif	/* DBG */
 
 static inline NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
@@ -137,11 +135,13 @@ static inline NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
     assert(Handle != 0);
     assert(pFileObject != NULL);
     IopAllocateObject(FileObject, FILE_OBJECT);
-    UNICODE_STRING FileName;
-    RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
-				       (PCHAR)IoPacket + Params->FileNameOffset,
-				       &FileName),
-	       IopFreePool(FileObject));
+    UNICODE_STRING FileName = {0};
+    if (Params->FileNameOffset) {
+	RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
+					   (PCHAR)IoPacket + Params->FileNameOffset,
+					   &FileName),
+		   IopFreePool(FileObject));
+    }
     FileObject->ReadAccess = Params->ReadAccess;
     FileObject->WriteAccess = Params->WriteAccess;
     FileObject->DeleteAccess = Params->DeleteAccess;
@@ -163,7 +163,9 @@ static inline VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject)
     assert(FileObject->Private.Link.Blink != NULL);
     assert(FileObject->Private.Handle != 0);
     RemoveEntryList(&FileObject->Private.Link);
-    IopFreePool(FileObject->FileName.Buffer);
+    if (FileObject->FileName.Buffer) {
+	IopFreePool(FileObject->FileName.Buffer);
+    }
     IopFreePool(FileObject);
 }
 

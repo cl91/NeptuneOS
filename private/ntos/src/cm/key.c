@@ -34,6 +34,7 @@ VOID CmpKeyObjectRemoveProc(IN POBJECT Parent,
 			    IN POBJECT Subobject,
 			    IN PCSTR Subpath)
 {
+    /* TODO! */
 }
 
 /*
@@ -71,11 +72,11 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     /* If we did not find the named key object, we pass on to the
      * open routine for further processing. If we found a value node,
      * return error so parsing/opening is stopped. */
-    if (NodeFound == NULL || NodeFound->Type != CM_NODE_KEY) {
+    if (!NodeFound || NodeFound->Type != CM_NODE_KEY) {
 	*FoundObject = NULL;
 	*RemainingPath = Path;
 	DbgTrace("Unable to parse %s. Should invoke open routine.\n", Path);
-	return NodeFound == NULL ? STATUS_NTOS_INVOKE_OPEN_ROUTINE : STATUS_OBJECT_TYPE_MISMATCH;
+	return NodeFound ? STATUS_OBJECT_TYPE_MISMATCH : STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
     /* Else, we return the key object that we have found */
@@ -142,8 +143,10 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     KEY_OBJECT_CREATE_CONTEXT CreaCtx = {
 	.Volatile = Volatile,
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&SubKey,
-			   Key, Path, OBJ_NO_PARSE, &CreaCtx))
+    DbgTrace("Creating subkey under path %s\n", Path);
+    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&SubKey, &CreaCtx));
+    RET_ERR_EX(ObInsertObject(Key, SubKey, Path, OBJ_NO_PARSE),
+	       ObDereferenceObject(SubKey));
 
     *OpenedInstance = SubKey;
     *RemainingPath = Path + strlen(Path);

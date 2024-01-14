@@ -9,7 +9,7 @@
 
 #include "fatfs.h"
 
-NTSTATUS FatFCBInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
+NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 {
     PFILE_OBJECT FileObject;
     PFATCCB NewCCB;
@@ -19,7 +19,7 @@ NTSTATUS FatFCBInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 	return STATUS_SUCCESS;
     }
 
-    ASSERT(FatFCBIsDirectory(Fcb));
+    ASSERT(FatFcbIsDirectory(Fcb));
     ASSERT(Fcb->FileObject == NULL);
 
     FileObject = IoCreateStreamFileObject(NULL, Vcb->StorageDevice);
@@ -56,7 +56,7 @@ NTSTATUS FatFCBInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 	goto Quit;
     }
 
-    FatGrabFCB(Vcb, Fcb);
+    FatGrabFcb(Vcb, Fcb);
     SetFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
     Status = STATUS_SUCCESS;
 
@@ -91,13 +91,13 @@ NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt, IN PFATFCB Fcb)
 
     DPRINT("updEntry DirIndex %u, PathName \'%wZ\'\n", DirIndex, &Fcb->PathNameU);
 
-    if (FatFCBIsRoot(Fcb) || BooleanFlagOn(Fcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
+    if (FatFcbIsRoot(Fcb) || BooleanFlagOn(Fcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
 	return STATUS_SUCCESS;
     }
 
     ASSERT(Fcb->ParentFcb);
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -136,7 +136,7 @@ NTSTATUS FatRenameEntry(IN PDEVICE_EXTENSION DeviceExt,
     DPRINT("FatRenameEntry(%p, %p, %wZ, %d)\n", DeviceExt, Fcb, FileName,
 	   CaseChangeOnly);
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -177,7 +177,7 @@ NTSTATUS FatRenameEntry(IN PDEVICE_EXTENSION DeviceExt,
 	CcSetDirtyPinnedData(Context, NULL);
 	CcUnpinData(Context);
 
-	Status = FatUpdateFCB(DeviceExt, Fcb, &DirContext, Fcb->ParentFcb);
+	Status = FatUpdateFcb(DeviceExt, Fcb, &DirContext, Fcb->ParentFcb);
 	if (NT_SUCCESS(Status)) {
 	    CcFlushCache(&Fcb->ParentFcb->Base, NULL, 0, NULL);
 	}
@@ -211,7 +211,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
     else
 	SizeDirEntry = sizeof(FAT_DIR_ENTRY);
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, DirFcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, DirFcb);
     if (!NT_SUCCESS(Status)) {
 	return FALSE;
     }
@@ -260,7 +260,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	    LARGE_INTEGER AllocationSize;
 
 	    /* Extend the directory */
-	    if (FatFCBIsRoot(DirFcb) && DeviceExt->FatInfo.FatType != FAT32) {
+	    if (FatFcbIsRoot(DirFcb) && DeviceExt->FatInfo.FatType != FAT32) {
 		/* We can't extend a root directory on a FAT12/FAT16/FATX partition */
 		return FALSE;
 	    }
@@ -649,10 +649,10 @@ static NTSTATUS FATAddEntry(IN PDEVICE_EXTENSION DeviceExt,
 
     if (MoveContext != NULL) {
 	/* We're modifying an existing FCB - likely rename/move */
-	Status = FatUpdateFCB(DeviceExt, *Fcb, &DirContext, ParentFcb);
+	Status = FatUpdateFcb(DeviceExt, *Fcb, &DirContext, ParentFcb);
     } else {
 	Status =
-	    FatMakeFCBFromDirEntry(DeviceExt, ParentFcb, &DirContext, Fcb);
+	    FatMakeFcbFromDirEntry(DeviceExt, ParentFcb, &DirContext, Fcb);
     }
     if (!NT_SUCCESS(Status)) {
 	ExFreePoolWithTag(Buffer, TAG_DIRENT);
@@ -663,7 +663,7 @@ static NTSTATUS FATAddEntry(IN PDEVICE_EXTENSION DeviceExt,
     DPRINT("new : entry=%11.11s\n", DirContext.DirEntry.Fat.Filename);
 
     if (IsDirectory) {
-	Status = FatFCBInitializeCacheFromVolume(DeviceExt, (*Fcb));
+	Status = FatFcbInitializeCacheFromVolume(DeviceExt, (*Fcb));
 	if (!NT_SUCCESS(Status)) {
 	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
 	    return Status;
@@ -692,7 +692,7 @@ static NTSTATUS FATAddEntry(IN PDEVICE_EXTENSION DeviceExt,
 	pFatEntry[1].FirstCluster = ParentFcb->Entry.Fat.FirstCluster;
 	pFatEntry[1].FirstClusterHigh =
 	    ParentFcb->Entry.Fat.FirstClusterHigh;
-	if (FatFCBIsRoot(ParentFcb)) {
+	if (FatFcbIsRoot(ParentFcb)) {
 	    pFatEntry[1].FirstCluster = 0;
 	    pFatEntry[1].FirstClusterHigh = 0;
 	}
@@ -736,7 +736,7 @@ static NTSTATUS FATXAddEntry(IN PDEVICE_EXTENSION DeviceExt,
 	return STATUS_DISK_FULL;
     }
     Index = DirContext.DirIndex = DirContext.StartIndex;
-    if (!FatFCBIsRoot(ParentFcb)) {
+    if (!FatFcbIsRoot(ParentFcb)) {
 	DirContext.DirIndex += 2;
 	DirContext.StartIndex += 2;
     }
@@ -805,10 +805,10 @@ static NTSTATUS FATXAddEntry(IN PDEVICE_EXTENSION DeviceExt,
     if (MoveContext != NULL) {
 	/* We're modifying an existing FCB - likely rename/move */
 	/* FIXME: check status */
-	FatUpdateFCB(DeviceExt, *Fcb, &DirContext, ParentFcb);
+	FatUpdateFcb(DeviceExt, *Fcb, &DirContext, ParentFcb);
     } else {
 	/* FIXME: check status */
-	FatMakeFCBFromDirEntry(DeviceExt, ParentFcb, &DirContext, Fcb);
+	FatMakeFcbFromDirEntry(DeviceExt, ParentFcb, &DirContext, Fcb);
     }
 
     DPRINT("addentry ok\n");
@@ -831,7 +831,7 @@ static NTSTATUS FATDelEntry(IN PDEVICE_EXTENSION DeviceExt,
     ASSERT(Fcb);
     ASSERT(Fcb->ParentFcb);
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -912,7 +912,7 @@ static NTSTATUS FATXDelEntry(IN PDEVICE_EXTENSION DeviceExt,
 
     StartIndex = Fcb->StartIndex;
 
-    Status = FatFCBInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
+    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -984,7 +984,7 @@ NTSTATUS FatMoveEntry(IN PDEVICE_EXTENSION DeviceExt,
 
     /* Add our new entry with our cluster */
     Status = FatAddEntry(DeviceExt, FileName, &Fcb, ParentFcb,
-			 (FatFCBIsDirectory(Fcb) ? FILE_DIRECTORY_FILE : 0),
+			 (FatFcbIsDirectory(Fcb) ? FILE_DIRECTORY_FILE : 0),
 			 *Fcb->Attributes, &MoveContext);
 
     CcFlushCache(&Fcb->ParentFcb->Base, NULL, 0, NULL);

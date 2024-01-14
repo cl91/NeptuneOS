@@ -503,7 +503,7 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
     Status = STATUS_IRP_FORWARDED;
 
 Metadata:
-    if (!IsVolume && !FatFCBIsDirectory(Fcb)) {
+    if (!IsVolume && !FatFcbIsDirectory(Fcb)) {
 	LARGE_INTEGER SystemTime;
 	ULONG Filter;
 

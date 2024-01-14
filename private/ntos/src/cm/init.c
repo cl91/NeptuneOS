@@ -29,10 +29,10 @@ NTSTATUS CmInitSystemPhase1()
     KEY_OBJECT_CREATE_CONTEXT Ctx = {
 	.Volatile = FALSE,
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key,
-			   RegistryDirectory, "Machine", 0, &Ctx));
-    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key,
-			   RegistryDirectory, "User", 0, &Ctx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key, &Ctx));
+    RET_ERR(ObInsertObject(RegistryDirectory, Key, "Machine", OBJ_NO_PARSE));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&Key, &Ctx));
+    RET_ERR(ObInsertObject(RegistryDirectory, Key, "User", OBJ_NO_PARSE));
     ObDereferenceObject(RegistryDirectory);
     return STATUS_SUCCESS;
 }

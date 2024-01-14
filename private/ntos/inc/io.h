@@ -66,14 +66,20 @@ typedef struct _IO_DEVICE_OBJECT {
     struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
     struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
     struct _DEVICE_NODE *DeviceNode; /* Only PDOs in PnP drivers have this. Otherwise NULL. */
+    struct _IO_VOLUME_CONTROL_BLOCK *Vcb; /* Only volume device objects have this. */
+    LIST_ENTRY OpenFileList; /* List of opened instances of this device object. */
+    POBJECT_DIRECTORY Subobjects;
     IO_DEVICE_INFO DeviceInfo;
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 
-typedef struct _SECTION_OBJECT_POINTERS {
-    PDATA_SECTION_OBJECT DataSectionObject;
-    PIMAGE_SECTION_OBJECT ImageSectionObject;
-} SECTION_OBJECT_POINTERS;
+/*
+ * Volume control block. This structure represents a mounted volume.
+ */
+typedef struct _IO_VOLUME_CONTROL_BLOCK {
+    PIO_DEVICE_OBJECT VolumeDevice; /* We have VolumeDevice->Vcb == this */
+    BOOLEAN Mounted;
+} IO_VOLUME_CONTROL_BLOCK, *PIO_VOLUME_CONTROL_BLOCK;
 
 /*
  * Server-side object of the client side FILE_OBJECT. Represents
@@ -81,11 +87,8 @@ typedef struct _SECTION_OBJECT_POINTERS {
  */
 typedef struct _IO_FILE_OBJECT {
     PIO_DEVICE_OBJECT DeviceObject;
-    PCSTR FileName;
-    SECTION_OBJECT_POINTERS SectionObject;
-    PVOID BufferPtr;
-    MWORD Size;
-    LIST_ENTRY Link;
+    struct _IO_FILE_CONTROL_BLOCK *Fcb;
+    LIST_ENTRY DeviceLink; /* List entry for this->DeviceObject->OpenFileList */
     PEVENT_OBJECT Event;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
@@ -97,15 +100,28 @@ typedef struct _IO_FILE_OBJECT {
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
 /*
+ * File control block. This structure represents an opened on-disk file.
+ * All opened instances of the same file shares the same file control block.
+ * This structure only exists for file objects that belong to a file system.
+ */
+typedef struct _IO_FILE_CONTROL_BLOCK {
+    PCSTR FileName;
+    MWORD FileSize;
+    PVOID BufferPtr;
+    PDATA_SECTION_OBJECT DataSectionObject;
+    PIMAGE_SECTION_OBJECT ImageSectionObject;
+} IO_FILE_CONTROL_BLOCK, *PIO_FILE_CONTROL_BLOCK;
+
+/*
  * Forward declarations.
  */
 
 /* file.c */
-NTSTATUS IoCreateFile(IN PCSTR FileName,
-		      IN POBJECT ParentDirectory,
-		      IN PVOID BufferPtr,
-		      IN MWORD FileSize,
-		      OUT PIO_FILE_OBJECT *pFile);
+NTSTATUS IoCreateDevicelessFile(IN PCSTR FileName,
+				IN OPTIONAL POBJECT ParentDirectory,
+				IN PVOID BufferPtr,
+				IN MWORD FileSize,
+				OUT PIO_FILE_OBJECT *pFile);
 
 /* init.c */
 NTSTATUS IoInitSystemPhase0();

@@ -78,9 +78,12 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
     FatGlobalData->DeviceObject = DeviceObject;
     /* TODO: We need to figure out SMP (one queue per processor?) */
     FatGlobalData->NumberProcessors = 1;
+
+#if 0
     /* Enable this to enter the debugger when file system corruption
      * has been detected: */
-    /* FatGlobalData->Flags = FAT_BREAK_ON_CORRUPTION; */
+    FatGlobalData->Flags = FAT_BREAK_ON_CORRUPTION;
+#endif
 
     DeviceObject->Flags |= DO_DIRECT_IO;
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = FatBuildRequest;
@@ -111,9 +114,7 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			      NULL, NULL, sizeof(FAT_IRP_CONTEXT), TAG_IRP);
 
     InitializeListHead(&FatGlobalData->VolumeListHead);
-    IoRegisterFileSystem(DeviceObject);
-
-    return STATUS_SUCCESS;
+    return IoRegisterFileSystem(DeviceObject);
 }
 
 static PFAT_IRP_CONTEXT FatAllocateIrpContext(PDEVICE_OBJECT DeviceObject,

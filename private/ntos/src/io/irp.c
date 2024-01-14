@@ -459,7 +459,7 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     }
     assert(DeviceObject->DriverObject != NULL);
     IoPacket->Request.Device.Object = DeviceObject;
-    IoPacket->Request.File.Object = IopGetFileObject(Src->Request.File.Handle);
+    IoPacket->Request.File.Object = IopGetFileObject(DeviceObject, Src->Request.File.Handle);
     IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(DriverObject);
     PPENDING_IRP PendingIrp = NULL;
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, DriverObject, &PendingIrp),
@@ -520,14 +520,16 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	    case IoCliMsgIoCompleted:
 		Status = IopHandleIoCompletedClientMessage(Response, DriverObject);
 		if (!NT_SUCCESS(Status)) {
-		    DbgTrace("IopHandleIoCompletedClientMessage returned error status 0x%x\n", Status);
+		    DbgTrace("IopHandleIoCompletedClientMessage returned error status 0x%x\n",
+			     Status);
 		}
 		break;
 
 	    case IoCliMsgForwardIrp:
 		Status = IopHandleForwardIrpClientMessage(Response, DriverObject);
 		if (!NT_SUCCESS(Status)) {
-		    DbgTrace("IopHandleForwardIrpClientMessage returned error status 0x%x\n", Status);
+		    DbgTrace("IopHandleForwardIrpClientMessage returned error status 0x%x\n",
+			     Status);
 		}
 		break;
 

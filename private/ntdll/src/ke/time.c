@@ -11,4 +11,5 @@ NTAPI NTSTATUS NtQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
 	    break;
 	}
     }
+    return STATUS_SUCCESS;
 }

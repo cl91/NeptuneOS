@@ -54,7 +54,7 @@
 		IopAllocatePendingIrp(Locals.IoPacket, Thread,		\
 				      &Locals.PendingIrp));		\
     /* Note here the IO buffers in the driver address space are freed	\
-     * when the server received the IoCompleted message, so we don't	\
+     * when the server receives the IoCompleted message, so we don't	\
      * need to free them manually. */					\
     Status = IopMapIoBuffers(Locals.PendingIrp, FALSE);			\
     if (NT_SUCCESS(Status)) {						\
@@ -65,13 +65,11 @@
 	goto out;							\
     }									\
 									\
-    /* For now every Read is synchronous. We need to figure out how we	\
-     * pass IO_STATUS_BLOCK back to the userspace safely. The idea is	\
-     * to pass it via a "special" APC passed to NtReadFile via		\
-     * IoReadFile (a private service routine). When			\
-     * NtWaitForSingleObject returns from the wait the special APC runs	\
-     * and write to the IO_STATUS_BLOCK. APC can have three		\
-     * SystemArguments so an IO_STATUS_BLOCK can fit into them. */	\
+    /* For now every IO is synchronous. For async IO, we need to figure	\
+     * out how we pass IO_STATUS_BLOCK back to the userspace safely.	\
+     * The idea is to pass it via APC. When NtWaitForSingleObject	\
+     * returns from the wait the special APC runs and write to the	\
+     * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */	\
 									\
     AWAIT(KeWaitForSingleObject, State,					\
 	  Locals, Thread,						\

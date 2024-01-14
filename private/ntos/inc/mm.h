@@ -163,12 +163,12 @@ static inline BOOLEAN MmCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
     return !IsListEmpty(&Node->ChildrenList);
 }
 
-static inline ULONG MmCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
+static inline SIZE_T MmCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
 {
     return GetListLength(&Node->ChildrenList);
 }
 
-static inline ULONG MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
+static inline SIZE_T MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
 {
     return GetListLength(&Node->SiblingLink);
 }
