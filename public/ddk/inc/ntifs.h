@@ -174,19 +174,129 @@ typedef struct _SHARE_ACCESS {
 /*
  * Access Control Routines
  */
-NTAPI NTSYSAPI VOID IoSetShareAccess(IN ACCESS_MASK DesiredAccess,
-				     IN ULONG DesiredShareAccess,
-				     IN OUT PFILE_OBJECT FileObject,
-				     OUT PSHARE_ACCESS ShareAccess);
-NTAPI NTSYSAPI NTSTATUS IoCheckShareAccess(IN ACCESS_MASK DesiredAccess,
-					   IN ULONG DesiredShareAccess,
-					   IN OUT PFILE_OBJECT FileObject,
-					   IN OUT PSHARE_ACCESS ShareAccess,
-					   IN BOOLEAN Update);
-NTAPI NTSYSAPI VOID IoUpdateShareAccess(IN PFILE_OBJECT FileObject,
-					IN OUT PSHARE_ACCESS ShareAccess);
-NTAPI NTSYSAPI VOID IoRemoveShareAccess(IN PFILE_OBJECT FileObject,
-					IN OUT PSHARE_ACCESS ShareAccess);
+FORCEINLINE NTAPI VOID IoSetShareAccess(IN ACCESS_MASK DesiredAccess,
+					IN ULONG DesiredShareAccess,
+					IN OUT PFILE_OBJECT FileObject,
+					OUT PSHARE_ACCESS ShareAccess)
+{
+    BOOLEAN ReadAccess = DesiredAccess & (FILE_READ_DATA | FILE_EXECUTE);
+    BOOLEAN WriteAccess = DesiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA);
+    BOOLEAN DeleteAccess = DesiredAccess & DELETE;
+
+    /* Update basic access */
+    FileObject->ReadAccess = ReadAccess;
+    FileObject->WriteAccess = WriteAccess;
+    FileObject->DeleteAccess = DeleteAccess;
+
+    /* Check if we have no access as all */
+    if (!ReadAccess && !WriteAccess && !DeleteAccess) {
+        ShareAccess->OpenCount = 0;
+        ShareAccess->Readers = 0;
+        ShareAccess->Writers = 0;
+        ShareAccess->Deleters = 0;
+        ShareAccess->SharedRead = 0;
+        ShareAccess->SharedWrite = 0;
+        ShareAccess->SharedDelete = 0;
+    } else {
+        BOOLEAN SharedRead = DesiredShareAccess & FILE_SHARE_READ;
+        BOOLEAN SharedWrite = DesiredShareAccess & FILE_SHARE_WRITE;
+        BOOLEAN SharedDelete = DesiredShareAccess & FILE_SHARE_DELETE;
+
+        FileObject->SharedRead = SharedRead;
+        FileObject->SharedWrite = SharedWrite;
+        FileObject->SharedDelete = SharedDelete;
+
+        ShareAccess->OpenCount = 1;
+        ShareAccess->Readers = ReadAccess;
+        ShareAccess->Writers = WriteAccess;
+        ShareAccess->Deleters = DeleteAccess;
+        ShareAccess->SharedRead = SharedRead;
+        ShareAccess->SharedWrite = SharedWrite;
+        ShareAccess->SharedDelete = SharedDelete;
+    }
+}
+
+FORCEINLINE NTAPI NTSTATUS IoCheckShareAccess(IN ACCESS_MASK DesiredAccess,
+					      IN ULONG DesiredShareAccess,
+					      IN OUT PFILE_OBJECT FileObject,
+					      IN OUT PSHARE_ACCESS ShareAccess,
+					      IN BOOLEAN Update)
+{
+    BOOLEAN ReadAccess = DesiredAccess & (FILE_READ_DATA | FILE_EXECUTE);
+    BOOLEAN WriteAccess = DesiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA);
+    BOOLEAN DeleteAccess = DesiredAccess & DELETE;
+
+    FileObject->ReadAccess = ReadAccess;
+    FileObject->WriteAccess = WriteAccess;
+    FileObject->DeleteAccess = DeleteAccess;
+
+    /* Check if we have any access */
+    if (ReadAccess || WriteAccess || DeleteAccess) {
+        /* Get shared access masks */
+        BOOLEAN SharedRead = DesiredShareAccess & FILE_SHARE_READ;
+        BOOLEAN SharedWrite = DesiredShareAccess & FILE_SHARE_WRITE;
+        BOOLEAN SharedDelete = DesiredShareAccess & FILE_SHARE_DELETE;
+
+        /* Check if the shared access is violated */
+        if ((ReadAccess && (ShareAccess->SharedRead < ShareAccess->OpenCount)) ||
+            (WriteAccess && (ShareAccess->SharedWrite < ShareAccess->OpenCount)) ||
+            (DeleteAccess && (ShareAccess->SharedDelete < ShareAccess->OpenCount)) ||
+            (ShareAccess->Readers && !SharedRead) ||
+            (ShareAccess->Writers && !SharedWrite) ||
+            (ShareAccess->Deleters && !SharedDelete)) {
+            /* Sharing violation, fail */
+            return STATUS_SHARING_VIOLATION;
+        }
+
+        /* Set them */
+        FileObject->SharedRead = SharedRead;
+        FileObject->SharedWrite = SharedWrite;
+        FileObject->SharedDelete = SharedDelete;
+
+        /* It's not, check if caller wants us to update it */
+        if (Update) {
+            ShareAccess->OpenCount++;
+
+            ShareAccess->Readers += ReadAccess;
+            ShareAccess->Writers += WriteAccess;
+            ShareAccess->Deleters += DeleteAccess;
+            ShareAccess->SharedRead += SharedRead;
+            ShareAccess->SharedWrite += SharedWrite;
+            ShareAccess->SharedDelete += SharedDelete;
+        }
+    }
+    return STATUS_SUCCESS;
+}
+
+FORCEINLINE NTAPI VOID IoUpdateShareAccess(IN PFILE_OBJECT FileObject,
+					   IN OUT PSHARE_ACCESS ShareAccess)
+{
+    if (FileObject->ReadAccess || FileObject->WriteAccess || FileObject->DeleteAccess) {
+        ShareAccess->OpenCount++;
+
+        ShareAccess->Readers += FileObject->ReadAccess;
+        ShareAccess->Writers += FileObject->WriteAccess;
+        ShareAccess->Deleters += FileObject->DeleteAccess;
+        ShareAccess->SharedRead += FileObject->SharedRead;
+        ShareAccess->SharedWrite += FileObject->SharedWrite;
+        ShareAccess->SharedDelete += FileObject->SharedDelete;
+    }
+}
+
+FORCEINLINE NTAPI VOID IoRemoveShareAccess(IN PFILE_OBJECT FileObject,
+					   IN OUT PSHARE_ACCESS ShareAccess)
+{
+    if (FileObject->ReadAccess || FileObject->WriteAccess || FileObject->DeleteAccess) {
+        ShareAccess->OpenCount--;
+
+        ShareAccess->Readers -= FileObject->ReadAccess;
+        ShareAccess->Writers -= FileObject->WriteAccess;
+        ShareAccess->Deleters -= FileObject->DeleteAccess;
+        ShareAccess->SharedRead -= FileObject->SharedRead;
+        ShareAccess->SharedWrite -= FileObject->SharedWrite;
+        ShareAccess->SharedDelete -= FileObject->SharedDelete;
+    }
+}
 
 /*
  * Common FCB Header
@@ -238,9 +348,10 @@ NTAPI NTSYSAPI BOOLEAN FsRtlIsNameInExpression(IN PUNICODE_STRING Expression,
 /*
  * File Notification Routines
  */
-FORCEINLINE NTAPI VOID FsRtlNotifyCleanup(IN PFILE_OBJECT File) { /* TODO */ }
-FORCEINLINE NTAPI NTSTATUS FsRtlNotifyVolumeEvent(IN PFILE_OBJECT FileObject,
-						  IN ULONG EventCode) {
+FORCEINLINE NTAPI NTAPI VOID FsRtlNotifyCleanup(IN PFILE_OBJECT File) { /* TODO */ }
+FORCEINLINE NTAPI NTAPI NTSTATUS FsRtlNotifyVolumeEvent(IN PFILE_OBJECT FileObject,
+							IN ULONG EventCode)
+{
     /* TODO */
     return 0;
 }
@@ -294,18 +405,19 @@ NTAPI NTSYSAPI VOID CcSetFileSizes(IN PFILE_OBJECT FileObject,
 
 /* On Neptune OS, CcMapData is synonymous with CcPinRead. On Windows
  * they are not (CcMapData is a more restrictive function there). */
-FORCEINLINE NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
-			       IN PLARGE_INTEGER FileOffset,
-			       IN ULONG Length,
-			       IN ULONG Flags,
-			       OUT PVOID *Bcb,
-			       OUT PVOID *Buffer) {
+FORCEINLINE NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
+				     IN PLARGE_INTEGER FileOffset,
+				     IN ULONG Length,
+				     IN ULONG Flags,
+				     OUT PVOID *Bcb,
+				     OUT PVOID *Buffer)
+{
     return CcPinRead(FileObject, FileOffset, Length, Flags, Bcb, Buffer);
 }
 
 /* On Neptune OS, CcFlushCache is a no-op. File system drivers do not need
  * to manually flush caches and in general should not do so. */
-FORCEINLINE VOID CcFlushCache(IN PFSRTL_COMMON_FCB_HEADER Fcb,
-			      IN OPTIONAL PLARGE_INTEGER FileOffset,
-			      IN ULONG Length,
-			      OUT OPTIONAL PIO_STATUS_BLOCK IoStatus) {}
+FORCEINLINE NTAPI VOID CcFlushCache(IN PFSRTL_COMMON_FCB_HEADER Fcb,
+				    IN OPTIONAL PLARGE_INTEGER FileOffset,
+				    IN ULONG Length,
+				    OUT OPTIONAL PIO_STATUS_BLOCK IoStatus) {}

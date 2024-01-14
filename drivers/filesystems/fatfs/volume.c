@@ -168,7 +168,7 @@ static NTSTATUS FsdGetFsDeviceInformation(PDEVICE_OBJECT DeviceObject,
     DPRINT("FsdGetFsDeviceInformation()\n");
     DPRINT("FsDeviceInfo = %p\n", FsDeviceInfo);
     DPRINT("BufferLength %u\n", *BufferLength);
-    DPRINT("Required length %u\n", sizeof(FILE_FS_DEVICE_INFORMATION));
+    DPRINT("Required length 0x%zx\n", sizeof(FILE_FS_DEVICE_INFORMATION));
 
     ASSERT(*BufferLength >= sizeof(FILE_FS_DEVICE_INFORMATION));
 

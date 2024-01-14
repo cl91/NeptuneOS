@@ -1,7 +1,9 @@
 
 #include <string.h>
 
+#ifdef _M_IX86
 #pragma weak memset
+#endif
 
 void* __cdecl memset(void* src, int val, size_t count)
 {

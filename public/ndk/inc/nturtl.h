@@ -802,9 +802,9 @@ NTAPI NTSYSAPI NTSTATUS RtlDnsHostNameToComputerName(PUNICODE_STRING ComputerNam
 /*
  * Unicode string inline functions
  */
-FORCEINLINE VOID RtlInitEmptyUnicodeString(OUT PUNICODE_STRING UnicodeString,
-					   IN PWCHAR Buffer,
-					   IN USHORT BufferSize)
+FORCEINLINE NTAPI VOID RtlInitEmptyUnicodeString(OUT PUNICODE_STRING UnicodeString,
+						 IN PWCHAR Buffer,
+						 IN USHORT BufferSize)
 {
     UnicodeString->Length = 0;
     UnicodeString->MaximumLength = BufferSize;
@@ -860,9 +860,9 @@ NTAPI NTSYSAPI VOID RtlUpperString(PSTRING DestinationString,
 /*
  * Ansi string inline functions
  */
-FORCEINLINE VOID RtlInitEmptyAnsiString(OUT PANSI_STRING AnsiString,
-					IN PCHAR Buffer,
-					IN USHORT BufferSize)
+FORCEINLINE NTAPI VOID RtlInitEmptyAnsiString(OUT PANSI_STRING AnsiString,
+					      IN PCHAR Buffer,
+					      IN USHORT BufferSize)
 {
     AnsiString->Length = 0;
     AnsiString->MaximumLength = BufferSize;
@@ -1124,9 +1124,9 @@ NTAPI NTSYSAPI SIZE_T RtlCompareMemoryUlong(IN PVOID Source,
 					    IN ULONG Value);
 
 #ifdef _M_AMD64
-FORCEINLINE VOID RtlFillMemoryUlong(OUT PVOID Destination,
-				    IN SIZE_T Length,
-				    IN ULONG Pattern)
+FORCEINLINE NTAPI VOID RtlFillMemoryUlong(OUT PVOID Destination,
+					  IN SIZE_T Length,
+					  IN ULONG Pattern)
 {
     PULONG Address = (PULONG)Destination;
     if ((Length /= 4) != 0) {
@@ -1233,8 +1233,8 @@ NTAPI NTSYSAPI BOOLEAN RtlTestBit(IN PRTL_BITMAP BitMapHeader,
 				  IN ULONG BitNumber);
 
 #ifdef _M_AMD64
-FORCEINLINE BOOLEAN RtlCheckBit(IN PRTL_BITMAP BitMapHeader,
-				IN ULONG BitPosition)
+FORCEINLINE NTAPI BOOLEAN RtlCheckBit(IN PRTL_BITMAP BitMapHeader,
+				      IN ULONG BitPosition)
 {
     return BitTest64((LONG64 CONST*)BitMapHeader->Buffer, (LONG64)BitPosition);
 }
@@ -1549,12 +1549,12 @@ NTAPI NTSYSAPI USHORT RtlQueryDepthSList(IN PSLIST_HEADER ListHead);
 #error "Unsupported architecture"
 #endif
 
-FORCEINLINE PTEB NtCurrentTeb(VOID)
+FORCEINLINE NTAPI PTEB NtCurrentTeb(VOID)
 {
     return (PTEB) __TLSBASE_READ(FIELD_OFFSET(NT_TIB, Self));
 }
 
-FORCEINLINE PPEB NtCurrentPeb(VOID)
+FORCEINLINE NTAPI PPEB NtCurrentPeb(VOID)
 {
     return NtCurrentTeb()->ProcessEnvironmentBlock;
 }
@@ -1778,9 +1778,9 @@ NTAPI NTSYSAPI NTSTATUS RtlQueryEnvironmentVariable_U(PWSTR Environment,
 /*
  * RTL auto-managed string buffer functions
  */
-FORCEINLINE VOID RtlInitBuffer(IN OUT PRTL_BUFFER Buffer,
-			       IN PUCHAR Data,
-			       IN ULONG DataSize)
+FORCEINLINE NTAPI VOID RtlInitBuffer(IN OUT PRTL_BUFFER Buffer,
+				     IN PUCHAR Data,
+				     IN ULONG DataSize)
 {
     Buffer->Buffer = Buffer->StaticBuffer = Data;
     Buffer->Size = Buffer->StaticSize = DataSize;
@@ -1792,7 +1792,7 @@ NTAPI NTSYSAPI NTSTATUS RtlEnsureBufferSize(IN ULONG Flags,
 					    IN OUT PRTL_BUFFER Buffer,
 					    IN SIZE_T RequiredSize);
 
-FORCEINLINE VOID RtlFreeBuffer(IN OUT PRTL_BUFFER Buffer)
+FORCEINLINE NTAPI VOID RtlFreeBuffer(IN OUT PRTL_BUFFER Buffer)
 {
     if (Buffer->Buffer != Buffer->StaticBuffer && Buffer->Buffer)
         RtlFreeHeap(RtlGetProcessHeap(), 0, Buffer->Buffer);

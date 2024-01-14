@@ -197,24 +197,24 @@ typedef enum _IO_COMPLETION_ROUTINE_RESULT {
  * To port Windows/ReactOS driver simply remove the first argument
  * in ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag).
  */
-FORCEINLINE PVOID ExAllocatePoolWithTag(IN SIZE_T Size,
-					IN ULONG Tag)
+FORCEINLINE NTAPI PVOID ExAllocatePoolWithTag(IN SIZE_T Size,
+					      IN ULONG Tag)
 {
     return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
 }
 
-FORCEINLINE VOID ExFreePoolWithTag(IN PVOID Pointer,
-				   IN ULONG Tag)
+FORCEINLINE NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+					 IN ULONG Tag)
 {
     RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
 }
 
-FORCEINLINE PVOID ExAllocatePool(IN SIZE_T Size)
+FORCEINLINE NTAPI PVOID ExAllocatePool(IN SIZE_T Size)
 {
     return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
 }
 
-FORCEINLINE VOID ExFreePool(IN PVOID Pointer)
+FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
 {
     RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
 }
@@ -222,7 +222,7 @@ FORCEINLINE VOID ExFreePool(IN PVOID Pointer)
 /*
  * Object manager routines
  */
-FORCEINLINE VOID ObDereferenceObject(IN PVOID Obj) { /* TODO */ }
+FORCEINLINE NTAPI VOID ObDereferenceObject(IN PVOID Obj) { /* TODO */ }
 
 struct _DEVICE_OBJECT;
 struct _DRIVER_OBJECT;
@@ -293,9 +293,9 @@ typedef struct _KDPC {
 /*
  * DPC initialization function
  */
-FORCEINLINE VOID KeInitializeDpc(IN PKDPC Dpc,
-				 IN PKDEFERRED_ROUTINE DeferredRoutine,
-				 IN PVOID DeferredContext)
+FORCEINLINE NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
+				       IN PKDEFERRED_ROUTINE DeferredRoutine,
+				       IN PVOID DeferredContext)
 {
     Dpc->DeferredRoutine = DeferredRoutine;
     Dpc->DeferredContext = DeferredContext;
@@ -328,7 +328,7 @@ typedef struct _KDEVICE_QUEUE_ENTRY {
 /*
  * Device queue initialization function
  */
-FORCEINLINE VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
+FORCEINLINE NTAPI VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
 {
     assert(Queue != NULL);
     InitializeListHead(&Queue->DeviceListHead);
@@ -351,8 +351,8 @@ NTAPI NTSYSAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Q
  * Same as KeRemoveByKeyDeviceQueue, except it doesn't assert if the queue is not busy.
  * Instead, NULL is returned if queue is not busy.
  */
-FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVICE_QUEUE Queue,
-								IN ULONG SortKey)
+FORCEINLINE NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVICE_QUEUE Queue,
+								      IN ULONG SortKey)
 {
     assert(Queue != NULL);
     if (!Queue->Busy) {
@@ -365,8 +365,8 @@ FORCEINLINE PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVICE_QUEU
  * Removes the specified entry from the queue, returning TRUE.
  * If the entry is not inserted, nothing is done and we return FALSE.
  */
-FORCEINLINE BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
-					     IN PKDEVICE_QUEUE_ENTRY Entry)
+FORCEINLINE NTAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
+						   IN PKDEVICE_QUEUE_ENTRY Entry)
 {
     assert(Queue != NULL);
     assert(Queue->Busy);
@@ -529,8 +529,8 @@ typedef IO_DPC_ROUTINE *PIO_DPC_ROUTINE;
 /*
  * Initialize the device object's built-in DPC object
  */
-FORCEINLINE VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
-					IN PIO_DPC_ROUTINE DpcRoutine)
+FORCEINLINE NTAPI VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
+					      IN PIO_DPC_ROUTINE DpcRoutine)
 {
     KeInitializeDpc(&DeviceObject->Dpc, (PKDEFERRED_ROUTINE)DpcRoutine,
 		    DeviceObject);
@@ -829,7 +829,7 @@ typedef struct _IO_STACK_LOCATION {
  * IO stack location.
  */
 DEPRECATED("IRPs always have exactly one stack location. Use IO_SIZE_OF_IRP instead.")
-FORCEINLINE USHORT IoSizeOfIrp(IN CCHAR StackSize)
+FORCEINLINE NTAPI USHORT IoSizeOfIrp(IN CCHAR StackSize)
 {
     return IO_SIZE_OF_IRP;
 }
@@ -840,7 +840,7 @@ FORCEINLINE USHORT IoSizeOfIrp(IN CCHAR StackSize)
  * Porting guide: IRPs always have exactly one stack location, so remove
  * the PacketSize and StackSize argument if you are porting from ReactOS.
  */
-FORCEINLINE VOID IoInitializeIrp(IN PIRP Irp)
+FORCEINLINE NTAPI VOID IoInitializeIrp(IN PIRP Irp)
 {
     /* Set the Header and other data */
     Irp->Type = IO_TYPE_IRP;
@@ -852,9 +852,9 @@ FORCEINLINE VOID IoInitializeIrp(IN PIRP Irp)
  * have "pool memory" since we are running in userspace, so remove the
  * StackSize and ChargeQuota argument if you are porting from ReactOS.
  */
-FORCEINLINE PIRP IoAllocateIrp()
+FORCEINLINE NTAPI PIRP IoAllocateIrp()
 {
-    PIRP Irp = (PIRP) ExAllocatePool(IO_SIZE_OF_IRP);
+    PIRP Irp = (PIRP)ExAllocatePool(IO_SIZE_OF_IRP);
     if (Irp == NULL) {
 	return NULL;
     }
@@ -862,7 +862,7 @@ FORCEINLINE PIRP IoAllocateIrp()
     return Irp;
 }
 
-FORCEINLINE VOID IoFreeIrp(IN PIRP Irp)
+FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
 {
     ExFreePool(Irp);
 }
@@ -871,7 +871,7 @@ FORCEINLINE VOID IoFreeIrp(IN PIRP Irp)
  * Returns the current (and only) IO stack location pointer. The (only)
  * IO stack location follows immediately after the IRP header.
  */
-FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
+FORCEINLINE NTAPI PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
 {
     return (PIO_STACK_LOCATION)(Irp + 1);
 }
@@ -881,23 +881,23 @@ FORCEINLINE PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
  * are effectively no-op since our IRPs always have exactly one stack location.
  */
 DEPRECATED("IRPs always have exactly one stack location. Remove this.")
-FORCEINLINE VOID IoSkipCurrentIrpStackLocation(IN OUT PIRP Irp)
+FORCEINLINE NTAPI VOID IoSkipCurrentIrpStackLocation(IN OUT PIRP Irp)
 {
 }
 
 DEPRECATED("IRPs always have exactly one stack location. Remove this.")
-FORCEINLINE VOID IoCopyCurrentIrpStackLocationToNext(IN OUT PIRP Irp)
+FORCEINLINE NTAPI VOID IoCopyCurrentIrpStackLocationToNext(IN OUT PIRP Irp)
 {
 }
 
 DEPRECATED("IRPs always have exactly one stack location. Remove this")
-FORCEINLINE VOID IoSetNextIrpStackLocation(IN OUT PIRP Irp)
+FORCEINLINE NTAPI VOID IoSetNextIrpStackLocation(IN OUT PIRP Irp)
 {
 }
 
 DEPRECATED_BY("IRPs always have exactly one stack location.",
 	      IoGetCurrentIrpStackLocation)
-FORCEINLINE PIO_STACK_LOCATION IoGetNextIrpStackLocation(IN PIRP Irp)
+FORCEINLINE NTAPI PIO_STACK_LOCATION IoGetNextIrpStackLocation(IN PIRP Irp)
 {
     return IoGetCurrentIrpStackLocation(Irp);
 }
@@ -934,7 +934,7 @@ NTAPI NTSYSAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 NTAPI NTSYSAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 							  IN PDEVICE_OBJECT TargetDevice);
 
-FORCEINLINE NTSTATUS
+FORCEINLINE NTAPI NTSTATUS
 IoAttachDeviceToDeviceStackSafe(IN PDEVICE_OBJECT SourceDevice,
 				IN PDEVICE_OBJECT TargetDevice,
 				IN OUT PDEVICE_OBJECT *AttachedToDeviceObject)
@@ -993,7 +993,7 @@ NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 				  IN OPTIONAL PKDPC Dpc);
 
 /* TODO: Inform the server to actually cancel the timer */
-FORCEINLINE BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
+FORCEINLINE NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 {
     BOOLEAN PreviousState = Timer->State;
     /* Mark the timer as canceled. The driver process will
@@ -1047,8 +1047,8 @@ NTAPI NTSYSAPI VOID KeClearEvent(IN PKEVENT Event);
  * NOTE: As opposed to Windows/ReactOS we do NOT need the interlocked (atomic)
  * operation here, since in NeptuneOS driver dispatch routines run in a single thread.
  */
-FORCEINLINE PDRIVER_CANCEL IoSetCancelRoutine(IN OUT PIRP Irp,
-					      IN OPTIONAL PDRIVER_CANCEL CancelRoutine)
+FORCEINLINE NTAPI PDRIVER_CANCEL IoSetCancelRoutine(IN OUT PIRP Irp,
+						    IN OPTIONAL PDRIVER_CANCEL CancelRoutine)
 {
     PDRIVER_CANCEL Old = Irp->CancelRoutine;
     Irp->CancelRoutine = CancelRoutine;
@@ -1058,7 +1058,7 @@ FORCEINLINE PDRIVER_CANCEL IoSetCancelRoutine(IN OUT PIRP Irp,
 /*
  * Mark the current IRP as pending
  */
-FORCEINLINE VOID IoMarkIrpPending(IN OUT PIRP Irp)
+FORCEINLINE NTAPI VOID IoMarkIrpPending(IN OUT PIRP Irp)
 {
     assert(!Irp->Completed);
     IoGetCurrentIrpStackLocation((Irp))->Control |= SL_PENDING_RETURNED;
@@ -1102,9 +1102,9 @@ NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
 /*
  * Set device StartIo flags
  */
-FORCEINLINE VOID IoSetStartIoAttributes(IN PDEVICE_OBJECT DeviceObject,
-					IN BOOLEAN DeferredStartIo,
-					IN BOOLEAN NonCancelable)
+FORCEINLINE NTAPI VOID IoSetStartIoAttributes(IN PDEVICE_OBJECT DeviceObject,
+					      IN BOOLEAN DeferredStartIo,
+					      IN BOOLEAN NonCancelable)
 {
     /* Set the flags the caller requested */
     DeviceObject->StartIoFlags |= (DeferredStartIo) ? DOE_SIO_DEFERRED : 0;
@@ -1114,15 +1114,15 @@ FORCEINLINE VOID IoSetStartIoAttributes(IN PDEVICE_OBJECT DeviceObject,
 /*
  * MDL (memory descriptor list) routines
  */
-FORCEINLINE PVOID MmGetSystemAddressForMdl(IN PMDL Mdl)
+FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdl(IN PMDL Mdl)
 {
     return Mdl->MappedSystemVa;
 }
 
 DEPRECATED_BY("Since user buffers are mapped directly into driver process they are always safe to access",
 	      MmGetSystemAddressForMld)
-FORCEINLINE PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl,
-					       IN ULONG Priority)
+FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl,
+						     IN ULONG Priority)
 {
     return MmGetSystemAddressForMdl(Mdl);
 }
@@ -1130,7 +1130,7 @@ FORCEINLINE PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl,
 /* Since for driver processes, MDLs are always mapped into "system address space",
  * this routine always returns NULL. The only use for this is to obtain an offset
  * into the IO buffer for the CurrentVa parameter of IoMapTransfer. */
-FORCEINLINE PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
+FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
 {
     UNREFERENCED_PARAMETER(Mdl);
     return NULL;
@@ -1178,8 +1178,8 @@ NTAPI NTSYSAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
  * in which case the current coroutine is suspended and waits for the
  * completion of the IRP.
  */
-FORCEINLINE NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
-				  IN OUT PIRP Irp)
+FORCEINLINE NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
+					IN OUT PIRP Irp)
 {
     LARGE_INTEGER Timeout = { .QuadPart = 0 };
     return IoCallDriverEx(DeviceObject, Irp, &Timeout);
@@ -1190,8 +1190,8 @@ FORCEINLINE NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
  *
  * Forward the IRP to the device object and wait for its completion.
  */
-FORCEINLINE BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
-					      IN PIRP Irp)
+FORCEINLINE NTAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
+						    IN PIRP Irp)
 {
     UNUSED NTSTATUS Status = IoCallDriverEx(DeviceObject, Irp, NULL);
     assert(Status == Irp->IoStatus.Status);
@@ -1204,14 +1204,14 @@ FORCEINLINE BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
  */
 DEPRECATED_BY("Power IRP synchronization is now automatic. You no longer need to call the Po-specific versions",
 	      IoCallDriver)
-FORCEINLINE NTSTATUS PoCallDriver(IN PDEVICE_OBJECT DeviceObject,
-				  IN OUT PIRP Irp)
+FORCEINLINE NTAPI NTSTATUS PoCallDriver(IN PDEVICE_OBJECT DeviceObject,
+					IN OUT PIRP Irp)
 {
     return IoCallDriver(DeviceObject, Irp);
 }
 
 DEPRECATED("Power IRP synchronization is now automatic. Remove this.")
-FORCEINLINE VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
+FORCEINLINE NTAPI VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
 {
     /* Do nothing */
 }
@@ -1309,7 +1309,7 @@ NTAPI NTSYSAPI VOID IoReleaseInterruptMutex(IN PKINTERRUPT Interrupt);
  */
 DEPRECATED_BY("Interrupt \"spinlock\" is actually a mutex.",
 	      IoAcquireInterruptMutex)
-FORCEINLINE KIRQL KeAcquireInterruptSpinLock(IN PKINTERRUPT Interrupt)
+FORCEINLINE NTAPI KIRQL KeAcquireInterruptSpinLock(IN PKINTERRUPT Interrupt)
 {
     IoAcquireInterruptMutex(Interrupt);
     /* Return PASSIVE_LEVEL */
@@ -1321,8 +1321,8 @@ FORCEINLINE KIRQL KeAcquireInterruptSpinLock(IN PKINTERRUPT Interrupt)
  */
 DEPRECATED_BY("Interrupt \"spinlock\" is actually a mutex.",
 	      IoReleaseInterruptMutex)
-FORCEINLINE VOID KeReleaseInterruptSpinLock(IN PKINTERRUPT Interrupt,
-					    IN KIRQL OldIrql)
+FORCEINLINE NTAPI VOID KeReleaseInterruptSpinLock(IN PKINTERRUPT Interrupt,
+						  IN KIRQL OldIrql)
 {
     IoReleaseInterruptMutex(Interrupt);
 }
@@ -1336,7 +1336,7 @@ NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject
  * This is the same function as IoGetAttachedDevice, since we don't have
  * reference counting for client-side objects.
  */
-FORCEINLINE PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
+FORCEINLINE NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
 {
     return IoGetAttachedDevice(DeviceObject);
 }
@@ -1466,10 +1466,7 @@ typedef PVOID (NTAPI *PALLOCATE_FUNCTION)(IN SIZE_T NumberOfBytes,
 typedef VOID (NTAPI *PFREE_FUNCTION)(IN PVOID Buffer);
 
 typedef struct LOOKASIDE_ALIGN _LOOKASIDE_LIST {
-    union {
-        SLIST_HEADER ListHead;
-        SINGLE_LIST_ENTRY SingleListHead;
-    };
+    SLIST_HEADER ListHead;
     USHORT Depth;
     USHORT MaximumDepth;
     ULONG TotalAllocates;
@@ -1486,24 +1483,34 @@ typedef struct LOOKASIDE_ALIGN _LOOKASIDE_LIST {
     ULONG Size;
     PALLOCATE_FUNCTION Allocate;
     PFREE_FUNCTION Free;
-    LIST_ENTRY ListEntry;
     ULONG LastTotalAllocates;
     union {
         ULONG LastAllocateMisses;
         ULONG LastAllocateHits;
     };
-    ULONG Future[2];
 } LOOKASIDE_LIST, *PLOOKASIDE_LIST;
 
-NTAPI NTSYSAPI VOID ExInitializeLookasideList(OUT PLOOKASIDE_LIST Lookaside,
-					      IN OPTIONAL PALLOCATE_FUNCTION Allocate,
-					      IN OPTIONAL PFREE_FUNCTION Free,
-					      IN ULONG Flags,
-					      IN SIZE_T Size,
-					      IN ULONG Tag,
-					      IN USHORT Depth);
+FORCEINLINE NTAPI VOID ExInitializeLookasideList(OUT PLOOKASIDE_LIST List,
+						 IN OPTIONAL PALLOCATE_FUNCTION Allocate,
+						 IN OPTIONAL PFREE_FUNCTION Free,
+						 IN SIZE_T Size,
+						 IN ULONG Tag) {
+    List->Tag = Tag;
+    List->Size = Size;
+    List->MaximumDepth = 256;
+    List->Depth = 4;
+    List->Allocate = Allocate ? Allocate : ExAllocatePoolWithTag;
+    List->Free = Free ? Free : ExFreePool;
+    RtlInitializeSListHead(&List->ListHead);
+    List->TotalAllocates = 0;
+    List->AllocateHits = 0;
+    List->TotalFrees = 0;
+    List->FreeHits = 0;
+    List->LastTotalAllocates = 0;
+    List->LastAllocateHits = 0;
+}
 
-FORCEINLINE PVOID ExAllocateFromLookasideList(IN OUT PLOOKASIDE_LIST Lookaside)
+FORCEINLINE NTAPI PVOID ExAllocateFromLookasideList(IN OUT PLOOKASIDE_LIST Lookaside)
 {
     Lookaside->TotalAllocates += 1;
     PVOID Entry = RtlInterlockedPopEntrySList(&Lookaside->ListHead);
@@ -1515,13 +1522,17 @@ FORCEINLINE PVOID ExAllocateFromLookasideList(IN OUT PLOOKASIDE_LIST Lookaside)
     return Entry;
 }
 
-FORCEINLINE USHORT ExQueryDepthSList(IN PSLIST_HEADER SListHead)
+FORCEINLINE NTAPI USHORT ExQueryDepthSList(IN PSLIST_HEADER SListHead)
 {
+#ifdef _WIN64
+    return (USHORT)SListHead->Header8.Depth;
+#else
     return (USHORT)SListHead->Depth;
+#endif
 }
 
-FORCEINLINE VOID ExFreeToLookasideList(IN OUT PLOOKASIDE_LIST Lookaside,
-				       IN PVOID Entry)
+FORCEINLINE NTAPI VOID ExFreeToLookasideList(IN OUT PLOOKASIDE_LIST Lookaside,
+					     IN PVOID Entry)
 {
     Lookaside->TotalFrees++;
     if (ExQueryDepthSList(&Lookaside->ListHead) >= Lookaside->Depth) {

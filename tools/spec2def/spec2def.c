@@ -1334,6 +1334,10 @@ int main(int argc, char *argv[])
 	gpszUnderscore = "_";
     } else if (strcasecmp(pszArchString, "x86_64") == 0)
 	giArch = ARCH_AMD64;
+    else if (strcasecmp(pszArchString, "amd64") == 0) {
+	giArch = ARCH_AMD64;
+	pszArchString = "x86_64";
+    }
     else if (strcasecmp(pszArchString, "ia64") == 0)
 	giArch = ARCH_IA64;
     else if (strcasecmp(pszArchString, "arm") == 0)

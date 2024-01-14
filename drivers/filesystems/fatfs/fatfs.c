@@ -104,11 +104,11 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     /* Private lists */
     ExInitializeLookasideList(&FatGlobalData->FcbLookasideList,
-			      NULL, NULL, 0, sizeof(FATFCB), TAG_FCB, 0);
-    ExInitializeLookasideList(&FatGlobalData->CcbLookasideList, NULL,
-			      NULL, 0, sizeof(FATCCB), TAG_CCB, 0);
+			      NULL, NULL, sizeof(FATFCB), TAG_FCB);
+    ExInitializeLookasideList(&FatGlobalData->CcbLookasideList,
+			      NULL, NULL, sizeof(FATCCB), TAG_CCB);
     ExInitializeLookasideList(&FatGlobalData->IrpContextLookasideList,
-			      NULL, NULL, 0, sizeof(FAT_IRP_CONTEXT), TAG_IRP, 0);
+			      NULL, NULL, sizeof(FAT_IRP_CONTEXT), TAG_IRP);
 
     InitializeListHead(&FatGlobalData->VolumeListHead);
     IoRegisterFileSystem(DeviceObject);
@@ -209,7 +209,7 @@ static NTSTATUS FatDispatchRequest(IN PFAT_IRP_CONTEXT IrpContext)
 
     case IRP_MJ_LOCK_CONTROL:
 	/* File lock control is implemented on the server side. */
-	Status = UNIMPLEMENTED;
+	Status = STATUS_NOT_IMPLEMENTED;
 	break;
 
     case IRP_MJ_DEVICE_CONTROL:

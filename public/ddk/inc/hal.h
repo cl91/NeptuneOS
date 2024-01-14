@@ -449,51 +449,51 @@ typedef struct _DMA_OPERATIONS {
     PFREE_COMMON_BUFFER_VECTOR FreeCommonBufferVector;
 } DMA_OPERATIONS, *PDMA_OPERATIONS;
 
-FORCEINLINE NTSTATUS IoAllocateAdapterChannel(IN PDMA_ADAPTER DmaAdapter,
-					      IN PDEVICE_OBJECT DeviceObject,
-					      IN ULONG NumberOfMapRegisters,
-					      IN PDRIVER_CONTROL ExecutionRoutine,
-					      IN PVOID Context)
+FORCEINLINE NTAPI NTSTATUS IoAllocateAdapterChannel(IN PDMA_ADAPTER DmaAdapter,
+						    IN PDEVICE_OBJECT DeviceObject,
+						    IN ULONG NumberOfMapRegisters,
+						    IN PDRIVER_CONTROL ExecutionRoutine,
+						    IN PVOID Context)
 {
     PALLOCATE_ADAPTER_CHANNEL AllocateAdapterChannel = DmaAdapter->DmaOperations->AllocateAdapterChannel;
     ASSERT(AllocateAdapterChannel);
     return AllocateAdapterChannel(DmaAdapter, DeviceObject, NumberOfMapRegisters, ExecutionRoutine, Context);
 }
 
-FORCEINLINE BOOLEAN IoFlushAdapterBuffers(IN PDMA_ADAPTER DmaAdapter,
-					  IN PMDL Mdl,
-					  IN PVOID MapRegisterBase,
-					  IN PVOID CurrentVa,
-					  IN ULONG Length,
-					  IN BOOLEAN WriteToDevice)
+FORCEINLINE NTAPI BOOLEAN IoFlushAdapterBuffers(IN PDMA_ADAPTER DmaAdapter,
+						IN PMDL Mdl,
+						IN PVOID MapRegisterBase,
+						IN PVOID CurrentVa,
+						IN ULONG Length,
+						IN BOOLEAN WriteToDevice)
 {
     PFLUSH_ADAPTER_BUFFERS FlushAdapterBuffers = DmaAdapter->DmaOperations->FlushAdapterBuffers;
     ASSERT(FlushAdapterBuffers);
     return FlushAdapterBuffers(DmaAdapter, Mdl, MapRegisterBase, CurrentVa, Length, WriteToDevice);
 }
 
-FORCEINLINE VOID IoFreeAdapterChannel(IN PDMA_ADAPTER DmaAdapter)
+FORCEINLINE NTAPI VOID IoFreeAdapterChannel(IN PDMA_ADAPTER DmaAdapter)
 {
     PFREE_ADAPTER_CHANNEL FreeAdapterChannel = DmaAdapter->DmaOperations->FreeAdapterChannel;
     ASSERT(FreeAdapterChannel);
     FreeAdapterChannel(DmaAdapter);
 }
 
-FORCEINLINE VOID IoFreeMapRegisters(IN PDMA_ADAPTER DmaAdapter,
-				    IN PVOID MapRegisterBase,
-				    IN ULONG NumberOfMapRegisters)
+FORCEINLINE NTAPI VOID IoFreeMapRegisters(IN PDMA_ADAPTER DmaAdapter,
+					  IN PVOID MapRegisterBase,
+					  IN ULONG NumberOfMapRegisters)
 {
     PFREE_MAP_REGISTERS FreeMapRegisters = DmaAdapter->DmaOperations->FreeMapRegisters;
     ASSERT(FreeMapRegisters);
     FreeMapRegisters(DmaAdapter, MapRegisterBase, NumberOfMapRegisters);
 }
 
-FORCEINLINE PHYSICAL_ADDRESS IoMapTransfer(IN PDMA_ADAPTER DmaAdapter,
-					   IN PMDL Mdl,
-					   IN PVOID MapRegisterBase,
-					   IN PVOID CurrentVa,
-					   IN OUT PULONG Length,
-					   IN BOOLEAN WriteToDevice)
+FORCEINLINE NTAPI PHYSICAL_ADDRESS IoMapTransfer(IN PDMA_ADAPTER DmaAdapter,
+						 IN PMDL Mdl,
+						 IN PVOID MapRegisterBase,
+						 IN PVOID CurrentVa,
+						 IN OUT PULONG Length,
+						 IN BOOLEAN WriteToDevice)
 {
     PMAP_TRANSFER MapTransfer = DmaAdapter->DmaOperations->MapTransfer;
     ASSERT(MapTransfer);
@@ -504,9 +504,9 @@ FORCEINLINE PHYSICAL_ADDRESS IoMapTransfer(IN PDMA_ADAPTER DmaAdapter,
  * On x86 and amd64 this is a NOOP because these architectures maintain cache
  * coherency without programmer's manual intervention. */
 #if defined(_M_IX86) || defined(_M_AMD64)
-FORCEINLINE VOID KeFlushIoBuffers(IN PMDL Mdl,
-				  IN BOOLEAN ReadOperation,
-				  IN BOOLEAN DmaOperation)
+FORCEINLINE NTAPI VOID KeFlushIoBuffers(IN PMDL Mdl,
+					IN BOOLEAN ReadOperation,
+					IN BOOLEAN DmaOperation)
 {
     UNREFERENCED_PARAMETER(Mdl);
     UNREFERENCED_PARAMETER(ReadOperation);
@@ -516,35 +516,35 @@ FORCEINLINE VOID KeFlushIoBuffers(IN PMDL Mdl,
 #error "Unsupported architecture"
 #endif
 
-FORCEINLINE PVOID HalAllocateCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
-					  IN ULONG Length,
-					  OUT PPHYSICAL_ADDRESS LogicalAddress,
-					  IN BOOLEAN CacheEnabled)
+FORCEINLINE NTAPI PVOID HalAllocateCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
+						IN ULONG Length,
+						OUT PPHYSICAL_ADDRESS LogicalAddress,
+						IN BOOLEAN CacheEnabled)
 {
     PALLOCATE_COMMON_BUFFER AllocateCommonBuffer = DmaAdapter->DmaOperations->AllocateCommonBuffer;
     ASSERT(AllocateCommonBuffer != NULL);
     return AllocateCommonBuffer(DmaAdapter, Length, LogicalAddress, CacheEnabled);
 }
 
-FORCEINLINE VOID HalFreeCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
-				     IN ULONG Length,
-				     IN PHYSICAL_ADDRESS LogicalAddress,
-				     IN PVOID VirtualAddress,
-				     IN BOOLEAN CacheEnabled)
+FORCEINLINE NTAPI VOID HalFreeCommonBuffer(IN PDMA_ADAPTER DmaAdapter,
+					   IN ULONG Length,
+					   IN PHYSICAL_ADDRESS LogicalAddress,
+					   IN PVOID VirtualAddress,
+					   IN BOOLEAN CacheEnabled)
 {
     PFREE_COMMON_BUFFER FreeCommonBuffer = DmaAdapter->DmaOperations->FreeCommonBuffer;
     ASSERT(FreeCommonBuffer != NULL);
     FreeCommonBuffer(DmaAdapter, Length, LogicalAddress, VirtualAddress, CacheEnabled);
 }
 
-FORCEINLINE ULONG HalReadDmaCounter(IN PDMA_ADAPTER DmaAdapter)
+FORCEINLINE NTAPI ULONG HalReadDmaCounter(IN PDMA_ADAPTER DmaAdapter)
 {
     PREAD_DMA_COUNTER ReadDmaCounter = DmaAdapter->DmaOperations->ReadDmaCounter;
     ASSERT(ReadDmaCounter != NULL);
     return ReadDmaCounter(DmaAdapter);
 }
 
-FORCEINLINE ULONG HalGetDmaAlignment(IN PDMA_ADAPTER DmaAdapter)
+FORCEINLINE NTAPI ULONG HalGetDmaAlignment(IN PDMA_ADAPTER DmaAdapter)
 {
     PGET_DMA_ALIGNMENT GetDmaAlignment = DmaAdapter->DmaOperations->GetDmaAlignment;
     ASSERT(GetDmaAlignment != NULL);
@@ -552,7 +552,7 @@ FORCEINLINE ULONG HalGetDmaAlignment(IN PDMA_ADAPTER DmaAdapter)
 }
 
 NTAPI NTSYSAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
-					     OUT PULONG NumberOfMapRegisters);
+					  OUT PULONG NumberOfMapRegisters);
 
 NTAPI NTSYSAPI VOID HalPutDmaAdapter(IN PDMA_ADAPTER DmaAdapter);
 

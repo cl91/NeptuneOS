@@ -361,7 +361,7 @@ static NTSTATUS FATAddEntry(IN PDEVICE_EXTENSION DeviceExt,
 
     /* nb of entry needed for long name+normal entry */
     NumSlots = (DirContext.LongNameU.Length / sizeof(WCHAR) + 12) / 13 + 1;
-    DPRINT("NameLen= %u, NumSlots =%u\n",
+    DPRINT("NameLen= 0x%zx, NumSlots =%u\n",
 	   DirContext.LongNameU.Length / sizeof(WCHAR), NumSlots);
     Buffer = ExAllocatePoolWithTag((NumSlots - 1) * sizeof(FAT_DIR_ENTRY),
 				   TAG_DIRENT);

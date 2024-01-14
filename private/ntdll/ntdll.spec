@@ -20,6 +20,7 @@
 @ stdcall NtResetEvent(ptr ptr)
 @ stdcall NtClearEvent(ptr)
 @ stdcall NtClose(long)
+@ stdcall NtQuerySystemTime(ptr)
 @ stdcall NtQuerySystemInformation(long long long long)
 @ stdcall NtQueryDirectoryFile(long long ptr ptr ptr ptr long long long ptr long)
 @ stdcall NtQueryInformationFile(ptr ptr ptr long long)
@@ -122,6 +123,11 @@
 @ cdecl strncpy(ptr str long)
 @ cdecl strspn(str str)
 @ cdecl strpbrk(str str)
+@ cdecl isprint(long)
+@ cdecl tolower(long)
+@ cdecl toupper(long)
+@ cdecl towlower(long)
+@ cdecl towupper(long)
 @ cdecl wcslen(wstr)
 @ cdecl wcschr(wstr long)
 @ cdecl wcscpy_s(wstr long wstr)
@@ -139,8 +145,9 @@
 @ varargs swprintf(ptr wstr)
 @ cdecl -arch=i386 -ret64 _alldiv(double double)
 @ cdecl -arch=i386 _except_handler3(ptr ptr ptr ptr)
+@ cdecl -arch=x86_64 __C_specific_handler(ptr long ptr ptr)
 @ cdecl _assert(str str long)
-@ cdecl -arch=x86_64,arm __chkstk()
+@ cdecl -arch=x86_64 __chkstk()
 @ extern -arch=i386 _chkstk
 @ extern RtlpDbgTraceModuleName
 @ extern KiUserExceptionDispatcher

@@ -1,6 +1,8 @@
 #include <string.h>
 
+#ifdef _M_IX86
 #pragma weak memmove
+#endif
 
 /* NOTE: This code is duplicated in memcpy function */
 void * __cdecl memmove(void *dest,const void *src,size_t count)
