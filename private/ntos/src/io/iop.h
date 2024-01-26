@@ -485,13 +485,14 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 			IN PTHREAD Thread,
 			IN PIO_DEVICE_OBJECT DevObj);
 
-FORCEINLINE BOOLEAN IopIsVolumeDevice(IN PIO_DEVICE_OBJECT DevObj)
+FORCEINLINE BOOLEAN IopIsStorageDevice(IN PIO_DEVICE_OBJECT DevObj)
 {
     DEVICE_TYPE Type = DevObj->DeviceInfo.DeviceType;
-    return Type == FILE_DEVICE_DISK || Type == FILE_DEVICE_CD_ROM || Type == FILE_DEVICE_TAPE;
+    return Type == FILE_DEVICE_DISK || Type == FILE_DEVICE_CD_ROM ||
+	Type == FILE_DEVICE_TAPE || Type == FILE_DEVICE_VIRTUAL_DISK;
 }
 
 FORCEINLINE BOOLEAN IopIsVolumeMounted(IN PIO_DEVICE_OBJECT DevObj)
 {
-    return IopIsVolumeDevice(DevObj) && DevObj->Vcb && DevObj->Vcb->Mounted;
+    return DevObj->Vcb && !DevObj->Vcb->MountInProgress;
 }

@@ -58,6 +58,7 @@ NTSTATUS IoInitSystemPhase0()
     RET_ERR(IopCreateDriverType());
     RET_ERR(ObCreateDirectory(DRIVER_OBJECT_DIRECTORY));
     RET_ERR(ObCreateDirectory(DEVICE_OBJECT_DIRECTORY));
+    RET_ERR(ObCreateDirectory(FILE_SYSTEM_OBJECT_DIRECTORY));
 
     return STATUS_SUCCESS;
 }

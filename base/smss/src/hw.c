@@ -38,6 +38,7 @@ static struct {
 } BootDrivers[] = {
     { "null", 0, NULL, NULL, NULL, NULL, NULL },
     { "beep", 0, NULL, NULL, NULL, NULL, NULL },
+    { "fatfs", 0, NULL, NULL, NULL, NULL, NULL },
     { "pnp", 0, NULL, "HTREE", "ROOT", "0", NULL },
     { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters, "Root", "PNP0303", "0", KBDCLASS_GUID },
     { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters, NULL, NULL, NULL, NULL },
@@ -160,5 +161,6 @@ NTSTATUS SmInitHardwareDatabase()
     RET_ERR(SmInitPnp());
     RET_ERR(SmLoadDriver("null"));
     RET_ERR(SmLoadDriver("beep"));
+    RET_ERR(SmLoadDriver("fatfs"));
     return STATUS_SUCCESS;
 }

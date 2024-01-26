@@ -39,7 +39,7 @@ static NTSTATUS FatReadDisk(IN PDEVICE_OBJECT DeviceObject,
 	IoGetCurrentIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
     }
 
-    DPRINT("Calling IO Driver... with irp %p\n", Irp);
+    DPRINT("Calling storage device driver with irp %p\n", Irp);
     NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
 
     if (!NT_SUCCESS(Status)) {
@@ -80,7 +80,7 @@ NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
 	IoGetCurrentIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
     }
 
-    DPRINT("Calling IO Driver... with irp %p\n", Irp);
+    DPRINT("Calling storage device driver with irp %p\n", Irp);
     NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
 
     if (OutputBufferSize) {

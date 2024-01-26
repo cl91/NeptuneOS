@@ -10,6 +10,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     IO_DEVICE_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->OpenFileList);
+    KeInitializeEvent(&Device->MountCompleted, NotificationEvent);
 
     Device->DriverObject = DriverObject;
     InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
@@ -112,25 +113,32 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     ASYNC_BEGIN(State, Locals, {
 	    PIO_FILE_OBJECT FileObject;
-	    PCSTR FileName;
+	    PIO_DEVICE_OBJECT TargetDevice;
 	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
 	});
+    Locals.FileObject = NULL;
+    Locals.IoPacket = NULL;
+    Locals.PendingIrp = NULL;
 
     /* Reject the open if the parse context is not IO_OPEN_CONTEXT */
     if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
 	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
     }
 
-    /* If the device object is a volume object, make sure the file system is mounted. */
+    /* If the device object represents a volume on a storage device, make sure
+     * its file system is mounted. */
     AWAIT_EX(Status, IopMountVolume, State, Locals, Thread, Device);
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
     }
-    assert(!IopIsVolumeDevice(Device) || IopIsVolumeMounted(Device));
+
+    /* If the device object is from the underlying storage driver, we send open IRPs to
+     * its file system volume device object instead. */
+    Locals.TargetDevice = IopIsStorageDevice(Device) ? Device->Vcb->VolumeDevice : Device;
 
     IF_ERR_GOTO(out, Status,
-		IopCreateMasterFileObject(SubPath, Device, &Locals.FileObject));
+		IopCreateMasterFileObject(SubPath, Locals.TargetDevice, &Locals.FileObject));
     assert(Locals.FileObject != NULL);
 
     /* Check if this is Synch I/O and set the sync flag accordingly */
@@ -186,7 +194,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	Locals.IoPacket->Request.CreateMailslot.FileObjectParameters = FileObjectParameters;
     }
 
-    Locals.IoPacket->Request.Device.Object = Device;
+    Locals.IoPacket->Request.Device.Object = Locals.TargetDevice;
     Locals.IoPacket->Request.File.Object = Locals.FileObject;
     IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
     IopQueueIoPacket(Locals.PendingIrp, Thread);
@@ -207,16 +215,16 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     }
 
 out:
-    if (!NT_SUCCESS(Status) && Locals.FileObject != NULL) {
+    if (!NT_SUCCESS(Status) && Locals.FileObject) {
 	ObDereferenceObject(Locals.FileObject);
     }
-    if (Locals.PendingIrp == NULL && Locals.IoPacket != NULL) {
-	IopFreePool(Locals.IoPacket);
-    } else {
+    if (Locals.PendingIrp) {
 	/* This will free the pending IRP and detach the pending irp from the thread.
 	 * At this point the IRP has already been detached from the driver object,
 	 * so we do not need to remove it from the driver IRP queue here. */
 	IopCleanupPendingIrp(Locals.PendingIrp);
+    } else if (Locals.IoPacket) {
+	IopFreePool(Locals.IoPacket);
     }
     ASYNC_END(State, Status);
 }

@@ -2,6 +2,7 @@
 
 #define DRIVER_OBJECT_DIRECTORY		"\\Driver"
 #define DEVICE_OBJECT_DIRECTORY		"\\Device"
+#define FILE_SYSTEM_OBJECT_DIRECTORY	"\\FileSystem"
 
 struct _PROCESS;
 struct _IO_FILE_OBJECT;
@@ -66,19 +67,23 @@ typedef struct _IO_DEVICE_OBJECT {
     struct _IO_DEVICE_OBJECT *AttachedDevice; /* Higher device object immediately above */
     struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
     struct _DEVICE_NODE *DeviceNode; /* Only PDOs in PnP drivers have this. Otherwise NULL. */
-    struct _IO_VOLUME_CONTROL_BLOCK *Vcb; /* Only volume device objects have this. */
+    struct _IO_VOLUME_CONTROL_BLOCK *Vcb; /* Only mounted volume devices can have this. */
     LIST_ENTRY OpenFileList; /* List of opened instances of this device object. */
     POBJECT_DIRECTORY Subobjects;
     IO_DEVICE_INFO DeviceInfo;
+    KEVENT MountCompleted; /* Used by the volume mount logic to signal mount completion. */
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 
 /*
- * Volume control block. This structure represents a mounted volume.
+ * Volume control block. This structure represents a mounted volume and
+ * links the file system volume device object with the underlying storage
+ * driver's device object.
  */
 typedef struct _IO_VOLUME_CONTROL_BLOCK {
-    PIO_DEVICE_OBJECT VolumeDevice; /* We have VolumeDevice->Vcb == this */
-    BOOLEAN Mounted;
+    PIO_DEVICE_OBJECT VolumeDevice; /* Volume device object created by the FS driver. */
+    PIO_DEVICE_OBJECT StorageDevice; /* Device object from the underlying storage driver. */
+    BOOLEAN MountInProgress;
 } IO_VOLUME_CONTROL_BLOCK, *PIO_VOLUME_CONTROL_BLOCK;
 
 /*

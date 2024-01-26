@@ -105,8 +105,11 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 	.DriverImagePath = DriverImagePath,
 	.DriverServicePath = DriverServicePath,
     };
-    /* Check the \Driver object directory for all loaded drivers and
-     * create the driver object if it has not yet been loaded. */
+    /* Check the \Driver object directory for all loaded drivers and create the
+     * driver object if it has not yet been loaded. Note on Windows/ReactOS
+     * systems, device driver objects are placed under \Driver while file
+     * system drivers are placed under \FileSystem. We do not make this
+     * distinction on Neptune OS and place both under \Driver. */
     NTSTATUS Status = ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
 					      DriverObjectDirectory, FALSE,
 					      (POBJECT *)&DriverObject);

@@ -405,6 +405,33 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	break;
     }
 
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+    {
+	switch (Src->Request.MinorFunction) {
+	case IRP_MN_MOUNT_VOLUME:
+	    IoStack->Parameters.MountVolume.Vpb = RtlAllocateHeap(RtlGetProcessHeap(),
+								  HEAP_ZERO_MEMORY,
+								  sizeof(VPB));
+	    if (!IoStack->Parameters.MountVolume.Vpb) {
+		return STATUS_NO_MEMORY;
+	    }
+	    IoStack->Parameters.MountVolume.DeviceObject =
+		IopGetDeviceObjectOrCreate(Src->Request.MountVolume.StorageDevice,
+					   Src->Request.MountVolume.StorageDeviceInfo);
+	    if (!IoStack->Parameters.MountVolume.DeviceObject) {
+		IopFreePool(IoStack->Parameters.MountVolume.Vpb);
+		IoStack->Parameters.MountVolume.Vpb = NULL;
+		return STATUS_INSUFFICIENT_RESOURCES;
+	    }
+	    break;
+	default:
+	    UNIMPLEMENTED;
+	    assert(FALSE);
+	    return STATUS_NOT_IMPLEMENTED;
+	}
+	break;
+    }
+
     case IRP_MJ_PNP:
     {
 	switch (Src->Request.MinorFunction) {
@@ -425,7 +452,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 		IoStack->Parameters.StartDevice.AllocatedResources =
 		    RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
 				    Src->Request.StartDevice.ResourceListSize);
-		if (IoStack->Parameters.StartDevice.AllocatedResources == NULL) {
+		if (!IoStack->Parameters.StartDevice.AllocatedResources) {
 		    return STATUS_NO_MEMORY;
 		}
 		memcpy(IoStack->Parameters.StartDevice.AllocatedResources,
@@ -436,7 +463,9 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 		IoStack->Parameters.StartDevice.AllocatedResourcesTranslated =
 		    RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
 				    Src->Request.StartDevice.TranslatedListSize);
-		if (IoStack->Parameters.StartDevice.AllocatedResourcesTranslated == NULL) {
+		if (!IoStack->Parameters.StartDevice.AllocatedResourcesTranslated) {
+		    IopFreePool(IoStack->Parameters.StartDevice.AllocatedResources);
+		    IoStack->Parameters.StartDevice.AllocatedResources = NULL;
 		    return STATUS_NO_MEMORY;
 		}
 		memcpy(IoStack->Parameters.StartDevice.AllocatedResourcesTranslated,
@@ -468,17 +497,36 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 static inline VOID IopDeleteIrp(PIRP Irp)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    if (IoStack->MajorFunction == IRP_MJ_PNP && IoStack->MinorFunction == IRP_MN_START_DEVICE) {
-	IopFreePool(IoStack->Parameters.StartDevice.AllocatedResources);
-	IopFreePool(IoStack->Parameters.StartDevice.AllocatedResourcesTranslated);
+    switch (IoStack->MajorFunction) {
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+	switch (IoStack->MinorFunction) {
+	case IRP_MN_MOUNT_VOLUME:
+	    if (IoStack->Parameters.MountVolume.Vpb) {
+		IopFreePool(IoStack->Parameters.MountVolume.Vpb);
+	    }
+	    break;
+	}
+	break;
+    case IRP_MJ_PNP:
+	switch (IoStack->MinorFunction) {
+	case IRP_MN_START_DEVICE:
+	    if (IoStack->Parameters.StartDevice.AllocatedResources) {
+		IopFreePool(IoStack->Parameters.StartDevice.AllocatedResources);
+	    }
+	    if (IoStack->Parameters.StartDevice.AllocatedResourcesTranslated) {
+		IopFreePool(IoStack->Parameters.StartDevice.AllocatedResourcesTranslated);
+	    }
+	    break;
+	}
+	break;
     }
     IopFreePool(Irp);
 }
 
-static VOID IopPopulateIoCompletedMessageFromIoStatus(IN PIO_PACKET Dest,
-						      IN NTSTATUS Status,
-						      IN GLOBAL_HANDLE OriginalRequestor,
-						      IN HANDLE IrpIdentifier)
+static VOID IopPopulateIoCompleteMessageFromIoStatus(IN PIO_PACKET Dest,
+						     IN NTSTATUS Status,
+						     IN GLOBAL_HANDLE OriginalRequestor,
+						     IN HANDLE IrpIdentifier)
 {
     assert(Status != STATUS_ASYNC_PENDING);
     assert(Status != STATUS_PENDING);
@@ -494,9 +542,9 @@ static VOID IopPopulateIoCompletedMessageFromIoStatus(IN PIO_PACKET Dest,
     Dest->ClientMsg.IoCompleted.IoStatus.Status = Status;
 }
 
-static BOOLEAN IopPopulateIoCompletedMessageFromLocalIrp(IN PIO_PACKET Dest,
-							 IN PIRP Irp,
-							 IN ULONG BufferSize)
+static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(IN PIO_PACKET Dest,
+							IN PIRP Irp,
+							IN ULONG BufferSize)
 {
     ULONG Size = FIELD_OFFSET(IO_PACKET, ClientMsg.IoCompleted.ResponseData);
     PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(Irp);
@@ -748,6 +796,17 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.DeviceIoControl.InputBufferLength,
 		 Stack->Parameters.DeviceIoControl.Type3InputBuffer);
 	break;
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+	switch (Stack->MinorFunction) {
+	case IRP_MN_MOUNT_VOLUME:
+	    DbgPrint("    FILE-SYSTEM-CONTROL  MOUNT-VOLUME Vpb %p DevObj %p\n",
+		     Stack->Parameters.MountVolume.Vpb,
+		     Stack->Parameters.MountVolume.DeviceObject);
+	    break;
+	default:
+	    DbgPrint("    FILE-SYSTEM-CONTROL  UNKNOWN-MINOR-FUNCTION\n");
+	}
+	break;
     case IRP_MJ_PNP:
 	switch (Stack->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
@@ -855,7 +914,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     }
 }
 
-static VOID IopHandleIoCompletedServerMessage(PIO_PACKET SrvMsg)
+static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
 {
     assert(SrvMsg != NULL);
     assert(SrvMsg->Type == IoPacketTypeServerMessage);
@@ -1121,7 +1180,7 @@ static inline NTSTATUS IopQueueRequestIoPacket(IN PIO_PACKET SrcIoPacket)
 /*
  * This is the main IO packet processing routine of the driver event loop. This
  * routine examines the incoming IO packet buffer and processes them, producing
- * the reply IO packets and send them to the outgoing IO packet buffer.
+ * the reply IO packets and sending them to the outgoing IO packet buffer.
  */
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests)
@@ -1135,19 +1194,21 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	     * IO packet in the incoming buffer. Once this is done, the information
 	     * stored in the incoming IRP buffer is copied into the IRP queue. */
 	    NTSTATUS Status = IopQueueRequestIoPacket(SrcIoPacket);
-	    /* If this IRP cannot be processed (due to say out-of-memory), we send the IoCompleted
-	     * message to inform the server now. We should never run out of outgoing packet
-	     * buffer here since the outgoing buffer has the same size as the incoming buffer. */
+	    /* If this IRP cannot be processed (due to say out-of-memory), we send
+	     * the IoCompleted message to inform the server now. We should never run
+	     * out of outgoing packet buffer here since the outgoing buffer has the
+	     * same size as the incoming buffer. */
 	    if (!NT_SUCCESS(Status)) {
 		/* Since all response packet has the same size we can use the array syntax */
-		IopPopulateIoCompletedMessageFromIoStatus(IopOutgoingIoPacketBuffer + ResponseCount, Status,
-							  SrcIoPacket->Request.OriginalRequestor,
-							  SrcIoPacket->Request.Identifier);
+		IopPopulateIoCompleteMessageFromIoStatus(IopOutgoingIoPacketBuffer+ResponseCount,
+							 Status,
+							 SrcIoPacket->Request.OriginalRequestor,
+							 SrcIoPacket->Request.Identifier);
 		ResponseCount++;
 	    }
 	} else if (SrcIoPacket->Type == IoPacketTypeServerMessage) {
 	    if (SrcIoPacket->ServerMsg.Type == IoSrvMsgIoCompleted) {
-		IopHandleIoCompletedServerMessage(SrcIoPacket);
+		IopHandleIoCompleteServerMessage(SrcIoPacket);
 	    } else {
 		DbgPrint("Invalid server message type %d\n", SrcIoPacket->ServerMsg.Type);
 		assert(FALSE);
@@ -1188,8 +1249,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
     /* Now process the IO work item queue */
     IopProcessWorkItemQueue();
 
-    /* Traverse the pending IRP list to see if any of them was completed by the
-     * IO work item. If it was, move it to the reply list and the cleanup list. */
+    /* Traverse the pending IRP list to see if any of them was completed by the IO
+     * work item, in which case we move it to the reply list and the cleanup list. */
     LoopOverList(Irp, &IopPendingIrpList, IRP, Private.Link) {
 	if (Irp->Completed) {
 	    IopCompleteIrp(Irp);
@@ -1199,7 +1260,7 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
     /* Since the incoming buffer and outgoing buffer have the same size we should never
      * run out of outgoing buffer at this point. */
     assert(ResponseCount <= DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET));
-    ULONG RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount * sizeof(IO_PACKET);
+    ULONG RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount*sizeof(IO_PACKET);
 
     /* Send the IoCompleted IO packet to inform the server of the AddDevice request completion */
     PIO_PACKET DestIrp = IopOutgoingIoPacketBuffer + ResponseCount;
@@ -1207,8 +1268,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	if (RemainingBufferSize < sizeof(IO_PACKET)) {
 	    break;
 	}
-	IopPopulateIoCompletedMessageFromIoStatus(DestIrp, Req->Status, Req->OriginalRequestor,
-						  Req->Identifier);
+	IopPopulateIoCompleteMessageFromIoStatus(DestIrp, Req->Status, Req->OriginalRequestor,
+						 Req->Identifier);
 	RemoveEntryList(&Req->Link);
 	IopFreePool(Req);
 	DestIrp++;
@@ -1221,7 +1282,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	/* This will become FALSE if remaining size is too small for the IO packet */
 	BOOLEAN Continue = FALSE;
 	if (Irp->Completed) {
-	    Continue = IopPopulateIoCompletedMessageFromLocalIrp(DestIrp, Irp, RemainingBufferSize);
+	    Continue = IopPopulateIoCompleteMessageFromLocalIrp(DestIrp, Irp,
+								RemainingBufferSize);
 	} else if (Irp->Private.OriginalRequestor != 0) {
 	    assert(Irp->Private.ForwardedTo != NULL);
 	    assert(Irp->Private.ForwardedTo->DriverObject == NULL);

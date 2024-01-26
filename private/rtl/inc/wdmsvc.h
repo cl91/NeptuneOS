@@ -218,6 +218,10 @@ typedef struct _IO_REQUEST_PARAMETERS {
 	    CHAR Data[]; /* The translated list always follows
 			  * the non-translated list */
 	} StartDevice;
+	struct {
+	    GLOBAL_HANDLE StorageDevice;
+	    IO_DEVICE_INFO StorageDeviceInfo;
+	} MountVolume;
     };
 } IO_REQUEST_PARAMETERS, *PIO_REQUEST_PARAMETERS;
 
@@ -433,6 +437,16 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x\n",
 		     IoPacket->Request.MajorFunction == IRP_MJ_DEVICE_CONTROL ? "" : "INTERNAL-",
 		     IoPacket->Request.DeviceIoControl.IoControlCode);
+	    break;
+	case IRP_MJ_FILE_SYSTEM_CONTROL:
+	    switch (IoPacket->Request.MinorFunction) {
+	    case IRP_MN_MOUNT_VOLUME:
+		DbgPrint("    FILE-SYSTEM-CONTROL  MOUNT-VOLUME  StorageDeviceHandle 0x%zx\n",
+			 IoPacket->Request.MountVolume.StorageDevice);
+		break;
+	    default:
+		DbgPrint("    FILE-SYSTEM-CONTROL  UNKNOWN-MINOR-CODE\n");
+	    }
 	    break;
 	case IRP_MJ_PNP:
 	    switch (IoPacket->Request.MinorFunction) {

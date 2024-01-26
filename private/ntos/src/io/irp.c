@@ -190,8 +190,8 @@ static VOID IopUnmapDriverIrpBuffers(IN PPENDING_IRP PendingIrp)
     PendingIrp->IoPacket->Request.OutputBuffer = PendingIrp->OutputBuffer;
 }
 
-static NTSTATUS IopHandleIoCompletedClientMessage(IN PIO_PACKET Response,
-						  IN PIO_DRIVER_OBJECT DriverObject)
+static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
+						 IN PIO_DRIVER_OBJECT DriverObject)
 {
     GLOBAL_HANDLE OriginalRequestor = Response->ClientMsg.IoCompleted.OriginalRequestor;
     HANDLE IrpIdentifier = Response->ClientMsg.IoCompleted.Identifier;
@@ -518,9 +518,9 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	case IoPacketTypeClientMessage:
 	    switch (Response->ClientMsg.Type) {
 	    case IoCliMsgIoCompleted:
-		Status = IopHandleIoCompletedClientMessage(Response, DriverObject);
+		Status = IopHandleIoCompleteClientMessage(Response, DriverObject);
 		if (!NT_SUCCESS(Status)) {
-		    DbgTrace("IopHandleIoCompletedClientMessage returned error status 0x%x\n",
+		    DbgTrace("IopHandleIoCompleteClientMessage returned error status 0x%x\n",
 			     Status);
 		}
 		break;
