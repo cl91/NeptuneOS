@@ -110,8 +110,6 @@ To create boot floopies, type
 ```
 ./mkfloopy.sh [amd64] [release]
 ```
-You might need to type your password because the script needs to invoke `sudo`.
-eVeRYtHiNg iS a fILe!!!
 
 ### Cross-compiling
 We use the LLVM toolchain so cross-compiling in theory should simply work without any

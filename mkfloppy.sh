@@ -35,15 +35,10 @@ fi
 cd "$(dirname "$0")"
 cd $BUILDDIR
 FLOPPYIMG=floppy.img
-FLOPPYOUT=floppyimgroot
 if [[ -e $FLOPPYIMG ]]; then
     rm $FLOPPYIMG
 fi
-if [[ -e $FLOPPYOUT ]]; then
-    rm -rf $FLOPPYOUT
-fi
 SYSLINUXCFGTMP=$(mktemp /tmp/syslinux.XXXXXXXX)
-mkdir -p $FLOPPYOUT
 mkfs.msdos -C $FLOPPYIMG 1440
 syslinux --install $FLOPPYIMG
 cat <<EOF > $SYSLINUXCFGTMP
@@ -78,15 +73,9 @@ NTOSTMP=$(mktemp /tmp/neptuneos-ntos.XXXXXXXX)
 gzip -c $IMAGEDIR/$KERNEL > $KERNELTMP
 gzip -c $IMAGEDIR/$NTOS > $NTOSTMP
 
-echo "This script will now ask for your password, because eVeRyThInG iS a fIlE"
-sudo mount $FLOPPYIMG $FLOPPYOUT
-sudo cp $KERNELTMP $FLOPPYOUT/kernel
-sudo cp $NTOSTMP $FLOPPYOUT/ntos
-sudo cp $SYSLINUX_FILES/mboot.c32 $FLOPPYOUT
-sudo cp $SYSLINUX_FILES/menu.c32 $FLOPPYOUT
-sudo cp $SYSLINUX_FILES/libutil.c32 $FLOPPYOUT
-sudo cp $SYSLINUX_FILES/libcom32.c32 $FLOPPYOUT
-sudo cp $SYSLINUXCFGTMP $FLOPPYOUT/syslinux.cfg
-sudo umount $FLOPPYOUT
+mcopy -i $FLOPPYIMG $KERNELTMP ::kernel
+mcopy -i $FLOPPYIMG $NTOSTMP ::ntos
+mcopy -i $FLOPPYIMG $SYSLINUXCFGTMP ::syslinux.cfg
+mcopy -i $FLOPPYIMG $SYSLINUX_FILES/mboot.c32 $SYSLINUX_FILES/menu.c32 $SYSLINUX_FILES/libutil.c32 $SYSLINUX_FILES/libcom32.c32 ::
 
 rm $KERNELTMP $NTOSTMP $SYSLINUXCFGTMP
