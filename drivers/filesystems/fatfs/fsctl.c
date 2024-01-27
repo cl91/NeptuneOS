@@ -24,8 +24,8 @@ static NTSTATUS FatReadDisk(IN PDEVICE_OBJECT DeviceObject,
 			    OUT PUCHAR Buffer,
 			    IN BOOLEAN OverrideVerify)
 {
-    DPRINT("FatReadDisk(DeviceObject %p, Offset %I64x, Length %u, Buffer %p)\n",
-	   DeviceObject, ReadOffset->QuadPart, ReadLength, Buffer);
+    DPRINT("FatReadDisk(DeviceObject %p, Offset 0x%llx, Length 0x%x, Buffer %p)\n",
+	   DeviceObject, ReadOffset ? ReadOffset->QuadPart : 0ULL, ReadLength, Buffer);
 
     IO_STATUS_BLOCK IoStatus;
     PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer,

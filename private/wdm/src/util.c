@@ -127,6 +127,13 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 					 IN BOOLEAN InternalDeviceIoControl,
 					 IN PIO_STATUS_BLOCK IoStatusBlock)
 {
+    if ((InputBuffer && !InputBufferLength) || (!InputBuffer && InputBufferLength)) {
+	return NULL;
+    }
+    if ((OutputBuffer && !OutputBufferLength) || (!OutputBuffer && OutputBufferLength)) {
+	return NULL;
+    }
+
     /* Allocate IRP */
     PIRP Irp = IoAllocateIrp();
     if (!Irp)
@@ -170,6 +177,10 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 					 IN ULONG Length,
 					 IN PLARGE_INTEGER StartingOffset)
 {
+    if ((Buffer && !Length) || (!Buffer && Length)) {
+	return NULL;
+    }
+
     /* Allocate IRP */
     PIRP Irp = IoAllocateIrp();
     if (!Irp)

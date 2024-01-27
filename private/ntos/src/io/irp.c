@@ -93,7 +93,7 @@ static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 /*
  * Before calling this routine, the IO buffers in the IO_PACKET are
  * pointers in the requestor address space. After this routine returns
- * with SUCCESS status, the IO buffers in the IO_PACKET are update to
+ * with SUCCESS status, the IO buffers in the IO_PACKET are updated to
  * the pointers in the target driver address space, and the original
  * IO buffer pointers are saved into the PENDING_IRP struct.
  */
@@ -118,6 +118,12 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
     MWORD InputBufferLength = PendingIrp->IoPacket->Request.InputBufferLength;
     MWORD OutputBuffer = PendingIrp->IoPacket->Request.OutputBuffer;
     MWORD OutputBufferLength = PendingIrp->IoPacket->Request.OutputBufferLength;
+    if ((InputBuffer && !InputBufferLength) || (!InputBuffer && InputBufferLength)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    if ((OutputBuffer && !OutputBufferLength) || (!OutputBuffer && OutputBufferLength)) {
+	return STATUS_INVALID_PARAMETER;
+    }
     PIO_DRIVER_OBJECT DriverObject = PendingIrp->IoPacket->Request.Device.Object->DriverObject;
     assert(DriverObject != NULL);
     MWORD DriverInputBuffer = 0;
@@ -551,7 +557,8 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	    Status = STATUS_INVALID_PARAMETER;
 	}
 	/* If the routines above returned error, there isn't a lot we can do
-	 * other than simply ignoring the error and continue processing. */
+	 * other than simply ignoring the error and continue processing.
+	 * On debug build we will assert so we can know what's going on. */
 	assert(NT_SUCCESS(Status));
 	Response = (PIO_PACKET)((MWORD)Response + Response->Size);
     }
