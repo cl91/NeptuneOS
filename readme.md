@@ -18,7 +18,7 @@ executables provided that our implementation of the NT Native API is sufficientl
 We should also be able to achieve a high degree of source code portability with Windows
 device drivers and file system drivers, although we do not aim for complete, line-for-line
 source code compatibility due to the architectural differences with Windows/ReactOS that
-make this gole non-realistic. Please see the (Documentation)[#documentation] section for
+make this gole non-realistic. Please see the [Documentation](#documentations) section for
 more information.
 
 ## Project Status
@@ -32,7 +32,7 @@ a bit slow because we generate too much debug logs. You can turn these off in th
 code (see `private/ntos/inc`). We also include a `beep.sys` driver which makes an
 annoying sound on the PC speaker. You will need to unmute to hear it (especially if
 you use `pulseaudio`). All drivers run in user space! The entire system fits in a
-floppy and can be downloaded from [Release v0.1.0001](https://github.com/cl91/NeptuneOS/releases/tag/v0.1.0001). You can also build it yourself. See the section on (Building)[#building].
+floppy and can be downloaded from [Release v0.1.0001](https://github.com/cl91/NeptuneOS/releases/tag/v0.1.0001). You can also build it yourself. See the section on [Building](#building).
 
 ## Minimal System Requirements
 
