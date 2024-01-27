@@ -115,9 +115,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	      "completing with STATUS_UNSUCCESSFUL\n");
 	Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
 	Irp->IoStatus.Information = 0;
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	StopMotor(DriveInfo->ControllerInfo);
-	return;
+	goto out;
     }
 
     if (DiskChanged) {
@@ -130,9 +128,29 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	if (ResetChangeFlag(DriveInfo) == STATUS_NO_MEDIA_IN_DEVICE)
 	    Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
 
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	StopMotor(DriveInfo->ControllerInfo);
-	return;
+	goto out;
+    }
+
+    /*
+     * Figure out the media type, if we don't know it already
+     */
+    if (DriveInfo->DiskGeometry.MediaType == Unknown) {
+	NTSTATUS Status = RWDetermineMediaType(DriveInfo, FALSE);
+	if (!NT_SUCCESS(Status)) {
+	    WARN_(FLOPPY, "DeviceIoctl(): unable to determine media type, "
+		  "error = 0x%x\n", Status);
+	    Irp->IoStatus.Status = Status;
+	    Irp->IoStatus.Information = 0;
+	    goto out;
+	}
+
+	if (DriveInfo->DiskGeometry.MediaType == Unknown) {
+	    WARN_(FLOPPY, "DeviceIoctl(): Unknown media in drive; "
+		  "completing with STATUS_UNRECOGNIZED_MEDIA\n");
+	    Irp->IoStatus.Status = STATUS_UNRECOGNIZED_MEDIA;
+	    Irp->IoStatus.Information = 0;
+	    goto out;
+	}
     }
 
     switch (Code) {
@@ -202,6 +220,12 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	/* This still works right even if DriveInfo->DiskGeometry->MediaType = Unknown */
 	memcpy(OutputBuffer, &DriveInfo->DiskGeometry, sizeof(DISK_GEOMETRY));
 	Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
+	DPRINT("Disk Geometry:\n");
+	DPRINT("Cylinders         0x%llx\n", DriveInfo->DiskGeometry.Cylinders.QuadPart);
+	DPRINT("MediaType           %d\n", DriveInfo->DiskGeometry.MediaType);
+	DPRINT("TracksPerCylinder   %d\n", DriveInfo->DiskGeometry.TracksPerCylinder);
+	DPRINT("SectorsPerTrack     %d\n", DriveInfo->DiskGeometry.SectorsPerTrack);
+	DPRINT("BytesPerSector      %d\n", DriveInfo->DiskGeometry.BytesPerSector);
     }
     break;
 
@@ -272,9 +296,9 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	break;
     }
 
+out:
     INFO_(FLOPPY, "ioctl: completing with status 0x%x\n",
 	  Irp->IoStatus.Status);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
     StopMotor(DriveInfo->ControllerInfo);
 }

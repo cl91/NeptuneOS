@@ -122,6 +122,12 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	DPRINT("FatBlockDeviceIoControl failed (%x)\n", Status);
 	return Status;
     }
+    DPRINT("Disk Geometry:\n");
+    DPRINT("Cylinders         0x%llx\n", DiskGeometry.Cylinders.QuadPart);
+    DPRINT("MediaType           %d\n", DiskGeometry.MediaType);
+    DPRINT("TracksPerCylinder   %d\n", DiskGeometry.TracksPerCylinder);
+    DPRINT("SectorsPerTrack     %d\n", DiskGeometry.SectorsPerTrack);
+    DPRINT("BytesPerSector      %d\n", DiskGeometry.BytesPerSector);
 
     FATINFO FatInfo = { .FixedMedia = (DiskGeometry.MediaType == FixedMedia) };
     BOOLEAN PartitionInfoIsValid = FALSE;
@@ -139,9 +145,9 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	}
 
 	DPRINT("Partition Information:\n");
-	DPRINT("StartingOffset      %I64x\n",
+	DPRINT("StartingOffset      0x%llx\n",
 	       PartitionInfo.StartingOffset.QuadPart / 512);
-	DPRINT("PartitionLength     %I64x\n",
+	DPRINT("PartitionLength     0x%llx\n",
 	       PartitionInfo.PartitionLength.QuadPart / 512);
 	DPRINT("HiddenSectors       %u\n", PartitionInfo.HiddenSectors);
 	DPRINT("PartitionNumber     %u\n", PartitionInfo.PartitionNumber);
