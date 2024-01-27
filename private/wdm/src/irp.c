@@ -260,12 +260,26 @@ static NTSTATUS IopMarshalIoctlBuffers(IN PIRP Irp,
     return STATUS_SUCCESS;
 }
 
+/* Note this function is called in two cases: (1) when the driver
+ * completes an IOCTL IRP sent from a foreign driver, and (2) when
+ * the driver completes an IOCTL IRP sent within the same driver
+ * address space. In the former case we need to properly copy the
+ * response of the driver back to the server-bound IoPacket and
+ * free the intermediate buffer we have allocated. In the latter
+ * case, whether we are completing an IOCTL IRP forwarded to a
+ * foreign driver or sent back to this driver (including all library
+ * drivers loded within the same address space), we do not allocate
+ * any intermediate buffer and always assume the NEITHER IO transfer
+ * type. */
 static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
 				     IN ULONG Ioctl,
 				     IN ULONG OutputBufferLength)
 {
+    if (!Irp->Private.OriginalRequestor) {
+	return;
+    }
     if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED) {
-	/* Copy the system buffer back to the user output buffer if needed */
+	/* Copy the system buffer back to the user output buffer if needed. */
 	if (OutputBufferLength != 0) {
 	    assert(Irp->Private.OutputBuffer != NULL);
 	    memcpy(Irp->Private.OutputBuffer, Irp->AssociatedIrp.SystemBuffer,
@@ -294,6 +308,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 				 IoStack->Parameters.DeviceIoControl.OutputBufferLength);
 	break;
     }
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
     case IRP_MJ_CREATE:
     case IRP_MJ_READ:
     case IRP_MJ_PNP:
@@ -735,27 +750,37 @@ static BOOLEAN IopPopulateIoRequestMessage(IN PIO_PACKET Dest,
 	ULONG Ioctl = IoStack->Parameters.DeviceIoControl.IoControlCode;
 	ULONG InputBufferLength = IoStack->Parameters.DeviceIoControl.InputBufferLength;
 	ULONG OutputBufferLength = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
-	PVOID InputBuffer = NULL;
-	PVOID OutputBuffer = NULL;
-	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED) {
-	    InputBuffer = Irp->AssociatedIrp.SystemBuffer;
-	    OutputBuffer = Irp->AssociatedIrp.SystemBuffer;
-	} else if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
-	    InputBuffer = IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
-	    OutputBuffer = Irp->UserBuffer;
-	} else {
-	    /* Direct IO: METHOD_IN_DIRECT or METHOD_OUT_DIRECT */
-	    InputBuffer = Irp->AssociatedIrp.SystemBuffer;
-	    if (OutputBufferLength != 0) {
-		assert(Irp->MdlAddress != NULL);
-		OutputBuffer = Irp->MdlAddress->MappedSystemVa;
-	    }
-	}
+	/* Note here as opposed to Windows/ReactOS, regardless of the IO transfer type
+	 * of the IOCTL code, we always use Type3InputBuffer to store the input buffer
+	 * address and UserBuffer to store the output buffer (see util.c, function
+	 * IoBuildDeviceIoControlRequest). This eliminates an unnecessary buffer
+	 * allocation since the system will take care of properly copying/mapping
+	 * the IO buffers to the target driver address space. */
+	PVOID InputBuffer = IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
+	PVOID OutputBuffer = Irp->UserBuffer;
 	Dest->Request.InputBuffer = (MWORD)InputBuffer;
 	Dest->Request.OutputBuffer = (MWORD)OutputBuffer;
 	Dest->Request.InputBufferLength = InputBufferLength;
 	Dest->Request.OutputBufferLength = OutputBufferLength;
 	Dest->Request.DeviceIoControl.IoControlCode = Ioctl;
+	break;
+    }
+    case IRP_MJ_READ:
+    {
+	/* Likewise, for READ IRP we always assume NEITHER IO. */
+	Dest->Request.InputBuffer = (MWORD)Irp->UserBuffer;
+	Dest->Request.InputBufferLength = IoStack->Parameters.Read.Length;
+	Dest->Request.Read.Key = IoStack->Parameters.Read.Key;
+	Dest->Request.Read.ByteOffset = IoStack->Parameters.Read.ByteOffset;
+	break;
+    }
+    case IRP_MJ_WRITE:
+    {
+	/* Always assume NEITHER IO. See above. */
+	Dest->Request.OutputBuffer = (MWORD)Irp->UserBuffer;
+	Dest->Request.OutputBufferLength = IoStack->Parameters.Write.Length;
+	Dest->Request.Write.Key = IoStack->Parameters.Write.Key;
+	Dest->Request.Write.ByteOffset = IoStack->Parameters.Write.ByteOffset;
 	break;
     }
     default:
@@ -844,6 +869,8 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     DbgTrace("Dumping IRP %p type %d size %d\n", Irp, Irp->Type, Irp->Size);
     DbgPrint("    MdlAddress %p Flags 0x%08x IO Stack Location %p\n",
 	     Irp->MdlAddress, Irp->Flags, IoGetCurrentIrpStackLocation(Irp));
+    DbgPrint("    System Buffer %p User Buffer %p\n",
+	     Irp->AssociatedIrp.SystemBuffer, Irp->UserBuffer);
     DbgPrint("    IO Status Block Status 0x%08x Information %p\n",
 	     Irp->IoStatus.Status, (PVOID) Irp->IoStatus.Information);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p OutputBuffer %p\n",
@@ -909,7 +936,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     /* If the IRP originates from the server, add the IRP to the
      * list of IRPs to reply to the server */
     assert(!IrpIsInReplyList(Irp));
-    if (Irp->Private.OriginalRequestor != 0) {
+    if (Irp->Private.OriginalRequestor) {
 	InsertTailList(&IopReplyIrpList, &Irp->Private.ReplyListEntry);
     }
 }
@@ -925,6 +952,8 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
      * (asynchronously) pending IRPs and IRPs suspended in a coroutine stack) */
     LoopOverList(Irp, &IopPendingIrpList, IRP, Private.Link) {
 	if (Irp->Private.OriginalRequestor == Orig && Irp->Private.Identifier == Id) {
+	    /* Fill the IO status block of the IRP with the result in the server message */
+	    Irp->IoStatus = SrvMsg->ServerMsg.IoCompleted.IoStatus;
 	    if (Irp->Private.CoroutineStackTop == NULL) {
 		/* If the IRP is not suspended in a coroutine, we should run the IO
 		 * completion routine. If it returns StopCompletion, IRP completion
@@ -996,6 +1025,7 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
 static VOID IopProcessIrpQueue()
 {
     LoopOverList(Irp, &IopIrpQueue, IRP, Private.Link) {
+	DbgTrace("Processing IRP from IRP queue:\n");
 	IoDbgDumpIrp(Irp);
 	NTSTATUS Status = STATUS_NTOS_BUG;
 	IopCurrentObject = Irp;
@@ -1207,6 +1237,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 		ResponseCount++;
 	    }
 	} else if (SrcIoPacket->Type == IoPacketTypeServerMessage) {
+	    DbgTrace("Got IoPacket type Server Message\n");
+	    IoDbgDumpIoPacket(SrcIoPacket, TRUE);
 	    if (SrcIoPacket->ServerMsg.Type == IoSrvMsgIoCompleted) {
 		IopHandleIoCompleteServerMessage(SrcIoPacket);
 	    } else {
@@ -1410,7 +1442,10 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
     assert(IoStack->DeviceObject != NULL);
     if (IopDeviceObjectIsLocal(DeviceObject)) {
 	/* If we are forwarding this IRP to a local device object, just call
-	 * the dispatch routine directly. */
+	 * the dispatch routine directly. Note drivers should generally avoid
+	 * doing this. In particular, for IOCTL IRPs forwarded to local device
+	 * objects, the IO tranfer type of the IOCTL code is ignored and we
+	 * always assume NEITHER IO. */
 	PDRIVER_DISPATCH DispatchRoutine = IopDriverObject.MajorFunction[IoStack->MajorFunction];
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	PDEVICE_OBJECT OldDeviceObject = IoStack->DeviceObject;

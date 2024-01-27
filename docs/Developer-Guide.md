@@ -11,34 +11,47 @@ We hope to demonstrate that with modern progress in microkernel design it is pos
 to realize the original NT design as an object oriented, message-passing based,
 client-server style microkernel OS.
 
+### Compatibility with Windows and ReactOS
+In theory we should be able to achieve binary compatibility with native Windows
+executables provided that our implementation of the NT Native API is sufficiently faithful.
+
+The main obstacle of achieving binary compatibility of kernel drivers is
+that many Windows kernel drivers do not follow the standard Windows driver communication
+protocol (ie. passing IRPs when you need to call another driver) and instead just pass
+pointers around and call into other drivers directly. In Neptune OS unless it's a
+driver-minidriver pair we always run "kernel" drivers in their separate processes so it
+is not possible to do that.
+
+Explain why complete, line-for-line driver source code compatibility is a non-goal.
+
 ## Source Directory Organization
 
-| Directory		 | Description			   |
+| Directory              | Description                     |
 | ---------------------  | ------------------------------- |
-| public		 | Public headers                  |
-| public/crt/inc	 | C Runtime Library headers	   |
-| public/ndk/inc	 | NT Client public headers	   |
-| public/ddk/inc	 | Device driver public headers	   |
-| public/sdk/inc	 | Win32 public headers		   |
-| private		 | seL4 root task and stub dlls	   |
-| private/ntos		 | NT Executive (root task)  	   |
-| private/ntdll		 | Native API stub dll		   |
-| private/wdm		 | Device driver interface dll	   |
-| base			 | Base native NT clients	   |
-| base/smss		 | Session Manager Subsystem	   |
-| base/ntcmd             | Native Command Prompt	   |
+| public                 | Public headers                  |
+| public/crt/inc         | C Runtime Library headers       |
+| public/ndk/inc         | NT Client public headers        |
+| public/ddk/inc         | Device driver public headers    |
+| public/sdk/inc         | Win32 public headers            |
+| private                | seL4 root task and stub dlls    |
+| private/ntos           | NT Executive (root task)        |
+| private/ntdll          | Native API stub dll             |
+| private/wdm            | Device driver interface dll     |
+| base                   | Base native NT clients          |
+| base/smss              | Session Manager Subsystem       |
+| base/ntcmd             | Native Command Prompt           |
 | drivers                | Device drivers                  |
 | drivers/base           | Base device drivers             |
 | drivers/base/pnp       | PNP root enumerator             |
-| drivers/filesystems    | File system drivers		   |
-| ^.../fatfs		 | FAT file system driver	   |
+| drivers/filesystems    | File system drivers             |
+| ^.../fatfs             | FAT file system driver          |
 | drivers/input          | Input device drivers            |
 | drivers/input/kbdclass | Keyboard class driver           |
 | drivers/input/i8042prt | i8042 port driver               |
 | drivers/storage        | Storage device drivers          |
 | drivers/storage/fdc    | Floppy device driver            |
-| win32			 | Win32 Subsystem (native exes)   |
-| shell			 | Win32 applications (win32 exes) |
+| win32                  | Win32 Subsystem (native exes)   |
+| shell                  | Win32 applications (win32 exes) |
 
 All code that makes seL4 calls and refers to seL4 headers should go under `private`.
 No code outside `private` can make any seL4 system calls or include any seL4 headers.
@@ -104,6 +117,27 @@ side. Client drivers do not need any special code to implement them.
 ### Driver Porting Guide
 
 Summary of issues mentioned above. Guide to porting drivers from ReactOS and Windows WDM.
+
+#### General Issues
+
+IO Transfer Type:
+Elaborate on how our architecture (running drivers in separate address spaces)
+changes certain ways in which IO transfer types are implemented.
+
+You should always call `IoBuildSynchronousFsdRequest`, `IoBuildAsynchronousFsdRequest`,
+and `IoBuildDeviceIoControlRequest` if you are generating an IRP within a driver
+process and forwarding it to another driver (or yourself). Do NOT build IRPs yourself
+as you may get the IO buffer settings wrong.
+
+Sending IRP to itself:
+Drivers should generally avoid sending IRPs to device objects created by itself and
+should simply call the relevant function directly. This avoids the overhead of allocating
+and freeing the IRP. In particular, for IRPs generated within the same driver address
+space, the IO transfer type is ignored and NEITHER IO is always assumed. This is
+especially important for driver-minidriver pairs since a driver-minidriver pair is
+loaded in the same address space, so sending an IRP from the minidriver to the
+library driver will always have NEITHER IO as the IO transfer type, regardless of
+the flags in the device object or the IOCTL code.
 
 #### Low-level Device Drivers
 

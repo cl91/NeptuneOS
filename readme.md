@@ -5,24 +5,21 @@ Microsoft calls the "NT Executive", the upper layer of the Windows kernel `NTOSK
 as a user process under the seL4 microkernel. The NT Executive implements the so-called
 NT Native API, the native system call interface of Windows upon which the more familiar
 Win32 API is built. These are exposed to the user mode via stub functions in `NTDLL.DLL`
-(a somewhat redundant name if you ask me) with names such as `NtCreateProcess`. The NT
-Executive is also responsible for the Windows kernel driver interface (known as the
-Windows driver model), which includes functions like `IoConnectInterrupt` and `IoCallDriver`.
-On Windows these are loaded into kernel mode and linked with the `NTOSKRNL.EXE` image.
-On Neptune OS, we run all the Windows kernel driver in user mode and they communicate
-with the NT Executive process via standard seL4 IPC primitives.
+with names such as `NtCreateProcess`. The NT Executive is also responsible for exposing
+a programming interface to device drivers. Said interface includes functions like
+`IoConnectInterrupt` and `IoCallDriver`. Our architecture enables device drivers to
+run in separate userspace processes and communicate with the NT Executive process via
+standard seL4 IPC primitives.
 
 The eventual goal of the Neptune OS project is to implement enough NT semantics such
 that a ReactOS user land can be ported under Neptune OS, as well as most ReactOS kernel
 drivers. In theory we should be able to achieve binary compatibility with native Windows
 executables provided that our implementation of the NT Native API is sufficiently faithful.
-We should also be able to achieve a high degree of source code compatibility with Windows
-kernel drivers. The main obstacle of achieving binary compatibility of kernel drivers is
-that many Windows kernel drivers do not follow the standard Windows driver communication
-protocol (ie. passing IRPs when you need to call another driver) and instead just pass
-pointers around and call into other drivers directly. In Neptune OS unless it's a
-driver-minidriver pair we always run "kernel" drivers in their separate processes so it
-is not possible to do that.
+We should also be able to achieve a high degree of source code portability with Windows
+device drivers and file system drivers, although we do not aim for complete, line-for-line
+source code compatibility due to the architectural differences with Windows/ReactOS that
+make this gole non-realistic. Please see the (Documentation)[#documentation] section for
+more information.
 
 ## Project Status
 

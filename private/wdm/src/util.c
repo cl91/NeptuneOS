@@ -147,8 +147,10 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
     StackPtr->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
     StackPtr->Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
 
-    /* Note: unlink Windows/ReactOS we simply store the buffer pointers
-     * since seL4 guarantees that mapped page access is always safe. */
+    /* Note unlike Windows/ReactOS we simply store the buffer pointers
+     * regardless of IO transfer type (buffered IO, direct IO, neither IO)
+     * of the IOCTL code. Copying/mapping the IO buffers is taken care of
+     * automatically by the system. */
     Irp->UserBuffer = OutputBuffer;
     StackPtr->Parameters.DeviceIoControl.Type3InputBuffer = InputBuffer;
 
@@ -182,7 +184,9 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
     /* Write the Major function and then deal with it */
     StackPtr->MajorFunction = (UCHAR) MajorFunction;
 
-    /* Set the user buffer pointer if the IRP has one */
+    /* Set the user buffer pointer if the IRP has one. Note again just like
+     * the case in IoBuildDeviceIoControlRequest, unlike Windows/ReactOS
+     * we ignore the IO transfer type and always assume NEITHER IO. */
     if ((MajorFunction != IRP_MJ_FLUSH_BUFFERS) && (MajorFunction != IRP_MJ_PNP) &&
 	(MajorFunction != IRP_MJ_SHUTDOWN) && (MajorFunction != IRP_MJ_POWER)) {
 	Irp->UserBuffer = Buffer;
