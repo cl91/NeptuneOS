@@ -233,3 +233,11 @@ with DO_VERIFY_REQUIRED so it knows to complete all future IRPs with STATUS_VERI
 logic), until such time that it receives a CHECK_VERIFY Ioctl or VERIFY_VOLUME Fsctl,
 at which point it can clear the DO_VERIFY_REQUIRED and proceed with normal IO
 proceeding.
+
+Cache Manager API
+IoCreateStreamFileObject
+Remove the FileObject parameter as it is never used in ReactOS code base so we have
+decided to remove it entirely. A non-NULL FileObject allows the client driver to
+perform cached IO on file metadata such as the security descriptor as if it is a
+file stream. This is not used by any driver in ReactOS so we won't bother supporting
+it.

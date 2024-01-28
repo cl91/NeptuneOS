@@ -155,8 +155,7 @@ NTAPI NTSYSAPI NTSTATUS IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject);
 /*
  * Stream File Object Creation Routine
  */
-NTAPI NTSYSAPI PFILE_OBJECT IoCreateStreamFileObject(IN OPTIONAL PFILE_OBJECT FileObject,
-						     IN OPTIONAL PDEVICE_OBJECT DeviceObject);
+NTAPI NTSYSAPI PFILE_OBJECT IoCreateStreamFileObject(IN PDEVICE_OBJECT DeviceObject);
 
 /*
  * Access Control Types

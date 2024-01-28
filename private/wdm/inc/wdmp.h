@@ -1,6 +1,5 @@
 #pragma once
 
-#include <nt.h>
 #include <wdm.h>
 #include <ntifs.h>
 #include <hal.h>
@@ -22,9 +21,9 @@ extern PCSTR IopDbgTraceModuleName;
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
 
 #define IopAllocatePoolEx(Ptr, Type, Size, OnError)		\
-    Type *Ptr = (Type *) RtlAllocateHeap(RtlGetProcessHeap(),	\
-					 HEAP_ZERO_MEMORY,	\
-					 Size);			\
+    Type *Ptr = (Type *)RtlAllocateHeap(RtlGetProcessHeap(),	\
+					HEAP_ZERO_MEMORY,	\
+					Size);			\
     if (Ptr == NULL) {						\
 	OnError;						\
 	return STATUS_NO_MEMORY;				\
@@ -185,6 +184,13 @@ VOID HalpInitDma(VOID);
 /* event.c */
 extern LIST_ENTRY IopEventList;
 
+/* file.c */
+NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
+			     IN PFILE_OBJECT_CREATE_PARAMETERS Params,
+			     IN GLOBAL_HANDLE Handle,
+			     OUT PFILE_OBJECT *pFileObject);
+VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject);
+
 /* irp.c */
 extern PIO_PACKET IopIncomingIoPacketBuffer;
 extern PIO_PACKET IopOutgoingIoPacketBuffer;
@@ -224,7 +230,26 @@ VOID IopProcessWorkItemQueue();
 BOOLEAN IopWorkItemIsInSuspendedList(IN PIO_WORKITEM Item);
 VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);
 
-static inline BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
+FORCEINLINE BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
 {
     return DeviceObject->DriverObject == &IopDriverObject;
+}
+
+/*
+ * Search the list of all files created by this driver and return
+ * the one matching the given GLOBAL_HANDLE. Returns NULL if not found.
+ */
+FORCEINLINE PFILE_OBJECT IopGetFileObject(IN GLOBAL_HANDLE Handle)
+{
+    LoopOverList(Object, &IopFileObjectList, FILE_OBJECT, Private.Link) {
+	if (Handle == Object->Private.Handle) {
+	    return Object;
+	}
+    }
+    return NULL;
+}
+
+FORCEINLINE GLOBAL_HANDLE IopGetFileHandle(IN PFILE_OBJECT File)
+{
+    return File ? File->Private.Handle : 0;
 }

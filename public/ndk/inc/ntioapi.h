@@ -133,7 +133,8 @@
      SYNCHRONIZE)
 
 /*
- * DEVICE_OBJECT.DeviceType
+ * DEVICE_OBJECT.DeviceType. This is exposed to "userspace"
+ * in FILE_FS_DEVICE_INFORMATION.
  */
 typedef ULONG DEVICE_TYPE;
 
@@ -223,7 +224,10 @@ typedef ULONG DEVICE_TYPE;
 #define FILE_DEVICE_SDFXHCI               0x0000005c
 #define FILE_DEVICE_UCMUCSI               0x0000005d
 
-/* DEVICE_OBJECT.Characteristics */
+/*
+ * DEVICE_OBJECT.Characteristics. This is exposed to "userspace"
+ * in FILE_FS_DEVICE_INFORMATION.
+ */
 #define FILE_REMOVABLE_MEDIA              0x00000001
 #define FILE_READ_ONLY_DEVICE             0x00000002
 #define FILE_FLOPPY_DISKETTE              0x00000004
@@ -238,189 +242,6 @@ typedef ULONG DEVICE_TYPE;
 #define FILE_CHARACTERISTIC_WEBDAV_DEVICE 0x00002000
 #define FILE_PORTABLE_DEVICE              0x00004000
 #define FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL 0x00020000
-
-/* File notification filter flags */
-#define FILE_NOTIFY_CHANGE_FILE_NAME    0x00000001
-#define FILE_NOTIFY_CHANGE_DIR_NAME     0x00000002
-#define FILE_NOTIFY_CHANGE_NAME         0x00000003
-#define FILE_NOTIFY_CHANGE_ATTRIBUTES   0x00000004
-#define FILE_NOTIFY_CHANGE_SIZE         0x00000008
-#define FILE_NOTIFY_CHANGE_LAST_WRITE   0x00000010
-#define FILE_NOTIFY_CHANGE_LAST_ACCESS  0x00000020
-#define FILE_NOTIFY_CHANGE_CREATION     0x00000040
-#define FILE_NOTIFY_CHANGE_EA           0x00000080
-#define FILE_NOTIFY_CHANGE_SECURITY     0x00000100
-#define FILE_NOTIFY_CHANGE_STREAM_NAME  0x00000200
-#define FILE_NOTIFY_CHANGE_STREAM_SIZE  0x00000400
-#define FILE_NOTIFY_CHANGE_STREAM_WRITE 0x00000800
-#define FILE_NOTIFY_VALID_MASK          0x00000fff
-
-/* FILE_NOTIFY_INFORMATION.Action */
-#define FILE_ACTION_ADDED                   0x00000001
-#define FILE_ACTION_REMOVED                 0x00000002
-#define FILE_ACTION_MODIFIED                0x00000003
-#define FILE_ACTION_RENAMED_OLD_NAME        0x00000004
-#define FILE_ACTION_RENAMED_NEW_NAME        0x00000005
-#define FILE_ACTION_ADDED_STREAM            0x00000006
-#define FILE_ACTION_REMOVED_STREAM          0x00000007
-#define FILE_ACTION_MODIFIED_STREAM         0x00000008
-#define FILE_ACTION_REMOVED_BY_DELETE       0x00000009
-#define FILE_ACTION_ID_NOT_TUNNELLED        0x0000000A
-#define FILE_ACTION_TUNNELLED_ID_COLLISION  0x0000000B
-
-/* FILE_FS_ATTRIBUTE_INFORMATION.FileSystemAttributes */
-#define FILE_CASE_SENSITIVE_SEARCH          0x00000001
-#define FILE_CASE_PRESERVED_NAMES           0x00000002
-#define FILE_UNICODE_ON_DISK                0x00000004
-#define FILE_PERSISTENT_ACLS                0x00000008
-#define FILE_FILE_COMPRESSION               0x00000010
-#define FILE_VOLUME_QUOTAS                  0x00000020
-#define FILE_SUPPORTS_SPARSE_FILES          0x00000040
-#define FILE_SUPPORTS_REPARSE_POINTS        0x00000080
-#define FILE_SUPPORTS_REMOTE_STORAGE        0x00000100
-#define FILE_VOLUME_IS_COMPRESSED           0x00008000
-#define FILE_SUPPORTS_OBJECT_IDS            0x00010000
-#define FILE_SUPPORTS_ENCRYPTION            0x00020000
-#define FILE_NAMED_STREAMS                  0x00040000
-#define FILE_READ_ONLY_VOLUME               0x00080000
-#define FILE_SEQUENTIAL_WRITE_ONCE          0x00100000
-#define FILE_SUPPORTS_TRANSACTIONS          0x00200000
-#define FILE_SUPPORTS_HARD_LINKS            0x00400000
-#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES   0x00800000
-#define FILE_SUPPORTS_OPEN_BY_FILE_ID       0x01000000
-#define FILE_SUPPORTS_USN_JOURNAL           0x02000000
-#define FILE_SUPPORTS_INTEGRITY_STREAMS     0x04000000
-#define FILE_SUPPORTS_BLOCK_REFCOUNTING     0x08000000
-#define FILE_SUPPORTS_SPARSE_VDL            0x10000000
-#define FILE_DAX_VOLUME                     0x20000000
-
-/*
- * IRP function codes. These need to be defined here in the public
- * NDK header because they are shared between the ntos root server
- * and the client dlls.
- */
-#define IRP_MJ_CREATE                     0x00
-#define IRP_MJ_CREATE_NAMED_PIPE          0x01
-#define IRP_MJ_CLOSE                      0x02
-#define IRP_MJ_READ                       0x03
-#define IRP_MJ_WRITE                      0x04
-#define IRP_MJ_QUERY_INFORMATION          0x05
-#define IRP_MJ_SET_INFORMATION            0x06
-#define IRP_MJ_QUERY_EA                   0x07
-#define IRP_MJ_SET_EA                     0x08
-#define IRP_MJ_FLUSH_BUFFERS              0x09
-#define IRP_MJ_QUERY_VOLUME_INFORMATION   0x0a
-#define IRP_MJ_SET_VOLUME_INFORMATION     0x0b
-#define IRP_MJ_DIRECTORY_CONTROL          0x0c
-#define IRP_MJ_FILE_SYSTEM_CONTROL        0x0d
-#define IRP_MJ_DEVICE_CONTROL             0x0e
-#define IRP_MJ_INTERNAL_DEVICE_CONTROL    0x0f
-#define IRP_MJ_SCSI                       0x0f
-#define IRP_MJ_SHUTDOWN                   0x10
-#define IRP_MJ_LOCK_CONTROL               0x11
-#define IRP_MJ_CLEANUP                    0x12
-#define IRP_MJ_CREATE_MAILSLOT            0x13
-#define IRP_MJ_QUERY_SECURITY             0x14
-#define IRP_MJ_SET_SECURITY               0x15
-#define IRP_MJ_POWER                      0x16
-#define IRP_MJ_SYSTEM_CONTROL             0x17
-#define IRP_MJ_DEVICE_CHANGE              0x18
-#define IRP_MJ_QUERY_QUOTA                0x19
-#define IRP_MJ_SET_QUOTA                  0x1a
-#define IRP_MJ_PNP                        0x1b
-#define IRP_MJ_PNP_POWER                  0x1b
-#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
-
-#define IRP_MN_SCSI_CLASS                 0x01
-
-#define IRP_MN_START_DEVICE               0x00
-#define IRP_MN_QUERY_REMOVE_DEVICE        0x01
-#define IRP_MN_REMOVE_DEVICE              0x02
-#define IRP_MN_CANCEL_REMOVE_DEVICE       0x03
-#define IRP_MN_STOP_DEVICE                0x04
-#define IRP_MN_QUERY_STOP_DEVICE          0x05
-#define IRP_MN_CANCEL_STOP_DEVICE         0x06
-
-#define IRP_MN_QUERY_DEVICE_RELATIONS       0x07
-#define IRP_MN_QUERY_INTERFACE              0x08
-#define IRP_MN_QUERY_CAPABILITIES           0x09
-#define IRP_MN_QUERY_RESOURCES              0x0A
-#define IRP_MN_QUERY_RESOURCE_REQUIREMENTS  0x0B
-#define IRP_MN_QUERY_DEVICE_TEXT            0x0C
-#define IRP_MN_FILTER_RESOURCE_REQUIREMENTS 0x0D
-
-#define IRP_MN_READ_CONFIG                  0x0F
-#define IRP_MN_WRITE_CONFIG                 0x10
-#define IRP_MN_EJECT                        0x11
-#define IRP_MN_SET_LOCK                     0x12
-#define IRP_MN_QUERY_ID                     0x13
-#define IRP_MN_QUERY_PNP_DEVICE_STATE       0x14
-#define IRP_MN_QUERY_BUS_INFORMATION        0x15
-#define IRP_MN_DEVICE_USAGE_NOTIFICATION    0x16
-#define IRP_MN_SURPRISE_REMOVAL             0x17
-#define IRP_MN_DEVICE_ENUMERATED            0x19
-
-#define IRP_MN_WAIT_WAKE                  0x00
-#define IRP_MN_POWER_SEQUENCE             0x01
-#define IRP_MN_SET_POWER                  0x02
-#define IRP_MN_QUERY_POWER                0x03
-
-#define IRP_MN_QUERY_ALL_DATA             0x00
-#define IRP_MN_QUERY_SINGLE_INSTANCE      0x01
-#define IRP_MN_CHANGE_SINGLE_INSTANCE     0x02
-#define IRP_MN_CHANGE_SINGLE_ITEM         0x03
-#define IRP_MN_ENABLE_EVENTS              0x04
-#define IRP_MN_DISABLE_EVENTS             0x05
-#define IRP_MN_ENABLE_COLLECTION          0x06
-#define IRP_MN_DISABLE_COLLECTION         0x07
-#define IRP_MN_REGINFO                    0x08
-#define IRP_MN_EXECUTE_METHOD             0x09
-
-#define IRP_MN_REGINFO_EX                 0x0b
-
-/* Minor codes for IRP_MJ_DIRECTORY_CONTROL */
-#define IRP_MN_QUERY_DIRECTORY            0x01
-#define IRP_MN_NOTIFY_CHANGE_DIRECTORY    0x02
-
-/* Minor codes for IRP_MJ_FILE_SYSTEM_CONTROL */
-#define IRP_MN_USER_FS_REQUEST            0x00
-#define IRP_MN_MOUNT_VOLUME               0x01
-#define IRP_MN_VERIFY_VOLUME              0x02
-#define IRP_MN_LOAD_FILE_SYSTEM           0x03
-#define IRP_MN_TRACK_LINK                 0x04
-#define IRP_MN_KERNEL_CALL                0x04
-
-/* FILE_OBJECT.Flags */
-#define FO_FILE_OPEN                 0x00000001
-#define FO_SYNCHRONOUS_IO            0x00000002
-#define FO_ALERTABLE_IO              0x00000004
-#define FO_NO_INTERMEDIATE_BUFFERING 0x00000008
-#define FO_WRITE_THROUGH             0x00000010
-#define FO_SEQUENTIAL_ONLY           0x00000020
-#define FO_CACHE_SUPPORTED           0x00000040
-#define FO_NAMED_PIPE                0x00000080
-#define FO_STREAM_FILE               0x00000100
-#define FO_MAILSLOT                  0x00000200
-#define FO_GENERATE_AUDIT_ON_CLOSE   0x00000400
-#define FO_QUEUE_IRP_TO_THREAD       0x00000400
-#define FO_DIRECT_DEVICE_OPEN        0x00000800
-#define FO_FILE_MODIFIED             0x00001000
-#define FO_FILE_SIZE_CHANGED         0x00002000
-#define FO_CLEANUP_COMPLETE          0x00004000
-#define FO_TEMPORARY_FILE            0x00008000
-#define FO_DELETE_ON_CLOSE           0x00010000
-#define FO_OPENED_CASE_SENSITIVE     0x00020000
-#define FO_HANDLE_CREATED            0x00040000
-#define FO_FILE_FAST_IO_READ         0x00080000
-#define FO_RANDOM_ACCESS             0x00100000
-#define FO_FILE_OPEN_CANCELLED       0x00200000
-#define FO_VOLUME_OPEN               0x00400000
-#define FO_REMOTE_ORIGIN             0x01000000
-#define FO_DISALLOW_EXCLUSIVE        0x02000000
-#define FO_SKIP_COMPLETION_PORT      0x02000000
-#define FO_SKIP_SET_EVENT            0x04000000
-#define FO_SKIP_SET_FAST_IO          0x08000000
-#define FO_FLAGS_VALID_ONLY_DURING_CREATE FO_DISALLOW_EXCLUSIVE
 
 /* File System Io Control Codes */
 #define FSCTL_REQUEST_OPLOCK_LEVEL_1    CTL_CODE(FILE_DEVICE_FILE_SYSTEM,  0, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -1202,3 +1023,228 @@ NTAPI NTSYSAPI NTSTATUS NtSetInformationFile(IN HANDLE FileHandle,
 					     IN FILE_INFORMATION_CLASS FileInformationClass);
 
 #endif
+
+/*
+ * Macros and data structures shared between the ntos root server
+ * and the client drivers. These are not exposed to "userspace" clients.
+ */
+#if defined(_NTOSKRNL_) || defined(_NTDDK_)
+
+/* DEVICE_OBJECT.Flags */
+#define DO_UNLOAD_PENDING                 0x00000001
+#define DO_VERIFY_VOLUME                  0x00000002
+#define DO_BUFFERED_IO                    0x00000004
+#define DO_EXCLUSIVE                      0x00000008
+#define DO_DIRECT_IO                      0x00000010
+#define DO_MAP_IO_BUFFER                  0x00000020
+#define DO_DEVICE_HAS_NAME                0x00000040
+#define DO_DEVICE_INITIALIZING            0x00000080
+#define DO_SYSTEM_BOOT_PARTITION          0x00000100
+#define DO_LONG_TERM_REQUESTS             0x00000200
+#define DO_NEVER_LAST_DEVICE              0x00000400
+#define DO_SHUTDOWN_REGISTERED            0x00000800
+#define DO_BUS_ENUMERATED_DEVICE          0x00001000
+#define DO_POWER_PAGABLE                  0x00002000
+#define DO_POWER_INRUSH                   0x00004000
+#define DO_LOW_PRIORITY_FILESYSTEM        0x00010000
+#define DO_SUPPORTS_TRANSACTIONS          0x00040000
+#define DO_FORCE_NEITHER_IO               0x00080000
+#define DO_VOLUME_DEVICE_OBJECT           0x00100000
+#define DO_SYSTEM_SYSTEM_PARTITION        0x00200000
+#define DO_SYSTEM_CRITICAL_PARTITION      0x00400000
+#define DO_DISALLOW_EXECUTE               0x00800000
+
+/* DEVICE_OBJECT.AlignmentRequirement */
+#define FILE_BYTE_ALIGNMENT             0x00000000
+#define FILE_WORD_ALIGNMENT             0x00000001
+#define FILE_LONG_ALIGNMENT             0x00000003
+#define FILE_QUAD_ALIGNMENT             0x00000007
+#define FILE_OCTA_ALIGNMENT             0x0000000f
+#define FILE_32_BYTE_ALIGNMENT          0x0000001f
+#define FILE_64_BYTE_ALIGNMENT          0x0000003f
+#define FILE_128_BYTE_ALIGNMENT         0x0000007f
+#define FILE_256_BYTE_ALIGNMENT         0x000000ff
+#define FILE_512_BYTE_ALIGNMENT         0x000001ff
+
+/* File notification filter flags */
+#define FILE_NOTIFY_CHANGE_FILE_NAME    0x00000001
+#define FILE_NOTIFY_CHANGE_DIR_NAME     0x00000002
+#define FILE_NOTIFY_CHANGE_NAME         0x00000003
+#define FILE_NOTIFY_CHANGE_ATTRIBUTES   0x00000004
+#define FILE_NOTIFY_CHANGE_SIZE         0x00000008
+#define FILE_NOTIFY_CHANGE_LAST_WRITE   0x00000010
+#define FILE_NOTIFY_CHANGE_LAST_ACCESS  0x00000020
+#define FILE_NOTIFY_CHANGE_CREATION     0x00000040
+#define FILE_NOTIFY_CHANGE_EA           0x00000080
+#define FILE_NOTIFY_CHANGE_SECURITY     0x00000100
+#define FILE_NOTIFY_CHANGE_STREAM_NAME  0x00000200
+#define FILE_NOTIFY_CHANGE_STREAM_SIZE  0x00000400
+#define FILE_NOTIFY_CHANGE_STREAM_WRITE 0x00000800
+#define FILE_NOTIFY_VALID_MASK          0x00000fff
+
+/* FILE_NOTIFY_INFORMATION.Action */
+#define FILE_ACTION_ADDED                   0x00000001
+#define FILE_ACTION_REMOVED                 0x00000002
+#define FILE_ACTION_MODIFIED                0x00000003
+#define FILE_ACTION_RENAMED_OLD_NAME        0x00000004
+#define FILE_ACTION_RENAMED_NEW_NAME        0x00000005
+#define FILE_ACTION_ADDED_STREAM            0x00000006
+#define FILE_ACTION_REMOVED_STREAM          0x00000007
+#define FILE_ACTION_MODIFIED_STREAM         0x00000008
+#define FILE_ACTION_REMOVED_BY_DELETE       0x00000009
+#define FILE_ACTION_ID_NOT_TUNNELLED        0x0000000A
+#define FILE_ACTION_TUNNELLED_ID_COLLISION  0x0000000B
+
+/* FILE_FS_ATTRIBUTE_INFORMATION.FileSystemAttributes */
+#define FILE_CASE_SENSITIVE_SEARCH          0x00000001
+#define FILE_CASE_PRESERVED_NAMES           0x00000002
+#define FILE_UNICODE_ON_DISK                0x00000004
+#define FILE_PERSISTENT_ACLS                0x00000008
+#define FILE_FILE_COMPRESSION               0x00000010
+#define FILE_VOLUME_QUOTAS                  0x00000020
+#define FILE_SUPPORTS_SPARSE_FILES          0x00000040
+#define FILE_SUPPORTS_REPARSE_POINTS        0x00000080
+#define FILE_SUPPORTS_REMOTE_STORAGE        0x00000100
+#define FILE_VOLUME_IS_COMPRESSED           0x00008000
+#define FILE_SUPPORTS_OBJECT_IDS            0x00010000
+#define FILE_SUPPORTS_ENCRYPTION            0x00020000
+#define FILE_NAMED_STREAMS                  0x00040000
+#define FILE_READ_ONLY_VOLUME               0x00080000
+#define FILE_SEQUENTIAL_WRITE_ONCE          0x00100000
+#define FILE_SUPPORTS_TRANSACTIONS          0x00200000
+#define FILE_SUPPORTS_HARD_LINKS            0x00400000
+#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES   0x00800000
+#define FILE_SUPPORTS_OPEN_BY_FILE_ID       0x01000000
+#define FILE_SUPPORTS_USN_JOURNAL           0x02000000
+#define FILE_SUPPORTS_INTEGRITY_STREAMS     0x04000000
+#define FILE_SUPPORTS_BLOCK_REFCOUNTING     0x08000000
+#define FILE_SUPPORTS_SPARSE_VDL            0x10000000
+#define FILE_DAX_VOLUME                     0x20000000
+
+/*
+ * IRP function codes.
+ */
+#define IRP_MJ_CREATE                     0x00
+#define IRP_MJ_CREATE_NAMED_PIPE          0x01
+#define IRP_MJ_CLOSE                      0x02
+#define IRP_MJ_READ                       0x03
+#define IRP_MJ_WRITE                      0x04
+#define IRP_MJ_QUERY_INFORMATION          0x05
+#define IRP_MJ_SET_INFORMATION            0x06
+#define IRP_MJ_QUERY_EA                   0x07
+#define IRP_MJ_SET_EA                     0x08
+#define IRP_MJ_FLUSH_BUFFERS              0x09
+#define IRP_MJ_QUERY_VOLUME_INFORMATION   0x0a
+#define IRP_MJ_SET_VOLUME_INFORMATION     0x0b
+#define IRP_MJ_DIRECTORY_CONTROL          0x0c
+#define IRP_MJ_FILE_SYSTEM_CONTROL        0x0d
+#define IRP_MJ_DEVICE_CONTROL             0x0e
+#define IRP_MJ_INTERNAL_DEVICE_CONTROL    0x0f
+#define IRP_MJ_SCSI                       0x0f
+#define IRP_MJ_SHUTDOWN                   0x10
+#define IRP_MJ_LOCK_CONTROL               0x11
+#define IRP_MJ_CLEANUP                    0x12
+#define IRP_MJ_CREATE_MAILSLOT            0x13
+#define IRP_MJ_QUERY_SECURITY             0x14
+#define IRP_MJ_SET_SECURITY               0x15
+#define IRP_MJ_POWER                      0x16
+#define IRP_MJ_SYSTEM_CONTROL             0x17
+#define IRP_MJ_DEVICE_CHANGE              0x18
+#define IRP_MJ_QUERY_QUOTA                0x19
+#define IRP_MJ_SET_QUOTA                  0x1a
+#define IRP_MJ_PNP                        0x1b
+#define IRP_MJ_PNP_POWER                  0x1b
+#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
+
+#define IRP_MN_SCSI_CLASS                 0x01
+
+#define IRP_MN_START_DEVICE               0x00
+#define IRP_MN_QUERY_REMOVE_DEVICE        0x01
+#define IRP_MN_REMOVE_DEVICE              0x02
+#define IRP_MN_CANCEL_REMOVE_DEVICE       0x03
+#define IRP_MN_STOP_DEVICE                0x04
+#define IRP_MN_QUERY_STOP_DEVICE          0x05
+#define IRP_MN_CANCEL_STOP_DEVICE         0x06
+
+#define IRP_MN_QUERY_DEVICE_RELATIONS       0x07
+#define IRP_MN_QUERY_INTERFACE              0x08
+#define IRP_MN_QUERY_CAPABILITIES           0x09
+#define IRP_MN_QUERY_RESOURCES              0x0A
+#define IRP_MN_QUERY_RESOURCE_REQUIREMENTS  0x0B
+#define IRP_MN_QUERY_DEVICE_TEXT            0x0C
+#define IRP_MN_FILTER_RESOURCE_REQUIREMENTS 0x0D
+
+#define IRP_MN_READ_CONFIG                  0x0F
+#define IRP_MN_WRITE_CONFIG                 0x10
+#define IRP_MN_EJECT                        0x11
+#define IRP_MN_SET_LOCK                     0x12
+#define IRP_MN_QUERY_ID                     0x13
+#define IRP_MN_QUERY_PNP_DEVICE_STATE       0x14
+#define IRP_MN_QUERY_BUS_INFORMATION        0x15
+#define IRP_MN_DEVICE_USAGE_NOTIFICATION    0x16
+#define IRP_MN_SURPRISE_REMOVAL             0x17
+#define IRP_MN_DEVICE_ENUMERATED            0x19
+
+#define IRP_MN_WAIT_WAKE                  0x00
+#define IRP_MN_POWER_SEQUENCE             0x01
+#define IRP_MN_SET_POWER                  0x02
+#define IRP_MN_QUERY_POWER                0x03
+
+#define IRP_MN_QUERY_ALL_DATA             0x00
+#define IRP_MN_QUERY_SINGLE_INSTANCE      0x01
+#define IRP_MN_CHANGE_SINGLE_INSTANCE     0x02
+#define IRP_MN_CHANGE_SINGLE_ITEM         0x03
+#define IRP_MN_ENABLE_EVENTS              0x04
+#define IRP_MN_DISABLE_EVENTS             0x05
+#define IRP_MN_ENABLE_COLLECTION          0x06
+#define IRP_MN_DISABLE_COLLECTION         0x07
+#define IRP_MN_REGINFO                    0x08
+#define IRP_MN_EXECUTE_METHOD             0x09
+
+#define IRP_MN_REGINFO_EX                 0x0b
+
+/* Minor codes for IRP_MJ_DIRECTORY_CONTROL */
+#define IRP_MN_QUERY_DIRECTORY            0x01
+#define IRP_MN_NOTIFY_CHANGE_DIRECTORY    0x02
+
+/* Minor codes for IRP_MJ_FILE_SYSTEM_CONTROL */
+#define IRP_MN_USER_FS_REQUEST            0x00
+#define IRP_MN_MOUNT_VOLUME               0x01
+#define IRP_MN_VERIFY_VOLUME              0x02
+#define IRP_MN_LOAD_FILE_SYSTEM           0x03
+#define IRP_MN_TRACK_LINK                 0x04
+#define IRP_MN_KERNEL_CALL                0x04
+
+/* FILE_OBJECT.Flags */
+#define FO_FILE_OPEN                 0x00000001
+#define FO_SYNCHRONOUS_IO            0x00000002
+#define FO_ALERTABLE_IO              0x00000004
+#define FO_NO_INTERMEDIATE_BUFFERING 0x00000008
+#define FO_WRITE_THROUGH             0x00000010
+#define FO_SEQUENTIAL_ONLY           0x00000020
+#define FO_CACHE_SUPPORTED           0x00000040
+#define FO_NAMED_PIPE                0x00000080
+#define FO_STREAM_FILE               0x00000100
+#define FO_MAILSLOT                  0x00000200
+#define FO_GENERATE_AUDIT_ON_CLOSE   0x00000400
+#define FO_QUEUE_IRP_TO_THREAD       0x00000400
+#define FO_DIRECT_DEVICE_OPEN        0x00000800
+#define FO_FILE_MODIFIED             0x00001000
+#define FO_FILE_SIZE_CHANGED         0x00002000
+#define FO_CLEANUP_COMPLETE          0x00004000
+#define FO_TEMPORARY_FILE            0x00008000
+#define FO_DELETE_ON_CLOSE           0x00010000
+#define FO_OPENED_CASE_SENSITIVE     0x00020000
+#define FO_HANDLE_CREATED            0x00040000
+#define FO_FILE_FAST_IO_READ         0x00080000
+#define FO_RANDOM_ACCESS             0x00100000
+#define FO_FILE_OPEN_CANCELLED       0x00200000
+#define FO_VOLUME_OPEN               0x00400000
+#define FO_REMOTE_ORIGIN             0x01000000
+#define FO_DISALLOW_EXCLUSIVE        0x02000000
+#define FO_SKIP_COMPLETION_PORT      0x02000000
+#define FO_SKIP_SET_EVENT            0x04000000
+#define FO_SKIP_SET_FAST_IO          0x08000000
+#define FO_FLAGS_VALID_ONLY_DURING_CREATE FO_DISALLOW_EXCLUSIVE
+
+#endif	/*  */

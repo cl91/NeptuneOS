@@ -565,10 +565,14 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 	DeviceExt->Statistics[i].Base.SizeOfCompleteStructure = sizeof(STATISTICS);
     }
 
-    DeviceExt->FatFileObject = IoCreateStreamFileObject(NULL, DeviceExt->StorageDevice);
+    DeviceExt->FatFileObject = IoCreateStreamFileObject(DeviceExt->StorageDevice);
+    if (!DeviceExt->FatFileObject) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto ByeBye;
+    }
     UNICODE_STRING NameU = RTL_CONSTANT_STRING(L"\\$$Fat$$");
     Fcb = FatNewFcb(DeviceExt, &NameU);
-    if (Fcb == NULL) {
+    if (!Fcb) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }

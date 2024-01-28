@@ -415,45 +415,34 @@ typedef struct _IMAGE_NT_HEADERS64 {
     ULONG Signature;
     IMAGE_FILE_HEADER FileHeader;
     IMAGE_OPTIONAL_HEADER64 OptionalHeader;
-} IMAGE_NT_HEADERS64;
+} IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
 
 typedef struct _IMAGE_NT_HEADERS32 {
     ULONG Signature;
     IMAGE_FILE_HEADER FileHeader;
     IMAGE_OPTIONAL_HEADER32 OptionalHeader;
-} IMAGE_NT_HEADERS32;
+} IMAGE_NT_HEADERS32, *PIMAGE_NT_HEADERS32;
 
 #ifdef _WIN64
 typedef IMAGE_NT_HEADERS64                  IMAGE_NT_HEADERS;
-#else
-typedef IMAGE_NT_HEADERS32                  IMAGE_NT_HEADERS;
-#endif
-
-#ifndef _NTDDK_
-
-typedef struct _IMAGE_NT_HEADERS32 *PIMAGE_NT_HEADERS32;
-typedef struct _IMAGE_NT_HEADERS64 *PIMAGE_NT_HEADERS64;
-
-#ifdef _WIN64
 typedef PIMAGE_NT_HEADERS64                 PIMAGE_NT_HEADERS;
 #else
+typedef IMAGE_NT_HEADERS32                  IMAGE_NT_HEADERS;
 typedef PIMAGE_NT_HEADERS32                 PIMAGE_NT_HEADERS;
 #endif
-
-#endif /* _NTDDK_ */
 
 //
 // Retreives the first image section header from the Nt Header
 //
-#define IMAGE_FIRST_SECTION( NtHeader )					\
-    ((PIMAGE_SECTION_HEADER) ((ULONG_PTR)(NtHeader) +			\
-			      FIELD_OFFSET( IMAGE_NT_HEADERS, OptionalHeader ) + \
-			      ((NtHeader))->FileHeader.SizeOfOptionalHeader))
+#define IMAGE_FIRST_SECTION(NtHeader)					\
+    ((PIMAGE_SECTION_HEADER)((ULONG_PTR)(NtHeader) +			\
+			     FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader) + \
+			     ((NtHeader))->FileHeader.SizeOfOptionalHeader))
 
 //
 // Subsystems
 //
-#define IMAGE_SUBSYSTEM_UNKNOWN                         0 
+#define IMAGE_SUBSYSTEM_UNKNOWN                         0
 #define IMAGE_SUBSYSTEM_NATIVE                          1
 #define IMAGE_SUBSYSTEM_WINDOWS_GUI                     2
 #define IMAGE_SUBSYSTEM_WINDOWS_CUI                     3

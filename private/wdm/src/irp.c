@@ -126,68 +126,6 @@ static inline BOOLEAN IrpIsInCleanupList(IN PIRP Irp)
 }
 #endif	/* DBG */
 
-static inline NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
-					   IN PFILE_OBJECT_CREATE_PARAMETERS Params,
-					   IN GLOBAL_HANDLE Handle,
-					   OUT PFILE_OBJECT *pFileObject)
-{
-    assert(Params != NULL);
-    assert(Handle != 0);
-    assert(pFileObject != NULL);
-    IopAllocateObject(FileObject, FILE_OBJECT);
-    UNICODE_STRING FileName = {0};
-    if (Params->FileNameOffset) {
-	RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
-					   (PCHAR)IoPacket + Params->FileNameOffset,
-					   &FileName),
-		   IopFreePool(FileObject));
-    }
-    FileObject->ReadAccess = Params->ReadAccess;
-    FileObject->WriteAccess = Params->WriteAccess;
-    FileObject->DeleteAccess = Params->DeleteAccess;
-    FileObject->SharedRead = Params->SharedRead;
-    FileObject->SharedWrite = Params->SharedWrite;
-    FileObject->SharedDelete = Params->SharedDelete;
-    FileObject->Flags = Params->Flags;
-    FileObject->FileName = FileName;
-    FileObject->Private.Handle = Handle;
-    InsertTailList(&IopFileObjectList, &FileObject->Private.Link);
-    *pFileObject = FileObject;
-    return STATUS_SUCCESS;
-}
-
-static inline VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject)
-{
-    assert(FileObject != NULL);
-    assert(FileObject->Private.Link.Flink != NULL);
-    assert(FileObject->Private.Link.Blink != NULL);
-    assert(FileObject->Private.Handle != 0);
-    RemoveEntryList(&FileObject->Private.Link);
-    if (FileObject->FileName.Buffer) {
-	IopFreePool(FileObject->FileName.Buffer);
-    }
-    IopFreePool(FileObject);
-}
-
-/*
- * Search the list of all files created by this driver and return
- * the one matching the given GLOBAL_HANDLE. Returns NULL if not found.
- */
-static inline PFILE_OBJECT IopGetFileObject(IN GLOBAL_HANDLE Handle)
-{
-    LoopOverList(Object, &IopFileObjectList, FILE_OBJECT, Private.Link) {
-	if (Handle == Object->Private.Handle) {
-	    return Object;
-	}
-    }
-    return NULL;
-}
-
-static inline GLOBAL_HANDLE IopGetFileHandle(IN PFILE_OBJECT File)
-{
-    return File ? File->Private.Handle : 0;
-}
-
 static inline NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 				      IN ULONG BufferLength,
 				      IN PULONG_PTR PfnDb,

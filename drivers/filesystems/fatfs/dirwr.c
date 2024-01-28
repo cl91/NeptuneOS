@@ -22,7 +22,7 @@ NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
     ASSERT(FatFcbIsDirectory(Fcb));
     ASSERT(Fcb->FileObject == NULL);
 
-    FileObject = IoCreateStreamFileObject(NULL, Vcb->StorageDevice);
+    FileObject = IoCreateStreamFileObject(Vcb->StorageDevice);
     if (FileObject == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <nt.h>
 #include <wdm.h>
 
 /*

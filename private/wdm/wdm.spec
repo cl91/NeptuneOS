@@ -1,5 +1,5 @@
 @ stdcall IoCreateDevice(ptr long ptr long long long ptr)
-@ stdcall IoCreateStreamFileObject(ptr ptr)
+@ stdcall IoCreateStreamFileObject(ptr)
 @ stdcall IoRegisterDriverReinitialization(ptr ptr ptr)
 @ stdcall IoAllocateDriverObjectExtension(ptr ptr long ptr)
 @ stdcall IoRegisterFileSystem(ptr)
