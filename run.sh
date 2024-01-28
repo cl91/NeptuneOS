@@ -1,13 +1,18 @@
 ARCH=i386
 BUILD_TYPE=Debug
+DIRECT=0
 
-if [[ ${1,,} == "release" || ${2,,} == "release" ]]; then
-    BUILD_TYPE=release
-fi
-
-if [[ $1 == "amd64" || $2 == "amd64" ]]; then
-    ARCH=amd64
-fi
+for var in "$@"; do
+    if [ "${var,,}" == 'release' ]; then
+        BUILD_TYPE=release
+    fi
+    if [ "${var,,}" == 'amd64' ]; then
+        ARCH=amd64
+    fi
+    if [ "${var,,}" == 'direct' ]; then
+        DIRECT=1
+    fi
+done
 
 BUILDDIR="build-$ARCH-${BUILD_TYPE,,}"
 IMAGEDIR="images-$ARCH-${BUILD_TYPE,,}"
@@ -35,7 +40,14 @@ for var in "$@"; do
     if [ "${var,,}" == 'i386' ]; then
         continue
     fi
+    if [ "${var,,}" == 'direct' ]; then
+        continue
+    fi
     ARGS[${#ARGS[@]}]="$var"
 done
 
-$QEMU -m size=400M -serial stdio -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"
+if (( $DIRECT )); then
+    $QEMU -m size=400M -serial stdio -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"
+else
+    $QEMU -m size=400M -serial stdio -fda $BUILDDIR/floppy.img "${ARGS[@]}"
+fi
