@@ -24,10 +24,11 @@ cat <<EOF >> iso/boot/grub/grub.cfg
     insmod gzio
     insmod part_msdos
     insmod ext2
+    set gfxmode=1024x768
     echo 'Loading seL4 Microkernel...'
-    multiboot /kernel
+    multiboot2 /kernel
     echo 'Loading NT Executive...'
-    module /ntos
+    module2 /ntos
 }
 EOF
 grub-mkrescue -o boot.iso iso/

@@ -106,11 +106,13 @@ To create boot isos, type
 ```
 To simulate using QEMU, run
 ```
-./run.sh [direct] [iso] [amd64] [release] [extra-qemu-args]
+./run.sh [direct/iso/uefi] [amd64] [release] [extra-qemu-args]
 ```
 If you specify `direct`, then QEMU will load the seL4 kernel and the NTOS image
-directly (using `-kernel` and `-initrd`). If you specify `iso`, it will load the
-boot iso built by `mkiso.sh`. Otherwise, the boot floppy created by `mkfloppy.sh`
+directly (using `-kernel` and `-initrd`). If you specify `iso` or `uefi`, it will
+load the boot iso built by `mkiso.sh`. The `uefi` option will also configure QEMU
+to load the UEFI firmware (note we have not implemented drawing in UEFI mode yet so
+there will not be a text console). Otherwise, the boot floppy created by `mkfloppy.sh`
 is used. Extra arguments are passed to QEMU. For instance, to run the `i386`
 release build with PC speaker enabled in QEMU you can pass the following (this
 assumes you are using a recent QEMU version and have pulseaudio)
