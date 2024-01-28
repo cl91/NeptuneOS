@@ -8,7 +8,7 @@
  */
 
 #include <assert.h>
-#include <wdm.h>
+#include <ntddk.h>
 #include <wchar.h>
 #include "arc.h"
 

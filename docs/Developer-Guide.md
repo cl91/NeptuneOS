@@ -66,6 +66,12 @@ should not make native NT api calls (although we don't explicitly forbid this).
 ## NT Executive Components
 
 ## Device Driver Interface
+The client-side device driver interface is implemented in `wdm.dll`. The name of the
+DLL originally comes from "Windows driver model" which is what Microsoft calls the NT5-era
+device driver interface. However, since we are not aiming for complete source
+compatibility (and also since Windows is a Microsoft trademark) let's pretend that
+WDM stands for "Well-organized Driver Model" (thank you ChatGPT for suggesting this
+name).
 
 ### Class, Port, Miniclass, Miniport
 
@@ -119,6 +125,8 @@ side. Client drivers do not need any special code to implement them.
 Summary of issues mentioned above. Guide to porting drivers from ReactOS and Windows WDM.
 
 #### General Issues
+Header file:
+Include `ntddk.h` (under `public/ddk/inc`) as the master header file.
 
 IO Transfer Type:
 Elaborate on how our architecture (running drivers in separate address spaces)

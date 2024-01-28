@@ -1,4 +1,4 @@
-#include <wdm.h>
+#include <ntddk.h>
 
 typedef enum _IDENTIFIER_FLAG {
     Failed = 0x01,

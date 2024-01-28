@@ -10,7 +10,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <assert.h>
-#include <wdm.h>
+#include <ntddk.h>
 #include <hal.h>
 #include <ntddbeep.h>
 

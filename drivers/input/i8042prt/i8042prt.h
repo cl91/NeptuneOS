@@ -1,6 +1,6 @@
 #pragma once
 
-#include <wdm.h>
+#include <ntddk.h>
 #include <kbdmou.h>
 #include "ntdd8042.h"
 

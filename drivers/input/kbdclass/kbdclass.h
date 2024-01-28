@@ -1,6 +1,6 @@
 #pragma once
 
-#include <wdm.h>
+#include <ntddk.h>
 #include <ntddkbd.h>
 
 #define MAX_PATH 260

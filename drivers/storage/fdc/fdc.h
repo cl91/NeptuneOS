@@ -81,7 +81,7 @@
 
 #pragma once
 
-#include <wdm.h>
+#include <ntddk.h>
 #include <hal.h>
 #include <ntdddisk.h>
 #include <mountdev.h>

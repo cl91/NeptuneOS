@@ -1,6 +1,6 @@
 #pragma once
 
-#include <wdm.h>
+#include <ntddk.h>
 
 typedef struct _FILESYSTEM_STATISTICS {
     USHORT FileSystemType;

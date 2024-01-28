@@ -1,6 +1,6 @@
 #pragma once
 
-#include <wdm.h>
+#include <ntddk.h>
 #include <ntifs.h>
 #include <hal.h>
 #include <assert.h>

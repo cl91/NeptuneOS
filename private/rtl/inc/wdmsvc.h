@@ -299,7 +299,7 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 /*
  * This is the actual data structure being passed between the server
  * task and the client driver processes. The public IRP struct is exposed
- * in wdm.h in order to remain (semi-)compatible with Windows/ReactOS.
+ * in ntddk.h in order to remain (semi-)compatible with Windows/ReactOS.
  */
 typedef struct POINTER_ALIGNMENT _IO_PACKET {
     IO_PACKET_TYPE Type;
