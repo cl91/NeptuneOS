@@ -1,6 +1,6 @@
 ARCH=i386
 BUILD_TYPE=Debug
-DIRECT=0
+BOOT_TYPE=floppy
 
 for var in "$@"; do
     if [ "${var,,}" == 'release' ]; then
@@ -10,7 +10,10 @@ for var in "$@"; do
         ARCH=amd64
     fi
     if [ "${var,,}" == 'direct' ]; then
-        DIRECT=1
+        BOOT_TYPE=direct
+    fi
+    if [ "${var,,}" == 'iso' ]; then
+        BOOT_TYPE=iso
     fi
 done
 
@@ -43,11 +46,16 @@ for var in "$@"; do
     if [ "${var,,}" == 'direct' ]; then
         continue
     fi
+    if [ "${var,,}" == 'iso' ]; then
+        continue
+    fi
     ARGS[${#ARGS[@]}]="$var"
 done
 
-if (( $DIRECT )); then
+if [[ $BOOT_TYPE == "direct" ]]; then
     $QEMU -m size=400M -serial stdio -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"
+elif [[ $BOOT_TYPE == "iso" ]]; then
+    $QEMU -m size=400M -serial stdio -cdrom $BUILDDIR/boot.iso "${ARGS[@]}"
 else
     $QEMU -m size=400M -serial stdio -fda $BUILDDIR/floppy.img "${ARGS[@]}"
 fi
