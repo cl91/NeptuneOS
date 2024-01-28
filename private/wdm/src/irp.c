@@ -457,7 +457,17 @@ static inline VOID IopDeleteIrp(PIRP Irp)
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 	switch (IoStack->MinorFunction) {
 	case IRP_MN_MOUNT_VOLUME:
-	    if (IoStack->Parameters.MountVolume.Vpb) {
+	    /* If the driver fails the MOUNT_VOLUME IRP, we need to clean up the VPB
+	     * that we have allocated before. However if the mount succeeded, the VPB
+	     * should not be deleted as it has been linked with the volume devices. */
+	    if (!NT_SUCCESS(Irp->IoStatus.Status) && IoStack->Parameters.MountVolume.Vpb) {
+		/* Unlink the VPB from the volume device objects, if needed. */
+		if (IoStack->Parameters.MountVolume.Vpb->DeviceObject) {
+		    IoStack->Parameters.MountVolume.Vpb->DeviceObject->Vpb = NULL;
+		}
+		if (IoStack->Parameters.MountVolume.Vpb->RealDevice) {
+		    IoStack->Parameters.MountVolume.Vpb->RealDevice->Vpb = NULL;
+		}
 		IopFreePool(IoStack->Parameters.MountVolume.Vpb);
 	    }
 	    break;
@@ -504,7 +514,8 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(IN PIO_PACKET Dest,
 {
     ULONG Size = FIELD_OFFSET(IO_PACKET, ClientMsg.IoCompleted.ResponseData);
     PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(Irp);
-    if (IoSp->MajorFunction == IRP_MJ_PNP) {
+    switch (IoSp->MajorFunction) {
+    case IRP_MJ_PNP:
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    if (Irp->IoStatus.Information != 0) {
@@ -525,7 +536,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(IN PIO_PACKET Dest,
 		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
 		if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
 		    assert(FALSE);
-		    return STATUS_INVALID_PARAMETER;
+		    return FALSE;
 		}
 		Size += Res->ListSize;
 	    }
@@ -536,10 +547,27 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(IN PIO_PACKET Dest,
 	    break;
 
 	default:
-	    UNIMPLEMENTED;
+	    /* UNIMPLEMENTED */
 	    assert(FALSE);
 	    return FALSE;
 	}
+	break;
+
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+	switch (IoSp->MinorFunction) {
+	case IRP_MN_MOUNT_VOLUME:
+	    assert(IoSp->Parameters.MountVolume.Vpb);
+	    if (!IoSp->Parameters.MountVolume.Vpb->DeviceObject) {
+		return FALSE;
+	    }
+	    Size += sizeof(IO_RESPONSE_DATA);
+	    break;
+	default:
+	    /* UNIMPLEMENTED */
+	    assert(FALSE);
+	    return FALSE;
+	}
+	break;
     }
     if (Size < sizeof(IO_PACKET)) {
 	Size = sizeof(IO_PACKET);
@@ -618,12 +646,27 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(IN PIO_PACKET Dest,
 	    break;
 
 	default:
-	    UNIMPLEMENTED;
+	    /* UNIMPLEMENTED */
 	    assert(FALSE);
 	    break;
 	}
 	break;
     }
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+	switch (IoSp->MinorFunction) {
+	case IRP_MN_MOUNT_VOLUME:
+	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
+		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
+		PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
+		Ptr->VolumeMounted.VolumeDeviceHandle = IopGetDeviceHandle(IoSp->Parameters.MountVolume.Vpb->DeviceObject);
+	    }
+	    break;
+	default:
+	    /* UNIMPLEMENTED */
+	    assert(FALSE);
+	    return FALSE;
+	}
+	break;
     default:
 	break;
     }
@@ -725,7 +768,7 @@ static BOOLEAN IopPopulateIoRequestMessage(IN PIO_PACKET Dest,
 	break;
     }
     default:
-	UNIMPLEMENTED;
+	/* UNIMPLEMENTED */
 	assert(FALSE);
 	return FALSE;
     }

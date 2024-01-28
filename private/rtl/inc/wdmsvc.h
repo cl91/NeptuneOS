@@ -233,6 +233,20 @@ typedef struct _IO_REQUEST_PARAMETERS {
 } IO_REQUEST_PARAMETERS, *PIO_REQUEST_PARAMETERS;
 
 /*
+ * Additional response data that are sent back to the server
+ * when the driver has finished processing an IO request. This
+ * is stored in the ResponseData member of IO_COMPLETED_MESSAGE
+ * Note this union is an incomplete list of possible forms of
+ * response data and some IRPs define additional format. See
+ * IopPopulateIoCompleteMessageFromLocalIrp in wdm.dll for details.
+ */
+typedef union _IO_RESPONSE_DATA {
+    struct {
+	GLOBAL_HANDLE VolumeDeviceHandle;
+    } VolumeMounted;
+} IO_RESPONSE_DATA, *PIO_RESPONSE_DATA;
+
+/*
  * Message to notify that an IRP has been completed.
  * Can be either a message from server to client or from client to server.
  */

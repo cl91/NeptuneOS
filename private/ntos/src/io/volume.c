@@ -74,9 +74,9 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
     Locals.Entry = Locals.FsList->Flink;
     Status = STATUS_UNRECOGNIZED_VOLUME;
 
+next:
     /* Loop over the fs list and send the mount request to each FS, until one of them
      * is able to mount the volume. */
-next:
     if (Locals.Entry == Locals.FsList) {
 	goto out;
     }
@@ -97,7 +97,27 @@ next:
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
     Status = Locals.PendingIrp->IoResponseStatus.Status;
-    if (!NT_SUCCESS(Status)) {
+    if (NT_SUCCESS(Status)) {
+	/* Get the volume device that the FS driver has created, and link it with our VCB. */
+	PIO_RESPONSE_DATA Response = Locals.PendingIrp->IoResponseData;
+	if (!Response) {
+	    /* In case of success the client should supply us with valid IO response data.
+	     * On debug build we stop so we can find out what's going on. */
+	    assert(FALSE);
+	    Status = STATUS_UNRECOGNIZED_VOLUME;
+	    goto out;
+	}
+	PIO_DEVICE_OBJECT VolumeDevice = IopGetDeviceObject(Response->VolumeMounted.VolumeDeviceHandle,
+							    Locals.CurrentFs->FsctlDevObj->DriverObject);
+	if (!VolumeDevice) {
+	    assert(FALSE);
+	    Status = STATUS_UNRECOGNIZED_VOLUME;
+	    goto out;
+	}
+	DevObj->Vcb->VolumeDevice = VolumeDevice;
+	DevObj->Vcb->StorageDevice = DevObj;
+	DevObj->Vcb->MountInProgress = FALSE;
+    } else {
 	IopCleanupPendingIrp(Locals.PendingIrp);
 	Locals.PendingIrp = NULL;
 	Locals.IoPacket = NULL;
@@ -111,13 +131,9 @@ out:
     } else if (Locals.IoPacket) {
 	IopFreePool(Locals.IoPacket);
     }
-    if (DevObj->Vcb) {
-	if (NT_SUCCESS(Status)) {
-	    DevObj->Vcb->MountInProgress = FALSE;
-	} else {
-	    IopFreePool(DevObj->Vcb);
-	    DevObj->Vcb = NULL;
-	}
+    if (DevObj->Vcb && !NT_SUCCESS(Status)) {
+	IopFreePool(DevObj->Vcb);
+	DevObj->Vcb = NULL;
     }
     KeSetEvent(&DevObj->MountCompleted);
     ASYNC_END(State, Status);
