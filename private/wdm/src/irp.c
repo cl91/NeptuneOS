@@ -557,10 +557,12 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(IN PIO_PACKET Dest,
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_MOUNT_VOLUME:
 	    assert(IoSp->Parameters.MountVolume.Vpb);
-	    if (!IoSp->Parameters.MountVolume.Vpb->DeviceObject) {
-		return FALSE;
+	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
+		if (!IoSp->Parameters.MountVolume.Vpb->DeviceObject) {
+		    return FALSE;
+		}
+		Size += sizeof(IO_RESPONSE_DATA);
 	    }
-	    Size += sizeof(IO_RESPONSE_DATA);
 	    break;
 	default:
 	    /* UNIMPLEMENTED */
