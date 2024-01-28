@@ -136,12 +136,12 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 				 InputBuffer, InputBufferLength,
 				 &DriverInputBuffer, TRUE));
 	assert(DriverInputBuffer != 0);
-	DbgTrace("Mapped input buffer %p into driver %s at %p\n",
-		 (PVOID)InputBuffer, DriverObject->DriverImagePath,
-		 (PVOID)DriverInputBuffer);
 	InputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
 						   InputBuffer,
 						   InputBufferLength);
+	DbgTrace("Mapped input buffer %p into driver %s at %p, pfn count %d\n",
+		 (PVOID)InputBuffer, DriverObject->DriverImagePath,
+		 (PVOID)DriverInputBuffer, InputBufferPfnCount);
     }
 
     MWORD DriverOutputBuffer = 0;
@@ -153,12 +153,12 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
 				    &DriverOutputBuffer, OutputIsReadOnly),
 		   IopUnmapUserBuffer(DriverObject, DriverInputBuffer));
 	assert(DriverOutputBuffer != 0);
-	DbgTrace("Mapped output buffer %p into driver %s at %p\n",
-		 (PVOID)OutputBuffer, DriverObject->DriverImagePath,
-		 (PVOID)DriverOutputBuffer);
 	OutputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
 						    OutputBuffer,
 						    OutputBufferLength);
+	DbgTrace("Mapped output buffer %p into driver %s at %p, pfn count %d\n",
+		 (PVOID)OutputBuffer, DriverObject->DriverImagePath,
+		 (PVOID)DriverOutputBuffer, OutputBufferPfnCount);
     }
     PendingIrp->IoPacket->Request.InputBuffer = DriverInputBuffer;
     PendingIrp->IoPacket->Request.OutputBuffer = DriverOutputBuffer;

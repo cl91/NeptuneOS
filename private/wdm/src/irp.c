@@ -343,6 +343,9 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
 	FileObject = IopGetFileObject(Src->Request.File.Handle);
     }
 
+    DbgTrace("Populating local IRP from server IO packet %p, devobj %p, fileobj %p\n",
+	     Src, DeviceObject, FileObject);
+    IoDbgDumpIoPacket(Src, TRUE);
     IoInitializeIrp(Irp);
 
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -768,8 +771,8 @@ static BOOLEAN IopPopulateIoRequestMessage(IN PIO_PACKET Dest,
     case IRP_MJ_READ:
     {
 	/* Likewise, for READ IRP we always assume NEITHER IO. */
-	Dest->Request.InputBuffer = (MWORD)Irp->UserBuffer;
-	Dest->Request.InputBufferLength = IoStack->Parameters.Read.Length;
+	Dest->Request.OutputBuffer = (MWORD)Irp->UserBuffer;
+	Dest->Request.OutputBufferLength = IoStack->Parameters.Read.Length;
 	Dest->Request.Read.Key = IoStack->Parameters.Read.Key;
 	Dest->Request.Read.ByteOffset = IoStack->Parameters.Read.ByteOffset;
 	break;
@@ -777,8 +780,8 @@ static BOOLEAN IopPopulateIoRequestMessage(IN PIO_PACKET Dest,
     case IRP_MJ_WRITE:
     {
 	/* Always assume NEITHER IO. See above. */
-	Dest->Request.OutputBuffer = (MWORD)Irp->UserBuffer;
-	Dest->Request.OutputBufferLength = IoStack->Parameters.Write.Length;
+	Dest->Request.InputBuffer = (MWORD)Irp->UserBuffer;
+	Dest->Request.InputBufferLength = IoStack->Parameters.Write.Length;
 	Dest->Request.Write.Key = IoStack->Parameters.Write.Key;
 	Dest->Request.Write.ByteOffset = IoStack->Parameters.Write.ByteOffset;
 	break;

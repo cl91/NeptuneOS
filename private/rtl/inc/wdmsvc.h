@@ -140,8 +140,15 @@ typedef struct _IO_REQUEST_PARAMETERS {
 			* IRP is queued on a driver object, this is the buffer
 			* address mapped in the driver address space. The
 			* original address is saved in the PENDING_IRP struct.
-			* Same goes for the output buffer below. */
-    MWORD OutputBuffer;
+			* Same goes for the output buffer below. This is used
+			* by IRP_MJ_WRITE and IOCTL IRPs. */
+    MWORD OutputBuffer;	/* See InputBuffer. This is used by IRP_MJ_READ and
+			 * IOCTL IRPs. Note it should be apparent from the
+			 * usage that input and output here is with respect
+			 * to the device. In other words, READ IRP will read
+			 * from the device and write to the OutputBuffer and
+			 * WRITE IRP will read from the InputBuffer and write
+			 * to the device. */
     ULONG InputBufferLength;
     ULONG OutputBufferLength;
     ULONG InputBufferPfn; /* Page frame database of the input buffer. This is
