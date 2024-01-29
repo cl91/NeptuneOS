@@ -123,18 +123,8 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     }
     KeInitializeDeviceQueue(&DeviceObject->DeviceQueue);
 
-    /* Set the right Sector Size. TODO: Server-side? */
-    switch (DeviceType) {
-        case FILE_DEVICE_DISK_FILE_SYSTEM:
-        case FILE_DEVICE_DISK:
-        case FILE_DEVICE_VIRTUAL_DISK:
-            /* The default is 512 bytes */
-            DeviceObject->SectorSize  = 512;
-            break;
-        case FILE_DEVICE_CD_ROM_FILE_SYSTEM:
-            /* The default is 2048 bytes */
-            DeviceObject->SectorSize = 2048;
-    }
+    /* Set the correct sector size. */
+    DeviceObject->SectorSize = IopDeviceTypeToSectorSize(DeviceType);
 
     *pDeviceObject = DeviceObject;
     DbgTrace("Created device object %p handle %p extension %p name %ws\n",

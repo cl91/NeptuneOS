@@ -339,6 +339,19 @@ typedef PTHREAD_START_ROUTINE PIO_INTERRUPT_SERVICE_THREAD_ENTRY;
 /*
  * Inline functions
  */
+static inline USHORT IopDeviceTypeToSectorSize(IN DEVICE_TYPE DeviceType)
+{
+    switch (DeviceType) {
+    case FILE_DEVICE_DISK_FILE_SYSTEM:
+    case FILE_DEVICE_DISK:
+    case FILE_DEVICE_VIRTUAL_DISK:
+	return 512;
+    case FILE_DEVICE_CD_ROM_FILE_SYSTEM:
+	return 2048;
+    }
+    return 0;
+}
+
 static inline VOID IoDbgDumpFileObjectCreateParameters(IN PIO_PACKET IoPacket,
 						       IN PFILE_OBJECT_CREATE_PARAMETERS Params)
 {

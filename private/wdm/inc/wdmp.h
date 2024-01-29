@@ -13,6 +13,9 @@ extern PCSTR IopDbgTraceModuleName;
 #include <wdmsvc.h>
 #include <wdm_wdmsvc_gen.h>
 
+#define ALIGN_DOWN_64(n, align)	(((ULONGLONG)(n)) & ~((align) - 1LL))
+#define ALIGN_UP_64(n, align)	ALIGN_DOWN_64(((ULONGLONG)(n))+(align)-1LL, (align))
+
 #define TAG_DRIVER_EXTENSION	'EVRD'
 #define TAG_REINIT		'iRoI'
 #define TAG_SYS_BUF		'BSYS'
