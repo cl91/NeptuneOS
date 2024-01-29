@@ -49,10 +49,9 @@ BOOLEAN FATIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 		CcUnpinData(Context);
 	    }
 
-	    __try {
-		CcMapData(Fcb->FileObject, &FileOffset, sizeof(FAT_DIR_ENTRY),
-			  MAP_WAIT, &Context, (PVOID *)&FatDirEntry);
-	    } __except(EXCEPTION_EXECUTE_HANDLER) {
+	    Status = CcMapData(Fcb->FileObject, &FileOffset, sizeof(FAT_DIR_ENTRY),
+			       MAP_WAIT, &Context, (PVOID *)&FatDirEntry);
+	    if (!NT_SUCCESS(Status)) {
 		return TRUE;
 	    }
 
@@ -103,11 +102,10 @@ BOOLEAN FATXIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 		CcUnpinData(Context);
 	    }
 
-	    __try {
-		CcMapData(Fcb->FileObject, &FileOffset,
-			  sizeof(FATX_DIR_ENTRY), MAP_WAIT, &Context,
-			  (PVOID *)&FatXDirEntry);
-	    } __except(EXCEPTION_EXECUTE_HANDLER) {
+	    Status = CcMapData(Fcb->FileObject, &FileOffset,
+			       sizeof(FATX_DIR_ENTRY), MAP_WAIT, &Context,
+			       (PVOID *)&FatXDirEntry);
+	    if (!NT_SUCCESS(Status)) {
 		return TRUE;
 	    }
 
@@ -177,10 +175,9 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	__try {
-	    CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-		      MAP_WAIT, pContext, pPage);
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
+	Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
+			   MAP_WAIT, pContext, pPage);
+	if (!NT_SUCCESS(Status)) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
@@ -214,10 +211,9 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 		    return STATUS_NO_MORE_ENTRIES;
 		}
 
-		__try {
-		    CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-			      MAP_WAIT, pContext, pPage);
-		} __except(EXCEPTION_EXECUTE_HANDLER) {
+		Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
+				   MAP_WAIT, pContext, pPage);
+		if (!NT_SUCCESS(Status)) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
@@ -245,10 +241,9 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 		    return STATUS_NO_MORE_ENTRIES;
 		}
 
-		__try {
-		    CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-			      MAP_WAIT, pContext, pPage);
-		} __except(EXCEPTION_EXECUTE_HANDLER) {
+		Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
+				   MAP_WAIT, pContext, pPage);
+		if (!NT_SUCCESS(Status)) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
@@ -368,10 +363,9 @@ NTSTATUS FATGetNextDirEntry(PVOID *pContext,
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    __try {
-		CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-			  MAP_WAIT, pContext, pPage);
-	    } __except(EXCEPTION_EXECUTE_HANDLER) {
+	    Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
+			       MAP_WAIT, pContext, pPage);
+	    if (!NT_SUCCESS(Status)) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
@@ -406,7 +400,7 @@ NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
 			     PFAT_DIRENTRY_CONTEXT DirContext, BOOLEAN First)
 {
     LARGE_INTEGER FileOffset;
-    PFATX_DIR_ENTRY fatxDirEntry;
+    PFATX_DIR_ENTRY FatXDirEntry;
     OEM_STRING StringO;
     ULONG DirIndex = DirContext->DirIndex;
     NTSTATUS Status;
@@ -446,8 +440,7 @@ NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
 	}
     }
 
-    Status =
-	FatFcbInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
+    Status = FatFcbInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -456,35 +449,33 @@ NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
 	if (*pContext != NULL) {
 	    CcUnpinData(*pContext);
 	}
-	FileOffset.u.LowPart =
-	    ROUND_DOWN(DirIndex * sizeof(FATX_DIR_ENTRY), PAGE_SIZE);
+	FileOffset.LowPart = ROUND_DOWN(DirIndex * sizeof(FATX_DIR_ENTRY), PAGE_SIZE);
 	if (FileOffset.u.LowPart >= DirFcb->Base.FileSize.u.LowPart) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	__try {
-	    CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-		      MAP_WAIT, pContext, pPage);
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
+	Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
+			   MAP_WAIT, pContext, pPage);
+	if (!NT_SUCCESS(Status)) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
     }
 
-    fatxDirEntry = (PFATX_DIR_ENTRY)(*pPage) + DirIndex % FATX_ENTRIES_PER_PAGE;
+    FatXDirEntry = (PFATX_DIR_ENTRY)(*pPage) + DirIndex % FATX_ENTRIES_PER_PAGE;
 
     DirContext->StartIndex = DirContext->DirIndex;
 
     while (TRUE) {
-	if (FATX_ENTRY_END(fatxDirEntry)) {
+	if (FATX_ENTRY_END(FatXDirEntry)) {
 	    CcUnpinData(*pContext);
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	if (!FATX_ENTRY_DELETED(fatxDirEntry)) {
-	    RtlCopyMemory(&DirContext->DirEntry.FatX, fatxDirEntry,
+	if (!FATX_ENTRY_DELETED(FatXDirEntry)) {
+	    RtlCopyMemory(&DirContext->DirEntry.FatX, FatXDirEntry,
 			  sizeof(FATX_DIR_ENTRY));
 	    break;
 	}
@@ -499,21 +490,20 @@ NTSTATUS FATXGetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    __try {
-		CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-			  MAP_WAIT, pContext, pPage);
-	    } __except(EXCEPTION_EXECUTE_HANDLER) {
+	    Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
+			       MAP_WAIT, pContext, pPage);
+	    if (!NT_SUCCESS(Status)) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    fatxDirEntry = (PFATX_DIR_ENTRY) * pPage;
+	    FatXDirEntry = (PFATX_DIR_ENTRY)*pPage;
 	} else {
-	    fatxDirEntry++;
+	    FatXDirEntry++;
 	}
     }
-    StringO.Buffer = (PCHAR) fatxDirEntry->Filename;
-    StringO.Length = StringO.MaximumLength = fatxDirEntry->FilenameLength;
+    StringO.Buffer = (PCHAR)FatXDirEntry->Filename;
+    StringO.Length = StringO.MaximumLength = FatXDirEntry->FilenameLength;
     RtlOemStringToUnicodeString(&DirContext->LongNameU, &StringO, FALSE);
     DirContext->ShortNameU = DirContext->LongNameU;
     return STATUS_SUCCESS;
