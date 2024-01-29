@@ -339,6 +339,12 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     MWORD FileSize;
     PIO_FILE_CONTROL_BLOCK Fcb;
     BOOLEAN NoNewFcb;
+    BOOLEAN ReadAccess;
+    BOOLEAN WriteAccess;
+    BOOLEAN DeleteAccess;
+    BOOLEAN SharedRead;
+    BOOLEAN SharedWrite;
+    BOOLEAN SharedDelete;
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*

@@ -24,6 +24,12 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     }
 
     File->DeviceObject = Ctx->DeviceObject;
+    File->ReadAccess = Ctx->ReadAccess;
+    File->WriteAccess = Ctx->WriteAccess;
+    File->DeleteAccess = Ctx->DeleteAccess;
+    File->SharedRead = Ctx->SharedRead;
+    File->SharedWrite = Ctx->SharedWrite;
+    File->SharedDelete = Ctx->SharedDelete;
     if (Ctx->DeviceObject) {
 	InsertTailList(&Ctx->DeviceObject->OpenFileList, &File->DeviceLink);
     }
@@ -36,6 +42,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
  * FileName is not an empty string (typically when the device object is
  * a volume object belonging to a file system), the file object will
  * be inserted under the device object using the file name as sub-path.
+ * File object created will have all IO access rights granted.
  */
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
@@ -51,7 +58,13 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 	.BufferPtr = NULL,
 	.FileSize = 0,
 	.Fcb = NULL,
-	.NoNewFcb = FALSE
+	.NoNewFcb = FALSE,
+	.ReadAccess = TRUE,
+	.WriteAccess = TRUE,
+	.DeleteAccess = TRUE,
+	.SharedRead = TRUE,
+	.SharedWrite = TRUE,
+	.SharedDelete = TRUE
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
