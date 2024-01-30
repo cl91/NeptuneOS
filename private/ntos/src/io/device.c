@@ -116,6 +116,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	    PIO_DEVICE_OBJECT TargetDevice;
 	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
+	    ULONG FileNameLength;
 	});
     Locals.FileObject = NULL;
     Locals.IoPacket = NULL;
@@ -150,8 +151,11 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	}
     }
 
-    ULONG FileNameLength = strlen(SubPath);
-    ULONG IoPacketSize = sizeof(IO_PACKET) + (FileNameLength ? FileNameLength + 2 : 0);
+    Locals.FileNameLength = strlen(SubPath);
+    ULONG IoPacketSize = sizeof(IO_PACKET);
+    if (Locals.FileNameLength) {
+	IoPacketSize += Locals.FileNameLength + 2;
+    }
     IF_ERR_GOTO(out, Status,
 		IopAllocateIoPacket(IoPacketTypeRequest, IoPacketSize, &Locals.IoPacket));
     assert(Locals.IoPacket != NULL);
@@ -159,13 +163,13 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     /* For IO packets involving the creation of file objects, we need to pass
      * FILE_OBJECT_CREATE_PARAMETERS to the client driver so it can record the
      * file object information there */
-    if (FileNameLength) {
+    if (Locals.FileNameLength) {
 	PUCHAR FileNamePtr = (PUCHAR)(&Locals.IoPacket[1]);
 	/* Note since we are handling the case of an absolute open (an open
 	 * request with RelatedFileObject == NULL), we prepend the path with
 	 * '\\' so the file system driver knows it's an absolute path. */
 	FileNamePtr[0] = '\\';
-	memcpy(FileNamePtr + 1, SubPath, FileNameLength + 1);
+	memcpy(FileNamePtr + 1, SubPath, Locals.FileNameLength + 1);
     }
     FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
 	.ReadAccess = Locals.FileObject->ReadAccess,
@@ -175,7 +179,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	.SharedWrite = Locals.FileObject->SharedWrite,
 	.SharedDelete = Locals.FileObject->SharedDelete,
 	.Flags = Locals.FileObject->Flags,
-	.FileNameOffset = FileNameLength ? sizeof(IO_PACKET) : 0
+	.FileNameOffset = Locals.FileNameLength ? sizeof(IO_PACKET) : 0
     };
 
     ULONG CreateOptions = OpenPacket->CreateOptions | (OpenPacket->Disposition << 24);
@@ -218,6 +222,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     if (NT_SUCCESS(Status)) {
 	*pOpenedInstance = Locals.FileObject;
+	*pRemainingPath += Locals.FileNameLength;
     }
 
 out:
