@@ -151,7 +151,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     }
 
     ULONG FileNameLength = strlen(SubPath);
-    ULONG IoPacketSize = sizeof(IO_PACKET) + FileNameLength + 1;
+    ULONG IoPacketSize = sizeof(IO_PACKET) + (FileNameLength ? FileNameLength + 2 : 0);
     IF_ERR_GOTO(out, Status,
 		IopAllocateIoPacket(IoPacketTypeRequest, IoPacketSize, &Locals.IoPacket));
     assert(Locals.IoPacket != NULL);
@@ -160,7 +160,12 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
      * FILE_OBJECT_CREATE_PARAMETERS to the client driver so it can record the
      * file object information there */
     if (FileNameLength) {
-	memcpy(Locals.IoPacket+1, SubPath, FileNameLength + 1);
+	PUCHAR FileNamePtr = (PUCHAR)(&Locals.IoPacket[1]);
+	/* Note since we are handling the case of an absolute open (an open
+	 * request with RelatedFileObject == NULL), we prepend the path with
+	 * '\\' so the file system driver knows it's an absolute path. */
+	FileNamePtr[0] = '\\';
+	memcpy(FileNamePtr + 1, SubPath, FileNameLength + 1);
     }
     FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
 	.ReadAccess = Locals.FileObject->ReadAccess,

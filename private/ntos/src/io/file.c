@@ -77,8 +77,7 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 }
 
 /*
- * This is a temporary function for the ldr component to create the initrd
- * boot module files. Eventually we will turn them into a proper DEVICE object.
+ * TODO: We need to handle opening against a RelatedFileObject
  */
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
