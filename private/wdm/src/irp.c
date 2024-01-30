@@ -297,36 +297,54 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(IN PIRP Irp,
     IoStack->Context = NULL;
     switch (Src->Request.MajorFunction) {
     case IRP_MJ_CREATE:
-	IoStack->Parameters.Create.SecurityContext = NULL;
+    {
+	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
+			    IopDeleteFileObject(FileObject));
+	IoStack->Parameters.Create.SecurityContext = SecurityContext;
 	IoStack->Parameters.Create.Options = Src->Request.Create.Options;
 	IoStack->Parameters.Create.FileAttributes = Src->Request.Create.FileAttributes;
 	IoStack->Parameters.Create.ShareAccess = Src->Request.Create.ShareAccess;
 	IoStack->Parameters.Create.EaLength = 0;
 	break;
+    }
 
     case IRP_MJ_CREATE_NAMED_PIPE:
-	IoStack->Parameters.CreatePipe.SecurityContext = NULL;
+    {
+	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
+			    IopDeleteFileObject(FileObject));
+	assert(FileObject != NULL);
+	IopAllocateObjectEx(NamedPipeCreateParameters, NAMED_PIPE_CREATE_PARAMETERS,
+			    {
+				IopDeleteFileObject(FileObject);
+				IopFreePool(SecurityContext);
+			    });
+	IoStack->Parameters.CreatePipe.SecurityContext = SecurityContext;
 	IoStack->Parameters.CreatePipe.Options = Src->Request.CreatePipe.Options;
 	IoStack->Parameters.CreatePipe.Reserved = 0;
 	IoStack->Parameters.CreatePipe.ShareAccess = Src->Request.CreatePipe.ShareAccess;
-	assert(FileObject != NULL);
-	IopAllocateObjectEx(NamedPipeCreateParameters, NAMED_PIPE_CREATE_PARAMETERS,
-			    IopDeleteFileObject(FileObject));
 	*NamedPipeCreateParameters = Src->Request.CreatePipe.Parameters;
 	IoStack->Parameters.CreatePipe.Parameters = NamedPipeCreateParameters;
 	break;
+    }
 
     case IRP_MJ_CREATE_MAILSLOT:
-	IoStack->Parameters.CreateMailslot.SecurityContext = NULL;
+    {
+	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
+			    IopDeleteFileObject(FileObject));
+	assert(FileObject != NULL);
+	IopAllocateObjectEx(MailslotCreateParameters, MAILSLOT_CREATE_PARAMETERS,
+			    {
+				IopDeleteFileObject(FileObject);
+				IopFreePool(SecurityContext);
+			    });
+	IoStack->Parameters.CreateMailslot.SecurityContext = SecurityContext;
 	IoStack->Parameters.CreateMailslot.Options = Src->Request.CreateMailslot.Options;
 	IoStack->Parameters.CreateMailslot.Reserved = 0;
 	IoStack->Parameters.CreateMailslot.ShareAccess = Src->Request.CreateMailslot.ShareAccess;
-	assert(FileObject != NULL);
-	IopAllocateObjectEx(MailslotCreateParameters, MAILSLOT_CREATE_PARAMETERS,
-			    IopDeleteFileObject(FileObject));
 	*MailslotCreateParameters = Src->Request.CreateMailslot.Parameters;
 	IoStack->Parameters.CreateMailslot.Parameters = MailslotCreateParameters;
 	break;
+    }
 
     case IRP_MJ_READ:
     {
@@ -454,6 +472,27 @@ static inline VOID IopDeleteIrp(PIRP Irp)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     switch (IoStack->MajorFunction) {
+    case IRP_MJ_CREATE:
+	if (IoStack->Parameters.Create.SecurityContext) {
+	    IopFreePool(IoStack->Parameters.Create.SecurityContext);
+	}
+	break;
+    case IRP_MJ_CREATE_NAMED_PIPE:
+	if (IoStack->Parameters.CreatePipe.SecurityContext) {
+	    IopFreePool(IoStack->Parameters.CreatePipe.SecurityContext);
+	}
+	if (IoStack->Parameters.CreatePipe.Parameters) {
+	    IopFreePool(IoStack->Parameters.CreatePipe.Parameters);
+	}
+	break;
+    case IRP_MJ_CREATE_MAILSLOT:
+	if (IoStack->Parameters.CreateMailslot.SecurityContext) {
+	    IopFreePool(IoStack->Parameters.CreateMailslot.SecurityContext);
+	}
+	if (IoStack->Parameters.CreateMailslot.Parameters) {
+	    IopFreePool(IoStack->Parameters.CreateMailslot.Parameters);
+	}
+	break;
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 	switch (IoStack->MinorFunction) {
 	case IRP_MN_MOUNT_VOLUME:
