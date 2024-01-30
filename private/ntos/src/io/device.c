@@ -173,22 +173,23 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	.FileNameOffset = FileNameLength ? sizeof(IO_PACKET) : 0
     };
 
+    ULONG CreateOptions = OpenPacket->CreateOptions | (OpenPacket->Disposition << 24);
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
 	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE;
-	Locals.IoPacket->Request.Create.Options = OpenPacket->CreateOptions;
+	Locals.IoPacket->Request.Create.Options = CreateOptions;
 	Locals.IoPacket->Request.Create.FileAttributes = OpenPacket->FileAttributes;
 	Locals.IoPacket->Request.Create.ShareAccess = OpenPacket->ShareAccess;
 	Locals.IoPacket->Request.Create.FileObjectParameters = FileObjectParameters;
     } else if (OpenPacket->CreateFileType == CreateFileTypeNamedPipe) {
 	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
-	Locals.IoPacket->Request.CreatePipe.Options = OpenPacket->CreateOptions;
+	Locals.IoPacket->Request.CreatePipe.Options = CreateOptions;
 	Locals.IoPacket->Request.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
 	Locals.IoPacket->Request.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
 	Locals.IoPacket->Request.CreatePipe.FileObjectParameters = FileObjectParameters;
     } else {
 	assert(OpenPacket->CreateFileType == CreateFileTypeMailslot);
 	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE_MAILSLOT;
-	Locals.IoPacket->Request.CreateMailslot.Options = OpenPacket->CreateOptions;
+	Locals.IoPacket->Request.CreateMailslot.Options = CreateOptions;
 	Locals.IoPacket->Request.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
 	Locals.IoPacket->Request.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
 	Locals.IoPacket->Request.CreateMailslot.FileObjectParameters = FileObjectParameters;
