@@ -422,11 +422,11 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    PUNICODE_STRING pSearchPattern = NULL;
+    PUNICODE_STRING SearchPattern = NULL;
     FILE_INFORMATION_CLASS FileInformationClass;
     PFILE_NAMES_INFORMATION Buffer0 = NULL;
-    PFATFCB pFcb;
-    PFATCCB pCcb;
+    PFATFCB Fcb;
+    PFATCCB Ccb;
     BOOLEAN FirstQuery = FALSE;
     BOOLEAN FirstCall = TRUE;
     FAT_DIRENTRY_CONTEXT DirContext;
@@ -436,14 +436,14 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 
     PIO_STACK_LOCATION Stack = IrpContext->Stack;
 
-    pCcb = (PFATCCB) IrpContext->FileObject->FsContext2;
-    pFcb = (PFATFCB) IrpContext->FileObject->FsContext;
+    Ccb = (PFATCCB)IrpContext->FileObject->FsContext2;
+    Fcb = (PFATFCB)IrpContext->FileObject->FsContext;
 
     LONG BufferLength = Stack->Parameters.QueryDirectory.Length;
     PUCHAR Buffer = IrpContext->Irp->UserBuffer;
 
     /* Obtain the callers parameters */
-    pSearchPattern = (PUNICODE_STRING)Stack->Parameters.QueryDirectory.FileName;
+    SearchPattern = (PUNICODE_STRING)Stack->Parameters.QueryDirectory.FileName;
     FileInformationClass = Stack->Parameters.QueryDirectory.FileInformationClass;
 
     /* Allocate search pattern in case:
@@ -453,41 +453,41 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
      * -> The pattern buffer is not null
      * Otherwise, we'll fall later and allocate a match all (*) pattern
      */
-    if (pSearchPattern && pSearchPattern->Length && pSearchPattern->Buffer) {
-	if (!pCcb->SearchPattern.Buffer) {
+    if (SearchPattern && SearchPattern->Length && SearchPattern->Buffer) {
+	if (!Ccb->SearchPattern.Buffer) {
 	    FirstQuery = TRUE;
-	    pCcb->SearchPattern.MaximumLength = pSearchPattern->Length + sizeof(WCHAR);
-	    pCcb->SearchPattern.Buffer =
-		ExAllocatePoolWithTag(pCcb->SearchPattern.MaximumLength,
+	    Ccb->SearchPattern.MaximumLength = SearchPattern->Length + sizeof(WCHAR);
+	    Ccb->SearchPattern.Buffer =
+		ExAllocatePoolWithTag(Ccb->SearchPattern.MaximumLength,
 				      TAG_SEARCH);
-	    if (!pCcb->SearchPattern.Buffer) {
+	    if (!Ccb->SearchPattern.Buffer) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
-	    RtlCopyUnicodeString(&pCcb->SearchPattern, pSearchPattern);
-	    pCcb->SearchPattern.Buffer[pCcb->SearchPattern.Length/sizeof(WCHAR)] = 0;
+	    RtlCopyUnicodeString(&Ccb->SearchPattern, SearchPattern);
+	    Ccb->SearchPattern.Buffer[Ccb->SearchPattern.Length/sizeof(WCHAR)] = 0;
 	}
-    } else if (!pCcb->SearchPattern.Buffer) {
+    } else if (!Ccb->SearchPattern.Buffer) {
 	FirstQuery = TRUE;
-	pCcb->SearchPattern.MaximumLength = 2 * sizeof(WCHAR);
-	pCcb->SearchPattern.Buffer = ExAllocatePoolWithTag(2 * sizeof(WCHAR),
+	Ccb->SearchPattern.MaximumLength = 2 * sizeof(WCHAR);
+	Ccb->SearchPattern.Buffer = ExAllocatePoolWithTag(2 * sizeof(WCHAR),
 							   TAG_SEARCH);
-	if (!pCcb->SearchPattern.Buffer) {
+	if (!Ccb->SearchPattern.Buffer) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
-	pCcb->SearchPattern.Buffer[0] = L'*';
-	pCcb->SearchPattern.Buffer[1] = 0;
-	pCcb->SearchPattern.Length = sizeof(WCHAR);
+	Ccb->SearchPattern.Buffer[0] = L'*';
+	Ccb->SearchPattern.Buffer[1] = 0;
+	Ccb->SearchPattern.Length = sizeof(WCHAR);
     }
 
     if (BooleanFlagOn(IrpContext->Stack->Flags, SL_INDEX_SPECIFIED)) {
-	DirContext.DirIndex = pCcb->Entry = Stack->Parameters.QueryDirectory.FileIndex;
+	DirContext.DirIndex = Ccb->Entry = Stack->Parameters.QueryDirectory.FileIndex;
     } else if (FirstQuery || BooleanFlagOn(IrpContext->Stack->Flags, SL_RESTART_SCAN)) {
-	DirContext.DirIndex = pCcb->Entry = 0;
+	DirContext.DirIndex = Ccb->Entry = 0;
     } else {
-	DirContext.DirIndex = pCcb->Entry;
+	DirContext.DirIndex = Ccb->Entry;
     }
 
-    DPRINT("Buffer=%p tofind=%wZ\n", Buffer, &pCcb->SearchPattern);
+    DPRINT("Buffer=%p tofind=%wZ\n", Buffer, &Ccb->SearchPattern);
 
     DirContext.DeviceExt = IrpContext->DeviceExt;
     DirContext.LongNameU.Buffer = LongNameBuffer;
@@ -497,12 +497,12 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 
     Written = 0;
     while ((Status == STATUS_SUCCESS) && (BufferLength > 0)) {
-	Status = FindFile(IrpContext->DeviceExt, pFcb,
-			  &pCcb->SearchPattern, &DirContext, FirstCall);
-	pCcb->Entry = DirContext.DirIndex;
+	Status = FindFile(IrpContext->DeviceExt, Fcb,
+			  &Ccb->SearchPattern, &DirContext, FirstCall);
+	Ccb->Entry = DirContext.DirIndex;
 
 	DPRINT("Found %wZ, Status=%x, entry %x\n", &DirContext.LongNameU,
-	       Status, pCcb->Entry);
+	       Status, Ccb->Entry);
 
 	FirstCall = FALSE;
 	if (NT_SUCCESS(Status)) {
@@ -556,7 +556,7 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 
 	Buffer0 = (PFILE_NAMES_INFORMATION)Buffer;
 	Buffer0->FileIndex = DirContext.DirIndex;
-	pCcb->Entry = ++DirContext.DirIndex;
+	Ccb->Entry = ++DirContext.DirIndex;
 	BufferLength -= Buffer0->NextEntryOffset;
 
 	if (BooleanFlagOn(IrpContext->Stack->Flags, SL_RETURN_SINGLE_ENTRY))

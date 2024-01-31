@@ -110,7 +110,7 @@ static NTSTATUS SmTestFloppyDriver()
     IO_STATUS_BLOCK IoStatusBlock;
 
     /* Open the device */
-    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0");
+    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0\\kernel");
     InitializeObjectAttributes(&ObjectAttributes, &FloppyDevice, 0, NULL, NULL);
     RET_ERR_EX(NtCreateFile(&hFloppy, FILE_READ_DATA | FILE_WRITE_DATA,
 			    &ObjectAttributes, &IoStatusBlock, NULL, 0,
@@ -124,7 +124,8 @@ static NTSTATUS SmTestFloppyDriver()
     /* Try to read the data */
     SmPrint("Reading floppy... ");
     RET_ERR_EX(NtReadFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
-			  Buffer, sizeof(Buffer), &ByteOffset, NULL),
+			  Buffer, 71764, &ByteOffset, NULL),
+			  /* Buffer, sizeof(Buffer), &ByteOffset, NULL), */
 	       SmPrint("FAILED. Status = 0x%x\n", Status));
 
     SmPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",

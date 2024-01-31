@@ -194,15 +194,6 @@ VOID FatDestroyCcb(PFATCCB Ccb)
 
 VOID FatDestroyFcb(PFATFCB Fcb)
 {
-#ifdef KDBG
-    if (DebugFile.Buffer != NULL
-	&& FsRtlIsNameInExpression(&DebugFile, &Fcb->LongNameU, FALSE,
-				   NULL)) {
-	DPRINT1("Destroying: %p (%wZ) %d\n", Fcb, &Fcb->PathNameU,
-		Fcb->RefCount);
-    }
-#endif
-
     if (!FatFcbIsRoot(Fcb) && !BooleanFlagOn(Fcb->Flags, FCB_IS_FAT)
 	&& !BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME)) {
 	RemoveEntryList(&Fcb->ParentListEntry);
@@ -441,10 +432,9 @@ PFATFCB FatGrabFcbFromTable(PDEVICE_EXTENSION Vcb,
 
     HASHENTRY *Entry;
 
-    DPRINT("'%wZ'\n", PathNameU);
+    DPRINT("FatGrabFcbFromTable: '%wZ'\n", PathNameU);
 
-    ASSERT(PathNameU->Length >= sizeof(WCHAR)
-	   && PathNameU->Buffer[0] == L'\\');
+    ASSERT(PathNameU->Length >= sizeof(WCHAR) && PathNameU->Buffer[0] == L'\\');
     Hash = FatNameHash(0, PathNameU);
 
     Entry = Vcb->FcbHashTable[Hash % Vcb->HashTableSize];
@@ -455,15 +445,15 @@ PFATFCB FatGrabFcbFromTable(PDEVICE_EXTENSION Vcb,
     while (Entry) {
 	if (Entry->Hash == Hash) {
 	    Fcb = Entry->Self;
-	    DPRINT("'%wZ' '%wZ'\n", &DirNameU, &Fcb->DirNameU);
+	    DPRINT("Comparing dir names '%wZ' '%wZ'\n", &DirNameU, &Fcb->DirNameU);
 	    if (RtlEqualUnicodeString(&DirNameU, &Fcb->DirNameU, TRUE)) {
 		if (Fcb->Hash.Hash == Hash) {
 		    FcbNameU = &Fcb->LongNameU;
 		} else {
 		    FcbNameU = &Fcb->ShortNameU;
 		}
-		/* compare the file name */
-		DPRINT("'%wZ' '%wZ'\n", &FileNameU, FcbNameU);
+		/* Compare the file name */
+		DPRINT("Comparing file names '%wZ' '%wZ'\n", &FileNameU, FcbNameU);
 		if (RtlEqualUnicodeString(&FileNameU, FcbNameU, TRUE)) {
 		    FatGrabFcb(Vcb, Fcb);
 		    return Fcb;
@@ -486,16 +476,13 @@ PFATFCB FatMakeRootFcb(PDEVICE_EXTENSION Vcb)
     PFATFCB Fcb = FatNewFcb(Vcb, &NameU);
     if (FatVolumeIsFatX(Vcb)) {
 	memset(Fcb->Entry.FatX.Filename, ' ', 42);
-	Fcb->Entry.FatX.FileSize = Vcb->FatInfo.RootDirectorySectors *
-	    Vcb->FatInfo.BytesPerSector;
+	Fcb->Entry.FatX.FileSize = Vcb->FatInfo.RootDirectorySectors * Vcb->FatInfo.BytesPerSector;
 	Fcb->Entry.FatX.Attrib = FILE_ATTRIBUTE_DIRECTORY;
 	Fcb->Entry.FatX.FirstCluster = 1;
-	Size = Vcb->FatInfo.RootDirectorySectors *
-	    Vcb->FatInfo.BytesPerSector;
+	Size = Vcb->FatInfo.RootDirectorySectors * Vcb->FatInfo.BytesPerSector;
     } else {
 	memset(Fcb->Entry.Fat.ShortName, ' ', 11);
-	Fcb->Entry.Fat.FileSize = Vcb->FatInfo.RootDirectorySectors *
-	    Vcb->FatInfo.BytesPerSector;
+	Fcb->Entry.Fat.FileSize = Vcb->FatInfo.RootDirectorySectors * Vcb->FatInfo.BytesPerSector;
 	Fcb->Entry.Fat.Attrib = FILE_ATTRIBUTE_DIRECTORY;
 	if (Vcb->FatInfo.FatType == FAT32) {
 	    ULONG FirstCluster = Vcb->FatInfo.RootCluster;
@@ -571,13 +558,6 @@ NTSTATUS FatMakeFcbFromDirEntry(PVCB Vcb,
 NTSTATUS FatAttachFcbToFileObject(PDEVICE_EXTENSION Vcb,
 				  PFATFCB Fcb, PFILE_OBJECT FileObject)
 {
-#ifdef KDBG
-    if (DebugFile.Buffer
-	&& FsRtlIsNameInExpression(&DebugFile, &Fcb->LongNameU, FALSE, NULL)) {
-	DPRINT1("Attaching %p to %p (%d)\n", Fcb, FileObject, Fcb->RefCount);
-    }
-#endif
-
     PFATCCB NewCcb = ExAllocateFromLookasideList(&FatGlobalData->CcbLookasideList);
     if (NewCcb == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -587,7 +567,7 @@ NTSTATUS FatAttachFcbToFileObject(PDEVICE_EXTENSION Vcb,
     FileObject->FsContext = Fcb;
     FileObject->FsContext2 = NewCcb;
     FileObject->Vpb = Vcb->IoVPB;
-    DPRINT("file open: Fcb:%p PathName:%wZ\n", Fcb, &Fcb->PathNameU);
+    DPRINT("File open: Fcb:%p PathName:%wZ\n", Fcb, &Fcb->PathNameU);
 
 #ifdef KDBG
     Fcb->Flags &= ~FCB_CLEANED_UP;
@@ -619,7 +599,7 @@ NTSTATUS FatDirFindFile(PDEVICE_EXTENSION DevExt,
     ASSERT(DirFcb);
     ASSERT(FileToFindU);
 
-    DPRINT("FatDirFindFile(VCB:%p, dirFCB:%p, File:%wZ)\n",
+    DPRINT("FatDirFindFile(Vcb:%p, DirFcb:%p, File:%wZ)\n",
 	   DevExt, DirFcb, FileToFindU);
     DPRINT("Dir Path:%wZ\n", &DirFcb->PathNameU);
 
@@ -643,23 +623,20 @@ NTSTATUS FatDirFindFile(PDEVICE_EXTENSION DevExt,
 	    return Status;
 	}
 
-	DPRINT("  Index:%u  longName:%wZ\n",
+	DPRINT("  Index:%u  LongName:%wZ\n",
 	       DirContext.DirIndex, &DirContext.LongNameU);
 
 	if (!ENTRY_VOLUME(IsFatX, &DirContext.DirEntry)) {
-	    if (DirContext.LongNameU.Length == 0 ||
-		DirContext.ShortNameU.Length == 0) {
+	    if (!DirContext.LongNameU.Length || !DirContext.ShortNameU.Length) {
 		DPRINT1("WARNING: File system corruption detected. You may "
 			"need to run a disk repair utility.\n");
 		if (FatGlobalData->Flags & FAT_BREAK_ON_CORRUPTION) {
-		    ASSERT(DirContext.LongNameU.Length != 0 &&
-			   DirContext.ShortNameU.Length != 0);
+		    ASSERT(DirContext.LongNameU.Length && DirContext.ShortNameU.Length);
 		}
 		DirContext.DirIndex++;
 		continue;
 	    }
-	    FoundLong = RtlEqualUnicodeString(FileToFindU, &DirContext.LongNameU,
-					      TRUE);
+	    FoundLong = RtlEqualUnicodeString(FileToFindU, &DirContext.LongNameU, TRUE);
 	    if (FoundLong == FALSE) {
 		FoundShort = RtlEqualUnicodeString(FileToFindU,
 						   &DirContext.ShortNameU, TRUE);
@@ -678,184 +655,181 @@ NTSTATUS FatDirFindFile(PDEVICE_EXTENSION DevExt,
 }
 
 NTSTATUS FatGetFcbForFile(PDEVICE_EXTENSION Vcb,
-			  PFATFCB *pParentFCB,
-			  PFATFCB *pFCB,
+			  PFATFCB *pParentFcb,
+			  PFATFCB *pFcb,
 			  PUNICODE_STRING pFileNameU)
 {
-    NTSTATUS status;
-    PFATFCB FCB = NULL;
-    PFATFCB parentFCB;
+    PFATFCB Fcb = NULL;
     UNICODE_STRING NameU;
     UNICODE_STRING RootNameU = RTL_CONSTANT_STRING(L"\\");
     UNICODE_STRING FileNameU;
     WCHAR NameBuffer[260];
-    PWCHAR curr, prev, last;
+    PWCHAR Curr, Prev, Last;
     ULONG Length;
 
     DPRINT("FatGetFcbForFile (%p,%p,%p,%wZ)\n",
-	   Vcb, pParentFCB, pFCB, pFileNameU);
+	   Vcb, pParentFcb, pFcb, pFileNameU);
 
     RtlInitEmptyUnicodeString(&FileNameU, NameBuffer, sizeof(NameBuffer));
 
-    parentFCB = *pParentFCB;
-
-    if (parentFCB == NULL) {
+    PFATFCB ParentFcb = *pParentFcb;
+    if (!ParentFcb) {
 	/* Passed-in name is the full name */
 	RtlCopyUnicodeString(&FileNameU, pFileNameU);
 
 	//  Trivial case, open of the root directory on volume
 	if (RtlEqualUnicodeString(&FileNameU, &RootNameU, FALSE)) {
-	    DPRINT("returning root FCB\n");
+	    DPRINT("Returning root FCB\n");
 
-	    FCB = FatOpenRootFcb(Vcb);
-	    *pFCB = FCB;
-	    *pParentFCB = NULL;
+	    Fcb = FatOpenRootFcb(Vcb);
+	    *pFcb = Fcb;
+	    *pParentFcb = NULL;
 
-	    return (FCB != NULL) ? STATUS_SUCCESS : STATUS_OBJECT_PATH_NOT_FOUND;
+	    return Fcb ? STATUS_SUCCESS : STATUS_OBJECT_PATH_NOT_FOUND;
 	}
 
 	/* Check for an existing FCB */
-	FCB = FatGrabFcbFromTable(Vcb, &FileNameU);
-	if (FCB) {
-	    *pFCB = FCB;
-	    *pParentFCB = FCB->ParentFcb;
-	    FatGrabFcb(Vcb, *pParentFCB);
+	Fcb = FatGrabFcbFromTable(Vcb, &FileNameU);
+	if (Fcb) {
+	    *pFcb = Fcb;
+	    *pParentFcb = Fcb->ParentFcb;
+	    FatGrabFcb(Vcb, *pParentFcb);
 	    return STATUS_SUCCESS;
 	}
 
-	last = curr = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
-	while (*curr != L'\\' && curr > FileNameU.Buffer) {
-	    curr--;
+	Last = Curr = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
+	while (*Curr != L'\\' && Curr > FileNameU.Buffer) {
+	    Curr--;
 	}
 
-	if (curr > FileNameU.Buffer) {
+	if (Curr > FileNameU.Buffer) {
 	    NameU.Buffer = FileNameU.Buffer;
-	    NameU.Length = (curr - FileNameU.Buffer) * sizeof(WCHAR);
+	    NameU.Length = (Curr - FileNameU.Buffer) * sizeof(WCHAR);
 	    NameU.MaximumLength = NameU.Length;
-	    FCB = FatGrabFcbFromTable(Vcb, &NameU);
-	    if (FCB) {
-		Length = (curr - FileNameU.Buffer) * sizeof(WCHAR);
-		if (Length != FCB->PathNameU.Length) {
-		    if (FileNameU.Length + FCB->PathNameU.Length - Length >
+	    Fcb = FatGrabFcbFromTable(Vcb, &NameU);
+	    if (Fcb) {
+		Length = (Curr - FileNameU.Buffer) * sizeof(WCHAR);
+		if (Length != Fcb->PathNameU.Length) {
+		    if (FileNameU.Length + Fcb->PathNameU.Length - Length >
 			FileNameU.MaximumLength) {
-			FatReleaseFcb(Vcb, FCB);
+			FatReleaseFcb(Vcb, Fcb);
 			return STATUS_OBJECT_NAME_INVALID;
 		    }
 		    RtlMoveMemory(FileNameU.Buffer +
-				  FCB->PathNameU.Length / sizeof(WCHAR),
-				  curr, FileNameU.Length - Length);
-		    FileNameU.Length += (USHORT) (FCB->PathNameU.Length - Length);
-		    curr = FileNameU.Buffer + FCB->PathNameU.Length / sizeof(WCHAR);
-		    last = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
+				  Fcb->PathNameU.Length / sizeof(WCHAR),
+				  Curr, FileNameU.Length - Length);
+		    FileNameU.Length += (USHORT)(Fcb->PathNameU.Length - Length);
+		    Curr = FileNameU.Buffer + Fcb->PathNameU.Length / sizeof(WCHAR);
+		    Last = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
 		}
-		RtlCopyMemory(FileNameU.Buffer, FCB->PathNameU.Buffer,
-			      FCB->PathNameU.Length);
+		RtlCopyMemory(FileNameU.Buffer, Fcb->PathNameU.Buffer,
+			      Fcb->PathNameU.Length);
 	    }
 	} else {
-	    FCB = NULL;
+	    Fcb = NULL;
 	}
 
-	if (FCB == NULL) {
-	    FCB = FatOpenRootFcb(Vcb);
-	    curr = FileNameU.Buffer;
+	if (Fcb == NULL) {
+	    Fcb = FatOpenRootFcb(Vcb);
+	    Curr = FileNameU.Buffer;
 	}
 
-	parentFCB = NULL;
-	prev = curr;
+	ParentFcb = NULL;
+	Prev = Curr;
     } else {
 	/* Make absolute path */
-	RtlCopyUnicodeString(&FileNameU, &parentFCB->PathNameU);
-	curr = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
-	if (*curr != L'\\') {
+	RtlCopyUnicodeString(&FileNameU, &ParentFcb->PathNameU);
+	Curr = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
+	if (*Curr != L'\\') {
 	    RtlAppendUnicodeToString(&FileNameU, L"\\");
-	    curr++;
+	    Curr++;
 	}
-	ASSERT(*curr == L'\\');
+	ASSERT(*Curr == L'\\');
 	RtlAppendUnicodeStringToString(&FileNameU, pFileNameU);
 
-	FCB = parentFCB;
-	parentFCB = NULL;
-	prev = curr;
-	last = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
+	Fcb = ParentFcb;
+	ParentFcb = NULL;
+	Prev = Curr;
+	Last = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) - 1;
     }
 
-    while (curr <= last) {
-	if (parentFCB) {
-	    FatReleaseFcb(Vcb, parentFCB);
-	    parentFCB = NULL;
+    while (Curr <= Last) {
+	if (ParentFcb) {
+	    FatReleaseFcb(Vcb, ParentFcb);
+	    ParentFcb = NULL;
 	}
-	//  fail if element in FCB is not a directory
-	if (!FatFcbIsDirectory(FCB)) {
+	// Fail if element in Fcb is not a directory
+	if (!FatFcbIsDirectory(Fcb)) {
 	    DPRINT("Element in requested path is not a directory\n");
 
-	    FatReleaseFcb(Vcb, FCB);
-	    FCB = NULL;
-	    *pParentFCB = NULL;
-	    *pFCB = NULL;
+	    FatReleaseFcb(Vcb, Fcb);
+	    Fcb = NULL;
+	    *pParentFcb = NULL;
+	    *pFcb = NULL;
 
 	    return STATUS_OBJECT_PATH_NOT_FOUND;
 	}
-	parentFCB = FCB;
-	if (prev < curr) {
-	    Length = (curr - prev) * sizeof(WCHAR);
-	    if (Length != parentFCB->LongNameU.Length) {
-		if (FileNameU.Length + parentFCB->LongNameU.Length -
+	ParentFcb = Fcb;
+	if (Prev < Curr) {
+	    Length = (Curr - Prev) * sizeof(WCHAR);
+	    if (Length != ParentFcb->LongNameU.Length) {
+		if (FileNameU.Length + ParentFcb->LongNameU.Length -
 		    Length > FileNameU.MaximumLength) {
-		    FatReleaseFcb(Vcb, parentFCB);
-		    *pParentFCB = NULL;
-		    *pFCB = NULL;
+		    FatReleaseFcb(Vcb, ParentFcb);
+		    *pParentFcb = NULL;
+		    *pFcb = NULL;
 		    return STATUS_OBJECT_NAME_INVALID;
 		}
-		RtlMoveMemory(prev +
-			      parentFCB->LongNameU.Length / sizeof(WCHAR),
-			      curr,
-			      FileNameU.Length - (curr -
+		RtlMoveMemory(Prev +
+			      ParentFcb->LongNameU.Length / sizeof(WCHAR),
+			      Curr,
+			      FileNameU.Length - (Curr -
 						  FileNameU.Buffer) *
 			      sizeof(WCHAR));
-		FileNameU.Length += (USHORT) (parentFCB->LongNameU.Length - Length);
-		curr = prev + parentFCB->LongNameU.Length / sizeof(WCHAR);
-		last = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) -
+		FileNameU.Length += (USHORT) (ParentFcb->LongNameU.Length - Length);
+		Curr = Prev + ParentFcb->LongNameU.Length / sizeof(WCHAR);
+		Last = FileNameU.Buffer + FileNameU.Length / sizeof(WCHAR) -
 		    1;
 	    }
-	    RtlCopyMemory(prev, parentFCB->LongNameU.Buffer,
-			  parentFCB->LongNameU.Length);
+	    RtlCopyMemory(Prev, ParentFcb->LongNameU.Buffer,
+			  ParentFcb->LongNameU.Length);
 	}
-	curr++;
-	prev = curr;
-	while (*curr != L'\\' && curr <= last) {
-	    curr++;
+	Curr++;
+	Prev = Curr;
+	while (*Curr != L'\\' && Curr <= Last) {
+	    Curr++;
 	}
 	NameU.Buffer = FileNameU.Buffer;
-	NameU.Length = (curr - NameU.Buffer) * sizeof(WCHAR);
+	NameU.Length = (Curr - NameU.Buffer) * sizeof(WCHAR);
 	NameU.MaximumLength = FileNameU.MaximumLength;
-	DPRINT("%wZ\n", &NameU);
-	FCB = FatGrabFcbFromTable(Vcb, &NameU);
-	if (FCB == NULL) {
-	    NameU.Buffer = prev;
-	    NameU.MaximumLength = NameU.Length = (curr - prev) * sizeof(WCHAR);
-	    status = FatDirFindFile(Vcb, parentFCB, &NameU, &FCB);
-	    if (status == STATUS_OBJECT_NAME_NOT_FOUND) {
-		*pFCB = NULL;
-		if (curr > last) {
-		    *pParentFCB = parentFCB;
+	DPRINT("Trying to grab fcb for %wZ\n", &NameU);
+	Fcb = FatGrabFcbFromTable(Vcb, &NameU);
+	if (!Fcb) {
+	    NameU.Buffer = Prev;
+	    NameU.MaximumLength = NameU.Length = (Curr - Prev) * sizeof(WCHAR);
+	    NTSTATUS Status = FatDirFindFile(Vcb, ParentFcb, &NameU, &Fcb);
+	    if (Status == STATUS_OBJECT_NAME_NOT_FOUND) {
+		*pFcb = NULL;
+		if (Curr > Last) {
+		    *pParentFcb = ParentFcb;
 		    return STATUS_OBJECT_NAME_NOT_FOUND;
 		} else {
-		    FatReleaseFcb(Vcb, parentFCB);
-		    *pParentFCB = NULL;
+		    FatReleaseFcb(Vcb, ParentFcb);
+		    *pParentFcb = NULL;
 		    return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
-	    } else if (!NT_SUCCESS(status)) {
-		FatReleaseFcb(Vcb, parentFCB);
-		*pParentFCB = NULL;
-		*pFCB = NULL;
+	    } else if (!NT_SUCCESS(Status)) {
+		FatReleaseFcb(Vcb, ParentFcb);
+		*pParentFcb = NULL;
+		*pFcb = NULL;
 
-		return status;
+		return Status;
 	    }
 	}
     }
 
-    *pParentFCB = parentFCB;
-    *pFCB = FCB;
+    *pParentFcb = ParentFcb;
+    *pFcb = Fcb;
 
     return STATUS_SUCCESS;
 }

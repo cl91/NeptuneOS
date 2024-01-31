@@ -314,43 +314,6 @@ typedef struct _DEVICE_EXTENSION {
     FAT_DISPATCH Dispatch;
 } DEVICE_EXTENSION, VCB, *PVCB;
 
-FORCEINLINE BOOLEAN FatIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt,
-					struct _FATFCB *Fcb)
-{
-    return DeviceExt->Dispatch.IsDirectoryEmpty(DeviceExt, Fcb);
-}
-
-FORCEINLINE NTSTATUS FatAddEntry(PDEVICE_EXTENSION DeviceExt,
-				 PUNICODE_STRING NameU,
-				 struct _FATFCB **Fcb,
-				 struct _FATFCB *ParentFcb,
-				 ULONG RequestedOptions,
-				 UCHAR ReqAttr,
-				 struct _FAT_MOVE_CONTEXT *MoveContext)
-{
-    return DeviceExt->Dispatch.AddEntry(DeviceExt, NameU, Fcb, ParentFcb,
-					RequestedOptions, ReqAttr,
-					MoveContext);
-}
-
-FORCEINLINE NTSTATUS FatDelEntry(PDEVICE_EXTENSION DeviceExt,
-				 struct _FATFCB *Fcb,
-				 struct _FAT_MOVE_CONTEXT *MoveContext)
-{
-    return DeviceExt->Dispatch.DelEntry(DeviceExt, Fcb, MoveContext);
-}
-
-FORCEINLINE NTSTATUS FatGetNextDirEntry(PDEVICE_EXTENSION DeviceExt,
-					PVOID *pContext,
-					PVOID *pPage,
-					struct _FATFCB *pDirFcb,
-					struct _FAT_DIRENTRY_CONTEXT *DirContext,
-					BOOLEAN First)
-{
-    return DeviceExt->Dispatch.GetNextDirEntry(pContext, pPage, pDirFcb,
-					       DirContext, First);
-}
-
 #define FAT_BREAK_ON_CORRUPTION 1
 
 typedef struct _FAT_GLOBAL_DATA {
@@ -600,10 +563,6 @@ BOOLEAN FsdSystemTimeToDosDateTime(PDEVICE_EXTENSION DeviceExt,
 				   USHORT *pDosDate,
 				   USHORT *pDosTime);
 
-/* direntry.c */
-ULONG FatDirEntryGetFirstCluster(PDEVICE_EXTENSION pDeviceExt,
-				 PDIR_ENTRY pDirEntry);
-
 /* dirwr.c */
 NTSTATUS FatFcbInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb);
 NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt,
@@ -620,6 +579,55 @@ NTSTATUS FatMoveEntry(IN PDEVICE_EXTENSION DeviceExt,
 		      IN PFATFCB Fcb,
 		      IN PUNICODE_STRING FileName,
 		      IN PFATFCB ParentFcb);
+
+FORCEINLINE ULONG FatDirEntryGetFirstCluster(PDEVICE_EXTENSION DevExt,
+					     PDIR_ENTRY DirEnt)
+{
+    if (DevExt->FatInfo.FatType == FAT32) {
+	return DirEnt->Fat.FirstCluster | ((ULONG)DirEnt->Fat.FirstClusterHigh << 16);
+    } else if (FatVolumeIsFatX(DevExt)) {
+	return DirEnt->FatX.FirstCluster;
+    } else {
+	return DirEnt->Fat.FirstCluster;
+    }
+}
+
+FORCEINLINE BOOLEAN FatIsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt,
+					struct _FATFCB *Fcb)
+{
+    return DeviceExt->Dispatch.IsDirectoryEmpty(DeviceExt, Fcb);
+}
+
+FORCEINLINE NTSTATUS FatAddEntry(PDEVICE_EXTENSION DeviceExt,
+				 PUNICODE_STRING NameU,
+				 struct _FATFCB **Fcb,
+				 struct _FATFCB *ParentFcb,
+				 ULONG RequestedOptions,
+				 UCHAR ReqAttr,
+				 struct _FAT_MOVE_CONTEXT *MoveContext)
+{
+    return DeviceExt->Dispatch.AddEntry(DeviceExt, NameU, Fcb, ParentFcb,
+					RequestedOptions, ReqAttr,
+					MoveContext);
+}
+
+FORCEINLINE NTSTATUS FatDelEntry(PDEVICE_EXTENSION DeviceExt,
+				 struct _FATFCB *Fcb,
+				 struct _FAT_MOVE_CONTEXT *MoveContext)
+{
+    return DeviceExt->Dispatch.DelEntry(DeviceExt, Fcb, MoveContext);
+}
+
+FORCEINLINE NTSTATUS FatGetNextDirEntry(PDEVICE_EXTENSION DeviceExt,
+					PVOID *pContext,
+					PVOID *pPage,
+					struct _FATFCB *pDirFcb,
+					struct _FAT_DIRENTRY_CONTEXT *DirContext,
+					BOOLEAN First)
+{
+    return DeviceExt->Dispatch.GetNextDirEntry(pContext, pPage, pDirFcb,
+					       DirContext, First);
+}
 
 /* ea.h */
 NTSTATUS FatSetExtendedAttributes(PFILE_OBJECT FileObject,

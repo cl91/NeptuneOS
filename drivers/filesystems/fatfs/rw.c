@@ -113,8 +113,8 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     LARGE_INTEGER ByteOffset = Stack->Parameters.Read.ByteOffset;
     ULONG Length = Stack->Parameters.Read.Length;
 
-    DPRINT("'%wZ', Offset: %u, Length %u\n", &Fcb->PathNameU,
-	   ByteOffset.LowPart, Length);
+    DPRINT("'%wZ', ReadOffset: 0x%x, ReadLength 0x%x. FileLength 0x%x\n", &Fcb->PathNameU,
+	   ByteOffset.LowPart, Length, Fcb->Base.FileSize.LowPart);
 
     /* This should not happen, but we will allow it nonetheless. */
     if (Length == 0) {
@@ -262,8 +262,8 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	    Status = NextCluster(DeviceExt, FirstCluster, &CurrentCluster, FALSE);
 	} while ((StartCluster + ClusterCount == CurrentCluster)
 		 && NT_SUCCESS(Status) && Length > BytesDone);
-	DPRINT("start %08x, next %08x, count %u\n", StartCluster,
-	       CurrentCluster, ClusterCount);
+	DPRINT("StartCluster %08x, NextCluster %08x, ClusterCount %u\n",
+	       StartCluster, CurrentCluster, ClusterCount);
 
 	Fcb->LastCluster = StartCluster + (ClusterCount - 1);
 	Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster) +

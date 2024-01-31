@@ -1124,7 +1124,7 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	.QuadPart = ROUND_UP_64(FileSize->QuadPart, ClusterSize)
     };
 
-    DPRINT("FatSetFileSizeInformation(File <%wZ>, FileSize %d %u)\n",
+    DPRINT("FatSetFileSizeInformation(File %wZ, FileSize 0x%x_%x)\n",
 	   &Fcb->PathNameU, FileSize->HighPart, FileSize->LowPart);
 
     if (NewAllocSize.HighPart > 0) {

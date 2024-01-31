@@ -20,6 +20,7 @@ VOID Fat8Dot3ToString(PFAT_DIR_ENTRY Entry, PUNICODE_STRING NameU)
 
     RtlCopyMemory(cString, Entry->ShortName, 11);
     cString[11] = 0;
+    DPRINT("Fat8Dot3ToString: short name = %s\n", cString);
     if (cString[0] == 0x05) {
 	cString[0] = 0xe5;
     }
@@ -313,6 +314,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     BOOLEAN PagingFileCreate = BooleanFlagOn(Stack->Flags, SL_OPEN_PAGING_FILE);
     PFILE_OBJECT FileObject = Stack->FileObject;
     PDEVICE_EXTENSION DeviceExt = DeviceObject->DeviceExtension;
+    assert(DeviceExt);
 
     if (BooleanFlagOn(Stack->Parameters.Create.Options, FILE_OPEN_BY_FILE_ID)) {
 	return STATUS_NOT_IMPLEMENTED;
@@ -336,9 +338,8 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     NTSTATUS Status;
     BOOLEAN OpenTargetDir = BooleanFlagOn(Stack->Flags, SL_OPEN_TARGET_DIRECTORY);
-    if (FileObject->FileName.Length == 0 &&
-	(FileObject->RelatedFileObject == NULL ||
-	 FileObject->RelatedFileObject->FsContext2 != NULL ||
+    if (!FileObject->FileName.Length &&
+	(!FileObject->RelatedFileObject || FileObject->RelatedFileObject->FsContext2 ||
 	 FileObject->RelatedFileObject->FsContext == DeviceExt->VolumeFcb)) {
 	/* This is an open operation for the volume itself */
 	DPRINT("Opening volume file object\n");
@@ -349,8 +350,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	}
 
 	if (BooleanFlagOn(RequestedOptions, FILE_DIRECTORY_FILE) &&
-	    (FileObject->RelatedFileObject == NULL
-	     || FileObject->RelatedFileObject->FsContext2 == NULL
+	    (!FileObject->RelatedFileObject || !FileObject->RelatedFileObject->FsContext2
 	     || FileObject->RelatedFileObject->FsContext == DeviceExt->VolumeFcb)) {
 	    return STATUS_NOT_A_DIRECTORY;
 	}
@@ -366,8 +366,9 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	FatAddToStat(DeviceExt, Fat.CreateHits, 1);
 
 	PFATFCB Fcb = DeviceExt->VolumeFcb;
+	assert(Fcb);
 
-	if (Fcb->OpenHandleCount == 0) {
+	if (!Fcb->OpenHandleCount) {
 	    IoSetShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 			     Stack->Parameters.Create.ShareAccess,
 			     FileObject, &Fcb->FcbShareAccess);
@@ -392,7 +393,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     if (FileObject->RelatedFileObject &&
 	FileObject->RelatedFileObject->FsContext == DeviceExt->VolumeFcb) {
-	ASSERT(FileObject->FileName.Length != 0);
+	ASSERT(FileObject->FileName.Length);
 	return STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
@@ -507,7 +508,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	}
 
 	/* We're done with opening! */
-	if (ParentFcb != NULL) {
+	if (ParentFcb) {
 	    Status = FatAttachFcbToFileObject(DeviceExt, ParentFcb, FileObject);
 	}
 
@@ -515,7 +516,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    PFATFCB Fcb = FileObject->FsContext;
 	    ASSERT(Fcb == ParentFcb);
 
-	    if (Fcb->OpenHandleCount == 0) {
+	    if (!Fcb->OpenHandleCount) {
 		IoSetShareAccess(Stack->Parameters.Create.SecurityContext->DesiredAccess,
 				 Stack->Parameters.Create.ShareAccess,
 				 FileObject, &Fcb->FcbShareAccess);
@@ -538,7 +539,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	    Fcb->OpenHandleCount++;
 	    DeviceExt->OpenHandleCount++;
-	} else if (ParentFcb != NULL) {
+	} else if (ParentFcb) {
 	    FatReleaseFcb(DeviceExt, ParentFcb);
 	}
 
