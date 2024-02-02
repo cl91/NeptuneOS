@@ -112,10 +112,7 @@ static BOOLEAN ReadyForRead(PCONTROLLER_INFO ControllerInfo)
  *     STATUS_UNSUCCESSFUL if not
  * NOTES:
  *     - Function designed after flowchart in intel datasheet
- *     - 250us max delay.  Note that this is exactly 5 times longer
- *       than Microsoft recommends stalling the processor
- *     - PAGED_CODE, because we spin for more than the Microsoft-recommended
- *       maximum.
+ *     - 250us max delay.
  *     - This function is necessary because sometimes the FIFO reacts slowly
  *       and isn't yet ready to read or write the next byte
  */
@@ -152,11 +149,9 @@ static NTSTATUS Send_Byte(PCONTROLLER_INFO ControllerInfo,
  *     STATUS_UNSUCCESSFUL if not
  * NOTES:
  *     - Function designed after flowchart in intel datasheet
- *     - 250us max delay.  Note that this is exactly 5 times longer
- *       than Microsoft recommends stalling the processor
+ *     - 250us max delay.
  *     - Remember that we can be interrupted here, so this might
  *       take much more wall clock time than 250us
- *     - PAGED_CODE because we spin for longer than Microsoft recommends
  */
 static NTSTATUS Get_Byte(PCONTROLLER_INFO ControllerInfo,
 			 PUCHAR Byte)
@@ -968,14 +963,14 @@ VOID HwDumpRegisters(PCONTROLLER_INFO ControllerInfo)
 {
     UNREFERENCED_PARAMETER(ControllerInfo);
 
-    INFO_(FLOPPY, "STATUS:\n");
+    INFO_(FLOPPY, "Status registers:\n");
     INFO_(FLOPPY, "STATUS_REGISTER_A = 0x%x\n",
 	  READ_PORT_UCHAR(ControllerInfo->BaseAddress + STATUS_REGISTER_A));
     INFO_(FLOPPY, "STATUS_REGISTER_B = 0x%x\n",
 	  READ_PORT_UCHAR(ControllerInfo->BaseAddress + STATUS_REGISTER_B));
     INFO_(FLOPPY, "DIGITAL_OUTPUT_REGISTER = 0x%x\n",
 	  READ_PORT_UCHAR(ControllerInfo->BaseAddress + DIGITAL_OUTPUT_REGISTER));
-    INFO_(FLOPPY, "MAIN_STATUS_REGISTER =0x%x\n",
+    INFO_(FLOPPY, "MAIN_STATUS_REGISTER = 0x%x\n",
 	  READ_PORT_UCHAR(ControllerInfo->BaseAddress + MAIN_STATUS_REGISTER));
     INFO_(FLOPPY, "DIGITAL_INPUT_REGISTER = 0x%x\n",
 	  READ_PORT_UCHAR(ControllerInfo->BaseAddress + DIGITAL_INPUT_REGISTER));
