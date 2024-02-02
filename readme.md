@@ -45,7 +45,8 @@ For i386 systems (should probably be called i686):
    this at compile time (see assembly routine `enable_paging` in `sel4/src/arch/x86/32/head.S`).
 2. RAM: 32MB should be safe, can probably go lower.
 3. VGA-compatible graphics controller.
-4. PS2 keyboard.
+4. PS2 keyboard. Most BIOSes offer PS2 emulation for USB keyboards so connecting a USB
+   keyboard should also work.
 5. PC BIOS or compatible, with a conformant ACPI implementation. This is more of a seL4
    requirement as it needs at least ACPI 3.0 for detecting the number of CPU cores. Note
    that most early 32-bit era PCs don't necessarily have a conformant ACPI (let alone
