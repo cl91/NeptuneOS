@@ -24,21 +24,17 @@
  *                  15-Feb-2004 vizzini - Created
  * NOTES:
  *     - Many of these functions are based directly on information from the
- *       Intel datasheet for their enhanced floppy controller.  Send_Byte and
- *       Get_Byte are direct C implementations of their flowcharts, and the
+ *       Intel datasheet for their enhanced floppy controller.  SendByte and
+ *       GetByte are direct C implementations of their flowcharts, and the
  *       read/write routine and others are loose adaptations of their charts.
  *     - These routines are generally designed to be small, atomic operations.  They
  *       do not wait for interrupts, deal with DMA, or do any other Windows-
  *       specific things, unless they have to.
- *     - If you compare this to Microsoft samples or to the old ReactOS driver,
- *       or even to the linux driver, you will notice a big difference:  we use
- *       a system thread to drain the queue.  This is because it's illegal to block
- *       in a dispatch routine, unless you're a top-level driver (which we absolutely
- *       are not).  One big reason is that we may be called at raised IRQL, at which
- *       it's illegal to block.  The floppy controller is a *dumb* piece of hardware,
- *       too - it is slow and difficult to deal with.  The solution is to do all
- *       of the blocking and servicing of the controller in a dedicated worker
- *       thread.
+ *     - The floppy controller is a *dumb* piece of hardware. It is slow and
+ *       difficult to deal with.  An issue we currently have is that on some drives
+ *       the interrupts comes in too slowly after a read command. This problem
+ *       doesn't seem to appear on the QEMU-emulated floppy controller so I don't
+ *       know how to debug this.
  *     - Some information taken from Intel 82077AA data sheet (order #290166-007)
  *
  * TODO: ATM the constants defined in hardware.h *might* be shifted to line up
@@ -116,7 +112,7 @@ static BOOLEAN ReadyForRead(PCONTROLLER_INFO ControllerInfo)
  *     - This function is necessary because sometimes the FIFO reacts slowly
  *       and isn't yet ready to read or write the next byte
  */
-static NTSTATUS Send_Byte(PCONTROLLER_INFO ControllerInfo,
+static NTSTATUS SendByte(PCONTROLLER_INFO ControllerInfo,
 			  UCHAR Byte)
 {
     int i;
@@ -132,7 +128,7 @@ static NTSTATUS Send_Byte(PCONTROLLER_INFO ControllerInfo,
 	WRITE_PORT_UCHAR(ControllerInfo->BaseAddress + FIFO, Byte);
 	return STATUS_SUCCESS;
     } else {
-	INFO_(FLOPPY, "Send_Byte: timed out trying to write\n");
+	INFO_(FLOPPY, "SendByte: timed out trying to write\n");
 	HwDumpRegisters(ControllerInfo);
 	return STATUS_UNSUCCESSFUL;
     }
@@ -153,7 +149,7 @@ static NTSTATUS Send_Byte(PCONTROLLER_INFO ControllerInfo,
  *     - Remember that we can be interrupted here, so this might
  *       take much more wall clock time than 250us
  */
-static NTSTATUS Get_Byte(PCONTROLLER_INFO ControllerInfo,
+static NTSTATUS GetByte(PCONTROLLER_INFO ControllerInfo,
 			 PUCHAR Byte)
 {
     int i;
@@ -169,14 +165,14 @@ static NTSTATUS Get_Byte(PCONTROLLER_INFO ControllerInfo,
 	*Byte = READ_PORT_UCHAR(ControllerInfo->BaseAddress + FIFO);
 	return STATUS_SUCCESS;
     } else {
-	INFO_(FLOPPY, "Get_Byte: timed out trying to write\n");
+	INFO_(FLOPPY, "GetByte: timed out trying to write\n");
 	HwDumpRegisters(ControllerInfo);
 	return STATUS_UNSUCCESSFUL;
     }
 }
 
 /*
- * FUNCTION: Set the data rte on a controller
+ * FUNCTION: Set the data rate on a controller
  * ARGUMENTS:
  *     ControllerInfo: Controller whose rate is being set
  *     DataRate: Data rate code to set the controller to
@@ -279,7 +275,7 @@ NTSTATUS HwSenseDriveStatus(PDRIVE_INFO DriveInfo)
     Buffer[1] = DriveInfo->UnitNumber;	/* hard-wired to head 0 for now */
 
     for (int i = 0; i < 2; i++) {
-	NTSTATUS Status = Send_Byte(DriveInfo->ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(DriveInfo->ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwSenseDriveStatus: failed to write FIFO. Error = 0x%x\n",
 		  Status);
@@ -347,7 +343,7 @@ NTSTATUS HwReadWriteData(PCONTROLLER_INFO ControllerInfo,
 	INFO_(FLOPPY, "HwReadWriteData: Sending a command byte to the FIFO: 0x%x\n",
 	      Buffer[i]);
 
-	NTSTATUS Status = Send_Byte(ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwReadWriteData: Unable to write to the FIFO. Error = 0x%x\n",
 		  Status);
@@ -376,7 +372,7 @@ NTSTATUS HwRecalibrateResult(PCONTROLLER_INFO ControllerInfo)
 {
     UCHAR Buffer[2];
 
-    NTSTATUS Status = Send_Byte(ControllerInfo, COMMAND_SENSE_INTERRUPT_STATUS);
+    NTSTATUS Status = SendByte(ControllerInfo, COMMAND_SENSE_INTERRUPT_STATUS);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY,
 	      "HwRecalibrateResult: Unable to write the controller. Error = 0x%x\n",
@@ -385,7 +381,7 @@ NTSTATUS HwRecalibrateResult(PCONTROLLER_INFO ControllerInfo)
     }
 
     for (int i = 0; i < 2; i++) {
-	Status = Get_Byte(ControllerInfo, &Buffer[i]);
+	Status = GetByte(ControllerInfo, &Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwRecalibrateResult: unable to read FIFO. Error = 0x%x\n",
 		  Status);
@@ -444,7 +440,7 @@ NTSTATUS HwReadWriteResult(PCONTROLLER_INFO ControllerInfo)
     UCHAR Buffer[7];
 
     for (int i = 0; i < 7; i++) {
-	NTSTATUS Status = Get_Byte(ControllerInfo, &Buffer[i]);
+	NTSTATUS Status = GetByte(ControllerInfo, &Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwReadWriteResult: unable to read fifo. Error = 0x%x\n",
 		  Status);
@@ -487,7 +483,7 @@ NTSTATUS HwRecalibrate(PDRIVE_INFO DriveInfo)
     Buffer[1] = Unit;
 
     for (int i = 0; i < 2; i++) {
-	NTSTATUS Status = Send_Byte(ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwRecalibrate: unable to write FIFO. Error = 0x%x\n",
 		  Status);
@@ -510,7 +506,7 @@ NTSTATUS HwSenseInterruptStatus(PCONTROLLER_INFO ControllerInfo)
 {
     UCHAR Buffer[2];
 
-    NTSTATUS Status = Send_Byte(ControllerInfo, COMMAND_SENSE_INTERRUPT_STATUS);
+    NTSTATUS Status = SendByte(ControllerInfo, COMMAND_SENSE_INTERRUPT_STATUS);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY,
 	      "HwSenseInterruptStatus: failed to write controller. Error = 0x%x\n",
@@ -519,7 +515,7 @@ NTSTATUS HwSenseInterruptStatus(PCONTROLLER_INFO ControllerInfo)
     }
 
     for (int i = 0; i < 2; i++) {
-	Status = Get_Byte(ControllerInfo, &Buffer[i]);
+	Status = GetByte(ControllerInfo, &Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY,
 		  "HwSenseInterruptStatus: failed to read controller. Error = 0x%x\n",
@@ -555,7 +551,7 @@ NTSTATUS HwReadId(PDRIVE_INFO DriveInfo, UCHAR Head)
     Buffer[1] = (Head << COMMAND_HEAD_NUMBER_SHIFT) | DriveInfo->UnitNumber;
 
     for (int i = 0; i < 2; i++) {
-	NTSTATUS Status = Send_Byte(DriveInfo->ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(DriveInfo->ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwReadId: unable to send bytes to fifo. Error = 0x%x\n",
 		  Status);
@@ -600,7 +596,7 @@ NTSTATUS HwFormatTrack(PCONTROLLER_INFO ControllerInfo,
     Buffer[5] = FillerPattern;
 
     for (int i = 0; i < 6; i++) {
-	NTSTATUS Status = Send_Byte(ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY,
 		  "HwFormatTrack: unable to send bytes to floppy. Error = 0x%x\n",
@@ -635,7 +631,7 @@ NTSTATUS HwSeek(PDRIVE_INFO DriveInfo, UCHAR Cylinder)
     Buffer[2] = Cylinder;
 
     for (int i = 0; i < 3; i++) {
-	NTSTATUS Status = Send_Byte(DriveInfo->ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(DriveInfo->ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwSeek: failed to write fifo. Error = 0x%x\n",
 		  Status);
@@ -686,7 +682,7 @@ NTSTATUS HwConfigure(PCONTROLLER_INFO ControllerInfo,
     Buffer[3] = PRETRK;
 
     for (int i = 0; i < 4; i++) {
-	NTSTATUS Status = Send_Byte(ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwConfigure: failed to write the fifo. Error = 0x%x\n",
 		  Status);
@@ -711,14 +707,14 @@ UCHAR HwGetVersion(PCONTROLLER_INFO ControllerInfo)
 {
     UCHAR Buffer;
 
-    NTSTATUS Status = Send_Byte(ControllerInfo, COMMAND_VERSION);
+    NTSTATUS Status = SendByte(ControllerInfo, COMMAND_VERSION);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY, "HwGetVersion: unable to write fifo. Error = 0x%x\n",
 	      Status);
 	return 0;
     }
 
-    Status = Get_Byte(ControllerInfo, &Buffer);
+    Status = GetByte(ControllerInfo, &Buffer);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY, "HwGetVersion: unable to write fifo. Error = 0x%x\n",
 	      Status);
@@ -785,7 +781,7 @@ NTSTATUS HwDiskChanged(PDRIVE_INFO DriveInfo,
 NTSTATUS HwSenseDriveStatusResult(PCONTROLLER_INFO ControllerInfo,
 				  PUCHAR DriveStatus)
 {
-    NTSTATUS Status = Get_Byte(ControllerInfo, DriveStatus);
+    NTSTATUS Status = GetByte(ControllerInfo, DriveStatus);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY, "HwSenseDriveStatus: unable to read fifo. Error = 0x%x\n",
 	      Status);
@@ -820,7 +816,7 @@ NTSTATUS HwReadIdResult(PCONTROLLER_INFO ControllerInfo,
     UCHAR Buffer[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
     for (int i = 0; i < 7; i++) {
-	NTSTATUS Status = Get_Byte(ControllerInfo, &Buffer[i]);
+	NTSTATUS Status = GetByte(ControllerInfo, &Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY,
 		  "ReadIdResult(): can't read from the controller. Error = 0x%x\n",
@@ -889,7 +885,7 @@ NTSTATUS HwSpecify(PCONTROLLER_INFO ControllerInfo,
     WARN_(FLOPPY, "HWSPECIFY: FIXME - sending 0x3 0xd1 0x2 to FIFO\n");
 
     for (int i = 0; i < 3; i++) {
-	NTSTATUS Status = Send_Byte(ControllerInfo, Buffer[i]);
+	NTSTATUS Status = SendByte(ControllerInfo, Buffer[i]);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "HwSpecify: unable to write to controller\n");
 	    return Status;
