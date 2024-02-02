@@ -206,7 +206,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 
     if (bootinfo->extraLen) {
 	DbgPrint("Extra bootinfo structures:\n");
-	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD) bootinfo + PAGE_SIZE);
+	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)bootinfo + PAGE_SIZE);
 	while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
 	    switch (BootInfoHeader->id) {
 	    case SEL4_BOOTINFO_HEADER_PADDING:
@@ -229,7 +229,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
-		KeX86TscFreq = *((uint32_t *)BootInfoHeader);
+		KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
 		DbgPrint("    tsc freq is %d MHz\n", KeX86TscFreq);
 		break;
 	    case SEL4_BOOTINFO_HEADER_FDT:
