@@ -6,16 +6,16 @@ extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 VOID MmRunAvlTreeTests()
 {
     DbgPrint("mm: Running AVL tree tests...");
-    PMM_AVL_TREE RootUntypedTree = &MiPhyMemDescriptor.RootUntypedForest;
+    PAVL_TREE RootUntypedTree = &MiPhyMemDescriptor.RootUntypedForest;
     DbgPrint("  RootUntypedTree:\n");
-    MmAvlDumpTreeLinear(RootUntypedTree);
-    MmAvlDumpTree(RootUntypedTree);
-    PMM_AVL_TREE VadTree = &MiNtosVaddrSpace.VadTree;
+    AvlDumpTreeLinear(RootUntypedTree);
+    AvlDumpTree(RootUntypedTree);
+    PAVL_TREE VadTree = &MiNtosVaddrSpace.VadTree;
     DbgPrint("  VadTree:\n");
-    MmAvlDumpTreeLinear(VadTree);
-    MmAvlDumpTree(VadTree);
-    PMM_AVL_TREE PageTableTree = &MiNtosVaddrSpace.RootPagingStructure->SubStructureTree;
+    AvlDumpTreeLinear(VadTree);
+    AvlDumpTree(VadTree);
+    PAVL_TREE PageTableTree = &MiNtosVaddrSpace.RootPagingStructure->SubStructureTree;
     DbgPrint("  PageTableTree:\n");
-    MmAvlDumpTreeLinear(PageTableTree);
-    MmAvlDumpTree(PageTableTree);
+    AvlDumpTreeLinear(PageTableTree);
+    AvlDumpTree(PageTableTree);
 }

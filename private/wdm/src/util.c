@@ -134,22 +134,15 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 	return NULL;
     }
 
-    /* Allocate IRP */
     PIRP Irp = IoAllocateIrp();
     if (!Irp)
 	return NULL;
 
-    /* Get the Stack */
     PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
-
-    /* Set the Device Object */
     StackPtr->DeviceObject = DeviceObject;
-
-    /* Set the DevCtl Type */
     StackPtr->MajorFunction = InternalDeviceIoControl ?
 	IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
 
-    /* Set the IOCTL Data */
     StackPtr->Parameters.DeviceIoControl.IoControlCode = IoControlCode;
     StackPtr->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
     StackPtr->Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
@@ -161,10 +154,8 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
     Irp->UserBuffer = OutputBuffer;
     StackPtr->Parameters.DeviceIoControl.Type3InputBuffer = InputBuffer;
 
-    /* Now write the IoSB */
     Irp->UserIosb = IoStatusBlock;
 
-    /* Return the IRP */
     return Irp;
 }
 
@@ -177,23 +168,30 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 					 IN ULONG Length,
 					 IN PLARGE_INTEGER StartingOffset)
 {
-    if ((Buffer && !Length) || (!Buffer && Length)) {
+    if (Buffer && !Length) {
+	assert(FALSE);
 	return NULL;
     }
 
-    /* Allocate IRP */
     PIRP Irp = IoAllocateIrp();
     if (!Irp)
 	return NULL;
+    if (!Buffer && Length) {
+	/* If Buffer is NULL but Length is not zero, in the case of READ IRP
+	 * we set the PAGING_IO flag so the server will map the memory pages
+	 * for us. In all other cases this is invalid and we return NULL. */
+	if (MajorFunction == IRP_MJ_READ) {
+	    Irp->Flags = IRP_PAGING_IO;
+	} else {
+	    IoFreeIrp(Irp);
+	    assert(FALSE);
+	    return NULL;
+	}
+    }
 
-    /* Get the Stack */
     PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
-
-    /* Set the Device Object */
     StackPtr->DeviceObject = DeviceObject;
-
-    /* Write the Major function and then deal with it */
-    StackPtr->MajorFunction = (UCHAR) MajorFunction;
+    StackPtr->MajorFunction = (UCHAR)MajorFunction;
 
     /* Set the user buffer pointer if the IRP has one. Note again just like
      * the case in IoBuildDeviceIoControlRequest, unlike Windows/ReactOS
@@ -202,19 +200,15 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 	(MajorFunction != IRP_MJ_SHUTDOWN) && (MajorFunction != IRP_MJ_POWER)) {
 	Irp->UserBuffer = Buffer;
 
-	/* Check if this is a read */
 	if (MajorFunction == IRP_MJ_READ) {
-	    /* Set the parameters for a read */
 	    StackPtr->Parameters.Read.Length = Length;
 	    StackPtr->Parameters.Read.ByteOffset = *StartingOffset;
 	} else if (MajorFunction == IRP_MJ_WRITE) {
-	    /* Otherwise, set write parameters */
 	    StackPtr->Parameters.Write.Length = Length;
 	    StackPtr->Parameters.Write.ByteOffset = *StartingOffset;
 	}
     }
 
-    /* Return the IRP */
     return Irp;
 }
 

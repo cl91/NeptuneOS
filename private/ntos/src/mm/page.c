@@ -115,7 +115,7 @@ static inline PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PAGING_STRUCTURE_
 static inline BOOLEAN MiPagingStructureContainsAddr(IN PPAGING_STRUCTURE Paging,
 						    IN MWORD VirtAddr)
 {
-    return MiAvlNodeContainsAddr(&Paging->AvlNode,
+    return AvlNodeContainsAddr(&Paging->AvlNode,
 				 MiPagingWindowSize(Paging->Type), VirtAddr);
 }
 
@@ -135,9 +135,9 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
 {
     MmInitializeCapTreeNode(&Page->TreeNode, CAP_TREE_NODE_PAGING_STRUCTURE,
 			    Cap, &MiNtosCNode, ParentNode);
-    MmAvlInitializeNode(&Page->AvlNode, MiSanitizeAlignment(Type, VirtAddr));
+    AvlInitializeNode(&Page->AvlNode, MiSanitizeAlignment(Type, VirtAddr));
     Page->SuperStructure = SuperStructure;
-    MmAvlInitializeTree(&Page->SubStructureTree);
+    AvlInitializeTree(&Page->SubStructureTree);
     Page->VSpaceCap = VSpaceCap;
     Page->Type = Type;
     Page->Mapped = Mapped;
@@ -155,9 +155,9 @@ static PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
 {
     assert(Paging != NULL);
     VirtAddr = MiSanitizeAlignment(MiPagingSubStructureType(Paging->Type), VirtAddr);
-    PMM_AVL_TREE Tree = &Paging->SubStructureTree;
-    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, VirtAddr);
-    PPAGING_STRUCTURE Super = MM_AVL_NODE_TO_PAGING_STRUCTURE(Parent);
+    PAVL_TREE Tree = &Paging->SubStructureTree;
+    PAVL_NODE Parent = AvlTreeFindNodeOrParent(Tree, VirtAddr);
+    PPAGING_STRUCTURE Super = AVL_NODE_TO_PAGING_STRUCTURE(Parent);
     if (Super != NULL && MiPagingStructureContainsAddr(Super, VirtAddr)) {
 	return Super;
     }
@@ -180,18 +180,18 @@ static VOID MiPagingInsertSubStructure(IN PPAGING_STRUCTURE Self,
     assert(SubStructure != NULL);
     assert(Self->Mapped);
     assert(SubStructure->Mapped);
-    PMM_AVL_TREE Tree = &Self->SubStructureTree;
+    PAVL_TREE Tree = &Self->SubStructureTree;
     MWORD VirtAddr = SubStructure->AvlNode.Key;
-    PMM_AVL_NODE Super = MiAvlTreeFindNodeOrParent(Tree, VirtAddr);
+    PAVL_NODE Super = AvlTreeFindNodeOrParent(Tree, VirtAddr);
     if (Super != NULL &&
-	MiPagingStructureContainsAddr(MM_AVL_NODE_TO_PAGING_STRUCTURE(Super), VirtAddr)) {
+	MiPagingStructureContainsAddr(AVL_NODE_TO_PAGING_STRUCTURE(Super), VirtAddr)) {
 	DbgTrace("Assertion triggered. Dumping PAGING_STRUCTURE Super:\n");
-	MmDbgDumpPagingStructure(MM_AVL_NODE_TO_PAGING_STRUCTURE(Super));
+	MmDbgDumpPagingStructure(AVL_NODE_TO_PAGING_STRUCTURE(Super));
 	DbgTrace("Dumping PAGING_STRUCTURE SubStructure:\n");
 	MmDbgDumpPagingStructure(SubStructure);
 	assert(FALSE);
     }
-    MiAvlTreeInsertNode(Tree, Super, &SubStructure->AvlNode);
+    AvlTreeInsertNode(Tree, Super, &SubStructure->AvlNode);
     SubStructure->SuperStructure = Self;
 }
 
@@ -206,7 +206,7 @@ static inline VOID MiPagingRemoveFromParentStructure(IN PPAGING_STRUCTURE Self)
 	return;
     }
 
-    MiAvlTreeRemoveNode(&Parent->SubStructureTree, &Self->AvlNode);
+    AvlTreeRemoveNode(&Parent->SubStructureTree, &Self->AvlNode);
     Self->SuperStructure = NULL;
 }
 
@@ -245,9 +245,9 @@ static NTSTATUS MiRetypeIntoPagingStructure(PPAGING_STRUCTURE Page)
 static VOID MiFreePagingStructure(PPAGING_STRUCTURE Page)
 {
     MiCapTreeRemoveFromParent(&Page->TreeNode);
-    assert(MiAvlTreeIsEmpty(&Page->SubStructureTree));
+    assert(AvlTreeIsEmpty(&Page->SubStructureTree));
     if (Page->SuperStructure) {
-	MiAvlTreeRemoveNode(&Page->SuperStructure->SubStructureTree, &Page->AvlNode);
+	AvlTreeRemoveNode(&Page->SuperStructure->SubStructureTree, &Page->AvlNode);
 	Page->SuperStructure = NULL;
     }
     MiFreePool(Page);
@@ -615,8 +615,8 @@ PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 PPAGING_STRUCTURE MiGetFirstPage(IN PPAGING_STRUCTURE Page)
 {
     assert(Page != NULL);
-    while (MiAvlGetFirstNode(&Page->SubStructureTree) != NULL) {
-	Page = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetFirstNode(&Page->SubStructureTree));
+    while (AvlGetFirstNode(&Page->SubStructureTree) != NULL) {
+	Page = AVL_NODE_TO_PAGING_STRUCTURE(AvlGetFirstNode(&Page->SubStructureTree));
     }
     assert(Page != NULL);
     return Page;
@@ -671,7 +671,7 @@ PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page)
 	if (Page == NULL) {
 	    return NULL;
 	}
-	Next = MM_AVL_NODE_TO_PAGING_STRUCTURE(MiAvlGetNextNode(&Page->AvlNode));
+	Next = AVL_NODE_TO_PAGING_STRUCTURE(AvlGetNextNode(&Page->AvlNode));
 	Page = Page->SuperStructure;
     } while (Next == NULL);
     return Next ? MiGetFirstPage(Next) : NULL;
@@ -950,14 +950,14 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 	DbgPrint("Not mapped");
     }
     DbgPrint("\n    Sub-structures linearly:  ");
-    MmAvlDumpTreeLinear(&Paging->SubStructureTree);
+    AvlDumpTreeLinear(&Paging->SubStructureTree);
     DbgPrint("\n    Sub-structures as a tree:\n");
-    MmAvlDumpTree(&Paging->SubStructureTree);
+    AvlDumpTree(&Paging->SubStructureTree);
 }
 
-static VOID MiDbgDumpPagingStructureVisitor(IN PMM_AVL_NODE Node)
+static VOID MiDbgDumpPagingStructureVisitor(IN PAVL_NODE Node)
 {
-    MmDbgDumpPagingStructureRecursively(MM_AVL_NODE_TO_PAGING_STRUCTURE(Node));
+    MmDbgDumpPagingStructureRecursively(AVL_NODE_TO_PAGING_STRUCTURE(Node));
 }
 
 VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
@@ -975,6 +975,6 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
 	DbgPrint("  == %p", (PVOID)MiGetPhysicalAddress(Paging));
     }
     DbgPrint("\n");
-    MmAvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);
+    AvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);
 }
 #endif

@@ -7,7 +7,7 @@ static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
     assert(Process != NULL);
     assert(Handle != NULL);
     assert(pObject != NULL);
-    PMM_AVL_NODE Node = MmAvlTreeFindNode(&Process->HandleTable.Tree, (MWORD) Handle);
+    PAVL_NODE Node = AvlTreeFindNode(&Process->HandleTable.Tree, (MWORD) Handle);
     if (Node == NULL) {
 	return STATUS_INVALID_HANDLE;
     }
@@ -49,7 +49,7 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
     ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
     Entry->Object = Object;
     InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
-    MmAvlTreeAppendNode(&Process->HandleTable.Tree,
+    AvlTreeAppendNode(&Process->HandleTable.Tree,
 			&Entry->AvlNode, HANDLE_VALUE_INC);
     /* Increase the reference count since we now exposing it to client space */
     ObpReferenceObject(Object);

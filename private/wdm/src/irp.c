@@ -974,7 +974,7 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
     GLOBAL_HANDLE Orig = SrvMsg->ServerMsg.IoCompleted.OriginalRequestor;
     HANDLE Id = SrvMsg->ServerMsg.IoCompleted.Identifier;
     /* Check the pending IRP list for all pending IRPs (this includes both
-     * (asynchronously) pending IRPs and IRPs suspended in a coroutine stack) */
+     * asynchronously pending IRPs and IRPs suspended in a coroutine stack) */
     LoopOverList(Irp, &IopPendingIrpList, IRP, Private.Link) {
 	if (Irp->Private.OriginalRequestor == Orig && Irp->Private.Identifier == Id) {
 	    /* Fill the IO status block of the IRP with the result in the server message */
@@ -1443,7 +1443,7 @@ NTAPI VOID IoCompleteRequest(IN PIRP Irp,
  * NOTE: Synchronous forwarding of IRP must occur in a coroutine. IoCallDriverEx
  * returns error if synchronous IRP forwarding is specified but no current
  * coroutine stack is found. In particular, you cannot forward IRPs synchronously
- * in a DPC or StartIO routine. This is the same as Windows/ReactOS: DPC and
+ * in a DPC or StartIO routine. This is the same on Windows/ReactOS: DPC and
  * StartIO routines run in DISPATCH_LEVEL so you cannot sleep.
  *
  * Microsoft discourages higher-level drivers from having a StartIO routine

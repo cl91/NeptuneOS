@@ -14,7 +14,7 @@ VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
     Self->VSpaceCap = RootPagingStructure->TreeNode.Cap;
     Self->RootPagingStructure = RootPagingStructure;
     Self->ASIDPool = 0;
-    MmAvlInitializeTree(&Self->VadTree);
+    AvlInitializeTree(&Self->VadTree);
     InitializeListHead(&Self->ViewerList);
 }
 
@@ -78,7 +78,7 @@ static inline BOOLEAN MiVadNodeContainsAddr(IN PMMVAD Vad,
 					    IN MWORD Addr)
 {
     assert(Vad != NULL);
-    return MiAddrWindowContainsAddr(Vad->AvlNode.Key, Vad->WindowSize, Addr);
+    return AddrWindowContainsAddr(Vad->AvlNode.Key, Vad->WindowSize, Addr);
 }
 
 /*
@@ -87,8 +87,8 @@ static inline BOOLEAN MiVadNodeContainsAddr(IN PMMVAD Vad,
 static PMMVAD MiVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD VirtAddr)
 {
-    PMM_AVL_TREE Tree = &VSpace->VadTree;
-    PMMVAD Node = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrPrev(Tree, VirtAddr));
+    PAVL_TREE Tree = &VSpace->VadTree;
+    PMMVAD Node = AVL_NODE_TO_VAD(AvlTreeFindNodeOrPrev(Tree, VirtAddr));
     if (Node != NULL && MiVadNodeContainsAddr(Node, VirtAddr)) {
 	return Node;
     }
@@ -104,7 +104,7 @@ static inline PMMVAD MiVadGetNextNode(IN PMMVAD Vad)
 {
     assert(Vad != NULL);
     assert(Vad->VSpace != NULL);
-    return MM_AVL_NODE_TO_VAD(MiAvlGetNextNode(&Vad->AvlNode));
+    return AVL_NODE_TO_VAD(AvlGetNextNode(&Vad->AvlNode));
 }
 
 /*
@@ -116,7 +116,7 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
 {
     assert(Vad != NULL);
     assert(Vad->VSpace != NULL);
-    return MM_AVL_NODE_TO_VAD(MiAvlGetPrevNode(&Vad->AvlNode));
+    return AVL_NODE_TO_VAD(AvlGetPrevNode(&Vad->AvlNode));
 }
 
 /*
@@ -225,7 +225,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 retry:
     /* Locate the first unused address window */
     VirtAddr = (Flags & MEM_RESERVE_TOP_DOWN) ? EndAddr : StartAddr;
-    Parent = MM_AVL_NODE_TO_VAD(MiAvlTreeFindNodeOrParent(&VSpace->VadTree,
+    Parent = AVL_NODE_TO_VAD(AvlTreeFindNodeOrParent(&VSpace->VadTree,
 								 VirtAddr));
     /* Address space is empty. */
     if (Parent == NULL) {
@@ -367,7 +367,7 @@ Insert:
 	return STATUS_SUCCESS;
     }
 
-    MiAvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
+    AvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
 
     DbgTrace("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
 	     (PVOID) Vad->AvlNode.Key,
@@ -769,7 +769,7 @@ VOID MmDeleteVad(IN PMMVAD Vad)
     assert(Vad->VSpace != NULL);
     assert(MiVSpaceFindVadNode(Vad->VSpace, Vad->AvlNode.Key) == Vad);
     MiUncommitVad(Vad);
-    MiAvlTreeRemoveNode(&Vad->VSpace->VadTree, &Vad->AvlNode);
+    AvlTreeRemoveNode(&Vad->VSpace->VadTree, &Vad->AvlNode);
     if (Vad->SectionLink.Flink != NULL) {
 	assert(Vad->SectionLink.Blink != NULL);
 	RemoveEntryList(&Vad->SectionLink);
@@ -1295,9 +1295,9 @@ VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace)
     MmDbgDumpPagingStructure(VSpace->RootPagingStructure);
     DbgPrint("Dumping virtual address space %p vad tree %p\n    linearly:  ",
 	     VSpace, &VSpace->VadTree);
-    MmAvlDumpTreeLinear(&VSpace->VadTree);
+    AvlDumpTreeLinear(&VSpace->VadTree);
     DbgPrint("\n    vad tree %p:\n", &VSpace->VadTree);
-    MmAvlDumpTree(&VSpace->VadTree);
+    AvlDumpTree(&VSpace->VadTree);
     DbgPrint("    vad tree content:\n");
     LoopOverVadTree(Vad, VSpace, MmDbgDumpVad(Vad));
     DbgPrint("Dumping virtual address space %p page mappings:\n", VSpace);

@@ -298,8 +298,7 @@ CheckFatX:
     FatInfo.BytesPerSector = DiskGeometry.BytesPerSector;
     FatInfo.SectorsPerCluster = BootFatX->SectorsPerCluster;
     FatInfo.RootDirectorySectors = BootFatX->SectorsPerCluster;
-    FatInfo.BytesPerCluster = BootFatX->SectorsPerCluster *
-	DiskGeometry.BytesPerSector;
+    FatInfo.BytesPerCluster = BootFatX->SectorsPerCluster * DiskGeometry.BytesPerSector;
     FatInfo.Sectors = (ULONG)(PartitionInfo.PartitionLength.QuadPart /
 				      DiskGeometry.BytesPerSector);
     if (FatInfo.Sectors / FatInfo.SectorsPerCluster < 65525) {
@@ -511,8 +510,7 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     RtlCopyMemory(&DeviceExt->FatInfo, &FatInfo, sizeof(FATINFO));
 
     DPRINT("BytesPerSector:     %u\n", DeviceExt->FatInfo.BytesPerSector);
-    DPRINT("SectorsPerCluster:  %u\n",
-	   DeviceExt->FatInfo.SectorsPerCluster);
+    DPRINT("SectorsPerCluster:  %u\n", DeviceExt->FatInfo.SectorsPerCluster);
     DPRINT("FATCount:           %u\n", DeviceExt->FatInfo.FATCount);
     DPRINT("FatSectors:         %u\n", DeviceExt->FatInfo.FatSectors);
     DPRINT("RootStart:          %u\n", DeviceExt->FatInfo.RootStart);
@@ -536,6 +534,7 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     DeviceExt->StorageDevice = DeviceToMount;
     DeviceExt->StorageDevice->Vpb->DeviceObject = DeviceObject;
     DeviceExt->StorageDevice->Vpb->RealDevice = DeviceExt->StorageDevice;
+    DeviceExt->StorageDevice->Vpb->ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
     DeviceExt->StorageDevice->Vpb->Flags |= VPB_MOUNTED;
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
@@ -581,18 +580,15 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     if (!NT_SUCCESS(Status))
 	goto ByeBye;
 
-    /* TODO! DeviceExt->FatFileObject->PrivateCacheMap = NULL; */
     Fcb->FileObject = DeviceExt->FatFileObject;
 
     Fcb->Flags = FCB_IS_FAT;
-    Fcb->Base.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.FatSectors *
+    Fcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.FatSectors *
 	DeviceExt->FatInfo.BytesPerSector;
-    Fcb->Base.ValidDataLength = Fcb->Base.FileSize;
-    Fcb->Base.AllocationSize = Fcb->Base.FileSize;
+    Fcb->Base.FileSizes.AllocationSize = Fcb->Base.FileSizes.FileSize;
+    Fcb->Base.FileSizes.ValidDataLength = Fcb->Base.FileSizes.FileSize;
 
-    Status = CcInitializeCacheMap(DeviceExt->FatFileObject,
-				  (PCC_FILE_SIZES)(&Fcb->Base.AllocationSize),
-				  TRUE, Fcb);
+    Status = CcInitializeCacheMap(DeviceExt->FatFileObject);
     if (!NT_SUCCESS(Status)) {
 	goto ByeBye;
     }
@@ -610,10 +606,10 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     }
 
     VolumeFcb->Flags = FCB_IS_VOLUME;
-    VolumeFcb->Base.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.Sectors *
+    VolumeFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.Sectors *
 	DeviceExt->FatInfo.BytesPerSector;
-    VolumeFcb->Base.ValidDataLength = VolumeFcb->Base.FileSize;
-    VolumeFcb->Base.AllocationSize = VolumeFcb->Base.FileSize;
+    VolumeFcb->Base.FileSizes.ValidDataLength = VolumeFcb->Base.FileSizes.FileSize;
+    VolumeFcb->Base.FileSizes.AllocationSize = VolumeFcb->Base.FileSizes.FileSize;
     DeviceExt->VolumeFcb = VolumeFcb;
 
     InsertHeadList(&FatGlobalData->VolumeListHead, &DeviceExt->VolumeListEntry);

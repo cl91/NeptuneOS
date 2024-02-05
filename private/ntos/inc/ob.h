@@ -452,12 +452,12 @@ typedef struct _OBJECT_DIRECTORY *POBJECT_DIRECTORY;
  * an AVL tree, organized by the handle values.
  */
 typedef struct _HANDLE_TABLE {
-    MM_AVL_TREE Tree;
+    AVL_TREE Tree;
 } HANDLE_TABLE, *PHANDLE_TABLE;
 
 static inline VOID ObInitializeHandleTable(IN PHANDLE_TABLE Table)
 {
-    MmAvlInitializeTree(&Table->Tree);
+    AvlInitializeTree(&Table->Tree);
 }
 
 /*
@@ -465,7 +465,7 @@ static inline VOID ObInitializeHandleTable(IN PHANDLE_TABLE Table)
  * represented by an AVL node where the node key is the handle value.
  */
 typedef struct _HANDLE_TABLE_ENTRY {
-    MM_AVL_NODE AvlNode;	/* Node key is handle */
+    AVL_NODE AvlNode;	/* Node key is handle */
     POBJECT Object;
     LIST_ENTRY HandleEntryLink; /* Link for the object header's HandleEntryList */
 } HANDLE_TABLE_ENTRY, *PHANDLE_TABLE_ENTRY;

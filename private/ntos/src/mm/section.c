@@ -363,7 +363,7 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     ULONG Attributes = Ctx->Attributes;
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
-    MmAvlInitializeNode(&Section->BasedSectionNode, 0);
+    AvlInitializeNode(&Section->BasedSectionNode, 0);
     InitializeListHead(&Section->VadList);
     Section->Attributes = Attributes;
 

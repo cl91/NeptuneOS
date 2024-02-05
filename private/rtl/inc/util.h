@@ -3,10 +3,45 @@
 #include <debug.h>
 #include <nt.h>
 #include <structures_gen.h>
+#include <services.h>
 #include "ctype_inline.h"
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
+
+/*
+ * Helper functions for MWORD array as bitmaps
+ */
+FORCEINLINE BOOLEAN GetBit(MWORD *Map, ULONG Bit)
+{
+    ULONG WordOffset = Bit / MWORD_BITS;
+    ULONG BitOffset = Bit % MWORD_BITS;
+
+    return (Map[WordOffset] & (1ULL << BitOffset)) != 0;
+}
+
+FORCEINLINE VOID SetBit(MWORD *Map, ULONG Bit)
+{
+    ULONG WordOffset = Bit / MWORD_BITS;
+    ULONG BitOffset = Bit % MWORD_BITS;
+
+    Map[WordOffset] |= (1ULL << BitOffset);
+}
+
+FORCEINLINE VOID ClearBit(MWORD *Map, ULONG Bit)
+{
+    ULONG WordOffset = Bit / MWORD_BITS;
+    ULONG BitOffset = Bit % MWORD_BITS;
+
+    Map[WordOffset] &= ~(1ULL << BitOffset);
+}
+
+/*
+ * Helper functions for ULONG64 as bitmaps
+ */
+#define GetBit64(Map, Bit)	(!!((Map) & (1ULL << (Bit))))
+#define SetBit64(Map, Bit)	((Map) |= (1ULL << (Bit)))
+#define ClearBit64(Map, Bit)	((Map) &= ~(1ULL << (Bit)))
 
 /*
  * Compute the hash of the given string. Note that string
@@ -14,7 +49,7 @@
  * hash value computed. The case conversion only applies
  * to English letters (ASCII).
  */
-static inline ULONG RtlpHashString(PCSTR Str)
+FORCEINLINE ULONG RtlpHashString(PCSTR Str)
 {
     ULONG Hash = 5381;
     ULONG Chr;
@@ -26,8 +61,8 @@ static inline ULONG RtlpHashString(PCSTR Str)
     return Hash;
 }
 
-static inline ULONG RtlpHashStringEx(IN PCSTR Str,
-				     IN ULONG Length) /* Excluding trailing '\0' */
+FORCEINLINE ULONG RtlpHashStringEx(IN PCSTR Str,
+				   IN ULONG Length) /* Excluding trailing '\0' */
 {
     ULONG Hash = 5381;
 
@@ -44,9 +79,9 @@ static inline ULONG RtlpHashStringEx(IN PCSTR Str,
 
 #ifndef _NTOSKRNL_
 #include <nturtl.h>
-static inline NTSTATUS RtlpUtf8ToUnicodeString(IN PVOID Heap,
-					       IN PCSTR String,
-					       OUT PUNICODE_STRING UnicodeString)
+FORCEINLINE NTSTATUS RtlpUtf8ToUnicodeString(IN PVOID Heap,
+					     IN PCSTR String,
+					     OUT PUNICODE_STRING UnicodeString)
 {
     assert(String != NULL);
     assert(UnicodeString != NULL);
@@ -70,8 +105,8 @@ static inline NTSTATUS RtlpUtf8ToUnicodeString(IN PVOID Heap,
 }
 
 /* Frees the buffer used in the UNICODE_STRING conversion above */
-static inline VOID RtlpFreeUnicodeString(IN PVOID Heap,
-					 IN UNICODE_STRING String)
+FORCEINLINE VOID RtlpFreeUnicodeString(IN PVOID Heap,
+				       IN UNICODE_STRING String)
 {
     RtlFreeHeap(Heap, 0, String.Buffer);
 }
@@ -80,12 +115,12 @@ static inline VOID RtlpFreeUnicodeString(IN PVOID Heap,
 /*
  * Doubly-linked list helper routines
  */
-static inline VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
+FORCEINLINE VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 {
     ListEntry->Flink = ListEntry->Blink = NULL;
 }
 
-static inline SIZE_T GetListLength(IN PLIST_ENTRY ListEntry)
+FORCEINLINE SIZE_T GetListLength(IN PLIST_ENTRY ListEntry)
 {
     SIZE_T Length = 0;
     for (PLIST_ENTRY Ptr = ListEntry->Flink; Ptr != ListEntry; Ptr = Ptr->Flink) {
@@ -94,8 +129,8 @@ static inline SIZE_T GetListLength(IN PLIST_ENTRY ListEntry)
     return Length;
 }
 
-static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
-				   IN PLIST_ENTRY Entry)
+FORCEINLINE BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
+				 IN PLIST_ENTRY Entry)
 {
     assert(List != NULL);
     assert(Entry != NULL);
@@ -128,8 +163,8 @@ static inline BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
 	 &(Entry)->Field != (ListHead); Entry = __ReverseLoop_blink,	\
 	     __ReverseLoop_blink = CONTAINING_RECORD((__ReverseLoop_blink)->Field.Blink, Type, Field))
 
-static inline PLIST_ENTRY GetNthEntryList(IN PLIST_ENTRY ListHead,
-					  IN ULONG Index)
+FORCEINLINE PLIST_ENTRY GetNthEntryList(IN PLIST_ENTRY ListHead,
+					IN ULONG Index)
 {
     assert(ListHead != NULL);
     PLIST_ENTRY Entry = ListHead->Flink;
@@ -167,7 +202,7 @@ extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;
 
 #define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RtlpDbgTraceModuleName, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
 
-static inline VOID RtlDbgPrintIndentation(IN LONG Indentation)
+FORCEINLINE VOID RtlDbgPrintIndentation(IN LONG Indentation)
 {
     for (LONG i = 0; i < Indentation; i++) {
 	DbgPrint(" ");

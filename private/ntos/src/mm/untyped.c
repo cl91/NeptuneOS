@@ -15,12 +15,12 @@ VOID MiInitializeUntyped(IN PUNTYPED Untyped,
     Untyped->Log2Size = Log2Size;
     Untyped->IsDevice = IsDevice;
     InvalidateListEntry(&Untyped->FreeListEntry);
-    MmAvlInitializeNode(&Untyped->AvlNode, PhyAddr);
+    AvlInitializeNode(&Untyped->AvlNode, PhyAddr);
 }
 
 VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem)
 {
-    MmAvlInitializeTree(&PhyMem->RootUntypedForest);
+    AvlInitializeTree(&PhyMem->RootUntypedForest);
     InitializeListHead(&PhyMem->LowMemUntypedList);
     InitializeListHead(&PhyMem->SmallUntypedList);
     InitializeListHead(&PhyMem->MediumUntypedList);
@@ -266,16 +266,16 @@ NTSTATUS MmRequestUntypedEx(IN LONG Log2Size,
 static inline BOOLEAN MiUntypedContainsPhyAddr(IN PUNTYPED Untyped,
 					       IN MWORD PhyAddr)
 {
-    return MiAvlNodeContainsAddr(&Untyped->AvlNode,
+    return AvlNodeContainsAddr(&Untyped->AvlNode,
 				 1ULL << Untyped->Log2Size, PhyAddr);
 }
 
 static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 				  IN MWORD PhyAddr)
 {
-    PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
-    PMM_AVL_NODE Node = MiAvlTreeFindNodeOrPrev(Tree, PhyAddr);
-    PUNTYPED Parent = MM_AVL_NODE_TO_UNTYPED(Node);
+    PAVL_TREE Tree = &PhyMem->RootUntypedForest;
+    PAVL_NODE Node = AvlTreeFindNodeOrPrev(Tree, PhyAddr);
+    PUNTYPED Parent = AVL_NODE_TO_UNTYPED(Node);
     if (Parent != NULL && MiUntypedContainsPhyAddr(Parent, PhyAddr)) {
 	return Parent;
     }
@@ -328,19 +328,19 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			     IN PUNTYPED RootUntyped)
 {
     MWORD StartPhyAddr = RootUntyped->AvlNode.Key;
-    PMM_AVL_TREE Tree = &PhyMem->RootUntypedForest;
-    PMM_AVL_NODE Parent = MiAvlTreeFindNodeOrParent(Tree, StartPhyAddr);
+    PAVL_TREE Tree = &PhyMem->RootUntypedForest;
+    PAVL_NODE Parent = AvlTreeFindNodeOrParent(Tree, StartPhyAddr);
     PUNTYPED ParentUntyped = CONTAINING_RECORD(Parent, UNTYPED, AvlNode);
 
     /* Reject the insertion if the root untyped to be inserted overlaps
      * with its parent node within the AVL tree. This should never happen
      * and in case it did, it would be a programming error. */
     if (Parent != NULL &&
-	MiAvlNodeOverlapsAddrWindow(Parent, 1ULL << ParentUntyped->Log2Size,
+	AvlNodeOverlapsAddrWindow(Parent, 1ULL << ParentUntyped->Log2Size,
 				    StartPhyAddr, 1ULL << RootUntyped->Log2Size)) {
 	return STATUS_NTOS_BUG;
     }
-    MiAvlTreeInsertNode(Tree, Parent, &RootUntyped->AvlNode);
+    AvlTreeInsertNode(Tree, Parent, &RootUntyped->AvlNode);
     return STATUS_SUCCESS;
 }
 
@@ -400,9 +400,9 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 }
 
 #ifdef CONFIG_DEBUG_BUILD
-static VOID MiDbgDumpUntyped(IN PMM_AVL_NODE Node)
+static VOID MiDbgDumpUntyped(IN PAVL_NODE Node)
 {
-    PUNTYPED Untyped = MM_AVL_NODE_TO_UNTYPED(Node);
+    PUNTYPED Untyped = AVL_NODE_TO_UNTYPED(Node);
     MmDbgDumpCapTree(&Untyped->TreeNode, 4);
 }
 
@@ -428,9 +428,9 @@ VOID MmDbgDumpUntypedForest()
 		 Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     DbgPrint("  Root untyped forest:\n");
-    MmAvlVisitTreeLinear(&MiPhyMemDescriptor.RootUntypedForest,
+    AvlVisitTreeLinear(&MiPhyMemDescriptor.RootUntypedForest,
 			 MiDbgDumpUntyped);
     DbgPrint("  Root untyped forest as an AVL tree ordered by physical address:\n");
-    MmAvlDumpTree(&MiPhyMemDescriptor.RootUntypedForest);
+    AvlDumpTree(&MiPhyMemDescriptor.RootUntypedForest);
 }
 #endif

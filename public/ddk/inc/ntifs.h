@@ -298,22 +298,6 @@ FORCEINLINE NTAPI VOID IoRemoveShareAccess(IN PFILE_OBJECT FileObject,
 }
 
 /*
- * Common FCB Header
- */
-typedef struct _FSRTL_COMMON_FCB_HEADER {
-    CSHORT NodeTypeCode;
-    CSHORT NodeByteSize;
-    UCHAR Flags;
-    UCHAR IsFastIoPossible;
-    UCHAR Flags2;
-    UCHAR Reserved : 4;
-    UCHAR Version : 4;
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER FileSize;
-    LARGE_INTEGER ValidDataLength;
-} FSRTL_COMMON_FCB_HEADER, *PFSRTL_COMMON_FCB_HEADER;
-
-/*
  * File Name Helper Routines
  */
 NTAPI NTSYSAPI BOOLEAN FsRtlAreNamesEqual(IN PCUNICODE_STRING Name1,
@@ -364,37 +348,44 @@ typedef struct _CC_FILE_SIZES {
     LARGE_INTEGER ValidDataLength;
 } CC_FILE_SIZES, *PCC_FILE_SIZES;
 
-#define PIN_WAIT                        (1)
-#define PIN_EXCLUSIVE                   (2)
-#define PIN_NO_READ                     (4)
-#define PIN_IF_BCB                      (8)
-#define PIN_CALLER_TRACKS_DIRTY_DATA    (32)
-#define PIN_HIGH_PRIORITY               (64)
+#define MAP_WAIT                        (1)
 
-/* These must be defined to be the same flags used in the CcPinRead
- * interface, since CcMapData is now synonymous with CcPinRead. */
-#define MAP_WAIT                        (PIN_WAIT)
-#define MAP_NO_READ                     (PIN_NO_READ)
-#define MAP_HIGH_PRIORITY               (PIN_HIGH_PRIORITY)
+/*
+ * Common FCB Header
+ */
+typedef struct _FSRTL_COMMON_FCB_HEADER {
+    CC_FILE_SIZES FileSizes; /* Driver must set this before calling CcInitializeCacheMap. */
+    PVOID CacheMap; /* Initialized by CcInitializeCacheMap. Driver should not touch it. */
+    PDEVICE_OBJECT VolumeDevice; /* Same as above. Do not touch it. */
+} FSRTL_COMMON_FCB_HEADER, *PFSRTL_COMMON_FCB_HEADER;
 
 /*
  * Cache Manager Routines
  */
-NTAPI NTSYSAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject,
-					     IN PCC_FILE_SIZES FileSizes,
-					     IN BOOLEAN PinAccess,
-					     IN PVOID LazyWriteContext);
+NTAPI NTSYSAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject);
 NTAPI NTSYSAPI BOOLEAN CcUninitializeCacheMap(IN PFILE_OBJECT FileObject,
 					      IN OPTIONAL PLARGE_INTEGER TruncateSize);
-NTAPI NTSYSAPI NTSTATUS CcPinRead(IN PFILE_OBJECT FileObject,
+NTAPI NTSYSAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 				  IN PLARGE_INTEGER FileOffset,
 				  IN ULONG Length,
 				  IN ULONG Flags,
+				  OUT ULONG *MappedLength,
 				  OUT PVOID *Bcb,
-				  OUT PVOID *Buffer);
-NTAPI NTSYSAPI VOID CcSetDirtyPinnedData(IN PVOID BcbVoid,
-					 IN OPTIONAL PLARGE_INTEGER Lsn);
+				  OUT PVOID *pBuffer);
+NTAPI NTSYSAPI VOID CcSetDirtyData(IN PVOID Bcb);
 NTAPI NTSYSAPI VOID CcUnpinData(IN PVOID Bcb);
+NTAPI NTSYSAPI NTSTATUS CcCopyRead(IN PFILE_OBJECT FileObject,
+				   IN PLARGE_INTEGER FileOffset,
+				   IN ULONG Length,
+				   IN BOOLEAN Wait,
+				   IN PVOID Buffer,
+				   OUT ULONG *BytesRead);
+NTAPI NTSYSAPI NTSTATUS CcCopyWrite(IN PFILE_OBJECT FileObject,
+				    IN PLARGE_INTEGER FileOffset,
+				    IN ULONG Length,
+				    IN BOOLEAN Wait,
+				    IN PVOID Buffer,
+				    OUT ULONG *BytesWritten);
 NTAPI NTSYSAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
 				   IN PLARGE_INTEGER StartOffset,
 				   IN PLARGE_INTEGER EndOffset,
@@ -402,21 +393,10 @@ NTAPI NTSYSAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
 NTAPI NTSYSAPI VOID CcSetFileSizes(IN PFILE_OBJECT FileObject,
 				   IN PCC_FILE_SIZES FileSizes);
 
-/* On Neptune OS, CcMapData is synonymous with CcPinRead. On Windows
- * they are not (CcMapData is a more restrictive function there). */
-FORCEINLINE NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
-				     IN PLARGE_INTEGER FileOffset,
-				     IN ULONG Length,
-				     IN ULONG Flags,
-				     OUT PVOID *Bcb,
-				     OUT PVOID *Buffer)
-{
-    return CcPinRead(FileObject, FileOffset, Length, Flags, Bcb, Buffer);
-}
-
-/* On Neptune OS, CcFlushCache is a no-op. File system drivers do not need
- * to manually flush caches and in general should not do so. */
 FORCEINLINE NTAPI VOID CcFlushCache(IN PFSRTL_COMMON_FCB_HEADER Fcb,
 				    IN OPTIONAL PLARGE_INTEGER FileOffset,
 				    IN ULONG Length,
-				    OUT OPTIONAL PIO_STATUS_BLOCK IoStatus) {}
+				    OUT OPTIONAL PIO_STATUS_BLOCK IoStatus)
+{
+    /* TODO */
+}

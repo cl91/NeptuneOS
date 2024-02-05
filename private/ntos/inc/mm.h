@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include <services.h>
+#include <avltree.h>
 
 #define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
 
@@ -225,36 +226,6 @@ static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
 }
 
 /*
- * A tree node in the AVL tree
- */
-typedef struct _MM_AVL_NODE {
-    MWORD Parent;
-    struct _MM_AVL_NODE *LeftChild;
-    struct _MM_AVL_NODE *RightChild;
-    MWORD Key; /* key is usually address, page number, or large page number */
-} MM_AVL_NODE, *PMM_AVL_NODE;
-
-static inline VOID MmAvlInitializeNode(PMM_AVL_NODE Node,
-				       MWORD Key)
-{
-    Node->Parent = 0;
-    Node->LeftChild = Node->RightChild = NULL;
-    Node->Key = Key;
-}
-
-/*
- * AVL tree ordered by the key of the tree node
- */
-typedef struct _MM_AVL_TREE {
-    PMM_AVL_NODE BalancedRoot;
-} MM_AVL_TREE, *PMM_AVL_TREE;
-
-static inline VOID MmAvlInitializeTree(IN PMM_AVL_TREE Tree)
-{
-    Tree->BalancedRoot = NULL;
-}
-
-/*
  * An untyped capability represents either free physical
  * memory or device memory mapped into the physical memory.
  * Both types of untyped capabilities are organized by
@@ -265,19 +236,22 @@ static inline VOID MmAvlInitializeTree(IN PMM_AVL_TREE Tree)
  */
 typedef struct _UNTYPED {
     CAP_TREE_NODE TreeNode;	/* Must be first entry */
-    MM_AVL_NODE AvlNode;	/* Node ordered by physical address.
-				 * For root untyped this is inserted into
-				 * the root untyped forest. For non-root
-				 * untyped the AvlNode.Key is used for book-
-				 * keeping purpose only and the AVL node is
-				 * not actually inserted into any AVL tree. */
+    AVL_NODE AvlNode;	/* Node ordered by physical address.
+			 * For root untyped this is inserted into
+			 * the root untyped forest. For non-root
+			 * untyped the AvlNode.Key is used for book-
+			 * keeping purpose only and the AVL node is
+			 * not actually inserted into any AVL tree. */
     LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
     LONG Log2Size;
     BOOLEAN IsDevice;
 } UNTYPED, *PUNTYPED;
 
-#define MM_AVL_NODE_TO_UNTYPED(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, UNTYPED, AvlNode) : NULL)
+#define AVL_NODE_TO_UNTYPED(Node)					\
+    ({									\
+	PAVL_NODE __node = (Node);					\
+	__node ? CONTAINING_RECORD(__node, UNTYPED, AvlNode) : NULL;	\
+    })
 
 /*
  * Virtual address descriptor
@@ -344,7 +318,7 @@ typedef union _MMVAD_FLAGS {
 #define MEM_RESERVE_NO_INSERT		(0x1UL << 9)
 
 typedef struct _MMVAD {
-    MM_AVL_NODE AvlNode; /* Starting virtual address of the node, 4K aligned */
+    AVL_NODE AvlNode; /* Starting virtual address of the node, 4K aligned */
     struct _VIRT_ADDR_SPACE *VSpace;
     MWORD WindowSize;		/* Rounded up to 4K page boundary */
     MMVAD_FLAGS Flags;
@@ -376,8 +350,11 @@ typedef struct _MMVAD {
     } MirroredMemory;
 } MMVAD, *PMMVAD;
 
-#define MM_AVL_NODE_TO_VAD(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, MMVAD, AvlNode) : NULL)
+#define AVL_NODE_TO_VAD(Node)						\
+    ({									\
+	PAVL_NODE __node = (Node);					\
+	__node ? CONTAINING_RECORD(__node, MMVAD, AvlNode) : NULL;	\
+    })
 
 /*
  * A paging structure represents a capability to either a page,
@@ -428,9 +405,9 @@ typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
 
 typedef struct _PAGING_STRUCTURE {
     CAP_TREE_NODE TreeNode; /* Cap tree node of the page cap. Must be first member. */
-    MM_AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree, Key is virt addr */
+    AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree, Key is virt addr */
     struct _PAGING_STRUCTURE *SuperStructure; /* Parent structure, so for page it's page table, etc. */
-    MM_AVL_TREE SubStructureTree; /* Substructure tree, so for page table it's pages in it, etc */
+    AVL_TREE SubStructureTree; /* Substructure tree, so for page table it's pages in it, etc */
     MWORD VSpaceCap; /* Cap of the VSpace that this paging structure is mapped into */
     PAGING_STRUCTURE_TYPE Type;
     BOOLEAN Mapped;
@@ -438,8 +415,13 @@ typedef struct _PAGING_STRUCTURE {
     PAGING_ATTRIBUTES Attributes;
 } PAGING_STRUCTURE, *PPAGING_STRUCTURE;
 
-#define MM_AVL_NODE_TO_PAGING_STRUCTURE(Node)					\
-    ((Node) != NULL ? CONTAINING_RECORD(Node, PAGING_STRUCTURE, AvlNode) : NULL)
+#define AVL_NODE_TO_PAGING_STRUCTURE(Node)		\
+    ({							\
+	PAVL_NODE __node = (Node);			\
+	__node ? CONTAINING_RECORD(__node,		\
+				   PAGING_STRUCTURE,	\
+				   AvlNode) : NULL;	\
+    })
 
 #define MM_RIGHTS_RW	(seL4_ReadWrite)
 #define MM_RIGHTS_RO	(seL4_CanRead)
@@ -460,7 +442,7 @@ static inline BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
 typedef struct _VIRT_ADDR_SPACE {
     MWORD VSpaceCap;		/* This is relative to the root task cspace */
     MWORD ASIDPool;
-    MM_AVL_TREE VadTree;
+    AVL_TREE VadTree;
     PPAGING_STRUCTURE RootPagingStructure;
     LIST_ENTRY ViewerList;	/* List of all VADs that mirror pages in this VSpace */
 } VIRT_ADDR_SPACE, *PVIRT_ADDR_SPACE;
@@ -478,9 +460,9 @@ typedef struct _PHY_MEM_DESCRIPTOR {
     LIST_ENTRY SmallUntypedList; /* *Free* untyped's that are smaller than one page */
     LIST_ENTRY MediumUntypedList; /* *Free* untyped's at least one page but smaller than one large page */
     LIST_ENTRY LargeUntypedList;  /* *Free* untyped's at least one large page */
-    MM_AVL_TREE RootUntypedForest; /* Root untyped forest organized by their starting phy addr.
-				    * Note that RootUntypedForest represents both the cap derivation
-				    * forest as well as the AVL tree of all untyped caps. */
+    AVL_TREE RootUntypedForest; /* Root untyped forest organized by their starting phy addr.
+				 * Note that RootUntypedForest represents both the cap derivation
+				 * forest as well as the AVL tree of all untyped caps. */
 } PHY_MEM_DESCRIPTOR, *PPHY_MEM_DESCRIPTOR;
 
 typedef enum _MM_MEM_PRESSURE {
@@ -526,7 +508,7 @@ typedef union _MMSECTION_FLAGS {
 } MMSECTION_FLAGS;
 
 typedef struct _SECTION {
-    MM_AVL_NODE BasedSectionNode; /* All SEC_BASED Sections are organized in an AVL tree */
+    AVL_NODE BasedSectionNode; /* All SEC_BASED Sections are organized in an AVL tree */
     union {
 	struct _IMAGE_SECTION_OBJECT *ImageSectionObject;
 	struct _DATA_SECTION_OBJECT *DataSectionObject;
@@ -576,17 +558,6 @@ NTSTATUS MmInitSystemPhase1();
 extern MWORD MmNumberOfPhysicalPages;
 extern MWORD MmLowestPhysicalPage;
 extern MWORD MmHighestPhysicalPage;
-
-/* avltree.c */
-PMM_AVL_NODE MmAvlTreeFindNode(IN PMM_AVL_TREE Tree,
-			       IN MWORD Key);
-VOID MmAvlTreeAppendNode(IN PMM_AVL_TREE Tree,
-			 IN OUT PMM_AVL_NODE Node,
-			 IN MWORD Increment);
-VOID MmAvlDumpTree(PMM_AVL_TREE tree);
-VOID MmAvlDumpTreeLinear(PMM_AVL_TREE tree);
-typedef VOID (*PMM_AVL_TREE_VISITOR)(PMM_AVL_NODE Node);
-VOID MmAvlVisitTreeLinear(PMM_AVL_TREE Tree, PMM_AVL_TREE_VISITOR Visitor);
 
 /* cap.c */
 NTSTATUS MmAllocateCapRange(IN PCNODE CNode,

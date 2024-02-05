@@ -203,6 +203,7 @@ typedef struct _VPB {
     struct _DEVICE_OBJECT *RealDevice;
     ULONG SerialNumber;
     ULONG ReferenceCount;
+    ULONG ClusterSize;
     WCHAR VolumeLabel[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];
 } VPB, *PVPB;
 
@@ -399,7 +400,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     PMDL MdlAddress;
     ULONG Flags;
 
-    /* We need to figure out master/associated IRPs and buffered IO */
     union {
 	struct _IRP *MasterIrp;
 	volatile LONG IrpCount;

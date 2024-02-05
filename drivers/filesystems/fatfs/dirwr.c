@@ -40,9 +40,7 @@ NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
     FileObject->Vpb = Vcb->IoVPB;
     Fcb->FileObject = FileObject;
 
-    Status = CcInitializeCacheMap(FileObject,
-				  (PCC_FILE_SIZES)(&Fcb->Base.AllocationSize),
-				  TRUE, Fcb);
+    Status = CcInitializeCacheMap(FileObject);
     if (!NT_SUCCESS(Status)) {
 	Fcb->FileObject = NULL;
 	ExFreeToLookasideList(&FatGlobalData->CcbLookasideList, NewCCB);
@@ -106,7 +104,7 @@ NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt, IN PFATFCB Fcb)
 
     Fcb->Flags &= ~FCB_IS_DIRTY;
     RtlCopyMemory(PinEntry, &Fcb->Entry, SizeDirEntry);
-    CcSetDirtyPinnedData(Context, NULL);
+    CcSetDirtyData(Context);
     CcUnpinData(Context);
     return STATUS_SUCCESS;
 }
@@ -208,7 +206,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	return FALSE;
     }
 
-    Count = DirFcb->Base.FileSize.LowPart / SizeDirEntry;
+    Count = DirFcb->Base.FileSizes.FileSize.LowPart / SizeDirEntry;
     Size = DeviceExt->FatInfo.BytesPerCluster / SizeDirEntry;
     for (i = 0; i < Count; i++, pFatEntry = (PDIR_ENTRY)((ULONG_PTR)pFatEntry + SizeDirEntry)) {
 	if (Context == NULL || (i % Size) == 0) {
@@ -255,7 +253,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 		/* We can't extend a root directory on a FAT12/FAT16/FATX partition */
 		return FALSE;
 	    }
-	    AllocationSize.QuadPart = DirFcb->Base.FileSize.LowPart +
+	    AllocationSize.QuadPart = DirFcb->Base.FileSizes.FileSize.LowPart +
 		DeviceExt->FatInfo.BytesPerCluster;
 	    Status = FatSetFileSizeInformation(DirFcb->FileObject,
 					       DirFcb, DeviceExt,
@@ -294,7 +292,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	}
 
 	if (Context) {
-	    CcSetDirtyPinnedData(Context, NULL);
+	    CcSetDirtyData(Context);
 	    CcUnpinData(Context);
 	}
     }

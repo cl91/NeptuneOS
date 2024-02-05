@@ -72,15 +72,15 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 		    ObDereferenceObject(tmpFileObject);
 		}
 
-		pFcb->Base.ValidDataLength.QuadPart = 0;
-		pFcb->Base.FileSize.QuadPart = 0;
-		pFcb->Base.AllocationSize.QuadPart = 0;
+		pFcb->Base.FileSizes.ValidDataLength.QuadPart = 0;
+		pFcb->Base.FileSizes.FileSize.QuadPart = 0;
+		pFcb->Base.FileSizes.AllocationSize.QuadPart = 0;
 	    }
 	}
 
 	/* Uninitialize the cache (should be done even if caching
 	 * was never initialized) */
-	CcUninitializeCacheMap(FileObject, &pFcb->Base.FileSize);
+	CcUninitializeCacheMap(FileObject);
 
 	if (BooleanFlagOn(pFcb->Flags, FCB_DELETE_PENDING) &&
 	    pFcb->OpenHandleCount == 0) {
