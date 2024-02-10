@@ -32,10 +32,10 @@ static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
     }
     assert(Process->ImageFile);
     assert(Process->ImageFile->Fcb);
-    DbgTrace("Object handle %p (process %s) lookup type mismatch: expected mask 0x%x found type %d\n",
-	     Handle,
-	     Process->ImageFile->Fcb->FileName ? Process->ImageFile->Fcb->FileName : "UNKNOWN",
-	     Type, ObjectHeader->Type->Index);
+    ObDbg("Object handle %p (process %s) lookup type mismatch: expected mask 0x%x found type %d\n",
+	  Handle,
+	  Process->ImageFile->Fcb->FileName ? Process->ImageFile->Fcb->FileName : "UNKNOWN",
+	  Type, ObjectHeader->Type->Index);
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
@@ -73,13 +73,13 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     NTSTATUS Status = ObParseObjectByName(RootDirectory, Path, CaseInsensitive,
 					  &Object, &RemainingPath);
     if (!NT_SUCCESS(Status)) {
-	DbgTrace("Object look up failed for %s\n", Path);
+	ObDbg("Object look up failed for %s\n", Path);
 	return Status;
     }
     assert(RemainingPath != NULL);
     /* Return error if the path cannot be fully parsed */
     if (*RemainingPath != '\0') {
-	DbgTrace("Unable to parse remaining path %s\n", RemainingPath);
+	ObDbg("Unable to parse remaining path %s\n", RemainingPath);
 	return STATUS_OBJECT_NAME_INVALID;
     }
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
@@ -89,8 +89,8 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
-    DbgTrace("Object path %s lookup type mismatch: expected type 0x%x found type %d\n",
-	     Path, Type, ObjectHeader->Type->Index);
+    ObDbg("Object path %s lookup type mismatch: expected type 0x%x found type %d\n",
+	  Path, Type, ObjectHeader->Type->Index);
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
@@ -112,12 +112,16 @@ NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
 /* Remove the object from its parent object (if it exists). */
 VOID ObRemoveObject(IN POBJECT Object)
 {
+    ObDbg("Removing object %p\n", Object);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
-    if (ObjectHeader->ParentObject != NULL) {
-	assert(ObjectHeader->ObjectName != NULL);
-	assert(ObjectHeader->Type->TypeInfo.RemoveProc != NULL);
-	ObjectHeader->Type->TypeInfo.RemoveProc(ObjectHeader->ParentObject,
-						Object, ObjectHeader->ObjectName);
+    if (ObjectHeader->ParentObject) {
+	ObDbg("Parent of object %p is %p\n", Object, ObjectHeader->ParentObject);
+	assert(ObjectHeader->ObjectName);
+	OBJECT_REMOVE_METHOD RemoveProc = ObjectHeader->Type->TypeInfo.RemoveProc;
+	assert(RemoveProc);
+	if (RemoveProc) {
+	    RemoveProc(ObjectHeader->ParentObject, Object, ObjectHeader->ObjectName);
+	}
 	ObpFreePool(ObjectHeader->ObjectName);
 	ObjectHeader->ParentObject = NULL;
 	ObjectHeader->ObjectName = NULL;
@@ -130,6 +134,7 @@ static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
     assert(ObjectHeader->Type != NULL);
 
     POBJECT Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
+    ObDbg("Deleting object %p\n", Object);
     ObRemoveObject(Object);
     if (ObjectHeader->Type->TypeInfo.DeleteProc != NULL) {
 	ObjectHeader->Type->TypeInfo.DeleteProc(Object);

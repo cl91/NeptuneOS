@@ -5,6 +5,12 @@
 #include "ex.h"
 #include <wdmsvc.h>
 
+#ifdef OBDBG
+#define ObDbg(...)	DbgTrace(__VA_ARGS__)
+#else
+#define ObDbg(...)
+#endif
+
 /*
  * Private flags for object creation. See public/ndk/inc/ntobapi.h
  * for public flags. See ntos/src/ob/create.c for details.

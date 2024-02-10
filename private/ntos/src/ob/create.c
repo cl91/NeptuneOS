@@ -97,8 +97,8 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
     assert(ParentHeader != NULL);
     assert(ParentHeader->Type != NULL);
 
-    DbgTrace("Inserting subobject %p under object %p with name %s\n",
-	     Object, Parent, ObjectName);
+    ObDbg("Inserting subobject %p under object %p with name %s\n",
+	  Object, Parent, ObjectName);
     OBJECT_INSERT_METHOD InsertProc = ParentHeader->Type->TypeInfo.InsertProc;
     if (InsertProc == NULL) {
 	return STATUS_INVALID_PARAMETER;

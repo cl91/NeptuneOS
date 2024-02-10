@@ -1,9 +1,7 @@
 #pragma once
 
-/* Comment this out to enable debug tracing on debug build */
-#ifndef NDEBUG
-#define NDEBUG
-#endif
+/* Uncomment this to turn on debugging outputs specific to Ob */
+/* #define OBDBG */
 
 #include <ntos.h>
 

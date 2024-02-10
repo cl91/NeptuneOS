@@ -181,7 +181,7 @@ parse:
 	!!(ObjectAttributes.Attributes & OBJ_CASE_INSENSITIVE),
 	&Subobject, &RemainingPath);
     if (!NT_SUCCESS(Status)) {
-	DbgTrace("Parsing path %s returned error status 0x%x\n", Locals.Path, Status);
+	ObDbg("Parsing path %s returned error status 0x%x\n", Locals.Path, Status);
 	/* In this case the parse routine should not modify the remaining path. */
 	assert(RemainingPath == Locals.Path);
 	/* If the parse routine returned OBJECT_NAME_NOT_FOUND or OBJECT_PATH_NOT_FOUND,
@@ -198,7 +198,7 @@ parse:
 	/* Note although the parse routine returned a new string in the RemainingPath,
 	 * we do not need to worry about freeing this string, as the parse routine shall
 	 * take care of recording this string and freeing it later when the object closes. */
-	DbgTrace("Reparsing with new path %s\n", RemainingPath);
+	ObDbg("Reparsing with new path %s\n", RemainingPath);
 	/* If we have an absolute path, reparse should start from the global root directory */
 	if (RemainingPath[0] == OBJ_NAME_PATH_SEPARATOR) {
 	    Locals.Object = ObpRootObjectDirectory;
@@ -211,8 +211,8 @@ parse:
 	 * invoking the sub-object's parse routine. This is recursive, until
 	 * either the remaining path is empty, or the process errors out. */
 	Locals.Object = Subobject;
-	DbgTrace("Invoking parse routine on sub-object %p sub-path %s\n",
-		 Subobject, RemainingPath);
+	ObDbg("Invoking parse routine on sub-object %p sub-path %s\n",
+	      Subobject, RemainingPath);
     }
     /* Skip the leading path separator. */
     if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
@@ -232,8 +232,8 @@ open:
     assert(OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type != NULL);
     /* If the object type does not define an open procedure, return error */
     if (OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc == NULL) {
-	DbgTrace("Type %s does not have an open procedure\n",
-		 OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Name);
+	ObDbg("Type %s does not have an open procedure\n",
+	      OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Name);
 	Status = STATUS_OBJECT_NAME_INVALID;
 	goto out;
     }
@@ -243,8 +243,8 @@ open:
     ObpReferenceObject(Locals.Object);
 
     /* Call the open procedure, and wait asynchronously. */
-    DbgTrace("Invoking open routine for object %p with path %s\n",
-	     Locals.Object, Locals.Path);
+    ObDbg("Invoking open routine for object %p with path %s\n",
+	  Locals.Object, Locals.Path);
     AWAIT_EX(Status,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc,
 	     AsyncState, Locals, Thread, Locals.Object, Locals.Path,
@@ -256,8 +256,8 @@ open:
     /* The open routine should always set the remaining path */
     assert(RemainingPath != NULL);
     if (!NT_SUCCESS(Status)) {
-	DbgTrace("Opening path %s on object %p failed, remaining path = %s\n",
-		 Locals.Path, Locals.Object, RemainingPath);
+	ObDbg("Opening path %s on object %p failed, remaining path = %s\n",
+	      Locals.Path, Locals.Object, RemainingPath);
 	goto out;
     }
     Locals.Path = RemainingPath;
@@ -276,7 +276,7 @@ open:
 	}
 	/* Otherwise, for a relative path reparse should start from the current object.
 	 * In this case we do not need to do anything. */
-	DbgTrace("Reparsing with new path %s\n", Locals.Path);
+	ObDbg("Reparsing with new path %s\n", Locals.Path);
     } else {
 	/* If the open succeeded, OpenedInstance should not be NULL. */
 	assert(OpenedInstance != NULL);
@@ -318,7 +318,7 @@ done:
 
 out:
     if (!NT_SUCCESS(Status) && Locals.OpenedInstance) {
-	/* FIXME: TODO: Invoke the close procedure of the opened instance */
+	/* FIXME: TODO: Invoke the delete procedure of the opened instance */
     }
     ASYNC_END(AsyncState, Status);
 }

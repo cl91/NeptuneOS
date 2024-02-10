@@ -3,6 +3,14 @@
 #include <nt.h>
 #include "ob.h"
 
+#ifdef CMDBG
+#define CmDbg(...)	DbgTrace(__VA_ARGS__)
+#define CmDbgPrint(...)	DbgPrint(__VA_ARGS__)
+#else
+#define CmDbg(...)
+#define CmDbgPrint(...)
+#endif
+
 #define REGISTRY_OBJECT_DIRECTORY	"\\Registry"
 
 typedef struct _CM_OPEN_CONTEXT {

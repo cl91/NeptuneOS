@@ -45,13 +45,13 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
 	assert(Entry != NULL);
 	assert(Entry->Object != NULL);
-	DbgTrace("Checking object %s\n", ObGetObjectName(Entry->Object));
+	ObDbg("Checking object %s\n", ObGetObjectName(Entry->Object));
 	if (strlen(ObGetObjectName(Entry->Object)) != Length) {
 	    continue;
 	}
 	INT (*Comparer)(PCSTR, PCSTR, ULONG_PTR) = CaseInsensitive ? _strnicmp : strncmp;
 	if (!Comparer(Name, ObGetObjectName(Entry->Object), Length)) {
-	    DbgTrace("Found object name = %s\n", ObGetObjectName(Entry->Object));
+	    ObDbg("Found object name = %s\n", ObGetObjectName(Entry->Object));
 	    *FoundObject = Entry->Object;
 	    if (DirectoryEntry != NULL) {
 		*DirectoryEntry = Entry;
@@ -77,8 +77,8 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 					    OUT PCSTR *RemainingPath)
 {
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY)Self;
-    DbgTrace("Trying to parse Path = %s case-%s\n", Path,
-	     CaseInsensitive ? "insensitively" : "sensitively");
+    ObDbg("Trying to parse Path = %s case-%s\n", Path,
+	  CaseInsensitive ? "insensitively" : "sensitively");
     assert(Self != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
@@ -93,13 +93,13 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength,
 				       CaseInsensitive, FoundObject, NULL),
 	       {
-		   DbgTrace("Path %s not found\n", Path);
+		   ObDbg("Path %s not found\n", Path);
 		   *FoundObject = NULL;
 		   *RemainingPath = Path;
 	       });
     *RemainingPath = Path + NameLength;
     /* The object manager will skip the leading OBJ_NAME_PATH_SEPARATOR */
-    DbgTrace("Parse successful. RemainingPath = %s\n", *RemainingPath);
+    ObDbg("Parse successful. RemainingPath = %s\n", *RemainingPath);
     return STATUS_SUCCESS;
 }
 
@@ -111,7 +111,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 					     IN POBJECT Object,
 					     IN PCSTR Name)
 {
-    DbgTrace("Inserting name %s\n", Name);
+    ObDbg("Inserting name %s\n", Name);
     POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
     assert(Self != NULL);
     assert(Name != NULL);
@@ -120,7 +120,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     /* Object name must not contain the OBJ_NAME_PATH_SEPARATOR */
     for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
 	if (*Ptr == OBJ_NAME_PATH_SEPARATOR) {
-	    DbgTrace("Inserting name %s failed\n", Name);
+	    ObDbg("Inserting name %s failed\n", Name);
 	    /* This usually means that the user did not create the intermediate
 	     * directory object. We return OBJECT_NAME_NOT_FOUND in this case. */
 	    return STATUS_OBJECT_NAME_NOT_FOUND;

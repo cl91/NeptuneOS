@@ -1,9 +1,7 @@
 #pragma once
 
-/* Comment this out to enable debug tracing on debug build */
-#ifndef NDEBUG
-#define NDEBUG
-#endif
+/* Uncomment this to enable debugging outputs specific to Cm */
+/* #define CMDBG */
 
 #include <ntos.h>
 

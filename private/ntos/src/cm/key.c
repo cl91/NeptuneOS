@@ -522,7 +522,7 @@ VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
         LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
 	    if (Node->Type == CM_NODE_KEY) {
-		DbgPrint("    KEY %s\n", ObGetObjectName(Node));
+		CmDbgPrint("    KEY %s\n", ObGetObjectName(Node));
 	    } else if (Node->Type == CM_NODE_VALUE) {
 		CmpDbgDumpValue((PCM_REG_VALUE)Node);
 	    }
@@ -542,8 +542,8 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
 	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    CM_OPEN_CONTEXT OpenContext;
 	});
-    DbgTrace("Trying to open key %s root directory %p\n",
-	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
+    CmDbg("Trying to open key %s root directory %p\n",
+	  ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
     /* Windows registry is always case insensitive so we set the
      * OBJ_CASE_INSENSITIVE even if the client did not. */
     Locals.ObjectAttributes = ObjectAttributes;
@@ -573,8 +573,8 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
 	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    CM_OPEN_CONTEXT OpenContext;
 	});
-    DbgTrace("Trying to create key %s root directory %p\n",
-	     ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
+    CmDbg("Trying to create key %s root directory %p\n",
+	  ObjectAttributes.ObjectNameBuffer, ObjectAttributes.RootDirectory);
     /* Windows registry is always case insensitive so we set the
      * OBJ_CASE_INSENSITIVE even if the client did not. */
     Locals.ObjectAttributes = ObjectAttributes;
@@ -601,8 +601,8 @@ NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE AsyncState,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    DbgTrace("KeyHandle 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
-	     KeyHandle, Index, KeyInformationClass, BufferSize);
+    CmDbg("KeyHandle 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
+	  KeyHandle, Index, KeyInformationClass, BufferSize);
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
@@ -626,8 +626,8 @@ NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE AsyncState,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    DbgTrace("NtEnumerateKey() KY 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
-	     KeyHandle, Index, KeyInformationClass, BufferSize);
+    CmDbg("NtEnumerateKey() KY 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
+	  KeyHandle, Index, KeyInformationClass, BufferSize);
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
@@ -649,8 +649,8 @@ NTSTATUS NtQueryKeyW(IN ASYNC_STATE AsyncState,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    DbgTrace("Querying key information class %d for key handle %p bufsize 0x%x\n",
-	     KeyInformationClass, KeyHandle, BufferSize);
+    CmDbg("Querying key information class %d for key handle %p bufsize 0x%x\n",
+	  KeyInformationClass, KeyHandle, BufferSize);
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
@@ -671,7 +671,7 @@ NTSTATUS NtQueryKeyA(IN ASYNC_STATE AsyncState,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    DbgTrace("Querying key information for key handle %p\n", KeyHandle);
+    CmDbg("Querying key information for key handle %p\n", KeyHandle);
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;

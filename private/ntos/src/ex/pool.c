@@ -1,9 +1,8 @@
-/* Comment this out to enable debug tracing on debug build */
-#ifndef NDEBUG
-#define NDEBUG
-#endif
-
 #include "ei.h"
+
+/* Comment this out to enable debug tracing on debug build */
+#undef DbgTrace
+#define DbgTrace(...)
 
 /* Returns Ceil(x/y) for unsigned integers x and y */
 #define RtlDivCeilUnsigned(x,y)	(((x)+(y)-1)/(y))

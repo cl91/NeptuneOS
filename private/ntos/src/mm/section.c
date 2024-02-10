@@ -34,7 +34,7 @@ static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
  *  [1] Microsoft Corporation, "Microsoft Portable Executable and Common Object
  *      File Format Specification", revision 6.0 (February 1999)
  */
-#define DIE(...) { DbgTrace(__VA_ARGS__); return STATUS_INVALID_IMAGE_FORMAT; }
+#define DIE(...) { MmDbg(__VA_ARGS__); return STATUS_INVALID_IMAGE_FORMAT; }
 static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 				    IN ULONG FileBufferSize,
 				    IN PIMAGE_SECTION_OBJECT ImageSection,
@@ -724,68 +724,68 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-#ifdef CONFIG_DEBUG_BUILD
+#ifdef MMDBG
 static VOID MiDbgDumpSubSection(IN PSUBSECTION SubSection)
 {
-    DbgPrint("Dumping sub-section %p\n", SubSection);
+    MmDbgPrint("Dumping sub-section %p\n", SubSection);
     if (SubSection == NULL) {
-	DbgPrint("    (nil)\n");
+	MmDbgPrint("    (nil)\n");
 	return;
     }
-    DbgPrint("    parent image section object = %p\n", SubSection->ImageSection);
-    DbgPrint("    sub-section name = %s\n", SubSection->Name);
-    DbgPrint("    sub-section size = 0x%x\n", SubSection->SubSectionSize);
-    DbgPrint("    starting file offset = 0x%x\n", SubSection->FileOffset);
-    DbgPrint("    raw data size = 0x%x\n", SubSection->RawDataSize);
-    DbgPrint("    sub-section base = 0x%x\n", SubSection->SubSectionBase);
-    DbgPrint("    characteristics = 0x%x\n", SubSection->Characteristics);
+    MmDbgPrint("    parent image section object = %p\n", SubSection->ImageSection);
+    MmDbgPrint("    sub-section name = %s\n", SubSection->Name);
+    MmDbgPrint("    sub-section size = 0x%x\n", SubSection->SubSectionSize);
+    MmDbgPrint("    starting file offset = 0x%x\n", SubSection->FileOffset);
+    MmDbgPrint("    raw data size = 0x%x\n", SubSection->RawDataSize);
+    MmDbgPrint("    sub-section base = 0x%x\n", SubSection->SubSectionBase);
+    MmDbgPrint("    characteristics = 0x%x\n", SubSection->Characteristics);
 }
 
 static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
 {
-    DbgPrint("Dumping image section object %p\n", ImageSection);
+    MmDbgPrint("Dumping image section object %p\n", ImageSection);
     if (ImageSection == NULL) {
-	DbgPrint("    (nil)\n");
+	MmDbgPrint("    (nil)\n");
 	return;
     }
-    DbgPrint("    Number of subsections = %d\n", ImageSection->NumSubSections);
-    DbgPrint("    Image base = %p\n", (PVOID) ImageSection->ImageBase);
-    DbgPrint("    TransferAddress = %p\n",
-	     (PVOID) ImageSection->ImageInformation.TransferAddress);
-    DbgPrint("    ZeroBits = 0x%x\n",
-	     ImageSection->ImageInformation.ZeroBits);
-    DbgPrint("    MaximumStackSize = 0x%zx\n",
-	     (MWORD) ImageSection->ImageInformation.MaximumStackSize);
-    DbgPrint("    CommittedStackSize = 0x%zx\n",
-	     (MWORD) ImageSection->ImageInformation.CommittedStackSize);
-    DbgPrint("    SubSystemType = 0x%x\n",
-	     ImageSection->ImageInformation.SubSystemType);
-    DbgPrint("    SubSystemMinorVersion = 0x%x\n",
-	     ImageSection->ImageInformation.SubSystemMinorVersion);
-    DbgPrint("    SubSystemMajorVersion = 0x%x\n",
-	     ImageSection->ImageInformation.SubSystemMajorVersion);
-    DbgPrint("    GpValue = 0x%x\n",
-	     ImageSection->ImageInformation.GpValue);
-    DbgPrint("    ImageCharacteristics = 0x%x\n",
-	     ImageSection->ImageInformation.ImageCharacteristics);
-    DbgPrint("    DllCharacteristics = 0x%x\n",
-	     ImageSection->ImageInformation.DllCharacteristics);
-    DbgPrint("    Machine = 0x%x\n",
-	     ImageSection->ImageInformation.Machine);
+    MmDbgPrint("    Number of subsections = %d\n", ImageSection->NumSubSections);
+    MmDbgPrint("    Image base = %p\n", (PVOID) ImageSection->ImageBase);
+    MmDbgPrint("    TransferAddress = %p\n",
+	       (PVOID) ImageSection->ImageInformation.TransferAddress);
+    MmDbgPrint("    ZeroBits = 0x%x\n",
+	       ImageSection->ImageInformation.ZeroBits);
+    MmDbgPrint("    MaximumStackSize = 0x%zx\n",
+	       (MWORD) ImageSection->ImageInformation.MaximumStackSize);
+    MmDbgPrint("    CommittedStackSize = 0x%zx\n",
+	       (MWORD) ImageSection->ImageInformation.CommittedStackSize);
+    MmDbgPrint("    SubSystemType = 0x%x\n",
+	       ImageSection->ImageInformation.SubSystemType);
+    MmDbgPrint("    SubSystemMinorVersion = 0x%x\n",
+	       ImageSection->ImageInformation.SubSystemMinorVersion);
+    MmDbgPrint("    SubSystemMajorVersion = 0x%x\n",
+	       ImageSection->ImageInformation.SubSystemMajorVersion);
+    MmDbgPrint("    GpValue = 0x%x\n",
+	       ImageSection->ImageInformation.GpValue);
+    MmDbgPrint("    ImageCharacteristics = 0x%x\n",
+	       ImageSection->ImageInformation.ImageCharacteristics);
+    MmDbgPrint("    DllCharacteristics = 0x%x\n",
+	       ImageSection->ImageInformation.DllCharacteristics);
+    MmDbgPrint("    Machine = 0x%x\n",
+	       ImageSection->ImageInformation.Machine);
     if (ImageSection->ImageInformation.ImageContainsCode) {
-	DbgPrint("    Image contains code\n");
+	MmDbgPrint("    Image contains code\n");
     } else {
-	DbgPrint("    Image does not contain code\n");
+	MmDbgPrint("    Image does not contain code\n");
     }
-    DbgPrint("    ImageFlags = 0x%x\n",
-	     ImageSection->ImageInformation.ImageFlags);
-    DbgPrint("    LoaderFlags = 0x%x\n",
-	     ImageSection->ImageInformation.LoaderFlags);
-    DbgPrint("    ImageFileSize = 0x%x\n",
-	     ImageSection->ImageInformation.ImageFileSize);
-    DbgPrint("    CheckSum = 0x%x\n",
-	     ImageSection->ImageInformation.CheckSum);
-    DbgPrint("    FileObject = %p\n", ImageSection->FileObject);
+    MmDbgPrint("    ImageFlags = 0x%x\n",
+	       ImageSection->ImageInformation.ImageFlags);
+    MmDbgPrint("    LoaderFlags = 0x%x\n",
+	       ImageSection->ImageInformation.LoaderFlags);
+    MmDbgPrint("    ImageFileSize = 0x%x\n",
+	       ImageSection->ImageInformation.ImageFileSize);
+    MmDbgPrint("    CheckSum = 0x%x\n",
+	       ImageSection->ImageInformation.CheckSum);
+    MmDbgPrint("    FileObject = %p\n", ImageSection->FileObject);
     IoDbgDumpFileObject(ImageSection->FileObject);
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	MiDbgDumpSubSection(SubSection);
@@ -794,21 +794,23 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
 
 static VOID MiDbgDumpDataSectionObject(IN PDATA_SECTION_OBJECT DataSection)
 {
-    DbgPrint("Dumping data section object %p\n", DataSection);
+    MmDbgPrint("Dumping data section object %p\n", DataSection);
     if (DataSection == NULL) {
-	DbgPrint("    (nil)\n");
+	MmDbgPrint("    (nil)\n");
 	return;
     }
-    DbgPrint("    UNIMPLEMENTED\n");
+    MmDbgPrint("    UNIMPLEMENTED\n");
 }
+#endif
 
 VOID MmDbgDumpSection(PSECTION Section)
 {
-    DbgPrint("Dumping section %p\n", Section);
+#ifdef MMDBG
+    MmDbgPrint("Dumping section %p\n", Section);
     if (Section == NULL) {
-	DbgPrint("    (nil)\n");
+	MmDbgPrint("    (nil)\n");
     }
-    DbgPrint("    Flags: %s%s%s%s%s%s\n",
+    MmDbgPrint("    Flags: %s%s%s%s%s%s\n",
 	     Section->Flags.Image ? " image" : "",
 	     Section->Flags.Based ? " based" : "",
 	     Section->Flags.File ? " file" : "",
@@ -820,5 +822,5 @@ VOID MmDbgDumpSection(PSECTION Section)
     } else {
 	MiDbgDumpDataSectionObject(Section->DataSectionObject);
     }
-}
 #endif
+}

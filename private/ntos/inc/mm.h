@@ -6,6 +6,14 @@
 #include <services.h>
 #include <avltree.h>
 
+#ifdef MMDBG
+#define MmDbg(...)	DbgTrace(__VA_ARGS__)
+#define MmDbgPrint(...)	DbgPrint(__VA_ARGS__)
+#else
+#define MmDbg(...)
+#define MmDbgPrint(...)
+#endif
+
 #define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
 
 #define PAGE_TABLE_OBJ_LOG2SIZE		(seL4_PageTableBits)
@@ -756,3 +764,17 @@ static inline VOID MmUnmapUserBuffer(IN PVOID UserBuffer)
 {
     return MmUnmapServerRegion((MWORD)UserBuffer);
 }
+
+/*
+ * Debug helper functions
+ */
+VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
+VOID MmDbgDumpCNode(IN PCNODE CNode);
+VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Root,
+		      IN LONG Indentation);
+VOID MmDbgDumpUntypedForest();
+VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
+VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
+VOID MmDbgDumpSection(IN PSECTION Section);
+VOID MmDbgDumpVad(PMMVAD Vad);
+VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);

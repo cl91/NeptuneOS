@@ -52,34 +52,6 @@ VOID vDbgPrint(PCSTR Format, va_list args);
 #define assert_ret(expr)	if (!(expr)) { return STATUS_NTOS_BUG; }
 
 /*
- * Debug helper functions
- */
-#ifdef CONFIG_DEBUG_BUILD
-VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node);
-VOID MmDbgDumpCNode(IN PCNODE CNode);
-VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Root,
-		      IN LONG Indentation);
-VOID MmDbgDumpUntypedForest();
-VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging);
-VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging);
-VOID MmDbgDumpSection(IN PSECTION Section);
-VOID MmDbgDumpVad(PMMVAD Vad);
-VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace);
-VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
-#else
-#define MmDbgDumpCapTreeNode(x)
-#define MmDbgDumpCNode(x)
-#define MmDbgDumpCapTree(x, y)
-#define MmDbgDumpUntypedForest()
-#define MmDbgDumpPagingStructure(x)
-#define MmDbgDumpPagingStructureRecursively(x)
-#define MmDbgDumpSection(x)
-#define MmDbgDumpVad(x)
-#define MmDbgDumpVSpace(x)
-#define IoDbgDumpFileObject(x)
-#endif
-
-/*
  * Additional alignment macros
  */
 #define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))

@@ -366,7 +366,7 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
     assert(!MmCapTreeNodeHasChildren(&Untyped->TreeNode));
     assert(MmCapTreeNodeSiblingCount(&Untyped->TreeNode) <= 2);
     assert(!MiUntypedIsInFreeLists(Untyped));
-    DbgTrace("Releasing untyped cap 0x%zx\n", Untyped->TreeNode.Cap);
+    MmDbg("Releasing untyped cap 0x%zx\n", Untyped->TreeNode.Cap);
     MmDbgDumpCapTree(&Untyped->TreeNode, 0);
     /* It appears that we have to call Revoke on the untyped cap, regardless
      * of whether the children of the untyped have been deleted (we always
@@ -399,38 +399,40 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
     }
 }
 
-#ifdef CONFIG_DEBUG_BUILD
+#ifdef MMDBG
 static VOID MiDbgDumpUntyped(IN PAVL_NODE Node)
 {
     PUNTYPED Untyped = AVL_NODE_TO_UNTYPED(Node);
     MmDbgDumpCapTree(&Untyped->TreeNode, 4);
 }
+#endif
 
 VOID MmDbgDumpUntypedForest()
 {
+#ifdef MMDBG
     PLIST_ENTRY SmallUntypedList = &MiPhyMemDescriptor.SmallUntypedList;
-    DbgPrint("Dumping all untyped caps:\n");
-    DbgPrint("  Small free untyped:\n");
+    MmDbgPrint("Dumping all untyped caps:\n");
+    MmDbgPrint("  Small free untyped:\n");
     LoopOverList(Untyped, SmallUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = 0x%zx  log2(size) = %d\n",
-		 Untyped->TreeNode.Cap, Untyped->Log2Size);
+	MmDbgPrint("    cap = 0x%zx  log2(size) = %d\n",
+		   Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY MediumUntypedList = &MiPhyMemDescriptor.MediumUntypedList;
-    DbgPrint("  Medium free untyped:\n");
+    MmDbgPrint("  Medium free untyped:\n");
     LoopOverList(Untyped, MediumUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = 0x%zx  log2(size) = %d\n",
-		 Untyped->TreeNode.Cap, Untyped->Log2Size);
+	MmDbgPrint("    cap = 0x%zx  log2(size) = %d\n",
+		   Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
     PLIST_ENTRY LargeUntypedList = &MiPhyMemDescriptor.LargeUntypedList;
-    DbgPrint("  Large free untyped:\n");
+    MmDbgPrint("  Large free untyped:\n");
     LoopOverList(Untyped, LargeUntypedList, UNTYPED, FreeListEntry) {
-	DbgPrint("    cap = 0x%zx  log2(size) = %d\n",
-		 Untyped->TreeNode.Cap, Untyped->Log2Size);
+	MmDbgPrint("    cap = 0x%zx  log2(size) = %d\n",
+		   Untyped->TreeNode.Cap, Untyped->Log2Size);
     }
-    DbgPrint("  Root untyped forest:\n");
+    MmDbgPrint("  Root untyped forest:\n");
     AvlVisitTreeLinear(&MiPhyMemDescriptor.RootUntypedForest,
-			 MiDbgDumpUntyped);
-    DbgPrint("  Root untyped forest as an AVL tree ordered by physical address:\n");
+		       MiDbgDumpUntyped);
+    MmDbgPrint("  Root untyped forest as an AVL tree ordered by physical address:\n");
     AvlDumpTree(&MiPhyMemDescriptor.RootUntypedForest);
-}
 #endif
+}

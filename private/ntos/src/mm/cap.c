@@ -49,11 +49,11 @@ Revision History:
 
 #include "mi.h"
 
-#ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
+#ifdef MMDBG
     if (Node == NULL) {
-	DbgPrint("(nil)");
+	MmDbgPrint("(nil)");
 	return;
     }
 
@@ -79,28 +79,31 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     if (Node->CSpace != &MiNtosCNode) {
 	CapType = "in client process's CSpace";
     }
-    DbgPrint("Cap 0x%zx (Type %s seL4 Cap %s)", Node->Cap, Type, CapType);
+    MmDbgPrint("Cap 0x%zx (Type %s seL4 Cap %s)", Node->Cap, Type, CapType);
+#endif
 }
 
 VOID MmDbgDumpCNode(IN PCNODE CNode)
 {
-    DbgTrace("Dumping CNode %p\n", CNode);
-    DbgPrint("    TREE-NODE ");
+#ifdef MMDBG
+    MmDbg("Dumping CNode %p\n", CNode);
+    MmDbgPrint("    TREE-NODE ");
     MmDbgDumpCapTreeNode(&CNode->TreeNode);
-    DbgPrint("\n    Log2Size %d  Depth %d\n  TotalUsed %d\n    UsedMap",
+    MmDbgPrint("\n    Log2Size %d  Depth %d\n  TotalUsed %d\n    UsedMap",
 	     CNode->Log2Size, CNode->Depth, CNode->TotalUsed);
     for (ULONG i = 0; i < (1 << CNode->Log2Size) / MWORD_BITS; i++) {
-	DbgPrint("  %p", (PVOID)CNode->UsedMap[i]);
+	MmDbgPrint("  %p", (PVOID)CNode->UsedMap[i]);
     }
-    DbgPrint("\n");
+    MmDbgPrint("\n");
     if (CNode->TreeNode.CSpace == &MiNtosCNode) {
 	for (ULONG i = 0; i < (1 << CNode->Log2Size); i++) {
 	    if (GetBit(CNode->UsedMap, i)) {
-		DbgPrint("Cap 0x%x Type %s\n", i,
-			 RtlDbgCapTypeToStr(seL4_DebugCapIdentify(i)));
+		MmDbgPrint("Cap 0x%x Type %s\n", i,
+			   RtlDbgCapTypeToStr(seL4_DebugCapIdentify(i)));
 	    }
 	}
     }
+#endif
 }
 
 #define MI_DBG_CAP_TREE_INDENTATION	2
@@ -108,17 +111,18 @@ VOID MmDbgDumpCNode(IN PCNODE CNode)
 VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Node,
 		      IN LONG Indentation)
 {
+#ifdef MMDBG
     RtlDbgPrintIndentation(Indentation);
-    DbgPrint("Node %p, CL.FL %p CL.BL %p SL.FL %p SL.BL %p   ",
+    MmDbgPrint("Node %p, CL.FL %p CL.BL %p SL.FL %p SL.BL %p   ",
 	     Node, Node->ChildrenList.Flink, Node->ChildrenList.Blink,
 	     Node->SiblingLink.Flink, Node->SiblingLink.Blink);
     MmDbgDumpCapTreeNode(Node);
-    DbgPrint("\n");
+    MmDbgPrint("\n");
     CapTreeLoopOverChildren(Child, Node) {
 	MmDbgDumpCapTree(Child, Indentation + MI_DBG_CAP_TREE_INDENTATION);
     }
-}
 #endif
+}
 
 /* Allocate a contiguous range of capability slots */
 NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
@@ -190,7 +194,7 @@ Lookup:
      * points to a free bit. */
     CNode->RecentFree = (Index+1) & CNodeMask;
 
-    DbgTrace("Allocated %d cap(s) starting 0x%zx\n", NumberRequested, *StartCap);
+    MmDbg("Allocated %d cap(s) starting 0x%zx\n", NumberRequested, *StartCap);
     return STATUS_SUCCESS;
 }
 
@@ -203,7 +207,7 @@ VOID MmDeallocateCap(IN PCNODE CNode,
     assert(CNode->UsedMap != NULL);
     assert(GetBit(CNode->UsedMap, Cap) == TRUE);
     assert(Cap != 0);		/* Freeing the null cap is a bug. */
-    DbgTrace("Decallocating 0x%zx\n", Cap);
+    MmDbg("Decallocating 0x%zx\n", Cap);
 
     ClearBit(CNode->UsedMap, Cap);
     CNode->RecentFree = Cap;
@@ -289,10 +293,10 @@ static NTSTATUS MiCopyCap(IN PCNODE DestCSpace,
 				NewRights);
 
     if (Error != 0) {
-	DbgTrace("CNode_Copy(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx) failed with error %d\n",
-		 DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
-		 SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
-		 NewRights.words[0], Error);
+	MmDbg("CNode_Copy(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx) failed with error %d\n",
+	      DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
+	      SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+	      NewRights.words[0], Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
@@ -317,10 +321,10 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
 				Rights, Badge);
 
     if (Error != 0) {
-	DbgTrace("CNode_Mint(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx, 0x%zx) failed with error %d\n",
-		 DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
-		 SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
-		 Rights.words[0], Badge, Error);
+	MmDbg("CNode_Mint(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx, 0x%zx) failed with error %d\n",
+	      DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
+	      SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+	      Rights.words[0], Badge, Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
@@ -339,12 +343,11 @@ static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
     PCNODE CSpace = Node->CSpace;
-    DbgTrace("Deleting cap 0x%zx for cspace 0x%zx\n",
-	     Node->Cap, CSpace->TreeNode.Cap);
+    MmDbg("Deleting cap 0x%zx for cspace 0x%zx\n", Node->Cap, CSpace->TreeNode.Cap);
     int Error = seL4_CNode_Delete(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
     if (Error != 0) {
-	DbgTrace("CNode_Delete(0x%zx, 0x%zx, %d) failed with error %d\n",
-		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+	MmDbg("CNode_Delete(0x%zx, 0x%zx, %d) failed with error %d\n",
+	      CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
 	KeDbgDumpIPCError(Error);
 	/* This should always succeed. On debug build we assert if it didn't. */
 	assert(FALSE);
@@ -364,11 +367,10 @@ static NTSTATUS MiRevokeCap(IN PCAP_TREE_NODE Node)
     assert(Node->Cap);
     PCNODE CSpace = Node->CSpace;
     int Error = seL4_CNode_Revoke(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
-    DbgTrace("Revoking cap 0x%zx for cspace 0x%zx\n",
-	     Node->Cap, CSpace->TreeNode.Cap);
+    MmDbg("Revoking cap 0x%zx for cspace 0x%zx\n", Node->Cap, CSpace->TreeNode.Cap);
     if (Error != 0) {
-	DbgTrace("CNode_Revoke(0x%zx, 0x%zx, %d) failed with error %d\n",
-		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+	MmDbg("CNode_Revoke(0x%zx, 0x%zx, %d) failed with error %d\n",
+	      CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
 	KeDbgDumpIPCError(Error);
 	/* This should always succeed. On debug build we assert if it didn't. */
 	assert(FALSE);
@@ -390,7 +392,7 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     assert(Node != NULL);
     assert(Node->CSpace != NULL);
     assert(Node->Cap);
-    DbgTrace("Before deleting cap 0x%zx\n", Node->Cap);
+    MmDbg("Before deleting cap 0x%zx\n", Node->Cap);
     if (Node->Parent != NULL) {
 	MmDbgDumpCapTree(Node->Parent, 0);
     } else {
@@ -409,11 +411,11 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 	    MiCapTreeNodeSetParent(Child, Parent);
 	}
     }
-    DbgTrace("After deletion: ");
+    MmDbg("After deletion: ");
     if (Parent != NULL) {
 	MmDbgDumpCapTree(Parent, 0);
     } else {
-	DbgTrace("Node had no parent\n");
+	MmDbg("Node had no parent\n");
     }
     /* If the parent cap tree node is an untyped cap and it has no children,
        release it */

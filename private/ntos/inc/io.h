@@ -131,3 +131,8 @@ NTSTATUS IoCreateDevicelessFile(IN PCSTR FileName,
 /* init.c */
 NTSTATUS IoInitSystemPhase0();
 NTSTATUS IoInitSystemPhase1();
+
+/*
+ * Debug helper functions
+ */
+VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);

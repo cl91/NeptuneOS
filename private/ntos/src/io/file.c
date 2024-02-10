@@ -344,9 +344,9 @@ NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
-#ifdef CONFIG_DEBUG_BUILD
 VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 {
+#ifdef CONFIG_DEBUG_BUILD
     DbgPrint("Dumping file object %p\n", File);
     if (File == NULL) {
 	DbgPrint("    (nil)\n");
@@ -361,5 +361,5 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
 	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);
     }
-}
 #endif
+}

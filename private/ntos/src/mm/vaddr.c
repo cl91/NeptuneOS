@@ -174,8 +174,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	}
     }
 
-    DbgTrace("Finding an address window of size 0x%zx within [%p, %p) for vspacecap 0x%zx\n",
-	     WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, VSpace ? VSpace->VSpaceCap : 0);
+    MmDbg("Finding an address window of size 0x%zx within [%p, %p) for vspacecap 0x%zx\n",
+	  WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, VSpace ? VSpace->VSpaceCap : 0);
     assert(StartAddr < EndAddr);
     assert(StartAddr + WindowSize > StartAddr);
     assert(StartAddr + WindowSize <= EndAddr);
@@ -356,7 +356,7 @@ Insert:
     VadFlags.CommitOnDemand = !!(Flags & MEM_COMMIT_ON_DEMAND);
     MiInitializeVadNode(Vad, VSpace, VirtAddr, WindowSize, VadFlags);
     if (VadFlags.CommitOnDemand) {
-	DbgTrace("Commit on demand\n");
+	MmDbg("Commit on demand\n");
     }
 
     if (pVad != NULL) {
@@ -369,10 +369,10 @@ Insert:
 
     AvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
 
-    DbgTrace("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
-	     (PVOID) Vad->AvlNode.Key,
-	     (PVOID) (Vad->AvlNode.Key + Vad->WindowSize),
-	     VSpace ? VSpace->VSpaceCap : 0);
+    MmDbg("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
+	  (PVOID) Vad->AvlNode.Key,
+	  (PVOID) (Vad->AvlNode.Key + Vad->WindowSize),
+	  VSpace ? VSpace->VSpaceCap : 0);
     return STATUS_SUCCESS;
 }
 
@@ -475,29 +475,29 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
     assert(WindowSize > 0);
-    DbgTrace("Trying to commit [%p, %p)\n", (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize));
+    MmDbg("Trying to commit [%p, %p)\n", (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize));
     StartAddr = PAGE_ALIGN(StartAddr);
     WindowSize = PAGE_ALIGN_UP(WindowSize);
     assert(StartAddr + WindowSize > StartAddr);
 
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, StartAddr);
     if (Vad == NULL) {
-	DbgTrace("Error: Must reserve address window before committing.\n");
+	MmDbg("Error: Must reserve address window before committing.\n");
 	MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
     if (Vad->Flags.NoAccess) {
-	DbgTrace("Error: Committing a NoAccess Vad.\n");
+	MmDbg("Error: Committing a NoAccess Vad.\n");
 	MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
 
     if ((StartAddr < Vad->AvlNode.Key) ||
 	(StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize)) {
-	DbgTrace("Committing addresses spanning multiple VADs is not implemented yet "
-		 "(requested [%p, %p) found VAD [%p, %p))\n",
-		 (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize),
-		 (PVOID)Vad->AvlNode.Key, (PVOID)(Vad->AvlNode.Key + Vad->WindowSize));
+	MmDbg("Committing addresses spanning multiple VADs is not implemented yet "
+	      "(requested [%p, %p) found VAD [%p, %p))\n",
+	      (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize),
+	      (PVOID)Vad->AvlNode.Key, (PVOID)(Vad->AvlNode.Key + Vad->WindowSize));
 	UNIMPLEMENTED;
     }
 
@@ -764,7 +764,7 @@ static VOID MiUncommitVad(IN PMMVAD Vad)
  */
 VOID MmDeleteVad(IN PMMVAD Vad)
 {
-    DbgTrace("Deleting vad %p key %p\n", Vad, (PVOID)Vad->AvlNode.Key);
+    MmDbg("Deleting vad %p key %p\n", Vad, (PVOID)Vad->AvlNode.Key);
     assert(Vad != NULL);
     assert(Vad->VSpace != NULL);
     assert(MiVSpaceFindVadNode(Vad->VSpace, Vad->AvlNode.Key) == Vad);
@@ -848,8 +848,8 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
     MWORD WindowSize = BufferLength;
     RET_ERR_EX(MiEnsureWindowMapped(VSpace, &UserWindowStart, &WindowSize, !ReadOnly),
 	       {
-		   DbgTrace("User window not mapped [%p, %p)\n",
-			    (PVOID)UserWindowStart, (PVOID)WindowSize);
+		   MmDbg("User window not mapped [%p, %p)\n",
+			 (PVOID)UserWindowStart, (PVOID)WindowSize);
 		   MmDbgDumpVSpace(VSpace);
 	       });
 
@@ -870,8 +870,8 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
 		   IN MWORD MappedRegionStart)
 {
-    DbgTrace("Unmapping region starting %p for vspace cap 0x%zx\n",
-	     (PVOID)MappedRegionStart, MappedVSpace->VSpaceCap);
+    MmDbg("Unmapping region starting %p for vspace cap 0x%zx\n",
+	  (PVOID)MappedRegionStart, MappedVSpace->VSpaceCap);
     PMMVAD Vad = MiVSpaceFindVadNode(MappedVSpace, MappedRegionStart);
     assert(Vad != NULL);
     assert(MiVadNodeContainsAddr(Vad, MappedRegionStart));
@@ -892,8 +892,8 @@ BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    DbgTrace("Attempt to handle VM-FAULT of thread %s at %p\n",
-	     Thread->DebugName, (PVOID)Addr);
+    MmDbg("Attempt to handle VM-FAULT of thread %s at %p\n",
+	  Thread->DebugName, (PVOID)Addr);
     PMMVAD Vad = MiVSpaceFindVadNode(&Thread->Process->VSpace, Addr);
     if (Vad == NULL || !Vad->Flags.CommitOnDemand) {
 	MmDbgDumpVSpace(&Thread->Process->VSpace);
@@ -956,11 +956,11 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
     }
     assert(Process != NULL);
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
-    DbgTrace("Process %s VSpace cap 0x%zx base address %p zerobits 0x%zx "
-	     "region size 0x%zx allocation type 0x%x protect 0x%x\n",
-	     Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
-	     VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)ZeroBits,
-	     RegionSize ? (MWORD)*RegionSize : 0, AllocationType, Protect);
+    MmDbg("Process %s VSpace cap 0x%zx base address %p zerobits 0x%zx "
+	  "region size 0x%zx allocation type 0x%x protect 0x%x\n",
+	  Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
+	  VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)ZeroBits,
+	  RegionSize ? (MWORD)*RegionSize : 0, AllocationType, Protect);
 
     /* On 64-bit systems the ZeroBits parameter is interpreted as a bit mask if it is
      * greater than 32. Convert the bit mask to the number of bits in that case. */
@@ -1046,7 +1046,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 	    Flags |= MEM_RESERVE_TOP_DOWN;
 	}
 	if (AllocationType & MEM_COMMIT_ON_DEMAND) {
-	    DbgTrace("Commit on demand\n");
+	    MmDbg("Commit on demand\n");
 	    Flags |= MEM_COMMIT_ON_DEMAND;
 	}
 	IF_ERR_GOTO(out, Status,
@@ -1115,14 +1115,14 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
     }
     assert(Process != NULL);
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
-    DbgTrace("Process %s VSpace cap 0x%zx base address %p region size 0x%zx free type 0x%x\n",
-	     Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
-	     VSpace->VSpaceCap, *BaseAddress, (MWORD)*RegionSize, FreeType);
+    MmDbg("Process %s VSpace cap 0x%zx base address %p region size 0x%zx free type 0x%x\n",
+	  Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
+	  VSpace->VSpaceCap, *BaseAddress, (MWORD)*RegionSize, FreeType);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, (MWORD)*BaseAddress);
     if (Vad == NULL) {
-	DbgTrace("Invalid base address %p\n", *BaseAddress);
+	MmDbg("Invalid base address %p\n", *BaseAddress);
 	Status = STATUS_INVALID_PARAMETER_2;
 	goto out;
     }
@@ -1134,13 +1134,13 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
 	 * the starting address of the VAD representing the reserved space).
 	 * Additionally, *RegionSize must be zero. */
 	if ((MWORD)*BaseAddress != Vad->AvlNode.Key) {
-	    DbgTrace("Base address does not equal start of reserved space %p\n",
-		     (PVOID)Vad->AvlNode.Key);
+	    MmDbg("Base address does not equal start of reserved space %p\n",
+		  (PVOID)Vad->AvlNode.Key);
 	    Status = STATUS_INVALID_PARAMETER_2;
 	    goto out;
 	}
 	if (*RegionSize != 0) {
-	    DbgTrace("Region size must be zero\n");
+	    MmDbg("Region size must be zero\n");
 	    Status = STATUS_INVALID_PARAMETER_3;
 	    goto out;
 	}
@@ -1163,7 +1163,7 @@ out:
 	ObDereferenceObject(Process);
     }
     if (!NT_SUCCESS(Status)) {
-	DbgTrace("NtFreeVirtualMemory failed with status 0x%x\n", Status);
+	MmDbg("NtFreeVirtualMemory failed with status 0x%x\n", Status);
 	MmDbgDumpVSpace(VSpace);
     }
     return Status;
@@ -1188,9 +1188,9 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
     }
     assert(Process != NULL);
     PVIRT_ADDR_SPACE TargetVSpace = &Process->VSpace;
-    DbgTrace("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%x\n",
-	     Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
-	     TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
+    MmDbg("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%x\n",
+	  Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
+	  TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
     PVOID MappedTargetBuffer = NULL;
     NTSTATUS Status;
     IF_ERR_GOTO(out, Status,
@@ -1248,59 +1248,61 @@ NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
     UNIMPLEMENTED;
 }
 
-#ifdef CONFIG_DEBUG_BUILD
 VOID MmDbgDumpVad(PMMVAD Vad)
 {
-    DbgPrint("Dumping vad at %p\n", Vad);
+#ifdef MMDBG
+    MmDbgPrint("Dumping vad at %p\n", Vad);
     if (Vad == NULL) {
-	DbgPrint("    (nil)\n");
+	MmDbgPrint("    (nil)\n");
 	return;
     }
 
-    DbgPrint("    vaddr start = %p  window size = 0x%zx\n"
-	     "   %s%s%s%s%s\n",
-	     (PVOID) Vad->AvlNode.Key, Vad->WindowSize,
-	     Vad->Flags.ImageMap ? " image-map" : "",
-	     Vad->Flags.LargePages ? " large-pages" : "",
-	     Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
-	     Vad->Flags.OwnedMemory ? " owned-memory" : "",
-	     Vad->Flags.MirroredMemory ? " mirrored-memory" : "");
+    MmDbgPrint("    vaddr start = %p  window size = 0x%zx\n"
+	       "   %s%s%s%s%s\n",
+	       (PVOID) Vad->AvlNode.Key, Vad->WindowSize,
+	       Vad->Flags.ImageMap ? " image-map" : "",
+	       Vad->Flags.LargePages ? " large-pages" : "",
+	       Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
+	       Vad->Flags.OwnedMemory ? " owned-memory" : "",
+	       Vad->Flags.MirroredMemory ? " mirrored-memory" : "");
     if (Vad->Flags.ImageMap) {
-	    DbgPrint("    subsection = %p\n", Vad->ImageSectionView.SubSection);
+	MmDbgPrint("    subsection = %p\n", Vad->ImageSectionView.SubSection);
     }
     if (Vad->Flags.FileMap) {
-	DbgPrint("    section = %p\n", Vad->DataSectionView.Section);
-	DbgPrint("    section offset = %p\n", (PVOID) Vad->DataSectionView.SectionOffset);
+	MmDbgPrint("    section = %p\n", Vad->DataSectionView.Section);
+	MmDbgPrint("    section offset = %p\n", (PVOID) Vad->DataSectionView.SectionOffset);
     }
     if (Vad->Flags.PhysicalMapping) {
-	DbgPrint("    physical base = %p\n", (PVOID) Vad->PhysicalSectionView.PhysicalBase);
+	MmDbgPrint("    physical base = %p\n", (PVOID) Vad->PhysicalSectionView.PhysicalBase);
     }
     if (Vad->Flags.MirroredMemory) {
-	DbgPrint("    master vspace = %p\n", Vad->MirroredMemory.Master);
-	DbgPrint("    start vaddr in master vspace = 0x%zx\n", Vad->MirroredMemory.StartAddr);
+	MmDbgPrint("    master vspace = %p\n", Vad->MirroredMemory.Master);
+	MmDbgPrint("    start vaddr in master vspace = 0x%zx\n", Vad->MirroredMemory.StartAddr);
     }
+#endif
 }
 
 VOID MmDbgDumpVSpace(PVIRT_ADDR_SPACE VSpace)
 {
-    DbgPrint("Dumping virtual address space %p\n", VSpace);
+#ifdef MMDBG
+    MmDbgPrint("Dumping virtual address space %p\n", VSpace);
     if (VSpace == NULL) {
-	DbgPrint("    (nil)\n");
+	MmDbgPrint("    (nil)\n");
 	return;
     }
 
-    DbgPrint("    vspacecap = 0x%zx    asidpool = 0x%zx\n",
-	     VSpace->VSpaceCap, VSpace->ASIDPool);
-    DbgPrint("    root paging structure %p:\n", VSpace->RootPagingStructure);
+    MmDbgPrint("    vspacecap = 0x%zx    asidpool = 0x%zx\n",
+	       VSpace->VSpaceCap, VSpace->ASIDPool);
+    MmDbgPrint("    root paging structure %p:\n", VSpace->RootPagingStructure);
     MmDbgDumpPagingStructure(VSpace->RootPagingStructure);
-    DbgPrint("Dumping virtual address space %p vad tree %p\n    linearly:  ",
-	     VSpace, &VSpace->VadTree);
+    MmDbgPrint("Dumping virtual address space %p vad tree %p\n    linearly:  ",
+	       VSpace, &VSpace->VadTree);
     AvlDumpTreeLinear(&VSpace->VadTree);
-    DbgPrint("\n    vad tree %p:\n", &VSpace->VadTree);
+    MmDbgPrint("\n    vad tree %p:\n", &VSpace->VadTree);
     AvlDumpTree(&VSpace->VadTree);
-    DbgPrint("    vad tree content:\n");
+    MmDbgPrint("    vad tree content:\n");
     LoopOverVadTree(Vad, VSpace, MmDbgDumpVad(Vad));
-    DbgPrint("Dumping virtual address space %p page mappings:\n", VSpace);
+    MmDbgPrint("Dumping virtual address space %p page mappings:\n", VSpace);
     MmDbgDumpPagingStructureRecursively(VSpace->RootPagingStructure);
-}
 #endif
+}
