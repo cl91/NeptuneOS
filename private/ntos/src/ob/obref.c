@@ -112,13 +112,16 @@ NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
 /* Remove the object from its parent object (if it exists). */
 VOID ObRemoveObject(IN POBJECT Object)
 {
-    ObDbg("Removing object %p\n", Object);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     if (ObjectHeader->ParentObject) {
-	ObDbg("Parent of object %p is %p\n", Object, ObjectHeader->ParentObject);
+	ObDbg("Removing object %p (parent %p)\n", Object, ObjectHeader->ParentObject);
 	assert(ObjectHeader->ObjectName);
-	OBJECT_REMOVE_METHOD RemoveProc = ObjectHeader->Type->TypeInfo.RemoveProc;
+	POBJECT_HEADER ParentHeader = OBJECT_TO_OBJECT_HEADER(ObjectHeader->ParentObject);
+	assert(ParentHeader);
+	assert(ParentHeader->Type);
+	OBJECT_REMOVE_METHOD RemoveProc = ParentHeader->Type->TypeInfo.RemoveProc;
 	assert(RemoveProc);
+	/* TODO: We need to make RemoveProc quicker by storing the ParentLink. */
 	if (RemoveProc) {
 	    RemoveProc(ObjectHeader->ParentObject, Object, ObjectHeader->ObjectName);
 	}
@@ -134,7 +137,9 @@ static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
     assert(ObjectHeader->Type != NULL);
 
     POBJECT Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
-    ObDbg("Deleting object %p\n", Object);
+    ObDbg("Deleting object %p (type %s name %s)\n", Object,
+	  Object ? ObjectHeader->Type->Name : "UNKNOWN-TYPE",
+	  Object ? (ObjectHeader->ObjectName ? ObjectHeader->ObjectName : "") : "");
     ObRemoveObject(Object);
     if (ObjectHeader->Type->TypeInfo.DeleteProc != NULL) {
 	ObjectHeader->Type->TypeInfo.DeleteProc(Object);
