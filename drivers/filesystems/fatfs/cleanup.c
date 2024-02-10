@@ -18,7 +18,7 @@
  */
 static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 {
-    PFATFCB pFcb;
+    PFATFCB Fcb;
     PFATCCB pCcb;
     BOOLEAN IsVolume;
     PDEVICE_EXTENSION DeviceExt = IrpContext->DeviceExt;
@@ -29,78 +29,76 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	   IrpContext->DeviceExt, FileObject);
 
     /* FIXME: handle file/directory deletion here */
-    pFcb = (PFATFCB) FileObject->FsContext;
-    if (!pFcb)
+    Fcb = (PFATFCB) FileObject->FsContext;
+    if (!Fcb)
 	return FALSE;
 
-    IsVolume = BooleanFlagOn(pFcb->Flags, FCB_IS_VOLUME);
+    IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
     if (IsVolume) {
-	pFcb->OpenHandleCount--;
+	Fcb->OpenHandleCount--;
 	DeviceExt->OpenHandleCount--;
 
-	if (pFcb->OpenHandleCount != 0) {
-	    IoRemoveShareAccess(FileObject, &pFcb->FcbShareAccess);
+	if (Fcb->OpenHandleCount != 0) {
+	    IoRemoveShareAccess(FileObject, &Fcb->FcbShareAccess);
 	}
     } else {
 	pCcb = FileObject->FsContext2;
 	if (BooleanFlagOn(pCcb->Flags, CCB_DELETE_ON_CLOSE)) {
-	    pFcb->Flags |= FCB_DELETE_PENDING;
+	    Fcb->Flags |= FCB_DELETE_PENDING;
 	}
 
 	/* Notify about the cleanup */
 	FsRtlNotifyCleanup(FileObject);
 
-	pFcb->OpenHandleCount--;
+	Fcb->OpenHandleCount--;
 	DeviceExt->OpenHandleCount--;
 
-	if (BooleanFlagOn(pFcb->Flags, FCB_IS_DIRTY)) {
-	    FatUpdateEntry(DeviceExt, pFcb);
+	if (BooleanFlagOn(Fcb->Flags, FCB_IS_DIRTY)) {
+	    FatUpdateEntry(DeviceExt, Fcb);
 	}
 
-	if (BooleanFlagOn(pFcb->Flags, FCB_DELETE_PENDING) &&
-	    pFcb->OpenHandleCount == 0) {
-	    if (FatFcbIsDirectory(pFcb) &&
-		!FatIsDirectoryEmpty(DeviceExt, pFcb)) {
-		pFcb->Flags &= ~FCB_DELETE_PENDING;
+	if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING) &&
+	    Fcb->OpenHandleCount == 0) {
+	    if (FatFcbIsDirectory(Fcb) &&
+		!FatIsDirectoryEmpty(DeviceExt, Fcb)) {
+		Fcb->Flags &= ~FCB_DELETE_PENDING;
 	    } else {
 		PFILE_OBJECT tmpFileObject;
-		tmpFileObject = pFcb->FileObject;
+		tmpFileObject = Fcb->FileObject;
 		if (tmpFileObject != NULL) {
-		    pFcb->FileObject = NULL;
+		    Fcb->FileObject = NULL;
 		    CcUninitializeCacheMap(tmpFileObject, NULL);
-		    ClearFlag(pFcb->Flags, FCB_CACHE_INITIALIZED);
+		    ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
 		    ObDereferenceObject(tmpFileObject);
 		}
 
-		pFcb->Base.FileSizes.ValidDataLength.QuadPart = 0;
-		pFcb->Base.FileSizes.FileSize.QuadPart = 0;
-		pFcb->Base.FileSizes.AllocationSize.QuadPart = 0;
+		Fcb->Base.FileSizes.ValidDataLength.QuadPart = 0;
+		Fcb->Base.FileSizes.FileSize.QuadPart = 0;
+		Fcb->Base.FileSizes.AllocationSize.QuadPart = 0;
 	    }
 	}
 
 	/* Uninitialize the cache (should be done even if caching
 	 * was never initialized) */
-	CcUninitializeCacheMap(FileObject);
+	CcUninitializeCacheMap(FileObject, &Fcb->Base.FileSizes.FileSize);
 
-	if (BooleanFlagOn(pFcb->Flags, FCB_DELETE_PENDING) &&
-	    pFcb->OpenHandleCount == 0) {
-	    FatDelEntry(DeviceExt, pFcb, NULL);
+	if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING) &&
+	    Fcb->OpenHandleCount == 0) {
+	    FatDelEntry(DeviceExt, Fcb, NULL);
 
-	    FatReportChange(DeviceExt,
-			    pFcb,
-			    (FatFcbIsDirectory(pFcb) ?
-			     FILE_NOTIFY_CHANGE_DIR_NAME :
+	    FatReportChange(DeviceExt, Fcb,
+			    (FatFcbIsDirectory(Fcb) ? FILE_NOTIFY_CHANGE_DIR_NAME :
 			     FILE_NOTIFY_CHANGE_FILE_NAME),
 			    FILE_ACTION_REMOVED);
 	}
 
-	if (pFcb->OpenHandleCount != 0) {
-	    IoRemoveShareAccess(FileObject, &pFcb->FcbShareAccess);
+	if (Fcb->OpenHandleCount != 0) {
+	    IoRemoveShareAccess(FileObject, &Fcb->FcbShareAccess);
 	}
 
 	FileObject->Flags |= FO_CLEANUP_COMPLETE;
 #ifdef KDBG
-	pFcb->Flags |= FCB_CLEANED_UP;
+	Fcb->Flags |= FCB_CLEANED_UP;
 #endif
     }
 

@@ -323,9 +323,9 @@ static VOID FatInitFcbFromDirEntry(PDEVICE_EXTENSION Vcb,
 	Fcb->DirIndex = DirContext->DirIndex - 2;
 	Fcb->StartIndex = DirContext->StartIndex - 2;
     }
-    Fcb->Base.FileSize.QuadPart = Size;
-    Fcb->Base.ValidDataLength.QuadPart = Size;
-    Fcb->Base.AllocationSize.QuadPart = ROUND_UP_64(Size, Vcb->FatInfo.BytesPerCluster);
+    Fcb->Base.FileSizes.FileSize.QuadPart = Size;
+    Fcb->Base.FileSizes.ValidDataLength.QuadPart = Size;
+    Fcb->Base.FileSizes.AllocationSize.QuadPart = ROUND_UP_64(Size, Vcb->FatInfo.BytesPerCluster);
 }
 
 NTSTATUS FatSetFcbNewDirName(PDEVICE_EXTENSION Vcb,
@@ -502,9 +502,9 @@ PFATFCB FatMakeRootFcb(PDEVICE_EXTENSION Vcb)
     Fcb->ShortHash.Hash = Fcb->Hash.Hash;
     Fcb->RefCount = 2;
     Fcb->DirIndex = 0;
-    Fcb->Base.FileSize.QuadPart = Size;
-    Fcb->Base.ValidDataLength.QuadPart = Size;
-    Fcb->Base.AllocationSize.QuadPart = Size;
+    Fcb->Base.FileSizes.FileSize.QuadPart = Size;
+    Fcb->Base.FileSizes.ValidDataLength.QuadPart = Size;
+    Fcb->Base.FileSizes.AllocationSize.QuadPart = Size;
 
     FatFcbInitializeCacheFromVolume(Vcb, Fcb);
     FatAddFcbToTable(Vcb, Fcb);

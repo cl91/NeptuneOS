@@ -351,17 +351,11 @@ Exit:
 static NTSTATUS ReadVolumeLabel(IN PVOID Device,
 				IN ULONG Start,
 				IN BOOLEAN IsFatX,
+				IN ULONG ClusterSize,
 				OUT PUNICODE_STRING VolumeLabel)
 {
-    ULONG SizeDirEntry;
-    ULONG EntriesPerPage;
-    if (IsFatX) {
-	SizeDirEntry = sizeof(FATX_DIR_ENTRY);
-	EntriesPerPage = FATX_ENTRIES_PER_PAGE;
-    } else {
-	SizeDirEntry = sizeof(FAT_DIR_ENTRY);
-	EntriesPerPage = FAT_ENTRIES_PER_PAGE;
-    }
+    ULONG SizeDirEntry = IsFatX ? sizeof(FATX_DIR_ENTRY) : sizeof(FAT_DIR_ENTRY);
+    ULONG EntriesPerCluster = ClusterSize / SizeDirEntry;
 
     PFATFCB pFcb = NULL;
     PVOID Buffer = NULL;
@@ -369,7 +363,7 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
 	/* FIXME: Check we really have a VCB */
 	pFcb = FatOpenRootFcb((PDEVICE_EXTENSION)Device);
     } else {
-	Buffer = ExAllocatePoolWithTag(PAGE_SIZE, TAG_DIRENT);
+	Buffer = ExAllocatePoolWithTag(ClusterSize, TAG_DIRENT);
 	if (Buffer == NULL) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -381,21 +375,21 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
     PDIR_ENTRY Entry;
     NTSTATUS Status = STATUS_SUCCESS;
     while (TRUE) {
-	/* When we cross a page boundary (including at the very start),
-	 * read one page off the disk, either via the cache manager or
+	/* When we cross a cluster boundary (including at the very start),
+	 * read one cluster off the disk, either via the cache manager or
 	 * by calling the underlying storage driver. */
-	if ((DirIndex % EntriesPerPage) == 0) {
+	if ((DirIndex % EntriesPerCluster) == 0) {
 	    if (!Start) {
 		if (Context) {
 		    CcUnpinData(Context);
 		    Context = NULL;
 		}
-		Status = CcMapData(pFcb->FileObject, &FileOffset,
-				   SizeDirEntry, MAP_WAIT, &Context,
-				   (PVOID *)&Entry);
+		ULONG MappedLength;
+		Status = CcMapData(pFcb->FileObject, &FileOffset, SizeDirEntry,
+				   MAP_WAIT, &MappedLength, &Context, (PVOID *)&Entry);
 	    } else {
 		Status = FatReadDisk((PDEVICE_OBJECT)Device, &FileOffset,
-				     PAGE_SIZE, (PUCHAR)Buffer, TRUE);
+				     ClusterSize, (PUCHAR)Buffer, TRUE);
 		Entry = Buffer;
 	    }
 	    if (!NT_SUCCESS(Status)) {
@@ -425,8 +419,8 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
 	}
 	DirIndex++;
 	Entry = (PDIR_ENTRY)((ULONG_PTR)Entry + SizeDirEntry);
-	if ((DirIndex % EntriesPerPage) == 0) {
-	    FileOffset.QuadPart += PAGE_SIZE;
+	if ((DirIndex % EntriesPerCluster) == 0) {
+	    FileOffset.QuadPart += ClusterSize;
 	}
     }
 
@@ -623,7 +617,8 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 	.Length = 0,
 	.MaximumLength = sizeof(DeviceObject->Vpb->VolumeLabel)
     };
-    ReadVolumeLabel(DeviceExt, 0, FatVolumeIsFatX(DeviceExt), &VolumeLabelU);
+    ReadVolumeLabel(DeviceExt, 0, FatVolumeIsFatX(DeviceExt),
+		    DeviceExt->FatInfo.BytesPerCluster, &VolumeLabelU);
     Vpb->VolumeLabelLength = VolumeLabelU.Length;
 
     /* Read dirty bit status */
@@ -726,7 +721,8 @@ static NTSTATUS FatVerify(PFAT_IRP_CONTEXT IrpContext)
     VolumeLabelU.MaximumLength = sizeof(BufferU);
     Status = ReadVolumeLabel(DeviceExt->StorageDevice,
 			     FatInfo.RootStart * FatInfo.BytesPerSector,
-			     FatInfo.FatType >= FATX16, &VolumeLabelU);
+			     FatInfo.FatType >= FATX16,
+			     FatInfo.BytesPerCluster, &VolumeLabelU);
     if (!NT_SUCCESS(Status)) {
 	goto err;
     }
@@ -779,14 +775,14 @@ static NTSTATUS FatGetRetrievalPointers(PFAT_IRP_CONTEXT IrpContext)
     ULONG MaxExtentCount = (OutputBufferLength - sizeof(RETRIEVAL_POINTERS_BUFFER)) /
 			    sizeof(RetrPtrs->Extents[0]);
 
-    if (Vcn.QuadPart >= Fcb->Base.AllocationSize.QuadPart / DeviceExt->FatInfo.BytesPerCluster) {
+    ULONG ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
+    if (Vcn.QuadPart >= Fcb->Base.FileSizes.AllocationSize.QuadPart / ClusterSize) {
 	return STATUS_INVALID_PARAMETER;
     }
 
     ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
     ULONG CurrentCluster = FirstCluster;
-    NTSTATUS Status = OffsetToCluster(DeviceExt, FirstCluster,
-				      Vcn.LowPart * DeviceExt->FatInfo.BytesPerCluster,
+    NTSTATUS Status = OffsetToCluster(DeviceExt, FirstCluster, Vcn.LowPart * ClusterSize,
 				      &CurrentCluster, FALSE);
     if (!NT_SUCCESS(Status)) {
 	return Status;

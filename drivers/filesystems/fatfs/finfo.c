@@ -81,8 +81,8 @@ NTSTATUS FatGetStandardInformation(PFATFCB FCB,
 	StandardInfo->EndOfFile.QuadPart = 0;
 	StandardInfo->Directory = TRUE;
     } else {
-	StandardInfo->AllocationSize = FCB->Base.AllocationSize;
-	StandardInfo->EndOfFile = FCB->Base.FileSize;
+	StandardInfo->AllocationSize = FCB->Base.FileSizes.AllocationSize;
+	StandardInfo->EndOfFile = FCB->Base.FileSizes.FileSize;
 	StandardInfo->Directory = FALSE;
     }
     StandardInfo->NumberOfLinks = 1;
@@ -994,8 +994,8 @@ static NTSTATUS FatGetNetworkOpenInformation(PFATFCB Fcb,
 	NetworkInfo->EndOfFile.QuadPart = 0L;
 	NetworkInfo->AllocationSize.QuadPart = 0L;
     } else {
-	NetworkInfo->AllocationSize = Fcb->Base.AllocationSize;
-	NetworkInfo->EndOfFile = Fcb->Base.FileSize;
+	NetworkInfo->AllocationSize = Fcb->Base.FileSizes.AllocationSize;
+	NetworkInfo->EndOfFile = Fcb->Base.FileSizes.FileSize;
     }
 
     NetworkInfo->FileAttributes = *Fcb->Attributes & 0x3f;
@@ -1095,9 +1095,9 @@ static VOID UpdateFileSize(IN PFILE_OBJECT FileObject,
 			   IN BOOLEAN IsFatX)
 {
     if (FileSize > 0) {
-	Fcb->Base.AllocationSize.QuadPart = ROUND_UP_64(FileSize, ClusterSize);
+	Fcb->Base.FileSizes.AllocationSize.QuadPart = ROUND_UP_64(FileSize, ClusterSize);
     } else {
-	Fcb->Base.AllocationSize.QuadPart = (LONGLONG) 0;
+	Fcb->Base.FileSizes.AllocationSize.QuadPart = (LONGLONG) 0;
     }
     if (!FatFcbIsDirectory(Fcb)) {
 	if (IsFatX)
@@ -1105,10 +1105,10 @@ static VOID UpdateFileSize(IN PFILE_OBJECT FileObject,
 	else
 	    Fcb->Entry.Fat.FileSize = FileSize;
     }
-    Fcb->Base.FileSize.QuadPart = FileSize;
-    Fcb->Base.ValidDataLength.QuadPart = FileSize;
+    Fcb->Base.FileSizes.FileSize.QuadPart = FileSize;
+    Fcb->Base.FileSizes.ValidDataLength.QuadPart = FileSize;
 
-    CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Base.AllocationSize);
+    CcSetFileSizes(FileObject, &Fcb->Base.FileSizes);
 }
 
 NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
@@ -1137,10 +1137,10 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 
     ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
 
-    if (NewAllocSize.LowPart == Fcb->Base.AllocationSize.LowPart) {
+    if (NewAllocSize.LowPart == Fcb->Base.FileSizes.AllocationSize.LowPart) {
 	/* Allocation size is not changed. Simply update the file size. */
 	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
-    } else if (NewAllocSize.LowPart > Fcb->Base.AllocationSize.LowPart) {
+    } else if (NewAllocSize.LowPart > Fcb->Base.FileSizes.AllocationSize.LowPart) {
 	/* New allocation size is larger, so we need to find more space. */
 	NTSTATUS Status;
 	if (FirstCluster == 0) {
@@ -1185,18 +1185,17 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	} else {
 	    ULONG Cluster;
 	    if (Fcb->LastCluster > 0) {
-		if (Fcb->Base.AllocationSize.LowPart - ClusterSize == Fcb->LastOffset) {
+		if (Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize == Fcb->LastOffset) {
 		    Cluster = Fcb->LastCluster;
 		    Status = STATUS_SUCCESS;
 		} else {
 		    Status = OffsetToCluster(DeviceExt, Fcb->LastCluster,
-					     Fcb->Base.AllocationSize.LowPart -
-					     ClusterSize - Fcb->LastOffset,
+					     Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize - Fcb->LastOffset,
 					     &Cluster, FALSE);
 		}
 	    } else {
 		Status = OffsetToCluster(DeviceExt, FirstCluster,
-					 Fcb->Base.AllocationSize.LowPart - ClusterSize,
+					 Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize,
 					 &Cluster, FALSE);
 	    }
 
@@ -1205,7 +1204,7 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	    }
 
 	    Fcb->LastCluster = Cluster;
-	    Fcb->LastOffset = Fcb->Base.AllocationSize.LowPart - ClusterSize;
+	    Fcb->LastOffset = Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize;
 
 	    /* FIXME: Check status */
 	    /* Cluster points now to the last cluster within the chain */
@@ -1281,7 +1280,7 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 
     /* Update the on-disk directory entry */
     Fcb->Flags |= FCB_IS_DIRTY;
-    if (NewAllocSize.LowPart != Fcb->Base.AllocationSize.LowPart) {
+    if (NewAllocSize.LowPart != Fcb->Base.FileSizes.AllocationSize.LowPart) {
 	FatUpdateEntry(DeviceExt, Fcb);
 
 	FatReportChange(DeviceExt, Fcb, FILE_NOTIFY_CHANGE_SIZE,

@@ -203,9 +203,6 @@ typedef struct _SLOT {
 #define FATX_ENTRY_LONG(DirEntry)    (FALSE)
 #define FATX_ENTRY_VOLUME(DirEntry)  (((DirEntry)->Attrib & 0x1f) == 0x08)
 
-#define FAT_ENTRIES_PER_PAGE   (PAGE_SIZE / sizeof(FAT_DIR_ENTRY))
-#define FATX_ENTRIES_PER_PAGE  (PAGE_SIZE / sizeof(FATX_DIR_ENTRY))
-
 #define BLOCKSIZE 512
 
 #define FAT16  (1)

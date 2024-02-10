@@ -231,8 +231,6 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
     OEM_STRING StringO;
     UNICODE_STRING StringW;
     CHAR cString[43];
-    ULONG SizeDirEntry;
-    ULONG EntriesPerPage;
     BOOLEAN IsFatX;
 
     DPRINT("FsdSetFsLabelInformation()\n");
@@ -244,19 +242,20 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	return STATUS_NAME_TOO_LONG;
     }
 
+    ULONG ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
+    ULONG SizeDirEntry;
     if (IsFatX) {
 	if (FsLabelInfo->VolumeLabelLength / sizeof(WCHAR) > 42)
 	    return STATUS_NAME_TOO_LONG;
 
 	SizeDirEntry = sizeof(FATX_DIR_ENTRY);
-	EntriesPerPage = FATX_ENTRIES_PER_PAGE;
     } else {
 	if (FsLabelInfo->VolumeLabelLength / sizeof(WCHAR) > 11)
 	    return STATUS_NAME_TOO_LONG;
 
 	SizeDirEntry = sizeof(FAT_DIR_ENTRY);
-	EntriesPerPage = FAT_ENTRIES_PER_PAGE;
     }
+    ULONG EntriesPerCluster = ClusterSize / SizeDirEntry;
 
     /* Create Volume label dir entry */
     LabelLen = FsLabelInfo->VolumeLabelLength / sizeof(WCHAR);
@@ -271,10 +270,8 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	return Status;
 
     if (IsFatX) {
-	RtlCopyMemory(VolumeLabelDirEntry.FatX.Filename, cString,
-		      LabelLen);
-	memset(&VolumeLabelDirEntry.FatX.Filename[LabelLen], ' ',
-	       42 - LabelLen);
+	RtlCopyMemory(VolumeLabelDirEntry.FatX.Filename, cString, LabelLen);
+	memset(&VolumeLabelDirEntry.FatX.Filename[LabelLen], ' ', 42 - LabelLen);
 	VolumeLabelDirEntry.FatX.Attrib = _A_VOLID;
     } else {
 	RtlCopyMemory(VolumeLabelDirEntry.Fat.Filename, cString,
@@ -300,11 +297,13 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 
     /* Search existing volume entry on disk */
     FileOffset.QuadPart = 0;
-    Status = CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
-		       PIN_WAIT, &Context, (PVOID *)&Entry);
+    ULONG MappedLength;
+    Status = CcMapData(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
+		       MAP_WAIT, &MappedLength, &Context, (PVOID *)&Entry);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
+    assert(MappedLength == SizeDirEntry);
 
     if (NT_SUCCESS(Status)) {
 	while (TRUE) {
@@ -312,7 +311,7 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 		/* Update entry */
 		LabelFound = TRUE;
 		RtlCopyMemory(Entry, &VolumeLabelDirEntry, SizeDirEntry);
-		CcSetDirtyPinnedData(Context, NULL);
+		CcSetDirtyData(Context);
 		Status = STATUS_SUCCESS;
 		break;
 	    }
@@ -323,16 +322,17 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 
 	    DirIndex++;
 	    Entry = (PDIR_ENTRY) ((ULONG_PTR) Entry + SizeDirEntry);
-	    if ((DirIndex % EntriesPerPage) == 0) {
+	    if ((DirIndex % EntriesPerCluster) == 0) {
 		CcUnpinData(Context);
-		FileOffset.u.LowPart += PAGE_SIZE;
-		Status = CcPinRead(pRootFcb->FileObject, &FileOffset,
-				   SizeDirEntry, PIN_WAIT, &Context,
-				   (PVOID *)&Entry);
+		FileOffset.LowPart += ClusterSize;
+		Status = CcMapData(pRootFcb->FileObject, &FileOffset,
+				   SizeDirEntry, MAP_WAIT, &MappedLength,
+				   &Context, (PVOID *)&Entry);
 		if (!NT_SUCCESS(Status)) {
 		    Context = NULL;
 		    break;
 		}
+		assert(MappedLength == SizeDirEntry);
 	    }
 	}
 
@@ -346,15 +346,16 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	if (!FatFindDirSpace(DeviceExt, pRootFcb, 1, &VolumeLabelDirIndex))
 	    Status = STATUS_DISK_FULL;
 	else {
-	    FileOffset.u.HighPart = 0;
-	    FileOffset.u.LowPart = VolumeLabelDirIndex * SizeDirEntry;
+	    FileOffset.HighPart = 0;
+	    FileOffset.LowPart = VolumeLabelDirIndex * SizeDirEntry;
 
-	    Status = CcPinRead(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
-			       PIN_WAIT, &Context, (PVOID *)&Entry);
+	    Status = CcMapData(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
+			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&Entry);
 
 	    if (NT_SUCCESS(Status)) {
+		assert(MappedLength == SizeDirEntry);
 		RtlCopyMemory(Entry, &VolumeLabelDirEntry, SizeDirEntry);
-		CcSetDirtyPinnedData(Context, NULL);
+		CcSetDirtyData(Context);
 		CcUnpinData(Context);
 		Status = STATUS_SUCCESS;
 	    }

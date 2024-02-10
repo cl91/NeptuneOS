@@ -354,6 +354,9 @@ typedef struct _CC_FILE_SIZES {
  * Common FCB Header
  */
 typedef struct _FSRTL_COMMON_FCB_HEADER {
+    CSHORT NodeTypeCode;
+    CSHORT NodeByteSize;
+    ULONG Flags;
     CC_FILE_SIZES FileSizes; /* Driver must set this before calling CcInitializeCacheMap. */
     PVOID CacheMap; /* Initialized by CcInitializeCacheMap. Driver should not touch it. */
     PDEVICE_OBJECT VolumeDevice; /* Same as above. Do not touch it. */

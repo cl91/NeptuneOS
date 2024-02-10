@@ -255,9 +255,10 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	AvlTreeFindNodeOrPrev(&CacheMap->BcbTree, AlignedOffset));
     PIRP FirstIrp = NULL;
     IO_STATUS_BLOCK IoStatus;
-    while (CurrentBcb && CurrentOffset < EndOffset) {
+    while (CurrentOffset < EndOffset) {
 	/* Determine the starting file offset of the new BCB. */
-	if (AvlNodeContainsAddr(&CurrentBcb->Node, CurrentBcb->Length, CurrentOffset)) {
+	if (CurrentBcb && AvlNodeContainsAddr(&CurrentBcb->Node,
+					      CurrentBcb->Length, CurrentOffset)) {
 	    CurrentOffset += CurrentBcb->Length;
 	}
 	if (CurrentOffset >= EndOffset) {
@@ -378,7 +379,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 map:
     PCC_BUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(AvlTreeFindNodeOrPrev(&CacheMap->BcbTree,
 									 AlignedOffset));
-    if (!AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, AlignedOffset)) {
+    if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, AlignedOffset)) {
 	return STATUS_NONE_MAPPED;
     }
     PCC_PINNED_BUFFER PinnedBuf = ExAllocatePool(sizeof(CC_PINNED_BUFFER));
@@ -448,7 +449,7 @@ NTAPI NTSTATUS CcCopyRead(IN PFILE_OBJECT FileObject,
 			  IN PLARGE_INTEGER FileOffset,
 			  IN ULONG Length,
 			  IN BOOLEAN Wait,
-			  IN PVOID Buffer,
+			  OUT PVOID Buffer,
 			  OUT ULONG *BytesRead)
 {
     assert(FileObject);

@@ -20,14 +20,11 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
 			 IN UCHAR ReqAttr,
 			 IN PFAT_MOVE_CONTEXT MoveContext)
 {
-    PVOID Context = NULL;
-    LARGE_INTEGER SystemTime, FileOffset;
     OEM_STRING NameA;
     FAT_DIRENTRY_CONTEXT DirContext;
-    PFATX_DIR_ENTRY pFatXDirEntry;
     ULONG Index;
 
-    DPRINT("addEntry: Name='%wZ', Dir='%wZ'\n", NameU, &ParentFcb->PathNameU);
+    DPRINT("AddEntry: Name='%wZ', Dir='%wZ'\n", NameU, &ParentFcb->PathNameU);
 
     DirContext.LongNameU = *NameU;
 
@@ -74,6 +71,7 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
     }
 
     /* Set dates and times */
+    LARGE_INTEGER SystemTime;
     NtQuerySystemTime(&SystemTime);
     FsdSystemTimeToDosDateTime(DeviceExt, &SystemTime,
 			       &DirContext.DirEntry.FatX.CreationDate,
@@ -93,18 +91,18 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
     ASSERT(BooleanFlagOn(ParentFcb->Flags, FCB_CACHE_INITIALIZED));
 
     /* add entry into parent directory */
-    FileOffset.HighPart = 0;
-    FileOffset.LowPart = Index * sizeof(FATX_DIR_ENTRY);
-    NTSTATUS Status = CcPinRead(ParentFcb->FileObject, &FileOffset,
-				sizeof(FATX_DIR_ENTRY), PIN_WAIT, &Context,
-				(PVOID *)&pFatXDirEntry);
+    LARGE_INTEGER FileOffset = {
+	.HighPart = 0,
+	.LowPart = Index * sizeof(FATX_DIR_ENTRY)
+    };
+    ULONG BytesWritten;
+    NTSTATUS Status = CcCopyWrite(ParentFcb->FileObject, &FileOffset,
+				  sizeof(FATX_DIR_ENTRY), TRUE,
+				  &DirContext.DirEntry.FatX, &BytesWritten);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-
-    RtlCopyMemory(pFatXDirEntry, &DirContext.DirEntry.FatX, sizeof(FATX_DIR_ENTRY));
-    CcSetDirtyPinnedData(Context, NULL);
-    CcUnpinData(Context);
+    assert(BytesWritten == sizeof(FATX_DIR_ENTRY));
 
     if (MoveContext != NULL) {
 	/* We're modifying an existing FCB - likely rename/move */
@@ -127,11 +125,8 @@ static NTSTATUS DelEntry(IN PDEVICE_EXTENSION DeviceExt,
 			 OUT PFAT_MOVE_CONTEXT MoveContext)
 {
     ULONG CurrentCluster = 0, NextCluster;
-    PVOID Context = NULL;
-    LARGE_INTEGER Offset;
-    PFATX_DIR_ENTRY pDirEntry;
+    PFATX_DIR_ENTRY DirEntry;
     ULONG StartIndex;
-    NTSTATUS Status;
 
     ASSERT(Fcb);
     ASSERT(Fcb->ParentFcb);
@@ -139,40 +134,46 @@ static NTSTATUS DelEntry(IN PDEVICE_EXTENSION DeviceExt,
 
     StartIndex = Fcb->StartIndex;
 
-    Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
+    NTSTATUS Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb->ParentFcb);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
 
-    DPRINT("delEntry PathName \'%wZ\'\n", &Fcb->PathNameU);
-    DPRINT("delete entry: %u\n", StartIndex);
-    Offset.HighPart = 0;
-    Offset.LowPart = (StartIndex * sizeof(FATX_DIR_ENTRY) / PAGE_SIZE) * PAGE_SIZE;
-    Status = CcPinRead(Fcb->ParentFcb->FileObject, &Offset, PAGE_SIZE,
-		       PIN_WAIT, &Context, (PVOID *)&pDirEntry);
+    DPRINT("DelEntry PathName \'%wZ\'\n", &Fcb->PathNameU);
+    DPRINT("Delete entry: %u\n", StartIndex);
+    ULONG ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
+    LARGE_INTEGER Offset = {
+	.HighPart = 0,
+	.LowPart = StartIndex * sizeof(FATX_DIR_ENTRY) / ClusterSize * ClusterSize
+    };
+    PVOID Context = NULL;
+    ULONG MappedLength = 0;
+    Status = CcMapData(Fcb->ParentFcb->FileObject, &Offset, ClusterSize,
+		       MAP_WAIT, &MappedLength, &Context, (PVOID *)&DirEntry);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("CcPinRead(Offset %x:%x, Length %d) failed\n",
-		Offset.HighPart, Offset.LowPart, PAGE_SIZE);
+	DPRINT1("CcMapData(Offset %x:%x, Length %d) failed\n",
+		Offset.HighPart, Offset.LowPart, ClusterSize);
 	return Status;
     }
+    assert(MappedLength == ClusterSize);
 
-    pDirEntry = &pDirEntry[StartIndex % (PAGE_SIZE / sizeof(FATX_DIR_ENTRY))];
-    pDirEntry->FilenameLength = 0xe5;
-    CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt, (PDIR_ENTRY)pDirEntry);
+    DirEntry = &DirEntry[StartIndex % (ClusterSize / sizeof(FATX_DIR_ENTRY))];
+    DirEntry->FilenameLength = 0xe5;
+    CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt, (PDIR_ENTRY)DirEntry);
 
     /* In case of moving, save properties */
-    if (MoveContext != NULL) {
+    if (MoveContext) {
 	MoveContext->FirstCluster = CurrentCluster;
-	MoveContext->FileSize = pDirEntry->FileSize;
-	MoveContext->CreationTime = pDirEntry->CreationTime;
-	MoveContext->CreationDate = pDirEntry->CreationDate;
+	MoveContext->FileSize = DirEntry->FileSize;
+	MoveContext->CreationTime = DirEntry->CreationTime;
+	MoveContext->CreationDate = DirEntry->CreationDate;
     }
 
-    CcSetDirtyPinnedData(Context, NULL);
+    CcSetDirtyData(Context);
     CcUnpinData(Context);
 
-    /* In case of moving, don't delete data */
-    if (MoveContext == NULL) {
+    /* Delete data except in the case of moving */
+    if (!MoveContext) {
 	while (CurrentCluster && CurrentCluster != 0xffffffff) {
 	    GetNextCluster(DeviceExt, CurrentCluster, &NextCluster);
 	    /* FIXME: check status */
@@ -193,28 +194,31 @@ static BOOLEAN IsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
     NTSTATUS Status;
 
     FileOffset.QuadPart = 0;
-    MaxIndex = Fcb->Base.FileSize.LowPart / sizeof(FATX_DIR_ENTRY);
+    MaxIndex = Fcb->Base.FileSizes.FileSize.LowPart / sizeof(FATX_DIR_ENTRY);
 
     Status = FatFcbInitializeCacheFromVolume(DeviceExt, Fcb);
     if (!NT_SUCCESS(Status)) {
 	return FALSE;
     }
 
+    ULONG ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
+    ULONG EntriesPerCluster = ClusterSize / sizeof(FATX_DIR_ENTRY);
     while (Index < MaxIndex) {
-	if (Context == NULL || (Index % FATX_ENTRIES_PER_PAGE) == 0) {
+	if (Context == NULL || (Index % EntriesPerCluster) == 0) {
 	    if (Context != NULL) {
 		CcUnpinData(Context);
 	    }
 
-	    Status = CcMapData(Fcb->FileObject, &FileOffset,
-			       sizeof(FATX_DIR_ENTRY), MAP_WAIT, &Context,
-			       (PVOID *)&FatXDirEntry);
+	    ULONG MappedLength;
+	    Status = CcMapData(Fcb->FileObject, &FileOffset, sizeof(FATX_DIR_ENTRY),
+			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&FatXDirEntry);
 	    if (!NT_SUCCESS(Status)) {
 		return TRUE;
 	    }
+	    assert(MappedLength == sizeof(FATX_DIR_ENTRY));
 
-	    FatXDirEntry += Index % FATX_ENTRIES_PER_PAGE;
-	    FileOffset.QuadPart += PAGE_SIZE;
+	    FatXDirEntry += Index % EntriesPerCluster;
+	    FileOffset.QuadPart += ClusterSize;
 	}
 
 	if (FATX_ENTRY_END(FatXDirEntry)) {
@@ -238,7 +242,7 @@ static BOOLEAN IsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
     return TRUE;
 }
 
-static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb,
+static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pCluster, IN PFATFCB DirFcb,
 				PFAT_DIRENTRY_CONTEXT DirContext, BOOLEAN First)
 {
     LARGE_INTEGER FileOffset;
@@ -287,25 +291,29 @@ static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb
 	return Status;
     }
 
-    if (*pContext == NULL || (DirIndex % FATX_ENTRIES_PER_PAGE) == 0) {
+    ULONG ClusterSize = DirContext->DeviceExt->FatInfo.BytesPerCluster;
+    ULONG EntriesPerCluster = ClusterSize / sizeof(FATX_DIR_ENTRY);
+    ULONG MappedLength;
+    if (*pContext == NULL || (DirIndex % EntriesPerCluster) == 0) {
 	if (*pContext != NULL) {
 	    CcUnpinData(*pContext);
 	}
-	FileOffset.LowPart = ROUND_DOWN(DirIndex * sizeof(FATX_DIR_ENTRY), PAGE_SIZE);
-	if (FileOffset.LowPart >= DirFcb->Base.FileSize.LowPart) {
+	FileOffset.LowPart = ROUND_DOWN(DirIndex * sizeof(FATX_DIR_ENTRY), ClusterSize);
+	if (FileOffset.LowPart >= DirFcb->Base.FileSizes.FileSize.LowPart) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-			   MAP_WAIT, pContext, pPage);
+	Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize, MAP_WAIT,
+			   &MappedLength, pContext, pCluster);
 	if (!NT_SUCCESS(Status)) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
+	assert(MappedLength == ClusterSize);
     }
 
-    FatXDirEntry = (PFATX_DIR_ENTRY)(*pPage) + DirIndex % FATX_ENTRIES_PER_PAGE;
+    FatXDirEntry = (PFATX_DIR_ENTRY)(*pCluster) + DirIndex % EntriesPerCluster;
 
     DirContext->StartIndex = DirContext->DirIndex;
 
@@ -324,22 +332,23 @@ static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pPage, IN PFATFCB DirFcb
 	DirContext->DirIndex++;
 	DirContext->StartIndex++;
 	DirIndex++;
-	if ((DirIndex % FATX_ENTRIES_PER_PAGE) == 0) {
+	if ((DirIndex % EntriesPerCluster) == 0) {
 	    CcUnpinData(*pContext);
-	    FileOffset.LowPart += PAGE_SIZE;
-	    if (FileOffset.LowPart >= DirFcb->Base.FileSize.LowPart) {
+	    FileOffset.LowPart += ClusterSize;
+	    if (FileOffset.LowPart >= DirFcb->Base.FileSizes.FileSize.LowPart) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    Status = CcMapData(DirFcb->FileObject, &FileOffset, PAGE_SIZE,
-			       MAP_WAIT, pContext, pPage);
+	    Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize,
+			       MAP_WAIT, &MappedLength, pContext, pCluster);
 	    if (!NT_SUCCESS(Status)) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
+	    assert(MappedLength == ClusterSize);
 
-	    FatXDirEntry = (PFATX_DIR_ENTRY)*pPage;
+	    FatXDirEntry = (PFATX_DIR_ENTRY)*pCluster;
 	} else {
 	    FatXDirEntry++;
 	}

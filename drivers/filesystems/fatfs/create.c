@@ -146,8 +146,8 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
 
     PVOID Context = NULL;
     while (TRUE) {
-	PVOID Page;
-	Status = FatGetNextDirEntry(DeviceExt, &Context, &Page, Parent,
+	PVOID Cluster;
+	Status = FatGetNextDirEntry(DeviceExt, &Context, &Cluster, Parent,
 				    DirContext, First);
 	First = FALSE;
 	if (Status == STATUS_NO_MORE_ENTRIES) {

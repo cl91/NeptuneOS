@@ -114,7 +114,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     ULONG Length = Stack->Parameters.Read.Length;
 
     DPRINT("'%wZ', ReadOffset: 0x%x, ReadLength 0x%x. FileLength 0x%x\n", &Fcb->PathNameU,
-	   ByteOffset.LowPart, Length, Fcb->Base.FileSize.LowPart);
+	   ByteOffset.LowPart, Length, Fcb->Base.FileSizes.FileSize.LowPart);
 
     /* This should not happen, but we will allow it nonetheless. */
     if (Length == 0) {
@@ -134,7 +134,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	goto ByeBye;
     }
 
-    if (ByteOffset.QuadPart >= Fcb->Base.FileSize.QuadPart) {
+    if (ByteOffset.QuadPart >= Fcb->Base.FileSizes.FileSize.QuadPart) {
 	IrpContext->Irp->IoStatus.Information = 0;
 	Status = STATUS_END_OF_FILE;
 	goto ByeBye;
@@ -151,8 +151,8 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     /* This can happen if the cluster size is smaller than the page size
      * of the architecture. */
     if (ByteOffset.QuadPart + Length >
-	ROUND_UP_64(Fcb->Base.FileSize.QuadPart, BytesPerSector)) {
-	Length = (ULONG)(ROUND_UP_64(Fcb->Base.FileSize.QuadPart, BytesPerSector)
+	ROUND_UP_64(Fcb->Base.FileSizes.FileSize.QuadPart, BytesPerSector)) {
+	Length = (ULONG)(ROUND_UP_64(Fcb->Base.FileSizes.FileSize.QuadPart, BytesPerSector)
 			 - ByteOffset.QuadPart);
 	Stack->Parameters.Read.Length = Length;
     }
@@ -352,7 +352,7 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	goto ByeBye;
     }
 
-    LARGE_INTEGER OldFileSize = Fcb->Base.FileSize;
+    LARGE_INTEGER OldFileSize = Fcb->Base.FileSizes.FileSize;
     LARGE_INTEGER NewFileSize = OldFileSize;
     ULONG Length = Stack->Parameters.Write.Length;
     if (Length == 0) {
@@ -382,7 +382,7 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	/* If we are not extending the file size (ie. we are writing to the
 	 * middle of the file), then the Length must also be sector aligned. */
 	DPRINT("Unaligned write: byte offset 0x%x length 0x%x file size 0x%I64x\n",
-	       ByteOffset.LowPart, Length, Fcb->Base.FileSize.QuadPart);
+	       ByteOffset.LowPart, Length, Fcb->Base.FileSizes.FileSize.QuadPart);
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
     }
