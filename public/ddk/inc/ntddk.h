@@ -443,15 +443,13 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 			    * unique up to the original requestor. */
 	PVOID OutputBuffer; /* Output buffer provided by the client
 			     * process, mapped here */
-	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList
-			     * and CleanupIrpList */
-	LIST_ENTRY ReplyListEntry;  /* List entry for the ReplyIrpList */
+	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList,
+			     * CleanupIrpList, and ReplyIrpList */
 	PDEVICE_OBJECT ForwardedTo; /* Device object that the IRP is
 				     * being forwarded to */
-	PVOID ForwardedBy;   /* Either an IRP or an AddDevice request,
-			      * that called IoCallDriver on this IRP */
-	PVOID CoroutineStackTop; /* Stack top of the coroutine stack
-				  * that this queue entry is using */
+	PVOID ExecEnv; /* Execution environment associated with this IRP */
+	PVOID EnvToWakeUp; /* Execution environment to wake up when this IRP
+			    * is completed. */
 	BOOLEAN NotifyCompletion; /* TRUE if the server will notify the
 				   * completion of this forwarded IRP. */
     } Private;	   /* Drivers shall not access this struct directly */

@@ -108,6 +108,7 @@
 @ stdcall RtlQueryRegistryValues(long ptr ptr ptr ptr)
 @ stdcall RtlWriteRegistryValue(long ptr ptr long ptr long)
 @ stdcall RtlDeleteRegistryValue(long ptr ptr)
+@ stdcall RtlFirstEntrySList(ptr)
 @ stdcall RtlInterlockedPushEntrySList(ptr ptr)
 @ stdcall RtlInterlockedPopEntrySList(ptr)
 @ stdcall RtlInterlockedFlushSList(ptr)

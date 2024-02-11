@@ -47,6 +47,23 @@ typedef struct _KI_COROUTINE_STACK {
  */
 typedef NTSTATUS (FASTCALL *KI_COROUTINE_ENTRYPOINT)(IN PVOID Context);
 
+struct _IOP_EXEC_ENV;
+typedef VOID (*PIOP_EXEC_ENV_FINALIZER)(struct _IOP_EXEC_ENV *Env, NTSTATUS Status);
+
+/*
+ * Represents an execution environment in which a dispatch function or
+ * IO work item is running.
+ */
+typedef struct _IOP_EXEC_ENV {
+    PVOID CoroutineStackTop;
+    PVOID Context;
+    KI_COROUTINE_ENTRYPOINT EntryPoint;
+    PIOP_EXEC_ENV_FINALIZER Finalizer;
+    struct _IOP_EXEC_ENV *EnvToWakeUp; /* Saved Irp->Private.EnvToWakeUp pointer */
+    LIST_ENTRY Link;
+    BOOLEAN Suspended;
+} IOP_EXEC_ENV, *PIOP_EXEC_ENV;
+
 /* coroutine.c */
 extern PVOID KiCoroutineStackChainHead;
 extern PVOID KiCurrentCoroutineStackTop;

@@ -368,8 +368,10 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	}
     free:
 	RemoveEntryList(&Req->Link);
-	/* We don't need to free Req->Irp here as that's freed by the
-	 * system later automatically. */
+	/* For IRPs that we have called IoCallDriver on (regardless of whether
+	 * it succeeded), it is freed by the system automatically when completing
+	 * the IRP, so we don't free it manually. */
+	Req->Irp = NULL;
 	if (Req->Bcb) {
 	    ExFreePool(Req->Bcb);
 	}

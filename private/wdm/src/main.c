@@ -84,19 +84,12 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopEventList);
     InitializeListHead(&IopTimerList);
-    InitializeListHead(&IopIrpQueue);
-    InitializeListHead(&IopReplyIrpList);
-    InitializeListHead(&IopPendingIrpList);
-    InitializeListHead(&IopCleanupIrpList);
-    InitializeListHead(&IopAddDeviceRequestList);
-    InitializeListHead(&IopSuspendedAddDeviceRequestList);
-    InitializeListHead(&IopCompletedAddDeviceRequestList);
     InitializeListHead(&IopX86PortList);
     InitializeListHead(&IopDriverObject.ReinitListHead);
     RtlInitializeSListHead(&IopWorkItemQueue);
-    InitializeListHead(&IopSuspendedWorkItemList);
     InitializeListHead(&IopDpcQueue);
     KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
+    IopInitIrpProcessing();
     HalpInitDma();
 
     NTSTATUS Status = IopCallDriverEntry(RegistryPath);

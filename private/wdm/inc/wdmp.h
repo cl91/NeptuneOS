@@ -45,27 +45,6 @@ extern PCSTR IopDbgTraceModuleName;
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
 
 /*
- * Private IO types
- */
-#define IOP_TYPE_WORKITEM		0xa0
-#define IOP_TYPE_ADD_DEVICE_REQUEST	0xad
-
-/*
- * A PNP AddDevice request from the server.
- */
-typedef struct _ADD_DEVICE_REQUEST {
-    SHORT Type;
-    USHORT Size;
-    NTSTATUS Status;
-    PDEVICE_OBJECT PhyDevObj;
-    PDRIVER_ADD_DEVICE AddDevice;
-    LIST_ENTRY Link;
-    PVOID CoroutineStackTop;
-    ULONG_PTR OriginalRequestor;
-    HANDLE Identifier;
-} ADD_DEVICE_REQUEST, *PADD_DEVICE_REQUEST;
-
-/*
  * Driver Re-Initialization Entry
  */
 typedef struct _DRIVER_REINIT_ITEM {
@@ -89,12 +68,8 @@ typedef struct _X86_IOPORT {
  * IO work item object.
  */
 typedef struct _IO_WORKITEM {
-    SHORT Type;
-    USHORT Size;
     PDEVICE_OBJECT DeviceObject;
     SLIST_ENTRY DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) QueueEntry;
-    LIST_ENTRY SuspendedListEntry;
-    PVOID CoroutineStackTop;
     union {
 	PIO_WORKITEM_ROUTINE WorkerRoutine;
 	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
@@ -197,15 +172,9 @@ VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject);
 /* irp.c */
 extern PIO_PACKET IopIncomingIoPacketBuffer;
 extern PIO_PACKET IopOutgoingIoPacketBuffer;
-extern LIST_ENTRY IopIrpQueue;
+extern LIST_ENTRY IopExecEnvList;
 extern LIST_ENTRY IopFileObjectList;
-extern LIST_ENTRY IopReplyIrpList;
-extern LIST_ENTRY IopPendingIrpList;
-extern LIST_ENTRY IopCleanupIrpList;
-extern LIST_ENTRY IopAddDeviceRequestList;
-extern LIST_ENTRY IopSuspendedAddDeviceRequestList;
-extern LIST_ENTRY IopCompletedAddDeviceRequestList;
-extern PVOID IopCurrentObject;
+VOID IopInitIrpProcessing();
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
 VOID IoDbgDumpIrp(IN PIRP Irp);
@@ -235,7 +204,7 @@ VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);
 
 FORCEINLINE BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
 {
-    return DeviceObject->DriverObject == &IopDriverObject;
+    return DeviceObject->DriverObject;
 }
 
 /*

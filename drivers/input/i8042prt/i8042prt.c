@@ -148,7 +148,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
 	goto cleanup;
     }
 
-    NTSTATUS Status = IoCallDriverEx(TopOfStack, NewIrp, NULL);
+    NTSTATUS Status = IoCallDriver(TopOfStack, NewIrp);
 
     if (FdoDeviceExtension->Type == Keyboard) {
 	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)FdoDeviceExtension;
