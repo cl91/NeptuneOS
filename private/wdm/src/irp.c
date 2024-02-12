@@ -1542,7 +1542,7 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 
     /* Determine whether we should forward the IRP synchronously or asynchronously */
     BOOLEAN Wait = Irp->UserIosb || !Timeout || Timeout->QuadPart;
-    DbgTrace("Forwarding Irp %p to DeviceObject %p(hnd %p) %ssynchronously\n", Irp,
+    DbgTrace("Forwarding Irp %p to DeviceObject %p(%p) %ssynchronously\n", Irp,
 	     DeviceObject, (PVOID)IopGetDeviceHandle(DeviceObject),
 	     Wait ? "" : "a");
     IoDbgDumpIrp(Irp);

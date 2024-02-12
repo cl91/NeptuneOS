@@ -306,7 +306,8 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	}
 	Req->Irp->Flags |= IRP_PAGING_IO;
 	PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Req->Irp);
-	Stack->CompletionRoutine = CiReadCompleted;
+	Stack->FileObject = FileObject;
+	IoSetCompletionRoutine(Req->Irp, CiReadCompleted, Req, TRUE, TRUE, TRUE);
 	InsertTailList(&ReqList, &Req->Link);
 	CurrentBcb = NextBcb;
 	CurrentOffset += CurrentLength;

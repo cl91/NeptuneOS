@@ -1504,3 +1504,28 @@ FORCEINLINE NTAPI VOID ExFreeToLookasideList(IN OUT PLOOKASIDE_LIST Lookaside,
 	RtlInterlockedPushEntrySList(&Lookaside->ListHead, (PSLIST_ENTRY)Entry);
     }
 }
+
+FORCEINLINE VOID IoSetCompletionRoutine(IN PIRP Irp,
+					IN OPTIONAL PIO_COMPLETION_ROUTINE CompletionRoutine,
+					IN OPTIONAL PVOID Context,
+					IN BOOLEAN InvokeOnSuccess,
+					IN BOOLEAN InvokeOnError,
+					IN BOOLEAN InvokeOnCancel)
+{
+    if (InvokeOnSuccess || InvokeOnError || InvokeOnCancel) {
+	ASSERT(CompletionRoutine);
+    }
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    IoStack->CompletionRoutine = CompletionRoutine;
+    IoStack->Context = Context;
+    IoStack->Control = 0;
+    if (InvokeOnSuccess) {
+	IoStack->Control = SL_INVOKE_ON_SUCCESS;
+    }
+    if (InvokeOnError) {
+	IoStack->Control |= SL_INVOKE_ON_ERROR;
+    }
+    if (InvokeOnCancel) {
+	IoStack->Control |= SL_INVOKE_ON_CANCEL;
+    }
+}
