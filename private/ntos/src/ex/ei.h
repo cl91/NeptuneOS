@@ -35,12 +35,17 @@ C_ASSERT(EX_POOL_OVERHEAD == EX_POOL_SMALLEST_BLOCK);
 C_ASSERT(sizeof(EX_POOL_BLOCK) == EX_POOL_SMALLEST_BLOCK);
 
 typedef struct _EX_POOL {
-    LONG TotalPages;		/* number of 4K pages */
-    LONG UsedPages;		/* we always allocate page contiguously */
+    LONG TotalPages;	/* Number of pages. Each page is PAGE_SIZE. */
+    LONG UsedPages;	/* Always equals TotalPages - GetListLength(FreePageList) */
     MWORD HeapStart;
     MWORD HeapEnd;
+    LIST_ENTRY FreePageList;		      /* List of EX_FREE_PAGE. */
     LIST_ENTRY FreeLists[EX_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
 } EX_POOL, *PEX_POOL;
+
+typedef struct _EX_FREE_PAGE {
+    LIST_ENTRY Link;	 /* Must be the first member of this struct */
+} EX_FREE_PAGE, *PEX_FREE_PAGE;
 
 /* event.c */
 NTSTATUS EiInitEventObject();

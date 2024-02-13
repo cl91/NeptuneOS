@@ -7,16 +7,14 @@
 /* Returns Ceil(x/y) for unsigned integers x and y */
 #define RtlDivCeilUnsigned(x,y)	(((x)+(y)-1)/(y))
 
+#if DBG
 static VOID EiAssertPool(IN PCSTR Expr,
 			 IN PCSTR File,
 			 IN ULONG Line);
-
-/*
- * For ExPool we always enforce the assertions even in release build.
- */
 #undef assert
 #define assert(_Expr)							\
     (void)((!!(_Expr)) || (EiAssertPool(#_Expr, __FILE__, __LINE__), 0))
+#endif	/* DBG */
 
 static EX_POOL EiPool;
 
@@ -102,6 +100,7 @@ static VOID EiDbgDumpPool()
     }
 }
 
+#if DBG
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-address"
 static VOID EiAssertPool(IN PCSTR Expr,
@@ -129,8 +128,9 @@ static VOID EiAssertPool(IN PCSTR Expr,
 		  __builtin_return_address(4));
 }
 #pragma GCC diagnostic pop
+#endif	/* DBG */
 
-/* Add the free page to the FreeLists */
+/* Add the free space to the FreeLists */
 static inline VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
 					IN MWORD Addr,
 					IN USHORT PreviousSize,
@@ -138,9 +138,8 @@ static inline VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
 {
     DbgTrace("Adding free space %p PS %d BS %d to pool\n", (PVOID)Addr,
 	     PreviousSize, BlockSize);
-    /* Make sure PoolHeader->Used is not set. */
-    assert(*((PPVOID)Addr) == 0);
-    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER) Addr;
+    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER)Addr;
+    memset(PoolHeader, 0, sizeof(EX_POOL_HEADER));
     PoolHeader->PreviousSize = PreviousSize;
     PoolHeader->BlockSize = BlockSize;
     PLIST_ENTRY FreeEntry = &EX_POOL_HEADER_TO_BLOCK(Addr)->FreeListEntry;
@@ -148,101 +147,123 @@ static inline VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
 }
 
 /* Add the free page to the FreeLists */
-static inline VOID EiAddPageToPool(IN PEX_POOL Pool,
-				   IN MWORD Addr)
+static inline VOID EiAddPageToFreeLists(IN PEX_POOL Pool,
+					IN MWORD Addr)
 {
-#if DBG
-    /* seL4 should give us clean pages so we should never get dirty data here.
-     * On debug build we generate an assertion if this has not been enforced. */
-    for (PPVOID p = (PPVOID)Addr; (MWORD)p < Addr + PAGE_SIZE; p++) {
-	assert(*p == 0);
-    }
-#endif
     EiAddFreeSpaceToPool(Pool, Addr, 0, EX_POOL_FREE_LISTS);
 }
 
-/* We require at least 3 consecutive 4K pages mapped at EX_POOL_START */
+/* We require at least 3 consecutive pages mapped at EX_POOL_START */
 NTSTATUS ExInitializePool(IN MWORD HeapStart,
 			  IN LONG NumPages)
 {
-    /* Initialize FreeLists */
+    InitializeListHead(&EiPool.FreePageList);
     for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
 	InitializeListHead(&EiPool.FreeLists[i]);
     }
 
-    if ((HeapStart & (PAGE_SIZE-1)) != 0 || NumPages < 3) {
+    if (!IS_PAGE_ALIGNED(HeapStart) || NumPages < 3) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* Add pages to pool */
+    /* Add pages to the pool */
     EiPool.TotalPages = NumPages;
     EiPool.UsedPages = 1;
     EiPool.HeapStart = HeapStart;
-    EiPool.HeapEnd = HeapStart + PAGE_SIZE;
-    EiAddPageToPool(&EiPool, HeapStart);
+    EiPool.HeapEnd = HeapStart + NumPages * PAGE_SIZE;
+    EiAddPageToFreeLists(&EiPool, HeapStart);
+
+    /* Add the remaining free pages to the free page list */
+    for (LONG Page = 1; Page < NumPages; Page++) {
+	PEX_FREE_PAGE FreePage = (PEX_FREE_PAGE)(HeapStart + PAGE_SIZE * Page);
+	InsertTailList(&EiPool.FreePageList, &FreePage->Link);
+    }
 
     return STATUS_SUCCESS;
 }
 
-/* Examine the number of available pages in the pool and optionally
- * request the memory management subcomponent for more pages.
+/*
+ * Request one page from the list of free pages, returning the
+ * starting address of the page. If the number of free pages goes
+ * too low, request the memory management subcomponent for more pages.
  *
- * Returns TRUE if successfully added page(s) to ExPool. Returns
- * FALSE if unable to request more pool pages from mm.
- *
- * If we have more than two pages in the pool, simply add one page
- * to the FreeLists.
- *
- * If there is only one page left, add it to the pool and request mm
- * for more pages. The reason for adding the last page is that mm
- * may need to allocate in order to build the capability derivation tree
- * and paging structure descriptors.
- *
- * If pool is initialized with at least 3 pages, then the amount of
- * available pages never goes below one, assuming there is free untyped
- * memory available.
+ * If AddToFreeLists is TRUE, we will also add the newly-allocated free
+ * page to the FreeLists. This needs to be done before we call Mm to
+ * commit new pages because Mm will need to allocate pool memory in
+ * order to build the capability derivation tree and paging structure
+ * descriptors.
  */
-static BOOLEAN EiRequestPoolPage(IN PEX_POOL Pool)
+static MWORD EiRequestFreePage(IN PEX_POOL Pool,
+			       IN BOOLEAN AddToFreeLists)
 {
     LONG AvailablePages = Pool->TotalPages - Pool->UsedPages;
-    if (AvailablePages >= 1) {
-	/* Add one page to the pool */
-	Pool->UsedPages++;
-	EiAddPageToPool(Pool, Pool->HeapEnd);
-	Pool->HeapEnd += PAGE_SIZE;
-	if (AvailablePages >= 4) {
-	    /* Plenty of resources here. Simply return */
-	    return TRUE;
-	} else {
-	    /* We are running low on resources. Check if we have run out of ExPool
-	     * virtual space first, and then request more pages from mm. */
-	    if (Pool->HeapEnd >= EX_POOL_END) {
-		return FALSE;
-	    }
-	    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
-	    LONG Size = PAGE_SIZE;
-	    if (MemPressure == MM_MEM_PRESSURE_SUFFICIENT_MEMORY) {
-		Size = LARGE_PAGE_SIZE;
-	    } else if (MemPressure == MM_MEM_PRESSURE_LOW_MEMORY) {
-		Size = 4 * PAGE_SIZE;
-	    } /* Otherwise we are critically low on memory, just get one page only */
-	    /* Make sure we don't run over the end of ExPool space. */
-	    if (Pool->HeapEnd + Size >= EX_POOL_END) {
-		Size = EX_POOL_END - Pool->HeapEnd;
-	    }
-	    NTSTATUS Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
+    assert(AvailablePages >= 0);
+    assert(AvailablePages == GetListLength(&Pool->FreePageList));
+    if (AvailablePages < 1) {
+	return 0;
+    }
+
+    /* Detach the first free page in the list of free pages. */
+    assert(!IsListEmpty(&Pool->FreePageList));
+    MWORD PageAddr = (MWORD)Pool->FreePageList.Flink;
+    RemoveHeadList(&Pool->FreePageList);
+    Pool->UsedPages++;
+    AvailablePages--;
+    if (AddToFreeLists) {
+	EiAddPageToFreeLists(Pool, PageAddr);
+    }
+
+    if (AvailablePages >= 4) {
+	/* Still have plenty of free pages. Simply return. */
+	return PageAddr;
+    }
+
+    /* We are running low on free pages, so we should allocate more
+     * before we totally run out. Check if we have enough ExPool
+     * virtual space first, and then request more pages from mm. */
+    if (Pool->HeapEnd >= EX_POOL_END) {
+	return PageAddr;
+    }
+    MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
+    LONG Size = PAGE_SIZE;
+    if (MemPressure == MM_MEM_PRESSURE_SUFFICIENT_MEMORY) {
+	Size = LARGE_PAGE_SIZE;
+    } else if (MemPressure == MM_MEM_PRESSURE_LOW_MEMORY) {
+	Size = 4 * PAGE_SIZE;
+	/* Otherwise we are critically low on memory, just get one page */
+    }
+    /* Make sure we don't run over the end of ExPool space. */
+    if (Pool->HeapEnd + Size >= EX_POOL_END) {
+	Size = EX_POOL_END - Pool->HeapEnd;
+    }
+    NTSTATUS Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
+    if (!NT_SUCCESS(Status)) {
+	/* If we tried to request more than one page, try again with only
+	 * one page instead. */
+	if (Size != PAGE_SIZE) {
+	    Size = PAGE_SIZE;
+	    Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
 	    if (!NT_SUCCESS(Status)) {
-		return FALSE;
+		return PageAddr;
 	    }
-	    Pool->TotalPages += Size >> PAGE_LOG2SIZE;
+	} else {
+	    return PageAddr;
 	}
     }
-    return TRUE;
+    Pool->TotalPages += Size >> PAGE_LOG2SIZE;
+    /* Add the newly allocated pages to the free page list. */
+    for (MWORD Offset = 0; Offset < Size; Offset += PAGE_SIZE) {
+	PEX_FREE_PAGE FreePage = (PEX_FREE_PAGE)(Pool->HeapEnd + Offset);
+	InsertTailList(&Pool->FreePageList, &FreePage->Link);
+    }
+    Pool->HeapEnd += Size;
+    return PageAddr;
 }
 
-/* If request size > EX_POOL_LARGEST_BLOCK, deny request
- * Else, allocate from the free list, and clear the memory.
- * If no more space in free list, request one more page.
+/* If request size is larger than the page size, deny request.
+ * If request size is larger than EX_POOL_LARGEST_BLOCK, just
+ * allocate a whole page. Otherwise, allocate from the free list.
+ * Memory is cleared before returning.
  */
 static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN MWORD NumberOfBytes,
@@ -258,11 +279,16 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	return NULL;
     }
 
-    if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
+    if (NumberOfBytes > PAGE_SIZE) {
 	return NULL;
     }
 
-    ULONG NumberOfBlocks = RtlDivCeilUnsigned(NumberOfBytes, EX_POOL_SMALLEST_BLOCK);
+    if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
+	return (PVOID)EiRequestFreePage(Pool, FALSE);
+    }
+
+    ULONG NumberOfBlocks = RtlDivCeilUnsigned(NumberOfBytes,
+					      EX_POOL_SMALLEST_BLOCK);
     NumberOfBytes = NumberOfBlocks * EX_POOL_SMALLEST_BLOCK;
     ULONG FreeListIndex = NumberOfBlocks - 1;
 
@@ -276,14 +302,19 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 
     /* If not found, try adding more pages to the pool and try again */
     if (FreeListIndex >= EX_POOL_FREE_LISTS) {
-	if (!EiRequestPoolPage(Pool)) {
+	/* Request one free page from the list of free pages and add it
+	 * to the pool. */
+	MWORD PageAddr = EiRequestFreePage(Pool, TRUE);
+	if (!PageAddr) {
 	    return NULL;
 	}
 	FreeListIndex = NumberOfBlocks - 1;
 	while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	    FreeListIndex++;
 	    if (FreeListIndex >= EX_POOL_FREE_LISTS) {
-		/* Still not enough resource, we are out of memory */
+		/* This shouldn't happen because we already added a new
+		 * page to the FreeLists. */
+		assert(FALSE);
 		return NULL;
 	    }
 	}
@@ -291,7 +322,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 
     LONG AvailableBlocks = FreeListIndex + 1;
     PLIST_ENTRY FreeEntry = Pool->FreeLists[FreeListIndex].Flink;
-    MWORD BlockStart = (MWORD) FreeEntry;
+    MWORD BlockStart = (MWORD)FreeEntry;
     PEX_POOL_HEADER PoolHeader = EX_POOL_BLOCK_TO_HEADER(BlockStart);
     DbgTrace("PoolHeader %p PS %d BS %d USED %s\n", PoolHeader,
 	     PoolHeader->PreviousSize, PoolHeader->BlockSize,
@@ -304,7 +335,8 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     if (LeftOverBlocks > 0) {
 	PEX_POOL_HEADER Next = EiGetNextPoolHeader(PoolHeader);
 	PoolHeader->BlockSize = NumberOfBlocks;
-	EiAddFreeSpaceToPool(Pool, BlockStart+NumberOfBytes, NumberOfBlocks, LeftOverBlocks);
+	EiAddFreeSpaceToPool(Pool, BlockStart + NumberOfBytes,
+			     NumberOfBlocks, LeftOverBlocks);
 	if (Next != NULL) {
 	    Next->PreviousSize = LeftOverBlocks;
 	}
@@ -314,39 +346,10 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     PoolHeader->Used = TRUE;
     PoolHeader->Tag = Tag;
 
-#if DBG
-    /* ExFreePoolWithTag always clears the memory so we should never get dirty data here.
-     * On debug build we generate an assertion if this has not been enforced.
-     * If this assertion is triggered it means that either ExPool has a bug or
-     * someone is still accessing this data after it has been freed. */
-    for (ULONG i = 0; i < NumberOfBytes; i++) {
-	if (((PCHAR)BlockStart)[i]) {
-	    DbgTrace("block start %p block size %d tag %c%c%c%c addr %p "
-		     "data 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
-		     (PVOID)BlockStart, PoolHeader->BlockSize,
-		     EX_POOL_GET_TAG0(Tag),
-		     EX_POOL_GET_TAG1(Tag),
-		     EX_POOL_GET_TAG2(Tag),
-		     EX_POOL_GET_TAG3(Tag),
-		     &((PCHAR)BlockStart)[i],
-		     ((PUCHAR)BlockStart)[i],
-		     ((PUCHAR)BlockStart)[i+1],
-		     ((PUCHAR)BlockStart)[i+2],
-		     ((PUCHAR)BlockStart)[i+3],
-		     ((PUCHAR)BlockStart)[i+4],
-		     ((PUCHAR)BlockStart)[i+5],
-		     ((PUCHAR)BlockStart)[i+6],
-		     ((PUCHAR)BlockStart)[i+7]);
-	}
-	assert(((PCHAR)BlockStart)[i] == 0);
-    }
-#else
-    /* On release build we simply clean the memory */
     memset((PVOID)BlockStart, 0, NumberOfBytes);
-#endif
     DbgTrace("Allocated block start %p PS %d BS %d\n",
 	     (PVOID)BlockStart, PoolHeader->PreviousSize, PoolHeader->BlockSize);
-    return (PVOID) BlockStart;
+    return (PVOID)BlockStart;
 }
 
 /*
@@ -363,6 +366,14 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 {
     assert(Pool != NULL);
     assert(Ptr != NULL);
+    /* If the pointer is page aligned, simpy add it to the list of free pages. */
+    if (IS_PAGE_ALIGNED(Ptr)) {
+	PEX_FREE_PAGE Page = (PEX_FREE_PAGE)Ptr;
+	InsertHeadList(&Pool->FreePageList, &Page->Link);
+	Pool->UsedPages--;
+	return;
+    }
+
     DbgTrace("Freeing %p tag %c%c%c%c\n", Ptr,
 	     EX_POOL_GET_TAG0(Tag),
 	     EX_POOL_GET_TAG1(Tag),
