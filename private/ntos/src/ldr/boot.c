@@ -28,7 +28,7 @@ NTSTATUS LdrLoadBootModules()
 	FileNames[i] = FileName;
     }
 
-    cpio_ls(_binary_initcpio_start, (size_t) _binary_initcpio_size,
+    cpio_ls(_binary_initcpio_start, (size_t)_binary_initcpio_size,
 	    FileNames, cpio.file_count);
 
     HalDisplayString("Available boot modules:");
@@ -40,15 +40,17 @@ NTSTATUS LdrLoadBootModules()
     for (int i = 0; i < cpio.file_count; i++) {
 	SIZE_T FileSize;
 	PCHAR FileContent = cpio_get_file(_binary_initcpio_start,
-					  (size_t) _binary_initcpio_size,
+					  (size_t)_binary_initcpio_size,
 					  FileNames[i], &FileSize);
 	DbgTrace("File %s start vaddr %p size 0x%x\n", FileNames[i],
 		 FileContent, (unsigned int) FileSize);
 
-	/* Create FILE object and insert into object directory */
 	PIO_FILE_OBJECT File = NULL;
+	/* Create the FILE object and insert into the object directory */
 	RET_ERR(IoCreateDevicelessFile(FileNames[i], BootModuleDirectory,
-				       (PVOID)FileContent, FileSize, &File));
+				       FileSize, &File));
+	assert(File->Fcb);
+	RET_ERR(CcCopyWrite(File->Fcb, 0, FileSize, FileContent));
 	assert(File != NULL);
     }
     ObDereferenceObject(BootModuleDirectory);

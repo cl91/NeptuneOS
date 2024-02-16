@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ntseapi.h>
+
 #define PAGE_NOACCESS		(0x01)
 #define PAGE_READONLY		(0x02)
 #define PAGE_READWRITE		(0x04)
@@ -114,6 +116,14 @@ typedef struct _SECTION_IMAGE_INFORMATION {
 } SECTION_IMAGE_INFORMATION, *PSECTION_IMAGE_INFORMATION;
 
 /*
+ * Section Inherit Flags for NtMapViewOfSection
+ */
+typedef enum _SECTION_INHERIT {
+    ViewShare = 1,
+    ViewUnmap = 2
+} SECTION_INHERIT;
+
+/*
  * Section access rights
  */
 #define SECTION_QUERY                0x0001
@@ -136,3 +146,65 @@ typedef struct _SECTION_IMAGE_INFORMATION {
     (((ULONG_PTR)(x))&(~(PAGE_SIZE-1)))
 #define PAGE_ROUND_UP(x)					\
     ((((ULONG_PTR)(x)) + PAGE_SIZE-1) & (~(PAGE_SIZE-1)))
+
+#ifndef _NTOSKRNL_
+
+/*
+ * Section-related routines
+ */
+NTAPI NTSYSAPI NTSTATUS NtCreateSection(OUT PHANDLE SectionHandle,
+					IN ACCESS_MASK DesiredAccess,
+					IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
+					IN OPTIONAL PLARGE_INTEGER MaximumSize,
+					IN ULONG SectionPageProtection,
+					IN ULONG AllocationAttributes,
+					IN OPTIONAL HANDLE FileHandle);
+
+NTAPI NTSYSAPI NTSTATUS NtMapViewOfSection(IN HANDLE SectionHandle,
+					   IN HANDLE ProcessHandle,
+					   IN OUT PVOID *BaseAddress,
+					   IN ULONG_PTR ZeroBits,
+					   IN SIZE_T CommitSize,
+					   IN OUT OPTIONAL PLARGE_INTEGER SectionOffset,
+					   IN OUT PSIZE_T ViewSize,
+					   IN SECTION_INHERIT InheritDisposition,
+					   IN ULONG AllocationType,
+					   IN ULONG AccessProtection);
+
+NTAPI NTSYSAPI NTSTATUS NtUnmapViewOfSection(IN HANDLE ProcessHandle,
+					     IN PVOID BaseAddress);
+
+/*
+ * Virtual memory management routines
+ */
+NTAPI NTSYSAPI NTSTATUS NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
+						IN OUT PVOID *BaseAddress,
+						IN ULONG_PTR ZeroBits,
+						IN OUT PSIZE_T RegionSize,
+						IN ULONG AllocationType,
+						IN ULONG Protect);
+
+NTAPI NTSYSAPI NTSTATUS NtFreeVirtualMemory(IN HANDLE ProcessHandle,
+					    IN OUT PVOID *BaseAddress,
+					    IN OUT PSIZE_T RegionSize,
+					    IN ULONG FreeType);
+
+NTAPI NTSYSAPI NTSTATUS NtProtectVirtualMemory(IN HANDLE ProcessHandle,
+					       IN PVOID *BaseAddress,
+					       IN SIZE_T *NumberOfBytesToProtect,
+					       IN ULONG NewAccessProtection,
+					       OUT PULONG OldAccessProtection);
+
+NTAPI NTSYSAPI NTSTATUS NtReadVirtualMemory(IN HANDLE ProcessHandle,
+					    IN PVOID BaseAddress,
+					    OUT PVOID Buffer,
+					    IN SIZE_T NumberOfBytesToRead,
+					    OUT OPTIONAL PSIZE_T NumberOfBytesRead);
+
+NTAPI NTSYSAPI NTSTATUS NtWriteVirtualMemory(IN HANDLE ProcessHandle,
+					     IN PVOID  BaseAddress,
+					     IN PVOID Buffer,
+					     IN SIZE_T NumberOfBytesToWrite,
+					     OUT OPTIONAL PSIZE_T NumberOfBytesWritten);
+
+#endif	/* _NTOSKRNL_ */

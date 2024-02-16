@@ -63,49 +63,40 @@ static NTSTATUS RtlpInitEnvironment(HANDLE ProcessHandle,
     DPRINT("RtlpInitEnvironment(ProcessHandle: %p, Peb: %p Params: %p)\n",
 	   ProcessHandle, Peb, ProcessParameters);
 
-    /* Give the caller 1MB if he requested it */
+    /* Give the caller 1MB if requested */
     if (ProcessParameters->Flags & RTL_USER_PROCESS_PARAMETERS_RESERVE_1MB) {
 	/* Give 1MB starting at 0x4 */
-	BaseAddress = (PVOID) 4;
+	BaseAddress = (PVOID)4;
 	EnviroSize = (1024 * 1024) - 256;
-	Status = NtAllocateVirtualMemory(ProcessHandle,
-					 &BaseAddress,
-					 0,
-					 &EnviroSize,
-					 MEM_RESERVE, PAGE_READWRITE);
+	Status = NtAllocateVirtualMemory(ProcessHandle, &BaseAddress, 0,
+					 &EnviroSize, MEM_RESERVE, PAGE_READWRITE);
 	if (!NT_SUCCESS(Status)) {
-	    DPRINT1("Failed to reserve 1MB of space \n");
+	    DPRINT1("Failed to reserve 1MB for process parameters\n");
 	    return Status;
 	}
     }
 
     /* Find the end of the Enviroment Block */
-    if ((Environment = (PWCHAR) ProcessParameters->Environment)) {
+    if ((Environment = (PWCHAR)ProcessParameters->Environment)) {
 	while (*Environment++)
 	    while (*Environment++);
 
 	/* Calculate the size of the block */
-	EnviroSize = (ULONG) ((ULONG_PTR) Environment -
-			      (ULONG_PTR) ProcessParameters->Environment);
+	EnviroSize = (ULONG)((ULONG_PTR)Environment -
+			     (ULONG_PTR)ProcessParameters->Environment);
 
 	/* Allocate and Initialize new Environment Block */
 	Size = EnviroSize;
-	Status = NtAllocateVirtualMemory(ProcessHandle,
-					 &BaseAddress,
-					 0,
-					 &Size,
-					 MEM_RESERVE | MEM_COMMIT,
-					 PAGE_READWRITE);
+	Status = NtAllocateVirtualMemory(ProcessHandle, &BaseAddress, 0, &Size,
+					 MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT1("Failed to allocate Environment Block\n");
 	    return Status;
 	}
 
 	/* Write the Environment Block */
-	NtWriteVirtualMemory(ProcessHandle,
-			     BaseAddress,
-			     ProcessParameters->Environment,
-			     EnviroSize, NULL);
+	NtWriteVirtualMemory(ProcessHandle, BaseAddress,
+			     ProcessParameters->Environment, EnviroSize, NULL);
 
 	/* Save pointer */
 	ProcessParameters->Environment = BaseAddress;
@@ -114,18 +105,15 @@ static NTSTATUS RtlpInitEnvironment(HANDLE ProcessHandle,
     /* Now allocate space for the Parameter Block */
     BaseAddress = NULL;
     Size = ProcessParameters->MaximumLength;
-    Status = NtAllocateVirtualMemory(ProcessHandle,
-				     &BaseAddress,
-				     0, &Size, MEM_COMMIT, PAGE_READWRITE);
+    Status = NtAllocateVirtualMemory(ProcessHandle, &BaseAddress, 0, &Size,
+				     MEM_COMMIT, PAGE_READWRITE);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Failed to allocate Parameter Block\n");
 	return Status;
     }
 
     /* Write the Parameter Block */
-    Status = NtWriteVirtualMemory(ProcessHandle,
-				  BaseAddress,
-				  ProcessParameters,
+    Status = NtWriteVirtualMemory(ProcessHandle, BaseAddress, ProcessParameters,
 				  ProcessParameters->Length, NULL);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Failed to write the Parameter Block\n");
@@ -133,8 +121,7 @@ static NTSTATUS RtlpInitEnvironment(HANDLE ProcessHandle,
     }
 
     /* Write pointer to Parameter Block */
-    Status = NtWriteVirtualMemory(ProcessHandle,
-				  &Peb->ProcessParameters,
+    Status = NtWriteVirtualMemory(ProcessHandle, &Peb->ProcessParameters,
 				  &BaseAddress, sizeof(BaseAddress), NULL);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Failed to write pointer to Parameter Block\n");
@@ -309,8 +296,7 @@ NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 
     /* Create the first Thread */
     Status = RtlCreateUserThread(ProcessInfo->ProcessHandle,
-				 ThreadSecurityDescriptor,
-				 TRUE,
+				 ThreadSecurityDescriptor, TRUE,
 				 ProcessInfo->ImageInformation.ZeroBits,
 				 ProcessInfo->ImageInformation.MaximumStackSize,
 				 ProcessInfo->ImageInformation.CommittedStackSize,

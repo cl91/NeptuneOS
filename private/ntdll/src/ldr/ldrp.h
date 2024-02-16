@@ -29,6 +29,20 @@ static inline VOID LdrpFreeUnicodeString(IN UNICODE_STRING String)
 extern UCHAR LdrpCp1252NlsData[];
 extern UCHAR LdrpUnicodeCaseTableData[];
 
+/* dll.c */
+VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
+				IN PCSTR BaseDllName);
+PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress);
+BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
+			      OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *LdrEntry);
+BOOLEAN LdrpCheckForLoadedDllHandle(IN PVOID Base,
+				    OUT PLDR_DATA_TABLE_ENTRY *LdrEntry);
+NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
+			      OUT PLDR_DATA_TABLE_ENTRY *DataTableEntry,
+			      OUT OPTIONAL PBOOLEAN Existing);
+NTSTATUS LdrpLoadDll(IN PCSTR DllName,
+		     OUT PVOID *BaseAddress);
+
 /* pe.c */
 ULONG LdrpRelocateImage(IN PVOID BaseAddress,
 			IN PCCH  LoaderName,
@@ -42,12 +56,7 @@ ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
 				IN ULONG Conflict,
 				IN ULONG Invalid);
 NTSTATUS LdrpWalkImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry);
-VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
-				IN PCSTR BaseDllName);
-PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress);
 PVOID LdrpFetchAddressOfEntryPoint(IN PVOID ImageBase);
-BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
-			      OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *LdrEntry);
 
 /* ../rtl/critical.c */
 VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore);

@@ -22,10 +22,9 @@ typedef seL4_Word MWORD;
 /* The maximum number of zero bits (starting from the most significant bit) in
  * the virtual address that the user can specify in virtual memory allocation.
  * This is determined by the lowest user address, defined below */
-#define MM_MAXIMUM_ZERO_BITS		(MWORD_BITS - PAGE_LOG2SIZE - 1)
+#define MM_MAXIMUM_ZERO_HIGH_BITS	(MWORD_BITS - PAGE_LOG2SIZE - 1)
 
 /* All hard-coded addresses in client processes' address space go here. */
-/* TODO: Use Windows/ReactOS address space scheme, especially KUSER_SHARED_DATA */
 #define LOWEST_USER_ADDRESS		(1ULL << PAGE_LOG2SIZE)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000ULL)
@@ -48,13 +47,6 @@ typedef seL4_Word MWORD;
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
 #define IPC_BUFFER_START		(0xd0000000ULL)
 #define IPC_BUFFER_END			(0xdfff0000ULL)
-#define LOADER_SHARED_DATA_CLIENT_ADDR	IPC_BUFFER_END
-
-#if KUSER_SHARED_DATA_CLIENT_ADDR >= USER_ADDRESS_END
-#error "User shared data must be within user address space"
-#endif
-
-compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DATA_CLIENT_ADDR >= PAGE_SIZE);
 
 /*
  * Ipc buffer, where the seL4 IPC buffer is placed at the very beginning,
@@ -81,10 +73,6 @@ compile_assert(KUSER_SHARED_DATA_TOO_LARGE, USER_ADDRESS_END - LOADER_SHARED_DAT
  * the overhead of mapping and unmapping exceeds the overhead of copy.
  */
 #define IRP_DATA_BUFFER_SIZE	1024
-
-/* Loader data shared between the server and NTDLL */
-#define LOADER_SHARED_DATA_RESERVE	(0x10000ULL)
-#define LOADER_SHARED_DATA_COMMIT	(PAGE_SIZE)
 
 /* Private heap reserved for the Ldr component of NTDLL */
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
@@ -143,12 +131,17 @@ typedef struct _NTDLL_THREAD_INIT_INFO {
     CONTEXT InitialContext;
 } NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
 
+#define INIT_INFO_NTDLL_PATH_SIZE	(32)
+#define INIT_INFO_IMAGE_NAME_SIZE	(512)
+#define INIT_INFO_SERVICE_PATH_SIZE	(512)
+
 typedef struct _NTDLL_DRIVER_INIT_INFO {
     MWORD IncomingIoPacketBuffer;
     MWORD OutgoingIoPacketBuffer;
     MWORD InitialCoroutineStackTop;
     MWORD X86TscFreq;
     MWORD DpcMutexCap;
+    CHAR ServicePath[INIT_INFO_SERVICE_PATH_SIZE]; /* Driver service registry key */
 } NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
 
 typedef struct _NTDLL_PROCESS_INIT_INFO {
@@ -163,10 +156,16 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     HANDLE VectoredHandlerLockSemaphore;
     HANDLE ProcessHeapLockSemaphore;
     HANDLE LoaderHeapLockSemaphore;
+    MWORD NtdllViewBase; /* Client address at which ntdll is loaded */
+    MWORD NtdllViewSize; /* Total virtual memory size of the ntdll image */
+    CHAR NtdllPath[INIT_INFO_NTDLL_PATH_SIZE]; /* Full path of the ntdll image */
+    CHAR ImageName[INIT_INFO_IMAGE_NAME_SIZE]; /* Base name of the image (eg smss.exe) */
     BOOLEAN DriverProcess;
     NTDLL_DRIVER_INIT_INFO DriverInitInfo;
     NTDLL_THREAD_INIT_INFO ThreadInitInfo;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;
+
+compile_assert(INIT_INFO_TOO_BIG, sizeof(NTDLL_PROCESS_INIT_INFO) < PAGE_SIZE);
 
 /*
  * Entrypoint routine of wdm.dll. In driver processes we don't call the
@@ -181,36 +180,6 @@ typedef VOID (*PWDM_DLL_ENTRYPOINT)(IN seL4_IPCBuffer *IpcBuffer,
  * has TLS index == 1.
  */
 #define SYSTEMDLL_TLS_INDEX	1
-
-/*
- * Shared data structure between the NTOS server and the NTDLL loader
- * component. The layout is
- * [LDRP_LOADED_MODULE] [DllPath] [DllName]
- * ------------- EntrySize ----------------
- * Note: All offsets are with respect to LOADER_SHARED_DATA_CLIENT_ADDR
- */
-typedef struct _LDRP_LOADED_MODULE {
-    MWORD DllPath;     /* Offset to the full path of the dll file */
-    MWORD DllName;     /* Offset to the dllname (eg kernel32.dll) */
-    MWORD ViewBase;    /* Client address at which the dll is loaded */
-    MWORD ViewSize;    /* Total size of the virtual memory of the image */
-    MWORD EntrySize;   /* Size of this struct plus the strings */
-} LDRP_LOADED_MODULE, *PLDRP_LOADED_MODULE;
-
-/*
- * Per-process equivalent of KUSER_SHARED_DATA. This has the same function
- * as Win32 PEB, except that we don't expose it to the public headers.
- *
- * Note: All offsets are with respect to LOADER_SHARED_DATA_CLIENT_ADDR
- */
-typedef struct _LOADER_SHARED_DATA {
-    MWORD LoadedModuleCount;
-    MWORD ImagePath; /* Offset to the full path of the image file */
-    MWORD ImageName; /* Offset to the base name of image (eg smss.exe) */
-    MWORD CommandLine; /* For user processes, this is the command line.
-			* For drivers, this is the driver service registry key */
-    MWORD LoadedModules; /* Offset to the start of loaded module entries */
-} LOADER_SHARED_DATA, *PLOADER_SHARED_DATA;
 
 #if seL4_PageBits <= seL4_IPCBufferSizeBits
 #error "seL4 IPC Buffer too large (must be no larger than half of a 4K page)"

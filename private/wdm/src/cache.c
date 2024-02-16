@@ -7,15 +7,15 @@
  * This structure describes the cache mapping of a file control block, with all
  * buffer control blocks (see below) organized as an AVL tree.
  */
-typedef struct _CC_CACHE_MAP {
+typedef struct _CI_CACHE_MAP {
     PFSRTL_COMMON_FCB_HEADER Fcb; /* Pointer to the FCB of the file object being cached. */
     AVL_TREE BcbTree; /* Tree of buffer control blocks, ordered by starting file offset. */
-} CC_CACHE_MAP, *PCC_CACHE_MAP;
+} CI_CACHE_MAP, *PCI_CACHE_MAP;
 
 /*
  * Buffer Control Block.
  *
- * A buffer control block (BCB) describes a contiguous region of a caching-enabled
+ * A buffer control block (BCB) describes a contiguous region of a cache-enabled
  * file object that is mapped contiguously in virtual memory. All offsets, addresses,
  * and buffer lengths are aligned by FS cluster size. Note in the case that the FS
  * cluster size is smaller than PAGE_SIZE, a page may contain data from different,
@@ -40,7 +40,7 @@ typedef struct _CC_CACHE_MAP {
  * It is important to stress that BCBs that are only adjacent in file offsets
  * but not in mapped addresses will NOT be merged.
  */
-typedef struct _CC_BUFFER_CONTROL_BLOCK {
+typedef struct _CI_BUFFER_CONTROL_BLOCK {
     AVL_NODE Node; /* Key is the starting file offset of the buffer.
 		    * This is always aligned by FS cluster size.
 		    * Must be the first member in this struct. */
@@ -48,38 +48,53 @@ typedef struct _CC_BUFFER_CONTROL_BLOCK {
 			  * Always cluster size aligned. */
     ULONG Length;   /* Length of the buffer in terms of file offset.
 		     * Always cluster size aligned. */
-    PCC_CACHE_MAP CacheMap;   /* The cache map this BCB belongs to. */
+    PCI_CACHE_MAP CacheMap;   /* The cache map this BCB belongs to. */
     LIST_ENTRY PinList;	 /* List of pinned sub-buffers of this BCB. */
-} CC_BUFFER_CONTROL_BLOCK, *PCC_BUFFER_CONTROL_BLOCK;
+    BOOLEAN Dirty;	 /* If TRUE, data need to be flushed. */
+} CI_BUFFER_CONTROL_BLOCK, *PCI_BUFFER_CONTROL_BLOCK;
+
+FORCEINLINE VOID CiInitializeBcb(IN PCI_BUFFER_CONTROL_BLOCK Bcb,
+				 IN ULONG64 FileOffset,
+				 IN PVOID MappedAddress,
+				 IN ULONG Length,
+				 IN PCI_CACHE_MAP CacheMap)
+{
+    AvlInitializeNode(&Bcb->Node, FileOffset);
+    Bcb->MappedAddress = MappedAddress;
+    Bcb->Length = Length;
+    Bcb->CacheMap = CacheMap;
+    InitializeListHead(&Bcb->PinList);
+    Bcb->Dirty = FALSE;
+}
 
 /*
  * This structure describes a pinned sub-buffer of a parent BCB. We hand this
  * to the client driver so CcUnpinData has all the information to unpin the
  * sub-buffer.
  */
-typedef struct _CC_PINNED_BUFFER {
-    PCC_BUFFER_CONTROL_BLOCK Bcb;
+typedef struct _CI_PINNED_BUFFER {
+    PCI_BUFFER_CONTROL_BLOCK Bcb;
     ULONG64 FileOffset;
     ULONG Length;
     LIST_ENTRY Link;
-} CC_PINNED_BUFFER, *PCC_PINNED_BUFFER;
+} CI_PINNED_BUFFER, *PCI_PINNED_BUFFER;
 
 #define AVL_NODE_TO_BCB(_Node)					\
     ({								\
 	PAVL_NODE __node = (_Node);				\
 	__node ? CONTAINING_RECORD(__node,			\
-				   CC_BUFFER_CONTROL_BLOCK,	\
+				   CI_BUFFER_CONTROL_BLOCK,	\
 				   Node) : NULL;		\
     })
 
 /*
  * READ request that is generated to fill the given BCB.
  */
-typedef struct _CC_READ_REQUEST {
+typedef struct _CI_READ_REQUEST {
     PIRP Irp;
-    PCC_BUFFER_CONTROL_BLOCK Bcb;
+    PCI_BUFFER_CONTROL_BLOCK Bcb;
     LIST_ENTRY Link;
-} CC_READ_REQUEST, *PCC_READ_REQUEST;
+} CI_READ_REQUEST, *PCI_READ_REQUEST;
 /*
  * ROUTINE DESCRIPTION:
  *     Initializes caching for a file object.
@@ -118,7 +133,7 @@ NTAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject)
 	assert(FALSE);
 	return STATUS_ALREADY_INITIALIZED;
     }
-    PCC_CACHE_MAP CacheMap = ExAllocatePool(sizeof(CC_CACHE_MAP));
+    PCI_CACHE_MAP CacheMap = ExAllocatePool(sizeof(CI_CACHE_MAP));
     if (!CacheMap) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -139,7 +154,7 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
 				      IN PIRP Irp,
 				      IN OPTIONAL PVOID Context)
 {
-    PCC_READ_REQUEST Req = Context;
+    PCI_READ_REQUEST Req = Context;
     assert(Req);
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     if (!NT_SUCCESS(Irp->IoStatus.Status)) {
@@ -149,17 +164,39 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
 	       Stack->Parameters.Read.ByteOffset.QuadPart,
 	       Stack->Parameters.Read.Length);
     }
-    DPRINT("Block request succeeded for %p. Requested length 0x%x fulfilled length 0x%x\n",
+    DPRINT("Block request succeeded for %p. Requested length 0x%x fulfilled length 0x%zx\n",
 	   Irp, Stack->Parameters.Read.Length, Irp->IoStatus.Information);
     assert(Irp->IoStatus.Information);
     assert(Irp->IoStatus.Information < Stack->Parameters.Read.Length);
     /* Adjust the BCB to the actual length mapped. */
-    Req->Bcb->Length = Irp->IoStatus.Information;
+    PMDL Mdl = Irp->MdlAddress;
+    assert(Mdl);
+    Req->Bcb->MappedAddress = Mdl->MappedSystemVa;
+    Req->Bcb->Length = Mdl->ByteCount;
+    /* If there are additional MDLs in the MDL chain, create new BCBs and insert
+     * them after this BCB. */
+    ULONG64 FileOffset = Req->Bcb->Node.Key + Req->Bcb->Length;
+    while ((Mdl = Mdl->Next) != NULL) {
+	PCI_READ_REQUEST NewReq = ExAllocatePool(sizeof(CI_READ_REQUEST));
+	if (!NewReq) {
+	    break;
+	}
+	PCI_BUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(sizeof(CI_BUFFER_CONTROL_BLOCK));
+	if (!NewBcb) {
+	    ExFreePool(NewReq);
+	    break;
+	}
+	NewReq->Bcb = NewBcb;
+	CiInitializeBcb(NewBcb, FileOffset, Mdl->MappedSystemVa, Mdl->ByteCount,
+			Req->Bcb->CacheMap);
+	InsertHeadList(&Req->Link, &NewReq->Link);
+	FileOffset += Mdl->ByteCount;
+    }
     return STATUS_CONTINUE_COMPLETION;
 }
 
-FORCEINLINE BOOLEAN CiAdjacentBcbs(IN PCC_BUFFER_CONTROL_BLOCK Prev,
-				   IN PCC_BUFFER_CONTROL_BLOCK Bcb)
+FORCEINLINE BOOLEAN CiAdjacentBcbs(IN PCI_BUFFER_CONTROL_BLOCK Prev,
+				   IN PCI_BUFFER_CONTROL_BLOCK Bcb)
 {
     return ((Prev->Node.Key + Prev->Length) == Bcb->Node.Key)
 	&& (((PUCHAR)Prev->MappedAddress + Prev->Length) == Bcb->MappedAddress);
@@ -227,7 +264,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	assert(FALSE);
 	return STATUS_INVALID_DEVICE_REQUEST;
     }
-    PCC_CACHE_MAP CacheMap = Fcb->CacheMap;
+    PCI_CACHE_MAP CacheMap = Fcb->CacheMap;
 
     /* Align the read to the cluster size of the FS. */
     ULONG64 AlignedOffset = ALIGN_DOWN_64(FileOffset->QuadPart, Vpb->ClusterSize);
@@ -246,12 +283,12 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 
     /* Allocate a BCB for each unmapped sub-region. For each new BCB, generate a
      * REAR IRP. The first IRP is the master IRP, and all subsequent IRPs are
-     * marked as its associated IRPs. Mark all these IRPs as PAGING_IO so the server
-     * will intercept them and fulfill them from the cache. */
+     * marked as its associated IRPs. The minor code will be set to IRP_MN_MDL so
+     * the server will return the MDL for the memory pages. */
     NTSTATUS Status = STATUS_SUCCESS;
     ULONG64 CurrentOffset = AlignedOffset;
     ULONG64 EndOffset = AlignedOffset + AlignedLength;
-    PCC_BUFFER_CONTROL_BLOCK CurrentBcb = AVL_NODE_TO_BCB(
+    PCI_BUFFER_CONTROL_BLOCK CurrentBcb = AVL_NODE_TO_BCB(
 	AvlTreeFindNodeOrPrev(&CacheMap->BcbTree, AlignedOffset));
     PIRP FirstIrp = NULL;
     IO_STATUS_BLOCK IoStatus;
@@ -266,18 +303,17 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	}
 	/* Determine the length of the current segment of the IO transfer. */
 	ULONG CurrentLength = EndOffset - CurrentOffset;
-	PCC_BUFFER_CONTROL_BLOCK NextBcb = AVL_NODE_TO_BCB(AvlGetNextNodeSafe(&CurrentBcb->Node));
+	PCI_BUFFER_CONTROL_BLOCK NextBcb = AVL_NODE_TO_BCB(AvlGetNextNodeSafe(&CurrentBcb->Node));
 	if (NextBcb && EndOffset > NextBcb->Node.Key) {
 	    CurrentLength = NextBcb->Node.Key - CurrentOffset;
 	}
-	PCC_BUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(sizeof(CC_BUFFER_CONTROL_BLOCK));
+	PCI_BUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(sizeof(CI_BUFFER_CONTROL_BLOCK));
 	if (!NewBcb) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto out;
 	}
-	InitializeListHead(&NewBcb->PinList);
-	NewBcb->CacheMap = CacheMap;
-	PCC_READ_REQUEST Req = ExAllocatePool(sizeof(CC_READ_REQUEST));
+	CiInitializeBcb(NewBcb, CurrentOffset, NULL, 0, CacheMap);
+	PCI_READ_REQUEST Req = ExAllocatePool(sizeof(CI_READ_REQUEST));
 	if (!Req) {
 	    ExFreePool(NewBcb);
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -304,7 +340,6 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	    FirstIrp = Req->Irp;
 	    FirstIrp->UserIosb = &IoStatus;
 	}
-	Req->Irp->Flags |= IRP_PAGING_IO;
 	PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Req->Irp);
 	Stack->FileObject = FileObject;
 	IoSetCompletionRoutine(Req->Irp, CiReadCompleted, Req, TRUE, TRUE, TRUE);
@@ -314,7 +349,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     }
 
     /* Forward the IRPs to the lower driver. Wait on the first IRP. */
-    ReverseLoopOverList(Req, &ReqList, CC_READ_REQUEST, Link) {
+    ReverseLoopOverList(Req, &ReqList, CI_READ_REQUEST, Link) {
 	DPRINT("Calling storage device driver with irp %p\n", Req->Irp);
 	Status = IoCallDriver(Vpb->DeviceObject, Req->Irp);
 	if (!NT_SUCCESS(Status)) {
@@ -332,15 +367,15 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
      * We need to see if any of the resulting BCBs are adjacent (in both file
      * offset and mapped address) with existing BCBs, in which case we merge
      * them. */
-    LoopOverList(Req, &ReqList, CC_READ_REQUEST, Link) {
+    LoopOverList(Req, &ReqList, CI_READ_REQUEST, Link) {
 	/* If the IO errored out, do nothing and simply clean up this BCB. */
 	if (!Req->Bcb->Length) {
 	    goto free;
 	}
 	PAVL_NODE Parent = NULL;
-	PCC_BUFFER_CONTROL_BLOCK Prev = AVL_NODE_TO_BCB(
+	PCI_BUFFER_CONTROL_BLOCK Prev = AVL_NODE_TO_BCB(
 	    AvlTreeFindNodeOrPrevEx(&CacheMap->BcbTree, Req->Bcb->Node.Key, &Parent));
-	PCC_BUFFER_CONTROL_BLOCK Next = AVL_NODE_TO_BCB(AvlGetNextNodeSafe(&Prev->Node));
+	PCI_BUFFER_CONTROL_BLOCK Next = AVL_NODE_TO_BCB(AvlGetNextNodeSafe(&Prev->Node));
 	if (Prev && CiAdjacentBcbs(Prev, Req->Bcb)) {
 	    Prev->Length += Req->Bcb->Length;
 	    /* If after merging the previous BCB and current BCB, the new BCB
@@ -350,7 +385,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 		AvlTreeRemoveNode(&CacheMap->BcbTree, &Next->Node);
 		Prev->Length += Next->Length;
 		/* Move the pinned buffer objects from Next to Prev */
-		LoopOverList(Pinned, &Next->PinList, CC_PINNED_BUFFER, Link) {
+		LoopOverList(Pinned, &Next->PinList, CI_PINNED_BUFFER, Link) {
 		    Pinned->Bcb = Prev;
 		    RemoveEntryList(&Pinned->Link);
 		    InsertTailList(&Prev->PinList, &Pinned->Link);
@@ -380,12 +415,12 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     }
 
 map:
-    PCC_BUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(AvlTreeFindNodeOrPrev(&CacheMap->BcbTree,
+    PCI_BUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(AvlTreeFindNodeOrPrev(&CacheMap->BcbTree,
 									 AlignedOffset));
     if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, AlignedOffset)) {
 	return STATUS_NONE_MAPPED;
     }
-    PCC_PINNED_BUFFER PinnedBuf = ExAllocatePool(sizeof(CC_PINNED_BUFFER));
+    PCI_PINNED_BUFFER PinnedBuf = ExAllocatePool(sizeof(CI_PINNED_BUFFER));
     if (!PinnedBuf) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto out;
@@ -401,9 +436,7 @@ map:
 
 out:
     /* Free all the allocated BCBs that have not been inserted into the cache map. */
-    LoopOverList(Req, &ReqList, CC_READ_REQUEST, Link) {
-	/* This is strictly speaking unnecessary, but we do it nonetheless. */
-	RemoveEntryList(&Req->Link);
+    LoopOverList(Req, &ReqList, CI_READ_REQUEST, Link) {
 	if (Req->Bcb) {
 	    ExFreePool(Req->Bcb);
 	}
@@ -417,12 +450,17 @@ out:
 
 NTAPI VOID CcSetDirtyData(IN PVOID Bcb)
 {
-    PCC_PINNED_BUFFER PinnedBuf = Bcb;
+    PCI_PINNED_BUFFER PinnedBuf = Bcb;
+    assert(PinnedBuf);
+    assert(PinnedBuf->Bcb);
+    PinnedBuf->Bcb->Dirty = TRUE;
 }
 
 NTAPI VOID CcUnpinData(IN PVOID Bcb)
 {
-    PCC_PINNED_BUFFER PinnedBuf = Bcb;
+    PCI_PINNED_BUFFER PinnedBuf = Bcb;
+    assert(PinnedBuf);
+    RemoveEntryList(&PinnedBuf->Link);
 }
 
 /*

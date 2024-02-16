@@ -234,35 +234,31 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 }
 
 /*
- * Read the value under the specified registry key. Key must be loaded
- * into the memory before calling.
+ * Load the registry key from disk and return the specified value under
+ * the key, as well as the key object itself.
  *
  * NOTE: This routine returns a pointer into the in-memory registry data.
  * You must call ObDereferenceObject on the key object once you are done
  * with the value.
  */
-NTSTATUS CmReadKeyValueByPath(IN PCSTR KeyPath,
+NTSTATUS CmReadKeyValueByPath(IN ASYNC_STATE State,
+			      IN PTHREAD Thread,
+			      IN PCSTR KeyPath,
 			      IN PCSTR Value,
 			      OUT POBJECT *KeyObject,
 			      OUT ULONG *Type,
 			      OUT PVOID *Data)
 {
+    /* TODO: Load the registry key from disk. */
+
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByName(KeyPath, OBJECT_TYPE_KEY, NULL, FALSE, (POBJECT *)&Key));
-    assert(Key != NULL);
+    RET_ERR(ObReferenceObjectByName(KeyPath, OBJECT_TYPE_KEY,
+				    NULL, FALSE, (POBJECT *)&Key));
+    assert(Key);
     CmpDbgDumpKey(Key);
-    PCM_NODE Node = CmpGetNamedNode(Key, Value, 0);
-    if (Node == NULL || Node->Type != CM_NODE_VALUE) {
-	ObDereferenceObject(Key);
-	return Node == NULL ? STATUS_OBJECT_NAME_NOT_FOUND : STATUS_OBJECT_TYPE_MISMATCH;
-    }
-    PCM_REG_VALUE ValueObj = (PCM_REG_VALUE)Node;
-#ifdef _M_IX86
-    assert(ValueObj->Type != REG_QWORD);
-#endif
+    RET_ERR_EX(CmReadKeyValueByPointer(Key, Value, Type, Data),
+	       ObDereferenceObject(Key));
     *KeyObject = Key;
-    *Type = ValueObj->Type;
-    *Data = ValueObj->Data;
     return STATUS_SUCCESS;
 }
 
@@ -468,7 +464,7 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
 	return STATUS_DATATYPE_MISALIGNMENT;
     }
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     CmpDbgDumpKey(Key);
@@ -502,7 +498,7 @@ NTSTATUS NtQueryValueKeyA(IN ASYNC_STATE AsyncState,
 	return STATUS_DATATYPE_MISALIGNMENT;
     }
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
@@ -555,7 +551,7 @@ NTSTATUS NtSetValueKey(IN ASYNC_STATE AsyncState,
     }
     assert(Thread->Process != NULL);
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     assert(Data != NULL);

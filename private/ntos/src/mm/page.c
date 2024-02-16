@@ -270,7 +270,7 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
 
     int Error = 0;
     if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
-#if MMDBG
+#ifdef MMDBG
 	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
 	MmDbg("Mapping %spage cap 0x%zx (paddr %p%s) into vspacecap 0x%zx at vaddr %p\n",
 	      (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
@@ -335,7 +335,7 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
 
     int Error = 0;
     if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
-#if MMDBG
+#ifdef MMDBG
 	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
 	MmDbg("Unmapping %spage cap 0x%zx (paddr %p%s) from vspacecap 0x%zx originally at vaddr %p\n",
 	      (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
@@ -727,7 +727,7 @@ static NTSTATUS MiCommitPrivatePage(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
+NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
 			     IN MWORD StartAddr,
 			     IN MWORD WindowSize,
 			     IN PAGING_RIGHTS Rights,
@@ -762,7 +762,7 @@ NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
 	    RemainingDataSize = 0;
 	}
 	RET_ERR(MiCommitPrivatePage(VSpace, CurVaddr, Rights, LargePage,
-				    (PVOID) DataStart, DataSize));
+				    (PVOID)DataStart, DataSize));
 	DataStart += DataSize;
 	CurVaddr += PageSize;
     }
@@ -772,12 +772,12 @@ NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS MiCommitSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
-				   IN MWORD OwnerAddr,
-				   IN PVIRT_ADDR_SPACE ViewerVSpace,
-				   IN MWORD ViewerAddr,
-				   IN PAGING_RIGHTS NewRights,
-				   OUT OPTIONAL PPAGING_STRUCTURE *pNewPage)
+static NTSTATUS MiMapSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
+				IN MWORD OwnerAddr,
+				IN PVIRT_ADDR_SPACE ViewerVSpace,
+				IN MWORD ViewerAddr,
+				IN PAGING_RIGHTS NewRights,
+				OUT OPTIONAL PPAGING_STRUCTURE *pNewPage)
 {
     PPAGING_STRUCTURE Page = MiQueryVirtualAddress(OwnerVSpace, OwnerAddr);
     if (Page == NULL || !MiPagingTypeIsPageOrLargePage(Page->Type)) {
@@ -786,7 +786,7 @@ static NTSTATUS MiCommitSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
 
     PPAGING_STRUCTURE ViewerPage = MiQueryVirtualAddress(ViewerVSpace, ViewerAddr);
     if (ViewerPage != NULL && MiPagingTypeIsPageOrLargePage(ViewerPage->Type)) {
-	return STATUS_ALREADY_COMMITTED;
+	return STATUS_CONFLICTING_ADDRESSES;
     }
 
     PPAGING_STRUCTURE NewPage = NULL;
@@ -809,7 +809,7 @@ static NTSTATUS MiCommitSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
  * Map an address window from the owner VSpace to the viewer VSpace,
  * possibly setting new access rights.
  */
-NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
+NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN MWORD OwnerStartAddr,
 			     IN PVIRT_ADDR_SPACE ViewerVSpace,
 			     IN MWORD ViewerStartAddr,
@@ -832,9 +832,9 @@ NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
     MWORD Offset = 0;
     while (Offset < WindowSize) {
 	PPAGING_STRUCTURE NewPage = NULL;
-	RET_ERR(MiCommitSharedPage(OwnerVSpace, OwnerStartAddr + Offset,
-				   ViewerVSpace, ViewerStartAddr + Offset,
-				   NewRights, &NewPage));
+	RET_ERR(MiMapSharedPage(OwnerVSpace, OwnerStartAddr + Offset,
+				ViewerVSpace, ViewerStartAddr + Offset,
+				NewRights, &NewPage));
 	assert(NewPage != NULL);
 	Offset += MiPagingWindowSize(NewPage->Type);
     }
@@ -853,11 +853,11 @@ NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
  * page will be mapped. If unsuccessful, a 4K page will be mapped, and *UseLargePage
  * is set to FALSE on return.
  */
-NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
-			IN MWORD PhyAddr,
-			IN MWORD VirtAddr,
-			IN PAGING_RIGHTS Rights,
-			IN OUT BOOLEAN *LargePage)
+static NTSTATUS MiMapIoPage(IN PVIRT_ADDR_SPACE VSpace,
+			    IN MWORD PhyAddr,
+			    IN MWORD VirtAddr,
+			    IN PAGING_RIGHTS Rights,
+			    IN OUT BOOLEAN *LargePage)
 {
     assert(IS_PAGE_ALIGNED(PhyAddr));
     assert(IS_PAGE_ALIGNED(VirtAddr));
@@ -893,7 +893,7 @@ retry:
     if (!MmCapTreeNodeHasChildren(&Untyped->TreeNode)) {
 	/* TODO: If Rights != MM_RIGHTS_RW, first create a page cap with full rights,
 	 * and then derive the cap with less rights. This is to make sure that future
-	 * calls to MiCommitIoPage with higher rights do not fail.
+	 * calls to MiMapIoPage with higher rights do not fail.
 	 *
 	 * Note that this is different from the case with owned memory. For owned
 	 * memory we don't do this because owners should have authority over how
@@ -918,6 +918,27 @@ retry:
     RET_ERR_EX(MiMapSuperStructure(Page, VSpace, NULL), MiFreePagingStructure(Page));
     RET_ERR_EX(MiMapPagingStructure(Page), MiFreePagingStructure(Page));
 
+    return STATUS_SUCCESS;
+}
+
+/* Map the physical memory window into the given VSpace. */
+NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
+		       IN MWORD PhyAddr,
+		       IN MWORD VirtAddr,
+		       IN MWORD WindowSize,
+		       IN PAGING_RIGHTS Rights,
+		       IN BOOLEAN LargePage)
+{
+    assert(VSpace != NULL);
+    assert(WindowSize != 0);
+    for (MWORD MappedSize = 0; MappedSize < WindowSize;
+	 MappedSize += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE)) {
+	if (WindowSize - MappedSize < LARGE_PAGE_SIZE) {
+	    LargePage = FALSE;
+	}
+	RET_ERR(MiMapIoPage(VSpace, PhyAddr + MappedSize, VirtAddr + MappedSize,
+			    Rights, &LargePage));
+    }
     return STATUS_SUCCESS;
 }
 

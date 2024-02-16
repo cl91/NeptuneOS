@@ -440,14 +440,11 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 {
     PPROCESS Process = Thread->Process;
     assert(Process);
-    assert(Process->ImageFile);
-    assert(Process->ImageFile->Fcb);
-    assert(Process->ImageFile->Fcb->FileName);
     DbgPrinter("\n==============================================================================\n"
 		"%s %s in thread %s|%p\n",
 	       Unhandled ? "Unhandled" : "Caught",
 	       KiDbgGetFaultName(Fault),
-	       Process->ImageFile->Fcb->FileName, Thread);
+	       KEDBG_THREAD_TO_FILENAME(Thread), Thread);
     KiDbgDumpFault(Fault, DbgPrinter);
     THREAD_CONTEXT Context;
     NTSTATUS Status = KeLoadThreadContext(Thread->TreeNode.Cap, &Context);
@@ -455,19 +452,12 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
 	DbgPrinter("Unable to dump thread context. Error 0x%08x\n", Status);
     }
     KiDumpThreadContext(&Context, DbgPrinter);
-    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", Process->ImageFile->Fcb->FileName,
-	       Process->ImageBaseAddress, Process->ImageBaseAddress + Process->ImageVirtualSize);
-    /* Dump the loaded modules of the process as well. */
-    PLOADER_SHARED_DATA LdrData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
-    if (LdrData != NULL) {
-	PLDRP_LOADED_MODULE ModuleData = (PLDRP_LOADED_MODULE)((MWORD)LdrData + LdrData->LoadedModules);
-	for (ULONG i = 0; i < LdrData->LoadedModuleCount; i++) {
-	    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", (PCSTR)((MWORD)LdrData + ModuleData->DllName),
-		       (PVOID)ModuleData->ViewBase,
-		       (PVOID)(ModuleData->ViewBase + ModuleData->ViewSize));
-	    ModuleData = (PLDRP_LOADED_MODULE)((MWORD)ModuleData + ModuleData->EntrySize);
-	}
-    }
+    DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", KEDBG_THREAD_TO_FILENAME(Thread),
+	       (PVOID)Process->ImageBaseAddress,
+	       (PVOID)(Process->ImageBaseAddress + Process->ImageVirtualSize));
+    DbgPrinter("MODULE ntdll.dll  MAPPED [%p, %p)\n",
+	       (PVOID)Process->InitInfo.NtdllViewBase,
+	       (PVOID)(Process->InitInfo.NtdllViewBase + Process->InitInfo.NtdllViewSize));
     DbgPrinter("==============================================================================\n");
 }
 

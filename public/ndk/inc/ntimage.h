@@ -301,7 +301,7 @@ typedef struct _IMAGE_FILE_HEADER {
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
 
 typedef struct _IMAGE_DATA_DIRECTORY {
-    ULONG VirtualAddress;
+    ULONG VirtualAddress; /* Relative virtual address (RVA) of the data directory. */
     ULONG Size;
 } IMAGE_DATA_DIRECTORY, *PIMAGE_DATA_DIRECTORY;
 
@@ -513,7 +513,7 @@ typedef struct _IMAGE_THUNK_DATA64 {
 	ULONGLONG Function;
 	ULONGLONG Ordinal;
 	ULONGLONG AddressOfData;
-    } u1;
+    };
 } IMAGE_THUNK_DATA64, *PIMAGE_THUNK_DATA64;
 #include <poppack.h>
 
@@ -523,13 +523,13 @@ typedef struct _IMAGE_THUNK_DATA32 {
 	ULONG Function;
 	ULONG Ordinal;
 	ULONG AddressOfData;
-    } u1;
+    };
 } IMAGE_THUNK_DATA32, *PIMAGE_THUNK_DATA32;
 
 #define IMAGE_ORDINAL_FLAG64 0x8000000000000000ULL
 #define IMAGE_ORDINAL_FLAG32 0x80000000
-#define IMAGE_ORDINAL64(Ordinal) (Ordinal & 0xffff)
-#define IMAGE_ORDINAL32(Ordinal) (Ordinal & 0xffff)
+#define IMAGE_ORDINAL64(Ordinal) (Ordinal & 0xFFFFULL)
+#define IMAGE_ORDINAL32(Ordinal) (Ordinal & 0xFFFFUL)
 #define IMAGE_SNAP_BY_ORDINAL64(Ordinal) ((Ordinal & IMAGE_ORDINAL_FLAG64) != 0)
 #define IMAGE_SNAP_BY_ORDINAL32(Ordinal) ((Ordinal & IMAGE_ORDINAL_FLAG32) != 0)
 

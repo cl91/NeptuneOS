@@ -1156,6 +1156,9 @@ NTAPI NTSYSAPI NTSTATUS NtSetInformationFile(IN HANDLE FileHandle,
 #define IRP_MJ_PNP_POWER                  0x1b
 #define IRP_MJ_MAXIMUM_FUNCTION           0x1b
 
+/* IRP minor code for IRP_MJ_READ */
+#define IRP_MN_MDL                        0x01
+
 #define IRP_MN_SCSI_CLASS                 0x01
 
 #define IRP_MN_START_DEVICE               0x00

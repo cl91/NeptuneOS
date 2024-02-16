@@ -442,13 +442,10 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
     }
 
     PPROCESS Process = NULL;
-    if (ProcessHandle == NtCurrentProcess()) {
-	Process = Thread->Process;
-    } else {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
-					  OBJECT_TYPE_PROCESS, (POBJECT *) &Process));
-    }
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
     assert(Process != NULL);
+    ObDereferenceObject(Process);
     /* Check the information class */
     NTSTATUS Status = STATUS_SUCCESS;
     switch (ProcessInformationClass) {
@@ -701,9 +698,6 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	Status = STATUS_NOT_IMPLEMENTED;
     }
 
-    if (ProcessHandle != NtCurrentProcess()) {
-	ObDereferenceObject(Process);
-    }
     if (ReturnLength && Length) {
 	*ReturnLength = Length;
     }

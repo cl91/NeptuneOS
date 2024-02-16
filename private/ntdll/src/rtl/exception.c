@@ -220,7 +220,6 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     CHAR szMod[128] = "";
     PEXCEPTION_RECORD ExceptionRecord = ExceptionInfo->ExceptionRecord;
     PCONTEXT ContextRecord = ExceptionInfo->ContextRecord;
-    PLOADER_SHARED_DATA LdrSharedData = (PLOADER_SHARED_DATA)LOADER_SHARED_DATA_CLIENT_ADDR;
 
     /* Print a stack trace. */
     DbgPrinter("\n==============================================================================\n");
@@ -228,7 +227,7 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	       Unhandled ? "Unhandled" : "Caught",
 	       ExceptionRecord->ExceptionCode,
 	       RtlpExceptionCodeToString(ExceptionRecord->ExceptionCode),
-	       (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrSharedData->ImageName),
+	       RtlpDbgTraceModuleName,
 	       NtCurrentTeb()->RealClientId.UniqueProcess,
 	       NtCurrentTeb()->RealClientId.UniqueThread);
 

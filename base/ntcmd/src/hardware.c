@@ -35,8 +35,7 @@ NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING KeyName =
-	RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System"
-			    L"\\CurrentControlSet\\Enum");
+	RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Enum");
 
     //
     // Initialize the object attributes
@@ -50,9 +49,9 @@ NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
     return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
 }
 
-NTSTATUS
-RtlCliGetChildOrSibling(IN PWCHAR Name,
-			OUT PWCHAR ChildName, IN ULONG Type)
+NTSTATUS RtlCliGetChildOrSibling(IN PWCHAR Name,
+				 OUT PWCHAR ChildName,
+				 IN ULONG Type)
 {
     NTSTATUS Status;
     PLUGPLAY_CONTROL_RELATED_DEVICE_DATA PlugPlayData;
@@ -73,9 +72,8 @@ RtlCliGetChildOrSibling(IN PWCHAR Name,
     // Get the root child node
     //
     Status = NtPlugPlayControl(PlugPlayControlGetRelatedDevice,
-			       (PVOID) & PlugPlayData,
-			       sizeof
-			       (PLUGPLAY_CONTROL_RELATED_DEVICE_DATA));
+			       (PVOID)&PlugPlayData,
+			       sizeof(PLUGPLAY_CONTROL_RELATED_DEVICE_DATA));
     return Status;
 }
 
@@ -142,8 +140,7 @@ NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name)
 		//
 		// Get the pointer to the name
 		//
-		Name = (PWCHAR) ((ULONG_PTR) FullInformation +
-				 FullInformation->DataOffset);
+		Name = (PWCHAR)((ULONG_PTR)FullInformation + FullInformation->DataOffset);
 
 		//
 		// Indent the name to create the appeareance of a tree
@@ -171,8 +168,9 @@ NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name)
     return Status;
 }
 
-NTSTATUS
-RtlCliListSubNodes(IN PWCHAR Parent, IN PWCHAR Sibling, IN PWCHAR Current)
+NTSTATUS RtlCliListSubNodes(IN PWCHAR Parent,
+			    IN PWCHAR Sibling,
+			    IN PWCHAR Current)
 {
     NTSTATUS Status;
     WCHAR FoundSibling[MAX_DEVICE_ID_LEN];
@@ -185,9 +183,8 @@ RtlCliListSubNodes(IN PWCHAR Parent, IN PWCHAR Sibling, IN PWCHAR Current)
 	//
 	// Get the first sibling
 	//
-	Status =
-	    RtlCliGetChildOrSibling(Current, FoundSibling,
-				    PNP_GET_SIBLING_DEVICE);
+	Status = RtlCliGetChildOrSibling(Current, FoundSibling,
+					 PNP_GET_SIBLING_DEVICE);
 	if (!NT_SUCCESS(Status))
 	    *FoundSibling = UNICODE_NULL;
 
@@ -199,9 +196,8 @@ RtlCliListSubNodes(IN PWCHAR Parent, IN PWCHAR Sibling, IN PWCHAR Current)
 	//
 	// Get its children
 	//
-	Status =
-	    RtlCliGetChildOrSibling(Current, FoundChild,
-				    PNP_GET_CHILD_DEVICE);
+	Status = RtlCliGetChildOrSibling(Current, FoundChild,
+					 PNP_GET_CHILD_DEVICE);
 	if (NT_SUCCESS(Status)) {
 	    //
 	    // Get it's children's subnodes
@@ -230,8 +226,7 @@ NTSTATUS RtlCliListHardwareTree(VOID)
     //
     // Get the root node's child
     //
-    Status =
-	RtlCliGetChildOrSibling(ROOT_NAME, Buffer, PNP_GET_CHILD_DEVICE);
+    Status = RtlCliGetChildOrSibling(ROOT_NAME, Buffer, PNP_GET_CHILD_DEVICE);
 
     //
     // Now get the entire tree

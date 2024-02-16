@@ -59,46 +59,13 @@ NTSTATUS IoInitSystemPhase0()
     RET_ERR(ObCreateDirectory(DRIVER_OBJECT_DIRECTORY));
     RET_ERR(ObCreateDirectory(DEVICE_OBJECT_DIRECTORY));
     RET_ERR(ObCreateDirectory(FILE_SYSTEM_OBJECT_DIRECTORY));
+    RET_ERR(CcInitializeCacheManager());
 
     return STATUS_SUCCESS;
-}
-
-static NTSTATUS IopLoadWdmDll()
-{
-    PIO_FILE_OBJECT WdmDll = NULL;
-    NTSTATUS Status = ObReferenceObjectByName(WDM_DLL_PATH, OBJECT_TYPE_FILE,
-					      NULL, FALSE, (POBJECT *) &WdmDll);
-    if (!NT_SUCCESS(Status)) {
-	goto fail;
-    }
-    assert(WdmDll != NULL);
-
-    PSECTION WdmDllSection = NULL;
-    Status = MmCreateSection(WdmDll, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-			     &WdmDllSection);
-    if (!NT_SUCCESS(Status)) {
-	goto fail;
-    }
-    assert(WdmDllSection != NULL);
-    assert(WdmDllSection->ImageSectionObject != NULL);
-    ObDereferenceObject(WdmDllSection);
-
-    return STATUS_SUCCESS;
-
-fail:
-    HalVgaPrint("\nFatal error: ");
-    if (WdmDll == NULL) {
-	HalVgaPrint("%s not found", WDM_DLL_PATH);
-    } else if (WdmDllSection == NULL) {
-	HalVgaPrint("create section failed for wdm.dll with error 0x%x", Status);
-    }
-    HalVgaPrint("\n\n");
-    return Status;
 }
 
 NTSTATUS IoInitSystemPhase1()
 {
-    RET_ERR(IopLoadWdmDll());
     RET_ERR(IopInitFileSystem());
 
     return STATUS_SUCCESS;

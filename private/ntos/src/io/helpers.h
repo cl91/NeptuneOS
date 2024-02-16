@@ -20,9 +20,7 @@
     }									\
     IF_ERR_GOTO(out, Status,						\
 		ObReferenceObjectByHandle(				\
-		    Thread->Process,					\
-		    FileHandle,						\
-		    OBJECT_TYPE_FILE,					\
+		    Thread, FileHandle, OBJECT_TYPE_FILE,		\
 		    (POBJECT *)&Locals.FileObject));			\
     assert(Locals.FileObject != NULL);					\
     assert(Locals.FileObject->DeviceObject != NULL);			\
@@ -31,9 +29,7 @@
     if (EventHandle != NULL) {						\
 	IF_ERR_GOTO(out, Status,					\
 		    ObReferenceObjectByHandle(				\
-			Thread->Process,				\
-			EventHandle,					\
-			OBJECT_TYPE_EVENT,				\
+			Thread, EventHandle, OBJECT_TYPE_EVENT,		\
 			(POBJECT *)&Locals.EventObject));		\
 	assert(Locals.EventObject != NULL);				\
     }									\

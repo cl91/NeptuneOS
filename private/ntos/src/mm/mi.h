@@ -197,24 +197,12 @@ PPAGING_STRUCTURE MiQueryVirtualAddress(IN PVIRT_ADDR_SPACE VSpace,
 MWORD MiGetPhysicalAddress(IN PPAGING_STRUCTURE Page);
 PPAGING_STRUCTURE MiGetFirstPage(IN PPAGING_STRUCTURE Page);
 PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page);
-NTSTATUS MiCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
-			     IN MWORD StartAddr,
-			     IN MWORD WindowSize,
-			     IN PAGING_RIGHTS Rights,
-			     IN BOOLEAN UseLargePages,
-			     IN OPTIONAL PVOID DataBuffer,
-			     IN OPTIONAL MWORD BufferSize);
-NTSTATUS MiMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
-			     IN MWORD OwnerStartAddr,
-			     IN PVIRT_ADDR_SPACE ViewerVSpace,
-			     IN MWORD ViewerStartAddr,
-			     IN MWORD WindowSize,
-			     IN PAGING_RIGHTS NewRights);
-NTSTATUS MiCommitIoPage(IN PVIRT_ADDR_SPACE VSpace,
-			IN MWORD PhyAddr,
-			IN MWORD VirtAddr,
-			IN PAGING_RIGHTS Rights,
-			IN OUT BOOLEAN *LargePage);
+NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
+		       IN MWORD PhyAddr,
+		       IN MWORD VirtAddr,
+		       IN MWORD WindowSize,
+		       IN PAGING_RIGHTS Rights,
+		       IN BOOLEAN LargePage);
 VOID MiDeletePage(IN PPAGING_STRUCTURE Page);
 
 static inline BOOLEAN MiPagingTypeIsRoot(IN PAGING_STRUCTURE_TYPE Type)
@@ -270,4 +258,3 @@ static inline MWORD MiPagingWindowSize(IN PAGING_STRUCTURE_TYPE Type)
 /* vaddr.c */
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
 			IN PPAGING_STRUCTURE RootPagingStructure);
-NTSTATUS MiCommitImageVad(IN PMMVAD Vad);

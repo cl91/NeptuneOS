@@ -272,6 +272,27 @@ typedef struct _ASYNC_STATE {
 	.StackTop = 0					\
     }
 
+#define KEDBG_PROCESS_TO_FILENAME(Process)				\
+    ({									\
+	PSECTION Section = Process->ImageSection;			\
+	assert(Section);						\
+	assert(Section->Flags.Image);					\
+	PIMAGE_SECTION_OBJECT Image = Section->ImageSectionObject;	\
+	assert(Image);							\
+	PIO_FILE_CONTROL_BLOCK Fcb = Image->Fcb;			\
+	assert(Fcb);							\
+	PCSTR FileName = Fcb->FileName;					\
+	assert(FileName);						\
+	FileName;							\
+    })
+
+#define KEDBG_THREAD_TO_FILENAME(Thread)	\
+    ({						\
+	PPROCESS Process = Thread->Process;	\
+	assert(Process);			\
+	KEDBG_PROCESS_TO_FILENAME(Process);	\
+    })
+
 /**
  * Dump the async state of the function
  */
@@ -280,9 +301,8 @@ typedef struct _ASYNC_STATE {
 	PTHREAD Thread = CONTAINING_RECORD(state.AsyncStack,		\
 					   THREAD, AsyncStack);		\
 	DbgTrace("Async state for thread %s|%p: Stack top %d. "		\
-		 "Async stack:",					\
-		 Thread->Process->ImageFile->Fcb->FileName, Thread,	\
-		 (state).StackTop);					\
+		 "Async stack:", KEDBG_THREAD_TO_FILENAME(Thread),	\
+		 Thread, (state).StackTop);				\
     }									\
     for (ULONG StackPtr = 0; StackPtr < (state).StackTop; ) {		\
 	PASYNC_STACK_FRAME Frame = (PASYNC_STACK_FRAME)(		\

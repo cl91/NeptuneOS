@@ -42,8 +42,8 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
  * Delete all paging structures in the VSpace (including the root paging
  * structure) but do NOT free the pool memory of Self.
  *
- * NOTE: We always use the term 'Destroy' to refer to releasing resources
- * of an object WITHOUT freeing its pool memory. The term 'Delete' is used
+ * NOTE: We always use the term 'destroy' to refer to releasing resources
+ * of an object WITHOUT freeing its pool memory. The term 'delete' is used
  * for the case where we release its resources AND free its pool memory.
  */
 NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
@@ -134,33 +134,67 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
  * If the MEM_RESERVE_LARGE_PAGES flag is specified and WindowSize is at least
  * one large page size, then we will attempt to locate an address window that
  * starts at the large page boundary (failing so, a regular search will be conducted).
+ *
+ * If LowZeroBits is larger than PAGE_LOG2SIZE, the address window will be aligned
+ * such that the lowest LowZeroBits bits of the starting address are zero.
  */
 NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,
 				  IN OPTIONAL MWORD EndAddr,
 				  IN MWORD WindowSize,
+				  IN ULONG LowZeroBits,
+				  IN ULONG HighZeroBits,
 				  IN MWORD Flags,
 				  OUT OPTIONAL PMMVAD *pVad)
 {
     assert(VSpace != NULL);
     assert(WindowSize != 0);
+    /* At least one flag must be set. */
+    assert(Flags);
+    /* Thw following "reserve type" flags are mutually exclusive. */
+    MWORD TypeFlags = MEM_RESERVE_IMAGE_MAP | MEM_RESERVE_FILE_MAP
+	| MEM_RESERVE_CACHE_MAP | MEM_RESERVE_PHYSICAL_MAPPING
+	| MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_MIRRORED_MEMORY;
+    assert(IsPow2OrZero(Flags & TypeFlags));
+    /* Unless NO_ACCESS or NO_INSERT is set, at least one of the "reserve type"
+     * flags above must be set. */
+    assert((Flags & (MEM_RESERVE_NO_ACCESS | MEM_RESERVE_NO_INSERT))
+	   || (Flags & TypeFlags));
+    /* NO_ACCESS and READ_ONLY are mutually exclusive. */
+    assert(IsPow2OrZero(Flags & (MEM_RESERVE_NO_ACCESS | MEM_RESERVE_READ_ONLY)));
+    /* COMMIT_ON_DEMAND can only be set for OWNED_MEMORY */
+    assert(!(Flags & MEM_COMMIT_ON_DEMAND) || (Flags & MEM_RESERVE_OWNED_MEMORY));
+
+    MWORD VirtAddr;
+    PMMVAD Parent;
     /* These will be used in the large page case when we re-attempt a regular search */
     MWORD OrigStartAddr = StartAddr;
     MWORD OrigWindowSize = WindowSize;
-
-    StartAddr = PAGE_ALIGN(StartAddr);
-    WindowSize = PAGE_ALIGN_UP(WindowSize);
     BOOLEAN TryLargePages = (Flags & MEM_RESERVE_LARGE_PAGES) &&
 	(WindowSize >= LARGE_PAGE_SIZE);
-    if (TryLargePages) {
-	StartAddr = LARGE_PAGE_ALIGN_UP(StartAddr);
-	WindowSize = LARGE_PAGE_ALIGN_UP(WindowSize);
-	/* If after alignment, the address window to search becomes empty, then
-	 * we won't try large pages. */
-	if (EndAddr && (StartAddr + WindowSize > EndAddr)) {
+
+    ULONG PageLog2Size;
+    MWORD PageAlignment;
+    MWORD Alignment;
+retry:
+    /* Use LowZeroBits and the relevant page size (whichever is larger) to determine
+     * address alignment requirement. */
+    PageLog2Size = TryLargePages ? LARGE_PAGE_LOG2SIZE : PAGE_LOG2SIZE;
+    PageAlignment = 1ULL << PageLog2Size;
+    Alignment = 1ULL << (LowZeroBits > PageLog2Size ? LowZeroBits : PageLog2Size);
+    StartAddr = ALIGN_UP_BY(StartAddr, Alignment);
+    WindowSize = ALIGN_UP_BY(WindowSize, PageAlignment);
+
+    /* If after alignment, the address window to search becomes empty, then
+     * we won't try large pages. */
+    if (EndAddr && (StartAddr + WindowSize > EndAddr)) {
+	if (TryLargePages) {
 	    TryLargePages = FALSE;
-	    StartAddr = PAGE_ALIGN(OrigStartAddr);
-	    WindowSize = PAGE_ALIGN_UP(OrigWindowSize);
+	    StartAddr = OrigStartAddr;
+	    WindowSize = OrigWindowSize;
+	    goto retry;
+	} else {
+	    return STATUS_CONFLICTING_ADDRESSES;
 	}
     }
 
@@ -168,68 +202,39 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     if (Flags & MEM_RESERVE_TOP_DOWN) {
 	assert(EndAddr != 0);
 	assert(EndAddr > WindowSize);
-    } else {
-	if (EndAddr == 0) {
-	    EndAddr = StartAddr + WindowSize;
+    } else if (!EndAddr) {
+	EndAddr = StartAddr + WindowSize;
+    }
+
+    if (HighZeroBits > MM_MAXIMUM_ZERO_HIGH_BITS) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    if (HighZeroBits) {
+	MWORD MaxAddr = 1 << (MWORD_BITS - HighZeroBits);
+	if (EndAddr > MaxAddr) {
+	    EndAddr = MaxAddr;
 	}
     }
 
-    MmDbg("Finding an address window of size 0x%zx within [%p, %p) for vspacecap 0x%zx\n",
-	  WindowSize, (PVOID) StartAddr, (PVOID) EndAddr, VSpace ? VSpace->VSpaceCap : 0);
-    assert(StartAddr < EndAddr);
     assert(StartAddr + WindowSize > StartAddr);
-    assert(StartAddr + WindowSize <= EndAddr);
-    assert((Flags & MEM_RESERVE_NO_ACCESS)
-	   || (Flags & MEM_RESERVE_NO_INSERT)
-	   || (Flags & MEM_RESERVE_OWNED_MEMORY)
-	   || (Flags & MEM_RESERVE_MIRRORED_MEMORY)
-	   || (Flags & MEM_RESERVE_PHYSICAL_MAPPING));
-    /* There might be a shorter way to write this, but this is the clearest */
-    if (Flags & MEM_RESERVE_NO_ACCESS) {
-	assert(!(Flags & MEM_RESERVE_NO_INSERT));
-	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
-    }
-    if (Flags & MEM_RESERVE_OWNED_MEMORY) {
-	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
-	assert(!(Flags & MEM_RESERVE_NO_INSERT));
-	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
-    }
-    if (Flags & MEM_RESERVE_MIRRORED_MEMORY) {
-	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
-	assert(!(Flags & MEM_RESERVE_NO_INSERT));
-	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
-    }
-    if (Flags & MEM_RESERVE_PHYSICAL_MAPPING) {
-	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
-	assert(!(Flags & MEM_RESERVE_NO_INSERT));
-	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_FILE_MAP));
-	assert(!(Flags & MEM_RESERVE_IMAGE_MAP));
-    }
-    if (Flags & MEM_RESERVE_NO_INSERT) {
-	assert(!(Flags & MEM_RESERVE_NO_ACCESS));
-	assert(!(Flags & MEM_RESERVE_OWNED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_MIRRORED_MEMORY));
-	assert(!(Flags & MEM_RESERVE_PHYSICAL_MAPPING));
-	assert(!(Flags & MEM_RESERVE_FILE_MAP));
-	assert(!(Flags & MEM_RESERVE_IMAGE_MAP));
+    if (StartAddr + WindowSize > EndAddr) {
+	return STATUS_CONFLICTING_ADDRESSES;
     }
 
-    MWORD VirtAddr;
-    PMMVAD Parent;
-retry:
+    MmDbg("Trying to find an addr window of size 0x%zx "
+	  "(LowZeroBits %d HighZeroBits %d) within [%p, %p) "
+	  "for vspacecap 0x%zx\n", WindowSize,
+	  LowZeroBits, HighZeroBits, (PVOID)StartAddr,
+	  (PVOID)EndAddr, VSpace ? VSpace->VSpaceCap : 0);
+
     /* Locate the first unused address window */
     VirtAddr = (Flags & MEM_RESERVE_TOP_DOWN) ? EndAddr : StartAddr;
     Parent = AVL_NODE_TO_VAD(AvlTreeFindNodeOrParent(&VSpace->VadTree,
-								 VirtAddr));
+						     VirtAddr));
     /* Address space is empty. */
     if (Parent == NULL) {
-	goto Insert;
+	goto insert;
     }
 
     if (Flags & MEM_RESERVE_TOP_DOWN) {
@@ -239,11 +244,9 @@ retry:
 	 * insert there. */
 	if (Parent->AvlNode.Key < EndAddr) {
 	    MWORD CurrentAddr = EndAddr - WindowSize;
-	    if (TryLargePages) {
-		CurrentAddr = LARGE_PAGE_ALIGN(CurrentAddr);
-	    }
+	    CurrentAddr = ALIGN_DOWN_BY(CurrentAddr, Alignment);
 	    if (Parent->AvlNode.Key + Parent->WindowSize <= CurrentAddr) {
-		goto Insert;
+		goto insert;
 	    } else {
 		/* Else, retreat to the address immediately before Parent,
 		 * unless EndAddr is already smaller than start of Parent */
@@ -262,17 +265,13 @@ retry:
 		/* Everything from StartAddr to VirtAddr is unused.
 		 * Simply insert before Parent. */
 		VirtAddr -= WindowSize;
-		if (TryLargePages) {
-		    VirtAddr = LARGE_PAGE_ALIGN(VirtAddr);
-		}
-		goto Insert;
+		VirtAddr = ALIGN_DOWN_BY(VirtAddr, Alignment);
+		goto insert;
 	    }
 	    /* VAD windows should never overlap */
 	    assert((Prev->AvlNode.Key + Prev->WindowSize) <= Parent->AvlNode.Key);
 	    MWORD CurrentAddr = VirtAddr - WindowSize;
-	    if (TryLargePages) {
-		CurrentAddr = LARGE_PAGE_ALIGN(CurrentAddr);
-	    }
+	    CurrentAddr = ALIGN_DOWN_BY(CurrentAddr, Alignment);
 	    if (Prev->AvlNode.Key + Prev->WindowSize <= CurrentAddr) {
 		/* Found an unused address window. Now determine whether we insert
 		 * as the right child of Prev or as left child of Parent */
@@ -281,7 +280,7 @@ retry:
 		    Parent = Prev;
 		}
 		VirtAddr = CurrentAddr;
-		goto Insert;
+		goto insert;
 	    }
 	    /* Otherwise keep going */
 	    Parent = Prev;
@@ -293,7 +292,7 @@ retry:
 	 * space between StartAddr and Parent, and insert there if there is. */
 	if (StartAddr < Parent->AvlNode.Key + Parent->WindowSize) {
 	    if (StartAddr + WindowSize <= Parent->AvlNode.Key) {
-		goto Insert;
+		goto insert;
 	    } else {
 		/* Else, advance to the address immediately after Parent */
 		VirtAddr = Parent->AvlNode.Key + Parent->WindowSize;
@@ -309,7 +308,7 @@ retry:
 	    if (Next == NULL) {
 		/* Everything from VirtAddr to EndAddr is unused.
 		 * Simply insert after Parent. */
-		goto Insert;
+		goto insert;
 	    }
 	    /* VAD windows should never overlap */
 	    assert((Parent->AvlNode.Key + Parent->WindowSize) <= Next->AvlNode.Key);
@@ -320,28 +319,25 @@ retry:
 		    Parent = Next;
 		    assert(Next->AvlNode.LeftChild == NULL);
 		}
-		goto Insert;
+		goto insert;
 	    }
 	    Parent = Next;
-	    VirtAddr = Next->AvlNode.Key + Next->WindowSize;
-	    if (TryLargePages) {
-		VirtAddr = LARGE_PAGE_ALIGN_UP(VirtAddr);
-	    }
+	    VirtAddr = ALIGN_UP_BY(Next->AvlNode.Key + Next->WindowSize, Alignment);
 	}
     }
 
     /* Unable to find an unused address window. Now try without large pages */
     if (TryLargePages) {
 	TryLargePages = FALSE;
-	StartAddr = PAGE_ALIGN(OrigStartAddr);
-	WindowSize = PAGE_ALIGN_UP(OrigWindowSize);
+	StartAddr = OrigStartAddr;
+	WindowSize = OrigWindowSize;
 	goto retry;
     }
     /* Now we really don't have any free address window. Return error. */
     MmDbgDumpVSpace(VSpace);
     return STATUS_CONFLICTING_ADDRESSES;
 
-Insert:
+insert:
     MiAllocatePool(Vad, MMVAD);
     MMVAD_FLAGS VadFlags;
     VadFlags.Word = 0;
@@ -349,8 +345,9 @@ Insert:
     VadFlags.ReadOnly = !!(Flags & MEM_RESERVE_READ_ONLY);
     VadFlags.ImageMap = !!(Flags & MEM_RESERVE_IMAGE_MAP);
     VadFlags.FileMap = !!(Flags & MEM_RESERVE_FILE_MAP);
+    VadFlags.CacheMap = !!(Flags & MEM_RESERVE_CACHE_MAP);
     VadFlags.PhysicalMapping = !!(Flags & MEM_RESERVE_PHYSICAL_MAPPING);
-    VadFlags.LargePages = !!(Flags & MEM_RESERVE_LARGE_PAGES);
+    VadFlags.LargePages = !!(Flags & MEM_RESERVE_LARGE_PAGES) && TryLargePages;
     VadFlags.OwnedMemory = !!(Flags & MEM_RESERVE_OWNED_MEMORY);
     VadFlags.MirroredMemory = !!(Flags & MEM_RESERVE_MIRRORED_MEMORY);
     VadFlags.CommitOnDemand = !!(Flags & MEM_COMMIT_ON_DEMAND);
@@ -370,8 +367,8 @@ Insert:
     AvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
 
     MmDbg("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
-	  (PVOID) Vad->AvlNode.Key,
-	  (PVOID) (Vad->AvlNode.Key + Vad->WindowSize),
+	  (PVOID)Vad->AvlNode.Key,
+	  (PVOID)(Vad->AvlNode.Key + Vad->WindowSize),
 	  VSpace ? VSpace->VSpaceCap : 0);
     return STATUS_SUCCESS;
 }
@@ -408,60 +405,6 @@ VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
     MmRegisterMirroredMemory(Viewer, MasterVad->VSpace, MasterVad->AvlNode.Key);
 }
 
-NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
-{
-    assert(Vad);
-    assert(Vad->VSpace);
-    assert(Vad->Flags.ImageMap);
-    assert(Vad->Flags.OwnedMemory || Vad->Flags.MirroredMemory);
-    assert(IS_PAGE_ALIGNED(Vad->AvlNode.Key));
-    assert(IS_PAGE_ALIGNED(Vad->WindowSize));
-    assert(Vad->AvlNode.Key + Vad->WindowSize > Vad->AvlNode.Key);
-    assert(Vad->ImageSectionView.SubSection);
-    assert(Vad->ImageSectionView.SubSection->ImageSection);
-    assert(Vad->ImageSectionView.SubSection->ImageSection->FileObject);
-    assert(Vad->ImageSectionView.SubSection->ImageSection->FileObject->Fcb);
-
-    PAGING_RIGHTS Rights = Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
-    PVOID FileBuffer = Vad->ImageSectionView.SubSection->ImageSection->FileObject->Fcb->BufferPtr;
-    PVOID DataBuffer = FileBuffer + Vad->ImageSectionView.SubSection->FileOffset;
-    MWORD DataSize = Vad->ImageSectionView.SubSection->RawDataSize;
-    /* TODO: Use shared pages for PE headers and read-only sections. */
-    if (Vad->Flags.OwnedMemory) {
-	RET_ERR(MiCommitOwnedMemory(Vad->VSpace, Vad->AvlNode.Key, Vad->WindowSize, Rights,
-				    Vad->Flags.LargePages, DataSize ? DataBuffer : NULL,
-				    DataSize));
-    } else {
-	assert(Vad->MirroredMemory.Master != NULL);
-	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
-	RET_ERR(MiMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
-				    Vad->VSpace, Vad->AvlNode.Key, Vad->WindowSize, Rights));
-    }
-
-    return STATUS_SUCCESS;
-}
-
-/* Map the physical memory window into the given VSpace. */
-static NTSTATUS MiCommitIoMemory(IN PVIRT_ADDR_SPACE VSpace,
-				 IN MWORD PhyAddr,
-				 IN MWORD VirtAddr,
-				 IN MWORD WindowSize,
-				 IN PAGING_RIGHTS Rights,
-				 IN BOOLEAN LargePage)
-{
-    assert(VSpace != NULL);
-    assert(WindowSize != 0);
-    for (MWORD Committed = 0; Committed < WindowSize;
-	 Committed += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE)) {
-	if (WindowSize - Committed < LARGE_PAGE_SIZE) {
-	    LargePage = FALSE;
-	}
-	RET_ERR(MiCommitIoPage(VSpace, PhyAddr + Committed, VirtAddr + Committed,
-			       Rights, &LargePage));
-    }
-    return STATUS_SUCCESS;
-}
-
 /*
  * Commit the virtual memory window [StartAddr, StartAddr + WindowSize). The
  * address window must have been already reserved and have not been committed
@@ -486,12 +429,50 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
+
     if (Vad->Flags.NoAccess) {
 	MmDbg("Error: Committing a NoAccess Vad.\n");
 	MmDbgDumpVSpace(VSpace);
 	return STATUS_INVALID_PARAMETER;
     }
 
+    /* VADs marked as cache map are managed by the cache manager and you cannot
+     * call MmCommitVirtualMemory on it. */
+    if (Vad->Flags.CacheMap) {
+	MmDbg("Error: Cache map is managed by the cache manager.\n");
+	MmDbgDumpVSpace(VSpace);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* VADs marked as file map are committed lazily (ie. when a thread accesses a page
+     * and generates a VM fault) and you cannot call MmCommitVirtualMemory on it. */
+    if (Vad->Flags.FileMap) {
+	MmDbg("Error: File map is committed lazily.\n");
+	MmDbgDumpVSpace(VSpace);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* VADs marked as image map are mapped using MmMapViewOfSection and you cannot
+     * call MmCommitVirtualMemory on it. */
+    if (Vad->Flags.ImageMap) {
+	MmDbg("Error: Call MmMapViewOfSection to commit image VAD.\n");
+	MmDbgDumpVSpace(VSpace);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* VADs marked as physical mapping are mapped using MmMapViewOfSection and you cannot
+     * call MmCommitVirtualMemory on it. */
+    if (Vad->Flags.PhysicalMapping) {
+	MmDbg("Error: Call MmMapViewOfSection to commit physical mapping.\n");
+	MmDbgDumpVSpace(VSpace);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* TODO: We need to determine if we allow committing multiple VADs in one call. */
     if ((StartAddr < Vad->AvlNode.Key) ||
 	(StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize)) {
 	MmDbg("Committing addresses spanning multiple VADs is not implemented yet "
@@ -503,28 +484,17 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 
     PAGING_RIGHTS Rights = (Vad->Flags.ReadOnly) ? MM_RIGHTS_RO : MM_RIGHTS_RW;
 
-    if (Vad->Flags.ImageMap) {
-	/* This will set CommitmentSize to the size of the VAD */
-	RET_ERR(MiCommitImageVad(Vad));
-    } else if (Vad->Flags.FileMap) {
-	UNIMPLEMENTED;
-    } else if (Vad->Flags.PhysicalMapping) {
-	if (Vad->PhysicalSectionView.RootUntyped) {
-	    assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
-	}
-	MWORD PhyAddr = StartAddr - Vad->AvlNode.Key + Vad->PhysicalSectionView.PhysicalBase;
-	RET_ERR(MiCommitIoMemory(Vad->VSpace, PhyAddr, StartAddr, WindowSize,
-				 Rights, Vad->Flags.LargePages));
-    } else if (Vad->Flags.MirroredMemory) {
+    if (Vad->Flags.MirroredMemory) {
 	assert(Vad->MirroredMemory.Master != NULL);
 	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
-	RET_ERR(MiMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
+	RET_ERR(MmMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
 				    Vad->VSpace, StartAddr, WindowSize, Rights));
     } else if (Vad->Flags.OwnedMemory) {
-	RET_ERR(MiCommitOwnedMemory(Vad->VSpace, StartAddr, WindowSize, Rights,
+	RET_ERR(MmCommitOwnedMemory(Vad->VSpace, StartAddr, WindowSize, Rights,
 				    Vad->Flags.LargePages, NULL, 0));
     } else {
 	/* Should never reach this */
+	MmDbgDumpVSpace(VSpace);
 	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
@@ -807,6 +777,7 @@ NTSTATUS MmMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
 				     TargetVaddrStart,
 				     TargetVaddrEnd,
 				     SrcWindowSize,
+				     0, 0,
 				     MEM_RESERVE_MIRRORED_MEMORY | TargetReserveFlag,
 				     &TargetVad));
     assert(TargetVad != NULL);
@@ -918,7 +889,7 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
     PMMVAD Vad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, Length, Flags, &Vad));
+				     USER_IMAGE_REGION_END, Length, 0, 0, Flags, &Vad));
     assert(Vad != NULL);
     PUNTYPED Untyped = NULL;
     ULONG Log2Size = 0;
@@ -930,7 +901,8 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     assert(Vad->Flags.PhysicalMapping);
     Vad->PhysicalSectionView.PhysicalBase = Untyped->AvlNode.Key;
     Vad->PhysicalSectionView.RootUntyped = Untyped;
-    RET_ERR_EX(MmCommitVirtualMemoryEx(VSpace, Vad->AvlNode.Key, Length),
+    RET_ERR_EX(MiMapIoMemory(VSpace, Untyped->AvlNode.Key, Vad->AvlNode.Key,
+			     Length, MM_RIGHTS_RW, FALSE),
 	       MmDeleteVad(Vad));
     MiInsertFreeUntyped(&MiPhyMemDescriptor, Untyped);
     *VirtAddr = Vad->AvlNode.Key;
@@ -942,40 +914,38 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN OUT OPTIONAL PVOID *BaseAddress,
-                                 IN ULONG_PTR ZeroBits,
+                                 IN ULONG_PTR HighZeroBits,
                                  IN OUT SIZE_T *RegionSize,
                                  IN ULONG AllocationType,
                                  IN ULONG Protect)
 {
     PPROCESS Process = NULL;
-    if (ProcessHandle != NtCurrentProcess()) {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
-					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
-    } else {
-	Process = Thread->Process;
-    }
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
     assert(Process != NULL);
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
-    MmDbg("Process %s VSpace cap 0x%zx base address %p zerobits 0x%zx "
+    MmDbg("Process %s VSpace cap 0x%zx base address %p highzerobits 0x%zx "
 	  "region size 0x%zx allocation type 0x%x protect 0x%x\n",
-	  Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
-	  VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)ZeroBits,
+	  KEDBG_PROCESS_TO_FILENAME(Process),
+	  VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)HighZeroBits,
 	  RegionSize ? (MWORD)*RegionSize : 0, AllocationType, Protect);
 
-    /* On 64-bit systems the ZeroBits parameter is interpreted as a bit mask if it is
-     * greater than 32. Convert the bit mask to the number of bits in that case. */
+    /* On 64-bit systems the HighZeroBits parameter is interpreted as a bit mask if
+     * it is greater than or equal to 32. Convert the bit mask to the number of bits
+     * in this case. */
 #ifdef _WIN64
-    if (ZeroBits >= 32) {
-        ZeroBits = 64 - RtlFindMostSignificantBit(ZeroBits) - 1;
-    } else if (ZeroBits) {
-	/* For ZeroBits < 32, on x64 this is interpreted as the number of highest
-	 * zero bits in the lower 32 bit part of the full 64 bit virtual address */
-        ZeroBits += 32;
+    if (HighZeroBits >= 32) {
+        HighZeroBits = 64 - RtlFindMostSignificantBit(HighZeroBits) - 1;
+    } else if (HighZeroBits) {
+	/* The high 32-bits of the allocated address are also required to be zero,
+	 * in order to retain compatibility with 32-bit systems. Therefore we need
+	 * to increase HighZeroBits by 32. */
+	HighZeroBits += 32;
     }
 #endif
 
     NTSTATUS Status = STATUS_INTERNAL_ERROR;
-    if (ZeroBits > MM_MAXIMUM_ZERO_BITS) {
+    if (HighZeroBits > MM_MAXIMUM_ZERO_HIGH_BITS) {
         Status = STATUS_INVALID_PARAMETER_3;
 	goto out;
     }
@@ -1050,8 +1020,8 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 	    Flags |= MEM_COMMIT_ON_DEMAND;
 	}
 	IF_ERR_GOTO(out, Status,
-		    MmReserveVirtualMemoryEx(VSpace, StartAddr, EndAddr,
-					     WindowSize, Flags, &Vad));
+		    MmReserveVirtualMemoryEx(VSpace, StartAddr, EndAddr, WindowSize,
+					     0, HighZeroBits, Flags, &Vad));
 	StartAddr = Vad->AvlNode.Key;
 	WindowSize = Vad->WindowSize;
 	EndAddr = StartAddr + WindowSize;
@@ -1073,10 +1043,8 @@ out:
     if (!NT_SUCCESS(Status) && (Vad != NULL) && (AllocationType & MEM_RESERVE)) {
 	MmDeleteVad(Vad);
     }
-    if (ProcessHandle != NtCurrentProcess()) {
-	assert(Process != NULL);
-	ObDereferenceObject(Process);
-    }
+    assert(Process != NULL);
+    ObDereferenceObject(Process);
     return Status;
 }
 
@@ -1107,16 +1075,12 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
 
     /* Get the process object refereed by ProcessHandle */
     PPROCESS Process = NULL;
-    if (ProcessHandle != NtCurrentProcess()) {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
-					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
-    } else {
-	Process = Thread->Process;
-    }
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
     assert(Process != NULL);
     PVIRT_ADDR_SPACE VSpace = &Process->VSpace;
     MmDbg("Process %s VSpace cap 0x%zx base address %p region size 0x%zx free type 0x%x\n",
-	  Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
+	  KEDBG_PROCESS_TO_FILENAME(Process),
 	  VSpace->VSpaceCap, *BaseAddress, (MWORD)*RegionSize, FreeType);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
@@ -1158,10 +1122,8 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
     Status = STATUS_SUCCESS;
 
 out:
-    if (ProcessHandle != NtCurrentProcess()) {
-	assert(Process != NULL);
-	ObDereferenceObject(Process);
-    }
+    assert(Process != NULL);
+    ObDereferenceObject(Process);
     if (!NT_SUCCESS(Status)) {
 	MmDbg("NtFreeVirtualMemory failed with status 0x%x\n", Status);
 	MmDbgDumpVSpace(VSpace);
@@ -1174,23 +1136,19 @@ NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress,
                               IN PVOID Buffer,
-                              IN ULONG NumberOfBytesToWrite,
-                              OUT OPTIONAL ULONG *NumberOfBytesWritten)
+                              IN SIZE_T NumberOfBytesToWrite,
+                              OUT OPTIONAL SIZE_T *NumberOfBytesWritten)
 {
     assert(Buffer != NULL);
     assert(NumberOfBytesToWrite != 0);
     PPROCESS Process = NULL;
-    if (ProcessHandle != NtCurrentProcess()) {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
-					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
-    } else {
-	Process = Thread->Process;
-    }
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
     assert(Process != NULL);
     PVIRT_ADDR_SPACE TargetVSpace = &Process->VSpace;
-    MmDbg("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%x\n",
-	  Process->ImageFile ? Process->ImageFile->Fcb->FileName : "",
-	  TargetVSpace->VSpaceCap, BaseAddress, Buffer, NumberOfBytesToWrite);
+    MmDbg("Target process %s (VSpace cap 0x%zx) base address %p buffer %p length 0x%zx\n",
+	  KEDBG_PROCESS_TO_FILENAME(Process),
+	  TargetVSpace->VSpaceCap, BaseAddress, Buffer, (MWORD)NumberOfBytesToWrite);
     PVOID MappedTargetBuffer = NULL;
     NTSTATUS Status;
     IF_ERR_GOTO(out, Status,
@@ -1206,10 +1164,8 @@ out:
     if (MappedTargetBuffer != NULL) {
 	MmUnmapUserBuffer(MappedTargetBuffer);
     }
-    if (ProcessHandle != NtCurrentProcess()) {
-	assert(Process != NULL);
-	ObDereferenceObject(Process);
-    }
+    assert(Process != NULL);
+    ObDereferenceObject(Process);
     return Status;
 }
 
@@ -1219,7 +1175,7 @@ NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
                              IN HANDLE ProcessHandle,
                              IN PVOID BaseAddress,
                              OUT PVOID Buffer,
-                             IN ULONG NumberOfBytesToRead,
+                             IN SIZE_T NumberOfBytesToRead,
                              OUT SIZE_T *NumberOfBytesRead)
 {
     UNIMPLEMENTED;

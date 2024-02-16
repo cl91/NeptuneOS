@@ -221,7 +221,7 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 static inline VOID KiResumeThread(IN PTHREAD Thread)
 {
     DbgTrace("Resuming thread %s|%p\n",
-	     Thread->Process->ImageFile->Fcb->FileName, Thread);
+	     KEDBG_THREAD_TO_FILENAME(Thread), Thread);
     /* Make sure we aren't already in the ready list. */
     LoopOverList(Entry, &KiReadyThreadList, THREAD, ReadyListLink) {
 	if (Entry == Thread) {

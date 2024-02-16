@@ -331,7 +331,7 @@ NTSTATUS HalpDmaStartTransfer(IN ASYNC_STATE AsyncState,
     }
 
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, AdapterHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
 				      OBJECT_TYPE_SYSTEM_ADAPTER,
 				      (POBJECT *)&AdapterObject));
     assert(AdapterObject != NULL);
@@ -404,7 +404,7 @@ NTSTATUS HalpDmaDisableChannel(IN ASYNC_STATE AsyncState,
 			       IN HANDLE AdapterHandle)
 {
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, AdapterHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
 				      OBJECT_TYPE_SYSTEM_ADAPTER,
 				      (POBJECT *)&AdapterObject));
     assert(AdapterObject != NULL);
@@ -429,7 +429,7 @@ NTSTATUS HalpDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
 				    OUT ULONG *pCount)
 {
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, AdapterHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
 				      OBJECT_TYPE_SYSTEM_ADAPTER,
 				      (POBJECT *)&AdapterObject));
     assert(AdapterObject != NULL);

@@ -18,6 +18,7 @@ static PTHREAD EiSessionManagerThread;
 static NTSTATUS EiStartSessionManager()
 {
     PIO_FILE_OBJECT SmssExe = NULL;
+    PSECTION SmssSection = NULL;
     NTSTATUS Status = ObReferenceObjectByName(SMSS_EXE_PATH, OBJECT_TYPE_FILE,
 					      NULL, FALSE, (POBJECT *)&SmssExe);
     if (!NT_SUCCESS(Status)) {
@@ -25,7 +26,13 @@ static NTSTATUS EiStartSessionManager()
     }
     assert(SmssExe != NULL);
 
-    Status = PsCreateProcess(SmssExe, NULL, NULL, &EiSessionManagerProcess);
+    Status = MmCreateSection(SmssExe, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+			     &SmssSection);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
+
+    Status = PsCreateProcess(SmssSection, NULL, &EiSessionManagerProcess);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }
@@ -40,10 +47,13 @@ static NTSTATUS EiStartSessionManager()
 
     return STATUS_SUCCESS;
 
- fail:
+fail:
     HalVgaPrint("\nFailed to start Session Manager: ");
-    if (SmssExe == NULL) {
+    if (!SmssExe) {
 	HalVgaPrint("%s not found", SMSS_EXE_PATH);
+    } else if (!SmssSection) {
+	HalVgaPrint("failed to create image section for %s, error 0x%x",
+		    SMSS_EXE_PATH, Status);
     } else if (EiSessionManagerProcess == NULL) {
 	HalVgaPrint("process creation returned error 0x%x", Status);
     } else {

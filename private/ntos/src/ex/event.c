@@ -76,8 +76,7 @@ NTSTATUS NtSetEvent(IN ASYNC_STATE State,
                     OUT OPTIONAL LONG *PreviousState)
 {
     PEVENT_OBJECT EventObject = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, EventHandle,
-				      OBJECT_TYPE_EVENT,
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
     assert(EventObject != NULL);
     if (PreviousState) {
@@ -94,8 +93,7 @@ NTSTATUS NtResetEvent(IN ASYNC_STATE State,
 		      OUT OPTIONAL LONG *PreviousState)
 {
     PEVENT_OBJECT EventObject = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, EventHandle,
-				      OBJECT_TYPE_EVENT,
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
     assert(EventObject != NULL);
     if (PreviousState) {
@@ -111,8 +109,7 @@ NTSTATUS NtClearEvent(IN ASYNC_STATE State,
 		      IN HANDLE EventHandle)
 {
     PEVENT_OBJECT EventObject = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, EventHandle,
-				      OBJECT_TYPE_EVENT,
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
     assert(EventObject != NULL);
     KeResetEvent(&EventObject->Event);
@@ -163,8 +160,10 @@ NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
 	    POBJECT Object;
 	    PDISPATCHER_HEADER DispatcherObject;
 	});
-    ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread->Process, ObjectHandle,
+    ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread, ObjectHandle,
 						   OBJECT_TYPE_ANY, &Locals.Object));
+    /* We cannot deference the object now because if we did, during the wait below
+     * someone else might be able to delete the object. */
     Locals.DispatcherObject = EiObjectGetDispatcherHeader(Locals.Object);
     if (!Locals.DispatcherObject) {
 	ObDereferenceObject(Locals.Object);

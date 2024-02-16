@@ -225,14 +225,14 @@ typedef struct _LIST_ENTRY
     ((type *)(((ULONG_PTR)address) - (ULONG_PTR)(&(((type *)0)->field))))
 
 /* List Functions */
-static inline VOID InitializeListHead(IN PLIST_ENTRY ListHead)
+FORCEINLINE VOID InitializeListHead(IN PLIST_ENTRY ListHead)
 {
     ListHead->Flink = ListHead;
     ListHead->Blink = ListHead;
 }
 
-static inline VOID InsertHeadList(IN PLIST_ENTRY ListHead,
-				  IN PLIST_ENTRY Entry)
+FORCEINLINE VOID InsertHeadList(IN PLIST_ENTRY ListHead,
+				IN PLIST_ENTRY Entry)
 {
     PLIST_ENTRY OldFlink;
     OldFlink = ListHead->Flink;
@@ -242,8 +242,8 @@ static inline VOID InsertHeadList(IN PLIST_ENTRY ListHead,
     ListHead->Flink = Entry;
 }
 
-static inline VOID InsertTailList(IN PLIST_ENTRY ListHead,
-				  IN PLIST_ENTRY Entry)
+FORCEINLINE VOID InsertTailList(IN PLIST_ENTRY ListHead,
+				IN PLIST_ENTRY Entry)
 {
     PLIST_ENTRY OldBlink;
     OldBlink = ListHead->Blink;
@@ -253,13 +253,27 @@ static inline VOID InsertTailList(IN PLIST_ENTRY ListHead,
     ListHead->Blink = Entry;
 }
 
-static inline BOOLEAN IsListEmpty(IN const LIST_ENTRY *ListHead)
+/*
+ * Append the ListToAppend to the tail of the list pointed to by ListHead.
+ * Note that ListToAppend does not have a list head.
+ */
+FORCEINLINE VOID AppendTailList(IN OUT PLIST_ENTRY ListHead,
+				IN OUT PLIST_ENTRY ListToAppend)
+{
+  PLIST_ENTRY ListEnd = ListHead->Blink;
+  ListHead->Blink->Flink = ListToAppend;
+  ListHead->Blink = ListToAppend->Blink;
+  ListToAppend->Blink->Flink = ListHead;
+  ListToAppend->Blink = ListEnd;
+}
+
+FORCEINLINE BOOLEAN IsListEmpty(IN const LIST_ENTRY *ListHead)
 {
     return (BOOLEAN)(ListHead->Flink == ListHead);
 }
 
 /* Returns TRUE if list is empty after removal */
-static inline BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
+FORCEINLINE BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
 {
     PLIST_ENTRY OldFlink;
     PLIST_ENTRY OldBlink;
@@ -271,7 +285,7 @@ static inline BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
     return (BOOLEAN)(OldFlink == OldBlink);
 }
 
-static inline PLIST_ENTRY RemoveHeadList(IN PLIST_ENTRY ListHead)
+FORCEINLINE PLIST_ENTRY RemoveHeadList(IN PLIST_ENTRY ListHead)
 {
     PLIST_ENTRY Flink;
     PLIST_ENTRY Entry;
@@ -283,7 +297,7 @@ static inline PLIST_ENTRY RemoveHeadList(IN PLIST_ENTRY ListHead)
     return Entry;
 }
 
-static inline PLIST_ENTRY RemoveTailList(IN PLIST_ENTRY ListHead)
+FORCEINLINE PLIST_ENTRY RemoveTailList(IN PLIST_ENTRY ListHead)
 {
     PLIST_ENTRY Blink;
     PLIST_ENTRY Entry;

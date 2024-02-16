@@ -172,16 +172,16 @@
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
     <parameter annotation="in" type="buf::Void" name="Buffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="NumberOfBytesToWrite" />
-    <parameter annotation="out opt" type="ptr::ULONG" name="NumberOfBytesWritten" />
+    <parameter annotation="in" type="bufsize::SIZE_T" name="NumberOfBytesToWrite" />
+    <parameter annotation="out opt" type="ptr::SIZE_T" name="NumberOfBytesWritten" />
   </svc>
 
   <svc name="NtReadVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
     <parameter annotation="out" type="buf::Void" name="Buffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="NumberOfBytesToRead" />
-    <parameter annotation="out" type="bufsize::SIZE_T" name="NumberOfBytesRead" />
+    <parameter annotation="in" type="bufsize::SIZE_T" name="NumberOfBytesToRead" />
+    <parameter annotation="out opt" type="ptr::SIZE_T" name="NumberOfBytesRead" />
   </svc>
 
   <svc name="NtDuplicateObject">
@@ -202,6 +202,24 @@
     <parameter annotation="in" type="ULONG" name="SectionPageProtection" />
     <parameter annotation="in" type="ULONG" name="AllocationAttributes" />
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
+  </svc>
+
+  <svc name="NtMapViewOfSection">
+    <parameter annotation="in" type="HANDLE" name="SectionHandle" />
+    <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
+    <parameter annotation="in out opt" type="ptr::PVOID" name="BaseAddress" />
+    <parameter annotation="in" type="ULONG_PTR" name="ZeroBits" />
+    <parameter annotation="in" type="SIZE_T" name="CommitSize" />
+    <parameter annotation="in out opt" type="ptr::LARGE_INTEGER" name="SectionOffset" />
+    <parameter annotation="in out" type="ptr::SIZE_T" name="ViewSize" />
+    <parameter annotation="in" type="SECTION_INHERIT" name="InheritDisposition" />
+    <parameter annotation="in" type="ULONG" name="AllocationType" />
+    <parameter annotation="in" type="ULONG" name="AccessProtection" />
+  </svc>
+
+  <svc name="NtUnmapViewOfSection">
+    <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
+    <parameter annotation="in" type="PVOID" name="BaseAddress" />
   </svc>
 
   <svc name="NtQuerySection">

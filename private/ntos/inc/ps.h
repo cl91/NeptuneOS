@@ -81,7 +81,6 @@ typedef struct _PROCESS {
     PCNODE CSpace;
     HANDLE_TABLE HandleTable;
     VIRT_ADDR_SPACE VSpace;	/* Virtual address space of the process */
-    PIO_FILE_OBJECT ImageFile;
     PSECTION ImageSection;
     MWORD ImageBaseAddress;
     MWORD ImageVirtualSize;
@@ -91,11 +90,10 @@ typedef struct _PROCESS {
     MWORD LoaderSharedDataClientAddr;
     MWORD LoaderSharedDataServerAddr;
     NTDLL_PROCESS_INIT_INFO InitInfo;
-    PIO_DRIVER_OBJECT DriverObject; /* TODO: Mini-driver? */
+    PIO_DRIVER_OBJECT DriverObject;
     NTSTATUS ExitStatus;	    /* Exit status of process */
     ULONG Cookie;
     NOTIFICATION DpcMutex;
-    /* TODO: */
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;
     ULONG_PTR BasePriority;
@@ -136,12 +134,9 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PCSTR DebugName,
 			      IN PSYSTEM_THREAD_ENTRY EntryPoint,
 			      IN BOOLEAN Suspended);
-NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
-			 IN PIO_DRIVER_OBJECT DriverObject,
-			 IN PSECTION ImageSection,
+NTSTATUS PsCreateProcess(IN OPTIONAL PSECTION ImageSection,
+			 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			 OUT PPROCESS *pProcess);
-NTSTATUS PsLoadDll(IN PPROCESS Process,
-		   IN PCSTR DllName);
 NTSTATUS PsResumeThread(IN PTHREAD Thread);
 NTSTATUS PsResumeSystemThread(IN PSYSTEM_THREAD Thread);
 NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,

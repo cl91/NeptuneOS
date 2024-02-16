@@ -9,6 +9,9 @@
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
+FORCEINLINE BOOLEAN IsPow2OrZero(ULONG64 n) { return !(n & (n-1)); }
+FORCEINLINE BOOLEAN IsPow2(ULONG64 n) { return n && IsPow2OrZero(n); }
+
 /*
  * Helper functions for MWORD array as bitmaps
  */
@@ -34,6 +37,16 @@ FORCEINLINE VOID ClearBit(MWORD *Map, ULONG Bit)
     ULONG BitOffset = Bit % MWORD_BITS;
 
     Map[WordOffset] &= ~(1ULL << BitOffset);
+}
+
+FORCEINLINE LONG GetFirstZeroBit(MWORD *Map, ULONG MaxBit)
+{
+    for (ULONG i = 0; i < MaxBit; i++) {
+	if (!GetBit(Map, i)) {
+	    return i;
+	}
+    }
+    return -1;
 }
 
 /*
@@ -118,6 +131,23 @@ FORCEINLINE VOID RtlpFreeUnicodeString(IN PVOID Heap,
 FORCEINLINE VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 {
     ListEntry->Flink = ListEntry->Blink = NULL;
+}
+
+/*
+ * Append the list pointed to by ListToAppend to the tail of the
+ * list pointed to by ListHead.
+ *
+ * Note that this is different from the function AppendTailList.
+ * Here ListToAppend is the list head of the list to be appended.
+ */
+FORCEINLINE VOID AppendTailListHead(IN PLIST_ENTRY ListHead,
+				    IN PLIST_ENTRY ListToAppend)
+{
+    ListHead->Blink->Flink = ListToAppend->Flink;
+    ListToAppend->Flink->Blink = ListHead->Blink;
+    ListHead->Blink = ListToAppend->Blink;
+    ListToAppend->Blink->Flink = ListHead;
+    InvalidateListEntry(ListToAppend);
 }
 
 FORCEINLINE SIZE_T GetListLength(IN PLIST_ENTRY ListEntry)

@@ -49,3 +49,23 @@ static inline ULONG RtlFirstSetBit(ULONG Integer)
 {
     return __builtin_ffs(Integer);
 }
+
+/* pe.c */
+NTSTATUS RtlImageNtHeaderEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
+			    OUT PIMAGE_NT_HEADERS *OutHeaders,
+			    OUT ULONG64 *NtHeaderOffset);
+ULONG64 RtlImageDirectoryEntryToFileOffset(IN PIO_FILE_OBJECT FileObject,
+					   IN USHORT Directory,
+					   OUT OPTIONAL ULONG *Size);
+ULONG64 RtlImageRvaToFileOffset(IN PIO_FILE_OBJECT FileObject,
+				IN ULONG Rva);
+
+FORCEINLINE PIMAGE_NT_HEADERS RtlImageNtHeader(IN PIO_FILE_CONTROL_BLOCK Fcb)
+{
+    PIMAGE_NT_HEADERS NtHeader = NULL;
+    ULONG64 NtHeaderOffset = 0;
+    if (!NT_SUCCESS(RtlImageNtHeaderEx(Fcb, &NtHeader, &NtHeaderOffset))) {
+	return NULL;
+    }
+    return NtHeader;
+}

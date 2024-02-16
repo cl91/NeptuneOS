@@ -21,6 +21,9 @@
 #define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageDirBits)
 #define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
 
+#define PAGE_ALIGN64(p)			((ULONG64)(p) & ~((ULONG64)PAGE_SIZE - 1))
+#define PAGE_ALIGN_UP64(p)		(PAGE_ALIGN64((ULONG64)(p) + PAGE_SIZE - 1))
+
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define LARGE_PAGE_ALIGN_UP(p)		(LARGE_PAGE_ALIGN((MWORD)(p)+LARGE_PAGE_SIZE-1))
@@ -275,28 +278,25 @@ typedef struct _UNTYPED {
  * access rights.
  *
  * A VAD node does not in general track the commitment status of individual pages.
- * Apart from a single bit to indicate whether the VAD has been fully committed,
- * owned memory regions also have a CommitmentSize member to indicate the total
- * amount of committed memory. This is due to the fact that owned memory can be
- * committed in pieces. No other types of VADs can be committed partially.
+ * Callers of MMVAD routines must manage this themselves. An example here is the
+ * cache manager that tracks the individual page commitment status via a multilevel
+ * table structure (see CC_VIEW_TABLE, CC_VIEW, and relevant routines in Cc).
  *
  * A MirroredMemory is a type of VADs that map another OwnedMemory VAD (typically
- * within another VSpace) into this VSpace, possibly with a different WindowSize
+ * within another VSpace) into a VSpace, possibly with a different WindowSize
  * and access rights. The commitment status of the MirroredMemory VAD is kept
  * in sync with the owned memory (within the address window of the mirrored VAD),
  * meaning that when the pages of the owned VAD are committed, the mirrored VAD
  * will have the corresponding pages mirrored as well, if these pages are within
  * the address window of the mirrored VAD.
- *
- * Note that the memory manager's internal routines do not rely on the information
- * stored in VADs to map or unmap a paging structure.
  */
 typedef union _MMVAD_FLAGS {
     struct {
 	ULONG NoAccess : 1;   /* True if forbidden to access memory region */
-	ULONG ReadOnly : 1;   /* Otherwise page is mapped ReadWrite */
-	ULONG ImageMap : 1;	 /* Node is a subsection of an image section */
-	ULONG FileMap : 1;	 /* Node is a view of a file section */
+	ULONG ReadOnly : 1;   /* If FALSE, page is mapped ReadWrite */
+	ULONG ImageMap : 1; /* Node is a subsection of an image section */
+	ULONG FileMap : 1;  /* Node is a view of a file section */
+	ULONG CacheMap : 1; /* Node is managed by the cache manager */
 	ULONG PhysicalMapping : 1; /* Node is a view of the physical memory */
 	ULONG LargePages : 1; /* Use large pages when possible */
 	ULONG OwnedMemory : 1; /* True if pages are owned by this VSpace */
@@ -307,32 +307,37 @@ typedef union _MMVAD_FLAGS {
 } MMVAD_FLAGS;
 
 /* Flags that can be passed into MmReserveVirtualMemoryEx */
-#define MEM_RESERVE_NO_ACCESS		(0x1UL)
+#define MEM_RESERVE_NO_ACCESS		(0x1UL << 0)
 #define MEM_RESERVE_READ_ONLY		(0x1UL << 1)
-/* If the VAD is neither an image map/file map nor a physical map, it would be
- * what Windows calls a "page-file backed section", in other words just memory. */
+/* VADs representing a section view will be marked as IMAGE_MAP or FILE_MAP or
+ * PHYSICAL_MAPPING. VADs for cache view will be marked as CACHE_MAP. VADs for
+ * memory allocated by NtAllocateVirtualMemory and related internal Mm routines
+ * will be marked as either "owned memory" or what we call "mirrored memory". */
 #define MEM_RESERVE_IMAGE_MAP		(0x1UL << 2)
 #define MEM_RESERVE_FILE_MAP		(0x1UL << 3)
-#define MEM_RESERVE_PHYSICAL_MAPPING	(0x1UL << 4)
-#define MEM_RESERVE_LARGE_PAGES		(0x1UL << 5)
-/* Search from higher address to lower address */
-#define MEM_RESERVE_TOP_DOWN		(0x1UL << 6)
+#define MEM_RESERVE_CACHE_MAP		(0x1UL << 4)
+#define MEM_RESERVE_PHYSICAL_MAPPING	(0x1UL << 5)
 /* Memory pages are owned by this VSpace */
-#define MEM_RESERVE_OWNED_MEMORY	(0x1UL << 7)
+#define MEM_RESERVE_OWNED_MEMORY	(0x1UL << 6)
 /* Memory pages are derived from pages in other VSpace via seL4_CNode_Copy */
-#define MEM_RESERVE_MIRRORED_MEMORY	(0x1UL << 8)
+#define MEM_RESERVE_MIRRORED_MEMORY	(0x1UL << 7)
+/* If set, Mm will try to reserve an address window aligned by the large page size
+ * and commit large pages when available. */
+#define MEM_RESERVE_LARGE_PAGES		(0x1UL << 8)
+/* Search from higher address to lower address */
+#define MEM_RESERVE_TOP_DOWN		(0x1UL << 9)
 /* Find unused address window only. Do not actually insert the VAD into the
  * process address space */
-#define MEM_RESERVE_NO_INSERT		(0x1UL << 9)
+#define MEM_RESERVE_NO_INSERT		(0x1UL << 10)
 
 typedef struct _MMVAD {
-    AVL_NODE AvlNode; /* Starting virtual address of the node, 4K aligned */
+    AVL_NODE AvlNode; /* Starting virtual address of the node, page aligned */
     struct _VIRT_ADDR_SPACE *VSpace;
-    MWORD WindowSize;		/* Rounded up to 4K page boundary */
+    MWORD WindowSize;		/* Rounded up to page boundary */
     MMVAD_FLAGS Flags;
     LIST_ENTRY SectionLink;	/* List entry for SECTION.VadList.
 				 * If the VAD does not map a section
-				 * view, this is NULL. */
+				 * view, this is unused. */
     union {
 	struct {
 	    struct _SECTION *Section;
@@ -343,19 +348,19 @@ typedef struct _MMVAD {
 	} ImageSectionView;
 	struct {
 	    MWORD PhysicalBase;	/* Base of the physical address window
-				 * to map, 4K aligned */
+				 * to map, page aligned */
 	    PUNTYPED RootUntyped; /* Root untyped from which the physical memory
 				   * of this VAD is allocated. This is only used
 				   * in the case of map register memory. */
 	} PhysicalSectionView;	/* Physical section is neither owned
 				 * or mirrored memory */
+	struct {
+	    struct _VIRT_ADDR_SPACE *Master; /* The VSpace that is been mapped
+					      * into this VSpace */
+	    MWORD StartAddr; /* Starting virtual address in the master vspace */
+	    LIST_ENTRY ViewerLink;	/* List entry for master VSpace's ViewerList */
+	} MirroredMemory;
     };
-    struct {
-	struct _VIRT_ADDR_SPACE *Master; /* The VSpace that is been mapped
-					  * into this VSpace */
-	MWORD StartAddr; /* Starting virtual address in the master vspace */
-	LIST_ENTRY ViewerLink;	/* List entry for master VSpace's ViewerList */
-    } MirroredMemory;
 } MMVAD, *PMMVAD;
 
 #define AVL_NODE_TO_VAD(Node)						\
@@ -495,8 +500,8 @@ typedef enum _MM_MEM_PRESSURE {
  * to the same FILE which can be mapped as image or data, the IO_FILE_OBJECT contains
  * pointers to both IMAGE_SECTION_OBJECT and DATA_SECTION_OBJECT.
  *
- * Note the nomenclatures here are somewhat different from ELF/PE object format
- * and may be confusing. A PE file can have multiple sections (.text, .data, etc)
+ * Note the nomenclatures here are somewhat confusing as the PE object format also has
+ * a notion of "sections". A PE file can have multiple sections (.text, .data, etc)
  * which are loaded into memory according to its image headers (including the
  * section headers). During loading NTOS will create a SECTION object for the
  * PE file, which will simply be a pointer to an IMAGE_SECTION_OBJECT struct,
@@ -529,16 +534,20 @@ typedef struct _SECTION {
     MWORD Size;
 } SECTION, *PSECTION;
 
+struct _IO_FILE_CONTROL_BLOCK;
+struct _IO_FILE_OBJECT;
 typedef struct _IMAGE_SECTION_OBJECT {
+    struct _IO_FILE_CONTROL_BLOCK *Fcb;
+    struct _IO_FILE_OBJECT *ImageCacheFile;
+    ULONG ImageCacheFileSize;
     LIST_ENTRY SubSectionList;
-    LONG NumSubSections;
-    struct _IO_FILE_OBJECT *FileObject;
     MWORD ImageBase;
+    LONG NumSubSections;
     SECTION_IMAGE_INFORMATION ImageInformation;
 } IMAGE_SECTION_OBJECT, *PIMAGE_SECTION_OBJECT;
 
 typedef struct _DATA_SECTION_OBJECT {
-    struct _IO_FILE_OBJECT *FileObject;
+    struct _IO_FILE_CONTROL_BLOCK *Fcb;
 } DATA_SECTION_OBJECT, *PDATA_SECTION_OBJECT;
 
 /*
@@ -548,12 +557,13 @@ typedef struct _DATA_SECTION_OBJECT {
 typedef struct _SUBSECTION {
     PIMAGE_SECTION_OBJECT ImageSection;	/* Image section that this subsection belong to */
     LIST_ENTRY Link; /* Link for the owning image section's SubSectionList */
-    UCHAR Name[IMAGE_SIZEOF_SHORT_NAME+1]; /* name of the PE section (.text, .data, etc) */
-    ULONG SubSectionSize; /* Size of the subsection in memory, 4K aligned. */
+    UCHAR Name[IMAGE_SIZEOF_SHORT_NAME+1]; /* Name of the PE section (.text, .data, etc) */
+    ULONG SubSectionSize; /* Size of the subsection in memory, page aligned. */
     ULONG FileOffset; /* Offset from the start of the file, file aligned */
     ULONG RawDataSize;   /* Size of the subsection, file aligned */
-    ULONG SubSectionBase; /* relative to the start of the owning section, 4K aligned */
-    ULONG Characteristics; /* section characteristics in the PE image section table */
+    ULONG SubSectionBase; /* Relative virtual address of the subsection, page aligned */
+    ULONG ImageCacheFileOffset;	/* Offset of this subsection within the image cache file. */
+    ULONG Characteristics; /* Section characteristics in the PE image section table */
 } SUBSECTION, *PSUBSECTION;
 
 /*
@@ -609,20 +619,44 @@ static inline NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
+NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
+			     IN MWORD StartAddr,
+			     IN MWORD WindowSize,
+			     IN PAGING_RIGHTS Rights,
+			     IN BOOLEAN UseLargePages,
+			     IN OPTIONAL PVOID DataBuffer,
+			     IN OPTIONAL MWORD BufferSize);
+NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
+			     IN MWORD OwnerStartAddr,
+			     IN PVIRT_ADDR_SPACE ViewerVSpace,
+			     IN MWORD ViewerStartAddr,
+			     IN MWORD WindowSize,
+			     IN PAGING_RIGHTS NewRights);
 
 /* section.c */
 NTSTATUS MmSectionInitialization();
+struct _ASYNC_STATE;
+struct _THREAD;
 NTSTATUS MmCreateSection(IN struct _IO_FILE_OBJECT *FileObject,
 			 IN ULONG PageProtection,
 			 IN ULONG SectionAttribute,
 			 OUT PSECTION *SectionObject);
+NTSTATUS MmCreateSectionEx(IN struct _ASYNC_STATE State,
+			   IN struct _THREAD *Thread,
+			   IN struct _IO_FILE_OBJECT *FileObject,
+			   IN ULONG PageProtection,
+			   IN ULONG SectionAttributes,
+			   OUT PSECTION *SectionObject);
 NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,
 			    IN OUT MWORD *BaseAddress,
-			    IN OUT MWORD *SectionOffset,
+			    IN OUT ULONG64 *SectionOffset,
 			    IN OUT MWORD *ViewSize,
+			    IN ULONG HighZeroBits,
+			    IN SECTION_INHERIT InheritDisposition,
+			    IN ULONG ReserveFlags,
 			    IN BOOLEAN AlwaysWritable);
-NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
+NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 			     IN MWORD VirtualBase,
 			     IN MWORD WindowSize);
 
@@ -634,6 +668,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,
 				  IN OPTIONAL MWORD EndAddr,
 				  IN MWORD WindowSize,
+				  IN ULONG LowZeroBits,
+				  IN ULONG HighZeroBits,
 				  IN MWORD Flags,
 				  OUT OPTIONAL PMMVAD *pVad);
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
@@ -688,12 +724,13 @@ BOOLEAN MmHandleThreadVmFault(IN struct _THREAD *Thread,
 static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
 					      IN OPTIONAL MWORD EndAddr,
 					      IN MWORD WindowSize,
+					      IN ULONG LowZeroBits,
 					      IN MWORD Flags,
 					      OUT OPTIONAL PMMVAD *pVad)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, EndAddr,
-				    WindowSize, Flags, pVad);
+				    WindowSize, LowZeroBits, 0, Flags, pVad);
 }
 
 static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,

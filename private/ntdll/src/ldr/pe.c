@@ -15,9 +15,99 @@
 #include "ldrp.h"
 #include <string.h>
 
-#define LDR_DLL_DEFAULT_EXTENSION	".dll"
-
 /* FUNCTIONS *****************************************************************/
+
+NTSTATUS RtlpImageNtHeaderEx(IN ULONG Flags,
+			     IN PVOID Base,
+			     IN ULONG64 Size,
+			     OUT PIMAGE_NT_HEADERS *OutHeaders)
+{
+    PIMAGE_NT_HEADERS NtHeaders;
+    PIMAGE_DOS_HEADER DosHeader;
+    BOOLEAN WantsRangeCheck;
+    ULONG NtHeaderOffset;
+
+    /* You must want NT Headers, no? */
+    if (OutHeaders == NULL) {
+        DPRINT1("OutHeaders is NULL\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Assume failure */
+    *OutHeaders = NULL;
+
+    /* Validate Flags */
+    if (Flags & ~RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK) {
+        DPRINT1("Invalid flags: 0x%x\n", Flags);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Validate base */
+    if ((Base == NULL) || (Base == (PVOID)-1)) {
+        DPRINT1("Invalid base address: %p\n", Base);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Check if the caller wants range checks */
+    WantsRangeCheck = !(Flags & RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK);
+    if (WantsRangeCheck) {
+        /* Make sure the image size is at least big enough for the DOS header */
+        if (Size < sizeof(IMAGE_DOS_HEADER)) {
+            DPRINT1("File buffer size too small\n");
+            return STATUS_INVALID_IMAGE_FORMAT;
+        }
+    }
+
+    /* Check if the DOS Signature matches */
+    DosHeader = Base;
+    if (DosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
+        /* Not a valid COFF */
+        DPRINT1("Invalid image DOS signature (expected 0x%x found 0x%x)\n",
+		IMAGE_DOS_SIGNATURE, DosHeader->e_magic);
+        return STATUS_INVALID_IMAGE_FORMAT;
+    }
+
+    if (DosHeader->e_lfanew <= 0) {
+        DPRINT1("Not a Windows executable, e_lfanew is %d\n", DosHeader->e_lfanew);
+        return STATUS_INVALID_IMAGE_FORMAT;
+    }
+
+    /* Get the offset to the NT headers (and copy from LONG to ULONG) */
+    NtHeaderOffset = DosHeader->e_lfanew;
+
+    /* The offset must not be larger than 256MB, as a hard-coded check.
+       In Windows this check is only done in user mode, not in kernel mode,
+       but it shouldn't harm to have it anyway. Note that without this check,
+       other overflow checks would become necessary! */
+    if (NtHeaderOffset >= (256 * 1024 * 1024)) {
+        DPRINT1("NT headers offset is larger than 256MB!\n");
+        return STATUS_INVALID_IMAGE_FORMAT;
+    }
+
+    /* Check if the caller wants validation */
+    if (WantsRangeCheck) {
+        /* Make sure the file header fits into the size */
+        if ((NtHeaderOffset + RTL_SIZEOF_THROUGH_FIELD(IMAGE_NT_HEADERS, FileHeader)) >= Size) {
+            /* Fail */
+            DPRINT1("NT headers beyond file buffer size!\n");
+            return STATUS_INVALID_IMAGE_FORMAT;
+        }
+    }
+
+    /* Now get a pointer to the NT Headers */
+    NtHeaders = (PIMAGE_NT_HEADERS)((ULONG_PTR)Base + NtHeaderOffset);
+
+    /* Verify the PE Signature */
+    if (NtHeaders->Signature != IMAGE_NT_SIGNATURE) {
+        DPRINT1("Invalid image NT signature (expected 0x%x found 0x%x)\n",
+		IMAGE_NT_SIGNATURE, NtHeaders->Signature);
+        return STATUS_INVALID_IMAGE_FORMAT;
+    }
+
+    /* Now return success and the NT header */
+    *OutHeaders = NtHeaders;
+    return STATUS_SUCCESS;
+}
 
 /*
  * @implemented
@@ -30,16 +120,15 @@ NTSTATUS NTAPI RtlImageNtHeaderEx(IN ULONG Flags,
 {
     NTSTATUS Status;
 
-    _SEH2_TRY {
+    __try {
 	/* Assume failure. This is also done in RtlpImageNtHeaderEx,
 	 * but this is guarded by SEH. */
-	if (OutHeaders != NULL) {
+	if (OutHeaders) {
 	    *OutHeaders = NULL;
 	}
         Status = RtlpImageNtHeaderEx(Flags, Base, Size, OutHeaders);
-    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
-        /* Fail with the SEH error */
-        Status = _SEH2_GetExceptionCode();
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        Status = GetExceptionCode();
     }
 
     return Status;
@@ -58,6 +147,92 @@ PIMAGE_NT_HEADERS NTAPI RtlImageNtHeader(IN PVOID Base)
     return NtHeader;
 }
 
+/*
+ * @implemented
+ */
+PVOID NTAPI RtlImageDirectoryEntryToData(IN PVOID BaseAddress,
+					 IN BOOLEAN MappedAsImage,
+					 IN USHORT Directory,
+					 IN PULONG Size)
+{
+    /* Magic flag for non-mapped images. */
+    if ((ULONG_PTR)BaseAddress & 1) {
+        BaseAddress = (PVOID)((ULONG_PTR)BaseAddress & ~1);
+        MappedAsImage = FALSE;
+    }
+
+    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(BaseAddress);
+    if (!NtHeader)
+        return NULL;
+
+    if (Directory >= NtHeader->OptionalHeader.NumberOfRvaAndSizes)
+        return NULL;
+
+    ULONG Va = NtHeader->OptionalHeader.DataDirectory[Directory].VirtualAddress;
+    if (Va == 0)
+        return NULL;
+
+    *Size = NtHeader->OptionalHeader.DataDirectory[Directory].Size;
+
+    if (MappedAsImage || Va < NtHeader->OptionalHeader.SizeOfHeaders)
+        return (PVOID)((ULONG_PTR)BaseAddress + Va);
+
+    /* Image mapped as ordinary file, we must find raw pointer */
+    return RtlImageRvaToVa(NtHeader, BaseAddress, Va, NULL);
+}
+
+/*
+ * @implemented
+ */
+PIMAGE_SECTION_HEADER NTAPI RtlImageRvaToSection(IN PIMAGE_NT_HEADERS NtHeader,
+						 IN PVOID BaseAddress,
+						 IN ULONG Rva)
+{
+    PIMAGE_SECTION_HEADER Section;
+    ULONG Va;
+    ULONG Count;
+
+    Count = NtHeader->FileHeader.NumberOfSections;
+    Section = IMAGE_FIRST_SECTION(NtHeader);
+
+    while (Count--) {
+        Va = Section->VirtualAddress;
+        if ((Va <= Rva) && (Rva < Va + Section->SizeOfRawData)) {
+            return Section;
+	}
+        Section++;
+    }
+
+    return NULL;
+}
+
+/*
+ * @implemented
+ */
+PVOID NTAPI RtlImageRvaToVa(IN PIMAGE_NT_HEADERS NtHeader,
+			    IN PVOID BaseAddress,
+			    IN ULONG Rva,
+			    IN PIMAGE_SECTION_HEADER *SectionHeader)
+{
+    PIMAGE_SECTION_HEADER Section = NULL;
+
+    if (SectionHeader)
+        Section = *SectionHeader;
+
+    if ((Section == NULL) || (Rva < Section->VirtualAddress) ||
+        (Rva >= Section->VirtualAddress + Section->SizeOfRawData)) {
+        Section = RtlImageRvaToSection(NtHeader, BaseAddress, Rva);
+        if (Section == NULL)
+            return NULL;
+
+        if (SectionHeader)
+            *SectionHeader = Section;
+    }
+
+    return (PVOID)((ULONG_PTR)BaseAddress + Rva + (ULONG_PTR)Section->PointerToRawData -
+                   (ULONG_PTR)Section->VirtualAddress);
+}
+
 static PIMAGE_BASE_RELOCATION
 LdrpProcessRelocationBlockLongLong(IN ULONG_PTR Address,
 				   IN ULONG Count,
@@ -72,22 +247,10 @@ LdrpProcessRelocationBlockLongLong(IN ULONG_PTR Address,
     PULONGLONG LongLongPtr;
 
     for (i = 0; i < Count; i++) {
-        Offset = SWAPW(*TypeOffset) & 0xFFF;
-        Type = SWAPW(*TypeOffset) >> 12;
+        Offset = *TypeOffset & 0xFFF;
+        Type = *TypeOffset >> 12;
         ShortPtr = (PUSHORT)(RVA(Address, Offset));
-        /*
-	 * Don't relocate within the relocation section itself.
-	 * GCC/LD sometimes generates relocation records for the relocation section.
-	 * This is a bug in GCC/LD.
-	 * Fix for it disabled, since it was only in ntoskrnl and not in ntdll
-	 */
-        /*
-	  if ((ULONG_PTR)ShortPtr < (ULONG_PTR)RelocationDir ||
-	  (ULONG_PTR)ShortPtr >= (ULONG_PTR)RelocationEnd)
-	  {*/
         switch (Type) {
-            /* case IMAGE_REL_BASED_SECTION : */
-            /* case IMAGE_REL_BASED_REL32 : */
         case IMAGE_REL_BASED_ABSOLUTE:
             break;
 
@@ -96,25 +259,27 @@ LdrpProcessRelocationBlockLongLong(IN ULONG_PTR Address,
             break;
 
         case IMAGE_REL_BASED_LOW:
-            *ShortPtr = SWAPW(*ShortPtr) + LOWORD(Delta & 0xFFFF);
+            *ShortPtr = *ShortPtr + LOWORD(Delta & 0xFFFF);
             break;
 
         case IMAGE_REL_BASED_HIGHLOW:
             LongPtr = (PULONG)RVA(Address, Offset);
-            *LongPtr = SWAPD(*LongPtr) + (Delta & 0xFFFFFFFF);
+            *LongPtr = *LongPtr + (Delta & 0xFFFFFFFF);
             break;
 
         case IMAGE_REL_BASED_DIR64:
             LongLongPtr = (PUINT64)RVA(Address, Offset);
-            *LongLongPtr = SWAPQ(*LongLongPtr) + Delta;
+            *LongLongPtr = *LongLongPtr + Delta;
             break;
 
         case IMAGE_REL_BASED_HIGHADJ:
         case IMAGE_REL_BASED_MIPS_JMPADDR:
+        /* case IMAGE_REL_BASED_SECTION : */
+        /* case IMAGE_REL_BASED_REL32 : */
         default:
             DPRINT1("Unknown/unsupported fixup type %hu.\n", Type);
             DPRINT1("Address %p, Current %u, Count %u, *TypeOffset %x\n",
-                    (PVOID)Address, i, Count, SWAPW(*TypeOffset));
+                    (PVOID)Address, i, Count, *TypeOffset);
             return (PIMAGE_BASE_RELOCATION)NULL;
         }
 
@@ -141,44 +306,41 @@ ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
 				IN ULONG Conflict,
 				IN ULONG Invalid)
 {
-    PIMAGE_NT_HEADERS NtHeaders;
-    PIMAGE_DATA_DIRECTORY RelocationDDir;
-    PIMAGE_BASE_RELOCATION RelocationDir, RelocationEnd;
-    ULONG Count;
-    ULONG_PTR Address;
-    PUSHORT TypeOffset;
-    LONGLONG Delta;
+    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(BaseAddress);
 
-    NtHeaders = RtlImageNtHeader(BaseAddress);
-
-    if (NtHeaders == NULL)
+    if (!NtHeaders)
         return Invalid;
 
-    if (SWAPW(NtHeaders->FileHeader.Characteristics) & IMAGE_FILE_RELOCS_STRIPPED) {
+    if (NtHeaders->FileHeader.Characteristics & IMAGE_FILE_RELOCS_STRIPPED) {
         return Conflict;
     }
 
-    RelocationDDir = &NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+    PIMAGE_DATA_DIRECTORY RelocationDDir =
+	&NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
 
-    if (SWAPD(RelocationDDir->VirtualAddress) == 0 || SWAPD(RelocationDDir->Size) == 0) {
+    if (!RelocationDDir->VirtualAddress || !RelocationDDir->Size) {
         return Success;
     }
 
-    Delta = (ULONG_PTR)BaseAddress - SWAPD(NtHeaders->OptionalHeader.ImageBase) + AdditionalBias;
-    RelocationDir = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)BaseAddress + SWAPD(RelocationDDir->VirtualAddress));
-    RelocationEnd = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)RelocationDir + SWAPD(RelocationDDir->Size));
+    LONGLONG Delta = (ULONG_PTR)BaseAddress -
+	NtHeaders->OptionalHeader.ImageBase + AdditionalBias;
+    PIMAGE_BASE_RELOCATION RelocationDir = (PIMAGE_BASE_RELOCATION)(
+	(ULONG_PTR)BaseAddress + RelocationDDir->VirtualAddress);
+    PIMAGE_BASE_RELOCATION RelocationEnd = (PIMAGE_BASE_RELOCATION)(
+	(ULONG_PTR)RelocationDir + RelocationDDir->Size);
 
-    while (RelocationDir < RelocationEnd && SWAPW(RelocationDir->SizeOfBlock) > 0) {
-        Count = (SWAPW(RelocationDir->SizeOfBlock) - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
-        Address = (ULONG_PTR)RVA(BaseAddress, SWAPD(RelocationDir->VirtualAddress));
-        TypeOffset = (PUSHORT)(RelocationDir + 1);
+    while (RelocationDir < RelocationEnd && RelocationDir->SizeOfBlock > 0) {
+	ULONG Count = (RelocationDir->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION))
+	    / sizeof(USHORT);
+	ULONG_PTR Address = (ULONG_PTR)RVA(BaseAddress, RelocationDir->VirtualAddress);
+	PUSHORT TypeOffset = (PUSHORT)(RelocationDir + 1);
 
         RelocationDir = LdrpProcessRelocationBlockLongLong(Address,
 							   Count,
 							   TypeOffset,
 							   Delta);
 
-        if (RelocationDir == NULL) {
+        if (!RelocationDir) {
             DPRINT1("Error during call to LdrpProcessRelocationBlockLongLong()!\n");
             return Invalid;
         }
@@ -187,348 +349,19 @@ ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
     return Success;
 }
 
-PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress)
-{
-    PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
-
-    /* Make sure the header is valid */
-    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(BaseAddress);
-    DPRINT("LdrpAllocateDataTableEntry(%p), NtHeader %p\n", BaseAddress,
-	   NtHeader);
-
-    if (NtHeader) {
-	/* Allocate an entry */
-	LdrEntry = RtlAllocateHeap(LdrpHeap,
-				   HEAP_ZERO_MEMORY,
-				   sizeof(LDR_DATA_TABLE_ENTRY));
-
-	/* Make sure we got one */
-	if (LdrEntry) {
-	    /* Set it up */
-	    LdrEntry->DllBase = BaseAddress;
-	    LdrEntry->SizeOfImage = NtHeader->OptionalHeader.SizeOfImage;
-	    LdrEntry->TimeDateStamp = NtHeader->FileHeader.TimeDateStamp;
-	    LdrEntry->PatchInformation = NULL;
-	}
-    }
-
-    /* Return the entry */
-    return LdrEntry;
-}
-
-VOID LdrpFreeDataTableEntry(IN PLDR_DATA_TABLE_ENTRY Entry)
-{
-    RtlFreeHeap(LdrpHeap, 0, Entry);
-}
-
 PVOID LdrpFetchAddressOfEntryPoint(IN PVOID ImageBase)
 {
-    PIMAGE_NT_HEADERS NtHeaders;
-    ULONG_PTR EntryPoint = 0;
-
-    /* Get entry point offset from NT headers */
-    NtHeaders = RtlImageNtHeader(ImageBase);
-    if (NtHeaders) {
-	/* Add image base */
-	EntryPoint = NtHeaders->OptionalHeader.AddressOfEntryPoint;
-	if (EntryPoint)
-	    EntryPoint += (ULONG_PTR) ImageBase;
-    }
-
-    /* Return calculated pointer (or zero in case of failure) */
-    return (PVOID) EntryPoint;
-}
-
-VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
-				IN PCSTR BaseDllName)
-{
-    PPEB_LDR_DATA PebData = NtCurrentPeb()->LdrData;
-
-    /* Insert into hash table */
-    ULONG i = LDRP_GET_HASH_ENTRY(BaseDllName);
-    InsertTailList(&LdrpHashTable[i], &LdrEntry->HashLinks);
-
-    /* Insert into other lists */
-    InsertTailList(&PebData->InLoadOrderModuleList, &LdrEntry->InLoadOrderLinks);
-    InsertTailList(&PebData->InMemoryOrderModuleList, &LdrEntry->InMemoryOrderLinks);
-}
-
-BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
-			      OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *LdrEntry)
-{
-
-    /* Check if a dll name was provided */
-    if (!DllName) {
-	return FALSE;
-    }
-
-    /* Get hash index */
-    ULONG HashIndex = LDRP_GET_HASH_ENTRY(DllName);
-    UNICODE_STRING BaseDllName;
-    RET_ERR(LdrpUtf8ToUnicodeString(DllName, &BaseDllName));
-
-    /* Traverse that list */
-    PLIST_ENTRY ListHead = &LdrpHashTable[HashIndex];
-    PLIST_ENTRY ListEntry = ListHead->Flink;
-    while (ListEntry != ListHead) {
-	/* Get the current entry */
-	PLDR_DATA_TABLE_ENTRY CurEntry = CONTAINING_RECORD(ListEntry,
-							   LDR_DATA_TABLE_ENTRY,
-							   HashLinks);
-
-	/* Check base name of that module */
-	if (RtlEqualUnicodeString(&BaseDllName, &CurEntry->BaseDllName, TRUE)) {
-	    /* It matches, return it */
-	    if (LdrEntry != NULL) {
-		*LdrEntry = CurEntry;
-	    }
-	    DbgTrace("Module '%s' already loaded at %p\n", DllName, CurEntry->DllBase);
-	    return TRUE;
-	}
-
-	/* Advance to the next entry */
-	ListEntry = ListEntry->Flink;
-    }
-
-    /* Module was not found, return failure */
-    DbgTrace("Module '%s' is not loaded\n", DllName);
-
-    return FALSE;
-}
-
-static NTSTATUS LdrpMapDll(IN PCSTR DllName,
-			   IN BOOLEAN Static,
-			   OUT PLDR_DATA_TABLE_ENTRY *DataTableEntry)
-{
-    DPRINT1("LDR: LdrpMapDll: Image Name %s\n", DllName);
-
-    PLDRP_LOADED_MODULE FoundModule = NULL;
-    PLOADER_SHARED_DATA LdrShared = (PLOADER_SHARED_DATA)LOADER_SHARED_DATA_CLIENT_ADDR;
-    PLDRP_LOADED_MODULE Module = (PLDRP_LOADED_MODULE)(LOADER_SHARED_DATA_CLIENT_ADDR + LdrShared->LoadedModules);
-    for (ULONG i = 0; i < LdrShared->LoadedModuleCount; i++) {
-	PCSTR FoundDllName = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + Module->DllName);
-	if (!strcasecmp(DllName, FoundDllName)) {
-	    FoundModule = Module;
-	    break;
-	}
-	Module = (PLDRP_LOADED_MODULE)((MWORD)(Module) + Module->EntrySize);
-    }
-
-    if (FoundModule == NULL) {
-	if (!Static) {
-	    /* TODO: Call server */
-	    return STATUS_NOT_IMPLEMENTED;
-	} else {
-	    return STATUS_DLL_NOT_FOUND;
-	}
-    }
-
-    /* Get the NT Header */
-    PVOID ViewBase = (PVOID) FoundModule->ViewBase;
-    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(ViewBase);
+    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(ImageBase);
     if (!NtHeaders) {
-	/* Invalid image. This should never happen. Assert in debug build. */
-	assert(FALSE);
-	return STATUS_INVALID_IMAGE_FORMAT;
+	return NULL;
     }
 
-    /* Allocate an entry */
-    PLDR_DATA_TABLE_ENTRY LdrEntry = LdrpAllocateDataTableEntry(ViewBase);
-    if (!LdrEntry) {
-	/* Invalid image, unmap, close handle and fail */
-	/* TODO: Call server to unmap the image if dynamic loading */
-	return STATUS_NO_MEMORY;
+    ULONG_PTR EntryPoint = NtHeaders->OptionalHeader.AddressOfEntryPoint;
+    if (EntryPoint) {
+	EntryPoint += (ULONG_PTR)ImageBase;
     }
 
-    /* Setup the entry */
-    UNICODE_STRING FullDllName, BaseDllName;
-    PCSTR DllPath = (PCSTR)(LOADER_SHARED_DATA_CLIENT_ADDR + FoundModule->DllPath);
-    RET_ERR_EX(LdrpUtf8ToUnicodeString(DllPath, &FullDllName),
-	       LdrpFreeDataTableEntry(LdrEntry));
-    RET_ERR_EX(LdrpUtf8ToUnicodeString(DllName, &BaseDllName),
-	       {
-		   LdrpFreeDataTableEntry(LdrEntry);
-		   LdrpFreeUnicodeString(FullDllName);
-	       });
-    LdrEntry->Flags = Static ? LDRP_STATIC_LINK : 0;
-    LdrEntry->LoadCount = 0;
-    LdrEntry->FullDllName = FullDllName;
-    LdrEntry->BaseDllName = BaseDllName;
-    LdrEntry->EntryPoint = LdrpFetchAddressOfEntryPoint(LdrEntry->DllBase);
-
-    DPRINT1("LDR: LdrpMapDll: Full Name %wZ, Base Name %wZ\n",
-	    &FullDllName, &BaseDllName);
-
-    /* Insert this entry */
-    LdrpInsertMemoryTableEntry(LdrEntry, DllName);
-
-    /* The image was valid. Is it a DLL? */
-    if (NtHeaders->FileHeader.Characteristics & IMAGE_FILE_DLL) {
-	/* Set the DLL Flag */
-	LdrEntry->Flags |= LDRP_IMAGE_DLL;
-    }
-
-    /* If we're not a DLL, clear the entrypoint */
-    if (!(LdrEntry->Flags & LDRP_IMAGE_DLL)) {
-	LdrEntry->EntryPoint = 0;
-    }
-
-    /* Return it for the caller */
-    *DataTableEntry = LdrEntry;
-
-    /* Check if we are loaded somewhere else */
-    ULONG_PTR ImageBase = (ULONG_PTR) NtHeaders->OptionalHeader.ImageBase;
-    if ((ULONG_PTR)ViewBase != ImageBase) {
-	DPRINT("LDR: LdrpMapDll Relocating Image Name %s (%p-%p -> %p-%p)\n",
-	       DllName, (PVOID) ImageBase, (PVOID) ImageBase + FoundModule->ViewSize,
-	       ViewBase, (PVOID) ((MWORD)ViewBase + FoundModule->ViewSize));
-
-	LdrEntry->Flags |= LDRP_IMAGE_NOT_AT_BASE;
-	/* Are we dealing with a DLL? */
-	if (LdrEntry->Flags & LDRP_IMAGE_DLL) {
-	    /* Check if relocs were stripped */
-	    if (!(NtHeaders->FileHeader.Characteristics & IMAGE_FILE_RELOCS_STRIPPED)) {
-		/* Get the relocation data */
-		ULONG RelocDataSize = 0;
-		PVOID RelocData = RtlImageDirectoryEntryToData(ViewBase,
-							       TRUE,
-							       IMAGE_DIRECTORY_ENTRY_BASERELOC,
-							       &RelocDataSize);
-
-		/* Does the DLL not have any? */
-		if (!RelocData && !RelocDataSize) {
-		    /* We'll allow this and simply continue */
-		    goto done;
-		}
-	    }
-
-	    /* Can't relocate user32 or kernel32 */
-	    if (!strcasecmp(DllName, "user32.dll") || !strcasecmp(DllName, "kernel32.dll")) {
-		return STATUS_ILLEGAL_DLL_RELOCATION;
-	    }
-
-	    /* Do the relocation */
-	    RET_ERR_EX(LdrpRelocateImageWithBias(ViewBase, 0LL, NULL,
-						 STATUS_SUCCESS,
-						 STATUS_CONFLICTING_ADDRESSES,
-						 STATUS_INVALID_IMAGE_FORMAT),
-		       {
-			   /* TODO: Call server to unload the dll */
-
-			   /* Remove module entry from the lists */
-			   RemoveEntryList(&LdrEntry->InLoadOrderLinks);
-			   RemoveEntryList(&LdrEntry->InMemoryOrderLinks);
-			   RemoveEntryList(&LdrEntry->HashLinks);
-
-			   /* Clear the entry */
-			   LdrpFreeUnicodeString(FullDllName);
-			   LdrpFreeUnicodeString(BaseDllName);
-			   LdrpFreeDataTableEntry(LdrEntry);
-			   *DataTableEntry = NULL;
-
-			   DPRINT1("LDR: Fixups unsuccessfully re-applied @ %p\n",
-				   ViewBase);
-		       });
-
-	    DPRINT1("LDR: Fixups successfully re-applied @ %p\n", ViewBase);
-	} else {
-	    /* Not a DLL, or no relocation needed */
-	    DPRINT1("LDR: Fixups won't be re-applied to non-Dll @ %p\n",
-		    ViewBase);
-	}
-    }
-
-done:
-    /* TODO: Call server to change the protection */
-    /* TODO: Validate image for SMP */
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
-				     OUT PLDR_DATA_TABLE_ENTRY *DataTableEntry,
-				     OUT OPTIONAL PBOOLEAN Existing)
-{
-    ULONG ImportNameLength = strlen(ImportName);
-    NTSTATUS Status = STATUS_SUCCESS;
-    PPEB Peb = RtlGetCurrentPeb();
-
-    DPRINT("LdrpLoadImportModule('%s' %p %p)\n", ImportName,
-	   DataTableEntry, Existing);
-
-    /* Find the extension, if present */
-    BOOLEAN GotExtension = FALSE;
-    for (ULONG i = ImportNameLength; i > 0; i--) {
-	if (ImportName[i] == '.') {
-	    GotExtension = TRUE;
-	    break;
-	} else if (ImportName[i] == '\\') {
-	    break;
-	}
-    }
-
-    /* If no extension was found, add the default extension */
-    if (!GotExtension) {
-	/* sizeof() includes terminating nul */
-	PCHAR ImportNameExt = RtlAllocateHeap(LdrpHeap, 0, ImportNameLength + sizeof(LDR_DLL_DEFAULT_EXTENSION));
-	if (ImportNameExt == NULL) {
-	    return STATUS_NO_MEMORY;
-	}
-	memcpy(ImportNameExt, ImportName, ImportNameLength);
-	memcpy(&ImportNameExt[ImportNameLength], LDR_DLL_DEFAULT_EXTENSION, sizeof(LDR_DLL_DEFAULT_EXTENSION));
-	ImportName = ImportNameExt;
-    }
-
-    /* Check if it's loaded */
-    if (LdrpCheckForLoadedDll(ImportName, DataTableEntry)) {
-	/* It's already existing in the list */
-	if (Existing) {
-	    *Existing = TRUE;
-	}
-	Status = STATUS_SUCCESS;
-	goto done;
-    }
-
-    /* We're loading it for the first time */
-    if (Existing) {
-	*Existing = FALSE;
-    }
-
-    /* Map it */
-    Status = LdrpMapDll(ImportName, TRUE, DataTableEntry);
-    if (!NT_SUCCESS(Status)) {
-	DPRINT1("LDR: LdrpMapDll failed with status %x for dll %s\n",
-		Status, ImportName);
-	goto done;
-    }
-    assert(*DataTableEntry != NULL);
-
-    /* Walk its import descriptor table */
-    Status = LdrpWalkImportDescriptor(*DataTableEntry);
-    if (!NT_SUCCESS(Status)) {
-	/* In case of failure, we still want the dll to be inserted
-	 * into the init-order module list. Do it here. If successful
-	 * LdrpWalkImportDescriptor has already inserted the dll. */
-	InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
-		       &(*DataTableEntry)->InInitializationOrderLinks);
-    }
-
-done:
-    if (!GotExtension) {
-	RtlFreeHeap(LdrpHeap, 0, (PVOID) ImportName);
-    }
-
-    return Status;
-}
-
-static NTSTATUS LdrpLoadDll(IN PCSTR DllName,
-			    OUT PVOID *BaseAddress)
-{
-    PLDR_DATA_TABLE_ENTRY DataTableEntry = NULL;
-    RET_ERR(LdrpLoadImportModule(DllName, &DataTableEntry, NULL));
-    assert(DataTableEntry != NULL);
-    DataTableEntry->LoadCount++;
-    *BaseAddress = DataTableEntry->DllBase;
-    return STATUS_SUCCESS;
+    return (PVOID)EntryPoint;
 }
 
 static USHORT LdrpNameToOrdinal(IN PCSTR ImportName,
@@ -569,45 +402,6 @@ static USHORT LdrpNameToOrdinal(IN PCSTR ImportName,
     return OrdinalTable[Next];
 }
 
-static BOOLEAN LdrpCheckForLoadedDllHandle(IN PVOID Base,
-					   OUT PLDR_DATA_TABLE_ENTRY *LdrEntry)
-{
-    static PLDR_DATA_TABLE_ENTRY LdrpLoadedDllHandleCache = NULL;
-    PLDR_DATA_TABLE_ENTRY Current;
-    PLIST_ENTRY ListHead, Next;
-
-    /* Check the cache first */
-    if ((LdrpLoadedDllHandleCache) && (LdrpLoadedDllHandleCache->DllBase == Base)) {
-	/* We got lucky, return the cached entry */
-	*LdrEntry = LdrpLoadedDllHandleCache;
-	return TRUE;
-    }
-
-    /* Time for a lookup */
-    ListHead = &NtCurrentPeb()->LdrData->InLoadOrderModuleList;
-    Next = ListHead->Flink;
-    while (Next != ListHead) {
-	/* Get the current entry */
-	Current = CONTAINING_RECORD(Next, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-
-	/* Make sure it's not unloading and check for a match */
-	if ((Current->InMemoryOrderLinks.Flink) && (Base == Current->DllBase)) {
-	    /* Save in cache */
-	    LdrpLoadedDllHandleCache = Current;
-
-	    /* Return it */
-	    *LdrEntry = Current;
-	    return TRUE;
-	}
-
-	/* Move to the next one */
-	Next = Next->Flink;
-    }
-
-    /* Nothing found */
-    return FALSE;
-}
-
 static NTSTATUS LdrpSnapThunk(IN PVOID ExportBase,
 			      IN PVOID ImportBase,
 			      IN PIMAGE_THUNK_DATA OriginalThunk,
@@ -622,29 +416,30 @@ static NTSTATUS LdrpSnapThunk(IN PVOID ExportBase,
     /* Check if the snap is by ordinal */
     USHORT Ordinal;
     ULONG OriginalOrdinal = 0;
-    BOOLEAN IsOrdinal = IMAGE_SNAP_BY_ORDINAL(OriginalThunk->u1.Ordinal);
+    BOOLEAN IsOrdinal = IMAGE_SNAP_BY_ORDINAL(OriginalThunk->Ordinal);
     if (IsOrdinal) {
 	/* Get the ordinal number, and its normalized version */
-	OriginalOrdinal = IMAGE_ORDINAL(OriginalThunk->u1.Ordinal);
+	OriginalOrdinal = IMAGE_ORDINAL(OriginalThunk->Ordinal);
 	Ordinal = (USHORT)(OriginalOrdinal - ExportDirectory->Base);
     } else {
 	/* First get the data VA */
 	PIMAGE_IMPORT_BY_NAME AddressOfData = (PIMAGE_IMPORT_BY_NAME)
-	    ((ULONG_PTR) ImportBase + ((ULONG_PTR) OriginalThunk->u1.AddressOfData & 0xffffffff));
+	    ((ULONG_PTR)ImportBase + (OriginalThunk->AddressOfData & 0xFFFFFFFFUL));
 
 	/* Get the name */
-	ImportName = (PCSTR) AddressOfData->Name;
+	ImportName = (PCSTR)AddressOfData->Name;
 
 	/* Now get the VA of the Name and Ordinal Tables */
-	PULONG NameTable = (PULONG) ((ULONG_PTR) ExportBase + (ULONG_PTR) ExportDirectory->AddressOfNames);
-	PUSHORT OrdinalTable = (PUSHORT) ((ULONG_PTR) ExportBase + (ULONG_PTR) ExportDirectory->AddressOfNameOrdinals);
+	PULONG NameTable = (PULONG)((ULONG_PTR)ExportBase + ExportDirectory->AddressOfNames);
+	PUSHORT OrdinalTable = (PUSHORT)((ULONG_PTR)ExportBase +
+					 ExportDirectory->AddressOfNameOrdinals);
 
 	/* Get the hint */
 	USHORT Hint = AddressOfData->Hint;
 
 	/* Try to get a match by using the hint */
-	if (((ULONG) Hint < ExportDirectory->NumberOfNames) &&
-	    (!strcmp(ImportName, ((PCSTR) ((ULONG_PTR) ExportBase + NameTable[Hint]))))) {
+	if (((ULONG)Hint < ExportDirectory->NumberOfNames) &&
+	    (!strcmp(ImportName, ((PCSTR)((ULONG_PTR)ExportBase + NameTable[Hint]))))) {
 	    /* We got a match, get the Ordinal from the hint */
 	    Ordinal = OrdinalTable[Hint];
 	} else {
@@ -655,18 +450,19 @@ static NTSTATUS LdrpSnapThunk(IN PVOID ExportBase,
     }
 
     /* Check if the ordinal is valid */
-    if ((ULONG) Ordinal < ExportDirectory->NumberOfFunctions) {
+    if ((ULONG)Ordinal < ExportDirectory->NumberOfFunctions) {
 	/* The ordinal seems correct, get the AddressOfFunctions VA */
-	PULONG AddressOfFunctions = (PULONG)((ULONG_PTR) ExportBase + (ULONG_PTR) ExportDirectory->AddressOfFunctions);
+	PULONG AddressOfFunctions = (PULONG)((ULONG_PTR)ExportBase +
+					     ExportDirectory->AddressOfFunctions);
 
 	/* Write the function pointer */
-	Thunk->u1.Function = (ULONG_PTR) ExportBase + AddressOfFunctions[Ordinal];
+	Thunk->Function = (ULONG_PTR)ExportBase + AddressOfFunctions[Ordinal];
 
 	/* Make sure it's within the exports */
-	if ((Thunk->u1.Function > (ULONG_PTR) ExportDirectory) &&
-	    (Thunk->u1.Function < ((ULONG_PTR) ExportDirectory + ExportSize))) {
+	if ((Thunk->Function > (ULONG_PTR)ExportDirectory) &&
+	    (Thunk->Function < ((ULONG_PTR)ExportDirectory + ExportSize))) {
 	    /* Get the Import and Forwarder Names */
-	    ImportName = (PCSTR) Thunk->u1.Function;
+	    ImportName = (PCSTR)Thunk->Function;
 	    PCSTR DotPosition = strchr(ImportName, '.');
 	    ASSERT(DotPosition != NULL);
 	    if (!DotPosition) {
@@ -706,7 +502,7 @@ static NTSTATUS LdrpSnapThunk(IN PVOID ExportBase,
 
 	    /* Get the pointer */
 	    Status = LdrGetProcedureAddress(ForwarderHandle, ForwardName, ForwardOrdinal,
-					    (PVOID *)(&Thunk->u1.Function));
+					    (PVOID *)(&Thunk->Function));
 	    /* If this fails, then error out */
 	    if (!NT_SUCCESS(Status))
 		goto FailurePath;
@@ -779,7 +575,7 @@ FailurePath:
     }
 
     /* Set this as a bad DLL */
-    Thunk->u1.Function = (ULONG_PTR) 0xffbadd11;
+    Thunk->Function = (ULONG_PTR)0xFFBADD11UL;
 
     /* Return the right error code */
     return IsOrdinal ? STATUS_ORDINAL_NOT_FOUND : STATUS_ENTRYPOINT_NOT_FOUND;
@@ -818,7 +614,7 @@ NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
 	    ImportName = RtlAllocateHeap(RtlGetProcessHeap(), 0, Length);
 	} else {
 	    /* Use our internal buffer */
-	    ImportName = (PIMAGE_IMPORT_BY_NAME) ImportBuffer;
+	    ImportName = (PIMAGE_IMPORT_BY_NAME)ImportBuffer;
 	}
 
 	/* Clear the hint */
@@ -830,7 +626,7 @@ NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
 
 	/* Clear the high bit */
 	ImageBase = ImportName;
-	Thunk.u1.AddressOfData = 0;
+	Thunk.AddressOfData = 0;
     } else {
 	/* Do it by ordinal */
 	ImageBase = NULL;
@@ -845,7 +641,7 @@ NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
 	}
 
 	/* Set the original flag in the thunk */
-	Thunk.u1.Ordinal = Ordinal | IMAGE_ORDINAL_FLAG;
+	Thunk.Ordinal = Ordinal | IMAGE_ORDINAL_FLAG;
     }
 
     /* Acquire lock */
@@ -860,34 +656,31 @@ NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
     }
 
     /* Get the pointer to the export directory */
-    ExportDir = RtlImageDirectoryEntryToData(LdrEntry->DllBase,
-					     TRUE,
+    ExportDir = RtlImageDirectoryEntryToData(LdrEntry->DllBase, TRUE,
 					     IMAGE_DIRECTORY_ENTRY_EXPORT,
 					     &ExportDirSize);
 
     if (!ExportDir) {
-	DPRINT1("Image %wZ has no exports, but were trying to get procedure %Z. BaseAddress asked 0x%p, got entry BA 0x%p\n",
+	DPRINT1("Image %wZ has no exports, but were trying to get procedure %Z. "
+		"BaseAddress asked 0x%p, got entry BA 0x%p\n",
 		&LdrEntry->BaseDllName, Name, BaseAddress, LdrEntry->DllBase);
 	Status = STATUS_PROCEDURE_NOT_FOUND;
 	goto Quickie;
     }
 
     /* Now get the thunk */
-    Status = LdrpSnapThunk(LdrEntry->DllBase,
-			   ImageBase,
-			   &Thunk,
-			   &Thunk,
+    Status = LdrpSnapThunk(LdrEntry->DllBase, ImageBase, &Thunk, &Thunk,
 			   ExportDir, ExportDirSize, FALSE, NULL);
 
     /* Make sure we're OK till here */
     if (NT_SUCCESS(Status)) {
 	/* Return the address */
-	*ProcedureAddress = (PVOID) Thunk.u1.Function;
+	*ProcedureAddress = (PVOID)Thunk.Function;
     }
 
- Quickie:
+Quickie:
     /* Cleanup */
-    if (ImportName && (ImportName != (PIMAGE_IMPORT_BY_NAME) ImportBuffer)) {
+    if (ImportName && (ImportName != (PIMAGE_IMPORT_BY_NAME)ImportBuffer)) {
 	/* We allocated from heap, free it */
 	RtlFreeHeap(RtlGetProcessHeap(), 0, ImportName);
     }
@@ -904,89 +697,49 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 			    IN PIMAGE_IMPORT_DESCRIPTOR IatEntry,
 			    IN BOOLEAN EntriesValid)
 {
-    PVOID Iat;
     PIMAGE_THUNK_DATA OriginalThunk, FirstThunk;
-    PIMAGE_NT_HEADERS NtHeader;
-    PIMAGE_SECTION_HEADER SectionHeader;
-    PIMAGE_EXPORT_DIRECTORY ExportDirectory;
-    PCSTR ImportName;
-    ULONG ForwarderChain, Rva, IatSize, ExportSize;
+    ULONG ForwarderChain;
 
     DPRINT("LdrpSnapIAT(%wZ %wZ %p %u)\n", &ExportLdrEntry->BaseDllName,
 	   &ImportLdrEntry->BaseDllName, IatEntry, EntriesValid);
 
-    /* Get export directory */
-    ExportDirectory = RtlImageDirectoryEntryToData(ExportLdrEntry->DllBase,
-						   TRUE,
-						   IMAGE_DIRECTORY_ENTRY_EXPORT,
-						   &ExportSize);
-
-    /* Make sure it has one */
+    /* Get the export directory */
+    ULONG ExportSize;
+    PIMAGE_EXPORT_DIRECTORY ExportDirectory =
+	RtlImageDirectoryEntryToData(ExportLdrEntry->DllBase, TRUE,
+				     IMAGE_DIRECTORY_ENTRY_EXPORT, &ExportSize);
     if (!ExportDirectory) {
-	/* Fail */
 	DbgTrace("LDR: %wZ doesn't contain an EXPORT table\n",
 		 &ExportLdrEntry->BaseDllName);
 	return STATUS_INVALID_IMAGE_FORMAT;
     }
 
-    /* Get the IAT */
-    Iat = RtlImageDirectoryEntryToData(ImportLdrEntry->DllBase,
-				       TRUE,
-				       IMAGE_DIRECTORY_ENTRY_IAT,
-				       &IatSize);
-
-    /* Check if we don't have one */
-    if (!Iat) {
-	/* Get the NT Header and the first section */
-	NtHeader = RtlImageNtHeader(ImportLdrEntry->DllBase);
-	if (!NtHeader) {
-	    return STATUS_INVALID_IMAGE_FORMAT;
-	}
-	SectionHeader = IMAGE_FIRST_SECTION(NtHeader);
-
-	/* Get the RVA of the import directory */
-	Rva = NtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
-
-	/* Make sure we got one */
-	if (Rva) {
-	    /* Loop all the sections */
-	    for (ULONG i = 0; i < NtHeader->FileHeader.NumberOfSections; i++) {
-		/* Check if we are inside this section */
-		if ((Rva >= SectionHeader->VirtualAddress) &&
-		    (Rva < (SectionHeader->VirtualAddress + SectionHeader->SizeOfRawData))) {
-		    /* We are, so set the IAT here */
-		    Iat = (PVOID)((ULONG_PTR)(ImportLdrEntry->DllBase) + SectionHeader->VirtualAddress);
-
-		    /* Set the size */
-		    IatSize = SectionHeader->Misc.VirtualSize;
-
-		    /* Deal with Watcom and other retarded compilers */
-		    if (!IatSize) {
-			IatSize = SectionHeader->SizeOfRawData;
-		    }
-
-		    /* Found it, get out */
-		    break;
-		}
-
-		/* No match, move to the next section */
-		SectionHeader++;
-	    }
-	}
-
-	/* If we still don't have an IAT, that's bad */
-	if (!Iat) {
-	    /* Fail */
-	    DbgPrint("LDR: Unable to locate IAT for %wZ (Image Base %p)\n",
-		     &ImportLdrEntry->BaseDllName, ImportLdrEntry->DllBase);
-	    return STATUS_INVALID_IMAGE_FORMAT;
-	}
+    /* Make sure the image actually has valid import resolution information.
+     * We first look at the image directory entry for the IAT. */
+    ULONG IatSize;
+    PVOID Iat = RtlImageDirectoryEntryToData(ImportLdrEntry->DllBase, TRUE,
+					     IMAGE_DIRECTORY_ENTRY_IAT, &IatSize);
+    if (Iat) {
+	goto ok;
     }
 
+    /* If the image does not have an import address table, it must at least
+     * have an import directory table. Othrewise the image is not valid. */
+    ULONG ImportDirSize;
+    PVOID ImportDir = RtlImageDirectoryEntryToData(ImportLdrEntry->DllBase, TRUE,
+						   IMAGE_DIRECTORY_ENTRY_IMPORT,
+						   &ImportDirSize);
+    if (!ImportDir) {
+	DbgPrint("LDR: No import directory table for %wZ (Image Base %p)\n",
+		 &ImportLdrEntry->BaseDllName, ImportLdrEntry->DllBase);
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
+
+ok:
     /* Check if the Thunks are already valid */
     if (EntriesValid) {
 	/* We'll only do forwarders. Get the import name */
-	ImportName = (PCSTR)((ULONG_PTR)(ImportLdrEntry->DllBase) + IatEntry->Name);
+	PCSTR ImportName = (PCSTR)((ULONG_PTR)ImportLdrEntry->DllBase + IatEntry->Name);
 
 	/* Get the list of forwarders */
 	ForwarderChain = IatEntry->ForwarderChain;
@@ -995,16 +748,16 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	while (ForwarderChain != -1) {
 	    /* Get the cached thunk VA */
 	    OriginalThunk = (PIMAGE_THUNK_DATA)
-		((ULONG_PTR) ImportLdrEntry->DllBase + IatEntry->OriginalFirstThunk +
+		((ULONG_PTR)ImportLdrEntry->DllBase + IatEntry->OriginalFirstThunk +
 		 (ForwarderChain * sizeof(IMAGE_THUNK_DATA)));
 
 	    /* Get the first thunk */
 	    FirstThunk = (PIMAGE_THUNK_DATA)
-		((ULONG_PTR) ImportLdrEntry->DllBase + IatEntry->FirstThunk +
+		((ULONG_PTR)ImportLdrEntry->DllBase + IatEntry->FirstThunk +
 		 (ForwarderChain * sizeof(IMAGE_THUNK_DATA)));
 
 	    /* Get the Forwarder from the thunk */
-	    ForwarderChain = (ULONG) FirstThunk->u1.Ordinal;
+	    ForwarderChain = (ULONG)FirstThunk->Ordinal;
 
 	    /* Snap the thunk */
 	    NTSTATUS Status = LdrpSnapThunk(ExportLdrEntry->DllBase,
@@ -1024,10 +777,11 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	}
     } else if (IatEntry->FirstThunk) {
 	/* Full snapping. Get the First thunk */
-	FirstThunk = (PIMAGE_THUNK_DATA)((ULONG_PTR) ImportLdrEntry->DllBase + IatEntry->FirstThunk);
+	FirstThunk = (PIMAGE_THUNK_DATA)((ULONG_PTR)ImportLdrEntry->DllBase
+					 + IatEntry->FirstThunk);
 
 	/* Get the NT Header */
-	NtHeader = RtlImageNtHeader(ImportLdrEntry->DllBase);
+	PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(ImportLdrEntry->DllBase);
 
 	/* Get the Original thunk VA, watch out for weird images */
 	if ((IatEntry->Characteristics < NtHeader->OptionalHeader.SizeOfHeaders)
@@ -1036,14 +790,15 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	    OriginalThunk = FirstThunk;
 	} else {
 	    /* Get the address from the field and convert to VA */
-	    OriginalThunk = (PIMAGE_THUNK_DATA)((ULONG_PTR) ImportLdrEntry->DllBase + IatEntry->OriginalFirstThunk);
+	    OriginalThunk = (PIMAGE_THUNK_DATA)((ULONG_PTR)ImportLdrEntry->DllBase
+						+ IatEntry->OriginalFirstThunk);
 	}
 
 	/* Get the Import name VA */
-	ImportName = (PCSTR) ((ULONG_PTR) ImportLdrEntry->DllBase + IatEntry->Name);
+	PCSTR ImportName = (PCSTR)((ULONG_PTR)ImportLdrEntry->DllBase + IatEntry->Name);
 
 	/* Loop while it's valid */
-	while (OriginalThunk->u1.AddressOfData) {
+	while (OriginalThunk->AddressOfData) {
 	    /* Snap the Thunk */
 	    NTSTATUS Status = LdrpSnapThunk(ExportLdrEntry->DllBase,
 					    ImportLdrEntry->DllBase,
@@ -1084,14 +839,12 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     /* Get the name's VA */
     PCSTR BoundImportName = (PCSTR) FirstEntry + BoundEntry->OffsetModuleName;
 
-    /* Show debug message */
     DPRINT1("LDR: %wZ bound to %s\n", &LdrEntry->BaseDllName, BoundImportName);
 
     /* Load the module for this entry */
     NTSTATUS Status = LdrpLoadImportModule(BoundImportName,
 					   &DllLdrEntry, &AlreadyLoaded);
     if (!NT_SUCCESS(Status)) {
-	/* Show debug message */
 	DPRINT1("LDR: %wZ failed to load import module %s; status = %x\n",
 		&LdrEntry->BaseDllName, BoundImportName, Status);
 	goto Quickie;
@@ -1107,14 +860,12 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     /* Check if the Bound Entry is now invalid */
     if ((BoundEntry->TimeDateStamp != DllLdrEntry->TimeDateStamp) ||
 	(DllLdrEntry->Flags & LDRP_IMAGE_NOT_AT_BASE)) {
-	/* Show debug message */
 	DPRINT1("LDR: %wZ has stale binding to %s\n",
 		&LdrEntry->BaseDllName, BoundImportName);
 
 	/* Remember it's become stale */
 	Stale = TRUE;
     } else {
-	/* Show debug message */
 	DPRINT1("LDR: %wZ has correct binding to %s\n",
 		&LdrEntry->BaseDllName, BoundImportName);
 
@@ -1130,7 +881,6 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 	/* Get the name */
 	PCSTR ForwarderName = (PCSTR) FirstEntry + ForwarderEntry->OffsetModuleName;
 
-	/* Show debug message */
 	DPRINT1("LDR: %wZ bound to %s via forwarder(s) from %wZ\n",
 		&LdrEntry->BaseDllName,
 		ForwarderName, &DllLdrEntry->BaseDllName);
@@ -1138,25 +888,23 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 	/* Load the module */
 	Status = LdrpLoadImportModule(ForwarderName, &ForwarderLdrEntry, &AlreadyLoaded);
 	if (NT_SUCCESS(Status)) {
-	    /* Loaded it, was it already loaded? */
+	    /* If the module was not previously loaded, add it to the list. */
 	    if (!AlreadyLoaded) {
-		/* Add it to our list */
 		InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
 			       &ForwarderLdrEntry->InInitializationOrderLinks);
 	    }
 	}
 
 	/* Check if the Bound Entry is now invalid */
-	if (!(NT_SUCCESS(Status)) || (ForwarderEntry->TimeDateStamp != ForwarderLdrEntry->TimeDateStamp)
+	if (!NT_SUCCESS(Status)
+	    || ForwarderEntry->TimeDateStamp != ForwarderLdrEntry->TimeDateStamp
 	    || (ForwarderLdrEntry->Flags & LDRP_IMAGE_NOT_AT_BASE)) {
-	    /* Show debug message */
 	    DPRINT1("LDR: %wZ has stale binding to %s\n",
 		    &LdrEntry->BaseDllName, ForwarderName);
 
 	    /* Remember it's become stale */
 	    Stale = TRUE;
 	} else {
-	    /* Show debug message */
 	    DPRINT1("LDR: %wZ has correct binding to %s\n",
 		    &LdrEntry->BaseDllName, ForwarderName);
 
@@ -1195,7 +943,6 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 
 	/* If we didn't find a name, fail */
 	if (!ImportEntry->Name) {
-	    /* Show debug message */
 	    DPRINT1("LDR: LdrpWalkImportTable - failing with"
 		    "STATUS_OBJECT_NAME_INVALID due to no import descriptor name\n");
 
@@ -1204,7 +951,6 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 	    goto Quickie;
 	}
 
-	/* Show debug message */
 	DPRINT1("LDR: Stale Bind %s from %wZ\n", ImportName, &LdrEntry->BaseDllName);
 
 	/* Snap the IAT Entry */
@@ -1212,7 +958,6 @@ static NTSTATUS LdrpHandleBoundDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 
 	/* Make sure we didn't fail */
 	if (!NT_SUCCESS(Status)) {
-	    /* Show debug message */
 	    DPRINT1("LDR: %wZ failed to load import module %s; status = %x\n",
 		    &LdrEntry->BaseDllName, BoundImportName, Status);
 
@@ -1241,7 +986,6 @@ static NTSTATUS LdrpHandleBoundTable(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 	RET_ERR(LdrpHandleBoundDescriptor(LdrEntry, &BoundEntry, FirstEntry));
     }
 
-    /* Done */
     return STATUS_SUCCESS;
 }
 
@@ -1255,29 +999,25 @@ static NTSTATUS LdrpHandleImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     PPEB Peb = NtCurrentPeb();
 
     /* Get the import name's VA */
-    ImportName = (PCSTR) ((ULONG_PTR) LdrEntry->DllBase + (*ImportEntry)->Name);
+    ImportName = (PCSTR)((ULONG_PTR)LdrEntry->DllBase + (*ImportEntry)->Name);
 
     /* Get the first thunk */
-    FirstThunk = (PIMAGE_THUNK_DATA) ((ULONG_PTR) LdrEntry->DllBase + (*ImportEntry)->FirstThunk);
+    FirstThunk = (PIMAGE_THUNK_DATA)((ULONG_PTR)LdrEntry->DllBase + (*ImportEntry)->FirstThunk);
 
     /* Make sure it's valid */
-    if (!FirstThunk->u1.Function)
+    if (!FirstThunk->Function)
 	goto SkipEntry;
 
-    /* Show debug message */
     DPRINT1("LDR: %s used by %wZ\n", ImportName, &LdrEntry->BaseDllName);
 
     /* Load the module associated to it */
     NTSTATUS Status = LdrpLoadImportModule(ImportName, &DllLdrEntry, &AlreadyLoaded);
     if (!NT_SUCCESS(Status)) {
-	/* Fail */
 	DbgPrint("LDR: LdrpWalkImportTable - LdrpLoadImportModule failed "
 		 "on import %s with status %x\n", ImportName, Status);
-	/* Return */
 	return Status;
     }
 
-    /* Show debug message */
     DPRINT1("LDR: Snapping imports for %wZ from %s\n",
 	    &LdrEntry->BaseDllName, ImportName);
 
@@ -1291,10 +1031,8 @@ static NTSTATUS LdrpHandleImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     /* Now snap the IAT Entry */
     Status = LdrpSnapIAT(DllLdrEntry, LdrEntry, *ImportEntry, FALSE);
     if (!NT_SUCCESS(Status)) {
-	/* Fail */
 	DbgPrint("LDR: LdrpWalkImportTable - LdrpSnapIAT #2 failed with "
 		 "status %x\n", Status);
-	/* Return */
 	return Status;
     }
 
@@ -1308,7 +1046,7 @@ static NTSTATUS LdrpHandleImportTable(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 				      IN PIMAGE_IMPORT_DESCRIPTOR ImportEntry)
 {
     /* Check for Name and Thunk */
-    while ((ImportEntry->Name) && (ImportEntry->FirstThunk)) {
+    while (ImportEntry->Name && ImportEntry->FirstThunk) {
 	/* Parse this descriptor */
 	RET_ERR(LdrpHandleImportDescriptor(LdrEntry, &ImportEntry));
     }
@@ -1327,29 +1065,22 @@ NTSTATUS LdrpWalkImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
 
     /* Check if we were redirected */
     if (!(LdrEntry->Flags & LDRP_REDIRECTED)) {
-	/* Get the Bound IAT */
 	BoundEntry = RtlImageDirectoryEntryToData(LdrEntry->DllBase, TRUE,
 						  IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT,
 						  &BoundTableSize);
     }
 
     /* Get the regular IAT, for fallback */
-    PIMAGE_IMPORT_DESCRIPTOR ImportEntry = RtlImageDirectoryEntryToData(LdrEntry->DllBase, TRUE,
-									IMAGE_DIRECTORY_ENTRY_IMPORT,
-									&ImportTableSize);
+    PIMAGE_IMPORT_DESCRIPTOR ImportEntry =
+	RtlImageDirectoryEntryToData(LdrEntry->DllBase, TRUE,
+				     IMAGE_DIRECTORY_ENTRY_IMPORT,
+				     &ImportTableSize);
 
-    /* Check if we got at least one */
-    if ((BoundEntry) || (ImportEntry)) {
-	/* Do we have a Bound IAT */
-	if (BoundEntry) {
-	    /* Handle the descriptor */
-	    RET_ERR(LdrpHandleBoundTable(LdrEntry, BoundEntry));
-	} else {
-	    /* Handle the descriptor */
-	    RET_ERR(LdrpHandleImportTable(LdrEntry, ImportEntry));
-	}
+    if (BoundEntry) {
+	RET_ERR(LdrpHandleBoundTable(LdrEntry, BoundEntry));
+    } else if (ImportEntry) {
+	RET_ERR(LdrpHandleImportTable(LdrEntry, ImportEntry));
     }
 
-    /* Return status */
     return STATUS_SUCCESS;
 }

@@ -299,7 +299,13 @@ The meanings of some IRP flags have been changed from their Windows counterparts
 usually because they don't make sense in Neptune OS and therefore are reused for
 different purposes.
 
-IRP_PAGING_IO: This has been changed to mean that the UserBuffer of the READ IRP
-is NULL and the server will map the relevant memory pages and fill this field.
 IRP_ASSOCIATED_IRP: This has been changed to mean that the address in UserBuffer is
 an offset relative to the UserBuffer of the master IRP.
+
+IRP_MJ_READ/IRP_MN_MDL:
+The meaning of this combination of IRP major/minor code has been slightly changed to
+indicate that the UserBuffer of the READ IRP is NULL and the server will map the
+relevant memory pages and supply an MDL chain that describes the mapped pages. Each
+MDL in the MDL chain describes virtually contiguous memory. This is used mainly by
+the cache manager and is never sent to the client drivers, so client drivers do not
+need to handle it.

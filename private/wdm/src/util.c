@@ -176,22 +176,22 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
     PIRP Irp = IoAllocateIrp();
     if (!Irp)
 	return NULL;
+
+    PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
+    StackPtr->DeviceObject = DeviceObject;
+    StackPtr->MajorFunction = (UCHAR)MajorFunction;
     if (!Buffer && Length) {
-	/* If Buffer is NULL but Length is not zero, in the case of READ IRP
-	 * we set the PAGING_IO flag so the server will map the memory pages
-	 * for us. In all other cases this is invalid and we return NULL. */
+	/* If Buffer is NULL but Length is not zero, in the case of a READ
+	 * we set the IRP minor code to IRP_MN_MDL so the server will map the
+	 * memory pages for us. In all other cases this is invalid. */
 	if (MajorFunction == IRP_MJ_READ) {
-	    Irp->Flags = IRP_PAGING_IO;
+	    StackPtr->MinorFunction = IRP_MN_MDL;
 	} else {
 	    IoFreeIrp(Irp);
 	    assert(FALSE);
 	    return NULL;
 	}
     }
-
-    PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
-    StackPtr->DeviceObject = DeviceObject;
-    StackPtr->MajorFunction = (UCHAR)MajorFunction;
 
     /* Set the user buffer pointer if the IRP has one. Note again just like
      * the case in IoBuildDeviceIoControlRequest, unlike Windows/ReactOS

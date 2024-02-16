@@ -2,6 +2,7 @@
 
 #include <kernel/gen_config.h>
 
+#include <limits.h>
 #include <nt.h>
 #include <assert.h>
 #include <compile_assert.h>

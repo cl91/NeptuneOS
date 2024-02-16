@@ -1,4 +1,5 @@
 #include "psp.h"
+#include <limits.h>
 
 LIST_ENTRY PspProcessList;
 PSECTION PspSystemDllSection;
@@ -47,31 +48,43 @@ NTSTATUS PsInitSystemPhase0()
 }
 
 /*
- * This is the same as LdrpNameToOrdinal except we assume that the DLL
- * is mapped as ordinary file as opposed to image (therefore we need to
- * convert RVA to file offset).
+ * Convert the given exported symbol name to its ordinal.
  */
-static USHORT PspNameToOrdinal(IN PCSTR ExportName,
-			       IN ULONG NumberOfNames,
-			       IN PVOID DllBase,
-			       IN PIMAGE_NT_HEADERS NtHeader,
-			       IN PULONG NameTable,
-			       IN PUSHORT OrdinalTable)
+static ULONG PspNameToOrdinal(IN PIO_FILE_OBJECT FileObject,
+			      IN PCSTR ExportName,
+			      IN ULONG NumberOfNames,
+			      IN ULONG64 NamesTableOffset,
+			      IN ULONG64 OrdinalsOffset)
 {
-    LONG Start, End, Next, CmpResult;
+    ULONG NameLength = strlen(ExportName);
+    PspAllocateArray(NameBuffer, CHAR, NameLength + 1);
 
     /* Use classical binary search to find the ordinal */
-    Start = Next = 0;
-    End = NumberOfNames - 1;
+    LONG Start = 0, Next = 0, End = NumberOfNames - 1;
     while (End >= Start) {
 	/* Next will be exactly between Start and End */
 	Next = (Start + End) >> 1;
 
-	/* Compare this name with the one we need to find */
-	CmpResult = strcmp(ExportName,
-			   (PCHAR)RtlImageRvaToVa(NtHeader, DllBase,
-						  NameTable[Next], NULL));
+	/* Call the cache manager to read the ULONG at NamesTable[Next], which
+	 * will contain the RVA of the name string. */
+	ULONG NameRva = 0;
+	NTSTATUS Status = CcCopyRead(FileObject->Fcb, NamesTableOffset + Next * sizeof(ULONG),
+				     sizeof(ULONG), (PVOID)&NameRva);
+	if (!NT_SUCCESS(Status)) {
+	    goto err;
+	}
+	/* Convert the RVA of the name string to file offset and call the cache
+	 * manager to read the string pointed to by the file offset. */
+	ULONG64 NameFileOffset = RtlImageRvaToFileOffset(FileObject, NameRva);
+	if (!NameFileOffset) {
+	    goto err;
+	}
+	Status = CcCopyRead(FileObject->Fcb, NameFileOffset, NameLength + 1, NameBuffer);
+	if (!NT_SUCCESS(Status)) {
+	    goto err;
+	}
 
+	LONG CmpResult = strcmp(ExportName, NameBuffer);
 	/* We found our entry if result is 0 */
 	if (!CmpResult)
 	    break;
@@ -86,61 +99,78 @@ static USHORT PspNameToOrdinal(IN PCSTR ExportName,
 
     /* If end is before start, then the search failed */
     if (End < Start)
-	return -1;
+	goto err;
 
-    /* Return found name */
-    return OrdinalTable[Next];
+    /* Return the ordinal corresponding to the specified export name */
+    USHORT Ordinal = -1;
+    NTSTATUS Status = CcCopyRead(FileObject->Fcb, OrdinalsOffset + Next * sizeof(USHORT),
+				 sizeof(USHORT), (PVOID)&Ordinal);
+    if (!NT_SUCCESS(Status)) {
+	goto err;
+    }
+    return Ordinal;
+
+err:
+    PspFreePool(NameBuffer);
+    return ULONG_MAX;
 }
 
 /*
- * This is a simplified version of LdrGetProcedureAddress. For the given
- * DLL at DllBase (mapped as ordinary file, not as image) we return the
- * relative virtual address of the given exported symbol.
+ * Similar to the client-side LdrGetProcedureAddress, this routine returns
+ * the relative virtual address for the given exported symbol in the PE
+ * image file.
  */
-static NTSTATUS PspLookupExportRva(IN PVOID DllBase,
+static NTSTATUS PspLookupExportRva(IN PIO_FILE_OBJECT FileObject,
 				   IN PCSTR NameOfExport,
 				   OUT ULONG *ExportRva)
 {
-    /* Get the image NT header */
-    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(DllBase);
-
     /* Get the pointer to the export directory */
     ULONG ExportSize = 0;
-    PIMAGE_EXPORT_DIRECTORY ExportDirectory = (PIMAGE_EXPORT_DIRECTORY)
-        RtlImageDirectoryEntryToData(DllBase, FALSE,
-				     IMAGE_DIRECTORY_ENTRY_EXPORT,
-				     &ExportSize);
-    assert(ExportDirectory != NULL);
-    assert(ExportSize != 0);
+    ULONG64 ExpDirOffset = RtlImageDirectoryEntryToFileOffset(FileObject,
+							      IMAGE_DIRECTORY_ENTRY_EXPORT,
+							      &ExportSize);
+    if (!ExportSize || !ExpDirOffset) {
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
+    PIMAGE_EXPORT_DIRECTORY ExportDirectory = NULL;
+    RET_ERR(CcMapData(FileObject->Fcb, ExpDirOffset, sizeof(IMAGE_EXPORT_DIRECTORY),
+		      NULL, (PVOID *)&ExportDirectory));
+    assert(ExportDirectory);
 
-    /* Get the pointer to the Names table */
-    PULONG AddressOfNames = (PULONG)RtlImageRvaToVa(NtHeader, DllBase,
-						    ExportDirectory->AddressOfNames,
-						    NULL);
-
-    /* Get the pointer to the NameOrdinals table */
-    PUSHORT AddressOfNameOrdinals = (PUSHORT)RtlImageRvaToVa(NtHeader, DllBase,
-							     ExportDirectory->AddressOfNameOrdinals,
-							     NULL);
-
-    /* Find the ordinal corresponding to the export symbol name */
-    USHORT Ordinal = PspNameToOrdinal(NameOfExport,
-				      ExportDirectory->NumberOfNames,
-				      DllBase, NtHeader,
-				      AddressOfNames,
-				      AddressOfNameOrdinals);
-
-    /* Ordinal lies outside of the export address table. Return error. */
-    if ((ULONG)Ordinal >= ExportDirectory->NumberOfFunctions) {
+    /* Get the file offset to the Names table */
+    ULONG64 NamesTableOffset = RtlImageRvaToFileOffset(FileObject,
+						       ExportDirectory->AddressOfNames);
+    if (!NamesTableOffset) {
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    /* Get the pointer to the export address table */
-    PULONG AddressOfFunctions = (PULONG)RtlImageRvaToVa(NtHeader, DllBase,
-							ExportDirectory->AddressOfFunctions,
-							NULL);
-    *ExportRva = AddressOfFunctions[Ordinal];
-    return STATUS_SUCCESS;
+    /* Get the file offset to the NameOrdinals table */
+    ULONG64 OrdinalsOffset = RtlImageRvaToFileOffset(FileObject,
+						     ExportDirectory->AddressOfNameOrdinals);
+    if (!OrdinalsOffset) {
+	return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    /* Find the ordinal corresponding to the export symbol name */
+    ULONG Ordinal = PspNameToOrdinal(FileObject, NameOfExport,
+				     ExportDirectory->NumberOfNames,
+				     NamesTableOffset, OrdinalsOffset);
+
+    /* Ordinal lies outside of the export address table. Return error. */
+    if (Ordinal >= ExportDirectory->NumberOfFunctions) {
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    /* Get the file offset to the export address table */
+    ULONG64 AddrTableOffset = RtlImageRvaToFileOffset(FileObject,
+						      ExportDirectory->AddressOfFunctions);
+    if (!AddrTableOffset) {
+        return STATUS_PROCEDURE_NOT_FOUND;
+    }
+
+    /* Call the cache manager to read the RVA at the ordinal */
+    return CcCopyRead(FileObject->Fcb, AddrTableOffset + Ordinal * sizeof(ULONG),
+		      sizeof(ULONG), ExportRva);
 }
 
 static NTSTATUS PspInitializeSystemDll()
@@ -173,7 +203,7 @@ static NTSTATUS PspInitializeSystemDll()
     }
 
     ULONG ExportRva = 0;
-    IF_ERR_GOTO(fail, Status, PspLookupExportRva(NtdllFile->Fcb->BufferPtr,
+    IF_ERR_GOTO(fail, Status, PspLookupExportRva(NtdllFile,
 						 USER_EXCEPTION_DISPATCHER_NAME,
 						 &ExportRva));
     assert(ExportRva != 0);
@@ -217,6 +247,7 @@ NTSTATUS PspMapUserSharedData()
     RET_ERR(MmReserveVirtualMemory(EX_DYN_VSPACE_START,
 				   EX_DYN_VSPACE_END,
 				   sizeof(KUSER_SHARED_DATA),
+				   0,
 				   MEM_RESERVE_OWNED_MEMORY,
 				   &Vad));
     assert(Vad != NULL);

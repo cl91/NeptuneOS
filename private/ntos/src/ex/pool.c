@@ -284,7 +284,9 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     }
 
     if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
-	return (PVOID)EiRequestFreePage(Pool, FALSE);
+	PVOID Page = (PVOID)EiRequestFreePage(Pool, FALSE);
+	memset(Page, 0, PAGE_SIZE);
+	return Page;
     }
 
     ULONG NumberOfBlocks = RtlDivCeilUnsigned(NumberOfBytes,

@@ -606,7 +606,7 @@ NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE AsyncState,
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     NTSTATUS Status = CmpEnumerateKey(Key, Index, KeyInformationClass,
@@ -631,7 +631,7 @@ NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE AsyncState,
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     NTSTATUS Status = CmpEnumerateKey(Key, Index, KeyInformationClass,
@@ -654,7 +654,7 @@ NTSTATUS NtQueryKeyW(IN ASYNC_STATE AsyncState,
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     NTSTATUS Status = CmpQueryKey(Key, KeyInformationClass, OutputBuffer,
@@ -675,7 +675,7 @@ NTSTATUS NtQueryKeyA(IN ASYNC_STATE AsyncState,
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, KeyHandle,
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     NTSTATUS Status = CmpQueryKey(Key, KeyInformationClass, OutputBuffer,

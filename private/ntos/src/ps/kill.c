@@ -143,12 +143,9 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
                            IN NTSTATUS ExitStatus)
 {
     PTHREAD ThreadToTerminate = NULL;
-    if (ThreadHandle == NtCurrentThread()) {
-	ThreadToTerminate = Thread;
-    } else {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ThreadHandle,
-					  OBJECT_TYPE_THREAD, (POBJECT *) &ThreadToTerminate));
-    }
+    RET_ERR(ObReferenceObjectByHandle(Thread, ThreadHandle,
+				      OBJECT_TYPE_THREAD, (POBJECT *)&ThreadToTerminate));
+    ObDereferenceObject(ThreadToTerminate);
     assert(ThreadToTerminate != NULL);
     PsTerminateThread(ThreadToTerminate, ExitStatus);
     /* If the current thread is terminating, do not reply to it */
@@ -175,18 +172,13 @@ NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
     if (ThreadHandle == NtCurrentThread()) {
 	return STATUS_INVALID_PARAMETER_1;
     } else {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ThreadHandle,
-					  OBJECT_TYPE_THREAD, (POBJECT *) &ThreadToResume));
-    }
-    assert(ThreadToResume != NULL);
-    NTSTATUS Status = STATUS_INTERNAL_ERROR;
-    IF_ERR_GOTO(out, Status, PsResumeThread(ThreadToResume));
-    Status = STATUS_SUCCESS;
-out:
-    if (ThreadToResume != NULL) {
+	RET_ERR(ObReferenceObjectByHandle(Thread, ThreadHandle,
+					  OBJECT_TYPE_THREAD, (POBJECT *)&ThreadToResume));
 	ObDereferenceObject(ThreadToResume);
     }
-    return Status;
+    assert(ThreadToResume != NULL);
+    RET_ERR(PsResumeThread(ThreadToResume));
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,

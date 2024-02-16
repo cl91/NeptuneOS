@@ -41,7 +41,7 @@ Abstract:
     DEVICE NODE STATE MACHINE
 
     0 (DeviceNodeUnspecified) ---> DeviceNodeInitialized
-      When a device node is created, it is initialized to be in the
+       When a device node is created, it is initialized to be in the
     state DeviceNodeInitialized. DeviceNodeUnspecified represents an
     invalid state.
 
@@ -355,30 +355,58 @@ static PCSTR IopGetRegSz(IN POBJECT Key,
     return RegSz;
 }
 
-static inline NTSTATUS IopLoadDriverByBaseName(IN PCSTR BaseName,
-					       OUT PIO_DRIVER_OBJECT *DriverObject)
+static NTSTATUS IopLoadDriverByBaseName(IN ASYNC_STATE State,
+					IN PTHREAD Thread,
+					IN PCSTR BaseName,
+					OUT PIO_DRIVER_OBJECT *DriverObject)
 {
-    CHAR DriverService[256];
-    snprintf(DriverService, sizeof(DriverService), REG_SERVICE_KEY "\\%s",
-	     BaseName);
-    return IopLoadDriver(DriverService, DriverObject);
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	    CHAR DriverService[256];
+	});
+    snprintf(Locals.DriverService, sizeof(Locals.DriverService),
+	     REG_SERVICE_KEY "\\%s", BaseName);
+    AWAIT_EX(Status, IopLoadDriver, State, Locals, Thread,
+	     Locals.DriverService, DriverObject);
+    ASYNC_END(State, Status);
 }
 
 /*
  * A note about driver loading order: device lower filters are loaded
- * first, followed by class lower filers, and then the function driver
+ * first, followed by class lower filters, and then the function driver
  * itself, and then device upper filters, and finally class upper filters.
- * Don't ask me why. Microsoft made it this way.
+ * In other words, class filter drivers are always loaded after the device
+ * filter drivers on the same level.
  */
-static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
+static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
+					 IN PTHREAD Thread,
+					 IN PDEVICE_NODE DeviceNode)
 {
+    NTSTATUS Status;
+    POBJECT ClassKey = NULL;
+    POBJECT EnumKey = NULL;
+    ULONG RegValueType = 0;
+    PCSTR DriverServiceName = NULL;
+
+    ASYNC_BEGIN(State, Locals, {
+	    CHAR KeyPath[256];
+	    POBJECT EnumKey;
+	    POBJECT ClassKey;
+	    PCSTR DeviceUpperFilterNames;
+	    PCSTR DeviceLowerFilterNames;
+	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
+	    CM_OPEN_CONTEXT OpenContext;
+	    PCSTR ClassUpperFilterNames;
+	    PCSTR ClassLowerFilterNames;
+	    ULONG Idx;
+	});
     assert(DeviceNode != NULL);
     assert(DeviceNode->DeviceId != NULL);
     assert(DeviceNode->InstanceId != NULL);
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeInitialized) {
 	DbgTrace("Device node state is %d. Not loading drivers.\n",
 		 IopDeviceNodeGetCurrentState(DeviceNode));
-	return STATUS_INVALID_DEVICE_STATE;
+	ASYNC_RETURN(State, STATUS_INVALID_DEVICE_STATE);
     }
 
     /* If previous attempts at driver loading failed, we want to clear the
@@ -402,24 +430,21 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
     }
 
     /* Query the device enum key to find the driver service to load */
-    NTSTATUS Status = STATUS_SUCCESS;
-    /* ClassKey and EnumKey must be declared before the first goto statement
-     * otherwise they would not be correctly initialized (because goto skips them). */
-    POBJECT ClassKey = NULL;
-    POBJECT EnumKey = NULL;
-    CHAR EnumKeyPath[256];
-    snprintf(EnumKeyPath, sizeof(EnumKeyPath), REG_ENUM_KEY "\\%s\\%s",
+    snprintf(Locals.KeyPath, sizeof(Locals.KeyPath), REG_ENUM_KEY "\\%s\\%s",
 	     DeviceNode->DeviceId, DeviceNode->InstanceId);
-    ULONG RegValueType;
-    PCSTR DriverServiceName = NULL;
-    RET_ERR(CmReadKeyValueByPath(EnumKeyPath, "Service", &EnumKey,
-				 &RegValueType, (PPVOID)&DriverServiceName));
-    assert(EnumKey != NULL);
+    AWAIT_EX(Status, CmReadKeyValueByPath, State, Locals, Thread,
+	     Locals.KeyPath, "Service", &EnumKey,
+	     &RegValueType, (PPVOID)&DriverServiceName);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    assert(EnumKey);
+    Locals.EnumKey = EnumKey;
     if (RegValueType != REG_SZ) {
 	Status = STATUS_DRIVER_UNABLE_TO_LOAD;
 	goto out;
     }
-    assert(DriverServiceName != NULL);
+    assert(DriverServiceName);
     DeviceNode->DriverServiceName = RtlDuplicateString(DriverServiceName, NTOS_IO_TAG);
     if (DeviceNode->DriverServiceName == NULL) {
 	Status = STATUS_NO_MEMORY;
@@ -427,32 +452,43 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
     }
 
     /* Also query the upper and lower device filter drivers */
-    PCSTR DeviceUpperFilterNames = IopGetMultiSz(EnumKey, "UpperFilters");
-    PCSTR DeviceLowerFilterNames = IopGetMultiSz(EnumKey, "LowerFilters");
+    Locals.DeviceUpperFilterNames = IopGetMultiSz(Locals.EnumKey, "UpperFilters");
+    Locals.DeviceLowerFilterNames = IopGetMultiSz(Locals.EnumKey, "LowerFilters");
 
     /* Query the class key to find the upper and lower class filters */
-    PCSTR ClassGuid = IopGetRegSz(EnumKey, "ClassGUID");
-    PCSTR ClassUpperFilterNames = NULL;
-    PCSTR ClassLowerFilterNames = NULL;
-    if (ClassGuid != NULL) {
-	CHAR ClassKeyPath[256];
-	snprintf(ClassKeyPath, sizeof(ClassKeyPath), REG_CLASS_KEY "\\%s",
-		 ClassGuid);
-	IF_ERR_GOTO(out, Status,
-		    ObReferenceObjectByName(ClassKeyPath, OBJECT_TYPE_KEY, NULL, FALSE, &ClassKey));
-	ClassUpperFilterNames = IopGetMultiSz(ClassKey, "UpperFilters");
-	ClassLowerFilterNames = IopGetMultiSz(EnumKey, "LowerFilters");
+    PCSTR ClassGuid = IopGetRegSz(Locals.EnumKey, "ClassGUID");
+    if (!ClassGuid) {
+	goto load;
     }
 
+    snprintf(Locals.KeyPath, sizeof(Locals.KeyPath), REG_CLASS_KEY "\\%s",
+	     ClassGuid);
+    Locals.ObjectAttributes.Attributes = OBJ_CASE_INSENSITIVE;
+    Locals.ObjectAttributes.ObjectNameBuffer = Locals.KeyPath;
+    Locals.ObjectAttributes.ObjectNameBufferLength = strlen(Locals.KeyPath) + 1;
+    Locals.OpenContext.Header.Type = OPEN_CONTEXT_KEY_OPEN;
+    Locals.OpenContext.Create = FALSE;
+    AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals, Thread,
+	     Locals.ObjectAttributes, OBJECT_TYPE_KEY,
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, &ClassKey);
+    if (!NT_SUCCESS(Status)) {
+	goto load;
+    }
+    assert(ClassKey);
+    Locals.ClassKey = ClassKey;
+    Locals.ClassUpperFilterNames = IopGetMultiSz(Locals.ClassKey, "UpperFilters");
+    Locals.ClassLowerFilterNames = IopGetMultiSz(Locals.ClassKey, "LowerFilters");
+
+load:
     /* Record the filter driver names in the device node */
     IF_ERR_GOTO(out, Status,
-		IopAllocateFilterDriverNames(DeviceUpperFilterNames,
-					     ClassUpperFilterNames,
+		IopAllocateFilterDriverNames(Locals.DeviceUpperFilterNames,
+					     Locals.ClassUpperFilterNames,
 					     &DeviceNode->UpperFilterCount,
 					     &DeviceNode->UpperFilterDriverNames));
     IF_ERR_GOTO(out, Status,
-		IopAllocateFilterDriverNames(DeviceLowerFilterNames,
-					     ClassLowerFilterNames,
+		IopAllocateFilterDriverNames(Locals.DeviceLowerFilterNames,
+					     Locals.ClassLowerFilterNames,
 					     &DeviceNode->LowerFilterCount,
 					     &DeviceNode->LowerFilterDriverNames));
 
@@ -465,14 +501,22 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
 	    goto out;
 	}
     }
-    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
-	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->LowerFilterDriverNames[i],
-							 &DeviceNode->LowerFilterDrivers[i]));
-    }
 
+    Locals.Idx = 0;
+lower:
+    if (Locals.Idx >= DeviceNode->LowerFilterCount) {
+	goto function;
+    }
+    AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
+	     DeviceNode->LowerFilterDriverNames[Locals.Idx],
+	     &DeviceNode->LowerFilterDrivers[Locals.Idx]);
+    Locals.Idx++;
+    goto lower;
+
+function:
     /* Load function driver next */
-    IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->DriverServiceName,
-						     &DeviceNode->FunctionDriverObject));
+    AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
+	     DeviceNode->DriverServiceName, &DeviceNode->FunctionDriverObject);
 
     /* Finally, load upper filter drivers */
     if (DeviceNode->UpperFilterCount != 0) {
@@ -483,12 +527,20 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN PDEVICE_NODE DeviceNode)
 	    goto out;
 	}
     }
-    for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
-	IF_ERR_GOTO(out, Status, IopLoadDriverByBaseName(DeviceNode->UpperFilterDriverNames[i],
-							 &DeviceNode->UpperFilterDrivers[i]));
+    Locals.Idx = 0;
+upper:
+    if (Locals.Idx >= DeviceNode->UpperFilterCount) {
+	goto done;
     }
+    AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
+	     DeviceNode->UpperFilterDriverNames[Locals.Idx],
+	     &DeviceNode->UpperFilterDrivers[Locals.Idx]);
+    Locals.Idx++;
+    goto upper;
 
+done:
     Status = STATUS_SUCCESS;
+
 out:
     if (NT_SUCCESS(Status)) {
         IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeDriversLoaded);
@@ -498,13 +550,13 @@ out:
     }
     /* Dereference the enum key object because the CmReadKeyValueByPath routine
      * increases its reference count. */
-    if (EnumKey != NULL) {
-	ObDereferenceObject(EnumKey);
+    if (Locals.EnumKey) {
+	ObDereferenceObject(Locals.EnumKey);
     }
-    if (ClassKey != NULL) {
-	ObDereferenceObject(ClassKey);
+    if (Locals.ClassKey) {
+	ObDereferenceObject(Locals.ClassKey);
     }
-    return Status;
+    ASYNC_END(State, Status);
 }
 
 static inline VOID IopPopulatePnpRequest(IN PIO_PACKET IoPacket,
@@ -1080,7 +1132,7 @@ static NTSTATUS IopDeviceTreeEnumerate(IN ASYNC_STATE AsyncState,
 
     /* We ignore the errors of the following function calls. This is ok since these
      * functions will not process the device node if it's not in the correct state. */
-    IopDeviceNodeLoadDrivers(DeviceNode);
+    AWAIT(IopDeviceNodeLoadDrivers, AsyncState, _, Thread, DeviceNode);
     AWAIT(IopDeviceNodeAddDevice, AsyncState, _, Thread, DeviceNode);
     AWAIT(IopDeviceNodeAssignResources, AsyncState, _, Thread, DeviceNode);
     AWAIT(IopDeviceNodeStartDevice, AsyncState, _, Thread, DeviceNode);
@@ -1190,7 +1242,10 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
 
     /* Load the root PnP enumerator driver and call AddDevice to create the root enumerator. */
     IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeInitialized);
-    IF_ERR_GOTO(out, Status, IopDeviceNodeLoadDrivers(IopRootDeviceNode));
+    AWAIT_EX(Status, IopDeviceNodeLoadDrivers, AsyncState, _, Thread, IopRootDeviceNode);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
     AWAIT_EX(Status, IopDeviceNodeAddDevice, AsyncState, _, Thread, IopRootDeviceNode);
     if (!NT_SUCCESS(Status)) {
 	goto out;

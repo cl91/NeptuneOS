@@ -30,11 +30,9 @@ static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
-    assert(Process->ImageFile);
-    assert(Process->ImageFile->Fcb);
-    ObDbg("Object handle %p (process %s) lookup type mismatch: expected mask 0x%x found type %d\n",
-	  Handle,
-	  Process->ImageFile->Fcb->FileName ? Process->ImageFile->Fcb->FileName : "UNKNOWN",
+    ObDbg("Object handle %p (process %s) lookup type mismatch: "
+	  "expected mask 0x%x found type %d\n",
+	  Handle, KEDBG_PROCESS_TO_FILENAME(Process),
 	  Type, ObjectHeader->Type->Index);
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
@@ -94,17 +92,23 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
-NTSTATUS ObReferenceObjectByHandle(IN PPROCESS Process,
+NTSTATUS ObReferenceObjectByHandle(IN PTHREAD Thread,
 				   IN HANDLE Handle,
 				   IN OBJECT_TYPE_ENUM Type,
 				   OUT POBJECT *pObject)
 {
-    assert(Process != NULL);
+    assert(Thread != NULL);
     assert(pObject != NULL);
     if (Handle == NULL) {
 	return STATUS_INVALID_HANDLE;
     }
-    RET_ERR(ObpLookupObjectHandleEx(Process, Handle, Type, pObject));
+    if (Handle == NtCurrentProcess() && (Type == OBJECT_TYPE_ANY || Type == OBJECT_TYPE_PROCESS)) {
+	*pObject = Thread->Process;
+    } else if (Handle == NtCurrentThread() && (Type == OBJECT_TYPE_ANY || Type == OBJECT_TYPE_THREAD)) {
+	*pObject = Thread;
+    } else {
+	RET_ERR(ObpLookupObjectHandleEx(Thread->Process, Handle, Type, pObject));
+    }
     ObpReferenceObject(*pObject);
     return STATUS_SUCCESS;
 }
@@ -165,11 +169,17 @@ VOID ObDereferenceObject(IN POBJECT Object)
 /*
  * We should implement lazy close. For now this does nothing.
  */
+NTSTATUS ObClose(IN PPROCESS Process,
+		 IN HANDLE Handle)
+{
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS NtClose(IN ASYNC_STATE State,
 		 IN PTHREAD Thread,
 		 IN HANDLE Handle)
 {
-    return STATUS_SUCCESS;
+    return ObClose(Thread->Process, Handle);
 }
 
 NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,

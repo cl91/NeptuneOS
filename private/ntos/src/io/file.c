@@ -1,9 +1,6 @@
 #include "iop.h"
 #include "helpers.h"
 
-/*
- * For now IO_FILE_OBJECT is just a pointer to an in-memory buffer.
- */
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx)
 {
@@ -11,16 +8,26 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     PIO_FILE_OBJECT File = (PIO_FILE_OBJECT)Object;
     PFILE_OBJ_CREATE_CONTEXT Ctx = (PFILE_OBJ_CREATE_CONTEXT)CreaCtx;
 
-    if (!Ctx->FileName || *Ctx->FileName == '\0' || Ctx->NoNewFcb) {
+    /* If the FileName is not NULL but points to an empty string, we
+     * must be opening a non-file-system device object, in which case
+     * we do not allocate an FCB. */
+    if (Ctx->FileName && *Ctx->FileName == '\0') {
 	File->Fcb = NULL;
     } else if (Ctx->Fcb) {
 	File->Fcb = Ctx->Fcb;
     } else {
 	IopAllocatePool(Fcb, IO_FILE_CONTROL_BLOCK);
 	File->Fcb = Fcb;
-	Fcb->FileName = Ctx->FileName;
+	if (Ctx->FileName) {
+	    Fcb->FileName = RtlDuplicateString(Ctx->FileName, NTOS_IO_TAG);
+	    if (!Fcb->FileName) {
+		IopFreePool(Fcb);
+		return STATUS_NO_MEMORY;
+	    }
+	}
 	Fcb->FileSize = Ctx->FileSize;
-	Fcb->BufferPtr = Ctx->BufferPtr;
+	Fcb->Vcb = Ctx->Vcb;
+	InitializeListHead(&Fcb->PrivateCacheMaps);
     }
 
     File->DeviceObject = Ctx->DeviceObject;
@@ -55,10 +62,9 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
     FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DeviceObject = DeviceObject,
 	.FileName = FileName,
-	.BufferPtr = NULL,
 	.FileSize = 0,
 	.Fcb = NULL,
-	.NoNewFcb = FALSE,
+	.Vcb = DeviceObject->Vcb,
 	.ReadAccess = TRUE,
 	.WriteAccess = TRUE,
 	.DeleteAccess = TRUE,
@@ -110,37 +116,40 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
  * boot module files. These files do not have a corresponding device object
  * because they are not managed by any file system.
  *
- * If ParentDirectory is not NULL, the file object is inserted under it as
- * a sub-object. Otherwise, the file object created is a no-name object and
- * is not part of any namespace (as far as the object manager is concerned).
+ * If File and ParentDirectory are not NULL, the file object is inserted
+ * under ParentDirectory as a sub-object. Otherwise, the file object created
+ * is a no-name object and is not part of any namespace as far as the object
+ * manager is concerned.
  */
-NTSTATUS IoCreateDevicelessFile(IN PCSTR FileName,
+NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
-				IN PVOID BufferPtr,
 				IN MWORD FileSize,
 				OUT PIO_FILE_OBJECT *pFile)
 {
-    assert(FileName);
-    assert(BufferPtr);
     assert(FileSize);
     assert(pFile);
     PIO_FILE_OBJECT File = NULL;
     FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DeviceObject = NULL,
 	.FileName = FileName,
-	.BufferPtr = BufferPtr,
 	.FileSize = FileSize,
 	.Fcb = NULL,
-	.NoNewFcb = FALSE
+	.Vcb = NULL
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
-    if (ParentDirectory) {
-	RET_ERR_EX(ObInsertObject(ParentDirectory, File, FileName, 0),
-		   ObDereferenceObject(File));
+    NTSTATUS Status;
+    IF_ERR_GOTO(out, Status, CcInitializeCacheMap(File->Fcb, NULL, NULL));
+    if (FileName && ParentDirectory) {
+	IF_ERR_GOTO(out, Status, ObInsertObject(ParentDirectory, File, FileName, 0));
     }
     *pFile = File;
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+out:
+    if (!NT_SUCCESS(Status)) {
+	ObDereferenceObject(File);
+    }
+    return Status;
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
@@ -357,7 +366,7 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
     if (File->Fcb) {
 	DbgPrint("    FileName = %s\n", File->Fcb->FileName);
 	DbgPrint("    FileSize = 0x%zx\n", File->Fcb->FileSize);
-	DbgPrint("    BufferPtr = %p\n", (PVOID)File->Fcb->BufferPtr);
+	DbgPrint("    SharedCacheMap = %p\n", File->Fcb->SharedCacheMap);
 	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
 	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);
     }

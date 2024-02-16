@@ -170,8 +170,7 @@ NTAPI NTSTATUS RtlAppendUnicodeStringToString(IN OUT PUNICODE_STRING Destination
     PWCHAR Buffer = &Destination->Buffer[Destination->Length / sizeof(WCHAR)];
 
     if (SourceLength) {
-	if ((SourceLength + Destination->Length) >
-	    Destination->MaximumLength) {
+	if (SourceLength + Destination->Length > Destination->MaximumLength) {
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
 

@@ -111,12 +111,13 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
  * Type specifies the object type of the handle (ie. specify OBJECT_TYPE_FILE
  * if you are opening a DEVICE object).
  */
-NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
-			    IN PTHREAD Thread,
-			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
-			    IN OBJECT_TYPE_ENUM Type,
-			    IN POB_OPEN_CONTEXT OpenContext,
-			    OUT HANDLE *pHandle)
+NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
+			      IN PTHREAD Thread,
+			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			      IN OBJECT_TYPE_ENUM Type,
+			      IN POB_OPEN_CONTEXT OpenContext,
+			      IN BOOLEAN AssignHandle,
+			      OUT PVOID *pHandle)
 {
     assert(ObpRootObjectDirectory != NULL);
     assert(Thread != NULL);
@@ -150,7 +151,7 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
     /* Get the root directory if user has specified one. Otherwise, default to the
      * global root object directory. */
     if (ObjectAttributes.RootDirectory != NULL) {
-	ASYNC_RET_ERR(AsyncState, ObReferenceObjectByHandle(Thread->Process,
+	ASYNC_RET_ERR(AsyncState, ObReferenceObjectByHandle(Thread,
 							    ObjectAttributes.RootDirectory,
 							    OBJECT_TYPE_ANY,
 							    &Locals.UserRootDirectory));
@@ -311,7 +312,11 @@ done:
     /* Remaining path is empty. Open is successful. Check the object type. */
     if (Type == OBJECT_TYPE_ANY || Type == OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Index) {
 	/* Type is valid. Assign the handle. */
-	Status = ObCreateHandle(Thread->Process, Locals.Object, pHandle);
+	if (AssignHandle) {
+	    Status = ObCreateHandle(Thread->Process, Locals.Object, pHandle);
+	} else {
+	    *pHandle = Locals.Object;
+	}
     } else {
 	Status = STATUS_OBJECT_TYPE_MISMATCH;
     }

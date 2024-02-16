@@ -318,6 +318,7 @@ typedef struct _IO_OPEN_CONTEXT {
 typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
     PCSTR DriverImagePath;
     PCSTR DriverServicePath;
+    PSECTION ImageSection;
 } DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
 
 /*
@@ -335,10 +336,9 @@ typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
 typedef struct _FILE_OBJ_CREATE_CONTEXT {
     PIO_DEVICE_OBJECT DeviceObject;
     PCSTR FileName;
-    PVOID BufferPtr;
     MWORD FileSize;
     PIO_FILE_CONTROL_BLOCK Fcb;
-    BOOLEAN NoNewFcb;
+    PIO_VOLUME_CONTROL_BLOCK Vcb;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;
@@ -482,8 +482,13 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 				   IN PVOID CreaCtx);
 VOID IopDriverObjectDeleteProc(IN POBJECT Self);
-NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
+NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       IN PCSTR DriverServicePath,
 		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject);
+
+/* cache.c */
+NTSTATUS CcInitializeCacheManager();
 
 /* volume.c */
 NTSTATUS IopInitFileSystem();

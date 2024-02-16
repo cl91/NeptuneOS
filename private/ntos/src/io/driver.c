@@ -3,8 +3,9 @@
 NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
 {
-    PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT) Object;
+    PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT)Object;
     PDRIVER_OBJ_CREATE_CONTEXT Ctx = (PDRIVER_OBJ_CREATE_CONTEXT)CreaCtx;
+    assert(Ctx->ImageSection);
     PCSTR DriverToLoad = Ctx->DriverImagePath;
     Driver->DriverImagePath = RtlDuplicateString(DriverToLoad, NTOS_IO_TAG);
     Driver->DriverRegistryPath = RtlDuplicateString(Ctx->DriverServicePath, NTOS_IO_TAG);
@@ -20,22 +21,11 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
-    /* TODO: FIXME We need to dereference the file in the delete routine */
-    PIO_FILE_OBJECT DriverFile = NULL;
-    RET_ERR(ObReferenceObjectByName(DriverToLoad, OBJECT_TYPE_FILE, NULL,
-				    FALSE, (POBJECT *) &DriverFile));
-    assert(DriverFile != NULL);
-    Driver->DriverFile = DriverFile;
-
     /* Start the driver process */
     PPROCESS Process = NULL;
-    RET_ERR(PsCreateProcess(DriverFile, Driver, NULL, &Process));
+    RET_ERR(PsCreateProcess(Ctx->ImageSection, Driver, &Process));
     assert(Process != NULL);
     Driver->DriverProcess = Process;
-
-    /* Make sure we have loaded wdm.dll, even when the driver image does not
-     * explicitly depend on it. */
-    RET_ERR(PsLoadDll(Process, WDM_DLL_NAME));
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
@@ -53,18 +43,39 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
 }
 
-/*
- * The driver service registry key must already be loaded when this
- * routine is called.
- */
-NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
+NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       IN PCSTR DriverServicePath,
 		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject)
 {
-    /* Get the object directory for all driver objects */
-    POBJECT DriverObjectDirectory = NULL;
-    RET_ERR(ObReferenceObjectByName(DRIVER_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,
-				    FALSE, NULL, &DriverObjectDirectory));
-    assert(DriverObjectDirectory != NULL);
+    NTSTATUS Status;
+    ULONG RegValueType = 0;
+    PCSTR DriverImagePath = NULL;
+    POBJECT KeyObject = NULL;
+    PIO_FILE_OBJECT DriverImageFile = NULL;
+    PSECTION DriverImageSection = NULL;
+
+    ASYNC_BEGIN(State, Locals, {
+	    POBJECT DriverObjectDirectory;
+	    PCSTR DriverName;
+	    PCSTR DriverImagePath;
+	    POBJECT KeyObject;
+	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
+	    IO_OPEN_CONTEXT OpenContext;
+	    PIO_FILE_OBJECT DriverImageFile;
+	    PSECTION DriverImageSection;
+	});
+    memset(&Locals, 0, sizeof(Locals));
+
+    /* Get the object directory for all driver objects. Note on Windows
+     * and ReactOS, device driver objects are placed under \Driver while
+     * file system drivers are placed under \FileSystem. We do not make
+     * this distinction on Neptune OS and place both under \Driver. */
+    ASYNC_RET_ERR(State, ObReferenceObjectByName(DRIVER_OBJECT_DIRECTORY,
+						 OBJECT_TYPE_DIRECTORY,
+						 FALSE, NULL,
+						 &Locals.DriverObjectDirectory));
+    assert(Locals.DriverObjectDirectory);
 
     /* Find the driver service basename, ie. "null" in
      * "\\Registry\\Machine\\CurrentControlSet\\Services\\null" */
@@ -77,93 +88,152 @@ NTSTATUS IopLoadDriver(IN PCSTR DriverServicePath,
 	    break;
 	}
     }
-    PCSTR DriverName = &DriverServicePath[SepIndex+1];
+    Locals.DriverName = &DriverServicePath[SepIndex+1];
     /* DriverName must not be an empty string */
-    if (*DriverName == '\0') {
-	return STATUS_INVALID_PARAMETER;
+    if (*Locals.DriverName == '\0') {
+	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
     }
 
-    /* Read the ImagePath value from the driver service registry key.
-     * The key must be loaded in memory at this point. */
-    ULONG RegValueType;
-    PCSTR DriverImagePath = NULL;
-    POBJECT KeyObject = NULL;
-    RET_ERR_EX(CmReadKeyValueByPath(DriverServicePath, "ImagePath", &KeyObject,
-				    &RegValueType, (PPVOID)&DriverImagePath),
-	       ObDereferenceObject(DriverObjectDirectory));
-    assert(KeyObject != NULL);
-    if (RegValueType != REG_SZ && RegValueType != REG_EXPAND_SZ) {
-	ObDereferenceObject(KeyObject);
-	ObDereferenceObject(DriverObjectDirectory);
-	return STATUS_OBJECT_NAME_INVALID;
-    }
-    assert(DriverImagePath != NULL);
-
-    /* Create the driver object */
+    /* Check the \Driver object directory to see if the driver has already
+     * been loaded. If it is, just return the existing driver object. */
     PIO_DRIVER_OBJECT DriverObject = NULL;
-    DRIVER_OBJ_CREATE_CONTEXT CreaCtx = {
-	.DriverImagePath = DriverImagePath,
-	.DriverServicePath = DriverServicePath,
-    };
-    /* Check the \Driver object directory for all loaded drivers and create the
-     * driver object if it has not yet been loaded. Note on Windows/ReactOS
-     * systems, device driver objects are placed under \Driver while file
-     * system drivers are placed under \FileSystem. We do not make this
-     * distinction on Neptune OS and place both under \Driver. */
-    NTSTATUS Status = ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
-					      DriverObjectDirectory, FALSE,
-					      (POBJECT *)&DriverObject);
+    Status = ObReferenceObjectByName(Locals.DriverName, OBJECT_TYPE_DRIVER,
+				     Locals.DriverObjectDirectory, FALSE,
+				     (POBJECT *)&DriverObject);
     if (NT_SUCCESS(Status)) {
+	assert(DriverObject);
 	/* Loading an already loaded driver does NOT increase its reference
 	 * count, so decrease the reference count increased by the call above. */
 	ObDereferenceObject(DriverObject);
-    } else {
-	Status = ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *)&DriverObject, &CreaCtx);
-	if (NT_SUCCESS(Status)) {
-	    Status = ObInsertObject(DriverObjectDirectory, DriverObject, DriverName,
-				    OBJ_NO_PARSE);
+	if (pDriverObject) {
+	    *pDriverObject = DriverObject;
 	}
-    }
-    /* Regardless of success or error, we need to dereference the driver object
-     * directory and key object because we increased their reference count above. */
-    ObDereferenceObject(DriverObjectDirectory);
-    ObDereferenceObject(KeyObject);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
+	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
 
+    /* Read the ImagePath value from the driver service registry key. */
+    AWAIT_EX(Status, CmReadKeyValueByPath, State, Locals, Thread,
+	     DriverServicePath, "ImagePath", &KeyObject,
+	     &RegValueType, (PPVOID)&DriverImagePath);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    assert(KeyObject);
+    assert(DriverImagePath);
+    Locals.KeyObject = KeyObject;
+    Locals.DriverImagePath = DriverImagePath;
+
+    if (RegValueType != REG_SZ && RegValueType != REG_EXPAND_SZ) {
+	Status = STATUS_OBJECT_NAME_INVALID;
+	goto out;
+    }
+    assert(Locals.DriverImagePath);
+
+    /* Open the driver image file */
+    Locals.ObjectAttributes.Attributes = OBJ_CASE_INSENSITIVE;
+    Locals.ObjectAttributes.ObjectNameBuffer = Locals.DriverImagePath;
+    Locals.ObjectAttributes.ObjectNameBufferLength = strlen(Locals.DriverImagePath) + 1;
+    Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
+    Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
+    Locals.OpenContext.OpenPacket.CreateOptions = FILE_SYNCHRONOUS_IO_NONALERT
+	| FILE_NON_DIRECTORY_FILE;
+    Locals.OpenContext.OpenPacket.FileAttributes = 0;
+    Locals.OpenContext.OpenPacket.ShareAccess = FILE_SHARE_DELETE | FILE_SHARE_READ;
+    Locals.OpenContext.OpenPacket.Disposition = 0;
+
+    AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals,
+	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_FILE,
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, (PVOID *)&DriverImageFile);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Locals.DriverImageFile = DriverImageFile;
+
+    /* Create the driver image section */
+    AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread,
+	     Locals.DriverImageFile, PAGE_EXECUTE, SEC_IMAGE, &DriverImageSection);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Locals.DriverImageSection = DriverImageSection;
+
+    /* Create the driver object */
+    DRIVER_OBJ_CREATE_CONTEXT CreaCtx = {
+	.DriverImagePath = Locals.DriverImagePath,
+	.DriverServicePath = DriverServicePath,
+	.ImageSection = Locals.DriverImageSection
+    };
+    PIO_DRIVER_OBJECT DriverObject = NULL;
+    Status = ObCreateObject(OBJECT_TYPE_DRIVER, (POBJECT *)&DriverObject, &CreaCtx);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Status = ObInsertObject(Locals.DriverObjectDirectory, DriverObject,
+			    Locals.DriverName, 0);
+    if (!NT_SUCCESS(Status)) {
+	/* This insertion may fail since another process might have attempted to
+	 * load the same driver concurrently. In this case we should delete the
+	 * driver object that we just created. */
+	ObDereferenceObject(DriverObject);
+	goto out;
+    }
     if (pDriverObject) {
 	*pDriverObject = DriverObject;
     }
-    return STATUS_SUCCESS;
+
+out:
+    /* Regardless of success or error, we need to dereference the objects
+     * referenced above. */
+    if (Locals.DriverObjectDirectory) {
+	ObDereferenceObject(Locals.DriverObjectDirectory);
+    }
+    if (Locals.KeyObject) {
+	ObDereferenceObject(Locals.KeyObject);
+    }
+    if (Locals.DriverImageSection) {
+	ObDereferenceObject(Locals.DriverImageSection);
+    }
+    if (Locals.DriverImageFile) {
+	ObDereferenceObject(Locals.DriverImageFile);
+    }
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN PCSTR DriverServiceName)
 {
+    PIO_DRIVER_OBJECT DriverObject = NULL;
+    NTSTATUS Status;
+
     ASYNC_BEGIN(State, Locals, {
 	    PIO_DRIVER_OBJECT DriverObject;
 	});
 
-    NTSTATUS Status = IopLoadDriver(DriverServiceName, &Locals.DriverObject);
+    AWAIT_EX(Status, IopLoadDriver, State, Locals, Thread,
+	     DriverServiceName, &DriverObject);
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
     }
-    assert(Locals.DriverObject != NULL);
+    assert(DriverObject != NULL);
+    Locals.DriverObject = DriverObject;
 
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE, NULL);
 
-    /* If the driver initialization failed, inform the caller of the error status */
-    if (Locals.DriverObject->MainEventLoopThread == NULL) {
-	ASYNC_RETURN(State, STATUS_UNSUCCESSFUL);
+    /* If the driver initialization failed, inform the caller of the error status.
+     * Otherwise return success (in case of success, MainEventLoopThread->ExitStatus
+     * will contain STATUS_SUCCESS). */
+    if (Locals.DriverObject->MainEventLoopThread) {
+	Status = Locals.DriverObject->MainEventLoopThread->ExitStatus;
+    } else {
+	Status = STATUS_UNSUCCESSFUL;
     }
-    if (!NT_SUCCESS(Locals.DriverObject->MainEventLoopThread->ExitStatus)) {
-	ASYNC_RETURN(State, Locals.DriverObject->MainEventLoopThread->ExitStatus);
+    if (!NT_SUCCESS(Status)) {
+	ObDereferenceObject(Locals.DriverObject);
     }
 
-    ASYNC_END(State, STATUS_SUCCESS);
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,

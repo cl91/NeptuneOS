@@ -4,7 +4,8 @@
 PSECTION MiPhysicalSection;
 
 /*
- * Note: Call memset(ImageSection, 0, sizeof(IMAGE_SECTION_OBJECT)) before calling this.
+ * Note: we assume memset(ImageSection, 0, sizeof(IMAGE_SECTION_OBJECT)) has
+ * been called before this routine is called.
  */
 static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSection,
 					    IN PIO_FILE_OBJECT File)
@@ -13,7 +14,8 @@ static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSectio
 }
 
 /*
- * Note: Call memset(Subsection, 0, sizeof(SUBSECTION)) before calling this.
+ * Note: we assume memset(Subsection, 0, sizeof(SUBSECTION)) has been called
+ * before this routine is called.
  */
 static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
 					  IN PIMAGE_SECTION_OBJECT ImageSection)
@@ -23,52 +25,42 @@ static inline VOID MiInitializeSubSection(IN PSUBSECTION SubSection,
 }
 
 /*
- * This is stolen shamelessly from the ReactOS source code.
- *
  * Parse the PE image headers and populate the given image section object,
  * including the SUBSECTIONs. The number of subsections equals the number of PE
  * sections of the image file plus the zeroth subsection which is the PE image
- * headers.
+ * headers. The shared cache map of the file object must be pinned and populated
+ * before calling this routine.
  *
  * References:
  *  [1] Microsoft Corporation, "Microsoft Portable Executable and Common Object
  *      File Format Specification", revision 6.0 (February 1999)
  */
 #define DIE(...) { MmDbg(__VA_ARGS__); return STATUS_INVALID_IMAGE_FORMAT; }
-static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
-				    IN ULONG FileBufferSize,
+static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
 				    IN PIMAGE_SECTION_OBJECT ImageSection,
 				    OUT MWORD *pSectionSize)
 {
-    assert(FileBuffer);
-    assert(FileBufferSize);
-    assert(ImageSection != NULL);
-    /* Make sure we FileBuffer + FileBufferSize doesn't overflow */
-    assert(Intsafe_CanOffsetPointer(FileBuffer, FileBufferSize));
+    assert(FileObject);
+    assert(FileObject->Fcb);
+    assert(FileObject->Fcb->SharedCacheMap);
+    assert(ImageSection);
+    assert(pSectionSize);
 
     PIMAGE_NT_HEADERS NtHeader = NULL;
-    RET_ERR(RtlpImageNtHeaderEx(RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK,
-				FileBuffer, FileBufferSize, &NtHeader));
-    assert(NtHeader != NULL);
+    ULONG64 NtHeaderOffset = 0;
+    RET_ERR(RtlImageNtHeaderEx(FileObject->Fcb, &NtHeader, &NtHeaderOffset));
+    assert(NtHeader);
+    assert(NtHeaderOffset);
 
-    PIMAGE_OPTIONAL_HEADER OptHeader = &NtHeader->OptionalHeader;
     ULONG OptHeaderSize = NtHeader->FileHeader.SizeOfOptionalHeader;
-    ULONG OptHeaderOffset = (MWORD) OptHeader - (MWORD) FileBuffer;
+    ULONG64 OptHeaderOffset = NtHeaderOffset + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader);
+    PIMAGE_OPTIONAL_HEADER OptHeader = NULL;
+    RET_ERR(CcMapData(FileObject->Fcb, OptHeaderOffset, OptHeaderSize,
+		      NULL, (PVOID *)&OptHeader));
 
-    /* Make sure we have read the whole optional header into memory. */
-    ULONG SectionHeadersOffset = 0; /* File offset of beginning of section header table */
-    if (!Intsafe_AddULong32(&SectionHeadersOffset, OptHeaderOffset, OptHeaderSize)) {
-	DIE("The NT header is too large, SizeOfOptionalHeader is %X\n", OptHeaderSize);
-    }
-    /* The buffer doesn't contain the full optional header: read it from the file */
-    if (FileBufferSize < SectionHeadersOffset) {
-	UNIMPLEMENTED;
-    }
-
-    /* Read information from the optional header */
-    if (!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, Magic)) {
-        DIE("The optional header does not contain the Magic field,"
-	    " SizeOfOptionalHeader is %X\n", OptHeaderSize);
+    /* Make sure the optional header size is big enough */
+    if (!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, NumberOfRvaAndSizes)) {
+        DIE("SizeOfOptionalHeader 0x%x too small\n", OptHeaderSize);
     }
 
     /* We only process PE files that are native to the architecture, which for
@@ -77,14 +69,9 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 	DIE("Invalid optional header, magic is 0x%x\n", OptHeader->Magic);
     }
 
-    /* Validate section alignment and file alignment */
-    if (!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SectionAlignment) ||
-	!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, FileAlignment)) {
-	DIE("Optional header does not contain section alignment or file alignment\n");
-    }
-    /* See [1], section 3.4.2 */
-    if(OptHeader->SectionAlignment < PAGE_SIZE) {
-	if(OptHeader->FileAlignment != OptHeader->SectionAlignment) {
+    /* Validate section alignment and file alignment. See [1], section 3.4.2 */
+    if (OptHeader->SectionAlignment < PAGE_SIZE) {
+	if (OptHeader->FileAlignment != OptHeader->SectionAlignment) {
 	    DIE("Sections aren't page-aligned and the file alignment isn't the same\n");
 	}
     } else if(OptHeader->SectionAlignment < OptHeader->FileAlignment) {
@@ -100,11 +87,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 	SectionAlignment = PAGE_SIZE;
     }
 
-    /* Validate image base */
-    if (!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, ImageBase)) {
-	DIE("Optional header does not contain ImageBase\n");
-    }
-    /* [1], section 3.4.2 */
+    /* Validate image base. See [1], section 3.4.2 */
     if (OptHeader->ImageBase % 0x10000) {
 	DIE("ImageBase is not aligned on a 64KB boundary\n");
     }
@@ -112,42 +95,18 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
     /* Populate image information of the image section object. */
     PSECTION_IMAGE_INFORMATION ImageInformation = &ImageSection->ImageInformation;
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SizeOfImage)) {
-	ImageInformation->ImageFileSize = OptHeader->SizeOfImage;
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SizeOfStackReserve)) {
-	ImageInformation->MaximumStackSize = OptHeader->SizeOfStackReserve;
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SizeOfStackCommit)) {
-	ImageInformation->CommittedStackSize = OptHeader->SizeOfStackCommit;
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, Subsystem)) {
-	ImageInformation->SubSystemType = OptHeader->Subsystem;
-	if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, MinorSubsystemVersion) &&
-	    RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, MajorSubsystemVersion)) {
-	    ImageInformation->SubSystemMinorVersion = OptHeader->MinorSubsystemVersion;
-	    ImageInformation->SubSystemMajorVersion = OptHeader->MajorSubsystemVersion;
-	}
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, AddressOfEntryPoint)) {
-	ImageInformation->TransferAddress =
-	    (PVOID) ((MWORD) (OptHeader->ImageBase + OptHeader->AddressOfEntryPoint));
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SizeOfCode)) {
-	ImageInformation->ImageContainsCode = (OptHeader->SizeOfCode != 0);
-    } else {
-	ImageInformation->ImageContainsCode = TRUE;
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, AddressOfEntryPoint) &&
-	(OptHeader->AddressOfEntryPoint == 0)) {
-	ImageInformation->ImageContainsCode = FALSE;
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, LoaderFlags)) {
-	ImageInformation->LoaderFlags = OptHeader->LoaderFlags;
-    }
-    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, DllCharacteristics)) {
-	ImageInformation->DllCharacteristics = OptHeader->DllCharacteristics;
-    }
+    ImageInformation->ImageFileSize = OptHeader->SizeOfImage;
+    ImageInformation->MaximumStackSize = OptHeader->SizeOfStackReserve;
+    ImageInformation->CommittedStackSize = OptHeader->SizeOfStackCommit;
+    ImageInformation->SubSystemType = OptHeader->Subsystem;
+    ImageInformation->SubSystemMinorVersion = OptHeader->MinorSubsystemVersion;
+    ImageInformation->SubSystemMajorVersion = OptHeader->MajorSubsystemVersion;
+    ImageInformation->TransferAddress =
+	(PVOID)(OptHeader->ImageBase + OptHeader->AddressOfEntryPoint);
+    ImageInformation->ImageContainsCode =
+	OptHeader->SizeOfCode && OptHeader->AddressOfEntryPoint;
+    ImageInformation->LoaderFlags = OptHeader->LoaderFlags;
+    ImageInformation->DllCharacteristics = OptHeader->DllCharacteristics;
 
     /*
      * Since we don't really implement SxS yet and LD doesn't support
@@ -170,42 +129,34 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     ImageInformation->GpValue = 0;
     ImageInformation->ZeroBits = 0;
 
-    /*
-     * SECTION HEADERS
-     * See [1], section 3.3
-     */
-    if (NtHeader->FileHeader.NumberOfSections > 96) {
-        DIE("Too many sections, NumberOfSections is %u\n",
-	    NtHeader->FileHeader.NumberOfSections);
-    }
-
     /* Size of the executable's headers. This includes the DOS header and
      * NT headers (the COFF header and the optional header), as well as
      * the section tables. */
-    if (!RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, SizeOfHeaders)) {
-	DIE("Optional header does not contain SizeOfHeaders member\n");
-    }
     ULONG AllHeadersSize = OptHeader->SizeOfHeaders;
     if (!IS_ALIGNED_BY(AllHeadersSize, FileAlignment)) {
         DIE("SizeOfHeaders is not aligned with file alignment\n");
     }
-    assert(Intsafe_CanMulULong32(NtHeader->FileHeader.NumberOfSections,
-				 sizeof(IMAGE_SECTION_HEADER)));
-    if (AllHeadersSize < NtHeader->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER)) {
-	DIE("SizeOfHeaders is less than number of sections times section header size\n");
-    }
-    /* Make sure we have read the entire section header table into memory. */
-    if (FileBufferSize < AllHeadersSize) {
-	UNIMPLEMENTED;
-    }
 
     /*
-     * We already know that Intsafe_CanOffsetPointer(FileBuffer, FileBufferSize),
-     * and FileBufferSize >= FirstSectionOffset, so this holds true too.
+     * SECTION HEADERS
+     * See [1], section 3.3
      */
-    assert(Intsafe_CanOffsetPointer(FileBuffer, SectionHeadersOffset));
-    PIMAGE_SECTION_HEADER SectionHeaders = (PIMAGE_SECTION_HEADER)
-	((ULONG_PTR)FileBuffer + SectionHeadersOffset);
+    ULONG NumberOfSections = NtHeader->FileHeader.NumberOfSections;
+    if (!NumberOfSections) {
+	DIE("Image must have at least one section.\n");
+    }
+    assert(Intsafe_CanMulULong32(NumberOfSections, sizeof(IMAGE_SECTION_HEADER)));
+    ULONG SectionHeadersSize = NumberOfSections * sizeof(IMAGE_SECTION_HEADER);
+    if (AllHeadersSize < SectionHeadersSize) {
+	DIE("SizeOfHeaders is less than number of sections times section header size\n");
+    }
+
+    /* The table of section headers is immediately after the optional header. */
+    ULONG64 SectionHeadersOffset = OptHeaderOffset + OptHeaderSize;
+    PIMAGE_SECTION_HEADER SectionHeaders = NULL;
+    RET_ERR(CcMapData(FileObject->Fcb, SectionHeadersOffset, SectionHeadersSize,
+		      NULL, (PVOID *)&SectionHeaders));
+    assert(SectionHeaders);
 
     /*
      * Parse the section tables and validate their values before we start
@@ -214,7 +165,7 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
      * See [1], section 4
      */
     MWORD PreviousSectionEnd = ALIGN_UP_BY(AllHeadersSize, SectionAlignment);
-    for (ULONG i = 0; i < NtHeader->FileHeader.NumberOfSections; i++) {
+    for (ULONG i = 0; i < NumberOfSections; i++) {
         /* Validate alignment */
         if (!IS_ALIGNED_BY(SectionHeaders[i].VirtualAddress, SectionAlignment)) {
             DIE("Section %u VirtualAddress is not aligned\n", i);
@@ -224,23 +175,11 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
         if(SectionHeaders[i].VirtualAddress != PreviousSectionEnd)
             DIE("Memory gap between section %u and the previous\n", i);
 
-        /* Ignore explicit BSS sections */
-        if (SectionHeaders[i].SizeOfRawData != 0) {
-#if 0
-            /* Yes, this should be a multiple of FileAlignment, but there's
-             * stuff out there that isn't. We can cope with that
-             */
-            if (!IS_ALIGNED_BY(SectionHeaders[i].SizeOfRawData, FileAlignment)) {
-                DIE("SizeOfRawData[%u] is not aligned\n", i);
-	    }
-            if (!IS_ALIGNED_BY(SectionHeaders[i].PointerToRawData, FileAlignment)) {
-                DIE("PointerToRawData[%u] is not aligned\n", i);
-	    }
-#endif
-            if (!Intsafe_CanAddULong32(SectionHeaders[i].PointerToRawData,
-				       SectionHeaders[i].SizeOfRawData)) {
-                DIE("SizeOfRawData[%u] too large\n", i);
-	    }
+	/* Validate SizeOfRawData */
+        if (SectionHeaders[i].SizeOfRawData &&
+	    !Intsafe_CanAddULong32(SectionHeaders[i].PointerToRawData,
+				   SectionHeaders[i].SizeOfRawData)) {
+	    DIE("SizeOfRawData[%u] too large\n", i);
 	}
 
 	MWORD VirtualSize = SectionHeaders[i].Misc.VirtualSize;
@@ -263,15 +202,13 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
      * Parse the section headers and allocate SUBSECTIONS for the image section object.
      * One additional subsection (the zeroth subsection) is for the image headers.
      */
-    LONG NumSubSections = NtHeader->FileHeader.NumberOfSections + 1;
+    LONG NumSubSections = NumberOfSections + 1;
     MiAllocateArray(SubSectionsArray, PSUBSECTION, NumSubSections, {});
     for (LONG i = 0; i < NumSubSections; i++) {
 	MiAllocatePoolEx(SubSection, SUBSECTION,
 			 {
 			     for (LONG j = 0; j < i; j++) {
-				 if (SubSectionsArray[j] == NULL) {
-				     return STATUS_NTOS_BUG;
-				 }
+				 assert(SubSectionsArray[j]);
 				 MiFreePool(SubSectionsArray[j]);
 			     }
 			     MiFreePool(SubSectionsArray);
@@ -288,9 +225,10 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
     SubSectionsArray[0]->FileOffset = 0;
     SubSectionsArray[0]->RawDataSize = AllHeadersSize;
     SubSectionsArray[0]->SubSectionBase = 0;
-    SubSectionsArray[0]->Characteristics = 0;
+    SubSectionsArray[0]->Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ;
     InsertTailList(&ImageSection->SubSectionList, &SubSectionsArray[0]->Link);
     MWORD SectionSize = SubSectionsArray[0]->SubSectionSize;
+    ULONG ImageCacheFileSize = SectionSize;
 
     for (LONG i = 1; i < NumSubSections; i++) {
 	SubSectionsArray[i]->RawDataSize = SectionHeaders[i-1].SizeOfRawData;
@@ -320,12 +258,24 @@ static NTSTATUS MiParseImageHeaders(IN PVOID FileBuffer,
 
         SubSectionsArray[i]->SubSectionSize = VirtualSize;
         SubSectionsArray[i]->SubSectionBase = SectionHeaders[i-1].VirtualAddress;
+	assert(SubSectionsArray[i-1]->SubSectionBase + SubSectionsArray[i-1]->SubSectionSize
+	       == SubSectionsArray[i]->SubSectionBase);
 	memcpy(SubSectionsArray[i]->Name, SectionHeaders[i-1].Name, IMAGE_SIZEOF_SHORT_NAME);
 	SubSectionsArray[i]->Name[IMAGE_SIZEOF_SHORT_NAME] = '\0';
 
-	InsertTailList(&ImageSection->SubSectionList, &SubSectionsArray[i]->Link);
+	/* If the section contains code or initialized data, we add it to the
+	 * image cache file. */
+	if (Characteristics & (IMAGE_SCN_CNT_CODE | IMAGE_SCN_CNT_INITIALIZED_DATA)) {
+	    SubSectionsArray[i]->ImageCacheFileOffset = ImageCacheFileSize;
+	    ImageCacheFileSize += VirtualSize;
+	} else {
+	    SubSectionsArray[i]->ImageCacheFileOffset = ULONG_MAX;
+	}
 	SectionSize += VirtualSize;
+
+	InsertTailList(&ImageSection->SubSectionList, &SubSectionsArray[i]->Link);
     }
+    ImageSection->ImageCacheFileSize = ImageCacheFileSize;
 
     MiFreePool(SubSectionsArray);
     *pSectionSize = SectionSize;
@@ -343,15 +293,49 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
     MiAllocatePool(ImageSection, IMAGE_SECTION_OBJECT);
     MiInitializeImageSection(ImageSection, File);
 
-    RET_ERR_EX(MiParseImageHeaders((PVOID)File->Fcb->BufferPtr, File->Fcb->FileSize,
-				   ImageSection, pSectionSize),
-	       MiFreePool(ImageSection));
+    NTSTATUS Status;
+    PIO_FILE_OBJECT ImageCacheFile = NULL;
+    IF_ERR_GOTO(out, Status, MiParseImageHeaders(File, ImageSection, pSectionSize));
+    IF_ERR_GOTO(out, Status, IoCreateDevicelessFile(NULL, NULL,
+						    ImageSection->ImageCacheFileSize,
+						    &ImageCacheFile));
+    assert(ImageCacheFile->Fcb);
+    IF_ERR_GOTO(out, Status, CcInitializeCacheMap(ImageCacheFile->Fcb, NULL, NULL));
+    LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
+	if (SubSection->ImageCacheFileOffset == ULONG_MAX) {
+	    continue;
+	}
+	ULONG BytesCopied = 0;
+	while (BytesCopied < SubSection->RawDataSize) {
+	    ULONG MappedLength;
+	    PVOID Buffer;
+	    IF_ERR_GOTO(out, Status, CcMapData(ImageCacheFile->Fcb,
+					       SubSection->ImageCacheFileOffset + BytesCopied,
+					       SubSection->RawDataSize - BytesCopied,
+					       &MappedLength, &Buffer));
+	    IF_ERR_GOTO(out, Status, CcCopyRead(File->Fcb,
+						SubSection->FileOffset + BytesCopied,
+						MappedLength, Buffer));
+	    BytesCopied += MappedLength;
+	}
+    }
 
     assert(File->Fcb);
     File->Fcb->ImageSectionObject = ImageSection;
-    ImageSection->FileObject = File;
+    ImageSection->Fcb = File->Fcb;
+    ImageSection->ImageCacheFile = ImageCacheFile;
     *pImageSection = ImageSection;
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+out:
+    if (!NT_SUCCESS(Status)) {
+	if (ImageSection) {
+	    MiFreePool(ImageSection);
+	}
+	if (ImageCacheFile) {
+	    ObDereferenceObject(ImageCacheFile);
+	}
+    }
+    return Status;
 }
 
 static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
@@ -389,7 +373,7 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     }
 
     Section->Flags.Image = 1;
-    /* For now all sections are committed immediately. */
+    /* Image sections are always committed immediately. */
     Section->Flags.Reserve = 1;
     Section->Flags.Commit = 1;
     Section->ImageSectionObject = ImageSection;
@@ -427,9 +411,9 @@ NTSTATUS MmSectionInitialization()
      * at starting addresses for 4K page hyperspace and large page hyperspace
      * will be mapped on-demand. */
     RET_ERR(MmReserveVirtualMemory(HYPERSPACE_4K_PAGE_START, 0, LARGE_PAGE_SIZE,
-				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
+				   0, MEM_RESERVE_MIRRORED_MEMORY, NULL));
     RET_ERR(MmReserveVirtualMemory(HYPERSPACE_LARGE_PAGE_START, 0, LARGE_PAGE_SIZE,
-				   MEM_RESERVE_MIRRORED_MEMORY, NULL));
+				   0, MEM_RESERVE_MIRRORED_MEMORY, NULL));
 
     /* Create the singleton physical section. */
     SECTION_OBJ_CREATE_CONTEXT Ctx = {
@@ -462,20 +446,82 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
     return STATUS_SUCCESS;
 }
 
-/*
- * Append the list pointed to by ListToAppend to ListHead.
- *
- * Note that this is different from the standard AppendTailList.
- * Here ListToAppend is the list head of the list to be appended.
- */
-static inline VOID MiAppendTailList(IN PLIST_ENTRY ListHead,
-				    IN PLIST_ENTRY ListToAppend)
+NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
+			   IN PIO_FILE_OBJECT FileObject,
+			   IN ULONG PageProtection,
+			   IN ULONG SectionAttributes,
+			   OUT PSECTION *SectionObject)
 {
-    ListHead->Blink->Flink = ListToAppend->Flink;
-    ListToAppend->Flink->Blink = ListHead->Blink;
-    ListHead->Blink = ListToAppend->Blink;
-    ListToAppend->Blink->Flink = ListHead;
-    InvalidateListEntry(ListToAppend);
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    ASYNC_BEGIN(State);
+
+    /* You cannot create a section object for a non-file-system file object. */
+    if (FileObject && !FileObject->Fcb) {
+	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
+    }
+
+    /* For image section creation, we need to load the image file from disk
+     * before calling MmCreateSection, because it needs to read the PE headers
+     * to create the image section. */
+    AWAIT_EX_IF(FileObject && (SectionAttributes & SEC_IMAGE), Status, CcPinData,
+		State, _, Thread, FileObject->Fcb, 0, FileObject->Fcb->FileSize, NULL);
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(State, Status);
+    }
+
+    Status = MmCreateSection(FileObject, PageProtection,
+			     SectionAttributes, SectionObject);
+
+    if (FileObject && (SectionAttributes & SEC_IMAGE)) {
+	CcUnpinData(FileObject->Fcb, 0, FileObject->Fcb->FileSize);
+    }
+
+    ASYNC_END(State, Status);
+}
+
+static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
+{
+    assert(Vad);
+    assert(Vad->VSpace);
+    assert(Vad->Flags.ImageMap);
+    assert(IS_PAGE_ALIGNED(Vad->AvlNode.Key));
+    assert(IS_PAGE_ALIGNED(Vad->WindowSize));
+    assert(Vad->AvlNode.Key + Vad->WindowSize > Vad->AvlNode.Key);
+    PSUBSECTION SubSection = Vad->ImageSectionView.SubSection;
+    assert(SubSection);
+    assert(SubSection->ImageSection);
+    assert(SubSection->ImageSection->ImageCacheFile);
+
+    PAGING_RIGHTS Rights = Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
+    if (SubSection->RawDataSize) {
+	ULONG BytesMapped = 0;
+	while (BytesMapped < SubSection->SubSectionSize) {
+	    ULONG MappedLength = 0;
+	    PVOID Buffer = NULL;
+	    RET_ERR(CcMapData(SubSection->ImageSection->ImageCacheFile->Fcb,
+			      SubSection->ImageCacheFileOffset + BytesMapped,
+			      SubSection->SubSectionSize - BytesMapped,
+			      &MappedLength, &Buffer));
+	    assert(IS_PAGE_ALIGNED(MappedLength));
+	    assert(IS_PAGE_ALIGNED(BytesMapped));
+	    if (Vad->Flags.ReadOnly) {
+		RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
+					    Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
+					    MappedLength, Rights));
+	    } else {
+		RET_ERR(MmCommitOwnedMemory(Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
+					    MappedLength, Rights, FALSE, Buffer, MappedLength));
+	    }
+	    BytesMapped += MappedLength;
+	}
+    } else {
+	RET_ERR(MmCommitOwnedMemory(Vad->VSpace, Vad->AvlNode.Key, Vad->WindowSize, Rights,
+				    Vad->Flags.LargePages, NULL, 0));
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
@@ -483,10 +529,16 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 					IN PIMAGE_SECTION_OBJECT ImageSection,
 					IN OUT OPTIONAL MWORD *pBaseAddress,
 					OUT OPTIONAL MWORD *pImageVirtualSize,
+					IN ULONG HighZeroBits,
+					IN ULONG ReserveFlags,
 					IN BOOLEAN AlwaysWritable)
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
+
+    if (ReserveFlags & !(MEM_RESERVE_TOP_DOWN | MEM_RESERVE_LARGE_PAGES)) {
+	return STATUS_INVALID_PARAMETER;
+    }
 
     /* Compute the total in-memory size of the image */
     MWORD ImageVirtualSize = 0;
@@ -497,27 +549,29 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
     /* Find an unused address window of ImageVirtualSize. If the user supplied the
      * base address, always map there. If not, try the preferred ImageBase specified
      * in the image file first */
+    ULONG TopDownFlag = ReserveFlags & MEM_RESERVE_TOP_DOWN;
     MWORD BaseAddress = ImageSection->ImageBase;
     if ((pBaseAddress != NULL) && (*pBaseAddress != 0)) {
 	BaseAddress = *pBaseAddress;
     } else if (!NT_SUCCESS(MmReserveVirtualMemoryEx(VSpace, BaseAddress, 0,
-						    ImageVirtualSize,
-						    MEM_RESERVE_NO_INSERT,
+						    ImageVirtualSize, 0, HighZeroBits,
+						    MEM_RESERVE_NO_INSERT | TopDownFlag,
 						    NULL))) {
 	/* We cannot map on the preferred image base. Search from the beginning
 	 * of the user address space. */
 	PMMVAD ImageVad = NULL;
 	RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
 					 USER_IMAGE_REGION_END,
-					 ImageVirtualSize,
-					 MEM_RESERVE_NO_INSERT, &ImageVad));
+					 ImageVirtualSize, 0, HighZeroBits,
+					 MEM_RESERVE_NO_INSERT | TopDownFlag,
+					 &ImageVad));
 	assert(ImageVad != NULL);
 	BaseAddress = ImageVad->AvlNode.Key;
 	assert(BaseAddress >= USER_IMAGE_REGION_START);
 	assert(BaseAddress < USER_IMAGE_REGION_END);
 	/* Since we have specified MEM_RESERVE_NO_INSERT above we can simply
-	 * free the pool memory of ImageVad here. Calling MmDeleteVad is
-	 * in fact INCORRECT here as the VAD has never been inserted. */
+	 * free the pool memory of ImageVad here. Calling MmDeleteVad would
+	 * be incorrect here as the VAD has never been inserted. */
 	MiFreePool(ImageVad);
     }
 
@@ -531,27 +585,21 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
      * to the subsection, and commit the memory pages of that subsection. */
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	PMMVAD Vad = NULL;
-	/* For now we always map pages as private. In the future when we have
-	 * implemented the cache manager, pages can be shared between the cache
-	 * manager and the client processes. For this to happen the pages must
-	 * be mapped read-only and the start of the data buffer happens to fall
-	 * on page boundary.
-	 *
-	 * Of course, sections can be shared with other client processes. This is
-	 * also left as future work. */
-	MWORD Flags = MEM_RESERVE_IMAGE_MAP | MEM_RESERVE_OWNED_MEMORY;
-	if (!AlwaysWritable) {
-	    if (!(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE)) {
-		Flags |= MEM_RESERVE_READ_ONLY;
-	    }
+	BOOLEAN ReadOnly = !AlwaysWritable &&
+	    !(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE);
+	MWORD Flags = MEM_RESERVE_IMAGE_MAP;
+	if (ReadOnly) {
+	    Flags |= MEM_RESERVE_READ_ONLY;
 	}
-	/* If PE data section is large enough, use large pages to save resources */
-	if (SubSection->RawDataSize >= (LARGE_PAGE_SIZE - PAGE_SIZE)) {
+	/* If the caller specified it and PE bss section is large enough,
+	 * use large pages to save resources */
+	if ((ReserveFlags & MEM_RESERVE_LARGE_PAGES) && !SubSection->RawDataSize &&
+	    SubSection->SubSectionSize >= (LARGE_PAGE_SIZE - PAGE_SIZE)) {
 	    Flags |= MEM_RESERVE_LARGE_PAGES;
 	}
 	IF_ERR_GOTO(err, Status,
 		    MmReserveVirtualMemoryEx(VSpace, BaseAddress + SubSection->SubSectionBase,
-					     0, SubSection->SubSectionSize, Flags, &Vad));
+					     0, SubSection->SubSectionSize, 0, 0, Flags, &Vad));
 	assert(Vad != NULL);
 	Vad->ImageSectionView.SubSection = SubSection;
 
@@ -564,7 +612,7 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     /* All subsections mapped successfully. Add the VADs to the vad list of the section */
-    MiAppendTailList(SectionVadList, &VadList);
+    AppendTailListHead(SectionVadList, &VadList);
 
     if (pBaseAddress != NULL) {
 	if (*pBaseAddress != 0) {
@@ -592,20 +640,27 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
     PMMVAD Vad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(VSpace, VirtualBase, 0, WindowSize,
-				     MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace, VirtualBase, 0, WindowSize, 0,
+				     0, MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
     assert(Vad != NULL);
     Vad->PhysicalSectionView.PhysicalBase = PhysicalBase;
-    RET_ERR(MmCommitVirtualMemoryEx(VSpace, VirtualBase, WindowSize));
+    if (Vad->PhysicalSectionView.RootUntyped) {
+	assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
+    }
+    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhysicalBase) &&
+	IS_LARGE_PAGE_ALIGNED(VirtualBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
+    RET_ERR_EX(MiMapIoMemory(Vad->VSpace, PhysicalBase, VirtualBase, WindowSize,
+			     MM_RIGHTS_RW, UseLargePage),
+	       MmDeleteVad(Vad));
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
+NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 			     IN MWORD VirtualBase,
 			     IN MWORD WindowSize)
 {
     return MmMapViewOfSection(&MiNtosVaddrSpace, MiPhysicalSection, &VirtualBase,
-			      &PhysicalBase, &WindowSize, TRUE);
+			      &PhysicalBase, &WindowSize, 0, ViewUnmap, 0, TRUE);
 }
 
 /*
@@ -616,8 +671,11 @@ NTSTATUS MmMapPhysicalMemory(IN MWORD PhysicalBase,
 NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,
 			    IN OUT OPTIONAL MWORD *BaseAddress,
-			    IN OUT OPTIONAL MWORD *SectionOffset,
+			    IN OUT OPTIONAL ULONG64 *SectionOffset,
 			    IN OUT OPTIONAL MWORD *ViewSize,
+			    IN ULONG HighZeroBits,
+			    IN SECTION_INHERIT InheritDisposition,
+			    IN ULONG ReserveFlags,
 			    IN BOOLEAN AlwaysWritable)
 {
     assert(VSpace != NULL);
@@ -627,16 +685,19 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PARAMETER;
 	}
 	MWORD ImageVirtualSize;
-	RET_ERR(MiMapViewOfImageSection(VSpace, &Section->VadList, Section->ImageSectionObject,
-					BaseAddress, &ImageVirtualSize, AlwaysWritable));
+	RET_ERR(MiMapViewOfImageSection(VSpace, &Section->VadList,
+					Section->ImageSectionObject,
+					BaseAddress, &ImageVirtualSize,	HighZeroBits,
+					ReserveFlags, AlwaysWritable));
 	if (ViewSize != NULL) {
 	    *ViewSize = ImageVirtualSize;
 	}
 	return STATUS_SUCCESS;
     } else if (Section->Flags.PhysicalMemory) {
-	assert((BaseAddress != NULL) && (*BaseAddress));
-	assert((SectionOffset != NULL) && (*SectionOffset));
-	assert((ViewSize != NULL) && (*ViewSize));
+	if (!BaseAddress || !*BaseAddress || !SectionOffset || !*SectionOffset
+	    || !ViewSize || !*ViewSize) {
+	    return STATUS_INVALID_PARAMETER;
+	}
 	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress, *ViewSize);
     }
     UNIMPLEMENTED;
@@ -652,29 +713,114 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
                          IN ULONG SectionAttributes,
                          IN HANDLE FileHandle)
 {
-    assert(SectionHandle != NULL);
-    PIO_FILE_OBJECT FileObject = NULL;
-    if (FileHandle != NULL) {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, FileHandle,
-					  OBJECT_TYPE_FILE, (POBJECT *) &FileObject));
-	assert(FileObject != NULL);
+    NTSTATUS Status;
+    PSECTION Section;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	});
+
+    Locals.FileObject = NULL;
+
+    if (FileHandle) {
+	ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread, FileHandle,
+						       OBJECT_TYPE_FILE,
+						       (POBJECT *)&Locals.FileObject));
+	assert(Locals.FileObject);
     }
 
-    PSECTION Section = NULL;
-    NTSTATUS Status = STATUS_NTOS_BUG;
-    IF_ERR_GOTO(out, Status, MmCreateSection(FileObject, SectionPageProtection,
-					     SectionAttributes, &Section));
-    assert(Section != NULL);
-    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Section, SectionHandle));
-
-out:
-    if (FileObject != NULL) {
-	ObDereferenceObject(FileObject);
+    AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread, Locals.FileObject,
+	     SectionPageProtection, SectionAttributes, &Section);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
     }
+    assert(Section);
+    assert(SectionHandle);
+    Status = ObCreateHandle(Thread->Process, Section, SectionHandle);
     if (!NT_SUCCESS(Status)) {
 	ObDereferenceObject(Section);
     }
+
+out:
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
+                            IN PTHREAD Thread,
+                            IN HANDLE SectionHandle,
+                            IN HANDLE ProcessHandle,
+                            IN OUT OPTIONAL PPVOID BaseAddress,
+                            IN ULONG_PTR HighZeroBits,
+                            IN SIZE_T CommitSize,
+                            IN OUT OPTIONAL PLARGE_INTEGER SectionOffset,
+                            IN OUT PSIZE_T ViewSize,
+                            IN SECTION_INHERIT InheritDisposition,
+                            IN ULONG AllocationType,
+                            IN ULONG AccessProtection)
+{
+    /* On 64-bit systems the HighZeroBits parameter is interpreted as a bit mask if
+     * it is greater than or equal to 32. Convert the bit mask to the number of bits
+     * in this case. */
+#ifdef _WIN64
+    if (HighZeroBits >= 32) {
+        HighZeroBits = 64 - RtlFindMostSignificantBit(HighZeroBits) - 1;
+    } else if (HighZeroBits) {
+	/* The high 32-bits of the allocated address are also required to be zero,
+	 * in order to retain compatibility with 32-bit systems. Therefore we need
+	 * to increase HighZeroBits by 32. */
+	HighZeroBits += 32;
+    }
+#endif
+
+    if (HighZeroBits > MM_MAXIMUM_ZERO_HIGH_BITS) {
+        return STATUS_INVALID_PARAMETER_4;
+    }
+
+    if (AllocationType & !(MEM_LARGE_PAGES | MEM_TOP_DOWN | MEM_RESERVE)) {
+	return STATUS_INVALID_PARAMETER_9;
+    }
+    ULONG ReserveFlags = 0;
+    if (AllocationType & MEM_LARGE_PAGES) {
+	ReserveFlags |= MEM_RESERVE_LARGE_PAGES;
+    }
+    if (AllocationType & MEM_TOP_DOWN) {
+	ReserveFlags |= MEM_RESERVE_TOP_DOWN;
+    }
+
+    PSECTION Section = NULL;
+    PPROCESS Process = NULL;
+    NTSTATUS Status;
+
+    IF_ERR_GOTO(out, Status, ObReferenceObjectByHandle(Thread, SectionHandle,
+						       OBJECT_TYPE_SECTION,
+						       (POBJECT *)&Section));
+    IF_ERR_GOTO(out, Status, ObReferenceObjectByHandle(Thread, ProcessHandle,
+						       OBJECT_TYPE_PROCESS,
+						       (POBJECT *)&Process));
+    Status = MmMapViewOfSection(&Process->VSpace, Section, (MWORD *)BaseAddress,
+				(ULONG64 *)SectionOffset, (MWORD *)ViewSize,
+				HighZeroBits, InheritDisposition, ReserveFlags,
+				AccessProtection & PAGE_READWRITE);
+
+out:
+    if (Section) {
+	ObDereferenceObject(Section);
+    }
+    if (Process) {
+	ObDereferenceObject(Process);
+    }
     return Status;
+}
+
+NTSTATUS NtUnmapViewOfSection(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN HANDLE ProcessHandle,
+                              IN PVOID BaseAddress)
+{
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQuerySection(IN ASYNC_STATE State,
@@ -704,8 +850,8 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
     }
 
     PSECTION Section = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
-				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
+    RET_ERR(ObReferenceObjectByHandle(Thread, SectionHandle,
+				      OBJECT_TYPE_SECTION, (POBJECT *)&Section));
 
     if (SectionInformationClass == SectionBasicInformation) {
 	PSECTION_BASIC_INFORMATION Info = (PSECTION_BASIC_INFORMATION)SectionInformationBuffer;
@@ -738,6 +884,7 @@ static VOID MiDbgDumpSubSection(IN PSUBSECTION SubSection)
     MmDbgPrint("    starting file offset = 0x%x\n", SubSection->FileOffset);
     MmDbgPrint("    raw data size = 0x%x\n", SubSection->RawDataSize);
     MmDbgPrint("    sub-section base = 0x%x\n", SubSection->SubSectionBase);
+    MmDbgPrint("    image cache file offset = 0x%x\n", SubSection->ImageCacheFileOffset);
     MmDbgPrint("    characteristics = 0x%x\n", SubSection->Characteristics);
 }
 
@@ -751,13 +898,13 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
     MmDbgPrint("    Number of subsections = %d\n", ImageSection->NumSubSections);
     MmDbgPrint("    Image base = %p\n", (PVOID) ImageSection->ImageBase);
     MmDbgPrint("    TransferAddress = %p\n",
-	       (PVOID) ImageSection->ImageInformation.TransferAddress);
+	       (PVOID)ImageSection->ImageInformation.TransferAddress);
     MmDbgPrint("    ZeroBits = 0x%x\n",
 	       ImageSection->ImageInformation.ZeroBits);
     MmDbgPrint("    MaximumStackSize = 0x%zx\n",
-	       (MWORD) ImageSection->ImageInformation.MaximumStackSize);
+	       (MWORD)ImageSection->ImageInformation.MaximumStackSize);
     MmDbgPrint("    CommittedStackSize = 0x%zx\n",
-	       (MWORD) ImageSection->ImageInformation.CommittedStackSize);
+	       (MWORD)ImageSection->ImageInformation.CommittedStackSize);
     MmDbgPrint("    SubSystemType = 0x%x\n",
 	       ImageSection->ImageInformation.SubSystemType);
     MmDbgPrint("    SubSystemMinorVersion = 0x%x\n",
@@ -785,8 +932,10 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
 	       ImageSection->ImageInformation.ImageFileSize);
     MmDbgPrint("    CheckSum = 0x%x\n",
 	       ImageSection->ImageInformation.CheckSum);
-    MmDbgPrint("    FileObject = %p\n", ImageSection->FileObject);
-    IoDbgDumpFileObject(ImageSection->FileObject);
+    MmDbgPrint("    Fcb = %p\n", ImageSection->Fcb);
+    MmDbgPrint("    ImageCacheFileSize = 0x%x\n", ImageSection->ImageCacheFileSize);
+    MmDbgPrint("    ImageCacheFile = %p\n", ImageSection->ImageCacheFile);
+    IoDbgDumpFileObject(ImageSection->ImageCacheFile);
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	MiDbgDumpSubSection(SubSection);
     }

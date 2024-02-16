@@ -556,7 +556,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN POBJECT RootDirectory,
 				 IN BOOLEAN CaseInsensitive,
 				 OUT POBJECT *Object);
-NTSTATUS ObReferenceObjectByHandle(IN struct _PROCESS *Process,
+NTSTATUS ObReferenceObjectByHandle(IN struct _THREAD *Thread,
 				   IN HANDLE Handle,
 				   IN OBJECT_TYPE_ENUM Type,
 				   OUT POBJECT *pObject);
@@ -565,6 +565,8 @@ NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			OUT HANDLE *pHandle);
 VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
+NTSTATUS ObClose(IN struct _PROCESS *Process,
+		 IN HANDLE Handle);
 
 /* open.c */
 NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
@@ -572,9 +574,20 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
 			     IN BOOLEAN CaseInsensitive,
 			     OUT POBJECT *FoundObject,
 			     OUT PCSTR *pRemainingPath);
-NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
-			    IN struct _THREAD *Thread,
-			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
-			    IN OBJECT_TYPE_ENUM Type,
-			    IN POB_OPEN_CONTEXT OpenContext,
-			    OUT HANDLE *pHandle);
+NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE State,
+			      IN struct _THREAD *Thread,
+			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			      IN OBJECT_TYPE_ENUM Type,
+			      IN POB_OPEN_CONTEXT OpenContext,
+			      IN BOOLEAN AssignHandle,
+			      OUT PVOID *pHandle);
+
+FORCEINLINE NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
+					IN struct _THREAD *Thread,
+					IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+					IN OBJECT_TYPE_ENUM Type,
+					IN POB_OPEN_CONTEXT OpenContext,
+					OUT PVOID *pHandle) {
+    return ObOpenObjectByNameEx(State, Thread, ObjectAttributes,
+				Type, OpenContext, TRUE, pHandle);
+}

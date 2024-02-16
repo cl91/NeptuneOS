@@ -129,7 +129,7 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 
     IF_ERR_GOTO(Fail, Status,
 		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
-				       SYSTEM_THREAD_IPC_RESERVE, MEM_RESERVE_OWNED_MEMORY,
+				       SYSTEM_THREAD_IPC_RESERVE, 0, MEM_RESERVE_OWNED_MEMORY,
 				       &IpcBufferVad));
     assert(IpcBufferVad != NULL);
     IF_ERR_GOTO(Fail, Status,
@@ -147,13 +147,15 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 
     IF_ERR_GOTO(Fail, Status,
 		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
-				       SYSTEM_THREAD_STACK_RESERVE, MEM_RESERVE_OWNED_MEMORY,
+				       SYSTEM_THREAD_STACK_RESERVE, 0, MEM_RESERVE_OWNED_MEMORY,
 				       &StackVad));
     assert(StackVad != NULL);
     assert(SYSTEM_THREAD_STACK_RESERVE >= (2 * PAGE_SIZE + SYSTEM_THREAD_STACK_COMMIT));
-    /* There is one uncommitted page above and one uncommitted page below every system thread stack */
+    /* There is one uncommitted page above and one uncommitted page below
+     * every system thread stack */
     IF_ERR_GOTO(Fail, Status,
-		MmCommitVirtualMemory(StackVad->AvlNode.Key + PAGE_SIZE, SYSTEM_THREAD_STACK_COMMIT));
+		MmCommitVirtualMemory(StackVad->AvlNode.Key + PAGE_SIZE,
+				      SYSTEM_THREAD_STACK_COMMIT));
     Thread->StackTop = (PVOID)(StackVad->AvlNode.Key + PAGE_SIZE + SYSTEM_THREAD_STACK_COMMIT);
 
     PspAllocateArrayEx(TlsBase, CHAR, NTOS_TLS_AREA_SIZE,
@@ -218,14 +220,10 @@ VOID PspPopulatePeb(IN PPROCESS Process)
 static inline NTSTATUS PspSetThreadDebugName(IN PTHREAD Thread)
 {
     assert(Thread);
-    assert(Thread->Process);
-    assert(Thread->Process->ImageFile);
-    assert(Thread->Process->ImageFile->Fcb);
-    assert(Thread->Process->ImageFile->Fcb->FileName);
     char NameBuf[seL4_MsgMaxLength * sizeof(MWORD)];
     /* We use the thread object addr to distinguish threads. */
     snprintf(NameBuf, sizeof(NameBuf), "%s|%p",
-	     Thread->Process->ImageFile->Fcb->FileName, Thread);
+	     KEDBG_THREAD_TO_FILENAME(Thread), Thread);
     PCSTR DebugName = RtlDuplicateString(NameBuf, NTOS_PS_TAG);
     if (DebugName == NULL) {
 	return STATUS_NO_MEMORY;
@@ -251,7 +249,7 @@ static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
 {
     PMMVAD ServerVad = NULL;
     RET_ERR(MmReserveVirtualMemory(ServerStart, ServerEnd, ReserveSize,
-				   MEM_RESERVE_OWNED_MEMORY, &ServerVad));
+				   0, MEM_RESERVE_OWNED_MEMORY, &ServerVad));
     assert(ServerVad != NULL);
     assert(ServerVad->AvlNode.Key != 0);
     RET_ERR_EX(MmCommitVirtualMemory(ServerVad->AvlNode.Key, CommitSize),
@@ -273,6 +271,24 @@ static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
 
     *pServerVad = ServerVad;
 
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PspCopyString(IN PCHAR Dest,
+			      IN ULONG BufferSize,
+			      IN PCSTR String)
+{
+    assert(Dest);
+    assert(BufferSize);
+    assert(String);
+    SIZE_T Length = strlen(String);
+    if (Length == 0) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    if (BufferSize < (Length + 1)) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    memcpy(Dest, String, Length+1); /* trailing '\0' */
     return STATUS_SUCCESS;
 }
 
@@ -360,7 +376,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, SYSTEM_DLL_TLS_REGION_START,
 					 SYSTEM_DLL_TLS_REGION_END,
 					 PspSystemDllTlsSubsection->SubSectionSize,
-					 MEM_RESERVE_OWNED_MEMORY, &SystemDllTlsVad));
+					 0, 0, MEM_RESERVE_OWNED_MEMORY, &SystemDllTlsVad));
 	assert(SystemDllTlsVad != NULL);
 	RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, SystemDllTlsVad->AvlNode.Key,
 					   SystemDllTlsVad->WindowSize),
@@ -369,14 +385,15 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     }
 
     if (Ctx->InitialTeb == NULL) {
-	ULONG StackReserve = Process->ImageSection->ImageSectionObject->ImageInformation.MaximumStackSize;
-	ULONG StackCommit = Process->ImageSection->ImageSectionObject->ImageInformation.CommittedStackSize;
+	PIMAGE_SECTION_OBJECT ImageSectionObject = Process->ImageSection->ImageSectionObject;
+	ULONG StackReserve = ImageSectionObject->ImageInformation.MaximumStackSize;
+	ULONG StackCommit = ImageSectionObject->ImageInformation.CommittedStackSize;
 	if (StackCommit > StackReserve) {
 	    StackCommit = StackReserve;
 	}
 	PMMVAD StackVad = NULL;
 	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, THREAD_STACK_START,
-					 HIGHEST_USER_ADDRESS, StackReserve,
+					 HIGHEST_USER_ADDRESS, StackReserve, 0, 0,
 					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES | MEM_COMMIT_ON_DEMAND,
 					 &StackVad));
 	assert(StackVad != NULL);
@@ -435,7 +452,24 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     if (Thread->InitialThread) {
 	/* Populate the process init info used by ntdll on process startup */
 	Process->InitInfo.ThreadInitInfo = Thread->InitInfo;
-	*((PNTDLL_PROCESS_INIT_INFO)Thread->IpcBufferServerAddr) = Process->InitInfo;
+	PNTDLL_PROCESS_INIT_INFO InitInfo = (PVOID)Thread->IpcBufferServerAddr;
+	*InitInfo = Process->InitInfo;
+
+	PSECTION ImageSection = Process->ImageSection;
+	assert(ImageSection);
+	assert(ImageSection->ImageSectionObject);
+	PIO_FILE_CONTROL_BLOCK Fcb = ImageSection->ImageSectionObject->Fcb;
+	assert(Fcb);
+	assert(Fcb->FileName);
+	RET_ERR(PspCopyString(InitInfo->ImageName,
+			      INIT_INFO_IMAGE_NAME_SIZE, Fcb->FileName));
+	RET_ERR(PspCopyString(InitInfo->NtdllPath,
+			      INIT_INFO_NTDLL_PATH_SIZE, NTDLL_PATH));
+	if (Process->DriverObject) {
+	    RET_ERR(PspCopyString(InitInfo->DriverInitInfo.ServicePath,
+				  INIT_INFO_SERVICE_PATH_SIZE,
+				  Process->DriverObject->DriverRegistryPath));
+	}
     } else {
 	/* Populate the thread init info used by ntdll on process startup */
 	*((PNTDLL_THREAD_INIT_INFO)Thread->IpcBufferServerAddr) = Thread->InitInfo;
@@ -450,167 +484,6 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	Process->Initialized = TRUE;
     }
 
-    return STATUS_SUCCESS;
-}
-
-static inline NTSTATUS PspMarshalString(IN PPROCESS Process,
-					IN OUT MWORD *LoaderDataOffset,
-					IN PCSTR String,
-					OUT MWORD *OutArg)
-{
-    assert(LoaderDataOffset != NULL);
-    assert(IS_ALIGNED(*LoaderDataOffset, MWORD));
-    assert(String != NULL);
-    SIZE_T Length = strlen(String);
-    if (Length == 0) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    if (*LoaderDataOffset + ALIGN_UP(Length+1, MWORD) > LOADER_SHARED_DATA_COMMIT) {
-	return STATUS_NO_MEMORY;
-    }
-    *OutArg = *LoaderDataOffset;
-    PUCHAR StrCopy = (PUCHAR)(Process->LoaderSharedDataServerAddr + *LoaderDataOffset);
-    memcpy(StrCopy, String, Length + 1); /* trailing '\0' */
-    if (!IS_ALIGNED(Length + 1, MWORD)) {
-	memset(StrCopy+Length+1, 0, ALIGN_UP(Length+1, MWORD) - (Length+1));
-    }
-    *LoaderDataOffset += ALIGN_UP(Length + 1, MWORD);
-    return STATUS_SUCCESS;
-}
-
-/*
- * Serialized format:
- * [LDRP_LOADED_MODULE] [DllPath] [DllName]
- */
-static inline NTSTATUS PspPopulateLoaderSharedData(IN PPROCESS Process,
-						   IN OUT MWORD *LoaderDataOffset,
-						   IN PCSTR DllPath,
-						   IN PCSTR DllName,
-						   IN MWORD ViewBase,
-						   IN MWORD ViewSize)
-{
-    assert(LoaderDataOffset != NULL);
-    assert(IS_ALIGNED(*LoaderDataOffset, MWORD));
-    assert(DllPath != NULL);
-    assert(DllName != NULL);
-    if (*LoaderDataOffset + sizeof(LDRP_LOADED_MODULE) > LOADER_SHARED_DATA_COMMIT) {
-	return STATUS_NO_MEMORY;
-    }
-    PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)(Process->LoaderSharedDataServerAddr + *LoaderDataOffset);
-    MWORD OrigLoaderDataOffset = *LoaderDataOffset;
-    *LoaderDataOffset += sizeof(LDRP_LOADED_MODULE);
-    RET_ERR(PspMarshalString(Process, LoaderDataOffset, DllPath, &LoadedModule->DllPath));
-    RET_ERR(PspMarshalString(Process, LoaderDataOffset, DllName, &LoadedModule->DllName));
-    LoadedModule->ViewBase = ViewBase;
-    LoadedModule->ViewSize = ViewSize;
-    LoadedModule->EntrySize = *LoaderDataOffset - OrigLoaderDataOffset;
-    return STATUS_SUCCESS;
-}
-
-/*
- * Search the given dll name in the process's PATH and map the dll if found.
- * Write the loader shared data and return the dll file object.
- *
- * If the dll is already mapped, nothing will be done, and DllFile will be
- * set to NULL.
- */
-static NTSTATUS PspMapDll(IN PPROCESS Process,
-			  IN PLOADER_SHARED_DATA LoaderSharedData,
-			  IN OUT MWORD *LoaderDataOffset,
-			  IN PCSTR DllName,
-			  OUT PIO_FILE_OBJECT *DllFile)
-{
-    DbgTrace("Mapping DllName %s for Process %p (%s)\n", DllName, Process,
-	     (Process->ImageFile && Process->ImageFile->Fcb && Process->ImageFile->Fcb->FileName)
-	     ? Process->ImageFile->Fcb->FileName : "???");
-    assert(LoaderDataOffset != NULL);
-    assert(DllFile != NULL);
-    MWORD OrigLoaderDataOffset = *LoaderDataOffset;
-
-    /* Check the loader shared data to see if the dll has already been mapped */
-    PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)((MWORD)LoaderSharedData + LoaderSharedData->LoadedModules);
-    for (ULONG i = 0; i < LoaderSharedData->LoadedModuleCount; i++) {
-	PCSTR LoadedDllName = (PCSTR)((MWORD)LoaderSharedData + LoadedModule->DllName);
-	if (!strcasecmp(LoadedDllName, DllName)) {
-	    *DllFile = NULL;
-	    return STATUS_SUCCESS;
-	}
-	LoadedModule = (PLDRP_LOADED_MODULE)((MWORD)LoadedModule + LoadedModule->EntrySize);
-    }
-
-    /* Search under \BootModules first. */
-    /* TODO: Eventually we need to implement the NT process search path semantics. */
-    ULONG DllNameLength = strlen(DllName);
-    PspAllocateArray(DllPath, CHAR, DllNameLength + sizeof(BOOTMODULE_OBJECT_DIRECTORY) + 1);
-    memcpy(DllPath, BOOTMODULE_OBJECT_DIRECTORY, sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1);
-    DllPath[sizeof(BOOTMODULE_OBJECT_DIRECTORY) - 1] = '\\';
-    memcpy(DllPath + sizeof(BOOTMODULE_OBJECT_DIRECTORY), DllName, DllNameLength+1);
-
-    PSECTION DllSection = NULL;
-    NTSTATUS Status = ObReferenceObjectByName(DllPath, OBJECT_TYPE_FILE, NULL,
-					      FALSE, (POBJECT *)DllFile);
-    if (!NT_SUCCESS(Status)) {
-	DbgTrace("Unable to find dll %s\n", DllPath);
-	goto fail;
-    }
-    assert(*DllFile != NULL);
-
-    Status = MmCreateSection(*DllFile, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-			     &DllSection);
-    if (!NT_SUCCESS(Status)) {
-	goto fail;
-    }
-    assert(DllSection != NULL);
-
-    MWORD DllBase = 0;
-    MWORD DllViewSize = 0;
-    Status = MmMapViewOfSection(&Process->VSpace, DllSection,
-				&DllBase, NULL, &DllViewSize, TRUE);
-    if (!NT_SUCCESS(Status)) {
-	goto fail;
-    }
-    assert(DllBase != 0);
-    assert(DllViewSize != 0);
-
-    LoaderSharedData->LoadedModuleCount++;
-    Status = PspPopulateLoaderSharedData(Process, LoaderDataOffset, DllPath,
-					 DllName, DllBase, DllViewSize);
-    if (!NT_SUCCESS(Status)) {
-	goto fail;
-    }
-
-    return STATUS_SUCCESS;
-
-fail:
-    PspFreePool(DllPath);
-    if (DllSection != NULL) {
-	ObDereferenceObject(DllSection);
-    }
-    *LoaderDataOffset = OrigLoaderDataOffset;
-    *DllFile = NULL;
-    return Status;
-}
-
-static NTSTATUS PspMapDependencies(IN PPROCESS Process,
-				   IN PLOADER_SHARED_DATA LoaderSharedData,
-				   IN OUT MWORD *LoaderDataOffset,
-				   IN PVOID DllFileBuffer)
-{
-    ULONG ImportTableSize = 0;
-    PIMAGE_IMPORT_DESCRIPTOR ImportTable = RtlImageDirectoryEntryToData(DllFileBuffer, FALSE,
-									IMAGE_DIRECTORY_ENTRY_IMPORT,
-									&ImportTableSize);
-    SIZE_T ImportDescriptorCount = ImportTableSize / sizeof(IMAGE_IMPORT_DESCRIPTOR);
-    for (ULONG i = 0; i < ImportDescriptorCount; i++) {
-	if (ImportTable[i].Name != 0) {
-	    PCSTR DllName = RtlImageRvaToPtr(DllFileBuffer, ImportTable[i].Name);
-	    PIO_FILE_OBJECT DllFile = NULL;
-	    RET_ERR(PspMapDll(Process, LoaderSharedData, LoaderDataOffset, DllName, &DllFile));
-	    if (DllFile != NULL) {
-		RET_ERR(PspMapDependencies(Process, LoaderSharedData, LoaderDataOffset, DllFile->Fcb->BufferPtr));
-	    }
-	}
-    }
     return STATUS_SUCCESS;
 }
 
@@ -632,7 +505,7 @@ NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
     PMMVAD Vad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
 				     USER_IMAGE_REGION_END, DRIVER_COROUTINE_STACK_RESERVE,
-				     MEM_RESERVE_OWNED_MEMORY, &Vad));
+				     0, 0, MEM_RESERVE_OWNED_MEMORY, &Vad));
     assert(Vad != NULL);
     RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, Vad->AvlNode.Key + PAGE_SIZE,
 				    DRIVER_COROUTINE_STACK_COMMIT));
@@ -643,26 +516,21 @@ NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 				    IN PVOID CreaCtx)
 {
-    PPROCESS Process = (PPROCESS) Object;
+    PPROCESS Process = (PPROCESS)Object;
+    assert(Process);
     PPROCESS_CREATION_CONTEXT Ctx = (PPROCESS_CREATION_CONTEXT)CreaCtx;
-    PIO_FILE_OBJECT ImageFile = Ctx->ImageFile;
+    assert(Ctx);
     PSECTION Section = Ctx->ImageSection;
+    assert(Section);
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
 
-    /* You cannot specify both ImageSection and ImageFile */
-    if ((Section != NULL) && (ImageFile != NULL)) {
-	return STATUS_INVALID_PARAMETER;
-    }
-
     /* Section must be an image section */
-    if ((Section != NULL) && !Section->Flags.Image) {
+    if (!Section->Flags.Image) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* We haven't implemented process inheritance yet */
-    if ((Section == NULL) && (ImageFile == NULL)) {
-	UNIMPLEMENTED;
-    }
+    ObpReferenceObject(Section);
+    Process->ImageSection = Section;
 
     RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &Process->CSpace));
     RET_ERR(MmCreateVSpace(&Process->VSpace));
@@ -677,25 +545,18 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     MWORD NtdllBase = 0;
     MWORD NtdllViewSize = 0;
     RET_ERR(MmMapViewOfSection(&Process->VSpace, PspSystemDllSection,
-			       &NtdllBase, NULL, &NtdllViewSize, TRUE));
+			       &NtdllBase, NULL, &NtdllViewSize, 0,
+			       ViewShare, 0, TRUE));
     assert(NtdllBase != 0);
     assert(NtdllViewSize != 0);
-
-    if (Section == NULL) {
-	RET_ERR(MmCreateSection(ImageFile, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
-				&Section));
-    } else {
-	ImageFile = Section->ImageSectionObject->FileObject;
-    }
-    assert(Section != NULL);
-    assert(ImageFile != NULL);
-    Process->ImageSection = Section;
-    Process->ImageFile = ImageFile;
+    Process->InitInfo.NtdllViewBase = NtdllBase;
+    Process->InitInfo.NtdllViewSize = NtdllViewSize;
 
     MWORD ImageBaseAddress = 0;
     MWORD ImageVirtualSize = 0;
     RET_ERR(MmMapViewOfSection(&Process->VSpace, Section,
-			       &ImageBaseAddress, NULL, &ImageVirtualSize, TRUE));
+			       &ImageBaseAddress, NULL, &ImageVirtualSize,
+			       0, ViewUnmap, 0, TRUE));
     assert(ImageBaseAddress != 0);
     assert(ImageVirtualSize != 0);
     Process->ImageBaseAddress = ImageBaseAddress;
@@ -710,7 +571,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     /* Reserve and commit the loader private heap */
     PMMVAD LoaderHeapVad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, NTDLL_LOADER_HEAP_RESERVE,
+				     USER_IMAGE_REGION_END, NTDLL_LOADER_HEAP_RESERVE, 0, 0,
 				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
 				     &LoaderHeapVad));
     assert(LoaderHeapVad != NULL);
@@ -719,7 +580,13 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     Process->InitInfo.LoaderHeapStart = LoaderHeapVad->AvlNode.Key;
 
     /* Reserve and commit the process heap */
-    PIMAGE_NT_HEADERS NtHeader = PspImageNtHeader(ImageFile->Fcb->BufferPtr);
+    PIO_FILE_CONTROL_BLOCK Fcb = Section->ImageSectionObject->Fcb;
+    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Fcb);
+    if (!NtHeader) {
+	/* This shouldn't happen since we have already verified the image above. */
+	assert(FALSE);
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
     MWORD ProcessHeapReserve = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapReserve);
     MWORD ProcessHeapCommit = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapCommit);
     if (ProcessHeapReserve == 0) {
@@ -733,7 +600,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     }
     PMMVAD ProcessHeapVad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, ProcessHeapReserve,
+				     USER_IMAGE_REGION_END, ProcessHeapReserve, 0, 0,
 				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
 				     &ProcessHeapVad));
     assert(ProcessHeapVad != NULL);
@@ -760,11 +627,11 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     /* Populate the Process Environment Block */
     PspPopulatePeb(Process);
 
-    /* Map the KUSER_SHARED_DATA into the client address space */
+    /* Map the KUSER_SHARED_DATA into the client address space (read-only). */
     PMMVAD ClientSharedDataVad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
-				     0, sizeof(KUSER_SHARED_DATA),
-				     MEM_RESERVE_MIRRORED_MEMORY,
+				     0, sizeof(KUSER_SHARED_DATA), 0, 0,
+				     MEM_RESERVE_MIRRORED_MEMORY | MEM_RESERVE_READ_ONLY,
 				     &ClientSharedDataVad));
     assert(ClientSharedDataVad != NULL);
     assert(ClientSharedDataVad->AvlNode.Key == KUSER_SHARED_DATA_CLIENT_ADDR);
@@ -772,46 +639,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
 				    sizeof(KUSER_SHARED_DATA)));
 
-    /* Map the loader shared data */
-    PMMVAD ServerLoaderSharedDataVad = NULL;
-    PMMVAD ClientLoaderSharedDataVad = NULL;
-    RET_ERR(PspMapSharedRegion(Process,
-			       EX_LOADER_SHARED_REGION_START,
-			       EX_LOADER_SHARED_REGION_END,
-			       LOADER_SHARED_DATA_RESERVE,
-			       LOADER_SHARED_DATA_COMMIT,
-			       LOADER_SHARED_DATA_CLIENT_ADDR,
-			       0, 0,
-			       &ServerLoaderSharedDataVad,
-			       &ClientLoaderSharedDataVad));
-    Process->LoaderSharedDataServerAddr = ServerLoaderSharedDataVad->AvlNode.Key;
-    Process->LoaderSharedDataClientAddr = ClientLoaderSharedDataVad->AvlNode.Key;
-
-    /* Walk the import table and map the dependencies recursively */
-    PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
-    MWORD LoaderDataOffset = sizeof(LOADER_SHARED_DATA);
-    RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->Fcb->FileName,
-			     &LoaderSharedData->ImageName));
-    if (DriverObject != NULL) {
-	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, DriverObject->DriverImagePath,
-				 &LoaderSharedData->ImagePath));
-	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, DriverObject->DriverRegistryPath,
-				 &LoaderSharedData->CommandLine));
-    } else {
-	/* TODO: Fix image path and command line */
-	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->Fcb->FileName,
-				 &LoaderSharedData->ImagePath));
-	RET_ERR(PspMarshalString(Process, &LoaderDataOffset, ImageFile->Fcb->FileName,
-				 &LoaderSharedData->CommandLine));
-    }
-    LoaderSharedData->LoadedModuleCount = 1;
-    LoaderSharedData->LoadedModules = LoaderDataOffset;
-    RET_ERR(PspPopulateLoaderSharedData(Process, &LoaderDataOffset,
-					NTDLL_PATH, NTDLL_NAME, NtdllBase, NtdllViewSize));
-    RET_ERR(PspMapDependencies(Process, LoaderSharedData,
-			       &LoaderDataOffset, ImageFile->Fcb->BufferPtr));
-
-    if (DriverObject != NULL) {
+    if (DriverObject) {
 	PMMVAD ServerIncomingIoPacketsVad = NULL;
 	PMMVAD ClientIncomingIoPacketsVad = NULL;
 	RET_ERR(PspMapSharedRegion(Process,
@@ -840,8 +668,9 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 				   &ClientOutgoingIoPacketsVad));
 	DriverObject->OutgoingIoPacketsServerAddr = ServerOutgoingIoPacketsVad->AvlNode.Key;
 	DriverObject->OutgoingIoPacketsClientAddr = ClientOutgoingIoPacketsVad->AvlNode.Key;
-	Process->InitInfo.DriverInitInfo.IncomingIoPacketBuffer = DriverObject->IncomingIoPacketsClientAddr;
-	Process->InitInfo.DriverInitInfo.OutgoingIoPacketBuffer = DriverObject->OutgoingIoPacketsClientAddr;
+	PNTDLL_DRIVER_INIT_INFO DriverInitInfo = &Process->InitInfo.DriverInitInfo;
+	DriverInitInfo->IncomingIoPacketBuffer = DriverObject->IncomingIoPacketsClientAddr;
+	DriverInitInfo->OutgoingIoPacketBuffer = DriverObject->OutgoingIoPacketsClientAddr;
 	MWORD InitialCoroutineStackTop = 0;
 	RET_ERR(PsMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
@@ -851,8 +680,8 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     /* Create the Event objects used by the NTDLL ldr component */
     /* FIXME: TODO */
-    Process->InitInfo.ProcessHeapLockSemaphore = (HANDLE) 3;
-    Process->InitInfo.LoaderHeapLockSemaphore = (HANDLE) 3;
+    Process->InitInfo.ProcessHeapLockSemaphore = (HANDLE)3;
+    Process->InitInfo.LoaderHeapLockSemaphore = (HANDLE)3;
 
     /* Generate a per-process security cookie */
     LARGE_INTEGER SystemTime = { .QuadPart = KeQuerySystemTime() };
@@ -895,42 +724,19 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PsCreateProcess(IN PIO_FILE_OBJECT ImageFile,
-			 IN PIO_DRIVER_OBJECT DriverObject,
-			 IN PSECTION ImageSection,
+NTSTATUS PsCreateProcess(IN OPTIONAL PSECTION ImageSection,
+			 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			 OUT PPROCESS *pProcess)
 {
     assert(pProcess != NULL);
 
     PPROCESS Process = NULL;
     PROCESS_CREATION_CONTEXT CreaCtx = {
-	.ImageFile = ImageFile,
 	.DriverObject = DriverObject,
 	.ImageSection = ImageSection
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *) &Process, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_PROCESS, (POBJECT *)&Process, &CreaCtx));
     *pProcess = Process;
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS PsLoadDll(IN PPROCESS Process,
-		   IN PCSTR DllName)
-{
-    /* Locate the end of the loader shared data */
-    PLOADER_SHARED_DATA LoaderSharedData = (PLOADER_SHARED_DATA)Process->LoaderSharedDataServerAddr;
-    PLDRP_LOADED_MODULE LoadedModule = (PLDRP_LOADED_MODULE)(Process->LoaderSharedDataServerAddr
-							     + LoaderSharedData->LoadedModules);
-    for (ULONG i = 0; i < LoaderSharedData->LoadedModuleCount; i++) {
-	LoadedModule = (PLDRP_LOADED_MODULE)((MWORD)LoadedModule + LoadedModule->EntrySize);
-    }
-    MWORD LoaderDataOffset = (MWORD)LoadedModule - Process->LoaderSharedDataServerAddr;
-
-    PIO_FILE_OBJECT DllFile = NULL;
-    RET_ERR(PspMapDll(Process, LoaderSharedData, &LoaderDataOffset, DllName, &DllFile));
-    if (DllFile != NULL) {
-	RET_ERR(PspMapDependencies(Process, LoaderSharedData,
-				   &LoaderDataOffset, DllFile->Fcb->BufferPtr));
-    }
     return STATUS_SUCCESS;
 }
 
@@ -949,27 +755,18 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
     assert(Thread->Process != NULL);
 
     PPROCESS Process = NULL;
-    if (ProcessHandle == NtCurrentProcess()) {
-	Process = Thread->Process;
-    } else {
-	RET_ERR(ObReferenceObjectByHandle(Thread->Process, ProcessHandle,
-					  OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
-    }
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
     assert(Process != NULL);
+    ObDereferenceObject(Process);
 
     PTHREAD CreatedThread = NULL;
-    RET_ERR_EX(PsCreateThread(Process, ThreadContext, InitialTeb,
-			      CreateSuspended, &CreatedThread),
-	       if (ProcessHandle != NtCurrentProcess()) {
-		   ObDereferenceObject(Process);
-	       });
+    /* The newly created thread will increase the reference count of the process
+     * object and decrease it when the thread exits or is terminated. */
+    RET_ERR(PsCreateThread(Process, ThreadContext, InitialTeb,
+			   CreateSuspended, &CreatedThread));
     RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, ThreadHandle),
-	       {
-		   ObDereferenceObject(CreatedThread);
-		   if (ProcessHandle != NtCurrentProcess()) {
-		       ObDereferenceObject(Process);
-		   }
-	       });
+	       ObDereferenceObject(CreatedThread));
     return STATUS_SUCCESS;
 }
 
@@ -993,21 +790,19 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
     }
 
     PSECTION Section = NULL;
-    /* When the process exits or is terminated the image section object is
-     * dereferenced. */
-    RET_ERR(ObReferenceObjectByHandle(Thread->Process, SectionHandle,
-				      OBJECT_TYPE_SECTION, (POBJECT *) &Section));
+    RET_ERR(ObReferenceObjectByHandle(Thread, SectionHandle,
+				      OBJECT_TYPE_SECTION, (POBJECT *)&Section));
     assert(Section != NULL);
+    ObDereferenceObject(Section);
     if (!Section->Flags.Image) {
-	ObDereferenceObject(Section);
 	return STATUS_INVALID_PARAMETER_6;
     }
 
     PPROCESS Process = NULL;
-    RET_ERR_EX(PsCreateProcess(NULL, NULL, Section, &Process),
-	       ObDereferenceObject(Section));
+    /* The newly created process will increase the reference count of the image section
+     * object and decrease it when the process exits or is terminated. */
+    RET_ERR(PsCreateProcess(Section, NULL, &Process));
     RET_ERR_EX(ObCreateHandle(Thread->Process, Process, ProcessHandle),
-	       /* This will dereference the section object */
 	       ObDereferenceObject(Process));
 
     return STATUS_SUCCESS;

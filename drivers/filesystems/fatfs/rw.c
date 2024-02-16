@@ -168,7 +168,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     /* Likewise, if this is a read of the FAT, simply increment the byte offset. */
     if (IsFatFile) {
 	Stack->Parameters.Read.ByteOffset.QuadPart += FatInfo->FatStart * BytesPerSector;
-	DPRINT("Reading the FAT file, disk offset %I64x\n",
+	DPRINT("Reading the FAT file, disk offset 0x%llx\n",
 	       Stack->Parameters.Read.ByteOffset.QuadPart);
     }
 

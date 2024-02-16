@@ -352,8 +352,8 @@ ClientPostMarshaling:
 
 # Types that can fit into a single machine word
 SIMPLE_TYPES = ["BOOLEAN", "CHAR", "UCHAR", "SHORT", "USHORT", "LONG", "ULONG",
-                "ULONG_PTR", "SIZE_T", "MWORD",
-                "NTSTATUS", "ACCESS_MASK", "LCID", "PVOID", "HANDLE", "GLOBAL_HANDLE",
+                "ULONG_PTR", "SIZE_T", "MWORD", "NTSTATUS", "SECTION_INHERIT",
+                "ACCESS_MASK", "LCID", "PVOID", "HANDLE", "GLOBAL_HANDLE",
                 "PIO_APC_ROUTINE", "PTIMER_APC_ROUTINE", "PIO_INTERRUPT_SERVICE_THREAD_ENTRY",
                 "EVENT_TYPE", "TIMER_TYPE", "SHUTDOWN_ACTION",
                 "HARDERROR_RESPONSE_OPTION", "HARDERROR_RESPONSE",
