@@ -23,10 +23,13 @@ LdrInitializeThunk:
 
     /*
      * MSVC amd64 calling convention requires that the caller allocates
-     * a 32-byte shadow area for rcx, rdx, r8 and r9
+     * a 32-byte shadow area for rcx, rdx, r8 and r9. Additionally, since
+     * the stack must be aligned by 16-bytes before the function call and
+     * the previous instruction pushes 8 bytes onto the stack, the total
+     * amount of stack space we need to allocate is 32+8==0x28 bytes.
      */
-    sub $0x20, %rsp
-    .seh_stackalloc 0x20
+    sub $0x28, %rsp
+    .seh_stackalloc 0x28
     .seh_endprologue
 
     /*
