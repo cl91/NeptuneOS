@@ -15,9 +15,6 @@ add_compile_options(
     -fno-pic
     -fno-pie
     -Wno-incompatible-library-redeclaration
-    -msoft-float
-    -mno-sse
-    -mno-mmx
     --target=${TRIPLE}
     -fasync-exceptions
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"

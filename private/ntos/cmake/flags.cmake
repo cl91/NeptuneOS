@@ -19,8 +19,8 @@ if((${CMAKE_BUILD_TYPE} STREQUAL "Release") OR (${CMAKE_BUILD_TYPE} STREQUAL "Mi
 endif()
 mark_as_advanced(UserLinkerGCSections)
 
-# The NT Executive task and device driver tasks cannot use FPU registers,
-# since we do not handle FPU context saving when switching threads.
+# We disable FPU-related codegen for the NT Executive task in order to eliminate
+# the overhead introduced by saving and restoring the FPU registers.
 # TODO: Profile +fpu vs -fpu context switching cost.
 add_compile_options(
     -Wall
