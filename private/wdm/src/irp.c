@@ -1153,6 +1153,7 @@ static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
     IoDbgDumpIrp(Irp);
     Irp->Private.ExecEnv = NULL;
     if (Status != STATUS_PENDING) {
+	assert(Irp->IoStatus.Status == Status);
 	Irp->IoStatus.Status = Status;
 	/* This will execute the completion routine of the IRP if registered,
 	 * and add the IRP to either the cleanup list or the pending list,

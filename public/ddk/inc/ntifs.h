@@ -389,6 +389,11 @@ NTAPI NTSYSAPI NTSTATUS CcCopyWrite(IN PFILE_OBJECT FileObject,
 				    IN BOOLEAN Wait,
 				    IN PVOID Buffer,
 				    OUT ULONG *BytesWritten);
+NTAPI NTSYSAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
+				  IN PLARGE_INTEGER FileOffset,
+				  IN ULONG Length,
+				  OUT PMDL *MdlChain,
+				  OUT PIO_STATUS_BLOCK IoStatus);
 NTAPI NTSYSAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
 				   IN PLARGE_INTEGER StartOffset,
 				   IN PLARGE_INTEGER EndOffset,

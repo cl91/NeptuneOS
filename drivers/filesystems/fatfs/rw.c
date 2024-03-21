@@ -83,6 +83,27 @@ NTSTATUS OffsetToCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 }
 
 /*
+ * If the IRP is an MDL read, call the cache manager to handle the MDL read.
+ * Otherwise, forward the IO to the underlying disk.
+ */
+static NTSTATUS FatForwardReadIrp(PDEVICE_EXTENSION DeviceExt, PIRP Irp)
+{
+    ASSERT(DeviceExt);
+    ASSERT(DeviceExt->VolumeFcb);
+    ASSERT(Irp);
+    ASSERT(!Irp->MdlAddress);
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    ASSERT(Stack);
+    ASSERT(Stack->MajorFunction == IRP_MJ_READ);
+    if (Stack->MinorFunction == IRP_MN_MDL) {
+	return CcMdlRead(DeviceExt->VolumeFcb->FileObject, &Stack->Parameters.Read.ByteOffset,
+			 Stack->Parameters.Read.Length, &Irp->MdlAddress, &Irp->IoStatus);
+    } else {
+	return IoCallDriver(DeviceExt->StorageDevice, Irp);
+    }
+}
+
+/*
  * FUNCTION: Reads data from a file
  */
 NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
@@ -134,7 +155,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	goto ByeBye;
     }
 
-    if (ByteOffset.QuadPart >= Fcb->Base.FileSizes.FileSize.QuadPart) {
+    if (ByteOffset.QuadPart + Length > Fcb->Base.FileSizes.FileSize.QuadPart) {
 	IrpContext->Irp->IoStatus.Information = 0;
 	Status = STATUS_END_OF_FILE;
 	goto ByeBye;
@@ -146,15 +167,6 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	       ByteOffset.LowPart, Length);
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
-    }
-
-    /* This can happen if the cluster size is smaller than the page size
-     * of the architecture. */
-    if (ByteOffset.QuadPart + Length >
-	ROUND_UP_64(Fcb->Base.FileSizes.FileSize.QuadPart, BytesPerSector)) {
-	Length = (ULONG)(ROUND_UP_64(Fcb->Base.FileSizes.FileSize.QuadPart, BytesPerSector)
-			 - ByteOffset.QuadPart);
-	Stack->Parameters.Read.Length = Length;
     }
 
     /* The page file is always placed at the beginning of the data region, so
@@ -184,7 +196,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     /* In the cases of a page file, fat file, or volume read, simply pass
      * the read request to the underlying storage device driver. */
     if (IsPageFile || IsFatFile || IsVolume) {
-	return IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
+	return FatForwardReadIrp(DeviceExt, IrpContext->Irp);
     }
 
     /* Get the first cluster of the file. If the first cluster is one, we
@@ -199,7 +211,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 
 	Stack->Parameters.Read.ByteOffset = ByteOffset;
 	Stack->Parameters.Read.Length = Length;
-	return IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
+	return FatForwardReadIrp(DeviceExt, IrpContext->Irp);
     }
 
     /* For normal file reads, traverse through the FAT using the cache manager
@@ -269,9 +281,9 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster) +
 	    (ClusterCount - 1) * BytesPerCluster;
 
-	/* TODO: Construct the associated IRPs */
+	/* TODO: Construct the associated IRPs and call FatForwardReadIrp */
 #if 0
-	Status = FatReadDiskPartial(IrpContext, &StartOffset, BytesDone, ReturnedLength, FALSE);
+	Status = FatForwardReadIrp(IrpContext, &StartOffset, BytesDone, ReturnedLength, FALSE);
 	if (!NT_SUCCESS(Status) && Status != STATUS_PENDING) {
 	    break;
 	}

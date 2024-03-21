@@ -341,7 +341,9 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     if (!FileObject->FileName.Length &&
 	(!FileObject->RelatedFileObject || FileObject->RelatedFileObject->FsContext2 ||
 	 FileObject->RelatedFileObject->FsContext == DeviceExt->VolumeFcb)) {
-	/* This is an open operation for the volume itself */
+	/* This is an open operation for the volume itself. Note this is different
+	 * from the volume stream file object we created locally when mounting the
+	 * file system, although they do share the same FCB. */
 	DPRINT("Opening volume file object\n");
 
 	if (RequestedDisposition != FILE_OPEN &&

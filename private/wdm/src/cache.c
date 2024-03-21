@@ -17,10 +17,28 @@ typedef struct _CI_CACHE_MAP {
  *
  * A buffer control block (BCB) describes a contiguous region of a cache-enabled
  * file object that is mapped contiguously in virtual memory. All offsets, addresses,
- * and buffer lengths are aligned by FS cluster size. Note in the case that the FS
- * cluster size is smaller than PAGE_SIZE, a page may contain data from different,
- * non-neighboring file regions, possibly of a different file. A schematic diagram
- * of the file mapping in this case may look like:
+ * and buffer lengths are aligned by FS cluster size. The server caches file objects
+ * in terms of view blocks which are 256KB (assuming the page size is 4K) contiguous
+ * file blocks. These file blocks are mapped into the driver address space with 256KB
+ * (for 4K page size)-aligned address windows. The server-side file objects include
+ * ordinary file objects created as a result of a CREATE IRP call to the file system
+ * and the volume file object that represents the entire data stream of the underlying
+ * volume device object.
+ *
+ * However, file system drivers make extensive usage of the so-called "stream file
+ * objects" in order to access on-disk FS metadata with the benefit of caching. These
+ * stream file objects are purely client-side objects and do not have a corresponding
+ * server-side object. Instead they are simply a collection of remapped file blocks
+ * of the volume file object. When the file system drive requests the cache manager
+ * to map these stream file objects for cached access, the cache manager will generate
+ * a READ IRP for the file block to be mapped, which will be dispatched locally back
+ * to the file system driver. The file system driver will then translate the READ IRP
+ * for the stream file into a series of READ IRPs for the volume file object, and
+ * forward these IRPs to the server. The server will then map the volume file blocks
+ * (using the 256KB views described above) into the client. In this case, if the FS
+ * cluster size is smaller than PAGE_SIZE, a mapped page of the stream file object may
+ * contain data from other (possibly non-stream) file objects. A schematic diagram of
+ * such file mappings may look like:
  *
  *     |-------------------------------------------------------------------|
  *     |   Cluster0  |   Cluster1  ,         Cluster2        |   Cluster3  |
@@ -31,14 +49,11 @@ typedef struct _CI_CACHE_MAP {
  *     Page start    MappedAddress                           |             Page end
  *                                            (MappedAddress + 2*ClusterSize)
  *
- * In the scenario above, one VM page can contain up to four FS clusters. This
- * particular page contains clusters from three different file objects. The BCB
- * describing the file region [FileOffset1, FileOffset1 + 2*ClusterSize) will
- * have Node.Key = FileOffset1 with Length = 2*ClusterSize, and MappedAddress =
- * PageStart + ClusterSize. When mapping file objects for cached access, BCBs
- * that are adjacent in both file offset and mapped addresses will be merged.
- * It is important to stress that BCBs that are only adjacent in file offsets
- * but not in mapped addresses will NOT be merged.
+ * In the scenario above, one page contains four FS clusters. This particular
+ * page contains clusters from three different file objects. The BCB describing
+ * the file region [FileOffset1, FileOffset1 + 2*ClusterSize) for FileObj1 will
+ * have Node.Key == FileOffset1 with Length == 2*ClusterSize, and MappedAddress
+ * == PageStart + ClusterSize.
  */
 typedef struct _CI_BUFFER_CONTROL_BLOCK {
     AVL_NODE Node; /* Key is the starting file offset of the buffer.
@@ -95,6 +110,7 @@ typedef struct _CI_READ_REQUEST {
     PCI_BUFFER_CONTROL_BLOCK Bcb;
     LIST_ENTRY Link;
 } CI_READ_REQUEST, *PCI_READ_REQUEST;
+
 /*
  * ROUTINE DESCRIPTION:
  *     Initializes caching for a file object.
@@ -163,6 +179,7 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
 	       Irp->IoStatus.Status, Stack->FileObject, Stack->DeviceObject,
 	       Stack->Parameters.Read.ByteOffset.QuadPart,
 	       Stack->Parameters.Read.Length);
+	return STATUS_CONTINUE_COMPLETION;
     }
     DPRINT("Block request succeeded for %p. Requested length 0x%x fulfilled length 0x%zx\n",
 	   Irp, Stack->Parameters.Read.Length, Irp->IoStatus.Information);
@@ -195,6 +212,12 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_CONTINUE_COMPLETION;
 }
 
+/*
+ * Returns true if Prev and Bcb are adjacent in both file offset and mapped addresses.
+ * These BCBs will be merged when mapping file objects for cached access. It is important
+ * to stress that BCBs that are only adjacent in file offsets but not in mapped addresses
+ * will NOT be merged.
+ */
 FORCEINLINE BOOLEAN CiAdjacentBcbs(IN PCI_BUFFER_CONTROL_BLOCK Prev,
 				   IN PCI_BUFFER_CONTROL_BLOCK Bcb)
 {
@@ -355,11 +378,12 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	if (!NT_SUCCESS(Status)) {
 	    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Req->Irp);
 	    DPRINT("IO failed!!! Error code: %x, FileObj %p DeviceObj %p, "
-		   "ReadOffset 0x%llx, ReadLength 0x%x\n",
+		   "ReadOffset 0x%llx, ReadLength 0x%x, Status 0x%x Info 0x%x\n",
 		   Status, Stack->FileObject, Stack->DeviceObject,
 		   Stack->Parameters.Read.ByteOffset.QuadPart,
-		   Stack->Parameters.Read.Length);
-	    Req->Bcb->Length = Stack->Parameters.Read.Length;
+		   Stack->Parameters.Read.Length, Req->Irp->IoStatus.Status,
+		   Req->Irp->IoStatus.Information);
+	    Req->Bcb->Length = 0;
 	}
     }
 
@@ -553,6 +577,20 @@ NTAPI NTSTATUS CcCopyWrite(IN PFILE_OBJECT FileObject,
 			   OUT ULONG *BytesWritten)
 {
     UNIMPLEMENTED;
+}
+
+NTAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
+			 IN PLARGE_INTEGER FileOffset,
+			 IN ULONG Length,
+			 OUT PMDL *MdlChain,
+			 OUT PIO_STATUS_BLOCK IoStatus)
+{
+    assert(MdlChain);
+    assert(IoStatus);
+    IoStatus->Status = STATUS_NOT_IMPLEMENTED;
+    IoStatus->Information = 0;
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 NTAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,

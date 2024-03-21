@@ -29,7 +29,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	   IrpContext->DeviceExt, FileObject);
 
     /* FIXME: handle file/directory deletion here */
-    Fcb = (PFATFCB) FileObject->FsContext;
+    Fcb = (PFATFCB)FileObject->FsContext;
     if (!Fcb)
 	return FALSE;
 

@@ -96,30 +96,26 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 
     /* If we were to delete, delete volume */
     if (Delete) {
-	LARGE_INTEGER Zero = { { 0, 0 }
-	};
-	PFATFCB Fcb;
+	LARGE_INTEGER Zero = {{0, 0}};
 
 	/* We are uninitializing, the VCB cannot be used anymore */
 	ClearFlag(DeviceExt->Flags, VCB_GOOD);
 
-	/* Invalidate and close the internal opened meta-files */
+	/* Invalidate and close the internal meta-files */
 	if (DeviceExt->RootFcb) {
-	    Fcb = DeviceExt->RootFcb;
-	    CcUninitializeCacheMap(Fcb->FileObject, &Zero);
-	    ObDereferenceObject(Fcb->FileObject);
+	    CcUninitializeCacheMap(DeviceExt->RootFcb->FileObject, &Zero);
+	    ObDereferenceObject(DeviceExt->RootFcb->FileObject);
+	    FatDestroyFcb(DeviceExt->RootFcb);
 	    DeviceExt->RootFcb = NULL;
-	    FatDestroyFcb(Fcb);
 	}
 	if (DeviceExt->VolumeFcb) {
-	    Fcb = DeviceExt->VolumeFcb;
-	    CcUninitializeCacheMap(Fcb->FileObject, &Zero);
-	    ObDereferenceObject(Fcb->FileObject);
+	    CcUninitializeCacheMap(DeviceExt->VolumeFcb->FileObject, &Zero);
+	    ObDereferenceObject(DeviceExt->VolumeFcb->FileObject);
+	    FatDestroyFcb(DeviceExt->VolumeFcb);
 	    DeviceExt->VolumeFcb = NULL;
-	    FatDestroyFcb(Fcb);
 	}
 	if (DeviceExt->FatFileObject) {
-	    Fcb = DeviceExt->FatFileObject->FsContext;
+	    PFATFCB Fcb = DeviceExt->FatFileObject->FsContext;
 	    CcUninitializeCacheMap(DeviceExt->FatFileObject, &Zero);
 	    DeviceExt->FatFileObject->FsContext = NULL;
 	    ObDereferenceObject(DeviceExt->FatFileObject);

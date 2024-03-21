@@ -538,7 +538,8 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
      * Both are used by the dismount logic. */
     DeviceExt->IoVPB = DeviceObject->Vpb;
     DeviceExt->SpareVPB = ExAllocatePoolWithTag(sizeof(VPB), TAG_VPB);
-    PFATFCB Fcb = NULL;
+    PFATFCB FatFcb = NULL, VolumeFcb = NULL;
+    PFILE_OBJECT VolumeFileObject = NULL;
     if (DeviceExt->SpareVPB == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
@@ -558,29 +559,61 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 	DeviceExt->Statistics[i].Base.SizeOfCompleteStructure = sizeof(STATISTICS);
     }
 
+    /* Create the volume stream file object and initialize caching for it. */
+    UNICODE_STRING VolumeNameU = RTL_CONSTANT_STRING(L"\\$$Volume$$");
+    VolumeFcb = FatNewFcb(DeviceExt, &VolumeNameU);
+    if (VolumeFcb == NULL) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto ByeBye;
+    }
+
+    VolumeFileObject = IoCreateStreamFileObject(DeviceExt->StorageDevice);
+    if (!VolumeFileObject) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto ByeBye;
+    }
+
+    Status = FatAttachFcbToFileObject(DeviceExt, VolumeFcb, VolumeFileObject);
+    if (!NT_SUCCESS(Status))
+	goto ByeBye;
+
+    VolumeFcb->Flags = FCB_IS_VOLUME;
+    VolumeFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.Sectors *
+	DeviceExt->FatInfo.BytesPerSector;
+    VolumeFcb->Base.FileSizes.ValidDataLength = VolumeFcb->Base.FileSizes.FileSize;
+    VolumeFcb->Base.FileSizes.AllocationSize = VolumeFcb->Base.FileSizes.FileSize;
+    VolumeFcb->FileObject = VolumeFileObject;
+    DeviceExt->VolumeFcb = VolumeFcb;
+
+    Status = CcInitializeCacheMap(VolumeFileObject);
+    if (!NT_SUCCESS(Status)) {
+	goto ByeBye;
+    }
+
+    /* Create the FAT table stream file object and initialize caching for it. */
     DeviceExt->FatFileObject = IoCreateStreamFileObject(DeviceExt->StorageDevice);
     if (!DeviceExt->FatFileObject) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }
     UNICODE_STRING NameU = RTL_CONSTANT_STRING(L"\\$$Fat$$");
-    Fcb = FatNewFcb(DeviceExt, &NameU);
-    if (!Fcb) {
+    FatFcb = FatNewFcb(DeviceExt, &NameU);
+    if (!FatFcb) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;
     }
 
-    Status = FatAttachFcbToFileObject(DeviceExt, Fcb, DeviceExt->FatFileObject);
+    Status = FatAttachFcbToFileObject(DeviceExt, FatFcb, DeviceExt->FatFileObject);
     if (!NT_SUCCESS(Status))
 	goto ByeBye;
 
-    Fcb->FileObject = DeviceExt->FatFileObject;
+    FatFcb->FileObject = DeviceExt->FatFileObject;
 
-    Fcb->Flags = FCB_IS_FAT;
-    Fcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.FatSectors *
+    FatFcb->Flags = FCB_IS_FAT;
+    FatFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.FatSectors *
 	DeviceExt->FatInfo.BytesPerSector;
-    Fcb->Base.FileSizes.AllocationSize = Fcb->Base.FileSizes.FileSize;
-    Fcb->Base.FileSizes.ValidDataLength = Fcb->Base.FileSizes.FileSize;
+    FatFcb->Base.FileSizes.AllocationSize = FatFcb->Base.FileSizes.FileSize;
+    FatFcb->Base.FileSizes.ValidDataLength = FatFcb->Base.FileSizes.FileSize;
 
     Status = CcInitializeCacheMap(DeviceExt->FatFileObject);
     if (!NT_SUCCESS(Status)) {
@@ -591,21 +624,6 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     CountAvailableClusters(DeviceExt, NULL);
 
     InitializeListHead(&DeviceExt->FcbListHead);
-
-    UNICODE_STRING VolumeNameU = RTL_CONSTANT_STRING(L"\\$$Volume$$");
-    PFATFCB VolumeFcb = FatNewFcb(DeviceExt, &VolumeNameU);
-    if (VolumeFcb == NULL) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	goto ByeBye;
-    }
-
-    VolumeFcb->Flags = FCB_IS_VOLUME;
-    VolumeFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.Sectors *
-	DeviceExt->FatInfo.BytesPerSector;
-    VolumeFcb->Base.FileSizes.ValidDataLength = VolumeFcb->Base.FileSizes.FileSize;
-    VolumeFcb->Base.FileSizes.AllocationSize = VolumeFcb->Base.FileSizes.FileSize;
-    DeviceExt->VolumeFcb = VolumeFcb;
-
     InsertHeadList(&FatGlobalData->VolumeListHead, &DeviceExt->VolumeListEntry);
 
     /* Read serial number */
@@ -656,8 +674,7 @@ ByeBye:
     assert(DeviceObject);
     assert(DeviceExt);
     if (DeviceExt->FatFileObject) {
-	LARGE_INTEGER Zero = { { 0, 0 }
-	};
+	LARGE_INTEGER Zero = {{0, 0}};
 	PFATCCB Ccb = (PFATCCB)DeviceExt->FatFileObject->FsContext2;
 	CcUninitializeCacheMap(DeviceExt->FatFileObject, &Zero);
 	ObDereferenceObject(DeviceExt->FatFileObject);
@@ -665,8 +682,21 @@ ByeBye:
 	    FatDestroyCcb(Ccb);
 	DeviceExt->FatFileObject = NULL;
     }
-    if (Fcb)
-	FatDestroyFcb(Fcb);
+    if (FatFcb) {
+	FatDestroyFcb(FatFcb);
+    }
+    if (VolumeFileObject) {
+	LARGE_INTEGER Zero = {{0, 0}};
+	PFATCCB Ccb = (PFATCCB)VolumeFileObject->FsContext2;
+	CcUninitializeCacheMap(VolumeFileObject, &Zero);
+	ObDereferenceObject(VolumeFileObject);
+	if (Ccb)
+	    FatDestroyCcb(Ccb);
+    }
+    if (VolumeFcb) {
+	FatDestroyFcb(VolumeFcb);
+	DeviceExt->VolumeFcb = NULL;
+    }
     if (DeviceExt->SpareVPB)
 	ExFreePoolWithTag(DeviceExt->SpareVPB, TAG_VPB);
     if (DeviceExt->Statistics)

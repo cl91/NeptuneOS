@@ -50,6 +50,7 @@
 @ stdcall CcUnpinData(ptr)
 @ stdcall CcCopyRead(ptr ptr long long ptr ptr)
 @ stdcall CcCopyWrite(ptr ptr long long ptr ptr)
+@ stdcall CcMdlRead(ptr ptr long ptr ptr)
 @ stdcall CcZeroData(ptr ptr ptr long)
 @ stdcall CcSetFileSizes(ptr ptr)
 @ stdcall FsRtlDoesNameContainWildCards(ptr)
