@@ -287,12 +287,33 @@ at which point it can clear the DO_VERIFY_REQUIRED and proceed with normal IO
 proceeding.
 
 Cache Manager API
-IoCreateStreamFileObject
-Remove the FileObject parameter as it is never used in ReactOS code base so we have
-decided to remove it entirely. A non-NULL FileObject allows the client driver to
-perform cached IO on file metadata such as the security descriptor as if it is a
-file stream. This is not used by any driver in ReactOS so we won't bother supporting
-it.
+
+IoCreateStreamFileObject:
+This creates a purely client-side file object that does not have a server-side
+counterpart. This is mainly used by the file system drivers so they can access the
+on-disk file system metadata using the same cache manager API for ordinary file IO.
+When porting, remove the FileObject parameter as it is never used in the ReactOS code
+base so we have removed it entirely. On Windows, a non-NULL FileObject allows the
+client driver to perform cached IO on file metadata such as the security descriptor
+as if it were a file stream. This is not used by any driver in ReactOS so we won't
+bother supporting it.
+
+IRP_MJ_READ/IRP_MN_MDL:
+The meaning of this combination of IRP major/minor code is largely unchanged from
+ReactOS/Windows and indicates that when completing the IO request, the dispatch
+routine needs to supply an MDL chain describing the mapped IO buffer. Each MDL in
+the MDL chain describes virtually contiguous memory that may or may not be physically
+contiguous. This is used mainly by the cache manager and is sent only to the file
+system drivers and never to the underlying storage device driver. File system drivers
+typically call CcMdlRead to satisfy an MDL READ.
+
+Handling NEITHER IO:
+The UserBuffer can be (and will typically always be) NULL. This indicates that the
+IO buffer has not yet been allocated when the IO is initiated. What the file system
+driver should do in this case is to simply translate the file offset to disk offset
+and pass on to the underlying storage driver (or to Cc if it is an MDL IO). The
+initiator of the IO (typically the cache manager) will take care of properly mapping
+the IO buffers later.
 
 IRP Flags:
 The meanings of some IRP flags have been changed from their Windows counterparts,
@@ -301,11 +322,3 @@ different purposes.
 
 IRP_ASSOCIATED_IRP: This has been changed to mean that the address in UserBuffer is
 an offset relative to the UserBuffer of the master IRP.
-
-IRP_MJ_READ/IRP_MN_MDL:
-The meaning of this combination of IRP major/minor code has been slightly changed to
-indicate that the UserBuffer of the READ IRP is NULL and the server will map the
-relevant memory pages and supply an MDL chain that describes the mapped pages. Each
-MDL in the MDL chain describes virtually contiguous memory. This is used mainly by
-the cache manager and is never sent to the client drivers, so client drivers do not
-need to handle it.

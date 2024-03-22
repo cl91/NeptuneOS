@@ -142,11 +142,11 @@ typedef struct _CC_CACHE_SPACE {
  * This structure records the mapping from the file offset of a file system
  * file object to the file offset of the underlying volume object.
  */
-typedef struct _CI_FILE_OFFSET_MAPPING {
+typedef struct _FILE_OFFSET_MAPPING {
     AVL_NODE Node; /* Key is the starting file offset of the file system file object. */
     ULONG64 VolumeFileOffset; /* Starting offset of the corresponding volume file region. */
     ULONG Length; /* Length of the file region. Must be divisible by the cluster size. */
-} CI_FILE_OFFSET_MAPPING, *PCI_FILE_OFFSET_MAPPING;
+} FILE_OFFSET_MAPPING, *PFILE_OFFSET_MAPPING;
 
 /*
  * A view is an area of the virtual memory space that spans 64 pages (256KB
@@ -160,7 +160,7 @@ typedef struct _CC_VIEW {
     MWORD MappedAddress; /* This is in the address space of the cache map */
     AVL_NODE Node; /* Key is the starting file offset of this view. */
     PCC_CACHE_MAP CacheMap; /* Cache map that this view belongs to. */
-    AVL_TREE FileOffsetMapping;	/* AVL tree of CI_FILE_OFFSET_MAPPING. */
+    AVL_TREE FileOffsetMapping;	/* AVL tree of FILE_OFFSET_MAPPING. */
 } CC_VIEW, *PCC_VIEW;
 
 #define AVL_NODE_TO_VIEW(p)	((p) ? CONTAINING_RECORD(p, CC_VIEW, Node) : NULL)

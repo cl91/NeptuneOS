@@ -96,6 +96,8 @@ static NTSTATUS FatForwardReadIrp(PDEVICE_EXTENSION DeviceExt, PIRP Irp)
     ASSERT(Stack);
     ASSERT(Stack->MajorFunction == IRP_MJ_READ);
     if (Stack->MinorFunction == IRP_MN_MDL) {
+	/* The MDL chain will be freed when wdm.dll!IopDeleteIrp deletes Irp->MdlAddress
+	 * so we don't need to call CcMdlReadComplete. */
 	return CcMdlRead(DeviceExt->VolumeFcb->FileObject, &Stack->Parameters.Read.ByteOffset,
 			 Stack->Parameters.Read.Length, &Irp->MdlAddress, &Irp->IoStatus);
     } else {
@@ -193,9 +195,13 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	FatAddToStat(DeviceExt, Fat.NonCachedReadBytes, Length);
     }
 
-    /* In the cases of a page file, fat file, or volume read, simply pass
-     * the read request to the underlying storage device driver. */
-    if (IsPageFile || IsFatFile || IsVolume) {
+    if (IsVolume) {
+	/* In the cases of a volume file read, simply pass the read request
+	 * to the underlying storage device driver. */
+	return IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
+    } else if (IsPageFile || IsFatFile) {
+	/* For page file or FAT file read, if MDL read is specified, go through
+	 * Cc to do the read. Otherwise simply pass on to the storage driver. */
 	return FatForwardReadIrp(DeviceExt, IrpContext->Irp);
     }
 

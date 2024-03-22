@@ -564,7 +564,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
  * This will also free the memory allocated when creating the IRP
  * (in IopPopulateLocalIrpFromServerIoPacket);
  */
-static inline VOID IopDeleteIrp(PIRP Irp)
+static VOID IopDeleteIrp(PIRP Irp)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     switch (IoStack->MajorFunction) {
