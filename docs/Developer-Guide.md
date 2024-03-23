@@ -8,8 +8,8 @@ memory management as well as IPC, and on top of which a "NT Executive" is implem
 The NT Executive is...
 
 We hope to demonstrate that with modern progress in microkernel design it is possible
-to realize the original NT design as an object oriented, message-passing based,
-client-server style microkernel OS.
+to realize the original NT design as a performant, general purpose, object oriented,
+message-passing based, client-server style microkernel OS.
 
 ### Compatibility with Windows and ReactOS
 In theory we should be able to achieve binary compatibility with native Windows
@@ -170,9 +170,20 @@ Summary of issues mentioned above. Guide to porting drivers from ReactOS and Win
 Header file:
 Include `ntddk.h` (under `public/ddk/inc`) as the master header file.
 
+DEVICE_OBJECT.Characteristics has been merged with DEVICE_OBJECT.Flags to form a 64-bit
+flag, so replace DEVICE_OBJECT.Characteristics with DEVICE_OBJECT.Flags.
+
 IO Transfer Type:
 Elaborate on how our architecture (running drivers in separate address spaces)
 changes certain ways in which IO transfer types are implemented.
+
+Unlike Windows and ReactOS, IO transfer types must be set when calling IoCreateDevice,
+eg.
+```
+IoCreateDevice(DriverObject, sizeof(DEVICE_EXTENSION), &DeviceName,
+	       FILE_DEVICE_BEEP, DO_BUFFERED_IO, FALSE, &DeviceObject);
+```
+Manually setting it in `DeviceObject->Flags |= DO_BUFFERED_IO` is incorrect.
 
 You should always call `IoBuildSynchronousFsdRequest`, `IoBuildAsynchronousFsdRequest`,
 and `IoBuildDeviceIoControlRequest` if you are generating an IRP within a driver
@@ -307,11 +318,19 @@ contiguous. This is used mainly by the cache manager and is sent only to the fil
 system drivers and never to the underlying storage device driver. File system drivers
 typically call CcMdlRead to satisfy an MDL READ.
 
+IO transfer types for file system drivers:
+Non-network file system drivers typically always use NEITHER IO as the IO transfer
+type as these are almost always stacked on top of an underlying storage device. Network
+file system drivers and purely in-memory file systems typically use DIRECT IO instead.
+The main difference between DIRECT IO and NEITHER IO is that the server will always
+allocate an IO buffer for DIRECT IO when initiating the IO, while for NEITHER IO the
+allocation of IO buffers may be deferred.
+
 Handling NEITHER IO:
 The UserBuffer can be (and will typically always be) NULL. This indicates that the
 IO buffer has not yet been allocated when the IO is initiated. What the file system
 driver should do in this case is to simply translate the file offset to disk offset
-and pass on to the underlying storage driver (or to Cc if it is an MDL IO). The
+and pass the IRP to the underlying storage driver (or to Cc if it is an MDL IO). The
 initiator of the IO (typically the cache manager) will take care of properly mapping
 the IO buffers later.
 

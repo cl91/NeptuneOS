@@ -1,5 +1,4 @@
 #include "iop.h"
-#include "helpers.h"
 
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
@@ -114,13 +113,9 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PIO_DEVICE_OBJECT TargetDevice;
-	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
 	    ULONG FileNameLength;
 	});
-    Locals.FileObject = NULL;
-    Locals.IoPacket = NULL;
-    Locals.PendingIrp = NULL;
 
     /* Reject the open if the parse context is not IO_OPEN_CONTEXT */
     if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
@@ -152,19 +147,19 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     }
 
     Locals.FileNameLength = strlen(SubPath);
-    ULONG IoPacketSize = sizeof(IO_PACKET);
-    if (Locals.FileNameLength) {
-	IoPacketSize += Locals.FileNameLength + 2;
+    ULONG DataSize = Locals.FileNameLength ? Locals.FileNameLength + 2 : 0;
+    PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize,
+						       NTOS_IO_TAG);
+    if (!Irp) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto out;
     }
-    IF_ERR_GOTO(out, Status,
-		IopAllocateIoPacket(IoPacketTypeRequest, IoPacketSize, &Locals.IoPacket));
-    assert(Locals.IoPacket != NULL);
 
     /* For IO packets involving the creation of file objects, we need to pass
      * FILE_OBJECT_CREATE_PARAMETERS to the client driver so it can record the
      * file object information there */
     if (Locals.FileNameLength) {
-	PUCHAR FileNamePtr = (PUCHAR)(&Locals.IoPacket[1]);
+	PUCHAR FileNamePtr = (PUCHAR)(Irp + 1);
 	/* Note since we are handling the case of an absolute open (an open
 	 * request with RelatedFileObject == NULL), we prepend the path with
 	 * '\\' so the file system driver knows it's an absolute path. */
@@ -179,37 +174,43 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	.SharedWrite = Locals.FileObject->SharedWrite,
 	.SharedDelete = Locals.FileObject->SharedDelete,
 	.Flags = Locals.FileObject->Flags,
+	/* Note FileNameOffset is with respect to the full IO_PACKET structure. */
 	.FileNameOffset = Locals.FileNameLength ? sizeof(IO_PACKET) : 0
     };
 
     ULONG CreateOptions = OpenPacket->CreateOptions | (OpenPacket->Disposition << 24);
     if (OpenPacket->CreateFileType == CreateFileTypeNone) {
-	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE;
-	Locals.IoPacket->Request.Create.Options = CreateOptions;
-	Locals.IoPacket->Request.Create.FileAttributes = OpenPacket->FileAttributes;
-	Locals.IoPacket->Request.Create.ShareAccess = OpenPacket->ShareAccess;
-	Locals.IoPacket->Request.Create.FileObjectParameters = FileObjectParameters;
+	Irp->MajorFunction = IRP_MJ_CREATE;
+	Irp->Create.Options = CreateOptions;
+	Irp->Create.FileAttributes = OpenPacket->FileAttributes;
+	Irp->Create.ShareAccess = OpenPacket->ShareAccess;
+	Irp->Create.FileObjectParameters = FileObjectParameters;
     } else if (OpenPacket->CreateFileType == CreateFileTypeNamedPipe) {
-	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
-	Locals.IoPacket->Request.CreatePipe.Options = CreateOptions;
-	Locals.IoPacket->Request.CreatePipe.ShareAccess = OpenPacket->ShareAccess;
-	Locals.IoPacket->Request.CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
-	Locals.IoPacket->Request.CreatePipe.FileObjectParameters = FileObjectParameters;
+	Irp->MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
+	Irp->CreatePipe.Options = CreateOptions;
+	Irp->CreatePipe.ShareAccess = OpenPacket->ShareAccess;
+	Irp->CreatePipe.Parameters = *(OpenPacket->NamedPipeCreateParameters);
+	Irp->CreatePipe.FileObjectParameters = FileObjectParameters;
     } else {
 	assert(OpenPacket->CreateFileType == CreateFileTypeMailslot);
-	Locals.IoPacket->Request.MajorFunction = IRP_MJ_CREATE_MAILSLOT;
-	Locals.IoPacket->Request.CreateMailslot.Options = CreateOptions;
-	Locals.IoPacket->Request.CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
-	Locals.IoPacket->Request.CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
-	Locals.IoPacket->Request.CreateMailslot.FileObjectParameters = FileObjectParameters;
+	Irp->MajorFunction = IRP_MJ_CREATE_MAILSLOT;
+	Irp->CreateMailslot.Options = CreateOptions;
+	Irp->CreateMailslot.ShareAccess = OpenPacket->ShareAccess;
+	Irp->CreateMailslot.Parameters = *(OpenPacket->MailslotCreateParameters);
+	Irp->CreateMailslot.FileObjectParameters = FileObjectParameters;
     }
 
-    Locals.IoPacket->Request.Device.Object = Locals.TargetDevice;
-    Locals.IoPacket->Request.File.Object = Locals.FileObject;
-    IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
-    IopQueueIoPacket(Locals.PendingIrp, Thread);
+    Irp->Device.Object = Locals.TargetDevice;
+    Irp->File.Object = Locals.FileObject;
+    Status = IopCallDriver(Thread, Irp, &Locals.PendingIrp);
+    /* IopCallDriver makes a copy of the IO_REQUEST_PARAMETERS structure so
+     * we should free the Irp object regardless of its return status. */
+    IopFreePool(Irp);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
 
-    /* For create/open we always wait till the driver has completed the request. */
+    /* For create/open we always wait for the driver to complete the request. */
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
@@ -230,12 +231,7 @@ out:
 	ObDereferenceObject(Locals.FileObject);
     }
     if (Locals.PendingIrp) {
-	/* This will free the pending IRP and detach the pending irp from the thread.
-	 * At this point the IRP has already been detached from the driver object,
-	 * so we do not need to remove it from the driver IRP queue here. */
 	IopCleanupPendingIrp(Locals.PendingIrp);
-    } else if (Locals.IoPacket) {
-	IopFreePool(Locals.IoPacket);
     }
     ASYNC_END(State, Status);
 }
@@ -248,7 +244,7 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 /*
  * Note: DeviceName must be a full path.
  */
-NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
+NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
 			 IN PTHREAD Thread,
                          IN OPTIONAL PCSTR DeviceName,
                          IN PIO_DEVICE_INFO DeviceInfo,
@@ -277,7 +273,7 @@ NTSTATUS IopCreateDevice(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
+NTSTATUS WdmIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
                                         IN PTHREAD Thread,
                                         IN GLOBAL_HANDLE SourceDeviceHandle,
                                         IN GLOBAL_HANDLE TargetDeviceHandle,
@@ -310,7 +306,7 @@ NTSTATUS IopIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopGetAttachedDevice(IN ASYNC_STATE AsyncState,
+NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
                               IN PTHREAD Thread,
                               IN GLOBAL_HANDLE DeviceHandle,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
@@ -347,21 +343,74 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
                                IN PVOID OutputBuffer,
                                IN ULONG OutputBufferLength)
 {
-    IO_SERVICE_PROLOGUE(State, Locals, FileObject, EventObject,
-			IoPacket, PendingIrp);
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
 
-    Locals.IoPacket->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
-    Locals.IoPacket->Request.MinorFunction = 0;
-    Locals.IoPacket->Request.InputBuffer = (MWORD)InputBuffer;
-    Locals.IoPacket->Request.OutputBuffer = (MWORD)OutputBuffer;
-    Locals.IoPacket->Request.InputBufferLength = InputBufferLength;
-    Locals.IoPacket->Request.OutputBufferLength = OutputBufferLength;
-    Locals.IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PEVENT_OBJECT EventObject;
+	    PPENDING_IRP PendingIrp;
+	});
 
-    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject, EventObject,
-			IoPacket, PendingIrp, IoStatusBlock);
+    if (FileHandle == NULL) {
+	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
+    }
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    assert(Locals.FileObject->DeviceObject != NULL);
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    if (EventHandle != NULL) {
+	IF_ERR_GOTO(out, Status,
+		    ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
+					      (POBJECT *)&Locals.EventObject));
+	assert(Locals.EventObject != NULL);
+    }
+
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = Locals.FileObject,
+	.MajorFunction = IRP_MJ_DEVICE_CONTROL,
+	.MinorFunction = 0,
+	.InputBuffer = (MWORD)InputBuffer,
+	.OutputBuffer = (MWORD)OutputBuffer,
+	.InputBufferLength = InputBufferLength,
+	.OutputBufferLength = OutputBufferLength,
+	.DeviceIoControl.IoControlCode = Ioctl
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    /* For now every IO is synchronous. For async IO, we need to figure
+     * out how we pass IO_STATUS_BLOCK back to the userspace safely.
+     * The idea is to pass it via APC. When NtWaitForSingleObject
+     * returns from the wait the special APC runs and write to the
+     * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+
+    /* This is the starting point when the function is resumed. */
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
+    }
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
 
 out:
-    IO_SERVICE_CLEANUP(Status, Locals, FileObject,
-		       EventObject, IoPacket, PendingIrp);
+    /* Regardless of the outcome of the IO request, we should dereference the
+     * file object and the event object because increased their refcount above. */
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.EventObject) {
+	ObDereferenceObject(Locals.EventObject);
+    }
+    /* This will free the pending IRP and detach the pending irp from the
+     * thread. At this point the IRP has already been detached from the driver
+     * object, so we do not need to remove it from the driver IRP queue here. */
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    ASYNC_END(State, Status);
 }

@@ -18,7 +18,7 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverRegistryPath;
     LIST_ENTRY DriverLink;    /* Links all driver objects currently existing */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
-    struct _PROCESS *DriverProcess;   /* TODO: We need to figure out Driver and Mini-driver */
+    struct _PROCESS *DriverProcess;
     struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
     struct _CC_CACHE_SPACE *CacheSpace; /* Non-NULL if the driver initialized cache support. */
     LIST_ENTRY IoPortList; /* List of all X86 IO ports enabled for this driver */
@@ -188,7 +188,7 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
 /* file.c */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
-				IN MWORD FileSize,
+				IN OPTIONAL MWORD FileSize,
 				OUT PIO_FILE_OBJECT *pFile);
 
 /* init.c */

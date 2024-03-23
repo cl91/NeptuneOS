@@ -559,87 +559,48 @@ out:
     ASYNC_END(State, Status);
 }
 
-static inline VOID IopPopulatePnpRequest(IN PIO_PACKET IoPacket,
-					 IN PIO_DEVICE_OBJECT DeviceObject,
-					 IN UCHAR MinorFunction)
-{
-    IoPacket->Request.MajorFunction = IRP_MJ_PNP;
-    IoPacket->Request.MinorFunction = MinorFunction;
-    IoPacket->Request.Device.Object = DeviceObject;
-}
-
-static inline VOID IopPopulateQueryDeviceRelationsRequest(IN PIO_PACKET IoPacket,
-							  IN PIO_DEVICE_OBJECT BusDevice,
-							  IN DEVICE_RELATION_TYPE Type)
-{
-    IopPopulatePnpRequest(IoPacket, BusDevice, IRP_MN_QUERY_DEVICE_RELATIONS);
-    IoPacket->Request.QueryDeviceRelations.Type = Type;
-}
-
-static inline VOID IopPopulateQueryIdRequest(IN PIO_PACKET IoPacket,
-					     IN PIO_DEVICE_OBJECT ChildPhyDev,
-					     IN BUS_QUERY_ID_TYPE IdType)
-{
-    IopPopulatePnpRequest(IoPacket, ChildPhyDev, IRP_MN_QUERY_ID);
-    IoPacket->Request.QueryId.IdType = IdType;
-}
-
 static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
 						    IN PIO_DEVICE_OBJECT DeviceObject,
 						    IN DEVICE_RELATION_TYPE Type,
 						    OUT PPENDING_IRP *PendingIrp)
 {
-    PIO_PACKET IoPacket = NULL;
-    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
-    assert(IoPacket != NULL);
-    IopPopulateQueryDeviceRelationsRequest(IoPacket, DeviceObject, Type);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
-	       IopFreePool(IoPacket));
-    IopQueueIoPacket(*PendingIrp, Thread);
-    return STATUS_SUCCESS;
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_PNP,
+	.MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS,
+	.Device.Object = DeviceObject,
+	.QueryDeviceRelations.Type = Type
+    };
+    return IopCallDriver(Thread, &Irp, PendingIrp);
 }
 
 static NTSTATUS IopQueueBusQueryIdRequest(IN PTHREAD Thread,
 					  IN PIO_DEVICE_OBJECT ChildPhyDev,
 					  IN BUS_QUERY_ID_TYPE IdType,
-					  OUT OPTIONAL PPENDING_IRP *pPendingIrp)
+					  OUT PPENDING_IRP *PendingIrp)
 {
-    PIO_PACKET IoPacket = NULL;
-    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
-    assert(IoPacket != NULL);
-    IopPopulateQueryIdRequest(IoPacket, ChildPhyDev, IdType);
-    PPENDING_IRP PendingIrp = NULL;
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
-	       IopFreePool(IoPacket));
-    assert(PendingIrp != NULL);
-    IopQueueIoPacket(PendingIrp, Thread);
-    if (pPendingIrp != NULL) {
-	*pPendingIrp = PendingIrp;
-    }
-    return STATUS_SUCCESS;
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_PNP,
+	.MinorFunction = IRP_MN_QUERY_ID,
+	.Device.Object = ChildPhyDev,
+	.QueryId.IdType = IdType
+    };
+    return IopCallDriver(Thread, &Irp, PendingIrp);
 }
 
 static NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
 					 IN PDEVICE_NODE DeviceNode,
 					 IN PIO_DRIVER_OBJECT DriverObject,
-					 OUT PPENDING_IRP *pPendingIrp)
+					 OUT PPENDING_IRP *PendingIrp)
 {
     PIO_DEVICE_OBJECT PhyDevObj = DeviceNode->PhyDevObj;
-    PIO_PACKET IoPacket = NULL;
-    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
-    assert(IoPacket != NULL);
-    IoPacket->Request.MajorFunction = IRP_MJ_ADD_DEVICE;
-    IoPacket->Request.Device.Object = PhyDevObj;
-    if (PhyDevObj != NULL) {
-	IoPacket->Request.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_ADD_DEVICE,
+	.Device.Object = PhyDevObj
+    };
+    if (PhyDevObj) {
+	Irp.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
     }
-    PPENDING_IRP PendingIrp = NULL;
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, &PendingIrp),
-	       IopFreePool(IoPacket));
-    assert(PendingIrp != NULL);
-    IopQueueIoPacketEx(PendingIrp, DriverObject, Thread);
-    *pPendingIrp = PendingIrp;
-    return STATUS_SUCCESS;
+    return IopCallDriverEx(Thread, &Irp, DriverObject, PendingIrp);
 }
 
 /*
@@ -725,14 +686,12 @@ static NTSTATUS IopQueueQueryResourceRequirementsRequest(IN PTHREAD Thread,
 							 IN PIO_DEVICE_OBJECT ChildPhyDev,
 							 OUT PPENDING_IRP *PendingIrp)
 {
-    PIO_PACKET IoPacket = NULL;
-    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &IoPacket));
-    assert(IoPacket != NULL);
-    IopPopulatePnpRequest(IoPacket, ChildPhyDev, IRP_MN_QUERY_RESOURCE_REQUIREMENTS);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
-	       IopFreePool(IoPacket));
-    IopQueueIoPacket(*PendingIrp, Thread);
-    return STATUS_SUCCESS;
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_PNP,
+	.MinorFunction = IRP_MN_QUERY_RESOURCE_REQUIREMENTS,
+	.Device.Object = ChildPhyDev
+    };
+    return IopCallDriver(Thread, &Irp, PendingIrp);
 }
 
 static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DESCRIPTOR Desc)
@@ -848,31 +807,30 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
 					   IN PDEVICE_NODE DeviceNode,
 					   OUT PPENDING_IRP *PendingIrp)
 {
-    PIO_PACKET IoPacket = NULL;
     PCM_RESOURCE_LIST Res = DeviceNode->Resources;
     ULONG ResSize = 0;
-    if (Res != NULL) {
+    if (Res) {
 	ResSize = sizeof(CM_RESOURCE_LIST) + Res->Count * sizeof(CM_FULL_RESOURCE_DESCRIPTOR);
 	for (ULONG i = 0; i < Res->Count; i++) {
 	    ResSize += Res->List[i].PartialResourceList.Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
 	}
     }
-    ULONG Size = FIELD_OFFSET(IO_PACKET, Request.StartDevice.Data) + 2 * ResSize;
-    if (Size < sizeof(IO_PACKET)) {
-	Size = sizeof(IO_PACKET);
+    PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + ResSize*2,
+						       NTOS_IO_TAG);
+    if (!Irp) {
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, Size, &IoPacket));
-    assert(IoPacket != NULL);
-    PIO_DEVICE_OBJECT DeviceObject = IopGetTopDevice(DeviceNode->PhyDevObj);
-    IopPopulatePnpRequest(IoPacket, DeviceObject, IRP_MN_START_DEVICE);
-    IoPacket->Request.StartDevice.ResourceListSize = ResSize;
-    IoPacket->Request.StartDevice.TranslatedListSize = ResSize;
-    memcpy(IoPacket->Request.StartDevice.Data, Res, ResSize);
-    memcpy(&IoPacket->Request.StartDevice.Data[ResSize], Res, ResSize);
-    RET_ERR_EX(IopAllocatePendingIrp(IoPacket, Thread, PendingIrp),
-	       IopFreePool(IoPacket));
-    IopQueueIoPacket(*PendingIrp, Thread);
-    return STATUS_SUCCESS;
+    Irp->DataSize = ResSize * 2;
+    Irp->MajorFunction = IRP_MJ_PNP;
+    Irp->MinorFunction = IRP_MN_START_DEVICE;
+    Irp->Device.Object = IopGetTopDevice(DeviceNode->PhyDevObj);
+    Irp->StartDevice.ResourceListSize = ResSize;
+    Irp->StartDevice.TranslatedListSize = ResSize;
+    if (ResSize) {
+	memcpy(Irp->StartDevice.Data, Res, ResSize);
+	memcpy(&Irp->StartDevice.Data[ResSize], Res, ResSize);
+    }
+    return IopCallDriver(Thread, Irp, PendingIrp);
 }
 
 static NTSTATUS IopDeviceNodeStartDevice(IN ASYNC_STATE AsyncState,
@@ -972,8 +930,8 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
      * PendingIrp will be freed at the end of the routine. Now allocate the PPENDING_IRP
      * array so we can query the child devices of their IDs. Note that we need two pointers
      * for each child device because we need to send two IRPs each. */
-    Locals.PendingIrps = (PPENDING_IRP *)ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * 2 * Locals.DeviceCount,
-							       NTOS_IO_TAG);
+    Locals.PendingIrps = ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * Locals.DeviceCount * 2,
+					       NTOS_IO_TAG);
     if (Locals.PendingIrps == NULL) {
 	Status = STATUS_NO_MEMORY;
 	goto out;

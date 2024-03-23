@@ -22,7 +22,7 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
  * @param Mdl
  *        MDL to query
  * @param StartVa
- *        Index into the MDL, with respect to MmGetMdlVirtualAddress
+ *        Starting virtual address of the buffer described by the MDL.
  *
  * @remarks
  *    Note that this function doesn't exist in Windows/ReactOS and is
@@ -31,17 +31,18 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
 NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
 					       IN PVOID StartVa)
 {
-    ULONG_PTR Rva = (ULONG_PTR)StartVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
-    ULONG_PTR CurrentRva = 0;
+    ULONG_PTR CurrentVa = 0;
     PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
     for (int i = 0; i < Mdl->PfnCount; i++) {
-	ULONG PageCount = (Mdl->PfnEntries[i] >> MDL_PFN_ATTR_BITS) & MDL_PFN_PAGE_COUNT_MASK;
-	SIZE_T PageSize = (Mdl->PfnEntries[i] & MDL_PFN_ATTR_LARGE_PAGE) ? PAGE_SIZE : LARGE_PAGE_SIZE;
-	ULONG_PTR NextRva = CurrentRva + PageCount * PageSize;
-	if (CurrentRva <= Rva && Rva < NextRva) {
-	    PhyAddr.QuadPart = (Mdl->PfnEntries[i] >> PAGE_SHIFT) << PAGE_SHIFT;
+	ULONG PageCount = MDL_PFN_PAGE_COUNT(Mdl->PfnEntries[i]);
+	SIZE_T PageSize = MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]);
+	ULONG_PTR NextVa = CurrentVa + PageCount * PageSize;
+	if (CurrentVa <= (ULONG_PTR)StartVa && (ULONG_PTR)StartVa < NextVa) {
+	    PhyAddr.QuadPart = MDL_PFN_PAGE_ADDRESS(Mdl->PfnEntries[i]) +
+		(ULONG_PTR)StartVa & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]) - 1);
 	    break;
 	}
+	CurrentVa = NextVa;
     }
     assert(PhyAddr.QuadPart != 0);
     return PhyAddr;
@@ -51,14 +52,13 @@ NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
  * @name MmGetMdlPhysicallyContiguousRegion
  *
  * Returns the size of the physically contiguous region starting from the
- * specified virtual address (with respect to MmGetMdlVirtualAddress) of
- * the MDL. If BoundAddrMul is not NULL, it defines what is considered
- * "physically contiguous".
+ * specified virtual address of the MDL. If BoundAddrBits is not NULL, it
+ * defines what is considered "physically contiguous".
  *
  * @param Mdl
  *        MDL to query
  * @param StartVa
- *        Index into the MDL, with respect to MmGetMdlVirtualAddress
+ *        Starting virtual address of the buffer described by the MDL.
  * @param BoundAddrBits
  *        If this is non-zero, it will define the boundary addresses
  *        across which pages are considered physically non-contiguous.
@@ -73,24 +73,25 @@ NTAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 					      IN PVOID StartVa,
 					      IN ULONG BoundAddrBits)
 {
-    ULONG_PTR Rva = (ULONG_PTR)StartVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
-    ULONG_PTR CurrentRva = 0;
+    ULONG_PTR CurrentVa = 0;
     for (int i = 0; i < Mdl->PfnCount; i++) {
-	ULONG PageCount = (Mdl->PfnEntries[i] >> MDL_PFN_ATTR_BITS) & MDL_PFN_PAGE_COUNT_MASK;
-	SIZE_T PageSize = (Mdl->PfnEntries[i] & MDL_PFN_ATTR_LARGE_PAGE) ? PAGE_SIZE : LARGE_PAGE_SIZE;
-	ULONG_PTR NextRva = CurrentRva + PageCount * PageSize;
-	if (CurrentRva <= Rva && Rva < NextRva) {
+	ULONG PageCount = MDL_PFN_PAGE_COUNT(Mdl->PfnEntries[i]);
+	SIZE_T PageSize = MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]);
+	ULONG_PTR NextVa = CurrentVa + PageCount * PageSize;
+	if (CurrentVa <= (ULONG_PTR)StartVa && (ULONG_PTR)StartVa < NextVa) {
+	    ULONG ByteOffset = (ULONG_PTR)StartVa & (PageSize - 1);
 	    if (BoundAddrBits >= PAGE_SHIFT) {
 		BoundAddrBits -= PAGE_SHIFT;
 		ULONG_PTR Pfn = Mdl->PfnEntries[i] >> PAGE_SHIFT;
 		ULONG_PTR PfnEnd = Pfn + (PageCount * PageSize >> PAGE_SHIFT);
 		if ((Pfn ^ PfnEnd) & ~((1ULL << BoundAddrBits) - 1)) {
 		    PfnEnd = ((Pfn >> BoundAddrBits) + 1) << BoundAddrBits;
-		    return (PfnEnd - Pfn) * PAGE_SIZE;
+		    return (PfnEnd - Pfn) * PAGE_SIZE - ByteOffset;
 		}
 	    }
-	    return PageCount * PageSize;
+	    return PageCount * PageSize - ByteOffset;
 	}
+	CurrentVa = NextVa;
     }
     assert(FALSE);
     return 0;
@@ -112,7 +113,7 @@ VOID __assert_fail(PCSTR str, PCSTR file, int line, PCSTR function)
  */
 NTAPI BOOLEAN HalMakeBeep(IN ULONG Frequency)
 {
-    return NT_SUCCESS(HalpMakeBeep(Frequency));
+    return NT_SUCCESS(WdmHalMakeBeep(Frequency));
 }
 
 /*

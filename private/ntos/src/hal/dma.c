@@ -303,10 +303,10 @@ NTSTATUS HalpInitDma()
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
-				  IN PTHREAD Thread,
-				  IN UCHAR DmaChannel,
-				  OUT HANDLE *Handle)
+NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
+				    IN PTHREAD Thread,
+				    IN UCHAR DmaChannel,
+				    OUT HANDLE *Handle)
 {
     if (DmaChannel >= 8) {
 	return STATUS_INVALID_PARAMETER;
@@ -318,13 +318,13 @@ NTSTATUS HalpDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
     return ObCreateHandle(Thread->Process, AdapterObject, Handle);
 }
 
-NTSTATUS HalpDmaStartTransfer(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
-			      IN HANDLE AdapterHandle,
-			      IN UCHAR DmaMode,
-			      IN USHORT TransferOffset,
-			      IN USHORT TransferLength,
-			      IN UCHAR HighByte)
+NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
+				IN PTHREAD Thread,
+				IN HANDLE AdapterHandle,
+				IN UCHAR DmaMode,
+				IN USHORT TransferOffset,
+				IN USHORT TransferLength,
+				IN UCHAR HighByte)
 {
     if (TransferLength == 0) {
 	return STATUS_INVALID_PARAMETER_4;
@@ -399,9 +399,9 @@ NTSTATUS HalpDmaStartTransfer(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpDmaDisableChannel(IN ASYNC_STATE AsyncState,
-			       IN PTHREAD Thread,
-			       IN HANDLE AdapterHandle)
+NTSTATUS WdmHalDmaDisableChannel(IN ASYNC_STATE AsyncState,
+				 IN PTHREAD Thread,
+				 IN HANDLE AdapterHandle)
 {
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
@@ -423,10 +423,10 @@ NTSTATUS HalpDmaDisableChannel(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
-				    IN PTHREAD Thread,
-				    IN HANDLE AdapterHandle,
-				    OUT ULONG *pCount)
+NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
+				      IN PTHREAD Thread,
+				      IN HANDLE AdapterHandle,
+				      OUT ULONG *pCount)
 {
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
@@ -472,13 +472,13 @@ NTSTATUS HalpDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
-                               IN PTHREAD Thread,
-                               IN ULONG Length,
-                               IN PPHYSICAL_ADDRESS HighestAddr,
-                               IN ULONG BoundaryAddressBits,
-                               OUT PVOID *pVirtAddr,
-                               OUT PHYSICAL_ADDRESS *pPhyAddr)
+NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
+				 IN PTHREAD Thread,
+				 IN ULONG Length,
+				 IN PPHYSICAL_ADDRESS HighestAddr,
+				 IN ULONG BoundaryAddressBits,
+				 OUT PVOID *pVirtAddr,
+				 OUT PHYSICAL_ADDRESS *pPhyAddr)
 {
     /* Length cannot be larger than the contiguous bank that the
      * DMA controller/device can access. For instance, if the

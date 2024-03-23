@@ -49,7 +49,7 @@ NTAPI NTSTATUS IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject)
     if (Handle == 0) {
 	return STATUS_INVALID_PARAMETER;
     }
-    return IopRegisterFileSystem(Handle);
+    return WdmRegisterFileSystem(Handle);
 }
 
 /*

@@ -289,8 +289,8 @@
     <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
     <parameter annotation="in" type="PVOID" name="ApcContext" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
-    <parameter annotation="out" type="buf::IoBuffer" name="Buffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
+    <parameter annotation="in" type="PVOID" name="Buffer" />
+    <parameter annotation="in" type="ULONG" name="BufferLength" />
     <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="ByteOffset" />
     <parameter annotation="in opt" type="ptr::ULONG" name="Key" />
   </svc>
@@ -301,7 +301,7 @@
     <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
     <parameter annotation="in" type="PVOID" name="ApcContext" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
-    <parameter annotation="in" type="buf::IoBuffer" name="Buffer" />
+    <parameter annotation="in" type="buf::InputIoBuffer" name="Buffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
     <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="ByteOffset" />
     <parameter annotation="in opt" type="ptr::ULONG" name="Key" />
@@ -318,10 +318,10 @@
     <parameter annotation="in" type="PVOID" name="ApcContext" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
     <parameter annotation="in" type="ULONG" name="IoControlCode" />
-    <parameter annotation="in opt" type="buf#0::IoBuffer" name="InputBuffer" />
-    <parameter annotation="in" type="bufsize#0::ULONG" name="InputBufferLength" />
-    <parameter annotation="out opt" type="buf#1::IoBuffer" name="OutputBuffer" />
-    <parameter annotation="in" type="bufsize#1::ULONG" name="OutputBufferLength" />
+    <parameter annotation="in opt" type="buf::InputIoBuffer" name="InputBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="InputBufferLength" />
+    <parameter annotation="in" type="PVOID" name="OutputBuffer" />
+    <parameter annotation="in" type="ULONG" name="OutputBufferLength" />
   </svc>
 
   <svc name="NtSetInformationFile">

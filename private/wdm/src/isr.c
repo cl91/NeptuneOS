@@ -76,7 +76,7 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
 	IoReleaseInterruptMutex(Interrupt);
 	/* Signal the main thread to check for DPC queue and IO work item queue */
-	IopNotifyMainThread();
+	WdmNotifyMainThread();
     }
     return 0;
 }
@@ -131,7 +131,7 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     InterruptObject->InterruptMode = InterruptMode;
 
     MWORD MutexCap = 0;
-    RET_ERR(IopConnectInterrupt(Vector,
+    RET_ERR(WdmConnectInterrupt(Vector,
 				ShareVector,
 				IopInterruptServiceThreadEntry,
 				InterruptObject,

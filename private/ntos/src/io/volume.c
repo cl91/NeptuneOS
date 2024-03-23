@@ -38,15 +38,12 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	    PLIST_ENTRY FsList;
 	    PLIST_ENTRY Entry;
 	    PIO_FILE_SYSTEM CurrentFs;
-	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
 	});
 
     if (!IopIsStorageDevice(DevObj)) {
 	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
-    Locals.IoPacket = NULL;
-    Locals.PendingIrp = NULL;
 
     /* If another mount is already in progress, wait for it to complete. */
     AWAIT_IF(DevObj->Vcb && DevObj->Vcb->MountInProgress, KeWaitForSingleObject,
@@ -81,17 +78,15 @@ next:
 	goto out;
     }
     Locals.CurrentFs = CONTAINING_RECORD(Locals.Entry, IO_FILE_SYSTEM, ListEntry);
-    IF_ERR_GOTO(out, Status,
-		IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET), &Locals.IoPacket));
-    assert(Locals.IoPacket != NULL);
 
-    Locals.IoPacket->Request.MajorFunction = IRP_MJ_FILE_SYSTEM_CONTROL;
-    Locals.IoPacket->Request.MinorFunction = IRP_MN_MOUNT_VOLUME;
-    Locals.IoPacket->Request.MountVolume.StorageDevice = OBJECT_TO_GLOBAL_HANDLE(DevObj);
-    Locals.IoPacket->Request.MountVolume.StorageDeviceInfo = DevObj->DeviceInfo;
-    Locals.IoPacket->Request.Device.Object = Locals.CurrentFs->FsctlDevObj;
-    IF_ERR_GOTO(out, Status, IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
-    IopQueueIoPacket(Locals.PendingIrp, Thread);
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_FILE_SYSTEM_CONTROL,
+	.MinorFunction = IRP_MN_MOUNT_VOLUME,
+	.Device.Object = Locals.CurrentFs->FsctlDevObj,
+	.MountVolume.StorageDevice = OBJECT_TO_GLOBAL_HANDLE(DevObj),
+	.MountVolume.StorageDeviceInfo = DevObj->DeviceInfo
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
@@ -120,7 +115,6 @@ next:
     } else {
 	IopCleanupPendingIrp(Locals.PendingIrp);
 	Locals.PendingIrp = NULL;
-	Locals.IoPacket = NULL;
 	Locals.Entry = Locals.Entry->Flink;
 	goto next;
     }
@@ -128,8 +122,6 @@ next:
 out:
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
-    } else if (Locals.IoPacket) {
-	IopFreePool(Locals.IoPacket);
     }
     if (DevObj->Vcb && !NT_SUCCESS(Status)) {
 	IopFreePool(DevObj->Vcb);
@@ -139,7 +131,7 @@ out:
     ASYNC_END(State, Status);
 }
 
-NTSTATUS IopRegisterFileSystem(IN ASYNC_STATE State,
+NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN GLOBAL_HANDLE DeviceHandle)
 {

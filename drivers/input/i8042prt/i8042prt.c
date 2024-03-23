@@ -424,7 +424,7 @@ static NTSTATUS FillEntries(IN PDEVICE_OBJECT DeviceObject,
     if (DeviceObject->Flags & DO_BUFFERED_IO) {
 	RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, DataStart, Size);
     } else if (DeviceObject->Flags & DO_DIRECT_IO) {
-	PVOID DestAddress = MmGetSystemAddressForMdl(Irp->MdlAddress);
+	PVOID DestAddress = MmGetSystemAddressForMdlSafe(Irp->MdlAddress);
 	if (DestAddress) {
 	    RtlCopyMemory(DestAddress, DataStart, Size);
 	} else {

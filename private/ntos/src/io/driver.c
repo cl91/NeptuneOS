@@ -235,7 +235,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
     ASYNC_END(State, Status);
 }
 
-NTSTATUS IopEnableX86Port(IN ASYNC_STATE AsyncState,
+NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
                           IN PTHREAD Thread,
                           IN USHORT PortNum,
                           OUT MWORD *Cap)
@@ -324,7 +324,7 @@ out:
     return Status;
 }
 
-NTSTATUS IopConnectInterrupt(IN ASYNC_STATE AsyncState,
+NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 			     IN PTHREAD Thread,
 			     IN ULONG Vector,
 			     IN BOOLEAN ShareVector,
@@ -360,7 +360,7 @@ NTSTATUS IopConnectInterrupt(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopCreateCoroutineStack(IN ASYNC_STATE State,
+NTSTATUS WdmCreateCoroutineStack(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 OUT PVOID *pStackTop)
 {
@@ -370,7 +370,7 @@ NTSTATUS IopCreateCoroutineStack(IN ASYNC_STATE State,
 				     (MWORD *)pStackTop);
 }
 
-NTSTATUS IopNotifyMainThread(IN ASYNC_STATE State,
+NTSTATUS WdmNotifyMainThread(IN ASYNC_STATE State,
 			     IN PTHREAD Thread)
 {
     assert(Thread->Process != NULL);

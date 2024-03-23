@@ -352,8 +352,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     struct _DRIVER_OBJECT *DriverObject;
     struct _IRP *CurrentIrp;
     UNICODE_STRING DeviceName;
-    ULONG Flags;
-    ULONG Characteristics;
+    ULONG64 Flags; /* Low 32 bits are device characteristics. High 32 bits are flags. */
     PVOID DeviceExtension;
     DEVICE_TYPE DeviceType;
     ULONG AlignmentRequirement;
@@ -382,8 +381,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
 typedef struct _MDL {
     struct _MDL *Next;
     PVOID MappedSystemVa;
-    ULONG ByteCount;
-    ULONG PfnCount;		/* Number of entries in PfnEntries */
+    ULONG Flags;
+    ULONG ByteOffset;	/* Page offset to the start of the buffer */
+    ULONG ByteCount;	/* Number of bytes of this buffer */
+    ULONG PfnCount;	/* Number of entries in PfnEntries */
     ULONG_PTR PfnEntries[];
 } MDL, *PMDL;
 
@@ -871,7 +872,7 @@ NTAPI NTSYSAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 				       IN ULONG DeviceExtensionSize,
 				       IN PUNICODE_STRING DeviceName OPTIONAL,
 				       IN DEVICE_TYPE DeviceType,
-				       IN ULONG DeviceCharacteristics,
+				       IN ULONG64 Flags,
 				       IN BOOLEAN Exclusive,
 				       OUT PDEVICE_OBJECT *DeviceObject);
 
@@ -1078,24 +1079,28 @@ FORCEINLINE NTAPI VOID IoSetStartIoAttributes(IN PDEVICE_OBJECT DeviceObject,
  */
 FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdl(IN PMDL Mdl)
 {
+    if (Mdl->MappedSystemVa) {
+	return Mdl->MappedSystemVa;
+    }
+    RtlRaiseStatus(STATUS_INVALID_ADDRESS);
+}
+
+FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl)
+{
+    /* Note that if the driver wants to access the memory described by the MDL,
+     * it must enable DO_MAP_IO_BUFFER when creating the device to map the memory
+     * into driver address space. Otherwise Mdl->MappedSystemVa is always NULL. */
     return Mdl->MappedSystemVa;
 }
 
-DEPRECATED_BY("Since user buffers are mapped directly into driver process they are always safe to access",
-	      MmGetSystemAddressForMld)
-FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl,
-						     IN ULONG Priority)
-{
-    return MmGetSystemAddressForMdl(Mdl);
-}
-
-/* Since for driver processes, MDLs are always mapped into "system address space",
- * this routine always returns NULL. The only use for this is to obtain an offset
- * into the IO buffer for the CurrentVa parameter of IoMapTransfer. */
+/* On Windows this routine returns the virtual address for the IO buffer in original
+ * requestor's process address space. The only use for this is to obtain an offset
+ * into the IO buffer for the CurrentVa parameter of IoMapTransfer. Since Neptune OS
+ * uses separate address spaces for drivers, we simply treat the original buffer as
+ * if it is mapped at the very beginning of the virtual address space. */
 FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
 {
-    UNREFERENCED_PARAMETER(Mdl);
-    return NULL;
+    return (PVOID)Mdl->ByteOffset;
 }
 
 NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,

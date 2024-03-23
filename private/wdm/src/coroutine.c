@@ -19,7 +19,7 @@ PVOID KiGetFirstAvailableCoroutineStack()
 	StackTop = Stack->NextStackTop;
     }
     if (StackTop == NULL) {
-	if (!NT_SUCCESS(IopCreateCoroutineStack(&StackTop))) {
+	if (!NT_SUCCESS(WdmCreateCoroutineStack(&StackTop))) {
 	    /* System is out of memory. Not much can be done here. */
 	    assert(FALSE);
 	    return NULL;

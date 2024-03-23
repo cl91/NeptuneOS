@@ -9,7 +9,7 @@ POBJECT_DIRECTORY ObpRootObjectDirectory;
 static NTSTATUS ObpDirectoryObjectCreateProc(IN POBJECT Self,
 					     IN PVOID CreaCtx)
 {
-    POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY) Self;
+    POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY)Self;
     assert(Self != NULL);
 
     for (int i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
@@ -103,6 +103,33 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
+					   IN PTHREAD Thread,
+					   IN POBJECT Object,
+					   IN PCSTR SubPath,
+					   IN ULONG Attributes,
+					   IN POB_OPEN_CONTEXT OpenContext,
+					   OUT POBJECT *pOpenedInstance,
+					   OUT PCSTR *pRemainingPath)
+{
+    assert(Thread != NULL);
+    assert(Object != NULL);
+    assert(SubPath != NULL);
+    assert(pOpenedInstance != NULL);
+    assert(ObObjectIsType(Object, OBJECT_TYPE_DIRECTORY));
+
+    *pRemainingPath = SubPath;
+    if (*SubPath != '\0') {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+    POBJECT_DIRECTORY DirObj = Object;
+    if (!DirObj->FileObject) {
+	RET_ERR(IoCreateDevicelessFile(NULL, NULL, 0, &DirObj->FileObject));
+    }
+    *pOpenedInstance = DirObj->FileObject;
+    return STATUS_SUCCESS;
+}
+
 /*
  * Called when the object manager attempts to insert an object
  * under the object directory
@@ -192,7 +219,7 @@ NTSTATUS ObpInitDirectoryObjectType()
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = ObpDirectoryObjectCreateProc,
 	.ParseProc = ObpDirectoryObjectParseProc,
-	.OpenProc = NULL,
+	.OpenProc = IopDirectoryObjectOpenProc,
 	.InsertProc = ObpDirectoryObjectInsertProc,
 	.RemoveProc = ObpDirectoryObjectRemoveProc,
 	.DeleteProc = ObpDirectoryObjectDeleteProc,

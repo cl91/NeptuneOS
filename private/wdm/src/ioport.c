@@ -6,7 +6,7 @@ NTAPI NTSTATUS IoEnableX86Port(USHORT PortNum)
 {
     IopAllocateObject(IoPort, X86_IOPORT);
     MWORD Cap = 0;
-    RET_ERR_EX(IopEnableX86Port(PortNum, &Cap),
+    RET_ERR_EX(WdmEnableX86Port(PortNum, &Cap),
 	       IopFreePool(IoPort));
     IoPort->Cap = Cap;
     IoPort->PortNum = PortNum;

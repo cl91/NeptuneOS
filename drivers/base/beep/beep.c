@@ -271,14 +271,11 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    /* Create the device */
+    /* Create the device object with BUFFERED_IO as the IO transfer type */
     Status = IoCreateDevice(DriverObject, sizeof(DEVICE_EXTENSION), &DeviceName,
-			    FILE_DEVICE_BEEP, 0, FALSE, &DeviceObject);
+			    FILE_DEVICE_BEEP, DO_BUFFERED_IO, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;
-
-    /* Make it use buffered I/O */
-    DeviceObject->Flags |= DO_BUFFERED_IO;
 
     /* Setup the Driver Object */
     DriverObject->MajorFunction[IRP_MJ_CREATE] = BeepCreate;

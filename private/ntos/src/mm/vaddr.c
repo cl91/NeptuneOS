@@ -505,8 +505,8 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 /*
  * Returns the PAGING_STRUCTURE pointer to the page at given virtual address.
  * If LargePage is specified, paging structure can be a page or a large page.
- * Otherwise the paging structure must be a 4K page. Returns NULL if no such
- * paging structure is unmapped at the given address.
+ * Otherwise the paging structure must be the lowest level page (4K in x86).
+ * Returns NULL if no such paging structure is unmapped at the given address.
  */
 PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
 				IN MWORD VirtAddr,
@@ -535,71 +535,85 @@ PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
 /*
  * Query the paging structures to generate the page frame database.
  *
- * If PfnDb is not NULL, page frame database will be written there.
- * Otherwise, only the Pfn count will be returned.
+ * If PfnDb is not NULL, the PFN database will be written there.
+ * If pPfnCount is not NULL, the PFN count will be written there.
  *
- * If *pPfnCount is non-zero, we check that it matches the actual
- * PFN count. If it doesn't match, we assert in debug build, and in
- * release build we cap the number of pfn entry written to at most
- * *pPfnCount.
- *
- * The buffer must be fully mapped in the specified process address
- * space prior to calling this function. Here Buffer is the pointer
- * in the specified process address space.
+ * If the buffer is fully mapped in the specified process address
+ * space prior to calling this function, FALSE is returned. Note
+ * here Buffer is the (client-side) virtual address in the address
+ * space of the specified process.
  */
-VOID MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
-				 IN PPROCESS Process,
-				 IN MWORD Buffer,
-				 IN MWORD BufferLength,
-				 OUT ULONG *pPfnCount)
+BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
+				    IN PPROCESS Process,
+				    IN MWORD Buffer,
+				    IN MWORD BufferLength,
+				    OUT OPTIONAL ULONG *pPfnCount)
 {
-    PPAGING_STRUCTURE Page = MmQueryPageEx(&Process->VSpace, Buffer, TRUE);
-    if (!Page) {
+    if (pPfnCount) {
 	*pPfnCount = 0;
-	return;
     }
-    MWORD PhyAddr = MiGetPhysicalAddress(Page);
-    ULONG PageCount = 1;
+    if (!Buffer || !BufferLength) {
+	return TRUE;
+    }
+    /* We never map the zeroth-page in any address space so Buffer cannot
+     * be less than PAGE_SIZE. */
+    assert(Buffer >= PAGE_SIZE);
+    ULONG PageCount = 0;
     ULONG PfnCount = 0;
-    while (Page->AvlNode.Key < (Buffer + BufferLength)) {
-	PPAGING_STRUCTURE NextPage = MiGetNextPagingStructure(Page);
-	MWORD NextPhyAddr = 0;
-	if (NextPage == NULL) {
+    MWORD VirtAddr = Buffer;
+    MWORD PhyAddrStart = 0;
+    MWORD PhyAddrEnd = 0;
+    PAGING_STRUCTURE_TYPE PrevPageType = -1;
+    while (TRUE) {
+	BOOLEAN Exit = (VirtAddr >= Buffer + BufferLength);
+	if (Exit) {
 	    goto out;
 	}
-	if (!MiPagingTypeIsPageOrLargePage(NextPage->Type)) {
-	    /* This should never happen because we always ensure that the
-	     * buffer is mapped when calling this function. */
-	    assert(FALSE);
-	    break;
+	PPAGING_STRUCTURE Page = MmQueryPageEx(&Process->VSpace, VirtAddr, TRUE);
+	if (!Page) {
+	    return FALSE;
 	}
-	NextPhyAddr = MiGetPhysicalAddress(NextPage);
-	if ((NextPage->AvlNode.Key < (Buffer + BufferLength)) &&
-	    (PhyAddr == NextPhyAddr) && (Page->Type == NextPage->Type)) {
+	assert(Page->AvlNode.Key);
+	MWORD PhyAddr = MiGetPhysicalAddress(Page);
+	assert(PhyAddr);
+	assert(IS_PAGE_ALIGNED(PhyAddr));
+
+	if (!PageCount) {
+	    PhyAddrStart = PhyAddr;
+	    PrevPageType = Page->Type;
+	}
+	if (!PageCount || (PhyAddrEnd == PhyAddr && Page->Type == PrevPageType)) {
+	    /* Page is physically contiguous with previous page. In this case
+	     * we simply increase the page count in the current PFN. */
 	    PageCount++;
+	    PhyAddrEnd = PhyAddr + MiPagingWindowSize(Page->Type);
 	} else {
 	out:
-	    if (*pPfnCount && (PfnCount >= *pPfnCount)) {
-		break;
-	    }
-	    if (PfnDb != NULL) {
-		assert(IS_PAGE_ALIGNED(PhyAddr));
-		if (MiPagingTypeIsLargePage(Page->Type)) {
-		    PhyAddr |= MDL_PFN_ATTR_LARGE_PAGE;
+	    /* Page is physically discontiguous with the previous page, in which
+	     * case we must write the current PFN and start a new one. */
+	    assert(PageCount);
+	    assert(MiPagingTypeIsPageOrLargePage(PrevPageType));
+	    assert(PhyAddrStart);
+	    assert(PhyAddrEnd);
+	    if (PfnDb) {
+		if (MiPagingTypeIsLargePage(PrevPageType)) {
+		    PhyAddrStart |= MDL_PFN_ATTR_LARGE_PAGE;
 		}
-		ULONG_PTR Pfn = PhyAddr | (PageCount << MDL_PFN_ATTR_BITS);
-		PfnDb[PfnCount] = Pfn;
+		PfnDb[PfnCount] = PhyAddrStart | (PageCount << MDL_PFN_ATTR_BITS);
 	    }
 	    PfnCount++;
-	    if (!NextPhyAddr) {
+	    if (Exit) {
 		break;
 	    }
-	    PhyAddr = NextPhyAddr;
+	    PhyAddrStart = PhyAddrEnd = 0;
 	    PageCount = 1;
 	}
-	Page = NextPage;
+	VirtAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
     }
-    *pPfnCount = PfnCount;
+    if (pPfnCount) {
+	*pPfnCount = PfnCount;
+    }
+    return TRUE;
 }
 
 /*

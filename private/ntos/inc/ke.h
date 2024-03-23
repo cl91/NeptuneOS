@@ -831,6 +831,7 @@ NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);
 NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
 			    IN PTHREAD_CONTEXT Context);
+BOOLEAN KePtrInSvcMsgBuf(IN MWORD Ptr, IN struct _THREAD *Thread);
 
 /* ioport.c */
 NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,

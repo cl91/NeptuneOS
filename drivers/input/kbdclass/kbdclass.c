@@ -28,7 +28,7 @@
  *                        |  i8042prt  |         | inport |
  *                        |------------|         |--------|
  *                             FDO
- *                   [unnamed, symbolic link]
+ *                   [unnamed, has symbolic link]
  *                              ^
  *                              |
  *                        |------------|          |-----------|
@@ -360,8 +360,7 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
 	+ DriverExtension->DeviceBaseName.Length /* "KeyboardClass" */
 	+ 4 * sizeof(WCHAR)	/* Id between 0 and 9999 */
 	+ sizeof(UNICODE_NULL);	/* Final NULL char */
-    DeviceNameU.Buffer = ExAllocatePoolWithTag(DeviceNameU.MaximumLength,
-					       CLASS_TAG);
+    DeviceNameU.Buffer = ExAllocatePoolWithTag(DeviceNameU.MaximumLength, CLASS_TAG);
     if (!DeviceNameU.Buffer) {
 	WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
 	return STATUS_NO_MEMORY;
@@ -383,10 +382,12 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
     PrefixLength = DeviceNameU.MaximumLength - 4 * sizeof(WCHAR) - sizeof(UNICODE_NULL);
     DeviceIdW = &DeviceNameU.Buffer[PrefixLength / sizeof(WCHAR)];
     while (DeviceId < 9999) {
-	DeviceNameU.Length = (USHORT)(PrefixLength + swprintf(DeviceIdW, L"%lu", DeviceId) * sizeof(WCHAR));
+	DeviceNameU.Length = (USHORT)(PrefixLength +
+				      swprintf(DeviceIdW, L"%lu", DeviceId) * sizeof(WCHAR));
 	Status = IoCreateDevice(DriverObject, sizeof(CLASS_DEVICE_EXTENSION),
 				&DeviceNameU, FILE_DEVICE_KEYBOARD,
-				FILE_DEVICE_SECURE_OPEN, FALSE, &Fdo);
+				FILE_DEVICE_SECURE_OPEN | DO_POWER_PAGABLE | DO_BUFFERED_IO,
+				FALSE, &Fdo);
 	if (NT_SUCCESS(Status))
 	    goto cleanup;
 	else if (Status != STATUS_OBJECT_NAME_COLLISION) {
@@ -419,8 +420,6 @@ cleanup:
 	return STATUS_NO_MEMORY;
     }
     DeviceExtension->DeviceName = DeviceNameU.Buffer;
-    Fdo->Flags |= DO_POWER_PAGABLE;
-    Fdo->Flags |= DO_BUFFERED_IO;	/* FIXME: Why is it needed for 1st stage setup? */
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
     /* Add entry entry to HKEY_LOCAL_MACHINE\Hardware\DeviceMap\[DeviceBaseName] */
@@ -517,9 +516,17 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 	return STATUS_SUCCESS;
 
     /* Create new device object */
-    NTSTATUS Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION), NULL, Pdo->DeviceType,
-				     Pdo->Characteristics & FILE_DEVICE_SECURE_OPEN ? FILE_DEVICE_SECURE_OPEN : 0,
-				     FALSE, &Fdo);
+    ULONG64 Flags = 0;
+    if (Pdo->Flags & FILE_DEVICE_SECURE_OPEN)
+	Flags |= FILE_DEVICE_SECURE_OPEN;
+    if (Pdo->Flags & DO_POWER_PAGABLE)
+	Flags |= DO_POWER_PAGABLE;
+    if (Pdo->Flags & DO_BUFFERED_IO)
+	Flags |= DO_BUFFERED_IO;
+    if (Pdo->Flags & DO_DIRECT_IO)
+	Flags |= DO_DIRECT_IO;
+    NTSTATUS Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION),
+				     NULL, Pdo->DeviceType, Flags, FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME, "IoCreateDevice() failed with status 0x%08x\n", Status);
 	goto cleanup;
@@ -538,12 +545,6 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 	      Status);
 	goto cleanup;
     }
-    if (DeviceExtension->LowerDevice->Flags & DO_POWER_PAGABLE)
-	Fdo->Flags |= DO_POWER_PAGABLE;
-    if (DeviceExtension->LowerDevice->Flags & DO_BUFFERED_IO)
-	Fdo->Flags |= DO_BUFFERED_IO;
-    if (DeviceExtension->LowerDevice->Flags & DO_DIRECT_IO)
-	Fdo->Flags |= DO_DIRECT_IO;
 
     if (DriverExtension->ConnectMultiplePorts)
 	DeviceExtension->ClassDO = DriverExtension->MainClassDeviceObject;
@@ -770,10 +771,9 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     PCLASS_DRIVER_EXTENSION DriverExtension;
     NTSTATUS Status;
 
-    Status = IoAllocateDriverObjectExtension(DriverObject,
-					     DriverObject,
+    Status = IoAllocateDriverObjectExtension(DriverObject, DriverObject,
 					     sizeof(CLASS_DRIVER_EXTENSION),
-					     (PVOID *) &DriverExtension);
+					     (PVOID *)&DriverExtension);
     if (!NT_SUCCESS(Status)) {
 	WARN_(CLASS_NAME,
 	      "IoAllocateDriverObjectExtension() failed with status 0x%08x\n",

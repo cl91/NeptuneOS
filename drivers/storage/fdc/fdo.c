@@ -756,8 +756,9 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 		Status = IoCreateDevice(FdoDevExt->Common.DeviceObject->DriverObject,
 					sizeof(PDO_DEVICE_EXTENSION),
 					&DeviceName, FILE_DEVICE_DISK,
-					FILE_DEVICE_SECURE_OPEN | FILE_REMOVABLE_MEDIA | FILE_FLOPPY_DISKETTE,
-					FALSE, &Pdo);
+					FILE_DEVICE_SECURE_OPEN | FILE_REMOVABLE_MEDIA
+					| FILE_FLOPPY_DISKETTE | DO_DIRECT_IO | DO_MAP_IO_BUFFER
+					| DO_POWER_PAGABLE, FALSE, &Pdo);
 	    } while (Status == STATUS_OBJECT_NAME_COLLISION);
 
 	    if (!NT_SUCCESS(Status)) {
@@ -770,8 +771,7 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 	    DriveInfo->DeviceObject = Pdo;
 
 	    PPDO_DEVICE_EXTENSION PdoDevExt = (PPDO_DEVICE_EXTENSION)Pdo->DeviceExtension;
-	    RtlZeroMemory(PdoDevExt,
-			  sizeof(PDO_DEVICE_EXTENSION));
+	    RtlZeroMemory(PdoDevExt, sizeof(PDO_DEVICE_EXTENSION));
 
 	    PdoDevExt->Common.IsFDO = FALSE;
 	    PdoDevExt->Common.DeviceObject = Pdo;
@@ -779,13 +779,10 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 	    PdoDevExt->Fdo = FdoDevExt->Common.DeviceObject;
 	    PdoDevExt->DriveInfo = DriveInfo;
 
-	    Pdo->Flags |= DO_DIRECT_IO;
-	    Pdo->Flags |= DO_POWER_PAGABLE;
 	    Pdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
 	    /* Add Device ID string */
-	    RtlCreateUnicodeString(&PdoDevExt->DeviceId,
-				   L"FDC\\GENERIC_FLOPPY_DRIVE");
+	    RtlCreateUnicodeString(&PdoDevExt->DeviceId, L"FDC\\GENERIC_FLOPPY_DRIVE");
 	    DPRINT("DeviceID: %S\n", PdoDevExt->DeviceId.Buffer);
 
 	    /* Add Hardware IDs string */

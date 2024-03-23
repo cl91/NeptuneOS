@@ -35,10 +35,11 @@ static NTSTATUS NTAPI FdcAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     /* Create functional device object for the controller */
     PDEVICE_OBJECT Fdo = NULL;
-    NTSTATUS Status = IoCreateDevice(DriverObject,
-				     sizeof(FDO_DEVICE_EXTENSION), NULL,
+    NTSTATUS Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_EXTENSION), NULL,
 				     FILE_DEVICE_CONTROLLER,
-				     FILE_DEVICE_SECURE_OPEN, FALSE, &Fdo);
+				     FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO |
+				     DO_MAP_IO_BUFFER | DO_POWER_PAGABLE,
+				     FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -61,9 +62,6 @@ static NTSTATUS NTAPI FdcAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     KeInitializeEvent(&DeviceExtension->ControllerInfo.SynchEvent,
 		      NotificationEvent, FALSE);
-
-    Fdo->Flags |= DO_DIRECT_IO;
-    Fdo->Flags |= DO_POWER_PAGABLE;
 
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;

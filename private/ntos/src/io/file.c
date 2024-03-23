@@ -1,5 +1,4 @@
 #include "iop.h"
-#include "helpers.h"
 
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx)
@@ -11,7 +10,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     /* If the FileName is not NULL but points to an empty string, we
      * must be opening a non-file-system device object, in which case
      * we do not allocate an FCB. */
-    if (Ctx->FileName && *Ctx->FileName == '\0') {
+    if ((Ctx->FileName && *Ctx->FileName == '\0') || Ctx->NoFcb) {
 	File->Fcb = NULL;
     } else if (Ctx->Fcb) {
 	File->Fcb = Ctx->Fcb;
@@ -65,6 +64,7 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 	.FileSize = 0,
 	.Fcb = NULL,
 	.Vcb = DeviceObject->Vcb,
+	.NoFcb = FALSE,
 	.ReadAccess = TRUE,
 	.WriteAccess = TRUE,
 	.DeleteAccess = TRUE,
@@ -123,10 +123,9 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
  */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
-				IN MWORD FileSize,
+				IN OPTIONAL MWORD FileSize,
 				OUT PIO_FILE_OBJECT *pFile)
 {
-    assert(FileSize);
     assert(pFile);
     PIO_FILE_OBJECT File = NULL;
     FILE_OBJ_CREATE_CONTEXT CreaCtx = {
@@ -134,12 +133,15 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 	.FileName = FileName,
 	.FileSize = FileSize,
 	.Fcb = NULL,
-	.Vcb = NULL
+	.Vcb = NULL,
+	.NoFcb = !FileSize
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
     NTSTATUS Status;
-    IF_ERR_GOTO(out, Status, CcInitializeCacheMap(File->Fcb, NULL, NULL));
+    if (FileSize) {
+	IF_ERR_GOTO(out, Status, CcInitializeCacheMap(File->Fcb, NULL, NULL));
+    }
     if (FileName && ParentDirectory) {
 	IF_ERR_GOTO(out, Status, ObInsertObject(ParentDirectory, File, FileName, 0));
     }
@@ -199,28 +201,6 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 {
     NTSTATUS Status;
 
-    /* We haven't implemented file systems yet so we hard-code the logic
-     * for directory files. */
-    if (OpenOptions & FILE_DIRECTORY_FILE) {
-	POBJECT_DIRECTORY Dir = NULL;
-	Status = ObReferenceObjectByName(ObjectAttributes.ObjectNameBuffer,
-					 OBJECT_TYPE_DIRECTORY, NULL,
-					 !!(ObjectAttributes.Attributes & OBJ_CASE_INSENSITIVE),
-					 (POBJECT *)&Dir);
-	if (!NT_SUCCESS(Status)) {
-	    goto out;
-	}
-	assert(Dir != NULL);
-	Status = ObCreateHandle(Thread->Process, Dir, FileHandle);
-	ObDereferenceObject(Dir);
-    out:
-	if (IoStatusBlock != NULL) {
-	    IoStatusBlock->Status = Status;
-	    IoStatusBlock->Information = 0;
-	}
-	return Status;
-    }
-
     ASYNC_BEGIN(State, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
 	});
@@ -248,29 +228,83 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
                     IN PIO_APC_ROUTINE ApcRoutine,
                     IN PVOID ApcContext,
                     OUT IO_STATUS_BLOCK *IoStatusBlock,
-                    IN PVOID Buffer,
+                    OUT PVOID Buffer,
                     IN ULONG BufferLength,
                     IN OPTIONAL PLARGE_INTEGER ByteOffset,
                     IN OPTIONAL PULONG Key)
 {
-    IO_SERVICE_PROLOGUE(State, Locals, FileObject, EventObject,
-			IoPacket, PendingIrp);
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
 
-    Locals.IoPacket->Request.MajorFunction = IRP_MJ_READ;
-    Locals.IoPacket->Request.MinorFunction = 0;
-    Locals.IoPacket->Request.OutputBuffer = (MWORD)Buffer;
-    Locals.IoPacket->Request.OutputBufferLength = BufferLength;
-    Locals.IoPacket->Request.Read.Key = Key ? *Key : 0;
-    if (ByteOffset != NULL) {
-	Locals.IoPacket->Request.Read.ByteOffset = *ByteOffset;
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PEVENT_OBJECT EventObject;
+	    PPENDING_IRP PendingIrp;
+	});
+
+    if (FileHandle == NULL) {
+	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
+    }
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    assert(Locals.FileObject->DeviceObject != NULL);
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    if (EventHandle != NULL) {
+	IF_ERR_GOTO(out, Status,
+		    ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
+					      (POBJECT *)&Locals.EventObject));
+	assert(Locals.EventObject != NULL);
     }
 
-    IO_SERVICE_EPILOGUE(out, Status, Locals, FileObject, EventObject,
-			IoPacket, PendingIrp, IoStatusBlock);
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = Locals.FileObject,
+	.MajorFunction = IRP_MJ_READ,
+	.MinorFunction = 0,
+	.OutputBuffer = (MWORD)Buffer,
+	.OutputBufferLength = BufferLength,
+	.Read.Key = Key ? *Key : 0
+    };
+    if (ByteOffset) {
+	Irp.Read.ByteOffset = *ByteOffset;
+    } else {
+	/* TODO: Use current byte offset of the file object (must be synchronous) */
+	/* Irp.Read.ByteOffset = ; */
+    }
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    /* For now every IO is synchronous. For async IO, we need to figure
+     * out how we pass IO_STATUS_BLOCK back to the userspace safely.
+     * The idea is to pass it via APC. When NtWaitForSingleObject
+     * returns from the wait the special APC runs and write to the
+     * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */
+
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+
+    /* This is the starting point when the function is resumed. */
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
+    }
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
 
 out:
-    IO_SERVICE_CLEANUP(Status, Locals, FileObject,
-		       EventObject, IoPacket, PendingIrp);
+    /* The IO request has returned a error status. Clean up the
+       file object. */
+    if (!NT_SUCCESS(Status) && Locals.FileObject != NULL) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (!NT_SUCCESS(Status) && Locals.EventObject != NULL) {
+	ObDereferenceObject(Locals.EventObject);
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtWriteFile(IN ASYNC_STATE AsyncState,
@@ -285,6 +319,8 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE AsyncState,
                      IN OPTIONAL PLARGE_INTEGER ByteOffset,
                      IN OPTIONAL PULONG Key)
 {
+    /* Note that since Buffer can be in the service message buffer, we cannot
+     * sleep until we have called IopCallDriver. */
     UNIMPLEMENTED;
 }
 

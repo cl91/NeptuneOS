@@ -202,8 +202,8 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
 
     PSYSTEM_DMA_ADAPTER SystemAdapter = &HalpDmaSystemAdapters[Desc->DmaChannel];
     if (!SystemAdapter->Handle) {
-	NTSTATUS Status = HalpDmaOpenSystemAdapter(Desc->DmaChannel,
-						   &SystemAdapter->Handle);
+	NTSTATUS Status = WdmHalDmaOpenSystemAdapter(Desc->DmaChannel,
+						     &SystemAdapter->Handle);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT("Unable to open system adapter for channel %d, err 0x%x\n",
 		   Desc->DmaChannel, Status);
@@ -497,8 +497,8 @@ static NTSTATUS HalpAllocateMapRegisters(IN PADAPTER_OBJECT AdapterObject,
      * new map registers. The server will always try to allocate high memory
      * when it's available, so as not to waste scarce resource (low memory). */
     ULONG BoundAddrBits = HalpGetAdapterBoundaryAddressBits(AdapterObject);
-    RET_ERR_EX(HalpAllocateDmaBuffer(Count << PAGE_SHIFT, &HighestAddr, BoundAddrBits,
-				     &MapReg->VirtBase, &MapReg->PhyBase),
+    RET_ERR_EX(WdmHalAllocateDmaBuffer(Count << PAGE_SHIFT, &HighestAddr, BoundAddrBits,
+				       &MapReg->VirtBase, &MapReg->PhyBase),
 	       ExFreePool(MapReg));
     assert(MapReg->VirtBase != NULL);
     assert(MapReg->PhyBase.QuadPart != 0);
@@ -820,8 +820,6 @@ NTAPI VOID HalpPutDmaAdapter(IN PDMA_ADAPTER DmaAdapter)
  *        Map register to copy data from/to.
  * @param CurrentVa
  *        Index into the specified Mdl indicating the start of the transfer.
- *        This is with respect to MmGetMdlVirtualAddress(Mdl), which is
- *        always NULL on Neptune OS (on Windows it is generally not).
  * @param Length
  *        Length of the data being copied. CurrentVa + Length should
  *        not exceed the end of the MDL.
@@ -839,10 +837,8 @@ NTAPI VOID HalpCopyBufferMap(IN PMDL Mdl,
 			     IN BOOLEAN WriteToDevice)
 {
     DbgTrace("MdlSystemVa = %p CurrentVa = %p Length = 0x%x WriteToDevice = %d\n",
-	     MmGetSystemAddressForMdl(Mdl), CurrentVa, Length, WriteToDevice);
-    /* Compute the offset of CurrentVa against the start of the MDL. Since
-     * on Neptune OS MmGetMdlVirtualAddress() always returns NULL, this is
-     * simply CurrentVa. */
+	     MmGetSystemAddressForMdlSafe(Mdl), CurrentVa, Length, WriteToDevice);
+    /* Compute the offset of CurrentVa against the start of the MDL. */
     ULONG_PTR OffsetInMdl = (ULONG_PTR)CurrentVa - (ULONG_PTR)MmGetMdlVirtualAddress(Mdl);
     ULONG_PTR CurrentAddress = (ULONG_PTR)MmGetSystemAddressForMdl(Mdl) + OffsetInMdl;
     PVOID MapRegBase = (PVOID)((ULONG_PTR)MapReg->VirtBase);
@@ -871,9 +867,7 @@ NTAPI VOID HalpCopyBufferMap(IN PMDL Mdl,
  * @param MapRegisterBase
  *        Handle to map registers to use for this dma.
  * @param CurrentVa
- *        Index into Mdl to transfer into/out of. This is with respect
- *        to MmGetMdlVirtualAddress(Mdl) (which on Neptune OS always
- *        returns NULL).
+ *        Index into Mdl to transfer into/out of.
  * @param Length
  *        Length of the DMA transfer. This will be updated to the number
  *        of bytes actually transferred by this function.
@@ -997,9 +991,9 @@ NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PDMA_ADAPTER DmaAdapter,
 	assert((PhysicalAddress.LowPart >> 24) == 0);
 	assert(PhysicalAddress.HighPart == 0);
 	/* Call the server to start the DMA transfer. */
-	HalpDmaStartTransfer(AdapterObject->SystemAdapter->Handle, AdapterMode.Byte,
-			     TransferOffset, TransferLength,
-			     PhysicalAddress.LowPart >> 16);
+	WdmHalDmaStartTransfer(AdapterObject->SystemAdapter->Handle, AdapterMode.Byte,
+			       TransferOffset, TransferLength,
+			       PhysicalAddress.LowPart >> 16);
     }
 
     /* Return physical address of the buffer with data that is used for the
@@ -1057,7 +1051,7 @@ NTAPI BOOLEAN HalpFlushAdapterBuffers(IN PDMA_ADAPTER DmaAdapter,
 
     /* If we are doing slave DMA, mask out (disable) the DMA channel. */
     if (AdapterObject->SystemAdapter) {
-	HalpDmaDisableChannel(AdapterObject->SystemAdapter->Handle);
+	WdmHalDmaDisableChannel(AdapterObject->SystemAdapter->Handle);
     }
 
     /* We only need to flush the map registers if we are reading from a device. */
@@ -1110,7 +1104,7 @@ NTAPI ULONG HalpReadDmaCounter(IN PDMA_ADAPTER DmaAdapter)
     }
 
     ULONG Count = 0;
-    HalpDmaReadProgressCounter(AdapterObject->SystemAdapter->Handle, &Count);
+    WdmHalDmaReadProgressCounter(AdapterObject->SystemAdapter->Handle, &Count);
 
     Count++;
     Count &= 0xffff;

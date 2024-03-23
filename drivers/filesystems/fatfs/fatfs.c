@@ -85,7 +85,6 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
     FatGlobalData->Flags = FAT_BREAK_ON_CORRUPTION;
 #endif
 
-    DeviceObject->Flags |= DO_DIRECT_IO;
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_CREATE] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_READ] = FatBuildRequest;

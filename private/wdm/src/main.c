@@ -64,7 +64,7 @@ static NTSTATUS IopDriverEventLoop()
 	ULONG NumRequestPackets = 0;
 	/* This should never return error. If it did, something is seriously
 	 * wrong and we should terminate the driver process. */
-	RET_ERR(IopRequestIoPackets(NumResponsePackets, &NumRequestPackets));
+	RET_ERR(WdmRequestIoPackets(NumResponsePackets, &NumRequestPackets));
 	IopProcessIoPackets(&NumResponsePackets, NumRequestPackets);
     }
 }

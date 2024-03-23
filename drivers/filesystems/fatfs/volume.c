@@ -173,7 +173,7 @@ static NTSTATUS FsdGetFsDeviceInformation(PDEVICE_OBJECT DeviceObject,
     ASSERT(*BufferLength >= sizeof(FILE_FS_DEVICE_INFORMATION));
 
     FsDeviceInfo->DeviceType = FILE_DEVICE_DISK;
-    FsDeviceInfo->Characteristics = DeviceObject->Characteristics;
+    FsDeviceInfo->Characteristics = DeviceObject->Flags;
 
     DPRINT("FsdGetFsDeviceInformation() finished.\n");
 

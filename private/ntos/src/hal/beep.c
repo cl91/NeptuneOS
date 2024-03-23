@@ -11,9 +11,9 @@
 /*
  * @implemented
  */
-NTSTATUS HalpMakeBeep(IN ASYNC_STATE AsyncState,
-                      IN PTHREAD Thread,
-                      IN ULONG Frequency)
+NTSTATUS WdmHalMakeBeep(IN ASYNC_STATE AsyncState,
+			IN PTHREAD Thread,
+			IN ULONG Frequency)
 {
     DbgTrace("Frequency %d\n", Frequency);
     SYSTEM_CONTROL_PORT_B_REGISTER SystemControl;

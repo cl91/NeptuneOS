@@ -153,8 +153,9 @@
  * the IO stack size is always one, there can only be one IO completion routine
  * set for an IRP, and once forwarded, the original device object of the IO stack
  * is overwritten with the device object that the IRP is forwarded to. The dispatch
- * function for the IRP will not be able to retrieve the original device object.
- * Drivers are discouraged from forwarding IRPs back to local device objects.
+ * function for the IRP will not be able to retrieve the original device object from
+ * the IRP. Drivers that forward IRPs back to its local device objects need to be
+ * aware of this issue and store the original device object appropriately if needed.
  *
  * [1] See https://community.osr.com/discussion/162053/iomarkirppending
  *  The allowed combinations of dispatch routine return status and
@@ -222,15 +223,20 @@ static inline BOOLEAN IrpIsInCleanupList(IN PIRP Irp)
 }
 #endif	/* DBG */
 
-static inline NTSTATUS IopAllocateMdl(IN PVOID Buffer,
-				      IN ULONG BufferLength,
-				      IN PULONG_PTR PfnDb,
-				      IN ULONG PfnCount,
-				      OUT PMDL *pMdl)
+static NTSTATUS IopAllocateMdl(IN PVOID Buffer,
+			       IN ULONG BufferLength,
+			       IN PULONG_PTR PfnDb,
+			       IN ULONG PfnCount,
+			       IN BOOLEAN BufferMapped,
+			       OUT PMDL *pMdl)
 {
+    assert(PfnCount);
     ULONG MdlSize = sizeof(MDL) + PfnCount * sizeof(ULONG_PTR);
     IopAllocatePool(Mdl, MDL, MdlSize);
-    Mdl->MappedSystemVa = Buffer;
+    if (BufferMapped) {
+	Mdl->MappedSystemVa = Buffer;
+    }
+    Mdl->ByteOffset = (ULONG)Buffer & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[0]) - 1);
     Mdl->ByteCount = BufferLength;
     Mdl->PfnCount = PfnCount;
     memcpy(Mdl->PfnEntries, PfnDb, PfnCount * sizeof(ULONG_PTR));
@@ -238,57 +244,106 @@ static inline NTSTATUS IopAllocateMdl(IN PVOID Buffer,
     return STATUS_SUCCESS;
 }
 
-static inline NTSTATUS IopMarshalIoBuffers(IN PIRP Irp,
-					   IN PVOID Buffer,
-					   IN ULONG BufferLength,
-					   IN PULONG_PTR PfnDb,
-					   IN ULONG PfnCount)
+static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
+				    IN PIO_PACKET IoPacket,
+				    IN PVOID Buffer,
+				    IN ULONG BufferLength,
+				    IN ULONG PfnOffset,
+				    IN ULONG PfnCount)
 {
     if (BufferLength == 0 || Buffer == NULL) {
 	return STATUS_SUCCESS;
     }
+    assert(PfnOffset < PAGE_SIZE);
+    assert(PfnCount < PAGE_SIZE / sizeof(MWORD));
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    ULONG DeviceFlags = IoStack->DeviceObject->Flags;
-    if (DeviceFlags & DO_BUFFERED_IO) {
-	Irp->AssociatedIrp.SystemBuffer = Buffer;
-    } else if (DeviceFlags & DO_DIRECT_IO) {
-	RET_ERR(IopAllocateMdl(Buffer, BufferLength, PfnDb, PfnCount,
-			       &Irp->MdlAddress));
-   } else {
-	/* NEITHER_IO */
-	Irp->UserBuffer = Buffer;
+    Irp->Flags &= ~IRP_DEALLOCATE_BUFFER;
+    Irp->Flags &= ~IRP_BUFFERED_IO;
+    ULONG64 DeviceFlags = IoStack->DeviceObject->Flags;
+    if (DeviceFlags & DO_DIRECT_IO) {
+	RET_ERR(IopAllocateMdl(Buffer, BufferLength,
+			       (PULONG_PTR)((PUCHAR)IoPacket + PfnOffset), PfnCount,
+			       DeviceFlags & DO_MAP_IO_BUFFER, &Irp->MdlAddress));
+    } else {
+	/* For both BUFFERED_IO and NEITHER_IO, we need to allocate a buffer if
+	 * the buffer is embedded in the IRP. Note this can only apply to input
+	 * buffer and not output buffer. */
+	if ((MWORD)Buffer < PAGE_SIZE) {
+	    assert((MWORD)Buffer == IoPacket->Request.InputBuffer);
+	    assert(BufferLength == IoPacket->Request.InputBufferLength);
+	    assert(BufferLength < IRP_DATA_BUFFER_SIZE);
+	    IopAllocatePool(BufferCopy, VOID, BufferLength);
+	    memcpy(BufferCopy, (PUCHAR)IoPacket + (MWORD)Buffer, BufferLength);
+	    Buffer = BufferCopy;
+	    Irp->Flags |= IRP_DEALLOCATE_BUFFER;
+	}
+	if (DeviceFlags & DO_BUFFERED_IO) {
+	    Irp->Flags |= IRP_BUFFERED_IO;
+	    Irp->AssociatedIrp.SystemBuffer = Buffer;
+	} else {
+	    Irp->UserBuffer = Buffer;
+	}
     }
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS IopMarshalIoctlBuffers(IN PIRP Irp,
-				       IN ULONG Ioctl,
-				       IN PVOID InputBuffer,
-				       IN ULONG InputBufferLength,
-				       IN PVOID OutputBuffer,
-				       IN ULONG OutputBufferLength,
-				       IN PULONG_PTR OutputBufferPfnDb,
-				       IN ULONG OutputBufferPfnCount)
+static NTSTATUS IopMarshalIoctlBuffers(OUT PIRP Irp,
+				       IN PIO_PACKET Src)
 {
+    ULONG Ioctl = Src->Request.DeviceIoControl.IoControlCode;
+    MWORD InputBuffer = Src->Request.InputBuffer;
+    MWORD OutputBuffer = Src->Request.OutputBuffer;
+    ULONG InputBufferLength = Src->Request.InputBufferLength;
+    ULONG OutputBufferLength = Src->Request.OutputBufferLength;
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    IoStack->Parameters.DeviceIoControl.IoControlCode = Ioctl;
+    IoStack->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
+    IoStack->Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
+
+    Irp->Flags &= ~IRP_DEALLOCATE_BUFFER;
+    Irp->Flags &= ~IRP_BUFFERED_IO;
+    ULONG SystemBufferLength = InputBufferLength;
     if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED) {
-	ULONG SystemBufferLength = max(InputBufferLength, OutputBufferLength);
-	IopAllocatePool(SystemBuffer, UCHAR, SystemBufferLength);
-	Irp->AssociatedIrp.SystemBuffer = SystemBuffer;
-	/* Copy the user input data (if exists) to the system buffer */
-	if (InputBufferLength != 0) {
-	    memcpy(Irp->AssociatedIrp.SystemBuffer, InputBuffer, InputBufferLength);
+	SystemBufferLength = max(InputBufferLength, OutputBufferLength);
+	if (!SystemBufferLength) {
+	    return STATUS_SUCCESS;
 	}
-	Irp->Private.OutputBuffer = OutputBuffer;
+	Irp->Private.OutputBuffer = (PVOID)OutputBuffer;
+	Irp->Flags |= IRP_BUFFERED_IO;
+    }
+    if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED ||
+	(InputBuffer && InputBuffer < PAGE_SIZE)) {
+	IopAllocatePool(SystemBuffer, UCHAR, SystemBufferLength);
+	/* Copy the user input data (if exists) to the system buffer */
+	if (InputBufferLength) {
+	    PUCHAR SrcBuffer;
+	    if (InputBuffer < PAGE_SIZE) {
+		SrcBuffer = (PUCHAR)Src + InputBuffer;
+	    } else {
+		SrcBuffer = (PUCHAR)InputBuffer;
+	    }
+	    memcpy(SystemBuffer, SrcBuffer, InputBufferLength);
+	}
+	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
+	    IoStack->Parameters.DeviceIoControl.Type3InputBuffer = SystemBuffer;
+	} else {
+	    Irp->AssociatedIrp.SystemBuffer = SystemBuffer;
+	}
+	Irp->Flags |= IRP_DEALLOCATE_BUFFER;
     } else if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
-	/* Type3InputBuffer is set in IopPopulateLocalIrpFromServerIoPacket */
-	Irp->UserBuffer = OutputBuffer;
+	Irp->UserBuffer = (PVOID)OutputBuffer;
+	IoStack->Parameters.DeviceIoControl.Type3InputBuffer = (PVOID)InputBuffer;
     } else {
-	/* Direct IO: METHOD_IN_DIRECT or METHOD_OUT_DIRECT */
-	Irp->AssociatedIrp.SystemBuffer = InputBuffer;
-	if (OutputBufferLength != 0) {
-	    RET_ERR(IopAllocateMdl(OutputBuffer, OutputBufferLength,
-				   OutputBufferPfnDb, OutputBufferPfnCount,
-				   &Irp->MdlAddress));
+	assert(Src->Request.Flags & IOP_IRP_OUTPUT_DIRECT_IO);
+	assert(!InputBuffer || InputBuffer >= PAGE_SIZE);
+	Irp->AssociatedIrp.SystemBuffer = (PVOID)InputBuffer;
+	/* For DIRECT_IO (METHOD_IN_DIRECT or METHOD_OUT_DIRECT), only the output
+	 * buffer has the MDL generated. */
+	PULONG_PTR PfnDb = (PULONG_PTR)((PUCHAR)Src + Src->Request.OutputBufferPfn);
+	ULONG PfnCount = Src->Request.OutputBufferPfnCount;
+	if (OutputBufferLength) {
+	    RET_ERR(IopAllocateMdl((PVOID)OutputBuffer, OutputBufferLength, PfnDb,
+				   PfnCount, TRUE, &Irp->MdlAddress));
 	}
     }
     return STATUS_SUCCESS;
@@ -298,21 +353,26 @@ static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
 				     IN ULONG Ioctl,
 				     IN ULONG OutputBufferLength)
 {
-    if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED) {
-	/* Copy the system buffer back to the user output buffer if needed. */
-	if (OutputBufferLength != 0) {
-	    assert(Irp->Private.OutputBuffer != NULL);
-	    memcpy(Irp->Private.OutputBuffer, Irp->AssociatedIrp.SystemBuffer,
-		   OutputBufferLength);
-	}
-	IopFreePool(Irp->AssociatedIrp.SystemBuffer);
-	Irp->AssociatedIrp.SystemBuffer = NULL;
-    } else if ((METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT) ||
-	       (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_OUT_DIRECT)) {
-	if (OutputBufferLength != 0) {
-	    assert(Irp->MdlAddress != NULL);
-	    IopFreePool(Irp->MdlAddress);
-	    Irp->MdlAddress = NULL;
+    /* Copy the system buffer back to the user output buffer if needed. */
+    if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED && OutputBufferLength) {
+	assert(Irp->Private.OutputBuffer != NULL);
+	memcpy(Irp->Private.OutputBuffer, Irp->AssociatedIrp.SystemBuffer,
+	       OutputBufferLength);
+    }
+    if ((METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT ||
+	 METHOD_FROM_CTL_CODE(Ioctl) == METHOD_OUT_DIRECT) && OutputBufferLength) {
+	assert(Irp->MdlAddress != NULL);
+	IopFreePool(Irp->MdlAddress);
+	Irp->MdlAddress = NULL;
+    }
+    if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
+	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
+	    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+	    IopFreePool(IoStack->Parameters.DeviceIoControl.Type3InputBuffer);
+	    IoStack->Parameters.DeviceIoControl.Type3InputBuffer = NULL;
+	} else {
+	    IopFreePool(Irp->AssociatedIrp.SystemBuffer);
+	    Irp->AssociatedIrp.SystemBuffer = NULL;
 	}
     }
 }
@@ -328,9 +388,22 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 				 IoStack->Parameters.DeviceIoControl.OutputBufferLength);
 	break;
     }
+    case IRP_MJ_READ:
+    case IRP_MJ_WRITE:
+    {
+	if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
+	    if (Irp->Flags & IRP_BUFFERED_IO) {
+		IopFreePool(Irp->AssociatedIrp.SystemBuffer);
+		Irp->AssociatedIrp.SystemBuffer = NULL;
+	    } else {
+		IopFreePool(Irp->UserBuffer);
+		Irp->UserBuffer = NULL;
+	    }
+	}
+	break;
+    }
     case IRP_MJ_FILE_SYSTEM_CONTROL:
     case IRP_MJ_CREATE:
-    case IRP_MJ_READ:
     case IRP_MJ_PNP:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
@@ -382,8 +455,8 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     IoStack->MajorFunction = Src->Request.MajorFunction;
     IoStack->MinorFunction = Src->Request.MinorFunction;
-    IoStack->Flags = Src->Request.Flags;
-    IoStack->Control = Src->Request.Control;
+    IoStack->Flags = 0;
+    IoStack->Control = 0;
     IoStack->DeviceObject = DeviceObject;
     IoStack->FileObject = FileObject;
     IoStack->CompletionRoutine = NULL;
@@ -441,34 +514,32 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 
     case IRP_MJ_READ:
     {
-	PVOID Buffer = (PVOID)Src->Request.OutputBuffer;
 	ULONG BufferLength = Src->Request.OutputBufferLength;
-	PULONG_PTR PfnDb = (PULONG_PTR)((MWORD)Src + Src->Request.OutputBufferPfn);
-	ULONG PfnCount = Src->Request.OutputBufferPfnCount;
 	IoStack->Parameters.Read.Length = BufferLength;
 	IoStack->Parameters.Read.Key = Src->Request.Read.Key;
 	IoStack->Parameters.Read.ByteOffset = Src->Request.Read.ByteOffset;
-	RET_ERR(IopMarshalIoBuffers(Irp, Buffer, BufferLength, PfnDb, PfnCount));
+	RET_ERR(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.OutputBuffer,
+				    BufferLength, Src->Request.OutputBufferPfn,
+				    Src->Request.OutputBufferPfnCount));
+	break;
+    }
+
+    case IRP_MJ_WRITE:
+    {
+	ULONG BufferLength = Src->Request.InputBufferLength;
+	IoStack->Parameters.Write.Length = BufferLength;
+	IoStack->Parameters.Write.Key = Src->Request.Write.Key;
+	IoStack->Parameters.Write.ByteOffset = Src->Request.Write.ByteOffset;
+	RET_ERR(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.InputBuffer,
+				    BufferLength, Src->Request.InputBufferPfn,
+				    Src->Request.InputBufferPfnCount));
 	break;
     }
 
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
     {
-	ULONG Ioctl = Src->Request.DeviceIoControl.IoControlCode;
-	PVOID InputBuffer = (PVOID)Src->Request.InputBuffer;
-	ULONG InputBufferLength = Src->Request.InputBufferLength;
-	ULONG OutputBufferLength = Src->Request.OutputBufferLength;
-	/* For DIRECT_IO only the output buffer has the MDL generated. */
-	PULONG_PTR PfnDb = (PULONG_PTR)((MWORD)Src + Src->Request.OutputBufferPfn);
-	ULONG PfnCount = Src->Request.OutputBufferPfnCount;
-	IoStack->Parameters.DeviceIoControl.IoControlCode = Ioctl;
-	IoStack->Parameters.DeviceIoControl.Type3InputBuffer = InputBuffer;
-	IoStack->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
-	IoStack->Parameters.DeviceIoControl.OutputBufferLength = OutputBufferLength;
-	RET_ERR(IopMarshalIoctlBuffers(Irp, Ioctl, InputBuffer, InputBufferLength,
-				       (PVOID)Src->Request.OutputBuffer,
-				       OutputBufferLength, PfnDb, PfnCount));
+	RET_ERR(IopMarshalIoctlBuffers(Irp, Src));
 	break;
     }
 

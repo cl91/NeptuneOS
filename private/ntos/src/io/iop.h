@@ -55,33 +55,52 @@
  *
  * Case 1: THREAD object queues an IRP on a DRIVER object
  *
- *  |-------------|       |-----------------------|       |-------------------------|       |------------------|       |---------|
- *  |  IO_PACKET  |       | DRIVER.IoPacketQueue  |       | DRV.PendingIoPacketList |       | Driver completes |       | Server  |
- *  |-------------| ----> |-----------------------| ----> |-------------------------| ----> | IRP, replies     | ----> | signals |
- *  | PENDING_IRP |       | THREAD.PendingIrpList |       | THREAD.PendingIrpList   |   |   | to server        |       | THREAD  |
- *  |-------------|       |-----------------------|       |-------------------------|   |   |------------------|       |---------|
- *                                                                                      |or
- *                                                                                      |-----> Case 3,4
+ *  |-------------|       |-----------------------|       |-------------------------|
+ *  |  IO_PACKET  |       | DRIVER.IoPacketQueue  |       | DRV.PendingIoPacketList |
+ *  |-------------| ----> |-----------------------| ----> |-------------------------|
+ *  | PENDING_IRP |       | THREAD.PendingIrpList |       | THREAD.PendingIrpList   |
+ *  |-------------|       |-----------------------|       |-------------------------|
+ *                                                               |       |
+ *                                            or Case 3,4 <------|       |
+ *                                                                      \|/
+ *                                     |---------|            |------------------|
+ *                                     | Server  |            | Driver completes |
+ *                                     | signals |  <-------  | IRP, replies     |
+ *                                     | THREAD  |            | to server        |
+ *                                     |---------|            |------------------|
+ *
  *
  * Case 2: Driver0 queues a new IRP on Driver1 via IoCallDriver
  *
- *  |-------------|       |-----------------------|       |-----------------------|       |----------------|       |---------|
- *  |  IO_PACKET  |       |   Drv1.IoPacketQueue  |       | Drv1.PendingIoPacketL |       | Drv1 completes |       | Server  |
- *  |-------------| ----> |-----------------------| ----> |-----------------------| ----> | IRP, replies   | ----> | replies |
- *  | PENDING_IRP |       | Drv0.ForwardedIrpList |       | Drv0.ForwardedIrpList |   |   | to server      |       | to Drv0 |
- *  |-------------|       |-----------------------|       |-----------------------|   |   |----------------|       |---------|
- *                                                                                    |or
- *                                                                                    |-----> Case 3,4
+ *  |-------------|       |-----------------------|       |--------------------------|
+ *  |  IO_PACKET  |       |   Drv1.IoPacketQueue  |       | Drv1.PendingIoPacketList |
+ *  |-------------| ----> |-----------------------| ----> |--------------------------|
+ *  | PENDING_IRP |       | Drv0.ForwardedIrpList |       |  Drv0.ForwardedIrpList   |
+ *  |-------------|       |-----------------------|       |--------------------------|
+ *                                                              |         |
+ *                                              or Case 3,4 <---|         |
+ *                                                                       \|/
+ *                                        |---------|            |----------------|
+ *                                        | Server  |            | Drv1 completes |
+ *                                        | replies | <--------- | IRP, replies   |
+ *                                        | to Drv0 |            | to server      |
+ *                                        |---------|            |----------------|
  *
  * Case 3: Driver1 forwards an existing IRP to Driver2 via IoCallDriver, NotifyCompletion == FALSE
  *
- *  |--------------------------|       |--------------------------|       |----------------|       |----------------|
- *  | Drv1.PendingIoPacketList |       | Drv2.PendingIoPacketList |       | Drv2 completes |       | Server signals |
- *  |--------------------------| ----> |--------------------------| ----> | IRP, replies   | ----> | thread/replies |
- *  |       PENDING_IRP        |       |     DOES NOT CHANGE      |   |   | to server      |       | to driver      |
- *  |--------------------------|       |--------------------------|   |   |----------------|       |----------------|
- *                                                                    |or
- *                                                                    |-----> Case 3,4
+ *  |--------------------------|       |--------------------------|       |----------------|
+ *  | Drv1.PendingIoPacketList |       | Drv2.PendingIoPacketList |       | Drv2 completes |
+ *  |--------------------------| ----> |--------------------------| ----> | IRP, replies   |
+ *  |       PENDING_IRP        |       |     DOES NOT CHANGE      |   |   | to server      |
+ *  |--------------------------|       |--------------------------|   |   |----------------|
+ *                                                                    |            |
+ *                                                    or Case 3,4 <---|            |
+ *                                                                                \|/
+ *                                                                        |----------------|
+ *                                                                        | Server signals |
+ *                                                                        | thread/replies |
+ *                                                                        | to driver      |
+ *                                                                        |----------------|
  *
  * Case 4: Driver2 forwards an existing IRP to Driver3 via IoCallDriver, NotifyCompletion == TRUE
  *
@@ -90,20 +109,28 @@
  *  |--------------------------| ----> |--------------------------| ----> | IRP, replies   |
  *  |       PENDING_IRP        |       |     DOES NOT CHANGE      |   |   | to server      |
  *  |--------------------------|       |--------------------------|   |   |----------------|
- *               |                                                  or|           |
- *              \|/                                     Case 3,4 <----|          \|/
- *  |-----------------------------|       |-----------------------|       |----------------|       |----------------|
- *  | New PENDING_IRP that links  | ----> | Drv2.ForwardedIrpList | ----> | Server replies |       | Server signals |
- *  | to the existing PENDING_IRP |       |-----------------------|       | to Drv2, waits | ----> | thread/replies |
- *  |-----------------------------|                                       | for Drv2 reply |       | to driver      |
- *                                                                        |----------------|       |----------------|
+ *              /|\                                                 or|           |
+ *               |                                      Case 3,4 <----|          \|/
+ *  |-----------------------------|       |-----------------------|       |----------------|
+ *  | New PENDING_IRP that links  | ----> | Drv2.ForwardedIrpList | ----> | Server replies |
+ *  | to the existing PENDING_IRP |       |-----------------------|       | to Drv2, waits |
+ *  |-----------------------------|                                       | for Drv2 reply |
+ *                                                                        |----------------|
+ *                                                                                |
+ *                                                                               \|/
+ *                                                                        |----------------|
+ *                                                                        | Server signals |
+ *                                                                        | thread/replies |
+ *                                                                        | to driver      |
+ *                                                                        |----------------|
  */
 typedef struct _PENDING_IRP {
     PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
 			  * The pending IO packet must be of type IoPacketTypeRequest. */
     POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level */
     LIST_ENTRY Link; /* List entry for THREAD.PendingIrpList or DRIVER.ForwardedIrpList */
-    struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP has been forwarded to. */
+    struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP
+				       * has been forwarded to. */
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
     MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
     MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
@@ -115,168 +142,14 @@ typedef struct _PENDING_IRP {
 			   * or if server-side allocation failed. */
     /* ---- The following member is only valid if Requestor is a DRIVER object ---- */
     PIO_DEVICE_OBJECT PreviousDeviceObject; /* Device object of this IRP before it is forwarded
-					     * (this is called ForwardedFrom in irp.c). The device
-					     * object in the IRP is always from the driver currently
-					     * handling it (ie. the device it has been forwarded to).
-					     * This is only valid if Requestor is a DRIVER object. */
+					     * (this is called ForwardedFrom in irp.c). The
+					     * device object in the IRP is always from the
+					     * driver currently handling it (ie. the device
+					     * it has been forwarded to). This is only valid
+					     * if Requestor is a DRIVER object. */
 } PENDING_IRP, *PPENDING_IRP;
 
-static inline NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
-					   IN ULONG Size,
-					   OUT PIO_PACKET *pIoPacket)
-{
-    assert(pIoPacket != NULL);
-    assert(Size >= sizeof(IO_PACKET));
-    ExAllocatePoolEx(IoPacket, IO_PACKET, Size, NTOS_IO_TAG, {});
-    IoPacket->Type = Type;
-    IoPacket->Size = Size;
-    *pIoPacket = IoPacket;
-    return STATUS_SUCCESS;
-}
-
-static inline NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
-					     IN POBJECT Requestor,
-					     OUT PPENDING_IRP *pPendingIrp)
-{
-    assert(IoPacket != NULL);
-    assert(Requestor != NULL);
-    assert(pPendingIrp != NULL);
-    IopAllocatePool(PendingIrp, PENDING_IRP);
-    PendingIrp->IoPacket = IoPacket;
-    PendingIrp->Requestor = Requestor;
-    PendingIrp->PreviousDeviceObject = NULL;
-    assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER) ||
-	   ObObjectIsType(Requestor, OBJECT_TYPE_THREAD));
-    *pPendingIrp = PendingIrp;
-    return STATUS_SUCCESS;
-}
-
-static inline VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
-{
-    if (PendingIrp->IoResponseData != NULL) {
-	IopFreePool(PendingIrp->IoResponseData);
-	PendingIrp->IoResponseData = NULL;
-    }
-}
-
-/*
- * Detach the given pending IRP from the thread that it has been queued on.
- * Free the IO response data, and delete both the IO packet struct and the
- * PENDING_IRP struct itself.
- */
-static inline VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
-{
-    RemoveEntryList(&PendingIrp->Link);
-    IopFreeIoResponseData(PendingIrp);
-    if (PendingIrp->IoPacket != NULL) {
-	IopFreePool(PendingIrp->IoPacket);
-    }
-    IopFreePool(PendingIrp);
-}
-
-static inline VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
-{
-    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
-	IopCleanupPendingIrp(PendingIrp);
-    }
-}
-
-/*
- * Returns the IO_PACKET queued in the driver object's PendingIoPacketList,
- * given the handle pair (OriginalRequestor, IrpIdentifier) that uniquely
- * identifies the IO_PACKET (currently).
- */
-static inline PIO_PACKET IopLocateIrpInDriverPendingList(IN PIO_DRIVER_OBJECT DriverObject,
-							 IN GLOBAL_HANDLE OriginalRequestor,
-							 IN HANDLE IrpIdentifier)
-{
-    PIO_PACKET CompletedIrp = NULL;
-    LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
-	/* The IO packets in the pending IO packet list must be of type IoPacketTypeRequest.
-	 * We never put IoPacketTypeClientMessage etc into the pending IO packet list */
-	assert(PendingIoPacket->Type == IoPacketTypeRequest);
-	if ((PendingIoPacket->Request.OriginalRequestor == OriginalRequestor) &&
-	    (PendingIoPacket->Request.Identifier == IrpIdentifier)) {
-	    CompletedIrp = PendingIoPacket;
-	}
-    }
-    return CompletedIrp;
-}
-
-/*
- * Returns the PENDING_IRP struct of the given IoPacket. Note that for driver
- * objects this searches the ForwardedIrpList not the PendingIoPacketList.
- * The latter is used for a different purpose (see io.h).
- */
-static inline PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
-							   IN PIO_PACKET IoPacket)
-{
-    POBJECT RequestorObject = GLOBAL_HANDLE_TO_OBJECT(OriginalRequestor);
-    if (ObObjectIsType(RequestorObject, OBJECT_TYPE_THREAD)) {
-	PTHREAD Thread = (PTHREAD)RequestorObject;
-	LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
-	    if (PendingIrp->IoPacket == IoPacket) {
-		assert(PendingIrp->Requestor == RequestorObject);
-		return PendingIrp;
-	    }
-	}
-    } else if (ObObjectIsType(RequestorObject, OBJECT_TYPE_DRIVER)) {
-	PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT)RequestorObject;
-	LoopOverList(PendingIrp, &Driver->ForwardedIrpList, PENDING_IRP, Link) {
-	    if (PendingIrp->IoPacket == IoPacket) {
-		assert(PendingIrp->Requestor == RequestorObject);
-		return PendingIrp;
-	    }
-	}
-    } else {
-	assert(FALSE);
-    }
-    return NULL;
-}
-
-static inline VOID IopDumpDriverPendingIoPacketList(IN PIO_DRIVER_OBJECT DriverObject,
-						    IN GLOBAL_HANDLE OriginalRequestor,
-						    IN HANDLE IrpIdentifier)
-{
-    DbgTrace("Received response packet from driver %s with invalid IRP identifier %p:%p."
-	     " Dumping all IO packets in the driver's pending IO packet list.\n",
-	     DriverObject->DriverImagePath, (PVOID)OriginalRequestor, IrpIdentifier);
-    LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
-	IoDbgDumpIoPacket(PendingIoPacket, FALSE);
-    }
-}
-
-/*
- * DO NOT call this directly!
- */
-static inline VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
-				      IN PIO_DRIVER_OBJECT Driver,
-				      IN PTHREAD Thread)
-{
-    /* Queue the IRP to the driver */
-    InsertTailList(&Driver->IoPacketQueue, &PendingIrp->IoPacket->IoPacketLink);
-    PendingIrp->IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(Thread);
-    /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
-    PendingIrp->IoPacket->Request.Identifier = (HANDLE)POINTER_TO_GLOBAL_HANDLE(PendingIrp->IoPacket);
-    InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
-    KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
-    KeSetEvent(&Driver->IoPacketQueuedEvent);
-}
-
-static inline VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
-				    IN PTHREAD Thread)
-{
-    /* We can only queue IO request packets */
-    assert(PendingIrp != NULL);
-    assert(PendingIrp->IoPacket != NULL);
-    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
-    assert(PendingIrp->IoPacket->Request.MajorFunction != IRP_MJ_ADD_DEVICE);
-    PIO_DRIVER_OBJECT Driver = PendingIrp->IoPacket->Request.Device.Object->DriverObject;
-    assert(Driver != NULL);
-    IopQueueIoPacketEx(PendingIrp, Driver, Thread);
-}
-
-static inline BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
+FORCEINLINE BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
 {
     return !!(File->Flags & FO_SYNCHRONOUS_IO);
 }
@@ -339,6 +212,7 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     MWORD FileSize;
     PIO_FILE_CONTROL_BLOCK Fcb;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
+    BOOLEAN NoFcb;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;
@@ -375,8 +249,8 @@ extern LIST_ENTRY IopDriverList;
  * Returns the device object of the given device handle, optionally
  * checking whether the device belongs to the driver object
  */
-static inline PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
-						   IN PIO_DRIVER_OBJECT DriverObject)
+FORCEINLINE PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
+						 IN PIO_DRIVER_OBJECT DriverObject)
 {
     if (DeviceHandle == 0) {
 	return NULL;
@@ -401,7 +275,7 @@ static inline PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle
     return NULL;
 }
 
-static inline PIO_DEVICE_OBJECT IopGetTopDevice(IN PIO_DEVICE_OBJECT Device)
+FORCEINLINE PIO_DEVICE_OBJECT IopGetTopDevice(IN PIO_DEVICE_OBJECT Device)
 {
     assert(Device != NULL);
     while (Device->AttachedDevice != NULL) {
@@ -417,8 +291,25 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 					 IN WAIT_TYPE WaitType,
 					 IN PPENDING_IRP *PendingIrps,
 					 IN ULONG IrpCount);
-NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
-			 IN BOOLEAN OutputIsReadOnly);
+NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
+			 IN PIO_REQUEST_PARAMETERS Irp,
+			 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
+			 OUT PPENDING_IRP *pPendingIrp);
+VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp);
+
+FORCEINLINE VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
+{
+    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
+	IopCleanupPendingIrp(PendingIrp);
+    }
+}
+
+FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
+				   IN PIO_REQUEST_PARAMETERS Irp,
+				   OUT PPENDING_IRP *pPendingIrp)
+{
+    return IopCallDriverEx(Thread, Irp, NULL, pPendingIrp);
+}
 
 /* file.c */
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
@@ -439,8 +330,8 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 /*
  * Returns the file object with the given global handle
  */
-static inline PIO_FILE_OBJECT IopGetFileObject(IN PIO_DEVICE_OBJECT DevObj,
-					       IN GLOBAL_HANDLE Handle)
+FORCEINLINE PIO_FILE_OBJECT IopGetFileObject(IN PIO_DEVICE_OBJECT DevObj,
+					     IN GLOBAL_HANDLE Handle)
 {
     assert(DevObj);
     if (Handle == 0) {

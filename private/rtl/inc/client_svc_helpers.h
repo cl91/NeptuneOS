@@ -149,7 +149,7 @@ static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,
      * or if it cannot fit into the service message buffer, simply
      * send the original client buffer pointer to the server and let
      * the server worry about mapping client buffers for IO. */
-    if (BufferSize < IRP_DATA_BUFFER_SIZE ||
+    if (BufferSize >= IRP_DATA_BUFFER_SIZE ||
 	(*MsgBufOffset + BufferSize >= SVC_MSGBUF_SIZE)) {
 	BufferArg->Word = (MWORD)ClientBuffer;
     } else {

@@ -187,7 +187,7 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
         }
         ULONG MsgBufferEnd = seL4_GetMR({{svc.msglength-1}});
         if (MsgBufferEnd > SVC_MSGBUF_SIZE) {
-            DbgTrace("{{svc_name}}: Invalid message size %d\\n", MsgBufferEnd);
+            DbgTrace("{{svc.server_name}}: Invalid message size %d\\n", MsgBufferEnd);
             break;
         }
         *pMsgBufferEnd = MsgBufferEnd;
@@ -921,11 +921,11 @@ class Service:
                              client_unmarshal_func = "KiServiceUnmarshalBuffer",
                              server_marshal_func = "KiServiceMapBuffer",
                              server_post_marshal_func = "KiServiceUnmapBuffer"),
-            BufferMarshaller(server_name, buffer_type = "IoBuffer",
+            BufferMarshaller(server_name, buffer_type = "InputIoBuffer",
                              server_type = "PVOID", client_type = "PVOID",
                              client_marshal_func = "KiServiceMarshalBuffer",
                              client_post_marshal_func = "",
-                             client_unmarshal_func = "KiServiceUnmarshalBuffer",
+                             client_unmarshal_func = "",
                              server_marshal_func = "",
                              server_post_marshal_func = ""),
             BufferMarshaller(server_name, buffer_type = "KeyValueInfoBuffer",

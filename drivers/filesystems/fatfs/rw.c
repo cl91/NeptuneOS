@@ -287,7 +287,8 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster) +
 	    (ClusterCount - 1) * BytesPerCluster;
 
-	/* TODO: Construct the associated IRPs and call FatForwardReadIrp */
+	/* TODO: Construct the associated IRPs (reuse master IRP too) and call
+	 * FatForwardReadIrp */
 #if 0
 	Status = FatForwardReadIrp(IrpContext, &StartOffset, BytesDone, ReturnedLength, FALSE);
 	if (!NT_SUCCESS(Status) && Status != STATUS_PENDING) {
