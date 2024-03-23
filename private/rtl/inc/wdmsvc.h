@@ -58,7 +58,7 @@ typedef MWORD GLOBAL_HANDLE, *PGLOBAL_HANDLE;
  */
 typedef struct _IO_DEVICE_INFO {
     DEVICE_TYPE DeviceType;
-    ULONG DeviceCharacteristics;
+    ULONG64 Flags;
 } IO_DEVICE_INFO, *PIO_DEVICE_INFO;
 
 /*

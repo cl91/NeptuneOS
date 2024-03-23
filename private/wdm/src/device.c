@@ -43,7 +43,7 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
     DeviceObject->DriverObject = DriverObject;
     DeviceObject->DeviceExtension = DevExtSize ? (PVOID)(DeviceObject + 1) : NULL;
     DeviceObject->DeviceType = DevInfo.DeviceType;
-    DeviceObject->Characteristics = DevInfo.DeviceCharacteristics;
+    DeviceObject->Flags = DevInfo.Flags;
     DeviceObject->Private.Handle = DeviceHandle;
     assert(IopGetDeviceObject(DeviceHandle) == NULL);
     InsertTailList(&IopDeviceList, &DeviceObject->Private.Link);
@@ -78,15 +78,14 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			      IN ULONG DeviceExtensionSize,
 			      IN PUNICODE_STRING DeviceName OPTIONAL,
 			      IN DEVICE_TYPE DeviceType,
-			      IN ULONG DeviceCharacteristics,
+			      IN ULONG64 Flags,
 			      IN BOOLEAN Exclusive,
 			      OUT PDEVICE_OBJECT *pDeviceObject)
 {
     assert(DriverObject != NULL);
     assert(pDeviceObject != NULL);
 
-    /* We don't support creating device objects for a different driver. This will
-     * probably never be supported so we simply return error. */
+    /* We don't support creating device objects for a different driver. */
     if (DriverObject != &IopDriverObject) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
@@ -102,7 +101,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
     IO_DEVICE_INFO DevInfo = {
 	.DeviceType = DeviceType,
-	.DeviceCharacteristics = DeviceCharacteristics
+	.Flags = Flags
     };
 
     GLOBAL_HANDLE DeviceHandle = 0;
@@ -113,7 +112,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
     IopInitializeDeviceObject(DeviceObject, DeviceExtensionSize,
 			      DevInfo, DeviceHandle, &IopDriverObject);
-    DeviceObject->Flags = DO_DEVICE_INITIALIZING;
+    DeviceObject->Flags |= DO_DEVICE_INITIALIZING;
     if (Exclusive) {
 	DeviceObject->Flags |= DO_EXCLUSIVE;
     }

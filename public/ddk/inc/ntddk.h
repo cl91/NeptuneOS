@@ -352,8 +352,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     struct _DRIVER_OBJECT *DriverObject;
     struct _IRP *CurrentIrp;
     UNICODE_STRING DeviceName;
-    ULONG Flags;
-    ULONG Characteristics;
+    ULONG64 Flags; /* Low 32 bits are device characteristics. High 32 bits are flags. */
     PVOID DeviceExtension;
     DEVICE_TYPE DeviceType;
     ULONG AlignmentRequirement;
@@ -871,7 +870,7 @@ NTAPI NTSYSAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 				       IN ULONG DeviceExtensionSize,
 				       IN PUNICODE_STRING DeviceName OPTIONAL,
 				       IN DEVICE_TYPE DeviceType,
-				       IN ULONG DeviceCharacteristics,
+				       IN ULONG64 Flags,
 				       IN BOOLEAN Exclusive,
 				       OUT PDEVICE_OBJECT *DeviceObject);
 
@@ -1078,6 +1077,9 @@ FORCEINLINE NTAPI VOID IoSetStartIoAttributes(IN PDEVICE_OBJECT DeviceObject,
  */
 FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdl(IN PMDL Mdl)
 {
+    /* Note that if the driver wants to access the memory described by the MDL,
+     * it must enable DO_MAP_IO_BUFFER when creating the device to map the memory
+     * into driver address space. Otherwise Mdl->MappedSystemVa is always NULL. */
     return Mdl->MappedSystemVa;
 }
 

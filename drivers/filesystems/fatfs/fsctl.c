@@ -480,13 +480,18 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     }
     DPRINT("FAT: Recognized volume!\n");
 
-    /* Create the volume device object. Read/write IRPs are sent to this device. */
+    /* Create the FS volume device object. Read/write IRPs are sent to this device. */
     PDEVICE_OBJECT DeviceObject;
     ULONG DevExtStructSize = ROUND_UP_32(sizeof(DEVICE_EXTENSION), sizeof(ULONG));
     ULONG DevExtFullSize = DevExtStructSize + sizeof(PHASHENTRY) * HashTableSize;
-    Status = IoCreateDevice(FatGlobalData->DriverObject, DevExtFullSize,
-			    NULL, FILE_DEVICE_DISK_FILE_SYSTEM,
-			    DeviceToMount->Characteristics, FALSE, &DeviceObject);
+    ULONG Flags = DeviceToMount->Flags & (FILE_REMOVABLE_MEDIA | FILE_READ_ONLY_DEVICE
+					  | FILE_FLOPPY_DISKETTE | FILE_DEVICE_SECURE_OPEN);
+    /* For write-once media, we can only mount the volume read-only. */
+    if (DeviceToMount->Flags & FILE_WRITE_ONCE_MEDIA) {
+	Flags |= FILE_READ_ONLY_DEVICE;
+    }
+    Status = IoCreateDevice(FatGlobalData->DriverObject, DevExtFullSize, NULL,
+			    FILE_DEVICE_DISK_FILE_SYSTEM, Flags, FALSE, &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
