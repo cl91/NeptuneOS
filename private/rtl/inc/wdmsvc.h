@@ -135,20 +135,26 @@ typedef struct _IO_REQUEST_PARAMETERS {
     UCHAR Control;
     IO_DEVICE_OBJECT_PTR Device;
     IO_FILE_OBJECT_PTR File;
-    MWORD InputBuffer; /* Client-side pointer! When creating a new IRP, this is
-			* in the original requestor's address space. When the
-			* IRP is queued on a driver object, this is the buffer
-			* address mapped in the driver address space. The
-			* original address is saved in the PENDING_IRP struct.
-			* Same goes for the output buffer below. This is used
-			* by IRP_MJ_WRITE and IOCTL IRPs. */
+    MWORD InputBuffer; /* If InputBufferLength is less than IRP_DATA_BUFFER_SIZE,
+			* this is the offset of input data embedded in this IRP.
+			* In this case InputBuffer will be smaller than PAGE_SIZE.
+			* Otherwise it is a pointer to the input data buffer in
+			* the address space of (1) when creating a new IRP, the
+			* original requestor or (2) when the IRP is queued on a
+			* driver object, the target driver. In the latter case
+			* the original address is saved in the PENDING_IRP struct.
+			* InputBuffer is used by IRP_MJ_WRITE and IOCTL IRPs.
+			* It should be apparent from the usage that input and
+			* output here is with respect to the device. In other
+			* words, READ IRP will read from the device and write to
+			* the OutputBuffer and WRITE IRP will read from the
+			* InputBuffer and write to the device. */
     MWORD OutputBuffer;	/* See InputBuffer. This is used by IRP_MJ_READ and
-			 * IOCTL IRPs. Note it should be apparent from the
-			 * usage that input and output here is with respect
-			 * to the device. In other words, READ IRP will read
-			 * from the device and write to the OutputBuffer and
-			 * WRITE IRP will read from the InputBuffer and write
-			 * to the device. */
+			 * IOCTL IRPs. Note if the OutputBuffer is less than
+			 * IRP_DATA_BUFFER_SIZE, when the IRP is queued on a
+			 * driver object this field is zero, and the driver
+			 * will store the output data in the ResponseData
+			 * member of IO_COMPLETED_MESSAGE, defined below. */
     ULONG InputBufferLength;
     ULONG OutputBufferLength;
     ULONG InputBufferPfn; /* Page frame database of the input buffer. This is
@@ -244,6 +250,15 @@ typedef union _IO_RESPONSE_DATA {
     struct {
 	GLOBAL_HANDLE VolumeDeviceHandle;
     } VolumeMounted;
+    struct {
+	ULONG MdlCount; /* Number of MDLs embedded in this message. This is used
+			 * by IRP_MJ_READ with the IRP_MN_MDL minor code where
+			 * the server needs to send the MDL chain to the client. */
+	struct {
+	    PVOID MappedSystemVa;
+	    ULONG_PTR ByteCount;
+	} Mdl[];
+    } MdlChain;
 } IO_RESPONSE_DATA, *PIO_RESPONSE_DATA;
 
 /*

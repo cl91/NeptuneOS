@@ -329,10 +329,9 @@ static inline OB_OBJECT_ATTRIBUTES KiUnmarshalObjectAttributes(IN MWORD IpcBuffe
 
 /*
  * Returns TRUE if the pointer falls in the service message buffer
- * of the given thread
+ * of the given thread.
  */
-static inline BOOLEAN KiPtrInSvcMsgBuf(IN MWORD Ptr,
-				       IN PTHREAD Thread)
+BOOLEAN KePtrInSvcMsgBuf(IN MWORD Ptr, IN struct _THREAD *Thread)
 {
     return (Ptr >= Thread->IpcBufferClientAddr) &&
 	(Ptr < (Thread->IpcBufferClientAddr + IPC_BUFFER_COMMIT));
@@ -347,7 +346,7 @@ static inline NTSTATUS KiServiceMapBuffer5(IN PTHREAD Thread,
     if (BufferLength == 0) {
 	return STATUS_INVALID_PARAMETER;
     }
-    if (KiPtrInSvcMsgBuf(ClientAddress, Thread)) {
+    if (KePtrInSvcMsgBuf(ClientAddress, Thread)) {
 	MWORD MsgBufOffset = ClientAddress - Thread->IpcBufferClientAddr;
 	if (MsgBufOffset >= SVC_MSGBUF_SIZE) {
 	    assert(FALSE);

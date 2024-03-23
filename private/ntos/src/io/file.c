@@ -280,7 +280,7 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
     /* Note here the IO buffers in the driver address space are freed
      * when the server receives the IoCompleted message, so we don't
      * need to free them manually. */
-    Status = IopMapIoBuffers(Locals.PendingIrp, FALSE);
+    Status = IopMapIoBuffers(Locals.PendingIrp);
     if (NT_SUCCESS(Status)) {
 	IopQueueIoPacket(Locals.PendingIrp, Thread);
     } else {

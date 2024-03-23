@@ -187,7 +187,7 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
         }
         ULONG MsgBufferEnd = seL4_GetMR({{svc.msglength-1}});
         if (MsgBufferEnd > SVC_MSGBUF_SIZE) {
-            DbgTrace("{{svc_name}}: Invalid message size %d\\n", MsgBufferEnd);
+            DbgTrace("{{svc.server_name}}: Invalid message size %d\\n", MsgBufferEnd);
             break;
         }
         *pMsgBufferEnd = MsgBufferEnd;

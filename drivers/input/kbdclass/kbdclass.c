@@ -28,7 +28,7 @@
  *                        |  i8042prt  |         | inport |
  *                        |------------|         |--------|
  *                             FDO
- *                   [unnamed, symbolic link]
+ *                   [unnamed, has symbolic link]
  *                              ^
  *                              |
  *                        |------------|          |-----------|
@@ -519,11 +519,11 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
     ULONG64 Flags = 0;
     if (Pdo->Flags & FILE_DEVICE_SECURE_OPEN)
 	Flags |= FILE_DEVICE_SECURE_OPEN;
-    if (DeviceExtension->LowerDevice->Flags & DO_POWER_PAGABLE)
+    if (Pdo->Flags & DO_POWER_PAGABLE)
 	Flags |= DO_POWER_PAGABLE;
-    if (DeviceExtension->LowerDevice->Flags & DO_BUFFERED_IO)
+    if (Pdo->Flags & DO_BUFFERED_IO)
 	Flags |= DO_BUFFERED_IO;
-    if (DeviceExtension->LowerDevice->Flags & DO_DIRECT_IO)
+    if (Pdo->Flags & DO_DIRECT_IO)
 	Flags |= DO_DIRECT_IO;
     NTSTATUS Status = IoCreateDevice(DriverObject, sizeof(PORT_DEVICE_EXTENSION),
 				     NULL, Pdo->DeviceType, Flags, FALSE, &Fdo);

@@ -48,12 +48,12 @@ static ULONG IopGetBufferPfnCount(IN PPROCESS Process,
  * If ReadOnly is FALSE, the user IO buffer must be writable by the user.
  * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
  */
-static inline NTSTATUS IopMapUserBuffer(IN PPROCESS User,
-					IN PIO_DRIVER_OBJECT Driver,
-					IN MWORD UserBufferStart,
-					IN MWORD UserBufferLength,
-					OUT MWORD *DriverBufferStart,
-					IN BOOLEAN ReadOnly)
+static NTSTATUS IopMapUserBuffer(IN PPROCESS User,
+				 IN PIO_DRIVER_OBJECT Driver,
+				 IN MWORD UserBufferStart,
+				 IN MWORD UserBufferLength,
+				 OUT MWORD *DriverBufferStart,
+				 IN BOOLEAN ReadOnly)
 {
     PVIRT_ADDR_SPACE UserVSpace = &User->VSpace;
     assert(UserVSpace != NULL);
@@ -77,8 +77,8 @@ static inline NTSTATUS IopMapUserBuffer(IN PPROCESS User,
 /*
  * Unmap the user buffer mapped by IopMapUserBuffer
  */
-static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
-				      IN MWORD DriverBuffer)
+static VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
+			       IN MWORD DriverBuffer)
 {
     assert(Driver != NULL);
     assert(Driver->DriverProcess != NULL);
@@ -91,79 +91,160 @@ static inline VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 }
 
 /*
+ * Map the IO buffers into the target driver address space.
+ *
  * Before calling this routine, the IO buffers in the IO_PACKET are
  * pointers in the requestor address space. After this routine returns
  * with SUCCESS status, the IO buffers in the IO_PACKET are updated to
  * the pointers in the target driver address space, and the original
  * IO buffer pointers are saved into the PENDING_IRP struct.
  */
-NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp,
-			 IN BOOLEAN OutputIsReadOnly)
+NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 {
-    assert(PendingIrp->IoPacket != NULL);
-    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
-    assert(PendingIrp->IoPacket->Request.Device.Object != NULL);
+    PIO_PACKET Irp = PendingIrp->IoPacket;
+    assert(Irp != NULL);
+    assert(Irp->Type == IoPacketTypeRequest);
     assert(PendingIrp->Requestor != NULL);
-    /* Map the IO buffers into the new driver address space */
+    MWORD InputBuffer = Irp->Request.InputBuffer;
+    MWORD InputBufferLength = Irp->Request.InputBufferLength;
+    MWORD OutputBuffer = Irp->Request.OutputBuffer;
+    MWORD OutputBufferLength = Irp->Request.OutputBufferLength;
     PPROCESS RequestorProcess = NULL;
+    PTHREAD RequestorThread = NULL;
     if (ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_THREAD)) {
-	RequestorProcess = ((PTHREAD)PendingIrp->Requestor)->Process;
+	RequestorThread = (PTHREAD)PendingIrp->Requestor;
+	RequestorProcess = RequestorThread->Process;
     } else {
 	assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_DRIVER));
 	RequestorProcess = ((PIO_DRIVER_OBJECT)PendingIrp->Requestor)->DriverProcess;
     }
     assert(RequestorProcess != NULL);
 
-    MWORD InputBuffer = PendingIrp->IoPacket->Request.InputBuffer;
-    MWORD InputBufferLength = PendingIrp->IoPacket->Request.InputBufferLength;
-    MWORD OutputBuffer = PendingIrp->IoPacket->Request.OutputBuffer;
-    MWORD OutputBufferLength = PendingIrp->IoPacket->Request.OutputBufferLength;
-    if ((InputBuffer && !InputBufferLength) || (!InputBuffer && InputBufferLength)) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    if ((OutputBuffer && !OutputBufferLength) || (!OutputBuffer && OutputBufferLength)) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    PIO_DRIVER_OBJECT DriverObject = PendingIrp->IoPacket->Request.Device.Object->DriverObject;
+    PIO_DEVICE_OBJECT DeviceObject = Irp->Request.Device.Object;
+    assert(DeviceObject != NULL);
+    PIO_DRIVER_OBJECT DriverObject = DeviceObject->DriverObject;
     assert(DriverObject != NULL);
+    /* We allow InputBuffer to be zero if the target device is a mounted
+     * file system volume. In this case the cache manager will take care
+     * of mapping the cache pages later. If the requestor specified a
+     * non-zero OutputBufferLength with a NULL OutputBuffer, the output
+     * data must be able to fit in the IRP (ie. OutputBufferLength must
+     * be less than IRP_DATA_BUFFER_SIZE). If the OutputBuffer is not NULL,
+     * it is always interpreted as a pointer in the requestor address space
+     * (and never as an offset, unlike the case of InputBuffer), so it
+     * cannot be less than PAGE_SIZE. */
+    if ((InputBuffer && !InputBufferLength) ||
+	(InputBufferLength && !InputBuffer && !DeviceObject->Vcb) ||
+	(OutputBuffer && !OutputBufferLength) || OutputBuffer <= PAGE_SIZE ||
+	(!OutputBuffer && OutputBufferLength >= IRP_DATA_BUFFER_SIZE)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Determine the IO transfer type based on either the device object flags
+     * or the IOCTL code. */
+    UCHAR MajorFunction = Irp->Request.MajorFunction;
+    IO_TRANSFER_TYPE InputIoType = 0, OutputIoType = 0;
+    BOOLEAN OutputIsReadOnly = FALSE;
+    if (MajorFunction == IRP_MJ_DEVICE_CONTROL ||
+	MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
+	InputIoType = MappedIo;
+	ULONG Ioctl = Irp->Request.DeviceIoControl.IoControlCode;
+	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED ||
+	    METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
+	    OutputIoType = MappedIo;
+	} else {
+	    OutputIoType = MappedDirectIo;
+	    /* If the IOCTL has type METHOD_IN_DIRECT, the OutputBuffer
+	     * is used as an input buffer (yes, I know, Microsoft loves
+	     * to be confusing) and will be mapped read-only. */
+	    OutputIsReadOnly = METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT;
+	}
+    } else {
+	IO_TRANSFER_TYPE IoType = 0;
+	if (DeviceObject->DeviceInfo.Flags & DO_DIRECT_IO) {
+	    IoType = DirectIo;
+	    if (DeviceObject->DeviceInfo.Flags & DO_MAP_IO_BUFFER) {
+		IoType |= MappedIo;
+	    }
+	} else {
+	    /* Buffered IO and neither IO have MappedIo as the transfer type */
+	    IoType = MappedIo;
+	}
+	InputIoType = OutputIoType = IoType;
+    }
+    /* For direct IO (both mapped direct IO and unmapped direct IO),
+     * the InputBuffer and OutputBuffer pointers must be page-aligned. */
+    if ((InputIoType & DirectIo) && !IS_PAGE_ALIGNED(InputBuffer)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    if ((OutputIoType & DirectIo) && !IS_PAGE_ALIGNED(OutputBuffer)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
     MWORD DriverInputBuffer = 0;
-    DbgTrace("Mapping input buffer %p from process vad 0x%zx\n",
-	     (PVOID)InputBuffer, RequestorProcess->VSpace.VSpaceCap);
     ULONG InputBufferPfnCount = 0;
+    MWORD DriverOutputBuffer = 0;
     ULONG OutputBufferPfnCount = 0;
-    if (InputBuffer && InputBufferLength) {
-	RET_ERR(IopMapUserBuffer(RequestorProcess, DriverObject,
-				 InputBuffer, InputBufferLength,
-				 &DriverInputBuffer, TRUE));
-	assert(DriverInputBuffer != 0);
-	InputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
-						   InputBuffer,
-						   InputBufferLength);
+    if (InputBuffer) {
+	if (InputIoType & DirectIo) {
+	    InputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
+						       InputBuffer,
+						       InputBufferLength);
+	}
+	if (InputIoType & MappedIo) {
+	    if (RequestorThread && KePtrInSvcMsgBuf(InputBuffer, RequestorThread)) {
+		/* If the input buffer pointer falls within the service message
+		 * area of the requestor thread, embed the input data in the IRP. */
+		assert(Irp->Size == sizeof(IO_PACKET) + InputBufferLength);
+		MWORD Offset = InputBuffer - RequestorThread->IpcBufferClientAddr;
+		assert(Offset + InputBufferLength < SVC_MSGBUF_SIZE);
+		PVOID Src = (PVOID)(RequestorThread->IpcBufferServerAddr + Offset);
+		/* This points to the end of the fixed part of the IO_PACKET struct */
+		PVOID Dest = Irp + 1;
+		memcpy(Dest, Src, InputBufferLength);
+		DriverInputBuffer = sizeof(IO_PACKET);
+	    } else if (InputBuffer < PAGE_SIZE) {
+		/* If the original requestor embedded the input data in the IRP
+		 * (in which case the InputBuffer will be less than PAGE_SIZE),
+		 * simply leave the original InputBuffer unchanged. */
+		DriverInputBuffer = InputBuffer;
+	    } else {
+		/* Otherwise, map the input buffer from the requestor
+		 * address space into the target driver address space. */
+		RET_ERR(IopMapUserBuffer(RequestorProcess, DriverObject,
+					 InputBuffer, InputBufferLength,
+					 &DriverInputBuffer, TRUE));
+	    }
+	    assert(DriverInputBuffer != 0);
+	}
 	DbgTrace("Mapped input buffer %p into driver %s at %p, pfn count %d\n",
 		 (PVOID)InputBuffer, DriverObject->DriverImagePath,
 		 (PVOID)DriverInputBuffer, InputBufferPfnCount);
     }
 
-    MWORD DriverOutputBuffer = 0;
-    DbgTrace("Mapping output buffer %p from process vad 0x%zx\n",
-	     (PVOID)OutputBuffer, RequestorProcess->VSpace.VSpaceCap);
-    if (OutputBuffer && OutputBufferLength) {
-	RET_ERR_EX(IopMapUserBuffer(RequestorProcess, DriverObject,
-				    OutputBuffer, OutputBufferLength,
-				    &DriverOutputBuffer, OutputIsReadOnly),
-		   IopUnmapUserBuffer(DriverObject, DriverInputBuffer));
-	assert(DriverOutputBuffer != 0);
-	OutputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
-						    OutputBuffer,
-						    OutputBufferLength);
+    if (OutputBuffer) {
+	if (OutputIoType & MappedIo) {
+	    RET_ERR_EX(IopMapUserBuffer(RequestorProcess, DriverObject,
+					OutputBuffer, OutputBufferLength,
+					&DriverOutputBuffer, OutputIsReadOnly),
+		       if (DriverInputBuffer >= PAGE_SIZE) {
+			   IopUnmapUserBuffer(DriverObject, DriverInputBuffer);
+		       });
+	    assert(DriverOutputBuffer != 0);
+	}
+	if (OutputIoType & DirectIo) {
+	    OutputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
+							OutputBuffer,
+							OutputBufferLength);
+	}
 	DbgTrace("Mapped output buffer %p into driver %s at %p, pfn count %d\n",
 		 (PVOID)OutputBuffer, DriverObject->DriverImagePath,
 		 (PVOID)DriverOutputBuffer, OutputBufferPfnCount);
     }
-    PendingIrp->IoPacket->Request.InputBuffer = DriverInputBuffer;
-    PendingIrp->IoPacket->Request.OutputBuffer = DriverOutputBuffer;
-    PendingIrp->IoPacket->Request.InputBufferPfnCount = InputBufferPfnCount;
-    PendingIrp->IoPacket->Request.OutputBufferPfnCount = OutputBufferPfnCount;
+    Irp->Request.InputBuffer = DriverInputBuffer;
+    Irp->Request.OutputBuffer = DriverOutputBuffer;
+    Irp->Request.InputBufferPfnCount = InputBufferPfnCount;
+    Irp->Request.OutputBufferPfnCount = OutputBufferPfnCount;
     PendingIrp->InputBuffer = InputBuffer;
     PendingIrp->OutputBuffer = OutputBuffer;
     return STATUS_SUCCESS;
@@ -428,7 +509,7 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 
     /* Set the Device object of the Irp to be the new device (ForwardedTo) */
     Irp->Request.Device.Object = ForwardedTo;
-    RET_ERR_EX(IopMapIoBuffers(PendingIrp, FALSE),
+    RET_ERR_EX(IopMapIoBuffers(PendingIrp),
 	       {
 		   /* Restore the original device object in the IRP if error */
 		   Irp->Request.Device.Object = PreviousDeviceObject;
@@ -473,7 +554,7 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     assert(PendingIrp != NULL);
 
     /* Map the input/output buffers from source driver to target driver */
-    RET_ERR_EX(IopMapIoBuffers(PendingIrp, FALSE),
+    RET_ERR_EX(IopMapIoBuffers(PendingIrp),
 	       {
 		   IopFreePool(IoPacket);
 		   IopFreePool(PendingIrp);

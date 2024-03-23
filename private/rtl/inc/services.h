@@ -72,7 +72,7 @@ typedef seL4_Word MWORD;
  * size, and should be reasonably small (but not too small), such that
  * the overhead of mapping and unmapping exceeds the overhead of copy.
  */
-#define IRP_DATA_BUFFER_SIZE	1024
+#define IRP_DATA_BUFFER_SIZE	(1024)
 
 /* Private heap reserved for the Ldr component of NTDLL */
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
