@@ -342,6 +342,9 @@ typedef struct _ASYNC_STATE {
 	struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS Locals;		\
     } ASYNC_STACK_FRAME, *PASYNC_STACK_FRAME;				\
     locals = _ASYNC_GET_NEXT_FRAME(state)->Locals
+#define _ASYNC_BEGIN_TAIL_NO_LOCALS(state)
+#define _ASYNC_BEGIN_TAIL_LOCALS(state, locals, vars)	\
+    memset(&(locals), 0, sizeof(locals))
 /* We define an unused typedef below so in non-async functions we can
  * generate an error if certain macros (RET_ERR, RET_ERR_EX) are used */
 #define _ASYNC_BEGIN_COMMON(state, ...)					\
@@ -384,7 +387,9 @@ typedef struct _ASYNC_STATE {
 #define ASYNC_BEGIN(...)						\
     _ASYNC_GET_MACRO(__VA_ARGS__, _ASYNC_BEGIN_LOCALS, ,		\
 		     _ASYNC_BEGIN_NO_LOCALS)(__VA_ARGS__);		\
-    _ASYNC_BEGIN_COMMON(__VA_ARGS__)
+    _ASYNC_BEGIN_COMMON(__VA_ARGS__);					\
+    _ASYNC_GET_MACRO(__VA_ARGS__, _ASYNC_BEGIN_TAIL_LOCALS, ,		\
+		     _ASYNC_BEGIN_TAIL_NO_LOCALS)(__VA_ARGS__)
 
 /**
  * Check that we are inside an ASYNC_BEGIN ASYNC_END block

@@ -65,7 +65,6 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 	    PIO_FILE_OBJECT DriverImageFile;
 	    PSECTION DriverImageSection;
 	});
-    memset(&Locals, 0, sizeof(Locals));
 
     /* Get the object directory for all driver objects. Note on Windows
      * and ReactOS, device driver objects are placed under \Driver while
