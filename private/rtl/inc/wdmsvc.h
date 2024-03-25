@@ -7,7 +7,7 @@
 compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 
 #define DRIVER_IO_PACKET_BUFFER_RESERVE	(64 * 1024)
-#define DRIVER_IO_PACKET_BUFFER_COMMIT	(8 * 1024)
+#define DRIVER_IO_PACKET_BUFFER_COMMIT	(16 * 1024)
 
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 
@@ -133,6 +133,7 @@ typedef struct _IO_REQUEST_PARAMETERS {
     UCHAR MinorFunction;
     UCHAR Flags;
     UCHAR Control;
+    ULONG Padding;
     IO_DEVICE_OBJECT_PTR Device;
     IO_FILE_OBJECT_PTR File;
     MWORD InputBuffer; /* If InputBufferLength is less than IRP_DATA_BUFFER_SIZE,
@@ -157,12 +158,12 @@ typedef struct _IO_REQUEST_PARAMETERS {
 			 * member of IO_COMPLETED_MESSAGE, defined below. */
     ULONG InputBufferLength;
     ULONG OutputBufferLength;
-    ULONG InputBufferPfn; /* Page frame database of the input buffer. This is
-			   * an offset from the beginning of the IO_PACKET */
     ULONG InputBufferPfnCount;
-    ULONG OutputBufferPfn; /* Page frame database of the output buffer. This is
-			    * an offset from the beginning of the IO_PACKET */
     ULONG OutputBufferPfnCount;
+    ULONG_PTR InputBufferPfn; /* Page frame database of the input buffer. This is
+			       * an offset from the beginning of the IO_PACKET */
+    ULONG_PTR OutputBufferPfn; /* Page frame database of the output buffer. This is
+				* an offset from the beginning of the IO_PACKET */
     GLOBAL_HANDLE OriginalRequestor; /* Original thread or driver object that
 				      * requested this IRP. Together with
 				      * Identifier, this uniquely identifies

@@ -381,8 +381,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
 typedef struct _MDL {
     struct _MDL *Next;
     PVOID MappedSystemVa;
-    ULONG ByteCount;
-    ULONG PfnCount;		/* Number of entries in PfnEntries */
+    ULONG Flags;
+    ULONG ByteOffset;	/* Page offset to the start of the buffer */
+    ULONG ByteCount;	/* Number of bytes of this buffer */
+    ULONG PfnCount;	/* Number of entries in PfnEntries */
     ULONG_PTR PfnEntries[];
 } MDL, *PMDL;
 

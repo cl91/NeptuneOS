@@ -15,14 +15,6 @@
     IopAllocateArrayEx(Var, Type, Size, {})
 #define IopFreePool(Var) ExFreePoolWithTag(Var, NTOS_IO_TAG)
 
-typedef enum _IO_TRANSFER_TYPE {
-    MappedIo = 1, /* If data size is small, embed data in the IRP. Otherwise map
-		   * the IO buffer into target driver address space. */
-    DirectIo, /* Only send MDL. Do not map the buffer into driver address space */
-    MappedDirectIo /* Send MDL, and map the buffer into driver address space.
-		    * Note this is equal to MappedIo | DirectIo. */
-} IO_TRANSFER_TYPE;
-
 /*
  * The PENDING_IRP represents a pending IRP that is queued by either a THREAD object
  * or a DRIVER object. There are several possible scenarios when it comes to IRP
@@ -136,7 +128,6 @@ typedef struct _PENDING_IRP {
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
     MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
     MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
-    IO_TRANSFER_TYPE IoType;
     /* ---- The following four members are only valid if Requestor is a THREAD object ---- */
     KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
     IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */

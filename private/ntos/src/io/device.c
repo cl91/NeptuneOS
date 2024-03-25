@@ -353,7 +353,6 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PEVENT_OBJECT EventObject;
-	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
 	});
 
@@ -375,22 +374,18 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
     }
 
     IF_ERR_GOTO(out, Status,
-		IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET),
-				    &Locals.IoPacket));
-    assert(Locals.IoPacket != NULL);
-    Locals.IoPacket->Request.Device.Object = Locals.FileObject->DeviceObject;
-    Locals.IoPacket->Request.File.Object = Locals.FileObject;
+		IopAllocatePendingIrp(Thread, sizeof(IO_PACKET), &Locals.PendingIrp));
+    Locals.PendingIrp->IoPacket->Request.Device.Object = Locals.FileObject->DeviceObject;
+    Locals.PendingIrp->IoPacket->Request.File.Object = Locals.FileObject;
 
-    Locals.IoPacket->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
-    Locals.IoPacket->Request.MinorFunction = 0;
-    Locals.IoPacket->Request.InputBuffer = (MWORD)InputBuffer;
-    Locals.IoPacket->Request.OutputBuffer = (MWORD)OutputBuffer;
-    Locals.IoPacket->Request.InputBufferLength = InputBufferLength;
-    Locals.IoPacket->Request.OutputBufferLength = OutputBufferLength;
-    Locals.IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
+    Locals.PendingIrp->IoPacket->Request.MajorFunction = IRP_MJ_DEVICE_CONTROL;
+    Locals.PendingIrp->IoPacket->Request.MinorFunction = 0;
+    Locals.PendingIrp->IoPacket->Request.InputBuffer = (MWORD)InputBuffer;
+    Locals.PendingIrp->IoPacket->Request.OutputBuffer = (MWORD)OutputBuffer;
+    Locals.PendingIrp->IoPacket->Request.InputBufferLength = InputBufferLength;
+    Locals.PendingIrp->IoPacket->Request.OutputBufferLength = OutputBufferLength;
+    Locals.PendingIrp->IoPacket->Request.DeviceIoControl.IoControlCode = Ioctl;
 
-    IF_ERR_GOTO(out, Status,
-		IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
     /* Note here the IO buffers in the driver address space are freed
      * when the server receives the IoCompleted message, so we don't
      * need to free them manually. */

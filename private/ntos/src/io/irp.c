@@ -90,6 +90,13 @@ static VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
     }
 }
 
+typedef enum _IO_TRANSFER_TYPE {
+    NeitherIo, /* IO buffer is mapped into target driver address space */
+    BufferedIo, /* If data size is small, embed data in the IRP. Otherwise map. */
+    DirectIo, /* Only send MDL. Do not map the buffer into driver address space */
+    MappedDirectIo /* Send MDL, and map the buffer into driver address space. */
+} IO_TRANSFER_TYPE;
+
 /*
  * Map the IO buffers into the target driver address space.
  *
@@ -147,12 +154,15 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
     BOOLEAN OutputIsReadOnly = FALSE;
     if (MajorFunction == IRP_MJ_DEVICE_CONTROL ||
 	MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
-	InputIoType = MappedIo;
 	ULONG Ioctl = Irp->Request.DeviceIoControl.IoControlCode;
-	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED ||
-	    METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
-	    OutputIoType = MappedIo;
+	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED) {
+	    InputIoType = OutputIoType = BufferedIo;
+	} else if(METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
+	    InputIoType = OutputIoType = NeitherIo;
 	} else {
+	    InputIoType = BufferedIo;
+	    /* Ioctl dispatch functions usually need to access the memory
+	     * mapped by the MDL, so we always map the buffer for direct IO. */
 	    OutputIoType = MappedDirectIo;
 	    /* If the IOCTL has type METHOD_IN_DIRECT, the OutputBuffer
 	     * is used as an input buffer (yes, I know, Microsoft loves
@@ -164,34 +174,30 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	if (DeviceObject->DeviceInfo.Flags & DO_DIRECT_IO) {
 	    IoType = DirectIo;
 	    if (DeviceObject->DeviceInfo.Flags & DO_MAP_IO_BUFFER) {
-		IoType |= MappedIo;
+		IoType = MappedDirectIo;
 	    }
+	} else if (DeviceObject->DeviceInfo.Flags & DO_BUFFERED_IO) {
+	    IoType = BufferedIo;
 	} else {
-	    /* Buffered IO and neither IO have MappedIo as the transfer type */
-	    IoType = MappedIo;
+	    IoType = NeitherIo;
 	}
 	InputIoType = OutputIoType = IoType;
     }
-    /* For direct IO (both mapped direct IO and unmapped direct IO),
-     * the InputBuffer and OutputBuffer pointers must be page-aligned. */
-    if ((InputIoType & DirectIo) && !IS_PAGE_ALIGNED(InputBuffer)) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    if ((OutputIoType & DirectIo) && !IS_PAGE_ALIGNED(OutputBuffer)) {
-	return STATUS_INVALID_PARAMETER;
-    }
 
-    MWORD DriverInputBuffer = 0;
-    ULONG InputBufferPfnCount = 0;
-    MWORD DriverOutputBuffer = 0;
-    ULONG OutputBufferPfnCount = 0;
+    MWORD MappedInputBuffer = 0;
+    PULONG_PTR InputPfn = NULL;
+    ULONG InputPfnCount = 0;
+    BOOLEAN MapInputBuffer = FALSE;
+    MWORD MappedOutputBuffer = 0;
+    PULONG_PTR OutputPfn = NULL;
+    ULONG OutputPfnCount = 0;
+    BOOLEAN MapOutputBuffer = FALSE;
     if (InputBuffer) {
-	if (InputIoType & DirectIo) {
-	    InputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
-						       InputBuffer,
-						       InputBufferLength);
+	if (InputIoType == DirectIo || InputIoType == MappedDirectIo) {
+	    MmGeneratePageFrameDatabase(InputPfn, RequestorProcess, InputBuffer,
+					InputBufferLength, &InputPfnCount);
 	}
-	if (InputIoType & MappedIo) {
+	if (InputIoType == BufferedIo) {
 	    if (RequestorThread && KePtrInSvcMsgBuf(InputBuffer, RequestorThread)) {
 		/* If the input buffer pointer falls within the service message
 		 * area of the requestor thread, embed the input data in the IRP. */
@@ -202,52 +208,65 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 		/* This points to the end of the fixed part of the IO_PACKET struct */
 		PVOID Dest = Irp + 1;
 		memcpy(Dest, Src, InputBufferLength);
-		DriverInputBuffer = sizeof(IO_PACKET);
+		MappedInputBuffer = sizeof(IO_PACKET);
 	    } else if (InputBuffer < PAGE_SIZE) {
 		/* If the original requestor embedded the input data in the IRP
 		 * (in which case the InputBuffer will be less than PAGE_SIZE),
 		 * simply leave the original InputBuffer unchanged. */
-		DriverInputBuffer = InputBuffer;
+		MappedInputBuffer = InputBuffer;
 	    } else {
-		/* Otherwise, map the input buffer from the requestor
-		 * address space into the target driver address space. */
-		RET_ERR(IopMapUserBuffer(RequestorProcess, DriverObject,
-					 InputBuffer, InputBufferLength,
-					 &DriverInputBuffer, TRUE));
+		MapInputBuffer = TRUE;
 	    }
-	    assert(DriverInputBuffer != 0);
+	} else if (InputIoType == NeitherIo || InputIoType == MappedDirectIo) {
+	    MapInputBuffer = TRUE;
+	}
+	if (MapInputBuffer) {
+	    /* Map the input buffer from the requestor address space into
+	     * the target driver address space. */
+	    assert(!MappedInputBuffer);
+	    RET_ERR(IopMapUserBuffer(RequestorProcess, DriverObject,
+				     InputBuffer, InputBufferLength,
+				     &MappedInputBuffer, TRUE));
+	    assert(MappedInputBuffer != 0);
 	}
 	DbgTrace("Mapped input buffer %p into driver %s at %p, pfn count %d\n",
 		 (PVOID)InputBuffer, DriverObject->DriverImagePath,
-		 (PVOID)DriverInputBuffer, InputBufferPfnCount);
+		 (PVOID)MappedInputBuffer, InputPfnCount);
     }
 
     if (OutputBuffer) {
 	if (OutputIoType & MappedIo) {
-	    RET_ERR_EX(IopMapUserBuffer(RequestorProcess, DriverObject,
-					OutputBuffer, OutputBufferLength,
-					&DriverOutputBuffer, OutputIsReadOnly),
-		       if (DriverInputBuffer >= PAGE_SIZE) {
-			   IopUnmapUserBuffer(DriverObject, DriverInputBuffer);
-		       });
-	    assert(DriverOutputBuffer != 0);
+	    Status = IopMapUserBuffer(RequestorProcess, DriverObject,
+				      OutputBuffer, OutputBufferLength,
+				      &MappedOutputBuffer, OutputIsReadOnly);
+	    if (!NT_SUCCESS(Status)) {
+		goto err;
+	    }
+	    assert(MappedOutputBuffer != 0);
 	}
 	if (OutputIoType & DirectIo) {
-	    OutputBufferPfnCount = IopGetBufferPfnCount(RequestorProcess,
-							OutputBuffer,
-							OutputBufferLength);
+	    OutputPfnCount = IopGetBufferPfnCount(RequestorProcess, OutputBuffer,
+						  OutputBufferLength, &MappedOutputBuffer);
 	}
 	DbgTrace("Mapped output buffer %p into driver %s at %p, pfn count %d\n",
 		 (PVOID)OutputBuffer, DriverObject->DriverImagePath,
-		 (PVOID)DriverOutputBuffer, OutputBufferPfnCount);
+		 (PVOID)MappedOutputBuffer, OutputPfnCount);
     }
-    Irp->Request.InputBuffer = DriverInputBuffer;
-    Irp->Request.OutputBuffer = DriverOutputBuffer;
-    Irp->Request.InputBufferPfnCount = InputBufferPfnCount;
-    Irp->Request.OutputBufferPfnCount = OutputBufferPfnCount;
+    Irp->Request.InputBuffer = MappedInputBuffer;
+    Irp->Request.OutputBuffer = MappedOutputBuffer;
+    Irp->Request.InputBufferPfnCount = InputPfnCount;
+    Irp->Request.OutputBufferPfnCount = OutputPfnCount;
     PendingIrp->InputBuffer = InputBuffer;
     PendingIrp->OutputBuffer = OutputBuffer;
     return STATUS_SUCCESS;
+
+err:
+    if (MapInputBuffer) {
+	IopUnmapUserBuffer(DriverObject, MappedInputBuffer);
+    }
+    if (InputPfn) {
+	IopFreePool(InputPfn);
+    }
 }
 
 static VOID IopUnmapDriverIrpBuffers(IN PPENDING_IRP PendingIrp)
@@ -699,11 +718,6 @@ NTSTATUS IopRequestIoPackets(IN ASYNC_STATE State,
 	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(IoPacket->Request.File.Object);
 	    if (Dest->Request.InputBufferPfnCount) {
 		Dest->Request.InputBufferPfn = IoPacketSize;
-		MmGeneratePageFrameDatabase((PULONG_PTR)((MWORD)Dest + IoPacketSize),
-					    DriverObject->DriverProcess,
-					    Dest->Request.InputBuffer,
-					    Dest->Request.InputBufferLength,
-					    &Dest->Request.InputBufferPfnCount);
 		IoPacketSize += Dest->Request.InputBufferPfnCount * sizeof(ULONG_PTR);
 	    }
 	    if (Dest->Request.OutputBufferPfnCount) {

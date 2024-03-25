@@ -37,7 +37,8 @@ static NTSTATUS NTAPI FdcAddDevice(IN PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT Fdo = NULL;
     NTSTATUS Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_EXTENSION), NULL,
 				     FILE_DEVICE_CONTROLLER,
-				     FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO | DO_POWER_PAGABLE,
+				     FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO |
+				     DO_MAP_IO_BUFFER | DO_POWER_PAGABLE,
 				     FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
 	return Status;
