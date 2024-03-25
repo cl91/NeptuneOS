@@ -55,31 +55,37 @@
  *
  * Case 1: THREAD object queues an IRP on a DRIVER object
  *
- *  |-------------|       |-----------------------|       |-------------------------|       |------------------|
- *  |  IO_PACKET  |       | DRIVER.IoPacketQueue  |       | DRV.PendingIoPacketList |       | Driver completes |
- *  |-------------| ----> |-----------------------| ----> |-------------------------| ----> | IRP, replies     |
- *  | PENDING_IRP |       | THREAD.PendingIrpList |       | THREAD.PendingIrpList   |   |   | to server        |
- *  |-------------|       |-----------------------|       |-------------------------|   |   |------------------|
- *                                                                                    or|            |
- *                                                                        Case 3,4 <----|           \|/
- *                                                                                               |---------|
- *                                                                                               | Server  |
- *                                                                                               | signals |
- *                                                                                               | THREAD  |
- * Case 2: Driver0 queues a new IRP on Driver1 via IoCallDriver                                  |---------|
+ *  |-------------|       |-----------------------|       |-------------------------|
+ *  |  IO_PACKET  |       | DRIVER.IoPacketQueue  |       | DRV.PendingIoPacketList |
+ *  |-------------| ----> |-----------------------| ----> |-------------------------|
+ *  | PENDING_IRP |       | THREAD.PendingIrpList |       | THREAD.PendingIrpList   |
+ *  |-------------|       |-----------------------|       |-------------------------|
+ *                                                               |       |
+ *                                            or Case 3,4 <------|       |
+ *                                                                      \|/
+ *                                     |---------|            |------------------|
+ *                                     | Server  |            | Driver completes |
+ *                                     | signals |  <-------  | IRP, replies     |
+ *                                     | THREAD  |            | to server        |
+ *                                     |---------|            |------------------|
  *
- *  |-------------|       |-----------------------|       |-----------------------|       |----------------|
- *  |  IO_PACKET  |       |   Drv1.IoPacketQueue  |       | Drv1.PendingIoPacketL |       | Drv1 completes |
- *  |-------------| ----> |-----------------------| ----> |-----------------------| ----> | IRP, replies   |
- *  | PENDING_IRP |       | Drv0.ForwardedIrpList |       | Drv0.ForwardedIrpList |   |   | to server      |
- *  |-------------|       |-----------------------|       |-----------------------|   |   |----------------|
- *                                                                                  or|            |
- *                                                                      Case 3,4 <----|           \|/
- *                                                                                            |---------|
- *                                                                                            | Server  |
- *                                                                                            | replies |
- *                                                                                            | to Drv0 |
- *                                                                                            |---------|
+ *
+ * Case 2: Driver0 queues a new IRP on Driver1 via IoCallDriver
+ *
+ *  |-------------|       |-----------------------|       |-----------------------|
+ *  |  IO_PACKET  |       |   Drv1.IoPacketQueue  |       | Drv1.PendingIoPacketL |
+ *  |-------------| ----> |-----------------------| ----> |-----------------------|
+ *  | PENDING_IRP |       | Drv0.ForwardedIrpList |       | Drv0.ForwardedIrpList |
+ *  |-------------|       |-----------------------|       |-----------------------|
+ *                                                              |         |
+ *                                              or Case 3,4 <---|         |
+ *                                                                       \|/
+ *                                        |---------|            |----------------|
+ *                                        | Server  |            | Drv1 completes |
+ *                                        | replies | <--------- | IRP, replies   |
+ *                                        | to Drv0 |            | to server      |
+ *                                        |---------|            |----------------|
+>>>>>>> 117483a (WIP)
  *
  * Case 3: Driver1 forwards an existing IRP to Driver2 via IoCallDriver, NotifyCompletion == FALSE
  *
@@ -88,9 +94,9 @@
  *  |--------------------------| ----> |--------------------------| ----> | IRP, replies   |
  *  |       PENDING_IRP        |       |     DOES NOT CHANGE      |   |   | to server      |
  *  |--------------------------|       |--------------------------|   |   |----------------|
- *                                                                  or|           |
- *                                                     Case 3,4 <-----|           |
- *                                                                               \|/
+ *                                                                    |            |
+ *                                                    or Case 3,4 <---|            |
+ *                                                                                \|/
  *                                                                        |----------------|
  *                                                                        | Server signals |
  *                                                                        | thread/replies |
@@ -124,7 +130,8 @@ typedef struct _PENDING_IRP {
 			  * The pending IO packet must be of type IoPacketTypeRequest. */
     POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level */
     LIST_ENTRY Link; /* List entry for THREAD.PendingIrpList or DRIVER.ForwardedIrpList */
-    struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP has been forwarded to. */
+    struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP
+				       * has been forwarded to. */
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
     MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
     MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
