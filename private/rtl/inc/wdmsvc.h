@@ -133,7 +133,7 @@ typedef struct _IO_REQUEST_PARAMETERS {
     UCHAR MinorFunction;
     UCHAR Flags;
     UCHAR Control;
-    ULONG Padding;
+    ULONG DataSize; /* Size of the extra data following the fixed part of this IRP. */
     IO_DEVICE_OBJECT_PTR Device;
     IO_FILE_OBJECT_PTR File;
     MWORD InputBuffer; /* If InputBufferLength is less than IRP_DATA_BUFFER_SIZE,
@@ -158,12 +158,12 @@ typedef struct _IO_REQUEST_PARAMETERS {
 			 * member of IO_COMPLETED_MESSAGE, defined below. */
     ULONG InputBufferLength;
     ULONG OutputBufferLength;
+    ULONG InputBufferPfn; /* Page frame database of the input buffer. This is
+			   * an offset from the beginning of the IO_PACKET */
+    ULONG OutputBufferPfn; /* Page frame database of the output buffer. This is
+			    * an offset from the beginning of the IO_PACKET */
     ULONG InputBufferPfnCount;
     ULONG OutputBufferPfnCount;
-    ULONG_PTR InputBufferPfn; /* Page frame database of the input buffer. This is
-			       * an offset from the beginning of the IO_PACKET */
-    ULONG_PTR OutputBufferPfn; /* Page frame database of the output buffer. This is
-				* an offset from the beginning of the IO_PACKET */
     GLOBAL_HANDLE OriginalRequestor; /* Original thread or driver object that
 				      * requested this IRP. Together with
 				      * Identifier, this uniquely identifies

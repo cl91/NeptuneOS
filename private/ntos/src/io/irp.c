@@ -1,5 +1,124 @@
 #include "iop.h"
 
+static NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
+				    IN ULONG Size,
+				    OUT PIO_PACKET *pIoPacket)
+{
+    assert(pIoPacket != NULL);
+    assert(Size >= sizeof(IO_PACKET));
+    ExAllocatePoolEx(IoPacket, IO_PACKET, Size, NTOS_IO_TAG, {});
+    IoPacket->Type = Type;
+    IoPacket->Size = Size;
+    *pIoPacket = IoPacket;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
+				      IN POBJECT Requestor,
+				      OUT PPENDING_IRP *pPendingIrp)
+{
+    assert(IoPacket != NULL);
+    assert(Requestor != NULL);
+    assert(pPendingIrp != NULL);
+    IopAllocatePool(PendingIrp, PENDING_IRP);
+    PendingIrp->IoPacket = IoPacket;
+    PendingIrp->Requestor = Requestor;
+    PendingIrp->PreviousDeviceObject = NULL;
+    assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER) ||
+	   ObObjectIsType(Requestor, OBJECT_TYPE_THREAD));
+    *pPendingIrp = PendingIrp;
+    return STATUS_SUCCESS;
+}
+
+static VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
+{
+    if (PendingIrp->IoResponseData != NULL) {
+	IopFreePool(PendingIrp->IoResponseData);
+	PendingIrp->IoResponseData = NULL;
+    }
+}
+
+/*
+ * Detach the given pending IRP from the thread that it has been queued on.
+ * Free the IO response data, and delete both the IO packet struct and the
+ * PENDING_IRP struct itself. You must eventually call this after every
+ * successful call to IopCallDriver or IopCallDriverEx.
+ */
+VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
+{
+    RemoveEntryList(&PendingIrp->Link);
+    IopFreeIoResponseData(PendingIrp);
+    if (PendingIrp->IoPacket != NULL) {
+	IopFreePool(PendingIrp->IoPacket);
+    }
+    IopFreePool(PendingIrp);
+}
+
+/*
+ * Returns the IO_PACKET queued in the driver object's PendingIoPacketList,
+ * given the handle pair (OriginalRequestor, IrpIdentifier) that uniquely
+ * identifies the IO_PACKET (currently).
+ */
+static PIO_PACKET IopLocateIrpInDriverPendingList(IN PIO_DRIVER_OBJECT DriverObject,
+						  IN GLOBAL_HANDLE OriginalRequestor,
+						  IN HANDLE IrpIdentifier)
+{
+    PIO_PACKET CompletedIrp = NULL;
+    LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
+	/* The IO packets in the pending IO packet list must be of type IoPacketTypeRequest.
+	 * We never put IoPacketTypeClientMessage etc into the pending IO packet list */
+	assert(PendingIoPacket->Type == IoPacketTypeRequest);
+	if ((PendingIoPacket->Request.OriginalRequestor == OriginalRequestor) &&
+	    (PendingIoPacket->Request.Identifier == IrpIdentifier)) {
+	    CompletedIrp = PendingIoPacket;
+	}
+    }
+    return CompletedIrp;
+}
+
+/*
+ * Returns the PENDING_IRP struct of the given IoPacket. Note that for driver
+ * objects this searches the ForwardedIrpList not the PendingIoPacketList.
+ * The latter is used for a different purpose (see io.h).
+ */
+static PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
+						    IN PIO_PACKET IoPacket)
+{
+    POBJECT RequestorObject = GLOBAL_HANDLE_TO_OBJECT(OriginalRequestor);
+    if (ObObjectIsType(RequestorObject, OBJECT_TYPE_THREAD)) {
+	PTHREAD Thread = (PTHREAD)RequestorObject;
+	LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
+	    if (PendingIrp->IoPacket == IoPacket) {
+		assert(PendingIrp->Requestor == RequestorObject);
+		return PendingIrp;
+	    }
+	}
+    } else if (ObObjectIsType(RequestorObject, OBJECT_TYPE_DRIVER)) {
+	PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT)RequestorObject;
+	LoopOverList(PendingIrp, &Driver->ForwardedIrpList, PENDING_IRP, Link) {
+	    if (PendingIrp->IoPacket == IoPacket) {
+		assert(PendingIrp->Requestor == RequestorObject);
+		return PendingIrp;
+	    }
+	}
+    } else {
+	assert(FALSE);
+    }
+    return NULL;
+}
+
+static VOID IopDumpDriverPendingIoPacketList(IN PIO_DRIVER_OBJECT DriverObject,
+					     IN GLOBAL_HANDLE OriginalRequestor,
+					     IN HANDLE IrpIdentifier)
+{
+    DbgTrace("Received response packet from driver %s with invalid IRP identifier %p:%p."
+	     " Dumping all IO packets in the driver's pending IO packet list.\n",
+	     DriverObject->DriverImagePath, (PVOID)OriginalRequestor, IrpIdentifier);
+    LoopOverList(PendingIoPacket, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
+	IoDbgDumpIoPacket(PendingIoPacket, FALSE);
+    }
+}
+
 NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 					 IN PTHREAD Thread,
 					 IN BOOLEAN Alertable,
@@ -294,6 +413,75 @@ static VOID IopUnmapDriverIrpBuffers(IN PPENDING_IRP PendingIrp)
     IopUnmapUserBuffer(DriverObject, PendingIrp->IoPacket->Request.OutputBuffer);
     PendingIrp->IoPacket->Request.InputBuffer = PendingIrp->InputBuffer;
     PendingIrp->IoPacket->Request.OutputBuffer = PendingIrp->OutputBuffer;
+}
+
+static VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
+			       IN PIO_DRIVER_OBJECT Driver,
+			       IN PTHREAD Thread)
+{
+    /* Queue the IRP to the driver */
+    InsertTailList(&Driver->IoPacketQueue, &PendingIrp->IoPacket->IoPacketLink);
+    PendingIrp->IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(Thread);
+    /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
+    PendingIrp->IoPacket->Request.Identifier = (HANDLE)POINTER_TO_GLOBAL_HANDLE(PendingIrp->IoPacket);
+    InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
+    KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
+    KeSetEvent(&Driver->IoPacketQueuedEvent);
+}
+
+static VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
+			     IN PTHREAD Thread)
+{
+    /* We can only queue IO request packets */
+    assert(PendingIrp != NULL);
+    assert(PendingIrp->IoPacket != NULL);
+    assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
+    assert(PendingIrp->IoPacket->Request.MajorFunction != IRP_MJ_ADD_DEVICE);
+    PIO_DRIVER_OBJECT Driver = PendingIrp->IoPacket->Request.Device.Object->DriverObject;
+    assert(Driver != NULL);
+    IopQueueIoPacketEx(PendingIrp, Driver, Thread);
+}
+
+NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
+			 IN PIO_REQUEST_PARAMETERS Irp,
+			 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
+			 OUT PPENDING_IRP *pPendingIrp)
+{
+    assert(Thread);
+    assert(Irp);
+    assert(pPendingIrp);
+    *pPendingIrp = NULL;
+    ULONG IoPacketSize = IopGetIoPacketSizeFromIrp(Irp);
+    PIO_PACKET IoPacket = NULL;
+    RET_ERR(IopAllocateIoPacket(IoPacketTypeRequest, IoPacketSize, &IoPacket));
+
+    NTSTATUS Status;
+    IF_ERR_GOTO(err, Status, IopAllocatePendingIrp(IoPacket, Thread, pPendingIrp));
+
+    /* Note here the IO buffers in the driver address space are freed when
+     * the server receives the IoCompleted message, so we don't need to free
+     * them manually. */
+    IF_ERR_GOTO(err, Status, IopMapIoBuffers(*pPendingIrp));
+
+    if (DriverObject) {
+	/* This is used by the PNP manager to queue the AddDevice request. */
+	IopQueueIoPacketEx(*pPendingIrp, DriverObject, Thread);
+    } else {
+	/* Non-AddDevice request is always queued on the driver object of
+	 * the target device object of the IRP. */
+	IopQueueIoPacket(*pPendingIrp, Thread);
+    }
+    return STATUS_SUCCESS;
+
+err:
+    if (IoPacket) {
+	IopFreePool(IoPacket);
+    }
+    if (*pPendingIrp) {
+	IopFreePool(*pPendingIrp);
+    }
+    *pPendingIrp = NULL;
+    return Status;
 }
 
 static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
