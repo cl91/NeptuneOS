@@ -149,13 +149,6 @@ typedef struct _PENDING_IRP {
 					     * if Requestor is a DRIVER object. */
 } PENDING_IRP, *PPENDING_IRP;
 
-FORCEINLINE VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
-{
-    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
-	IopCleanupPendingIrp(PendingIrp);
-    }
-}
-
 FORCEINLINE BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
 {
     return !!(File->Flags & FO_SYNCHRONOUS_IO);
@@ -303,9 +296,16 @@ NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
 			 OUT PPENDING_IRP *pPendingIrp);
 VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp);
 
-FORCEINLINE IopCallDriver(IN PTHREAD Thread,
-			  IN PIO_REQUEST_PARAMETERS Irp,
-			  OUT PPENDING_IRP *pPendingIrp)
+FORCEINLINE VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
+{
+    LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
+	IopCleanupPendingIrp(PendingIrp);
+    }
+}
+
+FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
+				   IN PIO_REQUEST_PARAMETERS Irp,
+				   OUT PPENDING_IRP *pPendingIrp)
 {
     return IopCallDriverEx(Thread, Irp, NULL, pPendingIrp);
 }
