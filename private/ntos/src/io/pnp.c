@@ -577,8 +577,8 @@ static NTSTATUS IopQueueQueryDeviceRelationsRequest(IN PTHREAD Thread,
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_PNP,
 	.MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS,
-	.Device = { .Object = DeviceObject },
-	.QueryDeviceRelations = { .Type = Type }
+	.Device.Object = DeviceObject,
+	.QueryDeviceRelations.Type = Type
     };
     return IopCallDriver(Thread, &Irp, PendingIrp);
 }
@@ -591,8 +591,8 @@ static NTSTATUS IopQueueBusQueryIdRequest(IN PTHREAD Thread,
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_PNP,
 	.MinorFunction = IRP_MN_QUERY_ID,
-	.Device = { .Object = ChildPhyDev },
-	.QueryId = { .IdType = IdType }
+	.Device.Object = ChildPhyDev,
+	.QueryId.IdType = IdType
     };
     return IopCallDriver(Thread, &Irp, PendingIrp);
 }
@@ -605,7 +605,7 @@ static NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
     PIO_DEVICE_OBJECT PhyDevObj = DeviceNode->PhyDevObj;
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_ADD_DEVICE,
-	.Device = { .Object = PhyDevObj }
+	.Device.Object = PhyDevObj
     };
     if (PhyDevObj) {
 	Irp.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
@@ -699,7 +699,7 @@ static NTSTATUS IopQueueQueryResourceRequirementsRequest(IN PTHREAD Thread,
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_PNP,
 	.MinorFunction = IRP_MN_QUERY_RESOURCE_REQUIREMENTS,
-	.Device = { .Object = ChildPhyDev }
+	.Device.Object = ChildPhyDev
     };
     return IopCallDriver(Thread, &Irp, PendingIrp);
 }

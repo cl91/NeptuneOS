@@ -237,7 +237,6 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PEVENT_OBJECT EventObject;
-	    PIO_PACKET IoPacket;
 	    PPENDING_IRP PendingIrp;
 	});
 
@@ -258,36 +257,22 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
 	assert(Locals.EventObject != NULL);
     }
 
-    IF_ERR_GOTO(out, Status,
-		IopAllocateIoPacket(IoPacketTypeRequest, sizeof(IO_PACKET),
-				    &Locals.IoPacket));
-    assert(Locals.IoPacket != NULL);
-    Locals.IoPacket->Request.Device.Object = Locals.FileObject->DeviceObject;
-    Locals.IoPacket->Request.File.Object = Locals.FileObject;
-
-    Locals.IoPacket->Request.MajorFunction = IRP_MJ_READ;
-    Locals.IoPacket->Request.MinorFunction = 0;
-    Locals.IoPacket->Request.OutputBuffer = (MWORD)Buffer;
-    Locals.IoPacket->Request.OutputBufferLength = BufferLength;
-    Locals.IoPacket->Request.Read.Key = Key ? *Key : 0;
-    if (ByteOffset != NULL) {
-	Locals.IoPacket->Request.Read.ByteOffset = *ByteOffset;
-    }
-
-
-    IF_ERR_GOTO(out, Status,
-		IopAllocatePendingIrp(Locals.IoPacket, Thread, &Locals.PendingIrp));
-    /* Note here the IO buffers in the driver address space are freed
-     * when the server receives the IoCompleted message, so we don't
-     * need to free them manually. */
-    Status = IopMapIoBuffers(Locals.PendingIrp);
-    if (NT_SUCCESS(Status)) {
-	IopQueueIoPacket(Locals.PendingIrp, Thread);
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = Locals.FileObject,
+	.MajorFunction = IRP_MJ_READ,
+	.MinorFunction = 0,
+	.OutputBuffer = (MWORD)Buffer,
+	.OutputBufferLength = BufferLength,
+	.Read.Key = Key ? *Key : 0
+    };
+    if (ByteOffset) {
+	Irp.Read.ByteOffset = *ByteOffset;
     } else {
-	IopFreePool(Locals.PendingIrp);
-	Locals.PendingIrp = NULL;
-	goto out;
+	/* TODO: Use current byte offset of the file object (must be synchronous) */
+	/* Irp.Read.ByteOffset = ; */
     }
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
     /* For now every IO is synchronous. For async IO, we need to figure
      * out how we pass IO_STATUS_BLOCK back to the userspace safely.
@@ -313,14 +298,7 @@ out:
     if (!NT_SUCCESS(Status) && Locals.EventObject != NULL) {
 	ObDereferenceObject(Locals.EventObject);
     }
-    if (Locals.PendingIrp == NULL & Locals.IoPacket != NULL) {
-	IopFreePool(Locals.IoPacket);
-    }
-    /* This will free the pending IRP and detach the pending irp
-     * from the thread. At this point the IRP has already been
-     * detached from the driver object, so we do not need to remove
-     * it from the driver IRP queue here. */
-    if (Locals.PendingIrp != NULL) {
+    if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
     ASYNC_END(State, Status);
