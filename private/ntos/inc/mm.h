@@ -687,11 +687,11 @@ PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
 				IN MWORD VirtAddr,
 				IN BOOLEAN LargePage);
 struct _PROCESS;
-VOID MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
-				 IN struct _PROCESS *Process,
-				 IN MWORD Buffer,
-				 IN MWORD BufferLength,
-				 OUT ULONG *pPfnCount);
+BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
+				    IN struct _PROCESS *Process,
+				    IN MWORD Buffer,
+				    IN MWORD BufferLength,
+				    OUT OPTIONAL ULONG *pPfnCount);
 VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
 			   IN PMMVAD MasterVad);
 VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
