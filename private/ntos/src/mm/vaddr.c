@@ -573,7 +573,7 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	if (!Page) {
 	    return FALSE;
 	}
-	assert(Page->TreeNode.Key);
+	assert(Page->AvlNode.Key);
 	MWORD PhyAddr = MiGetPhysicalAddress(Page);
 	assert(PhyAddr);
 	assert(IS_PAGE_ALIGNED(PhyAddr));
@@ -608,7 +608,7 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	    PhyAddrStart = PhyAddrEnd = 0;
 	    PageCount = 1;
 	}
-	VirtAddr = Page->TreeNode.Key + MiPagingWindowSize(Page->Type);
+	VirtAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
     }
     if (pPfnCount) {
 	*pPfnCount = PfnCount;

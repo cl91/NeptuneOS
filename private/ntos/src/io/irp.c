@@ -303,8 +303,8 @@ static VOID IopAppendPfnDatabaseToIoPacket(IN PPROCESS RequestorProcess,
     IO_TRANSFER_TYPE InputIoType, OutputIoType;
     IopGetIoTransferTypeFromIrp(Irp, Irp->Device.Object,
 				&InputIoType, &OutputIoType, NULL);
-    ULONG InputPfnCount, OutputPfnCount;
-    MWORD *PfnDb = (PUCHAR)IoPacket + PfnDbOffset;
+    ULONG InputPfnCount = 0, OutputPfnCount = 0;
+    MWORD *PfnDb = (MWORD *)((PUCHAR)IoPacket + PfnDbOffset);
     if (Irp->InputBuffer && (InputIoType & DirectIo)) {
 	assert(Irp->InputBufferLength);
 	MmGeneratePageFrameDatabase(PfnDb, RequestorProcess, Irp->InputBuffer,
@@ -391,8 +391,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	assert(MappedInputBuffer != 0);
 	DbgTrace("Mapped input buffer %p into driver %s at %p, pfn count %d\n",
 		 (PVOID)InputBuffer, DriverObject->DriverImagePath,
-		 (PVOID)MappedInputBuffer, Irp->InputBufferPfnCount);
-	Irp->InputBuffer = MappedInputBuffer;
+		 (PVOID)MappedInputBuffer, Irp->Request.InputBufferPfnCount);
+	Irp->Request.InputBuffer = MappedInputBuffer;
 	PendingIrp->InputBuffer = InputBuffer;
     }
 
@@ -408,8 +408,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	assert(MappedOutputBuffer != 0);
 	DbgTrace("Mapped output buffer %p into driver %s at %p, pfn count %d\n",
 		 (PVOID)OutputBuffer, DriverObject->DriverImagePath,
-		 (PVOID)MappedOutputBuffer, Irp->OutputBufferPfnCount);
-	Irp->OutputBuffer = MappedOutputBuffer;
+		 (PVOID)MappedOutputBuffer, Irp->Request.OutputBufferPfnCount);
+	Irp->Request.OutputBuffer = MappedOutputBuffer;
 	PendingIrp->OutputBuffer = OutputBuffer;
     }
     return STATUS_SUCCESS;
@@ -784,7 +784,7 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(Src->Request.Device.Handle, NULL);
     assert(DeviceObject != NULL);
     assert(Src->Request.Identifier != NULL);
-    if (DeviceObject == NULL || IoPacket->Request.Identifier == NULL) {
+    if (!DeviceObject || !Src->Request.Identifier) {
 	IoDbgDumpIoPacket(Src, TRUE);
 	return STATUS_INVALID_PARAMETER;
     }
