@@ -283,6 +283,17 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
 }
 #undef DIE
 
+static VOID MiImageSectionPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+					  IN ULONG64 FileOffset,
+					  IN ULONG64 Length,
+					  IN NTSTATUS Status,
+					  IN ULONG64 PinnedLength,
+					  IN OUT PVOID Context)
+{
+    PNTSTATUS pStatus = Context;
+    *pStatus = Status;
+}
+
 static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 				     OUT PIMAGE_SECTION_OBJECT *pImageSection,
 				     OUT MWORD *pSectionSize)
@@ -301,6 +312,11 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 						    &ImageCacheFile));
     assert(ImageCacheFile->Fcb);
     IF_ERR_GOTO(out, Status, CcInitializeCacheMap(ImageCacheFile->Fcb, NULL, NULL));
+    CcPinDataEx(ImageCacheFile->Fcb, 0, ImageSection->ImageCacheFileSize,
+		MiImageSectionPinDataCallback, &Status);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	if (SubSection->ImageCacheFileOffset == ULONG_MAX) {
 	    continue;
@@ -466,7 +482,7 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
      * before calling MmCreateSection, because it needs to read the PE headers
      * to create the image section. */
     AWAIT_EX_IF(FileObject && (SectionAttributes & SEC_IMAGE), Status, CcPinData,
-		State, _, Thread, FileObject->Fcb, 0, FileObject->Fcb->FileSize, NULL);
+		State, _, Thread, FileObject->Fcb, 0, FileObject->Fcb->FileSize);
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
     }

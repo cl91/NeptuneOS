@@ -201,9 +201,10 @@ typedef struct _VPB {
     USHORT VolumeLabelLength;
     struct _DEVICE_OBJECT *DeviceObject;
     struct _DEVICE_OBJECT *RealDevice;
+    ULONG64 VolumeSize;
+    ULONG ClusterSize;
     ULONG SerialNumber;
     ULONG ReferenceCount;
-    ULONG ClusterSize;
     WCHAR VolumeLabel[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];
 } VPB, *PVPB;
 
@@ -398,8 +399,8 @@ typedef DRIVER_CANCEL *PDRIVER_CANCEL;
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     SHORT Type;
     USHORT Size;
-    PMDL MdlAddress;
     ULONG Flags;
+    PMDL MdlAddress;
 
     union {
 	struct _IRP *MasterIrp;
@@ -827,6 +828,12 @@ FORCEINLINE NTAPI PIRP IoAllocateIrp()
 
 FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
 {
+    PMDL Mdl = Irp->MdlAddress;
+    while (Mdl) {
+	PMDL Next = Mdl->Next;
+	ExFreePool(Mdl);
+	Mdl = Next;
+    }
     ExFreePool(Irp);
 }
 
@@ -1100,7 +1107,7 @@ FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl)
  * if it is mapped at the very beginning of the virtual address space. */
 FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
 {
-    return (PVOID)Mdl->ByteOffset;
+    return (PVOID)(ULONG_PTR)Mdl->ByteOffset;
 }
 
 NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,

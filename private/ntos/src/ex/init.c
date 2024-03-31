@@ -76,7 +76,7 @@ static VOID EiTimerObjectDeleteProc(IN POBJECT Self)
 {
     assert(ObObjectIsType(Self, OBJECT_TYPE_TIMER));
     PTIMER Timer = (PTIMER)Self;
-    KeDestroyTimer(Timer);
+    KeUninitializeTimer(Timer);
 }
 
 static NTSTATUS EiCreateTimerType()

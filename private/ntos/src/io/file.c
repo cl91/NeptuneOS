@@ -1,5 +1,14 @@
 #include "iop.h"
 
+VOID IopInitializeFcb(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		      IN ULONG64 FileSize,
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb)
+{
+    Fcb->FileSize = FileSize;
+    Fcb->Vcb = Vcb;
+    InitializeListHead(&Fcb->PrivateCacheMaps);
+}
+
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx)
 {
@@ -17,6 +26,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     } else {
 	IopAllocatePool(Fcb, IO_FILE_CONTROL_BLOCK);
 	File->Fcb = Fcb;
+	Fcb->MasterFileObject = File;
 	if (Ctx->FileName) {
 	    Fcb->FileName = RtlDuplicateString(Ctx->FileName, NTOS_IO_TAG);
 	    if (!Fcb->FileName) {
@@ -24,9 +34,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 		return STATUS_NO_MEMORY;
 	    }
 	}
-	Fcb->FileSize = Ctx->FileSize;
-	Fcb->Vcb = Ctx->Vcb;
-	InitializeListHead(&Fcb->PrivateCacheMaps);
+	IopInitializeFcb(Fcb, Ctx->FileSize, Ctx->Vcb);
     }
 
     File->DeviceObject = Ctx->DeviceObject;
@@ -123,7 +131,7 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
  */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
-				IN OPTIONAL MWORD FileSize,
+				IN OPTIONAL ULONG64 FileSize,
 				OUT PIO_FILE_OBJECT *pFile)
 {
     assert(pFile);
@@ -401,7 +409,7 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
     DbgPrint("    Fcb = %p\n", File->Fcb);
     if (File->Fcb) {
 	DbgPrint("    FileName = %s\n", File->Fcb->FileName);
-	DbgPrint("    FileSize = 0x%zx\n", File->Fcb->FileSize);
+	DbgPrint("    FileSize = 0x%llx\n", File->Fcb->FileSize);
 	DbgPrint("    SharedCacheMap = %p\n", File->Fcb->SharedCacheMap);
 	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
 	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);

@@ -15,6 +15,13 @@
     IopAllocateArrayEx(Var, Type, Size, {})
 #define IopFreePool(Var) ExFreePoolWithTag(Var, NTOS_IO_TAG)
 
+/* Pseudo requestor object that represents the NTOS Executive thread.
+ * This is used by the cache manager to generate the paging IO requests. */
+#define IOP_PAGING_IO_REQUESTOR		(PTHREAD)((MWORD)(~0ULL))
+
+/* List of PENDING_IRPs queued by the NTOS Executive for paging IO. */
+extern LIST_ENTRY IopNtosPendingIrpList;
+
 /*
  * The PENDING_IRP represents a pending IRP that is queued by either a THREAD object
  * or a DRIVER object. There are several possible scenarios when it comes to IRP
@@ -149,6 +156,31 @@ typedef struct _PENDING_IRP {
 					     * if Requestor is a DRIVER object. */
 } PENDING_IRP, *PPENDING_IRP;
 
+/*
+ * IRP completion callback and IRP interception callback
+ *
+ * A function in the main NT Executive thread can register a completion callback
+ * or an interception callback when creating an IRP. Later when the IRP is completed
+ * by a driver or when the higher driver forwards the IRP to a lower driver, the
+ * IRP completion or interception callback is called. The completion callback is
+ * called only when the IRP is completed by the top-level driver and in this case
+ * the return value of the callback is ignored. The interception callback is called
+ * every time the IRP is forwarded. If the interception callback returns TRUE, the
+ * IRP is forwarded as normal. If the interception callback returns FALSE, the IRP
+ * forwarding is stopped. Typically the callback function will save the IoPacket and
+ * schedule the relevant work so another function can later call IopCompletePendingIrp
+ * to complete the IRP. The callback function can also simply call it to complete the
+ * IRP immediately. Note that IopCompletePendingIrp may deallocate the PENDING_IRP so
+ * the caller should not access it after calling IopCompletePendingIrp. Note also that
+ * completion callbacks should never call IopCompletePendingIrp. Only interception
+ * callbacks can call it (when returning FALSE). If a master IRP has associated IRPs,
+ * its completion/interception callback will be called when the associated IRPs are
+ * completed or created/forwarded, respectively.
+ */
+typedef BOOLEAN (*PIRP_CALLBACK)(IN PPENDING_IRP PendingIrp,
+				 IN OUT PVOID Context,
+				 IN BOOLEAN Completion);
+
 FORCEINLINE BOOLEAN IopFileIsSynchronous(IN PIO_FILE_OBJECT File)
 {
     return !!(File->Flags & FO_SYNCHRONOUS_IO);
@@ -209,7 +241,7 @@ typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
 typedef struct _FILE_OBJ_CREATE_CONTEXT {
     PIO_DEVICE_OBJECT DeviceObject;
     PCSTR FileName;
-    MWORD FileSize;
+    ULONG64 FileSize;
     PIO_FILE_CONTROL_BLOCK Fcb;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
     BOOLEAN NoFcb;
@@ -296,6 +328,10 @@ NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
 			 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			 OUT PPENDING_IRP *pPendingIrp);
 VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp);
+VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
+			   IN IO_STATUS_BLOCK IoStatus,
+			   IN PVOID ResponseData,
+			   IN ULONG ResponseDataSize);
 
 FORCEINLINE VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
 {
@@ -312,6 +348,9 @@ FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
 }
 
 /* file.c */
+VOID IopInitializeFcb(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		      IN ULONG64 FileSize,
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx);
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,

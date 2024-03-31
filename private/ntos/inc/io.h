@@ -121,8 +121,9 @@ typedef struct _IO_FILE_OBJECT {
  * of the file object is NULL.
  */
 typedef struct _IO_FILE_CONTROL_BLOCK {
+    PIO_FILE_OBJECT MasterFileObject;
     PCSTR FileName;		/* Owned by this struct. */
-    MWORD FileSize;
+    ULONG64 FileSize;
     struct _CC_CACHE_MAP *SharedCacheMap;
     LIST_ENTRY PrivateCacheMaps;
     PDATA_SECTION_OBJECT DataSectionObject;
@@ -135,29 +136,38 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
  */
 
 /* cache.c */
+typedef VOID (*PCC_PIN_DATA_CALLBACK)(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				      IN ULONG64 FileOffset,
+				      IN ULONG64 Length,
+				      IN NTSTATUS Status,
+				      IN ULONG64 PinnedLength,
+				      IN OUT PVOID Context);
 NTSTATUS CcInitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb,
 			      IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			      OUT OPTIONAL struct _CC_CACHE_MAP **pCacheMap);
+VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb);
+VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		   IN ULONG64 FileSize);
 NTSTATUS CcPinData(IN ASYNC_STATE AsyncState,
 		   IN struct _THREAD *Thread,
 		   IN PIO_FILE_CONTROL_BLOCK Fcb,
 		   IN ULONG64 FileOffset,
-		   IN ULONG64 Length,
-    		   OUT OPTIONAL ULONG64 *PinnedLength);
+		   IN ULONG64 Length);
+VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		 IN ULONG64 FileOffset,
+		 IN ULONG64 Length,
+		 IN PCC_PIN_DATA_CALLBACK Callback,
+		 IN OPTIONAL PVOID Context);
 VOID CcUnpinData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		 IN ULONG64 FileOffset,
 		 IN ULONG Length);
-NTSTATUS CcMapData(IN PIO_FILE_CONTROL_BLOCK Fcb,
-		   IN ULONG64 FileOffset,
-		   IN ULONG Length,
-		   OUT ULONG *MappedLength,
-		   OUT PVOID *Buffer);
 NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 		     IN PIO_FILE_CONTROL_BLOCK Fcb,
 		     IN ULONG64 FileOffset,
 		     IN ULONG Length,
 		     OUT ULONG *MappedLength,
-		     OUT PVOID *Buffer);
+		     OUT PVOID *Buffer,
+		     IN BOOLEAN MarkDirty);
 NTSTATUS CcCopyReadEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		      IN ULONG64 FileOffset,
 		      IN ULONG64 Length,
@@ -168,6 +178,15 @@ NTSTATUS CcCopyWriteEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		       IN ULONG64 Length,
 		       OUT OPTIONAL ULONG64 *pBytesWritten,
 		       IN PVOID Buffer);
+
+FORCEINLINE NTSTATUS CcMapData(IN PIO_FILE_CONTROL_BLOCK Fcb,
+			       IN ULONG64 FileOffset,
+			       IN ULONG Length,
+			       OUT OPTIONAL ULONG *pMappedLength,
+			       OUT PVOID *Buffer)
+{
+    return CcMapDataEx(NULL, Fcb, FileOffset, Length, pMappedLength, Buffer, FALSE);
+}
 
 FORCEINLINE NTSTATUS CcCopyRead(IN PIO_FILE_CONTROL_BLOCK Fcb,
 				IN ULONG64 FileOffset,
@@ -188,7 +207,7 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
 /* file.c */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
-				IN OPTIONAL MWORD FileSize,
+				IN OPTIONAL ULONG64 FileSize,
 				OUT PIO_FILE_OBJECT *pFile);
 
 /* init.c */

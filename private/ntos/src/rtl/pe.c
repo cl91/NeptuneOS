@@ -11,7 +11,7 @@ NTSTATUS RtlImageNtHeaderEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 
     /* Make sure the image size is at least big enough for the DOS header */
     if (Fcb->FileSize < sizeof(IMAGE_DOS_HEADER)) {
-	DPRINT1("Fcb %p file size 0x%zx too small\n",
+	DPRINT1("Fcb %p file size 0x%llx too small\n",
 		Fcb, Fcb->FileSize);
 	return STATUS_INVALID_IMAGE_FORMAT;
     }

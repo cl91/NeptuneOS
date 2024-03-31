@@ -1,5 +1,12 @@
 #include "iop.h"
 
+LIST_ENTRY IopNtosPendingIrpList;
+
+#define SERVER_OBJECT_TO_CLIENT_HANDLE(o)				\
+    ((POBJECT)(o) == IOP_PAGING_IO_REQUESTOR ? (GLOBAL_HANDLE)(o) : OBJECT_TO_GLOBAL_HANDLE(o))
+#define CLIENT_HANDLE_TO_SERVER_OBJECT(o)				\
+    ((o) == (MWORD)IOP_PAGING_IO_REQUESTOR ? (PVOID)(o) : GLOBAL_HANDLE_TO_OBJECT(o))
+
 static NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
 				    IN ULONG Size,
 				    OUT PIO_PACKET *pIoPacket)
@@ -36,11 +43,19 @@ static NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
     IopAllocatePool(PendingIrp, PENDING_IRP);
     PendingIrp->IoPacket = IoPacket;
     PendingIrp->Requestor = Requestor;
-    PendingIrp->PreviousDeviceObject = NULL;
-    assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER) ||
+    InitializeListHead(&PendingIrp->Link);
+    KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
+    assert(Requestor == IOP_PAGING_IO_REQUESTOR ||
+	   ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER) ||
 	   ObObjectIsType(Requestor, OBJECT_TYPE_THREAD));
     *pPendingIrp = PendingIrp;
     return STATUS_SUCCESS;
+}
+
+static VOID IopFreePendingIrp(IN PPENDING_IRP PendingIrp)
+{
+    KeUninitializeEvent(&PendingIrp->IoCompletionEvent);
+    IopFreePool(PendingIrp);
 }
 
 static VOID IopFreeIoResponseData(IN PPENDING_IRP PendingIrp)
@@ -64,7 +79,7 @@ VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
     if (PendingIrp->IoPacket != NULL) {
 	IopFreeIoPacket(PendingIrp->IoPacket);
     }
-    IopFreePool(PendingIrp);
+    IopFreePendingIrp(PendingIrp);
 }
 
 /*
@@ -99,8 +114,15 @@ static PIO_PACKET IopLocateIrpInDriverPendingList(IN PIO_DRIVER_OBJECT DriverObj
 static PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
 						    IN PIO_PACKET IoPacket)
 {
-    POBJECT RequestorObject = GLOBAL_HANDLE_TO_OBJECT(OriginalRequestor);
-    if (ObObjectIsType(RequestorObject, OBJECT_TYPE_THREAD)) {
+    POBJECT RequestorObject = CLIENT_HANDLE_TO_SERVER_OBJECT(OriginalRequestor);
+    if (RequestorObject == IOP_PAGING_IO_REQUESTOR) {
+	LoopOverList(PendingIrp, &IopNtosPendingIrpList, PENDING_IRP, Link) {
+	    if (PendingIrp->IoPacket == IoPacket) {
+		assert(PendingIrp->Requestor == RequestorObject);
+		return PendingIrp;
+	    }
+	}
+    } else if (ObObjectIsType(RequestorObject, OBJECT_TYPE_THREAD)) {
 	PTHREAD Thread = (PTHREAD)RequestorObject;
 	LoopOverList(PendingIrp, &Thread->PendingIrpList, PENDING_IRP, Link) {
 	    if (PendingIrp->IoPacket == IoPacket) {
@@ -173,14 +195,13 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
  * If ReadOnly is FALSE, the user IO buffer must be writable by the user.
  * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
  */
-static NTSTATUS IopMapUserBuffer(IN PPROCESS User,
+static NTSTATUS IopMapUserBuffer(IN PVIRT_ADDR_SPACE UserVSpace,
 				 IN PIO_DRIVER_OBJECT Driver,
 				 IN MWORD UserBufferStart,
 				 IN MWORD UserBufferLength,
 				 OUT MWORD *DriverBufferStart,
 				 IN BOOLEAN ReadOnly)
 {
-    PVIRT_ADDR_SPACE UserVSpace = &User->VSpace;
     assert(UserVSpace != NULL);
     DbgTrace("Mapping user buffer %p from vspace cap 0x%zx into driver %s\n",
 	     (PVOID)UserBufferStart, UserVSpace->VSpaceCap, Driver->DriverImagePath);
@@ -241,14 +262,17 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
     MWORD InputBufferLength = Irp->InputBufferLength;
     MWORD OutputBuffer = Irp->OutputBuffer;
     MWORD OutputBufferLength = Irp->OutputBufferLength;
-    PPROCESS RequestorProcess = NULL;
-    if (ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_THREAD)) {
-	RequestorProcess = ((PTHREAD)PendingIrp->Requestor)->Process;
+    PVIRT_ADDR_SPACE RequestorVSpace = NULL;
+    if (PendingIrp->Requestor == IOP_PAGING_IO_REQUESTOR) {
+	extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+	RequestorVSpace = &MiNtosVaddrSpace;
+    } else if (ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_THREAD)) {
+	RequestorVSpace = &((PTHREAD)PendingIrp->Requestor)->Process->VSpace;
     } else {
 	assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_DRIVER));
-	RequestorProcess = ((PIO_DRIVER_OBJECT)PendingIrp->Requestor)->DriverProcess;
+	RequestorVSpace = &((PIO_DRIVER_OBJECT)PendingIrp->Requestor)->DriverProcess->VSpace;
     }
-    assert(RequestorProcess != NULL);
+    assert(RequestorVSpace != NULL);
 
     PIO_DEVICE_OBJECT DeviceObject = Irp->Device.Object;
     assert(DeviceObject != NULL);
@@ -334,7 +358,7 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	assert(Irp->InputBufferLength >= IRP_DATA_BUFFER_SIZE);
 	if (!Irp->InputBufferPfn) {
 	    assert(!Irp->InputBufferPfnCount);
-	    if (!MmGeneratePageFrameDatabase(NULL, RequestorProcess, InputBuffer,
+	    if (!MmGeneratePageFrameDatabase(NULL, RequestorVSpace, InputBuffer,
 					     InputBufferLength, &Irp->InputBufferPfnCount)) {
 		assert(FALSE);
 		return STATUS_INVALID_USER_BUFFER;
@@ -342,8 +366,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	    assert(Irp->InputBufferPfnCount);
 	    IopAllocateArray(PfnDb, MWORD, Irp->InputBufferPfnCount);
 	    Irp->InputBufferPfn = (MWORD)PfnDb;
-	    MmGeneratePageFrameDatabase(PfnDb, RequestorProcess, InputBuffer,
-					InputBufferLength, NULL);
+	    MmGeneratePageFrameDatabase((PULONG_PTR)PfnDb, RequestorVSpace,
+					InputBuffer, InputBufferLength, NULL);
 	    DbgTrace("Generated PFN database for input buffer %p, db %p count %d\n",
 		     (PVOID)InputBuffer, PfnDb, Irp->InputBufferPfnCount);
 	}
@@ -361,7 +385,7 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	assert(Irp->OutputBufferLength >= IRP_DATA_BUFFER_SIZE);
 	if (!Irp->OutputBufferPfn) {
 	    assert(!Irp->OutputBufferPfnCount);
-	    if (!MmGeneratePageFrameDatabase(NULL, RequestorProcess, OutputBuffer,
+	    if (!MmGeneratePageFrameDatabase(NULL, RequestorVSpace, OutputBuffer,
 					     OutputBufferLength, &Irp->OutputBufferPfnCount)) {
 		assert(FALSE);
 		return STATUS_INVALID_USER_BUFFER;
@@ -369,8 +393,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	    assert(Irp->OutputBufferPfnCount);
 	    IopAllocateArray(PfnDb, MWORD, Irp->OutputBufferPfnCount);
 	    Irp->OutputBufferPfn = (MWORD)PfnDb;
-	    MmGeneratePageFrameDatabase(PfnDb, RequestorProcess, OutputBuffer,
-					OutputBufferLength, NULL);
+	    MmGeneratePageFrameDatabase((PULONG_PTR)PfnDb, RequestorVSpace,
+					OutputBuffer, OutputBufferLength, NULL);
 	    DbgTrace("Generated PFN database for output buffer %p, db %p count %d\n",
 		     (PVOID)OutputBuffer, PfnDb, Irp->OutputBufferPfnCount);
 	}
@@ -388,7 +412,7 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
     if (InputBuffer >= PAGE_SIZE && (InputIoType & MappedIo)) {
 	/* The input buffer must not already have been mapped. */
 	assert(!PendingIrp->InputBuffer);
-	RET_ERR(IopMapUserBuffer(RequestorProcess, DriverObject, InputBuffer,
+	RET_ERR(IopMapUserBuffer(RequestorVSpace, DriverObject, InputBuffer,
 				 InputBufferLength, &MappedInputBuffer, TRUE));
 	assert(MappedInputBuffer != 0);
 	DbgTrace("Mapped input buffer %p into driver %s at %p\n", (PVOID)InputBuffer,
@@ -404,7 +428,7 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	/* The output buffer must not already have been mapped. */
 	assert(!PendingIrp->OutputBuffer);
 	MWORD MappedOutputBuffer = 0;
-	RET_ERR_EX(IopMapUserBuffer(RequestorProcess, DriverObject,
+	RET_ERR_EX(IopMapUserBuffer(RequestorVSpace, DriverObject,
 				    OutputBuffer, OutputBufferLength,
 				    &MappedOutputBuffer, OutputIsReadOnly),
 		   if (MappedInputBuffer) {
@@ -448,14 +472,18 @@ static VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
 			       IN PIO_DRIVER_OBJECT Driver,
 			       IN PTHREAD Thread)
 {
+    assert(Thread == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Thread, OBJECT_TYPE_THREAD));
     /* Queue the IRP to the driver */
     InsertTailList(&Driver->IoPacketQueue, &PendingIrp->IoPacket->IoPacketLink);
     PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
-    Irp->OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(Thread);
+    Irp->OriginalRequestor = SERVER_OBJECT_TO_CLIENT_HANDLE(Thread);
     /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
     Irp->Identifier = (HANDLE)POINTER_TO_GLOBAL_HANDLE(PendingIrp->IoPacket);
-    InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
-    KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
+    if (Thread == IOP_PAGING_IO_REQUESTOR) {
+	InsertTailList(&IopNtosPendingIrpList, &PendingIrp->Link);
+    } else {
+	InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
+    }
     KeSetEvent(&Driver->IoPacketQueuedEvent);
 }
 
@@ -467,6 +495,7 @@ static VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
     assert(PendingIrp->IoPacket != NULL);
     assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
     assert(PendingIrp->IoPacket->Request.MajorFunction != IRP_MJ_ADD_DEVICE);
+    assert(Thread == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Thread, OBJECT_TYPE_THREAD));
     PIO_DRIVER_OBJECT Driver = PendingIrp->IoPacket->Request.Device.Object->DriverObject;
     assert(Driver != NULL);
     IopQueueIoPacketEx(PendingIrp, Driver, Thread);
@@ -476,6 +505,10 @@ static ULONG IopGetIoPacketSizeFromIrp(IN PTHREAD RequestorThread,
 				       IN PIO_REQUEST_PARAMETERS Irp)
 {
     ULONG DataOffset = ALIGN_UP(sizeof(IO_PACKET) + Irp->DataSize, MWORD);
+    /* For paging IO we never embed the IO data in the IRP. */
+    if (RequestorThread == IOP_PAGING_IO_REQUESTOR) {
+	return DataOffset;
+    }
     /* If the input buffer pointer falls within the service message area of
      * the requestor thread, the input data would be embedded in the IRP. */
     if (Irp->InputBuffer && KePtrInSvcMsgBuf(Irp->InputBuffer, RequestorThread)) {
@@ -500,6 +533,9 @@ static VOID IopCopyInputDataToIoPacket(IN PTHREAD RequestorThread,
 				       IN PIO_REQUEST_PARAMETERS Irp,
 				       OUT PIO_PACKET IoPacket)
 {
+    if (RequestorThread == IOP_PAGING_IO_REQUESTOR) {
+	return;
+    }
     ULONG DataOffset = ALIGN_UP(sizeof(IO_PACKET) + Irp->DataSize, MWORD);
     if (Irp->InputBuffer && KePtrInSvcMsgBuf(Irp->InputBuffer, RequestorThread)) {
 	MWORD MsgOffset = Irp->InputBuffer - RequestorThread->IpcBufferClientAddr;
@@ -538,6 +574,7 @@ NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
     assert(Thread);
     assert(Irp);
     assert(pPendingIrp);
+    assert(Thread == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Thread, OBJECT_TYPE_THREAD));
     *pPendingIrp = NULL;
     ULONG IoPacketSize = IopGetIoPacketSizeFromIrp(Thread, Irp);
     PIO_PACKET IoPacket = NULL;
@@ -575,10 +612,124 @@ err:
 	IopFreeIoPacket(IoPacket);
     }
     if (*pPendingIrp) {
-	IopFreePool(*pPendingIrp);
+	IopFreePendingIrp(*pPendingIrp);
     }
     *pPendingIrp = NULL;
     return Status;
+}
+
+/*
+ * Complete the PENDING_IRP. If the original requestor is a DRIVER object,
+ * the driver is replied to and the PENDING_IRP is cleaned up. If the original
+ * requestor is a THREAD object, the response data are saved in the PENDING_IRP
+ * and the PENDING_IRP is not freed in this case. The original requestor needs
+ * to call IopCleanupPendingIrp to clean up the PENDING_IRP.
+ */
+VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
+			   IN IO_STATUS_BLOCK IoStatus,
+			   IN PVOID ResponseData,
+			   IN ULONG ResponseDataSize)
+{
+    /* Unmap the IO buffers mapped into the driver address space */
+    IopUnmapDriverIrpBuffers(PendingIrp);
+    /* Find the THREAD or DRIVER object at this level */
+    PIO_PACKET Irp = PendingIrp->IoPacket;
+    POBJECT Requestor = PendingIrp->Requestor;
+    if (Requestor == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Requestor, OBJECT_TYPE_THREAD)) {
+	/* The original requestor is either a THREAD object or the NTOS Executive.
+	 * The latter uses the special pseudo requestor IOP_PAGING_IO_REQUESTOR to
+	 * indicate that the IRP is generated by Cc for paging IO. */
+	assert(PendingIrp->ForwardedFrom == NULL);
+	assert(PendingIrp->IoResponseData == NULL);
+	/* Copy the IO response data to the server. */
+	PendingIrp->IoResponseStatus = IoStatus;
+	PendingIrp->IoResponseDataSize = ResponseDataSize;
+	if (ResponseDataSize) {
+	    PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize,
+							       NTOS_IO_TAG);
+	    if (PendingIrp->IoResponseData != NULL) {
+		assert(ResponseData);
+		memcpy(PendingIrp->IoResponseData, ResponseData, ResponseDataSize);
+	    }
+	}
+	/* Wake the THREAD object up. This does nothing in the paging IO case. */
+	KeSetEvent(&PendingIrp->IoCompletionEvent);
+	/* Call the IO completion callback if the requestor has registered one. */
+	PIRP_CALLBACK Callback = Irp->Request.ServerPrivate.Callback;
+	if ((Irp->Request.Flags & IOP_IRP_COMPLETION_CALLBACK) && Callback) {
+	    Callback(PendingIrp, Irp->Request.ServerPrivate.Context, TRUE);
+	}
+    } else {
+	/* Otherwise, it must be a driver object. Reply to the driver. */
+	assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER));
+	/* Note that since a lower driver can create an IRP and send it to a
+	 * higher-level driver, which can in turn reflect this IRP back to the
+	 * lower driver, the Requestor can sometimes be equal to DriverObject. */
+	PIO_DRIVER_OBJECT RequestorDriver = (PIO_DRIVER_OBJECT)Requestor;
+
+	/* Allocate a new IO packet of type ServerMessage */
+	PIO_PACKET SrvMsg = NULL;
+	NTSTATUS Status = IopAllocateIoPacket(IoPacketTypeServerMessage,
+					      sizeof(IO_PACKET) + ResponseDataSize,
+					      &SrvMsg);
+	if (!NT_SUCCESS(Status)) {
+	    /* If the allocation failed, there isn't much we can do other than
+	     * simply ignoring it. On debug build we will stop the system so we
+	     * can figure out why the system is running out of critical memory. */
+	    assert(FALSE);
+	    goto free;
+	}
+	/* Copy the IO response to the new IO packet */
+	assert(SrvMsg != NULL);
+	SrvMsg->ServerMsg.Type = IoSrvMsgIoCompleted;
+	SrvMsg->ServerMsg.IoCompleted.Identifier = Irp->Request.Identifier;
+	SrvMsg->ServerMsg.IoCompleted.IoStatus = IoStatus;
+	SrvMsg->ServerMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
+	if (ResponseDataSize) {
+	    memcpy(SrvMsg->ServerMsg.IoCompleted.ResponseData, ResponseData,
+		   ResponseDataSize);
+	}
+	if (PendingIrp->ForwardedFrom == NULL) {
+	    /* If the requestor is the original requestor, set the OriginalRequestor
+	     * field to NULL since driver objects set this field to NULL when they
+	     * request a new IRP. */
+	    assert(Requestor == CLIENT_HANDLE_TO_SERVER_OBJECT(Irp->Request.OriginalRequestor));
+	    SrvMsg->ServerMsg.IoCompleted.OriginalRequestor = 0;
+	} else {
+	    /* Otherwise, this is an intermediate requestor that set NotifyCompletion
+	     * to TRUE. Move the completed IRP to its pending IRP list so when it replies
+	     * we know that the identifier pair it supplied is valid. */
+	    InsertTailList(&RequestorDriver->PendingIoPacketList, &Irp->IoPacketLink);
+	    /* Also restore the device object of the completed IRP to the previous
+	     * device object (before this IRP is forwarded to the DriverObject) */
+	    assert(PendingIrp->PreviousDeviceObject != NULL);
+	    Irp->Request.Device.Object = PendingIrp->PreviousDeviceObject;
+	    SrvMsg->ServerMsg.IoCompleted.OriginalRequestor = Irp->Request.OriginalRequestor;
+	    DbgTrace("Restoring IRP device object to %p from %s\n",
+		     PendingIrp->PreviousDeviceObject,
+		     PendingIrp->PreviousDeviceObject->DriverObject->DriverImagePath);
+	}
+
+	/* Add the server message IO packet to the driver IO packet queue */
+	InsertTailList(&RequestorDriver->IoPacketQueue, &SrvMsg->IoPacketLink);
+	/* Signal the driver that an IO packet has been queued */
+	KeSetEvent(&RequestorDriver->IoPacketQueuedEvent);
+    free:
+	/* Detach the PENDING_IRP from the driver's ForwardedIrpList */
+	RemoveEntryList(&PendingIrp->Link);
+	assert(PendingIrp->ForwardedTo == NULL);
+	if (PendingIrp->ForwardedFrom == NULL) {
+	    /* If the PENDING_IRP is the top-level one (ie. we are replying to the
+	     * driver that originally requested the IRP), free the IO_PACKET. */
+	    assert(PendingIrp->IoPacket != NULL);
+	    IopFreeIoPacket(PendingIrp->IoPacket);
+	} else {
+	    /* Otherwise, detach the PENDING_IRP from the IRP stack */
+	    PendingIrp->ForwardedFrom->ForwardedTo = NULL;
+	}
+	/* In either case, we want to free the PENDING_IRP itself */
+	IopFreePendingIrp(PendingIrp);
+    }
 }
 
 static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
@@ -591,8 +742,7 @@ static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 							      OriginalRequestor,
 							      IrpIdentifier);
     if (CompletedIrp == NULL) {
-	IopDumpDriverPendingIoPacketList(DriverObject,
-					 OriginalRequestor,
+	IopDumpDriverPendingIoPacketList(DriverObject, OriginalRequestor,
 					 IrpIdentifier);
 	return STATUS_INVALID_PARAMETER;
     }
@@ -618,7 +768,7 @@ static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 	/* AddDevice requests cannot be forwarded so there should only
 	 * be one THREAD object waiting on it */
 	assert(PendingIrp->ForwardedTo == NULL);
-	assert(PendingIrp->Requestor == GLOBAL_HANDLE_TO_OBJECT(OriginalRequestor));
+	assert(PendingIrp->Requestor == CLIENT_HANDLE_TO_SERVER_OBJECT(OriginalRequestor));
 	/* DRIVER object cannot initiate AddDevice requests */
 	assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_THREAD));
 	/* AddDevice request cannot have any response data */
@@ -641,93 +791,10 @@ static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 	PendingIrp = PendingIrp->ForwardedTo;
 	assert(PendingIrp->IoPacket == CompletedIrp);
     }
-    /* Unmap the IO buffers mapped into the driver address space */
-    IopUnmapDriverIrpBuffers(PendingIrp);
-    /* Find the THREAD or DRIVER object at this level */
-    POBJECT Requestor = PendingIrp->Requestor;
-    if (ObObjectIsType(Requestor, OBJECT_TYPE_THREAD)) {
-	/* The original requestor is a THREAD object */
-	assert(PendingIrp->ForwardedFrom == NULL);
-	assert(PendingIrp->IoResponseData == NULL);
-	/* Copy the IO response data to the server. */
-	PendingIrp->IoResponseStatus = Response->ClientMsg.IoCompleted.IoStatus;
-	ULONG ResponseDataSize = Response->ClientMsg.IoCompleted.ResponseDataSize;
-	PendingIrp->IoResponseDataSize = ResponseDataSize;
-	if (ResponseDataSize) {
-	    PendingIrp->IoResponseData = ExAllocatePoolWithTag(ResponseDataSize,
-							       NTOS_IO_TAG);
-	    if (PendingIrp->IoResponseData != NULL) {
-		memcpy(PendingIrp->IoResponseData,
-		       Response->ClientMsg.IoCompleted.ResponseData,
-		       ResponseDataSize);
-	    }
-	}
-	/* Wake the THREAD object up */
-	KeSetEvent(&PendingIrp->IoCompletionEvent);
-    } else {
-	/* Otherwise, it must be a driver object. Reply to the driver. */
-	assert(ObObjectIsType(Requestor, OBJECT_TYPE_DRIVER));
-	/* Note that since a lower driver can create an IRP and send it to a
-	 * higher-level driver, which can in turn reflect this IRP back to the
-	 * lower driver, the Requestor can sometimes be equal to DriverObject. */
-	PIO_DRIVER_OBJECT RequestorDriver = (PIO_DRIVER_OBJECT)Requestor;
 
-	/* Allocate a new IO packet of type ServerMessage */
-	PIO_PACKET SrvMsg = NULL;
-	RET_ERR(IopAllocateIoPacket(IoPacketTypeServerMessage,
-				    Response->Size, &SrvMsg));
-	/* Copy the IO response to the new IO packet */
-	assert(SrvMsg != NULL);
-	SrvMsg->ServerMsg.Type = IoSrvMsgIoCompleted;
-	SrvMsg->ServerMsg.IoCompleted = Response->ClientMsg.IoCompleted;
-	if (SrvMsg->ServerMsg.IoCompleted.ResponseDataSize != 0) {
-	    memcpy(SrvMsg->ServerMsg.IoCompleted.ResponseData,
-		   Response->ClientMsg.IoCompleted.ResponseData,
-		   Response->ClientMsg.IoCompleted.ResponseDataSize);
-	}
-	/* If the requestor is the original requestor, set the OriginalRequestor
-	 * field to NULL since driver objects set this field to NULL when they
-	 * request a new IRP */
-	if (PendingIrp->ForwardedFrom == NULL) {
-	    assert(Requestor == IopLocateIrpInOriginalRequestor(OriginalRequestor,
-								CompletedIrp)->Requestor);
-	    SrvMsg->ServerMsg.IoCompleted.OriginalRequestor = 0;
-	} else {
-	    /* Otherwise, this is an intermediate requestor. Move the completed
-	     * IRP to its pending IRP list so when it replies we know that its
-	     * identifier pair is valid. The original requestor never replies
-	     * to the IoCompleted server message so we do not do this. */
-	    InsertTailList(&RequestorDriver->PendingIoPacketList,
-			   &CompletedIrp->IoPacketLink);
-	    /* Also restore the device object of the completed IRP to the previous
-	     * device object (before this IRP is forwarded to the DriverObject) */
-	    assert(PendingIrp->PreviousDeviceObject != NULL);
-	    CompletedIrp->Request.Device.Object = PendingIrp->PreviousDeviceObject;
-	    DbgTrace("Restoring IRP device object to %p from %s\n",
-		     PendingIrp->PreviousDeviceObject,
-		     PendingIrp->PreviousDeviceObject->DriverObject->DriverImagePath);
-	}
-
-	/* Add the server message IO packet to the driver IO packet queue */
-	InsertTailList(&RequestorDriver->IoPacketQueue, &SrvMsg->IoPacketLink);
-	/* Signal the driver that an IO packet has been queued */
-	KeSetEvent(&RequestorDriver->IoPacketQueuedEvent);
-	/* Detach the PENDING_IRP from the driver's ForwardedIrpList */
-	RemoveEntryList(&PendingIrp->Link);
-	assert(PendingIrp->ForwardedTo == NULL);
-	if (PendingIrp->ForwardedFrom == NULL) {
-	    /* If the PENDING_IRP is the top-level one (ie. the original requestor),
-	     * free the original IO_PACKET */
-	    assert(PendingIrp->IoPacket != NULL);
-	    IopFreeIoPacket(PendingIrp->IoPacket);
-	} else {
-	    /* Otherwise, detach the PENDING_IRP from the IRP stack */
-	    PendingIrp->ForwardedFrom->ForwardedTo = NULL;
-	}
-	/* In either cases, we want to free the PENDING_IRP itself */
-	IopFreePool(PendingIrp);
-    }
-
+    IopCompletePendingIrp(PendingIrp, Response->ClientMsg.IoCompleted.IoStatus,
+			  Response->ClientMsg.IoCompleted.ResponseData,
+			  Response->ClientMsg.IoCompleted.ResponseDataSize);
     return STATUS_SUCCESS;
 }
 
@@ -750,9 +817,7 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 						     OriginalRequestor,
 						     IrpIdentifier);
     if (Irp == NULL || Irp->Type != IoPacketTypeRequest) {
-	IopDumpDriverPendingIoPacketList(SourceDriver,
-					 OriginalRequestor,
-					 IrpIdentifier);
+	IopDumpDriverPendingIoPacketList(SourceDriver, OriginalRequestor, IrpIdentifier);
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
@@ -782,10 +847,13 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	PendingIrp = PendingIrp->ForwardedTo;
     }
     if (PendingIrp->PreviousDeviceObject != NULL) {
-	DbgTrace("Lowest level PendingIrp->PreviousDeviceObject = %p DriverObject = %p DriverImagePath = %s\n",
-		 PendingIrp->PreviousDeviceObject, PendingIrp->PreviousDeviceObject->DriverObject,
+	DbgTrace("Lowest level PendingIrp->PreviousDeviceObject = %p "
+		 "DriverObject = %p DriverImagePath = %s\n",
+		 PendingIrp->PreviousDeviceObject,
+		 PendingIrp->PreviousDeviceObject->DriverObject,
 		 PendingIrp->PreviousDeviceObject->DriverObject->DriverImagePath);
     }
+    RemoveEntryList(&Irp->IoPacketLink);
 
     /* If client has requested completion notification, in addition to
      * moving the IO_PACKET from the source driver object to the target
@@ -793,9 +861,11 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
      * PENDING_IRP */
     PIO_DEVICE_OBJECT PreviousDeviceObject = Irp->Request.Device.Object;
     assert(PreviousDeviceObject != NULL);
+    NTSTATUS Status;
     if (Msg->ClientMsg.ForwardIrp.NotifyCompletion) {
 	PPENDING_IRP NewPendingIrp = NULL;
-	RET_ERR(IopAllocatePendingIrp(Irp, SourceDriver, &NewPendingIrp));
+	IF_ERR_GOTO(fail, Status,
+		    IopAllocatePendingIrp(Irp, SourceDriver, &NewPendingIrp));
 	NewPendingIrp->PreviousDeviceObject = PreviousDeviceObject;
 	NewPendingIrp->ForwardedFrom = PendingIrp;
 	PendingIrp->ForwardedTo = NewPendingIrp;
@@ -810,27 +880,127 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	IopUnmapDriverIrpBuffers(PendingIrp);
     }
 
+    /* Call the IO interception callback if the requestor has registered one. */
+    PIRP_CALLBACK Callback = Irp->Request.ServerPrivate.Callback;
+    if ((Irp->Request.Flags & IOP_IRP_INTERCEPTION_CALLBACK) && Callback) {
+	if (!Callback(PendingIrp, Irp->Request.ServerPrivate.Context, FALSE)) {
+	    /* If the callback function returned FALSE, IRP forwarding should
+	     * be halted. */
+	    return STATUS_SUCCESS;
+	}
+    }
+
     /* Set the Device object of the Irp to be the new device (ForwardedTo) */
     Irp->Request.Device.Object = ForwardedTo;
-    RET_ERR_EX(IopMapIoBuffers(PendingIrp),
-	       {
-		   /* Restore the original device object in the IRP if error */
-		   Irp->Request.Device.Object = PreviousDeviceObject;
-		   /* Also undo the completion notification path above */
-		   if (Msg->ClientMsg.ForwardIrp.NotifyCompletion) {
-		       assert(PendingIrp->ForwardedFrom != NULL);
-		       PendingIrp->ForwardedFrom->ForwardedTo = NULL;
-		       RemoveEntryList(&PendingIrp->Link);
-		       IopFreePool(PendingIrp);
-		   }
-	       });
+    Status = IopMapIoBuffers(PendingIrp);
+    if (!NT_SUCCESS(Status)) {
+	/* Restore the original device object in the IRP if error */
+	Irp->Request.Device.Object = PreviousDeviceObject;
+	/* Also undo the completion notification path above */
+	if (Msg->ClientMsg.ForwardIrp.NotifyCompletion) {
+	    assert(PendingIrp->ForwardedFrom != NULL);
+	    PendingIrp = PendingIrp->ForwardedFrom;
+	    RemoveEntryList(&PendingIrp->ForwardedTo->Link);
+	    IopFreePendingIrp(PendingIrp->ForwardedTo);
+	    PendingIrp->ForwardedTo = NULL;
+	}
+	goto fail;
+    }
 
     /* Move the original IO_PACKET from SourceDriver to ForwardedTo and wake the
      * target driver up */
-    RemoveEntryList(&Irp->IoPacketLink);
     InsertTailList(&ForwardedTo->DriverObject->IoPacketQueue, &Irp->IoPacketLink);
     KeSetEvent(&ForwardedTo->DriverObject->IoPacketQueuedEvent);
     return STATUS_SUCCESS;
+
+    IO_STATUS_BLOCK IoStatus;
+fail:
+    IoStatus.Status = Status;
+    IoStatus.Information = 0;
+    IopCompletePendingIrp(PendingIrp, IoStatus, NULL, 0);
+    return Status;
+}
+
+static VOID IopCachedReadCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				  IN ULONG64 FileOffset,
+				  IN ULONG64 Length,
+				  IN NTSTATUS Status,
+				  IN ULONG64 PinnedLength,
+				  IN OUT PVOID Context)
+{
+    PIO_RESPONSE_DATA ResponseData = NULL;
+    ULONG ResponseDataSize = 0;
+    PPENDING_IRP PendingIrp = Context;
+    if (!NT_SUCCESS(Status) || Length != PinnedLength) {
+	Status = STATUS_IO_DEVICE_ERROR;
+	goto out;
+    }
+    assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_DRIVER));
+    PIO_DRIVER_OBJECT DriverObject = PendingIrp->Requestor;
+    struct _MDL_LIST {
+	LIST_ENTRY Link;
+	PVOID MappedSystemVa;
+	ULONG_PTR ByteCount;
+    } MdlListHead = {}, *PrevMdl = NULL;
+    InitializeListHead(&MdlListHead.Link);
+    ULONG MdlCount = 0;
+    ULONG64 CurrentLength = 0;
+    while (CurrentLength < Length) {
+	ULONG MappedLength = 0;
+	PVOID Buffer = NULL;
+	Status = CcMapDataEx(DriverObject, Fcb, FileOffset + CurrentLength,
+			     Length - CurrentLength, &MappedLength, &Buffer, FALSE);
+	if (!NT_SUCCESS(Status)) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto free;
+	}
+	assert(Buffer);
+	if (PrevMdl && (PUCHAR)PrevMdl->MappedSystemVa + PrevMdl->ByteCount == Buffer) {
+	    PrevMdl->ByteCount += MappedLength;
+	    CurrentLength += MappedLength;
+	    continue;
+	}
+	struct _MDL_LIST *MdlListEntry = ExAllocatePoolWithTag(sizeof(struct _MDL_LIST),
+							       NTOS_IO_TAG);
+	if (!MdlListEntry) {
+	    goto free;
+	}
+	PrevMdl = MdlListEntry;
+	MdlListEntry->MappedSystemVa = Buffer;
+	MdlListEntry->ByteCount = MappedLength;
+	InsertTailList(&MdlListHead.Link, &MdlListEntry->Link);
+	CurrentLength += MappedLength;
+	MdlCount++;
+    }
+
+    ResponseDataSize = sizeof(IO_RESPONSE_DATA) + MdlCount * sizeof(PVOID) * 2;
+    ResponseData = ExAllocatePoolWithTag(ResponseDataSize, NTOS_IO_TAG);
+    if (!ResponseData) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto free;
+    }
+    ResponseData->MdlChain.MdlCount = MdlCount;
+    ULONG i = 0;
+    LoopOverList(Entry, &MdlListHead.Link, struct _MDL_LIST, Link) {
+	ResponseData->MdlChain.Mdl[i].MappedSystemVa = Entry->MappedSystemVa;
+	ResponseData->MdlChain.Mdl[i].ByteCount = Entry->ByteCount;
+	i++;
+    }
+    assert(i == MdlCount);
+    Status = STATUS_SUCCESS;
+
+free:
+    LoopOverList(Entry, &MdlListHead.Link, struct _MDL_LIST, Link) {
+	IopFreePool(Entry);
+    }
+    IO_STATUS_BLOCK IoStatus;
+out:
+    IoStatus.Status = Status;
+    IoStatus.Information = NT_SUCCESS(Status) ? Length : 0;
+    IopCompletePendingIrp(PendingIrp, IoStatus, ResponseData, ResponseDataSize);
+    if (ResponseData) {
+	IopFreePool(ResponseData);
+    }
 }
 
 static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
@@ -856,17 +1026,36 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     memcpy(IoPacket, Src, Src->Size);
     IoPacket->Request.Device.Object = DeviceObject;
     IoPacket->Request.File.Object = IopGetFileObject(DeviceObject, Src->Request.File.Handle);
-    IoPacket->Request.OriginalRequestor = OBJECT_TO_GLOBAL_HANDLE(DriverObject);
+    IoPacket->Request.OriginalRequestor = SERVER_OBJECT_TO_CLIENT_HANDLE(DriverObject);
     PPENDING_IRP PendingIrp = NULL;
     RET_ERR_EX(IopAllocatePendingIrp(IoPacket, DriverObject, &PendingIrp),
 	       IopFreeIoPacket(IoPacket));
     assert(PendingIrp != NULL);
 
+    /* If the device object is a mounted volume and the IRP is an MDL READ,
+     * we intercept the IRP and call Cc to handle it. We disallow WRITE IRPs
+     * for mounted volumes as these can lead to cache inconsistencies. All IO
+     * to a mounted volume must be done through the cache manager. */
+    if (DeviceObject->Vcb) {
+	if (Src->Request.MajorFunction == IRP_MJ_WRITE) {
+	    IO_STATUS_BLOCK IoStatus = { .Status = STATUS_INVALID_DEVICE_REQUEST };
+	    IopCompletePendingIrp(PendingIrp, IoStatus, NULL, 0);
+	    return STATUS_SUCCESS;
+	}
+	if (!Src->Request.OutputBuffer && Src->Request.MajorFunction == IRP_MJ_READ &&
+	    Src->Request.MinorFunction == IRP_MN_MDL) {
+	    assert(Src->Request.OutputBufferLength);
+	    CcPinDataEx(DeviceObject->Vcb->VolumeFcb, Src->Request.Read.ByteOffset.QuadPart,
+			Src->Request.OutputBufferLength, IopCachedReadCallback, PendingIrp);
+	    return STATUS_SUCCESS;
+	}
+    }
+
     /* Map the input/output buffers from source driver to target driver */
     RET_ERR_EX(IopMapIoBuffers(PendingIrp),
 	       {
 		   IopFreeIoPacket(IoPacket);
-		   IopFreePool(PendingIrp);
+		   IopFreePendingIrp(PendingIrp);
 	       });
 
     InsertTailList(&DriverObject->ForwardedIrpList, &PendingIrp->Link);
@@ -1000,8 +1189,8 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 		   Src->Request.Device.Object != NULL);
 	    assert(Src->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
 		   Src->Request.Device.Object->DriverObject == DriverObject);
-	    Dest->Request.Device.Handle = OBJECT_TO_GLOBAL_HANDLE(Src->Request.Device.Object);
-	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(Src->Request.File.Object);
+	    Dest->Request.Device.Handle = SERVER_OBJECT_TO_CLIENT_HANDLE(Src->Request.Device.Object);
+	    Dest->Request.File.Handle = SERVER_OBJECT_TO_CLIENT_HANDLE(Src->Request.File.Object);
 	    if (Src->Request.Flags & IOP_IRP_INPUT_DIRECT_IO) {
 		assert(Src->Request.InputBufferPfn);
 		assert(Src->Request.InputBufferPfnCount);

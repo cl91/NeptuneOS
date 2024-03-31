@@ -41,6 +41,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
+    /* TODO */
 }
 
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,

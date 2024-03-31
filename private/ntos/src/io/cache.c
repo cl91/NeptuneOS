@@ -152,15 +152,20 @@ typedef struct _FILE_OFFSET_MAPPING {
  * A view is an area of the virtual memory space that spans 64 pages (256KB
  * on architectures with 4K pages) that maps a (64*PAGE_SIZE)-aligned file
  * region of a cached file. The virtual memory area is always aligned by
- * 64 * PAGE_SIZE. Each page in the view always maps a full PAGE-SIZE'd file
- * region.
+ * 64 * PAGE_SIZE. When loading data from the disk we always load the full
+ * view, unless the view maps the last region of the file, in which case only
+ * the file region up till the end of file is loaded.
  */
 typedef struct _CC_VIEW {
-    ULONG64 Bitmap;		/* Bitmap of the allocation status. */
+    ULONG64 DirtyMap;	/* Bitmap of the dirty status of each page. */
     MWORD MappedAddress; /* This is in the address space of the cache map */
     AVL_NODE Node; /* Key is the starting file offset of this view. */
     PCC_CACHE_MAP CacheMap; /* Cache map that this view belongs to. */
-    AVL_TREE FileOffsetMapping;	/* AVL tree of FILE_OFFSET_MAPPING. */
+    AVL_TREE FileOffsetMapping;	/* AVL tree of FILE_OFFSET_MAPPING. This is
+				 * unused if the view is for the volume file. */
+    PPENDING_IRP PendingIrp;  /* Queued READ request for this view. */
+    LIST_ENTRY QueuedCallbacks;	/* List of QUEUED_CALLBACKs for this view. */
+    BOOLEAN Loaded; /* TRUE if file data have been loaded from disk. */
 } CC_VIEW, *PCC_VIEW;
 
 #define AVL_NODE_TO_VIEW(p)	((p) ? CONTAINING_RECORD(p, CC_VIEW, Node) : NULL)
@@ -168,15 +173,17 @@ typedef struct _CC_VIEW {
 static CC_CACHE_SPACE CiNtosCacheSpace;
 
 static NTSTATUS CiInitializeCacheSpace(IN PIO_DRIVER_OBJECT DriverObject,
-				       OUT OPTIONAL PCC_CACHE_SPACE *pCacheSpace)
+				       OUT PCC_CACHE_SPACE *pCacheSpace)
 {
     assert(DriverObject);
+    assert(pCacheSpace);
     PCC_CACHE_SPACE CacheSpace = CiAllocatePool(sizeof(CC_CACHE_SPACE));
     if (!CacheSpace) {
 	return STATUS_NO_MEMORY;
     }
     assert(DriverObject->DriverProcess);
     CacheSpace->AddrSpace = &DriverObject->DriverProcess->VSpace;
+    *pCacheSpace = CacheSpace;
     return STATUS_SUCCESS;
 }
 
@@ -259,6 +266,21 @@ alloc:
 	*pCacheMap = CacheMap;
     }
     return STATUS_SUCCESS;
+}
+
+VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb)
+{
+    /* TODO */
+}
+
+VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		   IN ULONG64 FileSize)
+{
+    assert(Fcb);
+    assert(FileSize);
+    assert(!Fcb->FileSize);
+    Fcb->FileSize = FileSize;
+    /* TODO: Size changes */
 }
 
 static PCC_VIEW_TABLE CiAllocateViewTable()
@@ -407,9 +429,29 @@ static NTSTATUS CiGetView(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	View->CacheMap = CacheMap;
 	AvlInitializeTree(&View->FileOffsetMapping);
 	AvlTreeInsertNode(&CacheMap->ViewTree, Parent, Node);
+	InitializeListHead(&View->QueuedCallbacks);
     }
     *pView = AVL_NODE_TO_VIEW(Node);
     return Node ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
+}
+
+typedef struct _PIN_DATA_CALLBACK_CONTEXT {
+    ULONG64 PinnedLength;
+    KEVENT Event;
+    NTSTATUS Status;
+} PIN_DATA_CALLBACK_CONTEXT, *PPIN_DATA_CALLBACK_CONTEXT;
+
+static VOID CiPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+			      IN ULONG64 FileOffset,
+			      IN ULONG64 Length,
+			      IN NTSTATUS Status,
+			      IN ULONG64 PinnedLength,
+			      IN OUT PVOID Ctx)
+{
+    PPIN_DATA_CALLBACK_CONTEXT Context = Ctx;
+    Context->PinnedLength = PinnedLength;
+    Context->Status = Status;
+    KeSetEvent(&Context->Event);
 }
 
 /*
@@ -424,168 +466,254 @@ static NTSTATUS CiGetView(IN PIO_FILE_CONTROL_BLOCK Fcb,
  *     Fcb            - File control block for the file object.
  *     FileOffset     - Starting offset of the file region.
  *     Length         - Length of the file region.
- *     *pPinnedLength - Length of the successfully pinned region.
  *
  * RETURNS:
  *     STATUS_SUCCESS if all data have been successfully loaded. Error
- *     status if an error has occurred. If only part of the file region
- *     is pinned, there are two cases:
- *       (1) If the caller specified a non-NULL pPinnedLength, we return
- *           STATUS_SOME_NOT_MAPPED. Note this is an NT_SUCCESS status.
- *       (2) If the caller did not specify a pPinnedLength, we return
- *           STATUS_NONE_MAPPED.
+ *     status if an error has occurred.
  */
 NTSTATUS CcPinData(IN ASYNC_STATE State,
 		   IN PTHREAD Thread,
 		   IN PIO_FILE_CONTROL_BLOCK Fcb,
 		   IN ULONG64 FileOffset,
-		   IN ULONG64 Length,
-		   OUT OPTIONAL ULONG64 *pPinnedLength)
+		   IN ULONG64 Length)
 {
-    NTSTATUS Status;
-
     ASYNC_BEGIN(State, Locals, {
-	    ULONG64 PinnedLength;
+	    PPIN_DATA_CALLBACK_CONTEXT Context;
 	});
 
-    Locals.PinnedLength = 0;
-
-    /* Since deviceless files are purely in-memory objects, all we need to do
-     * is allocating the cache pages if they have not been allocated. */
-    if (!Fcb->Vcb) {
-	while (Locals.PinnedLength < Length) {
-	    ULONG MappedLength = 0;
-	    PVOID Buffer;
-	    Status = CcMapData(Fcb, FileOffset + Locals.PinnedLength,
-			       Length - Locals.PinnedLength, &MappedLength, &Buffer);
-	    if (!NT_SUCCESS(Status)) {
-		goto out;
-	    }
-	    Locals.PinnedLength += MappedLength;
-	}
-	Status = STATUS_SUCCESS;
-	goto out;
+    Locals.Context = CiAllocatePool(sizeof(PIN_DATA_CALLBACK_CONTEXT));
+    if (!Locals.Context) {
+	ASYNC_RETURN(State, STATUS_INSUFFICIENT_RESOURCES);
     }
+    KeInitializeEvent(&Locals.Context->Event, NotificationEvent);
+    CcPinDataEx(Fcb, FileOffset, Length, CiPinDataCallback, Locals.Context);
 
-    /* UNIMPLEMENTED! */
-    assert(FALSE);
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.Context->Event.Header, FALSE, NULL);
 
-out:
-    if (pPinnedLength) {
-	*pPinnedLength = Locals.PinnedLength;
-	if (!NT_SUCCESS(Status)) {
-	    Status = Locals.PinnedLength ? STATUS_SOME_NOT_MAPPED : STATUS_NONE_MAPPED;
-	} else {
-	    Status = STATUS_SUCCESS;
-	}
-    } else {
-	Status = Locals.PinnedLength == Length ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
-    }
+    NTSTATUS Status = Locals.Context->Status;
+    KeUninitializeEvent(&Locals.Context->Event);
+    CiFreePool(Locals.Context);
     ASYNC_END(State, Status);
 }
 
-VOID CcUnpinData(IN PIO_FILE_CONTROL_BLOCK Fcb,
-		     IN ULONG64 FileOffset,
-		     IN ULONG Length)
+typedef struct _PIN_DATA_EX_CALLBACK {
+    ULONG64 OriginalFileOffset;
+    ULONG64 OriginalLength;
+    ULONG64 TargetLength;	/* Callback will be called when */
+    ULONG64 CompletedLength;	/* TargetLength == CompletedLength */
+    PCC_PIN_DATA_CALLBACK Callback;
+    PVOID Context;
+    NTSTATUS Status;
+} PIN_DATA_EX_CALLBACK, *PPIN_DATA_EX_CALLBACK;
+
+typedef struct _QUEUED_CALLBACK {
+    PPIN_DATA_EX_CALLBACK CallbackInfo;
+    PCC_VIEW View;
+    LIST_ENTRY Link;		/* List link for View->CallbackList */
+    ULONG MappedViewSize;
+} QUEUED_CALLBACK, *PQUEUED_CALLBACK;
+
+static BOOLEAN CiPagedReadCallback(IN PPENDING_IRP PendingIrp,
+				   IN OUT PVOID Context,
+				   IN BOOLEAN Completion)
 {
+    PQUEUED_CALLBACK QueuedCallback = Context;
+    PPIN_DATA_EX_CALLBACK CallbackInfo = QueuedCallback->CallbackInfo;
+    PCC_VIEW View = QueuedCallback->View;
+    PIO_FILE_CONTROL_BLOCK Fcb = View->CacheMap->Fcb;
+    BOOLEAN IsVolume = Fcb == Fcb->Vcb->VolumeFcb;
+    if (IsVolume) {
+	assert(Completion);
+	NTSTATUS Status = PendingIrp->IoResponseStatus.Status;
+	if (NT_SUCCESS(Status)) {
+	    View->Loaded = TRUE;
+	} else {
+	    MmUncommitVirtualMemory(View->MappedAddress, QueuedCallback->MappedViewSize);
+	    CallbackInfo->Status = Status;
+	}
+	CallbackInfo->CompletedLength += VIEW_SIZE;
+	if (CallbackInfo->CompletedLength == CallbackInfo->TargetLength) {
+	    ULONG64 PinnedLength = NT_SUCCESS(CallbackInfo->Status) ?
+		CallbackInfo->OriginalLength : 0;
+	    CallbackInfo->Callback(Fcb, CallbackInfo->OriginalFileOffset,
+				   CallbackInfo->OriginalLength, CallbackInfo->Status,
+				   PinnedLength, CallbackInfo->Context);
+	    CiFreePool(CallbackInfo);
+	}
+    } else {
+	assert(FALSE);
+    }
+    RemoveEntryList(&QueuedCallback->Link);
+    CiFreePool(QueuedCallback);
+    return FALSE;
 }
 
 /*
  * ROUTINE DESCRIPTION:
- *     This routine returns the pointer to the beginning of the specified
- *     file region mapped in the shared cache map and sets *MappedLength
- *     to the mapped length (within the same view). Before calling this
- *     routine, the caller must call CcPinData to populate the shared cache
- *     map for the file region (this does not apply to deviceless file
- *     objects, as these do not have a backing file system and are simply
- *     in-memory buffers).
+ *     Populate the shared cache map for the given file region of the
+ *     file object. Once populated, the data stay in the cache until
+ *     CcUnpinData is called.
  *
  * ARGUMENTS:
- *     Fcb            - File control block for the file object.
- *     FileOffset     - Starting offset of the file region.
- *     Length         - Length of the file region.
- *     *pMappedLength - The length of the successfully mapped region.
- *     *Buffer        - The mapped buffer in the cache map.
+ *     Fcb        - File control block for the file object.
+ *     FileOffset - Starting offset of the file region.
+ *     Callback   - Callback function to call when IO is completed.
+ *     Context    - Context for the callback function.
  *
- * RETURNS:
- *     STATUS_SUCCESS if all data have been successfully mapped.
- *     STATUS_NONE_MAPPED if no data have been mapped or if some data have
- *       been partially mapped but the caller did not specify pMappedLength.
- *     STATUS_SOME_NOT_MAPPED if some data have been partially mapped and
- *       the caller has specified a valid pMappedLength pointer.
- *
- * REMARKS:
- *     Note STATUS_SOME_NOT_MAPPED is an NT_SUCCESS status. If pMappedLength
- *     is not specified, the routine will return failure in the case of partial
- *     mapping.
+ * REMAKRS:
+ *     Note that for purely in-memory file objects, this function is
+ *     synchronous and simply populates the cache pages (with zero)
+ *     of the file.
  */
-NTSTATUS CcMapData(IN PIO_FILE_CONTROL_BLOCK Fcb,
-		   IN ULONG64 FileOffset,
-		   IN ULONG Length,
-		   OUT OPTIONAL ULONG *pMappedLength,
-		   OUT PVOID *Buffer)
+VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		 IN ULONG64 FileOffset,
+		 IN ULONG64 Length,
+		 IN PCC_PIN_DATA_CALLBACK Callback,
+		 IN OPTIONAL PVOID Context)
 {
     assert(Fcb);
-    if (pMappedLength) {
-	*pMappedLength = 0;
+    assert(Callback);
+
+    PIO_VOLUME_CONTROL_BLOCK Vcb = Fcb->Vcb;
+    NTSTATUS Status;
+
+    /* If the FileSize of the FCB is not set, we skip the end-of-file checks and
+     * assume the file is infinitely long. */
+    ULONG64 FileSize = Fcb->FileSize ? Fcb->FileSize : ~0ULL;
+    if (FileSize <= FileOffset || Length == 0) {
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
     }
-    if (!Length) {
-	return STATUS_SUCCESS;
+    if (FileOffset + Length > FileSize) {
+	Length = FileSize - FileOffset;
     }
-    /* Get the view in the shared cache map corresponding to this file region.
-     * If the view is not mapped, for device-less files it is automatically
-     * created, and in other cases an error is returned. */
-    PCC_VIEW View = NULL;
-    RET_ERR(CiGetView(Fcb, NULL, FileOffset, !Fcb->Vcb, &View));
-    assert(View);
+
+    /* Since we are dealing with asynchronous IO and we don't have the convenient
+     * ASYNC_STATE with which we can simply wait for the IOs to complete, construct
+     * a PIN_DATA_EX_CALLBACK structure which packs all the information we need
+     * when the IOs are completed. */
+    PPIN_DATA_EX_CALLBACK CallbackInfo = CiAllocatePool(sizeof(PIN_DATA_EX_CALLBACK));
+    if (!CallbackInfo) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto out;
+    }
+    CallbackInfo->OriginalFileOffset = FileOffset;
+    CallbackInfo->OriginalLength = Length;
+    /* Align the file region by view size (256KB on x86) */
     ULONG64 AlignedOffset = VIEW_ALIGN64(FileOffset);
-    assert(AlignedOffset == View->Node.Key);
-    ULONG MappedLength = Length;
-    if ((VIEW_ALIGN_UP64(FileOffset + Length) - AlignedOffset) > VIEW_SIZE) {
-	MappedLength = AlignedOffset + VIEW_SIZE - FileOffset;
-    }
-    ULONG ViewOffset = FileOffset - AlignedOffset;
-    ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
-    ULONG EndPage = PAGE_ALIGN_UP(ViewOffset + MappedLength) >> PAGE_LOG2SIZE;
-    assert(StartPage < PAGES_IN_VIEW);
-    assert(EndPage <= PAGES_IN_VIEW);
-    for (ULONG i = StartPage; i < EndPage; i++) {
-	if (!GetBit64(View->Bitmap, i)) {
-	    if (Fcb->Vcb) {
-		/* For files with a backing file system, if the view pages are not
-		 * mapped, adjust the mapped length and return. */
-		if (i == StartPage) {
-		    MappedLength = 0;
-		} else {
-		    MappedLength = (i << PAGE_LOG2SIZE) - ViewOffset;
-		}
-		break;
-	    } else {
-		/* We are dealing with a device-less file. These are file objects
-		 * that do not have a backing file system and are purely in-memory
-		 * objects. In this case if the view pages are not mapped we simply
-		 * allocate them. */
-		NTSTATUS Status = MmCommitOwnedMemory(CiNtosCacheSpace.AddrSpace,
-						      View->MappedAddress + PAGE_SIZE * i,
-						      PAGE_SIZE, MM_RIGHTS_RW, FALSE, NULL, 0);
-		if (!NT_SUCCESS(Status)) {
-		    break;
-		}
-		SetBit64(View->Bitmap, i);
-	    }
+    ULONG64 EndOffset = VIEW_ALIGN_UP64(FileOffset + Length);
+    CallbackInfo->TargetLength = EndOffset - AlignedOffset;
+    CallbackInfo->Callback = Callback;
+    CallbackInfo->Context = Context;
+
+    /* Get the view object for each file segment, and queue the READ request if the
+     * file segment is not loaded into memory. */
+    ULONG NumReqs = 0;
+    ULONG64 ProcessedLength = 0;
+    while (ProcessedLength < CallbackInfo->TargetLength) {
+	ULONG64 CurrentOffset = AlignedOffset + ProcessedLength;
+	ProcessedLength += VIEW_SIZE;
+	assert(CurrentOffset < FileSize);
+	PCC_VIEW View = NULL;
+	/* If view creation failed, record the error and move on to the next
+	 * view (if any). The next view creation will most likely also fail,
+	 * but that's ok. */
+	IF_ERR_GOTO(fail, Status, CiGetView(Fcb, NULL, CurrentOffset, TRUE, &View));
+	/* We always map the entire view except for the last view of a file, in
+	 * which case the view size is adjusted to the end of the file. */
+	ULONG MappedViewSize = VIEW_SIZE;
+	if (CurrentOffset + VIEW_SIZE > FileSize) {
+	    MappedViewSize = PAGE_ALIGN_UP(FileSize - CurrentOffset);
 	}
+	/* If the view is mapped, simply increment the completed length and
+	 * move on to the next view (if any). */
+	if (View->Loaded) {
+	    CallbackInfo->CompletedLength += VIEW_SIZE;
+	    continue;
+	}
+	/* For the volume device or purely in-memory file objects, if the view is not
+	 * mapped, we need to allocate private pages for the view. */
+	BOOLEAN IsVolume = Vcb && (Fcb == Vcb->VolumeFcb);
+	if (!Vcb || IsVolume) {
+	    IF_ERR_GOTO(fail, Status,
+			MmCommitOwnedMemory(CiNtosCacheSpace.AddrSpace,
+					    View->MappedAddress, MappedViewSize,
+					    MM_RIGHTS_RW, FALSE, NULL, 0));
+	}
+	/* For purely in-memory file objects, we don't need to send IO requests. */
+	if (!Vcb) {
+	    View->Loaded = TRUE;
+	    CallbackInfo->CompletedLength += VIEW_SIZE;
+	    assert(CallbackInfo->CompletedLength == ProcessedLength);
+	    continue;
+	}
+	/* Allocate a QUEUED_CALLBACK so we can queue the callback on the IRP
+	 * in order for it to be called later when the IO is completed. */
+	PQUEUED_CALLBACK QueuedCallback = CiAllocatePool(sizeof(QUEUED_CALLBACK));
+	if (!QueuedCallback) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto fail;
+	}
+	QueuedCallback->CallbackInfo = CallbackInfo;
+	QueuedCallback->View = View;
+	QueuedCallback->MappedViewSize = MappedViewSize;
+	if (!View->PendingIrp) {
+	    PIO_DEVICE_OBJECT DevObj = IsVolume ? Vcb->StorageDevice : Vcb->VolumeDevice;
+	    if (!DevObj) {
+		/* This should not happen since clients should not be able to make IO
+		 * requests to FS file objects before the volume is mounted. */
+		assert(FALSE);
+		Status = STATUS_INTERNAL_ERROR;
+		goto fail;
+	    }
+	    assert(IsVolume || Fcb->MasterFileObject);
+	    ULONG ReadLength = (CurrentOffset + VIEW_SIZE > FileSize)
+		? (FileSize - CurrentOffset) : VIEW_SIZE;
+	    IO_REQUEST_PARAMETERS Irp = {
+		.Flags = IOP_IRP_COMPLETION_CALLBACK,
+		.Device.Object = DevObj,
+		.File.Object = IsVolume ? NULL : Fcb->MasterFileObject,
+		.MajorFunction = IRP_MJ_READ,
+		.OutputBuffer = IsVolume ? (MWORD)View->MappedAddress : 0,
+		.OutputBufferLength = ReadLength,
+		.Read.ByteOffset.QuadPart = CurrentOffset,
+		.ServerPrivate = {
+		    .Callback = CiPagedReadCallback,
+		    .Context = QueuedCallback
+		}
+	    };
+	    if (!IsVolume) {
+		Irp.Flags |= IOP_IRP_INTERCEPTION_CALLBACK;
+	    }
+	    IF_ERR_GOTO(fail, Status, IopCallDriver(IOP_PAGING_IO_REQUESTOR,
+						    &Irp, &View->PendingIrp));
+	}
+	InsertTailList(&View->QueuedCallbacks, &QueuedCallback->Link);
+	NumReqs++;
+	continue;
+    fail:
+	CallbackInfo->CompletedLength += VIEW_SIZE;
+	CallbackInfo->Status = Status;
     }
-    if (!MappedLength) {
-	*Buffer = NULL;
-	return STATUS_NONE_MAPPED;
+
+    assert(Vcb || !NumReqs);
+    if (!NumReqs) {
+	Status = CallbackInfo->Status;
+	CiFreePool(CallbackInfo);
+	goto out;
     }
-    *Buffer = (PUCHAR)View->MappedAddress + ViewOffset;
-    if (pMappedLength) {
-	*pMappedLength = MappedLength;
-	return MappedLength == Length ? STATUS_SUCCESS : STATUS_SOME_NOT_MAPPED;
-    } else {
-	return MappedLength == Length ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
-    }
+    return;
+
+out:
+    Callback(Fcb, FileOffset, Length, Status,
+	     NT_SUCCESS(Status) ? Length : 0, Context);
+}
+
+VOID CcUnpinData(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		 IN ULONG64 FileOffset,
+		 IN ULONG Length)
+{
 }
 
 /*
@@ -595,19 +723,22 @@ NTSTATUS CcMapData(IN PIO_FILE_CONTROL_BLOCK Fcb,
  *     the driver process. If DriverObject is NULL, this routine returns
  *     the pointer to the beginning of the file region in the shared cache
  *     map. *MappedLength will be set to the length of the successfully
- *     mapped region (within the same view). Before calling this routine,
- *     the caller must call CcPinData to populate the shared cache map for
- *     the file region.
+ *     mapped region. Note the maximum length that will be mapped in one
+ *     single call to CcMapDataEx is the view size (256KB on x86). Before
+ *     calling this routine, the caller must call CcPinData to populate the
+ *     shared cache map for the file region.
  *
  * ARGUMENTS:
- *     DriverObject  - Driver object for the private cache map.
- *     Fcb           - File control block for the file object.
- *     FileOffset    - Starting offset of the file region.
- *     Length        - Length of the file region.
- *     *MappedLength - Length of the successfully mapped region.
- *     *Buffer       - Mapped buffer in the cache map.
- *                     Note if DriverObject is not NULL, this is a
- *                     pointer within the driver address space.
+ *     DriverObject   - Driver object for the private cache map.
+ *     Fcb            - File control block for the file object.
+ *     FileOffset     - Starting offset of the file region.
+ *     Length         - Length of the file region. File region will
+ *                      be truncated to view boundary.
+ *     *pMappedLength - Length of the successfully mapped region.
+ *     *Buffer        - Mapped buffer in the cache map.
+ *                      Note if DriverObject is not NULL, this is a
+ *                      pointer within the driver address space.
+ *     MarkDirty      - If TRUE, will mark the mapped pages as dirty.
  *
  * RETURNS:
  *     STATUS_SUCCESS if all data have been successfully mapped.
@@ -621,13 +752,95 @@ NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 		     IN PIO_FILE_CONTROL_BLOCK Fcb,
 		     IN ULONG64 FileOffset,
 		     IN ULONG Length,
-		     OUT ULONG *MappedLength,
-		     OUT PVOID *Buffer)
+		     OUT ULONG *pMappedLength,
+		     OUT PVOID *Buffer,
+		     IN BOOLEAN MarkDirty)
 {
-    if (!DriverObject) {
-	return CcMapData(Fcb, FileOffset, Length, MappedLength, Buffer);
+    assert(Fcb);
+    if (pMappedLength) {
+	*pMappedLength = 0;
     }
-    UNIMPLEMENTED;
+    if (!Length) {
+	return STATUS_SUCCESS;
+    }
+    /* If the FileSize of the FCB is not set, we skip the end-of-file checks and
+     * assume the file is infinitely long. */
+    ULONG64 FileSize = Fcb->FileSize ? Fcb->FileSize : ~0ULL;
+    if (FileOffset >= FileSize) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    ULONG MappedLength = Length;
+    if (FileOffset + Length > FileSize) {
+	MappedLength = FileSize - FileOffset;
+    }
+
+    /* If we are mapping a private cache, make sure the cache map is initialized. */
+    if (DriverObject) {
+	RET_ERR(CcInitializeCacheMap(Fcb, DriverObject, NULL));
+    }
+
+    /* Get the view in the cache map corresponding to this file region. If we
+     * are mapping a private cache map and the view does not exist, create it. */
+    PCC_VIEW View = NULL;
+    RET_ERR(CiGetView(Fcb, DriverObject, FileOffset, DriverObject != NULL, &View));
+    assert(View);
+
+    ULONG64 AlignedOffset = VIEW_ALIGN64(FileOffset);
+    assert(AlignedOffset == View->Node.Key);
+    ULONG64 EndOffset = AlignedOffset + VIEW_SIZE;
+    if (EndOffset > FileSize) {
+	EndOffset = FileSize;
+    }
+    if (FileOffset + MappedLength > EndOffset) {
+	assert(EndOffset > FileOffset);
+	MappedLength = EndOffset - FileOffset;
+    }
+    ULONG MappedViewSize = EndOffset - AlignedOffset;
+    if (!View->Loaded) {
+	if (DriverObject) {
+	    ULONG WindowSize = 0;
+	    PVOID Buffer = NULL;
+	    NTSTATUS Status = CcMapData(Fcb, AlignedOffset, VIEW_SIZE, &WindowSize, &Buffer);
+	    if (!NT_SUCCESS(Status)) {
+		MappedLength = 0;
+		goto out;
+	    }
+	    assert(WindowSize == MappedViewSize);
+	    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+	    Status = MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
+					 View->CacheMap->CacheSpace->AddrSpace,
+					 View->MappedAddress, MappedViewSize, MM_RIGHTS_RW);
+	    if (NT_SUCCESS(Status)) {
+		View->Loaded = TRUE;
+	    } else {
+		MappedLength = 0;
+	    }
+	} else {
+	    MappedLength = 0;
+	}
+    }
+
+out:
+    if (!MappedLength) {
+	*Buffer = NULL;
+	return STATUS_NONE_MAPPED;
+    } else if (MarkDirty) {
+	ULONG ViewOffset = FileOffset - AlignedOffset;
+	ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
+	ULONG EndPage = PAGE_ALIGN_UP(ViewOffset + MappedLength) >> PAGE_LOG2SIZE;
+	assert(StartPage < PAGES_IN_VIEW);
+	assert(EndPage <= PAGES_IN_VIEW);
+	for (ULONG i = StartPage; i < EndPage; i++) {
+	    SetBit64(View->DirtyMap, i);
+	}
+    }
+    *Buffer = (PUCHAR)View->MappedAddress + (FileOffset - AlignedOffset);
+    if (pMappedLength) {
+	*pMappedLength = MappedLength;
+	return MappedLength == Length ? STATUS_SUCCESS : STATUS_SOME_NOT_MAPPED;
+    } else {
+	return MappedLength == Length ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
+    }
 }
 
 /*
@@ -650,8 +863,8 @@ static NTSTATUS CiCopyReadWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
     while ((LONG64)Length > 0) {
 	ULONG MappedLength = 0;
 	PVOID MappedBuffer = NULL;
-	Status = CcMapData(Fcb, FileOffset, Length,
-			   &MappedLength, &MappedBuffer);
+	Status = CcMapDataEx(NULL, Fcb, FileOffset, Length,
+			     &MappedLength, &MappedBuffer, Write);
 	if (!NT_SUCCESS(Status)) {
 	    break;
 	}

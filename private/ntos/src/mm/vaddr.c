@@ -544,7 +544,7 @@ PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
  * space of the specified process.
  */
 BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
-				    IN PPROCESS Process,
+				    IN PVIRT_ADDR_SPACE VSpace,
 				    IN MWORD Buffer,
 				    IN MWORD BufferLength,
 				    OUT OPTIONAL ULONG *pPfnCount)
@@ -569,7 +569,7 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	if (Exit) {
 	    goto out;
 	}
-	PPAGING_STRUCTURE Page = MmQueryPageEx(&Process->VSpace, VirtAddr, TRUE);
+	PPAGING_STRUCTURE Page = MmQueryPageEx(VSpace, VirtAddr, TRUE);
 	if (!Page) {
 	    return FALSE;
 	}
@@ -758,6 +758,12 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 	assert(MiUntypedIsInFreeLists(Vad->PhysicalSectionView.RootUntyped));
     }
     MiFreePool(Vad);
+}
+
+VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
+			     IN MWORD WindowSize)
+{
+    MiUncommitWindow(&MiNtosVaddrSpace, &StartAddr, &WindowSize);
 }
 
 /*

@@ -58,6 +58,16 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, STATUS_NO_MEMORY);
     }
     DevObj->Vcb->MountInProgress = TRUE;
+    DevObj->Vcb->VolumeFcb = ExAllocatePoolWithTag(sizeof(IO_FILE_CONTROL_BLOCK),
+						   NTOS_IO_TAG);
+    if (!DevObj->Vcb->VolumeFcb) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto out;
+    }
+    /* FileSize is set to zero for the time being as we don't know the volume size yet. */
+    IopInitializeFcb(DevObj->Vcb->VolumeFcb, 0, DevObj->Vcb);
+    CcInitializeCacheMap(DevObj->Vcb->VolumeFcb, NULL, NULL);
+    DevObj->Vcb->StorageDevice = DevObj;
 
     /* Select the appropriate list of file systems to send the mount request to. */
     if ((DevObj->DeviceInfo.DeviceType == FILE_DEVICE_DISK) ||
@@ -102,6 +112,11 @@ next:
 	    Status = STATUS_UNRECOGNIZED_VOLUME;
 	    goto out;
 	}
+	if (!Response->VolumeMounted.VolumeSize) {
+	    assert(FALSE);
+	    Status = STATUS_UNRECOGNIZED_VOLUME;
+	    goto out;
+	}
 	PIO_DEVICE_OBJECT VolumeDevice = IopGetDeviceObject(Response->VolumeMounted.VolumeDeviceHandle,
 							    Locals.CurrentFs->FsctlDevObj->DriverObject);
 	if (!VolumeDevice) {
@@ -110,8 +125,8 @@ next:
 	    goto out;
 	}
 	DevObj->Vcb->VolumeDevice = VolumeDevice;
-	DevObj->Vcb->StorageDevice = DevObj;
 	DevObj->Vcb->MountInProgress = FALSE;
+	CcSetFileSize(DevObj->Vcb->VolumeFcb, Response->VolumeMounted.VolumeSize);
     } else {
 	IopCleanupPendingIrp(Locals.PendingIrp);
 	Locals.PendingIrp = NULL;
@@ -124,6 +139,10 @@ out:
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
     if (DevObj->Vcb && !NT_SUCCESS(Status)) {
+	if (DevObj->Vcb->VolumeFcb) {
+	    CcUninitializeCacheMap(DevObj->Vcb->VolumeFcb);
+	    IopFreePool(DevObj->Vcb->VolumeFcb);
+	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;
     }

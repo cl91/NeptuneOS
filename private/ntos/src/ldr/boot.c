@@ -6,6 +6,22 @@ extern UCHAR _binary_initcpio_start[];
 extern UCHAR _binary_initcpio_end[];
 extern UCHAR _binary_initcpio_size[];
 
+static VOID LdrpPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				IN ULONG64 FileOffset,
+				IN ULONG64 Length,
+				IN NTSTATUS Status,
+				IN ULONG64 PinnedLength,
+				IN OUT PVOID Context)
+{
+    if (NT_SUCCESS(Status)) {
+	Status = CcCopyWrite(Fcb, 0, Length, Context);
+    }
+    if (!NT_SUCCESS(Status)) {
+	KeBugCheckMsg("Failed to load boot module (address %p), error = 0x%x\n",
+		      Context, Status);
+    }
+}
+
 NTSTATUS LdrLoadBootModules()
 {
     RET_ERR(ObCreateDirectory(BOOTMODULE_OBJECT_DIRECTORY));
@@ -49,9 +65,9 @@ NTSTATUS LdrLoadBootModules()
 	/* Create the FILE object and insert into the object directory */
 	RET_ERR(IoCreateDevicelessFile(FileNames[i], BootModuleDirectory,
 				       FileSize, &File));
+	assert(File);
 	assert(File->Fcb);
-	RET_ERR(CcCopyWrite(File->Fcb, 0, FileSize, FileContent));
-	assert(File != NULL);
+	CcPinDataEx(File->Fcb, 0, FileSize, LdrpPinDataCallback, FileContent);
     }
     ObDereferenceObject(BootModuleDirectory);
 

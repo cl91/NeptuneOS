@@ -406,15 +406,14 @@ NTSTATUS HwRecalibrateResult(PCONTROLLER_INFO ControllerInfo)
 
     /* test seek complete */
     if ((Buffer[0] & SR0_SEEK_COMPLETE) != SR0_SEEK_COMPLETE) {
-	WARN_(FLOPPY,
-	      "HwRecalibrateResult: Failed to complete the seek\n");
+	WARN_(FLOPPY, "HwRecalibrateResult: Failed to complete the seek\n");
 	return STATUS_UNSUCCESSFUL;
     }
 
     /* Is the equipment check flag set?  Could be no disk in drive... */
     if ((Buffer[0] & SR0_EQUIPMENT_CHECK) == SR0_EQUIPMENT_CHECK) {
-	WARN_(FLOPPY,
-	      "HwRecalibrateResult: Seeked to track 0 successfully, but EC is set; returning failure\n");
+	WARN_(FLOPPY, "HwRecalibrateResult: Seeked to track 0 successfully, "
+	      "but EC is set; returning failure\n");
 	return STATUS_UNSUCCESSFUL;
     }
 

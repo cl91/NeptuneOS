@@ -135,6 +135,8 @@ DECLARE_POINTER_TYPE(IO_FILE_OBJECT);
 /* These must not be less than 1ULL << 16 as low 16 bits are public flags. */
 #define IOP_IRP_INPUT_DIRECT_IO			(1UL << 16)
 #define IOP_IRP_OUTPUT_DIRECT_IO		(1UL << 17)
+#define IOP_IRP_COMPLETION_CALLBACK		(1UL << 18)
+#define IOP_IRP_INTERCEPTION_CALLBACK		(1UL << 19)
 
 /*
  * Parameters for an IO request.
@@ -199,6 +201,11 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 			* all IRPs currently being requested by the driver.
 			* Both the system and the driver may reuse old handles
 			* of IO packets that have already been processed. */
+    struct {
+	PVOID Callback;	/* Irp completion or interception callback. */
+	PVOID Context;	/* Context for the IRP callback function. */
+    } ServerPrivate;   /* These fields are only used by the server. The
+			* client side routines should not access them. */
     union {
 	struct {
 	    IO_DEVICE_INFO PhysicalDeviceInfo; /* Request.Device is the physical
@@ -263,12 +270,13 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
  */
 typedef union _IO_RESPONSE_DATA {
     struct {
+	ULONG64 VolumeSize;
 	GLOBAL_HANDLE VolumeDeviceHandle;
     } VolumeMounted;
     struct {
-	ULONG MdlCount; /* Number of MDLs embedded in this message. This is used
-			 * by IRP_MJ_READ with the IRP_MN_MDL minor code where
-			 * the server needs to send the MDL chain to the client. */
+	ULONG_PTR MdlCount; /* Number of MDLs embedded in this message. This is used
+			     * by IRP_MJ_READ with the IRP_MN_MDL minor code where
+			     * the server needs to send the MDL chain to the client. */
 	struct {
 	    PVOID MappedSystemVa;
 	    ULONG_PTR ByteCount;
@@ -493,8 +501,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 						&IoPacket->Request.Create.FileObjectParameters);
 	    break;
 	case IRP_MJ_READ:
-	    DbgPrint("    READ  Key 0x%x ByteOffset 0x%llx\n",
-		     IoPacket->Request.Read.Key, IoPacket->Request.Read.ByteOffset.QuadPart);
+	    DbgPrint("    READ%s  Key 0x%x ByteOffset 0x%llx\n",
+		     IoPacket->Request.MinorFunction == IRP_MN_MDL ? " MDL" : "",
+		     IoPacket->Request.Read.Key,
+		     IoPacket->Request.Read.ByteOffset.QuadPart);
 	    break;
 	case IRP_MJ_DEVICE_CONTROL:
 	case IRP_MJ_INTERNAL_DEVICE_CONTROL:

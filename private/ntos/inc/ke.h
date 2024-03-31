@@ -669,10 +669,10 @@ static inline VOID KeResetEvent(IN PKEVENT Event)
     Event->Header.Signaled = FALSE;
 }
 
-static inline VOID KeDestroyEvent(IN PKEVENT Event)
+static inline VOID KeUninitializeEvent(IN PKEVENT Event)
 {
     /* Signal the event one last time so any thread that is blocked
-     * on this timer gets resumed. */
+     * on this event gets resumed. */
     KeSetEvent(Event);
     VOID KiDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
     KiDetachDispatcherObject(&Event->Header);
@@ -881,12 +881,12 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
 		   IN PTIMER_APC_ROUTINE TimerApcRoutine,
 		   IN PVOID TimerApcContext,
 		   IN LONG Period);
-VOID KeDestroyTimer(IN PTIMER Timer);
+VOID KeUninitializeTimer(IN PTIMER Timer);
 ULONGLONG KeQuerySystemTime(VOID);
 ULONGLONG KeQueryInterruptTime(VOID);
 
 /* Remove the timer from the timer queue. Note that you normally should
- * call KeDestroyTimer instead, which will take care of properly signaling
+ * call KeUninitializeTimer instead, which will take care of properly signaling
  * threads that are still waiting on it. This is only used by the thread
  * object deletion routine to remove the WaitTimer of the thread. */
 static inline VOID KeRemoveTimer(IN PTIMER Timer)

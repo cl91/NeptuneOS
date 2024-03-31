@@ -53,6 +53,7 @@ static NTSTATUS IopCreateDriverType()
 NTSTATUS IoInitSystemPhase0()
 {
     InitializeListHead(&IopDriverList);
+    InitializeListHead(&IopNtosPendingIrpList);
     RET_ERR(IopCreateFileType());
     RET_ERR(IopCreateDeviceType());
     RET_ERR(IopCreateDriverType());

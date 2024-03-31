@@ -300,7 +300,7 @@ CheckFatX:
     FatInfo.RootDirectorySectors = BootFatX->SectorsPerCluster;
     FatInfo.BytesPerCluster = BootFatX->SectorsPerCluster * DiskGeometry.BytesPerSector;
     FatInfo.Sectors = (ULONG)(PartitionInfo.PartitionLength.QuadPart /
-				      DiskGeometry.BytesPerSector);
+			      DiskGeometry.BytesPerSector);
     if (FatInfo.Sectors / FatInfo.SectorsPerCluster < 65525) {
 	DPRINT("FATX16\n");
 	FatInfo.FatType = FATX16;
@@ -533,7 +533,9 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     DeviceExt->StorageDevice = DeviceToMount;
     DeviceExt->StorageDevice->Vpb->DeviceObject = DeviceObject;
     DeviceExt->StorageDevice->Vpb->RealDevice = DeviceExt->StorageDevice;
-    DeviceExt->StorageDevice->Vpb->ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
+    DeviceExt->StorageDevice->Vpb->VolumeSize = (ULONG64)FatInfo.Sectors *
+	FatInfo.BytesPerSector;
+    DeviceExt->StorageDevice->Vpb->ClusterSize = FatInfo.BytesPerCluster;
     DeviceExt->StorageDevice->Vpb->Flags |= VPB_MOUNTED;
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
@@ -583,8 +585,8 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 	goto ByeBye;
 
     VolumeFcb->Flags = FCB_IS_VOLUME;
-    VolumeFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.Sectors *
-	DeviceExt->FatInfo.BytesPerSector;
+    VolumeFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)FatInfo.Sectors *
+	FatInfo.BytesPerSector;
     VolumeFcb->Base.FileSizes.ValidDataLength = VolumeFcb->Base.FileSizes.FileSize;
     VolumeFcb->Base.FileSizes.AllocationSize = VolumeFcb->Base.FileSizes.FileSize;
     VolumeFcb->FileObject = VolumeFileObject;
@@ -615,8 +617,8 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     FatFcb->FileObject = DeviceExt->FatFileObject;
 
     FatFcb->Flags = FCB_IS_FAT;
-    FatFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)DeviceExt->FatInfo.FatSectors *
-	DeviceExt->FatInfo.BytesPerSector;
+    FatFcb->Base.FileSizes.FileSize.QuadPart = (LONGLONG)FatInfo.FatSectors *
+	FatInfo.BytesPerSector;
     FatFcb->Base.FileSizes.AllocationSize = FatFcb->Base.FileSizes.FileSize;
     FatFcb->Base.FileSizes.ValidDataLength = FatFcb->Base.FileSizes.FileSize;
 
@@ -872,10 +874,8 @@ static NTSTATUS FatIsVolumeDirty(PFAT_IRP_CONTEXT IrpContext)
     Flags = (PULONG)IrpContext->Irp->AssociatedIrp.SystemBuffer;
     *Flags = 0;
 
-    if (BooleanFlagOn
-	(IrpContext->DeviceExt->VolumeFcb->Flags, VCB_IS_DIRTY)
-	&& !BooleanFlagOn(IrpContext->DeviceExt->VolumeFcb->Flags,
-			  VCB_CLEAR_DIRTY)) {
+    if (BooleanFlagOn(IrpContext->DeviceExt->VolumeFcb->Flags, VCB_IS_DIRTY)
+	&& !BooleanFlagOn(IrpContext->DeviceExt->VolumeFcb->Flags, VCB_CLEAR_DIRTY)) {
 	*Flags |= VOLUME_IS_DIRTY;
     }
 

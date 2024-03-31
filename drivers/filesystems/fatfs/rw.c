@@ -259,7 +259,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	ULONG StartCluster = CurrentCluster;
 	LARGE_INTEGER StartOffset = {
 	    .QuadPart = ClusterToSector(DeviceExt, StartCluster) * BytesPerSector
-	};;
+	};
 	ULONG BytesDone = 0;
 	ULONG ClusterCount = 0;
 

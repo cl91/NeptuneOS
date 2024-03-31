@@ -302,7 +302,7 @@ BOOLEAN KeCancelTimer(IN PTIMER Timer)
     return State;
 }
 
-VOID KeDestroyTimer(IN PTIMER Timer)
+VOID KeUninitializeTimer(IN PTIMER Timer)
 {
     assert(Timer != NULL);
     KeCancelTimer(Timer);

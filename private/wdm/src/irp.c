@@ -236,7 +236,7 @@ static NTSTATUS IopAllocateMdl(IN PVOID Buffer,
     if (BufferMapped) {
 	Mdl->MappedSystemVa = Buffer;
     }
-    Mdl->ByteOffset = (ULONG)Buffer & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[0]) - 1);
+    Mdl->ByteOffset = (ULONG_PTR)Buffer & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[0]) - 1);
     Mdl->ByteCount = BufferLength;
     Mdl->PfnCount = PfnCount;
     memcpy(Mdl->PfnEntries, PfnDb, PfnCount * sizeof(ULONG_PTR));
@@ -359,12 +359,7 @@ static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
 	memcpy(Irp->Private.OutputBuffer, Irp->AssociatedIrp.SystemBuffer,
 	       OutputBufferLength);
     }
-    if ((METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT ||
-	 METHOD_FROM_CTL_CODE(Ioctl) == METHOD_OUT_DIRECT) && OutputBufferLength) {
-	assert(Irp->MdlAddress != NULL);
-	IopFreePool(Irp->MdlAddress);
-	Irp->MdlAddress = NULL;
-    }
+    /* The MDL will be freed by IoFreeIrp so we don't need to free it here. */
     if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
 	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
 	    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
@@ -391,6 +386,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
     case IRP_MJ_READ:
     case IRP_MJ_WRITE:
     {
+	/* The MDL will be freed by IoFreeIrp so we don't need to free it here. */
 	if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
 	    if (Irp->Flags & IRP_BUFFERED_IO) {
 		IopFreePool(Irp->AssociatedIrp.SystemBuffer);
@@ -631,6 +627,37 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     return STATUS_SUCCESS;
 }
 
+static VOID IopPopulateLocalIrpFromServerIoResponse(OUT PIRP Irp,
+						    IN PIO_COMPLETED_MESSAGE Msg)
+{
+    Irp->IoStatus = Msg->IoStatus;
+    PIO_STACK_LOCATION Sp = IoGetCurrentIrpStackLocation(Irp);
+    if (Sp->MajorFunction == IRP_MJ_READ && Sp->MinorFunction == IRP_MN_MDL) {
+	assert(!Irp->UserBuffer);
+	assert(!Irp->MdlAddress);
+	PMDL PrevMdl = NULL;
+	PIO_RESPONSE_DATA Data = (PIO_RESPONSE_DATA)&Msg->ResponseData[0];
+	for (ULONG i = 0; i < Data->MdlChain.MdlCount; i++) {
+	    PMDL Mdl = ExAllocatePool(sizeof(MDL));
+	    if (!Mdl) {
+		/* The partial MDL chain will be freed eventually when
+		 * the IRP is freed (by IoFreeIrp). */
+		Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+		Irp->IoStatus.Information = 0;
+		break;
+	    }
+	    Mdl->MappedSystemVa = Data->MdlChain.Mdl[i].MappedSystemVa;
+	    Mdl->ByteCount = Data->MdlChain.Mdl[i].ByteCount;
+	    if (PrevMdl) {
+		PrevMdl->Next = Mdl;
+	    } else {
+		Irp->MdlAddress = Mdl;
+	    }
+	    PrevMdl = Mdl;
+	}
+    }
+}
+
 /*
  * This will also free the memory allocated when creating the IRP
  * (in IopPopulateLocalIrpFromServerIoPacket);
@@ -695,7 +722,7 @@ static VOID IopDeleteIrp(PIRP Irp)
 #if DBG
     RtlZeroMemory(Irp, IO_SIZE_OF_IRP);
 #endif
-    IopFreePool(Irp);
+    IoFreeIrp(Irp);
 }
 
 static VOID IopPopulateIoCompleteMessageFromIoStatus(OUT PIO_PACKET Dest,
@@ -721,7 +748,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 							IN PIRP Irp,
 							IN ULONG BufferSize)
 {
-    ULONG Size = FIELD_OFFSET(IO_PACKET, ClientMsg.IoCompleted.ResponseData);
+    ULONG Size = sizeof(IO_PACKET);
     PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(Irp);
     switch (IoSp->MajorFunction) {
     case IRP_MJ_PNP:
@@ -779,9 +806,6 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    return FALSE;
 	}
 	break;
-    }
-    if (Size < sizeof(IO_PACKET)) {
-	Size = sizeof(IO_PACKET);
     }
     if (BufferSize < Size) {
 	return FALSE;
@@ -869,6 +893,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
 		PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
+		Ptr->VolumeMounted.VolumeSize = IoSp->Parameters.MountVolume.Vpb->VolumeSize;
 		Ptr->VolumeMounted.VolumeDeviceHandle = IopGetDeviceHandle(IoSp->Parameters.MountVolume.Vpb->DeviceObject);
 	    }
 	    break;
@@ -1007,8 +1032,10 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.Create.EaLength);
 	break;
     case IRP_MJ_READ:
-	DbgPrint("    READ  Length 0x%x Key 0x%x ByteOffset 0x%llx\n",
-		 Stack->Parameters.Read.Length, Stack->Parameters.Read.Key,
+	DbgPrint("    READ%s  Length 0x%x Key 0x%x ByteOffset 0x%llx\n",
+		 Stack->MinorFunction == IRP_MN_MDL ? " MDL" : "",
+		 Stack->Parameters.Read.Length,
+		 Stack->Parameters.Read.Key,
 		 Stack->Parameters.Read.ByteOffset.QuadPart);
 	break;
     case IRP_MJ_DEVICE_CONTROL:
@@ -1186,8 +1213,8 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
      * asynchronously pending IRPs and IRPs suspended in a coroutine stack) */
     LoopOverList(Irp, &IopPendingIrpList, IRP, Private.Link) {
 	if (Irp->Private.OriginalRequestor == Orig && Irp->Private.Identifier == Id) {
-	    /* Fill the IO status block of the IRP with the result in the server message */
-	    Irp->IoStatus = SrvMsg->ServerMsg.IoCompleted.IoStatus;
+	    /* Update the data in the local IRP with the result in the server message */
+	    IopPopulateLocalIrpFromServerIoResponse(Irp, &SrvMsg->ServerMsg.IoCompleted);
 	    /* Detach the IRP from the pending IRP list. */
 	    RemoveEntryList(&Irp->Private.Link);
 	    /* If the execution environment associated with this IRP is different
@@ -1345,13 +1372,15 @@ again:
 static inline NTSTATUS IopQueueRequestIoPacket(IN PIO_PACKET SrcIoPacket)
 {
     assert(SrcIoPacket->Type == IoPacketTypeRequest);
-    IopAllocatePool(Irp, IRP, IO_SIZE_OF_IRP);
-    IoInitializeIrp(Irp);
+    PIRP Irp = IoAllocateIrp();
+    if (!Irp) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
     Irp->Private.OriginalRequestor = SrcIoPacket->Request.OriginalRequestor;
     Irp->Private.Identifier = SrcIoPacket->Request.Identifier;
     NTSTATUS Status = IopPopulateLocalIrpFromServerIoPacket(Irp, SrcIoPacket);
     if (!NT_SUCCESS(Status)) {
-	IopFreePool(Irp);
+	IoFreeIrp(Irp);
 	return Status;
     }
     InsertTailList(&IopIrpQueue, &Irp->Private.Link);

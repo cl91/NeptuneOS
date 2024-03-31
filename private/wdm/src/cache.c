@@ -187,7 +187,7 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
     DPRINT("Block request succeeded for %p. Requested length 0x%x fulfilled length 0x%zx\n",
 	   Irp, Stack->Parameters.Read.Length, Irp->IoStatus.Information);
     assert(Irp->IoStatus.Information);
-    assert(Irp->IoStatus.Information < Stack->Parameters.Read.Length);
+    assert(Irp->IoStatus.Information <= Stack->Parameters.Read.Length);
     /* Adjust the BCB to the actual length mapped. */
     PMDL Mdl = Irp->MdlAddress;
     assert(Mdl);
@@ -381,7 +381,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	if (!NT_SUCCESS(Status)) {
 	    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Req->Irp);
 	    DPRINT("IO failed!!! Error code: %x, FileObj %p DeviceObj %p, "
-		   "ReadOffset 0x%llx, ReadLength 0x%x, Status 0x%x Info 0x%x\n",
+		   "ReadOffset 0x%llx, ReadLength 0x%x, Status 0x%x Info 0x%zx\n",
 		   Status, Stack->FileObject, Stack->DeviceObject,
 		   Stack->Parameters.Read.ByteOffset.QuadPart,
 		   Stack->Parameters.Read.Length, Req->Irp->IoStatus.Status,
@@ -663,6 +663,7 @@ NTAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
 			  IN BOOLEAN Wait)
 {
     UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 NTAPI VOID CcSetFileSizes(IN PFILE_OBJECT FileObject,

@@ -22,7 +22,7 @@ static VOID EiEventObjectDeleteProc(IN POBJECT Self)
 {
     assert(ObObjectIsType(Self, OBJECT_TYPE_EVENT));
     PEVENT_OBJECT Event = (PEVENT_OBJECT)Self;
-    KeDestroyEvent(&Event->Event);
+    KeUninitializeEvent(&Event->Event);
     RemoveEntryList(&Event->Link);
 }
 

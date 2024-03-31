@@ -45,7 +45,7 @@ typedef struct _EVENT_OBJECT {
     if ((Var) == NULL) {						\
 	DbgPrint("Allocation of 0x%zx bytes for variable %s of type"	\
 		 " (%s *) failed in function %s @ %s:%d\n",		\
-		 (MWORD) Size, #Var, #Type,				\
+		 (MWORD)Size, #Var, #Type,				\
 		 __func__, __FILE__, __LINE__);				\
 	{OnError;}							\
 	COMPILE_CHECK_ASYNC_RETURN;					\

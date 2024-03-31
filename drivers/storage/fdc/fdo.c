@@ -164,10 +164,9 @@ NTSTATUS Recalibrate(PDRIVE_INFO DriveInfo)
     /* clear the event just in case the last call forgot */
     KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);
 
-    /* sometimes you have to do this twice; we'll just do it twice all the time since
+    /* Sometimes you have to do this twice; we'll just do it twice all the time since
      * we don't know if the people calling this Recalibrate routine expect a disk to
-     * even be in the drive, and if so, if that disk is formatted.
-     */
+     * even be in the drive, and if so, if that disk is formatted. */
     for (int i = 0; i < 2; i++) {
 	/* Send the command */
 	Status = HwRecalibrate(DriveInfo);

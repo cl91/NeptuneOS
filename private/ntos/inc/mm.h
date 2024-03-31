@@ -678,6 +678,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
 				 IN MWORD WindowSize);
+VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
+			     IN MWORD WindowSize);
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN ULONG Length,
 					      IN MWORD HighestPhyAddr,
@@ -689,9 +691,8 @@ NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
 				IN MWORD VirtAddr,
 				IN BOOLEAN LargePage);
-struct _PROCESS;
 BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
-				    IN struct _PROCESS *Process,
+				    IN PVIRT_ADDR_SPACE VSpace,
 				    IN MWORD Buffer,
 				    IN MWORD BufferLength,
 				    OUT OPTIONAL ULONG *pPfnCount);
