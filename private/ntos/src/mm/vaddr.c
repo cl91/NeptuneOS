@@ -918,7 +918,6 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     RET_ERR_EX(MiMapIoMemory(VSpace, Untyped->AvlNode.Key, Vad->AvlNode.Key,
 			     Length, MM_RIGHTS_RW, FALSE),
 	       MmDeleteVad(Vad));
-    MiInsertFreeUntyped(&MiPhyMemDescriptor, Untyped);
     *VirtAddr = Vad->AvlNode.Key;
     *PhyAddr = Untyped->AvlNode.Key;
     return STATUS_SUCCESS;

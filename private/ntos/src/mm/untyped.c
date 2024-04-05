@@ -103,6 +103,7 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
 		   MmDeallocateCap(Src->TreeNode.CSpace, NewCap);
 	       });
 
+    Src->Requested = TRUE;
     MiInitializeUntyped(LeftChild, Src->TreeNode.CSpace, Src, NewCap, Src->AvlNode.Key,
 			Src->Log2Size - 1, Src->IsDevice);
     MiInitializeUntyped(RightChild, Src->TreeNode.CSpace, Src, NewCap + 1,
@@ -123,6 +124,7 @@ VOID MiInsertFreeUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			 IN PUNTYPED Untyped)
 {
     assert(!Untyped->IsDevice);
+    assert(!Untyped->Requested);
     if (MmCapTreeNodeHasChildren(&Untyped->TreeNode)) {
 	CapTreeLoopOverChildren(Child, &Untyped->TreeNode) {
 	    if (Child->Type == CAP_TREE_NODE_UNTYPED) {
@@ -254,8 +256,9 @@ NTSTATUS MmRequestUntypedEx(IN LONG Log2Size,
 	Untyped = LeftChild;
     }
 
+    Untyped->Requested = TRUE;
     *pUntyped = Untyped;
-    assert(Untyped->IsDevice == FALSE);
+    assert(!Untyped->IsDevice);
 
     return STATUS_SUCCESS;
 }
@@ -285,7 +288,8 @@ static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 /* Returns the untyped memory of the specified log2size that contains
  * the specified physical address. Untyped caps may be split during
  * this process, but the remainders are not added back to the free
- * lists, unlike MmRequestUntyped. */
+ * lists, unlike MmRequestUntyped. This should only be called when
+ * mapping physical sections. */
 NTSTATUS MiGetUntypedAtPhyAddr(IN PPHY_MEM_DESCRIPTOR PhyMem,
 			       IN MWORD PhyAddr,
 			       IN LONG Log2Size,
@@ -302,6 +306,10 @@ NTSTATUS MiGetUntypedAtPhyAddr(IN PPHY_MEM_DESCRIPTOR PhyMem,
     LONG NumSplits = RootUntyped->Log2Size - Log2Size;
     for (LONG i = NumSplits-1; i >= 0; i--) {
 	if (!MmCapTreeNodeHasChildren(&(*Untyped)->TreeNode)) {
+	    /* Note since MmAllocatePhysicallyContiguousMemory calls
+	     * MmRequestUntypedEx before calling us, (*Untyped)->Requested
+	     * may be TRUE without the untyped having any children. This
+	     * is perfectly OK. */
 	    MiAllocatePool(Child0, UNTYPED);
 	    MiAllocatePoolEx(Child1, UNTYPED, MiFreePool(Child0));
 	    RET_ERR_EX(MiSplitUntyped(*Untyped, Child0, Child1),
@@ -363,6 +371,7 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 {
     assert(Untyped != NULL);
+    assert(Untyped->Requested);
     assert(!MmCapTreeNodeHasChildren(&Untyped->TreeNode));
     assert(MmCapTreeNodeSiblingCount(&Untyped->TreeNode) <= 2);
     assert(!MiUntypedIsInFreeLists(Untyped));
@@ -376,14 +385,18 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
      * If any one is familiar with seL4, please let me know if this is correct. */
     MiCapTreeRevokeNode(&Untyped->TreeNode);
     PCAP_TREE_NODE SiblingNode = MiCapTreeGetNextSibling(&Untyped->TreeNode);
-    if (SiblingNode != NULL && !MmCapTreeNodeHasChildren(SiblingNode)) {
+    if (SiblingNode != NULL) {
+	PUNTYPED SiblingUntyped = TREE_NODE_TO_UNTYPED(SiblingNode);
+	if (SiblingUntyped->Requested) {
+	    goto insert;
+	}
 	assert(Untyped->TreeNode.Parent != NULL);
 	assert(Untyped->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
 	assert(SiblingNode->Type == CAP_TREE_NODE_UNTYPED);
 	assert(SiblingNode->Parent != NULL);
 	assert(SiblingNode->Parent == Untyped->TreeNode.Parent);
+	assert(!MmCapTreeNodeHasChildren(SiblingNode));
 	PUNTYPED ParentUntyped = TREE_NODE_TO_UNTYPED(SiblingNode->Parent);
-	PUNTYPED SiblingUntyped = TREE_NODE_TO_UNTYPED(SiblingNode);
 	assert(SiblingUntyped->IsDevice == Untyped->IsDevice);
 	/* This will deallocate both the Untyped cap and the SiblingNode cap */
 	MiCapTreeRevokeNode(Untyped->TreeNode.Parent);
@@ -394,7 +407,12 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 	MiFreePool(Untyped);
 	MiFreePool(SiblingUntyped);
 	MmReleaseUntyped(ParentUntyped);
-    } else if (!Untyped->IsDevice) {
+	return;
+    }
+
+insert:
+    Untyped->Requested = FALSE;
+    if (!Untyped->IsDevice) {
 	MiInsertFreeUntyped(&MiPhyMemDescriptor, Untyped);
     }
 }

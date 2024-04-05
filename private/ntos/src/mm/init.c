@@ -155,10 +155,12 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
 			    InitInfo->InitUntypedPhyAddr + (1 << ChildLog2Size),
 			    ChildLog2Size, FALSE);
 	MiInsertFreeUntyped(&MiPhyMemDescriptor, RightChildUntyped);
+	ParentUntyped->Requested = TRUE;
 	ParentUntyped = LeftChildUntyped;
     }
 
     PPAGING_STRUCTURE Page = NULL;
+    ParentUntyped->Requested = TRUE;
     RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_LARGE_PAGE, ParentUntyped,
 					InitInfo->RootCNodeFreeCapStart + 2 * NumSplits,
 					EX_POOL_START, &Page));

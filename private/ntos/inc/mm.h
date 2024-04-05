@@ -256,6 +256,9 @@ typedef struct _UNTYPED {
     LIST_ENTRY FreeListEntry;	/* Applicable only for non-device untyped */
     LONG Log2Size;
     BOOLEAN IsDevice;
+    BOOLEAN Requested; /* TRUE if the UNTYPED has been handed out by MmRequestUntyped.
+			* An UNTYPED with children must have Requested == TRUE, but the
+			* converse is not true. */
 } UNTYPED, *PUNTYPED;
 
 #define AVL_NODE_TO_UNTYPED(Node)					\
