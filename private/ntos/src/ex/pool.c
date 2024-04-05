@@ -222,6 +222,13 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
     if (Pool->HeapEnd >= EX_POOL_END) {
 	return PageAddr;
     }
+    /* If we are already asking Mm for more memory, make sure we don't
+     * make concurrent requests. */
+    static BOOLEAN AllocationInProgress = FALSE;
+    if (AllocationInProgress) {
+	return PageAddr;
+    }
+    AllocationInProgress = TRUE;
     MM_MEM_PRESSURE MemPressure = MmQueryMemoryPressure();
     LONG Size = PAGE_SIZE;
     if (MemPressure == MM_MEM_PRESSURE_SUFFICIENT_MEMORY) {
@@ -242,9 +249,11 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
 	    Size = PAGE_SIZE;
 	    Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
 	    if (!NT_SUCCESS(Status)) {
+		AllocationInProgress = FALSE;
 		return PageAddr;
 	    }
 	} else {
+	    AllocationInProgress = FALSE;
 	    return PageAddr;
 	}
     }
@@ -255,6 +264,7 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
 	InsertTailList(&Pool->FreePageList, &FreePage->Link);
     }
     Pool->HeapEnd += Size;
+    AllocationInProgress = FALSE;
     return PageAddr;
 }
 
@@ -283,7 +293,9 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 
     if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
 	PVOID Page = (PVOID)EiRequestFreePage(Pool, FALSE);
-	memset(Page, 0, PAGE_SIZE);
+	if (Page) {
+	    memset(Page, 0, PAGE_SIZE);
+	}
 	return Page;
     }
 
@@ -312,9 +324,10 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	    FreeListIndex++;
 	    if (FreeListIndex >= EX_POOL_FREE_LISTS) {
-		/* This shouldn't happen because we already added a new
-		 * page to the FreeLists. */
-		assert(FALSE);
+		/* When requesting for more free pages, MmCommitVirtualMemory
+		 * might have done too many allocations to exhaust the free
+		 * lists again. If this happens, there is really nothing we
+		 * could do, so just return failure. */
 		return NULL;
 	    }
 	}
