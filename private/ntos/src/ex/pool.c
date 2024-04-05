@@ -92,9 +92,7 @@ static VOID EiDbgDumpPool()
 {
     DbgTrace("Dumping EX_POOL TotalPages 0x%x UsedPages 0x%x HeapStart %p HeapEnd %p\n",
 	     EiPool.TotalPages, EiPool.UsedPages, (PVOID)EiPool.HeapStart, (PVOID)EiPool.HeapEnd);
-    for (ULONG i = 0; i < EiPool.UsedPages; i++) {
-	EiDbgDumpPoolPage(EiPool.HeapStart + i * PAGE_SIZE);
-    }
+    EiDbgDumpPoolPage(EiPool.HeapStart);
     for (ULONG i = 0; i < EX_POOL_FREE_LISTS; i++) {
 	EiDbgDumpFreeList(i);
     }
