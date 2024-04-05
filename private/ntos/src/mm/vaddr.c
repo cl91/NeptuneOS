@@ -695,9 +695,9 @@ NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 /*
  * De-commit the given address window. The actual decommitted window is returned.
  */
-static VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
-			     IN OUT MWORD *StartAddr,
-			     IN OUT MWORD *WindowSize)
+VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
+		      IN OUT MWORD *StartAddr,
+		      IN OUT MWORD *WindowSize)
 {
     MWORD EndAddr = PAGE_ALIGN_UP(*StartAddr + *WindowSize);
     *StartAddr = PAGE_ALIGN(*StartAddr);

@@ -258,3 +258,6 @@ static inline MWORD MiPagingWindowSize(IN PAGING_STRUCTURE_TYPE Type)
 /* vaddr.c */
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
 			IN PPAGING_STRUCTURE RootPagingStructure);
+VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
+		      IN OUT MWORD *StartAddr,
+		      IN OUT MWORD *WindowSize);

@@ -747,6 +747,7 @@ NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
     MWORD RemainingDataSize = BufferSize;
     MWORD CurVaddr = StartAddr;
     MWORD DataStart = (MWORD) DataBuffer;
+    NTSTATUS Status;
     while (CurVaddr < StartAddr + WindowSize) {
 	BOOLEAN LargePage = FALSE;
 	if (UseLargePages && IS_LARGE_PAGE_ALIGNED(CurVaddr)
@@ -761,8 +762,11 @@ NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
 	} else {
 	    RemainingDataSize = 0;
 	}
-	RET_ERR(MiCommitPrivatePage(VSpace, CurVaddr, Rights, LargePage,
-				    (PVOID)DataStart, DataSize));
+	Status = MiCommitPrivatePage(VSpace, CurVaddr, Rights, LargePage,
+				     (PVOID)DataStart, DataSize);
+	if (!NT_SUCCESS(Status)) {
+	    goto err;
+	}
 	DataStart += DataSize;
 	CurVaddr += PageSize;
     }
@@ -770,6 +774,17 @@ NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
     MmDbg("Successfully committed memory window [%p, %p) for vaddrcap 0x%zx\n",
 	  (PVOID)StartAddr, (PVOID)(StartAddr+WindowSize), VSpace->VSpaceCap);
     return STATUS_SUCCESS;
+err:
+    if (CurVaddr > StartAddr) {
+	MmDbg("Failed to commit memory window [%p, %p) for vaddrcap 0x%zx. "
+	      "Uncommitting [%p, %p)\n",
+	      (PVOID)StartAddr, (PVOID)(StartAddr+WindowSize), VSpace->VSpaceCap,
+	      (PVOID)StartAddr, (PVOID)CurVaddr);
+	/* Decommit the successfully committed area */
+	MWORD WindowSize = CurVaddr - StartAddr;
+	MiUncommitWindow(VSpace, &StartAddr, &WindowSize);
+    }
+    return Status;
 }
 
 static NTSTATUS MiMapSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
@@ -830,11 +845,15 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 	  (PVOID)(ViewerStartAddr + WindowSize), ViewerVSpace->VSpaceCap);
 
     MWORD Offset = 0;
+    NTSTATUS Status;
     while (Offset < WindowSize) {
 	PPAGING_STRUCTURE NewPage = NULL;
-	RET_ERR(MiMapSharedPage(OwnerVSpace, OwnerStartAddr + Offset,
-				ViewerVSpace, ViewerStartAddr + Offset,
-				NewRights, &NewPage));
+	Status = MiMapSharedPage(OwnerVSpace, OwnerStartAddr + Offset,
+				 ViewerVSpace, ViewerStartAddr + Offset,
+				 NewRights, &NewPage);
+	if (!NT_SUCCESS(Status)) {
+	    goto err;
+	}
 	assert(NewPage != NULL);
 	Offset += MiPagingWindowSize(NewPage->Type);
     }
@@ -845,6 +864,18 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 	  OwnerVSpace->VSpaceCap, (PVOID)ViewerStartAddr,
 	  (PVOID)(ViewerStartAddr + WindowSize), ViewerVSpace->VSpaceCap);
     return STATUS_SUCCESS;
+err:
+    if (Offset) {
+	MmDbg("Failed to map mirrored pages from [%p, %p) of vaddrcap"
+	      " 0x%zx to [%p, %p) in vaddrcap 0x%zx. Uncommitting [%p, %p)\n",
+	      (PVOID)OwnerStartAddr, (PVOID)(OwnerStartAddr + WindowSize),
+	      OwnerVSpace->VSpaceCap, (PVOID)ViewerStartAddr,
+	      (PVOID)(ViewerStartAddr + WindowSize), ViewerVSpace->VSpaceCap,
+	      (PVOID)ViewerStartAddr, (PVOID)(ViewerStartAddr + Offset));
+	/* Decommit the successfully mapped area */
+	MiUncommitWindow(ViewerVSpace, &ViewerStartAddr, &Offset);
+    }
+    return Status;
 }
 
 /*
@@ -931,15 +962,32 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
     assert(WindowSize != 0);
-    for (MWORD MappedSize = 0; MappedSize < WindowSize;
-	 MappedSize += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE)) {
+    NTSTATUS Status;
+    MWORD MappedSize = 0;
+    while (MappedSize < WindowSize) {
 	if (WindowSize - MappedSize < LARGE_PAGE_SIZE) {
 	    LargePage = FALSE;
 	}
-	RET_ERR(MiMapIoPage(VSpace, PhyAddr + MappedSize, VirtAddr + MappedSize,
-			    Rights, &LargePage));
+	Status = MiMapIoPage(VSpace, PhyAddr + MappedSize, VirtAddr + MappedSize,
+			     Rights, &LargePage);
+	if (!NT_SUCCESS(Status)) {
+	    goto err;
+	}
+	MappedSize += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE);
     }
     return STATUS_SUCCESS;
+err:
+    if (MappedSize) {
+	MmDbg("Failed to map physical memory [%p, %p) to virtual memory [%p, %p) "
+	      "of vaddrcap 0x%zx. Uncommitting virtual memory [%p, %p)\n",
+	      (PVOID)PhyAddr, (PVOID)(PhyAddr + WindowSize),
+	      (PVOID)VirtAddr, (PVOID)(VirtAddr + WindowSize),
+	      VSpace->VSpaceCap, (PVOID)VirtAddr,
+	      (PVOID)(VirtAddr + MappedSize));
+	/* Decommit the successfully mapped area */
+	MiUncommitWindow(VSpace, &VirtAddr, &MappedSize);
+    }
+    return Status;
 }
 
 VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
