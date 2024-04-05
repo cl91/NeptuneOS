@@ -116,7 +116,7 @@ static inline BOOLEAN MiPagingStructureContainsAddr(IN PPAGING_STRUCTURE Paging,
 						    IN MWORD VirtAddr)
 {
     return AvlNodeContainsAddr(&Paging->AvlNode,
-				 MiPagingWindowSize(Paging->Type), VirtAddr);
+			       MiPagingWindowSize(Paging->Type), VirtAddr);
 }
 
 /*
@@ -563,7 +563,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     RET_ERR_EX(MiMapPagingStructure(Page), MiFreePagingStructure(Page));
 
     /* Copy the data buffer into the new page */
-    memcpy((PVOID) HyperspaceAddr, DataStart, DataSize);
+    memcpy((PVOID)HyperspaceAddr, DataStart, DataSize);
 
     /* Unmap the page and modify the paging structure to have the new parameters */
     RET_ERR_EX(MiUnmapPagingStructure(Page), MiFreePagingStructure(Page));

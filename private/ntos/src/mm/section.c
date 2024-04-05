@@ -504,6 +504,8 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 			      SubSection->ImageCacheFileOffset + BytesMapped,
 			      SubSection->SubSectionSize - BytesMapped,
 			      &MappedLength, &Buffer));
+	    assert(MappedLength);
+	    assert(Buffer);
 	    assert(IS_PAGE_ALIGNED(MappedLength));
 	    assert(IS_PAGE_ALIGNED(BytesMapped));
 	    if (Vad->Flags.ReadOnly) {

@@ -693,38 +693,28 @@ NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 /*
- * De-commit the given address window. The actual StartAddr and WindowSize are returned.
+ * De-commit the given address window. The actual decommitted window is returned.
  */
 static VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
 			     IN OUT MWORD *StartAddr,
 			     IN OUT MWORD *WindowSize)
 {
-    *StartAddr = PAGE_ALIGN(*StartAddr);
     MWORD EndAddr = PAGE_ALIGN_UP(*StartAddr + *WindowSize);
-    /* Note that despite the name, Page can be any level of paging structure, ie.
-     * page table, page directory, PDPT, or PML4 */
-    PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, *StartAddr);
-    /* We never de-commit root paging structures */
-    if (Page == NULL || MiPagingTypeIsRoot(Page->Type)) {
-	/* Do nothing as the virtual address space is empty */
-	return;
-    }
-    if (MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	*StartAddr = Page->AvlNode.Key;
-    } else {
-	Page = MiGetFirstPage(Page);
-	if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	    Page = MiGetNextPagingStructure(Page);
+    *StartAddr = PAGE_ALIGN(*StartAddr);
+    MWORD CurrentAddr = *StartAddr;
+    while (CurrentAddr < EndAddr) {
+	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
+	if (Page && MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	    if (CurrentAddr == *StartAddr) {
+		*StartAddr = Page->AvlNode.Key;
+	    }
+	    CurrentAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
+	    MiDeletePage(Page);
+	} else {
+	    CurrentAddr += PAGE_SIZE;
 	}
     }
-    while (Page != NULL && Page->AvlNode.Key < EndAddr) {
-	PPAGING_STRUCTURE Next = MiGetNextPagingStructure(Page);
-	if (Next == NULL) {
-	    *WindowSize = Page->AvlNode.Key + MiPagingWindowSize(Page->Type) - *StartAddr;
-	}
-	MiDeletePage(Page);
-	Page = Next;
-    }
+    *WindowSize = CurrentAddr - *StartAddr;
 }
 
 /*
