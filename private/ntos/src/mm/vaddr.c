@@ -566,15 +566,17 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
     PAGING_STRUCTURE_TYPE PrevPageType = -1;
     while (TRUE) {
 	BOOLEAN Exit = (VirtAddr >= Buffer + BufferLength);
+	MWORD PhyAddr = 0;
+	PPAGING_STRUCTURE Page = NULL;
 	if (Exit) {
 	    goto out;
 	}
-	PPAGING_STRUCTURE Page = MmQueryPageEx(VSpace, VirtAddr, TRUE);
+	Page = MmQueryPageEx(VSpace, VirtAddr, TRUE);
 	if (!Page) {
 	    return FALSE;
 	}
 	assert(Page->AvlNode.Key);
-	MWORD PhyAddr = MiGetPhysicalAddress(Page);
+	PhyAddr = MiGetPhysicalAddress(Page);
 	assert(PhyAddr);
 	assert(IS_PAGE_ALIGNED(PhyAddr));
 
@@ -605,7 +607,10 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	    if (Exit) {
 		break;
 	    }
-	    PhyAddrStart = PhyAddrEnd = 0;
+	    assert(Page);
+	    assert(PhyAddr);
+	    PhyAddrStart = PhyAddr;
+	    PhyAddrEnd = PhyAddr + MiPagingWindowSize(Page->Type);
 	    PageCount = 1;
 	}
 	VirtAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
