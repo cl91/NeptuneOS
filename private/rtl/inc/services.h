@@ -24,22 +24,28 @@ typedef seL4_Word MWORD;
  * This is determined by the lowest user address, defined below */
 #define MM_MAXIMUM_ZERO_HIGH_BITS	(MWORD_BITS - PAGE_LOG2SIZE - 1)
 
+#ifdef _WIN64
+#define ADDRSPACE_SHIFT	16
+#else
+#define ADDRSPACE_SHIFT	0
+#endif
+
 /* All hard-coded addresses in client processes' address space go here. */
 #define LOWEST_USER_ADDRESS		(1ULL << PAGE_LOG2SIZE)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000ULL)
 /* End of the address space where we can map user images */
 #define USER_IMAGE_REGION_START		(0x00400000ULL)
+
+#ifndef _WIN64
+/* On 32-bit architectures we generally follow the Windows address space
+ * organization with /3GB enabled. */
 #define USER_IMAGE_REGION_END		(0xb0000000ULL)
-#define KUSER_SHARED_DATA_CLIENT_ADDR	(USER_SHARED_DATA)
-#define WIN32_TEB_START			(USER_IMAGE_REGION_END)
 #define WIN32_TEB_END			(0xbffdf000ULL)
-#define WIN32_PEB_START			(WIN32_TEB_END)
 /* This is the end of client-manageable user space. The address space
  * between USER_ADDRESS_END and seL4_UserTop is reserved for private
  * data structures that the NTOS server maps into client address space. */
 #define USER_ADDRESS_END		(0xc0000000ULL)
-#define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 /* Size of system dll tls region per thread is determined by the size
  * of the .tls section of the NTDLL.DLL image. */
 #define SYSTEM_DLL_TLS_REGION_START	(0xc0010000ULL)
@@ -47,6 +53,23 @@ typedef seL4_Word MWORD;
 /* 64K IPC buffer reserve per thread. 4K initial commit. */
 #define IPC_BUFFER_START		(0xd0000000ULL)
 #define IPC_BUFFER_END			(0xdfff0000ULL)
+
+#else
+
+#define USER_IMAGE_REGION_END		(0x700000000000ULL)
+#define WIN32_TEB_END			(0x7ffdf0000000ULL)
+#define SYSTEM_DLL_TLS_REGION_START	(0x7ffe00000000ULL)
+#define SYSTEM_DLL_TLS_REGION_END	(0x7ffeffff0000ULL)
+#define IPC_BUFFER_START		(0x7fff00000000ULL)
+#define IPC_BUFFER_END			(0x7fffffff0000ULL)
+#define USER_ADDRESS_END		(0x800000000000ULL)
+
+#endif	/* _WIN64 */
+
+#define KUSER_SHARED_DATA_CLIENT_ADDR	(USER_SHARED_DATA)
+#define WIN32_TEB_START			(USER_IMAGE_REGION_END)
+#define WIN32_PEB_START			(WIN32_TEB_END)
+#define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 
 /*
  * Ipc buffer, where the seL4 IPC buffer is placed at the very beginning,
