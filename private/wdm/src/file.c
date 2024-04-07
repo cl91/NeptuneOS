@@ -12,7 +12,7 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
     UNICODE_STRING FileName = {0};
     if (Params->FileNameOffset) {
 	RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
-					   (PCHAR)IoPacket + Params->FileNameOffset,
+					   (PCHAR)(&IoPacket->Request) + Params->FileNameOffset,
 					   &FileName),
 		   IopFreePool(FileObject));
     }

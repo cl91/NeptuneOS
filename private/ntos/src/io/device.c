@@ -174,8 +174,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	.SharedWrite = Locals.FileObject->SharedWrite,
 	.SharedDelete = Locals.FileObject->SharedDelete,
 	.Flags = Locals.FileObject->Flags,
-	/* Note FileNameOffset is with respect to the full IO_PACKET structure. */
-	.FileNameOffset = Locals.FileNameLength ? sizeof(IO_PACKET) : 0
+	.FileNameOffset = Locals.FileNameLength ? sizeof(IO_REQUEST_PARAMETERS) : 0
     };
 
     ULONG CreateOptions = OpenPacket->CreateOptions | (OpenPacket->Disposition << 24);
@@ -200,6 +199,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	Irp->CreateMailslot.FileObjectParameters = FileObjectParameters;
     }
 
+    Irp->DataSize = DataSize;
     Irp->Device.Object = Locals.TargetDevice;
     Irp->File.Object = Locals.FileObject;
     Status = IopCallDriver(Thread, Irp, &Locals.PendingIrp);

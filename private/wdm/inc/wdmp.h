@@ -149,6 +149,9 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
     MWORD NotificationCap;
 } KINTERRUPT;
 
+/* cache.c */
+extern LIST_ENTRY CiCacheMapList;
+
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);

@@ -123,19 +123,30 @@ static NTSTATUS SmTestFloppyDriver()
 
     /* Try to read the data */
     SmPrint("Reading floppy... ");
+    ULONG FileSize = sizeof(ULONG_PTR) == 4 ? 0x11854 : 0x15395;
     RET_ERR_EX(NtReadFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
-			  Buffer, 71764, &ByteOffset, NULL),
+			  Buffer, FileSize, &ByteOffset, NULL),
 			  /* Buffer, sizeof(Buffer), &ByteOffset, NULL), */
 	       SmPrint("FAILED. Status = 0x%x\n", Status));
 
     SmPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",
 	    Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
 
-    for (ULONG i = 0; i < ARRAYSIZE(Buffer) / 16; i++) {
+    for (ULONG i = 0; i <= FileSize / 16; i++) {
 	PUSHORT Row = (PUSHORT)(Buffer + 16*i);
 	DbgPrint("%07x %04x %04x %04x %04x %04x %04x %04x %04x\n",
 		 16*i, Row[0], Row[1], Row[2], Row[3],
 		 Row[4], Row[5], Row[6], Row[7]);
+    }
+
+    for (ULONG i = FileSize / 16 + 1; i < ARRAYSIZE(Buffer) / 16; i++) {
+	PUSHORT Row = (PUSHORT)(Buffer + 16*i);
+	PULONG64 Row64 = Row;
+	if (Row64[0] || Row64[1] || Row64[2] || Row64[3]) {
+	    DbgPrint("%07x %04x %04x %04x %04x %04x %04x %04x %04x\n",
+		     16*i, Row[0], Row[1], Row[2], Row[3],
+		     Row[4], Row[5], Row[6], Row[7]);
+	}
     }
 
     return STATUS_SUCCESS;

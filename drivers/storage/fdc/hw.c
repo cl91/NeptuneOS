@@ -747,18 +747,18 @@ NTSTATUS HwDiskChanged(PDRIVE_INFO DriveInfo,
 
     if (ControllerInfo->Model30) {
 	if (!(Buffer & DIR_DISKETTE_CHANGE)) {
-	    INFO_(FLOPPY, "HdDiskChanged - Model30 - returning TRUE\n");
+	    INFO_(FLOPPY, "HwDiskChanged - Model30 - returning TRUE\n");
 	    *DiskChanged = TRUE;
 	} else {
-	    INFO_(FLOPPY, "HdDiskChanged - Model30 - returning FALSE\n");
+	    INFO_(FLOPPY, "HwDiskChanged - Model30 - returning FALSE\n");
 	    *DiskChanged = FALSE;
 	}
     } else {
 	if (Buffer & DIR_DISKETTE_CHANGE) {
-	    INFO_(FLOPPY, "HdDiskChanged - PS2 - returning TRUE\n");
+	    INFO_(FLOPPY, "HwDiskChanged - PS2 - returning TRUE\n");
 	    *DiskChanged = TRUE;
 	} else {
-	    INFO_(FLOPPY, "HdDiskChanged - PS2 - returning FALSE\n");
+	    INFO_(FLOPPY, "HwDiskChanged - PS2 - returning FALSE\n");
 	    *DiskChanged = FALSE;
 	}
     }

@@ -203,7 +203,7 @@ static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
     WaitingIrp = InterlockedExchangePointer((PVOID)&DeviceExtension->PowerIrp,
 					    NULL);
     if (WaitingIrp) {
-	PULONG pEvent = (PULONG) WaitingIrp->AssociatedIrp.SystemBuffer;
+	PULONG pEvent = (PULONG)WaitingIrp->SystemBuffer;
 
 	WaitingIrp->IoStatus.Status = STATUS_SUCCESS;
 	WaitingIrp->IoStatus.Information = sizeof(ULONG);
@@ -291,7 +291,7 @@ NTAPI NTSTATUS i8042KbdDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	if (Stack->Parameters.DeviceIoControl.OutputBufferLength != sizeof(ULONG))
 	    Status = STATUS_INVALID_PARAMETER;
 	else {
-	    pCaps = (PULONG) Irp->AssociatedIrp.SystemBuffer;
+	    pCaps = (PULONG)Irp->SystemBuffer;
 	    *pCaps = DeviceExtension->NewCaps;
 	    DeviceExtension->ReportedCaps = DeviceExtension->NewCaps;
 	    Irp->IoStatus.Information = sizeof(ULONG);
@@ -328,7 +328,7 @@ NTAPI NTSTATUS i8042KbdDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 							     DeviceExtension->PowerIrp,
 							     NULL,
 							     Irp);
-		    *(PULONG)Irp->AssociatedIrp.SystemBuffer = PowerKey;
+		    *(PULONG)Irp->SystemBuffer = PowerKey;
 		    Status = STATUS_SUCCESS;
 		    Irp->IoStatus.Status = Status;
 		    Irp->IoStatus.Information = sizeof(ULONG);
@@ -510,7 +510,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    break;
 	}
 
-	KeyboardAttributes = Irp->AssociatedIrp.SystemBuffer;
+	KeyboardAttributes = Irp->SystemBuffer;
 	*KeyboardAttributes = DeviceExtension->KeyboardAttributes;
 
 	Irp->IoStatus.Information = sizeof(KEYBOARD_ATTRIBUTES);
@@ -537,15 +537,13 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	/* We should check the UnitID, but it's kind of pointless as
 	 * all keyboards are supposed to have the same one
 	 */
-	if (Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION)) {
+	if (Stack->Parameters.DeviceIoControl.OutputBufferLength <
+	    sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION)) {
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	} else {
-	    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-			  &IndicatorTranslation,
-			  sizeof
-			  (LOCAL_KEYBOARD_INDICATOR_TRANSLATION));
-	    Irp->IoStatus.Information =
-		sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION);
+	    RtlCopyMemory(Irp->SystemBuffer,&IndicatorTranslation,
+			  sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION));
+	    Irp->IoStatus.Information = sizeof(LOCAL_KEYBOARD_INDICATOR_TRANSLATION);
 	    Status = STATUS_SUCCESS;
 	}
 	break;
@@ -555,14 +553,13 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	TRACE_(I8042PRT,
 	       "IRP_MJ_INTERNAL_DEVICE_CONTROL / IOCTL_KEYBOARD_QUERY_INDICATORS\n");
 
-	if (Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
+	if (Stack->Parameters.DeviceIoControl.OutputBufferLength <
+	    sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	} else {
-	    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
-			  &DeviceExtension->KeyboardIndicators,
+	    RtlCopyMemory(Irp->SystemBuffer, &DeviceExtension->KeyboardIndicators,
 			  sizeof(KEYBOARD_INDICATOR_PARAMETERS));
-	    Irp->IoStatus.Information =
-		sizeof(KEYBOARD_INDICATOR_PARAMETERS);
+	    Irp->IoStatus.Information = sizeof(KEYBOARD_INDICATOR_PARAMETERS);
 	    Status = STATUS_SUCCESS;
 	}
 	break;
@@ -572,11 +569,12 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	TRACE_(I8042PRT,
 	       "IRP_MJ_INTERNAL_DEVICE_CONTROL / IOCTL_KEYBOARD_SET_INDICATORS\n");
 
-	if (Stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
+	if (Stack->Parameters.DeviceIoControl.InputBufferLength <
+	    sizeof(KEYBOARD_INDICATOR_PARAMETERS)) {
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	} else {
 	    RtlCopyMemory(&DeviceExtension->KeyboardIndicators,
-			  Irp->AssociatedIrp.SystemBuffer,
+			  Irp->SystemBuffer,
 			  sizeof(KEYBOARD_INDICATOR_PARAMETERS));
 	    Status = STATUS_PENDING;
 	    IoMarkIrpPending(Irp);

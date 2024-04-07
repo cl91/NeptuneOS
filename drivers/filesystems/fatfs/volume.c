@@ -394,7 +394,7 @@ NTSTATUS FatQueryVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
     /* INITIALIZATION */
     FsInformationClass = IrpContext->Stack->Parameters.QueryVolume.FsInformationClass;
     BufferLength = IrpContext->Stack->Parameters.QueryVolume.Length;
-    SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    SystemBuffer = IrpContext->Irp->SystemBuffer;
 
     DPRINT("FsInformationClass %d\n", FsInformationClass);
     DPRINT("SystemBuffer %p\n", SystemBuffer);
@@ -456,7 +456,7 @@ NTSTATUS FatSetVolumeInformation(PFAT_IRP_CONTEXT IrpContext)
 
     FsInformationClass = Stack->Parameters.SetVolume.FsInformationClass;
     BufferLength = Stack->Parameters.SetVolume.Length;
-    SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    SystemBuffer = IrpContext->Irp->SystemBuffer;
 
     DPRINT("FsInformationClass %d\n", FsInformationClass);
     DPRINT("BufferLength %u\n", BufferLength);

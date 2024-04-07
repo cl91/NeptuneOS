@@ -149,7 +149,7 @@ NTAPI NTSTATUS BeepDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
     /* Get the stack location and parameters */
     Stack = IoGetCurrentIrpStackLocation(Irp);
-    BeepParam = (PBEEP_SET_PARAMETERS) Irp->AssociatedIrp.SystemBuffer;
+    BeepParam = (PBEEP_SET_PARAMETERS) Irp->SystemBuffer;
 
     /* We only support one IOCTL */
     if (Stack->Parameters.DeviceIoControl.IoControlCode != IOCTL_BEEP_SET) {
@@ -226,7 +226,7 @@ NTAPI VOID BeepStartIo(IN PDEVICE_OBJECT DeviceObject,
     (VOID) IoSetCancelRoutine(Irp, NULL);
 
     /* Get the I/O Stack and make sure the request is valid */
-    BeepParam = (PBEEP_SET_PARAMETERS) Irp->AssociatedIrp.SystemBuffer;
+    BeepParam = (PBEEP_SET_PARAMETERS) Irp->SystemBuffer;
     IoStack = IoGetCurrentIrpStackLocation(Irp);
     if (IoStack->Parameters.DeviceIoControl.IoControlCode == IOCTL_BEEP_SET) {
 	/* Check if we have an active timer */

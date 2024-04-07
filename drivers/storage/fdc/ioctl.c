@@ -46,7 +46,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     ULONG OutputLength = Stack->Parameters.DeviceIoControl.OutputBufferLength;
-    PVOID OutputBuffer = Irp->AssociatedIrp.SystemBuffer;
+    PVOID OutputBuffer = Irp->SystemBuffer;
     ULONG Code = Stack->Parameters.DeviceIoControl.IoControlCode;
     BOOLEAN DiskChanged;
     PMOUNTDEV_NAME Name;
@@ -250,7 +250,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	    break;
 	}
 
-	UniqueId = Irp->AssociatedIrp.SystemBuffer;
+	UniqueId = Irp->SystemBuffer;
 	UniqueId->UniqueIdLength = (USHORT)wcslen(DriveInfo->DeviceNameBuffer) * sizeof(WCHAR);
 
 	if (OutputLength < FIELD_OFFSET(MOUNTDEV_UNIQUE_ID, UniqueId) + UniqueId->UniqueIdLength) {
@@ -273,7 +273,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	    break;
 	}
 
-	Name = Irp->AssociatedIrp.SystemBuffer;
+	Name = Irp->SystemBuffer;
 	Name->NameLength = (USHORT)wcslen(DriveInfo->DeviceNameBuffer) * sizeof(WCHAR);
 
 	if (OutputLength < FIELD_OFFSET(MOUNTDEV_NAME, Name) + Name->NameLength) {

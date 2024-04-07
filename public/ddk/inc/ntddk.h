@@ -13,7 +13,7 @@ FORCEINLINE DECLSPEC_DEPRECATED VOID PAGED_CODE() {}
 
 /*
  * Returned by IoCallDriver to indicate that the IRP has been
- * forwarded to the lower-level drivers and has been deallocated
+ * forwarded to the lower-level drivers and will be deallocated
  * in the current driver.
  */
 #define STATUS_IRP_FORWARDED		STATUS_PENDING
@@ -194,6 +194,9 @@ struct _IRP;
 
 #define MAXIMUM_VOLUME_LABEL_LENGTH       (32 * sizeof(WCHAR))
 
+/*
+ * Volume Parameter Block
+ */
 typedef struct _VPB {
     SHORT Type;
     SHORT Size;
@@ -208,6 +211,9 @@ typedef struct _VPB {
     WCHAR VolumeLabel[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];
 } VPB, *PVPB;
 
+/*
+ * File Object
+ */
 typedef struct _FILE_OBJECT {
     SHORT Type;
     SHORT Size;
@@ -400,13 +406,15 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     SHORT Type;
     USHORT Size;
     ULONG Flags;
+
+    /* Address to the MDL chain associated with this IRP. */
     PMDL MdlAddress;
 
-    union {
-	struct _IRP *MasterIrp;
-	volatile LONG IrpCount;
-	PVOID SystemBuffer;
-    } AssociatedIrp;
+    /* For an associated IRP, this is the pointer to its master IRP. */
+    struct _IRP *MasterIrp;
+
+    /* For BUFFERED_IO, this is the pointer to the system-allocated buffer. */
+    PVOID SystemBuffer;
 
     /* IO status block returned by the driver */
     IO_STATUS_BLOCK IoStatus;
@@ -414,9 +422,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     /* IO status block supplied by the client driver that will be populated
      * once the IRP has been completed. This makes the IRP synchronous. */
     PIO_STATUS_BLOCK UserIosb;
-
-    /* TODO. */
-    BOOLEAN PendingReturned;
 
     /* Indicates whether this IRP has been canceled */
     BOOLEAN Cancel;
@@ -452,8 +457,19 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	PVOID ExecEnv; /* Execution environment associated with this IRP */
 	PVOID EnvToWakeUp; /* Execution environment to wake up when this IRP
 			    * is completed. */
+	union {
+	    LIST_ENTRY PendingList; /* For master IRP, this is the list of
+				     * all pending assoicated IRPs. */
+	    LIST_ENTRY Link;	/* For associated IRPs, this is the list link
+				 * for PendingList. */
+	} AssociatedIrp;
+	BOOLEAN MasterCompleted;  /* TRUE if the master IRP is completed but
+				   * its pending associated IRPs have not. */
 	BOOLEAN NotifyCompletion; /* TRUE if the server will notify the
 				   * completion of this forwarded IRP. */
+	BOOLEAN MasterIrpSent; /* TRUE if this is an associated IRP of a master
+				* IRP and the server has been informed of the
+				* master IRP's identifier. */
     } Private;	   /* Drivers shall not access this struct directly */
 
     /* Porting guide: in the original Windows/ReactOS definition
@@ -809,6 +825,7 @@ FORCEINLINE NTAPI VOID IoInitializeIrp(IN PIRP Irp)
     /* Set the Header and other data */
     Irp->Type = IO_TYPE_IRP;
     Irp->Size = IO_SIZE_OF_IRP;
+    InitializeListHead(&Irp->Private.AssociatedIrp.PendingList);
 }
 
 /*
@@ -1176,7 +1193,8 @@ FORCEINLINE NTAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObje
  * This was needed by the power manager in Windows XP/ReactOS and is
  * now deprecated in Windows Vista and later. We follow Vista+.
  */
-DEPRECATED_BY("Power IRP synchronization is now automatic. You no longer need to call the Po-specific versions",
+DEPRECATED_BY("Power IRP synchronization is now automatic. You no longer "
+	      "need to call the Po-specific versions",
 	      IoCallDriver)
 FORCEINLINE NTAPI NTSTATUS PoCallDriver(IN PDEVICE_OBJECT DeviceObject,
 					IN OUT PIRP Irp)

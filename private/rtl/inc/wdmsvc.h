@@ -100,8 +100,8 @@ typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
     BOOLEAN SharedWrite;
     BOOLEAN SharedDelete;
     ULONG Flags;
-    ULONG FileNameOffset; /* Offset to the NUL-terminated file name buffer,
-			   * starting from the beginning of the IO packet. */
+    ULONG FileNameOffset; /* Offset to the NUL-terminated file name buffer, with
+			   * respect to the beginning of the IO_REQUEST_PARAMETERS. */
 } FILE_OBJECT_CREATE_PARAMETERS, *PFILE_OBJECT_CREATE_PARAMETERS;
 
 /*
@@ -137,6 +137,7 @@ DECLARE_POINTER_TYPE(IO_FILE_OBJECT);
 #define IOP_IRP_OUTPUT_DIRECT_IO		(1UL << 17)
 #define IOP_IRP_COMPLETION_CALLBACK		(1UL << 18)
 #define IOP_IRP_INTERCEPTION_CALLBACK		(1UL << 19)
+#define IOP_IRP_NOTIFY_COMPLETION		(1UL << 20)
 
 /*
  * Parameters for an IO request.
@@ -201,9 +202,25 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 			* all IRPs currently being requested by the driver.
 			* Both the system and the driver may reuse old handles
 			* of IO packets that have already been processed. */
+    union {
+	struct {
+	    MWORD Placeholder;
+	    PVOID Ptr;
+	};
+	struct {
+	    GLOBAL_HANDLE OriginalRequestor;
+	    HANDLE Identifier;
+	};
+    } MasterIrp; /* Master IRP that this IRP is associated with. If the
+		  * IO_PACKET is in server address space, this union contains
+		  * the pointer to the master IRP's PENDING_IRP object. When
+		  * the IO_PACKET is in driver address space, this union is the
+		  * (OriginalRequestor,Identifier) pair of the master IRP. */
     struct {
 	PVOID Callback;	/* Irp completion or interception callback. */
 	PVOID Context;	/* Context for the IRP callback function. */
+	LONG PendingAssociatedIrps; /* Number of pending associated IRPs. */
+	BOOLEAN MasterCompleted;
     } ServerPrivate;   /* These fields are only used by the server. The
 			* client side routines should not access them. */
     union {
@@ -272,6 +289,7 @@ typedef union _IO_RESPONSE_DATA {
     struct {
 	ULONG64 VolumeSize;
 	GLOBAL_HANDLE VolumeDeviceHandle;
+	ULONG ClusterSize;
     } VolumeMounted;
     struct {
 	ULONG_PTR MdlCount; /* Number of MDLs embedded in this message. This is used
@@ -394,14 +412,15 @@ static inline VOID IoDbgDumpFileObjectCreateParameters(IN PIO_PACKET IoPacket,
 						       IN PFILE_OBJECT_CREATE_PARAMETERS Params)
 {
     DbgPrint("ReadAccess %s WriteAccess %s DeleteAccess %s SharedRead %s "
-	     "SharedWrite %s SharedDelete %s Flags 0x%08x FileName %p\n",
+	     "SharedWrite %s SharedDelete %s Flags 0x%08x FileNameOffset 0x%x FileName %s\n",
 	     Params->ReadAccess ? "TRUE" : "FALSE",
 	     Params->WriteAccess ? "TRUE" : "FALSE",
 	     Params->DeleteAccess ? "TRUE" : "FALSE",
 	     Params->SharedRead ? "TRUE" : "FALSE",
 	     Params->SharedWrite ? "TRUE" : "FALSE",
 	     Params->SharedDelete ? "TRUE" : "FALSE",
-	     Params->Flags, (PUCHAR)IoPacket + Params->FileNameOffset);
+	     Params->Flags, Params->FileNameOffset,
+	     (PUCHAR)(&IoPacket->Request) + Params->FileNameOffset);
 }
 
 static inline PCSTR IopDbgDeviceRelationTypeStr(IN DEVICE_RELATION_TYPE Type)
@@ -476,6 +495,19 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	DbgPrint(" OriginalRequestor %p Identifier %p\n",
 		 (PVOID)IoPacket->Request.OriginalRequestor,
 		 IoPacket->Request.Identifier);
+	if (ClientSide) {
+	    DbgPrint("    MasterIrp's OriginalRequestor %p Identifier %p)\n",
+		     (PVOID)IoPacket->Request.MasterIrp.OriginalRequestor,
+		     IoPacket->Request.MasterIrp.Identifier);
+	} else {
+	    struct {
+		PVOID IoPacket;
+		PVOID Requestor;
+	    } *PendingIrp = IoPacket->Request.MasterIrp.Ptr;
+	    DbgPrint("    MasterIrp's PENDING_IRP %p (OriginalRequestor %p IO_PACKET %p)\n",
+		     PendingIrp, PendingIrp ? PendingIrp->Requestor : NULL,
+		     PendingIrp ? PendingIrp->IoPacket : NULL);
+	}
 	DbgPrint("    InputBuffer %p Length 0x%x PfnCount %d "
 		 " OutputBuffer %p Length 0x%x PfnCount %d\n",
 		 (PVOID)IoPacket->Request.InputBuffer,

@@ -868,10 +868,10 @@ static NTSTATUS FatIsVolumeDirty(PFAT_IRP_CONTEXT IrpContext)
 
     if (IrpContext->Stack->Parameters.FileSystemControl.OutputBufferLength != sizeof(ULONG))
 	return STATUS_INVALID_BUFFER_SIZE;
-    else if (!IrpContext->Irp->AssociatedIrp.SystemBuffer)
+    else if (!IrpContext->Irp->SystemBuffer)
 	return STATUS_INVALID_USER_BUFFER;
 
-    Flags = (PULONG)IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    Flags = (PULONG)IrpContext->Irp->SystemBuffer;
     *Flags = 0;
 
     if (BooleanFlagOn(IrpContext->DeviceExt->VolumeFcb->Flags, VCB_IS_DIRTY)
@@ -1129,7 +1129,7 @@ static NTSTATUS FatGetStatistics(PFAT_IRP_CONTEXT IrpContext)
 
     DeviceExt = IrpContext->DeviceExt;
     Length = IrpContext->Stack->Parameters.FileSystemControl.OutputBufferLength;
-    Buffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    Buffer = IrpContext->Irp->SystemBuffer;
 
     if (Length < sizeof(FILESYSTEM_STATISTICS)) {
 	return STATUS_BUFFER_TOO_SMALL;

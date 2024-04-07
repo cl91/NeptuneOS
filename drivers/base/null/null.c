@@ -103,7 +103,7 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 
 	/* Get the length from the request and complete the request */
 	ULONG Length = IoStack->Parameters.QueryFile.Length;
-	Irp->IoStatus.Status = NullQueryFileInformation(Irp->AssociatedIrp.SystemBuffer, &Length,
+	Irp->IoStatus.Status = NullQueryFileInformation(Irp->SystemBuffer, &Length,
 							IoStack->Parameters.QueryFile.FileInformationClass);
 
 	/* Return the actual length */

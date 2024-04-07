@@ -630,7 +630,7 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    goto Fail;
 	}
 	Irp->IoStatus.Information = FILE_CREATED;
-	FatSetExtendedAttributes(FileObject, Irp->AssociatedIrp.SystemBuffer,
+	FatSetExtendedAttributes(FileObject, Irp->SystemBuffer,
 				 Stack->Parameters.Create.EaLength);
 
 	if (PagingFileCreate) {

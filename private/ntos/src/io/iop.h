@@ -133,8 +133,12 @@ extern LIST_ENTRY IopNtosPendingIrpList;
  */
 typedef struct _PENDING_IRP {
     PIO_PACKET IoPacket; /* IO packet that the thread is waiting for a response for.
-			  * The pending IO packet must be of type IoPacketTypeRequest. */
-    POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level */
+			  * The pending IO packet must be of type IoPacketTypeRequest.
+			  * This must be the first member of this struct due to
+			  * IoDbgDumpIoPacket. */
+    POBJECT Requestor; /* Points to the THREAD or DRIVER object at this level.
+			* This must be the second member of this struct due to
+			* IoDbgDumpIoPacket. */
     LIST_ENTRY Link; /* List entry for THREAD.PendingIrpList or DRIVER.ForwardedIrpList */
     struct _PENDING_IRP *ForwardedTo; /* Points to the driver object that this IRP
 				       * has been forwarded to. */

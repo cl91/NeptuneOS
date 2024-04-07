@@ -143,6 +143,13 @@
  * the private member ExecEnv of the IRP will be different from EnvToWakeUp. This
  * allows us to distinguish these two cases.
  *
+ * For associated IRPs, if its master IRP has NotifyCompletion == TRUE, then the
+ * associated IRP's NotifyCompletion state is implicitly set to TRUE, regardless of
+ * whether the associated IRP itself requires completion notification. The master
+ * IRP is completed only when all its associated IRPs are completed. If the master
+ * IRP has NotifyCompletion == FALSE, then the associated IRPs are forwarded normally
+ * as if they do not have a master IRP.
+ *
  * Note a special situation in all of the cases above is that if the driver forwards
  * an IRP (whether it's the one being processed or a new IRP generated locally) to a
  * local device object. In this case all of the above still apply, with the exception
@@ -223,6 +230,14 @@ static inline BOOLEAN IrpIsInCleanupList(IN PIRP Irp)
 }
 #endif	/* DBG */
 
+FORCEINLINE BOOLEAN IopIrpNeedsCompletionNotification(IN PIRP Irp)
+{
+    /* If the IRP is an associated IRP and the master IRP requires completion
+     * notification, then the associated IRP needs notification too. */
+    return Irp->Private.NotifyCompletion ||
+	(Irp->MasterIrp && Irp->MasterIrp->Private.NotifyCompletion);
+}
+
 static NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 			       IN ULONG BufferLength,
 			       IN PULONG_PTR PfnDb,
@@ -279,7 +294,7 @@ static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
 	}
 	if (DeviceFlags & DO_BUFFERED_IO) {
 	    Irp->Flags |= IRP_BUFFERED_IO;
-	    Irp->AssociatedIrp.SystemBuffer = Buffer;
+	    Irp->SystemBuffer = Buffer;
 	} else {
 	    Irp->UserBuffer = Buffer;
 	}
@@ -327,7 +342,7 @@ static NTSTATUS IopMarshalIoctlBuffers(OUT PIRP Irp,
 	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
 	    IoStack->Parameters.DeviceIoControl.Type3InputBuffer = SystemBuffer;
 	} else {
-	    Irp->AssociatedIrp.SystemBuffer = SystemBuffer;
+	    Irp->SystemBuffer = SystemBuffer;
 	}
 	Irp->Flags |= IRP_DEALLOCATE_BUFFER;
     } else if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
@@ -336,7 +351,7 @@ static NTSTATUS IopMarshalIoctlBuffers(OUT PIRP Irp,
     } else {
 	assert(Src->Request.Flags & IOP_IRP_OUTPUT_DIRECT_IO);
 	assert(!InputBuffer || InputBuffer >= PAGE_SIZE);
-	Irp->AssociatedIrp.SystemBuffer = (PVOID)InputBuffer;
+	Irp->SystemBuffer = (PVOID)InputBuffer;
 	/* For DIRECT_IO (METHOD_IN_DIRECT or METHOD_OUT_DIRECT), only the output
 	 * buffer has the MDL generated. */
 	PULONG_PTR PfnDb = (PULONG_PTR)((PUCHAR)Src + Src->Request.OutputBufferPfn);
@@ -356,7 +371,7 @@ static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
     /* Copy the system buffer back to the user output buffer if needed. */
     if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED && OutputBufferLength) {
 	assert(Irp->Private.OutputBuffer != NULL);
-	memcpy(Irp->Private.OutputBuffer, Irp->AssociatedIrp.SystemBuffer,
+	memcpy(Irp->Private.OutputBuffer, Irp->SystemBuffer,
 	       OutputBufferLength);
     }
     /* The MDL will be freed by IoFreeIrp so we don't need to free it here. */
@@ -366,8 +381,8 @@ static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
 	    IopFreePool(IoStack->Parameters.DeviceIoControl.Type3InputBuffer);
 	    IoStack->Parameters.DeviceIoControl.Type3InputBuffer = NULL;
 	} else {
-	    IopFreePool(Irp->AssociatedIrp.SystemBuffer);
-	    Irp->AssociatedIrp.SystemBuffer = NULL;
+	    IopFreePool(Irp->SystemBuffer);
+	    Irp->SystemBuffer = NULL;
 	}
     }
 }
@@ -389,8 +404,8 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 	/* The MDL will be freed by IoFreeIrp so we don't need to free it here. */
 	if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
 	    if (Irp->Flags & IRP_BUFFERED_IO) {
-		IopFreePool(Irp->AssociatedIrp.SystemBuffer);
-		Irp->AssociatedIrp.SystemBuffer = NULL;
+		IopFreePool(Irp->SystemBuffer);
+		Irp->SystemBuffer = NULL;
 	    } else {
 		IopFreePool(Irp->UserBuffer);
 		Irp->UserBuffer = NULL;
@@ -719,6 +734,23 @@ static VOID IopDeleteIrp(PIRP Irp)
 	}
 	break;
     }
+    /* Since we always detach the associated IRP from its master when the associated
+     * IRP is completed, at this point the IRP should not have a master IRP. If this
+     * happens, on debug build we will assert. On release build we will just detach it
+     * from the master IRP's pending IRP list. */
+    if (Irp->MasterIrp) {
+	assert(FALSE);
+	assert(ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
+			    &Irp->Private.AssociatedIrp.Link));
+	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
+    } else {
+	/* If the IRP is a master IRP itself, detach it from all its associated IRPs. */
+	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList, IRP,
+		     Private.AssociatedIrp.Link) {
+	    RemoveEntryList(&AssociatedIrp->Private.AssociatedIrp.Link);
+	    AssociatedIrp->MasterIrp = NULL;
+	}
+    }
 #if DBG
     RtlZeroMemory(Irp, IO_SIZE_OF_IRP);
 #endif
@@ -894,6 +926,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
 		PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
 		Ptr->VolumeMounted.VolumeSize = IoSp->Parameters.MountVolume.Vpb->VolumeSize;
+		Ptr->VolumeMounted.ClusterSize = IoSp->Parameters.MountVolume.Vpb->ClusterSize;
 		Ptr->VolumeMounted.VolumeDeviceHandle = IopGetDeviceHandle(IoSp->Parameters.MountVolume.Vpb->DeviceObject);
 	    }
 	    break;
@@ -937,6 +970,13 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     Dest->ClientMsg.ForwardIrp.Identifier = Irp->Private.Identifier;
     Dest->ClientMsg.ForwardIrp.DeviceObject = DeviceObject->Private.Handle;
     Dest->ClientMsg.ForwardIrp.NotifyCompletion = Irp->Private.NotifyCompletion;
+    if (IoStack->MajorFunction == IRP_MJ_READ) {
+	Dest->ClientMsg.ForwardIrp.NewOffset = IoStack->Parameters.Read.ByteOffset;
+	Dest->ClientMsg.ForwardIrp.NewLength = IoStack->Parameters.Read.Length;
+    } else if (IoStack->MajorFunction == IRP_MJ_WRITE) {
+	Dest->ClientMsg.ForwardIrp.NewOffset = IoStack->Parameters.Write.ByteOffset;
+	Dest->ClientMsg.ForwardIrp.NewLength = IoStack->Parameters.Write.Length;
+    }
     return TRUE;
 }
 
@@ -957,6 +997,11 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     if (BufferSize < Size) {
 	return FALSE;
     }
+    /* If the IRP is an associated IRP of a locally-generated master IRP and
+     * the master IRP has not yet been sent to the server, wait till it has. */
+    if (Irp->MasterIrp && !Irp->Private.MasterIrpSent) {
+	return FALSE;
+    }
     memset(Dest, 0, Size);
     Dest->Type = IoPacketTypeRequest;
     Dest->Size = Size;
@@ -966,6 +1011,15 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     /* Use the address of the IRP as identifier. OriginalRequestor is
      * left as NULL since the server is going to fill it. */
     Dest->Request.Identifier = Irp;
+    if (Irp->MasterIrp) {
+	assert(Irp->MasterIrp->Private.OriginalRequestor || Irp->Private.MasterIrpSent);
+	assert(Irp->MasterIrp->Private.Identifier);
+	Dest->Request.MasterIrp.OriginalRequestor = Irp->MasterIrp->Private.OriginalRequestor;
+	Dest->Request.MasterIrp.Identifier = Irp->MasterIrp->Private.Identifier;
+    }
+    if (IopIrpNeedsCompletionNotification(Irp)) {
+	Dest->Request.Flags |= IOP_IRP_NOTIFY_COMPLETION;
+    }
 
     switch (IoStack->MajorFunction) {
     case IRP_MJ_DEVICE_CONTROL:
@@ -1011,6 +1065,14 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 	/* UNIMPLEMENTED */
 	assert(FALSE);
 	return FALSE;
+    }
+    /* If the IRP itself is a master IRP, set the MasterSent member of all its
+     * assoicated IRPs to TRUE. */
+    if (!Irp->MasterIrp) {
+	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
+		     IRP, Private.AssociatedIrp.Link) {
+	    AssociatedIrp->Private.MasterIrpSent = TRUE;
+	}
     }
     return TRUE;
 }
@@ -1099,7 +1161,7 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     DbgPrint("    MdlAddress %p Flags 0x%08x IO Stack Location %p\n",
 	     Irp->MdlAddress, Irp->Flags, IoGetCurrentIrpStackLocation(Irp));
     DbgPrint("    System Buffer %p User Buffer %p Completed %d\n",
-	     Irp->AssociatedIrp.SystemBuffer, Irp->UserBuffer, Irp->Completed);
+	     Irp->SystemBuffer, Irp->UserBuffer, Irp->Completed);
     DbgPrint("    IO Status Block Status 0x%08x Information %p\n",
 	     Irp->IoStatus.Status, (PVOID) Irp->IoStatus.Information);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p OutputBuffer %p\n",
@@ -1161,43 +1223,63 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     assert(!IrpIsInPendingList(Irp));
     assert(!IrpIsInReplyList(Irp));
 
+    /* If the IRP has any pending associated IRPs, stop the completion, but
+     * set MasterCompleted to TRUE so when all pending associated IRPs are
+     * completed, we can complete the master IRP. */
+    if (!Irp->MasterIrp && !IsListEmpty(&Irp->Private.AssociatedIrp.PendingList)) {
+	Irp->Private.MasterCompleted = TRUE;
+	return;
+    }
+
     /* Execute the completion routine if one is registered. If it returns
      * StopCompletion, IRP completion is halted and the IRP remains in
      * pending state. Otherwise, IRP is completed.*/
-    BOOLEAN Complete = TRUE;
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     if (IoStack->CompletionRoutine) {
 	NTSTATUS Status = IoStack->CompletionRoutine(IoStack->DeviceObject,
 						     Irp, IoStack->Context);
 	if (Status == StopCompletion) {
-	    Complete = FALSE;
+	    return;
 	}
     }
 
-    if (Complete) {
-	Irp->Completed = TRUE;
-	/* Move the IRP into the ReplyIrp list which will be processed at
-	 * the end of IopProcessIoPackets. Note in the case where the
-	 * completion routine returned StopCompletion, the IRP is NOT
-	 * moved back to the pending IRP list. It will in fact not be in
-	 * any of the IRP lists. The driver is responsible for storing it
-	 * and remembering to call IoCompleteRequest on it later. */
-	InsertTailList(&IopReplyIrpList, &Irp->Private.Link);
+    Irp->Completed = TRUE;
+    /* Move the IRP into the ReplyIrp list which will be processed at
+     * the end of IopProcessIoPackets. Note in the case where the
+     * completion routine returned StopCompletion, the IRP is NOT
+     * moved back to the pending IRP list. It will in fact not be in
+     * any of the IRP lists. The driver is responsible for storing it
+     * and remembering to call IoCompleteRequest on it later. */
+    InsertTailList(&IopReplyIrpList, &Irp->Private.Link);
 
-	/* For buffered IO, we need to copy whatever data the driver
-	 * dispatch routine has written in the buffer we allocated
-	 * back to the requestor's buffer. This only applies to IRPs
-	 * originated from the server (not to locally generated IRPs). */
-	if (Irp->Private.OriginalRequestor) {
-	    IopUnmarshalIoBuffer(Irp);
-	}
+    /* For buffered IO, we need to copy whatever data the driver
+     * dispatch routine has written in the buffer we allocated
+     * back to the requestor's buffer. This only applies to IRPs
+     * originated from the server (not to locally generated IRPs). */
+    if (Irp->Private.OriginalRequestor) {
+	IopUnmarshalIoBuffer(Irp);
+    }
 
-	/* If there is an execution environment that was suspended waiting
-	 * for the completion of this IRP, wake it up now. */
-	if (Irp->Private.EnvToWakeUp) {
-	    PIOP_EXEC_ENV Env = Irp->Private.EnvToWakeUp;
-	    Env->Suspended = FALSE;
-	    Irp->Private.EnvToWakeUp = NULL;
+    /* If there is an execution environment that was suspended waiting
+     * for the completion of this IRP, wake it up now. */
+    if (Irp->Private.EnvToWakeUp) {
+	PIOP_EXEC_ENV Env = Irp->Private.EnvToWakeUp;
+	Env->Suspended = FALSE;
+	Irp->Private.EnvToWakeUp = NULL;
+    }
+
+    /* If the IRP is an associated IRP of a master IRP, detach it from
+     * the master. If the master has already been marked as completed
+     * and no more associated IRPs are pending, complete the master IRP. */
+    if (Irp->MasterIrp) {
+	PIRP MasterIrp = Irp->MasterIrp;
+	Irp->MasterIrp = NULL;
+	assert(ListHasEntry(&MasterIrp->Private.AssociatedIrp.PendingList,
+			    &Irp->Private.AssociatedIrp.Link));
+	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
+	if (MasterIrp->Private.MasterCompleted &&
+	    IsListEmpty(&MasterIrp->Private.AssociatedIrp.PendingList)) {
+	    IopCompleteIrp(MasterIrp);
 	}
     }
 }
@@ -1522,7 +1604,7 @@ workitem:
 	    /* Add the IRP to either the PendingList or the CleanupList, depending on
 	     * whether we expect the server to inform us of its completion. */
 	    if (Ok) {
-		if (Irp->Private.NotifyCompletion) {
+		if (IopIrpNeedsCompletionNotification(Irp)) {
 		    InsertTailList(&IopPendingIrpList, &Irp->Private.Link);
 		} else {
 		    InsertTailList(&IopCleanupIrpList, &Irp->Private.Link);
@@ -1532,7 +1614,7 @@ workitem:
 	if (!Ok) {
 	    /* Add the IRP back to the Reply list, because we failed to process it. */
 	    InsertHeadList(&IopReplyIrpList, &Irp->Private.Link);
-	    break;
+	    continue;
 	}
 
 	assert(DestIrp->Size >= sizeof(IO_PACKET));
@@ -1682,6 +1764,21 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
      * local address of the IRP. */
     if (!Irp->Private.Identifier) {
 	Irp->Private.Identifier = Irp;
+    }
+
+    /* If the IRP has specified a master IRP, add us as its associated IRP. */
+    if (Irp->MasterIrp) {
+	/* The master IRP cannot be an associated IRP of another IRP. */
+	assert(!Irp->MasterIrp->MasterIrp);
+	assert(!ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
+			     &Irp->Private.AssociatedIrp.Link));
+	InsertTailList(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
+		       &Irp->Private.AssociatedIrp.Link);
+	/* If the master IRP is not locally generated, always set MasterIrpSent
+	 * to TRUE because server is very well aware of the master IRP. */
+	if (Irp->MasterIrp->Private.OriginalRequestor) {
+	    Irp->Private.MasterIrpSent = TRUE;
+	}
     }
 
     /* If we are not waiting for the completion of the IRP, simply return */

@@ -10,15 +10,6 @@
 
 #include "fatfs.h"
 
-/*
- * Uncomment to enable strict verification of cluster/offset pair
- * caching. If this option is enabled you lose all the benefits of
- * the caching and the read/write operations will actually be
- * slower. It's meant only for debugging!!!
- * - Filip Navara, 26/07/2004
- */
-/* #define DEBUG_VERIFY_OFFSET_CACHING */
-
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -44,12 +35,12 @@ NTSTATUS NextCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 NTSTATUS OffsetToCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 			 ULONG FileOffset, PULONG Cluster, BOOLEAN Extend)
 {
-    DPRINT("OffsetToCluster(DeviceExt %p, FirstCluster %x,"
-	   " FileOffset %x, Cluster %p, Extend %d)\n", DeviceExt,
+    DPRINT("OffsetToCluster(DeviceExt %p, FirstCluster %x, "
+	   "FileOffset %x, Cluster %p, Extend %d)\n", DeviceExt,
 	   FirstCluster, FileOffset, Cluster, Extend);
 
     if (FirstCluster == 0) {
-	DbgPrint("OffsetToCluster is called with FirstCluster = 0!\n");
+	DPRINT("OffsetToCluster is called with FirstCluster = 0\n");
 	ASSERT(FALSE);
     }
 
@@ -97,13 +88,18 @@ static NTSTATUS FatForwardReadIrp(PDEVICE_EXTENSION DeviceExt, PIRP Irp)
     ASSERT(Stack->MajorFunction == IRP_MJ_READ);
     if (Stack->MinorFunction == IRP_MN_MDL) {
 	/* The MDL chain will be freed when wdm.dll!IopDeleteIrp deletes Irp->MdlAddress
-	 * so we don't need to call CcMdlReadComplete. */
+	 * so we don't need to call CcMdlReadComplete manually. */
 	return CcMdlRead(DeviceExt->VolumeFcb->FileObject, &Stack->Parameters.Read.ByteOffset,
 			 Stack->Parameters.Read.Length, &Irp->MdlAddress, &Irp->IoStatus);
     } else {
 	return IoCallDriver(DeviceExt->StorageDevice, Irp);
     }
 }
+
+typedef struct _DISK_READ_REQUEST {
+    PIRP Irp;
+    LIST_ENTRY Link;
+} DISK_READ_REQUEST, *PDISK_READ_REQUEST;
 
 /*
  * FUNCTION: Reads data from a file
@@ -114,8 +110,10 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     DPRINT("FatRead(IrpContext %p)\n", IrpContext);
     ASSERT(IrpContext->DeviceObject);
 
-    /* This request is not allowed on the main device object */
+    LIST_ENTRY ReqList;
+    InitializeListHead(&ReqList);
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    /* This request is not allowed on the main device object */
     if (IrpContext->DeviceObject == FatGlobalData->DeviceObject) {
 	DPRINT("FatRead is called with the main device object.\n");
 	Status = STATUS_INVALID_DEVICE_REQUEST;
@@ -132,12 +130,15 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     PFATINFO FatInfo = &DeviceExt->FatInfo;
     ULONG BytesPerSector = FatInfo->BytesPerSector;
     ASSERT(BytesPerSector);
+    ULONG BytesPerCluster = FatInfo->BytesPerCluster;
+    ASSERT(BytesPerCluster);
 
-    LARGE_INTEGER ByteOffset = Stack->Parameters.Read.ByteOffset;
+    ULONG64 ByteOffset = Stack->Parameters.Read.ByteOffset.QuadPart;
     ULONG Length = Stack->Parameters.Read.Length;
+    ULONG64 FileSize = Fcb->Base.FileSizes.FileSize.QuadPart;
 
-    DPRINT("'%wZ', ReadOffset: 0x%x, ReadLength 0x%x. FileLength 0x%x\n", &Fcb->PathNameU,
-	   ByteOffset.LowPart, Length, Fcb->Base.FileSizes.FileSize.LowPart);
+    DPRINT("'%wZ', ReadOffset: 0x%llx, ReadLength 0x%x. FileLength 0x%llx\n",
+	   &Fcb->PathNameU, ByteOffset, Length, FileSize);
 
     /* This should not happen, but we will allow it nonetheless. */
     if (Length == 0) {
@@ -152,21 +153,21 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
 
     /* Fatfs does not support files larger than 4GB. */
-    if (ByteOffset.HighPart && !IsVolume) {
+    if (ByteOffset > 0xFFFFFFFFULL && !IsVolume) {
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
     }
 
-    if (ByteOffset.QuadPart + Length > Fcb->Base.FileSizes.FileSize.QuadPart) {
+    if (ByteOffset + Length > FileSize) {
 	IrpContext->Irp->IoStatus.Information = 0;
 	Status = STATUS_END_OF_FILE;
 	goto ByeBye;
     }
 
-    if ((ByteOffset.LowPart % BytesPerSector) || (Length % BytesPerSector)) {
-	/* Read must be sector aligned. */
-	DPRINT("Unaligned read: byte offset %u length %u\n",
-	       ByteOffset.LowPart, Length);
+    if ((ByteOffset % BytesPerCluster) ||
+	(ByteOffset + Length < FileSize && (Length % BytesPerCluster))) {
+	/* Read must be cluster aligned. */
+	DPRINT("Unaligned read: cluster size = 0x%x\n", BytesPerCluster);
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
     }
@@ -210,100 +211,96 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
      * can simply pass the request to the underlying disk driver directly. */
     ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
     if (FirstCluster == 1) {
-	if (ByteOffset.LowPart + Length > FatInfo->RootDirectorySectors * BytesPerSector) {
-	    Length = FatInfo->RootDirectorySectors * BytesPerSector - ByteOffset.LowPart;
+	if (ByteOffset + Length > FatInfo->RootDirectorySectors * BytesPerSector) {
+	    Length = FatInfo->RootDirectorySectors * BytesPerSector - ByteOffset;
 	}
-	ByteOffset.LowPart += FatInfo->RootStart * BytesPerSector;
+	ByteOffset += FatInfo->RootStart * BytesPerSector;
 
-	Stack->Parameters.Read.ByteOffset = ByteOffset;
+	Stack->Parameters.Read.ByteOffset.QuadPart = ByteOffset;
 	Stack->Parameters.Read.Length = Length;
 	return FatForwardReadIrp(DeviceExt, IrpContext->Irp);
     }
 
-    /* For normal file reads, traverse through the FAT using the cache manager
-     * and construct associated IRPs. Pass these associated IRPs to the underlying
-     * storage device driver. The master IRP will be automatically completed
-     * once all associated IRPs are completed. As a first step, we find the
-     * cluster number for the starting offset of the requested read operation. */
+    /* For normal file reads, we first find the cluster number for the starting
+     * offset of the requested read operation. */
     ULONG CurrentCluster = FirstCluster;
-    ULONG BytesPerCluster = FatInfo->BytesPerCluster;
-    if (Fcb->LastCluster > 0 && ByteOffset.LowPart >= Fcb->LastOffset) {
-	Status = OffsetToCluster(DeviceExt, Fcb->LastCluster,
-				 ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster)
-				 - Fcb->LastOffset, &CurrentCluster, FALSE);
-#ifdef DEBUG_VERIFY_OFFSET_CACHING
-	/* DEBUG VERIFICATION */
-	ULONG CorrectCluster;
-	OffsetToCluster(DeviceExt, FirstCluster,
-			ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster),
-			&CorrectCluster, FALSE);
-	assert(CorrectCluster == CurrentCluster);
-#endif
-    } else {
-	Status = OffsetToCluster(DeviceExt, FirstCluster,
-				 ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster),
-				 &CurrentCluster, FALSE);
-    }
-
+    Status = OffsetToCluster(DeviceExt, FirstCluster, ByteOffset,
+			     &CurrentCluster, FALSE);
     if (!NT_SUCCESS(Status)) {
-	return Status;
+	goto ByeBye;
     }
-
-    Fcb->LastCluster = CurrentCluster;
-    Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster);
 
     IrpContext->RefCount = 1;
 
+    /* Traverse through the FAT using the cache manager and construct associated
+     * IRPs. Pass these associated IRPs to the underlying storage device driver.
+     * The master IRP will be automatically completed once all associated IRPs
+     * are completed. */
     BOOLEAN First = TRUE;
-    while (Length > 0 && CurrentCluster != 0xffffffff) {
+    ULONG ProcessedLength = 0;
+    while (ProcessedLength < Length && CurrentCluster != 0xFFFFFFFF) {
 	ULONG StartCluster = CurrentCluster;
-	LARGE_INTEGER StartOffset = {
-	    .QuadPart = ClusterToSector(DeviceExt, StartCluster) * BytesPerSector
-	};
-	ULONG BytesDone = 0;
 	ULONG ClusterCount = 0;
-
 	do {
 	    ClusterCount++;
-	    if (First) {
-		BytesDone = min(Length,
-				BytesPerCluster - (ByteOffset.LowPart % BytesPerCluster));
-		StartOffset.QuadPart += ByteOffset.LowPart % BytesPerCluster;
-		First = FALSE;
-	    } else {
-		if (Length - BytesDone > BytesPerCluster) {
-		    BytesDone += BytesPerCluster;
-		} else {
-		    BytesDone = Length;
-		}
-	    }
 	    Status = NextCluster(DeviceExt, FirstCluster, &CurrentCluster, FALSE);
-	} while ((StartCluster + ClusterCount == CurrentCluster)
-		 && NT_SUCCESS(Status) && Length > BytesDone);
-	DPRINT("StartCluster %08x, NextCluster %08x, ClusterCount %u\n",
+	    if (!NT_SUCCESS(Status)) {
+		goto ByeBye;
+	    }
+	} while (StartCluster + ClusterCount == CurrentCluster &&
+		 ProcessedLength + ClusterCount * BytesPerCluster < Length);
+	DPRINT("StartCluster %08x, NextCluster %08x, ClusterCount 0x%x\n",
 	       StartCluster, CurrentCluster, ClusterCount);
 
-	Fcb->LastCluster = StartCluster + (ClusterCount - 1);
-	Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster) +
-	    (ClusterCount - 1) * BytesPerCluster;
-
-	/* TODO: Construct the associated IRPs (reuse master IRP too) and call
-	 * FatForwardReadIrp */
-#if 0
-	Status = FatForwardReadIrp(IrpContext, &StartOffset, BytesDone, ReturnedLength, FALSE);
-	if (!NT_SUCCESS(Status) && Status != STATUS_PENDING) {
-	    break;
+	ULONG BytesToRead = ClusterCount * BytesPerCluster;
+	LARGE_INTEGER ReadOffset = {
+	    .QuadPart = ClusterToSector(DeviceExt, StartCluster) * BytesPerSector
+	};
+	/* We will reuse the main IRP for the first disk request. */
+	if (First) {
+	    DPRINT("Reusing master IRP BO,LEN 0x%llx 0x%x --> 0x%llx 0x%x\n",
+		   Stack->Parameters.Read.ByteOffset.QuadPart, Stack->Parameters.Read.Length,
+		   ReadOffset.QuadPart, BytesToRead);
+	    Stack->Parameters.Read.ByteOffset = ReadOffset;
+	    Stack->Parameters.Read.Length = BytesToRead;
+	    First = FALSE;
+	} else {
+	    PDISK_READ_REQUEST Req = ExAllocatePool(sizeof(DISK_READ_REQUEST));
+	    if (!Req) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto ByeBye;
+	    }
+	    InsertTailList(&ReqList, &Req->Link);
+	    PVOID Buffer = (PUCHAR)IrpContext->Irp->UserBuffer + ProcessedLength;
+	    Req->Irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
+						     DeviceExt->StorageDevice,
+						     Buffer, BytesToRead, &ReadOffset);
+	    if (!Req->Irp) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto ByeBye;
+	    }
+	    DPRINT("Building associated IRP bo,len == 0x%llx 0x%x buffer %p\n",
+		   ReadOffset.QuadPart, BytesToRead, Buffer);
+	    Req->Irp->MasterIrp = IrpContext->Irp;
 	}
-	ReturnedLength += BytesDone;
-#endif
-	Length -= BytesDone;
-	ByteOffset.LowPart += BytesDone;
+	ProcessedLength += BytesToRead;
     }
 
+    LoopOverList(Req, &ReqList, DISK_READ_REQUEST, Link) {
+	IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
+	Req->Irp = NULL;
+    }
+    IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
     Status = STATUS_IRP_FORWARDED;
 
 ByeBye:
-    DPRINT("%x\n", Status);
+    LoopOverList(Req, &ReqList, DISK_READ_REQUEST, Link) {
+	if (Req->Irp) {
+	    IoFreeIrp(Req->Irp);
+	}
+	ExFreePool(Req);
+    }
+    DPRINT("Completing IRP with status 0x%08x\n", Status);
     IrpContext->Irp->IoStatus.Status = Status;
     return Status;
 }
@@ -439,39 +436,15 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 
     /* Find the cluster to start the write from */
     ULONG CurrentCluster = FirstCluster;
-    ULONG LastCluster = Fcb->LastCluster;
-    ULONG LastOffset = Fcb->LastOffset;
-    if (LastCluster > 0 && ByteOffset.LowPart >= LastOffset) {
-	Status = OffsetToCluster(DeviceExt, LastCluster,
-				 ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster)
-				 - LastOffset, &CurrentCluster, FALSE);
-#ifdef DEBUG_VERIFY_OFFSET_CACHING
-	/* DEBUG VERIFICATION */
-	{
-	    ULONG CorrectCluster;
-	    OffsetToCluster(DeviceExt, FirstCluster,
-			    ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster),
-			    &CorrectCluster, FALSE);
-	    if (CorrectCluster != CurrentCluster)
-		KeBugCheck(FAT_FILE_SYSTEM);
-	}
-#endif
-    } else {
-	Status = OffsetToCluster(DeviceExt, FirstCluster,
-				 ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster),
-				 &CurrentCluster, FALSE);
-    }
-
+    Status = OffsetToCluster(DeviceExt, FirstCluster,
+			     ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster),
+			     &CurrentCluster, FALSE);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
 
-    Fcb->LastCluster = CurrentCluster;
-    Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster);
-
     IrpContext->RefCount = 1;
 
-    ULONG BufferOffset = 0;
     BOOLEAN First = TRUE;
     while (Length > 0 && CurrentCluster != 0xffffffff) {
 	ULONG StartCluster = CurrentCluster;
@@ -502,10 +475,6 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	DPRINT("start %08x, next %08x, count %u\n", StartCluster,
 	       CurrentCluster, ClusterCount);
 
-	Fcb->LastCluster = StartCluster + (ClusterCount - 1);
-	Fcb->LastOffset = ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster) +
-	    (ClusterCount - 1) * BytesPerCluster;
-
 	/* TODO: Construct the associated IRPs */
 #if 0
 	Status = FatWriteDiskPartial(IrpContext, &StartOffset,
@@ -514,7 +483,6 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	    break;
 	}
 #endif
-	BufferOffset += BytesDone;
 	Length -= BytesDone;
 	ByteOffset.LowPart += BytesDone;
     }

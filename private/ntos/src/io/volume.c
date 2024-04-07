@@ -125,6 +125,7 @@ next:
 	    goto out;
 	}
 	DevObj->Vcb->VolumeDevice = VolumeDevice;
+	DevObj->Vcb->ClusterSize = Response->VolumeMounted.ClusterSize;
 	DevObj->Vcb->MountInProgress = FALSE;
 	CcSetFileSize(DevObj->Vcb->VolumeFcb, Response->VolumeMounted.VolumeSize);
     } else {

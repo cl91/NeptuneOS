@@ -334,10 +334,11 @@ and pass the IRP to the underlying storage driver (or to Cc if it is an MDL IO).
 initiator of the IO (typically the cache manager) will take care of properly mapping
 the IO buffers later.
 
-IRP Flags:
-The meanings of some IRP flags have been changed from their Windows counterparts,
-usually because they don't make sense in Neptune OS and therefore are reused for
-different purposes.
+Associated IRPs and BUFFERED_IO:
+The Irp::AssociatedIrp union has been dissolved and the IrpCount member has been removed.
+Drivers do not need to set it. Counting the number of associated IRPs is done automatically
+by the system when forwarding the master IRP. As a consequence, accessing the system
+buffer for buffered IO is now done with `Irp->SystemBuffer` rather than
+`Irp->AssociatedIrp.SystemBuffer`. Likewise, change `Irp->AssociatedIrp.MasterIrp` to
+`Irp->MasterIrp`.
 
-IRP_ASSOCIATED_IRP: This has been changed to mean that the address in UserBuffer is
-an offset relative to the UserBuffer of the master IRP.

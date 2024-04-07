@@ -458,7 +458,7 @@ NTAPI NTSTATUS i8042MouInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    break;
 	}
 
-	*(PMOUSE_ATTRIBUTES)Irp->AssociatedIrp.SystemBuffer = DeviceExtension->MouseAttributes;
+	*(PMOUSE_ATTRIBUTES)Irp->SystemBuffer = DeviceExtension->MouseAttributes;
 	Irp->IoStatus.Information = sizeof(MOUSE_ATTRIBUTES);
 	Status = STATUS_SUCCESS;
 	break;

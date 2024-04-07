@@ -6,6 +6,12 @@
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
+#define LoopOverList(Entry, ListHead, Type, Field)			\
+    for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
+	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \
+	 &(Entry)->Field != (ListHead); Entry = __LoopOverList_flink,	\
+	     __LoopOverList_flink = CONTAINING_RECORD((__LoopOverList_flink)->Field.Flink, Type, Field))
+
 #define ENABLE_SWAPOUT
 
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
@@ -405,12 +411,6 @@ typedef struct _FATFCB {
 
     /* Entry into the hash table for the path + short name */
     HASHENTRY ShortHash;
-
-    /* Optimization: caching of last read/write cluster+offset pair. Can't
-     * be in FATCCB because it must be reset everytime the allocated clusters
-     * change. */
-    ULONG LastCluster;
-    ULONG LastOffset;
 } FATFCB, *PFATFCB;
 
 #define CCB_DELETE_ON_CLOSE     0x0001

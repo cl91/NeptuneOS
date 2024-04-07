@@ -1144,7 +1144,6 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	/* New allocation size is larger, so we need to find more space. */
 	NTSTATUS Status;
 	if (FirstCluster == 0) {
-	    Fcb->LastCluster = Fcb->LastOffset = 0;
 	    Status = NextCluster(DeviceExt, FirstCluster, &FirstCluster, TRUE);
 	    if (!NT_SUCCESS(Status)) {
 		DPRINT1("NextCluster failed. Status = %x\n", Status);
@@ -1184,33 +1183,18 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	    }
 	} else {
 	    ULONG Cluster;
-	    if (Fcb->LastCluster > 0) {
-		if (Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize == Fcb->LastOffset) {
-		    Cluster = Fcb->LastCluster;
-		    Status = STATUS_SUCCESS;
-		} else {
-		    Status = OffsetToCluster(DeviceExt, Fcb->LastCluster,
-					     Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize - Fcb->LastOffset,
-					     &Cluster, FALSE);
-		}
-	    } else {
-		Status = OffsetToCluster(DeviceExt, FirstCluster,
-					 Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize,
-					 &Cluster, FALSE);
-	    }
-
+	    Status = OffsetToCluster(DeviceExt, FirstCluster,
+				     Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize,
+				     &Cluster, FALSE);
 	    if (!NT_SUCCESS(Status)) {
 		return Status;
 	    }
-
-	    Fcb->LastCluster = Cluster;
-	    Fcb->LastOffset = Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize;
 
 	    /* FIXME: Check status */
 	    /* Cluster points now to the last cluster within the chain */
 	    ULONG NCluster;
 	    Status = OffsetToCluster(DeviceExt, Cluster,
-				     ROUND_DOWN(NewSize-1,ClusterSize) - Fcb->LastOffset,
+				     ROUND_DOWN(NewSize - 1, ClusterSize),
 				     &NCluster, TRUE);
 	    if (NCluster == 0xffffffff || !NT_SUCCESS(Status)) {
 		/* disk is full */
@@ -1239,8 +1223,6 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 #endif
 	DPRINT("Can set file size\n");
 
-	/* FIXME: Use the cached cluster/offset better way. */
-	Fcb->LastCluster = Fcb->LastOffset = 0;
 	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
 	NTSTATUS Status;
 	ULONG Cluster, NCluster;
@@ -1308,7 +1290,7 @@ NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    PVOID SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    PVOID SystemBuffer = IrpContext->Irp->SystemBuffer;
     ULONG BufferLength = IrpContext->Stack->Parameters.QueryFile.Length;
 
     NTSTATUS Status = STATUS_SUCCESS;
@@ -1384,7 +1366,7 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 
     FILE_INFORMATION_CLASS Info = IrpContext->Stack->Parameters.SetFile.FileInformationClass;
     PFATFCB Fcb = (PFATFCB) IrpContext->FileObject->FsContext;
-    PVOID SystemBuffer = IrpContext->Irp->AssociatedIrp.SystemBuffer;
+    PVOID SystemBuffer = IrpContext->Irp->SystemBuffer;
 
     DPRINT("FatSetInformation is called for '%s'\n",
 	   (Info >= (FileMaximumInformation - 1)) ? "????" : FileInformationClassNames[Info]);

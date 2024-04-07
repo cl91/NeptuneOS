@@ -422,7 +422,7 @@ static NTSTATUS FillEntries(IN PDEVICE_OBJECT DeviceObject,
     SIZE_T Size = NumberOfEntries * EntrySize;
 
     if (DeviceObject->Flags & DO_BUFFERED_IO) {
-	RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, DataStart, Size);
+	RtlCopyMemory(Irp->SystemBuffer, DataStart, Size);
     } else if (DeviceObject->Flags & DO_DIRECT_IO) {
 	PVOID DestAddress = MmGetSystemAddressForMdlSafe(Irp->MdlAddress);
 	if (DestAddress) {

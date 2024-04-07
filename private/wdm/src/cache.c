@@ -1,6 +1,8 @@
 #include <wdmp.h>
 #include <avltree.h>
 
+LIST_ENTRY CiCacheMapList;
+
 /*
  * Cache Map.
  *
@@ -10,6 +12,8 @@
 typedef struct _CACHE_MAP {
     PFSRTL_COMMON_FCB_HEADER Fcb; /* Pointer to the FCB of the file object being cached. */
     AVL_TREE BcbTree; /* Tree of buffer control blocks, ordered by starting file offset. */
+    LIST_ENTRY Link;  /* List link for the list of all cache maps */
+    LIST_ENTRY DirtyList;	/* List of dirty PINNED_BUFFERs. */
 } CACHE_MAP, *PCACHE_MAP;
 
 /*
@@ -61,17 +65,20 @@ typedef struct _BUFFER_CONTROL_BLOCK {
 		    * Must be the first member in this struct. */
     PVOID MappedAddress; /* Where the buffer is mapped to in memory.
 			  * Always cluster size aligned. */
-    ULONG Length;   /* Length of the buffer in terms of file offset.
-		     * Always cluster size aligned. */
+    ULONG64 Length;   /* Length of the buffer in terms of file offset.
+		       * Always cluster size aligned. */
     PCACHE_MAP CacheMap;   /* The cache map this BCB belongs to. */
     LIST_ENTRY PinList;	 /* List of pinned sub-buffers of this BCB. */
-    BOOLEAN Dirty;	 /* If TRUE, data need to be flushed. */
 } BUFFER_CONTROL_BLOCK, *PBUFFER_CONTROL_BLOCK;
+
+/* We set the cache readahead size to the view size because server always map
+ * a full view. */
+#define READAHEAD_SIZE	(64 * PAGE_SIZE)
 
 FORCEINLINE VOID CiInitializeBcb(IN PBUFFER_CONTROL_BLOCK Bcb,
 				 IN ULONG64 FileOffset,
 				 IN PVOID MappedAddress,
-				 IN ULONG Length,
+				 IN ULONG64 Length,
 				 IN PCACHE_MAP CacheMap)
 {
     AvlInitializeNode(&Bcb->Node, FileOffset);
@@ -79,7 +86,6 @@ FORCEINLINE VOID CiInitializeBcb(IN PBUFFER_CONTROL_BLOCK Bcb,
     Bcb->Length = Length;
     Bcb->CacheMap = CacheMap;
     InitializeListHead(&Bcb->PinList);
-    Bcb->Dirty = FALSE;
 }
 
 /*
@@ -92,6 +98,7 @@ typedef struct _PINNED_BUFFER {
     ULONG64 FileOffset;
     ULONG Length;
     LIST_ENTRY Link;
+    BOOLEAN Dirty;	 /* If TRUE, data need to be flushed. */
 } PINNED_BUFFER, *PPINNED_BUFFER;
 
 #define AVL_NODE_TO_BCB(_Node)					\
@@ -158,6 +165,8 @@ NTAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject)
     }
     CacheMap->Fcb = Fcb;
     AvlInitializeTree(&CacheMap->BcbTree);
+    InitializeListHead(&CacheMap->DirtyList);
+    InsertHeadList(&CiCacheMapList, &CacheMap->Link);
     Fcb->CacheMap = CacheMap;
     return STATUS_SUCCESS;
 }
@@ -292,13 +301,19 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     }
     PCACHE_MAP CacheMap = Fcb->CacheMap;
 
-    /* Align the read to the cluster size of the FS. */
-    ULONG64 AlignedOffset = ALIGN_DOWN_64(FileOffset->QuadPart, Vpb->ClusterSize);
-    ULONG AlignedLength = ALIGN_UP_64(FileOffset->QuadPart + Length, Vpb->ClusterSize)
-	- AlignedOffset;
+    /* In order to reduce the number of IRPs we need to send below, we align the read
+     * to the view size. */
+    ULONG64 AlignedOffset = ALIGN_DOWN_64(FileOffset->QuadPart, READAHEAD_SIZE);
+    ULONG64 EndOffset = ALIGN_UP_64(FileOffset->QuadPart + Length, READAHEAD_SIZE);
+    if (EndOffset > Fcb->FileSizes.FileSize.QuadPart) {
+	EndOffset = Fcb->FileSizes.FileSize.QuadPart;
+    }
+    if (EndOffset < FileOffset->QuadPart + Length) {
+	return STATUS_INVALID_PARAMETER;
+    }
 
     /* Build a list of file regions for which locally cached file data do not exist
-     * and therefore we need to call server to get the file data. */
+     * and therefore a server call is needed to get the file data. */
     LIST_ENTRY ReqList;
     InitializeListHead(&ReqList);
 
@@ -313,7 +328,6 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
      * the server will return the MDL for the memory pages. */
     NTSTATUS Status = STATUS_SUCCESS;
     ULONG64 CurrentOffset = AlignedOffset;
-    ULONG64 EndOffset = AlignedOffset + AlignedLength;
     PBUFFER_CONTROL_BLOCK CurrentBcb = AVL_NODE_TO_BCB(
 	AvlTreeFindNodeOrPrev(&CacheMap->BcbTree, AlignedOffset));
     PIRP FirstIrp = NULL;
@@ -360,8 +374,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	    goto out;
 	}
 	if (FirstIrp) {
-	    Req->Irp->AssociatedIrp.MasterIrp = FirstIrp;
-	    FirstIrp->AssociatedIrp.IrpCount++;
+	    Req->Irp->MasterIrp = FirstIrp;
 	} else {
 	    FirstIrp = Req->Irp;
 	    FirstIrp->UserIosb = &IoStatus;
@@ -479,8 +492,7 @@ NTAPI VOID CcSetDirtyData(IN PVOID Bcb)
 {
     PPINNED_BUFFER PinnedBuf = Bcb;
     assert(PinnedBuf);
-    assert(PinnedBuf->Bcb);
-    PinnedBuf->Bcb->Dirty = TRUE;
+    PinnedBuf->Dirty = TRUE;
 }
 
 NTAPI VOID CcUnpinData(IN PVOID Bcb)
@@ -488,6 +500,13 @@ NTAPI VOID CcUnpinData(IN PVOID Bcb)
     PPINNED_BUFFER PinnedBuf = Bcb;
     assert(PinnedBuf);
     RemoveEntryList(&PinnedBuf->Link);
+    /* If the PINNED_BUFFER is marked dirty, we need to add it to the dirty buffer
+     * list so we can inform the server of the dirty status. */
+    if (PinnedBuf->Dirty) {
+	InsertHeadList(&PinnedBuf->Bcb->CacheMap->DirtyList, &PinnedBuf->Link);
+    } else {
+	ExFreePool(Bcb);
+    }
 }
 
 /*
@@ -631,7 +650,7 @@ NTAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
     Mdl->ByteCount = MappedLength;
     *MdlChain = Mdl;
     assert(MappedLength <= Length);
-    assert(MappedLength < Length ||
+    assert(MappedLength == Length ||
 	   Bcb->Node.Key + Bcb->Length == FileOffset->QuadPart + MappedLength);
     while (MappedLength < Length) {
 	Bcb = NEXT_BCB(Bcb);

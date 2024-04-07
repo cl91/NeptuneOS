@@ -92,6 +92,7 @@ typedef struct _IO_VOLUME_CONTROL_BLOCK {
     PIO_DEVICE_OBJECT VolumeDevice; /* Volume device object created by the FS driver. */
     PIO_DEVICE_OBJECT StorageDevice; /* Device object from the underlying storage driver. */
     struct _IO_FILE_CONTROL_BLOCK *VolumeFcb;
+    ULONG ClusterSize;
     BOOLEAN MountInProgress;
 } IO_VOLUME_CONTROL_BLOCK, *PIO_VOLUME_CONTROL_BLOCK;
 
