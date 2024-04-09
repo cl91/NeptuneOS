@@ -720,6 +720,8 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 				    &LdrpImageEntry->BaseDllName));
     LdrpInsertMemoryTableEntry(LdrpImageEntry, InitInfo->ImageName);
     LdrpImageEntry->Flags |= LDRP_ENTRY_PROCESSED;
+    InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
+                   &LdrpImageEntry->InInitializationOrderLinks);
 
     /* Now do the same for NTDLL */
     LdrpNtdllEntry = LdrpAllocateDataTableEntry((PVOID)InitInfo->NtdllViewBase);
@@ -734,7 +736,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 				    &LdrpNtdllEntry->FullDllName));
     LdrpSetBaseDllName(&LdrpNtdllEntry->FullDllName, &LdrpNtdllEntry->BaseDllName);
     LdrpInsertMemoryTableEntry(LdrpNtdllEntry, "ntdll.dll");
-    InsertHeadList(&Peb->LdrData->InInitializationOrderModuleList,
+    InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
                    &LdrpNtdllEntry->InInitializationOrderLinks);
 
     /* Let the world know */
@@ -748,8 +750,12 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 
     /* If we are a driver process, load the wdm.dll first */
     if (InitInfo->DriverProcess) {
-	PVOID WdmDllBaseAddress;
-	RET_ERR(LdrpLoadDll("wdm.dll", &WdmDllBaseAddress));
+	PLDR_DATA_TABLE_ENTRY WdmDllEntry = NULL;
+	RET_ERR(LdrpLoadImportModule("wdm.dll", &WdmDllEntry, NULL));
+	assert(WdmDllEntry);
+	WdmDllEntry->LoadCount++;
+	InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
+		       &WdmDllEntry->InInitializationOrderLinks);
     }
 
     /* Walk the import table of the image and load all dependent DLLs, performing

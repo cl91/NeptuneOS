@@ -288,6 +288,15 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     DbgPrinter("   NOT IMPLEMENTED YET\n");
 #endif
 
+    DbgPrinter("Modules:\n");
+    LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
+		 LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
+	DbgPrinter("    %wZ (%wZ) mapped [%p, %p), entrypoint %p\n",
+		   &LdrEntry->FullDllName, &LdrEntry->BaseDllName,
+		   LdrEntry->DllBase, (PCHAR)LdrEntry->DllBase + LdrEntry->SizeOfImage,
+		   LdrEntry->EntryPoint);
+    }
+
     DbgPrinter("==============================================================================\n");
 }
 
