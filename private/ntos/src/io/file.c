@@ -229,17 +229,78 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     ASYNC_END(State, Status);
 }
 
-NTSTATUS NtReadFile(IN ASYNC_STATE State,
-                    IN PTHREAD Thread,
-                    IN HANDLE FileHandle,
-                    IN HANDLE EventHandle,
-                    IN PIO_APC_ROUTINE ApcRoutine,
-                    IN PVOID ApcContext,
-                    OUT IO_STATUS_BLOCK *IoStatusBlock,
-                    OUT PVOID Buffer,
-                    IN ULONG BufferLength,
-                    IN OPTIONAL PLARGE_INTEGER ByteOffset,
-                    IN OPTIONAL PULONG Key)
+typedef struct _CACHED_IO_CONTEXT {
+    KEVENT IoCompletionEvent;
+    PIO_FILE_OBJECT FileObject;
+    PEVENT_OBJECT EventToSignal;
+    PIO_APC_ROUTINE ApcRoutine;
+    PVOID ApcContext;
+    PTHREAD RequestorThread;
+    PVOID Buffer;
+    IO_STATUS_BLOCK IoStatus;
+    BOOLEAN Write;
+} CACHED_IO_CONTEXT, *PCACHED_IO_CONTEXT;
+
+static VOID IopCachedIoCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				IN ULONG64 FileOffset,
+				IN ULONG64 TargetLength,
+				IN NTSTATUS Status,
+				IN ULONG64 PinnedLength,
+				IN OUT PVOID Ctx)
+{
+    PCACHED_IO_CONTEXT Context = Ctx;
+    ULONG Length = 0;
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    while (Length < TargetLength) {
+	ULONG BytesToCopy = 0;
+	PVOID CacheBuffer = NULL;
+	IF_ERR_GOTO(out, Status,
+		    CcMapDataEx(NULL, Fcb, FileOffset + Length, TargetLength - Length,
+				&BytesToCopy, &CacheBuffer, Context->Write));
+	assert(BytesToCopy <= TargetLength - Length);
+	ULONG BytesCopied = 0;
+	while (BytesCopied < BytesToCopy) {
+	    PVOID MappedBuffer = NULL;
+	    ULONG MappedLength = 0;
+	    IF_ERR_GOTO(out, Status,
+			MmMapHyperspacePage(&Context->RequestorThread->Process->VSpace,
+					    (MWORD)Context->Buffer + Length + BytesCopied,
+					    !Context->Write, &MappedBuffer, &MappedLength));
+	    MappedLength = min(MappedLength, BytesToCopy - BytesCopied);
+	    if (Context->Write) {
+		RtlCopyMemory((PUCHAR)CacheBuffer + BytesCopied, MappedBuffer, MappedLength);
+	    } else {
+		RtlCopyMemory(MappedBuffer, (PUCHAR)CacheBuffer + BytesCopied, MappedLength);
+	    }
+	    MmUnmapHyperspacePage(MappedBuffer);
+	    BytesCopied += MappedLength;
+	}
+	assert(BytesCopied == BytesToCopy);
+	Length += BytesToCopy;
+    }
+    assert(Length == TargetLength);
+    Status = STATUS_SUCCESS;
+out:
+    Context->IoStatus.Status = Status;
+    Context->IoStatus.Information = Length;
+    KeSetEvent(&Context->IoCompletionEvent);
+}
+
+static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
+				 IN PTHREAD Thread,
+				 IN HANDLE FileHandle,
+				 IN HANDLE EventHandle,
+				 IN PIO_APC_ROUTINE ApcRoutine,
+				 IN PVOID ApcContext,
+				 OUT IO_STATUS_BLOCK *IoStatusBlock,
+				 IN OUT PVOID Buffer,
+				 IN ULONG BufferLength,
+				 IN OPTIONAL PLARGE_INTEGER ByteOffset,
+				 IN OPTIONAL PULONG Key,
+				 IN BOOLEAN Write)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
@@ -249,6 +310,9 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
 	    PIO_FILE_OBJECT FileObject;
 	    PEVENT_OBJECT EventObject;
 	    PPENDING_IRP PendingIrp;
+	    PCACHED_IO_CONTEXT Context;
+	    PKEVENT IoCompletionEvent;
+	    IO_STATUS_BLOCK IoStatus;
 	});
 
     if (FileHandle == NULL) {
@@ -268,57 +332,112 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
 	assert(Locals.EventObject != NULL);
     }
 
-    IO_REQUEST_PARAMETERS Irp = {
-	.Device.Object = Locals.FileObject->DeviceObject,
-	.File.Object = Locals.FileObject,
-	.MajorFunction = IRP_MJ_READ,
-	.MinorFunction = 0,
-	.OutputBuffer = (MWORD)Buffer,
-	.OutputBufferLength = BufferLength,
-	.Read.Key = Key ? *Key : 0
-    };
+    ULONG64 FileOffset = 0;
     if (ByteOffset) {
-	Irp.Read.ByteOffset = *ByteOffset;
+	FileOffset = ByteOffset->QuadPart;
     } else {
 	/* TODO: Use current byte offset of the file object (must be synchronous) */
-	/* Irp.Read.ByteOffset = ; */
+	/* FileOffset = ; */
     }
-    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
-    /* For now every IO is synchronous. For async IO, we need to figure
-     * out how we pass IO_STATUS_BLOCK back to the userspace safely.
-     * The idea is to pass it via APC. When NtWaitForSingleObject
-     * returns from the wait the special APC runs and write to the
-     * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */
+    /* If the target file is part of a mounted volume, go through Cc to do the IO. */
+    if (Locals.FileObject->Fcb) {
+	if (FileOffset >= Locals.FileObject->Fcb->FileSize) {
+	    Status = STATUS_END_OF_FILE;
+	    goto out;
+	}
+	IF_ERR_GOTO(out, Status, CcInitializeCacheMap(Locals.FileObject->Fcb, NULL, NULL));
+	Locals.Context = ExAllocatePoolWithTag(sizeof(CACHED_IO_CONTEXT), NTOS_IO_TAG);
+	if (!Locals.Context) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto out;
+	}
+	KeInitializeEvent(&Locals.Context->IoCompletionEvent, NotificationEvent);
+	Locals.Context->FileObject = Locals.FileObject;
+	Locals.Context->EventToSignal = Locals.EventObject;
+	Locals.Context->ApcRoutine = ApcRoutine;
+	Locals.Context->ApcContext = ApcContext;
+	Locals.Context->RequestorThread = Thread;
+	Locals.Context->Buffer = Buffer;
+	Locals.Context->Write = Write;
+	CcPinDataEx(Locals.FileObject->Fcb, FileOffset, BufferLength,
+		    IopCachedIoCallback, Locals.Context);
+	Locals.IoCompletionEvent = &Locals.Context->IoCompletionEvent;
+    } else {
+	/* Otherwise, queue an IRP to the target driver object. */
+	IO_REQUEST_PARAMETERS Irp = {
+	    .Device.Object = Locals.FileObject->DeviceObject,
+	    .File.Object = Locals.FileObject
+	};
+	if (Write) {
+	    Irp.MajorFunction = IRP_MJ_WRITE;
+	    Irp.InputBuffer = (MWORD)Buffer;
+	    Irp.InputBufferLength = BufferLength;
+	    Irp.Write.ByteOffset.QuadPart = FileOffset;
+	    Irp.Write.Key = Key ? *Key : 0;
+	} else {
+	    Irp.MajorFunction = IRP_MJ_READ;
+	    Irp.OutputBuffer = (MWORD)Buffer;
+	    Irp.OutputBufferLength = BufferLength;
+	    Irp.Read.ByteOffset.QuadPart = FileOffset;
+	    Irp.Read.Key = Key ? *Key : 0;
+	}
+	IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+	Locals.IoCompletionEvent = &Locals.PendingIrp->IoCompletionEvent;
+    }
 
+    /* For now every IO is synchronous. */
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
-	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
-
-    /* This is the starting point when the function is resumed. */
-    if (IoStatusBlock != NULL) {
-	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
-    }
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
+	  &Locals.IoCompletionEvent->Header, FALSE, NULL);
+    Locals.IoStatus = Locals.Context ? Locals.Context->IoStatus :
+	Locals.PendingIrp->IoResponseStatus;
+    Status = STATUS_SUCCESS;
 
 out:
-    /* The IO request has returned a error status. Clean up the
-       file object. */
-    if (!NT_SUCCESS(Status) && Locals.FileObject != NULL) {
+    if (!NT_SUCCESS(Status)) {
+	Locals.IoStatus.Status = Status;
+    } else {
+	Status = Locals.IoStatus.Status;
+    }
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.IoStatus;
+    }
+    if (Locals.FileObject) {
 	ObDereferenceObject(Locals.FileObject);
     }
-    if (!NT_SUCCESS(Status) && Locals.EventObject != NULL) {
+    if (Locals.EventObject) {
 	ObDereferenceObject(Locals.EventObject);
     }
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
+    if (Locals.Context) {
+	KeUninitializeEvent(&Locals.Context->IoCompletionEvent);
+	IopFreePool(Locals.Context);
+    }
     ASYNC_END(State, Status);
 }
 
-NTSTATUS NtWriteFile(IN ASYNC_STATE AsyncState,
+NTSTATUS NtReadFile(IN ASYNC_STATE State,
+                    IN PTHREAD Thread,
+                    IN HANDLE FileHandle,
+                    IN HANDLE EventHandle,
+                    IN PIO_APC_ROUTINE ApcRoutine,
+                    IN PVOID ApcContext,
+                    OUT IO_STATUS_BLOCK *IoStatusBlock,
+                    OUT PVOID Buffer,
+                    IN ULONG BufferLength,
+                    IN OPTIONAL PLARGE_INTEGER ByteOffset,
+                    IN OPTIONAL PULONG Key)
+{
+    return IopReadWriteFile(State, Thread, FileHandle, EventHandle, ApcRoutine, ApcContext,
+			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, FALSE);
+}
+
+NTSTATUS NtWriteFile(IN ASYNC_STATE State,
                      IN PTHREAD Thread,
                      IN HANDLE FileHandle,
-                     IN HANDLE Event,
+                     IN HANDLE EventHandle,
                      IN PIO_APC_ROUTINE ApcRoutine,
                      IN PVOID ApcContext,
                      OUT IO_STATUS_BLOCK *IoStatusBlock,
@@ -327,9 +446,8 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE AsyncState,
                      IN OPTIONAL PLARGE_INTEGER ByteOffset,
                      IN OPTIONAL PULONG Key)
 {
-    /* Note that since Buffer can be in the service message buffer, we cannot
-     * sleep until we have called IopCallDriver. */
-    UNIMPLEMENTED;
+    return IopReadWriteFile(State, Thread, FileHandle, EventHandle, ApcRoutine, ApcContext,
+			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, TRUE);
 }
 
 NTSTATUS NtDeleteFile(IN ASYNC_STATE AsyncState,
@@ -373,7 +491,7 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE AsyncState,
                                 IN PTHREAD Thread,
                                 IN HANDLE FileHandle,
                                 OUT IO_STATUS_BLOCK *IoStatusBlock,
-                                IN PVOID FileInfoBuffer,
+                                OUT PVOID FileInfoBuffer,
                                 IN ULONG Length,
                                 IN FILE_INFORMATION_CLASS FileInformationClass)
 {

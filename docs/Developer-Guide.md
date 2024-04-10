@@ -335,7 +335,7 @@ initiator of the IO (typically the cache manager) will take care of properly map
 the IO buffers later.
 
 Associated IRPs and BUFFERED_IO:
-The Irp::AssociatedIrp union has been dissolved and the IrpCount member has been removed.
+The Irp::AssociatedIrp union has been dissolved and its IrpCount member has been removed.
 Drivers do not need to set it. Counting the number of associated IRPs is done automatically
 by the system when forwarding the master IRP. As a consequence, accessing the system
 buffer for buffered IO is now done with `Irp->SystemBuffer` rather than

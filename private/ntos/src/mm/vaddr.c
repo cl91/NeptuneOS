@@ -490,8 +490,8 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	RET_ERR(MmMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
 				    Vad->VSpace, StartAddr, WindowSize, Rights));
     } else if (Vad->Flags.OwnedMemory) {
-	RET_ERR(MmCommitOwnedMemory(Vad->VSpace, StartAddr, WindowSize, Rights,
-				    Vad->Flags.LargePages, NULL, 0));
+	RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, StartAddr, WindowSize, Rights,
+				      Vad->Flags.LargePages, NULL, 0));
     } else {
 	/* Should never reach this */
 	MmDbgDumpVSpace(VSpace);
@@ -658,7 +658,7 @@ static NTSTATUS MiEnsureWindowMapped(IN PVIRT_ADDR_SPACE VSpace,
 	if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
 	    return STATUS_NOT_COMMITTED;
 	}
-	if (Writable && !MmPagingRightsAreEqual(Page->Rights, MM_RIGHTS_RW)) {
+	if (Writable && !MmPageIsWritable(Page)) {
 	    return STATUS_INVALID_PAGE_PROTECTION;
 	}
 	MWORD PageEndAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
@@ -864,6 +864,47 @@ VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
     if (Vad != NULL) {
 	MmDeleteVad(Vad);
     }
+}
+
+/*
+ * Map the client page at the specified address into the hyperspace
+ * so the server can access it. If the page is a large page, the large
+ * page hyperspace will be used. Otherwise the page is mapped at the
+ * regular page (4K on x86) hyperspace.
+ */
+NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
+			     IN MWORD Address,
+			     IN BOOLEAN Write,
+			     OUT PVOID *MappedAddress,
+			     OUT ULONG *MappedLength)
+{
+    PPAGING_STRUCTURE Page = MmQueryPageEx(VSpace, Address, TRUE);
+    if (!Page) {
+	return STATUS_INVALID_ADDRESS;
+    }
+    if (Write && !MmPageIsWritable(Page)) {
+	return STATUS_INVALID_PAGE_PROTECTION;
+    }
+    assert(MiPagingTypeIsPageOrLargePage(Page->Type));
+    assert(Page->Mapped);
+    MWORD HyperspaceAddr = MiPagingTypeIsPage(Page->Type) ?
+	HYPERSPACE_4K_PAGE_START : HYPERSPACE_LARGE_PAGE_START;
+    MWORD Offset = Address - Page->AvlNode.Key;
+    assert(Offset < MiPagingWindowSize(Page->Type));
+    RET_ERR(MmMapMirroredMemory(VSpace, Page->AvlNode.Key, &MiNtosVaddrSpace,
+				HyperspaceAddr, MiPagingWindowSize(Page->Type),
+				Write ? MM_RIGHTS_RW : MM_RIGHTS_RO));
+    *MappedAddress = (PVOID)(HyperspaceAddr + Offset);
+    *MappedLength = MiPagingWindowSize(Page->Type) - Offset;
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Unmap the hyperspace page at the given address.
+ */
+VOID MmUnmapHyperspacePage(IN PVOID MappedAddress)
+{
+    MmUncommitVirtualMemory((MWORD)MappedAddress, 1);
 }
 
 /*

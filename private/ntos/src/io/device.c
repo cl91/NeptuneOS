@@ -217,6 +217,11 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     /* This is the starting point when the function is resumed. */
     assert(Locals.FileObject != NULL);
 
+    if (Locals.PendingIrp->IoResponseDataSize && Locals.FileObject->Fcb) {
+	PIO_RESPONSE_DATA IoResponseData = Locals.PendingIrp->IoResponseData;
+	Locals.FileObject->Fcb->FileSize = IoResponseData->FileCreated.FileSize;
+    }
+
     IO_STATUS_BLOCK IoStatus = Locals.PendingIrp->IoResponseStatus;
     OpenContext->Information = IoStatus.Information;
     Status = IoStatus.Status;

@@ -287,6 +287,11 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
  */
 typedef union _IO_RESPONSE_DATA {
     struct {
+	ULONG64 FileSize;
+	ULONG64 AllocationSize;
+	ULONG64 ValidDataLength;
+    } FileCreated;
+    struct {
 	ULONG64 VolumeSize;
 	GLOBAL_HANDLE VolumeDeviceHandle;
 	ULONG ClusterSize;

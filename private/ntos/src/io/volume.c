@@ -127,6 +127,7 @@ next:
 	DevObj->Vcb->VolumeDevice = VolumeDevice;
 	DevObj->Vcb->ClusterSize = Response->VolumeMounted.ClusterSize;
 	DevObj->Vcb->MountInProgress = FALSE;
+	VolumeDevice->Vcb = DevObj->Vcb;
 	CcSetFileSize(DevObj->Vcb->VolumeFcb, Response->VolumeMounted.VolumeSize);
     } else {
 	IopCleanupPendingIrp(Locals.PendingIrp);

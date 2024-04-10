@@ -448,6 +448,11 @@ static inline BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
     return memcmp(&Left, &Right, sizeof(PAGING_RIGHTS)) == 0;
 }
 
+static inline BOOLEAN MmPageIsWritable(IN PPAGING_STRUCTURE Page)
+{
+    return MmPagingRightsAreEqual(Page->Rights, MM_RIGHTS_RW);
+}
+
 /*
  * Top level structure of the virtual address space of a process.
  *
@@ -622,19 +627,29 @@ static inline NTSTATUS MmRequestUntyped(IN LONG Log2Size,
 
 /* page.c */
 MM_MEM_PRESSURE MmQueryMemoryPressure();
-NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
-			     IN MWORD StartAddr,
-			     IN MWORD WindowSize,
-			     IN PAGING_RIGHTS Rights,
-			     IN BOOLEAN UseLargePages,
-			     IN OPTIONAL PVOID DataBuffer,
-			     IN OPTIONAL MWORD BufferSize);
+NTSTATUS MmCommitOwnedMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD StartAddr,
+			       IN MWORD WindowSize,
+			       IN PAGING_RIGHTS Rights,
+			       IN BOOLEAN UseLargePages,
+			       IN OPTIONAL PVOID DataBuffer,
+			       IN OPTIONAL MWORD BufferSize);
 NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN MWORD OwnerStartAddr,
 			     IN PVIRT_ADDR_SPACE ViewerVSpace,
 			     IN MWORD ViewerStartAddr,
 			     IN MWORD WindowSize,
 			     IN PAGING_RIGHTS NewRights);
+
+static inline NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
+					   IN MWORD WindowSize,
+					   IN PAGING_RIGHTS Rights,
+					   IN BOOLEAN UseLargePages)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmCommitOwnedMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize,
+				 Rights, UseLargePages, NULL, 0);
+}
 
 /* section.c */
 NTSTATUS MmSectionInitialization();
@@ -721,6 +736,12 @@ NTSTATUS MmMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
 			   OUT PMMVAD *TargetVad);
 VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
 		   IN MWORD MappedRegionStart);
+NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
+			     IN MWORD Address,
+			     IN BOOLEAN Write,
+			     OUT PVOID *MappedAddress,
+			     OUT ULONG *MappedLength);
+VOID MmUnmapHyperspacePage(IN PVOID MappedAddress);
 struct _THREAD;
 BOOLEAN MmHandleThreadVmFault(IN struct _THREAD *Thread,
 			      IN MWORD Addr);
@@ -744,10 +765,10 @@ static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
     return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
 
-static inline PPAGING_STRUCTURE MmQueryPage(IN PVIRT_ADDR_SPACE VSpace,
-					    IN MWORD VirtAddr)
+static inline PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
 {
-    return MmQueryPageEx(VSpace, VirtAddr, FALSE);
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmQueryPageEx(&MiNtosVaddrSpace, VirtAddr, FALSE);
 }
 
 /*

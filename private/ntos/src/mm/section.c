@@ -529,14 +529,17 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 					    Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
 					    MappedLength, Rights));
 	    } else {
-		RET_ERR(MmCommitOwnedMemory(Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
-					    MappedLength, Rights, FALSE, Buffer, MappedLength));
+		RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace,
+					      Vad->AvlNode.Key + BytesMapped,
+					      MappedLength, Rights, FALSE,
+					      Buffer, MappedLength));
 	    }
 	    BytesMapped += MappedLength;
 	}
     } else {
-	RET_ERR(MmCommitOwnedMemory(Vad->VSpace, Vad->AvlNode.Key, Vad->WindowSize, Rights,
-				    Vad->Flags.LargePages, NULL, 0));
+	RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, Vad->AvlNode.Key,
+				      Vad->WindowSize, Rights,
+				      Vad->Flags.LargePages, NULL, 0));
     }
 
     return STATUS_SUCCESS;

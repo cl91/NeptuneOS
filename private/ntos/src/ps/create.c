@@ -134,8 +134,7 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     assert(IpcBufferVad != NULL);
     IF_ERR_GOTO(Fail, Status,
 		MmCommitVirtualMemory(IpcBufferVad->AvlNode.Key, SYSTEM_THREAD_IPC_COMMIT));
-    PPAGING_STRUCTURE IpcBufferPage = MmQueryPage(&MiNtosVaddrSpace,
-						  IpcBufferVad->AvlNode.Key);
+    PPAGING_STRUCTURE IpcBufferPage = MmQueryPage(IpcBufferVad->AvlNode.Key);
     assert(IpcBufferPage != NULL);
     IF_ERR_GOTO(Fail, Status, KeEnableSystemThreadFaultHandler(Thread));
     IF_ERR_GOTO(Fail, Status, PspConfigureThread(Thread->TreeNode.Cap,
@@ -352,8 +351,9 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     Thread->IpcBufferServerAddr = ServerIpcBufferVad->AvlNode.Key;
     Thread->IpcBufferClientAddr = ClientIpcBufferVad->AvlNode.Key;
 
-    PPAGING_STRUCTURE IpcBufferClientPage = MmQueryPage(&Process->VSpace,
-							Thread->IpcBufferClientAddr);
+    PPAGING_STRUCTURE IpcBufferClientPage = MmQueryPageEx(&Process->VSpace,
+							  Thread->IpcBufferClientAddr,
+							  FALSE);
     assert(IpcBufferClientPage != NULL);
     RET_ERR(KeEnableThreadFaultHandler(Thread));
     RET_ERR(PspConfigureThread(Thread->TreeNode.Cap,

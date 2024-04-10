@@ -360,20 +360,20 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* If a non-zero InputBufferLength is given, InputBuffer cannot be NULL,
-     * unless the target device is a mounted file system volume and the IoType
-     * is not DIRECT_IO. In this case the cache manager will take care of mapping
-     * the cache pages later. */
-    if (InputBufferLength && !InputBuffer && (!DeviceObject->Vcb ||
-					      (InputIoType & DirectIo))) {
+    /* If a non-zero InputBufferLength is given, InputBuffer cannot be NULL. */
+    if (InputBufferLength && !InputBuffer) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
 
     /* If the requestor specified a NULL OutputBuffer with a non-zero
-     * OutputBufferLength, it wants the driver to embed the data in the
-     * IRP. In this case the data size cannot be too large. */
-    if (!OutputBuffer && OutputBufferLength >= IRP_DATA_BUFFER_SIZE) {
+     * OutputBufferLength and the target device is not a mounted file system,
+     * it wants the driver to embed the data in the IRP, in which case the
+     * data size cannot be too large. In the case of a mounted file system,
+     * a READ IRP with a NULL OutputBuffer comes from the cache manager which
+     * will take care of mapping the cache pages later */
+    if (!OutputBuffer && (!(DeviceObject->Vcb && Irp->MajorFunction == IRP_MJ_READ) &&
+			  OutputBufferLength >= IRP_DATA_BUFFER_SIZE)) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }

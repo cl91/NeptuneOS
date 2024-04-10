@@ -783,6 +783,12 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     ULONG Size = sizeof(IO_PACKET);
     PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(Irp);
     switch (IoSp->MajorFunction) {
+    case IRP_MJ_CREATE:
+	assert(IoSp->FileObject);
+	if (NT_SUCCESS(Irp->IoStatus.Status) && IoSp->FileObject->FsContext) {
+	    Size += sizeof(IO_RESPONSE_DATA);
+	}
+	break;
     case IRP_MJ_PNP:
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
@@ -856,6 +862,19 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     Dest->ClientMsg.IoCompleted.IoStatus = Irp->IoStatus;
 
     switch (IoSp->MajorFunction) {
+    case IRP_MJ_CREATE:
+	/* If the file being opened is part of a file system, we need to inform the
+	 * server of the file size information. */
+	assert(IoSp->FileObject);
+	if (NT_SUCCESS(Irp->IoStatus.Status) && IoSp->FileObject->FsContext) {
+	    Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
+	    PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
+	    PFSRTL_COMMON_FCB_HEADER Fcb = IoSp->FileObject->FsContext;
+	    Ptr->FileCreated.FileSize = Fcb->FileSizes.FileSize.QuadPart;
+	    Ptr->FileCreated.AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
+	    Ptr->FileCreated.ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
+	}
+	break;
     case IRP_MJ_PNP:
     {
 	switch (IoSp->MinorFunction) {

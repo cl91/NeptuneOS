@@ -45,6 +45,9 @@ Revision History:
 #define CiAllocatePool(Size)	ExAllocatePoolWithTag((Size), NTOS_CC_TAG)
 #define CiFreePool(Size)	ExFreePoolWithTag((Size), NTOS_CC_TAG)
 
+struct _CC_VIEW;
+struct _QUEUED_CALLBACK;
+
 /*
  * An L1 view table describes an aligned virtual memory area with
  * PAGE_SIZE/sizeof(PVOID) views. Each view may belong to different file
@@ -52,7 +55,6 @@ Revision History:
  * with PAGE_SIZE/sizeof(PVOID) view tables. 32-bit architectures only
  * have L1 view tables. 64-bit architectures have both.
  */
-struct _CC_VIEW;
 typedef struct _CC_VIEW_TABLE {
     union {
 	struct _CC_VIEW_TABLE *Parent; /* For lower-level view tables. */
@@ -143,10 +145,18 @@ typedef struct _CC_CACHE_SPACE {
  * file object to the file offset of the underlying volume object.
  */
 typedef struct _FILE_OFFSET_MAPPING {
-    AVL_NODE Node; /* Key is the starting file offset of the file system file object. */
+    AVL_NODE Node; /* Key is the starting file offset of the file region of the FS file
+		    * object with respect to the starting file offset of the view. */
     ULONG64 VolumeFileOffset; /* Starting offset of the corresponding volume file region. */
-    ULONG Length; /* Length of the file region. Must be divisible by the cluster size. */
+    union {
+	struct _QUEUED_CALLBACK *QueuedCallback;
+	struct _CC_VIEW *View;
+    };
+    ULONG Length; /* Length of the file region. Cluster size aligned. */
 } FILE_OFFSET_MAPPING, *PFILE_OFFSET_MAPPING;
+
+#define AVL_NODE_TO_FILE_OFFSET_MAPPING(p)				\
+    ((p) ? CONTAINING_RECORD(p, FILE_OFFSET_MAPPING, Node) : NULL)
 
 /*
  * A view is an area of the virtual memory space that spans 64 pages (256KB
@@ -512,7 +522,166 @@ typedef struct _QUEUED_CALLBACK {
     PCC_VIEW View;
     LIST_ENTRY Link;		/* List link for View->CallbackList */
     ULONG MappedViewSize;
+    ULONG MappedLength;	   /* Not used in the case of volume files. */
+    NTSTATUS Status;	   /* Not used in the case of volume files. */
 } QUEUED_CALLBACK, *PQUEUED_CALLBACK;
+
+static VOID CiCompleteQueuedCallback(IN PQUEUED_CALLBACK QueuedCallback)
+{
+    PPIN_DATA_EX_CALLBACK CallbackInfo = QueuedCallback->CallbackInfo;
+    PIO_FILE_CONTROL_BLOCK Fcb = QueuedCallback->View->CacheMap->Fcb;
+    CallbackInfo->CompletedLength += VIEW_SIZE;
+    if (CallbackInfo->CompletedLength == CallbackInfo->TargetLength) {
+	ULONG64 PinnedLength = NT_SUCCESS(CallbackInfo->Status) ?
+	    CallbackInfo->OriginalLength : 0;
+	CallbackInfo->Callback(Fcb, CallbackInfo->OriginalFileOffset,
+			       CallbackInfo->OriginalLength, CallbackInfo->Status,
+			       PinnedLength, CallbackInfo->Context);
+	CiFreePool(CallbackInfo);
+    }
+    RemoveEntryList(&QueuedCallback->Link);
+    CiFreePool(QueuedCallback);
+}
+
+static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
+					IN ULONG64 VolumeFileOffset,
+					IN ULONG64 Length,
+					IN NTSTATUS Status,
+					IN ULONG64 PinnedLength,
+					IN OUT PVOID Context)
+{
+    PFILE_OFFSET_MAPPING Mapping = Context;
+    PQUEUED_CALLBACK QueuedCallback = Mapping->QueuedCallback;
+    PPIN_DATA_EX_CALLBACK CallbackInfo = QueuedCallback->CallbackInfo;
+    PCC_VIEW View = QueuedCallback->View;
+    PIO_FILE_CONTROL_BLOCK Fcb = View->CacheMap->Fcb;
+    assert(Fcb != Fcb->Vcb->VolumeFcb);
+    assert(VolumeFcb == Fcb->Vcb->VolumeFcb);
+    assert(VolumeFileOffset == Mapping->VolumeFileOffset);
+    assert(Length == Mapping->Length);
+    assert(View->MappedAddress);
+
+    if (!NT_SUCCESS(QueuedCallback->Status)) {
+	Status = QueuedCallback->Status;
+    }
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    assert(PinnedLength == Length);
+
+    ULONG ViewOffset = Mapping->Node.Key;
+    assert(ViewOffset < VIEW_SIZE);
+    PAVL_NODE Parent = AvlTreeFindNodeOrParent(&View->FileOffsetMapping,
+					       ViewOffset);
+    if (Parent && Parent->Key == ViewOffset) {
+	/* This can happen if the FS driver sent multiple IRPs with
+	 * the same file offset. */
+	assert(FALSE);
+	Status = STATUS_INTERNAL_ERROR;
+	goto out;
+    }
+
+    /* If both the view offset and the volume file offset are page-aligned, we
+     * can simply share the pages with the volume cache map, except potentially
+     * for the last block if Length is not page-aligned. */
+    ULONG AlignedLength = PAGE_ALIGN(Length);
+    ULONG AlignedEndOffset = PAGE_ALIGN(ViewOffset + Length);
+    if (IS_PAGE_ALIGNED(ViewOffset) && IS_PAGE_ALIGNED(VolumeFileOffset)) {
+	ULONG MappedLength = 0;
+	while (MappedLength < AlignedLength) {
+	    MWORD MappedAddress = View->MappedAddress + ViewOffset + MappedLength;
+	    ULONG WindowSize = 0;
+	    PVOID Buffer = NULL;
+	    IF_ERR_GOTO(out, Status, CcMapData(VolumeFcb, VolumeFileOffset + MappedLength,
+					       AlignedLength - MappedLength,
+					       &WindowSize, &Buffer));
+	    assert(WindowSize);
+	    assert(Buffer);
+	    IF_ERR_GOTO(out, Status,
+			MmMapMirroredMemory(CiNtosCacheSpace.AddrSpace, (MWORD)Buffer,
+					    CiNtosCacheSpace.AddrSpace, MappedAddress,
+					    WindowSize, MM_RIGHTS_RW));
+	    MappedLength += WindowSize;
+	}
+	assert(MappedLength == AlignedLength);
+    } else {
+	/* Otherwise, we need to create private pages. Note for the unaligned head and
+	 * tail of the view region we ignore the STATUS_ALREADY_COMMITTED error since
+	 * another call of this routine may have already committed the pages there. */
+	ULONG AlignedOffset = PAGE_ALIGN_UP(ViewOffset);
+	if (ViewOffset < AlignedOffset) {
+	    Status = MmCommitOwnedMemory(View->MappedAddress + PAGE_ALIGN(ViewOffset),
+					 PAGE_SIZE, MM_RIGHTS_RW, FALSE);
+	    if (!NT_SUCCESS(Status) && Status != STATUS_ALREADY_COMMITTED) {
+		goto out;
+	    }
+	}
+	if (AlignedOffset < AlignedEndOffset) {
+	    IF_ERR_GOTO(out, Status,
+			MmCommitOwnedMemory(View->MappedAddress + AlignedOffset,
+					    AlignedEndOffset - AlignedOffset,
+					    MM_RIGHTS_RW, FALSE));
+	}
+    }
+    if (AlignedEndOffset < ViewOffset + Length) {
+	Status = MmCommitOwnedMemory(View->MappedAddress + AlignedEndOffset,
+				     PAGE_SIZE, MM_RIGHTS_RW, FALSE);
+	if (!NT_SUCCESS(Status) && Status != STATUS_ALREADY_COMMITTED) {
+	    goto out;
+	}
+    }
+
+    /* Skip the shared pages mapped above so the code below won't do unneeded copy. */
+    if (IS_PAGE_ALIGNED(ViewOffset) && IS_PAGE_ALIGNED(VolumeFileOffset)) {
+	ViewOffset += AlignedLength;
+	Length -= AlignedLength;
+    }
+
+    ULONG LengthCopied = 0;
+    while (LengthCopied < Length) {
+	ULONG MappedLength = 0;
+	PVOID Buffer = NULL;
+	Status = CcMapData(VolumeFcb, VolumeFileOffset + LengthCopied,
+			   Length - LengthCopied, &MappedLength, &Buffer);
+	if (!NT_SUCCESS(Status)) {
+	    assert(FALSE);
+	    goto out;
+	}
+	assert(Buffer);
+	assert(ViewOffset + LengthCopied < VIEW_SIZE);
+	RtlCopyMemory((PVOID)(View->MappedAddress + ViewOffset + LengthCopied),
+		      Buffer, MappedLength);
+	LengthCopied += MappedLength;
+    }
+
+    AvlTreeInsertNode(&View->FileOffsetMapping, Parent, &Mapping->Node);
+    Mapping->View = View;
+
+out:
+    QueuedCallback->MappedLength += Mapping->Length;
+    if (!NT_SUCCESS(Status)) {
+	QueuedCallback->Status = Status;
+	CallbackInfo->Status = Status;
+	CiFreePool(Mapping);
+	/* Free all the FILE_OFFSET_MAPPINGs of the view */
+	PAVL_NODE Node;
+	while ((Node = AvlGetFirstNode(&View->FileOffsetMapping)) != NULL) {
+	    AvlTreeRemoveNode(&View->FileOffsetMapping, Node);
+	    CiFreePool(AVL_NODE_TO_FILE_OFFSET_MAPPING(Node));
+	}
+	/* Uncommit all pages in this view */
+	MmUncommitVirtualMemory(View->MappedAddress, VIEW_SIZE);
+    }
+    if (QueuedCallback->MappedLength >= QueuedCallback->MappedViewSize) {
+	assert(QueuedCallback->MappedLength ==
+	       ALIGN_UP_BY(QueuedCallback->MappedViewSize, Fcb->Vcb->ClusterSize));
+	if (NT_SUCCESS(Status)) {
+	    assert(NT_SUCCESS(QueuedCallback->Status));
+	    View->Loaded = TRUE;
+	}
+	CiCompleteQueuedCallback(QueuedCallback);
+    }
+}
 
 static BOOLEAN CiPagedReadCallback(IN PPENDING_IRP PendingIrp,
 				   IN OUT PVOID Context,
@@ -523,29 +692,54 @@ static BOOLEAN CiPagedReadCallback(IN PPENDING_IRP PendingIrp,
     PCC_VIEW View = QueuedCallback->View;
     PIO_FILE_CONTROL_BLOCK Fcb = View->CacheMap->Fcb;
     BOOLEAN IsVolume = Fcb == Fcb->Vcb->VolumeFcb;
+    NTSTATUS Status = PendingIrp->IoResponseStatus.Status;
     if (IsVolume) {
 	assert(Completion);
-	NTSTATUS Status = PendingIrp->IoResponseStatus.Status;
 	if (NT_SUCCESS(Status)) {
 	    View->Loaded = TRUE;
 	} else {
 	    MmUncommitVirtualMemory(View->MappedAddress, QueuedCallback->MappedViewSize);
 	    CallbackInfo->Status = Status;
 	}
-	CallbackInfo->CompletedLength += VIEW_SIZE;
-	if (CallbackInfo->CompletedLength == CallbackInfo->TargetLength) {
-	    ULONG64 PinnedLength = NT_SUCCESS(CallbackInfo->Status) ?
-		CallbackInfo->OriginalLength : 0;
-	    CallbackInfo->Callback(Fcb, CallbackInfo->OriginalFileOffset,
-				   CallbackInfo->OriginalLength, CallbackInfo->Status,
-				   PinnedLength, CallbackInfo->Context);
-	    CiFreePool(CallbackInfo);
-	}
     } else {
-	assert(FALSE);
+	if (!NT_SUCCESS(Status)) {
+	    CallbackInfo->Status = Status;
+	    goto out;
+	}
+	PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
+	if (Irp->MajorFunction != IRP_MJ_READ) {
+	    assert(FALSE);
+	    CallbackInfo->Status = STATUS_INVALID_DEVICE_REQUEST;
+	    goto out;
+	}
+	ULONG64 ViewOffset = Irp->OutputBuffer;
+	ULONG64 VolumeFileOffset = Irp->Read.ByteOffset.QuadPart;
+	ULONG Length = Irp->OutputBufferLength;
+	/* File offset mapping must be within the same view and aligned
+	 * by cluster size. */
+	if (ViewOffset >= VIEW_SIZE || Length >= VIEW_SIZE ||
+	    !IS_ALIGNED_BY(ViewOffset, Fcb->Vcb->ClusterSize) ||
+	    !IS_ALIGNED_BY(Length, Fcb->Vcb->ClusterSize)) {
+	    assert(FALSE);
+	    CallbackInfo->Status = STATUS_INVALID_DEVICE_REQUEST;
+	    goto out;
+	}
+	PFILE_OFFSET_MAPPING Mapping = CiAllocatePool(sizeof(FILE_OFFSET_MAPPING));
+	if (!Mapping) {
+	    CallbackInfo->Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto out;
+	}
+	Mapping->Node.Key = ViewOffset;
+	Mapping->VolumeFileOffset = VolumeFileOffset;
+	Mapping->Length = Length;
+	Mapping->QueuedCallback = QueuedCallback;
+	CcPinDataEx(Fcb->Vcb->VolumeFcb, VolumeFileOffset, Length,
+		    CiFileOffsetMappingCallback, Mapping);
+	return FALSE;
     }
-    RemoveEntryList(&QueuedCallback->Link);
-    CiFreePool(QueuedCallback);
+
+out:
+    CiCompleteQueuedCallback(QueuedCallback);
     return FALSE;
 }
 
@@ -589,7 +783,7 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	Length = FileSize - FileOffset;
     }
 
-    /* Since we are dealing with asynchronous IO and we don't have the convenient
+    /* Since we are dealing with asynchronous IO and don't have the convenient
      * ASYNC_STATE with which we can simply wait for the IOs to complete, construct
      * a PIN_DATA_EX_CALLBACK structure which packs all the information we need
      * when the IOs are completed. */
@@ -624,7 +818,7 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	 * which case the view size is adjusted to the end of the file. */
 	ULONG MappedViewSize = VIEW_SIZE;
 	if (CurrentOffset + VIEW_SIZE > FileSize) {
-	    MappedViewSize = PAGE_ALIGN_UP(FileSize - CurrentOffset);
+	    MappedViewSize = FileSize - CurrentOffset;
 	}
 	/* If the view is mapped, simply increment the completed length and
 	 * move on to the next view (if any). */
@@ -637,9 +831,9 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	BOOLEAN IsVolume = Vcb && (Fcb == Vcb->VolumeFcb);
 	if (!Vcb || IsVolume) {
 	    IF_ERR_GOTO(fail, Status,
-			MmCommitOwnedMemory(CiNtosCacheSpace.AddrSpace,
-					    View->MappedAddress, MappedViewSize,
-					    MM_RIGHTS_RW, FALSE, NULL, 0));
+			MmCommitOwnedMemory(View->MappedAddress,
+					    PAGE_ALIGN_UP(MappedViewSize),
+					    MM_RIGHTS_RW, FALSE));
 	}
 	/* For purely in-memory file objects, we don't need to send IO requests. */
 	if (!Vcb) {

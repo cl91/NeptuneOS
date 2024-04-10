@@ -727,13 +727,13 @@ static NTSTATUS MiCommitPrivatePage(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmCommitOwnedMemory(IN PVIRT_ADDR_SPACE VSpace,
-			     IN MWORD StartAddr,
-			     IN MWORD WindowSize,
-			     IN PAGING_RIGHTS Rights,
-			     IN BOOLEAN UseLargePages,
-			     IN OPTIONAL PVOID DataBuffer,
-			     IN OPTIONAL MWORD BufferSize)
+NTSTATUS MmCommitOwnedMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD StartAddr,
+			       IN MWORD WindowSize,
+			       IN PAGING_RIGHTS Rights,
+			       IN BOOLEAN UseLargePages,
+			       IN OPTIONAL PVOID DataBuffer,
+			       IN OPTIONAL MWORD BufferSize)
 {
     assert(IS_PAGE_ALIGNED(StartAddr));
     assert(IS_PAGE_ALIGNED(WindowSize));
@@ -999,8 +999,9 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 	return;
     }
 
-    MmDbgPrint("    Virtual address %p  Type %s  VSpaceCap 0x%zx\n",
-	       (PVOID) Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type), Paging->VSpaceCap);
+    MmDbgPrint("    Virtual address %p  Type %s  VSpaceCap 0x%zx  Rights %s\n",
+	       (PVOID)Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type), Paging->VSpaceCap,
+	       MmPageIsWritable(Paging) ? "RW" : "RO");
     MmDbgPrint("    ");
     MmDbgDumpCapTreeNode(&Paging->TreeNode);
     MmDbgPrint("  Cap Tree Parent ");
