@@ -676,8 +676,8 @@ NTSTATUS HwConfigure(PCONTROLLER_INFO ControllerInfo,
 
     Buffer[0] = COMMAND_CONFIGURE;
     Buffer[1] = 0;
-    Buffer[2] = EIS * CONFIGURE_EIS + EFIFO * CONFIGURE_EFIFO +
-	POLL * CONFIGURE_POLL + FIFOTHR;
+    Buffer[2] = EIS * CONFIGURE_EIS + (!EFIFO) * CONFIGURE_EFIFO +
+	(!POLL) * CONFIGURE_POLL + FIFOTHR;
     Buffer[3] = PRETRK;
 
     for (int i = 0; i < 4; i++) {

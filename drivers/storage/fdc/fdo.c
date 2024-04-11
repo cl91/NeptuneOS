@@ -275,8 +275,9 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
     TRACE_(FLOPPY, "InitController called with Controller 0x%p\n",
 	   ControllerInfo);
 
-    /* Get controller in a known state */
-    NTSTATUS Status = HwConfigure(ControllerInfo, FALSE, TRUE, TRUE, 0, 0);
+    /* Get controller in a known state. We will set implied seek to FALSE
+     * for the time being and will try to enable it below. */
+    NTSTATUS Status = HwConfigure(ControllerInfo, FALSE, TRUE, FALSE, 7, 0);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY, "InitController: unable to configure controller. Error = 0x%x\n",
 	      Status);
@@ -319,7 +320,7 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
     /* Next, see if we have the right version to do implied seek */
     if (ControllerVersion == VERSION_ENHANCED) {
 	/* If so, set that up -- all defaults below except first TRUE for EIS */
-	Status = HwConfigure(ControllerInfo, TRUE, TRUE, TRUE, 0, 0);
+	Status = HwConfigure(ControllerInfo, TRUE, TRUE, FALSE, 7, 0);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY,
 		  "InitController: unable to set up implied seek. Error = 0x%x\n",
