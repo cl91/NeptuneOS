@@ -407,9 +407,6 @@ NTSTATUS FatUpdateFcb(PDEVICE_EXTENSION Vcb,
     /* Reinit FCB */
     FatInitFcbFromDirEntry(Vcb, ParentFcb, Fcb, DirContext);
 
-    if (FatFcbIsDirectory(Fcb)) {
-	CcFlushCache(&Fcb->Base, NULL, 0, NULL);
-    }
     InsertTailList(&ParentFcb->ParentListHead, &Fcb->ParentListEntry);
     FatAddFcbToTable(Vcb, Fcb);
 

@@ -1,6 +1,6 @@
 #pragma once
 
-/* TODO: SEH (especially on amd64) */
+#include <util.h>
 
 /*
  * This is placed at the top of the coroutine stack. The top of the

@@ -165,9 +165,6 @@ NTSTATUS FatRenameEntry(IN PDEVICE_EXTENSION DeviceExt,
 	CcUnpinData(Context);
 
 	Status = FatUpdateFcb(DeviceExt, Fcb, &DirContext, Fcb->ParentFcb);
-	if (NT_SUCCESS(Status)) {
-	    CcFlushCache(&Fcb->ParentFcb->Base, NULL, 0, NULL);
-	}
 
 	return Status;
     } else {
@@ -318,15 +315,12 @@ NTSTATUS FatMoveEntry(IN PDEVICE_EXTENSION DeviceExt,
     }
 
     OldParent = Fcb->ParentFcb;
-    CcFlushCache(&OldParent->Base, NULL, 0, NULL);
     MoveContext.InPlace = (OldParent == ParentFcb);
 
     /* Add our new entry with our cluster */
     Status = FatAddEntry(DeviceExt, FileName, &Fcb, ParentFcb,
 			 (FatFcbIsDirectory(Fcb) ? FILE_DIRECTORY_FILE : 0),
 			 *Fcb->Attributes, &MoveContext);
-
-    CcFlushCache(&Fcb->ParentFcb->Base, NULL, 0, NULL);
 
     return Status;
 }

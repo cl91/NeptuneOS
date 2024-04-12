@@ -3,17 +3,13 @@
 Copyright (c) Alex Ionescu.  All rights reserved.
 Copyright (c) 2011 amdf.
 
-    THIS CODE AND INFORMATION IS PROVIDED UNDER THE LESSER GNU PUBLIC LICENSE.
-    PLEASE READ THE FILE "COPYING" IN THE TOP LEVEL DIRECTORY.
-
 Module Name:
 
     input.c
 
 Abstract:
 
-    The Native Command Line Interface (NCLI) is the command shell for the
-    TinyKRNL OS.
+    The Native Command Line Interface is the command shell for Neptune OS.
     This module deals with device input (such as mouse or keyboard).
 
 Environment:

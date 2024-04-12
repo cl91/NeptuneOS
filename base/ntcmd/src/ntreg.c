@@ -1,6 +1,3 @@
-
-//#define DEBUGMODE
-
 #include "precomp.h"
 #include "ntreg.h"
 
@@ -166,7 +163,7 @@ BOOLEAN NtRegCloseKey(HANDLE hKey)
     return TRUE;
 }
 
-void NtEnumKey(HANDLE hKey)
+VOID NtEnumKey(HANDLE hKey)
 {
     char buf[BUFFER_SIZE];
     PKEY_VALUE_BASIC_INFORMATION pbi;

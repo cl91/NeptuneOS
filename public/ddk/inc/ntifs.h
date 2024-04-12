@@ -359,7 +359,6 @@ typedef struct _FSRTL_COMMON_FCB_HEADER {
     ULONG Flags;
     CC_FILE_SIZES FileSizes; /* Driver must set this before calling CcInitializeCacheMap. */
     PVOID CacheMap; /* Initialized by CcInitializeCacheMap. Driver should not touch it. */
-    PDEVICE_OBJECT VolumeDevice; /* Same as above. Do not touch it. */
 } FSRTL_COMMON_FCB_HEADER, *PFSRTL_COMMON_FCB_HEADER;
 
 /*
@@ -394,17 +393,9 @@ NTAPI NTSYSAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
 				  IN ULONG Length,
 				  OUT PMDL *MdlChain,
 				  OUT PIO_STATUS_BLOCK IoStatus);
-NTAPI NTSYSAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
-				   IN PLARGE_INTEGER StartOffset,
-				   IN PLARGE_INTEGER EndOffset,
-				   IN BOOLEAN Wait);
 NTAPI NTSYSAPI VOID CcSetFileSizes(IN PFILE_OBJECT FileObject,
 				   IN PCC_FILE_SIZES FileSizes);
-
-FORCEINLINE NTAPI VOID CcFlushCache(IN PFSRTL_COMMON_FCB_HEADER Fcb,
-				    IN OPTIONAL PLARGE_INTEGER FileOffset,
-				    IN ULONG Length,
-				    OUT OPTIONAL PIO_STATUS_BLOCK IoStatus)
-{
-    /* TODO */
-}
+NTAPI NTSYSAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
+				 IN OPTIONAL PLARGE_INTEGER FileOffset,
+				 IN ULONG Length,
+				 OUT OPTIONAL PIO_STATUS_BLOCK IoStatus);

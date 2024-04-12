@@ -1022,6 +1022,9 @@ NTAPI NTSYSAPI NTSTATUS NtSetInformationFile(IN HANDLE FileHandle,
 					     IN ULONG Length,
 					     IN FILE_INFORMATION_CLASS FileInformationClass);
 
+NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
+					   OUT PIO_STATUS_BLOCK IoStatusBlock);
+
 #endif
 
 /*

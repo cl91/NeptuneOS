@@ -187,6 +187,9 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.FileAttributes = FileAttributes;
     Locals.OpenContext.OpenPacket.ShareAccess = ShareAccess;
     Locals.OpenContext.OpenPacket.Disposition = CreateDisposition;
+    if (AllocationSize) {
+	Locals.OpenContext.OpenPacket.AllocationSize = AllocationSize->QuadPart;
+    }
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
@@ -450,6 +453,23 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE State,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, TRUE);
 }
 
+NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN HANDLE FileHandle,
+                              IN HANDLE Event,
+                              IN PIO_APC_ROUTINE ApcRoutine,
+                              IN PVOID ApcContext,
+                              OUT IO_STATUS_BLOCK *IoStatusBlock,
+                              IN PVOID FileInfoBuffer,
+                              IN ULONG BufferLength,
+                              IN FILE_INFORMATION_CLASS FileInformationClass,
+                              IN BOOLEAN ReturnSingleEntry,
+                              IN OPTIONAL PCSTR FileName,
+                              IN BOOLEAN RestartScan)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtDeleteFile(IN ASYNC_STATE AsyncState,
                       IN PTHREAD Thread,
                       IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -498,21 +518,62 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE AsyncState,
-                              IN PTHREAD Thread,
-                              IN HANDLE FileHandle,
-                              IN HANDLE Event,
-                              IN PIO_APC_ROUTINE ApcRoutine,
-                              IN PVOID ApcContext,
-                              OUT IO_STATUS_BLOCK *IoStatusBlock,
-                              IN PVOID FileInfoBuffer,
-                              IN ULONG BufferLength,
-                              IN FILE_INFORMATION_CLASS FileInformationClass,
-                              IN BOOLEAN ReturnSingleEntry,
-                              IN OPTIONAL PCSTR FileName,
-                              IN BOOLEAN RestartScan)
+NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,
+			    IN PTHREAD Thread,
+			    IN HANDLE FileHandle,
+			    OUT IO_STATUS_BLOCK *IoStatusBlock)
 {
-    UNIMPLEMENTED;
+    assert(Thread);
+    assert(Thread->Process);
+    assert(IoStatusBlock);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PPENDING_IRP PendingIrp;
+	});
+
+    if (FileHandle == NULL) {
+	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
+    }
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject);
+
+    if (!Locals.FileObject->DeviceObject) {
+	/* Purely in-memory file objects do not require flushing. Return success. */
+	if (IoStatusBlock) {
+	    IoStatusBlock->Status = STATUS_SUCCESS;
+	    IoStatusBlock->Information = 0;
+	}
+	ASYNC_RETURN(State, STATUS_SUCCESS);
+    }
+
+    assert(Locals.FileObject->DeviceObject->DriverObject);
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = Locals.FileObject,
+	.MajorFunction = IRP_MJ_FLUSH_BUFFERS
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
+    }
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+
+out:
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    ASYNC_END(State, Status);
 }
 
 VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)

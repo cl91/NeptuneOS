@@ -367,6 +367,11 @@
     <parameter annotation="in" type="BOOLEAN" name="RestartScan" />
   </svc>
 
+  <svc name="NtFlushBuffersFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+  </svc>
+
   <svc name="NtLoadDriver">
     <parameter annotation="in" type="UnicodeString" name="DriverServiceName" />
   </svc>

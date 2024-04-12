@@ -1,7 +1,7 @@
 #include <smss.h>
 #include <ntddbeep.h>
 
-PCSTR SMSS_BANNER = "\nNeptune OS Session Manager Version [" VER_PRODUCTVERSION_STRING "]\n";
+PCSTR SMSS_BANNER = "\nNeptune OS Session Manager [Version " VER_PRODUCTVERSION_STRING "]\n";
 
 NTSTATUS SmPrint(PCSTR Format, ...)
 {
@@ -110,25 +110,35 @@ static NTSTATUS SmTestFloppyDriver()
     IO_STATUS_BLOCK IoStatusBlock;
 
     /* Open the device */
-    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0\\kernel");
+    LARGE_INTEGER AllocationSize = { .QuadPart = 0x911 };
+    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0\\test");
     InitializeObjectAttributes(&ObjectAttributes, &FloppyDevice, 0, NULL, NULL);
     RET_ERR_EX(NtCreateFile(&hFloppy, FILE_READ_DATA | FILE_WRITE_DATA,
-			    &ObjectAttributes, &IoStatusBlock, NULL, 0,
+			    &ObjectAttributes, &IoStatusBlock, &AllocationSize, 0,
 			    FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
 			    0, NULL, 0),
 	       SmPrint("Failed to create device handle for fdc.sys. Status = 0x%x\n", Status));
+
+    RET_ERR_EX(NtFlushBuffersFile(hFloppy, &IoStatusBlock),
+	       SmPrint("Failed to flush buffers for %wZ, status = 0x%x\n",
+		       &FloppyDevice, Status));
 
     LARGE_INTEGER ByteOffset;
     RtlZeroMemory(&ByteOffset, sizeof(ByteOffset));
 
     /* Try to read the data */
-    SmPrint("Reading floppy... ");
-    RET_ERR_EX(NtReadFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
-			  Buffer, sizeof(Buffer), &ByteOffset, NULL),
+    SmPrint("Writing floppy... ");
+    snprintf(Buffer, 128, "hello, world!\n");
+    RET_ERR_EX(NtWriteFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
+			   Buffer, sizeof(Buffer), &ByteOffset, NULL),
 	       SmPrint("FAILED. Status = 0x%x\n", Status));
 
     SmPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",
 	    Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
+
+    RET_ERR_EX(NtFlushBuffersFile(hFloppy, &IoStatusBlock),
+	       SmPrint("Failed to flush buffers for %wZ, status = 0x%x\n",
+		       &FloppyDevice, Status));
 
     ULONG FileSize = IoStatusBlock.Information;
     for (ULONG i = 0; i <= FileSize / 16; i++) {

@@ -3,17 +3,13 @@
 Copyright (c) Alex Ionescu.  All rights reserved.
 Copyright (c) 2011 amdf.
 
-    THIS CODE AND INFORMATION IS PROVIDED UNDER THE LESSER GNU PUBLIC LICENSE.
-    PLEASE READ THE FILE "COPYING" IN THE TOP LEVEL DIRECTORY.
-
 Module Name:
 
     main.c
 
 Abstract:
 
-    The Native Command Line Interface (NCLI) is the command shell for the
-    TinyKRNL OS.
+    The Native Command Line Interface is the command shell for Neptune OS.
     This module handles the main command line interface and command parsing.
 
 Environment:
@@ -38,21 +34,25 @@ HANDLE hKey;
 
 PCSTR helpstr =
     "\n"
-    "cd X     - Change directory to X    md X     - Make directory X\n"
-    "copy X Y - Copy file X to Y         poweroff - Power off PC\n"
     "dir      - Show directory contents  pwd      - Print working directory\n"
-    "del X    - Delete file X            reboot   - Reboot PC\n"
-    "devtree  - Dump device tree         shutdown - Shutdown PC\n"
-    "exit     - Exit shell               sysinfo  - Dump system information\n"
-    "lm       - List modules             vid      - Test screen output\n"
-    "lp       - List processes           move X Y - Move file X to Y\n"
+    "dump X   - Show hexdump for file X  edlin X  - Edit lines for file X\n"
+    "cd X     - Change directory to X    md X     - Make directory X\n"
+    "copy X Y - Copy file X to Y         move X Y - Move file X to Y\n"
+    "del X    - Delete file X            sync     - Synchronize file systems\n"
+    "devtree  - Dump device tree         sysinfo  - Dump system information\n"
+    "lm       - List modules             lp       - List processes\n"
+    "test     - Test argument parsing    vid      - Test screen output\n"
+    "exit     - Exit shell               poweroff - Power off system\n"
+    "shutdown - Shutdown system          reboot   - Reboot system\n"
     "\n"
-    "If a command is not in the list, it is treated as an executable name\n"
+    "If a command is not in the list, it is treated as an executable name.\n"
     "\n"
-    "Note: we haven't implemented file system yet so pretty much none of the\n"
-    "commands above works right now. However, the keyboard stack is working.\n"
-    "This includes the keyboard class driver and the PS/2 port driver.\n"
+    "Note: to demonstrate the functions of the cache manager, write-back\n"
+    "caching is enabled for the floppy drive. You MUST run `sync' before\n"
+    "removing a disk, or risk data corruption.\n"
     "\n";
+
+#define COMPARE_CMD(Command, String) _strnicmp(Command, String, sizeof(String)-1)
 
 /*++
  * @name RtlClipProcessMessage
@@ -60,7 +60,7 @@ PCSTR helpstr =
  * The RtlClipProcessMessage routine
  *
  * @param Command
- *        FILLMEIN
+ *        Command to be processed.
  *
  * @return None.
  *
@@ -76,7 +76,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
     CHAR CommandBuf[BUFFER_SIZE];
 
     //
-    // Copy command line and break it to arguments
+    // Copy command line and break it down to arguments
     //
     // if xargc = 3, then xargv[1], xargv[2], xargv[3] are available
     // xargv[1] is a command name, xargv[2] is the first parameter
@@ -88,48 +88,48 @@ VOID RtlClipProcessMessage(PCHAR Command)
     //
     // We'll call the handler for each command
     //
-    if (!_strnicmp(Command, "exit", 4)) {
+    if (!COMPARE_CMD(Command, "exit")) {
 	//
-	// Exit from shell
+	// Exit from the shell
 	//
 	DeinitHeapMemory(hHeap);
 	NtTerminateProcess(NtCurrentProcess(), 0);
-    } else if (!_strnicmp(Command, "test", 4)) {
+    } else if (!COMPARE_CMD(Command, "test")) {
 	UINT i = 0;
 
 	RtlCliDisplayString("Args: %d\n", xargc);
 	for (i = 1; i < xargc; i++) {
 	    RtlCliDisplayString("Arg %d: %s\n", i, xargv[i]);
 	}
-    } else if (!_strnicmp(Command, "help", 4)) {
+    } else if (!COMPARE_CMD(Command, "help")) {
 	RtlCliDisplayString("%s", helpstr);
-    } else if (!_strnicmp(Command, "lm", 2)) {
+    } else if (!COMPARE_CMD(Command, "lm")) {
 	//
 	// List Modules (!lm)
 	//
 	RtlCliListDrivers();
-    } else if (!_strnicmp(Command, "lp", 2)) {
+    } else if (!COMPARE_CMD(Command, "lp")) {
 	//
 	// List Processes (!lp)
 	//
 	RtlCliListProcesses();
-    } else if (!_strnicmp(Command, "sysinfo", 7)) {
+    } else if (!COMPARE_CMD(Command, "sysinfo")) {
 	//
 	// Dump System Information (sysinfo)
 	//
 	RtlCliDumpSysInfo();
-    } else if (!_strnicmp(Command, "cd", 2)) {
+    } else if (!COMPARE_CMD(Command, "cd")) {
 	//
 	// Set the current directory
 	//
 	RtlCliSetCurrentDirectory(&Command[3]);
-    } else if (!_strnicmp(Command, "locale", 6)) {
+    } else if (!COMPARE_CMD(Command, "locale")) {
 	//
 	// Set the current directory
 	//
 
 	NtSetDefaultLocale(TRUE, 1049);
-    } else if (!_strnicmp(Command, "pwd", 3)) {
+    } else if (!COMPARE_CMD(Command, "pwd")) {
 	//
 	// Get the current directory
 	//
@@ -142,23 +142,23 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	RtlCliPrintString(&CurrentDirectoryString);
 
 	RtlFreeUnicodeString(&CurrentDirectoryString);
-    } else if (!_strnicmp(Command, "dir", 3)) {
+    } else if (!COMPARE_CMD(Command, "dir")) {
 	//
 	// List the current directory
 	//
 	RtlCliListDirectory();
-    } else if (!_strnicmp(Command, "devtree", 7)) {
+    } else if (!COMPARE_CMD(Command, "devtree")) {
 	//
 	// Dump hardware tree
 	//
 	RtlCliListHardwareTree();
-    } else if (!_strnicmp(Command, "shutdown", 8)) {
+    } else if (!COMPARE_CMD(Command, "shutdown")) {
 	RtlCliShutdown();
-    } else if (!_strnicmp(Command, "reboot", 6)) {
+    } else if (!COMPARE_CMD(Command, "reboot")) {
 	RtlCliReboot();
-    } else if (!_strnicmp(Command, "poweroff", 6)) {
+    } else if (!COMPARE_CMD(Command, "poweroff")) {
 	RtlCliPowerOff();
-    } else if (!_strnicmp(Command, "vid", 6)) {
+    } else if (!COMPARE_CMD(Command, "vid")) {
 	UINT j;
 	WCHAR w;
 	UNICODE_STRING us;
@@ -176,7 +176,6 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	j = 0;
 	for (w = L'A'; w < 0xFFFF; w++) {
 	    j++;
-	    NtDelayExecution(FALSE, &delay);
 	    //w = i;
 	    if (w != L'\n' && w != L'\r') {
 		RtlCliPutChar(w);
@@ -188,7 +187,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
 		RtlCliPutChar(L'\n');
 	    }
 	}
-    } else if (!_strnicmp(Command, "copy", 4)) {
+    } else if (!COMPARE_CMD(Command, "copy")) {
 	// Copy file
 	if (xargc > 2) {
 	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
@@ -204,7 +203,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!_strnicmp(Command, "move", 4)) {
+    } else if (!COMPARE_CMD(Command, "move")) {
 	// Move/rename file
 	if (xargc > 2) {
 	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
@@ -220,7 +219,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!_strnicmp(Command, "del", 3)) {
+    } else if (!COMPARE_CMD(Command, "del")) {
 	// Delete file
 	if (xargc > 1) {
 	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
@@ -236,7 +235,7 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!_strnicmp(Command, "md", 2)) {
+    } else if (!COMPARE_CMD(Command, "md")) {
 	// Make directory
 	if (xargc > 1) {
 	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);

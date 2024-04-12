@@ -167,6 +167,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	memcpy(FileNamePtr + 1, SubPath, Locals.FileNameLength + 1);
     }
     FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
+	.AllocationSize = OpenPacket->AllocationSize,
 	.ReadAccess = Locals.FileObject->ReadAccess,
 	.WriteAccess = Locals.FileObject->WriteAccess,
 	.DeleteAccess = Locals.FileObject->DeleteAccess,

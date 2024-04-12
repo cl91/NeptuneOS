@@ -1,6 +1,7 @@
 #include <wdmp.h>
 
 NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
+			     IN PDEVICE_OBJECT DeviceObject,
 			     IN PFILE_OBJECT_CREATE_PARAMETERS Params,
 			     IN GLOBAL_HANDLE Handle,
 			     OUT PFILE_OBJECT *pFileObject)
@@ -9,6 +10,7 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
     assert(Handle != 0);
     assert(pFileObject != NULL);
     IopAllocateObject(FileObject, FILE_OBJECT);
+    FileObject->DeviceObject = DeviceObject;
     UNICODE_STRING FileName = {0};
     if (Params->FileNameOffset) {
 	RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),

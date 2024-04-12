@@ -11,6 +11,19 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 
+#define VIEWS_PER_TABLE		(PAGE_SIZE / sizeof(PVOID))
+#define VIEW_TABLE_ADDRESS_BITS	(PAGE_LOG2SIZE - MWORD_LOG2SIZE)
+#define VIEW_TABLE_BITMAP_SIZE	(VIEWS_PER_TABLE / MWORD_BITS)
+#define PAGES_IN_VIEW		(64)
+#define VIEW_SIZE		(PAGE_SIZE * PAGES_IN_VIEW)
+#define VIEW_LOG2SIZE		(PAGE_LOG2SIZE + 6)
+#define VIEW_ALIGN(p)		ALIGN_DOWN_BY(p, VIEW_SIZE)
+#define VIEW_ALIGN_UP(p)	ALIGN_UP_BY(p, VIEW_SIZE)
+#define VIEW_ALIGN64(p)		((ULONG64)(p) & ~((ULONG64)VIEW_SIZE - 1))
+#define VIEW_ALIGN_UP64(p)	(VIEW_ALIGN64((ULONG64)(p) + VIEW_SIZE - 1))
+#define IS_VIEW_ALIGNED(p)	(((MWORD)(p)) == VIEW_ALIGN(p))
+#define IS_VIEW_ALIGNED64(p)	(((ULONG64)(p)) == VIEW_ALIGN64(p))
+
 /*
  * Defines the structure of the page frame database following an MDL
  *
@@ -93,6 +106,7 @@ typedef struct _NAMED_PIPE_CREATE_PARAMETERS {
  * Parameters for CREATE, CREATE_MAILSLOT, and CREATE_NAMED_PIPE
  */
 typedef struct _FILE_OBJECT_CREATE_PARAMETERS {
+    ULONG64 AllocationSize;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;
@@ -325,7 +339,8 @@ typedef struct _IO_COMPLETED_MESSAGE {
  * Message type of server messages
  */
 typedef enum _IO_SERVER_MESSAGE_TYPE {
-    IoSrvMsgIoCompleted
+    IoSrvMsgIoCompleted,
+    IoSrvMsgCacheFlushed
 } IO_SERVER_MESSAGE_TYPE;
 
 /*
@@ -335,6 +350,11 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
     IO_SERVER_MESSAGE_TYPE Type;
     union {
 	IO_COMPLETED_MESSAGE IoCompleted;
+	struct {
+	    GLOBAL_HANDLE DeviceObject;
+	    GLOBAL_HANDLE FileObject;
+	    IO_STATUS_BLOCK IoStatus;
+	} CacheFlushed;
     };
 } IO_PACKET_SERVER_MESSAGE, *PIO_PACKET_SERVER_MESSAGE;
 
@@ -343,8 +363,12 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
  */
 typedef enum _IO_CLIENT_MESSAGE_TYPE {
     IoCliMsgIoCompleted,
-    IoCliMsgForwardIrp
+    IoCliMsgForwardIrp,
+    IoCliMsgDirtyBuffers,
+    IoCliMsgFlushCache
 } IO_CLIENT_MESSAGE_TYPE;
+
+#define IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT	(8)
 
 /*
  * Message packet from the client.
@@ -368,6 +392,14 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 			      * Length of the requested read/write. It must be less than
 			      * or equal to the original length parameter. */
 	} ForwardIrp;
+	struct {
+	    MWORD ViewAddress;
+	    ULONG64 DirtyBits;
+	} DirtyBuffers[IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT];
+	struct {
+	    GLOBAL_HANDLE DeviceObject;
+	    GLOBAL_HANDLE FileObject;
+	} FlushCache;
     };
 } IO_PACKET_CLIENT_MESSAGE, *PIO_PACKET_CLIENT_MESSAGE;
 
@@ -416,9 +448,9 @@ static inline USHORT IopDeviceTypeToSectorSize(IN DEVICE_TYPE DeviceType)
 static inline VOID IoDbgDumpFileObjectCreateParameters(IN PIO_PACKET IoPacket,
 						       IN PFILE_OBJECT_CREATE_PARAMETERS Params)
 {
-    DbgPrint("ReadAccess %s WriteAccess %s DeleteAccess %s SharedRead %s "
+    DbgPrint("AllocationSize 0x%llx ReadAccess %s WriteAccess %s DeleteAccess %s SharedRead %s "
 	     "SharedWrite %s SharedDelete %s Flags 0x%08x FileNameOffset 0x%x FileName %s\n",
-	     Params->ReadAccess ? "TRUE" : "FALSE",
+	     Params->AllocationSize, Params->ReadAccess ? "TRUE" : "FALSE",
 	     Params->WriteAccess ? "TRUE" : "FALSE",
 	     Params->DeleteAccess ? "TRUE" : "FALSE",
 	     Params->SharedRead ? "TRUE" : "FALSE",
@@ -471,7 +503,7 @@ static inline PCSTR IopDbgQueryIdTypeStr(IN BUS_QUERY_ID_TYPE IdType)
 static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 				     IN BOOLEAN ClientSide)
 {
-    DbgTrace("Dumping IO Packet %p size %d\n", IoPacket, IoPacket->Size);
+    DbgTrace("Dumping IO Packet %p size 0x%x\n", IoPacket, IoPacket->Size);
     DbgPrint("    TYPE: ");
     switch (IoPacket->Type) {
     case IoPacketTypeRequest:
@@ -543,6 +575,15 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->Request.Read.Key,
 		     IoPacket->Request.Read.ByteOffset.QuadPart);
 	    break;
+	case IRP_MJ_WRITE:
+	    DbgPrint("    WRITE%s  Key 0x%x ByteOffset 0x%llx\n",
+		     IoPacket->Request.MinorFunction == IRP_MN_MDL ? " MDL" : "",
+		     IoPacket->Request.Write.Key,
+		     IoPacket->Request.Write.ByteOffset.QuadPart);
+	    break;
+	case IRP_MJ_FLUSH_BUFFERS:
+	    DbgPrint("    FLUSH-BUFFERS\n");
+	    break;
 	case IRP_MJ_DEVICE_CONTROL:
 	case IRP_MJ_INTERNAL_DEVICE_CONTROL:
 	    DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x\n",
@@ -583,6 +624,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    break;
 	default:
 	    DbgPrint("    UNKNOWN-MAJOR-FUNCTION\n");
+	    assert(FALSE);
 	}
     } else if (IoPacket->Type == IoPacketTypeServerMessage) {
 	switch (IoPacket->ServerMsg.Type) {
@@ -595,6 +637,17 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     (PVOID)IoPacket->ServerMsg.IoCompleted.IoStatus.Information,
 		     IoPacket->ServerMsg.IoCompleted.ResponseDataSize);
 	    break;
+	case IoSrvMsgCacheFlushed:
+	    DbgPrint("    SERVER-MSG CACHE-FLUSHED DeviceHandle %p FileHandle %p "
+		     "IO status 0x%08x Information %p\n",
+		     (PVOID)IoPacket->ServerMsg.CacheFlushed.DeviceObject,
+		     (PVOID)IoPacket->ServerMsg.CacheFlushed.FileObject,
+		     IoPacket->ServerMsg.CacheFlushed.IoStatus.Status,
+		     (PVOID)IoPacket->ServerMsg.CacheFlushed.IoStatus.Information);
+	    break;
+	default:
+	    DbgPrint("    INVALID SERVER MESSAGE TYPE %d\n", IoPacket->ServerMsg.Type);
+	    assert(FALSE);
 	}
     } else if (IoPacket->Type == IoPacketTypeClientMessage) {
 	switch (IoPacket->ClientMsg.Type) {
@@ -615,8 +668,26 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     (PVOID)IoPacket->ClientMsg.ForwardIrp.DeviceObject,
 		     IoPacket->ClientMsg.ForwardIrp.NotifyCompletion ? "TRUE" : "FALSE");
 	    break;
+	case IoCliMsgDirtyBuffers:
+	    DbgPrint("    CLIENT-MSG DIRTY-BUFFERS");
+	    for (ULONG i = 0; i < IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT; i++) {
+		PVOID ViewAddress = (PVOID)IoPacket->ClientMsg.DirtyBuffers[i].ViewAddress;
+		if (!ViewAddress) {
+		    break;
+		}
+		DbgPrint("  ViewAddress[%d] %p DirtyBits[%d] 0x%llx", i, ViewAddress,
+			 i, IoPacket->ClientMsg.DirtyBuffers[i].DirtyBits);
+	    }
+	    DbgPrint("\n");
+	    break;
+	case IoCliMsgFlushCache:
+	    DbgPrint("    CLIENT-MSG FLUSH-CACHE DeviceHandle %p FileHandle %p\n",
+		     (PVOID)IoPacket->ClientMsg.FlushCache.DeviceObject,
+		     (PVOID)IoPacket->ClientMsg.FlushCache.FileObject);
+	    break;
 	default:
 	    DbgPrint("    INVALID CLIENT MESSAGE TYPE %d\n", IoPacket->ClientMsg.Type);
+	    assert(FALSE);
 	}
     }
 }

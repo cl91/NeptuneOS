@@ -1,6 +1,3 @@
-
-//#define DEBUGMODE
-
 #include "precomp.h"
 #include "ntfile.h"
 

@@ -31,6 +31,7 @@
 @ stdcall NtQueryDirectoryFile(long long ptr ptr ptr ptr long long long ptr long)
 @ stdcall NtQueryInformationFile(ptr ptr ptr long long)
 @ stdcall NtQueryAttributesFile(ptr ptr)
+@ stdcall NtFlushBuffersFile(long ptr)
 @ stdcall NtShutdownSystem(long)
 @ stdcall NtSetDefaultLocale(long long)
 @ stdcall NtDelayExecution(long ptr)

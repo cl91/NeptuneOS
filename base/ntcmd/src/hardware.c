@@ -2,17 +2,14 @@
 
 Copyright (c) Alex Ionescu.  All rights reserved.
 
-    THIS CODE AND INFORMATION IS PROVIDED UNDER THE LESSER GNU PUBLIC LICENSE.
-    PLEASE READ THE FILE "COPYING" IN THE TOP LEVEL DIRECTORY.
-
 Module Name:
 
     hardware.c
 
 Abstract:
 
-    The Native Command Line Interface (NCLI) is the command shell for the
-    TinyKRNL OS.
+    The Native Command Line Interface is the command shell for Neptune OS.
+    This module implements hardware information database queries.
 
 Environment:
 

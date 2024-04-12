@@ -16,26 +16,16 @@
 
 static NTSTATUS FatFlushFile(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 {
-    IO_STATUS_BLOCK IoStatus;
     NTSTATUS Status;
 
     DPRINT("FatFlushFile(DeviceExt %p, Fcb %p) for '%wZ'\n", DeviceExt,
 	   Fcb, &Fcb->PathNameU);
 
-    CcFlushCache(&Fcb->Base, NULL, 0, &IoStatus);
-    if (IoStatus.Status == STATUS_INVALID_PARAMETER) {
-	/* FIXME: Caching was probably not initialized */
-	IoStatus.Status = STATUS_SUCCESS;
-    }
-
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_DIRTY)) {
-	Status = FatUpdateEntry(DeviceExt, Fcb);
-	if (!NT_SUCCESS(Status)) {
-	    IoStatus.Status = Status;
-	}
+	return FatUpdateEntry(DeviceExt, Fcb);
     }
 
-    return IoStatus.Status;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
@@ -62,7 +52,6 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 		ReturnStatus = Status;
 	    }
 	}
-	/* FIXME: Stop flushing if this is a removable media and the media was removed */
     }
 
     ListEntry = DeviceExt->FcbListHead.Flink;
@@ -76,10 +65,9 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 		ReturnStatus = Status;
 	    }
 	}
-	/* FIXME: Stop flushing if this is a removable media and the media was removed */
     }
 
-    Fcb = (PFATFCB) DeviceExt->FatFileObject->FsContext;
+    Fcb = (PFATFCB)DeviceExt->FatFileObject->FsContext;
 
     Status = FatFlushFile(DeviceExt, Fcb);
 
@@ -94,7 +82,6 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 	if (Status == STATUS_INVALID_DEVICE_REQUEST) {
 	    DPRINT1("Flush not supported, ignored\n");
 	    Status = STATUS_SUCCESS;
-
 	}
     } else {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -110,24 +97,26 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 
 NTSTATUS FatFlush(PFAT_IRP_CONTEXT IrpContext)
 {
-    NTSTATUS Status;
-    PFATFCB Fcb;
-
     /* This request is not allowed on the main device object. */
     if (IrpContext->DeviceObject == FatGlobalData->DeviceObject) {
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    Fcb = (PFATFCB) IrpContext->FileObject->FsContext;
+    PFATFCB Fcb = (PFATFCB)IrpContext->FileObject->FsContext;
     ASSERT(Fcb);
 
+    NTSTATUS Status;
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME)) {
 	Status = FatFlushVolume(IrpContext->DeviceExt, Fcb);
     } else {
 	Status = FatFlushFile(IrpContext->DeviceExt, Fcb);
     }
 
-    IrpContext->Irp->IoStatus.Information = 0;
+    IO_STATUS_BLOCK IoStatus;
+    CcFlushCache(IrpContext->FileObject, NULL, 0, &IoStatus);
+    if (!NT_SUCCESS(IoStatus.Status)) {
+	Status = IoStatus.Status;
+    }
     return Status;
 }

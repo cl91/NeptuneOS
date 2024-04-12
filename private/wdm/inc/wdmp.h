@@ -5,6 +5,7 @@
 #include <hal.h>
 #include <assert.h>
 #include <debug.h>
+#include "coroutine.h"
 
 extern PCSTR IopDbgTraceModuleName;
 #define RTLP_DBGTRACE_MODULE_NAME	IopDbgTraceModuleName
@@ -150,7 +151,12 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
 } KINTERRUPT;
 
 /* cache.c */
-extern LIST_ENTRY CiCacheMapList;
+VOID CiInitialzeCacheManager();
+ULONG CiProcessDirtyBufferList(IN ULONG RemainingBufferSize,
+			       IN PIO_PACKET DestIrp);
+ULONG CiProcessFlushCacheRequestList(IN ULONG RemainingBufferSize,
+				     IN PIO_PACKET DestIrp);
+VOID CiHandleCacheFlushedServerMessage(PIO_PACKET SrvMsg);
 
 /* device.c */
 extern LIST_ENTRY IopDeviceList;
@@ -167,6 +173,7 @@ extern LIST_ENTRY IopEventList;
 
 /* file.c */
 NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
+			     IN PDEVICE_OBJECT DeviceObject,
 			     IN PFILE_OBJECT_CREATE_PARAMETERS Params,
 			     IN GLOBAL_HANDLE Handle,
 			     OUT PFILE_OBJECT *pFileObject);
@@ -177,6 +184,8 @@ extern PIO_PACKET IopIncomingIoPacketBuffer;
 extern PIO_PACKET IopOutgoingIoPacketBuffer;
 extern LIST_ENTRY IopExecEnvList;
 extern LIST_ENTRY IopFileObjectList;
+extern PIOP_EXEC_ENV IopCurrentEnv;
+extern PIOP_EXEC_ENV IopOldEnvToWakeUp;
 VOID IopInitIrpProcessing();
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);

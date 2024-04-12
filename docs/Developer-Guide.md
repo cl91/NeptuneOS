@@ -65,6 +65,19 @@ should not make native NT api calls (although we don't explicitly forbid this).
 
 ## NT Executive Components
 
+### Memory manager (Mm)
+### Object manager (Ob)
+### Microkernel IPC (Ke)
+### Process manager (Ps)
+### IO manager (Io)
+#### Cache manager (Cc)
+### Configuration manager (Cm)
+### Executive objects (Ex)
+### Security reference manager (Se)
+### Hardware abstraction layer (Hal)
+### System loader (Ldr)
+### Runtime library (Rtl)
+
 ## Device Driver Interface
 The client-side device driver interface is implemented in `wdm.dll`. The name of the
 DLL originally comes from "Windows driver model" which is what Microsoft calls the NT5-era
@@ -88,92 +101,101 @@ cached IO and uncached IO, with various subtleties that the driver author must t
 of. On Neptune OS this architecture is dramatically simplified: the file system drivers
 act exclusively as clients to the cache manager, and do not need to worry about
 handling cached read/write IRPs because those are handled transparently by the Executive.
-The only role of the read/write IRP dispatch routines of a file system driver on Neptune
-OS is to translate file offsets into disk offsets for the on-disk files, typically by
-generating a series of associated IRPs in response to the read/write IRP directed to a
-file object. When the file system driver needs to access the on-disk metadata, it can call
-the cache manager to enable cached access for these in order to increase performance.
+The only role of the read IRP dispatch routines of a file system driver on Neptune OS is
+to translate file offsets into disk offsets for the on-disk files, typically by generating
+a series of associated IRPs in response to the read IRP directed to a file object. The role
+of the WRITE IRP in a file system driver is even simpler: it only needs to handle appending
+to a file, ie. extension of the file size. When the file system driver receives a WRITE IRP,
+it simply needs to allocate the required amount of spaces in the file system and inform the
+server of the translated offsets, again by generating a series of associated WRITE IRP to
+the underlying disk device, which the Executive will intercept. When the file system driver
+needs to access file system metadata on the disk, the cache manager will also enable cached
+access for them in order to increase performance.
 
-The Windows file system driver architecture implies that on Windows/ReactOS, IRPs often
-flow from the IO manager to the file system driver, and then get reflected back to the
-IO manager, which in turn redirects the IRPs to the file system driver for a second time,
-typically with some flags adjusted. This recursive behavior is OK for Windows since drivers
-run in kernel mode. On a microkernel operating system such as Neptune OS, this would incur
-unacceptable performance penalties due to the number of context switches needed. The
-aforementioned design decisions on Neptune OS are chosen precisely in order to minimize
-said number of context switches. On Neptune OS, for IO operations initiated by a "userspace"
-client, the flow of IRPs is always uni-directional and goes from the IO manager in the
-Executive to the file system driver, and then to the underlying storage disk driver.
-If the file object being read from or written to has caching enabled, these IRPs will be
-examined by the Executive and intercepted and completed immediately if they can be fulfilled
-directly from the cached data.
+In the Windows/ReactOS file system driver architecture, IRPs often flow from the IO manager
+to the file system driver, and then get reflected back to the IO manager, which in turn
+redirects the IRPs to the file system driver for a second time, typically with some flags
+adjusted. This recursive behavior is OK for Windows since drivers run in kernel mode. On a
+microkernel operating system such as Neptune OS, this would incur unacceptable performance
+penalties due to the number of context switches needed. The aforementioned design decisions
+for Neptune OS file system drivers are chosen precisely in order to minimize said context
+switches. On Neptune OS, the flow of IRPs is always uni-directional and goes from the IO
+manager in the Executive to the file system driver, and then to the underlying storage disk
+driver. If the file object being read from or written to has caching enabled, these IRPs
+will be examined by the Executive and intercepted and completed immediately if they can be
+fulfilled directly from the cached data.
 
-In particular, on Windows there is a set of so-called "fast-IO" routines that are implemented
-by the file system runtume library FsRtl (although file system drivers can choose to implement
-their own versions of the fast-IO routines, Microsoft recommends that they simply call the FsRtl
-routines directly, and most file system drivers follow this recommendation). These fast IO
-routines are called by the IO manager to handle the cache-hit cases of IO without calling into
-file system-specific code. It should be apparent from above that on Neptune OS the interception
-of the IRPs and their fulfillment from the cached data is functionally equivalent to what these
-fast IO routines do. On Neptune OS, the boilerplate code for fast IO routines that file system
-driver authors need to write on Windows are completely eliminated, and driver authors do not
-need to worry about manually enabling fast IO and other fast-IO related businesses, as these
-are handled by the system automatically and transparently.
+Despite the architectural differences with Windows/ReactOS, the programming interfaces for
+file system drivers on Neptune OS remain largely compatible with those on Windows/ReactOS.
+It is our hope that by consulting the Driver Porting Guide below, a programmer familiar
+with Windows file system driver writing can comfortably port an existing Windows/ReactOS
+file system driver to Neptune OS without much difficulty. In fact, much of the driver porting
+work involves deleting code, rather than writing new code, due to the above-mentioned
+simplifications of the driver architecture. For instance, on Windows there is a set of
+so-called "fast-IO" routines that are implemented by the file system runtume library FsRtl
+(although file system drivers can choose to implement their own versions of the fast-IO
+routines, Microsoft recommends that they simply call the FsRtl routines directly, and most
+file system drivers follow this recommendation). These fast IO routines are called by the
+IO manager to handle the cache-hit cases of IO without calling into file system-specific code.
+It should be apparent from above that on Neptune OS the interception of the IRPs and their
+fulfillment from the cached data is functionally equivalent to what these fast IO routines do.
+On Neptune OS, the boilerplate code for fast IO routines that file system driver authors need
+to write on Windows are completely eliminated, and driver authors do not need to worry about
+manually enabling fast IO and other fast-IO related businesses, as these are handled by the
+system automatically and transparently.
 
-In terms of synchronization, on Windows/ReactOS, most file system drivers will need to
-carefully guard concurrent write operations in order to maintain consistency of data.
-Typically they acquire Executive resources to prevent write operations from proceeding
-until the read operations are done (concurrent read operations are allowed). On Neptune OS
-this is unnecessary as the Executive handles this on the server side: the server never sends
-write IRPs to a file system driver unless all the relevant read operations on that file have
-been completed.
+Likewise, in terms of synchronization, on Windows/ReactOS most file system drivers will need
+to carefully guard concurrent write operations in order to maintain consistency of data.
+Typically they acquire Executive resources (a type of read-write lock in the Windows kernel)
+to prevent write operations from proceeding until the read operations are done (concurrent
+read operations are allowed). On Neptune OS this is completely unnecessary as the WRITE IRPs
+are used only for extending a file, and therefore no READ IRPs will be sent for the file
+region before the WRITE IRP is completed. When porting from Windows/ReactOS, these Executive
+resources and the relevant locking and unlocking calls should therefore be removed (we don't
+provide them anyway).
 
 Similarly, features such as byte-range locks are implemented transparently on the server
-side. Client drivers do not need any special code to implement them.
+side. Client drivers do not need any special code to implement them and should remove the
+relevant code when porting from Windows/ReactOS.
 
 ### Cache Manager
-The cache manager of Neptune OS is designed to ensure consistency and guarantees
-up-to-date access of the same on-disk data, even when the data are referenced in
-different file objects mapped in different processes. The meaning of this guarantee
-is two-fold: for the same file object mapped in different processes, the Neptune OS
-cache manager guarantees that all the virtual pages corresponding to the same file
-region map to the same physical page containing the file data. Secondly, if (parts
-of) two file objects refer to the same on-disk data region, we ensure that the write
-operations performed on one file object is seen immediately by all other file objects.
-Most importantly, this includes handling the case of caching both an on-disk file
-and its underlying volume device object. In this case we guarantee that the data
-written to the volume file object is seen immediately by anyone caching the on-disk
-file, and vice versa. Additionally, we also guarantee that there is always only one
-single copy of the same on-disk data in physical memory, so if an application or driver
-enables cached access for both a file (in a FS) and its underlying volume object,
-we guarantee that only one single set of physical pages will contain the cached
-file data. This guarantee is known as the "no-aliasing" guarantee of the Neptune OS
-cache manager.
+The cache manager of Neptune OS is designed to ensure consistent cached access for the
+file system and block device data for both "userspace" NT clients and file system drivers.
+This works across process boundary: for the same file object mapped in different processes,
+the Neptune OS cache manager guarantees that all virtual pages corresponding to the same
+file region map to the same physical page containing the file data. When the client driver
+writes to a cached file region, it sends the server a notification about the dirty pages.
+Server then updates the dirty status in the cache map, and flushes the caches appropriately.
+For file sections mapped in a NT client process, the server will query the dirty bit in
+the page directory to determine the dirty status when flushing the cache.
 
-Note this non-aliasing guarantee applies to both the case where the cluster size of the
-file system volume is an integer multiple of PAGE_SIZE (eg. 4K file system cluster size
-on an x86 machine), and the case where the cluster size is smaller than one VM page. In
-the latter case it is possible that some data belonging to one on-disk file with caching
-enabled may be seen by another driver that enabled caching to a different on-disk file.
-The Neptune OS cache manager will ensure that reading and writing will never spill over
-to the region that does not belong to a file, as long as the driver uses the interfaces
-provided by the cache manager to do the reading and writing. It is however, possible that
-a malicious driver can access these data if it bypasses the cache manager interfaces.
-In this case, the recommended solution is to completely disallow caching for this driver,
-or reformat the file system volume with cluster size that is at least one page size.
+The NT system service `NtFlushBuffersFile` can be used to initiate a cache flush explicitly.
+It is important to note that `NtFlushBuffersFile` only guarantees that the IO operations
+that have been completed at the time when this service is called will be flushed once the
+service routine returns. It makes no guarantee about the ongoing IO operations or future IO
+operations that are initiated after the service is called. The `NtFlushBuffersFile` is
+similar to the `fsync` system call in Unix and Unix-like systems.
+
+#### Write-back caching and stable page write
+
+Discuss the lack of stable page write and the problem for check-summing devices.
 
 ### Driver Porting Guide
 
 Summary of issues mentioned above. Guide to porting drivers from ReactOS and Windows WDM.
 
 #### General Issues
-Header file:
+
+##### Header file
 Include `ntddk.h` (under `public/ddk/inc`) as the master header file.
 
-DEVICE_OBJECT.Characteristics has been merged with DEVICE_OBJECT.Flags to form a 64-bit
-flag, so replace DEVICE_OBJECT.Characteristics with DEVICE_OBJECT.Flags.
+##### `DEVICE_OBJECT`
 
-IO Transfer Type:
+`DEVICE_OBJECT.Characteristics` has been merged with `DEVICE_OBJECT.Flags` to form a 64-bit
+flag, so replace `DEVICE_OBJECT.Characteristics` with `DEVICE_OBJECT.Flags`.
+
+##### IO Transfer Type
+
 Elaborate on how our architecture (running drivers in separate address spaces)
 changes certain ways in which IO transfer types are implemented.
 
@@ -190,7 +212,8 @@ and `IoBuildDeviceIoControlRequest` if you are generating an IRP within a driver
 process and forwarding it to another driver (or yourself). Do NOT build IRPs yourself
 as you may get the IO buffer settings wrong.
 
-Sending IRP to itself:
+##### Sending IRP to self
+
 Drivers should generally avoid sending IRPs to device objects created by itself and
 should simply call the relevant function directly. This avoids the overhead of allocating
 and freeing the IRP. In particular, for IRPs generated within the same driver address
@@ -202,24 +225,24 @@ the flags in the device object or the IOCTL code.
 
 #### Low-level Device Drivers
 
-Synchronization:
+##### Synchronization
 
 KEVENT (only between different threads within the same driver process)
 ERESOURCE (removed)
 
-Queuing IRP:
+##### Queuing IRP
 A common pattern in Windows/ReactOS drivers is that the driver will queue an IRP to an
 internal queue when IRPs come in faster than they can be processed by the driver. Common
 mechanisms include the StartIo routine, device queues, interlocked queues, and cancel-safe
 queues. These are generally speaking unnecessary on Neptune OS as the Executive limits
 the rate of IRP flows to a driver by setting an upper limit to the incoming driver IRP
 buffer. Low-level drivers should generally process IRPs synchronously. If the device is
-busy processing the IRP, the device should simply wait till the device finishes. This does
-NOT negatively impact system responsiveness since drivers run in their own separate process.
+busy processing the IRP, the driver should simply wait till the device finishes. This does
+not negatively impact system responsiveness since drivers run in their own separate process.
 That being said, the StartIo mechanism is still present on Neptune OS in order to make
 driver porting easier.
 
-Work items:
+##### Work items
 In addition to queuing IRPs due to rate limits, it is a common pattern on Windows/ReactOS
 for DPCs to queue a lengthy processing task to a system worker thread, which runs at
 a lower IRQL. This is also generally speaking unnecessary since DPCs are processed in the
@@ -228,7 +251,7 @@ long tasks that are of lower priority than regular IRP processing.
 
 #### File System Drivers
 
-Concurrency:
+##### Concurrency:
 Since all IRPs are processed in a single thread unless they are moved to a work queue,
 you can remove the KSPIN_LOCK, FAST_MUTEX, or similar locks that protect data structures
 that are only accessed by the main IRP processing thread. If you have data structures
@@ -239,7 +262,7 @@ However, you should generally avoid queuing IRPs in a work queue as we explained
 In particular DPCs are processed in the same thread as the IRPs (albeit with a higher
 priority), so you do not need any special synchronization considerations for DPCs.
 
-FCB and FILE_OBJECT:
+##### FCB and FILE_OBJECT:
 1. For the common FCB header, remove SECTION_OBJECT_POINTERS as it is no longer needed.
    You only need the FsRtl common FCB header.
 2. You don't need to initialize or modify FILE_OBJECT::PrivateCacheMap as it has been
@@ -247,7 +270,7 @@ FCB and FILE_OBJECT:
 2. Remove FILE_LOCK and related objects.
 3. Remove all ERESOURCE objects.
 
-Read IRP:
+##### Read IRP:
 
 1. Remove the Executive resources needed to guard concurrent write operations. These are
 usually called MainResource and PagingIOResource for user thread requests and paging IO
@@ -265,28 +288,28 @@ used in the recursive IRP flows discussed above. We disallow such recursion of I
 flows, and therefore do not provide such field and its related functions (`IoGetTopLevelIrp`
 and `IoSetTopLevelIrp`).
 
-Fast I/O
+##### Fast I/O
 
 Fast I/O is now handled transparently by the Executive. Therefore the fast I/O related
 fields in the common FSB header are removed.
 
-Directory Control IRP
+##### Directory Control IRP
 
 The IRP_MN_NOTIFY_CHANGE_DIRECTORY minor code is now handled automatically by the
 server. You no longer have to handle this in the file system driver. In the future
 this IRP minor code may be reused to report the user request for directory change
 notification to the filesystem driver.
 
-Lock User Buffer
+##### Lock User Buffer
 
 User buffers are always locked for IO. You do not need to explicitly lock the user
 buffers using MmProbeAndLockPages.
 
-FsRtlEnterFileSystem and FsRtlExitFileSystem
+##### FsRtlEnterFileSystem and FsRtlExitFileSystem
 
 These are no longer needed since drivers run in userspace.
 
-Detecting and Responding to Media Changes in Removable Drives
+##### Detecting and Responding to Media Changes in Removable Drives
 
 When detecting media change (usually during processing of Read/Write/DeviceIoctl
 IRPs) the driver should complete the IRP either with STATUS_MEDIA_CHANGED or
@@ -297,9 +320,10 @@ logic), until such time that it receives a CHECK_VERIFY Ioctl or VERIFY_VOLUME F
 at which point it can clear the DO_VERIFY_REQUIRED and proceed with normal IO
 proceeding.
 
-Cache Manager API
+#### Cache Manager API
 
-IoCreateStreamFileObject:
+##### IoCreateStreamFileObject:
+
 This creates a purely client-side file object that does not have a server-side
 counterpart. This is mainly used by the file system drivers so they can access the
 on-disk file system metadata using the same cache manager API for ordinary file IO.
@@ -309,7 +333,8 @@ client driver to perform cached IO on file metadata such as the security descrip
 as if it were a file stream. This is not used by any driver in ReactOS so we won't
 bother supporting it.
 
-IRP_MJ_READ/IRP_MN_MDL:
+##### IRP_MJ_READ/IRP_MN_MDL:
+
 The meaning of this combination of IRP major/minor code is largely unchanged from
 ReactOS/Windows and indicates that when completing the IO request, the dispatch
 routine needs to supply an MDL chain describing the mapped IO buffer. Each MDL in
@@ -318,7 +343,8 @@ contiguous. This is used mainly by the cache manager and is sent only to the fil
 system drivers and never to the underlying storage device driver. File system drivers
 typically call CcMdlRead to satisfy an MDL READ.
 
-IO transfer types for file system drivers:
+##### IO transfer types for file system drivers:
+
 Non-network file system drivers typically always use NEITHER IO as the IO transfer
 type as these are almost always stacked on top of an underlying storage device. Network
 file system drivers and purely in-memory file systems typically use DIRECT IO instead.
@@ -326,19 +352,28 @@ The main difference between DIRECT IO and NEITHER IO is that the server will alw
 allocate an IO buffer for DIRECT IO when initiating the IO, while for NEITHER IO the
 allocation of IO buffers may be deferred.
 
-Handling NEITHER IO:
-The UserBuffer can be (and will typically always be) NULL. This indicates that the
+##### Handling NEITHER IO:
+
+The `UserBuffer` can be (and will typically always be) NULL. This indicates that the
 IO buffer has not yet been allocated when the IO is initiated. What the file system
 driver should do in this case is to simply translate the file offset to disk offset
 and pass the IRP to the underlying storage driver (or to Cc if it is an MDL IO). The
 initiator of the IO (typically the cache manager) will take care of properly mapping
 the IO buffers later.
 
-Associated IRPs and BUFFERED_IO:
-The Irp::AssociatedIrp union has been dissolved and its IrpCount member has been removed.
+##### Associated IRPs and BUFFERED_IO:
+
+The `Irp::AssociatedIrp` union has been dissolved and its `IrpCount` member has been removed.
 Drivers do not need to set it. Counting the number of associated IRPs is done automatically
 by the system when forwarding the master IRP. As a consequence, accessing the system
 buffer for buffered IO is now done with `Irp->SystemBuffer` rather than
 `Irp->AssociatedIrp.SystemBuffer`. Likewise, change `Irp->AssociatedIrp.MasterIrp` to
 `Irp->MasterIrp`.
 
+##### `CcFlushCache`
+
+`CcFlushCache` sends the server a message to flush the relevant cache buffers and waits
+for the server to reply. Therefore for performance reasons, `CcFlushCache` should only be
+called as a response to the `IRP_MJ_FLUSH_BUFFERS` IRP. Driver authors should remove the
+calls to `CcFlushCache` and only call the function as the last step before completing the
+`IRP_MJ_FLUSH_BUFFERS` IRP.

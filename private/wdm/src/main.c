@@ -80,7 +80,6 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
-    InitializeListHead(&CiCacheMapList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopEventList);
@@ -92,6 +91,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
     IopInitIrpProcessing();
     HalpInitDma();
+    CiInitialzeCacheManager();
 
     NTSTATUS Status = IopCallDriverEntry(RegistryPath);
     if (!NT_SUCCESS(Status)) {

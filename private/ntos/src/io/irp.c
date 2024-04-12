@@ -43,6 +43,8 @@ static NTSTATUS IopAllocatePendingIrp(IN PIO_PACKET IoPacket,
     IopAllocatePool(PendingIrp, PENDING_IRP);
     PendingIrp->IoPacket = IoPacket;
     PendingIrp->Requestor = Requestor;
+    /* This is needed so RemoveEntryList(&PendingIrp->Link) is a no-op
+     * even if the PendingIrp has not been inserted into any list. */
     InitializeListHead(&PendingIrp->Link);
     KeInitializeEvent(&PendingIrp->IoCompletionEvent, NotificationEvent);
     assert(Requestor == IOP_PAGING_IO_REQUESTOR ||
@@ -1165,6 +1167,14 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
 	       IopFreeIoPacket(IoPacket));
     assert(PendingIrp != NULL);
 
+    /* If the IRP has an interception callback, run it, and stop if it returns FALSE. */
+    PIRP_CALLBACK Callback = IoPacket->Request.ServerPrivate.Callback;
+    if ((IoPacket->Request.Flags & IOP_IRP_INTERCEPTION_CALLBACK) && Callback) {
+	if (!Callback(PendingIrp, IoPacket->Request.ServerPrivate.Context, FALSE)) {
+	    return STATUS_SUCCESS;
+	}
+    }
+
     /* If the device object is a mounted volume and the IRP is an MDL READ,
      * we intercept the IRP and call Cc to handle it. We disallow WRITE IRPs
      * for mounted volumes as these can lead to cache inconsistencies. All IO
@@ -1198,6 +1208,69 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS IopHandleDirtyBufferMessage(IN PIO_PACKET Msg,
+					    IN PIO_DRIVER_OBJECT DriverObject)
+{
+    for (ULONG i = 0; i < IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT; i++) {
+	MWORD ViewAddress = Msg->ClientMsg.DirtyBuffers[i].ViewAddress;
+	if (!ViewAddress) {
+	    break;
+	}
+	CcSetDirtyData(DriverObject, ViewAddress,
+		       Msg->ClientMsg.DirtyBuffers[i].DirtyBits);
+    }
+    return STATUS_SUCCESS;
+}
+
+static VOID IopCacheFlushedCallback(IN PIO_DEVICE_OBJECT VolumeDevice,
+				    IN PIO_FILE_OBJECT FileObject,
+				    IN IO_STATUS_BLOCK IoStatus,
+				    IN OUT PVOID Context)
+{
+    PIO_DRIVER_OBJECT DriverObject = Context;
+
+    /* Allocate a new IO packet of type ServerMessage */
+    PIO_PACKET SrvMsg = NULL;
+    NTSTATUS Status = IopAllocateIoPacket(IoPacketTypeServerMessage,
+					  sizeof(IO_PACKET), &SrvMsg);
+    if (!NT_SUCCESS(Status)) {
+	/* If the allocation failed, there isn't much we can do other than
+	 * simply ignoring it. On debug build we will stop the system so we
+	 * can figure out why the system is running out of critical memory. */
+	assert(FALSE);
+	return;
+    }
+    assert(SrvMsg != NULL);
+    SrvMsg->ServerMsg.Type = IoSrvMsgCacheFlushed;
+    SrvMsg->ServerMsg.CacheFlushed.DeviceObject = SERVER_OBJECT_TO_CLIENT_HANDLE(VolumeDevice);
+    SrvMsg->ServerMsg.CacheFlushed.FileObject = SERVER_OBJECT_TO_CLIENT_HANDLE(FileObject);
+    SrvMsg->ServerMsg.CacheFlushed.IoStatus = IoStatus;
+
+    /* Add the server message IO packet to the driver IO packet queue */
+    InsertTailList(&DriverObject->IoPacketQueue, &SrvMsg->IoPacketLink);
+    /* Signal the driver that an IO packet has been queued */
+    KeSetEvent(&DriverObject->IoPacketQueuedEvent);
+}
+
+static NTSTATUS IopHandleFlushCacheMessage(IN PIO_PACKET Msg,
+					   IN PIO_DRIVER_OBJECT DriverObject)
+{
+    GLOBAL_HANDLE DeviceHandle = Msg->ClientMsg.FlushCache.DeviceObject;
+    GLOBAL_HANDLE FileHandle = Msg->ClientMsg.FlushCache.FileObject;
+    PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle, NULL);
+    if (!DeviceObject || !DeviceObject->Vcb) {
+	IoDbgDumpIoPacket(Msg, TRUE);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    PIO_DEVICE_OBJECT VolumeDevice = DeviceObject->Vcb->VolumeDevice;
+    assert(VolumeDevice);
+    PIO_FILE_OBJECT FileObject = IopGetFileObject(VolumeDevice, FileHandle);
+    assert(FileObject);
+    CcFlushCache(VolumeDevice, FileObject, IopCacheFlushedCallback, DriverObject);
+    return STATUS_SUCCESS;
+}
+
 /*
  * Handler function for the WDM service IopRequestIoPackets. This service should
  * only be called in the main event loop thread of the driver process.
@@ -1209,11 +1282,11 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
  */
 NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 			     IN PTHREAD Thread,
-			     IN ULONG NumResponsePackets,
-			     OUT ULONG *pNumRequestPackets)
+			     IN ULONG NumCliMsgs,
+			     OUT ULONG *pNumSrvMsgs)
 {
     assert(Thread != NULL);
-    assert(pNumRequestPackets != NULL);
+    assert(pNumSrvMsgs != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     NTSTATUS Status = STATUS_NTOS_BUG;
     assert(DriverObject != NULL);
@@ -1224,24 +1297,25 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
     }
     KeSetEvent(&DriverObject->InitializationDoneEvent);
 
-    /* Process the driver's response IO packet buffer first */
-    PIO_PACKET Response = (PIO_PACKET)DriverObject->OutgoingIoPacketsServerAddr;
+    /* Process the driver's outgoing IO packet buffer first. This buffer
+     * contains the client driver's messages to the server. */
+    PIO_PACKET CliMsg = (PIO_PACKET)DriverObject->OutgoingIoPacketsServerAddr;
     MWORD OutgoingPacketEnd = DriverObject->OutgoingIoPacketsServerAddr
 	+ DRIVER_IO_PACKET_BUFFER_COMMIT;
-    for (ULONG i = 0; i < NumResponsePackets; i++) {
-	if (Response->Size < sizeof(IO_PACKET) ||
-	    ((MWORD)Response + Response->Size >= OutgoingPacketEnd)) {
+    for (ULONG i = 0; i < NumCliMsgs; i++) {
+	if (CliMsg->Size < sizeof(IO_PACKET) ||
+	    ((MWORD)CliMsg + CliMsg->Size >= OutgoingPacketEnd)) {
 	    DbgTrace("Invalid IO packet size %d from driver %s. Processing halted.\n",
-		     Response->Size, DriverObject->DriverImagePath);
+		     CliMsg->Size, DriverObject->DriverImagePath);
 	    assert(FALSE);
 	    break;
 	}
 
-	switch (Response->Type) {
+	switch (CliMsg->Type) {
 	case IoPacketTypeClientMessage:
-	    switch (Response->ClientMsg.Type) {
+	    switch (CliMsg->ClientMsg.Type) {
 	    case IoCliMsgIoCompleted:
-		Status = IopHandleIoCompleteClientMessage(Response, DriverObject);
+		Status = IopHandleIoCompleteClientMessage(CliMsg, DriverObject);
 		if (!NT_SUCCESS(Status)) {
 		    DbgTrace("IopHandleIoCompleteClientMessage returned error status 0x%x\n",
 			     Status);
@@ -1249,44 +1323,60 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 		break;
 
 	    case IoCliMsgForwardIrp:
-		Status = IopHandleForwardIrpClientMessage(Response, DriverObject);
+		Status = IopHandleForwardIrpClientMessage(CliMsg, DriverObject);
 		if (!NT_SUCCESS(Status)) {
 		    DbgTrace("IopHandleForwardIrpClientMessage returned error status 0x%x\n",
 			     Status);
 		}
 		break;
 
+	    case IoCliMsgDirtyBuffers:
+		Status = IopHandleDirtyBufferMessage(CliMsg, DriverObject);
+		if (!NT_SUCCESS(Status)) {
+		    DbgTrace("IopHandleDirtyBufferMessage returned error status 0x%x\n",
+			     Status);
+		}
+		break;
+
+	    case IoCliMsgFlushCache:
+		Status = IopHandleFlushCacheMessage(CliMsg, DriverObject);
+		if (!NT_SUCCESS(Status)) {
+		    DbgTrace("IopHandleFlushCacheMessage returned error status 0x%x\n",
+			     Status);
+		}
+		break;
+
 	    default:
-		DbgTrace("Invalid IO message type from driver %s. Type is %d.\n",
-			 DriverObject->DriverImagePath, Response->ClientMsg.Type);
+		DbgTrace("Invalid client message type from driver %s. Type is %d.\n",
+			 DriverObject->DriverImagePath, CliMsg->ClientMsg.Type);
 		Status = STATUS_INVALID_PARAMETER;
 	    }
 	    break;
 
 	case IoPacketTypeRequest:
-	    Status = IopHandleIoRequestMessage(Response, DriverObject);
+	    Status = IopHandleIoRequestMessage(CliMsg, DriverObject);
 	    break;
 
 	default:
 	    DbgTrace("Received invalid response packet from driver %s. Dumping it now.\n",
 		     DriverObject->DriverImagePath);
-	    IoDbgDumpIoPacket(Response, TRUE);
+	    IoDbgDumpIoPacket(CliMsg, TRUE);
 	    Status = STATUS_INVALID_PARAMETER;
 	}
 	/* If the routines above returned error, there isn't a lot we can do
 	 * other than simply ignoring the error and continue processing.
 	 * On debug build we will assert so we can know what's going on. */
 	assert(NT_SUCCESS(Status));
-	Response = (PIO_PACKET)((MWORD)Response + Response->Size);
+	CliMsg = (PIO_PACKET)((MWORD)CliMsg + CliMsg->Size);
     }
 
     /* Wait for other threads to queue an IO packet on this driver. */
     AWAIT_EX(Status, KeWaitForSingleObject, State, _, Thread,
 	     &DriverObject->IoPacketQueuedEvent.Header, TRUE, NULL);
 
-    /* Now process the driver's queued IO packets and copy them to the driver's
-     * incoming IO packet buffer. */
-    ULONG NumRequestPackets = 0;
+    /* Now process the driver's queued IO packets and send them to the driver's incoming
+     * IO packet buffer, which contains the server's messages to the client driver. */
+    ULONG NumSrvMsgs = 0;
     ULONG TotalSize = 0;
     PIO_PACKET Dest = (PIO_PACKET)DriverObject->IncomingIoPacketsServerAddr;
     LoopOverList(Src, &DriverObject->IoPacketQueue, IO_PACKET, IoPacketLink) {
@@ -1310,7 +1400,7 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	    break;
 	}
 	/* Ok to send this one. */
-	NumRequestPackets++;
+	NumSrvMsgs++;
 	/* Copy this IoPacket to the driver's incoming IO packet buffer */
 	memcpy(Dest, Src, Src->Size);
 	Dest->Size = ALIGN_UP(Src->Size, MWORD);
@@ -1357,7 +1447,7 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	    IopFreeIoPacket(Src);
 	}
     }
-    *pNumRequestPackets = NumRequestPackets;
+    *pNumSrvMsgs = NumSrvMsgs;
 
     /* Returns APC status if the alertable wait above returned APC status */
     ASYNC_END(State, Status);

@@ -2,17 +2,13 @@
 
 Copyright (c) Alex Ionescu.  All rights reserved.
 
-    THIS CODE AND INFORMATION IS PROVIDED UNDER THE LESSER GNU PUBLIC LICENSE.
-    PLEASE READ THE FILE "COPYING" IN THE TOP LEVEL DIRECTORY.
-
 Module Name:
 
     sysinfo.c
 
 Abstract:
 
-    The Native Command Line Interface (NCLI) is the command shell for the
-    TinyKRNL OS.
+    The Native Command Line Interface is the command shell for Neptune OS.
     This module implements commands for displaying system information.
 
 Environment:
@@ -231,12 +227,13 @@ NTSTATUS RtlCliListProcesses(VOID)
 	//
 	// Display basic data
 	//
-	RtlCliDisplayString
-	    ("[%lx] %S - WS/PF/V:[%dK/%dK/%dK] Threads: %d\n",
-	     ModuleInfo->UniqueProcessId, ModuleInfo->ImageName.Buffer,
-	     ModuleInfo->WorkingSetSize / 1024,
-	     ModuleInfo->PagefileUsage / 1024,
-	     ModuleInfo->VirtualSize / 1024, ModuleInfo->NumberOfThreads);
+	RtlCliDisplayString("[%lx] %S - WS/PF/V:[%dK/%dK/%dK] Threads: %d\n",
+			    ModuleInfo->UniqueProcessId,
+			    ModuleInfo->ImageName.Buffer,
+			    ModuleInfo->WorkingSetSize / 1024,
+			    ModuleInfo->PagefileUsage / 1024,
+			    ModuleInfo->VirtualSize / 1024,
+			    ModuleInfo->NumberOfThreads);
 
 
 	//
@@ -319,10 +316,9 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     //
     // Query basic system information
     //
-    Status =
-	NtQuerySystemInformation(SystemProcessorPerformanceInformation,
-				 &ProcPerfInfo, sizeof(ProcPerfInfo),
-				 NULL);
+    Status = NtQuerySystemInformation(SystemProcessorPerformanceInformation,
+				      &ProcPerfInfo, sizeof(ProcPerfInfo),
+				      NULL);
     if (!NT_SUCCESS(Status))
 	return Status;
 
@@ -339,11 +335,10 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     // FIXME: Center it
     //
     RtlTimeToTimeFields(&TimeInfo.BootTime, &BootTime);
-    RtlCliDisplayString
-	("Native shell running in %S booted on %02d-%02d-%02d "
-	 "at %02d:%02d. CPUs: %d\n", SharedData->NtSystemRoot,
-	 BootTime.Day, BootTime.Month, BootTime.Year, BootTime.Hour,
-	 BootTime.Minute, BasicInfo.NumberOfProcessors);
+    RtlCliDisplayString("Native shell running in %S booted on %02d-%02d-%02d "
+			"at %02d:%02d. CPUs: %d\n", SharedData->NtSystemRoot,
+			BootTime.Day, BootTime.Month, BootTime.Year, BootTime.Hour,
+			BootTime.Minute, BasicInfo.NumberOfProcessors);
 
     //
     // Display System Flags

@@ -1,7 +1,5 @@
 #pragma once
 
-//#define DEBUGMODE
-
 #include <nt.h>
 
 #define HKEY_CLASSES_ROOT           0x80000000
@@ -17,16 +15,16 @@
 typedef ULONG H_KEY;
 
 WCHAR *NtRegGetRootPath(H_KEY hkRoot);
-BOOLEAN NtRegOpenKey(HANDLE * phKey, H_KEY hkRoot, WCHAR * pwszSubKey,
+BOOLEAN NtRegOpenKey(HANDLE *phKey, H_KEY hkRoot, WCHAR *pwszSubKey,
 		     ACCESS_MASK DesiredAccess);
-BOOLEAN NtRegWriteValue(HANDLE H_KEY, WCHAR * pwszValueName, PVOID pData,
+BOOLEAN NtRegWriteValue(HANDLE H_KEY, WCHAR *pwszValueName, PVOID pData,
 			ULONG uLength, ULONG dwRegType);
-BOOLEAN NtRegWriteString(HANDLE H_KEY, WCHAR * pwszValueName,
-			 WCHAR * pwszValue);
-BOOLEAN NtRegDeleteValue(HANDLE H_KEY, WCHAR * pwszValueName);
+BOOLEAN NtRegWriteString(HANDLE H_KEY, WCHAR *pwszValueName,
+			 WCHAR *pwszValue);
+BOOLEAN NtRegDeleteValue(HANDLE H_KEY, WCHAR *pwszValueName);
 BOOLEAN NtRegCloseKey(HANDLE H_KEY);
 BOOLEAN NtRegReadValue(HANDLE H_KEY, HANDLE hHeapHandle,
-		       WCHAR * pszValueName,
-		       PKEY_VALUE_PARTIAL_INFORMATION * pRetBuffer,
-		       ULONG * pRetBufferSize);
+		       WCHAR *pszValueName,
+		       PKEY_VALUE_PARTIAL_INFORMATION *pRetBuffer,
+		       ULONG *pRetBufferSize);
 void NtEnumKey(HANDLE hKey);

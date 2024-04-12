@@ -177,9 +177,11 @@ typedef struct _PENDING_IRP {
  * IRP immediately. Note that IopCompletePendingIrp may deallocate the PENDING_IRP so
  * the caller should not access it after calling IopCompletePendingIrp. Note also that
  * completion callbacks should never call IopCompletePendingIrp. Only interception
- * callbacks can call it (when returning FALSE). If a master IRP has associated IRPs,
- * its completion/interception callback will be called when the associated IRPs are
- * completed or created/forwarded, respectively.
+ * callbacks can call it (when returning FALSE). Completion callbacks can call
+ * IopCleanupPendingIrp if the original requestor is a thread object (or the NTOS
+ * Executive). If a master IRP has associated IRPs, its completion/interception
+ * callback will be called when the associated IRPs are completed or created/forwarded,
+ * respectively.
  */
 typedef BOOLEAN (*PIRP_CALLBACK)(IN PPENDING_IRP PendingIrp,
 				 IN OUT PVOID Context,
@@ -206,6 +208,7 @@ typedef struct _OPEN_PACKET {
     ULONG FileAttributes;
     ULONG ShareAccess;
     ULONG Disposition;
+    ULONG64 AllocationSize;
     union {
 	PNAMED_PIPE_CREATE_PARAMETERS NamedPipeCreateParameters;
 	PMAILSLOT_CREATE_PARAMETERS MailslotCreateParameters;

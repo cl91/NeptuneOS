@@ -143,6 +143,10 @@ typedef VOID (*PCC_PIN_DATA_CALLBACK)(IN PIO_FILE_CONTROL_BLOCK Fcb,
 				      IN NTSTATUS Status,
 				      IN ULONG64 PinnedLength,
 				      IN OUT PVOID Context);
+typedef VOID (*PCC_CACHE_FLUSHED_CALLBACK)(IN PIO_DEVICE_OBJECT VolumeDevice,
+					   IN PIO_FILE_OBJECT FileObject,
+					   IN IO_STATUS_BLOCK IoStatus,
+					   IN OUT PVOID Context);
 NTSTATUS CcInitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb,
 			      IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			      OUT OPTIONAL struct _CC_CACHE_MAP **pCacheMap);
@@ -162,6 +166,13 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 VOID CcUnpinData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		 IN ULONG64 FileOffset,
 		 IN ULONG Length);
+VOID CcSetDirtyData(IN PIO_DRIVER_OBJECT DriverObject,
+		    IN MWORD ViewAddress,
+		    IN ULONG64 DirtyBits);
+VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
+		  IN PIO_FILE_OBJECT FileObject,
+		  IN PCC_CACHE_FLUSHED_CALLBACK IopCacheFlushedCallback,
+		  IN OUT PVOID Context);
 NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 		     IN PIO_FILE_CONTROL_BLOCK Fcb,
 		     IN ULONG64 FileOffset,

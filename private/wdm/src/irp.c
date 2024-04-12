@@ -200,10 +200,10 @@ static LIST_ENTRY IopCleanupIrpList;
 static LIST_ENTRY IopExecEnvList;
 /* Current execution environment. This may be a dispatch function
  * (IOP_DISPATCH_FUNCTION) or an IO work item. */
-static PIOP_EXEC_ENV IopCurrentEnv;
+PIOP_EXEC_ENV IopCurrentEnv;
 /* Used for saving the Irp->Private.EnvToWakeUp member when the driver
  * calls IoCallDriver synchronously. */
-static PIOP_EXEC_ENV IopOldEnvToWakeUp;
+PIOP_EXEC_ENV IopOldEnvToWakeUp;
 
 /* List of all file objects created by this driver */
 LIST_ENTRY IopFileObjectList;
@@ -416,6 +416,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
     case IRP_MJ_FILE_SYSTEM_CONTROL:
     case IRP_MJ_CREATE:
     case IRP_MJ_PNP:
+    case IRP_MJ_FLUSH_BUFFERS:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
 	break;
@@ -451,7 +452,8 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	if ((Src->Request.MajorFunction == IRP_MJ_CREATE) ||
 	    (Src->Request.MajorFunction == IRP_MJ_CREATE_MAILSLOT) ||
 	    (Src->Request.MajorFunction == IRP_MJ_CREATE_NAMED_PIPE)) {
-	    RET_ERR(IopCreateFileObject(Src, &Src->Request.Create.FileObjectParameters,
+	    RET_ERR(IopCreateFileObject(Src, DeviceObject,
+					&Src->Request.Create.FileObjectParameters,
 					Src->Request.File.Handle, &FileObject));
 	} else {
 	    FileObject = IopGetFileObject(Src->Request.File.Handle);
@@ -477,6 +479,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     {
 	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
 			    IopDeleteFileObject(FileObject));
+	Irp->AllocationSize.QuadPart = Src->Request.Create.FileObjectParameters.AllocationSize;
 	IoStack->Parameters.Create.SecurityContext = SecurityContext;
 	IoStack->Parameters.Create.Options = Src->Request.Create.Options;
 	IoStack->Parameters.Create.FileAttributes = Src->Request.Create.FileAttributes;
@@ -495,6 +498,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 				IopDeleteFileObject(FileObject);
 				IopFreePool(SecurityContext);
 			    });
+	Irp->AllocationSize.QuadPart = Src->Request.Create.FileObjectParameters.AllocationSize;
 	IoStack->Parameters.CreatePipe.SecurityContext = SecurityContext;
 	IoStack->Parameters.CreatePipe.Options = Src->Request.CreatePipe.Options;
 	IoStack->Parameters.CreatePipe.Reserved = 0;
@@ -514,6 +518,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 				IopDeleteFileObject(FileObject);
 				IopFreePool(SecurityContext);
 			    });
+	Irp->AllocationSize.QuadPart = Src->Request.Create.FileObjectParameters.AllocationSize;
 	IoStack->Parameters.CreateMailslot.SecurityContext = SecurityContext;
 	IoStack->Parameters.CreateMailslot.Options = Src->Request.CreateMailslot.Options;
 	IoStack->Parameters.CreateMailslot.Reserved = 0;
@@ -630,6 +635,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	}
 	break;
     }
+    case IRP_MJ_FLUSH_BUFFERS:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
 	break;
@@ -1080,6 +1086,9 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 	Dest->Request.Write.ByteOffset = IoStack->Parameters.Write.ByteOffset;
 	break;
     }
+    case IRP_MJ_FLUSH_BUFFERS:
+	/* Do nothing */
+	break;
     default:
 	/* UNIMPLEMENTED */
 	assert(FALSE);
@@ -1118,6 +1127,16 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.Read.Length,
 		 Stack->Parameters.Read.Key,
 		 Stack->Parameters.Read.ByteOffset.QuadPart);
+	break;
+    case IRP_MJ_WRITE:
+	DbgPrint("    WRITE%s  Length 0x%x Key 0x%x ByteOffset 0x%llx\n",
+		 Stack->MinorFunction == IRP_MN_MDL ? " MDL" : "",
+		 Stack->Parameters.Write.Length,
+		 Stack->Parameters.Write.Key,
+		 Stack->Parameters.Write.ByteOffset.QuadPart);
+	break;
+    case IRP_MJ_FLUSH_BUFFERS:
+	DbgPrint("    FLUSH-BUFFERS\n");
 	break;
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
@@ -1179,8 +1198,8 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     DbgTrace("Dumping IRP %p type %d size %d\n", Irp, Irp->Type, Irp->Size);
     DbgPrint("    MdlAddress %p Flags 0x%08x IO Stack Location %p\n",
 	     Irp->MdlAddress, Irp->Flags, IoGetCurrentIrpStackLocation(Irp));
-    DbgPrint("    System Buffer %p User Buffer %p Completed %d\n",
-	     Irp->SystemBuffer, Irp->UserBuffer, Irp->Completed);
+    DbgPrint("    System Buffer %p User Buffer %p Completed %d AllocationSize 0x%llx\n",
+	     Irp->SystemBuffer, Irp->UserBuffer, Irp->Completed, Irp->AllocationSize.QuadPart);
     DbgPrint("    IO Status Block Status 0x%08x Information %p\n",
 	     Irp->IoStatus.Status, (PVOID) Irp->IoStatus.Information);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p OutputBuffer %p\n",
@@ -1282,8 +1301,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     /* If there is an execution environment that was suspended waiting
      * for the completion of this IRP, wake it up now. */
     if (Irp->Private.EnvToWakeUp) {
-	PIOP_EXEC_ENV Env = Irp->Private.EnvToWakeUp;
-	Env->Suspended = FALSE;
+	((PIOP_EXEC_ENV)Irp->Private.EnvToWakeUp)->Suspended = FALSE;
 	Irp->Private.EnvToWakeUp = NULL;
     }
 
@@ -1330,8 +1348,7 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
 	    /* If there is an execution environment that was suspended waiting
 	     * for the completion of this IRP, wake it up now. */
 	    if (Irp->Private.EnvToWakeUp) {
-		PIOP_EXEC_ENV Env = Irp->Private.EnvToWakeUp;
-		Env->Suspended = FALSE;
+		((PIOP_EXEC_ENV)Irp->Private.EnvToWakeUp)->Suspended = FALSE;
 		Irp->Private.EnvToWakeUp = NULL;
 	    }
 	    return;
@@ -1427,6 +1444,7 @@ again:
 	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
 	}
 	IopCurrentEnv = NULL;
+	IopOldEnvToWakeUp = NULL;
 	if (Status == STATUS_ASYNC_PENDING) {
 	    /* Mark the execution environment as suspended. */
 	    DbgTrace("Suspending exec env %p, coroutine stack %p, saved SP %p, "
@@ -1507,7 +1525,7 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 {
     ULONG ResponseCount = 0;
     PIO_PACKET SrcIoPacket = IopIncomingIoPacketBuffer;
-    ULONG RemainingBufferSize;
+    LONG RemainingBufferSize;
     PIO_PACKET DestIrp;
 
     for (ULONG i = 0; i < NumRequests; i++) {
@@ -1533,6 +1551,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	    IoDbgDumpIoPacket(SrcIoPacket, TRUE);
 	    if (SrcIoPacket->ServerMsg.Type == IoSrvMsgIoCompleted) {
 		IopHandleIoCompleteServerMessage(SrcIoPacket);
+	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCacheFlushed) {
+		CiHandleCacheFlushedServerMessage(SrcIoPacket);
 	    } else {
 		DbgPrint("Invalid server message type %d\n", SrcIoPacket->ServerMsg.Type);
 		assert(FALSE);
@@ -1574,6 +1594,26 @@ workitem:
     assert(ResponseCount <= DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET));
     RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount*sizeof(IO_PACKET);
     DestIrp = IopOutgoingIoPacketBuffer + ResponseCount;
+
+    /* Process the dirty buffer list and inform the server of them. */
+    ULONG DirtyBufferMsgCount = CiProcessDirtyBufferList(RemainingBufferSize, DestIrp);
+    RemainingBufferSize -= DirtyBufferMsgCount * sizeof(IO_PACKET);
+    DestIrp += DirtyBufferMsgCount;
+    ResponseCount += DirtyBufferMsgCount;
+    assert(RemainingBufferSize > 0);
+    if (RemainingBufferSize < sizeof(IO_PACKET)) {
+	goto delete;
+    }
+
+    /* Process the flush cache request list and inform the server of them. */
+    ULONG FlushCacheMsgCount = CiProcessFlushCacheRequestList(RemainingBufferSize, DestIrp);
+    RemainingBufferSize -= FlushCacheMsgCount * sizeof(IO_PACKET);
+    DestIrp += FlushCacheMsgCount;
+    ResponseCount += FlushCacheMsgCount;
+    assert(RemainingBufferSize > 0);
+    if (RemainingBufferSize < sizeof(IO_PACKET)) {
+	goto delete;
+    }
 
     /* Process the ReplyIrpList which contains IRPs that may require sending
      * a reply to the server. */
@@ -1648,6 +1688,7 @@ workitem:
 	}
     }
 
+delete:
     /* Clean up the list of IRPs marked for deletion */
     LoopOverList(Irp, &IopCleanupIrpList, IRP, Private.Link) {
 	RemoveEntryList(&Irp->Private.Link);

@@ -1,7 +1,14 @@
 #include <wdmp.h>
 #include <avltree.h>
 
-LIST_ENTRY CiCacheMapList;
+static LIST_ENTRY CiDirtyBufferList;
+static LIST_ENTRY CiFlushCacheRequestList;
+
+VOID CiInitialzeCacheManager()
+{
+    InitializeListHead(&CiDirtyBufferList);
+    InitializeListHead(&CiFlushCacheRequestList);
+}
 
 /*
  * Cache Map.
@@ -11,9 +18,9 @@ LIST_ENTRY CiCacheMapList;
  */
 typedef struct _CACHE_MAP {
     PFSRTL_COMMON_FCB_HEADER Fcb; /* Pointer to the FCB of the file object being cached. */
+    PVPB Vpb;	   /* Volume parameter block of the mounted volume. */
     AVL_TREE BcbTree; /* Tree of buffer control blocks, ordered by starting file offset. */
     LIST_ENTRY Link;  /* List link for the list of all cache maps */
-    LIST_ENTRY DirtyList;	/* List of dirty PINNED_BUFFERs. */
 } CACHE_MAP, *PCACHE_MAP;
 
 /*
@@ -65,7 +72,7 @@ typedef struct _BUFFER_CONTROL_BLOCK {
 		    * Must be the first member in this struct. */
     PVOID MappedAddress; /* Where the buffer is mapped to in memory.
 			  * Always cluster size aligned. */
-    ULONG64 Length;   /* Length of the buffer in terms of file offset.
+    MWORD Length;     /* Length of the buffer in terms of file offset.
 		       * Always cluster size aligned. */
     PCACHE_MAP CacheMap;   /* The cache map this BCB belongs to. */
     LIST_ENTRY PinList;	 /* List of pinned sub-buffers of this BCB. */
@@ -73,12 +80,12 @@ typedef struct _BUFFER_CONTROL_BLOCK {
 
 /* We set the cache readahead size to the view size because server always map
  * a full view. */
-#define READAHEAD_SIZE	(64 * PAGE_SIZE)
+#define READAHEAD_SIZE	(VIEW_SIZE)
 
 FORCEINLINE VOID CiInitializeBcb(IN PBUFFER_CONTROL_BLOCK Bcb,
 				 IN ULONG64 FileOffset,
 				 IN PVOID MappedAddress,
-				 IN ULONG64 Length,
+				 IN MWORD Length,
 				 IN PCACHE_MAP CacheMap)
 {
     AvlInitializeNode(&Bcb->Node, FileOffset);
@@ -94,9 +101,13 @@ FORCEINLINE VOID CiInitializeBcb(IN PBUFFER_CONTROL_BLOCK Bcb,
  * sub-buffer.
  */
 typedef struct _PINNED_BUFFER {
-    PBUFFER_CONTROL_BLOCK Bcb;
+    union {
+	PBUFFER_CONTROL_BLOCK Bcb; /* If Link is in PinList of BCB */
+	PFSRTL_COMMON_FCB_HEADER Fcb; /* If Link is in CiDirtyBufferList */
+    };
     ULONG64 FileOffset;
-    ULONG Length;
+    PVOID MappedAddress;
+    MWORD Length;
     LIST_ENTRY Link;
     BOOLEAN Dirty;	 /* If TRUE, data need to be flushed. */
 } PINNED_BUFFER, *PPINNED_BUFFER;
@@ -164,9 +175,8 @@ NTAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject)
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     CacheMap->Fcb = Fcb;
+    CacheMap->Vpb = Vpb;
     AvlInitializeTree(&CacheMap->BcbTree);
-    InitializeListHead(&CacheMap->DirtyList);
-    InsertHeadList(&CiCacheMapList, &CacheMap->Link);
     Fcb->CacheMap = CacheMap;
     return STATUS_SUCCESS;
 }
@@ -267,7 +277,7 @@ FORCEINLINE BOOLEAN CiAdjacentBcbs(IN PBUFFER_CONTROL_BLOCK Prev,
  *     occurred.
  *
  * REMARKS:
- *     Due to the alias-free design (see the Developers' Guide for details),
+ *     Due to the alias-free design (see the Developer Guide for details),
  *     of the Neptune OS cache manager, the CcMapData will only map the
  *     specified file region up till the point where it is contiguous on the
  *     underlying disk storage. If the entire region specified by FileOffset
@@ -470,6 +480,7 @@ map:
     *pBcb = PinnedBuf;
     PinnedBuf->Bcb = Bcb;
     PinnedBuf->FileOffset = FileOffset->QuadPart;
+    PinnedBuf->MappedAddress = *pBuffer;
     PinnedBuf->Length = *MappedLength;
     InsertHeadList(&Bcb->PinList, &PinnedBuf->Link);
     Status = (*MappedLength == Length) ? STATUS_SUCCESS : STATUS_SOME_NOT_MAPPED;
@@ -488,25 +499,150 @@ out:
     return Status;
 }
 
-NTAPI VOID CcSetDirtyData(IN PVOID Bcb)
+NTAPI VOID CcSetDirtyData(IN PVOID Context)
 {
-    PPINNED_BUFFER PinnedBuf = Bcb;
+    PPINNED_BUFFER PinnedBuf = Context;
     assert(PinnedBuf);
     PinnedBuf->Dirty = TRUE;
 }
 
-NTAPI VOID CcUnpinData(IN PVOID Bcb)
+NTAPI VOID CcUnpinData(IN PVOID Context)
 {
-    PPINNED_BUFFER PinnedBuf = Bcb;
+    PPINNED_BUFFER PinnedBuf = Context;
     assert(PinnedBuf);
     RemoveEntryList(&PinnedBuf->Link);
     /* If the PINNED_BUFFER is marked dirty, we need to add it to the dirty buffer
      * list so we can inform the server of the dirty status. */
     if (PinnedBuf->Dirty) {
-	InsertHeadList(&PinnedBuf->Bcb->CacheMap->DirtyList, &PinnedBuf->Link);
+	PinnedBuf->Fcb = PinnedBuf->Bcb->CacheMap->Fcb;
+	InsertHeadList(&CiDirtyBufferList, &PinnedBuf->Link);
     } else {
-	ExFreePool(Bcb);
+	ExFreePool(PinnedBuf);
     }
+}
+
+ULONG CiProcessDirtyBufferList(IN ULONG RemainingBufferSize,
+			       IN PIO_PACKET DestIrp)
+{
+    ULONG MaxMsgCount = RemainingBufferSize / sizeof(IO_PACKET);
+    if (!MaxMsgCount) {
+	return 0;
+    }
+    ULONG MsgCount = 0;
+    ULONG BufCount = 0;
+    LoopOverList(PinnedBuf, &CiDirtyBufferList, PINNED_BUFFER, Link) {
+	MWORD ProcessedLength = 0;
+	while (ProcessedLength < PinnedBuf->Length) {
+	    MWORD ViewAddress = VIEW_ALIGN(PinnedBuf->MappedAddress);
+	    ULONG ViewLength = min(ViewAddress + VIEW_SIZE - (MWORD)PinnedBuf->MappedAddress,
+				   PinnedBuf->Length - ProcessedLength);
+	    ULONG ViewOffset = (MWORD)PinnedBuf->MappedAddress - ViewAddress;
+	    assert(ViewOffset < VIEW_SIZE);
+	    ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
+	    ULONG EndPage = PAGE_ALIGN_UP(ViewOffset + ViewLength) >> PAGE_LOG2SIZE;
+	    assert(StartPage < PAGES_IN_VIEW);
+	    assert(EndPage <= PAGES_IN_VIEW);
+	    ULONG64 DirtyBits = 0;
+	    for (ULONG i = StartPage; i < EndPage; i++) {
+		SetBit64(DirtyBits, i);
+	    }
+
+	    /* If the view address has already been recorded, update its dirty bits. */
+	    for (ULONG i = 0; i <= MsgCount; i++) {
+		for (ULONG j = 0; j < BufCount; j++) {
+		    if (DestIrp[i].ClientMsg.DirtyBuffers[j].ViewAddress == ViewAddress) {
+			DestIrp[i].ClientMsg.DirtyBuffers[j].DirtyBits |= DirtyBits;
+			goto next;
+		    }
+		}
+	    }
+
+	    /* Otherwise, add a new entry for the view in the message. */
+	    DestIrp[MsgCount].ClientMsg.DirtyBuffers[BufCount].ViewAddress = ViewAddress;
+	    DestIrp[MsgCount].ClientMsg.DirtyBuffers[BufCount].DirtyBits = DirtyBits;
+	    BufCount++;
+	next:
+	    ProcessedLength += ViewLength;
+	    if (BufCount >= IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT) {
+		assert(BufCount == IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT);
+		MsgCount++;
+		BufCount = 0;
+		if (MsgCount >= MaxMsgCount) {
+		    assert(MsgCount == MaxMsgCount);
+		    break;
+		}
+	    }
+	}
+	assert(ProcessedLength <= PinnedBuf->Length);
+	if (ProcessedLength >= PinnedBuf->Length) {
+	    assert(ProcessedLength == PinnedBuf->Length);
+	    RemoveEntryList(&PinnedBuf->Link);
+	    ExFreePool(PinnedBuf);
+	}
+	if (MsgCount >= MaxMsgCount) {
+	    assert(MsgCount == MaxMsgCount);
+	    break;
+	}
+    }
+    assert(BufCount < IO_CLI_MSG_MAX_DIRTY_BUFFER_COUNT);
+    if (BufCount) {
+	MsgCount++;
+    }
+    assert(MsgCount <= MaxMsgCount);
+    for (ULONG i = 0; i < MsgCount; i++) {
+	DestIrp[i].Type = IoPacketTypeClientMessage;
+	DestIrp[i].Size = sizeof(IO_PACKET);
+	DestIrp[i].ClientMsg.Type = IoCliMsgDirtyBuffers;
+    }
+    if (BufCount) {
+	DestIrp[MsgCount-1].ClientMsg.DirtyBuffers[BufCount].ViewAddress = 0;
+	DestIrp[MsgCount-1].ClientMsg.DirtyBuffers[BufCount].DirtyBits = 0;
+    }
+    return MsgCount;
+}
+
+static NTSTATUS CiCopyReadWrite(IN PFILE_OBJECT FileObject,
+				IN PLARGE_INTEGER FileOffset,
+				IN ULONG Length,
+				IN BOOLEAN Wait,
+				IN OUT PVOID Buffer,
+				OUT ULONG *BytesCopied,
+				IN BOOLEAN Write)
+{
+    assert(FileObject);
+    assert(FileOffset);
+    assert(Buffer);
+    assert(BytesCopied);
+    *BytesCopied = 0;
+
+    while (*BytesCopied < Length) {
+	ULONG RemainingBytes = Length - *BytesCopied;
+	LARGE_INTEGER ByteOffset = { .QuadPart = FileOffset->QuadPart + *BytesCopied };
+	ULONG MappedLength = 0;
+	PVOID Bcb = NULL;
+	PVOID CacheBuffer = NULL;
+	NTSTATUS Status = CcMapData(FileObject, &ByteOffset, RemainingBytes,
+				    Wait ? MAP_WAIT : 0,
+				    &MappedLength, &Bcb, &CacheBuffer);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+	assert(Bcb);
+	assert(CacheBuffer);
+
+	ULONG BytesToCopy = min(MappedLength, RemainingBytes);
+	if (Write) {
+	    RtlCopyMemory(CacheBuffer, (PUCHAR)Buffer + *BytesCopied, BytesToCopy);
+	} else {
+	    RtlCopyMemory((PUCHAR)Buffer + *BytesCopied, CacheBuffer, BytesToCopy);
+	}
+	*BytesCopied += BytesToCopy;
+	if (Write) {
+	    CcSetDirtyData(Bcb);
+	}
+	CcUnpinData(Bcb);
+    }
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -539,33 +675,7 @@ NTAPI NTSTATUS CcCopyRead(IN PFILE_OBJECT FileObject,
 			  OUT PVOID Buffer,
 			  OUT ULONG *BytesRead)
 {
-    assert(FileObject);
-    assert(FileOffset);
-    assert(Buffer);
-    assert(BytesRead);
-    *BytesRead = 0;
-
-    while (*BytesRead < Length) {
-	ULONG RemainingBytes = Length - *BytesRead;
-	LARGE_INTEGER ReadOffset = { .QuadPart = FileOffset->QuadPart + *BytesRead };
-	ULONG MappedLength = 0;
-	PVOID Bcb = NULL;
-	PVOID SrcBuffer = NULL;
-	NTSTATUS Status = CcMapData(FileObject, &ReadOffset, RemainingBytes,
-				    Wait ? MAP_WAIT : 0,
-				    &MappedLength, &Bcb, &SrcBuffer);
-	if (!NT_SUCCESS(Status)) {
-	    return Status;
-	}
-	assert(Bcb);
-	assert(SrcBuffer);
-
-	ULONG BytesToCopy = min(MappedLength, RemainingBytes);
-	RtlCopyMemory((PUCHAR)Buffer + *BytesRead, SrcBuffer, BytesToCopy);
-	*BytesRead += BytesToCopy;
-	CcUnpinData(Bcb);
-    }
-    return STATUS_SUCCESS;
+    return CiCopyReadWrite(FileObject, FileOffset, Length, Wait, Buffer, BytesRead, FALSE);
 }
 
 /*
@@ -598,8 +708,7 @@ NTAPI NTSTATUS CcCopyWrite(IN PFILE_OBJECT FileObject,
 			   IN PVOID Buffer,
 			   OUT ULONG *BytesWritten)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    return CiCopyReadWrite(FileObject, FileOffset, Length, Wait, Buffer, BytesWritten, TRUE);
 }
 
 /*
@@ -676,17 +785,105 @@ out:
     return Status;
 }
 
-NTAPI NTSTATUS CcZeroData(IN PFILE_OBJECT FileObject,
-			  IN PLARGE_INTEGER StartOffset,
-			  IN PLARGE_INTEGER EndOffset,
-			  IN BOOLEAN Wait)
-{
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
 NTAPI VOID CcSetFileSizes(IN PFILE_OBJECT FileObject,
 			  IN PCC_FILE_SIZES FileSizes)
 {
     /* TODO! */
+}
+
+typedef struct _FLUSH_CACHE_REQUEST {
+    PIOP_EXEC_ENV EnvToWakeUp;
+    GLOBAL_HANDLE DeviceHandle;
+    GLOBAL_HANDLE FileHandle;
+    LIST_ENTRY Link;
+    IO_STATUS_BLOCK IoStatus;
+    BOOLEAN MsgSent;
+} FLUSH_CACHE_REQUEST, *PFLUSH_CACHE_REQUEST;
+
+NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
+			IN OPTIONAL PLARGE_INTEGER FileOffset,
+			IN ULONG Length,
+			OUT OPTIONAL PIO_STATUS_BLOCK IoStatus)
+{
+    /* This routine should be called in a context where we are allowed to sleep. */
+    assert(KiCurrentCoroutineStackTop);
+
+    PFSRTL_COMMON_FCB_HEADER Fcb = FileObject->FsContext;
+    assert(Fcb);
+    if (!Fcb || !Fcb->CacheMap) {
+	if (IoStatus) {
+	    IoStatus->Status = STATUS_INVALID_PARAMETER;
+	}
+	return;
+    }
+    PFLUSH_CACHE_REQUEST Req = ExAllocatePool(sizeof(FLUSH_CACHE_REQUEST));
+    if (!Req) {
+	if (IoStatus) {
+	    IoStatus->Status = STATUS_INSUFFICIENT_RESOURCES;
+	}
+	return;
+    }
+    assert(!IopOldEnvToWakeUp);
+    PVPB Vpb = ((PCACHE_MAP)Fcb->CacheMap)->Vpb;
+    assert(Vpb);
+    assert(Vpb->DeviceObject);
+    Req->DeviceHandle = Vpb->DeviceObject->Private.Handle;
+    Req->FileHandle = FileObject->Private.Handle;
+    Req->EnvToWakeUp = IopCurrentEnv;
+    InsertTailList(&CiFlushCacheRequestList, &Req->Link);
+
+    DbgTrace("Suspending coroutine stack %p\n", KiCurrentCoroutineStackTop);
+    KiYieldCoroutine();
+
+    assert(!IopOldEnvToWakeUp);
+    if (IoStatus) {
+	*IoStatus = Req->IoStatus;
+    }
+    /* List entry is removed in CiHandleCacheFlushedServerMessage */
+    ExFreePool(Req);
+}
+
+ULONG CiProcessFlushCacheRequestList(IN ULONG RemainingBufferSize,
+				     IN PIO_PACKET DestIrp)
+{
+    ULONG MaxMsgCount = RemainingBufferSize / sizeof(IO_PACKET);
+    if (!MaxMsgCount) {
+	return 0;
+    }
+    ULONG MsgCount = 0;
+    LoopOverList(Req, &CiFlushCacheRequestList, FLUSH_CACHE_REQUEST, Link) {
+	if (Req->MsgSent) {
+	    continue;
+	}
+	Req->MsgSent = TRUE;
+	RtlZeroMemory(DestIrp, sizeof(IO_PACKET));
+	DestIrp->Type = IoPacketTypeClientMessage;
+	DestIrp->Size = sizeof(IO_PACKET);
+	DestIrp->ClientMsg.Type = IoCliMsgFlushCache;
+	DestIrp->ClientMsg.FlushCache.DeviceObject = Req->DeviceHandle;
+	DestIrp->ClientMsg.FlushCache.FileObject = Req->FileHandle;
+	MsgCount++;
+	DestIrp++;
+	if (MsgCount >= MaxMsgCount) {
+	    assert(MsgCount == MaxMsgCount);
+	    break;
+	}
+    }
+    return MsgCount;
+}
+
+VOID CiHandleCacheFlushedServerMessage(PIO_PACKET SrvMsg)
+{
+    assert(SrvMsg != NULL);
+    assert(SrvMsg->Type == IoPacketTypeServerMessage);
+    assert(SrvMsg->ServerMsg.Type == IoSrvMsgCacheFlushed);
+    ReverseLoopOverList(Req, &CiFlushCacheRequestList, FLUSH_CACHE_REQUEST, Link) {
+	if (Req->DeviceHandle == SrvMsg->ServerMsg.CacheFlushed.DeviceObject &&
+	    Req->FileHandle == SrvMsg->ServerMsg.CacheFlushed.FileObject) {
+	    assert(Req->MsgSent);
+	    assert(Req->EnvToWakeUp);
+	    Req->EnvToWakeUp->Suspended = FALSE;
+	    RemoveEntryList(&Req->Link);
+	}
+    }
 }
