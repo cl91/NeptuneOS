@@ -114,6 +114,38 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
+static void KiRecordMachineInformation(seL4_BootInfo *bootinfo)
+{
+    if (bootinfo->extraLen) {
+	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)bootinfo + PAGE_SIZE);
+	while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+	    switch (BootInfoHeader->id) {
+	    case SEL4_BOOTINFO_HEADER_X86_VBE:
+		/* TODO: Record x86 VBE information */
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
+		/* TODO: Record x86 memory map information */
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
+		/* TODO: Record x86 ACPI RSDP information */
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
+		/* TODO: Record x86 framebuffer information */
+		break;
+	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
+		KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
+		break;
+	    case SEL4_BOOTINFO_HEADER_FDT:
+		/* TODO: Record FDT information */
+		break;
+	    default:
+		break;
+	    }
+	    BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)BootInfoHeader + BootInfoHeader->len);
+	}
+    }
+}
+
 static void KiRecordPhysicalMemoryInfo(seL4_BootInfo *bootinfo)
 {
     seL4_SlotRegion untyped = bootinfo->untyped;
@@ -229,7 +261,6 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
-		KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
 		DbgPrint("    tsc freq is %d MHz\n", KeX86TscFreq);
 		break;
 	    case SEL4_BOOTINFO_HEADER_FDT:
@@ -278,7 +309,7 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 #endif	/* CONFIG_DEBUG_BUILD */
 
-static void KiFillProcessorInformation()
+static void KiRecordProcessorInformation()
 {
     /* Call cpuid to fill in other CPU info
      * mode 1 => get extended family id, model id, proc type, family id, model and stepping id */
@@ -297,8 +328,8 @@ static void KiFillProcessorInformation()
     KeProcessorRevision <<= 4;
     KeProcessorRevision += (CPUInfo[0] & 0x0F00);
     KeProcessorRevision &= 0x0F0F;
-    /* TODO: translate various cpuid information into Microsoft FeatureBits.
-     * See reactos work on this part */
+    /* TODO: translate various cpuid information into Microsoft Feature Bits.
+     * See ReactOS work on this part */
     KeFeatureBits = 0;
 }
 
@@ -310,7 +341,8 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     if (KeProcessorCount == 0) {
 	KeProcessorCount = 1;
     }
-    KiFillProcessorInformation();
+    KiRecordProcessorInformation();
+    KiRecordMachineInformation(bootinfo);
 
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(NTOS_TCB_CAP, "NTOS Executive");
