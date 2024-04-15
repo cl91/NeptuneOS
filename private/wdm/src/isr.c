@@ -170,10 +170,18 @@ NTAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject)
 
 NTAPI VOID IoAcquireInterruptMutex(IN PKINTERRUPT Interrupt)
 {
+    if (!Interrupt) {
+	assert(FALSE);
+	return;
+    }
     KeAcquireMutex(&Interrupt->Mutex);
 }
 
 NTAPI VOID IoReleaseInterruptMutex(IN PKINTERRUPT Interrupt)
 {
+    if (!Interrupt) {
+	assert(FALSE);
+	return;
+    }
     KeReleaseMutex(&Interrupt->Mutex);
 }
