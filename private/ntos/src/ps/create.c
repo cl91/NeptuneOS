@@ -493,8 +493,6 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
  * middle two pages are committed. The first and last page are left as uncommitted
  * such that a stack overflow or underflow will trigger an exception.
  */
-#define DRIVER_COROUTINE_STACK_RESERVE	(4 * PAGE_SIZE)
-#define DRIVER_COROUTINE_STACK_COMMIT	(2 * PAGE_SIZE)
 NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 				   OUT MWORD *pStackTop)
 {

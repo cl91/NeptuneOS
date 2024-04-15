@@ -487,6 +487,8 @@ typedef struct _TEB {                                             /* win32/win64
     TEB_ACTIVE_FRAME            *ActiveFrame;                       /* fb0/17c0 */
     PRTL_FLS_DATA                FlsData;                           /* fb4/17c8 */
     PVOID                        ExceptionAddress;                  /* fb8/17d0 */
+    PVOID                        WdmCoroutineStackLow;              /* fbc/17d8 */
+    PVOID                        WdmCoroutineStackHigh;             /* fc0/17e0 */
 } TEB, *PTEB;
 #include <poppack.h>
 

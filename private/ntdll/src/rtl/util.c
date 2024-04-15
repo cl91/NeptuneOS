@@ -15,13 +15,6 @@ BOOLEAN NTAPI RtlpCheckForActiveDebugger(VOID)
     return NtCurrentPeb()->BeingDebugged;
 }
 
-NTAPI VOID RtlpGetStackLimits(OUT PULONG_PTR LowLimit,
-			      OUT PULONG_PTR HighLimit)
-{
-    *LowLimit = (ULONG_PTR)NtCurrentTeb()->NtTib.StackLimit;
-    *HighLimit = (ULONG_PTR)NtCurrentTeb()->NtTib.StackBase;
-}
-
 /*
  * @implemented
  */

@@ -205,13 +205,6 @@ static PCSTR RtlpExceptionCodeToString(IN ULONG ExceptionCode)
     }
 }
 
-/* TODO: wdm.dll coroutine stack */
-static inline BOOLEAN IsStackPtrOk(IN PVOID Ptr)
-{
-    PTEB Teb = NtCurrentTeb();
-    return (Ptr >= Teb->NtTib.StackLimit) && (Ptr < Teb->NtTib.StackBase);
-}
-
 VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 			   IN BOOLEAN Unhandled,
 			   IN RTLP_DBG_PRINTER DbgPrinter)
@@ -254,10 +247,13 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 
     /* Don't print the stack content on screen due to screen size limitation. */
     if (DbgPrinter != RtlpVgaPrint) {
-	DbgPrinter("Stack:\n");
-	PPVOID Stack = (PPVOID)ContextRecord->STACK_POINTER;
-	for (INT i = 0; i < 32 && IsStackPtrOk(Stack+i); i++) {
-	    DbgPrinter("   %p: %p\n", &Stack[i], Stack[i]);
+	__try {
+	    DbgPrinter("Stack:\n");
+	    PPVOID Stack = (PPVOID)ContextRecord->STACK_POINTER;
+	    for (INT i = 0; i < 32; i++) {
+		DbgPrinter("   %p: %p\n", &Stack[i], Stack[i]);
+	    }
+	}  __except (EXCEPTION_EXECUTE_HANDLER) {
 	}
     }
 
@@ -266,11 +262,11 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     __try {
 	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->BASE_POINTER;
 
-	for (UINT i = 0; i < 16 && IsStackPtrOk(Frame) && IsStackPtrOk(Frame+1); i++) {
+	for (UINT i = 0; i < 16; i++) {
 	    if (Frame[1] == 0) {
 		DbgPrinter("   <invalid address>\n");
 	    } else {
-		_module_name_from_addr((const void *) Frame[1], &StartAddr,
+		_module_name_from_addr((PCVOID)Frame[1], &StartAddr,
 				       szMod, sizeof(szMod));
 		DbgPrinter("   %p+%.8x   %s\n", (PVOID)StartAddr,
 			   Frame[1] - (ULONG_PTR)StartAddr, szMod);
@@ -282,7 +278,6 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	    Frame = (PULONG_PTR) Frame[0];
 	}
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-	DbgPrinter("<error dumping stack trace: 0x%lx>\n", GetExceptionCode());
     }
 #else
     DbgPrinter("   NOT IMPLEMENTED YET\n");
@@ -291,10 +286,9 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     DbgPrinter("Modules:\n");
     LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
 		 LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
-	DbgPrinter("    %wZ (%wZ) mapped [%p, %p), entrypoint %p\n",
+	DbgPrinter("   %wZ (%wZ) @ [%p, %p)\n",
 		   &LdrEntry->FullDllName, &LdrEntry->BaseDllName,
-		   LdrEntry->DllBase, (PCHAR)LdrEntry->DllBase + LdrEntry->SizeOfImage,
-		   LdrEntry->EntryPoint);
+		   LdrEntry->DllBase, (PCHAR)LdrEntry->DllBase + LdrEntry->SizeOfImage);
     }
 
     DbgPrinter("==============================================================================\n");

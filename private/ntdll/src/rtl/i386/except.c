@@ -67,8 +67,6 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
     }
 
     /* Get the current stack limits and registration frame */
-    ULONG_PTR StackLow, StackHigh;
-    RtlpGetStackLimits(&StackLow, &StackHigh);
     PEXCEPTION_REGISTRATION_RECORD RegistrationFrame = RtlpGetExceptionList();
     PEXCEPTION_REGISTRATION_RECORD NestedFrame = NULL;
 
@@ -76,22 +74,21 @@ NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
     while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
 	/* Find out where it ends */
 	DbgTrace("Handling exception registration frame %p\n", RegistrationFrame);
-	ULONG_PTR RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
+	PVOID RegistrationFrameEnd = (PUCHAR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
-	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR) RegistrationFrame < StackLow) ||
-	    ((ULONG_PTR) RegistrationFrame & 0x3)) {
+	if (!RtlpIsStackPtrOk(RegistrationFrame) || !RtlpIsStackPtrOk(RegistrationFrameEnd)
+	    || ((ULONG_PTR) RegistrationFrame & 0x3)) {
 	    /* Set invalid stack and bail out */
 	    DbgTrace("Invalid registration frame %p\n", RegistrationFrame);
 	    ExceptionRecord->ExceptionFlags |= EXCEPTION_STACK_INVALID;
 	    return FALSE;
 	}
-//
+
 	// TODO: Implement and call here RtlIsValidHandler(RegistrationFrame->Handler)
 	// for supporting SafeSEH functionality, see the following articles:
 	// https://www.optiv.com/blog/old-meets-new-microsoft-windows-safeseh-incompatibility
 	// https://msrc-blog.microsoft.com/2012/01/10/more-information-on-the-impact-of-ms12-001/
-	//
 
 	/* Check if logging is enabled */
 
@@ -189,10 +186,6 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 {
     EXCEPTION_RECORD ExceptionRecord2, ExceptionRecord3;
 
-    /* Capture the current stack limits */
-    ULONG_PTR StackLow, StackHigh;
-    RtlpGetStackLimits(&StackLow, &StackHigh);
-
     /* If the caller did not supply an exception record, setup a local one */
     if (!ExceptionRecord) {
 	/* Overwrite the argument */
@@ -264,11 +257,11 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	}
 
 	/* Find out where it ends */
-	ULONG_PTR RegistrationFrameEnd = (ULONG_PTR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
+	PVOID RegistrationFrameEnd = (PUCHAR)RegistrationFrame + sizeof(EXCEPTION_REGISTRATION_RECORD);
 
 	/* Make sure the registration frame is located within the stack */
-	if ((RegistrationFrameEnd > StackHigh) || ((ULONG_PTR)RegistrationFrame < StackLow) ||
-	    ((ULONG_PTR)RegistrationFrame & 0x3)) {
+	if (!RtlpIsStackPtrOk(RegistrationFrame) || !RtlpIsStackPtrOk(RegistrationFrameEnd)
+	    || ((ULONG_PTR)RegistrationFrame & 0x3)) {
 	    /* Create an invalid stack exception */
 	    ExceptionRecord2.ExceptionCode = STATUS_BAD_STACK;
 	    ExceptionRecord2.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
@@ -338,73 +331,34 @@ NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
 			      IN ULONG Count,
 			      IN ULONG Flags)
 {
-    ULONG_PTR Stack, NewStack, StackBegin, StackEnd = 0;
-    ULONG Eip;
-    BOOLEAN Result, StopSearch = FALSE;
+    ULONG_PTR Stack = (ULONG_PTR)__builtin_frame_address(0);
+    BOOLEAN StopSearch = FALSE;
     ULONG i = 0;
-
-    /* Get current EBP */
-#if defined(_M_IX86)
-#if defined __GNUC__
-    __asm__("mov %%ebp, %0" : "=r" (Stack) : );
-#elif defined(_MSC_VER)
-    __asm mov Stack, ebp
-#endif
-#elif defined(_M_MIPS)
-        __asm__("move $sp, %0" : "=r" (Stack) : );
-#elif defined(_M_PPC)
-    __asm__("mr %0,1" : "=r" (Stack) : );
-#elif defined(_M_ARM)
-#if defined __GNUC__
-    __asm__("mov sp, %0" : "=r"(Stack) : );
-#elif defined(_MSC_VER)
-    // FIXME: Hack. Probably won't work if this ever actually manages to run someday.
-    Stack = (ULONG_PTR)&Stack;
-#endif
-#else
-#error Unknown architecture
-#endif
-
-    /* Set it as the stack begin limit as well */
-    StackBegin = (ULONG_PTR)Stack;
-
-    /* Check if we're called for non-logging mode */
-    if (!Flags) {
-	/* Get the actual safe limits */
-	Result = RtlpCaptureStackLimits((ULONG_PTR)Stack,
-					&StackBegin,
-					&StackEnd);
-	if (!Result) return 0;
-    }
 
     /* Use a SEH block for maximum protection */
     _SEH2_TRY {
 	/* Loop the frames */
 	for (i = 0; i < Count; i++) {
 	    /*
-	     * Leave if we're past the stack,
-	     * if we're before the stack,
-	     * or if we've reached ourselves.
+	     * Leave if stack ptr is no longer valid
 	     */
-	    if ((Stack >= StackEnd) ||
-		(!i ? (Stack < StackBegin) : (Stack <= StackBegin)) ||
-		((StackEnd - Stack) < (2 * sizeof(ULONG_PTR)))) {
+	    if (!RtlpIsStackPtrOk((PVOID)Stack)) {
 		/* We're done or hit a bad address */
 		break;
 	    }
 
 	    /* Get new stack and EIP */
-	    NewStack = *(PULONG_PTR)Stack;
-	    Eip = *(PULONG_PTR)(Stack + sizeof(ULONG_PTR));
+	    ULONG_PTR NewStack = *(PULONG_PTR)Stack;
+	    ULONG Eip = *(PULONG_PTR)(Stack + sizeof(ULONG_PTR));
 
 	    /* Check if the new pointer is above the oldone and past the end */
-	    if (!((Stack < NewStack) && (NewStack < StackEnd))) {
+	    if (!RtlpIsStackPtrOk((PVOID)NewStack)) {
 		/* Stop searching after this entry */
 		StopSearch = TRUE;
 	    }
 
 	    /* Also make sure that the EIP isn't a stack address */
-	    if ((StackBegin < Eip) && (Eip < StackEnd)) break;
+	    if (RtlpIsStackPtrOk((PVOID)Eip)) break;
 
 	    /* FIXME: Check that EIP is inside a loaded module */
 

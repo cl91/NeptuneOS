@@ -1420,7 +1420,7 @@ again:
 	IopCurrentEnv = Env;
 	if (!Env->CoroutineStackTop) {
 	    /* Find the first available coroutine stack to use */
-	    PVOID Stack = KiGetFirstAvailableCoroutineStack();
+	    PUCHAR Stack = KiGetFirstAvailableCoroutineStack();
 	    /* If KiGetFirstAvailableCoroutineStack returns NULL, it means that
 	     * the system is out of memory. Simply stop processing and wait for
 	     * memory to become available in the future. */
@@ -1432,16 +1432,25 @@ again:
 	    DbgTrace("Switching to coroutine stack top %p\n", Stack);
 	    assert(!Env->EnvToWakeUp);
 	    IopOldEnvToWakeUp = NULL;
+	    PTEB Teb = NtCurrentTeb();
+	    Teb->WdmCoroutineStackHigh = Stack;
+	    Teb->WdmCoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
 	    Status = KiStartCoroutine(Stack, Env->EntryPoint, Env->Context);
 	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
+	    Teb->WdmCoroutineStackHigh = Teb->WdmCoroutineStackLow = NULL;
 	} else {
 	    /* We are resuming a coroutine suspended due to IoCallDriver. */
 	    DbgTrace("Resuming coroutine stack top %p. Saved SP %p\n",
 		     Env->CoroutineStackTop,
 		     KiGetCoroutineSavedSP(Env->CoroutineStackTop));
+	    PUCHAR Stack = Env->CoroutineStackTop;
+	    PTEB Teb = NtCurrentTeb();
+	    Teb->WdmCoroutineStackHigh = Stack;
+	    Teb->WdmCoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
 	    IopOldEnvToWakeUp = Env->EnvToWakeUp;
 	    Status = KiResumeCoroutine(Env->CoroutineStackTop);
 	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
+	    Teb->WdmCoroutineStackHigh = Teb->WdmCoroutineStackLow = NULL;
 	}
 	IopCurrentEnv = NULL;
 	IopOldEnvToWakeUp = NULL;

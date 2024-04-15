@@ -604,14 +604,8 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	RtlpDumpContext(ContextRecord);
     }
 
-    /* Get the current stack limits and registration frame */
-    ULONG_PTR StackLow, StackHigh;
-    RtlpGetStackLimits(&StackLow, &StackHigh);
-
     /* If we have a target frame, then this is our high limit */
-    if (TargetFrame != NULL) {
-	StackHigh = (ULONG64)TargetFrame + 1;
-    }
+    ULONG64 StackHigh = TargetFrame ? (ULONG64)TargetFrame + 1 : 0;
 
     /* Copy the context */
     CONTEXT UnwindContext = *ContextRecord;
@@ -679,9 +673,8 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	}
 
 	/* Check if we are still within the stack boundaries */
-	if ((EstablisherFrame < StackLow) || (EstablisherFrame >= StackHigh) || (EstablisherFrame & 7)) {
-	    /// TODO: Handle wdm.dll coroutine stack
-
+	if (!RtlpIsStackPtrOk((PVOID)EstablisherFrame) ||
+	    (StackHigh && EstablisherFrame >= StackHigh) || (EstablisherFrame & 7)) {
 	    /* If we are handling an exception, we are done here. */
 	    if (HandlerType == UNW_FLAG_EHANDLER) {
 		ExceptionRecord->ExceptionFlags |= EXCEPTION_STACK_INVALID;
@@ -755,8 +748,8 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	}
 
 	/* Check, if we have left our stack (8.) */
-	if ((EstablisherFrame < StackLow) || (EstablisherFrame > StackHigh) || (EstablisherFrame & 7)) {
-	    /// TODO: Check for DPC stack
+	if (!RtlpIsStackPtrOk((PVOID)EstablisherFrame) ||
+	    (StackHigh && EstablisherFrame > StackHigh) || (EstablisherFrame & 7)) {
 	    __debugbreak();
 
 	    if (UnwindContext.Rip == ContextRecord->Rip) {
@@ -853,10 +846,6 @@ NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
     RtlCaptureContext(&Context);
     ULONG64 ControlPc = Context.Rip;
 
-    /* Get the stack limits */
-    ULONG64 StackLow, StackHigh;
-    RtlpGetStackLimits(&StackLow, &StackHigh);
-
     ULONG64 ImageBase;
     ULONG TableLength;
     PRUNTIME_FUNCTION FunctionTable = RtlLookupFunctionTable(ControlPc,
@@ -909,7 +898,7 @@ NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
 	    }
 
 	    /* Check, if we have left our stack */
-	    if ((Context.Rsp < StackLow) || (Context.Rsp > StackHigh)) {
+	    if (!RtlpIsStackPtrOk((PVOID)Context.Rsp)) {
 		break;
 	    }
 

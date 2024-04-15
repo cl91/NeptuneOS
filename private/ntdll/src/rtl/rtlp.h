@@ -96,17 +96,16 @@ RtlpCheckLogException(IN PEXCEPTION_RECORD ExceptionRecord,
 /* util.c */
 NTAPI BOOLEAN RtlpCheckForActiveDebugger(VOID);
 
-NTAPI VOID RtlpGetStackLimits(PULONG_PTR LowLimit,
-			      PULONG_PTR HighLimit);
-
-static inline BOOLEAN RtlpCaptureStackLimits(IN ULONG_PTR Ebp,
-					     IN ULONG_PTR *StackBegin,
-					     IN ULONG_PTR *StackEnd)
+static inline BOOLEAN RtlpIsStackPtrOk(IN PVOID Ptr)
 {
-    /* FIXME: Verify */
-    *StackBegin = (ULONG_PTR)NtCurrentTeb()->NtTib.StackLimit;
-    *StackEnd = (ULONG_PTR)NtCurrentTeb()->NtTib.StackBase;
-    return TRUE;
+    PTEB Teb = NtCurrentTeb();
+    return (Ptr >= Teb->NtTib.StackLimit &&
+	    Ptr <= (Teb->NtTib.StackBase - sizeof(ULONG_PTR))) ||
+	(Teb->WdmCoroutineStackLow &&
+	 Teb->WdmCoroutineStackHigh &&
+	 Teb->WdmCoroutineStackLow < Teb->WdmCoroutineStackHigh &&
+	 Ptr >= Teb->WdmCoroutineStackLow &&
+	 Ptr <= (Teb->WdmCoroutineStackHigh - sizeof(ULONG_PTR)));
 }
 
 /* vectoreh.c */

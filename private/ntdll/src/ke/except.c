@@ -38,6 +38,9 @@ static VOID KiConvertExceptionRecord(IN OUT PEXCEPTION_RECORD ExceptionRecord)
 
     if (ExceptionCode == KI_VM_FAULT_CODE) {
 	ExceptionRecord->ExceptionCode = STATUS_ACCESS_VIOLATION;
+	ExceptionRecord->NumberParameters++;
+	ExceptionRecord->ExceptionInformation[1] = ExceptionRecord->ExceptionInformation[0];
+	ExceptionRecord->ExceptionInformation[0] = 1;
     } else if (ExceptionCode >= ARRAYSIZE(KiUserExceptionCodeTable)) {
 	ExceptionRecord->ExceptionCode = STATUS_UNSUCCESSFUL;
     } else {
@@ -61,14 +64,6 @@ FASTCALL VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
 {
     DbgTrace("ExceptionRecord %p Context %p\n", ExceptionRecord, Context);
     KiConvertExceptionRecord(ExceptionRecord);
-
-#if DBG
-    EXCEPTION_POINTERS ExceptionInfo = {
-	.ExceptionRecord = ExceptionRecord,
-	.ContextRecord = Context
-    };
-    RtlpPrintStackTrace(&ExceptionInfo, FALSE);
-#endif
 
     /* Dispatch the exception and check the result */
     NTSTATUS Status;
@@ -118,6 +113,9 @@ NTAPI NTSTATUS NtRaiseException(IN PEXCEPTION_RECORD ExceptionRecord,
 	.ExceptionRecord = ExceptionRecord,
 	.ContextRecord = Context
     };
+#if DBG
+    RtlpPrintStackTrace(&ExceptionInfo, TRUE);
+#endif
     RtlpVgaPrintStackTrace(&ExceptionInfo, TRUE);
     NtTerminateThread(NtCurrentThread(), ExceptionRecord->ExceptionCode);
     return STATUS_SUCCESS;
