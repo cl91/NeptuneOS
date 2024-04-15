@@ -873,15 +873,15 @@ NTSTATUS HwSpecify(PCONTROLLER_INFO ControllerInfo,
 		   BOOLEAN NonDma)
 {
     UCHAR Buffer[3];
+    assert(HeadLoadTime < 0x80);
+    assert(HeadUnloadTime < 0x10);
+    assert(StepRateTime < 0x10);
 
     Buffer[0] = COMMAND_SPECIFY;
-    /* Buffer[1] = (StepRateTime << 4) + HeadUnloadTime; */
-    /* Buffer[2] = (HeadLoadTime << 1) + (NonDma ? 1 : 0); */
-    Buffer[1] = 0xdf;
-    Buffer[2] = 0x2;
+    Buffer[1] = (StepRateTime << 4) | HeadUnloadTime;
+    Buffer[2] = (HeadLoadTime << 1) | (NonDma ? 1 : 0);
 
-    //INFO_(FLOPPY, "HwSpecify: sending 0x%x 0x%x 0x%x to FIFO\n", Buffer[0], Buffer[1], Buffer[2]);
-    WARN_(FLOPPY, "HWSPECIFY: FIXME - sending 0x3 0xd1 0x2 to FIFO\n");
+    INFO_(FLOPPY, "HwSpecify: sending 0x%x 0x%x 0x%x to FIFO\n", Buffer[0], Buffer[1], Buffer[2]);
 
     for (int i = 0; i < 3; i++) {
 	NTSTATUS Status = SendByte(ControllerInfo, Buffer[i]);

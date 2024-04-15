@@ -219,14 +219,14 @@
 #define SPECIFY_HLT_500K                0x8	/* 16ms; based on intel data sheet */
 #define SPECIFY_HLT_300K                0x6	/* 16ms; based on intel data sheet */
 #define SPECIFY_HLT_250K                0x4	/* 16ms; based on intel data sheet */
-#define SPECIFY_HUT_1M                  0x0	/* Need to figure out these eight values; 0 is max */
+#define SPECIFY_HUT_1M                  0x0
 #define SPECIFY_HUT_500K                0x0
 #define SPECIFY_HUT_300K                0x0
 #define SPECIFY_HUT_250K                0x0
 #define SPECIFY_SRT_1M                  0x0
-#define SPECIFY_SRT_500K                0x0
-#define SPECIFY_SRT_300K                0x0
-#define SPECIFY_SRT_250K                0x0
+#define SPECIFY_SRT_500K                0x8
+#define SPECIFY_SRT_300K                0xA
+#define SPECIFY_SRT_250K                0xC
 
 /* Command byte 1 constants */
 #define COMMAND_UNIT_SELECT             0x3	/* Covers two bits; defined below */
