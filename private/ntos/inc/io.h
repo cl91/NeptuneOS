@@ -104,14 +104,15 @@ typedef struct _IO_FILE_OBJECT {
     PIO_DEVICE_OBJECT DeviceObject;
     struct _IO_FILE_CONTROL_BLOCK *Fcb;
     LIST_ENTRY DeviceLink; /* List entry for this->DeviceObject->OpenFileList */
+    ULONG64 CurrentOffset; /* Current byte offset that the IO manager maintains */
     PEVENT_OBJECT Event;
+    ULONG Flags;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;
     BOOLEAN SharedRead;
     BOOLEAN SharedWrite;
     BOOLEAN SharedDelete;
-    ULONG Flags;
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
 /*
@@ -125,11 +126,15 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
     PIO_FILE_OBJECT MasterFileObject;
     PCSTR FileName;		/* Owned by this struct. */
     ULONG64 FileSize;
+    AVL_TREE FileOffsetMappings; /* AVL tree of FILE_OFFSET_MAPPING. This is not
+				  * used for the volume FCB. */
     struct _CC_CACHE_MAP *SharedCacheMap;
     LIST_ENTRY PrivateCacheMaps;
     PDATA_SECTION_OBJECT DataSectionObject;
     PIMAGE_SECTION_OBJECT ImageSectionObject;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
+    KEVENT WriteCompleted; /* Signaled when the WRITE IRP is completed. */
+    BOOLEAN WritePending; /* TRUE if a WRITE IRP for this file is in progress. */
 } IO_FILE_CONTROL_BLOCK, *PIO_FILE_CONTROL_BLOCK;
 
 /*
@@ -141,7 +146,6 @@ typedef VOID (*PCC_PIN_DATA_CALLBACK)(IN PIO_FILE_CONTROL_BLOCK Fcb,
 				      IN ULONG64 FileOffset,
 				      IN ULONG64 Length,
 				      IN NTSTATUS Status,
-				      IN ULONG64 PinnedLength,
 				      IN OUT PVOID Context);
 typedef VOID (*PCC_CACHE_FLUSHED_CALLBACK)(IN PIO_DEVICE_OBJECT VolumeDevice,
 					   IN PIO_FILE_OBJECT FileObject,
@@ -151,8 +155,6 @@ NTSTATUS CcInitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb,
 			      IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			      OUT OPTIONAL struct _CC_CACHE_MAP **pCacheMap);
 VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb);
-VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
-		   IN ULONG64 FileSize);
 NTSTATUS CcPinData(IN ASYNC_STATE AsyncState,
 		   IN struct _THREAD *Thread,
 		   IN PIO_FILE_CONTROL_BLOCK Fcb,
@@ -161,6 +163,7 @@ NTSTATUS CcPinData(IN ASYNC_STATE AsyncState,
 VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		 IN ULONG64 FileOffset,
 		 IN ULONG64 Length,
+		 IN BOOLEAN Extend,
 		 IN PCC_PIN_DATA_CALLBACK Callback,
 		 IN OPTIONAL PVOID Context);
 VOID CcUnpinData(IN PIO_FILE_CONTROL_BLOCK Fcb,
@@ -190,6 +193,9 @@ NTSTATUS CcCopyWriteEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		       IN ULONG64 Length,
 		       OUT OPTIONAL ULONG64 *pBytesWritten,
 		       IN PVOID Buffer);
+NTSTATUS CcZeroData(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		    IN ULONG64 FileOffset,
+		    IN ULONG64 Length);
 
 FORCEINLINE NTSTATUS CcMapData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 			       IN ULONG64 FileOffset,

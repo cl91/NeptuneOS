@@ -100,7 +100,7 @@ static VOID SmTestBeepDriver(IN ULONG Freq,
     }
 }
 
-static UCHAR Buffer[1440 * 1024];
+static CHAR Buffer[1440 * 1024];
 
 static NTSTATUS SmTestFloppyDriver()
 {
@@ -130,8 +130,9 @@ static NTSTATUS SmTestFloppyDriver()
     SmPrint("Writing floppy... ");
     snprintf(Buffer, 128, "hello, world!\n");
     RET_ERR_EX(NtWriteFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
-			   Buffer, sizeof(Buffer), &ByteOffset, NULL),
+			   Buffer, 0x1000, &ByteOffset, NULL),
 	       SmPrint("FAILED. Status = 0x%x\n", Status));
+    ULONG FileSize = IoStatusBlock.Information;
 
     SmPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",
 	    Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
@@ -140,7 +141,6 @@ static NTSTATUS SmTestFloppyDriver()
 	       SmPrint("Failed to flush buffers for %wZ, status = 0x%x\n",
 		       &FloppyDevice, Status));
 
-    ULONG FileSize = IoStatusBlock.Information;
     for (ULONG i = 0; i <= FileSize / 16; i++) {
 	PUSHORT Row = (PUSHORT)(Buffer + 16*i);
 	DbgPrint("%07x %04x %04x %04x %04x %04x %04x %04x %04x\n",

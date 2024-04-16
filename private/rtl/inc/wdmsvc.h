@@ -232,10 +232,10 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 		  * the pointer to the master IRP's PENDING_IRP object. When
 		  * the IO_PACKET is in driver address space, this union is the
 		  * (OriginalRequestor,Identifier) pair of the master IRP. */
+    LONG AssociatedIrpCount; /* Number of pending associated IRPs. */
     struct {
 	PVOID Callback;	/* Irp completion or interception callback. */
 	PVOID Context;	/* Context for the IRP callback function. */
-	LONG PendingAssociatedIrps; /* Number of pending associated IRPs. */
 	BOOLEAN MasterCompleted;
     } ServerPrivate;   /* These fields are only used by the server. The
 			* client side routines should not access them. */
@@ -306,7 +306,7 @@ typedef union _IO_RESPONSE_DATA {
 	ULONG64 FileSize;
 	ULONG64 AllocationSize;
 	ULONG64 ValidDataLength;
-    } FileCreated;
+    } FileSizes; /* For IRP_MJ_CREATE, IRP_MJ_WRITE and IRP_MJ_SET_INFORMATION */
     struct {
 	ULONG64 VolumeSize;
 	GLOBAL_HANDLE VolumeDeviceHandle;
@@ -386,13 +386,17 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 					      * the IRP being forwarded. */
 	    HANDLE Identifier;
 	    GLOBAL_HANDLE DeviceObject;
-	    BOOLEAN NotifyCompletion; /* TRUE if the client driver wants the server to
-				       * notify it after the IRP has been processed. */
+	    ULONG AssociatedIrpCount; /* Number of additional associated IRPs. */
 	    LARGE_INTEGER NewOffset; /* For IRP_MJ_READ and IRP_MJ_WRITE, this stores
 				      * the ByteOffset of the IRP being forwarded. */
 	    ULONG NewLength; /* For IRP_MJ_READ and IRP_MJ_WRITE, this stores the new
 			      * Length of the requested read/write. It must be less than
 			      * or equal to the original length parameter. */
+	    ULONG64 NewFileSize; /* File system driver only. */
+	    ULONG64 NewAllocationSize; /* File system driver only. */
+	    ULONG64 NewValidDataLength; /* File system driver only. */
+	    BOOLEAN NotifyCompletion; /* TRUE if the client driver wants the server to
+				       * notify it after the IRP has been processed. */
 	} ForwardIrp;
 	struct {
 	    MWORD ViewAddress;
@@ -535,7 +539,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		 (PVOID)IoPacket->Request.OriginalRequestor,
 		 IoPacket->Request.Identifier);
 	if (ClientSide) {
-	    DbgPrint("    MasterIrp's OriginalRequestor %p Identifier %p)\n",
+	    DbgPrint("    MasterIrp's OriginalRequestor %p Identifier %p\n",
 		     (PVOID)IoPacket->Request.MasterIrp.OriginalRequestor,
 		     IoPacket->Request.MasterIrp.Identifier);
 	} else {
@@ -547,6 +551,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     PendingIrp, PendingIrp ? PendingIrp->Requestor : NULL,
 		     PendingIrp ? PendingIrp->IoPacket : NULL);
 	}
+	DbgPrint("    AssociatedIrpCount %d\n", IoPacket->Request.AssociatedIrpCount);
 	DbgPrint("    InputBuffer %p Length 0x%x PfnCount %d "
 		 " OutputBuffer %p Length 0x%x PfnCount %d\n",
 		 (PVOID)IoPacket->Request.InputBuffer,

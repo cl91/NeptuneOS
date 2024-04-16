@@ -362,20 +362,14 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* If a non-zero InputBufferLength is given, InputBuffer cannot be NULL. */
-    if (InputBufferLength && !InputBuffer) {
-	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
-    }
-
     /* If the requestor specified a NULL OutputBuffer with a non-zero
      * OutputBufferLength and the target device is not a mounted file system,
      * it wants the driver to embed the data in the IRP, in which case the
      * data size cannot be too large. In the case of a mounted file system,
      * a READ IRP with a NULL OutputBuffer comes from the cache manager which
      * will take care of mapping the cache pages later */
-    if (!OutputBuffer && (!(DeviceObject->Vcb && Irp->MajorFunction == IRP_MJ_READ) &&
-			  OutputBufferLength >= IRP_DATA_BUFFER_SIZE)) {
+    if (!OutputBuffer && !((DeviceObject->Vcb && Irp->MajorFunction == IRP_MJ_READ) ||
+			   OutputBufferLength < IRP_DATA_BUFFER_SIZE)) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
@@ -672,10 +666,10 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
     /* Find the THREAD or DRIVER object at this level */
     PIO_PACKET Irp = PendingIrp->IoPacket;
     POBJECT Requestor = PendingIrp->Requestor;
-    assert(Irp->Request.ServerPrivate.PendingAssociatedIrps >= 0);
+    assert(Irp->Request.AssociatedIrpCount >= 0);
 
     if (Requestor == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Requestor, OBJECT_TYPE_THREAD) ||
-	(!PendingIrp->ForwardedFrom && Irp->Request.ServerPrivate.PendingAssociatedIrps > 0)) {
+	(!PendingIrp->ForwardedFrom && Irp->Request.AssociatedIrpCount > 0)) {
 	/* In these three cases we need to save the IO response data in the PENDING_IRP
 	 * for future use. Note we will not deallocate the PENDING_IRP in these cases. */
 	assert(!PendingIrp->ForwardedFrom);
@@ -696,7 +690,7 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
 	/* If this is a top-level PENDING_IRP (ie. those created by the original
 	 * requestor) and there are pending associated IRPs for this IRP, postpone
 	 * the completion till all associated IRPs have been completed. */
-	if (Irp->Request.ServerPrivate.PendingAssociatedIrps > 0) {
+	if (Irp->Request.AssociatedIrpCount > 0) {
 	    assert(!Irp->Request.ServerPrivate.MasterCompleted);
 	    /* Master IRPs cannot themselves be associated IRPs to some other IRPs. */
 	    assert(!Irp->Request.MasterIrp.Placeholder);
@@ -712,9 +706,9 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
 	    /* MasterPendingIrp should always be the top-level PENDING_IRP. */
 	    assert(!MasterPendingIrp->ForwardedFrom);
 	    PIO_PACKET MasterIrp = MasterPendingIrp->IoPacket;
-	    assert(MasterIrp->Request.ServerPrivate.PendingAssociatedIrps > 0);
-	    MasterIrp->Request.ServerPrivate.PendingAssociatedIrps--;
-	    if (!MasterIrp->Request.ServerPrivate.PendingAssociatedIrps &&
+	    assert(MasterIrp->Request.AssociatedIrpCount > 0);
+	    MasterIrp->Request.AssociatedIrpCount--;
+	    if (!MasterIrp->Request.AssociatedIrpCount &&
 		MasterIrp->Request.ServerPrivate.MasterCompleted) {
 		IopCompletePendingIrp(MasterPendingIrp,
 				      MasterPendingIrp->IoResponseStatus,
@@ -935,6 +929,11 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 		 PendingIrp->PreviousDeviceObject->DriverObject->DriverImagePath);
     }
     RemoveEntryList(&Irp->IoPacketLink);
+    Irp->Request.AssociatedIrpCount += Msg->ClientMsg.ForwardIrp.AssociatedIrpCount;
+
+    if (Irp->Request.File.Object && Irp->Request.File.Object->Fcb) {
+	Irp->Request.File.Object->Fcb->FileSize = Msg->ClientMsg.ForwardIrp.NewFileSize;
+    }
 
     /* If client has requested completion notification, in addition to
      * moving the IO_PACKET from the source driver object to the target
@@ -1033,13 +1032,12 @@ static VOID IopCachedReadCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 				  IN ULONG64 FileOffset,
 				  IN ULONG64 Length,
 				  IN NTSTATUS Status,
-				  IN ULONG64 PinnedLength,
 				  IN OUT PVOID Context)
 {
     PIO_RESPONSE_DATA ResponseData = NULL;
     ULONG ResponseDataSize = 0;
     PPENDING_IRP PendingIrp = Context;
-    if (!NT_SUCCESS(Status) || Length != PinnedLength) {
+    if (!NT_SUCCESS(Status)) {
 	Status = STATUS_IO_DEVICE_ERROR;
 	goto out;
     }
@@ -1178,7 +1176,7 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
     /* If the device object is a mounted volume and the IRP is an MDL READ,
      * we intercept the IRP and call Cc to handle it. We disallow WRITE IRPs
      * for mounted volumes as these can lead to cache inconsistencies. All IO
-     * to a mounted volume must be done through the cache manager. */
+     * to a mounted volume must be done through the Cc functions in wdm.dll. */
     if (DeviceObject->Vcb) {
 	if (Src->Request.MajorFunction == IRP_MJ_WRITE) {
 	    IO_STATUS_BLOCK IoStatus = { .Status = STATUS_INVALID_DEVICE_REQUEST };
@@ -1188,8 +1186,10 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
 	if (!Src->Request.OutputBuffer && Src->Request.MajorFunction == IRP_MJ_READ &&
 	    Src->Request.MinorFunction == IRP_MN_MDL) {
 	    assert(Src->Request.OutputBufferLength);
-	    CcPinDataEx(DeviceObject->Vcb->VolumeFcb, Src->Request.Read.ByteOffset.QuadPart,
-			Src->Request.OutputBufferLength, IopCachedReadCallback, PendingIrp);
+	    CcPinDataEx(DeviceObject->Vcb->VolumeFcb,
+			Src->Request.Read.ByteOffset.QuadPart,
+			Src->Request.OutputBufferLength, FALSE,
+			IopCachedReadCallback, PendingIrp);
 	    return STATUS_SUCCESS;
 	}
     }

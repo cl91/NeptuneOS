@@ -166,8 +166,8 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
     }
     GLOBAL_HANDLE OldTopHandle = 0;
     IO_DEVICE_INFO DevInfo;
-    if (!NT_SUCCESS(WdmIoAttachDeviceToDeviceStack(SourceHandle, TargetHandle,
-						   &OldTopHandle, &DevInfo))) {
+    if (!NT_SUCCESS(WdmAttachDeviceToDeviceStack(SourceHandle, TargetHandle,
+						 &OldTopHandle, &DevInfo))) {
 	IopFreePool(OldTopDevice);
 	return NULL;
     }

@@ -220,7 +220,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     if (Locals.PendingIrp->IoResponseDataSize && Locals.FileObject->Fcb) {
 	PIO_RESPONSE_DATA IoResponseData = Locals.PendingIrp->IoResponseData;
-	Locals.FileObject->Fcb->FileSize = IoResponseData->FileCreated.FileSize;
+	Locals.FileObject->Fcb->FileSize = IoResponseData->FileSizes.FileSize;
     }
 
     IO_STATUS_BLOCK IoStatus = Locals.PendingIrp->IoResponseStatus;
@@ -279,12 +279,12 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS WdmIoAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
-                                        IN PTHREAD Thread,
-                                        IN GLOBAL_HANDLE SourceDeviceHandle,
-                                        IN GLOBAL_HANDLE TargetDeviceHandle,
-                                        OUT GLOBAL_HANDLE *PreviousTopDeviceHandle,
-                                        OUT IO_DEVICE_INFO *PreviousTopDeviceInfo)
+NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
+				      IN PTHREAD Thread,
+				      IN GLOBAL_HANDLE SourceDeviceHandle,
+				      IN GLOBAL_HANDLE TargetDeviceHandle,
+				      OUT GLOBAL_HANDLE *PreviousTopDeviceHandle,
+				      OUT IO_DEVICE_INFO *PreviousTopDeviceInfo)
 {
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;

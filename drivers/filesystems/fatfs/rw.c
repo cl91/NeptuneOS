@@ -96,10 +96,120 @@ static NTSTATUS FatForwardReadIrp(PDEVICE_EXTENSION DeviceExt, PIRP Irp)
     }
 }
 
-typedef struct _DISK_READ_REQUEST {
+typedef struct _DISK_IO_REQUEST {
     PIRP Irp;
     LIST_ENTRY Link;
-} DISK_READ_REQUEST, *PDISK_READ_REQUEST;
+} DISK_IO_REQUEST, *PDISK_IO_REQUEST;
+
+/* Traverse through the FAT using the cache manager and construct associated
+ * IRPs. Pass these associated IRPs to the underlying storage device driver.
+ * The master IRP will be automatically completed once all associated IRPs
+ * are completed. */
+static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
+				 IN ULONG StartOffset,
+				 IN ULONG Length,
+				 IN ULONG FirstCluster,
+				 IN BOOLEAN Write)
+{
+    PDEVICE_EXTENSION DeviceExt = IrpContext->DeviceExt;
+    PIO_STACK_LOCATION Stack = IrpContext->Stack;
+    ULONG BytesPerSector = DeviceExt->FatInfo.BytesPerSector;
+    ASSERT(BytesPerSector);
+    ULONG BytesPerCluster = DeviceExt->FatInfo.BytesPerCluster;
+    ASSERT(BytesPerCluster);
+    assert(!(StartOffset & (BytesPerCluster - 1)));
+
+    LIST_ENTRY ReqList;
+    InitializeListHead(&ReqList);
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+
+    /* First find the cluster number corresponding to the starting offset. */
+    ULONG CurrentCluster = FirstCluster;
+    Status = OffsetToCluster(DeviceExt, FirstCluster, StartOffset,
+			     &CurrentCluster, FALSE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    BOOLEAN First = TRUE;
+    ULONG ProcessedLength = 0;
+    while (ProcessedLength < Length && CurrentCluster != 0xFFFFFFFF) {
+	ULONG StartCluster = CurrentCluster;
+	LARGE_INTEGER VolumeOffset = {
+	    .QuadPart = ClusterToSector(DeviceExt, StartCluster) * BytesPerSector
+	};
+	ULONG ClusterCount = 0;
+
+	do {
+	    ClusterCount++;
+	    Status = NextCluster(DeviceExt, FirstCluster, &CurrentCluster, FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		goto ByeBye;
+	    }
+	} while ((StartCluster + ClusterCount == CurrentCluster) &&
+		 (Length - ProcessedLength > ClusterCount * BytesPerCluster));
+	DPRINT("StartCluster %08x, NextCluster %08x, ClusterCount 0x%x, "
+	       "VolumeOffset 0x%llx\n", StartCluster, CurrentCluster,
+	       ClusterCount, VolumeOffset.QuadPart);
+
+	/* We will reuse the main IRP for the first disk request. */
+	if (First) {
+	    if (Write) {
+		DPRINT("Reusing master WRITE IRP BO,LEN 0x%llx 0x%x --> 0x%llx 0x%x\n",
+		       Stack->Parameters.Write.ByteOffset.QuadPart,
+		       Stack->Parameters.Write.Length,
+		       VolumeOffset.QuadPart, ClusterCount * BytesPerCluster);
+		Stack->Parameters.Write.ByteOffset = VolumeOffset;
+		Stack->Parameters.Write.Length = ClusterCount * BytesPerCluster;
+	    } else {
+		DPRINT("Reusing master READ IRP BO,LEN 0x%llx 0x%x --> 0x%llx 0x%x\n",
+		       Stack->Parameters.Read.ByteOffset.QuadPart,
+		       Stack->Parameters.Read.Length,
+		       VolumeOffset.QuadPart, ClusterCount * BytesPerCluster);
+		Stack->Parameters.Read.ByteOffset = VolumeOffset;
+		Stack->Parameters.Read.Length = ClusterCount * BytesPerCluster;
+	    }
+	    First = FALSE;
+	} else {
+	    PVOID Buffer = (PUCHAR)IrpContext->Irp->UserBuffer + ProcessedLength;
+	    DPRINT("Building associated IRP bo,len == 0x%llx 0x%x buffer %p\n",
+		   VolumeOffset.QuadPart, ClusterCount * BytesPerCluster, Buffer);
+	    ASSERT(IS_ALIGNED64(VolumeOffset.QuadPart, BytesPerCluster));
+	    PDISK_IO_REQUEST Req = ExAllocatePool(sizeof(DISK_IO_REQUEST));
+	    if (!Req) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto ByeBye;
+	    }
+	    InsertTailList(&ReqList, &Req->Link);
+	    Req->Irp = IoBuildAsynchronousFsdRequest(Write ? IRP_MJ_WRITE : IRP_MJ_READ,
+						     DeviceExt->StorageDevice, Buffer,
+						     ClusterCount * BytesPerCluster,
+						     &VolumeOffset);
+	    if (!Req->Irp) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto ByeBye;
+	    }
+	    Req->Irp->MasterIrp = IrpContext->Irp;
+	}
+	ProcessedLength += ClusterCount * BytesPerCluster;
+    }
+
+    LoopOverList(Req, &ReqList, DISK_IO_REQUEST, Link) {
+	IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
+	Req->Irp = NULL;
+    }
+    IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
+    return STATUS_IRP_FORWARDED;
+
+ByeBye:
+    LoopOverList(Req, &ReqList, DISK_IO_REQUEST, Link) {
+	if (Req->Irp) {
+	    IoFreeIrp(Req->Irp);
+	}
+	ExFreePool(Req);
+    }
+    return Status;
+}
 
 /*
  * FUNCTION: Reads data from a file
@@ -110,8 +220,6 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     DPRINT("FatRead(IrpContext %p)\n", IrpContext);
     ASSERT(IrpContext->DeviceObject);
 
-    LIST_ENTRY ReqList;
-    InitializeListHead(&ReqList);
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     /* This request is not allowed on the main device object */
     if (IrpContext->DeviceObject == FatGlobalData->DeviceObject) {
@@ -164,8 +272,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	goto ByeBye;
     }
 
-    if ((ByteOffset % BytesPerCluster) ||
-	(ByteOffset + Length < FileSize && (Length % BytesPerCluster))) {
+    if (ByteOffset & (BytesPerCluster - 1)) {
 	/* Read must be cluster aligned. */
 	DPRINT("Unaligned read: cluster size = 0x%x\n", BytesPerCluster);
 	Status = STATUS_INVALID_PARAMETER;
@@ -221,85 +328,9 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	return FatForwardReadIrp(DeviceExt, IrpContext->Irp);
     }
 
-    /* For normal file reads, we first find the cluster number for the starting
-     * offset of the requested read operation. */
-    ULONG CurrentCluster = FirstCluster;
-    Status = OffsetToCluster(DeviceExt, FirstCluster, ByteOffset,
-			     &CurrentCluster, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	goto ByeBye;
-    }
-
-    IrpContext->RefCount = 1;
-
-    /* Traverse through the FAT using the cache manager and construct associated
-     * IRPs. Pass these associated IRPs to the underlying storage device driver.
-     * The master IRP will be automatically completed once all associated IRPs
-     * are completed. */
-    BOOLEAN First = TRUE;
-    ULONG ProcessedLength = 0;
-    while (ProcessedLength < Length && CurrentCluster != 0xFFFFFFFF) {
-	ULONG StartCluster = CurrentCluster;
-	ULONG ClusterCount = 0;
-	do {
-	    ClusterCount++;
-	    Status = NextCluster(DeviceExt, FirstCluster, &CurrentCluster, FALSE);
-	    if (!NT_SUCCESS(Status)) {
-		goto ByeBye;
-	    }
-	} while (StartCluster + ClusterCount == CurrentCluster &&
-		 ProcessedLength + ClusterCount * BytesPerCluster < Length);
-	DPRINT("StartCluster %08x, NextCluster %08x, ClusterCount 0x%x\n",
-	       StartCluster, CurrentCluster, ClusterCount);
-
-	ULONG BytesToRead = ClusterCount * BytesPerCluster;
-	LARGE_INTEGER ReadOffset = {
-	    .QuadPart = ClusterToSector(DeviceExt, StartCluster) * BytesPerSector
-	};
-	/* We will reuse the main IRP for the first disk request. */
-	if (First) {
-	    DPRINT("Reusing master IRP BO,LEN 0x%llx 0x%x --> 0x%llx 0x%x\n",
-		   Stack->Parameters.Read.ByteOffset.QuadPart, Stack->Parameters.Read.Length,
-		   ReadOffset.QuadPart, BytesToRead);
-	    Stack->Parameters.Read.ByteOffset = ReadOffset;
-	    Stack->Parameters.Read.Length = BytesToRead;
-	    First = FALSE;
-	} else {
-	    PDISK_READ_REQUEST Req = ExAllocatePool(sizeof(DISK_READ_REQUEST));
-	    if (!Req) {
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto ByeBye;
-	    }
-	    InsertTailList(&ReqList, &Req->Link);
-	    PVOID Buffer = (PUCHAR)IrpContext->Irp->UserBuffer + ProcessedLength;
-	    Req->Irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
-						     DeviceExt->StorageDevice,
-						     Buffer, BytesToRead, &ReadOffset);
-	    if (!Req->Irp) {
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto ByeBye;
-	    }
-	    DPRINT("Building associated IRP bo,len == 0x%llx 0x%x buffer %p\n",
-		   ReadOffset.QuadPart, BytesToRead, Buffer);
-	    Req->Irp->MasterIrp = IrpContext->Irp;
-	}
-	ProcessedLength += BytesToRead;
-    }
-
-    LoopOverList(Req, &ReqList, DISK_READ_REQUEST, Link) {
-	IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
-	Req->Irp = NULL;
-    }
-    IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
-    Status = STATUS_IRP_FORWARDED;
+    Status = FatReadWriteDisk(IrpContext, (ULONG)ByteOffset, Length, FirstCluster, FALSE);
 
 ByeBye:
-    LoopOverList(Req, &ReqList, DISK_READ_REQUEST, Link) {
-	if (Req->Irp) {
-	    IoFreeIrp(Req->Irp);
-	}
-	ExFreePool(Req);
-    }
     DPRINT("Completing IRP with status 0x%08x\n", Status);
     IrpContext->Irp->IoStatus.Status = Status;
     return Status;
@@ -338,39 +369,30 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 
     DPRINT("<%wZ>\n", &Fcb->PathNameU);
 
-    /* We don't allow writing to the FAT file (reading is OK). Writing to the
-     * FAT is done exclusively through the cache manager to avoid inconsistency. */
-    if (IsFatFile) {
+    /* We don't allow writing to the volume file, the FAT file, or the page file as
+     * writing to these file objects is done exclusively through the cache manager. */
+    if (IsVolume || IsFatFile || IsPageFile) {
 	Status = STATUS_INVALID_DEVICE_REQUEST;
 	goto ByeBye;
     }
 
-    LARGE_INTEGER ByteOffset = Stack->Parameters.Write.ByteOffset;
-    if (ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE || ByteOffset.HighPart == -1) {
-	/* File system drivers are not expected to handle FILE_WRITE_TO_END_OF_FILE. */
-	Status = STATUS_INVALID_PARAMETER;
-	goto ByeBye;
-    }
-
-    /* Fatfs does not support files larger than 4GB. */
-    if (ByteOffset.HighPart && !IsVolume) {
-	Status = STATUS_INVALID_PARAMETER;
-	goto ByeBye;
-    }
-
-    /* The starting offset of the write must be sector aligned */
-    PFATINFO FatInfo = &DeviceExt->FatInfo;
-    ULONG BytesPerSector = FatInfo->BytesPerSector;
-    ASSERT(BytesPerSector);
-    if (ByteOffset.LowPart % BytesPerSector) {
-	DPRINT("Unaligned write: byte offset %u\n", ByteOffset.LowPart);
-	Status = STATUS_INVALID_PARAMETER;
-	goto ByeBye;
-    }
-
     LARGE_INTEGER OldFileSize = Fcb->Base.FileSizes.FileSize;
+    LARGE_INTEGER ByteOffset = Stack->Parameters.Write.ByteOffset;
+
+    ULONG BytesPerCluster = DeviceExt->FatInfo.BytesPerCluster;
+    if (ByteOffset.LowPart & (BytesPerCluster - 1)) {
+	/* Write must be cluster aligned. */
+	DPRINT("Unaligned read: cluster size = 0x%x\n", BytesPerCluster);
+	Status = STATUS_INVALID_PARAMETER;
+	goto ByeBye;
+    }
+
     LARGE_INTEGER NewFileSize = OldFileSize;
     ULONG Length = Stack->Parameters.Write.Length;
+    if (ByteOffset.QuadPart + Length > OldFileSize.QuadPart) {
+	NewFileSize.QuadPart = ByteOffset.QuadPart + Length;
+    }
+
     if (Length == 0) {
 	/* Update last write time */
 	IrpContext->Irp->IoStatus.Information = 0;
@@ -378,121 +400,36 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	goto Metadata;
     }
 
-    /* If the write exceeds the current file size, expand the file size. */
-    if (ByteOffset.QuadPart + Length > OldFileSize.QuadPart) {
-	if (IsFatFile || IsVolume ||
-	    FatDirEntryGetFirstCluster(IrpContext->DeviceExt, &Fcb->Entry) == 1) {
-	    /* It is illegal to expand the FAT file, the volume file, or (on FAT12/16)
-	     * the root directory. */
-	    Status = STATUS_END_OF_FILE;
-	    goto ByeBye;
-	}
-
-	NewFileSize.QuadPart = ByteOffset.QuadPart + Length;
-	Status = FatSetFileSizeInformation(IrpContext->FileObject, Fcb, DeviceExt,
-					   &NewFileSize);
-	if (!NT_SUCCESS(Status)) {
-	    goto ByeBye;
-	}
-    } else if (Length % BytesPerSector) {
-	/* If we are not extending the file size (ie. we are writing to the
-	 * middle of the file), then the Length must also be sector aligned. */
-	DPRINT("Unaligned write: byte offset 0x%x length 0x%x file size 0x%I64x\n",
-	       ByteOffset.LowPart, Length, Fcb->Base.FileSizes.FileSize.QuadPart);
-	Status = STATUS_INVALID_PARAMETER;
+    /* Fatfs does not support files larger than 4GB. */
+    if (NewFileSize.HighPart) {
+	Status = STATUS_FILE_SYSTEM_LIMITATION;
 	goto ByeBye;
     }
-
-    if (IsVolume) {
-	FatAddToStat(IrpContext->DeviceExt, Base.MetaDataWrites, 1);
-	FatAddToStat(IrpContext->DeviceExt, Base.MetaDataWriteBytes, Length);
-    } else {
-	FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWrites, 1);
-	FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWriteBytes, Length);
-    }
-
-    if (IsPageFile) {
-	Stack->Parameters.Write.ByteOffset.QuadPart += FatInfo->DataStart * BytesPerSector;
-	DPRINT("Write to page file, disk offset %I64x\n",
-	       Stack->Parameters.Write.ByteOffset.QuadPart);
-    }
-
-    if (IsPageFile || IsVolume) {
-	Status = IoCallDriver(IrpContext->DeviceExt->StorageDevice,
-			      IrpContext->Irp);
-	return Status;
-    }
-
-    ULONG BytesPerCluster = DeviceExt->FatInfo.BytesPerCluster;
-    ASSERT(BytesPerCluster);
 
     ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
     if (FirstCluster == 1) {
-	/* We don't allow writing to the FAT12/16 root directory as this should
-	 * be done via the cache manager exclusively to avoid data inconsistency. */
-	Status = STATUS_INVALID_DEVICE_REQUEST;
+	/* It is illegal to expand the root directory on FAT12 and FAT16. */
+	Status = STATUS_END_OF_FILE;
 	goto ByeBye;
     }
 
-    /* Find the cluster to start the write from */
-    ULONG CurrentCluster = FirstCluster;
-    Status = OffsetToCluster(DeviceExt, FirstCluster,
-			     ROUND_DOWN_32(ByteOffset.LowPart, BytesPerCluster),
-			     &CurrentCluster, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
-
-    IrpContext->RefCount = 1;
-
-    BOOLEAN First = TRUE;
-    while (Length > 0 && CurrentCluster != 0xffffffff) {
-	ULONG StartCluster = CurrentCluster;
-	LARGE_INTEGER StartOffset = {
-	    .QuadPart = ClusterToSector(DeviceExt, StartCluster) * BytesPerSector
-	};
-	ULONG BytesDone = 0;
-	ULONG ClusterCount = 0;
-
-	do {
-	    ClusterCount++;
-	    if (First) {
-		BytesDone = min(Length,
-				BytesPerCluster -
-				(ByteOffset.LowPart % BytesPerCluster));
-		StartOffset.QuadPart += ByteOffset.LowPart % BytesPerCluster;
-		First = FALSE;
-	    } else {
-		if (Length - BytesDone > BytesPerCluster) {
-		    BytesDone += BytesPerCluster;
-		} else {
-		    BytesDone = Length;
-		}
-	    }
-	    Status = NextCluster(DeviceExt, FirstCluster, &CurrentCluster, FALSE);
-	} while ((StartCluster + ClusterCount == CurrentCluster)
-		 && NT_SUCCESS(Status) && Length > BytesDone);
-	DPRINT("start %08x, next %08x, count %u\n", StartCluster,
-	       CurrentCluster, ClusterCount);
-
-	/* TODO: Construct the associated IRPs */
-#if 0
-	Status = FatWriteDiskPartial(IrpContext, &StartOffset,
-				     BytesDone, BufferOffset, FALSE);
-	if (!NT_SUCCESS(Status) && Status != STATUS_PENDING) {
-	    break;
+    if (NewFileSize.QuadPart != OldFileSize.QuadPart) {
+	assert(NewFileSize.QuadPart > OldFileSize.QuadPart);
+	Status = FatSetFileSizeInformation(IrpContext->FileObject, Fcb,
+					   DeviceExt, &NewFileSize);
+	if (!NT_SUCCESS(Status)) {
+	    goto ByeBye;
 	}
-#endif
-	Length -= BytesDone;
-	ByteOffset.LowPart += BytesDone;
     }
 
-    Status = STATUS_IRP_FORWARDED;
+    FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWrites, 1);
+    FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWriteBytes, Length);
+
+    Status = FatReadWriteDisk(IrpContext, ByteOffset.LowPart, Length, FirstCluster, TRUE);
 
 Metadata:
-    if (!IsVolume && !FatFcbIsDirectory(Fcb)) {
+    if (!FatFcbIsDirectory(Fcb)) {
 	LARGE_INTEGER SystemTime;
-	ULONG Filter;
 
 	// set dates and times
 	NtQuerySystemTime(&SystemTime);
@@ -512,11 +449,9 @@ Metadata:
 	Fcb->Flags |= FCB_IS_DIRTY;
 
 	/* Time to notify the OS */
-	Filter = FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_ATTRIBUTES;
-	if (ByteOffset.QuadPart != OldFileSize.QuadPart)
-	    Filter |= FILE_NOTIFY_CHANGE_SIZE;
-
-	FatReportChange(DeviceExt, Fcb, Filter, FILE_ACTION_MODIFIED);
+	FatReportChange(DeviceExt, Fcb, FILE_NOTIFY_CHANGE_LAST_WRITE |
+			FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE,
+			FILE_ACTION_MODIFIED);
     }
 
 ByeBye:

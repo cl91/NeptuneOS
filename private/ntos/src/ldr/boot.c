@@ -10,7 +10,6 @@ static VOID LdrpPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 				IN ULONG64 FileOffset,
 				IN ULONG64 Length,
 				IN NTSTATUS Status,
-				IN ULONG64 PinnedLength,
 				IN OUT PVOID Context)
 {
     if (NT_SUCCESS(Status)) {
@@ -67,7 +66,7 @@ NTSTATUS LdrLoadBootModules()
 				       FileSize, &File));
 	assert(File);
 	assert(File->Fcb);
-	CcPinDataEx(File->Fcb, 0, FileSize, LdrpPinDataCallback, FileContent);
+	CcPinDataEx(File->Fcb, 0, FileSize, FALSE, LdrpPinDataCallback, FileContent);
     }
     ObDereferenceObject(BootModuleDirectory);
 

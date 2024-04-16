@@ -19,6 +19,7 @@
 #define ROUND_UP_32(n, align)	ROUND_DOWN_32(((ULONG)(n))+(align)-1, (align))
 #define ROUND_DOWN_64(n, align)	(((ULONGLONG)(n)) & ~((align) - 1LL))
 #define ROUND_UP_64(n, align)	ROUND_DOWN_64(((ULONGLONG)(n))+(align)-1LL, (align))
+#define IS_ALIGNED64(n, align)	(ROUND_DOWN_64((n), (align)) == (ULONGLONG)(n))
 
 /* DOS File Attributes */
 #define _A_NORMAL 0x00
@@ -458,7 +459,6 @@ typedef struct _FAT_IRP_CONTEXT {
     ULONG Flags;
     UCHAR MajorFunction;
     UCHAR MinorFunction;
-    ULONG RefCount;
     CCHAR PriorityBoost;
 } FAT_IRP_CONTEXT, *PFAT_IRP_CONTEXT;
 

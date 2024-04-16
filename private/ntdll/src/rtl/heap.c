@@ -23,6 +23,10 @@
 #include "heap.h"
 #include "rtlp.h"
 
+/* Comment this to enable debugging. */
+#undef DPRINT
+#define DPRINT(...)
+
 static RTL_CRITICAL_SECTION RtlpProcessHeapListLock;
 
 /*

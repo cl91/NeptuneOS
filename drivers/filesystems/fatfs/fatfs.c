@@ -137,8 +137,6 @@ static PFAT_IRP_CONTEXT FatAllocateIrpContext(PDEVICE_OBJECT DeviceObject,
 	IrpContext->MajorFunction = IrpContext->Stack->MajorFunction;
 	IrpContext->MinorFunction = IrpContext->Stack->MinorFunction;
 	IrpContext->FileObject = IrpContext->Stack->FileObject;
-
-	IrpContext->RefCount = 0;
 	IrpContext->PriorityBoost = IO_NO_INCREMENT;
     }
     return IrpContext;

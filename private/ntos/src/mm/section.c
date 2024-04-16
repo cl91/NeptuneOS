@@ -287,7 +287,6 @@ static VOID MiImageSectionPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 					  IN ULONG64 FileOffset,
 					  IN ULONG64 Length,
 					  IN NTSTATUS Status,
-					  IN ULONG64 PinnedLength,
 					  IN OUT PVOID Context)
 {
     PNTSTATUS pStatus = Context;
@@ -312,7 +311,7 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 						    &ImageCacheFile));
     assert(ImageCacheFile->Fcb);
     IF_ERR_GOTO(out, Status, CcInitializeCacheMap(ImageCacheFile->Fcb, NULL, NULL));
-    CcPinDataEx(ImageCacheFile->Fcb, 0, ImageSection->ImageCacheFileSize,
+    CcPinDataEx(ImageCacheFile->Fcb, 0, ImageSection->ImageCacheFileSize, FALSE,
 		MiImageSectionPinDataCallback, &Status);
     if (!NT_SUCCESS(Status)) {
 	goto out;

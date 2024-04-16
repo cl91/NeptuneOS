@@ -6,7 +6,9 @@ VOID IopInitializeFcb(IN PIO_FILE_CONTROL_BLOCK Fcb,
 {
     Fcb->FileSize = FileSize;
     Fcb->Vcb = Vcb;
+    AvlInitializeTree(&Fcb->FileOffsetMappings);
     InitializeListHead(&Fcb->PrivateCacheMaps);
+    KeInitializeEvent(&Fcb->WriteCompleted, NotificationEvent);
 }
 
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
@@ -241,6 +243,7 @@ typedef struct _CACHED_IO_CONTEXT {
     PTHREAD RequestorThread;
     PVOID Buffer;
     IO_STATUS_BLOCK IoStatus;
+    ULONG64 OldFileSize;
     BOOLEAN Write;
 } CACHED_IO_CONTEXT, *PCACHED_IO_CONTEXT;
 
@@ -248,13 +251,16 @@ static VOID IopCachedIoCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 				IN ULONG64 FileOffset,
 				IN ULONG64 TargetLength,
 				IN NTSTATUS Status,
-				IN ULONG64 PinnedLength,
 				IN OUT PVOID Ctx)
 {
     PCACHED_IO_CONTEXT Context = Ctx;
     ULONG Length = 0;
     if (!NT_SUCCESS(Status)) {
 	goto out;
+    }
+
+    if (Context->Write && FileOffset > Context->OldFileSize) {
+	CcZeroData(Fcb, Context->OldFileSize, FileOffset - Context->OldFileSize);
     }
 
     while (Length < TargetLength) {
@@ -316,6 +322,7 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	    PCACHED_IO_CONTEXT Context;
 	    PKEVENT IoCompletionEvent;
 	    IO_STATUS_BLOCK IoStatus;
+	    ULONG64 FileOffset;
 	});
 
     if (FileHandle == NULL) {
@@ -335,20 +342,35 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	assert(Locals.EventObject != NULL);
     }
 
-    ULONG64 FileOffset = 0;
-    if (ByteOffset) {
-	FileOffset = ByteOffset->QuadPart;
+    if (ByteOffset && ByteOffset->QuadPart != FILE_USE_FILE_POINTER_POSITION) {
+	Locals.FileOffset = ByteOffset->QuadPart;
+    } else if (Locals.FileObject->Flags & FO_SYNCHRONOUS_IO) {
+	Locals.FileOffset = Locals.FileObject->CurrentOffset;
     } else {
-	/* TODO: Use current byte offset of the file object (must be synchronous) */
-	/* FileOffset = ; */
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
     }
+
+    if (Locals.FileOffset == FILE_WRITE_TO_END_OF_FILE) {
+	if (!Write) {
+	    Status = STATUS_INVALID_PARAMETER;
+	    goto out;
+	}
+	if (Locals.FileObject->Fcb) {
+	    Locals.FileOffset = Locals.FileObject->Fcb->FileSize;
+	}
+    }
+
+    /* If the target file is part of a mounted volume and we need to extend the file, make
+     * sure there isn't a concurrent WRITE IRP in progress. If there is one, wait for it
+     * to finish. */
+    AWAIT_IF(Locals.FileObject->Fcb && Locals.FileObject->Fcb->WritePending &&
+	     Locals.FileOffset + BufferLength > Locals.FileObject->Fcb->FileSize,
+	     KeWaitForSingleObject, State, Locals, Thread,
+	     &Locals.FileObject->Fcb->WriteCompleted.Header, FALSE, NULL);
 
     /* If the target file is part of a mounted volume, go through Cc to do the IO. */
     if (Locals.FileObject->Fcb) {
-	if (FileOffset >= Locals.FileObject->Fcb->FileSize) {
-	    Status = STATUS_END_OF_FILE;
-	    goto out;
-	}
 	IF_ERR_GOTO(out, Status, CcInitializeCacheMap(Locals.FileObject->Fcb, NULL, NULL));
 	Locals.Context = ExAllocatePoolWithTag(sizeof(CACHED_IO_CONTEXT), NTOS_IO_TAG);
 	if (!Locals.Context) {
@@ -362,8 +384,9 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	Locals.Context->ApcContext = ApcContext;
 	Locals.Context->RequestorThread = Thread;
 	Locals.Context->Buffer = Buffer;
+	Locals.Context->OldFileSize = Locals.FileObject->Fcb->FileSize;
 	Locals.Context->Write = Write;
-	CcPinDataEx(Locals.FileObject->Fcb, FileOffset, BufferLength,
+	CcPinDataEx(Locals.FileObject->Fcb, Locals.FileOffset, BufferLength, Write,
 		    IopCachedIoCallback, Locals.Context);
 	Locals.IoCompletionEvent = &Locals.Context->IoCompletionEvent;
     } else {
@@ -376,13 +399,13 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	    Irp.MajorFunction = IRP_MJ_WRITE;
 	    Irp.InputBuffer = (MWORD)Buffer;
 	    Irp.InputBufferLength = BufferLength;
-	    Irp.Write.ByteOffset.QuadPart = FileOffset;
+	    Irp.Write.ByteOffset.QuadPart = Locals.FileOffset;
 	    Irp.Write.Key = Key ? *Key : 0;
 	} else {
 	    Irp.MajorFunction = IRP_MJ_READ;
 	    Irp.OutputBuffer = (MWORD)Buffer;
 	    Irp.OutputBufferLength = BufferLength;
-	    Irp.Read.ByteOffset.QuadPart = FileOffset;
+	    Irp.Read.ByteOffset.QuadPart = Locals.FileOffset;
 	    Irp.Read.Key = Key ? *Key : 0;
 	}
 	IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));

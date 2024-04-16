@@ -16,8 +16,11 @@
 #define FILE_EXISTS                       0x00000004
 #define FILE_DOES_NOT_EXIST               0x00000005
 
-#define FILE_USE_FILE_POINTER_POSITION    0xfffffffe
-#define FILE_WRITE_TO_END_OF_FILE         0xffffffff
+/* Special file offsets for NtReadFile and NtWriteFile. Note these
+ * integer literals are defined without the type suffixes which allow
+ * them to be compared with both ULONG and ULONG64 integers correctly. */
+#define FILE_USE_FILE_POINTER_POSITION    (-2)
+#define FILE_WRITE_TO_END_OF_FILE         (-1)
 
 /* ACCESS_MASK (Bit 0--15) */
 #define FILE_LIST_DIRECTORY               0x00000001

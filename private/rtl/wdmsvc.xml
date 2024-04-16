@@ -10,7 +10,7 @@
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
-  <svc name="WdmIoAttachDeviceToDeviceStack">
+  <svc name="WdmAttachDeviceToDeviceStack">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="SourceDeviceHandle" />
     <parameter annotation="in" type="GLOBAL_HANDLE" name="TargetDeviceHandle" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="PreviousTopDeviceHandle" />

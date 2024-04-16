@@ -869,16 +869,17 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 
     switch (IoSp->MajorFunction) {
     case IRP_MJ_CREATE:
-	/* If the file being opened is part of a file system, we need to inform the
+    case IRP_MJ_WRITE:
+    case IRP_MJ_SET_INFORMATION:
+	/* If the file object is part of a file system, we need to inform the
 	 * server of the file size information. */
-	assert(IoSp->FileObject);
-	if (NT_SUCCESS(Irp->IoStatus.Status) && IoSp->FileObject->FsContext) {
+	if (NT_SUCCESS(Irp->IoStatus.Status) && IoSp->FileObject && IoSp->FileObject->FsContext) {
 	    Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
 	    PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
 	    PFSRTL_COMMON_FCB_HEADER Fcb = IoSp->FileObject->FsContext;
-	    Ptr->FileCreated.FileSize = Fcb->FileSizes.FileSize.QuadPart;
-	    Ptr->FileCreated.AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
-	    Ptr->FileCreated.ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
+	    Ptr->FileSizes.FileSize = Fcb->FileSizes.FileSize.QuadPart;
+	    Ptr->FileSizes.AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
+	    Ptr->FileSizes.ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
 	}
 	break;
     case IRP_MJ_PNP:
@@ -886,8 +887,9 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    if (Irp->IoStatus.Information != 0) {
-		/* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count. ResponseData[] are the GLOBAL_HANDLE
-		 * of the device objects in DEVICE_RELATIONS.Objects. */
+		/* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count.
+		 * ResponseData[] are the GLOBAL_HANDLE of the device objects
+		 * in DEVICE_RELATIONS.Objects. */
 		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
 		Dest->ClientMsg.IoCompleted.IoStatus.Information = Relations->Count;
 		PGLOBAL_HANDLE Data = (PGLOBAL_HANDLE)Dest->ClientMsg.IoCompleted.ResponseData;
@@ -972,7 +974,7 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
 					    IN PIRP Irp,
 					    IN ULONG BufferSize)
 {
-    UNUSED PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     assert(IoStack);
     assert(IoStack->MajorFunction <= IRP_MJ_MAXIMUM_FUNCTION);
     PDEVICE_OBJECT DeviceObject = Irp->Private.ForwardedTo;
@@ -1002,6 +1004,16 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
 	Dest->ClientMsg.ForwardIrp.NewOffset = IoStack->Parameters.Write.ByteOffset;
 	Dest->ClientMsg.ForwardIrp.NewLength = IoStack->Parameters.Write.Length;
     }
+    PFSRTL_COMMON_FCB_HEADER Fcb = IoStack->FileObject ? IoStack->FileObject->FsContext : NULL;
+    if (Fcb) {
+	Dest->ClientMsg.ForwardIrp.NewFileSize = Fcb->FileSizes.FileSize.QuadPart;
+	Dest->ClientMsg.ForwardIrp.NewAllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
+	Dest->ClientMsg.ForwardIrp.NewValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
+    }
+    if (Irp->MasterIrp) {
+	assert(!Irp->Private.AssociatedIrpCount);
+    }
+    Dest->ClientMsg.ForwardIrp.AssociatedIrpCount = Irp->Private.AssociatedIrpCount;
     return TRUE;
 }
 
@@ -1841,6 +1853,7 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 	assert(!Irp->MasterIrp->MasterIrp);
 	assert(!ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
 			     &Irp->Private.AssociatedIrp.Link));
+	Irp->MasterIrp->Private.AssociatedIrpCount++;
 	InsertTailList(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
 		       &Irp->Private.AssociatedIrp.Link);
 	/* If the master IRP is not locally generated, always set MasterIrpSent

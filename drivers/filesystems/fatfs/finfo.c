@@ -896,8 +896,7 @@ static NTSTATUS FatGetNameInformation(PFILE_OBJECT FileObject,
     ASSERT(FCB != NULL);
 
     /* If buffer can't hold at least the file name length, bail out */
-    if (*BufferLength <
-	(ULONG) FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]))
+    if (*BufferLength < (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]))
 	return STATUS_BUFFER_OVERFLOW;
 
     /* Save file name length, and as much file len, as buffer length allows */
@@ -1183,9 +1182,8 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	    }
 	} else {
 	    ULONG Cluster;
-	    Status = OffsetToCluster(DeviceExt, FirstCluster,
-				     Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize,
-				     &Cluster, FALSE);
+	    ULONG OldOffset = Fcb->Base.FileSizes.AllocationSize.LowPart - ClusterSize;
+	    Status = OffsetToCluster(DeviceExt, FirstCluster, OldOffset, &Cluster, FALSE);
 	    if (!NT_SUCCESS(Status)) {
 		return Status;
 	    }
@@ -1194,7 +1192,7 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	    /* Cluster points now to the last cluster within the chain */
 	    ULONG NCluster;
 	    Status = OffsetToCluster(DeviceExt, Cluster,
-				     ROUND_DOWN(NewSize - 1, ClusterSize),
+				     ROUND_DOWN(NewSize - 1, ClusterSize) - OldOffset,
 				     &NCluster, TRUE);
 	    if (NCluster == 0xffffffff || !NT_SUCCESS(Status)) {
 		/* disk is full */

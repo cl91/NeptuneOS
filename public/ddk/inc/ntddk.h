@@ -463,6 +463,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	    LIST_ENTRY Link;	/* For associated IRPs, this is the list link
 				 * for PendingList. */
 	} AssociatedIrp;
+	ULONG AssociatedIrpCount; /* Number of associated IRPs of a master IRP. */
 	BOOLEAN MasterCompleted;  /* TRUE if the master IRP is completed but
 				   * its pending associated IRPs have not. */
 	BOOLEAN NotifyCompletion; /* TRUE if the server will notify the
