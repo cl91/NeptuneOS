@@ -114,25 +114,22 @@ NTAPI USHORT RtlCaptureStackBackTrace(IN ULONG FramesToSkip,
  * Private helper function to lookup the module name from a given address.
  * The address can point to anywhere within the module.
  */
-static const char *_module_name_from_addr(const void *addr,
-					  void **module_start_addr,
-					  char *psz, size_t nChars)
+static VOID RtlpGetModuleNameFromAddr(IN PVOID Addr,
+				      OUT PVOID *ModuleStartAddr,
+				      OUT PUNICODE_STRING BaseDllName)
 {
-#if 0
-    MEMORY_BASIC_INFORMATION mbi;
-    if (VirtualQuery(addr, &mbi, sizeof(mbi)) != sizeof(mbi) ||
-	!GetModuleFileNameA((HMODULE) mbi.AllocationBase, psz, nChars)) {
-	psz[0] = '\0';
-	*module_start_addr = 0;
-    } else {
-	*module_start_addr = (void *) mbi.AllocationBase;
+    LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
+		 LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
+	if ((MWORD)Addr >= (MWORD)LdrEntry->DllBase &&
+	    (MWORD)Addr < (MWORD)LdrEntry->DllBase + LdrEntry->SizeOfImage) {
+	    *ModuleStartAddr = LdrEntry->DllBase;
+	    *BaseDllName = LdrEntry->BaseDllName;
+	    return;
+	}
     }
-    return psz;
-#else
-    psz[0] = '\0';
-    *module_start_addr = 0;
-    return psz;
-#endif
+    *ModuleStartAddr = NULL;
+    BaseDllName->Buffer = NULL;
+    BaseDllName->Length = BaseDllName->MaximumLength = 0;
 }
 
 typedef ULONG (*RTLP_DBG_PRINTER)(PCSTR Fmt, ...);
@@ -209,8 +206,6 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 			   IN BOOLEAN Unhandled,
 			   IN RTLP_DBG_PRINTER DbgPrinter)
 {
-    PVOID StartAddr;
-    CHAR szMod[128] = "";
     PEXCEPTION_RECORD ExceptionRecord = ExceptionInfo->ExceptionRecord;
     PCONTEXT ContextRecord = ExceptionInfo->ContextRecord;
 
@@ -226,7 +221,7 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 
     if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
 	ExceptionRecord->NumberParameters == 2) {
-	DbgPrinter("Faulting Address: %8zx\n",
+	DbgPrinter("Faulting Address: %08zx\n",
 		   ExceptionRecord->ExceptionInformation[1]);
     }
 
@@ -234,16 +229,17 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     if (ExceptionRecord->ExceptionCode == 0x80000100 /* EXCEPTION_WINE_STUB */ &&
 	ExceptionRecord->NumberParameters == 2) {
 	DbgPrinter("Missing function: %s!%s\n",
-		   (PSZ) ExceptionRecord->ExceptionInformation[0],
-		   (PSZ) ExceptionRecord->ExceptionInformation[1]);
+		   (PSZ)ExceptionRecord->ExceptionInformation[0],
+		   (PSZ)ExceptionRecord->ExceptionInformation[1]);
     }
 
     RtlpDumpContextEx(ContextRecord, DbgPrinter);
-    _module_name_from_addr(ExceptionRecord->ExceptionAddress, &StartAddr,
-			   szMod, sizeof(szMod));
-    DbgPrinter("Address:\n   %p+%-8zx   %s\n", (PVOID)StartAddr,
+    PVOID StartAddr;
+    UNICODE_STRING BaseDllName;
+    RtlpGetModuleNameFromAddr(ExceptionRecord->ExceptionAddress, &StartAddr, &BaseDllName);
+    DbgPrinter("Address:\n   %p+%08zx   %wZ\n", (PVOID)StartAddr,
 	       (ULONG_PTR)ExceptionRecord->ExceptionAddress - (ULONG_PTR)StartAddr,
-	       szMod);
+	       &BaseDllName);
 
     /* Don't print the stack content on screen due to screen size limitation. */
     if (DbgPrinter != RtlpVgaPrint) {
@@ -266,10 +262,9 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	    if (Frame[1] == 0) {
 		DbgPrinter("   <invalid address>\n");
 	    } else {
-		_module_name_from_addr((PCVOID)Frame[1], &StartAddr,
-				       szMod, sizeof(szMod));
-		DbgPrinter("   %p+%.8x   %s\n", (PVOID)StartAddr,
-			   Frame[1] - (ULONG_PTR)StartAddr, szMod);
+		RtlpGetModuleNameFromAddr((PVOID)Frame[1], &StartAddr, &BaseDllName);
+		DbgPrinter("   %p+%.8x   %wZ\n", (PVOID)StartAddr,
+			   Frame[1] - (ULONG_PTR)StartAddr, &BaseDllName);
 	    }
 
 	    if (Frame[0] == 0)
