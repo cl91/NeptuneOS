@@ -163,6 +163,7 @@ BOOLEAN NtRegCloseKey(HANDLE hKey)
     return TRUE;
 }
 
+#define BUFFER_SIZE 1024
 VOID NtEnumKey(HANDLE hKey)
 {
     char buf[BUFFER_SIZE];

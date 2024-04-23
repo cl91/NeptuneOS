@@ -183,9 +183,9 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
     PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
     DPRINT1("LDR: LdrpMapDll: Image Name %s\n", DllName);
 
-    /* For now we will hard code the search path to \BootModules */
+    /* For now we will hard code the search path to \??\BootModules */
     CHAR PathBuf[512];
-    snprintf(PathBuf, sizeof(PathBuf), "\\BootModules\\%s", DllName);
+    snprintf(PathBuf, sizeof(PathBuf), "\\??\\BootModules\\%s", DllName);
     UNICODE_STRING BaseDllName = {};
     UNICODE_STRING FullDllPath = {};
     NTSTATUS Status;

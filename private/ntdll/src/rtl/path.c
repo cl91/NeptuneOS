@@ -453,7 +453,7 @@ NTAPI NTSTATUS RtlpApplyLengthFunction(IN ULONG Flags,
     }
 
     if (Type == sizeof(UNICODE_STRING)) {
-	String = (PUNICODE_STRING) UnicodeStringOrUnicodeStringBuffer;
+	String = (PUNICODE_STRING)UnicodeStringOrUnicodeStringBuffer;
     } else if (Type == sizeof(RTL_UNICODE_STRING_BUFFER)) {
 	String = &((PRTL_UNICODE_STRING_BUFFER)UnicodeStringOrUnicodeStringBuffer)->String;
     } else {
@@ -524,11 +524,11 @@ NTAPI NTSTATUS RtlGetLengthWithoutLastFullDosOrNtPathElement(IN ULONG Flags,
     }
 
     /* Find the last path separator */
-    if (!NT_SUCCESS
-	(RtlFindCharInUnicodeString
-	 (RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END, Path,
-	  &PathDividers, &Position)))
+    if (!NT_SUCCESS(RtlFindCharInUnicodeString(
+			RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END,
+			Path, &PathDividers, &Position))) {
 	Position = 0;
+    }
 
     /* Is it the last char of the string? */
     if (Position && Position + sizeof(WCHAR) == Path->Length) {
@@ -536,17 +536,17 @@ NTAPI NTSTATUS RtlGetLengthWithoutLastFullDosOrNtPathElement(IN ULONG Flags,
 	Tmp.Length = Position;
 
 	/* Keep walking path separators to eliminate multiple next to eachother */
-	while (Tmp.Length > sizeof(WCHAR)
-	       && IS_PATH_SEPARATOR(Tmp.
-				    Buffer[Tmp.Length / sizeof(WCHAR)]))
+	while (Tmp.Length > sizeof(WCHAR) &&
+	       IS_PATH_SEPARATOR(Tmp.Buffer[Tmp.Length / sizeof(WCHAR)])) {
 	    Tmp.Length -= sizeof(WCHAR);
+	}
 
 	/* Find the previous occurence */
-	if (!NT_SUCCESS
-	    (RtlFindCharInUnicodeString
-	     (RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END, &Tmp,
-	      &PathDividers, &Position)))
+	if (!NT_SUCCESS(RtlFindCharInUnicodeString(
+			    RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END, &Tmp,
+			    &PathDividers, &Position))) {
 	    Position = 0;
+	}
     }
 
     /* Simplify code by working in chars instead of bytes */
@@ -554,9 +554,9 @@ NTAPI NTSTATUS RtlGetLengthWithoutLastFullDosOrNtPathElement(IN ULONG Flags,
 	Position /= sizeof(WCHAR);
 
     if (Position) {
-	// Keep walking path separators to eliminate multiple next to eachother, but ensure we leave one in place!
-	while (Position > 1
-	       && IS_PATH_SEPARATOR(Path->Buffer[Position - 1]))
+	// Keep walking path separators to eliminate multiple next to eachother,
+	// but ensure we leave one in place!
+	while (Position > 1 && IS_PATH_SEPARATOR(Path->Buffer[Position - 1]))
 	    Position--;
     }
 
@@ -714,11 +714,9 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 {
     NTSTATUS Status;
     PWCHAR FileNameBuffer;
-    ULONG FileNameLength, FileNameChars, DosLength, DosLengthOffset,
-	FullLength;
+    ULONG FileNameLength, FileNameChars, DosLength, DosLengthOffset, FullLength;
     BOOLEAN SkipTrailingPathSeparators;
     WCHAR c;
-
 
     ULONG reqsize = 0;
     PCWSTR ptr;
@@ -732,7 +730,6 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
     ULONG PrefixLength = 0;
     PWCHAR Source;
     ULONG SourceLength;
-
 
     /* For now, assume the name is valid */
     DPRINT("Filename: %wZ\n", FileName);
@@ -788,9 +785,8 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 	/* Do we have a DOS length, and does the caller want validity? */
 	if (InvalidName && (DosLengthOffset != 0)) {
 	    /* Do the check */
-	    Status =
-		RtlpCheckDeviceName(FileName, DosLengthOffset,
-				    InvalidName);
+	    Status = RtlpCheckDeviceName(FileName, DosLengthOffset,
+					 InvalidName);
 
 	    /* If the check failed, or the name is invalid, fail here */
 	    if (!NT_SUCCESS(Status))
@@ -812,7 +808,7 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 			  DosLength);
 
 	    /* Null terminate */
-	    *(PWCHAR) ((ULONG_PTR) Buffer + FullLength) = UNICODE_NULL;
+	    *(PWCHAR)((ULONG_PTR) Buffer + FullLength) = UNICODE_NULL;
 	    return FullLength;
 	}
 
@@ -886,25 +882,22 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 	    EnvVarNameBuffer[3] = UNICODE_NULL;
 
 	    EnvVarName.Length = 3 * sizeof(WCHAR);
-	    EnvVarName.MaximumLength =
-		EnvVarName.Length + sizeof(WCHAR);
+	    EnvVarName.MaximumLength = EnvVarName.Length + sizeof(WCHAR);
 	    EnvVarName.Buffer = EnvVarNameBuffer;
 
 	    // FIXME: Is it possible to use the user-given buffer ?
 	    // RtlInitEmptyUnicodeString(&EnvVarValue, NULL, Size);
 	    EnvVarValue.Length = 0;
 	    EnvVarValue.MaximumLength = (USHORT) Size;
-	    EnvVarValue.Buffer =
-		RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
+	    EnvVarValue.Buffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
 	    if (EnvVarValue.Buffer == NULL) {
 		Prefix = NULL;
 		PrefixLength = 0;
 		goto Quit;
 	    }
 
-	    Status =
-		RtlQueryEnvironmentVariable_U(NULL, &EnvVarName,
-					      &EnvVarValue);
+	    Status = RtlQueryEnvironmentVariable_U(NULL, &EnvVarName,
+						   &EnvVarValue);
 	    switch (Status) {
 	    case STATUS_SUCCESS:
 		/*
@@ -915,22 +908,18 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 		 * to be the only place in RtlGetFullPathName that the
 		 * existence of a part of a path is checked).
 		 */
-		EnvVarValue.Buffer[EnvVarValue.Length /
-				   sizeof(WCHAR)] = L'\\';
+		EnvVarValue.Buffer[EnvVarValue.Length / sizeof(WCHAR)] = L'\\';
 		Prefix = EnvVarValue.Buffer;
 		PrefixLength = EnvVarValue.Length + sizeof(WCHAR);	/* Append trailing '\\' */
 		break;
 
 	    case STATUS_BUFFER_TOO_SMALL:
-		reqsize =
-		    EnvVarValue.Length + SourceLength +
-		    sizeof(UNICODE_NULL);
+		reqsize = EnvVarValue.Length + SourceLength + sizeof(UNICODE_NULL);
 		goto Quit;
 
 	    default:
-		DPRINT1
-		    ("RtlQueryEnvironmentVariable_U(\"%wZ\") returned 0x%08x\n",
-		     &EnvVarName, Status);
+		DPRINT1("RtlQueryEnvironmentVariable_U(\"%wZ\") returned 0x%08x\n",
+			&EnvVarName, Status);
 
 		EnvVarNameBuffer[0] = NewDrive;
 		EnvVarNameBuffer[1] = L':';
@@ -939,8 +928,7 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 		Prefix = EnvVarNameBuffer;
 		PrefixLength = 3 * sizeof(WCHAR);
 
-		RtlFreeHeap(RtlGetProcessHeap(), 0,
-			    EnvVarValue.Buffer);
+		RtlFreeHeap(RtlGetProcessHeap(), 0, EnvVarValue.Buffer);
 		EnvVarValue.Buffer = NULL;
 		break;
 	    }
@@ -948,8 +936,7 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 	    break;
 	}
 	/* Fall through */
-	DPRINT
-	    ("RtlPathTypeDriveRelative - Using fall-through to RtlPathTypeRelative\n");
+	DPRINT("RtlPathTypeDriveRelative - Using fall-through to RtlPathTypeRelative\n");
     }
 
     case RtlPathTypeRelative:	/* foo     */
@@ -1084,9 +1071,8 @@ static NTSTATUS RtlpWin32NTNameToNtPathName_U(IN PUNICODE_STRING DosPath,
     /* Copy the prefix, and then the rest of the DOS path, and NULL-terminate */
     RtlCopyMemory(NewBuffer, RtlpDosDevicesPrefix.Buffer,
 		  RtlpDosDevicesPrefix.Length);
-    RtlCopyMemory((PCHAR) NewBuffer + RtlpDosDevicesPrefix.Length,
-		  DosPath->Buffer +
-		  RtlpDosDevicesPrefix.Length / sizeof(WCHAR),
+    RtlCopyMemory((PCHAR)NewBuffer + RtlpDosDevicesPrefix.Length,
+		  DosPath->Buffer + RtlpDosDevicesPrefix.Length / sizeof(WCHAR),
 		  DosPath->Length - RtlpDosDevicesPrefix.Length);
     NewBuffer[DosLength / sizeof(WCHAR)] = UNICODE_NULL;
 
@@ -1135,8 +1121,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 {
     WCHAR BigBuffer[MAX_PATH + 1];
     PWCHAR PrefixBuffer, NewBuffer, Buffer;
-    ULONG MaxLength, PathLength, PrefixLength, PrefixCut, LengthChars,
-	Length;
+    ULONG MaxLength, PathLength, PrefixLength, PrefixCut, LengthChars, Length;
     UNICODE_STRING CapturedDosName, PartNameString, FullPath;
     BOOLEAN QuickPath;
     RTL_PATH_TYPE InputPathType, BufferPathType;
@@ -1157,15 +1142,12 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
     CapturedDosName = *DosName;
 
     /* Check for the presence or absence of the NT prefix "\\?\" form */
-    // if (!RtlPrefixUnicodeString(&RtlpWin32NtRootSlash, &CapturedDosName, FALSE))
-    if ((CapturedDosName.Length <= RtlpWin32NtRootSlash.Length) ||
-	(CapturedDosName.Buffer[0] != RtlpWin32NtRootSlash.Buffer[0]) ||
-	(CapturedDosName.Buffer[1] != RtlpWin32NtRootSlash.Buffer[1]) ||
-	(CapturedDosName.Buffer[2] != RtlpWin32NtRootSlash.Buffer[2]) ||
-	(CapturedDosName.Buffer[3] != RtlpWin32NtRootSlash.Buffer[3])) {
-	/* NT prefix not present */
-
-	/* Quick path won't be used */
+    if (RtlPrefixUnicodeString(&RtlpWin32NtRootSlash, &CapturedDosName, FALSE)) {
+	/* NT prefix present. Use the optimized path after acquiring the lock. */
+	QuickPath = TRUE;
+	NewBuffer = NULL;
+    } else {
+	/* NT prefix not present. Quick path won't be used */
 	QuickPath = FALSE;
 
 	/* Use the static buffer */
@@ -1177,12 +1159,6 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 	DPRINT("MaxLength: %x\n", MaxLength);
 	if (!NewBuffer)
 	    return STATUS_NO_MEMORY;
-    } else {
-	/* NT prefix present */
-
-	/* Use the optimized path after acquiring the lock */
-	QuickPath = TRUE;
-	NewBuffer = NULL;
     }
 
     /* Lock the PEB and check if the quick path can be used */
@@ -1190,8 +1166,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
     if (QuickPath) {
 	/* Some simple fixups will get us the correct path */
 	DPRINT("Quick path\n");
-	Status = RtlpWin32NTNameToNtPathName_U(&CapturedDosName,
-					       NtName,
+	Status = RtlpWin32NTNameToNtPathName_U(&CapturedDosName, NtName,
 					       PartName, RelativeName);
 
 	/* Release the lock, we're done here */
@@ -1683,16 +1658,14 @@ NTAPI NTSTATUS RtlSetCurrentDirectory_U(IN PUNICODE_STRING Path)
     CurDir = &NtCurrentPeb()->ProcessParameters->CurrentDirectory;
 
     /* Check if we have to drop current handle */
-    if (((ULONG_PTR) (CurDir->Handle) & RTL_CURDIR_ALL_FLAGS) ==
-	RTL_CURDIR_DROP_OLD_HANDLE) {
+    if (((ULONG_PTR)(CurDir->Handle) & RTL_CURDIR_ALL_FLAGS) == RTL_CURDIR_DROP_OLD_HANDLE) {
 	OldHandle = CurDir->Handle;
 	CurDir->Handle = NULL;
     }
 
-    /* Allocate a buffer for full path (using max possible length */
-    FullPath.Buffer =
-	RtlAllocateHeap(RtlGetProcessHeap(), 0,
-			CurDir->DosPath.MaximumLength);
+    /* Allocate a buffer for full path (using max possible length) */
+    FullPath.Buffer = RtlAllocateHeap(RtlGetProcessHeap(), 0,
+				      CurDir->DosPath.MaximumLength);
     if (!FullPath.Buffer) {
 	Status = STATUS_NO_MEMORY;
 	goto Leave;
@@ -1703,9 +1676,8 @@ NTAPI NTSTATUS RtlSetCurrentDirectory_U(IN PUNICODE_STRING Path)
     FullPath.MaximumLength = CurDir->DosPath.MaximumLength;
 
     /* Get new directory full path */
-    FullPathLength =
-	RtlGetFullPathName_Ustr(Path, FullPath.MaximumLength,
-				FullPath.Buffer, NULL, NULL, &PathType);
+    FullPathLength = RtlGetFullPathName_Ustr(Path, FullPath.MaximumLength,
+					     FullPath.Buffer, NULL, NULL, &PathType);
     if (!FullPathLength) {
 	Status = STATUS_OBJECT_NAME_INVALID;
 	goto Leave;
@@ -1720,8 +1692,7 @@ NTAPI NTSTATUS RtlSetCurrentDirectory_U(IN PUNICODE_STRING Path)
     }
 
     /* Translate it to NT name */
-    if (!RtlDosPathNameToNtPathName_U
-	(FullPath.Buffer, &NtName, NULL, NULL)) {
+    if (!RtlDosPathNameToNtPathName_U(FullPath.Buffer, &NtName, NULL, NULL)) {
 	Status = STATUS_OBJECT_NAME_INVALID;
 	goto Leave;
     }
@@ -1730,57 +1701,27 @@ NTAPI NTSTATUS RtlSetCurrentDirectory_U(IN PUNICODE_STRING Path)
 			       OBJ_CASE_INSENSITIVE | OBJ_INHERIT,
 			       NULL, NULL);
 
-    /* If previous current directory was removable, then check it for dropping */
-    if (((ULONG_PTR) (CurDir->Handle) & RTL_CURDIR_ALL_FLAGS) ==
-	RTL_CURDIR_ALL_FLAGS) {
-	/* Get back normal handle */
-	CurDirHandle =
-	    (HANDLE) ((ULONG_PTR) (CurDir->Handle) &
-		      ~RTL_CURDIR_ALL_FLAGS);
-	CurDir->Handle = NULL;
+    /* Open directory */
+    Status = NtOpenFile(&CurDirHandle,
+			SYNCHRONIZE | FILE_TRAVERSE,
+			&ObjectAttributes,
+			&IoStatusBlock,
+			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+    if (!NT_SUCCESS(Status))
+	goto Leave;
 
-	/* Get device information */
-	Status = NtQueryVolumeInformationFile(CurDirHandle,
-					      &IoStatusBlock,
-					      &FileFsDeviceInfo,
-					      sizeof(FileFsDeviceInfo),
-					      FileFsDeviceInformation);
-	/* Retry without taking care of removable device */
-	if (!NT_SUCCESS(Status)) {
-	    Status = RtlSetCurrentDirectory_U(Path);
-	    goto Leave;
-	}
-    } else {
-	/* Open directory */
-	Status = NtOpenFile(&CurDirHandle,
-			    SYNCHRONIZE | FILE_TRAVERSE,
-			    &ObjectAttributes,
-			    &IoStatusBlock,
-			    FILE_SHARE_READ | FILE_SHARE_WRITE,
-			    FILE_DIRECTORY_FILE |
-			    FILE_SYNCHRONOUS_IO_NONALERT);
-	if (!NT_SUCCESS(Status))
-	    goto Leave;
-
-	/* Get device information */
-	Status = NtQueryVolumeInformationFile(CurDirHandle,
-					      &IoStatusBlock,
-					      &FileFsDeviceInfo,
-					      sizeof(FileFsDeviceInfo),
-					      FileFsDeviceInformation);
-	if (!NT_SUCCESS(Status))
-	    goto Leave;
+    /* Get device information */
+    Status = NtQueryVolumeInformationFile(CurDirHandle, &IoStatusBlock, &FileFsDeviceInfo,
+					  sizeof(FileFsDeviceInfo), FileFsDeviceInformation);
+    /* If device is removable, mark handle. */
+    if (NT_SUCCESS(Status) && (FileFsDeviceInfo.Characteristics & FILE_REMOVABLE_MEDIA)) {
+	CurDirHandle = (HANDLE)((ULONG_PTR)CurDirHandle | RTL_CURDIR_IS_REMOVABLE);
     }
 
-    /* If device is removable, mark handle */
-    if (FileFsDeviceInfo.Characteristics & FILE_REMOVABLE_MEDIA) {
-	CurDirHandle =
-	    (HANDLE) ((ULONG_PTR) CurDirHandle | RTL_CURDIR_IS_REMOVABLE);
-    }
+    FullPath.Length = (USHORT)FullPathLength;
 
-    FullPath.Length = (USHORT) FullPathLength;
-
-    /* If full path isn't \ terminated, do it */
+    /* If full path isn't NUL-terminated, make sure it is */
     if (FullPath.Buffer[CharLength - 1] != OBJ_NAME_PATH_SEPARATOR) {
 	if ((CharLength + 1) * sizeof(WCHAR) > SavedLength) {
 	    Status = STATUS_NAME_TOO_LONG;
@@ -1798,9 +1739,8 @@ NTAPI NTSTATUS RtlSetCurrentDirectory_U(IN PUNICODE_STRING Path)
     } else {
 	/* Allocate new current directory struct saving previous one */
 	OldCurDir = RtlpCurDirRef;
-	RtlpCurDirRef =
-	    RtlAllocateHeap(RtlGetProcessHeap(), 0,
-			    sizeof(RTLP_CURDIR_REF));
+	RtlpCurDirRef = RtlAllocateHeap(RtlGetProcessHeap(), 0,
+					sizeof(RTLP_CURDIR_REF));
 	if (!RtlpCurDirRef) {
 	    RtlpCurDirRef = OldCurDir;
 	    OldCurDir = NULL;

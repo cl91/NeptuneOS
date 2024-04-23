@@ -849,8 +849,9 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
                         IN SECTION_INFORMATION_CLASS SectionInformationClass,
                         IN PVOID SectionInformationBuffer,
                         IN ULONG SectionInformationLength,
-                        OUT OPTIONAL ULONG *ReturnLength)
+                        OUT ULONG *ReturnLength)
 {
+    assert(ReturnLength);
     if (SectionHandle == NULL) {
 	return STATUS_INVALID_HANDLE;
     }
@@ -882,9 +883,11 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
 	}
 	Info->Attributes = Section->Attributes;
 	Info->Size.QuadPart = Section->Size;
+	*ReturnLength = sizeof(SECTION_BASIC_INFORMATION);
     } else {
 	assert(SectionInformationClass == SectionImageInformation);
 	*((PSECTION_IMAGE_INFORMATION)SectionInformationBuffer) = Section->ImageSectionObject->ImageInformation;
+	*ReturnLength = sizeof(SECTION_IMAGE_INFORMATION);
     }
     ObDereferenceObject(Section);
     return STATUS_SUCCESS;

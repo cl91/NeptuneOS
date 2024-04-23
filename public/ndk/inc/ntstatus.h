@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ntdef.h>
+
 typedef LONG NTSTATUS;
 typedef NTSTATUS *PNTSTATUS;
 

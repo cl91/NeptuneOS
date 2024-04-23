@@ -42,3 +42,4 @@ include(${CMAKE_CURRENT_LIST_DIR}/../tools/cmake/spec2def.cmake)
 
 add_subdirectory(smss)
 add_subdirectory(ntcmd)
+add_subdirectory(umtests)

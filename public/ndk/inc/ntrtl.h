@@ -3,15 +3,6 @@
 #include <ntimage.h>
 #include <ntkeapi.h>
 
-#define MAX_PATH	260
-
-#define RTL_UNCHANGED_UNK_PATH  1
-#define RTL_CONVERTED_UNC_PATH  2
-#define RTL_CONVERTED_NT_PATH   3
-#define RTL_UNCHANGED_DOS_PATH  4
-
-#define RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK (0x00000001)
-
 typedef struct _CLIENT_ID {
     HANDLE UniqueProcess;
     HANDLE UniqueThread;
@@ -85,7 +76,6 @@ typedef struct _RTL_BITMAP {
 typedef const RTL_BITMAP *PCRTL_BITMAP;
 
 #define RTL_MAX_DRIVE_LETTERS 32
-#define RTL_DRIVE_LETTER_VALID (USHORT)0x0001
 
 /*
  * Thread and Process Start Routines for RtlCreateUserThread/Process

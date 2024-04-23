@@ -2,8 +2,7 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     Internal header for information classes info interface
- * COPYRIGHT:   Copyright ???
- *              Copyright 2020-2021 George Bișoc <george.bisoc@reactos.org>
+ * COPYRIGHT:   Copyright 2020-2021 George Bișoc <george.bisoc@reactos.org>
  */
 
 #pragma once

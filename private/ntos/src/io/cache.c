@@ -28,6 +28,7 @@ Revision History:
 
 --*/
 #include "iop.h"
+#include "ntstatus.h"
 
 #define NTOS_CC_TAG	(EX_POOL_TAG('n','t','c','c'))
 
@@ -1005,6 +1006,12 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 
     PIO_VOLUME_CONTROL_BLOCK Vcb = Fcb->Vcb;
     BOOLEAN IsVolume = Vcb && (Fcb == Vcb->VolumeFcb);
+
+    /* For deviceless files, we reject the cached IO if the file size is zero. */
+    if (!Vcb && !Fcb->FileSize) {
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
 
     /* If the FileSize of the FCB is not set, we skip the end-of-file checks and
      * assume the file is infinitely long. */

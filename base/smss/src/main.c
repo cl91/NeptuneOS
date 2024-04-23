@@ -1,5 +1,4 @@
 #include <smss.h>
-#include <ntddbeep.h>
 
 PCSTR SMSS_BANNER = "\nNeptune OS Session Manager [Version " VER_PRODUCTVERSION_STRING "]\n";
 
@@ -14,150 +13,6 @@ NTSTATUS SmPrint(PCSTR Format, ...)
 	return STATUS_UNSUCCESSFUL;
     }
     NtDisplayStringA(buf);
-    return STATUS_SUCCESS;
-}
-
-/*
- * Call the beep.sys driver to make a beep of given frequency (in Hz)
- * and duration (in ms)
- *
- * Returns true if beep is successful
- */
-static BOOLEAN SmBeep(IN ULONG dwFreq,
-		      IN ULONG dwDuration)
-{
-    HANDLE hBeep;
-    UNICODE_STRING BeepDevice;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK IoStatusBlock;
-
-    /* Open the device */
-    RtlInitUnicodeString(&BeepDevice, DD_BEEP_DEVICE_NAME_U);
-    InitializeObjectAttributes(&ObjectAttributes, &BeepDevice, 0, NULL, NULL);
-    NTSTATUS Status = NtCreateFile(&hBeep, FILE_READ_DATA | FILE_WRITE_DATA,
-				   &ObjectAttributes, &IoStatusBlock, NULL, 0,
-				   FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
-				   0, NULL, 0);
-    if (!NT_SUCCESS(Status)) {
-	DbgTrace("NtCreateFile returned error status 0x%x\n", Status);
-	return FALSE;
-    }
-
-    /* Check the parameters */
-    if ((dwFreq >= 0x25 && dwFreq <= 0x7FFF) || (dwFreq == 0x0 && dwDuration == 0x0)) {
-	BEEP_SET_PARAMETERS BeepSetParameters;
-	/* Set beep data */
-	BeepSetParameters.Frequency = dwFreq;
-	BeepSetParameters.Duration = dwDuration;
-
-	/* Send the beep */
-	Status = NtDeviceIoControlFile(hBeep, NULL, NULL, NULL, &IoStatusBlock,
-				       IOCTL_BEEP_SET, &BeepSetParameters,
-				       sizeof(BeepSetParameters), NULL, 0);
-	if (!NT_SUCCESS(Status)) {
-	    DbgTrace("NtDeviceIoControlFile returned error status 0x%x\n",
-		     Status);
-	}
-    } else {
-	DbgTrace("Invalid beep parameter freq %d duration %d\n",
-		 dwFreq, dwDuration);
-	Status = STATUS_INVALID_PARAMETER;
-    }
-
-    NtClose(hBeep);
-    return NT_SUCCESS(Status);
-}
-
-static NTSTATUS SmTestNullDriver()
-{
-    HANDLE hNull;
-    UNICODE_STRING NullDevice;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK IoStatusBlock;
-
-    /* Open the device */
-    RtlInitUnicodeString(&NullDevice, L"\\Device\\Null");
-    InitializeObjectAttributes(&ObjectAttributes, &NullDevice, 0, NULL, NULL);
-    RET_ERR_EX(NtCreateFile(&hNull, FILE_READ_DATA | FILE_WRITE_DATA,
-			    &ObjectAttributes, &IoStatusBlock, NULL, 0,
-			    FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
-			    0, NULL, 0),
-	       SmPrint("Failed to create device handle for null.sys. Status = 0x%x\n", Status));
-
-    return STATUS_SUCCESS;
-}
-
-static VOID SmTestBeepDriver(IN ULONG Freq,
-			     IN ULONG Duration)
-{
-    SmPrint("Testing beep driver with frequency %d Hz duration %d ms...\n",
-	    Freq, Duration);
-    BOOLEAN BeepSuccess = SmBeep(Freq, Duration);
-    if (BeepSuccess) {
-	SmPrint("Success. You should hear a beep.\n");
-    } else {
-	SmPrint("FAILED.\n");
-    }
-}
-
-static CHAR Buffer[1440 * 1024];
-
-static NTSTATUS SmTestFloppyDriver()
-{
-    HANDLE hFloppy;
-    UNICODE_STRING FloppyDevice;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK IoStatusBlock;
-
-    /* Open the device */
-    LARGE_INTEGER AllocationSize = { .QuadPart = 0x911 };
-    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0\\test");
-    InitializeObjectAttributes(&ObjectAttributes, &FloppyDevice, 0, NULL, NULL);
-    RET_ERR_EX(NtCreateFile(&hFloppy, FILE_READ_DATA | FILE_WRITE_DATA,
-			    &ObjectAttributes, &IoStatusBlock, &AllocationSize, 0,
-			    FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
-			    0, NULL, 0),
-	       SmPrint("Failed to create device handle for fdc.sys. Status = 0x%x\n", Status));
-
-    RET_ERR_EX(NtFlushBuffersFile(hFloppy, &IoStatusBlock),
-	       SmPrint("Failed to flush buffers for %wZ, status = 0x%x\n",
-		       &FloppyDevice, Status));
-
-    LARGE_INTEGER ByteOffset;
-    RtlZeroMemory(&ByteOffset, sizeof(ByteOffset));
-
-    /* Try to read the data */
-    SmPrint("Writing floppy... ");
-    snprintf(Buffer, 128, "hello, world!\n");
-    RET_ERR_EX(NtWriteFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
-			   Buffer, 0x1000, &ByteOffset, NULL),
-	       SmPrint("FAILED. Status = 0x%x\n", Status));
-    ULONG FileSize = IoStatusBlock.Information;
-
-    SmPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",
-	    Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
-
-    RET_ERR_EX(NtFlushBuffersFile(hFloppy, &IoStatusBlock),
-	       SmPrint("Failed to flush buffers for %wZ, status = 0x%x\n",
-		       &FloppyDevice, Status));
-
-    for (ULONG i = 0; i <= FileSize / 16; i++) {
-	PUSHORT Row = (PUSHORT)(Buffer + 16*i);
-	DbgPrint("%07x %04x %04x %04x %04x %04x %04x %04x %04x\n",
-		 16*i, Row[0], Row[1], Row[2], Row[3],
-		 Row[4], Row[5], Row[6], Row[7]);
-    }
-
-    for (ULONG i = FileSize / 16 + 1; i < ARRAYSIZE(Buffer) / 16; i++) {
-	PUSHORT Row = (PUSHORT)(Buffer + 16*i);
-	PULONG64 Row64 = (PULONG64)Row;
-	if (Row64[0] || Row64[1] || Row64[2] || Row64[3]) {
-	    DbgPrint("%07x %04x %04x %04x %04x %04x %04x %04x %04x\n",
-		     16*i, Row[0], Row[1], Row[2], Row[3],
-		     Row[4], Row[5], Row[6], Row[7]);
-	}
-    }
-
     return STATUS_SUCCESS;
 }
 
@@ -268,7 +123,7 @@ NTSTATUS SmStartCommandPrompt()
     WCHAR ProcessEnv[2] = { 0, 0 };
 
     UNICODE_STRING ImagePath;
-    RtlInitUnicodeString(&ImagePath, L"\\BootModules\\ntcmd.exe");
+    RtlInitUnicodeString(&ImagePath, L"\\??\\BootModules\\ntcmd.exe");
 
     NTSTATUS Status = RtlCreateProcessParameters(&ProcessParams, &ImagePath, NULL,
 						 NULL, NULL, ProcessEnv, NULL, NULL,
@@ -300,9 +155,6 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmPrint("%s\n", SMSS_BANNER);
     SmInitRegistry();
     SmInitHardwareDatabase();
-    SmTestNullDriver();
-    SmTestBeepDriver(440, 1000);
-    SmTestFloppyDriver();
     SmPrint("\n");
 
     if (!NT_SUCCESS(SmStartCommandPrompt())) {

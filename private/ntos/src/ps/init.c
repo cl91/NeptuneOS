@@ -229,8 +229,8 @@ fail:
 
 static VOID PspPopulateUserSharedData()
 {
-    UNUSED PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
-    /* TODO */
+    PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA)PspUserSharedDataVad->AvlNode.Key;
+    RtlCopyMemory(Data->NtSystemRoot, INITIAL_SYSTEM_ROOT_U, sizeof(INITIAL_SYSTEM_ROOT_U));
 }
 
 PKUSER_SHARED_DATA PsGetUserSharedData()
@@ -238,7 +238,7 @@ PKUSER_SHARED_DATA PsGetUserSharedData()
     if (PspUserSharedDataVad == NULL) {
 	return NULL;
     }
-    return (PKUSER_SHARED_DATA) PspUserSharedDataVad->AvlNode.Key;
+    return (PKUSER_SHARED_DATA)PspUserSharedDataVad->AvlNode.Key;
 }
 
 NTSTATUS PspMapUserSharedData()

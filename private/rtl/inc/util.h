@@ -99,6 +99,11 @@ FORCEINLINE NTSTATUS RtlpUtf8ToUnicodeString(IN PVOID Heap,
     assert(String != NULL);
     assert(UnicodeString != NULL);
     SIZE_T Length = strlen(String);
+    if (!Length) {
+	UnicodeString->Buffer = NULL;
+	UnicodeString->Length = UnicodeString->MaximumLength = 0;
+	return STATUS_SUCCESS;
+    }
     SIZE_T BufferSize = sizeof(WCHAR) * Length;
     PWCHAR Buffer = RtlAllocateHeap(Heap, 0, BufferSize);
     if (Buffer == NULL) {

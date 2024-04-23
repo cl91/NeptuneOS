@@ -67,7 +67,7 @@ static NTSTATUS SmInitBootDriverConfigs()
 		 SERVICE_KEY_PATH "\\%s\\" PARAMETERS_KEY_NAME,
 		 BootDrivers[i].ServiceName);
 	snprintf(ImagePath, sizeof(ImagePath),
-		 "\\BootModules\\%s.sys", BootDrivers[i].ServiceName);
+		 "\\??\\BootModules\\%s.sys", BootDrivers[i].ServiceName);
 	HANDLE ServiceKey = NULL;
 	RET_ERR(SmCreateRegistryKey(ServiceFullPath, FALSE, &ServiceKey));
 	assert(ServiceKey != NULL);

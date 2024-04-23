@@ -1,4 +1,5 @@
 #include "iop.h"
+#include "mm.h"
 
 VOID IopInitializeFcb(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		      IN ULONG64 FileSize,
@@ -325,9 +326,6 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	    ULONG64 FileOffset;
 	});
 
-    if (FileHandle == NULL) {
-	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
-    }
     IF_ERR_GOTO(out, Status,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
@@ -476,21 +474,116 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE State,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, TRUE);
 }
 
-NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE AsyncState,
+#define CHECK_LENGTH(BufferLength,Class, Struct)	\
+        case Class:					\
+            if (BufferLength < sizeof(Struct))		\
+                return STATUS_INFO_LENGTH_MISMATCH;	\
+            break
+
+NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
                               IN PTHREAD Thread,
                               IN HANDLE FileHandle,
-                              IN HANDLE Event,
+                              IN HANDLE EventHandle,
                               IN PIO_APC_ROUTINE ApcRoutine,
                               IN PVOID ApcContext,
                               OUT IO_STATUS_BLOCK *IoStatusBlock,
                               IN PVOID FileInfoBuffer,
-                              IN ULONG BufferLength,
+                              IN ULONG Length,
                               IN FILE_INFORMATION_CLASS FileInformationClass,
                               IN BOOLEAN ReturnSingleEntry,
                               IN OPTIONAL PCSTR FileName,
                               IN BOOLEAN RestartScan)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PEVENT_OBJECT EventObject;
+	    PIO_REQUEST_PARAMETERS Irp;
+	    PPENDING_IRP PendingIrp;
+	    IO_STATUS_BLOCK IoStatus;
+	});
+
+    switch (FileInformationClass) {
+        CHECK_LENGTH(Length, FileDirectoryInformation, FILE_DIRECTORY_INFORMATION);
+        CHECK_LENGTH(Length, FileFullDirectoryInformation, FILE_FULL_DIR_INFORMATION);
+        CHECK_LENGTH(Length, FileIdFullDirectoryInformation, FILE_ID_FULL_DIR_INFORMATION);
+        CHECK_LENGTH(Length, FileNamesInformation, FILE_NAMES_INFORMATION);
+        CHECK_LENGTH(Length, FileBothDirectoryInformation, FILE_BOTH_DIR_INFORMATION);
+        CHECK_LENGTH(Length, FileIdBothDirectoryInformation, FILE_ID_BOTH_DIR_INFORMATION);
+    default:
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    /* Deviceless files cannot be queried. */
+    if (!Locals.FileObject->DeviceObject) {
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    if (EventHandle != NULL) {
+	IF_ERR_GOTO(out, Status,
+		    ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
+					      (POBJECT *)&Locals.EventObject));
+	assert(Locals.EventObject != NULL);
+    }
+
+    /* Queue an IRP to the target driver object. */
+    ULONG DataSize = FileName ? strlen(FileName) + 1 : 0;
+    Locals.Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize*2,
+				       NTOS_IO_TAG);
+    Locals.Irp->MajorFunction = IRP_MJ_DIRECTORY_CONTROL;
+    Locals.Irp->MinorFunction = IRP_MN_QUERY_DIRECTORY;
+    Locals.Irp->Device.Object = Locals.FileObject->DeviceObject;
+    Locals.Irp->File.Object = Locals.FileObject;
+    Locals.Irp->OutputBuffer = (MWORD)FileInfoBuffer;
+    Locals.Irp->OutputBufferLength = Length;
+    Locals.Irp->QueryDirectory.FileInformationClass = FileInformationClass;
+    Locals.Irp->QueryDirectory.FileIndex = 0;
+    Locals.Irp->QueryDirectory.ReturnSingleEntry = ReturnSingleEntry;
+    Locals.Irp->QueryDirectory.RestartScan = RestartScan;
+    if (FileName) {
+	memcpy(Locals.Irp->QueryDirectory.FileName, FileName, DataSize);
+    }
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, Locals.Irp, &Locals.PendingIrp));
+
+    /* For now every IO is synchronous. */
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
+    Status = STATUS_SUCCESS;
+
+out:
+    if (!NT_SUCCESS(Status)) {
+	Locals.IoStatus.Status = Status;
+    } else {
+	Status = Locals.IoStatus.Status;
+    }
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.IoStatus;
+    }
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.EventObject) {
+	ObDereferenceObject(Locals.EventObject);
+    }
+    if (Locals.Irp) {
+	IopFreePool(Locals.Irp);
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtDeleteFile(IN ASYNC_STATE AsyncState,
@@ -505,7 +598,7 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE AsyncState,
                               IN HANDLE FileHandle,
                               OUT IO_STATUS_BLOCK *IoStatusBlock,
                               IN PVOID FileInfoBuffer,
-                              IN ULONG BufferLength,
+                              IN ULONG Length,
                               IN FILE_INFORMATION_CLASS FileInformationClass)
 {
     UNIMPLEMENTED;
@@ -519,7 +612,7 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE AsyncState,
+NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,
                                       IN PTHREAD Thread,
                                       IN HANDLE FileHandle,
                                       OUT IO_STATUS_BLOCK *IoStatusBlock,
@@ -527,7 +620,105 @@ NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE AsyncState,
                                       IN ULONG Length,
                                       IN FS_INFORMATION_CLASS FsInformationClass)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PPENDING_IRP PendingIrp;
+	    IO_STATUS_BLOCK IoStatus;
+	});
+
+    switch (FsInformationClass) {
+        CHECK_LENGTH(Length, FileFsVolumeInformation, FILE_FS_VOLUME_INFORMATION);
+        CHECK_LENGTH(Length, FileFsSizeInformation, FILE_FS_SIZE_INFORMATION);
+	CHECK_LENGTH(Length, FileFsDeviceInformation, FILE_FS_DEVICE_INFORMATION);
+	CHECK_LENGTH(Length, FileFsAttributeInformation, FILE_FS_ATTRIBUTE_INFORMATION);
+	CHECK_LENGTH(Length, FileFsControlInformation, FILE_FS_CONTROL_INFORMATION);
+	CHECK_LENGTH(Length, FileFsFullSizeInformation, FILE_FS_FULL_SIZE_INFORMATION);
+	CHECK_LENGTH(Length, FileFsObjectIdInformation, FILE_FS_OBJECTID_INFORMATION);
+	CHECK_LENGTH(Length, FileFsDriverPathInformation, FILE_FS_DRIVER_PATH_INFORMATION);
+    default:
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    /* Deviceless files cannot be queried. */
+    if (!Locals.FileObject->DeviceObject) {
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    PIO_DEVICE_INFO DevInfo = &Locals.FileObject->DeviceObject->DeviceInfo;
+    /* Quick path for FileFsDeviceInformation. The NT executive has enough info
+     * to reply to the client without asking the file system driver, except for
+     * network file systems. */
+    if (FsInformationClass == FileFsDeviceInformation &&
+	DevInfo->DeviceType != FILE_DEVICE_NETWORK_FILE_SYSTEM) {
+	/* TODO: Eventually we will schedule an IO APC to deliver the results
+	 * to the client side in order to avoid doing a syscall. For now we
+	 * will just map the user buffer to NT Executive address space. */
+	PFILE_FS_DEVICE_INFORMATION FsDeviceInfo = NULL;
+	IF_ERR_GOTO(out, Status, MmMapUserBuffer(&Thread->Process->VSpace,
+						 (MWORD)FsInfoBuffer, Length,
+						 (PVOID *)&FsDeviceInfo));
+	FsDeviceInfo->DeviceType = DevInfo->DeviceType;
+	FsDeviceInfo->Characteristics = DevInfo->Flags;
+	/* Complete characteristcs with mount status if relevant */
+	if (IopIsVolumeMounted(Locals.FileObject->DeviceObject)) {
+	    FsDeviceInfo->Characteristics |= FILE_DEVICE_IS_MOUNTED;
+	}
+	Locals.IoStatus.Information = sizeof(FILE_FS_DEVICE_INFORMATION);
+	Locals.IoStatus.Status = STATUS_SUCCESS;
+	MmUnmapUserBuffer(FsDeviceInfo);
+	goto out;
+    } else if (FsInformationClass == FileFsDriverPathInformation) {
+	/* The FsInfoBuffer for FileFsDriverPathInformation is in fact both an
+	 * IN buffer and an OUT buffer. This doesn't appear to be used anywhere
+	 * in the ReactOS code base so we won't bother supporting it. */
+        Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+
+    /* Queue an IRP to the target driver object. */
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = Locals.FileObject,
+	.MajorFunction = IRP_MJ_QUERY_VOLUME_INFORMATION,
+	.OutputBuffer = (MWORD)FsInfoBuffer,
+	.OutputBufferLength = Length,
+	.QueryVolume.FsInformationClass = FsInformationClass
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
+    Status = STATUS_SUCCESS;
+
+out:
+    if (!NT_SUCCESS(Status)) {
+	Locals.IoStatus.Status = Status;
+    } else {
+	Status = Locals.IoStatus.Status;
+    }
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.IoStatus;
+    }
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtQueryInformationFile(IN ASYNC_STATE AsyncState,

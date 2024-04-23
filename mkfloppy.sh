@@ -79,5 +79,6 @@ mcopy -i $FLOPPYIMG $KERNELTMP ::kernel
 mcopy -i $FLOPPYIMG $NTOSTMP ::ntos
 mcopy -i $FLOPPYIMG $SYSLINUXCFGTMP ::syslinux.cfg
 mcopy -i $FLOPPYIMG $SYSLINUX_FILES/mboot.c32 $SYSLINUX_FILES/menu.c32 $SYSLINUX_FILES/libutil.c32 $SYSLINUX_FILES/libcom32.c32 ::
+mcopy -i $FLOPPYIMG base/umtests/umtests.exe ::
 
 rm $KERNELTMP $NTOSTMP $SYSLINUXCFGTMP

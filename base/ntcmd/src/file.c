@@ -3,17 +3,13 @@
 Copyright (c) Alex Ionescu.  All rights reserved.
 Copyright (c) 2011 amdf.
 
-    THIS CODE AND INFORMATION IS PROVIDED UNDER THE LESSER GNU PUBLIC LICENSE.
-    PLEASE READ THE FILE "COPYING" IN THE TOP LEVEL DIRECTORY.
-
 Module Name:
 
     file.c
 
 Abstract:
 
-    The Native Command Line Interface (NCLI) is the command shell for the
-    TinyKRNL OS.
+    The Native Command Line Interface is the command shell for Neptune OS.
     This module implements commands for dealing with files and directories.
 
 Environment:
@@ -65,7 +61,6 @@ ULONG RtlCliGetCurrentDirectory(IN OUT PWSTR CurrentDirectory)
  * @remarks Documentation for this routine needs to be completed.
  *
  *--*/
-
 NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory)
 {
     WCHAR buf[MAX_PATH];
@@ -226,9 +221,8 @@ NTSTATUS RtlCliListDirectory(VOID)
     //
     // Initialize the object attributes
     //
-    RtlCliDisplayString(" Directory of %S\n\n", CurrentDirectory);
-    InitializeObjectAttributes(&ObjectAttributes,
-			       &DirectoryString,
+    RtlCliDisplayString(" Directory of %ws\n\n", CurrentDirectory);
+    InitializeObjectAttributes(&ObjectAttributes, &DirectoryString,
 			       OBJ_CASE_INSENSITIVE, NULL, NULL);
 
     //

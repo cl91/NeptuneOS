@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ntdef.h>
 #include <ntseapi.h>
 
 #define PAGE_NOACCESS		(0x01)

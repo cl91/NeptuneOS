@@ -45,36 +45,49 @@ typedef enum _CON_DEVICE_TYPE {
 } CON_DEVICE_TYPE;
 
 //
+// Keyboard code
+//
+#define RIGHT_ALT_PRESSED     0x0001	// the right alt key is pressed.
+#define LEFT_ALT_PRESSED      0x0002	// the left alt key is pressed.
+#define RIGHT_CTRL_PRESSED    0x0004	// the right ctrl key is pressed.
+#define LEFT_CTRL_PRESSED     0x0008	// the left ctrl key is pressed.
+#define SHIFT_PRESSED         0x0010	// the shift key is pressed.
+#define NUMLOCK_ON            0x0020	// the numlock light is on.
+#define SCROLLLOCK_ON         0x0040	// the scrolllock light is on.
+#define CAPSLOCK_ON           0x0080	// the capslock light is on.
+#define ENHANCED_KEY          0x0100	// the key is enhanced.
+
+typedef struct _KBD_RECORD {
+    USHORT wVirtualScanCode;
+    ULONG dwControlKeyState;
+    UCHAR AsciiChar;
+    BOOLEAN bKeyDown;
+} KBD_RECORD, *PKBD_RECORD;
+
+extern HANDLE hKeyboard;
+
+//
 // Display functions
 //
 NTSTATUS RtlCliDisplayString(IN PCH Message, ...);
-
 NTSTATUS RtlCliPrintString(IN PUNICODE_STRING Message);
-
 NTSTATUS RtlCliPutChar(IN WCHAR Char);
 
 //
 // Input functions
 //
 NTSTATUS RtlCliOpenInputDevice(OUT PHANDLE Handle, IN CON_DEVICE_TYPE Type);
-
 CHAR RtlCliGetChar(IN HANDLE hDriver);
-
 PCHAR RtlCliGetLine(IN HANDLE hDriver);
 
 //
 // System information functions
 //
 NTSTATUS RtlCliListDrivers(VOID);
-
 NTSTATUS RtlCliListProcesses(VOID);
-
 NTSTATUS RtlCliDumpSysInfo(VOID);
-
 NTSTATUS RtlCliShutdown(VOID);
-
 NTSTATUS RtlCliReboot(VOID);
-
 NTSTATUS RtlCliPowerOff(VOID);
 
 //
@@ -86,77 +99,52 @@ NTSTATUS RtlCliListHardwareTree(VOID);
 // File functions
 //
 NTSTATUS RtlCliListDirectory(VOID);
-
 NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory);
-
 ULONG RtlCliGetCurrentDirectory(IN OUT PWSTR CurrentDirectory);
-
-// Keyboard:
-
-extern HANDLE hKeyboard;
-
-typedef struct _KBD_RECORD {
-    USHORT wVirtualScanCode;
-    ULONG dwControlKeyState;
-    UCHAR AsciiChar;
-    BOOLEAN bKeyDown;
-} KBD_RECORD, *PKBD_RECORD;
-
-void IntTranslateKey(PKEYBOARD_INPUT_DATA InputData, KBD_RECORD * kbd_rec);
-
-#define RIGHT_ALT_PRESSED     0x0001	// the right alt key is pressed.
-#define LEFT_ALT_PRESSED      0x0002	// the left alt key is pressed.
-#define RIGHT_CTRL_PRESSED    0x0004	// the right ctrl key is pressed.
-#define LEFT_CTRL_PRESSED     0x0008	// the left ctrl key is pressed.
-#define SHIFT_PRESSED         0x0010	// the shift key is pressed.
-#define NUMLOCK_ON            0x0020	// the numlock light is on.
-#define SCROLLLOCK_ON         0x0040	// the scrolllock light is on.
-#define CAPSLOCK_ON           0x0080	// the capslock light is on.
-#define ENHANCED_KEY          0x0100	// the key is enhanced.
-
-// Process:
-
-NTSTATUS CreateNativeProcess(IN PCWSTR file_name, IN PCWSTR cmd_line,
-			     OUT PHANDLE hProcess);
-
-#define BUFFER_SIZE 1024
-
-// Command processing:
-
-UINT StringToArguments(CHAR *str);
-
-extern char *xargv[BUFFER_SIZE];
-extern unsigned int xargc;
-
 BOOL GetFullPath(IN PCSTR filename,
 		 OUT PWSTR out,
 		 IN ULONG out_size,
 		 IN BOOL add_slash);
 BOOL FileExists(PCWSTR fname);
 
-// Registry
+//
+// Keyboard functions
+//
+VOID IntTranslateKey(PKEYBOARD_INPUT_DATA InputData, KBD_RECORD *kbd_rec);
 
+//
+// Process functions
+//
+NTSTATUS CreateNativeProcess(IN PCWSTR file_name, IN PCWSTR cmd_line,
+			     OUT PHANDLE hProcess);
+
+//
+// Command processing function
+//
+UINT StringToArguments(IN OUT CHAR *Cmd, IN ULONG Bufsize, IN ULONG MaxArgs,
+		       OUT PCHAR *ArgList);
+
+//
+// Registry functions
+//
 NTSTATUS OpenKey(OUT PHANDLE pHandle, IN PWCHAR key);
 NTSTATUS RegWrite(HANDLE hKey, INT type, PWCHAR key_name, PVOID data,
 		  DWORD size);
-
 NTSTATUS RegReadValue(HANDLE hKey, PWCHAR key_name, OUT PULONG type,
 		      OUT PVOID data, IN ULONG buf_size,
 		      OUT PULONG out_size);
 
-// Misc
+//
+// Misc functions
+//
+VOID FillUnicodeStringWithAnsi(OUT PUNICODE_STRING us, IN PCHAR as);
 
-void FillUnicodeStringWithAnsi(OUT PUNICODE_STRING us, IN PCHAR as);
-
-//===========================================================
 //
 // Helper Functions for ntreg.c
 //
-//===========================================================
-
-BOOLEAN SetUnicodeString(UNICODE_STRING * pustrRet, WCHAR * pwszData);
-BOOLEAN DisplayString(WCHAR * pwszData);
-HANDLE InitHeapMemory(void);
+BOOLEAN SetUnicodeString(UNICODE_STRING * pustrRet, WCHAR *pwszData);
+BOOLEAN DisplayString(WCHAR *pwszData);
+HANDLE InitHeapMemory(VOID);
 BOOLEAN DeinitHeapMemory(HANDLE hHeap);
-BOOLEAN AppendString(WCHAR * pszInput, WCHAR * pszAppend);
-UINT GetStringLength(WCHAR * pszInput);
+BOOLEAN AppendString(WCHAR *pszInput, WCHAR *pszAppend);
+UINT GetStringLength(WCHAR *pszInput);

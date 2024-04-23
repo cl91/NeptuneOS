@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nt.h>
+#include <debug.h>
 #include <services.h>
 #include <wdmsvc_gen.h>
 
@@ -274,6 +275,16 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	struct {
 	    ULONG IoControlCode;
 	} DeviceIoControl;
+	struct {
+	    FILE_INFORMATION_CLASS FileInformationClass;
+	    ULONG FileIndex;
+	    BOOLEAN ReturnSingleEntry;
+	    BOOLEAN RestartScan;
+	    CHAR FileName[];
+	} QueryDirectory;
+	struct {
+	    FS_INFORMATION_CLASS FsInformationClass;
+	} QueryVolume;
 	struct {
 	    DEVICE_RELATION_TYPE Type;
 	} QueryDeviceRelations;
@@ -588,6 +599,27 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->Request.Write.Key,
 		     IoPacket->Request.Write.ByteOffset.QuadPart);
 	    break;
+	case IRP_MJ_DIRECTORY_CONTROL:
+	    DbgPrint("    DIRECTORY-CONTROL  ");
+	    switch (IoPacket->Request.MinorFunction) {
+	    case IRP_MN_QUERY_DIRECTORY:
+		DbgPrint("QUERY-DIRECTORY  FileInformationClass %d FileIndex %d "
+			 "ReturnSingleEntry %d RestartScan %d FileName %s\n",
+			 IoPacket->Request.QueryDirectory.FileInformationClass,
+			 IoPacket->Request.QueryDirectory.FileIndex,
+			 IoPacket->Request.QueryDirectory.ReturnSingleEntry,
+			 IoPacket->Request.QueryDirectory.RestartScan,
+			 IoPacket->Request.QueryDirectory.FileName);
+		break;
+	    default:
+		DbgPrint("UNKNOWN-MINOR-CODE\n");
+		assert(FALSE);
+	    }
+	    break;
+	case IRP_MJ_QUERY_VOLUME_INFORMATION:
+	    DbgPrint("    QUERY-VOLUME-INFORMATION FsInformationClass %d\n",
+		     IoPacket->Request.QueryVolume.FsInformationClass);
+	    break;
 	case IRP_MJ_FLUSH_BUFFERS:
 	    DbgPrint("    FLUSH-BUFFERS\n");
 	    break;
@@ -598,13 +630,14 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->Request.DeviceIoControl.IoControlCode);
 	    break;
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
+	    DbgPrint("    FILE-SYSTEM-CONTROL  ");
 	    switch (IoPacket->Request.MinorFunction) {
 	    case IRP_MN_MOUNT_VOLUME:
-		DbgPrint("    FILE-SYSTEM-CONTROL  MOUNT-VOLUME  StorageDeviceHandle 0x%zx\n",
+		DbgPrint("MOUNT-VOLUME  StorageDeviceHandle 0x%zx\n",
 			 IoPacket->Request.MountVolume.StorageDevice);
 		break;
 	    default:
-		DbgPrint("    FILE-SYSTEM-CONTROL  UNKNOWN-MINOR-CODE\n");
+		DbgPrint("UNKNOWN-MINOR-CODE\n");
 	    }
 	    break;
 	case IRP_MJ_PNP:

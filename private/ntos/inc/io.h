@@ -1,5 +1,12 @@
 #pragma once
 
+#include <nt.h>
+#include <services.h>
+#include <wdmsvc.h>
+#include "ke.h"
+#include "ob.h"
+#include "ex.h"
+
 #define DRIVER_OBJECT_DIRECTORY		"\\Driver"
 #define DEVICE_OBJECT_DIRECTORY		"\\Device"
 #define FILE_SYSTEM_OBJECT_DIRECTORY	"\\FileSystem"

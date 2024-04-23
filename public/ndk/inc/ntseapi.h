@@ -1,5 +1,8 @@
 #pragma once
 
+#include <ntdef.h>
+#include <ntstatus.h>
+
 typedef PVOID PSECURITY_DESCRIPTOR;
 
 typedef PVOID PACCESS_TOKEN;

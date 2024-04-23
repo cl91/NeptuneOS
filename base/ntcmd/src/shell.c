@@ -1,8 +1,5 @@
 #include "precomp.h"
 
-char *xargv[BUFFER_SIZE];
-unsigned int xargc;
-
 /*
  *****************************************************************************
  * GetFullPath - Get a full path.
@@ -60,74 +57,75 @@ BOOL GetFullPath(IN PCSTR filename,
 }
 
 // Argument processing functions:
-
-char *xargv[BUFFER_SIZE];
-unsigned int xargc;
-
-char *xstrtok(char *s, const char *ct)
+char *xstrtok(IN PCHAR s, IN PCSTR ct, OUT PCHAR *next_token)
 {
-    static char *old_strtok;
-    char *sbegin, *send;
-    sbegin = s ? s : old_strtok;
+    char *sbegin = s, *send;
     if (!sbegin) {
 	return NULL;
     }
     sbegin += strspn(sbegin, ct);
     if (*sbegin == '\0') {
-	old_strtok = NULL;
-	return (NULL);
+	*next_token = NULL;
+	return NULL;
     }
     send = strpbrk(sbegin, ct);
     if (send && *send != '\0') {
 	*send++ = '\0';
     }
-    old_strtok = send;
-    return (sbegin);
+    *next_token = send;
+    return sbegin;
 }
 
-UINT StringToArguments(CHAR *str)
+ULONG StringToArguments(IN OUT CHAR *Cmd, IN ULONG Bufsize, IN ULONG MaxArgs,
+			OUT PCHAR *xargv)
 {
-    BOOL q = FALSE;
-    char *p;
+    if (!MaxArgs) {
+	return 0;
+    }
 
-    p = str;
+    BOOL dq = FALSE, sq = FALSE;
+    char *p = Cmd;
 
     // 0x01 as a separator
-
     do {
 	switch (*p) {
 	case ' ':
-	    if (q) {
-		;
-	    } else {
+	    if (!sq && !dq) {
 		*p = '\1';
 	    }
 	    break;
 	case '\"':
-	    if (q) {
-		q = FALSE;
-	    } else {
-		q = TRUE;
-	    }
+	    dq = !dq;
+	    *p = '\1';
+	    break;
+	case '\'':
+	    sq = !sq;
 	    *p = '\1';
 	    break;
 	default:
-
 	    break;
 	}
 	p++;
-    } while (*p);
+    } while (*p && p < &Cmd[Bufsize]);
 
-    xargc = 0;
+    ULONG xargc = 0;
 
-    p = xstrtok(str, "\1");
+    PCHAR NextToken = NULL;
+    p = xstrtok(Cmd, "\1", &NextToken);
     if (p) {
-	xargv[++xargc] = p;
-	while (p != NULL) {
-	    p = xstrtok(NULL, "\1");
-	    xargv[++xargc] = p;
+	xargv[xargc++] = p;
+	if (MaxArgs == 1) {
+	    return 1;
 	}
-
+	p = NextToken;
+	while (p && *p) {
+	    p = xstrtok(p, "\1", &NextToken);
+	    xargv[xargc++] = p;
+	    if (xargc >= MaxArgs) {
+		return xargc;
+	    }
+	    p = NextToken;
+	}
 	return xargc;
     }
 
@@ -146,8 +144,7 @@ ULONG GetFileAttributesNt(PCWSTR filename)
     UNICODE_STRING nt_filename;
 
     RtlDosPathNameToNtPathName_U(filename, &nt_filename, NULL, NULL);
-    InitializeObjectAttributes(&oa, &nt_filename, OBJ_CASE_INSENSITIVE, 0,
-			       0);
+    InitializeObjectAttributes(&oa, &nt_filename, OBJ_CASE_INSENSITIVE, 0, 0);
 
     fbi.FileAttributes = 0;
     NtQueryAttributesFile(&oa, &fbi);
@@ -169,12 +166,10 @@ BOOL FolderExists(PCWSTR foldername)
     NTSTATUS st;
 
     RtlInitUnicodeString(&u_filename, foldername);
-    RtlDosPathNameToNtPathName_U(u_filename.Buffer, &nt_filename, NULL,
-				 NULL);
+    RtlDosPathNameToNtPathName_U(u_filename.Buffer, &nt_filename, NULL, NULL);
     RtlFreeUnicodeString(&u_filename);
 
-    InitializeObjectAttributes(&oa, &nt_filename, OBJ_CASE_INSENSITIVE, 0,
-			       0);
+    InitializeObjectAttributes(&oa, &nt_filename, OBJ_CASE_INSENSITIVE, 0, 0);
     st = NtQueryAttributesFile(&oa, &fbi);
 
     retval = NT_SUCCESS(st);
@@ -198,18 +193,16 @@ BOOL FileExists(PCWSTR filename)
     NTSTATUS st;
 
     RtlInitUnicodeString(&u_filename, filename);
-    RtlDosPathNameToNtPathName_U(u_filename.Buffer, &nt_filename, NULL,
-				 NULL);
+    RtlDosPathNameToNtPathName_U(u_filename.Buffer, &nt_filename, NULL, NULL);
     RtlFreeUnicodeString(&u_filename);
 
-    InitializeObjectAttributes(&oa, &nt_filename, OBJ_CASE_INSENSITIVE, 0,
-			       0);
+    InitializeObjectAttributes(&oa, &nt_filename, OBJ_CASE_INSENSITIVE, 0, 0);
     st = NtQueryAttributesFile(&oa, &fbi);
 
     return NT_SUCCESS(st);
 }
 
-BOOLEAN DisplayString(WCHAR * pwszData)
+BOOLEAN DisplayString(WCHAR *pwszData)
 {
     UNICODE_STRING ustrData;
     BOOLEAN bRet;
@@ -224,7 +217,7 @@ BOOLEAN DisplayString(WCHAR * pwszData)
     return TRUE;
 }
 
-BOOLEAN SetUnicodeString(UNICODE_STRING * pustrRet, WCHAR * pwszData)
+BOOLEAN SetUnicodeString(UNICODE_STRING *pustrRet, WCHAR *pwszData)
 {
     if (pustrRet == NULL || pwszData == NULL) {
 	return FALSE;
@@ -289,7 +282,7 @@ BOOLEAN AppendString(WCHAR *pszInput,
     return TRUE;
 }
 
-UINT GetStringLength(WCHAR * pszInput)
+UINT GetStringLength(WCHAR *pszInput)
 {
     int i;
 

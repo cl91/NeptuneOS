@@ -327,7 +327,7 @@
   <svc name="NtSetInformationFile">
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
-    <parameter annotation="in" type="buf::Void" name="FileInfoBuffer" />
+    <parameter annotation="in" type="buf::InputIoBuffer" name="FileInfoBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
     <parameter annotation="in" type="FILE_INFORMATION_CLASS" name="FileInformationClass" />
   </svc>
@@ -340,16 +340,16 @@
   <svc name="NtQueryVolumeInformationFile">
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
-    <parameter annotation="out" type="buf::Void" name="FsInfoBuffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="Length" />
+    <parameter annotation="in" type="PVOID" name="FsInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="Length" />
     <parameter annotation="in" type="FS_INFORMATION_CLASS" name="FsInformationClass" />
   </svc>
 
   <svc name="NtQueryInformationFile">
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
-    <parameter annotation="out" type="buf::Void" name="FileInfoBuffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="Length" />
+    <parameter annotation="in" type="PVOID" name="FileInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="Length" />
     <parameter annotation="in" type="FILE_INFORMATION_CLASS" name="FileInformationClass" />
   </svc>
 
@@ -359,8 +359,8 @@
     <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
     <parameter annotation="in" type="PVOID" name="ApcContext" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
-    <parameter annotation="out" type="buf::Void" name="FileInfoBuffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
+    <parameter annotation="in" type="PVOID" name="FileInfoBuffer" />
+    <parameter annotation="in" type="ULONG" name="BufferLength" />
     <parameter annotation="in" type="FILE_INFORMATION_CLASS" name="FileInformationClass" />
     <parameter annotation="in" type="BOOLEAN" name="ReturnSingleEntry" />
     <parameter annotation="in opt" type="UnicodeString" name="FileName" />

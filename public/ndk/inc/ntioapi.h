@@ -1,5 +1,9 @@
 #pragma once
 
+#include <ntdef.h>
+#include <ntseapi.h>
+#include <ntkeapi.h>
+
 #define METHOD_BUFFERED                   0
 #define METHOD_IN_DIRECT                  1
 #define METHOD_OUT_DIRECT                 2
@@ -556,6 +560,20 @@ typedef struct _FILE_MAILSLOT_SET_INFORMATION {
     PLARGE_INTEGER ReadTimeout;
 } FILE_MAILSLOT_SET_INFORMATION, *PFILE_MAILSLOT_SET_INFORMATION;
 
+typedef struct _FILE_DIRECTORY_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    WCHAR FileName[];
+} FILE_DIRECTORY_INFORMATION, *PFILE_DIRECTORY_INFORMATION;
+
 typedef struct _FILE_FULL_DIR_INFORMATION {
     ULONG NextEntryOffset;
     ULONG FileIndex;
@@ -587,6 +605,40 @@ typedef struct _FILE_BOTH_DIR_INFORMATION {
     WCHAR ShortName[12];
     WCHAR FileName[];
 } FILE_BOTH_DIR_INFORMATION, *PFILE_BOTH_DIR_INFORMATION;
+
+typedef struct _FILE_ID_FULL_DIR_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    ULONG EaSize;
+    LARGE_INTEGER FileId;
+    WCHAR FileName[];
+} FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
+
+typedef struct _FILE_ID_BOTH_DIR_INFORMATION {
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG FileAttributes;
+    ULONG FileNameLength;
+    ULONG EaSize;
+    CCHAR ShortNameLength;
+    WCHAR ShortName[12];
+    LARGE_INTEGER FileId;
+    WCHAR FileName[];
+} FILE_ID_BOTH_DIR_INFORMATION, *PFILE_ID_BOTH_DIR_INFORMATION;
 
 typedef struct _FILE_COMPLETION_INFORMATION {
     HANDLE Port;
@@ -648,20 +700,6 @@ typedef struct _FILE_VALID_DATA_LENGTH_INFORMATION {
     LARGE_INTEGER ValidDataLength;
 } FILE_VALID_DATA_LENGTH_INFORMATION, *PFILE_VALID_DATA_LENGTH_INFORMATION;
 
-typedef struct _FILE_DIRECTORY_INFORMATION {
-    ULONG NextEntryOffset;
-    ULONG FileIndex;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER EndOfFile;
-    LARGE_INTEGER AllocationSize;
-    ULONG FileAttributes;
-    ULONG FileNameLength;
-    WCHAR FileName[];
-} FILE_DIRECTORY_INFORMATION, *PFILE_DIRECTORY_INFORMATION;
-
 typedef struct _FILE_IO_COMPLETION_INFORMATION {
     PVOID KeyContext;
     PVOID ApcContext;
@@ -694,6 +732,15 @@ typedef struct _FILE_FS_ATTRIBUTE_INFORMATION {
     WCHAR FileSystemName[];
 } FILE_FS_ATTRIBUTE_INFORMATION, *PFILE_FS_ATTRIBUTE_INFORMATION;
 
+typedef struct _FILE_FS_CONTROL_INFORMATION {
+    LARGE_INTEGER FreeSpaceStartFiltering;
+    LARGE_INTEGER FreeSpaceThreshold;
+    LARGE_INTEGER FreeSpaceStopFiltering;
+    LARGE_INTEGER DefaultQuotaThreshold;
+    LARGE_INTEGER DefaultQuotaLimit;
+    ULONG FileSystemControlFlags;
+} FILE_FS_CONTROL_INFORMATION, *PFILE_FS_CONTROL_INFORMATION;
+
 typedef struct _FILE_FS_SIZE_INFORMATION {
     LARGE_INTEGER TotalAllocationUnits;
     LARGE_INTEGER AvailableAllocationUnits;
@@ -708,6 +755,17 @@ typedef struct _FILE_FS_FULL_SIZE_INFORMATION {
     ULONG           SectorsPerAllocationUnit;
     ULONG           BytesPerSector;
 } FILE_FS_FULL_SIZE_INFORMATION, *PFILE_FS_FULL_SIZE_INFORMATION;
+
+typedef struct _FILE_FS_OBJECTID_INFORMATION {
+    UCHAR ObjectId[16];
+    UCHAR ExtendedInfo[48];
+} FILE_FS_OBJECTID_INFORMATION, *PFILE_FS_OBJECTID_INFORMATION;
+
+typedef struct _FILE_FS_DRIVER_PATH_INFORMATION {
+    BOOLEAN DriverInPath;
+    ULONG DriverNameLength;
+    WCHAR DriverName[];
+} FILE_FS_DRIVER_PATH_INFORMATION, *PFILE_FS_DRIVER_PATH_INFORMATION;
 
 typedef struct _FILE_FS_LABEL_INFORMATION {
     ULONG VolumeLabelLength;

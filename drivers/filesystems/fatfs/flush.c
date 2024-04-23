@@ -16,8 +16,6 @@
 
 static NTSTATUS FatFlushFile(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 {
-    NTSTATUS Status;
-
     DPRINT("FatFlushFile(DeviceExt %p, Fcb %p) for '%wZ'\n", DeviceExt,
 	   Fcb, &Fcb->PathNameU);
 

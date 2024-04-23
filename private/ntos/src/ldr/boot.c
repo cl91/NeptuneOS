@@ -23,6 +23,7 @@ static VOID LdrpPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 
 NTSTATUS LdrLoadBootModules()
 {
+    RET_ERR(ObCreateDirectory(DOS_DEVICES_DIRECTORY));
     RET_ERR(ObCreateDirectory(BOOTMODULE_OBJECT_DIRECTORY));
     POBJECT BootModuleDirectory = NULL;
     RET_ERR(ObReferenceObjectByName(BOOTMODULE_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,

@@ -183,6 +183,12 @@
 
 #include <wdmp.h>
 #include "coroutine.h"
+#include "debug.h"
+#include "ntddk.h"
+#include "ntioapi.h"
+#include "ntstatus.h"
+#include "util.h"
+#include "wdmsvc.h"
 
 PIO_PACKET IopIncomingIoPacketBuffer;
 PIO_PACKET IopOutgoingIoPacketBuffer;
@@ -413,6 +419,8 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 	}
 	break;
     }
+    case IRP_MJ_DIRECTORY_CONTROL:
+    case IRP_MJ_QUERY_VOLUME_INFORMATION:
     case IRP_MJ_FILE_SYSTEM_CONTROL:
     case IRP_MJ_CREATE:
     case IRP_MJ_PNP:
@@ -556,6 +564,44 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
     {
 	RET_ERR(IopMarshalIoctlBuffers(Irp, Src));
+	break;
+    }
+
+    case IRP_MJ_DIRECTORY_CONTROL:
+    {
+	switch (Src->Request.MinorFunction) {
+	case IRP_MN_QUERY_DIRECTORY:
+	{
+	    PUNICODE_STRING FileName = ExAllocatePool(sizeof(UNICODE_STRING));
+	    if (!FileName) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	    }
+	    RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
+					       Src->Request.QueryDirectory.FileName,
+					       FileName),
+		       IopFreePool(FileName));
+	    Irp->SystemBuffer = Irp->UserBuffer = (PVOID)Src->Request.OutputBuffer;
+	    IoStack->Parameters.QueryDirectory.FileName = FileName;
+	    IoStack->Parameters.QueryDirectory.Length = Src->Request.OutputBufferLength;
+	    IoStack->Parameters.QueryDirectory.FileIndex = Src->Request.QueryDirectory.FileIndex;
+	    IoStack->Parameters.QueryDirectory.FileInformationClass =
+		Src->Request.QueryDirectory.FileInformationClass;
+	    break;
+	}
+	default:
+	    UNIMPLEMENTED;
+	    assert(FALSE);
+	    return STATUS_NOT_IMPLEMENTED;
+	}
+	break;
+    }
+
+    case IRP_MJ_QUERY_VOLUME_INFORMATION:
+    {
+	Irp->SystemBuffer = Irp->UserBuffer = (PVOID)Src->Request.OutputBuffer;
+	IoStack->Parameters.QueryVolume.Length = Src->Request.OutputBufferLength;
+	IoStack->Parameters.QueryVolume.FsInformationClass =
+	    Src->Request.QueryVolume.FsInformationClass;
 	break;
     }
 
@@ -706,6 +752,22 @@ static VOID IopDeleteIrp(PIRP Irp)
 	}
 	if (IoStack->Parameters.CreateMailslot.Parameters) {
 	    IopFreePool(IoStack->Parameters.CreateMailslot.Parameters);
+	}
+	break;
+    case IRP_MJ_DIRECTORY_CONTROL:
+	switch (IoStack->MinorFunction) {
+	case IRP_MN_QUERY_DIRECTORY:
+	    if (IoStack->Parameters.QueryDirectory.FileName &&
+		IoStack->Parameters.QueryDirectory.FileName->Buffer) {
+		IopFreePool(IoStack->Parameters.QueryDirectory.FileName->Buffer);
+	    }
+	    if (IoStack->Parameters.QueryDirectory.FileName) {
+		IopFreePool(IoStack->Parameters.QueryDirectory.FileName);
+	    }
+	    break;
+	default:
+	    UNIMPLEMENTED;
+	    assert(FALSE);
 	}
 	break;
     case IRP_MJ_FILE_SYSTEM_CONTROL:
@@ -1147,12 +1209,38 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.Write.Key,
 		 Stack->Parameters.Write.ByteOffset.QuadPart);
 	break;
+    case IRP_MJ_DIRECTORY_CONTROL:
+	DbgPrint("    DIRECTORY-CONTROL  ");
+	switch (Stack->MinorFunction) {
+	case IRP_MN_QUERY_DIRECTORY:
+            DbgPrint("QUERY-DIRECTORY  FileInformationClass %d FileIndex %d "
+		     "Length 0x%x FileName ",
+                     Stack->Parameters.QueryDirectory.FileInformationClass,
+                     Stack->Parameters.QueryDirectory.FileIndex,
+		     Stack->Parameters.QueryDirectory.Length);
+	    if (Stack->Parameters.QueryDirectory.FileName &&
+		Stack->Parameters.QueryDirectory.FileName->Buffer &&
+		Stack->Parameters.QueryDirectory.FileName->Length) {
+		DbgPrint("%wZ", Stack->Parameters.QueryDirectory.FileName);
+	    }
+	    DbgPrint("\n");
+	    break;
+	default:
+	    DbgPrint("UNKNOWN-MINOR-FUNCTION\n");
+	}
+	break;
+    case IRP_MJ_QUERY_VOLUME_INFORMATION:
+	DbgPrint("    QUERY-VOLUME-INFORMATION  FsInformationClass %d Length 0x%x\n",
+		 Stack->Parameters.QueryVolume.FsInformationClass,
+		 Stack->Parameters.QueryVolume.Length);
+	break;
     case IRP_MJ_FLUSH_BUFFERS:
 	DbgPrint("    FLUSH-BUFFERS\n");
 	break;
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
-	DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x OutputBufferLength 0x%x InputBufferLength 0x%x Type3InputBuffer %p\n",
+	DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x OutputBufferLength 0x%x "
+		 "InputBufferLength 0x%x Type3InputBuffer %p\n",
 		 Stack->MajorFunction == IRP_MJ_DEVICE_CONTROL ? "" : "INTERNAL-",
 		 Stack->Parameters.DeviceIoControl.IoControlCode,
 		 Stack->Parameters.DeviceIoControl.OutputBufferLength,
@@ -1160,14 +1248,15 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.DeviceIoControl.Type3InputBuffer);
 	break;
     case IRP_MJ_FILE_SYSTEM_CONTROL:
+	DbgPrint("    FILE-SYSTEM-CONTROL  ");
 	switch (Stack->MinorFunction) {
 	case IRP_MN_MOUNT_VOLUME:
-	    DbgPrint("    FILE-SYSTEM-CONTROL  MOUNT-VOLUME Vpb %p DevObj %p\n",
+	    DbgPrint("MOUNT-VOLUME Vpb %p DevObj %p\n",
 		     Stack->Parameters.MountVolume.Vpb,
 		     Stack->Parameters.MountVolume.DeviceObject);
 	    break;
 	default:
-	    DbgPrint("    FILE-SYSTEM-CONTROL  UNKNOWN-MINOR-FUNCTION\n");
+	    DbgPrint("UNKNOWN-MINOR-FUNCTION\n");
 	}
 	break;
     case IRP_MJ_PNP:

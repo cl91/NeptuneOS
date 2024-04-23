@@ -680,22 +680,29 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	}
     }
 
-    /* For now we will hard-code the CurrentDirectory to \BootModules */
-    RtlInitUnicodeString(&Peb->ProcessParameters->CurrentDirectory.DosPath, L"C:\\");
-    UNICODE_STRING NtName;
-    RtlInitUnicodeString(&NtName, L"\\BootModules");
-    OBJECT_ATTRIBUTES ObjAttr;
-    InitializeObjectAttributes(&ObjAttr, &NtName,
-			       OBJ_CASE_INSENSITIVE | OBJ_INHERIT,
-			       NULL, NULL);
-    IO_STATUS_BLOCK IoStatusBlock;
-    RET_ERR(NtOpenFile(&Peb->ProcessParameters->CurrentDirectory.Handle,
-		       SYNCHRONIZE | FILE_TRAVERSE, &ObjAttr, &IoStatusBlock,
-		       FILE_SHARE_READ | FILE_SHARE_WRITE,
-		       FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT));
-    if (!NT_SUCCESS(IoStatusBlock.Status)) {
-	return IoStatusBlock.Status;
+    /* If the the process parameters did not specify a current directory, use the
+     * system root. */
+    if (!Peb->ProcessParameters->CurrentDirectory.DosPath.Buffer) {
+	ULONG BufferSize = MAX_PATH * sizeof(WCHAR);
+	PWCHAR Buffer = RtlAllocateHeap(LdrpHeap, HEAP_ZERO_MEMORY, BufferSize);
+	if (!Buffer) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	Peb->ProcessParameters->CurrentDirectory.DosPath.Buffer = Buffer;
+	Peb->ProcessParameters->CurrentDirectory.DosPath.Length = 0;
+	Peb->ProcessParameters->CurrentDirectory.DosPath.MaximumLength = BufferSize;
     }
+    if (!Peb->ProcessParameters->CurrentDirectory.DosPath.Length ||
+	Peb->ProcessParameters->CurrentDirectory.DosPath.Buffer[0] == L'\0') {
+	ULONG PathLen = wcslen(SharedUserData->NtSystemRoot) * sizeof(WCHAR);
+	ULONG MaxLen = Peb->ProcessParameters->CurrentDirectory.DosPath.MaximumLength;
+	RtlCopyMemory(Peb->ProcessParameters->CurrentDirectory.DosPath.Buffer,
+		      SharedUserData->NtSystemRoot,
+		      min(PathLen + sizeof(WCHAR), MaxLen));
+	Peb->ProcessParameters->CurrentDirectory.DosPath.Length = min(PathLen, MaxLen);
+    }
+    DbgTrace("%ws\n", SharedUserData->NtSystemRoot);
+    RET_ERR(RtlSetCurrentDirectory_U(&Peb->ProcessParameters->CurrentDirectory.DosPath));
 
     /* Setup Loader Data */
     Peb->LdrData = &PebLdr;

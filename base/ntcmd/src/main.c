@@ -27,8 +27,6 @@ Revision History:
 #include "precomp.h"
 
 HANDLE hKeyboard;
-HANDLE hHeap;
-HANDLE hKey;
 
 #define NTCMD_BANNER "Neptune OS Native Command Prompt [Version " VER_PRODUCTVERSION_STRING "]\n"
 
@@ -39,51 +37,53 @@ PCSTR helpstr =
     "cd X     - Change directory to X    md X     - Make directory X\n"
     "copy X Y - Copy file X to Y         move X Y - Move file X to Y\n"
     "del X    - Delete file X            sync     - Synchronize file systems\n"
-    "devtree  - Dump device tree         sysinfo  - Dump system information\n"
+    "mount A  - Mount drive A            umount A - Unmount drive A\n"
     "lm       - List modules             lp       - List processes\n"
-    "test     - Test argument parsing    vid      - Test screen output\n"
-    "exit     - Exit shell               poweroff - Power off system\n"
-    "shutdown - Shutdown system          reboot   - Reboot system\n"
+    "devtree  - Dump device tree         sysinfo  - Dump system information\n"
+    "exit     - Exit shell               shutdown - Shutdown system\n"
+    "poweroff - Power off system         reboot   - Reboot system\n"
     "\n"
     "If a command is not in the list, it is treated as an executable name.\n"
     "\n"
-    "Note: to demonstrate the functions of the cache manager, write-back\n"
-    "caching is enabled for the floppy drive. You MUST run `sync' before\n"
+    "Note: to demonstrate the functionalities of the cache manager, write-back\n"
+    "caching is enabled for the floppy drive. You MUST run `umount A' before\n"
     "removing a disk, or risk data corruption.\n"
     "\n";
 
 #define COMPARE_CMD(Command, String) _strnicmp(Command, String, sizeof(String)-1)
 
+#define CMD_BUFSIZE	1024
+#define MAX_ARGS	16
+
 /*++
  * @name RtlClipProcessMessage
  *
- * The RtlClipProcessMessage routine
+ * Process the given user command string and execute the command.
  *
  * @param Command
  *        Command to be processed.
  *
- * @return None.
- *
- * @remarks Documentation for this routine needs to be completed.
+ * @return TRUE if processing should continue. FALSE if user requested to exit
+ *         the shell.
  *
  *--*/
-VOID RtlClipProcessMessage(PCHAR Command)
+BOOLEAN RtlClipProcessMessage(PCHAR Command)
 {
     WCHAR CurrentDirectory[MAX_PATH];
     WCHAR buf1[MAX_PATH];
     WCHAR buf2[MAX_PATH];
     UNICODE_STRING CurrentDirectoryString;
-    CHAR CommandBuf[BUFFER_SIZE];
+    CHAR CommandBuf[CMD_BUFSIZE];
+    PCHAR xargv[MAX_ARGS];
 
     //
     // Copy command line and break it down to arguments
     //
-    // if xargc = 3, then xargv[1], xargv[2], xargv[3] are available
-    // xargv[1] is a command name, xargv[2] is the first parameter
-
-    memset(CommandBuf, 0x00, BUFFER_SIZE);
-    strncpy(CommandBuf, Command, strnlen(Command, BUFFER_SIZE));
-    StringToArguments(CommandBuf);
+    // if xargc = 3, then xargv[0], xargv[1], xargv[2] are available
+    // xargv[0] is a command name, xargv[1] is the first parameter, etc.
+    memset(CommandBuf, 0x00, CMD_BUFSIZE);
+    strncpy(CommandBuf, Command, strnlen(Command, CMD_BUFSIZE));
+    ULONG xargc = StringToArguments(CommandBuf, CMD_BUFSIZE, MAX_ARGS, xargv);
 
     //
     // We'll call the handler for each command
@@ -92,16 +92,20 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	//
 	// Exit from the shell
 	//
-	DeinitHeapMemory(hHeap);
-	NtTerminateProcess(NtCurrentProcess(), 0);
+	return FALSE;
     } else if (!COMPARE_CMD(Command, "test")) {
+	//
+	// Test the command line parsing routine
+	//
 	UINT i = 0;
-
 	RtlCliDisplayString("Args: %d\n", xargc);
-	for (i = 1; i < xargc; i++) {
+	for (i = 0; i < xargc; i++) {
 	    RtlCliDisplayString("Arg %d: %s\n", i, xargv[i]);
 	}
     } else if (!COMPARE_CMD(Command, "help")) {
+	//
+	// Display help
+	//
 	RtlCliDisplayString("%s", helpstr);
     } else if (!COMPARE_CMD(Command, "lm")) {
 	//
@@ -125,22 +129,19 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	RtlCliSetCurrentDirectory(&Command[3]);
     } else if (!COMPARE_CMD(Command, "locale")) {
 	//
-	// Set the current directory
+	// Set the default locale
 	//
-
 	NtSetDefaultLocale(TRUE, 1049);
     } else if (!COMPARE_CMD(Command, "pwd")) {
 	//
 	// Get the current directory
 	//
 	RtlCliGetCurrentDirectory(CurrentDirectory);
-
 	//
 	// Display it
 	//
 	RtlInitUnicodeString(&CurrentDirectoryString, CurrentDirectory);
 	RtlCliPrintString(&CurrentDirectoryString);
-
 	RtlFreeUnicodeString(&CurrentDirectoryString);
     } else if (!COMPARE_CMD(Command, "dir")) {
 	//
@@ -161,22 +162,13 @@ VOID RtlClipProcessMessage(PCHAR Command)
     } else if (!COMPARE_CMD(Command, "vid")) {
 	UINT j;
 	WCHAR w;
-	UNICODE_STRING us;
-
-	LARGE_INTEGER delay;
-	memset(&delay, 0x00, sizeof(LARGE_INTEGER));
-	delay.LowPart = 100000000;
-
-
-	RtlInitUnicodeString(&us, L" ");
 
 	//75x23
-	RtlCliDisplayString("\nVid mode is 75x23\n\nCharacter test:");
+	RtlCliDisplayString("\nVid mode is 75x23\n\nCharacter test:\n");
 
 	j = 0;
-	for (w = L'A'; w < 0xFFFF; w++) {
+	for (w = L'A'; w < 0xFF; w++) {
 	    j++;
-	    //w = i;
 	    if (w != L'\n' && w != L'\r') {
 		RtlCliPutChar(w);
 	    } else {
@@ -189,9 +181,9 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	}
     } else if (!COMPARE_CMD(Command, "copy")) {
 	// Copy file
-	if (xargc > 2) {
-	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
-	    GetFullPath(xargv[3], buf2, sizeof(buf2), FALSE);
+	if (xargc == 3) {
+	    GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
 	    RtlCliDisplayString("\nCopy %S to %S\n", buf1, buf2);
 	    if (FileExists(buf1)) {
 		if (!NtFileCopyFile(buf1, buf2)) {
@@ -200,14 +192,16 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	    } else {
 		RtlCliDisplayString("File does not exist.\n");
 	    }
+	} else if (xargc > 3) {
+	    RtlCliDisplayString("Too many arguments.\n");
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
     } else if (!COMPARE_CMD(Command, "move")) {
 	// Move/rename file
-	if (xargc > 2) {
-	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
-	    GetFullPath(xargv[3], buf2, sizeof(buf2), FALSE);
+	if (xargc == 3) {
+	    GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
 	    RtlCliDisplayString("\nMove %S to %S\n", buf1, buf2);
 	    if (FileExists(buf1)) {
 		if (!NtFileMoveFile(buf1, buf2, FALSE)) {
@@ -216,13 +210,15 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	    } else {
 		RtlCliDisplayString("File does not exist.\n");
 	    }
+	} else if (xargc > 3) {
+	    RtlCliDisplayString("Too many arguments.\n");
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
     } else if (!COMPARE_CMD(Command, "del")) {
 	// Delete file
-	if (xargc > 1) {
-	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
+	if (xargc == 2) {
+	    GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
 	    if (FileExists(buf1)) {
 		RtlCliDisplayString("\nDelete %S\n", buf1);
 
@@ -232,19 +228,21 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	    } else {
 		RtlCliDisplayString("File does not exist.\n");
 	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
     } else if (!COMPARE_CMD(Command, "md")) {
 	// Make directory
-	if (xargc > 1) {
+	if (xargc == 2) {
 	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
-
 	    RtlCliDisplayString("\nCreate directory %S\n", buf1);
-
 	    if (!NtFileCreateDirectory(buf1)) {
 		RtlCliDisplayString("Failed.\n");
 	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
@@ -253,7 +251,6 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	// Unknown command, try to find an executable and run it.
 	// Executable name should be with an .exe extension.
 	//
-
 	WCHAR filename[MAX_PATH];
 	ANSI_STRING as;
 	UNICODE_STRING us;
@@ -266,22 +263,17 @@ VOID RtlClipProcessMessage(PCHAR Command)
 	    RtlAnsiStringToUnicodeString(&us, &as, TRUE);
 
 	    NtClose(hKeyboard);
-	    //RtlCliDisplayString("Keyboard is closed\n");
-
 	    CreateNativeProcess(filename, us.Buffer, &hProcess);
-
 	    RtlFreeAnsiString(&as);
 	    RtlFreeUnicodeString(&us);
 
-	    //RtlCliDisplayString("Waiting for process terminations\n");
 	    NtWaitForSingleObject(hProcess, FALSE, NULL);
-
 	    RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
-	    //RtlCliDisplayString("Keyboard restored\n");
 	} else {
-	    RtlCliDisplayString("%s not recognized\n", Command);
+	    RtlCliDisplayString("%s not recognized.\n", Command);
 	}
     }
+    return TRUE;
 }
 
 /*++
@@ -317,33 +309,16 @@ VOID RtlClipDisplayPrompt(VOID)
 }
 
 /*++
- * @name main
+ * @name NtProcessStartup
  *
- * The main routine
- *
- * @param argc
- *        FILLMEIN
- *
- * @param argv[]
- *        FILLMEIN
- *
- * @param envp[]
- *        FILLMEIN
- *
- * @param DebugFlag
- *        FILLMEIN
- *
- * @return NTSTATUS
- *
- * @remarks Documentation for this routine needs to be completed.
+ * This is the entry point for the Native Command Prompt.
  *
  *--*/
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     PCHAR Command;
 
-    hHeap = InitHeapMemory();
-    hKey = NULL;
+    HANDLE hHeap = InitHeapMemory();
 
     //
     // Show banner
@@ -382,14 +357,15 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 	    //
 	    // Process the command and do a new line again.
 	    //
-	    RtlClipProcessMessage(Command);
+	    if (!RtlClipProcessMessage(Command)) {
+		break;
+	    }
 	    RtlCliDisplayString("\n");
 	}
 	//
 	// Display the prompt, and restart the loop
 	//
 	RtlClipDisplayPrompt();
-	continue;
     }
 
 end:
