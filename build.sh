@@ -82,6 +82,7 @@ cmake ../../private/ntos \
       -DSTRUCTURES_GEN_H_ORIG=${PWD}/kernel/generated/arch/object/structures_gen.h \
       -DSTRUCTURES_GEN_DIR=${PWD} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -DKernelSel4Arch=$SEL4_ARCH -G Ninja
 ninja all-elf || build_failed
 
@@ -125,6 +126,7 @@ cmake ../../private/ntdll \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
 cp ntdll.lib ../ndk_lib || build_failed
@@ -146,6 +148,7 @@ cmake ../../private/wdm \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DGEN_INC_DIR=${PWD}/../ntdll \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
 cp wdm.lib ../ddk_lib || build_failed
@@ -161,6 +164,7 @@ cmake ../../base \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
 
@@ -176,6 +180,7 @@ cmake ../../drivers \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DDDK_LIB_PATH=${PWD}/../ddk_lib \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
 

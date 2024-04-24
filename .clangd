@@ -1,0 +1,24 @@
+If:
+  PathMatch: private/ntos/.*
+CompileFlags:
+  CompilationDatabase: build-i386-debug/elf
+---
+If:
+  PathMatch: private/ntdll/.*
+CompileFlags:
+  CompilationDatabase: build-i386-debug/ntdll
+---
+If:
+  PathMatch: private/wdm/.*
+CompileFlags:
+  CompilationDatabase: build-i386-debug/wdm
+---
+If:
+  PathMatch: drivers/.*
+CompileFlags:
+  CompilationDatabase: build-i386-debug/drivers
+---
+If:
+  PathMatch: base/.*
+CompileFlags:
+  CompilationDatabase: build-i386-debug/base
