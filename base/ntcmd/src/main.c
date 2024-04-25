@@ -126,7 +126,17 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	//
 	// Set the current directory
 	//
-	RtlCliSetCurrentDirectory(&Command[3]);
+	if (xargc == 2) {
+	    NTSTATUS Status = RtlCliSetCurrentDirectory(xargv[1]);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("cd: invalid directory (error 0x%08x)\n",
+				    Status);
+	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
+	} else {
+	    RtlCliDisplayString("Not enough arguments.\n");
+	}
     } else if (!COMPARE_CMD(Command, "locale")) {
 	//
 	// Set the default locale

@@ -72,30 +72,28 @@ NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory)
     // Full path contains at least two symbols, the second is ':'
     if (strnlen(Directory, MAX_PATH) >= 2 && Directory[1] == ':') {
 	RtlCreateUnicodeStringFromAsciiz(&us, Directory);
-	RtlSetCurrentDirectory_U(&us);
+	NTSTATUS Status = RtlSetCurrentDirectory_U(&us);
 	RtlFreeUnicodeString(&us);
-	return STATUS_SUCCESS;
+	return Status;
     }
 
     GetFullPath(Directory, buf, sizeof(buf), TRUE);
     RtlInitUnicodeString(&us, buf);
-    RtlSetCurrentDirectory_U(&us);
+    NTSTATUS Status = RtlSetCurrentDirectory_U(&us);
     RtlFreeUnicodeString(&us);
 
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /*++
  * @name RtlCliDumpFileInfo
  *
- * The RtlCliDumpFileInfo routine FILLMEIN
+ * Print the file information to the screen.
  *
  * @param DirInfo
- *        FILLMEIN
+ *        File information
  *
  * @return None.
- *
- * @remarks Documentation for this routine needs to be completed.
  *
  *--*/
 VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
@@ -104,11 +102,9 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
     WCHAR Save;
     TIME_FIELDS Time;
     CHAR SizeString[16];
-    WCHAR ShortString[12 + 1];
     WCHAR FileString[MAX_PATH + 1];
 
     WCHAR FileStringSize[100];
-    WCHAR ShortStringSize[100];
 
     UINT file_size = 0;
     UINT short_size = 0;
@@ -148,16 +144,7 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
     file_size = DirInfo->FileNameLength / sizeof(WCHAR);
     short_size = DirInfo->ShortNameLength / sizeof(WCHAR);
 
-    _snwprintf(ShortStringSize, sizeof(ShortStringSize)/sizeof(WCHAR), L"%d", short_size);
     _snwprintf(FileStringSize, sizeof(FileStringSize)/sizeof(WCHAR), L"%d", file_size);
-
-    if (DirInfo->ShortNameLength) {
-	memset(ShortString, 0x00, (12 + 1) * sizeof(WCHAR));
-	wcsncpy_s(ShortString, sizeof(ShortString)/sizeof(WCHAR),
-		  DirInfo->ShortName, short_size);
-    } else {
-	_snwprintf(ShortString, sizeof(ShortString)/sizeof(WCHAR), L" ");
-    }
 
     if (DirInfo->FileNameLength) {
 	memset(FileString, 0x00, (MAX_PATH + 1) * sizeof(WCHAR));
@@ -166,10 +153,10 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
 	_snwprintf(FileString, sizeof(FileString)/sizeof(WCHAR), L" ");
     }
 
-    RtlCliDisplayString("%02d.%02d.%04d %02d:%02d %s %9s %-28S %12S\n",
+    RtlCliDisplayString("%02d.%02d.%04d %02d:%02d %s %9s  %ws\n",
 			Time.Day, Time.Month, Time.Year, Time.Hour, Time.Minute,
-			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "<DIR>" : "     ",
-			SizeString, FileString, ShortString);
+			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "D" : " ",
+			SizeString, FileString);
 
     //
     // Restore the character that was here before
@@ -298,7 +285,6 @@ NTSTATUS RtlCliListDirectory(VOID)
 	// Loop every directory
 	//
 	Entry = DirectoryInfo;
-
 
 	while (Entry) {
 	    //
