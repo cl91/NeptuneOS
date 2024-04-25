@@ -91,11 +91,6 @@
     <parameter annotation="out" type="ptr::ULONG" name="Count" />
   </svc>
 
-  <svc name="IoSetDeviceInterfaceState">
-    <parameter annotation="in" type="UnicodeString" name="SymbolicLinkName" />
-    <parameter annotation="in" type="BOOLEAN" name="Enable" />
-  </svc>
-
   <svc name="KeDelayExecutionThread">
     <parameter annotation="in" type="BOOLEAN" name="Alertable" />
     <parameter annotation="in" type="ptr::LARGE_INTEGER" name="Interval" />

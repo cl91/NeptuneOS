@@ -328,14 +328,6 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IoSetDeviceInterfaceState(IN ASYNC_STATE AsyncState,
-                                   IN PTHREAD Thread,
-                                   IN PCSTR SymbolicLinkName,
-                                   IN BOOLEAN Enable)
-{
-    UNIMPLEMENTED;
-}
-
 NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
                                IN HANDLE FileHandle,

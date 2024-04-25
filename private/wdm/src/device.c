@@ -234,8 +234,34 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
  *--*/
 NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
 					 IN CONST GUID *InterfaceClassGuid,
-					 IN PUNICODE_STRING ReferenceString OPTIONAL,
+					 IN OPTIONAL PUNICODE_STRING ReferenceString,
 					 OUT PUNICODE_STRING SymbolicLinkName)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*++
+ * @name IoSetDeviceInterfaceState
+ * @implemented
+ *
+ * Enables or disables an instance of a previously registered device
+ * interface class.
+ * Documented in WDK.
+ *
+ * @param SymbolicLinkName
+ *        Pointer to the string identifying instance to enable or disable
+ *
+ * @param Enable
+ *        TRUE = enable, FALSE = disable
+ *
+ * @return Usual NTSTATUS
+ *
+ * @remarks Must be called at IRQL = PASSIVE_LEVEL in the context of a
+ *          system thread
+ *
+ *--*/
+NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
+					 IN BOOLEAN Enable)
 {
     return STATUS_NOT_IMPLEMENTED;
 }
