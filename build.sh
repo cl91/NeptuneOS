@@ -269,6 +269,18 @@ else
 	echo "Success."
     fi
 fi
+
+echo
+echo "---- Merge compile_commands.json ----"
+echo
+if [[ $(which jq) ]]; then
+    jq -s add ../*/*.json > ../compile_commands.json
+    rm ../*/compile_commands.json
+    echo "Done."
+else
+    echo "You'll need to install jq (https://jqlang.github.io/jq)."
+fi
+
 echo
 echo "####################################"
 echo "         Build successful!"

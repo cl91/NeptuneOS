@@ -91,6 +91,12 @@ the initcpio. Finally, for the boot floppy and boot iso you will need the follow
 tools: `syslinux` (for boot floppy), `grub` and `xorriso` (for boot iso), and
 `mtools` (for both).
 
+It is recommended to use a language server-enabled IDE to browse the source code.
+The tested setup is the `lsp-mode` package on `emacs` with `clangd` as the language
+server. The `build.sh` script will generate the `compile_commands.json` file for
+`clangd`. You will need to install [jq](https://jqlang.github.io/jq/) for this
+purpose.
+
 Clone the project first (make sure you use `git clone --recurse-submodules` since
 we include the seL4 kernel as a submodule) and then run
 ```
