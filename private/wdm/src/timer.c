@@ -1,28 +1,37 @@
+#include "debug.h"
+#include "ntddk.h"
+#include "ntstatus.h"
+#include "util.h"
 #include <wdmp.h>
 
 LIST_ENTRY IopTimerList;
 ULONG KiStallScaleFactor;
+
+static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
+{
+    NTSTATUS Status = NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
+				    NULL, NotificationTimer);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    InsertTailList(&IopTimerList, &Timer->TimerListEntry);
+    Timer->Dpc = NULL;
+    Timer->State = FALSE;
+    Timer->Canceled = FALSE;
+    return STATUS_SUCCESS;
+}
 
 /*
  * Call the server to create a timer object.
  */
 NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
-    NTSTATUS Status = NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
-				    NULL, NotificationTimer);
+    NTSTATUS Status = KiInitializeTimer(Timer);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
-    InsertTailList(&IopTimerList, &Timer->TimerListEntry);
-    Timer->Dpc = NULL;
-    Timer->State = FALSE;
-    Timer->Canceled = FALSE;
 }
 
-/*
- * FIXME: TODO This needs to be moved into a coroutine since
- * the DPC routine may invoke the IoCallDriverEx routine.
- */
 static NTAPI VOID IopTimerExpired(IN PVOID Context,
 				  IN ULONG TimerLowValue,
 				  IN LONG TimerHighValue)
@@ -48,23 +57,36 @@ static NTAPI VOID IopTimerExpired(IN PVOID Context,
  * it will be implicitly canceled. If specified, returns the previous
  * state of the timer (ie. TRUE if timer was set before the call).
  */
-NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-			 IN LARGE_INTEGER DueTime,
-			 IN OPTIONAL PKDPC Dpc)
+NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
+		    IN LARGE_INTEGER DueTime,
+		    IN OPTIONAL PKDPC Dpc,
+		    OUT PBOOLEAN PreviousState)
 {
-    /* On debug build we should find out why the timer handle is NULL */
+    assert(Timer);
     assert(Timer->Handle != NULL);
+    assert(PreviousState);
     if (Timer->Handle == NULL) {
 	RtlRaiseStatus(STATUS_INVALID_HANDLE);
     }
     Timer->Dpc = Dpc;
-    BOOLEAN PreviousState;
     NTSTATUS Status = NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
-				 Timer, TRUE, 0, &PreviousState);
+				 Timer, TRUE, 0, PreviousState);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    Timer->State = TRUE;
+    return STATUS_SUCCESS;
+}
+
+NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+			 IN LARGE_INTEGER DueTime,
+			 IN OPTIONAL PKDPC Dpc)
+{
+    BOOLEAN PreviousState;
+    NTSTATUS Status = KiSetTimer(Timer, DueTime, Dpc, &PreviousState);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
-    Timer->State = TRUE;
     return PreviousState;
 }
 
@@ -90,7 +112,13 @@ NTAPI ULONGLONG KeQueryInterruptTime(VOID)
 }
 
 /*
- * @implemented
+ * @name KeStallExecutionProcessor
+ *
+ * Stalls the execution of the current thread for the specified interval.
+ * This routine should not be used for delays that are longer than 50us.
+ *
+ * @param MicroSeconds
+ *        Specifies the amount of microseconds to stall.
  */
 NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
 {
@@ -102,4 +130,35 @@ NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
 
     /* Loop until time is elapsed */
     while (__rdtsc() < EndTime);
+}
+
+/**
+ * @name KeDelayExecutionThread
+ *
+ * Puts the current thread into an alertable or nonalertable wait
+ * state for a specified interval. This routine calls the server and
+ * should be used for delays that are longer than 1us.
+ *
+ * @param Alertable
+ *        Specify whether the wait is alertable.
+ * @param Interval
+ *        Specifies the absolute or relative time, in units of 100
+ *        nanoseconds, for which the wait is to occur. A negative value
+ *        indicates relative time.
+ */
+NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
+				IN PLARGE_INTEGER Interval)
+{
+    assert(Interval);
+    KTIMER Timer;
+    NTSTATUS Status = KiInitializeTimer(&Timer);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    BOOLEAN PreviousState;
+    Status = KiSetTimer(&Timer, *Interval, NULL, &PreviousState);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    return KeWaitForSingleObject(&Timer, 0, 0, Alertable, NULL);
 }

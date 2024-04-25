@@ -359,25 +359,3 @@ NTSTATUS NtSetTimer(IN ASYNC_STATE State,
     }
     return STATUS_SUCCESS;
 }
-
-/**
- * @name KeDelayExecutionThread
- *
- * Puts the current thread into an alertable or nonalertable wait
- * state for a specified interval. This routine is only exposed to
- * the driver processes.
- *
- * @param Alertable
- *        Specify whether the wait is alertable.
- * @param Interval
- *        Specifies the absolute or relative time, in units of 100
- *        nanoseconds, for which the wait is to occur. A negative value
- *        indicates relative time.
- */
-NTSTATUS KeDelayExecutionThread(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
-				IN BOOLEAN Alertable,
-				IN PLARGE_INTEGER Interval)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
