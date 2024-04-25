@@ -223,7 +223,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.CreateOptions = OpenOptions;
     Locals.OpenContext.OpenPacket.FileAttributes = 0;
     Locals.OpenContext.OpenPacket.ShareAccess = ShareAccess;
-    Locals.OpenContext.OpenPacket.Disposition = 0;
+    Locals.OpenContext.OpenPacket.Disposition = FILE_OPEN;
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,

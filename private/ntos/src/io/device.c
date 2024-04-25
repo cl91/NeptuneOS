@@ -150,7 +150,11 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     }
 
     Locals.FileNameLength = strlen(SubPath);
-    ULONG DataSize = Locals.FileNameLength ? Locals.FileNameLength + 2 : 0;
+    /* For volume devices we prepend the path separator '\\' to the path to be opened. */
+    if (Device->Vcb) {
+	Locals.FileNameLength++;
+    }
+    ULONG DataSize = Locals.FileNameLength ? Locals.FileNameLength + 1 : 0;
     PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize,
 						       NTOS_IO_TAG);
     if (!Irp) {
@@ -163,11 +167,16 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
      * file object information there */
     if (Locals.FileNameLength) {
 	PUCHAR FileNamePtr = (PUCHAR)(Irp + 1);
-	/* Note since we are handling the case of an absolute open (an open
-	 * request with RelatedFileObject == NULL), we prepend the path with
-	 * '\\' so the file system driver knows it's an absolute path. */
-	FileNamePtr[0] = '\\';
-	memcpy(FileNamePtr + 1, SubPath, Locals.FileNameLength + 1);
+	if (Device->Vcb) {
+	    /* Note since we are handling the case of an absolute open (an open
+	     * request with RelatedFileObject == NULL), we prepend the path with
+	     * '\\' so the file system driver knows it's an absolute path. */
+	    FileNamePtr[0] = '\\';
+	    FileNamePtr++;
+	    assert(Locals.FileNameLength > 0);
+	    Locals.FileNameLength--;
+	}
+	memcpy(FileNamePtr, SubPath, Locals.FileNameLength + 1);
     }
     FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
 	.AllocationSize = OpenPacket->AllocationSize,
@@ -178,7 +187,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	.SharedWrite = Locals.FileObject->SharedWrite,
 	.SharedDelete = Locals.FileObject->SharedDelete,
 	.Flags = Locals.FileObject->Flags,
-	.FileNameOffset = Locals.FileNameLength ? sizeof(IO_REQUEST_PARAMETERS) : 0
+	.FileNameOffset = DataSize ? sizeof(IO_REQUEST_PARAMETERS) : 0
     };
 
     ULONG CreateOptions = OpenPacket->CreateOptions | (OpenPacket->Disposition << 24);
