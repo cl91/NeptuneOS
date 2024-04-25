@@ -63,18 +63,30 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
     POBJECT Object = DirectoryObject ? DirectoryObject : ObpRootObjectDirectory;
     NTSTATUS Status = STATUS_SUCCESS;
 
-    while (*Path != '\0') {
+    while (TRUE) {
 	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
 	OBJECT_PARSE_METHOD ParseProc = ObjectHeader->Type->TypeInfo.ParseProc;
 	if (ParseProc == NULL) {
-	    /* The object type does not support subobject or namespace */
-	    Status = STATUS_OBJECT_TYPE_MISMATCH;
+	    if (Path && *Path) {
+		/* The object type does not support subobject or namespace. */
+		Status = STATUS_OBJECT_TYPE_MISMATCH;
+	    } else {
+		/* Path is empty. Parse succeeded. */
+		Status = STATUS_SUCCESS;
+	    }
 	    break;
 	}
 	POBJECT Subobject = NULL;
 	PCSTR RemainingPath = NULL;
 	Status = ParseProc(Object, Path, CaseInsensitive, &Subobject, &RemainingPath);
-	if (!NT_SUCCESS(Status)) {
+	if (!NT_SUCCESS(Status) || Status == STATUS_NTOS_STOP_PARSING) {
+	    if (Path && *Path) {
+		/* The object type does not support subobject or namespace. */
+		Status = STATUS_OBJECT_TYPE_MISMATCH;
+	    } else {
+		/* Path is empty. Parse succeeded. */
+		Status = STATUS_SUCCESS;
+	    }
 	    break;
 	}
 	assert(RemainingPath != NULL);
@@ -166,10 +178,6 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
     }
 
 parse:
-    /* If the path to be parsed is now empty, we are done parsing. Open the object. */
-    if (*Locals.Path == '\0') {
-	goto open;
-    }
     /* Invoke the parse procedure first. If there isn't a parse procedure,
      * invoke the open procedure instead. */
     if (OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.ParseProc == NULL) {
@@ -181,13 +189,15 @@ parse:
 	Locals.Object, Locals.Path,
 	!!(ObjectAttributes.Attributes & OBJ_CASE_INSENSITIVE),
 	&Subobject, &RemainingPath);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) || Status == STATUS_NTOS_STOP_PARSING) {
 	ObDbg("Parsing path %s returned error status 0x%x\n", Locals.Path, Status);
 	/* In this case the parse routine should not modify the remaining path. */
 	assert(RemainingPath == Locals.Path);
-	/* If the parse routine returned OBJECT_NAME_NOT_FOUND or OBJECT_PATH_NOT_FOUND,
-	 * we should invoke the open routine. Otherwise we simply fail. */
-	if (Status == STATUS_OBJECT_NAME_NOT_FOUND || Status == STATUS_OBJECT_PATH_NOT_FOUND) {
+	/* If the remaining path is empty, or if the parse routine returned NTOS_STOP_PARSING,
+	 * OBJECT_NAME_NOT_FOUND or OBJECT_PATH_NOT_FOUND, we should invoke the open routine.
+	 * Otherwise we simply fail. */
+	if (!Locals.Path[0] || Status == STATUS_NTOS_STOP_PARSING ||
+	    Status == STATUS_OBJECT_NAME_NOT_FOUND || Status == STATUS_OBJECT_PATH_NOT_FOUND) {
 	    goto open;
 	} else {
 	    goto out;
@@ -200,12 +210,9 @@ parse:
 	 * we do not need to worry about freeing this string, as the parse routine shall
 	 * take care of recording this string and freeing it later when the object closes. */
 	ObDbg("Reparsing with new path %s\n", RemainingPath);
-	/* If we have an absolute path, reparse should start from the global root directory */
-	if (RemainingPath[0] == OBJ_NAME_PATH_SEPARATOR) {
-	    Locals.Object = ObpRootObjectDirectory;
-	}
-	/* Otherwise, for a relative path reparse should start from the current object.
-	 * In this case we do not need to do anything. */
+	/* If the parse routine returned a subobject, use that as the new object to
+	 * start the reparse from. Otherwise, assume the root object directory. */
+        Locals.Object = Subobject ? Subobject : ObpRootObjectDirectory;
     } else {
 	/* If we get here, the parse routine has successfully parsed (part
 	 * of) the sub-path and returned a sub-object. We continue the parse by
@@ -220,7 +227,7 @@ parse:
 	RemainingPath++;
     }
     Locals.Path = RemainingPath;
-    /* Continue parsing until the remaining path is empty. */
+    /* Continue parsing until the object does not define a parse routine. */
     goto parse;
 
 open:

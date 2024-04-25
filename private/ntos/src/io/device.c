@@ -35,6 +35,11 @@ NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
     DbgTrace("Device %p trying to parse Path = %s case-%s\n", Self, Path,
 	     CaseInsensitive ? "insensitively" : "sensitively");
 
+    /* If the path is empty, we should stop parsing. */
+    if (!Path[0]) {
+	return STATUS_NTOS_STOP_PARSING;
+    }
+
     if (DevObj->Subobjects) {
 	return ObParseObjectByName(DevObj->Subobjects, Path, CaseInsensitive,
 				   FoundObject, RemainingPath);
