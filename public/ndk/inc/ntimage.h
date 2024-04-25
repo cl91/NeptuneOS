@@ -1,5 +1,8 @@
 #pragma once
 
+#include <ntdef.h>
+#include <ntkeapi.h>
+
 #ifndef _NTIMAGE_
 #define _NTIMAGE_
 

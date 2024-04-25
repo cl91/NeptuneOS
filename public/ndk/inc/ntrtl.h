@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ntimage.h>
+#include <ntstatus.h>
 #include <ntkeapi.h>
 
 typedef struct _CLIENT_ID {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ntdef.h>
+
 /*
  * Resource Type Levels
  */

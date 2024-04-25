@@ -116,6 +116,30 @@ static VOID SmGetKeyboardInput(IN HANDLE Keyboard,
     }
 }
 
+static VOID SmMountDrives()
+{
+    SmPrint("Mounting drive A... ");
+    UNICODE_STRING FloppyDevice = RTL_CONSTANT_STRING(L"\\Device\\Floppy0");
+    UNICODE_STRING FloppyDosDevice = RTL_CONSTANT_STRING(L"\\??\\A:");
+    OBJECT_ATTRIBUTES ObjAttr;
+    InitializeObjectAttributes(&ObjAttr, &FloppyDosDevice, 0, NULL, NULL);
+    HANDLE Symlink = NULL;
+    NTSTATUS Status = NtCreateSymbolicLinkObject(&Symlink, SYMBOLIC_LINK_ALL_ACCESS,
+						 &ObjAttr, &FloppyDevice);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to create symbolic link for drive A (error 0x%08x).\n", Status);
+	return;
+    }
+    NtClose(Symlink);
+    UNICODE_STRING DriveA = RTL_CONSTANT_STRING(L"A:\\");
+    NTSTATUS Status = RtlSetCurrentDirectory_U(&DriveA);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to mount drive A (error 0x%08x).\n", Status);
+	return;
+    }
+    SmPrint("OK\n");
+}
+
 NTSTATUS SmStartCommandPrompt()
 {
     PRTL_USER_PROCESS_PARAMETERS ProcessParams;
@@ -155,6 +179,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmPrint("%s\n", SMSS_BANNER);
     SmInitRegistry();
     SmInitHardwareDatabase();
+    SmMountDrives();
     SmPrint("\n");
 
     if (!NT_SUCCESS(SmStartCommandPrompt())) {
