@@ -37,6 +37,7 @@ C_ASSERT((OBJ_VALID_ATTRIBUTES & OBJ_NO_PARSE) == 0);
  */
 typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_DIRECTORY,
+    OBJECT_TYPE_SYMBOLIC_LINK,
     OBJECT_TYPE_THREAD,
     OBJECT_TYPE_PROCESS,
     OBJECT_TYPE_SECTION,
@@ -170,6 +171,8 @@ typedef struct _OBJECT_HEADER {
     LIST_ENTRY ObjectLink;
     LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
     POBJECT ParentObject; /* Parent object under which this object is inserted */
+    PVOID ParentLink;	  /* Pointer that the parent object can freely use to
+			   * point to bookkeeping information. */
     PCSTR ObjectName; /* Sub-path of this object under the parent object, set
 		       * when ObInsertObject inserts the object under a path.
 		       * This is always allocated on the ExPool by the object
@@ -399,11 +402,11 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Parent,
  * of the object as it is done by the object manager.
  *
  * The remove procedure cannot be NULL if the insert procedure is
- * supplied.
+ * supplied. Note when the object manager removes an object, it calls
+ * the RemoveProc of its parent object type, rather than the object type
+ * itself.
  */
-typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Parent,
-				     IN POBJECT Subobject,
-				     IN PCSTR Subpath);
+typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Subobject);
 
 /*
  * The delete procedure releases the resources of an object. It is
@@ -452,6 +455,7 @@ static inline BOOLEAN ObObjectIsType(IN POBJECT Object,
 #define OBJ_NAME_PATH_SEPARATOR ('\\')
 
 typedef struct _OBJECT_DIRECTORY *POBJECT_DIRECTORY;
+typedef struct _OBJECT_SYMBOLIC_LINK *POBJECT_SYMBOLIC_LINK;
 
 /*
  * A process's object handle table. All handles are inserted into
@@ -591,3 +595,8 @@ FORCEINLINE NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
     return ObOpenObjectByNameEx(State, Thread, ObjectAttributes,
 				Type, OpenContext, TRUE, pHandle);
 }
+
+/* symlink.c */
+NTSTATUS ObCreateSymbolicLink(IN PCSTR LinkTarget,
+			      IN OPTIONAL POBJECT LinkTargetObject,
+			      OUT POBJECT_SYMBOLIC_LINK *Symlink);

@@ -402,9 +402,7 @@ NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
 NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 				   IN POBJECT Object,
 				   IN PCSTR Path);
-VOID IopDeviceObjectRemoveProc(IN POBJECT Parent,
-			       IN POBJECT Subobject,
-			       IN PCSTR Subpath);
+VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject);
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,

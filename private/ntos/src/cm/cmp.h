@@ -210,9 +210,7 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
 				IN POBJECT Subobject,
 				IN PCSTR Subpath);
-VOID CmpKeyObjectRemoveProc(IN POBJECT Parent,
-			    IN POBJECT Subobject,
-			    IN PCSTR Subpath);
+VOID CmpKeyObjectRemoveProc(IN POBJECT Subobject);
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       IN PCSTR Path,
 			       IN BOOLEAN CaseInsensitive,

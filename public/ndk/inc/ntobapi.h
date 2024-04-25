@@ -1,5 +1,9 @@
 #pragma once
 
+#include <ntdef.h>
+#include <ntstatus.h>
+#include <ntseapi.h>
+
 /*
  * Definitions for Object Creation
  */
@@ -83,7 +87,11 @@ NTAPI NTSYSAPI NTSTATUS NtClose(IN HANDLE Handle);
 #define ZwClose NtClose
 
 NTAPI NTSYSAPI NTSTATUS NtWaitForSingleObject(IN HANDLE WaitObject,
-					      IN BOOLEAN Alertable,
-					      IN PLARGE_INTEGER Time);
+                                              IN BOOLEAN Alertable,
+                                              IN PLARGE_INTEGER Time);
 
+NTAPI NTSYSAPI NTSTATUS NtCreateSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
+						   IN ACCESS_MASK DesiredAccess,
+						   IN POBJECT_ATTRIBUTES ObjectAttributes,
+						   IN PUNICODE_STRING Name);
 #endif

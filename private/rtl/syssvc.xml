@@ -476,6 +476,13 @@
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
 
+  <svc name="NtCreateSymbolicLinkObject">
+    <parameter annotation="out" type="ptr::HANDLE" name="SymbolicLinkHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="UnicodeString" name="LinkTarget" />
+  </svc>
+
   <svc name="NtPlugPlayControl">
     <parameter annotation="in" type="PLUGPLAY_CONTROL_CLASS" name="PlugPlayControlClass" />
     <parameter annotation="in" type="buf::Void" name="Buffer" />

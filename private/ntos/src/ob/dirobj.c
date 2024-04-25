@@ -1,4 +1,16 @@
+#include "ob.h"
 #include "obp.h"
+
+#define OBP_DIROBJ_HASH_BUCKETS 37
+typedef struct _OBJECT_DIRECTORY {
+    LIST_ENTRY HashBuckets[OBP_DIROBJ_HASH_BUCKETS];
+    PIO_FILE_OBJECT FileObject;
+} OBJECT_DIRECTORY;
+
+typedef struct _OBJECT_DIRECTORY_ENTRY {
+    LIST_ENTRY ChainLink;
+    POBJECT Object;
+} OBJECT_DIRECTORY_ENTRY, *POBJECT_DIRECTORY_ENTRY;
 
 POBJECT_DIRECTORY ObpRootObjectDirectory;
 
@@ -156,6 +168,8 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 
     ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
     DirectoryEntry->Object = Object;
+    ObpReferenceObject(Object);
+    OBJECT_TO_OBJECT_HEADER(Object)->ParentLink = DirectoryEntry;
 
     MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, strlen(Name));
     assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
@@ -167,6 +181,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
 static inline VOID ObpObjectDirectoryRemoveEntry(IN POBJECT_DIRECTORY_ENTRY Entry)
 {
     if (Entry != NULL) {
+	ObDereferenceObject(Entry->Object);
 	RemoveEntryList(&Entry->ChainLink);
 	ObpFreePool(Entry);
     }
@@ -176,21 +191,14 @@ static inline VOID ObpObjectDirectoryRemoveEntry(IN POBJECT_DIRECTORY_ENTRY Entr
  * Called when the object manager attempts to remove an object
  * under the object directory
  */
-static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Parent,
-					 IN POBJECT Subobject,
-					 IN PCSTR Subpath)
+static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Subobject)
 {
-    assert(ObObjectIsType(Parent, OBJECT_TYPE_DIRECTORY));
-    POBJECT FoundObject = NULL;
-    POBJECT_DIRECTORY_ENTRY DirectoryEntry = NULL;
-    UNUSED NTSTATUS Status = ObpLookupDirectoryEntry((POBJECT_DIRECTORY)Parent,
-						     Subpath, strlen(Subpath),
-						     FALSE, &FoundObject,
-						     &DirectoryEntry);
-    assert(NT_SUCCESS(Status));
-    assert(FoundObject == Subobject);
-    assert(DirectoryEntry != NULL);
-    ObpObjectDirectoryRemoveEntry(DirectoryEntry);
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Subobject);
+    assert(ObObjectIsType(ObjectHeader->ParentObject, OBJECT_TYPE_DIRECTORY));
+    POBJECT_DIRECTORY_ENTRY Entry = ObjectHeader->ParentLink;
+    assert(Entry != NULL);
+    assert(Entry->Object == Subobject);
+    ObpObjectDirectoryRemoveEntry(Entry);
 }
 
 /*
@@ -206,7 +214,6 @@ static VOID ObpDirectoryObjectDeleteProc(IN POBJECT Self)
     for (ULONG i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
         LoopOverList(Entry, &Directory->HashBuckets[i],
 		     OBJECT_DIRECTORY_ENTRY, ChainLink) {
-	    /* TODO: For symbolic links we will delete the symbolic link object */
 	    ObpObjectDirectoryRemoveEntry(Entry);
 	}
     }

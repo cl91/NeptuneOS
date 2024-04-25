@@ -1,4 +1,5 @@
 #include "cmp.h"
+#include "ntstatus.h"
 
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx)
@@ -30,9 +31,7 @@ NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
     return STATUS_SUCCESS;
 }
 
-VOID CmpKeyObjectRemoveProc(IN POBJECT Parent,
-			    IN POBJECT Subobject,
-			    IN PCSTR Subpath)
+VOID CmpKeyObjectRemoveProc(IN POBJECT Subobject)
 {
     /* TODO! */
 }

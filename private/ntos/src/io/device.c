@@ -75,9 +75,7 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
     return ObInsertObject(DevObj->Subobjects, Object, Path, 0);
 }
 
-VOID IopDeviceObjectRemoveProc(IN POBJECT Parent,
-			       IN POBJECT Subobject,
-			       IN PCSTR Subpath)
+VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
 {
     /* We don't need to do anything here because the remove proc of the
      * directory object will take care of removing the subobject for us. */

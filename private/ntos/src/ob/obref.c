@@ -71,7 +71,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     NTSTATUS Status = ObParseObjectByName(RootDirectory, Path, CaseInsensitive,
 					  &Object, &RemainingPath);
     if (!NT_SUCCESS(Status)) {
-	ObDbg("Object look up failed for %s\n", Path);
+	ObDbg("Object look up failed for %s. Status = 0x%x\n", Path, Status);
 	return Status;
     }
     assert(RemainingPath != NULL);
@@ -125,9 +125,8 @@ VOID ObRemoveObject(IN POBJECT Object)
 	assert(ParentHeader->Type);
 	OBJECT_REMOVE_METHOD RemoveProc = ParentHeader->Type->TypeInfo.RemoveProc;
 	assert(RemoveProc);
-	/* TODO: We need to make RemoveProc quicker by storing the ParentLink. */
 	if (RemoveProc) {
-	    RemoveProc(ObjectHeader->ParentObject, Object, ObjectHeader->ObjectName);
+	    RemoveProc(Object);
 	}
 	ObpFreePool(ObjectHeader->ObjectName);
 	ObjectHeader->ParentObject = NULL;

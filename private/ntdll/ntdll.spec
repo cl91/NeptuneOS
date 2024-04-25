@@ -46,6 +46,8 @@
 @ stdcall NtEnumerateKey(long long long long long long)
 @ stdcall NtEnumerateValueKey(long long long long long long)
 @ stdcall NtQueryKey(long long ptr long ptr)
+@ stdcall NtCreateSymbolicLinkObject(ptr long ptr ptr)
+@ stdcall NtCreateSymbolicLinkObjectA(ptr long ptr ptr)
 @ stdcall NtPlugPlayInitialize()
 @ stdcall NtPlugPlayControl(ptr ptr long)
 @ stdcall NtTestAlert()

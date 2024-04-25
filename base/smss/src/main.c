@@ -1,3 +1,5 @@
+#include "ntdef.h"
+#include "ntobapi.h"
 #include <smss.h>
 
 PCSTR SMSS_BANNER = "\nNeptune OS Session Manager [Version " VER_PRODUCTVERSION_STRING "]\n";
@@ -132,7 +134,7 @@ static VOID SmMountDrives()
     }
     NtClose(Symlink);
     UNICODE_STRING DriveA = RTL_CONSTANT_STRING(L"A:\\");
-    NTSTATUS Status = RtlSetCurrentDirectory_U(&DriveA);
+    Status = RtlSetCurrentDirectory_U(&DriveA);
     if (!NT_SUCCESS(Status)) {
 	SmPrint("Failed to mount drive A (error 0x%08x).\n", Status);
 	return;

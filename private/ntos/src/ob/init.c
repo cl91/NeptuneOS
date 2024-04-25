@@ -6,6 +6,7 @@ NTSTATUS ObInitSystemPhase0()
     RET_ERR(ObpInitDirectoryObjectType());
     RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
 			   (POBJECT *)&ObpRootObjectDirectory, NULL));
+    RET_ERR(ObpInitSymlinkObjectType());
 
     return STATUS_SUCCESS;
 }
