@@ -20,7 +20,7 @@ Revision History:
     Alex Ionescu - Started Implementation - 23-Mar-06
 
 --*/
-#include "precomp.h"
+#include "ntcmd.h"
 
 /*++
  * @name RtlCliShutdown

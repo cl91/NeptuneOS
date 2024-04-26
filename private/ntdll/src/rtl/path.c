@@ -524,9 +524,8 @@ NTAPI NTSTATUS RtlGetLengthWithoutLastFullDosOrNtPathElement(IN ULONG Flags,
     }
 
     /* Find the last path separator */
-    if (!NT_SUCCESS(RtlFindCharInUnicodeString(
-			RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END,
-			Path, &PathDividers, &Position))) {
+    if (!NT_SUCCESS(RtlFindCharInUnicodeString(RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END,
+					       Path, &PathDividers, &Position))) {
 	Position = 0;
     }
 
@@ -767,8 +766,7 @@ NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
      * other hand, if the original name didn't contain any trailing separators
      * then we'll skip it in the full path name.
      */
-    SkipTrailingPathSeparators =
-	!IS_PATH_SEPARATOR(FileNameBuffer[FileNameChars - 1]);
+    SkipTrailingPathSeparators = !IS_PATH_SEPARATOR(FileNameBuffer[FileNameChars - 1]);
 
     /* Check if this is a DOS name */
     DosLength = RtlIsDosDeviceName_Ustr(FileName);
@@ -1225,8 +1223,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 
     /* Now copy the prefix and the buffer */
     RtlCopyMemory(NewBuffer, PrefixBuffer, PrefixLength);
-    RtlCopyMemory((PCHAR) NewBuffer + PrefixLength,
-		  Buffer + PrefixCut,
+    RtlCopyMemory((PCHAR)NewBuffer + PrefixLength, Buffer + PrefixCut,
 		  PathLength - (PrefixCut * sizeof(WCHAR)));
 
     /* Compute the length */
@@ -1320,7 +1317,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 static NTSTATUS RtlpDosPathNameToRelativeNtPathName_U(IN BOOLEAN HaveRelative,
 						      IN PCWSTR DosName,
 						      OUT PUNICODE_STRING NtName,
-						      OUT PCWSTR * PartName,
+						      OUT PCWSTR *PartName,
 						      OUT PRTL_RELATIVE_NAME_U RelativeName)
 {
     NTSTATUS Status;
@@ -1623,7 +1620,7 @@ NTAPI ULONG RtlGetCurrentDirectory_U(IN ULONG MaximumLength,
 
     /* Release PEB lock */
     RtlReleasePebLock();
-    DPRINT("CurrentDirectory %S\n", Buffer);
+    DPRINT("CurrentDirectory %ws\n", Buffer);
     return Length * sizeof(WCHAR);
 }
 

@@ -2,17 +2,14 @@
 
 Copyright (c) Alex Ionescu.  All rights reserved.
 
-    THIS CODE AND INFORMATION IS PROVIDED UNDER THE LESSER GNU PUBLIC LICENSE.
-    PLEASE READ THE FILE "COPYING" IN THE TOP LEVEL DIRECTORY.
-
 Module Name:
 
-    precomp.h
+    ntcmd.h
 
 Abstract:
 
-    The Native Command Line Interface (NCLI) is the command shell for the
-    TinyKRNL OS.
+    This is the master header file for the Native Command Prompt, the command shell
+    for Neptune OS.
 
 Environment:
 
@@ -33,8 +30,6 @@ Revision History:
 #include <wchar.h>
 #include <excpt.h>
 #include <ntddkbd.h>
-#include "ntfile.h"
-#include "ntreg.h"
 
 //
 // Device type for input/output
@@ -67,10 +62,24 @@ typedef struct _KBD_RECORD {
 extern HANDLE hKeyboard;
 
 //
+// Registry key
+//
+#define HKEY_CLASSES_ROOT           0x80000000
+#define HKEY_CURRENT_USER           0x80000001
+#define HKEY_LOCAL_MACHINE          0x80000002
+#define HKEY_USERS                  0x80000003
+#define HKEY_PERFORMANCE_DATA       0x80000004
+#define HKEY_PERFORMANCE_TEXT       0x80000050
+#define HKEY_PERFORMANCE_NLSTEXT    0x80000060
+#define HKEY_CURRENT_CONFIG         0x80000005
+#define HKEY_DYN_DATA               0x80000006
+
+typedef ULONG H_KEY;
+
+//
 // Display functions
 //
 NTSTATUS RtlCliDisplayString(IN PCH Message, ...);
-NTSTATUS RtlCliPrintString(IN PUNICODE_STRING Message);
 NTSTATUS RtlCliPutChar(IN WCHAR Char);
 
 //
@@ -101,11 +110,30 @@ NTSTATUS RtlCliListHardwareTree(VOID);
 NTSTATUS RtlCliListDirectory(VOID);
 NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory);
 ULONG RtlCliGetCurrentDirectory(IN OUT PWSTR CurrentDirectory);
-BOOL GetFullPath(IN PCSTR filename,
-		 OUT PWSTR out,
-		 IN ULONG out_size,
-		 IN BOOL add_slash);
-BOOL FileExists(PCWSTR fname);
+NTSTATUS GetFullPath(IN PCSTR FileName,
+		     OUT PWSTR FullPath,
+		     IN ULONG FullPathSize,
+		     IN BOOL AddSlash);
+BOOL FileExists(PCWSTR FileName);
+
+NTSTATUS OpenFile(HANDLE *RetFile, WCHAR *FileName,
+		  BOOLEAN Write, BOOLEAN Overwrite);
+NTSTATUS OpenDirectory(HANDLE *RetFile, WCHAR *FileName,
+		       BOOLEAN Write, BOOLEAN Overwrite);
+NTSTATUS ReadFile(HANDLE File, PVOID OutBuffer,
+		  ULONG BufferSize, ULONG *ReturnedLength);
+NTSTATUS WriteFile(HANDLE File, PVOID Data, ULONG BufferSize,
+		   ULONG *ReturnedLength);
+NTSTATUS SeekFile(HANDLE File, LONGLONG Amount);
+NTSTATUS GetFilePosition(HANDLE File,
+			 LONGLONG *CurrentPosition);
+NTSTATUS GetFileSize(HANDLE File, LONGLONG *FileSize);
+VOID CloseFile(HANDLE File);
+NTSTATUS CopyFile(WCHAR *Src, WCHAR *Dest);
+NTSTATUS DeleteFile(PCWSTR FileName);
+NTSTATUS CreateDirectory(PCWSTR DirName);
+NTSTATUS MoveFile(IN PCWSTR ExistingFileName,
+		  IN PCWSTR NewFileName, BOOLEAN ReplaceIfExists);
 
 //
 // Keyboard functions
@@ -134,16 +162,30 @@ NTSTATUS RegReadValue(HANDLE hKey, PWCHAR key_name, OUT PULONG type,
 		      OUT PVOID data, IN ULONG buf_size,
 		      OUT PULONG out_size);
 
+WCHAR *NtRegGetRootPath(H_KEY hkRoot);
+BOOLEAN NtRegOpenKey(HANDLE *phKey, H_KEY hkRoot, WCHAR *pwszSubKey,
+		     ACCESS_MASK DesiredAccess);
+BOOLEAN NtRegWriteValue(HANDLE H_KEY, WCHAR *pwszValueName, PVOID pData,
+			ULONG uLength, ULONG dwRegType);
+BOOLEAN NtRegWriteString(HANDLE H_KEY, WCHAR *pwszValueName,
+			 WCHAR *pwszValue);
+BOOLEAN NtRegDeleteValue(HANDLE H_KEY, WCHAR *pwszValueName);
+BOOLEAN NtRegCloseKey(HANDLE H_KEY);
+BOOLEAN NtRegReadValue(HANDLE H_KEY, HANDLE hHeapHandle,
+		       WCHAR *pszValueName,
+		       PKEY_VALUE_PARTIAL_INFORMATION *pRetBuffer,
+		       ULONG *pRetBufferSize);
+VOID NtEnumKey(HANDLE hKey);
+
 //
 // Misc functions
 //
-VOID FillUnicodeStringWithAnsi(OUT PUNICODE_STRING us, IN PCHAR as);
+NTSTATUS FillUnicodeStringWithAnsi(OUT PUNICODE_STRING UnicodeString, IN PCHAR String);
+PCSTR RtlCliStatusToErrorMessage(IN NTSTATUS Status);
 
 //
 // Helper Functions for ntreg.c
 //
-BOOLEAN SetUnicodeString(UNICODE_STRING * pustrRet, WCHAR *pwszData);
-BOOLEAN DisplayString(WCHAR *pwszData);
 HANDLE InitHeapMemory(VOID);
 BOOLEAN DeinitHeapMemory(HANDLE hHeap);
 BOOLEAN AppendString(WCHAR *pszInput, WCHAR *pszAppend);

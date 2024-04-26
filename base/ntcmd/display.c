@@ -23,25 +23,8 @@ Revision History:
     amdf - Display buffer extended (was too small) - 22-Feb-11
 
 --*/
-#include "precomp.h"
-
-/*++
- * @name RtlCliPrintString
- *
- * The RtlCliPrintString routine display a unicode string on the display device
- *
- * @param Message
- *        Pointer to a unicode string containing the message to print.
- *
- * @return STATUS_SUCCESS or failure code.
- *
- * @remarks None.
- *
- *--*/
-NTSTATUS RtlCliPrintString(IN PUNICODE_STRING Message)
-{
-    return NtDisplayString(Message);
-}
+#include "ntcmd.h"
+#include "ntexapi.h"
 
 /*++
  * @name RtlCliPutChar
@@ -111,7 +94,7 @@ NTSTATUS RtlCliDisplayString(IN PCH Message, ...)
     //
     // Display it on screen
     //
-    Status = RtlCliPrintString(&MessageString);
+    Status = NtDisplayString(&MessageString);
 
     //
     // Free Memory

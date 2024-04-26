@@ -479,7 +479,7 @@ NTAPI VOID RtlInitAnsiString(IN OUT PANSI_STRING DestinationString,
 	DestinationString->MaximumLength = 0;
     }
 
-    DestinationString->Buffer = (PCHAR) SourceString;
+    DestinationString->Buffer = (PCHAR)SourceString;
 }
 
 /*

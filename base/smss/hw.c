@@ -1,4 +1,4 @@
-#include <smss.h>
+#include "smss.h"
 
 #define HARDWARE_KEY_PATH			"\\Registry\\Machine\\Hardware"
 #define DEVICEMAP_KEY_PATH			HARDWARE_KEY_PATH "\\DeviceMap"

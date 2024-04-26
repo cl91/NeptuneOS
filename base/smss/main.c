@@ -1,6 +1,6 @@
-#include "ntdef.h"
-#include "ntobapi.h"
-#include <smss.h>
+#include <ntdef.h>
+#include <ntobapi.h>
+#include "smss.h"
 
 PCSTR SMSS_BANNER = "\nNeptune OS Session Manager [Version " VER_PRODUCTVERSION_STRING "]\n";
 

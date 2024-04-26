@@ -1,5 +1,4 @@
-#include "precomp.h"
-#include "ntreg.h"
+#include "ntcmd.h"
 
 WCHAR *NtRegGetRootPath(H_KEY hkRoot)
 {
@@ -38,7 +37,7 @@ BOOLEAN NtRegOpenKey(HANDLE *phKey,
     AppendString(wszKeyName, pwszSubKey);
 
     // Setup Unicode String
-    SetUnicodeString(&ustrKeyName, wszKeyName);
+    RtlInitUnicodeString(&ustrKeyName, wszKeyName);
 
     //printf("'%S'\n", ustrKeyName.Buffer);
     InitializeObjectAttributes(&ObjectAttributes,
@@ -64,7 +63,7 @@ BOOLEAN NtRegWriteValue(HANDLE hKey,
     UNICODE_STRING ustrValueName;
     NTSTATUS nRet;
 
-    SetUnicodeString(&ustrValueName, pwszValueName);
+    RtlInitUnicodeString(&ustrValueName, pwszValueName);
 
     nRet = NtSetValueKey(hKey, &ustrValueName, 0, dwRegType,	// i.e. REG_BINARY
 			 pData, uLength);
@@ -98,7 +97,7 @@ BOOLEAN NtRegDeleteValue(HANDLE hKey,
     UNICODE_STRING ustrValueName;
     int nRet = 0;
 
-    SetUnicodeString(&ustrValueName, pwszValueName);
+    RtlInitUnicodeString(&ustrValueName, pwszValueName);
 
     nRet = NtDeleteValueKey(hKey, &ustrValueName);
     if (!NT_SUCCESS(nRet)) {
@@ -120,7 +119,7 @@ BOOLEAN NtRegReadValue(HANDLE hKey, HANDLE hHeapHandle,
     NTSTATUS ntStatus = 0;
     int i = 0;
 
-    SetUnicodeString(&ustrValueName, pszValueName);
+    RtlInitUnicodeString(&ustrValueName, pszValueName);
 
     for (i = 0; i < 4096; i++) {
 	pBuffer = RtlAllocateHeap(hHeapHandle, 0, uSize);

@@ -1,4 +1,4 @@
-#include <smss.h>
+#include "smss.h"
 
 #define SYSTEM_HIVE_PATH	"\\Registry\\Machine\\System"
 

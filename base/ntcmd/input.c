@@ -23,7 +23,7 @@ Revision History:
     amdf - Added correct scancode translation in RtlCliGetChar - 20-Feb-11
 
 --*/
-#include "precomp.h"
+#include "ntcmd.h"
 
 //
 // Event to wait on for keyboard input

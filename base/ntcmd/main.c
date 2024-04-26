@@ -24,7 +24,8 @@ Revision History:
     amdf         - Added move command - 20-Feb-11
 
 --*/
-#include "precomp.h"
+#include "ntcmd.h"
+#include "ntexapi.h"
 
 HANDLE hKeyboard;
 
@@ -69,10 +70,8 @@ PCSTR helpstr =
  *--*/
 BOOLEAN RtlClipProcessMessage(PCHAR Command)
 {
-    WCHAR CurrentDirectory[MAX_PATH];
     WCHAR buf1[MAX_PATH];
     WCHAR buf2[MAX_PATH];
-    UNICODE_STRING CurrentDirectoryString;
     CHAR CommandBuf[CMD_BUFSIZE];
     PCHAR xargv[MAX_ARGS];
 
@@ -129,8 +128,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 2) {
 	    NTSTATUS Status = RtlCliSetCurrentDirectory(xargv[1]);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("cd: invalid directory (error 0x%08x)\n",
-				    Status);
+		RtlCliDisplayString("cd: %s", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -144,15 +142,11 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	NtSetDefaultLocale(TRUE, 1049);
     } else if (!COMPARE_CMD(Command, "pwd")) {
 	//
-	// Get the current directory
+	// Display the current directory
 	//
+	WCHAR CurrentDirectory[MAX_PATH];
 	RtlCliGetCurrentDirectory(CurrentDirectory);
-	//
-	// Display it
-	//
-	RtlInitUnicodeString(&CurrentDirectoryString, CurrentDirectory);
-	RtlCliPrintString(&CurrentDirectoryString);
-	RtlFreeUnicodeString(&CurrentDirectoryString);
+	RtlCliDisplayString("%ws", CurrentDirectory);
     } else if (!COMPARE_CMD(Command, "dir")) {
 	//
 	// List the current directory
@@ -192,15 +186,21 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
     } else if (!COMPARE_CMD(Command, "copy")) {
 	// Copy file
 	if (xargc == 3) {
-	    GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
-	    GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
-	    RtlCliDisplayString("\nCopy %S to %S\n", buf1, buf2);
+	    NTSTATUS Status =  GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("copy: %s", RtlCliStatusToErrorMessage(Status));
+	    }
+	    Status = GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("copy: %s", RtlCliStatusToErrorMessage(Status));
+	    }
 	    if (FileExists(buf1)) {
-		if (!NtFileCopyFile(buf1, buf2)) {
-		    RtlCliDisplayString("Failed.\n");
+		Status = CopyFile(buf1, buf2);
+		if (!NT_SUCCESS(Status)) {
+		    RtlCliDisplayString("copy: %s", RtlCliStatusToErrorMessage(Status));
 		}
 	    } else {
-		RtlCliDisplayString("File does not exist.\n");
+		RtlCliDisplayString("File %ws does not exist.\n", buf1);
 	    }
 	} else if (xargc > 3) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -210,15 +210,21 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
     } else if (!COMPARE_CMD(Command, "move")) {
 	// Move/rename file
 	if (xargc == 3) {
-	    GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
-	    GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
-	    RtlCliDisplayString("\nMove %S to %S\n", buf1, buf2);
+	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("move: %s", RtlCliStatusToErrorMessage(Status));
+	    }
+	    Status = GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("move: %s", RtlCliStatusToErrorMessage(Status));
+	    }
 	    if (FileExists(buf1)) {
-		if (!NtFileMoveFile(buf1, buf2, FALSE)) {
-		    RtlCliDisplayString("Failed.\n");
+		Status = MoveFile(buf1, buf2, FALSE);
+		if (!NT_SUCCESS(Status)) {
+		    RtlCliDisplayString("move: %s", RtlCliStatusToErrorMessage(Status));
 		}
 	    } else {
-		RtlCliDisplayString("File does not exist.\n");
+		RtlCliDisplayString("File %ws does not exist.\n", buf1);
 	    }
 	} else if (xargc > 3) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -228,15 +234,17 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
     } else if (!COMPARE_CMD(Command, "del")) {
 	// Delete file
 	if (xargc == 2) {
-	    GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("del: %s", RtlCliStatusToErrorMessage(Status));
+	    }
 	    if (FileExists(buf1)) {
-		RtlCliDisplayString("\nDelete %S\n", buf1);
-
-		if (!NtFileDeleteFile(buf1)) {
-		    RtlCliDisplayString("Failed.\n");
+		Status = DeleteFile(buf1);
+		if (!NT_SUCCESS(Status)) {
+		    RtlCliDisplayString("del: %s", RtlCliStatusToErrorMessage(Status));
 		}
 	    } else {
-		RtlCliDisplayString("File does not exist.\n");
+		RtlCliDisplayString("File %ws does not exist.\n", buf1);
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -246,10 +254,13 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
     } else if (!COMPARE_CMD(Command, "md")) {
 	// Make directory
 	if (xargc == 2) {
-	    GetFullPath(xargv[2], buf1, sizeof(buf1), FALSE);
-	    RtlCliDisplayString("\nCreate directory %S\n", buf1);
-	    if (!NtFileCreateDirectory(buf1)) {
-		RtlCliDisplayString("Failed.\n");
+	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("md: %s", RtlCliStatusToErrorMessage(Status));
+	    }
+	    Status = CreateDirectory(buf1);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("md: %s", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -261,23 +272,26 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	// Unknown command, try to find an executable and run it.
 	// Executable name should be with an .exe extension.
 	//
-	WCHAR filename[MAX_PATH];
-	ANSI_STRING as;
-	UNICODE_STRING us;
-	HANDLE hProcess;
+	WCHAR FileName[MAX_PATH];
+	ANSI_STRING AnsiString;
+	UNICODE_STRING UnicodeString;
+	HANDLE Process;
 
-	GetFullPath(xargv[1], filename, sizeof(filename), FALSE);
+	NTSTATUS Status = GetFullPath(xargv[1], FileName, sizeof(FileName), FALSE);
+	if (!NT_SUCCESS(Status)) {
+	    RtlCliDisplayString("%s not recognized: %s", Command,
+				RtlCliStatusToErrorMessage(Status));
+	}
 
-	if (FileExists(filename)) {
-	    RtlInitAnsiString(&as, Command);
-	    RtlAnsiStringToUnicodeString(&us, &as, TRUE);
+	if (FileExists(FileName)) {
+	    RtlInitAnsiString(&AnsiString, Command);
+	    RtlAnsiStringToUnicodeString(&UnicodeString, &AnsiString, TRUE);
 
 	    NtClose(hKeyboard);
-	    CreateNativeProcess(filename, us.Buffer, &hProcess);
-	    RtlFreeAnsiString(&as);
-	    RtlFreeUnicodeString(&us);
+	    CreateNativeProcess(FileName, UnicodeString.Buffer, &Process);
+	    RtlFreeUnicodeString(&UnicodeString);
 
-	    NtWaitForSingleObject(hProcess, FALSE, NULL);
+	    NtWaitForSingleObject(Process, FALSE, NULL);
 	    RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
 	} else {
 	    RtlCliDisplayString("%s not recognized.\n", Command);
@@ -315,7 +329,7 @@ VOID RtlClipDisplayPrompt(VOID)
     CurrentDirectory[DirSize] = L'>';
     CurrentDirectory[DirSize + 1] = UNICODE_NULL;
     RtlInitUnicodeString(&DirString, CurrentDirectory);
-    RtlCliPrintString(&DirString);
+    NtDisplayString(&DirString);
 }
 
 /*++

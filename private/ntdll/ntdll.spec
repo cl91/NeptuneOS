@@ -84,6 +84,7 @@
 @ stdcall RtlSystemTimeToLocalTime(ptr ptr)
 @ stdcall RtlLocalTimeToSystemTime(ptr ptr)
 @ stdcall RtlDosPathNameToNtPathName_U(wstr ptr ptr ptr)
+@ stdcall RtlDosPathNameToNtPathName_U_WithStatus(wstr ptr ptr ptr)
 @ stdcall RtlInitUnicodeString(ptr wstr)
 @ stdcall RtlInitUnicodeStringEx(ptr wstr)
 @ stdcall RtlCreateUnicodeString(ptr wstr)

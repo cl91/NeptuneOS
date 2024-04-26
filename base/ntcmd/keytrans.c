@@ -16,7 +16,7 @@
  * @addtogroup Keyboard
  */
 
-#include "precomp.h"
+#include "ntcmd.h"
 
 typedef struct _SCANTOASCII {
     USHORT ScanCode;
