@@ -79,11 +79,8 @@ NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
     /* TODO: We need to figure out SMP (one queue per processor?) */
     FatGlobalData->NumberProcessors = 1;
 
-#if 0
-    /* Enable this to enter the debugger when file system corruption
-     * has been detected: */
+    /* Generate an assertion when file system corruption has been detected. */
     FatGlobalData->Flags = FAT_BREAK_ON_CORRUPTION;
-#endif
 
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = FatBuildRequest;
     DriverObject->MajorFunction[IRP_MJ_CREATE] = FatBuildRequest;

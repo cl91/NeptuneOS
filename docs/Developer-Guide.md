@@ -66,8 +66,115 @@ should not make native NT api calls (although we don't explicitly forbid this).
 ## NT Executive Components
 
 ### Memory manager (Mm)
-### Object manager (Ob)
 ### Microkernel IPC (Ke)
+
+### Object manager (Ob)
+
+In the Windows/ReactOS design, an object type can implement
+the semantics of sub-objecting by defining a parse method,
+which parses part of the object path to produce a sub-object.
+The object manager recursively invokes the parse method when
+when opening an object.
+
+In our design a complication arises due to the fact that we
+run the NT Executive in user space. Opening an object may
+involve, for instance, queuing an IRP to a driver object and
+suspending the Executive service processing for the current
+thread. Therefore the "parse" procedure need to take an async
+context. On the other hand, for objects that live inside the
+NT Executive address space, or for objects that have already
+been opened, we need a way to make sure that the "parse"
+procedure will never suspend, so that it is safe to call it
+when the server does not have an async context in that moment.
+
+The solution we have here is to have two types of "parse"
+procedures: one that does not take an async context, and one
+that does. The "parse" procedure that does NOT take an async
+state is called the parse procedure in our codebase and the
+"parse" procedure that DOES take an async state is called the
+open procedure. Both take the sub-path being parsed as an
+argument and both implement the semantics of sub-objecting.
+
+The parse procedure will typically examine the cached object
+database to locate the sub-object given by the sub-path. These
+can include the sub-objects that have already been opened (by
+the open procedure) or sub-objects that always live locally
+(in the address space of the NT Executive). The parse procedure
+operates on a global context, meaning that it does not take
+a PTHREAD parameter and cannot modify THREAD states.
+
+On the other hand, the open procedure operates on a thread
+context, meaning that it takes a PTHREAD parameter and can
+modify the THREAD states. The open procedure will typically
+queue an IRP or (asynchronously) query an out-of-process
+database to find the specified sub-object. In particular,
+if the sub-path being parsed is empty, an open procedure can
+return a different object type to implement the semantics of
+an opened instance of the original object. This is employed
+by the IO manager extensively: opening a DEVICE object gives
+a FILE object.
+
+The object manager provides two public interfaces,
+ObReferenceObjectByName and ObOpenObjectByName, to implement
+the notion of looking up an object path and opening an object.
+ObReferenceObjectByName only calls the parse procedure, and
+always returns the pointer to the original object (such as
+a DEVICE object), as opposed to the opened instance (such as
+a FILE object). ObOpenObjectByName invokes both the parse
+and the open procedures, and assigns a handle to the opened
+instance. It therefore must be called with an async context,
+whereas ObReferenceObjectByName does not need one. This also
+means that an additional semantic difference between the
+parse routine and the open routine is that the open routine
+expects the opened instance to be assigned a handle after
+a successful open (although the open routine itself does not
+need to be concerned with handle assignment), while the parse
+routine does not expect so. Generally speaking, parsing is
+a non-invasive procedure where in case of error, one can simply
+throw the parsed object away, while opening is an "invasive"
+routine where one must take care of properly closing an opened
+instance when one is done with the opened object (or in the
+case of an error). This also means that the parse routine
+should not increase the reference count of the returned subobject,
+while the open routine should increase the reference count of the
+returned object, except in the case of reparsing.
+
+The IO subsystem uses the facilities of the object manager
+extensively. Since opening a device or a file is inherently
+an asynchronous process, the IO subsystem uses a two-step
+scheme when opening or creating a file. First, the parse
+procedures are invoked on the given path to locate the DEVICE
+object to be opened. For a simple DEVICE such as \Device\Beep,
+the parse prodecure will essentially be a no-op since the
+device does not implement sub-objects. The object manager
+then invokes the open procedure of the DEVICE object, which
+will yield a FILE_OBJECT, representing an opened instance of
+the DEVICE object. The open procedure will then queue the IRP
+to the thread calling the NT system service and depending on
+whether the open is synchronous or asynchronous, either wait
+on the IO completion event or return STATUS_PENDING.
+
+For a more complex device such as a volume object, its parse
+procedure will take the remaining path after the device name
+(ie. the src\main.c in \Device\Harddisk0\Partition0\src\main.c)
+and first invoke the cache manager and see if the file has been
+previously opened. If it was previously opened, the cached device
+object is returned immediately. Otherwise, the open procedure
+is invoked just like the simple case above.
+
+On the other hand, closing an object is always a lazy process.
+We simply flag the object for closing and queues the object
+closure IRP to the driver process (if it's created by a driver).
+The close routine does not wait for the driver's response and
+is therefore synchronous. This simplifies the error paths,
+especially in an asynchronous function.
+
+All object methods operate with in-process pointers. Assigning
+HANDLEs to opened objects is done by the object manager itself.
+Open routines do not need to be concered with handle assignment.
+
+#### Reference Counting
+
 ### Process manager (Ps)
 ### IO manager (Io)
 #### Cache manager (Cc)

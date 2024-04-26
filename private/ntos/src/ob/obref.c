@@ -1,4 +1,6 @@
 #include "obp.h"
+#include "util.h"
+#include "ob.h"
 
 static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
 				      IN HANDLE Handle,
@@ -67,18 +69,11 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 {
     assert(pObject != NULL);
     POBJECT Object = NULL;
-    PCSTR RemainingPath = NULL;
-    NTSTATUS Status = ObParseObjectByName(RootDirectory, Path, CaseInsensitive,
-					  &Object, &RemainingPath);
+    NTSTATUS Status = ObParseObjectByName(RootDirectory, Path,
+					  CaseInsensitive, &Object);
     if (!NT_SUCCESS(Status)) {
 	ObDbg("Object look up failed for %s. Status = 0x%x\n", Path, Status);
 	return Status;
-    }
-    assert(RemainingPath != NULL);
-    /* Return error if the path cannot be fully parsed */
-    if (*RemainingPath != '\0') {
-	ObDbg("Unable to parse remaining path %s\n", RemainingPath);
-	return STATUS_OBJECT_NAME_INVALID;
     }
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
@@ -128,7 +123,11 @@ VOID ObRemoveObject(IN POBJECT Object)
 	if (RemoveProc) {
 	    RemoveProc(Object);
 	}
+	/* The remove procedure should clear the ParentLink member of the object header. */
+	assert(!ObjectHeader->ParentLink);
 	ObpFreePool(ObjectHeader->ObjectName);
+	/* Dereference the parent object whose refcount we increased in ObInsertObject. */
+	ObDereferenceObject(ObjectHeader->ParentObject);
 	ObjectHeader->ParentObject = NULL;
 	ObjectHeader->ObjectName = NULL;
     }

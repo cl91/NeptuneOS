@@ -24,11 +24,16 @@ static VOID LdrpPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 NTSTATUS LdrLoadBootModules()
 {
     RET_ERR(ObCreateDirectory(DOS_DEVICES_DIRECTORY));
-    RET_ERR(ObCreateDirectory(BOOTMODULE_OBJECT_DIRECTORY));
-    POBJECT BootModuleDirectory = NULL;
-    RET_ERR(ObReferenceObjectByName(BOOTMODULE_OBJECT_DIRECTORY, OBJECT_TYPE_DIRECTORY,
-				    NULL, FALSE, &BootModuleDirectory));
-    assert(BootModuleDirectory != NULL);
+    RET_ERR(ObCreateDirectory(BOOT_MODULES_DIRECTORY));
+    POBJECT BootModulesDirectory = NULL;
+    RET_ERR(ObReferenceObjectByName(BOOT_MODULES_DIRECTORY, OBJECT_TYPE_DIRECTORY,
+				    NULL, FALSE, &BootModulesDirectory));
+    assert(BootModulesDirectory != NULL);
+    PIO_FILE_OBJECT BootModulesDirectoryFile = NULL;
+    /* Create a dummy FILE object for the boot modules directory so at the very
+     * early stage of the boot process (before any file system is mounted), ntdll
+     * can get a valid handle for the boot modules directory. */
+    RET_ERR(IoCreateDevicelessFile(".", BootModulesDirectory, 0, &BootModulesDirectoryFile));
 
     struct cpio_info cpio;
     int error = cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
@@ -63,13 +68,13 @@ NTSTATUS LdrLoadBootModules()
 
 	PIO_FILE_OBJECT File = NULL;
 	/* Create the FILE object and insert into the object directory */
-	RET_ERR(IoCreateDevicelessFile(FileNames[i], BootModuleDirectory,
+	RET_ERR(IoCreateDevicelessFile(FileNames[i], BootModulesDirectory,
 				       FileSize, &File));
 	assert(File);
 	assert(File->Fcb);
 	CcPinDataEx(File->Fcb, 0, FileSize, FALSE, LdrpPinDataCallback, FileContent);
     }
-    ObDereferenceObject(BootModuleDirectory);
+    ObDereferenceObject(BootModulesDirectory);
 
     return STATUS_SUCCESS;
 }

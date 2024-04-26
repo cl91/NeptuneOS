@@ -1408,24 +1408,26 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 {
     assert(FileObject);
     PIO_FILE_CONTROL_BLOCK Fcb = FileObject->Fcb;
-    assert(Fcb);
     /* If the file object has caching enabled, propagate its dirty maps to the volume FCB. */
-    if (Fcb->SharedCacheMap) {
+    if (Fcb && Fcb->SharedCacheMap) {
 	CiFlushPrivateCacheToShared(Fcb);
 	CiFlushDirtyDataToVolume(Fcb);
     }
-    PIO_FILE_CONTROL_BLOCK VolumeFcb = Fcb->Vcb->VolumeFcb;
+    assert(VolumeDevice);
+    PIO_FILE_CONTROL_BLOCK VolumeFcb = VolumeDevice->Vcb->VolumeFcb;
     assert(VolumeFcb);
     CiFlushPrivateCacheToShared(VolumeFcb);
     /* At this point all dirty bits should have been migrated to the volume FCB shared map. */
-    if (Fcb != VolumeFcb && Fcb->SharedCacheMap) {
+    if (Fcb && Fcb != VolumeFcb && Fcb->SharedCacheMap) {
 	LoopOverView(View, Fcb->SharedCacheMap) {
 	    assert(!View->DirtyMap);
 	}
     }
-    LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
-	LoopOverView(View, CacheMap) {
-	    assert(!View->DirtyMap);
+    if (Fcb) {
+	LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
+	    LoopOverView(View, CacheMap) {
+		assert(!View->DirtyMap);
+	    }
 	}
     }
     LoopOverList(CacheMap, &VolumeFcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
@@ -1490,7 +1492,7 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
     LoopOverList(Req, &CallbackInfo->ReqList, PAGED_WRITE_REQUEST, Link) {
 	IO_REQUEST_PARAMETERS Irp = {
 	    .Flags = IOP_IRP_COMPLETION_CALLBACK,
-	    .Device.Object = Fcb->Vcb->StorageDevice,
+	    .Device.Object = VolumeDevice->Vcb->StorageDevice,
 	    .File.Object = NULL,
 	    .MajorFunction = IRP_MJ_WRITE,
 	    .InputBuffer = Req->MappedAddress,

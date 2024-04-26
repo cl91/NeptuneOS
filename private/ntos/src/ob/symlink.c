@@ -1,6 +1,8 @@
+#include "obp.h"
+#include "ex.h"
+#include "ntrtl.h"
 #include "ntstatus.h"
 #include "ob.h"
-#include "obp.h"
 #include "util.h"
 
 typedef struct _OBJECT_SYMBOLIC_LINK {
@@ -51,14 +53,30 @@ static NTSTATUS ObpSymlinkObjectParseProc(IN POBJECT Self,
 {
     assert(Self);
     assert(Path);
-    if (Path[0]) {
-	return STATUS_OBJECT_TYPE_MISMATCH;
-    }
+    assert(Path[0] != OBJ_NAME_PATH_SEPARATOR);
     POBJECT_SYMBOLIC_LINK Link = Self;
     assert(Link->LinkTarget);
     assert(Link->LinkTargetObject);
+    ULONG PathLen = strlen(Path);
+    ULONG LinkTargetLen = strlen(Link->LinkTarget);
+    ULONG StringSize = LinkTargetLen + 1;
+    if (PathLen) {
+	StringSize += PathLen + 1;
+    }
+    PCHAR NewPath = ExAllocatePoolWithTag(StringSize, OB_PARSE_TAG);
+    if (!NewPath) {
+	*RemainingPath = Path;
+	*FoundObject = NULL;
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlCopyMemory(NewPath, Link->LinkTarget, LinkTargetLen);
+    if (PathLen) {
+	NewPath[LinkTargetLen] = OBJ_NAME_PATH_SEPARATOR;
+	RtlCopyMemory(NewPath + LinkTargetLen + 1, Path, PathLen);
+    }
+    NewPath[StringSize-1] = '\0';
     *FoundObject = Link->LinkTargetObject;
-    *RemainingPath = Link->LinkTarget;
+    *RemainingPath = NewPath;
     return STATUS_REPARSE_OBJECT;
 }
 

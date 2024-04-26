@@ -1,3 +1,4 @@
+#include "ntdef.h"
 #include <wdmp.h>
 #include <avltree.h>
 
@@ -808,14 +809,6 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
     /* This routine should be called in a context where we are allowed to sleep. */
     assert(KiCurrentCoroutineStackTop);
 
-    PFSRTL_COMMON_FCB_HEADER Fcb = FileObject->FsContext;
-    assert(Fcb);
-    if (!Fcb || !Fcb->CacheMap) {
-	if (IoStatus) {
-	    IoStatus->Status = STATUS_INVALID_PARAMETER;
-	}
-	return;
-    }
     PFLUSH_CACHE_REQUEST Req = ExAllocatePool(sizeof(FLUSH_CACHE_REQUEST));
     if (!Req) {
 	if (IoStatus) {
@@ -824,7 +817,8 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
 	return;
     }
     assert(!IopOldEnvToWakeUp);
-    PVPB Vpb = ((PCACHE_MAP)Fcb->CacheMap)->Vpb;
+    PFSRTL_COMMON_FCB_HEADER Fcb = FileObject->FsContext;
+    PVPB Vpb = Fcb ? ((PCACHE_MAP)Fcb->CacheMap)->Vpb : FileObject->DeviceObject->Vpb;
     assert(Vpb);
     assert(Vpb->DeviceObject);
     Req->DeviceHandle = Vpb->DeviceObject->Private.Handle;

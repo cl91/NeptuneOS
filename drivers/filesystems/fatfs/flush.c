@@ -9,6 +9,7 @@
 /* INCLUDES *****************************************************************/
 
 #include "fatfs.h"
+#include "ntstatus.h"
 
 #include <debug.h>
 

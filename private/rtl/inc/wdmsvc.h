@@ -2,6 +2,7 @@
 
 #include <nt.h>
 #include <debug.h>
+#include <util.h>
 #include <services.h>
 #include <wdmsvc_gen.h>
 

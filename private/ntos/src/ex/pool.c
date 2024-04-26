@@ -448,14 +448,20 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 /*
  * Note: on successful allocation, allocated memory is always zeroed.
  */
-PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
-			    IN ULONG Tag)
+PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes, IN ULONG Tag)
 {
     return EiAllocatePoolWithTag(&EiPool, NumberOfBytes, Tag);
 }
 
-VOID ExFreePoolWithTag(IN PCVOID Ptr,
-		       IN ULONG Tag)
+VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag)
 {
     EiFreePoolWithTag(&EiPool, Ptr, Tag);
+}
+
+/* Check if tag is correct */
+BOOLEAN ExCheckPoolObjectTag(IN PCVOID Ptr, IN ULONG Tag)
+{
+    PEX_POOL_HEADER Header = EX_POOL_BLOCK_TO_HEADER(Ptr);
+    assert(Header->Used);
+    return Header->Used && Header->Tag == Tag;
 }

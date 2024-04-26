@@ -23,7 +23,7 @@ NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
 {
     assert(ObObjectIsType(Parent, OBJECT_TYPE_KEY));
     assert(ObObjectIsType(Subobject, OBJECT_TYPE_KEY));
-    assert(!ObpPathHasSeparator(Subpath));
+    assert(!ObPathHasSeparator(Subpath));
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Parent;
     PCM_KEY_OBJECT SubKey = (PCM_KEY_OBJECT)Subobject;
     CmpInsertNamedNode(Parent, &SubKey->Node, Subpath);
@@ -62,7 +62,7 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     }
 
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
-    ULONG NameLength = ObpLocateFirstPathSeparator(Path);
+    ULONG NameLength = ObLocateFirstPathSeparator(Path);
     if (NameLength == 0) {
 	return STATUS_OBJECT_NAME_INVALID;
     }
@@ -132,7 +132,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 
     /* If we get here, it means that we are creating a new sub-key.
      * Check that the path does not contain a path separator. */
-    if (ObpPathHasSeparator(Path)) {
+    if (ObPathHasSeparator(Path)) {
 	return STATUS_OBJECT_NAME_INVALID;
     }
 
@@ -145,7 +145,10 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     DbgTrace("Creating subkey under path %s\n", Path);
     RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&SubKey, &CreaCtx));
     RET_ERR_EX(ObInsertObject(Key, SubKey, Path, OBJ_NO_PARSE),
-	       ObDereferenceObject(SubKey));
+	       {
+		   ObDereferenceObject(SubKey);
+		   *RemainingPath = Path;
+	       });
 
     *OpenedInstance = SubKey;
     *RemainingPath = Path + strlen(Path);

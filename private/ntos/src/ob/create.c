@@ -1,4 +1,8 @@
 #include "obp.h"
+#include "ex.h"
+#include "ntdef.h"
+#include "ntstatus.h"
+#include "ob.h"
 
 static OBJECT_TYPE ObpObjectTypes[MAX_NUM_OBJECT_TYPES];
 LIST_ENTRY ObpObjectList;
@@ -17,11 +21,6 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
     assert(TypeName != NULL);
     assert(ObjectBodySize != 0);
     assert(Init.CreateProc != NULL);
-    /* The remove procedure cannot be NULL if the insert procedure
-     * is supplied. */
-    if (Init.InsertProc != NULL) {
-	assert(Init.RemoveProc != NULL);
-    }
 
     POBJECT_TYPE ObjectType = ObpGetObjectType(Type);
     ObjectType->Name = TypeName;
@@ -54,6 +53,10 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
  * The directory object can be NULL, in which case the root object
  * directory is assumed. In this case you must specify an absolute
  * path.
+ *
+ * If OBJ_CREATE_DIR_IF flag is specified, intermediate directory objects
+ * will be created if they don't yet exist. You cannot specify OBJ_NO_PARSE
+ * if you have specified OBJ_CREATE_DIR_IF.
  */
 NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 			IN POBJECT Object,
@@ -62,17 +65,21 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 {
     assert(Object != NULL);
     assert(Path != NULL);
+    if ((Flags & OBJ_NO_PARSE) && (Flags & OBJ_CREATE_DIR_IF)) {
+	return STATUS_INVALID_PARAMETER;
+    }
     ObRemoveObject(Object);
 
     POBJECT Parent = DirectoryObject ? DirectoryObject : ObpRootObjectDirectory;
     PCSTR RemainingPath = Path;
+    PCSTR StringToFree = NULL;
     if (!(Flags & OBJ_NO_PARSE)) {
 	/* Note that we don't check the return value of the lookup here,
 	 * because we rely on the remaining path to determine whether the
 	 * path has been fully parsed. */
-	ObParseObjectByName(DirectoryObject, Path,
-			    !!(Flags & OBJ_CASE_INSENSITIVE),
-			    &Parent, &RemainingPath);
+	ObpParseObjectByName(DirectoryObject, Path,
+			     !!(Flags & OBJ_CASE_INSENSITIVE),
+			     &Parent, &RemainingPath, &StringToFree);
 	assert(Parent != NULL);
 	assert(RemainingPath != NULL);
     }
@@ -81,16 +88,41 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
     }
     /* If the remaining path is empty, it means that there is already an
      * object with the given path. In this case we reject the insertion. */
+    NTSTATUS Status;
     if (*RemainingPath == '\0') {
-	return STATUS_OBJECT_NAME_COLLISION;
+	Status = STATUS_OBJECT_NAME_COLLISION;
+	goto out;
     }
 
     /* The ObjectName of the object header is owned by the object
      * so we need to allocate storage for it. When the object is
      * deleted, the ObjectName is freed by the object manager. */
-    PCSTR ObjectName = RtlDuplicateString(RemainingPath, NTOS_OB_TAG);
+    PCHAR ObjectName = RtlDuplicateString(RemainingPath, NTOS_OB_TAG);
     if (!ObjectName) {
-	return STATUS_NO_MEMORY;
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
+    if (Flags & OBJ_CREATE_DIR_IF) {
+	ULONG Sep = ObLocateFirstPathSeparator(ObjectName);
+	while (ObjectName[Sep] == OBJ_NAME_PATH_SEPARATOR && ObjectName[Sep+1]) {
+	    ObjectName[Sep] = '\0';
+	    POBJECT_DIRECTORY DirObj = NULL;
+	    Status = ObCreateDirectoryEx(Parent, ObjectName, &DirObj);
+	    if (!NT_SUCCESS(Status)) {
+		ObpFreePool(ObjectName);
+		goto out;
+	    }
+	    PCHAR NewObjName = RtlDuplicateString(ObjectName+Sep+1, NTOS_OB_TAG);
+	    if (!NewObjName) {
+		ObpFreePool(ObjectName);
+		goto out;
+	    }
+	    ObpFreePool(ObjectName);
+	    ObjectName = NewObjName;
+	    Parent = DirObj;
+	    Sep = ObLocateFirstPathSeparator(ObjectName);
+	}
     }
 
     POBJECT_HEADER ParentHeader = OBJECT_TO_OBJECT_HEADER(Parent);
@@ -101,16 +133,29 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 	  Object, Parent, ObjectName);
     OBJECT_INSERT_METHOD InsertProc = ParentHeader->Type->TypeInfo.InsertProc;
     if (InsertProc == NULL) {
-	return STATUS_INVALID_PARAMETER;
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
     }
 
-    RET_ERR_EX(InsertProc(Parent, Object, ObjectName),
-	       ObpFreePool(ObjectName));
+    Status = InsertProc(Parent, Object, ObjectName);
+    if (!NT_SUCCESS(Status)) {
+	ObpFreePool(ObjectName);
+	goto out;
+    }
 
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     ObjectHeader->ParentObject = Parent;
     ObjectHeader->ObjectName = ObjectName;
-    return STATUS_SUCCESS;
+    /* We need to increase the refcount of the parent object so it cannot be
+     * deleted before all its children are deleted. */
+    ObpReferenceObject(Parent);
+    Status = STATUS_SUCCESS;
+
+out:
+    if (StringToFree) {
+	ExFreePoolWithTag(StringToFree, OB_PARSE_TAG);
+    }
+    return Status;
 }
 
 /*

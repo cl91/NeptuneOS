@@ -10,55 +10,54 @@ static inline BOOLEAN NeedReparse(IN NTSTATUS Status)
  * starting from the given directory object, and parse as much path as
  * is possible. If the entire path can be parsed, the object returned
  * is the final object that corresponds to the full path. In this case
- * the pRemainingPath pointer points to the last \NUL byte of the path
- * string. If there is remaining path leftover, the object returned is
- * the final object at which the parse failed. The remaining path points
- * to the sub-path that is yet to be parsed.
+ * the RemainingPath pointer points to an empty string. If there is
+ * remaining path leftover, the object returned is the final object at
+ * which the parse failed. The remaining path points to the sub-path
+ * that is yet to be parsed. The remaining path does NOT include the
+ * leading OBJ_NAME_PATH_SEPARATOR. The remaining path returned is never
+ * NULL, likewise for FoundObject.
  *
  * Directory object can be NULL, in which case the root object directory
  * is assumed. In this case you must specify an absolute path (one
  * that starts with the OBJ_NAME_PATH_SEPARATOR).
  *
- * If the parse procedure returns error, the resulting object of the
- * last successful parse is returned, as well as the remaining path
- * that is yet to be parsed. The remaining path does NOT include the
- * leading OBJ_NAME_PATH_SEPARATOR. The remaining path returned is
- * never NULL, likewise for FoundObject.
- *
  * If at any point the parse procedure returned STATUS_REPARSE or
  * STATUS_REPARSE_OBJECT, the object manager restarts a new parse from
  * the very beginning, using the path string returned by the parse
- * routine.
+ * routine. The parse routine must always allocate the new string on the
+ * ExPool with OB_PARSE_TAG. We generate an assertion if this has not
+ * been maintained.
  *
- * Note that you should not free the remaining path returned by this
- * routine. If you need to store the string returned by the remaining
- * path, you should make a copy.
+ * On return, *StringToFree contains the pointer to the string that the
+ * caller needs to free. The caller must free it using the OB_PARSE_TAG.
  */
-NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
-			     IN PCSTR Path,
-			     IN BOOLEAN CaseInsensitive,
-			     OUT POBJECT *FoundObject,
-			     OUT PCSTR *pRemainingPath)
+NTSTATUS ObpParseObjectByName(IN POBJECT DirectoryObject,
+			      IN PCSTR Path,
+			      IN BOOLEAN CaseInsensitive,
+			      OUT POBJECT *FoundObject,
+			      OUT PCSTR *pRemainingPath,
+			      OUT PCSTR *StringToFree)
 {
     assert(ObpRootObjectDirectory != NULL);
     assert(Path != NULL);
     assert(FoundObject != NULL);
     /* If the directory object is NULL, the path must be an absolute path. */
     assert(DirectoryObject != NULL || Path[0] == OBJ_NAME_PATH_SEPARATOR);
+    *StringToFree = NULL;
 
     /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
     if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
 	Path++;
     }
 
-    /* Points to the terminating '\0' charactor of Path */
+    /* Points to the terminating NUL of Path */
     UNUSED PCSTR LastByte = Path + strlen(Path);
 
     /* Recursively invoke the parse procedure of the object, until
      * one of the following is true:
-     *   1. The remaining path is empty
-     *   2. The parse procedure returns a failure status
-     *   3. The parse procedure is NULL
+     *   1. The parse procedure is NULL
+     *   2. The parse procedure returns STATUS_NTOS_STOP_PARSING
+     *   3. The parse procedure returns a failure status
      */
     POBJECT Object = DirectoryObject ? DirectoryObject : ObpRootObjectDirectory;
     NTSTATUS Status = STATUS_SUCCESS;
@@ -66,33 +65,27 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
     while (TRUE) {
 	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
 	OBJECT_PARSE_METHOD ParseProc = ObjectHeader->Type->TypeInfo.ParseProc;
-	if (ParseProc == NULL) {
-	    if (Path && *Path) {
-		/* The object type does not support subobject or namespace. */
-		Status = STATUS_OBJECT_TYPE_MISMATCH;
-	    } else {
-		/* Path is empty. Parse succeeded. */
-		Status = STATUS_SUCCESS;
-	    }
+	if (!ParseProc) {
 	    break;
 	}
 	POBJECT Subobject = NULL;
 	PCSTR RemainingPath = NULL;
 	Status = ParseProc(Object, Path, CaseInsensitive, &Subobject, &RemainingPath);
 	if (!NT_SUCCESS(Status) || Status == STATUS_NTOS_STOP_PARSING) {
-	    if (Path && *Path) {
-		/* The object type does not support subobject or namespace. */
-		Status = STATUS_OBJECT_TYPE_MISMATCH;
-	    } else {
-		/* Path is empty. Parse succeeded. */
-		Status = STATUS_SUCCESS;
-	    }
 	    break;
 	}
 	assert(RemainingPath != NULL);
 	/* If the parse procedure returned REPARSE, it will set Subobject to the new
-	 * root object and remaining path to the new path to be parsed */
-	if (!NeedReparse(Status)) {
+	 * root object and RemainingPath to the new path to be parsed. The new path
+	 * string must be allocated from the pool with OB_PARSE_TAG. */
+	if (NeedReparse(Status)) {
+	    assert(RemainingPath);
+	    assert(ExCheckPoolObjectTag(RemainingPath, OB_PARSE_TAG));
+	    if (*StringToFree) {
+		ExFreePoolWithTag(*StringToFree, OB_PARSE_TAG);
+	    }
+	    *StringToFree = RemainingPath;
+	} else {
 	    /* Parse procedure should not return a NULL Subobject (unless reparsing) */
 	    assert(Subobject != NULL);
 	    /* Remaining path should also be within the original Path (unless reparsing) */
@@ -111,6 +104,31 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
 
     *pRemainingPath = Path;
     *FoundObject = Object;
+    assert(Path);
+    assert(Object);
+    if (Path && *Path) {
+	/* The object type does not support subobject or namespace. */
+	return STATUS_OBJECT_PATH_NOT_FOUND;
+    } else {
+	/* Path is empty. Parse succeeded. */
+	return STATUS_SUCCESS;
+    }
+}
+
+NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
+			     IN PCSTR Path,
+                             IN BOOLEAN CaseInsensitive,
+                             OUT POBJECT *FoundObject)
+{
+    PCSTR RemainingPath = NULL, StringToFree = NULL;
+    NTSTATUS Status = ObpParseObjectByName(DirectoryObject, Path, CaseInsensitive,
+					   FoundObject, &RemainingPath, &StringToFree);
+    if (StringToFree) {
+	ExFreePoolWithTag(StringToFree, OB_PARSE_TAG);
+    }
+    if (!NT_SUCCESS(Status)) {
+	*FoundObject = NULL;
+    }
     return Status;
 }
 
@@ -143,8 +161,8 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
     ASYNC_BEGIN(AsyncState, Locals, {
 	    POBJECT Object;
 	    POBJECT OpenedInstance;
-	    POBJECT UserRootDirectory;
 	    PCSTR Path;
+	    PCSTR StringToFree;
 	});
 
     if (ObjectAttributes.ObjectNameBuffer == NULL && ObjectAttributes.RootDirectory == NULL) {
@@ -153,7 +171,6 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
 
     Locals.Object = ObpRootObjectDirectory;
     Locals.OpenedInstance = NULL;
-    Locals.UserRootDirectory = NULL;
     Locals.Path = ObjectAttributes.ObjectNameBuffer ? ObjectAttributes.ObjectNameBuffer : "";
 
     /* If caller has specified a root directory, the object path must be relative */
@@ -163,14 +180,15 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
     /* Get the root directory if user has specified one. Otherwise, default to the
      * global root object directory. */
     if (ObjectAttributes.RootDirectory != NULL) {
+	POBJECT UserRootDirectory = NULL;
 	ASYNC_RET_ERR(AsyncState, ObReferenceObjectByHandle(Thread,
 							    ObjectAttributes.RootDirectory,
 							    OBJECT_TYPE_ANY,
-							    &Locals.UserRootDirectory));
-	assert(Locals.UserRootDirectory != NULL);
-	Locals.Object = Locals.UserRootDirectory;
+							    &UserRootDirectory));
+	assert(UserRootDirectory != NULL);
 	/* ObReferenceObjectByHandle increased reference count, so we need to dereference it. */
-	ObDereferenceObject(Locals.Object);
+	ObDereferenceObject(UserRootDirectory);
+	Locals.Object = UserRootDirectory;
     }
     /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
     if (Locals.Path[0] == OBJ_NAME_PATH_SEPARATOR) {
@@ -203,13 +221,15 @@ parse:
 	    goto out;
 	}
     }
-    /* If the parse routine indicates reparse, rerun the parse routine with the
-     * new path utill it finds the actual object. */
     if (NeedReparse(Status)) {
-	/* Note although the parse routine returned a new string in the RemainingPath,
-	 * we do not need to worry about freeing this string, as the parse routine shall
-	 * take care of recording this string and freeing it later when the object closes. */
+	/* If the parse routine indicates reparse, RemainingPath will be the
+	 * new path with which we should restart the parse from. */
 	ObDbg("Reparsing with new path %s\n", RemainingPath);
+	assert(ExCheckPoolObjectTag(RemainingPath, OB_PARSE_TAG));
+	if (Locals.StringToFree) {
+	    ExFreePoolWithTag(Locals.StringToFree, OB_PARSE_TAG);
+	}
+	Locals.StringToFree = RemainingPath;
 	/* If the parse routine returned a subobject, use that as the new object to
 	 * start the reparse from. Otherwise, assume the root object directory. */
         Locals.Object = Subobject ? Subobject : ObpRootObjectDirectory;
@@ -242,8 +262,7 @@ open:
     if (OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc == NULL) {
 	ObDbg("Type %s does not have an open procedure\n",
 	      OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Name);
-	Status = STATUS_OBJECT_NAME_INVALID;
-	goto out;
+	goto done;
     }
 
     /* Increase the reference count of the object so it doesn't get deleted by another
@@ -261,7 +280,7 @@ open:
     /* Now that the open is done, dereference the object. */
     ObDereferenceObject(Locals.Object);
 
-    /* The open routine should always set the remaining path */
+    /* The open routine should always set the remaining path. */
     assert(RemainingPath != NULL);
     if (!NT_SUCCESS(Status)) {
 	ObDbg("Opening path %s on object %p failed, remaining path = %s\n",
@@ -270,23 +289,24 @@ open:
     }
     Locals.Path = RemainingPath;
 
-    /* If the open procedure returned REPARSE, restart the process from the
-     * very beginning. Note that just like the similar situation above, we do
-     * not need to worry about freeing the string returned by the open routine
-     * in the RemainingPath variable, because the open routine will take care of
-     * recording the allocation and freeing it later, when the object is closed. */
     if (NeedReparse(Status)) {
-	/* If reparsing, the open procedure should never touch OpenedInstance */
-	assert(OpenedInstance == NULL);
-	/* If we have an absolute path, reparse should start from the global root directory */
-	if (*Locals.Path == OBJ_NAME_PATH_SEPARATOR) {
-	    Locals.Object = ObpRootObjectDirectory;
+	/* If the open procedure returned REPARSE, restart the whole process from the
+	 * very beginning. In this case the RemainingPath will be the new path with
+	 * which we should restart the parse from. */
+	ObDbg("Reparsing with new path %s\n", RemainingPath);
+	assert(ExCheckPoolObjectTag(RemainingPath, OB_PARSE_TAG));
+	if (Locals.StringToFree) {
+	    ExFreePoolWithTag(Locals.StringToFree, OB_PARSE_TAG);
 	}
-	/* Otherwise, for a relative path reparse should start from the current object.
-	 * In this case we do not need to do anything. */
-	ObDbg("Reparsing with new path %s\n", Locals.Path);
+	Locals.StringToFree = RemainingPath;
+	/* If the open routine returned a subobject, use that as the new object to
+	 * start the reparse from. Otherwise, assume the root object directory. */
+        Locals.Object = OpenedInstance ? OpenedInstance : ObpRootObjectDirectory;
+	assert(!Locals.OpenedInstance);
     } else {
-	/* If the open succeeded, OpenedInstance should not be NULL. */
+	/* If the open succeeded, OpenedInstance should not be NULL. Note in this
+	 * case the open procedure must increase the reference count of the opened
+	 * instance before returning. */
 	assert(OpenedInstance != NULL);
 	/* Record the newly opened instance. */
 	Locals.Object = OpenedInstance;
@@ -298,22 +318,24 @@ open:
     }
     /* If the remaining path is not empty, invoke the parse routine of the newly
      * opened instance with the remaining path, until the remaining path is empty.
-     * This also applies to the reparse case aboove, in which case we invoke the
-     * parse routine on the original object with the new path. Note we will not
-     * invoke any open routines from this point on in the case where the open
-     * succeeded without reparsing.  */
+     * This also applies if the open routine returned REPARSE, in which case we
+     * restart the whole process from the beginning with the new path. Note we will
+     * not invoke any open routines from this point on in the case where the open
+     * succeeded without reparsing. */
     if (*Locals.Path != '\0') {
 	goto parse;
     } else if (NeedReparse(Status)) {
 	/* The new path cannot be empty. It is an error if the parse routine
-	 * returned REPARSE with an empty path string. */
+	 * returned REPARSE with an empty path string (in other words, we don't
+	 * allow the root object directory to have any alias). */
 	assert(FALSE);
 	Status = STATUS_OBJECT_NAME_INVALID;
+	goto out;
     }
 
 done:
     if (*Locals.Path != '\0') {
-	assert(!NT_SUCCESS(Status));
+	Status = STATUS_OBJECT_NAME_INVALID;
 	goto out;
     }
     /* Remaining path is empty. Open is successful. Check the object type. */
@@ -322,6 +344,7 @@ done:
 	if (AssignHandle) {
 	    Status = ObCreateHandle(Thread->Process, Locals.Object, pHandle);
 	} else {
+	    ObpReferenceObject(Locals.Object);
 	    *pHandle = Locals.Object;
 	}
     } else {
@@ -329,8 +352,15 @@ done:
     }
 
 out:
-    if (!NT_SUCCESS(Status) && Locals.OpenedInstance) {
-	/* FIXME: TODO: Invoke the delete procedure of the opened instance */
+    if (Locals.StringToFree) {
+	ExFreePoolWithTag(Locals.StringToFree, OB_PARSE_TAG);
+    }
+    /* Note even in the case of a successful open, we should decrease the refcount
+     * of the OpenedInstance, because the open procedure increased its refcount.
+     * In the case of a successful open, the final opened object will have its
+     * refcount increased, so in the end the refcounting is correctly maintained. */
+    if (Locals.OpenedInstance) {
+	ObDereferenceObject(Locals.OpenedInstance);
     }
     ASYNC_END(AsyncState, Status);
 }

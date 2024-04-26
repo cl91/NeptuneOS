@@ -15,9 +15,11 @@
  * Private flags for object creation. See public/ndk/inc/ntobapi.h
  * for public flags. See ntos/src/ob/create.c for details.
  */
-#define OBJ_NO_PARSE	0x1000L
+#define OBJ_NO_PARSE		0x1000UL
+#define OBJ_CREATE_DIR_IF	0x2000UL
 
 C_ASSERT((OBJ_VALID_ATTRIBUTES & OBJ_NO_PARSE) == 0);
+C_ASSERT((OBJ_VALID_ATTRIBUTES & OBJ_CREATE_DIR_IF) == 0);
 
 /* Unlike in Windows, the ObjectType itself is not a type.
  *
@@ -52,7 +54,8 @@ typedef enum _OBJECT_TYPE_ENUM {
     OBJECT_TYPE_ANY = MAX_NUM_OBJECT_TYPES
 } OBJECT_TYPE_ENUM;
 
-/* Object format:
+/*
+ *Object format:
  *
  *    |-------------|
  *    |OBJECT_HEADER|
@@ -64,106 +67,6 @@ typedef enum _OBJECT_TYPE_ENUM {
  * object body, not the object header. To avoid confusion we
  * always pass OBJECT pointers across function boundary, and
  * never pass OBJECT_HEADER pointers.
- *
- * In the Windows/ReactOS design, an object type can implement
- * the semantics of sub-objecting by defining a parse method,
- * which parses part of the object path to produce a sub-object.
- * The object manager recursively invokes the parse method when
- * when opening an object.
- *
- * In our design a complication arises due to the fact that we
- * run the NT Executive in user space. Opening an object may
- * involve, for instance, queuing an IRP to a driver object and
- * suspending the Executive service processing for the current
- * thread. Therefore the "parse" procedure need to take an async
- * context. On the other hand, for objects that live inside the
- * NT Executive address space, or for objects that have already
- * been opened, we need a way to make sure that the "parse"
- * procedure will never suspend, so that it is safe to call it
- * when the server does not have an async context in that moment.
- *
- * The solution we have here is to have two types of "parse"
- * procedures: one that does not take an async context, and one
- * that does. The "parse" procedure that does NOT take an async
- * state is called the parse procedure in our codebase and the
- * "parse" procedure that DOES take an async state is called the
- * open procedure. Both take the sub-path being parsed as an
- * argument and both implement the semantics of sub-objecting.
- *
- * The parse procedure will typically examine the cached object
- * database to locate the sub-object given by the sub-path. These
- * can include the sub-objects that have already been opened (by
- * the open procedure) or sub-objects that always live locally
- * (in the address space of the NT Executive). The parse procedure
- * operates on a global context, meaning that it does not take
- * a PTHREAD parameter and cannot modify THREAD states.
- *
- * On the other hand, the open procedure operates on a thread
- * context, meaning that it takes a PTHREAD parameter and can
- * modify the THREAD states. The open procedure will typically
- * queue an IRP or (asynchronously) query an out-of-process
- * database to find the specified sub-object. In particular,
- * if the sub-path being parsed is empty, an open procedure can
- * return a different object type to implement the semantics of
- * an opened instance of the original object. This is employed
- * by the IO manager extensively: opening a DEVICE object gives
- * a FILE object.
- *
- * The object manager provides two public interfaces,
- * ObReferenceObjectByName and ObOpenObjectByName, to implement
- * the notion of looking up an object path and opening an object.
- * ObReferenceObjectByName only calls the parse procedure, and
- * always returns the pointer to the original object (such as
- * a DEVICE object), as opposed to the opened instance (such as
- * a FILE object). ObOpenObjectByName invokes both the parse
- * and the open procedures, and assigns a handle to the opened
- * instance. It therefore must be called with an async context,
- * whereas ObReferenceObjectByName does not need one. This also
- * means that an additional semantic difference between the
- * parse routine and the open routine is that the open routine
- * expects the opened instance to be assigned a handle after
- * a successful open (although the open routine itself does not
- * need to be concerned with handle assignment), while the parse
- * routine does not expect so. Generally speaking, parsing is
- * a non-invasive procedure where in case of error, one can simply
- * throw the parsed object away, while opening is an "invasive"
- * routine where one must take care of properly closing an opened
- * instance when one is done with the opened object (or in the
- * case of an error).
- *
- * The IO subsystem uses the facilities of the object manager
- * extensively. Since opening a device or a file is inherently
- * an asynchronous process, the IO subsystem uses a two-step
- * scheme when opening or creating a file. First, the parse
- * procedures are invoked on the given path to locate the DEVICE
- * object to be opened. For a simple DEVICE such as \Device\Beep,
- * the parse prodecure will essentially be a no-op since the
- * device does not implement sub-objects. The object manager
- * then invokes the open procedure of the DEVICE object, which
- * will yield a FILE_OBJECT, representing an opened instance of
- * the DEVICE object. The open procedure will then queue the IRP
- * to the thread calling the NT system service and depending on
- * whether the open is synchronous or asynchronous, either wait
- * on the IO completion event or return STATUS_PENDING.
- *
- * For a more complex device such as a volume object, its parse
- * procedure will take the remaining path after the device name
- * (ie. the src\main.c in \Device\Harddisk0\Partition0\src\main.c)
- * and first invoke the cache manager and see if the file has been
- * previously opened. If it was previously opened, the cached device
- * object is returned immediately. Otherwise, the open procedure
- * is invoked just like the simple case above.
- *
- * On the other hand, closing an object is always a lazy process.
- * We simply flag the object for closing and queues the object
- * closure IRP to the driver process (if it's created by a driver).
- * The close routine does not wait for the driver's response and
- * is therefore synchronous. This simplifies the error paths,
- * especially in an asynchronous function.
- *
- * All object methods operate with in-process pointers. Assigning
- * HANDLEs to opened objects is done by the object manager itself.
- * Open routines do not need to be concered with handle assignment.
  */
 typedef PVOID POBJECT;
 typedef struct _OBJECT_HEADER {
@@ -326,9 +229,15 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
  * points to the new path to be parsed), and does NOT include the
  * leading OBJ_NAME_PATH_SEPARATOR.
  *
+ * When returning REPARSE, the parse routine must allocate the
+ * RemainingPath string from the pool with tag OB_PARSE_TAG. When
+ * returning an error status, the parse routine must set the
+ * RemainingPath to the original Path passed into the parse routine.
+ *
  * The parse procedure should not increase the reference count of
- * the object. All reference counting is done by the object manager.
+ * the object.
  */
+#define OB_PARSE_TAG	(EX_POOL_TAG('P', 'A', 'R', 'S'))
 typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
 					IN PCSTR Path,
 					IN BOOLEAN CaseInsensitive,
@@ -362,9 +271,9 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  * RemainingPath points to the new path to be parsed), and does NOT
  * include the leading OBJ_NAME_PATH_SEPARATOR.
  *
- * Like the parse procedure, the open procedure should not increase the
- * reference count of the object being opened or the opened instance.
- * All reference counting is done by the object manager.
+ * Unlike the parse procedure, the open procedure SHOULD increase the
+ * reference count of returned *pOpenedInstance object, except in the
+ * case of reparsing.
  */
 typedef enum _OPEN_CONTEXT_TYPE {
     OPEN_CONTEXT_DEVICE_OPEN,	/* IO_OPEN_CONTEXT */
@@ -388,8 +297,13 @@ typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
  * identifier name of the sub-object. The insert procedure is called
  * during object creation, where user can specify the parent object
  * and name of the object as part of the object attributes. The insert
- * procedure should not increase the reference count as it is done
- * by the object manager.
+ * procedure should not increase the reference count of either the
+ * parent or the subobject. Increasing the refcount of the appropriate
+ * object is done by the object manager.
+ *
+ * Note you cannot call ObInsertObject to insert the subobject into
+ * another object inside an insert procedure. Doing so will corrupt
+ * the object header of the subobjects.
  */
 typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Parent,
 					 IN POBJECT Subobject,
@@ -401,10 +315,8 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Parent,
  * object deletion and likewise should not decrease the reference count
  * of the object as it is done by the object manager.
  *
- * The remove procedure cannot be NULL if the insert procedure is
- * supplied. Note when the object manager removes an object, it calls
- * the RemoveProc of its parent object type, rather than the object type
- * itself.
+ * Note when the object manager removes an object, it calls the RemoveProc
+ * of its parent object type, rather than the object type itself.
  */
 typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Subobject);
 
@@ -489,29 +401,31 @@ typedef struct _HANDLE_TABLE_ENTRY {
  */
 #define HANDLE_VALUE_INC 4
 
-/*
- * Helper function to locate the first path separator.
- *
- * This should only be called within the object type's parse/open routines
- */
-static inline ULONG ObpLocateFirstPathSeparator(IN PCSTR Path)
+/* Helper function to locate the first path separator. */
+static inline ULONG ObLocateFirstPathSeparator(IN PCSTR Path)
 {
     /* Extract the name of the sub-object, which will be whatever is before
      * the first OBJ_NAME_PATH_SEPARATOR. The remaining path will be whatever
      * is left after the first OBJ_NAME_PATH_SEPARATOR (possibly empty). */
-    ULONG NameLength = 0;
-    for (PCSTR Ptr = Path; (*Ptr != '\0') && (*Ptr != OBJ_NAME_PATH_SEPARATOR); Ptr++) {
-	NameLength++;
+    ULONG Idx = 0;
+    for (PCSTR Ptr = Path; *Ptr && *Ptr != OBJ_NAME_PATH_SEPARATOR; Ptr++) {
+	Idx++;
     }
-    return NameLength;
+    return Idx;
 }
 
-/*
- * Helper function to determine if the given path has a path separator.
- *
- * This should only be called within the object type's parse/open routines
- */
-static inline BOOLEAN ObpPathHasSeparator(IN PCSTR Path)
+/* Helper function to locate the last path separator. */
+static inline LONG ObLocateLastPathSeparator(IN PCSTR Path)
+{
+    LONG Idx = strlen(Path);
+    while (Idx >= 0 && Path[Idx] != OBJ_NAME_PATH_SEPARATOR) {
+	Idx--;
+    }
+    return Idx;
+}
+
+/* Helper function to determine if the given path has a path separator. */
+static inline BOOLEAN ObPathHasSeparator(IN PCSTR Path)
 {
     while (*Path != '\0') {
 	if (*Path == OBJ_NAME_PATH_SEPARATOR) {
@@ -551,7 +465,23 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 			IN ULONG Flags);
 
 /* dirobj.c */
-NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath);
+NTSTATUS ObCreateDirectoryEx(IN OPTIONAL POBJECT Parent,
+			     IN PCSTR DirectoryPath,
+                             OUT OPTIONAL POBJECT_DIRECTORY *DirObj);
+NTSTATUS ObDirectoryObjectSearchObject(IN POBJECT_DIRECTORY Directory,
+				       IN PCSTR Name,
+				       IN ULONG Length, /* Excluding trailing '\0' */
+				       IN BOOLEAN CaseInsensitive,
+				       OUT POBJECT *FoundObject);
+NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
+                                       IN POBJECT Object,
+				       IN PCSTR Name);
+VOID ObDirectoryObjectRemoveObject(IN POBJECT Subobject);
+SIZE_T ObDirectoryGetObjectCount(IN POBJECT_DIRECTORY DirObj);
+FORCEINLINE NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
+{
+    return ObCreateDirectoryEx(NULL, DirectoryPath, NULL);
+}
 
 /* obref.c */
 struct _PROCESS;
@@ -576,8 +506,7 @@ NTSTATUS ObClose(IN struct _PROCESS *Process,
 NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
 			     IN PCSTR Path,
 			     IN BOOLEAN CaseInsensitive,
-			     OUT POBJECT *FoundObject,
-			     OUT PCSTR *pRemainingPath);
+			     OUT POBJECT *FoundObject);
 NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE State,
 			      IN struct _THREAD *Thread,
 			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,

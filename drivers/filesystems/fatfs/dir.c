@@ -437,7 +437,9 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
     PIO_STACK_LOCATION Stack = IrpContext->Stack;
 
     Ccb = (PFATCCB)IrpContext->FileObject->FsContext2;
+    assert(Ccb);
     Fcb = (PFATFCB)IrpContext->FileObject->FsContext;
+    assert(Fcb);
 
     LONG BufferLength = Stack->Parameters.QueryDirectory.Length;
     PUCHAR Buffer = IrpContext->Irp->UserBuffer;
@@ -457,9 +459,8 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 	if (!Ccb->SearchPattern.Buffer) {
 	    FirstQuery = TRUE;
 	    Ccb->SearchPattern.MaximumLength = SearchPattern->Length + sizeof(WCHAR);
-	    Ccb->SearchPattern.Buffer =
-		ExAllocatePoolWithTag(Ccb->SearchPattern.MaximumLength,
-				      TAG_SEARCH);
+	    Ccb->SearchPattern.Buffer =	ExAllocatePoolWithTag(Ccb->SearchPattern.MaximumLength,
+							      TAG_SEARCH);
 	    if (!Ccb->SearchPattern.Buffer) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
@@ -469,8 +470,7 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
     } else if (!Ccb->SearchPattern.Buffer) {
 	FirstQuery = TRUE;
 	Ccb->SearchPattern.MaximumLength = 2 * sizeof(WCHAR);
-	Ccb->SearchPattern.Buffer = ExAllocatePoolWithTag(2 * sizeof(WCHAR),
-							   TAG_SEARCH);
+	Ccb->SearchPattern.Buffer = ExAllocatePoolWithTag(2 * sizeof(WCHAR), TAG_SEARCH);
 	if (!Ccb->SearchPattern.Buffer) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -487,7 +487,7 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 	DirContext.DirIndex = Ccb->Entry;
     }
 
-    DPRINT("Buffer=%p tofind=%wZ\n", Buffer, &Ccb->SearchPattern);
+    DPRINT("Buffer=%p tofind=%wZ FirstQuery=%d\n", Buffer, &Ccb->SearchPattern, FirstQuery);
 
     DirContext.DeviceExt = IrpContext->DeviceExt;
     DirContext.LongNameU.Buffer = LongNameBuffer;

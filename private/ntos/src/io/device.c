@@ -1,4 +1,15 @@
+#include "ex.h"
+#include "io.h"
 #include "iop.h"
+#include "ke.h"
+#include "mm.h"
+#include "ntdef.h"
+#include "ntioapi.h"
+#include "ntobapi.h"
+#include "ntrtl.h"
+#include "ntstatus.h"
+#include "ob.h"
+#include "util.h"
 
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
@@ -35,17 +46,28 @@ NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
     DbgTrace("Device %p trying to parse Path = %s case-%s\n", Self, Path,
 	     CaseInsensitive ? "insensitively" : "sensitively");
 
-    /* If the path is empty, we should stop parsing. */
+    *RemainingPath = Path;
+    *FoundObject = NULL;
+    PIO_FILE_CONTROL_BLOCK VolumeFcb = DevObj->Vcb ? DevObj->Vcb->VolumeFcb : NULL;
+    POBJECT_DIRECTORY Subobjs =  VolumeFcb ? VolumeFcb->Subobjects : NULL;
+    if (!Subobjs) {
+	return STATUS_OBJECT_PATH_NOT_FOUND;
+    }
+
+    /* If the path is empty, look for the root directory file "." */
     if (!Path[0]) {
-	return STATUS_NTOS_STOP_PARSING;
+	return ObDirectoryObjectSearchObject(Subobjs, ".", 1, FALSE, FoundObject);
     }
 
-    if (DevObj->Subobjects) {
-	return ObParseObjectByName(DevObj->Subobjects, Path, CaseInsensitive,
-				   FoundObject, RemainingPath);
+    ULONG Sep = ObLocateFirstPathSeparator(Path);
+    NTSTATUS Status = ObDirectoryObjectSearchObject(Subobjs, Path, Sep,
+						    CaseInsensitive, FoundObject);
+    if (!NT_SUCCESS(Status)) {
+	*FoundObject = NULL;
+	return Status;
     }
-
-    return STATUS_OBJECT_PATH_NOT_FOUND;
+    *RemainingPath = Path + Sep;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
@@ -59,60 +81,40 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
     DbgTrace("Inserting subobject %p (path %s) for device object %p\n",
 	     Object, Path, Self);
 
-    /* Object path must not be empty. */
+    /* Object path must not be empty. Object path must also not contain the path
+     * separator but this is checked below, by ObDirectoryObjectInsertObject. */
     if (*Path == '\0') {
-	DbgTrace("Cannot insert empty path\n");
+	assert(FALSE);
 	return STATUS_OBJECT_PATH_INVALID;
     }
 
-    /* Object path must not be absolute. */
-    if (*Path == OBJ_NAME_PATH_SEPARATOR) {
-	DbgTrace("Cannot insert absolute path %s\n", Path);
-	return STATUS_OBJECT_PATH_INVALID;
+    PIO_FILE_CONTROL_BLOCK VolumeFcb = DevObj->Vcb ? DevObj->Vcb->VolumeFcb : NULL;
+    POBJECT_DIRECTORY Subobjs =  VolumeFcb ? VolumeFcb->Subobjects : NULL;
+    if (!Subobjs) {
+	/* This should never happen because we have created the object directory
+	 * when mounting the volume. */
+	assert(FALSE);
+	return STATUS_NTOS_BUG;
     }
 
-    if (!DevObj->Subobjects) {
-	RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY,
-			       (POBJECT *)&DevObj->Subobjects, NULL));
-    }
-
-    assert(DevObj->Subobjects);
-    return ObInsertObject(DevObj->Subobjects, Object, Path, 0);
+    return ObDirectoryObjectInsertObject(Subobjs, Object, Path);
 }
 
 VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
 {
-    /* We don't need to do anything here because the remove proc of the
-     * directory object will take care of removing the subobject for us. */
+    ObDirectoryObjectRemoveObject(Subobject);
 }
 
-NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
-				 IN POBJECT Object,
-				 IN PCSTR SubPath,
-				 IN ULONG Attributes,
-				 IN POB_OPEN_CONTEXT Context,
-				 OUT POBJECT *pOpenedInstance,
-				 OUT PCSTR *pRemainingPath)
+NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       IN PIO_DEVICE_OBJECT Device,
+		       IN PCSTR SubPath,
+		       IN ULONG Attributes,
+		       IN PIO_OPEN_CONTEXT OpenContext,
+		       OUT PIO_FILE_OBJECT *pFileObject)
 {
-    assert(Thread != NULL);
-    assert(Object != NULL);
-    assert(SubPath != NULL);
-    assert(Context != NULL);
-    assert(pOpenedInstance != NULL);
-
-    *pRemainingPath = SubPath;
-
-    /* These must come before ASYNC_BEGIN since they are referenced
-     * throughout the whole function (in particular, after the AWAIT call) */
-    PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
-    PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
-    POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
-    assert(Device->DriverObject != NULL);
-
-    /* This is initialized to STATUS_NTOS_BUG so we can catch bugs */
     NTSTATUS Status = STATUS_NTOS_BUG;
-
+    POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
     ASYNC_BEGIN(State, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PIO_DEVICE_OBJECT TargetDevice;
@@ -120,25 +122,47 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	    ULONG FileNameLength;
 	});
 
-    /* Reject the open if the parse context is not IO_OPEN_CONTEXT */
-    if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
-	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
-    }
-
-    /* If the device object represents a volume on a storage device, make sure
-     * its file system is mounted. */
-    AWAIT_EX(Status, IopMountVolume, State, Locals, Thread, Device);
-    if (!NT_SUCCESS(Status)) {
-	ASYNC_RETURN(State, Status);
-    }
-
     /* If the device object is from the underlying storage driver, we send open IRPs to
      * its file system volume device object instead. */
+    /* TODO: Implement raw mount. */
     Locals.TargetDevice = IopIsStorageDevice(Device) ? Device->Vcb->VolumeDevice : Device;
 
-    IF_ERR_GOTO(out, Status,
-		IopCreateMasterFileObject(SubPath, Locals.TargetDevice, &Locals.FileObject));
+    PCHAR ObjectName = (PCHAR)SubPath;
+   /* If we are opening the root directory of a volume, insert the file object under the
+     * device object with name "." */
+    if (Device->Vcb && !SubPath[0]) {
+	ObjectName = ".";
+    }
+    /* Remove the trailing '\\' in the object name. */
+    LONG Sep = ObLocateLastPathSeparator(ObjectName);
+    BOOLEAN Restore = FALSE;
+    if (Sep > 0 && ObjectName[Sep] == OBJ_NAME_PATH_SEPARATOR && !ObjectName[Sep+1]) {
+	ObjectName[Sep] = '\0';
+	Restore = TRUE;
+    }
+    /* For the root directory of a volume, the master file object will be an ordinary,
+     * non-directory file. The cached subobject directory is in the volume FCB. */
+    BOOLEAN IsDirectory = SubPath[0] && OpenPacket->CreateOptions & FILE_DIRECTORY_FILE;
+    Status = IopCreateMasterFileObject(ObjectName, Locals.TargetDevice, IsDirectory,
+				       &Locals.FileObject);
+    if (!NT_SUCCESS(Status)) {
+	if (Restore) {
+	    ObjectName[Sep] = OBJ_NAME_PATH_SEPARATOR;
+	}
+	goto out;
+    }
     assert(Locals.FileObject != NULL);
+
+    if (*ObjectName) {
+	ULONG Flags = (Attributes & OBJ_CASE_INSENSITIVE) | OBJ_CREATE_DIR_IF;
+	Status = ObInsertObject(Device, Locals.FileObject, ObjectName, Flags);
+	if (Restore) {
+	    ObjectName[Sep] = OBJ_NAME_PATH_SEPARATOR;
+	}
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+    }
 
     /* Check if this is Synch I/O and set the sync flag accordingly */
     if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT | FILE_SYNCHRONOUS_IO_NONALERT)) {
@@ -150,7 +174,8 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     }
 
     Locals.FileNameLength = strlen(SubPath);
-    /* For volume devices we prepend the path separator '\\' to the path to be opened. */
+    /* For volume devices we need to prepend the path separator '\\' to
+     * the path being opened. */
     if (Device->Vcb) {
 	Locals.FileNameLength++;
     }
@@ -239,17 +264,75 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     OpenContext->Information = IoStatus.Information;
     Status = IoStatus.Status;
 
+    /* TODO: Handle NTFS reparse point. We need to retrieve the reparse string
+     * returned by the driver and allocate a copy from the pool with OB_PARSE_TAG. */
     if (NT_SUCCESS(Status)) {
-	*pOpenedInstance = Locals.FileObject;
-	*pRemainingPath += Locals.FileNameLength;
+	if (Locals.FileObject->Fcb) {
+	    Locals.FileObject->Fcb->OpenInProgress = FALSE;
+	    KeSetEvent(&Locals.FileObject->Fcb->OpenCompleted);
+	}
+	*pFileObject = Locals.FileObject;
     }
 
 out:
     if (!NT_SUCCESS(Status) && Locals.FileObject) {
+	ObRemoveObject(Locals.FileObject);
 	ObDereferenceObject(Locals.FileObject);
     }
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
+				 IN PTHREAD Thread,
+				 IN POBJECT Object,
+				 IN PCSTR SubPath,
+				 IN ULONG Attributes,
+				 IN POB_OPEN_CONTEXT Context,
+				 OUT POBJECT *pOpenedInstance,
+				 OUT PCSTR *pRemainingPath)
+{
+    assert(Thread != NULL);
+    assert(Object != NULL);
+    assert(SubPath != NULL);
+    assert(Context != NULL);
+    assert(pOpenedInstance != NULL);
+
+    /* These must come before ASYNC_BEGIN since they are referenced
+     * throughout the whole function (in particular, after the AWAIT call) */
+    PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
+    PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
+    PIO_FILE_OBJECT FileObject = NULL;
+    assert(Device->DriverObject != NULL);
+
+    /* This is initialized to STATUS_NTOS_BUG so we can catch bugs */
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State);
+
+    /* Reject the open if the open context is not IO_OPEN_CONTEXT */
+    if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
+	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
+    }
+
+    /* If the device object represents a volume on a storage device,
+     * make sure its file system is mounted. */
+    AWAIT_EX(Status, IopMountVolume, State, _, Thread, Device);
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(State, Status);
+    }
+
+    AWAIT_EX(Status, IopOpenDevice, State, _, Thread, Device,
+	     SubPath, Attributes, OpenContext, &FileObject);
+    if (NT_SUCCESS(Status)) {
+	*pOpenedInstance = FileObject;
+	*pRemainingPath = SubPath + strlen(SubPath);
+	Status = STATUS_SUCCESS;
+    } else {
+	*pOpenedInstance = NULL;
+	*pRemainingPath = SubPath;
     }
     ASYNC_END(State, Status);
 }
@@ -380,9 +463,11 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
 	assert(Locals.EventObject != NULL);
     }
 
+    PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
+	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
     IO_REQUEST_PARAMETERS Irp = {
 	.Device.Object = Locals.FileObject->DeviceObject,
-	.File.Object = Locals.FileObject,
+	.File.Object = TargetFileObject,
 	.MajorFunction = IRP_MJ_DEVICE_CONTROL,
 	.MinorFunction = 0,
 	.InputBuffer = (MWORD)InputBuffer,

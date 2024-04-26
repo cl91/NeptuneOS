@@ -87,7 +87,7 @@ NTSTATUS RtlCliOpenInputDevice(OUT PHANDLE Handle,
 			  SYNCHRONIZE | GENERIC_READ |
 			  FILE_READ_ATTRIBUTES, &ObjectAttributes, &Iosb,
 			  NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN,
-			  FILE_DIRECTORY_FILE, NULL, 0);
+			  0, NULL, 0);
 
     //
     // Now create an event that will be used to wait on the device

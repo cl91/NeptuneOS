@@ -1,4 +1,6 @@
 #include "iop.h"
+#include "ob.h"
+#include "util.h"
 
 typedef struct _IO_FILE_SYSTEM {
     PIO_DEVICE_OBJECT FsctlDevObj; /* Device object to which we send FS control IRPs. */
@@ -58,14 +60,8 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, STATUS_NO_MEMORY);
     }
     DevObj->Vcb->MountInProgress = TRUE;
-    DevObj->Vcb->VolumeFcb = ExAllocatePoolWithTag(sizeof(IO_FILE_CONTROL_BLOCK),
-						   NTOS_IO_TAG);
-    if (!DevObj->Vcb->VolumeFcb) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	goto out;
-    }
     /* FileSize is set to zero for the time being as we don't know the volume size yet. */
-    IopInitializeFcb(DevObj->Vcb->VolumeFcb, 0, DevObj->Vcb);
+    IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, DevObj->Vcb, TRUE));
     CcInitializeCacheMap(DevObj->Vcb->VolumeFcb, NULL, NULL);
     DevObj->Vcb->StorageDevice = DevObj;
 
@@ -142,8 +138,7 @@ out:
     }
     if (DevObj->Vcb && !NT_SUCCESS(Status)) {
 	if (DevObj->Vcb->VolumeFcb) {
-	    CcUninitializeCacheMap(DevObj->Vcb->VolumeFcb);
-	    IopFreePool(DevObj->Vcb->VolumeFcb);
+	    IopDeleteFcb(DevObj->Vcb->VolumeFcb);
 	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;

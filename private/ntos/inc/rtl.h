@@ -1,11 +1,11 @@
 #include <nt.h>
 #include "ex.h"
 
-static inline PCSTR RtlDuplicateString(IN PCSTR String,
+static inline PCHAR RtlDuplicateString(IN PCSTR String,
 				       IN ULONG Tag)
 {
     if (String == NULL) {
-	return String;
+	return NULL;
     }
 
     SIZE_T BufLen = strlen(String) + 1;
@@ -17,12 +17,12 @@ static inline PCSTR RtlDuplicateString(IN PCSTR String,
     return Buf;
 }
 
-static inline PCSTR RtlDuplicateStringEx(IN PCSTR String,
+static inline PCHAR RtlDuplicateStringEx(IN PCSTR String,
 					 IN ULONG Length, /* Excluding trailing '\0' */
 					 IN ULONG Tag)
 {
     if (String == NULL) {
-	return String;
+	return NULL;
     }
 
     PCHAR Buf = ExAllocatePoolWithTag(Length+1, Tag);

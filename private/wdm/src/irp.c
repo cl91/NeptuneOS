@@ -586,6 +586,12 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	    IoStack->Parameters.QueryDirectory.FileIndex = Src->Request.QueryDirectory.FileIndex;
 	    IoStack->Parameters.QueryDirectory.FileInformationClass =
 		Src->Request.QueryDirectory.FileInformationClass;
+	    if (Src->Request.QueryDirectory.ReturnSingleEntry) {
+		IoStack->Flags |= SL_RETURN_SINGLE_ENTRY;
+	    }
+	    if (Src->Request.QueryDirectory.RestartScan) {
+		IoStack->Flags |= SL_RESTART_SCAN;
+	    }
 	    break;
 	}
 	default:

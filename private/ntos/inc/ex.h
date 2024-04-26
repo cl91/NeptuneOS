@@ -79,9 +79,7 @@ NTSTATUS ExInitSystemPhase0(seL4_BootInfo *bootinfo);
 NTSTATUS ExInitSystemPhase1();
 
 /* pool.c */
-NTSTATUS ExInitializePool(IN MWORD HeapStart,
-			  IN LONG NumPages);
-PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes,
-			    IN ULONG Tag);
-VOID ExFreePoolWithTag(IN PCVOID Ptr,
-		       IN ULONG Tag);
+NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);
+PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes, IN ULONG Tag);
+VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag);
+BOOLEAN ExCheckPoolObjectTag(IN PCVOID Ptr, IN ULONG Tag);

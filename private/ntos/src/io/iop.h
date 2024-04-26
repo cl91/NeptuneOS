@@ -251,7 +251,9 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     ULONG64 FileSize;
     PIO_FILE_CONTROL_BLOCK Fcb;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
+    PIO_FILE_OBJECT MasterFileObject;
     BOOLEAN NoFcb;
+    BOOLEAN IsDirectory;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;
@@ -355,11 +357,18 @@ FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
 }
 
 /* file.c */
-VOID IopInitializeFcb(IN PIO_FILE_CONTROL_BLOCK Fcb,
+NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
-		      IN PIO_VOLUME_CONTROL_BLOCK Vcb);
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb,
+		      IN BOOLEAN CreateDirectory);
+VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb);
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx);
+NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
+				IN PCSTR Path,
+				IN BOOLEAN CaseInsensitive,
+				OUT POBJECT *FoundObject,
+				OUT PCSTR *RemainingPath);
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
@@ -368,9 +377,14 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN POB_OPEN_CONTEXT ParseContext,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath);
+NTSTATUS IopFileObjectInsertProc(IN POBJECT Self,
+				 IN POBJECT Object,
+				 IN PCSTR Path);
+VOID IopFileObjectRemoveProc(IN POBJECT Subobject);
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   IN BOOLEAN IsDirectory,
 				   OUT PIO_FILE_OBJECT *pFile);
 
 /*
@@ -412,6 +426,13 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath);
 VOID IopDeviceObjectDeleteProc(IN POBJECT Self);
+NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       IN PIO_DEVICE_OBJECT Device,
+		       IN PCSTR SubPath,
+		       IN ULONG Attributes,
+		       IN PIO_OPEN_CONTEXT OpenContext,
+		       OUT PIO_FILE_OBJECT *pFileObject);
 
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,

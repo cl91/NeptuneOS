@@ -8,6 +8,7 @@
 
 /* INCLUDES *****************************************************************/
 
+#include "debug.h"
 #include "fatfs.h"
 
 /* FUNCTIONS *****************************************************************/
@@ -637,12 +638,6 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    Fcb->Flags |= FCB_IS_PAGE_FILE;
 	    SetFlag(DeviceExt->Flags, VCB_IS_SYS_OR_HAS_PAGE);
 	}
-	if (!Fcb->Base.CacheMap) {
-	    Status = CcInitializeCacheMap(FileObject);
-	    if (!NT_SUCCESS(Status)) {
-		goto Fail;
-	    }
-	}
 	goto Done;
 
     Fail:
@@ -773,13 +768,6 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	Status = FatSetFileSizeInformation(FileObject, Fcb, DeviceExt,
 					   &Irp->AllocationSize);
-	if (!NT_SUCCESS(Status)) {
-	    goto OpenFail;
-	}
-    }
-
-    if (!Fcb->Base.CacheMap) {
-	Status = CcInitializeCacheMap(FileObject);
 	if (!NT_SUCCESS(Status)) {
 	    goto OpenFail;
 	}

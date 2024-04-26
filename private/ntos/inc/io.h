@@ -4,6 +4,7 @@
 #include <services.h>
 #include <wdmsvc.h>
 #include "ke.h"
+#include "ntdef.h"
 #include "ob.h"
 #include "ex.h"
 
@@ -84,7 +85,6 @@ typedef struct _IO_DEVICE_OBJECT {
     struct _DEVICE_NODE *DeviceNode; /* Only PDOs in PnP drivers have this. Otherwise NULL. */
     struct _IO_VOLUME_CONTROL_BLOCK *Vcb; /* Only mounted volume devices can have this. */
     LIST_ENTRY OpenFileList; /* List of opened instances of this device object. */
-    POBJECT_DIRECTORY Subobjects;
     IO_DEVICE_INFO DeviceInfo;
     KEVENT MountCompleted; /* Used by the volume mount logic to signal mount completion. */
     BOOLEAN Exclusive;
@@ -140,6 +140,9 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
     PDATA_SECTION_OBJECT DataSectionObject;
     PIMAGE_SECTION_OBJECT ImageSectionObject;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
+    POBJECT_DIRECTORY Subobjects;
+    KEVENT OpenCompleted; /* Signaled when the file open is completed. */
+    BOOLEAN OpenInProgress;
     KEVENT WriteCompleted; /* Signaled when the WRITE IRP is completed. */
     BOOLEAN WritePending; /* TRUE if a WRITE IRP for this file is in progress. */
 } IO_FILE_CONTROL_BLOCK, *PIO_FILE_CONTROL_BLOCK;

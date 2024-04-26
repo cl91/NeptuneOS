@@ -1,5 +1,7 @@
-#include "ob.h"
 #include "obp.h"
+#include "ntdef.h"
+#include "ntstatus.h"
+#include "ob.h"
 
 #define OBP_DIROBJ_HASH_BUCKETS 37
 typedef struct _OBJECT_DIRECTORY {
@@ -78,6 +80,16 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS ObDirectoryObjectSearchObject(IN POBJECT_DIRECTORY Directory,
+				       IN PCSTR Name,
+				       IN ULONG Length, /* Excluding trailing '\0' */
+				       IN BOOLEAN CaseInsensitive,
+				       OUT POBJECT *FoundObject)
+{
+    return ObpLookupDirectoryEntry(Directory, Name, Length, CaseInsensitive,
+				   FoundObject, NULL);
+}
+
 /*
  * Called when the Object Manager attempts to parse a path
  * under the object directory.
@@ -96,14 +108,14 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     assert(FoundObject != NULL);
     assert(RemainingPath != NULL);
 
-    ULONG NameLength = ObpLocateFirstPathSeparator(Path);
+    ULONG NameLength = ObLocateFirstPathSeparator(Path);
     if (NameLength == 0) {
 	return STATUS_OBJECT_NAME_INVALID;
     }
 
     /* Look for the named object under the directory. */
-    RET_ERR_EX(ObpLookupDirectoryEntry(Directory, Path, NameLength,
-				       CaseInsensitive, FoundObject, NULL),
+    RET_ERR_EX(ObDirectoryObjectSearchObject(Directory, Path, NameLength,
+					     CaseInsensitive, FoundObject),
 	       {
 		   ObDbg("Path %s not found\n", Path);
 		   *FoundObject = NULL;
@@ -135,10 +147,40 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 	return STATUS_OBJECT_NAME_INVALID;
     }
     POBJECT_DIRECTORY DirObj = Object;
-    if (!DirObj->FileObject) {
-	RET_ERR(IoCreateDevicelessFile(NULL, NULL, 0, &DirObj->FileObject));
+    if (OpenContext->Type == OPEN_CONTEXT_DEVICE_OPEN) {
+	if (!DirObj->FileObject) {
+	    RET_ERR(IoCreateDevicelessFile(NULL, NULL, 0, &DirObj->FileObject));
+	}
+	*pOpenedInstance = DirObj->FileObject;
+    } else {
+	/* TODO: Implement NtOpenObjectDirectory */
+	UNIMPLEMENTED;
     }
-    *pOpenedInstance = DirObj->FileObject;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
+				       IN POBJECT Object,
+				       IN PCSTR Name)
+{
+    /* Object name must not be empty. */
+    assert(Name[0]);
+    /* Object name must not contain the OBJ_NAME_PATH_SEPARATOR */
+    for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
+	if (*Ptr == OBJ_NAME_PATH_SEPARATOR) {
+	    ObDbg("Inserting name %s failed\n", Name);
+	    assert(FALSE);
+	    return STATUS_OBJECT_PATH_INVALID;
+	}
+    }
+
+    ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
+    DirectoryEntry->Object = Object;
+    OBJECT_TO_OBJECT_HEADER(Object)->ParentLink = DirectoryEntry;
+
+    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, strlen(Name));
+    assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
+    InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
     return STATUS_SUCCESS;
 }
 
@@ -156,35 +198,18 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     assert(Name != NULL);
     assert(Object != NULL);
 
-    /* Object name must not contain the OBJ_NAME_PATH_SEPARATOR */
-    for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
-	if (*Ptr == OBJ_NAME_PATH_SEPARATOR) {
-	    ObDbg("Inserting name %s failed\n", Name);
-	    /* This usually means that the user did not create the intermediate
-	     * directory object. We return OBJECT_NAME_NOT_FOUND in this case. */
-	    return STATUS_OBJECT_NAME_NOT_FOUND;
-	}
-    }
-
-    ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
-    DirectoryEntry->Object = Object;
-    ObpReferenceObject(Object);
-    OBJECT_TO_OBJECT_HEADER(Object)->ParentLink = DirectoryEntry;
-
-    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, strlen(Name));
-    assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
-    InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
-
-    return STATUS_SUCCESS;
+    return ObDirectoryObjectInsertObject(Directory, Object, Name);
 }
 
-static inline VOID ObpObjectDirectoryRemoveEntry(IN POBJECT_DIRECTORY_ENTRY Entry)
+VOID ObDirectoryObjectRemoveObject(IN POBJECT Subobject)
 {
-    if (Entry != NULL) {
-	ObDereferenceObject(Entry->Object);
-	RemoveEntryList(&Entry->ChainLink);
-	ObpFreePool(Entry);
-    }
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Subobject);
+    POBJECT_DIRECTORY_ENTRY Entry = ObjectHeader->ParentLink;
+    assert(Entry != NULL);
+    assert(Entry->Object == Subobject);
+    RemoveEntryList(&Entry->ChainLink);
+    ObpFreePool(Entry);
+    ObjectHeader->ParentLink = NULL;
 }
 
 /*
@@ -193,12 +218,7 @@ static inline VOID ObpObjectDirectoryRemoveEntry(IN POBJECT_DIRECTORY_ENTRY Entr
  */
 static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Subobject)
 {
-    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Subobject);
-    assert(ObObjectIsType(ObjectHeader->ParentObject, OBJECT_TYPE_DIRECTORY));
-    POBJECT_DIRECTORY_ENTRY Entry = ObjectHeader->ParentLink;
-    assert(Entry != NULL);
-    assert(Entry->Object == Subobject);
-    ObpObjectDirectoryRemoveEntry(Entry);
+    ObDirectoryObjectRemoveObject(Subobject);
 }
 
 /*
@@ -208,15 +228,10 @@ static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Subobject)
 static VOID ObpDirectoryObjectDeleteProc(IN POBJECT Self)
 {
     assert(ObObjectIsType(Self, OBJECT_TYPE_DIRECTORY));
-    POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY)Self;
-    /* For each object in this object directory we unlink them
-     * from the object directory. */
-    for (ULONG i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
-        LoopOverList(Entry, &Directory->HashBuckets[i],
-		     OBJECT_DIRECTORY_ENTRY, ChainLink) {
-	    ObpObjectDirectoryRemoveEntry(Entry);
-	}
-    }
+    UNUSED POBJECT_DIRECTORY Directory = (POBJECT_DIRECTORY)Self;
+    /* Object directory should be empty at this point. We assert if this
+     * has not been maintained. */
+    assert(!ObDirectoryGetObjectCount(Directory));
     /* We don't need to free the directory object here since
      * the object manager does that for us */
 }
@@ -237,13 +252,18 @@ NTSTATUS ObpInitDirectoryObjectType()
 			      TypeInfo);
 }
 
-NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
+NTSTATUS ObCreateDirectoryEx(IN OPTIONAL POBJECT Parent,
+			     IN PCSTR DirectoryPath,
+			     OUT OPTIONAL POBJECT_DIRECTORY *DirObj)
 {
     POBJECT_DIRECTORY Directory = NULL;
     RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY, (POBJECT *)&Directory, NULL));
     assert(Directory != NULL);
-    RET_ERR_EX(ObInsertObject(NULL, Directory, DirectoryPath, 0),
+    RET_ERR_EX(ObInsertObject(Parent, Directory, DirectoryPath, 0),
 	       ObDereferenceObject(Directory));
+    if (DirObj) {
+	*DirObj = Directory;
+    }
     return STATUS_SUCCESS;
 }
 

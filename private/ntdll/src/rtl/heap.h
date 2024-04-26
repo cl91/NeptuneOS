@@ -121,14 +121,14 @@ C_ASSERT((2 << HEAP_ENTRY_SHIFT) == sizeof(HEAP_FREE_ENTRY));
 
 static inline VOID RtlpDbgDumpHeapEntry(PHEAP_ENTRY Entry)
 {
-    DbgPrint("entry %p size 0x%x (actually 0x%x) previous size 0x%x (actually 0x%x)\n", Entry,
-	     Entry->CommonEntry.Size, Entry->CommonEntry.Size << HEAP_ENTRY_SHIFT,
-	     Entry->CommonEntry.PreviousSize, Entry->CommonEntry.PreviousSize << HEAP_ENTRY_SHIFT);
+    DPRINT1("entry %p size 0x%x (actually 0x%x) previous size 0x%x (actually 0x%x)\n", Entry,
+	    Entry->CommonEntry.Size, Entry->CommonEntry.Size << HEAP_ENTRY_SHIFT,
+	    Entry->CommonEntry.PreviousSize, Entry->CommonEntry.PreviousSize << HEAP_ENTRY_SHIFT);
 }
 
 static inline VOID RtlpDbgDumpHeapFreeEntry(PHEAP_FREE_ENTRY Entry)
 {
-    DbgPrint("free ");
+    DPRINT1("free ");
     RtlpDbgDumpHeapEntry((PHEAP_ENTRY) Entry);
 }
 

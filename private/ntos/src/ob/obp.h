@@ -23,5 +23,13 @@ extern POBJECT_DIRECTORY ObpRootObjectDirectory;
 /* dirobj.c */
 NTSTATUS ObpInitDirectoryObjectType();
 
+/* open.c */
+NTSTATUS ObpParseObjectByName(IN POBJECT DirectoryObject,
+			      IN PCSTR Path,
+			      IN BOOLEAN CaseInsensitive,
+			      OUT POBJECT *FoundObject,
+			      OUT PCSTR *RemainingPath,
+			      OUT PCSTR *StringToFree);
+
 /* symlink.c */
 NTSTATUS ObpInitSymlinkObjectType();

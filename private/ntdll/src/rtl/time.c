@@ -18,6 +18,7 @@
 NTAPI NTSTATUS RtlLocalTimeToSystemTime(IN PLARGE_INTEGER LocalTime,
 					OUT PLARGE_INTEGER SystemTime)
 {
+    /* TODO: This should be cached. Maybe look at UserSharedData? */
     SYSTEM_TIMEOFDAY_INFORMATION TimeInformation;
     NTSTATUS Status = NtQuerySystemInformation(SystemTimeOfDayInformation, &TimeInformation,
 					       sizeof(TimeInformation), NULL);
@@ -35,6 +36,7 @@ NTAPI NTSTATUS RtlLocalTimeToSystemTime(IN PLARGE_INTEGER LocalTime,
 NTAPI NTSTATUS RtlSystemTimeToLocalTime(IN PLARGE_INTEGER SystemTime,
 					OUT PLARGE_INTEGER LocalTime)
 {
+    /* TODO: This should be cached. Maybe look at UserSharedData? */
     SYSTEM_TIMEOFDAY_INFORMATION TimeInformation;
     NTSTATUS Status = NtQuerySystemInformation(SystemTimeOfDayInformation, &TimeInformation,
 					       sizeof(TimeInformation), NULL);

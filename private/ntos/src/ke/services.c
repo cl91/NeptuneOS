@@ -684,12 +684,14 @@ VOID KiDispatchExecutiveServices()
 		NTSTATUS Status;
 		BOOLEAN ReplyCapSaved = FALSE;
 		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_WDM_SERVICE) {
-		    DbgTrace("Got driver call from thread %p\n", Thread);
+		    DbgTrace("Got driver call from thread %p (%s)\n",
+			     Thread, KEDBG_THREAD_TO_FILENAME(Thread));
 		    Status = KiHandleWdmService(SvcNum, Thread, ReqMsgLength,
 						&MsgBufferEnd, &ReplyCapSaved);
 		} else {
 		    assert(GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_SERVICE);
-		    DbgTrace("Got call from thread %p\n", Thread);
+		    DbgTrace("Got call from thread %p (%s)\n",
+			     Thread, KEDBG_THREAD_TO_FILENAME(Thread));
 		    Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength,
 						   &MsgBufferEnd, &ReplyCapSaved);
 		}
