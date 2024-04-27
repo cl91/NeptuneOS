@@ -1,5 +1,9 @@
 #pragma once
 
+#include <ntdef.h>
+#include <ntioapi.h>
+#include <hal.h>
+
 /*
  * DMA Mask Register Structure
  *

@@ -235,7 +235,15 @@ typedef struct _ADAPTER_OBJ_CREATE_CTX {
     UCHAR DmaChannel;
 } ADAPTER_OBJ_CREATE_CTX, *PADAPTER_OBJ_CREATE_CTX;
 
-#define ENABLE_PORT(p)	HalpEnableIoPort((USHORT)(ULONG_PTR)(p))
+#define ENABLE_PORT(p)		HalpEnableIoPort((USHORT)(ULONG_PTR)(p))
+#define DMA_INIT_CONTROLLER(Ctrl)					\
+    RET_ERR(ENABLE_PORT(&Ctrl->ClearBytePointer));			\
+    RET_ERR(ENABLE_PORT(&Ctrl->Mode));					\
+    RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress)); \
+    RET_ERR(ENABLE_PORT(AdapterObject->PagePort +			\
+			FIELD_OFFSET(EISA_CONTROL, DmaController1Pages))); \
+    RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseCount));	\
+    RET_ERR(ENABLE_PORT(&Ctrl->SingleMask))
 
 NTSTATUS HalpAdapterObjectCreateProc(IN POBJECT Object,
 				     IN PVOID CreaCtx)
@@ -252,23 +260,11 @@ NTSTATUS HalpAdapterObjectCreateProc(IN POBJECT Object,
     UCHAR Channel = AdapterObject->ChannelNumber;
     if (Controller == 1) {
 	PDMA1_CONTROL Ctrl = BaseVa1;
-	RET_ERR(ENABLE_PORT(&Ctrl->ClearBytePointer));
-	RET_ERR(ENABLE_PORT(&Ctrl->Mode));
-	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress));
-	RET_ERR(ENABLE_PORT(AdapterObject->PagePort +
-			    FIELD_OFFSET(EISA_CONTROL, DmaController1Pages)));
-	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseCount));
-	RET_ERR(ENABLE_PORT(&Ctrl->SingleMask));
+	DMA_INIT_CONTROLLER(Ctrl);
     } else {
 	assert(Controller == 2);
 	PDMA2_CONTROL Ctrl = BaseVa2;
-	RET_ERR(ENABLE_PORT(&Ctrl->ClearBytePointer));
-	RET_ERR(ENABLE_PORT(&Ctrl->Mode));
-	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress));
-	RET_ERR(ENABLE_PORT(AdapterObject->PagePort +
-			    FIELD_OFFSET(EISA_CONTROL, DmaController1Pages)));
-	RET_ERR(ENABLE_PORT(&Ctrl->DmaAddressCount[Channel].DmaBaseCount));
-	RET_ERR(ENABLE_PORT(&Ctrl->SingleMask));
+	DMA_INIT_CONTROLLER(Ctrl);
     }
     return STATUS_SUCCESS;
 }
@@ -318,6 +314,36 @@ NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
     return ObCreateHandle(Thread->Process, AdapterObject, Handle);
 }
 
+#define DMA_START_TRANSFER(Ty)						\
+    Ty *Ctrl = AdapterObject->AdapterBaseVa;				\
+									\
+    /* Reset Register */						\
+    WRITE_PORT_UCHAR(&Ctrl->ClearBytePointer, 0);			\
+									\
+    /* Set the Mode */							\
+    WRITE_PORT_UCHAR(&Ctrl->Mode, DmaMode);				\
+									\
+    /* Set the Offset Register */					\
+    WRITE_PORT_UCHAR(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress,	\
+		     (UCHAR)(TransferOffset));				\
+    WRITE_PORT_UCHAR(&Ctrl->DmaAddressCount[Channel].DmaBaseAddress,	\
+		     (UCHAR)(TransferOffset >> 8));			\
+									\
+    /* Set the Page Register */						\
+    WRITE_PORT_UCHAR(AdapterObject->PagePort +				\
+		     FIELD_OFFSET(EISA_CONTROL, DmaController1Pages),	\
+		     HighByte);						\
+									\
+    /* Set the Length */						\
+    WRITE_PORT_UCHAR(&Ctrl->DmaAddressCount[Channel].DmaBaseCount,	\
+		     (UCHAR)(TransferLength - 1));			\
+    WRITE_PORT_UCHAR(&Ctrl->DmaAddressCount[Channel].DmaBaseCount,	\
+		     (UCHAR)((TransferLength - 1) >> 8));		\
+									\
+    /* Unmask the Channel */						\
+    WRITE_PORT_UCHAR(&Ctrl->SingleMask, Channel | DMA_CLEARMASK)
+
+
 NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
 				IN PTHREAD Thread,
 				IN HANDLE AdapterHandle,
@@ -338,61 +364,9 @@ NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
 
     UCHAR Channel = AdapterObject->ChannelNumber;
     if (AdapterObject->AdapterNumber == 1) {
-	PDMA1_CONTROL DmaControl1 = AdapterObject->AdapterBaseVa;
-
-	/* Reset Register */
-	WRITE_PORT_UCHAR(&DmaControl1->ClearBytePointer, 0);
-
-	/* Set the Mode */
-	WRITE_PORT_UCHAR(&DmaControl1->Mode, DmaMode);
-
-	/* Set the Offset Register */
-	WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[Channel].DmaBaseAddress,
-			 (UCHAR)TransferOffset);
-	WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[Channel].DmaBaseAddress,
-			 (UCHAR)(TransferOffset >> 8));
-
-	/* Set the Page Register */
-	WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL,
-								DmaController1Pages),
-			 HighByte);
-
-	/* Set the Length */
-	WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[Channel].DmaBaseCount,
-			 (UCHAR)(TransferLength - 1));
-	WRITE_PORT_UCHAR(&DmaControl1->DmaAddressCount[Channel].DmaBaseCount,
-			 (UCHAR)((TransferLength - 1) >> 8));
-
-	/* Unmask the Channel */
-	WRITE_PORT_UCHAR(&DmaControl1->SingleMask, Channel | DMA_CLEARMASK);
+	DMA_START_TRANSFER(DMA1_CONTROL);
     } else {
-	PDMA2_CONTROL DmaControl2 = AdapterObject->AdapterBaseVa;
-
-	/* Reset Register */
-	WRITE_PORT_UCHAR(&DmaControl2->ClearBytePointer, 0);
-
-	/* Set the Mode */
-	WRITE_PORT_UCHAR(&DmaControl2->Mode, DmaMode);
-
-	/* Set the Offset Register */
-	WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[Channel].DmaBaseAddress,
-			 (UCHAR)(TransferOffset));
-	WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[Channel].DmaBaseAddress,
-			 (UCHAR)(TransferOffset >> 8));
-
-	/* Set the Page Register */
-	WRITE_PORT_UCHAR(AdapterObject->PagePort + FIELD_OFFSET(EISA_CONTROL,
-								DmaController1Pages),
-			 HighByte);
-
-	/* Set the Length */
-	WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[Channel].DmaBaseCount,
-			 (UCHAR)(TransferLength - 1));
-	WRITE_PORT_UCHAR(&DmaControl2->DmaAddressCount[Channel].DmaBaseCount,
-			 (UCHAR)((TransferLength - 1) >> 8));
-
-	/* Unmask the Channel */
-	WRITE_PORT_UCHAR(&DmaControl2->SingleMask, Channel | DMA_CLEARMASK);
+	DMA_START_TRANSFER(DMA2_CONTROL);
     }
 
     ObDereferenceObject(AdapterObject);
