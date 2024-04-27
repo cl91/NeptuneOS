@@ -277,7 +277,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	UNICODE_STRING UnicodeString;
 	HANDLE Process;
 
-	NTSTATUS Status = GetFullPath(xargv[1], FileName, sizeof(FileName), FALSE);
+	NTSTATUS Status = GetFullPath(xargv[0], FileName, sizeof(FileName), FALSE);
 	if (!NT_SUCCESS(Status)) {
 	    RtlCliDisplayString("%s not recognized: %s", Command,
 				RtlCliStatusToErrorMessage(Status));
