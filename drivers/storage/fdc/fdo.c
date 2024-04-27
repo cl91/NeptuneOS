@@ -651,7 +651,9 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	.InterfaceType = DeviceExtension->ControllerInfo.InterfaceType,
 	.BusNumber = DeviceExtension->ControllerInfo.BusNumber,
 	.MaximumLength = 2 * 18 * 512, /* based on a 1.44MB floppy */
-	.DmaWidth = (DeviceExtension->ControllerInfo.Dma > 3) ? Width16Bits : Width8Bits /* DMA 0,1,2,3 are 8-bit; 4,5,6,7 are 16-bit (4 is chain I think) */
+	.DemandMode = TRUE,
+	/* DMA 0,1,2,3 are 8-bit; 4,5,6,7 are 16-bit (4 is chain) */
+	.DmaWidth = (DeviceExtension->ControllerInfo.Dma > 3) ? Width16Bits : Width8Bits
     };
 
     DeviceExtension->ControllerInfo.AdapterObject = HalGetAdapter(&DeviceDescription,
