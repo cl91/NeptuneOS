@@ -37,7 +37,7 @@ PCSTR helpstr =
     "dump X   - Show hexdump for file X  edlin X  - Edit lines for file X\n"
     "cd X     - Change directory to X    md X     - Make directory X\n"
     "copy X Y - Copy file X to Y         move X Y - Move file X to Y\n"
-    "del X    - Delete file X            sync     - Synchronize file systems\n"
+    "del X    - Delete file X            sync A   - Flush caches for drive A\n"
     "mount A  - Mount drive A            umount A - Unmount drive A\n"
     "lm       - List modules             lp       - List processes\n"
     "devtree  - Dump device tree         sysinfo  - Dump system information\n"
@@ -51,7 +51,7 @@ PCSTR helpstr =
     "removing a disk, or risk data corruption.\n"
     "\n";
 
-#define COMPARE_CMD(Command, String) _strnicmp(Command, String, sizeof(String)-1)
+#define COMPARE_CMD(Command, String) (!_strnicmp(Command, String, sizeof(String)-1))
 
 #define CMD_BUFSIZE	1024
 #define MAX_ARGS	16
@@ -87,12 +87,12 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
     //
     // We'll call the handler for each command
     //
-    if (!COMPARE_CMD(Command, "exit")) {
+    if (COMPARE_CMD(Command, "exit")) {
 	//
 	// Exit from the shell
 	//
 	return FALSE;
-    } else if (!COMPARE_CMD(Command, "test")) {
+    } else if (COMPARE_CMD(Command, "test")) {
 	//
 	// Test the command line parsing routine
 	//
@@ -101,27 +101,27 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	for (i = 0; i < xargc; i++) {
 	    RtlCliDisplayString("Arg %d: %s\n", i, xargv[i]);
 	}
-    } else if (!COMPARE_CMD(Command, "help")) {
+    } else if (COMPARE_CMD(Command, "help")) {
 	//
 	// Display help
 	//
 	RtlCliDisplayString("%s", helpstr);
-    } else if (!COMPARE_CMD(Command, "lm")) {
+    } else if (COMPARE_CMD(Command, "lm")) {
 	//
 	// List Modules (!lm)
 	//
 	RtlCliListDrivers();
-    } else if (!COMPARE_CMD(Command, "lp")) {
+    } else if (COMPARE_CMD(Command, "lp")) {
 	//
 	// List Processes (!lp)
 	//
 	RtlCliListProcesses();
-    } else if (!COMPARE_CMD(Command, "sysinfo")) {
+    } else if (COMPARE_CMD(Command, "sysinfo")) {
 	//
 	// Dump System Information (sysinfo)
 	//
 	RtlCliDumpSysInfo();
-    } else if (!COMPARE_CMD(Command, "cd")) {
+    } else if (COMPARE_CMD(Command, "cd")) {
 	//
 	// Set the current directory
 	//
@@ -135,35 +135,35 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!COMPARE_CMD(Command, "locale")) {
+    } else if (COMPARE_CMD(Command, "locale")) {
 	//
 	// Set the default locale
 	//
 	NtSetDefaultLocale(TRUE, 1049);
-    } else if (!COMPARE_CMD(Command, "pwd")) {
+    } else if (COMPARE_CMD(Command, "pwd")) {
 	//
 	// Display the current directory
 	//
 	WCHAR CurrentDirectory[MAX_PATH];
 	RtlCliGetCurrentDirectory(CurrentDirectory);
 	RtlCliDisplayString("%ws", CurrentDirectory);
-    } else if (!COMPARE_CMD(Command, "dir")) {
+    } else if (COMPARE_CMD(Command, "dir")) {
 	//
 	// List the current directory
 	//
 	RtlCliListDirectory();
-    } else if (!COMPARE_CMD(Command, "devtree")) {
+    } else if (COMPARE_CMD(Command, "devtree")) {
 	//
 	// Dump hardware tree
 	//
 	RtlCliListHardwareTree();
-    } else if (!COMPARE_CMD(Command, "shutdown")) {
+    } else if (COMPARE_CMD(Command, "shutdown")) {
 	RtlCliShutdown();
-    } else if (!COMPARE_CMD(Command, "reboot")) {
+    } else if (COMPARE_CMD(Command, "reboot")) {
 	RtlCliReboot();
-    } else if (!COMPARE_CMD(Command, "poweroff")) {
+    } else if (COMPARE_CMD(Command, "poweroff")) {
 	RtlCliPowerOff();
-    } else if (!COMPARE_CMD(Command, "vid")) {
+    } else if (COMPARE_CMD(Command, "vid")) {
 	UINT j;
 	WCHAR w;
 
@@ -183,7 +183,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 		RtlCliPutChar(L'\n');
 	    }
 	}
-    } else if (!COMPARE_CMD(Command, "copy")) {
+    } else if (COMPARE_CMD(Command, "copy")) {
 	// Copy file
 	if (xargc == 3) {
 	    NTSTATUS Status =  GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
@@ -207,7 +207,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!COMPARE_CMD(Command, "move")) {
+    } else if (COMPARE_CMD(Command, "move")) {
 	// Move/rename file
 	if (xargc == 3) {
 	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
@@ -231,7 +231,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!COMPARE_CMD(Command, "del")) {
+    } else if (COMPARE_CMD(Command, "del")) {
 	// Delete file
 	if (xargc == 2) {
 	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
@@ -251,7 +251,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
-    } else if (!COMPARE_CMD(Command, "md")) {
+    } else if (COMPARE_CMD(Command, "md")) {
 	// Make directory
 	if (xargc == 2) {
 	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
@@ -261,6 +261,18 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	    Status = CreateDirectory(buf1);
 	    if (!NT_SUCCESS(Status)) {
 		RtlCliDisplayString("md: %s", RtlCliStatusToErrorMessage(Status));
+	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
+	} else {
+	    RtlCliDisplayString("Not enough arguments.\n");
+	}
+    } else if (COMPARE_CMD(Command, "sync")) {
+	// Flush buffers
+	if (xargc == 2) {
+	    NTSTATUS Status = FlushBuffers(xargv[1]);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("sync: %s", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");

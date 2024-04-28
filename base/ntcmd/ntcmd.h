@@ -134,6 +134,7 @@ NTSTATUS DeleteFile(PCWSTR FileName);
 NTSTATUS CreateDirectory(PCWSTR DirName);
 NTSTATUS MoveFile(IN PCWSTR ExistingFileName,
 		  IN PCWSTR NewFileName, BOOLEAN ReplaceIfExists);
+NTSTATUS FlushBuffers(IN PCSTR Drive);
 
 //
 // Keyboard functions

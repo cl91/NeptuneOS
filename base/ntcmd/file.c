@@ -23,7 +23,9 @@ Revision History:
 
 --*/
 #include "ntcmd.h"
+#include "ntdef.h"
 #include "ntstatus.h"
+#include "stdio.h"
 
 /*++
  * @name RtlCliGetCurrentDirectory
@@ -156,7 +158,7 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
 
     RtlCliDisplayString("%02d.%02d.%04d %02d:%02d %s %9s  %ws\n",
 			Time.Day, Time.Month, Time.Year, Time.Hour, Time.Minute,
-			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "D" : " ",
+			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "<DIR>" : "",
 			SizeString, FileString);
 
     //
@@ -596,4 +598,17 @@ out:
     RtlFreeUnicodeString(&ExistingFileNameU);
     CloseFile(FileHandle);
     return Status;
+}
+
+NTSTATUS FlushBuffers(IN PCSTR Drive)
+{
+    HANDLE Volume = NULL;
+    WCHAR Buffer[16];
+    _snwprintf(Buffer, sizeof(Buffer)/sizeof(WCHAR), L"%s:", Drive);
+    NTSTATUS Status = OpenFile(&Volume, Buffer, FALSE, FALSE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    IO_STATUS_BLOCK IoStatus;
+    return NtFlushBuffersFile(Volume, &IoStatus);
 }
