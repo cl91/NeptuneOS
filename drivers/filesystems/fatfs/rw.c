@@ -9,6 +9,9 @@
 /* INCLUDES *****************************************************************/
 
 #include "fatfs.h"
+#include "ntddk.h"
+#include "ntioapi.h"
+#include "ntstatus.h"
 
 /* FUNCTIONS *****************************************************************/
 
@@ -195,11 +198,41 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
     }
 
     LoopOverList(Req, &ReqList, DISK_IO_REQUEST, Link) {
-	IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
-	Req->Irp = NULL;
+	/* For MDL read we should call Cc to complete the read. Note this is
+	 * synchronous, so we should free the associated IRPs we have allocated. */
+	if (!Write && Stack->MinorFunction == IRP_MN_MDL) {
+	    IoGetCurrentIrpStackLocation(Req->Irp)->MinorFunction = IRP_MN_MDL;
+	    Status = FatForwardReadIrp(DeviceExt, Req->Irp);
+	    if (!NT_SUCCESS(Status)) {
+		break;
+	    }
+	} else {
+	    IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
+	    Req->Irp = NULL;
+	}
     }
-    IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
-    return STATUS_IRP_FORWARDED;
+    if (!Write && Stack->MinorFunction == IRP_MN_MDL) {
+	Status = FatForwardReadIrp(DeviceExt, IrpContext->Irp);
+	if (!NT_SUCCESS(Status)) {
+	    goto ByeBye;
+	}
+	/* Merge the resulting MDL list. */
+	PMDL Mdl = IrpContext->Irp->MdlAddress;
+	while (Mdl && Mdl->Next) {
+	    Mdl = Mdl->Next;
+	}
+	LoopOverList(Req, &ReqList, DISK_IO_REQUEST, Link) {
+	    Mdl->Next = Req->Irp->MdlAddress;
+	    while (Mdl && Mdl->Next) {
+		Mdl = Mdl->Next;
+	    }
+	    Req->Irp->MdlAddress = NULL;
+	}
+	Status = STATUS_SUCCESS;
+    } else {
+	IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
+	Status = STATUS_IRP_FORWARDED;
+    }
 
 ByeBye:
     LoopOverList(Req, &ReqList, DISK_IO_REQUEST, Link) {
