@@ -10,6 +10,7 @@
 /* INCLUDES *****************************************************************/
 
 #include "fatfs.h"
+#include "ntstatus.h"
 
 #define NASSERTS_RENAME
 
@@ -89,46 +90,6 @@ NTSTATUS FatGetStandardInformation(PFATFCB FCB,
     StandardInfo->DeletePending = BooleanFlagOn(FCB->Flags, FCB_DELETE_PENDING);
 
     *BufferLength -= sizeof(FILE_STANDARD_INFORMATION);
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS FatSetPositionInformation(PFILE_OBJECT FileObject,
-					  PFILE_POSITION_INFORMATION PositionInfo)
-{
-    DPRINT("FsdSetPositionInformation()\n");
-
-    DPRINT("PositionInfo %p\n", PositionInfo);
-    /* TODO: This should be handled on server side. */
-    /* DPRINT("Setting position %u\n", */
-    /* 	   PositionInfo->CurrentByteOffset.LowPart); */
-
-    /* FileObject->CurrentByteOffset.QuadPart = PositionInfo->CurrentByteOffset.QuadPart; */
-
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS FatGetPositionInformation(PFILE_OBJECT FileObject,
-					  PFATFCB FCB,
-					  PDEVICE_EXTENSION DeviceExt,
-					  PFILE_POSITION_INFORMATION PositionInfo,
-					  PULONG BufferLength)
-{
-    UNREFERENCED_PARAMETER(FileObject);
-    UNREFERENCED_PARAMETER(FCB);
-    UNREFERENCED_PARAMETER(DeviceExt);
-
-    DPRINT("FatGetPositionInformation()\n");
-
-    if (*BufferLength < sizeof(FILE_POSITION_INFORMATION))
-	return STATUS_BUFFER_OVERFLOW;
-
-    /* TODO: This should be handled on server side. */
-    /* PositionInfo->CurrentByteOffset.QuadPart = FileObject->CurrentByteOffset.QuadPart; */
-
-    /* DPRINT("Getting position %I64x\n", */
-    /* 	   PositionInfo->CurrentByteOffset.QuadPart); */
-
-    *BufferLength -= sizeof(FILE_POSITION_INFORMATION);
     return STATUS_SUCCESS;
 }
 
@@ -1074,12 +1035,6 @@ static NTSTATUS FatGetAllInformation(PFILE_OBJECT FileObject,
 				 &Info->EaInformation, BufferLength);
     if (!NT_SUCCESS(Status))
 	return Status;
-    /* Position Information */
-    Status = FatGetPositionInformation(FileObject, Fcb, DeviceExt,
-				       &Info->PositionInformation,
-				       BufferLength);
-    if (!NT_SUCCESS(Status))
-	return Status;
     /* Name Information */
     Status = FatGetNameInformation(FileObject, Fcb, DeviceExt,
 				   &Info->NameInformation, BufferLength);
@@ -1298,9 +1253,8 @@ NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
 	break;
 
     case FilePositionInformation:
-	Status = FatGetPositionInformation(IrpContext->FileObject, Fcb,
-					   IrpContext->DeviceExt,
-					   SystemBuffer, &BufferLength);
+	/* This is handled on the server-side. */
+	Status = STATUS_NOT_SUPPORTED;
 	break;
 
     case FileBasicInformation:
@@ -1400,7 +1354,8 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 
     switch (Info) {
     case FilePositionInformation:
-	Status = FatSetPositionInformation(FileObj, SystemBuffer);
+	/* This is handled on the server-side. */
+	Status = STATUS_NOT_SUPPORTED;
 	break;
 
     case FileDispositionInformation:

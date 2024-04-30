@@ -420,6 +420,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 	break;
     }
     case IRP_MJ_DIRECTORY_CONTROL:
+    case IRP_MJ_QUERY_INFORMATION:
     case IRP_MJ_QUERY_VOLUME_INFORMATION:
     case IRP_MJ_FILE_SYSTEM_CONTROL:
     case IRP_MJ_CREATE:
@@ -599,6 +600,15 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	    assert(FALSE);
 	    return STATUS_NOT_IMPLEMENTED;
 	}
+	break;
+    }
+
+    case IRP_MJ_QUERY_INFORMATION:
+    {
+	Irp->SystemBuffer = Irp->UserBuffer = (PVOID)Src->Request.OutputBuffer;
+	IoStack->Parameters.QueryFile.Length = Src->Request.OutputBufferLength;
+	IoStack->Parameters.QueryFile.FileInformationClass =
+	    Src->Request.QueryFile.FileInformationClass;
 	break;
     }
 
@@ -1234,6 +1244,11 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	default:
 	    DbgPrint("UNKNOWN-MINOR-FUNCTION\n");
 	}
+	break;
+    case IRP_MJ_QUERY_INFORMATION:
+	DbgPrint("    QUERY-INFORMATION  FileInformationClass %d Length 0x%x\n",
+		 Stack->Parameters.QueryFile.FileInformationClass,
+		 Stack->Parameters.QueryFile.Length);
 	break;
     case IRP_MJ_QUERY_VOLUME_INFORMATION:
 	DbgPrint("    QUERY-VOLUME-INFORMATION  FsInformationClass %d Length 0x%x\n",

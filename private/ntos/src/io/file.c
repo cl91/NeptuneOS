@@ -771,12 +771,79 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE AsyncState,
+/* TODO: We need to cache basic file info since this is accessed frequently. */
+NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
                                IN PTHREAD Thread,
                                IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
                                OUT FILE_BASIC_INFORMATION *FileInformation)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    HANDLE FileHandle = NULL;
+
+    ASYNC_BEGIN(State, Locals, {
+	    HANDLE FileHandle;
+	    PIO_FILE_OBJECT FileObject;
+	    IO_STATUS_BLOCK IoStatus;
+	    PPENDING_IRP PendingIrp;
+	});
+
+    AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, &FileHandle,
+	     FILE_READ_ATTRIBUTES, ObjectAttributes, &Locals.IoStatus, NULL, 0,
+	     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+	     FILE_OPEN, FILE_OPEN_REPARSE_POINT);
+    Locals.FileHandle = FileHandle;
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(State, Status);
+    }
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, Locals.FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    if (!Locals.FileObject->DeviceObject) {
+	/* TODO! */
+	assert(FALSE);
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    /* Queue an IRP to the target driver object. */
+    PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
+	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
+    /* TODO: Embed the response in the IO response message. */
+    assert((MWORD)FileInformation > Thread->IpcBufferServerAddr);
+    assert((MWORD)FileInformation < Thread->IpcBufferServerAddr + PAGE_SIZE);
+    MWORD TargetBuffer = (MWORD)FileInformation - Thread->IpcBufferServerAddr
+	+ Thread->IpcBufferClientAddr;
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = TargetFileObject,
+	.MajorFunction = IRP_MJ_QUERY_INFORMATION,
+	.OutputBuffer = TargetBuffer,
+	.OutputBufferLength = sizeof(FILE_BASIC_INFORMATION),
+	.QueryFile.FileInformationClass = FileBasicInformation
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
+    Status = STATUS_SUCCESS;
+
+out:
+    if (!NT_SUCCESS(Locals.IoStatus.Status)) {
+	Status = Locals.IoStatus.Status;
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,

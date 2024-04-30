@@ -278,6 +278,9 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	} DeviceIoControl;
 	struct {
 	    FILE_INFORMATION_CLASS FileInformationClass;
+	} QueryFile;
+	struct {
+	    FILE_INFORMATION_CLASS FileInformationClass;
 	    ULONG FileIndex;
 	    BOOLEAN ReturnSingleEntry;
 	    BOOLEAN RestartScan;
@@ -616,6 +619,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		DbgPrint("UNKNOWN-MINOR-CODE\n");
 		assert(FALSE);
 	    }
+	    break;
+	case IRP_MJ_QUERY_INFORMATION:
+	    DbgPrint("    QUERY-INFORMATION FileInformationClass %d\n",
+		     IoPacket->Request.QueryFile.FileInformationClass);
 	    break;
 	case IRP_MJ_QUERY_VOLUME_INFORMATION:
 	    DbgPrint("    QUERY-VOLUME-INFORMATION FsInformationClass %d\n",
