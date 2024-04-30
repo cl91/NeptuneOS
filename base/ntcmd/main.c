@@ -26,6 +26,7 @@ Revision History:
 --*/
 #include "ntcmd.h"
 #include "ntexapi.h"
+#include "string.h"
 
 HANDLE hKeyboard;
 
@@ -284,7 +285,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	// Unknown command, try to find an executable and run it.
 	// Executable name should be with an .exe extension.
 	//
-	WCHAR FileName[MAX_PATH];
+	WCHAR FileName[MAX_PATH] = {};
 	ANSI_STRING AnsiString;
 	UNICODE_STRING UnicodeString;
 	HANDLE Process;
@@ -294,20 +295,28 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	    RtlCliDisplayString("%s not recognized: %s", Command,
 				RtlCliStatusToErrorMessage(Status));
 	}
-
-	if (FileExists(FileName)) {
-	    RtlInitAnsiString(&AnsiString, Command);
-	    RtlAnsiStringToUnicodeString(&UnicodeString, &AnsiString, TRUE);
-
-	    NtClose(hKeyboard);
-	    CreateNativeProcess(FileName, UnicodeString.Buffer, &Process);
-	    RtlFreeUnicodeString(&UnicodeString);
-
-	    NtWaitForSingleObject(Process, FALSE, NULL);
-	    RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
-	} else {
+	if (!FileExists(FileName)) {
+	    if (!strstr(xargv[0], ".exe")) {
+		/* Try adding a .exe extension to the file. */
+		wcscat_s(FileName, MAX_PATH, L".exe");
+		if (FileExists(FileName)) {
+		    goto ok;
+		}
+	    }
 	    RtlCliDisplayString("%s not recognized.\n", Command);
+	    return TRUE;
 	}
+
+    ok:
+	RtlInitAnsiString(&AnsiString, Command);
+	RtlAnsiStringToUnicodeString(&UnicodeString, &AnsiString, TRUE);
+
+	NtClose(hKeyboard);
+	CreateNativeProcess(FileName, UnicodeString.Buffer, &Process);
+	RtlFreeUnicodeString(&UnicodeString);
+
+	NtWaitForSingleObject(Process, FALSE, NULL);
+	RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
     }
     return TRUE;
 }
