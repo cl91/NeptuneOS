@@ -62,7 +62,6 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
     DevObj->Vcb->MountInProgress = TRUE;
     /* FileSize is set to zero for the time being as we don't know the volume size yet. */
     IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, DevObj->Vcb, TRUE));
-    CcInitializeCacheMap(DevObj->Vcb->VolumeFcb, NULL, NULL);
     DevObj->Vcb->StorageDevice = DevObj;
 
     /* Select the appropriate list of file systems to send the mount request to. */

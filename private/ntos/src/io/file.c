@@ -27,6 +27,8 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 				  (POBJECT *)&Fcb->Subobjects, NULL),
 		   IopDeleteFcb(Fcb));
     }
+    RET_ERR_EX(CcInitializeCacheMap(Fcb, NULL, NULL),
+	       IopDeleteFcb(Fcb));
     *pFcb = Fcb;
     return STATUS_SUCCESS;
 }
@@ -316,9 +318,6 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
     NTSTATUS Status;
-    if (FileSize) {
-	IF_ERR_GOTO(out, Status, CcInitializeCacheMap(File->Fcb, NULL, NULL));
-    }
     if (FileName && ParentDirectory) {
 	IF_ERR_GOTO(out, Status, ObInsertObject(ParentDirectory, File, FileName, 0));
     }
@@ -534,7 +533,6 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 
     /* If the target file is part of a mounted volume, go through Cc to do the IO. */
     if (Locals.FileObject->Fcb) {
-	IF_ERR_GOTO(out, Status, CcInitializeCacheMap(Locals.FileObject->Fcb, NULL, NULL));
 	Locals.Context = ExAllocatePoolWithTag(sizeof(CACHED_IO_CONTEXT), NTOS_IO_TAG);
 	if (!Locals.Context) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
