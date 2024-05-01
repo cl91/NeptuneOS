@@ -460,6 +460,9 @@ static VOID IopCachedIoCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 out:
     Context->IoStatus.Status = Status;
     Context->IoStatus.Information = Length;
+    if (Context->FileObject->Flags & FO_SYNCHRONOUS_IO) {
+	Context->FileObject->CurrentOffset = FileOffset + Length;
+    }
     KeSetEvent(&Context->IoCompletionEvent);
 }
 
