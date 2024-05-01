@@ -129,7 +129,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 2) {
 	    NTSTATUS Status = RtlCliSetCurrentDirectory(xargv[1]);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("cd: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("cd: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -147,7 +147,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	//
 	WCHAR CurrentDirectory[MAX_PATH];
 	RtlCliGetCurrentDirectory(CurrentDirectory);
-	RtlCliDisplayString("%ws", CurrentDirectory);
+	RtlCliDisplayString("%ws\n", CurrentDirectory);
     } else if (COMPARE_CMD(Command, "dir")) {
 	//
 	// List the current directory
@@ -189,16 +189,16 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 3) {
 	    NTSTATUS Status =  GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("copy: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("copy: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	    Status = GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("copy: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("copy: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	    if (FileExists(buf1)) {
 		Status = CopyFile(buf1, buf2);
 		if (!NT_SUCCESS(Status)) {
-		    RtlCliDisplayString("copy: %s", RtlCliStatusToErrorMessage(Status));
+		    RtlCliDisplayString("copy: %s\n", RtlCliStatusToErrorMessage(Status));
 		}
 	    } else {
 		RtlCliDisplayString("File %ws does not exist.\n", buf1);
@@ -213,16 +213,16 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 3) {
 	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("move: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("move: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	    Status = GetFullPath(xargv[2], buf2, sizeof(buf2), FALSE);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("move: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("move: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	    if (FileExists(buf1)) {
 		Status = MoveFile(buf1, buf2, FALSE);
 		if (!NT_SUCCESS(Status)) {
-		    RtlCliDisplayString("move: %s", RtlCliStatusToErrorMessage(Status));
+		    RtlCliDisplayString("move: %s\n", RtlCliStatusToErrorMessage(Status));
 		}
 	    } else {
 		RtlCliDisplayString("File %ws does not exist.\n", buf1);
@@ -237,12 +237,12 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 2) {
 	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("del: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("del: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	    if (FileExists(buf1)) {
 		Status = DeleteFile(buf1);
 		if (!NT_SUCCESS(Status)) {
-		    RtlCliDisplayString("del: %s", RtlCliStatusToErrorMessage(Status));
+		    RtlCliDisplayString("del: %s\n", RtlCliStatusToErrorMessage(Status));
 		}
 	    } else {
 		RtlCliDisplayString("File %ws does not exist.\n", buf1);
@@ -257,11 +257,11 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 2) {
 	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("md: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("md: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	    Status = CreateDirectory(buf1);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("md: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("md: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -273,7 +273,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	if (xargc == 2) {
 	    NTSTATUS Status = FlushBuffers(xargv[1]);
 	    if (!NT_SUCCESS(Status)) {
-		RtlCliDisplayString("sync: %s", RtlCliStatusToErrorMessage(Status));
+		RtlCliDisplayString("sync: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -292,7 +292,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 
 	NTSTATUS Status = GetFullPath(xargv[0], FileName, sizeof(FileName), FALSE);
 	if (!NT_SUCCESS(Status)) {
-	    RtlCliDisplayString("%s not recognized: %s", Command,
+	    RtlCliDisplayString("%s not recognized: %s\n", Command,
 				RtlCliStatusToErrorMessage(Status));
 	}
 	if (!FileExists(FileName)) {
@@ -400,12 +400,11 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 	//
 	if (Command && *Command) {
 	    //
-	    // Process the command and do a new line again.
+	    // Process the command
 	    //
 	    if (!RtlClipProcessMessage(Command)) {
 		break;
 	    }
-	    RtlCliDisplayString("\n");
 	}
 	//
 	// Display the prompt, and restart the loop
