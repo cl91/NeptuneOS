@@ -778,26 +778,29 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
-    HANDLE FileHandle = NULL;
+    PIO_FILE_OBJECT FileObject = NULL;
 
     ASYNC_BEGIN(State, Locals, {
-	    HANDLE FileHandle;
+	    IO_OPEN_CONTEXT OpenContext;
 	    PIO_FILE_OBJECT FileObject;
 	    IO_STATUS_BLOCK IoStatus;
 	    PPENDING_IRP PendingIrp;
 	});
 
-    AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, &FileHandle,
-	     FILE_READ_ATTRIBUTES, ObjectAttributes, &Locals.IoStatus, NULL, 0,
-	     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-	     FILE_OPEN, FILE_OPEN_REPARSE_POINT);
-    Locals.FileHandle = FileHandle;
+    Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
+    Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
+    Locals.OpenContext.OpenPacket.CreateOptions = FILE_OPEN_REPARSE_POINT;
+    Locals.OpenContext.OpenPacket.FileAttributes = FILE_READ_ATTRIBUTES;
+    Locals.OpenContext.OpenPacket.ShareAccess = FILE_SHARE_READ;
+    Locals.OpenContext.OpenPacket.Disposition = FILE_OPEN;
+
+    AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals, Thread,
+	     ObjectAttributes, OBJECT_TYPE_FILE,
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, (PVOID *)&FileObject);
     if (!NT_SUCCESS(Status)) {
-	ASYNC_RETURN(State, Status);
+	goto out;
     }
-    IF_ERR_GOTO(out, Status,
-		ObReferenceObjectByHandle(Thread, Locals.FileHandle, OBJECT_TYPE_FILE,
-					  (POBJECT *)&Locals.FileObject));
+    Locals.FileObject = FileObject;
     assert(Locals.FileObject != NULL);
     if (!Locals.FileObject->DeviceObject) {
 	/* TODO! */
