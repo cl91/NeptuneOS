@@ -758,17 +758,6 @@ NTSTATUS NtDeleteFile(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtSetInformationFile(IN ASYNC_STATE AsyncState,
-                              IN PTHREAD Thread,
-                              IN HANDLE FileHandle,
-                              OUT IO_STATUS_BLOCK *IoStatusBlock,
-                              IN PVOID FileInfoBuffer,
-                              IN ULONG Length,
-                              IN FILE_INFORMATION_CLASS FileInformationClass)
-{
-    UNIMPLEMENTED;
-}
-
 /* TODO: We need to cache basic file info since this is accessed frequently. */
 NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
                                IN PTHREAD Thread,
@@ -845,6 +834,145 @@ out:
     }
 
     ASYNC_END(State, Status);
+}
+
+NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
+                                IN PTHREAD Thread,
+                                IN HANDLE FileHandle,
+                                OUT IO_STATUS_BLOCK *IoStatusBlock,
+                                OUT PVOID FileInfoBuffer,
+                                IN ULONG Length,
+                                IN FILE_INFORMATION_CLASS FileInformationClass)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PPENDING_IRP PendingIrp;
+	    IO_STATUS_BLOCK IoStatus;
+	});
+
+    switch (FileInformationClass) {
+	CHECK_LENGTH(Length, FileBasicInformation, FILE_BASIC_INFORMATION);
+	CHECK_LENGTH(Length, FileStandardInformation, FILE_STANDARD_INFORMATION);
+	CHECK_LENGTH(Length, FileInternalInformation, FILE_INTERNAL_INFORMATION);
+	CHECK_LENGTH(Length, FileEaInformation, FILE_EA_INFORMATION);
+	CHECK_LENGTH(Length, FileAccessInformation, FILE_ACCESS_INFORMATION);
+	CHECK_LENGTH(Length, FileNamesInformation, FILE_NAME_INFORMATION);
+	CHECK_LENGTH(Length, FilePositionInformation, FILE_POSITION_INFORMATION);
+	CHECK_LENGTH(Length, FileModeInformation, FILE_MODE_INFORMATION);
+	CHECK_LENGTH(Length, FileAlignmentInformation, FILE_ALIGNMENT_INFORMATION);
+	CHECK_LENGTH(Length, FileAllInformation, FILE_ALL_INFORMATION);
+	CHECK_LENGTH(Length, FileNameInformation, FILE_NAME_INFORMATION);
+	CHECK_LENGTH(Length, FileStreamInformation, FILE_STREAM_INFORMATION);
+	CHECK_LENGTH(Length, FilePipeInformation, FILE_PIPE_INFORMATION);
+	CHECK_LENGTH(Length, FilePipeLocalInformation, FILE_PIPE_LOCAL_INFORMATION);
+	CHECK_LENGTH(Length, FilePipeRemoteInformation, FILE_PIPE_REMOTE_INFORMATION);
+	CHECK_LENGTH(Length, FileMailslotQueryInformation, FILE_MAILSLOT_QUERY_INFORMATION);
+	CHECK_LENGTH(Length, FileCompressionInformation, FILE_COMPRESSION_INFORMATION);
+	CHECK_LENGTH(Length, FileObjectIdInformation, FILE_OBJECTID_INFORMATION);
+	CHECK_LENGTH(Length, FileQuotaInformation, FILE_QUOTA_INFORMATION);
+	CHECK_LENGTH(Length, FileReparsePointInformation, FILE_REPARSE_POINT_INFORMATION);
+	CHECK_LENGTH(Length, FileNetworkOpenInformation, FILE_NETWORK_OPEN_INFORMATION);
+	CHECK_LENGTH(Length, FileAttributeTagInformation, FILE_ATTRIBUTE_TAG_INFORMATION);
+	CHECK_LENGTH(Length, FileIoCompletionNotificationInformation,
+		     FILE_IO_COMPLETION_NOTIFICATION_INFORMATION);
+	CHECK_LENGTH(Length, FileIoStatusBlockRangeInformation,
+		     FILE_IOSTATUSBLOCK_RANGE_INFORMATION);
+	CHECK_LENGTH(Length, FileIoPriorityHintInformation, FILE_IO_PRIORITY_HINT_INFORMATION);
+	CHECK_LENGTH(Length, FileSfioReserveInformation, FILE_SFIO_RESERVE_INFORMATION);
+	CHECK_LENGTH(Length, FileSfioVolumeInformation, FILE_SFIO_VOLUME_INFORMATION);
+	CHECK_LENGTH(Length, FileProcessIdsUsingFileInformation,
+		     FILE_PROCESS_IDS_USING_FILE_INFORMATION);
+	CHECK_LENGTH(Length, FileNetworkPhysicalNameInformation,
+		     FILE_NETWORK_PHYSICAL_NAME_INFORMATION);
+    default:
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    /* Deviceless files cannot be queried. */
+    if (!Locals.FileObject->DeviceObject) {
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    PIO_DEVICE_INFO DevInfo = &Locals.FileObject->DeviceObject->DeviceInfo;
+    /* Quick path for FilePositionInformation. The NT executive has enough info
+     * to reply to the client without asking the file system driver. */
+    if (FileInformationClass == FilePositionInformation) {
+	/* TODO: Eventually we will schedule an IO APC to deliver the results
+	 * to the client side in order to avoid doing a syscall. For now we
+	 * will just map the user buffer to NT Executive address space. */
+	PFILE_POSITION_INFORMATION PosInfo = NULL;
+	IF_ERR_GOTO(out, Status, MmMapUserBuffer(&Thread->Process->VSpace,
+						 (MWORD)FileInfoBuffer, Length,
+						 (PVOID *)&PosInfo));
+	PosInfo->CurrentByteOffset.QuadPart = Locals.FileObject->CurrentOffset;
+	Locals.IoStatus.Information = sizeof(FILE_POSITION_INFORMATION);
+	Locals.IoStatus.Status = STATUS_SUCCESS;
+	MmUnmapUserBuffer(PosInfo);
+	goto out;
+    } else {
+	/* TODO: Handle FileAccessInformation and FileModeInformation, both of
+	 * which can be handled purely on the server-side. */
+    }
+    /* TODO: We need to cache FileBasicInformation and FileStandardInformation
+     * just like the fast IO path on Windows. */
+
+    /* Queue an IRP to the target driver object. */
+    PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
+	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = TargetFileObject,
+	.MajorFunction = IRP_MJ_QUERY_INFORMATION,
+	.OutputBuffer = (MWORD)FileInfoBuffer,
+	.OutputBufferLength = Length,
+	.QueryFile.FileInformationClass = FileInformationClass
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
+    Status = STATUS_SUCCESS;
+
+out:
+    if (!NT_SUCCESS(Status)) {
+	Locals.IoStatus.Status = Status;
+    } else {
+	Status = Locals.IoStatus.Status;
+    }
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.IoStatus;
+    }
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtSetInformationFile(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN HANDLE FileHandle,
+                              OUT IO_STATUS_BLOCK *IoStatusBlock,
+                              IN PVOID FileInfoBuffer,
+                              IN ULONG Length,
+                              IN FILE_INFORMATION_CLASS FileInformationClass)
+{
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,
@@ -956,17 +1084,6 @@ out:
     }
 
     ASYNC_END(State, Status);
-}
-
-NTSTATUS NtQueryInformationFile(IN ASYNC_STATE AsyncState,
-                                IN PTHREAD Thread,
-                                IN HANDLE FileHandle,
-                                OUT IO_STATUS_BLOCK *IoStatusBlock,
-                                OUT PVOID FileInfoBuffer,
-                                IN ULONG Length,
-                                IN FILE_INFORMATION_CLASS FileInformationClass)
-{
-    UNIMPLEMENTED;
 }
 
 NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,
