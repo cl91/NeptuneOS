@@ -1013,9 +1013,11 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	goto out;
     }
 
-    /* If the FileSize of the FCB is not set, we skip the end-of-file checks and
-     * assume the file is infinitely long. */
-    ULONG64 FileSize = Fcb->FileSize ? Fcb->FileSize : ~0ULL;
+    /* For the volume FCB, if the FileSize of the FCB is not set, we skip the
+     * end-of-file checks and assume the volume is infinitely long. This is
+     * needed because during the mount process the FS driver needs to access
+     * the volume file but has not yet reported the volume size to server. */
+    ULONG64 FileSize = !Fcb->FileSize && IsVolume ? ~0ULL : Fcb->FileSize;
     ULONG64 EndOffset = FileOffset + Length;
     BOOLEAN Extend = FALSE;
     if (Write && FileSize < EndOffset) {
