@@ -110,6 +110,7 @@ NTSTATUS RtlCliListHardwareTree(VOID);
 NTSTATUS RtlCliListDirectory(VOID);
 NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory);
 ULONG RtlCliGetCurrentDirectory(IN OUT PWSTR CurrentDirectory);
+NTSTATUS RtlCliDumpFile(IN PWSTR FileName);
 NTSTATUS GetFullPath(IN PCSTR FileName,
 		     OUT PWSTR FullPath,
 		     IN ULONG FullPathSize,

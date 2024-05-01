@@ -26,6 +26,7 @@ Revision History:
 #include "ntdef.h"
 #include "ntstatus.h"
 #include "stdio.h"
+#include <ctype.h>
 
 /*++
  * @name RtlCliGetCurrentDirectory
@@ -126,6 +127,77 @@ VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
 			Time.Day, Time.Month, Time.Year, Time.Hour, Time.Minute,
 			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "    <DIR>" : "",
 			SizeString, FileName);
+}
+
+/*++
+ * @name RtlCliDumpFile
+ *
+ * Print the hexdump of the file to the screen.
+ *
+ * @param FileName
+ *        Full path of the file.
+ *
+ * @return STATUS_SUCCESS if successful. Error status if error.
+ *
+ *--*/
+NTSTATUS RtlCliDumpFile(IN PWSTR FileName)
+{
+    HANDLE FileHandle = NULL;
+    NTSTATUS Status = OpenFile(&FileHandle, FileName, FALSE, FALSE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    UCHAR Data[4096] = {};
+    ULONG TotalLength = 0;
+    ULONG LineNum = 0;
+    while (TRUE) {
+	ULONG SizeRead = 0;
+	Status = ReadFile(FileHandle, Data, sizeof(Data), &SizeRead);
+	if (!NT_SUCCESS(Status) || !SizeRead) {
+	    break;
+	}
+	ULONG Length = 0;
+	while (Length < SizeRead) {
+	    RtlCliDisplayString("%08x  ", TotalLength);
+	    for (ULONG i = 0; i < 16; i++) {
+		if (Length + i < SizeRead) {
+		    RtlCliDisplayString("%02x ", Data[Length+i]);
+		} else {
+		    RtlCliDisplayString("  ");
+		}
+		if (i == 7 || i == 15) {
+		    RtlCliDisplayString(" ");
+		}
+	    }
+	    RtlCliDisplayString("|");
+	    for (ULONG i = 0; i < 16; i++) {
+		if (Length + i < SizeRead) {
+		    RtlCliDisplayString("%c", isprint(Data[Length+i]) ? Data[Length+i] : '.');
+		} else {
+		    RtlCliDisplayString(" ");
+		}
+	    }
+	    RtlCliDisplayString("|\n");
+	    Length += 16;
+	    TotalLength += 16;
+	    if (++LineNum > 20) {
+		LineNum = 0;
+		RtlCliDisplayString("Continue listing (Y/N): ");
+		while (TRUE) {
+		    CHAR c = RtlCliGetChar(hKeyboard);
+		    if (c == 'n' || c == 'N') {
+			RtlCliDisplayString("\n");
+			return STATUS_SUCCESS;
+		    }
+		    if (c == 'y' || c == 'Y') {
+			break;
+		    }
+		}
+		RtlCliDisplayString("\n");
+	    }
+	}
+    }
+    return Status;
 }
 
 /*++

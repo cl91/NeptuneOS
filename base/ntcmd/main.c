@@ -26,6 +26,7 @@ Revision History:
 --*/
 #include "ntcmd.h"
 #include "ntexapi.h"
+#include "ntstatus.h"
 #include "string.h"
 
 HANDLE hKeyboard;
@@ -34,16 +35,16 @@ HANDLE hKeyboard;
 
 PCSTR helpstr =
     "\n"
-    "dir      - Show directory contents  pwd      - Print working directory\n"
-    "dump X   - Show hexdump for file X  edlin X  - Edit lines for file X\n"
-    "cd X     - Change directory to X    md X     - Make directory X\n"
-    "copy X Y - Copy file X to Y         move X Y - Move file X to Y\n"
-    "del X    - Delete file X            sync A   - Flush caches for drive A\n"
-    "mount A  - Mount drive A            umount A - Unmount drive A\n"
-    "lm       - List modules             lp       - List processes\n"
-    "devtree  - Dump device tree         sysinfo  - Dump system information\n"
-    "exit     - Exit shell               shutdown - Shutdown system\n"
-    "poweroff - Power off system         reboot   - Reboot system\n"
+    "dir      - Show directory contents    pwd      - Print working directory\n"
+    "dump X   - Show hexdump for file X    edlin X  - Edit lines for file X\n"
+    "cd X     - Change directory to X      md X     - Make directory X\n"
+    "copy X Y - Copy file X to Y           move X Y - Move file X to Y\n"
+    "del X    - Delete file X              sync A   - Flush caches for drive A\n"
+    "mount A  - Mount drive A              umount A - Unmount drive A\n"
+    "lm       - List modules               lp       - List processes\n"
+    "devtree  - Dump device tree           sysinfo  - Dump system information\n"
+    "exit     - Exit shell                 shutdown - Shutdown system\n"
+    "poweroff - Power off system           reboot   - Reboot system\n"
     "\n"
     "If a command is not in the list, it is treated as an executable name.\n"
     "\n"
@@ -158,6 +159,24 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	// Dump hardware tree
 	//
 	RtlCliListHardwareTree();
+    } else if (COMPARE_CMD(Command, "dump")) {
+	//
+	// Dump the file content
+	//
+	if (xargc == 2) {
+	    NTSTATUS Status =  GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("dump: %s\n", RtlCliStatusToErrorMessage(Status));
+	    }
+	    Status = RtlCliDumpFile(buf1);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("dump: %s\n", RtlCliStatusToErrorMessage(Status));
+	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
+	} else {
+	    RtlCliDisplayString("Not enough arguments.\n");
+	}
     } else if (COMPARE_CMD(Command, "shutdown")) {
 	RtlCliShutdown();
     } else if (COMPARE_CMD(Command, "reboot")) {
