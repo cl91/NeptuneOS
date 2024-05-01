@@ -43,7 +43,7 @@ NTSTATUS OffsetToCluster(PDEVICE_EXTENSION DeviceExt, ULONG FirstCluster,
 	   FirstCluster, FileOffset, Cluster, Extend);
 
     if (FirstCluster == 0) {
-	DPRINT("OffsetToCluster is called with FirstCluster = 0\n");
+	DPRINT("ERROR: OffsetToCluster is called with FirstCluster = 0\n");
 	ASSERT(FALSE);
     }
 
@@ -400,7 +400,7 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
     BOOLEAN IsFatFile = BooleanFlagOn(Fcb->Flags, FCB_IS_FAT);
     BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
 
-    DPRINT("<%wZ>\n", &Fcb->PathNameU);
+    DPRINT("FatWrite: <%wZ>\n", &Fcb->PathNameU);
 
     /* We don't allow writing to the volume file, the FAT file, or the page file as
      * writing to these file objects is done exclusively through the cache manager. */
@@ -439,8 +439,7 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
 	goto ByeBye;
     }
 
-    ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
-    if (FirstCluster == 1) {
+    if (FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry) == 1) {
 	/* It is illegal to expand the root directory on FAT12 and FAT16. */
 	Status = STATUS_END_OF_FILE;
 	goto ByeBye;
@@ -458,6 +457,9 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
     FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWrites, 1);
     FatAddToStat(IrpContext->DeviceExt, Fat.NonCachedWriteBytes, Length);
 
+    ULONG FirstCluster = FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry);
+    assert(FirstCluster);
+    assert(FirstCluster != 1);
     Status = FatReadWriteDisk(IrpContext, ByteOffset.LowPart, Length, FirstCluster, TRUE);
 
 Metadata:
@@ -488,7 +490,7 @@ Metadata:
     }
 
 ByeBye:
-    DPRINT("%x\n", Status);
+    DPRINT("FatWrite: returning status 0x%08x\n", Status);
     IrpContext->Irp->IoStatus.Status = Status;
     if (NT_SUCCESS(Status)) {
 	IrpContext->PriorityBoost = IO_DISK_INCREMENT;
