@@ -525,6 +525,17 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	    Locals.FileOffset = Locals.FileObject->Fcb->FileSize;
 	}
     }
+    if (!Write && Locals.FileObject->Fcb) {
+	if (Locals.FileOffset > Locals.FileObject->Fcb->FileSize) {
+	    Status = STATUS_END_OF_FILE;
+	    goto out;
+	}
+	BufferLength = min(BufferLength, Locals.FileObject->Fcb->FileSize - Locals.FileOffset);
+	if (!BufferLength) {
+	    Status = STATUS_SUCCESS;
+	    goto out;
+	}
+    }
 
     /* If the target file is part of a mounted volume and we need to extend the file, make
      * sure there isn't a concurrent WRITE IRP in progress. If there is one, wait for it
@@ -907,7 +918,6 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
     }
     assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
 
-    PIO_DEVICE_INFO DevInfo = &Locals.FileObject->DeviceObject->DeviceInfo;
     /* Quick path for FilePositionInformation. The NT executive has enough info
      * to reply to the client without asking the file system driver. */
     if (FileInformationClass == FilePositionInformation) {
