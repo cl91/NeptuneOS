@@ -1199,10 +1199,11 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 {
     DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 	     Stack->MajorFunction, Stack->MinorFunction, Stack->Flags, Stack->Control);
-    DbgPrint("    DeviceObject %p(%p, ext %p) FileObject %p(%p) CompletionRoutine %p Context %p\n",
+    DbgPrint("    DeviceObject %p(%p, ext %p) FileObject %p(%p, fcb %p) CompletionRoutine %p Context %p\n",
 	     Stack->DeviceObject, (PVOID)IopGetDeviceHandle(Stack->DeviceObject),
 	     Stack->DeviceObject ? Stack->DeviceObject->DeviceExtension : NULL,
 	     Stack->FileObject, (PVOID)IopGetFileHandle(Stack->FileObject),
+	     Stack->FileObject ? Stack->FileObject->FsContext : NULL,
 	     Stack->CompletionRoutine, Stack->Context);
     switch (Stack->MajorFunction) {
     case IRP_MJ_CREATE:

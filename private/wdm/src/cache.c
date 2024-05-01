@@ -1,4 +1,5 @@
 #include "ntdef.h"
+#include "ntstatus.h"
 #include <wdmp.h>
 #include <avltree.h>
 
@@ -818,8 +819,18 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
     }
     assert(!IopOldEnvToWakeUp);
     PFSRTL_COMMON_FCB_HEADER Fcb = FileObject->FsContext;
-    PVPB Vpb = Fcb ? ((PCACHE_MAP)Fcb->CacheMap)->Vpb : FileObject->DeviceObject->Vpb;
-    assert(Vpb);
+    PVPB Vpb = NULL;
+    if (Fcb && Fcb->CacheMap) {
+	Vpb = ((PCACHE_MAP)Fcb->CacheMap)->Vpb;
+    } else if (FileObject->DeviceObject) {
+	Vpb = FileObject->DeviceObject->Vpb;
+    }
+    if (!Vpb) {
+	if (IoStatus) {
+	    IoStatus->Status = STATUS_INVALID_PARAMETER;
+	}
+	return;
+    }
     assert(Vpb->DeviceObject);
     Req->DeviceHandle = Vpb->DeviceObject->Private.Handle;
     Req->FileHandle = FileObject->Private.Handle;
