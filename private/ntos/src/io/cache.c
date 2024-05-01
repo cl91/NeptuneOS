@@ -875,8 +875,6 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
     }
 
     if (Extend) {
-	assert(Parent->Node.Key == Mapping->Node.Key);
-	assert(Parent->VolumeFileOffset == Mapping->VolumeFileOffset);
 	Parent->Length += Length;
     } else {
 	assert(!Parent || Mapping->Node.Key != Parent->Node.Key);
