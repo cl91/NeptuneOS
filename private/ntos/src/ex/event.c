@@ -1,4 +1,5 @@
 #include "ei.h"
+#include "ob.h"
 
 static LIST_ENTRY EiEventObjectList;
 
@@ -124,7 +125,6 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
     switch (ObObjectGetType(Object)) {
     case OBJECT_TYPE_DIRECTORY:
     case OBJECT_TYPE_THREAD:
-    case OBJECT_TYPE_PROCESS:
     case OBJECT_TYPE_SECTION:
     case OBJECT_TYPE_FILE:
     case OBJECT_TYPE_DEVICE:
@@ -137,6 +137,11 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
 	return NULL;
     case OBJECT_TYPE_EVENT:
 	return &((PEVENT_OBJECT)Object)->Event.Header;
+    case OBJECT_TYPE_PROCESS:
+	return &((PPROCESS)Object)->Header;
+    case OBJECT_TYPE_SYMBOLIC_LINK:
+	/* Symbolic links are not dispatcher objects. */
+	return NULL;
     case OBJECT_TYPE_SYSTEM_ADAPTER:
 	/* System adapters are not dispatcher objects. */
 	return NULL;

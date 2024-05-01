@@ -76,8 +76,6 @@ static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
 }
 
 /* async.c */
-VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
-VOID KiDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
 ULONG KiDeliverApc(IN PTHREAD Thread,
 		   IN ULONG MsgBufOffset,
 		   OUT BOOLEAN *MoreToCome);

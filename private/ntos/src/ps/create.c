@@ -1,3 +1,5 @@
+#include "ke.h"
+#include "ntexapi.h"
 #include "psp.h"
 #include <wdmsvc.h>
 
@@ -303,9 +305,9 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
      * the thread context */
     assert(!Process->Initialized || Ctx->Context != NULL);
 
-    if (Ctx->InitialTeb != NULL &&
-	(Ctx->InitialTeb->StackBase == NULL || Ctx->InitialTeb->StackLimit == NULL ||
-	 Ctx->InitialTeb->AllocatedStackBase == NULL ||
+    if (Ctx->InitialTeb &&
+	(!Ctx->InitialTeb->StackBase || !Ctx->InitialTeb->StackLimit ||
+	 !Ctx->InitialTeb->AllocatedStackBase ||
 	 /* Stack reserve must be at least stack commit */
 	 Ctx->InitialTeb->AllocatedStackBase > Ctx->InitialTeb->StackLimit ||
 	 /* Stack commit cannot be zero */
@@ -529,6 +531,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     ObpReferenceObject(Section);
     Process->ImageSection = Section;
+    KeInitializeDispatcherHeader(&Process->Header, NotificationEvent);
 
     RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &Process->CSpace));
     RET_ERR(MmCreateVSpace(&Process->VSpace));

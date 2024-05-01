@@ -579,17 +579,17 @@ typedef struct _DISPATCHER_HEADER {
     EVENT_TYPE EventType;
 } DISPATCHER_HEADER, *PDISPATCHER_HEADER;
 
-/*
- * This function is private to the KE component. Do not call it outside KE.
- */
-static inline VOID KiInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
-						IN EVENT_TYPE EventType)
+FORCEINLINE VOID KeInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
+					      IN EVENT_TYPE EventType)
 {
     assert(Header != NULL);
     InitializeListHead(&Header->WaitBlockList);
     Header->EventType = EventType;
     Header->Signaled = FALSE;
 }
+
+VOID KeSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
+VOID KeDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
 
 /*
  * A wait block represents a boolean condition that is satisfied when a dispatcher
@@ -655,13 +655,12 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
 				     IN EVENT_TYPE EventType)
 {
     assert(Event != NULL);
-    KiInitializeDispatcherHeader(&Event->Header, EventType);
+    KeInitializeDispatcherHeader(&Event->Header, EventType);
 }
 
 static inline VOID KeSetEvent(IN PKEVENT Event)
 {
-    VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
-    KiSignalDispatcherObject(&Event->Header);
+    KeSignalDispatcherObject(&Event->Header);
 }
 
 static inline VOID KeResetEvent(IN PKEVENT Event)
@@ -674,8 +673,7 @@ static inline VOID KeUninitializeEvent(IN PKEVENT Event)
     /* Signal the event one last time so any thread that is blocked
      * on this event gets resumed. */
     KeSetEvent(Event);
-    VOID KiDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
-    KiDetachDispatcherObject(&Event->Header);
+    KeDetachDispatcherObject(&Event->Header);
 }
 
 /*

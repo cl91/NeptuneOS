@@ -147,7 +147,7 @@ static NTSTATUS KiEnableTimerInterruptService()
 
 static inline VOID KiSignalExpiredTimer(IN PTIMER Timer)
 {
-    KiSignalDispatcherObject(&Timer->Header);
+    KeSignalDispatcherObject(&Timer->Header);
     /* Note here ApcThread can become NULL while ApcRoutine is not NULL.
      * This can happen when a thread object is deleted before the timer
      * object is (the thread object deletion routine will set ApcThread
@@ -224,7 +224,7 @@ ULONGLONG KeQueryInterruptTime()
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type)
 {
-    KiInitializeDispatcherHeader(&Timer->Header, Type == NotificationTimer ?
+    KeInitializeDispatcherHeader(&Timer->Header, Type == NotificationTimer ?
 				 NotificationEvent : SynchronizationEvent);
     InsertTailList(&KiTimerList, &Timer->ListEntry);
 }
@@ -309,8 +309,8 @@ VOID KeUninitializeTimer(IN PTIMER Timer)
     /* Signal the dispatcher header one last time so any thread that
      * is blocked on this timer gets resumed. We don't deliver APC
      * though because the timer technically didn't expire. */
-    KiSignalDispatcherObject(&Timer->Header);
-    KiDetachDispatcherObject(&Timer->Header);
+    KeSignalDispatcherObject(&Timer->Header);
+    KeDetachDispatcherObject(&Timer->Header);
     if (Timer->ApcThread != NULL) {
 	RemoveEntryList(&Timer->ThreadLink);
     }

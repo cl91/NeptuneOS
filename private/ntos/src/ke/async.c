@@ -26,8 +26,9 @@ static inline VOID KiInitializeWaitBlock(IN PKWAIT_BLOCK WaitBlock,
 /*
  * Detach the dispatcher object from all of the wait blocks that are waiting
  * for it. This is need when the dispatcher object is being destroyed, but
- * there might still be threads waiting on it. */
-VOID KiDetachDispatcherObject(IN PDISPATCHER_HEADER Header)
+ * there might still be threads waiting on it.
+ */
+VOID KeDetachDispatcherObject(IN PDISPATCHER_HEADER Header)
 {
     LoopOverList(WaitBlock, &Header->WaitBlockList, KWAIT_BLOCK, DispatcherLink) {
 	assert(WaitBlock->Thread != NULL);
@@ -347,7 +348,7 @@ ULONG KiDeliverApc(IN PTHREAD Thread,
  * to satisfied and wake all thread sleeping on this dispatcher object (if
  * all other wait conditions are satisfied for the thread).
  */
-VOID KiSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
+VOID KeSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
 {
     DbgTrace("Signaling dispatcher %p\n", Dispatcher);
     assert(Dispatcher != NULL);

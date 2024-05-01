@@ -1,4 +1,7 @@
+#include "ke.h"
+#include "ob.h"
 #include "psp.h"
+#include "util.h"
 
 /*
  * Unmaps the client-server shared region.
@@ -89,6 +92,11 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 
 VOID PspProcessObjectDeleteProc(IN POBJECT Object)
 {
+    PPROCESS Process = Object;
+    if (!Process->ImageSection) {
+	return;
+    }
+    KeDetachDispatcherObject(&Process->Header);
     /* TODO */
 }
 
@@ -109,7 +117,7 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
 			   IN NTSTATUS ExitStatus)
 {
     assert(Thread->Process != NULL);
-    DbgTrace("Terminating thread %p with status 0x%08x\n",
+    DbgTrace("Terminating thread %s with status 0x%08x\n",
 	     Thread->DebugName, ExitStatus);
     Thread->ExitStatus = ExitStatus;
     /* If the thread to terminate is the main event loop of a driver thread,
@@ -137,6 +145,7 @@ NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread)
     return PspSuspendThread(Thread->TreeNode.Cap);
 }
 
+
 NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
 			   IN PTHREAD Thread,
                            IN HANDLE ThreadHandle,
@@ -155,12 +164,34 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+VOID PsTerminateProcess(IN PPROCESS Process,
+			IN NTSTATUS ExitStatus)
+{
+    DbgTrace("Terminating process %p (%s) with status 0x%08x\n",
+	     Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
+    LoopOverList(Thread, &Process->ThreadList, THREAD, ThreadListEntry) {
+	PsTerminateThread(Thread, ExitStatus);
+    }
+    KeSignalDispatcherObject(&Process->Header);
+    ObDereferenceObject(Process);
+}
+
 NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
 			    IN PTHREAD Thread,
                             IN HANDLE ProcessHandle,
                             IN NTSTATUS ExitStatus)
 {
-    UNIMPLEMENTED;
+    PPROCESS Process = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
+    ObDereferenceObject(Process);
+    assert(Process != NULL);
+    PsTerminateProcess(Process, ExitStatus);
+    /* If the current process is terminating, do not reply to the calling thread. */
+    if (ProcessHandle == NtCurrentProcess()) {
+	return STATUS_NTOS_NO_REPLY;
+    }
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
