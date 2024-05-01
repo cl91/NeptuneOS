@@ -1,4 +1,6 @@
 #include "ldrp.h"
+#include "ntrtl.h"
+#include "ntstatus.h"
 
 /* TLS ***********************************************************************/
 
@@ -922,7 +924,8 @@ FASTCALL VOID LdrpInitialize(IN seL4_IPCBuffer *IpcBuffer,
     /* Check if we have already setup LDR data */
     PTHREAD_START_ROUTINE EntryPoint = NULL;
     NTSTATUS Status = STATUS_SUCCESS;
-    if (!Peb->LdrData) {
+    BOOLEAN InitThread = !Peb->LdrData;
+    if (InitThread) {
 	/* At process startup the process init info is placed at the beginning
 	 * of the ipc buffer. */
 	NTDLL_PROCESS_INIT_INFO InitInfo = *((PNTDLL_PROCESS_INIT_INFO)(IpcBuffer));
@@ -1012,12 +1015,19 @@ err:
 	RtlRaiseStatus(Status);
     }
 
-    /* The thread entry point should never return. Shutdown the thread if it did. */
+    /* The thread entry point should never return. Shutdown the thread if it did.
+     * If we are the init thread, also shutdown the entire process. */
     DPRINT1("LDR: Thread entry point %p returned for thread %p of process %p, "
-	    "shutting down thread.\n",
+	    "shutting down %s.\n",
 	    EntryPoint, NtCurrentTeb()->RealClientId.UniqueThread,
-	    NtCurrentTeb()->RealClientId.UniqueProcess);
-    RtlExitUserThread(STATUS_UNSUCCESSFUL);
+	    NtCurrentTeb()->RealClientId.UniqueProcess,
+	    InitThread ? "process" : "thread");
+    if (InitThread) {
+	LdrShutdownProcess();
+	NtTerminateProcess(NtCurrentProcess(), STATUS_UNSUCCESSFUL);
+    } else {
+	RtlExitUserThread(STATUS_UNSUCCESSFUL);
+    }
 }
 
 /*
