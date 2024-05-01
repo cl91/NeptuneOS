@@ -495,6 +495,7 @@ typedef struct _PIN_DATA_EX_CALLBACK_INFO {
 			       * some IO requests fail, this will be set to the IO
 			       * status block of the first failed IO request. */
     BOOLEAN Write;
+    BOOLEAN Extend;
 } PIN_DATA_EX_CALLBACK_INFO, *PPIN_DATA_EX_CALLBACK_INFO;
 
 typedef struct _QUEUED_IO_REQUEST {
@@ -573,6 +574,9 @@ static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
 	    Slave->CallbackInfo->IoStatus = IoStatus;
 	}
 	if (IsListEmpty(&Slave->CallbackInfo->ReqList)) {
+	    if (Slave->CallbackInfo->Extend) {
+		Slave->CallbackInfo->Fcb->WritePending = FALSE;
+	    }
 	    Slave->CallbackInfo->Callback(Slave->CallbackInfo->Fcb,
 					  Slave->CallbackInfo->OriginalFileOffset,
 					  Slave->CallbackInfo->OriginalLength,
@@ -584,6 +588,9 @@ static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
     }
     RemoveEntryList(&Req->Link);
     if (IsListEmpty(&Req->CallbackInfo->ReqList)) {
+	if (Req->CallbackInfo->Extend) {
+	    Req->CallbackInfo->Fcb->WritePending = FALSE;
+	}
 	Req->CallbackInfo->Callback(Req->CallbackInfo->Fcb,
 				    Req->CallbackInfo->OriginalFileOffset,
 				    Req->CallbackInfo->OriginalLength,
@@ -1063,6 +1070,7 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
     CallbackInfo->OriginalFileOffset = OriginalFileOffset;
     CallbackInfo->OriginalLength = OriginalLength;
     CallbackInfo->Write = Write;
+    CallbackInfo->Extend = Extend;
 
     PQUEUED_IO_REQUEST IoReq = NULL;
     ULONG64 CurrentOffset = VIEW_ALIGN64(FileOffset);
