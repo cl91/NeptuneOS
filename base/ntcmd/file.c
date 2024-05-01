@@ -103,68 +103,29 @@ NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory)
  *--*/
 VOID RtlCliDumpFileInfo(PFILE_BOTH_DIR_INFORMATION DirInfo)
 {
-    PWCHAR Null;
-    WCHAR Save;
+    LARGE_INTEGER LocalTime;
     TIME_FIELDS Time;
-    CHAR SizeString[16];
-    WCHAR FileString[MAX_PATH + 1];
-
-    WCHAR FileStringSize[100];
-
-    UINT FileSize = 0;
-
-    //
-    // The filename isn't null-terminated, and the next structure follows
-    // right after it. So, we save the next char (which ends up being the
-    // NextEntryOffset of the next structure), then temporarly clear it so
-    // that the RtlCliDisplayString can treat it as a null-terminated string
-    //
-    Null = (PWCHAR)((PBYTE) DirInfo->FileName + DirInfo->FileNameLength);
-    Save = *Null;
-    *Null = 0;
-
     //
     // Get the last access time
     //
-    RtlSystemTimeToLocalTime(&DirInfo->CreationTime,
-			     &DirInfo->CreationTime);
-    RtlTimeToTimeFields(&DirInfo->CreationTime, &Time);
+    RtlSystemTimeToLocalTime(&DirInfo->CreationTime, &LocalTime);
+    RtlTimeToTimeFields(&LocalTime, &Time);
 
-    //
-    // Don't display sizes for directories
-    //
+    CHAR SizeString[16] = {};
+    WCHAR FileName[MAX_PATH] = {};
     if (!(DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-	snprintf(SizeString, sizeof(SizeString), "%d", DirInfo->AllocationSize.LowPart);
-    } else {
-	snprintf(SizeString, sizeof(SizeString), " ", DirInfo->AllocationSize.LowPart);
+	snprintf(SizeString, sizeof(SizeString), "%9d", DirInfo->AllocationSize.LowPart);
     }
 
-    //
-    // Display this entry
-    //
-
-    // 75 symbols.
-
-    FileSize = DirInfo->FileNameLength / sizeof(WCHAR);
-
-    _snwprintf(FileStringSize, sizeof(FileStringSize)/sizeof(WCHAR), L"%d", FileSize);
-
+    ULONG FileNameLength = DirInfo->FileNameLength / sizeof(WCHAR);
     if (DirInfo->FileNameLength) {
-	memset(FileString, 0x00, (MAX_PATH + 1) * sizeof(WCHAR));
-	wcsncpy_s(FileString, sizeof(FileString)/sizeof(WCHAR), DirInfo->FileName, FileSize);
-    } else {
-	_snwprintf(FileString, sizeof(FileString)/sizeof(WCHAR), L" ");
+	wcsncpy_s(FileName, sizeof(FileName)/sizeof(WCHAR), DirInfo->FileName, FileNameLength);
     }
 
-    RtlCliDisplayString("%02d.%02d.%04d %02d:%02d %s %9s  %ws\n",
+    RtlCliDisplayString("%02d.%02d.%04d %02d:%02d %s%s  %ws\n",
 			Time.Day, Time.Month, Time.Year, Time.Hour, Time.Minute,
-			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "<DIR>" : "",
-			SizeString, FileString);
-
-    //
-    // Restore the character that was here before
-    //
-    *Null = Save;
+			DirInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? "    <DIR>" : "",
+			SizeString, FileName);
 }
 
 /*++
