@@ -78,7 +78,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 	Status = IoCallDriver(DeviceExt->StorageDevice, Irp);
 
 	/* Ignore device not supporting flush operation */
-	if (Status == STATUS_INVALID_DEVICE_REQUEST) {
+	if (Status == STATUS_INVALID_DEVICE_REQUEST || Status == STATUS_NOT_IMPLEMENTED) {
 	    DPRINT1("Flush not supported, ignored\n");
 	    Status = STATUS_SUCCESS;
 	}
