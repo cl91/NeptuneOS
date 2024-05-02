@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
+#include <ctype.h>
 #include <gnu.h>
 #include <nt.h>
 

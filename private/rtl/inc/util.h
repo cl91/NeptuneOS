@@ -4,7 +4,7 @@
 #include <nt.h>
 #include <structures_gen.h>
 #include <services.h>
-#include "ctype_inline.h"
+#include <ctype.h>
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
