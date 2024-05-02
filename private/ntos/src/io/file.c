@@ -52,8 +52,8 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     }
 
     /* If the FileName is not NULL but points to an empty string, we
-     * must be opening a non-file-system device object, in which case
-     * we do not allocate an FCB. */
+     * must be opening a non-file-system device object or the volume
+     * file object, in which case we do not allocate an FCB. */
     if ((Ctx->FileName && *Ctx->FileName == '\0') || Ctx->NoFcb) {
 	File->Fcb = NULL;
     } else if (Ctx->MasterFileObject) {

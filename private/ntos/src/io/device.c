@@ -117,6 +117,15 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 	    ObRemoveObject(DevObj->Vcb->VolumeFile);
 	}
 	DevObj->Vcb->VolumeFile = FileObj;
+	/* Increase its refcount so the volume file object is never deleted until
+	 * the volume is unmounted. */
+	ObpReferenceObject(FileObj);
+	/* The volume file object should not have an FCB allocated. */
+	assert(!FileObj->Fcb);
+	/* We assign the volume FCB to it. */
+	FileObj->Fcb = DevObj->Vcb->VolumeFcb;
+	/* And set us as the master file object of the volume FCB. */
+	FileObj->Fcb->MasterFileObject = FileObj;
 	return STATUS_SUCCESS;
     }
 
