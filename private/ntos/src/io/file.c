@@ -158,6 +158,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     PIO_FILE_OBJECT FileObject = Self;
     PIO_FILE_OBJECT OpenedFile = NULL;
     PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
+    POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
     ASYNC_BEGIN(State, Locals, {
 	    PCHAR FullPath;
 	    ULONG SubPathLen;
@@ -197,6 +198,15 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	IF_ERR_GOTO(out, Status,
 		    ObCreateObject(OBJECT_TYPE_FILE,
 				   (POBJECT *)&OpenedFile, &CreaCtx));
+	/* Check if this is Synch I/O and set the sync flag accordingly */
+	if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT |
+					 FILE_SYNCHRONOUS_IO_NONALERT)) {
+	    OpenedFile->Flags |= FO_SYNCHRONOUS_IO;
+	    /* Check if it's also alertable and set the alertable flag accordingly */
+	    if (OpenPacket->CreateOptions & FILE_SYNCHRONOUS_IO_ALERT) {
+		OpenedFile->Flags |= FO_ALERTABLE_IO;
+	    }
+	}
 	Status = STATUS_SUCCESS;
 	goto out;
     }

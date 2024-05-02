@@ -27,9 +27,7 @@ Revision History:
     2024-02-14  File created
 
 --*/
-#include "io.h"
 #include "iop.h"
-#include "ntstatus.h"
 #include "wdmsvc.h"
 
 #define NTOS_CC_TAG	(EX_POOL_TAG('n','t','c','c'))
