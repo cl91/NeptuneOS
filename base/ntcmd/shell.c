@@ -298,6 +298,10 @@ PCSTR RtlCliStatusToErrorMessage(IN NTSTATUS Status)
     case STATUS_NO_MEMORY:
     case STATUS_INSUFFICIENT_RESOURCES:
 	return "out of memory";
+    case STATUS_DISK_FULL:
+	return "disk full";
+    case STATUS_DISK_CORRUPT_ERROR:
+	return "disk corrupt";
     default:
 	if (NT_SUCCESS(Status)) {
 	    snprintf(Buffer, sizeof(Buffer), "success (status 0x%08x)", Status);
