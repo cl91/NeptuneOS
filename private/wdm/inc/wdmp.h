@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <debug.h>
 #include "coroutine.h"
+#include "ntdef.h"
 
 extern PCSTR IopDbgTraceModuleName;
 #define RTLP_DBGTRACE_MODULE_NAME	IopDbgTraceModuleName
@@ -226,7 +227,7 @@ FORCEINLINE BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
 FORCEINLINE PFILE_OBJECT IopGetFileObject(IN GLOBAL_HANDLE Handle)
 {
     LoopOverList(Object, &IopFileObjectList, FILE_OBJECT, Private.Link) {
-	if (Handle == Object->Private.Handle) {
+	if (Handle == Object->Header.GlobalHandle) {
 	    return Object;
 	}
     }
@@ -235,5 +236,26 @@ FORCEINLINE PFILE_OBJECT IopGetFileObject(IN GLOBAL_HANDLE Handle)
 
 FORCEINLINE GLOBAL_HANDLE IopGetFileHandle(IN PFILE_OBJECT File)
 {
-    return File ? File->Private.Handle : 0;
+    return File ? File->Header.GlobalHandle : 0;
 }
+
+typedef enum _CLIENT_OBJECT_TYPE {
+    CLIENT_OBJECT_TIMER,
+    CLIENT_OBJECT_EVENT,
+    CLIENT_OBJECT_DEVICE,
+    CLIENT_OBJECT_FILE
+} CLIENT_OBJECT_TYPE;
+
+FORCEINLINE BOOLEAN ObjectTypeIsWaitable(IN CLIENT_OBJECT_TYPE Ty)
+{
+    return Ty <= CLIENT_OBJECT_EVENT;
+}
+
+#define ObInitializeObject(Obj, Ty, TyName)			\
+    {								\
+	(Obj)->Header.Type = Ty;				\
+	(Obj)->Header.Flags = ObjectTypeIsWaitable(Ty) ?	\
+	    OBJ_WAITABLE_OBJECT : 0;				\
+	(Obj)->Header.Size = sizeof(TyName);			\
+	(Obj)->Header.RefCount = 1;				\
+    }

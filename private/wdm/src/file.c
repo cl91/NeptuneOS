@@ -18,6 +18,8 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 					   &FileName),
 		   IopFreePool(FileObject));
     }
+    ObInitializeObject(FileObject, CLIENT_OBJECT_FILE, FILE_OBJECT);
+    FileObject->Header.GlobalHandle = Handle;
     FileObject->ReadAccess = Params->ReadAccess;
     FileObject->WriteAccess = Params->WriteAccess;
     FileObject->DeleteAccess = Params->DeleteAccess;
@@ -26,7 +28,6 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
     FileObject->SharedDelete = Params->SharedDelete;
     FileObject->Flags = Params->Flags;
     FileObject->FileName = FileName;
-    FileObject->Private.Handle = Handle;
     InsertTailList(&IopFileObjectList, &FileObject->Private.Link);
     *pFileObject = FileObject;
     return STATUS_SUCCESS;
@@ -37,7 +38,7 @@ VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject)
     assert(FileObject != NULL);
     assert(FileObject->Private.Link.Flink != NULL);
     assert(FileObject->Private.Link.Blink != NULL);
-    assert(FileObject->Private.Handle != 0);
+    assert(FileObject->Header.GlobalHandle != 0);
     RemoveEntryList(&FileObject->Private.Link);
     if (FileObject->FileName.Buffer) {
 	IopFreePool(FileObject->FileName.Buffer);

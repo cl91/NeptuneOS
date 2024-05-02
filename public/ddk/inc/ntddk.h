@@ -212,11 +212,24 @@ typedef struct _VPB {
 } VPB, *PVPB;
 
 /*
+ * Common header for client-side objects.
+ */
+typedef struct _OBJECT_HEADER {
+    UCHAR Type;
+    UCHAR Flags;
+    USHORT Size;
+    LONG RefCount;
+    union {
+	ULONG_PTR GlobalHandle;   /* Unique handle supplied by the server */
+	HANDLE Handle;		  /* Regular NT handle */
+    };
+} OBJECT_HEADER, *POBJECT_HEADER;
+
+/*
  * File Object
  */
 typedef struct _FILE_OBJECT {
-    SHORT Type;
-    SHORT Size;
+    OBJECT_HEADER Header;	/* Must be first member */
     struct _DEVICE_OBJECT *DeviceObject;
     PVOID FsContext;
     PVOID FsContext2;
@@ -233,7 +246,6 @@ typedef struct _FILE_OBJECT {
     ULONG Flags;
     UNICODE_STRING FileName;
     struct {
-        ULONG_PTR Handle;   /* Unique handle supplied by the server */
 	LIST_ENTRY Link; /* List entry for the list of all known file objects */
     } Private;	   /* Drivers shall not access this struct directly */
 } FILE_OBJECT, *PFILE_OBJECT;
@@ -354,8 +366,7 @@ FORCEINLINE NTAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
  * Device object.
  */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
-    SHORT Type;
-    ULONG Size;
+    OBJECT_HEADER Header;
     struct _DRIVER_OBJECT *DriverObject;
     struct _IRP *CurrentIrp;
     UNICODE_STRING DeviceName;
@@ -374,7 +385,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     ULONG StartIoFlags;
     PVPB Vpb;
     struct {
-	ULONG_PTR Handle;   /* Unique handle supplied by the server */
 	LIST_ENTRY Link; /* List entry for the list of all known device objects */
     } Private;		 /* Drivers shall not access this struct directly */
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
@@ -518,13 +528,6 @@ FORCEINLINE NTAPI VOID IoInitializeDpcRequest(IN PDEVICE_OBJECT DeviceObject,
 }
 
 /*
- * Executive objects. These are simply handles to the server-side objects.
- */
-typedef struct _EPROCESS {
-    HANDLE Handle;
-} EPROCESS, *PEPROCESS;
-
-/*
  * Driver entry point
  */
 typedef NTSTATUS (NTAPI DRIVER_INITIALIZE)(IN struct _DRIVER_OBJECT *DriverObject,
@@ -578,10 +581,11 @@ typedef struct _IO_CLIENT_EXTENSION {
  * Driver object
  */
 typedef struct _DRIVER_OBJECT {
-    SHORT Type;
-    SHORT Size;
+    CSHORT Type;
+    CSHORT Size;
+    PDEVICE_OBJECT DeviceObject; /* Points to the last device created by IoCreateDevice.
+				  * Deprecated! Do not use in PnP drivers. */
     ULONG Flags;
-    PDEVICE_OBJECT DeviceObject;
     PVOID DriverStart;
     UNICODE_STRING ServiceKeyName;
     UNICODE_STRING DriverName;
@@ -964,7 +968,7 @@ NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
  * include files under public/ddk.
  */
 typedef struct _KTIMER {
-    HANDLE Handle;		/* Must be first member */
+    OBJECT_HEADER Header;	/* Must be first member. */
     LIST_ENTRY TimerListEntry;
     PKDPC Dpc;
     BOOLEAN State;		/* TRUE if the timer is set. */
@@ -1007,7 +1011,7 @@ NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
  * EVENT object.
  */
 typedef struct _KEVENT {
-    HANDLE Handle;		/* Must be first member */
+    OBJECT_HEADER Header;	/* Must be first member */
     LIST_ENTRY EventListEntry;
     EVENT_TYPE Type;
     BOOLEAN State;
@@ -1024,10 +1028,15 @@ NTAPI NTSYSAPI LONG KeResetEvent(IN PKEVENT Event);
 NTAPI NTSYSAPI VOID KeClearEvent(IN PKEVENT Event);
 
 /* As should be apparent from the code below, the only objects
- * waitable are those that has HANDLE as the first member. These
- * include KTIMER, KEVENT, EPROCESS, etc. */
+ * waitable are those that has OBJECT_HEADER as the first member and
+ * OBJ_WAITABLE_OBJECT set. These include KTIMER, KEVENT, etc. */
+#define OBJ_WAITABLE_OBJECT	(1)
 #define KeWaitForSingleObject(obj, _1, _2, alert, timeout)	\
-    NtWaitForSingleObject(*((PHANDLE)(obj)), alert, timeout)
+    ({								\
+	POBJECT_HEADER Header = &(obj)->Header;			\
+	assert(Header->Flags & OBJ_WAITABLE_OBJECT);		\
+	NtWaitForSingleObject(Header->Handle, alert, timeout);	\
+    })
 
 /*
  * Set the IO cancel routine of the given IRP, returning the previous one.

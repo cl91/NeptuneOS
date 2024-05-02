@@ -1058,7 +1058,7 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     assert(DeviceObject != NULL);
     assert(DeviceObject != IoStack->DeviceObject);
     assert(DeviceObject->DriverObject == NULL);
-    assert(DeviceObject->Private.Handle != 0);
+    assert(DeviceObject->Header.GlobalHandle != 0);
     assert(IoStack->DeviceObject != NULL);
     assert(IopDeviceObjectIsLocal(IoStack->DeviceObject));
     assert(Irp->Private.OriginalRequestor != 0);
@@ -1072,7 +1072,7 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     Dest->ClientMsg.Type = IoCliMsgForwardIrp;
     Dest->ClientMsg.ForwardIrp.OriginalRequestor = Irp->Private.OriginalRequestor;
     Dest->ClientMsg.ForwardIrp.Identifier = Irp->Private.Identifier;
-    Dest->ClientMsg.ForwardIrp.DeviceObject = DeviceObject->Private.Handle;
+    Dest->ClientMsg.ForwardIrp.DeviceObject = DeviceObject->Header.GlobalHandle;
     Dest->ClientMsg.ForwardIrp.NotifyCompletion = Irp->Private.NotifyCompletion;
     if (IoStack->MajorFunction == IRP_MJ_READ) {
 	Dest->ClientMsg.ForwardIrp.NewOffset = IoStack->Parameters.Read.ByteOffset;
@@ -1102,7 +1102,7 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     PDEVICE_OBJECT DeviceObject = Irp->Private.ForwardedTo;
     assert(DeviceObject != NULL);
     assert(DeviceObject->DriverObject == NULL);
-    assert(DeviceObject->Private.Handle != 0);
+    assert(DeviceObject->Header.GlobalHandle != 0);
     assert(IoStack);
     assert(IoStack->MajorFunction <= IRP_MJ_MAXIMUM_FUNCTION);
     assert(IoStack->DeviceObject != NULL);
@@ -1121,7 +1121,7 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     Dest->Size = Size;
     Dest->Request.MajorFunction = IoStack->MajorFunction;
     Dest->Request.MinorFunction = IoStack->MinorFunction;
-    Dest->Request.Device.Handle = DeviceObject->Private.Handle;
+    Dest->Request.Device.Handle = DeviceObject->Header.GlobalHandle;
     /* Use the address of the IRP as identifier. OriginalRequestor is
      * left as NULL since the server is going to fill it. */
     Dest->Request.Identifier = Irp;

@@ -832,8 +832,8 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
 	return;
     }
     assert(Vpb->DeviceObject);
-    Req->DeviceHandle = Vpb->DeviceObject->Private.Handle;
-    Req->FileHandle = FileObject->Private.Handle;
+    Req->DeviceHandle = Vpb->DeviceObject->Header.GlobalHandle;
+    Req->FileHandle = FileObject->Header.GlobalHandle;
     Req->EnvToWakeUp = IopCurrentEnv;
     InsertTailList(&CiFlushCacheRequestList, &Req->Link);
 

@@ -6,11 +6,12 @@ NTAPI VOID KeInitializeEvent(OUT PKEVENT Event,
 			     IN EVENT_TYPE Type,
 			     IN BOOLEAN InitialState)
 {
-    NTSTATUS Status = NtCreateEvent(&Event->Handle, EVENT_ALL_ACCESS,
+    NTSTATUS Status = NtCreateEvent(&Event->Header.Handle, EVENT_ALL_ACCESS,
 				    NULL, Type, InitialState);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
+    ObInitializeObject(Event, CLIENT_OBJECT_EVENT, KEVENT);
     InsertTailList(&IopEventList, &Event->EventListEntry);
     Event->State = InitialState;
 }
@@ -27,7 +28,7 @@ NTAPI LONG KeSetEvent(IN PKEVENT Event)
     }
     /* Otherwise, call the server to set the event. */
     LONG PreviousState;
-    NTSTATUS Status = NtSetEvent(Event->Handle, &PreviousState);
+    NTSTATUS Status = NtSetEvent(Event->Header.Handle, &PreviousState);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
@@ -43,7 +44,7 @@ NTAPI LONG KeResetEvent(IN PKEVENT Event)
     }
     /* Otherwise, call the server to clear the event. */
     LONG PreviousState;
-    NTSTATUS Status = NtResetEvent(Event->Handle, &PreviousState);
+    NTSTATUS Status = NtResetEvent(Event->Header.Handle, &PreviousState);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
@@ -58,7 +59,7 @@ NTAPI VOID KeClearEvent(IN PKEVENT Event)
 	return;
     }
     /* Otherwise, call the server to clear the event. */
-    NTSTATUS Status = NtClearEvent(Event->Handle);
+    NTSTATUS Status = NtClearEvent(Event->Header.Handle);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }

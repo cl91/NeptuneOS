@@ -11,7 +11,7 @@ LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
 {
     LoopOverList(Object, &IopDeviceList, DEVICE_OBJECT, Private.Link) {
-	if (Handle == Object->Private.Handle) {
+	if (Handle == Object->Header.GlobalHandle) {
 	    return Object;
 	}
     }
@@ -24,7 +24,7 @@ PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
  */
 GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device)
 {
-    return Device ? Device->Private.Handle : 0;
+    return Device ? Device->Header.GlobalHandle : 0;
 }
 
 /*
@@ -38,13 +38,13 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 					     IN PDRIVER_OBJECT DriverObject)
 {
     assert(DriverObject == NULL || DriverObject == &IopDriverObject);
-    DeviceObject->Type = IO_TYPE_DEVICE;
-    DeviceObject->Size = sizeof(DEVICE_OBJECT) + DevExtSize;
+    ObInitializeObject(DeviceObject, CLIENT_OBJECT_DEVICE, DEVICE_OBJECT);
+    DeviceObject->Header.Size += DevExtSize;
     DeviceObject->DriverObject = DriverObject;
     DeviceObject->DeviceExtension = DevExtSize ? (PVOID)(DeviceObject + 1) : NULL;
     DeviceObject->DeviceType = DevInfo.DeviceType;
     DeviceObject->Flags = DevInfo.Flags;
-    DeviceObject->Private.Handle = DeviceHandle;
+    DeviceObject->Header.GlobalHandle = DeviceHandle;
     assert(IopGetDeviceObject(DeviceHandle) == NULL);
     InsertTailList(&IopDeviceList, &DeviceObject->Private.Link);
 }
@@ -125,6 +125,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     /* Set the correct sector size. */
     DeviceObject->SectorSize = IopDeviceTypeToSectorSize(DeviceType);
 
+    DriverObject->DeviceObject = DeviceObject;
     *pDeviceObject = DeviceObject;
     DbgTrace("Created device object %p handle %p extension %p name %ws\n",
 	     DeviceObject, (PVOID)DeviceHandle, DeviceObject->DeviceExtension,

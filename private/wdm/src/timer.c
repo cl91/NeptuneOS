@@ -9,11 +9,12 @@ ULONG KiStallScaleFactor;
 
 static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
 {
-    NTSTATUS Status = NtCreateTimer(&Timer->Handle, TIMER_ALL_ACCESS,
+    NTSTATUS Status = NtCreateTimer(&Timer->Header.Handle, TIMER_ALL_ACCESS,
 				    NULL, NotificationTimer);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
+    ObInitializeObject(Timer, CLIENT_OBJECT_TIMER, KTIMER);
     InsertTailList(&IopTimerList, &Timer->TimerListEntry);
     Timer->Dpc = NULL;
     Timer->State = FALSE;
@@ -63,13 +64,13 @@ NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
 		    OUT PBOOLEAN PreviousState)
 {
     assert(Timer);
-    assert(Timer->Handle != NULL);
+    assert(Timer->Header.Handle != NULL);
     assert(PreviousState);
-    if (Timer->Handle == NULL) {
+    if (Timer->Header.Handle == NULL) {
 	RtlRaiseStatus(STATUS_INVALID_HANDLE);
     }
     Timer->Dpc = Dpc;
-    NTSTATUS Status = NtSetTimer(Timer->Handle, &DueTime, IopTimerExpired,
+    NTSTATUS Status = NtSetTimer(Timer->Header.Handle, &DueTime, IopTimerExpired,
 				 Timer, TRUE, 0, PreviousState);
     if (!NT_SUCCESS(Status)) {
 	return Status;
