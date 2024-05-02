@@ -1239,6 +1239,7 @@ NTSTATUS FatQueryInformation(PFAT_IRP_CONTEXT IrpContext)
 
     if (Fcb == NULL) {
 	DPRINT1("IRP_MJ_QUERY_INFORMATION without FCB!\n");
+	assert(FALSE);
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_INVALID_PARAMETER;
     }
@@ -1328,6 +1329,7 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 
     if (Fcb == NULL) {
 	DPRINT1("IRP_MJ_SET_INFORMATION without FCB!\n");
+	assert(FALSE);
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_INVALID_PARAMETER;
     }
