@@ -818,15 +818,14 @@ static VOID IopDeleteIrp(PIRP Irp)
 	}
 	break;
     }
-    /* Since we always detach the associated IRP from its master when the associated
-     * IRP is completed, at this point the IRP should not have a master IRP. If this
-     * happens, on debug build we will assert. On release build we will just detach it
-     * from the master IRP's pending IRP list. */
     if (Irp->MasterIrp) {
-	assert(FALSE);
+	/* The IRP is an associated IRP of a master IRP. This can happen if the driver
+	 * forwards an associated IRP without expecting a completion notification.
+	 * Detach the IRP from its master. */
 	assert(ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
 			    &Irp->Private.AssociatedIrp.Link));
 	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
+	Irp->MasterIrp = NULL;
     } else {
 	/* If the IRP is a master IRP itself, detach it from all its associated IRPs. */
 	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList, IRP,
