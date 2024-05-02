@@ -1,4 +1,5 @@
 #include "cmp.h"
+#include "util.h"
 
 static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
 			       IN PCSTR ValueName,
@@ -23,11 +24,6 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     PCM_REG_VALUE Value = Node ? CONTAINING_RECORD(Node, CM_REG_VALUE, Node) :
 	(PCM_REG_VALUE)ExAllocatePoolWithTag(sizeof(CM_REG_VALUE), NTOS_CM_TAG);
     if (Value == NULL) {
-	return STATUS_NO_MEMORY;
-    }
-    Value->Name = RtlDuplicateString(ValueName, NTOS_CM_TAG);
-    if (Value->Name == NULL) {
-	CmpFreePool(Value);
 	return STATUS_NO_MEMORY;
     }
     Value->Type = Type;
@@ -62,7 +58,13 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     }
     if (NewValue) {
 	Value->Node.Type = CM_NODE_VALUE;
-	CmpInsertNamedNode(Key, &Value->Node, Value->Name);
+	RET_ERR_EX(CmpInsertNamedNode(Key, &Value->Node, ValueName),
+		   {
+		       if (Value->Data) {
+			   CmpFreePool(Value->Data);
+		       }
+		       CmpFreePool(Value);
+		   });
     }
     return STATUS_SUCCESS;
 }
@@ -143,7 +145,8 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     case KeyValueBasicInformation:
     {
 	PKEY_VALUE_BASIC_INFORMATION Info = (PKEY_VALUE_BASIC_INFORMATION)OutputBuffer;
-	*ResultLength = sizeof(KEY_VALUE_BASIC_INFORMATION) + (Utf16 ? Value->Utf16NameLength : (Value->NameLength + 1));
+	*ResultLength = sizeof(KEY_VALUE_BASIC_INFORMATION) +
+	    (Utf16 ? Value->Node.Utf16NameLength : (Value->Node.NameLength + 1));
 	if (BufferSize < *ResultLength) {
 	    CmDbg("Need buffer size 0x%x got 0x%x\n", *ResultLength, BufferSize);
 	    return STATUS_BUFFER_TOO_SMALL;
@@ -152,10 +155,10 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 	Info->Type = Value->Type;
 	if (Utf16) {
 	    UNUSED ULONG Unused = 0;
-	    RET_ERR(RtlUTF8ToUnicodeN(Info->Name, Value->Utf16NameLength,
-				      &Unused, Value->Name, Value->NameLength));
+	    RET_ERR(RtlUTF8ToUnicodeN(Info->Name, Value->Node.Utf16NameLength,
+				      &Unused, Value->Node.Name, Value->Node.NameLength));
 	} else {
-	    memcpy(Info->Name, Value->Name, Value->NameLength + 1);
+	    memcpy(Info->Name, Value->Node.Name, Value->Node.NameLength + 1);
 	}
     }
     break;
@@ -165,7 +168,7 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     {
 	PKEY_VALUE_FULL_INFORMATION Info = (PKEY_VALUE_FULL_INFORMATION)OutputBuffer;
 	ULONG NameOffset = ALIGN_UP_BY(sizeof(KEY_VALUE_FULL_INFORMATION), Alignment);
-	ULONG NameLength = Utf16 ? Value->Utf16NameLength : (Value->NameLength + 1);
+	ULONG NameLength = Utf16 ? Value->Node.Utf16NameLength : (Value->Node.NameLength + 1);
 	ULONG DataOffset = NameOffset + ALIGN_UP_BY(NameLength, Alignment);
 	ULONG DataLength = CmpGetValueDataLength(Value, Utf16);
 	*ResultLength = DataOffset + DataLength;
@@ -180,11 +183,11 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
 	Info->NameLength = NameLength;
 	if (Utf16) {
 	    RET_ERR(RtlUTF8ToUnicodeN((PWSTR)((PCHAR)Info + NameOffset),
-				      Value->Utf16NameLength, &NameLength,
-				      Value->Name, Value->NameLength));
-	    assert(NameLength == Value->Utf16NameLength);
+				      Value->Node.Utf16NameLength, &NameLength,
+				      Value->Node.Name, Value->Node.NameLength));
+	    assert(NameLength == Value->Node.Utf16NameLength);
 	} else {
-	    memcpy((PCHAR)Info + NameOffset, Value->Name, Value->NameLength + 1);
+	    memcpy((PCHAR)Info + NameOffset, Value->Node.Name, Value->Node.NameLength + 1);
 	}
 	RET_ERR(CmpMarshalValueData(Value, Info, DataOffset, Utf16));
     }

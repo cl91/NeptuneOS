@@ -93,36 +93,25 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 	goto out;
     }
 
-    /* The ObjectName of the object header is owned by the object
-     * so we need to allocate storage for it. When the object is
-     * deleted, the ObjectName is freed by the object manager. */
-    PCHAR ObjectName = RtlDuplicateString(RemainingPath, NTOS_OB_TAG);
-    if (!ObjectName) {
-	Status = STATUS_NO_MEMORY;
-	goto out;
-    }
-
     POBJECT_HEADER ParentHeader = OBJECT_TO_OBJECT_HEADER(Parent);
     assert(ParentHeader != NULL);
     assert(ParentHeader->Type != NULL);
 
-    ObDbg("Inserting subobject %p under object %p with name %s\n",
-	  Object, Parent, ObjectName);
+    ObDbg("Inserting subobject %p under object %p with path %s\n",
+	  Object, Parent, RemainingPath);
     OBJECT_INSERT_METHOD InsertProc = ParentHeader->Type->TypeInfo.InsertProc;
     if (InsertProc == NULL) {
 	Status = STATUS_OBJECT_TYPE_MISMATCH;
 	goto out;
     }
 
-    Status = InsertProc(Parent, Object, ObjectName);
+    Status = InsertProc(Parent, Object, RemainingPath);
     if (!NT_SUCCESS(Status)) {
-	ObpFreePool(ObjectName);
 	goto out;
     }
 
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     ObjectHeader->ParentObject = Parent;
-    ObjectHeader->ObjectName = ObjectName;
     /* We need to increase the refcount of the parent object so it cannot be
      * deleted before all its children are deleted. */
     ObpReferenceObject(Parent);

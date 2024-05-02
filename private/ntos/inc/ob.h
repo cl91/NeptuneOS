@@ -74,10 +74,6 @@ typedef struct _OBJECT_HEADER {
     POBJECT ParentObject; /* Parent object under which this object is inserted */
     PVOID ParentLink;	  /* Pointer that the parent object can freely use to
 			   * point to bookkeeping information. */
-    PCSTR ObjectName; /* Sub-path of this object under the parent object, set
-		       * when ObInsertObject inserts the object under a path.
-		       * This is always allocated on the ExPool by the object
-		       * manager and owned by this object. */
     LONG RefCount;
 } OBJECT_HEADER, *POBJECT_HEADER;
 
@@ -86,11 +82,6 @@ typedef struct _OBJECT_HEADER {
 
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
     ((Ptr) == NULL ? NULL : (POBJECT_HEADER)(((MWORD)(Ptr)) - sizeof(OBJECT_HEADER)))
-
-static inline PCSTR ObGetObjectName(IN POBJECT Object)
-{
-    return OBJECT_TO_OBJECT_HEADER(Object)->ObjectName;
-}
 
 /*
  * We use the offset of an object header pointer from the start of the

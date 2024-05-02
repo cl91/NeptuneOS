@@ -14,6 +14,7 @@ typedef struct _OBJECT_DIRECTORY {
 typedef struct _OBJECT_DIRECTORY_ENTRY {
     LIST_ENTRY ChainLink;
     POBJECT Object;
+    PCSTR ObjectName;
     POBJECT_DIRECTORY Parent;
 } OBJECT_DIRECTORY_ENTRY, *POBJECT_DIRECTORY_ENTRY;
 
@@ -62,13 +63,13 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
 		 OBJECT_DIRECTORY_ENTRY, ChainLink) {
 	assert(Entry != NULL);
 	assert(Entry->Object != NULL);
-	ObDbg("Checking object %s\n", ObGetObjectName(Entry->Object));
-	if (strlen(ObGetObjectName(Entry->Object)) != Length) {
+	ObDbg("Checking object %s\n", Entry->ObjectName);
+	if (strlen(Entry->ObjectName) != Length) {
 	    continue;
 	}
 	INT (*Comparer)(PCSTR, PCSTR, ULONG_PTR) = CaseInsensitive ? _strnicmp : strncmp;
-	if (!Comparer(Name, ObGetObjectName(Entry->Object), Length)) {
-	    ObDbg("Found object name = %s\n", ObGetObjectName(Entry->Object));
+	if (!Comparer(Name, Entry->ObjectName, Length)) {
+	    ObDbg("Found object name = %s\n", Entry->ObjectName);
 	    *FoundObject = Entry->Object;
 	    if (DirectoryEntry != NULL) {
 		*DirectoryEntry = Entry;
@@ -184,19 +185,27 @@ static NTSTATUS ObpDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
 					       IN PCSTR Name,
 					       IN ULONG NameLength)
 {
+    ObDbg("Inserting object %p name %s (len 0x%x) into directory %p\n",
+	  Object, Name, NameLength, Directory);
     /* Object name must not be empty. */
     assert(Name[0]);
     /* Object name must not contain the OBJ_NAME_PATH_SEPARATOR */
     for (ULONG i = 0; i < NameLength; i++) {
 	if (Name[i] == OBJ_NAME_PATH_SEPARATOR) {
-	    ObDbg("Inserting name %s failed\n", Name);
 	    assert(FALSE);
 	    return STATUS_OBJECT_PATH_INVALID;
 	}
     }
 
-    ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
+    PCHAR ObjectName = RtlDuplicateStringEx(Name, NameLength, NTOS_OB_TAG);
+    if (!ObjectName) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    ObpAllocatePoolEx(DirectoryEntry, OBJECT_DIRECTORY_ENTRY,
+		      sizeof(OBJECT_DIRECTORY_ENTRY), ObpFreePool(ObjectName));
     DirectoryEntry->Object = Object;
+    DirectoryEntry->ObjectName = ObjectName;
     DirectoryEntry->Parent = Directory;
     OBJECT_TO_OBJECT_HEADER(Object)->ParentLink = DirectoryEntry;
 
@@ -237,6 +246,8 @@ VOID ObDirectoryObjectRemoveObject(IN POBJECT Subobject)
     assert(Entry != NULL);
     assert(Entry->Object == Subobject);
     RemoveEntryList(&Entry->ChainLink);
+    assert(Entry->ObjectName);
+    ObpFreePool(Entry->ObjectName);
     ObpFreePool(Entry);
     ObjectHeader->ParentLink = NULL;
 }

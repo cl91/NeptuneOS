@@ -114,7 +114,6 @@ VOID ObRemoveObject(IN POBJECT Object)
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     if (ObjectHeader->ParentObject) {
 	ObDbg("Removing object %p (parent %p)\n", Object, ObjectHeader->ParentObject);
-	assert(ObjectHeader->ObjectName);
 	POBJECT_HEADER ParentHeader = OBJECT_TO_OBJECT_HEADER(ObjectHeader->ParentObject);
 	assert(ParentHeader);
 	assert(ParentHeader->Type);
@@ -125,11 +124,9 @@ VOID ObRemoveObject(IN POBJECT Object)
 	}
 	/* The remove procedure should clear the ParentLink member of the object header. */
 	assert(!ObjectHeader->ParentLink);
-	ObpFreePool(ObjectHeader->ObjectName);
 	/* Dereference the parent object whose refcount we increased in ObInsertObject. */
 	ObDereferenceObject(ObjectHeader->ParentObject);
 	ObjectHeader->ParentObject = NULL;
-	ObjectHeader->ObjectName = NULL;
     }
 }
 
@@ -139,9 +136,8 @@ static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
     assert(ObjectHeader->Type != NULL);
 
     POBJECT Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
-    ObDbg("Deleting object %p (type %s name %s)\n", Object,
-	  Object ? ObjectHeader->Type->Name : "UNKNOWN-TYPE",
-	  Object ? (ObjectHeader->ObjectName ? ObjectHeader->ObjectName : "") : "");
+    ObDbg("Deleting object %p (type %s)\n", Object,
+	  Object ? ObjectHeader->Type->Name : "UNKNOWN-TYPE");
     ObRemoveObject(Object);
     if (ObjectHeader->Type->TypeInfo.DeleteProc != NULL) {
 	ObjectHeader->Type->TypeInfo.DeleteProc(Object);

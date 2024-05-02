@@ -29,6 +29,9 @@ typedef enum _CM_NODE_TYPE {
 typedef struct _CM_NODE {
     LIST_ENTRY HashLink;
     struct _CM_KEY_OBJECT *Parent;
+    PCSTR Name;	  /* Allocated on the ExPool. Owned by this object */
+    ULONG NameLength;	   /* Does NOT include trailing NUL */
+    ULONG Utf16NameLength; /* Does NOT include training UNICODE NUL */
     CM_NODE_TYPE Type;
 } CM_NODE, *PCM_NODE;
 
@@ -86,10 +89,7 @@ static inline ULONG CmpKeyHashIndexEx(IN PCSTR Str,
  */
 typedef struct _CM_REG_VALUE {
     CM_NODE Node; /* Hash-table entry for the parent key. Must be first */
-    PCSTR Name;	  /* Allocated on the ExPool. Owned by this object */
     ULONG Type;	  /* REG_NONE, REG_SZ, etc */
-    ULONG NameLength;	   /* Does NOT include trailing NUL */
-    ULONG Utf16NameLength; /* Does NOT include training UNICODE NUL */
     union {
 	ULONG Dword;
 	ULONGLONG Qword;
@@ -115,9 +115,7 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
     PCM_NODE NodeFound = NULL;
     LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
 	assert(Node->Type == CM_NODE_KEY || Node->Type == CM_NODE_VALUE);
-	PCSTR NodeName = Node->Type == CM_NODE_KEY ?
-	    ObGetObjectName(Node) : ((PCM_REG_VALUE)Node)->Name;
-	if (!_strnicmp(Name, NodeName, NameLength)) {
+	if (!_strnicmp(Name, Node->Name, NameLength)) {
 	    NodeFound = Node;
 	}
     }
@@ -140,64 +138,6 @@ static inline ULONG CmpGetValueDataLength(IN PCM_REG_VALUE Value,
 }
 
 /*
- * Link the node to parent.
- */
-static inline VOID CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
-				      IN PCM_NODE Node,
-				      IN PCSTR NodeName)
-{
-    assert(Parent != NULL);
-    assert(ObObjectIsType(Parent, OBJECT_TYPE_KEY));
-    assert(Parent->Node.Type == CM_NODE_KEY);
-    Node->Parent = Parent;
-    ULONG HashIndex = CmpKeyHashIndex(NodeName);
-    InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
-    ULONG NameLen = strlen(NodeName);
-    ULONG Utf16NameLen = 0;
-    RtlUTF8ToUnicodeN(NULL, 0, &Utf16NameLen, NodeName, NameLen);
-    if (Utf16NameLen < NameLen * sizeof(WCHAR)) {
-	Utf16NameLen = NameLen * sizeof(WCHAR);
-    }
-    if (NameLen > Parent->MaxNameLength) {
-	Parent->MaxNameLength = NameLen;
-    }
-    if (Utf16NameLen > Parent->MaxUtf16NameLength) {
-	Parent->MaxUtf16NameLength = Utf16NameLen;
-    }
-    if (Node->Type == CM_NODE_KEY) {
-	PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Node;
-	if (Key->Volatile) {
-	    Parent->VolatileSubKeyCount++;
-	} else {
-	    Parent->StableSubKeyCount++;
-	}
-	if (Key->ClassLength > Parent->MaxClassLength) {
-	    Parent->MaxClassLength = Key->ClassLength;
-	}
-    } else {
-	assert(Node->Type == CM_NODE_VALUE);
-	Parent->ValueCount++;
-	PCM_REG_VALUE Value = (PCM_REG_VALUE)Node;
-	Value->NameLength = NameLen;
-	Value->Utf16NameLength = Utf16NameLen;
-	ULONG ValueDataLen = CmpGetValueDataLength(Value, FALSE);
-	ULONG Utf16ValueDataLen = CmpGetValueDataLength(Value, TRUE);
-	if (NameLen > Parent->MaxValueNameLength) {
-	    Parent->MaxValueNameLength = NameLen;
-	}
-	if (Utf16NameLen > Parent->MaxUtf16ValueNameLength) {
-	    Parent->MaxUtf16ValueNameLength = Utf16NameLen;
-	}
-	if (ValueDataLen > Parent->MaxValueDataLength) {
-	    Parent->MaxValueDataLength = ValueDataLen;
-	}
-	if (Utf16ValueDataLen > Parent->MaxUtf16ValueDataLength) {
-	    Parent->MaxUtf16ValueDataLength = Utf16ValueDataLen;
-	}
-    }
-}
-
-/*
  * Creation context for key object
  */
 typedef struct _KEY_OBJECT_CREATE_CONTEXT {
@@ -205,6 +145,9 @@ typedef struct _KEY_OBJECT_CREATE_CONTEXT {
 } KEY_OBJECT_CREATE_CONTEXT, *PKEY_OBJECT_CREATE_CONTEXT;
 
 /* key.c */
+NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
+			    IN PCM_NODE Node,
+			    IN PCSTR NodeName);
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx);
 NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,

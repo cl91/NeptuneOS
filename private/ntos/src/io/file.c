@@ -302,8 +302,6 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 
     ASYNC_BEGIN(State, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
-	    /* OB_OBJECT_ATTRIBUTES ObjAttrs; */
-	    /* BOOLEAN Allocate; */
 	});
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
     Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
@@ -314,31 +312,6 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
     if (AllocationSize) {
 	Locals.OpenContext.OpenPacket.AllocationSize = AllocationSize->QuadPart;
     }
-    /* Locals.ObjAttrs = ObjectAttributes; */
-    /* /\* If we are opening a directory, append "\\." to the path, unless the */
-    /*  * path already has it. *\/ */
-    /* if (CreateOptions & FILE_DIRECTORY_FILE) { */
-    /* 	PCSTR Path = ObjectAttributes.ObjectNameBuffer; */
-    /* 	ULONG PathLen = strlen(Path); */
-    /* 	ULONG StringLen = PathLen + 2; */
-    /* 	Locals.Allocate = !(PathLen >= 2 && Path[PathLen-1] == '.' && */
-    /* 			    Path[PathLen-2] == OBJ_NAME_PATH_SEPARATOR); */
-    /* 	if (Locals.Allocate) { */
-    /* 	    PCHAR ObjName = ExAllocatePoolWithTag(StringLen + 1, NTOS_IO_TAG); */
-    /* 	    if (!ObjName) { */
-    /* 		ASYNC_RETURN(State, STATUS_INSUFFICIENT_RESOURCES); */
-    /* 	    } */
-    /* 	    RtlCopyMemory(ObjName, ObjectAttributes.ObjectNameBuffer, PathLen); */
-    /* 	    if (!PathLen || Path[PathLen-1] != OBJ_NAME_PATH_SEPARATOR) { */
-    /* 		ObjName[PathLen] = OBJ_NAME_PATH_SEPARATOR; */
-    /* 		PathLen++; */
-    /* 	    } */
-    /* 	    ObjName[PathLen++] = '.'; */
-    /* 	    ObjName[PathLen] = '\0'; */
-    /* 	    Locals.ObjAttrs.ObjectNameBuffer = ObjName; */
-    /* 	    Locals.ObjAttrs.ObjectNameBufferLength = PathLen + 1; */
-    /* 	} */
-    /* } */
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
@@ -347,9 +320,6 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 	IoStatusBlock->Status = Status;
 	IoStatusBlock->Information = Locals.OpenContext.Information;
     }
-    /* if (Locals.Allocate) { */
-    /* 	IopFreePool(Locals.ObjAttrs.ObjectNameBuffer); */
-    /* } */
     ASYNC_END(State, Status);
 }
 

@@ -1,5 +1,6 @@
 #include "cmp.h"
 #include "ntstatus.h"
+#include "util.h"
 
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx)
@@ -14,6 +15,71 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 	InitializeListHead(&Key->HashBuckets[i]);
     }
     InitializeListHead(&Key->SubKeyList);
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Link the node to parent.
+ */
+NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
+			    IN PCM_NODE Node,
+			    IN PCSTR NodeName)
+{
+    assert(Parent != NULL);
+    assert(ObObjectIsType(Parent, OBJECT_TYPE_KEY));
+    assert(Parent->Node.Type == CM_NODE_KEY);
+    Node->Name = RtlDuplicateString(NodeName, NTOS_CM_TAG);
+    if (!Node->Name) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RET_ERR_EX(RtlUTF8ToUnicodeN(NULL, 0, &Node->Utf16NameLength,
+				 NodeName, Node->NameLength),
+	       {
+		   CmpFreePool(Node->Name);
+		   Node->Name = NULL;
+	       });
+    Node->NameLength = strlen(NodeName);
+    Node->Parent = Parent;
+    ULONG HashIndex = CmpKeyHashIndex(NodeName);
+    InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
+    if (Node->Utf16NameLength < Node->NameLength * sizeof(WCHAR)) {
+	Node->Utf16NameLength = Node->NameLength * sizeof(WCHAR);
+    }
+    if (Node->NameLength > Parent->MaxNameLength) {
+	Parent->MaxNameLength = Node->NameLength;
+    }
+    if (Node->Utf16NameLength > Parent->MaxUtf16NameLength) {
+	Parent->MaxUtf16NameLength = Node->Utf16NameLength;
+    }
+    if (Node->Type == CM_NODE_KEY) {
+	PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Node;
+	if (Key->Volatile) {
+	    Parent->VolatileSubKeyCount++;
+	} else {
+	    Parent->StableSubKeyCount++;
+	}
+	if (Key->ClassLength > Parent->MaxClassLength) {
+	    Parent->MaxClassLength = Key->ClassLength;
+	}
+    } else {
+	assert(Node->Type == CM_NODE_VALUE);
+	Parent->ValueCount++;
+	PCM_REG_VALUE Value = (PCM_REG_VALUE)Node;
+	ULONG ValueDataLen = CmpGetValueDataLength(Value, FALSE);
+	ULONG Utf16ValueDataLen = CmpGetValueDataLength(Value, TRUE);
+	if (Node->NameLength > Parent->MaxValueNameLength) {
+	    Parent->MaxValueNameLength = Node->NameLength;
+	}
+	if (Node->Utf16NameLength > Parent->MaxUtf16ValueNameLength) {
+	    Parent->MaxUtf16ValueNameLength = Node->Utf16NameLength;
+	}
+	if (ValueDataLen > Parent->MaxValueDataLength) {
+	    Parent->MaxValueDataLength = ValueDataLen;
+	}
+	if (Utf16ValueDataLen > Parent->MaxUtf16ValueDataLength) {
+	    Parent->MaxUtf16ValueDataLength = Utf16ValueDataLen;
+	}
+    }
     return STATUS_SUCCESS;
 }
 
@@ -86,7 +152,7 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     /* Else, we return the key object that we have found */
     *FoundObject = NodeFound;
     *RemainingPath = Path + NameLength;
-    DbgTrace("Found key %s\n", ObGetObjectName(NodeFound));
+    DbgTrace("Found key %s\n", NodeFound->Name);
     /* Note that in the case where we are called in an open operation, we don't
      * need to return INVOKE_OPEN_ROUTINE here since the object manager will call
      * the open procedure once the path is fully parsed. */
@@ -165,7 +231,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     if (Context->Disposition != NULL) {
 	*Context->Disposition = REG_CREATED_NEW_KEY;
     }
-    DbgTrace("Created sub-key %s\n", ObGetObjectName(SubKey));
+    DbgTrace("Created sub-key %s\n", SubKey->Node.Name);
     return STATUS_SUCCESS;
 }
 
@@ -185,16 +251,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 				OUT ULONG *ResultLength,
 				IN BOOLEAN Utf16)
 {
-    ULONG Utf8Length = strlen(ObGetObjectName(Node));
-    ULONG NameLength = Utf8Length;
-    if (Utf16) {
-	NTSTATUS Status = RtlUTF8ToUnicodeN(NULL, 0, &NameLength,
-					    ObGetObjectName(Node),
-					    NameLength);
-	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
-	    return Status;
-	}
-    }
+    ULONG NameLength = Utf16 ? Node->Node.Utf16NameLength : Node->Node.NameLength;
 
     /* Check what kind of information is being requested */
     NTSTATUS Status = STATUS_SUCCESS;
@@ -240,9 +297,9 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Copy the key name */
 	if (Utf16) {
 	    RtlUTF8ToUnicodeN(Info->Name, Size, &Size,
-			      ObGetObjectName(Node), Utf8Length);
+			      Node->Node.Name, Node->Node.NameLength);
 	} else {
-	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
+	    RtlCopyMemory(Info->Name, Node->Node.Name, Size);
 	}
     }
     break;
@@ -290,9 +347,9 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Copy the key object name */
 	if (Utf16) {
 	    RtlUTF8ToUnicodeN(Info->Name, Size, &Size,
-			      ObGetObjectName(Node), Utf8Length);
+			      Node->Node.Name, Node->Node.NameLength);
 	} else {
-	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
+	    RtlCopyMemory(Info->Name, Node->Node.Name, Size);
 	}
 
 	/* Check if the node has a class */
@@ -419,9 +476,9 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Copy the key name */
 	if (Utf16) {
 	    RtlUTF8ToUnicodeN(Info->Name, Size, &Size,
-			      ObGetObjectName(Node), Utf8Length);
+			      Node->Node.Name, Node->Node.NameLength);
 	} else {
-	    RtlCopyMemory(Info->Name, ObGetObjectName(Node), Size);
+	    RtlCopyMemory(Info->Name, Node->Node.Name, Size);
 	}
     }
 
@@ -462,7 +519,7 @@ static NTSTATUS CmpQueryKey(IN PCM_KEY_OBJECT Key,
 			    IN BOOLEAN Utf16)
 {
     DbgTrace("Querying key %s infoclass %d bufsize 0x%x\n",
-	     ObGetObjectName(Key), KeyInformationClass, Length);
+	     Key->Node.Name, KeyInformationClass, Length);
     NTSTATUS Status;
 
     switch (KeyInformationClass) {
@@ -530,11 +587,11 @@ static NTSTATUS CmpEnumerateKey(IN PCM_KEY_OBJECT Key,
 
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
 {
-    DbgTrace("Dumping key %s\n", ObGetObjectName(Key));
+    DbgTrace("Dumping key %s\n", Key->Node.Name);
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
         LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
 	    if (Node->Type == CM_NODE_KEY) {
-		CmDbgPrint("    KEY %s\n", ObGetObjectName(Node));
+		CmDbgPrint("    KEY %s\n", Node->Name);
 	    } else if (Node->Type == CM_NODE_VALUE) {
 		CmpDbgDumpValue((PCM_REG_VALUE)Node);
 	    }
