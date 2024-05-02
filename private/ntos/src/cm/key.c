@@ -56,9 +56,16 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     assert(ObObjectIsType(Self, OBJECT_TYPE_KEY));
 
     DbgTrace("Parsing path %s\n", Path);
+    *FoundObject = NULL;
+    *RemainingPath = Path;
 
     if (*Path == '\0') {
-	return STATUS_OBJECT_NAME_INVALID;
+	return STATUS_NTOS_STOP_PARSING;
+    }
+
+    /* Skip the leading path separator. */
+    if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	Path++;
     }
 
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Self;
@@ -72,8 +79,6 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
      * open routine for further processing. If we found a value node,
      * return error so parsing/opening is stopped. */
     if (!NodeFound || NodeFound->Type != CM_NODE_KEY) {
-	*FoundObject = NULL;
-	*RemainingPath = Path;
 	DbgTrace("Unable to parse %s. Should invoke open routine.\n", Path);
 	return NodeFound ? STATUS_OBJECT_TYPE_MISMATCH : STATUS_OBJECT_PATH_NOT_FOUND;
     }
@@ -102,6 +107,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     assert(OpenContext != NULL);
     assert(OpenedInstance != NULL);
     assert(RemainingPath != NULL);
+    *RemainingPath = Path;
 
     DbgTrace("Opening path %s\n", Path);
 
@@ -115,7 +121,6 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
      * Simply return it. */
     if (*Path == '\0') {
 	*OpenedInstance = Self;
-	*RemainingPath = Path;
 	if (Context->Disposition != NULL) {
 	    *Context->Disposition = REG_OPENED_EXISTING_KEY;
 	}
@@ -131,8 +136,13 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     }
 
     /* If we get here, it means that we are creating a new sub-key.
-     * Check that the path does not contain a path separator. */
-    if (ObPathHasSeparator(Path)) {
+     * Skip the leading path separator. */
+    if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	Path++;
+    }
+
+    /* The remaining path must not be empty. */
+    if (!Path[0]) {
 	return STATUS_OBJECT_NAME_INVALID;
     }
 

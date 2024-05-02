@@ -9,11 +9,11 @@
 #include "ntstatus.h"
 #include "ob.h"
 #include "util.h"
+#include <string.h>
 
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
-		      IN PIO_VOLUME_CONTROL_BLOCK Vcb,
-		      IN BOOLEAN CreateDirectory)
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb)
 {
     IopAllocatePool(Fcb, IO_FILE_CONTROL_BLOCK);
     Fcb->FileSize = FileSize;
@@ -22,11 +22,6 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
     InitializeListHead(&Fcb->PrivateCacheMaps);
     KeInitializeEvent(&Fcb->OpenCompleted, NotificationEvent);
     KeInitializeEvent(&Fcb->WriteCompleted, NotificationEvent);
-    if (CreateDirectory) {
-	RET_ERR_EX(ObCreateObject(OBJECT_TYPE_DIRECTORY,
-				  (POBJECT *)&Fcb->Subobjects, NULL),
-		   IopDeleteFcb(Fcb));
-    }
     RET_ERR_EX(CcInitializeCacheMap(Fcb, NULL, NULL),
 	       IopDeleteFcb(Fcb));
     *pFcb = Fcb;
@@ -36,9 +31,6 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
     CcUninitializeCacheMap(Fcb);
-    if (Fcb->Subobjects) {
-	ObDereferenceObject(Fcb->Subobjects);
-    }
     KeUninitializeEvent(&Fcb->OpenCompleted);
     KeUninitializeEvent(&Fcb->WriteCompleted);
     IopFreePool(Fcb);
@@ -57,7 +49,6 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	assert(!Ctx->FileSize);
 	assert(!Ctx->Fcb);
 	assert(!Ctx->Vcb);
-	assert(!Ctx->IsDirectory);
     }
 
     /* If the FileName is not NULL but points to an empty string, we
@@ -69,7 +60,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	File->Fcb = Ctx->MasterFileObject->Fcb;
     } else {
 	PIO_FILE_CONTROL_BLOCK Fcb = NULL;
-	RET_ERR(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->Vcb, Ctx->IsDirectory));
+	RET_ERR(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->Vcb));
 	assert(Fcb);
 	File->Fcb = Fcb;
 	Fcb->MasterFileObject = File;
@@ -111,7 +102,6 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
  */
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
-				   IN BOOLEAN IsDirectory,
 				   OUT PIO_FILE_OBJECT *pFile)
 {
     assert(FileName);
@@ -122,7 +112,6 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 	.DeviceObject = DeviceObject,
 	.FileName = FileName,
 	.Vcb = DeviceObject->Vcb,
-	.IsDirectory = IsDirectory,
 	.ReadAccess = TRUE,
 	.WriteAccess = TRUE,
 	.DeleteAccess = TRUE,
@@ -146,23 +135,9 @@ NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
     PIO_FILE_OBJECT FileObj = Self;
     IoDbgDumpFileObject(FileObj);
     *RemainingPath = Path;
-    *FoundObject = NULL;
-    if (!Path[0]) {
-	return STATUS_NTOS_STOP_PARSING;
-    }
-    POBJECT_DIRECTORY Subobjs = FileObj->Fcb ? FileObj->Fcb->Subobjects : NULL;
-    if (!Subobjs) {
-	return STATUS_OBJECT_NAME_INVALID;
-    }
-    ULONG Sep = ObLocateFirstPathSeparator(Path);
-    NTSTATUS Status = ObDirectoryObjectSearchObject(Subobjs, Path, Sep,
-						    CaseInsensitive, FoundObject);
-    if (!NT_SUCCESS(Status)) {
-	*FoundObject = NULL;
-	return Status;
-    }
-    *RemainingPath = Path + Sep;
-    return STATUS_SUCCESS;
+    /* File objects don't have sub-objects. */
+    *FoundObject = *Path ? NULL : Self;
+    return *Path ? STATUS_OBJECT_PATH_NOT_FOUND : STATUS_NTOS_STOP_PARSING;
 }
 
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
@@ -188,15 +163,21 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	    ULONG SubPathLen;
 	});
 
-    /* Reject the open if the open context is not IO_OPEN_CONTEXT */
+    /* Reject the open if the open context is not IO_OPEN_CONTEXT. */
     if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
-	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
+	goto out;
     }
 
     DbgTrace("Opening file obj %p path %s\n", Self, SubPath);
     IoDbgDumpFileObject(FileObject);
-    *pRemainingPath = SubPath;
-    assert(FileObject->Fcb);
+
+    /* Non-volume file objects do not support sub-objects. */
+    if (!FileObject->Fcb) {
+	assert(FALSE);
+	Status = STATUS_INVALID_DEVICE_REQUEST;
+	goto out;
+    }
 
     /* If there is an existing file open request, wait for it to finish. */
     AWAIT_IF(FileObject->Fcb->Vcb && FileObject->Fcb->OpenInProgress,
@@ -206,35 +187,40 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     if (!SubPath[0]) {
 	/* If the user requested to create a new file, deny it. */
 	if (OpenContext->OpenPacket.Disposition == FILE_CREATE) {
-	    ASYNC_RETURN(State, STATUS_OBJECT_NAME_COLLISION);
+	    Status = STATUS_OBJECT_NAME_COLLISION;
+	    goto out;
 	}
 	/* TODO: Handle FILE_SUPERSEDE, FILE_OVERWRITE, etc */
 	FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	    .MasterFileObject = FileObject
 	};
-	ASYNC_RET_ERR(State, ObCreateObject(OBJECT_TYPE_FILE,
-					    (POBJECT *)&OpenedFile, &CreaCtx));
-	*pOpenedInstance = OpenedFile;
-	ASYNC_RETURN(State, STATUS_SUCCESS);
+	IF_ERR_GOTO(out, Status,
+		    ObCreateObject(OBJECT_TYPE_FILE,
+				   (POBJECT *)&OpenedFile, &CreaCtx));
+	Status = STATUS_SUCCESS;
+	goto out;
     }
 
     /* Concatenate the path of this file and the subpath to be opened to
      * form the full path of the target file object. */
     ULONG FileNameLen = strlen(FileObject->Fcb->FileName);
     Locals.SubPathLen = strlen(SubPath);
-    Locals.FullPath = ExAllocatePoolWithTag(FileNameLen + Locals.SubPathLen + 2,
+    Locals.FullPath = ExAllocatePoolWithTag(FileNameLen + Locals.SubPathLen + 1,
 					    NTOS_IO_TAG);
     if (!Locals.FullPath) {
-	ASYNC_RETURN(State, STATUS_INSUFFICIENT_RESOURCES);
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto out;
     }
     RtlCopyMemory(Locals.FullPath, FileObject->Fcb->FileName, FileNameLen);
-    Locals.FullPath[FileNameLen] = OBJ_NAME_PATH_SEPARATOR;
-    RtlCopyMemory(Locals.FullPath + FileNameLen + 1, SubPath, Locals.SubPathLen + 1);
+    RtlCopyMemory(Locals.FullPath + FileNameLen, SubPath, Locals.SubPathLen + 1);
 
-    /* Open the target file object */
+    /* Open the target file object.
+     * TODO: related open, delete. */
     AWAIT_EX(Status, IopOpenDevice, State, Locals, Thread,
 	     FileObject->DeviceObject, Locals.FullPath, Attributes,
 	     OpenContext, &OpenedFile);
+
+out:
     if (NT_SUCCESS(Status)) {
 	*pOpenedInstance = OpenedFile;
 	*pRemainingPath = SubPath + Locals.SubPathLen;
@@ -243,40 +229,10 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	*pOpenedInstance = NULL;
 	*pRemainingPath = SubPath;
     }
-    IopFreePool(Locals.FullPath);
+    if (Locals.FullPath) {
+	IopFreePool(Locals.FullPath);
+    }
     ASYNC_END(State, Status);
-}
-
-NTSTATUS IopFileObjectInsertProc(IN POBJECT Self,
-				 IN POBJECT Object,
-				 IN PCSTR Path)
-{
-    PIO_FILE_OBJECT FileObj = (PIO_FILE_OBJECT)Self;
-    assert(Self != NULL);
-    assert(Path != NULL);
-    assert(Object != NULL);
-    DbgTrace("Inserting subobject %p (path %s) for file object %p\n",
-	     Object, Path, Self);
-
-    /* Object path must not be empty. Object path must also not contain the path
-     * separator but this is checked below, by ObDirectoryObjectInsertObject. */
-    if (*Path == '\0') {
-	assert(FALSE);
-	return STATUS_OBJECT_PATH_INVALID;
-    }
-
-    POBJECT_DIRECTORY Subobjs =  FileObj->Fcb ? FileObj->Fcb->Subobjects : NULL;
-    /* Inserting into a non-directory file is not allowed. */
-    if (!Subobjs) {
-	return STATUS_OBJECT_TYPE_MISMATCH;
-    }
-
-    return ObDirectoryObjectInsertObject(Subobjs, Object, Path);
-}
-
-VOID IopFileObjectRemoveProc(IN POBJECT Subobject)
-{
-    ObDirectoryObjectRemoveObject(Subobject);
 }
 
 VOID IopFileObjectDeleteProc(IN POBJECT Self)
@@ -288,7 +244,7 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
     }
     if (FileObj->Fcb->MasterFileObject == FileObj) {
 	IopDeleteFcb(FileObj->Fcb);
-    } else {
+    } else if (FileObj->Fcb->MasterFileObject) {
 	ObDereferenceObject(FileObj->Fcb->MasterFileObject);
     }
 }
@@ -346,6 +302,8 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 
     ASYNC_BEGIN(State, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
+	    /* OB_OBJECT_ATTRIBUTES ObjAttrs; */
+	    /* BOOLEAN Allocate; */
 	});
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
     Locals.OpenContext.OpenPacket.CreateFileType = CreateFileTypeNone;
@@ -356,6 +314,31 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
     if (AllocationSize) {
 	Locals.OpenContext.OpenPacket.AllocationSize = AllocationSize->QuadPart;
     }
+    /* Locals.ObjAttrs = ObjectAttributes; */
+    /* /\* If we are opening a directory, append "\\." to the path, unless the */
+    /*  * path already has it. *\/ */
+    /* if (CreateOptions & FILE_DIRECTORY_FILE) { */
+    /* 	PCSTR Path = ObjectAttributes.ObjectNameBuffer; */
+    /* 	ULONG PathLen = strlen(Path); */
+    /* 	ULONG StringLen = PathLen + 2; */
+    /* 	Locals.Allocate = !(PathLen >= 2 && Path[PathLen-1] == '.' && */
+    /* 			    Path[PathLen-2] == OBJ_NAME_PATH_SEPARATOR); */
+    /* 	if (Locals.Allocate) { */
+    /* 	    PCHAR ObjName = ExAllocatePoolWithTag(StringLen + 1, NTOS_IO_TAG); */
+    /* 	    if (!ObjName) { */
+    /* 		ASYNC_RETURN(State, STATUS_INSUFFICIENT_RESOURCES); */
+    /* 	    } */
+    /* 	    RtlCopyMemory(ObjName, ObjectAttributes.ObjectNameBuffer, PathLen); */
+    /* 	    if (!PathLen || Path[PathLen-1] != OBJ_NAME_PATH_SEPARATOR) { */
+    /* 		ObjName[PathLen] = OBJ_NAME_PATH_SEPARATOR; */
+    /* 		PathLen++; */
+    /* 	    } */
+    /* 	    ObjName[PathLen++] = '.'; */
+    /* 	    ObjName[PathLen] = '\0'; */
+    /* 	    Locals.ObjAttrs.ObjectNameBuffer = ObjName; */
+    /* 	    Locals.ObjAttrs.ObjectNameBufferLength = PathLen + 1; */
+    /* 	} */
+    /* } */
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
@@ -364,6 +347,9 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 	IoStatusBlock->Status = Status;
 	IoStatusBlock->Information = Locals.OpenContext.Information;
     }
+    /* if (Locals.Allocate) { */
+    /* 	IopFreePool(Locals.ObjAttrs.ObjectNameBuffer); */
+    /* } */
     ASYNC_END(State, Status);
 }
 
@@ -1175,7 +1161,6 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 	DbgPrint("    SharedCacheMap = %p\n", File->Fcb->SharedCacheMap);
 	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
 	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);
-	DbgPrint("    Subobjects = %p\n", File->Fcb->Subobjects);
     }
 #endif
 }

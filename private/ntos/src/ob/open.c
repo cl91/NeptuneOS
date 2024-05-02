@@ -1,4 +1,5 @@
 #include "obp.h"
+#include "util.h"
 
 static inline BOOLEAN NeedReparse(IN NTSTATUS Status)
 {
@@ -13,9 +14,7 @@ static inline BOOLEAN NeedReparse(IN NTSTATUS Status)
  * the RemainingPath pointer points to an empty string. If there is
  * remaining path leftover, the object returned is the final object at
  * which the parse failed. The remaining path points to the sub-path
- * that is yet to be parsed. The remaining path does NOT include the
- * leading OBJ_NAME_PATH_SEPARATOR. The remaining path returned is never
- * NULL, likewise for FoundObject.
+ * that is yet to be parsed. The remaining path returned is never NULL.
  *
  * Directory object can be NULL, in which case the root object directory
  * is assumed. In this case you must specify an absolute path (one
@@ -44,11 +43,6 @@ NTSTATUS ObpParseObjectByName(IN POBJECT DirectoryObject,
     /* If the directory object is NULL, the path must be an absolute path. */
     assert(DirectoryObject != NULL || Path[0] == OBJ_NAME_PATH_SEPARATOR);
     *StringToFree = NULL;
-
-    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
-    if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
-	Path++;
-    }
 
     /* Points to the terminating NUL of Path */
     UNUSED PCSTR LastByte = Path + strlen(Path);
@@ -89,12 +83,8 @@ NTSTATUS ObpParseObjectByName(IN POBJECT DirectoryObject,
 	    /* Parse procedure should not return a NULL Subobject (unless reparsing) */
 	    assert(Subobject != NULL);
 	    /* Remaining path should also be within the original Path (unless reparsing) */
-	    assert(RemainingPath > Path);
+	    assert(RemainingPath >= Path);
 	    assert(RemainingPath <= LastByte);
-	}
-	/* Skip the leading OBJ_NAME_PATH_SEPARATOR if there is one */
-	if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	    RemainingPath++;
 	}
 	/* If the parse routine returned REPARSE, it can set the subobject to NULL
 	 * to indicate parsing from the root object directory */
@@ -174,12 +164,12 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
     Locals.Path = ObjectAttributes.ObjectNameBuffer ? ObjectAttributes.ObjectNameBuffer : "";
 
     /* If caller has specified a root directory, the object path must be relative */
-    if (ObjectAttributes.RootDirectory != NULL && Locals.Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+    if (ObjectAttributes.RootDirectory && Locals.Path[0] == OBJ_NAME_PATH_SEPARATOR) {
 	ASYNC_RETURN(AsyncState, STATUS_OBJECT_PATH_INVALID);
     }
     /* Get the root directory if user has specified one. Otherwise, default to the
      * global root object directory. */
-    if (ObjectAttributes.RootDirectory != NULL) {
+    if (ObjectAttributes.RootDirectory) {
 	POBJECT UserRootDirectory = NULL;
 	ASYNC_RET_ERR(AsyncState, ObReferenceObjectByHandle(Thread,
 							    ObjectAttributes.RootDirectory,
@@ -189,10 +179,6 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
 	/* ObReferenceObjectByHandle increased reference count, so we need to dereference it. */
 	ObDereferenceObject(UserRootDirectory);
 	Locals.Object = UserRootDirectory;
-    }
-    /* Skip the leading OBJ_NAME_PATH_SEPARATOR. */
-    if (Locals.Path[0] == OBJ_NAME_PATH_SEPARATOR) {
-	Locals.Path++;
     }
 
 parse:
@@ -241,10 +227,6 @@ parse:
 	Locals.Object = Subobject;
 	ObDbg("Invoking parse routine on sub-object %p sub-path %s\n",
 	      Subobject, RemainingPath);
-    }
-    /* Skip the leading path separator. */
-    if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	RemainingPath++;
     }
     Locals.Path = RemainingPath;
     /* Continue parsing until the object does not define a parse routine. */
@@ -311,10 +293,6 @@ open:
 	/* Record the newly opened instance. */
 	Locals.Object = OpenedInstance;
 	Locals.OpenedInstance = OpenedInstance;
-    }
-    /* Skip the leading path separator. */
-    if (*Locals.Path == OBJ_NAME_PATH_SEPARATOR) {
-	Locals.Path++;
     }
     /* If the remaining path is not empty, invoke the parse routine of the newly
      * opened instance with the remaining path, until the remaining path is empty.

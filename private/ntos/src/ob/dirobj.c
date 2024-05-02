@@ -1,7 +1,9 @@
+#include "ex.h"
 #include "obp.h"
 #include "ntdef.h"
 #include "ntstatus.h"
 #include "ob.h"
+#include "util.h"
 
 #define OBP_DIROBJ_HASH_BUCKETS 37
 typedef struct _OBJECT_DIRECTORY {
@@ -12,6 +14,7 @@ typedef struct _OBJECT_DIRECTORY {
 typedef struct _OBJECT_DIRECTORY_ENTRY {
     LIST_ENTRY ChainLink;
     POBJECT Object;
+    POBJECT_DIRECTORY Parent;
 } OBJECT_DIRECTORY_ENTRY, *POBJECT_DIRECTORY_ENTRY;
 
 POBJECT_DIRECTORY ObpRootObjectDirectory;
@@ -107,6 +110,17 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     assert(Path != NULL);
     assert(FoundObject != NULL);
     assert(RemainingPath != NULL);
+    *RemainingPath = Path;
+
+    /* Skip the leading path separator. */
+    if (Path[0] == OBJ_NAME_PATH_SEPARATOR) {
+	Path++;
+    }
+
+    /* If the Path is empty, stop parsing. */
+    if (Path[0] == '\0') {
+	return STATUS_NTOS_STOP_PARSING;
+    }
 
     ULONG NameLength = ObLocateFirstPathSeparator(Path);
     if (NameLength == 0) {
@@ -122,7 +136,6 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 		   *RemainingPath = Path;
 	       });
     *RemainingPath = Path + NameLength;
-    /* The object manager will skip the leading OBJ_NAME_PATH_SEPARATOR */
     ObDbg("Parse successful. RemainingPath = %s\n", *RemainingPath);
     return STATUS_SUCCESS;
 }
@@ -143,15 +156,22 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
     assert(ObObjectIsType(Object, OBJECT_TYPE_DIRECTORY));
 
     *pRemainingPath = SubPath;
+    /* Skip the leading path separator. */
+    if (SubPath[0] == OBJ_NAME_PATH_SEPARATOR) {
+	SubPath++;
+    }
     if (*SubPath != '\0') {
 	return STATUS_OBJECT_NAME_INVALID;
     }
     POBJECT_DIRECTORY DirObj = Object;
     if (OpenContext->Type == OPEN_CONTEXT_DEVICE_OPEN) {
-	if (!DirObj->FileObject) {
-	    RET_ERR(IoCreateDevicelessFile(NULL, NULL, 0, &DirObj->FileObject));
-	}
-	*pOpenedInstance = DirObj->FileObject;
+	/* If we are opening an object directory as a file, look for the file
+	 * object with name ".". This is so in the very early stage of the boot
+	 * ntdll can open a file handle to the boot modules directory. */
+	RET_ERR(ObDirectoryObjectSearchObject(DirObj, ".", 1,
+					      FALSE, pOpenedInstance));
+	ObpReferenceObject(*pOpenedInstance);
+	*pRemainingPath = SubPath;
     } else {
 	/* TODO: Implement NtOpenObjectDirectory */
 	UNIMPLEMENTED;
@@ -159,15 +179,16 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
-				       IN POBJECT Object,
-				       IN PCSTR Name)
+static NTSTATUS ObpDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
+					       IN POBJECT Object,
+					       IN PCSTR Name,
+					       IN ULONG NameLength)
 {
     /* Object name must not be empty. */
     assert(Name[0]);
     /* Object name must not contain the OBJ_NAME_PATH_SEPARATOR */
-    for (PCSTR Ptr = Name; *Ptr != '\0'; Ptr++) {
-	if (*Ptr == OBJ_NAME_PATH_SEPARATOR) {
+    for (ULONG i = 0; i < NameLength; i++) {
+	if (Name[i] == OBJ_NAME_PATH_SEPARATOR) {
 	    ObDbg("Inserting name %s failed\n", Name);
 	    assert(FALSE);
 	    return STATUS_OBJECT_PATH_INVALID;
@@ -176,12 +197,20 @@ NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
 
     ObpAllocatePool(DirectoryEntry, OBJECT_DIRECTORY_ENTRY);
     DirectoryEntry->Object = Object;
+    DirectoryEntry->Parent = Directory;
     OBJECT_TO_OBJECT_HEADER(Object)->ParentLink = DirectoryEntry;
 
-    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, strlen(Name));
+    MWORD HashIndex = ObpDirectoryEntryHashIndex(Name, NameLength);
     assert(HashIndex < OBP_DIROBJ_HASH_BUCKETS);
     InsertHeadList(&Directory->HashBuckets[HashIndex], &DirectoryEntry->ChainLink);
     return STATUS_SUCCESS;
+}
+
+NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
+				       IN POBJECT Object,
+				       IN PCSTR Name)
+{
+    return ObpDirectoryObjectInsertObject(Directory, Object, Name, strlen(Name));
 }
 
 /*
@@ -265,6 +294,52 @@ NTSTATUS ObCreateDirectoryEx(IN OPTIONAL POBJECT Parent,
 	*DirObj = Directory;
     }
     return STATUS_SUCCESS;
+}
+
+NTSTATUS ObCreateParentDirectory(IN OPTIONAL POBJECT RootDirectory,
+				 IN PCSTR ObjectPath,
+				 OUT OPTIONAL POBJECT_DIRECTORY *ParentDir)
+{
+    /* Parse the object path against the root directory until failure. */
+    POBJECT ParentObj = NULL;
+    PCSTR ObjectName = NULL, StringToFree = NULL;
+    NTSTATUS Status = ObpParseObjectByName(RootDirectory, ObjectPath, FALSE,
+					   &ParentObj, &ObjectName, &StringToFree);
+    if (!ParentObj || !ObObjectIsType(ParentObj, OBJECT_TYPE_DIRECTORY)) {
+	Status = STATUS_OBJECT_NAME_INVALID;
+	goto out;
+    }
+    Status = STATUS_SUCCESS;
+    ULONG Sep = ObLocateFirstPathSeparator(ObjectName);
+    while (Sep && ObjectName[Sep] == OBJ_NAME_PATH_SEPARATOR && ObjectName[Sep+1]) {
+	POBJECT_DIRECTORY DirObj = NULL;
+	Status = ObCreateObject(OBJECT_TYPE_DIRECTORY, (POBJECT *)&DirObj, NULL);
+	if (!NT_SUCCESS(Status)) {
+	    break;
+	}
+	Status = ObpDirectoryObjectInsertObject(ParentObj, DirObj, ObjectName, Sep);
+	if (!NT_SUCCESS(Status)) {
+	    break;
+	}
+	ObjectName += Sep + 1;
+	ParentObj = DirObj;
+	Sep = ObLocateFirstPathSeparator(ObjectName);
+    }
+    assert(ParentObj && ObObjectIsType(ParentObj, OBJECT_TYPE_DIRECTORY));
+    *ParentDir = ParentObj;
+out:
+    if (StringToFree) {
+	ExFreePoolWithTag(StringToFree, OB_PARSE_TAG);
+    }
+    return Status;
+}
+
+POBJECT_DIRECTORY ObGetParentDirectory(IN POBJECT Object)
+{
+    assert(Object);
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
+    POBJECT_DIRECTORY_ENTRY Entry = ObjectHeader->ParentLink;
+    return Entry ? Entry->Parent : NULL;
 }
 
 /* Return the number of subobjects in a directory object */

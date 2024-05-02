@@ -16,10 +16,8 @@
  * for public flags. See ntos/src/ob/create.c for details.
  */
 #define OBJ_NO_PARSE		0x1000UL
-#define OBJ_CREATE_DIR_IF	0x2000UL
 
 C_ASSERT((OBJ_VALID_ATTRIBUTES & OBJ_NO_PARSE) == 0);
-C_ASSERT((OBJ_VALID_ATTRIBUTES & OBJ_CREATE_DIR_IF) == 0);
 
 /* Unlike in Windows, the ObjectType itself is not a type.
  *
@@ -226,8 +224,7 @@ typedef NTSTATUS (*OBJECT_CREATE_METHOD)(IN POBJECT Self,
  * The parse procedure is not allowed to modify the Path string.
  * RemainingPath must point to a sub-string within Path (unless
  * the REPARSE status is returned, in which case RemainingPath
- * points to the new path to be parsed), and does NOT include the
- * leading OBJ_NAME_PATH_SEPARATOR.
+ * points to the new path to be parsed).
  *
  * When returning REPARSE, the parse routine must allocate the
  * RemainingPath string from the pool with tag OB_PARSE_TAG. When
@@ -268,8 +265,7 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  * Like the parse procedure, the open procedure is not allowed to
  * modify the Path string. RemainingPath must point to a sub-string
  * within Path (unless the REPARSE status is returned, in which case
- * RemainingPath points to the new path to be parsed), and does NOT
- * include the leading OBJ_NAME_PATH_SEPARATOR.
+ * RemainingPath points to the new path to be parsed)
  *
  * Unlike the parse procedure, the open procedure SHOULD increase the
  * reference count of returned *pOpenedInstance object, except in the
@@ -478,6 +474,10 @@ NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
 				       IN PCSTR Name);
 VOID ObDirectoryObjectRemoveObject(IN POBJECT Subobject);
 SIZE_T ObDirectoryGetObjectCount(IN POBJECT_DIRECTORY DirObj);
+NTSTATUS ObCreateParentDirectory(IN OPTIONAL POBJECT RootDirectory,
+                                 IN PCSTR ObjectPath,
+                                 OUT OPTIONAL POBJECT_DIRECTORY *ParentDir);
+POBJECT_DIRECTORY ObGetParentDirectory(IN POBJECT Object);
 FORCEINLINE NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 {
     return ObCreateDirectoryEx(NULL, DirectoryPath, NULL);

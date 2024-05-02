@@ -1,4 +1,5 @@
 #include "iop.h"
+#include "ntdef.h"
 #include "ob.h"
 #include "util.h"
 
@@ -61,7 +62,9 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
     }
     DevObj->Vcb->MountInProgress = TRUE;
     /* FileSize is set to zero for the time being as we don't know the volume size yet. */
-    IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, DevObj->Vcb, TRUE));
+    IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, DevObj->Vcb));
+    IF_ERR_GOTO(out, Status, ObCreateObject(OBJECT_TYPE_DIRECTORY,
+					    (PVOID *)&DevObj->Vcb->Subobjects, NULL));
     DevObj->Vcb->StorageDevice = DevObj;
 
     /* Select the appropriate list of file systems to send the mount request to. */
@@ -138,6 +141,9 @@ out:
     if (DevObj->Vcb && !NT_SUCCESS(Status)) {
 	if (DevObj->Vcb->VolumeFcb) {
 	    IopDeleteFcb(DevObj->Vcb->VolumeFcb);
+	}
+	if (DevObj->Vcb->Subobjects) {
+	    ObDereferenceObject(DevObj->Vcb->Subobjects);
 	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;

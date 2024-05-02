@@ -1,3 +1,4 @@
+#include "ntdef.h"
 #include "obp.h"
 #include "ex.h"
 #include "ntrtl.h"
@@ -53,28 +54,31 @@ static NTSTATUS ObpSymlinkObjectParseProc(IN POBJECT Self,
 {
     assert(Self);
     assert(Path);
-    assert(Path[0] != OBJ_NAME_PATH_SEPARATOR);
     POBJECT_SYMBOLIC_LINK Link = Self;
     assert(Link->LinkTarget);
     assert(Link->LinkTargetObject);
+    /* If the Path is non-empty but does not start with a '\\', we need to add one. */
+    BOOLEAN AddSep = Path[0] && Path[0] != OBJ_NAME_PATH_SEPARATOR;
     ULONG PathLen = strlen(Path);
     ULONG LinkTargetLen = strlen(Link->LinkTarget);
-    ULONG StringSize = LinkTargetLen + 1;
-    if (PathLen) {
-	StringSize += PathLen + 1;
+    ULONG StringLen = LinkTargetLen + PathLen;
+    if (AddSep) {
+	StringLen++;
     }
-    PCHAR NewPath = ExAllocatePoolWithTag(StringSize, OB_PARSE_TAG);
+    PCHAR NewPath = ExAllocatePoolWithTag(StringLen + 1, OB_PARSE_TAG);
     if (!NewPath) {
 	*RemainingPath = Path;
 	*FoundObject = NULL;
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     RtlCopyMemory(NewPath, Link->LinkTarget, LinkTargetLen);
-    if (PathLen) {
+    if (AddSep) {
 	NewPath[LinkTargetLen] = OBJ_NAME_PATH_SEPARATOR;
 	RtlCopyMemory(NewPath + LinkTargetLen + 1, Path, PathLen);
+    } else {
+	RtlCopyMemory(NewPath + LinkTargetLen, Path, PathLen);
     }
-    NewPath[StringSize-1] = '\0';
+    NewPath[StringLen] = '\0';
     *FoundObject = Link->LinkTargetObject;
     *RemainingPath = NewPath;
     return STATUS_REPARSE_OBJECT;

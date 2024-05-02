@@ -8,8 +8,8 @@ static NTSTATUS IopCreateFileType()
 	.CreateProc = IopFileObjectCreateProc,
 	.ParseProc = IopFileObjectParseProc,
 	.OpenProc = IopFileObjectOpenProc,
-	.InsertProc = IopFileObjectInsertProc,
-	.RemoveProc = IopFileObjectRemoveProc,
+	.InsertProc = NULL,
+	.RemoveProc = NULL,
 	.DeleteProc = IopFileObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_FILE,

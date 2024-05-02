@@ -253,7 +253,6 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     PIO_VOLUME_CONTROL_BLOCK Vcb;
     PIO_FILE_OBJECT MasterFileObject;
     BOOLEAN NoFcb;
-    BOOLEAN IsDirectory;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
     BOOLEAN DeleteAccess;
@@ -359,8 +358,7 @@ FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
 /* file.c */
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
-		      IN PIO_VOLUME_CONTROL_BLOCK Vcb,
-		      IN BOOLEAN CreateDirectory);
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb);
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx);
@@ -377,14 +375,9 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN POB_OPEN_CONTEXT ParseContext,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath);
-NTSTATUS IopFileObjectInsertProc(IN POBJECT Self,
-				 IN POBJECT Object,
-				 IN PCSTR Path);
-VOID IopFileObjectRemoveProc(IN POBJECT Subobject);
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
-				   IN BOOLEAN IsDirectory,
 				   OUT PIO_FILE_OBJECT *pFile);
 
 /*

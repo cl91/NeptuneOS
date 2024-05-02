@@ -10,6 +10,8 @@
 #include "ntstatus.h"
 #include "ob.h"
 #include "util.h"
+#include <ctype.h>
+#include <string.h>
 
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
@@ -40,7 +42,6 @@ NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
     assert(Path != NULL);
     assert(FoundObject != NULL);
     assert(RemainingPath != NULL);
-    assert(*Path != OBJ_NAME_PATH_SEPARATOR);
 
     PIO_DEVICE_OBJECT DevObj = (PIO_DEVICE_OBJECT)Self;
     DbgTrace("Device %p trying to parse Path = %s case-%s\n", Self, Path,
@@ -48,25 +49,34 @@ NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
 
     *RemainingPath = Path;
     *FoundObject = NULL;
-    PIO_FILE_CONTROL_BLOCK VolumeFcb = DevObj->Vcb ? DevObj->Vcb->VolumeFcb : NULL;
-    POBJECT_DIRECTORY Subobjs =  VolumeFcb ? VolumeFcb->Subobjects : NULL;
-    if (!Subobjs) {
-	return STATUS_OBJECT_PATH_NOT_FOUND;
+    /* If the device object is not a mounted volume, we should stop parsing.
+     * Non-volume devices do not cache subobjects. */
+    if (!DevObj->Vcb) {
+	return STATUS_NTOS_STOP_PARSING;
     }
 
-    /* If the path is empty, look for the root directory file "." */
+    /* If the path is empty, return the volume file object. Note this is different
+     * from the root directory file. */
     if (!Path[0]) {
-	return ObDirectoryObjectSearchObject(Subobjs, ".", 1, FALSE, FoundObject);
+	*FoundObject = DevObj->Vcb->VolumeFile;
+	return *FoundObject ? STATUS_SUCCESS : STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
-    ULONG Sep = ObLocateFirstPathSeparator(Path);
-    NTSTATUS Status = ObDirectoryObjectSearchObject(Subobjs, Path, Sep,
-						    CaseInsensitive, FoundObject);
-    if (!NT_SUCCESS(Status)) {
-	*FoundObject = NULL;
-	return Status;
+    if (!DevObj->Vcb->Subobjects) {
+	/* A successfully mounted volume should always have the Subobjects
+	 * directory, so there must be a bug. */
+	assert(FALSE);
+	return STATUS_NTOS_BUG;
     }
-    *RemainingPath = Path + Sep;
+
+    RET_ERR(ObParseObjectByName(DevObj->Vcb->Subobjects, Path,
+				CaseInsensitive, FoundObject));
+    /* If the object we found is an object directory, return the directory file
+     * object, located under the object directory with name "." */
+    if (ObObjectIsType(*FoundObject, OBJECT_TYPE_DIRECTORY)) {
+	RET_ERR(ObParseObjectByName(*FoundObject, ".", FALSE, FoundObject));
+    }
+    *RemainingPath = Path + strlen(Path);
     return STATUS_SUCCESS;
 }
 
@@ -74,35 +84,66 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 				   IN POBJECT Object,
 				   IN PCSTR Path)
 {
-    PIO_DEVICE_OBJECT DevObj = (PIO_DEVICE_OBJECT)Self;
+    PIO_DEVICE_OBJECT DevObj = Self;
+    PIO_FILE_OBJECT FileObj = Object;
     assert(Self != NULL);
     assert(Path != NULL);
     assert(Object != NULL);
     DbgTrace("Inserting subobject %p (path %s) for device object %p\n",
 	     Object, Path, Self);
 
-    /* Object path must not be empty. Object path must also not contain the path
-     * separator but this is checked below, by ObDirectoryObjectInsertObject. */
-    if (*Path == '\0') {
+    /* The object to be inserted must be a file object. */
+    if (!ObObjectIsType(Object, OBJECT_TYPE_FILE)) {
 	assert(FALSE);
-	return STATUS_OBJECT_PATH_INVALID;
+	return STATUS_OBJECT_TYPE_MISMATCH;
     }
 
-    PIO_FILE_CONTROL_BLOCK VolumeFcb = DevObj->Vcb ? DevObj->Vcb->VolumeFcb : NULL;
-    POBJECT_DIRECTORY Subobjs =  VolumeFcb ? VolumeFcb->Subobjects : NULL;
-    if (!Subobjs) {
-	/* This should never happen because we have created the object directory
-	 * when mounting the volume. */
+    /* The device object must be a mounted volume device. */
+    if (!DevObj->Vcb) {
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    if (!DevObj->Vcb->Subobjects) {
+	/* A successfully mounted volume should always have the Subobjects
+	 * directory, so there must be a bug. */
 	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
 
-    return ObDirectoryObjectInsertObject(Subobjs, Object, Path);
+    /* If the object path is empty, we insert the file object as the volume file object. */
+    if (*Path == '\0') {
+	if (DevObj->Vcb->VolumeFile) {
+	    assert(FALSE);
+	    ObRemoveObject(DevObj->Vcb->VolumeFile);
+	}
+	DevObj->Vcb->VolumeFile = FileObj;
+	return STATUS_SUCCESS;
+    }
+
+    PCSTR ObjName = Path + ObLocateLastPathSeparator(Path) + 1;
+    /* If the object name is empty (ie. if the path ends in "\", which means it's a
+     * directory file), we insert into the object directory using name "." */
+    if (!ObjName[0]) {
+	ObjName = ".";
+    }
+
+    /* Create the parent object directory if it does not exist. */
+    POBJECT_DIRECTORY ParentDir = NULL;
+    RET_ERR(ObCreateParentDirectory(DevObj->Vcb->Subobjects, Path, &ParentDir));
+    assert(ParentDir);
+
+    /* Insert the file object under the object directory. */
+    return ObDirectoryObjectInsertObject(ParentDir, Object, ObjName);
 }
 
 VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
 {
+    POBJECT_DIRECTORY ParentDir = ObGetParentDirectory(Subobject);
+    assert(ParentDir);
     ObDirectoryObjectRemoveObject(Subobject);
+    if (ParentDir && !ObDirectoryGetObjectCount(ParentDir)) {
+	ObDereferenceObject(ParentDir);
+    }
 }
 
 NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
@@ -119,7 +160,6 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	    PIO_FILE_OBJECT FileObject;
 	    PIO_DEVICE_OBJECT TargetDevice;
 	    PPENDING_IRP PendingIrp;
-	    ULONG FileNameLength;
 	});
 
     /* If the device object is from the underlying storage driver, we send open IRPs to
@@ -127,38 +167,27 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     /* TODO: Implement raw mount. */
     Locals.TargetDevice = IopIsStorageDevice(Device) ? Device->Vcb->VolumeDevice : Device;
 
-    PCHAR ObjectName = (PCHAR)SubPath;
-   /* If we are opening the root directory of a volume, insert the file object under the
-     * device object with name "." */
-    if (Device->Vcb && !SubPath[0]) {
-	ObjectName = ".";
-    }
-    /* Remove the trailing '\\' in the object name. */
-    LONG Sep = ObLocateLastPathSeparator(ObjectName);
-    BOOLEAN Restore = FALSE;
-    if (Sep > 0 && ObjectName[Sep] == OBJ_NAME_PATH_SEPARATOR && !ObjectName[Sep+1]) {
-	ObjectName[Sep] = '\0';
-	Restore = TRUE;
-    }
-    /* For the root directory of a volume, the master file object will be an ordinary,
-     * non-directory file. The cached subobject directory is in the volume FCB. */
-    BOOLEAN IsDirectory = SubPath[0] && OpenPacket->CreateOptions & FILE_DIRECTORY_FILE;
-    Status = IopCreateMasterFileObject(ObjectName, Locals.TargetDevice, IsDirectory,
-				       &Locals.FileObject);
+    Status = IopCreateMasterFileObject(SubPath, Locals.TargetDevice, &Locals.FileObject);
     if (!NT_SUCCESS(Status)) {
-	if (Restore) {
-	    ObjectName[Sep] = OBJ_NAME_PATH_SEPARATOR;
-	}
 	goto out;
     }
     assert(Locals.FileObject != NULL);
 
-    if (*ObjectName) {
-	ULONG Flags = (Attributes & OBJ_CASE_INSENSITIVE) | OBJ_CREATE_DIR_IF;
-	Status = ObInsertObject(Device, Locals.FileObject, ObjectName, Flags);
-	if (Restore) {
-	    ObjectName[Sep] = OBJ_NAME_PATH_SEPARATOR;
+    if (Device->Vcb) {
+	/* If the open is case-insensitive, we insert with an all-lower case path. */
+	PCHAR ObjectName = NULL;
+	if (Attributes & OBJ_CASE_INSENSITIVE) {
+	    ObjectName = ExAllocatePoolWithTag(strlen(SubPath) + 1, NTOS_IO_TAG);
+	    if (!ObjectName) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto out;
+	    }
+	    for (PCSTR p = SubPath; p[0]; p++) {
+		ObjectName[p - SubPath] = tolower(*p);
+	    }
 	}
+	Status = ObInsertObject(Device, Locals.FileObject,
+				ObjectName ? ObjectName : SubPath, OBJ_NO_PARSE);
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}
@@ -173,13 +202,8 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	}
     }
 
-    Locals.FileNameLength = strlen(SubPath);
-    /* For volume devices we need to prepend the path separator '\\' to
-     * the path being opened. */
-    if (Device->Vcb) {
-	Locals.FileNameLength++;
-    }
-    ULONG DataSize = Locals.FileNameLength ? Locals.FileNameLength + 1 : 0;
+    ULONG PathLen = strlen(SubPath);
+    ULONG DataSize = PathLen ? PathLen + 1 : 0;
     PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize,
 						       NTOS_IO_TAG);
     if (!Irp) {
@@ -190,18 +214,9 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     /* For IO packets involving the creation of file objects, we need to pass
      * FILE_OBJECT_CREATE_PARAMETERS to the client driver so it can record the
      * file object information there */
-    if (Locals.FileNameLength) {
+    if (PathLen) {
 	PUCHAR FileNamePtr = (PUCHAR)(Irp + 1);
-	if (Device->Vcb) {
-	    /* Note since we are handling the case of an absolute open (an open
-	     * request with RelatedFileObject == NULL), we prepend the path with
-	     * '\\' so the file system driver knows it's an absolute path. */
-	    FileNamePtr[0] = '\\';
-	    FileNamePtr++;
-	    assert(Locals.FileNameLength > 0);
-	    Locals.FileNameLength--;
-	}
-	memcpy(FileNamePtr, SubPath, Locals.FileNameLength + 1);
+	memcpy(FileNamePtr, SubPath, PathLen + 1);
     }
     FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters = {
 	.AllocationSize = OpenPacket->AllocationSize,

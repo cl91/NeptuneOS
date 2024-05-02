@@ -65,9 +65,6 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 {
     assert(Object != NULL);
     assert(Path != NULL);
-    if ((Flags & OBJ_NO_PARSE) && (Flags & OBJ_CREATE_DIR_IF)) {
-	return STATUS_INVALID_PARAMETER;
-    }
     ObRemoveObject(Object);
 
     POBJECT Parent = DirectoryObject ? DirectoryObject : ObpRootObjectDirectory;
@@ -82,14 +79,16 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 			     &Parent, &RemainingPath, &StringToFree);
 	assert(Parent != NULL);
 	assert(RemainingPath != NULL);
-    }
-    if (*RemainingPath == OBJ_NAME_PATH_SEPARATOR) {
-	RemainingPath++;
+	/* Skip the leading path separator in the remaining path. */
+	if (RemainingPath[0] == OBJ_NAME_PATH_SEPARATOR) {
+	    RemainingPath++;
+	}
     }
     /* If the remaining path is empty, it means that there is already an
-     * object with the given path. In this case we reject the insertion. */
+     * object with the given path. In this case we reject the insertion.
+     * This check is skipped if OBJ_NO_PARSE is specified. */
     NTSTATUS Status;
-    if (*RemainingPath == '\0') {
+    if (*RemainingPath == '\0' && !(Flags & OBJ_NO_PARSE)) {
 	Status = STATUS_OBJECT_NAME_COLLISION;
 	goto out;
     }
@@ -103,28 +102,6 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 	goto out;
     }
 
-    if (Flags & OBJ_CREATE_DIR_IF) {
-	ULONG Sep = ObLocateFirstPathSeparator(ObjectName);
-	while (ObjectName[Sep] == OBJ_NAME_PATH_SEPARATOR && ObjectName[Sep+1]) {
-	    ObjectName[Sep] = '\0';
-	    POBJECT_DIRECTORY DirObj = NULL;
-	    Status = ObCreateDirectoryEx(Parent, ObjectName, &DirObj);
-	    if (!NT_SUCCESS(Status)) {
-		ObpFreePool(ObjectName);
-		goto out;
-	    }
-	    PCHAR NewObjName = RtlDuplicateString(ObjectName+Sep+1, NTOS_OB_TAG);
-	    if (!NewObjName) {
-		ObpFreePool(ObjectName);
-		goto out;
-	    }
-	    ObpFreePool(ObjectName);
-	    ObjectName = NewObjName;
-	    Parent = DirObj;
-	    Sep = ObLocateFirstPathSeparator(ObjectName);
-	}
-    }
-
     POBJECT_HEADER ParentHeader = OBJECT_TO_OBJECT_HEADER(Parent);
     assert(ParentHeader != NULL);
     assert(ParentHeader->Type != NULL);
@@ -133,7 +110,7 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 	  Object, Parent, ObjectName);
     OBJECT_INSERT_METHOD InsertProc = ParentHeader->Type->TypeInfo.InsertProc;
     if (InsertProc == NULL) {
-	Status = STATUS_INVALID_PARAMETER;
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
 	goto out;
     }
 
