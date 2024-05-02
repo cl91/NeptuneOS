@@ -27,8 +27,10 @@ Revision History:
     2024-02-14  File created
 
 --*/
+#include "io.h"
 #include "iop.h"
 #include "ntstatus.h"
+#include "wdmsvc.h"
 
 #define NTOS_CC_TAG	(EX_POOL_TAG('n','t','c','c'))
 
@@ -1415,26 +1417,33 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 		  IN OUT PVOID Context)
 {
     assert(FileObject);
-    PIO_FILE_CONTROL_BLOCK Fcb = FileObject->Fcb;
-    /* If the file object has caching enabled, propagate its dirty maps to the volume FCB. */
-    if (Fcb && Fcb->SharedCacheMap) {
-	CiFlushPrivateCacheToShared(Fcb);
-	CiFlushDirtyDataToVolume(Fcb);
-    }
     assert(VolumeDevice);
+    assert(VolumeDevice == VolumeDevice->Vcb->VolumeDevice);
+    /* For all the open files in the volume with caching enabled, propagate
+     * their dirty maps to the volume FCB. */
+    LoopOverList(File, &VolumeDevice->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	PIO_FILE_CONTROL_BLOCK Fcb = File->Fcb;
+	if (Fcb && Fcb->SharedCacheMap && Fcb != VolumeDevice->Vcb->VolumeFcb) {
+	    CiFlushPrivateCacheToShared(Fcb);
+	    CiFlushDirtyDataToVolume(Fcb);
+	}
+    }
     PIO_FILE_CONTROL_BLOCK VolumeFcb = VolumeDevice->Vcb->VolumeFcb;
     assert(VolumeFcb);
     CiFlushPrivateCacheToShared(VolumeFcb);
     /* At this point all dirty bits should have been migrated to the volume FCB shared map. */
-    if (Fcb && Fcb != VolumeFcb && Fcb->SharedCacheMap) {
-	LoopOverView(View, Fcb->SharedCacheMap) {
-	    assert(!View->DirtyMap);
-	}
-    }
-    if (Fcb) {
-	LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
-	    LoopOverView(View, CacheMap) {
+    LoopOverList(File, &VolumeDevice->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	PIO_FILE_CONTROL_BLOCK Fcb = File->Fcb;
+	if (Fcb && Fcb != VolumeFcb && Fcb->SharedCacheMap) {
+	    LoopOverView(View, Fcb->SharedCacheMap) {
 		assert(!View->DirtyMap);
+	    }
+	}
+	if (Fcb) {
+	    LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
+		LoopOverView(View, CacheMap) {
+		    assert(!View->DirtyMap);
+		}
 	    }
 	}
     }
