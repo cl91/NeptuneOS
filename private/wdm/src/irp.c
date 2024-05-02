@@ -1357,7 +1357,8 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
 	if (AddDevice) {
 	    return AddDevice(&IopDriverObject, IoStack->DeviceObject);
 	} else {
-	    return STATUS_NOT_IMPLEMENTED;
+	    Irp->IoStatus.Information = 0;
+	    return Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
 	}
     }
     assert(IopDeviceObjectIsLocal(DeviceObject));
@@ -1366,6 +1367,9 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
     if (DispatchRoutine != NULL) {
 	Status = DispatchRoutine(DeviceObject, Irp);
+    } else {
+	Irp->IoStatus.Status = Status;
+	Irp->IoStatus.Information = 0;
     }
     return Status;
 }
@@ -1486,8 +1490,8 @@ static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
     DbgTrace("Running finalizer for exec env %p context %p suspended %d "
-	     "EnvToWakeUp %p:\n", Env, Env->Context, Env->Suspended,
-	     Env->EnvToWakeUp);
+	     "EnvToWakeUp %p, status 0x%08x:\n", Env, Env->Context,
+	     Env->Suspended, Env->EnvToWakeUp, Status);
     PIRP Irp = Env->Context;
     IoDbgDumpIrp(Irp);
     Irp->Private.ExecEnv = NULL;
