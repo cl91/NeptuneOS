@@ -1,4 +1,5 @@
 #include "ki.h"
+#include "ntdef.h"
 
 /* This is the system thread that listens to the fault endpoint
  * of the NT Executive event loop thread, in case the main event
@@ -66,6 +67,28 @@ static VOID KiDumpExecutiveThreadFault(IN seL4_Fault_t Fault,
 	DbgPrinter("Unable to dump Executive thread context. Error 0x%08x\n", Status);
     }
     KiDumpThreadContext(&Context, DbgPrinter);
+    DbgPrinter("Stack:\n");
+#ifdef _M_IX86
+    PULONG_PTR Stack = (PULONG_PTR)Context.esp;
+    for (ULONG i = 0; i < 0x40; i++) {
+	DbgPrinter("%08x", Stack[i]);
+	if ((i & 0x7) == 0x7) {
+	    DbgPrinter("\n");
+	} else {
+	    DbgPrinter(" ");
+	}
+    }
+#elif defined(_M_AMD64)
+    PULONG_PTR Stack = (PULONG_PTR)Context.rsp;
+    for (ULONG i = 0; i < 0x20; i++) {
+	DbgPrinter("%016x", Stack[i]);
+	if ((i & 0x3) == 0x3) {
+	    DbgPrinter("\n");
+	} else {
+	    DbgPrinter(" ");
+	}
+    }
+#endif
     DbgPrinter("==============================================================================\n");
 }
 
