@@ -11,8 +11,9 @@ static NTSTATUS PspCreateThreadType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = PspThreadObjectCreateProc,
-	.OpenProc = NULL,
 	.ParseProc = NULL,
+	.OpenProc = NULL,
+	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = PspThreadObjectDeleteProc,
@@ -27,8 +28,9 @@ static NTSTATUS PspCreateProcessType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = PspProcessObjectCreateProc,
-	.OpenProc = NULL,
 	.ParseProc = NULL,
+	.OpenProc = NULL,
+	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = PspProcessObjectDeleteProc,

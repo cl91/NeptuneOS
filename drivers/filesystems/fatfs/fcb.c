@@ -566,10 +566,8 @@ NTSTATUS FatAttachFcbToFileObject(PDEVICE_EXTENSION Vcb,
     FileObject->Vpb = Vcb->IoVPB;
     DPRINT("File open: Fcb:%p PathName:%wZ\n", Fcb, &Fcb->PathNameU);
 
-#ifdef KDBG
     Fcb->Flags &= ~FCB_CLEANED_UP;
     Fcb->Flags &= ~FCB_CLOSED;
-#endif
 
     return STATUS_SUCCESS;
 }

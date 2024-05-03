@@ -375,6 +375,9 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN POB_OPEN_CONTEXT ParseContext,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath);
+NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
+				IN struct _THREAD *Thread,
+				IN POBJECT Self);
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
@@ -418,6 +421,9 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN POB_OPEN_CONTEXT ParseContext,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath);
+NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
+				  IN PTHREAD Thread,
+				  IN POBJECT Object);
 VOID IopDeviceObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
@@ -438,6 +444,8 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 
 /* cache.c */
 NTSTATUS CcInitializeCacheManager();
+VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb);
+VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb);
 
 /* volume.c */
 NTSTATUS IopInitFileSystem();

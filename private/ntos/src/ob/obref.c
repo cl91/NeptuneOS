@@ -1,10 +1,9 @@
 #include "obp.h"
-#include "util.h"
-#include "ob.h"
 
 static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
 				      IN HANDLE Handle,
-				      OUT POBJECT *pObject)
+				      OUT POBJECT *pObject,
+				      OUT OPTIONAL PHANDLE_TABLE_ENTRY *pEntry)
 {
     assert(Process != NULL);
     assert(Handle != NULL);
@@ -13,18 +12,22 @@ static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
     if (Node == NULL) {
 	return STATUS_INVALID_HANDLE;
     }
-    *pObject = CONTAINING_RECORD(Node, HANDLE_TABLE_ENTRY, AvlNode)->Object;
+    PHANDLE_TABLE_ENTRY Entry = CONTAINING_RECORD(Node, HANDLE_TABLE_ENTRY, AvlNode);
+    *pObject = Entry->Object;
+    if (pEntry) {
+	*pEntry = Entry;
+    }
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
-					IN HANDLE Handle,
-					IN OBJECT_TYPE_ENUM Type,
-					OUT POBJECT *pObject)
+static NTSTATUS ObpLookupObjectHandleWithType(IN PPROCESS Process,
+					      IN HANDLE Handle,
+					      IN OBJECT_TYPE_ENUM Type,
+					      OUT POBJECT *pObject)
 {
     assert(pObject != NULL);
     POBJECT Object = NULL;
-    RET_ERR(ObpLookupObjectHandle(Process, Handle, &Object));
+    RET_ERR(ObpLookupObjectHandle(Process, Handle, &Object, NULL));
     assert(Object != NULL);
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
@@ -39,8 +42,12 @@ static NTSTATUS ObpLookupObjectHandleEx(IN PPROCESS Process,
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
+/*
+ * Create a client handle for the given object.
+ */
 NTSTATUS ObCreateHandle(IN PPROCESS Process,
 			IN POBJECT Object,
+			IN BOOLEAN ObjectOpened,
 			OUT HANDLE *pHandle)
 {
     assert(Object != NULL);
@@ -48,12 +55,13 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
     POBJECT_HEADER Header = OBJECT_TO_OBJECT_HEADER(Object);
     ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
     Entry->Object = Object;
+    Entry->InvokeClose = ObjectOpened;
     InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
     AvlTreeAppendNode(&Process->HandleTable.Tree,
-			&Entry->AvlNode, HANDLE_VALUE_INC);
+		      &Entry->AvlNode, HANDLE_VALUE_INC);
     /* Increase the reference count since we now exposing it to client space */
     ObpReferenceObject(Object);
-    *pHandle = (HANDLE) Entry->AvlNode.Key;
+    *pHandle = (HANDLE)Entry->AvlNode.Key;
     return STATUS_SUCCESS;
 }
 
@@ -102,7 +110,7 @@ NTSTATUS ObReferenceObjectByHandle(IN PTHREAD Thread,
     } else if (Handle == NtCurrentThread() && (Type == OBJECT_TYPE_ANY || Type == OBJECT_TYPE_THREAD)) {
 	*pObject = Thread;
     } else {
-	RET_ERR(ObpLookupObjectHandleEx(Thread->Process, Handle, Type, pObject));
+	RET_ERR(ObpLookupObjectHandleWithType(Thread->Process, Handle, Type, pObject));
     }
     ObpReferenceObject(*pObject);
     return STATUS_SUCCESS;
@@ -134,6 +142,7 @@ static VOID ObpDeleteObject(IN POBJECT_HEADER ObjectHeader)
 {
     assert(ObjectHeader != NULL);
     assert(ObjectHeader->Type != NULL);
+    assert(IsListEmpty(&ObjectHeader->HandleEntryList));
 
     POBJECT Object = OBJECT_HEADER_TO_OBJECT(ObjectHeader);
     ObDbg("Deleting object %p (type %s)\n", Object,
@@ -155,25 +164,60 @@ VOID ObDereferenceObject(IN POBJECT Object)
     assert(ObjectHeader->RefCount > 0);
 
     ObjectHeader->RefCount--;
+    /* Handle count should never be larger than refcount, even after dereferencing. */
+    assert(GetListLength(&ObjectHeader->HandleEntryList) <= ObjectHeader->RefCount);
+
     if (ObjectHeader->RefCount <= 0) {
 	ObpDeleteObject(ObjectHeader);
     }
 }
 
-/*
- * We should implement lazy close. For now this does nothing.
- */
-NTSTATUS ObClose(IN PPROCESS Process,
-		 IN HANDLE Handle)
+static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN PPROCESS Process,
+			       IN HANDLE Handle)
 {
-    return STATUS_SUCCESS;
+
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State, Locals, {
+	    POBJECT Object;
+	    PHANDLE_TABLE_ENTRY Entry;
+	});
+
+    IF_ERR_GOTO(out, Status, ObpLookupObjectHandle(Process, Handle,
+						   &Locals.Object, &Locals.Entry));
+    assert(Locals.Object);
+    assert(Locals.Entry);
+    /* Handle count should always be smaller (and not equal) than refcount. */
+    assert(GetListLength(&OBJECT_TO_OBJECT_HEADER(Locals.Object)->HandleEntryList)
+	   < OBJECT_TO_OBJECT_HEADER(Locals.Object)->RefCount);
+    /* Invoke the close procedure if we are closing a handle that was
+     * created as a result of an open). */
+    AWAIT_IF(Locals.Entry->InvokeClose &&
+	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc,
+	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc,
+	     State, Locals, Thread, Locals.Object);
+    AvlTreeRemoveNode(&Process->HandleTable.Tree, &Locals.Entry->AvlNode);
+    RemoveEntryList(&Locals.Entry->HandleEntryLink);
+    /* If the handle was created during an open, decrease the object refcount
+     * because the open routine increased it. */
+    if (Locals.Entry->InvokeClose) {
+	ObDereferenceObject(Locals.Object);
+    }
+    ObpFreePool(Locals.Entry);
+    /* Decrease the object refcount because ObCreateHandle increased it. */
+    ObDereferenceObject(Locals.Object);
+    Status = STATUS_SUCCESS;
+out:
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtClose(IN ASYNC_STATE State,
 		 IN PTHREAD Thread,
 		 IN HANDLE Handle)
 {
-    return ObClose(Thread->Process, Handle);
+    return ObpCloseHandle(State, Thread, Thread->Process, Handle);
 }
 
 NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,

@@ -1,6 +1,4 @@
 #include "cmp.h"
-#include "ntstatus.h"
-#include "util.h"
 
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx)
@@ -83,6 +81,16 @@ NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
     return STATUS_SUCCESS;
 }
 
+VOID CmpRemoveNode(IN PCM_NODE Node)
+{
+    if (Node->Name) {
+	CmpFreePool(Node->Name);
+    }
+    if (Node->Parent) {
+	RemoveEntryList(&Node->HashLink);
+    }
+}
+
 NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
 				IN POBJECT Subobject,
 				IN PCSTR Subpath)
@@ -92,7 +100,7 @@ NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
     assert(!ObPathHasSeparator(Subpath));
     PCM_KEY_OBJECT Key = (PCM_KEY_OBJECT)Parent;
     PCM_KEY_OBJECT SubKey = (PCM_KEY_OBJECT)Subobject;
-    CmpInsertNamedNode(Parent, &SubKey->Node, Subpath);
+    RET_ERR(CmpInsertNamedNode(Parent, &SubKey->Node, Subpath));
     InsertTailList(&Key->SubKeyList, &SubKey->SubKeyListEntry);
     return STATUS_SUCCESS;
 }
@@ -121,7 +129,7 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
     assert(RemainingPath != NULL);
     assert(ObObjectIsType(Self, OBJECT_TYPE_KEY));
 
-    DbgTrace("Parsing path %s\n", Path);
+    CmDbg("Parsing path %s\n", Path);
     *FoundObject = NULL;
     *RemainingPath = Path;
 
@@ -145,14 +153,14 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
      * open routine for further processing. If we found a value node,
      * return error so parsing/opening is stopped. */
     if (!NodeFound || NodeFound->Type != CM_NODE_KEY) {
-	DbgTrace("Unable to parse %s. Should invoke open routine.\n", Path);
+	CmDbg("Unable to parse %s. Should invoke open routine.\n", Path);
 	return NodeFound ? STATUS_OBJECT_TYPE_MISMATCH : STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
     /* Else, we return the key object that we have found */
     *FoundObject = NodeFound;
     *RemainingPath = Path + NameLength;
-    DbgTrace("Found key %s\n", NodeFound->Name);
+    CmDbg("Found key %s\n", NodeFound->Name);
     /* Note that in the case where we are called in an open operation, we don't
      * need to return INVOKE_OPEN_ROUTINE here since the object manager will call
      * the open procedure once the path is fully parsed. */
@@ -175,7 +183,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     assert(RemainingPath != NULL);
     *RemainingPath = Path;
 
-    DbgTrace("Opening path %s\n", Path);
+    CmDbg("Opening path %s\n", Path);
 
     /* Reject the open if the open context is not CM_OPEN_CONTEXT */
     if (OpenContext == NULL || OpenContext->Type != OPEN_CONTEXT_KEY_OPEN) {
@@ -187,6 +195,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
      * Simply return it. */
     if (*Path == '\0') {
 	*OpenedInstance = Self;
+	ObpReferenceObject(Self);
 	if (Context->Disposition != NULL) {
 	    *Context->Disposition = REG_OPENED_EXISTING_KEY;
 	}
@@ -218,7 +227,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     KEY_OBJECT_CREATE_CONTEXT CreaCtx = {
 	.Volatile = Volatile,
     };
-    DbgTrace("Creating subkey under path %s\n", Path);
+    CmDbg("Creating subkey under path %s\n", Path);
     RET_ERR(ObCreateObject(OBJECT_TYPE_KEY, (POBJECT *)&SubKey, &CreaCtx));
     RET_ERR_EX(ObInsertObject(Key, SubKey, Path, OBJ_NO_PARSE),
 	       {
@@ -231,17 +240,35 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
     if (Context->Disposition != NULL) {
 	*Context->Disposition = REG_CREATED_NEW_KEY;
     }
-    DbgTrace("Created sub-key %s\n", SubKey->Node.Name);
+    CmDbg("Created sub-key %s\n", SubKey->Node.Name);
     return STATUS_SUCCESS;
 }
 
-/*
- * TODO: We will need to figure out how to distinguish closing a
- * handle vs deleting a key from the registry. This is done via
- * the object manager's OBJ_PERMANENT attribute.
- */
+NTSTATUS CmpKeyObjectCloseProc(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN POBJECT Object)
+{
+    /* TODO: We will need to implement the NT semantics of a permanent
+     * object (objects with the OBJ_PERMANENT attribute) that doesn't
+     * get deleted even if all open handles to it are closed. For now
+     * we will simply increase the refcount so the key won't get deleted. */
+    ObpReferenceObject(Object);
+    return STATUS_SUCCESS;
+}
+
 VOID CmpKeyObjectDeleteProc(IN POBJECT Self)
 {
+    PCM_KEY_OBJECT Key = Self;
+    /* The key must not have any subkeys. */
+    assert(IsListEmpty(&Key->SubKeyList));
+    /* Delete all values of this key. */
+    for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
+        LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
+	    assert(Node->Type == CM_NODE_VALUE);
+	    CmpRemoveNode(Node);
+	    CmpFreePool((PCM_REG_VALUE)Node);
+	}
+    }
 }
 
 static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
@@ -270,7 +297,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the bufer we got is too small */
 	if (Length < MinimumSize) {
 	    /* Let the caller know and fail */
-	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
+	    CmDbg("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -288,8 +315,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if we don't have enough space for the name */
 	if (SizeLeft < Size) {
 	    /* Truncate the name we'll return, and tell the caller */
-	    DbgTrace("Need buffer size 0x%x got sizeleft 0x%x\n",
-		     Size, SizeLeft);
+	    CmDbg("Need buffer size 0x%x got sizeleft 0x%x\n", Size, SizeLeft);
 	    Size = SizeLeft;
 	    Status = STATUS_BUFFER_OVERFLOW;
 	}
@@ -319,7 +345,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the caller's buffer is too small */
 	if (Length < MinimumSize) {
 	    /* Let them know, and fail */
-	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
+	    CmDbg("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -338,8 +364,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the name can fit entirely */
 	if (SizeLeft < Size) {
 	    /* It can't, we'll have to truncate. Tell the caller */
-	    DbgTrace("Need buffer size 0x%x got sizeleft 0x%x\n",
-		     Size, SizeLeft);
+	    CmDbg("Need buffer size 0x%x got sizeleft 0x%x\n", Size, SizeLeft);
 	    Size = SizeLeft;
 	    Status = STATUS_BUFFER_OVERFLOW;
 	}
@@ -393,7 +418,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the caller's buffer is to small */
 	if (Length < MinimumSize) {
 	    /* Let them know and fail */
-	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
+	    CmDbg("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -453,7 +478,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* Check if the bufer we got is too small */
 	if (Length < MinimumSize) {
 	    /* Let the caller know and fail */
-	    DbgTrace("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
+	    CmDbg("Need buffer size 0x%x got 0x%x\n", MinimumSize, Length);
 	    Status = STATUS_BUFFER_TOO_SMALL;
 	    break;
 	}
@@ -467,8 +492,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	Size = NameLength;
 	if (SizeLeft < Size) {
 	    /* Truncate the name we'll return, and tell the caller */
-	    DbgTrace("Need buffer size 0x%x got sizeleft 0x%x\n",
-		     Size, SizeLeft);
+	    CmDbg("Need buffer size 0x%x got sizeleft 0x%x\n", Size, SizeLeft);
 	    Size = SizeLeft;
 	    Status = STATUS_BUFFER_OVERFLOW;
 	}
@@ -501,7 +525,7 @@ static NTSTATUS CmpQueryFlagsInformation(IN PCM_KEY_OBJECT Key,
     /* Validate the buffer size */
     *ResultLength = sizeof(*KeyFlagsInfo);
     if (Length < *ResultLength) {
-	DbgTrace("Need buffer size 0x%x got 0x%x\n", Length, *ResultLength);
+	CmDbg("Need buffer size 0x%x got 0x%x\n", Length, *ResultLength);
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -518,8 +542,8 @@ static NTSTATUS CmpQueryKey(IN PCM_KEY_OBJECT Key,
 			    OUT PULONG ResultLength,
 			    IN BOOLEAN Utf16)
 {
-    DbgTrace("Querying key %s infoclass %d bufsize 0x%x\n",
-	     Key->Node.Name, KeyInformationClass, Length);
+    CmDbg("Querying key %s infoclass %d bufsize 0x%x\n",
+	  Key->Node.Name, KeyInformationClass, Length);
     NTSTATUS Status;
 
     switch (KeyInformationClass) {
@@ -587,7 +611,7 @@ static NTSTATUS CmpEnumerateKey(IN PCM_KEY_OBJECT Key,
 
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
 {
-    DbgTrace("Dumping key %s\n", Key->Node.Name);
+    CmDbg("Dumping key %s\n", Key->Node.Name);
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
         LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
 	    if (Node->Type == CM_NODE_KEY) {

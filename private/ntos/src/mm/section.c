@@ -410,8 +410,9 @@ NTSTATUS MmSectionInitialization()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = MiSectionObjectCreateProc,
-	.OpenProc = NULL,
 	.ParseProc = NULL,
+	.OpenProc = NULL,
+	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = MiSectionObjectDeleteProc
@@ -756,7 +757,7 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     }
     assert(Section);
     assert(SectionHandle);
-    Status = ObCreateHandle(Thread->Process, Section, SectionHandle);
+    Status = ObCreateHandle(Thread->Process, Section, FALSE, SectionHandle);
     if (!NT_SUCCESS(Status)) {
 	ObDereferenceObject(Section);
     }

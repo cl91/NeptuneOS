@@ -103,10 +103,7 @@ FORCEINLINE VOID CiInitializeBcb(IN PBUFFER_CONTROL_BLOCK Bcb,
  * sub-buffer.
  */
 typedef struct _PINNED_BUFFER {
-    union {
-	PBUFFER_CONTROL_BLOCK Bcb; /* If Link is in PinList of BCB */
-	PFSRTL_COMMON_FCB_HEADER Fcb; /* If Link is in CiDirtyBufferList */
-    };
+    PBUFFER_CONTROL_BLOCK Bcb; /* Not NULL only if Link is in PinList of BCB */
     ULONG64 FileOffset;
     PVOID MappedAddress;
     MWORD Length;
@@ -186,7 +183,29 @@ NTAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject)
 NTAPI BOOLEAN CcUninitializeCacheMap(IN PFILE_OBJECT FileObject,
 				     IN OPTIONAL PLARGE_INTEGER TruncateSize)
 {
-    /* TODO */
+    assert(FileObject);
+    PFSRTL_COMMON_FCB_HEADER Fcb = FileObject->FsContext;
+    /* If the file object does not have caching initialized, return success. */
+    if (!Fcb || !Fcb->CacheMap) {
+	return TRUE;
+    }
+    assert(FileObject->DeviceObject);
+    PCACHE_MAP CacheMap = Fcb->CacheMap;
+    PAVL_NODE Node = NULL;
+    while ((Node = AvlGetFirstNode(&CacheMap->BcbTree)) != NULL) {
+	PBUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(Node);
+	LoopOverList(Buf, &Bcb->PinList, PINNED_BUFFER, Link) {
+	    /* Cache map should not have any pinned buffer at this point.
+	     * On release build we simply delete them. */
+	    assert(FALSE);
+	    RemoveEntryList(&Buf->Link);
+	    ExFreePool(Buf);
+	}
+	AvlTreeRemoveNode(&CacheMap->BcbTree, Node);
+	ExFreePool(Bcb);
+    }
+    ExFreePool(CacheMap);
+    Fcb->CacheMap = NULL;
     return TRUE;
 }
 
@@ -516,7 +535,7 @@ NTAPI VOID CcUnpinData(IN PVOID Context)
     /* If the PINNED_BUFFER is marked dirty, we need to add it to the dirty buffer
      * list so we can inform the server of the dirty status. */
     if (PinnedBuf->Dirty) {
-	PinnedBuf->Fcb = PinnedBuf->Bcb->CacheMap->Fcb;
+	PinnedBuf->Bcb = NULL;
 	InsertHeadList(&CiDirtyBufferList, &PinnedBuf->Link);
     } else {
 	ExFreePool(PinnedBuf);

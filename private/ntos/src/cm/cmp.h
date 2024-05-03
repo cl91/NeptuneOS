@@ -106,6 +106,8 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
 				       IN PCSTR Name,
 				       IN OPTIONAL ULONG NameLength)
 {
+    assert(Key);
+    assert(Name);
     if (NameLength == 0) {
 	NameLength = strlen(Name);
     }
@@ -115,6 +117,7 @@ static inline PCM_NODE CmpGetNamedNode(IN PCM_KEY_OBJECT Key,
     PCM_NODE NodeFound = NULL;
     LoopOverList(Node, &Key->HashBuckets[HashIndex], CM_NODE, HashLink) {
 	assert(Node->Type == CM_NODE_KEY || Node->Type == CM_NODE_VALUE);
+	assert(Node->Name);
 	if (!_strnicmp(Name, Node->Name, NameLength)) {
 	    NodeFound = Node;
 	}
@@ -148,6 +151,7 @@ typedef struct _KEY_OBJECT_CREATE_CONTEXT {
 NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
 			    IN PCM_NODE Node,
 			    IN PCSTR NodeName);
+VOID CmpRemoveNode(IN PCM_NODE Node);
 NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 				IN PVOID CreaCtx);
 NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
@@ -167,8 +171,12 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN POB_OPEN_CONTEXT OpenContext,
 			      OUT POBJECT *pOpenedInstance,
 			      OUT PCSTR *pRemainingPath);
+NTSTATUS CmpKeyObjectCloseProc(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+			       IN POBJECT Object);
 VOID CmpKeyObjectDeleteProc(IN POBJECT Self);
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key);
 
 /* value.c */
+VOID CmpFreeValue(IN PCM_REG_VALUE Value);
 VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value);

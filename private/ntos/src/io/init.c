@@ -8,6 +8,7 @@ static NTSTATUS IopCreateFileType()
 	.CreateProc = IopFileObjectCreateProc,
 	.ParseProc = IopFileObjectParseProc,
 	.OpenProc = IopFileObjectOpenProc,
+	.CloseProc = IopFileObjectCloseProc,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = IopFileObjectDeleteProc
@@ -24,6 +25,7 @@ static NTSTATUS IopCreateDeviceType()
 	.CreateProc = IopDeviceObjectCreateProc,
 	.ParseProc = IopDeviceObjectParseProc,
 	.OpenProc = IopDeviceObjectOpenProc,
+	.CloseProc = IopDeviceObjectCloseProc,
 	.InsertProc = IopDeviceObjectInsertProc,
 	.RemoveProc = IopDeviceObjectRemoveProc,
 	.DeleteProc = IopDeviceObjectDeleteProc
@@ -40,6 +42,7 @@ static NTSTATUS IopCreateDriverType()
 	.CreateProc = IopDriverObjectCreateProc,
 	.ParseProc = NULL,
 	.OpenProc = NULL,
+	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = IopDriverObjectDeleteProc

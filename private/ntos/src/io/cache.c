@@ -1266,7 +1266,7 @@ VOID CcSetDirtyData(IN PIO_DRIVER_OBJECT DriverObject,
     View->DirtyMap |= DirtyBits;
 }
 
-static VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
+VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
     PCC_CACHE_MAP CacheMap = Fcb->SharedCacheMap;
     assert(CacheMap);
@@ -1275,6 +1275,7 @@ static VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
     assert(Fcb->Vcb);
     PIO_FILE_CONTROL_BLOCK VolumeFcb = Fcb->Vcb->VolumeFcb;
     assert(VolumeFcb);
+    assert(VolumeFcb != Fcb);
     LoopOverView(View, CacheMap) {
 	for (ULONG i = 0; i < PAGES_IN_VIEW; i++) {
 	    if (!GetBit64(View->DirtyMap, i)) {
@@ -1318,7 +1319,7 @@ static VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
 
 /* Propagate the dirty maps of the private cache maps of the given FCB to
  * its shared cache map and clear the private dirty maps. */
-static VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb)
+VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
     assert(Fcb);
     LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {

@@ -1,5 +1,13 @@
 #include "cmp.h"
-#include "util.h"
+
+VOID CmpFreeValue(IN PCM_REG_VALUE Value)
+{
+    assert(Value);
+    if (Value->Data) {
+	CmpFreePool(Value->Data);
+    }
+    CmpFreePool(Value);
+}
 
 static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
 			       IN PCSTR ValueName,
@@ -59,12 +67,10 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
     if (NewValue) {
 	Value->Node.Type = CM_NODE_VALUE;
 	RET_ERR_EX(CmpInsertNamedNode(Key, &Value->Node, ValueName),
-		   {
-		       if (Value->Data) {
-			   CmpFreePool(Value->Data);
-		       }
-		       CmpFreePool(Value);
-		   });
+		   CmpFreeValue(Value));
+	/* Increase the refcount of the key so it won't be deleted
+	 * until all values are deleted. */
+	ObpReferenceObject(Key);
     }
     return STATUS_SUCCESS;
 }
@@ -75,7 +81,7 @@ static NTSTATUS CmpMarshalValueData(IN PCM_REG_VALUE Value,
 				    IN BOOLEAN Utf16)
 {
     CmDbg("Marshaling value data for value %s data type %d\n",
-	  Value->Name, Value->Type);
+	  Value->Node.Name, Value->Type);
     PVOID Data = (PCHAR)InfoBuffer + DataOffset;
     switch (Value->Type) {
     case REG_NONE:
@@ -254,6 +260,7 @@ NTSTATUS CmReadKeyValueByPath(IN ASYNC_STATE State,
 {
     /* TODO: Load the registry key from disk. */
 
+    *KeyObject = NULL;
     PCM_KEY_OBJECT Key = NULL;
     RET_ERR(ObReferenceObjectByName(KeyPath, OBJECT_TYPE_KEY,
 				    NULL, FALSE, (POBJECT *)&Key));
@@ -286,7 +293,7 @@ NTSTATUS CmReadKeyValueByPointer(IN POBJECT KeyObject,
     return STATUS_SUCCESS;
 }
 
-#if CMDBG
+#ifdef CMDBG
 static PCSTR CmpDbgInterfaceTypes[] = {
     "Internal",
     "Isa",
@@ -393,7 +400,7 @@ static VOID CmpDbgDumpFullResourceDescriptor(IN PCM_FULL_RESOURCE_DESCRIPTOR Des
 
 VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 {
-    CmDbgPrint("  VALUE %s ", Value->Name);
+    CmDbgPrint("  VALUE %s ", Value->Node.Name);
     switch (Value->Type) {
     case REG_NONE:
 	CmDbgPrint("TYPE REG_NONE\n");

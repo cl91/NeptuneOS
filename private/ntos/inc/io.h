@@ -115,6 +115,7 @@ typedef struct _IO_FILE_OBJECT {
     LIST_ENTRY DeviceLink; /* List entry for this->DeviceObject->OpenFileList */
     ULONG64 CurrentOffset; /* Current byte offset that the IO manager maintains */
     PEVENT_OBJECT Event;
+    PIO_PACKET CloseReq;
     ULONG Flags;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;

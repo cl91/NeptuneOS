@@ -1,15 +1,4 @@
-#include "ex.h"
-#include "io.h"
 #include "iop.h"
-#include "ke.h"
-#include "mm.h"
-#include "ntdef.h"
-#include "ntioapi.h"
-#include "ntrtl.h"
-#include "ntstatus.h"
-#include "ob.h"
-#include "util.h"
-#include <string.h>
 
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
@@ -42,6 +31,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     assert(CreaCtx);
     PIO_FILE_OBJECT File = (PIO_FILE_OBJECT)Object;
     PFILE_OBJ_CREATE_CONTEXT Ctx = (PFILE_OBJ_CREATE_CONTEXT)CreaCtx;
+    PIO_PACKET CloseReq = NULL;
 
     if (Ctx->MasterFileObject) {
 	assert(!Ctx->DeviceObject);
@@ -49,6 +39,11 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	assert(!Ctx->FileSize);
 	assert(!Ctx->Fcb);
 	assert(!Ctx->Vcb);
+    } else if (Ctx->DeviceObject) {
+	CloseReq = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
+	if (!CloseReq) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
     }
 
     /* If the FileName is not NULL but points to an empty string, we
@@ -60,7 +55,10 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	File->Fcb = Ctx->MasterFileObject->Fcb;
     } else {
 	PIO_FILE_CONTROL_BLOCK Fcb = NULL;
-	RET_ERR(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->Vcb));
+	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->Vcb),
+		   if (CloseReq) {
+		       IopFreePool(CloseReq);
+		   });
 	assert(Fcb);
 	File->Fcb = Fcb;
 	Fcb->MasterFileObject = File;
@@ -69,11 +67,15 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	    Fcb->FileName = RtlDuplicateString(Ctx->FileName, NTOS_IO_TAG);
 	    if (!Fcb->FileName) {
 		IopDeleteFcb(Fcb);
+		if (CloseReq) {
+		    IopFreePool(CloseReq);
+		}
 		return STATUS_NO_MEMORY;
 	    }
 	}
     }
 
+    File->CloseReq = CloseReq;
     File->DeviceObject = Ctx->DeviceObject;
     if (Ctx->MasterFileObject) {
 	ObpReferenceObject(Ctx->MasterFileObject);
@@ -245,17 +247,81 @@ out:
     ASYNC_END(State, Status);
 }
 
+NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
+				IN PTHREAD Thread,
+				IN POBJECT Self)
+{
+    /* If the file is a slave file, nothing needs to be done. The file
+     * object will simply get deleted. If we are a master file object,
+     * send the driver a IRP_MJ_CLEANUP for the needed cleanup. */
+    assert(Thread != NULL);
+    assert(Self != NULL);
+
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    PIO_FILE_OBJECT FileObj = Self;
+    ASYNC_BEGIN(State, Locals, {
+	    PPENDING_IRP PendingIrp;
+	});
+
+    PIO_FILE_OBJECT TargetFile = FileObj->Fcb ? FileObj->Fcb->MasterFileObject : FileObj;
+    PIO_DEVICE_OBJECT DeviceObject = TargetFile ? TargetFile->DeviceObject : NULL;
+    if (!DeviceObject) {
+	ASYNC_RETURN(State, STATUS_SUCCESS);
+    }
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_CLEANUP,
+	.Device.Object = DeviceObject,
+	.File.Object = TargetFile,
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    IopCleanupPendingIrp(Locals.PendingIrp);
+
+    /* For files with caching initialized, flush dirty data to disk. */
+    if (!FileObj->Fcb || !FileObj->Fcb->SharedCacheMap) {
+	Status = STATUS_SUCCESS;
+	goto out;
+    }
+    CiFlushPrivateCacheToShared(FileObj->Fcb);
+    if (FileObj->Fcb != FileObj->Fcb->Vcb->VolumeFcb) {
+	CiFlushDirtyDataToVolume(FileObj->Fcb);
+    }
+
+out:
+    ASYNC_END(State, Status);
+}
+
 VOID IopFileObjectDeleteProc(IN POBJECT Self)
 {
     PIO_FILE_OBJECT FileObj = Self;
+    DbgTrace("Deleteing file %p\n", FileObj);
+    IoDbgDumpFileObject(FileObj);
+    /* For file objects that have a client-side object, we queue an
+     * IRP_MJ_CLOSE request to its driver object. This request is
+     * sent in a server message which does not expect a reply. */
+    if (FileObj->CloseReq) {
+	FileObj->CloseReq->Type = IoPacketTypeServerMessage;
+	FileObj->CloseReq->Size = sizeof(IO_PACKET);
+	FileObj->CloseReq->ServerMsg.Type = IoSrvMsgCloseFile;
+	FileObj->CloseReq->ServerMsg.CloseFile.FileObject =
+	    OBJECT_TO_GLOBAL_HANDLE(FileObj);
+	assert(FileObj->DeviceObject);
+	PIO_DRIVER_OBJECT Driver = FileObj->DeviceObject->DriverObject;
+	/* The IO packet will be deleted later after it is sent to the driver. */
+	InsertTailList(&Driver->IoPacketQueue, &FileObj->CloseReq->IoPacketLink);
+	KeSetEvent(&Driver->IoPacketQueuedEvent);
+    }
     if (FileObj->DeviceObject) {
 	ObDereferenceObject(FileObj->DeviceObject);
 	RemoveEntryList(&FileObj->DeviceLink);
     }
-    if (FileObj->Fcb->MasterFileObject == FileObj) {
-	IopDeleteFcb(FileObj->Fcb);
-    } else if (FileObj->Fcb->MasterFileObject) {
-	ObDereferenceObject(FileObj->Fcb->MasterFileObject);
+    if (FileObj->Fcb) {
+	if (FileObj->Fcb->MasterFileObject == FileObj) {
+	    IopDeleteFcb(FileObj->Fcb);
+	} else if (FileObj->Fcb->MasterFileObject) {
+	    ObDereferenceObject(FileObj->Fcb->MasterFileObject);
+	}
     }
 }
 
@@ -328,7 +394,7 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FileHandle);
     if (IoStatusBlock != NULL) {
 	IoStatusBlock->Status = Status;
-	IoStatusBlock->Information = Locals.OpenContext.Information;
+	IoStatusBlock->Information = NT_SUCCESS(Status) ? Locals.OpenContext.Information : 0;
     }
     ASYNC_END(State, Status);
 }

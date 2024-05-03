@@ -357,7 +357,8 @@ typedef struct _IO_COMPLETED_MESSAGE {
  */
 typedef enum _IO_SERVER_MESSAGE_TYPE {
     IoSrvMsgIoCompleted,
-    IoSrvMsgCacheFlushed
+    IoSrvMsgCacheFlushed,
+    IoSrvMsgCloseFile
 } IO_SERVER_MESSAGE_TYPE;
 
 /*
@@ -372,6 +373,9 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
 	    GLOBAL_HANDLE FileObject;
 	    IO_STATUS_BLOCK IoStatus;
 	} CacheFlushed;
+	struct {
+	    GLOBAL_HANDLE FileObject;
+	} CloseFile;
     };
 } IO_PACKET_SERVER_MESSAGE, *PIO_PACKET_SERVER_MESSAGE;
 
@@ -591,6 +595,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    IoDbgDumpFileObjectCreateParameters(IoPacket,
 						&IoPacket->Request.Create.FileObjectParameters);
 	    break;
+	case IRP_MJ_CLOSE:
+	    DbgPrint("    CLOSE\n");
+	    break;
 	case IRP_MJ_READ:
 	    DbgPrint("    READ%s  Key 0x%x ByteOffset 0x%llx\n",
 		     IoPacket->Request.MinorFunction == IRP_MN_MDL ? " MDL" : "",
@@ -648,6 +655,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		DbgPrint("UNKNOWN-MINOR-CODE\n");
 	    }
 	    break;
+	case IRP_MJ_CLEANUP:
+	    DbgPrint("    CLEANUP\n");
+	    break;
 	case IRP_MJ_PNP:
 	    switch (IoPacket->Request.MinorFunction) {
 	    case IRP_MN_QUERY_DEVICE_RELATIONS:
@@ -692,6 +702,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     (PVOID)IoPacket->ServerMsg.CacheFlushed.FileObject,
 		     IoPacket->ServerMsg.CacheFlushed.IoStatus.Status,
 		     (PVOID)IoPacket->ServerMsg.CacheFlushed.IoStatus.Information);
+	    break;
+	case IoSrvMsgCloseFile:
+	    DbgPrint("    SERVER-MSG CLOSE-FILE FileHandle %p\n",
+		     (PVOID)IoPacket->ServerMsg.CloseFile.FileObject);
 	    break;
 	default:
 	    DbgPrint("    INVALID SERVER MESSAGE TYPE %d\n", IoPacket->ServerMsg.Type);

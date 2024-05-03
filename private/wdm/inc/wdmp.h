@@ -217,6 +217,7 @@ VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);
 
 FORCEINLINE BOOLEAN IopDeviceObjectIsLocal(IN PDEVICE_OBJECT DeviceObject)
 {
+    assert(DeviceObject);
     return DeviceObject->DriverObject;
 }
 

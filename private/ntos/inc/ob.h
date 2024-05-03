@@ -260,7 +260,12 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  *
  * Unlike the parse procedure, the open procedure SHOULD increase the
  * reference count of returned *pOpenedInstance object, except in the
- * case of reparsing.
+ * case of reparsing. The semantics here is that opening an object
+ * creates an "opened instance" of the original object. In the case
+ * of a DEVICE object, opening it creates a FILE object. If the opened
+ * instance of an object is simply itself, the open routine can return
+ * the original object as the opened instance after increasing the
+ * original object's reference count.
  */
 typedef enum _OPEN_CONTEXT_TYPE {
     OPEN_CONTEXT_DEVICE_OPEN,	/* IO_OPEN_CONTEXT */
@@ -303,9 +308,32 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Parent,
  * of the object as it is done by the object manager.
  *
  * Note when the object manager removes an object, it calls the RemoveProc
- * of its parent object type, rather than the object type itself.
+ * of its parent object type, rather than the object type itself. If
+ * a type has an insert procedure, its remove procedure cannot be NULL.
  */
 typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Subobject);
+
+/*
+ * The close procedure of an object is called when the object manager
+ * closes a client handle (Windows NT would call these handles "userspace
+ * handles", but since we are a microkernel OS and the Neptune OS
+ * Executive also runs in userspace, we refer to handles that we
+ * give out to client processes as "client handles"). The close procedure
+ * is semantically the opposite of the open procedure and should basically
+ * "undo" what is done by the open procedure, which usually involves
+ * sending an IRP with the IRP_MJ_CLEANUP code to notify the driver
+ * of the handle closure. The close procedure should NOT dereference
+ * the object as this is done by the object manager automatically when
+ * releasing the handle. The close procedure can wait, and therefore
+ * carries an ASYNC_STACK. The close procedure can be NULL. The close
+ * procedure does not return a value, and therefore must be able to
+ * clean up the opened instance despite any potential errors. If an
+ * object type has the open procedure defined, it must have a close
+ * procedure.
+ */
+typedef NTSTATUS (*OBJECT_CLOSE_METHOD)(IN ASYNC_STATE State,
+					IN struct _THREAD *Thread,
+					IN POBJECT Self);
 
 /*
  * The delete procedure releases the resources of an object. It is
@@ -326,6 +354,7 @@ typedef struct _OBJECT_TYPE_INITIALIZER {
     OBJECT_OPEN_METHOD OpenProc;
     OBJECT_INSERT_METHOD InsertProc;
     OBJECT_REMOVE_METHOD RemoveProc;
+    OBJECT_CLOSE_METHOD CloseProc;
     OBJECT_DELETE_METHOD DeleteProc;
 } OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
 
@@ -377,6 +406,8 @@ typedef struct _HANDLE_TABLE_ENTRY {
     AVL_NODE AvlNode;	/* Node key is handle */
     POBJECT Object;
     LIST_ENTRY HandleEntryLink; /* Link for the object header's HandleEntryList */
+    BOOLEAN InvokeClose; /* TRUE if the handle was created as part of an open and
+			  * we should invoke the close routine when closing it. */
 } HANDLE_TABLE_ENTRY, *PHANDLE_TABLE_ENTRY;
 
 /*
@@ -487,11 +518,10 @@ NTSTATUS ObReferenceObjectByHandle(IN struct _THREAD *Thread,
 				   OUT POBJECT *pObject);
 NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			IN POBJECT Object,
+			IN BOOLEAN ObjectOpened,
 			OUT HANDLE *pHandle);
 VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
-NTSTATUS ObClose(IN struct _PROCESS *Process,
-		 IN HANDLE Handle);
 
 /* open.c */
 NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,

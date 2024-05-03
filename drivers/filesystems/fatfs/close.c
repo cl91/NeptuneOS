@@ -42,18 +42,15 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
     /* Reference it and check if a create is being done */
     Vpb = DeviceExt->IoVPB;
     DPRINT("Vpb->ReferenceCount = %d\n", Vpb->ReferenceCount);
-    if (Vpb->ReferenceCount != UnCleanCount
-	|| DeviceExt->OpenHandleCount != 0) {
+    if (Vpb->ReferenceCount != UnCleanCount || DeviceExt->OpenHandleCount != 0) {
 	/* If we force-unmount, copy the VPB to our local own to prepare later dismount */
-	if (Force && Vpb->RealDevice->Vpb == Vpb
-	    && DeviceExt->SpareVPB != NULL) {
+	if (Force && Vpb->RealDevice->Vpb == Vpb && DeviceExt->SpareVPB) {
 	    RtlZeroMemory(DeviceExt->SpareVPB, sizeof(VPB));
 	    DeviceExt->SpareVPB->Type = IO_TYPE_VPB;
 	    DeviceExt->SpareVPB->Size = sizeof(VPB);
 	    DeviceExt->SpareVPB->RealDevice = DeviceExt->IoVPB->RealDevice;
 	    DeviceExt->SpareVPB->DeviceObject = NULL;
-	    DeviceExt->SpareVPB->Flags =
-		DeviceExt->IoVPB->Flags & VPB_REMOVE_PENDING;
+	    DeviceExt->SpareVPB->Flags = DeviceExt->IoVPB->Flags & VPB_REMOVE_PENDING;
 	    DeviceExt->IoVPB->RealDevice->Vpb = DeviceExt->SpareVPB;
 	    DeviceExt->SpareVPB = NULL;
 	    DeviceExt->IoVPB->Flags |= VPB_PERSISTENT;
@@ -69,14 +66,13 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	Delete = TRUE;
 
 	/* Swap the VPB with our local own */
-	if (Vpb->RealDevice->Vpb == Vpb && DeviceExt->SpareVPB != NULL) {
+	if (Vpb->RealDevice->Vpb == Vpb && DeviceExt->SpareVPB) {
 	    RtlZeroMemory(DeviceExt->SpareVPB, sizeof(VPB));
 	    DeviceExt->SpareVPB->Type = IO_TYPE_VPB;
 	    DeviceExt->SpareVPB->Size = sizeof(VPB);
 	    DeviceExt->SpareVPB->RealDevice = DeviceExt->IoVPB->RealDevice;
 	    DeviceExt->SpareVPB->DeviceObject = NULL;
-	    DeviceExt->SpareVPB->Flags =
-		DeviceExt->IoVPB->Flags & VPB_REMOVE_PENDING;
+	    DeviceExt->SpareVPB->Flags = DeviceExt->IoVPB->Flags & VPB_REMOVE_PENDING;
 	    DeviceExt->IoVPB->RealDevice->Vpb = DeviceExt->SpareVPB;
 	    DeviceExt->SpareVPB = NULL;
 	    DeviceExt->IoVPB->Flags |= VPB_PERSISTENT;
@@ -196,9 +192,7 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 	    ObDereferenceObject(tmpFileObject);
 	}
     }
-#ifdef KDBG
     pFcb->Flags |= FCB_CLOSED;
-#endif
 
     /* Release the FCB, we likely cause its deletion */
     FatReleaseFcb(DeviceExt, pFcb);

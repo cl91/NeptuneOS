@@ -1,17 +1,4 @@
-#include "ex.h"
-#include "io.h"
 #include "iop.h"
-#include "ke.h"
-#include "mm.h"
-#include "ntdef.h"
-#include "ntioapi.h"
-#include "ntobapi.h"
-#include "ntrtl.h"
-#include "ntstatus.h"
-#include "ob.h"
-#include "util.h"
-#include <ctype.h>
-#include <string.h>
 
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
@@ -143,6 +130,15 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 
     /* Insert the file object under the object directory. */
     return ObDirectoryObjectInsertObject(ParentDir, Object, ObjName);
+}
+
+NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
+				  IN PTHREAD Thread,
+				  IN POBJECT Object)
+{
+    /* We don't have to do anything here since the close routine for file objects
+     * will take care of closing a file handle. */
+    return STATUS_SUCCESS;
 }
 
 VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)

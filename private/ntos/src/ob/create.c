@@ -21,6 +21,8 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
     assert(TypeName != NULL);
     assert(ObjectBodySize != 0);
     assert(Init.CreateProc != NULL);
+    assert(!Init.InsertProc || Init.RemoveProc);
+    assert(!Init.OpenProc || Init.CloseProc);
 
     POBJECT_TYPE ObjectType = ObpGetObjectType(Type);
     ObjectType->Name = TypeName;

@@ -1,9 +1,4 @@
-#include "ex.h"
 #include "obp.h"
-#include "ntdef.h"
-#include "ntstatus.h"
-#include "ob.h"
-#include "util.h"
 
 #define OBP_DIROBJ_HASH_BUCKETS 37
 typedef struct _OBJECT_DIRECTORY {
@@ -134,7 +129,6 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 	       {
 		   ObDbg("Path %s not found\n", Path);
 		   *FoundObject = NULL;
-		   *RemainingPath = Path;
 	       });
     *RemainingPath = Path + NameLength;
     ObDbg("Parse successful. RemainingPath = %s\n", *RemainingPath);
@@ -177,6 +171,14 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 	/* TODO: Implement NtOpenObjectDirectory */
 	UNIMPLEMENTED;
     }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS ObpDirectoryObjectCloseProc(IN ASYNC_STATE State,
+					    IN PTHREAD Thread,
+					    IN POBJECT Object)
+{
+    /* TODO: Implement NtOpenObjectDirectory */
     return STATUS_SUCCESS;
 }
 
@@ -282,6 +284,7 @@ NTSTATUS ObpInitDirectoryObjectType()
 	.CreateProc = ObpDirectoryObjectCreateProc,
 	.ParseProc = ObpDirectoryObjectParseProc,
 	.OpenProc = IopDirectoryObjectOpenProc,
+	.CloseProc = ObpDirectoryObjectCloseProc,
 	.InsertProc = ObpDirectoryObjectInsertProc,
 	.RemoveProc = ObpDirectoryObjectRemoveProc,
 	.DeleteProc = ObpDirectoryObjectDeleteProc,

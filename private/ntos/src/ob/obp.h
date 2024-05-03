@@ -3,8 +3,6 @@
 /* Uncomment this to turn on debugging outputs specific to Ob */
 /* #define OBDBG */
 
-#include "ntdef.h"
-#include "ob.h"
 #include <ntos.h>
 
 #define NTOS_OB_TAG	(EX_POOL_TAG('n', 't', 'o', 'b'))

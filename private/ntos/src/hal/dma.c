@@ -276,6 +276,7 @@ NTSTATUS HalpInitDma()
 	.CreateProc = HalpAdapterObjectCreateProc,
 	.ParseProc = NULL,
 	.OpenProc = NULL,
+	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = NULL
@@ -311,7 +312,7 @@ NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
     if (AdapterObject == NULL) {
 	return STATUS_NO_SUCH_DEVICE;
     }
-    return ObCreateHandle(Thread->Process, AdapterObject, Handle);
+    return ObCreateHandle(Thread->Process, AdapterObject, FALSE, Handle);
 }
 
 #define DMA_START_TRANSFER(Ty)						\

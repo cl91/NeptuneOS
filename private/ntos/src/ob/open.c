@@ -1,5 +1,4 @@
 #include "obp.h"
-#include "util.h"
 
 static inline BOOLEAN NeedReparse(IN NTSTATUS Status)
 {
@@ -149,6 +148,7 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
     POBJECT OpenedInstance = NULL;
 
     ASYNC_BEGIN(AsyncState, Locals, {
+	    POBJECT UserRootDirectory;
 	    POBJECT Object;
 	    POBJECT OpenedInstance;
 	    PCSTR Path;
@@ -170,15 +170,14 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
     /* Get the root directory if user has specified one. Otherwise, default to the
      * global root object directory. */
     if (ObjectAttributes.RootDirectory) {
-	POBJECT UserRootDirectory = NULL;
 	ASYNC_RET_ERR(AsyncState, ObReferenceObjectByHandle(Thread,
 							    ObjectAttributes.RootDirectory,
 							    OBJECT_TYPE_ANY,
-							    &UserRootDirectory));
-	assert(UserRootDirectory != NULL);
-	/* ObReferenceObjectByHandle increased reference count, so we need to dereference it. */
-	ObDereferenceObject(UserRootDirectory);
-	Locals.Object = UserRootDirectory;
+							    &Locals.UserRootDirectory));
+	assert(Locals.UserRootDirectory != NULL);
+	/* ObReferenceObjectByHandle increased the refcount of UserRootDirectory, so it
+	 * won't be deleted during the open. We need to remember to dereference it later. */
+	Locals.Object = Locals.UserRootDirectory;
     }
 
 parse:
@@ -240,11 +239,12 @@ open:
 
     assert(Locals.Object != NULL);
     assert(OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type != NULL);
-    /* If the object type does not define an open procedure, return error */
+    /* If the object type does not define an open procedure, return error. */
     if (OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc == NULL) {
 	ObDbg("Type %s does not have an open procedure\n",
 	      OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Name);
-	goto done;
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
+	goto out;
     }
 
     /* Increase the reference count of the object so it doesn't get deleted by another
@@ -320,8 +320,11 @@ done:
     if (Type == OBJECT_TYPE_ANY || Type == OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Index) {
 	/* Type is valid. Assign the handle. */
 	if (AssignHandle) {
-	    Status = ObCreateHandle(Thread->Process, Locals.Object, pHandle);
+	    Status = ObCreateHandle(Thread->Process, Locals.Object, TRUE, pHandle);
 	} else {
+	    /* We are returning a pointer to the object to another server component.
+	     * In this case we should increse the refcount because the caller is
+	     * expected to decrease it later. */
 	    ObpReferenceObject(Locals.Object);
 	    *pHandle = Locals.Object;
 	}
@@ -330,14 +333,16 @@ done:
     }
 
 out:
+    if (Locals.UserRootDirectory) {
+	ObDereferenceObject(Locals.UserRootDirectory);
+    }
     if (Locals.StringToFree) {
 	ExFreePoolWithTag(Locals.StringToFree, OB_PARSE_TAG);
     }
-    /* Note even in the case of a successful open, we should decrease the refcount
-     * of the OpenedInstance, because the open procedure increased its refcount.
-     * In the case of a successful open, the final opened object will have its
-     * refcount increased, so in the end the refcounting is correctly maintained. */
-    if (Locals.OpenedInstance) {
+    /* If the open succeeded but the subsequent parse or handle creation failed,
+     * we should decrease the refcount of the opened object (if any) because the
+     * open procedure increased its refcount above. */
+    if (!NT_SUCCESS(Status) && Locals.OpenedInstance) {
 	ObDereferenceObject(Locals.OpenedInstance);
     }
     ASYNC_END(AsyncState, Status);

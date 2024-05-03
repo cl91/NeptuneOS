@@ -96,9 +96,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	}
 
 	FileObject->Flags |= FO_CLEANUP_COMPLETE;
-#ifdef KDBG
 	Fcb->Flags |= FCB_CLEANED_UP;
-#endif
     }
 
 #ifdef ENABLE_SWAPOUT

@@ -766,7 +766,7 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
      * object and decrease it when the thread exits or is terminated. */
     RET_ERR(PsCreateThread(Process, ThreadContext, InitialTeb,
 			   CreateSuspended, &CreatedThread));
-    RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, ThreadHandle),
+    RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, FALSE, ThreadHandle),
 	       ObDereferenceObject(CreatedThread));
     return STATUS_SUCCESS;
 }
@@ -803,7 +803,7 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
     /* The newly created process will increase the reference count of the image section
      * object and decrease it when the process exits or is terminated. */
     RET_ERR(PsCreateProcess(Section, NULL, &Process));
-    RET_ERR_EX(ObCreateHandle(Thread->Process, Process, ProcessHandle),
+    RET_ERR_EX(ObCreateHandle(Thread->Process, Process, FALSE, ProcessHandle),
 	       ObDereferenceObject(Process));
 
     return STATUS_SUCCESS;

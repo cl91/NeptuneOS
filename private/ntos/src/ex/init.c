@@ -83,8 +83,9 @@ static NTSTATUS EiCreateTimerType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = EiTimerObjectCreateProc,
-	.OpenProc = NULL,
 	.ParseProc = NULL,
+	.OpenProc = NULL,
+	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.DeleteProc = EiTimerObjectDeleteProc

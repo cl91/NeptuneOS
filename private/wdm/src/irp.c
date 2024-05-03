@@ -426,6 +426,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
     case IRP_MJ_CREATE:
     case IRP_MJ_PNP:
     case IRP_MJ_FLUSH_BUFFERS:
+    case IRP_MJ_CLEANUP:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
 	break;
@@ -698,6 +699,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	break;
     }
     case IRP_MJ_FLUSH_BUFFERS:
+    case IRP_MJ_CLEANUP:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
 	break;
@@ -1258,6 +1260,12 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
     case IRP_MJ_FLUSH_BUFFERS:
 	DbgPrint("    FLUSH-BUFFERS\n");
 	break;
+    case IRP_MJ_CLOSE:
+	DbgPrint("    CLOSE\n");
+	break;
+    case IRP_MJ_CLEANUP:
+	DbgPrint("    CLEANUP\n");
+	break;
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
 	DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x OutputBufferLength 0x%x "
@@ -1485,6 +1493,46 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
     assert(FALSE);
 }
 
+static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
+{
+    PFILE_OBJECT FileObj = IopGetFileObject(SrvMsg->ServerMsg.CloseFile.FileObject);
+    if (!FileObj) {
+	assert(FALSE);
+	return;
+    }
+    if (FileObj->Header.GlobalHandle) {
+	FileObj->Header.GlobalHandle = 0;
+	assert(ListHasEntry(&IopFileObjectList, &FileObj->Private.Link));
+	RemoveEntryList(&FileObj->Private.Link);
+    }
+    if (!FileObj->DeviceObject) {
+	assert(FALSE);
+	ObDereferenceObject(FileObj);
+	return;
+    }
+    PDRIVER_OBJECT DriverObject = FileObj->DeviceObject->DriverObject;
+    assert(DriverObject);
+    /* The dispatch routine for IRP_MJ_CLOSE cannot sleep, and in general
+     * should always succeed. We ignore any error that it returns. */
+    PDRIVER_DISPATCH Close = DriverObject->MajorFunction[IRP_MJ_CLOSE];
+    if (!Close) {
+	ObDereferenceObject(FileObj);
+	return;
+    }
+    PIRP Irp = IoAllocateIrp();
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    Stack->DeviceObject = FileObj->DeviceObject;
+    Stack->FileObject = FileObj;
+    Stack->MajorFunction = IRP_MJ_CLOSE;
+    if (!NT_SUCCESS(Close(FileObj->DeviceObject, Irp))) {
+	assert(FALSE);
+    }
+    /* If the dispatch routine did not complete the IRP, do it now.
+    * This will move the IRP to the reply list and eventually to the
+    * delete list so it gets freed. */
+    IoCompleteRequest(Irp, 0);
+}
+
 static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
@@ -1688,6 +1736,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 		IopHandleIoCompleteServerMessage(SrcIoPacket);
 	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCacheFlushed) {
 		CiHandleCacheFlushedServerMessage(SrcIoPacket);
+	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseFile) {
+		IopHandleCloseFileServerMessage(SrcIoPacket);
 	    } else {
 		DbgPrint("Invalid server message type %d\n", SrcIoPacket->ServerMsg.Type);
 		assert(FALSE);

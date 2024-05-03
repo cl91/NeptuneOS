@@ -6,6 +6,7 @@ static NTSTATUS CmpCreateKeyType()
 	.CreateProc = CmpKeyObjectCreateProc,
 	.ParseProc = CmpKeyObjectParseProc,
 	.OpenProc = CmpKeyObjectOpenProc,
+	.CloseProc = CmpKeyObjectCloseProc,
 	.InsertProc = CmpKeyObjectInsertProc,
 	.RemoveProc = CmpKeyObjectRemoveProc,
 	.DeleteProc = CmpKeyObjectDeleteProc,

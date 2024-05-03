@@ -2329,16 +2329,16 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 	    (HeapEntry->CommonEntry.SegmentOffset >= HEAP_SEGMENTS)) {
 	    /* This is an invalid block */
 	    DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
-	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-		(STATUS_INVALID_PARAMETER);
+	    ASSERT(FALSE);
+	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	    _SEH2_YIELD(return FALSE);
 	}
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
 	/* The pointer was invalid */
 	DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-	    (STATUS_INVALID_PARAMETER);
+	ASSERT(FALSE);
+	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	_SEH2_YIELD(return FALSE);
     }
     _SEH2_END;
@@ -2351,9 +2351,7 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 
     if (HeapEntry->CommonEntry.Flags & HEAP_ENTRY_VIRTUAL_ALLOC) {
 	/* Big allocation */
-	VirtualEntry =
-	    CONTAINING_RECORD(HeapEntry, HEAP_VIRTUAL_ALLOC_ENTRY,
-			      BusyBlock);
+	VirtualEntry = CONTAINING_RECORD(HeapEntry, HEAP_VIRTUAL_ALLOC_ENTRY, BusyBlock);
 
 	/* Remove it from the list */
 	RemoveEntryList(&VirtualEntry->Entry);
@@ -2366,9 +2364,10 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 				     &BlockSize, MEM_RELEASE);
 
 	if (!NT_SUCCESS(Status)) {
-	    DPRINT1
-		("HEAP: Failed releasing memory with Status 0x%08X. Heap %p, ptr %p, base address %p\n",
-		 Status, Heap, Ptr, VirtualEntry);
+	    DPRINT1("HEAP: Failed releasing memory with Status 0x%08X. "
+		    "Heap %p, ptr %p, base address %p\n",
+		    Status, Heap, Ptr, VirtualEntry);
+	    assert(FALSE);
 	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(Status);
 	}
     } else {

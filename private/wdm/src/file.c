@@ -9,6 +9,7 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
     assert(Params != NULL);
     assert(Handle != 0);
     assert(pFileObject != NULL);
+    assert(!IopGetFileObject(Handle));
     IopAllocateObject(FileObject, FILE_OBJECT);
     FileObject->DeviceObject = DeviceObject;
     UNICODE_STRING FileName = {0};

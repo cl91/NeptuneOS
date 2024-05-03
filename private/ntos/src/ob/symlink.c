@@ -1,10 +1,4 @@
-#include "ntdef.h"
 #include "obp.h"
-#include "ex.h"
-#include "ntrtl.h"
-#include "ntstatus.h"
-#include "ob.h"
-#include "util.h"
 
 typedef struct _OBJECT_SYMBOLIC_LINK {
     PCSTR LinkTarget;		/* String to be reparsed. Owned by this object. */
@@ -99,6 +93,10 @@ NTSTATUS ObpInitSymlinkObjectType()
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = ObpSymlinkObjectCreateProc,
 	.ParseProc = ObpSymlinkObjectParseProc,
+	.OpenProc = NULL,
+	.CloseProc = NULL,
+	.InsertProc = NULL,
+	.RemoveProc = NULL,
 	.DeleteProc = ObpSymlinkObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_SYMBOLIC_LINK,
@@ -128,21 +126,20 @@ NTSTATUS NtCreateSymbolicLinkObject(IN ASYNC_STATE AsyncState,
     POBJECT_SYMBOLIC_LINK Symlink = NULL;
     POBJECT RootDirectory = NULL;
     NTSTATUS Status = STATUS_NTOS_BUG;
-    BOOLEAN Inserted = FALSE;
+    if (ObjectAttributes.RootDirectory) {
+	RET_ERR(ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
+					  OBJECT_TYPE_ANY, RootDirectory));
+    }
     /* The reparse path in the symbolic link object created by this routine is
      * always absolute, ie. with respect to the global root directory. */
-    RET_ERR(ObCreateSymbolicLink(LinkTarget, NULL, &Symlink));
-    if (ObjectAttributes.RootDirectory) {
-	IF_ERR_GOTO(out, Status,
-		    ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
-					      OBJECT_TYPE_ANY, RootDirectory));
-    }
+    IF_ERR_GOTO(out, Status,
+		ObCreateSymbolicLink(LinkTarget, NULL, &Symlink));
     if (ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0]) {
 	IF_ERR_GOTO(out, Status, ObInsertObject(RootDirectory, Symlink,
 						ObjectAttributes.ObjectNameBuffer, 0));
-	Inserted = TRUE;
     }
-    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Symlink, SymbolicLinkHandle));
+    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Symlink,
+					    FALSE, SymbolicLinkHandle));
 
     Status = STATUS_SUCCESS;
 
@@ -150,13 +147,10 @@ out:
     if (RootDirectory) {
 	ObDereferenceObject(RootDirectory);
     }
-    if (!NT_SUCCESS(Status)) {
-	if (Inserted) {
-	    ObRemoveObject(Symlink);
-	}
-	if (Symlink) {
-	    ObDereferenceObject(Symlink);
-	}
+    if (!NT_SUCCESS(Status) && Symlink) {
+	/* ObRemoveObject is a no-op if Symlink is not inserted. */
+	ObRemoveObject(Symlink);
+	ObDereferenceObject(Symlink);
     }
     return Status;
 }
