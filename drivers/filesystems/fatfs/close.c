@@ -28,7 +28,7 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
     }
 
     /*
-     * NOTE: In their *CheckForDismount() function, our 3rd-party FS drivers
+     * NOTE: In their CheckForDismount() function, our 3rd-party FS drivers
      * as well as MS' fastfat, perform a comparison check of the current VCB's
      * VPB ReferenceCount with some sort of "dangling"/"residual" open count,
      * depending on whether or not we are in IRP_MJ_CREATE.
@@ -130,9 +130,8 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	 */
 	if (DeviceExt->SpareVPB) {
 	    ExFreePool(DeviceExt->SpareVPB);
-	}
-	/* Otherwise, delete any of the available VPB if its reference count is zero */
-	else if (DeviceExt->IoVPB->ReferenceCount == 0) {
+	} else if (DeviceExt->IoVPB->ReferenceCount == 0) {
+	    /* Otherwise, delete any of the available VPB if its refcount is zero. */
 	    ExFreePool(DeviceExt->IoVPB);
 	}
 
@@ -161,51 +160,36 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 	   DeviceExt, FileObject);
 
     /* FIXME : update entry in directory? */
-    PFATFCB pFcb = (PFATFCB) (FileObject->FsContext);
-    PFATCCB pCcb = (PFATCCB) (FileObject->FsContext2);
+    PFATFCB Fcb = (PFATFCB)FileObject->FsContext;
+    PFATCCB Ccb = (PFATCCB)FileObject->FsContext2;
 
-    if (pFcb == NULL) {
+    if (Fcb == NULL) {
 	return STATUS_SUCCESS;
     }
 
-    BOOLEAN IsVolume = BooleanFlagOn(pFcb->Flags, FCB_IS_VOLUME);
+    BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
 
-    if (pCcb) {
-	FatDestroyCcb(pCcb);
+    if (Ccb) {
+	FatDestroyCcb(Ccb);
     }
 
     /* Nothing to do for volumes or for the FAT file object */
-    if (BooleanFlagOn(pFcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
+    if (BooleanFlagOn(Fcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
 	return STATUS_SUCCESS;
     }
 
-    /* If cache is still initialized, release it.
-     * This only affects directories
-     */
-    if (!pFcb->OpenHandleCount && BooleanFlagOn(pFcb->Flags, FCB_CACHE_INITIALIZED)) {
-	PFILE_OBJECT tmpFileObject;
-	tmpFileObject = pFcb->FileObject;
-	if (tmpFileObject != NULL) {
-	    pFcb->FileObject = NULL;
-	    CcUninitializeCacheMap(tmpFileObject, NULL);
-	    ClearFlag(pFcb->Flags, FCB_CACHE_INITIALIZED);
-	    ObDereferenceObject(tmpFileObject);
-	}
-    }
-    pFcb->Flags |= FCB_CLOSED;
-
     /* Release the FCB, we likely cause its deletion */
-    FatReleaseFcb(DeviceExt, pFcb);
+    FatReleaseFcb(DeviceExt, Fcb);
+    Fcb->Flags |= FCB_CLOSED;
 
     FileObject->FsContext2 = NULL;
     FileObject->FsContext = NULL;
 
-#ifdef ENABLE_SWAPOUT
     if (IsVolume && DeviceExt->OpenHandleCount == 0) {
 	FatCheckForDismount(DeviceExt, FALSE);
     }
-#endif
 
+    ObDereferenceObject(FileObject);
     return Status;
 }
 

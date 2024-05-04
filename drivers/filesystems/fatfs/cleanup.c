@@ -18,22 +18,18 @@
  */
 static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 {
-    PFATFCB Fcb;
-    PFATCCB pCcb;
-    BOOLEAN IsVolume;
     PDEVICE_EXTENSION DeviceExt = IrpContext->DeviceExt;
     PFILE_OBJECT FileObject = IrpContext->FileObject;
-    BOOLEAN Deleted = FALSE;
 
     DPRINT("FatCleanupFile(DeviceExt %p, FileObject %p)\n",
 	   IrpContext->DeviceExt, FileObject);
 
     /* FIXME: handle file/directory deletion here */
-    Fcb = (PFATFCB)FileObject->FsContext;
+    PFATFCB Fcb = (PFATFCB)FileObject->FsContext;
     if (!Fcb)
 	return FALSE;
 
-    IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
+    BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
     if (IsVolume) {
 	Fcb->OpenHandleCount--;
 	DeviceExt->OpenHandleCount--;
@@ -42,8 +38,8 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	    IoRemoveShareAccess(FileObject, &Fcb->FcbShareAccess);
 	}
     } else {
-	pCcb = FileObject->FsContext2;
-	if (BooleanFlagOn(pCcb->Flags, CCB_DELETE_ON_CLOSE)) {
+	PFATCCB Ccb = FileObject->FsContext2;
+	if (BooleanFlagOn(Ccb->Flags, CCB_DELETE_ON_CLOSE)) {
 	    Fcb->Flags |= FCB_DELETE_PENDING;
 	}
 
@@ -57,33 +53,33 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	    FatUpdateEntry(DeviceExt, Fcb);
 	}
 
-	if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING) &&
-	    Fcb->OpenHandleCount == 0) {
-	    if (FatFcbIsDirectory(Fcb) && !FatIsDirectoryEmpty(DeviceExt, Fcb)) {
-		Fcb->Flags &= ~FCB_DELETE_PENDING;
-	    } else {
-		PFILE_OBJECT tmpFileObject;
-		tmpFileObject = Fcb->FileObject;
-		if (tmpFileObject != NULL) {
-		    Fcb->FileObject = NULL;
-		    CcUninitializeCacheMap(tmpFileObject, NULL);
-		    ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
-		    ObDereferenceObject(tmpFileObject);
-		}
-
-		Fcb->Base.FileSizes.ValidDataLength.QuadPart = 0;
-		Fcb->Base.FileSizes.FileSize.QuadPart = 0;
-		Fcb->Base.FileSizes.AllocationSize.QuadPart = 0;
-	    }
+	/* If the directory was marked for deletion but it's not empty, don't
+	 * actually delete it. */
+        if (FatFcbIsDirectory(Fcb) && !FatIsDirectoryEmpty(DeviceExt, Fcb)) {
+	    Fcb->Flags &= ~FCB_DELETE_PENDING;
 	}
 
-	/* Uninitialize the cache (should be done even if caching
-	 * was never initialized) */
-	CcUninitializeCacheMap(FileObject, &Fcb->Base.FileSizes.FileSize);
+	/* If the file was marked for deletion and the open handle count has reached
+	 * zero, delete the file from the disk. */
+	if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING) && !Fcb->OpenHandleCount) {
+	    PFILE_OBJECT MasterFileObject = Fcb->FileObject;
+	    /* Note that unlike Windows and ReactOS, there is always a one-to-one
+	     * correspondence between the FCB and the file object on Neptune OS,
+	     * so the file object should always be the master file object. */
+	    assert(MasterFileObject == FileObject);
+	    if (MasterFileObject != NULL) {
+		Fcb->FileObject = NULL;
+		CcUninitializeCacheMap(MasterFileObject, NULL);
+		ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
+		/* The file object itself will be dereferenced (and hence deleted)
+		 * in FatCloseFile, as a result of a CloseFile server message. */
+	    }
 
-	if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING) &&
-	    Fcb->OpenHandleCount == 0) {
-	    FatDelEntry(DeviceExt, Fcb, NULL);
+	    Fcb->Base.FileSizes.ValidDataLength.QuadPart = 0;
+	    Fcb->Base.FileSizes.FileSize.QuadPart = 0;
+	    Fcb->Base.FileSizes.AllocationSize.QuadPart = 0;
+
+            FatDelEntry(DeviceExt, Fcb, NULL);
 
 	    FatReportChange(DeviceExt, Fcb,
 			    (FatFcbIsDirectory(Fcb) ? FILE_NOTIFY_CHANGE_DIR_NAME :
@@ -99,13 +95,9 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	Fcb->Flags |= FCB_CLEANED_UP;
     }
 
-#ifdef ENABLE_SWAPOUT
     if (IsVolume && BooleanFlagOn(DeviceExt->Flags, VCB_DISMOUNT_PENDING)) {
-	Deleted = FatCheckForDismount(DeviceExt, TRUE);
+	return FatCheckForDismount(DeviceExt, TRUE);
     }
-#endif
-
-    return Deleted;
 }
 
 /*

@@ -12,8 +12,6 @@
 	 &(Entry)->Field != (ListHead); Entry = __LoopOverList_flink,	\
 	     __LoopOverList_flink = CONTAINING_RECORD((__LoopOverList_flink)->Field.Flink, Type, Field))
 
-#define ENABLE_SWAPOUT
-
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
 #define ROUND_DOWN_32(n, align)	(((ULONG)(n)) & ~((align)-1L))
 #define ROUND_UP_32(n, align)	ROUND_DOWN_32(((ULONG)(n))+(align)-1, (align))

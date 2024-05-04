@@ -1113,9 +1113,7 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 
     /* Mark we're being dismounted */
     DeviceExt->Flags |= VCB_DISMOUNT_PENDING;
-#ifndef ENABLE_SWAPOUT
     IrpContext->DeviceObject->Vpb->Flags &= ~VPB_MOUNTED;
-#endif
 
     return STATUS_SUCCESS;
 }

@@ -60,9 +60,7 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    }
 
 	    /* Unmount the logical volume */
-#ifdef ENABLE_SWAPOUT
 	    FatCheckForDismount(DeviceExt, FALSE);
-#endif
 
 	    if (!NT_SUCCESS(Status))
 		Irp->IoStatus.Status = Status;
