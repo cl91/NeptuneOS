@@ -134,7 +134,7 @@ NTAPI NTSTATUS BeepCleanup(IN PDEVICE_OBJECT DeviceObject,
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    /* Stop and beep and return */
+    /* Stop the beep and return */
     HalMakeBeep(0);
     return STATUS_SUCCESS;
 }
