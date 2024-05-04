@@ -142,22 +142,6 @@
     __absolute__address__ = __absolute__address__ + \size
 .endm
 
-.macro UNIMPLEMENTED2 file, line, func
-    jmp 4f
-1:  .ascii "Unimplemented", CR, LF, NUL
-2:  .asciz "\func"
-3:  .asciz \file
-4:
-    sub rsp, 0x20
-    lea rcx, 1b[rip]
-    lea rdx, 2b[rip]
-    lea r8, 3b[rip]
-    mov r9, \line
-    call DbgPrint
-    add rsp, 0x20
-.endm
-#define UNIMPLEMENTED UNIMPLEMENTED2 __FILE__, __LINE__,
-
 /* MASM/ML uses ".if" for runtime conditionals, and "if" for compile time
    conditionals. We therefore use "if", too. .if shouldn't be used at all */
 #define if .if
