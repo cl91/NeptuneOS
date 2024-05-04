@@ -559,10 +559,13 @@ static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
 	    assert(Length || View == Req->View);
 	    assert(View->IoReq == Req);
 	    View->IoReq = NULL;
+	    ULONG SizeToMap = min(VIEW_SIZE, Req->Length - Length);
+	    ULONG AlignedSize = PAGE_ALIGN_UP(View->MappedSize);
 	    if (NT_SUCCESS(IoStatus.Status)) {
-		View->MappedSize = min(VIEW_SIZE, Req->Length - Length);
-	    } else {
-		MmUncommitVirtualMemory(View->MappedAddress, VIEW_SIZE);
+		View->MappedSize = SizeToMap;
+	    } else if (SizeToMap > AlignedSize) {
+		MmUncommitVirtualMemory(View->MappedAddress + AlignedSize,
+					SizeToMap - AlignedSize);
 	    }
 	}
     }
@@ -1277,7 +1280,7 @@ VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
     assert(VolumeFcb);
     assert(VolumeFcb != Fcb);
     LoopOverView(View, CacheMap) {
-	for (ULONG i = 0; i < PAGES_IN_VIEW; i++) {
+	for (ULONG i = 0; i < (View->MappedSize + PAGE_SIZE - 1) / PAGE_SIZE; i++) {
 	    if (!GetBit64(View->DirtyMap, i)) {
 		continue;
 	    }
@@ -1347,6 +1350,8 @@ static VOID CiSetSharedMapDirtyBits(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	    ULONG MappedLength = min(FileOffset + Length - CurrentOffset,
 				     VIEW_ALIGN64(CurrentOffset + VIEW_SIZE) - CurrentOffset);
 	    ULONG ViewOffset = CurrentOffset - View->Node.Key;
+	    assert(ViewOffset < View->MappedSize);
+	    assert(ViewOffset + MappedLength <= View->MappedSize);
 	    ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
 	    ULONG EndPage = PAGE_ALIGN_UP(ViewOffset + MappedLength) >> PAGE_LOG2SIZE;
 	    assert(StartPage < PAGES_IN_VIEW);
@@ -1635,6 +1640,8 @@ out:
 	return STATUS_NONE_MAPPED;
     } else if (MarkDirty) {
 	ULONG ViewOffset = FileOffset - AlignedOffset;
+	assert(ViewOffset < View->MappedSize);
+	assert(ViewOffset + MappedLength <= View->MappedSize);
 	ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
 	ULONG EndPage = PAGE_ALIGN_UP(ViewOffset + MappedLength) >> PAGE_LOG2SIZE;
 	assert(StartPage < PAGES_IN_VIEW);
@@ -1757,4 +1764,11 @@ NTSTATUS CcZeroData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		    IN ULONG64 Length)
 {
     return CiCopyReadWrite(Fcb, FileOffset, Length, CopyZero, NULL, NULL);
+}
+
+VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		   IN ULONG64 NewFileSize)
+{
+    Fcb->FileSize = NewFileSize;
+    /* TODO: Shrink file. Need to discard cache data. */
 }

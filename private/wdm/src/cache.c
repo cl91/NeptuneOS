@@ -331,6 +331,10 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	return STATUS_INVALID_DEVICE_REQUEST;
     }
     PCACHE_MAP CacheMap = Fcb->CacheMap;
+    if (!CacheMap) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
 
     /* In order to reduce the number of IRPs we need to send below, we align the read
      * to the view size. */

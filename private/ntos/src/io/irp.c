@@ -932,7 +932,7 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
     Irp->Request.AssociatedIrpCount += Msg->ClientMsg.ForwardIrp.AssociatedIrpCount;
 
     if (Irp->Request.File.Object && Irp->Request.File.Object->Fcb) {
-	Irp->Request.File.Object->Fcb->FileSize = Msg->ClientMsg.ForwardIrp.NewFileSize;
+	CcSetFileSize(Irp->Request.File.Object->Fcb, Msg->ClientMsg.ForwardIrp.NewFileSize);
     }
 
     /* If client has requested completion notification, in addition to
