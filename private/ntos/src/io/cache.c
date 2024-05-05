@@ -268,11 +268,6 @@ alloc:
     return STATUS_SUCCESS;
 }
 
-VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb)
-{
-    /* TODO */
-}
-
 static PCC_VIEW_TABLE CiAllocateViewTable()
 {
     PCC_VIEW_TABLE Table = CiAllocatePool(sizeof(CC_VIEW_TABLE));
@@ -421,6 +416,36 @@ static NTSTATUS CiGetView(IN PIO_FILE_CONTROL_BLOCK Fcb,
     }
     *pView = AVL_NODE_TO_VIEW(Node);
     return Node ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
+}
+
+static VOID CiDeleteView(IN PCC_VIEW View) {}
+
+static VOID CiDeleteViewTable(IN PCC_VIEW_TABLE ViewTable) {}
+
+static VOID CiPurgeCacheMap(IN PCC_CACHE_MAP Map)
+{
+}
+
+VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb)
+{
+    /* Fcb must not have any dirty cached data at the time of calling this routine. */
+    if (Fcb->SharedCacheMap) {
+	LoopOverView(View, Fcb->SharedCacheMap) {
+	    assert(!View->DirtyMap);
+	}
+	CiPurgeCacheMap(Fcb->SharedCacheMap);
+	CiFreePool(Fcb->SharedCacheMap);
+	Fcb->SharedCacheMap = NULL;
+    }
+
+    LoopOverList(Map, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
+	LoopOverView(View, Map) {
+	    assert(!View->DirtyMap);
+	}
+	RemoveEntryList(&Map->PrivateMap.Link);
+	CiPurgeCacheMap(Map);
+	CiFreePool(Map);
+    }
 }
 
 typedef struct _PIN_DATA_CALLBACK_CONTEXT {

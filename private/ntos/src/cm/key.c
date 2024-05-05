@@ -171,6 +171,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
 			      IN POBJECT Self,
 			      IN PCSTR Path,
+			      IN ACCESS_MASK DesiredAccess,
 			      IN ULONG Attributes,
 			      IN POB_OPEN_CONTEXT OpenContext,
 			      OUT POBJECT *OpenedInstance,
@@ -645,7 +646,7 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
     Locals.OpenContext.Create = FALSE;
 
     AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals, Thread,
-	     Locals.ObjectAttributes, OBJECT_TYPE_KEY,
+	     Locals.ObjectAttributes, OBJECT_TYPE_KEY, DesiredAccess,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(AsyncState, Status);
 }
@@ -680,7 +681,7 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     Locals.OpenContext.Disposition = Disposition;
 
     AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals,
-	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_KEY,
+	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_KEY, DesiredAccess,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(AsyncState, Status);
 }

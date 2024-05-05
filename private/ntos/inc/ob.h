@@ -278,6 +278,7 @@ typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
 				       IN struct _THREAD *Thread,
 				       IN POBJECT Self,
 				       IN PCSTR SubPath,
+				       IN ACCESS_MASK DesiredAccess,
 				       IN ULONG Attributes,
 				       IN POB_OPEN_CONTEXT OpenContext,
 				       OUT POBJECT *pOpenedInstance,
@@ -532,6 +533,7 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE State,
 			      IN struct _THREAD *Thread,
 			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			      IN OBJECT_TYPE_ENUM Type,
+			      IN ACCESS_MASK DesiredAccess,
 			      IN POB_OPEN_CONTEXT OpenContext,
 			      IN BOOLEAN AssignHandle,
 			      OUT PVOID *pHandle);
@@ -540,10 +542,11 @@ FORCEINLINE NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
 					IN struct _THREAD *Thread,
 					IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 					IN OBJECT_TYPE_ENUM Type,
+					IN ACCESS_MASK DesiredAccess,
 					IN POB_OPEN_CONTEXT OpenContext,
 					OUT PVOID *pHandle) {
-    return ObOpenObjectByNameEx(State, Thread, ObjectAttributes,
-				Type, OpenContext, TRUE, pHandle);
+    return ObOpenObjectByNameEx(State, Thread, ObjectAttributes, Type,
+				DesiredAccess, OpenContext, TRUE, pHandle);
 }
 
 /* symlink.c */

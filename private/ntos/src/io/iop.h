@@ -225,24 +225,6 @@ typedef struct _IO_OPEN_CONTEXT {
 } IO_OPEN_CONTEXT, *PIO_OPEN_CONTEXT;
 
 /*
- * Creation context for the driver object creation routine
- */
-typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
-    PCSTR DriverImagePath;
-    PCSTR DriverServicePath;
-    PSECTION ImageSection;
-} DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
-
-/*
- * Creation context for the device object creation routine
- */
-typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
-    PIO_DRIVER_OBJECT DriverObject;
-    IO_DEVICE_INFO DeviceInfo;
-    BOOLEAN Exclusive;
-} DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
-
-/*
  * Creation context for the file object creation routine
  */
 typedef struct _FILE_OBJ_CREATE_CONTEXT {
@@ -252,13 +234,10 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     PIO_FILE_CONTROL_BLOCK Fcb;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
     PIO_FILE_OBJECT MasterFileObject;
+    ACCESS_MASK DesiredAccess;
+    ULONG ShareAccess;
     BOOLEAN NoFcb;
-    BOOLEAN ReadAccess;
-    BOOLEAN WriteAccess;
-    BOOLEAN DeleteAccess;
-    BOOLEAN SharedRead;
-    BOOLEAN SharedWrite;
-    BOOLEAN SharedDelete;
+    BOOLEAN AllocateCloseReq;
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*
@@ -358,6 +337,7 @@ FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
 /* file.c */
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
+		      IN PCSTR FileName,
 		      IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb);
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
@@ -371,6 +351,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object,
 			       IN PCSTR SubPath,
+			       IN ACCESS_MASK DesiredAccess,
 			       IN ULONG Attributes,
 			       IN POB_OPEN_CONTEXT ParseContext,
 			       OUT POBJECT *pOpenedInstance,
@@ -381,6 +362,8 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   IN ACCESS_MASK DesiredAccess,
+				   IN ULONG ShareAccess,
 				   OUT PIO_FILE_OBJECT *pFile);
 
 /*
@@ -417,6 +400,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
+				 IN ACCESS_MASK DesiredAccess,
 				 IN ULONG Attributes,
 				 IN POB_OPEN_CONTEXT ParseContext,
 				 OUT POBJECT *pOpenedInstance,
@@ -428,7 +412,9 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
 		       IN PIO_DEVICE_OBJECT Device,
+		       IN PIO_FILE_OBJECT MasterFileObject,
 		       IN PCSTR SubPath,
+		       IN ACCESS_MASK DesiredAccess,
 		       IN ULONG Attributes,
 		       IN PIO_OPEN_CONTEXT OpenContext,
 		       OUT PIO_FILE_OBJECT *pFileObject);

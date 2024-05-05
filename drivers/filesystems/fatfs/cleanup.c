@@ -63,10 +63,6 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	 * zero, delete the file from the disk. */
 	if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING) && !Fcb->OpenHandleCount) {
 	    PFILE_OBJECT MasterFileObject = Fcb->FileObject;
-	    /* Note that unlike Windows and ReactOS, there is always a one-to-one
-	     * correspondence between the FCB and the file object on Neptune OS,
-	     * so the file object should always be the master file object. */
-	    assert(MasterFileObject == FileObject);
 	    if (MasterFileObject != NULL) {
 		Fcb->FileObject = NULL;
 		CcUninitializeCacheMap(MasterFileObject, NULL);

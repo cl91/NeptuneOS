@@ -469,7 +469,7 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_KEY_OPEN;
     Locals.OpenContext.Create = FALSE;
     AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals, Thread,
-	     Locals.ObjectAttributes, OBJECT_TYPE_KEY,
+	     Locals.ObjectAttributes, OBJECT_TYPE_KEY, KEY_ENUMERATE_SUB_KEYS,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, &ClassKey);
     if (!NT_SUCCESS(Status)) {
 	goto load;

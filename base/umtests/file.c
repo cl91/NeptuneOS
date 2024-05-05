@@ -4,16 +4,16 @@ static CHAR Buffer[1440 * 1024];
 
 NTSTATUS TestFloppyDriver()
 {
-    HANDLE hFloppy;
-    UNICODE_STRING FloppyDevice;
+    HANDLE FileHandle;
+    UNICODE_STRING FileName;
     OBJECT_ATTRIBUTES ObjectAttributes;
     IO_STATUS_BLOCK IoStatusBlock;
 
     /* Open the device */
     LARGE_INTEGER AllocationSize = { .QuadPart = 0x911 };
-    RtlInitUnicodeString(&FloppyDevice, L"\\Device\\Floppy0\\test");
-    InitializeObjectAttributes(&ObjectAttributes, &FloppyDevice, 0, NULL, NULL);
-    NTSTATUS Status = NtCreateFile(&hFloppy, FILE_READ_DATA | FILE_WRITE_DATA,
+    RtlInitUnicodeString(&FileName, L"\\Device\\Floppy0\\test");
+    InitializeObjectAttributes(&ObjectAttributes, &FileName, 0, NULL, NULL);
+    NTSTATUS Status = NtCreateFile(&FileHandle, FILE_READ_DATA | FILE_WRITE_DATA,
 				   &ObjectAttributes, &IoStatusBlock, &AllocationSize, 0,
 				   FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
 				   0, NULL, 0);
@@ -28,7 +28,7 @@ NTSTATUS TestFloppyDriver()
     /* Try to read the data */
     VgaPrint("Writing floppy... ");
     snprintf(Buffer, 128, "hello, world!\n");
-    Status = NtWriteFile(hFloppy, NULL, NULL, NULL, &IoStatusBlock,
+    Status = NtWriteFile(FileHandle, NULL, NULL, NULL, &IoStatusBlock,
 			 Buffer, 0x1000, &ByteOffset, NULL);
     if (!NT_SUCCESS(Status)) {
 	VgaPrint("FAILED. Status = 0x%x\n", Status);
@@ -39,10 +39,10 @@ NTSTATUS TestFloppyDriver()
     VgaPrint("first bytes (see serial for full dump): %02x %02x %02x %02x.\n",
 	     Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
 
-    Status = NtFlushBuffersFile(hFloppy, &IoStatusBlock);
+    Status = NtFlushBuffersFile(FileHandle, &IoStatusBlock);
     if (!NT_SUCCESS(Status)) {
 	VgaPrint("Failed to flush buffers for %wZ, status = 0x%x\n",
-		 &FloppyDevice, Status);
+		 &FileName, Status);
 	return Status;
     }
 
@@ -62,6 +62,7 @@ NTSTATUS TestFloppyDriver()
 		     Row[4], Row[5], Row[6], Row[7]);
 	}
     }
+    NtClose(FileHandle);
 
     return STATUS_SUCCESS;
 }

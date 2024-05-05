@@ -2,9 +2,17 @@
 
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
+		      IN PCSTR FileName,
 		      IN PIO_VOLUME_CONTROL_BLOCK Vcb)
 {
     IopAllocatePool(Fcb, IO_FILE_CONTROL_BLOCK);
+    if (FileName) {
+	Fcb->FileName = RtlDuplicateString(FileName, NTOS_IO_TAG);
+	if (!Fcb->FileName) {
+	    IopFreePool(Fcb);
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+    }
     Fcb->FileSize = FileSize;
     Fcb->Vcb = Vcb;
     AvlInitializeTree(&Fcb->FileOffsetMappings);
@@ -19,10 +27,28 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
+    if (Fcb->FileName) {
+	IopFreePool(Fcb->FileName);
+    }
     CcUninitializeCacheMap(Fcb);
     KeUninitializeEvent(&Fcb->OpenCompleted);
     KeUninitializeEvent(&Fcb->WriteCompleted);
     IopFreePool(Fcb);
+}
+
+FORCEINLINE BOOLEAN ReadAccessDesired(IN ACCESS_MASK DesiredAccess)
+{
+    return DesiredAccess & (FILE_READ_DATA | FILE_EXECUTE);
+}
+
+FORCEINLINE BOOLEAN WriteAccessDesired(IN ACCESS_MASK DesiredAccess)
+{
+    return DesiredAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA);
+}
+
+FORCEINLINE BOOLEAN DeleteAccessDesired(IN ACCESS_MASK DesiredAccess)
+{
+    return DesiredAccess & DELETE;
 }
 
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
@@ -39,7 +65,8 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	assert(!Ctx->FileSize);
 	assert(!Ctx->Fcb);
 	assert(!Ctx->Vcb);
-    } else if (Ctx->DeviceObject) {
+    }
+    if (Ctx->DeviceObject || Ctx->AllocateCloseReq) {
 	CloseReq = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
 	if (!CloseReq) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
@@ -55,42 +82,34 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	File->Fcb = Ctx->MasterFileObject->Fcb;
     } else {
 	PIO_FILE_CONTROL_BLOCK Fcb = NULL;
-	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->Vcb),
+	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->FileName, Ctx->Vcb),
 		   if (CloseReq) {
 		       IopFreePool(CloseReq);
 		   });
 	assert(Fcb);
 	File->Fcb = Fcb;
 	Fcb->MasterFileObject = File;
-	Fcb->OpenInProgress = TRUE;
-	if (Ctx->FileName) {
-	    Fcb->FileName = RtlDuplicateString(Ctx->FileName, NTOS_IO_TAG);
-	    if (!Fcb->FileName) {
-		IopDeleteFcb(Fcb);
-		if (CloseReq) {
-		    IopFreePool(CloseReq);
-		}
-		return STATUS_NO_MEMORY;
-	    }
-	}
+	Fcb->OpenInProgress = !!Ctx->Vcb;
     }
 
     File->CloseReq = CloseReq;
     File->DeviceObject = Ctx->DeviceObject;
     if (Ctx->MasterFileObject) {
 	ObpReferenceObject(Ctx->MasterFileObject);
+	assert(Ctx->MasterFileObject->Fcb);
+	assert(Ctx->MasterFileObject->Fcb->MasterFileObject == Ctx->MasterFileObject);
 	File->Fcb = Ctx->MasterFileObject->Fcb;
 	File->DeviceObject = Ctx->MasterFileObject->DeviceObject;
     }
     if (Ctx->DeviceObject) {
 	ObpReferenceObject(Ctx->DeviceObject);
     }
-    File->ReadAccess = Ctx->ReadAccess;
-    File->WriteAccess = Ctx->WriteAccess;
-    File->DeleteAccess = Ctx->DeleteAccess;
-    File->SharedRead = Ctx->SharedRead;
-    File->SharedWrite = Ctx->SharedWrite;
-    File->SharedDelete = Ctx->SharedDelete;
+    File->ReadAccess = ReadAccessDesired(Ctx->DesiredAccess);
+    File->WriteAccess = WriteAccessDesired(Ctx->DesiredAccess);
+    File->DeleteAccess = DeleteAccessDesired(Ctx->DesiredAccess);
+    File->SharedRead = Ctx->ShareAccess & FILE_SHARE_READ;
+    File->SharedWrite = Ctx->ShareAccess & FILE_SHARE_WRITE;
+    File->SharedDelete = Ctx->ShareAccess & FILE_SHARE_DELETE;
     if (File->DeviceObject) {
 	InsertTailList(&File->DeviceObject->OpenFileList, &File->DeviceLink);
     }
@@ -104,6 +123,8 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
  */
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   IN ACCESS_MASK DesiredAccess,
+				   IN ULONG ShareAccess,
 				   OUT PIO_FILE_OBJECT *pFile)
 {
     assert(FileName);
@@ -114,12 +135,8 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 	.DeviceObject = DeviceObject,
 	.FileName = FileName,
 	.Vcb = DeviceObject->Vcb,
-	.ReadAccess = TRUE,
-	.WriteAccess = TRUE,
-	.DeleteAccess = TRUE,
-	.SharedRead = TRUE,
-	.SharedWrite = TRUE,
-	.SharedDelete = TRUE
+	.DesiredAccess = DesiredAccess,
+	.ShareAccess = ShareAccess
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
@@ -142,10 +159,17 @@ NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
     return *Path ? STATUS_OBJECT_PATH_NOT_FOUND : STATUS_NTOS_STOP_PARSING;
 }
 
+FORCEINLINE BOOLEAN DispositionIsOverwrite(IN ULONG Disposition)
+{
+    return Disposition == FILE_SUPERSEDE || Disposition == FILE_OVERWRITE ||
+	Disposition == FILE_OVERWRITE_IF;
+}
+
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Self,
 			       IN PCSTR SubPath,
+			       IN ACCESS_MASK DesiredAccess,
 			       IN ULONG Attributes,
 			       IN POB_OPEN_CONTEXT Context,
 			       OUT POBJECT *pOpenedInstance,
@@ -162,8 +186,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
     POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
     ASYNC_BEGIN(State, Locals, {
-	    PCHAR FullPath;
-	    ULONG SubPathLen;
+	    BOOLEAN CallDriver;
 	});
 
     /* Reject the open if the open context is not IO_OPEN_CONTEXT. */
@@ -187,15 +210,40 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	     KeWaitForSingleObject, State, Locals, Thread,
 	     &FileObject->Fcb->OpenCompleted.Header, FALSE, NULL);
 
-    if (!SubPath[0]) {
-	/* If the user requested to create a new file, deny it. */
-	if (OpenContext->OpenPacket.Disposition == FILE_CREATE) {
-	    Status = STATUS_OBJECT_NAME_COLLISION;
-	    goto out;
-	}
-	/* TODO: Handle FILE_SUPERSEDE, FILE_OVERWRITE, etc */
+    /* TODO: We need to handle related open which is used by NTFS to
+     * support multiple data streams of the same file. */
+    if (SubPath[0]) {
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+
+    /* If the user requested to create a new file, deny it. */
+    if (OpenContext->OpenPacket.Disposition == FILE_CREATE) {
+	Status = STATUS_OBJECT_NAME_COLLISION;
+	goto out;
+    }
+    /* If the master file object was opened without read access and the
+     * caller requested READ, deny the open. Likewise for WRITE and DELETE. */
+    if ((!FileObject->SharedRead && ReadAccessDesired(DesiredAccess)) ||
+	(!FileObject->SharedWrite && WriteAccessDesired(DesiredAccess)) ||
+	(!FileObject->SharedDelete && DeleteAccessDesired(DesiredAccess))) {
+	Status = STATUS_ACCESS_DENIED;
+	goto out;
+    }
+
+    /* If the desired access is greater than that of the master file object,
+     * or we are requesting to overwrite, supersede, or delete the file, call
+     * the driver to create a new client-side handle. Otherwise, simply create
+     * a slave file object which does not have a client-side handle. */
+    BOOLEAN CallDriver = DispositionIsOverwrite(OpenPacket->Disposition)||
+	(!FileObject->ReadAccess && ReadAccessDesired(DesiredAccess)) ||
+	(!FileObject->WriteAccess && DeleteAccessDesired(DesiredAccess)) ||
+	(!FileObject->DeleteAccess && DeleteAccessDesired(DesiredAccess)) ||
+	(OpenPacket->CreateOptions & FILE_DELETE_ON_CLOSE);
+
+    if (!CallDriver || !FileObject->DeviceObject) {
 	FILE_OBJ_CREATE_CONTEXT CreaCtx = {
-	    .MasterFileObject = FileObject
+	    .MasterFileObject = FileObject,
 	};
 	IF_ERR_GOTO(out, Status,
 		    ObCreateObject(OBJECT_TYPE_FILE,
@@ -213,36 +261,28 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	goto out;
     }
 
-    /* Concatenate the path of this file and the subpath to be opened to
-     * form the full path of the target file object. */
-    ULONG FileNameLen = strlen(FileObject->Fcb->FileName);
-    Locals.SubPathLen = strlen(SubPath);
-    Locals.FullPath = ExAllocatePoolWithTag(FileNameLen + Locals.SubPathLen + 1,
-					    NTOS_IO_TAG);
-    if (!Locals.FullPath) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
+    AWAIT_EX(Status, IopOpenDevice, State, Locals, Thread, FileObject->DeviceObject,
+	     FileObject, FileObject->Fcb->FileName, DesiredAccess, Attributes,
+	     OpenContext, &OpenedFile);
+    if (!NT_SUCCESS(Status)) {
 	goto out;
     }
-    RtlCopyMemory(Locals.FullPath, FileObject->Fcb->FileName, FileNameLen);
-    RtlCopyMemory(Locals.FullPath + FileNameLen, SubPath, Locals.SubPathLen + 1);
 
-    /* Open the target file object.
-     * TODO: related open, delete. */
-    AWAIT_EX(Status, IopOpenDevice, State, Locals, Thread,
-	     FileObject->DeviceObject, Locals.FullPath, Attributes,
-	     OpenContext, &OpenedFile);
+    /* For overwrite or supersede we should also invalidate the caches. */
+    if (DispositionIsOverwrite(OpenPacket->Disposition)) {
+	/* TODO! */
+	assert(FALSE);
+	Status = STATUS_NOT_IMPLEMENTED;
+    }
 
 out:
     if (NT_SUCCESS(Status)) {
 	*pOpenedInstance = OpenedFile;
-	*pRemainingPath = SubPath + Locals.SubPathLen;
+	*pRemainingPath = SubPath + strlen(SubPath);
 	Status = STATUS_SUCCESS;
     } else {
 	*pOpenedInstance = NULL;
 	*pRemainingPath = SubPath;
-    }
-    if (Locals.FullPath) {
-	IopFreePool(Locals.FullPath);
     }
     ASYNC_END(State, Status);
 }
@@ -251,9 +291,6 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 				IN PTHREAD Thread,
 				IN POBJECT Self)
 {
-    /* If the file is a slave file, nothing needs to be done. The file
-     * object will simply get deleted. If we are a master file object,
-     * send the driver a IRP_MJ_CLEANUP for the needed cleanup. */
     assert(Thread != NULL);
     assert(Self != NULL);
 
@@ -263,15 +300,19 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 	    PPENDING_IRP PendingIrp;
 	});
 
-    PIO_FILE_OBJECT TargetFile = FileObj->Fcb ? FileObj->Fcb->MasterFileObject : FileObj;
-    PIO_DEVICE_OBJECT DeviceObject = TargetFile ? TargetFile->DeviceObject : NULL;
-    if (!DeviceObject) {
+    /* If the file does not have a client-side handle, nothing needs to be done.
+     * The file object will simply get deleted. */
+    if (!FileObj->CloseReq) {
 	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
+    /* File with a client-side handle must have a device object. */
+    assert(FileObj->DeviceObject);
+    /* If the file has a client-side handle, send the driver a IRP_MJ_CLEANUP
+     * for the needed cleanup. */
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_CLEANUP,
-	.Device.Object = DeviceObject,
-	.File.Object = TargetFile,
+	.Device.Object = FileObj->DeviceObject,
+	.File.Object = FileObj,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
@@ -345,7 +386,10 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
     FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.FileName = FileName,
 	.FileSize = FileSize,
-	.NoFcb = !FileSize
+	.NoFcb = !FileSize,
+	.DesiredAccess = FILE_ALL_ACCESS,
+	 /* We don't allow NT clients to open a deviceless file for delete. */
+	.ShareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
@@ -390,7 +434,7 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
     }
 
     AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
-	     Thread, ObjectAttributes, OBJECT_TYPE_FILE,
+	     Thread, ObjectAttributes, OBJECT_TYPE_FILE, DesiredAccess,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FileHandle);
     if (IoStatusBlock != NULL) {
 	IoStatusBlock->Status = Status;
@@ -797,11 +841,35 @@ out:
     ASYNC_END(State, Status);
 }
 
-NTSTATUS NtDeleteFile(IN ASYNC_STATE AsyncState,
+NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
                       IN PTHREAD Thread,
                       IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    HANDLE FileHandle = NULL;
+    IO_STATUS_BLOCK IoStatus;
+
+    ASYNC_BEGIN(State, Locals, {
+	    HANDLE FileHandle;
+	});
+
+    /* Somewhat counter-intuitively, deleting a file involves opening a file
+     * with the FILE_DELETE_ON_CLOSE option, which will invoke the file system
+     * driver so it can mark the file as being delete. Once all open handles
+     * to the file are closed, the file system driver deletes the file in the
+     * IRP_MJ_CLEANUP dispatch function. */
+    AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, &FileHandle, DELETE,
+	     ObjectAttributes, &IoStatus, NULL, 0, FILE_SHARE_DELETE,
+	     FILE_OPEN, FILE_DELETE_ON_CLOSE);
+    Locals.FileHandle = FileHandle;
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(State, Status);
+    }
+
+    AWAIT(NtClose, State, Locals, Thread, Locals.FileHandle);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 /* TODO: We need to cache basic file info since this is accessed frequently. */
@@ -813,11 +881,12 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
-    PIO_FILE_OBJECT FileObject = NULL;
+    HANDLE FileHandle = NULL;
 
     ASYNC_BEGIN(State, Locals, {
-	    IO_OPEN_CONTEXT OpenContext;
+	    HANDLE FileHandle;
 	    PIO_FILE_OBJECT FileObject;
+	    IO_OPEN_CONTEXT OpenContext;
 	    IO_STATUS_BLOCK IoStatus;
 	    PPENDING_IRP PendingIrp;
 	});
@@ -829,13 +898,17 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.ShareAccess = FILE_SHARE_READ;
     Locals.OpenContext.OpenPacket.Disposition = FILE_OPEN;
 
-    AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals, Thread,
-	     ObjectAttributes, OBJECT_TYPE_FILE,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, (PVOID *)&FileObject);
+    AWAIT_EX(Status, ObOpenObjectByName, State, Locals, Thread,
+	     ObjectAttributes, OBJECT_TYPE_FILE, FILE_READ_ATTRIBUTES,
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, &FileHandle);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
-    Locals.FileObject = FileObject;
+    Locals.FileHandle = FileHandle;
+    assert(Locals.FileHandle != NULL);
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (PVOID *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
     if (!Locals.FileObject->DeviceObject) {
 	/* TODO! */
@@ -869,8 +942,8 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
     Status = STATUS_SUCCESS;
 
 out:
-    if (!NT_SUCCESS(Locals.IoStatus.Status)) {
-	Status = Locals.IoStatus.Status;
+    if (!NT_SUCCESS(Status)) {
+	Locals.IoStatus.Status = Status;
     }
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
@@ -878,8 +951,8 @@ out:
     if (Locals.FileObject) {
 	ObDereferenceObject(Locals.FileObject);
     }
-
-    ASYNC_END(State, Status);
+    AWAIT_IF(Locals.FileHandle, NtClose, State, Locals, Thread, Locals.FileHandle);
+    ASYNC_END(State, Locals.IoStatus.Status);
 }
 
 NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
@@ -1199,14 +1272,21 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 	DbgPrint("    (nil)\n");
 	return;
     }
-    DbgPrint("    DeviceObject = %p\n", File->DeviceObject);
-    DbgPrint("    Fcb = %p\n", File->Fcb);
+    DbgPrint("  DeviceObject = %p\n", File->DeviceObject);
+    DbgPrint("  Fcb = %p\n", File->Fcb);
     if (File->Fcb) {
 	DbgPrint("    FileName = %s\n", File->Fcb->FileName);
 	DbgPrint("    FileSize = 0x%llx\n", File->Fcb->FileSize);
+	DbgPrint("    MasterFileObject = %p\n", File->Fcb->MasterFileObject);
+	DbgPrint("    OpenInProgress = %d\n", File->Fcb->OpenInProgress);
 	DbgPrint("    SharedCacheMap = %p\n", File->Fcb->SharedCacheMap);
-	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
 	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);
+	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
+	if (File->Fcb->ImageSectionObject) {
+	    DbgPrint("      ImageCacheFile = %p\n",
+		     File->Fcb->ImageSectionObject->ImageCacheFile);
+	    IoDbgDumpFileObject(File->Fcb->ImageSectionObject->ImageCacheFile);
+	}
     }
 #endif
 }

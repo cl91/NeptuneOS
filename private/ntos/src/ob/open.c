@@ -134,6 +134,7 @@ NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
 			      IN PTHREAD Thread,
 			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			      IN OBJECT_TYPE_ENUM Type,
+			      IN ACCESS_MASK DesiredAccess,
 			      IN POB_OPEN_CONTEXT OpenContext,
 			      IN BOOLEAN AssignHandle,
 			      OUT PVOID *pHandle)
@@ -256,7 +257,7 @@ open:
 	  Locals.Object, Locals.Path);
     AWAIT_EX(Status,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc,
-	     AsyncState, Locals, Thread, Locals.Object, Locals.Path,
+	     AsyncState, Locals, Thread, Locals.Object, Locals.Path, DesiredAccess,
 	     ObjectAttributes.Attributes, OpenContext, &OpenedInstance, &RemainingPath);
 
     /* Now that the open is done, dereference the object. */

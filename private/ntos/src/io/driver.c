@@ -1,5 +1,14 @@
 #include "iop.h"
 
+/*
+ * Creation context for the driver object creation routine
+ */
+typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
+    PCSTR DriverImagePath;
+    PCSTR DriverServicePath;
+    PSECTION ImageSection;
+} DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
+
 NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
 {
@@ -142,7 +151,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.Disposition = 0;
 
     AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals,
-	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_FILE,
+	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_FILE, FILE_EXECUTE,
 	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, (PVOID *)&DriverImageFile);
     if (!NT_SUCCESS(Status)) {
 	goto out;

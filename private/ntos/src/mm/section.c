@@ -336,6 +336,8 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
     }
 
     assert(File->Fcb);
+    assert(File->Fcb->MasterFileObject);
+    ObpReferenceObject(File->Fcb->MasterFileObject);
     File->Fcb->ImageSectionObject = ImageSection;
     ImageSection->Fcb = File->Fcb;
     ImageSection->ImageCacheFile = ImageCacheFile;

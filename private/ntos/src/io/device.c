@@ -1,5 +1,14 @@
 #include "iop.h"
 
+/*
+ * Creation context for the device object creation routine
+ */
+typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
+    PIO_DRIVER_OBJECT DriverObject;
+    IO_DEVICE_INFO DeviceInfo;
+    BOOLEAN Exclusive;
+} DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
+
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
 {
@@ -154,11 +163,14 @@ VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
 NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
 		       IN PIO_DEVICE_OBJECT Device,
+		       IN PIO_FILE_OBJECT MasterFileObject,
 		       IN PCSTR SubPath,
+		       IN ACCESS_MASK DesiredAccess,
 		       IN ULONG Attributes,
 		       IN PIO_OPEN_CONTEXT OpenContext,
 		       OUT PIO_FILE_OBJECT *pFileObject)
 {
+    assert(Device);
     NTSTATUS Status = STATUS_NTOS_BUG;
     POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
     ASYNC_BEGIN(State, Locals, {
@@ -172,13 +184,22 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     /* TODO: Implement raw mount. */
     Locals.TargetDevice = IopIsStorageDevice(Device) ? Device->Vcb->VolumeDevice : Device;
 
-    Status = IopCreateMasterFileObject(SubPath, Locals.TargetDevice, &Locals.FileObject);
+    if (MasterFileObject) {
+	FILE_OBJ_CREATE_CONTEXT Ctx = {
+	    .MasterFileObject = MasterFileObject,
+	    .AllocateCloseReq = TRUE
+	};
+	Status = ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&Locals.FileObject, &Ctx);
+    } else {
+	Status = IopCreateMasterFileObject(SubPath, Locals.TargetDevice, DesiredAccess,
+					   OpenPacket->ShareAccess, &Locals.FileObject);
+    }
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
     assert(Locals.FileObject != NULL);
 
-    if (Device->Vcb) {
+    if (Device->Vcb && !MasterFileObject) {
 	/* If the open is case-insensitive, we insert with an all-lower case path. */
 	PCHAR ObjectName = NULL;
 	if (Attributes & OBJ_CASE_INSENSITIVE) {
@@ -309,6 +330,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
+				 IN ACCESS_MASK DesiredAccess,
 				 IN ULONG Attributes,
 				 IN POB_OPEN_CONTEXT Context,
 				 OUT POBJECT *pOpenedInstance,
@@ -344,8 +366,8 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, Status);
     }
 
-    AWAIT_EX(Status, IopOpenDevice, State, _, Thread, Device,
-	     SubPath, Attributes, OpenContext, &FileObject);
+    AWAIT_EX(Status, IopOpenDevice, State, _, Thread, Device, NULL,
+	     SubPath, DesiredAccess, Attributes, OpenContext, &FileObject);
     if (NT_SUCCESS(Status)) {
 	*pOpenedInstance = FileObject;
 	*pRemainingPath = SubPath + strlen(SubPath);
