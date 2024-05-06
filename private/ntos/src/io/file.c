@@ -336,7 +336,7 @@ out:
 VOID IopFileObjectDeleteProc(IN POBJECT Self)
 {
     PIO_FILE_OBJECT FileObj = Self;
-    DbgTrace("Deleteing file %p\n", FileObj);
+    DbgTrace("Releasing file object %p from memory\n", FileObj);
     IoDbgDumpFileObject(FileObj);
     /* For file objects that have a client-side object, we queue an
      * IRP_MJ_CLOSE request to its driver object. This request is
@@ -352,6 +352,14 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 	/* The IO packet will be deleted later after it is sent to the driver. */
 	InsertTailList(&Driver->IoPacketQueue, &FileObj->CloseReq->IoPacketLink);
 	KeSetEvent(&Driver->IoPacketQueuedEvent);
+    }
+
+    /* For files with caching initialized, flush dirty data to disk. */
+    if (FileObj->Fcb && FileObj->Fcb->SharedCacheMap) {
+	CiFlushPrivateCacheToShared(FileObj->Fcb);
+	if (FileObj->Fcb->Vcb && FileObj->Fcb != FileObj->Fcb->Vcb->VolumeFcb) {
+	    CiFlushDirtyDataToVolume(FileObj->Fcb);
+	}
     }
     if (FileObj->DeviceObject) {
 	ObDereferenceObject(FileObj->DeviceObject);

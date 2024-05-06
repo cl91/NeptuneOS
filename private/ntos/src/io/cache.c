@@ -28,7 +28,6 @@ Revision History:
 
 --*/
 #include "iop.h"
-#include "wdmsvc.h"
 
 #define NTOS_CC_TAG	(EX_POOL_TAG('n','t','c','c'))
 
@@ -418,30 +417,29 @@ static NTSTATUS CiGetView(IN PIO_FILE_CONTROL_BLOCK Fcb,
     return Node ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
 }
 
-static VOID CiDeleteView(IN PCC_VIEW View) {}
-
-static VOID CiDeleteViewTable(IN PCC_VIEW_TABLE ViewTable) {}
-
 static VOID CiPurgeCacheMap(IN PCC_CACHE_MAP Map)
 {
+    /* Fcb must not have any dirty cached data or queued IO request at the time of
+     * calling this routine. */
+    PCC_VIEW View;
+    while ((View = AVL_NODE_TO_VIEW(AvlGetFirstNode(&Map->ViewTree))) != NULL) {
+	assert(!View->DirtyMap);
+	assert(!View->IoReq);
+	AvlTreeRemoveNode(&Map->ViewTree, &View->Node);
+	MmUncommitVirtualMemory(View->MappedAddress, VIEW_SIZE);
+	CiFreePool(View);
+    }
 }
 
 VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
-    /* Fcb must not have any dirty cached data at the time of calling this routine. */
     if (Fcb->SharedCacheMap) {
-	LoopOverView(View, Fcb->SharedCacheMap) {
-	    assert(!View->DirtyMap);
-	}
 	CiPurgeCacheMap(Fcb->SharedCacheMap);
 	CiFreePool(Fcb->SharedCacheMap);
 	Fcb->SharedCacheMap = NULL;
     }
 
     LoopOverList(Map, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
-	LoopOverView(View, Map) {
-	    assert(!View->DirtyMap);
-	}
 	RemoveEntryList(&Map->PrivateMap.Link);
 	CiPurgeCacheMap(Map);
 	CiFreePool(Map);

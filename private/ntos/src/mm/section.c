@@ -406,6 +406,19 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
     LoopOverList(Vad, &Section->VadList, MMVAD, SectionLink) {
 	MmDeleteVad(Vad);
     }
+    if (Section->Flags.Image && Section->ImageSectionObject) {
+	if (Section->ImageSectionObject->ImageCacheFile) {
+	    ObDereferenceObject(Section->ImageSectionObject->ImageCacheFile);
+	}
+	if (Section->ImageSectionObject->Fcb &&
+	    Section->ImageSectionObject->Fcb->MasterFileObject) {
+	    ObDereferenceObject(Section->ImageSectionObject->Fcb->MasterFileObject);
+	}
+	MiFreePool(Section->ImageSectionObject);
+    } else if (Section->Flags.File) {
+	/* TODO! */
+	assert(FALSE);
+    }
 }
 
 NTSTATUS MmSectionInitialization()
