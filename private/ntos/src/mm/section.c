@@ -410,9 +410,13 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 	if (Section->ImageSectionObject->ImageCacheFile) {
 	    ObDereferenceObject(Section->ImageSectionObject->ImageCacheFile);
 	}
-	if (Section->ImageSectionObject->Fcb &&
-	    Section->ImageSectionObject->Fcb->MasterFileObject) {
-	    ObDereferenceObject(Section->ImageSectionObject->Fcb->MasterFileObject);
+	PIO_FILE_CONTROL_BLOCK Fcb = Section->ImageSectionObject->Fcb;
+	if (Fcb) {
+	    assert(Fcb->ImageSectionObject == Section->ImageSectionObject);
+	    Fcb->ImageSectionObject = NULL;
+	    if (Fcb->MasterFileObject) {
+		ObDereferenceObject(Fcb->MasterFileObject);
+	    }
 	}
 	MiFreePool(Section->ImageSectionObject);
     } else if (Section->Flags.File) {

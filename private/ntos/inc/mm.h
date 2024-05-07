@@ -693,8 +693,9 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
 				 IN MWORD WindowSize);
-VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
-			     IN MWORD WindowSize);
+VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD StartAddr,
+			       IN MWORD WindowSize);
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN ULONG Length,
 					      IN MWORD HighestPhyAddr,
@@ -764,6 +765,14 @@ static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
+
+static inline VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
+					   IN MWORD WindowSize)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    MmUncommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
+}
+
 
 static inline PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
 {

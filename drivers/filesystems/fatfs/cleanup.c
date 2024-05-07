@@ -94,6 +94,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
     if (IsVolume && BooleanFlagOn(DeviceExt->Flags, VCB_DISMOUNT_PENDING)) {
 	return FatCheckForDismount(DeviceExt, TRUE);
     }
+    return FALSE;
 }
 
 /*

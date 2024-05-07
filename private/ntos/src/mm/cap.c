@@ -51,7 +51,7 @@ Revision History:
 
 VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 {
-#ifdef MMDBG
+#if defined(MMDBG) && defined(CONFIG_DEBUG_BUILD)
     if (Node == NULL) {
 	MmDbgPrint("(nil)");
 	return;
@@ -85,7 +85,7 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 
 VOID MmDbgDumpCNode(IN PCNODE CNode)
 {
-#ifdef MMDBG
+#if defined(MMDBG) && defined(CONFIG_DEBUG_BUILD)
     MmDbg("Dumping CNode %p\n", CNode);
     MmDbgPrint("    TREE-NODE ");
     MmDbgDumpCapTreeNode(&CNode->TreeNode);

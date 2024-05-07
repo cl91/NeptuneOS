@@ -15,7 +15,7 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
     }
     Fcb->FileSize = FileSize;
     Fcb->Vcb = Vcb;
-    AvlInitializeTree(&Fcb->FileOffsetMappings);
+    AvlInitializeTree(&Fcb->FileRegionMappings);
     InitializeListHead(&Fcb->PrivateCacheMaps);
     KeInitializeEvent(&Fcb->OpenCompleted, NotificationEvent);
     KeInitializeEvent(&Fcb->WriteCompleted, NotificationEvent);
@@ -27,6 +27,8 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
+    assert(!Fcb->ImageSectionObject);
+    assert(!Fcb->DataSectionObject);
     if (Fcb->FileName) {
 	IopFreePool(Fcb->FileName);
     }
@@ -299,6 +301,13 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    PPENDING_IRP PendingIrp;
 	});
+
+    /* If the file is a master file object in a volume device, remove the file from
+     * the cached subobject directory, so any CREATE request for the same file from
+     * this point on will insert a new file object into the cached subobject directory. */
+    if (FileObj->Fcb && FileObj == FileObj->Fcb->MasterFileObject && FileObj->Fcb->Vcb) {
+	ObRemoveObject(Self);
+    }
 
     /* If the file does not have a client-side handle, nothing needs to be done.
      * The file object will simply get deleted. */

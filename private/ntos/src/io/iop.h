@@ -145,6 +145,9 @@ typedef struct _PENDING_IRP {
     struct _PENDING_IRP *ForwardedFrom; /* Back pointer for ForwardedTo. */
     MWORD InputBuffer; /* Pointer in the address space of the THREAD or DRIVER at this level */
     MWORD OutputBuffer;	/* Pointer in the address space of the THREAD or DRIVER at this level */
+    BOOLEAN InterceptorCalled;	/* The IRP interception/completion callback can use this
+				 * member to indicate whether the interception callback
+				 * has been called on this PENDING_IRP. */
     /* ---- The following four members are only valid if Requestor is a THREAD object ---- */
     KEVENT IoCompletionEvent; /* Signaled when the IO request has been completed. */
     IO_STATUS_BLOCK IoResponseStatus; /* Response status to the pending IO packet. */

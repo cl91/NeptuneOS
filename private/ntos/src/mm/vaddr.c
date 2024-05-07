@@ -765,10 +765,11 @@ VOID MmDeleteVad(IN PMMVAD Vad)
     MiFreePool(Vad);
 }
 
-VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
-			     IN MWORD WindowSize)
+VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD StartAddr,
+			       IN MWORD WindowSize)
 {
-    MiUncommitWindow(&MiNtosVaddrSpace, &StartAddr, &WindowSize);
+    MiUncommitWindow(VSpace, &StartAddr, &WindowSize);
 }
 
 /*

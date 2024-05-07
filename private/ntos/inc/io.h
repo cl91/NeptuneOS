@@ -137,7 +137,7 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
     PIO_FILE_OBJECT MasterFileObject;
     PCSTR FileName;		/* Owned by this struct. */
     ULONG64 FileSize;
-    AVL_TREE FileOffsetMappings; /* AVL tree of FILE_OFFSET_MAPPING. This is not
+    AVL_TREE FileRegionMappings; /* AVL tree of FILE_REGION_MAPPING. This is not
 				  * used for the volume FCB. */
     struct _CC_CACHE_MAP *SharedCacheMap;
     LIST_ENTRY PrivateCacheMaps;

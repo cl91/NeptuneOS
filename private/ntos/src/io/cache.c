@@ -130,19 +130,51 @@ typedef struct _CC_CACHE_SPACE {
 } CC_CACHE_SPACE, *PCC_CACHE_SPACE;
 
 /*
- * This structure records the mapping from the file offset of a file system
- * file object to the file offset of the underlying volume object.
+ * This structure records the mapping from the file region of a file system
+ * file object to the file region of the underlying volume object.
  */
-typedef struct _FILE_OFFSET_MAPPING {
+typedef struct _FILE_REGION_MAPPING {
     AVL_NODE Node; /* Key is the starting file offset of the file region in the FS file. */
     ULONG64 VolumeFileOffset; /* Starting offset of the corresponding volume file region. */
     ULONG64 Length; /* Length of the file region. Cluster size aligned except for the
 		     * last file block. */
     struct _CC_CACHE_MAP *CacheMap;
-} FILE_OFFSET_MAPPING, *PFILE_OFFSET_MAPPING;
+} FILE_REGION_MAPPING, *PFILE_REGION_MAPPING;
 
-#define AVL_NODE_TO_FILE_OFFSET_MAPPING(p)				\
-    ((p) ? CONTAINING_RECORD(p, FILE_OFFSET_MAPPING, Node) : NULL)
+#define AVL_NODE_TO_FILE_REGION_MAPPING(p)				\
+    ((p) ? CONTAINING_RECORD(p, FILE_REGION_MAPPING, Node) : NULL)
+
+/* Free all the FILE_REGION_MAPPINGs of the specified file region */
+static VOID CiFreeFileRegionMapping(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				    IN ULONG64 FileOffset,
+				    IN ULONG64 Length)
+{
+    PFILE_REGION_MAPPING Node =
+	AVL_NODE_TO_FILE_REGION_MAPPING(AvlTreeFindNodeOrParent(&Fcb->FileRegionMappings,
+								FileOffset));
+    while (Node) {
+	PAVL_NODE Next = AvlGetNextNode(&Node->Node);
+	if (FileOffset <= Node->Node.Key && Node->Node.Key + Length <= FileOffset + Length) {
+	    AvlTreeRemoveNode(&Fcb->FileRegionMappings, &Node->Node);
+	    CiFreePool(Node);
+	}
+	Node = AVL_NODE_TO_FILE_REGION_MAPPING(Next);
+    }
+}
+
+static VOID CiDbgDumpFileRegionMappings(IN PIO_FILE_CONTROL_BLOCK Fcb)
+{
+    DbgTrace("Dumping file region mappings for fcb %p (name %s)\n",
+	     Fcb, Fcb->FileName);
+    PFILE_REGION_MAPPING Node =
+	AVL_NODE_TO_FILE_REGION_MAPPING(AvlGetFirstNode(&Fcb->FileRegionMappings));
+    while (Node) {
+	DbgPrint("  [0x%llx + 0x%llx -> 0x%llx]", Node->Node.Key,
+		 Node->Length, Node->VolumeFileOffset);
+	Node = AVL_NODE_TO_FILE_REGION_MAPPING(AvlGetNextNode(&Node->Node));
+    }
+    DbgPrint("\n");
+}
 
 /*
  * A view is an area of the virtual memory space that spans 64 pages (256KB
@@ -417,17 +449,28 @@ static NTSTATUS CiGetView(IN PIO_FILE_CONTROL_BLOCK Fcb,
     return Node ? STATUS_SUCCESS : STATUS_NONE_MAPPED;
 }
 
+static VOID CiDeleteView(IN PCC_VIEW View)
+{
+    assert(!View->DirtyMap);
+    assert(!View->IoReq);
+    AvlTreeRemoveNode(&View->CacheMap->ViewTree, &View->Node);
+    MmUncommitVirtualMemoryEx(View->CacheMap->CacheSpace->AddrSpace,
+			      View->MappedAddress, VIEW_SIZE);
+    PCC_VIEW_TABLE ViewTable = View->CacheMap->CacheSpace->ViewTable;
+    ULONG ViewTableIndex = (View->MappedAddress >> VIEW_LOG2SIZE) &
+	((1UL << VIEW_TABLE_ADDRESS_BITS) - 1);
+    ClearBit(ViewTable->Bitmap, ViewTableIndex);
+    ViewTable->Views[ViewTableIndex] = NULL;
+    CiFreePool(View);
+}
+
 static VOID CiPurgeCacheMap(IN PCC_CACHE_MAP Map)
 {
     /* Fcb must not have any dirty cached data or queued IO request at the time of
      * calling this routine. */
     PCC_VIEW View;
     while ((View = AVL_NODE_TO_VIEW(AvlGetFirstNode(&Map->ViewTree))) != NULL) {
-	assert(!View->DirtyMap);
-	assert(!View->IoReq);
-	AvlTreeRemoveNode(&Map->ViewTree, &View->Node);
-	MmUncommitVirtualMemory(View->MappedAddress, VIEW_SIZE);
-	CiFreePool(View);
+	CiDeleteView(View);
     }
 }
 
@@ -444,6 +487,7 @@ VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb)
 	CiPurgeCacheMap(Map);
 	CiFreePool(Map);
     }
+    CiFreeFileRegionMapping(Fcb, 0, ~0ULL);
 }
 
 typedef struct _PIN_DATA_CALLBACK_CONTEXT {
@@ -527,36 +571,13 @@ typedef struct _QUEUED_IO_REQUEST {
     MWORD Length;  /* Request length of the IO request. Note this may not be equal to
 		    * the IO buffer length in the PendingIrp below, since drivers can
 		    * change the ByteOffset and Length when forwarding an IRP. */
+    MWORD CompletedLength; /* Length of the completed portion of the IO request. */
     PPENDING_IRP PendingIrp; /* When this is NULL, the QUEUED_IO_REQUEST is a slave
 			      * waiting for the master QUEUED_IO_REQUEST to finish. */
     LIST_ENTRY Link;   /* List entry for PIN_DATA_EX_CALLBACK_INFO::ReqList */
     LIST_ENTRY Slaves; /* Chains all slave QUEUED_IO_REQUESTs waiting on the completion
 			* of the master QUEUED_IO_REQUEST. */
 } QUEUED_IO_REQUEST, *PQUEUED_IO_REQUEST;
-
-FORCEINLINE ULONG64 CiGetIrpByteOffset(IN PQUEUED_IO_REQUEST Req)
-{
-    PIO_REQUEST_PARAMETERS Irp = &Req->PendingIrp->IoPacket->Request;
-    BOOLEAN Write = Irp->MajorFunction == IRP_MJ_WRITE;
-    assert(Write || Irp->MajorFunction == IRP_MJ_READ);
-    return Write ? Irp->Write.ByteOffset.QuadPart : Irp->Read.ByteOffset.QuadPart;
-}
-
-FORCEINLINE MWORD CiGetIrpRequestLength(IN PQUEUED_IO_REQUEST Req)
-{
-    PIO_REQUEST_PARAMETERS Irp = &Req->PendingIrp->IoPacket->Request;
-    BOOLEAN Write = Irp->MajorFunction == IRP_MJ_WRITE;
-    assert(Write || Irp->MajorFunction == IRP_MJ_READ);
-    return Write ? Irp->InputBufferLength : Irp->OutputBufferLength;
-}
-
-FORCEINLINE MWORD CiGetIrpUserBuffer(IN PQUEUED_IO_REQUEST Req)
-{
-    PIO_REQUEST_PARAMETERS Irp = &Req->PendingIrp->IoPacket->Request;
-    BOOLEAN Write = Irp->MajorFunction == IRP_MJ_WRITE;
-    assert(Write || Irp->MajorFunction == IRP_MJ_READ);
-    return Write ? Irp->InputBuffer : Irp->OutputBuffer;
-}
 
 static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
 				  IN NTSTATUS Status)
@@ -583,12 +604,16 @@ static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
 	    assert(View->IoReq == Req);
 	    View->IoReq = NULL;
 	    ULONG SizeToMap = min(VIEW_SIZE, Req->Length - Length);
-	    ULONG AlignedSize = PAGE_ALIGN_UP(View->MappedSize);
 	    if (NT_SUCCESS(IoStatus.Status)) {
 		View->MappedSize = SizeToMap;
-	    } else if (SizeToMap > AlignedSize) {
-		MmUncommitVirtualMemory(View->MappedAddress + AlignedSize,
-					SizeToMap - AlignedSize);
+	    } else if (SizeToMap > View->MappedSize) {
+		ULONG AlignedSize = PAGE_ALIGN_UP(View->MappedSize);
+		if (SizeToMap > AlignedSize) {
+		    MmUncommitVirtualMemory(View->MappedAddress + AlignedSize,
+					    SizeToMap - AlignedSize);
+		}
+		CiFreeFileRegionMapping(View->CacheMap->Fcb, View->Node.Key + View->MappedSize,
+					SizeToMap - View->MappedSize);
 	    }
 	}
     }
@@ -626,46 +651,37 @@ static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
     }
 }
 
-/* Free all the FILE_OFFSET_MAPPINGs of the specified file region */
-static VOID CiFreeFileOffsetMappings(IN PIO_FILE_CONTROL_BLOCK Fcb,
-				     IN ULONG64 FileOffset,
-				     IN ULONG64 Length)
+FORCEINLINE MWORD CiGetIrpUserBuffer(IN PPENDING_IRP PendingIrp)
 {
-    PFILE_OFFSET_MAPPING Node =
-	AVL_NODE_TO_FILE_OFFSET_MAPPING(AvlTreeFindNodeOrParent(&Fcb->FileOffsetMappings,
-								FileOffset));
-    while (Node) {
-	PAVL_NODE Next = AvlGetNextNode(&Node->Node);
-	if (FileOffset <= Node->Node.Key && Node->Node.Key + Length <= FileOffset + Length) {
-	    AvlTreeRemoveNode(&Fcb->FileOffsetMappings, &Node->Node);
-	    CiFreePool(Node);
-	}
-	Node = AVL_NODE_TO_FILE_OFFSET_MAPPING(Next);
-    }
+    PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
+    BOOLEAN Write = Irp->MajorFunction == IRP_MJ_WRITE;
+    assert(Write || Irp->MajorFunction == IRP_MJ_READ);
+    return Write ? Irp->InputBuffer : Irp->OutputBuffer;
 }
 
-typedef struct _FILE_OFFSET_MAPPING_CALLBACK_CONTEXT {
+typedef struct _FILE_REGION_MAPPING_CALLBACK_CONTEXT {
     PQUEUED_IO_REQUEST IoReq; /* This must be a master QUEUED_IO_REQUEST object */
     PPENDING_IRP PendingIrp;
-    MWORD CompletedLength;
-} FILE_OFFSET_MAPPING_CALLBACK_CONTEXT, *PFILE_OFFSET_MAPPING_CALLBACK_CONTEXT;
+} FILE_REGION_MAPPING_CALLBACK_CONTEXT, *PFILE_REGION_MAPPING_CALLBACK_CONTEXT;
 
-static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
+static VOID CiFileRegionMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 					IN ULONG64 VolumeFileOffset,
 					IN ULONG64 Length,
 					IN NTSTATUS Status,
 					IN OUT PVOID Ctx)
 {
-    PFILE_OFFSET_MAPPING_CALLBACK_CONTEXT Context = Ctx;
+    PFILE_REGION_MAPPING_CALLBACK_CONTEXT Context = Ctx;
     PQUEUED_IO_REQUEST IoReq = Context->IoReq;
-    assert(IoReq->PendingIrp);
+    assert(IoReq);
+    PPENDING_IRP PendingIrp = Context->PendingIrp;
+    assert(PendingIrp);
     PCC_CACHE_MAP CacheMap = IoReq->View->CacheMap;
     PIO_FILE_CONTROL_BLOCK Fcb = CacheMap->Fcb;
     assert(Fcb != Fcb->Vcb->VolumeFcb);
     assert(VolumeFcb == Fcb->Vcb->VolumeFcb);
     BOOLEAN Extend = FALSE;
-    PFILE_OFFSET_MAPPING Mapping = NULL;
-    ULONG64 RequestLength = Length;
+    PFILE_REGION_MAPPING Mapping = NULL;
+    ULONG64 OriginalLength = Length;
 
     if (!NT_SUCCESS(Status)) {
 	goto out;
@@ -675,44 +691,49 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
      * offset of the IO request, obtained from the leading view object associated with
      * the QUEUED_IO_REQUEST, and the offset supplied by the driver in the UserBuffer
      * member of the IRP. */
-    ULONG64 FileOffset = IoReq->View->Node.Key + CiGetIrpUserBuffer(IoReq);
+    ULONG64 FileOffset = IoReq->View->Node.Key + CiGetIrpUserBuffer(PendingIrp);
 
     /* If the Length exceeds the file size, adjust it to the end of the file. Note
      * that if we are extending the file, by this time the file size will have been
      * updated to the new file size. */
+    assert(Fcb->FileSize);
     if (FileOffset >= Fcb->FileSize) {
 	assert(FALSE);
 	Status = STATUS_INTERNAL_ERROR;
 	goto out;
     }
     if (FileOffset + Length > Fcb->FileSize) {
-	RequestLength = Length = Fcb->FileSize - FileOffset;
+	Length = Fcb->FileSize - FileOffset;
     }
 
-    PFILE_OFFSET_MAPPING Parent =
-	AVL_NODE_TO_FILE_OFFSET_MAPPING(AvlTreeFindNodeOrParent(&Fcb->FileOffsetMappings,
+    PFILE_REGION_MAPPING Parent =
+	AVL_NODE_TO_FILE_REGION_MAPPING(AvlTreeFindNodeOrParent(&Fcb->FileRegionMappings,
 								FileOffset));
     if (Parent) {
-	/* File system driver cannot return an overlapping file offset mapping. */
+	/* File system driver cannot return an overlapping file region mapping. */
 	if ((Parent->Node.Key < FileOffset && FileOffset < Parent->Node.Key + Parent->Length) ||
 	    (FileOffset < Parent->Node.Key && FileOffset + Length > Parent->Node.Key)) {
+	    CiDbgDumpFileRegionMappings(Fcb);
+	    assert(FALSE);
 	    Status = STATUS_INTERNAL_ERROR;
 	    goto out;
 	}
 	if (Parent->Node.Key == FileOffset) {
 	    if (Length < Parent->Length || Parent->VolumeFileOffset != VolumeFileOffset) {
-		/* If a file system driver resends an existing file offset mapping, it
+		/* If a file system driver resends an existing file region mapping, it
 		 * cannot be shrinking it, or change the starting volume file offset. */
+		CiDbgDumpFileRegionMappings(Fcb);
+		assert(FALSE);
 		Status = STATUS_INTERNAL_ERROR;
 		goto out;
 	    }
 	    if (Length == Parent->Length) {
-		/* If a file system driver resends an identical file offset mapping,
+		/* If a file system driver resends an identical file region mapping,
 		 * do nothing and return success. */
 		Status = STATUS_SUCCESS;
 		goto out;
 	    }
-	    /* We are extending a file offset mapping, so skip the part already mapped.
+	    /* We are extending a file region mapping, so skip the part already mapped.
 	     * Note if the cache pages are shared with the volume cache pages, we need
 	     * to skip whole pages. */
 	    ULONG64 LengthToSkip = Parent->Length;
@@ -734,7 +755,7 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
     /* Allocate the mapping object and record FileOffset, Length, and VolumeFileOffset,
      * because we will be changing these in the code below. */
     if (!Extend) {
-	Mapping = CiAllocatePool(sizeof(FILE_OFFSET_MAPPING));
+	Mapping = CiAllocatePool(sizeof(FILE_REGION_MAPPING));
 	if (!Mapping) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto out;
@@ -761,6 +782,8 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 				     PAGE_SIZE, MM_RIGHTS_RW, FALSE);
 	if (!NT_SUCCESS(Status) && Status != STATUS_ALREADY_COMMITTED) {
 	    goto out;
+	} else {
+	    Status = STATUS_SUCCESS;
 	}
 	/* If we are writing to a file, don't bother copying the data from the volume file. */
 	ULONG LengthToCopy = min(PAGE_ALIGN_UP64(FileOffset) - FileOffset, Length);
@@ -779,7 +802,9 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 			  Buffer, MappedLength);
 	}
 	/* Skip the part we copied above so the code below will not do unneeded copy. */
-	Parent->Length += LengthToCopy;
+	if (Extend) {
+	    Parent->Length += LengthToCopy;
+	}
 	FileOffset += LengthToCopy;
 	VolumeFileOffset += LengthToCopy;
 	Length -= LengthToCopy;
@@ -850,6 +875,8 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 				     PAGE_SIZE, MM_RIGHTS_RW, FALSE);
 	if (!NT_SUCCESS(Status) && Status != STATUS_ALREADY_COMMITTED) {
 	    goto out;
+	} else {
+	    Status = STATUS_SUCCESS;
 	}
     }
 
@@ -904,28 +931,39 @@ static VOID CiFileOffsetMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 	Parent->Length += Length;
     } else {
 	assert(!Parent || Mapping->Node.Key != Parent->Node.Key);
-	AvlTreeInsertNode(&Fcb->FileOffsetMappings, &Parent->Node, &Mapping->Node);
+	AvlTreeInsertNode(&Fcb->FileRegionMappings, &Parent->Node, &Mapping->Node);
     }
 
 out:
-    Context->CompletedLength += RequestLength;
+    IoReq->CompletedLength += OriginalLength;
     if (!NT_SUCCESS(Status)) {
 	if (Mapping) {
 	    CiFreePool(Mapping);
 	}
-	CiFreeFileOffsetMappings(Fcb, IoReq->View->Node.Key, IoReq->Length);
 	/* The cache pages mapped above will be freed in CiCompleteQueuedIoReq. */
 	IoReq->CallbackInfo->IoStatus.Status = Status;
     }
-    if (Context->CompletedLength >= IoReq->Length) {
-	assert(Context->CompletedLength == IoReq->Length);
+    if (IoReq->CompletedLength >= IoReq->Length) {
 	CiCompleteQueuedIoReq(IoReq, Status);
     }
-    IO_STATUS_BLOCK IoStatus = {
-	.Status = Status,
-	.Information = NT_SUCCESS(Status) ? RequestLength : 0
-    };
+    IO_STATUS_BLOCK IoStatus = { .Status = Status };
     IopCompletePendingIrp(Context->PendingIrp, IoStatus, NULL, 0);
+}
+
+FORCEINLINE ULONG64 CiGetIrpByteOffset(IN PPENDING_IRP PendingIrp)
+{
+    PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
+    BOOLEAN Write = Irp->MajorFunction == IRP_MJ_WRITE;
+    assert(Write || Irp->MajorFunction == IRP_MJ_READ);
+    return Write ? Irp->Write.ByteOffset.QuadPart : Irp->Read.ByteOffset.QuadPart;
+}
+
+FORCEINLINE MWORD CiGetIrpRequestLength(IN PPENDING_IRP PendingIrp)
+{
+    PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
+    BOOLEAN Write = Irp->MajorFunction == IRP_MJ_WRITE;
+    assert(Write || Irp->MajorFunction == IRP_MJ_READ);
+    return Write ? Irp->InputBufferLength : Irp->OutputBufferLength;
 }
 
 static BOOLEAN CiPagedIoCallback(IN PPENDING_IRP PendingIrp,
@@ -933,8 +971,8 @@ static BOOLEAN CiPagedIoCallback(IN PPENDING_IRP PendingIrp,
 				 IN BOOLEAN Completion)
 {
     PQUEUED_IO_REQUEST IoReq = Context;
-    ULONG64 FileOffset = CiGetIrpByteOffset(IoReq);
-    MWORD RequestLength = CiGetIrpRequestLength(IoReq);
+    ULONG64 FileOffset = CiGetIrpByteOffset(PendingIrp);
+    MWORD RequestLength = CiGetIrpRequestLength(PendingIrp);
 
     PIO_FILE_CONTROL_BLOCK Fcb = IoReq->View->CacheMap->Fcb;
     assert(Fcb->SharedCacheMap == IoReq->View->CacheMap);
@@ -942,53 +980,78 @@ static BOOLEAN CiPagedIoCallback(IN PPENDING_IRP PendingIrp,
     NTSTATUS Status = PendingIrp->IoResponseStatus.Status;
 
     if (IsVolume) {
-	/* If the target of the IO is the volume file object, allow it
-	 * to pass on to the lower driver. */
+	/* For the volume file object, if the storage driver forwarded
+	 * the IRP to a lower driver, allow it to pass. */
 	if (!Completion) {
 	    return TRUE;
 	}
-    } else {
-	if (!NT_SUCCESS(Status)) {
-	    goto out;
-	}
-	if (Completion) {
-	    /* For the master IRP we should call IopCleanupPendingIrp and free
-	     * the IoReq because we originally allocated the IoReq and requested
-	     * the IRP (in CcPinDataEx). */
-	    if (PendingIrp == IoReq->PendingIrp) {
-		goto cleanup;
-	    }
-	    /* For associated IRPs we should not call IopCleanupPendingIrp as
-	     * the system does the clean up for us (in IopCompletePendingIrp). */
-	    return FALSE;
-	}
-	/* File offset mapping must be aligned by cluster size. */
-	if (!IS_ALIGNED_BY(FileOffset, Fcb->Vcb->ClusterSize) ||
-	    !IS_ALIGNED_BY(RequestLength, Fcb->Vcb->ClusterSize)) {
-	    assert(FALSE);
-	    Status = STATUS_INVALID_DEVICE_REQUEST;
-	    goto out;
-	}
-	PFILE_OFFSET_MAPPING_CALLBACK_CONTEXT FileOffsetMappingCallbackContext =
-	    CiAllocatePool(sizeof(FILE_OFFSET_MAPPING_CALLBACK_CONTEXT));
-	if (!FileOffsetMappingCallbackContext) {
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	    goto out;
-	}
-	FileOffsetMappingCallbackContext->IoReq = IoReq;
-	FileOffsetMappingCallbackContext->PendingIrp = PendingIrp;
-	/* Note that since the IRP forwarding code updates the ByteOffset and the
-	 * Length members of the IRP, the FileOffset above is in fact the volume
-	 * file offset (not the file offset of the original file object), and the
-	 * RequestLength is in fact the length of the file offset mapping (not the
-	 * length of the original IO request). */
-	CcPinDataEx(Fcb->Vcb->VolumeFcb, FileOffset, RequestLength, FALSE,
-		    CiFileOffsetMappingCallback, FileOffsetMappingCallbackContext);
-	return FALSE;
+	/* Otherwise, complete the IRP. */
+	goto out;
     }
 
+    /* For non-volume file objects, if the file system driver responded to the
+     * original IO request with error straightaway, complete the IRP. Note in
+     * this case Completion will be TRUE but InterceptorCalled will be FALSE.*/
+    if (!NT_SUCCESS(Status) && !PendingIrp->InterceptorCalled) {
+	assert(Completion);
+	goto out;
+    }
+    /* For every file region of the (non-volume) files for which the file system
+     * driver successfully located its volume offset, this function will be called
+     * twice. First when the IRP is forwarded by the file system driver, and second
+     * when we call IopCompletePendingIrp to complete the PENDING_IRP in below. We
+     * distinguish the two cases using PendingIrp->InterceptorCalled. */
+    if (PendingIrp->InterceptorCalled) {
+	/* For the second time this function is called, Completion is always TRUE. */
+	assert(Completion);
+	/* For the master IRP we should call IopCleanupPendingIrp and free the IoReq
+	 * because we are the original requestor of the IoReq (see CcPinDataEx). */
+	if (PendingIrp == IoReq->PendingIrp) {
+	    goto cleanup;
+	}
+	/* For associated IRPs we should not call IopCleanupPendingIrp as the system
+	 * does the clean up for us (in IopCompletePendingIrp). Note in this case the
+	 * return value does not matter and we can return anything. */
+	return FALSE;
+    }
+    PendingIrp->InterceptorCalled = TRUE;
+
+    /* If we got here, we are being called for the first time. Build the file
+     * region mapping. file region mapping must be aligned by cluster size. */
+    if (!IS_ALIGNED_BY(FileOffset, Fcb->Vcb->ClusterSize) ||
+	!IS_ALIGNED_BY(RequestLength, Fcb->Vcb->ClusterSize)) {
+	assert(FALSE);
+	Status = STATUS_INTERNAL_ERROR;
+	goto out;
+    }
+    /* File region length cannot be zero. */
+    if (!RequestLength) {
+	assert(FALSE);
+	Status = STATUS_INTERNAL_ERROR;
+	goto out;
+    }
+    PFILE_REGION_MAPPING_CALLBACK_CONTEXT FileRegionMappingCallbackContext =
+	CiAllocatePool(sizeof(FILE_REGION_MAPPING_CALLBACK_CONTEXT));
+    if (!FileRegionMappingCallbackContext) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto out;
+    }
+    FileRegionMappingCallbackContext->IoReq = IoReq;
+    FileRegionMappingCallbackContext->PendingIrp = PendingIrp;
+    /* Note that since the IRP forwarding code updates the ByteOffset and the
+     * Length members of the IRP, the FileOffset above is in fact the volume
+     * file offset (not the file offset of the original file object), and the
+     * RequestLength is in fact the length of the file region mapping (not the
+     * length of the original IO request). */
+    CcPinDataEx(Fcb->Vcb->VolumeFcb, FileOffset, RequestLength, FALSE,
+		CiFileRegionMappingCallback, FileRegionMappingCallbackContext);
+    return FALSE;
+
 out:
-    CiCompleteQueuedIoReq(IoReq, Status);
+    IoReq->CompletedLength += RequestLength;
+    if (IoReq->CompletedLength >= IoReq->Length) {
+	CiCompleteQueuedIoReq(IoReq, Status);
+    }
 cleanup:
     IopCleanupPendingIrp(IoReq->PendingIrp);
     CiFreePool(IoReq);
@@ -1311,9 +1374,13 @@ VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
 	    ULONG ViewOffset = i * PAGE_SIZE;
 	    while (ViewOffset < min((i+1) * PAGE_SIZE, Fcb->FileSize - View->Node.Key)) {
 		ULONG FileOffset = View->Node.Key + ViewOffset;
-		PFILE_OFFSET_MAPPING Mapping = AVL_NODE_TO_FILE_OFFSET_MAPPING(
-		    AvlTreeFindNodeOrPrev(&Fcb->FileOffsetMappings, FileOffset));
-		assert(Mapping);
+		PFILE_REGION_MAPPING Mapping = AVL_NODE_TO_FILE_REGION_MAPPING(
+		    AvlTreeFindNodeOrPrev(&Fcb->FileRegionMappings, FileOffset));
+		if (!Mapping) {
+		    CiDbgDumpFileRegionMappings(Fcb);
+		    assert(FALSE);
+		    break;
+		}
 		assert(FileOffset >= Mapping->Node.Key);
 		assert(Mapping->Node.Key + Mapping->Length >= FileOffset);
 		ULONG64 VolumeFileOffset = Mapping->VolumeFileOffset +
