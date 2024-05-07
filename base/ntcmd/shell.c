@@ -304,6 +304,8 @@ PCSTR RtlCliStatusToErrorMessage(IN NTSTATUS Status)
 	return "disk corrupt";
     case STATUS_ACCESS_DENIED:
 	return "access denied";
+    case STATUS_INTERNAL_ERROR:
+	return "internal error";
     default:
 	if (NT_SUCCESS(Status)) {
 	    snprintf(Buffer, sizeof(Buffer), "success (status 0x%08x)", Status);
