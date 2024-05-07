@@ -724,11 +724,19 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    break;
 	case IoCliMsgForwardIrp:
 	    DbgPrint("    CLIENT-MSG FORWARD-IRP OriginalRequestor %p Identifier %p "
-		     "DeviceHandle %p NotifyCompletion %s\n",
+		     "DeviceHandle %p NotifyCompletion %s\n"
+		     "                           AssociatedIrpCount %d NewOffset 0x%llx "
+		     "NewLength 0x%x NewFileSize 0x%llx NewAllocationSize 0x%llx NewValidDataLength 0x%llx\n",
 		     (PVOID)IoPacket->ClientMsg.IoCompleted.OriginalRequestor,
 		     IoPacket->ClientMsg.IoCompleted.Identifier,
 		     (PVOID)IoPacket->ClientMsg.ForwardIrp.DeviceObject,
-		     IoPacket->ClientMsg.ForwardIrp.NotifyCompletion ? "TRUE" : "FALSE");
+		     IoPacket->ClientMsg.ForwardIrp.NotifyCompletion ? "TRUE" : "FALSE",
+		     IoPacket->ClientMsg.ForwardIrp.AssociatedIrpCount,
+		     IoPacket->ClientMsg.ForwardIrp.NewOffset.QuadPart,
+		     IoPacket->ClientMsg.ForwardIrp.NewLength,
+		     IoPacket->ClientMsg.ForwardIrp.NewFileSize,
+		     IoPacket->ClientMsg.ForwardIrp.NewAllocationSize,
+		     IoPacket->ClientMsg.ForwardIrp.NewValidDataLength);
 	    break;
 	case IoCliMsgDirtyBuffers:
 	    DbgPrint("    CLIENT-MSG DIRTY-BUFFERS");

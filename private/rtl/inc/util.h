@@ -172,6 +172,8 @@ FORCEINLINE BOOLEAN ListHasEntry(IN PLIST_ENTRY List,
     assert(List->Flink != NULL);
     for (PLIST_ENTRY p = List->Flink; p != List; p = p->Flink) {
 	if (p == Entry) {
+	    assert(p->Flink);
+	    assert(p->Blink);
 	    return TRUE;
 	}
     }

@@ -833,6 +833,7 @@ static VOID IopDeleteIrp(PIRP Irp)
 	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList, IRP,
 		     Private.AssociatedIrp.Link) {
 	    RemoveEntryList(&AssociatedIrp->Private.AssociatedIrp.Link);
+	    InitializeListHead(&AssociatedIrp->Private.AssociatedIrp.PendingList);
 	    AssociatedIrp->MasterIrp = NULL;
 	}
     }
@@ -1046,6 +1047,14 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	break;
     }
 
+    /* If the IRP itself is a master IRP, set the MasterSent member of all its
+     * assoicated IRPs to TRUE. */
+    if (!Irp->MasterIrp) {
+	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
+		     IRP, Private.AssociatedIrp.Link) {
+	    AssociatedIrp->Private.MasterIrpSent = TRUE;
+	}
+    }
     return TRUE;
 }
 
@@ -1091,6 +1100,13 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     }
     if (Irp->MasterIrp) {
 	assert(!Irp->Private.AssociatedIrpCount);
+    } else {
+	/* If the IRP itself is a master IRP, set the MasterSent member of all its
+	 * assoicated IRPs to TRUE. */
+	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
+		     IRP, Private.AssociatedIrp.Link) {
+	    AssociatedIrp->Private.MasterIrpSent = TRUE;
+	}
     }
     Dest->ClientMsg.ForwardIrp.AssociatedIrpCount = Irp->Private.AssociatedIrpCount;
     return TRUE;
@@ -1113,8 +1129,8 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     if (BufferSize < Size) {
 	return FALSE;
     }
-    /* If the IRP is an associated IRP of a locally-generated master IRP and
-     * the master IRP has not yet been sent to the server, wait till it has. */
+    /* If the IRP is an associated IRP of a master IRP and the master IRP
+     * has not yet been sent to the server, wait till it has. */
     if (Irp->MasterIrp && !Irp->Private.MasterIrpSent) {
 	return FALSE;
     }
@@ -1800,6 +1816,22 @@ workitem:
 	goto delete;
     }
 
+    /* Move all associated IRPs to the back of the list so their master IRPs
+     * get processed first. This is so that the server is informed of the
+     * master IRP's identifier pair and any possible file size changes. */
+    LIST_ENTRY AssociatedIrps;
+    InitializeListHead(&AssociatedIrps);
+    LoopOverList(Irp, &IopReplyIrpList, IRP, Private.Link) {
+	if (Irp->MasterIrp && !Irp->Private.MasterIrpSent) {
+	    RemoveEntryList(&Irp->Private.Link);
+	    InsertTailList(&AssociatedIrps, &Irp->Private.Link);
+	}
+    }
+    LoopOverList(Irp, &AssociatedIrps, IRP, Private.Link) {
+	RemoveEntryList(&Irp->Private.Link);
+	InsertTailList(&IopReplyIrpList, &Irp->Private.Link);
+    }
+
     /* Process the ReplyIrpList which contains IRPs that may require sending
      * a reply to the server. */
     LoopOverList(Irp, &IopReplyIrpList, IRP, Private.Link) {
@@ -1818,8 +1850,12 @@ workitem:
 		Ok = IopPopulateIoCompleteMessageFromLocalIrp(DestIrp, Irp,
 							      RemainingBufferSize);
 	    }
+	    /* Add the IRP to the cleanup list, if it's locally generated, or
+	     * if the server has been notified. */
 	    if (!Irp->Private.OriginalRequestor || Ok) {
 		InsertTailList(&IopCleanupIrpList, &Irp->Private.Link);
+		/* For locally generated IRPs, we don't need to notify server,
+		 * so just continue. */
 		if (!Irp->Private.OriginalRequestor) {
 		    continue;
 		}
@@ -2020,11 +2056,6 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 	Irp->MasterIrp->Private.AssociatedIrpCount++;
 	InsertTailList(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
 		       &Irp->Private.AssociatedIrp.Link);
-	/* If the master IRP is not locally generated, always set MasterIrpSent
-	 * to TRUE because server is very well aware of the master IRP. */
-	if (Irp->MasterIrp->Private.OriginalRequestor) {
-	    Irp->Private.MasterIrpSent = TRUE;
-	}
     }
 
     /* If we are not waiting for the completion of the IRP, simply return */
