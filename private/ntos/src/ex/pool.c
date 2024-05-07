@@ -373,12 +373,20 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
  * Since we check the Used bit of the block header and clear the memory on every
  * free, double free will result in a bug-check.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wframe-address"
 static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 			      IN PCVOID Ptr,
 			      IN ULONG Tag)
 {
     assert(Pool != NULL);
     assert(Ptr != NULL);
+    if ((MWORD)Ptr <= Pool->HeapStart || (MWORD)Ptr >= Pool->HeapEnd) {
+	KeBugCheckMsg("ExPool: Freeing invalid pointer %p. Call stack: %p %p %p %p %p %p\n",
+		      Ptr, __builtin_return_address(0), __builtin_return_address(1),
+		      __builtin_return_address(2), __builtin_return_address(3),
+		      __builtin_return_address(4), __builtin_return_address(5));
+    }
     /* If the pointer is page aligned, simpy add it to the list of free pages. */
     if (IS_PAGE_ALIGNED(Ptr)) {
 	PEX_FREE_PAGE Page = (PEX_FREE_PAGE)Ptr;
@@ -395,7 +403,14 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
     PEX_POOL_HEADER Header = EX_POOL_BLOCK_TO_HEADER(Ptr);
     assert(Header->Used);
     /* Check if tag is correct */
-    assert(Header->Tag == Tag);
+    if (Header->Tag != Tag) {
+	KeBugCheckMsg("ExPool: Freeing %p with invalid tag. Expected 0x%08x, "
+		      "got 0x%08x. Call stack: %p %p %p %p %p %p\n",
+		      Ptr, Header->Tag, Tag,
+		      __builtin_return_address(0), __builtin_return_address(1),
+		      __builtin_return_address(2), __builtin_return_address(3),
+		      __builtin_return_address(4), __builtin_return_address(5));
+    }
     DbgTrace("Header %p PS %d BS %d\n", Header, Header->PreviousSize, Header->BlockSize);
     PEX_POOL_HEADER Prev = EiGetPrevPoolHeader(Header);
     DbgTrace("Prev %p PS %d BS %d\n", Prev, Prev ? Prev->PreviousSize : 0,
@@ -444,6 +459,7 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 	     NextNext, NextNext ? NextNext->PreviousSize : 0,
 	     NextNext ? NextNext->BlockSize : 0);
 }
+#pragma GCC diagnostic pop
 
 /*
  * Note: on successful allocation, allocated memory is always zeroed.
