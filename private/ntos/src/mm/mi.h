@@ -8,20 +8,6 @@
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)
 #define LOG2SIZE_PER_CNODE_SLOT	(MWORD_LOG2SIZE + 2)
 
-/* Information needed to initialize the Memory Management subcomponent,
- * including the Executive Pool */
-typedef struct _MM_INIT_INFO {
-    MWORD InitUntypedCap;
-    MWORD InitUntypedPhyAddr;
-    LONG InitUntypedLog2Size;
-    MWORD RootCNodeFreeCapStart;
-    MWORD UserImageStartVirtAddr;
-    MWORD UserImageFrameCapStart;
-    MWORD NumUserImageFrames;
-    MWORD UserPagingStructureCapStart;
-    MWORD NumUserPagingStructureCaps;
-} MM_INIT_INFO, *PMM_INIT_INFO;
-
 #define MiAllocatePoolEx(Var, Type, OnError)				\
     ExAllocatePoolEx(Var, Type, sizeof(Type), NTOS_MM_TAG, OnError)
 #define MiAllocatePool(Var, Type)	MiAllocatePoolEx(Var, Type, {})

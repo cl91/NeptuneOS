@@ -9,6 +9,20 @@ PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 CNODE MiNtosCNode;
 static MWORD MiNtosCNodeUsedMap[(1 << ROOT_CNODE_LOG2SIZE) / MWORD_BITS] PAGE_ALIGNED_DATA;
 
+/* Information needed to initialize the Memory Management subcomponent,
+ * including the Executive Pool */
+typedef struct _MI_INIT_INFO {
+    MWORD InitUntypedCap;
+    MWORD InitUntypedPhyAddr;
+    LONG InitUntypedLog2Size;
+    MWORD RootCNodeFreeCapStart;
+    MWORD UserImageStartVirtAddr;
+    MWORD UserImageFrameCapStart;
+    MWORD NumUserImageFrames;
+    MWORD UserPagingStructureCapStart;
+    MWORD NumUserPagingStructureCaps;
+} MI_INIT_INFO, *PMI_INIT_INFO;
+
 static NTSTATUS MiInitRetypeIntoLargePage(IN MWORD Untyped,
 					  IN MWORD PageCap)
 {
@@ -56,7 +70,7 @@ static NTSTATUS MiInitMapLargePage(IN MWORD Untyped,
  * the number of splits needed to split the initial untyped cap into
  * large page size.
  */
-static NTSTATUS MiSplitInitialUntyped(IN PMM_INIT_INFO InitInfo)
+static NTSTATUS MiSplitInitialUntyped(IN PMI_INIT_INFO InitInfo)
 {
     MWORD DestCap = InitInfo->RootCNodeFreeCapStart;
     MWORD UntypedCap = InitInfo->InitUntypedCap;
@@ -74,7 +88,7 @@ static NTSTATUS MiSplitInitialUntyped(IN PMM_INIT_INFO InitInfo)
  * Split the initial untyped, taking left child at every turn,
  * and map the last left child at EX_POOL_START
  */
-static NTSTATUS MiInitMapInitialHeap(IN PMM_INIT_INFO InitInfo,
+static NTSTATUS MiInitMapInitialHeap(IN PMI_INIT_INFO InitInfo,
 				     OUT MWORD *FreeCapStart)
 {
     /* We require one large page to initialize ExPool */
@@ -132,7 +146,7 @@ static inline NTSTATUS MiInitCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type
  *
  *  FreeCapStart == LargePageCap + 1
  */
-static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
+static NTSTATUS MiInitAddUntypedAndLargePage(IN PMI_INIT_INFO InitInfo)
 {
     MiAllocatePool(RootUntyped, UNTYPED);
     MiInitializeUntyped(RootUntyped, &MiNtosCNode, NULL, InitInfo->InitUntypedCap,
@@ -182,7 +196,7 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMM_INIT_INFO InitInfo)
  *
  * Fox i386, the paging structure caps are page table caps.
  */
-static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
+static NTSTATUS MiInitAddUserImagePaging(IN PMI_INIT_INFO InitInfo)
 {
     MWORD PageTableCapStart = InitInfo->UserPagingStructureCapStart;
 
@@ -235,7 +249,7 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMM_INIT_INFO InitInfo)
  * Map the initial ExPool heap and build the book-keeping data structures
  * for the root task.
  */
-static NTSTATUS MiInitializeRootTask(IN PMM_INIT_INFO InitInfo)
+static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo)
 {
     /* Map initial pages for ExPool */
     MWORD FreeCapStart = 0;
@@ -307,13 +321,13 @@ NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
 	return STATUS_NO_MEMORY;
     }
 
-    MM_INIT_INFO InitInfo =
+    MI_INIT_INFO InitInfo =
 	{
 	 .InitUntypedCap = InitUntyped,
 	 .InitUntypedPhyAddr = InitUntypedPhyAddr,
 	 .InitUntypedLog2Size = Log2Size,
 	 .RootCNodeFreeCapStart = bootinfo->empty.start,
-	 .UserImageStartVirtAddr = (MWORD) (&_text_start[0]),
+	 .UserImageStartVirtAddr = (MWORD)(&_text_start[0]),
 	 .UserImageFrameCapStart = bootinfo->userImageFrames.start,
 	 .NumUserImageFrames = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
 	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
