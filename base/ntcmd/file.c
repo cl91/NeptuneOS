@@ -187,6 +187,7 @@ NTSTATUS RtlCliDumpFile(IN PWSTR FileName)
 		    CHAR c = RtlCliGetChar(hKeyboard);
 		    if (c == 'n' || c == 'N') {
 			RtlCliDisplayString("\n");
+			CloseFile(FileHandle);
 			return STATUS_SUCCESS;
 		    }
 		    if (c == 'y' || c == 'Y') {
@@ -197,6 +198,7 @@ NTSTATUS RtlCliDumpFile(IN PWSTR FileName)
 	    }
 	}
     }
+    CloseFile(FileHandle);
     return Status;
 }
 

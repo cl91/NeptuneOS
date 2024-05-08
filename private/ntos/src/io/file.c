@@ -1290,6 +1290,11 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
 	return;
     }
     DbgPrint("  DeviceObject = %p\n", File->DeviceObject);
+    DbgPrint("  Read %d Write %d Delete %d  SharedRead %d ShareWrite %d ShareDelete %d\n",
+	     File->ReadAccess, File->WriteAccess, File->DeleteAccess,
+	     File->SharedRead, File->SharedWrite, File->SharedDelete);
+    DbgPrint("  CurrentOffset = 0x%llx\n", File->CurrentOffset);
+    DbgPrint("  CloseReq = %p\n", File->CloseReq);
     DbgPrint("  Fcb = %p\n", File->Fcb);
     if (File->Fcb) {
 	DbgPrint("    FileName = %s\n", File->Fcb->FileName);
