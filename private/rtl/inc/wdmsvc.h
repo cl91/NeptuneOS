@@ -252,6 +252,7 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	    ULONG Options;
 	    ULONG FileAttributes;
 	    ULONG ShareAccess;
+	    BOOLEAN OpenTargetDirectory;
 	} Create;
 	struct {
 	    FILE_OBJECT_CREATE_PARAMETERS FileObjectParameters;
@@ -279,6 +280,10 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	struct {
 	    FILE_INFORMATION_CLASS FileInformationClass;
 	} QueryFile;
+	struct {
+	    FILE_INFORMATION_CLASS POINTER_ALIGNMENT FileInformationClass;
+	    GLOBAL_HANDLE TargetDirectory;
+	} SetFile;
 	struct {
 	    FILE_INFORMATION_CLASS FileInformationClass;
 	    ULONG FileIndex;
@@ -630,6 +635,11 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	case IRP_MJ_QUERY_INFORMATION:
 	    DbgPrint("    QUERY-INFORMATION FileInformationClass %d\n",
 		     IoPacket->Request.QueryFile.FileInformationClass);
+	    break;
+	case IRP_MJ_SET_INFORMATION:
+	    DbgPrint("    SET-INFORMATION FileInformationClass %d TargetDirectory 0x%zx\n",
+		     IoPacket->Request.SetFile.FileInformationClass,
+		     IoPacket->Request.SetFile.TargetDirectory);
 	    break;
 	case IRP_MJ_QUERY_VOLUME_INFORMATION:
 	    DbgPrint("    QUERY-VOLUME-INFORMATION FsInformationClass %d\n",

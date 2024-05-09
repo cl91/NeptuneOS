@@ -62,7 +62,8 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
     }
     DevObj->Vcb->MountInProgress = TRUE;
     /* FileSize is set to zero for the time being as we don't know the volume size yet. */
-    IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, "\\$$Volume$$", DevObj->Vcb));
+    IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, "\\$$Volume$$",
+					  DevObj->Vcb, 0));
     IF_ERR_GOTO(out, Status, ObCreateObject(OBJECT_TYPE_DIRECTORY,
 					    (PVOID *)&DevObj->Vcb->Subobjects, NULL));
     DevObj->Vcb->StorageDevice = DevObj;

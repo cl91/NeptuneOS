@@ -3,7 +3,8 @@
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
 		      IN PCSTR FileName,
-		      IN PIO_VOLUME_CONTROL_BLOCK Vcb)
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb,
+		      IN ULONG FileAttributes)
 {
     IopAllocatePool(Fcb, IO_FILE_CONTROL_BLOCK);
     if (FileName) {
@@ -15,20 +16,29 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
     }
     Fcb->FileSize = FileSize;
     Fcb->Vcb = Vcb;
+    Fcb->IsDirectory = FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
     AvlInitializeTree(&Fcb->FileRegionMappings);
     InitializeListHead(&Fcb->PrivateCacheMaps);
     KeInitializeEvent(&Fcb->OpenCompleted, NotificationEvent);
     KeInitializeEvent(&Fcb->WriteCompleted, NotificationEvent);
-    RET_ERR_EX(CcInitializeCacheMap(Fcb, NULL, NULL),
-	       IopDeleteFcb(Fcb));
+    if (!Fcb->IsDirectory) {
+	RET_ERR_EX(CcInitializeCacheMap(Fcb, NULL, NULL),
+		   IopDeleteFcb(Fcb));
+    }
     *pFcb = Fcb;
     return STATUS_SUCCESS;
 }
 
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
-    assert(!Fcb->ImageSectionObject);
-    assert(!Fcb->DataSectionObject);
+    if (Fcb->ImageSectionObject) {
+	assert(Fcb == Fcb->ImageSectionObject->Fcb);
+	Fcb->ImageSectionObject->Fcb = NULL;
+    }
+    if (Fcb->DataSectionObject) {
+	assert(Fcb == Fcb->DataSectionObject->Fcb);
+	Fcb->DataSectionObject->Fcb = NULL;
+    }
     if (Fcb->FileName) {
 	IopFreePool(Fcb->FileName);
     }
@@ -84,7 +94,8 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	File->Fcb = Ctx->MasterFileObject->Fcb;
     } else {
 	PIO_FILE_CONTROL_BLOCK Fcb = NULL;
-	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->FileName, Ctx->Vcb),
+	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->FileName, Ctx->Vcb,
+				Ctx->FileAttributes),
 		   if (CloseReq) {
 		       IopFreePool(CloseReq);
 		   });
@@ -125,6 +136,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
  */
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   IN ULONG FileAttributes,
 				   IN ACCESS_MASK DesiredAccess,
 				   IN ULONG ShareAccess,
 				   OUT PIO_FILE_OBJECT *pFile)
@@ -137,6 +149,7 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 	.DeviceObject = DeviceObject,
 	.FileName = FileName,
 	.Vcb = DeviceObject->Vcb,
+	.FileAttributes = FileAttributes,
 	.DesiredAccess = DesiredAccess,
 	.ShareAccess = ShareAccess
     };
@@ -234,30 +247,31 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     }
 
     /* If the desired access is greater than that of the master file object,
-     * or we are requesting to overwrite, supersede, or delete the file, call
-     * the driver to create a new client-side handle. Otherwise, simply create
-     * a slave file object which does not have a client-side handle. */
+     * or we are requesting to delete the file (this include overwrite, supersede,
+     * and rename), call the driver to create a new client-side handle. Otherwise,
+     * simply create a slave file object which does not have a client-side handle. */
     BOOLEAN CallDriver = DispositionIsOverwrite(OpenPacket->Disposition)||
 	(!FileObject->ReadAccess && ReadAccessDesired(DesiredAccess)) ||
 	(!FileObject->WriteAccess && DeleteAccessDesired(DesiredAccess)) ||
 	(!FileObject->DeleteAccess && DeleteAccessDesired(DesiredAccess)) ||
-	(OpenPacket->CreateOptions & FILE_DELETE_ON_CLOSE);
+	(OpenPacket->CreateOptions & FILE_DELETE_ON_CLOSE) ||
+	OpenPacket->OpenTargetDirectory;
 
     if (!CallDriver || !FileObject->DeviceObject) {
 	FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	    .MasterFileObject = FileObject,
 	};
 	IF_ERR_GOTO(out, Status,
-		    ObCreateObject(OBJECT_TYPE_FILE,
-				   (POBJECT *)&OpenedFile, &CreaCtx));
-	/* Check if this is Synch I/O and set the sync flag accordingly */
+		    ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&OpenedFile, &CreaCtx));
 	if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT |
 					 FILE_SYNCHRONOUS_IO_NONALERT)) {
 	    OpenedFile->Flags |= FO_SYNCHRONOUS_IO;
-	    /* Check if it's also alertable and set the alertable flag accordingly */
 	    if (OpenPacket->CreateOptions & FILE_SYNCHRONOUS_IO_ALERT) {
 		OpenedFile->Flags |= FO_ALERTABLE_IO;
 	    }
+	}
+	if (Attributes & OBJ_CASE_INSENSITIVE) {
+	    OpenedFile->Flags |= FO_OPENED_CASE_SENSITIVE;
 	}
 	Status = STATUS_SUCCESS;
 	goto out;
@@ -396,6 +410,7 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
 				IN OPTIONAL ULONG64 FileSize,
+				IN OPTIONAL ULONG FileAttributes,
 				OUT PIO_FILE_OBJECT *pFile)
 {
     assert(pFile);
@@ -404,6 +419,7 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 	.FileName = FileName,
 	.FileSize = FileSize,
 	.NoFcb = !FileSize,
+	.FileAttributes = FileAttributes,
 	.DesiredAccess = FILE_ALL_ACCESS,
 	 /* We don't allow NT clients to open a deviceless file for delete. */
 	.ShareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE
@@ -433,7 +449,8 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 			      IN ULONG FileAttributes,
 			      IN ULONG ShareAccess,
 			      IN ULONG CreateDisposition,
-			      IN ULONG CreateOptions)
+			      IN ULONG CreateOptions,
+			      IN BOOLEAN OpenTargetDirectory)
 {
     NTSTATUS Status;
 
@@ -446,6 +463,7 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.FileAttributes = FileAttributes;
     Locals.OpenContext.OpenPacket.ShareAccess = ShareAccess;
     Locals.OpenContext.OpenPacket.Disposition = CreateDisposition;
+    Locals.OpenContext.OpenPacket.OpenTargetDirectory = OpenTargetDirectory;
     if (AllocationSize) {
 	Locals.OpenContext.OpenPacket.AllocationSize = AllocationSize->QuadPart;
     }
@@ -476,7 +494,7 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
 {
     return IopCreateFile(State, Thread, FileHandle, DesiredAccess, ObjectAttributes,
 			 IoStatusBlock, AllocationSize, FileAttributes, ShareAccess,
-			 CreateDisposition, CreateOptions);
+			 CreateDisposition, CreateOptions, FALSE);
 }
 
 NTSTATUS NtOpenFile(IN ASYNC_STATE State,
@@ -489,7 +507,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
                     IN ULONG OpenOptions)
 {
     return IopCreateFile(State, Thread, FileHandle, DesiredAccess, ObjectAttributes,
-			 IoStatusBlock, NULL, 0, ShareAccess, FILE_OPEN, OpenOptions);
+			 IoStatusBlock, NULL, 0, ShareAccess, FILE_OPEN, OpenOptions, FALSE);
 }
 
 typedef struct _CACHED_IO_CONTEXT {
@@ -640,6 +658,11 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 
     /* If the target file is part of a mounted volume, go through Cc to do the IO. */
     if (Locals.FileObject->Fcb) {
+	/* We don't let NT clients read or write to directory files. */
+	if (Locals.FileObject->Fcb->IsDirectory) {
+	    Status = STATUS_FILE_IS_A_DIRECTORY;
+	    goto out;
+	}
 	Locals.Context = ExAllocatePoolWithTag(sizeof(CACHED_IO_CONTEXT), NTOS_IO_TAG);
 	if (!Locals.Context) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -879,7 +902,7 @@ NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
      * IRP_MJ_CLEANUP dispatch function. */
     AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, &FileHandle, DELETE,
 	     ObjectAttributes, &IoStatus, NULL, 0, FILE_SHARE_DELETE,
-	     FILE_OPEN, FILE_DELETE_ON_CLOSE);
+	     FILE_OPEN, FILE_DELETE_ON_CLOSE, FALSE);
     Locals.FileHandle = FileHandle;
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
@@ -978,7 +1001,7 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
                                 OUT IO_STATUS_BLOCK *IoStatusBlock,
                                 OUT PVOID FileInfoBuffer,
                                 IN ULONG Length,
-                                IN FILE_INFORMATION_CLASS FileInformationClass)
+                                IN FILE_INFORMATION_CLASS FileInfoClass)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
@@ -990,7 +1013,7 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
 	    IO_STATUS_BLOCK IoStatus;
 	});
 
-    switch (FileInformationClass) {
+    switch (FileInfoClass) {
 	CHECK_LENGTH(Length, FileBasicInformation, FILE_BASIC_INFORMATION);
 	CHECK_LENGTH(Length, FileStandardInformation, FILE_STANDARD_INFORMATION);
 	CHECK_LENGTH(Length, FileInternalInformation, FILE_INTERNAL_INFORMATION);
@@ -1033,16 +1056,10 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
-    /* Deviceless files cannot be queried. */
-    if (!Locals.FileObject->DeviceObject) {
-	Status = STATUS_NOT_IMPLEMENTED;
-	goto out;
-    }
-    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
 
     /* Quick path for FilePositionInformation. The NT executive has enough info
      * to reply to the client without asking the file system driver. */
-    if (FileInformationClass == FilePositionInformation) {
+    if (FileInfoClass == FilePositionInformation) {
 	/* TODO: Eventually we will schedule an IO APC to deliver the results
 	 * to the client side in order to avoid doing a syscall. For now we
 	 * will just map the user buffer to NT Executive address space. */
@@ -1062,6 +1079,12 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
     /* TODO: We need to cache FileBasicInformation and FileStandardInformation
      * just like the fast IO path on Windows. */
 
+    /* Deviceless files cannot be queried. */
+    if (!Locals.FileObject->DeviceObject) {
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto out;
+    }
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
     /* Queue an IRP to the target driver object. */
     PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
 	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
@@ -1071,7 +1094,7 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
 	.MajorFunction = IRP_MJ_QUERY_INFORMATION,
 	.OutputBuffer = (MWORD)FileInfoBuffer,
 	.OutputBufferLength = Length,
-	.QueryFile.FileInformationClass = FileInformationClass
+	.QueryFile.FileInformationClass = FileInfoClass
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
@@ -1099,15 +1122,248 @@ out:
     ASYNC_END(State, Status);
 }
 
-NTSTATUS NtSetInformationFile(IN ASYNC_STATE AsyncState,
+static NTSTATUS IopOpenTargetDirectory(IN ASYNC_STATE State,
+				       IN PTHREAD Thread,
+				       IN PFILE_RENAME_INFORMATION RenameInfo,
+				       IN PIO_FILE_OBJECT FileObject,
+				       OUT PIO_FILE_OBJECT *TargetDirectory,
+				       OUT HANDLE *TargetDirectoryHandle)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    IO_STATUS_BLOCK IoStatus;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PCHAR FileName;
+	    OB_OBJECT_ATTRIBUTES ObjAttr;
+	});
+    *TargetDirectory = NULL;
+    *TargetDirectoryHandle = NULL;
+
+    Locals.FileName = ExAllocatePoolWithTag(RenameInfo->FileNameLength, NTOS_IO_TAG);
+    if (!Locals.FileName) {
+	ASYNC_RETURN(State, STATUS_INSUFFICIENT_RESOURCES);
+    }
+    ULONG FileNameLength = 0;
+    Status = RtlUnicodeToUTF8N(Locals.FileName, RenameInfo->FileNameLength - 1,
+			       &FileNameLength, RenameInfo->FileName,
+			       RenameInfo->FileNameLength);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Locals.FileName[FileNameLength] = '\0';
+
+    Locals.ObjAttr.Attributes = FileObject->Flags & FO_OPENED_CASE_SENSITIVE ?
+	0 : OBJ_CASE_INSENSITIVE;
+    Locals.ObjAttr.ObjectNameBuffer = Locals.FileName;
+    Locals.ObjAttr.ObjectNameBufferLength = FileNameLength + 1;
+    Locals.ObjAttr.RootDirectory = RenameInfo->RootDirectory;
+    assert(FileObject->Fcb);
+    AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, TargetDirectoryHandle,
+	     (FileObject->Fcb->IsDirectory ? FILE_ADD_SUBDIRECTORY : 0) | SYNCHRONIZE,
+	     Locals.ObjAttr, &IoStatus, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+	     FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    if (IoStatus.Information == FILE_EXISTS && !RenameInfo->ReplaceIfExists) {
+	Status = STATUS_OBJECT_NAME_COLLISION;
+	goto close;
+    }
+
+    Status = ObReferenceObjectByHandle(Thread, *TargetDirectoryHandle,
+				       OBJECT_TYPE_FILE, (PVOID *)TargetDirectory);
+    if (!NT_SUCCESS(Status)) {
+	/* This should not happen. */
+	assert(FALSE);
+	goto close;
+    }
+
+    if ((*TargetDirectory)->DeviceObject != FileObject->DeviceObject) {
+	Status = STATUS_NOT_SAME_DEVICE;
+	goto close;
+    }
+
+    Status = STATUS_SUCCESS;
+    goto out;
+
+close:
+    AWAIT(NtClose, State, Locals, Thread, *TargetDirectoryHandle);
+    if (*TargetDirectory) {
+	ObDereferenceObject(*TargetDirectory);
+    }
+    *TargetDirectoryHandle = NULL;
+    *TargetDirectory = NULL;
+
+out:
+    if (Locals.FileName) {
+	IopFreePool(Locals.FileName);
+    }
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
                               IN PTHREAD Thread,
                               IN HANDLE FileHandle,
                               OUT IO_STATUS_BLOCK *IoStatusBlock,
                               IN PVOID FileInfoBuffer,
                               IN ULONG Length,
-                              IN FILE_INFORMATION_CLASS FileInformationClass)
+                              IN FILE_INFORMATION_CLASS FileInfoClass)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    PIO_FILE_OBJECT TargetDirectory = NULL;
+    HANDLE TargetDirectoryHandle = NULL;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PFILE_RENAME_INFORMATION RenameInfo;
+	    PIO_FILE_OBJECT TargetDirectory;
+	    HANDLE TargetDirectoryHandle;
+	    PPENDING_IRP PendingIrp;
+	    IO_STATUS_BLOCK IoStatus;
+	});
+
+    switch (FileInfoClass) {
+	CHECK_LENGTH(Length, FileBasicInformation, FILE_BASIC_INFORMATION);
+	CHECK_LENGTH(Length, FileRenameInformation, FILE_RENAME_INFORMATION);
+	CHECK_LENGTH(Length, FileLinkInformation, FILE_LINK_INFORMATION);
+	CHECK_LENGTH(Length, FileDispositionInformation, FILE_DISPOSITION_INFORMATION);
+	CHECK_LENGTH(Length, FilePositionInformation, FILE_POSITION_INFORMATION);
+	CHECK_LENGTH(Length, FileModeInformation, FILE_MODE_INFORMATION);
+	CHECK_LENGTH(Length, FileAllocationInformation, FILE_ALLOCATION_INFORMATION);
+	CHECK_LENGTH(Length, FileEndOfFileInformation, FILE_END_OF_FILE_INFORMATION);
+	CHECK_LENGTH(Length, FilePipeInformation, FILE_PIPE_INFORMATION);
+	CHECK_LENGTH(Length, FileMailslotSetInformation, FILE_MAILSLOT_SET_INFORMATION);
+	CHECK_LENGTH(Length, FileObjectIdInformation, FILE_OBJECTID_INFORMATION);
+	CHECK_LENGTH(Length, FileCompletionInformation, FILE_COMPLETION_INFORMATION);
+	CHECK_LENGTH(Length, FileMoveClusterInformation, FILE_MOVE_CLUSTER_INFORMATION);
+	CHECK_LENGTH(Length, FileQuotaInformation, FILE_QUOTA_INFORMATION);
+	CHECK_LENGTH(Length, FileTrackingInformation, FILE_TRACKING_INFORMATION);
+	CHECK_LENGTH(Length, FileValidDataLengthInformation, FILE_VALID_DATA_LENGTH_INFORMATION);
+	CHECK_LENGTH(Length, FileShortNameInformation, UNICODE_STRING);
+    default:
+	    Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+
+    if (FileInfoClass == FilePositionInformation || FileInfoClass == FileRenameInformation ||
+	FileInfoClass == FileLinkInformation || FileInfoClass == FileMoveClusterInformation) {
+	PVOID Buffer = NULL;
+	BOOLEAN Map = !KePtrInSvcMsgBuf((MWORD)FileInfoBuffer, Thread);
+	if (Map) {
+	    IF_ERR_GOTO(out, Status, MmMapUserBuffer(&Thread->Process->VSpace,
+						     (MWORD)FileInfoBuffer, Length, &Buffer));
+	} else {
+	    Buffer = (PVOID)((MWORD)FileInfoBuffer - Thread->IpcBufferClientAddr +
+			     Thread->IpcBufferServerAddr);
+	}
+	if (FileInfoClass == FilePositionInformation) {
+	    PFILE_POSITION_INFORMATION PosInfo = Buffer;
+	    Locals.FileObject->CurrentOffset = PosInfo->CurrentByteOffset.QuadPart;
+	    Locals.IoStatus.Information = 0;
+	    Locals.IoStatus.Status = STATUS_SUCCESS;
+	} else if (Locals.FileObject->Fcb) {
+	    Locals.RenameInfo = Buffer;
+	    /* AWAIT must be in the outermost scope, so we jump to a outermost scope
+	     * to open the target directory. */
+	    goto open_target;
+	target_opened:
+	    if (!NT_SUCCESS(Status)) {
+		UNICODE_STRING Path = {
+		    .Buffer = Locals.RenameInfo->FileName,
+		    .Length = Locals.RenameInfo->FileNameLength,
+		    .MaximumLength = Locals.RenameInfo->FileNameLength
+		};
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-invalid-specifier"
+		DbgTrace("Opening target directory failed. Path = %wZ\n", &Path);
+#pragma GCC diagnostic pop
+	    }
+	} else {
+	    /* File objects from non-file system drivers cannot be renamed. */
+	    Status = STATUS_INVALID_DEVICE_REQUEST;
+	}
+	if (Map) {
+	    MmUnmapUserBuffer(Buffer);
+	}
+	/* For FilePositionInformation, we don't need to call the file system driver. */
+	if (FileInfoClass == FilePositionInformation || !NT_SUCCESS(Status)) {
+	    goto out;
+	}
+    }
+    goto call_driver;
+
+open_target:
+    AWAIT_EX(Status, IopOpenTargetDirectory, State, Locals, Thread, Locals.RenameInfo,
+	     Locals.FileObject, &TargetDirectory, &TargetDirectoryHandle);
+    Locals.TargetDirectory = TargetDirectory;
+    Locals.TargetDirectoryHandle = TargetDirectoryHandle;
+    goto target_opened;
+
+call_driver:
+    /* Deviceless files only support setting FilePositionInformation. */
+    if (!Locals.FileObject->DeviceObject) {
+	Status = STATUS_NOT_SUPPORTED;
+	goto out;
+    }
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    /* Queue an IRP to the target driver object. */
+    PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
+	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = TargetFileObject,
+	.MajorFunction = IRP_MJ_SET_INFORMATION,
+	.InputBuffer = (MWORD)FileInfoBuffer,
+	.InputBufferLength = Length,
+    };
+    if (FileInfoClass == FileRenameInformation || FileInfoClass == FileLinkInformation ||
+	FileInfoClass == FileMoveClusterInformation) {
+	Irp.SetFile.FileInformationClass = FileInfoClass;
+	Irp.SetFile.TargetDirectory = OBJECT_TO_GLOBAL_HANDLE(Locals.TargetDirectory);
+    }
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
+    Status = STATUS_SUCCESS;
+
+    if (!Locals.TargetDirectoryHandle) {
+	goto out;
+    }
+    AWAIT(NtClose, State, Locals, Thread, Locals.TargetDirectoryHandle);
+    Status = STATUS_SUCCESS;
+
+out:
+    if (!NT_SUCCESS(Status)) {
+	Locals.IoStatus.Status = Status;
+    } else {
+	Status = Locals.IoStatus.Status;
+    }
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.IoStatus;
+    }
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.TargetDirectory) {
+	ObDereferenceObject(Locals.TargetDirectory);
+    }
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,

@@ -12,8 +12,6 @@
 #include "fatfs.h"
 #include "ntstatus.h"
 
-#define NASSERTS_RENAME
-
 /* GLOBALS ******************************************************************/
 
 const char *FileInformationClassNames[] = {
@@ -66,7 +64,7 @@ const char *FileInformationClassNames[] = {
 /*
  * FUNCTION: Retrieve the standard file information
  */
-NTSTATUS FatGetStandardInformation(PFATFCB FCB,
+NTSTATUS FatGetStandardInformation(PFATFCB Fcb,
 				   PFILE_STANDARD_INFORMATION StandardInfo,
 				   PULONG BufferLength)
 {
@@ -75,26 +73,26 @@ NTSTATUS FatGetStandardInformation(PFATFCB FCB,
 
     /* PRECONDITION */
     ASSERT(StandardInfo != NULL);
-    ASSERT(FCB != NULL);
+    ASSERT(Fcb != NULL);
 
-    if (FatFcbIsDirectory(FCB)) {
+    if (FatFcbIsDirectory(Fcb)) {
 	StandardInfo->AllocationSize.QuadPart = 0;
 	StandardInfo->EndOfFile.QuadPart = 0;
 	StandardInfo->Directory = TRUE;
     } else {
-	StandardInfo->AllocationSize = FCB->Base.FileSizes.AllocationSize;
-	StandardInfo->EndOfFile = FCB->Base.FileSizes.FileSize;
+	StandardInfo->AllocationSize = Fcb->Base.FileSizes.AllocationSize;
+	StandardInfo->EndOfFile = Fcb->Base.FileSizes.FileSize;
 	StandardInfo->Directory = FALSE;
     }
     StandardInfo->NumberOfLinks = 1;
-    StandardInfo->DeletePending = BooleanFlagOn(FCB->Flags, FCB_DELETE_PENDING);
+    StandardInfo->DeletePending = BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING);
 
     *BufferLength -= sizeof(FILE_STANDARD_INFORMATION);
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
-				       PFATFCB FCB,
+				       PFATFCB Fcb,
 				       PDEVICE_EXTENSION DeviceExt,
 				       PFILE_BASIC_INFORMATION BasicInfo)
 {
@@ -103,11 +101,11 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
     DPRINT("FatSetBasicInformation()\n");
 
     ASSERT(NULL != FileObject);
-    ASSERT(NULL != FCB);
+    ASSERT(NULL != Fcb);
     ASSERT(NULL != DeviceExt);
     ASSERT(NULL != BasicInfo);
     /* Check volume label bit */
-    ASSERT(0 == (*FCB->Attributes & _A_VOLID));
+    ASSERT(0 == (*Fcb->Attributes & _A_VOLID));
 
     NotifyFilter = 0;
 
@@ -120,7 +118,7 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 						   FILE_ATTRIBUTE_DIRECTORY |
 						   FILE_ATTRIBUTE_READONLY));
 
-	if (FatFcbIsDirectory(FCB)) {
+	if (FatFcbIsDirectory(Fcb)) {
 	    if (BooleanFlagOn(BasicInfo->FileAttributes, FILE_ATTRIBUTE_TEMPORARY)) {
 		DPRINT("Setting temporary attribute on a directory!\n");
 		return STATUS_INVALID_PARAMETER;
@@ -134,9 +132,9 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 	    }
 	}
 
-	if (Attributes != *FCB->Attributes) {
-	    *FCB->Attributes = Attributes;
-	    DPRINT("Setting attributes 0x%02x\n", *FCB->Attributes);
+	if (Attributes != *Fcb->Attributes) {
+	    *Fcb->Attributes = Attributes;
+	    DPRINT("Setting attributes 0x%02x\n", *Fcb->Attributes);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_ATTRIBUTES;
 	}
     }
@@ -145,8 +143,8 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 	if (BasicInfo->CreationTime.QuadPart != 0
 	    && BasicInfo->CreationTime.QuadPart != -1) {
 	    FsdSystemTimeToDosDateTime(DeviceExt, &BasicInfo->CreationTime,
-				       &FCB->Entry.FatX.CreationDate,
-				       &FCB->Entry.FatX.CreationTime);
+				       &Fcb->Entry.FatX.CreationDate,
+				       &Fcb->Entry.FatX.CreationTime);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_CREATION;
 	}
 
@@ -154,8 +152,8 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 	    && BasicInfo->LastAccessTime.QuadPart != -1) {
 	    FsdSystemTimeToDosDateTime(DeviceExt,
 				       &BasicInfo->LastAccessTime,
-				       &FCB->Entry.FatX.AccessDate,
-				       &FCB->Entry.FatX.AccessTime);
+				       &Fcb->Entry.FatX.AccessDate,
+				       &Fcb->Entry.FatX.AccessTime);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_ACCESS;
 	}
 
@@ -163,16 +161,16 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 	    && BasicInfo->LastWriteTime.QuadPart != -1) {
 	    FsdSystemTimeToDosDateTime(DeviceExt,
 				       &BasicInfo->LastWriteTime,
-				       &FCB->Entry.FatX.UpdateDate,
-				       &FCB->Entry.FatX.UpdateTime);
+				       &Fcb->Entry.FatX.UpdateDate,
+				       &Fcb->Entry.FatX.UpdateTime);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_WRITE;
 	}
     } else {
 	if (BasicInfo->CreationTime.QuadPart != 0
 	    && BasicInfo->CreationTime.QuadPart != -1) {
 	    FsdSystemTimeToDosDateTime(DeviceExt, &BasicInfo->CreationTime,
-				       &FCB->Entry.Fat.CreationDate,
-				       &FCB->Entry.Fat.CreationTime);
+				       &Fcb->Entry.Fat.CreationDate,
+				       &Fcb->Entry.Fat.CreationTime);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_CREATION;
 	}
 
@@ -180,7 +178,7 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 	    && BasicInfo->LastAccessTime.QuadPart != -1) {
 	    FsdSystemTimeToDosDateTime(DeviceExt,
 				       &BasicInfo->LastAccessTime,
-				       &FCB->Entry.Fat.AccessDate, NULL);
+				       &Fcb->Entry.Fat.AccessDate, NULL);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_ACCESS;
 	}
 
@@ -188,24 +186,24 @@ static NTSTATUS FatSetBasicInformation(PFILE_OBJECT FileObject,
 	    && BasicInfo->LastWriteTime.QuadPart != -1) {
 	    FsdSystemTimeToDosDateTime(DeviceExt,
 				       &BasicInfo->LastWriteTime,
-				       &FCB->Entry.Fat.UpdateDate,
-				       &FCB->Entry.Fat.UpdateTime);
+				       &Fcb->Entry.Fat.UpdateDate,
+				       &Fcb->Entry.Fat.UpdateTime);
 	    NotifyFilter |= FILE_NOTIFY_CHANGE_LAST_WRITE;
 	}
     }
 
-    FatUpdateEntry(DeviceExt, FCB);
+    FatUpdateEntry(DeviceExt, Fcb);
 
     if (NotifyFilter != 0) {
 	FatReportChange(DeviceExt,
-			FCB, NotifyFilter, FILE_ACTION_MODIFIED);
+			Fcb, NotifyFilter, FILE_ACTION_MODIFIED);
     }
 
     return STATUS_SUCCESS;
 }
 
 NTSTATUS FatGetBasicInformation(PFILE_OBJECT FileObject,
-				PFATFCB FCB,
+				PFATFCB Fcb,
 				PDEVICE_EXTENSION DeviceExt,
 				PFILE_BASIC_INFORMATION BasicInfo,
 				PULONG BufferLength)
@@ -221,34 +219,34 @@ NTSTATUS FatGetBasicInformation(PFILE_OBJECT FileObject,
 
     if (FatVolumeIsFatX(DeviceExt)) {
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   FCB->Entry.FatX.CreationDate,
-				   FCB->Entry.FatX.CreationTime,
+				   Fcb->Entry.FatX.CreationDate,
+				   Fcb->Entry.FatX.CreationTime,
 				   &BasicInfo->CreationTime);
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   FCB->Entry.FatX.AccessDate,
-				   FCB->Entry.FatX.AccessTime,
+				   Fcb->Entry.FatX.AccessDate,
+				   Fcb->Entry.FatX.AccessTime,
 				   &BasicInfo->LastAccessTime);
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   FCB->Entry.FatX.UpdateDate,
-				   FCB->Entry.FatX.UpdateTime,
+				   Fcb->Entry.FatX.UpdateDate,
+				   Fcb->Entry.FatX.UpdateTime,
 				   &BasicInfo->LastWriteTime);
 	BasicInfo->ChangeTime = BasicInfo->LastWriteTime;
     } else {
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   FCB->Entry.Fat.CreationDate,
-				   FCB->Entry.Fat.CreationTime,
+				   Fcb->Entry.Fat.CreationDate,
+				   Fcb->Entry.Fat.CreationTime,
 				   &BasicInfo->CreationTime);
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   FCB->Entry.Fat.AccessDate,
+				   Fcb->Entry.Fat.AccessDate,
 				   0, &BasicInfo->LastAccessTime);
 	FsdDosDateTimeToSystemTime(DeviceExt,
-				   FCB->Entry.Fat.UpdateDate,
-				   FCB->Entry.Fat.UpdateTime,
+				   Fcb->Entry.Fat.UpdateDate,
+				   Fcb->Entry.Fat.UpdateTime,
 				   &BasicInfo->LastWriteTime);
 	BasicInfo->ChangeTime = BasicInfo->LastWriteTime;
     }
 
-    BasicInfo->FileAttributes = *FCB->Attributes & 0x3f;
+    BasicInfo->FileAttributes = *Fcb->Attributes & 0x3f;
     /* Synthesize FILE_ATTRIBUTE_NORMAL */
     if (0 == (BasicInfo->FileAttributes & (FILE_ATTRIBUTE_DIRECTORY |
 					   FILE_ATTRIBUTE_ARCHIVE |
@@ -266,35 +264,35 @@ NTSTATUS FatGetBasicInformation(PFILE_OBJECT FileObject,
 
 
 static NTSTATUS FatSetDispositionInformation(PFILE_OBJECT FileObject,
-					     PFATFCB FCB,
+					     PFATFCB Fcb,
 					     PDEVICE_EXTENSION DeviceExt,
 					     PFILE_DISPOSITION_INFORMATION DispoInfo)
 {
     DPRINT("FsdSetDispositionInformation(<%wZ>, Delete %u)\n",
-	   &FCB->PathNameU, DispoInfo->DeleteFile);
+	   &Fcb->PathNameU, DispoInfo->DeleteFile);
 
     ASSERT(DeviceExt != NULL);
     ASSERT(DeviceExt->FatInfo.BytesPerCluster != 0);
-    ASSERT(FCB != NULL);
+    ASSERT(Fcb != NULL);
 
     if (!DispoInfo->DeleteFile) {
 	/* undelete the file */
-	FCB->Flags &= ~FCB_DELETE_PENDING;
+	Fcb->Flags &= ~FCB_DELETE_PENDING;
 	FileObject->DeletePending = FALSE;
 	return STATUS_SUCCESS;
     }
 
-    if (BooleanFlagOn(FCB->Flags, FCB_DELETE_PENDING)) {
+    if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING)) {
 	/* stream already marked for deletion. just update the file object */
 	FileObject->DeletePending = TRUE;
 	return STATUS_SUCCESS;
     }
 
-    if (FatFcbIsReadOnly(FCB)) {
+    if (FatFcbIsReadOnly(Fcb)) {
 	return STATUS_CANNOT_DELETE;
     }
 
-    if (FatFcbIsRoot(FCB) || IsDotOrDotDot(&FCB->LongNameU)) {
+    if (FatFcbIsRoot(Fcb) || IsDotOrDotDot(&Fcb->LongNameU)) {
 	/* we cannot delete a '.', '..' or the root directory */
 	return STATUS_ACCESS_DENIED;
     }
@@ -307,21 +305,21 @@ static NTSTATUS FatSetDispositionInformation(PFILE_OBJECT FileObject,
     }
 #endif
 
-    if (FatFcbIsDirectory(FCB) && !FatIsDirectoryEmpty(DeviceExt, FCB)) {
+    if (FatFcbIsDirectory(Fcb) && !FatIsDirectoryEmpty(DeviceExt, Fcb)) {
 	/* can't delete a non-empty directory */
 
 	return STATUS_DIRECTORY_NOT_EMPTY;
     }
 
     /* all good */
-    FCB->Flags |= FCB_DELETE_PENDING;
+    Fcb->Flags |= FCB_DELETE_PENDING;
     FileObject->DeletePending = TRUE;
 
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS FatPrepareTargetForRename(IN PDEVICE_EXTENSION DeviceExt,
-					  IN PFATFCB *ParentFCB,
+					  IN PFATFCB *ParentFcb,
 					  IN PUNICODE_STRING NewName,
 					  IN BOOLEAN ReplaceIfExists,
 					  IN PUNICODE_STRING ParentName,
@@ -331,71 +329,56 @@ static NTSTATUS FatPrepareTargetForRename(IN PDEVICE_EXTENSION DeviceExt,
     PFATFCB TargetFcb;
 
     DPRINT("FatPrepareTargetForRename(%p, %p, %wZ, %d, %wZ)\n",
-	   DeviceExt, ParentFCB, NewName, ReplaceIfExists, ParentName);
+	   DeviceExt, ParentFcb, NewName, ReplaceIfExists, ParentName);
 
     *Deleted = FALSE;
     /* Try to open target */
-    Status = FatGetFcbForFile(DeviceExt, ParentFCB, &TargetFcb, NewName);
-    /* If it exists */
-    if (NT_SUCCESS(Status)) {
-	DPRINT("Target file %wZ exists. FCB Flags %08x\n", NewName,
-	       TargetFcb->Flags);
-	/* Check whether we are allowed to replace */
-	if (ReplaceIfExists) {
-	    /* If that's a directory or a read-only file, we're not allowed */
-	    if (FatFcbIsDirectory(TargetFcb) || FatFcbIsReadOnly(TargetFcb)) {
-		DPRINT("And this is a readonly file!\n");
-		FatReleaseFcb(DeviceExt, *ParentFCB);
-		*ParentFCB = NULL;
-		FatReleaseFcb(DeviceExt, TargetFcb);
-		return STATUS_OBJECT_NAME_COLLISION;
-	    }
+    Status = FatGetFcbForFile(DeviceExt, ParentFcb, &TargetFcb, NewName);
+    if (!NT_SUCCESS(Status)) {
+	/* Target file does not exist. Return success if target directory exist,
+	 * and failure if it doesn't. */
+	return *ParentFcb ? STATUS_SUCCESS : Status;
+    }
 
-
-	    /* If we still have a file object, close it. */
-	    if (TargetFcb->FileObject) {
-#if 0	       /* TODO: This should probably be done on server-side */
-		if (!MmFlushImageSection(TargetFcb->FileObject->SectionObjectPointer,
-					 MmFlushForDelete)) {
-		    DPRINT("MmFlushImageSection failed.\n");
-		    FatReleaseFcb(DeviceExt, *ParentFCB);
-		    *ParentFCB = NULL;
-		    FatReleaseFcb(DeviceExt, TargetFcb);
-		    return STATUS_ACCESS_DENIED;
-		}
-#endif
-
-		TargetFcb->FileObject->DeletePending = TRUE;
-		FatCloseFile(DeviceExt, TargetFcb->FileObject);
-	    }
-
-	    /* If we are here, ensure the file isn't open by anyone! */
-	    if (TargetFcb->OpenHandleCount != 0) {
-		DPRINT("There are still open handles for this file.\n");
-		FatReleaseFcb(DeviceExt, *ParentFCB);
-		*ParentFCB = NULL;
-		FatReleaseFcb(DeviceExt, TargetFcb);
-		return STATUS_ACCESS_DENIED;
-	    }
-
-	    /* Effectively delete old file to allow renaming */
-	    DPRINT("Effectively deleting the file.\n");
-	    FatDelEntry(DeviceExt, TargetFcb, NULL);
-	    FatReleaseFcb(DeviceExt, TargetFcb);
-	    *Deleted = TRUE;
-	    return STATUS_SUCCESS;
-	} else {
-	    FatReleaseFcb(DeviceExt, *ParentFCB);
-	    *ParentFCB = NULL;
+    DPRINT("Target file %wZ exists. FCB Flags %08x\n", NewName, TargetFcb->Flags);
+    /* Check whether we are allowed to replace. */
+    if (ReplaceIfExists) {
+	/* If that's a directory or a read-only file, deny the replacement. */
+	if (FatFcbIsDirectory(TargetFcb) || FatFcbIsReadOnly(TargetFcb)) {
+	    DPRINT("And this is a readonly file!\n");
+	    FatReleaseFcb(DeviceExt, *ParentFcb);
+	    *ParentFcb = NULL;
 	    FatReleaseFcb(DeviceExt, TargetFcb);
 	    return STATUS_OBJECT_NAME_COLLISION;
 	}
-    } else if (*ParentFCB != NULL) {
-	return STATUS_SUCCESS;
-    }
 
-    /* Failure */
-    return Status;
+	/* If we still have a file object, close it. */
+	if (TargetFcb->FileObject) {
+	    TargetFcb->FileObject->DeletePending = TRUE;
+	    FatCloseFile(DeviceExt, TargetFcb->FileObject);
+	}
+
+	/* If we are here, ensure the file isn't open by anyone! */
+	if (TargetFcb->OpenHandleCount != 0) {
+	    DPRINT("There are still open handles for this file.\n");
+	    FatReleaseFcb(DeviceExt, *ParentFcb);
+	    *ParentFcb = NULL;
+	    FatReleaseFcb(DeviceExt, TargetFcb);
+	    return STATUS_ACCESS_DENIED;
+	}
+
+	/* Effectively delete old file to allow renaming */
+	DPRINT("Effectively deleting the file.\n");
+	FatDelEntry(DeviceExt, TargetFcb, NULL);
+	FatReleaseFcb(DeviceExt, TargetFcb);
+	*Deleted = TRUE;
+	return STATUS_SUCCESS;
+    } else {
+	FatReleaseFcb(DeviceExt, *ParentFcb);
+	*ParentFcb = NULL;
+	FatReleaseFcb(DeviceExt, TargetFcb);
+	return STATUS_OBJECT_NAME_COLLISION;
+    }
 }
 
 static BOOLEAN IsThereAChildOpened(PFATFCB FCB)
@@ -425,28 +408,28 @@ static BOOLEAN IsThereAChildOpened(PFATFCB FCB)
     return FALSE;
 }
 
-static VOID FatRenameChildFCB(PDEVICE_EXTENSION DeviceExt, PFATFCB FCB)
+static VOID FatRenameChildFcb(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 {
     PLIST_ENTRY Entry;
     PFATFCB Child;
 
-    if (IsListEmpty(&FCB->ParentListHead))
+    if (IsListEmpty(&Fcb->ParentListHead))
 	return;
 
-    for (Entry = FCB->ParentListHead.Flink; Entry != &FCB->ParentListHead;
+    for (Entry = Fcb->ParentListHead.Flink; Entry != &Fcb->ParentListHead;
 	 Entry = Entry->Flink) {
 	NTSTATUS Status;
 
 	Child = CONTAINING_RECORD(Entry, FATFCB, ParentListEntry);
 	DPRINT("Found %wZ with still %u references (parent: %u)!\n",
-	       &Child->PathNameU, Child->RefCount, FCB->RefCount);
+	       &Child->PathNameU, Child->RefCount, Fcb->RefCount);
 
-	Status = FatSetFcbNewDirName(DeviceExt, Child, FCB);
+	Status = FatSetFcbNewDirName(DeviceExt, Child, Fcb);
 	if (!NT_SUCCESS(Status))
 	    continue;
 
 	if (FatFcbIsDirectory(Child)) {
-	    FatRenameChildFCB(DeviceExt, Child);
+	    FatRenameChildFcb(DeviceExt, Child);
 	}
     }
 }
@@ -455,232 +438,54 @@ static VOID FatRenameChildFCB(PDEVICE_EXTENSION DeviceExt, PFATFCB FCB)
  * FUNCTION: Set the file name information
  */
 static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
-					PFATFCB FCB,
+					PFATFCB Fcb,
 					PDEVICE_EXTENSION DeviceExt,
 					PFILE_RENAME_INFORMATION RenameInfo,
 					PFILE_OBJECT TargetFileObject)
 {
-#ifdef NASSERTS_RENAME
-#pragma push_macro("ASSERT")
-#undef ASSERT
-#define ASSERT(x) ((VOID) 0)
-#endif
-    NTSTATUS Status;
-    UNICODE_STRING NewName;
-    UNICODE_STRING SourcePath;
-    UNICODE_STRING SourceFile;
-    UNICODE_STRING NewPath;
-    UNICODE_STRING NewFile;
-    PFILE_OBJECT RootFileObject;
-    PFATFCB RootFCB;
-    UNICODE_STRING RenameInfoString;
-    PFATFCB ParentFCB;
-    IO_STATUS_BLOCK IoStatusBlock;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    HANDLE TargetHandle;
-    BOOLEAN DeletedTarget;
-    ULONG OldReferences, NewReferences;
-    PFATFCB OldParent;
-
-    DPRINT("FatSetRenameInfo(%p, %p, %p, %p, %p)\n", FileObject, FCB,
+    DPRINT("FatSetRenameInfo(%p, %p, %p, %p, %p)\n", FileObject, Fcb,
 	   DeviceExt, RenameInfo, TargetFileObject);
 
     /* Disallow renaming root */
-    if (FatFcbIsRoot(FCB)) {
+    if (FatFcbIsRoot(Fcb)) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    OldReferences = FCB->ParentFcb->RefCount;
-#ifdef NASSERTS_RENAME
-    UNREFERENCED_PARAMETER(OldReferences);
-#endif
-
-    /* If we are performing relative opening for rename, get FO for getting FCB and path name */
-    if (RenameInfo->RootDirectory != NULL) {
-	/* We cannot tolerate relative opening with a full path */
-	if (RenameInfo->FileName[0] == L'\\') {
-	    return STATUS_OBJECT_NAME_INVALID;
-	}
-
-#if 0				/* TODO! */
-	Status = ObReferenceObjectByHandle(RenameInfo->RootDirectory,
-					   FILE_READ_DATA,
-					   *IoFileObjectType,
-					   ExGetPreviousMode(),
-					   (PVOID *)&RootFileObject,
-					   NULL);
-#endif
-	if (!NT_SUCCESS(Status)) {
-	    return Status;
-	}
-
-	RootFCB = RootFileObject->FsContext;
-    }
-
+    assert(Fcb->ParentFcb);
+    UNICODE_STRING NewName;
     RtlInitEmptyUnicodeString(&NewName, NULL, 0);
-    ParentFCB = NULL;
+    PFATFCB ParentFcb = NULL;
 
-    if (TargetFileObject == NULL) {
-	/* If we don't have target file object, construct paths thanks to relative FCB, if any, and with
-	 * information supplied by the user
-	 */
-
-	/* First, setup a string we'll work on */
-	RenameInfoString.Length = RenameInfo->FileNameLength;
-	RenameInfoString.MaximumLength = RenameInfo->FileNameLength;
-	RenameInfoString.Buffer = RenameInfo->FileName;
-
-	/* Check whether we have FQN */
-	if (RenameInfoString.Length > 6 * sizeof(WCHAR)) {
-	    if (RenameInfoString.Buffer[0] == L'\\'
-		&& RenameInfoString.Buffer[1] == L'?'
-		&& RenameInfoString.Buffer[2] == L'?'
-		&& RenameInfoString.Buffer[3] == L'\\'
-		&& RenameInfoString.Buffer[5] == L':'
-		&& (RenameInfoString.Buffer[4] >= L'A'
-		    && RenameInfoString.Buffer[4] <= L'Z')) {
-		/* If so, open its target directory */
-		InitializeObjectAttributes(&ObjectAttributes,
-					   &RenameInfoString,
-					   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-					   NULL, NULL);
-
-#if 0				/* TODO! */
-		Status = IoCreateFile(&TargetHandle,
-				      FILE_WRITE_DATA | SYNCHRONIZE,
-				      &ObjectAttributes,
-				      &IoStatusBlock,
-				      NULL, 0,
-				      FILE_SHARE_READ | FILE_SHARE_WRITE,
-				      FILE_OPEN,
-				      FILE_OPEN_FOR_BACKUP_INTENT,
-				      NULL, 0,
-				      CreateFileTypeNone,
-				      NULL,
-				      IO_FORCE_ACCESS_CHECK | IO_OPEN_TARGET_DIRECTORY);
-		if (!NT_SUCCESS(Status)) {
-		    goto Cleanup;
-		}
-#endif
-
-		/* Get its FO to get the FCB */
-#if 0		/* TODO */
-		Status = ObReferenceObjectByHandle(TargetHandle,
-						   FILE_WRITE_DATA,
-						   *IoFileObjectType,
-						   KernelMode,
-						   (PVOID *) &
-						   TargetFileObject, NULL);
-#endif
-		if (!NT_SUCCESS(Status)) {
-		    NtClose(TargetHandle);
-		    goto Cleanup;
-		}
-
-		/* Are we working on the same volume? */
-#if 0		/* TODO! */
-		if (IoGetRelatedDeviceObject(TargetFileObject) != IoGetRelatedDeviceObject(FileObject)) {
-		    ObDereferenceObject(TargetFileObject);
-		    ZwClose(TargetHandle);
-		    TargetFileObject = NULL;
-		    Status = STATUS_NOT_SAME_DEVICE;
-		    goto Cleanup;
-		}
-#endif
-	    }
-	}
-
-	NewName.Length = 0;
-	NewName.MaximumLength = RenameInfo->FileNameLength;
-	if (RenameInfo->RootDirectory != NULL) {
-	    NewName.MaximumLength += sizeof(WCHAR) + RootFCB->PathNameU.Length;
-	} else if (RenameInfo->FileName[0] != L'\\') {
-	    /* We don't have full path, and we don't have root directory:
-	     * => we move inside the same directory */
-	    NewName.MaximumLength += sizeof(WCHAR) + FCB->DirNameU.Length;
-	} else if (TargetFileObject != NULL) {
-	    /* We had a FQN:
-	     * => we need to use its correct path */
-	    NewName.MaximumLength += sizeof(WCHAR) +
-		((PFATFCB)TargetFileObject->FsContext)->PathNameU.Length;
-	}
-
-	NewName.Buffer = ExAllocatePoolWithTag(NewName.MaximumLength, TAG_NAME);
-	if (NewName.Buffer == NULL) {
-	    if (TargetFileObject != NULL) {
-		ObDereferenceObject(TargetFileObject);
-		ZwClose(TargetHandle);
-		TargetFileObject = NULL;
-	    }
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	    goto Cleanup;
-	}
-
-	if (RenameInfo->RootDirectory != NULL) {
-	    /* Here, copy first absolute and then append relative */
-	    RtlCopyUnicodeString(&NewName, &RootFCB->PathNameU);
-	    NewName.Buffer[NewName.Length / sizeof(WCHAR)] = L'\\';
-	    NewName.Length += sizeof(WCHAR);
-	    RtlAppendUnicodeStringToString(&NewName, &RenameInfoString);
-	} else if (RenameInfo->FileName[0] != L'\\') {
-	    /* Here, copy first work directory and then append filename */
-	    RtlCopyUnicodeString(&NewName, &FCB->DirNameU);
-	    NewName.Buffer[NewName.Length / sizeof(WCHAR)] = L'\\';
-	    NewName.Length += sizeof(WCHAR);
-	    RtlAppendUnicodeStringToString(&NewName, &RenameInfoString);
-	} else if (TargetFileObject != NULL) {
-	    /* Here, copy first path name and then append filename */
-	    RtlCopyUnicodeString(&NewName,
-				 &((PFATFCB)TargetFileObject->FsContext)->PathNameU);
-	    NewName.Buffer[NewName.Length / sizeof(WCHAR)] = L'\\';
-	    NewName.Length += sizeof(WCHAR);
-	    RtlAppendUnicodeStringToString(&NewName, &RenameInfoString);
-	} else {
-	    /* Here we should have full path, so simply copy it */
-	    RtlCopyUnicodeString(&NewName, &RenameInfoString);
-	}
-
-	/* Do we have to cleanup some stuff? */
-	if (TargetFileObject != NULL) {
-	    ObDereferenceObject(TargetFileObject);
-	    ZwClose(TargetHandle);
-	    TargetFileObject = NULL;
-	}
-    } else {
-	/* At that point, we shouldn't care about whether we are relative opening
-	 * Target FO FCB should already have full path
-	 */
-
-	/* Before constructing string, just make a sanity check (just to be sure!) */
-#if 0	/* TODO! */
-	if (IoGetRelatedDeviceObject(TargetFileObject) != IoGetRelatedDeviceObject(FileObject)) {
-	    Status = STATUS_NOT_SAME_DEVICE;
-	    goto Cleanup;
-	}
-#endif
-
-	NewName.Length = 0;
-	NewName.MaximumLength = TargetFileObject->FileName.Length +
-	    ((PFATFCB)TargetFileObject->FsContext)->PathNameU.Length + sizeof(WCHAR);
-	NewName.Buffer = ExAllocatePoolWithTag(NewName.MaximumLength, TAG_NAME);
-	if (NewName.Buffer == NULL) {
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	    goto Cleanup;
-	}
-
-	RtlCopyUnicodeString(&NewName,
-			     &((PFATFCB)TargetFileObject->FsContext)->PathNameU);
-	/* If \, it's already backslash terminated, don't add it */
-	if (!FatFcbIsRoot(TargetFileObject->FsContext)) {
-	    NewName.Buffer[NewName.Length / sizeof(WCHAR)] = L'\\';
-	    NewName.Length += sizeof(WCHAR);
-	}
-	RtlAppendUnicodeStringToString(&NewName, &TargetFileObject->FileName);
+    /* Before constructing the target name string, do a sanity check.
+     * This is alredy done on the server side, but we just want to be sure. */
+    NTSTATUS Status;
+    if (TargetFileObject->DeviceObject != FileObject->DeviceObject) {
+	Status = STATUS_NOT_SAME_DEVICE;
+	goto Cleanup;
     }
+
+    NewName.Length = 0;
+    NewName.MaximumLength = TargetFileObject->FileName.Length +
+	((PFATFCB)TargetFileObject->FsContext)->PathNameU.Length + sizeof(WCHAR);
+    NewName.Buffer = ExAllocatePoolWithTag(NewName.MaximumLength, TAG_NAME);
+    if (NewName.Buffer == NULL) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto Cleanup;
+    }
+
+    RtlCopyUnicodeString(&NewName, &((PFATFCB)TargetFileObject->FsContext)->PathNameU);
+    /* If \, it's already backslash terminated, don't add it */
+    if (!FatFcbIsRoot(TargetFileObject->FsContext)) {
+	NewName.Buffer[NewName.Length / sizeof(WCHAR)] = L'\\';
+	NewName.Length += sizeof(WCHAR);
+    }
+    RtlAppendUnicodeStringToString(&NewName, &TargetFileObject->FileName);
 
     /* Explode our paths to get path & filename */
-    FatSplitPathName(&FCB->PathNameU, &SourcePath, &SourceFile);
+    UNICODE_STRING SourcePath, SourceFile;
+    FatSplitPathName(&Fcb->PathNameU, &SourcePath, &SourceFile);
     DPRINT("Old dir: %wZ, Old file: %wZ\n", &SourcePath, &SourceFile);
+    UNICODE_STRING NewPath, NewFile;
     FatSplitPathName(&NewName, &NewPath, &NewFile);
     DPRINT("New dir: %wZ, New file: %wZ\n", &NewPath, &NewFile);
 
@@ -689,208 +494,151 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	goto Cleanup;
     }
 
-    if (FatFcbIsDirectory(FCB) && !IsListEmpty(&FCB->ParentListHead)) {
-	if (IsThereAChildOpened(FCB)) {
-	    Status = STATUS_ACCESS_DENIED;
-	    ASSERT(OldReferences == FCB->ParentFcb->RefCount);
-	    goto Cleanup;
-	}
+    ULONG OldReferences = Fcb->ParentFcb->RefCount;
+    if (FatFcbIsDirectory(Fcb) && !IsListEmpty(&Fcb->ParentListHead) &&
+	IsThereAChildOpened(Fcb)) {
+	Status = STATUS_ACCESS_DENIED;
+	ASSERT(OldReferences == Fcb->ParentFcb->RefCount);
+	goto Cleanup;
     }
 
+    ULONG DeletedTargetNotifyFlags =  FILE_NOTIFY_CHANGE_ATTRIBUTES |
+	FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE |
+	FILE_NOTIFY_CHANGE_LAST_ACCESS | FILE_NOTIFY_CHANGE_CREATION |
+	FILE_NOTIFY_CHANGE_EA;
+    ULONG NotifyFlag = FatFcbIsDirectory(Fcb) ?
+	FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME;
     /* Are we working in place? */
     if (FsRtlAreNamesEqual(&SourcePath, &NewPath, TRUE, NULL)) {
 	if (FsRtlAreNamesEqual(&SourceFile, &NewFile, FALSE, NULL)) {
 	    Status = STATUS_SUCCESS;
-	    ASSERT(OldReferences == FCB->ParentFcb->RefCount);
+	    ASSERT(OldReferences == Fcb->ParentFcb->RefCount);
 	    goto Cleanup;
 	}
 
 	if (FsRtlAreNamesEqual(&SourceFile, &NewFile, TRUE, NULL)) {
-	    FatReportChange(DeviceExt,
-			    FCB,
-			    (FatFcbIsDirectory(FCB) ?
-			     FILE_NOTIFY_CHANGE_DIR_NAME :
-			     FILE_NOTIFY_CHANGE_FILE_NAME),
-			    FILE_ACTION_RENAMED_OLD_NAME);
-	    Status = FatRenameEntry(DeviceExt, FCB, &NewFile, TRUE);
+	    FatReportChange(DeviceExt, Fcb, NotifyFlag, FILE_ACTION_RENAMED_OLD_NAME);
+	    Status = FatRenameEntry(DeviceExt, Fcb, &NewFile, TRUE);
 	    if (NT_SUCCESS(Status)) {
-		FatReportChange(DeviceExt,
-				FCB,
-				(FatFcbIsDirectory(FCB) ?
-				 FILE_NOTIFY_CHANGE_DIR_NAME :
-				 FILE_NOTIFY_CHANGE_FILE_NAME),
-				FILE_ACTION_RENAMED_NEW_NAME);
+		FatReportChange(DeviceExt, Fcb, NotifyFlag, FILE_ACTION_RENAMED_NEW_NAME);
 	    }
 	} else {
 	    /* Try to find target */
-	    ParentFCB = FCB->ParentFcb;
-	    FatGrabFcb(DeviceExt, ParentFCB);
-	    Status = FatPrepareTargetForRename(DeviceExt,
-					       &ParentFCB,
-					       &NewFile,
+	    ParentFcb = Fcb->ParentFcb;
+	    FatGrabFcb(DeviceExt, ParentFcb);
+	    BOOLEAN DeletedTarget;
+	    Status = FatPrepareTargetForRename(DeviceExt, &ParentFcb, &NewFile,
 					       RenameInfo->ReplaceIfExists,
 					       &NewPath, &DeletedTarget);
 	    if (!NT_SUCCESS(Status)) {
-		ASSERT(OldReferences == FCB->ParentFcb->RefCount - 1);
-		ASSERT(OldReferences == ParentFCB->RefCount - 1);
+		ASSERT(OldReferences == Fcb->ParentFcb->RefCount - 1);
+		ASSERT(OldReferences == ParentFcb->RefCount - 1);
 		goto Cleanup;
 	    }
 
-	    FatReportChange(DeviceExt,
-			    FCB,
-			    (FatFcbIsDirectory(FCB) ?
-			     FILE_NOTIFY_CHANGE_DIR_NAME :
-			     FILE_NOTIFY_CHANGE_FILE_NAME),
-			    (DeletedTarget ? FILE_ACTION_REMOVED :
-			     FILE_ACTION_RENAMED_OLD_NAME));
-	    Status = FatRenameEntry(DeviceExt, FCB, &NewFile, FALSE);
+	    FatReportChange(DeviceExt, Fcb, NotifyFlag,
+			    DeletedTarget ? FILE_ACTION_REMOVED : FILE_ACTION_RENAMED_OLD_NAME);
+	    Status = FatRenameEntry(DeviceExt, Fcb, &NewFile, FALSE);
 	    if (NT_SUCCESS(Status)) {
 		if (DeletedTarget) {
-		    FatReportChange(DeviceExt,
-				    FCB,
-				    FILE_NOTIFY_CHANGE_ATTRIBUTES |
-				    FILE_NOTIFY_CHANGE_SIZE |
-				    FILE_NOTIFY_CHANGE_LAST_WRITE |
-				    FILE_NOTIFY_CHANGE_LAST_ACCESS |
-				    FILE_NOTIFY_CHANGE_CREATION |
-				    FILE_NOTIFY_CHANGE_EA,
+		    FatReportChange(DeviceExt, Fcb, DeletedTargetNotifyFlags,
 				    FILE_ACTION_MODIFIED);
 		} else {
-		    FatReportChange(DeviceExt,
-				    FCB,
-				    (FatFcbIsDirectory(FCB) ?
-				     FILE_NOTIFY_CHANGE_DIR_NAME :
-				     FILE_NOTIFY_CHANGE_FILE_NAME),
-				    FILE_ACTION_RENAMED_NEW_NAME);
+		    FatReportChange(DeviceExt, Fcb, NotifyFlag, FILE_ACTION_RENAMED_NEW_NAME);
 		}
 	    }
 	}
 
-	ASSERT(OldReferences == FCB->ParentFcb->RefCount - 1);	// extra grab
-	ASSERT(OldReferences == ParentFCB->RefCount - 1);	// extra grab
+	ASSERT(OldReferences == Fcb->ParentFcb->RefCount - 1);	// extra grab
+	ASSERT(OldReferences == ParentFcb->RefCount - 1);	// extra grab
     } else {
-
 	/* Try to find target */
-	ParentFCB = NULL;
-	OldParent = FCB->ParentFcb;
-#ifdef NASSERTS_RENAME
-	UNREFERENCED_PARAMETER(OldParent);
-#endif
-	Status = FatPrepareTargetForRename(DeviceExt,
-					   &ParentFCB,
-					   &NewName,
+	ParentFcb = NULL;
+	PFATFCB OldParent = Fcb->ParentFcb;
+	BOOLEAN DeletedTarget;
+	Status = FatPrepareTargetForRename(DeviceExt, &ParentFcb, &NewName,
 					   RenameInfo->ReplaceIfExists,
 					   &NewPath, &DeletedTarget);
 	if (!NT_SUCCESS(Status)) {
-	    ASSERT(OldReferences == FCB->ParentFcb->RefCount);
+	    ASSERT(OldReferences == Fcb->ParentFcb->RefCount);
 	    goto Cleanup;
 	}
 
-	NewReferences = ParentFCB->RefCount;
-#ifdef NASSERTS_RENAME
-	UNREFERENCED_PARAMETER(NewReferences);
-#endif
+	ULONG NewReferences = ParentFcb->RefCount;
 
-	FatReportChange(DeviceExt,
-			FCB,
-			(FatFcbIsDirectory(FCB) ?
-			 FILE_NOTIFY_CHANGE_DIR_NAME :
-			 FILE_NOTIFY_CHANGE_FILE_NAME),
-			FILE_ACTION_REMOVED);
-	Status = FatMoveEntry(DeviceExt, FCB, &NewFile, ParentFCB);
+	FatReportChange(DeviceExt, Fcb, NotifyFlag, FILE_ACTION_REMOVED);
+	Status = FatMoveEntry(DeviceExt, Fcb, &NewFile, ParentFcb);
 	if (NT_SUCCESS(Status)) {
 	    if (DeletedTarget) {
-		FatReportChange(DeviceExt,
-				FCB,
-				FILE_NOTIFY_CHANGE_ATTRIBUTES |
-				FILE_NOTIFY_CHANGE_SIZE |
-				FILE_NOTIFY_CHANGE_LAST_WRITE |
-				FILE_NOTIFY_CHANGE_LAST_ACCESS |
-				FILE_NOTIFY_CHANGE_CREATION |
-				FILE_NOTIFY_CHANGE_EA,
+		FatReportChange(DeviceExt, Fcb, DeletedTargetNotifyFlags,
 				FILE_ACTION_MODIFIED);
 	    } else {
-		FatReportChange(DeviceExt,
-				FCB,
-				(FatFcbIsDirectory(FCB) ?
-				 FILE_NOTIFY_CHANGE_DIR_NAME :
-				 FILE_NOTIFY_CHANGE_FILE_NAME),
-				FILE_ACTION_ADDED);
+		FatReportChange(DeviceExt, Fcb, NotifyFlag, FILE_ACTION_ADDED);
 	    }
 	}
+	ASSERT(OldReferences == OldParent->RefCount + 1);	// removed file
+	ASSERT(NewReferences == ParentFcb->RefCount - 1);	// new file
     }
 
-    if (NT_SUCCESS(Status) && FatFcbIsDirectory(FCB)) {
-	FatRenameChildFCB(DeviceExt, FCB);
+    if (NT_SUCCESS(Status) && FatFcbIsDirectory(Fcb)) {
+	FatRenameChildFcb(DeviceExt, Fcb);
     }
-
-    ASSERT(OldReferences == OldParent->RefCount + 1);	// removed file
-    ASSERT(NewReferences == ParentFCB->RefCount - 1);	// new file
 Cleanup:
-    if (ParentFCB != NULL)
-	FatReleaseFcb(DeviceExt, ParentFCB);
+    if (ParentFcb != NULL)
+	FatReleaseFcb(DeviceExt, ParentFcb);
     if (NewName.Buffer != NULL)
 	ExFreePoolWithTag(NewName.Buffer, TAG_NAME);
-    if (RenameInfo->RootDirectory != NULL)
-	ObDereferenceObject(RootFileObject);
 
     return Status;
-#ifdef NASSERTS_RENAME
-#pragma pop_macro("ASSERT")
-#endif
 }
 
 /*
  * FUNCTION: Retrieve the file name information
  */
-static NTSTATUS FatGetNameInformation(PFILE_OBJECT FileObject,
-				      PFATFCB FCB,
-				      PDEVICE_EXTENSION DeviceExt,
-				      PFILE_NAME_INFORMATION NameInfo, PULONG BufferLength)
+static NTSTATUS FatGetNameInformation(IN PFILE_OBJECT FileObject,
+				      IN PFATFCB Fcb,
+				      IN PDEVICE_EXTENSION DeviceExt,
+				      OUT PFILE_NAME_INFORMATION NameInfo,
+				      IN OUT PULONG BufferLength)
 {
-    ULONG BytesToCopy;
-
     UNREFERENCED_PARAMETER(FileObject);
     UNREFERENCED_PARAMETER(DeviceExt);
 
     ASSERT(NameInfo != NULL);
-    ASSERT(FCB != NULL);
+    ASSERT(Fcb != NULL);
 
     /* If buffer can't hold at least the file name length, bail out */
     if (*BufferLength < (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]))
 	return STATUS_BUFFER_OVERFLOW;
 
     /* Save file name length, and as much file len, as buffer length allows */
-    NameInfo->FileNameLength = FCB->PathNameU.Length;
+    NameInfo->FileNameLength = Fcb->PathNameU.Length;
 
     /* Calculate amount of bytes to copy not to overflow the buffer */
-    BytesToCopy = min(FCB->PathNameU.Length,
-		      *BufferLength - FIELD_OFFSET(FILE_NAME_INFORMATION,
-						   FileName[0]));
+    ULONG BytesToCopy = min(Fcb->PathNameU.Length,
+			    *BufferLength - FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]));
 
     /* Fill in the bytes */
-    RtlCopyMemory(NameInfo->FileName, FCB->PathNameU.Buffer, BytesToCopy);
+    RtlCopyMemory(NameInfo->FileName, Fcb->PathNameU.Buffer, BytesToCopy);
 
     /* Check if we could write more but are not able to */
-    if (*BufferLength <
-	FCB->PathNameU.Length + (ULONG) FIELD_OFFSET(FILE_NAME_INFORMATION,
-						     FileName[0])) {
+    if (*BufferLength < Fcb->PathNameU.Length + (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION,
+								    FileName[0])) {
 	/* Return number of bytes written */
 	*BufferLength -= FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]) + BytesToCopy;
 	return STATUS_BUFFER_OVERFLOW;
     }
 
     /* We filled up as many bytes, as needed */
-    *BufferLength -= (FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]) +
-		      FCB->PathNameU.Length);
+    *BufferLength -= FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0]) + Fcb->PathNameU.Length;
 
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS FatGetInternalInformation(PFATFCB Fcb,
-					  PDEVICE_EXTENSION DeviceExt,
-					  PFILE_INTERNAL_INFORMATION InternalInfo,
-					  PULONG BufferLength)
+static NTSTATUS FatGetInternalInformation(IN PFATFCB Fcb,
+					  IN PDEVICE_EXTENSION DeviceExt,
+					  OUT PFILE_INTERNAL_INFORMATION InternalInfo,
+					  IN OUT PULONG BufferLength)
 {
     ASSERT(InternalInfo);
     ASSERT(Fcb);
@@ -898,8 +646,8 @@ static NTSTATUS FatGetInternalInformation(PFATFCB Fcb,
     if (*BufferLength < sizeof(FILE_INTERNAL_INFORMATION))
 	return STATUS_BUFFER_OVERFLOW;
 
-    InternalInfo->IndexNumber.QuadPart = (LONGLONG) FatDirEntryGetFirstCluster(DeviceExt,
-									       &Fcb->Entry) *
+    InternalInfo->IndexNumber.QuadPart =
+	(LONGLONG)FatDirEntryGetFirstCluster(DeviceExt, &Fcb->Entry) *
 	DeviceExt->FatInfo.BytesPerCluster;
 
     *BufferLength -= sizeof(FILE_INTERNAL_INFORMATION);
@@ -910,10 +658,10 @@ static NTSTATUS FatGetInternalInformation(PFATFCB Fcb,
 /*
  * FUNCTION: Retrieve the file network open information
  */
-static NTSTATUS FatGetNetworkOpenInformation(PFATFCB Fcb,
-					     PDEVICE_EXTENSION DeviceExt,
-					     PFILE_NETWORK_OPEN_INFORMATION NetworkInfo,
-					     PULONG BufferLength)
+static NTSTATUS FatGetNetworkOpenInformation(IN PFATFCB Fcb,
+					     IN PDEVICE_EXTENSION DeviceExt,
+					     OUT PFILE_NETWORK_OPEN_INFORMATION NetworkInfo,
+					     IN OUT PULONG BufferLength)
 {
     ASSERT(NetworkInfo);
     ASSERT(Fcb);
@@ -960,11 +708,11 @@ static NTSTATUS FatGetNetworkOpenInformation(PFATFCB Fcb,
 
     NetworkInfo->FileAttributes = *Fcb->Attributes & 0x3f;
     /* Synthesize FILE_ATTRIBUTE_NORMAL */
-    if (0 == (NetworkInfo->FileAttributes & (FILE_ATTRIBUTE_DIRECTORY |
-					     FILE_ATTRIBUTE_ARCHIVE |
-					     FILE_ATTRIBUTE_SYSTEM |
-					     FILE_ATTRIBUTE_HIDDEN |
-					     FILE_ATTRIBUTE_READONLY))) {
+    if (!(NetworkInfo->FileAttributes & (FILE_ATTRIBUTE_DIRECTORY |
+					 FILE_ATTRIBUTE_ARCHIVE |
+					 FILE_ATTRIBUTE_SYSTEM |
+					 FILE_ATTRIBUTE_HIDDEN |
+					 FILE_ATTRIBUTE_READONLY))) {
 	DPRINT("Synthesizing FILE_ATTRIBUTE_NORMAL\n");
 	NetworkInfo->FileAttributes |= FILE_ATTRIBUTE_NORMAL;
     }
@@ -974,19 +722,18 @@ static NTSTATUS FatGetNetworkOpenInformation(PFATFCB Fcb,
 }
 
 
-static NTSTATUS FatGetEaInformation(PFILE_OBJECT FileObject,
-				    PFATFCB Fcb,
-				    PDEVICE_EXTENSION DeviceExt,
-				    PFILE_EA_INFORMATION Info, PULONG BufferLength)
+static NTSTATUS FatGetEaInformation(IN PFILE_OBJECT FileObject,
+				    IN PFATFCB Fcb,
+				    IN PDEVICE_EXTENSION DeviceExt,
+				    OUT PFILE_EA_INFORMATION Info,
+				    IN OUT PULONG BufferLength)
 {
     UNREFERENCED_PARAMETER(FileObject);
     UNREFERENCED_PARAMETER(Fcb);
 
-    /* FIXME - use SEH to access the buffer! */
     Info->EaSize = 0;
     *BufferLength -= sizeof(*Info);
-    if (DeviceExt->FatInfo.FatType == FAT12 ||
-	DeviceExt->FatInfo.FatType == FAT16) {
+    if (DeviceExt->FatInfo.FatType == FAT12 || DeviceExt->FatInfo.FatType == FAT16) {
 	/* FIXME */
 	DPRINT1("FAT: FileEaInformation not implemented!\n");
     }
@@ -997,33 +744,35 @@ static NTSTATUS FatGetEaInformation(PFILE_OBJECT FileObject,
 /*
  * FUNCTION: Retrieve the all file information
  */
-static NTSTATUS FatGetAllInformation(PFILE_OBJECT FileObject,
-				     PFATFCB Fcb,
-				     PDEVICE_EXTENSION DeviceExt,
-				     PFILE_ALL_INFORMATION Info, PULONG BufferLength)
+static NTSTATUS FatGetAllInformation(IN PFILE_OBJECT FileObject,
+				     IN PFATFCB Fcb,
+				     IN PDEVICE_EXTENSION DeviceExt,
+				     OUT PFILE_ALL_INFORMATION Info,
+				     IN OUT PULONG BufferLength)
 {
     NTSTATUS Status;
 
     ASSERT(Info);
     ASSERT(Fcb);
 
-    if (*BufferLength <
-	FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation.FileName))
+    if (*BufferLength < FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation.FileName))
 	return STATUS_BUFFER_OVERFLOW;
 
-    *BufferLength -= (sizeof(FILE_ACCESS_INFORMATION) + sizeof(FILE_MODE_INFORMATION) +
-		      sizeof(FILE_ALIGNMENT_INFORMATION));
+    *BufferLength -= sizeof(FILE_ACCESS_INFORMATION) + sizeof(FILE_MODE_INFORMATION) +
+	sizeof(FILE_ALIGNMENT_INFORMATION);
 
     /* Basic Information */
     Status = FatGetBasicInformation(FileObject, Fcb, DeviceExt,
 				    &Info->BasicInformation, BufferLength);
     if (!NT_SUCCESS(Status))
 	return Status;
+
     /* Standard Information */
     Status = FatGetStandardInformation(Fcb, &Info->StandardInformation,
 				       BufferLength);
     if (!NT_SUCCESS(Status))
 	return Status;
+
     /* Internal Information */
     Status = FatGetInternalInformation(Fcb, DeviceExt,
 				       &Info->InternalInformation,
@@ -1035,6 +784,7 @@ static NTSTATUS FatGetAllInformation(PFILE_OBJECT FileObject,
 				 &Info->EaInformation, BufferLength);
     if (!NT_SUCCESS(Status))
 	return Status;
+
     /* Name Information */
     Status = FatGetNameInformation(FileObject, Fcb, DeviceExt,
 				   &Info->NameInformation, BufferLength);
@@ -1166,16 +916,6 @@ NTSTATUS FatSetFileSizeInformation(IN PFILE_OBJECT FileObject,
 	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
     } else {
 	/* New allocation size is smaller, so we need to shrink the file. */
-	DPRINT("Check for the ability to set file size\n");
-#if 0				/* TODO! */
-	if (!MmCanFileBeTruncated(FileObject->SectionObjectPointer,
-				  (PLARGE_INTEGER)AllocationSize)) {
-	    DPRINT("Couldn't set file size!\n");
-	    return STATUS_USER_MAPPED_FILE;
-	}
-#endif
-	DPRINT("Can set file size\n");
-
 	UpdateFileSize(FileObject, Fcb, NewSize, ClusterSize, IsFatX);
 	NTSTATUS Status;
 	ULONG Cluster, NCluster;
@@ -1318,14 +1058,13 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
     DPRINT("FatSetInformation(IrpContext %p)\n", IrpContext);
 
     FILE_INFORMATION_CLASS Info = IrpContext->Stack->Parameters.SetFile.FileInformationClass;
-    PFATFCB Fcb = (PFATFCB) IrpContext->FileObject->FsContext;
+    PFILE_OBJECT FileObj = IrpContext->FileObject;
+    PFATFCB Fcb = (PFATFCB)IrpContext->FileObject->FsContext;
     PVOID SystemBuffer = IrpContext->Irp->SystemBuffer;
 
-    DPRINT("FatSetInformation is called for '%s'\n",
-	   (Info >= (FileMaximumInformation - 1)) ? "????" : FileInformationClassNames[Info]);
-
-    DPRINT("FileInformationClass %d\n", Info);
-    DPRINT("SystemBuffer %p\n", SystemBuffer);
+    DPRINT("FatSetInformation is called for '%s' (%d)\n",
+	   (Info >= (FileMaximumInformation - 1)) ? "????" : FileInformationClassNames[Info],
+	   Info);
 
     if (Fcb == NULL) {
 	DPRINT1("IRP_MJ_SET_INFORMATION without FCB!\n");
@@ -1334,23 +1073,6 @@ NTSTATUS FatSetInformation(PFAT_IRP_CONTEXT IrpContext)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* Special: We should call MmCanFileBeTruncated here to determine if changing
-       the file size would be allowed.  If not, we bail with the right error.
-       We must do this before acquiring the lock. */
-#if 0			/* TODO! */
-    if (Info == FileEndOfFileInformation) {
-	DPRINT("Check for the ability to set file size\n");
-	if (!MmCanFileBeTruncated(IrpContext->FileObject->SectionObjectPointer,
-				  (PLARGE_INTEGER)SystemBuffer)) {
-	    DPRINT("Couldn't set file size!\n");
-	    IrpContext->Irp->IoStatus.Information = 0;
-	    return STATUS_USER_MAPPED_FILE;
-	}
-	DPRINT("Can set file size\n");
-    }
-#endif
-
-    PFILE_OBJECT FileObj = IrpContext->FileObject;
     PDEVICE_EXTENSION DevExt = IrpContext->DeviceExt;
     NTSTATUS Status = STATUS_SUCCESS;
 

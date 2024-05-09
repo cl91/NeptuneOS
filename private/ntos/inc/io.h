@@ -148,6 +148,7 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
     BOOLEAN OpenInProgress;
     KEVENT WriteCompleted; /* Signaled when the WRITE IRP is completed. */
     BOOLEAN WritePending; /* TRUE if a WRITE IRP for this file is in progress. */
+    BOOLEAN IsDirectory;  /* TRUE if the FCB is for a directory file. */
 } IO_FILE_CONTROL_BLOCK, *PIO_FILE_CONTROL_BLOCK;
 
 /*
@@ -239,6 +240,7 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
 				IN OPTIONAL ULONG64 FileSize,
+				IN OPTIONAL ULONG FileAttributes,
 				OUT PIO_FILE_OBJECT *pFile);
 
 /* init.c */

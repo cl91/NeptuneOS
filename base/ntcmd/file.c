@@ -621,11 +621,9 @@ NTSTATUS MoveFile(IN LPCWSTR ExistingFileName, IN LPCWSTR NewFileName,
     FileRenameInfo->FileNameLength = FileNameSize;
     RtlCopyMemory(FileRenameInfo->FileName, NewFileNameBuffer, FileNameSize);
 
-    Status = NtSetInformationFile(FileHandle,
-				  &IoStatusBlock,
-				  FileRenameInfo,
-				  sizeof(FILE_RENAME_INFORMATION) +
-				  FileNameSize, FileRenameInformation);
+    Status = NtSetInformationFile(FileHandle, &IoStatusBlock, FileRenameInfo,
+				  sizeof(FILE_RENAME_INFORMATION) + FileNameSize,
+				  FileRenameInformation);
 
     RtlFreeHeap(RtlGetProcessHeap(), 0, FileRenameInfo);
 

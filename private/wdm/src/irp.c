@@ -270,7 +270,8 @@ static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
 				    IN PVOID Buffer,
 				    IN ULONG BufferLength,
 				    IN ULONG PfnOffset,
-				    IN ULONG PfnCount)
+				    IN ULONG PfnCount,
+				    IN BOOLEAN ForceBufferedIo)
 {
     if (BufferLength == 0 || Buffer == NULL) {
 	return STATUS_SUCCESS;
@@ -298,7 +299,7 @@ static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
 	    Buffer = BufferCopy;
 	    Irp->Flags |= IRP_DEALLOCATE_BUFFER;
 	}
-	if (DeviceFlags & DO_BUFFERED_IO) {
+	if ((DeviceFlags & DO_BUFFERED_IO) || ForceBufferedIo) {
 	    Irp->Flags |= IRP_BUFFERED_IO;
 	    Irp->SystemBuffer = Buffer;
 	} else {
@@ -406,6 +407,7 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
     }
     case IRP_MJ_READ:
     case IRP_MJ_WRITE:
+    case IRP_MJ_SET_INFORMATION:
     {
 	/* The MDL will be freed by IoFreeIrp so we don't need to free it here. */
 	if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
@@ -495,6 +497,9 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	IoStack->Parameters.Create.FileAttributes = Src->Request.Create.FileAttributes;
 	IoStack->Parameters.Create.ShareAccess = Src->Request.Create.ShareAccess;
 	IoStack->Parameters.Create.EaLength = 0;
+	if (Src->Request.Create.OpenTargetDirectory) {
+	    IoStack->Flags |= SL_OPEN_TARGET_DIRECTORY;
+	}
 	break;
     }
 
@@ -546,7 +551,7 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	IoStack->Parameters.Read.ByteOffset = Src->Request.Read.ByteOffset;
 	RET_ERR(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.OutputBuffer,
 				    BufferLength, Src->Request.OutputBufferPfn,
-				    Src->Request.OutputBufferPfnCount));
+				    Src->Request.OutputBufferPfnCount, FALSE));
 	break;
     }
 
@@ -558,7 +563,35 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	IoStack->Parameters.Write.ByteOffset = Src->Request.Write.ByteOffset;
 	RET_ERR(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.InputBuffer,
 				    BufferLength, Src->Request.InputBufferPfn,
-				    Src->Request.InputBufferPfnCount));
+				    Src->Request.InputBufferPfnCount, FALSE));
+	break;
+    }
+
+    case IRP_MJ_SET_INFORMATION:
+    {
+	FILE_INFORMATION_CLASS FileInfoClass = Src->Request.SetFile.FileInformationClass;
+	IoStack->Parameters.SetFile.FileInformationClass = FileInfoClass;
+	if (FileInfoClass == FileRenameInformation || FileInfoClass == FileLinkInformation ||
+	    FileInfoClass == FileMoveClusterInformation) {
+	    PFILE_OBJECT Target = IopGetFileObject(Src->Request.SetFile.TargetDirectory);
+	    if (!Target) {
+		assert(FALSE);
+		return STATUS_INTERNAL_ERROR;
+	    }
+	    IoStack->Parameters.SetFile.FileObject = Target;
+	}
+	ULONG BufferLength = Src->Request.InputBufferLength;
+	IoStack->Parameters.SetFile.Length = BufferLength;
+	RET_ERR(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.InputBuffer,
+				    BufferLength, Src->Request.InputBufferPfn,
+				    Src->Request.InputBufferPfnCount, TRUE));
+	if (FileInfoClass == FileRenameInformation || FileInfoClass == FileLinkInformation) {
+	    PFILE_RENAME_INFORMATION RenameInfo = Irp->SystemBuffer;
+	    IoStack->Parameters.SetFile.ReplaceIfExists = RenameInfo->ReplaceIfExists;
+	} else if (FileInfoClass == FileMoveClusterInformation) {
+	    PFILE_MOVE_CLUSTER_INFORMATION MoveClusterInfo = Irp->SystemBuffer;
+	    IoStack->Parameters.SetFile.ClusterCount = MoveClusterInfo->ClusterCount;
+	}
 	break;
     }
 
@@ -818,6 +851,8 @@ static VOID IopDeleteIrp(PIRP Irp)
 	    }
 	    break;
 	}
+	break;
+    default:
 	break;
     }
     if (Irp->MasterIrp) {
@@ -1267,6 +1302,24 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	DbgPrint("    QUERY-INFORMATION  FileInformationClass %d Length 0x%x\n",
 		 Stack->Parameters.QueryFile.FileInformationClass,
 		 Stack->Parameters.QueryFile.Length);
+	break;
+    case IRP_MJ_SET_INFORMATION:
+	DbgPrint("    SET-INFORMATION  FileInformationClass %d Length 0x%x "
+		 "FileObject %p(%p, fcb %p)",
+		 Stack->Parameters.SetFile.FileInformationClass,
+		 Stack->Parameters.SetFile.Length,
+		 Stack->Parameters.SetFile.FileObject,
+		 (PVOID)IopGetFileHandle(Stack->Parameters.SetFile.FileObject),
+		 Stack->Parameters.SetFile.FileObject
+		 ? Stack->Parameters.SetFile.FileObject->FsContext : NULL);
+	if (Stack->Parameters.SetFile.FileInformationClass == FileRenameInformation ||
+	    Stack->Parameters.SetFile.FileInformationClass == FileLinkInformation) {
+	    DbgPrint(" ReplaceIfExists %d\n", Stack->Parameters.SetFile.ReplaceIfExists);
+	} else if (Stack->Parameters.SetFile.FileInformationClass == FileMoveClusterInformation) {
+	    DbgPrint(" ClusterCount %d\n", Stack->Parameters.SetFile.ClusterCount);
+	} else {
+	    DbgPrint("\n");
+	}
 	break;
     case IRP_MJ_QUERY_VOLUME_INFORMATION:
 	DbgPrint("    QUERY-VOLUME-INFORMATION  FsInformationClass %d Length 0x%x\n",

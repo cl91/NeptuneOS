@@ -8,7 +8,6 @@
 
 /* INCLUDES *****************************************************************/
 
-#include "debug.h"
 #include "fatfs.h"
 
 /* FUNCTIONS *****************************************************************/
@@ -490,22 +489,13 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	    FileObject->FileName.Length = FileNameLen;
 	    /* Skip first slash */
 	    ++Idx;
+	    /* Note since PathNameU points to the same buffer as FileObject->FileName,
+	     * this modifies the file name string associated with the file object. */
 	    RtlMoveMemory(&PathNameU.Buffer[0], &PathNameU.Buffer[Idx],
 			  FileObject->FileName.Length);
-#if 0
-	    /* Terminate the string at the last backslash */
-	    PathNameU.Buffer[Idx + 1] = UNICODE_NULL;
-	    PathNameU.Length = (Idx + 1) * sizeof(WCHAR);
-	    PathNameU.MaximumLength = PathNameU.Length + sizeof(WCHAR);
-
-	    /* Update the file object as well */
-	    FileObject->FileName.Length = PathNameU.Length;
-	    FileObject->FileName.MaximumLength = PathNameU.MaximumLength;
-#endif
 	} else {
 	    /* This is a relative open and we have only the filename, so
-	     * open the parent directory. It is in RelatedFileObject.
-	     */
+	     * open the parent directory. It is in RelatedFileObject. */
 	    ASSERT(FileObject->RelatedFileObject != NULL);
 	    /* No need to modify the FO. It already has the name */
 	}
@@ -688,26 +678,6 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	Status = STATUS_OBJECT_NAME_INVALID;
 	goto OpenFail;
     }
-#if 0 /* ifndef USE_ROS_CC_AND_FS */
-    if (!FatFcbIsDirectory(Fcb)) {
-	if (BooleanFlagOn(Stack->Parameters.Create.SecurityContext->DesiredAccess,
-			  FILE_WRITE_DATA)
-	    || RequestedDisposition == FILE_OVERWRITE
-	    || RequestedDisposition == FILE_OVERWRITE_IF
-	    || (RequestedOptions & FILE_DELETE_ON_CLOSE)) {
-	    if (!MmFlushImageSection(&Fcb->SectionObjectPointers, MmFlushForWrite)) {
-		DPRINT1("%wZ\n", &Fcb->PathNameU);
-		DPRINT1("%d %d %d\n",
-			Stack->Parameters.Create.SecurityContext->DesiredAccess & FILE_WRITE_DATA,
-			RequestedDisposition == FILE_OVERWRITE,
-			RequestedDisposition == FILE_OVERWRITE_IF);
-		Status = (BooleanFlagOn(RequestedOptions, FILE_DELETE_ON_CLOSE)) ?
-		    STATUS_CANNOT_DELETE : STATUS_SHARING_VIOLATION;
-		goto OpenFail;
-	    }
-	}
-    }
-#endif
     if (PagingFileCreate) {
 	/* FIXME:
 	 *   Do more checking for page files. It is possible

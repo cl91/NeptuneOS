@@ -33,7 +33,8 @@ NTSTATUS LdrLoadBootModules()
     /* Create a dummy FILE object for the boot modules directory so at the very
      * early stage of the boot process (before any file system is mounted), ntdll
      * can get a valid handle for the boot modules directory. */
-    RET_ERR(IoCreateDevicelessFile(".", BootModulesDirectory, 0, &BootModulesDirectoryFile));
+    RET_ERR(IoCreateDevicelessFile(".", BootModulesDirectory, 0,
+				   FILE_ATTRIBUTE_DIRECTORY, &BootModulesDirectoryFile));
 
     struct cpio_info cpio;
     int error = cpio_info(_binary_initcpio_start, (size_t) _binary_initcpio_size, &cpio);
@@ -69,7 +70,7 @@ NTSTATUS LdrLoadBootModules()
 	PIO_FILE_OBJECT File = NULL;
 	/* Create the FILE object and insert into the object directory */
 	RET_ERR(IoCreateDevicelessFile(FileNames[i], BootModulesDirectory,
-				       FileSize, &File));
+				       FileSize, 0, &File));
 	assert(File);
 	assert(File->Fcb);
 	CcPinDataEx(File->Fcb, 0, FileSize, FALSE, LdrpPinDataCallback, FileContent);

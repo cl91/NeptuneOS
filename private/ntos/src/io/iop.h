@@ -212,6 +212,7 @@ typedef struct _OPEN_PACKET {
     ULONG ShareAccess;
     ULONG Disposition;
     ULONG64 AllocationSize;
+    BOOLEAN OpenTargetDirectory;
     union {
 	PNAMED_PIPE_CREATE_PARAMETERS NamedPipeCreateParameters;
 	PMAILSLOT_CREATE_PARAMETERS MailslotCreateParameters;
@@ -237,6 +238,7 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     PIO_FILE_CONTROL_BLOCK Fcb;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
     PIO_FILE_OBJECT MasterFileObject;
+    ULONG FileAttributes;
     ACCESS_MASK DesiredAccess;
     ULONG ShareAccess;
     BOOLEAN NoFcb;
@@ -341,7 +343,8 @@ FORCEINLINE NTSTATUS IopCallDriver(IN PTHREAD Thread,
 NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 		      IN ULONG64 FileSize,
 		      IN PCSTR FileName,
-		      IN PIO_VOLUME_CONTROL_BLOCK Vcb);
+		      IN PIO_VOLUME_CONTROL_BLOCK Vcb,
+		      IN ULONG FileAttributes);
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb);
 NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 				 IN PVOID CreaCtx);
@@ -365,6 +368,7 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN PIO_DEVICE_OBJECT DeviceObject,
+				   IN ULONG FileAttributes,
 				   IN ACCESS_MASK DesiredAccess,
 				   IN ULONG ShareAccess,
 				   OUT PIO_FILE_OBJECT *pFile);

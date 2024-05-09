@@ -1098,6 +1098,11 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	goto out;
     }
 
+    if (!Fcb->SharedCacheMap) {
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+
     PIO_VOLUME_CONTROL_BLOCK Vcb = Fcb->Vcb;
     BOOLEAN IsVolume = Vcb && (Fcb == Vcb->VolumeFcb);
 
@@ -1682,6 +1687,9 @@ NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
     }
     if (!Length) {
 	return STATUS_SUCCESS;
+    }
+    if (!Fcb->SharedCacheMap) {
+	return STATUS_INVALID_PARAMETER;
     }
     /* If the FileSize of the FCB is not set, we skip the end-of-file checks and
      * assume the file is infinitely long. */

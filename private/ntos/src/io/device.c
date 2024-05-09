@@ -191,7 +191,8 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	};
 	Status = ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&Locals.FileObject, &Ctx);
     } else {
-	Status = IopCreateMasterFileObject(SubPath, Locals.TargetDevice, DesiredAccess,
+	Status = IopCreateMasterFileObject(SubPath, Locals.TargetDevice,
+					   OpenPacket->FileAttributes, DesiredAccess,
 					   OpenPacket->ShareAccess, &Locals.FileObject);
     }
     if (!NT_SUCCESS(Status)) {
@@ -199,7 +200,7 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     }
     assert(Locals.FileObject != NULL);
 
-    if (Device->Vcb && !MasterFileObject) {
+    if (Device->Vcb && !MasterFileObject && !OpenPacket->OpenTargetDirectory) {
 	/* If the open is case-insensitive, we insert with an all-lower case path. */
 	PCHAR ObjectName = NULL;
 	if (Attributes & OBJ_CASE_INSENSITIVE) {
@@ -211,6 +212,8 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	    for (PCSTR p = SubPath; p[0]; p++) {
 		ObjectName[p - SubPath] = tolower(*p);
 	    }
+	    /* Set the case-insensitivity flag of the file object according. */
+	    Locals.FileObject->Flags |= FO_OPENED_CASE_SENSITIVE;
 	}
 	Status = ObInsertObject(Device, Locals.FileObject,
 				ObjectName ? ObjectName : SubPath, OBJ_NO_PARSE);
@@ -263,6 +266,7 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	Irp->Create.FileAttributes = OpenPacket->FileAttributes;
 	Irp->Create.ShareAccess = OpenPacket->ShareAccess;
 	Irp->Create.FileObjectParameters = FileObjectParameters;
+	Irp->Create.OpenTargetDirectory = OpenPacket->OpenTargetDirectory;
     } else if (OpenPacket->CreateFileType == CreateFileTypeNamedPipe) {
 	Irp->MajorFunction = IRP_MJ_CREATE_NAMED_PIPE;
 	Irp->CreatePipe.Options = CreateOptions;

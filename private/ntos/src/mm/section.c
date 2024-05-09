@@ -308,7 +308,7 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
     IF_ERR_GOTO(out, Status, MiParseImageHeaders(File, ImageSection, pSectionSize));
     IF_ERR_GOTO(out, Status, IoCreateDevicelessFile(NULL, NULL,
 						    ImageSection->ImageCacheFileSize,
-						    &ImageCacheFile));
+						    0, &ImageCacheFile));
     assert(ImageCacheFile->Fcb);
     IF_ERR_GOTO(out, Status, CcInitializeCacheMap(ImageCacheFile->Fcb, NULL, NULL));
     CcPinDataEx(ImageCacheFile->Fcb, 0, ImageSection->ImageCacheFileSize, FALSE,
