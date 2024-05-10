@@ -1,7 +1,4 @@
-#include "ke.h"
-#include "ob.h"
 #include "psp.h"
-#include "util.h"
 
 /*
  * Unmaps the client-server shared region.
@@ -97,6 +94,7 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
 	return;
     }
     KeDetachDispatcherObject(&Process->Header);
+    ObDereferenceObject(Process->ImageSection);
     /* TODO */
 }
 

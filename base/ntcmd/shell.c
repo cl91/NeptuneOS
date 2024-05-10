@@ -296,14 +296,25 @@ PCSTR RtlCliStatusToErrorMessage(IN NTSTATUS Status)
     case STATUS_DEVICE_BUSY:
 	return "device busy";
     case STATUS_NO_MEMORY:
-    case STATUS_INSUFFICIENT_RESOURCES:
 	return "out of memory";
+    case STATUS_INSUFFICIENT_RESOURCES:
+	return "insufficient resources";
     case STATUS_DISK_FULL:
 	return "disk full";
     case STATUS_DISK_CORRUPT_ERROR:
 	return "disk corrupt";
     case STATUS_ACCESS_DENIED:
 	return "access denied";
+    case STATUS_VOLUME_DISMOUNTED:
+	return "volume dismounted";
+    case STATUS_VERIFY_REQUIRED:
+	return "remount needed";
+    case STATUS_MEDIA_CHANGED:
+	return "media changed";
+    case STATUS_NO_MEDIA:
+	return "no media";
+    case STATUS_NO_MEDIA_IN_DEVICE:
+	return "no media in device";
     case STATUS_INTERNAL_ERROR:
 	return "internal error";
     default:

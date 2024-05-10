@@ -425,6 +425,8 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 		       IN ULONG Attributes,
 		       IN PIO_OPEN_CONTEXT OpenContext,
 		       OUT PIO_FILE_OBJECT *pFileObject);
+VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
+			    IN ULONG Indentation);
 
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
@@ -447,6 +449,8 @@ NTSTATUS IopInitFileSystem();
 NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 			IN PTHREAD Thread,
 			IN PIO_DEVICE_OBJECT DevObj);
+VOID IopDismountVolume(IN PIO_DEVICE_OBJECT VolumeDevice);
+VOID IopDbgDumpVcb(IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 
 FORCEINLINE BOOLEAN IopIsStorageDevice(IN PIO_DEVICE_OBJECT DevObj)
 {

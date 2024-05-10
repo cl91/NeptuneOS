@@ -1,8 +1,5 @@
 #pragma once
 
-/* Uncomment this to enable debugging outputs specific to Mm */
-/* #define MMDBG */
-
 #include <ntos.h>
 
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)

@@ -130,7 +130,6 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
     case OBJECT_TYPE_FILE:
     case OBJECT_TYPE_DEVICE:
     case OBJECT_TYPE_DRIVER:
-    case OBJECT_TYPE_TIMER:
     case OBJECT_TYPE_KEY:
 	/* TODO: These are all dispatcher objects. We should be
 	 * able to sleep on them. This is not implemented yet. */
@@ -138,6 +137,8 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
 	return NULL;
     case OBJECT_TYPE_EVENT:
 	return &((PEVENT_OBJECT)Object)->Event.Header;
+    case OBJECT_TYPE_TIMER:
+	return &((PTIMER)Object)->Header;
     case OBJECT_TYPE_PROCESS:
 	return &((PPROCESS)Object)->Header;
     case OBJECT_TYPE_SYMBOLIC_LINK:

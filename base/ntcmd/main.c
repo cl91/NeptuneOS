@@ -287,12 +287,36 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
+    } else if (COMPARE_CMD(Command, "mount")) {
+	// Mount the volume
+	if (xargc == 2) {
+	    NTSTATUS Status = MountVolume(xargv[1]);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("mount: %s\n", RtlCliStatusToErrorMessage(Status));
+	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
+	} else {
+	    RtlCliDisplayString("Not enough arguments.\n");
+	}
     } else if (COMPARE_CMD(Command, "sync")) {
 	// Flush buffers
 	if (xargc == 2) {
 	    NTSTATUS Status = FlushBuffers(xargv[1]);
 	    if (!NT_SUCCESS(Status)) {
 		RtlCliDisplayString("sync: %s\n", RtlCliStatusToErrorMessage(Status));
+	    }
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
+	} else {
+	    RtlCliDisplayString("Not enough arguments.\n");
+	}
+    } else if (COMPARE_CMD(Command, "umount")) {
+	// Dismount the volume
+	if (xargc == 2) {
+	    NTSTATUS Status = DismountVolume(xargv[1]);
+	    if (!NT_SUCCESS(Status)) {
+		RtlCliDisplayString("umount: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
 	} else if (xargc > 2) {
 	    RtlCliDisplayString("Too many arguments.\n");
@@ -335,6 +359,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	RtlFreeUnicodeString(&UnicodeString);
 
 	NtWaitForSingleObject(Process, FALSE, NULL);
+	NtClose(Process);
 	RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
     }
     return TRUE;
@@ -398,6 +423,11 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 	RtlCliDisplayString("Unable to open keyboard. Error 0x%.8x\n", Status);
 	goto end;
     }
+
+    //
+    // Switch current directory to the root of A: drive
+    //
+    RtlCliSetCurrentDirectory("A:\\");
 
     //
     // Show initial prompt

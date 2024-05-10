@@ -136,6 +136,8 @@ NTSTATUS CreateDirectory(PCWSTR DirName);
 NTSTATUS MoveFile(IN PCWSTR ExistingFileName,
 		  IN PCWSTR NewFileName, BOOLEAN ReplaceIfExists);
 NTSTATUS FlushBuffers(IN PCSTR Drive);
+NTSTATUS DismountVolume(IN PCSTR Drive);
+NTSTATUS MountVolume(IN PCSTR Drive);
 
 //
 // Keyboard functions

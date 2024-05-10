@@ -133,12 +133,14 @@ static VOID SmMountDrives()
 	return;
     }
     NtClose(Symlink);
-    UNICODE_STRING DriveA = RTL_CONSTANT_STRING(L"A:\\");
-    Status = RtlSetCurrentDirectory_U(&DriveA);
+    HANDLE VolumeHandle = NULL;
+    IO_STATUS_BLOCK IoStatus;
+    Status = NtOpenFile(&VolumeHandle, 0, &ObjAttr, &IoStatus, 0, 0);
     if (!NT_SUCCESS(Status)) {
 	SmPrint("Failed to mount drive A (error 0x%08x).\n", Status);
 	return;
     }
+    NtClose(VolumeHandle);
     SmPrint("OK\n");
 }
 

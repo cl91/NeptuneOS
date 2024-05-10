@@ -1,7 +1,4 @@
 #include "iop.h"
-#include "ntdef.h"
-#include "ob.h"
-#include "util.h"
 
 typedef struct _IO_FILE_SYSTEM {
     PIO_DEVICE_OBJECT FsctlDevObj; /* Device object to which we send FS control IRPs. */
@@ -46,6 +43,11 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 
     if (!IopIsStorageDevice(DevObj)) {
 	ASYNC_RETURN(State, STATUS_SUCCESS);
+    }
+
+    /* If the volume is being dismounted, exit now. */
+    if (DevObj->Vcb && DevObj->Vcb->Dismounted) {
+	ASYNC_RETURN(State, STATUS_VOLUME_DISMOUNTED);
     }
 
     /* If another mount is already in progress, wait for it to complete. */
@@ -193,4 +195,53 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
     InsertHeadList(FsList, &FsObj->ListEntry);
     FsObj->FsctlDevObj = DevObj;
     return STATUS_SUCCESS;
+}
+
+VOID IopDismountVolume(IN PIO_DEVICE_OBJECT VolumeDevice)
+{
+    assert(VolumeDevice);
+    assert(VolumeDevice->Vcb);
+    if (!VolumeDevice || !VolumeDevice->Vcb) {
+	return;
+    }
+    PIO_VOLUME_CONTROL_BLOCK Vcb = VolumeDevice->Vcb;
+    DbgTrace("Dismounting volume with Vcb %p\n", Vcb);
+    IopDbgDumpVcb(Vcb);
+    Vcb->Dismounted = TRUE;
+    /* Decrease the refcount of the volume file that we increased in IopOpenDevice,
+     * when the volume file was first opened. */
+    ObDereferenceObject(Vcb->VolumeFile);
+    /* Dereference the volume device object that the file system driver created
+     * when mounting the volume. */
+    ObDereferenceObject(Vcb->VolumeDevice);
+    /* TODO: Force dismount. This is used in the VERIFY_VOLUME case. */
+}
+
+static VOID IopDbgVcbSubobjectVisitor(IN POBJECT Object,
+				      IN PVOID Context)
+{
+    ULONG Indentation = (ULONG)(ULONG_PTR)Context;
+    OBJECT_TYPE_ENUM Type = ObObjectGetType(Object);
+    if (Type == OBJECT_TYPE_DIRECTORY) {
+	ObDirectoryObjectVisitObject((POBJECT_DIRECTORY)Object,
+				     IopDbgVcbSubobjectVisitor, (PCHAR)Context+2);
+    } else if (Type == OBJECT_TYPE_FILE) {
+	IoDbgDumpFileObject((PIO_FILE_OBJECT)Object, Indentation + 2);
+    } else {
+	DbgPrint("Invalid object type %d\n", Type);
+	assert(FALSE);
+    }
+}
+
+VOID IopDbgDumpVcb(IN PIO_VOLUME_CONTROL_BLOCK Vcb)
+{
+    DbgPrint("Dumping VCB %p\n", Vcb);
+    DbgPrint("  VolumeDevice %p StorageDevice %p\n  VolumeFcb %p VolumeFile %p\n"
+	     "  ClusterSize 0x%x MountInProgress %d Dismounted %d\n",
+	     Vcb->VolumeDevice, Vcb->StorageDevice, Vcb->VolumeFcb, Vcb->VolumeFile,
+	     Vcb->ClusterSize, Vcb->MountInProgress, Vcb->Dismounted);
+    IopDbgDumpDeviceObject(Vcb->VolumeDevice, 2);
+    IopDbgDumpDeviceObject(Vcb->StorageDevice, 2);
+    IoDbgDumpFileObject(Vcb->VolumeFile, 2);
+    ObDirectoryObjectVisitObject(Vcb->Subobjects, IopDbgVcbSubobjectVisitor, (PVOID)2);
 }

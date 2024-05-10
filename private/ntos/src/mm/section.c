@@ -402,6 +402,8 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 {
     assert(ObObjectIsType(Self, OBJECT_TYPE_SECTION));
     PSECTION Section = (PSECTION)Self;
+    MmDbg("Deleting section object %p\n", Section);
+    MmDbgDumpSection(Section);
     /* Unmap all the mapped view of this section */
     LoopOverList(Vad, &Section->VadList, MMVAD, SectionLink) {
 	MmDeleteVad(Vad);
@@ -777,9 +779,11 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     assert(Section);
     assert(SectionHandle);
     Status = ObCreateHandle(Thread->Process, Section, FALSE, SectionHandle);
-    if (!NT_SUCCESS(Status)) {
-	ObDereferenceObject(Section);
-    }
+    /* Note here regardless of the return value we want to dereference the
+     * section object, because in a successful creation, the returned section
+     * object has refcount of one (instead of two, one from ObCreateObject,
+     * one from ObCreateHandle). A subsequent NtClose will delete the section. */
+    ObDereferenceObject(Section);
 
 out:
     if (Locals.FileObject) {
@@ -978,7 +982,7 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
     MmDbgPrint("    Fcb = %p\n", ImageSection->Fcb);
     MmDbgPrint("    ImageCacheFileSize = 0x%x\n", ImageSection->ImageCacheFileSize);
     MmDbgPrint("    ImageCacheFile = %p\n", ImageSection->ImageCacheFile);
-    IoDbgDumpFileObject(ImageSection->ImageCacheFile);
+    IoDbgDumpFileObject(ImageSection->ImageCacheFile, 4);
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	MiDbgDumpSubSection(SubSection);
     }
@@ -998,7 +1002,8 @@ static VOID MiDbgDumpDataSectionObject(IN PDATA_SECTION_OBJECT DataSection)
 VOID MmDbgDumpSection(PSECTION Section)
 {
 #ifdef MMDBG
-    MmDbgPrint("Dumping section %p\n", Section);
+    MmDbgPrint("Dumping section %p (refcount %lld)\n", Section,
+	       OBJECT_TO_OBJECT_HEADER(Section)->RefCount);
     if (Section == NULL) {
 	MmDbgPrint("    (nil)\n");
     }
@@ -1009,6 +1014,7 @@ VOID MmDbgDumpSection(PSECTION Section)
 	     Section->Flags.PhysicalMemory ? " physical-memory" : "",
 	     Section->Flags.Reserve ? " reserve" : "",
 	     Section->Flags.Commit ? " commit" : "");
+    ObDbgDumpObjectHandles(Section, 4);
     if (Section->Flags.Image) {
 	MiDbgDumpImageSectionObject(Section->ImageSectionObject);
     } else {

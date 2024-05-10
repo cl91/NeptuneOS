@@ -21,8 +21,8 @@
 
 #define IS_PATH_SEPARATOR(x) (((x)==L'\\')||((x)==L'/'))
 
-#define RTL_CURDIR_IS_REMOVABLE 0x1
-#define RTL_CURDIR_DROP_OLD_HANDLE 0x2
+#define RTL_CURDIR_IS_REMOVABLE 0x1ULL
+#define RTL_CURDIR_DROP_OLD_HANDLE 0x2ULL
 #define RTL_CURDIR_ALL_FLAGS (RTL_CURDIR_DROP_OLD_HANDLE | RTL_CURDIR_IS_REMOVABLE)	// 0x3
 C_ASSERT(RTL_CURDIR_ALL_FLAGS == OBJ_HANDLE_TAGBITS);
 
@@ -57,6 +57,11 @@ static const UNICODE_STRING RtlpPathDividers = RTL_CONSTANT_STRING(L"\\/");
 PRTLP_CURDIR_REF RtlpCurDirRef;
 
 /* FUNCTIONS ******************************************************************/
+
+FORCEINLINE VOID RtlpCloseDirHandle(IN HANDLE DirHandle)
+{
+    NtClose((PVOID)((ULONG_PTR)DirHandle & ~RTL_CURDIR_ALL_FLAGS));
+}
 
 NTAPI RTL_PATH_TYPE RtlDetermineDosPathNameType_Ustr(IN PCUNICODE_STRING PathString)
 {
@@ -1444,7 +1449,7 @@ NTAPI VOID RtlReleaseRelativeName(IN PRTL_RELATIVE_NAME_U RelativeName)
 	/* Decrease reference count */
 	if (!InterlockedDecrement(&RelativeName->CurDirRef->RefCount)) {
 	    /* If no one uses it any longer, close handle & free */
-	    NtClose(RelativeName->CurDirRef->Handle);
+	    RtlpCloseDirHandle(RelativeName->CurDirRef->Handle);
 	    RtlFreeHeap(RtlGetProcessHeap(), 0, RelativeName->CurDirRef);
 	}
 	RelativeName->CurDirRef = NULL;
@@ -1773,16 +1778,16 @@ Leave:
     }
 
     if (CurDirHandle)
-	NtClose(CurDirHandle);
+	RtlpCloseDirHandle(CurDirHandle);
 
     if (OldHandle)
-	NtClose(OldHandle);
+	RtlpCloseDirHandle(OldHandle);
 
     if (OldCurDirHandle)
-	NtClose(OldCurDirHandle);
+	RtlpCloseDirHandle(OldCurDirHandle);
 
     if (OldCurDir && InterlockedDecrement(&OldCurDir->RefCount) == 0) {
-	NtClose(OldCurDir->Handle);
+	RtlpCloseDirHandle(OldCurDir->Handle);
 	RtlFreeHeap(RtlGetProcessHeap(), 0, OldCurDir);
     }
 

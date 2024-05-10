@@ -1064,8 +1064,7 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
     FileObject = IrpContext->FileObject;
 
     /* We HAVE to be locked. Windows also allows dismount with no lock
-     * but we're here mainly for 1st stage, so KISS
-     */
+     * but we're here mainly for 1st stage, so KISS. */
     if (!BooleanFlagOn(DeviceExt->Flags, VCB_VOLUME_LOCKED)) {
 	return STATUS_ACCESS_DENIED;
     }
@@ -1086,6 +1085,12 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 
     /* Flush volume & files */
     FatFlushVolume(DeviceExt, (PFATFCB)FileObject->FsContext);
+    IO_STATUS_BLOCK IoStatus;
+    /* If cache flushing failed, there isn't a lot we can do. */
+    CcFlushCache(FileObject, NULL, 0, &IoStatus);
+    if (!NT_SUCCESS(IoStatus.Status)) {
+	DPRINT("CcFlushCache failed with error 0x%08x\n", IoStatus.Status);
+    }
 
     /* The volume is now clean */
     if (BooleanFlagOn(DeviceExt->VolumeFcb->Flags, VCB_CLEAR_DIRTY) &&

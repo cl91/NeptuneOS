@@ -74,7 +74,7 @@ typedef struct _OBJECT_HEADER {
     POBJECT ParentObject; /* Parent object under which this object is inserted */
     PVOID ParentLink;	  /* Pointer that the parent object can freely use to
 			   * point to bookkeeping information. */
-    LONG RefCount;
+    LONGLONG RefCount;
 } OBJECT_HEADER, *POBJECT_HEADER;
 
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
@@ -399,6 +399,8 @@ static inline VOID ObInitializeHandleTable(IN PHANDLE_TABLE Table)
     AvlInitializeTree(&Table->Tree);
 }
 
+struct _PROCESS;
+
 /*
  * An entry in the process's object handle table. Each handle is
  * represented by an AVL node where the node key is the handle value.
@@ -406,10 +408,16 @@ static inline VOID ObInitializeHandleTable(IN PHANDLE_TABLE Table)
 typedef struct _HANDLE_TABLE_ENTRY {
     AVL_NODE AvlNode;	/* Node key is handle */
     POBJECT Object;
+    struct _PROCESS *Process;
     LIST_ENTRY HandleEntryLink; /* Link for the object header's HandleEntryList */
     BOOLEAN InvokeClose; /* TRUE if the handle was created as part of an open and
 			  * we should invoke the close routine when closing it. */
 } HANDLE_TABLE_ENTRY, *PHANDLE_TABLE_ENTRY;
+
+FORCEINLINE ULONG64 ObGetObjectHandleCount(IN POBJECT Object)
+{
+    return GetListLength(&OBJECT_TO_OBJECT_HEADER(Object)->HandleEntryList);
+}
 
 /*
  * In Windows/ReactOS the lowest two bits of a HANDLE (called EXHANDLE
@@ -501,13 +509,17 @@ NTSTATUS ObCreateParentDirectory(IN OPTIONAL POBJECT RootDirectory,
                                  IN PCSTR ObjectPath,
                                  OUT OPTIONAL POBJECT_DIRECTORY *ParentDir);
 POBJECT_DIRECTORY ObGetParentDirectory(IN POBJECT Object);
+typedef VOID (*POB_DIRECTORY_OBJECT_VISITOR)(IN POBJECT Object,
+					     IN OPTIONAL PVOID Context);
+VOID ObDirectoryObjectVisitObject(IN POBJECT_DIRECTORY DirObj,
+				  IN POB_DIRECTORY_OBJECT_VISITOR Visitor,
+				  IN OPTIONAL PVOID Context);
 FORCEINLINE NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 {
     return ObCreateDirectoryEx(NULL, DirectoryPath, NULL);
 }
 
 /* obref.c */
-struct _PROCESS;
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
 				 IN POBJECT RootDirectory,
@@ -523,6 +535,8 @@ NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			OUT HANDLE *pHandle);
 VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
+VOID ObDbgDumpObjectHandles(IN POBJECT Object,
+			    IN ULONG Indentation);
 
 /* open.c */
 NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,

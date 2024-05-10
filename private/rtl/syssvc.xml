@@ -324,6 +324,19 @@
     <parameter annotation="in" type="ULONG" name="OutputBufferLength" />
   </svc>
 
+  <svc name="NtFsControlFile">
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="HANDLE" name="Event" />
+    <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="ApcContext" />
+    <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
+    <parameter annotation="in" type="ULONG" name="FsControlCode" />
+    <parameter annotation="in opt" type="buf::InputIoBuffer" name="InputBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="InputBufferLength" />
+    <parameter annotation="in" type="PVOID" name="OutputBuffer" />
+    <parameter annotation="in" type="ULONG" name="OutputBufferLength" />
+  </svc>
+
   <svc name="NtSetInformationFile">
     <parameter annotation="in" type="HANDLE" name="FileHandle" />
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />

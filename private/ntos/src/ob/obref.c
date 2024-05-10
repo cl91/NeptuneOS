@@ -55,6 +55,7 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
     POBJECT_HEADER Header = OBJECT_TO_OBJECT_HEADER(Object);
     ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
     Entry->Object = Object;
+    Entry->Process = Process;
     Entry->InvokeClose = ObjectOpened;
     InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
     AvlTreeAppendNode(&Process->HandleTable.Tree,
@@ -165,7 +166,7 @@ VOID ObDereferenceObject(IN POBJECT Object)
 
     ObjectHeader->RefCount--;
     /* Handle count should never be larger than refcount, even after dereferencing. */
-    assert(GetListLength(&ObjectHeader->HandleEntryList) <= ObjectHeader->RefCount);
+    assert(ObGetObjectHandleCount(Object) <= ObjectHeader->RefCount);
 
     if (ObjectHeader->RefCount <= 0) {
 	ObpDeleteObject(ObjectHeader);
@@ -185,13 +186,14 @@ static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
 	    PHANDLE_TABLE_ENTRY Entry;
 	});
 
+    ObDbg("Closing handle %p for process %s\n", Handle, KEDBG_PROCESS_TO_FILENAME(Process));
     IF_ERR_GOTO(out, Status, ObpLookupObjectHandle(Process, Handle,
 						   &Locals.Object, &Locals.Entry));
     assert(Locals.Object);
     assert(Locals.Entry);
-    /* Handle count should always be smaller (and not equal) than refcount. */
-    assert(GetListLength(&OBJECT_TO_OBJECT_HEADER(Locals.Object)->HandleEntryList)
-	   < OBJECT_TO_OBJECT_HEADER(Locals.Object)->RefCount);
+    /* Handle count should always be smaller than or equal to refcount. */
+    assert(ObGetObjectHandleCount(Locals.Object)
+           <= OBJECT_TO_OBJECT_HEADER(Locals.Object)->RefCount);
     /* Invoke the close procedure if we are closing a handle that was
      * created as a result of an open). */
     AWAIT_IF(Locals.Entry->InvokeClose &&
@@ -231,4 +233,26 @@ NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
                            IN ULONG Options)
 {
     UNIMPLEMENTED;
+}
+
+VOID ObDbgDumpObjectHandles(IN POBJECT Object,
+			    IN ULONG Indentation)
+{
+    if (!Object) {
+	return;
+    }
+    POBJECT_HEADER Header = OBJECT_TO_OBJECT_HEADER(Object);
+    if (IsListEmpty(&Header->HandleEntryList)) {
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("No open handle for object %p\n", Object);
+	return;
+    }
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("Open handles of object %p\n", Object);
+    LoopOverList(Entry, &Header->HandleEntryList, HANDLE_TABLE_ENTRY, HandleEntryLink) {
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("  Process %p (%s) Handle 0x%llx InvokeClose %d\n", Entry->Process,
+		 KEDBG_PROCESS_TO_FILENAME(Entry->Process), Entry->AvlNode.Key,
+		 Entry->InvokeClose);
+    }
 }

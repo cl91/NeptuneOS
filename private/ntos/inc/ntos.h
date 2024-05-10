@@ -1,5 +1,11 @@
 #pragma once
 
+/* Uncomment this to turn on debugging outputs specific to Ob */
+/* #define OBDBG */
+
+/* Uncomment this to enable debugging outputs specific to Mm */
+/* #define MMDBG */
+
 #include <kernel/gen_config.h>
 
 #include <limits.h>

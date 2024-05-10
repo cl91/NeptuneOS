@@ -633,6 +633,13 @@ out:
     return Status;
 }
 
+NTSTATUS MountVolume(IN PCSTR Drive)
+{
+    CHAR Buffer[16];
+    snprintf(Buffer, sizeof(Buffer), "%s:", Drive);
+    return RtlCliSetCurrentDirectory(Buffer);
+}
+
 NTSTATUS FlushBuffers(IN PCSTR Drive)
 {
     HANDLE Volume = NULL;
@@ -643,5 +650,37 @@ NTSTATUS FlushBuffers(IN PCSTR Drive)
 	return Status;
     }
     IO_STATUS_BLOCK IoStatus;
-    return NtFlushBuffersFile(Volume, &IoStatus);
+    Status = NtFlushBuffersFile(Volume, &IoStatus);
+    CloseFile(Volume);
+    return Status;
+}
+
+NTSTATUS DismountVolume(IN PCSTR Drive)
+{
+    UNICODE_STRING UnicodeString;
+    RtlInitUnicodeString(&UnicodeString, L"\\\\?\\BootModules");
+    RtlSetCurrentDirectory_U(&UnicodeString);
+    HANDLE Volume = NULL;
+    WCHAR Buffer[16];
+    _snwprintf(Buffer, sizeof(Buffer)/sizeof(WCHAR), L"%s:", Drive);
+    NTSTATUS Status = OpenFile(&Volume, Buffer, FALSE, FALSE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    IO_STATUS_BLOCK IoStatus;
+    Status = NtFsControlFile(Volume, NULL, NULL, NULL, &IoStatus,
+			     FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Status = NtFsControlFile(Volume, NULL, NULL, NULL, &IoStatus,
+			     FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    Status = NtFsControlFile(Volume, NULL, NULL, NULL, &IoStatus,
+			     FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0);
+out:
+    CloseFile(Volume);
+    return Status;
 }

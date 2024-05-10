@@ -309,6 +309,11 @@ static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
     return STATUS_SUCCESS;
 }
 
+/*
+ * This function works for both DeviceIoControl and FsContext thanks to the fact
+ * that the DeviceIoControl and the FileSystemControl member of IO_STACK_LOCATION
+ * are exactly the same.
+ */
 static NTSTATUS IopMarshalIoctlBuffers(OUT PIRP Irp,
 				       IN PIO_PACKET Src)
 {
@@ -371,6 +376,11 @@ static NTSTATUS IopMarshalIoctlBuffers(OUT PIRP Irp,
     return STATUS_SUCCESS;
 }
 
+/*
+ * This function works for both DeviceIoControl and FsContext thanks to the fact
+ * that the DeviceIoControl and the FileSystemControl member of IO_STACK_LOCATION
+ * are exactly the same.
+ */
 static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
 				     IN ULONG Ioctl,
 				     IN ULONG OutputBufferLength)
@@ -405,6 +415,14 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 				 IoStack->Parameters.DeviceIoControl.OutputBufferLength);
 	break;
     }
+    case IRP_MJ_FILE_SYSTEM_CONTROL:
+    {
+	if (IoStack->MinorFunction == IRP_MN_USER_FS_REQUEST) {
+	    IopUnmarshalIoctlBuffers(Irp, IoStack->Parameters.FileSystemControl.FsControlCode,
+				     IoStack->Parameters.FileSystemControl.OutputBufferLength);
+	}
+	break;
+    }
     case IRP_MJ_READ:
     case IRP_MJ_WRITE:
     case IRP_MJ_SET_INFORMATION:
@@ -424,7 +442,6 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
     case IRP_MJ_DIRECTORY_CONTROL:
     case IRP_MJ_QUERY_INFORMATION:
     case IRP_MJ_QUERY_VOLUME_INFORMATION:
-    case IRP_MJ_FILE_SYSTEM_CONTROL:
     case IRP_MJ_CREATE:
     case IRP_MJ_PNP:
     case IRP_MJ_FLUSH_BUFFERS:
@@ -658,6 +675,9 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     case IRP_MJ_FILE_SYSTEM_CONTROL:
     {
 	switch (Src->Request.MinorFunction) {
+	case IRP_MN_USER_FS_REQUEST:
+	    RET_ERR(IopMarshalIoctlBuffers(Irp, Src));
+	    break;
 	case IRP_MN_MOUNT_VOLUME:
 	    IoStack->Parameters.MountVolume.Vpb = RtlAllocateHeap(RtlGetProcessHeap(),
 								  HEAP_ZERO_MEMORY,
@@ -950,6 +970,8 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 	switch (IoSp->MinorFunction) {
+	case IRP_MN_USER_FS_REQUEST:
+	    break;
 	case IRP_MN_MOUNT_VOLUME:
 	    assert(IoSp->Parameters.MountVolume.Vpb);
 	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
@@ -1063,6 +1085,8 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     }
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 	switch (IoSp->MinorFunction) {
+	case IRP_MN_USER_FS_REQUEST:
+	    break;
 	case IRP_MN_MOUNT_VOLUME:
 	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
@@ -1348,6 +1372,14 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 	DbgPrint("    FILE-SYSTEM-CONTROL  ");
 	switch (Stack->MinorFunction) {
+	case IRP_MN_USER_FS_REQUEST:
+	    DbgPrint("USER-FS-REQUEST  FsControlCode 0x%x OutputBufferLength 0x%x "
+		     "InputBufferLength 0x%x Type3InputBuffer %p\n",
+		     Stack->Parameters.FileSystemControl.FsControlCode,
+		     Stack->Parameters.FileSystemControl.OutputBufferLength,
+		     Stack->Parameters.FileSystemControl.InputBufferLength,
+		     Stack->Parameters.FileSystemControl.Type3InputBuffer);
+	    break;
 	case IRP_MN_MOUNT_VOLUME:
 	    DbgPrint("MOUNT-VOLUME Vpb %p DevObj %p\n",
 		     Stack->Parameters.MountVolume.Vpb,
@@ -1355,6 +1387,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    break;
 	default:
 	    DbgPrint("UNKNOWN-MINOR-FUNCTION\n");
+	    assert(FALSE);
 	}
 	break;
     case IRP_MJ_PNP:

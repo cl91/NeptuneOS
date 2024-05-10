@@ -103,6 +103,7 @@ typedef struct _IO_VOLUME_CONTROL_BLOCK {
     POBJECT_DIRECTORY Subobjects;
     ULONG ClusterSize;
     BOOLEAN MountInProgress;
+    BOOLEAN Dismounted;
 } IO_VOLUME_CONTROL_BLOCK, *PIO_VOLUME_CONTROL_BLOCK;
 
 /*
@@ -117,6 +118,7 @@ typedef struct _IO_FILE_OBJECT {
     PEVENT_OBJECT Event;
     PIO_PACKET CloseReq; /* If not NULL, the file object has a client-side handle
 			  * that we must close when deleting the file object. */
+    LIST_ENTRY SlaveLink; /* Links all slave file objects in Fcb->SlaveList */
     ULONG Flags;
     BOOLEAN ReadAccess;
     BOOLEAN WriteAccess;
@@ -144,11 +146,15 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
     PDATA_SECTION_OBJECT DataSectionObject;
     PIMAGE_SECTION_OBJECT ImageSectionObject;
     PIO_VOLUME_CONTROL_BLOCK Vcb;
+    LIST_ENTRY SlaveList; /* List of slave file objects. Slave file objects do not
+			   * have a client-side handle. Note there are non-slave
+			   * file objects that are not a master file object. */
     KEVENT OpenCompleted; /* Signaled when the file open is completed. */
     BOOLEAN OpenInProgress;
     KEVENT WriteCompleted; /* Signaled when the WRITE IRP is completed. */
     BOOLEAN WritePending; /* TRUE if a WRITE IRP for this file is in progress. */
     BOOLEAN IsDirectory;  /* TRUE if the FCB is for a directory file. */
+    BOOLEAN MasterClosed; /* TRUE if the master file object has no open handle. */
 } IO_FILE_CONTROL_BLOCK, *PIO_FILE_CONTROL_BLOCK;
 
 /*
@@ -250,4 +256,5 @@ NTSTATUS IoInitSystemPhase1();
 /*
  * Debug helper functions
  */
-VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File);
+VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File,
+			 IN ULONG Indentation);

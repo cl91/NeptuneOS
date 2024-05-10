@@ -1627,6 +1627,7 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 	    CiFreePool(Req);
 	}
     }
+    Status = STATUS_SUCCESS;
 
 out:
     if (CallbackInfo && !NT_SUCCESS(CallbackInfo->IoStatus.Status)) {

@@ -1096,6 +1096,17 @@ NTAPI NTSYSAPI NTSTATUS NtDeviceIoControlFile(IN HANDLE FileHandle,
 					      OUT PVOID OutputBuffer,
 					      IN ULONG OutputBufferLength);
 
+NTAPI NTSYSAPI NTSTATUS NtFsControlFile(IN HANDLE FileHandle,
+					IN OPTIONAL HANDLE Event,
+					IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+					IN OPTIONAL PVOID ApcContext,
+					OUT PIO_STATUS_BLOCK IoStatusBlock,
+					IN ULONG FsControlCode,
+					IN PVOID InputBuffer,
+					IN ULONG InputBufferLength,
+					OUT PVOID OutputBuffer,
+					IN ULONG OutputBufferLength);
+
 NTAPI NTSYSAPI NTSTATUS NtQueryAttributesFile(IN POBJECT_ATTRIBUTES ObjectAttributes,
 					      OUT PFILE_BASIC_INFORMATION FileInformation);
 

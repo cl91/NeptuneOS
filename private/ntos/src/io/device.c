@@ -21,6 +21,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     KeInitializeEvent(&Device->MountCompleted, NotificationEvent);
 
     Device->DriverObject = DriverObject;
+    ObpReferenceObject(DriverObject);
     InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
     Device->DeviceInfo = DeviceInfo;
     Device->Exclusive = Exclusive;
@@ -112,6 +113,8 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 	    assert(FALSE);
 	    ObRemoveObject(DevObj->Vcb->VolumeFile);
 	}
+	/* The volume file object should not have a parent directory object. */
+	assert(!OBJECT_TO_OBJECT_HEADER(FileObj)->ParentLink);
 	DevObj->Vcb->VolumeFile = FileObj;
 	/* Increase its refcount so the volume file object is never deleted until
 	 * the volume is unmounted. */
@@ -153,10 +156,18 @@ NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
 VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
 {
     POBJECT_DIRECTORY ParentDir = ObGetParentDirectory(Subobject);
-    assert(ParentDir);
-    ObDirectoryObjectRemoveObject(Subobject);
-    if (ParentDir && !ObDirectoryGetObjectCount(ParentDir)) {
-	ObDereferenceObject(ParentDir);
+    if (ParentDir) {
+	assert(ObObjectIsType(Subobject, OBJECT_TYPE_FILE));
+	PIO_FILE_OBJECT FileObj = Subobject;
+	assert(FileObj->Fcb);
+	PIO_VOLUME_CONTROL_BLOCK Vcb = FileObj->Fcb->Vcb;
+	assert(Vcb);
+	ObDirectoryObjectRemoveObject(Subobject);
+	/* If the parent directory is empty, delete it, unless it's the root subobject
+	 * directory. */
+	if (!ObDirectoryGetObjectCount(ParentDir) && ParentDir != Vcb->Subobjects) {
+	    ObDereferenceObject(ParentDir);
+	}
     }
 }
 
@@ -187,7 +198,7 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     if (MasterFileObject) {
 	FILE_OBJ_CREATE_CONTEXT Ctx = {
 	    .MasterFileObject = MasterFileObject,
-	    .AllocateCloseReq = TRUE
+	    .AllocateCloseReq = !!MasterFileObject->DeviceObject
 	};
 	Status = ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&Locals.FileObject, &Ctx);
     } else {
@@ -360,18 +371,21 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     /* Reject the open if the open context is not IO_OPEN_CONTEXT */
     if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
-	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
+	goto out;
     }
 
     /* If the device object represents a volume on a storage device,
      * make sure its file system is mounted. */
     AWAIT_EX(Status, IopMountVolume, State, _, Thread, Device);
     if (!NT_SUCCESS(Status)) {
-	ASYNC_RETURN(State, Status);
+	goto out;
     }
 
     AWAIT_EX(Status, IopOpenDevice, State, _, Thread, Device, NULL,
 	     SubPath, DesiredAccess, Attributes, OpenContext, &FileObject);
+
+out:
     if (NT_SUCCESS(Status)) {
 	*pOpenedInstance = FileObject;
 	*pRemainingPath = SubPath + strlen(SubPath);
@@ -385,7 +399,28 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
 VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 {
-    /* TODO! */
+    PIO_DEVICE_OBJECT DevObj = Self;
+    DbgTrace("Deleting device object %p\n", DevObj);
+    IopDbgDumpDeviceObject(DevObj, 0);
+    assert(IsListEmpty(&DevObj->OpenFileList));
+    LoopOverList(FileObj, &DevObj->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	FileObj->DeviceObject = NULL;
+	RemoveEntryList(&FileObj->DeviceLink);
+    }
+    KeUninitializeEvent(&DevObj->MountCompleted);
+    RemoveEntryList(&DevObj->DeviceLink);
+    ObDereferenceObject(DevObj->DriverObject);
+    if (DevObj->AttachedDevice) {
+	DevObj->AttachedDevice->AttachedTo = DevObj->AttachedTo;
+    }
+    if (DevObj->AttachedTo) {
+	DevObj->AttachedTo->AttachedDevice = DevObj->AttachedDevice;
+    }
+    if (DevObj->Vcb) {
+	ObDereferenceObject(DevObj->Vcb->Subobjects);
+	DevObj->Vcb->StorageDevice->Vcb = NULL;
+	IopFreePool(DevObj->Vcb);
+    }
 }
 
 /*
@@ -469,89 +504,37 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
-                               IN HANDLE FileHandle,
-                               IN HANDLE EventHandle,
-                               IN PIO_APC_ROUTINE ApcRoutine,
-                               IN PVOID ApcContext,
-                               OUT IO_STATUS_BLOCK *IoStatusBlock,
-                               IN ULONG Ioctl,
-                               IN PVOID InputBuffer,
-                               IN ULONG InputBufferLength,
-                               IN PVOID OutputBuffer,
-                               IN ULONG OutputBufferLength)
+VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DevObj,
+			    IN ULONG Indentation)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
-    NTSTATUS Status = STATUS_NTOS_BUG;
-
-    ASYNC_BEGIN(State, Locals, {
-	    PIO_FILE_OBJECT FileObject;
-	    PEVENT_OBJECT EventObject;
-	    PPENDING_IRP PendingIrp;
-	});
-
-    if (FileHandle == NULL) {
-	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("Dumping device object %p\n", DevObj);
+    if (!DevObj) {
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("  (nil)\n");
+	return;
     }
-    IF_ERR_GOTO(out, Status,
-		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
-					  (POBJECT *)&Locals.FileObject));
-    assert(Locals.FileObject != NULL);
-    assert(Locals.FileObject->DeviceObject != NULL);
-    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
-
-    if (EventHandle != NULL) {
-	IF_ERR_GOTO(out, Status,
-		    ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
-					      (POBJECT *)&Locals.EventObject));
-	assert(Locals.EventObject != NULL);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  RefCount = %lld\n", OBJECT_TO_OBJECT_HEADER(DevObj)->RefCount);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  DriverObject = %p\n", DevObj->DriverObject);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  DeviceType = %d\n", DevObj->DeviceInfo.DeviceType);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  Flags = 0x%llx\n", DevObj->DeviceInfo.Flags);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  Exclusive = %d\n", DevObj->Exclusive);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  Vcb = %p\n", DevObj->Vcb);
+    ObDbgDumpObjectHandles(DevObj, Indentation + 2);
+    if (IsListEmpty(&DevObj->OpenFileList)) {
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("  No open file for device object %p\n", DevObj);
+    } else {
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("  Open files for device object %p\n", DevObj);
+	LoopOverList(FileObj, &DevObj->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	    IoDbgDumpFileObject(FileObj, Indentation + 4);
+	}
     }
-
-    PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
-	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
-    IO_REQUEST_PARAMETERS Irp = {
-	.Device.Object = Locals.FileObject->DeviceObject,
-	.File.Object = TargetFileObject,
-	.MajorFunction = IRP_MJ_DEVICE_CONTROL,
-	.MinorFunction = 0,
-	.InputBuffer = (MWORD)InputBuffer,
-	.OutputBuffer = (MWORD)OutputBuffer,
-	.InputBufferLength = InputBufferLength,
-	.OutputBufferLength = OutputBufferLength,
-	.DeviceIoControl.IoControlCode = Ioctl
-    };
-    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
-
-    /* For now every IO is synchronous. For async IO, we need to figure
-     * out how we pass IO_STATUS_BLOCK back to the userspace safely.
-     * The idea is to pass it via APC. When NtWaitForSingleObject
-     * returns from the wait the special APC runs and write to the
-     * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
-	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
-
-    /* This is the starting point when the function is resumed. */
-    if (IoStatusBlock != NULL) {
-	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
-    }
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
-
-out:
-    /* Regardless of the outcome of the IO request, we should dereference the
-     * file object and the event object because increased their refcount above. */
-    if (Locals.FileObject) {
-	ObDereferenceObject(Locals.FileObject);
-    }
-    if (Locals.EventObject) {
-	ObDereferenceObject(Locals.EventObject);
-    }
-    /* This will free the pending IRP and detach the pending irp from the
-     * thread. At this point the IRP has already been detached from the driver
-     * object, so we do not need to remove it from the driver IRP queue here. */
-    if (Locals.PendingIrp) {
-	IopCleanupPendingIrp(Locals.PendingIrp);
-    }
-    ASYNC_END(State, Status);
 }

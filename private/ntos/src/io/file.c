@@ -19,6 +19,7 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
     Fcb->IsDirectory = FileAttributes & FILE_ATTRIBUTE_DIRECTORY;
     AvlInitializeTree(&Fcb->FileRegionMappings);
     InitializeListHead(&Fcb->PrivateCacheMaps);
+    InitializeListHead(&Fcb->SlaveList);
     KeInitializeEvent(&Fcb->OpenCompleted, NotificationEvent);
     KeInitializeEvent(&Fcb->WriteCompleted, NotificationEvent);
     if (!Fcb->IsDirectory) {
@@ -90,9 +91,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
      * file object, in which case we do not allocate an FCB. */
     if ((Ctx->FileName && *Ctx->FileName == '\0') || Ctx->NoFcb) {
 	File->Fcb = NULL;
-    } else if (Ctx->MasterFileObject) {
-	File->Fcb = Ctx->MasterFileObject->Fcb;
-    } else {
+    } else if (!Ctx->MasterFileObject) {
 	PIO_FILE_CONTROL_BLOCK Fcb = NULL;
 	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->FileName, Ctx->Vcb,
 				Ctx->FileAttributes),
@@ -114,8 +113,8 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	File->Fcb = Ctx->MasterFileObject->Fcb;
 	File->DeviceObject = Ctx->MasterFileObject->DeviceObject;
     }
-    if (Ctx->DeviceObject) {
-	ObpReferenceObject(Ctx->DeviceObject);
+    if (File->DeviceObject) {
+	ObpReferenceObject(File->DeviceObject);
     }
     File->ReadAccess = ReadAccessDesired(Ctx->DesiredAccess);
     File->WriteAccess = WriteAccessDesired(Ctx->DesiredAccess);
@@ -167,7 +166,7 @@ NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
 {
     DbgTrace("Parsing file obj %p path %s\n", Self, Path);
     PIO_FILE_OBJECT FileObj = Self;
-    IoDbgDumpFileObject(FileObj);
+    IoDbgDumpFileObject(FileObj, 0);
     *RemainingPath = Path;
     /* File objects don't have sub-objects. */
     *FoundObject = *Path ? NULL : Self;
@@ -211,7 +210,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     }
 
     DbgTrace("Opening file obj %p path %s\n", Self, SubPath);
-    IoDbgDumpFileObject(FileObject);
+    IoDbgDumpFileObject(FileObject, 0);
 
     /* Non-volume file objects do not support sub-objects. */
     if (!FileObject->Fcb) {
@@ -263,6 +262,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	};
 	IF_ERR_GOTO(out, Status,
 		    ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&OpenedFile, &CreaCtx));
+	InsertTailList(&FileObject->Fcb->SlaveList, &OpenedFile->SlaveLink);
 	if (OpenPacket->CreateOptions & (FILE_SYNCHRONOUS_IO_ALERT |
 					 FILE_SYNCHRONOUS_IO_NONALERT)) {
 	    OpenedFile->Flags |= FO_SYNCHRONOUS_IO;
@@ -316,17 +316,50 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 	    PPENDING_IRP PendingIrp;
 	});
 
-    /* If the file is a master file object in a volume device, remove the file from
-     * the cached subobject directory, so any CREATE request for the same file from
-     * this point on will insert a new file object into the cached subobject directory. */
-    if (FileObj->Fcb && FileObj == FileObj->Fcb->MasterFileObject && FileObj->Fcb->Vcb) {
-	ObRemoveObject(Self);
+    DbgTrace("Closing file %p\n", FileObj);
+    IoDbgDumpFileObject(FileObj, 0);
+
+    if (FileObj->Fcb && FileObj == FileObj->Fcb->MasterFileObject) {
+	/* If we are a master file object, count the number of our slave file objects.
+	 * If it's not zero, delay the CLEANUP IRP till all slave files are closed. */
+	if (!IsListEmpty(&FileObj->Fcb->SlaveList)) {
+	    FileObj->Fcb->MasterClosed = TRUE;
+	    ASYNC_RETURN(State, STATUS_SUCCESS);
+	}
+	if (FileObj->Fcb->Vcb) {
+	    /* If we are closing the volume file, delay the close until the volume is
+	     * dismounted. */
+	    if (FileObj == FileObj->Fcb->Vcb->VolumeFile && !FileObj->Fcb->Vcb->Dismounted) {
+		FileObj->Fcb->MasterClosed = TRUE;
+		ASYNC_RETURN(State, STATUS_SUCCESS);
+	    }
+	    /* Remove the file from the cached subobject directory, so any CREATE request
+	     * for the same file from this point on will insert a new file object into the
+	     * cached subobject directory. */
+	    ObRemoveObject(Self);
+	}
     }
 
-    /* If the file does not have a client-side handle, nothing needs to be done.
-     * The file object will simply get deleted. */
+    /* If the file does not have a client-side handle, check whether the master file
+     * object has been closed and there are no more slave file objects. If true, send
+     * a CLEANUP IRP to the file system driver. Otherwise, we do nothing. */
+    PIO_FILE_OBJECT TargetFileObject = FileObj;
     if (!FileObj->CloseReq) {
-	ASYNC_RETURN(State, STATUS_SUCCESS);
+	if (!FileObj->Fcb) {
+	    ASYNC_RETURN(State, STATUS_SUCCESS);
+	}
+	assert(ListHasEntry(&FileObj->Fcb->SlaveList, &FileObj->SlaveLink));
+	RemoveEntryList(&FileObj->SlaveLink);
+	if (!FileObj->DeviceObject || !FileObj->Fcb->MasterClosed ||
+	    !IsListEmpty(&FileObj->Fcb->SlaveList)) {
+	    ASYNC_RETURN(State, STATUS_SUCCESS);
+	}
+	/* For the volume file, only send the CLEANUP IRP when dismounting. */
+	if (FileObj->Fcb->Vcb && FileObj->Fcb == FileObj->Fcb->Vcb->VolumeFcb
+	    && !FileObj->Fcb->Vcb->Dismounted) {
+	    ASYNC_RETURN(State, STATUS_SUCCESS);
+	}
+	TargetFileObject = FileObj->Fcb->MasterFileObject;
     }
     /* File with a client-side handle must have a device object. */
     assert(FileObj->DeviceObject);
@@ -335,7 +368,7 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_CLEANUP,
 	.Device.Object = FileObj->DeviceObject,
-	.File.Object = FileObj,
+	.File.Object = TargetFileObject,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
@@ -360,7 +393,7 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 {
     PIO_FILE_OBJECT FileObj = Self;
     DbgTrace("Releasing file object %p from memory\n", FileObj);
-    IoDbgDumpFileObject(FileObj);
+    IoDbgDumpFileObject(FileObj, 0);
     /* For file objects that have a client-side object, we queue an
      * IRP_MJ_CLOSE request to its driver object. This request is
      * sent in a server message which does not expect a reply. */
@@ -384,16 +417,16 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 	    CiFlushDirtyDataToVolume(FileObj->Fcb);
 	}
     }
-    if (FileObj->DeviceObject) {
-	ObDereferenceObject(FileObj->DeviceObject);
-	RemoveEntryList(&FileObj->DeviceLink);
-    }
     if (FileObj->Fcb) {
 	if (FileObj->Fcb->MasterFileObject == FileObj) {
 	    IopDeleteFcb(FileObj->Fcb);
 	} else if (FileObj->Fcb->MasterFileObject) {
 	    ObDereferenceObject(FileObj->Fcb->MasterFileObject);
 	}
+    }
+    if (FileObj->DeviceObject) {
+	RemoveEntryList(&FileObj->DeviceLink);
+	ObDereferenceObject(FileObj->DeviceObject);
     }
 }
 
@@ -420,7 +453,7 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 	.FileSize = FileSize,
 	.NoFcb = !FileSize,
 	.FileAttributes = FileAttributes,
-	.DesiredAccess = FILE_ALL_ACCESS,
+	.DesiredAccess = FILE_READ_ACCESS | FILE_WRITE_ACCESS,
 	 /* We don't allow NT clients to open a deviceless file for delete. */
 	.ShareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE
     };
@@ -767,6 +800,135 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE State,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, TRUE);
 }
 
+static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
+				       IN PTHREAD Thread,
+				       IN HANDLE FileHandle,
+				       IN HANDLE EventHandle,
+				       IN PIO_APC_ROUTINE ApcRoutine,
+				       IN PVOID ApcContext,
+				       OUT IO_STATUS_BLOCK *IoStatusBlock,
+				       IN ULONG ControlCode,
+				       IN PVOID InputBuffer,
+				       IN ULONG InputBufferLength,
+				       IN PVOID OutputBuffer,
+				       IN ULONG OutputBufferLength,
+				       IN BOOLEAN FsControl)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_FILE_OBJECT FileObject;
+	    PEVENT_OBJECT EventObject;
+	    PPENDING_IRP PendingIrp;
+	});
+
+    if (FileHandle == NULL) {
+	ASYNC_RETURN(State, STATUS_INVALID_HANDLE);
+    }
+    IF_ERR_GOTO(out, Status,
+		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
+					  (POBJECT *)&Locals.FileObject));
+    assert(Locals.FileObject != NULL);
+    assert(Locals.FileObject->DeviceObject != NULL);
+    assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
+
+    if (EventHandle != NULL) {
+	IF_ERR_GOTO(out, Status,
+		    ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
+					      (POBJECT *)&Locals.EventObject));
+	assert(Locals.EventObject != NULL);
+    }
+
+    PIO_FILE_OBJECT TargetFileObject = Locals.FileObject->Fcb ?
+	Locals.FileObject->Fcb->MasterFileObject : Locals.FileObject;
+    IO_REQUEST_PARAMETERS Irp = {
+	.Device.Object = Locals.FileObject->DeviceObject,
+	.File.Object = TargetFileObject,
+	.MajorFunction = FsControl ? IRP_MJ_FILE_SYSTEM_CONTROL : IRP_MJ_DEVICE_CONTROL,
+	.MinorFunction = FsControl ? IRP_MN_USER_FS_REQUEST : 0,
+	.InputBuffer = (MWORD)InputBuffer,
+	.OutputBuffer = (MWORD)OutputBuffer,
+	.InputBufferLength = InputBufferLength,
+	.OutputBufferLength = OutputBufferLength,
+	.DeviceIoControl.IoControlCode = ControlCode
+    };
+    IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+
+    /* For now every IO is synchronous. For async IO, we need to figure
+     * out how we pass IO_STATUS_BLOCK back to the userspace safely.
+     * The idea is to pass it via APC. When NtWaitForSingleObject
+     * returns from the wait the special APC runs and write to the
+     * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+
+    /* This is the starting point when the function is resumed. */
+    if (IoStatusBlock != NULL) {
+	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
+    }
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    if (FsControl && ControlCode == FSCTL_DISMOUNT_VOLUME && NT_SUCCESS(Status)) {
+	IopDismountVolume(Locals.FileObject->DeviceObject);
+    }
+
+out:
+    /* Regardless of the outcome of the IO request, we should dereference the
+     * file object and the event object because increased their refcount above. */
+    if (Locals.FileObject) {
+	ObDereferenceObject(Locals.FileObject);
+    }
+    if (Locals.EventObject) {
+	ObDereferenceObject(Locals.EventObject);
+    }
+    /* This will free the pending IRP and detach the pending irp from the
+     * thread. At this point the IRP has already been detached from the driver
+     * object, so we do not need to remove it from the driver IRP queue here. */
+    if (Locals.PendingIrp) {
+	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
+			       IN PTHREAD Thread,
+                               IN HANDLE FileHandle,
+                               IN HANDLE EventHandle,
+                               IN PIO_APC_ROUTINE ApcRoutine,
+                               IN PVOID ApcContext,
+                               OUT IO_STATUS_BLOCK *IoStatusBlock,
+                               IN ULONG Ioctl,
+                               IN PVOID InputBuffer,
+                               IN ULONG InputBufferLength,
+                               IN PVOID OutputBuffer,
+                               IN ULONG OutputBufferLength)
+{
+    return IopDeviceIoControlFile(State, Thread, FileHandle, EventHandle,
+				  ApcRoutine, ApcContext, IoStatusBlock, Ioctl,
+				  InputBuffer, InputBufferLength,
+				  OutputBuffer, OutputBufferLength, FALSE);
+}
+
+NTSTATUS NtFsControlFile(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
+			 IN HANDLE FileHandle,
+			 IN HANDLE EventHandle,
+			 IN PIO_APC_ROUTINE ApcRoutine,
+			 IN PVOID ApcContext,
+			 OUT IO_STATUS_BLOCK *IoStatusBlock,
+			 IN ULONG Fsctl,
+			 IN PVOID InputBuffer,
+			 IN ULONG InputBufferLength,
+			 IN PVOID OutputBuffer,
+			 IN ULONG OutputBufferLength)
+{
+    return IopDeviceIoControlFile(State, Thread, FileHandle, EventHandle,
+				  ApcRoutine, ApcContext, IoStatusBlock, Fsctl,
+				  InputBuffer, InputBufferLength,
+				  OutputBuffer, OutputBufferLength, TRUE);
+}
+
 #define CHECK_LENGTH(BufferLength,Class, Struct)	\
         case Class:					\
             if (BufferLength < sizeof(Struct))		\
@@ -817,7 +979,7 @@ NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
     assert(Locals.FileObject != NULL);
     /* Deviceless files cannot be queried. */
     if (!Locals.FileObject->DeviceObject) {
-	IoDbgDumpFileObject(Locals.FileObject);
+	IoDbgDumpFileObject(Locals.FileObject, 0);
 	Status = STATUS_NOT_IMPLEMENTED;
 	goto out;
     }
@@ -1537,34 +1699,56 @@ out:
     ASYNC_END(State, Status);
 }
 
-VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File)
+VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File,
+			 IN ULONG Indentation)
 {
-#ifdef CONFIG_DEBUG_BUILD
+    RtlDbgPrintIndentation(Indentation);
     DbgPrint("Dumping file object %p\n", File);
     if (File == NULL) {
-	DbgPrint("    (nil)\n");
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("  (nil)\n");
 	return;
     }
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  RefCount = %lld\n", OBJECT_TO_OBJECT_HEADER(File)->RefCount);
+    RtlDbgPrintIndentation(Indentation);
     DbgPrint("  DeviceObject = %p\n", File->DeviceObject);
+    RtlDbgPrintIndentation(Indentation);
     DbgPrint("  Read %d Write %d Delete %d  SharedRead %d ShareWrite %d ShareDelete %d\n",
 	     File->ReadAccess, File->WriteAccess, File->DeleteAccess,
 	     File->SharedRead, File->SharedWrite, File->SharedDelete);
+    RtlDbgPrintIndentation(Indentation);
     DbgPrint("  CurrentOffset = 0x%llx\n", File->CurrentOffset);
+    RtlDbgPrintIndentation(Indentation);
     DbgPrint("  CloseReq = %p\n", File->CloseReq);
+    RtlDbgPrintIndentation(Indentation);
     DbgPrint("  Fcb = %p\n", File->Fcb);
     if (File->Fcb) {
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    FileName = %s\n", File->Fcb->FileName);
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    FileSize = 0x%llx\n", File->Fcb->FileSize);
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    MasterFileObject = %p\n", File->Fcb->MasterFileObject);
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("    SlaveFileCount = %d\n", GetListLength(&File->Fcb->SlaveList));
+	RtlDbgPrintIndentation(Indentation);
+	DbgPrint("    MasterClosed = %d\n", File->Fcb->MasterClosed);
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    OpenInProgress = %d\n", File->Fcb->OpenInProgress);
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    SharedCacheMap = %p\n", File->Fcb->SharedCacheMap);
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    DataSectionObject = %p\n", File->Fcb->DataSectionObject);
+	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    ImageSectionObject = %p\n", File->Fcb->ImageSectionObject);
 	if (File->Fcb->ImageSectionObject) {
+	    RtlDbgPrintIndentation(Indentation);
 	    DbgPrint("      ImageCacheFile = %p\n",
 		     File->Fcb->ImageSectionObject->ImageCacheFile);
-	    IoDbgDumpFileObject(File->Fcb->ImageSectionObject->ImageCacheFile);
+	    IoDbgDumpFileObject(File->Fcb->ImageSectionObject->ImageCacheFile,
+				Indentation + 2);
 	}
     }
-#endif
+    ObDbgDumpObjectHandles(File, Indentation + 2);
 }

@@ -366,3 +366,15 @@ SIZE_T ObDirectoryGetObjectCount(IN POBJECT_DIRECTORY DirObj)
     }
     return ObjectCount;
 }
+
+VOID ObDirectoryObjectVisitObject(IN POBJECT_DIRECTORY DirObj,
+				  IN POB_DIRECTORY_OBJECT_VISITOR Visitor,
+				  IN OPTIONAL PVOID Context)
+{
+    assert(DirObj);
+    for (int i = 0; i < OBP_DIROBJ_HASH_BUCKETS; i++) {
+        LoopOverList(Entry, &DirObj->HashBuckets[i], OBJECT_DIRECTORY_ENTRY, ChainLink) {
+	    Visitor(Entry->Object, Context);
+	}
+    }
+}

@@ -657,6 +657,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
 	    DbgPrint("    FILE-SYSTEM-CONTROL  ");
 	    switch (IoPacket->Request.MinorFunction) {
+	    case IRP_MN_USER_FS_REQUEST:
+		DbgPrint("    USER-FS-REQUEST  FsControlCode 0x%x\n",
+			 IoPacket->Request.DeviceIoControl.IoControlCode);
+		break;
 	    case IRP_MN_MOUNT_VOLUME:
 		DbgPrint("MOUNT-VOLUME  StorageDeviceHandle 0x%zx\n",
 			 IoPacket->Request.MountVolume.StorageDevice);
@@ -734,9 +738,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    break;
 	case IoCliMsgForwardIrp:
 	    DbgPrint("    CLIENT-MSG FORWARD-IRP OriginalRequestor %p Identifier %p "
-		     "DeviceHandle %p NotifyCompletion %s\n"
-		     "                           AssociatedIrpCount %d NewOffset 0x%llx "
-		     "NewLength 0x%x NewFileSize 0x%llx NewAllocationSize 0x%llx NewValidDataLength 0x%llx\n",
+		     "DeviceHandle %p NotifyCompletion %s AssociatedIrpCount %d "
+		     "NewOffset 0x%llx NewLength 0x%x NewFileSize 0x%llx "
+		     "NewAllocationSize 0x%llx NewValidDataLength 0x%llx\n",
 		     (PVOID)IoPacket->ClientMsg.IoCompleted.OriginalRequestor,
 		     IoPacket->ClientMsg.IoCompleted.Identifier,
 		     (PVOID)IoPacket->ClientMsg.ForwardIrp.DeviceObject,

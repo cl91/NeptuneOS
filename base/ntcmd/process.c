@@ -19,8 +19,8 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
     UNICODE_STRING ImagePath;	// Nt ImagePath
     UNICODE_STRING DllPath;	// Nt DllPath (DOS Name)
     UNICODE_STRING UnicodeCmdLine;	// Nt CommandLine
-    PRTL_USER_PROCESS_PARAMETERS processparameters;	// ProcessParameters
-    RTL_USER_PROCESS_INFORMATION processinformation = { 0 };	// ProcessInformation
+    PRTL_USER_PROCESS_PARAMETERS ProcessParameters;	// ProcessParameters
+    RTL_USER_PROCESS_INFORMATION ProcessInformation = { 0 };	// ProcessInformation
     WCHAR Env[2] = { 0, 0 };	// Process Envirnoment
     PKUSER_SHARED_DATA SharedData = (PKUSER_SHARED_DATA)USER_SHARED_DATA;	// Kernel Shared Data
 
@@ -33,7 +33,7 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
     RtlInitUnicodeString(&DllPath, SharedData->NtSystemRoot);	// DLL Path is %SystemRoot%
     RtlInitUnicodeString(&UnicodeCmdLine, CmdLine);	// Command Line parameters
 
-    Status = RtlCreateProcessParameters(&processparameters, &ImageName, &DllPath,
+    Status = RtlCreateProcessParameters(&ProcessParameters, &ImageName, &DllPath,
 					&DllPath, &UnicodeCmdLine, Env, 0, 0, 0, 0);
 
     if (!NT_SUCCESS(Status)) {
@@ -44,22 +44,23 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
     DbgPrint("Launching Process: %wZ, DllPath=%wZ, CmdLine=%wZ", &ImageName,
 	     &DllPath, &UnicodeCmdLine);
     Status = RtlCreateUserProcess(&ImagePath, OBJ_CASE_INSENSITIVE,
-				  processparameters, NULL, NULL, NULL, FALSE,
-				  NULL, NULL, &processinformation);
+				  ProcessParameters, NULL, NULL, NULL, FALSE,
+				  NULL, NULL, &ProcessInformation);
 
     if (!NT_SUCCESS(Status)) {
 	RtlCliDisplayString("RtlCreateUserProcess failed\n");
 	return STATUS_UNSUCCESSFUL;
     }
 
-    Status = NtResumeThread(processinformation.ThreadHandle, NULL);
+    Status = NtResumeThread(ProcessInformation.ThreadHandle, NULL);
 
     if (!NT_SUCCESS(Status)) {
 	RtlCliDisplayString("NtResumeThread failed\n");
 	return STATUS_UNSUCCESSFUL;
     }
+    NtClose(ProcessInformation.ThreadHandle);
 
-    *hProcess = processinformation.ProcessHandle;
+    *hProcess = ProcessInformation.ProcessHandle;
 
     return STATUS_SUCCESS;
 }
