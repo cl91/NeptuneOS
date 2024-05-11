@@ -460,6 +460,19 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     BOOLEAN RecognizedFS;
     FATINFO FatInfo;
     NTSTATUS Status = FatHasFileSystem(DeviceToMount, &RecognizedFS, &FatInfo, FALSE);
+
+    /* Call the storage device driver to clear the VERIFY_REQUIRED flag and try again. */
+    if (Status == STATUS_MEDIA_CHANGED || Status == STATUS_VERIFY_REQUIRED) {
+	ULONG ChangeCount, BufSize = sizeof(ChangeCount);
+	Status = FatBlockDeviceIoControl(DeviceToMount, IOCTL_DISK_CHECK_VERIFY, NULL,
+					 0, &ChangeCount, &BufSize, TRUE);
+	if (!NT_SUCCESS(Status) && Status != STATUS_VERIFY_REQUIRED) {
+	    DPRINT("FatBlockDeviceIoControl() failed (Status %x)\n", Status);
+	    return Status;
+	}
+	Status = FatHasFileSystem(DeviceToMount, &RecognizedFS, &FatInfo, FALSE);
+    }
+
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }

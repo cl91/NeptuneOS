@@ -156,6 +156,7 @@ DECLARE_POINTER_TYPE(IO_FILE_OBJECT);
 #define IOP_IRP_COMPLETION_CALLBACK		(1UL << 18)
 #define IOP_IRP_INTERCEPTION_CALLBACK		(1UL << 19)
 #define IOP_IRP_NOTIFY_COMPLETION		(1UL << 20)
+#define IOP_IRP_OVERRIDE_VERIFY			(1UL << 21)
 
 /*
  * Parameters for an IO request.
@@ -421,6 +422,8 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 	    ULONG64 NewValidDataLength; /* File system driver only. */
 	    BOOLEAN NotifyCompletion; /* TRUE if the client driver wants the server to
 				       * notify it after the IRP has been processed. */
+	    BOOLEAN OverrideVerify; /* TRUE if the forwarded IRP should be marked
+				     * with SL_OVERRIDE_VERIFY_VOLUME. */
 	} ForwardIrp;
 	struct {
 	    MWORD ViewAddress;

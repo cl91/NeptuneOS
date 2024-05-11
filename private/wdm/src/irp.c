@@ -497,7 +497,8 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     IoStack->MajorFunction = Src->Request.MajorFunction;
     IoStack->MinorFunction = Src->Request.MinorFunction;
-    IoStack->Flags = 0;
+    IoStack->Flags = Src->Request.Flags & IOP_IRP_OVERRIDE_VERIFY ?
+	SL_OVERRIDE_VERIFY_VOLUME : 0;
     IoStack->Control = 0;
     IoStack->DeviceObject = DeviceObject;
     IoStack->FileObject = FileObject;
@@ -1144,6 +1145,7 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     Dest->ClientMsg.ForwardIrp.Identifier = Irp->Private.Identifier;
     Dest->ClientMsg.ForwardIrp.DeviceObject = DeviceObject->Header.GlobalHandle;
     Dest->ClientMsg.ForwardIrp.NotifyCompletion = Irp->Private.NotifyCompletion;
+    Dest->ClientMsg.ForwardIrp.OverrideVerify = IoStack->Flags & SL_OVERRIDE_VERIFY_VOLUME;
     if (IoStack->MajorFunction == IRP_MJ_READ) {
 	Dest->ClientMsg.ForwardIrp.NewOffset = IoStack->Parameters.Read.ByteOffset;
 	Dest->ClientMsg.ForwardIrp.NewLength = IoStack->Parameters.Read.Length;
@@ -1210,6 +1212,9 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     }
     if (IopIrpNeedsCompletionNotification(Irp)) {
 	Dest->Request.Flags |= IOP_IRP_NOTIFY_COMPLETION;
+    }
+    if (IoStack->Flags & SL_OVERRIDE_VERIFY_VOLUME) {
+	Dest->Request.Flags |= IOP_IRP_OVERRIDE_VERIFY;
     }
 
     switch (IoStack->MajorFunction) {

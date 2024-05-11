@@ -935,6 +935,12 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	CcSetFileSize(Irp->Request.File.Object->Fcb, Msg->ClientMsg.ForwardIrp.NewFileSize);
     }
 
+    if (Msg->ClientMsg.ForwardIrp.OverrideVerify) {
+	Irp->Request.Flags |= IOP_IRP_OVERRIDE_VERIFY;
+    } else {
+	Irp->Request.Flags &= ~IOP_IRP_OVERRIDE_VERIFY;
+    }
+
     /* If client has requested completion notification, in addition to
      * moving the IO_PACKET from the source driver object to the target
      * driver, we also create a PENDING_IRP that links to the existing
