@@ -261,13 +261,15 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 	return Status;
     }
 
-    /* Fail if we try to overwrite an existing directory */
-    if ((FatFcbIsDirectory(Fcb) && !BooleanFlagOn(RequestedOptions, FILE_DIRECTORY_FILE))
-	&& (RequestedDisposition == FILE_OVERWRITE
-	    || RequestedDisposition == FILE_OVERWRITE_IF
-	    || RequestedDisposition == FILE_SUPERSEDE)) {
+    /* Fail if we try to open an existing directory as a file */
+    if (FatFcbIsDirectory(Fcb) && !BooleanFlagOn(RequestedOptions, FILE_DIRECTORY_FILE)) {
 	FatReleaseFcb(DeviceExt, Fcb);
-	return STATUS_OBJECT_NAME_COLLISION;
+	if (RequestedDisposition == FILE_OVERWRITE || RequestedDisposition == FILE_SUPERSEDE
+	    || RequestedDisposition == FILE_OVERWRITE_IF) {
+	    return STATUS_OBJECT_NAME_COLLISION;
+	} else {
+	    return STATUS_FILE_IS_A_DIRECTORY;
+	}
     }
 
     if (BooleanFlagOn(Fcb->Flags, FCB_DELETE_PENDING)) {

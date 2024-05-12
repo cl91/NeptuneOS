@@ -315,6 +315,10 @@ PCSTR RtlCliStatusToErrorMessage(IN NTSTATUS Status)
 	return "no media";
     case STATUS_NO_MEDIA_IN_DEVICE:
 	return "no media in device";
+    case STATUS_FILE_IS_A_DIRECTORY:
+	return "file is a directory";
+    case STATUS_NOT_A_DIRECTORY:
+	return "not a directory";
     case STATUS_INTERNAL_ERROR:
 	return "internal error";
     default:
