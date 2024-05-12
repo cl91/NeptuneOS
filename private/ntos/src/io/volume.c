@@ -39,6 +39,7 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	    PLIST_ENTRY Entry;
 	    PIO_FILE_SYSTEM CurrentFs;
 	    PPENDING_IRP PendingIrp;
+	    PCLOSE_DEVICE_REQUEST CloseReq;
 	});
 
     if (!IopIsStorageDevice(DevObj)) {
@@ -60,7 +61,8 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 
     DevObj->Vcb = ExAllocatePoolWithTag(sizeof(IO_VOLUME_CONTROL_BLOCK), NTOS_IO_TAG);
     if (!DevObj->Vcb) {
-	ASYNC_RETURN(State, STATUS_NO_MEMORY);
+	Status = STATUS_NO_MEMORY;
+	goto out;
     }
     DevObj->Vcb->MountInProgress = TRUE;
     /* FileSize is set to zero for the time being as we don't know the volume size yet. */
@@ -90,6 +92,21 @@ next:
     }
     Locals.CurrentFs = CONTAINING_RECORD(Locals.Entry, IO_FILE_SYSTEM, ListEntry);
 
+    /* Queue a CLOSE_DEVICE_REQUEST to the storage device so when it gets
+     * deleted, the file system driver will know. */
+    assert(!Locals.CloseReq);
+    Locals.CloseReq = ExAllocatePoolWithTag(sizeof(CLOSE_DEVICE_REQUEST),
+					    NTOS_IO_TAG);
+    if (!Locals.CloseReq) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+    Locals.CloseReq->Req = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
+    if (!Locals.CloseReq->Req) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_FILE_SYSTEM_CONTROL,
 	.MinorFunction = IRP_MN_MOUNT_VOLUME,
@@ -98,6 +115,12 @@ next:
 	.MountVolume.StorageDeviceInfo = DevObj->DeviceInfo
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
+    Locals.CloseReq->DriverObject = Locals.CurrentFs->FsctlDevObj->DriverObject;
+    Locals.CloseReq->DeviceObject = DevObj;
+    InsertTailList(&DevObj->CloseReqList, &Locals.CloseReq->DeviceLink);
+    InsertTailList(&Locals.CloseReq->DriverObject->CloseDeviceReqList,
+		   &Locals.CloseReq->DriverLink);
+    Locals.CloseReq = NULL;
 
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
@@ -138,6 +161,12 @@ next:
     }
 
 out:
+    if (Locals.CloseReq) {
+	if (Locals.CloseReq->Req) {
+	    IopFreePool(Locals.CloseReq->Req);
+	}
+	IopFreePool(Locals.CloseReq);
+    }
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }

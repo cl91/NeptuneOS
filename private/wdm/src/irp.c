@@ -1640,6 +1640,21 @@ static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
     IoCompleteRequest(Irp, 0);
 }
 
+static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
+{
+    PDEVICE_OBJECT DevObj = IopGetDeviceObject(SrvMsg->ServerMsg.CloseDevice.DeviceObject);
+    if (!DevObj) {
+	assert(FALSE);
+	return;
+    }
+    if (DevObj->Header.GlobalHandle) {
+	DevObj->Header.GlobalHandle = 0;
+	assert(ListHasEntry(&IopDeviceList, &DevObj->Private.Link));
+	RemoveEntryList(&DevObj->Private.Link);
+    }
+    ObDereferenceObject(DevObj);
+}
+
 static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
@@ -1845,6 +1860,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 		CiHandleCacheFlushedServerMessage(SrcIoPacket);
 	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseFile) {
 		IopHandleCloseFileServerMessage(SrcIoPacket);
+	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseDevice) {
+		IopHandleCloseDeviceServerMessage(SrcIoPacket);
 	    } else {
 		DbgPrint("Invalid server message type %d\n", SrcIoPacket->ServerMsg.Type);
 		assert(FALSE);

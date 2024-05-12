@@ -186,7 +186,7 @@ FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
 /*
  * Object manager routines
  */
-FORCEINLINE NTAPI VOID ObDereferenceObject(IN PVOID Obj) { /* TODO */ }
+NTAPI NTSYSAPI VOID ObDereferenceObject(IN PVOID Obj);
 
 struct _DEVICE_OBJECT;
 struct _DRIVER_OBJECT;

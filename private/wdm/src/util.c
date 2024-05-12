@@ -1,5 +1,15 @@
 #include <wdmp.h>
 
+NTAPI VOID ObDereferenceObject(IN PVOID Obj)
+{
+    POBJECT_HEADER Header = Obj;
+    Header->RefCount--;
+    if (Header->RefCount <= 0) {
+	assert(Header->RefCount == 0);
+	IopFreePool(Obj);
+    }
+}
+
 /*
  * @implemented
  */

@@ -246,6 +246,17 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*
+ * CloseDevice server message queued on a device object.
+ */
+typedef struct _CLOSE_DEVICE_REQUEST {
+    PIO_DRIVER_OBJECT DriverObject;
+    PIO_DEVICE_OBJECT DeviceObject;
+    PIO_PACKET Req;
+    LIST_ENTRY DeviceLink;
+    LIST_ENTRY DriverLink;
+} CLOSE_DEVICE_REQUEST, *PCLOSE_DEVICE_REQUEST;
+
+/*
  * Worker thread of a driver object
  */
 typedef struct _WORKER_THREAD {

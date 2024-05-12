@@ -41,6 +41,7 @@
 @ stdcall KeSetEvent(ptr)
 @ stdcall KeResetEvent(ptr)
 @ stdcall KeClearEvent(ptr)
+@ stdcall ObDereferenceObject(ptr)
 @ stdcall HalMakeBeep(long)
 @ stdcall HalGetAdapter(ptr ptr)
 @ stdcall CcInitializeCacheMap(ptr)

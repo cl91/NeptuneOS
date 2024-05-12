@@ -364,7 +364,8 @@ typedef struct _IO_COMPLETED_MESSAGE {
 typedef enum _IO_SERVER_MESSAGE_TYPE {
     IoSrvMsgIoCompleted,
     IoSrvMsgCacheFlushed,
-    IoSrvMsgCloseFile
+    IoSrvMsgCloseFile,
+    IoSrvMsgCloseDevice
 } IO_SERVER_MESSAGE_TYPE;
 
 /*
@@ -382,6 +383,9 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
 	struct {
 	    GLOBAL_HANDLE FileObject;
 	} CloseFile;
+	struct {
+	    GLOBAL_HANDLE DeviceObject;
+	} CloseDevice;
     };
 } IO_PACKET_SERVER_MESSAGE, *PIO_PACKET_SERVER_MESSAGE;
 
@@ -723,6 +727,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	case IoSrvMsgCloseFile:
 	    DbgPrint("    SERVER-MSG CLOSE-FILE FileHandle %p\n",
 		     (PVOID)IoPacket->ServerMsg.CloseFile.FileObject);
+	    break;
+	case IoSrvMsgCloseDevice:
+	    DbgPrint("    SERVER-MSG CLOSE-DEVICE DeviceHandle %p\n",
+		     (PVOID)IoPacket->ServerMsg.CloseDevice.DeviceObject);
 	    break;
 	default:
 	    DbgPrint("    INVALID SERVER MESSAGE TYPE %d\n", IoPacket->ServerMsg.Type);

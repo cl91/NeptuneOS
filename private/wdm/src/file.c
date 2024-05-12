@@ -75,6 +75,7 @@ NTAPI PFILE_OBJECT IoCreateStreamFileObject(IN PDEVICE_OBJECT DeviceObject)
     if (!FileObject) {
 	return NULL;
     }
+    ObInitializeObject(FileObject, CLIENT_OBJECT_FILE, FILE_OBJECT);
     FileObject->DeviceObject = DeviceObject;
     FileObject->Flags = FO_STREAM_FILE;
     return FileObject;

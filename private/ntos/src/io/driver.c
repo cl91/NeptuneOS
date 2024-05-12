@@ -26,6 +26,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     InitializeListHead(&Driver->ForwardedIrpList);
+    InitializeListHead(&Driver->CloseDeviceReqList);
     InitializeListHead(&Driver->InterruptServiceList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
