@@ -35,6 +35,7 @@ from the ReactOS project, that supports most of the common shell commands, such 
 
 The entire system fits in a floppy and can be downloaded from
 [Release v0.2.0002](https://github.com/cl91/NeptuneOS/releases/tag/v0.2.0002).
+You can watch a short demo on [YouTube](https://www.youtube.com/watch?v=o3FLRnkh0ic).
 You can also build it yourself. See the section on [Building](#building).
 
 ### Planned Features
