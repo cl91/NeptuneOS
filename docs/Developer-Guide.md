@@ -484,6 +484,6 @@ As a consequence, accessing the system buffer for buffered IO is now done with
 
 `CcFlushCache` sends the server a message to flush the relevant cache buffers and waits
 for the server to reply. Therefore for performance reasons, `CcFlushCache` should only be
-called as a response to the `IRP_MJ_FLUSH_BUFFERS` IRP. Driver authors should remove the
-calls to `CcFlushCache` and only call the function as the last step before completing the
-`IRP_MJ_FLUSH_BUFFERS` IRP.
+called as a response to the `IRP_MJ_FLUSH_BUFFERS` IRP and during a volume dismount sequence.
+Driver authors should remove the calls to `CcFlushCache` and only call the function as the
+last step before completing the `IRP_MJ_FLUSH_BUFFERS` IRP and the dismount FSCTLs.

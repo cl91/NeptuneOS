@@ -1731,7 +1731,7 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File,
 	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    MasterFileObject = %p\n", File->Fcb->MasterFileObject);
 	RtlDbgPrintIndentation(Indentation);
-	DbgPrint("    SlaveFileCount = %d\n", GetListLength(&File->Fcb->SlaveList));
+	DbgPrint("    SlaveFileCount = %zd\n", (MWORD)GetListLength(&File->Fcb->SlaveList));
 	RtlDbgPrintIndentation(Indentation);
 	DbgPrint("    MasterClosed = %d\n", File->Fcb->MasterClosed);
 	RtlDbgPrintIndentation(Indentation);
