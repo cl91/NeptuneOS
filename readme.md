@@ -18,21 +18,30 @@ executables provided that our implementation of the NT Native API is sufficientl
 We should also be able to achieve a high degree of source code portability with Windows
 device drivers and file system drivers, although we do not aim for complete, line-for-line
 source code compatibility due to the architectural differences with Windows/ReactOS that
-make this gole non-realistic. Please see the [Documentation](#documentations) section for
+make this goal non-realistic. Please see the [Documentation](#documentations) section for
 more information.
 
 ## Project Status
 
-The status of the project right now is that we have implemented enough NT primitives
-to load a basic keyboard driver stack, which includes the keyboard class driver
-`kbdclass.sys` and the PS/2 port driver `i8042prt.sys`, as well as a basic command
-prompt `ntcmd.exe`, taken from the ReactOS project. Pretty much none of the shell
-command actually work but the keyboard stack is stable. The debug builds might be
-a bit slow because we generate too much debug logs. You can turn these off in the
-code (see `private/ntos/inc`). We also include a `beep.sys` driver which makes an
-annoying sound on the PC speaker. You will need to unmute to hear it (especially if
-you use `pulseaudio`). All drivers run in user space! The entire system fits in a
-floppy and can be downloaded from [Release v0.1.0001](https://github.com/cl91/NeptuneOS/releases/tag/v0.1.0001). You can also build it yourself. See the section on [Building](#building).
+The current status of the project is that we have implemented enough NT Executive
+components to support a reasonably complete file system stack with read-ahead and
+write-back caching support, that includes the FAT12/16/32 file system driver `fatfs.sys`
+and a floppy controller driver `fdc.sys`. We also have a basic keyboard driver stack,
+that includes the keyboard class driver `kbdclass.sys` and the PS/2 port driver
+`i8042prt.sys`. These allow us to run a basic command prompt `ntcmd.exe`, taken
+from the ReactOS project, that supports most of the common shell commands, such as
+`pwd`, `cd`, `copy`, `move`, `del`, `mount`, and `umount`. We also include a
+`beep.sys` driver which makes an annoying sound on the PC speaker.
+
+The entire system fits in a floppy and can be downloaded from
+[Release v0.2.0002](https://github.com/cl91/NeptuneOS/releases/tag/v0.2.0002).
+You can also build it yourself. See the section on [Building](#building).
+
+### Planned Features
+For the next release we are planning to port the ATA/AHCI driver stack from ReactOS
+so we can support most PATA/SATA hard disks. We also plan to write/port a disk
+benchmark suite so we can demonstrate that a microkernel design does not lead to
+unacceptable performance penalties.
 
 ## Minimal System Requirements
 
@@ -70,7 +79,7 @@ For amd64 systems:
 
 For `amd64` machines, Thinkpad X230 has been tested to work.
 
-## Building
+## Building and running
 
 You will need to build under Linux (seL4 doesn't build under any other operating system).
 You will need the following Python dependencies, and probably more.
@@ -126,6 +135,9 @@ assumes you are using a recent QEMU version and have pulseaudio)
 ```
 ./run.sh release -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0
 ```
+The debug build might run slowly especially if you turn on serial port logging.
+You can turn off logging by modifying the master header of the NT Executive project
+(see `private/ntos/inc/ntos.h`).
 
 ### Cross-compiling
 We use the LLVM toolchain so cross-compiling in theory should simply work without any
