@@ -153,5 +153,7 @@ NTSTATUS PsSetSystemThreadPriority(IN PSYSTEM_THREAD Thread,
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,
     			   IN NTSTATUS ExitStatus);
 NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread);
-VOID PsTerminateProcess(IN PPROCESS Process,
-			IN NTSTATUS ExitStatus);
+NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
+			    IN PTHREAD Thread,
+			    IN PPROCESS Process,
+			    IN NTSTATUS ExitStatus);

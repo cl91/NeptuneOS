@@ -719,7 +719,9 @@ VOID KiDispatchExecutiveServices()
 	     * remove the thread from the ready list. In the case that the async status
 	     * is still pending (because the handler function has blocked on a different
 	     * async wait), it is important that we do not wake up the thread too soon. */
-	    RemoveEntryList(&ReadyThread->ReadyListLink);
+	    if (Status != STATUS_NTOS_NO_REPLY) {
+		RemoveEntryList(&ReadyThread->ReadyListLink);
+	    }
 	    /* Reply to the thread if the handler function has completed */
 	    if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
 		ULONG NumApc = 0;

@@ -83,6 +83,15 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	MmUnmapRegion(&Thread->Process->VSpace, Thread->SystemDllTlsBase);
     }
 
+    /* If we are in the ready list, remove us from it. */
+    extern LIST_ENTRY KiReadyThreadList;
+    LoopOverList(Entry, &KiReadyThreadList, THREAD, ReadyListLink) {
+	if (Entry == Thread) {
+	    RemoveEntryList(&Thread->ReadyListLink);
+	    break;
+	}
+    }
+
     /* Finally, delete the TCB object */
     MmCapTreeDeleteNode(&Thread->TreeNode);
 }
@@ -162,16 +171,33 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-VOID PsTerminateProcess(IN PPROCESS Process,
-			IN NTSTATUS ExitStatus)
+NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
+			    IN PTHREAD Thread,
+			    IN PPROCESS Process,
+			    IN NTSTATUS ExitStatus)
 {
+    ASYNC_BEGIN(State, Locals, {
+	    HANDLE HandleToClose;
+	});
     DbgTrace("Terminating process %p (%s) with status 0x%08x\n",
 	     Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
+
+close:;
+    PAVL_NODE Node = AvlGetFirstNode(&Process->HandleTable.Tree);
+    if (!Node) {
+	goto out;
+    }
+    Locals.HandleToClose = (HANDLE)(ULONG_PTR)Node->Key;
+    AWAIT(NtClose, State, Locals, Thread, Locals.HandleToClose);
+    goto close;
+
+out:
     LoopOverList(Thread, &Process->ThreadList, THREAD, ThreadListEntry) {
 	PsTerminateThread(Thread, ExitStatus);
     }
     KeSignalDispatcherObject(&Process->Header);
     ObDereferenceObject(Process);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
@@ -179,17 +205,22 @@ NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
                             IN HANDLE ProcessHandle,
                             IN NTSTATUS ExitStatus)
 {
+    ASYNC_BEGIN(State, Locals, {
+	    PPROCESS Process;
+	});
     PPROCESS Process = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
-				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
-    ObDereferenceObject(Process);
+    ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread, ProcessHandle,
+						   OBJECT_TYPE_PROCESS,
+						   (POBJECT *)&Process));
     assert(Process != NULL);
-    PsTerminateProcess(Process, ExitStatus);
+    Locals.Process = Process;
+    ObDereferenceObject(Process);
+    AWAIT(PsTerminateProcess, State, Locals, Thread, Locals.Process, ExitStatus);
     /* If the current process is terminating, do not reply to the calling thread. */
     if (ProcessHandle == NtCurrentProcess()) {
-	return STATUS_NTOS_NO_REPLY;
+	ASYNC_RETURN(State, STATUS_NTOS_NO_REPLY);
     }
-    return STATUS_SUCCESS;
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,

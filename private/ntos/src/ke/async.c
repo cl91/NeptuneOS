@@ -1,5 +1,4 @@
 #include "ki.h"
-#include <stdarg.h>
 
 static inline BOOLEAN KiApcQueueIsEmpty(IN PTHREAD Thread)
 {
