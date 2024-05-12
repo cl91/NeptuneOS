@@ -187,6 +187,9 @@ static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
 	});
 
     ObDbg("Closing handle %p for process %s\n", Handle, KEDBG_PROCESS_TO_FILENAME(Process));
+    if (!Handle) {
+	ASYNC_RETURN(State, STATUS_SUCCESS);
+    }
     IF_ERR_GOTO(out, Status, ObpLookupObjectHandle(Process, Handle,
 						   &Locals.Object, &Locals.Entry));
     assert(Locals.Object);
