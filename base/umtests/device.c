@@ -53,6 +53,7 @@ static BOOLEAN Beep(IN ULONG dwFreq,
 		 dwFreq, dwDuration);
 	Status = STATUS_INVALID_PARAMETER;
     }
+    NtClose(hBeep);
 
     return NT_SUCCESS(Status);
 }

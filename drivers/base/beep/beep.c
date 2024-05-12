@@ -56,17 +56,6 @@ DRIVER_DISPATCH BeepClose;
 NTAPI NTSTATUS BeepClose(IN PDEVICE_OBJECT DeviceObject,
 			 IN PIRP Irp)
 {
-    PDEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
-
-    /* Check for active timer */
-    if (DeviceExtension->TimerActive) {
-	/* Cancel it */
-	if (KeCancelTimer(&DeviceExtension->Timer)) {
-	    /* Mark it as cancelled */
-	    DeviceExtension->TimerActive = FALSE;
-	}
-    }
-
     /* Complete the request */
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
@@ -101,41 +90,11 @@ DRIVER_DISPATCH BeepCleanup;
 NTAPI NTSTATUS BeepCleanup(IN PDEVICE_OBJECT DeviceObject,
 			   IN PIRP Irp)
 {
-    PKDEVICE_QUEUE_ENTRY Packet;
-    PIRP CurrentIrp;
-
-    /* Get the current IRP */
-    CurrentIrp = DeviceObject->CurrentIrp;
-    DeviceObject->CurrentIrp = NULL;
-    while (CurrentIrp) {
-	/* Clear its cancel routine */
-	(VOID) IoSetCancelRoutine(CurrentIrp, NULL);
-
-	/* Cancel the IRP */
-	CurrentIrp->IoStatus.Status = STATUS_CANCELLED;
-	CurrentIrp->IoStatus.Information = 0;
-
-	/* Complete it */
-	IoCompleteRequest(CurrentIrp, IO_NO_INCREMENT);
-
-	/* Get the next queue packet */
-	Packet = KeRemoveDeviceQueue(&DeviceObject->DeviceQueue);
-	if (Packet) {
-	    /* Get the IRP */
-	    CurrentIrp = CONTAINING_RECORD(Packet, IRP, Tail.DeviceQueueEntry);
-	} else {
-	    /* No more IRPs */
-	    CurrentIrp = NULL;
-	}
-    }
-
     /* Complete the IRP */
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    /* Stop the beep and return */
-    HalMakeBeep(0);
     return STATUS_SUCCESS;
 }
 
