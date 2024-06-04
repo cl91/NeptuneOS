@@ -130,7 +130,7 @@ static void KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 		/* TODO: Record x86 ACPI RSDP information */
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
-		/* TODO: Record x86 framebuffer information */
+		HalRegisterFramebuffer((PHAL_FRAMEBUFFER)(BootInfoHeader+1));
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 		KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
@@ -213,6 +213,13 @@ static void KiDumpBootInfoMemMap(seL4_X86_BootInfo_mmap_t *MemMapInfo)
 
 static void KiDumpBootInfoFrameBuffer(seL4_X86_BootInfo_fb_t *FbInfo)
 {
+    DbgPrint("    Framebuffer info:\n");
+    DbgPrint("        physical address = 0x%llx\n", FbInfo->PhysicalAddress);
+    DbgPrint("        pitch = 0x%x\n", FbInfo->Pitch);
+    DbgPrint("        width = %d\n", FbInfo->Width);
+    DbgPrint("        height = %d\n", FbInfo->Height);
+    DbgPrint("        bpp = %d\n", FbInfo->BitsPerPixel);
+    DbgPrint("        type = %d\n", FbInfo->Type);
 }
 
 static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
@@ -239,25 +246,25 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
     if (bootinfo->extraLen) {
 	DbgPrint("Extra bootinfo structures:\n");
 	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)bootinfo + PAGE_SIZE);
-	while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+	while ((MWORD)BootInfoHeader < ((MWORD)bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
 	    switch (BootInfoHeader->id) {
 	    case SEL4_BOOTINFO_HEADER_PADDING:
 		DbgPrint("    empty bootinfo padding of size 0x%zx\n", BootInfoHeader->len);
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_VBE:
 		DbgPrint("    x86 vbe info of size 0x%zx\n", BootInfoHeader->len);
-		KiDumpBootInfoVbe((seL4_X86_BootInfo_VBE *)BootInfoHeader);
+		KiDumpBootInfoVbe((seL4_X86_BootInfo_VBE *)(BootInfoHeader+1));
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
 		DbgPrint("    x86 mem map of size 0x%zx\n", BootInfoHeader->len);
-		KiDumpBootInfoMemMap((seL4_X86_BootInfo_mmap_t *)BootInfoHeader);
+		KiDumpBootInfoMemMap((seL4_X86_BootInfo_mmap_t *)(BootInfoHeader+1));
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
 		DbgPrint("    x86 acpi rsdp of size 0x%zx\n", BootInfoHeader->len);
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
 		DbgPrint("    x86 multiboot2 framebuffer info of size 0x%zx\n", BootInfoHeader->len);
-		KiDumpBootInfoFrameBuffer((seL4_X86_BootInfo_fb_t *)BootInfoHeader);
+		KiDumpBootInfoFrameBuffer((seL4_X86_BootInfo_fb_t *)(BootInfoHeader+1));
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);

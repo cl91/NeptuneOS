@@ -73,10 +73,7 @@ For amd64 systems:
    update).
 2. RAM: 128MB should be safe, can probably go lower.
 3. VGA-compatible graphics controller.
-4. Legacy BIOS booting. Most UEFI firmware can boot from legacy BIOS boot loaders by
-   enabling a setting. We haven't implemented UEFI booting yet although this shouldn't
-   take too much work. The only thing needed is drawing text on the linear framebuffer.
-   We might also want to support coreboot linear framebuffer.
+4. Legacy BIOS or UEFI-based BIOS that supports at least ACPI 3.0.
 
 For `amd64` machines, Thinkpad X230 has been tested to work.
 
@@ -128,8 +125,8 @@ To simulate using QEMU, run
 If you specify `direct`, then QEMU will load the seL4 kernel and the NTOS image
 directly (using `-kernel` and `-initrd`). If you specify `iso` or `uefi`, it will
 load the boot iso built by `mkiso.sh`. The `uefi` option will also configure QEMU
-to load the UEFI firmware (note we have not implemented drawing in UEFI mode yet so
-there will not be a text console). Otherwise, the boot floppy created by `mkfloppy.sh`
+to load the UEFI firmware, which provides a nice high definition framebuffer console.
+Otherwise, the boot floppy created by `mkfloppy.sh`
 is used. Extra arguments are passed to QEMU. For instance, to run the `i386`
 release build with PC speaker enabled in QEMU you can pass the following (this
 assumes you are using a recent QEMU version and have pulseaudio)

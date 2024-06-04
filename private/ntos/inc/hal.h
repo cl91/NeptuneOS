@@ -1,12 +1,18 @@
 #pragma once
 
 #include <nt.h>
+#include <printf.h>
 
-#define VGA_BLUE			(1)
-#define VGA_WHITE			(15)
-#define VGA_BG_COLOR			(VGA_BLUE << 4)
-#define VGA_FG_COLOR			(VGA_WHITE)
-#define VGA_TEXT_COLOR			(VGA_BG_COLOR | VGA_FG_COLOR)
+#include <pshpack1.h>
+typedef struct multiboot2_fb {
+    ULONG64 PhysicalAddress;
+    ULONG Pitch;
+    ULONG Width;
+    ULONG Height;
+    UCHAR BitsPerPixel;
+    UCHAR Type;
+} HAL_FRAMEBUFFER, *PHAL_FRAMEBUFFER;
+#include <poppack.h>
 
 /* TODO: This is for x86 and PIC only. We don't support IOAPIC yet. */
 #define TIMER_IRQ_LINE		0
@@ -27,12 +33,8 @@ BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time);
 BOOLEAN HalSetRealTimeClock(IN PTIME_FIELDS Time);
 
 /* vga.c */
-VOID HalDisplayStringEx(UCHAR Color, PCSTR String);
-
-static inline VOID HalDisplayString(PCSTR String)
-{
-    HalDisplayStringEx(VGA_TEXT_COLOR, String);
-}
+VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb);
+VOID HalDisplayString(PCSTR String);
 
 static inline __attribute__((format(printf, 1, 2))) ULONG HalVgaPrint(PCSTR Format, ...)
 {

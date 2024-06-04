@@ -120,11 +120,6 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
 #define RTC_REGISTER_D          0x0D
 #define RTC_REGISTER_CENTURY    0x32
 
-#define VGA_MODE_HORIZONTAL		(80)
-#define VGA_MODE_VERTICAL		(25)
-#define VGA_CURSOR_CONTROL_PORT		(0x3D4)
-#define VGA_CURSOR_DATA_PORT		(0x3D5)
-
 #define READ_PORT_UCHAR(PortNum)	__inbyte((ULONG_PTR)(PortNum))
 #define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte((ULONG_PTR)(PortNum), Data)
 
