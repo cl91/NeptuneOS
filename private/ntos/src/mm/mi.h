@@ -164,13 +164,15 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
 				 IN MWORD VirtAddr,
 				 IN PAGING_STRUCTURE_TYPE Type,
 				 IN BOOLEAN Mapped,
-				 IN PAGING_RIGHTS Rights);
+				 IN PAGING_RIGHTS Rights,
+    				 IN PAGING_ATTRIBUTES Attributes);
 NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 IN PUNTYPED Untyped,
 				 IN PPAGING_STRUCTURE ParentPaging,
 				 IN MWORD VirtAddr,
 				 IN MWORD VSpaceCap,
 				 IN PAGING_RIGHTS Rights,
+				 IN PAGING_ATTRIBUTES Attributes,
 				 OUT PPAGING_STRUCTURE *pPaging);
 NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
 				       IN PPAGING_STRUCTURE Paging);
@@ -184,6 +186,7 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 		       IN MWORD VirtAddr,
 		       IN MWORD WindowSize,
 		       IN PAGING_RIGHTS Rights,
+		       IN PAGING_ATTRIBUTES Attributes,
 		       IN BOOLEAN LargePage);
 VOID MiDeletePage(IN PPAGING_STRUCTURE Page);
 

@@ -415,6 +415,15 @@ typedef enum _PAGING_STRUCTURE_TYPE {
 typedef seL4_CapRights_t PAGING_RIGHTS;
 typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
 
+#define MM_RIGHTS_RW	(seL4_ReadWrite)
+#define MM_RIGHTS_RO	(seL4_CanRead)
+
+#define MM_ATTRIBUTES_DEFAULT		(seL4_X86_Default_VMAttributes)
+#define MM_ATTRIBUTES_NO_CACHE		(seL4_X86_CacheDisabled)
+#define MM_ATTRIBUTES_WRITE_BACK	(seL4_X86_WriteBack)
+#define MM_ATTRIBUTES_WRITE_THROUGH	(seL4_X86_WriteThrough)
+#define MM_ATTRIBUTES_WRITE_COMBINE	(seL4_X86_WriteCombining)
+
 typedef struct _PAGING_STRUCTURE {
     CAP_TREE_NODE TreeNode; /* Cap tree node of the page cap. Must be first member. */
     AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree, Key is virt addr */
@@ -434,9 +443,6 @@ typedef struct _PAGING_STRUCTURE {
 				   PAGING_STRUCTURE,	\
 				   AvlNode) : NULL;	\
     })
-
-#define MM_RIGHTS_RW	(seL4_ReadWrite)
-#define MM_RIGHTS_RO	(seL4_CanRead)
 
 static inline BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
 					     IN PAGING_RIGHTS Right)
@@ -627,6 +633,7 @@ NTSTATUS MmCommitOwnedMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 			       IN MWORD StartAddr,
 			       IN MWORD WindowSize,
 			       IN PAGING_RIGHTS Rights,
+			       IN PAGING_ATTRIBUTES Attributes,
 			       IN BOOLEAN UseLargePages,
 			       IN OPTIONAL PVOID DataBuffer,
 			       IN OPTIONAL MWORD BufferSize);
@@ -635,7 +642,8 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN PVIRT_ADDR_SPACE ViewerVSpace,
 			     IN MWORD ViewerStartAddr,
 			     IN MWORD WindowSize,
-			     IN PAGING_RIGHTS NewRights);
+			     IN PAGING_RIGHTS NewRights,
+			     IN PAGING_ATTRIBUTES NewAttributes);
 
 static inline NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
 					   IN MWORD WindowSize,
@@ -643,8 +651,8 @@ static inline NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
 					   IN BOOLEAN UseLargePages)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmCommitOwnedMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize,
-				 Rights, UseLargePages, NULL, 0);
+    return MmCommitOwnedMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize, Rights,
+				 MM_ATTRIBUTES_DEFAULT, UseLargePages, NULL, 0);
 }
 
 /* section.c */
@@ -669,10 +677,11 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN ULONG HighZeroBits,
 			    IN SECTION_INHERIT InheritDisposition,
 			    IN ULONG ReserveFlags,
-			    IN BOOLEAN AlwaysWritable);
+			    IN ULONG AccessProtection);
 NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 			     IN MWORD VirtualBase,
-			     IN MWORD WindowSize);
+			     IN MWORD WindowSize,
+			     IN ULONG PageProtection);
 
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);

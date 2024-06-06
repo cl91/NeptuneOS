@@ -548,18 +548,18 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 	    if (Vad->Flags.ReadOnly) {
 		RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
 					    Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
-					    MappedLength, Rights));
+					    MappedLength, Rights, MM_ATTRIBUTES_DEFAULT));
 	    } else {
 		RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace,
 					      Vad->AvlNode.Key + BytesMapped,
-					      MappedLength, Rights, FALSE,
-					      Buffer, MappedLength));
+					      MappedLength, Rights, MM_ATTRIBUTES_DEFAULT,
+					      FALSE, Buffer, MappedLength));
 	    }
 	    BytesMapped += MappedLength;
 	}
     } else {
 	RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, Vad->AvlNode.Key,
-				      Vad->WindowSize, Rights,
+				      Vad->WindowSize, Rights, MM_ATTRIBUTES_DEFAULT,
 				      Vad->Flags.LargePages, NULL, 0));
     }
 
@@ -573,7 +573,7 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 					OUT OPTIONAL MWORD *pImageVirtualSize,
 					IN ULONG HighZeroBits,
 					IN ULONG ReserveFlags,
-					IN BOOLEAN AlwaysWritable)
+					IN ULONG PageProtection)
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
@@ -627,7 +627,7 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
      * to the subsection, and commit the memory pages of that subsection. */
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	PMMVAD Vad = NULL;
-	BOOLEAN ReadOnly = !AlwaysWritable &&
+	BOOLEAN ReadOnly = !(PageProtection & PAGE_READWRITE) &&
 	    !(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE);
 	MWORD Flags = MEM_RESERVE_IMAGE_MAP;
 	if (ReadOnly) {
@@ -678,7 +678,8 @@ err:
 static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
 					   IN MWORD PhysicalBase,
 					   IN MWORD VirtualBase,
-					   IN MWORD WindowSize)
+					   IN MWORD WindowSize,
+					   IN ULONG PageProtection)
 {
     assert(VSpace != NULL);
     PMMVAD Vad = NULL;
@@ -689,20 +690,23 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
     if (Vad->PhysicalSectionView.RootUntyped) {
 	assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
     }
+    PAGING_ATTRIBUTES Attributes = (PageProtection & PAGE_WRITECOMBINE) ?
+	MM_ATTRIBUTES_WRITE_COMBINE : MM_ATTRIBUTES_DEFAULT;
     BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhysicalBase) &&
 	IS_LARGE_PAGE_ALIGNED(VirtualBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
     RET_ERR_EX(MiMapIoMemory(Vad->VSpace, PhysicalBase, VirtualBase, WindowSize,
-			     MM_RIGHTS_RW, UseLargePage),
+			     MM_RIGHTS_RW, Attributes, UseLargePage),
 	       MmDeleteVad(Vad));
     return STATUS_SUCCESS;
 }
 
 NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 			     IN MWORD VirtualBase,
-			     IN MWORD WindowSize)
+			     IN MWORD WindowSize,
+			     IN ULONG PageProtection)
 {
     return MmMapViewOfSection(&MiNtosVaddrSpace, MiPhysicalSection, &VirtualBase,
-			      &PhysicalBase, &WindowSize, 0, ViewUnmap, 0, TRUE);
+			      &PhysicalBase, &WindowSize, 0, ViewUnmap, 0, PageProtection);
 }
 
 /*
@@ -718,7 +722,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN ULONG HighZeroBits,
 			    IN SECTION_INHERIT InheritDisposition,
 			    IN ULONG ReserveFlags,
-			    IN BOOLEAN AlwaysWritable)
+			    IN ULONG AccessProtection)
 {
     assert(VSpace != NULL);
     assert(Section != NULL);
@@ -730,7 +734,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	RET_ERR(MiMapViewOfImageSection(VSpace, &Section->VadList,
 					Section->ImageSectionObject,
 					BaseAddress, &ImageVirtualSize,	HighZeroBits,
-					ReserveFlags, AlwaysWritable));
+					ReserveFlags, AccessProtection));
 	if (ViewSize != NULL) {
 	    *ViewSize = ImageVirtualSize;
 	}
@@ -740,7 +744,8 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    || !ViewSize || !*ViewSize) {
 	    return STATUS_INVALID_PARAMETER;
 	}
-	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress, *ViewSize);
+	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress,
+					  *ViewSize, AccessProtection);
     }
     UNIMPLEMENTED;
 }
@@ -826,6 +831,9 @@ NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
     if (AllocationType & !(MEM_LARGE_PAGES | MEM_TOP_DOWN | MEM_RESERVE)) {
 	return STATUS_INVALID_PARAMETER_9;
     }
+
+    /* TODO: Make sure AccessProtection is compatible with the page proection
+     * of the section object (specified in NtCreateSection). */
     ULONG ReserveFlags = 0;
     if (AllocationType & MEM_LARGE_PAGES) {
 	ReserveFlags |= MEM_RESERVE_LARGE_PAGES;
@@ -847,7 +855,7 @@ NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
     Status = MmMapViewOfSection(&Process->VSpace, Section, (MWORD *)BaseAddress,
 				(ULONG64 *)SectionOffset, (MWORD *)ViewSize,
 				HighZeroBits, InheritDisposition, ReserveFlags,
-				AccessProtection & PAGE_READWRITE);
+				AccessProtection);
 
 out:
     if (Section) {

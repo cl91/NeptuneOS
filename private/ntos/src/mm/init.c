@@ -118,7 +118,7 @@ static inline NTSTATUS MiInitCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type
 {
     assert(pPaging != NULL);
     RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, VirtAddr, NTOS_VSPACE_CAP,
-				    MM_RIGHTS_RW, pPaging));
+				    MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, pPaging));
     assert(*pPaging != NULL);
     (*pPaging)->TreeNode.Cap = Cap;
     (*pPaging)->Mapped = TRUE;
@@ -271,7 +271,7 @@ static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo)
     MiAllocatePool(RootPagingStructure, PAGING_STRUCTURE);
     MiInitializePagingStructure(RootPagingStructure, NULL, NULL, NTOS_VSPACE_CAP,
 				NTOS_VSPACE_CAP, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
-				TRUE, MM_RIGHTS_RW);
+				TRUE, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT);
     MiInitializeVSpace(&MiNtosVaddrSpace, RootPagingStructure);
 
     /* Add the paging structures for the root task image. */

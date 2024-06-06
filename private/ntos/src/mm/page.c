@@ -131,7 +131,8 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
 				 IN MWORD VirtAddr,
 				 IN PAGING_STRUCTURE_TYPE Type,
 				 IN BOOLEAN Mapped,
-				 IN PAGING_RIGHTS Rights)
+				 IN PAGING_RIGHTS Rights,
+    				 IN PAGING_ATTRIBUTES Attributes)
 {
     MmInitializeCapTreeNode(&Page->TreeNode, CAP_TREE_NODE_PAGING_STRUCTURE,
 			    Cap, &MiNtosCNode, ParentNode);
@@ -142,8 +143,7 @@ VOID MiInitializePagingStructure(IN PPAGING_STRUCTURE Page,
     Page->Type = Type;
     Page->Mapped = Mapped;
     Page->Rights = Rights;
-    /* TODO: Implement page attributes */
-    Page->Attributes = seL4_X86_Default_VMAttributes;
+    Page->Attributes = Attributes;
 }
 
 /*
@@ -427,13 +427,14 @@ NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 IN MWORD VirtAddr,
 				 IN MWORD VSpaceCap,
 				 IN PAGING_RIGHTS Rights,
+				 IN PAGING_ATTRIBUTES Attributes,
 				 OUT PPAGING_STRUCTURE *pPaging)
 {
     assert(pPaging);
 
     MiAllocatePool(Paging, PAGING_STRUCTURE);
-    MiInitializePagingStructure(Paging, &Untyped->TreeNode, ParentPaging,
-				VSpaceCap, 0, VirtAddr, Type, FALSE, Rights);
+    MiInitializePagingStructure(Paging, &Untyped->TreeNode, ParentPaging, VSpaceCap,
+				0, VirtAddr, Type, FALSE, Rights, Attributes);
 
     *pPaging = Paging;
     return STATUS_SUCCESS;
@@ -448,6 +449,7 @@ static NTSTATUS MiCreateSharedPage(IN PPAGING_STRUCTURE OldPage,
 				   IN PVIRT_ADDR_SPACE NewVSpace,
 				   IN MWORD NewVirtAddr,
 				   IN PAGING_RIGHTS NewRights,
+				   IN PAGING_ATTRIBUTES NewAttributes,
 				   OUT PPAGING_STRUCTURE *pNewPage)
 {
     assert(OldPage);
@@ -473,7 +475,7 @@ static NTSTATUS MiCreateSharedPage(IN PPAGING_STRUCTURE OldPage,
     MiAllocatePool(NewPage, PAGING_STRUCTURE);
     MiInitializePagingStructure(NewPage, NULL, NULL,
 				NewVSpace->VSpaceCap, 0, NewVirtAddr,
-				OldPage->Type, FALSE, NewRights);
+				OldPage->Type, FALSE, NewRights, NewAttributes);
     /* Note that the new page cap has the same rights as the old page cap.
      * The page access rights (RW/RO) are set when we map the page. */
     RET_ERR_EX(MmCapTreeCopyNode(&NewPage->TreeNode, &OldPage->TreeNode,
@@ -514,7 +516,9 @@ static NTSTATUS MiMapSuperStructure(IN PPAGING_STRUCTURE Paging,
 	    RET_ERR(MmRequestUntyped(MiPagingObjLog2Size(Subtype), &Untyped));
 	    RET_ERR_EX(MiCreatePagingStructure(Subtype, Untyped, SuperStructure,
 					       VirtAddr, VSpace->VSpaceCap,
-					       SuperStructure->Rights, &SubStructure),
+					       SuperStructure->Rights,
+					       SuperStructure->Attributes,
+					       &SubStructure),
 		       MmReleaseUntyped(Untyped));
 	    RET_ERR_EX(MiMapPagingStructure(SubStructure),
 		       {
@@ -541,6 +545,7 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
 					IN MWORD VirtAddr,
 					IN MWORD VSpaceCap,
 					IN PAGING_RIGHTS Rights,
+					IN PAGING_ATTRIBUTES Attributes,
 					IN PVOID DataStart,
 					IN MWORD DataSize,
 					OUT PPAGING_STRUCTURE *pPaging)
@@ -556,7 +561,8 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     }
     PPAGING_STRUCTURE Page = NULL;
     RET_ERR(MiCreatePagingStructure(Type, Untyped, NULL, HyperspaceAddr,
-				    NTOS_VSPACE_CAP, MM_RIGHTS_RW, &Page));
+				    NTOS_VSPACE_CAP, MM_RIGHTS_RW,
+				    MM_ATTRIBUTES_DEFAULT, &Page));
     assert(Page != NULL);
     RET_ERR_EX(MiMapSuperStructure(Page, &MiNtosVaddrSpace, NULL),
 	       MiFreePagingStructure(Page));
@@ -570,7 +576,8 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     /* This is necessary because MmCapTreeNodeSetParent requires empty parent */
     MiCapTreeRemoveFromParent(&Page->TreeNode);
     MiInitializePagingStructure(Page, &Untyped->TreeNode, ParentPaging, VSpaceCap,
-				Page->TreeNode.Cap, VirtAddr, Type, FALSE, Rights);
+				Page->TreeNode.Cap, VirtAddr, Type, FALSE, Rights,
+				Attributes);
 
     *pPaging = Page;
 
@@ -680,6 +687,7 @@ PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page)
 static NTSTATUS MiCommitPrivatePage(IN PVIRT_ADDR_SPACE VSpace,
 				    IN MWORD VirtAddr,
 				    IN PAGING_RIGHTS Rights,
+				    IN PAGING_ATTRIBUTES Attributes,
 				    IN BOOLEAN LargePage,
 				    IN OPTIONAL PVOID DataBuffer,
 				    IN OPTIONAL MWORD DataSize)
@@ -708,13 +716,13 @@ static NTSTATUS MiCommitPrivatePage(IN PVIRT_ADDR_SPACE VSpace,
 	 * a .data PE image section), first map the page to the "hyperspace" of
 	 * the NTOS root task, and copy the data over */
 	RET_ERR_EX(MiCreateInitializedPage(Type, Untyped, SuperStructure, VirtAddr,
-					   VSpace->VSpaceCap, Rights,
+					   VSpace->VSpaceCap, Rights, Attributes,
 					   DataBuffer, DataSize, &Page),
 		   MmReleaseUntyped(Untyped));
     } else {
 	/* If the SuperStructure pointer isn't correct we will fix it below */
 	RET_ERR_EX(MiCreatePagingStructure(Type, Untyped, SuperStructure, VirtAddr,
-					   VSpace->VSpaceCap, Rights, &Page),
+					   VSpace->VSpaceCap, Rights, Attributes, &Page),
 		   MmReleaseUntyped(Untyped));
     }
     assert(Page != NULL);
@@ -731,6 +739,7 @@ NTSTATUS MmCommitOwnedMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 			       IN MWORD StartAddr,
 			       IN MWORD WindowSize,
 			       IN PAGING_RIGHTS Rights,
+			       IN PAGING_ATTRIBUTES Attributes,
 			       IN BOOLEAN UseLargePages,
 			       IN OPTIONAL PVOID DataBuffer,
 			       IN OPTIONAL MWORD BufferSize)
@@ -762,8 +771,8 @@ NTSTATUS MmCommitOwnedMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	} else {
 	    RemainingDataSize = 0;
 	}
-	Status = MiCommitPrivatePage(VSpace, CurVaddr, Rights, LargePage,
-				     (PVOID)DataStart, DataSize);
+	Status = MiCommitPrivatePage(VSpace, CurVaddr, Rights, Attributes,
+				     LargePage, (PVOID)DataStart, DataSize);
 	if (!NT_SUCCESS(Status)) {
 	    goto err;
 	}
@@ -792,6 +801,7 @@ static NTSTATUS MiMapSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
 				IN PVIRT_ADDR_SPACE ViewerVSpace,
 				IN MWORD ViewerAddr,
 				IN PAGING_RIGHTS NewRights,
+				IN PAGING_ATTRIBUTES NewAttributes,
 				OUT OPTIONAL PPAGING_STRUCTURE *pNewPage)
 {
     PPAGING_STRUCTURE Page = MiQueryVirtualAddress(OwnerVSpace, OwnerAddr);
@@ -806,7 +816,7 @@ static NTSTATUS MiMapSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
 
     PPAGING_STRUCTURE NewPage = NULL;
     RET_ERR(MiCreateSharedPage(Page, ViewerVSpace, ViewerAddr,
-			       NewRights, &NewPage));
+			       NewRights, NewAttributes, &NewPage));
     assert(NewPage != NULL);
 
     RET_ERR_EX(MiMapSuperStructure(NewPage, ViewerVSpace, NULL),
@@ -829,7 +839,8 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN PVIRT_ADDR_SPACE ViewerVSpace,
 			     IN MWORD ViewerStartAddr,
 			     IN MWORD WindowSize,
-			     IN PAGING_RIGHTS NewRights)
+			     IN PAGING_RIGHTS NewRights,
+			     IN PAGING_ATTRIBUTES NewAttributes)
 {
     assert(OwnerVSpace != NULL);
     assert(ViewerVSpace != NULL);
@@ -850,7 +861,7 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 	PPAGING_STRUCTURE NewPage = NULL;
 	Status = MiMapSharedPage(OwnerVSpace, OwnerStartAddr + Offset,
 				 ViewerVSpace, ViewerStartAddr + Offset,
-				 NewRights, &NewPage);
+				 NewRights, NewAttributes, &NewPage);
 	if (!NT_SUCCESS(Status)) {
 	    goto err;
 	}
@@ -888,6 +899,7 @@ static NTSTATUS MiMapIoPage(IN PVIRT_ADDR_SPACE VSpace,
 			    IN MWORD PhyAddr,
 			    IN MWORD VirtAddr,
 			    IN PAGING_RIGHTS Rights,
+			    IN PAGING_ATTRIBUTES Attributes,
 			    IN OUT BOOLEAN *LargePage)
 {
     assert(IS_PAGE_ALIGNED(PhyAddr));
@@ -931,7 +943,7 @@ retry:
 	 * its memory can be mapped by viewers. In other words if owner maps the page
 	 * as read-only, no viewer should be able to modify it. */
 	RET_ERR(MiCreatePagingStructure(PageTy, Untyped, NULL, VirtAddr,
-					VSpace->VSpaceCap, Rights, &Page));
+					VSpace->VSpaceCap, Rights, Attributes, &Page));
     } else if (MiCapTreeNodeGetFirstChild(&Untyped->TreeNode)->Type
 	       == CAP_TREE_NODE_PAGING_STRUCTURE) {
 	PPAGING_STRUCTURE OldPage = MiCapTreeGetFirstChildTyped(Untyped,
@@ -939,7 +951,7 @@ retry:
 	if (Page->Type != PageTy) {
 	    return STATUS_INVALID_PARAMETER;
 	}
-	RET_ERR(MiCreateSharedPage(OldPage, VSpace, VirtAddr, Rights, &Page));
+	RET_ERR(MiCreateSharedPage(OldPage, VSpace, VirtAddr, Rights, Attributes, &Page));
     } else {
 	/* This cannot happen since we checked above, but return error anyway. */
 	return STATUS_INVALID_PARAMETER;
@@ -958,6 +970,7 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 		       IN MWORD VirtAddr,
 		       IN MWORD WindowSize,
 		       IN PAGING_RIGHTS Rights,
+		       IN PAGING_ATTRIBUTES Attributes,
 		       IN BOOLEAN LargePage)
 {
     assert(VSpace != NULL);
@@ -969,7 +982,7 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 	    LargePage = FALSE;
 	}
 	Status = MiMapIoPage(VSpace, PhyAddr + MappedSize, VirtAddr + MappedSize,
-			     Rights, &LargePage);
+			     Rights, Attributes, &LargePage);
 	if (!NT_SUCCESS(Status)) {
 	    goto err;
 	}
@@ -999,9 +1012,9 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 	return;
     }
 
-    MmDbgPrint("    Virtual address %p  Type %s  VSpaceCap 0x%zx  Rights %s\n",
+    MmDbgPrint("    Virtual address %p  Type %s  VSpaceCap 0x%zx  Rights %s  Attributes 0x%x\n",
 	       (PVOID)Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type), Paging->VSpaceCap,
-	       MmPageIsWritable(Paging) ? "RW" : "RO");
+	       MmPageIsWritable(Paging) ? "RW" : "RO", (ULONG)Paging->Attributes);
     MmDbgPrint("    ");
     MmDbgDumpCapTreeNode(&Paging->TreeNode);
     MmDbgPrint("  Cap Tree Parent ");

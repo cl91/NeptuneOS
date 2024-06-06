@@ -27,7 +27,7 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
 	       MiFreePool(RootPagingStructure));
     MiInitializePagingStructure(RootPagingStructure, NULL, NULL, 0,
 				0, 0, PAGING_TYPE_ROOT_PAGING_STRUCTURE,
-				TRUE, MM_RIGHTS_RW);
+				TRUE, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT);
     RET_ERR_EX(MmRetypeIntoObject(VSpaceUntyped, seL4_VSpaceObject,
 				  seL4_VSpaceBits, &RootPagingStructure->TreeNode),
 	       {
@@ -488,10 +488,11 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	assert(Vad->MirroredMemory.Master != NULL);
 	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
 	RET_ERR(MmMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
-				    Vad->VSpace, StartAddr, WindowSize, Rights));
+				    Vad->VSpace, StartAddr, WindowSize, Rights,
+				    MM_ATTRIBUTES_DEFAULT));
     } else if (Vad->Flags.OwnedMemory) {
 	RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, StartAddr, WindowSize, Rights,
-				      Vad->Flags.LargePages, NULL, 0));
+				      MM_ATTRIBUTES_DEFAULT, Vad->Flags.LargePages, NULL, 0));
     } else {
 	/* Should never reach this */
 	MmDbgDumpVSpace(VSpace);
@@ -894,7 +895,8 @@ NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
     assert(Offset < MiPagingWindowSize(Page->Type));
     RET_ERR(MmMapMirroredMemory(VSpace, Page->AvlNode.Key, &MiNtosVaddrSpace,
 				HyperspaceAddr, MiPagingWindowSize(Page->Type),
-				Write ? MM_RIGHTS_RW : MM_RIGHTS_RO));
+				Write ? MM_RIGHTS_RW : MM_RIGHTS_RO,
+				MM_ATTRIBUTES_DEFAULT));
     *MappedAddress = (PVOID)(HyperspaceAddr + Offset);
     *MappedLength = MiPagingWindowSize(Page->Type) - Offset;
     return STATUS_SUCCESS;
@@ -959,7 +961,7 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     Vad->PhysicalSectionView.PhysicalBase = Untyped->AvlNode.Key;
     Vad->PhysicalSectionView.RootUntyped = Untyped;
     RET_ERR_EX(MiMapIoMemory(VSpace, Untyped->AvlNode.Key, Vad->AvlNode.Key,
-			     Length, MM_RIGHTS_RW, FALSE),
+			     Length, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, FALSE),
 	       MmDeleteVad(Vad));
     *VirtAddr = Vad->AvlNode.Key;
     *PhyAddr = Untyped->AvlNode.Key;

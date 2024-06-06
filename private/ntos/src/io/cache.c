@@ -846,7 +846,7 @@ static VOID CiFileRegionMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 		IF_ERR_GOTO(out, Status,
 			    MmMapMirroredMemory(CiNtosCacheSpace.AddrSpace, (MWORD)Buffer,
 						CiNtosCacheSpace.AddrSpace, MappedAddress,
-						WindowSize, MM_RIGHTS_RW));
+						WindowSize, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT));
 		MappedLength += WindowSize;
 	    }
 	    assert(MappedLength == LengthToMap);
@@ -1726,7 +1726,8 @@ NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 	extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
 	Status = MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
 				     View->CacheMap->CacheSpace->AddrSpace,
-				     View->MappedAddress, MappedViewSize, MM_RIGHTS_RW);
+				     View->MappedAddress, MappedViewSize,
+				     MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT);
 	if (NT_SUCCESS(Status)) {
 	    View->MappedSize = MappedViewSize;
 	}

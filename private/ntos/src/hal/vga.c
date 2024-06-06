@@ -2514,7 +2514,8 @@ NTSTATUS HalpInitVga()
 	    goto TryVga;
 	}
 	RET_ERR(MmMapPhysicalMemory(HalpFramebuffer.PhysicalAddress,
-				    FRAMEBUFFER_VADDR_START, FrameBufferSize));
+				    FRAMEBUFFER_VADDR_START, FrameBufferSize,
+				    PAGE_WRITECOMBINE));
 	if (HalpFramebuffer.Width >= 1600) {
 	    HalpVgaFont = &HalpVgaFonts[HAL_VGA_FONT_16];
 	} else {
@@ -2525,7 +2526,7 @@ NTSTATUS HalpInitVga()
     } else {
     TryVga:
 	RET_ERR(MmMapPhysicalMemory(VGA_VIDEO_PAGE_PADDR,
-				    FRAMEBUFFER_VADDR_START, PAGE_SIZE));
+				    FRAMEBUFFER_VADDR_START, PAGE_SIZE, 0));
 	RET_ERR(HalpInitVgaIoPort());
 	HalpVgaDisableCursor();
 	HalpVgaCursorMaxColumns = VGA_MODE_COLUMNS;
