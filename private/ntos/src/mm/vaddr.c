@@ -1259,7 +1259,7 @@ NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
                                 IN ULONG NewAccessProtection,
                                 OUT OPTIONAL ULONG *OldAccessProtection)
 {
-    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 VOID MmDbgDumpVad(PMMVAD Vad)

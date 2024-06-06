@@ -158,6 +158,12 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
 		      NULL, (PVOID *)&SectionHeaders));
     assert(SectionHeaders);
 
+    /* Get the RVA for the import address table (if it exists) */
+    ULONG IatRva = 0;
+    if (RTL_CONTAINS_FIELD(OptHeader, OptHeaderSize, DataDirectory[IMAGE_DIRECTORY_ENTRY_IAT])) {
+	IatRva = OptHeader->DataDirectory[IMAGE_DIRECTORY_ENTRY_IAT].VirtualAddress;
+    }
+
     /*
      * Parse the section tables and validate their values before we start
      * building SUBSECTIONS for the image section.
@@ -248,13 +254,22 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
                 Characteristics |= IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
 	    }
         }
-	SubSectionsArray[i]->Characteristics = Characteristics;
 
 	ULONG VirtualSize = SectionHeaders[i-1].Misc.VirtualSize;
 	if (VirtualSize == 0) {
             VirtualSize = SectionHeaders[i-1].SizeOfRawData;
 	}
 	VirtualSize = ALIGN_UP_BY(VirtualSize, SectionAlignment);
+
+        /* If the section contains the import address table, make it read-write.
+	 * TODO: Since many compilers embed the IAT in the .data section, we should
+	 * implement copy-on-write for the IAT pages so we can share the rest of the
+	 * .data section with other processes. */
+	if (IatRva >= SectionHeaders[i-1].VirtualAddress &&
+	    IatRva < (SectionHeaders[i-1].VirtualAddress + VirtualSize)) {
+	    Characteristics |= IMAGE_SCN_MEM_WRITE;
+	}
+	SubSectionsArray[i]->Characteristics = Characteristics;
 
         SubSectionsArray[i]->SubSectionSize = VirtualSize;
         SubSectionsArray[i]->SubSectionBase = SectionHeaders[i-1].VirtualAddress;
@@ -627,14 +642,16 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
      * to the subsection, and commit the memory pages of that subsection. */
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	PMMVAD Vad = NULL;
-	BOOLEAN ReadOnly = !(PageProtection & PAGE_READWRITE) &&
+	/* If the image needs relocation, we always map the image as read-write. */
+	BOOLEAN ReadOnly = (ImageSection->ImageBase == BaseAddress) &&
+	    !(PageProtection & PAGE_READWRITE) &&
 	    !(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE);
 	MWORD Flags = MEM_RESERVE_IMAGE_MAP;
 	if (ReadOnly) {
 	    Flags |= MEM_RESERVE_READ_ONLY;
 	}
-	/* If the caller specified it and PE bss section is large enough,
-	 * use large pages to save resources */
+	/* If the caller specified it and the PE bss section is large enough,
+	 * use large pages to save resources. */
 	if ((ReserveFlags & MEM_RESERVE_LARGE_PAGES) && !SubSection->RawDataSize &&
 	    SubSection->SubSectionSize >= (LARGE_PAGE_SIZE - PAGE_SIZE)) {
 	    Flags |= MEM_RESERVE_LARGE_PAGES;

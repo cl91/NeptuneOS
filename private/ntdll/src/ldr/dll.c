@@ -174,6 +174,40 @@ static NTSTATUS LdrpCreateDllSection(IN OPTIONAL PUNICODE_STRING FullName,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS LdrpSetProtection(PVOID ViewBase)
+{
+    PIMAGE_NT_HEADERS NtHeaders = RtlImageNtHeader(ViewBase);
+    if (!NtHeaders) {
+	assert(FALSE);
+	return STATUS_INVALID_IMAGE_FORMAT;
+    }
+
+    /* For all read-only sections with non-zero size, restore the
+     * proper protection for the section pages. */
+    PIMAGE_SECTION_HEADER Section = IMAGE_FIRST_SECTION(NtHeaders);
+    for (ULONG i = 0; i < NtHeaders->FileHeader.NumberOfSections; i++) {
+        /* Check for read-only non-zero section */
+        if (Section->SizeOfRawData && !(Section->Characteristics & IMAGE_SCN_MEM_WRITE)) {
+	    /* Set it to either EXECUTE or READONLY */
+	    ULONG Protection = (Section->Characteristics & IMAGE_SCN_MEM_EXECUTE) ?
+		PAGE_EXECUTE : PAGE_READONLY;
+
+	    /* Add PAGE_NOCACHE if needed */
+	    if (Section->Characteristics & IMAGE_SCN_MEM_NOT_CACHED) {
+		Protection |= PAGE_NOCACHE;
+	    }
+
+	    PVOID SectionBase = (PVOID)((ULONG_PTR)ViewBase + Section->VirtualAddress);
+	    RET_ERR(NtProtectVirtualMemory(NtCurrentProcess(), &SectionBase,
+					   &Section->SizeOfRawData,
+					   Protection, &Protection));
+        }
+        Section++;
+    }
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS LdrpMapDll(IN PCSTR DllName,
 			   IN BOOLEAN Static,
 			   OUT PLDR_DATA_TABLE_ENTRY *DataTableEntry)
@@ -264,7 +298,8 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
 	       DllName, (PVOID)ImageBase, (PVOID)((SIZE_T)ImageBase + ViewSize),
 	       ViewBase, (PVOID)((SIZE_T)ViewBase + ViewSize));
 
-	/* Do the relocation */
+	/* Do the relocation. Note for image sections that are not loaded in their
+	 * preferred base address, all pages are mapped read-write by default. */
 	Status = LdrpRelocateImageWithBias(ViewBase, 0LL, NULL,
 					   STATUS_SUCCESS,
 					   STATUS_CONFLICTING_ADDRESSES,
@@ -274,6 +309,7 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
 		    ViewBase);
 	    goto err;
 	}
+
 	DPRINT1("LDR: Fixups successfully applied @ %p\n", ViewBase);
 	LdrEntry->Flags |= LDRP_IMAGE_NOT_AT_BASE;
     }
@@ -363,7 +399,19 @@ NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
 
     /* Walk its import descriptor table */
     Status = LdrpWalkImportDescriptor(*DataTableEntry);
-    if (!NT_SUCCESS(Status)) {
+
+    if (NT_SUCCESS(Status)) {
+	if ((*DataTableEntry)->Flags & LDRP_IMAGE_NOT_AT_BASE) {
+	    /* Set the proper protection for the image if it is relocated. */
+	    Status = LdrpSetProtection((*DataTableEntry)->DllBase);
+	    if (!NT_SUCCESS(Status)) {
+		DPRINT1("LDR: Unable to set protection for image base %p\n",
+			(*DataTableEntry)->DllBase);
+		/* This error is non-fatal, so return success. */
+		Status = STATUS_SUCCESS;
+	    }
+	}
+    } else {
 	/* In case of failure, we still want the dll to be inserted
 	 * into the init-order module list. Do it here. If successful
 	 * LdrpWalkImportDescriptor has already inserted the dll. */

@@ -714,28 +714,17 @@ static NTSTATUS LdrpSnapIAT(IN PLDR_DATA_TABLE_ENTRY ExportLdrEntry,
 	return STATUS_INVALID_IMAGE_FORMAT;
     }
 
-    /* Make sure the image actually has valid import resolution information.
-     * We first look at the image directory entry for the IAT. */
+    /* Check that the image data directory contains a valid pointer to the
+     * import address table. Although on Windows an image may not need to
+     * specify a valid data directory entry for the IAT (because the same
+     * information is contained in the import table), all modern compilers
+     * generate it, so on Neptune OS this is a hard requirement. */
     ULONG IatSize;
-    PVOID Iat = RtlImageDirectoryEntryToData(ImportLdrEntry->DllBase, TRUE,
-					     IMAGE_DIRECTORY_ENTRY_IAT, &IatSize);
-    if (Iat) {
-	goto ok;
-    }
-
-    /* If the image does not have an import address table, it must at least
-     * have an import directory table. Othrewise the image is not valid. */
-    ULONG ImportDirSize;
-    PVOID ImportDir = RtlImageDirectoryEntryToData(ImportLdrEntry->DllBase, TRUE,
-						   IMAGE_DIRECTORY_ENTRY_IMPORT,
-						   &ImportDirSize);
-    if (!ImportDir) {
-	DbgPrint("LDR: No import directory table for %wZ (Image Base %p)\n",
-		 &ImportLdrEntry->BaseDllName, ImportLdrEntry->DllBase);
+    if (!RtlImageDirectoryEntryToData(ImportLdrEntry->DllBase, TRUE,
+				      IMAGE_DIRECTORY_ENTRY_IAT, &IatSize)) {
 	return STATUS_INVALID_IMAGE_FORMAT;
     }
 
-ok:
     /* Check if the Thunks are already valid */
     if (EntriesValid) {
 	/* We'll only do forwarders. Get the import name */

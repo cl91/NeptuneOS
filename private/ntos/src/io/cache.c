@@ -1678,11 +1678,12 @@ NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 		     IN PIO_FILE_CONTROL_BLOCK Fcb,
 		     IN ULONG64 FileOffset,
 		     IN ULONG Length,
-		     OUT ULONG *pMappedLength,
+		     OUT OPTIONAL ULONG *pMappedLength,
 		     OUT PVOID *Buffer,
 		     IN BOOLEAN MarkDirty)
 {
     assert(Fcb);
+    assert(Buffer);
     if (pMappedLength) {
 	*pMappedLength = 0;
     }

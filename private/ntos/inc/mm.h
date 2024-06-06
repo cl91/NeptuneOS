@@ -573,7 +573,7 @@ typedef struct _SUBSECTION {
     ULONG RawDataSize;   /* Size of the subsection, file aligned */
     ULONG SubSectionBase; /* Relative virtual address of the subsection, page aligned */
     ULONG ImageCacheFileOffset;	/* Offset of this subsection within the image cache file. */
-    ULONG Characteristics; /* Section characteristics in the PE image section table */
+    ULONG Characteristics; /* Section characteristics in the PE image section table. */
 } SUBSECTION, *PSUBSECTION;
 
 /*
