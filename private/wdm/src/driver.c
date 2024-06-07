@@ -90,3 +90,54 @@ NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
     DriverObject->Flags |= DRVO_REINIT_REGISTERED;
     InsertTailList(&DriverObject->ReinitListHead, &ReinitItem->ItemEntry);
 }
+
+NTAPI NTSTATUS
+IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
+			       IN ULONG EventCategoryFlags,
+			       IN OPTIONAL PVOID EventCategoryData,
+			       IN PDRIVER_OBJECT DriverObject,
+			       IN PDRIVER_NOTIFICATION_CALLBACK_ROUTINE CallbackRoutine,
+			       IN OUT OPTIONAL PVOID Context,
+			       OUT PVOID *NotificationEntry)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTAPI PVOID MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
+			 IN SIZE_T NumberOfBytes,
+			 IN MEMORY_CACHING_TYPE CacheType)
+{
+    return NULL;
+}
+
+NTAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
+			  IN SIZE_T NumberOfBytes)
+{
+}
+
+NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID BaseAddress)
+{
+    PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
+    return PhyAddr;
+}
+
+NTAPI ULONG HalGetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
+				  IN ULONG BusNumber,
+				  IN ULONG SlotNumber,
+				  OUT PVOID Buffer,
+				  IN ULONG Offset,
+				  IN ULONG Length)
+{
+    return 0;
+}
+
+NTAPI ULONG HalSetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
+				  IN ULONG BusNumber,
+				  IN ULONG SlotNumber,
+				  IN PVOID Buffer,
+				  IN ULONG Offset,
+				  IN ULONG Length)
+{
+    return 0;
+}

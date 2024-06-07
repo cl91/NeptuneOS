@@ -2051,7 +2051,15 @@ NTAPI VOID IoCompleteRequest(IN PIRP Irp,
     IoGetCurrentIrpStackLocation((Irp))->Control &= ~SL_PENDING_RETURNED;
     Irp->PriorityBoost = PriorityBoost;
     IopCompleteIrp(Irp);
-};
+}
+
+/*
+ * Cancel the IRP.
+ */
+NTAPI VOID IoCancelIrp(IN PIRP Irp)
+{
+    /* UNIMPLEMENTED */
+}
 
 /*
  * Forward the IRP to the specified device object for processing.

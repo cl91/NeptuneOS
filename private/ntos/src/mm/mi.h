@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ntos.h>
+#include <ntintsafe.h>
 
 #define ROOT_CNODE_LOG2SIZE	(CONFIG_ROOT_CNODE_SIZE_BITS)
 #define LOG2SIZE_PER_CNODE_SLOT	(MWORD_LOG2SIZE + 2)
@@ -11,6 +12,34 @@
 #define MiAllocateArray(Var, Type, Size, OnError)			\
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 #define MiFreePool(Var) ExFreePoolWithTag(Var, NTOS_MM_TAG)
+
+static inline BOOLEAN IsPowerOf2(IN ULONG Number)
+{
+    if(Number == 0)
+	return FALSE;
+    return (Number & (Number - 1)) == 0;
+}
+
+static inline ULONG ModPow2(IN ULONG Address, IN ULONG Alignment)
+{
+    assert(IsPowerOf2(Alignment));
+    return Address & (Alignment - 1);
+}
+
+static inline BOOLEAN AlignUp(OUT PULONG AlignedAddress,
+			      IN ULONG Address,
+			      IN ULONG Alignment)
+{
+    ULONG nExcess = ModPow2(Address, Alignment);
+
+    if(nExcess == 0)
+    {
+	*AlignedAddress = Address;
+	return nExcess == 0;
+    }
+    else
+	return Intsafe_AddULong32(AlignedAddress, Address, Alignment - nExcess);
+}
 
 static inline VOID MiCapTreeRemoveFromParent(IN PCAP_TREE_NODE Node)
 {

@@ -3,9 +3,6 @@
 #include <ntifs.h>
 #include <ntdddisk.h>
 
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-
 #define LoopOverList(Entry, ListHead, Type, Field)			\
     for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
 	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \

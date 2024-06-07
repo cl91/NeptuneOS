@@ -39,6 +39,15 @@ typedef struct _PNP_DEVICE_EXTENSION {
     PPNP_DEVICE DeviceInfo; /* If NULL, device is the root enumerator */
 } PNP_DEVICE_EXTENSION, *PPNP_DEVICE_EXTENSION;
 
+static IO_RESOURCE_DESCRIPTOR AcpiResourceDescriptors[] = {
+    {
+	.Option = IO_RESOURCE_PREFERRED,
+	.Type = CmResourceTypeMemory,
+	.ShareDisposition = CmResourceShareDeviceExclusive,
+	.Flags = 0,
+    },
+};
+
 static IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
     {
 	.Option = IO_RESOURCE_PREFERRED,
@@ -130,6 +139,12 @@ static IO_RESOURCE_DESCRIPTOR FdcResourceDescriptors[] = {
 	.ResourceDescriptorCount = ARRAYSIZE(Desc)
 
 static PNP_DEVICE PnpDevices[] = {
+    {
+	.DeviceType = FILE_DEVICE_ACPI,
+	.DeviceID = L"ACPI",
+	.InstanceID = L"0",
+	DECLARE_RESOURCE_DESCRIPTORS(AcpiResourceDescriptors)
+    },
     {
 	.DeviceType = FILE_DEVICE_8042_PORT,
 	.DeviceID = L"PNP0303",
@@ -536,6 +551,42 @@ static NTSTATUS PnpDeviceQueryDeviceUsageNotification(IN PDEVICE_OBJECT DeviceOb
     return STATUS_NOT_IMPLEMENTED;
 }
 
+static NTSTATUS PnpRootStartDevice(IN PDEVICE_OBJECT DeviceObject,
+				   IN PCM_RESOURCE_LIST ResourceList,
+				   IN PCM_RESOURCE_LIST ResourceListTranslated)
+{
+    if (ResourceList == NULL || ResourceListTranslated == NULL) {
+	DPRINT1("No allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    PCM_PARTIAL_RESOURCE_LIST PartialList = &ResourceList->List[0].PartialResourceList;
+    if (ResourceList->Count != 1 || PartialList->Count != 1) {
+	DPRINT1("Wrong number of allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (PartialList->Version != 1 || PartialList->Revision != 1 ||
+	ResourceListTranslated->List[0].PartialResourceList.Version != 1 ||
+	ResourceListTranslated->List[0].PartialResourceList.Revision != 1) {
+	DPRINT1("Revision mismatch: %u.%u != 1.1 or %u.%u != 1.1\n",
+		PartialList->Version, PartialList->Revision,
+		ResourceListTranslated->List[0].PartialResourceList.Version,
+		ResourceListTranslated->List[0].PartialResourceList.Revision);
+	return STATUS_REVISION_MISMATCH;
+    }
+
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PartialList->PartialDescriptors[0];
+    if (Res->Type != CmResourceTypeMemory) {
+	DPRINT1("Invalid resource type %d\n", Res->Type);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    AcpiResourceDescriptors[0].u.Memory.MinimumAddress = Res->u.Memory.Start;
+    AcpiResourceDescriptors[0].u.Memory.MaximumAddress = Res->u.Memory.Start;
+    AcpiResourceDescriptors[0].u.Memory.Length = Res->u.Memory.Length;
+    return STATUS_SUCCESS;
+}
+
 /*
  * PNP dispatch function for the root enumerator device
  */
@@ -546,7 +597,9 @@ static NTSTATUS PnpRootDispatch(IN PDEVICE_OBJECT DeviceObject,
     NTSTATUS Status;
     switch (IrpSp->MinorFunction) {
     case IRP_MN_START_DEVICE:
-	Status = STATUS_SUCCESS;
+	Status = PnpRootStartDevice(DeviceObject,
+				    IrpSp->Parameters.StartDevice.AllocatedResources,
+				    IrpSp->Parameters.StartDevice.AllocatedResourcesTranslated);
 	break;
 
     case IRP_MN_QUERY_DEVICE_RELATIONS:

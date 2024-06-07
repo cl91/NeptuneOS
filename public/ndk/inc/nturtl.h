@@ -1263,6 +1263,11 @@ __cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
 				  IN ULONG Level,
 				  IN PCSTR Format, ...) __attribute__((format(printf, 3, 4)));
 
+NTAPI NTSYSAPI ULONG vDbgPrintEx(IN ULONG ComponentId,
+				 IN ULONG Level,
+				 IN PCCH Format,
+				 IN va_list ap);
+
 NTAPI NTSYSAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 			       IN PVOID FileName,
 			       IN ULONG LineNumber,

@@ -1172,6 +1172,30 @@ static VOID IopPrintDeviceTree(IN PDEVICE_NODE RootDeviceNode,
 }
 
 /*
+ * Assign resources to the root device node. We simply pass the address and size
+ * of the XSDT (eXtended System Descriptor Table) to the root PnP enumerator.
+ */
+static NTSTATUS IopRootNodeAssignResources()
+{
+    ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
+	sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+    IopRootDeviceNode->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
+    if (IopRootDeviceNode->Resources == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    IopRootDeviceNode->Resources->Count = 1;
+    IopRootDeviceNode->Resources->List[0].InterfaceType = Internal;
+    IopRootDeviceNode->Resources->List[0].BusNumber = 0;
+    IopRootDeviceNode->Resources->List[0].PartialResourceList.Version = 1;
+    IopRootDeviceNode->Resources->List[0].PartialResourceList.Revision = 1;
+    IopRootDeviceNode->Resources->List[0].PartialResourceList.Count = 1;
+    IopRootDeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors[0] =
+	HalAcpiGetRsdtResource();
+    IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeResourcesAssigned);
+    return STATUS_SUCCESS;
+}
+
+/*
  * Before calling this system service the session manager needs to
  * initialize the hardware database in the registry.
  */
@@ -1217,9 +1241,12 @@ NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
     assert(RootEnumerator != NULL);
     IopSetDeviceNode(RootEnumerator, IopRootDeviceNode);
 
-    /* The root enumerator does not need any resource assignment, so set its
-     * device node state to Started to skip that. */
-    IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeStarted);
+    /* Assign resources for the root enumerator, and start its device node. */
+    Status = IopRootNodeAssignResources();
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+    AWAIT(IopDeviceNodeStartDevice, AsyncState, _, Thread, IopRootDeviceNode);
 
     /* Recursively enumerate the root node and start all boot devices.
      * This will build the entire boot-time device tree. */
@@ -1300,6 +1327,16 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE AsyncState,
                            IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
                            IN PVOID Buffer,
                            IN ULONG BufferSize)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS WdmOpenDeviceRegistryKey(IN ASYNC_STATE AsyncState,
+                                  IN PTHREAD Thread,
+                                  IN GLOBAL_HANDLE DeviceHandle,
+                                  IN ULONG DevInstKeyType,
+                                  IN ACCESS_MASK DesiredAccess,
+                                  OUT HANDLE *DevInstRegKey)
 {
     UNIMPLEMENTED;
 }

@@ -1,4 +1,6 @@
 #include <wdmp.h>
+#define TEXT(x) L##x
+#include <regstr.h>
 
 /* Caches all device objects that have been queried, including
  * the device objects created by this driver. */
@@ -206,6 +208,23 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
     return IopGetDeviceObjectOrCreate(TopHandle, DevInfo);
 }
 
+NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
+{
+    PDEVICE_OBJECT DevObj = IoGetAttachedDevice(DeviceObject);
+    if (!DevObj) {
+	return NULL;
+    }
+    DevObj->Header.RefCount++;
+    return DevObj;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
+{
+}
+
 /*++
  * @name IoRegisterDeviceInterface
  * @implemented
@@ -268,10 +287,502 @@ NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
 }
 
 /*
+ *Returns the alias device interface of the specified device interface
+ */
+static NTSTATUS IopOpenInterfaceKey(IN CONST GUID *InterfaceClassGuid,
+				    IN ACCESS_MASK DesiredAccess,
+				    OUT HANDLE *pInterfaceKey)
+{
+    UNICODE_STRING LocalMachine = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\");
+    UNICODE_STRING GuidString;
+    UNICODE_STRING KeyName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    HANDLE InterfaceKey = NULL;
+    NTSTATUS Status;
+
+    GuidString.Buffer = KeyName.Buffer = NULL;
+
+    Status = RtlStringFromGUID(InterfaceClassGuid, &GuidString);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("RtlStringFromGUID() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+
+    KeyName.Length = 0;
+    KeyName.MaximumLength = LocalMachine.Length +
+	((USHORT)wcslen(REGSTR_PATH_DEVICE_CLASSES) + 1) *
+	sizeof(WCHAR) +
+	GuidString.Length;
+    KeyName.Buffer = ExAllocatePool(KeyName.MaximumLength);
+    if (!KeyName.Buffer) {
+	DPRINT("ExAllocatePool() failed\n");
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto cleanup;
+    }
+
+    Status = RtlAppendUnicodeStringToString(&KeyName, &LocalMachine);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("RtlAppendUnicodeStringToString() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+    Status = RtlAppendUnicodeToString(&KeyName, REGSTR_PATH_DEVICE_CLASSES);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("RtlAppendUnicodeToString() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+    Status = RtlAppendUnicodeToString(&KeyName, L"\\");
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("RtlAppendUnicodeToString() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+    Status = RtlAppendUnicodeStringToString(&KeyName, &GuidString);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("RtlAppendUnicodeStringToString() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+
+    InitializeObjectAttributes(&ObjectAttributes, &KeyName,
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+    Status = NtOpenKey(&InterfaceKey, DesiredAccess, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("ZwOpenKey() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+
+    *pInterfaceKey = InterfaceKey;
+    Status = STATUS_SUCCESS;
+
+cleanup:
+    if (!NT_SUCCESS(Status)) {
+	if (InterfaceKey != NULL)
+	    ZwClose(InterfaceKey);
+    }
+    RtlFreeUnicodeString(&GuidString);
+    RtlFreeUnicodeString(&KeyName);
+    return Status;
+}
+
+/*++
+ * @name IoGetDeviceInterfaces
+ * @implemented
+ *
+ * Returns a list of device interfaces of a particular device interface class.
+ * Documented in WDK
+ *
+ * @param InterfaceClassGuid
+ *        Points to a class GUID specifying the device interface class
+ *
+ * @param PhysicalDeviceObject
+ *        Points to an optional PDO that narrows the search to only the
+ *        device interfaces of the device represented by the PDO
+ *
+ * @param Flags
+ *        Specifies flags that modify the search for device interfaces. The
+ *        DEVICE_INTERFACE_INCLUDE_NONACTIVE flag specifies that the list of
+ *        returned symbolic links should contain also disabled device
+ *        interfaces in addition to the enabled ones.
+ *
+ * @param SymbolicLinkList
+ *        Points to a character pointer that is filled in on successful return
+ *        with a list of unicode strings identifying the device interfaces
+ *        that match the search criteria. The newly allocated buffer contains
+ *        a list of symbolic link names. Each unicode string in the list is
+ *        null-terminated; the end of the whole list is marked by an additional
+ *        NULL. The caller is responsible for freeing the buffer (ExFreePool)
+ *        when it is no longer needed.
+ *        If no device interfaces match the search criteria, this routine
+ *        returns STATUS_SUCCESS and the string contains a single NULL
+ *        character.
+ *
+ * @return Usual NTSTATUS
+ *
+ * @remarks None
+ *
+ *--*/
+NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
+				     IN OPTIONAL PDEVICE_OBJECT PhysicalDeviceObject,
+				     IN ULONG Flags,
+				     OUT PWSTR *SymbolicLinkList)
+{
+    UNICODE_STRING Control = RTL_CONSTANT_STRING(L"Control");
+    UNICODE_STRING SymbolicLink = RTL_CONSTANT_STRING(L"SymbolicLink");
+    HANDLE InterfaceKey = NULL;
+    HANDLE DeviceKey = NULL;
+    HANDLE ReferenceKey = NULL;
+    HANDLE ControlKey = NULL;
+    PKEY_BASIC_INFORMATION DeviceBi = NULL;
+    PKEY_BASIC_INFORMATION ReferenceBi = NULL;
+    PKEY_VALUE_PARTIAL_INFORMATION bip = NULL;
+    PKEY_VALUE_PARTIAL_INFORMATION PartialInfo;
+    UNICODE_STRING KeyName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    BOOLEAN FoundRightPDO = FALSE;
+    ULONG i = 0, j, Size, NeededLength, ActualLength, LinkedValue;
+    UNICODE_STRING ReturnBuffer = { 0, 0, NULL };
+    NTSTATUS Status;
+
+    /* TODO: Call server to get the device instance path of the PDO. */
+    PUNICODE_STRING InstanceDevicePath = NULL;
+
+    Status = IopOpenInterfaceKey(InterfaceClassGuid, KEY_ENUMERATE_SUB_KEYS,
+				 &InterfaceKey);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("IopOpenInterfaceKey() failed with status 0x%08x\n", Status);
+	goto cleanup;
+    }
+
+    /* Enumerate subkeys (i.e. the different device objects) */
+    while (TRUE) {
+	Status = NtEnumerateKey(InterfaceKey, i, KeyBasicInformation, NULL, 0, &Size);
+	if (Status == STATUS_NO_MORE_ENTRIES) {
+	    break;
+	} else if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
+	    DPRINT("NtEnumerateKey() failed with status 0x%08x\n", Status);
+	    goto cleanup;
+	}
+
+	DeviceBi = ExAllocatePool(Size);
+	if (!DeviceBi) {
+	    DPRINT("ExAllocatePool() failed\n");
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto cleanup;
+	}
+	Status = NtEnumerateKey(InterfaceKey, i++, KeyBasicInformation, DeviceBi, Size,
+				&Size);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT("NtEnumerateKey() failed with status 0x%08x\n", Status);
+	    goto cleanup;
+	}
+
+	/* Open device key */
+	KeyName.Length = KeyName.MaximumLength = (USHORT)DeviceBi->NameLength;
+	KeyName.Buffer = DeviceBi->Name;
+	InitializeObjectAttributes(&ObjectAttributes, &KeyName,
+				   OBJ_CASE_INSENSITIVE, InterfaceKey,
+				   NULL);
+	Status = NtOpenKey(&DeviceKey, KEY_ENUMERATE_SUB_KEYS, &ObjectAttributes);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT("NtOpenKey() failed with status 0x%08x\n", Status);
+	    goto cleanup;
+	}
+
+	if (PhysicalDeviceObject) {
+	    /* Check if we are on the right physical device object,
+	     * by reading the DeviceInstance string
+	     */
+	    RtlInitUnicodeString(&KeyName, L"DeviceInstance");
+	    Status = NtQueryValueKey(DeviceKey, &KeyName, KeyValuePartialInformation,
+				     NULL, 0, &NeededLength);
+	    if (Status == STATUS_BUFFER_TOO_SMALL) {
+		ActualLength = NeededLength;
+		PartialInfo = ExAllocatePool(ActualLength);
+		if (!PartialInfo) {
+		    Status = STATUS_INSUFFICIENT_RESOURCES;
+		    goto cleanup;
+		}
+
+		Status = NtQueryValueKey(DeviceKey, &KeyName, KeyValuePartialInformation,
+					 PartialInfo, ActualLength, &NeededLength);
+		if (!NT_SUCCESS(Status)) {
+		    DPRINT1("NtQueryValueKey #2 failed (%x)\n", Status);
+		    ExFreePool(PartialInfo);
+		    goto cleanup;
+		}
+		if (PartialInfo->DataLength == InstanceDevicePath->Length) {
+		    if (RtlCompareMemory(PartialInfo->Data, InstanceDevicePath->Buffer,
+					 InstanceDevicePath->Length) ==
+			InstanceDevicePath->Length) {
+			/* found right pdo */
+			FoundRightPDO = TRUE;
+		    }
+		}
+		ExFreePool(PartialInfo);
+		PartialInfo = NULL;
+		if (!FoundRightPDO) {
+		    /* not yet found */
+		    continue;
+		}
+	    } else {
+		/* error */
+		break;
+	    }
+	}
+
+	/* Enumerate subkeys (ie the different reference strings) */
+	j = 0;
+	while (TRUE) {
+	    Status = NtEnumerateKey(DeviceKey, j, KeyBasicInformation, NULL, 0, &Size);
+	    if (Status == STATUS_NO_MORE_ENTRIES) {
+		break;
+	    } else if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
+		DPRINT("NtEnumerateKey() failed with status 0x%08x\n", Status);
+		goto cleanup;
+	    }
+
+	    ReferenceBi = ExAllocatePool(Size);
+	    if (!ReferenceBi) {
+		DPRINT("ExAllocatePool() failed\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	    }
+	    Status = NtEnumerateKey(DeviceKey, j++, KeyBasicInformation, ReferenceBi,
+				    Size, &Size);
+	    if (!NT_SUCCESS(Status)) {
+		DPRINT("NtEnumerateKey() failed with status 0x%08x\n", Status);
+		goto cleanup;
+	    }
+
+	    KeyName.Length = KeyName.MaximumLength = (USHORT)ReferenceBi->NameLength;
+	    KeyName.Buffer = ReferenceBi->Name;
+	    if (RtlEqualUnicodeString(&KeyName, &Control, TRUE)) {
+		/* Skip Control subkey */
+		goto NextReferenceString;
+	    }
+
+	    /* Open reference key */
+	    InitializeObjectAttributes(&ObjectAttributes, &KeyName,
+				       OBJ_CASE_INSENSITIVE,
+				       DeviceKey, NULL);
+	    Status = NtOpenKey(&ReferenceKey, KEY_QUERY_VALUE, &ObjectAttributes);
+	    if (!NT_SUCCESS(Status)) {
+		DPRINT("NtOpenKey() failed with status 0x%08x\n", Status);
+		goto cleanup;
+	    }
+
+	    if (!(Flags & DEVICE_INTERFACE_INCLUDE_NONACTIVE)) {
+		/* We have to check if the interface is enabled, by
+		 * reading the Linked value in the Control subkey
+		 */
+		InitializeObjectAttributes(&ObjectAttributes, &Control,
+					   OBJ_CASE_INSENSITIVE,
+					   ReferenceKey, NULL);
+		Status = NtOpenKey(&ControlKey, KEY_QUERY_VALUE, &ObjectAttributes);
+		if (Status == STATUS_OBJECT_NAME_NOT_FOUND) {
+		    /* That's OK. The key doesn't exist (yet) because
+		     * the interface is not activated.
+		     */
+		    goto NextReferenceString;
+		} else if (!NT_SUCCESS(Status)) {
+		    DPRINT1("NtOpenKey() failed with status 0x%08x\n", Status);
+		    goto cleanup;
+		}
+
+		RtlInitUnicodeString(&KeyName, L"Linked");
+		Status = NtQueryValueKey(ControlKey, &KeyName, KeyValuePartialInformation,
+					 NULL, 0, &NeededLength);
+		if (Status == STATUS_BUFFER_TOO_SMALL) {
+		    ActualLength = NeededLength;
+		    PartialInfo = ExAllocatePool(ActualLength);
+		    if (!PartialInfo) {
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			goto cleanup;
+		    }
+
+		    Status = NtQueryValueKey(ControlKey, &KeyName,
+					     KeyValuePartialInformation, PartialInfo,
+					     ActualLength, &NeededLength);
+		    if (!NT_SUCCESS(Status)) {
+			DPRINT1("NtQueryValueKey #2 failed (%x)\n", Status);
+			ExFreePool(PartialInfo);
+			goto cleanup;
+		    }
+
+		    if (PartialInfo->Type != REG_DWORD ||
+			PartialInfo->DataLength != sizeof(ULONG)) {
+			DPRINT1("Bad registry read\n");
+			ExFreePool(PartialInfo);
+			goto cleanup;
+		    }
+
+		    RtlCopyMemory(&LinkedValue, PartialInfo->Data,
+				  PartialInfo->DataLength);
+
+		    ExFreePool(PartialInfo);
+		    if (LinkedValue == 0) {
+			/* This interface isn't active */
+			goto NextReferenceString;
+		    }
+		} else {
+		    DPRINT1("NtQueryValueKey #1 failed (%x)\n", Status);
+		    goto cleanup;
+		}
+	    }
+
+	    /* Read the SymbolicLink string and add it into SymbolicLinkList */
+	    Status = NtQueryValueKey(ReferenceKey, &SymbolicLink,
+				     KeyValuePartialInformation, NULL, 0, &Size);
+	    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
+		DPRINT("NtQueryValueKey() failed with status 0x%08x\n", Status);
+		goto cleanup;
+	    }
+	    bip = ExAllocatePool(Size);
+	    if (!bip) {
+		DPRINT("ExAllocatePool() failed\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto cleanup;
+	    }
+	    Status = NtQueryValueKey(ReferenceKey, &SymbolicLink,
+				     KeyValuePartialInformation, bip, Size, &Size);
+	    if (!NT_SUCCESS(Status)) {
+		DPRINT("NtQueryValueKey() failed with status 0x%08x\n", Status);
+		goto cleanup;
+	    } else if (bip->Type != REG_SZ) {
+		DPRINT("Unexpected registry type 0x%x (expected 0x%x)\n", bip->Type,
+		       REG_SZ);
+		Status = STATUS_UNSUCCESSFUL;
+		goto cleanup;
+	    } else if (bip->DataLength < 5 * sizeof(WCHAR)) {
+		DPRINT("Registry string too short (length %u, expected %zu at least)\n",
+		       bip->DataLength, 5 * sizeof(WCHAR));
+		Status = STATUS_UNSUCCESSFUL;
+		goto cleanup;
+	    }
+	    KeyName.Length = KeyName.MaximumLength = (USHORT)bip->DataLength;
+	    KeyName.Buffer = (PWSTR)bip->Data;
+
+	    /* Fixup the prefix (from "\\?\") */
+	    RtlCopyMemory(KeyName.Buffer, L"\\??\\", 4 * sizeof(WCHAR));
+
+	    /* Add new symbolic link to symbolic link list */
+	    if (ReturnBuffer.Length + KeyName.Length + sizeof(WCHAR) >
+		ReturnBuffer.MaximumLength) {
+		PWSTR NewBuffer;
+		ReturnBuffer.MaximumLength = (USHORT)max(
+		    2 * ReturnBuffer.MaximumLength,
+		    (USHORT)(ReturnBuffer.Length + KeyName.Length + 2 * sizeof(WCHAR)));
+		NewBuffer = ExAllocatePool(ReturnBuffer.MaximumLength);
+		if (!NewBuffer) {
+		    DPRINT("ExAllocatePool() failed\n");
+		    Status = STATUS_INSUFFICIENT_RESOURCES;
+		    goto cleanup;
+		}
+		if (ReturnBuffer.Buffer) {
+		    RtlCopyMemory(NewBuffer, ReturnBuffer.Buffer, ReturnBuffer.Length);
+		    ExFreePool(ReturnBuffer.Buffer);
+		}
+		ReturnBuffer.Buffer = NewBuffer;
+	    }
+	    DPRINT("Adding symbolic link %wZ\n", &KeyName);
+	    Status = RtlAppendUnicodeStringToString(&ReturnBuffer, &KeyName);
+	    if (!NT_SUCCESS(Status)) {
+		DPRINT("RtlAppendUnicodeStringToString() failed with status 0x%08x\n",
+		       Status);
+		goto cleanup;
+	    }
+	    /* RtlAppendUnicodeStringToString added a NULL at the end of the
+             * destination string, but didn't increase the Length field.
+             * Do it for it.
+             */
+	    ReturnBuffer.Length += sizeof(WCHAR);
+
+	NextReferenceString:
+	    ExFreePool(ReferenceBi);
+	    ReferenceBi = NULL;
+	    if (bip)
+		ExFreePool(bip);
+	    bip = NULL;
+	    if (ReferenceKey != NULL) {
+		NtClose(ReferenceKey);
+		ReferenceKey = NULL;
+	    }
+	    if (ControlKey != NULL) {
+		NtClose(ControlKey);
+		ControlKey = NULL;
+	    }
+	}
+	if (FoundRightPDO) {
+	    /* No need to go further, as we already have found what we searched */
+	    break;
+	}
+
+	ExFreePool(DeviceBi);
+	DeviceBi = NULL;
+	NtClose(DeviceKey);
+	DeviceKey = NULL;
+    }
+
+    /* Add final NULL to ReturnBuffer */
+    ASSERT(ReturnBuffer.Length <= ReturnBuffer.MaximumLength);
+    if (ReturnBuffer.Length >= ReturnBuffer.MaximumLength) {
+	PWSTR NewBuffer;
+	ReturnBuffer.MaximumLength += sizeof(WCHAR);
+	NewBuffer = ExAllocatePool(ReturnBuffer.MaximumLength);
+	if (!NewBuffer) {
+	    DPRINT("ExAllocatePool() failed\n");
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto cleanup;
+	}
+	if (ReturnBuffer.Buffer) {
+	    RtlCopyMemory(NewBuffer, ReturnBuffer.Buffer, ReturnBuffer.Length);
+	    ExFreePool(ReturnBuffer.Buffer);
+	}
+	ReturnBuffer.Buffer = NewBuffer;
+    }
+    ReturnBuffer.Buffer[ReturnBuffer.Length / sizeof(WCHAR)] = UNICODE_NULL;
+    *SymbolicLinkList = ReturnBuffer.Buffer;
+    Status = STATUS_SUCCESS;
+
+cleanup:
+    if (!NT_SUCCESS(Status) && ReturnBuffer.Buffer)
+	ExFreePool(ReturnBuffer.Buffer);
+    if (InterfaceKey != NULL)
+	NtClose(InterfaceKey);
+    if (DeviceKey != NULL)
+	NtClose(DeviceKey);
+    if (ReferenceKey != NULL)
+	NtClose(ReferenceKey);
+    if (ControlKey != NULL)
+	NtClose(ControlKey);
+    if (DeviceBi)
+	ExFreePool(DeviceBi);
+    if (ReferenceBi)
+	ExFreePool(ReferenceBi);
+    if (bip)
+	ExFreePool(bip);
+    return Status;
+}
+
+/*
  * @implemented
  */
-NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
+NTAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
+				    IN PUNICODE_STRING DeviceName)
 {
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, SymbolicLinkName,
+                               OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
+                               NULL, NULL);
+    HANDLE Handle;
+    NTSTATUS Status = NtCreateSymbolicLinkObject(&Handle, SYMBOLIC_LINK_ALL_ACCESS,
+						 &ObjectAttributes, DeviceName);
+    if (NT_SUCCESS(Status)) {
+	NtClose(Handle);
+    }
+    return Status;
+}
+
+/**
+ * @name IoOpenDeviceRegistryKey
+ *
+ * Open a registry key unique for a specified driver or device instance.
+ *
+ * @param DeviceObject   Device to get the registry key for.
+ * @param DevInstKeyType Type of the key to return.
+ * @param DesiredAccess  Access mask (eg. KEY_READ | KEY_WRITE).
+ * @param DevInstRegKey  Handle to the opened registry key on
+ *                       successful return.
+ *
+ * @return Status.
+ *
+ * @implemented
+ */
+NTAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
+				       IN ULONG DevInstKeyType,
+				       IN ACCESS_MASK DesiredAccess,
+				       OUT PHANDLE DevInstRegKey)
+{
+    return WdmOpenDeviceRegistryKey(DeviceObject->Header.GlobalHandle,
+				    DevInstKeyType, DesiredAccess, DevInstRegKey);
 }
 
 /*

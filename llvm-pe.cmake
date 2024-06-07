@@ -35,5 +35,7 @@ function(set_entrypoint _module _entrypoint)
 endfunction()
 
 function(set_dll_def _module _module_def)
-    set_property(TARGET ${_module} APPEND_STRING PROPERTY LINK_FLAGS " -Wl,/def:${_module_def}")
+    get_property(target_dir TARGET ${_module} PROPERTY BINARY_DIR)
+    set_property(TARGET ${_module} APPEND_STRING PROPERTY LINK_FLAGS
+		 " -Wl,/def:${target_dir}/${_module_def}")
 endfunction()

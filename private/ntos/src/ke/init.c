@@ -127,7 +127,7 @@ static void KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 		/* TODO: Record x86 memory map information */
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
-		/* TODO: Record x86 ACPI RSDP information */
+		HalAcpiRegisterRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1));
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
 		HalRegisterFramebuffer((PHAL_FRAMEBUFFER)(BootInfoHeader+1));

@@ -24,76 +24,96 @@ static inline PX86_IOPORT IopFindIoPort(USHORT PortNum)
     return NULL;
 }
 
-static NTSTATUS IopReadPort8(IN PX86_IOPORT Port,
-			     OUT UCHAR *Out)
-{
-    assert(Out != NULL);
-    seL4_X86_IOPort_In8_t Reply = seL4_X86_IOPort_In8(Port->Cap,
-						      Port->PortNum);
-    if (Reply.error != 0) {
-	DbgTrace("Reading IO port 0x%x (cap 0x%zx) failed with error %d\n",
-		 Port->PortNum, Port->Cap, Reply.error);
-	KeDbgDumpIPCError(Reply.error);
-	return SEL4_ERROR(Reply.error);
-    }
-    *Out = Reply.result;
-    return STATUS_SUCCESS;
-}
+#define DEFINE_READ_PORT_HELPER(Len, Type)			\
+    static NTSTATUS IopReadPort##Len(IN PX86_IOPORT Port,	\
+				     OUT Type *Out)		\
+    {								\
+	assert(Out != NULL);					\
+	seL4_X86_IOPort_In##Len##_t Reply =			\
+	    seL4_X86_IOPort_In##Len(Port->Cap, Port->PortNum);	\
+	if (Reply.error != 0) {					\
+	    DbgTrace("Reading IO port 0x%x (cap 0x%zx) failed "	\
+		     "with error %d\n",				\
+		     Port->PortNum, Port->Cap, Reply.error);	\
+	    KeDbgDumpIPCError(Reply.error);			\
+	    return SEL4_ERROR(Reply.error);			\
+	}							\
+	*Out = Reply.result;					\
+	return STATUS_SUCCESS;					\
+    }								\
 
-static NTSTATUS IopWritePort8(IN PX86_IOPORT Port,
-			      IN UCHAR Data)
-{
-    int Error = seL4_X86_IOPort_Out8(Port->Cap, Port->PortNum, Data);
-    if (Error != 0) {
-	DbgTrace("Writing IO port 0x%x (cap 0x%zx) with data 0x%x failed with error %d\n",
-		 Port->PortNum, Port->Cap, Data, Error);
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
+#define DEFINE_WRITE_PORT_HELPER(Len, Type)				\
+    static NTSTATUS IopWritePort##Len(IN PX86_IOPORT Port,		\
+				      IN Type Data)			\
+    {									\
+	int Error = seL4_X86_IOPort_Out##Len(Port->Cap,			\
+					     Port->PortNum, Data);	\
+	if (Error != 0) {						\
+	    DbgTrace("Writing IO port 0x%x (cap 0x%zx) with "		\
+		     "data 0x%x failed with error %d\n",		\
+		     Port->PortNum, Port->Cap, Data, Error);		\
+	    KeDbgDumpIPCError(Error);					\
+	    return SEL4_ERROR(Error);					\
+	}								\
+	return STATUS_SUCCESS;						\
     }
-    return STATUS_SUCCESS;
-}
 
-__cdecl UCHAR __inbyte(IN USHORT PortNum)
-{
-    PX86_IOPORT Port = IopFindIoPort(PortNum);
-    if (Port == NULL) {
-	NTSTATUS Status = IoEnableX86Port(PortNum);
-	if (!NT_SUCCESS(Status)) {
-	    RtlRaiseStatus(Status);
-	}
-	Port = IopFindIoPort(PortNum);
-	if (Port == NULL) {
-	    /* This is a bug. */
-	    assert(FALSE);
-	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);
-	}
+#define DEFINE_PORT_IN_FUNC(Name, Len, Type)			\
+    __cdecl Type __in##Name(IN USHORT PortNum)			\
+    {								\
+	PX86_IOPORT Port = IopFindIoPort(PortNum);		\
+	if (Port == NULL) {					\
+	    NTSTATUS Status = IoEnableX86Port(PortNum);		\
+	    if (!NT_SUCCESS(Status)) {				\
+		RtlRaiseStatus(Status);				\
+	    }							\
+	    Port = IopFindIoPort(PortNum);			\
+	    if (Port == NULL) {					\
+		/* This is a bug. */				\
+		assert(FALSE);					\
+		RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	    }							\
+	}							\
+	Type Value;						\
+	NTSTATUS Status = IopReadPort##Len(Port, &Value);	\
+	if (!NT_SUCCESS(Status)) {				\
+	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	}							\
+	return Value;						\
     }
-    UCHAR Value;
-    NTSTATUS Status = IopReadPort8(Port, &Value);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(STATUS_UNSUCCESSFUL);
-    }
-    return Value;
-}
 
-__cdecl VOID __outbyte(IN USHORT PortNum,
-		       IN UCHAR Data)
-{
-    PX86_IOPORT Port = IopFindIoPort(PortNum);
-    if (Port == NULL) {
-	NTSTATUS Status = IoEnableX86Port(PortNum);
-	if (!NT_SUCCESS(Status)) {
-	    RtlRaiseStatus(Status);
-	}
-	Port = IopFindIoPort(PortNum);
-	if (Port == NULL) {
-	    /* This is a bug. */
-	    assert(FALSE);
-	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);
-	}
+#define DEFINE_PORT_OUT_FUNC(Name, Len, Type)			\
+    __cdecl VOID __out##Name(IN USHORT PortNum,			\
+			     IN Type Data)			\
+    {								\
+	PX86_IOPORT Port = IopFindIoPort(PortNum);		\
+	if (Port == NULL) {					\
+	    NTSTATUS Status = IoEnableX86Port(PortNum);		\
+	    if (!NT_SUCCESS(Status)) {				\
+		RtlRaiseStatus(Status);				\
+	    }							\
+	    Port = IopFindIoPort(PortNum);			\
+	    if (Port == NULL) {					\
+		/* This is a bug. */				\
+		assert(FALSE);					\
+		RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	    }							\
+	}							\
+	NTSTATUS Status = IopWritePort##Len(Port, Data);	\
+	if (!NT_SUCCESS(Status)) {				\
+	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	}							\
     }
-    NTSTATUS Status = IopWritePort8(Port, Data);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(STATUS_UNSUCCESSFUL);
-    }
-}
+
+DEFINE_READ_PORT_HELPER(8, UCHAR);
+DEFINE_WRITE_PORT_HELPER(8, UCHAR);
+DEFINE_PORT_IN_FUNC(byte, 8, UCHAR);
+DEFINE_PORT_OUT_FUNC(byte, 8, UCHAR);
+DEFINE_READ_PORT_HELPER(16, USHORT);
+DEFINE_WRITE_PORT_HELPER(16, USHORT);
+DEFINE_PORT_IN_FUNC(word, 16, USHORT);
+DEFINE_PORT_OUT_FUNC(word, 16, USHORT);
+DEFINE_READ_PORT_HELPER(32, ULONG);
+DEFINE_WRITE_PORT_HELPER(32, ULONG);
+DEFINE_PORT_IN_FUNC(dword, 32, ULONG);
+DEFINE_PORT_OUT_FUNC(dword, 32, ULONG);

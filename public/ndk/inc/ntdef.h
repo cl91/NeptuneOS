@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <excpt.h>
+#include <limits.h>
 
 #ifdef _M_IX86
 #define FASTCALL __fastcall
@@ -76,6 +77,9 @@ typedef unsigned char BYTE, *PBYTE;
 typedef CHAR *LPCH, *PCH, *PNZCH, *PSZ;
 typedef CONST CHAR *LPCCH, *PCCH, *PCNZCH;
 
+typedef int8_t INT8;
+typedef uint8_t UINT8;
+
 typedef wchar_t WCHAR;
 typedef WCHAR *PWCHAR, *PWCH, *PWSTR, *LPWSTR;
 typedef CONST WCHAR *PCWCH, *PCWSTR, *LPCWSTR;
@@ -92,6 +96,9 @@ typedef SHORT *PSHORT;
 typedef USHORT *PUSHORT;
 typedef unsigned short WORD;
 
+typedef int16_t INT16;
+typedef uint16_t UINT16;
+
 typedef int INT;
 typedef unsigned int UINT;
 
@@ -103,10 +110,8 @@ typedef ULONG *PULONG, CLONG, *PCLONG, *LPDWORD;
 typedef uint64_t ULONGLONG, *PULONGLONG;
 typedef int64_t LONGLONG, *PLONGLONG;
 
-typedef uintptr_t ULONG_PTR;
-typedef intptr_t LONG_PTR;
-typedef ULONG_PTR SIZE_T, *PSIZE_T, *PULONG_PTR;
-typedef ULONG_PTR DWORD_PTR;
+typedef uintptr_t ULONG_PTR, SIZE_T, *PSIZE_T, *PULONG_PTR, DWORD_PTR, UINT_PTR, *PUINT_PTR;
+typedef intptr_t LONG_PTR, SSIZE_T, *PSSIZE_T, *PLONG_PTR, INT_PTR, *PINT_PTR;
 
 typedef int64_t LONG64, *PLONG64;
 typedef int64_t INT64,  *PINT64;
@@ -114,13 +119,61 @@ typedef uint64_t ULONG64, *PULONG64;
 typedef uint64_t DWORD64, *PDWORD64;
 typedef uint64_t UINT64,  *PUINT64;
 
-#define MAXUSHORT	(0xffff)
-#define MAXULONG_PTR	(~((ULONG_PTR)0))
-#define MAXLONG_PTR	((LONG_PTR)(MAXULONG_PTR >> 1))
-#define MINLONG_PTR	(~MAXLONG_PTR)
-#define MAXLONG		(0x7fffffff)
-#define MAXLONGLONG	(0x7fffffffffffffffLL)
-#define MAXULONG	(0xffffffffUL)
+#define BYTE_MAX INT8_MAX
+#define SHORT_MAX INT16_MAX
+#define USHORT_MAX UINT16_MAX
+#define WORD_MAX USHORT_MAX
+#define DWORD_MAX ULONG_MAX
+#define LONGLONG_MAX INT64_MAX
+#define LONG64_MAX INT64_MAX
+#define ULONGLONG_MAX UINT64_MAX
+#define DWORDLONG_MAX UINT64_MAX
+#define ULONG64_MAX UINT64_MAX
+#define DWORD64_MAX UINT64_MAX
+#define INT_PTR_MAX INTPTR_MAX
+#define UINT_PTR_MAX UINTPTR_MAX
+#define LONG_PTR_MAX INTPTR_MAX
+#define ULONG_PTR_MAX UINTPTR_MAX
+#define DWORD_PTR_MAX ULONG_PTR_MAX
+#define PTRDIFF_T_MAX PTRDIFF_MAX
+#define SIZE_T_MAX UINTPTR_MAX
+#define SSIZE_T_MAX INTPTR_MAX
+#define _SIZE_T_MAX SIZE_T_MAX
+
+#define BYTE_MIN INT8_MIN
+#define SHORT_MIN INT16_MIN
+#define USHORT_MIN UINT16_MIN
+#define WORD_MIN USHORT_MIN
+#define DWORD_MIN ULONG_MIN
+#define LONGLONG_MIN INT64_MIN
+#define LONG64_MIN INT64_MIN
+#define ULONGLONG_MIN UINT64_MIN
+#define DWORDLONG_MIN UINT64_MIN
+#define ULONG64_MIN UINT64_MIN
+#define DWORD64_MIN UINT64_MIN
+#define INT_PTR_MIN INTPTR_MIN
+#define UINT_PTR_MIN UINTPTR_MIN
+#define LONG_PTR_MIN INTPTR_MIN
+#define ULONG_PTR_MIN UINTPTR_MIN
+#define DWORD_PTR_MIN ULONG_PTR_MIN
+#define PTRDIFF_T_MIN PTRDIFF_MIN
+#define SIZE_T_MIN UINTPTR_MIN
+#define SSIZE_T_MIN INTPTR_MIN
+#define _SIZE_T_MIN SIZE_T_MIN
+
+#define MAXUSHORT	USHORT_MAX
+#define MAXULONG	ULONG_MAX
+#define MAXULONG_PTR	ULONG_PTR_MAX
+#define MAXLONG_PTR	LONG_PTR_MAX
+#define MAXLONG		LONG_MAX
+#define MAXLONGLONG	LONGLONG_MAX
+
+#define MINUSHORT	USHORT_MIN
+#define MINULONG	ULONG_MIN
+#define MINULONG_PTR	ULONG_PTR_MIN
+#define MINLONG_PTR	LONG_PTR_MIN
+#define MINLONG		LONG_MIN
+#define MINLONGLONG	LONGLONG_MIN
 
 typedef PVOID HANDLE, HMODULE, HINSTANCE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
@@ -166,6 +219,9 @@ typedef union _ULARGE_INTEGER {
 #define DUMMYUNIONNAME
 #define DUMMYUNIONNAME2
 #define ANYSIZE_ARRAY
+
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#define max(a, b) (((a) > (b)) ? (a) : (b))
 
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
 #define C_ASSERT(expr) extern char (*c_assert(void)) [(expr) ? 1 : -1]

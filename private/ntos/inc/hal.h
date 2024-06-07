@@ -4,6 +4,7 @@
 #include <printf.h>
 
 #include <pshpack1.h>
+/* Multiboot2 Framebuffer */
 typedef struct multiboot2_fb {
     ULONG64 PhysicalAddress;
     ULONG Pitch;
@@ -12,6 +13,19 @@ typedef struct multiboot2_fb {
     UCHAR BitsPerPixel;
     UCHAR Type;
 } HAL_FRAMEBUFFER, *PHAL_FRAMEBUFFER;
+
+/* Root System Descriptor Pointer */
+typedef struct _HAL_ACPI_RSDP {
+    CHAR Signature[8];
+    UCHAR Checksum;
+    CHAR OemId[6];
+    UCHAR Revision;
+    ULONG RsdtAddress;
+    ULONG Length;
+    ULONG64 XsdtAddress;
+    UCHAR ExtendedChecksum;
+    CHAR Reserved[3];
+} HAL_ACPI_RSDP, *PHAL_ACPI_RSDP;
 #include <poppack.h>
 
 /* TODO: This is for x86 and PIC only. We don't support IOAPIC yet. */
@@ -27,6 +41,10 @@ typedef struct multiboot2_fb {
 /* init.c */
 NTSTATUS HalInitSystemPhase0(VOID);
 NTSTATUS HalInitSystemPhase1(VOID);
+
+/* acpi.c */
+VOID HalAcpiRegisterRsdp(IN PHAL_ACPI_RSDP Rsdp);
+CM_PARTIAL_RESOURCE_DESCRIPTOR HalAcpiGetRsdtResource();
 
 /* cmos.c */
 BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time);

@@ -198,9 +198,9 @@ static NTSTATUS LdrpSetProtection(PVOID ViewBase)
 	    }
 
 	    PVOID SectionBase = (PVOID)((ULONG_PTR)ViewBase + Section->VirtualAddress);
+	    SIZE_T SizeOfRawData = Section->SizeOfRawData;
 	    RET_ERR(NtProtectVirtualMemory(NtCurrentProcess(), &SectionBase,
-					   &Section->SizeOfRawData,
-					   Protection, &Protection));
+					   &SizeOfRawData, Protection, &Protection));
         }
         Section++;
     }

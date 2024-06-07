@@ -35,9 +35,6 @@ static inline unsigned long PtrToUlong(const void *p)
     return ((unsigned long)(ULONG_PTR)p);
 }
 
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-
 /* Use native clang/gcc implementation of structured exception handling */
 #include <excpt.h>
 #define _SEH2_TRY __try

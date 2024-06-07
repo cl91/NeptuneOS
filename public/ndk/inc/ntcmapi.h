@@ -807,6 +807,12 @@ typedef struct _PLUGPLAY_BUS_INSTANCE {
     WCHAR BusName[MAX_BUS_NAME];
 } PLUGPLAY_BUS_INSTANCE, *PPLUGPLAY_BUS_INSTANCE;
 
+typedef struct _PNP_BUS_INFORMATION {
+    GUID BusTypeGuid;
+    INTERFACE_TYPE LegacyBusType;
+    ULONG BusNumber;
+} PNP_BUS_INFORMATION, *PPNP_BUS_INFORMATION;
+
 //
 // Partial Resource Descriptor and List for Hardware
 //

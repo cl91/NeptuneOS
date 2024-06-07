@@ -494,7 +494,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	goto Cleanup;
     }
 
-    ULONG OldReferences = Fcb->ParentFcb->RefCount;
+    UNUSED ULONG OldReferences = Fcb->ParentFcb->RefCount;
     if (FatFcbIsDirectory(Fcb) && !IsListEmpty(&Fcb->ParentListHead) &&
 	IsThereAChildOpened(Fcb)) {
 	Status = STATUS_ACCESS_DENIED;
@@ -554,7 +554,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
     } else {
 	/* Try to find target */
 	ParentFcb = NULL;
-	PFATFCB OldParent = Fcb->ParentFcb;
+	UNUSED PFATFCB OldParent = Fcb->ParentFcb;
 	BOOLEAN DeletedTarget;
 	Status = FatPrepareTargetForRename(DeviceExt, &ParentFcb, &NewName,
 					   RenameInfo->ReplaceIfExists,
@@ -564,7 +564,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
 	    goto Cleanup;
 	}
 
-	ULONG NewReferences = ParentFcb->RefCount;
+	UNUSED ULONG NewReferences = ParentFcb->RefCount;
 
 	FatReportChange(DeviceExt, Fcb, NotifyFlag, FILE_ACTION_REMOVED);
 	Status = FatMoveEntry(DeviceExt, Fcb, &NewFile, ParentFcb);

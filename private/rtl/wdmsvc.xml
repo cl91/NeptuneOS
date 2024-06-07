@@ -23,6 +23,13 @@
     <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="TopDeviceInfo" />
   </svc>
 
+  <svc name="WdmOpenDeviceRegistryKey">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
+    <parameter annotation="in" type="ULONG" name="DevInstKeyType" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="out" type="ptr::HANDLE" name="DevInstRegKey" />
+  </svc>
+
   <svc name="WdmRequestIoPackets">
     <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />

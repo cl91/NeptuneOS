@@ -110,6 +110,42 @@ static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
     return STATUS_SUCCESS;
 }
 
+/*
+ * ROUTINE DESCRIPTION:
+ *     Connect the specified interrupt service routine to the  given
+ *     interrupt vector.
+ *
+ * ARGUMENTS:
+ *     pInterruptObject - A pointer to the PKINTERRUPT object to be connected.
+ *     ServiceRoutine   - Interrupt service routine
+ *     ServiceContext   - Optional context for the interrupt service routine
+ *     Vector           - Interrupt vector to connect to. This is what the ACPI
+ *                        specification refers to as the "system vector", which
+ *                        on x86 systems with the 8259A interrupt controller is
+ *                        simply the IRQ number. On x88 systems with IOAPIC,
+ *                        this is the Global System Interrupt (GSI) vector.
+ *     Irql             - Device IRQ level. Caller should generally set this to
+ *                        Vector, or use whatever value the PnP manager supplies.
+ *     SynchronizeIrql  - Synchronization IRQ level, which the system uses to
+ *                        determine the scheduling priority of the interrupt
+ *                        service thread. Caller should generally set this to
+ *                        Irql.
+ *     InterruptMode    - Whether the interrupt is LevelSensitive or Latched.
+ *     ShareVector      - Whether the device allows the interrupt to be shared.
+ *
+ * The following arguments are ignored and are kept for compatibility reason.
+ *
+ *     ProcessorEnableMask - Specifies the process affinity of the ISR.
+ *     FloatingSave        - Whether the floating point states should be saved
+ *                           for the ISR.
+ *
+ * RETURNS:
+ *     STATUS_SUCCESS is the interrupt has been connected successfully. Error
+ *     status if otherwise.
+ *
+ * REMARKS:
+ *     When porting from ReactOS/Windows, remove the Spinlock argument.
+ */
 NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				  IN PKSERVICE_ROUTINE ServiceRoutine,
 				  IN OPTIONAL PVOID ServiceContext,

@@ -16,6 +16,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <string.h>
+#include <ntdef.h>
+
 #ifndef GUID_DEFINED
 #define GUID_DEFINED
 
@@ -118,11 +121,7 @@ typedef GUID FMTID, *LPFMTID;
 #define REFFMTID            const FMTID* __MIDL_CONST
 #endif
 
-#if !defined(__midl) && !defined(__WIDL__)
-#include <string.h>
-#ifdef __cplusplus
-
-__inline int InlineIsEqualGUID(REFGUID rguid1, REFGUID rguid2)
+FORCEINLINE int InlineIsEqualGUID(REFGUID rguid1, REFGUID rguid2)
 {
     return (((unsigned long *) &rguid1)[0] ==
 	    ((unsigned long *) &rguid2)[0]
@@ -134,26 +133,18 @@ __inline int InlineIsEqualGUID(REFGUID rguid1, REFGUID rguid2)
 	    ((unsigned long *) &rguid2)[3]);
 }
 
-__inline int IsEqualGUID(REFGUID rguid1, REFGUID rguid2)
+FORCEINLINE int IsEqualGUID(REFGUID rguid1, REFGUID rguid2)
 {
     return !memcmp(&rguid1, &rguid2, sizeof(GUID));
 }
 
-#else
+FORCEINLINE int IsEqualGUIDAligned(REFGUID guid1, REFGUID guid2)
+{
+    return (*(long long *)(&guid1) == *(long long *)(&guid2)) &&
+	(*((long long *)(&guid1) + 1) == *((long long *)(&guid2) + 1));
+}
 
-#define InlineIsEqualGUID(rguid1, rguid2)				\
-    (((unsigned long *)rguid1)[0] == ((unsigned long *)rguid2)[0] &&	\
-     ((unsigned long *)rguid1)[1] == ((unsigned long *)rguid2)[1] &&	\
-     ((unsigned long *)rguid1)[2] == ((unsigned long *)rguid2)[2] &&	\
-     ((unsigned long *)rguid1)[3] == ((unsigned long *)rguid2)[3])
-#define IsEqualGUID(rguid1, rguid2) (!memcmp(rguid1, rguid2, sizeof(GUID)))
-
-#endif
-#endif				/* __midl && __WIDL__ */
-
-#ifdef __cplusplus
-#include <string.h>
-#if !defined _SYS_GUID_OPERATOR_EQ_ && !defined _NO_SYS_GUID_OPERATOR_EQ_
+#if defined(__cplusplus) && !defined(_SYS_GUID_OPERATOR_EQ_) && defined(_NO_SYS_GUID_OPERATOR_EQ_)
 #define _SYS_GUID_OPERATOR_EQ_
 inline bool operator==(const GUID & guidOne, const GUID & guidOther)
 {
@@ -164,7 +155,6 @@ inline bool operator!=(const GUID & guidOne, const GUID & guidOther)
 {
     return !(guidOne == guidOther);
 }
-#endif
 #endif
 
 #endif				/* _GUIDDEF_H_ */

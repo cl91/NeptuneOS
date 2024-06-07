@@ -16,6 +16,15 @@ VOID vDbgPrint(IN PCSTR Format, IN va_list args)
     seL4_DebugPutString(buf);
 }
 
+NTAPI ULONG vDbgPrintEx(IN ULONG ComponentId,
+			IN ULONG Level,
+			IN PCCH Format,
+			IN va_list ap)
+{
+    vDbgPrint(Format, ap);
+    return 0;
+}
+
 ULONG DbgPrint(IN PCSTR Format, ...)
 {
     va_list arglist;
@@ -69,6 +78,14 @@ NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 VOID vDbgPrint(PCSTR Format, va_list args)
 {
     /* DO nothing */
+}
+
+NTAPI ULONG vDbgPrintEx(IN ULONG ComponentId,
+			IN ULONG Level,
+			IN PCCH Format,
+			IN va_list ap)
+{
+    return 0;
 }
 
 ULONG DbgPrint(PCSTR Format, ...)

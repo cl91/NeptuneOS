@@ -8,11 +8,58 @@
 __cdecl NTSYSAPI UCHAR __inbyte(IN USHORT PortNum);
 __cdecl NTSYSAPI VOID __outbyte(IN USHORT PortNum,
 				IN UCHAR Data);
+__cdecl NTSYSAPI USHORT __inword(IN USHORT PortNum);
+__cdecl NTSYSAPI VOID __outword(IN USHORT PortNum,
+				IN USHORT Data);
+__cdecl NTSYSAPI ULONG __indword(IN USHORT PortNum);
+__cdecl NTSYSAPI VOID __outdword(IN USHORT PortNum,
+				 IN ULONG Data);
 
-#define READ_PORT_UCHAR(PortNum)	__inbyte((ULONG_PTR)(PortNum))
-#define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte((ULONG_PTR)(PortNum), Data)
+#define READ_PORT_UCHAR(Port)		__inbyte((ULONG_PTR)(Port))
+#define WRITE_PORT_UCHAR(Port, Data)	__outbyte((ULONG_PTR)(Port), Data)
+#define READ_PORT_USHORT(Port)		__inword((ULONG_PTR)(Port))
+#define WRITE_PORT_USHORT(Port, Data)	__outword((ULONG_PTR)(Port), Data)
+#define READ_PORT_ULONG(Port)		__indword((ULONG_PTR)(Port))
+#define WRITE_PORT_ULONG(Port, Data)	__outdword((ULONG_PTR)(Port), Data)
 
-/* DMA data types */
+/*
+ * Hal Configuration Space Routines
+ */
+
+typedef enum _BUS_DATA_TYPE {
+    ConfigurationSpaceUndefined = -1,
+    Cmos,
+    EisaConfiguration,
+    Pos,
+    CbusConfiguration,
+    PCIConfiguration,
+    VMEConfiguration,
+    NuBusConfiguration,
+    PCMCIAConfiguration,
+    MPIConfiguration,
+    MPSAConfiguration,
+    PNPISAConfiguration,
+    SgiInternalConfiguration,
+    MaximumBusDataType
+} BUS_DATA_TYPE, *PBUS_DATA_TYPE;
+
+NTAPI NTSYSAPI ULONG HalGetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
+					   IN ULONG BusNumber,
+					   IN ULONG SlotNumber,
+					   OUT PVOID Buffer,
+					   IN ULONG Offset,
+					   IN ULONG Length);
+
+NTAPI NTSYSAPI ULONG HalSetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
+					   IN ULONG BusNumber,
+					   IN ULONG SlotNumber,
+					   IN PVOID Buffer,
+					   IN ULONG Offset,
+					   IN ULONG Length);
+
+/*
+ * DMA data types and routines
+ */
 
 typedef enum _DMA_WIDTH {
     Width8Bits,
@@ -555,4 +602,19 @@ NTAPI NTSYSAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescripti
 
 NTAPI NTSYSAPI VOID HalPutDmaAdapter(IN PDMA_ADAPTER DmaAdapter);
 
+/*
+ * IO memory mapping routines
+ */
+NTAPI NTSYSAPI PVOID MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
+				  IN SIZE_T NumberOfBytes,
+				  IN MEMORY_CACHING_TYPE CacheType);
+
+NTAPI NTSYSAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
+				   IN SIZE_T NumberOfBytes);
+
+NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID BaseAddress);
+
+/*
+ * PC speaker access routine
+ */
 NTAPI NTSYSAPI BOOLEAN HalMakeBeep(IN ULONG Frequency);

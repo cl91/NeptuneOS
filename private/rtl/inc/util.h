@@ -6,9 +6,6 @@
 #include <services.h>
 #include <ctype.h>
 
-#define min(a, b) (((a) < (b)) ? (a) : (b))
-#define max(a, b) (((a) > (b)) ? (a) : (b))
-
 FORCEINLINE BOOLEAN IsPow2OrZero(ULONG64 n) { return !(n & (n-1)); }
 FORCEINLINE BOOLEAN IsPow2(ULONG64 n) { return n && IsPow2OrZero(n); }
 

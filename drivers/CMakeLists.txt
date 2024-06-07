@@ -45,6 +45,7 @@ endfunction()
 
 add_subdirectory(lib)
 add_subdirectory(base)
+add_subdirectory(bus)
 add_subdirectory(input)
 add_subdirectory(storage)
 add_subdirectory(filesystems)

@@ -500,7 +500,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	};
 	/* Available for driver use. Typically used to queue IRP to
 	 * a driver-defined queue. */
-	LIST_ENTRY ListEntry;
+	union {
+	    LIST_ENTRY ListEntry;
+	    SLIST_ENTRY SListEntry;
+	};
 	/* The following member is used by the network packet filter
 	 * to queue IRP to an I/O completion queue. */
 	ULONG PacketType;
@@ -956,6 +959,25 @@ NTAPI NTSYSAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDevi
 NTAPI NTSYSAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
 						  IN BOOLEAN Enable);
 
+#define DEVICE_INTERFACE_INCLUDE_NONACTIVE 0x00000001
+
+NTAPI NTSYSAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
+					      IN OPTIONAL PDEVICE_OBJECT PhysicalDeviceObject,
+					      IN ULONG Flags,
+					      OUT PWSTR *SymbolicLinkList);
+
+NTAPI NTSYSAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
+					     IN PUNICODE_STRING DeviceName);
+
+#define PLUGPLAY_REGKEY_DEVICE                            1
+#define PLUGPLAY_REGKEY_DRIVER                            2
+#define PLUGPLAY_REGKEY_CURRENT_HWPROFILE                 4
+
+NTAPI NTSYSAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
+						IN ULONG DevInstKeyType,
+						IN ACCESS_MASK DesiredAccess,
+						IN PHANDLE DevInstRegKey);
+
 NTAPI NTSYSAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice);
 
 DEPRECATED("Drivers run in userspace and are always paged entirely. Remove this.")
@@ -1066,6 +1088,11 @@ FORCEINLINE NTAPI VOID IoMarkIrpPending(IN OUT PIRP Irp)
  */
 NTAPI NTSYSAPI VOID IoCompleteRequest(IN PIRP Irp,
 				      IN CHAR PriorityBoost);
+
+/*
+ * Cancel the given IRP
+ */
+NTAPI NTSYSAPI VOID IoCancelIrp(IN PIRP Irp);
 
 /*
  * Start the IO packet.
@@ -1286,7 +1313,6 @@ typedef BOOLEAN (NTAPI KSERVICE_ROUTINE)(IN PKINTERRUPT Interrupt,
 					 IN PVOID ServiceContext);
 typedef KSERVICE_ROUTINE *PKSERVICE_ROUTINE;
 
-/* Porting guide: Remove the Spinlock argument. */
 NTAPI NTSYSAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *InterruptObject,
 					   IN PKSERVICE_ROUTINE ServiceRoutine,
 					   IN OPTIONAL PVOID ServiceContext,
@@ -1335,13 +1361,10 @@ FORCEINLINE NTAPI VOID KeReleaseInterruptSpinLock(IN PKINTERRUPT Interrupt,
 NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject);
 
 /*
- * This is the same function as IoGetAttachedDevice, since we don't have
- * reference counting for client-side objects.
+ * This is the same function as IoGetAttachedDevice, but we increase the reference
+ * count of the attached device object.
  */
-FORCEINLINE NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
-{
-    return IoGetAttachedDevice(DeviceObject);
-}
+NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject);
 
 /*
  * PNP device relation list, which is simply an array of (physical) device objects.
@@ -1569,3 +1592,70 @@ FORCEINLINE VOID IoSetCompletionRoutine(IN PIRP Irp,
 	IoStack->Control |= SL_INVOKE_ON_CANCEL;
     }
 }
+
+/*
+ * Power management data types and routines
+ */
+NTAPI NTSYSAPI POWER_STATE PoSetPowerState(IN PDEVICE_OBJECT DeviceObject,
+					   IN POWER_STATE_TYPE Type,
+					   IN POWER_STATE State);
+
+typedef VOID (NTAPI *PREQUEST_POWER_COMPLETE)(IN PDEVICE_OBJECT DeviceObject,
+					      IN UCHAR MinorFunction,
+					      IN POWER_STATE PowerState,
+					      IN OPTIONAL PVOID Context,
+					      IN PIO_STATUS_BLOCK IoStatus);
+
+NTAPI NTSYSAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
+					  IN UCHAR MinorFunction,
+					  IN POWER_STATE PowerState,
+					  IN OPTIONAL PREQUEST_POWER_COMPLETE CompletionFunction,
+					  IN OPTIONAL PVOID Context,
+					  OUT PIRP *Irp);
+
+/*
+ * Windows Management Instrumentation data types and routines
+ */
+#define WMIREG_ACTION_REGISTER      1
+#define WMIREG_ACTION_DEREGISTER    2
+#define WMIREG_ACTION_REREGISTER    3
+#define WMIREG_ACTION_UPDATE_GUIDS  4
+#define WMIREG_ACTION_BLOCK_IRPS    5
+
+#define WMIREGISTER                 0
+#define WMIUPDATE                   1
+
+typedef VOID (NTAPI *WMI_NOTIFICATION_CALLBACK)(PVOID Wnode,
+						PVOID Context);
+
+NTAPI NTSYSAPI NTSTATUS IoWMIRegistrationControl(IN PDEVICE_OBJECT DeviceObject,
+						 IN ULONG Action);
+
+/*
+ * PnP notification data types and routines
+ */
+typedef NTSTATUS (NTAPI *PDRIVER_NOTIFICATION_CALLBACK_ROUTINE)(IN PVOID NotificationStructure,
+								IN OUT OPTIONAL PVOID Context);
+
+NTAPI NTSYSAPI NTSTATUS
+IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
+			       IN ULONG EventCategoryFlags,
+			       IN OPTIONAL PVOID EventCategoryData,
+			       IN PDRIVER_OBJECT DriverObject,
+			       IN PDRIVER_NOTIFICATION_CALLBACK_ROUTINE CallbackRoutine,
+			       IN OUT OPTIONAL PVOID Context,
+			       OUT PVOID *NotificationEntry);
+
+typedef struct _DEVICE_INTERFACE_CHANGE_NOTIFICATION {
+    USHORT Version;
+    USHORT Size;
+    GUID Event;
+    GUID InterfaceClassGuid;
+    PUNICODE_STRING SymbolicLinkName;
+} DEVICE_INTERFACE_CHANGE_NOTIFICATION, *PDEVICE_INTERFACE_CHANGE_NOTIFICATION;
+
+typedef struct _HWPROFILE_CHANGE_NOTIFICATION {
+    USHORT Version;
+    USHORT Size;
+    GUID Event;
+} HWPROFILE_CHANGE_NOTIFICATION, *PHWPROFILE_CHANGE_NOTIFICATION;

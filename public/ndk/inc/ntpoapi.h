@@ -1,5 +1,12 @@
 #pragma once
 
+#define PO_CB_SYSTEM_POWER_POLICY                0
+#define PO_CB_AC_STATUS                          1
+#define PO_CB_BUTTON_COLLISION                   2
+#define PO_CB_SYSTEM_STATE_LOCK                  3
+#define PO_CB_LID_SWITCH_STATE                   4
+#define PO_CB_PROCESSOR_POWER_POLICY             5
+
 /*
  * Information Structures for NtPowerInformation
  */
@@ -91,7 +98,6 @@ typedef union _SYSTEM_POWER_STATE_CONTEXT {
     };
     ULONG ContextAsUlong;
 } SYSTEM_POWER_STATE_CONTEXT, *PSYSTEM_POWER_STATE_CONTEXT;
-
 
 /*
  * Device capabilities

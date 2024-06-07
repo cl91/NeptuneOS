@@ -153,6 +153,24 @@ cmake ../../private/wdm \
 ninja || build_failed
 cp wdm.lib ../ddk_lib || build_failed
 
+# Build drivers with the PE toolchain
+cd ../drivers
+echo
+echo "---- Building drivers ----"
+echo
+cmake ../../drivers \
+      -DArch=${ARCH} \
+      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DDDK_LIB_PATH=${PWD}/../ddk_lib \
+      -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -G Ninja
+ninja || build_failed
+
 # Build base NT clients with the PE toolchain
 cd ../base
 echo
@@ -163,22 +181,6 @@ cmake ../../base \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
-      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
-      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
-      -G Ninja
-ninja || build_failed
-
-# Build drivers with the PE toolchain
-cd ../drivers
-echo
-echo "---- Building drivers ----"
-echo
-cmake ../../drivers \
-      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
-      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
-      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-      -DNDK_LIB_PATH=${PWD}/../ndk_lib \
-      -DDDK_LIB_PATH=${PWD}/../ddk_lib \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
@@ -204,8 +206,8 @@ fi
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
 BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
 DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys base/pnp/pnp.sys
-input/kbdclass/kbdclass.sys input/i8042prt/i8042prt.sys storage/fdc/fdc.sys
-filesystems/fatfs/fatfs.sys'
+bus/acpi/acpi.sys input/kbdclass/kbdclass.sys input/i8042prt/i8042prt.sys
+storage/fdc/fdc.sys filesystems/fatfs/fatfs.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
 done

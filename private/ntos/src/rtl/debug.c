@@ -2,7 +2,6 @@
 #include <sel4/sel4.h>
 #include <nt.h>
 #include <ke.h>
-#include <stddef.h>
 #include <stdarg.h>
 #include <printf.h>
 
@@ -21,7 +20,7 @@ ULONG DbgPrint(PCSTR Format, ...)
     va_start(arglist, Format);
     vDbgPrint(Format, arglist);
     va_end(arglist);
-    return STATUS_SUCCESS;
+    return 0;
 }
 
 VOID _assert(PCSTR str, PCSTR file, unsigned int line)
