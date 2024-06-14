@@ -157,7 +157,8 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 	    PKWAIT_BLOCK WaitBlocks;
 	});
 
-    /* Allocate the wait blocks */
+    /* Allocate the wait blocks. Note if Timeout is NULL, the zeroth wait block
+     * is not used. */
     Locals.WaitBlocks = (PKWAIT_BLOCK)ExAllocatePoolWithTag(sizeof(KWAIT_BLOCK) * Count,
 							    NTOS_KE_TAG);
     if (Locals.WaitBlocks == NULL) {
@@ -180,7 +181,7 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 	CurrentWaitBlock->Next = &Locals.WaitBlocks[i];
 	KiInitializeWaitBlock(&Locals.WaitBlocks[i], Thread,
 			      DispatcherObjects[i], WaitType, NULL);
-	CurrentWaitBlock = &Locals.WaitBlocks[i+1];
+	CurrentWaitBlock = &Locals.WaitBlocks[i];
     }
 
     /* Mark the thread as suspended and yield to the system service dispatcher. */

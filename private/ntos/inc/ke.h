@@ -606,25 +606,25 @@ VOID KeDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
  * A schematic diagram is as follows. Here Thread0 has a single wait block in the
  * master boolean formula, while Thread1 has several.
  *
- *   |--------- |             |------------|
- *   | THREAD0  |             |  THREAD1   |
- *   |----------|             |------------|
- *   |   Root   |             | Root Wait  |
- *   |   Wait   |             | Block TY=  |
- *   |   Block  |             |  WaitAll   |
- *   |TY=WaitAny|             |            |
- *   |----------|             |    Next    |--->|---------|     |---------|
- *     |   ^-------------     |------------|    |WaitBlock|     |WaitBlock|<-----------
- *     |                |                       |  Next   |---->|   Next  |->(nil)    |
- *    \|/               |                       |---------|     |---------|           |
- *   |---------------|  |                           ^  |            |                 |
- *   |  DISPATCHER   |  |                           |  |            |Dispatcher       |
- *   |---------------|  |                           |  |           \|/                |
- *   | WaitBlockList |-------------------------------  |     |---------------|        |
- *   |---------------|                                 |     |  DISPATCHER   |        |
- *          ^                                          |     |---------------|        |
- *          |                 Dispatcher               |     | WaitBlockList |---------
- *          -------------------------------------------|     |---------------|
+ *    |--------- |             |------------|
+ *    | THREAD0  |             |  THREAD1   |
+ *    |----------|             |------------|
+ *    |   Root   |  Dispatcher | Root Wait  | Dispatcher
+ *    |   Wait   |   Link      | Block TY=  |  Link
+ *    |   Block  |>----------->|  WaitAll   |>-------|
+ *    |TY=WaitAny|             |            |       \|/
+ *    |----------|             |    Next    |--->|---------|     |---------|
+ * Dispa|   ^                  |------------|    |WaitBlock|     |WaitBlock|<----------
+ * tcher|   | DispatcherLink        \|/          |  Next   |---->|   Next  |->(nil)   |
+ *     \|/  |_____________           |           |---------|     |---------|>-------| |
+ *    |---------------|  | Dispatcher|              \|/ |            |              | | Dispa
+ * |->|  DISPATCHER   |<-|-----------|               |  |            |Dispatcher    | | tcher
+ * |  |---------------|  |                           |  |           \|/             | | Link
+ * |  | WaitBlockList |---    DispatcherLink         |  |     |---------------|     | |
+ * |  |---------------|<-----------------------------|  |     |  DISPATCHER   |     | |
+ * |                                                    |     |---------------|<----| |
+ * |                           Dispatcher               |     | WaitBlockList |>-------
+ * |----------------------------------------------------|     |---------------|
  */
 typedef struct _KWAIT_BLOCK {
     struct _THREAD *Thread;
