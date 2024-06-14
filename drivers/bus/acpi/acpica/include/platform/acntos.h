@@ -22,6 +22,10 @@
 #define ACPI_USE_SYSTEM_INTTYPES
 #define ACPI_MUTEX_TYPE ACPI_OSL_MUTEX
 
+#if DBG || defined(DEBUG)
+#define ACPI_DEBUG_OUTPUT
+#endif
+
 #include <ntddk.h>
 #include <hal.h>
 #include <ctype.h>

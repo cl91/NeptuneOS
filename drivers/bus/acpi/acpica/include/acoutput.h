@@ -149,6 +149,8 @@
 #define ACPI_DB_INIT ACPI_DEBUG_LEVEL(ACPI_LV_INIT)
 #define ACPI_DB_DEBUG_OBJECT ACPI_DEBUG_LEVEL(ACPI_LV_DEBUG_OBJECT)
 #define ACPI_DB_INFO ACPI_DEBUG_LEVEL(ACPI_LV_INFO)
+#define ACPI_DB_WARN ACPI_DEBUG_LEVEL(ACPI_LV_INFO)
+#define ACPI_DB_ERROR ACPI_DEBUG_LEVEL(ACPI_LV_INFO)
 #define ACPI_DB_REPAIR ACPI_DEBUG_LEVEL(ACPI_LV_REPAIR)
 #define ACPI_DB_TRACE_POINT ACPI_DEBUG_LEVEL(ACPI_LV_TRACE_POINT)
 #define ACPI_DB_ALL_EXCEPTIONS ACPI_DEBUG_LEVEL(ACPI_LV_ALL_EXCEPTIONS)
@@ -319,34 +321,8 @@
 
 /* DEBUG_PRINT functions */
 
-#ifndef COMPILER_VA_MACRO
-
 #define ACPI_DEBUG_PRINT(plist) AcpiDebugPrint plist
 #define ACPI_DEBUG_PRINT_RAW(plist) AcpiDebugPrintRaw plist
-
-#else
-
-/* Helper macros for DEBUG_PRINT */
-
-#define ACPI_DO_DEBUG_PRINT(Function, Level, Line, Filename, Modulename, Component, ...) \
-    ACPI_DO_WHILE0({                                                                     \
-	if (ACPI_IS_DEBUG_ENABLED(Level, Component)) {                                   \
-	    Function(Level, Line, Filename, Modulename, Component, __VA_ARGS__);         \
-	}                                                                                \
-    })
-
-#define ACPI_ACTUAL_DEBUG(Level, Line, Filename, Modulename, Component, ...)          \
-    ACPI_DO_DEBUG_PRINT(AcpiDebugPrint, Level, Line, Filename, Modulename, Component, \
-			__VA_ARGS__)
-
-#define ACPI_ACTUAL_DEBUG_RAW(Level, Line, Filename, Modulename, Component, ...)         \
-    ACPI_DO_DEBUG_PRINT(AcpiDebugPrintRaw, Level, Line, Filename, Modulename, Component, \
-			__VA_ARGS__)
-
-#define ACPI_DEBUG_PRINT(plist) ACPI_ACTUAL_DEBUG plist
-#define ACPI_DEBUG_PRINT_RAW(plist) ACPI_ACTUAL_DEBUG_RAW plist
-
-#endif
 
 /*
  * Function entry tracing

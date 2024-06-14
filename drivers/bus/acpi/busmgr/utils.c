@@ -83,7 +83,7 @@ ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
 	ACPI_DEBUG_PRINT((ACPI_DB_WARN,
 			  "Format specifies more objects [%d] than exist in package "
 			  "[%d].",
-			  format_count, package->package.count));
+			  format_count, package->Package.Count));
 	return_ACPI_STATUS(AE_BAD_DATA);
     }
 
@@ -264,7 +264,7 @@ ACPI_STATUS acpi_evaluate_integer(ACPI_HANDLE handle,
 
     *data = element.Integer.Value;
 
-    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Return value [%lu]\n", *data));
+    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Return value [%llu]\n", *data));
 
     return_ACPI_STATUS(AE_OK);
 }
@@ -329,7 +329,7 @@ ACPI_STATUS acpi_evaluate_reference(ACPI_HANDLE handle,
 	    status = AE_BAD_DATA;
 	    ACPI_DEBUG_PRINT((ACPI_DB_ERROR,
 			      "Expecting a [Reference] package element, found type %X\n",
-			      element->type));
+			      element->Type));
 	    acpi_util_eval_error(handle, pathname, status);
 	    break;
 	}

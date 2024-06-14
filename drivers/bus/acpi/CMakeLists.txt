@@ -39,7 +39,7 @@ list(APPEND ACPICA_SOURCE
     acpica/executer/exconvrt.c
     acpica/executer/excreate.c
     acpica/executer/exdebug.c
-    # acpica/executer/exdump.c
+    acpica/executer/exdump.c
     acpica/executer/exfield.c
     acpica/executer/exfldio.c
     acpica/executer/exmisc.c
@@ -75,8 +75,8 @@ list(APPEND ACPICA_SOURCE
     acpica/namespace/nsalloc.c
     acpica/namespace/nsarguments.c
     acpica/namespace/nsconvert.c
-    # acpica/namespace/nsdump.c
-    # acpica/namespace/nsdumpdv.c
+    acpica/namespace/nsdump.c
+    acpica/namespace/nsdumpdv.c
     acpica/namespace/nseval.c
     acpica/namespace/nsinit.c
     acpica/namespace/nsload.c
@@ -107,8 +107,8 @@ list(APPEND ACPICA_SOURCE
     acpica/resources/rsaddr.c
     acpica/resources/rscalc.c
     acpica/resources/rscreate.c
-    # acpica/resources/rsdump.c
-    # acpica/resources/rsdumpinfo.c
+    acpica/resources/rsdump.c
+    acpica/resources/rsdumpinfo.c
     acpica/resources/rsinfo.c
     acpica/resources/rsio.c
     acpica/resources/rsirq.c
@@ -134,7 +134,7 @@ list(APPEND ACPICA_SOURCE
     acpica/utilities/utcache.c
     acpica/utilities/utcksum.c
     acpica/utilities/utcopy.c
-    # acpica/utilities/utdebug.c
+    acpica/utilities/utdebug.c
     acpica/utilities/utdecode.c
     acpica/utilities/utdelete.c
     acpica/utilities/uterror.c
@@ -154,7 +154,7 @@ list(APPEND ACPICA_SOURCE
     acpica/utilities/utownerid.c
     acpica/utilities/utpredef.c
     acpica/utilities/utprint.c
-    # acpica/utilities/utresdecode.c
+    acpica/utilities/utresdecode.c
     acpica/utilities/utresrc.c
     acpica/utilities/utstate.c
     acpica/utilities/utstring.c

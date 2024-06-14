@@ -44,14 +44,6 @@
 #ifndef __ACPI_H__
 #define __ACPI_H__
 
-#if defined(__REACTOS__) && !defined(UNIT_TEST)
-/*
- * Header inclusion HACK.
- */
-#include <ntddk.h>
-#undef ACPI_BIOS_ERROR // ACPI_BIOS_ERROR is redefined in acoutput.h
-#endif /* __REACTOS__ */
-
 /*
  * Public include files for use by code that will interface to ACPICA.
  *

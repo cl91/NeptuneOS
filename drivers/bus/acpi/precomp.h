@@ -3,6 +3,7 @@
 #include <initguid.h>
 #include <ntddk.h>
 #include <acpi.h>
+#include <accommon.h>
 
 #include <wdmguid.h>
 #include <acpiioct.h>

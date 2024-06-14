@@ -131,6 +131,7 @@
 @ cdecl memmove(ptr ptr long)
 @ cdecl memset(ptr long long)
 @ cdecl strcat(str str)
+@ cdecl strncat(str str long)
 @ cdecl strcmp()
 @ cdecl strchr(str long)
 @ cdecl strstr(str str)
