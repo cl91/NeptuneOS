@@ -961,10 +961,10 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 					      &Locals.PendingIrps[2*i+1]));
     }
     AWAIT(IopWaitForMultipleIoCompletions, AsyncState, Locals, Thread,
-	  FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount);
+	  FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 2);
 
     /* Set the device IDs of the child nodes. */
-    for (ULONG i = 0; i < 2 * Locals.DeviceCount; i++) {
+    for (ULONG i = 0; i < Locals.DeviceCount * 2; i++) {
 	PPENDING_IRP PendingIrp = Locals.PendingIrps[i];
 	assert(PendingIrp != NULL);
 	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
@@ -997,7 +997,7 @@ out:
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
     if (Locals.PendingIrps != NULL) {
-	for (ULONG i = 0; i < Locals.DeviceCount; i++) {
+	for (ULONG i = 0; i < Locals.DeviceCount * 2; i++) {
 	    if (Locals.PendingIrps[i] != NULL) {
 		IopCleanupPendingIrp(Locals.PendingIrps[i]);
 	    }
