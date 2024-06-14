@@ -261,6 +261,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
 		DbgPrint("    x86 acpi rsdp of size 0x%zx\n", BootInfoHeader->len);
+		HalAcpiDumpRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1), 6);
 		break;
 	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
 		DbgPrint("    x86 multiboot2 framebuffer info of size 0x%zx\n", BootInfoHeader->len);

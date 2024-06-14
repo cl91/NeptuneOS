@@ -52,6 +52,9 @@ PDEVICE_OBJECT AcpiOsGetBusFdo()
 VOID AcpiOsSetRootSystemTable(ACPI_PHYSICAL_ADDRESS Rsdt,
 			      ULONG Length)
 {
+    DPRINT("Setting XSDT to 0x%llx, Length 0x%x\n", Rsdt, Length);
+    assert(Rsdt);
+    assert(Length);
     AcpiRootSystemTable = Rsdt;
     AcpiRootSystemTableLength = Length;
 }

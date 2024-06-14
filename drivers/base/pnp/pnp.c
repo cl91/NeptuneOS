@@ -714,6 +714,25 @@ static NTSTATUS PnpDeviceQueryDeviceUsageNotification(IN PDEVICE_OBJECT DeviceOb
     return STATUS_NOT_IMPLEMENTED;
 }
 
+static NTSTATUS PnpBuildDeviceRequirementLists()
+{
+    for (ULONG i = 0; i < ARRAYSIZE(PnpDevices); i++) {
+	ULONG Size = MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE + PnpDevices[i].ResourceDescriptorSize;
+	PIO_RESOURCE_REQUIREMENTS_LIST ResList = (PIO_RESOURCE_REQUIREMENTS_LIST)ExAllocatePool(Size);
+	if (ResList == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	ResList->ListSize = Size;
+	ResList->List[0].Version = 1;
+	ResList->List[0].Revision = 1;
+	ResList->List[0].Count = PnpDevices[i].ResourceDescriptorCount;
+	memcpy((PCHAR)ResList + MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE,
+	       PnpDevices[i].ResourceDescriptors, PnpDevices[i].ResourceDescriptorSize);
+	PnpDevices[i].ResourceRequirementsList = ResList;
+    }
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS PnpRootStartDevice(IN PDEVICE_OBJECT DeviceObject,
 				   IN PCM_RESOURCE_LIST ResourceList,
 				   IN PCM_RESOURCE_LIST ResourceListTranslated)
@@ -742,12 +761,21 @@ static NTSTATUS PnpRootStartDevice(IN PDEVICE_OBJECT DeviceObject,
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PartialList->PartialDescriptors[0];
     if (Res->Type != CmResourceTypeMemory) {
 	DPRINT1("Invalid resource type %d\n", Res->Type);
+	assert(FALSE);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    if (!Res->u.Memory.Start.QuadPart || !Res->u.Memory.Length) {
+	DPRINT1("Invalid IO memory 0x%llx length 0x%x\n",
+		Res->u.Memory.Start.QuadPart, Res->u.Memory.Length);
+	assert(FALSE);
 	return STATUS_DEVICE_ENUMERATION_ERROR;
     }
     AcpiResourceDescriptors[0].u.Memory.MinimumAddress = Res->u.Memory.Start;
     AcpiResourceDescriptors[0].u.Memory.MaximumAddress = Res->u.Memory.Start;
     AcpiResourceDescriptors[0].u.Memory.Length = Res->u.Memory.Length;
-    return STATUS_SUCCESS;
+
+    /* Allocate the resource requirement lists */
+    return PnpBuildDeviceRequirementLists();
 }
 
 /*
@@ -885,25 +913,6 @@ NTAPI NTSTATUS PnpDispatch(IN PDEVICE_OBJECT DeviceObject,
     return PnpRootDispatch(DeviceObject, Irp);
 }
 
-static NTSTATUS PnpBuildDeviceRequirementLists()
-{
-    for (ULONG i = 0; i < ARRAYSIZE(PnpDevices); i++) {
-	ULONG Size = MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE + PnpDevices[i].ResourceDescriptorSize;
-	PIO_RESOURCE_REQUIREMENTS_LIST ResList = (PIO_RESOURCE_REQUIREMENTS_LIST)ExAllocatePool(Size);
-	if (ResList == NULL) {
-	    return STATUS_NO_MEMORY;
-	}
-	ResList->ListSize = Size;
-	ResList->List[0].Version = 1;
-	ResList->List[0].Revision = 1;
-	ResList->List[0].Count = PnpDevices[i].ResourceDescriptorCount;
-	memcpy((PCHAR)ResList + MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE,
-	       PnpDevices[i].ResourceDescriptors, PnpDevices[i].ResourceDescriptorSize);
-	PnpDevices[i].ResourceRequirementsList = ResList;
-    }
-    return STATUS_SUCCESS;
-}
-
 static NTSTATUS NTAPI PnpAddDevice(IN PDRIVER_OBJECT DriverObject,
 				   IN PDEVICE_OBJECT Pdo)
 {
@@ -924,14 +933,9 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 {
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    /* Allocate the resource requirement lists */
-    NTSTATUS Status = PnpBuildDeviceRequirementLists();
+    NTSTATUS Status = PnpInitHardwareDatabase();
     if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
-    Status = PnpInitHardwareDatabase();
-    if (!NT_SUCCESS(Status)) {
-        ERR_(ISAPNP, "Failed to initialize ISA PNP hardware database, status = 0x%x\n", Status);
+        ERR_(PNPMGR, "Failed to initialize PNP hardware database, status = 0x%x\n", Status);
 	return Status;
     }
 

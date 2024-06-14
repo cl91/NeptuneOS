@@ -125,6 +125,12 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
 	DPRINT1("Invalid resource type %d\n", Res->Type);
 	return STATUS_DEVICE_ENUMERATION_ERROR;
     }
+    if (!Res->u.Memory.Start.QuadPart || !Res->u.Memory.Length) {
+	DPRINT1("Invalid IO memory 0x%llx length 0x%x\n",
+		Res->u.Memory.Start.QuadPart, Res->u.Memory.Length);
+	assert(FALSE);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
     AcpiOsSetBusFdo(Fdo);
     AcpiOsSetRootSystemTable(Res->u.Memory.Start.QuadPart,
 			     Res->u.Memory.Length);
