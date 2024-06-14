@@ -610,13 +610,27 @@ static NTSTATUS CmpEnumerateKey(IN PCM_KEY_OBJECT Key,
 		       BufferSize, ResultLength, Utf16);
 }
 
+VOID CmpDbgDumpNode(IN PCM_NODE Node)
+{
+    CmDbgPrint("Name %s NameLength %d Utf16NameLength %d",
+	       Node->Name, Node->NameLength, Node->Utf16NameLength);
+}
+
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
 {
-    CmDbg("Dumping key %s\n", Key->Node.Name);
+    CmDbg("Dumping key ");
+    CmpDbgDumpNode(&Key->Node);
+    CmDbgPrint(" MaxNameLength %d MaxUtf16NameLength %d MaxClassLength %d"
+	       " MaxValueNameLength %d MaxUtf16ValueNameLength %d"
+	       " MaxValueDataLength %d MaxUtf16ValueDataLength %d\n",
+	       Key->MaxNameLength, Key->MaxUtf16NameLength,
+	       Key->MaxClassLength, Key->MaxValueNameLength,
+	       Key->MaxUtf16ValueNameLength, Key->MaxValueDataLength,
+	       Key->MaxUtf16ValueDataLength);
     for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
         LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
 	    if (Node->Type == CM_NODE_KEY) {
-		CmDbgPrint("    KEY %s\n", Node->Name);
+		CmDbgPrint("  KEY %s\n", Node->Name);
 	    } else if (Node->Type == CM_NODE_VALUE) {
 		CmpDbgDumpValue((PCM_REG_VALUE)Node);
 	    }

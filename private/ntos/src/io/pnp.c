@@ -725,6 +725,12 @@ static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DE
 	Res.u.Dma.Port = 0;
 	break;
 
+    case CmResourceTypeMemory:
+	/* Assign the first available memory-mapped IO region */
+	Res.u.Memory.Start = Desc.u.Memory.MinimumAddress;
+	Res.u.Memory.Length = Desc.u.Memory.Length;
+	break;
+
     default:
 	assert(FALSE);
     }

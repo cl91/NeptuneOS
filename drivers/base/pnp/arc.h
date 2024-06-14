@@ -1,5 +1,7 @@
 #include <ntddk.h>
 
+#define HARDWARE_DESCRIPTION_KEY L"\\Registry\\Machine\\Hardware\\Description"
+
 typedef enum _IDENTIFIER_FLAG {
     Failed = 0x01,
     ReadOnly = 0x02,

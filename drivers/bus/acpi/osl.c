@@ -247,26 +247,39 @@ VOID AcpiOsStall(UINT32 microseconds)
     KeStallExecutionProcessor(microseconds);
 }
 
-ACPI_STATUS AcpiOsCreateSemaphore(UINT32 MaxUnits,
-				  UINT32 InitialUnits,
-				  ACPI_SEMAPHORE *OutHandle)
+ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle,
+				UINT32 Units,
+				UINT16 Timeout)
 {
-    if (!OutHandle) {
-	DPRINT1("Bad parameter\n");
-	return AE_BAD_PARAMETER;
+    if (AcpiInterrupt) {
+	IoAcquireInterruptMutex(AcpiInterrupt);
     }
-    *OutHandle = AcpiInterrupt;
     return AE_OK;
 }
 
-ACPI_STATUS AcpiOsCreateLock(ACPI_SPINLOCK *OutHandle)
+ACPI_STATUS AcpiOsSignalSemaphore(ACPI_SEMAPHORE Handle,
+				  UINT32 Units)
 {
-    if (!OutHandle) {
-	DPRINT1("Bad parameter\n");
-	return AE_BAD_PARAMETER;
+    if (AcpiInterrupt) {
+	IoReleaseInterruptMutex(AcpiInterrupt);
     }
-    *OutHandle = AcpiInterrupt;
     return AE_OK;
+}
+
+ACPI_CPU_FLAGS AcpiOsAcquireLock(ACPI_SPINLOCK Handle)
+{
+    if (AcpiInterrupt) {
+	IoAcquireInterruptMutex(AcpiInterrupt);
+    }
+    return 0;
+}
+
+VOID AcpiOsReleaseLock(ACPI_SPINLOCK Handle,
+		       ACPI_CPU_FLAGS Flags)
+{
+    if (AcpiInterrupt) {
+	IoReleaseInterruptMutex(AcpiInterrupt);
+    }
 }
 
 static NTAPI BOOLEAN AcpiIsr(PKINTERRUPT Interrupt, PVOID ServiceContext)

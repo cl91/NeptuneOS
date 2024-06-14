@@ -6,6 +6,9 @@
 /* Uncomment this to enable debugging outputs specific to Mm */
 /* #define MMDBG */
 
+/* Uncomment this to enable debugging outputs specific to Cm */
+/* #define CMDBG */
+
 #include <kernel/gen_config.h>
 
 #include <limits.h>

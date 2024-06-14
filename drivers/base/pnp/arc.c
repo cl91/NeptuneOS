@@ -505,8 +505,7 @@ NTSTATUS ArcSetupHardwareDescriptionDatabase(IN PCONFIGURATION_COMPONENT_DATA Co
 {
     /* Setup the key name */
     UNICODE_STRING KeyName;
-    RtlInitUnicodeString(&KeyName,
-			 L"\\Registry\\Machine\\Hardware\\Description");
+    RtlInitUnicodeString(&KeyName, HARDWARE_DESCRIPTION_KEY);
     OBJECT_ATTRIBUTES ObjectAttributes;
     InitializeObjectAttributes(&ObjectAttributes,
 			       &KeyName, OBJ_CASE_INSENSITIVE, NULL, NULL);

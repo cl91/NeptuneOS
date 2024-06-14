@@ -7,6 +7,7 @@
  * that implements the PNP bus driver interface.
  */
 
+#include <stdio.h>
 #include <assert.h>
 #include <ntddk.h>
 #include <wchar.h>
@@ -294,12 +295,161 @@ static NTSTATUS IsaPnpDetectFDC(IN PCONFIGURATION_COMPONENT_DATA BusKey)
     return IsaPnpSetupFdcPeripheralKey(BusKey, ControllerKey);
 }
 
-static NTSTATUS IsaPnpInitHwDb()
+static NTSTATUS PnpInitProcessorDatabase(IN PCONFIGURATION_COMPONENT_DATA SystemKey,
+					 IN PSYSTEM_BASIC_INFORMATION BasicInfo,
+					 IN PSYSTEM_PROCESSOR_INFORMATION CpuInfo)
+{
+    /* Query basic system information and basic processor information */
+    NTSTATUS Status = NtQuerySystemInformation(SystemBasicInformation,
+					       BasicInfo, sizeof(*BasicInfo), NULL);
+    if (!NT_SUCCESS(Status))
+	return Status;
+    Status = NtQuerySystemInformation(SystemProcessorInformation,
+				      CpuInfo, sizeof(*CpuInfo), NULL);
+    if (!NT_SUCCESS(Status))
+	return Status;
+
+    for (ULONG i = 0; i < BasicInfo->NumberOfProcessors; i++) {
+	/* Build full ID string for each processor */
+	CHAR Buffer[128];
+	PCHAR FamilyId = "Unknown";
+	if (CpuInfo->ProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
+	    FamilyId = "x86";
+	} else if (CpuInfo->ProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) {
+	    FamilyId = "AMD64";
+	}
+	snprintf(Buffer, sizeof(Buffer), "%s Family %u Model %u Stepping %u",
+		 FamilyId, CpuInfo->ProcessorLevel, CpuInfo->ProcessorRevision >> 8,
+		 CpuInfo->ProcessorRevision & 0xff);
+	/* Setup the Configuration Entry for the Processor */
+	PCONFIGURATION_COMPONENT_DATA ConfigData;
+	Status = ArcCreateComponentKey(SystemKey, ProcessorClass, CentralProcessor,
+				       0, i, AFFINITY_MASK(i), Buffer, NULL, 0,
+				       &ConfigData);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+	/* Add the same configuration entry for the floating point processor.
+	 * We require i686 so FPU is always available. */
+	Status = ArcCreateComponentKey(SystemKey, ProcessorClass, FloatingPointProcessor,
+				       0, i, AFFINITY_MASK(i), Buffer, NULL, 0,
+				       &ConfigData);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+    }
+    return STATUS_SUCCESS;
+}
+
+/* Add the string value to the registry under the given key */
+static NTSTATUS PnpSetRegStringValue(IN HANDLE KeyHandle,
+				     IN PCWSTR ValueNameBuffer,
+				     IN PCSTR ValueStringBuffer)
+{
+    ANSI_STRING ValueStringA;
+    UNICODE_STRING ValueString;
+    RtlInitAnsiString(&ValueStringA, ValueStringBuffer);
+    NTSTATUS Status = RtlAnsiStringToUnicodeString(&ValueString, &ValueStringA, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    UNICODE_STRING ValueName;
+    RtlInitUnicodeString(&ValueName, ValueNameBuffer);
+    Status = NtSetValueKey(KeyHandle, &ValueName, 0, REG_SZ, ValueString.Buffer,
+			   ValueString.Length + sizeof(UNICODE_NULL));
+    RtlFreeUnicodeString(&ValueString);
+    return Status;
+}
+
+static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicInfo,
+					     IN PSYSTEM_PROCESSOR_INFORMATION CpuInfo)
+{
+    for (ULONG i = 0; i < BasicInfo->NumberOfProcessors; i++) {
+	/* Open the CPU hardware description key */
+	CHAR Buffer[256];
+	snprintf(Buffer, sizeof(Buffer), "%ws\\System\\CentralProcessor\\%d",
+		 HARDWARE_DESCRIPTION_KEY, i);
+	ANSI_STRING KeyNameA;
+	RtlInitAnsiString(&KeyNameA, Buffer);
+	UNICODE_STRING KeyName;
+	NTSTATUS Status = RtlAnsiStringToUnicodeString(&KeyName, &KeyNameA, TRUE);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+	OBJECT_ATTRIBUTES ObjectAttributes;
+	InitializeObjectAttributes(&ObjectAttributes, &KeyName, OBJ_CASE_INSENSITIVE, NULL,
+				   NULL);
+	HANDLE KeyHandle = NULL;
+	Status = NtOpenKey(&KeyHandle, KEY_READ | KEY_WRITE, &ObjectAttributes);
+	RtlFreeUnicodeString(&KeyName);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+
+	/* Check if we have extended CPUID that supports name ID. If we do,
+	 * populate the ProcessorNameString value in the registry. */
+	int CPUID[4];
+	__cpuid(CPUID, 0x80000000);
+	int ExtendedId = CPUID[0];
+	memset(Buffer, 0, sizeof(Buffer));
+	PCHAR Ptr = Buffer;
+	if (ExtendedId >= 0x80000004) {
+	    /* Do all the CPUIDs required to get the full name */
+	    for (ExtendedId = 2; ExtendedId <= 4; ExtendedId++) {
+		/* Do the CPUID and save the name string */
+		__cpuid(CPUID, 0x80000000 | ExtendedId);
+		((PULONG)Ptr)[0] = CPUID[0];
+		((PULONG)Ptr)[1] = CPUID[1];
+		((PULONG)Ptr)[2] = CPUID[2];
+		((PULONG)Ptr)[3] = CPUID[3];
+		/* Go to the next name string */
+		Ptr += 16;
+	    }
+	}
+	Status = PnpSetRegStringValue(KeyHandle, L"ProcessorNameString", Buffer);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+
+        /* Get the Vendor ID and add it to the registry */
+	__cpuid(CPUID, 0);
+	memset(Buffer, 0, sizeof(Buffer));
+	Ptr = Buffer;
+	((PULONG)Ptr)[0] = CPUID[1];
+	((PULONG)Ptr)[1] = CPUID[3];
+	((PULONG)Ptr)[2] = CPUID[2];
+	Status = PnpSetRegStringValue(KeyHandle, L"VendorIdentifier", Buffer);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+
+        /* Add the FeatureBits to the registry. */
+	Status = NtSetValueKeyA(KeyHandle, "FeatureSet", 0, REG_DWORD,
+				&CpuInfo->ProcessorFeatureBits, 4);
+    out:
+	NtClose(KeyHandle);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+    }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PnpInitHardwareDatabase()
 {
     PCONFIGURATION_COMPONENT_DATA SystemKey = NULL;
     NTSTATUS Status = ArcCreateSystemKey(&SystemKey);
     if (!NT_SUCCESS(Status)) {
-        ERR_(ISAPNP, "Failed to root ARC configuration key, status = 0x%x\n", Status);
+        ERR_(ISAPNP, "Failed to create root ARC configuration key, status = 0x%x\n",
+	     Status);
+	return Status;
+    }
+
+    SYSTEM_BASIC_INFORMATION BasicInfo;
+    SYSTEM_PROCESSOR_INFORMATION CpuInfo;
+    Status = PnpInitProcessorDatabase(SystemKey, &BasicInfo, &CpuInfo);
+    if (!NT_SUCCESS(Status)) {
+        ERR_(PNPMGR, "Failed to initialize processor database, status = 0x%x\n", Status);
 	return Status;
     }
 
@@ -338,11 +488,24 @@ static NTSTATUS IsaPnpInitHwDb()
 
     Status = IsaPnpDetectFDC(BusKey);
     if (!NT_SUCCESS(Status)) {
-        ERR_(ISAPNP, "Failed to detect floppy disk controllers, error = 0x%x\n", Status);
+        ERR_(ISAPNP, "Failed to detect floppy disk controllers, error = 0x%x\n",
+	     Status);
 	goto out;
     }
 
     Status = ArcSetupHardwareDescriptionDatabase(SystemKey);
+    if (!NT_SUCCESS(Status)) {
+        ERR_(PNPMGR, "Failed to setup hardware description database, error = 0x%x\n",
+	     Status);
+	goto out;
+    }
+
+    Status = PnpPopulateProcessorDatabase(&BasicInfo, &CpuInfo);
+    if (!NT_SUCCESS(Status)) {
+        ERR_(PNPMGR, "Failed to setup processor database, error = 0x%x\n",
+	     Status);
+	goto out;
+    }
 
 out:
     if (SystemKey != NULL) {
@@ -766,7 +929,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    Status = IsaPnpInitHwDb();
+    Status = PnpInitHardwareDatabase();
     if (!NT_SUCCESS(Status)) {
         ERR_(ISAPNP, "Failed to initialize ISA PNP hardware database, status = 0x%x\n", Status);
 	return Status;

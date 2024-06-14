@@ -200,7 +200,6 @@ static PWSTR ConfigurationValueNames[] = {
     L"Component Information"
 };
 
-
 /*
  * Free the configuration information allocated previously. Information must
  * have exactly three elements. The Information array itself is not freed.
@@ -508,9 +507,10 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
 
     /* Loop through the subkeys to try to find the specified bus */
     for (ULONG BusLoop = 0; BusLoop < SubKeyCount; BusLoop++) {
+	ULONG RequiredBufferSize;
 	Status = NtEnumerateKey(RootKeyHandle, BusLoop,
 				KeyBasicInformation, BasicInfo,
-				SubKeyBufferSize, &SubKeyBufferSize);
+				SubKeyBufferSize, &RequiredBufferSize);
 
 	/* We shouldn't get an error here, but if we did, something
 	 * is seriously wrong, but continue anyway. */
@@ -737,8 +737,9 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
     /* Enumerate each subkey to find the specified bus type and bus number */
     for (ULONG BusLoop = 0; BusLoop < SubKeyCount; BusLoop++) {
 	/* Enumerate the Key */
+	ULONG RequiredBufferSize;
 	Status = NtEnumerateKey(RootKeyHandle, BusLoop, KeyBasicInformation,
-				BasicInfo, SubKeyBufferSize, &SubKeyBufferSize);
+				BasicInfo, SubKeyBufferSize, &RequiredBufferSize);
 
 	/* We shouldn't get an error here, but if we did, something
 	 * is seriously wrong, but continue anyway. */
@@ -747,7 +748,7 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 	    continue;
 
 	/* We are only interested the following three adapter types so skip anything
-	 * that isn't on the list. You ask me why? Windows does this so we do too. */
+	 * that isn't on the list. */
 	PCWSTR AdapterNames[] = {
 	    L"MultifunctionAdapter",
 	    L"EisaAdapter",

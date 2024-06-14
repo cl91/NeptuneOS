@@ -50,20 +50,16 @@ typedef UCHAR UINT8;
 /* Likewise, since there is only one thread (ie. the main thread) beside
  * the ISR thread, acquiring a semaphore or a spinlock can simply be
  * defined as acquiring the interrupt mutex. */
-#define ACPI_SEMAPHORE PKINTERRUPT
-#define ACPI_SPINLOCK PKINTERRUPT
+#define ACPI_SEMAPHORE PVOID
+#define ACPI_SPINLOCK PVOID
+#define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsCreateSemaphore
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsDeleteSemaphore
-#define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsWaitSemaphore
-#define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsSignalSemaphore
-#define AcpiOsDeleteSemaphore(Handle) ({ (VOID)(Handle); AE_OK; })
-#define AcpiOsWaitSemaphore(Handle, Units, Timeout)			\
-    ({ IoAcquireInterruptMutex(Handle); (VOID)(Units); (VOID)(Timeout); AE_OK; })
-#define AcpiOsSignalSemaphore(Handle, Units)			\
-    ({ IoReleaseInterruptMutex(Handle); (VOID)(Units); AE_OK; })
+#define AcpiOsCreateSemaphore(MaxUnits, InitialUnits, OutHandle)	\
+    ({ if (OutHandle) *OutHandle = (PVOID)0x100;			\
+	(VOID)(MaxUnits); (VOID)(InitialUnits); AE_OK; })
+#define AcpiOsDeleteSemaphore(Handle) ({ assert(Handle); AE_OK; })
+#define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsCreateLock
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsDeleteLock
-#define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsAcquireLock
-#define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsReleaseLock
-#define AcpiOsDeleteLock(Handle) ({ (VOID)(Handle); ; })
-#define AcpiOsAcquireLock(Handle) ({ IoAcquireInterruptMutex(Handle); 0; })
-#define AcpiOsReleaseLock(Handle, Flags)			\
-    ({ IoReleaseInterruptMutex(Handle); (VOID)(Flags); })
+#define AcpiOsCreateLock(OutHandle)				\
+    ({ if (OutHandle) *OutHandle = (PVOID)0x200; AE_OK; })
+#define AcpiOsDeleteLock(Handle) assert(Handle)

@@ -45,7 +45,7 @@ QSI_DEF(SystemBasicInformation)
 /* Class 1 - Processor Information */
 QSI_DEF(SystemProcessorInformation)
 {
-    PSYSTEM_PROCESSOR_INFORMATION Spi = (PSYSTEM_PROCESSOR_INFORMATION) Buffer;
+    PSYSTEM_PROCESSOR_INFORMATION Spi = (PSYSTEM_PROCESSOR_INFORMATION)Buffer;
 
     *ReqSize = sizeof(SYSTEM_PROCESSOR_INFORMATION);
 

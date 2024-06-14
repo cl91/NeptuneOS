@@ -400,7 +400,9 @@ static VOID CmpDbgDumpFullResourceDescriptor(IN PCM_FULL_RESOURCE_DESCRIPTOR Des
 
 VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
 {
-    CmDbgPrint("  VALUE %s ", Value->Node.Name);
+    CmDbgPrint("  VALUE ");
+    CmpDbgDumpNode(&Value->Node);
+    CmDbgPrint("  ");
     switch (Value->Type) {
     case REG_NONE:
 	CmDbgPrint("TYPE REG_NONE\n");

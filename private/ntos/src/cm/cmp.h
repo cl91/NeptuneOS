@@ -1,8 +1,5 @@
 #pragma once
 
-/* Uncomment this to enable debugging outputs specific to Cm */
-/* #define CMDBG */
-
 #include <ntos.h>
 
 #define NTOS_CM_TAG	(EX_POOL_TAG('n','t','c','m'))
@@ -177,6 +174,7 @@ NTSTATUS CmpKeyObjectCloseProc(IN ASYNC_STATE State,
 			       IN POBJECT Object);
 VOID CmpKeyObjectDeleteProc(IN POBJECT Self);
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key);
+VOID CmpDbgDumpNode(IN PCM_NODE Node);
 
 /* value.c */
 VOID CmpFreeValue(IN PCM_REG_VALUE Value);

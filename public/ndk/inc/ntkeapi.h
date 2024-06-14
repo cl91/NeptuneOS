@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ntdef.h"
+#include "ntstatus.h"
+
 //
 // Processor Architectures
 //
@@ -241,6 +244,11 @@ typedef struct DECLSPEC_ALIGN(16) _XSAVE_FORMAT {
 #ifdef _M_AMD64
 #include <ntamd64.h>
 #endif
+
+FORCEINLINE KAFFINITY AFFINITY_MASK(ULONG Index)
+{
+    return (KAFFINITY)1 << Index;
+}
 
 /*
  * Native Calls. These are only available for client threads.
