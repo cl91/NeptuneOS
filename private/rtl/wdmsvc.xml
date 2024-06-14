@@ -64,6 +64,18 @@
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
+  <svc name="WdmReserveIoMemoryWindow">
+    <parameter annotation="in" type="ULONG64" name="PhysicalBase" />
+    <parameter annotation="in" type="ULONG" name="WindowBits" />
+    <parameter annotation="in" type="MEMORY_CACHING_TYPE" name="CacheType" />
+    <parameter annotation="out" type="ptr::PVOID" name="MappedAddress" />
+  </svc>
+
+  <svc name="WdmMapIoMemory">
+    <parameter annotation="in" type="MWORD" name="VirtualAddress" />
+    <parameter annotation="in" type="MWORD" name="WindowSize" />
+  </svc>
+
   <svc name="WdmHalMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>

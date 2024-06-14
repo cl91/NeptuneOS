@@ -712,7 +712,7 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
     BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhysicalBase) &&
 	IS_LARGE_PAGE_ALIGNED(VirtualBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
     RET_ERR_EX(MiMapIoMemory(Vad->VSpace, PhysicalBase, VirtualBase, WindowSize,
-			     MM_RIGHTS_RW, Attributes, UseLargePage),
+			     MM_RIGHTS_RW, Attributes, UseLargePage, FALSE),
 	       MmDeleteVad(Vad));
     return STATUS_SUCCESS;
 }

@@ -125,7 +125,7 @@ PVOID AcpiOsMapMemory(ACPI_PHYSICAL_ADDRESS Phys, ACPI_SIZE Length)
 
 VOID AcpiOsUnmapMemory(PVOID virt, ACPI_SIZE length)
 {
-    DPRINT("AcpiOsMapMemory(phys 0x%p  size 0x%zX)\n", virt, length);
+    DPRINT("AcpiOsUnmapMemory(virt %p  size 0x%zX)\n", virt, length);
 
     ASSERT(virt);
 

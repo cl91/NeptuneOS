@@ -21,9 +21,6 @@
 #define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageDirBits)
 #define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
 
-#define PAGE_ALIGN64(p)			((ULONG64)(p) & ~((ULONG64)PAGE_SIZE - 1))
-#define PAGE_ALIGN_UP64(p)		(PAGE_ALIGN64((ULONG64)(p) + PAGE_SIZE - 1))
-
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define LARGE_PAGE_ALIGN_UP(p)		(LARGE_PAGE_ALIGN((MWORD)(p)+LARGE_PAGE_SIZE-1))
@@ -347,6 +344,7 @@ typedef struct _MMVAD {
 	    PUNTYPED RootUntyped; /* Root untyped from which the physical memory
 				   * of this VAD is allocated. This is only used
 				   * in the case of map register memory. */
+	    MEMORY_CACHING_TYPE CacheType; /* Cache type of the page mappings. */
 	} PhysicalSectionView;	/* Physical section is neither owned
 				 * or mirrored memory */
 	struct {
@@ -422,9 +420,11 @@ typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
 
 typedef struct _PAGING_STRUCTURE {
     CAP_TREE_NODE TreeNode; /* Cap tree node of the page cap. Must be first member. */
-    AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree, Key is virt addr */
-    struct _PAGING_STRUCTURE *SuperStructure; /* Parent structure, so for page it's page table, etc. */
-    AVL_TREE SubStructureTree; /* Substructure tree, so for page table it's pages in it, etc */
+    AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree. Key is virt addr */
+    struct _PAGING_STRUCTURE *SuperStructure; /* Parent structure, so for page it's
+					       * page table, etc. */
+    AVL_TREE SubStructureTree; /* Substructure tree, so for page table these are
+				* the pages that were mapped into it, etc */
     MWORD VSpaceCap; /* Cap of the VSpace that this paging structure is mapped into */
     PAGING_STRUCTURE_TYPE Type;
     BOOLEAN Mapped;

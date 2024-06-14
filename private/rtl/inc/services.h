@@ -18,6 +18,11 @@ typedef seL4_Word MWORD;
 #define PAGE_ALIGN(p)			((MWORD)(p) & ~(PAGE_SIZE - 1))
 #define PAGE_ALIGN_UP(p)		(PAGE_ALIGN((MWORD)(p) + PAGE_SIZE - 1))
 #define IS_PAGE_ALIGNED(p)		(((MWORD)(p)) == PAGE_ALIGN(p))
+#define ALIGN_DOWN_64(n, align)		(((ULONGLONG)(n)) & ~((align) - 1LL))
+#define ALIGN_UP_64(n, align)		ALIGN_DOWN_64(((ULONGLONG)(n))+(align)-1LL, (align))
+#define PAGE_ALIGN64(p)			ALIGN_DOWN_64(p, PAGE_SIZE)
+#define PAGE_ALIGN_UP64(p)		ALIGN_UP_64(p, PAGE_SIZE)
+#define IS_PAGE_ALIGNED64(p)		(PAGE_ALIGN64(p) == (ULONG64)(p))
 
 /* The maximum number of zero bits (starting from the most significant bit) in
  * the virtual address that the user can specify in virtual memory allocation.

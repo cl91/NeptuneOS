@@ -42,6 +42,17 @@
 #define SEC_GLOBAL		(0x20000000UL)
 #define SEC_LARGE_PAGES		(0x80000000UL)
 
+typedef enum _MEMORY_CACHING_TYPE {
+    MmNonCached = FALSE,
+    MmCached = TRUE,
+    MmFrameBufferCached = 2,
+    MmWriteCombined = MmFrameBufferCached,
+    MmHardwareCoherentCached,
+    MmNonCachedUnordered,
+    MmUSWCCached,
+    MmMaximumCacheType
+} MEMORY_CACHING_TYPE;
+
 /*
  * Memory Information Classes for NtQueryVirtualMemory
  */

@@ -97,20 +97,6 @@ typedef enum _IO_ALLOCATION_ACTION {
 
 typedef ULONG NODE_REQUIREMENT;
 
-typedef enum _MEMORY_CACHING_TYPE_ORIG {
-    MmFrameBufferCached = 2
-} MEMORY_CACHING_TYPE_ORIG;
-
-typedef enum _MEMORY_CACHING_TYPE {
-    MmNonCached = FALSE,
-    MmCached = TRUE,
-    MmWriteCombined = MmFrameBufferCached,
-    MmHardwareCoherentCached,
-    MmNonCachedUnordered,
-    MmUSWCCached,
-    MmMaximumCacheType
-} MEMORY_CACHING_TYPE;
-
 /* DEVICE_DESCRIPTION.Version */
 
 #define DEVICE_DESCRIPTION_VERSION        0x0000

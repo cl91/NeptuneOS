@@ -216,7 +216,8 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 		       IN MWORD WindowSize,
 		       IN PAGING_RIGHTS Rights,
 		       IN PAGING_ATTRIBUTES Attributes,
-		       IN BOOLEAN LargePage);
+		       IN BOOLEAN LargePage,
+		       IN BOOLEAN IgnoreConflict);
 VOID MiDeletePage(IN PPAGING_STRUCTURE Page);
 
 static inline BOOLEAN MiPagingTypeIsRoot(IN PAGING_STRUCTURE_TYPE Type)

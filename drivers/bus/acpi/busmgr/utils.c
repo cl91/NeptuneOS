@@ -295,7 +295,7 @@ ACPI_STATUS acpi_evaluate_reference(ACPI_HANDLE handle,
     package = (ACPI_OBJECT *)buffer.Pointer;
 
     if ((buffer.Length == 0) || !package) {
-	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "No return object (len %X ptr %p)\n",
+	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "No return object (len %zX ptr %p)\n",
 			  buffer.Length, package));
 	status = AE_BAD_DATA;
 	acpi_util_eval_error(handle, pathname, status);

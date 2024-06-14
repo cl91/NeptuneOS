@@ -904,6 +904,12 @@ static NTSTATUS MiMapIoPage(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(IS_PAGE_ALIGNED(PhyAddr));
     assert(IS_PAGE_ALIGNED(VirtAddr));
+
+    /* Make sure the target virtual address does not already have a page mapped there. */
+    if (MmQueryPageEx(VSpace, VirtAddr, TRUE)) {
+	return STATUS_ALREADY_COMMITTED;
+    }
+
     if (*LargePage) {
 	*LargePage = IS_LARGE_PAGE_ALIGNED(PhyAddr) && IS_LARGE_PAGE_ALIGNED(VirtAddr);
     }
@@ -948,7 +954,7 @@ retry:
 	       == CAP_TREE_NODE_PAGING_STRUCTURE) {
 	PPAGING_STRUCTURE OldPage = MiCapTreeGetFirstChildTyped(Untyped,
 								PAGING_STRUCTURE);
-	if (Page->Type != PageTy) {
+	if (OldPage->Type != PageTy) {
 	    return STATUS_INVALID_PARAMETER;
 	}
 	RET_ERR(MiCreateSharedPage(OldPage, VSpace, VirtAddr, Rights, Attributes, &Page));
@@ -971,7 +977,8 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 		       IN MWORD WindowSize,
 		       IN PAGING_RIGHTS Rights,
 		       IN PAGING_ATTRIBUTES Attributes,
-		       IN BOOLEAN LargePage)
+		       IN BOOLEAN LargePage,
+		       IN BOOLEAN IgnoreConflict)
 {
     assert(VSpace != NULL);
     assert(WindowSize != 0);
@@ -983,7 +990,7 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 	}
 	Status = MiMapIoPage(VSpace, PhyAddr + MappedSize, VirtAddr + MappedSize,
 			     Rights, Attributes, &LargePage);
-	if (!NT_SUCCESS(Status)) {
+	if (!(NT_SUCCESS(Status) || (IgnoreConflict && Status == STATUS_ALREADY_COMMITTED))) {
 	    goto err;
 	}
 	MappedSize += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE);
