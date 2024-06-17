@@ -1659,3 +1659,29 @@ typedef struct _HWPROFILE_CHANGE_NOTIFICATION {
     USHORT Size;
     GUID Event;
 } HWPROFILE_CHANGE_NOTIFICATION, *PHWPROFILE_CHANGE_NOTIFICATION;
+
+typedef enum _DEVICE_REGISTRY_PROPERTY {
+    DevicePropertyDeviceDescription,
+    DevicePropertyHardwareID,
+    DevicePropertyCompatibleIDs,
+    DevicePropertyBootConfiguration,
+    DevicePropertyBootConfigurationTranslated,
+    DevicePropertyClassName,
+    DevicePropertyClassGuid,
+    DevicePropertyDriverKeyName,
+    DevicePropertyManufacturer,
+    DevicePropertyFriendlyName,
+    DevicePropertyLocationInformation,
+    DevicePropertyPhysicalDeviceObjectName,
+    DevicePropertyBusTypeGuid,
+    DevicePropertyLegacyBusType,
+    DevicePropertyBusNumber,
+    DevicePropertyEnumeratorName,
+    DevicePropertyAddress,
+    DevicePropertyUINumber,
+    DevicePropertyInstallState,
+    DevicePropertyRemovalPolicy,
+    DevicePropertyResourceRequirements,
+    DevicePropertyAllocatedResources,
+    DevicePropertyContainerID
+} DEVICE_REGISTRY_PROPERTY;
