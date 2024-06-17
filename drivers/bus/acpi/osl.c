@@ -316,9 +316,11 @@ UINT32 AcpiOsInstallInterruptHandler(UINT32 InterruptNumber,
     AcpiIsrContext.Context = Context;
     AcpiIsrContext.IrqNumber = InterruptNumber;
 
+    /* We should really set ShareVector to TRUE but since interrupt sharing is not
+     * yet implemented, we set it to FALSE for now. */
     NTSTATUS Status = IoConnectInterrupt(&AcpiInterrupt, AcpiIsr, &AcpiIsrContext,
 					 InterruptNumber, InterruptNumber, InterruptNumber,
-					 LevelSensitive, TRUE, 0, FALSE);
+					 LevelSensitive, FALSE, 0, FALSE);
 
     if (!NT_SUCCESS(Status)) {
 	DPRINT("Could not connect to interrupt %d\n", InterruptNumber);
