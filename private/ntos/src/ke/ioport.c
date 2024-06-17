@@ -2,6 +2,7 @@
 
 NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
 			  IN USHORT PortNum,
+			  IN USHORT Count,
 			  IN PX86_IOPORT IoPort)
 {
     assert(CSpace != NULL);
@@ -10,13 +11,13 @@ NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
     RET_ERR(MmAllocateCap(CSpace, &Cap));
     assert(Cap != 0);
     int Error = seL4_X86_IOPortControl_Issue(seL4_CapIOPortControl,
-					     PortNum, PortNum,
+					     PortNum, PortNum + Count - 1,
 					     CSpace->TreeNode.Cap,
 					     Cap, CSpace->Depth);
     if (Error != 0) {
 	MmDeallocateCap(CSpace, Cap);
 	DbgTrace("seL4_X86_IOPortControl_Issue(0x%x, 0x%x, 0x%x, 0x%zx, 0x%zx, %d) failed\n",
-		 seL4_CapIOPortControl, PortNum, PortNum,
+		 seL4_CapIOPortControl, PortNum, PortNum + Count - 1,
 		 CSpace->TreeNode.Cap, Cap, CSpace->Depth);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
@@ -25,6 +26,7 @@ NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
 			    CAP_TREE_NODE_X86_IOPORT,
 			    Cap, CSpace, NULL);
     IoPort->PortNum = PortNum;
+    IoPort->Count = Count;
     return STATUS_SUCCESS;
 }
 

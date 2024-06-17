@@ -144,7 +144,7 @@ NTSTATUS HalpInitCmos(VOID);
 NTSTATUS HalpInitDma(VOID);
 
 /* init.c */
-NTSTATUS HalpEnableIoPort(USHORT PortNum);
+NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count);
 UCHAR __inbyte(IN USHORT PortNum);
 VOID __outbyte(IN USHORT PortNum,
 	       IN UCHAR Data);

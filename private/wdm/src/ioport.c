@@ -2,26 +2,29 @@
 
 LIST_ENTRY IopX86PortList;
 
-NTAPI NTSTATUS IoEnableX86Port(USHORT PortNum)
+static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
 {
-    IopAllocateObject(IoPort, X86_IOPORT);
-    MWORD Cap = 0;
-    RET_ERR_EX(WdmEnableX86Port(PortNum, &Cap),
-	       IopFreePool(IoPort));
-    IoPort->Cap = Cap;
-    IoPort->PortNum = PortNum;
-    InsertTailList(&IopX86PortList, &IoPort->Link);
-    return STATUS_SUCCESS;
-}
-
-static inline PX86_IOPORT IopFindIoPort(USHORT PortNum)
-{
+    Len /= 8;
     LoopOverList(Entry, &IopX86PortList, X86_IOPORT, Link) {
-	if (Entry->PortNum == PortNum) {
+	if (Entry->PortNum == PortNum && Entry->Count == Len) {
 	    return Entry;
 	}
     }
-    return NULL;
+    PX86_IOPORT IoPort = ExAllocatePool(sizeof(X86_IOPORT));
+    if (!IoPort) {
+	return NULL;
+    }
+    MWORD Cap = 0;
+    NTSTATUS Status = WdmEnableX86Port(PortNum, Len, &Cap);
+    if (!NT_SUCCESS(Status)) {
+	IopFreePool(IoPort);
+	return NULL;
+    }
+    IoPort->Cap = Cap;
+    IoPort->PortNum = PortNum;
+    IoPort->Count = Len;
+    InsertTailList(&IopX86PortList, &IoPort->Link);
+    return IoPort;
 }
 
 #define DEFINE_READ_PORT_HELPER(Len, Type)			\
@@ -61,18 +64,9 @@ static inline PX86_IOPORT IopFindIoPort(USHORT PortNum)
 #define DEFINE_PORT_IN_FUNC(Name, Len, Type)			\
     __cdecl Type __in##Name(IN USHORT PortNum)			\
     {								\
-	PX86_IOPORT Port = IopFindIoPort(PortNum);		\
+	PX86_IOPORT Port = IopEnableIoPort(PortNum, Len);	\
 	if (Port == NULL) {					\
-	    NTSTATUS Status = IoEnableX86Port(PortNum);		\
-	    if (!NT_SUCCESS(Status)) {				\
-		RtlRaiseStatus(Status);				\
-	    }							\
-	    Port = IopFindIoPort(PortNum);			\
-	    if (Port == NULL) {					\
-		/* This is a bug. */				\
-		assert(FALSE);					\
-		RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
-	    }							\
+	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
 	}							\
 	Type Value;						\
 	NTSTATUS Status = IopReadPort##Len(Port, &Value);	\
@@ -86,18 +80,9 @@ static inline PX86_IOPORT IopFindIoPort(USHORT PortNum)
     __cdecl VOID __out##Name(IN USHORT PortNum,			\
 			     IN Type Data)			\
     {								\
-	PX86_IOPORT Port = IopFindIoPort(PortNum);		\
+	PX86_IOPORT Port = IopEnableIoPort(PortNum, Len);	\
 	if (Port == NULL) {					\
-	    NTSTATUS Status = IoEnableX86Port(PortNum);		\
-	    if (!NT_SUCCESS(Status)) {				\
-		RtlRaiseStatus(Status);				\
-	    }							\
-	    Port = IopFindIoPort(PortNum);			\
-	    if (Port == NULL) {					\
-		/* This is a bug. */				\
-		assert(FALSE);					\
-		RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
-	    }							\
+	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
 	}							\
 	NTSTATUS Status = IopWritePort##Len(Port, Data);	\
 	if (!NT_SUCCESS(Status)) {				\

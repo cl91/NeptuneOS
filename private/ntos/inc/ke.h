@@ -122,6 +122,7 @@ static inline VOID KeSignalNotification(IN PNOTIFICATION Notification)
 typedef struct _X86_IOPORT {
     CAP_TREE_NODE TreeNode; /* Must be first member */
     USHORT PortNum;	    /* Port number */
+    USHORT Count;	    /* This equals port size in bytes.  */
     LIST_ENTRY Link;	    /* Links all enabled ports of a process */
 } X86_IOPORT, *PX86_IOPORT;
 
@@ -834,6 +835,7 @@ BOOLEAN KePtrInSvcMsgBuf(IN MWORD Ptr, IN struct _THREAD *Thread);
 /* ioport.c */
 NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
 			  IN USHORT PortNum,
+			  IN USHORT Count,
 			  IN PX86_IOPORT IoPort);
 NTSTATUS KeReadPort8(IN PX86_IOPORT Port,
 		     OUT UCHAR *Out);
@@ -841,10 +843,11 @@ NTSTATUS KeWritePort8(IN PX86_IOPORT Port,
 		      IN UCHAR Data);
 
 static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
+				      IN USHORT Count,
 				      IN PX86_IOPORT IoPort)
 {
     extern CNODE MiNtosCNode;
-    return KeEnableIoPortEx(&MiNtosCNode, PortNum, IoPort);
+    return KeEnableIoPortEx(&MiNtosCNode, PortNum, Count, IoPort);
 }
 
 /* init.c */

@@ -2,7 +2,7 @@
 
 static LIST_ENTRY HalpX86IoPortList;
 
-NTSTATUS HalpEnableIoPort(USHORT PortNum)
+NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count)
 {
     PLIST_ENTRY InsertAfter = &HalpX86IoPortList;
     /* Traverse the port list and find where we should insert the node */
@@ -17,7 +17,7 @@ NTSTATUS HalpEnableIoPort(USHORT PortNum)
 	}
     }
     HalpAllocatePool(IoPort, X86_IOPORT);
-    RET_ERR_EX(KeEnableIoPort(PortNum, IoPort),
+    RET_ERR_EX(KeEnableIoPort(PortNum, Count, IoPort),
 	       HalpFreePool(IoPort));
     InsertHeadList(InsertAfter, &IoPort->Link);
     return STATUS_SUCCESS;

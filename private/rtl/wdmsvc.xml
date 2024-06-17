@@ -37,6 +37,7 @@
 
   <svc name="WdmEnableX86Port">
     <parameter annotation="in" type="USHORT" name="PortNum" />
+    <parameter annotation="in" type="USHORT" name="Count" />
     <parameter annotation="out" type="ptr::MWORD" name="Cap" />
   </svc>
 

@@ -235,7 +235,7 @@ typedef struct _ADAPTER_OBJ_CREATE_CTX {
     UCHAR DmaChannel;
 } ADAPTER_OBJ_CREATE_CTX, *PADAPTER_OBJ_CREATE_CTX;
 
-#define ENABLE_PORT(p)		HalpEnableIoPort((USHORT)(ULONG_PTR)(p))
+#define ENABLE_PORT(p)		HalpEnableIoPort((USHORT)(ULONG_PTR)(p), 1)
 #define DMA_INIT_CONTROLLER(Ctrl)					\
     RET_ERR(ENABLE_PORT(&Ctrl->ClearBytePointer));			\
     RET_ERR(ENABLE_PORT(&Ctrl->Mode));					\

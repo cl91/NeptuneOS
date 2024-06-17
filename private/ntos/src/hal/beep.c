@@ -95,8 +95,8 @@ NTSTATUS WdmHalMakeBeep(IN ASYNC_STATE AsyncState,
 
 NTSTATUS HalpInitBeep()
 {
-    RET_ERR(HalpEnableIoPort(SYSTEM_CONTROL_PORT_B));
-    RET_ERR(HalpEnableIoPort(TIMER_CONTROL_PORT));
-    RET_ERR(HalpEnableIoPort(TIMER_CHANNEL2_DATA_PORT));
+    RET_ERR(HalpEnableIoPort(SYSTEM_CONTROL_PORT_B, 1));
+    RET_ERR(HalpEnableIoPort(TIMER_CONTROL_PORT, 1));
+    RET_ERR(HalpEnableIoPort(TIMER_CHANNEL2_DATA_PORT, 1));
     return STATUS_SUCCESS;
 }

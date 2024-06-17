@@ -249,6 +249,7 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
                           IN PTHREAD Thread,
                           IN USHORT PortNum,
+			  IN USHORT Count,
                           OUT MWORD *Cap)
 {
     assert(Thread != NULL);
@@ -259,7 +260,7 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
     assert(DriverObject != NULL);
 
     IopAllocatePool(IoPort, X86_IOPORT);
-    RET_ERR_EX(KeEnableIoPortEx(Process->CSpace, PortNum, IoPort),
+    RET_ERR_EX(KeEnableIoPortEx(Process->CSpace, PortNum, Count, IoPort),
 	       IopFreePool(IoPort));
     InsertTailList(&DriverObject->IoPortList, &IoPort->Link);
     *Cap = IoPort->TreeNode.Cap;

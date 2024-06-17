@@ -2500,8 +2500,8 @@ static inline VOID HalpVgaClearScreen()
 
 static inline NTSTATUS HalpInitVgaIoPort()
 {
-    RET_ERR(HalpEnableIoPort(VGA_CURSOR_CONTROL_PORT));
-    RET_ERR(HalpEnableIoPort(VGA_CURSOR_DATA_PORT));
+    RET_ERR(HalpEnableIoPort(VGA_CURSOR_CONTROL_PORT, 1));
+    RET_ERR(HalpEnableIoPort(VGA_CURSOR_DATA_PORT, 1));
     return STATUS_SUCCESS;
 }
 

@@ -117,8 +117,8 @@ static ULONG HalpSetCmosData(IN ULONG BusNumber,
 
 NTSTATUS HalpInitCmos()
 {
-    RET_ERR(HalpEnableIoPort(CMOS_CONTROL_PORT));
-    RET_ERR(HalpEnableIoPort(CMOS_DATA_PORT));
+    RET_ERR(HalpEnableIoPort(CMOS_CONTROL_PORT, 1));
+    RET_ERR(HalpEnableIoPort(CMOS_DATA_PORT, 1));
     return STATUS_SUCCESS;
 }
 

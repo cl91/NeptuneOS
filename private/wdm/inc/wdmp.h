@@ -61,6 +61,7 @@ typedef struct _X86_IOPORT {
     MWORD Cap;
     LIST_ENTRY Link;
     USHORT PortNum;
+    USHORT Count;
 } X86_IOPORT, *PX86_IOPORT;
 
 /*
