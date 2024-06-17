@@ -107,7 +107,6 @@ list(APPEND ACPICA_SOURCE
     acpica/resources/rsaddr.c
     acpica/resources/rscalc.c
     acpica/resources/rscreate.c
-    acpica/resources/rsdump.c
     acpica/resources/rsdumpinfo.c
     acpica/resources/rsinfo.c
     acpica/resources/rsio.c
@@ -167,7 +166,10 @@ list(APPEND ACPICA_SOURCE
     acpica/utilities/utxfinit.c
     acpica/utilities/utxfmutex.c)
 
-add_library(acpica ${ACPICA_SOURCE})
+list(APPEND ACPICA_SOURCE_DEBUG
+    acpica/resources/rsdump.c)
+
+add_library(acpica ${ACPICA_SOURCE} $<$<CONFIG:Debug>:${ACPICA_SOURCE_DEBUG}>)
 
 list(APPEND ACPI_SOURCE
     busmgr/bus.c
