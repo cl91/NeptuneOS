@@ -142,7 +142,7 @@ ACPI_STATUS ACPI_INIT_FUNCTION AcpiInitializeTables(ACPI_TABLE_DESC *InitialTabl
      * Root Table Array. This array contains the information of the RSDT/XSDT
      * in a common, more usable format.
      */
-    Status = AcpiTbParseRootTable(XsdtAddress);
+    Status = AcpiTbParseRootTable(XsdtAddress, AcpiOsIsRootSystemTableLegacy());
     return_ACPI_STATUS(Status);
 }
 

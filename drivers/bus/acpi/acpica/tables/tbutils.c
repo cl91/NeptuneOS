@@ -239,9 +239,10 @@ static ACPI_PHYSICAL_ADDRESS AcpiTbGetRootTableEntry(UINT8 *TableEntry,
  *
  ******************************************************************************/
 
-ACPI_STATUS ACPI_INIT_FUNCTION AcpiTbParseRootTable(ACPI_PHYSICAL_ADDRESS XsdtAddress)
+ACPI_STATUS ACPI_INIT_FUNCTION AcpiTbParseRootTable(ACPI_PHYSICAL_ADDRESS XsdtAddress,
+						    INT IsLegacy)
 {
-    UINT32 TableEntrySize = ACPI_XSDT_ENTRY_SIZE;
+    UINT32 TableEntrySize = IsLegacy ? ACPI_RSDT_ENTRY_SIZE : ACPI_XSDT_ENTRY_SIZE;
     UINT32 i;
     UINT32 TableCount;
     ACPI_TABLE_HEADER *Table;

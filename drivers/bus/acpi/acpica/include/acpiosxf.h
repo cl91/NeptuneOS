@@ -98,6 +98,10 @@ ACPI_PHYSICAL_ADDRESS
 AcpiOsGetRootSystemTable(void);
 #endif
 
+#ifndef ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsIsRootSystemTableLegacy
+INT AcpiOsIsRootSystemTableLegacy();
+#endif
+
 #ifndef ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsPredefinedOverride
 ACPI_STATUS
 AcpiOsPredefinedOverride(const ACPI_PREDEFINED_NAMES *InitVal, ACPI_STRING *NewVal);

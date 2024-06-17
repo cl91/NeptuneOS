@@ -15,7 +15,7 @@ typedef struct _ACPI_ISR_CONTEXT {
 
 static PDEVICE_OBJECT AcpiBusFdo;
 static ACPI_PHYSICAL_ADDRESS AcpiRootSystemTable;
-static ULONG AcpiRootSystemTableLength;
+static BOOLEAN AcpiRootSystemTableIsLegacy;
 static PKINTERRUPT AcpiInterrupt;
 static ACPI_ISR_CONTEXT AcpiIsrContext;
 
@@ -56,14 +56,19 @@ VOID AcpiOsSetRootSystemTable(ACPI_PHYSICAL_ADDRESS Rsdt,
     assert(Rsdt);
     assert(Length);
     AcpiRootSystemTable = Rsdt;
-    AcpiRootSystemTableLength = Length;
+    AcpiRootSystemTableIsLegacy = Length == 4;
 }
 
-ACPI_PHYSICAL_ADDRESS AcpiOsGetRootSystemTable(VOID)
+ACPI_PHYSICAL_ADDRESS AcpiOsGetRootSystemTable()
 {
     DPRINT("AcpiOsGetRootSystemTable\n");
 
     return AcpiRootSystemTable;
+}
+
+INT AcpiOsIsRootSystemTableLegacy()
+{
+    return AcpiRootSystemTableIsLegacy;
 }
 
 ACPI_STATUS AcpiOsPredefinedOverride(const ACPI_PREDEFINED_NAMES *PredefinedObject,

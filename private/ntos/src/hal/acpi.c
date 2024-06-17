@@ -12,7 +12,10 @@ CM_PARTIAL_RESOURCE_DESCRIPTOR HalAcpiGetRsdtResource()
     assert(HalpAcpiRsdp.XsdtAddress || HalpAcpiRsdp.RsdtAddress);
     ULONG64 Address = HalpAcpiRsdp.XsdtAddress ?
 	HalpAcpiRsdp.XsdtAddress : HalpAcpiRsdp.RsdtAddress;
-    ULONG Length = HalpAcpiRsdp.Length ? HalpAcpiRsdp.Length : 8;
+    /* Inform the client of whether we got an RSDT or an XSDT. If we are running
+     * on a BIOS with ACPI 1.0 (or if the XSDT address is NULL, which for ACPI >= 2.0
+     * is a violation of the ACPI specs), we have an RSDT. Otherwise it's an XSDT. */
+    ULONG Length = HalpAcpiRsdp.XsdtAddress && HalpAcpiRsdp.Revision ? 8 : 4;
     CM_PARTIAL_RESOURCE_DESCRIPTOR Rsdt = {
 	.Type = CmResourceTypeMemory,
 	.u.Memory = {

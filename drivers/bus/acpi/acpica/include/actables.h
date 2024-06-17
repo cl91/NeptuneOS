@@ -165,7 +165,8 @@ void AcpiTbInstallTableWithOverride(ACPI_TABLE_DESC *NewTableDesc, BOOLEAN Overr
 				    UINT32 *TableIndex);
 
 ACPI_STATUS
-AcpiTbParseRootTable(ACPI_PHYSICAL_ADDRESS RsdpAddress);
+AcpiTbParseRootTable(ACPI_PHYSICAL_ADDRESS RsdpAddress,
+		     INT IsLegacy);
 
 ACPI_STATUS
 AcpiTbGetTable(ACPI_TABLE_DESC *TableDesc, ACPI_TABLE_HEADER **OutTable);
