@@ -137,8 +137,8 @@ NTAPI BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
 	PdoDeviceExtension = (PVOID)DeviceExtension;
 	DPRINT1("PDO(b=0x%x, d=0x%x, f=0x%x)<-%s\n",
 		PdoDeviceExtension->ParentFdoExtension->BaseBus,
-		PdoDeviceExtension->Slot.u.bits.DeviceNumber,
-		PdoDeviceExtension->Slot.u.bits.FunctionNumber, IrpString);
+		PdoDeviceExtension->Slot.Bits.DeviceNumber,
+		PdoDeviceExtension->Slot.Bits.FunctionNumber, IrpString);
     } else if (DeviceExtension->ExtensionType == PciFdoExtensionType) {
 	/* Choose the correct debug level based on which function this is */
 	if (IoStackLocation->MajorFunction == IRP_MJ_POWER) {
@@ -267,8 +267,8 @@ NTAPI VOID PciDebugPrintIoResReqList(IN PIO_RESOURCE_REQUIREMENTS_LIST Requireme
     DPRINT1("     BusNumber            0x%x\n", Requirements->BusNumber);
     DPRINT1("     SlotNumber           %d (0x%x), (d/f = 0x%x/0x%x)\n",
 	    Requirements->SlotNumber, Requirements->SlotNumber,
-	    ((PCI_SLOT_NUMBER *)&Requirements->SlotNumber)->u.bits.DeviceNumber,
-	    ((PCI_SLOT_NUMBER *)&Requirements->SlotNumber)->u.bits.FunctionNumber);
+	    ((PCI_SLOT_NUMBER *)&Requirements->SlotNumber)->Bits.DeviceNumber,
+	    ((PCI_SLOT_NUMBER *)&Requirements->SlotNumber)->Bits.FunctionNumber);
     DPRINT1("     AlternativeLists     %u\n", AlternativeLists);
 
     /* Scan alternative lists */

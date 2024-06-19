@@ -19,7 +19,7 @@ NTAPI ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    Base = PciData->u.type1.IOLimit;
+    Base = PciData->Type1.IOLimit;
 
     /* Low bit specifies 32-bit address, top bits specify the base */
     Is32Bit = (Base & 0xF) == 1;
@@ -28,8 +28,8 @@ NTAPI ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
     /* Is it 32-bit? */
     if (Is32Bit) {
 	/* Read the upper 16-bits from the other register */
-	IoBase |= PciData->u.type1.IOBaseUpper16 << 16;
-	ASSERT(PciData->u.type1.IOLimit & 0x1);
+	IoBase |= PciData->Type1.IOBaseUpper16 << 16;
+	ASSERT(PciData->Type1.IOLimit & 0x1);
     }
 
     /* Return the base address */
@@ -43,7 +43,7 @@ NTAPI ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the limit */
-    Limit = PciData->u.type1.IOLimit;
+    Limit = PciData->Type1.IOLimit;
 
     /* Low bit specifies 32-bit address, top bits specify the limit */
     Is32Bit = (Limit & 0xF) == 1;
@@ -52,8 +52,8 @@ NTAPI ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
     /* Is it 32-bit? */
     if (Is32Bit) {
 	/* Read the upper 16-bits from the other register */
-	IoLimit |= PciData->u.type1.IOLimitUpper16 << 16;
-	ASSERT(PciData->u.type1.IOBase & 0x1);
+	IoLimit |= PciData->Type1.IOLimitUpper16 << 16;
+	ASSERT(PciData->Type1.IOBase & 0x1);
     }
 
     /* Return the I/O limit */
@@ -65,7 +65,7 @@ NTAPI ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Return the memory base */
-    return (PciData->u.type1.MemoryBase << 16);
+    return (PciData->Type1.MemoryBase << 16);
 }
 
 NTAPI ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
@@ -73,7 +73,7 @@ NTAPI ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Return the memory limit */
-    return (PciData->u.type1.MemoryLimit << 16) | 0xFFFFF;
+    return (PciData->Type1.MemoryLimit << 16) | 0xFFFFF;
 }
 
 NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
@@ -84,7 +84,7 @@ NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    PrefetchBase = PciData->u.type1.PrefetchBase;
+    PrefetchBase = PciData->Type1.PrefetchBase;
 
     /* Low bit specifies 64-bit address, top bits specify the base */
     Is64Bit = (PrefetchBase & 0xF) == 1;
@@ -93,7 +93,7 @@ NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData
     /* Is it 64-bit? */
     if (Is64Bit) {
 	/* Read the upper 32-bits from the other register */
-	Base.HighPart = PciData->u.type1.PrefetchBaseUpper32;
+	Base.HighPart = PciData->Type1.PrefetchBaseUpper32;
     }
 
     /* Return the base */
@@ -108,7 +108,7 @@ NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciDat
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    PrefetchLimit = PciData->u.type1.PrefetchLimit;
+    PrefetchLimit = PciData->Type1.PrefetchLimit;
 
     /* Low bit specifies 64-bit address, top bits specify the limit */
     Is64Bit = (PrefetchLimit & 0xF) == 1;
@@ -117,7 +117,7 @@ NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciDat
     /* Is it 64-bit? */
     if (Is64Bit) {
 	/* Read the upper 32-bits from the other register */
-	Limit.HighPart = PciData->u.type1.PrefetchLimitUpper32;
+	Limit.HighPart = PciData->Type1.PrefetchLimitUpper32;
     }
 
     /* Return the limit */
@@ -162,7 +162,7 @@ NTAPI BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
     /* Check for hacks first, then check the ProgIf of the bridge */
     if (!(PdoExtension->HackFlags & PCI_HACK_SUBTRACTIVE_DECODE) &&
-	(Current->ProgIf != 1) && ((PciData->u.type1.IOLimit & 0xF0) == 0xF0)) {
+	(Current->ProgIf != 1) && ((PciData->Type1.IOLimit & 0xF0) == 0xF0)) {
 	/* A subtractive decode bridge would have a ProgIf 1, and no I/O limit */
 	DPRINT("Subtractive decode does not seem to be enabled\n");
 	return FALSE;
@@ -185,7 +185,7 @@ NTAPI BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* If we found subtractive decode, we'll need a resource update later */
-    DPRINT1("PCI : Subtractive decode on 0x%x\n", Current->u.type1.SecondaryBus);
+    DPRINT1("PCI : Subtractive decode on 0x%x\n", Current->Type1.SecondaryBus);
     PdoExtension->UpdateHardware = TRUE;
     return TRUE;
 }
@@ -219,7 +219,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Scan all current and limit descriptors for each BAR needed */
-    BarArray = Current->u.type1.BaseAddresses;
+    BarArray = Current->Type1.BaseAddresses;
     for (i = 0; i < 6; i++) {
 	/* Get the current resource descriptor, and the limit requirement */
 	CmDescriptor = &Resources->Current[i];
@@ -240,12 +240,12 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	    /* Is this the ROM BAR? */
 	    if (i == 5) {
 		/* Read the correct bar, with the appropriate mask */
-		Bar = Current->u.type1.ROMBaseAddress;
+		Bar = Current->Type1.ROMBaseAddress;
 		BarMask = PCI_ADDRESS_ROM_ADDRESS_MASK;
 
 		/* Decode the base address, and write down the length */
 		Base.LowPart = Bar & BarMask;
-		DPRINT1("ROM BAR Base: %lx\n", Base.LowPart);
+		DPRINT1("ROM BAR Base: %x\n", Base.LowPart);
 		CmDescriptor->u.Memory.Length = IoDescriptor->u.Memory.Length;
 	    } else {
 		/* Otherwise, get the BAR from the array */
@@ -270,7 +270,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
 		/* Decode the base address, and write down the length */
 		Base.LowPart = Bar & BarMask;
-		DPRINT1("BAR Base: %lx\n", Base.LowPart);
+		DPRINT1("BAR Base: %x\n", Base.LowPart);
 		CmDescriptor->u.Generic.Length = IoDescriptor->u.Generic.Length;
 	    }
 	} else {
@@ -283,11 +283,11 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* I/O Port Requirements */
 		Base.LowPart = PciBridgeIoBase(Current);
 		Limit.LowPart = PciBridgeIoLimit(Current);
-		DPRINT1("Bridge I/O Base and Limit: %lx %lx\n", Base.LowPart,
+		DPRINT1("Bridge I/O Base and Limit: %x %x\n", Base.LowPart,
 			Limit.LowPart);
 
 		/* Do we have any I/O Port data? */
-		if (!(Base.LowPart) && (Current->u.type1.IOLimit)) {
+		if (!(Base.LowPart) && (Current->Type1.IOLimit)) {
 		    /* There's a limit */
 		    HaveIoLimit = TRUE;
 		}
@@ -297,7 +297,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		Limit.LowPart = PciBridgeMemoryLimit(Current);
 
 		/* These should always be there, so check their alignment */
-		DPRINT1("Bridge MEM Base and Limit: %lx %lx\n", Base.LowPart,
+		DPRINT1("Bridge MEM Base and Limit: %xlx %xlx\n", Base.LowPart,
 			Limit.LowPart);
 		CheckAlignment = TRUE;
 	    } else if (i == 4) {
@@ -307,7 +307,8 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		Limit = PciBridgePrefetchMemoryLimit(Current);
 
 		/* If it's there, check the alignment */
-		DPRINT1("Bridge Prefetch MEM Base and Limit: %I64x %I64x\n", Base, Limit);
+		DPRINT1("Bridge Prefetch MEM Base and Limit: %I64x %I64x\n",
+			Base.QuadPart, Limit.QuadPart);
 		CheckAlignment = TRUE;
 	    }
 
@@ -345,15 +346,15 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Save PCI settings into the PDO extension for easy access later */
-    PdoExtension->Dependent.type1.PrimaryBus = Current->u.type1.PrimaryBus;
-    PdoExtension->Dependent.type1.SecondaryBus = Current->u.type1.SecondaryBus;
-    PdoExtension->Dependent.type1.SubordinateBus = Current->u.type1.SubordinateBus;
+    PdoExtension->Dependent.type1.PrimaryBus = Current->Type1.PrimaryBus;
+    PdoExtension->Dependent.type1.SecondaryBus = Current->Type1.SecondaryBus;
+    PdoExtension->Dependent.type1.SubordinateBus = Current->Type1.SubordinateBus;
 
     /* Check for subtractive decode bridges */
     if (PdoExtension->Dependent.type1.SubtractiveDecode) {
 	/* Check if legacy VGA decodes are enabled */
 	DPRINT1("Subtractive decode bridge\n");
-	if (Current->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
+	if (Current->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	    /* Save this setting for later */
 	    DPRINT1("VGA Bridge\n");
 	    PdoExtension->Dependent.type1.VgaBitSet = TRUE;
@@ -363,7 +364,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	ASSERT(PdoExtension->Dependent.type1.IsaBitSet == FALSE);
     } else {
 	/* Check if legacy VGA decodes are enabled */
-	if (Current->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
+	if (Current->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	    /* Save this setting for later */
 	    DPRINT1("VGA Bridge\n");
 	    PdoExtension->Dependent.type1.VgaBitSet = TRUE;
@@ -373,7 +374,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	}
 
 	/* Check if legacy ISA decoding is enabled */
-	if (Current->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_ISA) {
+	if (Current->Type1.BridgeControl & PCI_ENABLE_BRIDGE_ISA) {
 	    /* Save this setting for later */
 	    DPRINT1("ISA Bridge\n");
 	    PdoExtension->Dependent.type1.IsaBitSet = TRUE;
@@ -392,7 +393,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	if (PdoExtension->Dependent.type1.SubtractiveDecode) {
 	    /* We're going to need a copy of the configuration for later use */
 	    DPRINT1("apply config save hack to ICH subtractive decode\n");
-	    SavedConfig = ExAllocatePoolWithTag(0, PCI_COMMON_HDR_LENGTH, 'PciP');
+	    SavedConfig = ExAllocatePoolWithTag(PCI_COMMON_HDR_LENGTH, 'PciP');
 	    PdoExtension->ParentFdoExtension->PreservedConfig = SavedConfig;
 	    if (SavedConfig)
 		RtlCopyMemory(SavedConfig, Current, PCI_COMMON_HDR_LENGTH);
@@ -414,7 +415,7 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PdoExtension = Context->PdoExtension;
 
     /* Scan the BARs into the limit descriptors */
-    BarArray = Working->u.type1.BaseAddresses;
+    BarArray = Working->Type1.BaseAddresses;
     Limit = PdoExtension->Resources->Limit;
 
     /* First of all, loop all the BARs */
@@ -451,8 +452,8 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	    /* Are we getting the I/O limit? */
 	    if (i == 2) {
 		/* There should be one, get it */
-		ASSERT(Working->u.type1.IOLimit != 0);
-		ASSERT((Working->u.type1.IOLimit & 0x0E) == 0);
+		ASSERT(Working->Type1.IOLimit != 0);
+		ASSERT((Working->Type1.IOLimit & 0x0E) == 0);
 		MemoryLimit.LowPart = PciBridgeIoLimit(Working);
 
 		/* Build a descriptor for this limit */
@@ -465,7 +466,7 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		(&Limit[i])->u.Port.Length = 0;
 	    } else if (i == 3) {
 		/* There should be a valid memory limit, get it */
-		ASSERT((Working->u.type1.MemoryLimit & 0xF) == 0);
+		ASSERT((Working->Type1.MemoryLimit & 0xF) == 0);
 		MemoryLimit.LowPart = PciBridgeMemoryLimit(Working);
 
 		/* Build the descriptor for it */
@@ -475,7 +476,7 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		(&Limit[i])->u.Memory.MinimumAddress.QuadPart = 0;
 		(&Limit[i])->u.Memory.MaximumAddress = MemoryLimit;
 		(&Limit[i])->u.Memory.Length = 0;
-	    } else if (Working->u.type1.PrefetchLimit) {
+	    } else if (Working->Type1.PrefetchLimit) {
 		/* Get the prefetch memory limit, if there is one */
 		MemoryLimit = PciBridgePrefetchMemoryLimit(Working);
 
@@ -494,9 +495,9 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Does the ROM have its own BAR? */
-    if (Working->u.type1.ROMBaseAddress & PCI_ROMADDRESS_ENABLED) {
+    if (Working->Type1.ROMBaseAddress & PCI_ROMADDRESS_ENABLED) {
 	/* Build a limit for it as well */
-	PciCreateIoDescriptorFromBarLimit(&Limit[i], &Working->u.type1.ROMBaseAddress,
+	PciCreateIoDescriptorFromBarLimit(&Limit[i], &Working->Type1.ROMBaseAddress,
 					  TRUE);
     }
 }
@@ -515,33 +516,33 @@ PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Conte
      * Based on the bits that were ignored (still 0), this is how we can tell
      * what the limit is.
      */
-    RtlFillMemory(PciData->u.type1.BaseAddresses,
-		  FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.CapabilitiesPtr) -
-		      FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.BaseAddresses),
+    RtlFillMemory(PciData->Type1.BaseAddresses,
+		  FIELD_OFFSET(PCI_COMMON_HEADER, Type1.CapabilitiesPtr) -
+		      FIELD_OFFSET(PCI_COMMON_HEADER, Type1.BaseAddresses),
 		  0xFF);
 
     /* Copy the saved settings from the current context into the PCI header */
-    PciData->u.type1.PrimaryBus = Current->u.type1.PrimaryBus;
-    PciData->u.type1.SecondaryBus = Current->u.type1.SecondaryBus;
-    PciData->u.type1.SubordinateBus = Current->u.type1.SubordinateBus;
-    PciData->u.type1.SecondaryLatency = Current->u.type1.SecondaryLatency;
+    PciData->Type1.PrimaryBus = Current->Type1.PrimaryBus;
+    PciData->Type1.SecondaryBus = Current->Type1.SecondaryBus;
+    PciData->Type1.SubordinateBus = Current->Type1.SubordinateBus;
+    PciData->Type1.SecondaryLatency = Current->Type1.SecondaryLatency;
 
     /* No I/O limit or base. The bottom base bit specifies that FIXME */
-    PciData->u.type1.IOBaseUpper16 = 0xFFFE;
-    PciData->u.type1.IOLimitUpper16 = 0xFFFF;
+    PciData->Type1.IOBaseUpper16 = 0xFFFE;
+    PciData->Type1.IOLimitUpper16 = 0xFFFF;
 
     /* Save secondary status before it gets cleared */
-    Context->SecondaryStatus = Current->u.type1.SecondaryStatus;
+    Context->SecondaryStatus = Current->Type1.SecondaryStatus;
 
     /* Clear secondary status */
-    Current->u.type1.SecondaryStatus = 0;
-    PciData->u.type1.SecondaryStatus = 0;
+    Current->Type1.SecondaryStatus = 0;
+    PciData->Type1.SecondaryStatus = 0;
 }
 
 NTAPI VOID PCIBridge_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     /* Copy back the secondary status register */
-    Context->Current->u.type1.SecondaryStatus = Context->SecondaryStatus;
+    Context->Current->Type1.SecondaryStatus = Context->SecondaryStatus;
 }
 
 NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
@@ -551,7 +552,7 @@ NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
     UNREFERENCED_PARAMETER(Context);
 
     /* Does this bridge have VGA decodes on it? */
-    if (PciData->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
+    if (PciData->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	/* Build a private descriptor with 3 entries */
 	IoDescriptor->Type = CmResourceTypeDevicePrivate;
 	IoDescriptor->u.DevicePrivate.Data[0] = 3;
@@ -602,7 +603,7 @@ NTAPI VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     ULONG i;
 
     /* Check if I/O Decodes are enabled */
-    //IoActive = (PciData->u.type1.IOBase & 0xF) == 1;
+    //IoActive = (PciData->Type1.IOBase & 0xF) == 1;
 
     /*
      * Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810,
@@ -617,16 +618,16 @@ NTAPI VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	  (PdoExtension->Dependent.type1.SubtractiveDecode == FALSE))) ||
 	(PdoExtension->Dependent.type1.SubtractiveDecode == FALSE)) {
 	/* No resources are needed on a subtractive decode bridge */
-	PciData->u.type1.MemoryBase = 0xFFFF;
-	PciData->u.type1.PrefetchBase = 0xFFFF;
-	PciData->u.type1.IOBase = 0xFF;
-	PciData->u.type1.IOLimit = 0;
-	PciData->u.type1.MemoryLimit = 0;
-	PciData->u.type1.PrefetchLimit = 0;
-	PciData->u.type1.PrefetchBaseUpper32 = 0;
-	PciData->u.type1.PrefetchLimitUpper32 = 0;
-	PciData->u.type1.IOBaseUpper16 = 0;
-	PciData->u.type1.IOLimitUpper16 = 0;
+	PciData->Type1.MemoryBase = 0xFFFF;
+	PciData->Type1.PrefetchBase = 0xFFFF;
+	PciData->Type1.IOBase = 0xFF;
+	PciData->Type1.IOLimit = 0;
+	PciData->Type1.MemoryLimit = 0;
+	PciData->Type1.PrefetchLimit = 0;
+	PciData->Type1.PrefetchBaseUpper32 = 0;
+	PciData->Type1.PrefetchLimitUpper32 = 0;
+	PciData->Type1.IOBaseUpper16 = 0;
+	PciData->Type1.IOLimitUpper16 = 0;
     } else {
 	/*
          * Otherwise, get the FDO to read the old PCI configuration header that
@@ -636,22 +637,22 @@ NTAPI VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	ASSERT(PdoExtension->Resources == NULL);
 
 	/* Read the PCI header data and use that here */
-	PciData->u.type1.IOBase = FdoExtension->PreservedConfig->u.type1.IOBase;
-	PciData->u.type1.IOLimit = FdoExtension->PreservedConfig->u.type1.IOLimit;
-	PciData->u.type1.MemoryBase = FdoExtension->PreservedConfig->u.type1.MemoryBase;
-	PciData->u.type1.MemoryLimit = FdoExtension->PreservedConfig->u.type1.MemoryLimit;
-	PciData->u.type1.PrefetchBase =
-	    FdoExtension->PreservedConfig->u.type1.PrefetchBase;
-	PciData->u.type1.PrefetchLimit =
-	    FdoExtension->PreservedConfig->u.type1.PrefetchLimit;
-	PciData->u.type1.PrefetchBaseUpper32 =
-	    FdoExtension->PreservedConfig->u.type1.PrefetchBaseUpper32;
-	PciData->u.type1.PrefetchLimitUpper32 =
-	    FdoExtension->PreservedConfig->u.type1.PrefetchLimitUpper32;
-	PciData->u.type1.IOBaseUpper16 =
-	    FdoExtension->PreservedConfig->u.type1.IOBaseUpper16;
-	PciData->u.type1.IOLimitUpper16 =
-	    FdoExtension->PreservedConfig->u.type1.IOLimitUpper16;
+	PciData->Type1.IOBase = FdoExtension->PreservedConfig->Header.Type1.IOBase;
+	PciData->Type1.IOLimit = FdoExtension->PreservedConfig->Header.Type1.IOLimit;
+	PciData->Type1.MemoryBase = FdoExtension->PreservedConfig->Header.Type1.MemoryBase;
+	PciData->Type1.MemoryLimit = FdoExtension->PreservedConfig->Header.Type1.MemoryLimit;
+	PciData->Type1.PrefetchBase =
+	    FdoExtension->PreservedConfig->Header.Type1.PrefetchBase;
+	PciData->Type1.PrefetchLimit =
+	    FdoExtension->PreservedConfig->Header.Type1.PrefetchLimit;
+	PciData->Type1.PrefetchBaseUpper32 =
+	    FdoExtension->PreservedConfig->Header.Type1.PrefetchBaseUpper32;
+	PciData->Type1.PrefetchLimitUpper32 =
+	    FdoExtension->PreservedConfig->Header.Type1.PrefetchLimitUpper32;
+	PciData->Type1.IOBaseUpper16 =
+	    FdoExtension->PreservedConfig->Header.Type1.IOBaseUpper16;
+	PciData->Type1.IOLimitUpper16 =
+	    FdoExtension->PreservedConfig->Header.Type1.IOLimitUpper16;
     }
 
     /* Loop bus resources */
@@ -664,16 +665,16 @@ NTAPI VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Copy the bus number data */
-    PciData->u.type1.PrimaryBus = PdoExtension->Dependent.type1.PrimaryBus;
-    PciData->u.type1.SecondaryBus = PdoExtension->Dependent.type1.SecondaryBus;
-    PciData->u.type1.SubordinateBus = PdoExtension->Dependent.type1.SubordinateBus;
+    PciData->Type1.PrimaryBus = PdoExtension->Dependent.type1.PrimaryBus;
+    PciData->Type1.SecondaryBus = PdoExtension->Dependent.type1.SecondaryBus;
+    PciData->Type1.SubordinateBus = PdoExtension->Dependent.type1.SubordinateBus;
 
     /* Copy the decode flags */
     if (PdoExtension->Dependent.type1.IsaBitSet) {
-	PciData->u.type1.BridgeControl |= PCI_ENABLE_BRIDGE_ISA;
+	PciData->Type1.BridgeControl |= PCI_ENABLE_BRIDGE_ISA;
     }
 
     if (PdoExtension->Dependent.type1.VgaBitSet) {
-	PciData->u.type1.BridgeControl |= PCI_ENABLE_BRIDGE_VGA;
+	PciData->Type1.BridgeControl |= PCI_ENABLE_BRIDGE_VGA;
     }
 }

@@ -26,7 +26,7 @@ NTAPI VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     Resources = Context->PdoExtension->Resources;
 
     /* Loop all the PCI BARs */
-    BarArray = PciData->u.type0.BaseAddresses;
+    BarArray = PciData->Type0.BaseAddresses;
     for (i = 0; i <= PCI_TYPE0_ADDRESSES; i++) {
 	/* Get the resource descriptor and limit descriptor for this BAR */
 	CmDescriptor = &Resources->Current[i];
@@ -67,7 +67,7 @@ NTAPI VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	    }
 	} else {
 	    /* Actually a ROM BAR, so read the correct register */
-	    Bar = PciData->u.type0.ROMBaseAddress;
+	    Bar = PciData->Type0.ROMBaseAddress;
 
 	    /* Apply the correct mask for ROM BARs */
 	    BarMask = PCI_ADDRESS_ROM_ADDRESS_MASK;
@@ -93,8 +93,8 @@ NTAPI VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Also save the sub-IDs that came directly from the PCI header */
-    Context->PdoExtension->SubsystemVendorId = PciData->u.type0.SubVendorID;
-    Context->PdoExtension->SubsystemId = PciData->u.type0.SubSystemID;
+    Context->PdoExtension->SubsystemVendorId = PciData->Type0.SubVendorID;
+    Context->PdoExtension->SubsystemId = PciData->Type0.SubSystemID;
 }
 
 NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
@@ -111,7 +111,7 @@ NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PciData = Context->PciData;
 
     /* And get the array of bARs */
-    BarArray = PciData->u.type0.BaseAddresses;
+    BarArray = PciData->Type0.BaseAddresses;
 
     /* First, check for IDE controllers that are not in native mode */
     if ((PdoExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
@@ -147,7 +147,7 @@ NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	/* Check for the I/O port requirement */
 	if (BarArray[1] == 0xFC01) {
 	    /* Check for completely bogus BAR */
-	    if (Current->u.type0.BaseAddresses[1] == 1) {
+	    if (Current->Type0.BaseAddresses[1] == 1) {
 		/* Ignore it */
 		BarArray[1] = 0;
 		DPRINT1("PCI - Ignored Cirrus GD54xx broken IO requirement (400 "
@@ -156,7 +156,7 @@ NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Otherwise, this BAR seems okay */
 		DPRINT1("PCI - Cirrus GD54xx 400 port IO requirement has a valid setting "
 			"(%08x)\n",
-			Current->u.type0.BaseAddresses[1]);
+			Current->Type0.BaseAddresses[1]);
 	    }
 	} else if (BarArray[1]) {
 	    /* Strange, the I/O BAR was not found as expected (or at all) */
@@ -179,7 +179,7 @@ NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Create the last descriptor based on the ROM address */
-    PciCreateIoDescriptorFromBarLimit(&Limit[i], &PciData->u.type0.ROMBaseAddress, TRUE);
+    PciCreateIoDescriptorFromBarLimit(&Limit[i], &PciData->Type0.ROMBaseAddress, TRUE);
 }
 
 NTAPI VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
@@ -194,7 +194,7 @@ NTAPI VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTE
     PciData = Context->PciData;
 
     /* Get the array of BARs */
-    BarArray = PciData->u.type0.BaseAddresses;
+    BarArray = PciData->Type0.BaseAddresses;
 
     /* Check for IDE controllers that are not in native mode */
     if ((PdoExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
@@ -209,7 +209,7 @@ NTAPI VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTE
 	BarArray[i] = 0xFFFFFFFF;
 
     /* Do the same for the PCI ROM BAR */
-    PciData->u.type0.ROMBaseAddress = PCI_ADDRESS_ROM_ADDRESS_MASK;
+    PciData->Type0.ROMBaseAddress = PCI_ADDRESS_ROM_ADDRESS_MASK;
 }
 
 NTAPI VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)

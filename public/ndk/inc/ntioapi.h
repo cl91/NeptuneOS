@@ -998,6 +998,9 @@ typedef struct _IO_RESOURCE_DESCRIPTOR {
 	    PHYSICAL_ADDRESS MaximumAddress;
 	} Generic;
 	struct {
+	    ULONG Data[3];
+	} DevicePrivate;
+	struct {
 	    ULONG Length;
 	    ULONG MinBusNumber;
 	    ULONG MaxBusNumber;

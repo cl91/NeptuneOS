@@ -39,7 +39,6 @@ NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     BOOLEAN DrainPartial, RangeChange;
     ULONG i, j;
     PPCI_FUNCTION_RESOURCES PciResources;
-    PAGED_CODE();
 
     /* Make sure we have either no resources, or at least one */
     ASSERT((ResourceList == NULL) || (ResourceList->Count == 1));
@@ -253,7 +252,7 @@ NTAPI PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Coun
 	       sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
 
     /* Allocate the list */
-    RequirementsList = ExAllocatePoolWithTag(PagedPool, Size, 'BicP');
+    RequirementsList = ExAllocatePoolWithTag(Size, 'BicP');
     if (!RequirementsList)
 	return NULL;
 
@@ -284,7 +283,7 @@ NTAPI PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNu
 	       sizeof(CM_RESOURCE_LIST);
 
     /* Allocate the list */
-    ResourceList = ExAllocatePoolWithTag(PagedPool, Size, 'BicP');
+    ResourceList = ExAllocatePoolWithTag(Size, 'BicP');
     if (!ResourceList)
 	return NULL;
 
@@ -310,8 +309,7 @@ NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
     ULONG Count, i;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, Resource, LastResource;
     PCM_RESOURCE_LIST ResourceList;
-    UCHAR InterruptLine;
-    PAGED_CODE();
+    CHAR InterruptLine;
 
     /* Assume failure */
     Count = 0;
@@ -354,7 +352,7 @@ NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
     if (PdoExtension->HeaderType == PCI_BRIDGE_TYPE) {
 	/* Read bridge settings, check if VGA is present */
 	PciReadDeviceConfig(PdoExtension, &BridgeControl,
-			    FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.BridgeControl),
+			    FIELD_OFFSET(PCI_COMMON_HEADER, Type1.BridgeControl),
 			    sizeof(USHORT));
 	if (BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	    /* Remember for later */
@@ -453,14 +451,13 @@ NTAPI NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 					     IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
     PDEVICE_RELATIONS DeviceRelations;
-    PAGED_CODE();
 
     /* If there were existing relations, free them */
     if (*pDeviceRelations)
 	ExFreePoolWithTag(*pDeviceRelations, 0);
 
     /* Allocate a new structure for the relations */
-    DeviceRelations = ExAllocatePoolWithTag(NonPagedPool, sizeof(DEVICE_RELATIONS),
+    DeviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS),
 					    'BicP');
     if (!DeviceRelations)
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -522,7 +519,6 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     NTSTATUS Status;
     PCI_COMMON_HEADER PciHeader;
-    PAGED_CODE();
 
     /* Check if the PDO has any resources, or at least an interrupt pin */
     if ((PdoExtension->Resources) || (PdoExtension->InterruptPin)) {
@@ -660,22 +656,22 @@ NTAPI BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
 	    PdoExtension->ProgIf = NewProgIf;
 
 	    /* Clear the first four BARs to reset current BAR settings */
-	    PciData->u.type0.BaseAddresses[0] = 0;
-	    PciData->u.type0.BaseAddresses[1] = 0;
-	    PciData->u.type0.BaseAddresses[2] = 0;
-	    PciData->u.type0.BaseAddresses[3] = 0;
-	    PciWriteDeviceConfig(PdoExtension, PciData->u.type0.BaseAddresses,
-				 FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.BaseAddresses),
+	    PciData->Type0.BaseAddresses[0] = 0;
+	    PciData->Type0.BaseAddresses[1] = 0;
+	    PciData->Type0.BaseAddresses[2] = 0;
+	    PciData->Type0.BaseAddresses[3] = 0;
+	    PciWriteDeviceConfig(PdoExtension, PciData->Type0.BaseAddresses,
+				 FIELD_OFFSET(PCI_COMMON_HEADER, Type0.BaseAddresses),
 				 4 * sizeof(ULONG));
 
 	    /* Re-read the BARs to have the latest data for native mode IDE */
-	    PciReadDeviceConfig(PdoExtension, PciData->u.type0.BaseAddresses,
-				FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.BaseAddresses),
+	    PciReadDeviceConfig(PdoExtension, PciData->Type0.BaseAddresses,
+				FIELD_OFFSET(PCI_COMMON_HEADER, Type0.BaseAddresses),
 				4 * sizeof(ULONG));
 
 	    /* Re-read the interrupt pin used for native mode IDE */
-	    PciReadDeviceConfig(PdoExtension, &PciData->u.type0.InterruptPin,
-				FIELD_OFFSET(PCI_COMMON_HEADER, u.type0.InterruptPin),
+	    PciReadDeviceConfig(PdoExtension, &PciData->Type0.InterruptPin,
+				FIELD_OFFSET(PCI_COMMON_HEADER, Type0.InterruptPin),
 				sizeof(UCHAR));
 
 	    /* The IDE Controller is now in native mode */
@@ -755,7 +751,7 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	if ((PciData->VendorID == 0x1045) && (PciData->DeviceID != 0xC621)) {
 	    /* Disable native mode */
 	    PciData->ProgIf &= ~5;
-	    PciData->u.type0.InterruptPin = 0;
+	    PciData->Type0.InterruptPin = 0;
 
 	    /*
                  * Because the software is modifying the actual header data from
@@ -811,16 +807,8 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	    /* Is native mode enabled after all? */
 	    if ((PciData->ProgIf & 5) != 5) {
 		/* Compatible mode, so force ISA-style IRQ14 and IRQ 15 */
-		PciData->u.type0.InterruptPin = 0;
+		PciData->Type0.InterruptPin = 0;
 	    }
-	}
-
-	/* Is this a PCI device with legacy VGA card decodes on the root bus? */
-	if ((PdoExtension->HackFlags & PCI_HACK_VIDEO_LEGACY_DECODE) &&
-	    (PCI_IS_ROOT_FDO(DeviceExtension)) &&
-	    !(DeviceExtension->BrokenVideoHackApplied)) {
-	    /* Tell the arbiter to apply a hack for these older devices */
-	    ario_ApplyBrokenVideoHack(DeviceExtension);
 	}
 
 	/* Is this a Compaq PCI Hotplug Controller (r17) on a PAE system ? */
@@ -901,16 +889,16 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
                  * defense, the PCI specification only requires stable data, not
                  * necessarily zero data, during the address phase.
                  */
-	    PciData->u.type1.MemoryBase = 0xFFFF;
-	    PciData->u.type1.PrefetchBase = 0xFFFF;
-	    PciData->u.type1.IOBase = 0xFF;
-	    PciData->u.type1.IOLimit = 0;
-	    PciData->u.type1.MemoryLimit = 0;
-	    PciData->u.type1.PrefetchLimit = 0;
-	    PciData->u.type1.PrefetchBaseUpper32 = 0;
-	    PciData->u.type1.PrefetchLimitUpper32 = 0;
-	    PciData->u.type1.IOBaseUpper16 = 0;
-	    PciData->u.type1.IOLimitUpper16 = 0;
+	    PciData->Type1.MemoryBase = 0xFFFF;
+	    PciData->Type1.PrefetchBase = 0xFFFF;
+	    PciData->Type1.IOBase = 0xFF;
+	    PciData->Type1.IOLimit = 0;
+	    PciData->Type1.MemoryLimit = 0;
+	    PciData->Type1.PrefetchLimit = 0;
+	    PciData->Type1.PrefetchBaseUpper32 = 0;
+	    PciData->Type1.PrefetchLimitUpper32 = 0;
+	    PciData->Type1.IOBaseUpper16 = 0;
+	    PciData->Type1.IOLimitUpper16 = 0;
 	}
 	break;
 
@@ -962,8 +950,8 @@ NTAPI BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
     /* Devices, on the other hand, have subsystem data that can be compared */
     SubsysMatch = (HackFlags &
 		   (PCI_HACK_NO_SUBSYSTEM | PCI_HACK_NO_SUBSYSTEM_AFTER_D3)) ||
-		  ((DeviceExtension->SubsystemVendorId == PciData->u.type0.SubVendorID) &&
-		   (DeviceExtension->SubsystemId == PciData->u.type0.SubSystemID));
+		  ((DeviceExtension->SubsystemVendorId == PciData->Type0.SubVendorID) &&
+		   (DeviceExtension->SubsystemId == PciData->Type0.SubSystemID));
     return SubsysMatch;
 }
 
@@ -979,11 +967,11 @@ NTAPI BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUM
 
 	    /* Check if this is the high end of a double decker device */
 	    if ((HackFlags & PCI_HACK_DOUBLE_DECKER) &&
-		(Slot.u.bits.DeviceNumber >= 16)) {
+		(Slot.Bits.DeviceNumber >= 16)) {
 		/* It belongs to the same device, so skip it */
 		DPRINT1("    Device (Ven %04x Dev %04x (d=0x%x, f=0x%x)) is a ghost.\n",
-			PciData->VendorID, PciData->DeviceID, Slot.u.bits.DeviceNumber,
-			Slot.u.bits.FunctionNumber);
+			PciData->VendorID, PciData->DeviceID, Slot.Bits.DeviceNumber,
+			Slot.Bits.FunctionNumber);
 		break;
 	    }
 	} else if (OperationType == PCI_SKIP_RESOURCE_ENUMERATION) {
@@ -1036,7 +1024,6 @@ NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     DEVICE_POWER_STATE WakeLevel;
     PCI_CAPABILITIES_HEADER AgpCapability;
     PCI_PM_CAPABILITY PowerCapabilities;
-    PAGED_CODE();
 
     /* Assume no known wake level */
     PdoExtension->PowerState.DeviceWakeLevel = PowerDeviceUnspecified;
@@ -1051,11 +1038,11 @@ NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 	HeaderType = PCI_CONFIGURATION_TYPE(PciData);
 	if (HeaderType == PCI_CARDBUS_BRIDGE_TYPE) {
 	    /* Use the bridge's header */
-	    CapPtr = PciData->u.type2.CapabilitiesPtr;
+	    CapPtr = PciData->Type2.CapabilitiesPtr;
 	} else {
 	    /* Use the device header */
 	    ASSERT(HeaderType <= PCI_CARDBUS_BRIDGE_TYPE);
-	    CapPtr = PciData->u.type0.CapabilitiesPtr;
+	    CapPtr = PciData->Type0.CapabilitiesPtr;
 	}
 
 	/* Skip garbage capabilities pointer */
@@ -1064,7 +1051,7 @@ NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 	    PdoExtension->CapabilitiesPtr = 0;
 	    PdoExtension->HackFlags |= PCI_HACK_NO_PM_CAPS;
 	} else {
-	    DPRINT1("Device has capabilities at: %lx\n", CapPtr);
+	    DPRINT1("Device has capabilities at: %x\n", CapPtr);
 	    PdoExtension->CapabilitiesPtr = CapPtr;
 
 	    /* Check for PCI-to-PCI Bridges and AGP bridges */
@@ -1080,7 +1067,7 @@ NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 					    TargetAgpCapabilityId, &AgpCapability,
 					    sizeof(PCI_CAPABILITIES_HEADER))) {
 		    /* AGP target ID was found, store it */
-		    DPRINT1("AGP ID: %lx\n", TargetAgpCapabilityId);
+		    DPRINT1("AGP ID: %x\n", TargetAgpCapabilityId);
 		    PdoExtension->TargetAgpCapabilityId = TargetAgpCapabilityId;
 		}
 	    }
@@ -1182,7 +1169,6 @@ NTAPI NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PCI_IPI_CONTEXT IpiContext;
     PIO_RESOURCE_DESCRIPTOR IoDescriptor;
     ULONG Offset;
-    PAGED_CODE();
 
     /* Grab all parameters from the context */
     PdoExtension = Context->PdoExtension;
@@ -1267,8 +1253,7 @@ NTAPI NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     ASSERT(PdoExtension->Resources == NULL);
 
     /* Allocate the structure that will hold the discovered resources and limits */
-    PdoExtension->Resources = ExAllocatePoolWithTag(NonPagedPool,
-						    sizeof(PCI_FUNCTION_RESOURCES),
+    PdoExtension->Resources = ExAllocatePoolWithTag(sizeof(PCI_FUNCTION_RESOURCES),
 						    'BicP');
     if (!PdoExtension->Resources)
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -1312,7 +1297,6 @@ NTAPI NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     NTSTATUS Status;
     PPCI_COMMON_HEADER PciData;
     PCI_CONFIGURATOR_CONTEXT Context;
-    PAGED_CODE();
 
     /* Do the hackflags indicate this device should be skipped? */
     if (PciSkipThisFunction(Current, PdoExtension->Slot, PCI_SKIP_RESOURCE_ENUMERATION,
@@ -1322,7 +1306,7 @@ NTAPI NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Allocate a buffer to hold two PCI configuration headers */
-    PciData = ExAllocatePoolWithTag(0, 2 * PCI_COMMON_HDR_LENGTH, 'BicP');
+    PciData = ExAllocatePoolWithTag(2 * PCI_COMMON_HDR_LENGTH, 'BicP');
     if (!PciData)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1341,7 +1325,6 @@ NTAPI VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PPCI_PDO_EXTENSION PdoExtension;
     PDEVICE_OBJECT PhysicalDeviceObject;
-    PAGED_CODE();
 
     /* Get the PDO Extension */
     PhysicalDeviceObject = DeviceExtension->PhysicalDeviceObject;
@@ -1414,7 +1397,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 	/* Check if the secondary bus number has changed */
 	PciReadDeviceConfig(PdoExtension, &SecondaryBus,
-			    FIELD_OFFSET(PCI_COMMON_HEADER, u.type1.SecondaryBus),
+			    FIELD_OFFSET(PCI_COMMON_HEADER, Type1.SecondaryBus),
 			    sizeof(UCHAR));
 	if (SecondaryBus != PdoExtension->Dependent.type1.SecondaryBus) {
 	    UNIMPLEMENTED_DBGBREAK("PCI: Bus numbers have been changed!  Restoring "
@@ -1423,14 +1406,14 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     }
 
     /* Loop every device on the bus */
-    PciSlot.u.bits.Reserved = 0;
+    PciSlot.Bits.Reserved = 0;
     i = DeviceExtension->BaseBus;
     for (j = 0; j < MaxDevice; j++) {
 	/* Loop every function of each device */
-	PciSlot.u.bits.DeviceNumber = j;
+	PciSlot.Bits.DeviceNumber = j;
 	for (k = 0; k < PCI_MAX_FUNCTION; k++) {
 	    /* Build the final slot structure */
-	    PciSlot.u.bits.FunctionNumber = k;
+	    PciSlot.Bits.FunctionNumber = k;
 
 	    /* Read the vendor for this slot */
 	    PciReadSlotConfig(DeviceExtension, PciSlot, PciData, 0, sizeof(USHORT));
@@ -1449,7 +1432,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 	    /* Dump device that was found */
 	    DPRINT1("Scan Found Device 0x%x (b=0x%x, d=0x%x, f=0x%x)\n",
-		    PciSlot.u.AsULONG, i, j, k);
+		    PciSlot.AsULONG, i, j, k);
 
 	    /* Dump the device's header */
 	    PciDebugDumpCommonConfig(PciData);
@@ -1462,12 +1445,6 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    if (DescriptionText)
 		ExFreePoolWithTag(DescriptionText, 0);
 
-	    /* Check if there is an ACPI Watchdog Table */
-	    if (WdTable) {
-		/* Check if this PCI device is the ACPI Watchdog Device... */
-		UNIMPLEMENTED_DBGBREAK();
-	    }
-
 	    /* Check for non-simple devices */
 	    if ((PCI_MULTIFUNCTION_DEVICE(PciData)) ||
 		(PciData->BaseClass == PCI_CLASS_BRIDGE_DEV)) {
@@ -1476,8 +1453,8 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		SubSystemId = 0;
 	    } else {
 		/* Read the subsystem information from the PCI header */
-		SubVendorId = PciData->u.type0.SubVendorID;
-		SubSystemId = PciData->u.type0.SubSystemID;
+		SubVendorId = PciData->Type0.SubVendorID;
+		SubSystemId = PciData->Type0.SubSystemID;
 	    }
 
 	    /* Get any hack flags for this device */
@@ -1497,7 +1474,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    /* PCI bridges with a VGA card are also considered critical */
 	    if ((PciData->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
 		(PciData->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) &&
-		(PciData->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) &&
+		(PciData->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) &&
 		!(HackFlags & PCI_HACK_DONT_DISABLE_DECODES)) {
 		/* Do not disable their decodes either */
 		DPRINT1("Not allowing PM because device is VGA\n");
@@ -1512,7 +1489,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    }
 
 	    /* Check if a PDO has already been created for this device */
-	    PdoExtension = PciFindPdoByFunction(DeviceExtension, PciSlot.u.AsULONG,
+	    PdoExtension = PciFindPdoByFunction(DeviceExtension, PciSlot.AsULONG,
 						PciData);
 	    if (PdoExtension) {
 		/* Rescan scenarios are not yet implemented */
@@ -1582,18 +1559,18 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		    Status = STATUS_UNSUCCESSFUL;
 		} else {
 		    /* Data is still correct, check for interrupt line change */
-		    if (BiosData->u.type0.InterruptLine !=
-			PciData->u.type0.InterruptLine) {
+		    if (BiosData->Type0.InterruptLine !=
+			PciData->Type0.InterruptLine) {
 			/* Update the current BIOS with the saved interrupt line */
 			PciWriteDeviceConfig(NewExtension,
-					     &BiosData->u.type0.InterruptLine,
+					     &BiosData->Type0.InterruptLine,
 					     FIELD_OFFSET(PCI_COMMON_HEADER,
-							  u.type0.InterruptLine),
+							  Type0.InterruptLine),
 					     sizeof(UCHAR));
 		    }
 
 		    /* Save the BIOS interrupt line and the initial command */
-		    NewExtension->RawInterruptLine = BiosData->u.type0.InterruptLine;
+		    NewExtension->RawInterruptLine = BiosData->Type0.InterruptLine;
 		    NewExtension->InitialCommand = BiosData->Command;
 		}
 	    }
@@ -1605,7 +1582,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		ASSERT(NT_SUCCESS(Status));
 
 		/* Save the interrupt line and command from the device */
-		NewExtension->RawInterruptLine = PciData->u.type0.InterruptLine;
+		NewExtension->RawInterruptLine = PciData->Type0.InterruptLine;
 		NewExtension->InitialCommand = PciData->Command;
 	    }
 
@@ -1627,7 +1604,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 			  PCI_HACK_FIXUP_AFTER_CONFIGURATION, NewExtension);
 
 	    /* Save interrupt pin */
-	    NewExtension->InterruptPin = PciData->u.type0.InterruptPin;
+	    NewExtension->InterruptPin = PciData->Type0.InterruptPin;
 
 	    /*
              * Use either this device's actual IRQ line or, if it's connected on
@@ -1790,7 +1767,6 @@ NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
     PDEVICE_RELATIONS DeviceRelations, NewRelations;
     SIZE_T Size;
     PDEVICE_OBJECT DeviceObject, *ObjectArray;
-    PAGED_CODE();
 
     /* Make sure the FDO is started */
     ASSERT(DeviceExtension->DeviceState == PciStarted);
@@ -1832,7 +1808,7 @@ NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
 	Size += sizeof(PDEVICE_OBJECT) * DeviceRelations->Count;
 
     /* Allocate the device relations */
-    NewRelations = (PDEVICE_RELATIONS)ExAllocatePoolWithTag(0, Size, 'BicP');
+    NewRelations = (PDEVICE_RELATIONS)ExAllocatePoolWithTag(Size, 'BicP');
     if (!NewRelations) {
 	/* Out of space, cancel the operation */
 	PciCancelStateTransition(DeviceExtension, PciSynchronizedOperation);
@@ -1941,7 +1917,7 @@ NTAPI NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Do
     if (DoReset) {
 	/* Reset resources */
 	Configurator->ResetDevice(PdoExtension, &PciData);
-	PciData.u.type0.InterruptLine = PdoExtension->RawInterruptLine;
+	PciData.Type0.InterruptLine = PdoExtension->RawInterruptLine;
     }
 
     /* Check if the latency timer changed */
@@ -1963,7 +1939,7 @@ NTAPI NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Do
     /* Inherit data from PDO extension */
     PciData.LatencyTimer = PdoExtension->SavedLatencyTimer;
     PciData.CacheLineSize = PdoExtension->SavedCacheLineSize;
-    PciData.u.type0.InterruptLine = PdoExtension->RawInterruptLine;
+    PciData.Type0.InterruptLine = PdoExtension->RawInterruptLine;
 
     /* Apply any resource hacks required */
     PciApplyHacks(FdoExtension, &PciData, PdoExtension->Slot,
@@ -1979,7 +1955,7 @@ NTAPI NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Do
     PciUpdateHardware(PdoExtension, &PciData);
 
     /* Update complete */
-    PdoExtension->RawInterruptLine = PciData.u.type0.InterruptLine;
+    PdoExtension->RawInterruptLine = PciData.Type0.InterruptLine;
     PdoExtension->NeedsHotPlugConfiguration = FALSE;
     return STATUS_SUCCESS;
 }

@@ -74,7 +74,7 @@ NTAPI NTSTATUS RtlAnsiStringToUnicodeString(IN OUT PUNICODE_STRING UniDest,
     if (NlsMbCodePageTag == FALSE) {
 	Length = AnsiSource->Length * 2 + sizeof(WCHAR);
     } else {
-	Length = RtlxAnsiStringToUnicodeSize(AnsiSource);
+	Length = RtlAnsiStringToUnicodeSize(AnsiSource);
     }
     if (Length > MAXUSHORT)
 	return STATUS_INVALID_PARAMETER_2;
@@ -117,7 +117,7 @@ NTAPI NTSTATUS RtlAnsiStringToUnicodeString(IN OUT PUNICODE_STRING UniDest,
  * RETURNS
  *  The calculated size in bytes including nullterm.
  */
-NTAPI ULONG RtlxAnsiStringToUnicodeSize(IN PCANSI_STRING AnsiString)
+NTAPI ULONG RtlAnsiStringToUnicodeSize(IN PCANSI_STRING AnsiString)
 {
     ULONG Size;
 

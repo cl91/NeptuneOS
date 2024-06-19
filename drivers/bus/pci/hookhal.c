@@ -37,7 +37,7 @@ NTAPI PPCI_PDO_EXTENSION PciFindPdoByLocation(IN ULONG BusNumber, IN ULONG SlotN
     PPCI_FDO_EXTENSION DeviceExtension;
     PPCI_PDO_EXTENSION PdoExtension;
     PCI_SLOT_NUMBER PciSlot;
-    PciSlot.u.AsULONG = SlotNumber;
+    PciSlot.AsULONG = SlotNumber;
 
     /* Acquire the global lock */
     KeEnterCriticalRegion();
@@ -74,10 +74,10 @@ NTAPI PPCI_PDO_EXTENSION PciFindPdoByLocation(IN ULONG BusNumber, IN ULONG SlotN
     for (PdoExtension = DeviceExtension->ChildPdoList; PdoExtension;
 	 PdoExtension = PdoExtension->Next) {
 	/* Check if the function number and header data matches */
-	if ((PdoExtension->Slot.u.bits.FunctionNumber == PciSlot.u.bits.FunctionNumber) &&
-	    (PdoExtension->Slot.u.bits.DeviceNumber == PciSlot.u.bits.DeviceNumber)) {
+	if ((PdoExtension->Slot.Bits.FunctionNumber == PciSlot.Bits.FunctionNumber) &&
+	    (PdoExtension->Slot.Bits.DeviceNumber == PciSlot.Bits.DeviceNumber)) {
 	    /* This is considered to be the same PDO */
-	    ASSERT(PdoExtension->Slot.u.AsULONG == PciSlot.u.AsULONG);
+	    ASSERT(PdoExtension->Slot.AsULONG == PciSlot.AsULONG);
 	    break;
 	}
     }
@@ -90,7 +90,7 @@ NTAPI PPCI_PDO_EXTENSION PciFindPdoByLocation(IN ULONG BusNumber, IN ULONG SlotN
     if (!PdoExtension) {
 	/* Let the debugger know */
 	DPRINT1("Pci: Could not find PDO for device @ %x.%x.%x\n", BusNumber,
-		PciSlot.u.bits.DeviceNumber, PciSlot.u.bits.FunctionNumber);
+		PciSlot.Bits.DeviceNumber, PciSlot.Bits.FunctionNumber);
     }
 
     /* If the search found something, this is non-NULL, otherwise it's NULL */
@@ -111,7 +111,6 @@ NTAPI NTSTATUS PciAssignSlotResources(IN PUNICODE_STRING RegistryPath,
     PPCI_PDO_EXTENSION PdoExtension;
     NTSTATUS Status;
     PDEVICE_OBJECT ExistingDeviceObject;
-    PAGED_CODE();
     ASSERT(PcipSavedAssignSlotResources);
     ASSERT(BusType == PCIBus);
 
@@ -135,8 +134,8 @@ NTAPI NTSTATUS PciAssignSlotResources(IN PUNICODE_STRING RegistryPath,
 	/* Read the PCI header and cache the routing information */
 	PciReadDeviceConfig(PdoExtension, &PciData, 0, PCI_COMMON_HDR_LENGTH);
 	Status = PciCacheLegacyDeviceRouting(
-	    DeviceObject, BusNumber, SlotNumber, PciData.u.type0.InterruptLine,
-	    PciData.u.type0.InterruptPin, PciData.BaseClass, PciData.SubClass,
+	    DeviceObject, BusNumber, SlotNumber, PciData.Type0.InterruptLine,
+	    PciData.Type0.InterruptPin, PciData.BaseClass, PciData.SubClass,
 	    PdoExtension->ParentFdoExtension->PhysicalDeviceObject, PdoExtension,
 	    &ExistingDeviceObject);
 	if (NT_SUCCESS(Status)) {
@@ -183,7 +182,7 @@ NTAPI NTSTATUS PciAssignSlotResources(IN PUNICODE_STRING RegistryPath,
 	    /* Otherwise, cache the new routing */
 	    PciCacheLegacyDeviceRouting(
 		ExistingDeviceObject, BusNumber, SlotNumber,
-		PciData.u.type0.InterruptLine, PciData.u.type0.InterruptPin,
+		PciData.Type0.InterruptLine, PciData.Type0.InterruptPin,
 		PciData.BaseClass, PciData.SubClass,
 		PdoExtension->ParentFdoExtension->PhysicalDeviceObject, PdoExtension,
 		NULL);

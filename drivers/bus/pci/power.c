@@ -41,19 +41,14 @@ NTAPI NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
 				      IN ULONG_PTR CapOffset)
 {
     ULONG PciState, TimeoutEntry, PmcsrOffset, TryCount;
-    PPCI_VERIFIER_DATA VerifierData;
     LARGE_INTEGER Interval;
     PCI_PMCSR Pmcsr;
-    KIRQL Irql;
 
     /* Make sure the power state is valid, and the device can support it */
     ASSERT((PdoExtension->PowerState.CurrentDeviceState >= PowerDeviceD0) &&
 	   (PdoExtension->PowerState.CurrentDeviceState <= PowerDeviceD3));
     ASSERT((PowerState >= PowerDeviceD0) && (PowerState <= PowerDeviceD3));
     ASSERT(!(PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS));
-
-    /* Save the current IRQL */
-    Irql = KeGetCurrentIrql();
 
     /* Pick the expected timeout for this transition */
     TimeoutEntry =
@@ -70,16 +65,9 @@ NTAPI NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
     while (--TryCount) {
 	/* Check if this state transition will take time */
 	if (TimeoutEntry > 0) {
-	    /* Check if this is happening at high IRQL */
-	    if (Irql >= DISPATCH_LEVEL) {
-		/* Can't wait at high IRQL, stall the processor */
-		KeStallExecutionProcessor(TimeoutEntry);
-	    } else {
-		/* Do a wait for the timeout specified instead */
-		Interval.QuadPart = -10 * TimeoutEntry;
-		Interval.QuadPart -= KeQueryTimeIncrement() - 1;
-		KeDelayExecutionThread(KernelMode, FALSE, &Interval);
-	    }
+	    /* Do a wait for the timeout specified instead */
+	    Interval.QuadPart = -10 * TimeoutEntry;
+	    KeDelayExecutionThread(FALSE, &Interval);
 	}
 
 	/* Read the PMCSR and see if the state has changed */
@@ -90,16 +78,6 @@ NTAPI NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
 	/* Try again, forcing a timeout of 1ms */
 	TimeoutEntry = 1000;
     }
-
-    /* Call verifier with this error */
-    VerifierData = PciVerifierRetrieveFailureData(2);
-    ASSERT(VerifierData);
-    VfFailDeviceNode(
-	PdoExtension->PhysicalDeviceObject, PCI_VERIFIER_DETECTED_VIOLATION,
-	2, // The PMCSR register was not updated within the spec-mandated time.
-	VerifierData->FailureClass, &VerifierData->AssertionControl,
-	VerifierData->DebuggerMessageText, "%DevObj%Ulong",
-	PdoExtension->PhysicalDeviceObject, PciState);
 
     return STATUS_DEVICE_PROTOCOL_ERROR;
 }

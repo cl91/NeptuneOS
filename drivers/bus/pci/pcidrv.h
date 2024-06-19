@@ -182,8 +182,8 @@ typedef struct _PCI_FDO_EXTENSION {
     SINGLE_LIST_ENTRY List;
     ULONG ExtensionType;
     struct _PCI_MJ_DISPATCH_TABLE *IrpDispatchTable;
-    BOOLEAN DeviceState;
-    BOOLEAN TentativeNextState;
+    PCI_STATE DeviceState;
+    PCI_STATE TentativeNextState;
     KEVENT SecondaryExtLock;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PDEVICE_OBJECT FunctionalDeviceObject;
@@ -193,14 +193,8 @@ typedef struct _PCI_FDO_EXTENSION {
     struct _PCI_FDO_EXTENSION *BusRootFdoExtension;
     struct _PCI_FDO_EXTENSION *ParentFdoExtension;
     struct _PCI_PDO_EXTENSION *ChildBridgePdoList;
-    BOOLEAN MaxSubordinateBus;
-    BOOLEAN BaseBus;
+    UCHAR BaseBus;
     BOOLEAN Fake;
-    BOOLEAN ChildDelete;
-    BOOLEAN Scanned;
-    BOOLEAN ArbitersInitialized;
-    BOOLEAN BrokenVideoHackApplied;
-    BOOLEAN Hibernated;
     PCI_POWER_STATE PowerState;
     SINGLE_LIST_ENTRY SecondaryExtension;
     LONG ChildWaitWakeCount;
@@ -244,8 +238,8 @@ typedef struct _PCI_PDO_EXTENSION {
     PVOID Next;
     ULONG ExtensionType;
     struct _PCI_MJ_DISPATCH_TABLE *IrpDispatchTable;
-    BOOLEAN DeviceState;
-    BOOLEAN TentativeNextState;
+    PCI_STATE DeviceState;
+    PCI_STATE TentativeNextState;
 
     KEVENT SecondaryExtLock;
     PCI_SLOT_NUMBER Slot;
@@ -258,21 +252,21 @@ typedef struct _PCI_PDO_EXTENSION {
     USHORT DeviceId;
     USHORT SubsystemVendorId;
     USHORT SubsystemId;
-    BOOLEAN RevisionId;
+    UCHAR RevisionId;
     BOOLEAN ProgIf;
-    BOOLEAN SubClass;
-    BOOLEAN BaseClass;
-    BOOLEAN AdditionalResourceCount;
-    BOOLEAN AdjustedInterruptLine;
-    BOOLEAN InterruptPin;
-    BOOLEAN RawInterruptLine;
-    BOOLEAN CapabilitiesPtr;
-    BOOLEAN SavedLatencyTimer;
-    BOOLEAN SavedCacheLineSize;
-    BOOLEAN HeaderType;
+    UCHAR SubClass;
+    UCHAR BaseClass;
+    UCHAR AdditionalResourceCount;
+    UCHAR AdjustedInterruptLine;
+    UCHAR InterruptPin;
+    UCHAR RawInterruptLine;
+    UCHAR CapabilitiesPtr;
+    UCHAR SavedLatencyTimer;
+    UCHAR SavedCacheLineSize;
+    UCHAR HeaderType;
     BOOLEAN NotPresent;
     BOOLEAN ReportedMissing;
-    BOOLEAN ExpectedWritebackFailure;
+    UCHAR ExpectedWritebackFailure;
     BOOLEAN NoTouchPmeEnable;
     BOOLEAN LegacyDriver;
     BOOLEAN UpdateHardware;
@@ -293,7 +287,7 @@ typedef struct _PCI_PDO_EXTENSION {
     struct _PCI_PDO_EXTENSION *NextHashEntry;
     PCI_LOCK Lock;
     PCI_PMC PowerCapabilities;
-    BOOLEAN TargetAgpCapabilityId;
+    UCHAR TargetAgpCapabilityId;
     USHORT CommandEnables;
     USHORT InitialCommand;
 } PCI_PDO_EXTENSION, *PPCI_PDO_EXTENSION;
@@ -435,10 +429,6 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 NTAPI NTSTATUS PciIrpNotSupported(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
 				  IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPassIrpFromFdoToPdo(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp);
-
-NTAPI NTSTATUS PciCallDownIrpStack(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp);
-
 NTAPI NTSTATUS PciIrpInvalidDeviceRequest(IN PIRP Irp,
 					  IN PIO_STACK_LOCATION IoStackLocation,
 					  IN PPCI_FDO_EXTENSION DeviceExtension);
@@ -496,9 +486,6 @@ NTAPI NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
 NTAPI NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
 					     IN PIO_STACK_LOCATION IoStackLocation,
 					     IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciFdoIrpQueryInterface(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				       IN PPCI_FDO_EXTENSION DeviceExtension);
 
 NTAPI NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
 					  IN PIO_STACK_LOCATION IoStackLocation,
@@ -559,9 +546,6 @@ NTAPI NTSTATUS PciPdoIrpCancelStopDevice(IN PIRP Irp,
 NTAPI NTSTATUS PciPdoIrpQueryDeviceRelations(IN PIRP Irp,
 					     IN PIO_STACK_LOCATION IoStackLocation,
 					     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryInterface(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				       IN PPCI_PDO_EXTENSION DeviceExtension);
 
 NTAPI NTSTATUS PciPdoIrpQueryCapabilities(IN PIRP Irp,
 					  IN PIO_STACK_LOCATION IoStackLocation,
@@ -693,8 +677,6 @@ NTAPI NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 //
 // Configuration Routines
 //
-NTAPI NTSTATUS PciGetConfigHandlers(IN PPCI_FDO_EXTENSION FdoExtension);
-
 NTAPI VOID PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,
 			     IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer, IN ULONG Offset,
 			     IN ULONG Length);
@@ -720,14 +702,6 @@ NTAPI NTSTATUS PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
 
 NTAPI VOID PciCommitStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
 				    IN PCI_STATE NewState);
-
-//
-// Arbiter Support
-//
-NTAPI NTSTATUS PciInitializeArbiters(IN PPCI_FDO_EXTENSION FdoExtension);
-
-NTAPI NTSTATUS PciInitializeArbiterRanges(IN PPCI_FDO_EXTENSION DeviceExtension,
-					  IN PCM_RESOURCE_LIST Resources);
 
 //
 // Debug Helpers

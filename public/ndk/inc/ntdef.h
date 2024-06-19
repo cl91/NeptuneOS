@@ -386,7 +386,7 @@ typedef struct _OBJECT_ATTRIBUTES_ANSI {
 /*
  * Returns the byte offset of a field in a structure of the given type.
  */
-#define FIELD_OFFSET(Type, Field)    ((LONG)(LONG_PTR)&(((Type *)0)->Field))
+#define FIELD_OFFSET(t,f)	((LONG)__builtin_offsetof(t,f))
 
 /*
  * Returns the size of a field in a structure of the given type.

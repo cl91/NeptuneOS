@@ -44,7 +44,7 @@ NTAPI PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
 	ASSERT(Description[TextLength / sizeof(WCHAR)] == L'\n');
 
 	/* Allocate the buffer to hold the message string */
-	Buffer = ExAllocatePoolWithTag(PagedPool, TextLength, 'BicP');
+	Buffer = ExAllocatePoolWithTag(TextLength, 'BicP');
 	if (!Buffer)
 	    return NULL;
 
@@ -87,7 +87,7 @@ NTAPI PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClas
     Message = PciGetDescriptionMessage(Identifier, NULL);
     if (!Message) {
 	/* It wasn't found, allocate a buffer for a generic description */
-	Message = ExAllocatePoolWithTag(PagedPool, sizeof(L"PCI Device"), 'bicP');
+	Message = ExAllocatePoolWithTag(sizeof(L"PCI Device"), 'bicP');
 	if (Message)
 	    RtlCopyMemory(Message, L"PCI Device", sizeof(L"PCI Device"));
     }
@@ -187,8 +187,6 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     PANSI_STRING NextString;
     UNICODE_STRING DestinationString;
     PCI_ID_BUFFER IdBuffer;
-    PAGED_CODE();
-
     /* Assume failure */
     Status = STATUS_SUCCESS;
     *Buffer = NULL;
@@ -273,8 +271,8 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 
 	/* And then encode the device and function number */
 	PciIdPrintfAppend(&IdBuffer, "%02X",
-			  (DeviceExtension->Slot.u.bits.DeviceNumber << 3) |
-			      DeviceExtension->Slot.u.bits.FunctionNumber);
+			  (DeviceExtension->Slot.Bits.DeviceNumber << 3) |
+			      DeviceExtension->Slot.Bits.FunctionNumber);
 
 	/* Loop every parent until the root */
 	ParentExtension = DeviceExtension->ParentFdoExtension;
@@ -282,8 +280,8 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 	    /* And encode the parent's device and function number as well */
 	    PdoExtension = ParentExtension->PhysicalDeviceObject->DeviceExtension;
 	    PciIdPrintfAppend(&IdBuffer, "%02X",
-			      (PdoExtension->Slot.u.bits.DeviceNumber << 3) |
-				  PdoExtension->Slot.u.bits.FunctionNumber);
+			      (PdoExtension->Slot.Bits.DeviceNumber << 3) |
+				  PdoExtension->Slot.Bits.FunctionNumber);
 	}
 	break;
 
@@ -298,7 +296,7 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     ASSERT(IdBuffer.Count > 0);
 
     /* Allocate the final string buffer to hold the ID */
-    StringBuffer = ExAllocatePoolWithTag(PagedPool, IdBuffer.TotalLength, 'BicP');
+    StringBuffer = ExAllocatePoolWithTag(IdBuffer.TotalLength, 'BicP');
     if (!StringBuffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -363,7 +361,7 @@ NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	/* Add space for a null-terminator, and allocate the buffer */
 	Length += 2 * sizeof(UNICODE_NULL);
-	LocationBuffer = ExAllocatePoolWithTag(PagedPool, Length * sizeof(WCHAR), 'BicP');
+	LocationBuffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), 'BicP');
 	*Buffer = LocationBuffer;
 
 	/* Check if the allocation succeeded */
@@ -371,8 +369,8 @@ NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
 	    /* Build the location string based on bus, function, and device */
 	    swprintf(LocationBuffer, MessageBuffer,
 		     PdoExtension->ParentFdoExtension->BaseBus,
-		     PdoExtension->Slot.u.bits.FunctionNumber,
-		     PdoExtension->Slot.u.bits.DeviceNumber);
+		     PdoExtension->Slot.Bits.FunctionNumber,
+		     PdoExtension->Slot.Bits.DeviceNumber);
 	}
 
 	/* Free the original string from the resource section */

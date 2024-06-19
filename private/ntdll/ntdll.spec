@@ -105,6 +105,7 @@
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)
 @ stdcall RtlUnicodeToUTF8N(ptr long ptr ptr long)
 @ stdcall RtlAnsiStringToUnicodeString(ptr ptr long)
+@ stdcall RtlAnsiStringToUnicodeSize(ptr)
 @ stdcall RtlFreeAnsiString(long)
 @ stdcall RtlUnicodeStringToOemString(ptr ptr long)
 @ stdcall RtlOemStringToUnicodeString(ptr ptr long)

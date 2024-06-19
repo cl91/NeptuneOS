@@ -143,7 +143,6 @@ NTAPI BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
     NTSTATUS Status;
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING KeyString;
-    PAGED_CODE();
 
     /* Initialize the object attributes */
     RtlInitUnicodeString(&KeyString, KeyName);
@@ -188,7 +187,7 @@ NTAPI NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
 	/* Allocate an appropriate buffer for the size that was returned */
 	ASSERT(NeededLength != 0);
 	Status = STATUS_INSUFFICIENT_RESOURCES;
-	PartialInfo = ExAllocatePoolWithTag(PagedPool, NeededLength, PCI_POOL_TAG);
+	PartialInfo = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
 	if (!PartialInfo)
 	    break;
 
@@ -209,7 +208,7 @@ NTAPI NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
 
 	/* Allocate a buffer to hold the data and return it to the caller */
 	Status = STATUS_INSUFFICIENT_RESOURCES;
-	*OutputBuffer = ExAllocatePoolWithTag(PagedPool, NeededLength, PCI_POOL_TAG);
+	*OutputBuffer = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
 	if (!*OutputBuffer)
 	    break;
 
@@ -331,7 +330,6 @@ NTAPI VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
 				IN PPCI_FDO_EXTENSION DeviceExtension, IN PKEVENT Lock)
 {
     PSINGLE_LIST_ENTRY NextEntry;
-    PAGED_CODE();
 
     /* Check if a lock was specified */
     if (Lock) {
@@ -356,8 +354,6 @@ NTAPI VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
 NTAPI VOID PciInsertEntryAtHead(IN PSINGLE_LIST_ENTRY ListHead,
 				IN PSINGLE_LIST_ENTRY Entry, IN PKEVENT Lock)
 {
-    PAGED_CODE();
-
     /* Check if a lock was specified */
     if (Lock) {
 	/* Wait for the lock to be released */
@@ -399,7 +395,7 @@ NTAPI NTSTATUS PciGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 	}
 
 	/* Allocate the required buffer */
-	Buffer = ExAllocatePoolWithTag(PagedPool, BufferLength, 'BicP');
+	Buffer = ExAllocatePoolWithTag(BufferLength, 'BicP');
 	if (!Buffer) {
 	    /* No memory, fail the request */
 	    DPRINT1("PCI - Failed to allocate DeviceProperty buffer (%u bytes).\n",
@@ -433,7 +429,6 @@ NTAPI NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCo
     KEVENT Event;
     IO_STATUS_BLOCK IoStatusBlock;
     PDEVICE_OBJECT AttachedDevice;
-    PAGED_CODE();
 
     /* Initialize the pending IRP event */
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
@@ -583,8 +578,6 @@ NTAPI PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtens
 
 NTAPI BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    PAGED_CODE();
-
     UNREFERENCED_PARAMETER(DeviceExtension);
 
     /* Check for too many, or no, debug ports */
@@ -608,7 +601,6 @@ NTAPI NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
     PKEY_VALUE_PARTIAL_INFORMATION PartialInfo = (PVOID)DataBuffer;
     NTSTATUS Status;
     ULONG ResultLength;
-    PAGED_CODE();
 
     /* Open the PCI key */
     Status =
@@ -653,7 +645,6 @@ NTAPI NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
     UNICODE_STRING KeyName, KeyValue;
     WCHAR Buffer[32];
     NTSTATUS Status;
-    PAGED_CODE();
 
     /* Open the PCI key */
     Status =
@@ -872,14 +863,13 @@ NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
     PACPI_EVAL_OUTPUT_BUFFER OutputBuffer;
     ULONG i, Length;
     NTSTATUS Status;
-    PAGED_CODE();
 
     /* Assume slot is not part of the parent method */
     FoundSlot = FALSE;
 
     /* Allocate a 2KB buffer for the method return parameters */
     Length = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 2048;
-    OutputBuffer = ExAllocatePoolWithTag(PagedPool, Length, 'BicP');
+    OutputBuffer = ExAllocatePoolWithTag(Length, 'BicP');
     if (OutputBuffer) {
 	/* Clear out the output buffer */
 	RtlZeroMemory(OutputBuffer, Length);
@@ -1061,7 +1051,7 @@ NTAPI NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
     UNREFERENCED_PARAMETER(Buffer);
 
     /* Allocate a structure for the bus information */
-    BusInfo = ExAllocatePoolWithTag(PagedPool, sizeof(PNP_BUS_INFORMATION), 'BicP');
+    BusInfo = ExAllocatePoolWithTag(sizeof(PNP_BUS_INFORMATION), 'BicP');
     if (!BusInfo)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1133,7 +1123,6 @@ NTAPI NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
     PDEVICE_OBJECT AttachedDevice;
     PIO_STACK_LOCATION IoStackLocation;
     IO_STATUS_BLOCK IoStatusBlock;
-    PAGED_CODE();
 
     /* Zero out capabilities and set undefined values to start with */
     RtlZeroMemory(DeviceCapability, sizeof(DEVICE_CAPABILITIES));

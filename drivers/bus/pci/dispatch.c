@@ -12,70 +12,19 @@
 
 /* FUNCTIONS ******************************************************************/
 
-IO_COMPLETION_ROUTINE PciSetEventCompletion;
-
-NTAPI NTSTATUS PciSetEventCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				     IN PVOID Context)
+static NTSTATUS PciCallDownIrpStack(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
 {
-    PKEVENT Event = (PVOID)Context;
-    ASSERT(Event);
-
-    UNREFERENCED_PARAMETER(DeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
-
-    /* Set the event and return the appropriate status code */
-    KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-NTAPI NTSTATUS PciCallDownIrpStack(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
-{
-    NTSTATUS Status;
-    KEVENT Event;
-    PAGED_CODE();
     DPRINT1("PciCallDownIrpStack ...\n");
     ASSERT_FDO(DeviceExtension);
 
-    /* Initialize the wait event */
-    KeInitializeEvent(&Event, SynchronizationEvent, 0);
-
-    /* Setup a completion routine */
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine(Irp, PciSetEventCompletion, &Event, TRUE, TRUE, TRUE);
-
     /* Call the attached device */
-    Status = IoCallDriver(DeviceExtension->AttachedDeviceObject, Irp);
-    if (Status == STATUS_PENDING) {
-	/* Wait for it to complete the request, and get its status */
-	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-	Status = Irp->IoStatus.Status;
-    }
-
-    /* Return that status back to the caller */
-    return Status;
+    return IoCallDriverEx(DeviceExtension->AttachedDeviceObject, Irp, NULL);
 }
 
-NTAPI NTSTATUS PciPassIrpFromFdoToPdo(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
+static NTSTATUS PciPassIrpFromFdoToPdo(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
 {
-    PIO_STACK_LOCATION IoStackLocation;
-    NTSTATUS Status;
     DPRINT1("Pci PassIrp ...\n");
-
-    /* Get the stack location to check which function this is */
-    IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
-    if (IoStackLocation->MajorFunction == IRP_MJ_POWER) {
-	/* Power IRPs are special since we have to notify the Power Manager */
-	IoCopyCurrentIrpStackLocationToNext(Irp);
-	PoStartNextPowerIrp(Irp);
-	Status = PoCallDriver(DeviceExtension->AttachedDeviceObject, Irp);
-    } else {
-	/* For a normal IRP, just call the next driver in the stack */
-	IoSkipCurrentIrpStackLocation(Irp);
-	Status = IoCallDriver(DeviceExtension->AttachedDeviceObject, Irp);
-    }
-
-    /* Return the status back to the caller */
-    return Status;
+    return IoCallDriver(DeviceExtension->AttachedDeviceObject, Irp);
 }
 
 NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
@@ -109,21 +58,18 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	/* And choose which function table to use */
 	switch (IoStackLocation->MajorFunction) {
 	case IRP_MJ_POWER:
-
 	    /* Power Manager IRPs */
 	    TableArray = IrpDispatchTable->PowerIrpDispatchTable;
 	    MaxMinor = IrpDispatchTable->PowerIrpMaximumMinorFunction;
 	    break;
 
 	case IRP_MJ_PNP:
-
 	    /* Plug-and-Play Manager IRPs */
 	    TableArray = IrpDispatchTable->PnpIrpDispatchTable;
 	    MaxMinor = IrpDispatchTable->PnpIrpMaximumMinorFunction;
 	    break;
 
 	case IRP_MJ_SYSTEM_CONTROL:
-
 	    /* WMI IRPs */
 	    DispatchFunction = IrpDispatchTable->SystemControlIrpDispatchFunction;
 	    DispatchStyle = IrpDispatchTable->SystemControlIrpDispatchStyle;
@@ -131,7 +77,6 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    break;
 
 	default:
-
 	    /* Unrecognized IRPs */
 	    DispatchFunction = IrpDispatchTable->OtherIrpDispatchFunction;
 	    DispatchStyle = IrpDispatchTable->OtherIrpDispatchStyle;
@@ -211,10 +156,6 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     } else {
 	/* Otherwise, the IRP is returned with its status */
 	Status = Irp->IoStatus.Status;
-
-	/* Power IRPs need to notify the Power Manager that the next IRP can go */
-	if (IoStackLocation->MajorFunction == IRP_MJ_POWER)
-	    PoStartNextPowerIrp(Irp);
 
 	/* And now this IRP can be completed */
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
