@@ -389,6 +389,7 @@ typedef struct _PEB {                                                 /* win32/w
     PRTL_BITMAP                      FlsBitmap;                         /* 218/338 */
     ULONG                            FlsBitmapBits[4];                  /* 21c/340 */
     ULONG                            FlsHighIndex;                      /* 22c/350 */
+    LCID                             SessionDefaultLocale;              /* 230/358 */
 } PEB, *PPEB;
 #include <poppack.h>
 

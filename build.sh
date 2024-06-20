@@ -59,6 +59,7 @@ mkdir -p $BUILDDIR/{host,elf,pe_inc,ntdll,wdm,base,drivers,initcpio,ndk_lib,ddk_
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
 SPEC2DEF_PATH=$(echo ${PWD}/host/spec2def/spec2def)
+UTF16LE_PATH=$(echo ${PWD}/host/utf16le/utf16le)
 
 # Build spec2def with the native toolchain
 cd host
@@ -74,6 +75,7 @@ echo
 echo "---- Building ELF targets ----"
 echo
 cmake ../../private/ntos \
+      -DCLANG_ARCH=${CLANG_ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-linux-gnu \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
@@ -117,6 +119,7 @@ fi
 cd ../ntdll
 cmake ../../private/ntdll \
       -DArch=${ARCH} \
+      -DCLANG_ARCH=${CLANG_ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
@@ -124,6 +127,7 @@ cmake ../../private/ntdll \
       -DSEL4_GENERATED_HEADERS_DIR="${PE_INC}" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DUTF16LE_PATH=${UTF16LE_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
@@ -137,6 +141,7 @@ echo
 cd ../wdm
 cmake ../../private/wdm \
       -DArch=${ARCH} \
+      -DCLANG_ARCH=${CLANG_ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
@@ -144,6 +149,7 @@ cmake ../../private/wdm \
       -DSEL4_GENERATED_HEADERS_DIR="${PE_INC}" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}" \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DUTF16LE_PATH=${UTF16LE_PATH} \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DGEN_INC_DIR=${PWD}/../ntdll \
@@ -160,12 +166,14 @@ echo "---- Building drivers ----"
 echo
 cmake ../../drivers \
       -DArch=${ARCH} \
+      -DCLANG_ARCH=${CLANG_ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
       -DDDK_LIB_PATH=${PWD}/../ddk_lib \
       -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DUTF16LE_PATH=${UTF16LE_PATH} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
@@ -177,10 +185,12 @@ echo
 echo "---- Building base NT clients ----"
 echo
 cmake ../../base \
+      -DCLANG_ARCH=${CLANG_ARCH} \
       -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DUTF16LE_PATH=${UTF16LE_PATH} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja

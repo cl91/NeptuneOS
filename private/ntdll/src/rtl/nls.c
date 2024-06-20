@@ -803,3 +803,9 @@ NTAPI CHAR RtlUpperChar(IN CHAR Source)
 
     return Destination;
 }
+
+NTAPI NTSTATUS NtQueryDefaultLocale(IN BOOLEAN UserProfile,
+				    OUT PLCID DefaultLocaleId)
+{
+    return UserProfile ? NtCurrentPeb()->SessionDefaultLocale : SharedUserData->DefaultLocale;
+}

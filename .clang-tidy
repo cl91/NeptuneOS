@@ -1,0 +1,7 @@
+Checks: '-*,readability-identifier-naming'
+CheckOptions:
+  - { key: readability-identifier-naming.StructCase,          value: UPPER_CASE  }
+  - { key: readability-identifier-naming.FunctionCase,        value: CamelCase }
+  - { key: readability-identifier-naming.VariableCase,        value: CamelCase }
+  - { key: readability-identifier-naming.ParameterCase,       value: CamelCase }
+  - { key: readability-identifier-naming.GlobalConstantCase,  value: UPPER_CASE }

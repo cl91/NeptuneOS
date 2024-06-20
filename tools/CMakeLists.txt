@@ -6,3 +6,4 @@ add_compile_options(-Wall)
 
 add_subdirectory(spec2def)
 add_subdirectory(geninc)
+add_subdirectory(utf16le)

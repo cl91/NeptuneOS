@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "NT Layer DLL"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "ntdll"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "ntdll.dll"
+#include <version.rc>

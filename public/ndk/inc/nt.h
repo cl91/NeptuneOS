@@ -8,6 +8,7 @@
 #define UNICODE 1
 #include <ntdef.h>
 #include <ntstatus.h>
+#include <nls.h>
 #include <intrin.h>
 #include <debug.h>
 #include <ntkeapi.h>

@@ -34,6 +34,7 @@
 @ stdcall NtQuerySystemTime(ptr)
 @ stdcall NtQuerySystemInformation(long long long long)
 @ stdcall NtShutdownSystem(long)
+@ stdcall NtQueryDefaultLocale(long ptr)
 @ stdcall NtSetDefaultLocale(long long)
 @ stdcall NtDelayExecution(long ptr)
 @ stdcall NtOpenKey(ptr long ptr)

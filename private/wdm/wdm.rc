@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Neptune OS Driver Interface DLL"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "wdm"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "wdm.dll"
+#include <version.rc>

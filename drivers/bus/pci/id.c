@@ -13,7 +13,7 @@
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
+static PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
 {
     PMESSAGE_RESOURCE_ENTRY Entry;
     ULONG TextLength;
@@ -75,7 +75,7 @@ NTAPI PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
     return Buffer;
 }
 
-NTAPI PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClass)
+PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClass)
 {
     PWCHAR Message;
     ULONG Identifier;
@@ -96,7 +96,7 @@ NTAPI PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClas
     return Message;
 }
 
-NTAPI VOID PciInitIdBuffer(IN PPCI_ID_BUFFER IdBuffer)
+static VOID PciInitIdBuffer(IN PPCI_ID_BUFFER IdBuffer)
 {
     /* Initialize the sizes to zero and the pointer to the start of the buffer */
     IdBuffer->TotalLength = 0;
@@ -174,8 +174,8 @@ ULONG PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
     return Size;
 }
 
-NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
-			  IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer)
+NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
+		    IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer)
 {
     ULONG SubsysId;
     CHAR VendorString[22];
@@ -204,14 +204,12 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     /* Check what the caller is requesting */
     switch (QueryType) {
     case BusQueryDeviceID:
-
 	/* A single ID, the vendor string + the revision ID */
 	PciIdPrintf(&IdBuffer, "%s&SUBSYS_%08X&REV_%02X", VendorString, SubsysId,
 		    DeviceExtension->RevisionId);
 	break;
 
     case BusQueryHardwareIDs:
-
 	/* First the vendor string + the subsystem ID + the revision ID */
 	PciIdPrintf(&IdBuffer, "%s&SUBSYS_%08X&REV_%02X", VendorString, SubsysId,
 		    DeviceExtension->RevisionId);
@@ -233,7 +231,6 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 	break;
 
     case BusQueryCompatibleIDs:
-
 	/* First, the vendor + revision ID only */
 	PciIdPrintf(&IdBuffer, "%s&REV_%02X", VendorString, DeviceExtension->RevisionId);
 
@@ -265,7 +262,6 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 	break;
 
     case BusQueryInstanceID:
-
 	/* Start with a terminator */
 	PciIdPrintf(&IdBuffer, "\0");
 
@@ -286,7 +282,6 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 	break;
 
     default:
-
 	/* Unknown query type */
 	DPRINT1("PciQueryId expected ID type = %d\n", QueryType);
 	return STATUS_NOT_SUPPORTED;
@@ -326,9 +321,9 @@ NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     return Status;
 }
 
-NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
-				  IN DEVICE_TEXT_TYPE QueryType, IN ULONG Locale,
-				  OUT PWCHAR *Buffer)
+NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
+			    IN DEVICE_TEXT_TYPE QueryType, IN ULONG Locale,
+			    OUT PWCHAR *Buffer)
 {
     PWCHAR MessageBuffer, LocationBuffer;
     ULONG Length;
@@ -339,7 +334,6 @@ NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Check what the caller is requesting */
     switch (QueryType) {
     case DeviceTextDescription:
-
 	/* Get the message from the resource section */
 	MessageBuffer = PciGetDeviceDescriptionMessage(PdoExtension->BaseClass,
 						       PdoExtension->SubClass);
@@ -350,7 +344,6 @@ NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
 	break;
 
     case DeviceTextLocationInformation:
-
 	/* Get the message from the resource section */
 	MessageBuffer = PciGetDescriptionMessage(0x10000, &Length);
 	if (!MessageBuffer) {
@@ -381,7 +374,6 @@ NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
 	break;
 
     default:
-
 	/* Anything else is unsupported */
 	Status = STATUS_NOT_SUPPORTED;
 	break;

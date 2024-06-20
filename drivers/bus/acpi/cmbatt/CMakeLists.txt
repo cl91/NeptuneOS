@@ -5,7 +5,8 @@ list(APPEND SRC
     cmexec.c
     cmbpnp.c
     cmbwmi.c
-    guid.c)
+    guid.c
+    cmbatt.rc)
 
 add_driver(cmbatt ${SRC})
 add_dependencies(cmbatt wmilib battc)

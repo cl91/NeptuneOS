@@ -54,7 +54,7 @@ file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*/*.c ${CMAKE_CURRENT_LIST_DIR}/src/
 
 file(GLOB NTDLLP_SRC ${CMAKE_CURRENT_LIST_DIR}/src/crt/math/${Arch}/*.S ${CMAKE_CURRENT_LIST_DIR}/src/crt/except/${Arch}/*.S)
 
-add_library(ntdll SHARED ${SRC})
+add_library(ntdll SHARED ${SRC} ntdll.rc)
 add_library(ntdllp STATIC ${NTDLLP_SRC})
 add_dependencies(ntdll rtl)
 target_link_libraries(ntdll PRIVATE rtl)

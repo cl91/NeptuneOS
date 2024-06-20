@@ -179,7 +179,6 @@ typedef PVOID HANDLE, HMODULE, HINSTANCE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
 typedef HANDLE *PHANDLE;
 typedef LONG HRESULT;
-typedef ULONG LCID;
 
 typedef union _LARGE_INTEGER {
     struct {

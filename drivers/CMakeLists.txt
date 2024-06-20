@@ -4,6 +4,8 @@ set(CMAKE_SYSTEM_NAME Windows)
 
 project(drivers)
 
+include(${CMAKE_CURRENT_LIST_DIR}/../tools/cmake/mc.cmake)
+
 add_compile_options(
     -Wall
     -nostdinc

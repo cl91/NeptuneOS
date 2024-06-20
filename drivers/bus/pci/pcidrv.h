@@ -752,14 +752,14 @@ NTAPI NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
 //
 // Identification Functions
 //
-NTAPI PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClass);
+PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClass);
 
-NTAPI NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
-				  IN DEVICE_TEXT_TYPE QueryType, IN ULONG Locale,
-				  OUT PWCHAR *Buffer);
+NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
+			    IN DEVICE_TEXT_TYPE QueryType, IN ULONG Locale,
+			    OUT PWCHAR *Buffer);
 
-NTAPI NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
-			  IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer);
+ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
+		     IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer);
 
 //
 // CardBUS Support

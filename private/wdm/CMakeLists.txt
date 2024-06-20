@@ -49,7 +49,7 @@ rtl_import_project()
 
 file(GLOB SRC ${CMAKE_CURRENT_LIST_DIR}/src/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.c ${CMAKE_CURRENT_LIST_DIR}/src/${Arch}/*.S)
 
-add_library(wdm SHARED ${SRC})
+add_library(wdm SHARED ${SRC} wdm.rc)
 add_dependencies(wdm rtl)
 target_link_directories(wdm PRIVATE ${NDK_LIB_PATH})
 target_link_libraries(wdm PRIVATE rtl)

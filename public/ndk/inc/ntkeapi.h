@@ -2,6 +2,7 @@
 
 #include "ntdef.h"
 #include "ntstatus.h"
+#include "nls.h"
 
 //
 // Processor Architectures
@@ -203,6 +204,7 @@ typedef struct _KUSER_SHARED_DATA {
     };
     ULONG Cookie;
     ULONG CookiePad[1];
+    LCID DefaultLocale;
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 #include <poppack.h>
 

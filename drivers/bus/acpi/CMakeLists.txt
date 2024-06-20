@@ -182,7 +182,8 @@ list(APPEND ACPI_SOURCE
     eval.c
     pnp.c
     power.c
-    main.c)
+    main.c
+    acpi.rc)
 
 add_driver(acpi ${ACPI_SOURCE})
 add_dependencies(acpi acpica)

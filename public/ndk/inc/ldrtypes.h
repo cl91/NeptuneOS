@@ -10,6 +10,24 @@
 #define RESOURCE_LANGUAGE_LEVEL                 2
 #define RESOURCE_DATA_LEVEL                     3
 
+//
+// Loader Resource Information
+//
+typedef struct _LDR_RESOURCE_INFO {
+    ULONG_PTR Type;
+    ULONG_PTR Name;
+    ULONG_PTR Language;
+} LDR_RESOURCE_INFO, *PLDR_RESOURCE_INFO;
+
+typedef struct _LDR_ENUM_RESOURCE_INFO {
+    ULONG_PTR Type;
+    ULONG_PTR Name;
+    ULONG_PTR Language;
+    PVOID Data;
+    ULONG Size;
+    ULONG Reserved;
+} LDR_ENUM_RESOURCE_INFO, *PLDR_ENUM_RESOURCE_INFO;
+
 /*
  * Loader Data Table Entry Flags
  */
