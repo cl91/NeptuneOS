@@ -14,151 +14,139 @@
 
 BOOLEAN PciRunningDatacenter;
 PDRIVER_OBJECT PciDriverObject;
-KEVENT PciGlobalLock;
-KEVENT PciBusLock;
-KEVENT PciLegacyDescriptionLock;
 BOOLEAN PciLockDeviceResources;
-BOOLEAN PciEnableNativeModeATA;
 ULONG PciSystemWideHackFlags;
 PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 PPCI_HACK_ENTRY PciHackTable;
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI NTSTATUS
+static NTSTATUS
 PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
 {
     BOOLEAN Result;
     NTSTATUS Status;
-    HANDLE KeyHandle, SubKey;
+    HANDLE KeyHandle = NULL, SubKey = NULL;
     ULONG NumberOfBytes, i, Length;
-    PKEY_FULL_INFORMATION FullInfo;
-    PKEY_BASIC_INFORMATION KeyInfo;
-    PKEY_VALUE_PARTIAL_INFORMATION ValueInfo;
+    PKEY_FULL_INFORMATION FullInfo = NULL;
+    PKEY_BASIC_INFORMATION KeyInfo = NULL;
+    PKEY_VALUE_PARTIAL_INFORMATION ValueInfo = NULL;
     UNICODE_STRING ValueName;
     struct {
 	CM_FULL_RESOURCE_DESCRIPTOR Descriptor;
-    } *Package;
+    } *Package = NULL;
 
-    /* So we know what to free at the end of the body */
-    Package = NULL;
-    ValueInfo = NULL;
-    KeyInfo = NULL;
-    KeyHandle = NULL;
-    FullInfo = NULL;
-    do {
-	/* Open the BIOS key */
-	Result = PciOpenKey(L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\"
-			    L"System\\MultiFunctionAdapter",
-			    NULL, KEY_QUERY_VALUE, &KeyHandle, &Status);
-	if (!Result)
+    /* Open the BIOS key */
+    Result = PciOpenKey(L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\"
+			L"System\\MultiFunctionAdapter",
+			NULL, KEY_QUERY_VALUE, &KeyHandle, &Status);
+    if (!Result)
+	goto out;
+
+    /* Query how much space should be allocated for the key information */
+    Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, sizeof(ULONG),
+			&NumberOfBytes);
+    if (Status != STATUS_BUFFER_TOO_SMALL)
+	goto out;
+
+    /* Allocate the space required */
+    Status = STATUS_INSUFFICIENT_RESOURCES;
+    FullInfo = ExAllocatePoolWithTag(NumberOfBytes, PCI_POOL_TAG);
+    if (!FullInfo)
+	goto out;
+
+    /* Now query the key information that's needed */
+    Status = NtQueryKey(KeyHandle, KeyFullInformation, FullInfo, NumberOfBytes,
+			&NumberOfBytes);
+    if (!NT_SUCCESS(Status))
+	goto out;
+
+    /* Allocate enough space to hold the value information plus the name */
+    Status = STATUS_INSUFFICIENT_RESOURCES;
+    Length = FullInfo->MaxNameLen + 26;
+    KeyInfo = ExAllocatePoolWithTag(Length, PCI_POOL_TAG);
+    if (!KeyInfo)
+	goto out;
+
+    /* Allocate the value information and name we expect to find */
+    ValueInfo = ExAllocatePoolWithTag(sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+				      sizeof(L"PCI BIOS"),
+				      PCI_POOL_TAG);
+    if (!ValueInfo)
+	goto out;
+
+    /* Loop each sub-key */
+    i = 0;
+    while (TRUE) {
+	/* Query each sub-key */
+	Status = NtEnumerateKey(KeyHandle, i++, KeyBasicInformation, KeyInfo, Length,
+				&NumberOfBytes);
+	if (Status == STATUS_NO_MORE_ENTRIES)
 	    break;
 
-	/* Query how much space should be allocated for the key information */
-	Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, sizeof(ULONG),
-			    &NumberOfBytes);
-	if (Status != STATUS_BUFFER_TOO_SMALL)
-	    break;
+	/* Null-terminate the keyname, because the kernel does not */
+	KeyInfo->Name[KeyInfo->NameLength / sizeof(WCHAR)] = UNICODE_NULL;
 
-	/* Allocate the space required */
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	FullInfo = ExAllocatePoolWithTag(NumberOfBytes, PCI_POOL_TAG);
-	if (!FullInfo)
-	    break;
-
-	/* Now query the key information that's needed */
-	Status = NtQueryKey(KeyHandle, KeyFullInformation, FullInfo, NumberOfBytes,
-			    &NumberOfBytes);
-	if (!NT_SUCCESS(Status))
-	    break;
-
-	/* Allocate enough space to hold the value information plus the name */
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	Length = FullInfo->MaxNameLen + 26;
-	KeyInfo = ExAllocatePoolWithTag(Length, PCI_POOL_TAG);
-	if (!KeyInfo)
-	    break;
-
-	/* Allocate the value information and name we expect to find */
-	ValueInfo = ExAllocatePoolWithTag(sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
-					  sizeof(L"PCI BIOS"),
-					  PCI_POOL_TAG);
-	if (!ValueInfo)
-	    break;
-
-	/* Loop each sub-key */
-	i = 0;
-	while (TRUE) {
-	    /* Query each sub-key */
-	    Status = NtEnumerateKey(KeyHandle, i++, KeyBasicInformation, KeyInfo, Length,
-				    &NumberOfBytes);
-	    if (Status == STATUS_NO_MORE_ENTRIES)
-		break;
-
-	    /* Null-terminate the keyname, because the kernel does not */
-	    KeyInfo->Name[KeyInfo->NameLength / sizeof(WCHAR)] = UNICODE_NULL;
-
-	    /* Open this subkey */
-	    Result = PciOpenKey(KeyInfo->Name, KeyHandle, KEY_QUERY_VALUE, &SubKey,
-				&Status);
-	    if (Result) {
-		/* Query the identifier value for this subkey */
-		RtlInitUnicodeString(&ValueName, L"Identifier");
-		Status = NtQueryValueKey(SubKey, &ValueName, KeyValuePartialInformation,
-					 ValueInfo,
-					 sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
-					 sizeof(L"PCI BIOS"),
-					 &NumberOfBytes);
-		if (NT_SUCCESS(Status)) {
-		    /* Check if this is the PCI BIOS subkey */
-		    if (!wcsncmp((PWCHAR)ValueInfo->Data, L"PCI BIOS",
-				 ValueInfo->DataLength)) {
-			/* It is, proceed to query the PCI IRQ routing table */
-			Status = PciGetRegistryValue(L"Configuration Data",
-						     L"RealModeIrqRoutingTable"
-						     L"\\0",
-						     SubKey, REG_FULL_RESOURCE_DESCRIPTOR,
-						     (PVOID *)&Package, &NumberOfBytes);
-			NtClose(SubKey);
-			break;
-		    }
+	/* Open this subkey */
+	Result = PciOpenKey(KeyInfo->Name, KeyHandle, KEY_QUERY_VALUE, &SubKey,
+			    &Status);
+	if (Result) {
+	    /* Query the identifier value for this subkey */
+	    RtlInitUnicodeString(&ValueName, L"Identifier");
+	    Status = NtQueryValueKey(SubKey, &ValueName, KeyValuePartialInformation,
+				     ValueInfo,
+				     sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+				     sizeof(L"PCI BIOS"),
+				     &NumberOfBytes);
+	    if (NT_SUCCESS(Status)) {
+		/* Check if this is the PCI BIOS subkey */
+		if (!wcsncmp((PWCHAR)ValueInfo->Data, L"PCI BIOS",
+			     ValueInfo->DataLength)) {
+		    /* It is, proceed to query the PCI IRQ routing table */
+		    Status = PciGetRegistryValue(L"Configuration Data",
+						 L"RealModeIrqRoutingTable\\0",
+						 SubKey, REG_FULL_RESOURCE_DESCRIPTOR,
+						 (PVOID *)&Package, &NumberOfBytes);
+		    NtClose(SubKey);
+		    break;
 		}
-
-		/* Close the subkey and try the next one */
-		NtClose(SubKey);
 	    }
+
+	    /* Close the subkey and try the next one */
+	    NtClose(SubKey);
 	}
+    }
 
-	/* Check if we got here because the routing table was found */
-	if (!NT_SUCCESS(Status))
-	    break;
+    /* Check if we got here because the routing table was found */
+    if (!NT_SUCCESS(Status))
+	goto out;
 
-	/* Check if a descriptor was found */
-	if (!Package)
-	    break;
+    /* Check if a descriptor was found */
+    if (!Package)
+	goto out;
 
-	/* Make sure the buffer is large enough to hold the table */
-	PPCI_IRQ_ROUTING_TABLE Table = (PVOID)(Package + 1);
-	if ((NumberOfBytes < sizeof(*Package)) ||
-	    (Table->TableSize > (NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR)))) {
-	    /* Invalid package size */
-	    Status = STATUS_UNSUCCESSFUL;
-	    break;
-	}
+    /* Make sure the buffer is large enough to hold the table */
+    PPCI_IRQ_ROUTING_TABLE Table = (PVOID)(Package + 1);
+    if ((NumberOfBytes < sizeof(*Package)) ||
+	(Table->TableSize > (NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR)))) {
+	/* Invalid package size */
+	Status = STATUS_UNSUCCESSFUL;
+	goto out;
+    }
 
-	/* Allocate space for the table */
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	*PciRoutingTable = ExAllocatePoolWithTag(NumberOfBytes, PCI_POOL_TAG);
-	if (!*PciRoutingTable)
-	    break;
+    /* Allocate space for the table */
+    Status = STATUS_INSUFFICIENT_RESOURCES;
+    *PciRoutingTable = ExAllocatePoolWithTag(NumberOfBytes, PCI_POOL_TAG);
+    if (!*PciRoutingTable)
+	goto out;
 
-	/* Copy the registry data */
-	RtlCopyMemory(*PciRoutingTable, Table,
-		      NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR));
-	Status = STATUS_SUCCESS;
-    } while (FALSE);
+    /* Copy the registry data */
+    RtlCopyMemory(*PciRoutingTable, Table,
+		  NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR));
+    Status = STATUS_SUCCESS;
 
     /* Close any opened keys, free temporary allocations, and return status */
+out:
     if (Package)
 	ExFreePoolWithTag(Package, 0);
     if (ValueInfo)
@@ -172,7 +160,7 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
     return Status;
 }
 
-NTAPI NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
+static NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
 {
     PKEY_FULL_INFORMATION FullInfo;
     ULONG i, HackCount;
@@ -350,7 +338,7 @@ NTAPI NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
     return Status;
 }
 
-NTAPI NTSTATUS PciGetDebugPorts(IN HANDLE DebugKey)
+static NTSTATUS PciGetDebugPorts(IN HANDLE DebugKey)
 {
     UNREFERENCED_PARAMETER(DebugKey);
     /* This function is not yet implemented */
@@ -370,7 +358,7 @@ NTAPI VOID PciDriverUnload(IN PDRIVER_OBJECT DriverObject)
 NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
-    HANDLE KeyHandle, ParametersKey, DebugKey, ControlSetKey;
+    HANDLE KeyHandle = NULL, ParametersKey = NULL, DebugKey = NULL, ControlSetKey = NULL;
     BOOLEAN Result;
     OBJECT_ATTRIBUTES ObjectAttributes;
     ULONG ResultLength;
@@ -380,131 +368,106 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     NTSTATUS Status;
     DPRINT1("PCI: DriverEntry!\n");
 
-    /* Setup initial loop variables */
-    KeyHandle = NULL;
-    ParametersKey = NULL;
-    DebugKey = NULL;
-    ControlSetKey = NULL;
-    do {
-	/* Remember our object so we can get it to it later */
-	PciDriverObject = DriverObject;
+    /* Remember our object so we can get it to it later */
+    PciDriverObject = DriverObject;
 
-	/* Setup the IRP dispatcher */
-	DriverObject->MajorFunction[IRP_MJ_POWER] = PciDispatchIrp;
-	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = PciDispatchIrp;
-	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = PciDispatchIrp;
-	DriverObject->MajorFunction[IRP_MJ_PNP] = PciDispatchIrp;
-	DriverObject->DriverUnload = PciDriverUnload;
+    /* Setup the IRP dispatcher */
+    DriverObject->MajorFunction[IRP_MJ_POWER] = PciDispatchIrp;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = PciDispatchIrp;
+    DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = PciDispatchIrp;
+    DriverObject->MajorFunction[IRP_MJ_PNP] = PciDispatchIrp;
+    DriverObject->DriverUnload = PciDriverUnload;
 
-	/* This is how we'll detect a new PCI bus */
-	DriverObject->AddDevice = PciAddDevice;
+    /* This is how we'll detect a new PCI bus */
+    DriverObject->AddDevice = PciAddDevice;
 
-	/* Open the PCI key */
-	InitializeObjectAttributes(&ObjectAttributes, RegistryPath,
-				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
-	Status = NtOpenKey(&KeyHandle, KEY_QUERY_VALUE, &ObjectAttributes);
+    /* Open the PCI key */
+    InitializeObjectAttributes(&ObjectAttributes, RegistryPath,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+    Status = NtOpenKey(&KeyHandle, KEY_QUERY_VALUE, &ObjectAttributes);
+    if (!NT_SUCCESS(Status))
+	goto out;
+
+    /* Open the Parameters subkey */
+    Result = PciOpenKey(L"Parameters", KeyHandle, KEY_QUERY_VALUE, &ParametersKey,
+			&Status);
+    //if (!Result) goto out;
+
+    /* Build the list of all known PCI erratas */
+    Status = PciBuildHackTable(ParametersKey);
+    //if (!NT_SUCCESS(Status)) goto out;
+
+    /* Open the debug key, if it exists */
+    Result = PciOpenKey(L"Debug", KeyHandle, KEY_QUERY_VALUE, &DebugKey, &Status);
+    if (Result) {
+	/* There are PCI debug devices, go discover them */
+	Status = PciGetDebugPorts(DebugKey);
 	if (!NT_SUCCESS(Status))
-	    break;
+	    goto out;
+    }
 
-	/* Open the Parameters subkey */
-	Result = PciOpenKey(L"Parameters", KeyHandle, KEY_QUERY_VALUE, &ParametersKey,
-			    &Status);
-	//if (!Result) break;
+    /* Open the control set key */
+    Result = PciOpenKey(L"\\Registry\\Machine\\System\\CurrentControlSet", NULL,
+			KEY_QUERY_VALUE, &ControlSetKey, &Status);
+    if (!Result)
+	goto out;
 
-	/* Build the list of all known PCI erratas */
-	Status = PciBuildHackTable(ParametersKey);
-	//if (!NT_SUCCESS(Status)) break;
+    /* Read the command line */
+    Status = PciGetRegistryValue(L"SystemStartOptions", L"Control", ControlSetKey,
+				 REG_SZ, (PVOID *)&StartOptions, &ResultLength);
+    if (NT_SUCCESS(Status)) {
+	/* Initialize the command-line as a string */
+	OptionString.Buffer = StartOptions;
+	OptionString.MaximumLength = OptionString.Length = ResultLength;
 
-	/* Open the debug key, if it exists */
-	Result = PciOpenKey(L"Debug", KeyHandle, KEY_QUERY_VALUE, &DebugKey, &Status);
-	if (Result) {
-	    /* There are PCI debug devices, go discover them */
-	    Status = PciGetDebugPorts(DebugKey);
-	    if (!NT_SUCCESS(Status))
-		break;
+	/* Check if the command-line has the PCILOCK argument */
+	RtlInitUnicodeString(&PciLockString, L"PCILOCK");
+	if (PciUnicodeStringStrStr(&OptionString, &PciLockString, TRUE)) {
+	    /* The PCI Bus driver will keep the BIOS-assigned resources */
+	    PciLockDeviceResources = TRUE;
 	}
 
-	/* Initialize the synchronization locks */
-	KeInitializeEvent(&PciGlobalLock, SynchronizationEvent, TRUE);
-	KeInitializeEvent(&PciBusLock, SynchronizationEvent, TRUE);
-	KeInitializeEvent(&PciLegacyDescriptionLock, SynchronizationEvent, TRUE);
+	/* This data isn't needed anymore */
+	ExFreePoolWithTag(StartOptions, 0);
+    }
 
-	/* Open the control set key */
-	Result = PciOpenKey(L"\\Registry\\Machine\\System\\CurrentControlSet", NULL,
-			    KEY_QUERY_VALUE, &ControlSetKey, &Status);
-	if (!Result)
-	    break;
+    /* The PCILOCK feature can also be enabled per-system in the registry */
+    Status = PciGetRegistryValue(L"PCILock", L"Control\\BiosInfo\\PCI", ControlSetKey,
+				 REG_DWORD, (PVOID *)&Value, &ResultLength);
+    if (NT_SUCCESS(Status)) {
+	/* Read the value it's been set to. This overrides /PCILOCK */
+	if (ResultLength == sizeof(ULONG))
+	    PciLockDeviceResources = *Value;
+	ExFreePoolWithTag(Value, 0);
+    }
 
-	/* Read the command line */
-	Status = PciGetRegistryValue(L"SystemStartOptions", L"Control", ControlSetKey,
-				     REG_SZ, (PVOID *)&StartOptions, &ResultLength);
-	if (NT_SUCCESS(Status)) {
-	    /* Initialize the command-line as a string */
-	    OptionString.Buffer = StartOptions;
-	    OptionString.MaximumLength = OptionString.Length = ResultLength;
+    /* The system can have global PCI erratas in the registry */
+    Status = PciGetRegistryValue(L"HackFlags", L"Control\\PnP\\PCI", ControlSetKey,
+				 REG_DWORD, (PVOID *)&Value, &ResultLength);
+    if (NT_SUCCESS(Status)) {
+	/* Read them in */
+	if (ResultLength == sizeof(ULONG))
+	    PciSystemWideHackFlags = *Value;
+	ExFreePoolWithTag(Value, 0);
+    }
 
-	    /* Check if the command-line has the PCILOCK argument */
-	    RtlInitUnicodeString(&PciLockString, L"PCILOCK");
-	    if (PciUnicodeStringStrStr(&OptionString, &PciLockString, TRUE)) {
-		/* The PCI Bus driver will keep the BIOS-assigned resources */
-		PciLockDeviceResources = TRUE;
-	    }
+    /* Build the range lists for all the excluded resource areas */
+    Status = PciBuildDefaultExclusionLists();
+    if (!NT_SUCCESS(Status))
+	goto out;
 
-	    /* This data isn't needed anymore */
-	    ExFreePoolWithTag(StartOptions, 0);
-	}
+    /* Read the PCI IRQ Routing Table that the loader put in the registry */
+    PciGetIrqRoutingTableFromRegistry(&PciIrqRoutingTable);
 
-	/* The PCILOCK feature can also be enabled per-system in the registry */
-	Status = PciGetRegistryValue(L"PCILock", L"Control\\BiosInfo\\PCI", ControlSetKey,
-				     REG_DWORD, (PVOID *)&Value, &ResultLength);
-	if (NT_SUCCESS(Status)) {
-	    /* Read the value it's been set to. This overrides /PCILOCK */
-	    if (ResultLength == sizeof(ULONG))
-		PciLockDeviceResources = *Value;
-	    ExFreePoolWithTag(Value, 0);
-	}
+    /* Check if this is a Datacenter SKU, which impacts IRQ alignment */
+    PciRunningDatacenter = PciIsDatacenter();
+    if (PciRunningDatacenter)
+	DPRINT1("PCI running on datacenter build\n");
 
-	/* The system can have global PCI erratas in the registry */
-	Status = PciGetRegistryValue(L"HackFlags", L"Control\\PnP\\PCI", ControlSetKey,
-				     REG_DWORD, (PVOID *)&Value, &ResultLength);
-	if (NT_SUCCESS(Status)) {
-	    /* Read them in */
-	    if (ResultLength == sizeof(ULONG))
-		PciSystemWideHackFlags = *Value;
-	    ExFreePoolWithTag(Value, 0);
-	}
-
-	/* Check if the system should allow native ATA support */
-	Status = PciGetRegistryValue(L"EnableNativeModeATA", L"Control\\PnP\\PCI",
-				     ControlSetKey, REG_DWORD, (PVOID *)&Value,
-				     &ResultLength);
-	if (NT_SUCCESS(Status)) {
-	    /* This key is typically set by drivers, but users can force it */
-	    if (ResultLength == sizeof(ULONG))
-		PciEnableNativeModeATA = *Value;
-	    ExFreePoolWithTag(Value, 0);
-	}
-
-	/* Build the range lists for all the excluded resource areas */
-	Status = PciBuildDefaultExclusionLists();
-	if (!NT_SUCCESS(Status))
-	    break;
-
-	/* Read the PCI IRQ Routing Table that the loader put in the registry */
-	PciGetIrqRoutingTableFromRegistry(&PciIrqRoutingTable);
-
-	/* Take over the HAL's default PCI Bus Handler routines */
-	PciHookHal();
-
-	/* Check if this is a Datacenter SKU, which impacts IRQ alignment */
-	PciRunningDatacenter = PciIsDatacenter();
-	if (PciRunningDatacenter)
-	    DPRINT1("PCI running on datacenter build\n");
-
-	Status = STATUS_SUCCESS;
-    } while (FALSE);
+    Status = STATUS_SUCCESS;
 
     /* Close all opened keys, return driver status to PnP Manager */
+out:
     if (KeyHandle)
 	NtClose(KeyHandle);
     if (ControlSetKey)

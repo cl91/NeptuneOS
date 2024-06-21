@@ -28,8 +28,8 @@ PCI_CONFIGURATOR PciConfigurators[] = {
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					   IN PCM_RESOURCE_LIST ResourceList)
+BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				     IN PCM_RESOURCE_LIST ResourceList)
 {
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, InterruptResource;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR BaseResource, CurrentDescriptor;
@@ -80,7 +80,7 @@ NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	    /* Check what kind of descriptor this was */
 	    switch (Partial->Type) {
-	    /* Base BAR resources */
+		/* Base BAR resources */
 	    case CmResourceTypePort:
 	    case CmResourceTypeMemory:
 
@@ -89,7 +89,7 @@ NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 		BaseResource = Partial;
 		break;
 
-	    /* Interrupt resource */
+		/* Interrupt resource */
 	    case CmResourceTypeInterrupt:
 
 		/* Make sure it's a compatible (and the only) PCI interrupt */
@@ -108,22 +108,22 @@ NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 		break;
 
-	    /* Check for specific device data */
+		/* Check for specific device data */
 	    case CmResourceTypeDevicePrivate:
 
 		/* Check what kind of data this was */
 		switch (Partial->u.DevicePrivate.Data[0]) {
-		/* Not used in the driver yet */
+		    /* Not used in the driver yet */
 		case 1:
 		    UNIMPLEMENTED_DBGBREAK();
 		    break;
 
-		/* Not used in the driver yet */
+		    /* Not used in the driver yet */
 		case 2:
 		    UNIMPLEMENTED_DBGBREAK();
 		    break;
 
-		/* A drain request */
+		    /* A drain request */
 		case 3:
 		    /* Shouldn't be a base resource, this is a drain */
 		    ASSERT(BaseResource == NULL);
@@ -196,11 +196,9 @@ NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     return ((RangeChange) || (PdoExtension->UpdateHardware));
 }
 
-NTAPI VOID PcipUpdateHardware(IN PVOID Context, IN PVOID Context2)
+static VOID PciUpdateHardware(IN PPCI_PDO_EXTENSION PdoExtension,
+			      IN PPCI_COMMON_HEADER PciData)
 {
-    PPCI_PDO_EXTENSION PdoExtension = Context;
-    PPCI_COMMON_HEADER PciData = Context2;
-
     /* Check if we're allowed to disable decodes */
     PciData->Command = PdoExtension->CommandEnables;
     if (!(PdoExtension->HackFlags & PCI_HACK_PRESERVE_COMMAND)) {
@@ -217,30 +215,9 @@ NTAPI VOID PcipUpdateHardware(IN PVOID Context, IN PVOID Context2)
     PciDecodeEnable(PdoExtension, TRUE, &PdoExtension->CommandEnables);
 }
 
-NTAPI VOID PciUpdateHardware(IN PPCI_PDO_EXTENSION PdoExtension,
-			     IN PPCI_COMMON_HEADER PciData)
-{
-    PCI_IPI_CONTEXT Context;
-
-    /* Check for critical devices and PCI Debugging devices */
-    if ((PdoExtension->HackFlags & PCI_HACK_CRITICAL_DEVICE) ||
-	(PdoExtension->OnDebugPath)) {
-	/* Build the context and send an IPI */
-	Context.RunCount = 1;
-	Context.Barrier = 1;
-	Context.Context = PciData;
-	Context.Function = PcipUpdateHardware;
-	Context.DeviceExtension = PdoExtension;
-	KeIpiGenericCall(PciExecuteCriticalSystemRoutine, (ULONG_PTR)&Context);
-    } else {
-	/* Just to the update inline */
-	PcipUpdateHardware(PdoExtension, PciData);
-    }
-}
-
-NTAPI PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Count,
-								   IN ULONG BusNumber,
-								   IN ULONG SlotNumber)
+static PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Count,
+								    IN ULONG BusNumber,
+								    IN ULONG SlotNumber)
 {
     SIZE_T Size;
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
@@ -249,7 +226,7 @@ NTAPI PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Coun
     Size = sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
     if (Count > 1)
 	Size = sizeof(IO_RESOURCE_DESCRIPTOR) * (Count - 1) +
-	       sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
+	    sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
 
     /* Allocate the list */
     RequirementsList = ExAllocatePoolWithTag(Size, 'BicP');
@@ -271,7 +248,7 @@ NTAPI PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Coun
     return RequirementsList;
 }
 
-NTAPI PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNumber)
+PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNumber)
 {
     SIZE_T Size;
     PCM_RESOURCE_LIST ResourceList;
@@ -280,7 +257,7 @@ NTAPI PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNu
     Size = sizeof(CM_RESOURCE_LIST);
     if (Count > 1)
 	Size = sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * (Count - 1) +
-	       sizeof(CM_RESOURCE_LIST);
+	    sizeof(CM_RESOURCE_LIST);
 
     /* Allocate the list */
     ResourceList = ExAllocatePoolWithTag(Size, 'BicP');
@@ -300,8 +277,8 @@ NTAPI PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNu
     return ResourceList;
 }
 
-NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
-				 OUT PCM_RESOURCE_LIST *Buffer)
+NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
+			   OUT PCM_RESOURCE_LIST *Buffer)
 {
     PPCI_FUNCTION_RESOURCES PciResources;
     BOOLEAN HaveVga, HaveMemSpace, HaveIoSpace;
@@ -409,7 +386,7 @@ NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	    /* Build an I/O descriptor for the graphic ports at 0x3B0 */
 	    Resource->Type = CmResourceTypePort;
 	    Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
-			      CM_RESOURCE_PORT_10_BIT_DECODE;
+		CM_RESOURCE_PORT_10_BIT_DECODE;
 	    Resource->u.Port.Start.QuadPart = 0x3B0u;
 	    Resource->u.Port.Length = 0xC;
 	    Resource++;
@@ -417,7 +394,7 @@ NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	    /* Build an I/O descriptor for the graphic ports at 0x3C0 */
 	    Resource->Type = CmResourceTypePort;
 	    Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
-			      CM_RESOURCE_PORT_10_BIT_DECODE;
+		CM_RESOURCE_PORT_10_BIT_DECODE;
 	    Resource->u.Port.Start.QuadPart = 0x3C0u;
 	    Resource->u.Port.Length = 0x20;
 	    Resource++;
@@ -447,8 +424,8 @@ NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
-					     IN OUT PDEVICE_RELATIONS *pDeviceRelations)
+NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
+				       IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
     PDEVICE_RELATIONS DeviceRelations;
 
@@ -465,15 +442,14 @@ NTAPI NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     /* Only one relation: the PDO */
     DeviceRelations->Count = 1;
     DeviceRelations->Objects[0] = PdoExtension->PhysicalDeviceObject;
-    ObReferenceObject(DeviceRelations->Objects[0]);
 
     /* Return the new relations */
     *pDeviceRelations = DeviceRelations;
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
-					 IN OUT PDEVICE_RELATIONS *pDeviceRelations)
+NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
+				   IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(pDeviceRelations);
@@ -483,9 +459,9 @@ NTAPI NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTAPI NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
-					IN PPCI_COMMON_HEADER PciData,
-					OUT PIO_RESOURCE_REQUIREMENTS_LIST *Buffer)
+NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
+				  IN PPCI_COMMON_HEADER PciData,
+				  OUT PIO_RESOURCE_REQUIREMENTS_LIST *Buffer)
 {
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
 
@@ -513,9 +489,8 @@ NTAPI NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS
-PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
-		     IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList)
+NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
+			      IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList)
 {
     NTSTATUS Status;
     PCI_COMMON_HEADER PciHeader;
@@ -529,14 +504,6 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
 	Status = PciBuildRequirementsList(PdoExtension, &PciHeader, RequirementsList);
 	if (!NT_SUCCESS(Status))
 	    return Status;
-
-	/* Is this a Compaq PCI Hotplug Controller (r17) on a PAE system ? */
-	if ((PciHeader.VendorID == 0xE11) && (PciHeader.DeviceID == 0xA0F7) &&
-	    (PciHeader.RevisionID == 17) &&
-	    (ExIsProcessorFeaturePresent(PF_PAE_ENABLED))) {
-	    /* Have not tested this on eVb's machine yet */
-	    UNIMPLEMENTED_DBGBREAK();
-	}
 
 	/* Check if the requirements are actually the zero list */
 	if (*RequirementsList == PciZeroIoResourceRequirements) {
@@ -575,8 +542,8 @@ PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
  *    the PCI Configuration space for this device is accurate. The operating system
  *    re-reads this data after previously ignoring it.
  */
-NTAPI BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
-					IN PPCI_COMMON_HEADER PciData, IN BOOLEAN Initial)
+BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
+				  IN PPCI_COMMON_HEADER PciData, IN BOOLEAN Initial)
 {
     UCHAR MasterMode, SlaveMode, MasterFixed, SlaveFixed, ProgIf, NewProgIf;
     BOOLEAN Switched;
@@ -688,9 +655,9 @@ NTAPI BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
     return Switched;
 }
 
-NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
-			 IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER SlotNumber,
-			 IN ULONG OperationType, PPCI_PDO_EXTENSION PdoExtension)
+VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
+		   IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER SlotNumber,
+		   IN ULONG OperationType, PPCI_PDO_EXTENSION PdoExtension)
 {
     ULONG LegacyBaseAddress;
     USHORT Command;
@@ -700,29 +667,29 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 
     /* Check what kind of hack operation this is */
     switch (OperationType) {
-    /*
+    case PCI_HACK_FIXUP_BEFORE_CONFIGURATION:
+	/*
          * This is mostly concerned with fixing up incorrect class data that can
          * exist on certain PCI hardware before the 2.0 spec was ratified.
          */
-    case PCI_HACK_FIXUP_BEFORE_CONFIGURATION:
 
 	/* Note that the i82375 PCI/EISA and the i82378 PCI/ISA bridges that
-             * are present on certain DEC/NT Alpha machines are pre-PCI 2.0 devices
-             * and appear as non-classified, so their correct class/subclass data
-             * is written here instead.
-             */
+	 * are present on certain DEC/NT Alpha machines are pre-PCI 2.0 devices
+	 * and appear as non-classified, so their correct class/subclass data
+	 * is written here instead.
+	 */
 	if ((PciData->VendorID == 0x8086) &&
 	    ((PciData->DeviceID == 0x482) || (PciData->DeviceID == 0x484))) {
 	    /* Note that 0x482 is the i82375 (EISA), 0x484 is the i82378 (ISA) */
 	    PciData->SubClass = PciData->DeviceID == 0x482 ? PCI_SUBCLASS_BR_EISA :
-							     PCI_SUBCLASS_BR_ISA;
+		PCI_SUBCLASS_BR_ISA;
 	    PciData->BaseClass = PCI_CLASS_BRIDGE_DEV;
 
 	    /*
-                 * Because the software is modifying the actual header data from
-                 * the BIOS, this flag tells the driver to ignore failures when
-                 * comparing the original BIOS data with the PCI data.
-                 */
+	     * Because the software is modifying the actual header data from
+	     * the BIOS, this flag tells the driver to ignore failures when
+	     * comparing the original BIOS data with the PCI data.
+	     */
 	    if (PdoExtension)
 		PdoExtension->ExpectedWritebackFailure = TRUE;
 	}
@@ -730,34 +697,34 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	/* Note that in this case, an immediate return is issued */
 	return;
 
-    /*
+    case PCI_HACK_FIXUP_AFTER_CONFIGURATION:
+	/*
          * This is concerned with setting up interrupts correctly for native IDE
          * mode, but will also handle broken VGA decoding on older bridges as
          * well as a PAE-specific hack for certain Compaq Hot-Plug Controllers.
          */
-    case PCI_HACK_FIXUP_AFTER_CONFIGURATION:
 
 	/* There should always be a PDO extension passed in */
 	ASSERT(PdoExtension);
 
 	/*
-             * On the OPTi Viper-M IDE controller, Linux doesn't support IDE-DMA
-             * and FreeBSD bug reports indicate that the system crashes when the
-             * feature is enabled (so it's disabled on that OS as well). In the
-             * NT PCI Bus Driver, it seems Microsoft too, completely disables
-             * Native IDE functionality on this controller, so it would seem OPTi
-             * simply frelled up this controller.
-             */
+	 * On the OPTi Viper-M IDE controller, Linux doesn't support IDE-DMA
+	 * and FreeBSD bug reports indicate that the system crashes when the
+	 * feature is enabled (so it's disabled on that OS as well). In the
+	 * NT PCI Bus Driver, it seems Microsoft too, completely disables
+	 * Native IDE functionality on this controller, so it would seem OPTi
+	 * simply frelled up this controller.
+	 */
 	if ((PciData->VendorID == 0x1045) && (PciData->DeviceID != 0xC621)) {
 	    /* Disable native mode */
 	    PciData->ProgIf &= ~5;
 	    PciData->Type0.InterruptPin = 0;
 
 	    /*
-                 * Because the software is modifying the actual header data from
-                 * the BIOS, this flag tells the driver to ignore failures when
-                 * comparing the original BIOS data with the PCI data.
-                 */
+	     * Because the software is modifying the actual header data from
+	     * the BIOS, this flag tells the driver to ignore failures when
+	     * comparing the original BIOS data with the PCI data.
+	     */
 	    PdoExtension->ExpectedWritebackFailure = TRUE;
 	} else if ((PciData->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
 		   (PciData->SubClass == PCI_SUBCLASS_MSC_IDE_CTLR)) {
@@ -765,41 +732,37 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	    PdoExtension->BIOSAllowsIDESwitchToNativeMode = FALSE;
 
 	    /*
-                 * Registry must have enabled native mode (typically as a result
-                 * of an INF file directive part of the IDE controller's driver)
-                 * and the system must not be booted in Safe Mode. If that checks
-                 * out, then evaluate the ACPI NATA method to see if the platform
-                 * supports this. See the section "BIOS and Platform Prerequisites
-                 * for Switching a Native-Mode-Capable Controller" in the Storage
-                 * section of the Windows Driver Kit for more details:
-                 *
-                 * 5. For each ATA controller enumerated, the PCI bus driver checks
-                 *    the Programming Interface register of the IDE controller to
-                 *    see if it supports switching both channels to native mode.
-                 * 6. The PCI bus driver checks whether the BIOS/platform supports
-                 *    switching the controller by checking the NATA method described
-                 *    earlier in this article.
-                 *
-                 *    If an ATA controller does not indicate that it is native
-                 *    mode-capable, or if the BIOS NATA control method is missing
-                 *    or does not list that device, the PCI bus driver does not
-                 *    switch the controller and it is assigned legacy resources.
-                 *
-                 *  If both the controller and the BIOS indicate that the controller
-                 *  can be switched, the process of switching the controller begins
-                 *  with the next step.
-                 */
-	    if ((PciEnableNativeModeATA) && !(InitSafeBootMode) &&
-		(PciIsSlotPresentInParentMethod(PdoExtension, 'ATAN'))) {
+	     * Evaluate the ACPI NATA method to see if the platform supports
+	     * native ATA mode. See the section "BIOS and Platform Prerequisites
+	     * for Switching a Native-Mode-Capable Controller" in the Storage
+	     * section of the Windows Driver Kit for more details:
+	     *
+	     * 5. For each ATA controller enumerated, the PCI bus driver checks
+	     *    the Programming Interface register of the IDE controller to
+	     *    see if it supports switching both channels to native mode.
+	     * 6. The PCI bus driver checks whether the BIOS/platform supports
+	     *    switching the controller by checking the NATA method described
+	     *    earlier in this article.
+	     *
+	     *    If an ATA controller does not indicate that it is native
+	     *    mode-capable, or if the BIOS NATA control method is missing
+	     *    or does not list that device, the PCI bus driver does not
+	     *    switch the controller and it is assigned legacy resources.
+	     *
+	     *  If both the controller and the BIOS indicate that the controller
+	     *  can be switched, the process of switching the controller begins
+	     *  with the next step.
+	     */
+	    if (PciIsSlotPresentInParentMethod(PdoExtension, 'ATAN')) {
 		/* The platform supports it, remember that */
 		PdoExtension->BIOSAllowsIDESwitchToNativeMode = TRUE;
 
 		/*
-                     * Now switch the controller into native mode if both channels
-                     * support native IDE mode. See "How Windows Switches an ATA
-                     * Controller to Native Mode" in the Storage section of the
-                     * Windows Driver Kit for more details.
-                     */
+		 * Now switch the controller into native mode if both channels
+		 * support native IDE mode. See "How Windows Switches an ATA
+		 * Controller to Native Mode" in the Storage section of the
+		 * Windows Driver Kit for more details.
+		 */
 		PdoExtension->IDEInNativeMode = PciConfigureIdeController(PdoExtension,
 									  PciData, TRUE);
 	    }
@@ -810,32 +773,15 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 		PciData->Type0.InterruptPin = 0;
 	    }
 	}
-
-	/* Is this a Compaq PCI Hotplug Controller (r17) on a PAE system ? */
-	if ((PciData->VendorID == 0xE11) && (PciData->DeviceID == 0xA0F7) &&
-	    (PciData->RevisionID == 17) &&
-	    (ExIsProcessorFeaturePresent(PF_PAE_ENABLED))) {
-	    /* Turn off the decodes immediately */
-	    PciData->Command &= ~(PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE |
-				  PCI_ENABLE_BUS_MASTER);
-	    PciWriteDeviceConfig(PdoExtension, &PciData->Command,
-				 FIELD_OFFSET(PCI_COMMON_HEADER, Command),
-				 sizeof(USHORT));
-
-	    /* Do not EVER turn them on again, this will blow up the system */
-	    PdoExtension->CommandEnables &= ~(
-		PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE | PCI_ENABLE_BUS_MASTER);
-	    PdoExtension->HackFlags |= PCI_HACK_PRESERVE_COMMAND;
-	}
 	break;
 
-    /*
+    case PCI_HACK_FIXUP_BEFORE_UPDATE:
+	/*
          * This is called whenever resources are changed and hardware needs to be
          * updated. It is concerned with two highly specific erratas on an IBM
          * hot-plug docking bridge used on the Thinkpad 600 Series and on Intel's
          * ICH PCI Bridges.
          */
-    case PCI_HACK_FIXUP_BEFORE_UPDATE:
 
 	/* There should always be a PDO extension passed in */
 	ASSERT(PdoExtension);
@@ -862,10 +808,10 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	}
 
 	/*
-             * Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810,
-             * i820, i840, i845 Chipsets) that have subtractive decode enabled,
-             * and whose hack flags do not specify that this support is broken.
-             */
+	 * Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810,
+	 * i820, i840, i845 Chipsets) that have subtractive decode enabled,
+	 * and whose hack flags do not specify that this support is broken.
+	 */
 	if ((PdoExtension->HeaderType == PCI_BRIDGE_TYPE) &&
 	    (PdoExtension->Dependent.type1.SubtractiveDecode) &&
 	    ((PdoExtension->VendorId == 0x8086) &&
@@ -874,21 +820,21 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	      (PdoExtension->DeviceId == 0x2448))) &&
 	    !(PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE)) {
 	    /*
-                 * The positive decode window shouldn't be used, these values are
-                 * normally all read-only or initialized to 0 by the BIOS, but
-                 * it appears Intel doesn't do this, so the PCI Bus Driver will
-                 * do it in software instead. Note that this is used to prevent
-                 * certain non-compliant PCI devices from breaking down due to the
-                 * fact that these ICH bridges have a known "quirk" (which Intel
-                 * documents as a known "erratum", although it's not not really
-                 * an ICH bug since the PCI specification does allow for it) in
-                 * that they will sometimes send non-zero addresses during special
-                 * cycles (ie: non-zero data during the address phase). These
-                 * broken PCI cards will mistakenly attempt to claim the special
-                 * cycle and corrupt their I/O and RAM ranges. Again, in Intel's
-                 * defense, the PCI specification only requires stable data, not
-                 * necessarily zero data, during the address phase.
-                 */
+	     * The positive decode window shouldn't be used, these values are
+	     * normally all read-only or initialized to 0 by the BIOS, but
+	     * it appears Intel doesn't do this, so the PCI Bus Driver will
+	     * do it in software instead. Note that this is used to prevent
+	     * certain non-compliant PCI devices from breaking down due to the
+	     * fact that these ICH bridges have a known "quirk" (which Intel
+	     * documents as a known "erratum", although it's not not really
+	     * an ICH bug since the PCI specification does allow for it) in
+	     * that they will sometimes send non-zero addresses during special
+	     * cycles (ie: non-zero data during the address phase). These
+	     * broken PCI cards will mistakenly attempt to claim the special
+	     * cycle and corrupt their I/O and RAM ranges. Again, in Intel's
+	     * defense, the PCI specification only requires stable data, not
+	     * necessarily zero data, during the address phase.
+	     */
 	    PciData->Type1.MemoryBase = 0xFFFF;
 	    PciData->Type1.PrefetchBase = 0xFFFF;
 	    PciData->Type1.IOBase = 0xFF;
@@ -921,21 +867,21 @@ NTAPI VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
     }
 }
 
-NTAPI BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
-			       IN PPCI_COMMON_HEADER PciData)
+BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
+			 IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN IdMatch, RevMatch, SubsysMatch;
     ULONGLONG HackFlags = DeviceExtension->HackFlags;
 
     /* Check if the IDs match */
     IdMatch = (PciData->VendorID == DeviceExtension->VendorId) &&
-	      (PciData->DeviceID == DeviceExtension->DeviceId);
+	(PciData->DeviceID == DeviceExtension->DeviceId);
     if (!IdMatch)
 	return FALSE;
 
     /* If the device has a valid revision, check if it matches */
     RevMatch = (HackFlags & PCI_HACK_NO_REVISION_AFTER_D3) ||
-	       (PciData->RevisionID == DeviceExtension->RevisionId);
+	(PciData->RevisionID == DeviceExtension->RevisionId);
     if (!RevMatch)
 	return FALSE;
 
@@ -950,13 +896,13 @@ NTAPI BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
     /* Devices, on the other hand, have subsystem data that can be compared */
     SubsysMatch = (HackFlags &
 		   (PCI_HACK_NO_SUBSYSTEM | PCI_HACK_NO_SUBSYSTEM_AFTER_D3)) ||
-		  ((DeviceExtension->SubsystemVendorId == PciData->Type0.SubVendorID) &&
-		   (DeviceExtension->SubsystemId == PciData->Type0.SubSystemID));
+	((DeviceExtension->SubsystemVendorId == PciData->Type0.SubVendorID) &&
+	 (DeviceExtension->SubsystemId == PciData->Type0.SubSystemID));
     return SubsysMatch;
 }
 
-NTAPI BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER Slot,
-				  IN UCHAR OperationType, IN ULONGLONG HackFlags)
+BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER Slot,
+			    IN UCHAR OperationType, IN ULONGLONG HackFlags)
 {
     do {
 	/* Check if this is device enumeration */
@@ -1017,8 +963,8 @@ NTAPI BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUM
     return TRUE;
 }
 
-NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
-				      IN PPCI_COMMON_HEADER PciData)
+VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
+				IN PPCI_COMMON_HEADER PciData)
 {
     ULONG HeaderType, CapPtr, TargetAgpCapabilityId;
     DEVICE_POWER_STATE WakeLevel;
@@ -1061,8 +1007,8 @@ NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 		/* Query either the raw AGP capabilitity, or the Target AGP one */
 		TargetAgpCapabilityId = (PdoExtension->SubClass ==
 					 PCI_SUBCLASS_BR_PCI_TO_PCI) ?
-					    PCI_CAPABILITY_ID_AGP_TARGET :
-					    PCI_CAPABILITY_ID_AGP;
+		    PCI_CAPABILITY_ID_AGP_TARGET :
+		    PCI_CAPABILITY_ID_AGP;
 		if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
 					    TargetAgpCapabilityId, &AgpCapability,
 					    sizeof(PCI_CAPABILITIES_HEADER))) {
@@ -1114,17 +1060,17 @@ NTAPI VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     if (PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS) {
 	/* Then guess the current state based on whether the decodes are on */
 	PdoExtension->PowerState.CurrentDeviceState = PciData->Command &
-							      (PCI_ENABLE_IO_SPACE |
-							       PCI_ENABLE_MEMORY_SPACE |
-							       PCI_ENABLE_BUS_MASTER) ?
-							  PowerDeviceD0 :
-							  PowerDeviceD3;
+	    (PCI_ENABLE_IO_SPACE |
+	     PCI_ENABLE_MEMORY_SPACE |
+	     PCI_ENABLE_BUS_MASTER) ?
+	    PowerDeviceD0 :
+	    PowerDeviceD3;
 	DPRINT1("PM is off, so assumed device is: %d based on enables\n",
 		PdoExtension->PowerState.CurrentDeviceState);
     }
 }
 
-NTAPI VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
+VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
 {
     PPCI_CONFIGURATOR_CONTEXT Context = Context2;
     PPCI_COMMON_HEADER PciData, Current;
@@ -1161,12 +1107,11 @@ NTAPI VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
     Context->Configurator->RestoreCurrent(Context);
 }
 
-NTAPI NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
+NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_CONFIGURATOR Configurator;
     PPCI_COMMON_HEADER PciData, Current;
     PPCI_PDO_EXTENSION PdoExtension;
-    PCI_IPI_CONTEXT IpiContext;
     PIO_RESOURCE_DESCRIPTOR IoDescriptor;
     ULONG Offset;
 
@@ -1194,37 +1139,7 @@ NTAPI NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     /* Initialize it, which will typically setup the BARs for limit discovery */
     Configurator->Initialize(Context);
 
-    /* Check for critical devices and PCI Debugging devices */
-    if ((PdoExtension->HackFlags & PCI_HACK_CRITICAL_DEVICE) ||
-	(PdoExtension->OnDebugPath)) {
-	/* Specifically check for a PCI Debugging device */
-	if (PdoExtension->OnDebugPath) {
-	    /* Was it enabled for bus mastering? */
-	    if (Context->Command & PCI_ENABLE_BUS_MASTER) {
-		/* This decode needs to be re-enabled so debugging can work */
-		PciData->Command |= PCI_ENABLE_BUS_MASTER;
-		Current->Command |= PCI_ENABLE_BUS_MASTER;
-	    }
-
-	    /* Disable the debugger while the discovery is happening */
-	    KdDisableDebugger();
-	}
-
-	/* For these devices, an IPI must be sent to force high-IRQL discovery */
-	IpiContext.Barrier = 1;
-	IpiContext.RunCount = 1;
-	IpiContext.DeviceExtension = PdoExtension;
-	IpiContext.Function = PciWriteLimitsAndRestoreCurrent;
-	IpiContext.Context = Context;
-	KeIpiGenericCall(PciExecuteCriticalSystemRoutine, (ULONG_PTR)&IpiContext);
-
-	/* Re-enable the debugger if this was a PCI Debugging Device */
-	if (PdoExtension->OnDebugPath)
-	    KdEnableDebugger();
-    } else {
-	/* Otherwise, it's safe to do this in-line at low IRQL */
-	PciWriteLimitsAndRestoreCurrent(PdoExtension, Context);
-    }
+    PciWriteLimitsAndRestoreCurrent(PdoExtension, Context);
 
     /*
      * Check if it's valid to compare the headers to see if limit discovery mode
@@ -1291,8 +1206,8 @@ NTAPI NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
-				    IN PPCI_COMMON_HEADER Current, IN ULONGLONG HackFlags)
+NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
+			      IN PPCI_COMMON_HEADER Current, IN ULONGLONG HackFlags)
 {
     NTSTATUS Status;
     PPCI_COMMON_HEADER PciData;
@@ -1321,7 +1236,7 @@ NTAPI NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     return Status;
 }
 
-NTAPI VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
+VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PPCI_PDO_EXTENSION PdoExtension;
     PDEVICE_OBJECT PhysicalDeviceObject;
@@ -1361,7 +1276,7 @@ NTAPI VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     }
 }
 
-NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     ULONG MaxDevice = PCI_MAX_DEVICES;
     BOOLEAN ProcessFlag = FALSE;
@@ -1527,11 +1442,6 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    if ((NewExtension->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
 		((NewExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) ||
 		 (NewExtension->SubClass == PCI_SUBCLASS_BR_CARDBUS))) {
-		/* Acquire this device's lock */
-		KeEnterCriticalRegion();
-		KeWaitForSingleObject(&DeviceExtension->ChildListLock, Executive,
-				      KernelMode, FALSE, NULL);
-
 		/* Scan the bridge list until the first free entry */
 		for (BridgeExtension = &DeviceExtension->ChildBridgePdoList;
 		     *BridgeExtension; BridgeExtension = &(*BridgeExtension)->NextBridge)
@@ -1540,10 +1450,6 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		/* Add this PDO as a bridge */
 		*BridgeExtension = NewExtension;
 		ASSERT(NewExtension->NextBridge == NULL);
-
-		/* Release this device's lock */
-		KeSetEvent(&DeviceExtension->ChildListLock, IO_NO_INCREMENT, FALSE);
-		KeLeaveCriticalRegion();
 	    }
 
 	    /* Get the PCI BIOS configuration saved in the registry */
@@ -1641,7 +1547,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 		/* Check for capabilities that this driver cares about */
 		switch (CapHeader.CapabilityID) {
-		/* Power management capability is heavily used by the bus */
+		    /* Power management capability is heavily used by the bus */
 		case PCI_CAPABILITY_ID_POWER_MANAGEMENT:
 
 		    /* Dump the capability */
@@ -1649,7 +1555,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		    Size = sizeof(PCI_PM_CAPABILITY);
 		    break;
 
-		/* AGP capability is required for AGP bus functionality */
+		    /* AGP capability is required for AGP bus functionality */
 		case PCI_CAPABILITY_ID_AGP:
 
 		    /* Dump the capability */
@@ -1657,7 +1563,7 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		    Size = sizeof(PCI_AGP_CAPABILITY);
 		    break;
 
-		/* This driver doesn't really use anything other than that */
+		    /* This driver doesn't really use anything other than that */
 		default:
 
 		    /* Windows prints this, we could do a translation later */
@@ -1758,8 +1664,8 @@ NTAPI NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
-				       IN OUT PDEVICE_RELATIONS *pDeviceRelations)
+NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
+				 IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
     NTSTATUS Status;
     PPCI_PDO_EXTENSION PdoExtension;
@@ -1821,7 +1727,7 @@ NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
 	/* Copy the old relations into the new buffer, then free the old one */
 	RtlCopyMemory(NewRelations, DeviceRelations,
 		      FIELD_OFFSET(DEVICE_RELATIONS, Objects) +
-			  DeviceRelations->Count * sizeof(PDEVICE_OBJECT));
+		      DeviceRelations->Count * sizeof(PDEVICE_OBJECT));
 	ExFreePoolWithTag(DeviceRelations, 0);
     }
 
@@ -1842,7 +1748,6 @@ NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
 	if (!PdoExtension->NotPresent) {
 	    /* Reference it and add it to the array */
 	    DeviceObject = PdoExtension->PhysicalDeviceObject;
-	    ObReferenceObject(DeviceObject);
 	    *ObjectArray++ = DeviceObject;
 	}
 
@@ -1860,16 +1765,13 @@ NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset,
-			       IN BOOLEAN SomethingSomethingDarkSide)
+NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset)
 {
     PPCI_FDO_EXTENSION FdoExtension;
     UCHAR NewCacheLineSize, NewLatencyTimer;
     PCI_COMMON_HEADER PciData;
     BOOLEAN Native;
     PPCI_CONFIGURATOR Configurator;
-
-    UNREFERENCED_PARAMETER(SomethingSomethingDarkSide);
 
     /* Get the FDO and read the configuration data */
     FdoExtension = PdoExtension->ParentFdoExtension;

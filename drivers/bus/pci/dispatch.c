@@ -165,8 +165,8 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return Status;
 }
 
-NTAPI NTSTATUS PciIrpNotSupported(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciIrpNotSupported(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			    IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -178,9 +178,9 @@ NTAPI NTSTATUS PciIrpNotSupported(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLoca
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciIrpInvalidDeviceRequest(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciIrpInvalidDeviceRequest(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
+				    IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);

@@ -69,15 +69,15 @@ NTSTATUS PnpStateTransitionArray[PciMaxObjectState * PciMaxObjectState] = {
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI VOID PciInitializeState(IN PPCI_FDO_EXTENSION DeviceExtension)
+VOID PciInitializeState(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     /* Set the initial state */
     DeviceExtension->DeviceState = PciNotStarted;
     DeviceExtension->TentativeNextState = PciNotStarted;
 }
 
-NTAPI NTSTATUS PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-				       IN PCI_STATE NewState)
+NTSTATUS PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
+				 IN PCI_STATE NewState)
 {
     PCI_STATE CurrentState;
     NTSTATUS Status;
@@ -117,8 +117,8 @@ NTAPI NTSTATUS PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
     return Status;
 }
 
-NTAPI NTSTATUS PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-					IN PCI_STATE StateNotEntered)
+NTSTATUS PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
+				  IN PCI_STATE StateNotEntered)
 {
     NTSTATUS Status;
     DPRINT1("PCI Request to cancel transition of Extension %p to %s ->", DeviceExtension,
@@ -147,8 +147,8 @@ NTAPI NTSTATUS PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
     return Status;
 }
 
-NTAPI VOID PciCommitStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-				    IN PCI_STATE NewState)
+VOID PciCommitStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
+			      IN PCI_STATE NewState)
 {
     DPRINT1("PCI Commit transition of Extension %p to %s\n", DeviceExtension,
 	    PciTransitionText[NewState]);

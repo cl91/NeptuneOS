@@ -371,7 +371,7 @@ NTSTATUS acpi_create_registry_table(HANDLE ParentKeyHandle,
     NTSTATUS Status;
     CHAR OemId[7] = { 0 }; /* exactly one byte more than ACPI_TABLE_HEADER->OemId */
     CHAR OemTableId[9] = { 0 }; /* exactly one byte more than ACPI_TABLE_HEADER->OemTableId */
-    CHAR OemRevision[9] = { 0 }; /* enough to accept hex DWORD */
+    WCHAR OemRevision[9] = { 0 }; /* enough to accept hex DWORD */
 
     C_ASSERT(sizeof(OemId) == RTL_FIELD_SIZE(ACPI_TABLE_HEADER, OemId) + 1);
     C_ASSERT(sizeof(OemTableId) == RTL_FIELD_SIZE(ACPI_TABLE_HEADER, OemTableId) + 1);
@@ -438,29 +438,14 @@ NTSTATUS acpi_create_registry_table(HANDLE ParentKeyHandle,
 	}
 	KeyHandle = SubKeyHandle;
 
-	Status = snprintf(OemRevision, sizeof(OemRevision), "%08X",
-			  OutTable->OemRevision);
-	if (!NT_SUCCESS(Status)) {
-	    DPRINT1("RtlStringCbPrintfW() for 0x%08x failed (Status 0x%08x)\n",
-		    OutTable->OemRevision, Status);
-	    NtClose(KeyHandle);
-	    return Status;
-	}
-	RtlInitAnsiString(&HardwareKeyNameA, OemRevision);
-	Status = RtlAnsiStringToUnicodeString(&HardwareKeyName, &HardwareKeyNameA, TRUE);
-	if (!NT_SUCCESS(Status)) {
-	    DPRINT1("RtlAnsiStringToUnicodeString() for %Z failed (Status 0x%08x)\n",
-		    &HardwareKeyNameA, Status);
-	    NtClose(KeyHandle);
-	    return Status;
-	}
-
+	_snwprintf(OemRevision, sizeof(OemRevision), L"%08X",
+		   OutTable->OemRevision);
+	RtlInitUnicodeString(&HardwareKeyName, OemRevision);
 	InitializeObjectAttributes(&ObjectAttributes, &HardwareKeyName,
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, KeyHandle,
 				   NULL);
 	Status = NtCreateKey(&SubKeyHandle, KEY_WRITE, &ObjectAttributes, 0, NULL,
 			     REG_OPTION_VOLATILE, NULL);
-	RtlFreeUnicodeString(&HardwareKeyName);
 	NtClose(KeyHandle);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT1("NtCreateKey() for %ws failed (Status 0x%08x)\n", KeyName, Status);

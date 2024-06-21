@@ -9,6 +9,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "pcidrv.h"
+#include <stdio.h>
 
 /* GLOBALS ********************************************************************/
 
@@ -19,9 +20,9 @@ RTL_RANGE_LIST PciVgaAndIsaBitExclusionList;
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI BOOLEAN PciUnicodeStringStrStr(IN PUNICODE_STRING InputString,
-				     IN PCUNICODE_STRING EqualString,
-				     IN BOOLEAN CaseInSensitive)
+BOOLEAN PciUnicodeStringStrStr(IN PUNICODE_STRING InputString,
+			       IN PCUNICODE_STRING EqualString,
+			       IN BOOLEAN CaseInSensitive)
 {
     UNICODE_STRING PartialString;
     LONG EqualChars, TotalChars;
@@ -52,7 +53,7 @@ NTAPI BOOLEAN PciUnicodeStringStrStr(IN PUNICODE_STRING InputString,
     return TRUE;
 }
 
-NTAPI BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value)
+BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value)
 {
     USHORT Short;
     ULONG Low, High, Length;
@@ -93,14 +94,14 @@ NTAPI BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value)
     }
 }
 
-NTAPI BOOLEAN PciIsSuiteVersion(IN USHORT SuiteMask)
+BOOLEAN PciIsSuiteVersion(IN USHORT SuiteMask)
 {
     ULONGLONG Mask = 0;
-    RTL_OSVERSIONINFOEXW VersionInfo;
+    RTL_OSVERSIONINFOEX VersionInfo;
 
     /* Initialize the version information */
-    RtlZeroMemory(&VersionInfo, sizeof(RTL_OSVERSIONINFOEXW));
-    VersionInfo.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEXW);
+    RtlZeroMemory(&VersionInfo, sizeof(RTL_OSVERSIONINFOEX));
+    VersionInfo.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEX);
     VersionInfo.wSuiteMask = SuiteMask;
 
     /* Set the comparison mask and return if the passed suite mask matches */
@@ -108,7 +109,7 @@ NTAPI BOOLEAN PciIsSuiteVersion(IN USHORT SuiteMask)
     return NT_SUCCESS(RtlVerifyVersionInfo(&VersionInfo, VER_SUITENAME, Mask));
 }
 
-NTAPI BOOLEAN PciIsDatacenter(VOID)
+BOOLEAN PciIsDatacenter(VOID)
 {
     BOOLEAN Result;
     PVOID Value;
@@ -120,8 +121,8 @@ NTAPI BOOLEAN PciIsDatacenter(VOID)
 
     /* First, try opening the setup key */
     Status = PciGetRegistryValue(L"",
-				 L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Servic"
-				 L"es\\setupdd",
+				 L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Services"
+				 L"\\setupdd",
 				 0, REG_BINARY, &Value, &ResultLength);
     if (!NT_SUCCESS(Status)) {
 	/* This is not an in-progress Setup boot, so query the suite version */
@@ -136,9 +137,9 @@ NTAPI BOOLEAN PciIsDatacenter(VOID)
     return Result;
 }
 
-NTAPI BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
-			 IN ACCESS_MASK DesiredAccess, OUT PHANDLE KeyHandle,
-			 OUT PNTSTATUS KeyStatus)
+BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
+		   IN ACCESS_MASK DesiredAccess, OUT PHANDLE KeyHandle,
+		   OUT PNTSTATUS KeyStatus)
 {
     NTSTATUS Status;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -156,9 +157,9 @@ NTAPI BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
     return NT_SUCCESS(Status);
 }
 
-NTAPI NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
-				   IN HANDLE RootHandle, IN ULONG Type,
-				   OUT PVOID *OutputBuffer, OUT PULONG OutputLength)
+NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
+			     IN HANDLE RootHandle, IN ULONG Type,
+			     OUT PVOID *OutputBuffer, OUT PULONG OutputLength)
 {
     NTSTATUS Status;
     PKEY_VALUE_PARTIAL_INFORMATION PartialInfo;
@@ -170,56 +171,56 @@ NTAPI NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
     /* So we know what to free at the end of the body */
     PartialInfo = NULL;
     KeyHandle = NULL;
-    do {
-	/* Open the key by name, rooted off the handle passed */
-	Result = PciOpenKey(KeyName, RootHandle, KEY_QUERY_VALUE, &KeyHandle, &Status);
-	if (!Result)
-	    break;
 
-	/* Query for the size that's needed for the value that was passed in */
-	RtlInitUnicodeString(&ValueString, ValueName);
-	Status = NtQueryValueKey(KeyHandle, &ValueString, KeyValuePartialInformation,
-				 NULL, 0, &NeededLength);
-	ASSERT(!NT_SUCCESS(Status));
-	if (Status != STATUS_BUFFER_TOO_SMALL)
-	    break;
+    /* Open the key by name, rooted off the handle passed */
+    Result = PciOpenKey(KeyName, RootHandle, KEY_QUERY_VALUE, &KeyHandle, &Status);
+    if (!Result)
+	goto out;
 
-	/* Allocate an appropriate buffer for the size that was returned */
-	ASSERT(NeededLength != 0);
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	PartialInfo = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
-	if (!PartialInfo)
-	    break;
+    /* Query for the size that's needed for the value that was passed in */
+    RtlInitUnicodeString(&ValueString, ValueName);
+    Status = NtQueryValueKey(KeyHandle, &ValueString, KeyValuePartialInformation,
+			     NULL, 0, &NeededLength);
+    ASSERT(!NT_SUCCESS(Status));
+    if (Status != STATUS_BUFFER_TOO_SMALL)
+	goto out;
 
-	/* Query the actual value information now that the size is known */
-	Status = NtQueryValueKey(KeyHandle, &ValueString, KeyValuePartialInformation,
-				 PartialInfo, NeededLength, &ActualLength);
-	if (!NT_SUCCESS(Status))
-	    break;
+    /* Allocate an appropriate buffer for the size that was returned */
+    ASSERT(NeededLength != 0);
+    Status = STATUS_INSUFFICIENT_RESOURCES;
+    PartialInfo = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
+    if (!PartialInfo)
+	goto out;
 
-	/* Make sure it's of the type that the caller expects */
-	Status = STATUS_INVALID_PARAMETER;
-	if (PartialInfo->Type != Type)
-	    break;
+    /* Query the actual value information now that the size is known */
+    Status = NtQueryValueKey(KeyHandle, &ValueString, KeyValuePartialInformation,
+			     PartialInfo, NeededLength, &ActualLength);
+    if (!NT_SUCCESS(Status))
+	goto out;
 
-	/* Subtract the registry-specific header, to get the data size */
-	ASSERT(NeededLength == ActualLength);
-	NeededLength -= sizeof(KEY_VALUE_PARTIAL_INFORMATION);
+    /* Make sure it's of the type that the caller expects */
+    Status = STATUS_INVALID_PARAMETER;
+    if (PartialInfo->Type != Type)
+	goto out;
 
-	/* Allocate a buffer to hold the data and return it to the caller */
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	*OutputBuffer = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
-	if (!*OutputBuffer)
-	    break;
+    /* Subtract the registry-specific header, to get the data size */
+    ASSERT(NeededLength == ActualLength);
+    NeededLength -= sizeof(KEY_VALUE_PARTIAL_INFORMATION);
 
-	/* Copy the data into the buffer and return its length to the caller */
-	RtlCopyMemory(*OutputBuffer, PartialInfo->Data, NeededLength);
-	if (OutputLength)
-	    *OutputLength = NeededLength;
-	Status = STATUS_SUCCESS;
-    } while (0);
+    /* Allocate a buffer to hold the data and return it to the caller */
+    Status = STATUS_INSUFFICIENT_RESOURCES;
+    *OutputBuffer = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
+    if (!*OutputBuffer)
+	goto out;
+
+    /* Copy the data into the buffer and return its length to the caller */
+    RtlCopyMemory(*OutputBuffer, PartialInfo->Data, NeededLength);
+    if (OutputLength)
+	*OutputLength = NeededLength;
+    Status = STATUS_SUCCESS;
 
     /* Close any opened keys and free temporary allocations */
+out:
     if (KeyHandle)
 	NtClose(KeyHandle);
     if (PartialInfo)
@@ -227,7 +228,7 @@ NTAPI NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
     return Status;
 }
 
-NTAPI NTSTATUS PciBuildDefaultExclusionLists(VOID)
+NTSTATUS PciBuildDefaultExclusionLists(VOID)
 {
     ULONG Start;
     NTSTATUS Status;
@@ -272,8 +273,7 @@ NTAPI NTSTATUS PciBuildDefaultExclusionLists(VOID)
     return Status;
 }
 
-NTAPI PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceObject,
-						      IN PKEVENT Lock)
+PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceObject)
 {
     PPCI_FDO_EXTENSION DeviceExtension;
     PPCI_PDO_EXTENSION SearchExtension, FoundExtension;
@@ -282,30 +282,14 @@ NTAPI PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceOb
     SearchExtension = DeviceObject->DeviceExtension;
     FoundExtension = NULL;
 
-    /* Check if a lock was specified */
-    if (Lock) {
-	/* Wait for the lock to be released */
-	KeEnterCriticalRegion();
-	KeWaitForSingleObject(Lock, Executive, KernelMode, FALSE, NULL);
-    }
-
     /* Now search for the extension */
     DeviceExtension = (PPCI_FDO_EXTENSION)PciFdoExtensionListHead.Next;
     while (DeviceExtension) {
-	/* Acquire this device's lock */
-	KeEnterCriticalRegion();
-	KeWaitForSingleObject(&DeviceExtension->ChildListLock, Executive, KernelMode,
-			      FALSE, NULL);
-
-	/* Scan all children PDO, stop when no more PDOs, or found it */
+	/* Scan all child PDOs, stop when no more PDOs, or found it */
 	for (FoundExtension = DeviceExtension->ChildPdoList;
 	     ((FoundExtension) && (FoundExtension != SearchExtension));
 	     FoundExtension = FoundExtension->Next)
 	    ;
-
-	/* Release this device's lock */
-	KeSetEvent(&DeviceExtension->ChildListLock, IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
 
 	/* If we found it, break out */
 	if (FoundExtension)
@@ -315,123 +299,37 @@ NTAPI PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceOb
 	DeviceExtension = (PPCI_FDO_EXTENSION)DeviceExtension->List.Next;
     }
 
-    /* Check if we had acquired a lock previously */
-    if (Lock) {
-	/* Release it */
-	KeSetEvent(Lock, IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
-    }
-
     /* Return which extension was found, if any */
     return DeviceExtension;
 }
 
-NTAPI VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
-				IN PPCI_FDO_EXTENSION DeviceExtension, IN PKEVENT Lock)
+VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
+			  IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PSINGLE_LIST_ENTRY NextEntry;
-
-    /* Check if a lock was specified */
-    if (Lock) {
-	/* Wait for the lock to be released */
-	KeEnterCriticalRegion();
-	KeWaitForSingleObject(Lock, Executive, KernelMode, FALSE, NULL);
-    }
 
     /* Loop the list until we get to the end, then insert this entry there */
     for (NextEntry = ListHead; NextEntry->Next; NextEntry = NextEntry->Next)
 	;
     NextEntry->Next = &DeviceExtension->List;
-
-    /* Check if we had acquired a lock previously */
-    if (Lock) {
-	/* Release it */
-	KeSetEvent(Lock, IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
-    }
 }
 
-NTAPI VOID PciInsertEntryAtHead(IN PSINGLE_LIST_ENTRY ListHead,
-				IN PSINGLE_LIST_ENTRY Entry, IN PKEVENT Lock)
+VOID PciInsertEntryAtHead(IN PSINGLE_LIST_ENTRY ListHead,
+			  IN PSINGLE_LIST_ENTRY Entry)
 {
-    /* Check if a lock was specified */
-    if (Lock) {
-	/* Wait for the lock to be released */
-	KeEnterCriticalRegion();
-	KeWaitForSingleObject(Lock, Executive, KernelMode, FALSE, NULL);
-    }
-
     /* Make the entry point to the current head and make the head point to it */
     Entry->Next = ListHead->Next;
     ListHead->Next = Entry;
-
-    /* Check if we had acquired a lock previously */
-    if (Lock) {
-	/* Release it */
-	KeSetEvent(Lock, IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
-    }
 }
 
-NTAPI NTSTATUS PciGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
-				    IN DEVICE_REGISTRY_PROPERTY DeviceProperty,
-				    OUT PVOID *OutputBuffer)
-{
-    NTSTATUS Status;
-    ULONG BufferLength, ResultLength;
-    PVOID Buffer;
-    do {
-	/* Query the requested property size */
-	Status = IoGetDeviceProperty(DeviceObject, DeviceProperty, 0, NULL,
-				     &BufferLength);
-	if (Status != STATUS_BUFFER_TOO_SMALL) {
-	    /* Call should've failed with buffer too small! */
-	    DPRINT1("PCI - Unexpected status from GetDeviceProperty, saw %08X, expected "
-		    "%08X.\n",
-		    Status, STATUS_BUFFER_TOO_SMALL);
-	    *OutputBuffer = NULL;
-	    ASSERTMSG("PCI Successfully did the impossible!\n", FALSE);
-	    break;
-	}
-
-	/* Allocate the required buffer */
-	Buffer = ExAllocatePoolWithTag(BufferLength, 'BicP');
-	if (!Buffer) {
-	    /* No memory, fail the request */
-	    DPRINT1("PCI - Failed to allocate DeviceProperty buffer (%u bytes).\n",
-		    BufferLength);
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	    break;
-	}
-
-	/* Do the actual property query call */
-	Status = IoGetDeviceProperty(DeviceObject, DeviceProperty, BufferLength, Buffer,
-				     &ResultLength);
-	if (!NT_SUCCESS(Status))
-	    break;
-
-	/* Return the buffer to the caller */
-	ASSERT(BufferLength == ResultLength);
-	*OutputBuffer = Buffer;
-	return STATUS_SUCCESS;
-    } while (FALSE);
-
-    /* Failure path */
-    return STATUS_UNSUCCESSFUL;
-}
-
-NTAPI NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
-			    IN PVOID InputBuffer, IN ULONG InputBufferLength,
-			    IN PVOID OutputBuffer, IN ULONG OutputBufferLength)
+NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
+		      IN PVOID InputBuffer, IN ULONG InputBufferLength,
+		      IN PVOID OutputBuffer, IN ULONG OutputBufferLength)
 {
     PIRP Irp;
     NTSTATUS Status;
-    KEVENT Event;
     IO_STATUS_BLOCK IoStatusBlock;
     PDEVICE_OBJECT AttachedDevice;
-
-    /* Initialize the pending IRP event */
-    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Get a reference to the root PDO (ACPI) */
     AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
@@ -441,26 +339,21 @@ NTAPI NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCo
     /* Build the requested IOCTL IRP */
     Irp = IoBuildDeviceIoControlRequest(IoControlCode, AttachedDevice, InputBuffer,
 					InputBufferLength, OutputBuffer,
-					OutputBufferLength, 0, &Event, &IoStatusBlock);
+					OutputBufferLength, 0, &IoStatusBlock);
     if (!Irp)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
     /* Send the IOCTL to the driver */
     Status = IoCallDriver(AttachedDevice, Irp);
-    if (Status == STATUS_PENDING) {
-	/* Wait for a response */
-	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-	Status = Irp->IoStatus.Status;
-    }
 
     /* Take away the reference we took and return the result to the caller */
     ObDereferenceObject(AttachedDevice);
     return Status;
 }
 
-NTAPI ULONGLONG PciGetHackFlags(IN USHORT VendorId, IN USHORT DeviceId,
-				IN USHORT SubVendorId, IN USHORT SubSystemId,
-				IN UCHAR RevisionId)
+ULONGLONG PciGetHackFlags(IN USHORT VendorId, IN USHORT DeviceId,
+			  IN USHORT SubVendorId, IN USHORT SubSystemId,
+			  IN UCHAR RevisionId)
 {
     PPCI_HACK_ENTRY HackEntry;
     ULONGLONG HackFlags;
@@ -516,7 +409,7 @@ NTAPI ULONGLONG PciGetHackFlags(IN USHORT VendorId, IN USHORT DeviceId,
     return HackFlags;
 }
 
-NTAPI BOOLEAN PciIsCriticalDeviceClass(IN UCHAR BaseClass, IN UCHAR SubClass)
+BOOLEAN PciIsCriticalDeviceClass(IN UCHAR BaseClass, IN UCHAR SubClass)
 {
     /* Check for system or bridge devices */
     if (BaseClass == PCI_CLASS_BASE_SYSTEM_DEV) {
@@ -531,23 +424,11 @@ NTAPI BOOLEAN PciIsCriticalDeviceClass(IN UCHAR BaseClass, IN UCHAR SubClass)
     }
 }
 
-NTAPI PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtension,
-					      IN ULONG FunctionNumber,
-					      IN PPCI_COMMON_HEADER PciData)
+PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtension,
+					IN ULONG FunctionNumber,
+					IN PPCI_COMMON_HEADER PciData)
 {
-    KIRQL Irql;
     PPCI_PDO_EXTENSION PdoExtension;
-
-    /* Get the current IRQL when this call was made */
-    Irql = KeGetCurrentIrql();
-
-    /* Is this a low-IRQL call? */
-    if (Irql < DISPATCH_LEVEL) {
-	/* Acquire this device's lock */
-	KeEnterCriticalRegion();
-	KeWaitForSingleObject(&DeviceExtension->ChildListLock, Executive, KernelMode,
-			      FALSE, NULL);
-    }
 
     /* Loop every child PDO */
     for (PdoExtension = DeviceExtension->ChildPdoList; PdoExtension;
@@ -555,7 +436,7 @@ NTAPI PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtens
 	/* Find only enumerated PDOs */
 	if (!PdoExtension->ReportedMissing) {
 	    /* Check if the function number and header data matches */
-	    if ((FunctionNumber == PdoExtension->Slot.u.AsULONG) &&
+	    if ((FunctionNumber == PdoExtension->Slot.AsULONG) &&
 		(PdoExtension->VendorId == PciData->VendorID) &&
 		(PdoExtension->DeviceId == PciData->DeviceID) &&
 		(PdoExtension->RevisionId == PciData->RevisionID)) {
@@ -565,18 +446,11 @@ NTAPI PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtens
 	}
     }
 
-    /* Was this a low-IRQL call? */
-    if (Irql < DISPATCH_LEVEL) {
-	/* Release this device's lock */
-	KeSetEvent(&DeviceExtension->ChildListLock, IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
-    }
-
     /* If the search found something, this is non-NULL, otherwise it's NULL */
     return PdoExtension;
 }
 
-NTAPI BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
+BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(DeviceExtension);
 
@@ -590,8 +464,8 @@ NTAPI BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
     return FALSE;
 }
 
-NTAPI NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
-				OUT PPCI_COMMON_HEADER PciData)
+NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
+			  OUT PPCI_COMMON_HEADER PciData)
 {
     HANDLE KeyHandle, SubKeyHandle;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -620,8 +494,8 @@ NTAPI NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 	return Status;
 
     /* Create the key value based on the device and function number */
-    swprintf(Buffer, L"DEV_%02x&FUN_%02x", DeviceExtension->Slot.u.bits.DeviceNumber,
-	     DeviceExtension->Slot.u.bits.FunctionNumber);
+    swprintf(Buffer, L"DEV_%02x&FUN_%02x", DeviceExtension->Slot.Bits.DeviceNumber,
+	     DeviceExtension->Slot.Bits.FunctionNumber);
     RtlInitUnicodeString(&KeyValue, Buffer);
 
     /* Query the value information (PCI BIOS configuration header) */
@@ -637,8 +511,8 @@ NTAPI NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
     return Status;
 }
 
-NTAPI NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
-				 IN PPCI_COMMON_HEADER PciData)
+NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
+			   IN PPCI_COMMON_HEADER PciData)
 {
     HANDLE KeyHandle, SubKeyHandle;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -664,8 +538,9 @@ NTAPI NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 	return Status;
 
     /* Create the key value based on the device and function number */
-    swprintf(Buffer, L"DEV_%02x&FUN_%02x", DeviceExtension->Slot.u.bits.DeviceNumber,
-	     DeviceExtension->Slot.u.bits.FunctionNumber);
+    _snwprintf(Buffer, sizeof(Buffer), L"DEV_%02x&FUN_%02x",
+	       DeviceExtension->Slot.Bits.DeviceNumber,
+	       DeviceExtension->Slot.Bits.FunctionNumber);
     RtlInitUnicodeString(&KeyValue, Buffer);
 
     /* Set the value data (the PCI BIOS configuration header) */
@@ -675,9 +550,9 @@ NTAPI NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
     return Status;
 }
 
-NTAPI UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
-				    IN UCHAR Offset, IN ULONG CapabilityId,
-				    OUT PPCI_CAPABILITIES_HEADER Buffer, IN ULONG Length)
+UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
+			      IN UCHAR Offset, IN ULONG CapabilityId,
+			      OUT PPCI_CAPABILITIES_HEADER Buffer, IN ULONG Length)
 {
     ULONG CapabilityCount = 0;
 
@@ -735,9 +610,9 @@ NTAPI UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
     return 0;
 }
 
-NTAPI BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
-				   IN PPCI_COMMON_HEADER Config, IN ULONGLONG HackFlags,
-				   IN BOOLEAN ForPowerDown)
+BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
+			     IN PPCI_COMMON_HEADER Config, IN ULONGLONG HackFlags,
+			     IN BOOLEAN ForPowerDown)
 {
     UCHAR BaseClass, SubClass;
     BOOLEAN IsVga;
@@ -797,7 +672,7 @@ NTAPI BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
 	    /* This is a supported bridge, but does it have a VGA card? */
 	    if (!DeviceExtension) {
 		/* Read the bridge control flag from the PCI header */
-		IsVga = Config->u.type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA;
+		IsVga = Config->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA;
 	    } else {
 		/* Read the cached flag in the device extension */
 		IsVga = DeviceExtension->Dependent.type1.VgaBitSet;
@@ -813,7 +688,7 @@ NTAPI BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
     return !(HackFlags & PCI_HACK_NO_PM_CAPS);
 }
 
-NTAPI PCI_DEVICE_TYPES PciClassifyDeviceType(IN PPCI_PDO_EXTENSION PdoExtension)
+PCI_DEVICE_TYPES PciClassifyDeviceType(IN PPCI_PDO_EXTENSION PdoExtension)
 {
     ASSERT(PdoExtension->ExtensionType == PciPdoExtensionType);
 
@@ -833,7 +708,7 @@ NTAPI PCI_DEVICE_TYPES PciClassifyDeviceType(IN PPCI_PDO_EXTENSION PdoExtension)
     return PciTypeDevice;
 }
 
-NTAPI ULONG_PTR PciExecuteCriticalSystemRoutine(IN ULONG_PTR IpiContext)
+ULONG_PTR PciExecuteCriticalSystemRoutine(IN ULONG_PTR IpiContext)
 {
     PPCI_IPI_CONTEXT Context = (PPCI_IPI_CONTEXT)IpiContext;
 
@@ -854,8 +729,8 @@ NTAPI ULONG_PTR PciExecuteCriticalSystemRoutine(IN ULONG_PTR IpiContext)
     return 0;
 }
 
-NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
-					     IN ULONG Method)
+BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
+				       IN ULONG Method)
 {
     BOOLEAN FoundSlot;
     PACPI_METHOD_ARGUMENT Argument;
@@ -872,7 +747,7 @@ NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
     OutputBuffer = ExAllocatePoolWithTag(Length, 'BicP');
     if (OutputBuffer) {
 	/* Clear out the output buffer */
-	RtlZeroMemory(OutputBuffer, Length);
+	RtlZeroMemory((PVOID)OutputBuffer, Length);
 
 	/* Initialize the input buffer with the method requested */
 	InputBuffer.Signature = 0;
@@ -882,7 +757,7 @@ NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
 	/* Send it to the ACPI driver */
 	Status = PciSendIoctl(PdoExtension->ParentFdoExtension->PhysicalDeviceObject,
 			      IOCTL_ACPI_EVAL_METHOD, &InputBuffer,
-			      sizeof(ACPI_EVAL_INPUT_BUFFER), OutputBuffer, Length);
+			      sizeof(ACPI_EVAL_INPUT_BUFFER), (PVOID)OutputBuffer, Length);
 	if (NT_SUCCESS(Status)) {
 	    /* Scan all output arguments */
 	    for (i = 0; i < OutputBuffer->Count; i++) {
@@ -893,8 +768,8 @@ NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
 
 		/* Check if the argument matches this PCI slot structure */
 		if (Argument->Argument ==
-		    ((PdoExtension->Slot.u.bits.DeviceNumber) |
-		     ((PdoExtension->Slot.u.bits.FunctionNumber) << 16))) {
+		    ((PdoExtension->Slot.Bits.DeviceNumber) |
+		     ((PdoExtension->Slot.Bits.FunctionNumber) << 16))) {
 		    /* This slot has been found, return it */
 		    FoundSlot = TRUE;
 		    break;
@@ -903,14 +778,14 @@ NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
 	}
 
 	/* Finished with the buffer, free it */
-	ExFreePoolWithTag(OutputBuffer, 0);
+	ExFreePoolWithTag((PVOID)OutputBuffer, 0);
     }
 
     /* Return if the slot was found */
     return FoundSlot;
 }
 
-NTAPI ULONG PciGetLengthFromBar(IN ULONG Bar)
+ULONG PciGetLengthFromBar(IN ULONG Bar)
 {
     ULONG Length;
 
@@ -927,7 +802,7 @@ NTAPI ULONG PciGetLengthFromBar(IN ULONG Bar)
     return Length;
 }
 
-NTAPI BOOLEAN PciCreateIoDescriptorFromBarLimit(
+BOOLEAN PciCreateIoDescriptorFromBarLimit(
     PIO_RESOURCE_DESCRIPTOR ResourceDescriptor, IN PULONG BarArray, IN BOOLEAN Rom)
 {
     ULONG CurrentBar, BarLength, BarMask;
@@ -1000,14 +875,14 @@ NTAPI BOOLEAN PciCreateIoDescriptorFromBarLimit(
 
     /* Now write down the maximum address based on the base + length */
     ResourceDescriptor->u.Port.MaximumAddress.QuadPart = (CurrentBar & BarMask) +
-							 BarLength - 1;
+	BarLength - 1;
 
     /* Return if this is a 64-bit BAR, so the loop code knows to skip the next one */
     return Is64BitBar;
 }
 
-NTAPI VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable,
-			   OUT PUSHORT Command)
+VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable,
+		     OUT PUSHORT Command)
 {
     USHORT CommandValue;
 
@@ -1015,7 +890,7 @@ NTAPI VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable
      * If decodes are being disabled, make sure it's allowed, and in both cases,
      * make sure that a hackflag isn't preventing touching the decodes at all.
      */
-    if (((Enable) || (PciCanDisableDecodes(PdoExtension, 0, 0, 0))) &&
+    if ((Enable || PciCanDisableDecodes(PdoExtension, 0, 0, 0)) &&
 	!(PdoExtension->HackFlags & PCI_HACK_PRESERVE_COMMAND)) {
 	/* Did the caller already have a command word? */
 	if (Command) {
@@ -1023,7 +898,7 @@ NTAPI VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable
 	    CommandValue = *Command;
 	} else {
 	    /* Otherwise, read the current command */
-	    PciReadDeviceConfig(PdoExtension, &Command,
+	    PciReadDeviceConfig(PdoExtension, &CommandValue,
 				FIELD_OFFSET(PCI_COMMON_HEADER, Command), sizeof(USHORT));
 	}
 
@@ -1034,8 +909,8 @@ NTAPI VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable
 	/* If requested, enable the decodes that were enabled at init time */
 	if (Enable)
 	    CommandValue |= PdoExtension->CommandEnables &
-			    (PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE |
-			     PCI_ENABLE_BUS_MASTER);
+		(PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE |
+		 PCI_ENABLE_BUS_MASTER);
 
 	/* Update the command word */
 	PciWriteDeviceConfig(PdoExtension, &CommandValue,
@@ -1043,8 +918,8 @@ NTAPI VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable
     }
 }
 
-NTAPI NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
-				      IN PPNP_BUS_INFORMATION *Buffer)
+NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
+				IN PPNP_BUS_INFORMATION *Buffer)
 {
     PPNP_BUS_INFORMATION BusInfo;
 
@@ -1062,23 +937,21 @@ NTAPI NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
-				      OUT PULONG SlotNumber)
+static NTSTATUS PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
+				       OUT PULONG SlotNumber)
 {
     PPCI_FDO_EXTENSION ParentExtension;
-    ULONG ResultLength;
-    NTSTATUS Status;
     PSLOT_INFO SlotInfo;
 
     /* Check if a $PIR from the BIOS is used (legacy IRQ routing) */
     ParentExtension = PdoExtension->ParentFdoExtension;
     DPRINT1("Slot lookup for %d.%u.%u\n", ParentExtension ? ParentExtension->BaseBus : -1,
-	    PdoExtension->Slot.u.bits.DeviceNumber,
-	    PdoExtension->Slot.u.bits.FunctionNumber);
-    if ((PciIrqRoutingTable) && (ParentExtension)) {
+	    PdoExtension->Slot.Bits.DeviceNumber,
+	    PdoExtension->Slot.Bits.FunctionNumber);
+    if (PciIrqRoutingTable && ParentExtension) {
 	/* Read every slot information entry */
 	SlotInfo = &PciIrqRoutingTable->Slot[0];
-	DPRINT1("PIR$ %p is %lx bytes, slot 0 is at: %p\n", PciIrqRoutingTable,
+	DPRINT1("PIR$ %p is %x bytes, slot 0 is at: %p\n", PciIrqRoutingTable,
 		PciIrqRoutingTable->TableSize, SlotInfo);
 	while (SlotInfo < (PSLOT_INFO)((ULONG_PTR)PciIrqRoutingTable +
 				       PciIrqRoutingTable->TableSize)) {
@@ -1086,9 +959,9 @@ NTAPI NTSTATUS PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
 		    SlotInfo->DeviceNumber, SlotInfo->SlotNumber);
 
 	    /* Check if this slot information matches the PDO being queried */
-	    if ((ParentExtension->BaseBus == SlotInfo->BusNumber) &&
-		(PdoExtension->Slot.u.bits.DeviceNumber == SlotInfo->DeviceNumber >> 3) &&
-		(SlotInfo->SlotNumber)) {
+	    if (ParentExtension->BaseBus == SlotInfo->BusNumber &&
+		PdoExtension->Slot.Bits.DeviceNumber == (SlotInfo->DeviceNumber >> 3) &&
+		SlotInfo->SlotNumber) {
 		/* We found it, return it and return success */
 		*SlotNumber = SlotInfo->SlotNumber;
 		return STATUS_SUCCESS;
@@ -1099,27 +972,18 @@ NTAPI NTSTATUS PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
 	}
     }
 
-    /* Otherwise, grab the parent FDO and check if it's the root */
-    if (PCI_IS_ROOT_FDO(ParentExtension)) {
-	/* The root FDO doesn't have a slot number */
-	Status = STATUS_UNSUCCESSFUL;
-    } else {
-	/* Otherwise, query the slot/UI address/number as a device property */
-	Status = IoGetDeviceProperty(ParentExtension->PhysicalDeviceObject,
-				     DevicePropertyUINumber, sizeof(ULONG), SlotNumber,
-				     &ResultLength);
-    }
-
-    /* Return the status of this endeavour */
-    return Status;
+    /* Since there is generally no universal mapping between the slot number
+     * (which we take to be the UI number) and the PCI device, if the BIOS
+     * didn't tell us about the slot number, there is nothing we can do other
+     * than returning failure. */
+    return STATUS_UNSUCCESSFUL;
 }
 
-NTAPI NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
-					IN OUT PDEVICE_CAPABILITIES DeviceCapability)
+static NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
+					 IN OUT PDEVICE_CAPABILITIES DeviceCapability)
 {
     PIRP Irp;
     NTSTATUS Status;
-    KEVENT Event;
     PDEVICE_OBJECT AttachedDevice;
     PIO_STACK_LOCATION IoStackLocation;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -1131,14 +995,11 @@ NTAPI NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
     DeviceCapability->Address = -1;
     DeviceCapability->UINumber = -1;
 
-    /* Build the wait event for the IOCTL */
-    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
-
     /* Find the device the PDO is attached to */
     AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
 
     /* And build an IRP for it */
-    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, AttachedDevice, NULL, 0, NULL, &Event,
+    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, AttachedDevice, NULL, 0, NULL,
 				       &IoStatusBlock);
     if (!Irp) {
 	/* The IRP failed, fail the request as well */
@@ -1151,7 +1012,7 @@ NTAPI NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
     Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
 
     /* Get a stack location in this IRP */
-    IoStackLocation = IoGetNextIrpStackLocation(Irp);
+    IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
     ASSERT(IoStackLocation);
 
     /* Initialize it as a query capabilities IRP, with no completion routine */
@@ -1163,19 +1024,14 @@ NTAPI NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
 
     /* Send the IOCTL to the driver */
     Status = IoCallDriver(AttachedDevice, Irp);
-    if (Status == STATUS_PENDING) {
-	/* Wait for a response and update the actual status */
-	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-	Status = Irp->IoStatus.Status;
-    }
 
     /* Done, dereference the attached device and return the final result */
     ObDereferenceObject(AttachedDevice);
     return Status;
 }
 
-NTAPI NTSTATUS PciQueryPowerCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
-					 IN PDEVICE_CAPABILITIES DeviceCapability)
+static NTSTATUS PciQueryPowerCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
+					  IN PDEVICE_CAPABILITIES DeviceCapability)
 {
     PDEVICE_OBJECT DeviceObject;
     NTSTATUS Status;
@@ -1399,15 +1255,15 @@ NTAPI NTSTATUS PciQueryPowerCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
-				    IN OUT PDEVICE_CAPABILITIES DeviceCapability)
+NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
+			      IN OUT PDEVICE_CAPABILITIES DeviceCapability)
 {
     NTSTATUS Status;
 
     /* A PDO ID is never unique, and its address is its function and device */
     DeviceCapability->UniqueID = FALSE;
-    DeviceCapability->Address = PdoExtension->Slot.u.bits.FunctionNumber |
-				(PdoExtension->Slot.u.bits.DeviceNumber << 16);
+    DeviceCapability->Address = PdoExtension->Slot.Bits.FunctionNumber |
+	(PdoExtension->Slot.Bits.DeviceNumber << 16);
 
     /* Check for host bridges */
     if ((PdoExtension->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
@@ -1428,7 +1284,7 @@ NTAPI NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     /* The slot number is stored as a device property, go query it */
     PciDetermineSlotNumber(PdoExtension, &DeviceCapability->UINumber);
 
-    /* Finally, query and power capabilities and convert them for PnP usage */
+    /* Finally, query any power capabilities and convert them for PnP usage */
     Status = PciQueryPowerCapabilities(PdoExtension, DeviceCapability);
 
     /* Dump the capabilities if it all worked, and return the status */

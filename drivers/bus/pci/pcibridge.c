@@ -12,7 +12,7 @@
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
+ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is32Bit;
     ULONG Base, IoBase;
@@ -36,7 +36,7 @@ NTAPI ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
     return IoBase;
 }
 
-NTAPI ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
+ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is32Bit;
     ULONG Limit, IoLimit;
@@ -60,7 +60,7 @@ NTAPI ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
     return IoLimit | 0xFFF;
 }
 
-NTAPI ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
+ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
 {
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
@@ -68,7 +68,7 @@ NTAPI ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
     return (PciData->Type1.MemoryBase << 16);
 }
 
-NTAPI ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
+ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
 {
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
@@ -76,7 +76,7 @@ NTAPI ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
     return (PciData->Type1.MemoryLimit << 16) | 0xFFFFF;
 }
 
-NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
+PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is64Bit;
     LARGE_INTEGER Base;
@@ -100,7 +100,7 @@ NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData
     return Base;
 }
 
-NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciData)
+PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is64Bit;
     LARGE_INTEGER Limit;
@@ -124,7 +124,7 @@ NTAPI PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciDat
     return Limit;
 }
 
-NTAPI ULONG PciBridgeMemoryWorstCaseAlignment(IN ULONG Length)
+ULONG PciBridgeMemoryWorstCaseAlignment(IN ULONG Length)
 {
     ULONG Alignment;
     ASSERT(Length != 0);
@@ -140,13 +140,13 @@ NTAPI ULONG PciBridgeMemoryWorstCaseAlignment(IN ULONG Length)
     return Alignment;
 }
 
-NTAPI BOOLEAN PciBridgeIsPositiveDecode(IN PPCI_PDO_EXTENSION PdoExtension)
+BOOLEAN PciBridgeIsPositiveDecode(IN PPCI_PDO_EXTENSION PdoExtension)
 {
     /* Undocumented ACPI Method PDEC to get positive decode settings */
     return PciIsSlotPresentInParentMethod(PdoExtension, 'CEDP');
 }
 
-NTAPI BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
+BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER Current, PciData;
     PPCI_PDO_EXTENSION PdoExtension;
@@ -190,7 +190,7 @@ NTAPI BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
     return TRUE;
 }
 
-NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     NTSTATUS Status;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
@@ -401,7 +401,7 @@ NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 }
 
-NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PIO_RESOURCE_DESCRIPTOR Limit;
     PULONG BarArray;
@@ -459,7 +459,7 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Build a descriptor for this limit */
 		(&Limit[i])->Type = CmResourceTypePort;
 		(&Limit[i])->Flags = CM_RESOURCE_PORT_WINDOW_DECODE |
-				     CM_RESOURCE_PORT_POSITIVE_DECODE;
+		    CM_RESOURCE_PORT_POSITIVE_DECODE;
 		(&Limit[i])->u.Port.Alignment = 0x1000;
 		(&Limit[i])->u.Port.MinimumAddress.QuadPart = 0;
 		(&Limit[i])->u.Port.MaximumAddress = MemoryLimit;
@@ -502,7 +502,7 @@ NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 }
 
-NTAPI VOID
+VOID
 PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER PciData, Current;
@@ -518,7 +518,7 @@ PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Conte
      */
     RtlFillMemory(PciData->Type1.BaseAddresses,
 		  FIELD_OFFSET(PCI_COMMON_HEADER, Type1.CapabilitiesPtr) -
-		      FIELD_OFFSET(PCI_COMMON_HEADER, Type1.BaseAddresses),
+		  FIELD_OFFSET(PCI_COMMON_HEADER, Type1.BaseAddresses),
 		  0xFF);
 
     /* Copy the saved settings from the current context into the PCI header */
@@ -539,13 +539,13 @@ PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Conte
     PciData->Type1.SecondaryStatus = 0;
 }
 
-NTAPI VOID PCIBridge_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID PCIBridge_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     /* Copy back the secondary status register */
     Context->Current->Type1.SecondaryStatus = Context->SecondaryStatus;
 }
 
-NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
+VOID PCIBridge_GetAdditionalResourceDescriptors(
     IN PPCI_CONFIGURATOR_CONTEXT Context, IN PPCI_COMMON_HEADER PciData,
     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
@@ -569,7 +569,7 @@ NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
 	/* Then, the VGA registers at 0x3B0 */
 	IoDescriptor[2].Type = CmResourceTypePort;
 	IoDescriptor[2].Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
-				CM_RESOURCE_PORT_10_BIT_DECODE;
+	    CM_RESOURCE_PORT_10_BIT_DECODE;
 	IoDescriptor[2].u.Port.Length = 12;
 	IoDescriptor[2].u.Port.Alignment = 1;
 	IoDescriptor[2].u.Port.MinimumAddress.QuadPart = 0x3B0;
@@ -578,7 +578,7 @@ NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
 	/* And finally the VGA registers at 0x3C0 */
 	IoDescriptor[3].Type = CmResourceTypePort;
 	IoDescriptor[3].Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
-				CM_RESOURCE_PORT_10_BIT_DECODE;
+	    CM_RESOURCE_PORT_10_BIT_DECODE;
 	IoDescriptor[3].u.Port.Length = 32;
 	IoDescriptor[3].u.Port.Alignment = 1;
 	IoDescriptor[3].u.Port.MinimumAddress.QuadPart = 0x3C0;
@@ -586,16 +586,16 @@ NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
     }
 }
 
-NTAPI VOID PCIBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-				IN PPCI_COMMON_HEADER PciData)
+VOID PCIBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
+			   IN PPCI_COMMON_HEADER PciData)
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
     UNIMPLEMENTED_DBGBREAK();
 }
 
-NTAPI VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					   IN PPCI_COMMON_HEADER PciData)
+VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				      IN PPCI_COMMON_HEADER PciData)
 {
     //BOOLEAN IoActive;
     PPCI_FDO_EXTENSION FdoExtension;

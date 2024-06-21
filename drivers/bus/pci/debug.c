@@ -13,28 +13,28 @@
 /* GLOBALS ********************************************************************/
 
 PCHAR PnpCodes[] = { "START_DEVICE",
-		     "QUERY_REMOVE_DEVICE",
-		     "REMOVE_DEVICE",
-		     "CANCEL_REMOVE_DEVICE",
-		     "STOP_DEVICE",
-		     "QUERY_STOP_DEVICE",
-		     "CANCEL_STOP_DEVICE",
-		     "QUERY_DEVICE_RELATIONS",
-		     "QUERY_INTERFACE",
-		     "QUERY_CAPABILITIES",
-		     "QUERY_RESOURCES",
-		     "QUERY_RESOURCE_REQUIREMENTS",
-		     "QUERY_DEVICE_TEXT",
-		     "FILTER_RESOURCE_REQUIREMENTS",
-		     "** UNKNOWN PNP IRP Minor Code **",
-		     "READ_CONFIG",
-		     "WRITE_CONFIG",
-		     "EJECT",
-		     "SET_LOCK",
-		     "QUERY_ID",
-		     "QUERY_PNP_DEVICE_STATE",
-		     "QUERY_BUS_INFORMATION",
-		     "DEVICE_USAGE_NOTIFICATION" };
+    "QUERY_REMOVE_DEVICE",
+    "REMOVE_DEVICE",
+    "CANCEL_REMOVE_DEVICE",
+    "STOP_DEVICE",
+    "QUERY_STOP_DEVICE",
+    "CANCEL_STOP_DEVICE",
+    "QUERY_DEVICE_RELATIONS",
+    "QUERY_INTERFACE",
+    "QUERY_CAPABILITIES",
+    "QUERY_RESOURCES",
+    "QUERY_RESOURCE_REQUIREMENTS",
+    "QUERY_DEVICE_TEXT",
+    "FILTER_RESOURCE_REQUIREMENTS",
+    "** UNKNOWN PNP IRP Minor Code **",
+    "READ_CONFIG",
+    "WRITE_CONFIG",
+    "EJECT",
+    "SET_LOCK",
+    "QUERY_ID",
+    "QUERY_PNP_DEVICE_STATE",
+    "QUERY_BUS_INFORMATION",
+    "DEVICE_USAGE_NOTIFICATION" };
 
 PCHAR PoCodes[] = {
     "WAIT_WAKE",
@@ -44,7 +44,7 @@ PCHAR PoCodes[] = {
 };
 
 PCHAR SystemPowerStates[] = { "Unspecified", "Working",	  "Sleeping1", "Sleeping2",
-			      "Sleeping3",   "Hibernate", "Shutdown" };
+    "Sleeping3",   "Hibernate", "Shutdown" };
 
 PCHAR DevicePowerStates[] = { "Unspecified", "D0", "D1", "D2", "D3" };
 
@@ -53,7 +53,7 @@ ULONG PciBreakOnPdoPnpIrp, PciBreakOnFdoPnpIrp;
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI PCHAR PciDebugPnpIrpTypeToText(IN USHORT MinorFunction)
+PCHAR PciDebugPnpIrpTypeToText(IN USHORT MinorFunction)
 {
     PCHAR Text;
 
@@ -70,7 +70,7 @@ NTAPI PCHAR PciDebugPnpIrpTypeToText(IN USHORT MinorFunction)
     return Text;
 }
 
-NTAPI PCHAR PciDebugPoIrpTypeToText(IN USHORT MinorFunction)
+PCHAR PciDebugPoIrpTypeToText(IN USHORT MinorFunction)
 {
     PCHAR Text;
 
@@ -87,9 +87,9 @@ NTAPI PCHAR PciDebugPoIrpTypeToText(IN USHORT MinorFunction)
     return Text;
 }
 
-NTAPI BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
-					 IN PPCI_FDO_EXTENSION DeviceExtension,
-					 IN USHORT MaxMinor)
+BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
+				   IN PPCI_FDO_EXTENSION DeviceExtension,
+				   IN USHORT MaxMinor)
 {
     PPCI_PDO_EXTENSION PdoDeviceExtension;
     ULONG BreakMask;
@@ -102,8 +102,8 @@ NTAPI BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
 
 	/* Get the string and the correct break mask for the extension */
 	BreakMask = (DeviceExtension->ExtensionType == PciPdoExtensionType) ?
-			PciBreakOnPdoPowerIrp :
-			PciBreakOnFdoPowerIrp;
+	    PciBreakOnPdoPowerIrp :
+	PciBreakOnFdoPowerIrp;
 	IrpString = PciDebugPoIrpTypeToText(IoStackLocation->MinorFunction);
 	break;
 
@@ -111,8 +111,8 @@ NTAPI BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
 
 	/* Get the string and the correct break mask for the extension */
 	BreakMask = (DeviceExtension->ExtensionType == PciFdoExtensionType) ?
-			PciBreakOnPdoPnpIrp :
-			PciBreakOnFdoPnpIrp;
+	    PciBreakOnPdoPnpIrp :
+	PciBreakOnFdoPnpIrp;
 	IrpString = PciDebugPnpIrpTypeToText(IoStackLocation->MinorFunction);
 	break;
 
@@ -159,7 +159,7 @@ NTAPI BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
     return ((1 << IoStackLocation->MinorFunction) & BreakMask);
 }
 
-NTAPI VOID PciDebugDumpCommonConfig(IN PPCI_COMMON_HEADER PciData)
+VOID PciDebugDumpCommonConfig(IN PPCI_COMMON_HEADER PciData)
 {
     USHORT i;
 
@@ -170,7 +170,7 @@ NTAPI VOID PciDebugDumpCommonConfig(IN PPCI_COMMON_HEADER PciData)
     }
 }
 
-NTAPI VOID PciDebugDumpQueryCapabilities(IN PDEVICE_CAPABILITIES DeviceCaps)
+VOID PciDebugDumpQueryCapabilities(IN PDEVICE_CAPABILITIES DeviceCaps)
 {
     ULONG i;
 
@@ -197,11 +197,11 @@ NTAPI VOID PciDebugDumpQueryCapabilities(IN PDEVICE_CAPABILITIES DeviceCaps)
     DbgPrint(" ]\n");
 }
 
-NTAPI PCHAR PciDebugCmResourceTypeToText(IN UCHAR Type)
+PCHAR PciDebugCmResourceTypeToText(IN UCHAR Type)
 {
     /* What kind of resource it this? */
     switch (Type) {
-    /* Pick the correct identifier string based on the type */
+	/* Pick the correct identifier string based on the type */
     case CmResourceTypeDeviceSpecific:
 	return "CmResourceTypeDeviceSpecific";
     case CmResourceTypePort:
@@ -225,7 +225,7 @@ NTAPI PCHAR PciDebugCmResourceTypeToText(IN UCHAR Type)
     }
 }
 
-NTAPI VOID PciDebugPrintIoResource(IN PIO_RESOURCE_DESCRIPTOR Descriptor)
+VOID PciDebugPrintIoResource(IN PIO_RESOURCE_DESCRIPTOR Descriptor)
 {
     ULONG i;
     PULONG Data;
@@ -246,7 +246,7 @@ NTAPI VOID PciDebugPrintIoResource(IN PIO_RESOURCE_DESCRIPTOR Descriptor)
     }
 }
 
-NTAPI VOID PciDebugPrintIoResReqList(IN PIO_RESOURCE_REQUIREMENTS_LIST Requirements)
+VOID PciDebugPrintIoResReqList(IN PIO_RESOURCE_REQUIREMENTS_LIST Requirements)
 {
     ULONG AlternativeLists;
     PIO_RESOURCE_LIST List;
@@ -290,7 +290,7 @@ NTAPI VOID PciDebugPrintIoResReqList(IN PIO_RESOURCE_REQUIREMENTS_LIST Requireme
     DPRINT1("\n");
 }
 
-NTAPI VOID PciDebugPrintPartialResource(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialResource)
+VOID PciDebugPrintPartialResource(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialResource)
 {
     /* Dump all the data in the partial */
     DPRINT1("     Partial Resource Descriptor @0x%p\n", PartialResource);
@@ -303,7 +303,7 @@ NTAPI VOID PciDebugPrintPartialResource(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Parti
 	    PartialResource->u.Generic.Start.HighPart, PartialResource->u.Generic.Length);
 }
 
-NTAPI VOID PciDebugPrintCmResList(IN PCM_RESOURCE_LIST PartialList)
+VOID PciDebugPrintCmResList(IN PCM_RESOURCE_LIST PartialList)
 {
     PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;

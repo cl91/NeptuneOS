@@ -305,7 +305,7 @@ NTAPI NTSTATUS LdrFindResource_U(PVOID BaseAddress,
 
     __try {
 	if (ResourceInfo) {
-	    DPRINT("module %p type %x name %x lang %04x level %u\n", BaseAddress,
+	    DPRINT("module %p type %zx name %zx lang %04zx level %u\n", BaseAddress,
 		   ResourceInfo->Type, Level > 1 ? ResourceInfo->Name : 0,
 		   Level > 2 ? ResourceInfo->Language : 0, Level);
 	}
@@ -342,7 +342,7 @@ NTAPI NTSTATUS LdrFindResourceDirectory_U(IN PVOID BaseAddress,
 
     __try {
 	if (Info) {
-	    DPRINT("module %p type %ws name %ws lang %04x level %u\n", BaseAddress,
+	    DPRINT("module %p type %ws name %ws lang %04zx level %u\n", BaseAddress,
 		   (LPCWSTR)Info->Type, Level > 1 ? (LPCWSTR)Info->Name : L"",
 		   Level > 2 ? Info->Language : 0, Level);
 	}

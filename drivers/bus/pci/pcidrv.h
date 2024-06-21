@@ -184,11 +184,9 @@ typedef struct _PCI_FDO_EXTENSION {
     struct _PCI_MJ_DISPATCH_TABLE *IrpDispatchTable;
     PCI_STATE DeviceState;
     PCI_STATE TentativeNextState;
-    KEVENT SecondaryExtLock;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PDEVICE_OBJECT FunctionalDeviceObject;
     PDEVICE_OBJECT AttachedDeviceObject;
-    KEVENT ChildListLock;
     struct _PCI_PDO_EXTENSION *ChildPdoList;
     struct _PCI_FDO_EXTENSION *BusRootFdoExtension;
     struct _PCI_FDO_EXTENSION *ParentFdoExtension;
@@ -241,7 +239,6 @@ typedef struct _PCI_PDO_EXTENSION {
     PCI_STATE DeviceState;
     PCI_STATE TentativeNextState;
 
-    KEVENT SecondaryExtLock;
     PCI_SLOT_NUMBER Slot;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PPCI_FDO_EXTENSION ParentFdoExtension;
@@ -295,7 +292,7 @@ typedef struct _PCI_PDO_EXTENSION {
 //
 // IRP Dispatch Function Type
 //
-typedef NTSTATUS(NTAPI *PCI_DISPATCH_FUNCTION)(IN PIRP Irp,
+typedef NTSTATUS (*PCI_DISPATCH_FUNCTION)(IN PIRP Irp,
 					       IN PIO_STACK_LOCATION IoStackLocation,
 					       IN PVOID DeviceExtension);
 
@@ -338,26 +335,26 @@ typedef struct _PCI_ID_BUFFER {
 //
 struct _PCI_CONFIGURATOR_CONTEXT;
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_INITIALIZE)(
+typedef VOID (*PCI_CONFIGURATOR_INITIALIZE)(
     IN struct _PCI_CONFIGURATOR_CONTEXT *Context);
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_RESTORE_CURRENT)(
+typedef VOID (*PCI_CONFIGURATOR_RESTORE_CURRENT)(
     IN struct _PCI_CONFIGURATOR_CONTEXT *Context);
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_SAVE_LIMITS)(
+typedef VOID (*PCI_CONFIGURATOR_SAVE_LIMITS)(
     IN struct _PCI_CONFIGURATOR_CONTEXT *Context);
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_SAVE_CURRENT_SETTINGS)(
+typedef VOID (*PCI_CONFIGURATOR_SAVE_CURRENT_SETTINGS)(
     IN struct _PCI_CONFIGURATOR_CONTEXT *Context);
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_CHANGE_RESOURCE_SETTINGS)(
+typedef VOID (*PCI_CONFIGURATOR_CHANGE_RESOURCE_SETTINGS)(
     IN PPCI_PDO_EXTENSION PdoExtension, IN PPCI_COMMON_HEADER PciData);
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_GET_ADDITIONAL_RESOURCE_DESCRIPTORS)(
+typedef VOID (*PCI_CONFIGURATOR_GET_ADDITIONAL_RESOURCE_DESCRIPTORS)(
     IN struct _PCI_CONFIGURATOR_CONTEXT *Context, IN PPCI_COMMON_HEADER PciData,
     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
 
-typedef VOID(NTAPI *PCI_CONFIGURATOR_RESET_DEVICE)(IN PPCI_PDO_EXTENSION PdoExtension,
+typedef VOID (*PCI_CONFIGURATOR_RESET_DEVICE)(IN PPCI_PDO_EXTENSION PdoExtension,
 						   IN PPCI_COMMON_HEADER PciData);
 
 //
@@ -389,7 +386,7 @@ typedef struct _PCI_CONFIGURATOR_CONTEXT {
 //
 // PCI IPI Function
 //
-typedef VOID(NTAPI *PCI_IPI_FUNCTION)(IN PVOID Reserved, IN PVOID Context);
+typedef VOID (*PCI_IPI_FUNCTION)(IN PVOID Reserved, IN PVOID Context);
 
 //
 // PCI IPI Context
@@ -426,28 +423,28 @@ DRIVER_DISPATCH PciDispatchIrp;
 
 NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTAPI NTSTATUS PciIrpNotSupported(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciIrpNotSupported(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			    IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciIrpInvalidDeviceRequest(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciIrpInvalidDeviceRequest(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
+				    IN PPCI_FDO_EXTENSION DeviceExtension);
 
 //
 // Power Routines
 //
-NTAPI NTSTATUS PciFdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			      IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
-						  IN DEVICE_POWER_STATE DeviceState,
-						  IN BOOLEAN IrpSet);
+NTSTATUS PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
+					    IN DEVICE_POWER_STATE DeviceState,
+					    IN BOOLEAN IrpSet);
 
 //
 // Bus FDO Routines
@@ -458,296 +455,285 @@ DRIVER_ADD_DEVICE PciAddDevice;
 NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 			    IN PDEVICE_OBJECT PhysicalDeviceObject);
 
-NTAPI NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			      IN PPCI_FDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
 				    IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			       IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
+				     IN PIO_STACK_LOCATION IoStackLocation,
 				     IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
-					   IN PIO_STACK_LOCATION IoStackLocation,
-					   IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciFdoIrpQueryStopDevice(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_FDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
+				   IN PIO_STACK_LOCATION IoStackLocation,
 				   IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpQueryStopDevice(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
+				       IN PIO_STACK_LOCATION IoStackLocation,
+				       IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
-					 IN PIO_STACK_LOCATION IoStackLocation,
-					 IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
+				    IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
-					     IN PIO_STACK_LOCATION IoStackLocation,
-					     IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
+NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
 					  IN PIO_STACK_LOCATION IoStackLocation,
 					  IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
-						IN PIO_STACK_LOCATION IoStackLocation,
-						IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
-						  IN PIO_STACK_LOCATION IoStackLocation,
-						  IN PPCI_FDO_EXTENSION DeviceExtension);
+NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
+					    IN PIO_STACK_LOCATION IoStackLocation,
+					    IN PPCI_FDO_EXTENSION DeviceExtension);
 
 //
 // Device PDO Routines
 //
-NTAPI NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
-			    IN PCI_SLOT_NUMBER Slot, OUT PDEVICE_OBJECT *PdoDeviceObject);
+NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
+		      IN PCI_SLOT_NUMBER Slot, OUT PDEVICE_OBJECT *PdoDeviceObject);
 
-NTAPI NTSTATUS PciPdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciPdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
 			      IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciPdoIrpQueryRemoveDevice(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
 				    IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpQueryRemoveDevice(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciPdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			       IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciPdoIrpCancelRemoveDevice(IN PIRP Irp,
+				     IN PIO_STACK_LOCATION IoStackLocation,
 				     IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpCancelRemoveDevice(IN PIRP Irp,
-					   IN PIO_STACK_LOCATION IoStackLocation,
-					   IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciPdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciPdoIrpQueryStopDevice(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpCancelStopDevice(IN PIRP Irp,
+				   IN PIO_STACK_LOCATION IoStackLocation,
 				   IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpQueryStopDevice(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpCancelStopDevice(IN PIRP Irp,
-					 IN PIO_STACK_LOCATION IoStackLocation,
-					 IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryDeviceRelations(IN PIRP Irp,
-					     IN PIO_STACK_LOCATION IoStackLocation,
-					     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryCapabilities(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryResources(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciPdoIrpQueryDeviceRelations(IN PIRP Irp,
+				       IN PIO_STACK_LOCATION IoStackLocation,
 				       IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpQueryResourceRequirements(IN PIRP Irp,
-						  IN PIO_STACK_LOCATION IoStackLocation,
-						  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryDeviceText(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpReadConfig(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpWriteConfig(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciPdoIrpQueryCapabilities(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
 				    IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpQueryId(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciPdoIrpQueryResources(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+				 IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpQueryDeviceState(IN PIRP Irp,
-					 IN PIO_STACK_LOCATION IoStackLocation,
-					 IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTAPI NTSTATUS PciPdoIrpQueryBusInformation(IN PIRP Irp,
+NTSTATUS PciPdoIrpQueryResourceRequirements(IN PIRP Irp,
 					    IN PIO_STACK_LOCATION IoStackLocation,
 					    IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpDeviceUsageNotification(IN PIRP Irp,
-						IN PIO_STACK_LOCATION IoStackLocation,
-						IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciPdoIrpQueryDeviceText(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpSurpriseRemoval(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciPdoIrpReadConfig(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciPdoIrpQueryLegacyBusInformation(IN PIRP Irp,
-						  IN PIO_STACK_LOCATION IoStackLocation,
-						  IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciPdoIrpWriteConfig(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			      IN PPCI_PDO_EXTENSION DeviceExtension);
 
-//
-// HAL Callback/Hook Routines
-//
-NTAPI VOID PciHookHal(VOID);
+NTSTATUS PciPdoIrpQueryId(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			  IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpQueryDeviceState(IN PIRP Irp,
+				   IN PIO_STACK_LOCATION IoStackLocation,
+				   IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpQueryBusInformation(IN PIRP Irp,
+				      IN PIO_STACK_LOCATION IoStackLocation,
+				      IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpDeviceUsageNotification(IN PIRP Irp,
+					  IN PIO_STACK_LOCATION IoStackLocation,
+					  IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpSurpriseRemoval(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_PDO_EXTENSION DeviceExtension);
+
+NTSTATUS PciPdoIrpQueryLegacyBusInformation(IN PIRP Irp,
+					    IN PIO_STACK_LOCATION IoStackLocation,
+					    IN PPCI_PDO_EXTENSION DeviceExtension);
 
 //
 // Utility Routines
 //
-NTAPI BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value);
+BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value);
 
-NTAPI BOOLEAN PciIsDatacenter(VOID);
+BOOLEAN PciIsDatacenter(VOID);
 
-NTAPI NTSTATUS PciBuildDefaultExclusionLists(VOID);
+NTSTATUS PciBuildDefaultExclusionLists(VOID);
 
-NTAPI BOOLEAN PciUnicodeStringStrStr(IN PUNICODE_STRING InputString,
-				     IN PCUNICODE_STRING EqualString,
-				     IN BOOLEAN CaseInSensitive);
+BOOLEAN PciUnicodeStringStrStr(IN PUNICODE_STRING InputString,
+			       IN PCUNICODE_STRING EqualString,
+			       IN BOOLEAN CaseInSensitive);
 
-NTAPI BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
-			 IN ACCESS_MASK DesiredAccess, OUT PHANDLE KeyHandle,
-			 OUT PNTSTATUS KeyStatus);
+BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
+		   IN ACCESS_MASK DesiredAccess, OUT PHANDLE KeyHandle,
+		   OUT PNTSTATUS KeyStatus);
 
-NTAPI NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
-				   IN HANDLE RootHandle, IN ULONG Type,
-				   OUT PVOID *OutputBuffer, OUT PULONG OutputLength);
+NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
+			     IN HANDLE RootHandle, IN ULONG Type,
+			     OUT PVOID *OutputBuffer, OUT PULONG OutputLength);
 
-NTAPI PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceObject,
-						      IN PKEVENT Lock);
+PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
-				IN PPCI_FDO_EXTENSION DeviceExtension, IN PKEVENT Lock);
+VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
+			  IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
-				    IN DEVICE_REGISTRY_PROPERTY DeviceProperty,
-				    OUT PVOID *OutputBuffer);
+NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
+		      IN PVOID InputBuffer, IN ULONG InputBufferLength,
+		      IN PVOID OutputBuffer, IN ULONG OutputBufferLength);
 
-NTAPI NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
-			    IN PVOID InputBuffer, IN ULONG InputBufferLength,
-			    IN PVOID OutputBuffer, IN ULONG OutputBufferLength);
+ULONGLONG PciGetHackFlags(IN USHORT VendorId, IN USHORT DeviceId,
+			  IN USHORT SubVendorId, IN USHORT SubSystemId,
+			  IN UCHAR RevisionId);
 
-NTAPI ULONGLONG PciGetHackFlags(IN USHORT VendorId, IN USHORT DeviceId,
-				IN USHORT SubVendorId, IN USHORT SubSystemId,
-				IN UCHAR RevisionId);
+PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtension,
+					IN ULONG FunctionNumber,
+					IN PPCI_COMMON_HEADER PciData);
 
-NTAPI PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtension,
-					      IN ULONG FunctionNumber,
-					      IN PPCI_COMMON_HEADER PciData);
+BOOLEAN PciIsCriticalDeviceClass(IN UCHAR BaseClass, IN UCHAR SubClass);
 
-NTAPI BOOLEAN PciIsCriticalDeviceClass(IN UCHAR BaseClass, IN UCHAR SubClass);
+BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension);
 
-NTAPI BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension);
+NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
+			  OUT PPCI_COMMON_HEADER PciData);
 
-NTAPI NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
-				OUT PPCI_COMMON_HEADER PciData);
+NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
+			   OUT PPCI_COMMON_HEADER PciData);
 
-NTAPI NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
-				 OUT PPCI_COMMON_HEADER PciData);
+UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
+			      IN UCHAR Offset, IN ULONG CapabilityId,
+			      OUT PPCI_CAPABILITIES_HEADER Buffer, IN ULONG Length);
 
-NTAPI UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
-				    IN UCHAR Offset, IN ULONG CapabilityId,
-				    OUT PPCI_CAPABILITIES_HEADER Buffer, IN ULONG Length);
+BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
+			     IN PPCI_COMMON_HEADER Config, IN ULONGLONG HackFlags,
+			     IN BOOLEAN ForPowerDown);
 
-NTAPI BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
-				   IN PPCI_COMMON_HEADER Config, IN ULONGLONG HackFlags,
-				   IN BOOLEAN ForPowerDown);
+PCI_DEVICE_TYPES PciClassifyDeviceType(IN PPCI_PDO_EXTENSION PdoExtension);
 
-NTAPI PCI_DEVICE_TYPES PciClassifyDeviceType(IN PPCI_PDO_EXTENSION PdoExtension);
+BOOLEAN PciCreateIoDescriptorFromBarLimit(PIO_RESOURCE_DESCRIPTOR ResourceDescriptor,
+					  IN PULONG BarArray, IN BOOLEAN Rom);
 
-NTAPI BOOLEAN PciCreateIoDescriptorFromBarLimit(
-    PIO_RESOURCE_DESCRIPTOR ResourceDescriptor, IN PULONG BarArray, IN BOOLEAN Rom);
+BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
+				       IN ULONG Method);
 
-NTAPI BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
-					     IN ULONG Method);
+VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable,
+		     OUT PUSHORT Command);
 
-NTAPI VOID PciDecodeEnable(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN Enable,
-			   OUT PUSHORT Command);
+NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
+				IN PPNP_BUS_INFORMATION *Buffer);
 
-NTAPI NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
-				      IN PPNP_BUS_INFORMATION *Buffer);
-
-NTAPI NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
-				    IN OUT PDEVICE_CAPABILITIES DeviceCapability);
+NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
+			      IN OUT PDEVICE_CAPABILITIES DeviceCapability);
 
 //
 // Configuration Routines
 //
-NTAPI VOID PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,
-			     IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer, IN ULONG Offset,
-			     IN ULONG Length);
+VOID PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,
+		       IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer, IN ULONG Offset,
+		       IN ULONG Length);
 
-NTAPI VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
-				IN ULONG Offset, IN ULONG Length);
+VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
+			  IN ULONG Offset, IN ULONG Length);
 
-NTAPI VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
-			       IN ULONG Offset, IN ULONG Length);
+VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
+			 IN ULONG Offset, IN ULONG Length);
 
-NTAPI UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension);
+UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension);
 
 //
 // State Machine Logic Transition Routines
 //
-NTAPI VOID PciInitializeState(IN PPCI_FDO_EXTENSION DeviceExtension);
+VOID PciInitializeState(IN PPCI_FDO_EXTENSION DeviceExtension);
 
-NTAPI NTSTATUS PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-				       IN PCI_STATE NewState);
+NTSTATUS PciBeginStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
+				 IN PCI_STATE NewState);
 
-NTAPI NTSTATUS PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-					IN PCI_STATE NewState);
+NTSTATUS PciCancelStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
+				  IN PCI_STATE NewState);
 
-NTAPI VOID PciCommitStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
-				    IN PCI_STATE NewState);
+VOID PciCommitStateTransition(IN PPCI_FDO_EXTENSION DeviceExtension,
+			      IN PCI_STATE NewState);
 
 //
 // Debug Helpers
 //
-NTAPI BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
-					 IN PPCI_FDO_EXTENSION DeviceExtension,
-					 IN USHORT MaxMinor);
+BOOLEAN PciDebugIrpDispatchDisplay(IN PIO_STACK_LOCATION IoStackLocation,
+				   IN PPCI_FDO_EXTENSION DeviceExtension,
+				   IN USHORT MaxMinor);
 
-NTAPI VOID PciDebugDumpCommonConfig(IN PPCI_COMMON_HEADER PciData);
+VOID PciDebugDumpCommonConfig(IN PPCI_COMMON_HEADER PciData);
 
-NTAPI VOID PciDebugDumpQueryCapabilities(IN PDEVICE_CAPABILITIES DeviceCaps);
+VOID PciDebugDumpQueryCapabilities(IN PDEVICE_CAPABILITIES DeviceCaps);
 
-NTAPI VOID PciDebugPrintIoResReqList(IN PIO_RESOURCE_REQUIREMENTS_LIST Requirements);
+VOID PciDebugPrintIoResReqList(IN PIO_RESOURCE_REQUIREMENTS_LIST Requirements);
 
-NTAPI VOID PciDebugPrintCmResList(IN PCM_RESOURCE_LIST ResourceList);
+VOID PciDebugPrintCmResList(IN PCM_RESOURCE_LIST ResourceList);
 
-NTAPI VOID
+VOID
 PciDebugPrintPartialResource(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialResource);
 
 //
 // PCI Enumeration and Resources
 //
-NTAPI NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
+NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
+				 IN OUT PDEVICE_RELATIONS *pDeviceRelations);
+
+NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
+			   OUT PCM_RESOURCE_LIST *Buffer);
+
+NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 				       IN OUT PDEVICE_RELATIONS *pDeviceRelations);
 
-NTAPI NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
-				 OUT PCM_RESOURCE_LIST *Buffer);
+NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
+				   IN OUT PDEVICE_RELATIONS *pDeviceRelations);
 
-NTAPI NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
-					     IN OUT PDEVICE_RELATIONS *pDeviceRelations);
+NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
+			      IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList);
 
-NTAPI NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
-					 IN OUT PDEVICE_RELATIONS *pDeviceRelations);
+BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				     IN PCM_RESOURCE_LIST ResourceList);
 
-NTAPI NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
-				    IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList);
+NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset);
 
-NTAPI BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					   IN PCM_RESOURCE_LIST ResourceList);
-
-NTAPI NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset,
-			       IN BOOLEAN SomethingSomethingDarkSide);
-
-NTAPI NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
-					IN PPCI_COMMON_HEADER PciData,
-					OUT PIO_RESOURCE_REQUIREMENTS_LIST *Buffer);
+NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
+				  IN PPCI_COMMON_HEADER PciData,
+				  OUT PIO_RESOURCE_REQUIREMENTS_LIST *Buffer);
 
 //
 // Identification Functions
@@ -758,104 +744,85 @@ NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
 			    IN DEVICE_TEXT_TYPE QueryType, IN ULONG Locale,
 			    OUT PWCHAR *Buffer);
 
- NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
-		     IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer);
+NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
+		    IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer);
 
 //
 // CardBUS Support
 //
-NTAPI VOID
-Cardbus_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Cardbus_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Cardbus_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Cardbus_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Cardbus_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Cardbus_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Cardbus_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Cardbus_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Cardbus_GetAdditionalResourceDescriptors(
-    IN PPCI_CONFIGURATOR_CONTEXT Context, IN PPCI_COMMON_HEADER PciData,
-    IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
+VOID Cardbus_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
+					      IN PPCI_COMMON_HEADER PciData,
+					      IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
 
-NTAPI VOID Cardbus_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-			       IN PPCI_COMMON_HEADER PciData);
+VOID Cardbus_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
+			 IN PPCI_COMMON_HEADER PciData);
 
-NTAPI VOID Cardbus_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					  IN PPCI_COMMON_HEADER PciData);
+VOID Cardbus_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				    IN PPCI_COMMON_HEADER PciData);
 
 //
 // PCI Device Support
 //
-NTAPI VOID
-Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID Device_GetAdditionalResourceDescriptors(
-    IN PPCI_CONFIGURATOR_CONTEXT Context, IN PPCI_COMMON_HEADER PciData,
-    IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
+VOID Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
+					     IN PPCI_COMMON_HEADER PciData,
+					     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
 
-NTAPI VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-			      IN PPCI_COMMON_HEADER PciData);
+VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
+			IN PPCI_COMMON_HEADER PciData);
 
-NTAPI VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					 IN PPCI_COMMON_HEADER PciData);
+VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				   IN PPCI_COMMON_HEADER PciData);
 
 //
 // PCI-to-PCI Bridge Device Support
 //
-NTAPI VOID
-PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID PCIBridge_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context);
+VOID PCIBridge_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context);
 
-NTAPI VOID PCIBridge_GetAdditionalResourceDescriptors(
-    IN PPCI_CONFIGURATOR_CONTEXT Context, IN PPCI_COMMON_HEADER PciData,
-    IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
+VOID PCIBridge_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
+						IN PPCI_COMMON_HEADER PciData,
+						IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
 
-NTAPI VOID PCIBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-				IN PPCI_COMMON_HEADER PciData);
+VOID PCIBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
+			   IN PPCI_COMMON_HEADER PciData);
 
-NTAPI VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					   IN PPCI_COMMON_HEADER PciData);
+VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				      IN PPCI_COMMON_HEADER PciData);
 
 //
 // Bus Number Routines
 //
-NTAPI BOOLEAN PciAreBusNumbersConfigured(IN PPCI_PDO_EXTENSION PdoExtension);
-
-//
-// Routine Interface
-//
-NTAPI NTSTATUS PciCacheLegacyDeviceRouting(IN PDEVICE_OBJECT DeviceObject,
-					   IN ULONG BusNumber, IN ULONG SlotNumber,
-					   IN UCHAR InterruptLine, IN UCHAR InterruptPin,
-					   IN UCHAR BaseClass, IN UCHAR SubClass,
-					   IN PDEVICE_OBJECT PhysicalDeviceObject,
-					   IN PPCI_PDO_EXTENSION PdoExtension,
-					   OUT PDEVICE_OBJECT *pFoundDeviceObject);
+BOOLEAN PciAreBusNumbersConfigured(IN PPCI_PDO_EXTENSION PdoExtension);
 
 //
 // External Resources
 //
 extern SINGLE_LIST_ENTRY PciFdoExtensionListHead;
-extern KEVENT PciGlobalLock;
 extern PDRIVER_OBJECT PciDriverObject;
 extern PPCI_HACK_ENTRY PciHackTable;
 extern BOOLEAN PciAssignBusNumbers;
-extern BOOLEAN PciEnableNativeModeATA;
 extern PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 extern BOOLEAN PciRunningDatacenter;
-
-/* Exported by NTOS, should this go in the NDK? */
-extern NTSYSAPI BOOLEAN InitSafeBootMode;
 
 #endif /* _PCIDRV_H_ */

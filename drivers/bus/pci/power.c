@@ -36,9 +36,9 @@ ULONG PciPowerDelayTable[PowerDeviceD3 * PowerDeviceD3] = {
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
-				      IN DEVICE_POWER_STATE PowerState,
-				      IN ULONG_PTR CapOffset)
+NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
+				IN DEVICE_POWER_STATE PowerState,
+				IN ULONG_PTR CapOffset)
 {
     ULONG PciState, TimeoutEntry, PmcsrOffset, TryCount;
     LARGE_INTEGER Interval;
@@ -82,9 +82,9 @@ NTAPI NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_DEVICE_PROTOCOL_ERROR;
 }
 
-NTAPI NTSTATUS PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
-						  IN DEVICE_POWER_STATE DeviceState,
-						  IN BOOLEAN IrpSet)
+NTSTATUS PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceExtension,
+					    IN DEVICE_POWER_STATE DeviceState,
+					    IN BOOLEAN IrpSet)
 {
     NTSTATUS Status;
     PCI_PM_CAPABILITY PmCaps;
@@ -154,8 +154,8 @@ NTAPI NTSTATUS PciSetPowerManagedDevicePowerState(IN PPCI_PDO_EXTENSION DeviceEx
     return Status;
 }
 
-NTAPI NTSTATUS PciFdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			      IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -167,8 +167,8 @@ NTAPI NTSTATUS PciFdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -180,8 +180,8 @@ NTAPI NTSTATUS PciFdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLoc
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);

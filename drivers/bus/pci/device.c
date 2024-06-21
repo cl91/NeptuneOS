@@ -12,7 +12,7 @@
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER PciData;
     PIO_RESOURCE_DESCRIPTOR IoDescriptor;
@@ -97,7 +97,7 @@ NTAPI VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     Context->PdoExtension->SubsystemId = PciData->Type0.SubSystemID;
 }
 
-NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER Current, PciData;
     PPCI_PDO_EXTENSION PdoExtension;
@@ -182,7 +182,7 @@ NTAPI VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PciCreateIoDescriptorFromBarLimit(&Limit[i], &PciData->Type0.ROMBaseAddress, TRUE);
 }
 
-NTAPI VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER PciData;
     PPCI_PDO_EXTENSION PdoExtension;
@@ -212,16 +212,16 @@ NTAPI VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTE
     PciData->Type0.ROMBaseAddress = PCI_ADDRESS_ROM_ADDRESS_MASK;
 }
 
-NTAPI VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     UNREFERENCED_PARAMETER(Context);
     /* Nothing to do for devices */
     return;
 }
 
-NTAPI VOID Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
-						   IN PPCI_COMMON_HEADER PciData,
-						   IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
+VOID Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
+					     IN PPCI_COMMON_HEADER PciData,
+					     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PciData);
@@ -230,8 +230,8 @@ NTAPI VOID Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT 
     UNIMPLEMENTED_DBGBREAK();
 }
 
-NTAPI VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-			      IN PPCI_COMMON_HEADER PciData)
+VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
+			IN PPCI_COMMON_HEADER PciData)
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
@@ -239,8 +239,8 @@ NTAPI VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
     UNIMPLEMENTED_DBGBREAK();
 }
 
-NTAPI VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-					 IN PPCI_COMMON_HEADER PciData)
+VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				   IN PPCI_COMMON_HEADER PciData)
 {
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);

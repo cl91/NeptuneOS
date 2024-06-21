@@ -366,22 +366,16 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
 {
     for (ULONG i = 0; i < BasicInfo->NumberOfProcessors; i++) {
 	/* Open the CPU hardware description key */
-	CHAR Buffer[256];
-	snprintf(Buffer, sizeof(Buffer), "%ws\\System\\CentralProcessor\\%d",
-		 HARDWARE_DESCRIPTION_KEY, i);
-	ANSI_STRING KeyNameA;
-	RtlInitAnsiString(&KeyNameA, Buffer);
+	WCHAR Buffer[256];
+	_snwprintf(Buffer, sizeof(Buffer), L"%ws\\System\\CentralProcessor\\%d",
+		   HARDWARE_DESCRIPTION_KEY, i);
 	UNICODE_STRING KeyName;
-	NTSTATUS Status = RtlAnsiStringToUnicodeString(&KeyName, &KeyNameA, TRUE);
-	if (!NT_SUCCESS(Status)) {
-	    return Status;
-	}
+	RtlInitUnicodeString(&KeyName, Buffer);
 	OBJECT_ATTRIBUTES ObjectAttributes;
 	InitializeObjectAttributes(&ObjectAttributes, &KeyName, OBJ_CASE_INSENSITIVE, NULL,
 				   NULL);
 	HANDLE KeyHandle = NULL;
-	Status = NtOpenKey(&KeyHandle, KEY_READ | KEY_WRITE, &ObjectAttributes);
-	RtlFreeUnicodeString(&KeyName);
+	NTSTATUS Status = NtOpenKey(&KeyHandle, KEY_READ | KEY_WRITE, &ObjectAttributes);
 	if (!NT_SUCCESS(Status)) {
 	    return Status;
 	}
@@ -391,8 +385,9 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
 	int CPUID[4];
 	__cpuid(CPUID, 0x80000000);
 	int ExtendedId = CPUID[0];
-	memset(Buffer, 0, sizeof(Buffer));
-	PCHAR Ptr = Buffer;
+	CHAR AnsiBuffer[64];
+	memset(AnsiBuffer, 0, sizeof(AnsiBuffer));
+	PCHAR Ptr = AnsiBuffer;
 	if (ExtendedId >= 0x80000004) {
 	    /* Do all the CPUIDs required to get the full name */
 	    for (ExtendedId = 2; ExtendedId <= 4; ExtendedId++) {
@@ -406,19 +401,19 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
 		Ptr += 16;
 	    }
 	}
-	Status = PnpSetRegStringValue(KeyHandle, L"ProcessorNameString", Buffer);
+	Status = PnpSetRegStringValue(KeyHandle, L"ProcessorNameString", AnsiBuffer);
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}
 
         /* Get the Vendor ID and add it to the registry */
 	__cpuid(CPUID, 0);
-	memset(Buffer, 0, sizeof(Buffer));
-	Ptr = Buffer;
+	memset(AnsiBuffer, 0, sizeof(AnsiBuffer));
+	Ptr = AnsiBuffer;
 	((PULONG)Ptr)[0] = CPUID[1];
 	((PULONG)Ptr)[1] = CPUID[3];
 	((PULONG)Ptr)[2] = CPUID[2];
-	Status = PnpSetRegStringValue(KeyHandle, L"VendorIdentifier", Buffer);
+	Status = PnpSetRegStringValue(KeyHandle, L"VendorIdentifier", AnsiBuffer);
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}

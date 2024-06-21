@@ -114,7 +114,8 @@ ULONG PciIdPrintf(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
 
     /* Do the actual string formatting into the character buffer */
     va_start(va, Format);
-    vsprintf(IdBuffer->CharBuffer, Format, va);
+    vsnprintf(IdBuffer->CharBuffer,
+	      sizeof(IdBuffer->BufferData) - IdBuffer->TotalLength, Format, va);
     va_end(va);
 
     /* Initialize the ANSI_STRING that will hold this string buffer */
@@ -153,7 +154,7 @@ ULONG PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
 
     /* Do the actual append, and return the length this string took */
     va_start(va, Format);
-    Length = vsprintf(IdBuffer->CharBuffer - 1, Format, va);
+    Length = vsnprintf(IdBuffer->CharBuffer - 1, MaxLength, Format, va);
     va_end(va);
     ASSERT(Length < MaxLength);
 
@@ -192,8 +193,9 @@ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     *Buffer = NULL;
 
     /* Start with the genric vendor string, which is the vendor ID + device ID */
-    sprintf(VendorString, "PCI\\VEN_%04X&DEV_%04X", DeviceExtension->VendorId,
-	    DeviceExtension->DeviceId);
+    snprintf(VendorString, sizeof(VendorString),
+	     "PCI\\VEN_%04X&DEV_%04X", DeviceExtension->VendorId,
+	     DeviceExtension->DeviceId);
 
     /* Initialize the PCI ID Buffer */
     PciInitIdBuffer(&IdBuffer);

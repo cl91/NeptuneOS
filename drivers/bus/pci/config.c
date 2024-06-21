@@ -16,7 +16,7 @@ BOOLEAN PciAssignBusNumbers;
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
+UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
 {
     UCHAR InterruptLine = 0, PciInterruptLine;
     ULONG Length;
@@ -36,9 +36,9 @@ NTAPI UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
     return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
 }
 
-NTAPI VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
-				   IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer,
-				   IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
+VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
+			     IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer,
+			     IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
 {
     /* TODO! */
 #if 0
@@ -73,25 +73,25 @@ NTAPI VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
 #endif
 }
 
-NTAPI VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
-				IN ULONG Offset, IN ULONG Length)
+VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
+			  IN ULONG Offset, IN ULONG Length)
 {
     /* Call the generic worker function */
     PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension, DeviceExtension->Slot,
 			    Buffer, Offset, Length, FALSE);
 }
 
-NTAPI VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
-			       IN ULONG Offset, IN ULONG Length)
+VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
+			 IN ULONG Offset, IN ULONG Length)
 {
     /* Call the generic worker function */
     PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension, DeviceExtension->Slot,
 			    Buffer, Offset, Length, TRUE);
 }
 
-NTAPI VOID PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,
-			     IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer, IN ULONG Offset,
-			     IN ULONG Length)
+VOID PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,
+		       IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer, IN ULONG Offset,
+		       IN ULONG Length)
 {
     /* Call the generic worker function */
     PciReadWriteConfigSpace(DeviceExtension, Slot, Buffer, Offset, Length, TRUE);

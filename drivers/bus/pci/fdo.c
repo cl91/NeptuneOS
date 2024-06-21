@@ -53,18 +53,18 @@ PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
 };
 
 PCI_MJ_DISPATCH_TABLE PciFdoDispatchTable = { IRP_MN_DEVICE_ENUMERATED,
-					      PciFdoDispatchPnpTable,
-					      IRP_MN_QUERY_POWER,
-					      PciFdoDispatchPowerTable,
-					      IRP_DOWNWARD,
-					      (PCI_DISPATCH_FUNCTION)PciIrpNotSupported,
-					      IRP_DOWNWARD,
-					      (PCI_DISPATCH_FUNCTION)PciIrpNotSupported };
+    PciFdoDispatchPnpTable,
+    IRP_MN_QUERY_POWER,
+    PciFdoDispatchPowerTable,
+    IRP_DOWNWARD,
+    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported,
+    IRP_DOWNWARD,
+    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported };
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			      IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
     PCM_RESOURCE_LIST Resources;
@@ -98,9 +98,9 @@ NTAPI NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLo
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
+				    IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -110,7 +110,19 @@ NTAPI NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			       IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
+				     IN PIO_STACK_LOCATION IoStackLocation,
 				     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
@@ -121,9 +133,8 @@ NTAPI NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackL
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
-					   IN PIO_STACK_LOCATION IoStackLocation,
-					   IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+			     IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -133,7 +144,20 @@ NTAPI NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
+NTSTATUS PciFdoIrpQueryStopDevice(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
+				   IN PIO_STACK_LOCATION IoStackLocation,
 				   IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
@@ -144,33 +168,9 @@ NTAPI NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLoc
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpQueryStopDevice(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_FDO_EXTENSION DeviceExtension)
-{
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTAPI NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
-					 IN PIO_STACK_LOCATION IoStackLocation,
-					 IN PPCI_FDO_EXTENSION DeviceExtension)
-{
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTAPI NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
-					     IN PIO_STACK_LOCATION IoStackLocation,
-					     IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
+				       IN PIO_STACK_LOCATION IoStackLocation,
+				       IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
 
@@ -188,9 +188,9 @@ NTAPI NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
     return Status;
 }
 
-NTAPI NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
+				    IN PIO_STACK_LOCATION IoStackLocation,
+				    IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PDEVICE_CAPABILITIES Capabilities;
     ASSERT_FDO(DeviceExtension);
@@ -212,9 +212,9 @@ NTAPI NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
-						IN PIO_STACK_LOCATION IoStackLocation,
-						IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
+					  IN PIO_STACK_LOCATION IoStackLocation,
+					  IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -224,9 +224,9 @@ NTAPI NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
-					IN PIO_STACK_LOCATION IoStackLocation,
-					IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -236,9 +236,9 @@ NTAPI NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
-						  IN PIO_STACK_LOCATION IoStackLocation,
-						  IN PPCI_FDO_EXTENSION DeviceExtension)
+NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
+					    IN PIO_STACK_LOCATION IoStackLocation,
+					    IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -248,7 +248,7 @@ NTAPI NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTAPI VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
+VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
 {
     ACPI_EVAL_INPUT_BUFFER InputBuffer;
     PACPI_EVAL_OUTPUT_BUFFER OutputBuffer;
@@ -264,13 +264,13 @@ NTAPI VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
 	return;
 
     /* Initialize the output and input buffers. The method is _HPP */
-    RtlZeroMemory(OutputBuffer, Length);
+    RtlZeroMemory((PVOID)OutputBuffer, Length);
     *(PULONG)InputBuffer.MethodName = 'PPH_';
     InputBuffer.Signature = ACPI_EVAL_INPUT_BUFFER_SIGNATURE;
     do {
 	/* Send the IOCTL to the ACPI driver */
 	Status = PciSendIoctl(FdoExtension->PhysicalDeviceObject, IOCTL_ACPI_EVAL_METHOD,
-			      &InputBuffer, sizeof(InputBuffer), OutputBuffer, Length);
+			      &InputBuffer, sizeof(InputBuffer), (PVOID)OutputBuffer, Length);
 	if (!NT_SUCCESS(Status)) {
 	    /* The method failed, check if we can salvage data from parent */
 	    if (!PCI_IS_ROOT_FDO(FdoExtension)) {
@@ -292,12 +292,12 @@ NTAPI VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
     } while (FALSE);
 
     /* Free the buffer and return */
-    ExFreePoolWithTag(OutputBuffer, 0);
+    ExFreePoolWithTag((PVOID)OutputBuffer, 0);
 }
 
-NTAPI VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
-						 IN PDEVICE_OBJECT DeviceObject,
-						 IN PDEVICE_OBJECT PhysicalDeviceObject)
+VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
+					   IN PDEVICE_OBJECT DeviceObject,
+					   IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
     /* Initialize the extension */
     RtlZeroMemory(FdoExtension, sizeof(PCI_FDO_EXTENSION));
@@ -310,10 +310,6 @@ NTAPI VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension
     FdoExtension->PowerState.CurrentDeviceState = PowerDeviceD0;
     FdoExtension->IrpDispatchTable = &PciFdoDispatchTable;
 
-    /* Initialize the extension locks */
-    KeInitializeEvent(&FdoExtension->SecondaryExtLock, SynchronizationEvent, TRUE);
-    KeInitializeEvent(&FdoExtension->ChildListLock, SynchronizationEvent, TRUE);
-
     /* Initialize the default state */
     PciInitializeState(FdoExtension);
 }
@@ -321,7 +317,6 @@ NTAPI VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension
 NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 			    IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
-    PCM_RESOURCE_LIST Descriptor;
     PDEVICE_OBJECT AttachedTo;
     PPCI_FDO_EXTENSION FdoExtension;
     PPCI_FDO_EXTENSION ParentExtension;
@@ -342,138 +337,107 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     PdoExtension = NULL;
     DeviceObject = NULL;
 
-    do {
-	/* Check if there's already a device extension for this bus */
-	ParentExtension = PciFindParentPciFdoExtension(PhysicalDeviceObject,
-						       &PciGlobalLock);
-	if (ParentExtension) {
-	    /* Make sure we find a real PDO */
-	    PdoExtension = PhysicalDeviceObject->DeviceExtension;
-	    ASSERT_PDO(PdoExtension);
+    /* Check if there's already a device extension for this bus */
+    ParentExtension = PciFindParentPciFdoExtension(PhysicalDeviceObject);
+    if (ParentExtension) {
+	/* Make sure we find a real PDO */
+	PdoExtension = PhysicalDeviceObject->DeviceExtension;
+	ASSERT_PDO(PdoExtension);
 
-	    /* Make sure it's a PCI-to-PCI bridge */
-	    if ((PdoExtension->BaseClass != PCI_CLASS_BRIDGE_DEV) ||
-		(PdoExtension->SubClass != PCI_SUBCLASS_BR_PCI_TO_PCI)) {
-		/* This should never happen */
-		DPRINT1("PCI - PciAddDevice for Non-Root/Non-PCI-PCI bridge,\n"
-			"      Class %02x, SubClass %02x, will not add.\n",
-			PdoExtension->BaseClass, PdoExtension->SubClass);
-		ASSERT((PdoExtension->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
-		       (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI));
+	/* Make sure it's a PCI-to-PCI bridge */
+	if ((PdoExtension->BaseClass != PCI_CLASS_BRIDGE_DEV) ||
+	    (PdoExtension->SubClass != PCI_SUBCLASS_BR_PCI_TO_PCI)) {
+	    /* This should never happen */
+	    DPRINT1("PCI - PciAddDevice for Non-Root/Non-PCI-PCI bridge,\n"
+		    "      Class %02x, SubClass %02x, will not add.\n",
+		    PdoExtension->BaseClass, PdoExtension->SubClass);
+	    ASSERT((PdoExtension->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
+		   (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI));
 
-		/* Enter the failure path */
-		Status = STATUS_INVALID_DEVICE_REQUEST;
-		break;
-	    }
-
-	    /* Subordinate bus on the bridge */
-	    DPRINT1("PCI - AddDevice (new bus is child of bus 0x%x).\n",
-		    ParentExtension->BaseBus);
-
-	    /* Make sure PCI bus numbers are configured */
-	    if (!PciAreBusNumbersConfigured(PdoExtension)) {
-		/* This is a critical failure */
-		DPRINT1("PCI - Bus numbers not configured for bridge (0x%x.0x%x.0x%x)\n",
-			ParentExtension->BaseBus, PdoExtension->Slot.Bits.DeviceNumber,
-			PdoExtension->Slot.Bits.FunctionNumber);
-
-		/* Enter the failure path */
-		Status = STATUS_INVALID_DEVICE_REQUEST;
-		break;
-	    }
+	    /* Enter the failure path */
+	    Status = STATUS_INVALID_DEVICE_REQUEST;
+	    goto err;
 	}
 
-	/* Create the FDO for the bus */
-	Status = IoCreateDevice(DriverObject, sizeof(PCI_FDO_EXTENSION), NULL,
-				FILE_DEVICE_BUS_EXTENDER, 0, 0, &DeviceObject);
-	if (!NT_SUCCESS(Status))
-	    break;
+	/* Subordinate bus on the bridge */
+	DPRINT1("PCI - AddDevice (new bus is child of bus 0x%x).\n",
+		ParentExtension->BaseBus);
 
-	/* Initialize the extension for the FDO */
-	FdoExtension = DeviceObject->DeviceExtension;
-	PciInitializeFdoExtensionCommonFields(DeviceObject->DeviceExtension, DeviceObject,
-					      PhysicalDeviceObject);
+	/* Make sure PCI bus numbers are configured */
+	if (!PciAreBusNumbersConfigured(PdoExtension)) {
+	    /* This is a critical failure */
+	    DPRINT1("PCI - Bus numbers not configured for bridge (0x%x.0x%x.0x%x)\n",
+		    ParentExtension->BaseBus, PdoExtension->Slot.Bits.DeviceNumber,
+		    PdoExtension->Slot.Bits.FunctionNumber);
 
-	/* Attach to the root PDO */
-	Status = STATUS_NO_SUCH_DEVICE;
-	AttachedTo = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
-	ASSERT(AttachedTo != NULL);
-	if (!AttachedTo)
-	    break;
-	FdoExtension->AttachedDeviceObject = AttachedTo;
-
-	/* Check if this is a child bus, or the root */
-	if (ParentExtension) {
-	    /* The child inherits root data */
-	    FdoExtension->BaseBus = PdoExtension->Dependent.type1.SecondaryBus;
-	    FdoExtension->BusRootFdoExtension = ParentExtension->BusRootFdoExtension;
-	    PdoExtension->BridgeFdoExtension = FdoExtension;
-	    FdoExtension->ParentFdoExtension = ParentExtension;
-	} else {
-	    /* Query the boot configuration */
-	    Status = PciGetDeviceProperty(PhysicalDeviceObject,
-					  DevicePropertyBootConfiguration,
-					  (PVOID *)&Descriptor);
-	    if (!NT_SUCCESS(Status)) {
-		/* No configuration has been set */
-		Descriptor = NULL;
-	    } else {
-		/* Root PDO in ReactOS does not assign boot resources */
-		UNIMPLEMENTED_DBGBREAK("Encountered during setup\n");
-		Descriptor = NULL;
-	    }
-
-	    if (Descriptor) {
-		/* Root PDO in ReactOS does not assign boot resources */
-		UNIMPLEMENTED_DBGBREAK();
-	    } else {
-		/* Default configuration isn't the normal path on Windows */
-		if (PciBreakOnDefault) {
-		    /* If a second bus is found and there's still no data, crash */
-		    RtlRaiseStatus(STATUS_DATA_ERROR);
-		}
-
-		/* Warn that a default configuration will be used, and set bus 0 */
-		DPRINT1("PCI   Will use default configuration.\n");
-		PciBreakOnDefault = TRUE;
-		FdoExtension->BaseBus = 0;
-	    }
-
-	    /* This is the root bus */
-	    FdoExtension->BusRootFdoExtension = FdoExtension;
+	    /* Enter the failure path */
+	    Status = STATUS_INVALID_DEVICE_REQUEST;
+	    goto err;
 	}
+    }
 
-	/* This is a real FDO, insert it into the list */
-	FdoExtension->Fake = FALSE;
-	PciInsertEntryAtTail(&PciFdoExtensionListHead, FdoExtension, &PciGlobalLock);
+    /* Create the FDO for the bus */
+    Status = IoCreateDevice(DriverObject, sizeof(PCI_FDO_EXTENSION), NULL,
+			    FILE_DEVICE_BUS_EXTENDER, 0, 0, &DeviceObject);
+    if (!NT_SUCCESS(Status))
+	goto err;
 
-	/* Open the device registry key so that we can query the errata flags */
-	IoOpenDeviceRegistryKey(DeviceObject, PLUGPLAY_REGKEY_DEVICE, KEY_ALL_ACCESS,
-				&KeyHandle),
+    /* Initialize the extension for the FDO */
+    FdoExtension = DeviceObject->DeviceExtension;
+    PciInitializeFdoExtensionCommonFields(DeviceObject->DeviceExtension, DeviceObject,
+					  PhysicalDeviceObject);
 
-	    /* Open the value that contains errata flags for this bus instance */
-	    RtlInitUnicodeString(&ValueName, L"HackFlags");
-	Status = NtQueryValueKey(KeyHandle, &ValueName, KeyValuePartialInformation,
-				 ValueInfo, sizeof(Buffer), &ResultLength);
-	NtClose(KeyHandle);
-	if (NT_SUCCESS(Status)) {
-	    /* Make sure the data is of expected type and size */
-	    if ((ValueInfo->Type == REG_DWORD) &&
-		(ValueInfo->DataLength == sizeof(ULONG))) {
-		/* Read the flags for this bus */
-		FdoExtension->BusHackFlags = *(PULONG)&ValueInfo->Data;
-	    }
+    /* Attach to the root PDO */
+    Status = STATUS_NO_SUCH_DEVICE;
+    AttachedTo = IoAttachDeviceToDeviceStack(DeviceObject, PhysicalDeviceObject);
+    ASSERT(AttachedTo != NULL);
+    if (!AttachedTo)
+	goto err;
+    FdoExtension->AttachedDeviceObject = AttachedTo;
+
+    /* Check if this is a child bus, or the root */
+    if (ParentExtension) {
+	/* The child inherits root data */
+	FdoExtension->BaseBus = PdoExtension->Dependent.type1.SecondaryBus;
+	FdoExtension->BusRootFdoExtension = ParentExtension->BusRootFdoExtension;
+	PdoExtension->BridgeFdoExtension = FdoExtension;
+	FdoExtension->ParentFdoExtension = ParentExtension;
+    } else {
+	/* This is the root bus */
+	FdoExtension->BusRootFdoExtension = FdoExtension;
+    }
+
+    /* This is a real FDO, insert it into the list */
+    FdoExtension->Fake = FALSE;
+    PciInsertEntryAtTail(&PciFdoExtensionListHead, FdoExtension);
+
+    /* Open the device registry key so that we can query the errata flags */
+    IoOpenDeviceRegistryKey(DeviceObject, PLUGPLAY_REGKEY_DEVICE, KEY_ALL_ACCESS,
+			    &KeyHandle),
+
+	/* Open the value that contains errata flags for this bus instance */
+	RtlInitUnicodeString(&ValueName, L"HackFlags");
+    Status = NtQueryValueKey(KeyHandle, &ValueName, KeyValuePartialInformation,
+			     ValueInfo, sizeof(Buffer), &ResultLength);
+    NtClose(KeyHandle);
+    if (NT_SUCCESS(Status)) {
+	/* Make sure the data is of expected type and size */
+	if ((ValueInfo->Type == REG_DWORD) &&
+	    (ValueInfo->DataLength == sizeof(ULONG))) {
+	    /* Read the flags for this bus */
+	    FdoExtension->BusHackFlags = *(PULONG)&ValueInfo->Data;
 	}
+    }
 
-	/* Query ACPI for PCI HotPlug Support */
-	PciGetHotPlugParameters(FdoExtension);
+    /* Query ACPI for PCI HotPlug Support */
+    PciGetHotPlugParameters(FdoExtension);
 
-	/* The Bus FDO is now initialized */
-	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
-	return STATUS_SUCCESS;
-    } while (FALSE);
+    /* The Bus FDO is now initialized */
+    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+    return STATUS_SUCCESS;
 
     /* This is the failure path */
+err:
     ASSERT(!NT_SUCCESS(Status));
 
     /* Check if the FDO extension exists */

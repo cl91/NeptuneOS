@@ -12,7 +12,7 @@
 
 /* FUNCTIONS ******************************************************************/
 
-NTAPI BOOLEAN PciAreBusNumbersConfigured(IN PPCI_PDO_EXTENSION PdoExtension)
+BOOLEAN PciAreBusNumbersConfigured(IN PPCI_PDO_EXTENSION PdoExtension)
 {
     UCHAR PrimaryBus, BaseBus, SecondaryBus, SubordinateBus;
 
