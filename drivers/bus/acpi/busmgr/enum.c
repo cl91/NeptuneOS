@@ -11,60 +11,60 @@
 #include "acpi_bus.h"
 #include <stdio.h>
 
-#define HAS_CHILDREN(d) ((d)->children.Flink != &((d)->children))
-#define HAS_SIBLINGS(d) (((d)->parent) && ((d)->node.Flink != &(d)->parent->children))
-#define NODE_TO_DEVICE(n) (CONTAINING_RECORD(n, struct acpi_device, node))
+#define HAS_CHILDREN(d) ((d)->Children.Flink != &((d)->Children))
+#define HAS_SIBLINGS(d) (((d)->Parent) && ((d)->Node.Flink != &(d)->Parent->Children))
+#define NODE_TO_DEVICE(n) (CONTAINING_RECORD(n, ACPI_DEVICE, Node))
 
-extern struct acpi_device *acpi_root;
+extern PACPI_DEVICE AcpiRoot;
 
 static VOID Bus_InitializePdo(PDEVICE_OBJECT Pdo, PFDO_DEVICE_DATA FdoData)
 {
-    PPDO_DEVICE_DATA pdoData;
-    int acpistate;
-    DEVICE_POWER_STATE ntState;
+    PPDO_DEVICE_DATA PdoData;
+    INT AcpiState;
+    DEVICE_POWER_STATE PowerState;
 
-    pdoData = (PPDO_DEVICE_DATA)Pdo->DeviceExtension;
+    PdoData = (PPDO_DEVICE_DATA)Pdo->DeviceExtension;
 
-    DPRINT("pdo 0x%p, extension 0x%p\n", Pdo, pdoData);
+    DPRINT("pdo 0x%p, extension 0x%p\n", Pdo, PdoData);
 
-    if (pdoData->AcpiHandle)
-	acpi_bus_get_power(pdoData->AcpiHandle, &acpistate);
+    if (PdoData->AcpiHandle)
+	AcpiBusGetPower(PdoData->AcpiHandle, &AcpiState);
     else
-	acpistate = ACPI_STATE_D0;
+	AcpiState = ACPI_STATE_D0;
 
-    switch (acpistate) {
+    switch (AcpiState) {
     case ACPI_STATE_D0:
-	ntState = PowerDeviceD0;
+	PowerState = PowerDeviceD0;
 	break;
     case ACPI_STATE_D1:
-	ntState = PowerDeviceD1;
+	PowerState = PowerDeviceD1;
 	break;
     case ACPI_STATE_D2:
-	ntState = PowerDeviceD2;
+	PowerState = PowerDeviceD2;
 	break;
     case ACPI_STATE_D3:
-	ntState = PowerDeviceD3;
+	PowerState = PowerDeviceD3;
 	break;
     default:
-	DPRINT1("Unknown power state (%d) returned by acpi\n", acpistate);
-	ntState = PowerDeviceUnspecified;
+	DPRINT1("Unknown power state (%d) returned by acpi\n", AcpiState);
+	PowerState = PowerDeviceUnspecified;
 	break;
     }
 
     //
     // Initialize the rest
     //
-    pdoData->Common.IsFDO = FALSE;
-    pdoData->Common.Self = Pdo;
+    PdoData->Common.IsFDO = FALSE;
+    PdoData->Common.Self = Pdo;
 
-    pdoData->ParentFdo = FdoData->Common.Self;
+    PdoData->ParentFdo = FdoData->Common.Self;
 
-    INITIALIZE_PNP_STATE(pdoData->Common);
+    INITIALIZE_PNP_STATE(PdoData->Common);
 
-    pdoData->Common.DevicePowerState = ntState;
-    pdoData->Common.SystemPowerState = FdoData->Common.SystemPowerState;
+    PdoData->Common.DevicePowerState = PowerState;
+    PdoData->Common.SystemPowerState = FdoData->Common.SystemPowerState;
 
-    InsertTailList(&FdoData->ListOfPDOs, &pdoData->Link);
+    InsertTailList(&FdoData->ListOfPDOs, &PdoData->Link);
     FdoData->NumPDOs++;
 
     // This should be the last step in initialization.
@@ -91,57 +91,55 @@ static NTSTATUS Bus_DestroyPdo(PDEVICE_OBJECT Device, PPDO_DEVICE_DATA PdoData)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS Bus_PlugInDevice(struct acpi_device *Device, PFDO_DEVICE_DATA FdoData)
+static NTSTATUS Bus_PlugInDevice(PACPI_DEVICE Device, PFDO_DEVICE_DATA FdoData)
 {
-    PDEVICE_OBJECT pdo;
-    PPDO_DEVICE_DATA pdoData;
-    NTSTATUS status;
-    ULONG index;
-    WCHAR temp[256];
-    PLIST_ENTRY entry;
+    PDEVICE_OBJECT Pdo;
+    PPDO_DEVICE_DATA PdoData;
+    NTSTATUS Status;
+    ULONG Index;
+    WCHAR Temp[256];
+    PLIST_ENTRY Entry;
 
     /* Don't enumerate the root device */
-    if (Device->handle == ACPI_ROOT_OBJECT)
+    if (Device->Handle == ACPI_ROOT_OBJECT)
 	return STATUS_SUCCESS;
 
     /* Check we didnt add this already */
-    for (entry = FdoData->ListOfPDOs.Flink; entry != &FdoData->ListOfPDOs;
-	 entry = entry->Flink) {
-	struct acpi_device *CurrentDevice;
+    for (Entry = FdoData->ListOfPDOs.Flink; Entry != &FdoData->ListOfPDOs;
+	 Entry = Entry->Flink) {
+	PACPI_DEVICE CurrentDevice;
 
-	pdoData = CONTAINING_RECORD(entry, PDO_DEVICE_DATA, Link);
+	PdoData = CONTAINING_RECORD(Entry, PDO_DEVICE_DATA, Link);
 
 	//dont duplicate devices
-	if (pdoData->AcpiHandle == Device->handle)
+	if (PdoData->AcpiHandle == Device->Handle)
 	    return STATUS_SUCCESS;
 
 	//check everything but fixed feature devices
-	if (pdoData->AcpiHandle)
-	    acpi_bus_get_device(pdoData->AcpiHandle, &CurrentDevice);
+	if (PdoData->AcpiHandle)
+	    AcpiBusGetDevice(PdoData->AcpiHandle, &CurrentDevice);
 	else
 	    continue;
 
 	//check if the HID matches
-	if (!strcmp(Device->pnp.hardware_id, CurrentDevice->pnp.hardware_id)) {
+	if (!strcmp(Device->Pnp.HardwareId, CurrentDevice->Pnp.HardwareId)) {
 	    //check if UID exists for both and matches
-	    if (Device->flags.unique_id && CurrentDevice->flags.unique_id &&
-		!strcmp(Device->pnp.unique_id, CurrentDevice->pnp.unique_id)) {
+	    if (Device->Flags.UniqueId && CurrentDevice->Flags.UniqueId &&
+		!strcmp(Device->Pnp.UniqueId, CurrentDevice->Pnp.UniqueId)) {
 		/* We have a UID on both but they're the same so we have to ignore it */
-		DPRINT1("Detected duplicate device: %hs %hs\n", Device->pnp.hardware_id,
-			Device->pnp.unique_id);
+		DPRINT1("Detected duplicate device: %hs %hs\n", Device->Pnp.HardwareId,
+			Device->Pnp.UniqueId);
 		return STATUS_SUCCESS;
-	    } else if (!Device->flags.unique_id && !CurrentDevice->flags.unique_id) {
+	    } else if (!Device->Flags.UniqueId && !CurrentDevice->Flags.UniqueId) {
 		/* No UID so we can only legally have 1 of these devices */
-		DPRINT1("Detected duplicate device: %hs\n", Device->pnp.hardware_id);
+		DPRINT1("Detected duplicate device: %hs\n", Device->Pnp.HardwareId);
 		return STATUS_SUCCESS;
 	    }
 	}
     }
 
-    DPRINT("Exposing PDO\n"
-	   "======AcpiHandle:   %p\n"
-	   "======HardwareId:     %s\n",
-	   Device->handle, Device->pnp.hardware_id);
+    DPRINT("Exposing PDO\n======AcpiHandle:   %p\n======HardwareId:     %s\n",
+	   Device->Handle, Device->Pnp.HardwareId);
 
     //
     // Create the PDO
@@ -149,66 +147,66 @@ static NTSTATUS Bus_PlugInDevice(struct acpi_device *Device, PFDO_DEVICE_DATA Fd
 
     DPRINT("FdoData->NextLowerDriver = 0x%p\n", FdoData->NextLowerDriver);
 
-    status = IoCreateDevice(FdoData->Common.Self->DriverObject, sizeof(PDO_DEVICE_DATA),
+    Status = IoCreateDevice(FdoData->Common.Self->DriverObject, sizeof(PDO_DEVICE_DATA),
 			    NULL, FILE_DEVICE_CONTROLLER, FILE_AUTOGENERATED_DEVICE_NAME,
-			    FALSE, &pdo);
+			    FALSE, &Pdo);
 
-    if (!NT_SUCCESS(status)) {
-	return status;
+    if (!NT_SUCCESS(Status)) {
+	return Status;
     }
 
-    pdoData = (PPDO_DEVICE_DATA)pdo->DeviceExtension;
-    pdoData->AcpiHandle = Device->handle;
+    PdoData = (PPDO_DEVICE_DATA)Pdo->DeviceExtension;
+    PdoData->AcpiHandle = Device->Handle;
 
     //
     // Copy the hardware IDs
     //
-    index = 0;
-    index += swprintf(&temp[index], L"ACPI\\%hs", Device->pnp.hardware_id);
-    temp[index++] = UNICODE_NULL;
+    Index = 0;
+    Index += swprintf(&Temp[Index], L"ACPI\\%hs", Device->Pnp.HardwareId);
+    Temp[Index++] = UNICODE_NULL;
 
-    index += swprintf(&temp[index], L"*%hs", Device->pnp.hardware_id);
-    temp[index++] = UNICODE_NULL;
-    temp[index++] = UNICODE_NULL;
+    Index += swprintf(&Temp[Index], L"*%hs", Device->Pnp.HardwareId);
+    Temp[Index++] = UNICODE_NULL;
+    Temp[Index++] = UNICODE_NULL;
 
-    pdoData->HardwareIDs = ExAllocatePoolWithTag(index * sizeof(WCHAR),
+    PdoData->HardwareIDs = ExAllocatePoolWithTag(Index * sizeof(WCHAR),
 						 'DpcA');
 
-    if (!pdoData->HardwareIDs) {
-	IoDeleteDevice(pdo);
+    if (!PdoData->HardwareIDs) {
+	IoDeleteDevice(Pdo);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlCopyMemory(pdoData->HardwareIDs, temp, index * sizeof(WCHAR));
-    Bus_InitializePdo(pdo, FdoData);
+    RtlCopyMemory(PdoData->HardwareIDs, Temp, Index * sizeof(WCHAR));
+    Bus_InitializePdo(Pdo, FdoData);
 
-    return status;
+    return Status;
 }
 
 /* looks alot like acpi_bus_walk doesnt it */
 NTSTATUS Bus_EnumerateDevices(PFDO_DEVICE_DATA DeviceExtension)
 {
     ULONG Count = 0;
-    struct acpi_device *Device = acpi_root;
+    PACPI_DEVICE Device = AcpiRoot;
 
     while (Device) {
-	if (Device->status.present && Device->status.enabled &&
-	    Device->flags.hardware_id) {
+	if (Device->Status.Present && Device->Status.Enabled &&
+	    Device->Flags.HardwareId) {
 	    Bus_PlugInDevice(Device, DeviceExtension);
 	    Count++;
 	}
 
 	if (HAS_CHILDREN(Device)) {
-	    Device = NODE_TO_DEVICE(Device->children.Flink);
+	    Device = NODE_TO_DEVICE(Device->Children.Flink);
 	    continue;
 	}
 	if (HAS_SIBLINGS(Device)) {
-	    Device = NODE_TO_DEVICE(Device->node.Flink);
+	    Device = NODE_TO_DEVICE(Device->Node.Flink);
 	    continue;
 	}
-	while ((Device = Device->parent)) {
+	while ((Device = Device->Parent)) {
 	    if (HAS_SIBLINGS(Device)) {
-		Device = NODE_TO_DEVICE(Device->node.Flink);
+		Device = NODE_TO_DEVICE(Device->Node.Flink);
 		break;
 	    }
 	}

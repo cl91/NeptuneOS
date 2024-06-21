@@ -69,27 +69,27 @@ static PCHAR DbgDevicePowerString(DEVICE_POWER_STATE Type)
 
 static NTSTATUS Bus_FDO_Power(PFDO_DEVICE_DATA Data, PIRP Irp)
 {
-    NTSTATUS status = STATUS_SUCCESS;
-    POWER_STATE powerState;
-    POWER_STATE_TYPE powerType;
-    PIO_STACK_LOCATION stack;
+    NTSTATUS Status = STATUS_SUCCESS;
+    POWER_STATE PowerState;
+    POWER_STATE_TYPE PowerType;
+    PIO_STACK_LOCATION Stack;
     ULONG AcpiState;
     ACPI_STATUS AcpiStatus;
-    SYSTEM_POWER_STATE oldPowerState;
+    SYSTEM_POWER_STATE OldPowerState;
 
-    stack = IoGetCurrentIrpStackLocation(Irp);
-    powerType = stack->Parameters.Power.Type;
-    powerState = stack->Parameters.Power.State;
+    Stack = IoGetCurrentIrpStackLocation(Irp);
+    PowerType = Stack->Parameters.Power.Type;
+    PowerState = Stack->Parameters.Power.State;
 
-    if (stack->MinorFunction == IRP_MN_SET_POWER) {
+    if (Stack->MinorFunction == IRP_MN_SET_POWER) {
 	DPRINT("\tRequest to set %s state to %s\n",
-	       ((powerType == SystemPowerState) ? "System" : "Device"),
-	       ((powerType == SystemPowerState) ?
-		    DbgSystemPowerString(powerState.SystemState) :
-		    DbgDevicePowerString(powerState.DeviceState)));
+	       ((PowerType == SystemPowerState) ? "System" : "Device"),
+	       ((PowerType == SystemPowerState) ?
+		    DbgSystemPowerString(PowerState.SystemState) :
+		    DbgDevicePowerString(PowerState.DeviceState)));
 
-	if (powerType == SystemPowerState) {
-	    switch (powerState.SystemState) {
+	if (PowerType == SystemPowerState) {
+	    switch (PowerState.SystemState) {
 	    case PowerSystemSleeping1:
 		AcpiState = ACPI_STATE_S1;
 		break;
@@ -110,94 +110,94 @@ static NTSTATUS Bus_FDO_Power(PFDO_DEVICE_DATA Data, PIRP Irp)
 		ASSERT(FALSE);
 		break;
 	    }
-	    oldPowerState = Data->Common.SystemPowerState;
-	    Data->Common.SystemPowerState = powerState.SystemState;
+	    OldPowerState = Data->Common.SystemPowerState;
+	    Data->Common.SystemPowerState = PowerState.SystemState;
 	    AcpiStatus = AcpiBusSuspendSystem(AcpiState);
 	    if (!ACPI_SUCCESS(AcpiStatus)) {
 		DPRINT1("Failed to enter sleep state %d (Status 0x%X)\n", AcpiState,
 			AcpiStatus);
-		Data->Common.SystemPowerState = oldPowerState;
-		status = STATUS_UNSUCCESSFUL;
+		Data->Common.SystemPowerState = OldPowerState;
+		Status = STATUS_UNSUCCESSFUL;
 	    }
 	}
     }
-    status = IoCallDriver(Data->NextLowerDriver, Irp);
-    return status;
+    Status = IoCallDriver(Data->NextLowerDriver, Irp);
+    return Status;
 }
 
 static NTSTATUS Bus_PDO_Power(PPDO_DEVICE_DATA PdoData, PIRP Irp)
 {
-    NTSTATUS status;
-    PIO_STACK_LOCATION stack;
-    POWER_STATE powerState;
-    POWER_STATE_TYPE powerType;
-    ULONG error;
+    NTSTATUS Status;
+    PIO_STACK_LOCATION Stack;
+    POWER_STATE PowerState;
+    POWER_STATE_TYPE PowerType;
+    ULONG Error;
 
-    stack = IoGetCurrentIrpStackLocation(Irp);
-    powerType = stack->Parameters.Power.Type;
-    powerState = stack->Parameters.Power.State;
+    Stack = IoGetCurrentIrpStackLocation(Irp);
+    PowerType = Stack->Parameters.Power.Type;
+    PowerState = Stack->Parameters.Power.State;
 
-    switch (stack->MinorFunction) {
+    switch (Stack->MinorFunction) {
     case IRP_MN_SET_POWER:
 
 	DPRINT("\tSetting %s power state to %s\n",
-	       ((powerType == SystemPowerState) ? "System" : "Device"),
-	       ((powerType == SystemPowerState) ?
-		    DbgSystemPowerString(powerState.SystemState) :
-		    DbgDevicePowerString(powerState.DeviceState)));
+	       ((PowerType == SystemPowerState) ? "System" : "Device"),
+	       ((PowerType == SystemPowerState) ?
+		    DbgSystemPowerString(PowerState.SystemState) :
+		    DbgDevicePowerString(PowerState.DeviceState)));
 
-	switch (powerType) {
+	switch (PowerType) {
 	case DevicePowerState:
-	    if (!PdoData->AcpiHandle || !acpi_bus_power_manageable(PdoData->AcpiHandle)) {
-		PoSetPowerState(PdoData->Common.Self, DevicePowerState, powerState);
-		PdoData->Common.DevicePowerState = powerState.DeviceState;
-		status = STATUS_SUCCESS;
+	    if (!PdoData->AcpiHandle || !AcpiBusPowerManageable(PdoData->AcpiHandle)) {
+		PoSetPowerState(PdoData->Common.Self, DevicePowerState, PowerState);
+		PdoData->Common.DevicePowerState = PowerState.DeviceState;
+		Status = STATUS_SUCCESS;
 		break;
 	    }
 
-	    switch (powerState.DeviceState) {
+	    switch (PowerState.DeviceState) {
 	    case PowerDeviceD0:
-		error = acpi_bus_set_power(PdoData->AcpiHandle, ACPI_STATE_D0);
+		Error = AcpiBusSetPower(PdoData->AcpiHandle, ACPI_STATE_D0);
 		break;
 
 	    case PowerDeviceD1:
-		error = acpi_bus_set_power(PdoData->AcpiHandle, ACPI_STATE_D1);
+		Error = AcpiBusSetPower(PdoData->AcpiHandle, ACPI_STATE_D1);
 		break;
 
 	    case PowerDeviceD2:
-		error = acpi_bus_set_power(PdoData->AcpiHandle, ACPI_STATE_D2);
+		Error = AcpiBusSetPower(PdoData->AcpiHandle, ACPI_STATE_D2);
 		break;
 
 	    case PowerDeviceD3:
-		error = acpi_bus_set_power(PdoData->AcpiHandle, ACPI_STATE_D3);
+		Error = AcpiBusSetPower(PdoData->AcpiHandle, ACPI_STATE_D3);
 		break;
 
 	    default:
-		error = 0;
+		Error = 0;
 		break;
 	    }
 
-	    if (ACPI_SUCCESS(error)) {
-		PoSetPowerState(PdoData->Common.Self, DevicePowerState, powerState);
-		PdoData->Common.DevicePowerState = powerState.DeviceState;
-		status = STATUS_SUCCESS;
+	    if (ACPI_SUCCESS(Error)) {
+		PoSetPowerState(PdoData->Common.Self, DevicePowerState, PowerState);
+		PdoData->Common.DevicePowerState = PowerState.DeviceState;
+		Status = STATUS_SUCCESS;
 	    } else
-		status = STATUS_UNSUCCESSFUL;
+		Status = STATUS_UNSUCCESSFUL;
 	    break;
 
 	case SystemPowerState:
-	    PdoData->Common.SystemPowerState = powerState.SystemState;
-	    status = STATUS_SUCCESS;
+	    PdoData->Common.SystemPowerState = PowerState.SystemState;
+	    Status = STATUS_SUCCESS;
 	    break;
 
 	default:
-	    status = STATUS_NOT_SUPPORTED;
+	    Status = STATUS_NOT_SUPPORTED;
 	    break;
 	}
 	break;
 
     case IRP_MN_QUERY_POWER:
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_WAIT_WAKE:
@@ -207,18 +207,18 @@ static NTSTATUS Bus_PDO_Power(PPDO_DEVICE_DATA PdoData, PIRP Irp)
 	//
     case IRP_MN_POWER_SEQUENCE:
     default:
-	status = STATUS_NOT_SUPPORTED;
+	Status = STATUS_NOT_SUPPORTED;
 	break;
     }
 
-    if (status != STATUS_NOT_SUPPORTED) {
-	Irp->IoStatus.Status = status;
+    if (Status != STATUS_NOT_SUPPORTED) {
+	Irp->IoStatus.Status = Status;
     }
 
-    status = Irp->IoStatus.Status;
+    Status = Irp->IoStatus.Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    return status;
+    return Status;
 }
 
 NTAPI NTSTATUS Bus_Power(PDEVICE_OBJECT DeviceObject, PIRP Irp)

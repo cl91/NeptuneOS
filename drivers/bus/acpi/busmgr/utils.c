@@ -36,85 +36,85 @@
 #define _COMPONENT ACPI_BUS_COMPONENT
 ACPI_MODULE_NAME("acpi_utils")
 
-static void acpi_util_eval_error(ACPI_HANDLE h, ACPI_STRING p, ACPI_STATUS s)
+static VOID AcpiUtilEvalError(ACPI_HANDLE Handle,
+			      ACPI_STRING String,
+			      ACPI_STATUS Status)
 {
 #ifdef ACPI_DEBUG_OUTPUT
-    char prefix[80] = { '\0' };
-    ACPI_BUFFER buffer = { sizeof(prefix), prefix };
-    AcpiGetName(h, ACPI_FULL_PATHNAME, &buffer);
-    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Evaluate [%s.%s]: %s\n", (char *)prefix, p,
-		      AcpiFormatException(s)));
+    CHAR Prefix[80] = { '\0' };
+    ACPI_BUFFER Buffer = { sizeof(Prefix), Prefix };
+    AcpiGetName(Handle, ACPI_FULL_PATHNAME, &Buffer);
+    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Evaluate [%s.%s]: %s\n", (PCHAR )Prefix, String,
+		      AcpiFormatException(Status)));
 #endif
 }
 
 /* --------------------------------------------------------------------------
    Object Evaluation Helpers
    -------------------------------------------------------------------------- */
-ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
-				 ACPI_BUFFER *format,
-				 ACPI_BUFFER *buffer)
+ACPI_STATUS AcpiExtractPackage(ACPI_OBJECT *Package,
+			       ACPI_BUFFER *Format,
+			       ACPI_BUFFER *Buffer)
 {
-    UINT32 size_required = 0;
-    UINT32 tail_offset = 0;
-    char *format_string = NULL;
-    UINT32 format_count = 0;
-    UINT32 i = 0;
-    UINT8 *head = NULL;
-    UINT8 *tail = NULL;
+    UINT32 SizeRequired = 0;
+    UINT32 TailOffset = 0;
+    PCHAR FormatString = NULL;
+    UINT32 FormatCount = 0;
+    UINT8 *Head = NULL;
+    UINT8 *Tail = NULL;
 
-    if (!package || (package->Type != ACPI_TYPE_PACKAGE) ||
-	(package->Package.Count < 1)) {
+    if (!Package || (Package->Type != ACPI_TYPE_PACKAGE) ||
+	(Package->Package.Count < 1)) {
 	ACPI_DEBUG_PRINT((ACPI_DB_WARN, "Invalid 'package' argument\n"));
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
     }
 
-    if (!format || !format->Pointer || (format->Length < 1)) {
+    if (!Format || !Format->Pointer || (Format->Length < 1)) {
 	ACPI_DEBUG_PRINT((ACPI_DB_WARN, "Invalid 'format' argument\n"));
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
     }
 
-    if (!buffer) {
+    if (!Buffer) {
 	ACPI_DEBUG_PRINT((ACPI_DB_WARN, "Invalid 'buffer' argument\n"));
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
     }
 
-    format_count = (format->Length / sizeof(char)) - 1;
-    if (format_count > package->Package.Count) {
+    FormatCount = (Format->Length / sizeof(char)) - 1;
+    if (FormatCount > Package->Package.Count) {
 	ACPI_DEBUG_PRINT((ACPI_DB_WARN,
-			  "Format specifies more objects [%d] than exist in package "
-			  "[%d].",
-			  format_count, package->Package.Count));
+			  "Format specifies more objects [%d] than exist in package [%d].",
+			  FormatCount, Package->Package.Count));
 	return_ACPI_STATUS(AE_BAD_DATA);
     }
 
-    format_string = format->Pointer;
+    FormatString = Format->Pointer;
 
     /*
      * Calculate size_required.
      */
-    for (i = 0; i < format_count; i++) {
-	ACPI_OBJECT *element = &(package->Package.Elements[i]);
+    for (ULONG i = 0; i < FormatCount; i++) {
+	ACPI_OBJECT *Element = &(Package->Package.Elements[i]);
 
-	if (!element) {
+	if (!Element) {
 	    return_ACPI_STATUS(AE_BAD_DATA);
 	}
 
-	switch (element->Type) {
+	switch (Element->Type) {
 	case ACPI_TYPE_INTEGER:
-	    switch (format_string[i]) {
+	    switch (FormatString[i]) {
 	    case 'N':
-		size_required += sizeof(ACPI_INTEGER);
-		tail_offset += sizeof(ACPI_INTEGER);
+		SizeRequired += sizeof(ACPI_INTEGER);
+		TailOffset += sizeof(ACPI_INTEGER);
 		break;
 	    case 'S':
-		size_required += sizeof(char *) + sizeof(ACPI_INTEGER) + sizeof(char);
-		tail_offset += sizeof(char *);
+		SizeRequired += sizeof(PCHAR ) + sizeof(ACPI_INTEGER) + sizeof(char);
+		TailOffset += sizeof(PCHAR );
 		break;
 	    default:
 		ACPI_DEBUG_PRINT((ACPI_DB_WARN,
 				  "Invalid package element [%d]: got number, expecting "
 				  "[%c].\n",
-				  i, format_string[i]));
+				  i, FormatString[i]));
 		return_ACPI_STATUS(AE_BAD_DATA);
 		break;
 	    }
@@ -122,22 +122,22 @@ ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
 
 	case ACPI_TYPE_STRING:
 	case ACPI_TYPE_BUFFER:
-	    switch (format_string[i]) {
+	    switch (FormatString[i]) {
 	    case 'S':
-		size_required += sizeof(char *) +
-		    (element->String.Length * sizeof(char)) + sizeof(char);
-		tail_offset += sizeof(char *);
+		SizeRequired += sizeof(PCHAR ) +
+		    (Element->String.Length * sizeof(char)) + sizeof(char);
+		TailOffset += sizeof(PCHAR );
 		break;
 	    case 'B':
-		size_required += sizeof(UINT8 *) +
-		    (element->Buffer.Length * sizeof(UINT8));
-		tail_offset += sizeof(UINT8 *);
+		SizeRequired += sizeof(UINT8 *) +
+		    (Element->Buffer.Length * sizeof(UINT8));
+		TailOffset += sizeof(UINT8 *);
 		break;
 	    default:
 		ACPI_DEBUG_PRINT((ACPI_DB_WARN,
 				  "Invalid package element [%d] got string/buffer, "
 				  "expecting [%c].\n",
-				  i, format_string[i]));
+				  i, FormatString[i]));
 		return_ACPI_STATUS(AE_BAD_DATA);
 		break;
 	    }
@@ -145,8 +145,8 @@ ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
 
 	case ACPI_TYPE_PACKAGE:
 	default:
-	    ACPI_DEBUG_PRINT(
-		(ACPI_DB_INFO, "Found unsupported element at index=%d\n", i));
+	    ACPI_DEBUG_PRINT((ACPI_DB_INFO,
+			      "Found unsupported element at index=%d\n", i));
 	    /* TBD: handle nested packages... */
 	    return_ACPI_STATUS(AE_SUPPORT);
 	    break;
@@ -156,43 +156,43 @@ ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
     /*
      * Validate output buffer.
      */
-    if (buffer->Length < size_required) {
-	buffer->Length = size_required;
+    if (Buffer->Length < SizeRequired) {
+	Buffer->Length = SizeRequired;
 	return_ACPI_STATUS(AE_BUFFER_OVERFLOW);
-    } else if (buffer->Length != size_required || !buffer->Pointer) {
+    } else if (Buffer->Length != SizeRequired || !Buffer->Pointer) {
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
     }
 
-    head = buffer->Pointer;
-    tail = ((PUCHAR)buffer->Pointer) + tail_offset;
+    Head = Buffer->Pointer;
+    Tail = ((PUCHAR)Buffer->Pointer) + TailOffset;
 
     /*
      * Extract package data.
      */
-    for (i = 0; i < format_count; i++) {
-	UINT8 **pointer = NULL;
-	ACPI_OBJECT *element = &(package->Package.Elements[i]);
+    for (ULONG i = 0; i < FormatCount; i++) {
+	UINT8 **Pointer = NULL;
+	ACPI_OBJECT *Element = &(Package->Package.Elements[i]);
 
-	if (!element) {
+	if (!Element) {
 	    return_ACPI_STATUS(AE_BAD_DATA);
 	}
 
-	switch (element->Type) {
+	switch (Element->Type) {
 	case ACPI_TYPE_INTEGER:
-	    switch (format_string[i]) {
+	    switch (FormatString[i]) {
 	    case 'N':
-		*((ACPI_INTEGER *)head) = element->Integer.Value;
-		head += sizeof(ACPI_INTEGER);
+		*((ACPI_INTEGER *)Head) = Element->Integer.Value;
+		Head += sizeof(ACPI_INTEGER);
 		break;
 	    case 'S':
-		pointer = (UINT8 **)head;
-		*pointer = tail;
-		*((ACPI_INTEGER *)tail) = element->Integer.Value;
-		head += sizeof(ACPI_INTEGER *);
-		tail += sizeof(ACPI_INTEGER);
+		Pointer = (UINT8 **)Head;
+		*Pointer = Tail;
+		*((ACPI_INTEGER *)Tail) = Element->Integer.Value;
+		Head += sizeof(ACPI_INTEGER *);
+		Tail += sizeof(ACPI_INTEGER);
 		/* NULL terminate string */
-		*tail = (char)0;
-		tail += sizeof(char);
+		*Tail = (char)0;
+		Tail += sizeof(char);
 		break;
 	    default:
 		/* Should never get here */
@@ -202,23 +202,23 @@ ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
 
 	case ACPI_TYPE_STRING:
 	case ACPI_TYPE_BUFFER:
-	    switch (format_string[i]) {
+	    switch (FormatString[i]) {
 	    case 'S':
-		pointer = (UINT8 **)head;
-		*pointer = tail;
-		memcpy(tail, element->String.Pointer, element->String.Length);
-		head += sizeof(char *);
-		tail += element->String.Length * sizeof(char);
+		Pointer = (UINT8 **)Head;
+		*Pointer = Tail;
+		memcpy(Tail, Element->String.Pointer, Element->String.Length);
+		Head += sizeof(PCHAR );
+		Tail += Element->String.Length * sizeof(char);
 		/* NULL terminate string */
-		*tail = (char)0;
-		tail += sizeof(char);
+		*Tail = (char)0;
+		Tail += sizeof(char);
 		break;
 	    case 'B':
-		pointer = (UINT8 **)head;
-		*pointer = tail;
-		memcpy(tail, element->Buffer.Pointer, element->Buffer.Length);
-		head += sizeof(UINT8 *);
-		tail += element->Buffer.Length * sizeof(UINT8);
+		Pointer = (UINT8 **)Head;
+		*Pointer = Tail;
+		memcpy(Tail, Element->Buffer.Pointer, Element->Buffer.Length);
+		Head += sizeof(UINT8 *);
+		Tail += Element->Buffer.Length * sizeof(UINT8);
 		break;
 	    default:
 		/* Should never get here */
@@ -237,132 +237,132 @@ ACPI_STATUS acpi_extract_package(ACPI_OBJECT *package,
     return_ACPI_STATUS(AE_OK);
 }
 
-ACPI_STATUS acpi_evaluate_integer(ACPI_HANDLE handle,
-				  ACPI_STRING pathname,
-				  ACPI_OBJECT_LIST *arguments,
-				  unsigned long long *data)
+ACPI_STATUS AcpiEvaluateInteger(ACPI_HANDLE Handle,
+				ACPI_STRING Pathname,
+				ACPI_OBJECT_LIST *Arguments,
+				ULONG64 *Data)
 {
-    ACPI_STATUS status = AE_OK;
-    ACPI_OBJECT element;
-    ACPI_BUFFER buffer = { sizeof(ACPI_OBJECT), &element };
+    ACPI_STATUS Status = AE_OK;
+    ACPI_OBJECT Element;
+    ACPI_BUFFER Buffer = { sizeof(ACPI_OBJECT), &Element };
 
-    ACPI_FUNCTION_TRACE("acpi_evaluate_integer");
+    ACPI_FUNCTION_TRACE("AcpiEvaluateInteger");
 
-    if (!data)
+    if (!Data)
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
 
-    status = AcpiEvaluateObject(handle, pathname, arguments, &buffer);
-    if (ACPI_FAILURE(status)) {
-	acpi_util_eval_error(handle, pathname, status);
-	return_ACPI_STATUS(status);
+    Status = AcpiEvaluateObject(Handle, Pathname, Arguments, &Buffer);
+    if (ACPI_FAILURE(Status)) {
+	AcpiUtilEvalError(Handle, Pathname, Status);
+	return_ACPI_STATUS(Status);
     }
 
-    if (element.Type != ACPI_TYPE_INTEGER) {
-	acpi_util_eval_error(handle, pathname, AE_BAD_DATA);
+    if (Element.Type != ACPI_TYPE_INTEGER) {
+	AcpiUtilEvalError(Handle, Pathname, AE_BAD_DATA);
 	return_ACPI_STATUS(AE_BAD_DATA);
     }
 
-    *data = element.Integer.Value;
+    *Data = Element.Integer.Value;
 
-    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Return value [%llu]\n", *data));
+    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Return value [%llu]\n", *Data));
 
     return_ACPI_STATUS(AE_OK);
 }
 
-ACPI_STATUS acpi_evaluate_reference(ACPI_HANDLE handle,
-				    ACPI_STRING pathname,
-				    ACPI_OBJECT_LIST *arguments,
-				    struct acpi_handle_list *list)
+ACPI_STATUS AcpiEvaluateReference(ACPI_HANDLE Handle,
+				  ACPI_STRING Pathname,
+				  ACPI_OBJECT_LIST *Arguments,
+				  PACPI_HANDLE_LIST List)
 {
-    ACPI_STATUS status = AE_OK;
-    ACPI_OBJECT *package = NULL;
-    ACPI_OBJECT *element = NULL;
-    ACPI_BUFFER buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+    ACPI_STATUS Status = AE_OK;
+    ACPI_OBJECT *Package = NULL;
+    ACPI_OBJECT *Element = NULL;
+    ACPI_BUFFER Buffer = { ACPI_ALLOCATE_BUFFER, NULL };
     UINT32 i = 0;
 
-    ACPI_FUNCTION_TRACE("acpi_evaluate_reference");
+    ACPI_FUNCTION_TRACE("AcpiEvaluateReference");
 
-    if (!list) {
+    if (!List) {
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
     }
 
     /* Evaluate object. */
 
-    status = AcpiEvaluateObject(handle, pathname, arguments, &buffer);
-    if (ACPI_FAILURE(status))
+    Status = AcpiEvaluateObject(Handle, Pathname, Arguments, &Buffer);
+    if (ACPI_FAILURE(Status))
 	goto end;
 
-    package = (ACPI_OBJECT *)buffer.Pointer;
+    Package = (ACPI_OBJECT *)Buffer.Pointer;
 
-    if ((buffer.Length == 0) || !package) {
+    if ((Buffer.Length == 0) || !Package) {
 	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "No return object (len %zX ptr %p)\n",
-			  buffer.Length, package));
-	status = AE_BAD_DATA;
-	acpi_util_eval_error(handle, pathname, status);
+			  Buffer.Length, Package));
+	Status = AE_BAD_DATA;
+	AcpiUtilEvalError(Handle, Pathname, Status);
 	goto end;
     }
-    if (package->Type != ACPI_TYPE_PACKAGE) {
+    if (Package->Type != ACPI_TYPE_PACKAGE) {
 	ACPI_DEBUG_PRINT(
-	    (ACPI_DB_ERROR, "Expecting a [Package], found type %X\n", package->Type));
-	status = AE_BAD_DATA;
-	acpi_util_eval_error(handle, pathname, status);
+	    (ACPI_DB_ERROR, "Expecting a [Package], found type %X\n", Package->Type));
+	Status = AE_BAD_DATA;
+	AcpiUtilEvalError(Handle, Pathname, Status);
 	goto end;
     }
-    if (!package->Package.Count) {
-	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "[Package] has zero elements (%p)\n", package));
-	status = AE_BAD_DATA;
-	acpi_util_eval_error(handle, pathname, status);
+    if (!Package->Package.Count) {
+	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "[Package] has zero elements (%p)\n", Package));
+	Status = AE_BAD_DATA;
+	AcpiUtilEvalError(Handle, Pathname, Status);
 	goto end;
     }
 
-    if (package->Package.Count > ACPI_MAX_HANDLES) {
+    if (Package->Package.Count > ACPI_MAX_HANDLES) {
 	return AE_NO_MEMORY;
     }
-    list->count = package->Package.Count;
+    List->Count = Package->Package.Count;
 
     /* Extract package data. */
 
-    for (i = 0; i < list->count; i++) {
-	element = &(package->Package.Elements[i]);
+    for (i = 0; i < List->Count; i++) {
+	Element = &(Package->Package.Elements[i]);
 
-	if (element->Type != ACPI_TYPE_LOCAL_REFERENCE) {
-	    status = AE_BAD_DATA;
+	if (Element->Type != ACPI_TYPE_LOCAL_REFERENCE) {
+	    Status = AE_BAD_DATA;
 	    ACPI_DEBUG_PRINT((ACPI_DB_ERROR,
 			      "Expecting a [Reference] package element, found type %X\n",
-			      element->Type));
-	    acpi_util_eval_error(handle, pathname, status);
+			      Element->Type));
+	    AcpiUtilEvalError(Handle, Pathname, Status);
 	    break;
 	}
 
-	if (!element->Reference.Handle) {
+	if (!Element->Reference.Handle) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_ERROR,
 			      "Invalid reference in"
 			      " package %s\n",
-			      pathname));
-	    status = AE_NULL_ENTRY;
+			      Pathname));
+	    Status = AE_NULL_ENTRY;
 	    break;
 	}
 	/* Get the  ACPI_HANDLE. */
 
-	list->handles[i] = element->Reference.Handle;
-	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Found reference [%p]\n", list->handles[i]));
+	List->Handles[i] = Element->Reference.Handle;
+	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Found reference [%p]\n", List->Handles[i]));
     }
 
 end:
-    if (ACPI_FAILURE(status)) {
-	list->count = 0;
+    if (ACPI_FAILURE(Status)) {
+	List->Count = 0;
 	//ExFreePool(list->handles);
     }
 
-    if (buffer.Pointer)
-	AcpiOsFree(buffer.Pointer);
+    if (Buffer.Pointer)
+	AcpiOsFree(Buffer.Pointer);
 
-    return_ACPI_STATUS(status);
+    return_ACPI_STATUS(Status);
 }
 
-NTSTATUS acpi_create_registry_table(HANDLE ParentKeyHandle,
-				    ACPI_TABLE_HEADER *OutTable,
-				    PCWSTR KeyName)
+static NTSTATUS AcpiCreateRegistryTable(HANDLE ParentKeyHandle,
+					ACPI_TABLE_HEADER *OutTable,
+					PCWSTR KeyName)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING HardwareKeyName, ValueName;
@@ -466,7 +466,7 @@ NTSTATUS acpi_create_registry_table(HANDLE ParentKeyHandle,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS acpi_create_volatile_registry_tables(void)
+NTSTATUS AcpiCreateVolatileRegistryTables(void)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING HardwareKeyName = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\HARDWARE"
@@ -493,9 +493,9 @@ NTSTATUS acpi_create_volatile_registry_tables(void)
 	goto done;
     }
     /* Dump DSDT table */
-    Status = acpi_create_registry_table(KeyHandle, OutTable, L"DSDT");
+    Status = AcpiCreateRegistryTable(KeyHandle, OutTable, L"DSDT");
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("acpi_dump_table_to_registry() for DSDT failed (Status 0x%08x)\n",
+	DPRINT1("AcpiCreateRegistryTable() for DSDT failed (Status 0x%08x)\n",
 		Status);
 	goto done;
     }
@@ -507,9 +507,9 @@ NTSTATUS acpi_create_volatile_registry_tables(void)
 	goto done;
     }
     /* Dump FACS table */
-    Status = acpi_create_registry_table(KeyHandle, OutTable, L"FACS");
+    Status = AcpiCreateRegistryTable(KeyHandle, OutTable, L"FACS");
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("acpi_dump_table_to_registry() for FACS failed (Status 0x%08x)\n",
+	DPRINT1("AcpiCreateRegistryTable() for FACS failed (Status 0x%08x)\n",
 		Status);
 	goto done;
     }
@@ -521,7 +521,7 @@ NTSTATUS acpi_create_volatile_registry_tables(void)
 	goto done;
     }
     /* Dump FADT table */
-    Status = acpi_create_registry_table(KeyHandle, OutTable, L"FADT");
+    Status = AcpiCreateRegistryTable(KeyHandle, OutTable, L"FADT");
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("acpi_dump_table_to_registry() for FADT failed (Status 0x%08x)\n",
 		Status);
@@ -534,10 +534,10 @@ NTSTATUS acpi_create_volatile_registry_tables(void)
 	goto done;
     }
     /* Dump RSDT table */
-    Status = acpi_create_registry_table(KeyHandle, OutTable, L"RSDT");
+    Status = AcpiCreateRegistryTable(KeyHandle, OutTable, L"RSDT");
     AcpiOsUnmapMemory(OutTable, ACPI_XSDT_ENTRY_SIZE);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("acpi_dump_table_to_registry() for RSDT failed (Status 0x%08x)\n",
+	DPRINT1("AcpiCreateRegistryTable() for RSDT failed (Status 0x%08x)\n",
 		Status);
     }
 

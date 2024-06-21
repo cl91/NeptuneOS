@@ -51,204 +51,192 @@ ACPI_MODULE_NAME("acpi_power")
 #define ACPI_POWER_RESOURCE_STATE_ON 0x01
 #define ACPI_POWER_RESOURCE_STATE_UNKNOWN 0xFF
 
-int acpi_power_nocheck;
+INT AcpiPowerNocheck;
 
-static int acpi_power_add(struct acpi_device *device);
-static int acpi_power_remove(struct acpi_device *device, int type);
-static int acpi_power_resume(struct acpi_device *device, int state);
+static INT AcpiPowerAdd(PACPI_DEVICE Device);
+static INT AcpiPowerRemove(PACPI_DEVICE Device, INT Type);
+static INT AcpiPowerResume(PACPI_DEVICE Device, INT State);
 
-static struct acpi_driver acpi_power_driver = { { 0, 0 },
-						ACPI_POWER_DRIVER_NAME,
-						ACPI_POWER_CLASS,
-						0,
-						0,
-						ACPI_POWER_HID,
-						{ acpi_power_add, acpi_power_remove, NULL,
-						  NULL, acpi_power_resume } };
+static ACPI_BUSMGR_COMPONENT AcpiPowerDriver = {
+    { 0, 0 }, ACPI_POWER_DRIVER_NAME, ACPI_POWER_CLASS, 0, 0, ACPI_POWER_HID,
+    { AcpiPowerAdd, AcpiPowerRemove, NULL, NULL, AcpiPowerResume }
+};
 
 struct acpi_power_reference {
-    LIST_ENTRY node;
-    struct acpi_device *device;
+    LIST_ENTRY Node;
+    PACPI_DEVICE Device;
 };
 
 struct acpi_power_resource {
-    struct acpi_device *device;
-    acpi_bus_id name;
-    UINT32 system_level;
-    UINT32 order;
-    //struct mutex resource_lock;
-    LIST_ENTRY reference;
+    PACPI_DEVICE Device;
+    ACPI_BUS_ID Name;
+    UINT32 SystemLevel;
+    UINT32 Order;
+    LIST_ENTRY Reference;
 };
 
-static LIST_ENTRY acpi_power_resource_list;
+static LIST_ENTRY AcpiPowerResourceList;
 
 /* --------------------------------------------------------------------------
-                             Power Resource Management
+   Power Resource Management
    -------------------------------------------------------------------------- */
 
-static int acpi_power_get_context(ACPI_HANDLE handle,
-				  struct acpi_power_resource **resource)
+static INT AcpiPowerGetContext(ACPI_HANDLE Handle,
+			       struct acpi_power_resource **Resource)
 {
-    int result = 0;
-    struct acpi_device *device = NULL;
+    INT Result = 0;
+    PACPI_DEVICE Device = NULL;
 
-    if (!resource)
+    if (!Resource)
 	return_VALUE(-15);
 
-    result = acpi_bus_get_device(handle, &device);
-    if (result) {
-	ACPI_DEBUG_PRINT((ACPI_DB_WARN, "Error getting context [%p]\n", handle));
-	return_VALUE(result);
+    Result = AcpiBusGetDevice(Handle, &Device);
+    if (Result) {
+	ACPI_DEBUG_PRINT((ACPI_DB_WARN, "Error getting context [%p]\n", Handle));
+	return_VALUE(Result);
     }
 
-    *resource = (struct acpi_power_resource *)acpi_driver_data(device);
-    if (!*resource)
+    *Resource = (struct acpi_power_resource *)ACPI_BUSMGR_COMPONENT_DATA(Device);
+    if (!*Resource)
 	return_VALUE(-15);
 
     return 0;
 }
 
-static int acpi_power_get_state(ACPI_HANDLE handle, int *state)
+static INT AcpiPowerGetState(ACPI_HANDLE Handle, INT *State)
 {
-    ACPI_STATUS status = AE_OK;
-    unsigned long long sta = 0;
-    char node_name[5];
-    ACPI_BUFFER buffer = { sizeof(node_name), node_name };
+    ACPI_STATUS Status = AE_OK;
+    ULONG64 Sta = 0;
+    CHAR NodeName[5];
+    ACPI_BUFFER Buffer = { sizeof(NodeName), NodeName };
 
-    if (!handle || !state)
+    if (!Handle || !State)
 	return_VALUE(-1);
 
-    status = acpi_evaluate_integer(handle, "_STA", NULL, &sta);
-    if (ACPI_FAILURE(status))
+    Status = AcpiEvaluateInteger(Handle, "_STA", NULL, &Sta);
+    if (ACPI_FAILURE(Status))
 	return_VALUE(-15);
 
-    *state = (sta & 0x01) ? ACPI_POWER_RESOURCE_STATE_ON : ACPI_POWER_RESOURCE_STATE_OFF;
+    *State = (Sta & 0x01) ? ACPI_POWER_RESOURCE_STATE_ON : ACPI_POWER_RESOURCE_STATE_OFF;
 
-    AcpiGetName(handle, ACPI_SINGLE_NAME, &buffer);
+    AcpiGetName(Handle, ACPI_SINGLE_NAME, &Buffer);
 
     ACPI_DEBUG_PRINT(
-	(ACPI_DB_INFO, "Resource [%s] is %s\n", node_name, *state ? "on" : "off"));
+	(ACPI_DB_INFO, "Resource [%s] is %s\n", NodeName, *State ? "on" : "off"));
 
     return 0;
 }
 
-static int acpi_power_get_list_state(struct acpi_handle_list *list, int *state)
+static INT AcpiPowerGetListState(PACPI_HANDLE_LIST List, INT *State)
 {
-    int result = 0, state1;
-    UINT32 i = 0;
+    INT Result = 0, State1;
 
-    if (!list || !state)
+    if (!List || !State)
 	return_VALUE(-1);
 
     /* The state of the list is 'on' IFF all resources are 'on'. */
 
-    for (i = 0; i < list->count; i++) {
+    for (ULONG i = 0; i < List->Count; i++) {
 	/*
-		 * The state of the power resource can be obtained by
-		 * using the ACPI handle. In such case it is unnecessary to
-		 * get the Power resource first and then get its state again.
-		 */
-	result = acpi_power_get_state(list->handles[i], &state1);
-	if (result)
-	    return result;
+	 * The state of the power resource can be obtained by
+	 * using the ACPI handle. In such case it is unnecessary to
+	 * get the Power resource first and then get its state again.
+	 */
+	Result = AcpiPowerGetState(List->Handles[i], &State1);
+	if (Result)
+	    return Result;
 
-	*state = state1;
+	*State = State1;
 
-	if (*state != ACPI_POWER_RESOURCE_STATE_ON)
+	if (*State != ACPI_POWER_RESOURCE_STATE_ON)
 	    break;
     }
 
-    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Resource list is %s\n", *state ? "on" : "off"));
+    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Resource list is %s\n", *State ? "on" : "off"));
 
-    return result;
+    return Result;
 }
 
-static int acpi_power_on(ACPI_HANDLE handle, struct acpi_device *dev)
+static INT AcpiPowerOn(ACPI_HANDLE Handle, PACPI_DEVICE Dev)
 {
-    int result = 0;
-    int found = 0;
-    ACPI_STATUS status = AE_OK;
-    struct acpi_power_resource *resource = NULL;
+    INT Result = 0;
+    INT Found = 0;
+    ACPI_STATUS Status = AE_OK;
+    struct acpi_power_resource *Resource = NULL;
 
-    result = acpi_power_get_context(handle, &resource);
-    if (result)
-	return result;
+    Result = AcpiPowerGetContext(Handle, &Resource);
+    if (Result)
+	return Result;
 
-    //mutex_lock(&resource->resource_lock);
-    LoopOverList(ref, &resource->reference, struct acpi_power_reference, node) {
-	if (dev->handle == ref->device->handle) {
+    LoopOverList(ref, &Resource->Reference, struct acpi_power_reference, Node) {
+	if (Dev->Handle == ref->Device->Handle) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 			      "Device [%s] already referenced by resource [%s]\n",
-			      dev->pnp.bus_id, resource->name));
-	    found = 1;
+			      Dev->Pnp.BusId, Resource->Name));
+	    Found = 1;
 	    break;
 	}
     }
 
-    if (!found) {
-	struct acpi_power_reference *ref = ExAllocatePoolWithTag(sizeof(struct acpi_power_reference),
+    if (!Found) {
+	struct acpi_power_reference *Ref = ExAllocatePoolWithTag(sizeof(struct acpi_power_reference),
 								 ACPI_TAG);
-	if (!ref) {
+	if (!Ref) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "kmalloc() failed\n"));
-	    //mutex_unlock(&resource->resource_lock);
-	    return -1; //-ENOMEM;
+	    return -1; // -ENOMEM;
 	}
-	InsertTailList(&resource->reference, &ref->node);
-	ref->device = dev;
+	InsertTailList(&Resource->Reference, &Ref->Node);
+	Ref->Device = Dev;
 	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Device [%s] added to resource [%s] references\n",
-			  dev->pnp.bus_id, resource->name));
+			  Dev->Pnp.BusId, Resource->Name));
     }
-    //mutex_unlock(&resource->resource_lock);
 
-    status = AcpiEvaluateObject(resource->device->handle, "_ON", NULL, NULL);
-    if (ACPI_FAILURE(status))
+    Status = AcpiEvaluateObject(Resource->Device->Handle, "_ON", NULL, NULL);
+    if (ACPI_FAILURE(Status))
 	return_VALUE(-15);
 
     /* Update the power resource's _device_ power state */
-    resource->device->power.state = ACPI_STATE_D0;
+    Resource->Device->Power.State = ACPI_STATE_D0;
 
     return 0;
 }
 
-static int acpi_power_off_device(ACPI_HANDLE handle, struct acpi_device *dev)
+static INT AcpiPowerOffDevice(ACPI_HANDLE Handle, PACPI_DEVICE Dev)
 {
-    int result = 0;
-    ACPI_STATUS status = AE_OK;
-    struct acpi_power_resource *resource = NULL;
+    INT Result = 0;
+    ACPI_STATUS Status = AE_OK;
+    struct acpi_power_resource *Resource = NULL;
 
-    result = acpi_power_get_context(handle, &resource);
-    if (result)
-	return result;
+    Result = AcpiPowerGetContext(Handle, &Resource);
+    if (Result)
+	return Result;
 
-    //mutex_lock(&resource->resource_lock);
-    LoopOverList(ref, &resource->reference, struct acpi_power_reference, node) {
-	if (dev->handle == ref->device->handle) {
-	    RemoveEntryList(&ref->node);
+    LoopOverList(ref, &Resource->Reference, struct acpi_power_reference, Node) {
+	if (Dev->Handle == ref->Device->Handle) {
+	    RemoveEntryList(&ref->Node);
 	    ExFreePool(ref);
 	    ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 			      "Device [%s] removed from resource [%s] references\n",
-			      dev->pnp.bus_id, resource->name));
+			      Dev->Pnp.BusId, Resource->Name));
 	    break;
 	}
     }
 
-    if (!IsListEmpty(&resource->reference)) {
+    if (!IsListEmpty(&Resource->Reference)) {
 	ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 			  "Cannot turn resource [%s] off - resource is in use\n",
-			  resource->name));
-	//mutex_unlock(&resource->resource_lock);
+			  Resource->Name));
 	return 0;
     }
-    //mutex_unlock(&resource->resource_lock);
 
-    status = AcpiEvaluateObject(resource->device->handle, "_OFF", NULL, NULL);
-    if (ACPI_FAILURE(status))
+    Status = AcpiEvaluateObject(Resource->Device->Handle, "_OFF", NULL, NULL);
+    if (ACPI_FAILURE(Status))
 	return -1;
 
     /* Update the power resource's _device_ power state */
-    resource->device->power.state = ACPI_STATE_D3;
+    Resource->Device->Power.State = ACPI_STATE_D3;
 
-    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Resource [%s] turned off\n", resource->name));
+    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Resource [%s] turned off\n", Resource->Name));
 
     return 0;
 }
@@ -270,12 +258,12 @@ static int acpi_power_off_device(ACPI_HANDLE handle, struct acpi_device *dev)
  * 0 if neither _DSW nor _PSW has been found
  * -ENODEV if the execution of either _DSW or _PSW has failed
  */
-int acpi_device_sleep_wake(struct acpi_device *dev, int enable, int sleep_state,
-			   int dev_state)
+INT AcpiDeviceSleepWake(PACPI_DEVICE Dev, INT Enable, INT SleepState,
+			INT DevState)
 {
-    union acpi_object in_arg[3];
-    struct acpi_object_list arg_list = { 3, in_arg };
-    ACPI_STATUS status = AE_OK;
+    union acpi_object InArg[3];
+    struct acpi_object_list ArgList = { 3, InArg };
+    ACPI_STATUS Status = AE_OK;
 
     /*
      * Try to execute _DSW first.
@@ -288,28 +276,28 @@ int acpi_device_sleep_wake(struct acpi_device *dev, int enable, int sleep_state,
      * the first argument is filled. The values of the other two arguments
      * are meaningless.
      */
-    in_arg[0].Type = ACPI_TYPE_INTEGER;
-    in_arg[0].Integer.Value = enable;
-    in_arg[1].Type = ACPI_TYPE_INTEGER;
-    in_arg[1].Integer.Value = sleep_state;
-    in_arg[2].Type = ACPI_TYPE_INTEGER;
-    in_arg[2].Integer.Value = dev_state;
-    status = AcpiEvaluateObject(dev->handle, "_DSW", &arg_list, NULL);
-    if (ACPI_SUCCESS(status)) {
+    InArg[0].Type = ACPI_TYPE_INTEGER;
+    InArg[0].Integer.Value = Enable;
+    InArg[1].Type = ACPI_TYPE_INTEGER;
+    InArg[1].Integer.Value = SleepState;
+    InArg[2].Type = ACPI_TYPE_INTEGER;
+    InArg[2].Integer.Value = DevState;
+    Status = AcpiEvaluateObject(Dev->Handle, "_DSW", &ArgList, NULL);
+    if (ACPI_SUCCESS(Status)) {
 	return 0;
-    } else if (status != AE_NOT_FOUND) {
+    } else if (Status != AE_NOT_FOUND) {
 	DPRINT1("_DSW execution failed\n");
-	dev->wakeup.flags.valid = 0;
+	Dev->Wakeup.Flags.Valid = 0;
 	return -1;
     }
 
     /* Execute _PSW */
-    arg_list.Count = 1;
-    in_arg[0].Integer.Value = enable;
-    status = AcpiEvaluateObject(dev->handle, "_PSW", &arg_list, NULL);
-    if (ACPI_FAILURE(status) && (status != AE_NOT_FOUND)) {
+    ArgList.Count = 1;
+    InArg[0].Integer.Value = Enable;
+    Status = AcpiEvaluateObject(Dev->Handle, "_PSW", &ArgList, NULL);
+    if (ACPI_FAILURE(Status) && (Status != AE_NOT_FOUND)) {
 	DPRINT1("_PSW execution failed\n");
-	dev->wakeup.flags.valid = 0;
+	Dev->Wakeup.Flags.Valid = 0;
 	return -1;
     }
 
@@ -322,26 +310,24 @@ int acpi_device_sleep_wake(struct acpi_device *dev, int enable, int sleep_state,
  * 2. Execute _DSW (Device Sleep Wake) or (deprecated in ACPI 3.0) _PSW (Power
  *    State Wake) for the device, if present
  */
-int acpi_enable_wakeup_device_power(struct acpi_device *dev, int sleep_state)
+INT AcpiEnableWakeupDevicePower(PACPI_DEVICE Dev, INT SleepState)
 {
-    unsigned int i;
-    int err = 0;
+    ULONG i;
+    INT Err = 0;
 
-    if (!dev || !dev->wakeup.flags.valid)
+    if (!Dev || !Dev->Wakeup.Flags.Valid)
 	return -1;
 
-    //mutex_lock(&acpi_device_lock);
-
-    if (dev->wakeup.prepare_count++)
+    if (Dev->Wakeup.PrepareCount++)
 	goto out;
 
     /* Open power resource */
-    for (i = 0; i < dev->wakeup.resources.count; i++) {
-	int ret = acpi_power_on(dev->wakeup.resources.handles[i], dev);
-	if (ret) {
+    for (i = 0; i < Dev->Wakeup.Resources.Count; i++) {
+	INT Ret = AcpiPowerOn(Dev->Wakeup.Resources.Handles[i], Dev);
+	if (Ret) {
 	    DPRINT("Transition power state\n");
-	    dev->wakeup.flags.valid = 0;
-	    err = -1;
+	    Dev->Wakeup.Flags.Valid = 0;
+	    Err = -1;
 	    goto err_out;
 	}
     }
@@ -350,15 +336,14 @@ int acpi_enable_wakeup_device_power(struct acpi_device *dev, int sleep_state)
      * Passing 3 as the third argument below means the device may be placed
      * in arbitrary power state afterwards.
      */
-    err = acpi_device_sleep_wake(dev, 1, sleep_state, 3);
+    Err = AcpiDeviceSleepWake(Dev, 1, SleepState, 3);
 
 err_out:
-    if (err)
-	dev->wakeup.prepare_count = 0;
+    if (Err)
+	Dev->Wakeup.PrepareCount = 0;
 
 out:
-    //mutex_unlock(&acpi_device_lock);
-    return err;
+    return Err;
 }
 
 /*
@@ -367,101 +352,98 @@ out:
  *    State Wake) for the device, if present
  * 2. Shutdown down the power resources
  */
-int acpi_disable_wakeup_device_power(struct acpi_device *dev)
+INT AcpiDisableWakeupDevicePower(PACPI_DEVICE Dev)
 {
-    unsigned int i;
-    int err = 0;
+    ULONG i;
+    INT Err = 0;
 
-    if (!dev || !dev->wakeup.flags.valid)
+    if (!Dev || !Dev->Wakeup.Flags.Valid)
 	return -1;
 
-    //mutex_lock(&acpi_device_lock);
-
-    if (--dev->wakeup.prepare_count > 0)
+    if (--Dev->Wakeup.PrepareCount > 0)
 	goto out;
 
     /*
-     * Executing the code below even if prepare_count is already zero when
+     * Executing the code below even if PrepareCount is already zero when
      * the function is called may be useful, for example for initialisation.
      */
-    if (dev->wakeup.prepare_count < 0)
-	dev->wakeup.prepare_count = 0;
+    if (Dev->Wakeup.PrepareCount < 0)
+	Dev->Wakeup.PrepareCount = 0;
 
-    err = acpi_device_sleep_wake(dev, 0, 0, 0);
-    if (err)
+    Err = AcpiDeviceSleepWake(Dev, 0, 0, 0);
+    if (Err)
 	goto out;
 
     /* Close power resource */
-    for (i = 0; i < dev->wakeup.resources.count; i++) {
-	int ret = acpi_power_off_device(dev->wakeup.resources.handles[i], dev);
-	if (ret) {
+    for (i = 0; i < Dev->Wakeup.Resources.Count; i++) {
+	INT Ret = AcpiPowerOffDevice(Dev->Wakeup.Resources.Handles[i], Dev);
+	if (Ret) {
 	    DPRINT("Transition power state\n");
-	    dev->wakeup.flags.valid = 0;
-	    err = -1;
+	    Dev->Wakeup.Flags.Valid = 0;
+	    Err = -1;
 	    goto out;
 	}
     }
 
 out:
-    //mutex_unlock(&acpi_device_lock);
-    return err;
+    return Err;
 }
 
 /* --------------------------------------------------------------------------
-                             Device Power Management
+   Device Power Management
    -------------------------------------------------------------------------- */
 
-int acpi_power_get_inferred_state(struct acpi_device *device)
+INT AcpiPowerGetInferredState(PACPI_DEVICE Device)
 {
-    int result = 0;
-    struct acpi_handle_list *list = NULL;
-    int list_state = 0;
-    int i = 0;
+    INT Result = 0;
+    PACPI_HANDLE_LIST List = NULL;
+    INT ListState = 0;
+    INT i = 0;
 
-    if (!device)
+    if (!Device)
 	return_VALUE(-1);
 
-    device->power.state = ACPI_STATE_UNKNOWN;
+    Device->Power.State = ACPI_STATE_UNKNOWN;
 
     /*
      * We know a device's inferred power state when all the resources
      * required for a given D-state are 'on'.
      */
     for (i = ACPI_STATE_D0; i < ACPI_STATE_D3; i++) {
-	list = &device->power.states[i].resources;
-	if (list->count < 1)
+	List = &Device->Power.States[i].Resources;
+	if (List->Count < 1)
 	    continue;
 
-	result = acpi_power_get_list_state(list, &list_state);
-	if (result)
-	    return_VALUE(result);
+	Result = AcpiPowerGetListState(List, &ListState);
+	if (Result)
+	    return_VALUE(Result);
 
-	if (list_state == ACPI_POWER_RESOURCE_STATE_ON) {
-	    device->power.state = i;
+	if (ListState == ACPI_POWER_RESOURCE_STATE_ON) {
+	    Device->Power.State = i;
 	    return_VALUE(0);
 	}
     }
 
-    device->power.state = ACPI_STATE_D3;
+    Device->Power.State = ACPI_STATE_D3;
 
     return_VALUE(0);
 }
 
-int acpi_power_transition(struct acpi_device *device, int state)
+INT AcpiPowerTransition(PACPI_DEVICE Device, INT State)
 {
-    int result = 0;
-    struct acpi_handle_list *cl = NULL; /* Current Resources */
-    struct acpi_handle_list *tl = NULL; /* Target Resources */
-    unsigned int i = 0;
+    INT Result = 0;
+    PACPI_HANDLE_LIST Cl = NULL; /* Current Resources */
+    PACPI_HANDLE_LIST Tl = NULL; /* Target Resources */
+    ULONG i = 0;
 
-    if (!device || (state < ACPI_STATE_D0) || (state > ACPI_STATE_D3))
+    if (!Device || (State < ACPI_STATE_D0) || (State > ACPI_STATE_D3))
 	return_VALUE(-1);
 
-    if ((device->power.state < ACPI_STATE_D0) || (device->power.state > ACPI_STATE_D3))
+    if ((Device->Power.State < ACPI_STATE_D0) || (Device->Power.State > ACPI_STATE_D3))
 	return_VALUE(-15);
 
-    cl = &device->power.states[device->power.state].resources;
-    tl = &device->power.states[state].resources;
+    Cl = &Device->Power.States[Device->Power.State].Resources;
+    Tl = &Device->Power.States[State].Resources;
 
     /* TBD: Resources must be ordered. */
 
@@ -469,157 +451,151 @@ int acpi_power_transition(struct acpi_device *device, int state)
      * First we reference all power resources required in the target list
      * (e.g. so the device doesn't lose power while transitioning).
      */
-    for (i = 0; i < tl->count; i++) {
-	result = acpi_power_on(tl->handles[i], device);
-	if (result)
+    for (i = 0; i < Tl->Count; i++) {
+	Result = AcpiPowerOn(Tl->Handles[i], Device);
+	if (Result)
 	    goto end;
     }
 
-    if (device->power.state == state) {
+    if (Device->Power.State == State) {
 	goto end;
     }
 
     /*
      * Then we dereference all power resources used in the current list.
      */
-    for (i = 0; i < cl->count; i++) {
-	result = acpi_power_off_device(cl->handles[i], device);
-	if (result)
+    for (i = 0; i < Cl->Count; i++) {
+	Result = AcpiPowerOffDevice(Cl->Handles[i], Device);
+	if (Result)
 	    goto end;
     }
 
 end:
-    if (result)
-	device->power.state = ACPI_STATE_UNKNOWN;
+    if (Result)
+	Device->Power.State = ACPI_STATE_UNKNOWN;
     else {
 	/* We shouldn't change the state till all above operations succeed */
-	device->power.state = state;
+	Device->Power.State = State;
     }
 
-    return result;
+    return Result;
 }
 
 /* --------------------------------------------------------------------------
-                                Driver Interface
+   Driver Interface
    -------------------------------------------------------------------------- */
 
-int acpi_power_add(struct acpi_device *device)
+INT AcpiPowerAdd(PACPI_DEVICE Device)
 {
-    int result = 0, state;
-    ACPI_STATUS status = AE_OK;
-    struct acpi_power_resource *resource = NULL;
-    union acpi_object acpi_object;
-    ACPI_BUFFER buffer = { sizeof(ACPI_OBJECT), &acpi_object };
+    INT Result = 0, State;
+    ACPI_STATUS Status = AE_OK;
+    struct acpi_power_resource *Resource = NULL;
+    union acpi_object AcpiObject;
+    ACPI_BUFFER Buffer = { sizeof(ACPI_OBJECT), &AcpiObject };
 
-    if (!device)
+    if (!Device)
 	return_VALUE(-1);
 
-    resource = ExAllocatePoolWithTag(sizeof(struct acpi_power_resource),
+    Resource = ExAllocatePoolWithTag(sizeof(struct acpi_power_resource),
 				     ACPI_TAG);
-    if (!resource)
+    if (!Resource)
 	return_VALUE(-4);
 
-    resource->device = device;
-    //mutex_init(&resource->resource_lock);
-    InitializeListHead(&resource->reference);
+    Resource->Device = Device;
+    InitializeListHead(&Resource->Reference);
 
-    strcpy(resource->name, device->pnp.bus_id);
-    strcpy(acpi_device_name(device), ACPI_POWER_DEVICE_NAME);
-    strcpy(acpi_device_class(device), ACPI_POWER_CLASS);
-    device->driver_data = resource;
+    strcpy(Resource->Name, Device->Pnp.BusId);
+    strcpy(ACPI_DEVICE_NAME(Device), ACPI_POWER_DEVICE_NAME);
+    strcpy(ACPI_DEVICE_CLASS(Device), ACPI_POWER_CLASS);
+    Device->DriverData = Resource;
 
     /* Evalute the object to get the system level and resource order. */
-    status = AcpiEvaluateObject(device->handle, NULL, NULL, &buffer);
-    if (ACPI_FAILURE(status)) {
-	result = -15;
+    Status = AcpiEvaluateObject(Device->Handle, NULL, NULL, &Buffer);
+    if (ACPI_FAILURE(Status)) {
+	Result = -15;
 	goto end;
     }
-    resource->system_level = acpi_object.PowerResource.SystemLevel;
-    resource->order = acpi_object.PowerResource.ResourceOrder;
+    Resource->SystemLevel = AcpiObject.PowerResource.SystemLevel;
+    Resource->Order = AcpiObject.PowerResource.ResourceOrder;
 
-    result = acpi_power_get_state(device->handle, &state);
-    if (result)
+    Result = AcpiPowerGetState(Device->Handle, &State);
+    if (Result)
 	goto end;
 
-    switch (state) {
+    switch (State) {
     case ACPI_POWER_RESOURCE_STATE_ON:
-	device->power.state = ACPI_STATE_D0;
+	Device->Power.State = ACPI_STATE_D0;
 	break;
     case ACPI_POWER_RESOURCE_STATE_OFF:
-	device->power.state = ACPI_STATE_D3;
+	Device->Power.State = ACPI_STATE_D3;
 	break;
     default:
-	device->power.state = ACPI_STATE_UNKNOWN;
+	Device->Power.State = ACPI_STATE_UNKNOWN;
 	break;
     }
 
-    DPRINT("%s [%s] (%s)\n", acpi_device_name(device), acpi_device_bid(device),
-	   state ? "on" : "off");
+    DPRINT("%s [%s] (%s)\n", ACPI_DEVICE_NAME(Device), ACPI_DEVICE_BID(Device),
+	   State ? "on" : "off");
 
 end:
-    if (result)
-	ExFreePool(resource);
+    if (Result)
+	ExFreePool(Resource);
 
-    return result;
+    return Result;
 }
 
-int acpi_power_remove(struct acpi_device *device, int type)
+INT AcpiPowerRemove(PACPI_DEVICE Device, INT Type)
 {
-    struct acpi_power_resource *resource = NULL;
+    struct acpi_power_resource *Resource = NULL;
 
-    if (!device || !acpi_driver_data(device))
+    if (!Device || !ACPI_BUSMGR_COMPONENT_DATA(Device))
 	return_VALUE(-1);
 
-    resource = acpi_driver_data(device);
+    Resource = ACPI_BUSMGR_COMPONENT_DATA(Device);
 
-    //mutex_lock(&resource->resource_lock);
-    LoopOverList(ref, &resource->reference, struct acpi_power_reference, node) {
-	RemoveEntryList(&ref->node);
+    LoopOverList(ref, &Resource->Reference, struct acpi_power_reference, Node) {
+	RemoveEntryList(&ref->Node);
 	ExFreePool(ref);
     }
-    //mutex_unlock(&resource->resource_lock);
-    ExFreePool(resource);
+    ExFreePool(Resource);
 
     return_VALUE(0);
 }
 
-static int acpi_power_resume(struct acpi_device *device, int state)
+static INT AcpiPowerResume(PACPI_DEVICE Device, INT State)
 {
-    int result = 0;
-    struct acpi_power_resource *resource = NULL;
-    struct acpi_power_reference *ref;
+    INT Result = 0;
+    struct acpi_power_resource *Resource = NULL;
+    struct acpi_power_reference *Ref;
 
-    if (!device || !acpi_driver_data(device))
+    if (!Device || !ACPI_BUSMGR_COMPONENT_DATA(Device))
 	return -1;
 
-    resource = acpi_driver_data(device);
+    Resource = ACPI_BUSMGR_COMPONENT_DATA(Device);
 
-    result = acpi_power_get_state(device->handle, &state);
-    if (result)
-	return result;
+    Result = AcpiPowerGetState(Device->Handle, &State);
+    if (Result)
+	return Result;
 
-    //mutex_lock(&resource->resource_lock);
-    if (state == ACPI_POWER_RESOURCE_STATE_OFF && !IsListEmpty(&resource->reference)) {
-	ref = CONTAINING_RECORD(resource->reference.Flink, struct acpi_power_reference, node);
-	//mutex_unlock(&resource->resource_lock);
-	result = acpi_power_on(device->handle, ref->device);
-	return result;
+    if (State == ACPI_POWER_RESOURCE_STATE_OFF && !IsListEmpty(&Resource->Reference)) {
+	Ref = CONTAINING_RECORD(Resource->Reference.Flink, struct acpi_power_reference, Node);
+	Result = AcpiPowerOn(Device->Handle, Ref->Device);
+	return Result;
     }
 
-    //mutex_unlock(&resource->resource_lock);
     return 0;
 }
 
-int acpi_power_init(void)
+INT AcpiPowerInit(void)
 {
-    int result = 0;
+    INT Result = 0;
 
     DPRINT("acpi_power_init\n");
 
-    InitializeListHead(&acpi_power_resource_list);
+    InitializeListHead(&AcpiPowerResourceList);
 
-    result = acpi_bus_register_driver(&acpi_power_driver);
-    if (result < 0) {
+    Result = AcpiBusRegisterDriver(&AcpiPowerDriver);
+    if (Result < 0) {
 	return_VALUE(-15);
     }
 

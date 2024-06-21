@@ -188,6 +188,7 @@
 @ cdecl _stricmp(str str)
 @ cdecl _strnicmp(str str long)
 @ cdecl _vsnprintf(ptr long str ptr) vsnprintf
+@ cdecl _vsnwprintf(ptr long wstr ptr)
 @ varargs _snprintf(ptr long str) snprintf
 @ varargs _snwprintf(ptr long wstr)
 @ varargs swprintf(ptr wstr)

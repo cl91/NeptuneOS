@@ -23,8 +23,10 @@
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
-#ifndef __ACPI_DRIVERS_H__
-#define __ACPI_DRIVERS_H__
+#ifndef __ACPI_BUSMGR_COMPONENTS_H__
+#define __ACPI_BUSMGR_COMPONENTS_H__
+
+#include "acpi_bus.h"
 
 #define ACPI_MAX_STRING 80
 
@@ -35,7 +37,7 @@
 #define ACPI_BUS_COMPONENT 0x00010000
 #define ACPI_BUS_CLASS "system_bus"
 #define ACPI_BUS_HID "ACPI_BUS"
-#define ACPI_BUS_DRIVER_NAME "ACPI Bus Driver"
+#define ACPI_BUSMGR_COMPONENT_NAME "ACPI Bus Driver"
 #define ACPI_BUS_DEVICE_NAME "System Bus"
 
 /* --------------------------------------------------------------------------
@@ -103,8 +105,8 @@
 #define ACPI_BUTTON_DEVICE_NAME_LID "Lid Switch"
 #define ACPI_BUTTON_TYPE_LID 0x05
 
-int acpi_button_init(void);
-void acpi_button_exit(void);
+INT AcpiButtonInit(void);
+VOID AcpiButtonExit(void);
 
 /* --------------------------------------------------------------------------
                                 Embedded Controller
@@ -117,14 +119,6 @@ void acpi_button_exit(void);
 #define ACPI_EC_DEVICE_NAME "Embedded Controller"
 #define ACPI_EC_FILE_INFO "info"
 
-#ifdef CONFIG_ACPI_EC
-
-int acpi_ec_ecdt_probe(void);
-int acpi_ec_init(void);
-void acpi_ec_exit(void);
-
-#endif
-
 /* --------------------------------------------------------------------------
                                        Fan
    -------------------------------------------------------------------------- */
@@ -136,53 +130,6 @@ void acpi_ec_exit(void);
 #define ACPI_FAN_DEVICE_NAME "Fan"
 #define ACPI_FAN_FILE_STATE "state"
 #define ACPI_FAN_NOTIFY_STATUS 0x80
-
-/* --------------------------------------------------------------------------
-                                       PCI
-   -------------------------------------------------------------------------- */
-
-#ifdef CONFIG_ACPI_PCI
-
-#define ACPI_PCI_COMPONENT 0x00400000
-
-/* ACPI PCI Root Bridge (pci_root.c) */
-
-#define ACPI_PCI_ROOT_CLASS "pci_bridge"
-#define ACPI_PCI_ROOT_HID "PNP0A03"
-#define ACPI_PCI_ROOT_DRIVER_NAME "ACPI PCI Root Bridge Driver"
-#define ACPI_PCI_ROOT_DEVICE_NAME "PCI Root Bridge"
-
-int acpi_pci_root_init(void);
-void acpi_pci_root_exit(void);
-
-/* ACPI PCI Interrupt Link (pci_link.c) */
-
-#define ACPI_PCI_LINK_CLASS "pci_irq_routing"
-#define ACPI_PCI_LINK_HID "PNP0C0F"
-#define ACPI_PCI_LINK_DRIVER_NAME "ACPI PCI Interrupt Link Driver"
-#define ACPI_PCI_LINK_DEVICE_NAME "PCI Interrupt Link"
-#define ACPI_PCI_LINK_FILE_INFO "info"
-#define ACPI_PCI_LINK_FILE_STATUS "state"
-
-int acpi_pci_link_check(void);
-int acpi_pci_link_get_irq(ACPI_HANDLE handle, int index, int *edge_level,
-			  int *active_high_low);
-int acpi_pci_link_init(void);
-void acpi_pci_link_exit(void);
-
-/* ACPI PCI Interrupt Routing (pci_irq.c) */
-
-int acpi_pci_irq_add_prt(ACPI_HANDLE handle, int segment, int bus);
-
-/* ACPI PCI Device Binding (pci_bind.c) */
-
-struct pci_bus;
-
-int acpi_pci_bind(struct acpi_device *device);
-int acpi_pci_bind_root(struct acpi_device *device, struct acpi_pci_id *id,
-		       struct pci_bus *bus);
-
-#endif /*CONFIG_ACPI_PCI*/
 
 /* --------------------------------------------------------------------------
                                   Power Resource
@@ -199,10 +146,10 @@ int acpi_pci_bind_root(struct acpi_device *device, struct acpi_pci_id *id,
 #define ACPI_POWER_RESOURCE_STATE_ON 0x01
 #define ACPI_POWER_RESOURCE_STATE_UNKNOWN 0xFF
 
-int acpi_power_get_inferred_state(struct acpi_device *device);
-int acpi_power_transition(struct acpi_device *device, int state);
-int acpi_power_init(void);
-void acpi_power_exit(void);
+INT AcpiPowerGetInferredState(PACPI_DEVICE Device);
+INT AcpiPowerTransition(PACPI_DEVICE Device, INT State);
+INT AcpiPowerInit(void);
+VOID AcpiPowerExit(void);
 
 /* --------------------------------------------------------------------------
                                     Processor
@@ -223,8 +170,6 @@ void acpi_power_exit(void);
 #define ACPI_PROCESSOR_LIMIT_NONE 0x00
 #define ACPI_PROCESSOR_LIMIT_INCREMENT 0x01
 #define ACPI_PROCESSOR_LIMIT_DECREMENT 0x02
-
-int acpi_processor_set_thermal_limit(ACPI_HANDLE handle, int type);
 
 /* --------------------------------------------------------------------------
                                  Thermal Zone
@@ -249,8 +194,6 @@ int acpi_processor_set_thermal_limit(ACPI_HANDLE handle, int type);
 #define ACPI_THERMAL_MODE_PASSIVE 0x01
 #define ACPI_THERMAL_PATH_POWEROFF "/sbin/poweroff"
 
-/* Motherboard devices */
-int acpi_motherboard_init(void);
 /* --------------------------------------------------------------------------
                                 Debug Support
    -------------------------------------------------------------------------- */
@@ -261,46 +204,4 @@ int acpi_motherboard_init(void);
 #define ACPI_DEBUG_HIGH 3
 #define ACPI_DEBUG_DRIVERS 4
 
-extern UINT32 acpi_dbg_level;
-extern UINT32 acpi_dbg_layer;
-
-static inline void acpi_set_debug(UINT32 flag)
-{
-    static UINT32 layer_save;
-    static UINT32 level_save;
-
-    switch (flag) {
-    case ACPI_DEBUG_RESTORE:
-	acpi_dbg_layer = layer_save;
-	acpi_dbg_level = level_save;
-	break;
-    case ACPI_DEBUG_LOW:
-    case ACPI_DEBUG_MEDIUM:
-    case ACPI_DEBUG_HIGH:
-    case ACPI_DEBUG_DRIVERS:
-	layer_save = acpi_dbg_layer;
-	level_save = acpi_dbg_level;
-	break;
-    }
-
-    switch (flag) {
-    case ACPI_DEBUG_LOW:
-	acpi_dbg_layer = ACPI_COMPONENT_DEFAULT | ACPI_ALL_DRIVERS;
-	acpi_dbg_level = ACPI_DEBUG_DEFAULT;
-	break;
-    case ACPI_DEBUG_MEDIUM:
-	acpi_dbg_layer = ACPI_COMPONENT_DEFAULT | ACPI_ALL_DRIVERS;
-	acpi_dbg_level = ACPI_LV_FUNCTIONS | ACPI_LV_ALL_EXCEPTIONS;
-	break;
-    case ACPI_DEBUG_HIGH:
-	acpi_dbg_layer = 0xFFFFFFFF;
-	acpi_dbg_level = 0xFFFFFFFF;
-	break;
-    case ACPI_DEBUG_DRIVERS:
-	acpi_dbg_layer = ACPI_ALL_DRIVERS;
-	acpi_dbg_level = 0xFFFFFFFF;
-	break;
-    }
-}
-
-#endif /*__ACPI_DRIVERS_H__*/
+#endif /*__ACPI_BUSMGR_COMPONENTS_H__*/

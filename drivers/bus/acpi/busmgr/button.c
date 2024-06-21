@@ -32,29 +32,25 @@
 #define _COMPONENT ACPI_BUTTON_COMPONENT
 ACPI_MODULE_NAME("acpi_button")
 
-static int acpi_button_add(struct acpi_device *device);
-static int acpi_button_remove(struct acpi_device *device, int type);
+static INT AcpiButtonAdd(PACPI_DEVICE Device);
+static INT AcpiButtonRemove(PACPI_DEVICE Device, INT Type);
 
-static struct acpi_driver acpi_button_driver = { { 0, 0 },
-    ACPI_BUTTON_DRIVER_NAME,
-    ACPI_BUTTON_CLASS,
-    0,
-    0,
-    "ACPI_FPB,ACPI_FSB,PNP0C0D,PNP0C0C,"
-    "PNP0C0E",
-    { acpi_button_add,
-      acpi_button_remove } };
-
-struct acpi_button {
-    ACPI_HANDLE handle;
-    struct acpi_device *device; /* Fixed button kludge */
-    UINT8 type;
-    unsigned long pushed;
+static ACPI_BUSMGR_COMPONENT AcpiButtonDriver = {
+    { 0, 0 }, ACPI_BUTTON_DRIVER_NAME, ACPI_BUTTON_CLASS, 0, 0,
+    "ACPI_FPB,ACPI_FSB,PNP0C0D,PNP0C0C,PNP0C0E",
+    { AcpiButtonAdd, AcpiButtonRemove }
 };
 
-struct acpi_device *power_button;
-struct acpi_device *sleep_button;
-struct acpi_device *lid_button;
+typedef struct _ACPI_BUTTON {
+    ACPI_HANDLE Handle;
+    PACPI_DEVICE Device; /* Fixed button kludge */
+    UINT8 Type;
+    ULONG64 Pushed;
+} ACPI_BUTTON, *PACPI_BUTTON;
+
+PACPI_DEVICE PowerButton;
+PACPI_DEVICE SleepButton;
+PACPI_DEVICE LidButton;
 
 /* --------------------------------------------------------------------------
    Button Event Management
@@ -85,11 +81,11 @@ static NTAPI VOID ButtonEventWorkItemRoutine(IN PDEVICE_OBJECT DeviceObject,
  * Note this function is called in the interrupt thread, so we need to
  * synchronize access with the main thread.
  */
-static int handle_button_event(struct acpi_device *device, UINT8 type, int data)
+static INT HandleButtonEvent(PACPI_DEVICE Device, UINT8 Type, INT Data)
 {
     DPRINT("acpi_bus_generate_event\n");
 
-    if (!device)
+    if (!Device)
 	return_VALUE(AE_BAD_PARAMETER);
 
     PIO_WORKITEM Workitem = IoAllocateWorkItem(AcpiOsGetBusFdo());
@@ -98,9 +94,9 @@ static int handle_button_event(struct acpi_device *device, UINT8 type, int data)
     }
 
     ULONG ButtonEvent = 0;
-    if (strstr(device->pnp.bus_id, "PWRF"))
+    if (strstr(Device->Pnp.BusId, "PWRF"))
 	ButtonEvent = SYS_BUTTON_POWER;
-    else if (strstr(device->pnp.bus_id, "SLPF"))
+    else if (strstr(Device->Pnp.BusId, "SLPF"))
 	ButtonEvent = SYS_BUTTON_SLEEP;
 
     PSLIST_ENTRY Entry = RtlInterlockedPopEntrySList(&GetButtonEventIrpList);
@@ -117,224 +113,224 @@ static int handle_button_event(struct acpi_device *device, UINT8 type, int data)
    Driver Interface
    -------------------------------------------------------------------------- */
 
-static void acpi_button_notify(ACPI_HANDLE handle, UINT32 event, void *data)
+static VOID AcpiButtonNotify(ACPI_HANDLE Handle, UINT32 Event, PVOID Data)
 {
-    struct acpi_button *button = (struct acpi_button *)data;
+    PACPI_BUTTON Button = (PACPI_BUTTON )Data;
 
     ACPI_FUNCTION_TRACE("acpi_button_notify");
 
-    if (!button || !button->device)
+    if (!Button || !Button->Device)
 	return_VOID;
 
-    switch (event) {
+    switch (Event) {
     case ACPI_BUTTON_NOTIFY_STATUS:
-	handle_button_event(button->device, event, ++button->pushed);
+	HandleButtonEvent(Button->Device, Event, ++Button->Pushed);
 	break;
     default:
-	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Unsupported event [0x%x]\n", event));
+	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Unsupported event [0x%x]\n", Event));
 	break;
     }
 
     return_VOID;
 }
 
-static ACPI_STATUS acpi_button_notify_fixed(void *data)
+static ACPI_STATUS AcpiButtonNotifyFixed(PVOID Data)
 {
-    struct acpi_button *button = (struct acpi_button *)data;
+    PACPI_BUTTON Button = (PACPI_BUTTON )Data;
 
     ACPI_FUNCTION_TRACE("acpi_button_notify_fixed");
 
-    if (!button)
+    if (!Button)
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
 
-    acpi_button_notify(button->handle, ACPI_BUTTON_NOTIFY_STATUS, button);
+    AcpiButtonNotify(Button->Handle, ACPI_BUTTON_NOTIFY_STATUS, Button);
 
     return_ACPI_STATUS(AE_OK);
 }
 
-static int acpi_button_add(struct acpi_device *device)
+static INT AcpiButtonAdd(PACPI_DEVICE Device)
 {
-    int result = 0;
-    ACPI_STATUS status = AE_OK;
-    struct acpi_button *button = NULL;
+    INT Result = 0;
+    ACPI_STATUS Status = AE_OK;
+    PACPI_BUTTON Button = NULL;
 
     ACPI_FUNCTION_TRACE("acpi_button_add");
 
-    if (!device)
+    if (!Device)
 	return_VALUE(-1);
 
-    button = ExAllocatePoolWithTag(sizeof(struct acpi_button), ACPI_TAG);
-    if (!button)
+    Button = ExAllocatePoolWithTag(sizeof(ACPI_BUTTON), ACPI_TAG);
+    if (!Button)
 	return_VALUE(-4);
-    memset(button, 0, sizeof(struct acpi_button));
+    memset(Button, 0, sizeof(ACPI_BUTTON));
 
-    button->device = device;
-    button->handle = device->handle;
-    acpi_driver_data(device) = button;
+    Button->Device = Device;
+    Button->Handle = Device->Handle;
+    ACPI_BUSMGR_COMPONENT_DATA(Device) = Button;
 
     /*
      * Determine the button type (via hid), as fixed-feature buttons
      * need to be handled a bit differently than generic-space.
      */
-    if (!strcmp(acpi_device_hid(device), ACPI_BUTTON_HID_POWER)) {
-	button->type = ACPI_BUTTON_TYPE_POWER;
-	sprintf(acpi_device_name(device), "%s", ACPI_BUTTON_DEVICE_NAME_POWER);
-	sprintf(acpi_device_class(device), "%s/%s", ACPI_BUTTON_CLASS,
+    if (!strcmp(ACPI_DEVICE_HID(Device), ACPI_BUTTON_HID_POWER)) {
+	Button->Type = ACPI_BUTTON_TYPE_POWER;
+	sprintf(ACPI_DEVICE_NAME(Device), "%s", ACPI_BUTTON_DEVICE_NAME_POWER);
+	sprintf(ACPI_DEVICE_CLASS(Device), "%s/%s", ACPI_BUTTON_CLASS,
 		ACPI_BUTTON_SUBCLASS_POWER);
-    } else if (!strcmp(acpi_device_hid(device), ACPI_BUTTON_HID_POWERF)) {
-	button->type = ACPI_BUTTON_TYPE_POWERF;
-	sprintf(acpi_device_name(device), "%s", ACPI_BUTTON_DEVICE_NAME_POWERF);
-	sprintf(acpi_device_class(device), "%s/%s", ACPI_BUTTON_CLASS,
+    } else if (!strcmp(ACPI_DEVICE_HID(Device), ACPI_BUTTON_HID_POWERF)) {
+	Button->Type = ACPI_BUTTON_TYPE_POWERF;
+	sprintf(ACPI_DEVICE_NAME(Device), "%s", ACPI_BUTTON_DEVICE_NAME_POWERF);
+	sprintf(ACPI_DEVICE_CLASS(Device), "%s/%s", ACPI_BUTTON_CLASS,
 		ACPI_BUTTON_SUBCLASS_POWER);
-    } else if (!strcmp(acpi_device_hid(device), ACPI_BUTTON_HID_SLEEP)) {
-	button->type = ACPI_BUTTON_TYPE_SLEEP;
-	sprintf(acpi_device_name(device), "%s", ACPI_BUTTON_DEVICE_NAME_SLEEP);
-	sprintf(acpi_device_class(device), "%s/%s", ACPI_BUTTON_CLASS,
+    } else if (!strcmp(ACPI_DEVICE_HID(Device), ACPI_BUTTON_HID_SLEEP)) {
+	Button->Type = ACPI_BUTTON_TYPE_SLEEP;
+	sprintf(ACPI_DEVICE_NAME(Device), "%s", ACPI_BUTTON_DEVICE_NAME_SLEEP);
+	sprintf(ACPI_DEVICE_CLASS(Device), "%s/%s", ACPI_BUTTON_CLASS,
 		ACPI_BUTTON_SUBCLASS_SLEEP);
-    } else if (!strcmp(acpi_device_hid(device), ACPI_BUTTON_HID_SLEEPF)) {
-	button->type = ACPI_BUTTON_TYPE_SLEEPF;
-	sprintf(acpi_device_name(device), "%s", ACPI_BUTTON_DEVICE_NAME_SLEEPF);
-	sprintf(acpi_device_class(device), "%s/%s", ACPI_BUTTON_CLASS,
+    } else if (!strcmp(ACPI_DEVICE_HID(Device), ACPI_BUTTON_HID_SLEEPF)) {
+	Button->Type = ACPI_BUTTON_TYPE_SLEEPF;
+	sprintf(ACPI_DEVICE_NAME(Device), "%s", ACPI_BUTTON_DEVICE_NAME_SLEEPF);
+	sprintf(ACPI_DEVICE_CLASS(Device), "%s/%s", ACPI_BUTTON_CLASS,
 		ACPI_BUTTON_SUBCLASS_SLEEP);
-    } else if (!strcmp(acpi_device_hid(device), ACPI_BUTTON_HID_LID)) {
-	button->type = ACPI_BUTTON_TYPE_LID;
-	sprintf(acpi_device_name(device), "%s", ACPI_BUTTON_DEVICE_NAME_LID);
-	sprintf(acpi_device_class(device), "%s/%s", ACPI_BUTTON_CLASS,
+    } else if (!strcmp(ACPI_DEVICE_HID(Device), ACPI_BUTTON_HID_LID)) {
+	Button->Type = ACPI_BUTTON_TYPE_LID;
+	sprintf(ACPI_DEVICE_NAME(Device), "%s", ACPI_BUTTON_DEVICE_NAME_LID);
+	sprintf(ACPI_DEVICE_CLASS(Device), "%s/%s", ACPI_BUTTON_CLASS,
 		ACPI_BUTTON_SUBCLASS_LID);
     } else {
 	ACPI_DEBUG_PRINT(
-	    (ACPI_DB_ERROR, "Unsupported hid [%s]\n", acpi_device_hid(device)));
-	result = -15;
+	    (ACPI_DB_ERROR, "Unsupported hid [%s]\n", ACPI_DEVICE_HID(Device)));
+	Result = -15;
 	goto end;
     }
 
     /*
      * Ensure only one button of each type is used.
      */
-    switch (button->type) {
+    switch (Button->Type) {
     case ACPI_BUTTON_TYPE_POWER:
     case ACPI_BUTTON_TYPE_POWERF:
-	if (!power_button)
-	    power_button = device;
+	if (!PowerButton)
+	    PowerButton = Device;
 	else {
-	    ExFreePoolWithTag(button, ACPI_TAG);
+	    ExFreePoolWithTag(Button, ACPI_TAG);
 	    return_VALUE(-15);
 	}
 	break;
     case ACPI_BUTTON_TYPE_SLEEP:
     case ACPI_BUTTON_TYPE_SLEEPF:
-	if (!sleep_button)
-	    sleep_button = device;
+	if (!SleepButton)
+	    SleepButton = Device;
 	else {
-	    ExFreePoolWithTag(button, ACPI_TAG);
+	    ExFreePoolWithTag(Button, ACPI_TAG);
 	    return_VALUE(-15);
 	}
 	break;
     case ACPI_BUTTON_TYPE_LID:
-	if (!lid_button)
-	    lid_button = device;
+	if (!LidButton)
+	    LidButton = Device;
 	else {
-	    ExFreePoolWithTag(button, ACPI_TAG);
+	    ExFreePoolWithTag(Button, ACPI_TAG);
 	    return_VALUE(-15);
 	}
 	break;
     }
 
-    switch (button->type) {
+    switch (Button->Type) {
     case ACPI_BUTTON_TYPE_POWERF:
-	status = AcpiInstallFixedEventHandler(ACPI_EVENT_POWER_BUTTON,
-					      acpi_button_notify_fixed, button);
+	Status = AcpiInstallFixedEventHandler(ACPI_EVENT_POWER_BUTTON,
+					      AcpiButtonNotifyFixed, Button);
 	break;
     case ACPI_BUTTON_TYPE_SLEEPF:
-	status = AcpiInstallFixedEventHandler(ACPI_EVENT_SLEEP_BUTTON,
-					      acpi_button_notify_fixed, button);
+	Status = AcpiInstallFixedEventHandler(ACPI_EVENT_SLEEP_BUTTON,
+					      AcpiButtonNotifyFixed, Button);
 	break;
     case ACPI_BUTTON_TYPE_LID:
-	status = AcpiInstallFixedEventHandler(ACPI_BUTTON_TYPE_LID,
-					      acpi_button_notify_fixed, button);
+	Status = AcpiInstallFixedEventHandler(ACPI_BUTTON_TYPE_LID,
+					      AcpiButtonNotifyFixed, Button);
 	break;
     default:
-	status = AcpiInstallNotifyHandler(button->handle, ACPI_DEVICE_NOTIFY,
-					  acpi_button_notify, button);
+	Status = AcpiInstallNotifyHandler(Button->Handle, ACPI_DEVICE_NOTIFY,
+					  AcpiButtonNotify, Button);
 	break;
     }
 
-    if (ACPI_FAILURE(status)) {
+    if (ACPI_FAILURE(Status)) {
 	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "Error installing notify handler\n"));
-	result = -15;
+	Result = -15;
 	goto end;
     }
 
-    DPRINT("%s [%s]\n", acpi_device_name(device), acpi_device_bid(device));
+    DPRINT("%s [%s]\n", ACPI_DEVICE_NAME(Device), ACPI_DEVICE_BID(Device));
 
 end:
-    if (result) {
-	ExFreePoolWithTag(button, ACPI_TAG);
+    if (Result) {
+	ExFreePoolWithTag(Button, ACPI_TAG);
     }
 
-    return_VALUE(result);
+    return_VALUE(Result);
 }
 
-static int acpi_button_remove(struct acpi_device *device, int type)
+static INT AcpiButtonRemove(PACPI_DEVICE Device, INT Type)
 {
-    ACPI_STATUS status = 0;
-    struct acpi_button *button = NULL;
+    ACPI_STATUS Status = 0;
+    PACPI_BUTTON Button = NULL;
 
     ACPI_FUNCTION_TRACE("acpi_button_remove");
 
-    if (!device || !acpi_driver_data(device))
+    if (!Device || !ACPI_BUSMGR_COMPONENT_DATA(Device))
 	return_VALUE(-1);
 
-    button = acpi_driver_data(device);
+    Button = ACPI_BUSMGR_COMPONENT_DATA(Device);
 
     /* Unregister for device notifications. */
-    switch (button->type) {
+    switch (Button->Type) {
     case ACPI_BUTTON_TYPE_POWERF:
-	status = AcpiRemoveFixedEventHandler(ACPI_EVENT_POWER_BUTTON,
-					     acpi_button_notify_fixed);
+	Status = AcpiRemoveFixedEventHandler(ACPI_EVENT_POWER_BUTTON,
+					     AcpiButtonNotifyFixed);
 	break;
     case ACPI_BUTTON_TYPE_SLEEPF:
-	status = AcpiRemoveFixedEventHandler(ACPI_EVENT_SLEEP_BUTTON,
-					     acpi_button_notify_fixed);
+	Status = AcpiRemoveFixedEventHandler(ACPI_EVENT_SLEEP_BUTTON,
+					     AcpiButtonNotifyFixed);
 	break;
     case ACPI_BUTTON_TYPE_LID:
-	status = AcpiRemoveFixedEventHandler(ACPI_BUTTON_TYPE_LID,
-					     acpi_button_notify_fixed);
+	Status = AcpiRemoveFixedEventHandler(ACPI_BUTTON_TYPE_LID,
+					     AcpiButtonNotifyFixed);
 	break;
     default:
-	status = AcpiRemoveNotifyHandler(button->handle, ACPI_DEVICE_NOTIFY,
-					 acpi_button_notify);
+	Status = AcpiRemoveNotifyHandler(Button->Handle, ACPI_DEVICE_NOTIFY,
+					 AcpiButtonNotify);
 	break;
     }
 
-    if (ACPI_FAILURE(status))
+    if (ACPI_FAILURE(Status))
 	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "Error removing notify handler\n"));
 
-    ExFreePoolWithTag(button, ACPI_TAG);
+    ExFreePoolWithTag(Button, ACPI_TAG);
 
     return_VALUE(0);
 }
 
-int acpi_button_init(void)
+INT AcpiButtonInit(void)
 {
-    int result = 0;
+    INT Result = 0;
 
-    ACPI_FUNCTION_TRACE("acpi_button_init");
+    ACPI_FUNCTION_TRACE("AcpiButtonInit");
 
     RtlInitializeSListHead(&GetButtonEventIrpList);
-    result = acpi_bus_register_driver(&acpi_button_driver);
-    if (result < 0) {
+    Result = AcpiBusRegisterDriver(&AcpiButtonDriver);
+    if (Result < 0) {
 	return_VALUE(-15);
     }
 
     return_VALUE(0);
 }
 
-void acpi_button_exit(void)
+VOID AcpiButtonExit(void)
 {
-    ACPI_FUNCTION_TRACE("acpi_button_exit");
+    ACPI_FUNCTION_TRACE("AcpiButtonExit");
 
-    acpi_bus_unregister_driver(&acpi_button_driver);
+    AcpiBusUnregisterDriver(&AcpiButtonDriver);
 
     return_VOID;
 }

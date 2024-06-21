@@ -8,152 +8,152 @@
 
 static NTSTATUS Bus_PDO_QueryDeviceCaps(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
-    PIO_STACK_LOCATION stack;
-    PDEVICE_CAPABILITIES deviceCapabilities;
-    struct acpi_device *device = NULL;
+    PIO_STACK_LOCATION Stack;
+    PDEVICE_CAPABILITIES DeviceCapabilities;
+    PACPI_DEVICE Device = NULL;
     ULONG i;
 
     if (DeviceData->AcpiHandle)
-	acpi_bus_get_device(DeviceData->AcpiHandle, &device);
+	AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
-    stack = IoGetCurrentIrpStackLocation(Irp);
+    Stack = IoGetCurrentIrpStackLocation(Irp);
 
     //
     // Get the packet.
     //
-    deviceCapabilities = stack->Parameters.DeviceCapabilities.Capabilities;
+    DeviceCapabilities = Stack->Parameters.DeviceCapabilities.Capabilities;
 
     //
     // Set the capabilities.
     //
 
-    if (deviceCapabilities->Version != 1 ||
-	deviceCapabilities->Size < sizeof(DEVICE_CAPABILITIES)) {
+    if (DeviceCapabilities->Version != 1 ||
+	DeviceCapabilities->Size < sizeof(DEVICE_CAPABILITIES)) {
 	return STATUS_UNSUCCESSFUL;
     }
 
-    deviceCapabilities->D1Latency = 0;
-    deviceCapabilities->D2Latency = 0;
-    deviceCapabilities->D3Latency = 0;
+    DeviceCapabilities->D1Latency = 0;
+    DeviceCapabilities->D2Latency = 0;
+    DeviceCapabilities->D3Latency = 0;
 
-    deviceCapabilities->DeviceState[PowerSystemWorking] = PowerDeviceD0;
-    deviceCapabilities->DeviceState[PowerSystemSleeping1] = PowerDeviceD3;
-    deviceCapabilities->DeviceState[PowerSystemSleeping2] = PowerDeviceD3;
-    deviceCapabilities->DeviceState[PowerSystemSleeping3] = PowerDeviceD3;
+    DeviceCapabilities->DeviceState[PowerSystemWorking] = PowerDeviceD0;
+    DeviceCapabilities->DeviceState[PowerSystemSleeping1] = PowerDeviceD3;
+    DeviceCapabilities->DeviceState[PowerSystemSleeping2] = PowerDeviceD3;
+    DeviceCapabilities->DeviceState[PowerSystemSleeping3] = PowerDeviceD3;
 
-    for (i = 0; i < ACPI_D_STATE_COUNT && device; i++) {
-	if (!device->power.states[i].flags.valid)
+    for (i = 0; i < ACPI_D_STATE_COUNT && Device; i++) {
+	if (!Device->Power.States[i].Flags.Valid)
 	    continue;
 
 	switch (i) {
 	case ACPI_STATE_D0:
-	    deviceCapabilities->DeviceState[PowerSystemWorking] = PowerDeviceD0;
+	    DeviceCapabilities->DeviceState[PowerSystemWorking] = PowerDeviceD0;
 	    break;
 
 	case ACPI_STATE_D1:
-	    deviceCapabilities->DeviceState[PowerSystemSleeping1] = PowerDeviceD1;
-	    deviceCapabilities->D1Latency = device->power.states[i].latency;
+	    DeviceCapabilities->DeviceState[PowerSystemSleeping1] = PowerDeviceD1;
+	    DeviceCapabilities->D1Latency = Device->Power.States[i].Latency;
 	    break;
 
 	case ACPI_STATE_D2:
-	    deviceCapabilities->DeviceState[PowerSystemSleeping2] = PowerDeviceD2;
-	    deviceCapabilities->D2Latency = device->power.states[i].latency;
+	    DeviceCapabilities->DeviceState[PowerSystemSleeping2] = PowerDeviceD2;
+	    DeviceCapabilities->D2Latency = Device->Power.States[i].Latency;
 	    break;
 
 	case ACPI_STATE_D3:
-	    deviceCapabilities->DeviceState[PowerSystemSleeping3] = PowerDeviceD3;
-	    deviceCapabilities->D3Latency = device->power.states[i].latency;
+	    DeviceCapabilities->DeviceState[PowerSystemSleeping3] = PowerDeviceD3;
+	    DeviceCapabilities->D3Latency = Device->Power.States[i].Latency;
 	    break;
 	}
     }
 
     // We can wake the system from D1
-    deviceCapabilities->DeviceWake = PowerDeviceD1;
+    DeviceCapabilities->DeviceWake = PowerDeviceD1;
 
-    deviceCapabilities->DeviceD1 =
-	(deviceCapabilities->DeviceState[PowerSystemSleeping1] == PowerDeviceD1);
-    deviceCapabilities->DeviceD2 =
-	(deviceCapabilities->DeviceState[PowerSystemSleeping2] == PowerDeviceD2);
+    DeviceCapabilities->DeviceD1 =
+	(DeviceCapabilities->DeviceState[PowerSystemSleeping1] == PowerDeviceD1);
+    DeviceCapabilities->DeviceD2 =
+	(DeviceCapabilities->DeviceState[PowerSystemSleeping2] == PowerDeviceD2);
 
-    deviceCapabilities->WakeFromD0 = FALSE;
-    deviceCapabilities->WakeFromD1 = TRUE; // Yes we can
-    deviceCapabilities->WakeFromD2 = FALSE;
-    deviceCapabilities->WakeFromD3 = FALSE;
+    DeviceCapabilities->WakeFromD0 = FALSE;
+    DeviceCapabilities->WakeFromD1 = TRUE; // Yes we can
+    DeviceCapabilities->WakeFromD2 = FALSE;
+    DeviceCapabilities->WakeFromD3 = FALSE;
 
-    if (device) {
-	deviceCapabilities->LockSupported = device->flags.lockable;
-	deviceCapabilities->EjectSupported = device->flags.ejectable;
-	deviceCapabilities->HardwareDisabled = !device->status.enabled &&
-					       !device->status.functional;
-	deviceCapabilities->Removable = device->flags.removable;
-	deviceCapabilities->SurpriseRemovalOK = device->flags.surprise_removal_ok;
-	deviceCapabilities->UniqueID = device->flags.unique_id;
-	deviceCapabilities->NoDisplayInUI = !device->status.show_in_ui;
-	deviceCapabilities->Address = device->pnp.bus_address;
+    if (Device) {
+	DeviceCapabilities->LockSupported = Device->Flags.Lockable;
+	DeviceCapabilities->EjectSupported = Device->Flags.Ejectable;
+	DeviceCapabilities->HardwareDisabled = !Device->Status.Enabled &&
+					       !Device->Status.Functional;
+	DeviceCapabilities->Removable = Device->Flags.Removable;
+	DeviceCapabilities->SurpriseRemovalOK = Device->Flags.SurpriseRemovalOk;
+	DeviceCapabilities->UniqueID = Device->Flags.UniqueId;
+	DeviceCapabilities->NoDisplayInUI = !Device->Status.ShowInUi;
+	DeviceCapabilities->Address = Device->Pnp.BusAddress;
     }
 
-    if (!device || (device->flags.hardware_id &&
-		    (strstr(device->pnp.hardware_id, ACPI_BUTTON_HID_LID) ||
-		     strstr(device->pnp.hardware_id, ACPI_THERMAL_HID) ||
-		     strstr(device->pnp.hardware_id, ACPI_PROCESSOR_HID)))) {
+    if (!Device || (Device->Flags.HardwareId &&
+		    (strstr(Device->Pnp.HardwareId, ACPI_BUTTON_HID_LID) ||
+		     strstr(Device->Pnp.HardwareId, ACPI_THERMAL_HID) ||
+		     strstr(Device->Pnp.HardwareId, ACPI_PROCESSOR_HID)))) {
 	/* Allow ACPI to control the device if it is a lid button,
          * a thermal zone, a processor, or a fixed feature button */
-	deviceCapabilities->RawDeviceOK = TRUE;
+	DeviceCapabilities->RawDeviceOK = TRUE;
     }
 
-    deviceCapabilities->SilentInstall = FALSE;
-    deviceCapabilities->UINumber = (ULONG)-1;
+    DeviceCapabilities->SilentInstall = FALSE;
+    DeviceCapabilities->UINumber = (ULONG)-1;
 
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
-    PIO_STACK_LOCATION stack;
-    PWCHAR buffer, src;
-    WCHAR temp[256];
-    ULONG length, i;
-    NTSTATUS status = STATUS_SUCCESS;
-    struct acpi_device *Device;
+    PIO_STACK_LOCATION Stack;
+    PWCHAR Buffer, Src;
+    WCHAR Temp[256];
+    ULONG Length, i;
+    NTSTATUS Status = STATUS_SUCCESS;
+    PACPI_DEVICE Device;
 
-    stack = IoGetCurrentIrpStackLocation(Irp);
+    Stack = IoGetCurrentIrpStackLocation(Irp);
 
-    switch (stack->Parameters.QueryId.IdType) {
+    switch (Stack->Parameters.QueryId.IdType) {
     case BusQueryDeviceID:
 
 	/* This is a REG_SZ value */
 
 	if (DeviceData->AcpiHandle) {
-	    acpi_bus_get_device(DeviceData->AcpiHandle, &Device);
+	    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
-	    if (strcmp(Device->pnp.hardware_id, "Processor") == 0) {
-		length = wcslen(ProcessorIdString);
-		wcscpy_s(temp, sizeof(temp), ProcessorIdString);
+	    if (strcmp(Device->Pnp.HardwareId, "Processor") == 0) {
+		Length = wcslen(ProcessorIdString);
+		wcscpy_s(Temp, sizeof(Temp), ProcessorIdString);
 	    } else {
-		length = swprintf(temp, L"ACPI\\%hs", Device->pnp.hardware_id);
+		Length = swprintf(Temp, L"ACPI\\%hs", Device->Pnp.HardwareId);
 	    }
 	} else {
 	    /* We know it's a fixed feature button because
              * these are direct children of the ACPI root device
              * and therefore have no handle
              */
-	    length = swprintf(temp, L"ACPI\\FixedButton");
+	    Length = swprintf(Temp, L"ACPI\\FixedButton");
 	}
 
-	temp[length++] = UNICODE_NULL;
+	Temp[Length++] = UNICODE_NULL;
 
-	NT_ASSERT(length * sizeof(WCHAR) <= sizeof(temp));
+	NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	buffer = ExAllocatePoolWithTag(length * sizeof(WCHAR), ACPI_TAG);
+	Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
 
-	if (!buffer) {
-	    status = STATUS_INSUFFICIENT_RESOURCES;
+	if (!Buffer) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
 	}
 
-	RtlCopyMemory(buffer, temp, length * sizeof(WCHAR));
-	Irp->IoStatus.Information = (ULONG_PTR)buffer;
-	DPRINT("BusQueryDeviceID: %ls\n", buffer);
+	RtlCopyMemory(Buffer, Temp, Length * sizeof(WCHAR));
+	Irp->IoStatus.Information = (ULONG_PTR)Buffer;
+	DPRINT("BusQueryDeviceID: %ls\n", Buffer);
 	break;
 
     case BusQueryInstanceID:
@@ -162,159 +162,159 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	/* See comment in BusQueryDeviceID case */
 	if (DeviceData->AcpiHandle) {
-	    acpi_bus_get_device(DeviceData->AcpiHandle, &Device);
+	    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
-	    if (Device->flags.unique_id)
-		length = swprintf(temp, L"%hs", Device->pnp.unique_id);
+	    if (Device->Flags.UniqueId)
+		Length = swprintf(Temp, L"%hs", Device->Pnp.UniqueId);
 	    else
 		/* FIXME: Generate unique id! */
-		length = swprintf(temp, L"%ls", L"0");
+		Length = swprintf(Temp, L"%ls", L"0");
 	} else {
 	    /* FIXME: Generate unique id! */
-	    length = swprintf(temp, L"%ls", L"0");
+	    Length = swprintf(Temp, L"%ls", L"0");
 	}
 
-	temp[length++] = UNICODE_NULL;
+	Temp[Length++] = UNICODE_NULL;
 
-	NT_ASSERT(length * sizeof(WCHAR) <= sizeof(temp));
+	NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	buffer = ExAllocatePoolWithTag(length * sizeof(WCHAR), ACPI_TAG);
-	if (!buffer) {
-	    status = STATUS_INSUFFICIENT_RESOURCES;
+	Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
+	if (!Buffer) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
 	}
 
-	RtlCopyMemory(buffer, temp, length * sizeof(WCHAR));
-	DPRINT("BusQueryInstanceID: %ls\n", buffer);
-	Irp->IoStatus.Information = (ULONG_PTR)buffer;
+	RtlCopyMemory(Buffer, Temp, Length * sizeof(WCHAR));
+	DPRINT("BusQueryInstanceID: %ls\n", Buffer);
+	Irp->IoStatus.Information = (ULONG_PTR)Buffer;
 	break;
 
     case BusQueryHardwareIDs:
 
 	/* This is a REG_MULTI_SZ value */
-	length = 0;
-	status = STATUS_NOT_SUPPORTED;
+	Length = 0;
+	Status = STATUS_NOT_SUPPORTED;
 
 	/* See comment in BusQueryDeviceID case */
 	if (DeviceData->AcpiHandle) {
-	    acpi_bus_get_device(DeviceData->AcpiHandle, &Device);
+	    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
-	    if (!Device->flags.hardware_id) {
+	    if (!Device->Flags.HardwareId) {
 		/* We don't have the ID to satisfy this request */
 		break;
 	    }
 
-	    DPRINT("Device name: %s\n", Device->pnp.device_name);
-	    DPRINT("Hardware ID: %s\n", Device->pnp.hardware_id);
+	    DPRINT("Device name: %s\n", Device->Pnp.DeviceName);
+	    DPRINT("Hardware ID: %s\n", Device->Pnp.HardwareId);
 
-	    if (strcmp(Device->pnp.hardware_id, "Processor") == 0) {
-		length = ProcessorHardwareIds.Length / sizeof(WCHAR);
-		src = ProcessorHardwareIds.Buffer;
+	    if (strcmp(Device->Pnp.HardwareId, "Processor") == 0) {
+		Length = ProcessorHardwareIds.Length / sizeof(WCHAR);
+		Src = ProcessorHardwareIds.Buffer;
 	    } else {
-		length += swprintf(&temp[length], L"ACPI\\%hs", Device->pnp.hardware_id);
-		temp[length++] = UNICODE_NULL;
+		Length += swprintf(&Temp[Length], L"ACPI\\%hs", Device->Pnp.HardwareId);
+		Temp[Length++] = UNICODE_NULL;
 
-		length += swprintf(&temp[length], L"*%hs", Device->pnp.hardware_id);
-		temp[length++] = UNICODE_NULL;
-		temp[length++] = UNICODE_NULL;
-		src = temp;
+		Length += swprintf(&Temp[Length], L"*%hs", Device->Pnp.HardwareId);
+		Temp[Length++] = UNICODE_NULL;
+		Temp[Length++] = UNICODE_NULL;
+		Src = Temp;
 	    }
 	} else {
-	    length += swprintf(&temp[length], L"ACPI\\FixedButton");
-	    temp[length++] = UNICODE_NULL;
+	    Length += swprintf(&Temp[Length], L"ACPI\\FixedButton");
+	    Temp[Length++] = UNICODE_NULL;
 
-	    length += swprintf(&temp[length], L"*FixedButton");
-	    temp[length++] = UNICODE_NULL;
-	    temp[length++] = UNICODE_NULL;
-	    src = temp;
+	    Length += swprintf(&Temp[Length], L"*FixedButton");
+	    Temp[Length++] = UNICODE_NULL;
+	    Temp[Length++] = UNICODE_NULL;
+	    Src = Temp;
 	}
 
-	NT_ASSERT(length * sizeof(WCHAR) <= sizeof(temp));
+	NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	buffer = ExAllocatePoolWithTag(length * sizeof(WCHAR), ACPI_TAG);
+	Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
 
-	if (!buffer) {
-	    status = STATUS_INSUFFICIENT_RESOURCES;
+	if (!Buffer) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
 	}
 
-	RtlCopyMemory(buffer, src, length * sizeof(WCHAR));
-	Irp->IoStatus.Information = (ULONG_PTR)buffer;
-	DPRINT("BusQueryHardwareIDs: %ls\n", buffer);
-	status = STATUS_SUCCESS;
+	RtlCopyMemory(Buffer, Src, Length * sizeof(WCHAR));
+	Irp->IoStatus.Information = (ULONG_PTR)Buffer;
+	DPRINT("BusQueryHardwareIDs: %ls\n", Buffer);
+	Status = STATUS_SUCCESS;
 	break;
 
     case BusQueryCompatibleIDs:
 
 	/* This is a REG_MULTI_SZ value */
-	length = 0;
-	status = STATUS_NOT_SUPPORTED;
+	Length = 0;
+	Status = STATUS_NOT_SUPPORTED;
 
 	/* See comment in BusQueryDeviceID case */
 	if (DeviceData->AcpiHandle) {
-	    acpi_bus_get_device(DeviceData->AcpiHandle, &Device);
+	    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
-	    if (!Device->flags.hardware_id) {
+	    if (!Device->Flags.HardwareId) {
 		/* We don't have the ID to satisfy this request */
 		break;
 	    }
 
-	    DPRINT("Device name: %s\n", Device->pnp.device_name);
-	    DPRINT("Hardware ID: %s\n", Device->pnp.hardware_id);
+	    DPRINT("Device name: %s\n", Device->Pnp.DeviceName);
+	    DPRINT("Hardware ID: %s\n", Device->Pnp.HardwareId);
 
-	    if (strcmp(Device->pnp.hardware_id, "Processor") == 0) {
-		length += swprintf(&temp[length], L"ACPI\\%hs", Device->pnp.hardware_id);
-		temp[length++] = UNICODE_NULL;
+	    if (strcmp(Device->Pnp.HardwareId, "Processor") == 0) {
+		Length += swprintf(&Temp[Length], L"ACPI\\%hs", Device->Pnp.HardwareId);
+		Temp[Length++] = UNICODE_NULL;
 
-		length += swprintf(&temp[length], L"*%hs", Device->pnp.hardware_id);
-		temp[length++] = UNICODE_NULL;
-		temp[length++] = UNICODE_NULL;
-	    } else if (Device->flags.compatible_ids) {
-		for (i = 0; i < Device->pnp.cid_list->Count; i++) {
-		    length += swprintf(&temp[length], L"ACPI\\%hs",
-				       Device->pnp.cid_list->Ids[i].String);
-		    temp[length++] = UNICODE_NULL;
+		Length += swprintf(&Temp[Length], L"*%hs", Device->Pnp.HardwareId);
+		Temp[Length++] = UNICODE_NULL;
+		Temp[Length++] = UNICODE_NULL;
+	    } else if (Device->Flags.CompatibleIds) {
+		for (i = 0; i < Device->Pnp.CidList->Count; i++) {
+		    Length += swprintf(&Temp[Length], L"ACPI\\%hs",
+				       Device->Pnp.CidList->Ids[i].String);
+		    Temp[Length++] = UNICODE_NULL;
 
-		    length += swprintf(&temp[length], L"*%hs",
-				       Device->pnp.cid_list->Ids[i].String);
-		    temp[length++] = UNICODE_NULL;
+		    Length += swprintf(&Temp[Length], L"*%hs",
+				       Device->Pnp.CidList->Ids[i].String);
+		    Temp[Length++] = UNICODE_NULL;
 		}
 
-		temp[length++] = UNICODE_NULL;
+		Temp[Length++] = UNICODE_NULL;
 	    } else {
 		/* No compatible IDs */
 		break;
 	    }
 
-	    NT_ASSERT(length * sizeof(WCHAR) <= sizeof(temp));
+	    NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	    buffer = ExAllocatePoolWithTag(length * sizeof(WCHAR), ACPI_TAG);
-	    if (!buffer) {
-		status = STATUS_INSUFFICIENT_RESOURCES;
+	    Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
+	    if (!Buffer) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
 		break;
 	    }
 
-	    RtlCopyMemory(buffer, temp, length * sizeof(WCHAR));
-	    Irp->IoStatus.Information = (ULONG_PTR)buffer;
-	    DPRINT("BusQueryCompatibleIDs: %ls\n", buffer);
-	    status = STATUS_SUCCESS;
+	    RtlCopyMemory(Buffer, Temp, Length * sizeof(WCHAR));
+	    Irp->IoStatus.Information = (ULONG_PTR)Buffer;
+	    DPRINT("BusQueryCompatibleIDs: %ls\n", Buffer);
+	    Status = STATUS_SUCCESS;
 	}
 	break;
 
     default:
-	status = Irp->IoStatus.Status;
+	Status = Irp->IoStatus.Status;
     }
-    return status;
+    return Status;
 }
 
 static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
     PWCHAR Buffer, Temp;
-    PIO_STACK_LOCATION stack;
-    NTSTATUS status = Irp->IoStatus.Status;
-    stack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION Stack;
+    NTSTATUS Status = Irp->IoStatus.Status;
+    Stack = IoGetCurrentIrpStackLocation(Irp);
 
-    switch (stack->Parameters.QueryDeviceText.DeviceTextType) {
+    switch (Stack->Parameters.QueryDeviceText.DeviceTextType) {
     case DeviceTextDescription:
 
 	if (!Irp->IoStatus.Information) {
@@ -391,7 +391,7 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    Buffer = ExAllocatePoolWithTag((wcslen(Temp) + 1) * sizeof(WCHAR), ACPI_TAG);
 
 	    if (!Buffer) {
-		status = STATUS_INSUFFICIENT_RESOURCES;
+		Status = STATUS_INSUFFICIENT_RESOURCES;
 		break;
 	    }
 
@@ -400,7 +400,7 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    DPRINT("\tDeviceTextDescription :%ws\n", Buffer);
 
 	    Irp->IoStatus.Information = (ULONG_PTR)Buffer;
-	    status = STATUS_SUCCESS;
+	    Status = STATUS_SUCCESS;
 	}
 	break;
 
@@ -408,7 +408,7 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	break;
     }
 
-    return status;
+    return Status;
 }
 
 static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
@@ -418,11 +418,11 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     PCM_PARTIAL_RESOURCE_DESCRIPTOR ResourceDescriptor;
     ACPI_STATUS AcpiStatus;
     ACPI_BUFFER Buffer;
-    ACPI_RESOURCE *resource;
+    ACPI_RESOURCE *Resource;
     ULONG ResourceListSize;
     ULONG i;
     ULONGLONG BusNumber;
-    struct acpi_device *device;
+    PACPI_DEVICE Device;
 
     if (!DeviceData->AcpiHandle) {
 	return Irp->IoStatus.Status;
@@ -433,13 +433,13 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
      * we create a resource list and add a bus number descriptor to it */
     if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
 	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
-	acpi_bus_get_device(DeviceData->AcpiHandle, &device);
+	AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
-	AcpiStatus = acpi_evaluate_integer(DeviceData->AcpiHandle, "_BBN", NULL,
+	AcpiStatus = AcpiEvaluateInteger(DeviceData->AcpiHandle, "_BBN", NULL,
 					   &BusNumber);
 	if (AcpiStatus != AE_OK) {
 #if 0
-            if (device->flags.unique_id) {
+            if (device->Flags.UniqueId) {
                 /* FIXME: Try the unique ID */
             }
             else
@@ -495,34 +495,34 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	return STATUS_UNSUCCESSFUL;
     }
 
-    resource = Buffer.Pointer;
+    Resource = Buffer.Pointer;
     /* Count number of resources */
-    while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
-	switch (resource->Type) {
+    while (Resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
+	switch (Resource->Type) {
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ: {
-	    ACPI_RESOURCE_EXTENDED_IRQ *irq_data =
-		(ACPI_RESOURCE_EXTENDED_IRQ *)&resource->Data;
-	    if (irq_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_EXTENDED_IRQ *IrqData =
+		(ACPI_RESOURCE_EXTENDED_IRQ *)&Resource->Data;
+	    if (IrqData->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    NumberOfResources += irq_data->InterruptCount;
+	    NumberOfResources += IrqData->InterruptCount;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_IRQ: {
-	    ACPI_RESOURCE_IRQ *irq_data = (ACPI_RESOURCE_IRQ *)&resource->Data;
-	    NumberOfResources += irq_data->InterruptCount;
+	    ACPI_RESOURCE_IRQ *IrqData = (ACPI_RESOURCE_IRQ *)&Resource->Data;
+	    NumberOfResources += IrqData->InterruptCount;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_DMA: {
-	    ACPI_RESOURCE_DMA *dma_data = (ACPI_RESOURCE_DMA *)&resource->Data;
-	    NumberOfResources += dma_data->ChannelCount;
+	    ACPI_RESOURCE_DMA *DmaData = (ACPI_RESOURCE_DMA *)&Resource->Data;
+	    NumberOfResources += DmaData->ChannelCount;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS16:
 	case ACPI_RESOURCE_TYPE_ADDRESS32:
 	case ACPI_RESOURCE_TYPE_ADDRESS64:
 	case ACPI_RESOURCE_TYPE_EXTENDED_ADDRESS64: {
-	    ACPI_RESOURCE_ADDRESS *addr_res = (ACPI_RESOURCE_ADDRESS *)&resource->Data;
-	    if (addr_res->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS *AddrRes = (ACPI_RESOURCE_ADDRESS *)&Resource->Data;
+	    if (AddrRes->ProducerConsumer == ACPI_PRODUCER)
 		break;
 	    NumberOfResources++;
 	    break;
@@ -536,11 +536,11 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    break;
 	}
 	default: {
-	    DPRINT1("Unknown resource type: %d\n", resource->Type);
+	    DPRINT1("Unknown resource type: %d\n", Resource->Type);
 	    break;
 	}
 	}
-	resource = ACPI_NEXT_RESOURCE(resource);
+	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
 
     /* Allocate memory */
@@ -561,26 +561,26 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     ResourceDescriptor = ResourceList->List[0].PartialResourceList.PartialDescriptors;
 
     /* Fill resources list structure */
-    resource = Buffer.Pointer;
-    while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
-	switch (resource->Type) {
+    Resource = Buffer.Pointer;
+    while (Resource->Type != ACPI_RESOURCE_TYPE_END_TAG) {
+	switch (Resource->Type) {
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ: {
-	    ACPI_RESOURCE_EXTENDED_IRQ *irq_data =
-		(ACPI_RESOURCE_EXTENDED_IRQ *)&resource->Data;
-	    if (irq_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_EXTENDED_IRQ *IrqData =
+		(ACPI_RESOURCE_EXTENDED_IRQ *)&Resource->Data;
+	    if (IrqData->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    for (i = 0; i < irq_data->InterruptCount; i++) {
+	    for (i = 0; i < IrqData->InterruptCount; i++) {
 		ResourceDescriptor->Type = CmResourceTypeInterrupt;
 
 		ResourceDescriptor->ShareDisposition =
-		    (irq_data->Shareable == ACPI_SHARED ? CmResourceShareShared :
+		    (IrqData->Shareable == ACPI_SHARED ? CmResourceShareShared :
 							  CmResourceShareDeviceExclusive);
-		ResourceDescriptor->Flags = (irq_data->Triggering ==
+		ResourceDescriptor->Flags = (IrqData->Triggering ==
 						     ACPI_LEVEL_SENSITIVE ?
 						 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 						 CM_RESOURCE_INTERRUPT_LATCHED);
 		ResourceDescriptor->u.Interrupt.Level =
-		    ResourceDescriptor->u.Interrupt.Vector = irq_data->Interrupts[i];
+		    ResourceDescriptor->u.Interrupt.Vector = IrqData->Interrupts[i];
 		ResourceDescriptor->u.Interrupt.Affinity = (KAFFINITY)(-1);
 
 		ResourceDescriptor++;
@@ -588,19 +588,19 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_IRQ: {
-	    ACPI_RESOURCE_IRQ *irq_data = (ACPI_RESOURCE_IRQ *)&resource->Data;
-	    for (i = 0; i < irq_data->InterruptCount; i++) {
+	    ACPI_RESOURCE_IRQ *IrqData = (ACPI_RESOURCE_IRQ *)&Resource->Data;
+	    for (i = 0; i < IrqData->InterruptCount; i++) {
 		ResourceDescriptor->Type = CmResourceTypeInterrupt;
 
 		ResourceDescriptor->ShareDisposition =
-		    (irq_data->Shareable == ACPI_SHARED ? CmResourceShareShared :
+		    (IrqData->Shareable == ACPI_SHARED ? CmResourceShareShared :
 							  CmResourceShareDeviceExclusive);
-		ResourceDescriptor->Flags = (irq_data->Triggering ==
+		ResourceDescriptor->Flags = (IrqData->Triggering ==
 						     ACPI_LEVEL_SENSITIVE ?
 						 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 						 CM_RESOURCE_INTERRUPT_LATCHED);
 		ResourceDescriptor->u.Interrupt.Level =
-		    ResourceDescriptor->u.Interrupt.Vector = irq_data->Interrupts[i];
+		    ResourceDescriptor->u.Interrupt.Vector = IrqData->Interrupts[i];
 		ResourceDescriptor->u.Interrupt.Affinity = (KAFFINITY)(-1);
 
 		ResourceDescriptor++;
@@ -608,11 +608,11 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_DMA: {
-	    ACPI_RESOURCE_DMA *dma_data = (ACPI_RESOURCE_DMA *)&resource->Data;
-	    for (i = 0; i < dma_data->ChannelCount; i++) {
+	    ACPI_RESOURCE_DMA *DmaData = (ACPI_RESOURCE_DMA *)&Resource->Data;
+	    for (i = 0; i < DmaData->ChannelCount; i++) {
 		ResourceDescriptor->Type = CmResourceTypeDma;
 		ResourceDescriptor->Flags = 0;
-		switch (dma_data->Type) {
+		switch (DmaData->Type) {
 		case ACPI_TYPE_A:
 		    ResourceDescriptor->Flags |= CM_RESOURCE_DMA_TYPE_A;
 		    break;
@@ -623,9 +623,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_DMA_TYPE_F;
 		    break;
 		}
-		if (dma_data->BusMaster == ACPI_BUS_MASTER)
+		if (DmaData->BusMaster == ACPI_BUS_MASTER)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_DMA_BUS_MASTER;
-		switch (dma_data->Transfer) {
+		switch (DmaData->Transfer) {
 		case ACPI_TRANSFER_8:
 		    ResourceDescriptor->Flags |= CM_RESOURCE_DMA_8;
 		    break;
@@ -636,67 +636,67 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_DMA_8_AND_16;
 		    break;
 		}
-		ResourceDescriptor->u.Dma.Channel = dma_data->Channels[i];
+		ResourceDescriptor->u.Dma.Channel = DmaData->Channels[i];
 
 		ResourceDescriptor++;
 	    }
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_IO: {
-	    ACPI_RESOURCE_IO *io_data = (ACPI_RESOURCE_IO *)&resource->Data;
+	    ACPI_RESOURCE_IO *IoData = (ACPI_RESOURCE_IO *)&Resource->Data;
 	    ResourceDescriptor->Type = CmResourceTypePort;
 	    ResourceDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
 	    ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-	    if (io_data->IoDecode == ACPI_DECODE_16)
+	    if (IoData->IoDecode == ACPI_DECODE_16)
 		ResourceDescriptor->Flags |= CM_RESOURCE_PORT_16_BIT_DECODE;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_PORT_10_BIT_DECODE;
-	    ResourceDescriptor->u.Port.Start.QuadPart = io_data->Minimum;
-	    ResourceDescriptor->u.Port.Length = io_data->AddressLength;
+	    ResourceDescriptor->u.Port.Start.QuadPart = IoData->Minimum;
+	    ResourceDescriptor->u.Port.Length = IoData->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_FIXED_IO: {
-	    ACPI_RESOURCE_FIXED_IO *io_data = (ACPI_RESOURCE_FIXED_IO *)&resource->Data;
+	    ACPI_RESOURCE_FIXED_IO *IoData = (ACPI_RESOURCE_FIXED_IO *)&Resource->Data;
 	    ResourceDescriptor->Type = CmResourceTypePort;
 	    ResourceDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
 	    ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-	    ResourceDescriptor->u.Port.Start.QuadPart = io_data->Address;
-	    ResourceDescriptor->u.Port.Length = io_data->AddressLength;
+	    ResourceDescriptor->u.Port.Start.QuadPart = IoData->Address;
+	    ResourceDescriptor->u.Port.Length = IoData->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS16: {
-	    ACPI_RESOURCE_ADDRESS16 *addr16_data =
-		(ACPI_RESOURCE_ADDRESS16 *)&resource->Data;
-	    if (addr16_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS16 *Addr16Data =
+		(ACPI_RESOURCE_ADDRESS16 *)&Resource->Data;
+	    if (Addr16Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    if (addr16_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr16Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = addr16_data->Address.Minimum;
+		ResourceDescriptor->u.BusNumber.Start = Addr16Data->Address.Minimum;
 		ResourceDescriptor->u.BusNumber.Length =
-		    addr16_data->Address.AddressLength;
-	    } else if (addr16_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr16Data->Address.AddressLength;
+	    } else if (Addr16Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr16_data->Decode == ACPI_POS_DECODE)
+		if (Addr16Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = addr16_data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = addr16_data->Address.AddressLength;
+		ResourceDescriptor->u.Port.Start.QuadPart = Addr16Data->Address.Minimum;
+		ResourceDescriptor->u.Port.Length = Addr16Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = 0;
-		if (addr16_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr16Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr16_data->Info.Mem.Caching) {
+		switch (Addr16Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -707,41 +707,41 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = addr16_data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = addr16_data->Address.AddressLength;
+		ResourceDescriptor->u.Memory.Start.QuadPart = Addr16Data->Address.Minimum;
+		ResourceDescriptor->u.Memory.Length = Addr16Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS32: {
-	    ACPI_RESOURCE_ADDRESS32 *addr32_data =
-		(ACPI_RESOURCE_ADDRESS32 *)&resource->Data;
-	    if (addr32_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS32 *Addr32Data =
+		(ACPI_RESOURCE_ADDRESS32 *)&Resource->Data;
+	    if (Addr32Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    if (addr32_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr32Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = addr32_data->Address.Minimum;
+		ResourceDescriptor->u.BusNumber.Start = Addr32Data->Address.Minimum;
 		ResourceDescriptor->u.BusNumber.Length =
-		    addr32_data->Address.AddressLength;
-	    } else if (addr32_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr32Data->Address.AddressLength;
+	    } else if (Addr32Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr32_data->Decode == ACPI_POS_DECODE)
+		if (Addr32Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = addr32_data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = addr32_data->Address.AddressLength;
+		ResourceDescriptor->u.Port.Start.QuadPart = Addr32Data->Address.Minimum;
+		ResourceDescriptor->u.Port.Length = Addr32Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = 0;
-		if (addr32_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr32Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr32_data->Info.Mem.Caching) {
+		switch (Addr32Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -752,43 +752,43 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = addr32_data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = addr32_data->Address.AddressLength;
+		ResourceDescriptor->u.Memory.Start.QuadPart = Addr32Data->Address.Minimum;
+		ResourceDescriptor->u.Memory.Length = Addr32Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS64: {
-	    ACPI_RESOURCE_ADDRESS64 *addr64_data =
-		(ACPI_RESOURCE_ADDRESS64 *)&resource->Data;
-	    if (addr64_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS64 *Addr64Data =
+		(ACPI_RESOURCE_ADDRESS64 *)&Resource->Data;
+	    if (Addr64Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    if (addr64_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr64Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		DPRINT1("64-bit bus address is not supported!\n");
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
 		ResourceDescriptor->u.BusNumber.Start = (ULONG)
-							    addr64_data->Address.Minimum;
+							    Addr64Data->Address.Minimum;
 		ResourceDescriptor->u.BusNumber.Length =
-		    addr64_data->Address.AddressLength;
-	    } else if (addr64_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr64Data->Address.AddressLength;
+	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr64_data->Decode == ACPI_POS_DECODE)
+		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = addr64_data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = addr64_data->Address.AddressLength;
+		ResourceDescriptor->u.Port.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = 0;
-		if (addr64_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr64Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr64_data->Info.Mem.Caching) {
+		switch (Addr64Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -799,42 +799,42 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = addr64_data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = addr64_data->Address.AddressLength;
+		ResourceDescriptor->u.Memory.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->u.Memory.Length = Addr64Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_EXTENDED_ADDRESS64: {
-	    ACPI_RESOURCE_EXTENDED_ADDRESS64 *addr64_data =
-		(ACPI_RESOURCE_EXTENDED_ADDRESS64 *)&resource->Data;
-	    if (addr64_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_EXTENDED_ADDRESS64 *Addr64Data =
+		(ACPI_RESOURCE_EXTENDED_ADDRESS64 *)&Resource->Data;
+	    if (Addr64Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    if (addr64_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr64Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		DPRINT1("64-bit bus address is not supported!\n");
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = (ULONG)addr64_data->Address.Minimum;
+		ResourceDescriptor->u.BusNumber.Start = (ULONG)Addr64Data->Address.Minimum;
 		ResourceDescriptor->u.BusNumber.Length =
-		    addr64_data->Address.AddressLength;
-	    } else if (addr64_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr64Data->Address.AddressLength;
+	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr64_data->Decode == ACPI_POS_DECODE)
+		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = addr64_data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = addr64_data->Address.AddressLength;
+		ResourceDescriptor->u.Port.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		ResourceDescriptor->Flags = 0;
-		if (addr64_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr64Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr64_data->Info.Mem.Caching) {
+		switch (Addr64Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -845,54 +845,54 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = addr64_data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = addr64_data->Address.AddressLength;
+		ResourceDescriptor->u.Memory.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->u.Memory.Length = Addr64Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_MEMORY24: {
-	    ACPI_RESOURCE_MEMORY24 *mem24_data = (ACPI_RESOURCE_MEMORY24 *)&resource->Data;
+	    ACPI_RESOURCE_MEMORY24 *Mem24Data = (ACPI_RESOURCE_MEMORY24 *)&Resource->Data;
 	    ResourceDescriptor->Type = CmResourceTypeMemory;
 	    ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 	    ResourceDescriptor->Flags = CM_RESOURCE_MEMORY_24;
-	    if (mem24_data->WriteProtect == ACPI_READ_ONLY_MEMORY)
+	    if (Mem24Data->WriteProtect == ACPI_READ_ONLY_MEMORY)
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    ResourceDescriptor->u.Memory.Start.QuadPart = mem24_data->Minimum;
-	    ResourceDescriptor->u.Memory.Length = mem24_data->AddressLength;
+	    ResourceDescriptor->u.Memory.Start.QuadPart = Mem24Data->Minimum;
+	    ResourceDescriptor->u.Memory.Length = Mem24Data->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_MEMORY32: {
-	    ACPI_RESOURCE_MEMORY32 *mem32_data = (ACPI_RESOURCE_MEMORY32 *)&resource->Data;
+	    ACPI_RESOURCE_MEMORY32 *Mem32Data = (ACPI_RESOURCE_MEMORY32 *)&Resource->Data;
 	    ResourceDescriptor->Type = CmResourceTypeMemory;
 	    ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 	    ResourceDescriptor->Flags = 0;
-	    if (mem32_data->WriteProtect == ACPI_READ_ONLY_MEMORY)
+	    if (Mem32Data->WriteProtect == ACPI_READ_ONLY_MEMORY)
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    ResourceDescriptor->u.Memory.Start.QuadPart = mem32_data->Minimum;
-	    ResourceDescriptor->u.Memory.Length = mem32_data->AddressLength;
+	    ResourceDescriptor->u.Memory.Start.QuadPart = Mem32Data->Minimum;
+	    ResourceDescriptor->u.Memory.Length = Mem32Data->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_FIXED_MEMORY32: {
-	    ACPI_RESOURCE_FIXED_MEMORY32 *memfixed32_data =
-		(ACPI_RESOURCE_FIXED_MEMORY32 *)&resource->Data;
+	    ACPI_RESOURCE_FIXED_MEMORY32 *Memfixed32Data =
+		(ACPI_RESOURCE_FIXED_MEMORY32 *)&Resource->Data;
 	    ResourceDescriptor->Type = CmResourceTypeMemory;
 	    ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 	    ResourceDescriptor->Flags = 0;
-	    if (memfixed32_data->WriteProtect == ACPI_READ_ONLY_MEMORY)
+	    if (Memfixed32Data->WriteProtect == ACPI_READ_ONLY_MEMORY)
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    ResourceDescriptor->u.Memory.Start.QuadPart = memfixed32_data->Address;
-	    ResourceDescriptor->u.Memory.Length = memfixed32_data->AddressLength;
+	    ResourceDescriptor->u.Memory.Start.QuadPart = Memfixed32Data->Address;
+	    ResourceDescriptor->u.Memory.Length = Memfixed32Data->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
@@ -901,7 +901,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    break;
 	}
 	}
-	resource = ACPI_NEXT_RESOURCE(resource);
+	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
 
     ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
@@ -914,7 +914,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
     ULONG NumberOfResources = 0;
     ACPI_STATUS AcpiStatus;
     ACPI_BUFFER Buffer;
-    ACPI_RESOURCE *resource;
+    ACPI_RESOURCE *Resource;
     ULONG i, RequirementsListSize;
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
     PIO_RESOURCE_DESCRIPTOR RequirementDescriptor;
@@ -963,41 +963,41 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
     }
 
     SeenStartDependent = FALSE;
-    resource = Buffer.Pointer;
+    Resource = Buffer.Pointer;
     /* Count number of resources */
-    while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG &&
-	   resource->Type != ACPI_RESOURCE_TYPE_END_DEPENDENT) {
-	if (resource->Type == ACPI_RESOURCE_TYPE_START_DEPENDENT) {
+    while (Resource->Type != ACPI_RESOURCE_TYPE_END_TAG &&
+	   Resource->Type != ACPI_RESOURCE_TYPE_END_DEPENDENT) {
+	if (Resource->Type == ACPI_RESOURCE_TYPE_START_DEPENDENT) {
 	    if (SeenStartDependent) {
 		break;
 	    }
 	    SeenStartDependent = TRUE;
 	}
-	switch (resource->Type) {
+	switch (Resource->Type) {
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ: {
-	    ACPI_RESOURCE_EXTENDED_IRQ *irq_data =
-		(ACPI_RESOURCE_EXTENDED_IRQ *)&resource->Data;
-	    if (irq_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_EXTENDED_IRQ *IrqData =
+		(ACPI_RESOURCE_EXTENDED_IRQ *)&Resource->Data;
+	    if (IrqData->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    NumberOfResources += irq_data->InterruptCount;
+	    NumberOfResources += IrqData->InterruptCount;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_IRQ: {
-	    ACPI_RESOURCE_IRQ *irq_data = (ACPI_RESOURCE_IRQ *)&resource->Data;
-	    NumberOfResources += irq_data->InterruptCount;
+	    ACPI_RESOURCE_IRQ *IrqData = (ACPI_RESOURCE_IRQ *)&Resource->Data;
+	    NumberOfResources += IrqData->InterruptCount;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_DMA: {
-	    ACPI_RESOURCE_DMA *dma_data = (ACPI_RESOURCE_DMA *)&resource->Data;
-	    NumberOfResources += dma_data->ChannelCount;
+	    ACPI_RESOURCE_DMA *DmaData = (ACPI_RESOURCE_DMA *)&Resource->Data;
+	    NumberOfResources += DmaData->ChannelCount;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS16:
 	case ACPI_RESOURCE_TYPE_ADDRESS32:
 	case ACPI_RESOURCE_TYPE_ADDRESS64:
 	case ACPI_RESOURCE_TYPE_EXTENDED_ADDRESS64: {
-	    ACPI_RESOURCE_ADDRESS *res_addr = (ACPI_RESOURCE_ADDRESS *)&resource->Data;
-	    if (res_addr->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS *ResAddr = (ACPI_RESOURCE_ADDRESS *)&Resource->Data;
+	    if (ResAddr->ProducerConsumer == ACPI_PRODUCER)
 		break;
 	    NumberOfResources++;
 	    break;
@@ -1014,7 +1014,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	    break;
 	}
 	}
-	resource = ACPI_NEXT_RESOURCE(resource);
+	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
 
     RequirementsListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) +
@@ -1037,66 +1037,66 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 
     /* Fill resources list structure */
     SeenStartDependent = FALSE;
-    resource = Buffer.Pointer;
-    while (resource->Type != ACPI_RESOURCE_TYPE_END_TAG &&
-	   resource->Type != ACPI_RESOURCE_TYPE_END_DEPENDENT) {
-	if (resource->Type == ACPI_RESOURCE_TYPE_START_DEPENDENT) {
+    Resource = Buffer.Pointer;
+    while (Resource->Type != ACPI_RESOURCE_TYPE_END_TAG &&
+	   Resource->Type != ACPI_RESOURCE_TYPE_END_DEPENDENT) {
+	if (Resource->Type == ACPI_RESOURCE_TYPE_START_DEPENDENT) {
 	    if (SeenStartDependent) {
 		break;
 	    }
 	    SeenStartDependent = TRUE;
 	}
-	switch (resource->Type) {
+	switch (Resource->Type) {
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ: {
-	    ACPI_RESOURCE_EXTENDED_IRQ *irq_data = &resource->Data.ExtendedIrq;
-	    if (irq_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_EXTENDED_IRQ *IrqData = &Resource->Data.ExtendedIrq;
+	    if (IrqData->ProducerConsumer == ACPI_PRODUCER)
 		break;
-	    for (i = 0; i < irq_data->InterruptCount; i++) {
+	    for (i = 0; i < IrqData->InterruptCount; i++) {
 		RequirementDescriptor->Option = (i == 0) ? IO_RESOURCE_PREFERRED :
 							   IO_RESOURCE_ALTERNATIVE;
 		RequirementDescriptor->Type = CmResourceTypeInterrupt;
 		RequirementDescriptor->ShareDisposition =
-		    (irq_data->Shareable == ACPI_SHARED ? CmResourceShareShared :
+		    (IrqData->Shareable == ACPI_SHARED ? CmResourceShareShared :
 							  CmResourceShareDeviceExclusive);
 		RequirementDescriptor->Flags =
-		    (irq_data->Triggering == ACPI_LEVEL_SENSITIVE ?
+		    (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 			 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 			 CM_RESOURCE_INTERRUPT_LATCHED);
 		RequirementDescriptor->u.Interrupt.MinimumVector =
 		    RequirementDescriptor->u.Interrupt.MaximumVector =
-			irq_data->Interrupts[i];
+			IrqData->Interrupts[i];
 
 		RequirementDescriptor++;
 	    }
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_IRQ: {
-	    ACPI_RESOURCE_IRQ *irq_data = &resource->Data.Irq;
-	    for (i = 0; i < irq_data->InterruptCount; i++) {
+	    ACPI_RESOURCE_IRQ *IrqData = &Resource->Data.Irq;
+	    for (i = 0; i < IrqData->InterruptCount; i++) {
 		RequirementDescriptor->Option = (i == 0) ? IO_RESOURCE_PREFERRED :
 							   IO_RESOURCE_ALTERNATIVE;
 		RequirementDescriptor->Type = CmResourceTypeInterrupt;
 		RequirementDescriptor->ShareDisposition =
-		    (irq_data->Shareable == ACPI_SHARED ? CmResourceShareShared :
+		    (IrqData->Shareable == ACPI_SHARED ? CmResourceShareShared :
 							  CmResourceShareDeviceExclusive);
 		RequirementDescriptor->Flags =
-		    (irq_data->Triggering == ACPI_LEVEL_SENSITIVE ?
+		    (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 			 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 			 CM_RESOURCE_INTERRUPT_LATCHED);
 		RequirementDescriptor->u.Interrupt.MinimumVector =
 		    RequirementDescriptor->u.Interrupt.MaximumVector =
-			irq_data->Interrupts[i];
+			IrqData->Interrupts[i];
 
 		RequirementDescriptor++;
 	    }
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_DMA: {
-	    ACPI_RESOURCE_DMA *dma_data = &resource->Data.Dma;
-	    for (i = 0; i < dma_data->ChannelCount; i++) {
+	    ACPI_RESOURCE_DMA *DmaData = &Resource->Data.Dma;
+	    for (i = 0; i < DmaData->ChannelCount; i++) {
 		RequirementDescriptor->Type = CmResourceTypeDma;
 		RequirementDescriptor->Flags = 0;
-		switch (dma_data->Type) {
+		switch (DmaData->Type) {
 		case ACPI_TYPE_A:
 		    RequirementDescriptor->Flags |= CM_RESOURCE_DMA_TYPE_A;
 		    break;
@@ -1107,9 +1107,9 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    RequirementDescriptor->Flags |= CM_RESOURCE_DMA_TYPE_F;
 		    break;
 		}
-		if (dma_data->BusMaster == ACPI_BUS_MASTER)
+		if (DmaData->BusMaster == ACPI_BUS_MASTER)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_DMA_BUS_MASTER;
-		switch (dma_data->Transfer) {
+		switch (DmaData->Transfer) {
 		case ACPI_TRANSFER_8:
 		    RequirementDescriptor->Flags |= CM_RESOURCE_DMA_8;
 		    break;
@@ -1125,80 +1125,80 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 							   IO_RESOURCE_ALTERNATIVE;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
 		RequirementDescriptor->u.Dma.MinimumChannel =
-		    RequirementDescriptor->u.Dma.MaximumChannel = dma_data->Channels[i];
+		    RequirementDescriptor->u.Dma.MaximumChannel = DmaData->Channels[i];
 		RequirementDescriptor++;
 	    }
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_IO: {
-	    ACPI_RESOURCE_IO *io_data = &resource->Data.Io;
+	    ACPI_RESOURCE_IO *IoData = &Resource->Data.Io;
 	    RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-	    if (io_data->IoDecode == ACPI_DECODE_16)
+	    if (IoData->IoDecode == ACPI_DECODE_16)
 		RequirementDescriptor->Flags |= CM_RESOURCE_PORT_16_BIT_DECODE;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_PORT_10_BIT_DECODE;
-	    RequirementDescriptor->u.Port.Length = io_data->AddressLength;
+	    RequirementDescriptor->u.Port.Length = IoData->AddressLength;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypePort;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
-	    RequirementDescriptor->u.Port.Alignment = io_data->Alignment;
-	    RequirementDescriptor->u.Port.MinimumAddress.QuadPart = io_data->Minimum;
+	    RequirementDescriptor->u.Port.Alignment = IoData->Alignment;
+	    RequirementDescriptor->u.Port.MinimumAddress.QuadPart = IoData->Minimum;
 	    RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
-		io_data->Maximum + io_data->AddressLength - 1;
+		IoData->Maximum + IoData->AddressLength - 1;
 
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_FIXED_IO: {
-	    ACPI_RESOURCE_FIXED_IO *io_data = &resource->Data.FixedIo;
+	    ACPI_RESOURCE_FIXED_IO *IoData = &Resource->Data.FixedIo;
 	    RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-	    RequirementDescriptor->u.Port.Length = io_data->AddressLength;
+	    RequirementDescriptor->u.Port.Length = IoData->AddressLength;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypePort;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
 	    RequirementDescriptor->u.Port.Alignment = 1;
-	    RequirementDescriptor->u.Port.MinimumAddress.QuadPart = io_data->Address;
+	    RequirementDescriptor->u.Port.MinimumAddress.QuadPart = IoData->Address;
 	    RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
-		io_data->Address + io_data->AddressLength - 1;
+		IoData->Address + IoData->AddressLength - 1;
 
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS16: {
-	    ACPI_RESOURCE_ADDRESS16 *addr16_data = &resource->Data.Address16;
-	    if (addr16_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS16 *Addr16Data = &Resource->Data.Address16;
+	    if (Addr16Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
-	    if (addr16_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr16Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
 		RequirementDescriptor->u.BusNumber.MinBusNumber =
-		    addr16_data->Address.Minimum;
+		    Addr16Data->Address.Minimum;
 		RequirementDescriptor->u.BusNumber.MaxBusNumber =
-		    addr16_data->Address.Maximum + addr16_data->Address.AddressLength - 1;
+		    Addr16Data->Address.Maximum + Addr16Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.BusNumber.Length =
-		    addr16_data->Address.AddressLength;
-	    } else if (addr16_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr16Data->Address.AddressLength;
+	    } else if (Addr16Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr16_data->Decode == ACPI_POS_DECODE)
+		if (Addr16Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
 		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
-		    addr16_data->Address.Minimum;
+		    Addr16Data->Address.Minimum;
 		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
-		    addr16_data->Address.Maximum + addr16_data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = addr16_data->Address.AddressLength;
+		    Addr16Data->Address.Maximum + Addr16Data->Address.AddressLength - 1;
+		RequirementDescriptor->u.Port.Length = Addr16Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = 0;
-		if (addr16_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr16Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr16_data->Info.Mem.Caching) {
+		switch (Addr16Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -1210,50 +1210,50 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    break;
 		}
 		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
-		    addr16_data->Address.Minimum;
+		    Addr16Data->Address.Minimum;
 		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		    addr16_data->Address.Maximum + addr16_data->Address.AddressLength - 1;
+		    Addr16Data->Address.Maximum + Addr16Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.Memory.Length =
-		    addr16_data->Address.AddressLength;
+		    Addr16Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS32: {
-	    ACPI_RESOURCE_ADDRESS32 *addr32_data = &resource->Data.Address32;
-	    if (addr32_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS32 *Addr32Data = &Resource->Data.Address32;
+	    if (Addr32Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
-	    if (addr32_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr32Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
 		RequirementDescriptor->u.BusNumber.MinBusNumber =
-		    addr32_data->Address.Minimum;
+		    Addr32Data->Address.Minimum;
 		RequirementDescriptor->u.BusNumber.MaxBusNumber =
-		    addr32_data->Address.Maximum + addr32_data->Address.AddressLength - 1;
+		    Addr32Data->Address.Maximum + Addr32Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.BusNumber.Length =
-		    addr32_data->Address.AddressLength;
-	    } else if (addr32_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr32Data->Address.AddressLength;
+	    } else if (Addr32Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr32_data->Decode == ACPI_POS_DECODE)
+		if (Addr32Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
 		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
-		    addr32_data->Address.Minimum;
+		    Addr32Data->Address.Minimum;
 		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
-		    addr32_data->Address.Maximum + addr32_data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = addr32_data->Address.AddressLength;
+		    Addr32Data->Address.Maximum + Addr32Data->Address.AddressLength - 1;
+		RequirementDescriptor->u.Port.Length = Addr32Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = 0;
-		if (addr32_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr32Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr32_data->Info.Mem.Caching) {
+		switch (Addr32Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -1265,52 +1265,52 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    break;
 		}
 		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
-		    addr32_data->Address.Minimum;
+		    Addr32Data->Address.Minimum;
 		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		    addr32_data->Address.Maximum + addr32_data->Address.AddressLength - 1;
+		    Addr32Data->Address.Maximum + Addr32Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.Memory.Length =
-		    addr32_data->Address.AddressLength;
+		    Addr32Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_ADDRESS64: {
-	    ACPI_RESOURCE_ADDRESS64 *addr64_data = &resource->Data.Address64;
-	    if (addr64_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_ADDRESS64 *Addr64Data = &Resource->Data.Address64;
+	    if (Addr64Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
-	    if (addr64_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr64Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		DPRINT1("64-bit bus address is not supported!\n");
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
 		RequirementDescriptor->u.BusNumber.MinBusNumber =
-		    (ULONG)addr64_data->Address.Minimum;
+		    (ULONG)Addr64Data->Address.Minimum;
 		RequirementDescriptor->u.BusNumber.MaxBusNumber =
-		    (ULONG)addr64_data->Address.Maximum +
-		    addr64_data->Address.AddressLength - 1;
+		    (ULONG)Addr64Data->Address.Maximum +
+		    Addr64Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.BusNumber.Length =
-		    addr64_data->Address.AddressLength;
-	    } else if (addr64_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr64Data->Address.AddressLength;
+	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr64_data->Decode == ACPI_POS_DECODE)
+		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
 		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
-		    addr64_data->Address.Minimum;
+		    Addr64Data->Address.Minimum;
 		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
-		    addr64_data->Address.Maximum + addr64_data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = addr64_data->Address.AddressLength;
+		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
+		RequirementDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = 0;
-		if (addr64_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr64Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr64_data->Info.Mem.Caching) {
+		switch (Addr64Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -1322,52 +1322,52 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    break;
 		}
 		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
-		    addr64_data->Address.Minimum;
+		    Addr64Data->Address.Minimum;
 		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		    addr64_data->Address.Maximum + addr64_data->Address.AddressLength - 1;
+		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.Memory.Length =
-		    addr64_data->Address.AddressLength;
+		    Addr64Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_EXTENDED_ADDRESS64: {
-	    ACPI_RESOURCE_EXTENDED_ADDRESS64 *addr64_data = &resource->Data.ExtAddress64;
-	    if (addr64_data->ProducerConsumer == ACPI_PRODUCER)
+	    ACPI_RESOURCE_EXTENDED_ADDRESS64 *Addr64Data = &Resource->Data.ExtAddress64;
+	    if (Addr64Data->ProducerConsumer == ACPI_PRODUCER)
 		break;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
-	    if (addr64_data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
+	    if (Addr64Data->ResourceType == ACPI_BUS_NUMBER_RANGE) {
 		DPRINT1("64-bit bus address is not supported!\n");
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
 		RequirementDescriptor->u.BusNumber.MinBusNumber =
-		    (ULONG)addr64_data->Address.Minimum;
+		    (ULONG)Addr64Data->Address.Minimum;
 		RequirementDescriptor->u.BusNumber.MaxBusNumber =
-		    (ULONG)addr64_data->Address.Maximum +
-		    addr64_data->Address.AddressLength - 1;
+		    (ULONG)Addr64Data->Address.Maximum +
+		    Addr64Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.BusNumber.Length =
-		    addr64_data->Address.AddressLength;
-	    } else if (addr64_data->ResourceType == ACPI_IO_RANGE) {
+		    Addr64Data->Address.AddressLength;
+	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-		if (addr64_data->Decode == ACPI_POS_DECODE)
+		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
 		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
-		    addr64_data->Address.Minimum;
+		    Addr64Data->Address.Minimum;
 		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
-		    addr64_data->Address.Maximum + addr64_data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = addr64_data->Address.AddressLength;
+		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
+		RequirementDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 		RequirementDescriptor->Flags = 0;
-		if (addr64_data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
+		if (Addr64Data->Info.Mem.WriteProtect == ACPI_READ_ONLY_MEMORY)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 		else
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-		switch (addr64_data->Info.Mem.Caching) {
+		switch (Addr64Data->Info.Mem.Caching) {
 		case ACPI_CACHABLE_MEMORY:
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_CACHEABLE;
 		    break;
@@ -1379,66 +1379,66 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    break;
 		}
 		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
-		    addr64_data->Address.Minimum;
+		    Addr64Data->Address.Minimum;
 		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		    addr64_data->Address.Maximum + addr64_data->Address.AddressLength - 1;
+		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
 		RequirementDescriptor->u.Memory.Length =
-		    addr64_data->Address.AddressLength;
+		    Addr64Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_MEMORY24: {
-	    ACPI_RESOURCE_MEMORY24 *mem24_data = &resource->Data.Memory24;
+	    ACPI_RESOURCE_MEMORY24 *Mem24Data = &Resource->Data.Memory24;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypeMemory;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 	    RequirementDescriptor->Flags = CM_RESOURCE_MEMORY_24;
-	    if (mem24_data->WriteProtect == ACPI_READ_ONLY_MEMORY)
+	    if (Mem24Data->WriteProtect == ACPI_READ_ONLY_MEMORY)
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart = mem24_data->Minimum;
+	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart = Mem24Data->Minimum;
 	    RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		mem24_data->Maximum + mem24_data->AddressLength - 1;
-	    RequirementDescriptor->u.Memory.Length = mem24_data->AddressLength;
+		Mem24Data->Maximum + Mem24Data->AddressLength - 1;
+	    RequirementDescriptor->u.Memory.Length = Mem24Data->AddressLength;
 
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_MEMORY32: {
-	    ACPI_RESOURCE_MEMORY32 *mem32_data = &resource->Data.Memory32;
+	    ACPI_RESOURCE_MEMORY32 *Mem32Data = &Resource->Data.Memory32;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypeMemory;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 	    RequirementDescriptor->Flags = 0;
-	    if (mem32_data->WriteProtect == ACPI_READ_ONLY_MEMORY)
+	    if (Mem32Data->WriteProtect == ACPI_READ_ONLY_MEMORY)
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart = mem32_data->Minimum;
+	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart = Mem32Data->Minimum;
 	    RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		mem32_data->Maximum + mem32_data->AddressLength - 1;
-	    RequirementDescriptor->u.Memory.Length = mem32_data->AddressLength;
+		Mem32Data->Maximum + Mem32Data->AddressLength - 1;
+	    RequirementDescriptor->u.Memory.Length = Mem32Data->AddressLength;
 
 	    RequirementDescriptor++;
 	    break;
 	}
 	case ACPI_RESOURCE_TYPE_FIXED_MEMORY32: {
-	    ACPI_RESOURCE_FIXED_MEMORY32 *fixedmem32_data = &resource->Data.FixedMemory32;
+	    ACPI_RESOURCE_FIXED_MEMORY32 *Fixedmem32Data = &Resource->Data.FixedMemory32;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypeMemory;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
 	    RequirementDescriptor->Flags = 0;
-	    if (fixedmem32_data->WriteProtect == ACPI_READ_ONLY_MEMORY)
+	    if (Fixedmem32Data->WriteProtect == ACPI_READ_ONLY_MEMORY)
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
 	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
-		fixedmem32_data->Address;
+		Fixedmem32Data->Address;
 	    RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-		fixedmem32_data->Address + fixedmem32_data->AddressLength - 1;
-	    RequirementDescriptor->u.Memory.Length = fixedmem32_data->AddressLength;
+		Fixedmem32Data->Address + Fixedmem32Data->AddressLength - 1;
+	    RequirementDescriptor->u.Memory.Length = Fixedmem32Data->AddressLength;
 
 	    RequirementDescriptor++;
 	    break;
@@ -1447,7 +1447,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	    break;
 	}
 	}
-	resource = ACPI_NEXT_RESOURCE(resource);
+	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
     ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
 
@@ -1489,28 +1489,28 @@ Return Value:
 --*/
 static NTSTATUS Bus_PDO_QueryDeviceRelations(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
-    PIO_STACK_LOCATION stack;
-    PDEVICE_RELATIONS deviceRelations;
-    NTSTATUS status;
+    PIO_STACK_LOCATION Stack;
+    PDEVICE_RELATIONS DeviceRelations;
+    NTSTATUS Status;
 
-    stack = IoGetCurrentIrpStackLocation(Irp);
+    Stack = IoGetCurrentIrpStackLocation(Irp);
 
-    switch (stack->Parameters.QueryDeviceRelations.Type) {
+    switch (Stack->Parameters.QueryDeviceRelations.Type) {
     case TargetDeviceRelation:
 
-	deviceRelations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
-	if (deviceRelations) {
+	DeviceRelations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
+	if (DeviceRelations) {
 	    //
 	    // Only PDO can handle this request. Somebody above
 	    // is not playing by rule.
 	    //
 	    ASSERTMSG("Someone above is handling TargetDeviceRelation\n",
-		      !deviceRelations);
+		      !DeviceRelations);
 	}
 
-	deviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS), ACPI_TAG);
-	if (!deviceRelations) {
-	    status = STATUS_INSUFFICIENT_RESOURCES;
+	DeviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS), ACPI_TAG);
+	if (!DeviceRelations) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
 	}
 
@@ -1521,22 +1521,22 @@ static NTSTATUS Bus_PDO_QueryDeviceRelations(PPDO_DEVICE_DATA DeviceData, PIRP I
 	// un-registers for notification on the device.
 	//
 
-	deviceRelations->Count = 1;
-	deviceRelations->Objects[0] = DeviceData->Common.Self;
+	DeviceRelations->Count = 1;
+	DeviceRelations->Objects[0] = DeviceData->Common.Self;
 	// ObReferenceObject(DeviceData->Common.Self);
 
-	status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = (ULONG_PTR)deviceRelations;
+	Status = STATUS_SUCCESS;
+	Irp->IoStatus.Information = (ULONG_PTR)DeviceRelations;
 	break;
 
     case BusRelations: // Not handled by PDO
     case EjectionRelations: // optional for PDO
     case RemovalRelations: // // optional for PDO
     default:
-	status = Irp->IoStatus.Status;
+	Status = Irp->IoStatus.Status;
     }
 
-    return status;
+    return Status;
 }
 
 /*++
@@ -1559,21 +1559,21 @@ Return Value:
 --*/
 static NTSTATUS Bus_PDO_QueryBusInformation(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
-    PPNP_BUS_INFORMATION busInfo;
+    PPNP_BUS_INFORMATION BusInfo;
 
-    busInfo = ExAllocatePoolWithTag(sizeof(PNP_BUS_INFORMATION), ACPI_TAG);
+    BusInfo = ExAllocatePoolWithTag(sizeof(PNP_BUS_INFORMATION), ACPI_TAG);
 
-    if (busInfo == NULL) {
+    if (BusInfo == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    busInfo->BusTypeGuid = GUID_ACPI_INTERFACE_STANDARD;
+    BusInfo->BusTypeGuid = GUID_ACPI_INTERFACE_STANDARD;
 
-    busInfo->LegacyBusType = InternalPowerBus;
+    BusInfo->LegacyBusType = InternalPowerBus;
 
-    busInfo->BusNumber = 0; //fixme
+    BusInfo->BusNumber = 0; //fixme
 
-    Irp->IoStatus.Information = (ULONG_PTR)busInfo;
+    Irp->IoStatus.Information = (ULONG_PTR)BusInfo;
 
     return STATUS_SUCCESS;
 }
@@ -1581,11 +1581,11 @@ static NTSTATUS Bus_PDO_QueryBusInformation(PPDO_DEVICE_DATA DeviceData, PIRP Ir
 static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
 					  PDEVICE_CAPABILITIES DeviceCapabilities)
 {
-    IO_STATUS_BLOCK ioStatus;
-    NTSTATUS status;
-    PDEVICE_OBJECT targetObject;
-    PIO_STACK_LOCATION irpStack;
-    PIRP pnpIrp;
+    IO_STATUS_BLOCK IoStatus;
+    NTSTATUS Status;
+    PDEVICE_OBJECT TargetObject;
+    PIO_STACK_LOCATION IrpStack;
+    PIRP PnpIrp;
 
     //
     // Initialize the capabilities that we will send down
@@ -1596,62 +1596,62 @@ static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
     DeviceCapabilities->Address = -1;
     DeviceCapabilities->UINumber = -1;
 
-    targetObject = IoGetAttachedDeviceReference(DeviceObject);
+    TargetObject = IoGetAttachedDeviceReference(DeviceObject);
 
     //
     // Build an Irp
     //
-    pnpIrp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, targetObject, NULL,
-					  0, NULL, &ioStatus);
-    if (pnpIrp == NULL) {
-	status = STATUS_INSUFFICIENT_RESOURCES;
+    PnpIrp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, TargetObject, NULL,
+					  0, NULL, &IoStatus);
+    if (PnpIrp == NULL) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto GetDeviceCapabilitiesExit;
     }
 
     //
     // Pnp Irps all begin life as STATUS_NOT_SUPPORTED;
     //
-    pnpIrp->IoStatus.Status = STATUS_NOT_SUPPORTED;
+    PnpIrp->IoStatus.Status = STATUS_NOT_SUPPORTED;
 
     //
     // Get the top of stack
     //
-    irpStack = IoGetCurrentIrpStackLocation(pnpIrp);
+    IrpStack = IoGetCurrentIrpStackLocation(PnpIrp);
 
     //
     // Set the top of stack
     //
-    RtlZeroMemory(irpStack, sizeof(IO_STACK_LOCATION));
-    irpStack->MajorFunction = IRP_MJ_PNP;
-    irpStack->MinorFunction = IRP_MN_QUERY_CAPABILITIES;
-    irpStack->Parameters.DeviceCapabilities.Capabilities = DeviceCapabilities;
+    RtlZeroMemory(IrpStack, sizeof(IO_STACK_LOCATION));
+    IrpStack->MajorFunction = IRP_MJ_PNP;
+    IrpStack->MinorFunction = IRP_MN_QUERY_CAPABILITIES;
+    IrpStack->Parameters.DeviceCapabilities.Capabilities = DeviceCapabilities;
 
     //
     // Call the driver
     //
-    status = IoCallDriver(targetObject, pnpIrp);
+    Status = IoCallDriver(TargetObject, PnpIrp);
 
 GetDeviceCapabilitiesExit:
     //
     // Done with reference
     //
-    ObDereferenceObject(targetObject);
+    ObDereferenceObject(TargetObject);
 
     //
     // Done
     //
-    return status;
+    return Status;
 }
 
 NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpStack,
 		     PPDO_DEVICE_DATA DeviceData)
 {
-    NTSTATUS status;
-    POWER_STATE state;
-    struct acpi_device *device = NULL;
+    NTSTATUS Status;
+    POWER_STATE State;
+    PACPI_DEVICE Device = NULL;
 
     if (DeviceData->AcpiHandle)
-	acpi_bus_get_device(DeviceData->AcpiHandle, &device);
+	AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
     //
     // NB: Because we are a bus enumerator, we have no one to whom we could
@@ -1666,50 +1666,50 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	// required to allow others to access this device.
 	// Power up the device.
 	//
-	if (DeviceData->AcpiHandle && acpi_bus_power_manageable(DeviceData->AcpiHandle) &&
-	    !ACPI_SUCCESS(acpi_bus_set_power(DeviceData->AcpiHandle, ACPI_STATE_D0))) {
+	if (DeviceData->AcpiHandle && AcpiBusPowerManageable(DeviceData->AcpiHandle) &&
+	    !ACPI_SUCCESS(AcpiBusSetPower(DeviceData->AcpiHandle, ACPI_STATE_D0))) {
 	    DPRINT1("Device %p failed to start!\n", DeviceData->AcpiHandle);
-	    status = STATUS_UNSUCCESSFUL;
+	    Status = STATUS_UNSUCCESSFUL;
 	    break;
 	}
 
 	DeviceData->InterfaceName.Length = 0;
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 
-	if (!device) {
-	    status = IoRegisterDeviceInterface(DeviceData->Common.Self,
+	if (!Device) {
+	    Status = IoRegisterDeviceInterface(DeviceData->Common.Self,
 					       &GUID_DEVICE_SYS_BUTTON, NULL,
 					       &DeviceData->InterfaceName);
-	} else if (device->flags.hardware_id &&
-		   strstr(device->pnp.hardware_id, ACPI_THERMAL_HID)) {
-	    status = IoRegisterDeviceInterface(DeviceData->Common.Self,
+	} else if (Device->Flags.HardwareId &&
+		   strstr(Device->Pnp.HardwareId, ACPI_THERMAL_HID)) {
+	    Status = IoRegisterDeviceInterface(DeviceData->Common.Self,
 					       &GUID_DEVICE_THERMAL_ZONE, NULL,
 					       &DeviceData->InterfaceName);
-	} else if (device->flags.hardware_id &&
-		   strstr(device->pnp.hardware_id, ACPI_FAN_HID)) {
-	    status = IoRegisterDeviceInterface(DeviceData->Common.Self, &GUID_DEVICE_FAN,
+	} else if (Device->Flags.HardwareId &&
+		   strstr(Device->Pnp.HardwareId, ACPI_FAN_HID)) {
+	    Status = IoRegisterDeviceInterface(DeviceData->Common.Self, &GUID_DEVICE_FAN,
 					       NULL, &DeviceData->InterfaceName);
-	} else if (device->flags.hardware_id &&
-		   strstr(device->pnp.hardware_id, ACPI_BUTTON_HID_LID)) {
-	    status = IoRegisterDeviceInterface(DeviceData->Common.Self, &GUID_DEVICE_LID,
+	} else if (Device->Flags.HardwareId &&
+		   strstr(Device->Pnp.HardwareId, ACPI_BUTTON_HID_LID)) {
+	    Status = IoRegisterDeviceInterface(DeviceData->Common.Self, &GUID_DEVICE_LID,
 					       NULL, &DeviceData->InterfaceName);
-	} else if (device->flags.hardware_id &&
-		   strstr(device->pnp.hardware_id, ACPI_PROCESSOR_HID)) {
-	    status = IoRegisterDeviceInterface(DeviceData->Common.Self,
+	} else if (Device->Flags.HardwareId &&
+		   strstr(Device->Pnp.HardwareId, ACPI_PROCESSOR_HID)) {
+	    Status = IoRegisterDeviceInterface(DeviceData->Common.Self,
 					       &GUID_DEVICE_PROCESSOR, NULL,
 					       &DeviceData->InterfaceName);
 	}
 
 	/* Failure to register an interface is not a fatal failure so don't
 	 * return a failure status */
-	if (NT_SUCCESS(status) && DeviceData->InterfaceName.Length != 0)
+	if (NT_SUCCESS(Status) && DeviceData->InterfaceName.Length != 0)
 	    IoSetDeviceInterfaceState(&DeviceData->InterfaceName, TRUE);
 
-	state.DeviceState = PowerDeviceD0;
-	PoSetPowerState(DeviceData->Common.Self, DevicePowerState, state);
+	State.DeviceState = PowerDeviceD0;
+	PoSetPowerState(DeviceData->Common.Self, DevicePowerState, State);
 	DeviceData->Common.DevicePowerState = PowerDeviceD0;
 	SET_NEW_PNP_STATE(DeviceData->Common, Started);
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_STOP_DEVICE:
@@ -1721,18 +1721,18 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	// Here we shut down the device and give up and unmap any resources
 	// we acquired for the device.
 	//
-	if (DeviceData->AcpiHandle && acpi_bus_power_manageable(DeviceData->AcpiHandle) &&
-	    !ACPI_SUCCESS(acpi_bus_set_power(DeviceData->AcpiHandle, ACPI_STATE_D3))) {
+	if (DeviceData->AcpiHandle && AcpiBusPowerManageable(DeviceData->AcpiHandle) &&
+	    !ACPI_SUCCESS(AcpiBusSetPower(DeviceData->AcpiHandle, ACPI_STATE_D3))) {
 	    DPRINT1("Device %p failed to stop!\n", DeviceData->AcpiHandle);
-	    status = STATUS_UNSUCCESSFUL;
+	    Status = STATUS_UNSUCCESSFUL;
 	    break;
 	}
 
-	state.DeviceState = PowerDeviceD3;
-	PoSetPowerState(DeviceData->Common.Self, DevicePowerState, state);
+	State.DeviceState = PowerDeviceD3;
+	PoSetPowerState(DeviceData->Common.Self, DevicePowerState, State);
 	DeviceData->Common.DevicePowerState = PowerDeviceD3;
 	SET_NEW_PNP_STATE(DeviceData->Common, Stopped);
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_QUERY_STOP_DEVICE:
@@ -1744,7 +1744,7 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	//
 
 	SET_NEW_PNP_STATE(DeviceData->Common, StopPending);
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_CANCEL_STOP_DEVICE:
@@ -1769,7 +1769,7 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	    //
 	    RESTORE_PREVIOUS_PNP_STATE(DeviceData->Common);
 	}
-	status = STATUS_SUCCESS; // We must not fail this IRP.
+	Status = STATUS_SUCCESS; // We must not fail this IRP.
 	break;
 
     case IRP_MN_REMOVE_DEVICE:
@@ -1781,28 +1781,28 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	if (DeviceData->InterfaceName.Length != 0)
 	    IoSetDeviceInterfaceState(&DeviceData->InterfaceName, FALSE);
 
-	if (DeviceData->AcpiHandle && acpi_bus_power_manageable(DeviceData->AcpiHandle) &&
-	    !ACPI_SUCCESS(acpi_bus_set_power(DeviceData->AcpiHandle, ACPI_STATE_D3))) {
+	if (DeviceData->AcpiHandle && AcpiBusPowerManageable(DeviceData->AcpiHandle) &&
+	    !ACPI_SUCCESS(AcpiBusSetPower(DeviceData->AcpiHandle, ACPI_STATE_D3))) {
 	    DPRINT1("Device %p failed to enter D3!\n", DeviceData->AcpiHandle);
-	    state.DeviceState = PowerDeviceD3;
-	    PoSetPowerState(DeviceData->Common.Self, DevicePowerState, state);
+	    State.DeviceState = PowerDeviceD3;
+	    PoSetPowerState(DeviceData->Common.Self, DevicePowerState, State);
 	    DeviceData->Common.DevicePowerState = PowerDeviceD3;
 	}
 
 	SET_NEW_PNP_STATE(DeviceData->Common, Stopped);
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_QUERY_REMOVE_DEVICE:
 	SET_NEW_PNP_STATE(DeviceData->Common, RemovalPending);
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_CANCEL_REMOVE_DEVICE:
 	if (RemovalPending == DeviceData->Common.DevicePnPState) {
 	    RESTORE_PREVIOUS_PNP_STATE(DeviceData->Common);
 	}
-	status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     case IRP_MN_QUERY_CAPABILITIES:
@@ -1812,14 +1812,14 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	// can be locked or ejected..etc
 	//
 
-	status = Bus_PDO_QueryDeviceCaps(DeviceData, Irp);
+	Status = Bus_PDO_QueryDeviceCaps(DeviceData, Irp);
 
 	break;
 
     case IRP_MN_QUERY_ID:
 
 	// Query the IDs of the device
-	status = Bus_PDO_QueryDeviceId(DeviceData, Irp);
+	Status = Bus_PDO_QueryDeviceId(DeviceData, Irp);
 
 	break;
 
@@ -1828,31 +1828,31 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	DPRINT("\tQueryDeviceRelation Type: %s\n",
 	       DbgDeviceRelationString(IrpStack->Parameters.QueryDeviceRelations.Type));
 
-	status = Bus_PDO_QueryDeviceRelations(DeviceData, Irp);
+	Status = Bus_PDO_QueryDeviceRelations(DeviceData, Irp);
 
 	break;
 
     case IRP_MN_QUERY_DEVICE_TEXT:
 
-	status = Bus_PDO_QueryDeviceText(DeviceData, Irp);
+	Status = Bus_PDO_QueryDeviceText(DeviceData, Irp);
 
 	break;
 
     case IRP_MN_QUERY_RESOURCES:
 
-	status = Bus_PDO_QueryResources(DeviceData, Irp);
+	Status = Bus_PDO_QueryResources(DeviceData, Irp);
 
 	break;
 
     case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
 
-	status = Bus_PDO_QueryResourceRequirements(DeviceData, Irp);
+	Status = Bus_PDO_QueryResourceRequirements(DeviceData, Irp);
 
 	break;
 
     case IRP_MN_QUERY_BUS_INFORMATION:
 
-	status = Bus_PDO_QueryBusInformation(DeviceData, Irp);
+	Status = Bus_PDO_QueryBusInformation(DeviceData, Irp);
 
 	break;
 
@@ -1895,7 +1895,7 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 
     case IRP_MN_SET_LOCK:
 
-	status = STATUS_NOT_SUPPORTED;
+	Status = STATUS_NOT_SUPPORTED;
 
 	break;
 
@@ -1905,13 +1905,13 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	// For PnP requests to the PDO that we do not understand we should
 	// return the IRP WITHOUT setting the status or information fields.
 	// These fields may have already been set by a filter (eg acpi).
-	status = Irp->IoStatus.Status;
+	Status = Irp->IoStatus.Status;
 
 	break;
     }
 
-    Irp->IoStatus.Status = status;
+    Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    return status;
+    return Status;
 }

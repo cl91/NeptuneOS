@@ -6,8 +6,8 @@
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_ADD_DEVICE Bus_AddDevice;
 
-extern struct acpi_device *sleep_button;
-extern struct acpi_device *power_button;
+extern struct _ACPI_DEVICE *SleepButton;
+extern struct _ACPI_DEVICE *PowerButton;
 
 UNICODE_STRING ProcessorHardwareIds = { 0, 0, NULL };
 LPWSTR ProcessorIdString = NULL;
@@ -16,47 +16,47 @@ LPWSTR ProcessorNameString = NULL;
 static NTAPI NTSTATUS Bus_AddDevice(PDRIVER_OBJECT DriverObject,
 				    PDEVICE_OBJECT PhysicalDeviceObject)
 {
-    NTSTATUS status;
-    PDEVICE_OBJECT deviceObject = NULL;
-    PFDO_DEVICE_DATA deviceData = NULL;
+    NTSTATUS Status;
+    PDEVICE_OBJECT DeviceObject = NULL;
+    PFDO_DEVICE_DATA DeviceData = NULL;
 
     DPRINT("Add Device: 0x%p\n", PhysicalDeviceObject);
 
     DPRINT("#################### Bus_AddDevice Creating FDO ####################\n");
-    status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_DATA), NULL, FILE_DEVICE_ACPI,
-			    FILE_DEVICE_SECURE_OPEN, TRUE, &deviceObject);
-    if (!NT_SUCCESS(status)) {
-	DPRINT1("IoCreateDevice() failed with status 0x%X\n", status);
+    Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_DATA), NULL, FILE_DEVICE_ACPI,
+			    FILE_DEVICE_SECURE_OPEN, TRUE, &DeviceObject);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("IoCreateDevice() failed with status 0x%X\n", Status);
 	goto End;
     }
 
-    deviceData = (PFDO_DEVICE_DATA)deviceObject->DeviceExtension;
-    RtlZeroMemory(deviceData, sizeof(FDO_DEVICE_DATA));
+    DeviceData = (PFDO_DEVICE_DATA)DeviceObject->DeviceExtension;
+    RtlZeroMemory(DeviceData, sizeof(FDO_DEVICE_DATA));
 
     //
     // Set the initial state of the FDO
     //
 
-    INITIALIZE_PNP_STATE(deviceData->Common);
+    INITIALIZE_PNP_STATE(DeviceData->Common);
 
-    deviceData->Common.IsFDO = TRUE;
+    DeviceData->Common.IsFDO = TRUE;
 
-    deviceData->Common.Self = deviceObject;
+    DeviceData->Common.Self = DeviceObject;
 
-    InitializeListHead(&deviceData->ListOfPDOs);
+    InitializeListHead(&DeviceData->ListOfPDOs);
 
     // Set the PDO for use with PlugPlay functions
 
-    deviceData->UnderlyingPDO = PhysicalDeviceObject;
+    DeviceData->UnderlyingPDO = PhysicalDeviceObject;
 
     //
     // Set the initial powerstate of the FDO
     //
 
-    deviceData->Common.DevicePowerState = PowerDeviceUnspecified;
-    deviceData->Common.SystemPowerState = PowerSystemWorking;
+    DeviceData->Common.DevicePowerState = PowerDeviceUnspecified;
+    DeviceData->Common.SystemPowerState = PowerSystemWorking;
 
-    deviceObject->Flags |= DO_POWER_PAGABLE;
+    DeviceObject->Flags |= DO_POWER_PAGABLE;
 
     //
     // Attach our FDO to the device stack.
@@ -64,11 +64,11 @@ static NTAPI NTSTATUS Bus_AddDevice(PDRIVER_OBJECT DriverObject,
     // attachment chain.  This is where all the IRPs should be routed.
     //
 
-    deviceData->NextLowerDriver = IoAttachDeviceToDeviceStack(deviceObject,
+    DeviceData->NextLowerDriver = IoAttachDeviceToDeviceStack(DeviceObject,
 							      PhysicalDeviceObject);
 
-    if (NULL == deviceData->NextLowerDriver) {
-	status = STATUS_NO_SUCH_DEVICE;
+    if (NULL == DeviceData->NextLowerDriver) {
+	Status = STATUS_NO_SUCH_DEVICE;
 	goto End;
     }
 
@@ -76,16 +76,16 @@ static NTAPI NTSTATUS Bus_AddDevice(PDRIVER_OBJECT DriverObject,
     // We are done with initializing, so let's indicate that and return.
     // This should be the final step in the AddDevice process.
     //
-    deviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
 End:
-    if (!NT_SUCCESS(status) && deviceObject) {
-	if (deviceData && deviceData->NextLowerDriver) {
-	    IoDetachDevice(deviceData->NextLowerDriver);
+    if (!NT_SUCCESS(Status) && DeviceObject) {
+	if (DeviceData && DeviceData->NextLowerDriver) {
+	    IoDetachDevice(DeviceData->NextLowerDriver);
 	}
-	IoDeleteDevice(deviceObject);
+	IoDeleteDevice(DeviceObject);
     }
-    return status;
+    return Status;
 }
 
 static NTAPI NTSTATUS Bus_CreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
@@ -100,68 +100,68 @@ static NTAPI NTSTATUS Bus_CreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Ir
 
 static NTAPI NTSTATUS Bus_DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-    PIO_STACK_LOCATION irpStack;
-    NTSTATUS status = STATUS_NOT_SUPPORTED;
-    PCOMMON_DEVICE_DATA commonData;
+    PIO_STACK_LOCATION IrpStack;
+    NTSTATUS Status = STATUS_NOT_SUPPORTED;
+    PCOMMON_DEVICE_DATA CommonData;
     ULONG Caps = 0;
 
-    irpStack = IoGetCurrentIrpStackLocation(Irp);
-    ASSERT(IRP_MJ_DEVICE_CONTROL == irpStack->MajorFunction);
+    IrpStack = IoGetCurrentIrpStackLocation(Irp);
+    ASSERT(IRP_MJ_DEVICE_CONTROL == IrpStack->MajorFunction);
 
-    commonData = (PCOMMON_DEVICE_DATA)DeviceObject->DeviceExtension;
+    CommonData = (PCOMMON_DEVICE_DATA)DeviceObject->DeviceExtension;
 
     Irp->IoStatus.Information = 0;
 
-    if (!commonData->IsFDO) {
-	switch (irpStack->Parameters.DeviceIoControl.IoControlCode) {
+    if (!CommonData->IsFDO) {
+	switch (IrpStack->Parameters.DeviceIoControl.IoControlCode) {
 	case IOCTL_ACPI_ASYNC_EVAL_METHOD:
 	case IOCTL_ACPI_EVAL_METHOD:
-	    status = Bus_PDO_EvalMethod((PPDO_DEVICE_DATA)commonData, Irp);
+	    Status = Bus_PDO_EvalMethod((PPDO_DEVICE_DATA)CommonData, Irp);
 	    break;
 
 	case IOCTL_GET_SYS_BUTTON_CAPS:
-	    if (irpStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(ULONG)) {
-		status = STATUS_BUFFER_TOO_SMALL;
+	    if (IrpStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(ULONG)) {
+		Status = STATUS_BUFFER_TOO_SMALL;
 		break;
 	    }
 
-	    if (wcsstr(((PPDO_DEVICE_DATA)commonData)->HardwareIDs, L"PNP0C0D")) {
+	    if (wcsstr(((PPDO_DEVICE_DATA)CommonData)->HardwareIDs, L"PNP0C0D")) {
 		DPRINT1("Lid button reported to power manager\n");
 		Caps |= SYS_BUTTON_LID;
-	    } else if (((PPDO_DEVICE_DATA)commonData)->AcpiHandle == NULL) {
+	    } else if (((PPDO_DEVICE_DATA)CommonData)->AcpiHandle == NULL) {
 		/* We have to return both at the same time because since we
                    * have a NULL handle we are the fixed feature DO and we will
                    * only be called once (not once per device)
                    */
-		if (power_button) {
+		if (PowerButton) {
 		    DPRINT("Fixed power button reported to power manager\n");
 		    Caps |= SYS_BUTTON_POWER;
 		}
-		if (sleep_button) {
+		if (SleepButton) {
 		    DPRINT("Fixed sleep button reported to power manager\n");
 		    Caps |= SYS_BUTTON_SLEEP;
 		}
-	    } else if (wcsstr(((PPDO_DEVICE_DATA)commonData)->HardwareIDs, L"PNP0C0C")) {
+	    } else if (wcsstr(((PPDO_DEVICE_DATA)CommonData)->HardwareIDs, L"PNP0C0C")) {
 		DPRINT("Control method power button reported to power manager\n");
 		Caps |= SYS_BUTTON_POWER;
-	    } else if (wcsstr(((PPDO_DEVICE_DATA)commonData)->HardwareIDs, L"PNP0C0E")) {
+	    } else if (wcsstr(((PPDO_DEVICE_DATA)CommonData)->HardwareIDs, L"PNP0C0E")) {
 		DPRINT("Control method sleep reported to power manager\n");
 		Caps |= SYS_BUTTON_SLEEP;
 	    } else {
 		DPRINT1("IOCTL_GET_SYS_BUTTON_CAPS sent to a non-button device\n");
-		status = STATUS_INVALID_PARAMETER;
+		Status = STATUS_INVALID_PARAMETER;
 	    }
 
 	    if (Caps != 0) {
 		RtlCopyMemory(Irp->SystemBuffer, &Caps, sizeof(Caps));
 		Irp->IoStatus.Information = sizeof(Caps);
-		status = STATUS_SUCCESS;
+		Status = STATUS_SUCCESS;
 	    }
 	    break;
 
 	case IOCTL_GET_SYS_BUTTON_EVENT:
 	    AcpiBusQueueGetButtonEventIrp(Irp);
-	    status = STATUS_PENDING;
+	    Status = STATUS_PENDING;
 	    break;
 
 	case IOCTL_BATTERY_QUERY_TAG:
@@ -170,20 +170,20 @@ static NTAPI NTSTATUS Bus_DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP 
 
 	default:
 	    DPRINT1("Unsupported IOCTL: %x\n",
-		    irpStack->Parameters.DeviceIoControl.IoControlCode);
+		    IrpStack->Parameters.DeviceIoControl.IoControlCode);
 	    break;
 	}
     } else {
 	DPRINT1("IOCTL sent to the ACPI FDO! Kill the caller!\n");
     }
 
-    if (status != STATUS_PENDING) {
-	Irp->IoStatus.Status = status;
+    if (Status != STATUS_PENDING) {
+	Irp->IoStatus.Status = Status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
     } else {
 	IoMarkIrpPending(Irp);
     }
-    return status;
+    return Status;
 }
 
 static NTSTATUS AcpiRegOpenKey(IN HANDLE ParentKeyHandle, IN LPCWSTR KeyName,
@@ -258,9 +258,9 @@ static NTSTATUS AcpiRegQueryValue(IN HANDLE KeyHandle, IN LPWSTR ValueName,
 	if (((ValueInfo->Type == REG_SZ) || (ValueInfo->Type == REG_EXPAND_SZ) ||
 	     (ValueInfo->Type == REG_MULTI_SZ)) &&
 	    (ValueInfo->DataLength <= *DataLength - sizeof(WCHAR))) {
-	    WCHAR *ptr = (WCHAR *)((ULONG_PTR)Data + ValueInfo->DataLength);
-	    if ((ptr > (WCHAR *)Data) && ptr[-1])
-		*ptr = 0;
+	    WCHAR *Ptr = (WCHAR *)((ULONG_PTR)Data + ValueInfo->DataLength);
+	    if ((Ptr > (WCHAR *)Data) && Ptr[-1])
+		*Ptr = 0;
 	}
     }
 

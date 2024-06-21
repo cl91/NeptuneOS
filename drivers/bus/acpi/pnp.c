@@ -160,7 +160,7 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
 	return STATUS_UNSUCCESSFUL;
     }
 
-    Status = acpi_create_volatile_registry_tables();
+    Status = AcpiCreateVolatileRegistryTables();
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Unable to create ACPI tables in registry\n");
     }
@@ -169,7 +169,7 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
     /* Initialize ACPI bus manager */
     AcpiStatus = AcpiBusInitializeManager();
     if (!ACPI_SUCCESS(AcpiStatus)) {
-	DPRINT1("acpi_init() failed with status 0x%X\n", AcpiStatus);
+	DPRINT1("AcpiBusInitializeManager() failed with status 0x%X\n", AcpiStatus);
 	AcpiTerminate();
 	return STATUS_UNSUCCESSFUL;
     }
@@ -359,29 +359,29 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 
 NTAPI NTSTATUS Bus_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
-    PIO_STACK_LOCATION irpStack;
-    NTSTATUS status;
-    PCOMMON_DEVICE_DATA commonData;
+    PIO_STACK_LOCATION IrpStack;
+    NTSTATUS Status;
+    PCOMMON_DEVICE_DATA CommonData;
 
-    irpStack = IoGetCurrentIrpStackLocation(Irp);
-    ASSERT(IRP_MJ_PNP == irpStack->MajorFunction);
+    IrpStack = IoGetCurrentIrpStackLocation(Irp);
+    ASSERT(IRP_MJ_PNP == IrpStack->MajorFunction);
 
-    commonData = (PCOMMON_DEVICE_DATA)DeviceObject->DeviceExtension;
+    CommonData = (PCOMMON_DEVICE_DATA)DeviceObject->DeviceExtension;
 
-    if (commonData->IsFDO) {
-	DPRINT("FDO %s IRP:0x%p\n", PnPMinorFunctionString(irpStack->MinorFunction), Irp);
+    if (CommonData->IsFDO) {
+	DPRINT("FDO %s IRP:0x%p\n", PnPMinorFunctionString(IrpStack->MinorFunction), Irp);
 	//
 	// Request is for the bus FDO
 	//
-	status = Bus_FDO_PnP(DeviceObject, Irp, irpStack, (PFDO_DEVICE_DATA)commonData);
+	Status = Bus_FDO_PnP(DeviceObject, Irp, IrpStack, (PFDO_DEVICE_DATA)CommonData);
     } else {
-	DPRINT("PDO %s IRP: 0x%p\n", PnPMinorFunctionString(irpStack->MinorFunction),
+	DPRINT("PDO %s IRP: 0x%p\n", PnPMinorFunctionString(IrpStack->MinorFunction),
 	       Irp);
 	//
 	// Request is for the child PDO.
 	//
-	status = Bus_PDO_PnP(DeviceObject, Irp, irpStack, (PPDO_DEVICE_DATA)commonData);
+	Status = Bus_PDO_PnP(DeviceObject, Irp, IrpStack, (PPDO_DEVICE_DATA)CommonData);
     }
 
-    return status;
+    return Status;
 }

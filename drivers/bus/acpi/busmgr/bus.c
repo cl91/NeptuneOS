@@ -32,42 +32,39 @@
 #include "acpi_bus.h"
 #include "acpi_drivers.h"
 
-#define down(mutex)
-#define up(mutex)
-
 #define _COMPONENT ACPI_BUS_COMPONENT
 ACPI_MODULE_NAME("acpi_bus")
 
 #define WALK_UP 0
 #define WALK_DOWN 1
 
-#define STRUCT_TO_INT(s) (*((int *)&s))
-#define HAS_CHILDREN(d) ((d)->children.Flink != &((d)->children))
-#define HAS_SIBLINGS(d) (((d)->parent) && ((d)->node.Flink != &(d)->parent->children))
-#define NODE_TO_DEVICE(n) (CONTAINING_RECORD(n, struct acpi_device, node))
+#define STRUCT_TO_INT(s) (*((INT *)&s))
+#define HAS_CHILDREN(d) ((d)->Children.Flink != &((d)->Children))
+#define HAS_SIBLINGS(d) (((d)->Parent) && ((d)->Node.Flink != &(d)->Parent->Children))
+#define NODE_TO_DEVICE(n) (CONTAINING_RECORD(n, ACPI_DEVICE, Node))
 
-extern void acpi_pic_sci_set_trigger(unsigned int irq, UINT16 trigger);
+extern VOID AcpiPicSciSetTrigger(ULONG Irq, UINT16 Trigger);
 
-typedef int (*acpi_bus_walk_callback)(struct acpi_device *, int, void *);
+typedef INT (*ACPI_BUS_WALK_CALLBACK)(PACPI_DEVICE , int, PVOID );
 
-struct acpi_device *acpi_root;
+PACPI_DEVICE AcpiRoot;
 
-int ProcessorCount, PowerDeviceCount, PowerButtonCount, FixedPowerButtonCount;
-int FixedSleepButtonCount, SleepButtonCount, ThermalZoneCount;
+INT ProcessorCount, PowerDeviceCount, PowerButtonCount, FixedPowerButtonCount;
+INT FixedSleepButtonCount, SleepButtonCount, ThermalZoneCount;
 
-static int acpi_device_register(struct acpi_device *device, struct acpi_device *parent)
+static INT AcpiDeviceRegister(PACPI_DEVICE Device, PACPI_DEVICE Parent)
 {
-    int result = 0;
+    INT Result = 0;
 
-    if (!device)
+    if (!Device)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    return_VALUE(result);
+    return_VALUE(Result);
 }
 
-static int acpi_device_unregister(struct acpi_device *device)
+static INT AcpiDeviceUnregister(PACPI_DEVICE Device)
 {
-    if (!device)
+    if (!Device)
 	return_VALUE(AE_BAD_PARAMETER);
 
 #ifdef CONFIG_LDM
@@ -81,7 +78,7 @@ static int acpi_device_unregister(struct acpi_device *device)
    Device Management
    -------------------------------------------------------------------------- */
 
-static void acpi_bus_data_handler(ACPI_HANDLE handle, void *context)
+static VOID AcpiBusDataHandler(ACPI_HANDLE Handle, PVOID Context)
 {
     DPRINT1("acpi_bus_data_handler not implemented\n");
 
@@ -90,176 +87,165 @@ static void acpi_bus_data_handler(ACPI_HANDLE handle, void *context)
     return;
 }
 
-int acpi_bus_get_device(ACPI_HANDLE handle, struct acpi_device **device)
+INT AcpiBusGetDevice(ACPI_HANDLE Handle, PACPI_DEVICE *Device)
 {
-    ACPI_STATUS status = AE_OK;
+    ACPI_STATUS Status = AE_OK;
 
-    if (!device)
+    if (!Device)
 	return_VALUE(AE_BAD_PARAMETER);
 
     /* TBD: Support fixed-feature devices */
 
-    status = AcpiGetData(handle, acpi_bus_data_handler, (void **)device);
-    if (ACPI_FAILURE(status) || !*device) {
-	DPRINT("Error getting context for object [%p]\n", handle);
+    Status = AcpiGetData(Handle, AcpiBusDataHandler, (PVOID *)Device);
+    if (ACPI_FAILURE(Status) || !*Device) {
+	DPRINT("Error getting context for object [%p]\n", Handle);
 	return_VALUE(AE_NOT_FOUND);
     }
 
     return 0;
 }
 
-static ACPI_STATUS acpi_bus_get_status_handle(ACPI_HANDLE handle, unsigned long long *sta)
+static ACPI_STATUS AcpiBusGetStatusHandle(ACPI_HANDLE Handle, ULONG64 *Sta)
 {
-    ACPI_STATUS status;
+    ACPI_STATUS Status;
 
-    status = acpi_evaluate_integer(handle, "_STA", NULL, sta);
-    if (ACPI_SUCCESS(status))
+    Status = AcpiEvaluateInteger(Handle, "_STA", NULL, Sta);
+    if (ACPI_SUCCESS(Status))
 	return AE_OK;
 
-    if (status == AE_NOT_FOUND) {
-	*sta = ACPI_STA_DEVICE_PRESENT | ACPI_STA_DEVICE_ENABLED | ACPI_STA_DEVICE_UI |
+    if (Status == AE_NOT_FOUND) {
+	*Sta = ACPI_STA_DEVICE_PRESENT | ACPI_STA_DEVICE_ENABLED | ACPI_STA_DEVICE_UI |
 	    ACPI_STA_DEVICE_FUNCTIONING;
 	return AE_OK;
     }
-    return status;
+    return Status;
 }
 
-static int acpi_bus_get_status(struct acpi_device *device)
+static INT AcpiBusGetStatus(PACPI_DEVICE Device)
 {
-    ACPI_STATUS status;
-    unsigned long long sta;
+    ACPI_STATUS Status;
+    ULONG64 Sta;
 
-    status = acpi_bus_get_status_handle(device->handle, &sta);
-    if (ACPI_FAILURE(status))
+    Status = AcpiBusGetStatusHandle(Device->Handle, &Sta);
+    if (ACPI_FAILURE(Status))
 	return -1;
 
-    STRUCT_TO_INT(device->status) = (int)sta;
+    STRUCT_TO_INT(Device->Status) = (int)Sta;
 
-    if (device->status.functional && !device->status.present) {
+    if (Device->Status.Functional && !Device->Status.Present) {
 	ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 			  "Device [%s] status [%08x]: "
 			  "functional but not present;\n",
-			  device->pnp.bus_id, (UINT32)STRUCT_TO_INT(device->status)));
+			  Device->Pnp.BusId, (UINT32)STRUCT_TO_INT(Device->Status)));
     }
 
-    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Device [%s] status [%08x]\n", device->pnp.bus_id,
-		      (UINT32)STRUCT_TO_INT(device->status)));
+    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Device [%s] status [%08x]\n", Device->Pnp.BusId,
+		      (UINT32)STRUCT_TO_INT(Device->Status)));
     return 0;
 }
 
-void acpi_bus_private_data_handler(ACPI_HANDLE handle, void *context)
+VOID AcpiBusPrivateDataHandler(ACPI_HANDLE Handle, PVOID Context)
 {
     return;
 }
 
-int acpi_bus_get_private_data(ACPI_HANDLE handle, void **data)
+INT AcpiBusGetPrivateData(ACPI_HANDLE Handle, PVOID *Data)
 {
-    ACPI_STATUS status = AE_OK;
+    ACPI_STATUS Status = AE_OK;
 
-    if (!*data)
+    if (!*Data)
 	return -1;
 
-    status = AcpiGetData(handle, acpi_bus_private_data_handler, data);
-    if (ACPI_FAILURE(status) || !*data) {
-	DPRINT("No context for object [%p]\n", handle);
+    Status = AcpiGetData(Handle, AcpiBusPrivateDataHandler, Data);
+    if (ACPI_FAILURE(Status) || !*Data) {
+	DPRINT("No context for object [%p]\n", Handle);
 	return -1;
     }
 
     return 0;
 }
+
 /* --------------------------------------------------------------------------
    Power Management
    -------------------------------------------------------------------------- */
 
-int acpi_bus_get_power(ACPI_HANDLE handle, int *state)
+INT AcpiBusGetPower(ACPI_HANDLE Handle, INT *State)
 {
-    int result = 0;
-    ACPI_STATUS status = 0;
-    struct acpi_device *device = NULL;
-    unsigned long long psc = 0;
+    INT Result = 0;
+    ACPI_STATUS Status = 0;
+    PACPI_DEVICE Device = NULL;
+    ULONG64 Psc = 0;
 
-    result = acpi_bus_get_device(handle, &device);
-    if (result)
-	return_VALUE(result);
+    Result = AcpiBusGetDevice(Handle, &Device);
+    if (Result)
+	return_VALUE(Result);
 
-    *state = ACPI_STATE_UNKNOWN;
+    *State = ACPI_STATE_UNKNOWN;
 
-    if (!device->flags.power_manageable) {
+    if (!Device->Flags.PowerManageable) {
 	/* TBD: Non-recursive algorithm for walking up hierarchy */
-	if (device->parent)
-	    *state = device->parent->power.state;
+	if (Device->Parent)
+	    *State = Device->Parent->Power.State;
 	else
-	    *state = ACPI_STATE_D0;
+	    *State = ACPI_STATE_D0;
     } else {
 	/*
 	 * Get the device's power state either directly (via _PSC) or
 	 * indirectly (via power resources).
 	 */
-	if (device->power.flags.explicit_get) {
-	    status = acpi_evaluate_integer(device->handle, "_PSC", NULL, &psc);
-	    if (ACPI_FAILURE(status))
+	if (Device->Power.Flags.ExplicitGet) {
+	    Status = AcpiEvaluateInteger(Device->Handle, "_PSC", NULL, &Psc);
+	    if (ACPI_FAILURE(Status))
 		return_VALUE(AE_NOT_FOUND);
-	    device->power.state = (int)psc;
-	} else if (device->power.flags.power_resources) {
-	    result = acpi_power_get_inferred_state(device);
-	    if (result)
-		return_VALUE(result);
+	    Device->Power.State = (int)Psc;
+	} else if (Device->Power.Flags.PowerResources) {
+	    Result = AcpiPowerGetInferredState(Device);
+	    if (Result)
+		return_VALUE(Result);
 	}
 
-	*state = device->power.state;
+	*State = Device->Power.State;
     }
 
-    DPRINT("Device [%s] power state is D%d\n", device->pnp.bus_id, device->power.state);
+    DPRINT("Device [%s] power state is D%d\n", Device->Pnp.BusId, Device->Power.State);
 
     return_VALUE(0);
 }
 
-int acpi_bus_set_power(ACPI_HANDLE handle, int state)
+INT AcpiBusSetPower(ACPI_HANDLE Handle, INT State)
 {
-    int result = 0;
-    ACPI_STATUS status = AE_OK;
-    struct acpi_device *device = NULL;
-    char object_name[5] = { '_', 'P', 'S', '0' + state, '\0' };
+    INT Result = 0;
+    ACPI_STATUS Status = AE_OK;
+    PACPI_DEVICE Device = NULL;
+    CHAR ObjectName[5] = { '_', 'P', 'S', '0' + State, '\0' };
 
-    result = acpi_bus_get_device(handle, &device);
-    if (result)
-	return_VALUE(result);
+    Result = AcpiBusGetDevice(Handle, &Device);
+    if (Result)
+	return_VALUE(Result);
 
-    if ((state < ACPI_STATE_D0) || (state > ACPI_STATE_D3))
+    if ((State < ACPI_STATE_D0) || (State > ACPI_STATE_D3))
 	return_VALUE(AE_BAD_PARAMETER);
 
     /* Make sure this is a valid target state */
 
-    if (!device->flags.power_manageable) {
+    if (!Device->Flags.PowerManageable) {
 	DPRINT1("Device is not power manageable\n");
 	return_VALUE(AE_NOT_FOUND);
     }
     /*
      * Get device's current power state
      */
-    //if (!acpi_power_nocheck) {
-    /*
-     * Maybe the incorrect power state is returned on the bogus
-     * bios, which is different with the real power state.
-     * For example: the bios returns D0 state and the real power
-     * state is D3. OS expects to set the device to D0 state. In
-     * such case if OS uses the power state returned by the BIOS,
-     * the device can't be transisted to the correct power state.
-     * So if the acpi_power_nocheck is set, it is unnecessary to
-     * get the power state by calling acpi_bus_get_power.
-     */
-    acpi_bus_get_power(device->handle, &device->power.state);
-    //}
+    AcpiBusGetPower(Device->Handle, &Device->Power.State);
 
-    if ((state == device->power.state) && !device->flags.force_power_state) {
-	DPRINT1("Device is already at D%d\n", state);
+    if ((State == Device->Power.State) && !Device->Flags.ForcePowerState) {
+	DPRINT1("Device is already at D%d\n", State);
 	return 0;
     }
-    if (!device->power.states[state].flags.valid) {
-	DPRINT1("Device does not support D%d\n", state);
+    if (!Device->Power.States[State].Flags.Valid) {
+	DPRINT1("Device does not support D%d\n", State);
 	return AE_NOT_FOUND;
     }
-    if (device->parent && (state < device->parent->power.state)) {
+    if (Device->Parent && (State < Device->Parent->Power.State)) {
 	DPRINT1("Cannot set device to a higher-powered state than parent\n");
 	return AE_NOT_FOUND;
     }
@@ -271,121 +257,120 @@ int acpi_bus_set_power(ACPI_HANDLE handle, int state)
      * power resources) then evalute _PSx.  Conversely for transitions to
      * a lower-powered state.
      */
-    if (state < device->power.state) {
-	if (device->power.flags.power_resources) {
-	    result = acpi_power_transition(device, state);
-	    if (result)
+    if (State < Device->Power.State) {
+	if (Device->Power.Flags.PowerResources) {
+	    Result = AcpiPowerTransition(Device, State);
+	    if (Result)
 		goto end;
 	}
-	if (device->power.states[state].flags.explicit_set) {
-	    status = AcpiEvaluateObject(device->handle, object_name, NULL, NULL);
-	    if (ACPI_FAILURE(status)) {
-		result = AE_NOT_FOUND;
+	if (Device->Power.States[State].Flags.ExplicitSet) {
+	    Status = AcpiEvaluateObject(Device->Handle, ObjectName, NULL, NULL);
+	    if (ACPI_FAILURE(Status)) {
+		Result = AE_NOT_FOUND;
 		goto end;
 	    }
 	}
     } else {
-	if (device->power.states[state].flags.explicit_set) {
-	    status = AcpiEvaluateObject(device->handle, object_name, NULL, NULL);
-	    if (ACPI_FAILURE(status)) {
-		result = AE_NOT_FOUND;
+	if (Device->Power.States[State].Flags.ExplicitSet) {
+	    Status = AcpiEvaluateObject(Device->Handle, ObjectName, NULL, NULL);
+	    if (ACPI_FAILURE(Status)) {
+		Result = AE_NOT_FOUND;
 		goto end;
 	    }
 	}
-	if (device->power.flags.power_resources) {
-	    result = acpi_power_transition(device, state);
-	    if (result)
+	if (Device->Power.Flags.PowerResources) {
+	    Result = AcpiPowerTransition(Device, State);
+	    if (Result)
 		goto end;
 	}
     }
 
 end:
-    if (result)
-	DPRINT("Error transitioning device [%s] to D%d\n", device->pnp.bus_id, state);
+    if (Result)
+	DPRINT("Error transitioning device [%s] to D%d\n", Device->Pnp.BusId, State);
     else
-	DPRINT("Device [%s] transitioned to D%d\n", device->pnp.bus_id, state);
+	DPRINT("Device [%s] transitioned to D%d\n", Device->Pnp.BusId, State);
 
-    return result;
+    return Result;
 }
 
-BOOLEAN acpi_bus_power_manageable(ACPI_HANDLE handle)
+BOOLEAN AcpiBusPowerManageable(ACPI_HANDLE Handle)
 {
-    struct acpi_device *device;
-    int result;
+    PACPI_DEVICE Device;
+    INT Result;
 
-    result = acpi_bus_get_device(handle, &device);
-    return result ? 0 : device->flags.power_manageable;
+    Result = AcpiBusGetDevice(Handle, &Device);
+    return Result ? 0 : Device->Flags.PowerManageable;
 }
 
-BOOLEAN acpi_bus_can_wakeup(ACPI_HANDLE handle)
+BOOLEAN AcpiBusCanWakeup(ACPI_HANDLE Handle)
 {
-    struct acpi_device *device;
-    int result;
+    PACPI_DEVICE Device;
+    INT Result;
 
-    result = acpi_bus_get_device(handle, &device);
-    return result ? 0 : device->wakeup.flags.valid;
+    Result = AcpiBusGetDevice(Handle, &Device);
+    return Result ? 0 : Device->Wakeup.Flags.Valid;
 }
 
-static int acpi_bus_get_power_flags(struct acpi_device *device)
+static INT AcpiBusGetPowerFlags(PACPI_DEVICE Device)
 {
-    ACPI_STATUS status = 0;
-    ACPI_HANDLE handle = 0;
-    UINT32 i = 0;
+    ACPI_STATUS Status = 0;
+    ACPI_HANDLE Handle = 0;
 
-    if (!device)
+    if (!Device)
 	return AE_NOT_FOUND;
 
     /*
      * Power Management Flags
      */
-    status = AcpiGetHandle(device->handle, "_PSC", &handle);
-    if (ACPI_SUCCESS(status))
-	device->power.flags.explicit_get = 1;
-    status = AcpiGetHandle(device->handle, "_IRC", &handle);
-    if (ACPI_SUCCESS(status))
-	device->power.flags.inrush_current = 1;
-    status = AcpiGetHandle(device->handle, "_PRW", &handle);
-    if (ACPI_SUCCESS(status))
-	device->flags.wake_capable = 1;
+    Status = AcpiGetHandle(Device->Handle, "_PSC", &Handle);
+    if (ACPI_SUCCESS(Status))
+	Device->Power.Flags.ExplicitGet = 1;
+    Status = AcpiGetHandle(Device->Handle, "_IRC", &Handle);
+    if (ACPI_SUCCESS(Status))
+	Device->Power.Flags.InrushCurrent = 1;
+    Status = AcpiGetHandle(Device->Handle, "_PRW", &Handle);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.WakeCapable = 1;
 
     /*
      * Enumerate supported power management states
      */
-    for (i = ACPI_STATE_D0; i <= ACPI_STATE_D3; i++) {
-	struct acpi_device_power_state *ps = &device->power.states[i];
-	char object_name[5] = { '_', 'P', 'R', '0' + i, '\0' };
+    for (UINT32 i = ACPI_STATE_D0; i <= ACPI_STATE_D3; i++) {
+	PACPI_DEVICE_POWER_STATE Ps = &Device->Power.States[i];
+	CHAR ObjectName[5] = { '_', 'P', 'R', '0' + i, '\0' };
 
 	/* Evaluate "_PRx" to se if power resources are referenced */
-	status = acpi_evaluate_reference(device->handle, object_name, NULL,
-					 &ps->resources);
-	if (ACPI_SUCCESS(status) && ps->resources.count) {
-	    device->power.flags.power_resources = 1;
-	    ps->flags.valid = 1;
+	Status = AcpiEvaluateReference(Device->Handle, ObjectName, NULL,
+					 &Ps->Resources);
+	if (ACPI_SUCCESS(Status) && Ps->Resources.Count) {
+	    Device->Power.Flags.PowerResources = 1;
+	    Ps->Flags.Valid = 1;
 	}
 
 	/* Evaluate "_PSx" to see if we can do explicit sets */
-	object_name[2] = 'S';
-	status = AcpiGetHandle(device->handle, object_name, &handle);
-	if (ACPI_SUCCESS(status)) {
-	    ps->flags.explicit_set = 1;
-	    ps->flags.valid = 1;
+	ObjectName[2] = 'S';
+	Status = AcpiGetHandle(Device->Handle, ObjectName, &Handle);
+	if (ACPI_SUCCESS(Status)) {
+	    Ps->Flags.ExplicitSet = 1;
+	    Ps->Flags.Valid = 1;
 	}
 
 	/* State is valid if we have some power control */
-	if (ps->resources.count || ps->flags.explicit_set)
-	    ps->flags.valid = 1;
+	if (Ps->Resources.Count || Ps->Flags.ExplicitSet)
+	    Ps->Flags.Valid = 1;
 
-	ps->power = -1; /* Unknown - driver assigned */
-	ps->latency = -1; /* Unknown - driver assigned */
+	Ps->Power = -1; /* Unknown - driver assigned */
+	Ps->Latency = -1; /* Unknown - driver assigned */
     }
 
     /* Set defaults for D0 and D3 states (always valid) */
-    device->power.states[ACPI_STATE_D0].flags.valid = 1;
-    device->power.states[ACPI_STATE_D0].power = 100;
-    device->power.states[ACPI_STATE_D3].flags.valid = 1;
-    device->power.states[ACPI_STATE_D3].power = 0;
+    Device->Power.States[ACPI_STATE_D0].Flags.Valid = 1;
+    Device->Power.States[ACPI_STATE_D0].Power = 100;
+    Device->Power.States[ACPI_STATE_D3].Flags.Valid = 1;
+    Device->Power.States[ACPI_STATE_D3].Power = 0;
 
-    device->power.state = ACPI_STATE_UNKNOWN;
+    Device->Power.State = ACPI_STATE_UNKNOWN;
 
     return 0;
 }
@@ -394,12 +379,12 @@ static int acpi_bus_get_power_flags(struct acpi_device *device)
    Performance Management
    -------------------------------------------------------------------------- */
 
-static int acpi_bus_get_perf_flags(struct acpi_device *device)
+static INT AcpiBusGetPerfFlags(PACPI_DEVICE Device)
 {
-    if (!device)
+    if (!Device)
 	return AE_NOT_FOUND;
 
-    device->performance.state = ACPI_STATE_UNKNOWN;
+    Device->Performance.State = ACPI_STATE_UNKNOWN;
 
     return 0;
 }
@@ -409,28 +394,28 @@ static int acpi_bus_get_perf_flags(struct acpi_device *device)
    -------------------------------------------------------------------------- */
 
 /**
- * acpi_bus_walk
+ * AcpiBusWalk
  * -------------
  * Used to walk the ACPI Bus's device namespace.  Can walk down (depth-first)
  * or up.  Able to parse starting at any node in the namespace.  Note that a
  * callback return value of -249 will terminate the walk.
  *
- * @start:	starting point
- * callback:	function to call for every device encountered while parsing
- * direction:	direction to parse (up or down)
- * @data:	context for this search operation
+ * @Start:	starting point
+ * Callback:	function to call for every device encountered while parsing
+ * Direction:	direction to parse (up or down)
+ * @Data:	context for this search operation
  */
-static int acpi_bus_walk(struct acpi_device *start, acpi_bus_walk_callback callback,
-			 int direction, void *data)
+static INT AcpiBusWalk(PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
+			 INT Direction, PVOID Data)
 {
-    int result = 0;
-    int level = 0;
-    struct acpi_device *device = NULL;
+    INT Result = 0;
+    INT Level = 0;
+    PACPI_DEVICE Device = NULL;
 
-    if (!start || !callback)
+    if (!Start || !Callback)
 	return AE_BAD_PARAMETER;
 
-    device = start;
+    Device = Start;
 
     /*
      * Parse Namespace
@@ -441,125 +426,122 @@ static int acpi_bus_walk(struct acpi_device *start, acpi_bus_walk_callback callb
      * or powering down a subtree).
      */
 
-    while (device) {
-	if (direction == WALK_DOWN)
-	    if (-249 == callback(device, level, data))
+    while (Device) {
+	if (Direction == WALK_DOWN)
+	    if (-249 == Callback(Device, Level, Data))
 		break;
 
 	/* Depth First */
 
-	if (HAS_CHILDREN(device)) {
-	    device = NODE_TO_DEVICE(device->children.Flink);
-	    ++level;
+	if (HAS_CHILDREN(Device)) {
+	    Device = NODE_TO_DEVICE(Device->Children.Flink);
+	    ++Level;
 	    continue;
 	}
 
-	if (direction == WALK_UP)
-	    if (-249 == callback(device, level, data))
+	if (Direction == WALK_UP)
+	    if (-249 == Callback(Device, Level, Data))
 		break;
 
 	/* Now Breadth */
 
-	if (HAS_SIBLINGS(device)) {
-	    device = NODE_TO_DEVICE(device->node.Flink);
+	if (HAS_SIBLINGS(Device)) {
+	    Device = NODE_TO_DEVICE(Device->Node.Flink);
 	    continue;
 	}
 
 	/* Scope Exhausted - Find Next */
 
-	while ((device = device->parent)) {
-	    --level;
-	    if (HAS_SIBLINGS(device)) {
-		device = NODE_TO_DEVICE(device->node.Flink);
+	while ((Device = Device->Parent)) {
+	    --Level;
+	    if (HAS_SIBLINGS(Device)) {
+		Device = NODE_TO_DEVICE(Device->Node.Flink);
 		break;
 	    }
 	}
     }
 
-    if ((direction == WALK_UP) && (result == 0))
-	callback(start, level, data);
+    if ((Direction == WALK_UP) && (Result == 0))
+	Callback(Start, Level, Data);
 
-    return result;
+    return Result;
 }
 
 /* --------------------------------------------------------------------------
    Notification Handling
    -------------------------------------------------------------------------- */
 
-static void acpi_bus_check_device(ACPI_HANDLE handle)
+static VOID AcpiBusCheckDevice(ACPI_HANDLE Handle)
 {
-    struct acpi_device *device;
-    ACPI_STATUS status = 0;
-    struct acpi_device_status old_status;
+    PACPI_DEVICE Device;
+    ACPI_STATUS Status = 0;
+    ACPI_DEVICE_STATUS OldStatus;
 
-    if (acpi_bus_get_device(handle, &device))
+    if (AcpiBusGetDevice(Handle, &Device))
 	return;
-    if (!device)
+    if (!Device)
 	return;
 
-    old_status = device->status;
+    OldStatus = Device->Status;
 
     /*
      * Make sure this device's parent is present before we go about
      * messing with the device.
      */
-    if (device->parent && !device->parent->status.present) {
-	device->status = device->parent->status;
+    if (Device->Parent && !Device->Parent->Status.Present) {
+	Device->Status = Device->Parent->Status;
 	return;
     }
 
-    status = acpi_bus_get_status(device);
-    if (ACPI_FAILURE(status))
+    Status = AcpiBusGetStatus(Device);
+    if (ACPI_FAILURE(Status))
 	return;
 
-    if (STRUCT_TO_INT(old_status) == STRUCT_TO_INT(device->status))
+    if (STRUCT_TO_INT(OldStatus) == STRUCT_TO_INT(Device->Status))
 	return;
 
     /*
      * Device Insertion/Removal
      */
-    if ((device->status.present) && !(old_status.present)) {
+    if ((Device->Status.Present) && !(OldStatus.Present)) {
 	DPRINT("Device insertion detected\n");
 	/* TBD: Handle device insertion */
-    } else if (!(device->status.present) && (old_status.present)) {
+    } else if (!(Device->Status.Present) && (OldStatus.Present)) {
 	DPRINT("Device removal detected\n");
 	/* TBD: Handle device removal */
     }
 }
 
-static void acpi_bus_check_scope(ACPI_HANDLE handle)
+static VOID AcpiBusCheckScope(ACPI_HANDLE Handle)
 {
     /* Status Change? */
-    acpi_bus_check_device(handle);
+    AcpiBusCheckDevice(Handle);
 
     /*
      * TBD: Enumerate child devices within this device's scope and
-     *       run acpi_bus_check_device()'s on them.
+     *       run AcpiBusCheckDevice()'s on them.
      */
 }
 
 /**
- * acpi_bus_notify
+ * AcpiBusNotify
  * ---------------
  * Callback for all 'system-level' device notifications (values 0x00-0x7F).
  */
-static void acpi_bus_notify(ACPI_HANDLE handle, UINT32 type, void *data)
+static VOID AcpiBusNotify(ACPI_HANDLE Handle, UINT32 Type, PVOID Data)
 {
-    struct acpi_device *device = NULL;
-    struct acpi_driver *driver;
+    PACPI_DEVICE Device = NULL;
+    PACPI_BUSMGR_COMPONENT Driver;
 
-    DPRINT1("Notification %#02x to handle %p\n", type, handle);
+    DPRINT1("Notification %#02x to handle %p\n", Type, Handle);
 
-    //blocking_notifier_call_chain(&acpi_bus_notify_list,
-    //	type, (void *)handle);
+    AcpiBusGetDevice(Handle, &Device);
 
-    acpi_bus_get_device(handle, &device);
-
-    switch (type) {
+    switch (Type) {
     case ACPI_NOTIFY_BUS_CHECK:
 	DPRINT("Received BUS CHECK notification for device [%s]\n",
-	       device ? device->pnp.bus_id : "n/a");
-	acpi_bus_check_scope(handle);
+	       Device ? Device->Pnp.BusId : "n/a");
+	AcpiBusCheckScope(Handle);
 	/*
 	 * TBD: We'll need to outsource certain events to non-ACPI
 	 *	drivers via the device manager (device.c).
@@ -568,8 +550,8 @@ static void acpi_bus_notify(ACPI_HANDLE handle, UINT32 type, void *data)
 
     case ACPI_NOTIFY_DEVICE_CHECK:
 	DPRINT("Received DEVICE CHECK notification for device [%s]\n",
-	       device ? device->pnp.bus_id : "n/a");
-	acpi_bus_check_device(handle);
+	       Device ? Device->Pnp.BusId : "n/a");
+	AcpiBusCheckDevice(Handle);
 	/*
 	 * TBD: We'll need to outsource certain events to non-ACPI
 	 *	drivers via the device manager (device.c).
@@ -578,8 +560,8 @@ static void acpi_bus_notify(ACPI_HANDLE handle, UINT32 type, void *data)
 
     case ACPI_NOTIFY_DEVICE_WAKE:
 	DPRINT("Received DEVICE WAKE notification for device [%s]\n",
-	       device ? device->pnp.bus_id : "n/a");
-	acpi_bus_check_device(handle);
+	       Device ? Device->Pnp.BusId : "n/a");
+	AcpiBusCheckDevice(Handle);
 	/*
 	 * TBD: We'll need to outsource certain events to non-ACPI
 	 *      drivers via the device manager (device.c).
@@ -588,45 +570,45 @@ static void acpi_bus_notify(ACPI_HANDLE handle, UINT32 type, void *data)
 
     case ACPI_NOTIFY_EJECT_REQUEST:
 	DPRINT1("Received EJECT REQUEST notification for device [%s]\n",
-		device ? device->pnp.bus_id : "n/a");
+		Device ? Device->Pnp.BusId : "n/a");
 	/* TBD */
 	break;
 
     case ACPI_NOTIFY_DEVICE_CHECK_LIGHT:
 	DPRINT1("Received DEVICE CHECK LIGHT notification for device [%s]\n",
-		device ? device->pnp.bus_id : "n/a");
+		Device ? Device->Pnp.BusId : "n/a");
 	/* TBD: Exactly what does 'light' mean? */
 	break;
 
     case ACPI_NOTIFY_FREQUENCY_MISMATCH:
 	DPRINT1("Received FREQUENCY MISMATCH notification for device [%s]\n",
-		device ? device->pnp.bus_id : "n/a");
+		Device ? Device->Pnp.BusId : "n/a");
 	/* TBD */
 	break;
 
     case ACPI_NOTIFY_BUS_MODE_MISMATCH:
 	DPRINT1("Received BUS MODE MISMATCH notification for device [%s]\n",
-		device ? device->pnp.bus_id : "n/a");
+		Device ? Device->Pnp.BusId : "n/a");
 	/* TBD */
 	break;
 
     case ACPI_NOTIFY_POWER_FAULT:
 	DPRINT1("Received POWER FAULT notification for device [%s]\n",
-		device ? device->pnp.bus_id : "n/a");
+		Device ? Device->Pnp.BusId : "n/a");
 	/* TBD */
 	break;
 
     default:
 	DPRINT1("Received unknown/unsupported notification [%08x] for device [%s]\n",
-		type, device ? device->pnp.bus_id : "n/a");
+		Type, Device ? Device->Pnp.BusId : "n/a");
 	break;
     }
 
-    if (device) {
-	driver = device->driver;
-	if (driver && driver->ops.notify &&
-	    (driver->flags & ACPI_DRIVER_ALL_NOTIFY_EVENTS))
-	    driver->ops.notify(device, type);
+    if (Device) {
+	Driver = Device->Driver;
+	if (Driver && Driver->Ops.Notify &&
+	    (Driver->Flags & ACPI_BUSMGR_COMPONENT_ALL_NOTIFY_EVENTS))
+	    Driver->Ops.Notify(Device, Type);
     }
 }
 
@@ -642,179 +624,169 @@ static LIST_HEAD(acpi_bus_drivers);
  * Checks the device's hardware (_HID) or compatible (_CID) ids to see if it
  * matches the specified driver's criteria.
  */
-static int acpi_bus_match(struct acpi_device *device, struct acpi_driver *driver)
+static INT AcpiBusMatch(PACPI_DEVICE Device, PACPI_BUSMGR_COMPONENT Driver)
 {
-    int error = 0;
+    INT Error = 0;
 
-    if (device->flags.hardware_id)
-	if (strstr(driver->ids, device->pnp.hardware_id))
+    if (Device->Flags.HardwareId)
+	if (strstr(Driver->Ids, Device->Pnp.HardwareId))
 	    goto Done;
 
-    if (device->flags.compatible_ids) {
-	ACPI_PNP_DEVICE_ID_LIST *cid_list = device->pnp.cid_list;
-	int i;
+    if (Device->Flags.CompatibleIds) {
+	ACPI_PNP_DEVICE_ID_LIST *CidList = Device->Pnp.CidList;
 
 	/* compare multiple _CID entries against driver ids */
-	for (i = 0; i < cid_list->Count; i++) {
-	    if (strstr(driver->ids, cid_list->Ids[i].String))
+	for (INT i = 0; i < CidList->Count; i++) {
+	    if (strstr(Driver->Ids, CidList->Ids[i].String))
 		goto Done;
 	}
     }
-    error = -2;
+    Error = -2;
 
 Done:
 
-    return error;
+    return Error;
 }
 
 /**
- * acpi_bus_driver_init
+ * AcpiBusDriverInit
  * --------------------
  * Used to initialize a device via its device driver.  Called whenever a
- * driver is bound to a device.  Invokes the driver's add() and start() ops.
+ * driver is bound to a device.  Invokes the driver's add() and start() Ops.
  */
-static int acpi_bus_driver_init(struct acpi_device *device, struct acpi_driver *driver)
+static INT AcpiBusDriverInit(PACPI_DEVICE Device, PACPI_BUSMGR_COMPONENT Driver)
 {
-    int result = 0;
+    INT Result = 0;
 
-    if (!device || !driver)
+    if (!Device || !Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    if (!driver->ops.add)
+    if (!Driver->Ops.Add)
 	return_VALUE(-38);
 
-    result = driver->ops.add(device);
-    if (result) {
-	device->driver = NULL;
-	//acpi_driver_data(device) = NULL;
-	return_VALUE(result);
+    Result = Driver->Ops.Add(Device);
+    if (Result) {
+	Device->Driver = NULL;
+	return_VALUE(Result);
     }
 
-    device->driver = driver;
+    Device->Driver = Driver;
 
     /*
      * TBD - Configuration Management: Assign resources to device based
      * upon possible configuration and currently allocated resources.
      */
 
-    if (driver->ops.start) {
-	result = driver->ops.start(device);
-	if (result && driver->ops.remove)
-	    driver->ops.remove(device, ACPI_BUS_REMOVAL_NORMAL);
-	return_VALUE(result);
+    if (Driver->Ops.Start) {
+	Result = Driver->Ops.Start(Device);
+	if (Result && Driver->Ops.Remove)
+	    Driver->Ops.Remove(Device, ACPI_BUS_REMOVAL_NORMAL);
+	return_VALUE(Result);
     }
 
     DPRINT("Driver successfully bound to device\n");
 
-    if (driver->ops.scan) {
-	driver->ops.scan(device);
+    if (Driver->Ops.Scan) {
+	Driver->Ops.Scan(Device);
     }
 
     return_VALUE(0);
 }
 
 /**
- * acpi_bus_attach
+ * AcpiBusAttach
  * -------------
- * Callback for acpi_bus_walk() used to find devices that match a specific
+ * Callback for AcpiBusWalk() used to find devices that match a specific
  * driver's criteria and then attach the driver.
  */
-static int acpi_bus_attach(struct acpi_device *device, int level, void *data)
+static INT AcpiBusAttach(PACPI_DEVICE Device, INT Level, PVOID Data)
 {
-    int result = 0;
-    struct acpi_driver *driver = NULL;
+    INT Result = 0;
+    PACPI_BUSMGR_COMPONENT Driver = NULL;
 
-    if (!device || !data)
+    if (!Device || !Data)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    driver = (struct acpi_driver *)data;
+    Driver = (PACPI_BUSMGR_COMPONENT )Data;
 
-    if (device->driver)
+    if (Device->Driver)
 	return_VALUE(-9);
 
-    if (!device->status.present)
+    if (!Device->Status.Present)
 	return_VALUE(AE_NOT_FOUND);
 
-    result = acpi_bus_match(device, driver);
-    if (result)
-	return_VALUE(result);
+    Result = AcpiBusMatch(Device, Driver);
+    if (Result)
+	return_VALUE(Result);
 
-    DPRINT("Found driver [%s] for device [%s]\n", driver->name, device->pnp.bus_id);
+    DPRINT("Found driver [%s] for device [%s]\n", Driver->Name, Device->Pnp.BusId);
 
-    result = acpi_bus_driver_init(device, driver);
-    if (result)
-	return_VALUE(result);
+    Result = AcpiBusDriverInit(Device, Driver);
+    if (Result)
+	return_VALUE(Result);
 
-    down(&acpi_bus_drivers_lock);
-    ++driver->references;
-    up(&acpi_bus_drivers_lock);
+    ++Driver->References;
 
     return_VALUE(0);
 }
 
 /**
- * acpi_bus_unattach
+ * AcpiBusUnattach
  * -----------------
- * Callback for acpi_bus_walk() used to find devices that match a specific
+ * Callback for AcpiBusWalk() used to find devices that match a specific
  * driver's criteria and unattach the driver.
  */
-static int acpi_bus_unattach(struct acpi_device *device, int level, void *data)
+static INT AcpiBusUnattach(PACPI_DEVICE Device, INT Level, PVOID Data)
 {
-    int result = 0;
-    struct acpi_driver *driver = (struct acpi_driver *)data;
+    INT Result = 0;
+    PACPI_BUSMGR_COMPONENT Driver = (PACPI_BUSMGR_COMPONENT )Data;
 
-    if (!device || !driver)
+    if (!Device || !Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    if (device->driver != driver)
+    if (Device->Driver != Driver)
 	return_VALUE(-6);
 
-    if (!driver->ops.remove)
+    if (!Driver->Ops.Remove)
 	return_VALUE(-23);
 
-    result = driver->ops.remove(device, ACPI_BUS_REMOVAL_NORMAL);
-    if (result)
-	return_VALUE(result);
+    Result = Driver->Ops.Remove(Device, ACPI_BUS_REMOVAL_NORMAL);
+    if (Result)
+	return_VALUE(Result);
 
-    device->driver = NULL;
-    acpi_driver_data(device) = NULL;
+    Device->Driver = NULL;
+    ACPI_BUSMGR_COMPONENT_DATA(Device) = NULL;
 
-    down(&acpi_bus_drivers_lock);
-    driver->references--;
-    up(&acpi_bus_drivers_lock);
+    Driver->References--;
 
     return_VALUE(0);
 }
 
 /**
- * acpi_bus_find_driver
+ * AcpiBusFindDriver
  * --------------------
  * Parses the list of registered drivers looking for a driver applicable for
  * the specified device.
  */
-static int acpi_bus_find_driver(struct acpi_device *device)
+static INT AcpiBusFindDriver(PACPI_DEVICE Device)
 {
-    int result = AE_NOT_FOUND;
+    INT Result = AE_NOT_FOUND;
 
-    if (!device || device->driver)
+    if (!Device || Device->Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    down(&acpi_bus_drivers_lock);
-
-    LoopOverList(driver, &acpi_bus_drivers, struct acpi_driver, node) {
-	if (acpi_bus_match(device, driver))
+    LoopOverList(driver, &acpi_bus_drivers, ACPI_BUSMGR_COMPONENT, Node) {
+	if (AcpiBusMatch(Device, driver))
 	    continue;
 
-	result = acpi_bus_driver_init(device, driver);
-	if (!result)
-	    ++driver->references;
+	Result = AcpiBusDriverInit(Device, driver);
+	if (!Result)
+	    ++driver->References;
 
 	break;
     }
 
-    up(&acpi_bus_drivers_lock);
-
-    return_VALUE(result);
+    return_VALUE(Result);
 }
 
 /**
@@ -823,21 +795,16 @@ static int acpi_bus_find_driver(struct acpi_device *device)
  * Registers a driver with the ACPI bus.  Searches the namespace for all
  * devices that match the driver's criteria and binds.
  */
-int acpi_bus_register_driver(struct acpi_driver *driver)
+INT AcpiBusRegisterDriver(PACPI_BUSMGR_COMPONENT Driver)
 {
-    if (!driver)
+    if (!Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    //if (acpi_disabled)
-    //	return_VALUE(AE_NOT_FOUND);
+    InsertTailList(&acpi_bus_drivers, &Driver->Node);
 
-    down(&acpi_bus_drivers_lock);
-    InsertTailList(&acpi_bus_drivers, &driver->node);
-    up(&acpi_bus_drivers_lock);
+    AcpiBusWalk(AcpiRoot, AcpiBusAttach, WALK_DOWN, Driver);
 
-    acpi_bus_walk(acpi_root, acpi_bus_attach, WALK_DOWN, driver);
-
-    return_VALUE(driver->references);
+    return_VALUE(Driver->References);
 }
 
 /**
@@ -846,19 +813,17 @@ int acpi_bus_register_driver(struct acpi_driver *driver)
  * Unregisters a driver with the ACPI bus.  Searches the namespace for all
  * devices that match the driver's criteria and unbinds.
  */
-void acpi_bus_unregister_driver(struct acpi_driver *driver)
+VOID AcpiBusUnregisterDriver(PACPI_BUSMGR_COMPONENT Driver)
 {
-    if (!driver)
+    if (!Driver)
 	return;
 
-    acpi_bus_walk(acpi_root, acpi_bus_unattach, WALK_UP, driver);
+    AcpiBusWalk(AcpiRoot, AcpiBusUnattach, WALK_UP, Driver);
 
-    if (driver->references)
+    if (Driver->References)
 	return;
 
-    down(&acpi_bus_drivers_lock);
-    RemoveEntryList(&driver->node);
-    up(&acpi_bus_drivers_lock);
+    RemoveEntryList(&Driver->Node);
 
     return;
 }
@@ -867,80 +832,79 @@ void acpi_bus_unregister_driver(struct acpi_driver *driver)
    Device Enumeration
    -------------------------------------------------------------------------- */
 
-static int acpi_bus_get_flags(struct acpi_device *device)
+static INT AcpiBusGetFlags(PACPI_DEVICE Device)
 {
-    ACPI_STATUS status = AE_OK;
-    ACPI_HANDLE temp = NULL;
+    ACPI_STATUS Status = AE_OK;
+    ACPI_HANDLE Temp = NULL;
 
     /* Presence of _STA indicates 'dynamic_status' */
-    status = AcpiGetHandle(device->handle, "_STA", &temp);
-    if (ACPI_SUCCESS(status))
-	device->flags.dynamic_status = 1;
+    Status = AcpiGetHandle(Device->Handle, "_STA", &Temp);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.DynamicStatus = 1;
 
     /* Presence of _CID indicates 'compatible_ids' */
-    status = AcpiGetHandle(device->handle, "_CID", &temp);
-    if (ACPI_SUCCESS(status))
-	device->flags.compatible_ids = 1;
+    Status = AcpiGetHandle(Device->Handle, "_CID", &Temp);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.CompatibleIds = 1;
 
     /* Presence of _RMV indicates 'removable' */
-    status = AcpiGetHandle(device->handle, "_RMV", &temp);
-    if (ACPI_SUCCESS(status))
-	device->flags.removable = 1;
+    Status = AcpiGetHandle(Device->Handle, "_RMV", &Temp);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.Removable = 1;
 
     /* Presence of _EJD|_EJ0 indicates 'ejectable' */
-    status = AcpiGetHandle(device->handle, "_EJD", &temp);
-    if (ACPI_SUCCESS(status))
-	device->flags.ejectable = 1;
+    Status = AcpiGetHandle(Device->Handle, "_EJD", &Temp);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.Ejectable = 1;
     else {
-	status = AcpiGetHandle(device->handle, "_EJ0", &temp);
-	if (ACPI_SUCCESS(status))
-	    device->flags.ejectable = 1;
+	Status = AcpiGetHandle(Device->Handle, "_EJ0", &Temp);
+	if (ACPI_SUCCESS(Status))
+	    Device->Flags.Ejectable = 1;
     }
 
     /* Presence of _LCK indicates 'lockable' */
-    status = AcpiGetHandle(device->handle, "_LCK", &temp);
-    if (ACPI_SUCCESS(status))
-	device->flags.lockable = 1;
+    Status = AcpiGetHandle(Device->Handle, "_LCK", &Temp);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.Lockable = 1;
 
     /* Presence of _PS0|_PR0 indicates 'power manageable' */
-    status = AcpiGetHandle(device->handle, "_PS0", &temp);
-    if (ACPI_FAILURE(status))
-	status = AcpiGetHandle(device->handle, "_PR0", &temp);
-    if (ACPI_SUCCESS(status))
-	device->flags.power_manageable = 1;
+    Status = AcpiGetHandle(Device->Handle, "_PS0", &Temp);
+    if (ACPI_FAILURE(Status))
+	Status = AcpiGetHandle(Device->Handle, "_PR0", &Temp);
+    if (ACPI_SUCCESS(Status))
+	Device->Flags.PowerManageable = 1;
 
     /* TBD: Performance management */
 
     return_VALUE(0);
 }
 
-static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
-			ACPI_HANDLE handle, int type)
+static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
+			ACPI_HANDLE Handle, INT Type)
 {
-    int result = 0;
-    ACPI_STATUS status = AE_OK;
-    struct acpi_device *device = NULL;
-    char bus_id[5] = { '?', 0 };
-    ACPI_BUFFER buffer;
-    ACPI_DEVICE_INFO *info = NULL;
-    char *hid = NULL;
-    char *uid = NULL;
-    ACPI_PNP_DEVICE_ID_LIST *cid_list = NULL;
-    int i = 0;
-    acpi_unique_id static_uid_buffer;
+    INT Result = 0;
+    ACPI_STATUS Status = AE_OK;
+    PACPI_DEVICE Device = NULL;
+    CHAR BusId[5] = { '?', 0 };
+    ACPI_BUFFER Buffer;
+    ACPI_DEVICE_INFO *Info = NULL;
+    PCHAR Hid = NULL;
+    PCHAR Uid = NULL;
+    ACPI_PNP_DEVICE_ID_LIST *CidList = NULL;
+    ACPI_UNIQUE_ID StaticUidBuffer;
 
-    if (!child)
+    if (!Child)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    device = ExAllocatePoolWithTag(sizeof(struct acpi_device), 'DpcA');
-    if (!device) {
+    Device = ExAllocatePoolWithTag(sizeof(ACPI_DEVICE), 'DpcA');
+    if (!Device) {
 	DPRINT1("Memory allocation error\n");
 	return_VALUE(-12);
     }
-    memset(device, 0, sizeof(struct acpi_device));
+    memset(Device, 0, sizeof(ACPI_DEVICE));
 
-    device->handle = handle;
-    device->parent = parent;
+    Device->Handle = Handle;
+    Device->Parent = Parent;
 
     /*
      * Bus ID
@@ -948,32 +912,32 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * The device's Bus ID is simply the object name.
      * TBD: Shouldn't this value be unique (within the ACPI namespace)?
      */
-    switch (type) {
+    switch (Type) {
     case ACPI_BUS_TYPE_SYSTEM:
-	snprintf(device->pnp.bus_id, sizeof(device->pnp.bus_id), "%s", "ACPI");
+	snprintf(Device->Pnp.BusId, sizeof(Device->Pnp.BusId), "%s", "ACPI");
 	break;
     case ACPI_BUS_TYPE_POWER_BUTTONF:
     case ACPI_BUS_TYPE_POWER_BUTTON:
-	snprintf(device->pnp.bus_id, sizeof(device->pnp.bus_id), "%s", "PWRF");
+	snprintf(Device->Pnp.BusId, sizeof(Device->Pnp.BusId), "%s", "PWRF");
 	break;
     case ACPI_BUS_TYPE_SLEEP_BUTTONF:
     case ACPI_BUS_TYPE_SLEEP_BUTTON:
-	snprintf(device->pnp.bus_id, sizeof(device->pnp.bus_id), "%s", "SLPF");
+	snprintf(Device->Pnp.BusId, sizeof(Device->Pnp.BusId), "%s", "SLPF");
 	break;
     default:
-	buffer.Length = sizeof(bus_id);
-	buffer.Pointer = bus_id;
-	AcpiGetName(handle, ACPI_SINGLE_NAME, &buffer);
+	Buffer.Length = sizeof(BusId);
+	Buffer.Pointer = BusId;
+	AcpiGetName(Handle, ACPI_SINGLE_NAME, &Buffer);
 
 	/* Clean up trailing underscores (if any) */
-	for (i = 3; i > 1; i--) {
-	    if (bus_id[i] == '_')
-		bus_id[i] = '\0';
+	for (INT i = 3; i > 1; i--) {
+	    if (BusId[i] == '_')
+		BusId[i] = '\0';
 	    else
 		break;
 	}
-	snprintf(device->pnp.bus_id, sizeof(device->pnp.bus_id), "%s", bus_id);
-	buffer.Pointer = NULL;
+	snprintf(Device->Pnp.BusId, sizeof(Device->Pnp.BusId), "%s", BusId);
+	Buffer.Pointer = NULL;
 
 	break;
     }
@@ -986,8 +950,8 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * handles -- cannot evaluate objects until we know the device is
      * present and properly initialized.
      */
-    result = acpi_bus_get_flags(device);
-    if (result)
+    Result = AcpiBusGetFlags(Device);
+    if (Result)
 	goto end;
 
     /*
@@ -999,18 +963,18 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * Note that _STA has a different meaning for some objects (e.g.
      * power resources) so we need to be careful how we use it.
      */
-    switch (type) {
+    switch (Type) {
     case ACPI_BUS_TYPE_DEVICE:
-	result = acpi_bus_get_status(device);
-	if (result)
+	Result = AcpiBusGetStatus(Device);
+	if (Result)
 	    goto end;
 	break;
     default:
-	STRUCT_TO_INT(device->status) = 0x0F;
+	STRUCT_TO_INT(Device->Status) = 0x0F;
 	break;
     }
-    if (!device->status.present) {
-	result = -2;
+    if (!Device->Status.Present) {
+	Result = -2;
 	goto end;
     }
 
@@ -1024,78 +988,78 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * Hardware ID, Unique ID, & Bus Address
      * -------------------------------------
      */
-    switch (type) {
+    switch (Type) {
     case ACPI_BUS_TYPE_DEVICE:
-	status = AcpiGetObjectInfo(handle, &info);
-	if (ACPI_FAILURE(status)) {
+	Status = AcpiGetObjectInfo(Handle, &Info);
+	if (ACPI_FAILURE(Status)) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "Error reading device info\n"));
-	    result = AE_NOT_FOUND;
-	    info = NULL;
+	    Result = AE_NOT_FOUND;
+	    Info = NULL;
 	    goto end;
 	}
-	if (info->Valid & ACPI_VALID_HID)
-	    hid = info->HardwareId.String;
-	if (info->Valid & ACPI_VALID_UID)
-	    uid = info->UniqueId.String;
-	if (info->Valid & ACPI_VALID_CID) {
-	    cid_list = &info->CompatibleIdList;
-	    device->pnp.cid_list = ExAllocatePoolWithTag(cid_list->ListSize,
+	if (Info->Valid & ACPI_VALID_HID)
+	    Hid = Info->HardwareId.String;
+	if (Info->Valid & ACPI_VALID_UID)
+	    Uid = Info->UniqueId.String;
+	if (Info->Valid & ACPI_VALID_CID) {
+	    CidList = &Info->CompatibleIdList;
+	    Device->Pnp.CidList = ExAllocatePoolWithTag(CidList->ListSize,
 							 'DpcA');
-	    if (device->pnp.cid_list) {
-		char *p = (char *)&device->pnp.cid_list->Ids[cid_list->Count];
-		device->pnp.cid_list->Count = cid_list->Count;
-		device->pnp.cid_list->ListSize = cid_list->ListSize;
-		for (i = 0; i < cid_list->Count; i++) {
-		    device->pnp.cid_list->Ids[i].Length = cid_list->Ids[i].Length;
-		    device->pnp.cid_list->Ids[i].String = p;
-		    ASSERT(p + cid_list->Ids[i].Length <=
-			   (char *)device->pnp.cid_list + cid_list->ListSize);
-		    memcpy(device->pnp.cid_list->Ids[i].String, cid_list->Ids[i].String,
-			   cid_list->Ids[i].Length);
-		    p += cid_list->Ids[i].Length;
+	    if (Device->Pnp.CidList) {
+		PCHAR P = (PCHAR )&Device->Pnp.CidList->Ids[CidList->Count];
+		Device->Pnp.CidList->Count = CidList->Count;
+		Device->Pnp.CidList->ListSize = CidList->ListSize;
+		for (INT i = 0; i < CidList->Count; i++) {
+		    Device->Pnp.CidList->Ids[i].Length = CidList->Ids[i].Length;
+		    Device->Pnp.CidList->Ids[i].String = P;
+		    ASSERT(P + CidList->Ids[i].Length <=
+			   (PCHAR )Device->Pnp.CidList + CidList->ListSize);
+		    memcpy(Device->Pnp.CidList->Ids[i].String, CidList->Ids[i].String,
+			   CidList->Ids[i].Length);
+		    P += CidList->Ids[i].Length;
 		}
 	    } else
 		DPRINT("Memory allocation error\n");
 	}
-	if (info->Valid & ACPI_VALID_ADR) {
-	    device->pnp.bus_address = info->Address;
-	    device->flags.bus_address = 1;
+	if (Info->Valid & ACPI_VALID_ADR) {
+	    Device->Pnp.BusAddress = Info->Address;
+	    Device->Flags.BusAddress = 1;
 	}
 	break;
     case ACPI_BUS_TYPE_POWER:
-	hid = ACPI_POWER_HID;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "%d", (PowerDeviceCount++));
+	Hid = ACPI_POWER_HID;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "%d", (PowerDeviceCount++));
 	break;
     case ACPI_BUS_TYPE_PROCESSOR:
-	hid = ACPI_PROCESSOR_HID;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "_%d", (ProcessorCount++));
+	Hid = ACPI_PROCESSOR_HID;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "_%d", (ProcessorCount++));
 	break;
     case ACPI_BUS_TYPE_THERMAL:
-	hid = ACPI_THERMAL_HID;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "%d", (ThermalZoneCount++));
+	Hid = ACPI_THERMAL_HID;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "%d", (ThermalZoneCount++));
 	break;
     case ACPI_BUS_TYPE_POWER_BUTTON:
-	hid = ACPI_BUTTON_HID_POWER;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "%d", (PowerButtonCount++));
+	Hid = ACPI_BUTTON_HID_POWER;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "%d", (PowerButtonCount++));
 	break;
     case ACPI_BUS_TYPE_POWER_BUTTONF:
-	hid = ACPI_BUTTON_HID_POWERF;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "%d", (FixedPowerButtonCount++));
+	Hid = ACPI_BUTTON_HID_POWERF;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "%d", (FixedPowerButtonCount++));
 	break;
     case ACPI_BUS_TYPE_SLEEP_BUTTON:
-	hid = ACPI_BUTTON_HID_SLEEP;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "%d", (SleepButtonCount++));
+	Hid = ACPI_BUTTON_HID_SLEEP;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "%d", (SleepButtonCount++));
 	break;
     case ACPI_BUS_TYPE_SLEEP_BUTTONF:
-	hid = ACPI_BUTTON_HID_SLEEPF;
-	uid = static_uid_buffer;
-	snprintf(uid, sizeof(static_uid_buffer), "%d", (FixedSleepButtonCount++));
+	Hid = ACPI_BUTTON_HID_SLEEPF;
+	Uid = StaticUidBuffer;
+	snprintf(Uid, sizeof(StaticUidBuffer), "%d", (FixedSleepButtonCount++));
 	break;
     }
 
@@ -1104,41 +1068,34 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * ----
      * Fix for the system root bus device -- the only root-level device.
      */
-    if (((ACPI_HANDLE)parent == ACPI_ROOT_OBJECT) && (type == ACPI_BUS_TYPE_DEVICE)) {
-	hid = ACPI_BUS_HID;
-	snprintf(device->pnp.device_name, sizeof(device->pnp.device_name), "%s",
+    if (((ACPI_HANDLE)Parent == ACPI_ROOT_OBJECT) && (Type == ACPI_BUS_TYPE_DEVICE)) {
+	Hid = ACPI_BUS_HID;
+	snprintf(Device->Pnp.DeviceName, sizeof(Device->Pnp.DeviceName), "%s",
 		 ACPI_BUS_DEVICE_NAME);
-	snprintf(device->pnp.device_class, sizeof(device->pnp.device_class), "%s",
+	snprintf(Device->Pnp.DeviceClass, sizeof(Device->Pnp.DeviceClass), "%s",
 		 ACPI_BUS_CLASS);
     }
 
-    if (hid) {
-	device->pnp.hardware_id = ExAllocatePoolWithTag(strlen(hid) + 1,
+    if (Hid) {
+	Device->Pnp.HardwareId = ExAllocatePoolWithTag(strlen(Hid) + 1,
 							'DpcA');
-	if (device->pnp.hardware_id) {
-	    snprintf(device->pnp.hardware_id, strlen(hid) + 1, "%s", hid);
-	    device->flags.hardware_id = 1;
+	if (Device->Pnp.HardwareId) {
+	    snprintf(Device->Pnp.HardwareId, strlen(Hid) + 1, "%s", Hid);
+	    Device->Flags.HardwareId = 1;
 	}
     }
-    if (uid) {
-	snprintf(device->pnp.unique_id, sizeof(device->pnp.unique_id), "%s", uid);
-	device->flags.unique_id = 1;
+    if (Uid) {
+	snprintf(Device->Pnp.UniqueId, sizeof(Device->Pnp.UniqueId), "%s", Uid);
+	Device->Flags.UniqueId = 1;
     }
-
-    /*
-     * If we called get_object_info, we now are finished with the buffer,
-     * so we can free it.
-     */
-    //if (buffer.Pointer)
-    //AcpiOsFree(buffer.Pointer);
 
     /*
      * Power Management
      * ----------------
      */
-    if (device->flags.power_manageable) {
-	result = acpi_bus_get_power_flags(device);
-	if (result)
+    if (Device->Flags.PowerManageable) {
+	Result = AcpiBusGetPowerFlags(Device);
+	if (Result)
 	    goto end;
     }
 
@@ -1146,33 +1103,33 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * Performance Management
      * ----------------------
      */
-    if (device->flags.performance_manageable) {
-	result = acpi_bus_get_perf_flags(device);
-	if (result)
+    if (Device->Flags.PerformanceManageable) {
+	Result = AcpiBusGetPerfFlags(Device);
+	if (Result)
 	    goto end;
     }
 
     /*
      * Context
      * -------
-     * Attach this 'struct acpi_device' to the ACPI object.  This makes
+     * Attach this 'ACPI_DEVICE' to the ACPI object.  This makes
      * resolutions from handle->device very efficient.  Note that we need
      * to be careful with fixed-feature devices as they all attach to the
      * root object.
      */
-    switch (type) {
+    switch (Type) {
     case ACPI_BUS_TYPE_POWER_BUTTON:
     case ACPI_BUS_TYPE_POWER_BUTTONF:
     case ACPI_BUS_TYPE_SLEEP_BUTTON:
     case ACPI_BUS_TYPE_SLEEP_BUTTONF:
 	break;
     default:
-	status = AcpiAttachData(device->handle, acpi_bus_data_handler, device);
+	Status = AcpiAttachData(Device->Handle, AcpiBusDataHandler, Device);
 	break;
     }
-    if (ACPI_FAILURE(status)) {
+    if (ACPI_FAILURE(Status)) {
 	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "Error attaching device data\n"));
-	result = AE_NOT_FOUND;
+	Result = AE_NOT_FOUND;
 	goto end;
     }
 
@@ -1181,18 +1138,18 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * -------
      * Link this device to its parent and siblings.
      */
-    InitializeListHead(&device->children);
-    if (!device->parent)
-	InitializeListHead(&device->node);
+    InitializeListHead(&Device->Children);
+    if (!Device->Parent)
+	InitializeListHead(&Device->Node);
     else
-	InsertTailList(&device->parent->children, &device->node);
+	InsertTailList(&Device->Parent->Children, &Device->Node);
 
     /*
      * Global Device Hierarchy:
      * ------------------------
      * Register this device with the global device hierarchy.
      */
-    acpi_device_register(device, parent);
+    AcpiDeviceRegister(Device, Parent);
 
     /*
      * Bind _ADR-Based Devices
@@ -1201,9 +1158,9 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      * 'bind' function (if exists) to bind the ACPI- and natively-
      * enumerated device representations.
      */
-    if (device->flags.bus_address) {
-	if (device->parent && device->parent->ops.bind)
-	    device->parent->ops.bind(device);
+    if (Device->Flags.BusAddress) {
+	if (Device->Parent && Device->Parent->Ops.Bind)
+	    Device->Parent->Ops.Bind(Device);
     }
 
     /*
@@ -1215,117 +1172,117 @@ static int acpi_bus_add(struct acpi_device **child, struct acpi_device *parent,
      *
      * TBD: Assumes LDM provides driver hot-plug capability.
      */
-    if (device->flags.hardware_id || device->flags.compatible_ids)
-	acpi_bus_find_driver(device);
+    if (Device->Flags.HardwareId || Device->Flags.CompatibleIds)
+	AcpiBusFindDriver(Device);
 
 end:
-    if (info != NULL)
-	ACPI_FREE(info);
-    if (result) {
-	if (device->pnp.cid_list) {
-	    ExFreePoolWithTag(device->pnp.cid_list, 'DpcA');
+    if (Info != NULL)
+	ACPI_FREE(Info);
+    if (Result) {
+	if (Device->Pnp.CidList) {
+	    ExFreePoolWithTag(Device->Pnp.CidList, 'DpcA');
 	}
-	if (device->pnp.hardware_id) {
-	    ExFreePoolWithTag(device->pnp.hardware_id, 'DpcA');
+	if (Device->Pnp.HardwareId) {
+	    ExFreePoolWithTag(Device->Pnp.HardwareId, 'DpcA');
 	}
-	ExFreePoolWithTag(device, 'DpcA');
-	return_VALUE(result);
+	ExFreePoolWithTag(Device, 'DpcA');
+	return_VALUE(Result);
     }
-    *child = device;
+    *Child = Device;
 
     return_VALUE(0);
 }
 
-static int acpi_bus_remove(struct acpi_device *device, int type)
+static INT AcpiBusRemove(PACPI_DEVICE Device, INT Type)
 {
-    if (!device)
+    if (!Device)
 	return_VALUE(AE_NOT_FOUND);
 
-    acpi_device_unregister(device);
+    AcpiDeviceUnregister(Device);
 
-    if (device->pnp.cid_list)
-	ExFreePoolWithTag(device->pnp.cid_list, 'DpcA');
+    if (Device->Pnp.CidList)
+	ExFreePoolWithTag(Device->Pnp.CidList, 'DpcA');
 
-    if (device->pnp.hardware_id)
-	ExFreePoolWithTag(device->pnp.hardware_id, 'DpcA');
+    if (Device->Pnp.HardwareId)
+	ExFreePoolWithTag(Device->Pnp.HardwareId, 'DpcA');
 
-    if (device)
-	ExFreePoolWithTag(device, 'DpcA');
+    if (Device)
+	ExFreePoolWithTag(Device, 'DpcA');
 
     return_VALUE(0);
 }
 
-int acpi_bus_scan(struct acpi_device *start)
+INT AcpiBusScan(PACPI_DEVICE Start)
 {
-    ACPI_STATUS status = AE_OK;
-    struct acpi_device *parent = NULL;
-    struct acpi_device *child = NULL;
-    ACPI_HANDLE phandle = 0;
-    ACPI_HANDLE chandle = 0;
-    ACPI_OBJECT_TYPE type = 0;
-    UINT32 level = 1;
+    ACPI_STATUS Status = AE_OK;
+    PACPI_DEVICE Parent = NULL;
+    PACPI_DEVICE Child = NULL;
+    ACPI_HANDLE Phandle = 0;
+    ACPI_HANDLE Chandle = 0;
+    ACPI_OBJECT_TYPE Type = 0;
+    UINT32 Level = 1;
 
-    if (!start)
+    if (!Start)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    parent = start;
-    phandle = start->handle;
+    Parent = Start;
+    Phandle = Start->Handle;
 
     /*
      * Parse through the ACPI namespace, identify all 'devices', and
-     * create a new 'struct acpi_device' for each.
+     * create a new 'ACPI_DEVICE' for each.
      */
-    while ((level > 0) && parent) {
-	status = AcpiGetNextObject(ACPI_TYPE_ANY, phandle, chandle, &chandle);
+    while ((Level > 0) && Parent) {
+	Status = AcpiGetNextObject(ACPI_TYPE_ANY, Phandle, Chandle, &Chandle);
 
 	/*
 	 * If this scope is exhausted then move our way back up.
 	 */
-	if (ACPI_FAILURE(status)) {
-	    level--;
-	    chandle = phandle;
-	    AcpiGetParent(phandle, &phandle);
-	    if (parent->parent)
-		parent = parent->parent;
+	if (ACPI_FAILURE(Status)) {
+	    Level--;
+	    Chandle = Phandle;
+	    AcpiGetParent(Phandle, &Phandle);
+	    if (Parent->Parent)
+		Parent = Parent->Parent;
 	    continue;
 	}
 
-	status = AcpiGetType(chandle, &type);
-	if (ACPI_FAILURE(status))
+	Status = AcpiGetType(Chandle, &Type);
+	if (ACPI_FAILURE(Status))
 	    continue;
 
 	/*
 	 * If this is a scope object then parse it (depth-first).
 	 */
-	if (type == ACPI_TYPE_LOCAL_SCOPE) {
-	    level++;
-	    phandle = chandle;
-	    chandle = 0;
+	if (Type == ACPI_TYPE_LOCAL_SCOPE) {
+	    Level++;
+	    Phandle = Chandle;
+	    Chandle = 0;
 	    continue;
 	}
 
 	/*
 	 * We're only interested in objects that we consider 'devices'.
 	 */
-	switch (type) {
+	switch (Type) {
 	case ACPI_TYPE_DEVICE:
-	    type = ACPI_BUS_TYPE_DEVICE;
+	    Type = ACPI_BUS_TYPE_DEVICE;
 	    break;
 	case ACPI_TYPE_PROCESSOR:
-	    type = ACPI_BUS_TYPE_PROCESSOR;
+	    Type = ACPI_BUS_TYPE_PROCESSOR;
 	    break;
 	case ACPI_TYPE_THERMAL:
-	    type = ACPI_BUS_TYPE_THERMAL;
+	    Type = ACPI_BUS_TYPE_THERMAL;
 	    break;
 	case ACPI_TYPE_POWER:
-	    type = ACPI_BUS_TYPE_POWER;
+	    Type = ACPI_BUS_TYPE_POWER;
 	    break;
 	default:
 	    continue;
 	}
 
-	status = acpi_bus_add(&child, parent, chandle, type);
-	if (ACPI_FAILURE(status))
+	Status = AcpiBusAdd(&Child, Parent, Chandle, Type);
+	if (ACPI_FAILURE(Status))
 	    continue;
 
 	/*
@@ -1338,13 +1295,13 @@ int acpi_bus_scan(struct acpi_device *start)
 	 * TBD: Need notifications and other detection mechanisms
 	 *	in place before we can fully implement this.
 	 */
-	if (child->status.present) {
-	    status = AcpiGetNextObject(ACPI_TYPE_ANY, chandle, 0, NULL);
-	    if (ACPI_SUCCESS(status)) {
-		level++;
-		phandle = chandle;
-		chandle = 0;
-		parent = child;
+	if (Child->Status.Present) {
+	    Status = AcpiGetNextObject(ACPI_TYPE_ANY, Chandle, 0, NULL);
+	    if (ACPI_SUCCESS(Status)) {
+		Level++;
+		Phandle = Chandle;
+		Chandle = 0;
+		Parent = Child;
 	    }
 	}
     }
@@ -1352,12 +1309,12 @@ int acpi_bus_scan(struct acpi_device *start)
     return_VALUE(0);
 }
 
-static int acpi_bus_scan_fixed(struct acpi_device *root)
+static INT AcpiBusScanFixed(PACPI_DEVICE Root)
 {
-    int result = 0;
-    struct acpi_device *device = NULL;
+    INT Result = 0;
+    PACPI_DEVICE Device = NULL;
 
-    if (!root)
+    if (!Root)
 	return_VALUE(AE_NOT_FOUND);
 
     /* If ACPI_FADT_POWER_BUTTON is set, then a control
@@ -1365,12 +1322,12 @@ static int acpi_bus_scan_fixed(struct acpi_device *root)
      * power button is present.
      */
     if (AcpiGbl_FADT.Flags & ACPI_FADT_POWER_BUTTON)
-	result = acpi_bus_add(&device, acpi_root, NULL, ACPI_BUS_TYPE_POWER_BUTTON);
+	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_POWER_BUTTON);
     else {
 	/* Enable the fixed power button so we get notified if it is pressed */
 	AcpiWriteBitRegister(ACPI_BITREG_POWER_BUTTON_ENABLE, 1);
 
-	result = acpi_bus_add(&device, acpi_root, NULL, ACPI_BUS_TYPE_POWER_BUTTONF);
+	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_POWER_BUTTONF);
     }
 
     /* This one is a bit more complicated and we do it wrong
@@ -1381,137 +1338,119 @@ static int acpi_bus_scan_fixed(struct acpi_device *root)
      * the we have a control method button just like above.
      */
     if (AcpiGbl_FADT.Flags & ACPI_FADT_SLEEP_BUTTON)
-	result = acpi_bus_add(&device, acpi_root, NULL, ACPI_BUS_TYPE_SLEEP_BUTTON);
+	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_SLEEP_BUTTON);
     else {
 	/* Enable the fixed sleep button so we get notified if it is pressed */
 	AcpiWriteBitRegister(ACPI_BITREG_SLEEP_BUTTON_ENABLE, 1);
 
-	result = acpi_bus_add(&device, acpi_root, NULL, ACPI_BUS_TYPE_SLEEP_BUTTONF);
+	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_SLEEP_BUTTONF);
     }
 
-    return_VALUE(result);
+    return_VALUE(Result);
 }
 
 /* --------------------------------------------------------------------------
    Initialization/Cleanup
    -------------------------------------------------------------------------- */
 
-int acpi_bus_init(void)
+static INT AcpiBusInit(void)
 {
-    int result = 0;
-    ACPI_STATUS status = AE_OK;
+    INT Result = 0;
+    ACPI_STATUS Status = AE_OK;
 
-    DPRINT("acpi_bus_init\n");
+    DPRINT("AcpiBusInit\n");
 
-    status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
-    if (ACPI_FAILURE(status)) {
+    Status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
+    if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to start the ACPI Interpreter\n");
 	goto error1;
     }
 
-    /*
-     * ACPI 2.0 requires the EC driver to be loaded and work before
-     * the EC device is found in the namespace. This is accomplished
-     * by looking for the ECDT table, and getting the EC parameters out
-     * of that.
-     */
-    //result = acpi_ec_ecdt_probe();
-    /* Ignore result. Not having an ECDT is not fatal. */
-
-    status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
-    if (ACPI_FAILURE(status)) {
+    Status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
+    if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to initialize ACPI objects\n");
 	goto error1;
     }
 
     /*
-     * Maybe EC region is required at bus_scan/acpi_get_devices. So it
-     * is necessary to enable it as early as possible.
-     */
-    //acpi_boot_ec_enable();
-
-    /* Initialize sleep structures */
-    //acpi_sleep_init();
-
-    /*
      * Register the for all standard device notifications.
      */
-    status = AcpiInstallNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY,
-				      acpi_bus_notify, NULL);
-    if (ACPI_FAILURE(status)) {
+    Status = AcpiInstallNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY,
+				      AcpiBusNotify, NULL);
+    if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to register for device notifications\n");
-	result = AE_NOT_FOUND;
+	Result = AE_NOT_FOUND;
 	goto error1;
     }
 
     /*
      * Create the root device in the bus's device tree
      */
-    result = acpi_bus_add(&acpi_root, NULL, ACPI_ROOT_OBJECT, ACPI_BUS_TYPE_SYSTEM);
-    if (result)
+    Result = AcpiBusAdd(&AcpiRoot, NULL, ACPI_ROOT_OBJECT, ACPI_BUS_TYPE_SYSTEM);
+    if (Result)
 	goto error2;
 
     /*
      * Enumerate devices in the ACPI namespace.
      */
-    result = acpi_bus_scan_fixed(acpi_root);
-    if (result)
-	DPRINT1("acpi_bus_scan_fixed failed\n");
-    result = acpi_bus_scan(acpi_root);
-    if (result)
-	DPRINT1("acpi_bus_scan failed\n");
+    Result = AcpiBusScanFixed(AcpiRoot);
+    if (Result)
+	DPRINT1("AcpiBusScanFixed failed\n");
+    Result = AcpiBusScan(AcpiRoot);
+    if (Result)
+	DPRINT1("AcpiBusScan failed\n");
 
     return_VALUE(0);
 
     /* Mimic structured exception handling */
 error2:
-    AcpiRemoveNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY, acpi_bus_notify);
+    AcpiRemoveNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY, AcpiBusNotify);
 error1:
     AcpiTerminate();
     return_VALUE(AE_NOT_FOUND);
 }
 
-static void acpi_bus_exit(void)
+static VOID AcpiBusExit(void)
 {
-    ACPI_STATUS status = AE_OK;
+    ACPI_STATUS Status = AE_OK;
 
-    DPRINT1("acpi_bus_exit\n");
+    DPRINT1("AcpiBusExit\n");
 
-    status = AcpiRemoveNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY,
-				     acpi_bus_notify);
-    if (ACPI_FAILURE(status))
+    Status = AcpiRemoveNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY,
+				     AcpiBusNotify);
+    if (ACPI_FAILURE(Status))
 	DPRINT1("Error removing notify handler\n");
 
-    acpi_bus_remove(acpi_root, ACPI_BUS_REMOVAL_NORMAL);
+    AcpiBusRemove(AcpiRoot, ACPI_BUS_REMOVAL_NORMAL);
 
-    status = AcpiTerminate();
-    if (ACPI_FAILURE(status))
+    Status = AcpiTerminate();
+    if (ACPI_FAILURE(Status))
 	DPRINT1("Unable to terminate the ACPI Interpreter\n");
     else
 	DPRINT1("Interpreter disabled\n");
 }
 
-int AcpiBusInitializeManager(void)
+INT AcpiBusInitializeManager(void)
 {
-    int result = 0;
+    INT Result = 0;
 
-    DPRINT("acpi_init\n");
+    DPRINT("AcpiBusInitializeManager\n");
 
     DPRINT("Subsystem revision %08x\n", ACPI_CA_VERSION);
 
-    result = acpi_bus_init();
+    Result = AcpiBusInit();
 
     /*
      * Install drivers required for proper enumeration of the
      * ACPI namespace.
      */
-    acpi_power_init(); /* ACPI Bus Power Management */
-    acpi_button_init();
+    AcpiPowerInit(); /* ACPI Bus Power Management */
+    AcpiButtonInit();
 
-    return result;
+    return Result;
 }
 
 VOID AcpiBusTerminateManager(void)
 {
-    acpi_bus_exit();
+    AcpiBusExit();
 }

@@ -112,8 +112,8 @@ NTAPI NTSTATUS Bus_Power(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 /* busmgr/bus.c */
 int AcpiBusInitializeManager();
 VOID AcpiBusTerminateManager();
-int acpi_bus_set_power(ACPI_HANDLE handle, int state);
-BOOLEAN acpi_bus_power_manageable(ACPI_HANDLE handle);
+int AcpiBusSetPower(ACPI_HANDLE handle, int state);
+BOOLEAN AcpiBusPowerManageable(ACPI_HANDLE handle);
 
 /* busmgr/button.c */
 VOID AcpiBusQueueGetButtonEventIrp(IN PIRP Irp);
@@ -130,4 +130,4 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 ACPI_STATUS AcpiBusSuspendSystem(UINT32 state);
 
 /* bugmgr/utils.c */
-NTSTATUS acpi_create_volatile_registry_tables(void);
+NTSTATUS AcpiCreateVolatileRegistryTables(void);
