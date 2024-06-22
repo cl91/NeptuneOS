@@ -191,7 +191,7 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 			    PIO_STACK_LOCATION IrpStack,
 			    PFDO_DEVICE_DATA DeviceData)
 {
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
     ULONG Length, PrevCount, NumPdosPresent;
     PLIST_ENTRY Entry;
     PPDO_DEVICE_DATA PdoData;
@@ -199,29 +199,21 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 
     switch (IrpStack->MinorFunction) {
     case IRP_MN_START_DEVICE:
-
 	Status = Bus_StartFdo(DeviceObject, DeviceData, Irp,
 			      IrpStack->Parameters.StartDevice.AllocatedResources,
 			      IrpStack->Parameters.StartDevice.AllocatedResourcesTranslated);
-
-	Irp->IoStatus.Status = Status;
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	return Status;
+	break;
 
     case IRP_MN_QUERY_STOP_DEVICE:
-
 	//
 	// The PnP manager is trying to stop the device
 	// for resource rebalancing.
 	//
 	SET_NEW_PNP_STATE(DeviceData->Common, StopPending);
 	Status = Bus_StopFdo(DeviceObject, DeviceData, Irp);
-	Irp->IoStatus.Status = Status;
 	break;
 
     case IRP_MN_CANCEL_STOP_DEVICE:
-
 	//
 	// The PnP Manager sends this IRP, at some point after an
 	// IRP_MN_QUERY_STOP_DEVICE, to inform the drivers for a
@@ -246,7 +238,6 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 	break;
 
     case IRP_MN_QUERY_DEVICE_RELATIONS:
-
 	DPRINT("\tQueryDeviceRelation Type: %s\n",
 	       DbgDeviceRelationString(IrpStack->Parameters.QueryDeviceRelations.Type));
 
@@ -285,7 +276,6 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 	// Need to allocate a new relations structure and add our
 	// PDOs to it.
 	//
-
 	Length = sizeof(DEVICE_RELATIONS) +
 		 ((NumPdosPresent + PrevCount) * sizeof(PDEVICE_OBJECT));
 
@@ -296,7 +286,6 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 	    // Fail the IRP
 	    //
 	    Irp->IoStatus.Status = Status = STATUS_INSUFFICIENT_RESOURCES;
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	    return Status;
 	}
 
@@ -340,21 +329,16 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 	//
 	// Set up and pass the IRP further down the stack
 	//
-	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
 	break;
 
     default:
-
-	//
-	// In the default case we merely call the next driver.
-	// We must not modify Irp->IoStatus.Status or complete the IRP.
-	//
-
+	// In the default case we simply fail the IRP.
 	break;
     }
 
-    Status = IoCallDriver(DeviceData->NextLowerDriver, Irp);
-    return STATUS_SUCCESS;
+    Irp->IoStatus.Status = Status;
+    return Status;
 }
 
 NTAPI NTSTATUS Bus_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp)
