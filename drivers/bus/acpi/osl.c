@@ -128,13 +128,13 @@ PVOID AcpiOsMapMemory(ACPI_PHYSICAL_ADDRESS Phys, ACPI_SIZE Length)
     return Ptr;
 }
 
-VOID AcpiOsUnmapMemory(PVOID virt, ACPI_SIZE length)
+VOID AcpiOsUnmapMemory(PVOID Virt, ACPI_SIZE Length)
 {
-    DPRINT("AcpiOsUnmapMemory(virt %p  size 0x%zX)\n", virt, length);
+    DPRINT("AcpiOsUnmapMemory(virt %p  size 0x%zX)\n", Virt, Length);
 
-    ASSERT(virt);
+    ASSERT(Virt);
 
-    MmUnmapIoSpace(virt, length);
+    MmUnmapIoSpace(Virt, Length);
 }
 
 ACPI_STATUS AcpiOsGetPhysicalAddress(PVOID LogicalAddress,
@@ -154,17 +154,17 @@ ACPI_STATUS AcpiOsGetPhysicalAddress(PVOID LogicalAddress,
     return AE_OK;
 }
 
-PVOID AcpiOsAllocate(ACPI_SIZE size)
+PVOID AcpiOsAllocate(ACPI_SIZE Size)
 {
-    DPRINT("AcpiOsAllocate size %zd\n", size);
-    return ExAllocatePoolWithTag(size, ACPI_TAG);
+    DPRINT("AcpiOsAllocate size %zd\n", Size);
+    return ExAllocatePoolWithTag(Size, ACPI_TAG);
 }
 
-VOID AcpiOsFree(PVOID ptr)
+VOID AcpiOsFree(PVOID Ptr)
 {
-    if (!ptr)
+    if (!Ptr)
 	DPRINT1("Attempt to free null pointer!!!\n");
-    ExFreePoolWithTag(ptr, ACPI_TAG);
+    ExFreePoolWithTag(Ptr, ACPI_TAG);
 }
 
 static volatile UCHAR Probe;
@@ -239,20 +239,20 @@ ACPI_STATUS AcpiOsExecute(ACPI_EXECUTE_TYPE Type,
     return AE_OK;
 }
 
-VOID AcpiOsSleep(UINT64 milliseconds)
+VOID AcpiOsSleep(UINT64 Milliseconds)
 {
-    DPRINT("AcpiOsSleep %llu\n", milliseconds);
+    DPRINT("AcpiOsSleep %llu\n", Milliseconds);
     LARGE_INTEGER Delay = {
 	/* Unit is 100ns. */
-	.QuadPart = milliseconds * 1000 * 10
+	.QuadPart = Milliseconds * 1000 * 10
     };
     KeDelayExecutionThread(FALSE, &Delay);
 }
 
-VOID AcpiOsStall(UINT32 microseconds)
+VOID AcpiOsStall(UINT32 Microseconds)
 {
-    DPRINT("AcpiOsStall %d\n", microseconds);
-    KeStallExecutionProcessor(microseconds);
+    DPRINT("AcpiOsStall %d\n", Microseconds);
+    KeStallExecutionProcessor(Microseconds);
 }
 
 ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle,
@@ -350,15 +350,10 @@ ACPI_STATUS AcpiOsRemoveInterruptHandler(UINT32 InterruptNumber,
     return AE_OK;
 }
 
-ACPI_STATUS AcpiOsReadMemory(ACPI_PHYSICAL_ADDRESS Address,
-			     UINT64 *Value,
-			     UINT32 Width)
+static VOID OslReadMemory(PVOID MappedAddress,
+			  UINT64 *Value,
+			  UINT32 Width)
 {
-    DPRINT("AcpiOsReadMemory 0x%llx\n", Address);
-    PVOID MappedAddress = AcpiOsMapMemory(Address, Width);
-    if (!MappedAddress) {
-	return AE_ERROR;
-    }
     switch (Width) {
     case 8:
 	*Value = *(PUCHAR)MappedAddress;
@@ -378,20 +373,27 @@ ACPI_STATUS AcpiOsReadMemory(ACPI_PHYSICAL_ADDRESS Address,
 
     default:
 	DPRINT1("AcpiOsReadMemory got bad width: %d\n", Width);
-	return AE_BAD_PARAMETER;
+	RtlRaiseStatus(STATUS_INVALID_PARAMETER);
     }
-    return AE_OK;
 }
 
-ACPI_STATUS AcpiOsWriteMemory(ACPI_PHYSICAL_ADDRESS Address,
-			      UINT64 Value,
-			      UINT32 Width)
+ACPI_STATUS AcpiOsReadMemory(ACPI_PHYSICAL_ADDRESS Address,
+			     UINT64 *Value,
+			     UINT32 Width)
 {
-    DPRINT("AcpiOsWriteMemory 0x%llx\n", Address);
+    DPRINT("AcpiOsReadMemory 0x%llx\n", Address);
     PVOID MappedAddress = AcpiOsMapMemory(Address, Width);
     if (!MappedAddress) {
 	return AE_ERROR;
     }
+    OslReadMemory(MappedAddress, Value, Width);
+    return AE_OK;
+}
+
+static VOID OslWriteMemory(PVOID MappedAddress,
+			   UINT64 Value,
+			   UINT32 Width)
+{
     switch (Width) {
     case 8:
 	*(PUCHAR)MappedAddress = Value;
@@ -411,9 +413,21 @@ ACPI_STATUS AcpiOsWriteMemory(ACPI_PHYSICAL_ADDRESS Address,
 
     default:
 	DPRINT1("AcpiOsWriteMemory got bad width: %d\n", Width);
-	return AE_BAD_PARAMETER;
+	RtlRaiseStatus(STATUS_INVALID_PARAMETER);
+    }
+}
+
+ACPI_STATUS AcpiOsWriteMemory(ACPI_PHYSICAL_ADDRESS Address,
+			      UINT64 Value,
+			      UINT32 Width)
+{
+    DPRINT("AcpiOsWriteMemory 0x%llx\n", Address);
+    PVOID MappedAddress = AcpiOsMapMemory(Address, Width);
+    if (!MappedAddress) {
+	return AE_ERROR;
     }
 
+    OslWriteMemory(MappedAddress, Value, Width);
     return AE_OK;
 }
 
@@ -470,71 +484,75 @@ ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS Address,
     return AE_OK;
 }
 
-BOOLEAN OslIsPciDevicePresent(ULONG BusNumber, ULONG SlotNumber)
+#define CFG_SHIFT	12
+
+static PVOID OslGetPciConfigurationAddress(ACPI_PCI_ID *PciId,
+					   UINT32 Reg)
 {
-    UINT32 ReadLength;
-    PCI_COMMON_CONFIG PciConfig;
-
-    /* Detect device presence by reading the PCI configuration space */
-
-    ReadLength = HalGetBusDataByOffset(PCIConfiguration, BusNumber, SlotNumber,
-				       &PciConfig, 0, sizeof(PciConfig));
-    if (ReadLength == 0) {
-	DPRINT("PCI device is not present\n");
-	return FALSE;
+    ULONG64 PhyAddr = 0;
+    ACPI_TABLE_MCFG *Table;
+    ACPI_STATUS Status = AcpiGetTable(ACPI_SIG_MCFG, 0, (ACPI_TABLE_HEADER **)&Table);
+    if (ACPI_FAILURE(Status)) {
+	DPRINT1("Failed to get MCFG table (Status 0x%08x)\n", Status);
+	return NULL;
     }
-
-    ASSERT(ReadLength >= 2);
-
-    if (PciConfig.Header.VendorID == PCI_INVALID_VENDORID) {
+    ACPI_MCFG_ALLOCATION *Entry = (PVOID)(Table + 1);
+    ULONG EntryCount = (Table->Header.Length - sizeof(*Table)) / sizeof(*Entry);
+    for (ULONG i = 0; i < EntryCount; i++) {
+	if (Entry[i].PciSegment == PciId->Segment &&
+	    Entry[i].StartBusNumber <= PciId->Bus &&
+	    Entry[i].EndBusNumber >= PciId->Bus) {
+	    PhyAddr = Entry[i].Address;
+	    break;
+	}
+    }
+    if (!PhyAddr) {
+	DPRINT("No MCFG table entry found for PCI segment %d bus %d\n",
+	       PciId->Segment, PciId->Bus);
+	return NULL;
+    }
+    PhyAddr += ((PciId->Bus << 8) | (PciId->Device << 3) | PciId->Function) << CFG_SHIFT;
+    PPCI_COMMON_CONFIG PciCfg = AcpiOsMapMemory(PhyAddr, 1 << CFG_SHIFT);
+    if (!PciCfg) {
+	DPRINT("Unable to map physical memory %llx\n", PhyAddr);
+	return NULL;
+    }
+    if (PciCfg->Header.VendorID == PCI_INVALID_VENDORID) {
 	DPRINT("Invalid vendor ID in PCI configuration space\n");
-	return FALSE;
+	return NULL;
     }
 
     DPRINT("PCI device is present\n");
-
-    return TRUE;
+    return (PCHAR)PciCfg + Reg;
 }
 
 ACPI_STATUS AcpiOsReadPciConfiguration(ACPI_PCI_ID *PciId,
 				       UINT32 Reg, UINT64 *Value, UINT32 Width)
 {
-    PCI_SLOT_NUMBER Slot;
+    DPRINT("AcpiOsReadPciConfiguration, segment=%d, bus=%d, device=%d, func=%d, reg=0x%x\n",
+	   PciId->Device, PciId->Bus, PciId->Device, PciId->Function, Reg);
 
-    Slot.AsULONG = 0;
-    Slot.Bits.DeviceNumber = PciId->Device;
-    Slot.Bits.FunctionNumber = PciId->Function;
-
-    DPRINT("AcpiOsReadPciConfiguration, slot=0x%X, func=0x%X\n", Slot.AsULONG, Reg);
-
-    if (!OslIsPciDevicePresent(PciId->Bus, Slot.AsULONG))
+    PVOID MappedReg = OslGetPciConfigurationAddress(PciId, Reg);
+    if (!MappedReg) {
 	return AE_NOT_FOUND;
+    }
 
-    /* Width is in BITS */
-    HalGetBusDataByOffset(PCIConfiguration, PciId->Bus, Slot.AsULONG, Value, Reg,
-			  (Width >> 3));
-
+    OslReadMemory(MappedReg, Value, Width);
     return AE_OK;
 }
 
 ACPI_STATUS AcpiOsWritePciConfiguration(ACPI_PCI_ID *PciId,
 					UINT32 Reg, UINT64 Value, UINT32 Width)
 {
-    ULONG Buf = Value;
-    PCI_SLOT_NUMBER Slot;
+    DPRINT("AcpiOsWritePciConfiguration, segment=%d, bus=%d, device=%d, func=%d, reg=0x%x\n",
+	   PciId->Device, PciId->Bus, PciId->Device, PciId->Function, Reg);
 
-    Slot.AsULONG = 0;
-    Slot.Bits.DeviceNumber = PciId->Device;
-    Slot.Bits.FunctionNumber = PciId->Function;
-
-    DPRINT("AcpiOsWritePciConfiguration, slot=0x%x\n", Slot.AsULONG);
-    if (!OslIsPciDevicePresent(PciId->Bus, Slot.AsULONG))
+    PVOID MappedReg = OslGetPciConfigurationAddress(PciId, Reg);
+    if (!MappedReg) {
 	return AE_NOT_FOUND;
+    }
 
-    /* Width is in bits */
-    HalSetBusDataByOffset(PCIConfiguration, PciId->Bus, Slot.AsULONG, &Buf, Reg,
-			  (Width >> 3));
-
+    OslWriteMemory(MappedReg, Value, Width);
     return AE_OK;
 }
 

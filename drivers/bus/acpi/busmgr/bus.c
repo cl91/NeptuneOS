@@ -342,7 +342,7 @@ static INT AcpiBusGetPowerFlags(PACPI_DEVICE Device)
 
 	/* Evaluate "_PRx" to se if power resources are referenced */
 	Status = AcpiEvaluateReference(Device->Handle, ObjectName, NULL,
-					 &Ps->Resources);
+				       &Ps->Resources);
 	if (ACPI_SUCCESS(Status) && Ps->Resources.Count) {
 	    Device->Power.Flags.PowerResources = 1;
 	    Ps->Flags.Valid = 1;
@@ -406,7 +406,7 @@ static INT AcpiBusGetPerfFlags(PACPI_DEVICE Device)
  * @Data:	context for this search operation
  */
 static INT AcpiBusWalk(PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
-			 INT Direction, PVOID Data)
+		       INT Direction, PVOID Data)
 {
     INT Result = 0;
     INT Level = 0;
@@ -616,10 +616,10 @@ static VOID AcpiBusNotify(ACPI_HANDLE Handle, UINT32 Type, PVOID Data)
    Driver Management
    -------------------------------------------------------------------------- */
 
-static LIST_HEAD(acpi_bus_drivers);
+static LIST_HEAD(AcpiBusDrivers);
 
 /**
- * acpi_bus_match
+ * AcpiBusMatch
  * --------------
  * Checks the device's hardware (_HID) or compatible (_CID) ids to see if it
  * matches the specified driver's criteria.
@@ -707,7 +707,7 @@ static INT AcpiBusAttach(PACPI_DEVICE Device, INT Level, PVOID Data)
     if (!Device || !Data)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    Driver = (PACPI_BUSMGR_COMPONENT )Data;
+    Driver = (PACPI_BUSMGR_COMPONENT)Data;
 
     if (Device->Driver)
 	return_VALUE(-9);
@@ -775,7 +775,7 @@ static INT AcpiBusFindDriver(PACPI_DEVICE Device)
     if (!Device || Device->Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    LoopOverList(driver, &acpi_bus_drivers, ACPI_BUSMGR_COMPONENT, Node) {
+    LoopOverList(driver, &AcpiBusDrivers, ACPI_BUSMGR_COMPONENT, Node) {
 	if (AcpiBusMatch(Device, driver))
 	    continue;
 
@@ -790,7 +790,7 @@ static INT AcpiBusFindDriver(PACPI_DEVICE Device)
 }
 
 /**
- * acpi_bus_register_driver
+ * AcpiBusRegisterDriver
  * ------------------------
  * Registers a driver with the ACPI bus.  Searches the namespace for all
  * devices that match the driver's criteria and binds.
@@ -800,7 +800,7 @@ INT AcpiBusRegisterDriver(PACPI_BUSMGR_COMPONENT Driver)
     if (!Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    InsertTailList(&acpi_bus_drivers, &Driver->Node);
+    InsertTailList(&AcpiBusDrivers, &Driver->Node);
 
     AcpiBusWalk(AcpiRoot, AcpiBusAttach, WALK_DOWN, Driver);
 
@@ -808,7 +808,7 @@ INT AcpiBusRegisterDriver(PACPI_BUSMGR_COMPONENT Driver)
 }
 
 /**
- * acpi_bus_unregister_driver
+ * AcpiBusUnregisterDriver
  * --------------------------
  * Unregisters a driver with the ACPI bus.  Searches the namespace for all
  * devices that match the driver's criteria and unbinds.
@@ -880,7 +880,7 @@ static INT AcpiBusGetFlags(PACPI_DEVICE Device)
 }
 
 static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
-			ACPI_HANDLE Handle, INT Type)
+		      ACPI_HANDLE Handle, INT Type)
 {
     INT Result = 0;
     ACPI_STATUS Status = AE_OK;
@@ -899,7 +899,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
     Device = ExAllocatePoolWithTag(sizeof(ACPI_DEVICE), 'DpcA');
     if (!Device) {
 	DPRINT1("Memory allocation error\n");
-	return_VALUE(-12);
+	return_VALUE(AE_NO_MEMORY);
     }
     memset(Device, 0, sizeof(ACPI_DEVICE));
 
@@ -1004,7 +1004,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
 	if (Info->Valid & ACPI_VALID_CID) {
 	    CidList = &Info->CompatibleIdList;
 	    Device->Pnp.CidList = ExAllocatePoolWithTag(CidList->ListSize,
-							 'DpcA');
+							'DpcA');
 	    if (Device->Pnp.CidList) {
 		PCHAR P = (PCHAR )&Device->Pnp.CidList->Ids[CidList->Count];
 		Device->Pnp.CidList->Count = CidList->Count;
@@ -1078,7 +1078,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
 
     if (Hid) {
 	Device->Pnp.HardwareId = ExAllocatePoolWithTag(strlen(Hid) + 1,
-							'DpcA');
+						       'DpcA');
 	if (Device->Pnp.HardwareId) {
 	    snprintf(Device->Pnp.HardwareId, strlen(Hid) + 1, "%s", Hid);
 	    Device->Flags.HardwareId = 1;
@@ -1353,24 +1353,27 @@ static INT AcpiBusScanFixed(PACPI_DEVICE Root)
    Initialization/Cleanup
    -------------------------------------------------------------------------- */
 
-static INT AcpiBusInit(void)
+INT AcpiBusInitializeManager(void)
 {
-    INT Result = 0;
-    ACPI_STATUS Status = AE_OK;
+    DPRINT("AcpiBusInitializeManager\n");
 
-    DPRINT("AcpiBusInit\n");
+    DPRINT("Subsystem revision %08x\n", ACPI_CA_VERSION);
+
+    ACPI_STATUS Status = AE_OK;
 
     Status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to start the ACPI Interpreter\n");
 	goto error1;
     }
+    DPRINT1("AcpiEnableSubsystem OK\n");
 
     Status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to initialize ACPI objects\n");
 	goto error1;
     }
+    DPRINT1("AcpiInitializeObjects OK\n");
 
     /*
      * Register the for all standard device notifications.
@@ -1379,38 +1382,64 @@ static INT AcpiBusInit(void)
 				      AcpiBusNotify, NULL);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to register for device notifications\n");
-	Result = AE_NOT_FOUND;
+	Status = AE_NOT_FOUND;
 	goto error1;
     }
+    DPRINT1("AcpiInstallNotifyHandler OK\n");
 
     /*
      * Create the root device in the bus's device tree
      */
-    Result = AcpiBusAdd(&AcpiRoot, NULL, ACPI_ROOT_OBJECT, ACPI_BUS_TYPE_SYSTEM);
-    if (Result)
+    Status = AcpiBusAdd(&AcpiRoot, NULL, ACPI_ROOT_OBJECT, ACPI_BUS_TYPE_SYSTEM);
+    if (ACPI_FAILURE(Status))
 	goto error2;
+    DPRINT1("AcpiBusAdd OK\n");
 
     /*
      * Enumerate devices in the ACPI namespace.
      */
-    Result = AcpiBusScanFixed(AcpiRoot);
-    if (Result)
+    Status = AcpiBusScanFixed(AcpiRoot);
+    if (ACPI_FAILURE(Status)) {
 	DPRINT1("AcpiBusScanFixed failed\n");
-    Result = AcpiBusScan(AcpiRoot);
-    if (Result)
+    } else {
+	DPRINT1("AcpiBusScanFixed OK\n");
+    }
+    Status = AcpiBusScan(AcpiRoot);
+    if (ACPI_FAILURE(Status)) {
 	DPRINT1("AcpiBusScan failed\n");
+    } else {
+	DPRINT1("AcpiBusScan OK\n");
+    }
 
-    return_VALUE(0);
+    /*
+     * Install drivers required for proper enumeration of the
+     * ACPI namespace.
+     */
+    Status = AcpiPowerInit(); /* ACPI Bus Power Management */
+    if (ACPI_FAILURE(Status)) {
+	DPRINT1("AcpiPowerInit failed\n");
+    } else {
+	DPRINT1("AcpiPowerInit OK\n");
+    }
+    Status = AcpiButtonInit();
+    if (ACPI_FAILURE(Status)) {
+	DPRINT1("AcpiButtonInit failed\n");
+    } else {
+	DPRINT1("AcpiButtonInit OK\n");
+    }
 
-    /* Mimic structured exception handling */
+    DPRINT1("AcpiBusInitializeManager OK\n");
+    return_VALUE(AE_OK);
+
 error2:
     AcpiRemoveNotifyHandler(ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY, AcpiBusNotify);
 error1:
     AcpiTerminate();
-    return_VALUE(AE_NOT_FOUND);
+
+    return Status;
 }
 
-static VOID AcpiBusExit(void)
+VOID AcpiBusTerminateManager(void)
 {
     ACPI_STATUS Status = AE_OK;
 
@@ -1428,29 +1457,4 @@ static VOID AcpiBusExit(void)
 	DPRINT1("Unable to terminate the ACPI Interpreter\n");
     else
 	DPRINT1("Interpreter disabled\n");
-}
-
-INT AcpiBusInitializeManager(void)
-{
-    INT Result = 0;
-
-    DPRINT("AcpiBusInitializeManager\n");
-
-    DPRINT("Subsystem revision %08x\n", ACPI_CA_VERSION);
-
-    Result = AcpiBusInit();
-
-    /*
-     * Install drivers required for proper enumeration of the
-     * ACPI namespace.
-     */
-    AcpiPowerInit(); /* ACPI Bus Power Management */
-    AcpiButtonInit();
-
-    return Result;
-}
-
-VOID AcpiBusTerminateManager(void)
-{
-    AcpiBusExit();
 }

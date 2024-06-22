@@ -23,41 +23,6 @@ __cdecl NTSYSAPI VOID __outdword(IN USHORT PortNum,
 #define WRITE_PORT_ULONG(Port, Data)	__outdword((ULONG_PTR)(Port), Data)
 
 /*
- * Hal Configuration Space Routines
- */
-
-typedef enum _BUS_DATA_TYPE {
-    ConfigurationSpaceUndefined = -1,
-    Cmos,
-    EisaConfiguration,
-    Pos,
-    CbusConfiguration,
-    PCIConfiguration,
-    VMEConfiguration,
-    NuBusConfiguration,
-    PCMCIAConfiguration,
-    MPIConfiguration,
-    MPSAConfiguration,
-    PNPISAConfiguration,
-    SgiInternalConfiguration,
-    MaximumBusDataType
-} BUS_DATA_TYPE, *PBUS_DATA_TYPE;
-
-NTAPI NTSYSAPI ULONG HalGetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
-					   IN ULONG BusNumber,
-					   IN ULONG SlotNumber,
-					   OUT PVOID Buffer,
-					   IN ULONG Offset,
-					   IN ULONG Length);
-
-NTAPI NTSYSAPI ULONG HalSetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
-					   IN ULONG BusNumber,
-					   IN ULONG SlotNumber,
-					   IN PVOID Buffer,
-					   IN ULONG Offset,
-					   IN ULONG Length);
-
-/*
  * DMA data types and routines
  */
 

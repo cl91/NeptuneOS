@@ -56,8 +56,6 @@
 @ stdcall ObDereferenceObject(ptr)
 @ stdcall HalMakeBeep(long)
 @ stdcall HalGetAdapter(ptr ptr)
-@ stdcall HalGetBusDataByOffset(long long long ptr long long)
-@ stdcall HalSetBusDataByOffset(long long long ptr long long)
 @ stdcall CcInitializeCacheMap(ptr)
 @ stdcall CcUninitializeCacheMap(ptr ptr)
 @ stdcall CcMapData(ptr ptr long long ptr ptr ptr)

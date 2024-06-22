@@ -21,6 +21,8 @@ UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
     UCHAR InterruptLine = 0, PciInterruptLine;
     ULONG Length;
 
+    /* TODO! */
+#if 0
     /* Does the device have an interrupt pin? */
     if (PdoExtension->InterruptPin) {
 	/* Find the associated line on the parent bus */
@@ -31,14 +33,15 @@ UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
 	if (Length)
 	    InterruptLine = PciInterruptLine;
     }
+#endif
 
     /* Either keep the original interrupt line, or the one on the master bus */
     return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
 }
 
-VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
-			     IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer,
-			     IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
+static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
+				    IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer,
+				    IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
 {
     /* TODO! */
 #if 0

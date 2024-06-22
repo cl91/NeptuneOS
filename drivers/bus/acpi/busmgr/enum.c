@@ -186,6 +186,7 @@ static NTSTATUS Bus_PlugInDevice(PACPI_DEVICE Device, PFDO_DEVICE_DATA FdoData)
 /* looks alot like acpi_bus_walk doesnt it */
 NTSTATUS Bus_EnumerateDevices(PFDO_DEVICE_DATA DeviceExtension)
 {
+    DPRINT1("Enumerating ACPI bus\n");
     ULONG Count = 0;
     PACPI_DEVICE Device = AcpiRoot;
 

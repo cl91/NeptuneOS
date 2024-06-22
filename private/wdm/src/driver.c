@@ -319,25 +319,3 @@ NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID BaseAddress)
     PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
     return PhyAddr;
 }
-
-NTAPI ULONG HalGetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
-				  IN ULONG BusNumber,
-				  IN ULONG SlotNumber,
-				  OUT PVOID Buffer,
-				  IN ULONG Offset,
-				  IN ULONG Length)
-{
-    assert(FALSE);
-    return 0;
-}
-
-NTAPI ULONG HalSetBusDataByOffset(IN BUS_DATA_TYPE BusDataType,
-				  IN ULONG BusNumber,
-				  IN ULONG SlotNumber,
-				  IN PVOID Buffer,
-				  IN ULONG Offset,
-				  IN ULONG Length)
-{
-    assert(FALSE);
-    return 0;
-}
