@@ -1,6 +1,4 @@
 #include "ldrp.h"
-#include "ntrtl.h"
-#include "ntstatus.h"
 
 /* TLS ***********************************************************************/
 

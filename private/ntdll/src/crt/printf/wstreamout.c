@@ -59,9 +59,7 @@ enum
 #define get_exp(f) (int)floor(f == 0 ? 0 : (f >= 0 ? log10(f) : log10(-f)))
 #define round(x) floor((x) + 0.5)
 
-static
-int
-streamout_char(FILE *stream, int chr)
+static int streamout_char(FILE *stream, int chr)
 {
 #if !defined(_USER32_WSPRINTF)
      if ((stream->_flag & _IOSTRG) && (stream->_base == NULL))
@@ -78,48 +76,42 @@ streamout_char(FILE *stream, int chr)
     return 1;
 }
 
-static
-int
-streamout_astring(FILE *stream, const char *string, size_t count)
+static int streamout_astring(FILE *stream, const char *string, size_t count)
 {
-    TCHAR chr;
     int written = 0;
 
 #if !defined(_USER32_WSPRINTF)
-     if ((stream->_flag & _IOSTRG) && (stream->_base == NULL))
+    if ((stream->_flag & _IOSTRG) && (stream->_base == NULL))
         return count;
 #endif
 
-    while (count--)
-    {
 #ifdef _UNICODE
-        int len = 0;
-	if (!NT_SUCCESS(RtlMultiByteToUnicodeN(&chr, sizeof(chr),
-					       (PULONG)&len, string,
-					       MB_CUR_MAX))) {
-	    break;
-	}
-        if (len < 1) break;
-        string += len;
+    if (stream->_cnt < sizeof(WCHAR))
+        return 0;
+    RtlMultiByteToUnicodeN((PWCH)stream->_ptr, min(stream->_cnt, count * sizeof(WCHAR)),
+			   (PULONG)&written, string, strlen(string));
+    stream->_ptr += written;
+    stream->_cnt -= written;
+    written /= sizeof(WCHAR);
 #else
+    while (count--) {
+	TCHAR chr;
         chr = *string++;
-#endif
         if (streamout_char(stream, chr) == 0) return -1;
         written++;
     }
+#endif
 
     return written;
 }
 
-static
-int
-streamout_wstring(FILE *stream, const wchar_t *string, size_t count)
+static int streamout_wstring(FILE *stream, const wchar_t *string, size_t count)
 {
     wchar_t chr;
     int written = 0;
 
 #if defined(_UNICODE) && !defined(_USER32_WSPRINTF)
-     if ((stream->_flag & _IOSTRG) && (stream->_base == NULL))
+    if ((stream->_flag & _IOSTRG) && (stream->_base == NULL))
         return count;
 #endif
 
