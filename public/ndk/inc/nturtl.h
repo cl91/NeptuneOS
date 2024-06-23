@@ -867,6 +867,8 @@ NTAPI NTSYSAPI NTSTATUS RtlDowncaseUnicodeString(IN OUT PUNICODE_STRING UniDest,
 NTAPI NTSYSAPI NTSTATUS RtlStringFromGUID(IN REFGUID Guid,
 					  OUT PUNICODE_STRING GuidString);
 
+NTAPI NTSYSAPI ULONG RtlUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString);
+
 NTAPI NTSYSAPI ULONG RtlxUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString);
 
 NTAPI NTSYSAPI ULONG RtlUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString);
@@ -1010,16 +1012,13 @@ NTAPI NTSYSAPI VOID RtlResetRtlTranslations(IN PNLSTABLEINFO NlsTable);
 
 NTAPI NTSYSAPI VOID RtlFreeOemString(IN POEM_STRING OemString);
 
-NTAPI NTSYSAPI BOOLEAN RtlpDidUnicodeToOemWork(IN PCUNICODE_STRING UnicodeString,
-					       IN POEM_STRING OemString);
-
 NTAPI NTSYSAPI NTSTATUS RtlUnicodeToMultiByteSize(OUT PULONG MbSize,
 						  IN PCWCH UnicodeString,
 						  IN ULONG UnicodeSize);
 
-NTAPI NTSYSAPI ULONG RtlxUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString);
-
 NTAPI NTSYSAPI ULONG RtlUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString);
+
+NTAPI NTSYSAPI ULONG RtlxUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString);
 
 NTAPI NTSYSAPI ULONG RtlUnicodeStringToCountedOemSize(IN PCUNICODE_STRING UnicodeString);
 
@@ -1038,6 +1037,8 @@ NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeStringToCountedOemString(IN OUT POEM_STR
 NTAPI NTSYSAPI NTSTATUS RtlUpcaseUnicodeStringToOemString(IN OUT POEM_STRING OemDest,
 							  IN PCUNICODE_STRING UniSource,
 							  IN BOOLEAN AllocateDestinationString);
+
+NTAPI NTSYSAPI ULONG RtlOemStringToUnicodeSize(IN PCOEM_STRING OemString);
 
 NTAPI NTSYSAPI ULONG RtlxOemStringToUnicodeSize(IN PCOEM_STRING OemString);
 

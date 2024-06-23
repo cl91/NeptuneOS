@@ -13,19 +13,6 @@
 #include <wchar.h>
 #include "rtlp.h"
 
-/* GLOBALS *******************************************************************/
-
-extern BOOLEAN NlsMbCodePageTag;
-extern BOOLEAN NlsMbOemCodePageTag;
-extern PUSHORT NlsLeadByteInfo;
-extern USHORT NlsOemDefaultChar;
-extern USHORT NlsUnicodeDefaultChar;
-extern PUSHORT NlsOemLeadByteInfo;
-extern PWCHAR NlsOemToUnicodeTable;
-extern PCHAR NlsUnicodeToOemTable;
-extern PUSHORT NlsUnicodeToMbOemTable;
-
-
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -33,26 +20,17 @@ extern PUSHORT NlsUnicodeToMbOemTable;
  */
 NTAPI WCHAR RtlAnsiCharToUnicodeChar(IN OUT PUCHAR *AnsiChar)
 {
-    ULONG Size;
     NTSTATUS Status;
     WCHAR UnicodeChar = L' ';
 
-    if (NlsLeadByteInfo) {
-	Size = (NlsLeadByteInfo[**AnsiChar] == 0) ? 1 : 2;
-    } else {
-	DPRINT("HACK::Shouldn't have happened! Consider fixing Usetup and registry entries it creates on install\n");
-	Size = 1;
-    }
-
-    Status = RtlMultiByteToUnicodeN(&UnicodeChar,
-				    sizeof(WCHAR),
-				    NULL, (PCHAR) *AnsiChar, Size);
+    Status = RtlMultiByteToUnicodeN(&UnicodeChar, sizeof(WCHAR), NULL,
+				    (PCHAR)(*AnsiChar), 1);
 
     if (!NT_SUCCESS(Status)) {
 	UnicodeChar = L' ';
     }
 
-    *AnsiChar += Size;
+    (*AnsiChar)++;
     return UnicodeChar;
 }
 
@@ -68,14 +46,9 @@ NTAPI NTSTATUS RtlAnsiStringToUnicodeString(IN OUT PUNICODE_STRING UniDest,
 					    IN BOOLEAN AllocateDestinationString)
 {
     NTSTATUS Status;
-    ULONG Length;
     ULONG Index;
 
-    if (NlsMbCodePageTag == FALSE) {
-	Length = AnsiSource->Length * 2 + sizeof(WCHAR);
-    } else {
-	Length = RtlAnsiStringToUnicodeSize(AnsiSource);
-    }
+    ULONG Length = RtlAnsiStringToUnicodeSize(AnsiSource);
     if (Length > MAXUSHORT)
 	return STATUS_INVALID_PARAMETER_2;
     UniDest->Length = (USHORT) Length - sizeof(WCHAR);
@@ -122,8 +95,7 @@ NTAPI ULONG RtlAnsiStringToUnicodeSize(IN PCANSI_STRING AnsiString)
     ULONG Size;
 
     /* Convert from Mb String to Unicode Size */
-    RtlMultiByteToUnicodeSize(&Size,
-			      AnsiString->Buffer, AnsiString->Length);
+    RtlMultiByteToUnicodeSize(&Size, AnsiString->Buffer, AnsiString->Length);
 
     /* Return the size plus the null-char */
     return (Size + sizeof(WCHAR));
@@ -207,101 +179,101 @@ NTAPI NTSTATUS RtlAppendUnicodeStringToString(IN OUT PUNICODE_STRING Destination
  * DIFFERENCES
  *  This function does not read garbage behind '\0' as the native version does.
  */
-NTAPI NTSTATUS RtlCharToInteger(PCSZ str,	/* [I] '\0' terminated single-byte string containing a number */
-				ULONG base,	/* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
-				PULONG value)
+NTAPI NTSTATUS RtlCharToInteger(PCSZ Str,	/* [I] '\0' terminated single-byte string containing a number */
+				ULONG Base,	/* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
+				PULONG Value)
 {				/* [O] Destination for the converted value */
-    CHAR chCurrent;
-    int digit;
+    CHAR Current;
+    int Digit;
     ULONG RunningTotal = 0;
-    char bMinus = 0;
+    char Minus = 0;
 
     /* skip leading whitespaces */
-    while (*str != '\0' && *str <= ' ')
-	str++;
+    while (*Str != '\0' && *Str <= ' ')
+	Str++;
 
     /* Check for +/- */
-    if (*str == '+') {
-	str++;
-    } else if (*str == '-') {
-	bMinus = 1;
-	str++;
+    if (*Str == '+') {
+	Str++;
+    } else if (*Str == '-') {
+	Minus = 1;
+	Str++;
     }
 
     /* base = 0 means autobase */
-    if (base == 0) {
-	base = 10;
+    if (Base == 0) {
+	Base = 10;
 
-	if (str[0] == '0') {
-	    if (str[1] == 'b') {
-		str += 2;
-		base = 2;
-	    } else if (str[1] == 'o') {
-		str += 2;
-		base = 8;
-	    } else if (str[1] == 'x') {
-		str += 2;
-		base = 16;
+	if (Str[0] == '0') {
+	    if (Str[1] == 'b') {
+		Str += 2;
+		Base = 2;
+	    } else if (Str[1] == 'o') {
+		Str += 2;
+		Base = 8;
+	    } else if (Str[1] == 'x') {
+		Str += 2;
+		Base = 16;
 	    }
 	}
-    } else if (base != 2 && base != 8 && base != 10 && base != 16) {
+    } else if (Base != 2 && Base != 8 && Base != 10 && Base != 16) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    if (value == NULL)
+    if (Value == NULL)
 	return STATUS_ACCESS_VIOLATION;
 
-    while (*str != '\0') {
-	chCurrent = *str;
+    while (*Str != '\0') {
+	Current = *Str;
 
-	if (chCurrent >= '0' && chCurrent <= '9') {
-	    digit = chCurrent - '0';
-	} else if (chCurrent >= 'A' && chCurrent <= 'Z') {
-	    digit = chCurrent - 'A' + 10;
-	} else if (chCurrent >= 'a' && chCurrent <= 'z') {
-	    digit = chCurrent - 'a' + 10;
+	if (Current >= '0' && Current <= '9') {
+	    Digit = Current - '0';
+	} else if (Current >= 'A' && Current <= 'Z') {
+	    Digit = Current - 'A' + 10;
+	} else if (Current >= 'a' && Current <= 'z') {
+	    Digit = Current - 'a' + 10;
 	} else {
-	    digit = -1;
+	    Digit = -1;
 	}
 
-	if (digit < 0 || digit >= (int) base)
+	if (Digit < 0 || Digit >= (int) Base)
 	    break;
 
-	RunningTotal = RunningTotal * base + digit;
-	str++;
+	RunningTotal = RunningTotal * Base + Digit;
+	Str++;
     }
 
-    *value = bMinus ? (0 - RunningTotal) : RunningTotal;
+    *Value = Minus ? (0 - RunningTotal) : RunningTotal;
     return STATUS_SUCCESS;
 }
 
 /*
  * @implemented
  */
-NTAPI LONG RtlCompareString(IN const STRING * s1,
-			    IN const STRING * s2,
+NTAPI LONG RtlCompareString(IN const STRING *String1,
+			    IN const STRING *String2,
 			    IN BOOLEAN CaseInsensitive)
 {
-    unsigned int len;
-    LONG ret = 0;
-    LPCSTR p1, p2;
+    ULONG Len;
+    LONG Ret = 0;
+    LPCSTR Ptr1, Ptr2;
 
-    len = min(s1->Length, s2->Length);
-    p1 = s1->Buffer;
-    p2 = s2->Buffer;
+    Len = min(String1->Length, String2->Length);
+    Ptr1 = String1->Buffer;
+    Ptr2 = String2->Buffer;
 
     if (CaseInsensitive) {
-	while (!ret && len--)
-	    ret = RtlUpperChar(*p1++) - RtlUpperChar(*p2++);
+	while (!Ret && Len--)
+	    Ret = RtlUpperChar(*Ptr1++) - RtlUpperChar(*Ptr2++);
     } else {
-	while (!ret && len--)
-	    ret = *p1++ - *p2++;
+	while (!Ret && Len--)
+	    Ret = *Ptr1++ - *Ptr2++;
     }
 
-    if (!ret)
-	ret = s1->Length - s2->Length;
+    if (!Ret)
+	Ret = String1->Length - String2->Length;
 
-    return ret;
+    return Ret;
 }
 
 /*
@@ -310,13 +282,13 @@ NTAPI LONG RtlCompareString(IN const STRING * s1,
  * RETURNS
  *  TRUE if strings are equal.
  */
-NTAPI BOOLEAN RtlEqualString(IN const STRING * s1,
-			     IN const STRING * s2,
+NTAPI BOOLEAN RtlEqualString(IN const STRING *String1,
+			     IN const STRING *String2,
 			     IN BOOLEAN CaseInsensitive)
 {
-    if (s1->Length != s2->Length)
+    if (String1->Length != String2->Length)
 	return FALSE;
-    return !RtlCompareString(s1, s2, CaseInsensitive);
+    return !RtlCompareString(String1, String2, CaseInsensitive);
 }
 
 /*
@@ -325,13 +297,13 @@ NTAPI BOOLEAN RtlEqualString(IN const STRING * s1,
  * RETURNS
  *  TRUE if strings are equal.
  */
-NTAPI BOOLEAN RtlEqualUnicodeString(IN CONST UNICODE_STRING * s1,
-				    IN CONST UNICODE_STRING * s2,
+NTAPI BOOLEAN RtlEqualUnicodeString(IN CONST UNICODE_STRING *String1,
+				    IN CONST UNICODE_STRING *String2,
 				    IN BOOLEAN CaseInsensitive)
 {
-    if (s1->Length != s2->Length)
+    if (String1->Length != String2->Length)
 	return FALSE;
-    return !RtlCompareUnicodeString(s1, s2, CaseInsensitive);
+    return !RtlCompareUnicodeString(String1, String2, CaseInsensitive);
 }
 
 /*
@@ -365,95 +337,13 @@ NTAPI VOID RtlFreeUnicodeString(IN PUNICODE_STRING UnicodeString)
     }
 }
 
-
 /*
  * @implemented
- *
- * NOTES
- *  Check the OEM string to match the Unicode string.
- *
- *  Functions which convert Unicode strings to OEM strings will set a
- *  DefaultChar from the OEM codepage when the characters are unknown.
- *  So check it against the Unicode string and return false when the
- *  Unicode string does not contain a TransDefaultChar.
- */
-NTAPI BOOLEAN RtlpDidUnicodeToOemWork(IN PCUNICODE_STRING UnicodeString,
-				      IN POEM_STRING OemString)
-{
-    ULONG i = 0;
-
-    if (NlsMbOemCodePageTag == FALSE) {
-	/* single-byte code page */
-	/* Go through all characters of a string */
-	while (i < OemString->Length) {
-	    /* Check if it got translated into a default char,
-	     * but source char wasn't a default char equivalent
-	     */
-	    if ((OemString->Buffer[i] == NlsOemDefaultChar) &&
-		(UnicodeString->Buffer[i] != NlsUnicodeDefaultChar)) {
-		/* Yes, it means unmappable characters were found */
-		return FALSE;
-	    }
-
-	    /* Move to the next char */
-	    i++;
-	}
-
-	/* All chars were translated successfuly */
-	return TRUE;
-    } else {
-	/* multibyte code page */
-
-	/* FIXME */
-	return TRUE;
-    }
-}
-
-/*
- * @implemented
+ * @note This is used by the dos 8.3 file name conversion for non-Latin code pages.
+ *       We always return true.
  */
 NTAPI BOOLEAN RtlIsValidOemCharacter(IN PWCHAR Char)
 {
-    WCHAR UnicodeChar;
-    WCHAR OemChar;
-
-    /* If multi-byte code page present */
-    if (NlsMbOemCodePageTag) {
-	USHORT Offset;
-
-	OemChar = NlsUnicodeToMbOemTable[*Char];
-
-	/* If character has Lead Byte */
-	Offset = NlsOemLeadByteInfo[HIBYTE(OemChar)];
-	if (Offset) {
-	    /* Use DBCS table */
-	    UnicodeChar = NlsOemLeadByteInfo[Offset + LOBYTE(OemChar)];
-	} else {
-	    UnicodeChar = NlsOemToUnicodeTable[OemChar];
-	}
-
-	/* Upcase */
-	UnicodeChar = RtlpUpcaseUnicodeChar(UnicodeChar);
-
-	/* Receive OEM character from the table */
-	OemChar = NlsUnicodeToMbOemTable[UnicodeChar];
-    } else {
-	/* Receive Unicode character from the table */
-	UnicodeChar = RtlpUpcaseUnicodeChar(NlsOemToUnicodeTable
-					    [(UCHAR) NlsUnicodeToOemTable[*Char]]);
-
-	/* Receive OEM character from the table */
-	OemChar = NlsUnicodeToOemTable[UnicodeChar];
-    }
-
-    /* Not valid character, failed */
-    if (OemChar == NlsOemDefaultChar) {
-	DPRINT1("\\u%04x is not valid for OEM\n", *Char);
-	return FALSE;
-    }
-
-    *Char = UnicodeChar;
-
     return TRUE;
 }
 
@@ -579,48 +469,47 @@ NTAPI NTSTATUS RtlInitUnicodeStringEx(OUT PUNICODE_STRING DestinationString,
  *  Str is nullterminated when length allowes it.
  *  When str fits exactly in length characters the nullterm is ommitted.
  */
-NTAPI NTSTATUS RtlIntegerToChar(ULONG value,	/* [I] Value to be converted */
-				ULONG base,	/* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
-				ULONG length,	/* [I] Length of the str buffer in bytes */
-				PCHAR str)
+NTAPI NTSTATUS RtlIntegerToChar(ULONG Value,	/* [I] Value to be converted */
+				ULONG Base,	/* [I] Number base for conversion (allowed 0, 2, 8, 10 or 16) */
+				ULONG Length,	/* [I] Length of the str buffer in bytes */
+				PCHAR Str)
 {				/* [O] Destination for the converted value */
-    CHAR buffer[33];
-    PCHAR pos;
-    CHAR digit;
-    SIZE_T len;
+    CHAR Buffer[33];
+    PCHAR Pos;
+    CHAR Digit;
+    SIZE_T Len;
 
-    if (base == 0) {
-	base = 10;
-    } else if (base != 2 && base != 8 && base != 10 && base != 16) {
+    if (Base == 0) {
+	Base = 10;
+    } else if (Base != 2 && Base != 8 && Base != 10 && Base != 16) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    pos = &buffer[32];
-    *pos = '\0';
+    Pos = &Buffer[32];
+    *Pos = '\0';
 
     do {
-	pos--;
-	digit = (CHAR) (value % base);
-	value = value / base;
+	Pos--;
+	Digit = (CHAR) (Value % Base);
+	Value = Value / Base;
 
-	if (digit < 10) {
-	    *pos = '0' + digit;
+	if (Digit < 10) {
+	    *Pos = '0' + Digit;
 	} else {
-	    *pos = 'A' + digit - 10;
+	    *Pos = 'A' + Digit - 10;
 	}
-    }
-    while (value != 0L);
+    } while (Value != 0L);
 
-    len = &buffer[32] - pos;
+    Len = &Buffer[32] - Pos;
 
-    if (len > length) {
+    if (Len > Length) {
 	return STATUS_BUFFER_OVERFLOW;
-    } else if (str == NULL) {
+    } else if (Str == NULL) {
 	return STATUS_ACCESS_VIOLATION;
-    } else if (len == length) {
-	RtlCopyMemory(str, pos, len);
+    } else if (Len == Length) {
+	RtlCopyMemory(Str, Pos, Len);
     } else {
-	RtlCopyMemory(str, pos, len + 1);
+	RtlCopyMemory(Str, Pos, Len + 1);
     }
 
     return STATUS_SUCCESS;
@@ -635,7 +524,7 @@ NTAPI NTSTATUS RtlIntegerToUnicode(IN ULONG Value,
 				   IN OUT LPWSTR String)
 {
     ULONG Radix;
-    WCHAR temp[33];
+    WCHAR Temp[33];
     ULONG v = Value;
     ULONG i;
     PWCHAR tp;
@@ -650,9 +539,9 @@ NTAPI NTSTATUS RtlIntegerToUnicode(IN ULONG Value,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    tp = temp;
+    tp = Temp;
 
-    while (v || tp == temp) {
+    while (v || tp == Temp) {
 	i = v % Radix;
 	v = v / Radix;
 
@@ -664,13 +553,13 @@ NTAPI NTSTATUS RtlIntegerToUnicode(IN ULONG Value,
 	tp++;
     }
 
-    if ((ULONG) ((ULONG_PTR) tp - (ULONG_PTR) temp) >= Length) {
+    if ((ULONG) ((ULONG_PTR) tp - (ULONG_PTR) Temp) >= Length) {
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
     sp = String;
 
-    while (tp > temp)
+    while (tp > Temp)
 	*sp++ = *--tp;
 
     *sp = 0;
@@ -895,7 +784,7 @@ NTAPI NTSTATUS RtlUnicodeStringToInteger(const UNICODE_STRING * str,	/* [I] Unic
  * RETURNS
  *  Bytes necessary for the conversion including nullterm.
  */
-NTAPI ULONG RtlxUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString)
+NTAPI ULONG RtlUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString)
 {
     ULONG Size;
 
@@ -908,21 +797,9 @@ NTAPI ULONG RtlxUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString)
     return (Size + sizeof(CHAR));
 }
 
-NTAPI ULONG RtlUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString)
-{
-    return NlsMbOemCodePageTag ? RtlxUnicodeStringToOemSize(UnicodeString) :
-	(UnicodeString->Length + sizeof(UNICODE_NULL)) / sizeof(WCHAR);
-}
-
 NTAPI ULONG RtlUnicodeStringToCountedOemSize(IN PCUNICODE_STRING UnicodeString)
 {
     return (ULONG)(RtlUnicodeStringToOemSize(UnicodeString) - sizeof(ANSI_NULL));
-}
-
-NTAPI ULONG RtlOemStringToUnicodeSize(IN PCOEM_STRING OemString)
-{
-    return NlsMbOemCodePageTag ? RtlxOemStringToUnicodeSize(OemString) :
-	((OemString)->Length + sizeof(ANSI_NULL)) * sizeof(WCHAR);
 }
 
 NTAPI ULONG RtlOemStringToCountedUnicodeSize(IN PCOEM_STRING OemString)
@@ -943,16 +820,11 @@ NTAPI NTSTATUS RtlUnicodeStringToAnsiString(IN OUT PANSI_STRING AnsiDest,
 {
     NTSTATUS Status = STATUS_SUCCESS;
     NTSTATUS RealStatus;
-    ULONG Length;
     ULONG Index;
 
     ASSERT(!(UniSource->Length & 1));
 
-    if (NlsMbCodePageTag == FALSE) {
-	Length = (UniSource->Length + sizeof(WCHAR)) / sizeof(WCHAR);
-    } else {
-	Length = RtlxUnicodeStringToAnsiSize(UniSource);
-    }
+    ULONG Length = RtlUnicodeStringToAnsiSize(UniSource);
 
     if (Length > MAXUSHORT)
 	return STATUS_INVALID_PARAMETER_2;
@@ -1105,7 +977,6 @@ NTAPI BOOLEAN RtlIsTextUnicode(CONST VOID *buf,
     ULONG hi_byte_diff = 0;
     ULONG lo_byte_diff = 0;
     ULONG weight = 3;
-    ULONG lead_byte = 0;
 
     if (len < sizeof(WCHAR)) {
 	/* FIXME: MSDN documents IS_TEXT_UNICODE_BUFFER_TOO_SMALL but there is no such thing... */
@@ -1163,29 +1034,6 @@ NTAPI BOOLEAN RtlIsTextUnicode(CONST VOID *buf,
 	case 0xFFFF:		/* Unicode 0xFFFF */
 	    out_flags |= IS_TEXT_UNICODE_ILLEGAL_CHARS;
 	    break;
-	}
-    }
-
-    if (NlsMbCodePageTag) {
-	for (i = 0; i < len; i++) {
-	    if (NlsLeadByteInfo[s[i]]) {
-		++lead_byte;
-		++i;
-	    }
-	}
-
-	if (lead_byte) {
-	    weight = (len / 2) - 1;
-
-	    if (lead_byte < (weight / 3))
-		weight = 3;
-	    else if (lead_byte < ((weight * 2) / 3))
-		weight = 2;
-	    else
-		weight = 1;
-
-	    if (pf && (*pf & IS_TEXT_UNICODE_DBCS_LEADBYTE))
-		out_flags |= IS_TEXT_UNICODE_DBCS_LEADBYTE;
 	}
     }
 
@@ -1587,8 +1435,9 @@ NTAPI NTSTATUS RtlUnicodeStringToCountedOemString(IN OUT POEM_STRING OemDest,
 			      UniSource->Buffer, UniSource->Length);
 
     /* Check for unmapped character */
-    if (NT_SUCCESS(Status) && !RtlpDidUnicodeToOemWork(UniSource, OemDest))
+    if (!NT_SUCCESS(Status) || Status == STATUS_SOME_NOT_MAPPED) {
 	Status = STATUS_UNMAPPABLE_CHARACTER;
+    }
 
     if (!NT_SUCCESS(Status) && AllocateDestinationString) {
 	/* Conversion failed, free dest string and return status code */
@@ -1766,8 +1615,9 @@ NTAPI NTSTATUS RtlUpcaseUnicodeStringToCountedOemString(IN OUT POEM_STRING OemDe
 				    UniSource->Buffer, UniSource->Length);
 
     /* Check for unmapped characters */
-    if (NT_SUCCESS(Status) && !RtlpDidUnicodeToOemWork(UniSource, OemDest))
+    if (!NT_SUCCESS(Status) || Status == STATUS_SOME_NOT_MAPPED) {
 	Status = STATUS_UNMAPPABLE_CHARACTER;
+    }
 
     if (!NT_SUCCESS(Status) && AllocateDestinationString) {
 	RtlpFreeStringMemory(OemDest->Buffer, TAG_OSTR);
@@ -1813,8 +1663,9 @@ NTAPI NTSTATUS RtlUpcaseUnicodeStringToOemString(IN OUT POEM_STRING OemDest,
 				    UniSource->Buffer, UniSource->Length);
 
     /* Check for unmapped characters */
-    if (NT_SUCCESS(Status) && !RtlpDidUnicodeToOemWork(UniSource, OemDest))
+    if (!NT_SUCCESS(Status) || Status == STATUS_SOME_NOT_MAPPED) {
 	Status = STATUS_UNMAPPABLE_CHARACTER;
+    }
 
     if (!NT_SUCCESS(Status) && AllocateDestinationString) {
 	RtlpFreeStringMemory(OemDest->Buffer, TAG_OSTR);
@@ -1832,7 +1683,7 @@ NTAPI NTSTATUS RtlUpcaseUnicodeStringToOemString(IN OUT POEM_STRING OemDest,
  * RETURNS
  *  Bytes calculated including nullterm
  */
-NTAPI ULONG RtlxOemStringToUnicodeSize(IN PCOEM_STRING OemString)
+NTAPI ULONG RtlOemStringToUnicodeSize(IN PCOEM_STRING OemString)
 {
     ULONG Size;
 
@@ -1880,7 +1731,7 @@ NTAPI NTSTATUS RtlStringFromGUID(IN REFGUID Guid,
  * RETURNS
  *  Bytes calculated including nullterm
  */
-NTAPI ULONG RtlxUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString)
+NTAPI ULONG RtlUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString)
 {
     ULONG Size;
 
@@ -1893,12 +1744,6 @@ NTAPI ULONG RtlxUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString)
 
     /* Return the size + null-char */
     return (Size + sizeof(CHAR));
-}
-
-NTAPI ULONG RtlUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString)
-{
-    return NlsMbCodePageTag ? RtlxUnicodeStringToAnsiSize(UnicodeString) :
-	(UnicodeString->Length + sizeof(UNICODE_NULL)) / sizeof(WCHAR);
 }
 
 /*
@@ -2369,7 +2214,7 @@ NTAPI NTSTATUS RtlDnsHostNameToComputerName(PUNICODE_STRING ComputerName,
 	    ComputerNameOem.MaximumLength =
 		(USHORT) (MAX_COMPUTERNAME_LENGTH + 1);
 
-	    if (RtlpDidUnicodeToOemWork(DnsHostName, &ComputerNameOem)) {
+	    if (NT_SUCCESS(Status) && Status != STATUS_SOME_NOT_MAPPED) {
 		/* no unmapped character so convert it back to an unicode string */
 		Status = RtlOemStringToUnicodeString(ComputerName,
 						     &ComputerNameOem,

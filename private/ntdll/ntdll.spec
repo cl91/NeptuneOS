@@ -112,8 +112,15 @@
 @ stdcall RtlAnsiStringToUnicodeString(ptr ptr long)
 @ stdcall RtlAnsiStringToUnicodeSize(ptr)
 @ stdcall RtlFreeAnsiString(long)
+@ stdcall RtlUnicodeStringToAnsiString(ptr ptr long)
+@ stdcall RtlUnicodeStringToAnsiSize(ptr)
+@ stdcall RtlxUnicodeStringToAnsiSize(ptr) RtlUnicodeStringToAnsiSize
 @ stdcall RtlUnicodeStringToOemString(ptr ptr long)
+@ stdcall RtlUnicodeStringToOemSize(ptr)
+@ stdcall RtlxUnicodeStringToOemSize(ptr) RtlUnicodeStringToOemSize
 @ stdcall RtlOemStringToUnicodeString(ptr ptr long)
+@ stdcall RtlOemStringToUnicodeSize(ptr)
+@ stdcall RtlxOemStringToUnicodeSize(ptr) RtlOemStringToUnicodeSize
 @ stdcall RtlUpcaseUnicodeString(ptr ptr long)
 @ stdcall RtlUpcaseUnicodeStringToAnsiString(ptr ptr long)
 @ stdcall RtlUpcaseUnicodeStringToCountedOemString(ptr ptr long)

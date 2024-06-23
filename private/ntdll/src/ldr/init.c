@@ -54,8 +54,6 @@ RTL_BITMAP FlsBitMap;
 BOOLEAN LdrpImageHasTls;
 LIST_ENTRY LdrpTlsList;
 
-NLSTABLEINFO LdrpNlsTable;
-
 extern LARGE_INTEGER RtlpTimeout;
 PVOID LdrpHeap;
 
@@ -632,15 +630,8 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     RtlpInitializeCriticalSection(&FastPebLock, InitInfo->FastPebLockSemaphore, 0);
     Peb->FastPebLock = &FastPebLock;
 
-    /* Initialize NLS data */
-    Peb->AnsiCodePageData = (PUSHORT)LdrpCp1252NlsData;
-    Peb->OemCodePageData = (PUSHORT)LdrpCp1252NlsData;
-    Peb->UnicodeCaseTableData = (PUSHORT)LdrpUnicodeCaseTableData;
-    RtlInitNlsTables(Peb->AnsiCodePageData, Peb->OemCodePageData,
-		     Peb->UnicodeCaseTableData, &LdrpNlsTable);
-
-    /* Reset NLS Translations */
-    RtlResetRtlTranslations(&LdrpNlsTable);
+    /* Initialize the unicode case tables */
+    RtlResetRtlTranslations(NULL);
 
     /* Setup the process heap and the loader heap */
     RET_ERR(LdrpInitializeHeapManager(InitInfo, ProcessHeapFlags, &ProcessHeapParams));

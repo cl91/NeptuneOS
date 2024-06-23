@@ -26,7 +26,6 @@ static inline VOID LdrpFreeUnicodeString(IN UNICODE_STRING String)
 }
 
 /* nlsdata.c */
-extern UCHAR LdrpCp1252NlsData[];
 extern UCHAR LdrpUnicodeCaseTableData[];
 
 /* dll.c */

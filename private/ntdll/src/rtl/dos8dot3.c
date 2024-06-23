@@ -11,9 +11,6 @@
 #include <nt.h>
 #include <image.h>
 
-extern PUSHORT NlsUnicodeToMbOemTable;
-extern BOOLEAN NlsMbOemCodePageTag;
-
 /* CONSTANTS *****************************************************************/
 
 const ULONG RtlpShortIllegals[] = { 0xFFFFFFFF, 0xFC009C04, 0x38000000, 0x10000000 };
@@ -102,13 +99,6 @@ NTAPI VOID RtlGenerate8dot3Name(IN PUNICODE_STRING Name,
 		    Char = L'_';
 		else if (Char >= L'a' && Char <= L'z')
 		    Char = RtlUpcaseUnicodeChar(Char);
-
-		/* Beware of MB OEM codepage */
-		if (NlsMbOemCodePageTag && HIBYTE(NlsUnicodeToMbOemTable[Char])) {
-		    if (OemSizeLeft < 2)
-			break;
-		    OemSizeLeft--;
-		}
 
 		Context->NameBuffer[Context->NameLength] = Char;
 		Context->NameLength++;
