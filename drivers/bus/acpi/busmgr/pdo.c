@@ -153,7 +153,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	RtlCopyMemory(Buffer, Temp, Length * sizeof(WCHAR));
 	Irp->IoStatus.Information = (ULONG_PTR)Buffer;
-	DPRINT("BusQueryDeviceID: %ls\n", Buffer);
+	DPRINT("BusQueryDeviceID: %ws\n", Buffer);
 	break;
 
     case BusQueryInstanceID:
