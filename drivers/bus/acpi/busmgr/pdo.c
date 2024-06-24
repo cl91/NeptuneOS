@@ -316,7 +316,6 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
     switch (Stack->Parameters.QueryDeviceText.DeviceTextType) {
     case DeviceTextDescription:
-
 	if (!Irp->IoStatus.Information) {
 	    if (wcsstr(DeviceData->HardwareIDs, L"PNP000") != 0)
 		Temp = L"Programmable interrupt controller";
