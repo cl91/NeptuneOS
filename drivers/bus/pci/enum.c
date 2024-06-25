@@ -223,10 +223,7 @@ static PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Cou
     PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
 
     /* Calculate the final size of the list, including each descriptor */
-    Size = sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
-    if (Count > 1)
-	Size = sizeof(IO_RESOURCE_DESCRIPTOR) * (Count - 1) +
-	    sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
+    Size = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_DESCRIPTOR) * Count;
 
     /* Allocate the list */
     RequirementsList = ExAllocatePoolWithTag(Size, 'BicP');
@@ -254,10 +251,7 @@ PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNumber)
     PCM_RESOURCE_LIST ResourceList;
 
     /* Calculate the final size of the list, including each descriptor */
-    Size = sizeof(CM_RESOURCE_LIST);
-    if (Count > 1)
-	Size = sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * (Count - 1) +
-	    sizeof(CM_RESOURCE_LIST);
+    Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * Count;
 
     /* Allocate the list */
     ResourceList = ExAllocatePoolWithTag(Size, 'BicP');

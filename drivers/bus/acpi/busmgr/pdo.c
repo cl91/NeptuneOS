@@ -302,7 +302,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	break;
 
     default:
-	Status = Irp->IoStatus.Status;
+	Status = STATUS_NOT_SUPPORTED;
     }
     return Status;
 }
@@ -311,7 +311,7 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
     PWCHAR Buffer, Temp;
     PIO_STACK_LOCATION Stack;
-    NTSTATUS Status = Irp->IoStatus.Status;
+    NTSTATUS Status = STATUS_NOT_SUPPORTED;
     Stack = IoGetCurrentIrpStackLocation(Irp);
 
     switch (Stack->Parameters.QueryDeviceText.DeviceTextType) {
@@ -424,7 +424,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     PACPI_DEVICE Device;
 
     if (!DeviceData->AcpiHandle) {
-	return Irp->IoStatus.Status;
+	return STATUS_INVALID_DEVICE_REQUEST;
     }
 
     /* A bus number resource is not included in the list of current resources
@@ -480,7 +480,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     AcpiStatus = AcpiGetCurrentResources(DeviceData->AcpiHandle, &Buffer);
     if ((!ACPI_SUCCESS(AcpiStatus) && AcpiStatus != AE_BUFFER_OVERFLOW) ||
 	Buffer.Length == 0) {
-	return Irp->IoStatus.Status;
+	/* Device does not have any resources. We will return success with
+	 * an empty resource list. */
+	return STATUS_SUCCESS;
     }
 
     Buffer.Pointer = ExAllocatePoolWithTag(Buffer.Length, 'BpcA');
@@ -544,7 +546,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
     /* Allocate memory */
     ResourceListSize = sizeof(CM_RESOURCE_LIST) +
-		       sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * (NumberOfResources - 1);
+		       sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * NumberOfResources;
     ResourceList = ExAllocatePoolWithTag(ResourceListSize, 'RpcA');
 
     if (!ResourceList) {
@@ -1017,7 +1019,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
     }
 
     RequirementsListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) +
-			   sizeof(IO_RESOURCE_DESCRIPTOR) * (NumberOfResources - 1);
+			   sizeof(IO_RESOURCE_DESCRIPTOR) * NumberOfResources;
     RequirementsList = ExAllocatePoolWithTag(RequirementsListSize, 'RpcA');
 
     if (!RequirementsList) {

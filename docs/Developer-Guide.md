@@ -330,6 +330,15 @@ loaded in the same address space, so sending an IRP from the minidriver to the
 library driver will always have NEITHER IO as the IO transfer type, regardless of
 the flags in the device object or the IOCTL code.
 
+##### Variable-length structs
+
+We use the C99 flexible array member feature where the last array member of a variable
+length struct will have zero dimension. This differs from the Window/ReactOS convention
+where a variable-length struct is defined with the last array member having dimension one.
+When computing the size of the full struct, use `sizeof(STRUCT_NAME) + NumElem * ELEM_SIZE`,
+without subtracting one from `NumElem` as you would in Windows/ReactOS. An example is
+the `IO_RESOURCE_REQUIREMENT_LIST` structure used in the PnP driver interface.
+
 #### Low-level Device Drivers
 
 ##### Synchronization
