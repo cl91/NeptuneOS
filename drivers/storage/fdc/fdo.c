@@ -560,11 +560,8 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	    DPRINT("Port: 0x%x (%u)\n",
 		   PartialDescriptor->u.Port.Start.u.LowPart,
 		   PartialDescriptor->u.Port.Length);
-	    if (PartialDescriptor->u.Port.Length >= 6) {
-		DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)PartialDescriptor->u.Port.Start.QuadPart;
-		assert(!FoundPort);
-		FoundPort = TRUE;
-	    }
+	    DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)(PartialDescriptor->u.Port.Start.QuadPart & ~0xFUL);
+	    FoundPort = TRUE;
 	    break;
 
 	case CmResourceTypeInterrupt:
