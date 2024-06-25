@@ -1,11 +1,5 @@
 #include <ntdll.h>
 
-/* rtl/exception.c */
-VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
-			 IN BOOLEAN Unhandled);
-VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
-			    IN BOOLEAN Unhandled);
-
 /*
  * This table converts the x86/amd64 exception code to the NT status code.
  */

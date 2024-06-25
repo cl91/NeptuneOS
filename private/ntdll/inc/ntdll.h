@@ -49,3 +49,9 @@ static inline unsigned long PtrToUlong(const void *p)
 #define _SEH2_VOLATILE
 
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
+
+/* rtl/exception.c */
+VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
+			 IN BOOLEAN Unhandled);
+VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
+			    IN BOOLEAN Unhandled);

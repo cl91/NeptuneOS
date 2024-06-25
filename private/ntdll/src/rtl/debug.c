@@ -1,9 +1,5 @@
-#include <autoconf.h>
-#include <sel4/sel4.h>
-#include <stddef.h>
-#include <stdarg.h>
 #include <printf.h>
-#include <nt.h>
+#include <ntdll.h>
 
 // TODO: Replace with ReactOS code
 
@@ -45,10 +41,36 @@ ULONG DbgPrintEx(IN ULONG ComponentId,
     return 0;
 }
 
+static VOID DbgpPrintStackTrace()
+{
+    EXCEPTION_RECORD ExceptionRecord;
+    CONTEXT Context;
+
+    /* Capture the context */
+    RtlCaptureContext(&Context);
+
+    /* Create an exception record */
+    ExceptionRecord.ExceptionAddress = _ReturnAddress();
+    ExceptionRecord.ExceptionCode = STATUS_ASSERTION_FAILURE;
+    ExceptionRecord.ExceptionRecord = NULL;
+    ExceptionRecord.NumberParameters = 0;
+    ExceptionRecord.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
+
+    /* Write the context flag */
+    Context.ContextFlags = CONTEXT_FULL;
+
+    EXCEPTION_POINTERS ExceptionInfo = {
+	.ExceptionRecord = &ExceptionRecord,
+	.ContextRecord = &Context
+    };
+    RtlpPrintStackTrace(&ExceptionInfo, FALSE);
+}
+
 VOID _assert(PCSTR str, PCSTR file, unsigned int line)
 {
     DbgPrint("Assertion %s failed at line %d of file %s\n",
 	     str, line, file);
+    DbgpPrintStackTrace();
     char buf[512];
     snprintf(buf, sizeof(buf), "Assertion %s failed at line %d of file %s\n",
 	     str, line, file);
@@ -64,6 +86,7 @@ NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 {
     DbgPrint("Assertion %s failed at line %d of file %s: %s\n",
 	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
+    DbgpPrintStackTrace();
     char buf[512];
     snprintf(buf, sizeof(buf), "Assertion %s failed at line %d of file %s: %s\n",
 	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
