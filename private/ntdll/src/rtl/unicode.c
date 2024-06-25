@@ -786,7 +786,7 @@ NTAPI NTSTATUS RtlUnicodeStringToInteger(const UNICODE_STRING * str,	/* [I] Unic
  */
 NTAPI ULONG RtlUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString)
 {
-    ULONG Size;
+    ULONG Size = 0;
 
     /* Convert the Unicode String to Mb Size */
     RtlUnicodeToMultiByteSize(&Size,
@@ -794,7 +794,7 @@ NTAPI ULONG RtlUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString)
 			      UnicodeString->Length);
 
     /* Return the size + the null char */
-    return (Size + sizeof(CHAR));
+    return Size + sizeof(CHAR);
 }
 
 NTAPI ULONG RtlUnicodeStringToCountedOemSize(IN PCUNICODE_STRING UnicodeString)

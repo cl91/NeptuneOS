@@ -435,6 +435,7 @@ NTAPI NTSTATUS RtlUpcaseUnicodeToMultiByteN(OUT PCHAR MbString,
 	    *MbString = Buffer[i];
 	    MbString++;
 	}
+	SizeWritten += CodepointSize;
 	UnicodeString++;
     }
 
