@@ -7,6 +7,9 @@ for var in "$@"; do
     if [ "${var,,}" == 'release' ]; then
         BUILD_TYPE=release
     fi
+    if [ "${var,,}" == 'reldbginfo' ]; then
+        BUILD_TYPE=relwithdebinfo
+    fi
     if [ "${var,,}" == 'amd64' ]; then
         ARCH=amd64
         OVMFARCH=x64
@@ -37,6 +40,9 @@ declare -a ARGS
 for var in "$@"; do
     # Ignore known bad arguments
     if [ "${var,,}" == 'release' ]; then
+        continue
+    fi
+    if [ "${var,,}" == 'reldbginfo' ]; then
         continue
     fi
     if [ "${var,,}" == 'debug' ]; then

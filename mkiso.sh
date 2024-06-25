@@ -1,11 +1,15 @@
 ARCH=i386
 BUILD_TYPE=Debug
 
-if [[ ${1,,} == "release" || ${2,,} == "release" ]]; then
+args=(${@,,})
+
+if [[ ${args[@]} =~ "release" ]]; then
     BUILD_TYPE=Release
+elif [[ ${args[@]} =~ "reldbginfo" ]]; then
+    BUILD_TYPE=RelWithDebInfo
 fi
 
-if [[ $1 == "amd64" || $2 == "amd64" ]]; then
+if [[ ${args[@]} =~ "amd64" ]]; then
     ARCH=amd64
 fi
 
