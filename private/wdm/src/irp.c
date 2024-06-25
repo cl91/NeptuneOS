@@ -934,7 +934,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     case IRP_MJ_PNP:
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
-	    if (Irp->IoStatus.Information != 0) {
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
 		Size += Relations->Count * sizeof(GLOBAL_HANDLE);
 	    }
@@ -942,13 +942,13 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 
 	case IRP_MN_QUERY_ID:
 	    /* For UTF-16 strings that are legal device IDs its characters are always within ASCII */
-	    if (Irp->IoStatus.Information != 0) {
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		Size += wcslen((PWSTR)Irp->IoStatus.Information) + 1;
 	    }
 	    break;
 
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
-	    if (Irp->IoStatus.Information != 0) {
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
 		if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
 		    assert(FALSE);
@@ -1024,7 +1024,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     {
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
-	    if (Irp->IoStatus.Information != 0) {
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		/* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count.
 		 * ResponseData[] are the GLOBAL_HANDLE of the device objects
 		 * in DEVICE_RELATIONS.Objects. */
@@ -1041,7 +1041,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    break;
 
 	case IRP_MN_QUERY_ID:
-	    if (Irp->IoStatus.Information != 0) {
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		/* ResponseData[] is the UTF-8 string of the device id.
 		 * ResponseDataSize is the size of the string including terminating NUL.
 		 * Dest->...IoStatus.Information is cleared. */
@@ -1059,7 +1059,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    break;
 
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
-	    if (Irp->IoStatus.Information != 0) {
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		/* ResponseData[] is the IO_RESOURCE_REQUIREMENTS_LIST, copied verbatim.
 		 * ResponseDataSize is its size in bytes.
 		 * Dest->...IoStatus.Information is cleared. */
