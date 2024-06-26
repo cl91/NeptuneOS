@@ -31,18 +31,30 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
     while (1) ;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wframe-address"
 NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 		      IN PVOID FileName,
 		      IN ULONG LineNumber,
 		      IN OPTIONAL PCHAR Message)
 {
-    KeBugCheckMsg("Assertion %s failed at line %d of file %s: %s\n",
-		  (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName, Message);
+    KeBugCheckMsg("Assertion %s failed at line %d of file %s%s%s.\n"
+		  "Call stack: %p %p %p %p %p %p %p %p\n",
+		  (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName,
+		  Message ? ": " : "", Message ? Message : "",
+		  __builtin_return_address(1),
+		  __builtin_return_address(2),
+		  __builtin_return_address(3),
+		  __builtin_return_address(4),
+		  __builtin_return_address(5),
+		  __builtin_return_address(6),
+		  __builtin_return_address(7),
+		  __builtin_return_address(8));
     /* Loop forever */
     while (1);
     return 0;
 }
-
+#pragma GCC diagnostic pop
 #endif
 
 /*
