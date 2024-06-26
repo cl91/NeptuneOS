@@ -65,7 +65,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 
 #ifndef assert
 #if DBG && !defined(NASSERT)
-#define assert(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, (PCHAR)""))
+#define assert(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, NULL))
 #else
 #define assert(x) ((VOID) 0)
 #endif
@@ -73,7 +73,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 
 #ifndef ASSERT
 #if DBG && !defined(NASSERT)
-#define ASSERT(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, (PCHAR)""))
+#define ASSERT(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, NULL))
 #else
 #define ASSERT(x) ((VOID) 0)
 #endif
