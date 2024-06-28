@@ -328,8 +328,7 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     HANDLE KeyHandle;
     UNICODE_STRING ValueName;
     ULONG ResultLength;
-    DPRINT1("PCI - AddDevice (a new bus). PDO: %p (Driver: %wZ)\n", PhysicalDeviceObject,
-	    &PhysicalDeviceObject->DriverObject->DriverName);
+    DPRINT1("PCI - AddDevice (a new bus). PDO: %p\n", PhysicalDeviceObject);
 
     /* Zero out variables so failure path knows what to do */
     AttachedTo = NULL;
