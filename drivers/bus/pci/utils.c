@@ -148,7 +148,7 @@ BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
     /* Initialize the object attributes */
     RtlInitUnicodeString(&KeyString, KeyName);
     InitializeObjectAttributes(&ObjectAttributes, &KeyString,
-			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, RootKey, NULL);
+			       OBJ_CASE_INSENSITIVE, RootKey, NULL);
 
     /* Open the key, returning a boolean, and the status, if requested */
     Status = NtOpenKey(KeyHandle, DesiredAccess, &ObjectAttributes);
@@ -485,8 +485,7 @@ NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 
     /* Create a volatile BIOS configuration key */
     RtlInitUnicodeString(&KeyName, L"BiosConfig");
-    InitializeObjectAttributes(&ObjectAttributes, &KeyName, OBJ_KERNEL_HANDLE, KeyHandle,
-			       NULL);
+    InitializeObjectAttributes(&ObjectAttributes, &KeyName, 0, KeyHandle, NULL);
     Status = NtCreateKey(&SubKeyHandle, KEY_READ, &ObjectAttributes, 0, NULL,
 			 REG_OPTION_VOLATILE, NULL);
     NtClose(KeyHandle);
@@ -529,8 +528,7 @@ NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 
     /* Create a volatile BIOS configuration key */
     RtlInitUnicodeString(&KeyName, L"BiosConfig");
-    InitializeObjectAttributes(&ObjectAttributes, &KeyName, OBJ_KERNEL_HANDLE, KeyHandle,
-			       NULL);
+    InitializeObjectAttributes(&ObjectAttributes, &KeyName, 0, KeyHandle, NULL);
     Status = NtCreateKey(&SubKeyHandle, KEY_READ | KEY_WRITE, &ObjectAttributes, 0, NULL,
 			 REG_OPTION_VOLATILE, NULL);
     NtClose(KeyHandle);
