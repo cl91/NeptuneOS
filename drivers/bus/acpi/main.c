@@ -453,7 +453,7 @@ static NTSTATUS GetProcessorInformation(VOID)
 	Length = swprintf(ProcessorIdString, L"ACPI\\%s_-_%.*s",
 			  ProcessorVendorIdentifier, Level1Length, ProcessorIdentifier);
 	ProcessorIdString[Length++] = UNICODE_NULL;
-	DPRINT("ProcessorIdString: %S\n", ProcessorIdString);
+	DPRINT("ProcessorIdString: %ws\n", ProcessorIdString);
     }
 
 done:

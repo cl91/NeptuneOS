@@ -716,10 +716,10 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 		    DPRINT1("Long name entry has invalid Index: %x!\n",
 			    LongNameEntry->Id);
 
-		DPRINT("  LongName: [%S]\n", DirContext->LongNameU.Buffer);
+		DPRINT("  LongName: [%ws]\n", DirContext->LongNameU.Buffer);
 
 		if (CheckSum != LongNameEntry->AliasChecksum) {
-		    DPRINT1("Found wrong alias checksum in long name entry (first %x, current %x, %S)\n",
+		    DPRINT1("Found wrong alias checksum in long name entry (first %x, current %x, %ws)\n",
 			    CheckSum, LongNameEntry->AliasChecksum,
 			    DirContext->LongNameU.Buffer);
 		    Valid = FALSE;
@@ -733,7 +733,7 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 		}
 
 		if (ShortCheckSum != CheckSum && DirContext->LongNameU.Buffer[0]) {
-		    DPRINT1("Checksum from long and short name is not equal (short: %x, long: %x, %S)\n",
+		    DPRINT1("Checksum from long and short name is not equal (short: %x, long: %x, %ws)\n",
 			    ShortCheckSum, CheckSum,
 			    DirContext->LongNameU.Buffer);
 		    DirContext->LongNameU.Buffer[0] = 0;

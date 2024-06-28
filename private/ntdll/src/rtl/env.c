@@ -458,13 +458,13 @@ NTAPI NTSTATUS RtlQueryEnvironmentVariable_U(PWSTR Environment,
 	wcs = wcschr(wcs, L'=');
 	if (wcs == NULL) {
 	    wcs = var.Buffer + wcslen(var.Buffer);
-	    DPRINT("Search at :%S\n", wcs);
+	    DPRINT("Search at :%ws\n", wcs);
 	}
 	if (*wcs) {
 	    var.Length = var.MaximumLength = (USHORT)(wcs - var.Buffer) * sizeof(WCHAR);
 	    val = ++wcs;
 	    wcs += wcslen(wcs);
-	    DPRINT("Search at :%S\n", wcs);
+	    DPRINT("Search at :%ws\n", wcs);
 
 	    if (RtlEqualUnicodeString(&var, Name, TRUE)) {
 		Value->Length = (USHORT) (wcs - val) * sizeof(WCHAR);
@@ -472,7 +472,7 @@ NTAPI NTSTATUS RtlQueryEnvironmentVariable_U(PWSTR Environment,
 		    memcpy(Value->Buffer, val,
 			   min(Value->Length + sizeof(WCHAR),
 			       Value->MaximumLength));
-		    DPRINT("Value %S\n", val);
+		    DPRINT("Value %ws\n", val);
 		    DPRINT("Return STATUS_SUCCESS\n");
 		    Status = STATUS_SUCCESS;
 		} else {

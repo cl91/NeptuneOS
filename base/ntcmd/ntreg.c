@@ -39,7 +39,7 @@ BOOLEAN NtRegOpenKey(HANDLE *phKey,
     // Setup Unicode String
     RtlInitUnicodeString(&ustrKeyName, wszKeyName);
 
-    //printf("'%S'\n", ustrKeyName.Buffer);
+    //printf("'%ws'\n", ustrKeyName.Buffer);
     InitializeObjectAttributes(&ObjectAttributes,
 			       &ustrKeyName,
 			       OBJ_CASE_INSENSITIVE, NULL, NULL);
@@ -179,7 +179,7 @@ VOID NtEnumKey(HANDLE hKey)
     while (STATUS_SUCCESS == NtEnumerateKey(hKey, i++, KeyNodeInformation,
 					    pki, BUFFER_SIZE, &ResultLength)) {
 	if (pki->NameLength) {
-	    RtlCliDisplayString("[%S]\n", pki->Name);
+	    RtlCliDisplayString("[%ws]\n", pki->Name);
 	} else {
 	    RtlCliDisplayString("[null]\n");
 	}
@@ -200,7 +200,7 @@ VOID NtEnumKey(HANDLE hKey)
 			    ? " REG_MULTI_SZ" : (pbi->Type == REG_DWORD)
 			    ? " REG_DWORD" : "Other type (%d)", pbi->Type);
 	if (pbi->NameLength) {
-	    RtlCliDisplayString("    %S\n", pbi->Name);
+	    RtlCliDisplayString("    %ws\n", pbi->Name);
 	} else {
 	    RtlCliDisplayString("    (null)\n");
 	}

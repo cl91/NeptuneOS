@@ -429,7 +429,7 @@ static ULONG RtlpCollapsePath(PWSTR Path, /* ULONG PathBufferSize, ULONG PathLen
 static SIZE_T RtlpSkipUNCPrefix(PCWSTR FileNameBuffer)
 {
     PCWSTR UncPath = FileNameBuffer + 2;
-    DPRINT("RtlpSkipUNCPrefix(%S)\n", FileNameBuffer);
+    DPRINT("RtlpSkipUNCPrefix(%ws)\n", FileNameBuffer);
 
     while (*UncPath && !IS_PATH_SEPARATOR(*UncPath))
 	UncPath++;		/* share name */
@@ -1200,7 +1200,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
 
     /* Check where it really is */
     BufferPathType = RtlDetermineDosPathNameType_U(Buffer);
-    DPRINT("Buffer: %S Type: %x\n", Buffer, BufferPathType);
+    DPRINT("Buffer: %ws Type: %x\n", Buffer, BufferPathType);
     switch (BufferPathType) {
 	/* It's actually a UNC path in \??\UNC\ */
     case RtlPathTypeUncAbsolute:
@@ -1240,7 +1240,7 @@ static NTSTATUS RtlpDosPathNameToRelativeNtPathName_Ustr(IN BOOLEAN HaveRelative
     NtName->Length = (USHORT) Length;
     NtName->MaximumLength = (USHORT) MaxLength;
     NewBuffer[LengthChars] = UNICODE_NULL;
-    DPRINT("New buffer: %S\n", NewBuffer);
+    DPRINT("New buffer: %ws\n", NewBuffer);
     DPRINT("NT Name: %wZ\n", NtName);
 
     /* Check if a partial name was requested */
@@ -1519,7 +1519,7 @@ NTAPI NTSTATUS RtlGetLengthWithoutTrailingPathSeparators(IN ULONG Flags,
  */
 NTAPI RTL_PATH_TYPE RtlDetermineDosPathNameType_U(IN PCWSTR Path)
 {
-    DPRINT("RtlDetermineDosPathNameType_U %S\n", Path);
+    DPRINT("RtlDetermineDosPathNameType_U %ws\n", Path);
 
     /* Unlike the newer RtlDetermineDosPathNameType_U we assume 4 characters */
     if (IS_PATH_SEPARATOR(Path[0])) {
@@ -2187,7 +2187,7 @@ NTAPI NTSTATUS RtlGetFullPathName_UstrEx(IN PUNICODE_STRING FileName,
 				     StaticLength,
 				     StaticBuffer,
 				     &ShortName, NameInvalid, PathType);
-    DPRINT("Length: %u StaticBuffer: %S\n", Length, StaticBuffer);
+    DPRINT("Length: %u StaticBuffer: %ws\n", Length, StaticBuffer);
     if (!Length) {
 	/* Fail if it failed */
 	DbgPrint("%s(%d) - RtlGetFullPathName_Ustr() returned 0\n",
@@ -2346,7 +2346,7 @@ Release:
 
 Quickie:
     /* Free any buffers we should be freeing */
-    DPRINT("Status: %x %S %S\n", Status, StaticBuffer,
+    DPRINT("Status: %x %ws %ws\n", Status, StaticBuffer,
 	   TempDynamicString.Buffer);
     if ((StaticString) && (StaticBuffer)
 	&& (StaticBuffer != StaticString->Buffer)) {
@@ -2652,7 +2652,7 @@ NTAPI NTSTATUS RtlDosSearchPath_Ustr(IN ULONG Flags,
 		sizeof(WCHAR);
 
 	    /* Check if this file exists */
-	    DPRINT("BUFFER: %S\n", StaticCandidateString.Buffer);
+	    DPRINT("BUFFER: %ws\n", StaticCandidateString.Buffer);
 	    if (RtlDoesFileExists_UEx(StaticCandidateString.Buffer, FALSE)) {
 		/* Awesome, it does, now get the full path */
 		Status = RtlGetFullPathName_UstrEx(&StaticCandidateString,
@@ -2671,7 +2671,7 @@ NTAPI NTSTATUS RtlDosSearchPath_Ustr(IN ULONG Flags,
 			 "the search path, but RtlGetfullPathNameUStrEx() "
 			 "returned %08x\n", __FUNCTION__, &StaticCandidateString, Status);
 		}
-		DPRINT("Status: %x BUFFER: %S\n", Status,
+		DPRINT("Status: %x BUFFER: %ws\n", Status,
 		       CallerBuffer->Buffer);
 		goto Quickie;
 	    } else {
@@ -2774,7 +2774,7 @@ NTAPI NTSTATUS RtlDosSearchPath_Ustr(IN ULONG Flags,
 		     "failed with status %08x\n", __FUNCTION__,
 		     &StaticCandidateString, Status);
 	    }
-	    DPRINT("Status: %x BUFFER: %S\n", Status,
+	    DPRINT("Status: %x BUFFER: %ws\n", Status,
 		   CallerBuffer->Buffer);
 	} else {
 	    /* File was found on the first try, get the final full path */
@@ -2793,7 +2793,7 @@ NTAPI NTSTATUS RtlDosSearchPath_Ustr(IN ULONG Flags,
 		     "failed with status %08x\n", __FUNCTION__,
 		     FileNameString, Status);
 	    }
-	    DPRINT("Status: %x BUFFER: %S\n", Status,
+	    DPRINT("Status: %x BUFFER: %ws\n", Status,
 		   CallerBuffer->Buffer);
 	}
     }
