@@ -535,12 +535,20 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
                               OUT IO_DEVICE_INFO *TopDeviceInfo)
 {
+    if (!DeviceHandle) {
+	return STATUS_INVALID_PARAMETER;
+    }
     IopAllocatePool(CloseReq, CLOSE_DEVICE_REQUEST);
     IopAllocatePoolEx(Req, IO_PACKET, IopFreePool(CloseReq));
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
+    if (!Device) {
+	IopFreePool(CloseReq);
+	IopFreePool(Req);
+	return STATUS_INVALID_HANDLE;
+    }
     Device = IopGetTopDevice(Device);
     *TopDeviceHandle = OBJECT_TO_GLOBAL_HANDLE(Device);
     *TopDeviceInfo = Device->DeviceInfo;
