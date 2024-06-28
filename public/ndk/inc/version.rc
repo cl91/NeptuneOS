@@ -14,6 +14,28 @@
 
 #include "ntverp.h"
 
+#define CURSOR		1
+#define BITMAP		2
+#define ICON		3
+#define MENU		4
+#define DIALOG		5
+#define STRING		6
+#define FONTDIR		7
+#define FONT		8
+#define ACCELERATOR	9
+#define RCDATA		10
+#define MESSAGETABLE	11
+#define DIFFERENCE	MESSAGETABLE
+#define GROUP_CURSOR	(CURSOR + DIFFERENCE)
+#define GROUP_ICON	(ICON + DIFFERENCE)
+#define VERSION		16
+#define DLGINCLUDE	17
+#define PLUGPLAY	19
+#define VXD		20
+#define ANICURSOR	21
+#define ANIICON		22
+#define HTML		23
+
 /* Define some defaults (shouldn't be overwritten by applications */
 #define NEPTUNEOS_DEFAULT_STR_COMPANY_NAME    "Neptune OS Project"
 #define NEPTUNEOS_DEFAULT_STR_DESCRIPTION     "Neptune OS Core Component"
