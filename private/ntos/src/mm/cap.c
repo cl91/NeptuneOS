@@ -250,7 +250,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
  * Delete the capability of the specified CNode and release its untyped memory
  * for reuse. Delete its book-keeping information.
  *
- * The initial root task CNode should never be destroyed.
+ * The initial root task CNode should never be deleted.
  */
 VOID MmDeleteCNode(IN PCNODE CNode)
 {

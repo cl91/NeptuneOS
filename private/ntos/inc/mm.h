@@ -681,7 +681,7 @@ NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);
-NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self);
+VOID MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self);
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace);
 NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,
