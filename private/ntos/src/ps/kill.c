@@ -37,6 +37,13 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
      * object creation */
     ObDereferenceObject(Thread->Process);
 
+    /* If we are deleting the main event loop thread of a driver process,
+     * unlink us from the driver object. */
+    if (Thread->Process->DriverObject &&
+	Thread == Thread->Process->DriverObject->MainEventLoopThread) {
+	Thread->Process->DriverObject->MainEventLoopThread = NULL;
+    }
+
     /* Remove the thread from its PROCESS object's thread list */
     assert(Thread->ThreadListEntry.Flink != NULL);
     assert(Thread->ThreadListEntry.Blink != NULL);
@@ -104,6 +111,9 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     }
     KeDetachDispatcherObject(&Process->Header);
     ObDereferenceObject(Process->ImageSection);
+    if (Process->DriverObject) {
+	Process->DriverObject->DriverProcess = NULL;
+    }
     /* TODO */
 }
 

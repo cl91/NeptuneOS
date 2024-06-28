@@ -103,6 +103,6 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     Status = IopDriverEventLoop();
 
 fail:
-    /* The driver startup failed. Raise the status to terminate the driver process. */
-    RtlRaiseStatus(Status);
+    /* The driver startup failed. Terminate the driver process. */
+    NtTerminateProcess(NtCurrentProcess(), Status);
 }
