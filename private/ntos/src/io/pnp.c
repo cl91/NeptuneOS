@@ -510,6 +510,9 @@ lower:
     AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
 	     DeviceNode->LowerFilterDriverNames[Locals.Idx],
 	     &DeviceNode->LowerFilterDrivers[Locals.Idx]);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
     Locals.Idx++;
     goto lower;
 
@@ -517,6 +520,9 @@ function:
     /* Load function driver next */
     AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
 	     DeviceNode->DriverServiceName, &DeviceNode->FunctionDriverObject);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
 
     /* Finally, load upper filter drivers */
     if (DeviceNode->UpperFilterCount != 0) {
@@ -535,6 +541,9 @@ upper:
     AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
 	     DeviceNode->UpperFilterDriverNames[Locals.Idx],
 	     &DeviceNode->UpperFilterDrivers[Locals.Idx]);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
     Locals.Idx++;
     goto upper;
 
@@ -1161,7 +1170,7 @@ static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
 	    HalVgaPrint(". START FAIL.\n");
 	}
     } else if (DeviceNode->DriverServiceName != NULL) {
-	HalVgaPrint(" FAILED to load driver %s\n", DeviceNode->DriverServiceName);
+	HalVgaPrint(" FAILED to load driver %s.\n", DeviceNode->DriverServiceName);
     } else {
 	HalVgaPrint("\n");
     }
