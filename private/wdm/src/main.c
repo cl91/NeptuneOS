@@ -80,6 +80,7 @@ VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
     IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
+    IopDriverObject.DriverStart = NtCurrentPeb()->ImageBaseAddress;
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopEventList);
