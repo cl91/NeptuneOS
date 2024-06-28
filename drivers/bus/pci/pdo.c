@@ -443,6 +443,7 @@ NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
     RtlInitUnicodeString(&DeviceString, DeviceName);
 
     /* Create the actual device now */
+    assert(DeviceExtension->FunctionalDeviceObject->DriverObject);
     Status = IoCreateDevice(DeviceExtension->FunctionalDeviceObject->DriverObject,
 			    sizeof(PCI_PDO_EXTENSION), &DeviceString,
 			    FILE_DEVICE_BUS_EXTENDER, 0, 0, &DeviceObject);
