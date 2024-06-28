@@ -33,23 +33,35 @@ VOID _assert(PCSTR str, PCSTR file, unsigned int line)
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-address"
+extern char _text_start[];
+#define GET_RETURN_ADDRESS(i)				\
+    ReturnAddresses[i] = __builtin_return_address(i+1);	\
+    if (ReturnAddresses[i] < (PVOID)_text_start) {	\
+	goto out;					\
+    }
 NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 		      IN PVOID FileName,
 		      IN ULONG LineNumber,
 		      IN OPTIONAL PCHAR Message)
 {
+    PVOID ReturnAddresses[8] = {};
+    GET_RETURN_ADDRESS(0);
+    GET_RETURN_ADDRESS(1);
+    GET_RETURN_ADDRESS(2);
+    GET_RETURN_ADDRESS(3);
+    GET_RETURN_ADDRESS(4);
+    GET_RETURN_ADDRESS(5);
+    GET_RETURN_ADDRESS(6);
+    GET_RETURN_ADDRESS(7);
+out:
     KeBugCheckMsg("Assertion %s failed at line %d of file %s%s%s.\n"
 		  "Call stack: %p %p %p %p %p %p %p %p\n",
 		  (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName,
 		  Message ? ": " : "", Message ? Message : "",
-		  __builtin_return_address(1),
-		  __builtin_return_address(2),
-		  __builtin_return_address(3),
-		  __builtin_return_address(4),
-		  __builtin_return_address(5),
-		  __builtin_return_address(6),
-		  __builtin_return_address(7),
-		  __builtin_return_address(8));
+		  ReturnAddresses[0], ReturnAddresses[1],
+		  ReturnAddresses[2], ReturnAddresses[3],
+		  ReturnAddresses[4], ReturnAddresses[5],
+		  ReturnAddresses[6], ReturnAddresses[7]);
     /* Loop forever */
     while (1);
     return 0;
