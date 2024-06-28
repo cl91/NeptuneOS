@@ -97,7 +97,7 @@ static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
  *
  * IMPORTANT: The notification being destroyed cannot have any derived cap.
  */
-static inline VOID KeDeleteNotification(IN PNOTIFICATION Notification)
+static inline VOID KeDestroyNotification(IN PNOTIFICATION Notification)
 {
     assert(Notification != NULL);
     assert(!MmCapTreeNodeHasChildren(&Notification->TreeNode));

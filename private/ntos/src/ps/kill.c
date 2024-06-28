@@ -109,12 +109,21 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     if (!Process->ImageSection) {
 	return;
     }
+    /* At this point the handle table should be empty. */
+    assert(!Process->HandleTable.Tree.BalancedRoot);
+    /* The thread list should be empty as well. */
+    assert(IsListEmpty(&Process->ThreadList));
     KeDetachDispatcherObject(&Process->Header);
     ObDereferenceObject(Process->ImageSection);
     if (Process->DriverObject) {
 	Process->DriverObject->DriverProcess = NULL;
     }
-    /* TODO */
+    if (Process->DpcMutex.TreeNode.Cap) {
+	KeDestroyNotification(&Process->DpcMutex);
+    }
+    MmDestroyVSpace(&Process->VSpace);
+    MmDeleteCNode(Process->CSpace);
+    RemoveEntryList(&Process->ProcessListEntry);
 }
 
 static NTSTATUS PspSuspendThread(IN MWORD Cap)

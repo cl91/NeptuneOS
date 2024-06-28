@@ -46,9 +46,27 @@ NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self)
  * of an object WITHOUT freeing its pool memory. The term 'delete' is used
  * for the case where we release its resources AND free its pool memory.
  */
-NTSTATUS MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
+VOID MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
 {
-    UNIMPLEMENTED;
+    /* Delete all the VADs of this VSpace. */
+    PAVL_NODE Node;
+    while ((Node = AvlGetFirstNode(&Self->VadTree))) {
+	MmDeleteVad(AVL_NODE_TO_VAD(Node));
+    }
+    MmDbgDumpVSpace(Self);
+    /* At this point the VSpace should be empty. */
+    assert(!Self->RootPagingStructure->SubStructureTree.BalancedRoot);
+    MiDeletePage(Self->RootPagingStructure);
+    Self->RootPagingStructure = NULL;
+    /* Delete all VADs (in foreign VSpaces) mirroring (parts of) this VSpace. */
+    LoopOverList(Vad, &Self->ViewerList, MMVAD, MirroredMemory.ViewerLink) {
+	assert(Vad->Flags.MirroredMemory);
+	MmDeleteVad(Vad);
+    }
+    Self->VSpaceCap = 0;
+    /* ASID is automatically disassociated when the VSpace cap was deleted
+     * (by MiDeletePage). */
+    Self->ASIDPool = 0;
 }
 
 /*

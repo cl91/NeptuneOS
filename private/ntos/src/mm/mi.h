@@ -124,6 +124,7 @@ static inline VOID MiInitializeVadNode(IN PMMVAD Node,
     Node->WindowSize = WindowSize;
 }
 
+/* IMPORTANT: You cannot use this macro if you want to delete the Vad! */
 #define LoopOverVadTree(Vad, VSpace, Statement)				\
     for (PAVL_NODE Node = AvlGetFirstNode(&VSpace->VadTree);		\
 	 Node != NULL; Node = AvlGetNextNode(Node)) {			\
