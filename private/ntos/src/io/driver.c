@@ -36,12 +36,14 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     RET_ERR(PsCreateProcess(Ctx->ImageSection, Driver, &Process));
     assert(Process != NULL);
     Driver->DriverProcess = Process;
+    ObpReferenceObject(Process);
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
     RET_ERR(PsCreateThread(Process, NULL, NULL, FALSE, &Thread));
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
+    ObpReferenceObject(Thread);
 
     /* Add the driver to the list of all drivers */
     InsertTailList(&IopDriverList, &Driver->DriverLink);
@@ -51,6 +53,13 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
+    PIO_DRIVER_OBJECT Driver = Self;
+    if (Driver->MainEventLoopThread) {
+	ObDereferenceObject(Driver->MainEventLoopThread);
+    }
+    if (Driver->DriverProcess) {
+	ObDereferenceObject(Driver->DriverProcess);
+    }
     /* TODO */
 }
 
@@ -75,6 +84,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 	    IO_OPEN_CONTEXT OpenContext;
 	    PIO_FILE_OBJECT DriverImageFile;
 	    PSECTION DriverImageSection;
+	    PIO_DRIVER_OBJECT DriverObject;
 	});
 
     /* Get the object directory for all driver objects. Note on Windows
@@ -187,8 +197,25 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 	ObDereferenceObject(DriverObject);
 	goto out;
     }
-    if (pDriverObject) {
-	*pDriverObject = DriverObject;
+
+    /* Now wait on the InitializationDoneEvent for the main event loop of the
+     * driver process to start. */
+    Locals.DriverObject = DriverObject;
+    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE, NULL);
+
+    /* If the driver initialization failed, inform the caller of the error status.
+     * Otherwise return success (in case of success, MainEventLoopThread->ExitStatus
+     * will contain STATUS_SUCCESS). */
+    if (Locals.DriverObject->MainEventLoopThread) {
+	Status = Locals.DriverObject->MainEventLoopThread->ExitStatus;
+    } else {
+	Status = STATUS_UNSUCCESSFUL;
+    }
+    if (!NT_SUCCESS(Status)) {
+	ObDereferenceObject(Locals.DriverObject);
+    } else if (pDriverObject) {
+	*pDriverObject = Locals.DriverObject;
     }
 
 out:
@@ -227,21 +254,6 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
     }
     assert(DriverObject != NULL);
     Locals.DriverObject = DriverObject;
-
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
-	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE, NULL);
-
-    /* If the driver initialization failed, inform the caller of the error status.
-     * Otherwise return success (in case of success, MainEventLoopThread->ExitStatus
-     * will contain STATUS_SUCCESS). */
-    if (Locals.DriverObject->MainEventLoopThread) {
-	Status = Locals.DriverObject->MainEventLoopThread->ExitStatus;
-    } else {
-	Status = STATUS_UNSUCCESSFUL;
-    }
-    if (!NT_SUCCESS(Status)) {
-	ObDereferenceObject(Locals.DriverObject);
-    }
 
     ASYNC_END(State, Status);
 }
