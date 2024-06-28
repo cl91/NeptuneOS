@@ -222,6 +222,11 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 	return STATUS_OBJECT_NAME_INVALID;
     }
 
+    /* The remaining path must not have a path separator at this point. */
+    if (ObPathHasSeparator(Path)) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+
     /* Create the sub-key object and insert into the parent key */
     BOOLEAN Volatile = Context->CreateOptions & REG_OPTION_VOLATILE;
     PCM_KEY_OBJECT SubKey = NULL;
