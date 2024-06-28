@@ -54,13 +54,26 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
     PIO_DRIVER_OBJECT Driver = Self;
+    /* TODO: in the CloseProc, send the driver the Unload message.
+     * NOTE: move the dereferencing below to the CloseProc. */
+    LoopOverList(Device, &Driver->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	ObDereferenceObject(Device);
+    }
+    assert(IsListEmpty(&Driver->DeviceList));
     if (Driver->MainEventLoopThread) {
 	ObDereferenceObject(Driver->MainEventLoopThread);
     }
     if (Driver->DriverProcess) {
 	ObDereferenceObject(Driver->DriverProcess);
     }
-    /* TODO */
+    if (Driver->DriverImagePath) {
+	IopFreePool(Driver->DriverImagePath);
+    }
+    if (Driver->DriverRegistryPath) {
+	IopFreePool(Driver->DriverRegistryPath);
+    }
+    /* TODO: Close IO ports, disconnect interrupts, cleanup the pending IRPs etc. */
+    RemoveEntryList(&Driver->DriverLink);
 }
 
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,

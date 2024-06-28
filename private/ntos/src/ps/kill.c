@@ -26,6 +26,7 @@ static VOID PspUnmapSharedRegion(IN MWORD ServerStart,
  */
 VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 {
+    DbgTrace("Deleting thread %p\n", Object);
     assert(Object != NULL);
     PTHREAD Thread = (PTHREAD)Object;
     /* If we didn't even get to create the TCB cap, simply return */
@@ -105,6 +106,7 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 
 VOID PspProcessObjectDeleteProc(IN POBJECT Object)
 {
+    DbgTrace("Deleting process %p\n", Object);
     PPROCESS Process = Object;
     if (!Process->ImageSection) {
 	return;
