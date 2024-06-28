@@ -227,7 +227,7 @@ NTSTATUS RtlCliListProcesses(VOID)
 	//
 	// Display basic data
 	//
-	RtlCliDisplayString("[%lx] %S - WS/PF/V:[%dK/%dK/%dK] Threads: %d\n",
+	RtlCliDisplayString("[%lx] %ws - WS/PF/V:[%dK/%dK/%dK] Threads: %d\n",
 			    ModuleInfo->UniqueProcessId,
 			    ModuleInfo->ImageName.Buffer,
 			    ModuleInfo->WorkingSetSize / 1024,
@@ -335,7 +335,7 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     // FIXME: Center it
     //
     RtlTimeToTimeFields(&TimeInfo.BootTime, &BootTime);
-    RtlCliDisplayString("Native shell running in %S booted on %02d-%02d-%02d "
+    RtlCliDisplayString("Native shell running in %ws booted on %02d-%02d-%02d "
 			"at %02d:%02d. CPUs: %d\n", SharedData->NtSystemRoot,
 			BootTime.Day, BootTime.Month, BootTime.Year, BootTime.Hour,
 			BootTime.Minute, BasicInfo.NumberOfProcessors);

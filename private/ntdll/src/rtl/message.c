@@ -26,7 +26,8 @@ NTAPI NTSTATUS RtlFindMessage(IN PVOID BaseAddress, IN ULONG Type,
     PMESSAGE_RESOURCE_ENTRY MessageEntry;
     ULONG i;
 
-    DPRINT("RtlFindMessage()\n");
+    DPRINT("RtlFindMessage(): BaseAddress %p Type %d Language 0x%x MessageId 0x%x\n",
+	   BaseAddress, Type, Language, MessageId);
 
     LDR_RESOURCE_INFO ResourceInfo = {
 	.Type = Type,
@@ -89,7 +90,7 @@ NTAPI NTSTATUS RtlFindMessage(IN PVOID BaseAddress, IN ULONG Type,
     if (MessageEntry->Flags == 0) {
 	DPRINT("AnsiText: %s\n", MessageEntry->Text);
     } else {
-	DPRINT("UnicodeText: %S\n", (PWSTR)MessageEntry->Text);
+	DPRINT("UnicodeText: %ws\n", (PWSTR)MessageEntry->Text);
     }
 
     if (MessageResourceEntry != NULL) {
@@ -109,7 +110,7 @@ RtlFormatMessageEx(IN PWSTR Message, IN ULONG MaxWidth OPTIONAL, IN BOOLEAN Igno
 		   IN va_list *Arguments, OUT PWSTR Buffer, IN ULONG BufferSize,
 		   OUT PULONG ReturnLength OPTIONAL, IN ULONG Flags)
 {
-    DPRINT1("RtlFormatMessage(%S, %u, %s, %s, %s, %p, %p, %u, %p, %x)\n", Message,
+    DPRINT1("RtlFormatMessage(%ws, %u, %s, %s, %s, %p, %p, %u, %p, %x)\n", Message,
 	    MaxWidth, IgnoreInserts ? "TRUE" : "FALSE",
 	    ArgumentsAreAnsi ? "TRUE" : "FALSE", ArgumentsAreAnArray ? "TRUE" : "FALSE",
 	    Arguments, Buffer, BufferSize, ReturnLength, Flags);

@@ -150,8 +150,8 @@ NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name)
 		// Add the device name or description, and display it
 		//
 		wcscat_s(Buffer, MAX_DEVICE_ID_LEN, Name);
-		RtlCliDisplayString("%S\n", Buffer);
-		DbgPrint("%S\n", Buffer);
+		RtlCliDisplayString("%ws\n", Buffer);
+		DbgPrint("%ws\n", Buffer);
 	    }
 	    //
 	    // Close the key to the device instance name

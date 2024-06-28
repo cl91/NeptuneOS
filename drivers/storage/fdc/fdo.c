@@ -749,7 +749,7 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 		swprintf(DriveInfo->DeviceNameBuffer, L"\\Device\\Floppy%u", DeviceNumber++);
 		UNICODE_STRING DeviceName;
 		RtlInitUnicodeString(&DeviceName, DriveInfo->DeviceNameBuffer);
-		DPRINT("Device name: %S\n", DriveInfo->DeviceNameBuffer);
+		DPRINT("Device name: %ws\n", DriveInfo->DeviceNameBuffer);
 
 		/* Create physical device object */
 		Status = IoCreateDevice(FdoDevExt->Common.DeviceObject->DriverObject,
@@ -765,7 +765,7 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 		goto done;
 	    }
 
-	    DPRINT("PDO created: %S\n", DriveInfo->DeviceNameBuffer);
+	    DPRINT("PDO created: %ws\n", DriveInfo->DeviceNameBuffer);
 
 	    DriveInfo->DeviceObject = Pdo;
 
@@ -782,7 +782,7 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 
 	    /* Add Device ID string */
 	    RtlCreateUnicodeString(&PdoDevExt->DeviceId, L"FDC\\GENERIC_FLOPPY_DRIVE");
-	    DPRINT("DeviceID: %S\n", PdoDevExt->DeviceId.Buffer);
+	    DPRINT("DeviceID: %ws\n", PdoDevExt->DeviceId.Buffer);
 
 	    /* Add Hardware IDs string */
 	    Status = PciCreateHardwareIDsString(&PdoDevExt->HardwareIds);

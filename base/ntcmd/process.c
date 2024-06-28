@@ -30,7 +30,7 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
 
     RtlInitUnicodeString(&ImagePath, NtFileName.Buffer);	// Image path
     RtlInitUnicodeString(&ImageName, FilePath);	// Image name
-    RtlInitUnicodeString(&DllPath, SharedData->NtSystemRoot);	// DLL Path is %SystemRoot%
+    RtlInitUnicodeString(&DllPath, SharedData->NtSystemRoot);	// DLL Path is %wsystemRoot%
     RtlInitUnicodeString(&UnicodeCmdLine, CmdLine);	// Command Line parameters
 
     Status = RtlCreateProcessParameters(&ProcessParameters, &ImageName, &DllPath,
