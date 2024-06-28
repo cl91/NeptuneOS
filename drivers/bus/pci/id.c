@@ -32,29 +32,43 @@ static PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
 
     /* Check if the resource data is Unicode or ANSI */
     if (Entry->Flags & MESSAGE_RESOURCE_UNICODE) {
-	/* Subtract one space for the end-of-message terminator */
+	/* Subtract one space for the empty message terminator */
 	TextLength = Entry->Length - FIELD_OFFSET(MESSAGE_RESOURCE_ENTRY, Text) -
 		     sizeof(WCHAR);
 
 	/* Grab the text */
 	Description = (PWCHAR)Entry->Text;
 
-	/* Validate valid message length, ending with a newline character */
+	/* Validate valid message length */
 	ASSERT(TextLength > 1);
-	ASSERT(Description[TextLength / sizeof(WCHAR)] == L'\n');
+
+	/* Remove trailing new line characters and the NUL-terminator. */
+	while (TextLength) {
+	    if (Description[TextLength/sizeof(WCHAR) - 1] == L'\n' ||
+		Description[TextLength/sizeof(WCHAR) - 1] == L'\r' ||
+		Description[TextLength/sizeof(WCHAR) - 1] == L'\0') {
+		TextLength -= sizeof(WCHAR);
+	    } else {
+		break;
+	    }
+	}
+	if (!TextLength) {
+	    assert(FALSE);
+	    return NULL;
+	}
 
 	/* Allocate the buffer to hold the message string */
-	Buffer = ExAllocatePoolWithTag(TextLength, 'BicP');
+	Buffer = ExAllocatePoolWithTag(TextLength + 1, 'BicP');
 	if (!Buffer)
 	    return NULL;
 
-	/* Copy the message, minus the newline character, and terminate it */
-	RtlCopyMemory(Buffer, Entry->Text, TextLength - 1);
+	/* Copy the message and terminate it */
+	RtlCopyMemory(Buffer, Entry->Text, TextLength);
 	Buffer[TextLength / sizeof(WCHAR)] = UNICODE_NULL;
 
 	/* Return the length to the caller, minus the terminating NULL */
 	if (Length)
-	    *Length = TextLength - 1;
+	    *Length = TextLength;
     } else {
 	/* Initialize the entry as a string */
 	RtlInitAnsiString(&MessageString, (PCHAR)Entry->Text);
