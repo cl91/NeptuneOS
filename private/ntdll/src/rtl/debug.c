@@ -86,12 +86,12 @@ NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 {
     DbgPrint("Assertion %s failed at line %d of file %s%s%s\n",
 	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName,
-	     Message ? ": " : "", Message ? Message : NULL);
+	     Message ? ": " : "", Message ? Message : "");
     DbgpPrintStackTrace();
     char buf[512];
     snprintf(buf, sizeof(buf), "Assertion %s failed at line %d of file %s%s%s\n",
 	     (PCSTR)FailedAssertion, LineNumber, (PCSTR)FileName,
-	     Message ? ": " : "", Message ? Message : NULL);
+	     Message ? ": " : "", Message ? Message : "");
     NtDisplayStringA(buf);
     /* Loop forever */
     while (1);
