@@ -1349,7 +1349,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    /* Find description for this device for the debugger's sake */
 	    DescriptionText = PciGetDeviceDescriptionMessage(PciData->BaseClass,
 							     PciData->SubClass);
-	    DPRINT1("Device Description \"%S\".\n",
+	    DPRINT1("Device Description \"%ws\".\n",
 		    DescriptionText ? DescriptionText : L"(NULL)");
 	    if (DescriptionText)
 		ExFreePoolWithTag(DescriptionText, 0);

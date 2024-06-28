@@ -80,14 +80,14 @@ NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation
 
     /* Check for any boot-provided resources */
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
-    if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension))) {
+    if (Resources && !PCI_IS_ROOT_FDO(DeviceExtension)) {
 	/* These resources would only be for non-root FDOs, unhandled for now */
 	ASSERT(Resources->Count == 1);
 	UNIMPLEMENTED_DBGBREAK();
     }
 
     /* Again, check for boot-provided resources for non-root FDO */
-    if ((Resources) && !(PCI_IS_ROOT_FDO(DeviceExtension))) {
+    if (Resources && !PCI_IS_ROOT_FDO(DeviceExtension)) {
 	/* Unhandled for now */
 	ASSERT(Resources->Count == 1);
 	UNIMPLEMENTED_DBGBREAK();
@@ -267,31 +267,31 @@ VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
     RtlZeroMemory((PVOID)OutputBuffer, Length);
     *(PULONG)InputBuffer.MethodName = 'PPH_';
     InputBuffer.Signature = ACPI_EVAL_INPUT_BUFFER_SIGNATURE;
-    do {
-	/* Send the IOCTL to the ACPI driver */
-	Status = PciSendIoctl(FdoExtension->PhysicalDeviceObject, IOCTL_ACPI_EVAL_METHOD,
-			      &InputBuffer, sizeof(InputBuffer), (PVOID)OutputBuffer, Length);
-	if (!NT_SUCCESS(Status)) {
-	    /* The method failed, check if we can salvage data from parent */
-	    if (!PCI_IS_ROOT_FDO(FdoExtension)) {
-		/* Copy the root bus' hot plug parameters */
-		FdoExtension->HotPlugParameters =
-		    FdoExtension->ParentFdoExtension->HotPlugParameters;
-	    }
 
-	    /* Nothing more to do on this path */
-	    break;
+    /* Send the IOCTL to the ACPI driver */
+    Status = PciSendIoctl(FdoExtension->PhysicalDeviceObject, IOCTL_ACPI_EVAL_METHOD,
+			  &InputBuffer, sizeof(InputBuffer), (PVOID)OutputBuffer, Length);
+    if (!NT_SUCCESS(Status)) {
+	/* The method failed, check if we can salvage data from parent */
+	if (!PCI_IS_ROOT_FDO(FdoExtension)) {
+	    /* Copy the root bus' hot plug parameters */
+	    FdoExtension->HotPlugParameters =
+		FdoExtension->ParentFdoExtension->HotPlugParameters;
 	}
 
-	/* ACPI sent back some data. 4 parameters are expected in the output */
-	if (OutputBuffer->Count != 4)
-	    break;
+	/* Nothing more to do on this path */
+	goto out;
+    }
 
-	/* HotPlug PCI Support not yet implemented */
-	UNIMPLEMENTED_DBGBREAK();
-    } while (FALSE);
+    /* ACPI sent back some data. 4 parameters are expected in the output */
+    if (OutputBuffer->Count != 4)
+	goto out;
+
+    /* HotPlug PCI Support not yet implemented */
+    UNIMPLEMENTED_DBGBREAK();
 
     /* Free the buffer and return */
+out:
     ExFreePoolWithTag((PVOID)OutputBuffer, 0);
 }
 
@@ -325,7 +325,6 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
     PKEY_VALUE_PARTIAL_INFORMATION ValueInfo = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
     NTSTATUS Status;
-    HANDLE KeyHandle;
     UNICODE_STRING ValueName;
     ULONG ResultLength;
     DPRINT1("PCI - AddDevice (a new bus). PDO: %p\n", PhysicalDeviceObject);
@@ -411,11 +410,15 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     PciInsertEntryAtTail(&PciFdoExtensionListHead, FdoExtension);
 
     /* Open the device registry key so that we can query the errata flags */
-    IoOpenDeviceRegistryKey(DeviceObject, PLUGPLAY_REGKEY_DEVICE, KEY_ALL_ACCESS,
-			    &KeyHandle),
+    HANDLE KeyHandle = NULL;
+    Status = IoOpenDeviceRegistryKey(DeviceObject, PLUGPLAY_REGKEY_DEVICE,
+				     KEY_ALL_ACCESS, &KeyHandle);
+    if (!NT_SUCCESS(Status)) {
+	goto hotplug;
+    }
 
-	/* Open the value that contains errata flags for this bus instance */
-	RtlInitUnicodeString(&ValueName, L"HackFlags");
+    /* Open the value that contains errata flags for this bus instance */
+    RtlInitUnicodeString(&ValueName, L"HackFlags");
     Status = NtQueryValueKey(KeyHandle, &ValueName, KeyValuePartialInformation,
 			     ValueInfo, sizeof(Buffer), &ResultLength);
     NtClose(KeyHandle);
@@ -429,6 +432,7 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
     /* Query ACPI for PCI HotPlug Support */
+hotplug:
     PciGetHotPlugParameters(FdoExtension);
 
     /* The Bus FDO is now initialized */

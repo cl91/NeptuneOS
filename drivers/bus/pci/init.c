@@ -333,8 +333,10 @@ static NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
 	ExFreePool(FullInfo);
     if (ValueInfo)
 	ExFreePool(ValueInfo);
-    if (PciHackTable)
+    if (PciHackTable) {
 	ExFreePool(PciHackTable);
+	PciHackTable = NULL;
+    }
     return Status;
 }
 
@@ -383,7 +385,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     /* Open the PCI key */
     InitializeObjectAttributes(&ObjectAttributes, RegistryPath,
-			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
     Status = NtOpenKey(&KeyHandle, KEY_QUERY_VALUE, &ObjectAttributes);
     if (!NT_SUCCESS(Status))
 	goto out;
