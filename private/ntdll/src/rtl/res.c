@@ -98,6 +98,9 @@ static IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryById(IMAGE_RESOURCE_DIRECT
     Max = Min + Dir->NumberOfIdEntries - 1;
     while (Min <= Max) {
 	Pos = (Min + Max) / 2;
+	if (!Entry[Pos].Id) {
+	    break;
+	}
 	if (Entry[Pos].Id == Id) {
 	    if (!Entry[Pos].DataIsDirectory == !WantDir) {
 		DPRINT("root %p dir %p id %04x ret %p\n", Root, Dir, Id,
@@ -189,14 +192,14 @@ static NTSTATUS RtlpFindResourceEntry(PVOID BaseAddress,
     if (!Level--)
 	goto done;
     if (!(*Ret = RtlpFindResourceEntryByName(ResDirPtr, (LPCWSTR)Info->Type, Root,
-				    WantDir || Level)))
+					     WantDir || Level)))
 	return STATUS_RESOURCE_TYPE_NOT_FOUND;
     if (!Level--)
 	return STATUS_SUCCESS;
 
     ResDirPtr = *Ret;
     if (!(*Ret = RtlpFindResourceEntryByName(ResDirPtr, (LPCWSTR)Info->Name, Root,
-				    WantDir || Level)))
+					     WantDir || Level)))
 	return STATUS_RESOURCE_NAME_NOT_FOUND;
     if (!Level--)
 	return STATUS_SUCCESS;
