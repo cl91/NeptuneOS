@@ -1,8 +1,9 @@
 #include "smss.h"
 
+#define SYSTEM_KEY_PATH				"\\Registry\\Machine\\System"
 #define HARDWARE_KEY_PATH			"\\Registry\\Machine\\Hardware"
 #define DEVICEMAP_KEY_PATH			HARDWARE_KEY_PATH "\\DeviceMap"
-#define CURRENT_CONTROL_SET_KEY_PATH		"\\Registry\\Machine\\CurrentControlSet"
+#define CURRENT_CONTROL_SET_KEY_PATH		SYSTEM_KEY_PATH "\\CurrentControlSet"
 #define SERVICE_KEY_PATH			CURRENT_CONTROL_SET_KEY_PATH "\\Services"
 #define CURRENT_CONTROL_SET_CONTROL_KEY_PATH	CURRENT_CONTROL_SET_KEY_PATH "\\Control"
 #define CLASS_KEY_PATH				CURRENT_CONTROL_SET_CONTROL_KEY_PATH "\\Class"
@@ -152,6 +153,7 @@ static NTSTATUS SmInitPnp()
 
 NTSTATUS SmInitHardwareDatabase()
 {
+    RET_ERR(SmCreateRegistryKey(SYSTEM_KEY_PATH, TRUE, NULL));
     RET_ERR(SmCreateRegistryKey(HARDWARE_KEY_PATH, TRUE, NULL));
     RET_ERR(SmCreateRegistryKey(DEVICEMAP_KEY_PATH, TRUE, NULL));
     RET_ERR(SmCreateRegistryKey(CURRENT_CONTROL_SET_KEY_PATH, FALSE, NULL));
