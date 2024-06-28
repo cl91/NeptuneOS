@@ -84,7 +84,6 @@ NTAPI NTSTATUS RtlAddRange(IN OUT PRTL_RANGE_LIST RangeList, IN ULONGLONG Start,
 	    Current = CONTAINING_RECORD(Entry, RTL_RANGE_ENTRY, Entry);
 	    if (Current->Range.Start > RangeEntry->Range.End) {
 		/* Insert before current */
-		DPRINT("Insert before current\n");
 		InsertTailList(&Current->Entry, &RangeEntry->Entry);
 
 		RangeList->Count++;
@@ -96,7 +95,6 @@ NTAPI NTSTATUS RtlAddRange(IN OUT PRTL_RANGE_LIST RangeList, IN ULONGLONG Start,
 	    Entry = Entry->Flink;
 	}
 
-	DPRINT("Insert tail\n");
 	InsertTailList(&RangeList->ListHead, &RangeEntry->Entry);
 	RangeList->Count++;
 	RangeList->Stamp++;
@@ -302,9 +300,6 @@ NTAPI NTSTATUS RtlFindRange(IN PRTL_RANGE_LIST RangeList, IN ULONGLONG Minimum,
 	    return STATUS_RANGE_NOT_FOUND;
 	}
 
-	DPRINT("RangeMax: %I64x\n", RangeMax);
-	DPRINT("RangeMin: %I64x\n", RangeMin);
-
 	if (RangeMin > CurrentEntry->Range.End) {
 	    *Start = RangeMin;
 	    return STATUS_SUCCESS;
@@ -323,9 +318,6 @@ NTAPI NTSTATUS RtlFindRange(IN PRTL_RANGE_LIST RangeList, IN ULONGLONG Minimum,
     if (RangeMin < Minimum || (RangeMax - RangeMin) < (Length - 1)) {
 	return STATUS_RANGE_NOT_FOUND;
     }
-
-    DPRINT("RangeMax: %I64x\n", RangeMax);
-    DPRINT("RangeMin: %I64x\n", RangeMin);
 
     *Start = RangeMin;
 
@@ -355,9 +347,6 @@ VOID NTAPI RtlFreeRangeList(IN PRTL_RANGE_LIST RangeList)
     while (!IsListEmpty(&RangeList->ListHead)) {
 	Entry = RemoveHeadList(&RangeList->ListHead);
 	Current = CONTAINING_RECORD(Entry, RTL_RANGE_ENTRY, Entry);
-
-	DPRINT("Range start: %I64u\n", Current->Range.Start);
-	DPRINT("Range end:   %I64u\n", Current->Range.End);
 
 	RtlpFreeMemory(Current, 0);
     }
