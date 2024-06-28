@@ -51,9 +51,9 @@ Abstract:
 
 #include "iop.h"
 
-#define REG_SERVICE_KEY	"\\Registry\\Machine\\CurrentControlSet\\Services"
-#define REG_CLASS_KEY	"\\Registry\\Machine\\CurrentControlSet\\Control\\Class"
-#define REG_ENUM_KEY	"\\Registry\\Machine\\CurrentControlSet\\Enum"
+#define REG_SERVICE_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Services"
+#define REG_CLASS_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Class"
+#define REG_ENUM_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Enum"
 
 /*
  * Device node state.
