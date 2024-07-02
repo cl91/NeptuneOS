@@ -17,10 +17,10 @@ BOOLEAN PciAreBusNumbersConfigured(IN PPCI_PDO_EXTENSION PdoExtension)
     UCHAR PrimaryBus, BaseBus, SecondaryBus, SubordinateBus;
 
     /* Get all relevant bus number details */
-    PrimaryBus = PdoExtension->Dependent.type1.PrimaryBus;
+    PrimaryBus = PdoExtension->Dependent.Type1.PrimaryBus;
     BaseBus = PdoExtension->ParentFdoExtension->BaseBus;
-    SecondaryBus = PdoExtension->Dependent.type1.SecondaryBus;
-    SubordinateBus = PdoExtension->Dependent.type1.SubordinateBus;
+    SecondaryBus = PdoExtension->Dependent.Type1.SecondaryBus;
+    SubordinateBus = PdoExtension->Dependent.Type1.SubordinateBus;
 
     /* The primary bus should be the base bus of the parent */
     if ((PrimaryBus != BaseBus) || (SecondaryBus <= PrimaryBus))

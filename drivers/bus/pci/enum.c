@@ -807,7 +807,7 @@ VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
 	 * and whose hack flags do not specify that this support is broken.
 	 */
 	if ((PdoExtension->HeaderType == PCI_BRIDGE_TYPE) &&
-	    (PdoExtension->Dependent.type1.SubtractiveDecode) &&
+	    (PdoExtension->Dependent.Type1.SubtractiveDecode) &&
 	    ((PdoExtension->VendorId == 0x8086) &&
 	     ((PdoExtension->DeviceId == 0x2418) || (PdoExtension->DeviceId == 0x2428) ||
 	      (PdoExtension->DeviceId == 0x244E) ||
@@ -1246,8 +1246,8 @@ VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 	/* Check for PCI bridges with the ISA bit set, or required */
 	if ((PdoExtension) && (PciClassifyDeviceType(PdoExtension) == PciTypePciBridge) &&
-	    ((PdoExtension->Dependent.type1.IsaBitRequired) ||
-	     (PdoExtension->Dependent.type1.IsaBitSet))) {
+	    ((PdoExtension->Dependent.Type1.IsaBitRequired) ||
+	     (PdoExtension->Dependent.Type1.IsaBitSet))) {
 	    /* We'll need to do some legacy support */
 	    UNIMPLEMENTED_DBGBREAK();
 	}
@@ -1256,7 +1256,7 @@ VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	for (PdoExtension = DeviceExtension->ChildBridgePdoList; PdoExtension;
 	     PdoExtension = PdoExtension->NextBridge) {
 	    /* Find any that have the VGA decode bit on */
-	    if (PdoExtension->Dependent.type1.VgaBitSet) {
+	    if (PdoExtension->Dependent.Type1.VgaBitSet) {
 		/* Again, some more legacy support we'll have to do */
 		UNIMPLEMENTED_DBGBREAK();
 	    }
@@ -1308,7 +1308,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	PciReadDeviceConfig(PdoExtension, &SecondaryBus,
 			    FIELD_OFFSET(PCI_COMMON_HEADER, Type1.SecondaryBus),
 			    sizeof(UCHAR));
-	if (SecondaryBus != PdoExtension->Dependent.type1.SecondaryBus) {
+	if (SecondaryBus != PdoExtension->Dependent.Type1.SecondaryBus) {
 	    UNIMPLEMENTED_DBGBREAK("PCI: Bus numbers have been changed!  Restoring "
 				   "originals.\n");
 	}

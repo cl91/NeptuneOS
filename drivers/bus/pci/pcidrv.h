@@ -101,8 +101,7 @@ typedef enum _PCI_SIGNATURE {
     PciInterface_NativeIde = 'icP=',
     PciInterface_AgpTarget = 'icP>',
     PciInterface_Location = 'icP?'
-} PCI_SIGNATURE,
-    *PPCI_SIGNATURE;
+} PCI_SIGNATURE, *PPCI_SIGNATURE;
 
 //
 // Driver-handled PCI Device Types
@@ -191,8 +190,8 @@ typedef struct _PCI_FDO_EXTENSION {
     struct _PCI_FDO_EXTENSION *BusRootFdoExtension;
     struct _PCI_FDO_EXTENSION *ParentFdoExtension;
     struct _PCI_PDO_EXTENSION *ChildBridgePdoList;
+    PHYSICAL_ADDRESS ConfigBase;
     UCHAR BaseBus;
-    BOOLEAN Fake;
     PCI_POWER_STATE PowerState;
     SINGLE_LIST_ENTRY SecondaryExtension;
     LONG ChildWaitWakeCount;
@@ -216,7 +215,7 @@ typedef struct _PCI_FUNCTION_RESOURCES {
 typedef union _PCI_HEADER_TYPE_DEPENDENT {
     struct {
 	UCHAR Spare[4];
-    } type0;
+    } Type0;
     struct {
 	UCHAR PrimaryBus;
 	UCHAR SecondaryBus;
@@ -226,10 +225,10 @@ typedef union _PCI_HEADER_TYPE_DEPENDENT {
 	UCHAR VgaBitSet : 1;
 	UCHAR WeChangedBusNumbers : 1;
 	UCHAR IsaBitRequired : 1;
-    } type1;
+    } Type1;
     struct {
 	UCHAR Spare[4];
-    } type2;
+    } Type2;
 } PCI_HEADER_TYPE_DEPENDENT, *PPCI_HEADER_TYPE_DEPENDENT;
 
 typedef struct _PCI_PDO_EXTENSION {
@@ -455,138 +454,11 @@ DRIVER_ADD_DEVICE PciAddDevice;
 NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 			    IN PDEVICE_OBJECT PhysicalDeviceObject);
 
-NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			      IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
-				    IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			       IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
-				     IN PIO_STACK_LOCATION IoStackLocation,
-				     IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			     IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpQueryStopDevice(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
-				   IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
-				       IN PIO_STACK_LOCATION IoStackLocation,
-				       IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
-				    IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_FDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
-					    IN PIO_STACK_LOCATION IoStackLocation,
-					    IN PPCI_FDO_EXTENSION DeviceExtension);
-
 //
 // Device PDO Routines
 //
 NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
 		      IN PCI_SLOT_NUMBER Slot, OUT PDEVICE_OBJECT *PdoDeviceObject);
-
-NTSTATUS PciPdoWaitWake(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			      IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryRemoveDevice(IN PIRP Irp,
-				    IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			       IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpCancelRemoveDevice(IN PIRP Irp,
-				     IN PIO_STACK_LOCATION IoStackLocation,
-				     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryStopDevice(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpCancelStopDevice(IN PIRP Irp,
-				   IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryDeviceRelations(IN PIRP Irp,
-				       IN PIO_STACK_LOCATION IoStackLocation,
-				       IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryCapabilities(IN PIRP Irp,
-				    IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryResources(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-				 IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryResourceRequirements(IN PIRP Irp,
-					    IN PIO_STACK_LOCATION IoStackLocation,
-					    IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryDeviceText(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpReadConfig(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			     IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpWriteConfig(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			      IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryId(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryDeviceState(IN PIRP Irp,
-				   IN PIO_STACK_LOCATION IoStackLocation,
-				   IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryBusInformation(IN PIRP Irp,
-				      IN PIO_STACK_LOCATION IoStackLocation,
-				      IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpDeviceUsageNotification(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpSurpriseRemoval(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_PDO_EXTENSION DeviceExtension);
-
-NTSTATUS PciPdoIrpQueryLegacyBusInformation(IN PIRP Irp,
-					    IN PIO_STACK_LOCATION IoStackLocation,
-					    IN PPCI_PDO_EXTENSION DeviceExtension);
 
 //
 // Utility Routines
@@ -712,16 +584,16 @@ PciDebugPrintPartialResource(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialResource)
 // PCI Enumeration and Resources
 //
 NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
-				 IN OUT PDEVICE_RELATIONS *pDeviceRelations);
+				 IN OUT PDEVICE_RELATIONS *DeviceRelations);
 
 NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 			   OUT PCM_RESOURCE_LIST *Buffer);
 
 NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
-				       IN OUT PDEVICE_RELATIONS *pDeviceRelations);
+				       IN OUT PDEVICE_RELATIONS *DeviceRelations);
 
 NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
-				   IN OUT PDEVICE_RELATIONS *pDeviceRelations);
+				   IN OUT PDEVICE_RELATIONS *DeviceRelations);
 
 NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
 			      IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList);

@@ -15,56 +15,11 @@
 SINGLE_LIST_ENTRY PciFdoExtensionListHead;
 BOOLEAN PciBreakOnDefault;
 
-PCI_MN_DISPATCH_TABLE PciFdoDispatchPowerTable[] = {
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoWaitWake },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoSetPowerState },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryPower },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
-};
-
-PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
-    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpStartDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryRemoveDevice },
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoIrpRemoveDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpCancelRemoveDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpStopDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryStopDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpCancelStopDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryDeviceRelations },
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryCapabilities },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpDeviceUsageNotification },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpSurpriseRemoval },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryLegacyBusInformation },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
-};
-
-PCI_MJ_DISPATCH_TABLE PciFdoDispatchTable = { IRP_MN_DEVICE_ENUMERATED,
-    PciFdoDispatchPnpTable,
-    IRP_MN_QUERY_POWER,
-    PciFdoDispatchPowerTable,
-    IRP_DOWNWARD,
-    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported,
-    IRP_DOWNWARD,
-    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported };
-
 /* FUNCTIONS ******************************************************************/
 
-NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			      IN PPCI_FDO_EXTENSION DeviceExtension)
+static NTSTATUS PciFdoStartDevice(IN PIRP Irp,
+				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
     PCM_RESOURCE_LIST Resources;
@@ -80,27 +35,28 @@ NTSTATUS PciFdoIrpStartDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation
 
     /* Check for any boot-provided resources */
     Resources = IoStackLocation->Parameters.StartDevice.AllocatedResources;
-    if (Resources && !PCI_IS_ROOT_FDO(DeviceExtension)) {
-	/* These resources would only be for non-root FDOs, unhandled for now */
-	ASSERT(Resources->Count == 1);
-	UNIMPLEMENTED_DBGBREAK();
+    if (!Resources) {
+	goto commit;
     }
-
-    /* Again, check for boot-provided resources for non-root FDO */
-    if (Resources && !PCI_IS_ROOT_FDO(DeviceExtension)) {
+    if (PCI_IS_ROOT_FDO(DeviceExtension)) {
+	/* We should be getting exactly one resource which is the base physical
+	 * address of the Enhanced Configuration Mechanism Address Space. */
+	ASSERT(Resources->Count == 1);
+    } else {
 	/* Unhandled for now */
 	ASSERT(Resources->Count == 1);
 	UNIMPLEMENTED_DBGBREAK();
     }
 
+commit:
     /* Commit the transition to the started state */
     PciCommitStateTransition(DeviceExtension, PciStarted);
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
-				    IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_FDO_EXTENSION DeviceExtension)
+static NTSTATUS PciFdoQueryRemoveDevice(IN PIRP Irp,
+					IN PIO_STACK_LOCATION IoStackLocation,
+					IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -110,53 +66,7 @@ NTSTATUS PciFdoIrpQueryRemoveDevice(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTSTATUS PciFdoIrpRemoveDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			       IN PPCI_FDO_EXTENSION DeviceExtension)
-{
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS PciFdoIrpCancelRemoveDevice(IN PIRP Irp,
-				     IN PIO_STACK_LOCATION IoStackLocation,
-				     IN PPCI_FDO_EXTENSION DeviceExtension)
-{
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS PciFdoIrpStopDevice(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
-			     IN PPCI_FDO_EXTENSION DeviceExtension)
-{
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS PciFdoIrpQueryStopDevice(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_FDO_EXTENSION DeviceExtension)
-{
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
-}
-
-NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
+static NTSTATUS PciFdoRemoveDevice(IN PIRP Irp,
 				   IN PIO_STACK_LOCATION IoStackLocation,
 				   IN PPCI_FDO_EXTENSION DeviceExtension)
 {
@@ -168,9 +78,57 @@ NTSTATUS PciFdoIrpCancelStopDevice(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
+static NTSTATUS PciFdoCancelRemoveDevice(IN PIRP Irp,
+					 IN PIO_STACK_LOCATION IoStackLocation,
+					 IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+static NTSTATUS PciFdoStopDevice(IN PIRP Irp,
+				 IN PIO_STACK_LOCATION IoStackLocation,
+				 IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+static NTSTATUS PciFdoQueryStopDevice(IN PIRP Irp,
+				      IN PIO_STACK_LOCATION IoStackLocation,
+				      IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+static NTSTATUS PciFdoCancelStopDevice(IN PIRP Irp,
 				       IN PIO_STACK_LOCATION IoStackLocation,
 				       IN PPCI_FDO_EXTENSION DeviceExtension)
+{
+    UNREFERENCED_PARAMETER(Irp);
+    UNREFERENCED_PARAMETER(IoStackLocation);
+    UNREFERENCED_PARAMETER(DeviceExtension);
+
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_SUPPORTED;
+}
+
+static NTSTATUS PciFdoQueryDeviceRelations(IN PIRP Irp,
+					   IN PIO_STACK_LOCATION IoStackLocation,
+					   IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
 
@@ -188,9 +146,9 @@ NTSTATUS PciFdoIrpQueryDeviceRelations(IN PIRP Irp,
     return Status;
 }
 
-NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
-				    IN PIO_STACK_LOCATION IoStackLocation,
-				    IN PPCI_FDO_EXTENSION DeviceExtension)
+static NTSTATUS PciFdoQueryCapabilities(IN PIRP Irp,
+					IN PIO_STACK_LOCATION IoStackLocation,
+					IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PDEVICE_CAPABILITIES Capabilities;
     ASSERT_FDO(DeviceExtension);
@@ -212,9 +170,9 @@ NTSTATUS PciFdoIrpQueryCapabilities(IN PIRP Irp,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
-					  IN PIO_STACK_LOCATION IoStackLocation,
-					  IN PPCI_FDO_EXTENSION DeviceExtension)
+static NTSTATUS PciFdoDeviceUsageNotification(IN PIRP Irp,
+					      IN PIO_STACK_LOCATION IoStackLocation,
+					      IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -224,9 +182,9 @@ NTSTATUS PciFdoIrpDeviceUsageNotification(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
-				  IN PPCI_FDO_EXTENSION DeviceExtension)
+static NTSTATUS PciFdoSurpriseRemoval(IN PIRP Irp,
+				      IN PIO_STACK_LOCATION IoStackLocation,
+				      IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -236,9 +194,9 @@ NTSTATUS PciFdoIrpSurpriseRemoval(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
-					    IN PIO_STACK_LOCATION IoStackLocation,
-					    IN PPCI_FDO_EXTENSION DeviceExtension)
+static NTSTATUS PciFdoQueryLegacyBusInformation(IN PIRP Irp,
+						IN PIO_STACK_LOCATION IoStackLocation,
+						IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     UNREFERENCED_PARAMETER(Irp);
     UNREFERENCED_PARAMETER(IoStackLocation);
@@ -248,7 +206,7 @@ NTSTATUS PciFdoIrpQueryLegacyBusInformation(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
+static VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
 {
     ACPI_EVAL_INPUT_BUFFER InputBuffer;
     PACPI_EVAL_OUTPUT_BUFFER OutputBuffer;
@@ -295,9 +253,57 @@ out:
     ExFreePoolWithTag((PVOID)OutputBuffer, 0);
 }
 
-VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
-					   IN PDEVICE_OBJECT DeviceObject,
-					   IN PDEVICE_OBJECT PhysicalDeviceObject)
+static PCI_MN_DISPATCH_TABLE PciFdoDispatchPowerTable[] = {
+    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoWaitWake },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoSetPowerState },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryPower },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
+};
+
+static PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
+    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoStartDevice },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryRemoveDevice },
+    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoRemoveDevice },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelRemoveDevice },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoStopDevice },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryStopDevice },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelStopDevice },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryDeviceRelations },
+    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryCapabilities },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoDeviceUsageNotification },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoSurpriseRemoval },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryLegacyBusInformation },
+    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
+};
+
+static PCI_MJ_DISPATCH_TABLE PciFdoDispatchTable = {
+    IRP_MN_DEVICE_ENUMERATED,
+    PciFdoDispatchPnpTable,
+    IRP_MN_QUERY_POWER,
+    PciFdoDispatchPowerTable,
+    IRP_DOWNWARD,
+    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported,
+    IRP_DOWNWARD,
+    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported
+};
+
+static VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,
+						  IN PDEVICE_OBJECT DeviceObject,
+						  IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
     /* Initialize the extension */
     RtlZeroMemory(FdoExtension, sizeof(PCI_FDO_EXTENSION));
@@ -396,7 +402,7 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
     /* Check if this is a child bus, or the root */
     if (ParentExtension) {
 	/* The child inherits root data */
-	FdoExtension->BaseBus = PdoExtension->Dependent.type1.SecondaryBus;
+	FdoExtension->BaseBus = PdoExtension->Dependent.Type1.SecondaryBus;
 	FdoExtension->BusRootFdoExtension = ParentExtension->BusRootFdoExtension;
 	PdoExtension->BridgeFdoExtension = FdoExtension;
 	FdoExtension->ParentFdoExtension = ParentExtension;
@@ -405,8 +411,7 @@ NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 	FdoExtension->BusRootFdoExtension = FdoExtension;
     }
 
-    /* This is a real FDO, insert it into the list */
-    FdoExtension->Fake = FALSE;
+    /* Insert the FDO extension into the list */
     PciInsertEntryAtTail(&PciFdoExtensionListHead, FdoExtension);
 
     /* Open the device registry key so that we can query the errata flags */
