@@ -150,7 +150,7 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	Irp->IoStatus.Status = Status;
 
     /* Successful, or unhandled IRPs that are "DOWNWARD" are sent to the PDO */
-    if ((PassToPdo) && ((NT_SUCCESS(Status)) || (Status == STATUS_NOT_SUPPORTED))) {
+    if (PassToPdo && (NT_SUCCESS(Status) || Status == STATUS_NOT_SUPPORTED)) {
 	/* Let the PDO deal with it */
 	Status = PciPassIrpFromFdoToPdo(DeviceExtension, Irp);
     } else {
