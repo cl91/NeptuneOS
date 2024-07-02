@@ -346,28 +346,28 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Save PCI settings into the PDO extension for easy access later */
-    PdoExtension->Dependent.type1.PrimaryBus = Current->Type1.PrimaryBus;
-    PdoExtension->Dependent.type1.SecondaryBus = Current->Type1.SecondaryBus;
-    PdoExtension->Dependent.type1.SubordinateBus = Current->Type1.SubordinateBus;
+    PdoExtension->Dependent.Type1.PrimaryBus = Current->Type1.PrimaryBus;
+    PdoExtension->Dependent.Type1.SecondaryBus = Current->Type1.SecondaryBus;
+    PdoExtension->Dependent.Type1.SubordinateBus = Current->Type1.SubordinateBus;
 
     /* Check for subtractive decode bridges */
-    if (PdoExtension->Dependent.type1.SubtractiveDecode) {
+    if (PdoExtension->Dependent.Type1.SubtractiveDecode) {
 	/* Check if legacy VGA decodes are enabled */
 	DPRINT1("Subtractive decode bridge\n");
 	if (Current->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	    /* Save this setting for later */
 	    DPRINT1("VGA Bridge\n");
-	    PdoExtension->Dependent.type1.VgaBitSet = TRUE;
+	    PdoExtension->Dependent.Type1.VgaBitSet = TRUE;
 	}
 
 	/* Legacy ISA decoding is not compatible with subtractive decode */
-	ASSERT(PdoExtension->Dependent.type1.IsaBitSet == FALSE);
+	ASSERT(PdoExtension->Dependent.Type1.IsaBitSet == FALSE);
     } else {
 	/* Check if legacy VGA decodes are enabled */
 	if (Current->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	    /* Save this setting for later */
 	    DPRINT1("VGA Bridge\n");
-	    PdoExtension->Dependent.type1.VgaBitSet = TRUE;
+	    PdoExtension->Dependent.Type1.VgaBitSet = TRUE;
 
 	    /* And on positive decode, we'll also need extra resources locked */
 	    PdoExtension->AdditionalResourceCount = 4;
@@ -377,7 +377,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	if (Current->Type1.BridgeControl & PCI_ENABLE_BRIDGE_ISA) {
 	    /* Save this setting for later */
 	    DPRINT1("ISA Bridge\n");
-	    PdoExtension->Dependent.type1.IsaBitSet = TRUE;
+	    PdoExtension->Dependent.Type1.IsaBitSet = TRUE;
 	}
     }
 
@@ -390,7 +390,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	  (PdoExtension->DeviceId == 0x244E) || (PdoExtension->DeviceId == 0x2448))) ||
 	(PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE)) {
 	/* Check if subtractive decode is actually enabled */
-	if (PdoExtension->Dependent.type1.SubtractiveDecode) {
+	if (PdoExtension->Dependent.Type1.SubtractiveDecode) {
 	    /* We're going to need a copy of the configuration for later use */
 	    DPRINT1("apply config save hack to ICH subtractive decode\n");
 	    SavedConfig = ExAllocatePoolWithTag(PCI_COMMON_HDR_LENGTH, 'PciP');
@@ -434,15 +434,15 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     /* Check if this is a subtractive decode bridge */
     if (PciBridgeIsSubtractiveDecode(Context)) {
 	/* This bridge is subtractive */
-	PdoExtension->Dependent.type1.SubtractiveDecode = TRUE;
+	PdoExtension->Dependent.Type1.SubtractiveDecode = TRUE;
 
 	/* Subtractive bridges cannot use legacy ISA or VGA functionality */
-	PdoExtension->Dependent.type1.IsaBitSet = FALSE;
-	PdoExtension->Dependent.type1.VgaBitSet = FALSE;
+	PdoExtension->Dependent.Type1.IsaBitSet = FALSE;
+	PdoExtension->Dependent.Type1.VgaBitSet = FALSE;
     }
 
     /* For normal decode bridges, we'll need to find the bridge limits too */
-    if (!PdoExtension->Dependent.type1.SubtractiveDecode) {
+    if (!PdoExtension->Dependent.Type1.SubtractiveDecode) {
 	/* Loop the descriptors that are left, to store the bridge limits */
 	for (i = PCI_TYPE1_ADDRESSES; i < 5; i++) {
 	    /* No 64-bit memory addresses, and set the address to 0 to begin */
@@ -615,8 +615,8 @@ VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	  ((PdoExtension->DeviceId == 0x2418) || (PdoExtension->DeviceId == 0x2428) ||
 	   (PdoExtension->DeviceId == 0x244E) || (PdoExtension->DeviceId == 0x2448))) &&
 	 (!(PdoExtension->HackFlags & PCI_HACK_BROKEN_SUBTRACTIVE_DECODE) ||
-	  (PdoExtension->Dependent.type1.SubtractiveDecode == FALSE))) ||
-	(PdoExtension->Dependent.type1.SubtractiveDecode == FALSE)) {
+	  (PdoExtension->Dependent.Type1.SubtractiveDecode == FALSE))) ||
+	(PdoExtension->Dependent.Type1.SubtractiveDecode == FALSE)) {
 	/* No resources are needed on a subtractive decode bridge */
 	PciData->Type1.MemoryBase = 0xFFFF;
 	PciData->Type1.PrefetchBase = 0xFFFF;
@@ -665,16 +665,16 @@ VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Copy the bus number data */
-    PciData->Type1.PrimaryBus = PdoExtension->Dependent.type1.PrimaryBus;
-    PciData->Type1.SecondaryBus = PdoExtension->Dependent.type1.SecondaryBus;
-    PciData->Type1.SubordinateBus = PdoExtension->Dependent.type1.SubordinateBus;
+    PciData->Type1.PrimaryBus = PdoExtension->Dependent.Type1.PrimaryBus;
+    PciData->Type1.SecondaryBus = PdoExtension->Dependent.Type1.SecondaryBus;
+    PciData->Type1.SubordinateBus = PdoExtension->Dependent.Type1.SubordinateBus;
 
     /* Copy the decode flags */
-    if (PdoExtension->Dependent.type1.IsaBitSet) {
+    if (PdoExtension->Dependent.Type1.IsaBitSet) {
 	PciData->Type1.BridgeControl |= PCI_ENABLE_BRIDGE_ISA;
     }
 
-    if (PdoExtension->Dependent.type1.VgaBitSet) {
+    if (PdoExtension->Dependent.Type1.VgaBitSet) {
 	PciData->Type1.BridgeControl |= PCI_ENABLE_BRIDGE_VGA;
     }
 }

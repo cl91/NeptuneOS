@@ -673,7 +673,7 @@ BOOLEAN PciCanDisableDecodes(IN PPCI_PDO_EXTENSION DeviceExtension,
 		IsVga = Config->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA;
 	    } else {
 		/* Read the cached flag in the device extension */
-		IsVga = DeviceExtension->Dependent.type1.VgaBitSet;
+		IsVga = DeviceExtension->Dependent.Type1.VgaBitSet;
 	    }
 
 	    /* Never disable VGA adapters if this is for power down */

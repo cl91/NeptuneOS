@@ -375,7 +375,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     /* Setup the IRP dispatcher */
     DriverObject->MajorFunction[IRP_MJ_POWER] = PciDispatchIrp;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = PciDispatchIrp;
     DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = PciDispatchIrp;
     DriverObject->MajorFunction[IRP_MJ_PNP] = PciDispatchIrp;
     DriverObject->DriverUnload = PciDriverUnload;
