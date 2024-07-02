@@ -113,7 +113,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     /* Find the driver service basename, ie. "null" in
      * "\\Registry\\Machine\\CurrentControlSet\\Services\\null" */
     SIZE_T PathLen = strlen(DriverServicePath);
-    /* Start from the last non-nul byte, look for the path separator '\\' */
+    /* Starting from the last non-nul byte, look for the path separator '\\' */
     SIZE_T SepIndex = 0;
     for (SIZE_T i = PathLen-1; i > 0; i--) {
 	if (DriverServicePath[i] == OBJ_NAME_PATH_SEPARATOR) {
@@ -228,6 +228,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     if (!NT_SUCCESS(Status)) {
 	ObDereferenceObject(Locals.DriverObject);
     } else if (pDriverObject) {
+	Locals.DriverObject->DriverLoaded = TRUE;
 	*pDriverObject = Locals.DriverObject;
     }
 

@@ -217,7 +217,14 @@ out:
 	PsTerminateThread(Thread, ExitStatus);
     }
     KeSignalDispatcherObject(&Process->Header);
+    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
     ObDereferenceObject(Process);
+    /* If we are terminating a running driver process, dereference the driver object.
+     * Note we do not do this before the driver is fully loaded since IopLoadDriver
+     * dereferences the driver object if it fails to load. */
+    if (DriverObject && DriverObject->DriverLoaded) {
+	ObDereferenceObject(DriverObject);
+    }
     ASYNC_END(State, STATUS_SUCCESS);
 }
 

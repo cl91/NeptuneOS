@@ -111,6 +111,6 @@ NTAPI NTSTATUS NtRaiseException(IN PEXCEPTION_RECORD ExceptionRecord,
     RtlpPrintStackTrace(&ExceptionInfo, TRUE);
 #endif
     RtlpVgaPrintStackTrace(&ExceptionInfo, TRUE);
-    NtTerminateThread(NtCurrentThread(), ExceptionRecord->ExceptionCode);
+    NtTerminateProcess(NtCurrentProcess(), ExceptionRecord->ExceptionCode);
     return STATUS_SUCCESS;
 }
