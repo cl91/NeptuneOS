@@ -25,7 +25,7 @@ ACPI_STATUS AcpiOsInitialize(VOID)
 
 #ifndef NDEBUG
     /* Verboseness level of the acpica core */
-    AcpiDbgLevel = 0x00FFFFFF;
+    AcpiDbgLevel = ACPI_LV_INIT | ACPI_LV_DEBUG_OBJECT | ACPI_LV_INFO;
     AcpiDbgLayer = 0xFFFFFFFF;
 #endif
 
@@ -156,7 +156,6 @@ ACPI_STATUS AcpiOsGetPhysicalAddress(PVOID LogicalAddress,
 
 PVOID AcpiOsAllocate(ACPI_SIZE Size)
 {
-    DPRINT("AcpiOsAllocate size %zd\n", Size);
     return ExAllocatePoolWithTag(Size, ACPI_TAG);
 }
 
