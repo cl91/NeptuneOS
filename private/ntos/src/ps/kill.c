@@ -203,6 +203,14 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
     DbgTrace("Terminating process %p (%s) with status 0x%08x\n",
 	     Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
 
+    /* If we are terminating a running driver process, unload the driver.
+     * Note we do not do this before the driver is fully loaded since
+     * IopLoadDriver takes care of properly dereferencing the driver object
+     * if it fails to load. */
+    AWAIT_IF(Process->DriverObject && Process->DriverObject->DriverLoaded,
+	     IoUnloadDriver, State, Locals, Thread, Process->DriverObject,
+	     FALSE, ExitStatus);
+
 close:;
     PAVL_NODE Node = AvlGetFirstNode(&Process->HandleTable.Tree);
     if (!Node) {
@@ -217,14 +225,7 @@ out:
 	PsTerminateThread(Thread, ExitStatus);
     }
     KeSignalDispatcherObject(&Process->Header);
-    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
     ObDereferenceObject(Process);
-    /* If we are terminating a running driver process, dereference the driver object.
-     * Note we do not do this before the driver is fully loaded since IopLoadDriver
-     * dereferences the driver object if it fails to load. */
-    if (DriverObject && DriverObject->DriverLoaded) {
-	ObDereferenceObject(DriverObject);
-    }
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
@@ -267,12 +268,4 @@ NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
     assert(ThreadToResume != NULL);
     RET_ERR(PsResumeThread(ThreadToResume));
     return STATUS_SUCCESS;
-}
-
-NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
-                          IN BOOLEAN Alertable,
-                          IN PLARGE_INTEGER Interval)
-{
-    UNIMPLEMENTED;
 }

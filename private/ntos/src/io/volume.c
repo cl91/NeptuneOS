@@ -39,7 +39,6 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	    PLIST_ENTRY Entry;
 	    PIO_FILE_SYSTEM CurrentFs;
 	    PPENDING_IRP PendingIrp;
-	    PCLOSE_DEVICE_REQUEST CloseReq;
 	});
 
     if (!IopIsStorageDevice(DevObj)) {
@@ -61,6 +60,11 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 
     DevObj->Vcb = ExAllocatePoolWithTag(sizeof(IO_VOLUME_CONTROL_BLOCK), NTOS_IO_TAG);
     if (!DevObj->Vcb) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+    DevObj->Vcb->ForceDismountMsg = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
+    if (!DevObj->Vcb->ForceDismountMsg) {
 	Status = STATUS_NO_MEMORY;
 	goto out;
     }
@@ -92,35 +96,19 @@ next:
     }
     Locals.CurrentFs = CONTAINING_RECORD(Locals.Entry, IO_FILE_SYSTEM, ListEntry);
 
-    /* Queue a CLOSE_DEVICE_REQUEST to the storage device so when it gets
-     * deleted, the file system driver will know. */
-    assert(!Locals.CloseReq);
-    Locals.CloseReq = ExAllocatePoolWithTag(sizeof(CLOSE_DEVICE_REQUEST),
-					    NTOS_IO_TAG);
-    if (!Locals.CloseReq) {
-	Status = STATUS_NO_MEMORY;
-	goto out;
-    }
-    Locals.CloseReq->Req = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
-    if (!Locals.CloseReq->Req) {
-	Status = STATUS_NO_MEMORY;
-	goto out;
-    }
-
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_FILE_SYSTEM_CONTROL,
 	.MinorFunction = IRP_MN_MOUNT_VOLUME,
 	.Device.Object = Locals.CurrentFs->FsctlDevObj,
-	.MountVolume.StorageDevice = OBJECT_TO_GLOBAL_HANDLE(DevObj),
 	.MountVolume.StorageDeviceInfo = DevObj->DeviceInfo
     };
+    /* Queue a CLOSE_DEVICE_MESSAGE to the storage device so when it gets
+     * deleted, the file system driver will know. */
+    IF_ERR_GOTO(out, Status,
+		IopGrantDeviceHandleToDriver(DevObj,
+					     Locals.CurrentFs->FsctlDevObj->DriverObject,
+					     &Irp.MountVolume.StorageDevice));
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
-    Locals.CloseReq->DriverObject = Locals.CurrentFs->FsctlDevObj->DriverObject;
-    Locals.CloseReq->DeviceObject = DevObj;
-    InsertTailList(&DevObj->CloseReqList, &Locals.CloseReq->DeviceLink);
-    InsertTailList(&Locals.CloseReq->DriverObject->CloseDeviceReqList,
-		   &Locals.CloseReq->DriverLink);
-    Locals.CloseReq = NULL;
 
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
@@ -161,12 +149,6 @@ next:
     }
 
 out:
-    if (Locals.CloseReq) {
-	if (Locals.CloseReq->Req) {
-	    IopFreePool(Locals.CloseReq->Req);
-	}
-	IopFreePool(Locals.CloseReq);
-    }
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
@@ -176,6 +158,9 @@ out:
 	}
 	if (DevObj->Vcb->Subobjects) {
 	    ObDereferenceObject(DevObj->Vcb->Subobjects);
+	}
+	if (DevObj->Vcb->ForceDismountMsg) {
+	    IopFreePool(DevObj->Vcb->ForceDismountMsg);
 	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;
@@ -226,24 +211,73 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-VOID IopDismountVolume(IN PIO_DEVICE_OBJECT VolumeDevice)
+static VOID IopVcbDetachSubobject(IN POBJECT Object,
+				  IN PVOID Context)
 {
-    assert(VolumeDevice);
-    assert(VolumeDevice->Vcb);
-    if (!VolumeDevice || !VolumeDevice->Vcb) {
+    if (ObObjectIsType(Object, OBJECT_TYPE_DIRECTORY)) {
+	ObDirectoryObjectVisitObject(Object, IopVcbDetachSubobject, NULL);
+	assert(ObGetObjectRefCount(Object) == 1);
+	ObDereferenceObject(Object);
+    } else {
+	assert(ObObjectIsType(Object, OBJECT_TYPE_FILE));
+	PIO_FILE_OBJECT FileObj = Object;
+	assert(FileObj->Zombie);
+	assert(!FileObj->DeviceObject);
+	assert(!FileObj->Fcb);
+	ObRemoveObject(Object);
+    }
+}
+
+VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
+		       IN BOOLEAN Force)
+{
+    assert(Vcb && !Vcb->MountInProgress);
+    if (!Vcb || Vcb->MountInProgress) {
 	return;
     }
-    PIO_VOLUME_CONTROL_BLOCK Vcb = VolumeDevice->Vcb;
     DbgTrace("Dismounting volume with Vcb %p\n", Vcb);
     IopDbgDumpVcb(Vcb);
     Vcb->Dismounted = TRUE;
     /* Decrease the refcount of the volume file that we increased in IopOpenDevice,
      * when the volume file was first opened. */
-    ObDereferenceObject(Vcb->VolumeFile);
+    if (Vcb->VolumeFile) {
+	assert(Vcb->VolumeFile->Zombie);
+	assert(!Vcb->VolumeFile->DeviceObject);
+	assert(!Vcb->VolumeFile->Fcb);
+	ObDereferenceObject(Vcb->VolumeFile);
+    }
     /* Dereference the volume device object that the file system driver created
-     * when mounting the volume. */
+     * when mounting the volume. Note the refcount of the volume device should
+     * be greater than one at this point, so the deref will not delete the object. */
+    assert(ObGetObjectRefCount(Vcb->VolumeDevice) > 1);
     ObDereferenceObject(Vcb->VolumeDevice);
-    /* TODO: Force dismount. This is used in the VERIFY_VOLUME case. */
+    /* If we are forcing the dismount due to for instance media change or a driver
+     * crashing, queue the ForceDismount message to the file system driver. */
+    if (Force) {
+	assert(Vcb->ForceDismountMsg);
+	PIO_PACKET Msg = Vcb->ForceDismountMsg;
+	Vcb->ForceDismountMsg = NULL;
+	Msg->Type = IoPacketTypeServerMessage;
+	Msg->Size = sizeof(IO_PACKET);
+	Msg->ServerMsg.Type = IoSrvMsgForceDismount;
+	Msg->ServerMsg.ForceDismount.VolumeDevice = OBJECT_TO_GLOBAL_HANDLE(Vcb->VolumeDevice);
+	InsertTailList(&Vcb->VolumeDevice->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
+	KeSetEvent(&Vcb->VolumeDevice->DriverObject->IoPacketQueuedEvent);
+	/* Detach the file objects of this volume from the volume control block.
+	 * This is only needed if we are forcing the dismount. For normal dismount
+	 * the subobject directory should be empty. */
+	ObDirectoryObjectVisitObject(Vcb->Subobjects, IopVcbDetachSubobject, NULL);
+	assert(ObGetObjectRefCount(Vcb->Subobjects) == 1);
+	ObDereferenceObject(Vcb->Subobjects);
+	/* At this point the volume FCB should be deleted (by IopForceRemoveDevice).
+	 * We make sure this is done. */
+	assert(!Vcb->VolumeFcb);
+	/* Detach the VCB from the device objects. Note in the normal dismount case,
+	 * this is done when the volume device is deleted. */
+	Vcb->VolumeDevice = NULL;
+	Vcb->StorageDevice = NULL;
+	IopFreePool(Vcb);
+    }
 }
 
 static VOID IopDbgVcbSubobjectVisitor(IN POBJECT Object,

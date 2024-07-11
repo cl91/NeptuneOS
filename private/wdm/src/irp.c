@@ -1655,6 +1655,17 @@ static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
     ObDereferenceObject(DevObj);
 }
 
+static VOID IopHandleForceDismountServerMessage(PIO_PACKET SrvMsg)
+{
+    PDEVICE_OBJECT VolDev = IopGetDeviceObject(SrvMsg->ServerMsg.ForceDismount.VolumeDevice);
+    if (!VolDev) {
+	assert(FALSE);
+	return;
+    }
+    /* TODO! */
+    assert(FALSE);
+}
+
 static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
@@ -1862,6 +1873,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 		IopHandleCloseFileServerMessage(SrcIoPacket);
 	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseDevice) {
 		IopHandleCloseDeviceServerMessage(SrcIoPacket);
+	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgForceDismount) {
+		IopHandleForceDismountServerMessage(SrcIoPacket);
 	    } else {
 		DbgPrint("Invalid server message type %d\n", SrcIoPacket->ServerMsg.Type);
 		assert(FALSE);

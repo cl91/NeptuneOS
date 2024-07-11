@@ -26,7 +26,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     InitializeListHead(&Driver->ForwardedIrpList);
-    InitializeListHead(&Driver->CloseDeviceReqList);
+    InitializeListHead(&Driver->CloseDeviceMsgList);
     InitializeListHead(&Driver->InterruptServiceList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
@@ -54,17 +54,43 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
     PIO_DRIVER_OBJECT Driver = Self;
-    /* TODO: in the CloseProc, send the driver the Unload message.
-     * NOTE: move the dereferencing below to the CloseProc. */
-    LoopOverList(Device, &Driver->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	ObDereferenceObject(Device);
-    }
+
+    /* Since creating a device object increases the refcount of its driver
+     * object, if we get here the device list should be empty. */
     assert(IsListEmpty(&Driver->DeviceList));
+
+    /* Delete the CloseDevice message that we queued in IopGrantDeviceHandleToDriver.
+     * Note the device objects in the CloseDevice message list are all foreign device
+     * objects (those that are not created by this driver). */
+    LoopOverList(Msg, &Driver->CloseDeviceMsgList, CLOSE_DEVICE_MESSAGE, DriverLink) {
+	assert(Msg->DeviceObject->DriverObject != Driver);
+	RemoveEntryList(&Msg->DeviceLink);
+	RemoveEntryList(&Msg->DriverLink);
+	ObDereferenceObject(Msg->DeviceObject);
+	IopFreePool(Msg->Msg);
+	IopFreePool(Msg);
+    }
+
+    /* Delete all IO packets in PendingIoPacketList and IoPacketQueue. Since all queued
+     * IO requests have been taken care of in IopUnloadDriver, the only IO packets remaining
+     * are message packets. */
+    LoopOverList(Irp, &Driver->PendingIoPacketList, IO_PACKET, IoPacketLink) {
+	assert(Irp->Type != IoPacketTypeRequest);
+	RemoveEntryList(&Irp->IoPacketLink);
+	IopFreePool(Irp);
+    }
+    LoopOverList(Irp, &Driver->IoPacketQueue, IO_PACKET, IoPacketLink) {
+	assert(Irp->Type != IoPacketTypeRequest);
+	RemoveEntryList(&Irp->IoPacketLink);
+	IopFreePool(Irp);
+    }
+
     if (Driver->MainEventLoopThread) {
 	ObDereferenceObject(Driver->MainEventLoopThread);
     }
     if (Driver->DriverProcess) {
 	ObDereferenceObject(Driver->DriverProcess);
+	Driver->DriverProcess->DriverObject = NULL;
     }
     if (Driver->DriverImagePath) {
 	IopFreePool(Driver->DriverImagePath);
@@ -72,7 +98,9 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     if (Driver->DriverRegistryPath) {
 	IopFreePool(Driver->DriverRegistryPath);
     }
-    /* TODO: Close IO ports, disconnect interrupts, cleanup the pending IRPs etc. */
+    /* TODO: Close IO ports, disconnect interrupts, uninit cache. */
+    KeUninitializeEvent(&Driver->InitializationDoneEvent);
+    KeUninitializeEvent(&Driver->IoPacketQueuedEvent);
     RemoveEntryList(&Driver->DriverLink);
 }
 
@@ -247,6 +275,80 @@ out:
     if (Locals.DriverImageFile) {
 	ObDereferenceObject(Locals.DriverImageFile);
     }
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
+			IN PIO_DRIVER_OBJECT DriverObject,
+			IN BOOLEAN NormalExit,
+			IN NTSTATUS ExitStatus)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State);
+
+    DbgTrace("Unloading driver %p (%s)\n", DriverObject,
+	     KEDBG_PROCESS_TO_FILENAME(DriverObject->DriverProcess));
+
+    if (NormalExit) {
+	assert(FALSE);
+	ASYNC_RETURN(State, STATUS_NOT_IMPLEMENTED);
+    }
+
+    /* Move all IO packets in PendingIoPacketList back to the driver's IoPacketQueue. */
+    LoopOverList(Irp, &DriverObject->PendingIoPacketList, IO_PACKET, IoPacketLink) {
+	RemoveEntryList(&Irp->IoPacketLink);
+	InsertTailList(&DriverObject->IoPacketQueue, &Irp->IoPacketLink);
+    }
+
+    /* For each IO request packet queued to this driver, complete the IRP with error. */
+    LoopOverList(Irp, &DriverObject->IoPacketQueue, IO_PACKET, IoPacketLink) {
+	if (Irp->Type != IoPacketTypeRequest) {
+	    continue;
+	}
+	RemoveEntryList(&Irp->IoPacketLink);
+	InitializeListHead(&Irp->IoPacketLink);
+	PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(Irp->Request.OriginalRequestor,
+								  Irp);
+	if (!PendingIrp) {
+	    /* If the PENDING_IRP is invalid, we must have a bug somewhere, so assert
+	     * in debug build and try to continue in release build. */
+	    assert(FALSE);
+	    IopFreePool(Irp);
+	    continue;
+	}
+	/* If an IO packet is in the driver's IO packet queue, the PENDING_IRP we need to
+	 * complete is always the lowest-level PENDING_IRP, so locate that now. */
+	while (PendingIrp->ForwardedTo != NULL) {
+	    PendingIrp = PendingIrp->ForwardedTo;
+	}
+	IO_STATUS_BLOCK IoStatus = { .Status = STATUS_DRIVER_PROCESS_TERMINATED };
+	IopCompletePendingIrp(PendingIrp, IoStatus, NULL, 0);
+    }
+
+    /* In the case of a driver forwarding an IRP to another driver, since we do not allow
+     * a driver to forward an IRP to itself (the client-side routines will process such an
+     * IRP locally), calling IopCompletePendingIrp will only detach IO packets from the IO
+     * packet queue and never add them back, so at the end of the previous loop, the IO packet
+     * queue will no longer contain any IO requests (only server messages will remain). */
+    LoopOverList(Irp, &DriverObject->IoPacketQueue, IO_PACKET, IoPacketLink) {
+	assert(Irp->Type != IoPacketTypeRequest);
+    }
+
+    /* Cancel all pending IRPs that this driver has requested. */
+    LoopOverList(PendingIrp, &DriverObject->ForwardedIrpList, PENDING_IRP, Link) {
+	IopCancelPendingIrp(PendingIrp);
+    }
+
+    /* Forcibly remove all device objects that this driver has created. */
+    LoopOverList(DevObj, &DriverObject->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	IopForceRemoveDevice(DevObj);
+    }
+
+    assert(ObGetObjectRefCount(DriverObject) == 1);
+    ObDereferenceObject(DriverObject);
+
+    Status = STATUS_SUCCESS;
     ASYNC_END(State, Status);
 }
 

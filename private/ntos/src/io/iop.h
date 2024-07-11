@@ -242,19 +242,19 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     ACCESS_MASK DesiredAccess;
     ULONG ShareAccess;
     BOOLEAN NoFcb;
-    BOOLEAN AllocateCloseReq;
+    BOOLEAN AllocateCloseMsg;
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*
  * CloseDevice server message queued on a device object.
  */
-typedef struct _CLOSE_DEVICE_REQUEST {
+typedef struct _CLOSE_DEVICE_MESSAGE {
     PIO_DRIVER_OBJECT DriverObject;
     PIO_DEVICE_OBJECT DeviceObject;
-    PIO_PACKET Req;
+    PIO_PACKET Msg;
     LIST_ENTRY DeviceLink;
     LIST_ENTRY DriverLink;
-} CLOSE_DEVICE_REQUEST, *PCLOSE_DEVICE_REQUEST;
+} CLOSE_DEVICE_MESSAGE, *PCLOSE_DEVICE_MESSAGE;
 
 /*
  * Worker thread of a driver object
@@ -335,6 +335,9 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
 			   IN IO_STATUS_BLOCK IoStatus,
 			   IN PVOID ResponseData,
 			   IN ULONG ResponseDataSize);
+VOID IopCancelPendingIrp(IN PPENDING_IRP PendingIrp);
+PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
+					     IN PIO_PACKET IoPacket);
 
 FORCEINLINE VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
 {
@@ -436,8 +439,23 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 		       IN ULONG Attributes,
 		       IN PIO_OPEN_CONTEXT OpenContext,
 		       OUT PIO_FILE_OBJECT *pFileObject);
+NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject,
+				      IN PIO_DRIVER_OBJECT DriverObject,
+				      OUT GLOBAL_HANDLE *DeviceHandle);
+VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj);
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 			    IN ULONG Indentation);
+
+FORCEINLINE BOOLEAN IopDeviceHandleIsGranted(IN PIO_DEVICE_OBJECT DeviceObject,
+					     IN PIO_DRIVER_OBJECT DriverObject)
+{
+    LoopOverList(ExistingReq, &DeviceObject->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
+	if (ExistingReq->DriverObject == DriverObject) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
 
 /* driver.c */
 NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
@@ -460,7 +478,8 @@ NTSTATUS IopInitFileSystem();
 NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 			IN PTHREAD Thread,
 			IN PIO_DEVICE_OBJECT DevObj);
-VOID IopDismountVolume(IN PIO_DEVICE_OBJECT VolumeDevice);
+VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
+		       IN BOOLEAN Force);
 VOID IopDbgDumpVcb(IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 
 FORCEINLINE BOOLEAN IopIsStorageDevice(IN PIO_DEVICE_OBJECT DevObj)

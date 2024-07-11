@@ -83,6 +83,11 @@ typedef struct _OBJECT_HEADER {
 #define OBJECT_TO_OBJECT_HEADER(Ptr)			\
     ((Ptr) == NULL ? NULL : (POBJECT_HEADER)(((MWORD)(Ptr)) - sizeof(OBJECT_HEADER)))
 
+FORCEINLINE LONGLONG ObGetObjectRefCount(IN POBJECT Object)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->RefCount;
+}
+
 /*
  * We use the offset of an object header pointer from the start of the
  * Executive pool as the global handle of an object. Since the

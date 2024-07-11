@@ -32,6 +32,10 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
+    LoopOverList(Slave, &Fcb->SlaveList, IO_FILE_OBJECT, SlaveLink) {
+	Slave->Fcb = NULL;
+	RemoveEntryList(&Slave->SlaveLink);
+    }
     if (Fcb->ImageSectionObject) {
 	assert(Fcb == Fcb->ImageSectionObject->Fcb);
 	Fcb->ImageSectionObject->Fcb = NULL;
@@ -70,7 +74,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     assert(CreaCtx);
     PIO_FILE_OBJECT File = (PIO_FILE_OBJECT)Object;
     PFILE_OBJ_CREATE_CONTEXT Ctx = (PFILE_OBJ_CREATE_CONTEXT)CreaCtx;
-    PIO_PACKET CloseReq = NULL;
+    PIO_PACKET CloseMsg = NULL;
 
     if (Ctx->MasterFileObject) {
 	assert(!Ctx->DeviceObject);
@@ -79,9 +83,9 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	assert(!Ctx->Fcb);
 	assert(!Ctx->Vcb);
     }
-    if (Ctx->DeviceObject || Ctx->AllocateCloseReq) {
-	CloseReq = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
-	if (!CloseReq) {
+    if (Ctx->DeviceObject || Ctx->AllocateCloseMsg) {
+	CloseMsg = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
+	if (!CloseMsg) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
     }
@@ -95,8 +99,8 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	PIO_FILE_CONTROL_BLOCK Fcb = NULL;
 	RET_ERR_EX(IopCreateFcb(&Fcb, Ctx->FileSize, Ctx->FileName, Ctx->Vcb,
 				Ctx->FileAttributes),
-		   if (CloseReq) {
-		       IopFreePool(CloseReq);
+		   if (CloseMsg) {
+		       IopFreePool(CloseMsg);
 		   });
 	assert(Fcb);
 	File->Fcb = Fcb;
@@ -104,7 +108,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
 	Fcb->OpenInProgress = !!Ctx->Vcb;
     }
 
-    File->CloseReq = CloseReq;
+    File->CloseMsg = CloseMsg;
     File->DeviceObject = Ctx->DeviceObject;
     if (Ctx->MasterFileObject) {
 	ObpReferenceObject(Ctx->MasterFileObject);
@@ -344,7 +348,7 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
      * object has been closed and there are no more slave file objects. If true, send
      * a CLEANUP IRP to the file system driver. Otherwise, we do nothing. */
     PIO_FILE_OBJECT TargetFileObject = FileObj;
-    if (!FileObj->CloseReq) {
+    if (!FileObj->CloseMsg) {
 	if (!FileObj->Fcb) {
 	    ASYNC_RETURN(State, STATUS_SUCCESS);
 	}
@@ -360,6 +364,10 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 	    ASYNC_RETURN(State, STATUS_SUCCESS);
 	}
 	TargetFileObject = FileObj->Fcb->MasterFileObject;
+    } else if (FileObj->Zombie) {
+	/* If the file is in a zombie state (ie. its device object was forcibly
+	 * removed due to for instance a driver crash), simply return. */
+	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
     /* File with a client-side handle must have a device object. */
     assert(FileObj->DeviceObject);
@@ -397,21 +405,26 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
     /* For file objects that have a client-side object, we queue an
      * IRP_MJ_CLOSE request to its driver object. This request is
      * sent in a server message which does not expect a reply. */
-    if (FileObj->CloseReq) {
-	FileObj->CloseReq->Type = IoPacketTypeServerMessage;
-	FileObj->CloseReq->Size = sizeof(IO_PACKET);
-	FileObj->CloseReq->ServerMsg.Type = IoSrvMsgCloseFile;
-	FileObj->CloseReq->ServerMsg.CloseFile.FileObject =
-	    OBJECT_TO_GLOBAL_HANDLE(FileObj);
-	assert(FileObj->DeviceObject);
-	PIO_DRIVER_OBJECT Driver = FileObj->DeviceObject->DriverObject;
-	/* The IO packet will be deleted later after it is sent to the driver. */
-	InsertTailList(&Driver->IoPacketQueue, &FileObj->CloseReq->IoPacketLink);
-	KeSetEvent(&Driver->IoPacketQueuedEvent);
+    if (FileObj->CloseMsg) {
+	if (FileObj->Zombie) {
+	    /* In the case of a zombie file, we simply free the close message. */
+	    IopFreePool(FileObj->CloseMsg);
+	} else {
+	    FileObj->CloseMsg->Type = IoPacketTypeServerMessage;
+	    FileObj->CloseMsg->Size = sizeof(IO_PACKET);
+	    FileObj->CloseMsg->ServerMsg.Type = IoSrvMsgCloseFile;
+	    FileObj->CloseMsg->ServerMsg.CloseFile.FileObject =
+		OBJECT_TO_GLOBAL_HANDLE(FileObj);
+	    assert(FileObj->DeviceObject);
+	    PIO_DRIVER_OBJECT Driver = FileObj->DeviceObject->DriverObject;
+	    /* The IO packet will be deleted later after it is sent to the driver. */
+	    InsertTailList(&Driver->IoPacketQueue, &FileObj->CloseMsg->IoPacketLink);
+	    KeSetEvent(&Driver->IoPacketQueuedEvent);
+	}
     }
 
     /* For files with caching initialized, flush dirty data to disk. */
-    if (FileObj->Fcb && FileObj->Fcb->SharedCacheMap) {
+    if (FileObj->Fcb && FileObj->Fcb->SharedCacheMap && !FileObj->Zombie) {
 	CiFlushPrivateCacheToShared(FileObj->Fcb);
 	if (FileObj->Fcb->Vcb && FileObj->Fcb != FileObj->Fcb->Vcb->VolumeFcb) {
 	    CiFlushDirtyDataToVolume(FileObj->Fcb);
@@ -641,7 +654,15 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
-    assert(Locals.FileObject->DeviceObject != NULL);
+    if (Locals.FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
+    if (!Locals.FileObject->DeviceObject && !Locals.FileObject->Fcb) {
+	assert(FALSE);
+	Status = STATUS_INTERNAL_ERROR;
+	goto out;
+    }
     assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
 
     if (EventHandle != NULL) {
@@ -715,6 +736,7 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	Locals.IoCompletionEvent = &Locals.Context->IoCompletionEvent;
     } else {
 	/* Otherwise, queue an IRP to the target driver object. */
+	assert(Locals.FileObject->DeviceObject);
 	IO_REQUEST_PARAMETERS Irp = {
 	    .Device.Object = Locals.FileObject->DeviceObject,
 	    .File.Object = Locals.FileObject,
@@ -831,7 +853,10 @@ static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
-    assert(Locals.FileObject->DeviceObject != NULL);
+    if (!Locals.FileObject->DeviceObject) {
+	Status = STATUS_INVALID_DEVICE_REQUEST;
+	goto out;
+    }
     assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
 
     if (EventHandle != NULL) {
@@ -870,7 +895,9 @@ static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
     }
     Status = Locals.PendingIrp->IoResponseStatus.Status;
     if (FsControl && ControlCode == FSCTL_DISMOUNT_VOLUME && NT_SUCCESS(Status)) {
-	IopDismountVolume(Locals.FileObject->DeviceObject);
+	assert(Locals.FileObject->DeviceObject);
+	assert(Locals.FileObject->DeviceObject->Vcb);
+	IopDismountVolume(Locals.FileObject->DeviceObject->Vcb, FALSE);
     }
 
 out:
@@ -980,7 +1007,7 @@ NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
     /* Deviceless files cannot be queried. */
     if (!Locals.FileObject->DeviceObject) {
 	IoDbgDumpFileObject(Locals.FileObject, 0);
-	Status = STATUS_NOT_IMPLEMENTED;
+	Status = Locals.FileObject->Zombie ? STATUS_FILE_FORCED_CLOSED : STATUS_NOT_IMPLEMENTED;
 	goto out;
     }
     assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
@@ -1112,6 +1139,10 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (PVOID *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
+    if (Locals.FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
     if (!Locals.FileObject->DeviceObject) {
 	/* TODO! */
 	assert(FALSE);
@@ -1218,6 +1249,10 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
+    if (Locals.FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
 
     /* Quick path for FilePositionInformation. The NT executive has enough info
      * to reply to the client without asking the file system driver. */
@@ -1415,6 +1450,10 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
+    if (Locals.FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
 
     if (FileInfoClass == FilePositionInformation || FileInfoClass == FileRenameInformation ||
 	FileInfoClass == FileLinkInformation || FileInfoClass == FileMoveClusterInformation) {
@@ -1564,6 +1603,10 @@ NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject != NULL);
+    if (Locals.FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
     /* Deviceless files cannot be queried. */
     if (!Locals.FileObject->DeviceObject) {
 	Status = STATUS_NOT_IMPLEMENTED;
@@ -1661,6 +1704,10 @@ NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, FileHandle, OBJECT_TYPE_FILE,
 					  (POBJECT *)&Locals.FileObject));
     assert(Locals.FileObject);
+    if (Locals.FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
 
     if (!Locals.FileObject->DeviceObject) {
 	/* Purely in-memory file objects do not require flushing. Return success. */
@@ -1668,7 +1715,8 @@ NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,
 	    IoStatusBlock->Status = STATUS_SUCCESS;
 	    IoStatusBlock->Information = 0;
 	}
-	ASYNC_RETURN(State, STATUS_SUCCESS);
+	Status = STATUS_SUCCESS;
+	goto out;
     }
 
     assert(Locals.FileObject->DeviceObject->DriverObject);
@@ -1712,7 +1760,8 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File,
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  RefCount = %lld\n", OBJECT_TO_OBJECT_HEADER(File)->RefCount);
     RtlDbgPrintIndentation(Indentation);
-    DbgPrint("  DeviceObject = %p\n", File->DeviceObject);
+    DbgPrint("  DeviceObject = %p%s\n", File->DeviceObject,
+	     File->Zombie ? "  ZOMBIE!" : "");
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  Read %d Write %d Delete %d  SharedRead %d ShareWrite %d ShareDelete %d\n",
 	     File->ReadAccess, File->WriteAccess, File->DeleteAccess,
@@ -1720,7 +1769,7 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File,
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  CurrentOffset = 0x%llx\n", File->CurrentOffset);
     RtlDbgPrintIndentation(Indentation);
-    DbgPrint("  CloseReq = %p\n", File->CloseReq);
+    DbgPrint("  CloseMsg = %p\n", File->CloseMsg);
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  Fcb = %p\n", File->Fcb);
     if (File->Fcb) {

@@ -162,8 +162,8 @@ static BOOLEAN IopIoPacketLocator(IN PPENDING_IRP PendingIrp,
 {
     return PendingIrp->IoPacket == IoPacket;
 }
-static PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
-						    IN PIO_PACKET IoPacket)
+PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
+					     IN PIO_PACKET IoPacket)
 {
     return IopLocatePendingIrpInOriginalRequestor(OriginalRequestor,
 						  IopIoPacketLocator, IoPacket);
@@ -488,6 +488,9 @@ static VOID IopUnmapDriverIrpBuffers(IN PPENDING_IRP PendingIrp)
      * completed the IRP. */
     assert(PendingIrp->ForwardedTo == NULL);
     PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
+    if (Irp->MajorFunction == IRP_MJ_ADD_DEVICE) {
+	return;
+    }
     PIO_DRIVER_OBJECT DriverObject = Irp->Device.Object->DriverObject;
     if (PendingIrp->InputBuffer) {
 	assert(Irp->InputBuffer);
@@ -811,6 +814,17 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
     }
 }
 
+/*
+ * This routine is called when the original requestor of the PENDING_IRP
+ * has either requested to cancel the IRP or, in the case where the original
+ * requestor has crashed, is forced to cancel all its pending IRPs.
+ */
+VOID IopCancelPendingIrp(IN PPENDING_IRP PendingIrp)
+{
+    /* TODO! */
+    assert(FALSE);
+}
+
 static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 						 IN PIO_DRIVER_OBJECT DriverObject)
 {
@@ -840,33 +854,37 @@ static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(PendingIrp->IoPacket == CompletedIrp);
-    /* The PENDING_IRP must be top-most (ie. not forwarded from
-     * a higher-level driver) */
+    /* Since the PENDING_IRP corresponds to the original requestor, it must be
+     * top-most (ie. not forwarded from a higher-level driver). */
     assert(PendingIrp->ForwardedFrom == NULL);
-    /* AddDevice requests require special handling */
+    /* AddDevice requests are special so we perform further sanity checks. */
     if (CompletedIrp->Request.MajorFunction == IRP_MJ_ADD_DEVICE) {
 	/* AddDevice requests cannot be forwarded so there should only
 	 * be one THREAD object waiting on it */
 	assert(PendingIrp->ForwardedTo == NULL);
 	assert(PendingIrp->Requestor == CLIENT_HANDLE_TO_SERVER_OBJECT(OriginalRequestor));
-	/* DRIVER object cannot initiate AddDevice requests */
+	/* DRIVER object cannot initiate AddDevice requests. */
 	assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_THREAD));
+	/* AddDevice requests do not have IO buffers. */
+	assert(!PendingIrp->InputBuffer);
+	assert(!PendingIrp->OutputBuffer);
 	/* AddDevice request cannot have any response data */
 	if (Response->ClientMsg.IoCompleted.ResponseDataSize) {
 	    assert(FALSE);
 	    return STATUS_INVALID_PARAMETER;
 	}
-	/* Copy the IO response data and wake the THREAD up. */
-	PendingIrp->IoResponseStatus = Response->ClientMsg.IoCompleted.IoStatus;
-	KeSetEvent(&PendingIrp->IoCompletionEvent);
-	return STATUS_SUCCESS;
+	DbgTrace("Completed IRP device obj is %p, driverobj is %s\n",
+		 CompletedIrp->Request.Device.Object,
+		 DriverObject->DriverImagePath);
+    } else {
+	assert(CompletedIrp->Request.Device.Object->DriverObject == DriverObject);
+	DbgTrace("Completed IRP device obj driver obj is %s, driverobj is %s\n",
+		 CompletedIrp->Request.Device.Object->DriverObject->DriverImagePath,
+		 DriverObject->DriverImagePath);
     }
 
-    DbgTrace("Completed IRP device obj driver obj is %s, driverobj is %s\n",
-	     CompletedIrp->Request.Device.Object->DriverObject->DriverImagePath,
-	     DriverObject->DriverImagePath);
-    assert(CompletedIrp->Request.Device.Object->DriverObject == DriverObject);
-    /* Locate the lowest-level driver object in the IRP flow */
+    /* Since the PendingIrp we have now corresponds to the original requestor, we need to
+     * locate the actual PENDING_IRP being completed, which is always the lowest-level one. */
     while (PendingIrp->ForwardedTo != NULL) {
 	PendingIrp = PendingIrp->ForwardedTo;
 	assert(PendingIrp->IoPacket == CompletedIrp);
@@ -914,6 +932,12 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(ForwardedTo->DriverObject != NULL);
+    /* The target driver must not be the same as the source driver. */
+    if (ForwardedTo->DriverObject == SourceDriver) {
+	DbgTrace("Driver %s sent ForwardIrp message to its local device object %p\n",
+		 SourceDriver->DriverImagePath, ForwardedTo);
+	return STATUS_INVALID_PARAMETER;
+    }
 
     PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor, Irp);
     /* If the IRP identifier is valid, PendingIrp should never be NULL. We assert on
@@ -1254,8 +1278,15 @@ static VOID IopCacheFlushedCallback(IN PIO_DEVICE_OBJECT VolumeDevice,
     }
     assert(SrvMsg != NULL);
     SrvMsg->ServerMsg.Type = IoSrvMsgCacheFlushed;
-    SrvMsg->ServerMsg.CacheFlushed.DeviceObject = SERVER_OBJECT_TO_CLIENT_HANDLE(VolumeDevice);
-    SrvMsg->ServerMsg.CacheFlushed.FileObject = SERVER_OBJECT_TO_CLIENT_HANDLE(FileObject);
+    /* Note here the client driver must be aware of the volume device object, so we
+     * do not need to worrying about granting the device handle to the driver. */
+    assert(IopDeviceHandleIsGranted(VolumeDevice, DriverObject));
+    SrvMsg->ServerMsg.CacheFlushed.DeviceObject = OBJECT_TO_GLOBAL_HANDLE(VolumeDevice);
+    /* Just like the case in WdmRequestIoPackets (see comment therein), we need to
+     * make sure the driver object indeed owns the file object. */
+    assert(!FileObject || (FileObject->CloseMsg && FileObject->DeviceObject
+			   && FileObject->DeviceObject->DriverObject == DriverObject));
+    SrvMsg->ServerMsg.CacheFlushed.FileObject = OBJECT_TO_GLOBAL_HANDLE(FileObject);
     SrvMsg->ServerMsg.CacheFlushed.IoStatus = IoStatus;
 
     /* Add the server message IO packet to the driver IO packet queue */
@@ -1410,7 +1441,19 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	     * packet buffer size. We need to profile this. */
 	    break;
 	}
-	/* Ok to send this one. */
+	/* If the IO packet is an IO request and the IRP specified a device object,
+	 * make sure we have the necessary bookkeeping information so we can properly
+	 * clean up when the device object is being deleted. */
+	GLOBAL_HANDLE DeviceHandle = 0;
+	if (Src->Type == IoPacketTypeRequest && Src->Request.Device.Object) {
+	    Status = IopGrantDeviceHandleToDriver(Src->Request.Device.Object,
+						  DriverObject, &DeviceHandle);
+	    if (!NT_SUCCESS(Status)) {
+		/* We are out of memory. There isn't much we can do here so just stop. */
+		break;
+	    }
+	}
+	/* Ok to send this IO packet. */
 	NumSrvMsgs++;
 	/* Copy this IoPacket to the driver's incoming IO packet buffer */
 	memcpy(Dest, Src, Src->Size);
@@ -1423,8 +1466,21 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 		   Src->Request.Device.Object != NULL);
 	    assert(Src->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
 		   Src->Request.Device.Object->DriverObject == DriverObject);
-	    Dest->Request.Device.Handle = SERVER_OBJECT_TO_CLIENT_HANDLE(Src->Request.Device.Object);
-	    Dest->Request.File.Handle = SERVER_OBJECT_TO_CLIENT_HANDLE(Src->Request.File.Object);
+	    Dest->Request.Device.Handle = DeviceHandle;
+	    /* A driver has a client-side handle for a server-side file object if and
+	     * only if the driver owns the device object for the file object, so unlike
+	     * the case for device handles we do not need to explicitly "grant" the file
+	     * handle to the client driver. However, we need to make sure the driver
+	     * object indeed owns the file object. If it does not, the file object member
+	     * of the client-side IRP is set to NULL. */
+	    assert(!Src->Request.File.Object ||
+		   (Src->Request.File.Object->CloseMsg && Src->Request.File.Object->DeviceObject));
+	    if (!Src->Request.File.Object ||
+		Src->Request.File.Object->DeviceObject->DriverObject != DriverObject) {
+		Dest->Request.File.Handle = 0;
+	    } else {
+		Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(Src->Request.File.Object);
+	    }
 	    if (Src->Request.Flags & IOP_IRP_INPUT_DIRECT_IO) {
 		assert(Src->Request.InputBufferPfn);
 		assert(Src->Request.InputBufferPfnCount);
