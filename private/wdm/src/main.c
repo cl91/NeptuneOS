@@ -38,10 +38,17 @@ const IMAGE_TLS_DIRECTORY _tls_used = {
 static NTSTATUS IopCallDriverEntry(IN PUNICODE_STRING RegistryPath)
 {
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
-    RET_ERR(LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress, &LdrDriverImage));
+    NTSTATUS Status = LdrFindEntryForAddress(NtCurrentPeb()->ImageBaseAddress,
+					     &LdrDriverImage);
+    if (!NT_SUCCESS(Status)) {
+	return STATUS_DRIVER_ENTRYPOINT_NOT_FOUND;
+    }
     PVOID DriverEntry = LdrDriverImage->EntryPoint;
     DbgTrace("Registry path %wZ\n", RegistryPath);
-    RET_ERR(((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, RegistryPath));
+    Status = ((PDRIVER_INITIALIZE)DriverEntry)(&IopDriverObject, RegistryPath);
+    if (!NT_SUCCESS(Status)) {
+	return STATUS_FAILED_DRIVER_ENTRY;
+    }
     return STATUS_SUCCESS;
 }
 
