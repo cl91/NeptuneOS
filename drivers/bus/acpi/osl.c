@@ -529,7 +529,7 @@ ACPI_STATUS AcpiOsReadPciConfiguration(ACPI_PCI_ID *PciId,
 				       UINT32 Reg, UINT64 *Value, UINT32 Width)
 {
     DPRINT("AcpiOsReadPciConfiguration, segment=%d, bus=%d, device=%d, func=%d, reg=0x%x\n",
-	   PciId->Device, PciId->Bus, PciId->Device, PciId->Function, Reg);
+	   PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, Reg);
 
     PVOID MappedReg = OslGetPciConfigurationAddress(PciId, Reg);
     if (!MappedReg) {
