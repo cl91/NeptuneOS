@@ -74,6 +74,9 @@ VOID IopCleanupPendingIrp(IN PPENDING_IRP PendingIrp)
 {
     RemoveEntryList(&PendingIrp->Link);
     if (PendingIrp->IoPacket != NULL) {
+	/* When we detach the IO packet from the list, we always do
+	 * an InitializeListHead so the removal below becomes a no-op. */
+	RemoveEntryList(&PendingIrp->IoPacket->IoPacketLink);
 	IopFreeIoPacket(PendingIrp->IoPacket);
     }
     IopFreePendingIrp(PendingIrp);
@@ -827,6 +830,7 @@ static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
     /* IRP identifier is valid. Detach the IO packet from the
      * driver's pending IO packet list. */
     RemoveEntryList(&CompletedIrp->IoPacketLink);
+    InitializeListHead(&CompletedIrp->IoPacketLink);
     PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor,
 							      CompletedIrp);
     /* If the IRP identifier is valid, PendingIrp should never be NULL.
@@ -930,6 +934,7 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 		 PendingIrp->PreviousDeviceObject->DriverObject->DriverImagePath);
     }
     RemoveEntryList(&Irp->IoPacketLink);
+    InitializeListHead(&Irp->IoPacketLink);
     Irp->Request.AssociatedIrpCount += Msg->ClientMsg.ForwardIrp.AssociatedIrpCount;
 
     if (Irp->Request.File.Object && Irp->Request.File.Object->Fcb) {
