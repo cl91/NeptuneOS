@@ -201,6 +201,7 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 					 IN PPENDING_IRP *PendingIrps,
 					 IN ULONG IrpCount)
 {
+    NTSTATUS Status = STATUS_SUCCESS;
     ASYNC_BEGIN(State, Locals, {
 	    PDISPATCHER_HEADER *DspObjs;
 	});
@@ -216,11 +217,11 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 	assert(PendingIrps[i] != NULL);
 	Locals.DspObjs[i] = &PendingIrps[i]->IoCompletionEvent.Header;
     }
-    AWAIT(KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
-	  WaitType, Locals.DspObjs, IrpCount, NULL);
+    AWAIT_EX(Status, KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
+	     WaitType, Locals.DspObjs, IrpCount, NULL);
     assert(Locals.DspObjs != NULL);
     ExFreePoolWithTag(Locals.DspObjs, NTOS_IO_TAG);
-    ASYNC_END(State, STATUS_SUCCESS);
+    ASYNC_END(State, Status);
 }
 
 /*

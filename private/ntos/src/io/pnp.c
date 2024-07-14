@@ -975,8 +975,11 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryInstanceID,
 					      &Locals.PendingIrps[2*i+1]));
     }
-    AWAIT(IopWaitForMultipleIoCompletions, AsyncState, Locals, Thread,
-	  FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 2);
+    AWAIT_EX(Status, IopWaitForMultipleIoCompletions, AsyncState, Locals, Thread,
+	     FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 2);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
 
     /* Set the device IDs of the child nodes. */
     for (ULONG i = 0; i < Locals.DeviceCount * 2; i++) {

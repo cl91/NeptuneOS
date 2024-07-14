@@ -157,6 +157,8 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 	    PKWAIT_BLOCK WaitBlocks;
 	});
 
+    /* TODO: Check whether the wait is satisfied. Return immediately if it is. */
+
     /* Allocate the wait blocks. Note if Timeout is NULL, the zeroth wait block
      * is not used. */
     Locals.WaitBlocks = (PKWAIT_BLOCK)ExAllocatePoolWithTag(sizeof(KWAIT_BLOCK) * Count,
