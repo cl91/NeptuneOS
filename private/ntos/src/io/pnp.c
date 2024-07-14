@@ -222,6 +222,9 @@ static inline NTSTATUS IopDeviceNodeSetDeviceId(IN PDEVICE_NODE DeviceNode,
 						IN BUS_QUERY_ID_TYPE IdType)
 {
     assert(DeviceNode != NULL);
+    if (!DeviceId || DeviceId[0] == '\0') {
+	return STATUS_INVALID_PARAMETER;
+    }
     switch (IdType) {
     case BusQueryDeviceID:
 	assert(DeviceNode->DeviceId == NULL);
