@@ -268,10 +268,29 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
     return PageAddr;
 }
 
-/* If request size is larger than the page size, deny request.
- * If request size is larger than EX_POOL_LARGEST_BLOCK, just
- * allocate a whole page. Otherwise, allocate from the free list.
- * Memory is cleared before returning.
+static PVOID EiAllocateFromLargePool(IN MWORD NumberOfBytes)
+{
+    assert(NumberOfBytes > PAGE_SIZE);
+    PMMVAD Vad = NULL;
+    NTSTATUS Status = MmReserveVirtualMemory(EX_LARGE_POOL_START, EX_LARGE_POOL_END,
+					     NumberOfBytes, 0,
+					     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
+					     &Vad);
+    if (!NT_SUCCESS(Status)) {
+	return NULL;
+    }
+    Status = MmCommitVirtualMemory(Vad->AvlNode.Key, Vad->WindowSize);
+    if (!NT_SUCCESS(Status)) {
+	MmUnmapServerRegion(Vad->AvlNode.Key);
+	return NULL;
+    }
+    return (PVOID)Vad->AvlNode.Key;
+}
+
+/* If request size is larger than the page size, allocate from the large
+ * object pool. If request size is larger than EX_POOL_LARGEST_BLOCK but
+ * no greater than one page, just allocate a whole page. Otherwise,
+ * allocate from the free list. Memory is cleared before returning.
  */
 static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 				   IN MWORD NumberOfBytes,
@@ -288,7 +307,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     }
 
     if (NumberOfBytes > PAGE_SIZE) {
-	return NULL;
+	return EiAllocateFromLargePool(NumberOfBytes);
     }
 
     if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
@@ -381,6 +400,16 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 {
     assert(Pool != NULL);
     assert(Ptr != NULL);
+    if ((MWORD)Ptr >= EX_LARGE_POOL_START && (MWORD)Ptr < EX_LARGE_POOL_END) {
+	if (!IS_PAGE_ALIGNED(Ptr)) {
+	    KeBugCheckMsg("ExPool: Freeing unaligned object %p. Call stack: %p %p %p %p %p %p\n",
+			  Ptr, __builtin_return_address(0), __builtin_return_address(1),
+			  __builtin_return_address(2), __builtin_return_address(3),
+			  __builtin_return_address(4), __builtin_return_address(5));
+	}
+	MmUnmapServerRegion((MWORD)Ptr);
+	return;
+    }
     if ((MWORD)Ptr <= Pool->HeapStart || (MWORD)Ptr >= Pool->HeapEnd) {
 	KeBugCheckMsg("ExPool: Freeing invalid pointer %p. Call stack: %p %p %p %p %p %p\n",
 		      Ptr, __builtin_return_address(0), __builtin_return_address(1),
