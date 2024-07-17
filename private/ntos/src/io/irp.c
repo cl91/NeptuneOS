@@ -1402,13 +1402,12 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	TotalSize += DestIoPacketSize;
 	if (TotalSize > DRIVER_IO_PACKET_BUFFER_COMMIT) {
 	    /* The driver's incoming IO packet buffer is full, so the rest of the
-	     * pending IO packets are skipped and left in the queue. If this happens
-	     * a lot, one should increase the driver's IO packet buffer size. In debug
-	     * build we assert so we can know.
-	     * TODO: Dynamically commit more memory in this case. Make sure to commit
-	     * the outgoing buffer memory as well since we assume that the outgoing
-	     * buffer has the same size as the incoming buffer. */
-	    assert(FALSE);
+	     * pending IO packets are skipped and left in the queue. Signal the
+	     * IoPacketQueued event of the driver object so next time it will
+	     * process the remaining IO packets. */
+	    KeSetEvent(&DriverObject->IoPacketQueuedEvent);
+	    /* TODO: If this happens a lot, one should increase the driver's IO
+	     * packet buffer size. We need to profile this. */
 	    break;
 	}
 	/* Ok to send this one. */
