@@ -1,6 +1,7 @@
 Checks: '-*,readability-identifier-naming'
 CheckOptions:
-  - { key: readability-identifier-naming.StructCase,                  value: UPPER_CASE  }
+  - { key: readability-identifier-naming.StructCase,                  value: UPPER_CASE }
+  - { key: readability-identifier-naming.StructIgnoredRegexp,         value: '_[A-Z0-9_]+' }
   - { key: readability-identifier-naming.FunctionCase,                value: CamelCase }
   - { key: readability-identifier-naming.FunctionIgnoredRegexp,       value: '[A-Za-z]+(_[A-Za-z]+)?_[A-Za-z0-9]+' }
   - { key: readability-identifier-naming.VariableCase,                value: CamelCase }
