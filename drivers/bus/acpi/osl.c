@@ -516,12 +516,13 @@ static PVOID OslGetPciConfigurationAddress(ACPI_PCI_ID *PciId,
 	DPRINT("Unable to map physical memory %llx\n", PhyAddr);
 	return NULL;
     }
+#if DBG
     if (PciCfg->Header.VendorID == PCI_INVALID_VENDORID) {
 	DPRINT("Invalid vendor ID in PCI configuration space\n");
-	return NULL;
+    } else {
+	DPRINT("PCI device is present\n");
     }
-
-    DPRINT("PCI device is present\n");
+#endif
     return (PCHAR)PciCfg + Reg;
 }
 
