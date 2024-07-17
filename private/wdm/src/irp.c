@@ -1873,6 +1873,12 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	SrcIoPacket = (PIO_PACKET)((MWORD)SrcIoPacket + SrcIoPacket->Size);
     }
 
+    /* Since the incoming buffer and outgoing buffer have the same size we should never
+     * run out of outgoing buffer at this point. */
+    assert(ResponseCount <= DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET));
+    RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount*sizeof(IO_PACKET);
+    DestIrp = IopOutgoingIoPacketBuffer + ResponseCount;
+
     /* Process all the queued DPC objects first. */
     IopProcessDpcQueue();
 
@@ -1897,12 +1903,6 @@ workitem:
     if (RtlFirstEntrySList(&IopWorkItemQueue)) {
 	goto workitem;
     }
-
-    /* Since the incoming buffer and outgoing buffer have the same size we should never
-     * run out of outgoing buffer at this point. */
-    assert(ResponseCount <= DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET));
-    RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount*sizeof(IO_PACKET);
-    DestIrp = IopOutgoingIoPacketBuffer + ResponseCount;
 
     /* Process the dirty buffer list and inform the server of them. */
     ULONG DirtyBufferMsgCount = CiProcessDirtyBufferList(RemainingBufferSize, DestIrp);
@@ -2009,10 +2009,10 @@ workitem:
 	assert(RemainingBufferSize >= DestIrp->Size);
 	DbgTrace("Processed the following IRP from the ReplyList\n");
 	IoDbgDumpIoPacket(DestIrp, TRUE);
-	DestIrp = (PIO_PACKET)((MWORD)DestIrp + DestIrp->Size);
 	RemainingBufferSize -= DestIrp->Size;
 	ResponseCount++;
-	if (RemainingBufferSize < DestIrp->Size) {
+	DestIrp = (PIO_PACKET)((PCHAR)DestIrp + DestIrp->Size);
+	if (RemainingBufferSize < sizeof(IO_PACKET)) {
 	    break;
 	}
     }
