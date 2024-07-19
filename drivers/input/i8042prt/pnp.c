@@ -186,7 +186,9 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
      * So get the first two bytes in a loop.
      */
     for (ReplyByte = 0; ReplyByte < sizeof(ExpectedReply) / sizeof(ExpectedReply[0]); ReplyByte++) {
-	ULONG Counter = 500;
+	/* Try two times to read the port. Since the maximum timeout for each read is
+	 * around 600ms, this times out at around 1.2s. */
+	ULONG Counter = 2;
 
 	do {
 	    Status = i8042ReadDataWait(DeviceExtension, &Value);
