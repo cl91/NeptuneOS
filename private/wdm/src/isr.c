@@ -65,16 +65,22 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
     KiWdmServiceCap = Interrupt->WdmServiceCap;
     assert(Interrupt->ServiceRoutine != NULL);
     while (TRUE) {
+	DbgTrace("ACKING...\n");
 	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
 	if (AckError != 0) {
 	    DbgTrace("Failed to ACK IRQ handler cap %zd for vector %d. Error:",
 		     Interrupt->IrqHandlerCap, Interrupt->Vector);
 	    KeDbgDumpIPCError(AckError);
 	}
+	DbgTrace("WAITING...\n");
 	seL4_Wait(Interrupt->NotificationCap, NULL);
+	DbgTrace("ACQUIRING...\n");
 	IoAcquireInterruptMutex(Interrupt);
+	DbgTrace("GOT...\n");
 	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
+	DbgTrace("ISR ret...\n");
 	IoReleaseInterruptMutex(Interrupt);
+	DbgTrace("RELEASE...\n");
 	/* Signal the main thread to check for DPC queue and IO work item queue */
 	WdmNotifyMainThread();
     }

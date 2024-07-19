@@ -50,6 +50,9 @@ static NTAPI VOID i8042KbdQueuePacket(IN PVOID Context)
 
     TRACE_(I8042PRT, "Irq completes key\n");
     KeInsertQueueDpc(&DeviceExtension->DpcKeyboard, NULL, NULL);
+    TRACE_(I8042PRT, "Flushing\n");
+    i8042Flush(DeviceExtension->Common.PortDeviceExtension);
+    TRACE_(I8042PRT, "Flushing done\n");
 }
 
 /*
@@ -112,6 +115,8 @@ static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 {
     BOOLEAN FinishIrp = FALSE;
     NTSTATUS Result = STATUS_INTERNAL_ERROR;	/* Shouldn't happen */
+
+    DPRINT("PACKET DPC\n");
 
     /* If the interrupt happens before this is setup, the key
      * was already in the buffer. Too bad! */
@@ -259,6 +264,8 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
     UNREFERENCED_PARAMETER(SystemArgument2);
+
+    DPRINT("In DPC routine\n");
 
     if (HandlePowerKeys(DeviceExtension)) {
 	return;
@@ -635,6 +642,7 @@ NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
     NTSTATUS Status;
 
     UNREFERENCED_PARAMETER(Interrupt);
+    DPRINT("KBD ISR\n");
 
     PI8042_KEYBOARD_EXTENSION DeviceExtension = Context;
     PPORT_DEVICE_EXTENSION PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
@@ -657,7 +665,9 @@ NTAPI BOOLEAN i8042KbdInterruptService(IN PKINTERRUPT Interrupt,
 	Counter--;
     }
     if (Counter == 0) {
-	WARN_(I8042PRT, "Spurious i8042 keyboard interrupt\n");
+	WARN_(I8042PRT, "Spurious i8042 keyboard interrupt. Flushing...\n");
+	i8042Flush(PortDeviceExtension);
+	WARN_(I8042PRT, "Flushing done.\n");
 	return FALSE;
     }
 

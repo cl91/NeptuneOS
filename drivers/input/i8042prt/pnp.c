@@ -16,8 +16,8 @@
 /* FUNCTIONS *****************************************************************/
 
 /* This is all pretty confusing. There's more than one way to
- * disable/enable the keyboard. You can send KBD_ENABLE to the
- * keyboard, and it will start scanning keys. Sending KBD_DISABLE
+ * disable/enable the keyboard. You can send KBD_CMD_ENABLE to the
+ * keyboard, and it will start scanning keys. Sending KBD_CMD_DISABLE
  * will disable the key scanning but also reset the parameters to
  * defaults.
  *
@@ -128,10 +128,6 @@ static VOID i8042DetectKeyboard(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	WARN_(I8042PRT, "Warning: can't write SET_LEDS (0x%08x)\n",
 	      Status);
     }
-
-    /* Turn on translation and SF (Some machines don't reboot if SF is not set, see ReactOS bug CORE-1713) */
-    if (!i8042ChangeMode(DeviceExtension, 0, CCB_TRANSLATE | CCB_SYSTEM_FLAG))
-	return;
 
     /*
      * We used to send a KBD_LINE_TEST (0xAB) command, but on at least HP
@@ -246,8 +242,8 @@ static NTSTATUS i8042ConnectKeyboardInterrupt(IN PI8042_KEYBOARD_EXTENSION Devic
 
     PPORT_DEVICE_EXTENSION PortDeviceExtension = DeviceExtension->Common.PortDeviceExtension;
 
-    // Enable keyboard clock line
-    i8042Write(PortDeviceExtension, PortDeviceExtension->ControlPort, KBD_CLK_ENABLE);
+    /* // Enable keyboard clock line */
+    /* i8042Write(PortDeviceExtension, PortDeviceExtension->ControlPort, KBD_CLK_ENABLE); */
 
     KIRQL DirqlMax = MAX(PortDeviceExtension->KeyboardInterrupt.Dirql,
 			 PortDeviceExtension->MouseInterrupt.Dirql);
@@ -355,6 +351,44 @@ static NTSTATUS EnableInterrupts(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     return STATUS_SUCCESS;
 }
 
+/* Issue a sequence of commands to the keyboard to reset its status. */
+static VOID ResetKeyboard(IN PPORT_DEVICE_EXTENSION DeviceExtension)
+{
+    IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
+    NTSTATUS Status = i8042SynchWritePort(DeviceExtension, KBD_CMD_DISABLE, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(I8042PRT, "Failed to send DISABLE command to keyboard: 0x%x", Status);
+	goto out;
+    }
+    Status = i8042SynchWritePort(DeviceExtension, KBD_CMD_SET_LEDS, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(I8042PRT, "Failed to send SET_LEDS command to keyboard: 0x%x", Status);
+	goto out;
+    }
+    Status = i8042SynchWritePort(DeviceExtension, 0, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(I8042PRT, "Failed to send 00 to keyboard: 0x%x", Status);
+	goto out;
+    }
+    Status = i8042SynchWritePort(DeviceExtension, KBD_CMD_SET_RATE, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(I8042PRT, "Failed to send SET_RATE command to keyboard: 0x%x", Status);
+	goto out;
+    }
+    Status = i8042SynchWritePort(DeviceExtension, 0, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(I8042PRT, "Failed to send 00 to keyboard: 0x%x", Status);
+	goto out;
+    }
+    Status = i8042SynchWritePort(DeviceExtension, KBD_CMD_ENABLE, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(I8042PRT, "Failed to send ENABLE command to keyboard: 0x%x", Status);
+	goto out;
+    }
+out:
+    IoReleaseInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
+}
+
 static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 {
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
@@ -380,8 +414,8 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	/* First detect the mouse and then the keyboard!
 	 * If we do it the other way round, some systems throw away settings
 	 * like the keyboard translation, when detecting the mouse. */
-	TRACE_(I8042PRT, "Detecting mouse\n");
-	i8042DetectMouse(DeviceExtension);
+	/* TRACE_(I8042PRT, "Detecting mouse\n"); */
+	/* i8042DetectMouse(DeviceExtension); */
 	TRACE_(I8042PRT, "Detecting keyboard\n");
 	i8042DetectKeyboard(DeviceExtension);
 
@@ -392,8 +426,10 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 
 	TRACE_(I8042PRT, "Enabling i8042 interrupts\n");
 	if (DeviceExtension->Flags & KEYBOARD_PRESENT) {
-	    FlagsToDisable |= CCB_KBD_DISAB;
-	    FlagsToEnable |= CCB_KBD_INT_ENAB;
+	    FlagsToDisable |= CCB_KBD_DISAB | CCB_MOUSE_DISAB;
+	    /* Set the Translation and the System flag. Some machines don't reboot if
+	     * SF is not set. See ReactOS bug CORE-1713. */
+	    FlagsToEnable |= CCB_KBD_INT_ENAB | CCB_TRANSLATE | CCB_SYSTEM_FLAG;
 	}
 	if (DeviceExtension->Flags & MOUSE_PRESENT) {
 	    FlagsToDisable |= CCB_MOUSE_DISAB;
@@ -417,6 +453,7 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	Status = i8042ConnectKeyboardInterrupt(DeviceExtension->KeyboardExtension);
 	if (NT_SUCCESS(Status)) {
 	    DeviceExtension->Flags |= KEYBOARD_INITIALIZED;
+	    ResetKeyboard(DeviceExtension);
 	} else {
 	    WARN_(I8042PRT, "i8042ConnectKeyboardInterrupt failed: %x\n",
 		  Status);

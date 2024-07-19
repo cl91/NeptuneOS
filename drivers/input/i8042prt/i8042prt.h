@@ -220,6 +220,10 @@ typedef struct _I8042_HOOK_WORKITEM {
 
 #define KBD_CMD_SET_LEDS   0xED
 #define KBD_CMD_GET_ID     0xF2
+#define KBD_CMD_SET_RATE   0xF3
+#define KBD_CMD_ENABLE     0xF4
+#define KBD_CMD_DISABLE    0xF5
+#define KBD_CMD_RESET      0xFF
 
 /*-----------------------------------------------------
  * Keyboard responses
@@ -236,6 +240,7 @@ typedef struct _I8042_HOOK_WORKITEM {
 
 #define KBD_OBF            0x01
 #define KBD_IBF            0x02
+#define KBD_KEYLOCK        0x10
 #define MOU_OBF            0x20
 #define KBD_PERR           0x80
 

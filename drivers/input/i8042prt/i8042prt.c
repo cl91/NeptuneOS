@@ -503,6 +503,7 @@ VOID ProcessPendingReadIrps(IN PDEVICE_OBJECT DeviceObject)
 {
     PFDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     LoopOverList(Irp, &DeviceExtension->PendingReadIrpList, IRP, Tail.ListEntry) {
+	DPRINT("Pending Read IRP %p\n", Irp);
 	RemoveEntryList(&Irp->Tail.ListEntry);
 	if (i8042HandleReadIrp(DeviceObject, Irp) == STATUS_PENDING) {
 	    InsertTailList(&DeviceExtension->PendingReadIrpList, &Irp->Tail.ListEntry);
