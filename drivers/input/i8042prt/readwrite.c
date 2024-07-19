@@ -118,7 +118,7 @@ NTAPI NTSTATUS i8042SynchReadPort(IN PVOID Context,
 
     UNREFERENCED_PARAMETER(WaitForAck);
 
-    DeviceExtension = (PPORT_DEVICE_EXTENSION) Context;
+    DeviceExtension = (PPORT_DEVICE_EXTENSION)Context;
 
     return i8042ReadDataWait(DeviceExtension, Value);
 }
@@ -127,9 +127,8 @@ NTAPI NTSTATUS i8042SynchReadPort(IN PVOID Context,
  * These functions are callbacks for filter driver custom
  * initialization routines.
  */
-NTSTATUS NTAPI
-i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		    IN UCHAR Port, IN UCHAR Value, IN BOOLEAN WaitForAck)
+NTSTATUS i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+			     IN UCHAR Value, IN BOOLEAN WaitForAck)
 {
     NTSTATUS Status;
     UCHAR Ack;
@@ -138,13 +137,6 @@ i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     ResendIterations = DeviceExtension->Settings.ResendIterations + 1;
 
     do {
-	if (Port)
-	    if (!i8042Write
-		(DeviceExtension, DeviceExtension->DataPort, Port)) {
-		WARN_(I8042PRT, "Failed to write Port\n");
-		return STATUS_IO_TIMEOUT;
-	    }
-
 	if (!i8042Write(DeviceExtension, DeviceExtension->DataPort, Value)) {
 	    WARN_(I8042PRT, "Failed to write Value\n");
 	    return STATUS_IO_TIMEOUT;
@@ -174,12 +166,12 @@ i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
  * FUNCTION: Write data to a port, waiting first for it to become ready
  */
 BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-		   IN USHORT addr,
-		   IN UCHAR data)
+		   IN USHORT Addr,
+		   IN UCHAR Data)
 {
     ULONG Counter;
 
-    ASSERT(addr);
+    ASSERT(Addr);
     ASSERT(DeviceExtension->ControlPort != 0);
 
     Counter = DeviceExtension->Settings.PollingIterations;
@@ -189,8 +181,8 @@ BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     }
 
     if (Counter) {
-	WRITE_PORT_UCHAR(addr, data);
-	INFO_(I8042PRT, "Sent 0x%x to port 0x%x\n", data, addr);
+	WRITE_PORT_UCHAR(Addr, Data);
+	INFO_(I8042PRT, "Sent 0x%x to port 0x%x\n", Data, Addr);
 	return TRUE;
     }
     return FALSE;

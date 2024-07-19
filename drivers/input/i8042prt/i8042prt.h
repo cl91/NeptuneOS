@@ -346,10 +346,9 @@ NTSTATUS i8042ReadStatus(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 NTAPI NTSTATUS i8042SynchReadPort(IN PVOID Context,
 				  OUT PUCHAR Value,
 				  IN BOOLEAN WaitForAck);
-NTAPI NTSTATUS i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
-				   IN UCHAR Port,
-				   IN UCHAR Value,
-				   IN BOOLEAN WaitForAck);
+NTSTATUS i8042SynchWritePort(IN PPORT_DEVICE_EXTENSION DeviceExtension,
+			     IN UCHAR Value,
+			     IN BOOLEAN WaitForAck);
 BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 		   IN USHORT addr,
 		   IN UCHAR data);

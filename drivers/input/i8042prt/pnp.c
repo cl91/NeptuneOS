@@ -75,8 +75,7 @@ static NTSTATUS i8042BasicDetect(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 
     /* Don't enable keyboard and mouse interrupts, disable keyboard/mouse */
     i8042Flush(DeviceExtension);
-    if (!i8042ChangeMode
-	(DeviceExtension, CCB_KBD_INT_ENAB | CCB_MOUSE_INT_ENAB,
+    if (!i8042ChangeMode(DeviceExtension, CCB_KBD_INT_ENAB | CCB_MOUSE_INT_ENAB,
 	 CCB_KBD_DISAB | CCB_MOUSE_DISAB))
 	return STATUS_IO_DEVICE_ERROR;
 
@@ -118,10 +117,9 @@ static VOID i8042DetectKeyboard(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     NTSTATUS Status;
 
     /* Set LEDs (that is not fatal if some error occurs) */
-    Status =
-	i8042SynchWritePort(DeviceExtension, 0, KBD_CMD_SET_LEDS, TRUE);
+    Status = i8042SynchWritePort(DeviceExtension, KBD_CMD_SET_LEDS, TRUE);
     if (NT_SUCCESS(Status)) {
-	Status = i8042SynchWritePort(DeviceExtension, 0, 0, TRUE);
+	Status = i8042SynchWritePort(DeviceExtension, 0, TRUE);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(I8042PRT, "Can't finish SET_LEDS (0x%08x)\n", Status);
 	    return;
@@ -132,8 +130,7 @@ static VOID i8042DetectKeyboard(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     }
 
     /* Turn on translation and SF (Some machines don't reboot if SF is not set, see ReactOS bug CORE-1713) */
-    if (!i8042ChangeMode
-	(DeviceExtension, 0, CCB_TRANSLATE | CCB_SYSTEM_FLAG))
+    if (!i8042ChangeMode(DeviceExtension, 0, CCB_TRANSLATE | CCB_SYSTEM_FLAG))
 	return;
 
     /*
@@ -166,8 +163,7 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     /* Now reset the mouse */
     i8042Flush(DeviceExtension);
 
-    if (!i8042IsrWritePort
-	(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE)) {
+    if (!i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE)) {
 	WARN_(I8042PRT, "Failed to write reset command to mouse\n");
 	goto failure;
     }
@@ -175,15 +171,15 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     /*
      * The implementation of the "Mouse Reset" command differs much from chip to chip.
      *
-     * By default, the first byte is an ACK when the mouse is plugged in and working, and NACK when it's not.
-     * On success, the next bytes are 0xAA and 0x00.
+     * By default, the first byte is an ACK when the mouse is plugged in and working,
+     * and NACK when it's not. On success, the next bytes are 0xAA and 0x00.
      *
      * But on some systems (like ECS K7S5A Pro, SiS 735 chipset), we always get an ACK and 0xAA.
      * Only the last byte indicates whether a mouse is plugged in.
      * It is either sent or not, so if there is no byte, it indicates a failure here.
      *
-     * After the Mouse Reset command was issued, it usually takes some time until we get a response.
-     * So get the first two bytes in a loop.
+     * After the Mouse Reset command was issued, it usually takes some time until we
+     * get a response. So get the first two bytes in a loop.
      */
     for (ReplyByte = 0; ReplyByte < sizeof(ExpectedReply) / sizeof(ExpectedReply[0]); ReplyByte++) {
 	/* Try two times to read the port. Since the maximum timeout for each read is
@@ -231,10 +227,9 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     return;
 
 failure:
-    /* There is probably no mouse present. On some systems,
-       the probe locks the entire keyboard controller. Let's
-       try to get access to the keyboard again by sending a
-       reset */
+    /* There is probably no mouse present. On some systems, the probe locks
+     * the entire keyboard controller. Let's try to get access to the keyboard
+     * again by sending a reset */
     i8042Flush(DeviceExtension);
     i8042Write(DeviceExtension, DeviceExtension->ControlPort, CTRL_SELF_TEST);
     i8042ReadDataWait(DeviceExtension, &Value);
@@ -441,18 +436,18 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 		  Status);
 	}
 
-	/* Start the mouse */
-	IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
+	/* Reset the mouse */
 	/* HACK: the mouse has already been reset in i8042DetectMouse. This second
 	   reset prevents some touchpads/mice from working (Dell D531, D600).
 	   See CORE-6901 */
 	/* This is disabled for now. */
 #if 0
+	IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
 	if (!(i8042HwFlags & FL_INITHACK)) {
 	    i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
 	}
-#endif
 	IoReleaseInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
+#endif
     }
 
     return Status;

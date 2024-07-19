@@ -60,8 +60,8 @@ NTAPI NTSTATUS i8042SynchWritePortKbd(IN PVOID Context,
 				      IN UCHAR Value,
 				      IN BOOLEAN WaitForAck)
 {
-    return i8042SynchWritePort((PPORT_DEVICE_EXTENSION) Context,
-			       0, Value, WaitForAck);
+    return i8042SynchWritePort((PPORT_DEVICE_EXTENSION)Context,
+			       Value, WaitForAck);
 }
 
 /*
@@ -321,13 +321,10 @@ NTAPI NTSTATUS i8042KbdDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 		IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	    } else {
 		ULONG PowerKey;
-		PowerKey =
-		    InterlockedExchange((PLONG) & DeviceExtension->LastPowerKey, 0);
+		PowerKey = InterlockedExchange((PLONG)&DeviceExtension->LastPowerKey, 0);
 		if (PowerKey != 0) {
-		    (VOID) InterlockedCompareExchangePointer((PVOID) &
-							     DeviceExtension->PowerIrp,
-							     NULL,
-							     Irp);
+		    InterlockedCompareExchangePointer((PVOID)&DeviceExtension->PowerIrp,
+						      NULL, Irp);
 		    *(PULONG)Irp->SystemBuffer = PowerKey;
 		    Status = STATUS_SUCCESS;
 		    Irp->IoStatus.Status = Status;
