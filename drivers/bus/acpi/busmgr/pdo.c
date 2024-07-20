@@ -453,7 +453,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	DPRINT("Found PCI root hub: %llu\n", BusNumber);
 
-	ResourceListSize = sizeof(CM_RESOURCE_LIST);
+	ResourceListSize = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
+	    sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
 	ResourceList = ExAllocatePoolWithTag(ResourceListSize, 'RpcA');
 	if (!ResourceList)
 	    return STATUS_INSUFFICIENT_RESOURCES;
@@ -545,7 +546,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     }
 
     /* Allocate memory */
-    ResourceListSize = sizeof(CM_RESOURCE_LIST) +
+    ResourceListSize = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
 		       sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * NumberOfResources;
     ResourceList = ExAllocatePoolWithTag(ResourceListSize, 'RpcA');
 
@@ -1016,7 +1017,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
 
-    RequirementsListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) +
+    RequirementsListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
 			   sizeof(IO_RESOURCE_DESCRIPTOR) * NumberOfResources;
     RequirementsList = ExAllocatePoolWithTag(RequirementsListSize, 'RpcA');
 
