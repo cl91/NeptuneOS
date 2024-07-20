@@ -573,13 +573,12 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    for (i = 0; i < IrqData->InterruptCount; i++) {
 		ResourceDescriptor->Type = CmResourceTypeInterrupt;
 
-		ResourceDescriptor->ShareDisposition =
-		    (IrqData->Shareable == ACPI_SHARED ? CmResourceShareShared :
-							  CmResourceShareDeviceExclusive);
-		ResourceDescriptor->Flags = (IrqData->Triggering ==
-						     ACPI_LEVEL_SENSITIVE ?
-						 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
-						 CM_RESOURCE_INTERRUPT_LATCHED);
+		ResourceDescriptor->ShareDisposition = (IrqData->Shareable == ACPI_SHARED ?
+							CmResourceShareShared :
+							CmResourceShareDeviceExclusive);
+		ResourceDescriptor->Flags = (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
+					     CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
+					     CM_RESOURCE_INTERRUPT_LATCHED);
 		ResourceDescriptor->u.Interrupt.Level =
 		    ResourceDescriptor->u.Interrupt.Vector = IrqData->Interrupts[i];
 		ResourceDescriptor->u.Interrupt.Affinity = (KAFFINITY)(-1);
@@ -593,13 +592,12 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    for (i = 0; i < IrqData->InterruptCount; i++) {
 		ResourceDescriptor->Type = CmResourceTypeInterrupt;
 
-		ResourceDescriptor->ShareDisposition =
-		    (IrqData->Shareable == ACPI_SHARED ? CmResourceShareShared :
-							  CmResourceShareDeviceExclusive);
-		ResourceDescriptor->Flags = (IrqData->Triggering ==
-						     ACPI_LEVEL_SENSITIVE ?
-						 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
-						 CM_RESOURCE_INTERRUPT_LATCHED);
+		ResourceDescriptor->ShareDisposition = (IrqData->Shareable == ACPI_SHARED ?
+							CmResourceShareShared :
+							CmResourceShareDeviceExclusive);
+		ResourceDescriptor->Flags = (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
+					     CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
+					     CM_RESOURCE_INTERRUPT_LATCHED);
 		ResourceDescriptor->u.Interrupt.Level =
 		    ResourceDescriptor->u.Interrupt.Vector = IrqData->Interrupts[i];
 		ResourceDescriptor->u.Interrupt.Affinity = (KAFFINITY)(-1);
@@ -1066,6 +1064,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->u.Interrupt.MinimumVector =
 		    RequirementDescriptor->u.Interrupt.MaximumVector =
 			IrqData->Interrupts[i];
+		RequirementDescriptor->u.Interrupt.TargetedProcessors = (KAFFINITY)-1;
 
 		RequirementDescriptor++;
 	    }
@@ -1087,6 +1086,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->u.Interrupt.MinimumVector =
 		    RequirementDescriptor->u.Interrupt.MaximumVector =
 			IrqData->Interrupts[i];
+		RequirementDescriptor->u.Interrupt.TargetedProcessors = (KAFFINITY)-1;
 
 		RequirementDescriptor++;
 	    }
