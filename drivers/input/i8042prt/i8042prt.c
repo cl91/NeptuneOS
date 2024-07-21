@@ -465,13 +465,51 @@ static NTAPI NTSTATUS i8042HandleReadIrp(IN PDEVICE_OBJECT DeviceObject,
     ULONG EntriesInBuffer = DeviceExtension->EntriesInBuffer;
     IoReleaseInterruptMutex(PortDeviceExtension->HighestDIRQLInterrupt);
 
-    if (EntriesInBuffer == 0) {
-	/* We shouldn't have any synchronization issues here unlike Windows,
-	 * so this IRP should never have been canceled at this point. */
-	IoMarkIrpPending(Irp);
-	InsertTailList(&DeviceExtension->PendingReadIrpList, &Irp->Tail.ListEntry);
-	IoSetCancelRoutine(Irp, i8042CancelReadIrp);
-	return STATUS_PENDING;
+    while (EntriesInBuffer == 0) {
+	/* Poll the device to get the keyboard input. */
+	UCHAR Output = 0;
+    read:
+	while (TRUE) {
+	    UCHAR PortStatus = 0;
+	    NTSTATUS Status = i8042ReadStatus(PortDeviceExtension, &PortStatus);
+	    if (!NT_SUCCESS(Status)) {
+		WARN_(I8042PRT,
+		      "i8042ReadStatus() failed with status 0x%08x\n",
+		      Status);
+	    }
+	    Status = i8042ReadKeyboardData(PortDeviceExtension, &Output);
+	    if (NT_SUCCESS(Status))
+		break;
+	    KeStallExecutionProcessor(1);
+	}
+	INFO_(I8042PRT, "Got: 0x%02x\n", Output);
+
+	if (i8042PacketIsr(PortDeviceExtension, Output)) {
+	    if (PortDeviceExtension->PacketComplete) {
+		TRACE_(I8042PRT, "Packet complete\n");
+	    }
+	    TRACE_(I8042PRT, "Data eaten by packet\n");
+	    goto read;
+	}
+
+	TRACE_(I8042PRT, "Got keyboard input\n");
+
+	DeviceExtension->EntriesInBuffer++;
+	if (DeviceExtension->EntriesInBuffer >
+	    PortDeviceExtension->Settings.KeyboardDataQueueSize) {
+	    WARN_(I8042PRT, "Keyboard buffer overflow\n");
+	    DeviceExtension->EntriesInBuffer--;
+	}
+
+	TRACE_(I8042PRT, "Irq completes key\n");
+	EntriesInBuffer = DeviceExtension->EntriesInBuffer;
+
+	/* /\* We shouldn't have any synchronization issues here unlike Windows, */
+	/*  * so this IRP should never have been canceled at this point. *\/ */
+	/* IoMarkIrpPending(Irp); */
+	/* InsertTailList(&DeviceExtension->PendingReadIrpList, &Irp->Tail.ListEntry); */
+	/* IoSetCancelRoutine(Irp, i8042CancelReadIrp); */
+	/* return STATUS_PENDING; */
     }
 
     SIZE_T NumberOfEntries = IoStack->Parameters.Read.Length / EntrySize;
