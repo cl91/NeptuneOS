@@ -463,13 +463,19 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
  * to clean up the device handle bookkeeping on the client side, and to
  * unlink the device object if the driver process crashes.
  */
-NTSTATUS IopGrantDeviceHandleToDriver(IN PIO_DEVICE_OBJECT DeviceObject,
+NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject,
 				      IN PIO_DRIVER_OBJECT DriverObject,
-				      IN GLOBAL_HANDLE *DeviceHandle)
+				      OUT GLOBAL_HANDLE *DeviceHandle)
 {
+    assert(DeviceHandle);
+    if (!DeviceObject) {
+	*DeviceHandle = 0;
+	return STATUS_SUCCESS;
+    }
     /* Queue a CLOSE_DEVICE_REQUEST to the driver object if it has not been done before. */
     LoopOverList(ExistingReq, &DeviceObject->CloseReqList, CLOSE_DEVICE_REQUEST, DeviceLink) {
 	if (ExistingReq->DriverObject == DriverObject) {
+	    *DeviceHandle = OBJECT_TO_GLOBAL_HANDLE(DeviceObject);
 	    return STATUS_SUCCESS;
 	}
     }

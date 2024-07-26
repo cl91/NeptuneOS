@@ -1254,8 +1254,15 @@ static VOID IopCacheFlushedCallback(IN PIO_DEVICE_OBJECT VolumeDevice,
     }
     assert(SrvMsg != NULL);
     SrvMsg->ServerMsg.Type = IoSrvMsgCacheFlushed;
-    SrvMsg->ServerMsg.CacheFlushed.DeviceObject = SERVER_OBJECT_TO_CLIENT_HANDLE(VolumeDevice);
-    SrvMsg->ServerMsg.CacheFlushed.FileObject = SERVER_OBJECT_TO_CLIENT_HANDLE(FileObject);
+    /* Note here the client driver must be aware of the volume device object, so we
+     * do not need to worrying about granting the device handle to the driver. */
+    assert(IopDeviceHandleIsGranted(VolumeDevice, DriverObject));
+    SrvMsg->ServerMsg.CacheFlushed.DeviceObject = OBJECT_TO_GLOBAL_HANDLE(VolumeDevice);
+    /* Just like the case in WdmRequestIoPackets (see comment therein), we need to
+     * make sure the driver object indeed owns the file object. */
+    assert(!FileObject || (FileObject->CloseReq && FileObject->DeviceObject
+			   && FileObject->DeviceObject->DriverObject == DriverObject));
+    SrvMsg->ServerMsg.CacheFlushed.FileObject = OBJECT_TO_GLOBAL_HANDLE(FileObject);
     SrvMsg->ServerMsg.CacheFlushed.IoStatus = IoStatus;
 
     /* Add the server message IO packet to the driver IO packet queue */
@@ -1410,7 +1417,19 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	     * packet buffer size. We need to profile this. */
 	    break;
 	}
-	/* Ok to send this one. */
+	/* If the IO packet is an IO request and the IRP specified a device object,
+	 * make sure we have the necessary bookkeeping information so we can properly
+	 * clean up when the device object is being deleted. */
+	GLOBAL_HANDLE DeviceHandle = 0;
+	if (Src->Type == IoPacketTypeRequest && Src->Request.Device.Object) {
+	    Status = IopGrantDeviceHandleToDriver(Src->Request.Device.Object,
+						  DriverObject, &DeviceHandle);
+	    if (!NT_SUCCESS(Status)) {
+		/* We are out of memory. There isn't much we can do here so just stop. */
+		break;
+	    }
+	}
+	/* Ok to send this IO packet. */
 	NumSrvMsgs++;
 	/* Copy this IoPacket to the driver's incoming IO packet buffer */
 	memcpy(Dest, Src, Src->Size);
@@ -1423,8 +1442,16 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 		   Src->Request.Device.Object != NULL);
 	    assert(Src->Request.MajorFunction == IRP_MJ_ADD_DEVICE ||
 		   Src->Request.Device.Object->DriverObject == DriverObject);
-	    Dest->Request.Device.Handle = SERVER_OBJECT_TO_CLIENT_HANDLE(Src->Request.Device.Object);
-	    Dest->Request.File.Handle = SERVER_OBJECT_TO_CLIENT_HANDLE(Src->Request.File.Object);
+	    Dest->Request.Device.Handle = DeviceHandle;
+	    /* A driver has a client-side handle for a server-side file object if and
+	     * only if the driver is the file system driver that owns the file object,
+	     * so unlike device objects we do not need to explicitly "grant" the file
+	     * handle to the client driver. However, we need to make sure the driver
+	     * object indeed owns the file object. */
+	    assert(!Src->Request.File.Object ||
+		   (Src->Request.File.Object->CloseReq && Src->Request.File.Object->DeviceObject
+		    && Src->Request.File.Object->DeviceObject->DriverObject == DriverObject));
+	    Dest->Request.File.Handle = OBJECT_TO_GLOBAL_HANDLE(Src->Request.File.Object);
 	    if (Src->Request.Flags & IOP_IRP_INPUT_DIRECT_IO) {
 		assert(Src->Request.InputBufferPfn);
 		assert(Src->Request.InputBufferPfnCount);
