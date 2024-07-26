@@ -436,6 +436,9 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 		       IN ULONG Attributes,
 		       IN PIO_OPEN_CONTEXT OpenContext,
 		       OUT PIO_FILE_OBJECT *pFileObject);
+NTSTATUS IopGrantDeviceHandleToDriver(IN PIO_DEVICE_OBJECT DeviceObject,
+				      IN PIO_DRIVER_OBJECT DriverObject,
+				      IN GLOBAL_HANDLE *DeviceHandle);
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 			    IN ULONG Indentation);
 

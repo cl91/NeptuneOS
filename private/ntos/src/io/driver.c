@@ -54,11 +54,8 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
     PIO_DRIVER_OBJECT Driver = Self;
-    /* TODO: in the CloseProc, send the driver the Unload message.
-     * NOTE: move the dereferencing below to the CloseProc. */
-    LoopOverList(Device, &Driver->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	ObDereferenceObject(Device);
-    }
+    /* Since creating a device object increases the refcount of its driver
+     * object, if we get here the device list should be empty. */
     assert(IsListEmpty(&Driver->DeviceList));
     if (Driver->MainEventLoopThread) {
 	ObDereferenceObject(Driver->MainEventLoopThread);
@@ -247,6 +244,20 @@ out:
     if (Locals.DriverImageFile) {
 	ObDereferenceObject(Locals.DriverImageFile);
     }
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
+			IN PIO_DRIVER_OBJECT DriverObject,
+			IN BOOLEAN NormalExit,
+			IN NTSTATUS ExitStatus)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_DRIVER_OBJECT DriverObject;
+	});
+
     ASYNC_END(State, Status);
 }
 

@@ -9,6 +9,19 @@ typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
     BOOLEAN Exclusive;
 } DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
 
+NTSTATUS IopQueueCloseDeviceRequest(IN PIO_DEVICE_OBJECT Device,
+				    IN PIO_DRIVER_OBJECT DriverObject)
+{
+    IopAllocatePool(CloseReq, CLOSE_DEVICE_REQUEST);
+    IopAllocatePoolEx(Req, IO_PACKET, IopFreePool(CloseReq));
+    CloseReq->Req = Req;
+    CloseReq->DeviceObject = Device;
+    CloseReq->DriverObject = DriverObject;
+    InsertTailList(&Device->CloseReqList, &CloseReq->DeviceLink);
+    InsertTailList(&DriverObject->CloseDeviceReqList, &CloseReq->DriverLink);
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
 				   IN PVOID CreaCtx)
 {
@@ -19,13 +32,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->OpenFileList);
     InitializeListHead(&Device->CloseReqList);
-    IopAllocatePool(CloseReq, CLOSE_DEVICE_REQUEST);
-    IopAllocatePoolEx(Req, IO_PACKET, IopFreePool(CloseReq));
-    CloseReq->Req = Req;
-    CloseReq->DeviceObject = Device;
-    CloseReq->DriverObject = DriverObject;
-    InsertTailList(&Device->CloseReqList, &CloseReq->DeviceLink);
-    InsertTailList(&DriverObject->CloseDeviceReqList, &CloseReq->DriverLink);
+    RET_ERR(IopQueueCloseDeviceRequest(Device, DriverObject));
     KeInitializeEvent(&Device->MountCompleted, NotificationEvent);
 
     Device->DriverObject = DriverObject;
@@ -450,6 +457,34 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 }
 
 /*
+ * This routine must be called before a GLOBAL_HANDLE for a device object
+ * is given out to a driver object that did not create said device object.
+ * It queues a CLOSE_DEVICE_REQUEST so we can send the driver a notification
+ * to clean up the device handle bookkeeping on the client side, and to
+ * unlink the device object if the driver process crashes.
+ */
+NTSTATUS IopGrantDeviceHandleToDriver(IN PIO_DEVICE_OBJECT DeviceObject,
+				      IN PIO_DRIVER_OBJECT DriverObject,
+				      IN GLOBAL_HANDLE *DeviceHandle)
+{
+    /* Queue a CLOSE_DEVICE_REQUEST to the driver object if it has not been done before. */
+    LoopOverList(ExistingReq, &DeviceObject->CloseReqList, CLOSE_DEVICE_REQUEST, DeviceLink) {
+	if (ExistingReq->DriverObject == DriverObject) {
+	    return STATUS_SUCCESS;
+	}
+    }
+    /* Since we queue a CLOSE_DEVICE_REQUEST to the owning driver object when creating
+     * the device object, the driver object here can not be the owner of the device. */
+    assert(DriverObject != DeviceObject->DriverObject);
+    RET_ERR(IopQueueCloseDeviceRequest(DeviceObject, DriverObject));
+    /* Increase the refcount of the device object, because we are handing it out to a
+     * foreign driver. */
+    ObpReferenceObject(DeviceObject);
+    *DeviceHandle = OBJECT_TO_GLOBAL_HANDLE(DeviceObject);
+    return STATUS_SUCCESS;
+}
+
+/*
  * Note: DeviceName must be a full path.
  */
 NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
@@ -483,23 +518,21 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
 
 NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 				      IN PTHREAD Thread,
-				      IN GLOBAL_HANDLE SourceDeviceHandle,
-				      IN GLOBAL_HANDLE TargetDeviceHandle,
-				      OUT GLOBAL_HANDLE *PreviousTopDeviceHandle,
-				      OUT IO_DEVICE_INFO *PreviousTopDeviceInfo)
+				      IN GLOBAL_HANDLE SrcDevHandle,
+				      IN GLOBAL_HANDLE TgtDevHandle,
+				      OUT GLOBAL_HANDLE *PrevTopDevHandle,
+				      OUT IO_DEVICE_INFO *PrevTopDevInfo)
 {
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
-    PIO_DEVICE_OBJECT SrcDev = IopGetDeviceObject(SourceDeviceHandle, DriverObject);
-    PIO_DEVICE_OBJECT TgtDev = IopGetDeviceObject(TargetDeviceHandle, NULL);
+    PIO_DEVICE_OBJECT SrcDev = IopGetDeviceObject(SrcDevHandle, DriverObject);
+    PIO_DEVICE_OBJECT TgtDev = IopGetDeviceObject(TgtDevHandle, NULL);
     if (SrcDev == NULL || TgtDev == NULL) {
 	/* This shouldn't happen since we check the validity of device handles before */
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
-    IopAllocatePool(CloseReq, CLOSE_DEVICE_REQUEST);
-    IopAllocatePoolEx(Req, IO_PACKET, IopFreePool(CloseReq));
     PIO_DEVICE_OBJECT PrevTop = TgtDev;
     while (PrevTop->AttachedDevice != NULL) {
 	PrevTop = PrevTop->AttachedDevice;
@@ -509,23 +542,10 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 	assert(SrcDev->AttachedTo->AttachedDevice == SrcDev);
 	SrcDev->AttachedTo->AttachedDevice = NULL;
     }
+    RET_ERR(IopGrantDeviceHandleToDriver(PrevTop, DriverObject, PrevTopDevHandle));
     SrcDev->AttachedTo = PrevTop;
     PrevTop->AttachedDevice = SrcDev;
-    *PreviousTopDeviceHandle = OBJECT_TO_GLOBAL_HANDLE(PrevTop);
-    *PreviousTopDeviceInfo = PrevTop->DeviceInfo;
-    /* Queue a CLOSE_DEVICE_REQUEST to the driver object if it has not been done before. */
-    LoopOverList(ExistingReq, &PrevTop->CloseReqList, CLOSE_DEVICE_REQUEST, DeviceLink) {
-	if (ExistingReq->DriverObject == DriverObject) {
-	    IopFreePool(CloseReq);
-	    IopFreePool(Req);
-	    return STATUS_SUCCESS;
-	}
-    }
-    CloseReq->Req = Req;
-    CloseReq->DeviceObject = PrevTop;
-    CloseReq->DriverObject = DriverObject;
-    InsertTailList(&DriverObject->CloseDeviceReqList, &CloseReq->DriverLink);
-    InsertTailList(&PrevTop->CloseReqList, &CloseReq->DeviceLink);
+    *PrevTopDevInfo = PrevTop->DeviceInfo;
     return STATUS_SUCCESS;
 }
 
@@ -538,33 +558,16 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
     if (!DeviceHandle) {
 	return STATUS_INVALID_PARAMETER;
     }
-    IopAllocatePool(CloseReq, CLOSE_DEVICE_REQUEST);
-    IopAllocatePoolEx(Req, IO_PACKET, IopFreePool(CloseReq));
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
     if (!Device) {
-	IopFreePool(CloseReq);
-	IopFreePool(Req);
 	return STATUS_INVALID_HANDLE;
     }
     Device = IopGetTopDevice(Device);
-    *TopDeviceHandle = OBJECT_TO_GLOBAL_HANDLE(Device);
+    RET_ERR(IopGrantDeviceHandleToDriver(Device, DriverObject, TopDeviceHandle));
     *TopDeviceInfo = Device->DeviceInfo;
-    /* Queue a CLOSE_DEVICE_REQUEST to the driver object if it has not been done before. */
-    LoopOverList(ExistingReq, &Device->CloseReqList, CLOSE_DEVICE_REQUEST, DeviceLink) {
-	if (ExistingReq->DriverObject == DriverObject) {
-	    IopFreePool(CloseReq);
-	    IopFreePool(Req);
-	    return STATUS_SUCCESS;
-	}
-    }
-    CloseReq->Req = Req;
-    CloseReq->DeviceObject = Device;
-    CloseReq->DriverObject = DriverObject;
-    InsertTailList(&DriverObject->CloseDeviceReqList, &CloseReq->DriverLink);
-    InsertTailList(&Device->CloseReqList, &CloseReq->DeviceLink);
     return STATUS_SUCCESS;
 }
 

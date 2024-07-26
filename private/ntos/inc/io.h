@@ -247,6 +247,13 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
     return CcCopyWriteEx(Fcb, FileOffset, Length, NULL, Buffer);
 }
 
+/* driver.c */
+NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
+			IN struct _THREAD *Thread,
+			IN PIO_DRIVER_OBJECT DriverObject,
+			IN BOOLEAN NormalExit,
+			IN NTSTATUS ExitStatus);
+
 /* file.c */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 				IN OPTIONAL POBJECT ParentDirectory,
