@@ -106,9 +106,16 @@ typedef struct _IO_VOLUME_CONTROL_BLOCK {
     struct _IO_FILE_CONTROL_BLOCK *VolumeFcb;
     struct _IO_FILE_OBJECT *VolumeFile;
     POBJECT_DIRECTORY Subobjects;
+    PIO_PACKET ForceDismountMsg; /* Queued to the file system driver in the case of
+				  * a forced dismount. */
     ULONG ClusterSize;
     BOOLEAN MountInProgress;
-    BOOLEAN Dismounted;
+    BOOLEAN Dismounted;	/* TRUE if the file system has successfully responded to the
+			 * FSCTL_DISMOUNT_VOLUME call. The VCB will be detached lazily
+			 * when the volume object is later deleted (when the client calls
+			 * NtClose on the volume device handle). Note this is not used
+			 * in the case of a forced dismount, where we perform a forced
+			 * removal of the volume device object and detach the VCB eagerly. */
 } IO_VOLUME_CONTROL_BLOCK, *PIO_VOLUME_CONTROL_BLOCK;
 
 /*
@@ -131,6 +138,10 @@ typedef struct _IO_FILE_OBJECT {
     BOOLEAN SharedRead;
     BOOLEAN SharedWrite;
     BOOLEAN SharedDelete;
+    BOOLEAN Zombie; /* If TRUE, the device object of the file object has been
+		     * forcibly removed but an NT client still has an open handle
+		     * to the file object. The file object will be deleted when
+		     * all clients have closed the handles to the file object. */
 } IO_FILE_OBJECT, *PIO_FILE_OBJECT;
 
 /*

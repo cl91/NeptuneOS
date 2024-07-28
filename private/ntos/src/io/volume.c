@@ -63,6 +63,11 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	Status = STATUS_NO_MEMORY;
 	goto out;
     }
+    DevObj->Vcb->ForceDismountMsg = ExAllocatePoolWithTag(sizeof(IO_PACKET), NTOS_IO_TAG);
+    if (!DevObj->Vcb->ForceDismountMsg) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
     DevObj->Vcb->MountInProgress = TRUE;
     /* FileSize is set to zero for the time being as we don't know the volume size yet. */
     IF_ERR_GOTO(out, Status, IopCreateFcb(&DevObj->Vcb->VolumeFcb, 0, "\\$$Volume$$",
@@ -154,6 +159,9 @@ out:
 	if (DevObj->Vcb->Subobjects) {
 	    ObDereferenceObject(DevObj->Vcb->Subobjects);
 	}
+	if (DevObj->Vcb->ForceDismountMsg) {
+	    IopFreePool(DevObj->Vcb->ForceDismountMsg);
+	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;
     }
@@ -203,14 +211,12 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-VOID IopDismountVolume(IN PIO_DEVICE_OBJECT VolumeDevice)
+VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
+		       IN BOOLEAN Force)
 {
-    assert(VolumeDevice);
-    assert(VolumeDevice->Vcb);
-    if (!VolumeDevice || !VolumeDevice->Vcb) {
+    assert(Vcb);
+    if (!Vcb)
 	return;
-    }
-    PIO_VOLUME_CONTROL_BLOCK Vcb = VolumeDevice->Vcb;
     DbgTrace("Dismounting volume with Vcb %p\n", Vcb);
     IopDbgDumpVcb(Vcb);
     Vcb->Dismounted = TRUE;
@@ -220,7 +226,12 @@ VOID IopDismountVolume(IN PIO_DEVICE_OBJECT VolumeDevice)
     /* Dereference the volume device object that the file system driver created
      * when mounting the volume. */
     ObDereferenceObject(Vcb->VolumeDevice);
-    /* TODO: Force dismount. This is used in the VERIFY_VOLUME case. */
+    /* If we are forcing the dismount due to for instance media change or a driver
+     * crashing, queue the ForceDismount message to the file system driver. */
+    if (Force) {
+	assert(Vcb->ForceDismountMsg);
+	
+    }
 }
 
 static VOID IopDbgVcbSubobjectVisitor(IN POBJECT Object,

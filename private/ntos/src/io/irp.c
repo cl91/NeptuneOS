@@ -1444,8 +1444,8 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 		   Src->Request.Device.Object->DriverObject == DriverObject);
 	    Dest->Request.Device.Handle = DeviceHandle;
 	    /* A driver has a client-side handle for a server-side file object if and
-	     * only if the driver is the file system driver that owns the file object,
-	     * so unlike device objects we do not need to explicitly "grant" the file
+	     * only if the driver owns the device object for the file object, so unlike
+	     * the case for device handles we do not need to explicitly "grant" the file
 	     * handle to the client driver. However, we need to make sure the driver
 	     * object indeed owns the file object. */
 	    assert(!Src->Request.File.Object ||

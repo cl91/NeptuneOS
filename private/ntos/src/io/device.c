@@ -418,10 +418,6 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
     DbgTrace("Deleting device object %p\n", DevObj);
     IopDbgDumpDeviceObject(DevObj, 0);
     assert(IsListEmpty(&DevObj->OpenFileList));
-    LoopOverList(FileObj, &DevObj->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
-	FileObj->DeviceObject = NULL;
-	RemoveEntryList(&FileObj->DeviceLink);
-    }
     LoopOverList(CloseReq, &DevObj->CloseReqList, CLOSE_DEVICE_REQUEST, DeviceLink) {
 	assert(CloseReq->DriverObject);
 	assert(CloseReq->DeviceObject == DevObj);
@@ -448,11 +444,41 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 	DevObj->AttachedTo->AttachedDevice = DevObj->AttachedDevice;
     }
     if (DevObj->Vcb) {
-	/* Tell the file system driver to also delete the reference of the storage
-	 * device that we sent during the mount sequence. */
-	ObDereferenceObject(DevObj->Vcb->Subobjects);
-	DevObj->Vcb->StorageDevice->Vcb = NULL;
-	IopFreePool(DevObj->Vcb);
+	PIO_VOLUME_CONTROL_BLOCK Vcb = DevObj->Vcb;
+	ObDereferenceObject(Vcb->Subobjects);
+	Vcb->StorageDevice->Vcb = NULL;
+	Vcb->VolumeDevice->Vcb = NULL;
+	IopFreePool(Vcb);
+    }
+}
+
+/*
+ * Perform a force removal of the device object. This is called for instance
+ * when the driver process that owns the device has crashed.
+ */
+VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
+{
+    /* For all opened file objects of this device object, mark the file object
+     * as a zombie because we cannot delete it just yet (at least one NT client
+     * still has an open handle to it). These file objects will be deleted when
+     * all open handles to them are closed. */
+    LoopOverList(FileObj, &DevObj->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	FileObj->DeviceObject = NULL;
+	FileObj->Zombie = TRUE;
+	RemoveEntryList(&FileObj->DeviceLink);
+	/* Decrease the refcount of the device object because we increased it
+	 * at the time the file object was created. */
+	ObDereferenceObject(DevObj);
+    }
+    /* Since we increased the refcount of the device object when granting the
+     * device handle to the driver processes, we need to decrease it here. */
+    LoopOverList(Req, &DevObj->CloseReqList, CLOSE_DEVICE_REQUEST, DeviceLink) {
+	if (Req->DriverObject != DevObj->DriverObject) {
+	    ObDereferenceObject(DevObj);
+	}
+    }
+    if (DevObj->Vcb) {
+	IopDismountVolume(DevObj->Vcb, TRUE);
     }
 }
 
@@ -460,8 +486,8 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
  * This routine must be called before a GLOBAL_HANDLE for a device object
  * is given out to a driver object that did not create said device object.
  * It queues a CLOSE_DEVICE_REQUEST so we can send the driver a notification
- * to clean up the device handle bookkeeping on the client side, and to
- * unlink the device object if the driver process crashes.
+ * to clean up the device handle on the client side, and to unlink the device
+ * object if the driver process crashes.
  */
 NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject,
 				      IN PIO_DRIVER_OBJECT DriverObject,
