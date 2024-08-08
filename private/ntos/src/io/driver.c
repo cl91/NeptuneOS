@@ -258,6 +258,16 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 	    PIO_DRIVER_OBJECT DriverObject;
 	});
 
+    if (NormalExit) {
+	assert(FALSE);
+	ASYNC_RETURN(State, STATUS_NOT_IMPLEMENTED);
+    }
+
+    /* Force remove devices. TODO */
+
+    assert(ObGetObjectRefCount(DriverObject) == 1);
+    ObDereferenceObject(DriverObject);
+
     ASYNC_END(State, Status);
 }
 

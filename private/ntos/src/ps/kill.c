@@ -269,11 +269,3 @@ NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
     RET_ERR(PsResumeThread(ThreadToResume));
     return STATUS_SUCCESS;
 }
-
-NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
-                          IN BOOLEAN Alertable,
-                          IN PLARGE_INTEGER Interval)
-{
-    UNIMPLEMENTED;
-}

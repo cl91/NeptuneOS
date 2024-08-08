@@ -365,7 +365,8 @@ typedef enum _IO_SERVER_MESSAGE_TYPE {
     IoSrvMsgIoCompleted,
     IoSrvMsgCacheFlushed,
     IoSrvMsgCloseFile,
-    IoSrvMsgCloseDevice
+    IoSrvMsgCloseDevice,
+    IoSrvMsgForceDismount
 } IO_SERVER_MESSAGE_TYPE;
 
 /*
@@ -386,6 +387,9 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
 	struct {
 	    GLOBAL_HANDLE DeviceObject;
 	} CloseDevice;
+	struct {
+	    GLOBAL_HANDLE VolumeDevice;
+	} ForceDismount;
     };
 } IO_PACKET_SERVER_MESSAGE, *PIO_PACKET_SERVER_MESSAGE;
 

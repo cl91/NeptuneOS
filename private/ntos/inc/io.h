@@ -164,7 +164,9 @@ typedef struct _IO_FILE_CONTROL_BLOCK {
     PIO_VOLUME_CONTROL_BLOCK Vcb;
     LIST_ENTRY SlaveList; /* List of slave file objects. Slave file objects do not
 			   * have a client-side handle. Note there are non-slave
-			   * file objects that are not a master file object. */
+			   * file objects that are not a master file object (these
+			   * are created in the case of opening a file with greater
+			   * desired access, see IopFileObjectOpenProc). */
     KEVENT OpenCompleted; /* Signaled when the file open is completed. */
     BOOLEAN OpenInProgress;
     KEVENT WriteCompleted; /* Signaled when the WRITE IRP is completed. */

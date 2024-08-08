@@ -359,3 +359,11 @@ NTSTATUS NtSetTimer(IN ASYNC_STATE State,
     }
     return STATUS_SUCCESS;
 }
+
+NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,
+                          IN PTHREAD Thread,
+                          IN BOOLEAN Alertable,
+                          IN PLARGE_INTEGER Interval)
+{
+    UNIMPLEMENTED;
+}

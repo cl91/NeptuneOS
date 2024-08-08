@@ -445,6 +445,7 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
     }
     if (DevObj->Vcb) {
 	PIO_VOLUME_CONTROL_BLOCK Vcb = DevObj->Vcb;
+	assert(ObGetObjectRefCount(Vcb->Subobjects) == 1);
 	ObDereferenceObject(Vcb->Subobjects);
 	Vcb->StorageDevice->Vcb = NULL;
 	Vcb->VolumeDevice->Vcb = NULL;
@@ -463,6 +464,21 @@ VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
      * still has an open handle to it). These file objects will be deleted when
      * all open handles to them are closed. */
     LoopOverList(FileObj, &DevObj->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	assert(DevObj == FileObj->DeviceObject);
+	if (FileObj->Fcb && FileObj == FileObj->Fcb->MasterFileObject) {
+	    PIO_FILE_CONTROL_BLOCK Fcb = FileObj->Fcb;
+	    /* The slave files will detached in IopDeleteFcb. */
+	    LoopOverList(Slave, &Fcb->SlaveList, IO_FILE_OBJECT, SlaveLink) {
+		assert(Slave != FileObj);
+		assert(Slave->Zombie);
+		assert(!Slave->DeviceObject);
+	    }
+	    if (DevObj->Vcb && Fcb == DevObj->Vcb->VolumeFcb) {
+		DevObj->Vcb->VolumeFcb = NULL;
+	    }
+	    IopDeleteFcb(Fcb);
+	}
+	FileObj->Fcb = NULL;
 	FileObj->DeviceObject = NULL;
 	FileObj->Zombie = TRUE;
 	RemoveEntryList(&FileObj->DeviceLink);

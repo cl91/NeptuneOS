@@ -32,6 +32,10 @@ NTSTATUS IopCreateFcb(OUT PIO_FILE_CONTROL_BLOCK *pFcb,
 
 VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
+    LoopOverList(Slave, &Fcb->SlaveList, IO_FILE_OBJECT, SlaveLink) {
+	Slave->Fcb = NULL;
+	RemoveEntryList(&Slave->SlaveLink);
+    }
     if (Fcb->ImageSectionObject) {
 	assert(Fcb == Fcb->ImageSectionObject->Fcb);
 	Fcb->ImageSectionObject->Fcb = NULL;
