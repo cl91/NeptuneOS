@@ -162,8 +162,8 @@ static BOOLEAN IopIoPacketLocator(IN PPENDING_IRP PendingIrp,
 {
     return PendingIrp->IoPacket == IoPacket;
 }
-static PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
-						    IN PIO_PACKET IoPacket)
+PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
+					     IN PIO_PACKET IoPacket)
 {
     return IopLocatePendingIrpInOriginalRequestor(OriginalRequestor,
 						  IopIoPacketLocator, IoPacket);
@@ -488,6 +488,9 @@ static VOID IopUnmapDriverIrpBuffers(IN PPENDING_IRP PendingIrp)
      * completed the IRP. */
     assert(PendingIrp->ForwardedTo == NULL);
     PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
+    if (Irp->MajorFunction == IRP_MJ_ADD_DEVICE) {
+	return;
+    }
     PIO_DRIVER_OBJECT DriverObject = Irp->Device.Object->DriverObject;
     if (PendingIrp->InputBuffer) {
 	assert(Irp->InputBuffer);
@@ -811,6 +814,17 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
     }
 }
 
+/*
+ * This routine is called when the original requestor of the PENDING_IRP
+ * has either requested to cancel the IRP or, in the case where the original
+ * requestor has crashed, is forced to cancel all its pending IRPs.
+ */
+VOID IopCancelPendingIrp(IN PPENDING_IRP PendingIrp)
+{
+    /* TODO! */
+    assert(FALSE);
+}
+
 static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 						 IN PIO_DRIVER_OBJECT DriverObject)
 {
@@ -840,33 +854,37 @@ static NTSTATUS IopHandleIoCompleteClientMessage(IN PIO_PACKET Response,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(PendingIrp->IoPacket == CompletedIrp);
-    /* The PENDING_IRP must be top-most (ie. not forwarded from
-     * a higher-level driver) */
+    /* Since the PENDING_IRP corresponds to the original requestor, it must be
+     * top-most (ie. not forwarded from a higher-level driver). */
     assert(PendingIrp->ForwardedFrom == NULL);
-    /* AddDevice requests require special handling */
+    /* AddDevice requests are special so we perform further sanity checks. */
     if (CompletedIrp->Request.MajorFunction == IRP_MJ_ADD_DEVICE) {
 	/* AddDevice requests cannot be forwarded so there should only
 	 * be one THREAD object waiting on it */
 	assert(PendingIrp->ForwardedTo == NULL);
 	assert(PendingIrp->Requestor == CLIENT_HANDLE_TO_SERVER_OBJECT(OriginalRequestor));
-	/* DRIVER object cannot initiate AddDevice requests */
+	/* DRIVER object cannot initiate AddDevice requests. */
 	assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_THREAD));
+	/* AddDevice requests do not have IO buffers. */
+	assert(!PendingIrp->InputBuffer);
+	assert(!PendingIrp->OutputBuffer);
 	/* AddDevice request cannot have any response data */
 	if (Response->ClientMsg.IoCompleted.ResponseDataSize) {
 	    assert(FALSE);
 	    return STATUS_INVALID_PARAMETER;
 	}
-	/* Copy the IO response data and wake the THREAD up. */
-	PendingIrp->IoResponseStatus = Response->ClientMsg.IoCompleted.IoStatus;
-	KeSetEvent(&PendingIrp->IoCompletionEvent);
-	return STATUS_SUCCESS;
+	DbgTrace("Completed IRP device obj is %p, driverobj is %s\n",
+		 CompletedIrp->Request.Device.Object,
+		 DriverObject->DriverImagePath);
+    } else {
+	assert(CompletedIrp->Request.Device.Object->DriverObject == DriverObject);
+	DbgTrace("Completed IRP device obj driver obj is %s, driverobj is %s\n",
+		 CompletedIrp->Request.Device.Object->DriverObject->DriverImagePath,
+		 DriverObject->DriverImagePath);
     }
 
-    DbgTrace("Completed IRP device obj driver obj is %s, driverobj is %s\n",
-	     CompletedIrp->Request.Device.Object->DriverObject->DriverImagePath,
-	     DriverObject->DriverImagePath);
-    assert(CompletedIrp->Request.Device.Object->DriverObject == DriverObject);
-    /* Locate the lowest-level driver object in the IRP flow */
+    /* Since the PendingIrp we have now corresponds to the original requestor, we need to
+     * locate the actual PENDING_IRP being completed, which is always the lowest-level one. */
     while (PendingIrp->ForwardedTo != NULL) {
 	PendingIrp = PendingIrp->ForwardedTo;
 	assert(PendingIrp->IoPacket == CompletedIrp);
@@ -914,6 +932,12 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(ForwardedTo->DriverObject != NULL);
+    /* The target driver must not be the same as the source driver. */
+    if (ForwardedTo->DriverObject == SourceDriver) {
+	DbgTrace("Driver %s sent ForwardIrp message to its local device object %p\n",
+		 SourceDriver->DriverImagePath, ForwardedTo);
+	return STATUS_INVALID_PARAMETER;
+    }
 
     PPENDING_IRP PendingIrp = IopLocateIrpInOriginalRequestor(OriginalRequestor, Irp);
     /* If the IRP identifier is valid, PendingIrp should never be NULL. We assert on

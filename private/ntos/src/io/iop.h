@@ -335,6 +335,9 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
 			   IN IO_STATUS_BLOCK IoStatus,
 			   IN PVOID ResponseData,
 			   IN ULONG ResponseDataSize);
+VOID IopCancelPendingIrp(IN PPENDING_IRP PendingIrp);
+PPENDING_IRP IopLocateIrpInOriginalRequestor(IN GLOBAL_HANDLE OriginalRequestor,
+					     IN PIO_PACKET IoPacket);
 
 FORCEINLINE VOID IopCleanupPendingIrpList(IN PTHREAD Thread)
 {
@@ -439,6 +442,7 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject,
 				      IN PIO_DRIVER_OBJECT DriverObject,
 				      OUT GLOBAL_HANDLE *DeviceHandle);
+VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj);
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 			    IN ULONG Indentation);
 

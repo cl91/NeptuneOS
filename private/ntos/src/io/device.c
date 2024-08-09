@@ -496,6 +496,10 @@ VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
     if (DevObj->Vcb) {
 	IopDismountVolume(DevObj->Vcb, TRUE);
     }
+    /* At this point the device object should have exactly one reference. */
+    assert(ObGetObjectRefCount(DevObj) == 1);
+    /* Delete the device object */
+    ObDereferenceObject(DevObj);
 }
 
 /*
