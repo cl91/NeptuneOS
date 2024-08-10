@@ -583,7 +583,13 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 
 	case CmResourceTypeDma:
 	    DPRINT("Dma: Channel %u\n", PartialDescriptor->u.Dma.Channel);
-	    DeviceExtension->ControllerInfo.Dma = PartialDescriptorTranslated->u.Dma.Channel;
+	    if (PartialDescriptor->u.Dma.Channel != 2) {
+		DPRINT("WARNING: BUGGY ACPI. FDC is hard-coded to use DMA channel 2. "
+		       "Changing DMA channel %u to channel 2.\n", PartialDescriptor->u.Dma.Channel);
+		DeviceExtension->ControllerInfo.Dma = 2;
+	    } else {
+		DeviceExtension->ControllerInfo.Dma = PartialDescriptorTranslated->u.Dma.Channel;
+	    }
 	    assert(!FoundDma);
 	    FoundDma = TRUE;
 	    break;
