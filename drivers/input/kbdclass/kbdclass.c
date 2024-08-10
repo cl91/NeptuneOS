@@ -635,7 +635,7 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	return Status;
 
     default:
-	Status = STATUS_INVALID_DEVICE_REQUEST;
+	Status = STATUS_NOT_SUPPORTED;
 	break;
     }
 

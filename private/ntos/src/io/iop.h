@@ -277,6 +277,92 @@ typedef struct _INTERRUPT_SERVICE {
     NOTIFICATION InterruptMutex;      /* Client side capability */
 } INTERRUPT_SERVICE, *PINTERRUPT_SERVICE;
 
+/*
+ * Device node state.
+ */
+typedef enum _DEVICE_NODE_STATE {
+    DeviceNodeUnspecified,
+    DeviceNodeInitialized,
+    DeviceNodeLoadDriverFailed,
+    DeviceNodeDriversLoaded,
+    DeviceNodeAddDeviceFailed,
+    DeviceNodeDevicesAdded,
+    DeviceNodeResourcesAssignmentFailed,
+    DeviceNodeResourcesAssigned,
+    DeviceNodeStartPending,
+    DeviceNodeStartCompletion,
+    DeviceNodeStartPostWork,
+    DeviceNodeStartFailed,
+    DeviceNodeStarted,
+    DeviceNodeQueryStopped,
+    DeviceNodeStopped,
+    DeviceNodeRestartCompletion,
+    DeviceNodeEnumeratePending,
+    DeviceNodeEnumerateFailed,
+    DeviceNodeEnumerateCompletion,
+    DeviceNodeAwaitingQueuedDeletion,
+    DeviceNodeAwaitingQueuedRemoval,
+    DeviceNodeQueryRemoved,
+    DeviceNodeRemovePendingCloses,
+    DeviceNodeRemoved,
+    DeviceNodeDeletePendingCloses,
+    DeviceNodeDeleted,
+    MaxDeviceNodeState
+} DEVICE_NODE_STATE, *PDEVICE_NODE_STATE;
+
+#define DEVNODE_HISTORY_SIZE	(16)	/* must be a multiple of two */
+
+/*
+ * Device Node for the PNP manager
+ */
+typedef struct _DEVICE_NODE {
+    DEVICE_NODE_STATE StateHistory[DEVNODE_HISTORY_SIZE];
+    ULONG CurrentState;		/* Index into StateHistory */
+    NTSTATUS ErrorStatus;
+    PIO_DEVICE_OBJECT PhyDevObj;
+    PCSTR DeviceId;
+    PCSTR InstanceId;
+    struct _DEVICE_NODE *Parent;
+    LIST_ENTRY ChildrenList;
+    LIST_ENTRY SiblingLink;
+    PCSTR DriverServiceName;
+    ULONG UpperFilterCount;
+    ULONG LowerFilterCount;
+    PCSTR *UpperFilterDriverNames;
+    PCSTR *LowerFilterDriverNames;
+    PIO_DRIVER_OBJECT FunctionDriverObject;
+    PIO_DRIVER_OBJECT *UpperFilterDrivers;
+    PIO_DRIVER_OBJECT *LowerFilterDrivers;
+    PCM_RESOURCE_LIST Resources;
+} DEVICE_NODE, *PDEVICE_NODE;
+
+/*
+ * Call this if you need to get the device node of a device object.
+ * DO NOT just do DeviceObject->DeviceNode since we only keep track
+ * of device nodes for PDOs (lowest device object in a device stack).
+ */
+FORCEINLINE PDEVICE_NODE IopGetDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject)
+{
+    assert(DeviceObject != NULL);
+    /* Locate the lowest device object */
+    PIO_DEVICE_OBJECT Pdo = DeviceObject;
+    while (Pdo->AttachedTo != NULL) {
+	Pdo = Pdo->AttachedTo;
+	assert(Pdo != NULL);
+    }
+    return Pdo->DeviceNode;
+}
+
+FORCEINLINE VOID IopDeviceNodeSetCurrentState(IN PDEVICE_NODE Node,
+					      IN DEVICE_NODE_STATE State)
+{
+    assert(Node != NULL);
+    assert(Node->CurrentState < DEVNODE_HISTORY_SIZE);
+    Node->CurrentState++;
+    Node->CurrentState %= DEVNODE_HISTORY_SIZE;
+    Node->StateHistory[Node->CurrentState] = State;
+}
+
 /* init.c */
 extern LIST_ENTRY IopDriverList;
 

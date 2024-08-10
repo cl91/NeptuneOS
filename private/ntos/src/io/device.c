@@ -437,6 +437,11 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 	Vcb->VolumeDevice->Vcb = NULL;
 	IopFreePool(Vcb);
     }
+    if (DevObj->DeviceNode) {
+	assert(DevObj->DeviceNode->PhyDevObj == DevObj);
+	DevObj->DeviceNode->PhyDevObj = NULL;
+	IopDeviceNodeSetCurrentState(DevObj->DeviceNode, DeviceNodeDeleted);
+    }
 }
 
 /*
@@ -447,6 +452,11 @@ VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
 {
     DbgTrace("Force removing device object %p (%s)\n", DevObj,
 	     KEDBG_PROCESS_TO_FILENAME(DevObj->DriverObject->DriverProcess));
+    /* Set the status of the device node of the PDO to DeviceNodeRemoved */
+    PDEVICE_NODE DevNode = IopGetDeviceNode(DevObj);
+    if (DevNode) {
+	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeRemoved);
+    }
     /* For all opened file objects of this device object, mark the file object
      * as a zombie because we cannot delete it just yet (at least one NT client
      * still has an open handle to it). These file objects will be deleted when
