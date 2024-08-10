@@ -23,11 +23,12 @@
     <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="TopDeviceInfo" />
   </svc>
 
-  <svc name="WdmOpenDeviceRegistryKey">
+  <svc name="WdmGetDeviceProperty">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
-    <parameter annotation="in" type="ULONG" name="DevInstKeyType" />
-    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
-    <parameter annotation="out" type="ptr::HANDLE" name="DevInstRegKey" />
+    <parameter annotation="in" type="DEVICE_REGISTRY_PROPERTY" name="DeviceProperty" />
+    <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
+    <parameter annotation="out" type="buf::Void" name="PropertyBuffer" />
+    <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
 
   <svc name="WdmRequestIoPackets">

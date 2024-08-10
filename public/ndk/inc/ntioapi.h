@@ -1384,4 +1384,37 @@ typedef ULONG PNP_DEVICE_STATE, *PPNP_DEVICE_STATE;
 #define PNP_DEVICE_RESOURCE_REQUIREMENTS_CHANGED 0x00000010
 #define PNP_DEVICE_NOT_DISABLEABLE               0x00000020
 
+typedef enum _DEVICE_REMOVAL_POLICY {
+    RemovalPolicyExpectNoRemoval = 1,
+    RemovalPolicyExpectOrderlyRemoval = 2,
+    RemovalPolicyExpectSurpriseRemoval = 3
+} DEVICE_REMOVAL_POLICY, *PDEVICE_REMOVAL_POLICY;
+
+typedef enum _DEVICE_REGISTRY_PROPERTY {
+    DevicePropertyDeviceDescription,
+    DevicePropertyHardwareID,
+    DevicePropertyCompatibleIDs,
+    DevicePropertyBootConfiguration,
+    DevicePropertyBootConfigurationTranslated,
+    DevicePropertyClassName,
+    DevicePropertyClassGuid,
+    DevicePropertyDriverKeyName,
+    DevicePropertyManufacturer,
+    DevicePropertyFriendlyName,
+    DevicePropertyLocationInformation,
+    DevicePropertyPhysicalDeviceObjectName,
+    DevicePropertyBusTypeGuid,
+    DevicePropertyLegacyBusType,
+    DevicePropertyBusNumber,
+    DevicePropertyEnumeratorName,
+    DevicePropertyAddress,
+    DevicePropertyUINumber,
+    DevicePropertyInstallState,
+    DevicePropertyRemovalPolicy,
+    DevicePropertyResourceRequirements,
+    DevicePropertyAllocatedResources,
+    DevicePropertyContainerID,
+    DevicePropertyInstancePath
+} DEVICE_REGISTRY_PROPERTY;
+
 #endif	/*  */

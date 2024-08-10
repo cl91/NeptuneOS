@@ -11,6 +11,7 @@
 @ stdcall IoRegisterDeviceInterface(ptr ptr ptr ptr)
 @ stdcall IoSetDeviceInterfaceState(ptr long)
 @ stdcall IoGetDeviceInterfaces(ptr ptr long ptr)
+@ stdcall IoGetDeviceProperty(ptr long long ptr ptr)
 @ stdcall IoCreateSymbolicLink(ptr ptr)
 @ stdcall IoOpenDeviceRegistryKey(ptr long long ptr)
 @ stdcall IoQueryDeviceDescription(ptr ptr ptr ptr ptr ptr ptr ptr)

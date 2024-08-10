@@ -2,6 +2,13 @@
 #define TEXT(x) L##x
 #include <regstr.h>
 
+#define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
+#define PROFILE_KEY_NAME L"Hardware Profiles\\Current\\System\\CurrentControlSet\\"
+#define CLASS_KEY_NAME L"Control\\Class\\"
+#define ENUM_KEY_NAME L"Enum\\"
+#define DEVICE_PARAMETERS_KEY_NAME L"Device Parameters"
+#define BOOT_CONFIG_KEY_NAME L"LogConf"
+
 /* Caches all device objects that have been queried, including
  * the device objects created by this driver. */
 LIST_ENTRY IopDeviceList;
@@ -286,8 +293,39 @@ NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+static NTSTATUS IopGetDeviceInstancePath(IN PDEVICE_OBJECT DeviceObject,
+					 OUT PUNICODE_STRING InstancePath)
+{
+    ULONG BufferSize = 0;
+    WCHAR Buffer[256];
+    NTSTATUS Status = WdmGetDeviceProperty(DeviceObject->Header.GlobalHandle,
+					   DevicePropertyInstancePath,
+					   sizeof(Buffer), Buffer, &BufferSize);
+    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
+	return Status;
+    }
+    PWCHAR Path = ExAllocatePool(BufferSize);
+    if (!Path) {
+	return STATUS_NO_MEMORY;
+    }
+    if (Status == STATUS_BUFFER_TOO_SMALL) {
+	Status = WdmGetDeviceProperty(DeviceObject->Header.GlobalHandle,
+				      DevicePropertyInstancePath,
+				      BufferSize, Path, &BufferSize);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+    } else {
+	RtlCopyMemory(Path, Buffer, BufferSize);
+    }
+    InstancePath->Buffer = Path;
+    InstancePath->Length = BufferSize;
+    InstancePath->MaximumLength = BufferSize;
+    return STATUS_SUCCESS;
+}
+
 /*
- *Returns the alias device interface of the specified device interface
+ * Returns the alias device interface of the specified device interface
  */
 static NTSTATUS IopOpenInterfaceKey(IN CONST GUID *InterfaceClassGuid,
 				    IN ACCESS_MASK DesiredAccess,
@@ -362,6 +400,64 @@ cleanup:
     return Status;
 }
 
+static NTSTATUS IopQueryValueKey(IN HANDLE KeyHandle,
+				 IN PWCHAR ValueName,
+				 OUT PKEY_VALUE_PARTIAL_INFORMATION *PartialInfo)
+{
+    ULONG BufferSize;
+    UNICODE_STRING ValueNameU;
+    RtlInitUnicodeString(&ValueNameU, ValueName);
+    NTSTATUS Status = NtQueryValueKey(KeyHandle, &ValueNameU,
+				      KeyValuePartialInformation,
+				      NULL, 0, &BufferSize);
+    if (Status != STATUS_BUFFER_TOO_SMALL) {
+	return Status;
+    }
+
+    *PartialInfo = ExAllocatePool(BufferSize);
+    if (!*PartialInfo) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Status = NtQueryValueKey(KeyHandle, &ValueNameU,
+			     KeyValuePartialInformation, *PartialInfo,
+			     BufferSize, &BufferSize);
+    if (!NT_SUCCESS(Status)) {
+	ExFreePool(*PartialInfo);
+    }
+    return Status;
+}
+
+static NTSTATUS IopReadRegValue(IN HANDLE KeyHandle,
+				IN PWCHAR ValueName,
+				IN ULONG ValueType,
+				IN ULONG BufferSize,
+				OUT PVOID Data,
+				OUT OPTIONAL ULONG *DataLength)
+{
+    PKEY_VALUE_PARTIAL_INFORMATION PartialInfo = NULL;
+    NTSTATUS Status = IopQueryValueKey(KeyHandle, ValueName, &PartialInfo);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    if (DataLength) {
+	*DataLength = PartialInfo->DataLength;
+    }
+    if (PartialInfo->Type != ValueType) {
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
+	goto out;
+    }
+    if (PartialInfo->DataLength > BufferSize) {
+	Status = STATUS_BUFFER_TOO_SMALL;
+	goto out;
+    }
+    RtlCopyMemory(Data, PartialInfo->Data, PartialInfo->DataLength);
+    Status = STATUS_SUCCESS;
+out:
+    ExFreePool(PartialInfo);
+    return Status;
+}
+
 /*++
  * @name IoGetDeviceInterfaces
  * @implemented
@@ -405,24 +501,28 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 				     OUT PWSTR *SymbolicLinkList)
 {
     UNICODE_STRING Control = RTL_CONSTANT_STRING(L"Control");
-    UNICODE_STRING SymbolicLink = RTL_CONSTANT_STRING(L"SymbolicLink");
     HANDLE InterfaceKey = NULL;
     HANDLE DeviceKey = NULL;
     HANDLE ReferenceKey = NULL;
     HANDLE ControlKey = NULL;
-    PKEY_BASIC_INFORMATION DeviceBi = NULL;
-    PKEY_BASIC_INFORMATION ReferenceBi = NULL;
-    PKEY_VALUE_PARTIAL_INFORMATION bip = NULL;
+    PKEY_BASIC_INFORMATION DeviceBasicInfo = NULL;
+    PKEY_BASIC_INFORMATION RefBasicInfo = NULL;
+    PKEY_VALUE_PARTIAL_INFORMATION ValueInfo = NULL;
     PKEY_VALUE_PARTIAL_INFORMATION PartialInfo;
     UNICODE_STRING KeyName;
     OBJECT_ATTRIBUTES ObjectAttributes;
     BOOLEAN FoundRightPDO = FALSE;
-    ULONG i = 0, j, Size, NeededLength, ActualLength, LinkedValue;
+    ULONG i = 0, j, Size, LinkedValue;
     UNICODE_STRING ReturnBuffer = { 0, 0, NULL };
     NTSTATUS Status;
 
-    /* TODO: Call server to get the device instance path of the PDO. */
-    PUNICODE_STRING InstanceDevicePath = NULL;
+    UNICODE_STRING DeviceInstancePath = { 0, 0, NULL };
+    if (PhysicalDeviceObject) {
+	Status = IopGetDeviceInstancePath(PhysicalDeviceObject, &DeviceInstancePath);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+    }
 
     Status = IopOpenInterfaceKey(InterfaceClassGuid, KEY_ENUMERATE_SUB_KEYS,
 				 &InterfaceKey);
@@ -441,25 +541,24 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 	    goto cleanup;
 	}
 
-	DeviceBi = ExAllocatePool(Size);
-	if (!DeviceBi) {
+	DeviceBasicInfo = ExAllocatePool(Size);
+	if (!DeviceBasicInfo) {
 	    DPRINT("ExAllocatePool() failed\n");
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto cleanup;
 	}
-	Status = NtEnumerateKey(InterfaceKey, i++, KeyBasicInformation, DeviceBi, Size,
-				&Size);
+	Status = NtEnumerateKey(InterfaceKey, i++, KeyBasicInformation,
+				DeviceBasicInfo, Size, &Size);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT("NtEnumerateKey() failed with status 0x%08x\n", Status);
 	    goto cleanup;
 	}
 
 	/* Open device key */
-	KeyName.Length = KeyName.MaximumLength = (USHORT)DeviceBi->NameLength;
-	KeyName.Buffer = DeviceBi->Name;
+	KeyName.Length = KeyName.MaximumLength = (USHORT)DeviceBasicInfo->NameLength;
+	KeyName.Buffer = DeviceBasicInfo->Name;
 	InitializeObjectAttributes(&ObjectAttributes, &KeyName,
-				   OBJ_CASE_INSENSITIVE, InterfaceKey,
-				   NULL);
+				   OBJ_CASE_INSENSITIVE, InterfaceKey, NULL);
 	Status = NtOpenKey(&DeviceKey, KEY_ENUMERATE_SUB_KEYS, &ObjectAttributes);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT("NtOpenKey() failed with status 0x%08x\n", Status);
@@ -468,43 +567,21 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 
 	if (PhysicalDeviceObject) {
 	    /* Check if we are on the right physical device object,
-	     * by reading the DeviceInstance string
-	     */
-	    RtlInitUnicodeString(&KeyName, L"DeviceInstance");
-	    Status = NtQueryValueKey(DeviceKey, &KeyName, KeyValuePartialInformation,
-				     NULL, 0, &NeededLength);
-	    if (Status == STATUS_BUFFER_TOO_SMALL) {
-		ActualLength = NeededLength;
-		PartialInfo = ExAllocatePool(ActualLength);
-		if (!PartialInfo) {
-		    Status = STATUS_INSUFFICIENT_RESOURCES;
-		    goto cleanup;
-		}
-
-		Status = NtQueryValueKey(DeviceKey, &KeyName, KeyValuePartialInformation,
-					 PartialInfo, ActualLength, &NeededLength);
-		if (!NT_SUCCESS(Status)) {
-		    DPRINT1("NtQueryValueKey #2 failed (%x)\n", Status);
-		    ExFreePool(PartialInfo);
-		    goto cleanup;
-		}
-		if (PartialInfo->DataLength == InstanceDevicePath->Length) {
-		    if (RtlCompareMemory(PartialInfo->Data, InstanceDevicePath->Buffer,
-					 InstanceDevicePath->Length) ==
-			InstanceDevicePath->Length) {
-			/* found right pdo */
-			FoundRightPDO = TRUE;
-		    }
-		}
-		ExFreePool(PartialInfo);
-		PartialInfo = NULL;
-		if (!FoundRightPDO) {
-		    /* not yet found */
-		    continue;
-		}
-	    } else {
-		/* error */
+	     * by reading the DeviceInstance string */
+	    Status = IopQueryValueKey(DeviceKey, L"DeviceInstance", &PartialInfo);
+	    if (!NT_SUCCESS(Status)) {
 		break;
+	    }
+	    if (PartialInfo->DataLength == DeviceInstancePath.Length &&
+		RtlCompareMemory(PartialInfo->Data, DeviceInstancePath.Buffer,
+				 DeviceInstancePath.Length) == DeviceInstancePath.Length) {
+		FoundRightPDO = TRUE;
+	    }
+	    ExFreePool(PartialInfo);
+	    PartialInfo = NULL;
+	    if (!FoundRightPDO) {
+		/* not yet found */
+		continue;
 	    }
 	}
 
@@ -519,21 +596,21 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 		goto cleanup;
 	    }
 
-	    ReferenceBi = ExAllocatePool(Size);
-	    if (!ReferenceBi) {
+	    RefBasicInfo = ExAllocatePool(Size);
+	    if (!RefBasicInfo) {
 		DPRINT("ExAllocatePool() failed\n");
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto cleanup;
 	    }
-	    Status = NtEnumerateKey(DeviceKey, j++, KeyBasicInformation, ReferenceBi,
+	    Status = NtEnumerateKey(DeviceKey, j++, KeyBasicInformation, RefBasicInfo,
 				    Size, &Size);
 	    if (!NT_SUCCESS(Status)) {
 		DPRINT("NtEnumerateKey() failed with status 0x%08x\n", Status);
 		goto cleanup;
 	    }
 
-	    KeyName.Length = KeyName.MaximumLength = (USHORT)ReferenceBi->NameLength;
-	    KeyName.Buffer = ReferenceBi->Name;
+	    KeyName.Length = KeyName.MaximumLength = (USHORT)RefBasicInfo->NameLength;
+	    KeyName.Buffer = RefBasicInfo->Name;
 	    if (RtlEqualUnicodeString(&KeyName, &Control, TRUE)) {
 		/* Skip Control subkey */
 		goto NextReferenceString;
@@ -559,86 +636,43 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 		Status = NtOpenKey(&ControlKey, KEY_QUERY_VALUE, &ObjectAttributes);
 		if (Status == STATUS_OBJECT_NAME_NOT_FOUND) {
 		    /* That's OK. The key doesn't exist (yet) because
-		     * the interface is not activated.
-		     */
+		     * the interface is not activated. */
 		    goto NextReferenceString;
 		} else if (!NT_SUCCESS(Status)) {
 		    DPRINT1("NtOpenKey() failed with status 0x%08x\n", Status);
 		    goto cleanup;
 		}
 
-		RtlInitUnicodeString(&KeyName, L"Linked");
-		Status = NtQueryValueKey(ControlKey, &KeyName, KeyValuePartialInformation,
-					 NULL, 0, &NeededLength);
-		if (Status == STATUS_BUFFER_TOO_SMALL) {
-		    ActualLength = NeededLength;
-		    PartialInfo = ExAllocatePool(ActualLength);
-		    if (!PartialInfo) {
-			Status = STATUS_INSUFFICIENT_RESOURCES;
-			goto cleanup;
-		    }
-
-		    Status = NtQueryValueKey(ControlKey, &KeyName,
-					     KeyValuePartialInformation, PartialInfo,
-					     ActualLength, &NeededLength);
-		    if (!NT_SUCCESS(Status)) {
-			DPRINT1("NtQueryValueKey #2 failed (%x)\n", Status);
-			ExFreePool(PartialInfo);
-			goto cleanup;
-		    }
-
-		    if (PartialInfo->Type != REG_DWORD ||
-			PartialInfo->DataLength != sizeof(ULONG)) {
-			DPRINT1("Bad registry read\n");
-			ExFreePool(PartialInfo);
-			goto cleanup;
-		    }
-
-		    RtlCopyMemory(&LinkedValue, PartialInfo->Data,
-				  PartialInfo->DataLength);
-
-		    ExFreePool(PartialInfo);
-		    if (LinkedValue == 0) {
-			/* This interface isn't active */
-			goto NextReferenceString;
-		    }
-		} else {
-		    DPRINT1("NtQueryValueKey #1 failed (%x)\n", Status);
+		Status = IopReadRegValue(ControlKey, L"Linked", REG_DWORD,
+					 sizeof(ULONG), &LinkedValue, NULL);
+		if (!NT_SUCCESS(Status)) {
 		    goto cleanup;
+		}
+		if (LinkedValue == 0) {
+		    /* This interface isn't active */
+		    goto NextReferenceString;
 		}
 	    }
 
 	    /* Read the SymbolicLink string and add it into SymbolicLinkList */
-	    Status = NtQueryValueKey(ReferenceKey, &SymbolicLink,
-				     KeyValuePartialInformation, NULL, 0, &Size);
-	    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
-		DPRINT("NtQueryValueKey() failed with status 0x%08x\n", Status);
-		goto cleanup;
-	    }
-	    bip = ExAllocatePool(Size);
-	    if (!bip) {
-		DPRINT("ExAllocatePool() failed\n");
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto cleanup;
-	    }
-	    Status = NtQueryValueKey(ReferenceKey, &SymbolicLink,
-				     KeyValuePartialInformation, bip, Size, &Size);
+	    Status = IopQueryValueKey(ReferenceKey, L"SymbolicLink",
+				      &ValueInfo);
 	    if (!NT_SUCCESS(Status)) {
-		DPRINT("NtQueryValueKey() failed with status 0x%08x\n", Status);
+		DPRINT("IopQueryValueKey() failed with status 0x%08x\n", Status);
 		goto cleanup;
-	    } else if (bip->Type != REG_SZ) {
-		DPRINT("Unexpected registry type 0x%x (expected 0x%x)\n", bip->Type,
+	    } else if (ValueInfo->Type != REG_SZ) {
+		DPRINT("Unexpected registry type 0x%x (expected 0x%x)\n", ValueInfo->Type,
 		       REG_SZ);
 		Status = STATUS_UNSUCCESSFUL;
 		goto cleanup;
-	    } else if (bip->DataLength < 5 * sizeof(WCHAR)) {
+	    } else if (ValueInfo->DataLength < 5 * sizeof(WCHAR)) {
 		DPRINT("Registry string too short (length %u, expected %zu at least)\n",
-		       bip->DataLength, 5 * sizeof(WCHAR));
+		       ValueInfo->DataLength, 5 * sizeof(WCHAR));
 		Status = STATUS_UNSUCCESSFUL;
 		goto cleanup;
 	    }
-	    KeyName.Length = KeyName.MaximumLength = (USHORT)bip->DataLength;
-	    KeyName.Buffer = (PWSTR)bip->Data;
+	    KeyName.Length = KeyName.MaximumLength = (USHORT)ValueInfo->DataLength;
+	    KeyName.Buffer = (PWSTR)ValueInfo->Data;
 
 	    /* Fixup the prefix (from "\\?\") */
 	    RtlCopyMemory(KeyName.Buffer, L"\\??\\", 4 * sizeof(WCHAR));
@@ -676,11 +710,11 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 	    ReturnBuffer.Length += sizeof(WCHAR);
 
 	NextReferenceString:
-	    ExFreePool(ReferenceBi);
-	    ReferenceBi = NULL;
-	    if (bip)
-		ExFreePool(bip);
-	    bip = NULL;
+	    ExFreePool(RefBasicInfo);
+	    RefBasicInfo = NULL;
+	    if (ValueInfo)
+		ExFreePool(ValueInfo);
+	    ValueInfo = NULL;
 	    if (ReferenceKey != NULL) {
 		NtClose(ReferenceKey);
 		ReferenceKey = NULL;
@@ -695,8 +729,8 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 	    break;
 	}
 
-	ExFreePool(DeviceBi);
-	DeviceBi = NULL;
+	ExFreePool(DeviceBasicInfo);
+	DeviceBasicInfo = NULL;
 	NtClose(DeviceKey);
 	DeviceKey = NULL;
     }
@@ -723,6 +757,9 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
     Status = STATUS_SUCCESS;
 
 cleanup:
+    if (DeviceInstancePath.Buffer) {
+	ExFreePool(DeviceInstancePath.Buffer);
+    }
     if (!NT_SUCCESS(Status) && ReturnBuffer.Buffer)
 	ExFreePool(ReturnBuffer.Buffer);
     if (InterfaceKey != NULL)
@@ -733,12 +770,12 @@ cleanup:
 	NtClose(ReferenceKey);
     if (ControlKey != NULL)
 	NtClose(ControlKey);
-    if (DeviceBi)
-	ExFreePool(DeviceBi);
-    if (ReferenceBi)
-	ExFreePool(ReferenceBi);
-    if (bip)
-	ExFreePool(bip);
+    if (DeviceBasicInfo)
+	ExFreePool(DeviceBasicInfo);
+    if (RefBasicInfo)
+	ExFreePool(RefBasicInfo);
+    if (ValueInfo)
+	ExFreePool(ValueInfo);
     return Status;
 }
 
@@ -761,13 +798,26 @@ NTAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
     return Status;
 }
 
+static NTSTATUS IopOpenKey(OUT PHANDLE KeyHandle,
+			   IN HANDLE ParentKey,
+			   IN PUNICODE_STRING Name,
+			   IN ACCESS_MASK DesiredAccess)
+{
+    *KeyHandle = NULL;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, Name,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			       ParentKey, NULL);
+    return NtOpenKey(KeyHandle, DesiredAccess, &ObjectAttributes);
+}
+
 /**
  * @name IoOpenDeviceRegistryKey
  *
  * Open a registry key unique for a specified driver or device instance.
  *
  * @param DeviceObject   Device to get the registry key for.
- * @param DevInstKeyType Type of the key to return.
+ * @param DevInstKeyType Type of the key to return. If zero, will open the base key.
  * @param DesiredAccess  Access mask (eg. KEY_READ | KEY_WRITE).
  * @param DevInstRegKey  Handle to the opened registry key on
  *                       successful return.
@@ -781,8 +831,173 @@ NTAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
 				       IN ACCESS_MASK DesiredAccess,
 				       OUT PHANDLE DevInstRegKey)
 {
-    return WdmOpenDeviceRegistryKey(DeviceObject->Header.GlobalHandle,
-				    DevInstKeyType, DesiredAccess, DevInstRegKey);
+    ULONG KeyNameLength;
+    PWSTR KeyNameBuffer;
+    UNICODE_STRING KeyName;
+    ULONG DriverKeyLength;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    NTSTATUS Status;
+
+    UNICODE_STRING InstancePath;
+    Status = IopGetDeviceInstancePath(DeviceObject, &InstancePath);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    /* Calculate the length of the base key name. This is the full
+     * name for driver key or the name excluding "Device Parameters"
+     * subkey for device key. */
+    KeyNameLength = sizeof(CONTROL_KEY_NAME);
+    if (DevInstKeyType & PLUGPLAY_REGKEY_CURRENT_HWPROFILE)
+	KeyNameLength += sizeof(PROFILE_KEY_NAME) - sizeof(UNICODE_NULL);
+    if (DevInstKeyType & PLUGPLAY_REGKEY_DRIVER) {
+	KeyNameLength += sizeof(CLASS_KEY_NAME) - sizeof(UNICODE_NULL);
+	Status = IoGetDeviceProperty(DeviceObject, DevicePropertyDriverKeyName, 0, NULL,
+				     &DriverKeyLength);
+	if (Status != STATUS_BUFFER_TOO_SMALL)
+	    return Status;
+	KeyNameLength += DriverKeyLength;
+    } else {
+	KeyNameLength += sizeof(ENUM_KEY_NAME) - sizeof(UNICODE_NULL) +
+			 InstancePath.Length;
+    }
+
+    /* Allocate the buffer for the key name */
+    KeyNameBuffer = ExAllocatePool(KeyNameLength);
+    if (KeyNameBuffer == NULL)
+	return STATUS_INSUFFICIENT_RESOURCES;
+
+    KeyName.Length = 0;
+    KeyName.MaximumLength = (USHORT)KeyNameLength;
+    KeyName.Buffer = KeyNameBuffer;
+
+    /* Build the key name */
+    KeyName.Length += sizeof(CONTROL_KEY_NAME) - sizeof(UNICODE_NULL);
+    RtlCopyMemory(KeyNameBuffer, CONTROL_KEY_NAME, KeyName.Length);
+
+    if (DevInstKeyType & PLUGPLAY_REGKEY_CURRENT_HWPROFILE)
+	RtlAppendUnicodeToString(&KeyName, PROFILE_KEY_NAME);
+
+    if (DevInstKeyType & PLUGPLAY_REGKEY_DRIVER) {
+	RtlAppendUnicodeToString(&KeyName, CLASS_KEY_NAME);
+	Status = IoGetDeviceProperty(DeviceObject, DevicePropertyDriverKeyName,
+				     DriverKeyLength,
+				     KeyNameBuffer + (KeyName.Length / sizeof(WCHAR)),
+				     &DriverKeyLength);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT1("Call to IoGetDeviceProperty() failed with Status 0x%08x\n", Status);
+	    ExFreePool(KeyNameBuffer);
+	    return Status;
+	}
+	KeyName.Length += (USHORT)DriverKeyLength - sizeof(UNICODE_NULL);
+    } else {
+	RtlAppendUnicodeToString(&KeyName, ENUM_KEY_NAME);
+	Status = RtlAppendUnicodeStringToString(&KeyName, &InstancePath);
+	if (KeyName.Length == 0) {
+	    ExFreePool(KeyNameBuffer);
+	    return Status;
+	}
+    }
+
+    /* Open the base key. */
+    Status = IopOpenKey(DevInstRegKey, NULL, &KeyName, DesiredAccess);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("IoOpenDeviceRegistryKey(%wZ): failed to open base key, status 0x%08x\n",
+		&KeyName, Status);
+	ExFreePool(KeyNameBuffer);
+	return Status;
+    }
+    ExFreePool(KeyNameBuffer);
+
+    /* If user requested the base key or the driver key we're done. */
+    if (!DevInstKeyType || (DevInstKeyType & PLUGPLAY_REGKEY_DRIVER))
+	return Status;
+
+    /* For device key we must open "Device Parameters" subkey and create it
+     * if it doesn't exist. For boot configuration we must open "LogConf". */
+    if (DevInstKeyType & PLUGPLAY_REGKEY_DEVICE) {
+	RtlInitUnicodeString(&KeyName, DEVICE_PARAMETERS_KEY_NAME);
+    } else if (DevInstKeyType & PLUGPLAY_REGKEY_BOOT_CONFIGURATION) {
+	RtlInitUnicodeString(&KeyName, BOOT_CONFIG_KEY_NAME);
+    } else {
+	Status = STATUS_INVALID_PARAMETER;
+	goto out;
+    }
+    InitializeObjectAttributes(&ObjectAttributes, &KeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			       *DevInstRegKey, NULL);
+    Status = NtCreateKey(DevInstRegKey, DesiredAccess, &ObjectAttributes, 0, NULL,
+			 REG_OPTION_NON_VOLATILE, NULL);
+
+out:
+    NtClose(ObjectAttributes.RootDirectory);
+    return Status;
+}
+
+#define PIP_REGISTRY_DATA(x, y) ValueName = x; ValueType = y; break
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
+				   IN DEVICE_REGISTRY_PROPERTY DeviceProperty,
+				   IN ULONG BufferLength,
+				   OUT PVOID PropertyBuffer,
+				   OUT PULONG ResultLength)
+{
+    PWSTR ValueName = NULL;
+    ULONG ValueType;
+    switch (DeviceProperty) {
+	/* Registry-based properties */
+    case DevicePropertyUINumber:
+	PIP_REGISTRY_DATA(REGSTR_VAL_UI_NUMBER, REG_DWORD);
+    case DevicePropertyLocationInformation:
+	PIP_REGISTRY_DATA(REGSTR_VAL_LOCATION_INFORMATION, REG_SZ);
+    case DevicePropertyDeviceDescription:
+	PIP_REGISTRY_DATA(REGSTR_VAL_DEVDESC, REG_SZ);
+    case DevicePropertyHardwareID:
+	PIP_REGISTRY_DATA(REGSTR_VAL_HARDWAREID, REG_MULTI_SZ);
+    case DevicePropertyCompatibleIDs:
+	PIP_REGISTRY_DATA(REGSTR_VAL_COMPATIBLEIDS, REG_MULTI_SZ);
+    case DevicePropertyBootConfiguration:
+	PIP_REGISTRY_DATA(REGSTR_VAL_BOOTCONFIG, REG_RESOURCE_LIST);
+    case DevicePropertyClassName:
+	PIP_REGISTRY_DATA(REGSTR_VAL_CLASS, REG_SZ);
+    case DevicePropertyClassGuid:
+	PIP_REGISTRY_DATA(REGSTR_VAL_CLASSGUID, REG_SZ);
+    case DevicePropertyDriverKeyName:
+	PIP_REGISTRY_DATA(REGSTR_VAL_DRIVER, REG_SZ);
+    case DevicePropertyManufacturer:
+	PIP_REGISTRY_DATA(REGSTR_VAL_MFG, REG_SZ);
+    case DevicePropertyFriendlyName:
+	PIP_REGISTRY_DATA(REGSTR_VAL_FRIENDLYNAME, REG_SZ);
+    case DevicePropertyInstallState:
+	PIP_REGISTRY_DATA(REGSTR_VAL_CONFIGFLAGS, REG_DWORD);
+    case DevicePropertyContainerID:
+    case DevicePropertyResourceRequirements:
+    case DevicePropertyAllocatedResources:
+	UNIMPLEMENTED;
+	break;
+    default:
+	return WdmGetDeviceProperty(DeviceObject->Header.GlobalHandle,
+				    DeviceProperty, BufferLength,
+				    PropertyBuffer, ResultLength);
+    }
+    if (!ValueName) {
+	return STATUS_NOT_IMPLEMENTED;
+    }
+
+    HANDLE KeyHandle = NULL;
+    ULONG KeyType = (DeviceProperty == DevicePropertyBootConfiguration)
+	? PLUGPLAY_REGKEY_BOOT_CONFIGURATION : 0;
+    NTSTATUS Status = IoOpenDeviceRegistryKey(DeviceObject, KeyType, KEY_READ, &KeyHandle);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    Status = IopReadRegValue(KeyHandle, ValueName, ValueType,
+			     BufferLength, PropertyBuffer, ResultLength);
+    NtClose(KeyHandle);
+    return Status;
 }
 
 /*

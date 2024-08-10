@@ -1276,3 +1276,85 @@ NTSTATUS WdmOpenDeviceRegistryKey(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
+                              IN PTHREAD Thread,
+                              IN GLOBAL_HANDLE DeviceHandle,
+                              IN DEVICE_REGISTRY_PROPERTY DeviceProperty,
+                              IN ULONG BufferLength,
+                              OUT PVOID PropertyBuffer,
+                              OUT ULONG *pResultLength)
+{
+    PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle, NULL);
+    if (!DeviceObject) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    PDEVICE_NODE DeviceNode = IopGetDeviceNode(DeviceObject);
+    if (!DeviceNode) {
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    PVOID Data = NULL;
+    ULONG ResultLength = 0;
+    BOOLEAN UnicodeOutput = FALSE;
+    CHAR Buffer[512];
+
+    switch (DeviceProperty) {
+    case DevicePropertyBusTypeGuid:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyLegacyBusType:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyBusNumber:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyEnumeratorName:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyBootConfigurationTranslated:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyPhysicalDeviceObjectName:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyRemovalPolicy:
+	UNIMPLEMENTED;
+	break;
+
+    case DevicePropertyInstancePath:
+	snprintf(Buffer, sizeof(Buffer), "%s\\%s",
+		 DeviceNode->DeviceId, DeviceNode->InstanceId);
+	UnicodeOutput = TRUE;
+	Data = Buffer;
+	ResultLength = strlen(Buffer) + 1;
+	break;
+
+    case DevicePropertyAddress:
+	return STATUS_NOT_SUPPORTED;
+    default:
+	return STATUS_INVALID_PARAMETER_2;
+    }
+
+    if (!Data) {
+	return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (UnicodeOutput) {
+	return RtlUTF8ToUnicodeN(PropertyBuffer, BufferLength, pResultLength,
+				 Data, ResultLength);
+    }
+
+    *pResultLength = ResultLength;
+    if (ResultLength > BufferLength) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    RtlCopyMemory(PropertyBuffer, Data, ResultLength);
+    return STATUS_SUCCESS;
+}

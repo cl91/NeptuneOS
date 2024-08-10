@@ -371,7 +371,7 @@ extern LIST_ENTRY IopDriverList;
  * checking whether the device belongs to the driver object
  */
 FORCEINLINE PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
-						 IN PIO_DRIVER_OBJECT DriverObject)
+						 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject)
 {
     if (DeviceHandle == 0) {
 	return NULL;

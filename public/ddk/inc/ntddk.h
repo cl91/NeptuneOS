@@ -966,12 +966,19 @@ NTAPI NTSYSAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 					      IN ULONG Flags,
 					      OUT PWSTR *SymbolicLinkList);
 
+NTAPI NTSYSAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
+					    IN DEVICE_REGISTRY_PROPERTY DeviceProperty,
+					    IN ULONG BufferLength,
+					    OUT PVOID PropertyBuffer,
+					    OUT PULONG ResultLength);
+
 NTAPI NTSYSAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
 					     IN PUNICODE_STRING DeviceName);
 
 #define PLUGPLAY_REGKEY_DEVICE                            1
 #define PLUGPLAY_REGKEY_DRIVER                            2
 #define PLUGPLAY_REGKEY_CURRENT_HWPROFILE                 4
+#define PLUGPLAY_REGKEY_BOOT_CONFIGURATION                8
 
 NTAPI NTSYSAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
 						IN ULONG DevInstKeyType,
@@ -1659,29 +1666,3 @@ typedef struct _HWPROFILE_CHANGE_NOTIFICATION {
     USHORT Size;
     GUID Event;
 } HWPROFILE_CHANGE_NOTIFICATION, *PHWPROFILE_CHANGE_NOTIFICATION;
-
-typedef enum _DEVICE_REGISTRY_PROPERTY {
-    DevicePropertyDeviceDescription,
-    DevicePropertyHardwareID,
-    DevicePropertyCompatibleIDs,
-    DevicePropertyBootConfiguration,
-    DevicePropertyBootConfigurationTranslated,
-    DevicePropertyClassName,
-    DevicePropertyClassGuid,
-    DevicePropertyDriverKeyName,
-    DevicePropertyManufacturer,
-    DevicePropertyFriendlyName,
-    DevicePropertyLocationInformation,
-    DevicePropertyPhysicalDeviceObjectName,
-    DevicePropertyBusTypeGuid,
-    DevicePropertyLegacyBusType,
-    DevicePropertyBusNumber,
-    DevicePropertyEnumeratorName,
-    DevicePropertyAddress,
-    DevicePropertyUINumber,
-    DevicePropertyInstallState,
-    DevicePropertyRemovalPolicy,
-    DevicePropertyResourceRequirements,
-    DevicePropertyAllocatedResources,
-    DevicePropertyContainerID
-} DEVICE_REGISTRY_PROPERTY;
