@@ -39,9 +39,32 @@ static NTSTATUS PciFdoStartDevice(IN PIRP Irp,
 	goto commit;
     }
     if (PCI_IS_ROOT_FDO(DeviceExtension)) {
-	/* We should be getting exactly one resource which is the base physical
-	 * address of the Enhanced Configuration Mechanism Address Space. */
 	ASSERT(Resources->Count == 1);
+	for (ULONG i = 0; i < Resources->List[0].PartialResourceList.Count; i++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc =
+		&Resources->List[0].PartialResourceList.PartialDescriptors[i];
+	    switch (Desc->Type) {
+	    case CmResourceTypePort:
+		/* We will not use the legacy 0xCF8 port to access the PCI
+		 * configuration space so we simply ignore the port resource. */
+		DPRINT("PCI Config Port: 0x%x (%u)\n",
+		       Desc->u.Port.Start.u.LowPart,
+		       Desc->u.Port.Length);
+		break;
+	    case CmResourceTypeMemory:
+		DPRINT("PCI Config Memory: 0x%llx (0x%x)\n",
+		       Desc->u.Memory.Start.QuadPart,
+		       Desc->u.Memory.Length);
+		DeviceExtension->ConfigBase = Desc->u.Memory.Start;
+		break;
+	    case CmResourceTypeBusNumber:
+		DPRINT("PCI Root Bus Number: 0x%x (0x%x)\n",
+		       Desc->u.BusNumber.Start,
+		       Desc->u.BusNumber.Length);
+		DeviceExtension->BaseBus = Desc->u.BusNumber.Start;
+		break;
+	    }
+	}
     } else {
 	/* Unhandled for now */
 	ASSERT(Resources->Count == 1);

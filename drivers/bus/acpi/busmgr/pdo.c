@@ -120,9 +120,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
     switch (Stack->Parameters.QueryId.IdType) {
     case BusQueryDeviceID:
-
 	/* This is a REG_SZ value */
-
 	if (DeviceData->AcpiHandle) {
 	    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
 
@@ -157,9 +155,6 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	break;
 
     case BusQueryInstanceID:
-
-	/* This is a REG_SZ value */
-
 	/* See comment in BusQueryDeviceID case */
 	if (DeviceData->AcpiHandle) {
 	    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
@@ -190,7 +185,6 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	break;
 
     case BusQueryHardwareIDs:
-
 	/* This is a REG_MULTI_SZ value */
 	Length = 0;
 	Status = STATUS_NOT_SUPPORTED;
@@ -245,7 +239,6 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	break;
 
     case BusQueryCompatibleIDs:
-
 	/* This is a REG_MULTI_SZ value */
 	Length = 0;
 	Status = STATUS_NOT_SUPPORTED;
@@ -410,6 +403,40 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     return Status;
 }
 
+#define PCI_SEGMENT_ECMA_SIZE (1UL << 28)
+
+static VOID PciGetSegmentNumber(IN PPDO_DEVICE_DATA DeviceData,
+				OUT ULONGLONG *SegmentNumber)
+{
+    PACPI_DEVICE Device;
+    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
+
+    ACPI_STATUS Status = AcpiEvaluateInteger(DeviceData->AcpiHandle, METHOD_NAME__SEG,
+					     NULL, SegmentNumber);
+    if (Status != AE_OK) {
+	DPRINT1("WARNING: Unable to get the PCI segment number using _SEG. Default to 0.\n");
+	*SegmentNumber = 0;
+    } else {
+	DPRINT("Got PCI segment number %lld from _SEG.\n", *SegmentNumber);
+    }
+}
+
+static VOID PciGetBusNumber(IN PPDO_DEVICE_DATA DeviceData,
+			    OUT ULONGLONG *BusNumber)
+{
+    PACPI_DEVICE Device;
+    AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
+
+    ACPI_STATUS Status = AcpiEvaluateInteger(DeviceData->AcpiHandle, METHOD_NAME__BBN,
+					     NULL, BusNumber);
+    if (Status != AE_OK) {
+	DPRINT1("WARNING: Unable to get the PCI bus number using _BBN. Default to 0.\n");
+	*BusNumber = 0;
+    } else {
+	DPRINT("Got PCI bus number %lld from _BBN.\n", *BusNumber);
+    }
+}
+
 static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
     ULONG NumberOfResources = 0;
@@ -420,60 +447,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     ACPI_RESOURCE *Resource;
     ULONG ResourceListSize;
     ULONG i;
-    ULONGLONG BusNumber;
-    PACPI_DEVICE Device;
 
     if (!DeviceData->AcpiHandle) {
 	return STATUS_INVALID_DEVICE_REQUEST;
-    }
-
-    /* A bus number resource is not included in the list of current resources
-     * for the root PCI bus so we manually query one here and if we find it
-     * we create a resource list and add a bus number descriptor to it */
-    if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
-	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
-	AcpiBusGetDevice(DeviceData->AcpiHandle, &Device);
-
-	AcpiStatus = AcpiEvaluateInteger(DeviceData->AcpiHandle, "_BBN", NULL,
-					   &BusNumber);
-	if (AcpiStatus != AE_OK) {
-#if 0
-            if (device->Flags.UniqueId) {
-                /* FIXME: Try the unique ID */
-            }
-            else
-#endif
-	    {
-		BusNumber = 0;
-		DPRINT1("Failed to find a bus number\n");
-	    }
-	} else {
-	    DPRINT("Using _BBN for bus number\n");
-	}
-
-	DPRINT("Found PCI root hub: %llu\n", BusNumber);
-
-	ResourceListSize = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
-	    sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-	ResourceList = ExAllocatePoolWithTag(ResourceListSize, 'RpcA');
-	if (!ResourceList)
-	    return STATUS_INSUFFICIENT_RESOURCES;
-
-	ResourceList->Count = 1;
-	ResourceList->List[0].InterfaceType = Internal;
-	ResourceList->List[0].BusNumber = 0;
-	ResourceList->List[0].PartialResourceList.Version = 1;
-	ResourceList->List[0].PartialResourceList.Revision = 1;
-	ResourceList->List[0].PartialResourceList.Count = 1;
-	ResourceDescriptor = ResourceList->List[0].PartialResourceList.PartialDescriptors;
-
-	ResourceDescriptor->Type = CmResourceTypeBusNumber;
-	ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-	ResourceDescriptor->u.BusNumber.Start = BusNumber;
-	ResourceDescriptor->u.BusNumber.Length = 1;
-
-	Irp->IoStatus.Information = (ULONG_PTR)ResourceList;
-	return STATUS_SUCCESS;
     }
 
     /* Get current resources */
@@ -543,6 +519,17 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	}
 	}
 	Resource = ACPI_NEXT_RESOURCE(Resource);
+    }
+
+    /* For the root PCI bus we find the PCI segment group number and pass
+     * the its Enhanced Configuration Mechanism Address to the pci bus driver. */
+    ULONGLONG SegmentNumber = 0;
+    ULONGLONG BusNumber = 0;
+    if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
+	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
+	PciGetSegmentNumber(DeviceData, &SegmentNumber);
+	PciGetSegmentNumber(DeviceData, &BusNumber);
+	NumberOfResources += 2;
     }
 
     /* Allocate memory */
@@ -904,6 +891,20 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
 
+    if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
+	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
+	ACPI_PCI_ID PciBus = { .Segment = SegmentNumber };
+	ResourceDescriptor->Type = CmResourceTypeMemory;
+	ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+	ResourceDescriptor->u.Memory.Length = PCI_SEGMENT_ECMA_SIZE;
+	ResourceDescriptor->u.Memory.Start.QuadPart = OslGetPciConfigurationAddress(&PciBus);
+	ResourceDescriptor++;
+	ResourceDescriptor->Type = CmResourceTypeBusNumber;
+	ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+	ResourceDescriptor->u.BusNumber.Start = BusNumber;
+	ResourceDescriptor->u.BusNumber.Length = 1;
+    }
+
     ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
     Irp->IoStatus.Information = (ULONG_PTR)ResourceList;
     return STATUS_SUCCESS;
@@ -922,12 +923,6 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
     BOOLEAN SeenStartDependent;
 
     if (!DeviceData->AcpiHandle) {
-	return Irp->IoStatus.Status;
-    }
-
-    /* Handle the PCI root manually */
-    if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
-	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
 	return Irp->IoStatus.Status;
     }
 
@@ -1015,6 +1010,17 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	}
 	}
 	Resource = ACPI_NEXT_RESOURCE(Resource);
+    }
+
+    /* For the root PCI bus we find the PCI segment group number and pass
+     * the its Enhanced Configuration Mechanism Address to the pci bus driver. */
+    ULONGLONG SegmentNumber = 0;
+    ULONGLONG BusNumber = 0;
+    if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
+	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
+	PciGetSegmentNumber(DeviceData, &SegmentNumber);
+	PciGetBusNumber(DeviceData, &BusNumber);
+	NumberOfResources += 2;
     }
 
     RequirementsListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
@@ -1452,6 +1458,24 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	Resource = ACPI_NEXT_RESOURCE(Resource);
     }
     ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
+
+    if (wcsstr(DeviceData->HardwareIDs, L"PNP0A03") != 0 ||
+	wcsstr(DeviceData->HardwareIDs, L"PNP0A08") != 0) {
+	ACPI_PCI_ID PciBus = { .Segment = SegmentNumber, .Bus = BusNumber };
+	RequirementDescriptor->Type = CmResourceTypeMemory;
+	RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+	RequirementDescriptor->u.Memory.Length = PCI_SEGMENT_ECMA_SIZE;
+	RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+	    OslGetPciConfigurationAddress(&PciBus);
+	RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart + PCI_SEGMENT_ECMA_SIZE - 1;
+	RequirementDescriptor++;
+	RequirementDescriptor->Type = CmResourceTypeBusNumber;
+	RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
+	RequirementDescriptor->u.BusNumber.MinBusNumber = BusNumber;
+	RequirementDescriptor->u.BusNumber.MaxBusNumber = BusNumber;
+	RequirementDescriptor->u.BusNumber.Length = 1;
+    }
 
     Irp->IoStatus.Information = (ULONG_PTR)RequirementsList;
 

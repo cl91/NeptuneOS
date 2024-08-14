@@ -653,6 +653,12 @@ static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DE
 	Res.u.Memory.Length = Desc.u.Memory.Length;
 	break;
 
+    case CmResourceTypeBusNumber:
+	/* Assign the first available bus number */
+	Res.u.BusNumber.Start = Desc.u.BusNumber.MinBusNumber;
+	Res.u.BusNumber.Length = Desc.u.BusNumber.Length;
+	break;
+
     default:
 	assert(FALSE);
     }

@@ -97,6 +97,7 @@ VOID AcpiOsSetBusFdo(IN PDEVICE_OBJECT Fdo);
 PDEVICE_OBJECT AcpiOsGetBusFdo();
 VOID AcpiOsSetRootSystemTable(ACPI_PHYSICAL_ADDRESS Rsdt,
 			      ULONG Length);
+ULONG64 OslGetPciConfigurationAddress(ACPI_PCI_ID *PciId);
 
 /* pnp.c */
 #if DBG

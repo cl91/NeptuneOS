@@ -485,15 +485,14 @@ ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS Address,
 
 #define CFG_SHIFT	12
 
-static PVOID OslGetPciConfigurationAddress(ACPI_PCI_ID *PciId,
-					   UINT32 Reg)
+ULONG64 OslGetPciConfigurationAddress(ACPI_PCI_ID *PciId)
 {
     ULONG64 PhyAddr = 0;
     ACPI_TABLE_MCFG *Table;
     ACPI_STATUS Status = AcpiGetTable(ACPI_SIG_MCFG, 0, (ACPI_TABLE_HEADER **)&Table);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("Failed to get MCFG table (Status 0x%08x)\n", Status);
-	return NULL;
+	return 0;
     }
     ACPI_MCFG_ALLOCATION *Entry = (PVOID)(Table + 1);
     ULONG EntryCount = (Table->Header.Length - sizeof(*Table)) / sizeof(*Entry);
@@ -508,9 +507,19 @@ static PVOID OslGetPciConfigurationAddress(ACPI_PCI_ID *PciId,
     if (!PhyAddr) {
 	DPRINT("No MCFG table entry found for PCI segment %d bus %d\n",
 	       PciId->Segment, PciId->Bus);
-	return NULL;
+	return 0;
     }
     PhyAddr += ((PciId->Bus << 8) | (PciId->Device << 3) | PciId->Function) << CFG_SHIFT;
+    return PhyAddr;
+}
+
+static PVOID OslGetPciConfig(ACPI_PCI_ID *PciId,
+			     UINT32 Reg)
+{
+    ULONG64 PhyAddr = OslGetPciConfigurationAddress(PciId);
+    if (!PhyAddr) {
+	return NULL;
+    }
     PPCI_COMMON_CONFIG PciCfg = AcpiOsMapMemory(PhyAddr, 1 << CFG_SHIFT);
     if (!PciCfg) {
 	DPRINT("Unable to map physical memory %llx\n", PhyAddr);
@@ -532,7 +541,7 @@ ACPI_STATUS AcpiOsReadPciConfiguration(ACPI_PCI_ID *PciId,
     DPRINT("AcpiOsReadPciConfiguration, segment=%d, bus=%d, device=%d, func=%d, reg=0x%x\n",
 	   PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, Reg);
 
-    PVOID MappedReg = OslGetPciConfigurationAddress(PciId, Reg);
+    PVOID MappedReg = OslGetPciConfig(PciId, Reg);
     if (!MappedReg) {
 	return AE_NOT_FOUND;
     }
@@ -547,7 +556,7 @@ ACPI_STATUS AcpiOsWritePciConfiguration(ACPI_PCI_ID *PciId,
     DPRINT("AcpiOsWritePciConfiguration, segment=%d, bus=%d, device=%d, func=%d, reg=0x%x\n",
 	   PciId->Device, PciId->Bus, PciId->Device, PciId->Function, Reg);
 
-    PVOID MappedReg = OslGetPciConfigurationAddress(PciId, Reg);
+    PVOID MappedReg = OslGetPciConfig(PciId, Reg);
     if (!MappedReg) {
 	return AE_NOT_FOUND;
     }

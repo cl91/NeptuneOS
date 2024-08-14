@@ -39,41 +39,39 @@ UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
     return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
 }
 
+#define CFG_SHIFT	12
+
 static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
 				    IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer,
 				    IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
 {
-    /* TODO! */
-#if 0
-    PPCI_BUS_INTERFACE_STANDARD PciInterface;
-    PBUS_HANDLER BusHandler;
-    PPCIBUSDATA BusData;
-    PciReadWriteConfig HalFunction;
-
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(DeviceExtension->BusRootFdoExtension));
-
-    /* Get the ACPI-compliant PCI interface */
-    PciInterface = DeviceExtension->BusRootFdoExtension->PciBusInterface;
-    if (PciInterface) {
-	/* Currently this driver only supports the legacy HAL interface */
-	UNIMPLEMENTED_DBGBREAK();
+    PHYSICAL_ADDRESS PhyAddr = DeviceExtension->ConfigBase;
+    PhyAddr.QuadPart += ((DeviceExtension->BaseBus << 8) | (Slot.Bits.DeviceNumber << 3) |
+			 Slot.Bits.FunctionNumber) << CFG_SHIFT;
+    PCHAR Ptr = MmMapIoSpace(PhyAddr, 1UL << CFG_SHIFT, MmNonCached);
+    DPRINT("%s PCI Config Base 0x%llx BaseBus 0x%x Dev 0x%x Func 0x%x Mapped %p\n",
+	   Read ? "Reading" : "Writing",
+	   DeviceExtension->ConfigBase.QuadPart, DeviceExtension->BaseBus,
+	   Slot.Bits.DeviceNumber, Slot.Bits.FunctionNumber, Ptr);
+    if (!Ptr) {
+	RtlRaiseStatus(STATUS_ACCESS_DENIED);
+    }
+#if DBG
+    PPCI_COMMON_CONFIG PciCfg = (PVOID)Ptr;
+    if (PciCfg->Header.VendorID == PCI_INVALID_VENDORID) {
+	DPRINT("Invalid vendor ID in PCI configuration space.\n");
     } else {
-	/* Make sure there's a registered HAL bus handler */
-	ASSERT(DeviceExtension->BusHandler);
-
-	/* PCI Bus Number assignment is only valid on ACPI systems */
-	ASSERT(!PciAssignBusNumbers);
-
-	/* Grab the HAL PCI Bus Handler data */
-	BusHandler = (PBUS_HANDLER)DeviceExtension->BusHandler;
-	BusData = (PPCIBUSDATA)BusHandler->BusData;
-
-	/* Choose the appropriate read or write function, and call it */
-	HalFunction = Read ? BusData->ReadConfig : BusData->WriteConfig;
-	HalFunction(BusHandler, Slot, Buffer, Offset, Length);
+	DPRINT("PCI device is present\n");
     }
 #endif
+    Ptr += Offset;
+    if (Read) {
+	RtlCopyMemory(Buffer, Ptr, Length);
+    } else {
+	RtlCopyMemory(Ptr, Buffer, Length);
+    }
 }
 
 VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
