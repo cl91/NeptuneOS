@@ -327,28 +327,17 @@ NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
 		      IN PVOID OutputBuffer, IN ULONG OutputBufferLength)
 {
     PIRP Irp;
-    NTSTATUS Status;
     IO_STATUS_BLOCK IoStatusBlock;
-    PDEVICE_OBJECT AttachedDevice;
-
-    /* Get a reference to the root PDO (ACPI) */
-    AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
-    if (!AttachedDevice)
-	return STATUS_INVALID_PARAMETER;
 
     /* Build the requested IOCTL IRP */
-    Irp = IoBuildDeviceIoControlRequest(IoControlCode, AttachedDevice, InputBuffer,
+    Irp = IoBuildDeviceIoControlRequest(IoControlCode, DeviceObject, InputBuffer,
 					InputBufferLength, OutputBuffer,
 					OutputBufferLength, 0, &IoStatusBlock);
     if (!Irp)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
     /* Send the IOCTL to the driver */
-    Status = IoCallDriver(AttachedDevice, Irp);
-
-    /* Take away the reference we took and return the result to the caller */
-    ObDereferenceObject(AttachedDevice);
-    return Status;
+    return IoCallDriver(DeviceObject, Irp);
 }
 
 ULONGLONG PciGetHackFlags(IN USHORT VendorId, IN USHORT DeviceId,
