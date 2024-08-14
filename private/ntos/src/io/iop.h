@@ -383,6 +383,12 @@ FORCEINLINE PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
 		return DevObj;
 	    }
 	}
+	/* Check the list of device object handles that have been granted to the driver. */
+	LoopOverList(Msg, &DriverObject->CloseDeviceMsgList, CLOSE_DEVICE_MESSAGE, DriverLink) {
+	    if (Msg->DeviceObject == GLOBAL_HANDLE_TO_OBJECT(DeviceHandle)) {
+		return Msg->DeviceObject;
+	    }
+	}
     } else {
 	/* Traverse the list of all driver objects, and check if there is a match */
 	LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
