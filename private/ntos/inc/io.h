@@ -57,8 +57,6 @@ typedef struct _IO_DRIVER_OBJECT {
     BOOLEAN DriverLoaded;  /* TRUE if the driver loading succeeded. This is used by
 			    * PsTerminateProcess to determine whether we should
 			    * dereference the driver object. */
-    BOOLEAN AddDeviceCalled; /* Windows only calls AddDevice once, when the driver
-			      * is loaded by the PnP manager. */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*

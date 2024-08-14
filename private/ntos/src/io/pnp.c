@@ -578,13 +578,9 @@ check:
 
 call:
     assert(Locals.DriverObject != NULL);
-    if (Locals.DriverObject->AddDeviceCalled) {
-	goto check;
-    }
     IF_ERR_GOTO(end, Status, IopQueueAddDeviceRequest(Thread, DeviceNode,
 						      Locals.DriverObject,
 						      &Locals.PendingIrp));
-    Locals.DriverObject->AddDeviceCalled = TRUE;
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
