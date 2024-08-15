@@ -554,8 +554,8 @@ BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
     SlaveFixed = (ProgIf & 8) == 0;
 
     /*
-     * [..] In order for Windows XP SP1 and Windows Server 2003 to switch an ATA
-     * ATA controller from compatible mode to native mode, the following must be
+     * In order for Windows XP SP1 and Windows Server 2003 to switch an ATA
+     * controller from compatible mode to native mode, the following must be
      * true:
      *
      * - The controller must indicate in its programming interface that both channels
@@ -563,7 +563,7 @@ BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
      *   not support switching only one IDE channel to native mode. See the PCI IDE
      *   Controller Specification Revision 1.0 for details.
      */
-    if ((MasterMode != SlaveMode) || (MasterFixed != SlaveFixed)) {
+    if (MasterMode != SlaveMode || MasterFixed != SlaveFixed) {
 	/* Windows does not support this configuration, fail */
 	DPRINT1("PCI: Warning unsupported IDE controller configuration for "
 		"VEN_%04x&DEV_%04x!",
@@ -572,9 +572,9 @@ BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Check if the controller is already in native mode */
-    if ((MasterMode) && (SlaveMode)) {
+    if (MasterMode && SlaveMode) {
 	/* Check if I/O decodes should be disabled */
-	if ((Initial) || (PdoExtension->IoSpaceUnderNativeIdeControl)) {
+	if (Initial || PdoExtension->IoSpaceUnderNativeIdeControl) {
 	    /* Read the current command */
 	    PciReadDeviceConfig(PdoExtension, &Command,
 				FIELD_OFFSET(PCI_COMMON_HEADER, Command), sizeof(USHORT));
@@ -593,8 +593,8 @@ BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	/* The controller is now in native mode */
 	Switched = TRUE;
-    } else if (!(MasterFixed) && !(SlaveFixed) &&
-	       (PdoExtension->BIOSAllowsIDESwitchToNativeMode) &&
+    } else if (!MasterFixed && !SlaveFixed &&
+	       PdoExtension->BIOSAllowsIDESwitchToNativeMode &&
 	       !(PdoExtension->HackFlags & PCI_HACK_DISABLE_IDE_NATIVE_MODE)) {
 	/* Turn off decodes */
 	PciDecodeEnable(PdoExtension, FALSE, NULL);

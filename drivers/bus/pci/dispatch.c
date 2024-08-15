@@ -12,15 +12,6 @@
 
 /* FUNCTIONS ******************************************************************/
 
-static NTSTATUS PciCallDownIrpStack(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
-{
-    DPRINT1("PciCallDownIrpStack ...\n");
-    ASSERT_FDO(DeviceExtension);
-
-    /* Call the attached device */
-    return IoCallDriverEx(DeviceExtension->AttachedDeviceObject, Irp, NULL);
-}
-
 static NTSTATUS PciPassIrpFromFdoToPdo(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
 {
     DPRINT1("Pci PassIrp ...\n");
@@ -106,48 +97,14 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    DbgBreakPoint();
 	}
 
-	/* Check if this IRP should be sent up the stack first */
-	if (DispatchStyle == IRP_UPWARD) {
-	    /* Do it now before handling it ourselves */
-	    PciCallDownIrpStack(DeviceExtension, Irp);
-	}
-
 	/* Call the our driver's handler for this IRP and deal with the IRP */
 	Status = DispatchFunction(Irp, IoStackLocation, DeviceExtension);
-	switch (DispatchStyle) {
-	/* Complete IRPs are completely immediately by our driver */
-	case IRP_COMPLETE:
-	    PassToPdo = FALSE;
-	    break;
-
-	/* Downward IRPs are send to the attached FDO */
-	case IRP_DOWNWARD:
-	    PassToPdo = TRUE;
-	    break;
-
-	/* Upward IRPs are completed immediately by our driver */
-	case IRP_UPWARD:
-	    PassToPdo = FALSE;
-	    break;
-
-	/* Dispatch IRPs are immediately returned */
-	case IRP_DISPATCH:
-	    return Status;
-
-	/* There aren't any other dispatch styles! */
-	default:
-	    ASSERT(FALSE);
-	    return Status;
-	}
+	PassToPdo = DispatchStyle == IRP_FORWARD;
     }
 
-    /* Pending IRPs are returned immediately */
-    if (Status == STATUS_PENDING)
-	return Status;
-
-    /* Handled IRPs return their status in the status block */
-    if (Status != STATUS_NOT_SUPPORTED)
-	Irp->IoStatus.Status = Status;
+    /* Dispatch routines should never return STATUS_PENDING. */
+    assert(Status != STATUS_PENDING);
+    Irp->IoStatus.Status = Status;
 
     /* Successful, or unhandled IRPs that are "DOWNWARD" are sent to the PDO */
     if (PassToPdo && (NT_SUCCESS(Status) || Status == STATUS_NOT_SUPPORTED)) {

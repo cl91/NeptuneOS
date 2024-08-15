@@ -277,51 +277,51 @@ out:
 }
 
 static PCI_MN_DISPATCH_TABLE PciFdoDispatchPowerTable[] = {
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoWaitWake },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoSetPowerState },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryPower },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoWaitWake },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoSetPowerState },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoIrpQueryPower },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
 };
 
 static PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
-    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoStartDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryRemoveDevice },
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciFdoRemoveDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelRemoveDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoStopDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryStopDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelStopDevice },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryDeviceRelations },
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryCapabilities },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_UPWARD, (PCI_DISPATCH_FUNCTION)PciFdoDeviceUsageNotification },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoSurpriseRemoval },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryLegacyBusInformation },
-    { IRP_DOWNWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoStartDevice },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryRemoveDevice },
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoRemoveDevice },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelRemoveDevice },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoStopDevice },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryStopDevice },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelStopDevice },
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoQueryDeviceRelations },
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoQueryCapabilities },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoDeviceUsageNotification },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoSurpriseRemoval },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryLegacyBusInformation },
+    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }
 };
 
 static PCI_MJ_DISPATCH_TABLE PciFdoDispatchTable = {
-    IRP_MN_DEVICE_ENUMERATED,
-    PciFdoDispatchPnpTable,
-    IRP_MN_QUERY_POWER,
-    PciFdoDispatchPowerTable,
-    IRP_DOWNWARD,
-    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported,
-    IRP_DOWNWARD,
-    (PCI_DISPATCH_FUNCTION)PciIrpNotSupported
+    .PnpIrpMaximumMinorFunction = IRP_MN_DEVICE_ENUMERATED,
+    .PnpIrpDispatchTable = PciFdoDispatchPnpTable,
+    .PowerIrpMaximumMinorFunction = IRP_MN_QUERY_POWER,
+    .PowerIrpDispatchTable = PciFdoDispatchPowerTable,
+    .SystemControlIrpDispatchStyle = IRP_FORWARD,
+    .SystemControlIrpDispatchFunction = (PCI_DISPATCH_FUNCTION)PciIrpNotSupported,
+    .OtherIrpDispatchStyle = IRP_FORWARD,
+    .OtherIrpDispatchFunction = (PCI_DISPATCH_FUNCTION)PciIrpNotSupported
 };
 
 static VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtension,

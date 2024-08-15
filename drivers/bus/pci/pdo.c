@@ -377,7 +377,7 @@ static NTSTATUS PciPdoQueryLegacyBusInformation(IN PIRP Irp,
 }
 
 static PCI_MN_DISPATCH_TABLE PciPdoDispatchPowerTable[] = {
-    { IRP_DISPATCH, (PCI_DISPATCH_FUNCTION)PciPdoWaitWake },
+    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoWaitWake },
     { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
     { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoSetPowerState },
     { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciPdoIrpQueryPower },

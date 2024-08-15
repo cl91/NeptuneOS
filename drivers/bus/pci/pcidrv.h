@@ -132,9 +132,7 @@ typedef enum _PCI_STATE {
 //
 typedef enum _PCI_DISPATCH_STYLE {
     IRP_COMPLETE,
-    IRP_DOWNWARD,
-    IRP_UPWARD,
-    IRP_DISPATCH,
+    IRP_FORWARD
 } PCI_DISPATCH_STYLE;
 
 //
