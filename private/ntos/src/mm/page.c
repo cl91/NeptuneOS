@@ -960,12 +960,14 @@ retry:
 	RET_ERR(MiCreateSharedPage(OldPage, VSpace, VirtAddr, Rights, Attributes, &Page));
     } else {
 	/* This cannot happen since we checked above, but return error anyway. */
+	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
 
     assert(Page != NULL);
     RET_ERR_EX(MiMapSuperStructure(Page, VSpace, NULL), MiFreePagingStructure(Page));
     RET_ERR_EX(MiMapPagingStructure(Page), MiFreePagingStructure(Page));
+    Untyped->Requested = TRUE;
 
     return STATUS_SUCCESS;
 }

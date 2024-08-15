@@ -265,7 +265,7 @@ typedef struct _UNTYPED {
  * Virtual address descriptor
  *
  * A virtual address descriptor describes a contiguous region of pages within
- * the client process's virtual address space, that have the same access rights,
+ * the client process's virtual address space that have the same access rights,
  * attributes, and that belong to the same view of a section (or subsection).
  *
  * In terms of ownership of the memory pages within the VAD, there are two types
