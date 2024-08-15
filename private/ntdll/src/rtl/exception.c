@@ -223,8 +223,8 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 
     if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
 	ExceptionRecord->NumberParameters == 2) {
-	DbgPrinter("Faulting Address: %08zx\n",
-		   ExceptionRecord->ExceptionInformation[1]);
+	DbgPrinter("Faulting Address: %p\n",
+		   (PVOID)ExceptionRecord->ExceptionInformation[1]);
     }
 
     /* Trace the wine special error and show the modulename and functionname */
