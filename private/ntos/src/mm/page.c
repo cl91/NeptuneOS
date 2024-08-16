@@ -22,19 +22,6 @@ static inline PCSTR MiPagingTypeToStr(PAGING_STRUCTURE_TYPE Type)
 #endif
 
 /*
- * Sanitize the virtual address such that it is aligned with
- * the boundary of the address window of the paging structure
- */
-static inline MWORD MiSanitizeAlignment(IN PAGING_STRUCTURE_TYPE Type,
-					IN MWORD VirtAddr)
-{
-    return VirtAddr & ~(MiPagingWindowSize(Type) - 1);
-}
-
-#define ASSERT_ALIGNMENT(Page)						\
-    assert(MiSanitizeAlignment(Page->Type, Page->AvlNode.Key) == Page->AvlNode.Key)
-
-/*
  * Returns the log2size of the seL4 kernel object representing the paging structure
  *
  * Note: Not to be confused with the log2size of the address window it represents
@@ -53,31 +40,6 @@ static inline LONG MiPagingObjLog2Size(PAGING_STRUCTURE_TYPE Type)
 	return PDPT_OBJ_LOG2SIZE;
     } else if (Type == PAGING_TYPE_PML4) {
 	return PML4_OBJ_LOG2SIZE;
-    }
-    assert(FALSE);
-    return 0;
-}
-
-/*
- * Returns the type of the seL4 kernel object representing the paging structure
- * that is one layer below the specified paging structure. In other words, for page
- * tables we return page, etc.
- *
- * Note that multiple paging structure types can share the same super-structure
- * (for instance, both page tables and large pages have page directory as parent),
- * and MiPagingSubStructureType returns the intermediate mapping structure (ie.
- * page table, page directory, and PDPT), not the large/huge page types.
- */
-static inline PAGING_STRUCTURE_TYPE MiPagingSubStructureType(PAGING_STRUCTURE_TYPE Type)
-{
-    if (Type == PAGING_TYPE_PAGE_TABLE) {
-	return PAGING_TYPE_PAGE;
-    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
-	return PAGING_TYPE_PAGE_TABLE;
-    } else if (Type == PAGING_TYPE_PDPT) {
-	return PAGING_TYPE_PAGE_DIRECTORY;
-    } else if (Type == PAGING_TYPE_PML4) {
-	return PAGING_TYPE_PDPT;
     }
     assert(FALSE);
     return 0;
@@ -106,17 +68,6 @@ static inline PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PAGING_STRUCTURE_
 #endif
     assert(FALSE);
     return 0;
-}
-
-/*
- * Returns TRUE if the address window that the paging structure represents
- * contains the given virtual address
- */
-static inline BOOLEAN MiPagingStructureContainsAddr(IN PPAGING_STRUCTURE Paging,
-						    IN MWORD VirtAddr)
-{
-    return AvlNodeContainsAddr(&Paging->AvlNode,
-			       MiPagingWindowSize(Paging->Type), VirtAddr);
 }
 
 /*
@@ -156,10 +107,10 @@ static PPAGING_STRUCTURE MiPagingFindSubstructure(IN PPAGING_STRUCTURE Paging,
     assert(Paging != NULL);
     VirtAddr = MiSanitizeAlignment(MiPagingSubStructureType(Paging->Type), VirtAddr);
     PAVL_TREE Tree = &Paging->SubStructureTree;
-    PAVL_NODE Parent = AvlTreeFindNodeOrParent(Tree, VirtAddr);
-    PPAGING_STRUCTURE Super = AVL_NODE_TO_PAGING_STRUCTURE(Parent);
-    if (Super != NULL && MiPagingStructureContainsAddr(Super, VirtAddr)) {
-	return Super;
+    PAVL_NODE Node = AvlTreeFindNodeOrParent(Tree, VirtAddr);
+    PPAGING_STRUCTURE SubStructure = AVL_NODE_TO_PAGING_STRUCTURE(Node);
+    if (SubStructure && MiPagingStructureContainsAddr(SubStructure, VirtAddr)) {
+	return SubStructure;
     }
     return NULL;
 }
@@ -182,16 +133,16 @@ static VOID MiPagingInsertSubStructure(IN PPAGING_STRUCTURE Self,
     assert(SubStructure->Mapped);
     PAVL_TREE Tree = &Self->SubStructureTree;
     MWORD VirtAddr = SubStructure->AvlNode.Key;
-    PAVL_NODE Super = AvlTreeFindNodeOrParent(Tree, VirtAddr);
-    if (Super != NULL &&
-	MiPagingStructureContainsAddr(AVL_NODE_TO_PAGING_STRUCTURE(Super), VirtAddr)) {
+    PAVL_NODE Parent = AvlTreeFindNodeOrParent(Tree, VirtAddr);
+    if (Parent != NULL &&
+	MiPagingStructureContainsAddr(AVL_NODE_TO_PAGING_STRUCTURE(Parent), VirtAddr)) {
 	MmDbg("Assertion triggered. Dumping PAGING_STRUCTURE Super:\n");
-	MmDbgDumpPagingStructure(AVL_NODE_TO_PAGING_STRUCTURE(Super));
+	MmDbgDumpPagingStructure(AVL_NODE_TO_PAGING_STRUCTURE(Parent));
 	MmDbg("Dumping PAGING_STRUCTURE SubStructure:\n");
 	MmDbgDumpPagingStructure(SubStructure);
 	assert(FALSE);
     }
-    AvlTreeInsertNode(Tree, Super, &SubStructure->AvlNode);
+    AvlTreeInsertNode(Tree, Parent, &SubStructure->AvlNode);
     SubStructure->SuperStructure = Self;
 }
 
@@ -662,14 +613,14 @@ MWORD MiGetPhysicalAddress(IN PPAGING_STRUCTURE Page)
  *   |------------|  |------------|    |------------|
  *   |PAGE TABLE 0|  |PAGE TABLE 1|    |PAGE TABLE 2|
  *   |------------|  |------------|    |------------|
- *     |     |                               |
- * |-----| |-----|                        |-----|
- * |PAGE0| |PAGE1|                        |PAGE2|
- * |-----| |-----|                        |-----|
+ *     |     |             |                 |
+ * |-----| |-----|      |-----|           |-----|
+ * |PAGE0| |PAGE1|      |PAGE2|           |PAGE3|
+ * |-----| |-----|      |-----|           |-----|
  *
- * Calling MiGetNextPagingStructure on Page0 will return Page1, while calling it
- * on Page1 will return PageTable1, and calling it on PageTable1 will return Page2.
- * Calling it on PageTable0 will return PageTable1.
+ * Calling MiGetNextPagingStructure on Page0 will return Page1. Calling it
+ * on Page1 will return Page2. Calling it on PageTable1 will return Page3.
+ * Calling it on PageTable0 will return Page2.
  */
 PPAGING_STRUCTURE MiGetNextPagingStructure(IN PPAGING_STRUCTURE Page)
 {

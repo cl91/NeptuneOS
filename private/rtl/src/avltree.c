@@ -306,6 +306,35 @@ PAVL_NODE AvlTreeFindNodeOrPrevEx(IN PAVL_TREE Tree,
 }
 
 /*
+ * Returns Node with the smallest key such that Node->Key >= input Key.
+ *
+ * In other words, if the tree has a node with the given key, this routine
+ * returns that node. Otherwise, pretend that a node with the given key is
+ * inserted into the tree, and this routine returns its next node.
+ *
+ * Returns NULL if no such node is found.
+ *
+ * Note: don't use this to find the parent node if you want to insert into tree.
+ * Use AvlTreeFindNodeOrParent instead.
+ */
+PAVL_NODE AvlTreeFindNodeOrNextEx(IN PAVL_TREE Tree,
+				  IN ULONG64 Key,
+				  OUT OPTIONAL PAVL_NODE *pParent)
+{
+    PAVL_NODE Parent = AvlTreeFindNodeOrParent(Tree, Key);
+    if (Parent == NULL) {
+	return NULL;
+    }
+    if (pParent) {
+	*pParent = Parent;
+    }
+    if (Parent->Key >= Key) {
+	return Parent;
+    }
+    return AvlGetNextNode(Parent);
+}
+
+/*
  * Returns the node of given key if it is in the tree. Otherwise,
  * returns NULL.
  */

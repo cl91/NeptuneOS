@@ -242,6 +242,31 @@ static inline BOOLEAN MiPagingTypeIsPageOrLargePage(IN PAGING_STRUCTURE_TYPE Typ
 }
 
 /*
+ * Returns the type of the seL4 kernel object representing the paging structure
+ * that is one layer below the specified paging structure. In other words, for page
+ * tables we return page, etc.
+ *
+ * Note that multiple paging structure types can share the same super-structure
+ * (for instance, both page tables and large pages have page directory as parent),
+ * and MiPagingSubStructureType returns the intermediate mapping structure (ie.
+ * page table, page directory, and PDPT), not the large/huge page types.
+ */
+static inline PAGING_STRUCTURE_TYPE MiPagingSubStructureType(PAGING_STRUCTURE_TYPE Type)
+{
+    if (Type == PAGING_TYPE_PAGE_TABLE) {
+	return PAGING_TYPE_PAGE;
+    } else if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
+	return PAGING_TYPE_PAGE_TABLE;
+    } else if (Type == PAGING_TYPE_PDPT) {
+	return PAGING_TYPE_PAGE_DIRECTORY;
+    } else if (Type == PAGING_TYPE_PML4) {
+	return PAGING_TYPE_PDPT;
+    }
+    assert(FALSE);
+    return 0;
+}
+
+/*
  * Returns the log2size of the address window that the paging structure represents
  */
 static inline LONG MiPagingWindowLog2Size(IN PAGING_STRUCTURE_TYPE Type)
@@ -270,6 +295,30 @@ static inline MWORD MiPagingWindowSize(IN PAGING_STRUCTURE_TYPE Type)
 {
     return 1ULL << MiPagingWindowLog2Size(Type);
 }
+
+/*
+ * Returns TRUE if the address window that the paging structure represents
+ * contains the given virtual address
+ */
+static inline BOOLEAN MiPagingStructureContainsAddr(IN PPAGING_STRUCTURE Paging,
+						    IN MWORD VirtAddr)
+{
+    return AvlNodeContainsAddr(&Paging->AvlNode,
+			       MiPagingWindowSize(Paging->Type), VirtAddr);
+}
+
+/*
+ * Sanitize the virtual address such that it is aligned with
+ * the boundary of the address window of the paging structure
+ */
+static inline MWORD MiSanitizeAlignment(IN PAGING_STRUCTURE_TYPE Type,
+					IN MWORD VirtAddr)
+{
+    return VirtAddr & ~(MiPagingWindowSize(Type) - 1);
+}
+
+#define ASSERT_ALIGNMENT(Page)						\
+    assert(MiSanitizeAlignment(Page->Type, Page->AvlNode.Key) == Page->AvlNode.Key)
 
 /* vaddr.c */
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,

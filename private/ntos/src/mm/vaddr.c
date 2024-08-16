@@ -720,25 +720,46 @@ NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
  * De-commit the given address window. The actual decommitted window is returned.
  */
 VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
-		      IN OUT MWORD *StartAddr,
+		      IN OUT MWORD *pStartAddr,
 		      IN OUT MWORD *WindowSize)
 {
-    MWORD EndAddr = PAGE_ALIGN_UP(*StartAddr + *WindowSize);
-    *StartAddr = PAGE_ALIGN(*StartAddr);
-    MWORD CurrentAddr = *StartAddr;
-    while (CurrentAddr < EndAddr) {
-	PPAGING_STRUCTURE Page = MiQueryVirtualAddress(VSpace, CurrentAddr);
-	if (Page && MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	    if (CurrentAddr == *StartAddr) {
-		*StartAddr = Page->AvlNode.Key;
-	    }
-	    CurrentAddr = Page->AvlNode.Key + MiPagingWindowSize(Page->Type);
-	    MiDeletePage(Page);
-	} else {
-	    CurrentAddr += PAGE_SIZE;
+    MWORD EndAddr = PAGE_ALIGN_UP(*pStartAddr + *WindowSize);
+    MWORD StartAddr = PAGE_ALIGN(*pStartAddr);
+    *pStartAddr = StartAddr;
+    *WindowSize = EndAddr - StartAddr;
+    PPAGING_STRUCTURE Page = VSpace->RootPagingStructure;
+    /* Address space is empty, so exit. */
+    if (!Page) {
+	return;
+    }
+    /* Descend through the multi-level trees and find the first page or
+     * large page that is mapped at or after the starting address. */
+    while (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	MWORD AlignedAddr = MiSanitizeAlignment(MiPagingSubStructureType(Page->Type),
+						StartAddr);
+	PAVL_TREE Tree = &Page->SubStructureTree;
+	PAVL_NODE Node = AvlTreeFindNodeOrNext(Tree, AlignedAddr);
+	PPAGING_STRUCTURE SubStructure = AVL_NODE_TO_PAGING_STRUCTURE(Node);
+	if (!SubStructure) {
+	    break;
+	}
+	Page = SubStructure;
+	if (!MiPagingStructureContainsAddr(Page, StartAddr)) {
+	    break;
 	}
     }
-    *WindowSize = CurrentAddr - *StartAddr;
+    if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
+	/* If Page is an empty paging structure, this is a no-op. */
+	Page = MiGetFirstPage(Page);
+    }
+    /* Delete the all paging structures till EndAddr is reached. */
+    while (Page && Page->AvlNode.Key < EndAddr) {
+	PPAGING_STRUCTURE NextPage = MiGetNextPagingStructure(Page);
+	/* MiDeletePage will delete the parent paging structure if
+	 * it becomes empty. */
+	MiDeletePage(Page);
+	Page = NextPage;
+    }
 }
 
 /*

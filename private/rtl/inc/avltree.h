@@ -162,6 +162,9 @@ PAVL_NODE AvlTreeFindNodeOrParent(IN PAVL_TREE Tree,
 PAVL_NODE AvlTreeFindNodeOrPrevEx(IN PAVL_TREE Tree,
 				  IN ULONG64 Key,
 				  OUT OPTIONAL PAVL_NODE *pParent);
+PAVL_NODE AvlTreeFindNodeOrNextEx(IN PAVL_TREE Tree,
+				  IN ULONG64 Key,
+				  OUT OPTIONAL PAVL_NODE *pParent);
 PAVL_NODE AvlTreeFindNode(IN PAVL_TREE Tree,
 			  IN ULONG64 Key);
 VOID AvlTreeAppendNode(IN PAVL_TREE Tree,
@@ -182,6 +185,12 @@ FORCEINLINE PAVL_NODE AvlTreeFindNodeOrPrev(IN PAVL_TREE Tree,
 					    IN MWORD Key)
 {
     return AvlTreeFindNodeOrPrevEx(Tree, Key, NULL);
+}
+
+FORCEINLINE PAVL_NODE AvlTreeFindNodeOrNext(IN PAVL_TREE Tree,
+					    IN MWORD Key)
+{
+    return AvlTreeFindNodeOrNextEx(Tree, Key, NULL);
 }
 
 /*
