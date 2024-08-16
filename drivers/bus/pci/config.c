@@ -42,7 +42,7 @@ UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
 #define CFG_SHIFT	12
 
 static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
-				    IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer,
+				    IN PCI_SLOT_NUMBER Slot, IN PCHAR Buffer,
 				    IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
 {
     /* Only the root FDO can access configuration space */
@@ -50,11 +50,13 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     PHYSICAL_ADDRESS PhyAddr = DeviceExtension->ConfigBase;
     PhyAddr.QuadPart += ((DeviceExtension->BaseBus << 8) | (Slot.Bits.DeviceNumber << 3) |
 			 Slot.Bits.FunctionNumber) << CFG_SHIFT;
-    PCHAR Ptr = MmMapIoSpace(PhyAddr, 1UL << CFG_SHIFT, MmNonCached);
-    DPRINT("%s PCI Config Base 0x%llx BaseBus 0x%x Dev 0x%x Func 0x%x Mapped %p\n",
+    volatile PCHAR Ptr = MmMapIoSpace(PhyAddr, 1UL << CFG_SHIFT, MmNonCached);
+    DPRINT("%s PCI Config Base 0x%llx BaseBus 0x%x Dev 0x%x Func 0x%x "
+	   "Mapped %p Buffer %p Offset 0x%x Length 0x%x\n",
 	   Read ? "Reading" : "Writing",
 	   DeviceExtension->ConfigBase.QuadPart, DeviceExtension->BaseBus,
-	   Slot.Bits.DeviceNumber, Slot.Bits.FunctionNumber, Ptr);
+	   Slot.Bits.DeviceNumber, Slot.Bits.FunctionNumber, Ptr,
+	   Buffer, Offset, Length);
     if (!Ptr) {
 	RtlRaiseStatus(STATUS_ACCESS_DENIED);
     }
@@ -67,10 +69,12 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     }
 #endif
     Ptr += Offset;
-    if (Read) {
-	RtlCopyMemory(Buffer, Ptr, Length);
-    } else {
-	RtlCopyMemory(Ptr, Buffer, Length);
+    for (ULONG i = 0; i < Length; i++) {
+	if (Read) {
+	    Buffer[i] = Ptr[i];
+	} else {
+	    Ptr[i] = Buffer[i];
+	}
     }
 }
 
