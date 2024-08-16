@@ -87,11 +87,11 @@ static IMAGE_RESOURCE_DIRECTORY *RtlpFindFirstResourceEntry(IMAGE_RESOURCE_DIREC
  */
 static IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryById(IMAGE_RESOURCE_DIRECTORY *Dir,
 							   WORD Id,
-							   void *Root,
+							   PVOID Root,
 							   BOOLEAN WantDir)
 {
     const IMAGE_RESOURCE_DIRECTORY_ENTRY *Entry;
-    ULONG Min, Max, Pos;
+    LONG Min, Max, Pos;
 
     Entry = (const IMAGE_RESOURCE_DIRECTORY_ENTRY *)(Dir + 1);
     Min = Dir->NumberOfNamedEntries;
