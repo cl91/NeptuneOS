@@ -87,6 +87,7 @@ future
 ply
 setuptools
 six
+lxml
 ```
 You will also need `cmake`, `clang`, `llvm` and `lld` as a basic toolchain. `clang`
 is a native cross compiler that can generate both ELF and PE targets. GCC is not
