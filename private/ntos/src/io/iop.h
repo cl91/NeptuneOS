@@ -541,6 +541,11 @@ VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 FORCEINLINE BOOLEAN IopDeviceHandleIsGranted(IN PIO_DEVICE_OBJECT DeviceObject,
 					     IN PIO_DRIVER_OBJECT DriverObject)
 {
+    LoopOverList(ExistingDevice, &DriverObject->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	if (ExistingDevice == DeviceObject) {
+	    return TRUE;
+	}
+    }
     LoopOverList(ExistingReq, &DeviceObject->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
 	if (ExistingReq->DriverObject == DriverObject) {
 	    return TRUE;
