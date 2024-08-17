@@ -241,9 +241,11 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
     /* Decrease the refcount of the volume file that we increased in IopOpenDevice,
      * when the volume file was first opened. */
     if (Vcb->VolumeFile) {
-	assert(Vcb->VolumeFile->Zombie);
-	assert(!Vcb->VolumeFile->DeviceObject);
-	assert(!Vcb->VolumeFile->Fcb);
+	if (Force) {
+	    assert(Vcb->VolumeFile->Zombie);
+	    assert(!Vcb->VolumeFile->DeviceObject);
+	    assert(!Vcb->VolumeFile->Fcb);
+	}
 	ObDereferenceObject(Vcb->VolumeFile);
     }
     /* Dereference the volume device object that the file system driver created
