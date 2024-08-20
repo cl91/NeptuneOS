@@ -37,27 +37,16 @@ Revision History:
 
 #define DICTIONARY_SIGNATURE 'tciD'
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable:4200) // nonstandard extension used : zero-sized array in struct/union
-#endif
 struct _DICTIONARY_HEADER {
     PDICTIONARY_HEADER Next;
     ULONGLONG Key;
     UCHAR Data[0];
 };
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 struct _DICTIONARY_HEADER;
 typedef struct _DICTIONARY_HEADER DICTIONARY_HEADER, *PDICTIONARY_HEADER;
 
-
-VOID
-InitializeDictionary(
-    IN PDICTIONARY Dictionary
-    )
+VOID InitializeDictionary(IN PDICTIONARY Dictionary)
 {
     RtlZeroMemory(Dictionary, sizeof(DICTIONARY));
     Dictionary->Signature = DICTIONARY_SIGNATURE;
@@ -65,23 +54,16 @@ InitializeDictionary(
     return;
 }
 
-
 BOOLEAN
-TestDictionarySignature(
-    IN PDICTIONARY Dictionary
-    )
+TestDictionarySignature(IN PDICTIONARY Dictionary)
 {
     return Dictionary->Signature == DICTIONARY_SIGNATURE;
 }
 
 NTSTATUS
-AllocateDictionaryEntry(
-    IN PDICTIONARY Dictionary,
-    IN ULONGLONG Key,
-    _In_range_(0, sizeof(FILE_OBJECT_EXTENSION)) IN ULONG Size,
-    IN ULONG Tag,
-    OUT PVOID *Entry
-    )
+AllocateDictionaryEntry(IN PDICTIONARY Dictionary, IN ULONGLONG Key,
+			_In_range_(0, sizeof(FILE_OBJECT_EXTENSION)) IN ULONG Size,
+			IN ULONG Tag, OUT PVOID *Entry)
 {
     PDICTIONARY_HEADER header;
     KIRQL oldIrql;
@@ -91,12 +73,10 @@ AllocateDictionaryEntry(
 
     *Entry = NULL;
 
-    header = ExAllocatePoolWithTag(NonPagedPoolNx,
-                                   Size + sizeof(DICTIONARY_HEADER),
-                                   Tag);
+    header = ExAllocatePoolWithTag(NonPagedPoolNx, Size + sizeof(DICTIONARY_HEADER), Tag);
 
-    if(header == NULL) {
-        return STATUS_INSUFFICIENT_RESOURCES;
+    if (header == NULL) {
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     RtlZeroMemory(header, sizeof(DICTIONARY_HEADER) + Size);
@@ -108,61 +88,55 @@ AllocateDictionaryEntry(
 
     KeAcquireSpinLock(&(Dictionary->SpinLock), &oldIrql);
 
-    TRY {
+    TRY
+    {
+	entry = &(Dictionary->List);
 
-        entry = &(Dictionary->List);
+	while (*entry != NULL) {
+	    if ((*entry)->Key == Key) {
+		//
+		// Dictionary must have unique keys.
+		//
 
-        while(*entry != NULL) {
-            if((*entry)->Key == Key) {
+		status = STATUS_OBJECT_NAME_COLLISION;
+		LEAVE;
 
-                //
-                // Dictionary must have unique keys.
-                //
+	    } else if ((*entry)->Key < Key) {
+		//
+		// We will go ahead and insert the key in here.
+		//
+		break;
+	    } else {
+		entry = &((*entry)->Next);
+	    }
+	}
 
-                status = STATUS_OBJECT_NAME_COLLISION;
-                LEAVE;
+	//
+	// If we make it here then we will go ahead and do the insertion.
+	//
 
-            } else if ((*entry)->Key < Key) {
+	header->Next = *entry;
+	*entry = header;
+    }
+    FINALLY
+    {
+	KeReleaseSpinLock(&(Dictionary->SpinLock), oldIrql);
 
-                //
-                // We will go ahead and insert the key in here.
-                //
-                break;
-            } else {
-                entry = &((*entry)->Next);
-            }
-        }
-
-        //
-        // If we make it here then we will go ahead and do the insertion.
-        //
-
-        header->Next = *entry;
-        *entry = header;
-
-    } FINALLY {
-        KeReleaseSpinLock(&(Dictionary->SpinLock), oldIrql);
-
-        if(!NT_SUCCESS(status)) {
-            FREE_POOL(header);
-        } else {
-            *Entry = (PVOID) header->Data;
-        }
+	if (!NT_SUCCESS(status)) {
+	    FREE_POOL(header);
+	} else {
+	    *Entry = (PVOID)header->Data;
+	}
     }
     return status;
 }
 
-
 PVOID
-GetDictionaryEntry(
-    IN PDICTIONARY Dictionary,
-    IN ULONGLONG Key
-    )
+GetDictionaryEntry(IN PDICTIONARY Dictionary, IN ULONGLONG Key)
 {
     PDICTIONARY_HEADER entry;
     PVOID data;
     KIRQL oldIrql;
-
 
     data = NULL;
 
@@ -170,13 +144,12 @@ GetDictionaryEntry(
 
     entry = Dictionary->List;
     while (entry != NULL) {
-
-        if (entry->Key == Key) {
-            data = entry->Data;
-            break;
-        } else {
-            entry = entry->Next;
-        }
+	if (entry->Key == Key) {
+	    data = entry->Data;
+	    break;
+	} else {
+	    entry = entry->Next;
+	}
     }
 
     KeReleaseSpinLock(&(Dictionary->SpinLock), oldIrql);
@@ -184,12 +157,7 @@ GetDictionaryEntry(
     return data;
 }
 
-
-VOID
-FreeDictionaryEntry(
-    IN PDICTIONARY Dictionary,
-    IN PVOID Entry
-    )
+VOID FreeDictionaryEntry(IN PDICTIONARY Dictionary, IN PVOID Entry)
 {
     PDICTIONARY_HEADER header;
     PDICTIONARY_HEADER *entry;
@@ -202,15 +170,14 @@ FreeDictionaryEntry(
     KeAcquireSpinLock(&(Dictionary->SpinLock), &oldIrql);
 
     entry = &(Dictionary->List);
-    while(*entry != NULL) {
-
-        if(*entry == header) {
-            *entry = header->Next;
-            found = TRUE;
-            break;
-        } else {
-            entry = &(*entry)->Next;
-        }
+    while (*entry != NULL) {
+	if (*entry == header) {
+	    *entry = header->Next;
+	    found = TRUE;
+	    break;
+	} else {
+	    entry = &(*entry)->Next;
+	}
     }
 
     KeReleaseSpinLock(&(Dictionary->SpinLock), oldIrql);
@@ -222,10 +189,8 @@ FreeDictionaryEntry(
 
     NT_ASSERT(found);
     if (found) {
-        FREE_POOL(header);
+	FREE_POOL(header);
     }
 
     return;
-
 }
-

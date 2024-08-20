@@ -24,18 +24,14 @@ Revision History:
 #include "classp.h"
 #include "debug.h"
 
-#ifdef DEBUG_USE_WPP
-#include "autorun.tmh"
-#endif
-
 #define GESN_TIMEOUT_VALUE (0x4)
 #define GESN_BUFFER_SIZE (0x8)
-#define GESN_DEVICE_BUSY_LOWER_THRESHOLD_100_MS   (2)
+#define GESN_DEVICE_BUSY_LOWER_THRESHOLD_100_MS (2)
 
 #define MAXIMUM_IMMEDIATE_MCN_RETRIES (0x20)
-#define MCN_REG_SUBKEY_NAME                   (L"MediaChangeNotification")
+#define MCN_REG_SUBKEY_NAME (L"MediaChangeNotification")
 #define MCN_REG_AUTORUN_DISABLE_INSTANCE_NAME (L"AlwaysDisableMCN")
-#define MCN_REG_AUTORUN_ENABLE_INSTANCE_NAME  (L"AlwaysEnableMCN")
+#define MCN_REG_AUTORUN_ENABLE_INSTANCE_NAME (L"AlwaysEnableMCN")
 
 const GUID StoragePredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID;
 
@@ -56,60 +52,40 @@ const GUID StoragePredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GU
 //         would be to serialize the polling and power down irps so that
 //         only one of them is sent to the device at a time.
 //
-static
-BOOLEAN
-ClasspCanSendPollingIrp(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION fdoExtension
-    )
+static BOOLEAN ClasspCanSendPollingIrp(_In_ PFUNCTIONAL_DEVICE_EXTENSION fdoExtension)
 {
     return ((fdoExtension->DevicePowerState == PowerDeviceD0) &&
-            (fdoExtension->PowerDownInProgress == FALSE) &&
-            (ClasspScreenOff == FALSE));
+	    (fdoExtension->PowerDownInProgress == FALSE) && (ClasspScreenOff == FALSE));
 }
 
 BOOLEAN
 ClasspIsMediaChangeDisabledDueToHardwareLimitation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PUNICODE_STRING RegistryPath
-    );
+    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PUNICODE_STRING RegistryPath);
 
 NTSTATUS
-ClasspMediaChangeDeviceInstanceOverride(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    OUT PBOOLEAN Enabled
-    );
+ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					OUT PBOOLEAN Enabled);
 
 BOOLEAN
-ClasspIsMediaChangeDisabledForClass(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PUNICODE_STRING RegistryPath
-    );
+ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				    IN PUNICODE_STRING RegistryPath);
 
-VOID
-ClasspSetMediaChangeStateEx(
+VOID ClasspSetMediaChangeStateEx(
     IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN MEDIA_CHANGE_DETECTION_STATE NewState,
-    IN BOOLEAN Wait,
+    IN MEDIA_CHANGE_DETECTION_STATE NewState, IN BOOLEAN Wait,
     IN BOOLEAN KnownStateChange // can ignore oldstate == unknown
-    );
+);
 
 RTL_QUERY_REGISTRY_ROUTINE ClasspMediaChangeRegistryCallBack;
 
-VOID
-ClasspSendMediaStateIrp(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PMEDIA_CHANGE_DETECTION_INFO Info,
-    IN ULONG CountDown
-    );
+VOID ClasspSendMediaStateIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     IN PMEDIA_CHANGE_DETECTION_INFO Info, IN ULONG CountDown);
 
 IO_WORKITEM_ROUTINE ClasspFailurePredict;
 
 NTSTATUS
-ClasspInitializePolling(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN BOOLEAN AllowDriveToSleep
-    );
-
+ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			IN BOOLEAN AllowDriveToSleep);
 
 IO_WORKITEM_ROUTINE ClasspDisableGesn;
 
@@ -126,35 +102,11 @@ BOOLEAN ClasspScreenOff = FALSE;
 //
 // Tick timer related defines.
 //
-#define TICK_TIMER_PERIOD_IN_MSEC    1000
-#define TICK_TIMER_DELAY_IN_MSEC     1000
-
-#if ALLOC_PRAGMA
-
-#pragma alloc_text(PAGE, ClassInitializeMediaChangeDetection)
-#pragma alloc_text(PAGE, ClassEnableMediaChangeDetection)
-#pragma alloc_text(PAGE, ClassDisableMediaChangeDetection)
-#pragma alloc_text(PAGE, ClassCleanupMediaChangeDetection)
-#pragma alloc_text(PAGE, ClasspMediaChangeRegistryCallBack)
-#pragma alloc_text(PAGE, ClasspInitializePolling)
-#pragma alloc_text(PAGE, ClasspDisableGesn)
-
-#pragma alloc_text(PAGE, ClasspIsMediaChangeDisabledDueToHardwareLimitation)
-#pragma alloc_text(PAGE, ClasspMediaChangeDeviceInstanceOverride)
-#pragma alloc_text(PAGE, ClasspIsMediaChangeDisabledForClass)
-
-#pragma alloc_text(PAGE, ClassSetFailurePredictionPoll)
-
-#pragma alloc_text(PAGE, ClasspInitializeGesn)
-#pragma alloc_text(PAGE, ClasspMcnControl)
-
-#endif
+#define TICK_TIMER_PERIOD_IN_MSEC 1000
+#define TICK_TIMER_DELAY_IN_MSEC 1000
 
 // ISSUE -- make this public?
-VOID
-ClassSendEjectionNotification(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+VOID ClassSendEjectionNotification(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     //
     // For post-NT5.1 work, need to move EjectSynchronizationEvent
@@ -176,51 +128,39 @@ ClassSendEjectionNotification(
     // non-MMC-compliant devices also from sense codes.
     //
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassSendEjectionNotification: media EJECT_REQUEST"));
-    ClassSendNotification(FdoExtension,
-                           &GUID_IO_MEDIA_EJECT_REQUEST,
-                           0,
-                           NULL);
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		"ClassSendEjectionNotification: media EJECT_REQUEST"));
+    ClassSendNotification(FdoExtension, &GUID_IO_MEDIA_EJECT_REQUEST, 0, NULL);
     return;
 }
 
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassSendNotification(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_ const GUID * Guid,
-    _In_ ULONG  ExtraDataSize,
-    _In_reads_bytes_opt_(ExtraDataSize) PVOID  ExtraData
-    )
+_IRQL_requires_max_(DISPATCH_LEVEL) NTAPI VOID
+    ClassSendNotification(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			  _In_ const GUID *Guid, _In_ ULONG ExtraDataSize,
+			  _In_reads_bytes_opt_(ExtraDataSize) PVOID ExtraData)
 {
     PTARGET_DEVICE_CUSTOM_NOTIFICATION notification;
     ULONG requiredSize;
     NTSTATUS status;
 
     status = RtlULongAdd((sizeof(TARGET_DEVICE_CUSTOM_NOTIFICATION) - sizeof(UCHAR)),
-                         ExtraDataSize,
-                         &requiredSize);
+			 ExtraDataSize, &requiredSize);
 
     if (!(NT_SUCCESS(status)) || (requiredSize > 0x0000ffff)) {
-        // MAX_USHORT, max total size for these events!
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                   "Error sending event: size too large! (%x)\n",
-                   requiredSize));
-        return;
+	// MAX_USHORT, max total size for these events!
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "Error sending event: size too large! (%x)\n", requiredSize));
+	return;
     }
 
-    notification = ExAllocatePoolWithTag(NonPagedPoolNx,
-                                         requiredSize,
-                                         'oNcS');
+    notification = ExAllocatePoolWithTag(NonPagedPoolNx, requiredSize, 'oNcS');
 
     //
     // if none allocated, exit
     //
 
     if (notification == NULL) {
-        return;
+	return;
     }
 
     //
@@ -235,24 +175,20 @@ ClassSendNotification(
     notification->Event = *Guid;
 
     if (ExtraData != NULL && ExtraDataSize != 0) {
-        RtlCopyMemory(notification->CustomDataBuffer, ExtraData, ExtraDataSize);
+	RtlCopyMemory(notification->CustomDataBuffer, ExtraData, ExtraDataSize);
     }
 
-    IoReportTargetDeviceChangeAsynchronous(FdoExtension->LowerPdo,
-                                           notification,
-                                           NULL, NULL);
+    IoReportTargetDeviceChangeAsynchronous(FdoExtension->LowerPdo, notification, NULL,
+					   NULL);
 
     FREE_POOL(notification);
     return;
 }
 
-
 NTSTATUS
-ClasspInterpretGesnData(
-    IN  PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN  PNOTIFICATION_EVENT_STATUS_HEADER Header,
-    OUT PBOOLEAN ResendImmediately
-    )
+ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			IN PNOTIFICATION_EVENT_STATUS_HEADER Header,
+			OUT PBOOLEAN ResendImmediately)
 
 /*++
 
@@ -324,10 +260,10 @@ Notes:
 
     *ResendImmediately = FALSE;
     if (Header->NEA) {
-        return status;
+	return status;
     }
     if (Header->NotificationClass == NOTIFICATION_NO_CLASS_EVENTS) {
-        return status;
+	return status;
     }
 
     //
@@ -341,426 +277,380 @@ Notes:
     //
 
     if (info->Gesn.HackEventMask) {
+	//
+	// all events use the low four bytes of zero to indicate
+	// that there was no change in status.
+	//
 
-        //
-        // all events use the low four bytes of zero to indicate
-        // that there was no change in status.
-        //
+	UCHAR thisEvent = Header->ClassEventData[0] & 0xf;
+	UCHAR lowestSetBit;
+	UCHAR thisEventBit = (1 << Header->NotificationClass);
 
-        UCHAR thisEvent = Header->ClassEventData[0] & 0xf;
-        UCHAR lowestSetBit;
-        UCHAR thisEventBit = (1 << Header->NotificationClass);
+	if (!TEST_FLAG(info->Gesn.EventMask, thisEventBit)) {
+	    //
+	    // The drive is reporting an event that wasn't requested
+	    //
 
-        if (!TEST_FLAG(info->Gesn.EventMask, thisEventBit)) {
+	    return STATUS_DEVICE_PROTOCOL_ERROR;
+	}
 
-            //
-            // The drive is reporting an event that wasn't requested
-            //
+	//
+	// some bit magic here... this results in the lowest set bit only
+	//
 
-            return STATUS_DEVICE_PROTOCOL_ERROR;
-        }
+	lowestSetBit = info->Gesn.EventMask;
+	lowestSetBit &= (info->Gesn.EventMask - 1);
+	lowestSetBit ^= (info->Gesn.EventMask);
 
-        //
-        // some bit magic here... this results in the lowest set bit only
-        //
+	if (thisEventBit != lowestSetBit) {
+	    //
+	    // HACKHACK - REF #0001
+	    // the first time we ever see an event set that is not the lowest
+	    // set bit in the request (iow, highest priority), we know that the
+	    // hack is no longer required, as the device is ignoring "no change"
+	    // events when a real event is waiting in the other requested queues.
+	    //
 
-        lowestSetBit = info->Gesn.EventMask;
-        lowestSetBit &= (info->Gesn.EventMask - 1);
-        lowestSetBit ^= (info->Gesn.EventMask);
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"Classpnp => GESN::NONE: Compliant drive found, "
+			"removing GESN hack (%x, %x)\n",
+			thisEventBit, info->Gesn.EventMask));
 
-        if (thisEventBit != lowestSetBit) {
+	    info->Gesn.HackEventMask = FALSE;
 
-            //
-            // HACKHACK - REF #0001
-            // the first time we ever see an event set that is not the lowest
-            // set bit in the request (iow, highest priority), we know that the
-            // hack is no longer required, as the device is ignoring "no change"
-            // events when a real event is waiting in the other requested queues.
-            //
+	} else if (thisEvent == 0) { // NOTIFICATION_*_EVENT_NO_CHANGE
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                       "Classpnp => GESN::NONE: Compliant drive found, "
-                       "removing GESN hack (%x, %x)\n",
-                       thisEventBit, info->Gesn.EventMask));
+	    //
+	    // HACKHACK - REF #0001
+	    // note: this hack prevents poorly implemented firmware from constantly
+	    //       returning "No Event".  we do this by cycling through the
+	    //       supported list of events here.
+	    //
 
-            info->Gesn.HackEventMask = FALSE;
+	    SET_FLAG(info->Gesn.NoChangeEventMask, thisEventBit);
+	    CLEAR_FLAG(info->Gesn.EventMask, thisEventBit);
 
-        } else if (thisEvent == 0) { // NOTIFICATION_*_EVENT_NO_CHANGE
+	    //
+	    // if we have cycled through all supported event types, then
+	    // we need to reset the events we are asking about. else we
+	    // want to resend this request immediately in case there was
+	    // another event pending.
+	    //
 
-            //
-            // HACKHACK - REF #0001
-            // note: this hack prevents poorly implemented firmware from constantly
-            //       returning "No Event".  we do this by cycling through the
-            //       supported list of events here.
-            //
-
-            SET_FLAG(info->Gesn.NoChangeEventMask, thisEventBit);
-            CLEAR_FLAG(info->Gesn.EventMask, thisEventBit);
-
-            //
-            // if we have cycled through all supported event types, then
-            // we need to reset the events we are asking about. else we
-            // want to resend this request immediately in case there was
-            // another event pending.
-            //
-
-            if (info->Gesn.EventMask == 0) {
-                info->Gesn.EventMask         = info->Gesn.NoChangeEventMask;
-                info->Gesn.NoChangeEventMask = 0;
-            } else {
-                *ResendImmediately = TRUE;
-            }
-            return status;
-        }
+	    if (info->Gesn.EventMask == 0) {
+		info->Gesn.EventMask = info->Gesn.NoChangeEventMask;
+		info->Gesn.NoChangeEventMask = 0;
+	    } else {
+		*ResendImmediately = TRUE;
+	    }
+	    return status;
+	}
 
     } // end if (info->Gesn.HackEventMask)
 
-    dataLength =
-        (Header->EventDataLength[0] << 8) |
-        (Header->EventDataLength[1] & 0xff);
+    dataLength = (Header->EventDataLength[0] << 8) | (Header->EventDataLength[1] & 0xff);
     dataLength -= 2;
     requiredLength = 4; // all events are four bytes
 
     if (dataLength < requiredLength) {
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                   "Classpnp => GESN returned only %x bytes data for fdo %p\n",
-                   dataLength, FdoExtension->DeviceObject));
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "Classpnp => GESN returned only %x bytes data for fdo %p\n",
+		    dataLength, FdoExtension->DeviceObject));
 
-        return STATUS_DEVICE_PROTOCOL_ERROR;
+	return STATUS_DEVICE_PROTOCOL_ERROR;
     }
     if (dataLength != requiredLength) {
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                   "Classpnp => GESN returned too many (%x) bytes data for fdo %p\n",
-                   dataLength, FdoExtension->DeviceObject));
-        // dataLength = 4;
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "Classpnp => GESN returned too many (%x) bytes data for fdo %p\n",
+		    dataLength, FdoExtension->DeviceObject));
+	// dataLength = 4;
     }
 
     NT_ASSERT(dataLength == 4);
 
-    if ((Header->ClassEventData[0] & 0xf) == 0)
-    {
-        // a zero event is a "no change event, so do not retry
-        return status;
+    if ((Header->ClassEventData[0] & 0xf) == 0) {
+	// a zero event is a "no change event, so do not retry
+	return status;
     }
 
     // because a event other than "no change" occurred,
     // we should immediately resend this request.
     *ResendImmediately = TRUE;
 
-
-/*
+    /*
     ClassSendNotification(FdoExtension,
                            &GUID_IO_GENERIC_GESN_EVENT,
                            sizeof(NOTIFICATION_EVENT_STATUS_HEADER) + dataLength,
                            Header)
 */
 
-
-
     switch (Header->NotificationClass) {
-
     case NOTIFICATION_OPERATIONAL_CHANGE_CLASS_EVENTS: { // 0x01
 
-        PNOTIFICATION_OPERATIONAL_STATUS opChangeInfo =
-            (PNOTIFICATION_OPERATIONAL_STATUS)(Header->ClassEventData);
-        ULONG event;
+	PNOTIFICATION_OPERATIONAL_STATUS opChangeInfo =
+	    (PNOTIFICATION_OPERATIONAL_STATUS)(Header->ClassEventData);
+	ULONG event;
 
-        if (opChangeInfo->OperationalEvent == NOTIFICATION_OPERATIONAL_EVENT_CHANGE_REQUESTED) {
-            break;
-        }
+	if (opChangeInfo->OperationalEvent ==
+	    NOTIFICATION_OPERATIONAL_EVENT_CHANGE_REQUESTED) {
+	    break;
+	}
 
-        event = (opChangeInfo->Operation[0] << 8) |
-                (opChangeInfo->Operation[1]     ) ;
+	event = (opChangeInfo->Operation[0] << 8) | (opChangeInfo->Operation[1]);
 
-        // Workaround some hardware that is buggy but prevalent in the market
-        // This hardware has the property that it will report OpChange events repeatedly,
-        // causing us to retry immediately so quickly that we will eventually disable
-        // GESN to prevent an infinite loop.
-        // (only one valid OpChange event type now, only two ever defined)
-        if (info->MediaChangeRetryCount >= 4) {
+	// Workaround some hardware that is buggy but prevalent in the market
+	// This hardware has the property that it will report OpChange events repeatedly,
+	// causing us to retry immediately so quickly that we will eventually disable
+	// GESN to prevent an infinite loop.
+	// (only one valid OpChange event type now, only two ever defined)
+	if (info->MediaChangeRetryCount >= 4) {
+	    //
+	    // HACKHACK - REF #0002
+	    // Some drives incorrectly report OpChange/Change (001b/0001h) events
+	    // continuously when the tray has been ejected.  This causes this routine
+	    // to set ResendImmediately to "TRUE", and that results in our cycling
+	    // 32 times immediately resending.  At that point, we give up detecting
+	    // the infinite retry loop, and disable GESN on these drives.  This
+	    // prevents Media Eject Request (from eject button) from being reported.
+	    // Thus, instead we should attempt to workaround this issue by detecting
+	    // this behavior.
+	    //
 
-            //
-            // HACKHACK - REF #0002
-            // Some drives incorrectly report OpChange/Change (001b/0001h) events
-            // continuously when the tray has been ejected.  This causes this routine
-            // to set ResendImmediately to "TRUE", and that results in our cycling
-            // 32 times immediately resending.  At that point, we give up detecting
-            // the infinite retry loop, and disable GESN on these drives.  This
-            // prevents Media Eject Request (from eject button) from being reported.
-            // Thus, instead we should attempt to workaround this issue by detecting
-            // this behavior.
-            //
+	    static UCHAR const OpChangeMask = 0x02;
 
-            static UCHAR const OpChangeMask = 0x02;
+	    // At least one device reports "temporarily busy" (which is useless) on eject
+	    // At least one device reports "OpChange" repeatedly when re-inserting media
+	    // All seem to work well using this workaround
 
-            // At least one device reports "temporarily busy" (which is useless) on eject
-            // At least one device reports "OpChange" repeatedly when re-inserting media
-            // All seem to work well using this workaround
+	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_MCN,
+			"Classpnp => GESN OpChange events are broken.  Working around "
+			"this "
+			"problem in software (for fdo %p)\n",
+			FdoExtension->DeviceObject));
 
-            TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_MCN,
-                        "Classpnp => GESN OpChange events are broken.  Working around this "
-                        "problem in software (for fdo %p)\n",
-                        FdoExtension->DeviceObject));
+	    // OpChange is not the only bit set -- Media class is required....
+	    NT_ASSERT(CountOfSetBitsUChar(info->Gesn.EventMask) != 1);
 
+	    //
+	    // Force the use of the hackhack (ref #0001) to workaround the
+	    // issue noted this hackhack (ref #0002).
+	    //
+	    SET_FLAG(info->Gesn.NoChangeEventMask, OpChangeMask);
+	    CLEAR_FLAG(info->Gesn.EventMask, OpChangeMask);
+	    info->Gesn.HackEventMask = TRUE;
 
-            // OpChange is not the only bit set -- Media class is required....
-            NT_ASSERT(CountOfSetBitsUChar(info->Gesn.EventMask) != 1);
+	    //
+	    // don't request the opChange event again.  use the method
+	    // defined by hackhack (ref #0001) as the workaround.
+	    //
 
-            //
-            // Force the use of the hackhack (ref #0001) to workaround the
-            // issue noted this hackhack (ref #0002).
-            //
-            SET_FLAG(info->Gesn.NoChangeEventMask, OpChangeMask);
-            CLEAR_FLAG(info->Gesn.EventMask, OpChangeMask);
-            info->Gesn.HackEventMask = TRUE;
+	    if (info->Gesn.EventMask == 0) {
+		info->Gesn.EventMask = info->Gesn.NoChangeEventMask;
+		info->Gesn.NoChangeEventMask = 0;
+		*ResendImmediately = FALSE;
+	    } else {
+		*ResendImmediately = TRUE;
+	    }
 
-            //
-            // don't request the opChange event again.  use the method
-            // defined by hackhack (ref #0001) as the workaround.
-            //
+	    break;
+	}
 
-            if (info->Gesn.EventMask == 0) {
-                info->Gesn.EventMask         = info->Gesn.NoChangeEventMask;
-                info->Gesn.NoChangeEventMask = 0;
-                *ResendImmediately = FALSE;
-            } else {
-                *ResendImmediately = TRUE;
-            }
+	if ((event == NOTIFICATION_OPERATIONAL_OPCODE_FEATURE_ADDED) |
+	    (event == NOTIFICATION_OPERATIONAL_OPCODE_FEATURE_CHANGE)) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"Classpnp => GESN says features added/changedfor fdo %p\n",
+			FdoExtension->DeviceObject));
 
-            break;
-        }
+	    // don't notify that new media arrived, just set the
+	    // DO_VERIFY to force a FS reload.
 
+	    if (TEST_FLAG(FdoExtension->DeviceObject->Characteristics,
+			  FILE_REMOVABLE_MEDIA) &&
+		(ClassGetVpb(FdoExtension->DeviceObject) != NULL) &&
+		(ClassGetVpb(FdoExtension->DeviceObject)->Flags & VPB_MOUNTED)) {
+		SET_FLAG(FdoExtension->DeviceObject->Flags, DO_VERIFY_VOLUME);
+	    }
 
-        if ((event == NOTIFICATION_OPERATIONAL_OPCODE_FEATURE_ADDED) |
-            (event == NOTIFICATION_OPERATIONAL_OPCODE_FEATURE_CHANGE)) {
+	    //
+	    // If there is a class specific error handler, call it with
+	    // a "fake" media change error in case it needs to update
+	    // internal structures as though a media change occurred.
+	    //
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                       "Classpnp => GESN says features added/changedfor fdo %p\n",
-                       FdoExtension->DeviceObject));
+	    if (FdoExtension->CommonExtension.DevInfo->ClassError != NULL) {
+		SCSI_REQUEST_BLOCK srb = { 0 };
+		UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = { 0 };
+		PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
+		PSCSI_REQUEST_BLOCK srbPtr;
 
-            // don't notify that new media arrived, just set the
-            // DO_VERIFY to force a FS reload.
+		SENSE_DATA sense = { 0 };
+		NTSTATUS tempStatus;
+		BOOLEAN retry;
 
-            if (TEST_FLAG(FdoExtension->DeviceObject->Characteristics,
-                          FILE_REMOVABLE_MEDIA) &&
-                (ClassGetVpb(FdoExtension->DeviceObject) != NULL) &&
-                (ClassGetVpb(FdoExtension->DeviceObject)->Flags & VPB_MOUNTED)
-                ) {
+		tempStatus = STATUS_MEDIA_CHANGED;
+		retry = FALSE;
 
-                SET_FLAG(FdoExtension->DeviceObject->Flags, DO_VERIFY_VOLUME);
-            }
+		sense.ErrorCode = SCSI_SENSE_ERRORCODE_FIXED_CURRENT;
 
-            //
-            // If there is a class specific error handler, call it with
-            // a "fake" media change error in case it needs to update
-            // internal structures as though a media change occurred.
-            //
+		sense.AdditionalSenseLength =
+		    sizeof(SENSE_DATA) -
+		    RTL_SIZEOF_THROUGH_FIELD(SENSE_DATA, AdditionalSenseLength);
 
-            if (FdoExtension->CommonExtension.DevInfo->ClassError != NULL) {
+		sense.SenseKey = SCSI_SENSE_UNIT_ATTENTION;
+		sense.AdditionalSenseCode = SCSI_ADSENSE_MEDIUM_CHANGED;
 
-                SCSI_REQUEST_BLOCK srb = {0};
-                UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = {0};
-                PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
-                PSCSI_REQUEST_BLOCK srbPtr;
+		//
+		// Send the right type of SRB to the class driver
+		//
+		if ((FdoExtension->CommonExtension.DriverExtension->SrbSupport &
+		     CLASS_SRB_STORAGE_REQUEST_BLOCK) != 0) {
+		    status = InitializeStorageRequestBlock(
+			srbEx, STORAGE_ADDRESS_TYPE_BTL8,
+			CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1, SrbExDataTypeScsiCdb16);
+		    if (NT_SUCCESS(status)) {
+			SrbSetCdbLength(srbEx, 6);
+			srbEx->SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
+			SrbSetSenseInfoBuffer(srbEx, &sense);
+			SrbSetSenseInfoBufferLength(srbEx, sizeof(sense));
+			srbPtr = (PSCSI_REQUEST_BLOCK)srbEx;
+		    } else {
+			// should not happen. Revert to legacy SRB.
+			NT_ASSERT(FALSE);
+			srb.CdbLength = 6;
+			srb.Length = sizeof(SCSI_REQUEST_BLOCK);
+			srb.SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
+			srb.SenseInfoBuffer = &sense;
+			srb.SenseInfoBufferLength = sizeof(SENSE_DATA);
+			srbPtr = &srb;
+		    }
+		} else {
+		    srb.CdbLength = 6;
+		    srb.Length = sizeof(SCSI_REQUEST_BLOCK);
+		    srb.SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
+		    srb.SenseInfoBuffer = &sense;
+		    srb.SenseInfoBufferLength = sizeof(SENSE_DATA);
+		    srbPtr = &srb;
+		}
 
-                SENSE_DATA sense = {0};
-                NTSTATUS tempStatus;
-                BOOLEAN retry;
+		FdoExtension->CommonExtension.DevInfo->ClassError(
+		    FdoExtension->DeviceObject, srbPtr, &tempStatus, &retry);
 
-                tempStatus = STATUS_MEDIA_CHANGED;
-                retry = FALSE;
-
-                sense.ErrorCode = SCSI_SENSE_ERRORCODE_FIXED_CURRENT;
-
-                sense.AdditionalSenseLength = sizeof(SENSE_DATA) -
-                    RTL_SIZEOF_THROUGH_FIELD(SENSE_DATA, AdditionalSenseLength);
-
-                sense.SenseKey = SCSI_SENSE_UNIT_ATTENTION;
-                sense.AdditionalSenseCode = SCSI_ADSENSE_MEDIUM_CHANGED;
-
-                //
-                // Send the right type of SRB to the class driver
-                //
-                if ((FdoExtension->CommonExtension.DriverExtension->SrbSupport &
-                     CLASS_SRB_STORAGE_REQUEST_BLOCK) != 0) {
-#ifdef _MSC_VER
-                    #pragma prefast(suppress:26015, "InitializeStorageRequestBlock ensures buffer access is bounded")
-#endif
-                    status = InitializeStorageRequestBlock(srbEx,
-                                                           STORAGE_ADDRESS_TYPE_BTL8,
-                                                           CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-                                                           1,
-                                                           SrbExDataTypeScsiCdb16);
-                    if (NT_SUCCESS(status)) {
-                        SrbSetCdbLength(srbEx, 6);
-                        srbEx->SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-                        SrbSetSenseInfoBuffer(srbEx, &sense);
-                        SrbSetSenseInfoBufferLength(srbEx, sizeof(sense));
-                        srbPtr = (PSCSI_REQUEST_BLOCK)srbEx;
-                    } else {
-                        // should not happen. Revert to legacy SRB.
-                        NT_ASSERT(FALSE);
-                        srb.CdbLength = 6;
-                        srb.Length    = sizeof(SCSI_REQUEST_BLOCK);
-                        srb.SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-                        srb.SenseInfoBuffer = &sense;
-                        srb.SenseInfoBufferLength = sizeof(SENSE_DATA);
-                        srbPtr = &srb;
-                    }
-                } else {
-                    srb.CdbLength = 6;
-                    srb.Length    = sizeof(SCSI_REQUEST_BLOCK);
-                    srb.SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-                    srb.SenseInfoBuffer = &sense;
-                    srb.SenseInfoBufferLength = sizeof(SENSE_DATA);
-                    srbPtr = &srb;
-                }
-
-                FdoExtension->CommonExtension.DevInfo->ClassError(FdoExtension->DeviceObject,
-                                                                  srbPtr,
-                                                                  &tempStatus,
-                                                                  &retry);
-
-            } // end class error handler
-
-        }
-        break;
+	    } // end class error handler
+	}
+	break;
     }
 
     case NOTIFICATION_EXTERNAL_REQUEST_CLASS_EVENTS: { // 0x3
 
-        PNOTIFICATION_EXTERNAL_STATUS externalInfo =
-            (PNOTIFICATION_EXTERNAL_STATUS)(Header->ClassEventData);
-        DEVICE_EVENT_EXTERNAL_REQUEST externalData = {0};
+	PNOTIFICATION_EXTERNAL_STATUS externalInfo =
+	    (PNOTIFICATION_EXTERNAL_STATUS)(Header->ClassEventData);
+	DEVICE_EVENT_EXTERNAL_REQUEST externalData = { 0 };
 
-        //
-        // unfortunately, due to time constraints, we will only notify
-        // about keys being pressed, and not released.  this makes keys
-        // single-function, but simplifies the code significantly.
-        //
+	//
+	// unfortunately, due to time constraints, we will only notify
+	// about keys being pressed, and not released.  this makes keys
+	// single-function, but simplifies the code significantly.
+	//
 
-        if (externalInfo->ExternalEvent != NOTIFICATION_EXTERNAL_EVENT_BUTTON_DOWN) {
-            break;
-        }
+	if (externalInfo->ExternalEvent != NOTIFICATION_EXTERNAL_EVENT_BUTTON_DOWN) {
+	    break;
+	}
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                   "Classpnp => GESN::EXTERNAL: Event: %x Status %x Req %x\n",
-                   externalInfo->ExternalEvent, externalInfo->ExternalStatus,
-                   (externalInfo->Request[0] << 8) | externalInfo->Request[1]
-                   ));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "Classpnp => GESN::EXTERNAL: Event: %x Status %x Req %x\n",
+		    externalInfo->ExternalEvent, externalInfo->ExternalStatus,
+		    (externalInfo->Request[0] << 8) | externalInfo->Request[1]));
 
-        externalData.Version = 1;
-        externalData.DeviceClass = 0;
-        externalData.ButtonStatus = externalInfo->ExternalEvent;
-        externalData.Request =
-            (externalInfo->Request[0] << 8) |
-            (externalInfo->Request[1] & 0xff);
-        KeQuerySystemTime(&(externalData.SystemTime));
-        externalData.SystemTime.QuadPart *= (LONGLONG)KeQueryTimeIncrement();
+	externalData.Version = 1;
+	externalData.DeviceClass = 0;
+	externalData.ButtonStatus = externalInfo->ExternalEvent;
+	externalData.Request = (externalInfo->Request[0] << 8) |
+			       (externalInfo->Request[1] & 0xff);
+	KeQuerySystemTime(&(externalData.SystemTime));
+	externalData.SystemTime.QuadPart *= (LONGLONG)KeQueryTimeIncrement();
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspInterpretGesnData: media DEVICE_EXTERNAL_REQUEST"));
-        ClassSendNotification(FdoExtension,
-                               &GUID_IO_DEVICE_EXTERNAL_REQUEST,
-                               sizeof(DEVICE_EVENT_EXTERNAL_REQUEST),
-                               &externalData);
-        return status;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspInterpretGesnData: media DEVICE_EXTERNAL_REQUEST"));
+	ClassSendNotification(FdoExtension, &GUID_IO_DEVICE_EXTERNAL_REQUEST,
+			      sizeof(DEVICE_EVENT_EXTERNAL_REQUEST), &externalData);
+	return status;
     }
 
     case NOTIFICATION_MEDIA_STATUS_CLASS_EVENTS: { // 0x4
 
-        PNOTIFICATION_MEDIA_STATUS mediaInfo =
-            (PNOTIFICATION_MEDIA_STATUS)(Header->ClassEventData);
+	PNOTIFICATION_MEDIA_STATUS mediaInfo =
+	    (PNOTIFICATION_MEDIA_STATUS)(Header->ClassEventData);
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                   "Classpnp => GESN::MEDIA: Event: %x Status %x\n",
-                   mediaInfo->MediaEvent, mediaInfo->MediaStatus));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "Classpnp => GESN::MEDIA: Event: %x Status %x\n",
+		    mediaInfo->MediaEvent, mediaInfo->MediaStatus));
 
-        if ((mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_NEW_MEDIA) ||
-            (mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_MEDIA_CHANGE)) {
+	if ((mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_NEW_MEDIA) ||
+	    (mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_MEDIA_CHANGE)) {
+	    if (TEST_FLAG(FdoExtension->DeviceObject->Characteristics,
+			  FILE_REMOVABLE_MEDIA) &&
+		(ClassGetVpb(FdoExtension->DeviceObject) != NULL) &&
+		(ClassGetVpb(FdoExtension->DeviceObject)->Flags & VPB_MOUNTED)) {
+		SET_FLAG(FdoExtension->DeviceObject->Flags, DO_VERIFY_VOLUME);
+	    }
+	    InterlockedIncrement((volatile LONG *)&FdoExtension->MediaChangeCount);
+	    ClasspSetMediaChangeStateEx(FdoExtension, MediaPresent, FALSE, TRUE);
 
+	} else if (mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_MEDIA_REMOVAL) {
+	    ClasspSetMediaChangeStateEx(FdoExtension, MediaNotPresent, FALSE, TRUE);
 
-            if (TEST_FLAG(FdoExtension->DeviceObject->Characteristics,
-                          FILE_REMOVABLE_MEDIA) &&
-                (ClassGetVpb(FdoExtension->DeviceObject) != NULL) &&
-                (ClassGetVpb(FdoExtension->DeviceObject)->Flags & VPB_MOUNTED)
-                ) {
-
-                SET_FLAG(FdoExtension->DeviceObject->Flags, DO_VERIFY_VOLUME);
-
-            }
-            InterlockedIncrement((volatile LONG *)&FdoExtension->MediaChangeCount);
-            ClasspSetMediaChangeStateEx(FdoExtension,
-                                        MediaPresent,
-                                        FALSE,
-                                        TRUE);
-
-        } else if (mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_MEDIA_REMOVAL) {
-
-            ClasspSetMediaChangeStateEx(FdoExtension,
-                                        MediaNotPresent,
-                                        FALSE,
-                                        TRUE);
-
-        } else if (mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_EJECT_REQUEST) {
-
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                       "Classpnp => GESN Ejection request received!\n"));
-            ClassSendEjectionNotification(FdoExtension);
-
-        }
-        break;
-
+	} else if (mediaInfo->MediaEvent == NOTIFICATION_MEDIA_EVENT_EJECT_REQUEST) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"Classpnp => GESN Ejection request received!\n"));
+	    ClassSendEjectionNotification(FdoExtension);
+	}
+	break;
     }
 
     case NOTIFICATION_DEVICE_BUSY_CLASS_EVENTS: { // lowest priority events...
 
-        PNOTIFICATION_BUSY_STATUS busyInfo =
-            (PNOTIFICATION_BUSY_STATUS)(Header->ClassEventData);
-        DEVICE_EVENT_BECOMING_READY busyData = {0};
+	PNOTIFICATION_BUSY_STATUS busyInfo =
+	    (PNOTIFICATION_BUSY_STATUS)(Header->ClassEventData);
+	DEVICE_EVENT_BECOMING_READY busyData = { 0 };
 
-        //
-        // NOTE: we never actually need to immediately retry for these
-        //       events: if one exists, the device is busy, and if not,
-        //       we still don't want to retry.
-        //
+	//
+	// NOTE: we never actually need to immediately retry for these
+	//       events: if one exists, the device is busy, and if not,
+	//       we still don't want to retry.
+	//
 
-        *ResendImmediately = FALSE;
+	*ResendImmediately = FALSE;
 
-        //
-        // else we want to report the approximated time till it's ready.
-        //
+	//
+	// else we want to report the approximated time till it's ready.
+	//
 
-        busyData.Version = 1;
-        busyData.Reason = busyInfo->DeviceBusyStatus;
-        busyData.Estimated100msToReady = (busyInfo->Time[0] << 8) |
-                                         (busyInfo->Time[1] & 0xff);
+	busyData.Version = 1;
+	busyData.Reason = busyInfo->DeviceBusyStatus;
+	busyData.Estimated100msToReady = (busyInfo->Time[0] << 8) |
+					 (busyInfo->Time[1] & 0xff);
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                   "Classpnp => GESN::BUSY: Event: %x Status %x Time %x\n",
-                   busyInfo->DeviceBusyEvent, busyInfo->DeviceBusyStatus,
-                   busyData.Estimated100msToReady
-                   ));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "Classpnp => GESN::BUSY: Event: %x Status %x Time %x\n",
+		    busyInfo->DeviceBusyEvent, busyInfo->DeviceBusyStatus,
+		    busyData.Estimated100msToReady));
 
-        //
-        // Ignore the notification if the time is small
-        //
-        if (busyData.Estimated100msToReady < GESN_DEVICE_BUSY_LOWER_THRESHOLD_100_MS) {
-            break;
-        }
+	//
+	// Ignore the notification if the time is small
+	//
+	if (busyData.Estimated100msToReady < GESN_DEVICE_BUSY_LOWER_THRESHOLD_100_MS) {
+	    break;
+	}
 
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspInterpretGesnData: media BECOMING_READY"));
-        ClassSendNotification(FdoExtension,
-                               &GUID_IO_DEVICE_BECOMING_READY,
-                               sizeof(DEVICE_EVENT_BECOMING_READY),
-                               &busyData);
-        break;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspInterpretGesnData: media BECOMING_READY"));
+	ClassSendNotification(FdoExtension, &GUID_IO_DEVICE_BECOMING_READY,
+			      sizeof(DEVICE_EVENT_BECOMING_READY), &busyData);
+	break;
     }
 
     default: {
-
-        break;
-
+	break;
     }
 
     } // end switch on notification class
@@ -794,15 +684,14 @@ Return Value:
     none
 
 --*/
-VOID
-ClasspInternalSetMediaChangeState(
+VOID ClasspInternalSetMediaChangeState(
     IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     IN MEDIA_CHANGE_DETECTION_STATE NewState,
     IN BOOLEAN KnownStateChange // can ignore oldstate == unknown
-    )
+)
 {
 #if DBG
-    PCSZ states[] = {"Unknown", "Present", "Not Present", "Unavailable"};
+    PCSZ states[] = { "Unknown", "Present", "Not Present", "Unavailable" };
 #endif
     MEDIA_CHANGE_DETECTION_STATE oldMediaState;
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
@@ -810,36 +699,33 @@ ClasspInternalSetMediaChangeState(
     PIO_WORKITEM workItem;
 
     if (!((NewState >= MediaUnknown) && (NewState <= MediaUnavailable))) {
-        return;
+	return;
     }
 
-    if(info == NULL) {
-        return;
+    if (info == NULL) {
+	return;
     }
 
-    oldMediaState = InterlockedExchange(
-        (PLONG)(&info->MediaChangeDetectionState),
-        (LONG)NewState);
+    oldMediaState = InterlockedExchange((PLONG)(&info->MediaChangeDetectionState),
+					(LONG)NewState);
 
-    if((oldMediaState == MediaUnknown) && (!KnownStateChange)) {
+    if ((oldMediaState == MediaUnknown) && (!KnownStateChange)) {
+	//
+	// The media was in an indeterminate state before - don't notify for
+	// this change.
+	//
 
-        //
-        // The media was in an indeterminate state before - don't notify for
-        // this change.
-        //
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassSetMediaChangeState: State was unknown - this may "
+		    "not be a change\n"));
+	return;
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassSetMediaChangeState: State was unknown - this may "
-                    "not be a change\n"));
-        return;
+    } else if (oldMediaState == NewState) {
+	//
+	// Media is in the same state it was before.
+	//
 
-    } else if(oldMediaState == NewState) {
-
-        //
-        // Media is in the same state it was before.
-        //
-
-        return;
+	return;
     }
 
     //
@@ -847,34 +733,35 @@ ClasspInternalSetMediaChangeState(
     // DO_VERIFY_VOLUME to each partition. Ensure that only one work item
     // updates the disk's properties at any given time.
     //
-    if (InterlockedCompareExchange((volatile LONG *)&FdoExtension->PrivateFdoData->UpdateDiskPropertiesWorkItemActive, 1, 0) == 0) {
+    if (InterlockedCompareExchange((volatile LONG *)&FdoExtension->PrivateFdoData
+				       ->UpdateDiskPropertiesWorkItemActive,
+				   1, 0) == 0) {
+	workItem = IoAllocateWorkItem(FdoExtension->DeviceObject);
 
-        workItem = IoAllocateWorkItem(FdoExtension->DeviceObject);
+	if (workItem) {
+	    IoQueueWorkItem(workItem, ClasspUpdateDiskProperties, DelayedWorkQueue,
+			    workItem);
 
-        if (workItem) {
-
-            IoQueueWorkItem(workItem, ClasspUpdateDiskProperties, DelayedWorkQueue, workItem);
-
-        } else {
-
-            InterlockedExchange((volatile LONG *)&FdoExtension->PrivateFdoData->UpdateDiskPropertiesWorkItemActive, 0);
-        }
+	} else {
+	    InterlockedExchange((volatile LONG *)&FdoExtension->PrivateFdoData
+				    ->UpdateDiskPropertiesWorkItemActive,
+				0);
+	}
     }
 
-    if(info->MediaChangeDetectionDisableCount != 0) {
+    if (info->MediaChangeDetectionDisableCount != 0) {
 #if DBG
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassSetMediaChangeState: MCN not enabled, state "
-                    "changed from %s to %s\n",
-                    states[oldMediaState], states[NewState]));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassSetMediaChangeState: MCN not enabled, state "
+		    "changed from %s to %s\n",
+		    states[oldMediaState], states[NewState]));
 #endif
-        return;
-
+	return;
     }
 #if DBG
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                "ClassSetMediaChangeState: State change from %s to %s\n",
-                states[oldMediaState], states[NewState]));
+		"ClassSetMediaChangeState: State change from %s to %s\n",
+		states[oldMediaState], states[NewState]));
 #endif
 
     //
@@ -884,29 +771,23 @@ ClasspInternalSetMediaChangeState(
     mcnContext.NewState = NewState;
 
     if (NewState == MediaPresent) {
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspInternalSetMediaChangeState: media ARRIVAL"));
+	ClassSendNotification(FdoExtension, &GUID_IO_MEDIA_ARRIVAL,
+			      sizeof(CLASS_MEDIA_CHANGE_CONTEXT), &mcnContext);
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspInternalSetMediaChangeState: media ARRIVAL"));
-        ClassSendNotification(FdoExtension,
-                               &GUID_IO_MEDIA_ARRIVAL,
-                               sizeof(CLASS_MEDIA_CHANGE_CONTEXT),
-                               &mcnContext);
-
-    }
-    else if ((NewState == MediaNotPresent) || (NewState == MediaUnavailable)) {
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspInternalSetMediaChangeState: media REMOVAL"));
-        ClassSendNotification(FdoExtension,
-                               &GUID_IO_MEDIA_REMOVAL,
-                               sizeof(CLASS_MEDIA_CHANGE_CONTEXT),
-                               &mcnContext);
+    } else if ((NewState == MediaNotPresent) || (NewState == MediaUnavailable)) {
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspInternalSetMediaChangeState: media REMOVAL"));
+	ClassSendNotification(FdoExtension, &GUID_IO_MEDIA_REMOVAL,
+			      sizeof(CLASS_MEDIA_CHANGE_CONTEXT), &mcnContext);
 
     } else {
+	//
+	// Don't notify of changed going to unknown.
+	//
 
-        //
-        // Don't notify of changed going to unknown.
-        //
-
-        return;
+	return;
     }
 
     return;
@@ -943,22 +824,18 @@ Return Value:
 
 --*/
 
-VOID
-#ifdef _MSC_VER
-#pragma prefast(suppress:26165, "The mutex won't be acquired in the case of a timeout.")
-#endif
-ClasspSetMediaChangeStateEx(
+VOID ClasspSetMediaChangeStateEx(
     IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN MEDIA_CHANGE_DETECTION_STATE NewState,
-    IN BOOLEAN Wait,
+    IN MEDIA_CHANGE_DETECTION_STATE NewState, IN BOOLEAN Wait,
     IN BOOLEAN KnownStateChange // can ignore oldstate == unknown
-    )
+)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
     LARGE_INTEGER zero;
     NTSTATUS status;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "> ClasspSetMediaChangeStateEx"));
+    TracePrint(
+	(TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "> ClasspSetMediaChangeStateEx"));
 
     //
     // Reset SMART status on media removal as the old status may not be
@@ -967,33 +844,27 @@ ClasspSetMediaChangeStateEx(
     //
 
     if (NewState == MediaNotPresent) {
-
-        FdoExtension->FailurePredicted = FALSE;
-        FdoExtension->FailureReason = 0;
-
+	FdoExtension->FailurePredicted = FALSE;
+	FdoExtension->FailureReason = 0;
     }
-
 
     zero.QuadPart = 0;
 
-    if(info == NULL) {
-        return;
+    if (info == NULL) {
+	return;
     }
 
-    status = KeWaitForMutexObject(&info->MediaChangeMutex,
-                                  Executive,
-                                  KernelMode,
-                                  FALSE,
-                                  ((Wait == TRUE) ? NULL : &zero));
+    status = KeWaitForMutexObject(&info->MediaChangeMutex, Executive, KernelMode, FALSE,
+				  ((Wait == TRUE) ? NULL : &zero));
 
-    if(status == STATUS_TIMEOUT) {
+    if (status == STATUS_TIMEOUT) {
+	//
+	// Someone else is in the process of setting the media state
+	//
 
-        //
-        // Someone else is in the process of setting the media state
-        //
-
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN, "ClasspSetMediaChangeStateEx - timed out waiting for mutex"));
-        return;
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "ClasspSetMediaChangeStateEx - timed out waiting for mutex"));
+	return;
     }
 
     //
@@ -1004,19 +875,16 @@ ClasspSetMediaChangeStateEx(
 
     KeReleaseMutex(&info->MediaChangeMutex, FALSE);
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "< ClasspSetMediaChangeStateEx"));
+    TracePrint(
+	(TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "< ClasspSetMediaChangeStateEx"));
 
     return;
 } // end ClassSetMediaChangeStateEx()
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassSetMediaChangeState(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_ MEDIA_CHANGE_DETECTION_STATE NewState,
-    _In_ BOOLEAN Wait
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
+    ClassSetMediaChangeState(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     _In_ MEDIA_CHANGE_DETECTION_STATE NewState,
+			     _In_ BOOLEAN Wait)
 {
     ClasspSetMediaChangeStateEx(FdoExtension, NewState, Wait, FALSE);
     return;
@@ -1044,20 +912,14 @@ Return Value:
     NTSTATUS
 
 --*/
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClasspMediaChangeDetectionCompletion(
-    PDEVICE_OBJECT DeviceObject,
-    PIRP Irp,
-    PVOID Context
-    )
+NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData;
     PMEDIA_CHANGE_DETECTION_INFO info;
     NTSTATUS status;
     BOOLEAN retryImmediately = FALSE;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER) Context;
+    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Context;
 
     _Analysis_assume_(Srb != NULL);
 
@@ -1070,11 +932,13 @@ ClasspMediaChangeDetectionCompletion(
     DeviceObject = IoGetCurrentIrpStackLocation(Irp)->DeviceObject;
     fdoExtension = DeviceObject->DeviceExtension;
     fdoData = fdoExtension->PrivateFdoData;
-    info         = fdoExtension->MediaChangeDetectionInfo;
+    info = fdoExtension->MediaChangeDetectionInfo;
 
     NT_ASSERT(info->MediaChangeIrp != NULL);
     NT_ASSERT(!TEST_FLAG(Srb->SrbStatus, SRB_STATUS_QUEUE_FROZEN));
-    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "> ClasspMediaChangeDetectionCompletion: Device %p completed MCN irp %p.", DeviceObject, Irp));
+    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
+		"> ClasspMediaChangeDetectionCompletion: Device %p completed MCN irp %p.",
+		DeviceObject, Irp));
 
     /*
      *  HACK for IoMega 2GB Jaz drive:
@@ -1090,30 +954,26 @@ ClasspMediaChangeDetectionCompletion(
      */
 
     if ((SRB_STATUS(Srb->SrbStatus) != SRB_STATUS_SUCCESS) &&
-        TEST_FLAG(fdoExtension->ScanForSpecialFlags, CLASS_SPECIAL_CAUSE_NOT_REPORTABLE_HACK)) {
+	TEST_FLAG(fdoExtension->ScanForSpecialFlags,
+		  CLASS_SPECIAL_CAUSE_NOT_REPORTABLE_HACK)) {
+	PVOID senseData = SrbGetSenseInfoBuffer(Srb);
 
-        PVOID senseData = SrbGetSenseInfoBuffer(Srb);
+	if (senseData) {
+	    BOOLEAN validSense = TRUE;
+	    UCHAR senseInfoBufferLength = SrbGetSenseInfoBufferLength(Srb);
+	    UCHAR senseKey = 0;
+	    UCHAR additionalSenseCode = 0;
 
-        if (senseData) {
+	    validSense = ScsiGetSenseKeyAndCodes(
+		senseData, senseInfoBufferLength,
+		SCSI_SENSE_OPTIONS_FIXED_FORMAT_IF_UNKNOWN_FORMAT_INDICATED, &senseKey,
+		&additionalSenseCode, NULL);
 
-            BOOLEAN validSense = TRUE;
-            UCHAR senseInfoBufferLength = SrbGetSenseInfoBufferLength(Srb);
-            UCHAR senseKey = 0;
-            UCHAR additionalSenseCode = 0;
-
-            validSense = ScsiGetSenseKeyAndCodes(senseData,
-                                                 senseInfoBufferLength,
-                                                 SCSI_SENSE_OPTIONS_FIXED_FORMAT_IF_UNKNOWN_FORMAT_INDICATED,
-                                                 &senseKey,
-                                                 &additionalSenseCode,
-                                                 NULL);
-
-            if (validSense &&
-                senseKey == SCSI_SENSE_NOT_READY &&
-                additionalSenseCode == SCSI_ADSENSE_LUN_NOT_READY) {
-                Srb->SrbStatus = SRB_STATUS_SUCCESS;
-            }
-        }
+	    if (validSense && senseKey == SCSI_SENSE_NOT_READY &&
+		additionalSenseCode == SCSI_ADSENSE_LUN_NOT_READY) {
+		Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	    }
+	}
     }
 
     //
@@ -1122,62 +982,59 @@ ClasspMediaChangeDetectionCompletion(
     //
     status = STATUS_SUCCESS;
     if (SRB_STATUS(Srb->SrbStatus) != SRB_STATUS_SUCCESS) {
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "ClasspMediaChangeDetectionCompletion - failed - srb status=%s, "
+		    "sense=%s/%s/%s.",
+		    DBGGETSRBSTATUSSTR(Srb), DBGGETSENSECODESTR(Srb),
+		    DBGGETADSENSECODESTR(Srb), DBGGETADSENSEQUALIFIERSTR(Srb)));
 
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion - failed - srb status=%s, sense=%s/%s/%s.",
-                    DBGGETSRBSTATUSSTR(Srb), DBGGETSENSECODESTR(Srb), DBGGETADSENSECODESTR(Srb), DBGGETADSENSEQUALIFIERSTR(Srb)));
+	InterpretSenseInfoWithoutHistory(DeviceObject, Irp, (PSCSI_REQUEST_BLOCK)Srb,
+					 IRP_MJ_SCSI, 0, 0, &status, NULL);
+    } else {
+	fdoData->LoggedTURFailureSinceLastIO = FALSE;
 
-        InterpretSenseInfoWithoutHistory(DeviceObject,
-                                         Irp,
-                                         (PSCSI_REQUEST_BLOCK)Srb,
-                                         IRP_MJ_SCSI,
-                                         0,
-                                         0,
-                                         &status,
-                                         NULL);
-    }
-    else {
+	if (!info->Gesn.Supported) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClasspMediaChangeDetectionCompletion - succeeded and GESN NOT "
+			"supported, setting MediaPresent."));
 
-        fdoData->LoggedTURFailureSinceLastIO = FALSE;
+	    //
+	    // success != media for GESN case
+	    //
 
-        if (!info->Gesn.Supported) {
+	    ClassSetMediaChangeState(fdoExtension, MediaPresent, FALSE);
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion - succeeded and GESN NOT supported, setting MediaPresent."));
-
-            //
-            // success != media for GESN case
-            //
-
-            ClassSetMediaChangeState(fdoExtension, MediaPresent, FALSE);
-
-        }
-        else {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion - succeeded (GESN supported)."));
-        }
+	} else {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClasspMediaChangeDetectionCompletion - succeeded (GESN "
+			"supported)."));
+	}
     }
 
     if (info->Gesn.Supported) {
+	if (status == STATUS_DATA_OVERRUN) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClasspMediaChangeDetectionCompletion - Overrun"));
+	    status = STATUS_SUCCESS;
+	}
 
-        if (status == STATUS_DATA_OVERRUN) {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion - Overrun"));
-            status = STATUS_SUCCESS;
-        }
+	if (!NT_SUCCESS(status)) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClasspMediaChangeDetectionCompletion: GESN failed with status "
+			"%x",
+			status));
+	} else {
+	    //
+	    // for GESN, need to interpret the results of the data.
+	    // this may also require an immediate retry
+	    //
 
-        if (!NT_SUCCESS(status)) {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion: GESN failed with status %x", status));
-        } else {
+	    if (Irp->IoStatus.Information == 8) {
+		ClasspInterpretGesnData(fdoExtension, (PVOID)info->Gesn.Buffer,
+					&retryImmediately);
+	    }
 
-            //
-            // for GESN, need to interpret the results of the data.
-            // this may also require an immediate retry
-            //
-
-            if (Irp->IoStatus.Information == 8 ) {
-                ClasspInterpretGesnData(fdoExtension,
-                                        (PVOID)info->Gesn.Buffer,
-                                        &retryImmediately);
-            }
-
-        } // end of NT_SUCCESS(status)
+	} // end of NT_SUCCESS(status)
 
     } // end of Info->Gesn.Supported
 
@@ -1186,7 +1043,7 @@ ClasspMediaChangeDetectionCompletion(
     //
 
     if (PORT_ALLOCATED_SENSE_EX(fdoExtension, Srb)) {
-        FREE_PORT_ALLOCATED_SENSE_BUFFER_EX(fdoExtension, Srb);
+	FREE_PORT_ALLOCATED_SENSE_BUFFER_EX(fdoExtension, Srb);
     }
 
     //
@@ -1207,84 +1064,83 @@ ClasspMediaChangeDetectionCompletion(
     //
 
     if (retryImmediately) {
+	info->MediaChangeRetryCount++;
 
-        info->MediaChangeRetryCount++;
+	if (info->MediaChangeRetryCount > MAXIMUM_IMMEDIATE_MCN_RETRIES) {
+	    //
+	    // Disable GESN on this device.
+	    // Create a work item to set the value in the registry
+	    //
 
-        if (info->MediaChangeRetryCount > MAXIMUM_IMMEDIATE_MCN_RETRIES) {
+	    PIO_WORKITEM workItem;
 
-            //
-            // Disable GESN on this device.
-            // Create a work item to set the value in the registry
-            //
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClasspMediaChangeDetectionCompletion: Disabling GESN for device "
+			"%p",
+			DeviceObject));
 
-            PIO_WORKITEM workItem;
+	    workItem = IoAllocateWorkItem(DeviceObject);
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion: Disabling GESN for device %p", DeviceObject));
+	    if (workItem) {
+		IoQueueWorkItem(workItem, ClasspDisableGesn, DelayedWorkQueue, workItem);
+	    }
 
-            workItem = IoAllocateWorkItem(DeviceObject);
-
-            if (workItem) {
-                IoQueueWorkItem(workItem, ClasspDisableGesn, DelayedWorkQueue, workItem);
-            }
-
-            info->Gesn.Supported  = 0;
-            info->Gesn.EventMask  = 0;
-            info->Gesn.BufferSize = 0;
-            info->MediaChangeRetryCount = 0;
-            retryImmediately = FALSE;
-        }
+	    info->Gesn.Supported = 0;
+	    info->Gesn.EventMask = 0;
+	    info->Gesn.BufferSize = 0;
+	    info->MediaChangeRetryCount = 0;
+	    retryImmediately = FALSE;
+	}
 
     } else {
-
-        info->MediaChangeRetryCount = 0;
-
+	info->MediaChangeRetryCount = 0;
     }
-
 
     //
     // release the remove lock....
     //
 
     {
-        UCHAR uniqueValue = 0;
-        ClassAcquireRemoveLock(DeviceObject, (PVOID)(&uniqueValue));
-        ClassReleaseRemoveLock(DeviceObject, Irp);
+	UCHAR uniqueValue = 0;
+	ClassAcquireRemoveLock(DeviceObject, (PVOID)(&uniqueValue));
+	ClassReleaseRemoveLock(DeviceObject, Irp);
 
-
-        //
-        // set the irp as not in use
-        //
-        {
+	//
+	// set the irp as not in use
+	//
+	{
 #if DBG
-        volatile LONG irpWasInUse;
-        irpWasInUse = InterlockedCompareExchange(&info->MediaChangeIrpInUse, 0, 1);
-            #if _MSC_FULL_VER != 13009111        // This compiler always takes the wrong path here.
-                NT_ASSERT(irpWasInUse);
-            #endif
-#else
-            InterlockedCompareExchange(&info->MediaChangeIrpInUse, 0, 1);
+	    volatile LONG irpWasInUse;
+	    irpWasInUse = InterlockedCompareExchange(&info->MediaChangeIrpInUse, 0, 1);
+#if _MSC_FULL_VER != 13009111 // This compiler always takes the wrong path here.
+	    NT_ASSERT(irpWasInUse);
 #endif
+#else
+	    InterlockedCompareExchange(&info->MediaChangeIrpInUse, 0, 1);
+#endif
+	}
+
+	//
+	// now send it again before we release our last remove lock
+	//
+
+	if (retryImmediately) {
+	    ClasspSendMediaStateIrp(fdoExtension, info, 0);
+	} else {
+	    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
+			"ClasspMediaChangeDetectionCompletion - not retrying "
+			"immediately"));
+	}
+
+	//
+	// release the temporary remove lock
+	//
+
+	ClassReleaseRemoveLock(DeviceObject, (PVOID)(&uniqueValue));
     }
 
-        //
-        // now send it again before we release our last remove lock
-        //
-
-        if (retryImmediately) {
-            ClasspSendMediaStateIrp(fdoExtension, info, 0);
-        }
-        else {
-            TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "ClasspMediaChangeDetectionCompletion - not retrying immediately"));
-        }
-
-        //
-        // release the temporary remove lock
-        //
-
-        ClassReleaseRemoveLock(DeviceObject, (PVOID)(&uniqueValue));
-    }
-
-    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "< ClasspMediaChangeDetectionCompletion"));
+    TracePrint(
+	(TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "< ClasspMediaChangeDetectionCompletion"));
 
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
@@ -1306,12 +1162,8 @@ Return Value:
 
 
 --*/
-PIRP
-ClasspPrepareMcnIrp(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PMEDIA_CHANGE_DETECTION_INFO Info,
-    IN BOOLEAN UseGesn
-)
+PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			 IN PMEDIA_CHANGE_DETECTION_INFO Info, IN BOOLEAN UseGesn)
 {
     PSCSI_REQUEST_BLOCK srb;
     PSTORAGE_REQUEST_BLOCK srbEx;
@@ -1335,8 +1187,8 @@ ClasspPrepareMcnIrp(
     irp = Info->MediaChangeIrp;
 
     if (irp == NULL) {
-        NT_ASSERT(irp);
-        return NULL;
+	NT_ASSERT(irp);
+	return NULL;
     }
 
     //
@@ -1345,15 +1197,13 @@ ClasspPrepareMcnIrp(
 
     status = ClassAcquireRemoveLock(FdoExtension->DeviceObject, irp);
     if (status == REMOVE_COMPLETE) {
-        NT_ASSERT(status != REMOVE_COMPLETE);
-        return NULL;
-    }
-    else if (status == REMOVE_PENDING) {
-        ClassReleaseRemoveLock(FdoExtension->DeviceObject, irp);
-        return NULL;
-    }
-    else {
-        NT_ASSERT(status == NO_REMOVE);
+	NT_ASSERT(status != REMOVE_COMPLETE);
+	return NULL;
+    } else if (status == REMOVE_PENDING) {
+	ClassReleaseRemoveLock(FdoExtension->DeviceObject, irp);
+	return NULL;
+    } else {
+	NT_ASSERT(status == NO_REMOVE);
     }
 
     IoReuseIrp(irp, STATUS_NOT_SUPPORTED);
@@ -1401,57 +1251,51 @@ ClasspPrepareMcnIrp(
 
     timeOutValue = FdoExtension->TimeOutValue * 2;
     if (timeOutValue == 0) {
+	if (FdoExtension->TimeOutValue == 0) {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+			"ClassSendTestUnitIrp: FdoExtension->TimeOutValue "
+			"is set to zero?! -- resetting to 10\n"));
+	    timeOutValue = 10 * 2; // reasonable default
 
-        if (FdoExtension->TimeOutValue == 0) {
-
-            TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                       "ClassSendTestUnitIrp: FdoExtension->TimeOutValue "
-                       "is set to zero?! -- resetting to 10\n"));
-            timeOutValue = 10 * 2;  // reasonable default
-
-        } else {
-
-            TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                       "ClassSendTestUnitIrp: Someone set "
-                       "srb->TimeOutValue to zero?! -- resetting to %x\n",
-                       FdoExtension->TimeOutValue * 2));
-            timeOutValue = FdoExtension->TimeOutValue * 2;
-
-        }
-
+	} else {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+			"ClassSendTestUnitIrp: Someone set "
+			"srb->TimeOutValue to zero?! -- resetting to %x\n",
+			FdoExtension->TimeOutValue * 2));
+	    timeOutValue = FdoExtension->TimeOutValue * 2;
+	}
     }
 
     if (!UseGesn) {
-        nextIrpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_SCSI_EXECUTE_NONE;
-        irp->MdlAddress = NULL;
+	nextIrpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_SCSI_EXECUTE_NONE;
+	irp->MdlAddress = NULL;
 
-        SET_FLAG(srbFlags, SRB_FLAGS_NO_DATA_TRANSFER);
+	SET_FLAG(srbFlags, SRB_FLAGS_NO_DATA_TRANSFER);
 
-        //
-        // Set SRB_FLAGS_NO_KEEP_AWAKE for non-cdrom devices if these requests should
-        // not prevent devices from going to sleep.
-        //
-        if ((FdoExtension->DeviceObject->DeviceType != FILE_DEVICE_CD_ROM) &&
-            (ClasspScreenOff == TRUE)) {
-            SET_FLAG(srbFlags, SRB_FLAGS_NO_KEEP_AWAKE);
-        }
+	//
+	// Set SRB_FLAGS_NO_KEEP_AWAKE for non-cdrom devices if these requests should
+	// not prevent devices from going to sleep.
+	//
+	if ((FdoExtension->DeviceObject->DeviceType != FILE_DEVICE_CD_ROM) &&
+	    (ClasspScreenOff == TRUE)) {
+	    SET_FLAG(srbFlags, SRB_FLAGS_NO_KEEP_AWAKE);
+	}
 
-        cdbLength = 6;
-        dataBuffer = NULL;
-        dataTransferLength = 0;
+	cdbLength = 6;
+	dataBuffer = NULL;
+	dataTransferLength = 0;
 
     } else {
-        NT_ASSERT(Info->Gesn.Buffer);
+	NT_ASSERT(Info->Gesn.Buffer);
 
-        nextIrpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_SCSI_EXECUTE_IN;
-        irp->MdlAddress = Info->Gesn.Mdl;
+	nextIrpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_SCSI_EXECUTE_IN;
+	irp->MdlAddress = Info->Gesn.Mdl;
 
-        SET_FLAG(srbFlags, SRB_FLAGS_DATA_IN);
-        cdbLength = 10;
-        dataBuffer = Info->Gesn.Buffer;
-        dataTransferLength = Info->Gesn.BufferSize;
-        timeOutValue = GESN_TIMEOUT_VALUE; // much shorter timeout for GESN
-
+	SET_FLAG(srbFlags, SRB_FLAGS_DATA_IN);
+	cdbLength = 10;
+	dataBuffer = Info->Gesn.Buffer;
+	dataTransferLength = Info->Gesn.BufferSize;
+	timeOutValue = GESN_TIMEOUT_VALUE; // much shorter timeout for GESN
     }
 
     //
@@ -1459,84 +1303,75 @@ ClasspPrepareMcnIrp(
     //
     srb = nextIrpStack->Parameters.Scsi.Srb;
     if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-        srbEx = (PSTORAGE_REQUEST_BLOCK)nextIrpStack->Parameters.Scsi.Srb;
+	srbEx = (PSTORAGE_REQUEST_BLOCK)nextIrpStack->Parameters.Scsi.Srb;
 
-        status = InitializeStorageRequestBlock(srbEx,
-                                               STORAGE_ADDRESS_TYPE_BTL8,
-                                               CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-                                               1,
-                                               SrbExDataTypeScsiCdb16);
-        if (!NT_SUCCESS(status)) {
-            // should not happen
-            NT_ASSERT(FALSE);
-            return NULL;
-        }
+	status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
+					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+					       SrbExDataTypeScsiCdb16);
+	if (!NT_SUCCESS(status)) {
+	    // should not happen
+	    NT_ASSERT(FALSE);
+	    return NULL;
+	}
 
-        srbEx->RequestTag         = SP_UNTAGGED;
-        srbEx->RequestAttribute   = SRB_SIMPLE_TAG_REQUEST;
-        srbEx->SrbFunction        = SRB_FUNCTION_EXECUTE_SCSI;
-        srbEx->SrbStatus          = 0;
-        srbEx->OriginalRequest    = irp;
-        srbEx->SrbFlags           = srbFlags;
-        srbEx->TimeOutValue       = timeOutValue;
-        srbEx->DataBuffer         = dataBuffer;
-        srbEx->DataTransferLength = dataTransferLength;
+	srbEx->RequestTag = SP_UNTAGGED;
+	srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
+	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+	srbEx->SrbStatus = 0;
+	srbEx->OriginalRequest = irp;
+	srbEx->SrbFlags = srbFlags;
+	srbEx->TimeOutValue = timeOutValue;
+	srbEx->DataBuffer = dataBuffer;
+	srbEx->DataTransferLength = dataTransferLength;
 
-        SrbSetScsiStatus(srbEx, 0);
-        SrbSetSenseInfoBuffer(srbEx, buffer);
-        SrbSetSenseInfoBufferLength(srbEx, bufferLength);
-        SrbSetCdbLength(srbEx, cdbLength);
+	SrbSetScsiStatus(srbEx, 0);
+	SrbSetSenseInfoBuffer(srbEx, buffer);
+	SrbSetSenseInfoBufferLength(srbEx, bufferLength);
+	SrbSetCdbLength(srbEx, cdbLength);
 
-        cdb = SrbGetCdb(srbEx);
+	cdb = SrbGetCdb(srbEx);
 
     } else {
-        RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
+	RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
 
-        srb->QueueTag        = SP_UNTAGGED;
-        srb->QueueAction     = SRB_SIMPLE_TAG_REQUEST;
-        srb->Length          = sizeof(SCSI_REQUEST_BLOCK);
-        srb->Function        = SRB_FUNCTION_EXECUTE_SCSI;
-        srb->SenseInfoBuffer = buffer;
-        srb->SenseInfoBufferLength = bufferLength;
-        srb->SrbStatus       = 0;
-        srb->ScsiStatus      = 0;
-        srb->OriginalRequest = irp;
+	srb->QueueTag = SP_UNTAGGED;
+	srb->QueueAction = SRB_SIMPLE_TAG_REQUEST;
+	srb->Length = sizeof(SCSI_REQUEST_BLOCK);
+	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+	srb->SenseInfoBuffer = buffer;
+	srb->SenseInfoBufferLength = bufferLength;
+	srb->SrbStatus = 0;
+	srb->ScsiStatus = 0;
+	srb->OriginalRequest = irp;
 
-        srb->SrbFlags        = srbFlags;
-        srb->TimeOutValue    = timeOutValue;
-        srb->CdbLength       = cdbLength;
-        srb->DataBuffer      = dataBuffer;
-        srb->DataTransferLength = dataTransferLength;
+	srb->SrbFlags = srbFlags;
+	srb->TimeOutValue = timeOutValue;
+	srb->CdbLength = cdbLength;
+	srb->DataBuffer = dataBuffer;
+	srb->DataTransferLength = dataTransferLength;
 
-        cdb = (PCDB) &srb->Cdb[0];
-
+	cdb = (PCDB)&srb->Cdb[0];
     }
 
     if (cdb) {
-        if (!UseGesn) {
-            cdb->CDB6GENERIC.OperationCode = SCSIOP_TEST_UNIT_READY;
-        } else {
-            cdb->GET_EVENT_STATUS_NOTIFICATION.OperationCode =
-                SCSIOP_GET_EVENT_STATUS;
-            cdb->GET_EVENT_STATUS_NOTIFICATION.Immediate = 1;
-            cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[0] =
-                (UCHAR)((Info->Gesn.BufferSize) >> 8);
-            cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[1] =
-                (UCHAR)((Info->Gesn.BufferSize) & 0xff);
-            cdb->GET_EVENT_STATUS_NOTIFICATION.NotificationClassRequest =
-                Info->Gesn.EventMask;
-        }
+	if (!UseGesn) {
+	    cdb->CDB6GENERIC.OperationCode = SCSIOP_TEST_UNIT_READY;
+	} else {
+	    cdb->GET_EVENT_STATUS_NOTIFICATION.OperationCode = SCSIOP_GET_EVENT_STATUS;
+	    cdb->GET_EVENT_STATUS_NOTIFICATION.Immediate = 1;
+	    cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[0] =
+		(UCHAR)((Info->Gesn.BufferSize) >> 8);
+	    cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[1] =
+		(UCHAR)((Info->Gesn.BufferSize) & 0xff);
+	    cdb->GET_EVENT_STATUS_NOTIFICATION.NotificationClassRequest =
+		Info->Gesn.EventMask;
+	}
     }
 
-    IoSetCompletionRoutine(irp,
-                           ClasspMediaChangeDetectionCompletion,
-                           srb,
-                           TRUE,
-                           TRUE,
-                           TRUE);
+    IoSetCompletionRoutine(irp, ClasspMediaChangeDetectionCompletion, srb, TRUE, TRUE,
+			   TRUE);
 
     return irp;
-
 }
 
 /*++////////////////////////////////////////////////////////////////////////////
@@ -1555,12 +1390,8 @@ Arguments:
 Return Value:
 
 --*/
-VOID
-ClasspSendMediaStateIrp(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PMEDIA_CHANGE_DETECTION_INFO Info,
-    IN ULONG CountDown
-    )
+VOID ClasspSendMediaStateIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     IN PMEDIA_CHANGE_DETECTION_INFO Info, IN ULONG CountDown)
 {
     BOOLEAN requestPending = FALSE;
     LONG irpInUse;
@@ -1568,18 +1399,16 @@ ClasspSendMediaStateIrp(
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "> ClasspSendMediaStateIrp"));
 
     if (((FdoExtension->CommonExtension.CurrentState != IRP_MN_START_DEVICE) ||
-         (FdoExtension->DevicePowerState != PowerDeviceD0)
-         ) &&
-        (!Info->MediaChangeIrpLost)) {
+	 (FdoExtension->DevicePowerState != PowerDeviceD0)) &&
+	(!Info->MediaChangeIrpLost)) {
+	//
+	// the device may be stopped, powered down, or otherwise queueing io,
+	// so should not timeout the autorun irp (yet) -- set to zero ticks.
+	// scattered code relies upon this to not prematurely "lose" an
+	// autoplay irp that was queued.
+	//
 
-        //
-        // the device may be stopped, powered down, or otherwise queueing io,
-        // so should not timeout the autorun irp (yet) -- set to zero ticks.
-        // scattered code relies upon this to not prematurely "lose" an
-        // autoplay irp that was queued.
-        //
-
-        Info->MediaChangeIrpTimeInUse = 0;
+	Info->MediaChangeIrpTimeInUse = 0;
     }
 
     //
@@ -1589,138 +1418,135 @@ ClasspSendMediaStateIrp(
     irpInUse = InterlockedCompareExchange(&Info->MediaChangeIrpInUse, 1, 0);
 
     if (irpInUse) {
+	LONG timeInUse;
 
-        LONG timeInUse;
+	timeInUse = InterlockedIncrement(&Info->MediaChangeIrpTimeInUse);
 
-        timeInUse = InterlockedIncrement(&Info->MediaChangeIrpTimeInUse);
+	TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
+		    "ClasspSendMediaStateIrp: irp in use for "
+		    "%x seconds when synchronizing for MCD\n",
+		    timeInUse));
 
-        TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "ClasspSendMediaStateIrp: irp in use for "
-                    "%x seconds when synchronizing for MCD\n", timeInUse));
+	if (Info->MediaChangeIrpLost == FALSE) {
+	    if (timeInUse > MEDIA_CHANGE_TIMEOUT_TIME) {
+		//
+		// currently set to five minutes.  hard to imagine a drive
+		// taking that long to spin up.
+		//
 
-        if (Info->MediaChangeIrpLost == FALSE) {
+		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+			    "CdRom%d: Media Change Notification has lost "
+			    "it's irp and doesn't know where to find it.  "
+			    "Leave it alone and it'll come home dragging "
+			    "it's stack behind it.\n",
+			    FdoExtension->DeviceNumber));
+		Info->MediaChangeIrpLost = TRUE;
+	    }
+	}
 
-            if (timeInUse > MEDIA_CHANGE_TIMEOUT_TIME) {
-
-                //
-                // currently set to five minutes.  hard to imagine a drive
-                // taking that long to spin up.
-                //
-
-                TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                            "CdRom%d: Media Change Notification has lost "
-                            "it's irp and doesn't know where to find it.  "
-                            "Leave it alone and it'll come home dragging "
-                            "it's stack behind it.\n",
-                            FdoExtension->DeviceNumber));
-                Info->MediaChangeIrpLost = TRUE;
-            }
-        }
-
-        TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "< ClasspSendMediaStateIrp - irpInUse"));
-        return;
-
+	TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
+		    "< ClasspSendMediaStateIrp - irpInUse"));
+	return;
     }
 
-    TRY {
+    TRY
+    {
+	if (Info->MediaChangeDetectionDisableCount != 0) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassCheckMediaState: device %p has "
+			" detection disabled \n",
+			FdoExtension->DeviceObject));
+	    LEAVE;
+	}
 
-        if (Info->MediaChangeDetectionDisableCount != 0) {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassCheckMediaState: device %p has "
-                        " detection disabled \n", FdoExtension->DeviceObject));
-            LEAVE;
-        }
+	if (FdoExtension->DevicePowerState != PowerDeviceD0) {
+	    //
+	    // It's possible that the device went to D3 while the screen was
+	    // off so we need to make sure that we send the IRP regardless
+	    // of the device's power state in order to wake the device back
+	    // up when the screen comes back on.
+	    // When the screen is off we set the SRB_FLAG_NO_KEEP_AWAKE flag
+	    // so that the lower driver does not power-up the device for this
+	    // request.  When the screen comes back on, however, we want to
+	    // resume checking for media presence so we no longer set the flag.
+	    // When the device is in D3 we also stop the polling timer as well.
+	    //
 
-        if (FdoExtension->DevicePowerState != PowerDeviceD0) {
+	    //
+	    // NOTE: we don't increment the time in use until our power state
+	    // changes above.  this way, we won't "lose" the autoplay irp.
+	    // it's up to the lower driver to determine if powering up is a
+	    // good idea.
+	    //
 
-            //
-            // It's possible that the device went to D3 while the screen was
-            // off so we need to make sure that we send the IRP regardless
-            // of the device's power state in order to wake the device back
-            // up when the screen comes back on.
-            // When the screen is off we set the SRB_FLAG_NO_KEEP_AWAKE flag
-            // so that the lower driver does not power-up the device for this
-            // request.  When the screen comes back on, however, we want to
-            // resume checking for media presence so we no longer set the flag.
-            // When the device is in D3 we also stop the polling timer as well.
-            //
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassCheckMediaState: device %p needs to powerup "
+			"to handle this io (may take a few extra seconds).\n",
+			FdoExtension->DeviceObject));
+	}
 
-            //
-            // NOTE: we don't increment the time in use until our power state
-            // changes above.  this way, we won't "lose" the autoplay irp.
-            // it's up to the lower driver to determine if powering up is a
-            // good idea.
-            //
+	Info->MediaChangeIrpTimeInUse = 0;
+	Info->MediaChangeIrpLost = FALSE;
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                        "ClassCheckMediaState: device %p needs to powerup "
-                        "to handle this io (may take a few extra seconds).\n",
-                        FdoExtension->DeviceObject));
-        }
+	if (CountDown == 0) {
+	    PIRP irp;
 
-        Info->MediaChangeIrpTimeInUse = 0;
-        Info->MediaChangeIrpLost = FALSE;
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassCheckMediaState: timer expired\n"));
 
-        if (CountDown == 0) {
+	    if (Info->MediaChangeDetectionDisableCount != 0) {
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "ClassCheckMediaState: detection disabled\n"));
+		LEAVE;
+	    }
 
-            PIRP irp;
+	    //
+	    // Prepare the IRP for the test unit ready
+	    //
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                        "ClassCheckMediaState: timer expired\n"));
+	    irp = ClasspPrepareMcnIrp(FdoExtension, Info, Info->Gesn.Supported);
 
-            if (Info->MediaChangeDetectionDisableCount != 0) {
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                            "ClassCheckMediaState: detection disabled\n"));
-                LEAVE;
-            }
+	    //
+	    // Issue the request.
+	    //
 
-            //
-            // Prepare the IRP for the test unit ready
-            //
+	    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
+			"ClasspSendMediaStateIrp: Device %p getting TUR "
+			" irp %p\n",
+			FdoExtension->DeviceObject, irp));
 
-            irp = ClasspPrepareMcnIrp(FdoExtension,
-                                      Info,
-                                      Info->Gesn.Supported);
+	    if (irp == NULL) {
+		LEAVE;
+	    }
 
-            //
-            // Issue the request.
-            //
+	    //
+	    // note: if we send it to the class dispatch routines, there is
+	    //       a timing window here (since they grab the remove lock)
+	    //       where we'd be removed. ELIMINATE the window by grabbing
+	    //       the lock ourselves above and sending it to the lower
+	    //       device object directly or to the device's StartIo
+	    //       routine (which doesn't acquire the lock).
+	    //
 
-            TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
-                        "ClasspSendMediaStateIrp: Device %p getting TUR "
-                        " irp %p\n", FdoExtension->DeviceObject, irp));
+	    requestPending = TRUE;
 
-            if (irp == NULL) {
-                LEAVE;
-            }
-
-
-            //
-            // note: if we send it to the class dispatch routines, there is
-            //       a timing window here (since they grab the remove lock)
-            //       where we'd be removed. ELIMINATE the window by grabbing
-            //       the lock ourselves above and sending it to the lower
-            //       device object directly or to the device's StartIo
-            //       routine (which doesn't acquire the lock).
-            //
-
-            requestPending = TRUE;
-
-            TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "  ClasspSendMediaStateIrp - calling IoCallDriver."));
-            IoCallDriver(FdoExtension->CommonExtension.LowerDeviceObject, irp);
-        }
-
-    } FINALLY {
-
-        if(requestPending == FALSE) {
+	    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN,
+			"  ClasspSendMediaStateIrp - calling IoCallDriver."));
+	    IoCallDriver(FdoExtension->CommonExtension.LowerDeviceObject, irp);
+	}
+    }
+    FINALLY
+    {
+	if (requestPending == FALSE) {
 #if DBG
-            irpInUse = InterlockedCompareExchange(&Info->MediaChangeIrpInUse, 0, 1);
-            #if _MSC_FULL_VER != 13009111        // This compiler always takes the wrong path here.
-                NT_ASSERT(irpInUse);
-            #endif
-#else
-            InterlockedCompareExchange(&Info->MediaChangeIrpInUse, 0, 1);
+	    irpInUse = InterlockedCompareExchange(&Info->MediaChangeIrpInUse, 0, 1);
+#if _MSC_FULL_VER != 13009111 // This compiler always takes the wrong path here.
+	    NT_ASSERT(irpInUse);
 #endif
-        }
-
+#else
+	    InterlockedCompareExchange(&Info->MediaChangeIrpInUse, 0, 1);
+#endif
+	}
     }
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_MCN, "< ClasspSendMediaStateIrp"));
@@ -1747,19 +1573,15 @@ Return Value:
     none
 
 --*/
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassCheckMediaState(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+NTAPI VOID ClassCheckMediaState(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
     LONG countDown;
 
-    if(info == NULL) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassCheckMediaState: detection not enabled\n"));
-        return;
+    if (info == NULL) {
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassCheckMediaState: detection not enabled\n"));
+	return;
     }
 
     //
@@ -1775,9 +1597,7 @@ ClassCheckMediaState(
     // Try to acquire the media change event.  If we can't do it immediately
     // then bail out and assume the caller will try again later.
     //
-    ClasspSendMediaStateIrp(FdoExtension,
-                            info,
-                            countDown);
+    ClasspSendMediaStateIrp(FdoExtension, info, countDown);
 
     return;
 } // end ClassCheckMediaState()
@@ -1799,17 +1619,12 @@ Return Value:
     None
 
 --*/
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassResetMediaChangeTimer(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+NTAPI VOID ClassResetMediaChangeTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
 
-    if(info != NULL) {
-        InterlockedExchange(&(info->MediaChangeCountDown),
-                            MEDIA_CHANGE_DEFAULT_TIME);
+    if (info != NULL) {
+	InterlockedExchange(&(info->MediaChangeCountDown), MEDIA_CHANGE_DEFAULT_TIME);
     }
     return;
 } // end ClassResetMediaChangeTimer()
@@ -1831,10 +1646,8 @@ Return Value:
 
 --*/
 NTSTATUS
-ClasspInitializePolling(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN BOOLEAN AllowDriveToSleep
-    )
+ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			IN BOOLEAN AllowDriveToSleep)
 {
     PDEVICE_OBJECT fdo = FdoExtension->DeviceObject;
 
@@ -1844,139 +1657,134 @@ ClasspInitializePolling(
     PAGED_CODE();
 
     if (FdoExtension->MediaChangeDetectionInfo != NULL) {
-        return STATUS_SUCCESS;
+	return STATUS_SUCCESS;
     }
 
-    info = ExAllocatePoolWithTag(NonPagedPoolNx,
-                                 sizeof(MEDIA_CHANGE_DETECTION_INFO),
-                                 CLASS_TAG_MEDIA_CHANGE_DETECTION);
+    info = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(MEDIA_CHANGE_DETECTION_INFO),
+				 CLASS_TAG_MEDIA_CHANGE_DETECTION);
 
     if (info != NULL) {
-        RtlZeroMemory(info, sizeof(MEDIA_CHANGE_DETECTION_INFO));
+	RtlZeroMemory(info, sizeof(MEDIA_CHANGE_DETECTION_INFO));
 
-        FdoExtension->KernelModeMcnContext.FileObject      = (PVOID)-1;
-        FdoExtension->KernelModeMcnContext.DeviceObject    = (PVOID)-1;
-        FdoExtension->KernelModeMcnContext.LockCount       = 0;
-        FdoExtension->KernelModeMcnContext.McnDisableCount = 0;
+	FdoExtension->KernelModeMcnContext.FileObject = (PVOID)-1;
+	FdoExtension->KernelModeMcnContext.DeviceObject = (PVOID)-1;
+	FdoExtension->KernelModeMcnContext.LockCount = 0;
+	FdoExtension->KernelModeMcnContext.McnDisableCount = 0;
 
-        /*
+	/*
          *  Allocate an IRP to carry the Test-Unit-Ready.
          *  Allocate an extra IRP stack location
          *  so we can cache our device object in the top location.
          */
-        irp = IoAllocateIrp((CCHAR)(fdo->StackSize+1), FALSE);
+	irp = IoAllocateIrp((CCHAR)(fdo->StackSize + 1), FALSE);
 
-        if (irp != NULL) {
+	if (irp != NULL) {
+	    PVOID buffer;
+	    BOOLEAN GesnSupported = FALSE;
 
-            PVOID buffer;
-            BOOLEAN GesnSupported = FALSE;
+	    buffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
+					   SENSE_BUFFER_SIZE_EX,
+					   CLASS_TAG_MEDIA_CHANGE_DETECTION);
 
-            buffer = ExAllocatePoolWithTag(
-                        NonPagedPoolNxCacheAligned,
-                        SENSE_BUFFER_SIZE_EX,
-                        CLASS_TAG_MEDIA_CHANGE_DETECTION);
+	    if (buffer != NULL) {
+		info->MediaChangeIrp = irp;
+		info->SenseBuffer = buffer;
+		info->SenseBufferLength = SENSE_BUFFER_SIZE_EX;
 
-            if (buffer != NULL) {
+		//
+		// Set default values for the media change notification
+		// configuration.
+		//
 
-                info->MediaChangeIrp = irp;
-                info->SenseBuffer = buffer;
-                info->SenseBufferLength = SENSE_BUFFER_SIZE_EX;
+		info->MediaChangeCountDown = MEDIA_CHANGE_DEFAULT_TIME;
+		info->MediaChangeDetectionDisableCount = 0;
 
-                //
-                // Set default values for the media change notification
-                // configuration.
-                //
+		//
+		// Assume that there is initially no media in the device
+		// only notify upper layers if there is something there
+		//
 
-                info->MediaChangeCountDown = MEDIA_CHANGE_DEFAULT_TIME;
-                info->MediaChangeDetectionDisableCount = 0;
+		info->MediaChangeDetectionState = MediaUnknown;
 
-                //
-                // Assume that there is initially no media in the device
-                // only notify upper layers if there is something there
-                //
+		info->MediaChangeIrpTimeInUse = 0;
+		info->MediaChangeIrpLost = FALSE;
 
-                info->MediaChangeDetectionState = MediaUnknown;
+		//
+		// setup all extra flags we'll be setting for this irp
+		//
+		info->SrbFlags = 0;
+		if (AllowDriveToSleep) {
+		    SET_FLAG(info->SrbFlags, SRB_FLAGS_NO_KEEP_AWAKE);
+		}
+		SET_FLAG(info->SrbFlags, SRB_CLASS_FLAGS_LOW_PRIORITY);
+		SET_FLAG(info->SrbFlags, SRB_FLAGS_NO_QUEUE_FREEZE);
+		SET_FLAG(info->SrbFlags, SRB_FLAGS_DISABLE_SYNCH_TRANSFER);
 
-                info->MediaChangeIrpTimeInUse = 0;
-                info->MediaChangeIrpLost = FALSE;
+		KeInitializeMutex(&info->MediaChangeMutex, 0x100);
 
-                //
-                // setup all extra flags we'll be setting for this irp
-                //
-                info->SrbFlags = 0;
-                if (AllowDriveToSleep) {
-                    SET_FLAG(info->SrbFlags, SRB_FLAGS_NO_KEEP_AWAKE);
-                }
-                SET_FLAG(info->SrbFlags, SRB_CLASS_FLAGS_LOW_PRIORITY);
-                SET_FLAG(info->SrbFlags, SRB_FLAGS_NO_QUEUE_FREEZE);
-                SET_FLAG(info->SrbFlags, SRB_FLAGS_DISABLE_SYNCH_TRANSFER);
+		//
+		// It is ok to support media change events on this
+		// device.
+		//
 
-                KeInitializeMutex(&info->MediaChangeMutex, 0x100);
+		FdoExtension->MediaChangeDetectionInfo = info;
 
-                //
-                // It is ok to support media change events on this
-                // device.
-                //
+		//
+		// NOTE: the DeviceType is FILE_DEVICE_CD_ROM even
+		//       when the device supports DVD (no need to
+		//       check for FILE_DEVICE_DVD, as it's not a
+		//       valid check).
+		//
 
-                FdoExtension->MediaChangeDetectionInfo = info;
+		if (FdoExtension->DeviceObject->DeviceType == FILE_DEVICE_CD_ROM) {
+		    NTSTATUS status;
 
-                //
-                // NOTE: the DeviceType is FILE_DEVICE_CD_ROM even
-                //       when the device supports DVD (no need to
-                //       check for FILE_DEVICE_DVD, as it's not a
-                //       valid check).
-                //
+		    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				"ClasspInitializePolling: Testing for GESN\n"));
+		    status = ClasspInitializeGesn(FdoExtension, info);
+		    if (NT_SUCCESS(status)) {
+			TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				    "ClasspInitializePolling: GESN available "
+				    "for %p\n",
+				    FdoExtension->DeviceObject));
+			NT_ASSERT(info->Gesn.Supported);
+			NT_ASSERT(info->Gesn.Buffer != NULL);
+			NT_ASSERT(info->Gesn.BufferSize != 0);
+			NT_ASSERT(info->Gesn.EventMask != 0);
+			GesnSupported = TRUE;
+		    } else {
+			TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				    "ClasspInitializePolling: GESN *NOT* available "
+				    "for %p\n",
+				    FdoExtension->DeviceObject));
+		    }
+		}
 
-                if (FdoExtension->DeviceObject->DeviceType == FILE_DEVICE_CD_ROM) {
+		if (GesnSupported == FALSE) {
+		    NT_ASSERT(info->Gesn.Supported == 0);
+		    NT_ASSERT(info->Gesn.Buffer == NULL);
+		    NT_ASSERT(info->Gesn.BufferSize == 0);
+		    NT_ASSERT(info->Gesn.EventMask == 0);
+		    info->Gesn.Supported = 0; // just in case....
+		}
 
-                    NTSTATUS status;
+		//
+		// Register for screen state notification. Will use this to
+		// determine user presence.
+		//
+		if (ScreenStateNotificationHandle == NULL) {
+		    PoRegisterPowerSettingCallback(fdo, &GUID_CONSOLE_DISPLAY_STATE,
+						   &ClasspPowerSettingCallback, NULL,
+						   &ScreenStateNotificationHandle);
+		}
 
-                    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                               "ClasspInitializePolling: Testing for GESN\n"));
-                    status = ClasspInitializeGesn(FdoExtension, info);
-                    if (NT_SUCCESS(status)) {
-                        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                                   "ClasspInitializePolling: GESN available "
-                                   "for %p\n", FdoExtension->DeviceObject));
-                        NT_ASSERT(info->Gesn.Supported );
-                        NT_ASSERT(info->Gesn.Buffer     != NULL);
-                        NT_ASSERT(info->Gesn.BufferSize != 0);
-                        NT_ASSERT(info->Gesn.EventMask  != 0);
-                        GesnSupported = TRUE;
-                    } else {
-                        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                                   "ClasspInitializePolling: GESN *NOT* available "
-                                   "for %p\n", FdoExtension->DeviceObject));
-                    }
-                }
+		return STATUS_SUCCESS;
+	    }
 
-                if (GesnSupported == FALSE) {
-                    NT_ASSERT(info->Gesn.Supported == 0);
-                    NT_ASSERT(info->Gesn.Buffer == NULL);
-                    NT_ASSERT(info->Gesn.BufferSize == 0);
-                    NT_ASSERT(info->Gesn.EventMask  == 0);
-                    info->Gesn.Supported = 0; // just in case....
-                }
+	    IoFreeIrp(irp);
+	}
 
-                //
-                // Register for screen state notification. Will use this to
-                // determine user presence.
-                //
-                if (ScreenStateNotificationHandle == NULL) {
-                    PoRegisterPowerSettingCallback(fdo,
-                                                   &GUID_CONSOLE_DISPLAY_STATE,
-                                                   &ClasspPowerSettingCallback,
-                                                   NULL,
-                                                   &ScreenStateNotificationHandle);
-                }
-
-                return STATUS_SUCCESS;
-            }
-
-            IoFreeIrp(irp);
-        }
-
-        FREE_POOL(info);
+	FREE_POOL(info);
     }
 
     //
@@ -1987,10 +1795,8 @@ ClasspInitializePolling(
 } // end ClasspInitializePolling()
 
 NTSTATUS
-ClasspInitializeGesn(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PMEDIA_CHANGE_DETECTION_INFO Info
-    )
+ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+		     IN PMEDIA_CHANGE_DETECTION_INFO Info)
 {
     PNOTIFICATION_EVENT_STATUS_HEADER header;
     CLASS_DETECTION_STATE detectionState = ClassDetectionUnknown;
@@ -2010,30 +1816,23 @@ ClasspInitializeGesn(
     // read if we already know the abilities of the device
     //
 
-    ClassGetDeviceParameter(FdoExtension,
-                            CLASSP_REG_SUBKEY_NAME,
-                            CLASSP_REG_MMC_DETECTION_VALUE_NAME,
-                            (PULONG)&detectionState);
+    ClassGetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+			    CLASSP_REG_MMC_DETECTION_VALUE_NAME, (PULONG)&detectionState);
 
     if (detectionState == ClassDetectionUnsupported) {
-        goto ExitWithError;
+	goto ExitWithError;
     }
 
     //
     // check if the device has a hack flag saying never to try this.
     //
 
-    if (TEST_FLAG(FdoExtension->PrivateFdoData->HackFlags,
-                  FDO_HACK_GESN_IS_BAD)) {
-
-        ClassSetDeviceParameter(FdoExtension,
-                                CLASSP_REG_SUBKEY_NAME,
-                                CLASSP_REG_MMC_DETECTION_VALUE_NAME,
-                                ClassDetectionUnsupported);
-        goto ExitWithError;
-
+    if (TEST_FLAG(FdoExtension->PrivateFdoData->HackFlags, FDO_HACK_GESN_IS_BAD)) {
+	ClassSetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+				CLASSP_REG_MMC_DETECTION_VALUE_NAME,
+				ClassDetectionUnsupported);
+	goto ExitWithError;
     }
-
 
     //
     // else go through the process since we allocate buffers and
@@ -2041,23 +1840,21 @@ ClasspInitializeGesn(
     //
 
     if (Info->Gesn.Buffer == NULL) {
-        Info->Gesn.Buffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-                                                  GESN_BUFFER_SIZE,
-                                                  '??cS');
+	Info->Gesn.Buffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
+						  GESN_BUFFER_SIZE, '??cS');
     }
     if (Info->Gesn.Buffer == NULL) {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto ExitWithError;
+	status = STATUS_INSUFFICIENT_RESOURCES;
+	goto ExitWithError;
     }
     if (Info->Gesn.Mdl != NULL) {
-        IoFreeMdl(Info->Gesn.Mdl);
+	IoFreeMdl(Info->Gesn.Mdl);
     }
-    Info->Gesn.Mdl = IoAllocateMdl(Info->Gesn.Buffer,
-                                   GESN_BUFFER_SIZE,
-                                   FALSE, FALSE, NULL);
+    Info->Gesn.Mdl = IoAllocateMdl(Info->Gesn.Buffer, GESN_BUFFER_SIZE, FALSE, FALSE,
+				   NULL);
     if (Info->Gesn.Mdl == NULL) {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto ExitWithError;
+	status = STATUS_INSUFFICIENT_RESOURCES;
+	goto ExitWithError;
     }
 
     MmBuildMdlForNonPagedPool(Info->Gesn.Mdl);
@@ -2079,232 +1876,194 @@ ClasspInitializeGesn(
     atapiResets = 0;
     retryImmediately = TRUE;
     for (i = 0; i < 16 && retryImmediately == TRUE; i++) {
+	irp = ClasspPrepareMcnIrp(FdoExtension, Info, TRUE);
+	if (irp == NULL) {
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto ExitWithError;
+	}
 
-        irp = ClasspPrepareMcnIrp(FdoExtension, Info, TRUE);
-        if (irp == NULL) {
-            status = STATUS_INSUFFICIENT_RESOURCES;
-            goto ExitWithError;
-        }
+	if (Info->MediaChangeSrb.Srb.Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
+	    srbFlags = Info->MediaChangeSrb.SrbEx.SrbFlags;
+	} else {
+	    srbFlags = Info->MediaChangeSrb.Srb.SrbFlags;
+	}
+	NT_ASSERT(TEST_FLAG(srbFlags, SRB_FLAGS_NO_QUEUE_FREEZE));
 
-        if (Info->MediaChangeSrb.Srb.Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-            srbFlags = Info->MediaChangeSrb.SrbEx.SrbFlags;
-        } else {
-            srbFlags = Info->MediaChangeSrb.Srb.SrbFlags;
-        }
-        NT_ASSERT(TEST_FLAG(srbFlags, SRB_FLAGS_NO_QUEUE_FREEZE));
+	//
+	// replace the completion routine with a different one this time...
+	//
 
-        //
-        // replace the completion routine with a different one this time...
-        //
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	IoSetCompletionRoutine(irp, ClassSignalCompletion, &event, TRUE, TRUE, TRUE);
 
-        KeInitializeEvent(&event, SynchronizationEvent, FALSE);
-        IoSetCompletionRoutine(irp,
-                               ClassSignalCompletion,
-                               &event,
-                               TRUE, TRUE, TRUE);
+	status = IoCallDriver(FdoExtension->CommonExtension.LowerDeviceObject, irp);
 
-        status = IoCallDriver(FdoExtension->CommonExtension.LowerDeviceObject, irp);
+	if (status == STATUS_PENDING) {
+	    status = KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+	    NT_ASSERT(NT_SUCCESS(status));
+	}
+	ClassReleaseRemoveLock(FdoExtension->DeviceObject, irp);
 
-        if (status == STATUS_PENDING) {
-            status = KeWaitForSingleObject(&event,
-                                           Executive,
-                                           KernelMode,
-                                           FALSE,
-                                           NULL);
-            NT_ASSERT(NT_SUCCESS(status));
-        }
-        ClassReleaseRemoveLock(FdoExtension->DeviceObject, irp);
+	if (SRB_STATUS(Info->MediaChangeSrb.Srb.SrbStatus) != SRB_STATUS_SUCCESS) {
+	    InterpretSenseInfoWithoutHistory(FdoExtension->DeviceObject, irp,
+					     &(Info->MediaChangeSrb.Srb), IRP_MJ_SCSI, 0,
+					     0, &status, NULL);
+	}
 
-        if (SRB_STATUS(Info->MediaChangeSrb.Srb.SrbStatus) != SRB_STATUS_SUCCESS) {
+	if ((deviceDescriptor->BusType == BusTypeAtapi) &&
+	    (Info->MediaChangeSrb.Srb.SrbStatus == SRB_STATUS_BUS_RESET)) {
+	    //
+	    // ATAPI unfortunately returns SRB_STATUS_BUS_RESET instead
+	    // of SRB_STATUS_TIMEOUT, so we cannot differentiate between
+	    // the two.  if we get this status four time consecutively,
+	    // stop trying this command.  it is too late to change ATAPI
+	    // at this point, so special-case this here. (07/10/2001)
+	    // NOTE: any value more than 4 may cause the device to be
+	    //       marked missing.
+	    //
 
-            InterpretSenseInfoWithoutHistory(FdoExtension->DeviceObject,
-                                             irp,
-                                             &(Info->MediaChangeSrb.Srb),
-                                             IRP_MJ_SCSI,
-                                             0,
-                                             0,
-                                             &status,
-                                             NULL);
-        }
+	    atapiResets++;
+	    if (atapiResets >= 4) {
+		status = STATUS_IO_DEVICE_ERROR;
+		goto ExitWithError;
+	    }
+	}
 
-        if ((deviceDescriptor->BusType == BusTypeAtapi) &&
-            (Info->MediaChangeSrb.Srb.SrbStatus == SRB_STATUS_BUS_RESET)
-            ) {
+	if (status == STATUS_DATA_OVERRUN) {
+	    status = STATUS_SUCCESS;
+	}
 
-            //
-            // ATAPI unfortunately returns SRB_STATUS_BUS_RESET instead
-            // of SRB_STATUS_TIMEOUT, so we cannot differentiate between
-            // the two.  if we get this status four time consecutively,
-            // stop trying this command.  it is too late to change ATAPI
-            // at this point, so special-case this here. (07/10/2001)
-            // NOTE: any value more than 4 may cause the device to be
-            //       marked missing.
-            //
+	if ((status == STATUS_INVALID_DEVICE_REQUEST) || (status == STATUS_TIMEOUT) ||
+	    (status == STATUS_IO_DEVICE_ERROR) || (status == STATUS_IO_TIMEOUT)) {
+	    //
+	    // with these error codes, we don't ever want to try this command
+	    // again on this device, since it reacts poorly.
+	    //
 
-            atapiResets++;
-            if (atapiResets >= 4) {
-                status = STATUS_IO_DEVICE_ERROR;
-                goto ExitWithError;
-            }
-        }
+	    ClassSetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+				    CLASSP_REG_MMC_DETECTION_VALUE_NAME,
+				    ClassDetectionUnsupported);
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+			"Classpnp => GESN test failed %x for fdo %p\n", status,
+			FdoExtension->DeviceObject));
+	    goto ExitWithError;
+	}
 
-        if (status == STATUS_DATA_OVERRUN) {
-            status = STATUS_SUCCESS;
-        }
+	if (!NT_SUCCESS(status)) {
+	    //
+	    // this may be other errors that should not disable GESN
+	    // for all future start_device calls.
+	    //
 
-        if ((status == STATUS_INVALID_DEVICE_REQUEST) ||
-            (status == STATUS_TIMEOUT) ||
-            (status == STATUS_IO_DEVICE_ERROR) ||
-            (status == STATUS_IO_TIMEOUT)
-            ) {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+			"Classpnp => GESN test failed %x for fdo %p\n", status,
+			FdoExtension->DeviceObject));
+	    goto ExitWithError;
+	}
 
-            //
-            // with these error codes, we don't ever want to try this command
-            // again on this device, since it reacts poorly.
-            //
+	if (i == 0) {
+	    //
+	    // the first time, the request was just retrieving a mask of
+	    // available bits.  use this to mask future requests.
+	    //
 
-            ClassSetDeviceParameter(FdoExtension,
-                                    CLASSP_REG_SUBKEY_NAME,
-                                    CLASSP_REG_MMC_DETECTION_VALUE_NAME,
-                                    ClassDetectionUnsupported);
-            TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                       "Classpnp => GESN test failed %x for fdo %p\n",
-                       status, FdoExtension->DeviceObject));
-            goto ExitWithError;
+	    header = (PNOTIFICATION_EVENT_STATUS_HEADER)(Info->Gesn.Buffer);
 
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"Classpnp => Fdo %p supports event mask %x\n",
+			FdoExtension->DeviceObject, header->SupportedEventClasses));
 
-        }
+	    if (TEST_FLAG(header->SupportedEventClasses,
+			  NOTIFICATION_MEDIA_STATUS_CLASS_MASK)) {
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "Classpnp => GESN supports MCN\n"));
+	    }
+	    if (TEST_FLAG(header->SupportedEventClasses,
+			  NOTIFICATION_DEVICE_BUSY_CLASS_MASK)) {
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "Classpnp => GESN supports DeviceBusy\n"));
+	    }
+	    if (TEST_FLAG(header->SupportedEventClasses,
+			  NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK)) {
+		if (TEST_FLAG(FdoExtension->PrivateFdoData->HackFlags,
+			      FDO_HACK_GESN_IGNORE_OPCHANGE)) {
+		    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				"Classpnp => GESN supports OpChange, but "
+				"must ignore these events for compatibility\n"));
+		    CLEAR_FLAG(header->SupportedEventClasses,
+			       NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK);
+		} else {
+		    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				"Classpnp => GESN supports OpChange\n"));
+		}
+	    }
+	    Info->Gesn.EventMask = header->SupportedEventClasses;
 
-        if (!NT_SUCCESS(status)) {
+	    //
+	    // realistically, we are only considering the following events:
+	    //    EXTERNAL REQUEST - this is being tested for play/stop/etc.
+	    //    MEDIA STATUS - autorun and ejection requests.
+	    //    DEVICE BUSY - to allow us to predict when media will be ready.
+	    // therefore, we should not bother querying for the other,
+	    // unknown events. clear all but the above flags.
+	    //
 
-            //
-            // this may be other errors that should not disable GESN
-            // for all future start_device calls.
-            //
+	    Info->Gesn.EventMask &= NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK |
+				    NOTIFICATION_EXTERNAL_REQUEST_CLASS_MASK |
+				    NOTIFICATION_MEDIA_STATUS_CLASS_MASK |
+				    NOTIFICATION_DEVICE_BUSY_CLASS_MASK;
 
-            TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-                       "Classpnp => GESN test failed %x for fdo %p\n",
-                       status, FdoExtension->DeviceObject));
-            goto ExitWithError;
-        }
+	    //
+	    // HACKHACK - REF #0001
+	    // Some devices will *never* report an event if we've also requested
+	    // that it report lower-priority events.  this is due to a
+	    // misunderstanding in the specification wherein a "No Change" is
+	    // interpreted to be a real event.  what should occur is that the
+	    // device should ignore "No Change" events when multiple event types
+	    // are requested unless there are no other events waiting.  this
+	    // greatly reduces the number of requests that the host must send
+	    // to determine if an event has occurred. Since we must work on all
+	    // drives, default to enabling the hack until we find evidence of
+	    // proper firmware.
+	    //
+	    if (Info->Gesn.EventMask == 0) {
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "Classpnp => GESN supported, but not mask we care "
+			    "about (%x) for FDO %p\n",
+			    header->SupportedEventClasses, FdoExtension->DeviceObject));
+		goto ExitWithError;
 
-        if (i == 0) {
+	    } else if (CountOfSetBitsUChar(Info->Gesn.EventMask) == 1) {
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "Classpnp => GESN hack not required for FDO %p\n",
+			    FdoExtension->DeviceObject));
 
-            //
-            // the first time, the request was just retrieving a mask of
-            // available bits.  use this to mask future requests.
-            //
+	    } else {
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "Classpnp => GESN hack enabled for FDO %p\n",
+			    FdoExtension->DeviceObject));
+		Info->Gesn.HackEventMask = 1;
+	    }
 
-            header = (PNOTIFICATION_EVENT_STATUS_HEADER)(Info->Gesn.Buffer);
+	} else {
+	    //
+	    // not the first time looping through, so interpret the results.
+	    //
 
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                       "Classpnp => Fdo %p supports event mask %x\n",
-                       FdoExtension->DeviceObject, header->SupportedEventClasses));
+	    status = ClasspInterpretGesnData(FdoExtension, (PVOID)Info->Gesn.Buffer,
+					     &retryImmediately);
 
+	    if (!NT_SUCCESS(status)) {
+		//
+		// This drive does not support GESN correctly
+		//
 
-            if (TEST_FLAG(header->SupportedEventClasses,
-                          NOTIFICATION_MEDIA_STATUS_CLASS_MASK)) {
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                           "Classpnp => GESN supports MCN\n"));
-            }
-            if (TEST_FLAG(header->SupportedEventClasses,
-                          NOTIFICATION_DEVICE_BUSY_CLASS_MASK)) {
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                           "Classpnp => GESN supports DeviceBusy\n"));
-            }
-            if (TEST_FLAG(header->SupportedEventClasses,
-                          NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK)) {
-
-                if (TEST_FLAG(FdoExtension->PrivateFdoData->HackFlags,
-                              FDO_HACK_GESN_IGNORE_OPCHANGE)) {
-                    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                                "Classpnp => GESN supports OpChange, but "
-                                "must ignore these events for compatibility\n"));
-                    CLEAR_FLAG(header->SupportedEventClasses,
-                               NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK);
-                } else {
-                    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                                "Classpnp => GESN supports OpChange\n"));
-                }
-            }
-            Info->Gesn.EventMask = header->SupportedEventClasses;
-
-            //
-            // realistically, we are only considering the following events:
-            //    EXTERNAL REQUEST - this is being tested for play/stop/etc.
-            //    MEDIA STATUS - autorun and ejection requests.
-            //    DEVICE BUSY - to allow us to predict when media will be ready.
-            // therefore, we should not bother querying for the other,
-            // unknown events. clear all but the above flags.
-            //
-
-            Info->Gesn.EventMask &=
-                NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK |
-                NOTIFICATION_EXTERNAL_REQUEST_CLASS_MASK   |
-                NOTIFICATION_MEDIA_STATUS_CLASS_MASK       |
-                NOTIFICATION_DEVICE_BUSY_CLASS_MASK        ;
-
-
-            //
-            // HACKHACK - REF #0001
-            // Some devices will *never* report an event if we've also requested
-            // that it report lower-priority events.  this is due to a
-            // misunderstanding in the specification wherein a "No Change" is
-            // interpreted to be a real event.  what should occur is that the
-            // device should ignore "No Change" events when multiple event types
-            // are requested unless there are no other events waiting.  this
-            // greatly reduces the number of requests that the host must send
-            // to determine if an event has occurred. Since we must work on all
-            // drives, default to enabling the hack until we find evidence of
-            // proper firmware.
-            //
-            if (Info->Gesn.EventMask == 0) {
-
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                           "Classpnp => GESN supported, but not mask we care "
-                           "about (%x) for FDO %p\n",
-                           header->SupportedEventClasses,
-                           FdoExtension->DeviceObject));
-                goto ExitWithError;
-
-            } else if (CountOfSetBitsUChar(Info->Gesn.EventMask) == 1) {
-
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                           "Classpnp => GESN hack not required for FDO %p\n",
-                           FdoExtension->DeviceObject));
-
-            } else {
-
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                           "Classpnp => GESN hack enabled for FDO %p\n",
-                           FdoExtension->DeviceObject));
-                Info->Gesn.HackEventMask = 1;
-
-            }
-
-        } else {
-
-            //
-            // not the first time looping through, so interpret the results.
-            //
-
-            status = ClasspInterpretGesnData(FdoExtension,
-                                             (PVOID)Info->Gesn.Buffer,
-                                             &retryImmediately);
-
-            if (!NT_SUCCESS(status)) {
-
-                //
-                // This drive does not support GESN correctly
-                //
-
-                ClassSetDeviceParameter(FdoExtension,
-                                        CLASSP_REG_SUBKEY_NAME,
-                                        CLASSP_REG_MMC_DETECTION_VALUE_NAME,
-                                        ClassDetectionUnsupported);
-                goto ExitWithError;
-            }
-        }
+		ClassSetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+					CLASSP_REG_MMC_DETECTION_VALUE_NAME,
+					ClassDetectionUnsupported);
+		goto ExitWithError;
+	    }
+	}
 
     } // end loop of GESN requests....
 
@@ -2322,58 +2081,48 @@ ClasspInitializeGesn(
     //
 
     if (TEST_FLAG(Info->Gesn.EventMask, NOTIFICATION_MEDIA_STATUS_CLASS_MASK)) {
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "Classpnp => Enabling GESN support for fdo %p\n",
+		    FdoExtension->DeviceObject));
+	Info->Gesn.Supported = TRUE;
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                   "Classpnp => Enabling GESN support for fdo %p\n",
-                   FdoExtension->DeviceObject));
-        Info->Gesn.Supported = TRUE;
+	ClassSetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+				CLASSP_REG_MMC_DETECTION_VALUE_NAME,
+				ClassDetectionSupported);
 
-        ClassSetDeviceParameter(FdoExtension,
-                                CLASSP_REG_SUBKEY_NAME,
-                                CLASSP_REG_MMC_DETECTION_VALUE_NAME,
-                                ClassDetectionSupported);
-
-        return STATUS_SUCCESS;
-
+	return STATUS_SUCCESS;
     }
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-               "Classpnp => GESN available but not enabled for fdo %p\n",
-               FdoExtension->DeviceObject));
+		"Classpnp => GESN available but not enabled for fdo %p\n",
+		FdoExtension->DeviceObject));
     goto ExitWithError;
 
     // fall through...
 
 ExitWithError:
     TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
-               "Classpnp => GESN support detection failed  for fdo %p with status %08x\n",
-               FdoExtension->DeviceObject, status));
-
+		"Classpnp => GESN support detection failed  for fdo %p with status "
+		"%08x\n",
+		FdoExtension->DeviceObject, status));
 
     if (Info->Gesn.Mdl) {
-        IoFreeMdl(Info->Gesn.Mdl);
-        Info->Gesn.Mdl = NULL;
+	IoFreeMdl(Info->Gesn.Mdl);
+	Info->Gesn.Mdl = NULL;
     }
     FREE_POOL(Info->Gesn.Buffer);
-    Info->Gesn.Supported  = 0;
-    Info->Gesn.EventMask  = 0;
+    Info->Gesn.Supported = 0;
+    Info->Gesn.EventMask = 0;
     Info->Gesn.BufferSize = 0;
     return STATUS_NOT_SUPPORTED;
-
 }
-
 
 //
 //  Work item to set the hack flag in the registry to disable GESN
 //  on devices that sends too many events
 //
 
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClasspDisableGesn(
-    IN PDEVICE_OBJECT Fdo,
-    IN PVOID Context
-    )
+NTAPI VOID ClasspDisableGesn(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PIO_WORKITEM WorkItem = (PIO_WORKITEM)Context;
@@ -2383,10 +2132,9 @@ ClasspDisableGesn(
     //
     // Set the hack flag in the registry
     //
-    ClassSetDeviceParameter(fdoExtension,
-                            CLASSP_REG_SUBKEY_NAME,
-                            CLASSP_REG_MMC_DETECTION_VALUE_NAME,
-                            ClassDetectionUnsupported);
+    ClassSetDeviceParameter(fdoExtension, CLASSP_REG_SUBKEY_NAME,
+			    CLASSP_REG_MMC_DETECTION_VALUE_NAME,
+			    ClassDetectionUnsupported);
     _Analysis_assume_(WorkItem != NULL);
     IoFreeWorkItem(WorkItem);
 }
@@ -2415,13 +2163,9 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL)
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassInitializeTestUnitPolling(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_ BOOLEAN AllowDriveToSleep
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
+    ClassInitializeTestUnitPolling(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				   _In_ BOOLEAN AllowDriveToSleep)
 {
     return ClasspInitializePolling(FdoExtension, AllowDriveToSleep);
 } // end ClassInitializeTestUnitPolling()
@@ -2451,19 +2195,14 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassInitializeMediaChangeDetection(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_ PUCHAR EventPrefix
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
+    ClassInitializeMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					_In_ PUCHAR EventPrefix)
 {
     PDEVICE_OBJECT fdo = FdoExtension->DeviceObject;
     NTSTATUS status;
 
-    PCLASS_DRIVER_EXTENSION driverExtension = ClassGetDriverExtension(
-                                                fdo->DriverObject);
+    PCLASS_DRIVER_EXTENSION driverExtension = ClassGetDriverExtension(fdo->DriverObject);
 
     BOOLEAN disabledForBadHardware;
     BOOLEAN disabled;
@@ -2481,50 +2220,45 @@ ClassInitializeMediaChangeDetection(
     //
 
     disabledForBadHardware = ClasspIsMediaChangeDisabledDueToHardwareLimitation(
-                                FdoExtension,
-                                &(driverExtension->RegistryPath)
-                                );
+	FdoExtension, &(driverExtension->RegistryPath));
 
     if (disabledForBadHardware) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassInitializeMCN: Disabled due to hardware"
-                    "limitations for this device"));
-        return;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassInitializeMCN: Disabled due to hardware"
+		    "limitations for this device"));
+	return;
     }
 
     //
     // autorun should now be enabled by default for all media types.
     //
 
-    disabled = ClasspIsMediaChangeDisabledForClass(
-                    FdoExtension,
-                    &(driverExtension->RegistryPath)
-                    );
+    disabled = ClasspIsMediaChangeDisabledForClass(FdoExtension,
+						   &(driverExtension->RegistryPath));
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                "ClassInitializeMCN: Class    MCN is %s\n",
-                (disabled ? "disabled" : "enabled")));
+		"ClassInitializeMCN: Class    MCN is %s\n",
+		(disabled ? "disabled" : "enabled")));
 
-    status = ClasspMediaChangeDeviceInstanceOverride(
-                FdoExtension,
-                &instanceOverride);  // default value
+    status = ClasspMediaChangeDeviceInstanceOverride(FdoExtension,
+						     &instanceOverride); // default value
 
     if (!NT_SUCCESS(status)) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassInitializeMCN: Instance using default\n"));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassInitializeMCN: Instance using default\n"));
     } else {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassInitializeMCN: Instance override: %s MCN\n",
-                    (instanceOverride ? "Enabling" : "Disabling")));
-        disabled = !instanceOverride;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassInitializeMCN: Instance override: %s MCN\n",
+		    (instanceOverride ? "Enabling" : "Disabling")));
+	disabled = !instanceOverride;
     }
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                "ClassInitializeMCN: Instance MCN is %s\n",
-                (disabled ? "disabled" : "enabled")));
+		"ClassInitializeMCN: Instance MCN is %s\n",
+		(disabled ? "disabled" : "enabled")));
 
     if (disabled) {
-        return;
+	return;
     }
 
     //
@@ -2560,139 +2294,120 @@ Return Value:
 
 --*/
 NTSTATUS
-ClasspMediaChangeDeviceInstanceOverride(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    OUT PBOOLEAN Enabled
-    )
+ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					OUT PBOOLEAN Enabled)
 {
-    HANDLE                   deviceParameterHandle = NULL;  // cdrom instance key
-    HANDLE                   driverParameterHandle = NULL;  // cdrom specific key
+    HANDLE deviceParameterHandle = NULL; // cdrom instance key
+    HANDLE driverParameterHandle = NULL; // cdrom specific key
     RTL_QUERY_REGISTRY_TABLE queryTable[3];
-    OBJECT_ATTRIBUTES        objectAttributes;
-    UNICODE_STRING           subkeyName;
-    NTSTATUS                 status = STATUS_UNSUCCESSFUL;
-    ULONG                    alwaysEnable = FALSE;
-    ULONG                    alwaysDisable = FALSE;
-    ULONG                    i;
+    OBJECT_ATTRIBUTES objectAttributes;
+    UNICODE_STRING subkeyName;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    ULONG alwaysEnable = FALSE;
+    ULONG alwaysDisable = FALSE;
+    ULONG i;
 
     PAGED_CODE();
 
-    TRY {
+    TRY
+    {
+	status = IoOpenDeviceRegistryKey(FdoExtension->LowerPdo, PLUGPLAY_REGKEY_DEVICE,
+					 KEY_ALL_ACCESS, &deviceParameterHandle);
+	if (!NT_SUCCESS(status)) {
+	    //
+	    // this can occur when a new device is added to the system
+	    // this is due to cdrom.sys being an 'essential' driver
+	    //
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassMediaChangeDeviceInstanceDisabled: "
+			"Could not open device registry key [%lx]\n",
+			status));
+	    LEAVE;
+	}
 
-        status = IoOpenDeviceRegistryKey( FdoExtension->LowerPdo,
-                                          PLUGPLAY_REGKEY_DEVICE,
-                                          KEY_ALL_ACCESS,
-                                          &deviceParameterHandle
-                                          );
-        if (!NT_SUCCESS(status)) {
+	RtlInitUnicodeString(&subkeyName, MCN_REG_SUBKEY_NAME);
+	InitializeObjectAttributes(&objectAttributes, &subkeyName,
+				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+				   deviceParameterHandle, (PSECURITY_DESCRIPTOR)NULL);
 
-            //
-            // this can occur when a new device is added to the system
-            // this is due to cdrom.sys being an 'essential' driver
-            //
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                        "ClassMediaChangeDeviceInstanceDisabled: "
-                        "Could not open device registry key [%lx]\n", status));
-            LEAVE;
-        }
+	status = ZwCreateKey(&driverParameterHandle, KEY_READ, &objectAttributes, 0,
+			     (PUNICODE_STRING)NULL, REG_OPTION_NON_VOLATILE, NULL);
 
-        RtlInitUnicodeString(&subkeyName, MCN_REG_SUBKEY_NAME);
-        InitializeObjectAttributes(&objectAttributes,
-                                   &subkeyName,
-                                   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                                   deviceParameterHandle,
-                                   (PSECURITY_DESCRIPTOR) NULL);
+	if (!NT_SUCCESS(status)) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassMediaChangeDeviceInstanceDisabled: "
+			"subkey could not be created. %lx\n",
+			status));
+	    LEAVE;
+	}
 
-        status = ZwCreateKey(&driverParameterHandle,
-                             KEY_READ,
-                             &objectAttributes,
-                             0,
-                             (PUNICODE_STRING) NULL,
-                             REG_OPTION_NON_VOLATILE,
-                             NULL);
+	//
+	// Default to not changing autorun behavior, based upon setting
+	// registryValue to zero.
+	//
 
-        if (!NT_SUCCESS(status)) {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                        "ClassMediaChangeDeviceInstanceDisabled: "
-                        "subkey could not be created. %lx\n", status));
-            LEAVE;
-        }
+	for (i = 0; i < 2; i++) {
+	    RtlZeroMemory(&queryTable[0], sizeof(queryTable));
 
-        //
-        // Default to not changing autorun behavior, based upon setting
-        // registryValue to zero.
-        //
+	    queryTable[0].Flags = RTL_QUERY_REGISTRY_DIRECT |
+				  RTL_QUERY_REGISTRY_TYPECHECK;
+	    queryTable[0].DefaultType = (REG_DWORD
+					 << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) |
+					REG_NONE;
+	    queryTable[0].DefaultLength = 0;
 
-        for (i=0;i<2;i++) {
+	    if (i == 0) {
+		queryTable[0].Name = MCN_REG_AUTORUN_DISABLE_INSTANCE_NAME;
+		queryTable[0].EntryContext = &alwaysDisable;
+		queryTable[0].DefaultData = &alwaysDisable;
+	    } else {
+		queryTable[0].Name = MCN_REG_AUTORUN_ENABLE_INSTANCE_NAME;
+		queryTable[0].EntryContext = &alwaysEnable;
+		queryTable[0].DefaultData = &alwaysEnable;
+	    }
 
-            RtlZeroMemory(&queryTable[0], sizeof(queryTable));
+	    //
+	    // don't care if it succeeds, since we set defaults above
+	    //
 
-            queryTable[0].Flags         = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
-            queryTable[0].DefaultType   = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_NONE;
-            queryTable[0].DefaultLength = 0;
-
-            if (i==0) {
-                queryTable[0].Name          = MCN_REG_AUTORUN_DISABLE_INSTANCE_NAME;
-                queryTable[0].EntryContext  = &alwaysDisable;
-                queryTable[0].DefaultData   = &alwaysDisable;
-            } else {
-                queryTable[0].Name          = MCN_REG_AUTORUN_ENABLE_INSTANCE_NAME;
-                queryTable[0].EntryContext  = &alwaysEnable;
-                queryTable[0].DefaultData   = &alwaysEnable;
-            }
-
-            //
-            // don't care if it succeeds, since we set defaults above
-            //
-
-            RtlQueryRegistryValues(RTL_REGISTRY_HANDLE,
-                                   (PWSTR)driverParameterHandle,
-                                   queryTable,
-                                   NULL,
-                                   NULL);
-        }
-
-    } FINALLY {
-
-        if (driverParameterHandle) ZwClose(driverParameterHandle);
-        if (deviceParameterHandle) ZwClose(deviceParameterHandle);
-
+	    RtlQueryRegistryValues(RTL_REGISTRY_HANDLE, (PWSTR)driverParameterHandle,
+				   queryTable, NULL, NULL);
+	}
+    }
+    FINALLY
+    {
+	if (driverParameterHandle)
+	    ZwClose(driverParameterHandle);
+	if (deviceParameterHandle)
+	    ZwClose(deviceParameterHandle);
     }
 
     if (alwaysEnable && alwaysDisable) {
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n",
-                    "Both Enable and Disable set -- DISABLE"));
-        NT_ASSERT(NT_SUCCESS(status));
-        status = STATUS_SUCCESS;
-        *Enabled = FALSE;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n",
+		    "Both Enable and Disable set -- DISABLE"));
+	NT_ASSERT(NT_SUCCESS(status));
+	status = STATUS_SUCCESS;
+	*Enabled = FALSE;
 
     } else if (alwaysDisable) {
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n",
-                    "DISABLE"));
-        NT_ASSERT(NT_SUCCESS(status));
-        status = STATUS_SUCCESS;
-        *Enabled = FALSE;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n", "DISABLE"));
+	NT_ASSERT(NT_SUCCESS(status));
+	status = STATUS_SUCCESS;
+	*Enabled = FALSE;
 
     } else if (alwaysEnable) {
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n",
-                    "ENABLE"));
-        NT_ASSERT(NT_SUCCESS(status));
-        status = STATUS_SUCCESS;
-        *Enabled = TRUE;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n", "ENABLE"));
+	NT_ASSERT(NT_SUCCESS(status));
+	status = STATUS_SUCCESS;
+	*Enabled = TRUE;
 
     } else {
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n",
-                    "DEFAULT"));
-        status = STATUS_UNSUCCESSFUL;
-
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassMediaChangeDeviceInstanceDisabled: %s selected\n", "DEFAULT"));
+	status = STATUS_UNSUCCESSFUL;
     }
 
     return status;
@@ -2725,14 +2440,12 @@ Return Value:
 --*/
 BOOLEAN
 ClasspIsMediaChangeDisabledDueToHardwareLimitation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PUNICODE_STRING RegistryPath
-    )
+    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PUNICODE_STRING RegistryPath)
 {
     PSTORAGE_DEVICE_DESCRIPTOR deviceDescriptor = FdoExtension->DeviceDescriptor;
-    OBJECT_ATTRIBUTES objectAttributes = {0};
+    OBJECT_ATTRIBUTES objectAttributes = { 0 };
     HANDLE serviceKey = NULL;
-    RTL_QUERY_REGISTRY_TABLE parameters[2] = {0};
+    RTL_QUERY_REGISTRY_TABLE parameters[2] = { 0 };
 
     UNICODE_STRING deviceUnicodeString;
     ANSI_STRING deviceString;
@@ -2740,188 +2453,169 @@ ClasspIsMediaChangeDisabledDueToHardwareLimitation(
 
     NTSTATUS status;
 
-
     PAGED_CODE();
 
     //
     // open the service key.
     //
 
-    InitializeObjectAttributes(&objectAttributes,
-                               RegistryPath,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               NULL,
-                               NULL);
+    InitializeObjectAttributes(&objectAttributes, RegistryPath,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
 
-    status = ZwOpenKey(&serviceKey,
-                       KEY_READ,
-                       &objectAttributes);
+    status = ZwOpenKey(&serviceKey, KEY_READ, &objectAttributes);
 
     NT_ASSERT(NT_SUCCESS(status));
 
+    if (!NT_SUCCESS(status)) {
+	//
+	// always take the safe path.  if we can't open the service key,
+	// disable autorun
+	//
 
-    if(!NT_SUCCESS(status)) {
-
-        //
-        // always take the safe path.  if we can't open the service key,
-        // disable autorun
-        //
-
-        return TRUE;
-
+	return TRUE;
     }
 
-    TRY {
-        //
-        // Determine if drive is in a list of those requiring
-        // autorun to be disabled.  this is stored in a REG_MULTI_SZ
-        // named AutoRunAlwaysDisable.  this is required as some autochangers
-        // must load the disc to reply to ChkVerify request, causing them
-        // to cycle discs continuously.
-        //
+    TRY
+    {
+	//
+	// Determine if drive is in a list of those requiring
+	// autorun to be disabled.  this is stored in a REG_MULTI_SZ
+	// named AutoRunAlwaysDisable.  this is required as some autochangers
+	// must load the disc to reply to ChkVerify request, causing them
+	// to cycle discs continuously.
+	//
 
-        PWSTR nullMultiSz;
-        PUCHAR vendorId;
-        PUCHAR productId;
-        PUCHAR revisionId;
-        ULONG  length;
-        ULONG  offset;
+	PWSTR nullMultiSz;
+	PUCHAR vendorId;
+	PUCHAR productId;
+	PUCHAR revisionId;
+	ULONG length;
+	ULONG offset;
 
-        deviceString.Buffer        = NULL;
-        deviceUnicodeString.Buffer = NULL;
+	deviceString.Buffer = NULL;
+	deviceUnicodeString.Buffer = NULL;
 
-        //
-        // there may be nothing to check against
-        //
+	//
+	// there may be nothing to check against
+	//
 
-        if ((deviceDescriptor->VendorIdOffset == 0) &&
-            (deviceDescriptor->ProductIdOffset == 0)) {
-            LEAVE;
-        }
+	if ((deviceDescriptor->VendorIdOffset == 0) &&
+	    (deviceDescriptor->ProductIdOffset == 0)) {
+	    LEAVE;
+	}
 
-        length = 0;
+	length = 0;
 
-        if (deviceDescriptor->VendorIdOffset == 0) {
-            vendorId = NULL;
-        } else {
-            vendorId = (PUCHAR) deviceDescriptor + deviceDescriptor->VendorIdOffset;
-            length = (ULONG)strlen((PCSZ)vendorId);
-        }
+	if (deviceDescriptor->VendorIdOffset == 0) {
+	    vendorId = NULL;
+	} else {
+	    vendorId = (PUCHAR)deviceDescriptor + deviceDescriptor->VendorIdOffset;
+	    length = (ULONG)strlen((PCSZ)vendorId);
+	}
 
-        if ( deviceDescriptor->ProductIdOffset == 0 ) {
-            productId = NULL;
-        } else {
-            productId = (PUCHAR)deviceDescriptor + deviceDescriptor->ProductIdOffset;
-            length += (ULONG)strlen((PCSZ)productId);
-        }
+	if (deviceDescriptor->ProductIdOffset == 0) {
+	    productId = NULL;
+	} else {
+	    productId = (PUCHAR)deviceDescriptor + deviceDescriptor->ProductIdOffset;
+	    length += (ULONG)strlen((PCSZ)productId);
+	}
 
-        if ( deviceDescriptor->ProductRevisionOffset == 0 ) {
-            revisionId = NULL;
-        } else {
-            revisionId = (PUCHAR) deviceDescriptor + deviceDescriptor->ProductRevisionOffset;
-            length += (ULONG)strlen((PCSZ)revisionId);
-        }
+	if (deviceDescriptor->ProductRevisionOffset == 0) {
+	    revisionId = NULL;
+	} else {
+	    revisionId = (PUCHAR)deviceDescriptor +
+			 deviceDescriptor->ProductRevisionOffset;
+	    length += (ULONG)strlen((PCSZ)revisionId);
+	}
 
-        //
-        // allocate a buffer for the string
-        //
+	//
+	// allocate a buffer for the string
+	//
 
-        deviceString.Length = (USHORT)( length );
-        deviceString.MaximumLength = deviceString.Length + 1;
-        deviceString.Buffer = (PCHAR)ExAllocatePoolWithTag( NonPagedPoolNx,
-                                                            deviceString.MaximumLength,
-                                                            CLASS_TAG_AUTORUN_DISABLE
-                                                            );
-        if (deviceString.Buffer == NULL) {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                        "ClassMediaChangeDisabledForHardware: Unable to alloc "
-                        "string buffer\n" ));
-            LEAVE;
-        }
+	deviceString.Length = (USHORT)(length);
+	deviceString.MaximumLength = deviceString.Length + 1;
+	deviceString.Buffer = (PCHAR)ExAllocatePoolWithTag(NonPagedPoolNx,
+							   deviceString.MaximumLength,
+							   CLASS_TAG_AUTORUN_DISABLE);
+	if (deviceString.Buffer == NULL) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassMediaChangeDisabledForHardware: Unable to alloc "
+			"string buffer\n"));
+	    LEAVE;
+	}
 
-        //
-        // copy strings to the buffer
-        //
-        offset = 0;
+	//
+	// copy strings to the buffer
+	//
+	offset = 0;
 
-        if (vendorId != NULL) {
-            RtlCopyMemory(deviceString.Buffer + offset,
-                          vendorId,
-                          strlen((PCSZ)vendorId));
-            offset += (ULONG)strlen((PCSZ)vendorId);
-        }
+	if (vendorId != NULL) {
+	    RtlCopyMemory(deviceString.Buffer + offset, vendorId, strlen((PCSZ)vendorId));
+	    offset += (ULONG)strlen((PCSZ)vendorId);
+	}
 
-        if ( productId != NULL ) {
-            RtlCopyMemory(deviceString.Buffer + offset,
-                          productId,
-                          strlen((PCSZ)productId));
-            offset += (ULONG)strlen((PCSZ)productId);
-        }
-        if ( revisionId != NULL ) {
-            RtlCopyMemory(deviceString.Buffer + offset,
-                          revisionId,
-                          strlen((PCSZ)revisionId));
-            offset += (ULONG)strlen((PCSZ)revisionId);
-        }
+	if (productId != NULL) {
+	    RtlCopyMemory(deviceString.Buffer + offset, productId,
+			  strlen((PCSZ)productId));
+	    offset += (ULONG)strlen((PCSZ)productId);
+	}
+	if (revisionId != NULL) {
+	    RtlCopyMemory(deviceString.Buffer + offset, revisionId,
+			  strlen((PCSZ)revisionId));
+	    offset += (ULONG)strlen((PCSZ)revisionId);
+	}
 
-        NT_ASSERT(offset == deviceString.Length);
+	NT_ASSERT(offset == deviceString.Length);
 
-#ifdef _MSC_VER
-        #pragma warning(suppress:6386) // Not an issue as deviceString.Buffer is of size deviceString.MaximumLength, which is equal to (deviceString.Length + 1)
-#endif
-        deviceString.Buffer[deviceString.Length] = '\0';  // Null-terminated
+	deviceString.Buffer[deviceString.Length] = '\0'; // Null-terminated
 
-        //
-        // convert to unicode as registry deals with unicode strings
-        //
+	//
+	// convert to unicode as registry deals with unicode strings
+	//
 
-        status = RtlAnsiStringToUnicodeString( &deviceUnicodeString,
-                                               &deviceString,
-                                               TRUE
-                                               );
-        if (!NT_SUCCESS(status)) {
-            TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                        "ClassMediaChangeDisabledForHardware: cannot convert "
-                        "to unicode %lx\n", status));
-            LEAVE;
-        }
+	status = RtlAnsiStringToUnicodeString(&deviceUnicodeString, &deviceString, TRUE);
+	if (!NT_SUCCESS(status)) {
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			"ClassMediaChangeDisabledForHardware: cannot convert "
+			"to unicode %lx\n",
+			status));
+	    LEAVE;
+	}
 
-        //
-        // query the value, setting valueFound to true if found
-        //
-        nullMultiSz = L"\0";
-        parameters[0].QueryRoutine  = ClasspMediaChangeRegistryCallBack;
-        parameters[0].Flags         = RTL_QUERY_REGISTRY_REQUIRED;
-        parameters[0].Name          = L"AutoRunAlwaysDisable";
-        parameters[0].EntryContext  = &mediaChangeNotificationDisabled;
-        parameters[0].DefaultType   = REG_MULTI_SZ;
-        parameters[0].DefaultData   = nullMultiSz;
-        parameters[0].DefaultLength = 0;
+	//
+	// query the value, setting valueFound to true if found
+	//
+	nullMultiSz = L"\0";
+	parameters[0].QueryRoutine = ClasspMediaChangeRegistryCallBack;
+	parameters[0].Flags = RTL_QUERY_REGISTRY_REQUIRED;
+	parameters[0].Name = L"AutoRunAlwaysDisable";
+	parameters[0].EntryContext = &mediaChangeNotificationDisabled;
+	parameters[0].DefaultType = REG_MULTI_SZ;
+	parameters[0].DefaultData = nullMultiSz;
+	parameters[0].DefaultLength = 0;
 
-        status = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE,
-                                        serviceKey,
-                                        parameters,
-                                        &deviceUnicodeString,
-                                        NULL);
+	status = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE, serviceKey, parameters,
+					&deviceUnicodeString, NULL);
 
-        if ( !NT_SUCCESS(status) ) {
-            LEAVE;
-        }
+	if (!NT_SUCCESS(status)) {
+	    LEAVE;
+	}
+    }
+    FINALLY
+    {
+	FREE_POOL(deviceString.Buffer);
+	if (deviceUnicodeString.Buffer != NULL) {
+	    RtlFreeUnicodeString(&deviceUnicodeString);
+	}
 
-    } FINALLY {
-
-        FREE_POOL( deviceString.Buffer );
-        if (deviceUnicodeString.Buffer != NULL) {
-            RtlFreeUnicodeString( &deviceUnicodeString );
-        }
-
-        ZwClose(serviceKey);
+	ZwClose(serviceKey);
     }
 
     if (mediaChangeNotificationDisabled) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassMediaChangeDisabledForHardware: "
-                    "Device is on disable list\n"));
-        return TRUE;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassMediaChangeDisabledForHardware: "
+		    "Device is on disable list\n"));
+	return TRUE;
     }
     return FALSE;
 
@@ -2953,15 +2647,13 @@ Return Value:
 
 --*/
 BOOLEAN
-ClasspIsMediaChangeDisabledForClass(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PUNICODE_STRING RegistryPath
-    )
+ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				    IN PUNICODE_STRING RegistryPath)
 {
-    OBJECT_ATTRIBUTES objectAttributes = {0};
+    OBJECT_ATTRIBUTES objectAttributes = { 0 };
     HANDLE serviceKey = NULL;
     HANDLE parametersKey = NULL;
-    RTL_QUERY_REGISTRY_TABLE parameters[3] = {0};
+    RTL_QUERY_REGISTRY_TABLE parameters[3] = { 0 };
 
     UNICODE_STRING paramStr;
 
@@ -2973,37 +2665,30 @@ ClasspIsMediaChangeDisabledForClass(
 
     NTSTATUS status;
 
-
     PAGED_CODE();
 
     //
     // open the service key.
     //
 
-    InitializeObjectAttributes(&objectAttributes,
-                               RegistryPath,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               NULL,
-                               NULL);
+    InitializeObjectAttributes(&objectAttributes, RegistryPath,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
 
-    status = ZwOpenKey(&serviceKey,
-                       KEY_READ,
-                       &objectAttributes);
+    status = ZwOpenKey(&serviceKey, KEY_READ, &objectAttributes);
 
     NT_ASSERT(NT_SUCCESS(status));
 
-    if(!NT_SUCCESS(status)) {
+    if (!NT_SUCCESS(status)) {
+	//
+	// return the default value, which is the
+	// inverse of the registry setting default
+	// since this routine asks if it's disabled
+	//
 
-        //
-        // return the default value, which is the
-        // inverse of the registry setting default
-        // since this routine asks if it's disabled
-        //
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassCheckServiceMCN: Defaulting to %s\n",
-                    (mcnRegistryValue ? "Enabled" : "Disabled")));
-        return (BOOLEAN)(!mcnRegistryValue);
-
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassCheckServiceMCN: Defaulting to %s\n",
+		    (mcnRegistryValue ? "Enabled" : "Disabled")));
+	return (BOOLEAN)(!mcnRegistryValue);
     }
 
     //
@@ -3012,64 +2697,53 @@ ClasspIsMediaChangeDisabledForClass(
 
     RtlInitUnicodeString(&paramStr, L"Parameters");
 
-    InitializeObjectAttributes(&objectAttributes,
-                               &paramStr,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               serviceKey,
-                               NULL);
+    InitializeObjectAttributes(&objectAttributes, &paramStr,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, serviceKey,
+			       NULL);
 
-    status = ZwOpenKey(&parametersKey,
-                       KEY_READ,
-                       &objectAttributes);
+    status = ZwOpenKey(&parametersKey, KEY_READ, &objectAttributes);
 
     if (!NT_SUCCESS(status)) {
-        parametersKey = NULL;
+	parametersKey = NULL;
     }
-
-
 
     //
     // Check for the Autorun value.
     //
 
-    parameters[0].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    parameters[0].Name          = L"Autorun";
-    parameters[0].EntryContext  = &mcnRegistryValue;
-    parameters[0].DefaultType   = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD;
-    parameters[0].DefaultData   = &mcnRegistryValue;
+    parameters[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
+    parameters[0].Name = L"Autorun";
+    parameters[0].EntryContext = &mcnRegistryValue;
+    parameters[0].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) |
+				REG_DWORD;
+    parameters[0].DefaultData = &mcnRegistryValue;
     parameters[0].DefaultLength = sizeof(ULONG);
 
     // ignore failures
-    RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL,
-                           serviceKey,
-                           parameters,
-                           NULL,
-                           NULL);
+    RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL, serviceKey,
+			   parameters, NULL, NULL);
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassCheckServiceMCN: "
-                "<Service>/Autorun flag = %d\n", mcnRegistryValue));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		"ClassCheckServiceMCN: "
+		"<Service>/Autorun flag = %d\n",
+		mcnRegistryValue));
 
-    if(parametersKey != NULL) {
-
-        // ignore failures
-        RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL,
-                               parametersKey,
-                               parameters,
-                               NULL,
-                               NULL);
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassCheckServiceMCN: "
-                    "<Service>/Parameters/Autorun flag = %d\n",
-                    mcnRegistryValue));
-        ZwClose(parametersKey);
-
+    if (parametersKey != NULL) {
+	// ignore failures
+	RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL, parametersKey,
+			       parameters, NULL, NULL);
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassCheckServiceMCN: "
+		    "<Service>/Parameters/Autorun flag = %d\n",
+		    mcnRegistryValue));
+	ZwClose(parametersKey);
     }
     ZwClose(serviceKey);
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassCheckServiceMCN: "
-                "Autoplay for device %p is %s\n",
-                FdoExtension->DeviceObject,
-                (mcnRegistryValue ? "on" : "off")
-                ));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		"ClassCheckServiceMCN: "
+		"Autoplay for device %p is %s\n",
+		FdoExtension->DeviceObject, (mcnRegistryValue ? "on" : "off")));
 
     //
     // return if it is _disabled_, which is the
@@ -3096,63 +2770,50 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassEnableMediaChangeDetection(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
+    ClassEnableMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
     LONG oldCount;
 
     PAGED_CODE();
 
-    if(info == NULL) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
-                    "ClassEnableMediaChangeDetection: not initialized\n"));
-        return;
+    if (info == NULL) {
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClassEnableMediaChangeDetection: not initialized\n"));
+	return;
     }
 
-    (VOID)KeWaitForMutexObject(&info->MediaChangeMutex,
-                                UserRequest,
-                                KernelMode,
-                                FALSE,
-                                NULL);
+    (VOID) KeWaitForMutexObject(&info->MediaChangeMutex, UserRequest, KernelMode, FALSE,
+				NULL);
 
     oldCount = --info->MediaChangeDetectionDisableCount;
 
     NT_ASSERT(oldCount >= 0);
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassEnableMediaChangeDetection: Disable count "
-                "reduced to %d - ",
-                info->MediaChangeDetectionDisableCount));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		"ClassEnableMediaChangeDetection: Disable count "
+		"reduced to %d - ",
+		info->MediaChangeDetectionDisableCount));
 
-    if(oldCount == 0) {
+    if (oldCount == 0) {
+	//
+	// We don't know what state the media is in anymore.
+	//
 
-        //
-        // We don't know what state the media is in anymore.
-        //
+	ClasspInternalSetMediaChangeState(FdoExtension, MediaUnknown, FALSE);
 
-        ClasspInternalSetMediaChangeState(FdoExtension,
-                                          MediaUnknown,
-                                          FALSE
-                                          );
+	//
+	// Reset the MCN timer.
+	//
 
-        //
-        // Reset the MCN timer.
-        //
+	ClassResetMediaChangeTimer(FdoExtension);
 
-        ClassResetMediaChangeTimer(FdoExtension);
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "MCD is enabled\n"));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "MCD is enabled\n"));
 
     } else {
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "MCD still disabled\n"));
-
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "MCD still disabled\n"));
     }
-
 
     //
     // Let something else run.
@@ -3182,32 +2843,26 @@ Return Value:
 --*/
 ULONG BreakOnMcnDisable = FALSE;
 
-_IRQL_requires_max_(PASSIVE_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassDisableMediaChangeDetection(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
+    ClassDisableMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
 
     PAGED_CODE();
 
-    if(info == NULL) {
-        return;
+    if (info == NULL) {
+	return;
     }
 
-    (VOID)KeWaitForMutexObject(&info->MediaChangeMutex,
-                               UserRequest,
-                               KernelMode,
-                               FALSE,
-                               NULL);
+    (VOID) KeWaitForMutexObject(&info->MediaChangeMutex, UserRequest, KernelMode, FALSE,
+				NULL);
 
     info->MediaChangeDetectionDisableCount++;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassDisableMediaChangeDetection: "
-                "disable count is %d\n",
-                info->MediaChangeDetectionDisableCount));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		"ClassDisableMediaChangeDetection: "
+		"disable count is %d\n",
+		info->MediaChangeDetectionDisableCount));
 
     KeReleaseMutex(&info->MediaChangeMutex, FALSE);
 
@@ -3229,25 +2884,21 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassCleanupMediaChangeDetection(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
+    ClassCleanupMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
 
     PAGED_CODE()
 
-    if(info == NULL) {
-        return;
+    if (info == NULL) {
+	return;
     }
 
     FdoExtension->MediaChangeDetectionInfo = NULL;
 
     if (info->Gesn.Mdl) {
-        IoFreeMdl(info->Gesn.Mdl);
+	IoFreeMdl(info->Gesn.Mdl);
     }
     FREE_POOL(info->Gesn.Buffer);
     IoFreeIrp(info->MediaChangeIrp);
@@ -3273,14 +2924,10 @@ Return Value:
 
 --*/
 NTSTATUS
-ClasspMcnControl(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PIRP Irp,
-    IN PSCSI_REQUEST_BLOCK Srb
-    )
+ClasspMcnControl(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP Irp,
+		 IN PSCSI_REQUEST_BLOCK Srb)
 {
-    PCOMMON_DEVICE_EXTENSION commonExtension =
-        (PCOMMON_DEVICE_EXTENSION) FdoExtension;
+    PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
 
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PPREVENT_MEDIA_REMOVAL request = Irp->AssociatedIrp.SystemBuffer;
@@ -3297,56 +2944,51 @@ ClasspMcnControl(
     // request.  If not we'll fail it before synchronizing.
     //
 
-    TRY {
+    TRY
+    {
+	if (fileObject != NULL) {
+	    fsContext = ClassGetFsContext(commonExtension, fileObject);
+	} else if (Irp->RequestorMode == KernelMode) { // && fileObject == NULL
+	    fsContext = &FdoExtension->KernelModeMcnContext;
+	}
 
-        if(fileObject != NULL) {
-            fsContext = ClassGetFsContext(commonExtension, fileObject);
-        }else if(Irp->RequestorMode == KernelMode) { // && fileObject == NULL
-            fsContext = &FdoExtension->KernelModeMcnContext;
-        }
+	if (fsContext == NULL) {
+	    //
+	    // This handle isn't setup correctly.  We can't let the
+	    // operation go.
+	    //
 
-        if (fsContext == NULL) {
+	    status = STATUS_INVALID_PARAMETER;
+	    LEAVE;
+	}
 
-            //
-            // This handle isn't setup correctly.  We can't let the
-            // operation go.
-            //
+	if (request->PreventMediaRemoval) {
+	    //
+	    // This is a lock command.  Reissue the command in case bus or
+	    // device was reset and the lock was cleared.
+	    //
 
-            status = STATUS_INVALID_PARAMETER;
-            LEAVE;
-        }
+	    ClassDisableMediaChangeDetection(FdoExtension);
+	    InterlockedIncrement((volatile LONG *)&(fsContext->McnDisableCount));
 
-        if(request->PreventMediaRemoval) {
+	} else {
+	    if (fsContext->McnDisableCount == 0) {
+		status = STATUS_INVALID_DEVICE_STATE;
+		LEAVE;
+	    }
 
-            //
-            // This is a lock command.  Reissue the command in case bus or
-            // device was reset and the lock was cleared.
-            //
+	    InterlockedDecrement((volatile LONG *)&(fsContext->McnDisableCount));
+	    ClassEnableMediaChangeDetection(FdoExtension);
+	}
+    }
+    FINALLY
+    {
+	Irp->IoStatus.Status = status;
 
-            ClassDisableMediaChangeDetection(FdoExtension);
-            InterlockedIncrement((volatile LONG *)&(fsContext->McnDisableCount));
+	FREE_POOL(Srb);
 
-        } else {
-
-            if(fsContext->McnDisableCount == 0) {
-                status = STATUS_INVALID_DEVICE_STATE;
-                LEAVE;
-            }
-
-            InterlockedDecrement((volatile LONG *)&(fsContext->McnDisableCount));
-            ClassEnableMediaChangeDetection(FdoExtension);
-        }
-
-    } FINALLY {
-
-        Irp->IoStatus.Status = status;
-
-        FREE_POOL(Srb);
-
-        ClassReleaseRemoveLock(FdoExtension->DeviceObject, Irp);
-        ClassCompleteRequest(FdoExtension->DeviceObject,
-                             Irp,
-                             IO_NO_INCREMENT);
+	ClassReleaseRemoveLock(FdoExtension->DeviceObject, Irp);
+	ClassCompleteRequest(FdoExtension->DeviceObject, Irp, IO_NO_INCREMENT);
     }
     return status;
 } // end ClasspMcnControl(
@@ -3378,18 +3020,11 @@ Return Value:
 
 --*/
 _Function_class_(RTL_QUERY_REGISTRY_ROUTINE)
-_IRQL_requires_max_(PASSIVE_LEVEL)
-_IRQL_requires_same_
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClasspMediaChangeRegistryCallBack(
-    _In_z_ PWSTR ValueName,
-    _In_ ULONG ValueType,
-    _In_reads_bytes_opt_(ValueLength) PVOID ValueData,
-    _In_ ULONG ValueLength,
-    _In_opt_ PVOID Context,
-    _In_opt_ PVOID EntryContext
-    )
+    _IRQL_requires_max_(PASSIVE_LEVEL) _IRQL_requires_same_ NTAPI NTSTATUS
+    ClasspMediaChangeRegistryCallBack(_In_z_ PWSTR ValueName, _In_ ULONG ValueType,
+				      _In_reads_bytes_opt_(ValueLength) PVOID ValueData,
+				      _In_ ULONG ValueLength, _In_opt_ PVOID Context,
+				      _In_opt_ PVOID EntryContext)
 {
     PULONG valueFound;
     PUNICODE_STRING deviceString;
@@ -3398,10 +3033,8 @@ ClasspMediaChangeRegistryCallBack(
     PAGED_CODE();
     UNREFERENCED_PARAMETER(ValueName);
 
-    if (ValueData == NULL ||
-        Context == NULL ||
-        EntryContext == NULL) {
-        return STATUS_INVALID_PARAMETER;
+    if (ValueData == NULL || Context == NULL || EntryContext == NULL) {
+	return STATUS_INVALID_PARAMETER;
     }
 
     //
@@ -3410,23 +3043,24 @@ ClasspMediaChangeRegistryCallBack(
 
     valueFound = EntryContext;
     if ((*valueFound) != 0) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspMcnRegCB: already set to true\n"));
-        return STATUS_SUCCESS;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspMcnRegCB: already set to true\n"));
+	return STATUS_SUCCESS;
     }
 
     if (ValueLength == sizeof(WCHAR)) {
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN, "ClasspMcnRegCB: NULL string should "
-                    "never be passed to registry call-back!\n"));
-        return STATUS_SUCCESS;
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "ClasspMcnRegCB: NULL string should "
+		    "never be passed to registry call-back!\n"));
+	return STATUS_SUCCESS;
     }
-
 
     //
     // if the data is not a terminated string, exit
     //
 
     if (ValueType != REG_SZ) {
-        return STATUS_SUCCESS;
+	return STATUS_SUCCESS;
     }
 
     deviceString = Context;
@@ -3438,7 +3072,7 @@ ClasspMediaChangeRegistryCallBack(
     //
 
     if (ValueLength > deviceString->Length) {
-        ValueLength = deviceString->Length;
+	ValueLength = deviceString->Length;
     }
 
     //
@@ -3446,23 +3080,20 @@ ClasspMediaChangeRegistryCallBack(
     //
 
     if (RtlCompareMemory(deviceString->Buffer, keyValue, ValueLength) == ValueLength) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspRegMcnCB: Match found\n"));
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspRegMcnCB: DeviceString at %p\n",
-                    deviceString->Buffer));
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspRegMcnCB: KeyValue at %p\n",
-                    keyValue));
-        (*valueFound) = TRUE;
+	TracePrint(
+	    (TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspRegMcnCB: Match found\n"));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspRegMcnCB: DeviceString at %p\n", deviceString->Buffer));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspRegMcnCB: KeyValue at %p\n", keyValue));
+	(*valueFound) = TRUE;
     }
 
     return STATUS_SUCCESS;
 } // end ClasspMediaChangeRegistryCallBack()
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-VOID
-ClasspTimerTickEx(
-    _In_ PEX_TIMER Timer,
-    _In_opt_ PVOID Context
-)
+VOID ClasspTimerTickEx(_In_ PEX_TIMER Timer, _In_opt_ PVOID Context)
 {
     KDPC dummyDpc = { 0 };
 
@@ -3493,19 +3124,11 @@ Arguments:
 Return Value:
 
 --*/
-_Function_class_(KDEFERRED_ROUTINE)
-_IRQL_requires_max_(DISPATCH_LEVEL)
-_IRQL_requires_min_(DISPATCH_LEVEL)
-_IRQL_requires_(DISPATCH_LEVEL)
-_IRQL_requires_same_
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClasspTimerTick(
-    _In_ PKDPC Dpc,
-    _In_opt_ PVOID DeferredContext,
-    _In_opt_ PVOID SystemArgument1,
-    _In_opt_ PVOID SystemArgument2
-    )
+_Function_class_(KDEFERRED_ROUTINE) _IRQL_requires_max_(DISPATCH_LEVEL)
+    _IRQL_requires_min_(DISPATCH_LEVEL)
+	_IRQL_requires_(DISPATCH_LEVEL) _IRQL_requires_same_ NTAPI VOID
+    ClasspTimerTick(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
+		    _In_opt_ PVOID SystemArgument1, _In_opt_ PVOID SystemArgument2)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeferredContext;
     PCOMMON_DEVICE_EXTENSION commonExtension;
@@ -3526,9 +3149,6 @@ ClasspTimerTick(
     //
     // Do any media change work
     //
-#ifdef _MSC_VER
-#pragma warning(suppress:4054) // okay to type cast function pointer to PIRP for this use case
-#endif
     isRemoved = ClassAcquireRemoveLock(DeviceObject, (PIRP)ClasspTimerTick);
 
     //
@@ -3544,115 +3164,100 @@ ClasspTimerTick(
     // remove
 
     if (!isRemoved) {
+	PFAILURE_PREDICTION_INFO info = fdoExtension->FailurePredictionInfo;
 
-        PFAILURE_PREDICTION_INFO info = fdoExtension->FailurePredictionInfo;
+	//
+	// Do any media change detection work
+	//
 
-        //
-        // Do any media change detection work
-        //
+	if ((fdoExtension->MediaChangeDetectionInfo != NULL) &&
+	    (fdoExtension->FunctionSupportInfo->AsynchronousNotificationSupported ==
+	     FALSE)) {
+	    ClassCheckMediaState(fdoExtension);
+	}
 
-        if ((fdoExtension->MediaChangeDetectionInfo != NULL) &&
-            (fdoExtension->FunctionSupportInfo->AsynchronousNotificationSupported == FALSE)) {
+	//
+	// Do any failure prediction work
+	//
+	if ((info != NULL) && (info->Method != FailurePredictionNone)) {
+	    ULONG countDown;
 
-            ClassCheckMediaState(fdoExtension);
+	    if (ClasspCanSendPollingIrp(fdoExtension)) {
+		//
+		// Synchronization is not required here since the Interlocked
+		// locked instruction guarantees atomicity. Other code that
+		// resets CountDown uses InterlockedExchange which is also
+		// atomic.
+		//
+		countDown = InterlockedDecrement((volatile LONG *)&info->CountDown);
+		if (countDown == 0) {
+		    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				"ClasspTimerTick: Send FP irp for %p\n", DeviceObject));
 
-        }
+		    if (info->WorkQueueItem == NULL) {
+			info->WorkQueueItem = IoAllocateWorkItem(
+			    fdoExtension->DeviceObject);
 
-        //
-        // Do any failure prediction work
-        //
-        if ((info != NULL) && (info->Method != FailurePredictionNone)) {
+			if (info->WorkQueueItem == NULL) {
+			    //
+			    // Set the countdown to one minute in the future.
+			    // we'll try again then in the hopes there's more
+			    // free memory.
+			    //
 
-            ULONG countDown;
+			    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+					"ClassTimerTick: Couldn't allocate "
+					"item - try again in one minute\n"));
+			    InterlockedExchange((volatile LONG *)&info->CountDown, 60);
 
-            if (ClasspCanSendPollingIrp(fdoExtension)) {
+			} else {
+			    //
+			    // Grab the remove lock so that removal will block
+			    // until the work item is done.
+			    //
 
-                //
-                // Synchronization is not required here since the Interlocked
-                // locked instruction guarantees atomicity. Other code that
-                // resets CountDown uses InterlockedExchange which is also
-                // atomic.
-                //
-                countDown = InterlockedDecrement((volatile LONG *)&info->CountDown);
-                if (countDown == 0) {
+			    ClassAcquireRemoveLock(fdoExtension->DeviceObject,
+						   info->WorkQueueItem);
 
-                    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClasspTimerTick: Send FP irp for %p\n",
-                                   DeviceObject));
+			    IoQueueWorkItem(info->WorkQueueItem, ClasspFailurePredict,
+					    DelayedWorkQueue, info);
+			}
 
-                    if(info->WorkQueueItem == NULL) {
+		    } else {
+			TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+				    "ClasspTimerTick: Failure "
+				    "Prediction work item is "
+				    "already active for device %p\n",
+				    DeviceObject));
+		    }
+		} // end (countdown == 0)
 
-                        info->WorkQueueItem =
-                            IoAllocateWorkItem(fdoExtension->DeviceObject);
+	    } else {
+		//
+		// If device is sleeping then just rearm polling timer
+		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+			    "ClassTimerTick, SHHHH!!! device is %p is sleeping\n",
+			    DeviceObject));
+	    }
 
-                        if(info->WorkQueueItem == NULL) {
+	} // end failure prediction polling
 
-                            //
-                            // Set the countdown to one minute in the future.
-                            // we'll try again then in the hopes there's more
-                            // free memory.
-                            //
+	//
+	// Give driver a chance to do its own specific work
+	//
 
-                            TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,  "ClassTimerTick: Couldn't allocate "
-                                           "item - try again in one minute\n"));
-                            InterlockedExchange((volatile LONG *)&info->CountDown, 60);
+	if (commonExtension->DriverExtension->InitData.ClassTick != NULL) {
+	    commonExtension->DriverExtension->InitData.ClassTick(DeviceObject);
 
-                        } else {
-
-                            //
-                            // Grab the remove lock so that removal will block
-                            // until the work item is done.
-                            //
-
-                            ClassAcquireRemoveLock(fdoExtension->DeviceObject,
-                                                   info->WorkQueueItem);
-
-                            IoQueueWorkItem(info->WorkQueueItem,
-                                            ClasspFailurePredict,
-                                            DelayedWorkQueue,
-                                            info);
-                        }
-
-                    } else {
-
-                        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,  "ClasspTimerTick: Failure "
-                                       "Prediction work item is "
-                                       "already active for device %p\n",
-                                    DeviceObject));
-
-                    }
-                } // end (countdown == 0)
-
-            } else {
-                //
-                // If device is sleeping then just rearm polling timer
-                TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN, "ClassTimerTick, SHHHH!!! device is %p is sleeping\n",
-                            DeviceObject));
-            }
-
-        } // end failure prediction polling
-
-        //
-        // Give driver a chance to do its own specific work
-        //
-
-        if (commonExtension->DriverExtension->InitData.ClassTick != NULL) {
-
-            commonExtension->DriverExtension->InitData.ClassTick(DeviceObject);
-
-        } // end device specific tick handler
+	} // end device specific tick handler
     } // end check for removed
 
-#ifdef _MSC_VER
-#pragma warning(suppress:4054) // okay to type cast function pointer to PIRP for this use case
-#endif
     ClassReleaseRemoveLock(DeviceObject, (PIRP)ClasspTimerTick);
 } // end ClasspTimerTick()
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
 BOOLEAN
-ClasspUpdateTimerNoWakeTolerance(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-)
+ClasspUpdateTimerNoWakeTolerance(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
 
@@ -3681,52 +3286,48 @@ Returns:
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
     if (FdoExtension->CommonExtension.IsFdo) {
-        fdoData = FdoExtension->PrivateFdoData;
+	fdoData = FdoExtension->PrivateFdoData;
     }
 
-    if (fdoData != NULL &&
-        fdoData->TickTimer != NULL &&
-        fdoData->TimerInitialized &&
-        fdoData->TickTimerEnabled) {
+    if (fdoData != NULL && fdoData->TickTimer != NULL && fdoData->TimerInitialized &&
+	fdoData->TickTimerEnabled) {
+	LONGLONG noWakeTolerance = TICK_TIMER_DELAY_IN_MSEC * (10 * 1000);
 
-        LONGLONG noWakeTolerance = TICK_TIMER_DELAY_IN_MSEC * (10 * 1000);
+	//
+	// Set the no-wake tolerance to "unlimited" if the conditions below
+	// are met.  An "unlimited" no-wake tolerance means that the timer
+	// will *never* wake the processor if the processor is in a
+	// low-power state.
+	//  1. The screen is off.
+	//  2. The class driver is *not* a consumer of the tick timer (ClassTick is NULL).
+	//  3. This is a disk device.
+	// Otherwise the tolerance is set to the normal, default tolerable delay.
+	//
+	if (ClasspScreenOff &&
+	    FdoExtension->CommonExtension.DriverExtension->InitData.ClassTick == NULL &&
+	    FdoExtension->DeviceObject->DeviceType == FILE_DEVICE_DISK) {
+	    noWakeTolerance = EX_TIMER_UNLIMITED_TOLERANCE;
+	}
 
-        //
-        // Set the no-wake tolerance to "unlimited" if the conditions below
-        // are met.  An "unlimited" no-wake tolerance means that the timer
-        // will *never* wake the processor if the processor is in a
-        // low-power state.
-        //  1. The screen is off.
-        //  2. The class driver is *not* a consumer of the tick timer (ClassTick is NULL).
-        //  3. This is a disk device.
-        // Otherwise the tolerance is set to the normal, default tolerable delay.
-        //
-        if (ClasspScreenOff &&
-            FdoExtension->CommonExtension.DriverExtension->InitData.ClassTick == NULL &&
-            FdoExtension->DeviceObject->DeviceType == FILE_DEVICE_DISK) {
-            noWakeTolerance = EX_TIMER_UNLIMITED_TOLERANCE;
-        }
+	//
+	// The new tolerance is different from the current tolerance so we need
+	// to set/reset the timer with the new tolerance value.
+	//
+	if (fdoData->CurrentNoWakeTolerance != noWakeTolerance) {
+	    EXT_SET_PARAMETERS parameters;
+	    LONGLONG period = TICK_TIMER_PERIOD_IN_MSEC *
+			      (10 * 1000); // Convert to units of 100ns.
+	    LONGLONG dueTime = period *
+			       (-1); // Negative sign indicates dueTime is relative.
 
-        //
-        // The new tolerance is different from the current tolerance so we need
-        // to set/reset the timer with the new tolerance value.
-        //
-        if (fdoData->CurrentNoWakeTolerance != noWakeTolerance) {
-            EXT_SET_PARAMETERS parameters;
-            LONGLONG period = TICK_TIMER_PERIOD_IN_MSEC * (10 * 1000); // Convert to units of 100ns.
-            LONGLONG dueTime = period * (-1); // Negative sign indicates dueTime is relative.
+	    ExInitializeSetTimerParameters(&parameters);
+	    parameters.NoWakeTolerance = noWakeTolerance;
+	    fdoData->CurrentNoWakeTolerance = noWakeTolerance;
 
-            ExInitializeSetTimerParameters(&parameters);
-            parameters.NoWakeTolerance = noWakeTolerance;
-            fdoData->CurrentNoWakeTolerance = noWakeTolerance;
+	    ExSetTimer(fdoData->TickTimer, dueTime, period, &parameters);
 
-            ExSetTimer(fdoData->TickTimer,
-                       dueTime,
-                       period,
-                       &parameters);
-
-            return TRUE;
-        }
+	    return TRUE;
+	}
     }
 
     return FALSE;
@@ -3734,9 +3335,7 @@ Returns:
 #endif
 
 NTSTATUS
-ClasspInitializeTimer(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-)
+ClasspInitializeTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
 
@@ -3765,39 +3364,37 @@ Return Value:
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
     if (FdoExtension->CommonExtension.IsFdo) {
-        fdoData = FdoExtension->PrivateFdoData;
+	fdoData = FdoExtension->PrivateFdoData;
     }
 
     if (fdoData == NULL) {
-        return STATUS_UNSUCCESSFUL;
+	return STATUS_UNSUCCESSFUL;
     }
 
     if (fdoData->TimerInitialized == FALSE) {
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-        NT_ASSERT(fdoData->TickTimer == NULL);
-        //
-        // The tick timer is a no-wake timer, which means it will not wake
-        // the processor while the processor is in a low power state until
-        // the timer's no-wake tolerance is reached.
-        //
-        fdoData->TickTimer = ExAllocateTimer(ClasspTimerTickEx, FdoExtension, EX_TIMER_NO_WAKE);
-        if (fdoData->TickTimer == NULL) {
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
+	NT_ASSERT(fdoData->TickTimer == NULL);
+	//
+	// The tick timer is a no-wake timer, which means it will not wake
+	// the processor while the processor is in a low power state until
+	// the timer's no-wake tolerance is reached.
+	//
+	fdoData->TickTimer = ExAllocateTimer(ClasspTimerTickEx, FdoExtension,
+					     EX_TIMER_NO_WAKE);
+	if (fdoData->TickTimer == NULL) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
 #else
-        KeInitializeDpc(&fdoData->TickTimerDpc, ClasspTimerTick, FdoExtension);
-        KeInitializeTimer(&fdoData->TickTimer);
+	KeInitializeDpc(&fdoData->TickTimerDpc, ClasspTimerTick, FdoExtension);
+	KeInitializeTimer(&fdoData->TickTimer);
 #endif
-        fdoData->TimerInitialized = TRUE;
+	fdoData->TimerInitialized = TRUE;
     }
 
     return STATUS_SUCCESS;
 }
 
-VOID
-ClasspDeleteTimer(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-)
+VOID ClasspDeleteTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
 
@@ -3818,19 +3415,19 @@ Return Value:
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
     if (FdoExtension->CommonExtension.IsFdo) {
-        fdoData = FdoExtension->PrivateFdoData;
-        if (fdoData != NULL) {
+	fdoData = FdoExtension->PrivateFdoData;
+	if (fdoData != NULL) {
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-            if (fdoData->TickTimer != NULL) {
-                EXT_DELETE_PARAMETERS parameters;
-                ExInitializeDeleteTimerParameters(&parameters);
-                ExDeleteTimer(fdoData->TickTimer, TRUE, FALSE, &parameters);
-                fdoData->TickTimer = NULL;
-            }
+	    if (fdoData->TickTimer != NULL) {
+		EXT_DELETE_PARAMETERS parameters;
+		ExInitializeDeleteTimerParameters(&parameters);
+		ExDeleteTimer(fdoData->TickTimer, TRUE, FALSE, &parameters);
+		fdoData->TickTimer = NULL;
+	    }
 #endif
-            fdoData->TimerInitialized = FALSE;
-            fdoData->TickTimerEnabled = FALSE;
-        }
+	    fdoData->TimerInitialized = FALSE;
+	    fdoData->TickTimerEnabled = FALSE;
+	}
     }
 }
 
@@ -3853,86 +3450,83 @@ Return Value:
     None.
 
 --*/
-VOID
-ClasspEnableTimer(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+VOID ClasspEnableTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
     if (FdoExtension->CommonExtension.IsFdo) {
-        fdoData = FdoExtension->PrivateFdoData;
+	fdoData = FdoExtension->PrivateFdoData;
     }
 
     if (fdoData != NULL) {
-        //
-        // The timer should have already been initialized, but if that's not
-        // the case it's not the end of the world.  We can attempt to
-        // initialize it now.
-        //
-        NT_ASSERT(fdoData->TimerInitialized);
-        if (fdoData->TimerInitialized == FALSE) {
-            NTSTATUS status;
-            status = ClasspInitializeTimer(FdoExtension);
-            if (NT_SUCCESS(status) == FALSE) {
-                return;
-            }
-        }
+	//
+	// The timer should have already been initialized, but if that's not
+	// the case it's not the end of the world.  We can attempt to
+	// initialize it now.
+	//
+	NT_ASSERT(fdoData->TimerInitialized);
+	if (fdoData->TimerInitialized == FALSE) {
+	    NTSTATUS status;
+	    status = ClasspInitializeTimer(FdoExtension);
+	    if (NT_SUCCESS(status) == FALSE) {
+		return;
+	    }
+	}
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-        if (fdoData->TickTimer != NULL) {
-            EXT_SET_PARAMETERS parameters;
-            LONGLONG period = TICK_TIMER_PERIOD_IN_MSEC * (10 * 1000); // Convert to units of 100ns.
-            LONGLONG dueTime = period * (-1); // Negative sign indicates dueTime is relative.
+	if (fdoData->TickTimer != NULL) {
+	    EXT_SET_PARAMETERS parameters;
+	    LONGLONG period = TICK_TIMER_PERIOD_IN_MSEC *
+			      (10 * 1000); // Convert to units of 100ns.
+	    LONGLONG dueTime = period *
+			       (-1); // Negative sign indicates dueTime is relative.
 
-            ExInitializeSetTimerParameters(&parameters);
+	    ExInitializeSetTimerParameters(&parameters);
 
-            //
-            // Set the no-wake tolerance to "unlimited" if the conditions below
-            // are met.  An "unlimited" no-wake tolerance means that the timer
-            // will *never* wake the processor if the processor is in a
-            // low-power state.
-            //  1. The screen is off.
-            //  2. The class driver is *not* a consumer of the tick timer (ClassTick is NULL).
-            //  3. This is a disk device.
-            // Otherwise the tolerance is set to the normal tolerable delay.
-            //
-            if (ClasspScreenOff &&
-                FdoExtension->CommonExtension.DriverExtension->InitData.ClassTick == NULL &&
-                FdoExtension->DeviceObject->DeviceType == FILE_DEVICE_DISK) {
-                parameters.NoWakeTolerance = EX_TIMER_UNLIMITED_TOLERANCE;
-            } else {
-                parameters.NoWakeTolerance = TICK_TIMER_DELAY_IN_MSEC * (10 * 1000);
-            }
+	    //
+	    // Set the no-wake tolerance to "unlimited" if the conditions below
+	    // are met.  An "unlimited" no-wake tolerance means that the timer
+	    // will *never* wake the processor if the processor is in a
+	    // low-power state.
+	    //  1. The screen is off.
+	    //  2. The class driver is *not* a consumer of the tick timer (ClassTick is NULL).
+	    //  3. This is a disk device.
+	    // Otherwise the tolerance is set to the normal tolerable delay.
+	    //
+	    if (ClasspScreenOff &&
+		FdoExtension->CommonExtension.DriverExtension->InitData.ClassTick ==
+		    NULL &&
+		FdoExtension->DeviceObject->DeviceType == FILE_DEVICE_DISK) {
+		parameters.NoWakeTolerance = EX_TIMER_UNLIMITED_TOLERANCE;
+	    } else {
+		parameters.NoWakeTolerance = TICK_TIMER_DELAY_IN_MSEC * (10 * 1000);
+	    }
 
-            fdoData->CurrentNoWakeTolerance = parameters.NoWakeTolerance;
+	    fdoData->CurrentNoWakeTolerance = parameters.NoWakeTolerance;
 
-            ExSetTimer(fdoData->TickTimer,
-                       dueTime,
-                       period,
-                       &parameters);
+	    ExSetTimer(fdoData->TickTimer, dueTime, period, &parameters);
 
-            fdoData->TickTimerEnabled = TRUE;
-        } else {
-            NT_ASSERT(fdoData->TickTimer != NULL);
-        }
+	    fdoData->TickTimerEnabled = TRUE;
+	} else {
+	    NT_ASSERT(fdoData->TickTimer != NULL);
+	}
 #else
-        //
-        // Start the periodic tick timer using a coalescable timer with some delay
-        //
-        {
-            LARGE_INTEGER timeout;
-            timeout.QuadPart = TICK_TIMER_PERIOD_IN_MSEC * (10 * 1000) * (-1);
-            KeSetCoalescableTimer(&fdoData->TickTimer,
-                                  timeout, TICK_TIMER_PERIOD_IN_MSEC, TICK_TIMER_DELAY_IN_MSEC,
-                                  &fdoData->TickTimerDpc);
-            fdoData->TickTimerEnabled = TRUE;
-        }
+	//
+	// Start the periodic tick timer using a coalescable timer with some delay
+	//
+	{
+	    LARGE_INTEGER timeout;
+	    timeout.QuadPart = TICK_TIMER_PERIOD_IN_MSEC * (10 * 1000) * (-1);
+	    KeSetCoalescableTimer(&fdoData->TickTimer, timeout, TICK_TIMER_PERIOD_IN_MSEC,
+				  TICK_TIMER_DELAY_IN_MSEC, &fdoData->TickTimerDpc);
+	    fdoData->TickTimerEnabled = TRUE;
+	}
 #endif
 
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,  "ClasspEnableTimer: Periodic tick timer enabled "
-                    "for device %p\n", FdoExtension->DeviceObject));
-
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspEnableTimer: Periodic tick timer enabled "
+		    "for device %p\n",
+		    FdoExtension->DeviceObject));
     }
 
 } // end ClasspEnableTimer()
@@ -3952,43 +3546,40 @@ Arguments:
 Return Value:
 
 --*/
-VOID
-ClasspDisableTimer(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+VOID ClasspDisableTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
     if (FdoExtension->CommonExtension.IsFdo) {
-        fdoData = FdoExtension->PrivateFdoData;
+	fdoData = FdoExtension->PrivateFdoData;
     }
 
     if (fdoData && fdoData->TimerInitialized == TRUE) {
-
-        //
-        // we are only going to stop the actual timer in remove device routine
-        // or when done transitioning to D3 (timer will be started again when
-        // done transitioning to D0).
-        //
-        // it is the responsibility of the code within the timer routine to
-        // check if the device is removed and not processing io for the final
-        // call.
-        // this keeps the code clean and prevents lots of bugs.
-        //
+	//
+	// we are only going to stop the actual timer in remove device routine
+	// or when done transitioning to D3 (timer will be started again when
+	// done transitioning to D0).
+	//
+	// it is the responsibility of the code within the timer routine to
+	// check if the device is removed and not processing io for the final
+	// call.
+	// this keeps the code clean and prevents lots of bugs.
+	//
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-        NT_ASSERT(fdoData->TickTimer != NULL);
-        ExCancelTimer(fdoData->TickTimer, NULL);
+	NT_ASSERT(fdoData->TickTimer != NULL);
+	ExCancelTimer(fdoData->TickTimer, NULL);
 #else
-        KeCancelTimer(&fdoData->TickTimer);
+	KeCancelTimer(&fdoData->TickTimer);
 #endif
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,  "ClasspDisableTimer: Periodic tick timer disabled "
-                    "for device %p\n", FdoExtension->DeviceObject));
-        fdoData->TickTimerEnabled = FALSE;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
+		    "ClasspDisableTimer: Periodic tick timer disabled "
+		    "for device %p\n",
+		    FdoExtension->DeviceObject));
+	fdoData->TickTimerEnabled = FALSE;
 
     } else {
-
-        TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,  "ClasspDisableTimer: Timer never initialized\n"));
-
+	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
+		    "ClasspDisableTimer: Timer never initialized\n"));
     }
 
     return;
@@ -4012,27 +3603,23 @@ Return Value:
 Note:  this function can be called (via the workitem callback) after the paging device is shut down,
          so it must be PAGE LOCKED.
 --*/
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClasspFailurePredict(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PVOID Context
-    )
+NTAPI VOID ClasspFailurePredict(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PIO_WORKITEM workItem;
-    STORAGE_PREDICT_FAILURE checkFailure = {0};
-    SCSI_ADDRESS scsiAddress = {0};
+    STORAGE_PREDICT_FAILURE checkFailure = { 0 };
+    SCSI_ADDRESS scsiAddress = { 0 };
     PFAILURE_PREDICTION_INFO Info = (PFAILURE_PREDICTION_INFO)Context;
 
     NTSTATUS status;
 
     if (Info == NULL) {
-        NT_ASSERT(Info != NULL);
-        return;
+	NT_ASSERT(Info != NULL);
+	return;
     }
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,  "ClasspFailurePredict: Polling for failure\n"));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
+		"ClasspFailurePredict: Polling for failure\n"));
 
     //
     // Mark the work item as inactive and reset the countdown timer.  we
@@ -4045,114 +3632,88 @@ ClasspFailurePredict(
     workItem = InterlockedExchangePointer((volatile PVOID *)&(Info->WorkQueueItem), NULL);
 
     if (ClasspCanSendPollingIrp(fdoExtension)) {
+	KEVENT event;
+	PDEVICE_OBJECT topOfStack;
+	PIRP irp = NULL;
+	IO_STATUS_BLOCK ioStatus;
+	NTSTATUS activateStatus = STATUS_UNSUCCESSFUL;
 
-        KEVENT event;
-        PDEVICE_OBJECT topOfStack;
-        PIRP irp = NULL;
-        IO_STATUS_BLOCK ioStatus;
-        NTSTATUS activateStatus = STATUS_UNSUCCESSFUL;
+	//
+	// Take an active reference on the device to ensure it is powered up
+	// while we do the failure prediction query.
+	//
+	if (fdoExtension->FunctionSupportInfo->IdlePower.IdlePowerEnabled) {
+	    activateStatus = ClasspPowerActivateDevice(DeviceObject);
+	}
 
-        //
-        // Take an active reference on the device to ensure it is powered up
-        // while we do the failure prediction query.
-        //
-        if (fdoExtension->FunctionSupportInfo->IdlePower.IdlePowerEnabled) {
-            activateStatus = ClasspPowerActivateDevice(DeviceObject);
-        }
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
-        KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	topOfStack = IoGetAttachedDeviceReference(DeviceObject);
 
-        topOfStack = IoGetAttachedDeviceReference(DeviceObject);
+	//
+	// Send down irp to see if drive is predicting failure
+	//
 
-        //
-        // Send down irp to see if drive is predicting failure
-        //
+	irp = IoBuildDeviceIoControlRequest(IOCTL_STORAGE_PREDICT_FAILURE, topOfStack,
+					    NULL, 0, &checkFailure,
+					    sizeof(STORAGE_PREDICT_FAILURE), FALSE,
+					    &event, &ioStatus);
 
-        irp = IoBuildDeviceIoControlRequest(
-                        IOCTL_STORAGE_PREDICT_FAILURE,
-                        topOfStack,
-                        NULL,
-                        0,
-                        &checkFailure,
-                        sizeof(STORAGE_PREDICT_FAILURE),
-                        FALSE,
-                        &event,
-                        &ioStatus);
+	if (irp != NULL) {
+	    status = IoCallDriver(topOfStack, irp);
+	    if (status == STATUS_PENDING) {
+		(VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+		status = ioStatus.Status;
+	    }
 
+	} else {
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	}
 
-        if (irp != NULL) {
+	if (NT_SUCCESS(status) && (checkFailure.PredictFailure)) {
+	    checkFailure.PredictFailure = 512;
 
+	    //
+	    // Send down irp to get scsi address
+	    //
+	    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
-            status = IoCallDriver(topOfStack, irp);
-            if (status == STATUS_PENDING) {
-                (VOID)KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-                status = ioStatus.Status;
-            }
+	    RtlZeroMemory(&scsiAddress, sizeof(SCSI_ADDRESS));
+	    irp = IoBuildDeviceIoControlRequest(IOCTL_SCSI_GET_ADDRESS, topOfStack, NULL,
+						0, &scsiAddress, sizeof(SCSI_ADDRESS),
+						FALSE, &event, &ioStatus);
 
+	    if (irp != NULL) {
+		status = IoCallDriver(topOfStack, irp);
+		if (status == STATUS_PENDING) {
+		    (VOID)
+			KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+		}
+	    }
 
-        } else {
-            status = STATUS_INSUFFICIENT_RESOURCES;
-        }
+	    ClassNotifyFailurePredicted(
+		fdoExtension, (PUCHAR)&checkFailure, sizeof(checkFailure),
+		(BOOLEAN)(fdoExtension->FailurePredicted == FALSE), 2, scsiAddress.PathId,
+		scsiAddress.TargetId, scsiAddress.Lun);
 
-        if (NT_SUCCESS(status) && (checkFailure.PredictFailure)) {
+	    fdoExtension->FailurePredicted = TRUE;
+	}
 
-            checkFailure.PredictFailure = 512;
+	ObDereferenceObject(topOfStack);
 
-            //
-            // Send down irp to get scsi address
-            //
-            KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	//
+	// Update the failure prediction query time and release the active
+	// reference.
+	//
 
-            RtlZeroMemory(&scsiAddress, sizeof(SCSI_ADDRESS));
-            irp = IoBuildDeviceIoControlRequest(
-                IOCTL_SCSI_GET_ADDRESS,
-                topOfStack,
-                NULL,
-                0,
-                &scsiAddress,
-                sizeof(SCSI_ADDRESS),
-                FALSE,
-                &event,
-                &ioStatus);
+	KeQuerySystemTime(&(Info->LastFailurePredictionQueryTime));
 
-            if (irp != NULL) {
-
-
-                status = IoCallDriver(topOfStack, irp);
-                if (status == STATUS_PENDING) {
-                    (VOID)KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-                }
-
-            }
-
-            ClassNotifyFailurePredicted(fdoExtension,
-                                    (PUCHAR)&checkFailure,
-                                    sizeof(checkFailure),
-                                    (BOOLEAN)(fdoExtension->FailurePredicted == FALSE),
-                                    2,
-                                    scsiAddress.PathId,
-                                    scsiAddress.TargetId,
-                                    scsiAddress.Lun);
-
-            fdoExtension->FailurePredicted = TRUE;
-
-        }
-
-        ObDereferenceObject(topOfStack);
-
-        //
-        // Update the failure prediction query time and release the active
-        // reference.
-        //
-
-        KeQuerySystemTime(&(Info->LastFailurePredictionQueryTime));
-
-        if (NT_SUCCESS(activateStatus)) {
-            ClasspPowerIdleDevice(DeviceObject);
-        }
+	if (NT_SUCCESS(activateStatus)) {
+	    ClasspPowerIdleDevice(DeviceObject);
+	}
     }
 
-    ClassReleaseRemoveLock(DeviceObject, (PIRP) workItem);
+    ClassReleaseRemoveLock(DeviceObject, (PIRP)workItem);
     IoFreeWorkItem(workItem);
     return;
 } // end ClasspFailurePredict()
@@ -4168,66 +3729,55 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(DISPATCH_LEVEL)
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassNotifyFailurePredicted(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_reads_bytes_(BufferSize) PUCHAR Buffer,
-    _In_ ULONG BufferSize,
-    _In_ BOOLEAN LogError,
-    _In_ ULONG UniqueErrorValue,
-    _In_ UCHAR PathId,
-    _In_ UCHAR TargetId,
-    _In_ UCHAR Lun
-    )
+_IRQL_requires_max_(DISPATCH_LEVEL) NTAPI VOID
+    ClassNotifyFailurePredicted(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				_In_reads_bytes_(BufferSize) PUCHAR Buffer,
+				_In_ ULONG BufferSize, _In_ BOOLEAN LogError,
+				_In_ ULONG UniqueErrorValue, _In_ UCHAR PathId,
+				_In_ UCHAR TargetId, _In_ UCHAR Lun)
 {
     PIO_ERROR_LOG_PACKET logEntry;
     EVENT_DESCRIPTOR eventDescriptor;
     PCLASS_DRIVER_EXTENSION driverExtension;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,  "ClasspFailurePredictPollCompletion: Failure predicted for device %p\n", FdoExtension->DeviceObject));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
+		"ClasspFailurePredictPollCompletion: Failure predicted for device %p\n",
+		FdoExtension->DeviceObject));
 
     //
     // Fire off a WMI event
     //
-    ClassWmiFireEvent(FdoExtension->DeviceObject,
-                                   (LPGUID)&StoragePredictFailureEventGuid,
-                                   0,
-                                   BufferSize,
-                                   Buffer);
+    ClassWmiFireEvent(FdoExtension->DeviceObject, (LPGUID)&StoragePredictFailureEventGuid,
+		      0, BufferSize, Buffer);
     //
     // Log an error into the eventlog
     //
 
-    if (LogError)
-    {
-        logEntry = IoAllocateErrorLogEntry(
-                            FdoExtension->DeviceObject,
-                           sizeof(IO_ERROR_LOG_PACKET) + (3 * sizeof(ULONG)));
+    if (LogError) {
+	logEntry = IoAllocateErrorLogEntry(FdoExtension->DeviceObject,
+					   sizeof(IO_ERROR_LOG_PACKET) +
+					       (3 * sizeof(ULONG)));
 
-        if (logEntry != NULL)
-        {
+	if (logEntry != NULL) {
+	    logEntry->FinalStatus = STATUS_SUCCESS;
+	    logEntry->ErrorCode = IO_WRN_FAILURE_PREDICTED;
+	    logEntry->SequenceNumber = 0;
+	    logEntry->MajorFunctionCode = IRP_MJ_DEVICE_CONTROL;
+	    logEntry->IoControlCode = IOCTL_STORAGE_PREDICT_FAILURE;
+	    logEntry->RetryCount = 0;
+	    logEntry->UniqueErrorValue = UniqueErrorValue;
+	    logEntry->DumpDataSize = 3;
 
-            logEntry->FinalStatus     = STATUS_SUCCESS;
-            logEntry->ErrorCode       = IO_WRN_FAILURE_PREDICTED;
-            logEntry->SequenceNumber  = 0;
-            logEntry->MajorFunctionCode = IRP_MJ_DEVICE_CONTROL;
-            logEntry->IoControlCode   = IOCTL_STORAGE_PREDICT_FAILURE;
-            logEntry->RetryCount      = 0;
-            logEntry->UniqueErrorValue = UniqueErrorValue;
-            logEntry->DumpDataSize    = 3;
+	    logEntry->DumpData[0] = PathId;
+	    logEntry->DumpData[1] = TargetId;
+	    logEntry->DumpData[2] = Lun;
 
-            logEntry->DumpData[0] = PathId;
-            logEntry->DumpData[1] = TargetId;
-            logEntry->DumpData[2] = Lun;
+	    //
+	    // Write the error log packet.
+	    //
 
-            //
-            // Write the error log packet.
-            //
-
-            IoWriteErrorLogEntry(logEntry);
-        }
+	    IoWriteErrorLogEntry(logEntry);
+	}
     }
 
     //
@@ -4237,29 +3787,22 @@ ClassNotifyFailurePredicted(
     //
 
     if ((LogError == TRUE) ||
-        ((FdoExtension->FailurePredicted == FALSE) && (UniqueErrorValue == 4))) {
+	((FdoExtension->FailurePredicted == FALSE) && (UniqueErrorValue == 4))) {
+	driverExtension = IoGetDriverObjectExtension(
+	    FdoExtension->DeviceObject->DriverObject, CLASS_DRIVER_EXTENSION_KEY);
 
-#ifdef _MSC_VER
-#pragma warning(suppress:4054) // okay to type cast function pointer as data pointer for this use case
-#endif
-        driverExtension = IoGetDriverObjectExtension(FdoExtension->DeviceObject->DriverObject, CLASS_DRIVER_EXTENSION_KEY);
+	if ((driverExtension != NULL) && (driverExtension->EtwHandle != 0)) {
+	    EventDescCreate(&eventDescriptor,
+			    1, // Id
+			    0, // Version
+			    0, // Channel
+			    0, // Level
+			    0, // Task
+			    0, // OpCode
+			    0); // Keyword
 
-        if ((driverExtension != NULL) && (driverExtension->EtwHandle != 0)) {
-            EventDescCreate(&eventDescriptor,
-                            1,    // Id
-                            0,    // Version
-                            0,    // Channel
-                            0,    // Level
-                            0,    // Task
-                            0,    // OpCode
-                            0);   // Keyword
-
-            EtwWrite(driverExtension->EtwHandle,
-                     &eventDescriptor,
-                     NULL,
-                     0,
-                     NULL);
-        }
+	    EtwWrite(driverExtension->EtwHandle, &eventDescriptor, NULL, 0, NULL);
+	}
     }
 
 } // end ClassNotifyFailurePredicted()
@@ -4287,14 +3830,10 @@ Return Value:
     NT Status
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL)
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassSetFailurePredictionPoll(
-    _Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_ FAILURE_PREDICTION_METHOD FailurePredictionMethod,
-    _In_ ULONG PollingPeriod
-    )
+_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
+    ClassSetFailurePredictionPoll(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				  _In_ FAILURE_PREDICTION_METHOD FailurePredictionMethod,
+				  _In_ ULONG PollingPeriod)
 {
     PFAILURE_PREDICTION_INFO info;
     NTSTATUS status;
@@ -4302,42 +3841,33 @@ ClassSetFailurePredictionPoll(
     PAGED_CODE();
 
     if (FdoExtension->FailurePredictionInfo == NULL) {
+	if (FailurePredictionMethod != FailurePredictionNone) {
+	    info = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(FAILURE_PREDICTION_INFO),
+					 CLASS_TAG_FAILURE_PREDICT);
 
-        if (FailurePredictionMethod != FailurePredictionNone) {
+	    if (info == NULL) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	    }
 
-            info = ExAllocatePoolWithTag(NonPagedPoolNx,
-                                         sizeof(FAILURE_PREDICTION_INFO),
-                                         CLASS_TAG_FAILURE_PREDICT);
+	    KeInitializeEvent(&info->Event, SynchronizationEvent, TRUE);
 
-            if (info == NULL) {
+	    info->WorkQueueItem = NULL;
+	    info->Period = DEFAULT_FAILURE_PREDICTION_PERIOD;
 
-                return STATUS_INSUFFICIENT_RESOURCES;
+	    KeQuerySystemTime(&(info->LastFailurePredictionQueryTime));
 
-            }
+	} else {
+	    //
+	    // FaultPrediction has not been previously initialized, nor
+	    // is it being initialized now. No need to do anything.
+	    //
+	    return STATUS_SUCCESS;
+	}
 
-            KeInitializeEvent(&info->Event, SynchronizationEvent, TRUE);
-
-            info->WorkQueueItem = NULL;
-            info->Period = DEFAULT_FAILURE_PREDICTION_PERIOD;
-
-            KeQuerySystemTime(&(info->LastFailurePredictionQueryTime));
-
-        } else {
-
-            //
-            // FaultPrediction has not been previously initialized, nor
-            // is it being initialized now. No need to do anything.
-            //
-            return STATUS_SUCCESS;
-
-        }
-
-        FdoExtension->FailurePredictionInfo = info;
+	FdoExtension->FailurePredictionInfo = info;
 
     } else {
-
-        info = FdoExtension->FailurePredictionInfo;
-
+	info = FdoExtension->FailurePredictionInfo;
     }
 
     /*
@@ -4345,40 +3875,35 @@ ClassSetFailurePredictionPoll(
      */
     KeEnterCriticalRegion();
 
-    (VOID)KeWaitForSingleObject(&info->Event,
-                                 UserRequest,
-                                 KernelMode,
-                                 FALSE,
-                                 NULL);
-
+    (VOID) KeWaitForSingleObject(&info->Event, UserRequest, KernelMode, FALSE, NULL);
 
     //
     // Reset polling period and counter. Setup failure detection type
     //
 
     if (PollingPeriod != 0) {
-
-        InterlockedExchange((volatile LONG *)&info->Period, PollingPeriod);
+	InterlockedExchange((volatile LONG *)&info->Period, PollingPeriod);
     }
 
     InterlockedExchange((volatile LONG *)&info->CountDown, info->Period);
 
     info->Method = FailurePredictionMethod;
     if (FailurePredictionMethod != FailurePredictionNone) {
+	ClasspEnableTimer(FdoExtension);
 
-        ClasspEnableTimer(FdoExtension);
-
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,  "ClassEnableFailurePredictPoll: Enabled for "
-                    "device %p\n", FdoExtension->DeviceObject));
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
+		    "ClassEnableFailurePredictPoll: Enabled for "
+		    "device %p\n",
+		    FdoExtension->DeviceObject));
 
     } else {
-
-        ClasspDisableTimer(FdoExtension);
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,  "ClassEnableFailurePredictPoll: Disabled for "
-                    "device %p\n", FdoExtension->DeviceObject));
+	ClasspDisableTimer(FdoExtension);
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
+		    "ClassEnableFailurePredictPoll: Disabled for "
+		    "device %p\n",
+		    FdoExtension->DeviceObject));
     }
     status = STATUS_SUCCESS;
-
 
     KeSetEvent(&info->Event, IO_NO_INCREMENT, FALSE);
 
@@ -4388,9 +3913,7 @@ ClassSetFailurePredictionPoll(
 } // end ClassSetFailurePredictionPoll()
 
 BOOLEAN
-ClasspFailurePredictionPeriodMissed(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+ClasspFailurePredictionPeriodMissed(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
     This routine can be used to determine if a failure prediction polling
@@ -4423,14 +3946,14 @@ Returns:
     // query and the current time and convert it to seconds.
     //
     KeQuerySystemTime(&currentTime);
-    timeDifference.QuadPart = currentTime.QuadPart - FdoExtension->FailurePredictionInfo->LastFailurePredictionQueryTime.QuadPart;
+    timeDifference.QuadPart =
+	currentTime.QuadPart -
+	FdoExtension->FailurePredictionInfo->LastFailurePredictionQueryTime.QuadPart;
     timeDifference.QuadPart /= (10LL * 1000LL * 1000LL);
 
     if (timeDifference.QuadPart >= FdoExtension->FailurePredictionInfo->Period) {
-        missedPeriod = TRUE;
+	missedPeriod = TRUE;
     }
 
     return missedPeriod;
 }
-
-
