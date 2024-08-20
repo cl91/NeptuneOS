@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "ntddstor.h"
+#include <nt.h>
 
 #define DD_DISK_DEVICE_NAME               "\\Device\\UNKNOWN"
 #define DD_DISK_DEVICE_NAME_U             L"\\Device\\UNKNOWN"

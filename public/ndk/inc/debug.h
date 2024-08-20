@@ -87,6 +87,9 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #endif
 #endif
 
+#define NT_ASSERT ASSERT
+#define NT_ASSERTMSG ASSERTMSG
+
 /* For internal purposes only */
 #define __NOTICE(level, fmt, ...)   DbgPrint(#level ":  %s at %s:%d " fmt, __FUNCTION__, __RELFILE__, __LINE__, ##__VA_ARGS__)
 

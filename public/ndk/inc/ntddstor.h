@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <nt.h>
+
 #if defined(DEFINE_GUID)
 
 DEFINE_GUID(GUID_DEVINTERFACE_DISK,
@@ -327,7 +329,7 @@ typedef struct _STORAGE_BUS_RESET_REQUEST {
 
 typedef struct _STORAGE_BREAK_RESERVATION_REQUEST {
     ULONG Length;
-    UCHAR _unused;
+    UCHAR Unused;
     UCHAR PathId;
     UCHAR TargetId;
     UCHAR Lun;
@@ -579,6 +581,8 @@ typedef struct _STORAGE_ADAPTER_DESCRIPTOR {
     UCHAR BusType;
     USHORT BusMajorVersion;
     USHORT BusMinorVersion;
+    UCHAR SrbType;
+    UCHAR AddressType;
 } STORAGE_ADAPTER_DESCRIPTOR, *PSTORAGE_ADAPTER_DESCRIPTOR;
 
 typedef struct _STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR {
@@ -614,6 +618,10 @@ typedef struct _STORAGE_MINIPORT_DESCRIPTOR {
     STORAGE_PORT_CODE_SET Portdriver;
     BOOLEAN LUNResetSupported;
     BOOLEAN TargetResetSupported;
+    USHORT IoTimeoutValue;
+    BOOLEAN ExtraIoInfoSupported;
+    UCHAR Reserved0[3];
+    ULONG Reserved1;
 } STORAGE_MINIPORT_DESCRIPTOR, *PSTORAGE_MINIPORT_DESCRIPTOR;
 
 typedef struct _DEVICE_LB_PROVISIONING_DESCRIPTOR {

@@ -604,7 +604,8 @@ NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
 NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
 		     IN PTHREAD Thread,
 		     IN GLOBAL_HANDLE GlobalHandle,
-		     IN PULARGE_INTEGER AbsoluteDueTime)
+		     IN PULARGE_INTEGER AbsoluteDueTime,
+		     IN LONG Period)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
@@ -612,7 +613,7 @@ NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
     assert(DriverObject);
     LoopOverList(IoTimer, &DriverObject->IoTimerList, IO_TIMER, DriverLink) {
 	if (OBJECT_TO_GLOBAL_HANDLE(IoTimer) == GlobalHandle) {
-	    KeQueueIoTimer(IoTimer, *AbsoluteDueTime, 0);
+	    KeQueueIoTimer(IoTimer, *AbsoluteDueTime, Period);
 	    return STATUS_SUCCESS;
 	}
     }

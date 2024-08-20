@@ -80,7 +80,7 @@ typedef struct _GUID {
 
 #ifndef __LPGUID_DEFINED__
 #define __LPGUID_DEFINED__
-typedef GUID *LPGUID;
+typedef GUID *PGUID, *LPGUID;
 #endif
 
 #ifndef __LPCGUID_DEFINED__

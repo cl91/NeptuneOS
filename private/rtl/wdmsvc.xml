@@ -69,6 +69,7 @@
   <svc name="WdmSetTimer">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="GlobalHandle" />
     <parameter annotation="in" type="ptr::ULARGE_INTEGER" name="AbsoluteDueTime" />
+    <parameter annotation="in" type="LONG" name="Period" />
   </svc>
 
   <svc name="WdmCreateCoroutineStack">

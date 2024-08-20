@@ -73,15 +73,11 @@ VOID IopProcessTimerList()
  *
  * This routine must be called at DISPATCH_LEVEL and below.
  */
-NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-			 IN LARGE_INTEGER DueTime,
-			 IN OPTIONAL PKDPC Dpc)
+NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
+			   IN LARGE_INTEGER DueTime,
+			   IN LONG Period,
+			   IN OPTIONAL PKDPC Dpc)
 {
-    assert(Timer);
-    assert(Timer->Header.Header.GlobalHandle);
-    if (!Timer->Header.Header.GlobalHandle) {
-	RtlRaiseStatus(STATUS_INVALID_HANDLE);
-    }
     /* Compute the absolute due time of the timer. */
     ULARGE_INTEGER AbsoluteDueTime = {
 	.QuadPart = DueTime.QuadPart
@@ -91,12 +87,13 @@ NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 	KeQuerySystemTime(&SystemTime);
 	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + SystemTime.QuadPart;
     }
-    NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle, &AbsoluteDueTime);
+    NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle, &AbsoluteDueTime, Period);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
     Timer->Dpc = Dpc;
     Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
+    Timer->Period = Period;
     IoAcquireDpcMutex();
     /* If the timer has expired (but hasn't been processed by the main event loop), we
      * need to remove it from the signaled object list. */
@@ -134,6 +131,13 @@ NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
     }
     IoReleaseDpcMutex();
     return PreviousState;
+}
+
+NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+			 IN LARGE_INTEGER DueTime,
+			 IN OPTIONAL PKDPC Dpc)
+{
+    return KeSetTimerEx(Timer, DueTime, 0, Dpc);
 }
 
 /*

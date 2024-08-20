@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Storport Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "storport"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "storport.sys"
+#include <version.rc>

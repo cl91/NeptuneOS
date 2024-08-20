@@ -835,12 +835,7 @@ NTAPI VOID IoFreeIrp(IN PIRP Irp)
 	}
     }
 
-    PMDL Mdl = Irp->MdlAddress;
-    while (Mdl) {
-	PMDL Next = Mdl->Next;
-	ExFreePool(Mdl);
-	Mdl = Next;
-    }
+    IoFreeMdl(Irp->MdlAddress);
     /* At this point the IRP should not have any IO stack locations. */
     assert(Irp->CurrentLocation == Irp->StackCount + 1);
 #if DBG
