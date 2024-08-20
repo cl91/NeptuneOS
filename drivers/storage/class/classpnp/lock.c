@@ -25,11 +25,6 @@ Revision History:
 #include "classp.h"
 #include "debug.h"
 
-#ifdef DEBUG_USE_WPP
-#include "lock.tmh"
-#endif
-
-
 LONG LockHighWatermark = 0;
 LONG LockLowWatermark = 0;
 LONG MaxLockedMinutes = 5;
@@ -110,18 +105,9 @@ Return Value:
     lock.
 
 --*/
-ULONG
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassAcquireRemoveLockEx(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PVOID Tag,
-    _In_ PCSTR File,
-    _In_ ULONG Line
-    )
+NTAPI ULONG ClassAcquireRemoveLockEx(_In_ PDEVICE_OBJECT DeviceObject, _In_ PVOID Tag,
+			 _In_ PCSTR File, _In_ ULONG Line)
 // This function implements the acquisition of Tag
-#ifdef _MSC_VER
-#pragma warning(suppress:28104)
-#endif
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     BOOLEAN rundownAcquired;
@@ -131,89 +117,89 @@ ClassAcquireRemoveLockEx(
     // Grab the remove lock
     //
 
-    #if DBG
+#if DBG
 
-        LONG lockValue;
+    LONG lockValue;
 
-        lockValue = InterlockedIncrement(&commonExtension->RemoveLock);
+    lockValue = InterlockedIncrement(&commonExtension->RemoveLock);
 
+    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,
+		"ClassAcquireRemoveLock: "
+		"Acquired for Object %p & irp %p - count is %d\n",
+		DeviceObject, Tag, lockValue));
 
-        TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,  "ClassAcquireRemoveLock: "
-                    "Acquired for Object %p & irp %p - count is %d\n",
-                    DeviceObject, Tag, lockValue));
+    NT_ASSERTMSG("ClassAcquireRemoveLock - lock value was negative : ", (lockValue > 0));
 
-        NT_ASSERTMSG("ClassAcquireRemoveLock - lock value was negative : ",
-                  (lockValue > 0));
+    NT_ASSERTMSG("RemoveLock increased to meet LockHighWatermark",
+		 ((LockHighWatermark == 0) || (lockValue != LockHighWatermark)));
 
-        NT_ASSERTMSG("RemoveLock increased to meet LockHighWatermark",
-                  ((LockHighWatermark == 0) ||
-                   (lockValue != LockHighWatermark)));
+    if (commonExtension->IsRemoved != REMOVE_COMPLETE) {
+	PRTL_GENERIC_TABLE removeTrackingList = NULL;
+	REMOVE_TRACKING_BLOCK trackingBlock;
+	PREMOVE_TRACKING_BLOCK insertedTrackingBlock = NULL;
+	BOOLEAN newElement = FALSE;
 
-        if (commonExtension->IsRemoved != REMOVE_COMPLETE) {
-            PRTL_GENERIC_TABLE removeTrackingList = NULL;
-            REMOVE_TRACKING_BLOCK trackingBlock;
-            PREMOVE_TRACKING_BLOCK insertedTrackingBlock = NULL;
-            BOOLEAN newElement = FALSE;
+	KIRQL oldIrql;
 
-            KIRQL oldIrql;
+	trackingBlock.Tag = Tag;
 
-            trackingBlock.Tag = Tag;
+	trackingBlock.File = File;
+	trackingBlock.Line = Line;
 
-            trackingBlock.File = File;
-            trackingBlock.Line = Line;
+	KeQueryTickCount((&trackingBlock.TimeLocked));
 
-            KeQueryTickCount((&trackingBlock.TimeLocked));
+	KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock, &oldIrql);
 
-            KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock,
-                              &oldIrql);
+	removeTrackingList = commonExtension->RemoveTrackingList;
 
-            removeTrackingList = commonExtension->RemoveTrackingList;
+	if (removeTrackingList != NULL) {
+	    insertedTrackingBlock =
+		RtlInsertElementGenericTable(removeTrackingList, &trackingBlock,
+					     sizeof(REMOVE_TRACKING_BLOCK), &newElement);
+	}
 
-            if (removeTrackingList != NULL) {
-                insertedTrackingBlock = RtlInsertElementGenericTable(removeTrackingList,
-                                                                     &trackingBlock,
-                                                                     sizeof(REMOVE_TRACKING_BLOCK),
-                                                                     &newElement);
-            }
+	if (insertedTrackingBlock != NULL) {
+	    if (!newElement) {
+		TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK,
+			    ">>>>>ClassAcquireRemoveLock: "
+			    "already tracking Tag %p\n",
+			    Tag));
+		TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK,
+			    ">>>>>ClassAcquireRemoveLock: "
+			    "acquired in file %s on line %d\n",
+			    insertedTrackingBlock->File, insertedTrackingBlock->Line));
+		//                  NT_ASSERT(FALSE);
+	    }
+	} else {
+	    commonExtension->RemoveTrackingUntrackedCount++;
 
-            if (insertedTrackingBlock != NULL) {
-                if (!newElement) {
-                    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK, ">>>>>ClassAcquireRemoveLock: "
-                                "already tracking Tag %p\n", Tag));
-                    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK, ">>>>>ClassAcquireRemoveLock: "
-                                "acquired in file %s on line %d\n",
-                                insertedTrackingBlock->File, insertedTrackingBlock->Line));
-//                  NT_ASSERT(FALSE);
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_LOCK,
+			">>>>>ClassAcquireRemoveLock: "
+			"Cannot track Tag %p - currently %d untracked requsts\n",
+			Tag, commonExtension->RemoveTrackingUntrackedCount));
+	}
 
-                }
-            } else {
-                commonExtension->RemoveTrackingUntrackedCount++;
+	KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
+    }
+#else
 
-                TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_LOCK, ">>>>>ClassAcquireRemoveLock: "
-                            "Cannot track Tag %p - currently %d untracked requsts\n",
-                            Tag, commonExtension->RemoveTrackingUntrackedCount));
-            }
+    UNREFERENCED_PARAMETER(Tag);
+    UNREFERENCED_PARAMETER(File);
+    UNREFERENCED_PARAMETER(Line);
 
-            KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
-        }
-    #else
+#endif
 
-        UNREFERENCED_PARAMETER(Tag);
-        UNREFERENCED_PARAMETER(File);
-        UNREFERENCED_PARAMETER(Line);
-
-    #endif
-
-    removeLockRundown = (PEX_RUNDOWN_REF_CACHE_AWARE)
-        ((PCHAR)commonExtension->PrivateCommonData + sizeof(CLASS_PRIVATE_COMMON_DATA));
+    removeLockRundown =
+	(PEX_RUNDOWN_REF_CACHE_AWARE)((PCHAR)commonExtension->PrivateCommonData +
+				      sizeof(CLASS_PRIVATE_COMMON_DATA));
     rundownAcquired = ExAcquireRundownProtectionCacheAware(removeLockRundown);
     if (!rundownAcquired) {
-        InterlockedIncrement((volatile LONG*) &(commonExtension->PrivateCommonData->RemoveLockFailAcquire));
-        TracePrint((TRACE_LEVEL_VERBOSE,
-                    TRACE_FLAG_LOCK,
-                    "ClassAcquireRemoveLockEx: RemoveLockRundown acquisition failed"
-                    "RemoveLockFailAcquire = %d\n",
-                    commonExtension->PrivateCommonData->RemoveLockFailAcquire));
+	InterlockedIncrement((volatile LONG *)&(
+	    commonExtension->PrivateCommonData->RemoveLockFailAcquire));
+	TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,
+		    "ClassAcquireRemoveLockEx: RemoveLockRundown acquisition failed"
+		    "RemoveLockFailAcquire = %d\n",
+		    commonExtension->PrivateCommonData->RemoveLockFailAcquire));
     }
 
     return (commonExtension->IsRemoved);
@@ -246,102 +232,98 @@ Return Value:
     none
 
 --*/
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassReleaseRemoveLock(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_opt_ PIRP Tag
-    )
+NTAPI VOID ClassReleaseRemoveLock(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PIRP Tag)
 // This function implements the release of Tag
-#ifdef _MSC_VER
-#pragma warning(suppress:28103)
-#endif
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     LONG lockValue;
     LONG oldValue;
     PEX_RUNDOWN_REF_CACHE_AWARE removeLockRundown = NULL;
 
-    #if DBG
-        PRTL_GENERIC_TABLE removeTrackingList = NULL;
-        REMOVE_TRACKING_BLOCK searchDataBlock;
+#if DBG
+    PRTL_GENERIC_TABLE removeTrackingList = NULL;
+    REMOVE_TRACKING_BLOCK searchDataBlock;
 
-        BOOLEAN found = FALSE;
+    BOOLEAN found = FALSE;
 
-        BOOLEAN isRemoved = (commonExtension->IsRemoved == REMOVE_COMPLETE);
+    BOOLEAN isRemoved = (commonExtension->IsRemoved == REMOVE_COMPLETE);
 
-        KIRQL oldIrql;
+    KIRQL oldIrql;
 
-        if (isRemoved) {
-            TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK, "ClassReleaseRemoveLock: REMOVE_COMPLETE set; this should never happen"));
-            InterlockedDecrement(&(commonExtension->RemoveLock));
-            return;
-        }
+    if (isRemoved) {
+	TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,
+		    "ClassReleaseRemoveLock: REMOVE_COMPLETE set; this should never "
+		    "happen"));
+	InterlockedDecrement(&(commonExtension->RemoveLock));
+	return;
+    }
 
-        KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock,
-                          &oldIrql);
+    KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock, &oldIrql);
 
-        removeTrackingList = commonExtension->RemoveTrackingList;
+    removeTrackingList = commonExtension->RemoveTrackingList;
 
-        if (removeTrackingList != NULL) {
-            searchDataBlock.Tag = Tag;
-            found = RtlDeleteElementGenericTable(removeTrackingList, &searchDataBlock);
-        }
+    if (removeTrackingList != NULL) {
+	searchDataBlock.Tag = Tag;
+	found = RtlDeleteElementGenericTable(removeTrackingList, &searchDataBlock);
+    }
 
-        if (!found) {
-            if(commonExtension->RemoveTrackingUntrackedCount == 0) {
-                TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK, ">>>>>ClassReleaseRemoveLock: "
-                            "Couldn't find Tag %p in the lock tracking list\n", Tag));
-                //
-                // This might happen if the device is being removed and the tracking list
-                // has already been freed. Don't assert if that is the case.
-                //
-                NT_ASSERT((removeTrackingList == NULL) && (commonExtension->IsRemoved != NO_REMOVE));
-            } else {
-                TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK, ">>>>>ClassReleaseRemoveLock: "
-                            "Couldn't find Tag %p in the lock tracking list - "
-                            "may be one of the %d untracked requests still outstanding\n",
-                            Tag, commonExtension->RemoveTrackingUntrackedCount));
+    if (!found) {
+	if (commonExtension->RemoveTrackingUntrackedCount == 0) {
+	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK,
+			">>>>>ClassReleaseRemoveLock: "
+			"Couldn't find Tag %p in the lock tracking list\n",
+			Tag));
+	    //
+	    // This might happen if the device is being removed and the tracking list
+	    // has already been freed. Don't assert if that is the case.
+	    //
+	    NT_ASSERT((removeTrackingList == NULL) &&
+		      (commonExtension->IsRemoved != NO_REMOVE));
+	} else {
+	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK,
+			">>>>>ClassReleaseRemoveLock: "
+			"Couldn't find Tag %p in the lock tracking list - "
+			"may be one of the %d untracked requests still outstanding\n",
+			Tag, commonExtension->RemoveTrackingUntrackedCount));
 
-                commonExtension->RemoveTrackingUntrackedCount--;
-                NT_ASSERT(commonExtension->RemoveTrackingUntrackedCount >= 0);
-            }
-        }
+	    commonExtension->RemoveTrackingUntrackedCount--;
+	    NT_ASSERT(commonExtension->RemoveTrackingUntrackedCount >= 0);
+	}
+    }
 
-        KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock,
-                          oldIrql);
+    KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
 
-        lockValue = InterlockedDecrement(&commonExtension->RemoveLock);
+    lockValue = InterlockedDecrement(&commonExtension->RemoveLock);
 
-        TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,  "ClassReleaseRemoveLock: "
-                    "Released for Object %p & irp %p - count is %d\n",
-                    DeviceObject, Tag, lockValue));
+    TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,
+		"ClassReleaseRemoveLock: "
+		"Released for Object %p & irp %p - count is %d\n",
+		DeviceObject, Tag, lockValue));
 
-        NT_ASSERT(lockValue >= 0);
+    NT_ASSERT(lockValue >= 0);
 
-        NT_ASSERTMSG("RemoveLock decreased to meet LockLowWatermark",
-                  ((LockLowWatermark == 0) || !(lockValue == LockLowWatermark)));
+    NT_ASSERTMSG("RemoveLock decreased to meet LockLowWatermark",
+		 ((LockLowWatermark == 0) || !(lockValue == LockLowWatermark)));
 
-        if (lockValue == 0) {
+    if (lockValue == 0) {
+	NT_ASSERT(commonExtension->IsRemoved);
 
-            NT_ASSERT(commonExtension->IsRemoved);
+	//
+	// The device needs to be removed.  Signal the remove event
+	// that it's safe to go ahead.
+	//
 
-            //
-            // The device needs to be removed.  Signal the remove event
-            // that it's safe to go ahead.
-            //
+	TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,
+		    "ClassReleaseRemoveLock: "
+		    "Release for object %p & irp %p caused lock to go to zero\n",
+		    DeviceObject, Tag));
+    }
 
-            TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_LOCK,  "ClassReleaseRemoveLock: "
-                        "Release for object %p & irp %p caused lock to go to zero\n",
-                        DeviceObject, Tag));
+#else
 
-        }
+    UNREFERENCED_PARAMETER(Tag);
 
-    #else
-
-        UNREFERENCED_PARAMETER(Tag);
-
-    #endif
+#endif
 
     //
     // Decrement the RemoveLockFailAcquire by 1 when RemoveLockFailAcquire is non-zero.
@@ -351,22 +333,22 @@ ClassReleaseRemoveLock(
     oldValue = 1;
     lockValue = commonExtension->PrivateCommonData->RemoveLockFailAcquire;
     while (lockValue != 0) {
-        oldValue =
-            InterlockedCompareExchange((volatile LONG *) &commonExtension->PrivateCommonData->RemoveLockFailAcquire,
-            lockValue - 1,
-            lockValue);
+	oldValue = InterlockedCompareExchange(
+	    (volatile LONG *)&commonExtension->PrivateCommonData->RemoveLockFailAcquire,
+	    lockValue - 1, lockValue);
 
-        if (oldValue == lockValue) {
-            break;
-        }
+	if (oldValue == lockValue) {
+	    break;
+	}
 
-        lockValue = oldValue;
+	lockValue = oldValue;
     }
 
     if (lockValue == 0) {
-        removeLockRundown = (PEX_RUNDOWN_REF_CACHE_AWARE)
-            ((PCHAR)commonExtension->PrivateCommonData + sizeof(CLASS_PRIVATE_COMMON_DATA));
-        ExReleaseRundownProtectionCacheAware(removeLockRundown);
+	removeLockRundown =
+	    (PEX_RUNDOWN_REF_CACHE_AWARE)((PCHAR)commonExtension->PrivateCommonData +
+					  sizeof(CLASS_PRIVATE_COMMON_DATA));
+	ExReleaseRundownProtectionCacheAware(removeLockRundown);
     }
 
     return;
@@ -396,47 +378,43 @@ Return Value:
     none
 
 --*/
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClassCompleteRequest(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp,
-    _In_ CCHAR PriorityBoost
-    )
+NTAPI VOID ClassCompleteRequest(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp,
+				_In_ CCHAR PriorityBoost)
 {
-    #if DBG
-        PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
+#if DBG
+    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
 
-        PRTL_GENERIC_TABLE removeTrackingList = NULL;
-        REMOVE_TRACKING_BLOCK searchDataBlock;
-        PREMOVE_TRACKING_BLOCK foundTrackingBlock;
+    PRTL_GENERIC_TABLE removeTrackingList = NULL;
+    REMOVE_TRACKING_BLOCK searchDataBlock;
+    PREMOVE_TRACKING_BLOCK foundTrackingBlock;
 
-        KIRQL oldIrql;
+    KIRQL oldIrql;
 
-        KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock, &oldIrql);
+    KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock, &oldIrql);
 
-        removeTrackingList = commonExtension->RemoveTrackingList;
+    removeTrackingList = commonExtension->RemoveTrackingList;
 
-        if (removeTrackingList != NULL)
-        {
-            searchDataBlock.Tag = Irp;
+    if (removeTrackingList != NULL) {
+	searchDataBlock.Tag = Irp;
 
-            foundTrackingBlock = RtlLookupElementGenericTable(removeTrackingList, &searchDataBlock);
+	foundTrackingBlock = RtlLookupElementGenericTable(removeTrackingList,
+							  &searchDataBlock);
 
-            if(foundTrackingBlock != NULL) {
+	if (foundTrackingBlock != NULL) {
+	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK,
+			">>>>>ClassCompleteRequest: "
+			"Irp %p completed while still holding the remove lock\n",
+			Irp));
+	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK,
+			">>>>>ClassCompleteRequest: "
+			"Lock acquired in file %s on line %d\n",
+			foundTrackingBlock->File, foundTrackingBlock->Line));
+	    NT_ASSERT(FALSE);
+	}
+    }
 
-                TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK, ">>>>>ClassCompleteRequest: "
-                            "Irp %p completed while still holding the remove lock\n", Irp));
-                TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_LOCK, ">>>>>ClassCompleteRequest: "
-                            "Lock acquired in file %s on line %d\n",
-                            foundTrackingBlock->File, foundTrackingBlock->Line));
-                NT_ASSERT(FALSE);
-            }
-        }
-
-        KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
-    #endif
-
+    KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
+#endif
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -444,14 +422,8 @@ ClassCompleteRequest(
     return;
 } // end ClassCompleteRequest()
 
-
-RTL_GENERIC_COMPARE_RESULTS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-RemoveTrackingCompareRoutine(
-    PRTL_GENERIC_TABLE Table,
-    PVOID FirstStruct,
-    PVOID SecondStruct
-    )
+NTAPI RTL_GENERIC_COMPARE_RESULTS RemoveTrackingCompareRoutine(PRTL_GENERIC_TABLE Table, PVOID FirstStruct,
+			     PVOID SecondStruct)
 {
     PVOID tag1, tag2;
 
@@ -460,101 +432,79 @@ RemoveTrackingCompareRoutine(
     tag1 = ((PREMOVE_TRACKING_BLOCK)FirstStruct)->Tag;
     tag2 = ((PREMOVE_TRACKING_BLOCK)SecondStruct)->Tag;
 
-    if (tag1 < tag2)
-    {
-        return GenericLessThan;
-    }
-    else if (tag1 > tag2)
-    {
-        return GenericGreaterThan;
+    if (tag1 < tag2) {
+	return GenericLessThan;
+    } else if (tag1 > tag2) {
+	return GenericGreaterThan;
     }
 
     return GenericEqual;
 }
 
-PVOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-RemoveTrackingAllocateRoutine(
-    PRTL_GENERIC_TABLE Table,
-    CLONG ByteSize
-    )
+NTAPI PVOID RemoveTrackingAllocateRoutine(PRTL_GENERIC_TABLE Table, CLONG ByteSize)
 {
     UNREFERENCED_PARAMETER(Table);
 
     return ExAllocatePoolWithTag(NonPagedPoolNx, ByteSize, CLASS_TAG_LOCK_TRACKING);
 }
 
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-RemoveTrackingFreeRoutine(
-    PRTL_GENERIC_TABLE Table,
-    PVOID Buffer
-    )
+NTAPI VOID RemoveTrackingFreeRoutine(PRTL_GENERIC_TABLE Table, PVOID Buffer)
 {
     UNREFERENCED_PARAMETER(Table);
 
     FREE_POOL(Buffer);
 }
 
-VOID
-ClasspInitializeRemoveTracking(
-    _In_ PDEVICE_OBJECT DeviceObject
-    )
+VOID ClasspInitializeRemoveTracking(_In_ PDEVICE_OBJECT DeviceObject)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
 
-    #if DBG
-        KeInitializeSpinLock(&commonExtension->RemoveTrackingSpinlock);
+#if DBG
+    KeInitializeSpinLock(&commonExtension->RemoveTrackingSpinlock);
 
-        commonExtension->RemoveTrackingList = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(RTL_GENERIC_TABLE), CLASS_TAG_LOCK_TRACKING);
+    commonExtension->RemoveTrackingList = ExAllocatePoolWithTag(NonPagedPoolNx,
+								sizeof(RTL_GENERIC_TABLE),
+								CLASS_TAG_LOCK_TRACKING);
 
-        if (commonExtension->RemoveTrackingList != NULL)
-        {
-            RtlInitializeGenericTable(commonExtension->RemoveTrackingList,
-                                      RemoveTrackingCompareRoutine,
-                                      RemoveTrackingAllocateRoutine,
-                                      RemoveTrackingFreeRoutine,
-                                      NULL);
-        }
-    #else
+    if (commonExtension->RemoveTrackingList != NULL) {
+	RtlInitializeGenericTable(commonExtension->RemoveTrackingList,
+				  RemoveTrackingCompareRoutine,
+				  RemoveTrackingAllocateRoutine,
+				  RemoveTrackingFreeRoutine, NULL);
+    }
+#else
 
-        UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(DeviceObject);
 
-        commonExtension->RemoveTrackingSpinlock = (ULONG_PTR) -1;
-        commonExtension->RemoveTrackingList = NULL;
-    #endif
+    commonExtension->RemoveTrackingSpinlock = (ULONG_PTR)-1;
+    commonExtension->RemoveTrackingList = NULL;
+#endif
 }
 
-VOID
-ClasspUninitializeRemoveTracking(
-    _In_ PDEVICE_OBJECT DeviceObject
-    )
+VOID ClasspUninitializeRemoveTracking(_In_ PDEVICE_OBJECT DeviceObject)
 {
-    #if DBG
-        PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-        PRTL_GENERIC_TABLE removeTrackingList = commonExtension->RemoveTrackingList;
+#if DBG
+    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
+    PRTL_GENERIC_TABLE removeTrackingList = commonExtension->RemoveTrackingList;
 
-        ASSERTMSG("Removing the device while still holding remove locks",
-                   commonExtension->RemoveTrackingUntrackedCount == 0 &&
-                   removeTrackingList != NULL ? RtlNumberGenericTableElements(removeTrackingList) == 0 : TRUE);
+    ASSERTMSG("Removing the device while still holding remove locks",
+	      commonExtension->RemoveTrackingUntrackedCount == 0 &&
+		      removeTrackingList != NULL ?
+		  RtlNumberGenericTableElements(removeTrackingList) == 0 :
+		  TRUE);
 
-        if (removeTrackingList != NULL)
-        {
-            KIRQL oldIrql;
-            KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock, &oldIrql);
+    if (removeTrackingList != NULL) {
+	KIRQL oldIrql;
+	KeAcquireSpinLock(&commonExtension->RemoveTrackingSpinlock, &oldIrql);
 
-            FREE_POOL(removeTrackingList);
-            commonExtension->RemoveTrackingList = NULL;
+	FREE_POOL(removeTrackingList);
+	commonExtension->RemoveTrackingList = NULL;
 
-            KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
-        }
+	KeReleaseSpinLock(&commonExtension->RemoveTrackingSpinlock, oldIrql);
+    }
 
-    #else
+#else
 
-        UNREFERENCED_PARAMETER(DeviceObject);
-    #endif
+    UNREFERENCED_PARAMETER(DeviceObject);
+#endif
 }
-
-
-
-
