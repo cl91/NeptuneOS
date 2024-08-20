@@ -24,35 +24,16 @@ Revision History:
 #include "classp.h"
 #include "debug.h"
 
+VOID ClasspStartIdleTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData);
 
-#ifdef DEBUG_USE_WPP
-#include "clntirp.tmh"
-#endif
-
-VOID
-ClasspStartIdleTimer(
-    IN PCLASS_PRIVATE_FDO_DATA FdoData
-    );
-
-VOID
-ClasspStopIdleTimer(
-    PCLASS_PRIVATE_FDO_DATA FdoData
-    );
+VOID ClasspStopIdleTimer(PCLASS_PRIVATE_FDO_DATA FdoData);
 
 KDEFERRED_ROUTINE ClasspIdleTimerDpc;
 
-VOID
-ClasspServiceIdleRequest(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    BOOLEAN PostToDpc
-    );
+VOID ClasspServiceIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			      BOOLEAN PostToDpc);
 
-
-PIRP
-ClasspDequeueIdleRequest(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    );
-
+PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
 /*++
 
@@ -74,20 +55,14 @@ Return Value:
     None
 
 --*/
-VOID
-EnqueueDeferredClientIrp(
-    PDEVICE_OBJECT Fdo,
-    PIRP Irp
-    )
+VOID EnqueueDeferredClientIrp(PDEVICE_OBJECT Fdo, PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     KIRQL oldIrql;
 
-
     KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
     InsertTailList(&fdoData->DeferredClientIrpList, &Irp->Tail.Overlay.ListEntry);
-
 
     KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 }
@@ -109,10 +84,7 @@ Return Value:
     Pointer to removed IRP
 
 --*/
-PIRP
-DequeueDeferredClientIrp(
-    PDEVICE_OBJECT Fdo
-    )
+PIRP DequeueDeferredClientIrp(PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
@@ -123,32 +95,28 @@ DequeueDeferredClientIrp(
     // We don't want to grab the spinlock every time we check it (which is on every xfer completion)
     // so check once first before we grab the spinlock.
     //
-    if (IsListEmpty(&fdoData->DeferredClientIrpList)){
-        irp = NULL;
-    }
-    else {
-        PLIST_ENTRY listEntry;
-        KIRQL oldIrql;
+    if (IsListEmpty(&fdoData->DeferredClientIrpList)) {
+	irp = NULL;
+    } else {
+	PLIST_ENTRY listEntry;
+	KIRQL oldIrql;
 
-        KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-        if (IsListEmpty(&fdoData->DeferredClientIrpList)){
-            listEntry = NULL;
-        }
-        else {
-            listEntry = RemoveHeadList(&fdoData->DeferredClientIrpList);
-        }
-        KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
+	KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
+	if (IsListEmpty(&fdoData->DeferredClientIrpList)) {
+	    listEntry = NULL;
+	} else {
+	    listEntry = RemoveHeadList(&fdoData->DeferredClientIrpList);
+	}
+	KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 
-        if (listEntry == NULL) {
-            irp = NULL;
-        }
-        else {
-            irp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
-            NT_ASSERT(irp->Type == IO_TYPE_IRP);
+	if (listEntry == NULL) {
+	    irp = NULL;
+	} else {
+	    irp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
+	    NT_ASSERT(irp->Type == IO_TYPE_IRP);
 
-
-            InitializeListHead(&irp->Tail.Overlay.ListEntry);
-        }
+	    InitializeListHead(&irp->Tail.Overlay.ListEntry);
+	}
     }
 
     return irp;
@@ -171,46 +139,41 @@ Return Value:
     None
 
 --*/
-VOID
-ClasspInitializeIdleTimer(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
     ULONG idleInterval = CLASS_IDLE_INTERVAL;
     ULONG idlePrioritySupported = TRUE;
     ULONG activeIdleIoMax = 1;
 
-    ClassGetDeviceParameter(FdoExtension,
-                            CLASSP_REG_SUBKEY_NAME,
-                            CLASSP_REG_IDLE_PRIORITY_SUPPORTED,
-                            &idlePrioritySupported);
-
+    ClassGetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+			    CLASSP_REG_IDLE_PRIORITY_SUPPORTED, &idlePrioritySupported);
 
     if (idlePrioritySupported == FALSE) {
-        //
-        // User has set the registry to disable idle priority for this disk.
-        // No need to initialize any further.
-        // Always ensure that none of the other fields used for idle priority
-        // io are ever used without checking if it is supported.
-        //
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER, "ClasspInitializeIdleTimer: Idle priority not supported for disk %p\n", FdoExtension));
-        fdoData->IdlePrioritySupported = FALSE;
-        fdoData->IdleIoCount = 0;
-        fdoData->ActiveIoCount = 0;
-        return;
+	//
+	// User has set the registry to disable idle priority for this disk.
+	// No need to initialize any further.
+	// Always ensure that none of the other fields used for idle priority
+	// io are ever used without checking if it is supported.
+	//
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		    "ClasspInitializeIdleTimer: Idle priority not supported for disk "
+		    "%p\n",
+		    FdoExtension));
+	fdoData->IdlePrioritySupported = FALSE;
+	fdoData->IdleIoCount = 0;
+	fdoData->ActiveIoCount = 0;
+	return;
     }
 
-    ClassGetDeviceParameter(FdoExtension,
-                            CLASSP_REG_SUBKEY_NAME,
-                            CLASSP_REG_IDLE_INTERVAL_NAME,
-                            &idleInterval);
+    ClassGetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+			    CLASSP_REG_IDLE_INTERVAL_NAME, &idleInterval);
 
     if ((idleInterval < CLASS_IDLE_INTERVAL_MIN) || (idleInterval > USHORT_MAX)) {
-        //
-        // If the interval is too low or too high, reset it to the default value.
-        //
-        idleInterval = CLASS_IDLE_INTERVAL;
+	//
+	// If the interval is too low or too high, reset it to the default value.
+	//
+	idleInterval = CLASS_IDLE_INTERVAL;
     }
 
     fdoData->IdlePrioritySupported = TRUE;
@@ -225,10 +188,8 @@ ClasspInitializeIdleTimer(
     fdoData->ActiveIoCount = 0;
     fdoData->ActiveIdleIoCount = 0;
 
-    ClassGetDeviceParameter(FdoExtension,
-                            CLASSP_REG_SUBKEY_NAME,
-                            CLASSP_REG_IDLE_ACTIVE_MAX,
-                            &activeIdleIoMax);
+    ClassGetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
+			    CLASSP_REG_IDLE_ACTIVE_MAX, &activeIdleIoMax);
 
     activeIdleIoMax = max(activeIdleIoMax, 1);
     activeIdleIoMax = min(activeIdleIoMax, USHORT_MAX);
@@ -257,40 +218,35 @@ Return Value:
     None
 
 --*/
-VOID
-ClasspStartIdleTimer(
-    IN PCLASS_PRIVATE_FDO_DATA FdoData
-    )
+VOID ClasspStartIdleTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
 {
     LARGE_INTEGER dueTime;
     LONG mstotimer;
     LONG timerStarted;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER, "ClasspStartIdleTimer: Start idle timer\n"));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		"ClasspStartIdleTimer: Start idle timer\n"));
 
     timerStarted = InterlockedCompareExchange(&FdoData->IdleTimerStarted, 1, 0);
 
     if (!timerStarted) {
+	//
+	// Reset the anti-starvation start time.
+	//
+	FdoData->AntiStarvationStartTime = ClasspGetCurrentTime();
 
-        //
-        // Reset the anti-starvation start time.
-        //
-        FdoData->AntiStarvationStartTime = ClasspGetCurrentTime();
+	//
+	// convert milliseconds to a relative 100ns
+	//
+	mstotimer = (-10) * 1000;
 
-        //
-        // convert milliseconds to a relative 100ns
-        //
-        mstotimer = (-10) * 1000;
+	//
+	// multiply the period
+	//
+	dueTime.QuadPart = Int32x32To64(FdoData->IdleInterval, mstotimer);
 
-        //
-        // multiply the period
-        //
-        dueTime.QuadPart = Int32x32To64(FdoData->IdleInterval, mstotimer);
-
-        KeSetTimerEx(&FdoData->IdleTimer,
-                     dueTime,
-                     FdoData->IdleInterval,
-                     &FdoData->IdleDpc);
+	KeSetTimerEx(&FdoData->IdleTimer, dueTime, FdoData->IdleInterval,
+		     &FdoData->IdleDpc);
     }
     return;
 }
@@ -312,19 +268,17 @@ Return Value:
     None
 
 --*/
-VOID
-ClasspStopIdleTimer(
-    PCLASS_PRIVATE_FDO_DATA FdoData
-    )
+VOID ClasspStopIdleTimer(PCLASS_PRIVATE_FDO_DATA FdoData)
 {
     LONG timerStarted;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER, "ClasspStopIdleTimer: Stop idle timer\n"));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		"ClasspStopIdleTimer: Stop idle timer\n"));
 
     timerStarted = InterlockedCompareExchange(&FdoData->IdleTimerStarted, 0, 1);
 
     if (timerStarted) {
-        (VOID)KeCancelTimer(&FdoData->IdleTimer);
+	(VOID) KeCancelTimer(&FdoData->IdleTimer);
     }
     return;
 }
@@ -348,10 +302,7 @@ Return Value:
 
 --*/
 ULONGLONG
-ClasspGetIdleTime (
-    IN PCLASS_PRIVATE_FDO_DATA FdoData,
-    IN LARGE_INTEGER CurrentTime
-    )
+ClasspGetIdleTime(IN PCLASS_PRIVATE_FDO_DATA FdoData, IN LARGE_INTEGER CurrentTime)
 {
     ULONGLONG idleTime;
     NTSTATUS status;
@@ -362,19 +313,18 @@ ClasspGetIdleTime (
     //
 
     status = RtlULongLongSub((ULONGLONG)CurrentTime.QuadPart,
-                             (ULONGLONG)FdoData->LastNonIdleIoTime.QuadPart,
-                             &idleTime);
+			     (ULONGLONG)FdoData->LastNonIdleIoTime.QuadPart, &idleTime);
 
     if (NT_SUCCESS(status)) {
-        //
-        // Convert the time to milliseconds.
-        //
-        idleTime = ClasspTimeDiffToMs(idleTime);
+	//
+	// Convert the time to milliseconds.
+	//
+	idleTime = ClasspTimeDiffToMs(idleTime);
     } else {
-        //
-        // Failed to get time difference, assume enough time passed.
-        //
-        idleTime = FdoData->IdleInterval;
+	//
+	// Failed to get time difference, assume enough time passed.
+	//
+	idleTime = FdoData->IdleInterval;
     }
 
     return idleTime;
@@ -403,10 +353,8 @@ Return Value:
 
 --*/
 LOGICAL
-ClasspIdleDurationSufficient (
-    IN PCLASS_PRIVATE_FDO_DATA FdoData,
-    OUT LARGE_INTEGER** CurrentTimeIn
-    )
+ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
+			     OUT LARGE_INTEGER **CurrentTimeIn)
 {
     ULONGLONG idleInterval;
     LARGE_INTEGER CurrentTime;
@@ -416,10 +364,10 @@ ClasspIdleDurationSufficient (
     // idle time.
     //
     if (FdoData->ActiveIoCount > 0) {
-        if (CurrentTimeIn != NULL) {
-            *CurrentTimeIn = NULL;
-        }
-        return FALSE;
+	if (CurrentTimeIn != NULL) {
+	    *CurrentTimeIn = NULL;
+	}
+	return FALSE;
     }
 
     //
@@ -431,11 +379,11 @@ ClasspIdleDurationSufficient (
     idleInterval = ClasspGetIdleTime(FdoData, CurrentTime);
 
     if (CurrentTimeIn != NULL) {
-        **CurrentTimeIn = CurrentTime;
+	**CurrentTimeIn = CurrentTime;
     }
 
     if (idleInterval >= FdoData->IdleInterval) {
-        return TRUE;
+	return TRUE;
     }
 
     return FALSE;
@@ -463,60 +411,53 @@ Return Value:
     None
 
 --*/
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-ClasspIdleTimerDpc(
-    IN PKDPC Dpc,
-    IN PVOID Context,
-    IN PVOID SystemArgument1,
-    IN PVOID SystemArgument2
-    )
+NTAPI VOID ClasspIdleTimerDpc(IN PKDPC Dpc, IN PVOID Context, IN PVOID SystemArgument1,
+			      IN PVOID SystemArgument2)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Context;
     PCLASS_PRIVATE_FDO_DATA fdoData;
     ULONGLONG idleTime;
     NTSTATUS status;
     LARGE_INTEGER currentTime;
-    LARGE_INTEGER* pCurrentTime;
+    LARGE_INTEGER *pCurrentTime;
 
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
     UNREFERENCED_PARAMETER(SystemArgument2);
 
     if (fdoExtension == NULL) {
-        NT_ASSERT(fdoExtension != NULL);
-        return;
+	NT_ASSERT(fdoExtension != NULL);
+	return;
     }
 
     fdoData = fdoExtension->PrivateFdoData;
 
     if (fdoData->ActiveIoCount <= 0) {
+	//
+	// If there are max active idle requests, do not issue another one here.
+	//
+	if (fdoData->ActiveIdleIoCount >= fdoData->IdleActiveIoMax) {
+	    return;
+	}
 
-        //
-        // If there are max active idle requests, do not issue another one here.
-        //
-        if (fdoData->ActiveIdleIoCount >= fdoData->IdleActiveIoMax) {
-            return;
-        }
+	//
+	// Check whether enough idle time has passed since the last non-idle
+	// request has completed.
+	//
 
-        //
-        // Check whether enough idle time has passed since the last non-idle
-        // request has completed.
-        //
-
-        pCurrentTime = &currentTime;
-        if (ClasspIdleDurationSufficient(fdoData, &pCurrentTime)) {
-            //
-            // We are going to issue an idle request so reset the anti-starvation
-            // timer counter.
-            // If we are here (Idle duration is sufficient), pCurrentTime is
-            // expected to be set.
-            //
-            NT_ASSERT(pCurrentTime != NULL);
-            fdoData->AntiStarvationStartTime = *pCurrentTime;
-            ClasspServiceIdleRequest(fdoExtension, FALSE);
-        }
-        return;
+	pCurrentTime = &currentTime;
+	if (ClasspIdleDurationSufficient(fdoData, &pCurrentTime)) {
+	    //
+	    // We are going to issue an idle request so reset the anti-starvation
+	    // timer counter.
+	    // If we are here (Idle duration is sufficient), pCurrentTime is
+	    // expected to be set.
+	    //
+	    NT_ASSERT(pCurrentTime != NULL);
+	    fdoData->AntiStarvationStartTime = *pCurrentTime;
+	    ClasspServiceIdleRequest(fdoExtension, FALSE);
+	}
+	return;
     }
 
     //
@@ -526,28 +467,29 @@ ClasspIdleTimerDpc(
 
     currentTime = ClasspGetCurrentTime();
     status = RtlULongLongSub((ULONGLONG)currentTime.QuadPart,
-                             (ULONGLONG)fdoData->AntiStarvationStartTime.QuadPart,
-                             &idleTime);
+			     (ULONGLONG)fdoData->AntiStarvationStartTime.QuadPart,
+			     &idleTime);
 
     if (NT_SUCCESS(status)) {
-        //
-        // Convert the time to milliseconds.
-        //
-        idleTime = ClasspTimeDiffToMs(idleTime);
+	//
+	// Convert the time to milliseconds.
+	//
+	idleTime = ClasspTimeDiffToMs(idleTime);
     } else {
-        //
-        // Failed to get time difference, assume enough time passed.
-        //
-        idleTime = fdoData->StarvationDuration;
+	//
+	// Failed to get time difference, assume enough time passed.
+	//
+	idleTime = fdoData->StarvationDuration;
     }
 
     //
     // If the timer is running then there must be at least one idle priority I/O pending
     //
     if (idleTime >= fdoData->StarvationDuration) {
-        fdoData->AntiStarvationStartTime = currentTime;
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER, "ClasspIdleTimerDpc: Starvation timer. Send one idle request\n"));
-        ClasspServiceIdleRequest(fdoExtension, FALSE);
+	fdoData->AntiStarvationStartTime = currentTime;
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		    "ClasspIdleTimerDpc: Starvation timer. Send one idle request\n"));
+	ClasspServiceIdleRequest(fdoExtension, FALSE);
     }
     return;
 }
@@ -573,19 +515,17 @@ Return Value:
 
 --*/
 NTSTATUS
-ClasspEnqueueIdleRequest(
-    PDEVICE_OBJECT DeviceObject,
-    PIRP Irp
-    )
+ClasspEnqueueIdleRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     KIRQL oldIrql;
     BOOLEAN issueRequest = TRUE;
     LARGE_INTEGER currentTime;
-    LARGE_INTEGER* pCurrentTime;
+    LARGE_INTEGER *pCurrentTime;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER, "ClasspEnqueueIdleRequest: Queue idle request %p\n", Irp));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		"ClasspEnqueueIdleRequest: Queue idle request %p\n", Irp));
 
     IoMarkIrpPending(Irp);
 
@@ -594,7 +534,7 @@ ClasspEnqueueIdleRequest(
     //
     pCurrentTime = &currentTime;
     if (ClasspIdleDurationSufficient(fdoData, &pCurrentTime) == FALSE) {
-        issueRequest = FALSE;
+	issueRequest = FALSE;
     }
 
     //
@@ -602,31 +542,28 @@ ClasspEnqueueIdleRequest(
     // queue this idle request.
     //
     if (fdoData->ActiveIdleIoCount >= fdoData->IdleActiveIoMax) {
-        issueRequest = FALSE;
+	issueRequest = FALSE;
     }
-
 
     KeAcquireSpinLock(&fdoData->IdleListLock, &oldIrql);
     if (IsListEmpty(&fdoData->IdleIrpList)) {
-        NT_ASSERT(fdoData->IdleIoCount == 0);
+	NT_ASSERT(fdoData->IdleIoCount == 0);
     }
     InsertTailList(&fdoData->IdleIrpList, &Irp->Tail.Overlay.ListEntry);
 
-
     fdoData->IdleIoCount++;
     if (!fdoData->IdleTimerStarted) {
-        ClasspStartIdleTimer(fdoData);
+	ClasspStartIdleTimer(fdoData);
     }
 
     if (fdoData->IdleIoCount != 1) {
-        issueRequest = FALSE;
+	issueRequest = FALSE;
     }
-
 
     KeReleaseSpinLock(&fdoData->IdleListLock, oldIrql);
 
     if (issueRequest) {
-        ClasspServiceIdleRequest(fdoExtension, FALSE);
+	ClasspServiceIdleRequest(fdoExtension, FALSE);
     }
 
     return STATUS_PENDING;
@@ -650,10 +587,7 @@ Return Value:
     Pointer to removed IRP
 
 --*/
-PIRP
-ClasspDequeueIdleRequest(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
     PLIST_ENTRY listEntry = NULL;
@@ -663,30 +597,28 @@ ClasspDequeueIdleRequest(
     KeAcquireSpinLock(&fdoData->IdleListLock, &oldIrql);
 
     if (fdoData->IdleIoCount > 0) {
-        listEntry = RemoveHeadList(&fdoData->IdleIrpList);
-        //
-        // Make sure we actaully removed a request from the list
-        //
-        NT_ASSERT(listEntry != &fdoData->IdleIrpList);
-        //
-        // Decrement the idle I/O count.
-        //
-        fdoData->IdleIoCount--;
-        //
-        // Stop the timer on last request
-        //
-        if (fdoData->IdleIoCount == 0) {
-            ClasspStopIdleTimer(fdoData);
-        }
-        irp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
-        NT_ASSERT(irp->Type == IO_TYPE_IRP);
+	listEntry = RemoveHeadList(&fdoData->IdleIrpList);
+	//
+	// Make sure we actaully removed a request from the list
+	//
+	NT_ASSERT(listEntry != &fdoData->IdleIrpList);
+	//
+	// Decrement the idle I/O count.
+	//
+	fdoData->IdleIoCount--;
+	//
+	// Stop the timer on last request
+	//
+	if (fdoData->IdleIoCount == 0) {
+	    ClasspStopIdleTimer(fdoData);
+	}
+	irp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
+	NT_ASSERT(irp->Type == IO_TYPE_IRP);
 
-
-        InitializeListHead(&irp->Tail.Overlay.ListEntry);
+	InitializeListHead(&irp->Tail.Overlay.ListEntry);
     }
 
     KeReleaseSpinLock(&fdoData->IdleListLock, oldIrql);
-
 
     return irp;
 }
@@ -709,10 +641,7 @@ Return Value:
     None
 
 --*/
-VOID
-ClasspCompleteIdleRequest(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    )
+VOID ClasspCompleteIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
 
@@ -723,11 +652,11 @@ ClasspCompleteIdleRequest(
     // non-idle request.
     //
     if ((fdoData->IdleIoCount > 0) &&
-        (fdoData->ActiveIdleIoCount < fdoData->IdleActiveIoMax) &&
-        (fdoData->ActiveIoCount <= 0) &&
-        (ClasspIdleDurationSufficient(fdoData, NULL))) {
-        TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER, "ClasspCompleteIdleRequest: Service next idle reqeusts\n"));
-        ClasspServiceIdleRequest(FdoExtension, TRUE);
+	(fdoData->ActiveIdleIoCount < fdoData->IdleActiveIoMax) &&
+	(fdoData->ActiveIoCount <= 0) && (ClasspIdleDurationSufficient(fdoData, NULL))) {
+	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		    "ClasspCompleteIdleRequest: Service next idle reqeusts\n"));
+	ClasspServiceIdleRequest(FdoExtension, TRUE);
     }
 
     return;
@@ -753,18 +682,14 @@ Return Value:
     None
 
 --*/
-VOID
-ClasspServiceIdleRequest(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    BOOLEAN PostToDpc
-    )
+VOID ClasspServiceIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			      BOOLEAN PostToDpc)
 {
     PIRP irp;
 
     irp = ClasspDequeueIdleRequest(FdoExtension);
     if (irp != NULL) {
-        ServiceTransferRequest(FdoExtension->DeviceObject, irp, PostToDpc);
+	ServiceTransferRequest(FdoExtension->DeviceObject, irp, PostToDpc);
     }
     return;
 }
-
