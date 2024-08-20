@@ -285,7 +285,7 @@ static PCI_MN_DISPATCH_TABLE PciFdoDispatchPowerTable[] = {
 };
 
 static PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
-    { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoStartDevice },
+    { IRP_BOTTOM_UP, (PCI_DISPATCH_FUNCTION)PciFdoStartDevice },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryRemoveDevice },
     { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoRemoveDevice },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelRemoveDevice },
@@ -294,7 +294,7 @@ static PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoCancelStopDevice },
     { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoQueryDeviceRelations },
     { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoQueryCapabilities },
+    { IRP_BOTTOM_UP, (PCI_DISPATCH_FUNCTION)PciFdoQueryCapabilities },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
@@ -307,7 +307,7 @@ static PCI_MN_DISPATCH_TABLE PciFdoDispatchPnpTable[] = {
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported },
-    { IRP_COMPLETE, (PCI_DISPATCH_FUNCTION)PciFdoDeviceUsageNotification },
+    { IRP_BOTTOM_UP, (PCI_DISPATCH_FUNCTION)PciFdoDeviceUsageNotification },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoSurpriseRemoval },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciFdoQueryLegacyBusInformation },
     { IRP_FORWARD, (PCI_DISPATCH_FUNCTION)PciIrpNotSupported }

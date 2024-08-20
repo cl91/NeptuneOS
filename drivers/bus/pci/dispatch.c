@@ -97,6 +97,16 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    DbgBreakPoint();
 	}
 
+	/* If the dispatch style is BOTTOM_UP, the IRP should be handled by the
+	 * lowest-level driver first, and then travels upward, so call the lower
+	 * driver and wait for it to complete the IRP. */
+	if (DispatchStyle == IRP_BOTTOM_UP) {
+	    Status = IoCallDriverEx(DeviceExtension->AttachedDeviceObject, Irp, NULL);
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
+	}
+
 	/* Call the our driver's handler for this IRP and deal with the IRP */
 	Status = DispatchFunction(Irp, IoStackLocation, DeviceExtension);
 	PassToPdo = DispatchStyle == IRP_FORWARD;
@@ -106,7 +116,7 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     assert(Status != STATUS_PENDING);
     Irp->IoStatus.Status = Status;
 
-    /* Successful, or unhandled IRPs that are "DOWNWARD" are sent to the PDO */
+    /* Successful, or unhandled IRPs with FORWARD dispatch style are sent to the PDO */
     if (PassToPdo && (NT_SUCCESS(Status) || Status == STATUS_NOT_SUPPORTED)) {
 	/* Let the PDO deal with it */
 	Status = PciPassIrpFromFdoToPdo(DeviceExtension, Irp);
