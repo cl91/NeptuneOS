@@ -122,7 +122,7 @@ To create boot isos, type
 ```
 To simulate using QEMU, run
 ```
-./run.sh [direct/iso/uefi] [amd64] [release] [extra-qemu-args]
+./run.sh [direct|iso|uefi] [amd64] [release] [extra-qemu-args]
 ```
 If you specify `direct`, then QEMU will load the seL4 kernel and the NTOS image
 directly (using `-kernel` and `-initrd`). If you specify `iso` or `uefi`, it will
