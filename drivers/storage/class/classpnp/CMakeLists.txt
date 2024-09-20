@@ -1,8 +1,5 @@
 project(classpnp C ASM)
 
-spec2def(classpnp classpnp.spec ${Arch})
-set_dll_def(classpnp classpnp.def)
-
 list(APPEND SOURCE
     autorun.c
     class.c
@@ -26,6 +23,9 @@ list(APPEND SOURCE
 add_driver(classpnp
     ${SOURCE}
     class.rc)
+
+spec2def(classpnp classpnp.spec ${Arch})
+set_dll_def(classpnp classpnp.def)
 
 target_compile_definitions(classpnp PUBLIC
     DEBUG_USE_KDPRINT
