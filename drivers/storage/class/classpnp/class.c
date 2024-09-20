@@ -113,7 +113,8 @@ Return Value:
    STATUS_SUCCESS
 
 --*/
-NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING RegistryPath)
+NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
+			   IN PUNICODE_STRING RegistryPath)
 {
     UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(RegistryPath);
@@ -141,9 +142,9 @@ Return Value:
     A valid return code for a DriverEntry routine.
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_ NTAPI ULONG
-    ClassInitialize(_In_ PVOID Argument1, _In_ PVOID Argument2,
-		    _In_ PCLASS_INIT_DATA InitializationData)
+NTAPI ULONG ClassInitialize(IN PVOID Argument1,
+			    IN PVOID Argument2,
+			    IN PCLASS_INIT_DATA InitializationData)
 {
     PDRIVER_OBJECT DriverObject = Argument1;
     PUNICODE_STRING RegistryPath = Argument2;
@@ -151,8 +152,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_ NTAPI ULONG
     PCLASS_DRIVER_EXTENSION driverExtension;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     //
     // Initialize the security cookie if needed.
@@ -417,14 +416,13 @@ Return Value:
     Status Code
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_ NTAPI ULONG
-    ClassInitializeEx(_In_ PDRIVER_OBJECT DriverObject, _In_ LPGUID Guid, _In_ PVOID Data)
+NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
+			      IN LPGUID Guid,
+			      IN PVOID Data)
 {
     PCLASS_DRIVER_EXTENSION driverExtension;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     driverExtension = IoGetDriverObjectExtension(DriverObject,
 						 CLASS_DRIVER_EXTENSION_KEY);
@@ -606,8 +604,6 @@ NTAPI VOID ClassUnload(IN PDRIVER_OBJECT DriverObject)
 {
     PCLASS_DRIVER_EXTENSION driverExtension;
 
-    PAGED_CODE();
-
     NT_ASSERT(DriverObject->DeviceObject == NULL);
 
     driverExtension = IoGetDriverObjectExtension(DriverObject,
@@ -676,14 +672,13 @@ Status: STATUS_NO_SUCH_DEVICE if the class driver did not want this device
     status of device creation and initialization
 
 --*/
-NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject)
+NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
+			      IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
     PCLASS_DRIVER_EXTENSION driverExtension =
 	IoGetDriverObjectExtension(DriverObject, CLASS_DRIVER_EXTENSION_KEY);
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     status = driverExtension->InitData.ClassAddDevice(DriverObject, PhysicalDeviceObject);
 
@@ -724,8 +719,6 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     NTSTATUS status = Irp->IoStatus.Status;
     BOOLEAN completeRequest = TRUE;
     BOOLEAN lockReleased = FALSE;
-
-    PAGED_CODE();
 
     //
     // Extract all the useful information out of the driver object
@@ -1576,8 +1569,6 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
     NTSTATUS status = STATUS_SUCCESS;
     PDEVICE_POWER_DESCRIPTOR powerDescriptor = NULL;
 
-    PAGED_CODE();
-
     driverExtension = IoGetDriverObjectExtension(DeviceObject->DriverObject,
 						 CLASS_DRIVER_EXTENSION_KEY);
 
@@ -2372,7 +2363,8 @@ Exit:
     return status;
 }
 
-VOID InterpretCapacityData(PDEVICE_OBJECT Fdo, PREAD_CAPACITY_DATA_EX ReadCapacityData)
+VOID InterpretCapacityData(PDEVICE_OBJECT Fdo,
+			   PREAD_CAPACITY_DATA_EX ReadCapacityData)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     ULONG cylinderSize;
@@ -2476,7 +2468,7 @@ Return Value:
     Status is returned.
 
 --*/
-_Must_inspect_result_ NTAPI NTSTATUS ClassReadDriveCapacity(_In_ PDEVICE_OBJECT Fdo)
+NTAPI NTSTATUS ClassReadDriveCapacity(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = Fdo->DeviceExtension;
@@ -2797,7 +2789,7 @@ Return Value:
     None.
 
 --*/
-NTAPI VOID ClassSendStartUnit(_In_ PDEVICE_OBJECT Fdo)
+NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 {
     PIO_STACK_LOCATION irpStack;
     PIRP irp;
@@ -2954,7 +2946,9 @@ Return Value:
     None.
 
 --*/
-NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
+					   PIRP Irp,
+					   PVOID Context)
 {
     PCOMPLETION_CONTEXT context = Context;
     PSCSI_REQUEST_BLOCK srb;
@@ -3036,9 +3030,6 @@ NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject, PIRP Irp
 
 } // end ClassAsynchronousCompletion()
 
-NTSTATUS
-ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
-
 /*++
 
 Routine description:
@@ -3062,7 +3053,7 @@ Return Value:
     STATUS_SUCCESS if successful, an error code otherwise
 
 --*/
-
+NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = Fdo->DeviceExtension;
@@ -3695,9 +3686,9 @@ Return Value:
        Srb->DataTransferLength
 
 --*/
-NTAPI NTSTATUS ClassSendSrbSynchronous(_In_ PDEVICE_OBJECT Fdo, _Inout_ PSCSI_REQUEST_BLOCK _Srb,
+NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo, IN OUT PSCSI_REQUEST_BLOCK _Srb,
 			_In_reads_bytes_opt_(BufferLength) PVOID BufferAddress,
-			_In_ ULONG BufferLength, _In_ BOOLEAN WriteToDevice)
+			IN ULONG BufferLength, IN BOOLEAN WriteToDevice)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
@@ -4074,10 +4065,13 @@ Return Value:
             FALSE: Drivers should not retry this request.
 
 --*/
-NTAPI BOOLEAN ClassInterpretSenseInfo(_In_ PDEVICE_OBJECT Fdo, _In_ PSCSI_REQUEST_BLOCK _Srb,
-			_In_ UCHAR MajorFunctionCode, _In_ ULONG IoDeviceCode,
-			_In_ ULONG RetryCount, _Out_ NTSTATUS *Status,
-			_Out_opt_ _Deref_out_range_(0, 100) ULONG *RetryInterval)
+NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
+				      IN PSCSI_REQUEST_BLOCK _Srb,
+				      IN UCHAR MajorFunctionCode,
+				      IN ULONG IoDeviceCode,
+				      IN ULONG RetryCount,
+				      OUT NTSTATUS *Status,
+				      OUT OPTIONAL ULONG *RetryInterval)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
@@ -6164,19 +6158,21 @@ Return Value:
     Length of the transferred data is returned.
 
 --*/
-NTAPI ULONG ClassModeSense(_In_ PDEVICE_OBJECT Fdo, _In_reads_bytes_(Length) PCHAR ModeSenseBuffer,
-	       _In_ ULONG Length, _In_ UCHAR PageMode)
+NTAPI ULONG ClassModeSense(IN PDEVICE_OBJECT Fdo,
+			   IN PCHAR ModeSenseBuffer,
+			   IN ULONG Length,
+			   IN UCHAR PageMode)
 {
-    PAGED_CODE();
-
     return ClasspModeSense(Fdo, ModeSenseBuffer, Length, PageMode,
 			   MODE_SENSE_CURRENT_VALUES);
 }
 
-NTAPI ULONG ClassModeSenseEx(_In_ PDEVICE_OBJECT Fdo, _In_reads_bytes_(Length) PCHAR ModeSenseBuffer,
-		 _In_ ULONG Length, _In_ UCHAR PageMode, _In_ UCHAR PageControl)
+NTAPI ULONG ClassModeSenseEx(IN PDEVICE_OBJECT Fdo,
+			     IN PCHAR ModeSenseBuffer,
+			     IN ULONG Length,
+			     IN UCHAR PageMode,
+			     IN UCHAR PageControl)
 {
-    PAGED_CODE();
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
     return ClasspModeSense(Fdo, ModeSenseBuffer, Length, PageMode, PageControl);
 #else
@@ -6189,9 +6185,6 @@ NTAPI ULONG ClassModeSenseEx(_In_ PDEVICE_OBJECT Fdo, _In_reads_bytes_(Length) P
 #endif
 }
 
-ULONG ClasspModeSense(_In_ PDEVICE_OBJECT Fdo,
-		      _In_reads_bytes_(Length) PCHAR ModeSenseBuffer, _In_ ULONG Length,
-		      _In_ UCHAR PageMode, _In_ UCHAR PageControl)
 /*
 Routine Description:
 
@@ -6220,11 +6213,14 @@ Return Value:
     Length of the transferred data is returned.
 
 --*/
+ULONG ClasspModeSense(IN PDEVICE_OBJECT Fdo,
+		      IN PCHAR ModeSenseBuffer,
+		      IN ULONG Length,
+		      IN UCHAR PageMode,
+		      IN UCHAR PageControl)
 {
     ULONG lengthTransferred = 0;
     PMDL senseBufferMdl;
-
-    PAGED_CODE();
 
     senseBufferMdl = BuildDeviceInputMdl(ModeSenseBuffer, Length);
     if (senseBufferMdl) {
@@ -6301,8 +6297,10 @@ Return Value:
     then NULL is return.
 
 --*/
-NTAPI PVOID ClassFindModePage(_In_reads_bytes_(Length) PCHAR ModeSenseBuffer, _In_ ULONG Length,
-		  _In_ UCHAR PageMode, _In_ BOOLEAN Use6Byte)
+NTAPI PVOID ClassFindModePage(IN PCHAR ModeSenseBuffer,
+			      IN ULONG Length,
+			      IN UCHAR PageMode,
+			      IN BOOLEAN Use6Byte)
 {
     PUCHAR limit;
     ULONG parameterHeaderLength;
@@ -6367,8 +6365,10 @@ NTAPI PVOID ClassFindModePage(_In_reads_bytes_(Length) PCHAR ModeSenseBuffer, _I
     return result;
 } // end ClassFindModePage()
 
-NTAPI NTSTATUS ClassModeSelect(_In_ PDEVICE_OBJECT Fdo, _In_reads_bytes_(Length) PCHAR ModeSelectBuffer,
-		_In_ ULONG Length, _In_ BOOLEAN SavePages)
+NTAPI NTSTATUS ClassModeSelect(IN PDEVICE_OBJECT Fdo,
+			       IN PCHAR ModeSelectBuffer,
+			       IN ULONG Length,
+			       IN BOOLEAN SavePages)
 {
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
     return ClasspModeSelect(Fdo, ModeSelectBuffer, Length, SavePages);
@@ -6405,9 +6405,10 @@ Return Value:
     NTSTATUS code of the request.
 
 --*/
-NTSTATUS
-ClasspModeSelect(_In_ PDEVICE_OBJECT Fdo, _In_reads_bytes_(Length) PCHAR ModeSelectBuffer,
-		 _In_ ULONG Length, _In_ BOOLEAN SavePages)
+NTSTATUS ClasspModeSelect(IN PDEVICE_OBJECT Fdo,
+			  IN PCHAR ModeSelectBuffer,
+			  IN ULONG Length,
+			  IN BOOLEAN SavePages)
 {
     PMDL senseBufferMdl;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -6503,14 +6504,12 @@ Return Value:
     or returns a status value to indicate why it failed.
 
 --*/
-_Success_(return == STATUS_PENDING) NTAPI NTSTATUS
-    ClassSendSrbAsynchronous(_In_ PDEVICE_OBJECT Fdo,
-			     _Inout_ __on_failure(__drv_freesMem(Mem))
-				 __drv_aliasesMem PSCSI_REQUEST_BLOCK _Srb,
-			     _In_ PIRP Irp,
-			     _In_reads_bytes_opt_(BufferLength)
-				 __drv_aliasesMem PVOID BufferAddress,
-			     _In_ ULONG BufferLength, _In_ BOOLEAN WriteToDevice)
+NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
+					IN OUT PSCSI_REQUEST_BLOCK _Srb,
+					IN PIRP Irp,
+					IN OPTIONAL PVOID BufferAddress,
+					IN ULONG BufferLength,
+					IN BOOLEAN WriteToDevice)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PIO_STACK_LOCATION irpStack;
@@ -6777,7 +6776,7 @@ Return Value:
    Returns back a STATUS_PENDING or a completion status.
 
 --*/
-NTAPI NTSTATUS ClassDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
+NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
 
@@ -8142,17 +8141,14 @@ Return Value:
     NT Status
 
 --*/
-NTSTATUS
-ClasspIsPortable(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-		 _Out_ PBOOLEAN IsPortable)
+NTSTATUS ClasspIsPortable(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			  OUT PBOOLEAN IsPortable)
 {
     DEVPROP_BOOLEAN isInternal = DEVPROP_FALSE;
     BOOLEAN isPortable = FALSE;
     ULONG size = 0;
     NTSTATUS status = STATUS_SUCCESS;
     DEVPROPTYPE type = DEVPROP_TYPE_EMPTY;
-
-    PAGED_CODE();
 
     *IsPortable = FALSE;
 
@@ -8228,16 +8224,11 @@ Return Value:
     NTSTATUS
 
 --*/
-
-_IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_
-    _Post_satisfies_(return <= 0) SCSIPORT_API NTAPI NTSTATUS
-    ClassCreateDeviceObject(_In_ PDRIVER_OBJECT DriverObject,
-			    _In_z_ PCCHAR ObjectNameBuffer,
-			    _In_ PDEVICE_OBJECT LowerDevice, _In_ BOOLEAN IsFdo,
-			    _Outptr_result_nullonfailure_ _At_(*DeviceObject,
-							       __drv_allocatesMem(Mem)
-								   __drv_aliasesMem)
-				PDEVICE_OBJECT *DeviceObject)
+NTAPI SCSIPORT_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
+						    IN PCCHAR ObjectNameBuffer,
+						    IN PDEVICE_OBJECT LowerDevice,
+						    IN BOOLEAN IsFdo,
+						    OUT PDEVICE_OBJECT *DeviceObject)
 {
     BOOLEAN isPartitionable;
     STRING ntNameString;
@@ -8254,8 +8245,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_
 	IoGetDriverObjectExtension(DriverObject, CLASS_DRIVER_EXTENSION_KEY);
 
     PCLASS_DEV_INFO devInfo;
-
-    PAGED_CODE();
 
     _Analysis_assume_(driverExtension != NULL);
 
@@ -8539,8 +8528,8 @@ Return Value:
     Returns a status indicating success or failure of the operation.
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
-    ClassClaimDevice(_In_ PDEVICE_OBJECT LowerDeviceObject, _In_ BOOLEAN Release)
+NTAPI NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
+				IN BOOLEAN Release)
 {
     IO_STATUS_BLOCK ioStatus;
     PIRP irp;
@@ -8548,8 +8537,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
     KEVENT event;
     NTSTATUS status;
     SCSI_REQUEST_BLOCK srb = { 0 };
-
-    PAGED_CODE();
 
     //
     // WORK ITEM - MPIO related. Need to think about how to handle.
@@ -8718,8 +8705,7 @@ Return Value:
     None, but it sets a new default timeout for a class of devices.
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI ULONG
-    ClassQueryTimeOutRegistryValue(_In_ PDEVICE_OBJECT DeviceObject)
+NTAPI ULONG ClassQueryTimeOutRegistryValue(IN PDEVICE_OBJECT DeviceObject)
 {
     //
     // Find the appropriate reg. key
@@ -8736,8 +8722,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI ULONG
     LONG timeOut = 0;
     ULONG zero = 0;
     ULONG size;
-
-    PAGED_CODE();
 
     if (!registryPath) {
 	return 0;
@@ -8815,7 +8799,9 @@ Return Value:
     NT status
 
 --*/
-NTAPI NTSTATUS ClassCheckVerifyComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS ClassCheckVerifyComplete(IN PDEVICE_OBJECT Fdo,
+					IN PIRP Irp,
+					IN PVOID Context)
 {
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
@@ -8876,17 +8862,15 @@ Return Value:
     buffer allocated on behalf of the caller.
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
-    ClassGetDescriptor(_In_ PDEVICE_OBJECT DeviceObject,
-		       _In_ PSTORAGE_PROPERTY_ID PropertyId, _Outptr_ PVOID *Descriptor)
+NTAPI NTSTATUS ClassGetDescriptor(IN PDEVICE_OBJECT DeviceObject,
+				  IN PSTORAGE_PROPERTY_ID PropertyId,
+				  OUT PVOID *Descriptor)
 {
     STORAGE_PROPERTY_QUERY query = { 0 };
     IO_STATUS_BLOCK ioStatus;
 
     PSTORAGE_DESCRIPTOR_HEADER descriptor = NULL;
     ULONG length;
-
-    PAGED_CODE();
 
     //
     // Set the passed-in descriptor pointer to NULL as default
@@ -9010,7 +8994,9 @@ Return Value:
     STATUS_MORE_PROCESSING_REQUIRED
 
 --*/
-NTAPI NTSTATUS ClassSignalCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS ClassSignalCompletion(IN PDEVICE_OBJECT DeviceObject,
+				     IN PIRP Irp,
+				     IN PVOID Context)
 {
     PKEVENT Event = (PKEVENT)Context;
 
@@ -9049,14 +9035,11 @@ Return Value:
     status
 
 --*/
-NTSTATUS
-ClassPnpQueryFdoRelations(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
+NTSTATUS ClassPnpQueryFdoRelations(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_DRIVER_EXTENSION driverExtension =
 	IoGetDriverObjectExtension(Fdo->DriverObject, CLASS_DRIVER_EXTENSION_KEY);
-
-    PAGED_CODE();
 
     _Analysis_assume_(driverExtension != NULL);
 
@@ -9096,13 +9079,10 @@ Return Value:
     None
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassMarkChildrenMissing(_In_ PFUNCTIONAL_DEVICE_EXTENSION Fdo)
+NTAPI VOID ClassMarkChildrenMissing(IN PFUNCTIONAL_DEVICE_EXTENSION Fdo)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = &(Fdo->CommonExtension);
     PPHYSICAL_DEVICE_EXTENSION nextChild = commonExtension->ChildList;
-
-    PAGED_CODE();
 
     ClassAcquireChildLock(Fdo);
 
@@ -9146,13 +9126,11 @@ Return Value:
     to PNP.
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI BOOLEAN
-    ClassMarkChildMissing(_In_ PPHYSICAL_DEVICE_EXTENSION Child,
-			  _In_ BOOLEAN AcquireChildLock)
+NTAPI BOOLEAN ClassMarkChildMissing(IN PPHYSICAL_DEVICE_EXTENSION Child,
+				    IN BOOLEAN AcquireChildLock)
 {
     BOOLEAN returnValue = Child->IsEnumerated;
 
-    PAGED_CODE();
     ASSERT_PDO(Child->DeviceObject);
 
     Child->IsMissing = TRUE;
@@ -9196,9 +9174,9 @@ Return Value:
     status
 
 --*/
-NTSTATUS
-ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo, IN DEVICE_RELATION_TYPE RelationType,
-			     OUT PDEVICE_RELATIONS *DeviceRelations)
+NTSTATUS ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo,
+				      IN DEVICE_RELATION_TYPE RelationType,
+				      OUT PDEVICE_RELATIONS *DeviceRelations)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
@@ -9214,8 +9192,6 @@ ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo, IN DEVICE_RELATION_TYPE Rela
     NTSTATUS status;
 
     UNREFERENCED_PARAMETER(RelationType);
-
-    PAGED_CODE();
 
     ClassAcquireChildLock(fdoExtension);
 
@@ -9334,9 +9310,9 @@ Return Value:
     status
 
 --*/
-NTSTATUS
-ClassGetPdoId(IN PDEVICE_OBJECT Pdo, IN BUS_QUERY_ID_TYPE IdType,
-	      IN PUNICODE_STRING IdString)
+NTSTATUS ClassGetPdoId(IN PDEVICE_OBJECT Pdo,
+		       IN BUS_QUERY_ID_TYPE IdType,
+		       IN PUNICODE_STRING IdString)
 {
     PCLASS_DRIVER_EXTENSION driverExtension =
 	IoGetDriverObjectExtension(Pdo->DriverObject, CLASS_DRIVER_EXTENSION_KEY);
@@ -9345,8 +9321,6 @@ ClassGetPdoId(IN PDEVICE_OBJECT Pdo, IN BUS_QUERY_ID_TYPE IdType,
 
     ASSERT_PDO(Pdo);
     NT_ASSERT(driverExtension->InitData.ClassQueryId);
-
-    PAGED_CODE();
 
     return driverExtension->InitData.ClassQueryId(Pdo, IdType, IdString);
 } // end ClassGetPdoId()
@@ -9370,17 +9344,14 @@ Return Value:
     status
 
 --*/
-NTSTATUS
-ClassQueryPnpCapabilities(IN PDEVICE_OBJECT DeviceObject,
-			  IN PDEVICE_CAPABILITIES Capabilities)
+NTSTATUS ClassQueryPnpCapabilities(IN PDEVICE_OBJECT DeviceObject,
+				   IN PDEVICE_CAPABILITIES Capabilities)
 {
     PCLASS_DRIVER_EXTENSION driverExtension = ClassGetDriverExtension(
 	DeviceObject->DriverObject);
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
 
     PCLASS_QUERY_PNP_CAPABILITIES queryRoutine = NULL;
-
-    PAGED_CODE();
 
     NT_ASSERT(DeviceObject);
     NT_ASSERT(Capabilities);
@@ -9418,16 +9389,13 @@ Return Value:
     none
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassInvalidateBusRelations(_In_ PDEVICE_OBJECT Fdo)
+NTAPI VOID ClassInvalidateBusRelations(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_DRIVER_EXTENSION driverExtension =
 	IoGetDriverObjectExtension(Fdo->DriverObject, CLASS_DRIVER_EXTENSION_KEY);
 
     NTSTATUS status = STATUS_SUCCESS;
-
-    PAGED_CODE();
 
     _Analysis_assume_(driverExtension != NULL);
 
@@ -9474,8 +9442,8 @@ Return Value:
     status
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
-    ClassRemoveDevice(_In_ PDEVICE_OBJECT DeviceObject, _In_ UCHAR RemoveType)
+NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
+				 IN UCHAR RemoveType)
 {
     PCLASS_DRIVER_EXTENSION driverExtension = IoGetDriverObjectExtension(
 	DeviceObject->DriverObject, CLASS_DRIVER_EXTENSION_KEY);
@@ -9484,8 +9452,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
     BOOLEAN proceedWithRemove = TRUE;
     NTSTATUS status;
     PEX_RUNDOWN_REF_CACHE_AWARE removeLockRundown = NULL;
-
-    PAGED_CODE();
 
     _Analysis_assume_(driverExtension != NULL);
 
@@ -9799,8 +9765,7 @@ Return Value:
     Either NULL if none, or a pointer to the driver extension
 
 --*/
-__drv_aliasesMem _IRQL_requires_max_(DISPATCH_LEVEL)
-NTAPI PCLASS_DRIVER_EXTENSION ClassGetDriverExtension(_In_ PDRIVER_OBJECT DriverObject)
+NTAPI PCLASS_DRIVER_EXTENSION ClassGetDriverExtension(IN PDRIVER_OBJECT DriverObject)
 {
     return IoGetDriverObjectExtension(DriverObject, CLASS_DRIVER_EXTENSION_KEY);
 } // end ClassGetDriverExtension()
@@ -9877,12 +9842,11 @@ Return Value:
     None
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassUpdateInformationInRegistry(_In_ PDEVICE_OBJECT Fdo, _In_ PCHAR DeviceName,
-				     _In_ ULONG DeviceNumber,
-				     _In_reads_bytes_opt_(InquiryDataLength)
-					 PINQUIRYDATA InquiryData,
-				     _In_ ULONG InquiryDataLength)
+NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
+					    IN PCHAR DeviceName,
+					    IN ULONG DeviceNumber,
+					    IN OPTIONAL PINQUIRYDATA InquiryData,
+					    IN ULONG InquiryDataLength)
 {
     NTSTATUS status;
     SCSI_ADDRESS scsiAddress = { 0 };
@@ -9894,8 +9858,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
     HANDLE targetKey;
     IO_STATUS_BLOCK ioStatus;
     UCHAR buffer[256] = { 0 };
-
-    PAGED_CODE();
 
     NT_ASSERT(DeviceName);
     targetKey = NULL;
@@ -10033,8 +9995,9 @@ Return Value:
     STATUS_MORE_PROCESSING_REQUIRED
 
 --*/
-NTAPI NTSTATUS ClasspSendSynchronousCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				IN PVOID Context)
+NTAPI NTSTATUS ClasspSendSynchronousCompletion(IN PDEVICE_OBJECT DeviceObject,
+					       IN PIRP Irp,
+					       IN PVOID Context)
 {
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 		"ClasspSendSynchronousCompletion: %p %p %p\n", DeviceObject, Irp,
@@ -10083,8 +10046,6 @@ VOID ClasspRegisterMountedDeviceInterface(IN PDEVICE_OBJECT DeviceObject)
     UNICODE_STRING interfaceName;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     if (isFdo) {
 	PFUNCTIONAL_DEVICE_EXTENSION functionalExtension;
@@ -10154,18 +10115,17 @@ Arguments:
 Return Value:
 
 --*/
-NTAPI VOID ClassSendDeviceIoControlSynchronous(
-    _In_ ULONG IoControlCode, _In_ PDEVICE_OBJECT TargetDeviceObject,
-    _Inout_updates_opt_(_Inexpressible_(max(InputBufferLength, OutputBufferLength)))
-	PVOID Buffer,
-    _In_ ULONG InputBufferLength, _In_ ULONG OutputBufferLength,
-    _In_ BOOLEAN InternalDeviceIoControl, _Out_ PIO_STATUS_BLOCK IoStatus)
+NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
+					       IN PDEVICE_OBJECT TargetDeviceObject,
+					       IN OUT OPTIONAL PVOID Buffer,
+					       IN ULONG InputBufferLength,
+					       IN ULONG OutputBufferLength,
+					       IN BOOLEAN InternalDeviceIoControl,
+					       OUT PIO_STATUS_BLOCK IoStatus)
 {
     PIRP irp;
     PIO_STACK_LOCATION irpSp;
     ULONG method;
-
-    PAGED_CODE();
 
     irp = NULL;
     method = IoControlCode & 3;
@@ -10405,7 +10365,8 @@ Arguments:
 Return Value:
 
 --*/
-NTAPI NTSTATUS ClassForwardIrpSynchronous(_In_ PCOMMON_DEVICE_EXTENSION CommonExtension, _In_ PIRP Irp)
+NTAPI NTSTATUS ClassForwardIrpSynchronous(IN PCOMMON_DEVICE_EXTENSION CommonExtension,
+					  IN PIRP Irp)
 {
     IoCopyCurrentIrpStackLocationToNext(Irp);
     return ClassSendIrpSynchronous(CommonExtension->LowerDeviceObject, Irp);
@@ -10430,7 +10391,8 @@ Arguments:
 Return Value:
 
 --*/
-NTAPI NTSTATUS ClassSendIrpSynchronous(_In_ PDEVICE_OBJECT TargetDeviceObject, _In_ PIRP Irp)
+NTAPI NTSTATUS ClassSendIrpSynchronous(IN PDEVICE_OBJECT TargetDeviceObject,
+				       IN PIRP Irp)
 {
     KEVENT event;
     NTSTATUS status;
@@ -10513,7 +10475,7 @@ Return Value:
     the VPB, or NULL if none.
 
 --*/
-NTAPI PVPB ClassGetVpb(_In_ PDEVICE_OBJECT DeviceObject)
+NTAPI PVPB ClassGetVpb(IN PDEVICE_OBJECT DeviceObject)
 {
     return DeviceObject->Vpb;
 } // end ClassGetVpb()
@@ -10523,12 +10485,9 @@ NTAPI PVPB ClassGetVpb(_In_ PDEVICE_OBJECT DeviceObject)
     ISSUE-2000/02/20-henrygab Not documented ClasspAllocateReleaseRequest
 
 --*/
-NTSTATUS
-ClasspAllocateReleaseRequest(IN PDEVICE_OBJECT Fdo)
+NTSTATUS ClasspAllocateReleaseRequest(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-
-    PAGED_CODE();
 
     KeInitializeSpinLock(&(fdoExtension->ReleaseQueueSpinLock));
 
@@ -10560,8 +10519,6 @@ ClasspAllocateReleaseRequest(IN PDEVICE_OBJECT Fdo)
 VOID ClasspFreeReleaseRequest(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-
-    PAGED_CODE();
 
     //KIRQL oldIrql;
 
@@ -10616,7 +10573,7 @@ Return Value:
     None.
 
 --*/
-NTAPI VOID ClassReleaseQueue(_In_ PDEVICE_OBJECT Fdo)
+NTAPI VOID ClassReleaseQueue(IN PDEVICE_OBJECT Fdo)
 {
     ClasspReleaseQueue(Fdo, NULL);
     return;
@@ -10645,8 +10602,7 @@ Notes:
     condition is checked for in ClasspReleaseQueue().
 
 --*/
-NTSTATUS
-ClasspAllocateReleaseQueueIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTSTATUS ClasspAllocateReleaseQueueIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     UCHAR lowerStackSize;
 
@@ -10701,8 +10657,7 @@ Notes:
     Should only be called from StartDevice()
 
 --*/
-NTSTATUS
-ClasspAllocatePowerProcessIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTSTATUS ClasspAllocatePowerProcessIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     UCHAR stackSize;
 
@@ -10896,7 +10851,9 @@ Return Value:
     None.
 
 --*/
-NTAPI NTSTATUS ClassReleaseQueueCompletion(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+NTAPI NTSTATUS ClassReleaseQueueCompletion(PDEVICE_OBJECT DeviceObject,
+					   PIRP Irp,
+					   PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     KIRQL oldIrql;
@@ -10966,11 +10923,8 @@ Return Value:
     None
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassAcquireChildLock(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassAcquireChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
-    PAGED_CODE();
-
     if (FdoExtension->ChildLockOwner != KeGetCurrentThread()) {
 	(VOID) KeWaitForSingleObject(&FdoExtension->ChildLock, Executive, KernelMode,
 				     FALSE, NULL);
@@ -11005,7 +10959,7 @@ Return Value:
     None.
 
 --*/
-NTAPI VOID ClassReleaseChildLock(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassReleaseChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     NT_ASSERT(FdoExtension->ChildLockOwner == KeGetCurrentThread());
     NT_ASSERT(FdoExtension->ChildLockAcquisitionCount != 0);
@@ -11041,8 +10995,8 @@ Return Value:
     None.
 
 --*/
-VOID ClassAddChild(_In_ PFUNCTIONAL_DEVICE_EXTENSION Parent,
-		   _In_ PPHYSICAL_DEVICE_EXTENSION Child, _In_ BOOLEAN AcquireLock)
+VOID ClassAddChild(IN PFUNCTIONAL_DEVICE_EXTENSION Parent,
+		   IN PPHYSICAL_DEVICE_EXTENSION Child, IN BOOLEAN AcquireLock)
 {
     if (AcquireLock) {
 	ClassAcquireChildLock(Parent);
@@ -11096,9 +11050,9 @@ Return Value:
     be found in the list (or if Child was NULL but the list is empty).
 
 --*/
-PPHYSICAL_DEVICE_EXTENSION
-ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Parent,
-		 IN PPHYSICAL_DEVICE_EXTENSION Child, IN BOOLEAN AcquireLock)
+PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Parent,
+					    IN PPHYSICAL_DEVICE_EXTENSION Child,
+					    IN BOOLEAN AcquireLock)
 {
     if (AcquireLock) {
 	ClassAcquireChildLock(Parent);
@@ -11167,7 +11121,9 @@ ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Parent,
     ISSUE-2000/02/20-henrygab Not documented ClasspRetryRequestDpc
 
 --*/
-NTAPI VOID ClasspRetryRequestDpc(IN PKDPC Dpc, IN PVOID DeferredContext, IN PVOID Arg1,
+NTAPI VOID ClasspRetryRequestDpc(IN PKDPC Dpc,
+				 IN PVOID DeferredContext,
+				 IN PVOID Arg1,
 				 IN PVOID Arg2)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
@@ -11277,13 +11233,9 @@ NTAPI VOID ClasspRetryRequestDpc(IN PKDPC Dpc, IN PVOID DeferredContext, IN PVOI
     ISSUE-2000/02/20-henrygab Not documented ClassRetryRequest
 
 --*/
-VOID ClassRetryRequest(
-    IN PDEVICE_OBJECT SelfDeviceObject, IN PIRP Irp,
-    _In_ _In_range_(
-	0,
-	MAXIMUM_RETRY_FOR_SINGLE_IO_IN_100NS_UNITS) // 100 seconds; already an assert on this...
-    IN LONGLONG TimeDelta100ns // in 100ns units
-)
+VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
+		       IN PIRP Irp,
+		       IN LONGLONG TimeDelta100ns) // in 100ns units
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData;
@@ -11459,16 +11411,13 @@ VOID ClasspRetryDpcTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
     return;
 } // end ClasspRetryDpcTimer()
 
-NTSTATUS
-ClasspInitializeHotplugInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTSTATUS ClasspInitializeHotplugInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
     DEVICE_REMOVAL_POLICY deviceRemovalPolicy = 0;
     NTSTATUS status;
     ULONG resultLength = 0;
     ULONG writeCacheOverride;
-
-    PAGED_CODE();
 
     //
     // start with some default settings
@@ -11579,8 +11528,6 @@ ClasspInitializeHotplugInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 NTAPI VOID ClasspScanForClassHacks(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				   IN ULONG_PTR Data)
 {
-    PAGED_CODE();
-
     //
     // remove invalid flags and save
     //
@@ -11603,8 +11550,6 @@ VOID ClasspScanForSpecialInRegistry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
     //
     ULONG deviceHacks;
     RTL_QUERY_REGISTRY_TABLE queryTable[2] = { 0 }; // null terminated array
-
-    PAGED_CODE();
 
     deviceParameterHandle = NULL;
     classParameterHandle = NULL;
@@ -11757,13 +11702,14 @@ NTAPI VOID ClasspUpdateDiskProperties(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
     return;
 }
 
-BOOLEAN
-InterpretSenseInfoWithoutHistory(
-    _In_ PDEVICE_OBJECT Fdo, _In_opt_ PIRP OriginalRequest, _In_ PSCSI_REQUEST_BLOCK Srb,
-    UCHAR MajorFunctionCode, ULONG IoDeviceCode, ULONG PreviousRetryCount,
-    _Out_ NTSTATUS *Status,
-    _Out_opt_ _Deref_out_range_(0, MAXIMUM_RETRY_FOR_SINGLE_IO_IN_100NS_UNITS)
-	LONGLONG *RetryIn100nsUnits)
+BOOLEAN InterpretSenseInfoWithoutHistory(IN PDEVICE_OBJECT Fdo,
+					 IN OPTIONAL PIRP OriginalRequest,
+					 IN PSCSI_REQUEST_BLOCK Srb,
+					 UCHAR MajorFunctionCode,
+					 ULONG IoDeviceCode,
+					 ULONG PreviousRetryCount,
+					 OUT NTSTATUS *Status,
+					 OUT OPTIONAL LONGLONG *RetryIn100nsUnits)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
@@ -11807,7 +11753,7 @@ InterpretSenseInfoWithoutHistory(
     return retry;
 }
 
-VOID ClasspGetInquiryVpdSupportInfo(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     NTSTATUS status;
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
@@ -11970,8 +11916,7 @@ VOID ClasspGetInquiryVpdSupportInfo(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExte
 //          don't return STATUS_SUCCESS this function will just assume Thin
 //          Provisioning is not enabled and return STATUS_SUCCESS.
 //
-NTSTATUS
-ClasspGetLBProvisioningInfo(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTSTATUS ClasspGetLBProvisioningInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PSCSI_REQUEST_BLOCK srb = NULL;
     ULONG srbSize = 0;
@@ -12023,9 +11968,6 @@ ClasspGetLBProvisioningInfo(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     return STATUS_SUCCESS;
 }
 
-_IRQL_requires_(PASSIVE_LEVEL) _IRQL_requires_same_ NTSTATUS
-    ClassDetermineTokenOperationCommandSupport(_In_ PDEVICE_OBJECT DeviceObject)
-
 /*++
 
 Routine Description:
@@ -12046,11 +11988,9 @@ Return Value:
     Nothing
 
 --*/
-
+NTSTATUS ClassDetermineTokenOperationCommandSupport(IN PDEVICE_OBJECT DeviceObject)
 {
     NTSTATUS status = STATUS_SUCCESS;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_PNP,
 		"ClassDetermineTokenOperationCommandSupport (%p): Entering function.\n",
@@ -12086,9 +12026,6 @@ Return Value:
     return status;
 }
 
-_IRQL_requires_same_ NTSTATUS
-ClasspGetBlockDeviceTokenLimitsInfo(_Inout_ PDEVICE_OBJECT DeviceObject)
-
 /*++
 
 Routine Description:
@@ -12107,7 +12044,7 @@ Return Value:
     STATUS_SUCCESS otherwise.
 
 --*/
-
+NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     NTSTATUS status;
@@ -12334,11 +12271,6 @@ __ClasspGetBlockDeviceTokenLimitsInfo_Exit:
     return status;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ NTSTATUS
-    ClassDeviceProcessOffloadRead(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp,
-				  _Inout_ PSCSI_REQUEST_BLOCK Srb)
-
 /*++
 
 Routine Description:
@@ -12360,7 +12292,9 @@ Return Value:
     NTSTATUS code
 
 --*/
-
+NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
+				       IN PIRP Irp,
+				       IN OUT PSCSI_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION irpStack;
     NTSTATUS status;
@@ -12374,8 +12308,6 @@ Return Value:
     // This function must be called at less than dispatch level.
     // Fail if IRQL >= DISPATCH_LEVEL.
     //
-    PAGED_CODE();
-
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClassDeviceProcessOffloadRead (%p): Entering function. Irp %p\n",
 		DeviceObject, Irp));
@@ -12487,8 +12419,8 @@ __ClassDeviceProcessOffloadRead_Exit:
     return status;
 }
 
-VOID ClasspCompleteOffloadRequest(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp,
-				  _In_ NTSTATUS CompletionStatus)
+VOID ClasspCompleteOffloadRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				  IN NTSTATUS CompletionStatus)
 {
     NTSTATUS status = CompletionStatus;
 
@@ -12499,11 +12431,6 @@ VOID ClasspCompleteOffloadRequest(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Ir
 
     return;
 }
-
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ NTSTATUS
-    ClassDeviceProcessOffloadWrite(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp,
-				   _Inout_ PSCSI_REQUEST_BLOCK Srb)
 
 /*++
 
@@ -12526,7 +12453,9 @@ Return Value:
     NTSTATUS code
 
 --*/
-
+NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp,
+					IN OUT PSCSI_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION irpStack;
     NTSTATUS status;
@@ -12537,8 +12466,6 @@ Return Value:
     //
     // This function must be called at less than dispatch level.
     //
-    PAGED_CODE();
-
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClassDeviceProcessOffloadWrite (%p): Entering function. Irp %p\n",
 		DeviceObject, Irp));
@@ -12626,10 +12553,6 @@ __ClassDeviceProcessOffloadWrite_Exit:
     return status;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ NTSTATUS
-    ClasspServicePopulateTokenTransferRequest(_In_ PDEVICE_OBJECT Fdo, _In_ PIRP Irp)
-
 /*++
 
 Routine description:
@@ -12647,7 +12570,7 @@ Return Value:
     STATUS_SUCCESS if successful, an error code otherwise
 
 --*/
-
+NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
 {
     BOOLEAN allDataSetRangeFullyConverted;
     UINT32 allocationSize;
@@ -12683,8 +12606,6 @@ Return Value:
     ULONGLONG totalSectorCount;
     ULONGLONG totalSectorsToProcess;
     ULONG transferSize;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspServicePopulateTokenTransferRequest (%p): Entering function. Irp "
@@ -12981,8 +12902,6 @@ __ClasspServicePopulateTokenTransferRequest_Exit:
     return status;
 }
 
-VOID ClasspPopulateTokenTransferPacketDone(_In_ PVOID Context)
-
 /*++
 
 Routine description:
@@ -13003,7 +12922,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspPopulateTokenTransferPacketDone(IN PVOID Context)
 {
     PDEVICE_OBJECT fdo;
     ULONG listIdentifier;
@@ -13062,9 +12981,6 @@ __ClasspPopulateTokenTransferPacketDone_ErrorExit:
     return;
 }
 
-VOID ClasspCompleteOffloadRead(_In_ POFFLOAD_READ_CONTEXT OffloadReadContext,
-			       _In_ NTSTATUS CompletionStatus)
-
 /*++
 
 Routine description:
@@ -13084,7 +13000,8 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspCompleteOffloadRead(IN POFFLOAD_READ_CONTEXT OffloadReadContext,
+			       IN NTSTATUS CompletionStatus)
 {
     PDEVICE_MANAGE_DATA_SET_ATTRIBUTES dsmAttributes;
     ULONGLONG entireXferLen;
@@ -13143,9 +13060,6 @@ Return Value:
     return;
 }
 
-VOID ClasspCleanupOffloadReadContext(_In_ __drv_freesMem(mem)
-					 POFFLOAD_READ_CONTEXT OffloadReadContext)
-
 /*++
 
 Routine description:
@@ -13162,7 +13076,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspCleanupOffloadReadContext(IN POFFLOAD_READ_CONTEXT OffloadReadContext)
 {
     PMDL populateTokenMdl;
 
@@ -13177,9 +13091,6 @@ Return Value:
 
     return;
 }
-
-_IRQL_requires_same_ VOID
-ClasspReceivePopulateTokenInformation(_In_ POFFLOAD_READ_CONTEXT OffloadReadContext)
 
 /*++
 
@@ -13205,7 +13116,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadContext)
 {
     PVOID buffer;
     ULONG bufferLength;
@@ -13300,8 +13211,6 @@ __ClasspReceivePopulateTokenInformation_ErrorExit:
     return;
 }
 
-VOID ClasspReceivePopulateTokenInformationTransferPacketDone(_In_ PVOID Context)
-
 /*++
 
 Routine description:
@@ -13322,7 +13231,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 {
     ULONG availableData;
     PVOID buffer;
@@ -13659,10 +13568,6 @@ __ClasspReceivePopulateTokenInformationTransferPacketDone_Exit:
     return;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ NTSTATUS
-    ClasspServiceWriteUsingTokenTransferRequest(_In_ PDEVICE_OBJECT Fdo, _In_ PIRP Irp)
-
 /*++
 
 Routine description:
@@ -13680,7 +13585,8 @@ Return Value:
     STATUS_SUCCESS if successful, an error code otherwise
 
 --*/
-
+NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
+						     IN PIRP Irp)
 {
     ULONG allocationSize;
     PVOID buffer;
@@ -13702,8 +13608,6 @@ Return Value:
     BOOLEAN tokenInvalidated;
     ULONG tokenOperationBufferLength;
     PMDL writeUsingTokenMdl;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspServiceWriteUsingTokenTransferRequest (%p): Entering function. "
@@ -13956,9 +13860,6 @@ __ClasspServiceWriteUsingTokenTransferRequest_Exit:
     return status;
 }
 
-VOID ClasspContinueOffloadWrite(
-    _In_ __drv_aliasesMem POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
-
 /*++
 
 Routine description:
@@ -13980,7 +13881,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
     BOOLEAN allDataSetRangeFullyConverted;
     ULONG blockDescrIndex;
@@ -14212,9 +14113,6 @@ __ClasspContinueOffloadWrite_ErrorExit:
     return;
 }
 
-VOID ClasspAdvanceOffloadWritePosition(_In_ POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
-				       _In_ ULONGLONG SectorsToAdvance)
-
 /*++
 
 Routine description:
@@ -14242,7 +14140,8 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspAdvanceOffloadWritePosition(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
+				       IN ULONGLONG SectorsToAdvance)
 {
     ULONGLONG bytesToAdvance;
     ULONGLONG bytesToDo;
@@ -14286,8 +14185,6 @@ Return Value:
     return;
 }
 
-VOID ClasspWriteUsingTokenTransferPacketDone(_In_ PVOID Context)
-
 /*++
 
 Routine description:
@@ -14313,7 +14210,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspWriteUsingTokenTransferPacketDone(IN PVOID Context)
 {
     ULONGLONG entireXferLen;
     PDEVICE_OBJECT fdo;
@@ -14442,10 +14339,6 @@ __ClasspWriteUsingTokenTransferPacketDone_Exit:
     return;
 }
 
-VOID ClasspReceiveWriteUsingTokenInformationDone(_In_ POFFLOAD_WRITE_CONTEXT
-						     OffloadWriteContext,
-						 _In_ NTSTATUS CompletionCausingStatus)
-
 /*++
 
 Routine description:
@@ -14472,7 +14365,8 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspReceiveWriteUsingTokenInformationDone(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
+						 IN NTSTATUS CompletionCausingStatus)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = OffloadWriteContext->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
@@ -14529,10 +14423,6 @@ __ClasspReceiveWriteUsingTokenInformationDone_Exit:
     return;
 }
 
-VOID ClasspCompleteOffloadWrite(_In_ __drv_freesMem(Mem)
-				    POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
-				_In_ NTSTATUS CompletionCausingStatus)
-
 /*++
 
 Routine description:
@@ -14563,7 +14453,8 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspCompleteOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
+				IN NTSTATUS CompletionCausingStatus)
 {
     PDEVICE_OBJECT fdo;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
@@ -14639,9 +14530,6 @@ Return Value:
     return;
 }
 
-VOID ClasspCleanupOffloadWriteContext(_In_ __drv_freesMem(mem)
-					  POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
-
 /*++
 
 Routine description:
@@ -14658,7 +14546,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspCleanupOffloadWriteContext(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
     PMDL writeUsingTokenMdl = OffloadWriteContext->WriteUsingTokenMdl;
 
@@ -14669,9 +14557,6 @@ Return Value:
 
     return;
 }
-
-_IRQL_requires_same_ VOID
-ClasspReceiveWriteUsingTokenInformation(_In_ POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 
 /*++
 
@@ -14694,7 +14579,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
     PVOID buffer;
     ULONG bufferLength;
@@ -14799,9 +14684,6 @@ __ClasspReceiveWriteUsingTokenInformation_ErrorExit:
     return;
 }
 
-VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(
-    _In_ POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
-
 /*++
 
 Routine description:
@@ -14826,7 +14708,7 @@ Return Value:
     None.
 
 --*/
-
+VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
     ULONG availableData;
     PVOID buffer;
@@ -15114,9 +14996,6 @@ __ClasspReceiveWriteUsingTokenInformationTransferPacketDone_Exit:
     return;
 }
 
-NTSTATUS
-ClasspRefreshFunctionSupportInfo(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				 _In_ BOOLEAN ForceQuery)
 /*
 Routine Description:
 
@@ -15138,6 +15017,8 @@ Return Value:
     STATUS_SUCCESS or an error status
 
 --*/
+NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					  IN BOOLEAN ForceQuery)
 {
     NTSTATUS status;
     PSCSI_REQUEST_BLOCK srb = NULL;
@@ -15220,11 +15101,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-ClasspBlockLimitsDataSnapshot(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			      _In_ BOOLEAN ForceQuery,
-			      _Out_ PCLASS_VPD_B0_DATA BlockLimitsData,
-			      _Out_ PULONG GenerationCount)
 /*
 Routine Description:
 
@@ -15254,6 +15130,10 @@ Return Value:
     STATUS_SUCCESS or an error status
 
 --*/
+NTSTATUS ClasspBlockLimitsDataSnapshot(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				       IN BOOLEAN ForceQuery,
+				       OUT PCLASS_VPD_B0_DATA BlockLimitsData,
+				       OUT PULONG GenerationCount)
 {
     NTSTATUS status;
     KLOCK_QUEUE_HANDLE lockHandle;
