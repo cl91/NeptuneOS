@@ -58,34 +58,30 @@ static BOOLEAN ClasspCanSendPollingIrp(_In_ PFUNCTIONAL_DEVICE_EXTENSION fdoExte
 	    (fdoExtension->PowerDownInProgress == FALSE) && (ClasspScreenOff == FALSE));
 }
 
-BOOLEAN
-ClasspIsMediaChangeDisabledDueToHardwareLimitation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PUNICODE_STRING RegistryPath);
+BOOLEAN ClasspIsMediaChangeDisabledDueToHardwareLimitation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+							   IN PUNICODE_STRING RegistryPath);
 
-NTSTATUS
-ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					OUT PBOOLEAN Enabled);
+NTSTATUS ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+						 OUT PBOOLEAN Enabled);
 
-BOOLEAN
-ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				    IN PUNICODE_STRING RegistryPath);
+BOOLEAN ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					    IN PUNICODE_STRING RegistryPath);
 
-VOID ClasspSetMediaChangeStateEx(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN MEDIA_CHANGE_DETECTION_STATE NewState, IN BOOLEAN Wait,
-    IN BOOLEAN KnownStateChange // can ignore oldstate == unknown
-);
+VOID ClasspSetMediaChangeStateEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN MEDIA_CHANGE_DETECTION_STATE NewState,
+				 IN BOOLEAN Wait,
+				 IN BOOLEAN KnownStateChange); // can ignore oldstate == unknown
 
 RTL_QUERY_REGISTRY_ROUTINE ClasspMediaChangeRegistryCallBack;
 
 VOID ClasspSendMediaStateIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     IN PMEDIA_CHANGE_DETECTION_INFO Info, IN ULONG CountDown);
+			     IN PMEDIA_CHANGE_DETECTION_INFO Info,
+			     IN ULONG CountDown);
 
 IO_WORKITEM_ROUTINE ClasspFailurePredict;
 
-NTSTATUS
-ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			IN BOOLEAN AllowDriveToSleep);
+NTSTATUS ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN BOOLEAN AllowDriveToSleep);
 
 IO_WORKITEM_ROUTINE ClasspDisableGesn;
 
@@ -134,10 +130,10 @@ VOID ClassSendEjectionNotification(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     return;
 }
 
-_IRQL_requires_max_(DISPATCH_LEVEL) NTAPI VOID
-    ClassSendNotification(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			  _In_ const GUID *Guid, _In_ ULONG ExtraDataSize,
-			  _In_reads_bytes_opt_(ExtraDataSize) PVOID ExtraData)
+NTAPI VOID ClassSendNotification(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN const GUID *Guid,
+				 IN ULONG ExtraDataSize,
+				 IN PVOID ExtraData)
 {
     PTARGET_DEVICE_CUSTOM_NOTIFICATION notification;
     ULONG requiredSize;
@@ -184,11 +180,6 @@ _IRQL_requires_max_(DISPATCH_LEVEL) NTAPI VOID
     FREE_POOL(notification);
     return;
 }
-
-NTSTATUS
-ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			IN PNOTIFICATION_EVENT_STATUS_HEADER Header,
-			OUT PBOOLEAN ResendImmediately)
 
 /*++
 
@@ -244,6 +235,9 @@ Notes:
     cleared from the device.
 
 --*/
+NTSTATUS ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN PNOTIFICATION_EVENT_STATUS_HEADER Header,
+				 OUT PBOOLEAN ResendImmediately)
 
 {
     PMEDIA_CHANGE_DETECTION_INFO info;
@@ -684,11 +678,9 @@ Return Value:
     none
 
 --*/
-VOID ClasspInternalSetMediaChangeState(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN MEDIA_CHANGE_DETECTION_STATE NewState,
-    IN BOOLEAN KnownStateChange // can ignore oldstate == unknown
-)
+VOID ClasspInternalSetMediaChangeState(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				       IN MEDIA_CHANGE_DETECTION_STATE NewState,
+				       IN BOOLEAN KnownStateChange) // can ignore oldstate == unknown
 {
 #if DBG
     PCSZ states[] = { "Unknown", "Present", "Not Present", "Unavailable" };
@@ -823,12 +815,10 @@ Return Value:
     none
 
 --*/
-
-VOID ClasspSetMediaChangeStateEx(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN MEDIA_CHANGE_DETECTION_STATE NewState, IN BOOLEAN Wait,
-    IN BOOLEAN KnownStateChange // can ignore oldstate == unknown
-)
+VOID ClasspSetMediaChangeStateEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN MEDIA_CHANGE_DETECTION_STATE NewState,
+				 IN BOOLEAN Wait,
+				 IN BOOLEAN KnownStateChange) // can ignore oldstate == unknown
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
     LARGE_INTEGER zero;
@@ -881,10 +871,9 @@ VOID ClasspSetMediaChangeStateEx(
     return;
 } // end ClassSetMediaChangeStateEx()
 
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassSetMediaChangeState(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     _In_ MEDIA_CHANGE_DETECTION_STATE NewState,
-			     _In_ BOOLEAN Wait)
+NTAPI VOID ClassSetMediaChangeState(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				    IN MEDIA_CHANGE_DETECTION_STATE NewState,
+				    IN BOOLEAN Wait)
 {
     ClasspSetMediaChangeStateEx(FdoExtension, NewState, Wait, FALSE);
     return;
@@ -912,7 +901,9 @@ Return Value:
     NTSTATUS
 
 --*/
-NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT DeviceObject,
+						    PIRP Irp,
+						    PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData;
@@ -1163,7 +1154,8 @@ Return Value:
 
 --*/
 PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			 IN PMEDIA_CHANGE_DETECTION_INFO Info, IN BOOLEAN UseGesn)
+			 IN PMEDIA_CHANGE_DETECTION_INFO Info,
+			 IN BOOLEAN UseGesn)
 {
     PSCSI_REQUEST_BLOCK srb;
     PSTORAGE_REQUEST_BLOCK srbEx;
@@ -1391,7 +1383,8 @@ Return Value:
 
 --*/
 VOID ClasspSendMediaStateIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     IN PMEDIA_CHANGE_DETECTION_INFO Info, IN ULONG CountDown)
+			     IN PMEDIA_CHANGE_DETECTION_INFO Info,
+			     IN ULONG CountDown)
 {
     BOOLEAN requestPending = FALSE;
     LONG irpInUse;
@@ -1573,7 +1566,7 @@ Return Value:
     none
 
 --*/
-NTAPI VOID ClassCheckMediaState(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassCheckMediaState(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
     LONG countDown;
@@ -1619,7 +1612,7 @@ Return Value:
     None
 
 --*/
-NTAPI VOID ClassResetMediaChangeTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassResetMediaChangeTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
 
@@ -1645,16 +1638,13 @@ Arguments:
 Return Value:
 
 --*/
-NTSTATUS
-ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			IN BOOLEAN AllowDriveToSleep)
+NTSTATUS ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN BOOLEAN AllowDriveToSleep)
 {
     PDEVICE_OBJECT fdo = FdoExtension->DeviceObject;
 
     PMEDIA_CHANGE_DETECTION_INFO info;
     PIRP irp;
-
-    PAGED_CODE();
 
     if (FdoExtension->MediaChangeDetectionInfo != NULL) {
 	return STATUS_SUCCESS;
@@ -1794,9 +1784,8 @@ ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
 } // end ClasspInitializePolling()
 
-NTSTATUS
-ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-		     IN PMEDIA_CHANGE_DETECTION_INFO Info)
+NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			      IN PMEDIA_CHANGE_DETECTION_INFO Info)
 {
     PNOTIFICATION_EVENT_STATUS_HEADER header;
     CLASS_DETECTION_STATE detectionState = ClassDetectionUnknown;
@@ -1809,7 +1798,6 @@ ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     ULONG atapiResets;
     ULONG srbFlags;
 
-    PAGED_CODE();
     NT_ASSERT(Info == FdoExtension->MediaChangeDetectionInfo);
 
     //
@@ -2121,13 +2109,10 @@ ExitWithError:
 //  Work item to set the hack flag in the registry to disable GESN
 //  on devices that sends too many events
 //
-
 NTAPI VOID ClasspDisableGesn(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PIO_WORKITEM WorkItem = (PIO_WORKITEM)Context;
-
-    PAGED_CODE();
 
     //
     // Set the hack flag in the registry
@@ -2163,9 +2148,8 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
-    ClassInitializeTestUnitPolling(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				   _In_ BOOLEAN AllowDriveToSleep)
+NTAPI NTSTATUS ClassInitializeTestUnitPolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					      IN BOOLEAN AllowDriveToSleep)
 {
     return ClasspInitializePolling(FdoExtension, AllowDriveToSleep);
 } // end ClassInitializeTestUnitPolling()
@@ -2195,9 +2179,8 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassInitializeMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					_In_ PUCHAR EventPrefix)
+NTAPI VOID ClassInitializeMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					       IN PUCHAR EventPrefix)
 {
     PDEVICE_OBJECT fdo = FdoExtension->DeviceObject;
     NTSTATUS status;
@@ -2209,8 +2192,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
     BOOLEAN instanceOverride;
 
     UNREFERENCED_PARAMETER(EventPrefix);
-
-    PAGED_CODE();
 
     //
     // NOTE: This assumes that ClassInitializeMediaChangeDetection is always
@@ -2293,9 +2274,8 @@ Return Value:
     FALSE - Autorun is not disabled (Default)
 
 --*/
-NTSTATUS
-ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					OUT PBOOLEAN Enabled)
+NTSTATUS ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+						 OUT PBOOLEAN Enabled)
 {
     HANDLE deviceParameterHandle = NULL; // cdrom instance key
     HANDLE driverParameterHandle = NULL; // cdrom specific key
@@ -2306,8 +2286,6 @@ ClasspMediaChangeDeviceInstanceOverride(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     ULONG alwaysEnable = FALSE;
     ULONG alwaysDisable = FALSE;
     ULONG i;
-
-    PAGED_CODE();
 
     TRY
     {
@@ -2438,9 +2416,8 @@ Return Value:
     FALSE - Autorun may be enabled
 
 --*/
-BOOLEAN
-ClasspIsMediaChangeDisabledDueToHardwareLimitation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PUNICODE_STRING RegistryPath)
+BOOLEAN ClasspIsMediaChangeDisabledDueToHardwareLimitation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+							   IN PUNICODE_STRING RegistryPath)
 {
     PSTORAGE_DEVICE_DESCRIPTOR deviceDescriptor = FdoExtension->DeviceDescriptor;
     OBJECT_ATTRIBUTES objectAttributes = { 0 };
@@ -2452,8 +2429,6 @@ ClasspIsMediaChangeDisabledDueToHardwareLimitation(
     ULONG mediaChangeNotificationDisabled = FALSE;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     //
     // open the service key.
@@ -2646,9 +2621,8 @@ Return Value:
     FALSE - Autorun is enabled for this class
 
 --*/
-BOOLEAN
-ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				    IN PUNICODE_STRING RegistryPath)
+BOOLEAN ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					    IN PUNICODE_STRING RegistryPath)
 {
     OBJECT_ATTRIBUTES objectAttributes = { 0 };
     HANDLE serviceKey = NULL;
@@ -2664,8 +2638,6 @@ ClasspIsMediaChangeDisabledForClass(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
     ULONG mcnRegistryValue = 1;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     //
     // open the service key.
@@ -2770,13 +2742,10 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassEnableMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassEnableMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
     LONG oldCount;
-
-    PAGED_CODE();
 
     if (info == NULL) {
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
@@ -2824,6 +2793,8 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
     return;
 } // end ClassEnableMediaChangeDetection()
 
+ULONG BreakOnMcnDisable = FALSE;
+
 /*++////////////////////////////////////////////////////////////////////////////
 
 ClassDisableMediaChangeDetection() ISSUE-2000/02/20-henrygab - why public?
@@ -2841,14 +2812,9 @@ Arguments:
 Return Value:
 
 --*/
-ULONG BreakOnMcnDisable = FALSE;
-
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassDisableMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassDisableMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
-
-    PAGED_CODE();
 
     if (info == NULL) {
 	return;
@@ -2884,12 +2850,9 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassCleanupMediaChangeDetection(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTAPI VOID ClassCleanupMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PMEDIA_CHANGE_DETECTION_INFO info = FdoExtension->MediaChangeDetectionInfo;
-
-    PAGED_CODE()
 
     if (info == NULL) {
 	return;
@@ -2923,9 +2886,9 @@ Arguments:
 Return Value:
 
 --*/
-NTSTATUS
-ClasspMcnControl(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP Irp,
-		 IN PSCSI_REQUEST_BLOCK Srb)
+NTSTATUS ClasspMcnControl(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			  IN PIRP Irp,
+			  IN PSCSI_REQUEST_BLOCK Srb)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
 
@@ -2936,8 +2899,6 @@ ClasspMcnControl(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP Irp,
     PFILE_OBJECT_EXTENSION fsContext = NULL;
 
     NTSTATUS status = STATUS_SUCCESS;
-
-    PAGED_CODE();
 
     //
     // Check to make sure we have a file object extension to keep track of this
@@ -3019,18 +2980,17 @@ Return Value:
     EntryContext will be 1 if found
 
 --*/
-_Function_class_(RTL_QUERY_REGISTRY_ROUTINE)
-    _IRQL_requires_max_(PASSIVE_LEVEL) _IRQL_requires_same_ NTAPI NTSTATUS
-    ClasspMediaChangeRegistryCallBack(_In_z_ PWSTR ValueName, _In_ ULONG ValueType,
-				      _In_reads_bytes_opt_(ValueLength) PVOID ValueData,
-				      _In_ ULONG ValueLength, _In_opt_ PVOID Context,
-				      _In_opt_ PVOID EntryContext)
+NTAPI NTSTATUS ClasspMediaChangeRegistryCallBack(IN PWSTR ValueName,
+						 IN ULONG ValueType,
+						 IN OPTIONAL PVOID ValueData,
+						 IN ULONG ValueLength,
+						 IN OPTIONAL PVOID Context,
+						 IN OPTIONAL PVOID EntryContext)
 {
     PULONG valueFound;
     PUNICODE_STRING deviceString;
     PWSTR keyValue;
 
-    PAGED_CODE();
     UNREFERENCED_PARAMETER(ValueName);
 
     if (ValueData == NULL || Context == NULL || EntryContext == NULL) {
@@ -3093,7 +3053,7 @@ _Function_class_(RTL_QUERY_REGISTRY_ROUTINE)
 } // end ClasspMediaChangeRegistryCallBack()
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-VOID ClasspTimerTickEx(_In_ PEX_TIMER Timer, _In_opt_ PVOID Context)
+VOID ClasspTimerTickEx(IN PEX_TIMER Timer, IN OPTIONAL PVOID Context)
 {
     KDPC dummyDpc = { 0 };
 
@@ -3124,11 +3084,10 @@ Arguments:
 Return Value:
 
 --*/
-_Function_class_(KDEFERRED_ROUTINE) _IRQL_requires_max_(DISPATCH_LEVEL)
-    _IRQL_requires_min_(DISPATCH_LEVEL)
-	_IRQL_requires_(DISPATCH_LEVEL) _IRQL_requires_same_ NTAPI VOID
-    ClasspTimerTick(_In_ PKDPC Dpc, _In_opt_ PVOID DeferredContext,
-		    _In_opt_ PVOID SystemArgument1, _In_opt_ PVOID SystemArgument2)
+NTAPI VOID ClasspTimerTick(IN PKDPC Dpc,
+			   IN OPTIONAL PVOID DeferredContext,
+			   IN OPTIONAL PVOID SystemArgument1,
+			   IN OPTIONAL PVOID SystemArgument2)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeferredContext;
     PCOMMON_DEVICE_EXTENSION commonExtension;
@@ -3256,8 +3215,6 @@ _Function_class_(KDEFERRED_ROUTINE) _IRQL_requires_max_(DISPATCH_LEVEL)
 } // end ClasspTimerTick()
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-BOOLEAN
-ClasspUpdateTimerNoWakeTolerance(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
 
@@ -3282,6 +3239,7 @@ Returns:
     FALSE if the timer was not set/reset.
 
 */
+BOOLEAN ClasspUpdateTimerNoWakeTolerance(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
@@ -3334,8 +3292,6 @@ Returns:
 }
 #endif
 
-NTSTATUS
-ClasspInitializeTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
 
@@ -3360,6 +3316,7 @@ Return Value:
     A non-success status if the timer is not initialized.
 
 */
+NTSTATUS ClasspInitializeTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
@@ -3394,7 +3351,6 @@ Return Value:
     return STATUS_SUCCESS;
 }
 
-VOID ClasspDeleteTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
 
@@ -3411,6 +3367,7 @@ Return Value:
     None.
 
 */
+VOID ClasspDeleteTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
@@ -3450,7 +3407,7 @@ Return Value:
     None.
 
 --*/
-VOID ClasspEnableTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+VOID ClasspEnableTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
@@ -3546,7 +3503,7 @@ Arguments:
 Return Value:
 
 --*/
-VOID ClasspDisableTimer(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+VOID ClasspDisableTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = NULL;
 
@@ -3729,12 +3686,14 @@ Arguments:
 Return Value:
 
 --*/
-_IRQL_requires_max_(DISPATCH_LEVEL) NTAPI VOID
-    ClassNotifyFailurePredicted(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				_In_reads_bytes_(BufferSize) PUCHAR Buffer,
-				_In_ ULONG BufferSize, _In_ BOOLEAN LogError,
-				_In_ ULONG UniqueErrorValue, _In_ UCHAR PathId,
-				_In_ UCHAR TargetId, _In_ UCHAR Lun)
+NTAPI VOID ClassNotifyFailurePredicted(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				       IN PUCHAR Buffer,
+				       IN ULONG BufferSize,
+				       IN BOOLEAN LogError,
+				       IN ULONG UniqueErrorValue,
+				       IN UCHAR PathId,
+				       IN UCHAR TargetId,
+				       IN UCHAR Lun)
 {
     PIO_ERROR_LOG_PACKET logEntry;
     EVENT_DESCRIPTOR eventDescriptor;
@@ -3830,15 +3789,12 @@ Return Value:
     NT Status
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
-    ClassSetFailurePredictionPoll(_Inout_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				  _In_ FAILURE_PREDICTION_METHOD FailurePredictionMethod,
-				  _In_ ULONG PollingPeriod)
+NTAPI NTSTATUS ClassSetFailurePredictionPoll(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					     IN FAILURE_PREDICTION_METHOD FailurePredictionMethod,
+					     IN ULONG PollingPeriod)
 {
     PFAILURE_PREDICTION_INFO info;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     if (FdoExtension->FailurePredictionInfo == NULL) {
 	if (FailurePredictionMethod != FailurePredictionNone) {
@@ -3912,8 +3868,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL) NTAPI NTSTATUS
     return status;
 } // end ClassSetFailurePredictionPoll()
 
-BOOLEAN
-ClasspFailurePredictionPeriodMissed(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*
 Routine Description:
     This routine can be used to determine if a failure prediction polling
@@ -3932,6 +3886,7 @@ Returns:
     missed.
     FALSE otherwise.
 */
+BOOLEAN ClasspFailurePredictionPeriodMissed(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     LARGE_INTEGER currentTime;
     LARGE_INTEGER timeDifference;
