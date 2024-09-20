@@ -31,10 +31,7 @@ const PCSZ LockTypeStrings[] = { "Simple", "Secure", "Internal" };
 
 VOID ClasspCleanupDisableMcn(IN PFILE_OBJECT_EXTENSION FsContext);
 
-NTAPI NTSTATUS ClassCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
-
 /*++
-
 Routine Description:
 
     SCSI class driver create and close routine.  This is called by the I/O system
@@ -49,9 +46,8 @@ Arguments:
 Return Value:
 
     Device-specific drivers return value or STATUS_SUCCESS.
-
 --*/
-
+NTAPI NTSTATUS ClassCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     ULONG removeState;
@@ -89,10 +85,7 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-ClasspCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 /*++
-
 Routine Description:
 
     This routine will handle create/close operations for a given classpnp
@@ -110,8 +103,8 @@ Arguments:
 Return Value:
 
     status
-
 --*/
+NTSTATUS ClasspCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
