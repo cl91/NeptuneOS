@@ -373,9 +373,10 @@ VOID ClasspCleanupDisableMcn(IN PFILE_OBJECT_EXTENSION FsContext)
  *                  boottime pagefile problems with the new one (below)
  *                  are resolved.
  */
-NTSTATUS
-ClasspEjectionControl(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN MEDIA_LOCK_TYPE LockType,
-		      IN BOOLEAN Lock)
+NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
+			       IN PIRP Irp,
+			       IN MEDIA_LOCK_TYPE LockType,
+			       IN BOOLEAN Lock)
 {
     PFUNCTIONAL_DEVICE_EXTENSION FdoExtension = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
@@ -653,9 +654,10 @@ ClasspEjectionControl(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN MEDIA_LOCK_TYPE Loc
  *      HOWEVER, it seems to cause pagefile initialization to fail during boot
  *      for some reason.  Need to resolve this before switching to this function.
  */
-NTSTATUS
-ClasspEjectionControl(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN MEDIA_LOCK_TYPE LockType,
-		      IN BOOLEAN Lock)
+NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
+			       IN PIRP Irp,
+			       IN MEDIA_LOCK_TYPE LockType,
+			       IN BOOLEAN Lock)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PFILE_OBJECT_EXTENSION fsContext;
@@ -789,8 +791,7 @@ ClasspEjectionControl(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN MEDIA_LOCK_TYPE Loc
 		    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 		    SetupEjectionTransferPacket(pkt, Lock, &event, Irp);
 		    SubmitTransferPacket(pkt);
-		    (VOID)
-			KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+		    KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
 		    status = Irp->IoStatus.Status;
 		} else {
 		    status = STATUS_INSUFFICIENT_RESOURCES;
@@ -853,11 +854,9 @@ ClasspEjectionControl(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN MEDIA_LOCK_TYPE Loc
 }
 #endif
 
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI PFILE_OBJECT_EXTENSION
-    ClassGetFsContext(_In_ PCOMMON_DEVICE_EXTENSION CommonExtension,
-		      _In_ PFILE_OBJECT FileObject)
+NTAPI PFILE_OBJECT_EXTENSION ClassGetFsContext(IN PCOMMON_DEVICE_EXTENSION CommonExtension,
+					       IN PFILE_OBJECT FileObject)
 {
-    PAGED_CODE();
     return GetDictionaryEntry(&(CommonExtension->FileObjectDictionary),
 			      (ULONGLONG)FileObject);
 }
