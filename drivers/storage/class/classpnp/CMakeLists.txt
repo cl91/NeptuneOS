@@ -1,7 +1,7 @@
+project(classpnp C ASM)
 
-spec2def(classpnp.sys classpnp.spec ADD_IMPORTLIB)
-
-remove_definitions(-D_WIN32_WINNT=0x502)
+spec2def(classpnp classpnp.spec ${Arch})
+set_dll_def(classpnp classpnp.def)
 
 list(APPEND SOURCE
     autorun.c
@@ -23,10 +23,9 @@ list(APPEND SOURCE
     utils.c
     xferpkt.c)
 
-add_library(classpnp MODULE
+add_driver(classpnp
     ${SOURCE}
-    class.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/classpnp.def)
+    class.rc)
 
 target_compile_definitions(classpnp PUBLIC
     DEBUG_USE_KDPRINT
@@ -41,15 +40,5 @@ target_compile_definitions(classpnp PRIVATE
     CLASS_GLOBAL_BUFFERED_DEBUG_PRINT_BUFFER_SIZE=512
     CLASS_GLOBAL_BUFFERED_DEBUG_PRINT_BUFFERS=512)
 
-if(NOT MSVC)
-    target_compile_options(classpnp PRIVATE -Wno-pointer-to-int-cast -Wno-switch)
-endif()
-
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(classpnp PRIVATE -Wno-unused-but-set-variable)
-endif()
-
-set_module_type(classpnp kernelmodedriver)
-target_link_libraries(classpnp ntoskrnl_vista libcntpr ${PSEH_LIB})
-add_importlibs(classpnp ntoskrnl hal)
-add_cd_file(TARGET classpnp DESTINATION reactos/system32/drivers NO_CAB FOR all)
+target_compile_options(classpnp PRIVATE
+    -Wno-pointer-to-int-cast -Wno-switch -Wno-unused-but-set-variable)
