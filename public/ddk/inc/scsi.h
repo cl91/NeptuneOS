@@ -23,9 +23,7 @@
 #ifndef _NTSCSI_
 #define _NTSCSI_
 
-#ifndef _NTSCSI_USER_MODE_
-#include "srb.h"
-#endif
+#include <nt.h>
 
 #define NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK 0x02
 #define NOTIFICATION_POWER_MANAGEMENT_CLASS_MASK 0x04

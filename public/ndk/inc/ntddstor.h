@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <nt.h>
+
 #if defined(DEFINE_GUID)
 
 DEFINE_GUID(GUID_DEVINTERFACE_DISK,
@@ -327,7 +329,7 @@ typedef struct _STORAGE_BUS_RESET_REQUEST {
 
 typedef struct _STORAGE_BREAK_RESERVATION_REQUEST {
     ULONG Length;
-    UCHAR _unused;
+    UCHAR Unused;
     UCHAR PathId;
     UCHAR TargetId;
     UCHAR Lun;
