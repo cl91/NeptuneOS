@@ -26,7 +26,6 @@ Revision History:
 
 #include "classp.h"
 #include "debug.h"
-#include <process.h>
 #include <devpkey.h>
 #include <ntiologc.h>
 
@@ -153,16 +152,6 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
 
     NTSTATUS status;
 
-    //
-    // Initialize the security cookie if needed.
-    //
-#ifndef __REACTOS__
-    if (InitSecurityCookie == FALSE) {
-	__security_init_cookie();
-	InitSecurityCookie = TRUE;
-    }
-#endif
-
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT, "\n\nSCSI Class Driver\n"));
 
     ClasspInitializeDebugGlobals();
@@ -280,7 +269,7 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
 	driverExtension->RegistryPath.MaximumLength = RegistryPath->MaximumLength;
 
 	driverExtension->RegistryPath.Buffer =
-	    ExAllocatePoolWithTag(PagedPool, RegistryPath->MaximumLength, '1CcS');
+	    ExAllocatePoolWithTag(RegistryPath->MaximumLength, '1CcS');
 
 	if (driverExtension->RegistryPath.Buffer == NULL) {
 	    status = STATUS_INSUFFICIENT_RESOURCES;
@@ -457,7 +446,7 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 	    // incorrect size -- client programming error
 	    status = STATUS_INVALID_PARAMETER;
 	} else {
-	    info = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(CLASS_WORKING_SET),
+	    info = ExAllocatePoolWithTag(sizeof(CLASS_WORKING_SET),
 					 CLASS_TAG_WORKING_SET);
 	    if (info == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
@@ -505,8 +494,7 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 	    // incorrect size -- client programming error
 	    status = STATUS_INVALID_PARAMETER;
 	} else {
-	    info = ExAllocatePoolWithTag(NonPagedPoolNx,
-					 sizeof(CLASS_INTERPRET_SENSE_INFO2),
+	    info = ExAllocatePoolWithTag(sizeof(CLASS_INTERPRET_SENSE_INFO2),
 					 CLASS_TAG_SENSE2);
 	    if (info == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
@@ -779,8 +767,7 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 		    status = STATUS_INSUFFICIENT_RESOURCES;
 
-		    deviceRelations = ExAllocatePoolWithTag(PagedPool,
-							    sizeof(DEVICE_RELATIONS),
+		    deviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS),
 							    '2CcS');
 
 		    if (deviceRelations != NULL) {
@@ -1596,7 +1583,7 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 
 	    if (fdoExtension->PrivateFdoData == NULL) {
 		fdoExtension->PrivateFdoData =
-		    ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(CLASS_PRIVATE_FDO_DATA),
+		    ExAllocatePoolWithTag(sizeof(CLASS_PRIVATE_FDO_DATA),
 					  CLASS_TAG_PRIVATE_DATA);
 	    }
 
@@ -1616,7 +1603,7 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 	    //
 	    if (fdoExtension->AdditionalFdoData == NULL) {
 		fdoExtension->AdditionalFdoData =
-		    ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(ADDITIONAL_FDO_DATA),
+		    ExAllocatePoolWithTag(sizeof(ADDITIONAL_FDO_DATA),
 					  CLASSPNP_POOL_TAG_ADDITIONAL_DATA);
 	    }
 
@@ -1647,8 +1634,7 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 
 	    if (fdoExtension->FunctionSupportInfo == NULL) {
 		fdoExtension->FunctionSupportInfo = (PCLASS_FUNCTION_SUPPORT_INFO)
-		    ExAllocatePoolWithTag(NonPagedPoolNx,
-					  sizeof(CLASS_FUNCTION_SUPPORT_INFO), '3BcS');
+		    ExAllocatePoolWithTag(sizeof(CLASS_FUNCTION_SUPPORT_INFO), '3BcS');
 	    }
 
 	    if (fdoExtension->FunctionSupportInfo == NULL) {
@@ -2804,7 +2790,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
     // Allocate Srb from nonpaged pool.
     //
 
-    context = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(COMPLETION_CONTEXT), '6CcS');
+    context = ExAllocatePoolWithTag(sizeof(COMPLETION_CONTEXT), '6CcS');
 
     if (context == NULL) {
 	//
@@ -3755,8 +3741,7 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo, IN OUT PSCSI_REQUE
 
 #endif
 
-    senseInfoBuffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-					    senseInfoBufferLength, '7CcS');
+    senseInfoBuffer = ExAllocatePoolWithTag(senseInfoBufferLength, '7CcS');
 
     if (senseInfoBuffer == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
