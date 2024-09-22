@@ -124,9 +124,9 @@ VOID ClasspInitializeDebugGlobals()
 
         None
 
-    --*/
-VOID ClassDebugPrint(_In_ CLASS_DEBUG_LEVEL DebugPrintLevel, _In_z_ PCCHAR DebugMessage,
-		     ...)
+--*/
+VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
+		     IN PCCHAR DebugMessage, ...)
 {
     va_list ap;
     va_start(ap, DebugMessage);
@@ -481,11 +481,6 @@ VOID SnapDiskStartup(VOID)
     PDISK_SPINUP_TRACES Entry;
     LARGE_INTEGER SpinUpTime;
 
-    extern NTSYSAPI NTAPI USHORT
-    RtlCaptureStackBackTrace(_In_ ULONG FramesToSkip, _In_ ULONG FramesToCapture,
-			     _Out_writes_to_(FramesToCapture, return) PVOID * BackTrace,
-			     _Out_opt_ PULONG BackTraceHash);
-
     //
     // Grab the current count, then mod it so that it
     // becomes an index into the DiskSpinupTraces array.
@@ -514,8 +509,8 @@ VOID SnapDiskStartup(VOID)
 #else
 
 // We have to keep this in the retail build for legacy.
-VOID ClassDebugPrint(_In_ CLASS_DEBUG_LEVEL DebugPrintLevel, _In_z_ PCCHAR DebugMessage,
-		     ...)
+VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
+		     IN PCCHAR DebugMessage, ...)
 {
     UNREFERENCED_PARAMETER(DebugPrintLevel);
     UNREFERENCED_PARAMETER(DebugMessage);

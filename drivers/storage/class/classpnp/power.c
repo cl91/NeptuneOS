@@ -21,14 +21,7 @@ Revision History:
 
 --*/
 
-#ifndef __REACTOS__
-#include "stddef.h"
-#include "ntddk.h"
-#include "scsi.h"
-#endif
 #include "classp.h"
-
-// #include <stdarg.h> __REACTOS__
 
 #define CLASS_TAG_POWER 'WLcS'
 
@@ -61,9 +54,8 @@ IO_COMPLETION_ROUTINE ClasspPowerUpCompletion;
 IO_COMPLETION_ROUTINE ClasspStartNextPowerIrpCompletion;
 IO_COMPLETION_ROUTINE ClasspDeviceLockFailurePowerIrpCompletion;
 
-NTSTATUS
-ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-		   IN CLASS_POWER_OPTIONS Options);
+NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+			    IN CLASS_POWER_OPTIONS Options);
 
 VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 		       PCLASS_POWER_CONTEXT Context);
@@ -85,7 +77,8 @@ Arguments:
 Return Value:
 
 --*/
-NTAPI NTSTATUS ClassDispatchPower(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTAPI NTSTATUS ClassDispatchPower(IN PDEVICE_OBJECT DeviceObject,
+				  IN PIRP Irp)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     ULONG isRemoved;
@@ -160,7 +153,9 @@ Return Value:
     STATUS_SUCCESS
 
 --*/
-NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
+				       IN PIRP Irp,
+				       IN PVOID Context)
 {
     PCLASS_POWER_CONTEXT PowerContext = (PCLASS_POWER_CONTEXT)Context;
     PCOMMON_DEVICE_EXTENSION commonExtension;
@@ -729,7 +724,9 @@ Return Value:
     STATUS_SUCCESS
 
 --*/
-NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
+					 IN PIRP Irp,
+					 IN PVOID Context)
 {
     PCLASS_POWER_CONTEXT PowerContext = (PCLASS_POWER_CONTEXT)Context;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension =
@@ -1486,12 +1483,9 @@ Arguments:
 Return Value:
 
 --*/
-NTSTATUS
-ClasspPowerHandler(
-    IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-    IN CLASS_POWER_OPTIONS
-	Options // ISSUE-2000/02/20-henrygab - pass pointer, not whole struct
-)
+NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
+			    IN PIRP Irp,
+			    IN CLASS_POWER_OPTIONS Options) // ISSUE-2000/02/20-henrygab - pass pointer, not whole struct
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDEVICE_OBJECT lowerDevice = commonExtension->LowerDeviceObject;
@@ -1806,7 +1800,8 @@ Routine Description:
     the least amount of work possible.
 
 --*/
-NTAPI NTSTATUS ClassMinimalPowerHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTAPI NTSTATUS ClassMinimalPowerHandler(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
@@ -1884,8 +1879,8 @@ Return Value:
     None
 
 --*/
-__control_entrypoint(DeviceDriver) NTAPI NTSTATUS
-    ClassSpinDownPowerHandler(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+NTAPI NTSTATUS ClassSpinDownPowerHandler(_In_ PDEVICE_OBJECT DeviceObject,
+					 _In_ PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     CLASS_POWER_OPTIONS options = { 0 };
@@ -1937,7 +1932,8 @@ Routine Description:
         CLASS_SPECIAL_NO_QUEUE_LOCK
 
 --*/
-NTAPI NTSTATUS ClassStopUnitPowerHandler(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+NTAPI NTSTATUS ClassStopUnitPowerHandler(_In_ PDEVICE_OBJECT DeviceObject,
+					 _In_ PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
 
@@ -2085,8 +2081,9 @@ Routine Description:
     sent until the previous one has fully completed.
 
 --*/
-NTAPI NTSTATUS ClasspStartNextPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				  IN PVOID Context)
+NTAPI NTSTATUS ClasspStartNextPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObject,
+						 IN PIRP Irp,
+						 IN PVOID Context)
 {
     PCLASS_POWER_CONTEXT PowerContext = (PCLASS_POWER_CONTEXT)Context;
 
@@ -2104,8 +2101,9 @@ NTAPI NTSTATUS ClasspStartNextPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_SUCCESS;
 } // end ClasspStartNextPowerIrpCompletion()
 
-NTAPI NTSTATUS ClasspDeviceLockFailurePowerIrpCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-					  IN PVOID Context)
+NTAPI NTSTATUS ClasspDeviceLockFailurePowerIrpCompletion(IN PDEVICE_OBJECT DeviceObject,
+							 IN PIRP Irp,
+							 IN PVOID Context)
 {
     PCLASS_POWER_CONTEXT PowerContext = (PCLASS_POWER_CONTEXT)Context;
     PCOMMON_DEVICE_EXTENSION commonExtension;
@@ -2197,8 +2195,6 @@ NTAPI NTSTATUS ClasspDeviceLockFailurePowerIrpCompletion(IN PDEVICE_OBJECT Devic
     return STATUS_SUCCESS;
 }
 
-_IRQL_requires_same_ NTSTATUS
-ClasspSendEnableIdlePowerIoctl(_In_ PDEVICE_OBJECT DeviceObject)
 /*++
 Description:
 
@@ -2216,6 +2212,7 @@ Return Value:
     this device is now enabled for idle (runtime) power management.
 
 --*/
+NTSTATUS ClasspSendEnableIdlePowerIoctl(_In_ PDEVICE_OBJECT DeviceObject)
 {
     NTSTATUS status;
     STORAGE_IDLE_POWER idlePower = { 0 };
@@ -2250,10 +2247,6 @@ Return Value:
     return status;
 }
 
-_Function_class_(POWER_SETTING_CALLBACK) _IRQL_requires_same_ NTAPI NTSTATUS
-    ClasspPowerSettingCallback(_In_ LPCGUID SettingGuid,
-			       _In_reads_bytes_(ValueLength) PVOID Value,
-			       _In_ ULONG ValueLength, _Inout_opt_ PVOID Context)
 /*++
 Description:
 
@@ -2277,6 +2270,10 @@ Return Value:
     STATUS_SUCCESS
 
 --*/
+NTAPI NTSTATUS ClasspPowerSettingCallback(_In_ LPCGUID SettingGuid,
+					  _In_ PVOID Value,
+					  _In_ ULONG ValueLength,
+					  _Inout_opt_ PVOID Context)
 {
     PIDLE_POWER_FDO_LIST_ENTRY fdoEntry = NULL;
 
@@ -2396,7 +2393,6 @@ Return Value:
     return STATUS_SUCCESS;
 }
 
-_IRQL_requires_same_ NTSTATUS ClasspEnableIdlePower(_In_ PDEVICE_OBJECT DeviceObject)
 /*++
 Description:
 
@@ -2417,6 +2413,7 @@ Return Value:
     An NTSTATUS code indicating the status of the operation.
 
 --*/
+NTSTATUS ClasspEnableIdlePower(_In_ PDEVICE_OBJECT DeviceObject)
 {
     NTSTATUS status = STATUS_SUCCESS;
     ULONG d3ColdDisabledByUser = FALSE;

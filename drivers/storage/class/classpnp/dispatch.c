@@ -68,7 +68,6 @@ NTAPI NTSTATUS ClassGlobalDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return (commonExtension->DispatchTable[irpStack->MajorFunction])(DeviceObject, Irp);
 }
 
-NTAPI NTSTATUS ClassDispatchUnimplemented(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 /*++
 
 Routine Description:
@@ -92,7 +91,7 @@ Return Value:
 
 
 --*/
-
+NTAPI NTSTATUS ClassDispatchUnimplemented(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -101,9 +100,6 @@ Return Value:
     // the same status stored in the packet.
     //
 
-    if ((IoGetCurrentIrpStackLocation(Irp))->MajorFunction == IRP_MJ_POWER) {
-	PoStartNextPowerIrp(Irp);
-    }
     Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return STATUS_INVALID_DEVICE_REQUEST;

@@ -28,13 +28,8 @@
 #define RTL_USE_AVL_TABLES 0
 
 #include <stddef.h>
-#include <stdarg.h>
-#include <stdlib.h>
-
 #include <ntddk.h>
-
 #include <scsi.h>
-
 #include <wmidata.h>
 #include <classpnp.h>
 #include <storduid.h>
@@ -47,24 +42,11 @@
 #include <ioevent.h>
 #include <ntstrsafe.h>
 #include <ntintsafe.h>
-
 #include <wdmguid.h>
 
 #if (NTDDI_VERSION >= NTDDI_WIN8)
-
 #include <ntpoapi.h>
-
 #include <srbhelper.h>
-
-#endif
-
-#ifdef __REACTOS__
-#undef MdlMappingNoExecute
-#define MdlMappingNoExecute 0
-#define NonPagedPoolNx NonPagedPool
-#define NonPagedPoolNxCacheAligned NonPagedPoolCacheAligned
-#undef POOL_NX_ALLOCATION
-#define POOL_NX_ALLOCATION 0
 #endif
 
 //
@@ -84,7 +66,7 @@
 #endif
 
 /*
- *  IA64 requires 8-byte alignment for pointers, but the IA64 NT kernel expects 16-byte alignment
+ * IA64 requires 8-byte alignment for pointers, but the IA64 NT kernel expects 16-byte alignment
  */
 #ifdef _WIN64
 #define PTRALIGN DECLSPEC_ALIGN(16)

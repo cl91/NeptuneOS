@@ -26,15 +26,6 @@ Revision History:
 #include <ntddk.h>
 #include <classpnp.h>
 
-#ifdef __REACTOS__
-#undef MdlMappingNoExecute
-#define MdlMappingNoExecute 0
-#define NonPagedPoolNx NonPagedPool
-#define NonPagedPoolNxCacheAligned NonPagedPoolCacheAligned
-#undef POOL_NX_ALLOCATION
-#define POOL_NX_ALLOCATION 0
-#endif
-
 #define DICTIONARY_SIGNATURE 'tciD'
 
 struct _DICTIONARY_HEADER {
@@ -54,16 +45,16 @@ VOID InitializeDictionary(IN PDICTIONARY Dictionary)
     return;
 }
 
-BOOLEAN
-TestDictionarySignature(IN PDICTIONARY Dictionary)
+BOOLEAN TestDictionarySignature(IN PDICTIONARY Dictionary)
 {
     return Dictionary->Signature == DICTIONARY_SIGNATURE;
 }
 
-NTSTATUS
-AllocateDictionaryEntry(IN PDICTIONARY Dictionary, IN ULONGLONG Key,
-			_In_range_(0, sizeof(FILE_OBJECT_EXTENSION)) IN ULONG Size,
-			IN ULONG Tag, OUT PVOID *Entry)
+NTSTATUS AllocateDictionaryEntry(IN PDICTIONARY Dictionary,
+				 IN ULONGLONG Key,
+				 IN ULONG Size,
+				 IN ULONG Tag,
+				 OUT PVOID *Entry)
 {
     PDICTIONARY_HEADER header;
     KIRQL oldIrql;
@@ -131,8 +122,7 @@ AllocateDictionaryEntry(IN PDICTIONARY Dictionary, IN ULONGLONG Key,
     return status;
 }
 
-PVOID
-GetDictionaryEntry(IN PDICTIONARY Dictionary, IN ULONGLONG Key)
+PVOID GetDictionaryEntry(IN PDICTIONARY Dictionary, IN ULONGLONG Key)
 {
     PDICTIONARY_HEADER entry;
     PVOID data;
