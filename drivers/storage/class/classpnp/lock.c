@@ -105,8 +105,8 @@ Return Value:
     lock.
 
 --*/
-NTAPI ULONG ClassAcquireRemoveLockEx(_In_ PDEVICE_OBJECT DeviceObject, _In_ PVOID Tag,
-			 _In_ PCSTR File, _In_ ULONG Line)
+NTAPI ULONG ClassAcquireRemoveLockEx(IN PDEVICE_OBJECT DeviceObject, IN PVOID Tag,
+				     IN PCSTR File, IN ULONG Line)
 // This function implements the acquisition of Tag
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
@@ -231,9 +231,11 @@ Return Value:
 
     none
 
+Note:
+    This function implements the release of Tag
+
 --*/
-NTAPI VOID ClassReleaseRemoveLock(_In_ PDEVICE_OBJECT DeviceObject, _In_opt_ PIRP Tag)
-// This function implements the release of Tag
+NTAPI VOID ClassReleaseRemoveLock(IN PDEVICE_OBJECT DeviceObject, IN OPTIONAL PIRP Tag)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     LONG lockValue;
@@ -378,8 +380,8 @@ Return Value:
     none
 
 --*/
-NTAPI VOID ClassCompleteRequest(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp,
-				_In_ CCHAR PriorityBoost)
+NTAPI VOID ClassCompleteRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				IN CCHAR PriorityBoost)
 {
 #if DBG
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
@@ -422,8 +424,9 @@ NTAPI VOID ClassCompleteRequest(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp,
     return;
 } // end ClassCompleteRequest()
 
-NTAPI RTL_GENERIC_COMPARE_RESULTS RemoveTrackingCompareRoutine(PRTL_GENERIC_TABLE Table, PVOID FirstStruct,
-			     PVOID SecondStruct)
+NTAPI RTL_GENERIC_COMPARE_RESULTS RemoveTrackingCompareRoutine(PRTL_GENERIC_TABLE Table,
+							       PVOID FirstStruct,
+							       PVOID SecondStruct)
 {
     PVOID tag1, tag2;
 
@@ -455,7 +458,7 @@ NTAPI VOID RemoveTrackingFreeRoutine(PRTL_GENERIC_TABLE Table, PVOID Buffer)
     FREE_POOL(Buffer);
 }
 
-VOID ClasspInitializeRemoveTracking(_In_ PDEVICE_OBJECT DeviceObject)
+VOID ClasspInitializeRemoveTracking(IN PDEVICE_OBJECT DeviceObject)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
 
@@ -481,7 +484,7 @@ VOID ClasspInitializeRemoveTracking(_In_ PDEVICE_OBJECT DeviceObject)
 #endif
 }
 
-VOID ClasspUninitializeRemoveTracking(_In_ PDEVICE_OBJECT DeviceObject)
+VOID ClasspUninitializeRemoveTracking(IN PDEVICE_OBJECT DeviceObject)
 {
 #if DBG
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;

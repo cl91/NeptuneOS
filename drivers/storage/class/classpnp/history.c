@@ -25,10 +25,6 @@ Revision History:
 #include "classp.h"
 #include "debug.h"
 
-//#ifdef ALLOC_PRAGMA
-//    #pragma alloc_text(PAGE, InitializeTransferPackets)
-//#endif
-
 VOID HistoryInitializeRetryLogs(_Out_ PSRB_HISTORY History, ULONG HistoryCount)
 {
     ULONG tmpSize = HistoryCount * sizeof(SRB_HISTORY_ITEM);

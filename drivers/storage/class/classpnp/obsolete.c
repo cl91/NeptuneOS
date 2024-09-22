@@ -8,9 +8,8 @@ Module Name:
 
 Abstract:
 
-    THESE ARE EXPORTED CLASSPNP FUNCTIONS (and their subroutines)
-    WHICH ARE NOW OBSOLETE.
-    BUT WE NEED TO KEEP THEM AROUND FOR LEGACY REASONS.
+    These are exported classpnp functions (and their subroutines)
+    which are now obsolete, but are kept around for legacy reasons.
 
 Environment:
 
@@ -42,8 +41,8 @@ typedef struct _CSCAN_LIST_ENTRY {
  *      StartIo routine when the transfer size is too large for the hardware.
  *      We map it to our new read/write handler.
  */
-NTAPI VOID ClassSplitRequest(_In_ PDEVICE_OBJECT Fdo, _In_ PIRP Irp,
-			     _In_ ULONG MaximumBytes)
+NTAPI VOID ClassSplitRequest(IN PDEVICE_OBJECT Fdo, IN PIRP Irp,
+			     IN ULONG MaximumBytes)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -92,7 +91,9 @@ Return Value:
     NT status
 
 --*/
-NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
+					 IN PIRP Irp,
+					 IN PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
@@ -144,13 +145,7 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN 
 	    retry = TRUE;
 	}
 
-#ifndef __REACTOS__
-#pragma warning(suppress : 4213) // okay to cast Arg4 as a ulong for this use case
-	if (retry && ((ULONG)(ULONG_PTR)irpStack->Parameters.Others.Argument4)--) {
-#else
 	if (retry && (*(ULONG *)&irpStack->Parameters.Others.Argument4)--) {
-#endif
-
 	    //
 	    // Retry request. If the class driver has supplied a StartIo,
 	    // call it directly for retries.
@@ -454,7 +449,7 @@ Return Value:
     NT Status
 
 --*/
-NTAPI NTSTATUS ClassBuildRequest(_In_ PDEVICE_OBJECT Fdo, _In_ PIRP Irp)
+NTAPI NTSTATUS ClassBuildRequest(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
@@ -477,9 +472,6 @@ NTAPI NTSTATUS ClassBuildRequest(_In_ PDEVICE_OBJECT Fdo, _In_ PIRP Irp)
     return STATUS_SUCCESS;
 
 } // end ClassBuildRequest()
-
-VOID ClasspBuildRequestEx(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, _In_ PIRP Irp,
-			  _In_ __drv_aliasesMem PSCSI_REQUEST_BLOCK Srb)
 
 /*++
 
@@ -513,6 +505,8 @@ Return Value:
     NT Status
 
 --*/
+VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP Irp,
+			  IN PSCSI_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION currentIrpStack = IoGetCurrentIrpStackLocation(Irp);
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
@@ -752,8 +746,6 @@ VOID ClasspInsertCScanList(IN PLIST_ENTRY ListHead, IN PCSCAN_LIST_ENTRY Entry)
     InsertTailList(ListHead, &(Entry->Entry));
 }
 
-VOID ClassInsertCScanList(IN PCSCAN_LIST List, IN PIRP Irp, IN ULONGLONG BlockNumber,
-			  IN BOOLEAN LowPriority)
 /*++
 
 Routine Description:
@@ -782,6 +774,8 @@ Return Value:
     none
 
 --*/
+VOID ClassInsertCScanList(IN PCSCAN_LIST List, IN PIRP Irp, IN ULONGLONG BlockNumber,
+			  IN BOOLEAN LowPriority)
 {
     PCSCAN_LIST_ENTRY entry = (PCSCAN_LIST_ENTRY)Irp->Tail.Overlay.DriverContext;
 
@@ -806,8 +800,6 @@ Return Value:
     return;
 }
 
-VOID ClassFreeOrReuseSrb(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			 IN __drv_freesMem(mem) PSCSI_REQUEST_BLOCK Srb)
 /*++
 
 Routine Description:
@@ -828,7 +820,8 @@ Return Value:
     none.
 
 --*/
-
+VOID ClassFreeOrReuseSrb(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			 IN PSCSI_REQUEST_BLOCK Srb)
 {
     PCOMMON_DEVICE_EXTENSION commonExt = &FdoExtension->CommonExtension;
 
@@ -880,8 +873,7 @@ Return Value:
     None
 
 --*/
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassDeleteSrbLookasideList(_Inout_ PCOMMON_DEVICE_EXTENSION CommonExtension)
+NTAPI VOID ClassDeleteSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION CommonExtension)
 {
     PAGED_CODE();
 
@@ -923,10 +915,8 @@ Note:
     this call.
 
 --*/
-
-_IRQL_requires_max_(PASSIVE_LEVEL) NTAPI VOID
-    ClassInitializeSrbLookasideList(_Inout_ PCOMMON_DEVICE_EXTENSION CommonExtension,
-				    _In_ ULONG NumberElements)
+NTAPI VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION CommonExtension,
+					   IN ULONG NumberElements)
 {
     size_t sizeNeeded;
     PFUNCTIONAL_DEVICE_EXTENSION fdo;

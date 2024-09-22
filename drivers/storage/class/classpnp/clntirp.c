@@ -92,8 +92,8 @@ PIRP DequeueDeferredClientIrp(PDEVICE_OBJECT Fdo)
 
     //
     // The DeferredClientIrpList is almost always empty.
-    // We don't want to grab the spinlock every time we check it (which is on every xfer completion)
-    // so check once first before we grab the spinlock.
+    // We don't want to grab the spinlock every time we check it (which is on
+    // every xfer completion) so check once first before we grab the spinlock.
     //
     if (IsListEmpty(&fdoData->DeferredClientIrpList)) {
 	irp = NULL;
@@ -301,8 +301,8 @@ Return Value:
     The idle interval in ms.
 
 --*/
-ULONGLONG
-ClasspGetIdleTime(IN PCLASS_PRIVATE_FDO_DATA FdoData, IN LARGE_INTEGER CurrentTime)
+ULONGLONG ClasspGetIdleTime(IN PCLASS_PRIVATE_FDO_DATA FdoData,
+			    IN LARGE_INTEGER CurrentTime)
 {
     ULONGLONG idleTime;
     NTSTATUS status;
@@ -352,9 +352,8 @@ Return Value:
     TRUE if sufficient idle duration has elapsed to issue the next idle request.
 
 --*/
-LOGICAL
-ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
-			     OUT LARGE_INTEGER **CurrentTimeIn)
+LOGICAL ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
+				     OUT LARGE_INTEGER **CurrentTimeIn)
 {
     ULONGLONG idleInterval;
     LARGE_INTEGER CurrentTime;
@@ -411,7 +410,9 @@ Return Value:
     None
 
 --*/
-NTAPI VOID ClasspIdleTimerDpc(IN PKDPC Dpc, IN PVOID Context, IN PVOID SystemArgument1,
+NTAPI VOID ClasspIdleTimerDpc(IN PKDPC Dpc,
+			      IN PVOID Context,
+			      IN PVOID SystemArgument1,
 			      IN PVOID SystemArgument2)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Context;
@@ -514,8 +515,7 @@ Return Value:
     NT status code.
 
 --*/
-NTSTATUS
-ClasspEnqueueIdleRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+NTSTATUS ClasspEnqueueIdleRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;

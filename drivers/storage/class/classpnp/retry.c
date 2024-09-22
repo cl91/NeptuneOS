@@ -566,8 +566,10 @@ VOID TransferPacketQueueRetryDpc(PTRANSFER_PACKET Pkt)
     }
 }
 
-NTAPI VOID TransferPacketRetryTimerDpc(IN PKDPC Dpc, IN PVOID DeferredContext,
-				       IN PVOID SystemArgument1, IN PVOID SystemArgument2)
+NTAPI VOID TransferPacketRetryTimerDpc(IN PKDPC Dpc,
+				       IN PVOID DeferredContext,
+				       IN PVOID SystemArgument1,
+				       IN PVOID SystemArgument2)
 {
     PTRANSFER_PACKET pkt;
     PDEVICE_OBJECT fdo;

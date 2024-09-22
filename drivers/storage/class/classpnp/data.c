@@ -27,10 +27,6 @@ Revision History:
  */
 LIST_ENTRY AllFdosList = { &AllFdosList, &AllFdosList };
 
-#ifdef ALLOC_DATA_PRAGMA
-#pragma data_seg("PAGEDATA")
-#endif
-
 /*
 #define FDO_HACK_CANNOT_LOCK_MEDIA              (0x00000001)
 #define FDO_HACK_GESN_IS_BAD                    (0x00000002)
@@ -214,7 +210,3 @@ GUID ClassGuidQueryRegInfoEx = GUID_CLASSPNP_QUERY_REGINFOEX;
 GUID ClassGuidSenseInfo2 = GUID_CLASSPNP_SENSEINFO2;
 GUID ClassGuidWorkingSet = GUID_CLASSPNP_WORKING_SET;
 GUID ClassGuidSrbSupport = GUID_CLASSPNP_SRB_SUPPORT;
-
-#ifdef ALLOC_DATA_PRAGMA
-#pragma data_seg()
-#endif
