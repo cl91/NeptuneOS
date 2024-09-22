@@ -23,6 +23,7 @@
 #ifndef _NTSRB_
 #define _NTSRB_
 
+#include <nt.h>
 #include "hal.h"
 
 /* NOTE: the current SCSI_MAXIMUM_TARGETS_PER_BUS is applicable
