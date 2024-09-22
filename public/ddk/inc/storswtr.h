@@ -27,40 +27,6 @@
 #define TRACE_LEVEL_INFORMATION 4
 #define TRACE_LEVEL_VERBOSE 5
 
-// if defined, uses KdPrint instead of WMI tracing
-#ifndef DEBUG_USE_KDPRINT
-
-#define WPP_NORMAL_FLAGS                \
-    WPP_DEFINE_BIT(TRACE_FLAG_GENERAL)  \
-    WPP_DEFINE_BIT(TRACE_FLAG_PNP)      \
-    WPP_DEFINE_BIT(TRACE_FLAG_POWER)    \
-    WPP_DEFINE_BIT(TRACE_FLAG_RW)       \
-    WPP_DEFINE_BIT(TRACE_FLAG_IOCTL)    \
-    WPP_DEFINE_BIT(TRACE_FLAG_QUEUE)    \
-    WPP_DEFINE_BIT(TRACE_FLAG_WMI)      \
-    WPP_DEFINE_BIT(TRACE_FLAG_TIMER)    \
-    WPP_DEFINE_BIT(TRACE_FLAG_INIT)     \
-    WPP_DEFINE_BIT(TRACE_FLAG_LOCK)     \
-    WPP_DEFINE_BIT(TRACE_FLAG_DEBUG1)   \
-    WPP_DEFINE_BIT(TRACE_FLAG_DEBUG2)   \
-    WPP_DEFINE_BIT(TRACE_FLAG_MCN)      \
-    WPP_DEFINE_BIT(TRACE_FLAG_ISR)      \
-    WPP_DEFINE_BIT(TRACE_FLAG_ENUM)     \
-    WPP_DEFINE_BIT(TRACE_FLAG_LOGOTEST) \
-    WPP_DEFINE_BIT(TRACE_FLAG_DUMP)     \
-    WPP_DEFINE_BIT(TRACE_FLAG_SCSI)
-
-#define WPP_CONTROL_GUIDS_NORMAL_FLAGS(_GUID) \
-    WPP_DEFINE_CONTROL_GUID(wppCtlGuid, _GUID, WPP_NORMAL_FLAGS)
-
-#define WPP_LEVEL_FLAGS_ENABLED(lvl, flags) \
-    (WPP_LEVEL_ENABLED(flags) && WPP_CONTROL(WPP_BIT_##flags).Level >= lvl)
-#define WPP_LEVEL_FLAGS_LOGGER(lvl, flags) WPP_LEVEL_LOGGER(flags)
-
-#define DEBUG_USE_WPP
-
-#else // DEBUG_USE_KDPRINT
-
 #ifdef DEBUG_USE_WPP
 #undef DEBUG_USE_WPP
 #endif
@@ -97,7 +63,7 @@ typedef enum _DEBUG_FLAGS {
     TRACE_FLAG_SCSI
 } DEBUG_FLAGS, *PDEBUG_FLAGS;
 
-#if DBG && (NTDDI_VERSION >= NTDDI_WINXP)
+#if DBG
 
 #define TracePrint(x) StorDebugPrint x
 
@@ -127,7 +93,5 @@ void StorDebugPrint(int DebugPrintLevel,
 #define TracePrint(x)
 
 #endif // DBG && (NTDDI_VERSION >= NTDDI_WINXP)
-
-#endif // DEBUG_USE_KDPRINT
 
 #endif // _STORSWTR_H_
