@@ -1644,6 +1644,8 @@ NTAPI NTSYSAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
 #define WMIREGISTER                 0
 #define WMIUPDATE                   1
 
+typedef ULONGLONG REGHANDLE, *PREGHANDLE;
+
 typedef VOID (NTAPI *WMI_NOTIFICATION_CALLBACK)(PVOID Wnode,
 						PVOID Context);
 

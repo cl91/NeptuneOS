@@ -30,6 +30,7 @@
 #include <stddef.h>
 #include <ntddk.h>
 #include <scsi.h>
+#include <storswtr.h>
 #include <wmidata.h>
 #include <classpnp.h>
 #include <storduid.h>
@@ -1194,14 +1195,7 @@ FORCEINLINE BOOLEAN ClasspIsIdleRequestSupported(PCLASS_PRIVATE_FDO_DATA FdoData
 
 FORCEINLINE VOID ClasspMarkIrpAsIdle(PIRP Irp, BOOLEAN Idle)
 {
-#ifndef __REACTOS__
-// truncation is not an issue for this use case
-// nonstandard extension used is not an issue for this use case
-#pragma warning(suppress : 4305; suppress : 4213)
-    ((BOOLEAN)Irp->Tail.Overlay.DriverContext[1]) = Idle;
-#else
     ((PULONG_PTR)Irp->Tail.Overlay.DriverContext)[1] = Idle;
-#endif
 }
 
 FORCEINLINE BOOLEAN ClasspIsIdleRequest(PIRP Irp)
