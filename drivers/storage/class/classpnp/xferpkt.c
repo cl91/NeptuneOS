@@ -307,7 +307,7 @@ VOID DestroyAllTransferPackets(PDEVICE_OBJECT Fdo)
     FREE_POOL(fdoData->SrbTemplate);
 }
 
-__drv_allocatesMem(Mem) PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
+PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -478,7 +478,7 @@ __drv_allocatesMem(Mem) PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
  *  DestroyTransferPacket
  *
  */
-VOID DestroyTransferPacket(_In_ __drv_freesMem(mem) PTRANSFER_PACKET Pkt)
+VOID DestroyTransferPacket(IN PTRANSFER_PACKET Pkt)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -506,7 +506,7 @@ VOID DestroyTransferPacket(_In_ __drv_freesMem(mem) PTRANSFER_PACKET Pkt)
     FREE_POOL(Pkt);
 }
 
-VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo, __drv_aliasesMem PTRANSFER_PACKET Pkt)
+VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo, PTRANSFER_PACKET Pkt)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -634,13 +634,15 @@ VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo, __drv_aliasesMem PTRANSFER_PA
     }
 }
 
-PTRANSFER_PACKET DequeueFreeTransferPacket(PDEVICE_OBJECT Fdo, BOOLEAN AllocIfNeeded)
+PTRANSFER_PACKET DequeueFreeTransferPacket(PDEVICE_OBJECT Fdo,
+					   BOOLEAN AllocIfNeeded)
 {
     return DequeueFreeTransferPacketEx(Fdo, AllocIfNeeded, KeGetCurrentNodeNumber());
 }
 
-PTRANSFER_PACKET DequeueFreeTransferPacketEx(_In_ PDEVICE_OBJECT Fdo,
-					     _In_ BOOLEAN AllocIfNeeded, _In_ ULONG Node)
+PTRANSFER_PACKET DequeueFreeTransferPacketEx(IN PDEVICE_OBJECT Fdo,
+					     IN BOOLEAN AllocIfNeeded,
+					     IN ULONG Node)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -697,8 +699,11 @@ PTRANSFER_PACKET DequeueFreeTransferPacketEx(_In_ PDEVICE_OBJECT Fdo,
  *        The Irp is set up in SubmitTransferPacket because it must be reset
  *        for each packet submission.
  */
-VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt, PVOID Buf, ULONG Len,
-				  LARGE_INTEGER DiskLocation, PIRP OriginalIrp)
+VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt,
+				  PVOID Buf,
+				  ULONG Len,
+				  LARGE_INTEGER DiskLocation,
+				  PIRP OriginalIrp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = Pkt->Fdo->DeviceExtension;
@@ -719,8 +724,7 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt, PVOID Buf, ULONG Len,
      * This field is useful when debugging, since low-memory conditions are
      * handled differently for CDROM (which is the only driver using StartIO)
      */
-    Pkt->DriverUsesStartIO = (commonExtension->DriverExtension->InitData.ClassStartIo !=
-			      NULL);
+    Pkt->DriverUsesStartIO = (commonExtension->DriverExtension->InitData.ClassStartIo != NULL);
 
     /*
      *  Slap the constant SRB fields in from our pre-initialized template.
@@ -771,8 +775,7 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt, PVOID Buf, ULONG Len,
 	    pCdb->CDB10.LogicalBlockByte3 = ((PFOUR_BYTE)&logicalBlockAddr.LowPart)->Byte0;
 	    pCdb->CDB10.TransferBlocksMsb = ((PFOUR_BYTE)&numTransferBlocks)->Byte1;
 	    pCdb->CDB10.TransferBlocksLsb = ((PFOUR_BYTE)&numTransferBlocks)->Byte0;
-	    pCdb->CDB10.OperationCode = (majorFunc == IRP_MJ_READ) ? SCSIOP_READ :
-								     SCSIOP_WRITE;
+	    pCdb->CDB10.OperationCode = (majorFunc == IRP_MJ_READ) ? SCSIOP_READ : SCSIOP_WRITE;
 	}
     }
 
@@ -908,7 +911,9 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     return IoCallDriver(nextDevObj, Pkt->Irp);
 }
 
-NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
+				   IN PIRP Irp,
+				   IN PVOID Context)
 {
     PTRANSFER_PACKET pkt = (PTRANSFER_PACKET)Context;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = pkt->Fdo->DeviceExtension;
@@ -1293,8 +1298,10 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo, IN PIRP Irp, IN PV
  *
  *      Set up a transferPacket for a synchronous Ejection Control transfer.
  */
-VOID SetupEjectionTransferPacket(TRANSFER_PACKET *Pkt, BOOLEAN PreventMediaRemoval,
-				 PKEVENT SyncEventPtr, PIRP OriginalIrp)
+VOID SetupEjectionTransferPacket(TRANSFER_PACKET *Pkt,
+				 BOOLEAN PreventMediaRemoval,
+				 PKEVENT SyncEventPtr,
+				 PIRP OriginalIrp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -1342,9 +1349,13 @@ VOID SetupEjectionTransferPacket(TRANSFER_PACKET *Pkt, BOOLEAN PreventMediaRemov
  *
  *      Set up a transferPacket for a synchronous Mode Sense transfer.
  */
-VOID SetupModeSenseTransferPacket(TRANSFER_PACKET *Pkt, PKEVENT SyncEventPtr,
-				  PVOID ModeSenseBuffer, UCHAR ModeSenseBufferLen,
-				  UCHAR PageMode, UCHAR SubPage, PIRP OriginalIrp,
+VOID SetupModeSenseTransferPacket(TRANSFER_PACKET *Pkt,
+				  PKEVENT SyncEventPtr,
+				  PVOID ModeSenseBuffer,
+				  UCHAR ModeSenseBufferLen,
+				  UCHAR PageMode,
+				  UCHAR SubPage,
+				  PIRP OriginalIrp,
 				  UCHAR PageControl)
 
 {
@@ -1400,9 +1411,12 @@ VOID SetupModeSenseTransferPacket(TRANSFER_PACKET *Pkt, PKEVENT SyncEventPtr,
  *
  *      Set up a transferPacket for a synchronous Mode Select transfer.
  */
-VOID SetupModeSelectTransferPacket(TRANSFER_PACKET *Pkt, PKEVENT SyncEventPtr,
-				   PVOID ModeSelectBuffer, UCHAR ModeSelectBufferLen,
-				   BOOLEAN SavePages, PIRP OriginalIrp)
+VOID SetupModeSelectTransferPacket(TRANSFER_PACKET *Pkt,
+				   PKEVENT SyncEventPtr,
+				   PVOID ModeSelectBuffer,
+				   UCHAR ModeSelectBufferLen,
+				   BOOLEAN SavePages,
+				   PIRP OriginalIrp)
 
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
@@ -1454,9 +1468,12 @@ VOID SetupModeSelectTransferPacket(TRANSFER_PACKET *Pkt, PKEVENT SyncEventPtr,
  *
  *      Set up a transferPacket for a synchronous Drive Capacity transfer.
  */
-VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt, PVOID ReadCapacityBuffer,
-				      ULONG ReadCapacityBufferLen, PKEVENT SyncEventPtr,
-				      PIRP OriginalIrp, BOOLEAN Use16ByteCdb)
+VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt,
+				      PVOID ReadCapacityBuffer,
+				      ULONG ReadCapacityBufferLen,
+				      PKEVENT SyncEventPtr,
+				      PIRP OriginalIrp,
+				      BOOLEAN Use16ByteCdb)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -1514,55 +1531,53 @@ VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt, PVOID ReadCapacityBu
 }
 
 #if 0
+/*
+ *  SetupSendStartUnitTransferPacket
+ *
+ *      Set up a transferPacket for a synchronous Send Start Unit transfer.
+ */
+VOID SetupSendStartUnitTransferPacket(TRANSFER_PACKET *Pkt,
+				      PIRP OriginalIrp)
+{
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
+    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
+    PCDB pCdb;
+
+    RtlZeroMemory(&Pkt->Srb, sizeof(SCSI_REQUEST_BLOCK));
+
     /*
-     *  SetupSendStartUnitTransferPacket
-     *
-     *      Set up a transferPacket for a synchronous Send Start Unit transfer.
+     *  Initialize the SRB.
+     *  Use a very long timeout value to give the drive time to spin up.
      */
-    VOID SetupSendStartUnitTransferPacket(   TRANSFER_PACKET *Pkt,
-                                                    PIRP OriginalIrp)
-    {
-        PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
-        PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-        PCDB pCdb;
+    Pkt->Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
+    Pkt->Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+    Pkt->Srb->TimeOutValue = START_UNIT_TIMEOUT;
+    Pkt->Srb->CdbLength = 6;
+    Pkt->Srb->OriginalRequest = Pkt->Irp;
+    Pkt->Srb->SenseInfoBuffer = &Pkt->SrbErrorSenseData;
+    Pkt->Srb->SenseInfoBufferLength = sizeof(Pkt->SrbErrorSenseData);
+    Pkt->Srb->Lun = 0;
 
-        PAGED_CODE();
+    SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_NO_DATA_TRANSFER);
+    SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_DISABLE_AUTOSENSE);
+    SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_DISABLE_SYNCH_TRANSFER);
 
-        RtlZeroMemory(&Pkt->Srb, sizeof(SCSI_REQUEST_BLOCK));
+    pCdb = (PCDB)Pkt->Srb->Cdb;
+    pCdb->START_STOP.OperationCode = SCSIOP_START_STOP_UNIT;
+    pCdb->START_STOP.Start = 1;
+    pCdb->START_STOP.Immediate = 0;
+    pCdb->START_STOP.LogicalUnitNumber = 0;
 
-        /*
-         *  Initialize the SRB.
-         *  Use a very long timeout value to give the drive time to spin up.
-         */
-        Pkt->Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-        Pkt->Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-        Pkt->Srb->TimeOutValue = START_UNIT_TIMEOUT;
-        Pkt->Srb->CdbLength = 6;
-        Pkt->Srb->OriginalRequest = Pkt->Irp;
-        Pkt->Srb->SenseInfoBuffer = &Pkt->SrbErrorSenseData;
-        Pkt->Srb->SenseInfoBufferLength = sizeof(Pkt->SrbErrorSenseData);
-        Pkt->Srb->Lun = 0;
-
-        SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_NO_DATA_TRANSFER);
-        SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_DISABLE_AUTOSENSE);
-        SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_DISABLE_SYNCH_TRANSFER);
-
-        pCdb = (PCDB)Pkt->Srb->Cdb;
-        pCdb->START_STOP.OperationCode = SCSIOP_START_STOP_UNIT;
-        pCdb->START_STOP.Start = 1;
-        pCdb->START_STOP.Immediate = 0;
-        pCdb->START_STOP.LogicalUnitNumber = 0;
-
-        Pkt->OriginalIrp = OriginalIrp;
-        Pkt->NumRetries = 0;
-        Pkt->SyncEventPtr = NULL;
-        Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
-    }
+    Pkt->OriginalIrp = OriginalIrp;
+    Pkt->NumRetries = 0;
+    Pkt->SyncEventPtr = NULL;
+    Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
+}
 #endif
 
-NTAPI VOID CleanupTransferPacketToWorkingSetSizeWorker(_In_ PVOID Fdo,
-						       _In_opt_ PVOID Context,
-						       _In_ PIO_WORKITEM IoWorkItem)
+NTAPI VOID CleanupTransferPacketToWorkingSetSizeWorker(IN PVOID Fdo,
+						       IN OPTIONAL PVOID Context,
+						       IN PIO_WORKITEM IoWorkItem)
 {
     ULONG node = (ULONG)(ULONG_PTR)Context;
 
@@ -1580,10 +1595,6 @@ NTAPI VOID CleanupTransferPacketToWorkingSetSizeWorker(_In_ PVOID Fdo,
     }
 }
 
-VOID CleanupTransferPacketToWorkingSetSize(_In_ PDEVICE_OBJECT Fdo,
-					   _In_ BOOLEAN LimitNumPktToDelete,
-					   _In_ ULONG Node)
-
 /*
 Routine Description:
 
@@ -1596,7 +1607,9 @@ Arguments:
     Node: NUMA node transfer packet is associated with.
 
 --*/
-
+VOID CleanupTransferPacketToWorkingSetSize(IN PDEVICE_OBJECT Fdo,
+					   IN BOOLEAN LimitNumPktToDelete,
+					   IN ULONG Node)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
@@ -1661,14 +1674,6 @@ Arguments:
     return;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ VOID
-    ClasspSetupPopulateTokenTransferPacket(
-	_In_ __drv_aliasesMem POFFLOAD_READ_CONTEXT OffloadReadContext,
-	_In_ PTRANSFER_PACKET Pkt, _In_ ULONG Length,
-	_In_reads_bytes_(Length) PUCHAR PopulateTokenBuffer, _In_ PIRP OriginalIrp,
-	_In_ ULONG ListIdentifier)
-
 /*++
 
 Routine description:
@@ -1690,14 +1695,17 @@ Return Value:
     Nothing
 
 --*/
-
+VOID ClasspSetupPopulateTokenTransferPacket(IN POFFLOAD_READ_CONTEXT OffloadReadContext,
+					    IN PTRANSFER_PACKET Pkt,
+					    IN ULONG Length,
+					    IN PUCHAR PopulateTokenBuffer,
+					    IN PIRP OriginalIrp,
+					    IN ULONG ListIdentifier)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PCLASS_PRIVATE_FDO_DATA fdoData;
     PCDB pCdb;
     ULONG srbLength;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupPopulateTokenTransferPacket (%p): Entering function. Irp "
@@ -1756,14 +1764,6 @@ Return Value:
     return;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ VOID
-    ClasspSetupReceivePopulateTokenInformationTransferPacket(
-	_In_ POFFLOAD_READ_CONTEXT OffloadReadContext, _In_ PTRANSFER_PACKET Pkt,
-	_In_ ULONG Length,
-	_In_reads_bytes_(Length) PUCHAR ReceivePopulateTokenInformationBuffer,
-	_In_ PIRP OriginalIrp, _In_ ULONG ListIdentifier)
-
 /*++
 
 Routine description:
@@ -1775,7 +1775,7 @@ Arguments:
 
     Pkt - The transfer packet to be sent down to the lower driver
     Length - Length of the buffer being sent as part of the command
-    ReceivePopulateTokenInformationBuffer - The buffer into which the target will pass back the token
+    Buffer - The buffer into which the target will pass back the token
     OriginalIrp - The Io request to be processed
     ListIdentifier - The identifier that will be used to correlate this command with its corresponding previous populate token operation
 
@@ -1784,7 +1784,12 @@ Return Value:
     Nothing
 
 --*/
-
+VOID ClasspSetupReceivePopulateTokenInformationTransferPacket(IN POFFLOAD_READ_CONTEXT Ctx,
+							      IN PTRANSFER_PACKET Pkt,
+							      IN ULONG Length,
+							      IN PUCHAR Buffer,
+							      IN PIRP OriginalIrp,
+							      IN ULONG ListIdentifier)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PCLASS_PRIVATE_FDO_DATA fdoData;
@@ -1814,7 +1819,7 @@ Return Value:
     SrbSetSenseInfoBuffer(Pkt->Srb, &Pkt->SrbErrorSenseData);
     SrbSetSenseInfoBufferLength(Pkt->Srb, sizeof(Pkt->SrbErrorSenseData));
     SrbSetTimeOutValue(Pkt->Srb, fdoExt->TimeOutValue);
-    SrbSetDataBuffer(Pkt->Srb, ReceivePopulateTokenInformationBuffer);
+    SrbSetDataBuffer(Pkt->Srb, Buffer);
     SrbSetDataTransferLength(Pkt->Srb, Length);
 
     SrbAssignSrbFlags(Pkt->Srb, fdoExt->SrbFlags | SRB_FLAGS_DATA_IN |
@@ -1832,7 +1837,7 @@ Return Value:
 	REVERSE_BYTES(&pCdb->RECEIVE_TOKEN_INFORMATION.AllocationLength, &Length);
     }
 
-    Pkt->BufPtrCopy = ReceivePopulateTokenInformationBuffer;
+    Pkt->BufPtrCopy = Buffer;
     Pkt->BufLenCopy = Length;
 
     Pkt->OriginalIrp = OriginalIrp;
@@ -1840,7 +1845,7 @@ Return Value:
     Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
 
     Pkt->ContinuationRoutine = ClasspReceivePopulateTokenInformationTransferPacketDone;
-    Pkt->ContinuationContext = OffloadReadContext;
+    Pkt->ContinuationContext = Ctx;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupReceivePopulateTokenInformationTransferPacket (%p): Exiting "
@@ -1849,14 +1854,6 @@ Return Value:
 
     return;
 }
-
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ VOID
-    ClasspSetupWriteUsingTokenTransferPacket(
-	_In_ __drv_aliasesMem POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
-	_In_ PTRANSFER_PACKET Pkt, _In_ ULONG Length,
-	_In_reads_bytes_(Length) PUCHAR WriteUsingTokenBuffer, _In_ PIRP OriginalIrp,
-	_In_ ULONG ListIdentifier)
 
 /*++
 
@@ -1873,7 +1870,7 @@ Arguments:
 
     Pkt - The transfer packet to be sent down to the lower driver
     Length - Length of the buffer being sent as part of the command
-    WriteUsingTokenBuffer - The buffer that contains the read token and the write LBA ranges information for the WriteUsingToken operation
+    Buffer - The buffer that contains the read token and the write LBA ranges information for the WriteUsingToken operation
     OriginalIrp - The Io request to be processed
     ListIdentifier - The identifier that will be used to correlate a subsequent command to retrieve extended results in case of command failure
 
@@ -1882,7 +1879,12 @@ Return Value:
     Nothing
 
 --*/
-
+VOID ClasspSetupWriteUsingTokenTransferPacket(IN POFFLOAD_WRITE_CONTEXT Ctx,
+					      IN PTRANSFER_PACKET Pkt,
+					      IN ULONG Length,
+					      IN PUCHAR Buffer,
+					      IN PIRP OriginalIrp,
+					      IN ULONG ListIdentifier)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PCLASS_PRIVATE_FDO_DATA fdoData;
@@ -1912,7 +1914,7 @@ Return Value:
     SrbSetSenseInfoBuffer(Pkt->Srb, &Pkt->SrbErrorSenseData);
     SrbSetSenseInfoBufferLength(Pkt->Srb, sizeof(Pkt->SrbErrorSenseData));
     SrbSetTimeOutValue(Pkt->Srb, fdoExt->TimeOutValue);
-    SrbSetDataBuffer(Pkt->Srb, WriteUsingTokenBuffer);
+    SrbSetDataBuffer(Pkt->Srb, Buffer);
     SrbSetDataTransferLength(Pkt->Srb, Length);
 
     SrbAssignSrbFlags(Pkt->Srb, fdoExt->SrbFlags | SRB_FLAGS_DATA_OUT |
@@ -1928,7 +1930,7 @@ Return Value:
 	REVERSE_BYTES(&pCdb->TOKEN_OPERATION.ListIdentifier, &ListIdentifier);
     }
 
-    Pkt->BufPtrCopy = WriteUsingTokenBuffer;
+    Pkt->BufPtrCopy = Buffer;
     Pkt->BufLenCopy = Length;
 
     Pkt->OriginalIrp = OriginalIrp;
@@ -1936,7 +1938,7 @@ Return Value:
     Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
 
     Pkt->ContinuationRoutine = ClasspWriteUsingTokenTransferPacketDone;
-    Pkt->ContinuationContext = OffloadWriteContext;
+    Pkt->ContinuationContext = Ctx;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupWriteUsingTokenTransferPacket (%p): Exiting function with "
@@ -1945,14 +1947,6 @@ Return Value:
 
     return;
 }
-
-_IRQL_requires_max_(APC_LEVEL)
-    _IRQL_requires_min_(PASSIVE_LEVEL) _IRQL_requires_same_ VOID
-    ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(
-	_In_ POFFLOAD_WRITE_CONTEXT OffloadWriteContext, _In_ PTRANSFER_PACKET Pkt,
-	_In_ ULONG Length,
-	_In_reads_bytes_(Length) PUCHAR ReceiveWriteUsingTokenInformationBuffer,
-	_In_ PIRP OriginalIrp, _In_ ULONG ListIdentifier)
 
 /*++
 
@@ -1966,7 +1960,7 @@ Arguments:
     Pkt - The transfer packet to be sent down to the lower driver
     SyncEventPtr - The event that gets signaled once the IRP contained in the packet completes
     Length - Length of the buffer being sent as part of the command
-    ReceiveWriteUsingTokenInformationBuffer - The buffer into which the target will pass back the extended results
+    Buffer - The buffer into which the target will pass back the extended results
     OriginalIrp - The Io request to be processed
     ListIdentifier - The identifier that will be used to correlate this command with its corresponding previous write using token operation
 
@@ -1975,6 +1969,12 @@ Return Value:
     Nothing
 
 --*/
+VOID ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(IN POFFLOAD_WRITE_CONTEXT Ctx,
+								IN PTRANSFER_PACKET Pkt,
+								IN ULONG Length,
+								IN PUCHAR Buffer,
+								IN PIRP OriginalIrp,
+								IN ULONG ListIdentifier)
 
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
@@ -2005,7 +2005,7 @@ Return Value:
     SrbSetSenseInfoBuffer(Pkt->Srb, &Pkt->SrbErrorSenseData);
     SrbSetSenseInfoBufferLength(Pkt->Srb, sizeof(Pkt->SrbErrorSenseData));
     SrbSetTimeOutValue(Pkt->Srb, fdoExt->TimeOutValue);
-    SrbSetDataBuffer(Pkt->Srb, ReceiveWriteUsingTokenInformationBuffer);
+    SrbSetDataBuffer(Pkt->Srb, Buffer);
     SrbSetDataTransferLength(Pkt->Srb, Length);
 
     SrbAssignSrbFlags(Pkt->Srb, fdoExt->SrbFlags | SRB_FLAGS_DATA_IN |
@@ -2023,7 +2023,7 @@ Return Value:
 	REVERSE_BYTES(&pCdb->RECEIVE_TOKEN_INFORMATION.ListIdentifier, &ListIdentifier);
     }
 
-    Pkt->BufPtrCopy = ReceiveWriteUsingTokenInformationBuffer;
+    Pkt->BufPtrCopy = Buffer;
     Pkt->BufLenCopy = Length;
 
     Pkt->OriginalIrp = OriginalIrp;
@@ -2032,7 +2032,7 @@ Return Value:
 
     Pkt->ContinuationRoutine = (PCONTINUATION_ROUTINE)
 	ClasspReceiveWriteUsingTokenInformationTransferPacketDone;
-    Pkt->ContinuationContext = OffloadWriteContext;
+    Pkt->ContinuationContext = Ctx;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupReceiveWriteUsingTokenInformationTransferPacket (%p): "
