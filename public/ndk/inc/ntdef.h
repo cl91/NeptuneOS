@@ -76,7 +76,7 @@ typedef CONST VOID *PCVOID;
 typedef char CHAR, CCHAR;
 typedef unsigned char UCHAR;
 typedef signed char SCHAR;
-typedef CHAR *PCHAR;
+typedef CHAR *PCHAR, *PCCHAR;
 typedef UCHAR *PUCHAR;
 typedef CONST CHAR *PCSTR, *LPCSTR, *PCSZ;
 typedef unsigned char BYTE, *PBYTE;
