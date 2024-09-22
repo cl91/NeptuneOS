@@ -2,8 +2,6 @@
 
 #include <ntimage.h>
 
-#define NT_ASSERT(...)	assert(__VA_ARGS__)
-
 typedef struct _CLIENT_ID {
     HANDLE UniqueProcess;
     HANDLE UniqueThread;
