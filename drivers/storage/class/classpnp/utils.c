@@ -35,7 +35,6 @@ BOOLEAN ClasspMyStringMatches(IN OPTIONAL PCHAR StringToMatch,
 			      IN PCHAR TargetString)
 {
     ULONG length; // strlen returns an int, not size_t (!)
-    PAGED_CODE();
     NT_ASSERT(TargetString);
     // if no match requested, return TRUE
     if (StringToMatch == NULL) {
@@ -62,8 +61,6 @@ NTAPI VOID ClassGetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     HANDLE deviceSubkeyHandle = NULL;
     ULONG defaultParameterValue;
 
-    PAGED_CODE();
-
     //
     // open the given parameter
     //
@@ -80,9 +77,9 @@ NTAPI VOID ClassGetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 				   deviceParameterHandle, NULL);
 
-	status = ZwOpenKey(&deviceSubkeyHandle, KEY_READ, &objectAttributes);
+	status = NtOpenKey(&deviceSubkeyHandle, KEY_READ, &objectAttributes);
 	if (!NT_SUCCESS(status)) {
-	    ZwClose(deviceParameterHandle);
+	    NtClose(deviceParameterHandle);
 	}
     }
 
@@ -111,10 +108,10 @@ NTAPI VOID ClassGetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	//
 
 	if (SubkeyName) {
-	    ZwClose(deviceSubkeyHandle);
+	    NtClose(deviceSubkeyHandle);
 	}
 
-	ZwClose(deviceParameterHandle);
+	NtClose(deviceParameterHandle);
     }
 
     if (!NT_SUCCESS(status)) {
@@ -134,10 +131,10 @@ NTAPI VOID ClassGetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 				       deviceParameterHandle, NULL);
 
-	    status = ZwOpenKey(&deviceSubkeyHandle, KEY_READ, &objectAttributes);
+	    status = NtOpenKey(&deviceSubkeyHandle, KEY_READ, &objectAttributes);
 
 	    if (!NT_SUCCESS(status)) {
-		ZwClose(deviceParameterHandle);
+		NtClose(deviceParameterHandle);
 	    }
 	}
 
@@ -174,10 +171,10 @@ NTAPI VOID ClassGetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	    }
 
 	    if (SubkeyName) {
-		ZwClose(deviceSubkeyHandle);
+		NtClose(deviceSubkeyHandle);
 	    }
 
-	    ZwClose(deviceParameterHandle);
+	    NtClose(deviceParameterHandle);
 	}
     }
 
@@ -193,8 +190,6 @@ NTAPI NTSTATUS ClassSetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
     NTSTATUS status;
     HANDLE deviceParameterHandle = NULL;
     HANDLE deviceSubkeyHandle = NULL;
-
-    PAGED_CODE();
 
     //
     // open the given parameter
@@ -212,10 +207,10 @@ NTAPI NTSTATUS ClassSetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 				   deviceParameterHandle, NULL);
 
-	status = ZwCreateKey(&deviceSubkeyHandle, KEY_READ | KEY_WRITE, &objectAttributes,
+	status = NtCreateKey(&deviceSubkeyHandle, KEY_READ | KEY_WRITE, &objectAttributes,
 			     0, NULL, 0, NULL);
 	if (!NT_SUCCESS(status)) {
-	    ZwClose(deviceParameterHandle);
+	    NtClose(deviceParameterHandle);
 	}
     }
 
@@ -231,10 +226,10 @@ NTAPI NTSTATUS ClassSetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 	//
 
 	if (SubkeyName) {
-	    ZwClose(deviceSubkeyHandle);
+	    NtClose(deviceSubkeyHandle);
 	}
 
-	ZwClose(deviceParameterHandle);
+	NtClose(deviceParameterHandle);
     }
 
     return status;
@@ -257,7 +252,6 @@ NTAPI VOID ClassScanForSpecial(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     PUCHAR productRevision;
     UCHAR nullString[] = "";
 
-    PAGED_CODE();
     NT_ASSERT(DeviceList);
     NT_ASSERT(Function);
 
@@ -6635,8 +6629,6 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 
     UNREFERENCED_PARAMETER(Srb);
 
-    PAGED_CODE();
-
     fdoExtension = DeviceObject->DeviceExtension;
     query = (PSTORAGE_PROPERTY_QUERY)Irp->AssociatedIrp.SystemBuffer;
     irpStack = IoGetCurrentIrpStackLocation(Irp);
@@ -6809,8 +6801,6 @@ NTSTATUS ClasspValidateOffloadSupported(IN PDEVICE_OBJECT DeviceObject,
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     NTSTATUS status;
 
-    PAGED_CODE();
-
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspValidateOffloadSupported (%p): Entering function. Irp %p\n",
 		DeviceObject, Irp));
@@ -6891,8 +6881,6 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
     ULONG dataSetRangesCount;
     ULONG i;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspValidateOffloadInputParameters (%p): Entering function Irp %p.\n",
