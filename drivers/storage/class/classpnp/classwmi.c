@@ -21,38 +21,27 @@ Revision History:
 
 --*/
 
-#ifndef __REACTOS__
-#include "stddef.h"
-#include "ntddk.h"
-#include "scsi.h"
-
-#include "classpnp.h"
-
-#include "mountdev.h"
-
-#include <stdarg.h>
-#endif
-
 #include "classp.h"
 #include <wmistr.h>
 #include <wmidata.h>
-// #include <classlog.h> __REACTOS__
 
 #define TIME_STRING_LENGTH 25
 
-BOOLEAN
-ClassFindGuid(PGUIDREGINFO GuidList, ULONG GuidCount, LPGUID Guid, PULONG GuidIndex);
+BOOLEAN ClassFindGuid(PGUIDREGINFO GuidList,
+		      ULONG GuidCount,
+		      LPGUID Guid,
+		      PULONG GuidIndex);
 
-NTSTATUS
-ClassQueryInternalDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-			    IN ULONG GuidIndex, IN ULONG BufferAvail, OUT PUCHAR Buffer);
+NTSTATUS ClassQueryInternalDataBlock(IN PDEVICE_OBJECT DeviceObject,
+				     IN PIRP Irp,
+				     IN ULONG GuidIndex,
+				     IN ULONG BufferAvail,
+				     OUT PUCHAR Buffer);
 
-PWCHAR
-ConvertTickToDateTime(IN LARGE_INTEGER Tick,
-		      _Out_writes_(TIME_STRING_LENGTH) PWCHAR String);
+PWCHAR ConvertTickToDateTime(IN LARGE_INTEGER Tick,
+			     OUT PWCHAR String);
 
-BOOLEAN
-ClassFindInternalGuid(LPGUID Guid, PULONG GuidIndex);
+BOOLEAN ClassFindInternalGuid(LPGUID Guid, PULONG GuidIndex);
 
 //
 // This is the name for the MOF resource that must be part of all drivers that
@@ -104,8 +93,10 @@ Return Value:
     TRUE if guid is found else FALSE
 
 --*/
-BOOLEAN
-ClassFindGuid(PGUIDREGINFO GuidList, ULONG GuidCount, LPGUID Guid, PULONG GuidIndex)
+BOOLEAN ClassFindGuid(PGUIDREGINFO GuidList,
+		      ULONG GuidCount,
+		      LPGUID Guid,
+		      PULONG GuidIndex)
 {
     ULONG i;
 
@@ -140,12 +131,9 @@ Return Value:
     TRUE if guid is found else FALSE
 
 --*/
-BOOLEAN
-ClassFindInternalGuid(LPGUID Guid, PULONG GuidIndex)
+BOOLEAN ClassFindInternalGuid(LPGUID Guid, PULONG GuidIndex)
 {
     ULONG i;
-
-    PAGED_CODE();
 
     for (i = 0; i < NUM_CLASS_WMI_GUIDS; i++) {
 	if (IsEqualGUID(Guid, &wmiClassGuids[i].Guid)) {
@@ -192,8 +180,6 @@ NTAPI NTSTATUS ClassSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     ULONG guidIndex = (ULONG)-1;
     PCLASS_WMI_INFO classWmiInfo;
     BOOLEAN isInternalGuid = FALSE;
-
-    PAGED_CODE();
 
     //
     // Make sure device has not been removed
@@ -617,9 +603,6 @@ NTAPI NTSTATUS ClassSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return (status);
 } // end ClassSystemControl()
 
-NTSTATUS
-ClassQueryInternalDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-			    IN ULONG GuidIndex, IN ULONG BufferAvail, OUT PUCHAR Buffer)
 /*++
 
 Routine Description:
@@ -648,6 +631,11 @@ Return Value:
     status
 
 --*/
+NTSTATUS ClassQueryInternalDataBlock(IN PDEVICE_OBJECT DeviceObject,
+				     IN PIRP Irp,
+				     IN ULONG GuidIndex,
+				     IN ULONG BufferAvail,
+				     OUT PUCHAR Buffer)
 {
     NTSTATUS status;
 #ifndef __REACTOS__ // WMI in not a thing on ReactOS yet
@@ -680,10 +668,9 @@ Return Value:
 		senseData = &logEntry->senseData;
 		logEntry->tickCount = fdoLogEntry->TickCount.QuadPart;
 		logEntry->portNumber = fdoLogEntry->PortNumber;
-		logEntry->errorPaging = (fdoLogEntry->ErrorPaging == 0 ? FALSE : TRUE);
-		logEntry->errorRetried = (fdoLogEntry->ErrorRetried == 0 ? FALSE : TRUE);
-		logEntry->errorUnhandled = (fdoLogEntry->ErrorUnhandled == 0 ? FALSE :
-									       TRUE);
+		logEntry->errorPaging = fdoLogEntry->ErrorPaging;
+		logEntry->errorRetried = fdoLogEntry->ErrorRetried;
+		logEntry->errorUnhandled = fdoLogEntry->ErrorUnhandled;
 		logEntry->errorReserved = fdoLogEntry->ErrorReserved;
 		RtlMoveMemory(logEntry->reserved, fdoLogEntry->Reserved,
 			      sizeof(logEntry->reserved));
@@ -721,14 +708,13 @@ Return Value:
 		//       put in the log.  Therefore, no conversion is needed here.
 		//
 		senseData->errorCode = fdoSenseData->ErrorCode;
-		senseData->valid = (fdoSenseData->Valid == 0 ? FALSE : TRUE);
+		senseData->valid = fdoSenseData->Valid;
 		senseData->segmentNumber = fdoSenseData->SegmentNumber;
 		senseData->senseKey = fdoSenseData->SenseKey;
-		senseData->reserved = (fdoSenseData->Reserved == 0 ? FALSE : TRUE);
-		senseData->incorrectLength = (fdoSenseData->IncorrectLength == 0 ? FALSE :
-										   TRUE);
-		senseData->endOfMedia = (fdoSenseData->EndOfMedia == 0 ? FALSE : TRUE);
-		senseData->fileMark = (fdoSenseData->FileMark == 0 ? FALSE : TRUE);
+		senseData->reserved = fdoSenseData->Reserved;
+		senseData->incorrectLength = fdoSenseData->IncorrectLength;
+		senseData->endOfMedia = fdoSenseData->EndOfMedia;
+		senseData->fileMark = fdoSenseData->FileMark;
 		RtlMoveMemory(senseData->information, fdoSenseData->Information,
 			      sizeof(senseData->information));
 		senseData->additionalSenseLength = fdoSenseData->AdditionalSenseLength;
@@ -761,10 +747,6 @@ Return Value:
     return status;
 }
 
-PWCHAR
-ConvertTickToDateTime(IN LARGE_INTEGER Tick,
-		      _Out_writes_(TIME_STRING_LENGTH) PWCHAR String)
-
 /*++
 
 Routine Description:
@@ -781,7 +763,8 @@ Return Value:
     The time string
 
 --*/
-
+PWCHAR ConvertTickToDateTime(IN LARGE_INTEGER Tick,
+			     OUT PWCHAR String)
 {
     LARGE_INTEGER nowTick, nowTime, time;
     ULONG maxInc = 0;
@@ -844,10 +827,11 @@ Return Value:
     status
 
 --*/
-SCSIPORT_API
-NTAPI NTSTATUS ClassWmiCompleteRequest(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp,
-			_In_ NTSTATUS Status, _In_ ULONG BufferUsed,
-			_In_ CCHAR PriorityBoost)
+NTAPI SCSIPORT_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
+						    IN OUT PIRP Irp,
+						    IN NTSTATUS Status,
+						    IN ULONG BufferUsed,
+						    IN CCHAR PriorityBoost)
 {
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PUCHAR buffer;
@@ -991,10 +975,11 @@ Return Value:
     status
 
 --*/
-_IRQL_requires_max_(DISPATCH_LEVEL) NTAPI NTSTATUS
-    ClassWmiFireEvent(_In_ PDEVICE_OBJECT DeviceObject, _In_ LPGUID Guid,
-		      _In_ ULONG InstanceIndex, _In_ ULONG EventDataSize,
-		      _In_reads_bytes_(EventDataSize) PVOID EventData)
+NTAPI NTSTATUS ClassWmiFireEvent(IN PDEVICE_OBJECT DeviceObject,
+				 IN LPGUID Guid,
+				 IN ULONG InstanceIndex,
+				 IN ULONG EventDataSize,
+				 IN PVOID EventData)
 {
     ULONG sizeNeeded;
     PWNODE_SINGLE_INSTANCE event;
