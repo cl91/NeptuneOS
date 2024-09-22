@@ -23,8 +23,6 @@ Revision History:
 
 #include "classp.h"
 
-PVOID
-DefaultStorageRequestBlockAllocateRoutine(_In_ CLONG ByteSize)
 /*++
 
 Routine Description:
@@ -40,14 +38,11 @@ Return Value:
     Pointer to the SRB buffer. NULL if SRB buffer could not be allocated.
 
 --*/
+PVOID DefaultStorageRequestBlockAllocateRoutine(IN CLONG ByteSize)
 {
-    return ExAllocatePoolWithTag(NonPagedPoolNx, ByteSize, '+brs');
+    return ExAllocatePoolWithTag(ByteSize, '+brs');
 }
 
-NTSTATUS
-pInitializeStorageRequestBlock(_Inout_bytecount_(ByteSize) PSTORAGE_REQUEST_BLOCK Srb,
-			       _In_ USHORT AddressType, _In_ ULONG ByteSize,
-			       _In_ ULONG NumSrbExData, _In_ va_list ap)
 /*++
 
 Routine Description:
@@ -72,6 +67,11 @@ Return Value:
     NTSTATUS
 
 --*/
+NTSTATUS pInitializeStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
+					IN USHORT AddressType,
+					IN ULONG ByteSize,
+					IN ULONG NumSrbExData,
+					IN va_list ap)
 {
     NTSTATUS status = STATUS_SUCCESS;
     PSTOR_ADDRESS address;
@@ -187,10 +187,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-InitializeStorageRequestBlock(_Inout_bytecount_(ByteSize) PSTORAGE_REQUEST_BLOCK Srb,
-			      _In_ USHORT AddressType, _In_ ULONG ByteSize,
-			      _In_ ULONG NumSrbExData, ...)
 /*++
 
 Routine Description:
@@ -215,6 +211,10 @@ Return Value:
     NTSTATUS
 
 --*/
+NTSTATUS InitializeStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
+				       IN USHORT AddressType,
+				       IN ULONG ByteSize,
+				       IN ULONG NumSrbExData, ...)
 {
     NTSTATUS status;
     va_list ap;
@@ -224,10 +224,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-CreateStorageRequestBlock(_Inout_ PSTORAGE_REQUEST_BLOCK *Srb, _In_ USHORT AddressType,
-			  _In_opt_ PSRB_ALLOCATE_ROUTINE AllocateRoutine,
-			  _Inout_opt_ ULONG *ByteSize, _In_ ULONG NumSrbExData, ...)
 /*++
 
 Routine Description:
@@ -254,6 +250,11 @@ Return Value:
     NTSTATUS
 
 --*/
+NTSTATUS CreateStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK *Srb,
+				   IN USHORT AddressType,
+				   IN OPTIONAL PSRB_ALLOCATE_ROUTINE AllocateRoutine,
+				   IN OUT OPTIONAL ULONG *ByteSize,
+				   IN ULONG NumSrbExData, ...)
 {
     ULONG sizeNeeded = 0;
     va_list ap;
