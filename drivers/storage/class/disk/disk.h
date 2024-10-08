@@ -69,16 +69,6 @@ Revision History:
 #define DISK_TAG_UPDATE_CAP     'UDcS'  // "ScDU" - update capacity path
 #define DISK_TAG_WI_CONTEXT     'WDcS'  // "ScDW" - work-item context
 
-#ifdef __REACTOS__
-#undef MdlMappingNoExecute
-#define MdlMappingNoExecute 0
-#define NonPagedPoolNx NonPagedPool
-#define NonPagedPoolNxCacheAligned NonPagedPoolCacheAligned
-#undef POOL_NX_ALLOCATION
-#define POOL_NX_ALLOCATION 0
-#endif
-
-
 #if defined(_X86_) || defined(_AMD64_)
 
 //
