@@ -48,10 +48,6 @@ BOOLEAN ClassFindInternalGuid(LPGUID Guid, PULONG GuidIndex);
 // register via this interface.
 #define MOFRESOURCENAME L"MofResourceName"
 
-//
-// What can be paged ???
-
-#ifdef __REACTOS__
 #define MSStorageDriver_ClassErrorLogGuid                  \
     {                                                      \
 	0xD5A9A51E, 0x03F9, 0x404d,                        \
@@ -59,7 +55,6 @@ BOOLEAN ClassFindInternalGuid(LPGUID Guid, PULONG GuidIndex);
 	    0x97, 0x22, 0x15, 0xF9, 0x0E, 0xB0, 0x70, 0x38 \
 	}                                                  \
     }
-#endif
 
 //
 // Define WMI interface to all class drivers

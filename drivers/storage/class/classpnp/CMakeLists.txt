@@ -41,4 +41,5 @@ target_compile_definitions(classpnp PRIVATE
     CLASS_GLOBAL_BUFFERED_DEBUG_PRINT_BUFFERS=512)
 
 target_compile_options(classpnp PRIVATE
-    -Wno-pointer-to-int-cast -Wno-switch -Wno-unused-but-set-variable)
+    -Wno-pointer-to-int-cast -Wno-switch -Wno-unused-but-set-variable
+    -Wno-gnu-variable-sized-type-not-at-end)
