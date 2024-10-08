@@ -1110,7 +1110,7 @@ FORCEINLINE VOID FREE_PORT_ALLOCATED_SENSE_BUFFER(IN PFUNCTIONAL_DEVICE_EXTENSIO
 {
     ASSERT(TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     ASSERT(TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
-    ASSERT(Srb->SenseInfoBuffer != FdoExtension->SenseData);
+    ASSERT(Srb->SenseInfoBuffer != Ext->SenseData);
 
     ExFreePool(Srb->SenseInfoBuffer);
     Srb->SenseInfoBuffer = Ext->SenseData;
