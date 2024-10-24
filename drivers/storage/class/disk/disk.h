@@ -32,42 +32,41 @@ Revision History:
 // Set component ID for DbgPrintEx calls
 //
 #ifndef DEBUG_COMP_ID
-#define DEBUG_COMP_ID   DPFLTR_DISK_ID
+#define DEBUG_COMP_ID DPFLTR_DISK_ID
 #endif
 
 //
 // Include header file and setup GUID for tracing
 //
 #include <storswtr.h>
-#define WPP_GUID_DISK           (945186BF, 3DD6, 4f3f, 9C8E, 9EDD3FC9D558)
+#define WPP_GUID_DISK (945186BF, 3DD6, 4f3f, 9C8E, 9EDD3FC9D558)
 #ifndef WPP_CONTROL_GUIDS
-#define WPP_CONTROL_GUIDS       WPP_CONTROL_GUIDS_NORMAL_FLAGS(WPP_GUID_DISK)
+#define WPP_CONTROL_GUIDS WPP_CONTROL_GUIDS_NORMAL_FLAGS(WPP_GUID_DISK)
 #endif
-
 
 #ifdef ExAllocatePool
 #undef ExAllocatePool
 #define ExAllocatePool #NT_ASSERT(FALSE)
 #endif
 
-#define DISK_TAG_GENERAL        ' DcS'  // "ScD " - generic tag
-#define DISK_TAG_SMART          'aDcS'  // "ScDa" - SMART allocations
-#define DISK_TAG_INFO_EXCEPTION 'ADcS'  // "ScDA" - Info Exceptions
-#define DISK_TAG_DISABLE_CACHE  'CDcS'  // "ScDC" - disable cache paths
-#define DISK_TAG_CCONTEXT       'cDcS'  // "ScDc" - disk allocated completion context
-#define DISK_TAG_DISK_GEOM      'GDcS'  // "ScDG" - disk geometry buffer
-#define DISK_TAG_UPDATE_GEOM    'gDcS'  // "ScDg" - update disk geometry paths
-#define DISK_TAG_SENSE_INFO     'IDcS'  // "ScDI" - sense info buffers
-#define DISK_TAG_PNP_ID         'iDcS'  // "ScDp" - pnp ids
-#define DISK_TAG_MODE_DATA      'MDcS'  // "ScDM" - mode data buffer
-#define DISK_CACHE_MBR_CHECK    'mDcS'  // "ScDM" - mbr checksum code
-#define DISK_TAG_NAME           'NDcS'  // "ScDN" - disk name code
-#define DISK_TAG_READ_CAP       'PDcS'  // "ScDP" - read capacity buffer
-#define DISK_TAG_PART_LIST      'pDcS'  // "ScDp" - disk partition lists
-#define DISK_TAG_SRB            'SDcS'  // "ScDS" - srb allocation
-#define DISK_TAG_START          'sDcS'  // "ScDs" - start device paths
-#define DISK_TAG_UPDATE_CAP     'UDcS'  // "ScDU" - update capacity path
-#define DISK_TAG_WI_CONTEXT     'WDcS'  // "ScDW" - work-item context
+#define DISK_TAG_GENERAL ' DcS' // "ScD " - generic tag
+#define DISK_TAG_SMART 'aDcS' // "ScDa" - SMART allocations
+#define DISK_TAG_INFO_EXCEPTION 'ADcS' // "ScDA" - Info Exceptions
+#define DISK_TAG_DISABLE_CACHE 'CDcS' // "ScDC" - disable cache paths
+#define DISK_TAG_CCONTEXT 'cDcS' // "ScDc" - disk allocated completion context
+#define DISK_TAG_DISK_GEOM 'GDcS' // "ScDG" - disk geometry buffer
+#define DISK_TAG_UPDATE_GEOM 'gDcS' // "ScDg" - update disk geometry paths
+#define DISK_TAG_SENSE_INFO 'IDcS' // "ScDI" - sense info buffers
+#define DISK_TAG_PNP_ID 'iDcS' // "ScDp" - pnp ids
+#define DISK_TAG_MODE_DATA 'MDcS' // "ScDM" - mode data buffer
+#define DISK_CACHE_MBR_CHECK 'mDcS' // "ScDM" - mbr checksum code
+#define DISK_TAG_NAME 'NDcS' // "ScDN" - disk name code
+#define DISK_TAG_READ_CAP 'PDcS' // "ScDP" - read capacity buffer
+#define DISK_TAG_PART_LIST 'pDcS' // "ScDp" - disk partition lists
+#define DISK_TAG_SRB 'SDcS' // "ScDS" - srb allocation
+#define DISK_TAG_START 'sDcS' // "ScDs" - start device paths
+#define DISK_TAG_UPDATE_CAP 'UDcS' // "ScDU" - update capacity path
+#define DISK_TAG_WI_CONTEXT 'WDcS' // "ScDW" - work-item context
 
 #if defined(_X86_) || defined(_AMD64_)
 
@@ -90,8 +89,7 @@ typedef enum _DISK_GEOMETRY_SOURCE {
 // Context for requests that can be combined and sent down
 //
 
-typedef struct _DISK_GROUP_CONTEXT
-{
+typedef struct _DISK_GROUP_CONTEXT {
     //
     // Queue of requests whose representative is currently outstanding at the port driver
     //
@@ -118,9 +116,9 @@ typedef struct _DISK_GROUP_CONTEXT
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 
     union {
-        SCSI_REQUEST_BLOCK Srb;
-        STORAGE_REQUEST_BLOCK SrbEx;
-        UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
+	SCSI_REQUEST_BLOCK Srb;
+	STORAGE_REQUEST_BLOCK SrbEx;
+	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
     } Srb;
 
 #else
@@ -136,7 +134,6 @@ typedef struct _DISK_GROUP_CONTEXT
     // This event will allow for the requests to be sent down synchronously
     //
     KEVENT Event;
-
 
 #if DBG
 
@@ -164,16 +161,13 @@ typedef struct _DISK_GROUP_CONTEXT
 //
 // Write cache setting as defined by the user
 //
-typedef enum _DISK_USER_WRITE_CACHE_SETTING
-{
-    DiskWriteCacheDisable =  0,
-    DiskWriteCacheEnable  =  1,
+typedef enum _DISK_USER_WRITE_CACHE_SETTING {
+    DiskWriteCacheDisable = 0,
+    DiskWriteCacheEnable = 1,
     DiskWriteCacheDefault = -1
-
 } DISK_USER_WRITE_CACHE_SETTING, *PDISK_USER_WRITE_CACHE_SETTING;
 
 typedef struct _DISK_DATA {
-
     //
     // This field is the ordinal of a partition as it appears on a disk.
     //
@@ -187,110 +181,107 @@ typedef struct _DISK_DATA {
     PARTITION_STYLE PartitionStyle;
 
     union {
+	struct {
+	    //
+	    // Disk signature (from MBR)
+	    //
 
-        struct {
+	    ULONG Signature;
 
-            //
-            // Disk signature (from MBR)
-            //
+	    //
+	    // MBR checksum
+	    //
 
-            ULONG Signature;
+	    ULONG MbrCheckSum;
 
-            //
-            // MBR checksum
-            //
+	    //
+	    // Number of hidden sectors for BPB.
+	    //
 
-            ULONG MbrCheckSum;
+	    ULONG HiddenSectors;
 
-            //
-            // Number of hidden sectors for BPB.
-            //
+	    //
+	    // Partition type of this device object
+	    //
+	    // This field is set by:
+	    //
+	    //     1. Initially set according to the partition list entry
+	    //        partition type returned by IoReadPartitionTable.
+	    //
+	    //     2. Subsequently set by the
+	    //        IOCTL_DISK_SET_PARTITION_INFORMATION I/O control
+	    //        function when IoSetPartitionInformation function
+	    //        successfully updates the partition type on the disk.
+	    //
 
-            ULONG HiddenSectors;
+	    UCHAR PartitionType;
 
-            //
-            // Partition type of this device object
-            //
-            // This field is set by:
-            //
-            //     1. Initially set according to the partition list entry
-            //        partition type returned by IoReadPartitionTable.
-            //
-            //     2. Subsequently set by the
-            //        IOCTL_DISK_SET_PARTITION_INFORMATION I/O control
-            //        function when IoSetPartitionInformation function
-            //        successfully updates the partition type on the disk.
-            //
+	    //
+	    // Boot indicator - indicates whether this partition is a
+	    // bootable (active) partition for this device
+	    //
+	    // This field is set according to the partition list entry boot
+	    // indicator returned by IoReadPartitionTable.
+	    //
 
-            UCHAR PartitionType;
+	    BOOLEAN BootIndicator;
 
-            //
-            // Boot indicator - indicates whether this partition is a
-            // bootable (active) partition for this device
-            //
-            // This field is set according to the partition list entry boot
-            // indicator returned by IoReadPartitionTable.
-            //
+	} Mbr;
 
-            BOOLEAN BootIndicator;
+	struct {
+	    //
+	    // The DiskGUID field from the EFI partition header.
+	    //
 
-        } Mbr;
+	    GUID DiskId;
 
-        struct {
+	    //
+	    // Partition type of this device object.
+	    //
 
-            //
-            // The DiskGUID field from the EFI partition header.
-            //
+	    GUID PartitionType;
 
-            GUID DiskId;
+	    //
+	    // Unique partition identifier for this partition.
+	    //
 
-            //
-            // Partition type of this device object.
-            //
+	    GUID PartitionId;
 
-            GUID PartitionType;
+	    //
+	    // EFI partition attributes for this partition.
+	    //
 
-            //
-            // Unique partition identifier for this partition.
-            //
+	    ULONG64 Attributes;
 
-            GUID PartitionId;
+	    //
+	    // EFI partition name of this partition.
+	    //
 
-            //
-            // EFI partition attributes for this partition.
-            //
+	    WCHAR PartitionName[36];
 
-            ULONG64 Attributes;
-
-            //
-            // EFI partition name of this partition.
-            //
-
-            WCHAR PartitionName[36];
-
-        } Efi;
+	} Efi;
 
 #ifdef _MSC_VER
-#pragma warning(suppress: 4201) //this is intended to be an unnamed union
+#pragma warning(suppress : 4201) //this is intended to be an unnamed union
 #endif
     };
 
     struct {
-        //
-        // This flag is set when the well known name is created (through
-        // DiskCreateSymbolicLinks) and cleared when destroying it
-        // (by calling DiskDeleteSymbolicLinks).
-        //
+	//
+	// This flag is set when the well known name is created (through
+	// DiskCreateSymbolicLinks) and cleared when destroying it
+	// (by calling DiskDeleteSymbolicLinks).
+	//
 
-        unsigned int WellKnownNameCreated : 1;
+	unsigned int WellKnownNameCreated : 1;
 
-        //
-        // This flag is set when the PhysicalDriveN link is created (through
-        // DiskCreateSymbolicLinks) and is cleared when destroying it (through
-        // DiskDeleteSymbolicLinks)
-        //
+	//
+	// This flag is set when the PhysicalDriveN link is created (through
+	// DiskCreateSymbolicLinks) and is cleared when destroying it (through
+	// DiskDeleteSymbolicLinks)
+	//
 
-        unsigned int PhysicalDriveLinkCreated : 1;
+	unsigned int PhysicalDriveLinkCreated : 1;
 
     } LinkStatus;
 
@@ -374,7 +365,6 @@ typedef struct _DISK_DATA {
 
     DISK_USER_WRITE_CACHE_SETTING WriteCacheOverride;
 
-
 } DISK_DATA, *PDISK_DATA;
 
 //
@@ -382,25 +372,23 @@ typedef struct _DISK_DATA {
 // hardware.
 //
 
-#define HackDisableTaggedQueuing            (0x01)
-#define HackDisableSynchronousTransfers     (0x02)
-#define HackDisableSpinDown                 (0x04)
-#define HackDisableWriteCache               (0x08)
-#define HackCauseNotReportableHack          (0x10)
-#define HackRequiresStartUnitCommand        (0x20)
+#define HackDisableTaggedQueuing (0x01)
+#define HackDisableSynchronousTransfers (0x02)
+#define HackDisableSpinDown (0x04)
+#define HackDisableWriteCache (0x08)
+#define HackCauseNotReportableHack (0x10)
+#define HackRequiresStartUnitCommand (0x20)
 
-
-#define DiskDeviceParameterSubkey           L"Disk"
-#define DiskDeviceUserWriteCacheSetting     L"UserWriteCacheSetting"
-#define DiskDeviceCacheIsPowerProtected     L"CacheIsPowerProtected"
-
+#define DiskDeviceParameterSubkey L"Disk"
+#define DiskDeviceUserWriteCacheSetting L"UserWriteCacheSetting"
+#define DiskDeviceCacheIsPowerProtected L"CacheIsPowerProtected"
 
 #define FUNCTIONAL_EXTENSION_SIZE sizeof(FUNCTIONAL_DEVICE_EXTENSION) + sizeof(DISK_DATA)
 
-#define MODE_DATA_SIZE      192
-#define VALUE_BUFFER_SIZE  2048
-#define SCSI_DISK_TIMEOUT    10
-#define PARTITION0_LIST_SIZE  4
+#define MODE_DATA_SIZE 192
+#define VALUE_BUFFER_SIZE 2048
+#define SCSI_DISK_TIMEOUT 10
+#define PARTITION0_LIST_SIZE 4
 
 #define MAX_MEDIA_TYPES 4
 typedef struct _DISK_MEDIA_TYPES_LIST {
@@ -415,25 +403,23 @@ typedef struct _DISK_MEDIA_TYPES_LIST {
 //
 // WMI reregistration structures used for reregister work item
 //
-typedef struct
-{
+typedef struct {
     SINGLE_LIST_ENTRY Next;
     PDEVICE_OBJECT DeviceObject;
     PIRP Irp;
 } DISKREREGREQUEST, *PDISKREREGREQUEST;
 
-#define MAX_SECTORS_PER_VERIFY              0x100
+#define MAX_SECTORS_PER_VERIFY 0x100
 
 //
 // This is based off 100ns units
 //
-#define ONE_MILLI_SECOND   ((ULONGLONG)10 * 1000)
+#define ONE_MILLI_SECOND ((ULONGLONG)10 * 1000)
 
 //
 // Context for the work-item
 //
-typedef struct _DISK_VERIFY_WORKITEM_CONTEXT
-{
+typedef struct _DISK_VERIFY_WORKITEM_CONTEXT {
     PIRP Irp;
     PSCSI_REQUEST_BLOCK Srb;
     PIO_WORKITEM WorkItem;
@@ -447,8 +433,8 @@ typedef struct _DISK_VERIFY_WORKITEM_CONTEXT
 
 #define CHECK_IRQL()                                    \
     if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {         \
-        NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);    \
-        return STATUS_INVALID_LEVEL;                    \
+	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL); \
+	return STATUS_INVALID_LEVEL;                    \
     }
 
 //
@@ -459,10 +445,6 @@ extern CLASSPNP_SCAN_FOR_SPECIAL_INFO DiskBadControllers[];
 extern const DISK_MEDIA_TYPES_LIST DiskMediaTypes[];
 extern const DISK_MEDIA_TYPES_LIST DiskMediaTypesExclude[];
 
-#if defined(__REACTOS__) && defined(_MSC_VER)
-# pragma section("PAGECONS", read)
-# pragma section("PAGEDATA", read,write)
-#endif
 //
 // Macros
 //
@@ -471,131 +453,54 @@ extern const DISK_MEDIA_TYPES_LIST DiskMediaTypesExclude[];
 // Routine prototypes.
 //
 
-
 DRIVER_INITIALIZE DriverEntry;
 
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskUnload(
-    IN PDRIVER_OBJECT DriverObject
-    );
+NTAPI VOID DiskUnload(IN PDRIVER_OBJECT DriverObject);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskAddDevice(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PDEVICE_OBJECT Pdo
-    );
+NTAPI NTSTATUS DiskAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT Pdo);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskInitFdo(
-    IN PDEVICE_OBJECT Fdo
-    );
+NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskStartFdo(
-    IN PDEVICE_OBJECT Fdo
-    );
+NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskStopDevice(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN UCHAR Type
-    );
+NTAPI NTSTATUS DiskStopDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskRemoveDevice(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN UCHAR Type
-    );
+NTAPI NTSTATUS DiskRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskReadWriteVerification(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTAPI NTSTATUS DiskReadWriteVerification(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskDeviceControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTAPI NTSTATUS DiskDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoProcessError(
-    PDEVICE_OBJECT DeviceObject,
-    PSCSI_REQUEST_BLOCK Srb,
-    NTSTATUS *Status,
-    BOOLEAN *Retry
-    );
+NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT DeviceObject, PSCSI_REQUEST_BLOCK Srb,
+			       NTSTATUS *Status, BOOLEAN *Retry);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskShutdownFlush(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskGetCacheInformation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PDISK_CACHE_INFORMATION CacheInfo
-    );
+NTAPI NTSTATUS DiskGetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				       IN PDISK_CACHE_INFORMATION CacheInfo);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskSetCacheInformation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PDISK_CACHE_INFORMATION CacheInfo
-    );
+NTAPI NTSTATUS DiskSetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				       IN PDISK_CACHE_INFORMATION CacheInfo);
 
-VOID
-DiskLogCacheInformation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PDISK_CACHE_INFORMATION CacheInfo,
-    IN NTSTATUS Status
-    );
+VOID DiskLogCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     IN PDISK_CACHE_INFORMATION CacheInfo, IN NTSTATUS Status);
 
-NTSTATUS
-DiskIoctlGetCacheSetting(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTSTATUS DiskIoctlGetCacheSetting(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS
-DiskIoctlSetCacheSetting(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTSTATUS DiskIoctlSetCacheSetting(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 IO_WORKITEM_ROUTINE DisableWriteCache;
 
 IO_WORKITEM_ROUTINE DiskIoctlVerifyThread;
 
-VOID
-DiskFlushDispatch(
-    IN PDEVICE_OBJECT Fdo,
-    IN PDISK_GROUP_CONTEXT FlushContext
-    );
+VOID DiskFlushDispatch(IN PDEVICE_OBJECT Fdo, IN PDISK_GROUP_CONTEXT FlushContext);
 
 IO_COMPLETION_ROUTINE DiskFlushComplete;
 
-
-NTSTATUS
-DiskModeSelect(
-    IN PDEVICE_OBJECT DeviceObject,
-    _In_reads_bytes_(Length) PCHAR ModeSelectBuffer,
-    IN ULONG Length,
-    IN BOOLEAN SavePage
-    );
+NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT DeviceObject,
+			IN PCHAR ModeSelectBuffer,
+			IN ULONG Length,
+			IN BOOLEAN SavePage);
 
 //
 // We need to validate that the self test subcommand is valid and
@@ -606,389 +511,173 @@ DiskModeSelect(
 // mode bit, we can allow any request that does not have bit 7 set. Until
 // that is done we want to be sure
 //
-#define DiskIsValidSmartSelfTest(Subcommand) \
-    ( ((Subcommand) == SMART_OFFLINE_ROUTINE_OFFLINE) || \
-      ((Subcommand) == SMART_SHORT_SELFTEST_OFFLINE) || \
-      ((Subcommand) == SMART_EXTENDED_SELFTEST_OFFLINE) )
+#define DiskIsValidSmartSelfTest(Subcommand)            \
+    (((Subcommand) == SMART_OFFLINE_ROUTINE_OFFLINE) || \
+     ((Subcommand) == SMART_SHORT_SELFTEST_OFFLINE) ||  \
+     ((Subcommand) == SMART_EXTENDED_SELFTEST_OFFLINE))
 
+NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN ULONG SrbControlCode, IN UCHAR Command,
+				 IN UCHAR Feature, IN UCHAR SectorCount,
+				 IN UCHAR SectorNumber, IN OUT PSRB_IO_CONTROL SrbControl,
+				 OUT PULONG BufferSize);
 
-NTSTATUS
-DiskPerformSmartCommand(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN ULONG SrbControlCode,
-    IN UCHAR Command,
-    IN UCHAR Feature,
-    IN UCHAR SectorCount,
-    IN UCHAR SectorNumber,
-    IN OUT PSRB_IO_CONTROL SrbControl,
-    OUT PULONG BufferSize
-    );
+NTSTATUS DiskGetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					 OUT PMODE_INFO_EXCEPTIONS ReturnPageData);
 
-NTSTATUS
-DiskGetInfoExceptionInformation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    OUT PMODE_INFO_EXCEPTIONS ReturnPageData
-    );
-
-NTSTATUS
-DiskSetInfoExceptionInformation(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN PMODE_INFO_EXCEPTIONS PageData
-    );
+NTSTATUS DiskSetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					 IN PMODE_INFO_EXCEPTIONS PageData);
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-NTSTATUS
-DiskGetModePage(
-    _In_ PDEVICE_OBJECT Fdo,
-    _In_ UCHAR PageMode,
-    _In_ UCHAR PageControl,
-    _In_ PMODE_PARAMETER_HEADER ModeData,
-    _Inout_ PULONG ModeDataSize,
-    _Out_ PVOID* PageData
-    );
+NTSTATUS DiskGetModePage(IN PDEVICE_OBJECT Fdo, IN UCHAR PageMode,
+			 IN UCHAR PageControl, IN PMODE_PARAMETER_HEADER ModeData,
+			 _Inout_ PULONG ModeDataSize, _Out_ PVOID *PageData);
 
-NTSTATUS
-DiskEnableInfoExceptions(
-    _In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    _In_ BOOLEAN Enable
-    );
+NTSTATUS DiskEnableInfoExceptions(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				  IN BOOLEAN Enable);
 #endif // (NTDDI_VERSION >= NTDDI_WINBLUE)
 
-NTSTATUS
-DiskDetectFailurePrediction(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    PFAILURE_PREDICTION_METHOD FailurePredictCapability,
-    BOOLEAN ScsiAddressAvailable
-    );
+NTSTATUS DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				     PFAILURE_PREDICTION_METHOD FailurePredictCapability,
+				     BOOLEAN ScsiAddressAvailable);
 
-NTSTATUS
-DiskCreateFdo(
-    IN PDRIVER_OBJECT DriverObject,
-    IN PDEVICE_OBJECT LowerDeviceObject,
-    IN PULONG DeviceCount,
-    IN BOOLEAN DasdAccessOnly
-    );
+NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
+		       IN PDEVICE_OBJECT LowerDeviceObject, IN PULONG DeviceCount,
+		       IN BOOLEAN DasdAccessOnly);
 
-VOID
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskSetSpecialHacks(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    IN ULONG_PTR Data
-    );
+NTAPI VOID DiskSetSpecialHacks(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			       IN ULONG_PTR Data);
 
-VOID
-ResetBus(
-    IN PDEVICE_OBJECT DeviceObject
-    );
+VOID ResetBus(IN PDEVICE_OBJECT DeviceObject);
 
-NTSTATUS
-DiskGenerateDeviceName(
-    IN ULONG DeviceNumber,
-    OUT PCCHAR *RawName
-    );
+NTSTATUS DiskGenerateDeviceName(IN ULONG DeviceNumber, OUT PCCHAR *RawName);
 
-VOID
-DiskCreateSymbolicLinks(
-    IN PDEVICE_OBJECT DeviceObject
-    );
+VOID DiskCreateSymbolicLinks(IN PDEVICE_OBJECT DeviceObject);
 
-VOID
-DiskDeleteSymbolicLinks(
-    IN PDEVICE_OBJECT DeviceObject
-    );
+VOID DiskDeleteSymbolicLinks(IN PDEVICE_OBJECT DeviceObject);
 
+NTAPI NTSTATUS DiskFdoQueryWmiRegInfo(IN PDEVICE_OBJECT DeviceObject, OUT ULONG *RegFlags,
+				      OUT PUNICODE_STRING InstanceName);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoQueryWmiRegInfo(
-    IN PDEVICE_OBJECT DeviceObject,
-    OUT ULONG *RegFlags,
-    OUT PUNICODE_STRING InstanceName
-    );
+NTAPI NTSTATUS DiskFdoQueryWmiRegInfoEx(IN PDEVICE_OBJECT DeviceObject,
+					OUT ULONG *RegFlags,
+					OUT PUNICODE_STRING InstanceName,
+					OUT PUNICODE_STRING MofName);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoQueryWmiRegInfoEx(
-    IN PDEVICE_OBJECT DeviceObject,
-    OUT ULONG *RegFlags,
-    OUT PUNICODE_STRING InstanceName,
-    OUT PUNICODE_STRING MofName
-    );
+NTAPI NTSTATUS DiskFdoQueryWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+					IN ULONG GuidIndex, IN ULONG BufferAvail,
+					OUT PUCHAR Buffer);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoQueryWmiDataBlock(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp,
-    IN ULONG GuidIndex,
-    IN ULONG BufferAvail,
-    OUT PUCHAR Buffer
-    );
+NTAPI NTSTATUS DiskFdoSetWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				      IN ULONG GuidIndex, IN ULONG BufferSize,
+				      IN PUCHAR Buffer);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoSetWmiDataBlock(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp,
-    IN ULONG GuidIndex,
-    IN ULONG BufferSize,
-    IN PUCHAR Buffer
-    );
+NTAPI NTSTATUS DiskFdoSetWmiDataItem(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				     IN ULONG GuidIndex, IN ULONG DataItemId,
+				     IN ULONG BufferSize, IN PUCHAR Buffer);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoSetWmiDataItem(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp,
-    IN ULONG GuidIndex,
-    IN ULONG DataItemId,
-    IN ULONG BufferSize,
-    IN PUCHAR Buffer
-    );
+NTAPI NTSTATUS DiskFdoExecuteWmiMethod(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				       IN ULONG GuidIndex, IN ULONG MethodId,
+				       IN ULONG InBufferSize, IN ULONG OutBufferSize,
+				       IN PUCHAR Buffer);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoExecuteWmiMethod(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp,
-    IN ULONG GuidIndex,
-    IN ULONG MethodId,
-    IN ULONG InBufferSize,
-    IN ULONG OutBufferSize,
-    IN PUCHAR Buffer
-    );
+NTAPI NTSTATUS DiskWmiFunctionControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				      IN ULONG GuidIndex,
+				      IN CLASSENABLEDISABLEFUNCTION Function,
+				      IN BOOLEAN Enable);
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskWmiFunctionControl(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp,
-    IN ULONG GuidIndex,
-    IN CLASSENABLEDISABLEFUNCTION Function,
-    IN BOOLEAN Enable
-    );
+NTSTATUS DiskReadFailurePredictStatus(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				      PSTORAGE_FAILURE_PREDICT_STATUS DiskSmartStatus);
 
-NTSTATUS
-DiskReadFailurePredictStatus(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    PSTORAGE_FAILURE_PREDICT_STATUS DiskSmartStatus
-    );
+NTSTATUS DiskReadFailurePredictData(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				    PSTORAGE_FAILURE_PREDICT_DATA DiskSmartData);
 
-NTSTATUS
-DiskReadFailurePredictData(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    PSTORAGE_FAILURE_PREDICT_DATA DiskSmartData
-    );
+NTSTATUS DiskEnableDisableFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					    BOOLEAN Enable);
 
-NTSTATUS
-DiskEnableDisableFailurePrediction(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    BOOLEAN Enable
-    );
+NTSTATUS DiskEnableDisableFailurePredictPolling(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+						BOOLEAN Enable, ULONG PollTimeInSeconds);
 
-NTSTATUS
-DiskEnableDisableFailurePredictPolling(
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    BOOLEAN Enable,
-    ULONG PollTimeInSeconds
-    );
-
-NTSTATUS DiskInitializeReregistration(
-    VOID
-    );
+NTSTATUS DiskInitializeReregistration(VOID);
 
 extern GUIDREGINFO DiskWmiFdoGuidList[];
 
 #if defined(_X86_) || defined(_AMD64_)
-NTSTATUS
-DiskReadDriveCapacity(
-    IN PDEVICE_OBJECT Fdo
-    );
+NTSTATUS DiskReadDriveCapacity(IN PDEVICE_OBJECT Fdo);
 #else
-#define DiskReadDriveCapacity(Fdo)  ClassReadDriveCapacity(Fdo)
+#define DiskReadDriveCapacity(Fdo) ClassReadDriveCapacity(Fdo)
 #endif
-
 
 #if defined(_X86_) || defined(_AMD64_)
 
-NTSTATUS
-DiskSaveDetectInfo(
-    PDRIVER_OBJECT DriverObject
-    );
+NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject);
 
-VOID
-DiskCleanupDetectInfo(
-    IN PDRIVER_OBJECT DriverObject
-    );
+VOID DiskCleanupDetectInfo(IN PDRIVER_OBJECT DriverObject);
 
-VOID
-DiskDriverReinitialization (
-    IN PDRIVER_OBJECT DriverObject,
-    IN PVOID Nothing,
-    IN ULONG Count
-    );
+VOID DiskDriverReinitialization(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing,
+				IN ULONG Count);
 
 #endif
 
 #if defined(_X86_) || defined(_AMD64_)
-NTSTATUS
-DiskGetDetectInfo(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-    OUT PDISK_DETECTION_INFO DetectInfo
-    );
+NTSTATUS DiskGetDetectInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			   OUT PDISK_DETECTION_INFO DetectInfo);
 
-NTSTATUS
-DiskReadSignature(
-    IN PDEVICE_OBJECT Fdo
-    );
+NTSTATUS DiskReadSignature(IN PDEVICE_OBJECT Fdo);
 
-BOOLEAN
-DiskIsNT4Geometry(
-    IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
-    );
+BOOLEAN DiskIsNT4Geometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
 #else
 #define DiskGetDetectInfo(FdoExtension, DetectInfo) (STATUS_UNSUCCESSFUL)
 #endif
 
+#define DiskHashGuid(Guid)                                                \
+    (((PULONG) & Guid)[0] ^ ((PULONG) & Guid)[0] ^ ((PULONG) & Guid)[0] ^ \
+     ((PULONG) & Guid)[0])
 
-#define DiskHashGuid(Guid) (((PULONG) &Guid)[0] ^ ((PULONG) &Guid)[0] ^ ((PULONG) &Guid)[0] ^ ((PULONG) &Guid)[0])
+NTSTATUS DiskDetermineMediaTypes(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN UCHAR MediumType,
+				 IN UCHAR DensityCode, IN BOOLEAN MediaPresent,
+				 IN BOOLEAN IsWritable);
 
+NTSTATUS DiskIoctlGetLengthInfo(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS
-DiskDetermineMediaTypes(
-    IN PDEVICE_OBJECT Fdo,
-    IN PIRP     Irp,
-    IN UCHAR    MediumType,
-    IN UCHAR    DensityCode,
-    IN BOOLEAN  MediaPresent,
-    IN BOOLEAN  IsWritable
-    );
+NTSTATUS DiskIoctlGetDriveGeometry(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlGetLengthInfo(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTSTATUS DiskIoctlGetDriveGeometryEx(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS
-DiskIoctlGetDriveGeometry(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlGetCacheInformation(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlGetDriveGeometryEx(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
-    );
+NTSTATUS DiskIoctlSetCacheInformation(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlGetCacheInformation(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlSetCacheInformation(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlPredictFailure(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlGetMediaTypesEx(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlEnableFailurePrediction(IN PDEVICE_OBJECT DeviceObject,
+					  IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlPredictFailure(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlEnableFailurePrediction(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlReassignBlocks(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlVerify(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlReassignBlocksEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlReassignBlocks(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlReassignBlocksEx(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlSetVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlIsWritable(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlClearVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlSetVerify(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlUpdateDriveSize(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlClearVerify(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlGetVolumeDiskExtents(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlUpdateDriveSize(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlSmartGetVersion(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlGetVolumeDiskExtents(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlSmartReceiveDriveData(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlSmartGetVersion(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
+NTSTATUS DiskIoctlSmartSendDriveCommand(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp);
 
-NTSTATUS
-DiskIoctlSmartReceiveDriveData(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
-
-NTSTATUS
-DiskIoctlSmartSendDriveCommand(
-    IN PDEVICE_OBJECT DeviceObject,
-    IN OUT PIRP Irp
-    );
-
-FORCEINLINE // __REACTOS__
-PCDB
-GetSrbScsiData(
-    _In_ PSTORAGE_REQUEST_BLOCK SrbEx,
-    _In_opt_ PUCHAR CdbLength8,
-    _In_opt_ PULONG CdbLength32,
-    _In_opt_ PUCHAR ScsiStatus,
-    _In_opt_ PVOID *SenseInfoBuffer,
-    _In_opt_ PUCHAR SenseInfoBufferLength
-    )
 /*++
 
 Routine Description:
@@ -1017,6 +706,12 @@ Return Value:
     Pointer to Cdb field or NULL if SRB is not a SRB_FUNCTION_EXECUTE_SCSI.
 
 --*/
+FORCEINLINE PCDB GetSrbScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
+				IN OPTIONAL PUCHAR CdbLength8,
+				IN OPTIONAL PULONG CdbLength32,
+				IN OPTIONAL PUCHAR ScsiStatus,
+				IN OPTIONAL PVOID *SenseInfoBuffer,
+				IN OPTIONAL PUCHAR SenseInfoBufferLength)
 {
     PCDB Cdb = NULL;
     ULONG i;
@@ -1024,161 +719,148 @@ Return Value:
     BOOLEAN FoundEntry = FALSE;
 
     if ((SrbEx->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-        (SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
-        NT_ASSERT(SrbEx->NumSrbExData > 0);
+	(SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
+	NT_ASSERT(SrbEx->NumSrbExData > 0);
 
-        for (i = 0; i < SrbEx->NumSrbExData; i++) {
+	for (i = 0; i < SrbEx->NumSrbExData; i++) {
+	    // Skip any invalid offsets
+	    if ((SrbEx->SrbExDataOffset[i] < sizeof(STORAGE_REQUEST_BLOCK)) ||
+		(SrbEx->SrbExDataOffset[i] > SrbEx->SrbLength)) {
+		// Catch any invalid offsets
+		NT_ASSERT(FALSE);
+		continue;
+	    }
 
-            // Skip any invalid offsets
-            if ((SrbEx->SrbExDataOffset[i] < sizeof(STORAGE_REQUEST_BLOCK)) ||
-                (SrbEx->SrbExDataOffset[i] > SrbEx->SrbLength)){
-                // Catch any invalid offsets
-                NT_ASSERT(FALSE);
-                continue;
-            }
+	    SrbExData = (PSRBEX_DATA)((PUCHAR)SrbEx + SrbEx->SrbExDataOffset[i]);
 
-            SrbExData = (PSRBEX_DATA)((PUCHAR)SrbEx + SrbEx->SrbExDataOffset[i]);
+	    switch (SrbExData->Type) {
+	    case SrbExDataTypeScsiCdb16:
+		if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB16) <=
+		    SrbEx->SrbLength) {
+		    FoundEntry = TRUE;
+		    if (CdbLength8) {
+			*CdbLength8 = ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->CdbLength;
+		    }
 
-            switch (SrbExData->Type) {
+		    if (((PSRBEX_DATA_SCSI_CDB16)SrbExData)->CdbLength > 0) {
+			Cdb = (PCDB)((PSRBEX_DATA_SCSI_CDB16)SrbExData)->Cdb;
+		    }
 
-                case SrbExDataTypeScsiCdb16:
-                    if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB16) <= SrbEx->SrbLength) {
-                        FoundEntry = TRUE;
-                        if (CdbLength8) {
-                            *CdbLength8 = ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->CdbLength;
-                        }
+		    if (ScsiStatus) {
+			*ScsiStatus = ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->ScsiStatus;
+		    }
 
-                        if (((PSRBEX_DATA_SCSI_CDB16) SrbExData)->CdbLength > 0) {
-                            Cdb = (PCDB)((PSRBEX_DATA_SCSI_CDB16) SrbExData)->Cdb;
-                        }
+		    if (SenseInfoBuffer) {
+			*SenseInfoBuffer =
+			    ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->SenseInfoBuffer;
+		    }
 
-                        if (ScsiStatus) {
-                            *ScsiStatus =
-                                ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->ScsiStatus;
-                        }
+		    if (SenseInfoBufferLength) {
+			*SenseInfoBufferLength =
+			    ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->SenseInfoBufferLength;
+		    }
 
-                        if (SenseInfoBuffer) {
-                            *SenseInfoBuffer =
-                                ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->SenseInfoBuffer;
-                        }
+		} else {
+		    // Catch invalid offset
+		    NT_ASSERT(FALSE);
+		}
+		break;
 
-                        if (SenseInfoBufferLength) {
-                            *SenseInfoBufferLength =
-                                ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->SenseInfoBufferLength;
-                        }
+	    case SrbExDataTypeScsiCdb32:
+		if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB32) <=
+		    SrbEx->SrbLength) {
+		    FoundEntry = TRUE;
+		    if (CdbLength8) {
+			*CdbLength8 = ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->CdbLength;
+		    }
 
-                    } else {
-                        // Catch invalid offset
-                        NT_ASSERT(FALSE);
-                    }
-                    break;
+		    if (((PSRBEX_DATA_SCSI_CDB32)SrbExData)->CdbLength > 0) {
+			Cdb = (PCDB)((PSRBEX_DATA_SCSI_CDB32)SrbExData)->Cdb;
+		    }
 
-                case SrbExDataTypeScsiCdb32:
-                    if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB32) <= SrbEx->SrbLength) {
-                        FoundEntry = TRUE;
-                        if (CdbLength8) {
-                            *CdbLength8 = ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->CdbLength;
-                        }
+		    if (ScsiStatus) {
+			*ScsiStatus = ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->ScsiStatus;
+		    }
 
-                        if (((PSRBEX_DATA_SCSI_CDB32) SrbExData)->CdbLength > 0) {
-                            Cdb = (PCDB)((PSRBEX_DATA_SCSI_CDB32) SrbExData)->Cdb;
-                        }
+		    if (SenseInfoBuffer) {
+			*SenseInfoBuffer =
+			    ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->SenseInfoBuffer;
+		    }
 
-                        if (ScsiStatus) {
-                            *ScsiStatus =
-                                ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->ScsiStatus;
-                        }
+		    if (SenseInfoBufferLength) {
+			*SenseInfoBufferLength =
+			    ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->SenseInfoBufferLength;
+		    }
 
-                        if (SenseInfoBuffer) {
-                            *SenseInfoBuffer =
-                                ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->SenseInfoBuffer;
-                        }
+		} else {
+		    // Catch invalid offset
+		    NT_ASSERT(FALSE);
+		}
+		break;
 
-                        if (SenseInfoBufferLength) {
-                            *SenseInfoBufferLength =
-                                ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->SenseInfoBufferLength;
-                        }
+	    case SrbExDataTypeScsiCdbVar:
+		if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB_VAR) <=
+		    SrbEx->SrbLength) {
+		    FoundEntry = TRUE;
+		    if (CdbLength32) {
+			*CdbLength32 = ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->CdbLength;
+		    }
 
-                    } else {
-                        // Catch invalid offset
-                        NT_ASSERT(FALSE);
-                    }
-                    break;
+		    if (((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->CdbLength > 0) {
+			Cdb = (PCDB)((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->Cdb;
+		    }
 
-                case SrbExDataTypeScsiCdbVar:
-                    if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB_VAR) <= SrbEx->SrbLength) {
-                        FoundEntry = TRUE;
-                        if (CdbLength32) {
-                            *CdbLength32 = ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->CdbLength;
-                        }
+		    if (ScsiStatus) {
+			*ScsiStatus = ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->ScsiStatus;
+		    }
 
-                        if (((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->CdbLength > 0) {
-                            Cdb = (PCDB)((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->Cdb;
-                        }
+		    if (SenseInfoBuffer) {
+			*SenseInfoBuffer =
+			    ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->SenseInfoBuffer;
+		    }
 
-                        if (ScsiStatus) {
-                            *ScsiStatus =
-                                ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->ScsiStatus;
-                        }
+		    if (SenseInfoBufferLength) {
+			*SenseInfoBufferLength =
+			    ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->SenseInfoBufferLength;
+		    }
 
-                        if (SenseInfoBuffer) {
-                            *SenseInfoBuffer =
-                                ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->SenseInfoBuffer;
-                        }
+		} else {
+		    // Catch invalid offset
+		    NT_ASSERT(FALSE);
+		}
+		break;
+	    }
 
-                        if (SenseInfoBufferLength) {
-                            *SenseInfoBufferLength =
-                                ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->SenseInfoBufferLength;
-                        }
-
-                    } else {
-                        // Catch invalid offset
-                        NT_ASSERT(FALSE);
-                    }
-                    break;
-            }
-
-            if (FoundEntry) {
-                break;
-            }
-        }
+	    if (FoundEntry) {
+		break;
+	    }
+	}
 
     } else {
+	if (CdbLength8) {
+	    *CdbLength8 = 0;
+	}
 
-        if (CdbLength8) {
-            *CdbLength8 = 0;
-        }
+	if (CdbLength32) {
+	    *CdbLength32 = 0;
+	}
 
-        if (CdbLength32) {
-            *CdbLength32 = 0;
-        }
+	if (ScsiStatus) {
+	    *ScsiStatus = 0;
+	}
 
-        if (ScsiStatus) {
-            *ScsiStatus = 0;
-        }
+	if (SenseInfoBuffer) {
+	    *SenseInfoBuffer = NULL;
+	}
 
-        if (SenseInfoBuffer) {
-            *SenseInfoBuffer = NULL;
-        }
-
-        if (SenseInfoBufferLength) {
-            *SenseInfoBufferLength = 0;
-        }
+	if (SenseInfoBufferLength) {
+	    *SenseInfoBufferLength = 0;
+	}
     }
 
     return Cdb;
 }
 
-FORCEINLINE // __REACTOS__
-VOID
-SetSrbScsiData(
-    _In_ PSTORAGE_REQUEST_BLOCK SrbEx,
-    _In_ UCHAR CdbLength8,
-    _In_ ULONG CdbLength32,
-    _In_ UCHAR ScsiStatus,
-    _In_opt_ PVOID SenseInfoBuffer,
-    _In_ UCHAR SenseInfoBufferLength
-    )
 /*++
 
 Routine Description:
@@ -1207,76 +889,85 @@ Return Value:
     None
 
 --*/
+FORCEINLINE VOID SetSrbScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
+				IN UCHAR CdbLength8,
+				IN ULONG CdbLength32,
+				IN UCHAR ScsiStatus,
+				IN OPTIONAL PVOID SenseInfoBuffer,
+				IN UCHAR SenseInfoBufferLength)
 {
     ULONG i;
     PSRBEX_DATA SrbExData = NULL;
     BOOLEAN FoundEntry = FALSE;
 
     if ((SrbEx->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-        (SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
-        NT_ASSERT(SrbEx->NumSrbExData > 0);
+	(SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
+	NT_ASSERT(SrbEx->NumSrbExData > 0);
 
-        for (i = 0; i < SrbEx->NumSrbExData; i++) {
+	for (i = 0; i < SrbEx->NumSrbExData; i++) {
+	    // Skip any invalid offsets
+	    if ((SrbEx->SrbExDataOffset[i] < sizeof(STORAGE_REQUEST_BLOCK)) ||
+		(SrbEx->SrbExDataOffset[i] > SrbEx->SrbLength)) {
+		// Catch any invalid offsets
+		NT_ASSERT(FALSE);
+		continue;
+	    }
 
-            // Skip any invalid offsets
-            if ((SrbEx->SrbExDataOffset[i] < sizeof(STORAGE_REQUEST_BLOCK)) ||
-                (SrbEx->SrbExDataOffset[i] > SrbEx->SrbLength)){
-                // Catch any invalid offsets
-                NT_ASSERT(FALSE);
-                continue;
-            }
+	    SrbExData = (PSRBEX_DATA)((PUCHAR)SrbEx + SrbEx->SrbExDataOffset[i]);
 
-            SrbExData = (PSRBEX_DATA)((PUCHAR)SrbEx + SrbEx->SrbExDataOffset[i]);
+	    switch (SrbExData->Type) {
+	    case SrbExDataTypeScsiCdb16:
+		if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB16) <=
+		    SrbEx->SrbLength) {
+		    FoundEntry = TRUE;
+		    ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->CdbLength = CdbLength8;
+		    ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->ScsiStatus = ScsiStatus;
+		    ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->SenseInfoBuffer = SenseInfoBuffer;
+		    ((PSRBEX_DATA_SCSI_CDB16)SrbExData)->SenseInfoBufferLength =
+			SenseInfoBufferLength;
+		} else {
+		    // Catch invalid offset
+		    NT_ASSERT(FALSE);
+		}
+		break;
 
-            switch (SrbExData->Type) {
+	    case SrbExDataTypeScsiCdb32:
+		if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB32) <=
+		    SrbEx->SrbLength) {
+		    FoundEntry = TRUE;
+		    ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->CdbLength = CdbLength8;
+		    ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->ScsiStatus = ScsiStatus;
+		    ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->SenseInfoBuffer = SenseInfoBuffer;
+		    ((PSRBEX_DATA_SCSI_CDB32)SrbExData)->SenseInfoBufferLength =
+			SenseInfoBufferLength;
+		} else {
+		    // Catch invalid offset
+		    NT_ASSERT(FALSE);
+		}
+		break;
 
-                case SrbExDataTypeScsiCdb16:
-                    if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB16) <= SrbEx->SrbLength) {
-                        FoundEntry = TRUE;
-                        ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->CdbLength = CdbLength8;
-                        ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->ScsiStatus = ScsiStatus;
-                        ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->SenseInfoBuffer = SenseInfoBuffer;
-                        ((PSRBEX_DATA_SCSI_CDB16) SrbExData)->SenseInfoBufferLength = SenseInfoBufferLength;
-                    } else {
-                        // Catch invalid offset
-                        NT_ASSERT(FALSE);
-                    }
-                    break;
+	    case SrbExDataTypeScsiCdbVar:
+		if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB_VAR) <=
+		    SrbEx->SrbLength) {
+		    FoundEntry = TRUE;
+		    ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->CdbLength = CdbLength32;
+		    ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->ScsiStatus = ScsiStatus;
+		    ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->SenseInfoBuffer =
+			SenseInfoBuffer;
+		    ((PSRBEX_DATA_SCSI_CDB_VAR)SrbExData)->SenseInfoBufferLength =
+			SenseInfoBufferLength;
+		} else {
+		    // Catch invalid offset
+		    NT_ASSERT(FALSE);
+		}
+		break;
+	    }
 
-                case SrbExDataTypeScsiCdb32:
-                    if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB32) <= SrbEx->SrbLength) {
-                        FoundEntry = TRUE;
-                        ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->CdbLength = CdbLength8;
-                        ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->ScsiStatus = ScsiStatus;
-                        ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->SenseInfoBuffer = SenseInfoBuffer;
-                        ((PSRBEX_DATA_SCSI_CDB32) SrbExData)->SenseInfoBufferLength = SenseInfoBufferLength;
-                    } else {
-                        // Catch invalid offset
-                        NT_ASSERT(FALSE);
-                    }
-                    break;
-
-                case SrbExDataTypeScsiCdbVar:
-                    if (SrbEx->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB_VAR) <= SrbEx->SrbLength) {
-                        FoundEntry = TRUE;
-                        ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->CdbLength = CdbLength32;
-                        ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->ScsiStatus = ScsiStatus;
-                        ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->SenseInfoBuffer = SenseInfoBuffer;
-                        ((PSRBEX_DATA_SCSI_CDB_VAR) SrbExData)->SenseInfoBufferLength = SenseInfoBufferLength;
-                    } else {
-                        // Catch invalid offset
-                        NT_ASSERT(FALSE);
-                    }
-                    break;
-            }
-
-            if (FoundEntry) {
-                break;
-            }
-        }
-
+	    if (FoundEntry) {
+		break;
+	    }
+	}
     }
 
     return;
 }
-
