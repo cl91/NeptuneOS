@@ -110,7 +110,7 @@ Return Value:
 NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
-    CLASS_INIT_DATA InitializationData = { 0 };
+    CLASS_INIT_DATA InitData = { 0 };
     CLASS_QUERY_WMI_REGINFO_EX_LIST classQueryWmiRegInfoExList = { 0 };
     GUID guidQueryRegInfoEx = GUID_CLASSPNP_QUERY_REGINFOEX;
     GUID guidSrbSupport = GUID_CLASSPNP_SRB_SUPPORT;
@@ -134,42 +134,39 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
 #endif
 
-    InitializationData.InitializationDataSize = sizeof(CLASS_INIT_DATA);
+    InitData.InitializationDataSize = sizeof(CLASS_INIT_DATA);
 
     //
     // Setup sizes and entry points for functional device objects
     //
 
-    InitializationData.FdoData.DeviceExtensionSize = FUNCTIONAL_EXTENSION_SIZE;
-    InitializationData.FdoData.DeviceType = FILE_DEVICE_DISK;
-    InitializationData.FdoData.DeviceCharacteristics = FILE_DEVICE_SECURE_OPEN;
+    InitData.FdoData.DeviceExtensionSize = FUNCTIONAL_EXTENSION_SIZE;
+    InitData.FdoData.DeviceType = FILE_DEVICE_DISK;
+    InitData.FdoData.DeviceCharacteristics = FILE_DEVICE_SECURE_OPEN;
 
-    InitializationData.FdoData.ClassInitDevice = DiskInitFdo;
-    InitializationData.FdoData.ClassStartDevice = DiskStartFdo;
-    InitializationData.FdoData.ClassStopDevice = DiskStopDevice;
-    InitializationData.FdoData.ClassRemoveDevice = DiskRemoveDevice;
-    InitializationData.FdoData.ClassPowerDevice = ClassSpinDownPowerHandler;
+    InitData.FdoData.ClassInitDevice = DiskInitFdo;
+    InitData.FdoData.ClassStartDevice = DiskStartFdo;
+    InitData.FdoData.ClassStopDevice = DiskStopDevice;
+    InitData.FdoData.ClassRemoveDevice = DiskRemoveDevice;
+    InitData.FdoData.ClassPowerDevice = ClassSpinDownPowerHandler;
 
-    InitializationData.FdoData.ClassError = DiskFdoProcessError;
-    InitializationData.FdoData.ClassReadWriteVerification = DiskReadWriteVerification;
-    InitializationData.FdoData.ClassDeviceControl = DiskDeviceControl;
-    InitializationData.FdoData.ClassShutdownFlush = DiskShutdownFlush;
-    InitializationData.FdoData.ClassCreateClose = NULL;
+    InitData.FdoData.ClassError = DiskFdoProcessError;
+    InitData.FdoData.ClassReadWriteVerification = DiskReadWriteVerification;
+    InitData.FdoData.ClassDeviceControl = DiskDeviceControl;
+    InitData.FdoData.ClassShutdownFlush = DiskShutdownFlush;
+    InitData.FdoData.ClassCreateClose = NULL;
 
-    InitializationData.FdoData.ClassWmiInfo.GuidCount = 7;
-    InitializationData.FdoData.ClassWmiInfo.GuidRegInfo = DiskWmiFdoGuidList;
-    InitializationData.FdoData.ClassWmiInfo.ClassQueryWmiRegInfo = DiskFdoQueryWmiRegInfo;
-    InitializationData.FdoData.ClassWmiInfo.ClassQueryWmiDataBlock =
-	DiskFdoQueryWmiDataBlock;
-    InitializationData.FdoData.ClassWmiInfo.ClassSetWmiDataBlock = DiskFdoSetWmiDataBlock;
-    InitializationData.FdoData.ClassWmiInfo.ClassSetWmiDataItem = DiskFdoSetWmiDataItem;
-    InitializationData.FdoData.ClassWmiInfo.ClassExecuteWmiMethod =
-	DiskFdoExecuteWmiMethod;
-    InitializationData.FdoData.ClassWmiInfo.ClassWmiFunctionControl =
-	DiskWmiFunctionControl;
+    InitData.FdoData.ClassWmiInfo.GuidCount = 7;
+    InitData.FdoData.ClassWmiInfo.GuidRegInfo = DiskWmiFdoGuidList;
+    InitData.FdoData.ClassWmiInfo.ClassQueryWmiRegInfo = DiskFdoQueryWmiRegInfo;
+    InitData.FdoData.ClassWmiInfo.ClassQueryWmiDataBlock = DiskFdoQueryWmiDataBlock;
+    InitData.FdoData.ClassWmiInfo.ClassSetWmiDataBlock = DiskFdoSetWmiDataBlock;
+    InitData.FdoData.ClassWmiInfo.ClassSetWmiDataItem = DiskFdoSetWmiDataItem;
+    InitData.FdoData.ClassWmiInfo.ClassExecuteWmiMethod = DiskFdoExecuteWmiMethod;
+    InitData.FdoData.ClassWmiInfo.ClassWmiFunctionControl = DiskWmiFunctionControl;
 
-    InitializationData.ClassAddDevice = DiskAddDevice;
-    InitializationData.ClassUnload = DiskUnload;
+    InitData.ClassAddDevice = DiskAddDevice;
+    InitData.ClassUnload = DiskUnload;
 
     //
     // Initialize regregistration data structures
@@ -181,7 +178,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     // Call the class init routine
     //
 
-    status = ClassInitialize(DriverObject, RegistryPath, &InitializationData);
+    status = ClassInitialize(DriverObject, RegistryPath, &InitData);
 
     if (NT_SUCCESS(status)) {
 	IoRegisterBootDriverReinitialization(DriverObject, DiskBootDriverReinit, NULL);
@@ -195,8 +192,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     classQueryWmiRegInfoExList.Size = sizeof(CLASS_QUERY_WMI_REGINFO_EX_LIST);
     classQueryWmiRegInfoExList.ClassFdoQueryWmiRegInfoEx = DiskFdoQueryWmiRegInfoEx;
 
-    (VOID)
-	ClassInitializeEx(DriverObject, &guidQueryRegInfoEx, &classQueryWmiRegInfoExList);
+    ClassInitializeEx(DriverObject, &guidQueryRegInfoEx, &classQueryWmiRegInfoExList);
 
     //
     // Call class init Ex routine to register SRB support
@@ -228,8 +224,6 @@ NTAPI VOID DiskUnload(IN PDRIVER_OBJECT DriverObject)
     // Cleans up tracing
     //
     WPP_CLEANUP(DriverObject);
-
-    return;
 }
 
 /*++
@@ -258,7 +252,8 @@ Return Value:
 
 --*/
 NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
-		       IN PDEVICE_OBJECT PhysicalDeviceObject, IN PULONG DeviceCount,
+		       IN PDEVICE_OBJECT PhysicalDeviceObject,
+		       IN PULONG DeviceCount,
 		       IN BOOLEAN DasdAccessOnly)
 {
     PCCHAR deviceName = NULL;
@@ -1577,9 +1572,9 @@ Arguments:
 
     Fdo - The device object which requested the completion routine
     Irp - The irp that is being completed
-    Context - If disk had write cache enabled and SYNC CACHE command was sent as 1st part of FLUSH processing
-                   then context must carry the completion status of SYNC CACHE request,
-              else context must be set to STATUS_SUCCESS.
+    Context - If disk had write cache enabled and SYNC CACHE command was sent as
+              1st part of FLUSH processing, then context must carry the completion
+	      status of SYNC CACHE request, else context must be set to STATUS_SUCCESS.
 
 Return Value:
 
@@ -1592,9 +1587,6 @@ NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Co
     NTSTATUS status;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PDISK_DATA diskData;
-#ifdef _MSC_VER
-#pragma warning(suppress : 4311) // pointer truncation from 'PVOID' to 'NTSTATUS'
-#endif
     NTSTATUS SyncCacheStatus = (NTSTATUS)(ULONG_PTR)Context;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_GENERAL, "DiskFlushComplete: %p %p\n",
@@ -1606,7 +1598,6 @@ NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Co
     fdoExt = (PFUNCTIONAL_DEVICE_EXTENSION)Fdo->DeviceExtension;
     diskData = (PDISK_DATA)fdoExt->CommonExtension.DriverData;
     NT_ASSERT(diskData != NULL);
-    _Analysis_assume_(diskData != NULL);
 
     FlushContext = &diskData->FlushContext;
 
@@ -1679,17 +1670,19 @@ Return Value:
     Length of the transferred data is returned.
 
 --*/
-NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULONG Length,
+NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
+			IN PCHAR ModeSelectBuffer,
+			IN ULONG Length,
 			IN BOOLEAN SavePage)
 {
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
+    PFUNCTIONAL_DEVICE_EXTENSION FdoExt = Fdo->DeviceExtension;
     PCDB cdb;
     SCSI_REQUEST_BLOCK srb = { 0 };
     ULONG retries = 1;
     ULONG length2;
     NTSTATUS status;
     PULONG buffer;
-    PMODE_PARAMETER_BLOCK blockDescriptor;
+    PMODE_PARAMETER_BLOCK BlockDesc;
     UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = { 0 };
     PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
     PSTOR_ADDR_BTL8 storAddrBtl8;
@@ -1700,11 +1693,11 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULO
     // Check whether block length is available
     //
 
-    if (fdoExtension->DiskGeometry.BytesPerSector == 0) {
+    if (FdoExt->DiskGeometry.BytesPerSector == 0) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskModeSelect: Block length is not available. Unable to send mode "
 		    "select\n"));
-	NT_ASSERT(fdoExtension->DiskGeometry.BytesPerSector != 0);
+	NT_ASSERT(FdoExt->DiskGeometry.BytesPerSector != 0);
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -1726,20 +1719,17 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULO
     // Set length in header to size of mode page.
     //
 
-    ((PMODE_PARAMETER_HEADER)buffer)->BlockDescriptorLength = sizeof(
-	MODE_PARAMETER_BLOCK);
+    ((PMODE_PARAMETER_HEADER)buffer)->BlockDescriptorLength = sizeof(MODE_PARAMETER_BLOCK);
 
-    blockDescriptor = (PMODE_PARAMETER_BLOCK)(buffer + 1);
+    BlockDesc = (PMODE_PARAMETER_BLOCK)(buffer + 1);
 
     //
     // Set block length from the cached disk geometry
     //
 
-    blockDescriptor->BlockLength[2] = (UCHAR)(fdoExtension->DiskGeometry.BytesPerSector >>
-					      16);
-    blockDescriptor->BlockLength[1] = (UCHAR)(fdoExtension->DiskGeometry.BytesPerSector >>
-					      8);
-    blockDescriptor->BlockLength[0] = (UCHAR)(fdoExtension->DiskGeometry.BytesPerSector);
+    BlockDesc->BlockLength[2] = (UCHAR)(FdoExt->DiskGeometry.BytesPerSector >> 16);
+    BlockDesc->BlockLength[1] = (UCHAR)(FdoExt->DiskGeometry.BytesPerSector >> 8);
+    BlockDesc->BlockLength[0] = (UCHAR)(FdoExt->DiskGeometry.BytesPerSector);
 
     //
     // Copy mode page to buffer.
@@ -1751,7 +1741,7 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULO
     // Build the MODE SELECT CDB.
     //
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
+    if (FdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 	//
 	// Set up STORAGE_REQUEST_BLOCK fields
 	//
@@ -1767,7 +1757,7 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULO
 	srbEx->NumSrbExData = 1;
 
 	// Set timeout value from device extension.
-	srbEx->TimeOutValue = fdoExtension->TimeOutValue * 2;
+	srbEx->TimeOutValue = FdoExt->TimeOutValue * 2;
 
 	//
 	// Set up address fields
@@ -1781,12 +1771,9 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULO
 	// Set up SCSI SRB extended data fields
 	//
 
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-				    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
+	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8);
+	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <= srbEx->SrbLength) {
+	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx + srbEx->SrbExDataOffset[0]);
 	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
 	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
 	    srbExDataCdb16->CdbLength = 6;
@@ -1812,7 +1799,7 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo, IN PCHAR ModeSelectBuffer, IN ULO
 	// Set timeout value from device extension.
 	//
 
-	srb.TimeOutValue = fdoExtension->TimeOutValue * 2;
+	srb.TimeOutValue = FdoExt->TimeOutValue * 2;
 
 	srbPtr = &srb;
     }
@@ -1855,20 +1842,19 @@ Retry:
 NTAPI VOID DisableWriteCache(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 
 {
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
-						    Fdo->DeviceExtension;
+    PFUNCTIONAL_DEVICE_EXTENSION FdoExt = (PFUNCTIONAL_DEVICE_EXTENSION)Fdo->DeviceExtension;
     DISK_CACHE_INFORMATION cacheInfo = { 0 };
     NTSTATUS status;
     PIO_WORKITEM WorkItem = (PIO_WORKITEM)Context;
 
     NT_ASSERT(WorkItem != NULL);
 
-    status = DiskGetCacheInformation(fdoExtension, &cacheInfo);
+    status = DiskGetCacheInformation(FdoExt, &cacheInfo);
 
     if (NT_SUCCESS(status) && (cacheInfo.WriteCacheEnabled == TRUE)) {
 	cacheInfo.WriteCacheEnabled = FALSE;
 
-	DiskSetCacheInformation(fdoExtension, &cacheInfo);
+	DiskSetCacheInformation(FdoExt, &cacheInfo);
     }
 
     IoFreeWorkItem(WorkItem);
@@ -1881,9 +1867,8 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 {
     PDISK_VERIFY_WORKITEM_CONTEXT WorkContext = (PDISK_VERIFY_WORKITEM_CONTEXT)Context;
     PIRP Irp = NULL;
-    PFUNCTIONAL_DEVICE_EXTENSION FdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
-						    Fdo->DeviceExtension;
-    PDISK_DATA DiskData = (PDISK_DATA)FdoExtension->CommonExtension.DriverData;
+    PFUNCTIONAL_DEVICE_EXTENSION FdoExt = (PFUNCTIONAL_DEVICE_EXTENSION)Fdo->DeviceExtension;
+    PDISK_DATA DiskData = (PDISK_DATA)FdoExt->CommonExtension.DriverData;
     PVERIFY_INFORMATION verifyInfo = NULL;
     PSCSI_REQUEST_BLOCK Srb = NULL;
     PCDB Cdb = NULL;
@@ -1915,20 +1900,20 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
     // Add disk offset to starting the sector
     //
 
-    byteOffset.QuadPart = FdoExtension->CommonExtension.StartingOffset.QuadPart +
+    byteOffset.QuadPart = FdoExt->CommonExtension.StartingOffset.QuadPart +
 			  verifyInfo->StartingOffset.QuadPart;
 
     //
     // Convert byte offset to the sector offset
     //
 
-    sectorOffset.QuadPart = byteOffset.QuadPart >> FdoExtension->SectorShift;
+    sectorOffset.QuadPart = byteOffset.QuadPart >> FdoExt->SectorShift;
 
     //
     // Convert byte count to sector count.
     //
 
-    sectorCount = verifyInfo->Length >> FdoExtension->SectorShift;
+    sectorCount = verifyInfo->Length >> FdoExt->SectorShift;
 
     //
     // Make sure  that all previous verify requests have indeed completed
@@ -1940,7 +1925,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
     //
     // Initialize SCSI SRB for a verify CDB
     //
-    if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
+    if (FdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 	RtlZeroMemory(Srb, CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE);
 	srbEx = (PSTORAGE_REQUEST_BLOCK)Srb;
 
@@ -1980,7 +1965,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
 
 	    Cdb = (PCDB)srbExDataCdb16->Cdb;
-	    if (TEST_FLAG(FdoExtension->DeviceFlags, DEV_USE_16BYTE_CDB)) {
+	    if (TEST_FLAG(FdoExt->DeviceFlags, DEV_USE_16BYTE_CDB)) {
 		srbExDataCdb16->CdbLength = 16;
 		Cdb->CDB16.OperationCode = SCSIOP_VERIFY16;
 	    } else {
@@ -2003,7 +1988,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
 
 	Cdb = (PCDB)Srb->Cdb;
-	if (TEST_FLAG(FdoExtension->DeviceFlags, DEV_USE_16BYTE_CDB)) {
+	if (TEST_FLAG(FdoExt->DeviceFlags, DEV_USE_16BYTE_CDB)) {
 	    Srb->CdbLength = 16;
 	    Cdb->CDB16.OperationCode = SCSIOP_VERIFY16;
 	} else {
@@ -2015,7 +2000,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
     while (NT_SUCCESS(status) && (sectorCount != 0)) {
 	USHORT numSectors = (USHORT)min(sectorCount, MAX_SECTORS_PER_VERIFY);
 
-	if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
+	if (FdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 	    //
 	    // Reset status fields
 	    //
@@ -2028,7 +2013,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 	    // on  the number of sectors  being verified
 	    //
 
-	    srbEx->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExtension->TimeOutValue;
+	    srbEx->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExt->TimeOutValue;
 	} else {
 	    //
 	    // Reset status fields
@@ -2042,7 +2027,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 	    // on  the number of sectors  being verified
 	    //
 
-	    Srb->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExtension->TimeOutValue;
+	    Srb->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExt->TimeOutValue;
 	}
 
 	//
@@ -2051,7 +2036,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 	// the while loop
 	//
 
-	if (TEST_FLAG(FdoExtension->DeviceFlags, DEV_USE_16BYTE_CDB)) {
+	if (TEST_FLAG(FdoExt->DeviceFlags, DEV_USE_16BYTE_CDB)) {
 	    REVERSE_BYTES_QUAD(&Cdb->CDB16.LogicalBlock, &sectorOffset);
 	    REVERSE_BYTES_SHORT(&Cdb->CDB16.TransferLength[2], &numSectors);
 	} else {
@@ -2218,9 +2203,9 @@ NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
 				PIO_ERROR_LOG_PACKET logEntry = NULL;
 
 				//
-				// The user has explicitly requested that write caching be turned on.
-				// Warn the user that writes with FUA enabled are not working and that
-				// they should disable write cache.
+				// The user has explicitly requested that write caching
+				// be turned on. Warn the user that writes with FUA enabled
+				// are not working and that they should disable write cache.
 				//
 
 				logEntry = IoAllocateErrorLogEntry(
@@ -2598,9 +2583,6 @@ VOID ResetBus(IN PDEVICE_OBJECT Fdo)
     //
 
     IoCallDriver(fdoExtension->CommonExtension.LowerDeviceObject, irp);
-
-    return;
-
 } // end ResetBus()
 
 VOID DiskLogCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
@@ -2713,10 +2695,8 @@ NTSTATUS DiskGetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExte
     return (status);
 }
 
-NTSTATUS
-DiskSetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				IN PMODE_INFO_EXCEPTIONS PageData)
-
+NTSTATUS DiskSetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					 IN PMODE_INFO_EXCEPTIONS PageData)
 {
     ULONG i;
     NTSTATUS status = STATUS_SUCCESS;
