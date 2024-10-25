@@ -26,28 +26,11 @@ Revision History:
 #include "pnp.tmh"
 #endif
 
-#ifndef __REACTOS__
 extern PULONG InitSafeBootMode;
-#else
-extern NTSYSAPI ULONG InitSafeBootMode;
-#endif
 ULONG diskDeviceSequenceNumber = 0;
 extern BOOLEAN DiskIsPastReinit;
 
-#ifdef ALLOC_PRAGMA
-
-#pragma alloc_text(PAGE, DiskAddDevice)
-#pragma alloc_text(PAGE, DiskInitFdo)
-#pragma alloc_text(PAGE, DiskStartFdo)
-#pragma alloc_text(PAGE, DiskGenerateDeviceName)
-#pragma alloc_text(PAGE, DiskCreateSymbolicLinks)
-#pragma alloc_text(PAGE, DiskDeleteSymbolicLinks)
-#pragma alloc_text(PAGE, DiskRemoveDevice)
-#endif
-
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskAddDevice(IN PDRIVER_OBJECT DriverObject, IN PDEVICE_OBJECT PhysicalDeviceObject)
+#define FDO_NAME_FORMAT "\\Device\\Harddisk%d\\DR%d"
 
 /*++
 
@@ -68,7 +51,8 @@ Return Value:
     True is returned if one disk was found and successfully created.
 
 --*/
-
+NTAPI NTSTATUS DiskAddDevice(IN PDRIVER_OBJECT DriverObject,
+			     IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
     ULONG rootPartitionMountable = FALSE;
 
@@ -77,14 +61,11 @@ Return Value:
 
     NTSTATUS status;
 
-    PAGED_CODE();
-
     //
     // See if we should be allowing file systems to mount on partition zero.
     //
 
-    TRY
-    {
+    __try {
 	HANDLE deviceKey = NULL;
 
 	UNICODE_STRING diskKeyName;
@@ -101,7 +82,7 @@ Return Value:
 			"DiskAddDevice: Error %#08lx opening device key "
 			"for pdo %p\n",
 			status, PhysicalDeviceObject));
-	    LEAVE;
+	    __leave;
 	}
 
 	RtlInitUnicodeString(&diskKeyName, L"Disk");
@@ -109,15 +90,15 @@ Return Value:
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, deviceKey,
 				   NULL);
 
-	status = ZwOpenKey(&diskKey, KEY_READ, &objectAttributes);
-	ZwClose(deviceKey);
+	status = NtOpenKey(&diskKey, KEY_READ, &objectAttributes);
+	NtClose(deviceKey);
 
 	if (!NT_SUCCESS(status)) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
 			"DiskAddDevice: Error %#08lx opening disk key "
 			"for pdo %p device key %p\n",
 			status, PhysicalDeviceObject, deviceKey));
-	    LEAVE;
+	    __leave;
 	}
 
 	queryTable[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK;
@@ -126,10 +107,6 @@ Return Value:
 	queryTable[0].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) |
 				    REG_NONE;
 
-#ifdef _MSC_VER
-#pragma prefast(suppress : 6309, \
-		"We don't have QueryRoutine so Context doesn't make any sense")
-#endif
 	status = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE, diskKey, queryTable, NULL,
 					NULL);
 
@@ -140,10 +117,8 @@ Return Value:
 			status, diskKey, PhysicalDeviceObject));
 	}
 
-	ZwClose(diskKey);
-    }
-    FINALLY
-    {
+	NtClose(diskKey);
+    } __finally {
 	//
 	// Do nothing.
 	//
@@ -183,10 +158,6 @@ Return Value:
 
 } // end DiskAddDevice()
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskInitFdo(IN PDEVICE_OBJECT Fdo)
-
 /*++
 
 Routine Description:
@@ -203,7 +174,7 @@ Return Value:
     status
 
 --*/
-
+NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)fdoExtension->CommonExtension.DriverData;
@@ -215,8 +186,6 @@ Return Value:
     PULONG dmSkew;
 
     NTSTATUS status = STATUS_SUCCESS;
-
-    PAGED_CODE();
 
     //
     // Build the lookaside list for srb's for the physical disk. Should only
@@ -475,8 +444,7 @@ Return Value:
     // and enable failure prediction polling.
     //
 
-    if (InitSafeBootMode == 0) // __REACTOS__
-    {
+    if (InitSafeBootMode == 0) {
 	DiskDetectFailurePrediction(fdoExtension, &diskData->FailurePredictionCapability,
 				    NT_SUCCESS(status));
 
@@ -543,18 +511,13 @@ Return Value:
 
 } // end DiskInitFdo()
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskStopDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type)
+NTAPI NTSTATUS DiskStopDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type)
 
 {
     UNREFERENCED_PARAMETER(DeviceObject);
     UNREFERENCED_PARAMETER(Type);
     return STATUS_SUCCESS;
 }
-
-NTSTATUS
-DiskGenerateDeviceName(IN ULONG DeviceNumber, OUT PCCHAR *RawName)
 
 /*++
 
@@ -577,20 +540,17 @@ Return Value:
     status
 
 --*/
-
-#define FDO_NAME_FORMAT "\\Device\\Harddisk%d\\DR%d"
-
+NTSTATUS DiskGenerateDeviceName(IN ULONG DeviceNumber, OUT PCCHAR *RawName)
 {
     CHAR rawName[64] = { 0 };
     NTSTATUS status;
-
-    PAGED_CODE();
 
     status = RtlStringCchPrintfA(rawName, sizeof(rawName) - 1, FDO_NAME_FORMAT,
 				 DeviceNumber, diskDeviceSequenceNumber++);
     if (!NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
-		    "DiskGenerateDeviceName: Format FDO name failed with error: 0x%X\n",
+		    "DiskGenerateDeviceName: Format FDO name failed with error: "
+		    "0x%X\n",
 		    status));
 	return status;
     }
@@ -604,7 +564,8 @@ Return Value:
     status = RtlStringCchCopyA(*RawName, strlen(rawName) + 1, rawName);
     if (!NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
-		    "DiskGenerateDeviceName: Device name copy failed with error: 0x%X\n",
+		    "DiskGenerateDeviceName: Device name copy failed with error: "
+		    "0x%X\n",
 		    status));
 	FREE_POOL(*RawName);
 	return status;
@@ -615,8 +576,6 @@ Return Value:
 
     return STATUS_SUCCESS;
 }
-
-VOID DiskCreateSymbolicLinks(IN PDEVICE_OBJECT DeviceObject)
 
 /*++
 
@@ -637,9 +596,8 @@ Arguments:
 Return Value:
 
     STATUS
-
 --*/
-
+VOID DiskCreateSymbolicLinks(IN PDEVICE_OBJECT DeviceObject)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = commonExtension->DriverData;
@@ -648,8 +606,6 @@ Return Value:
     UNICODE_STRING unicodeSourceName;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     //
     // Build the destination for the link first using the device name
@@ -714,8 +670,6 @@ Return Value:
     return;
 }
 
-VOID DiskDeleteSymbolicLinks(IN PDEVICE_OBJECT DeviceObject)
-
 /*++
 
 Routine Description:
@@ -733,7 +687,7 @@ Return Value:
     status
 
 --*/
-
+VOID DiskDeleteSymbolicLinks(IN PDEVICE_OBJECT DeviceObject)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = commonExtension->DriverData;
@@ -741,8 +695,6 @@ Return Value:
     WCHAR wideLinkName[64] = { 0 };
     UNICODE_STRING unicodeLinkName;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     if (diskData->LinkStatus.WellKnownNameCreated) {
 	status = RtlStringCchPrintfW(
@@ -771,10 +723,6 @@ Return Value:
     return;
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type)
-
 /*++
 
 Routine Description:
@@ -791,12 +739,10 @@ Return Value:
     status
 
 --*/
-
+NTAPI NTSTATUS DiskRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-
-    PAGED_CODE();
 
     //
     // Handle query and cancel
@@ -811,8 +757,8 @@ Return Value:
     //
 
     if (fdoExtension->DeviceDirectory != NULL) {
-	ZwMakeTemporaryObject(fdoExtension->DeviceDirectory);
-	ZwClose(fdoExtension->DeviceDirectory);
+	NtMakeTemporaryObject(fdoExtension->DeviceDirectory);
+	NtClose(fdoExtension->DeviceDirectory);
 	fdoExtension->DeviceDirectory = NULL;
     }
 
@@ -830,10 +776,6 @@ Return Value:
 
     return STATUS_SUCCESS;
 }
-
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskStartFdo(IN PDEVICE_OBJECT Fdo)
 
 /*++
 
@@ -858,7 +800,7 @@ Return Value:
     status
 
 --*/
-
+NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = &(fdoExtension->CommonExtension);
@@ -867,8 +809,6 @@ Return Value:
     DISK_CACHE_INFORMATION cacheInfo = { 0 };
     ULONG isPowerProtected = 0;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     //
     // Get the hotplug information, so we can turn off write cache if needed
@@ -929,7 +869,8 @@ Return Value:
 	    // may cause the filesystem to refuse to mount on this media
 	    //
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_PNP,
-			"DiskStartFdo: Turning off write cache for %p due to a firmware "
+			"DiskStartFdo: Turning off write cache for %p due to a "
+			"firmware "
 			"issue\n",
 			Fdo));
 
@@ -949,7 +890,8 @@ Return Value:
 	    // This flag indicates that the media in the device cannot be reliably locked
 	    //
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_PNP,
-			"DiskStartFdo: Turning off write cache for %p due to unlockable "
+			"DiskStartFdo: Turning off write cache for %p due to "
+			"unlockable "
 			"media\n",
 			Fdo));
 
