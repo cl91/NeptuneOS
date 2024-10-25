@@ -2984,8 +2984,7 @@ NTAPI NTSTATUS DiskSetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 	}
     }
 
-    if (NT_SUCCESS(status)) {
-    } else {
+    if (!NT_SUCCESS(status)) {
 	//
 	// We were unable to modify the disk write cache setting
 	//
