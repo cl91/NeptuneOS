@@ -26,29 +26,24 @@ Revision History:
 #include "diskwmi.tmh"
 #endif
 
-NTSTATUS
-DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			    PSTORAGE_PREDICT_FAILURE checkFailure);
+NTSTATUS DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				     PSTORAGE_PREDICT_FAILURE checkFailure);
 
-NTSTATUS
-DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, PBOOLEAN SupportSmart);
+NTSTATUS DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     PBOOLEAN SupportSmart);
 
-NTSTATUS
-DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			    PFAILURE_PREDICTION_METHOD FailurePredictCapability,
-			    BOOLEAN ScsiAddressAvailable);
+NTSTATUS DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				     PFAILURE_PREDICTION_METHOD FailurePredictCapability,
+				     BOOLEAN ScsiAddressAvailable);
 
-NTSTATUS
-DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				 PSTORAGE_FAILURE_PREDICT_THRESHOLDS DiskSmartThresholds);
+NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					  PSTORAGE_FAILURE_PREDICT_THRESHOLDS Thresholds);
 
-NTSTATUS
-DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN UCHAR SectorCount,
-		 IN UCHAR LogAddress, OUT PUCHAR Buffer);
+NTSTATUS DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			  IN UCHAR SectorCount, IN UCHAR LogAddress, OUT PUCHAR Buffer);
 
-NTSTATUS
-DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN UCHAR SectorCount,
-		  IN UCHAR LogAddress, IN PUCHAR Buffer);
+NTSTATUS DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			   IN UCHAR SectorCount, IN UCHAR LogAddress, IN PUCHAR Buffer);
 
 IO_WORKITEM_ROUTINE DiskReregWorker;
 
@@ -104,36 +99,6 @@ GUID DiskPredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID;
 #define SmartThresholdsGuid 5
 #define ScsiInfoExceptionsGuid 6
 
-#ifdef ALLOC_PRAGMA
-
-#pragma alloc_text(PAGE, DiskWmiFunctionControl)
-#pragma alloc_text(PAGE, DiskFdoQueryWmiRegInfo)
-#pragma alloc_text(PAGE, DiskFdoQueryWmiDataBlock)
-#pragma alloc_text(PAGE, DiskFdoSetWmiDataBlock)
-#pragma alloc_text(PAGE, DiskFdoSetWmiDataItem)
-#pragma alloc_text(PAGE, DiskFdoExecuteWmiMethod)
-
-#pragma alloc_text(PAGE, DiskDetectFailurePrediction)
-#pragma alloc_text(PAGE, DiskEnableDisableFailurePrediction)
-#pragma alloc_text(PAGE, DiskEnableDisableFailurePredictPolling)
-#pragma alloc_text(PAGE, DiskReadFailurePredictStatus)
-#pragma alloc_text(PAGE, DiskReadFailurePredictData)
-#pragma alloc_text(PAGE, DiskReadFailurePredictThresholds)
-#pragma alloc_text(PAGE, DiskGetIdentifyInfo)
-#pragma alloc_text(PAGE, DiskReadSmartLog)
-#pragma alloc_text(PAGE, DiskWriteSmartLog)
-#pragma alloc_text(PAGE, DiskPerformSmartCommand)
-#pragma alloc_text(PAGE, DiskSendFailurePredictIoctl)
-#pragma alloc_text(PAGE, DiskReregWorker)
-#pragma alloc_text(PAGE, DiskInitializeReregistration)
-
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-#pragma alloc_text(PAGE, DiskGetModePage)
-#pragma alloc_text(PAGE, DiskEnableInfoExceptions)
-#endif // (NTDDI_VERSION >= NTDDI_WINBLUE)
-
-#endif
-
 //
 // Note:
 // Some port drivers assume that the SENDCMDINPARAMS structure will always be atleast
@@ -146,7 +111,8 @@ GUID DiskPredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID;
 
 //
 // Read SMART data attributes.
-// SrbControl should be : sizeof(SRB_IO_CONTROL) + MAX[ sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + READ_ATTRIBUTE_BUFFER_SIZE ]
+// SrbControl should be : sizeof(SRB_IO_CONTROL) +
+// max(sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + READ_ATTRIBUTE_BUFFER_SIZE)
 // Attribute data returned at &SendCmdOutParams->bBuffer[0]
 //
 #define DiskReadSmartData(FdoExtension, SrbControl, BufferSize)                   \
@@ -156,7 +122,8 @@ GUID DiskPredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID;
 
 //
 // Read SMART data thresholds.
-// SrbControl should be : sizeof(SRB_IO_CONTROL) + MAX[ sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + READ_THRESHOLD_BUFFER_SIZE ]
+// SrbControl should be : sizeof(SRB_IO_CONTROL) +
+// max(sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + READ_THRESHOLD_BUFFER_SIZE)
 // Attribute data returned at &SendCmdOutParams->bBuffer[0]
 //
 #define DiskReadSmartThresholds(FdoExtension, SrbControl, BufferSize)                \
@@ -166,7 +133,8 @@ GUID DiskPredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID;
 
 //
 // Read SMART status
-// SrbControl should be : sizeof(SRB_IO_CONTROL) + MAX[ sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + sizeof(IDEREGS) ]
+// SrbControl should be : sizeof(SRB_IO_CONTROL) +
+// max(sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + sizeof(IDEREGS))
 // Failure predicted if SendCmdOutParams->bBuffer[3] == 0xf4 and SendCmdOutParams->bBuffer[4] == 0x2c
 //
 #define DiskReadSmartStatus(FdoExtension, SrbControl, BufferSize)                       \
@@ -175,7 +143,8 @@ GUID DiskPredictFailureEventGuid = WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID;
 
 //
 // Read disks IDENTIFY data
-// SrbControl should be : sizeof(SRB_IO_CONTROL) + MAX[ sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + IDENTIFY_BUFFER_SIZE ]
+// SrbControl should be : sizeof(SRB_IO_CONTROL) +
+// max(sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + IDENTIFY_BUFFER_SIZE)
 // Identify data returned at &SendCmdOutParams->bBuffer[0]
 //
 #define DiskGetIdentifyData(FdoExtension, SrbControl, BufferSize)                        \
@@ -208,38 +177,6 @@ static NTSTATUS DiskDisableSmart(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 				   (PSRB_IO_CONTROL)srbControl, &bufferSize);
 }
 
-#ifndef __REACTOS__ // functions are not used
-//
-// Enable Attribute Autosave
-//
-_inline NTSTATUS
-DiskEnableSmartAttributeAutosave(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
-{
-    UCHAR srbControl[sizeof(SRB_IO_CONTROL) + sizeof(SENDCMDINPARAMS)] = { 0 };
-    ULONG bufferSize = sizeof(srbControl);
-
-    return DiskPerformSmartCommand(FdoExtension,
-				   IOCTL_SCSI_MINIPORT_ENABLE_DISABLE_AUTOSAVE, SMART_CMD,
-				   ENABLE_DISABLE_AUTOSAVE, 0xf1, 0,
-				   (PSRB_IO_CONTROL)srbControl, &bufferSize);
-}
-
-//
-// Disable Attribute Autosave
-//
-_inline NTSTATUS
-DiskDisableSmartAttributeAutosave(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
-{
-    UCHAR srbControl[sizeof(SRB_IO_CONTROL) + sizeof(SENDCMDINPARAMS)] = { 0 };
-    ULONG bufferSize = sizeof(srbControl);
-
-    return DiskPerformSmartCommand(FdoExtension,
-				   IOCTL_SCSI_MINIPORT_ENABLE_DISABLE_AUTOSAVE, SMART_CMD,
-				   ENABLE_DISABLE_AUTOSAVE, 0x00, 0,
-				   (PSRB_IO_CONTROL)srbControl, &bufferSize);
-}
-#endif
-
 //
 // Initialize execution of SMART online diagnostics
 //
@@ -255,22 +192,19 @@ static NTSTATUS DiskExecuteSmartDiagnostics(PFUNCTIONAL_DEVICE_EXTENSION FdoExte
 				   (PSRB_IO_CONTROL)srbControl, &bufferSize);
 }
 
-NTSTATUS
-DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN UCHAR SectorCount,
-		 IN UCHAR LogAddress, OUT PUCHAR Buffer)
+NTSTATUS DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			  IN UCHAR SectorCount, IN UCHAR LogAddress, OUT PUCHAR Buffer)
 {
     PSRB_IO_CONTROL srbControl;
     NTSTATUS status;
     PSENDCMDOUTPARAMS sendCmdOutParams;
     ULONG logSize, bufferSize;
 
-    PAGED_CODE();
-
     logSize = SectorCount * SMART_LOG_SECTOR_SIZE;
     bufferSize = sizeof(SRB_IO_CONTROL) +
 		 max(sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + logSize);
 
-    srbControl = ExAllocatePoolWithTag(NonPagedPoolNx, bufferSize, DISK_TAG_SMART);
+    srbControl = ExAllocatePoolWithTag(bufferSize, DISK_TAG_SMART);
 
     if (srbControl != NULL) {
 	status = DiskPerformSmartCommand(FdoExtension, IOCTL_SCSI_MINIPORT_READ_SMART_LOG,
@@ -290,21 +224,18 @@ DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN UCHAR SectorCo
     return (status);
 }
 
-NTSTATUS
-DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN UCHAR SectorCount,
-		  IN UCHAR LogAddress, IN PUCHAR Buffer)
+NTSTATUS DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			   IN UCHAR SectorCount, IN UCHAR LogAddress, IN PUCHAR Buffer)
 {
     PSRB_IO_CONTROL srbControl;
     NTSTATUS status;
     PSENDCMDINPARAMS sendCmdInParams;
     ULONG logSize, bufferSize;
 
-    PAGED_CODE();
-
     logSize = SectorCount * SMART_LOG_SECTOR_SIZE;
     bufferSize = sizeof(SRB_IO_CONTROL) + sizeof(SENDCMDINPARAMS) - 1 + logSize;
 
-    srbControl = ExAllocatePoolWithTag(NonPagedPoolNx, bufferSize, DISK_TAG_SMART);
+    srbControl = ExAllocatePoolWithTag(bufferSize, DISK_TAG_SMART);
 
     if (srbControl != NULL) {
 	sendCmdInParams = (PSENDCMDINPARAMS)((PUCHAR)srbControl + sizeof(SRB_IO_CONTROL));
@@ -321,11 +252,6 @@ DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN UCHAR SectorC
     return (status);
 }
 
-NTSTATUS
-DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			IN ULONG SrbControlCode, IN UCHAR Command, IN UCHAR Feature,
-			IN UCHAR SectorCount, IN UCHAR SectorNumber,
-			IN OUT PSRB_IO_CONTROL SrbControl, OUT PULONG BufferSize)
 /*++
 
 Routine Description:
@@ -358,6 +284,11 @@ Return Value:
     status
 
 --*/
+NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN ULONG SrbControlCode, IN UCHAR Command,
+				 IN UCHAR Feature, IN UCHAR SectorCount,
+				 IN UCHAR SectorNumber, IN OUT PSRB_IO_CONTROL SrbControl,
+				 OUT PULONG BufferSize)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
@@ -375,8 +306,6 @@ Return Value:
     UCHAR srbExBuffer[CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE] = { 0 };
     PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
     PSTOR_ADDR_BTL8 storAddrBtl8;
-
-    PAGED_CODE();
 
     //
     // Point to the 'buffer' portion of the SRB_CONTROL and compute how
@@ -636,16 +565,14 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, PBOOLEAN SupportSmart)
+NTSTATUS DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     PBOOLEAN SupportSmart)
 {
     UCHAR outBuffer[sizeof(SRB_IO_CONTROL) +
 		    max(sizeof(SENDCMDINPARAMS),
 			sizeof(SENDCMDOUTPARAMS) - 1 + IDENTIFY_BUFFER_SIZE)] = { 0 };
     ULONG outBufferSize = sizeof(outBuffer);
     NTSTATUS status;
-
-    PAGED_CODE();
 
     status = DiskGetIdentifyData(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
 				 &outBufferSize);
@@ -673,17 +600,14 @@ DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, PBOOLEAN SupportS
 // FP Ioctl specific routines
 //
 
-NTSTATUS
-DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			    PSTORAGE_PREDICT_FAILURE checkFailure)
+NTSTATUS DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				     PSTORAGE_PREDICT_FAILURE checkFailure)
 {
     KEVENT event;
     PDEVICE_OBJECT deviceObject;
     IO_STATUS_BLOCK ioStatus = { 0 };
     PIRP irp;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
@@ -711,15 +635,12 @@ DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
 
-NTSTATUS
-DiskGetModePage(_In_ PDEVICE_OBJECT Fdo, _In_ UCHAR PageMode, _In_ UCHAR PageControl,
-		_In_ PMODE_PARAMETER_HEADER ModeData, _Inout_ PULONG ModeDataSize,
-		_Out_ PVOID *PageData)
+NTSTATUS DiskGetModePage(IN PDEVICE_OBJECT Fdo, IN UCHAR PageMode, IN UCHAR PageControl,
+			 IN PMODE_PARAMETER_HEADER ModeData, IN OUT PULONG ModeDataSize,
+			 OUT PVOID *PageData)
 {
     ULONG size = 0;
     PVOID pageData = NULL;
-
-    PAGED_CODE();
 
     if (ModeData == NULL || ModeDataSize == NULL ||
 	*ModeDataSize < sizeof(MODE_PARAMETER_HEADER) || PageData == NULL) {
@@ -771,9 +692,8 @@ DiskGetModePage(_In_ PDEVICE_OBJECT Fdo, _In_ UCHAR PageMode, _In_ UCHAR PageCon
     }
 }
 
-NTSTATUS
-DiskEnableInfoExceptions(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			 _In_ BOOLEAN Enable)
+NTSTATUS DiskEnableInfoExceptions(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				  IN BOOLEAN Enable)
 {
     PDISK_DATA diskData = (PDISK_DATA)(FdoExtension->CommonExtension.DriverData);
     NTSTATUS status = STATUS_NOT_SUPPORTED;
@@ -782,12 +702,9 @@ DiskEnableInfoExceptions(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     MODE_INFO_EXCEPTIONS changeablePageData;
     ULONG modeDataSize;
 
-    PAGED_CODE();
-
     modeDataSize = MODE_DATA_SIZE;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned, modeDataSize,
-				     DISK_TAG_INFO_EXCEPTION);
+    modeData = ExAllocatePoolWithTag(modeDataSize, DISK_TAG_INFO_EXCEPTION);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_WMI,
@@ -912,9 +829,6 @@ DiskEnableInfoExceptions(_In_ PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 // FP type independent routines
 //
 
-NTSTATUS
-DiskEnableDisableFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				   BOOLEAN Enable)
 /*++
 
 Routine Description:
@@ -932,12 +846,12 @@ Return Value:
     NT Status
 
 --*/
+NTSTATUS DiskEnableDisableFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					    BOOLEAN Enable)
 {
     NTSTATUS status;
     PCOMMON_DEVICE_EXTENSION commonExtension = &(FdoExtension->CommonExtension);
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
-
-    PAGED_CODE();
 
     switch (diskData->FailurePredictionCapability) {
     case FailurePredictionSmart: {
@@ -971,9 +885,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-DiskEnableDisableFailurePredictPolling(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				       BOOLEAN Enable, ULONG PollTimeInSeconds)
 /*++
 
 Routine Description:
@@ -993,12 +904,12 @@ Return Value:
     NT Status
 
 --*/
+NTSTATUS DiskEnableDisableFailurePredictPolling(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+						BOOLEAN Enable, ULONG PollTimeInSeconds)
 {
     NTSTATUS status;
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
-
-    PAGED_CODE();
 
     if (Enable) {
 	status = DiskEnableDisableFailurePrediction(FdoExtension, Enable);
@@ -1023,9 +934,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-DiskReadFailurePredictStatus(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     PSTORAGE_FAILURE_PREDICT_STATUS DiskSmartStatus)
 /*++
 
 Routine Description:
@@ -1043,12 +951,12 @@ Return Value:
     NT Status
 
 --*/
+NTSTATUS DiskReadFailurePredictStatus(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				      PSTORAGE_FAILURE_PREDICT_STATUS DiskSmartStatus)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
     NTSTATUS status;
-
-    PAGED_CODE();
 
     DiskSmartStatus->PredictFailure = FALSE;
 
@@ -1091,9 +999,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-DiskReadFailurePredictData(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			   PSTORAGE_FAILURE_PREDICT_DATA DiskSmartData)
 /*++
 
 Routine Description:
@@ -1112,12 +1017,12 @@ Return Value:
     NT Status
 
 --*/
+NTSTATUS DiskReadFailurePredictData(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				    PSTORAGE_FAILURE_PREDICT_DATA DiskSmartData)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
     NTSTATUS status;
-
-    PAGED_CODE();
 
     switch (diskData->FailurePredictionCapability) {
     case FailurePredictionSmart: {
@@ -1129,7 +1034,7 @@ Return Value:
 			max(sizeof(SENDCMDINPARAMS),
 			    sizeof(SENDCMDOUTPARAMS) - 1 + READ_ATTRIBUTE_BUFFER_SIZE);
 
-	outBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, outBufferSize, DISK_TAG_SMART);
+	outBuffer = ExAllocatePoolWithTag(outBufferSize, DISK_TAG_SMART);
 
 	if (outBuffer != NULL) {
 	    status = DiskReadSmartData(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
@@ -1171,9 +1076,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				 PSTORAGE_FAILURE_PREDICT_THRESHOLDS DiskSmartThresholds)
 /*++
 
 Routine Description:
@@ -1192,12 +1094,12 @@ Return Value:
     NT Status
 
 --*/
+NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					  PSTORAGE_FAILURE_PREDICT_THRESHOLDS Thresholds)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
     NTSTATUS status;
-
-    PAGED_CODE();
 
     switch (diskData->FailurePredictionCapability) {
     case FailurePredictionSmart: {
@@ -1209,7 +1111,7 @@ Return Value:
 			max(sizeof(SENDCMDINPARAMS),
 			    sizeof(SENDCMDOUTPARAMS) - 1 + READ_THRESHOLD_BUFFER_SIZE);
 
-	outBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, outBufferSize, DISK_TAG_SMART);
+	outBuffer = ExAllocatePoolWithTag(outBufferSize, DISK_TAG_SMART);
 
 	if (outBuffer != NULL) {
 	    status = DiskReadSmartThresholds(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
@@ -1219,10 +1121,9 @@ Return Value:
 		cmdOutParameters = (PSENDCMDOUTPARAMS)(outBuffer +
 						       sizeof(SRB_IO_CONTROL));
 
-		RtlCopyMemory(DiskSmartThresholds->VendorSpecific,
-			      cmdOutParameters->bBuffer,
+		RtlCopyMemory(Thresholds->VendorSpecific, cmdOutParameters->bBuffer,
 			      min(READ_THRESHOLD_BUFFER_SIZE,
-				  sizeof(DiskSmartThresholds->VendorSpecific)));
+				  sizeof(Thresholds->VendorSpecific)));
 	    }
 	    FREE_POOL(outBuffer);
 	} else {
@@ -1244,19 +1145,16 @@ Return Value:
     return status;
 }
 
-VOID NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
+NTAPI VOID DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
 {
     PDISKREREGREQUEST reregRequest;
     NTSTATUS status;
     PDEVICE_OBJECT deviceObject;
     PIRP irp;
 
-    PAGED_CODE();
     UNREFERENCED_PARAMETER(DevObject);
 
     NT_ASSERT(Context != NULL);
-    _Analysis_assume_(Context != NULL);
 
     do {
 	reregRequest = (PDISKREREGREQUEST)ExInterlockedPopEntryList(&DiskReregHead,
@@ -1295,11 +1193,8 @@ DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
     IoFreeWorkItem((PIO_WORKITEM)Context);
 }
 
-NTSTATUS
-DiskInitializeReregistration(VOID)
+NTSTATUS DiskInitializeReregistration(VOID)
 {
-    PAGED_CODE();
-
     //
     // Initialize the spinlock used to manage the
     // list of disks reregistering their guids
@@ -1309,8 +1204,7 @@ DiskInitializeReregistration(VOID)
     return (STATUS_SUCCESS);
 }
 
-NTSTATUS
-DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+NTSTATUS DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
     PDISKREREGREQUEST reregRequest;
     PIO_WORKITEM workItem;
@@ -1322,8 +1216,7 @@ DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    reregRequest = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(DISKREREGREQUEST),
-					 DISK_TAG_SMART);
+    reregRequest = ExAllocatePoolWithTag(sizeof(DISKREREGREQUEST), DISK_TAG_SMART);
     if (reregRequest != NULL) {
 	//
 	// add the disk that needs reregistration to the stack of disks
@@ -1366,9 +1259,8 @@ DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     return (status);
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskInfoExceptionComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
+NTAPI NTSTATUS DiskInfoExceptionComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp,
+					 PVOID Context)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
@@ -1616,8 +1508,7 @@ DiskInfoExceptionComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp, PVOID Context)
     return (STATUS_MORE_PROCESSING_REQUIRED);
 }
 
-NTSTATUS
-DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PUCHAR modeData;
     PSCSI_REQUEST_BLOCK srb;
@@ -1632,8 +1523,7 @@ DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16 = NULL;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned, MODE_DATA_SIZE,
-				     DISK_TAG_INFO_EXCEPTION);
+    modeData = ExAllocatePoolWithTag(MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_WMI,
 		    "DiskInfoExceptionCheck: Can't allocate mode data "
@@ -1646,7 +1536,7 @@ DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     } else {
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
-    srb = ExAllocatePoolWithTag(NonPagedPoolNx, srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
     if (srb == NULL) {
 	FREE_POOL(modeData);
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_WMI,
@@ -1660,8 +1550,7 @@ DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     // Sense buffer is in aligned nonpaged pool.
     //
 
-    senseInfoBuffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-					    SENSE_BUFFER_SIZE_EX, '7CcS');
+    senseInfoBuffer = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE_EX, '7CcS');
 
     if (senseInfoBuffer == NULL) {
 	FREE_POOL(srb);
@@ -1906,10 +1795,6 @@ DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     return (STATUS_PENDING);
 }
 
-NTSTATUS
-DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			    PFAILURE_PREDICTION_METHOD FailurePredictCapability,
-			    BOOLEAN ScsiAddressAvailable)
 /*++
 
 Routine Description:
@@ -1945,6 +1830,9 @@ Return Value:
     NT Status
 
 --*/
+NTSTATUS DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				     PFAILURE_PREDICTION_METHOD FailurePredictCapability,
+				     BOOLEAN ScsiAddressAvailable)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
@@ -1952,8 +1840,6 @@ Return Value:
     NTSTATUS status;
     STORAGE_PREDICT_FAILURE checkFailure;
     STORAGE_FAILURE_PREDICT_STATUS diskSmartStatus;
-
-    PAGED_CODE();
 
     //
     // Assume no failure predict mechanisms
@@ -2027,10 +1913,6 @@ Return Value:
     return (STATUS_SUCCESS);
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskWmiFunctionControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN ULONG GuidIndex,
-		       IN CLASSENABLEDISABLEFUNCTION Function, IN BOOLEAN Enable)
 /*++
 
 Routine Description:
@@ -2070,11 +1952,13 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskWmiFunctionControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				      IN ULONG GuidIndex,
+				      IN CLASSENABLEDISABLEFUNCTION Function,
+				      IN BOOLEAN Enable)
 {
     NTSTATUS status = STATUS_SUCCESS;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-
-    PAGED_CODE();
 
     if ((Function == DataBlockCollection) && Enable) {
 	if ((GuidIndex == SmartStatusGuid) || (GuidIndex == SmartDataGuid) ||
@@ -2116,10 +2000,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoQueryWmiRegInfo(IN PDEVICE_OBJECT DeviceObject, OUT ULONG *RegFlags,
-		       OUT PUNICODE_STRING InstanceName)
 /*++
 
 Routine Description:
@@ -2153,11 +2033,12 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskFdoQueryWmiRegInfo(IN PDEVICE_OBJECT DeviceObject, OUT ULONG *RegFlags,
+				      OUT PUNICODE_STRING InstanceName)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
 
-    PAGED_CODE();
     UNREFERENCED_PARAMETER(InstanceName);
 
     SET_FLAG(DiskWmiFdoGuidList[SmartThresholdsGuid].Flags, WMIREG_FLAG_REMOVE_GUID);
@@ -2208,10 +2089,6 @@ Return Value:
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoQueryWmiRegInfoEx(IN PDEVICE_OBJECT DeviceObject, OUT ULONG *RegFlags,
-			 OUT PUNICODE_STRING InstanceName, OUT PUNICODE_STRING MofName)
 /*++
 
 Routine Description:
@@ -2249,6 +2126,10 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskFdoQueryWmiRegInfoEx(IN PDEVICE_OBJECT DeviceObject,
+					OUT ULONG *RegFlags,
+					OUT PUNICODE_STRING InstanceName,
+					OUT PUNICODE_STRING MofName)
 {
     NTSTATUS status;
 
@@ -2262,10 +2143,6 @@ Return Value:
     return (status);
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoQueryWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN ULONG GuidIndex,
-			 IN ULONG BufferAvail, OUT PUCHAR Buffer)
 /*++
 
 Routine Description:
@@ -2295,14 +2172,15 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskFdoQueryWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+					IN ULONG GuidIndex, IN ULONG BufferAvail,
+					OUT PUCHAR Buffer)
 {
     NTSTATUS status;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
     ULONG sizeNeeded;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
 		"Disk: DiskQueryWmiDataBlock, Device %p, Irp %p, GuiIndex %d\n"
@@ -2454,10 +2332,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoSetWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN ULONG GuidIndex,
-		       IN ULONG BufferSize, IN PUCHAR Buffer)
 /*++
 
 Routine Description:
@@ -2486,13 +2360,14 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskFdoSetWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				      IN ULONG GuidIndex, IN ULONG BufferSize,
+				      IN PUCHAR Buffer)
 {
     NTSTATUS status;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
 		"Disk: DiskSetWmiDataBlock, Device %p, Irp %p, GuiIndex %d\n"
@@ -2544,10 +2419,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoSetWmiDataItem(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN ULONG GuidIndex,
-		      IN ULONG DataItemId, IN ULONG BufferSize, IN PUCHAR Buffer)
 /*++
 
 Routine Description:
@@ -2578,10 +2449,11 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskFdoSetWmiDataItem(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				     IN ULONG GuidIndex, IN ULONG DataItemId,
+				     IN ULONG BufferSize, IN PUCHAR Buffer)
 {
     NTSTATUS status;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
 		"Disk: DiskSetWmiDataItem, Device %p, Irp %p, GuiIndex %d, DataId %d\n"
@@ -2603,11 +2475,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-NTAPI /* ReactOS Change: GCC Does not support STDCALL by default */
-DiskFdoExecuteWmiMethod(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN ULONG GuidIndex,
-			IN ULONG MethodId, IN ULONG InBufferSize, IN ULONG OutBufferSize,
-			IN PUCHAR Buffer)
 /*++
 
 Routine Description:
@@ -2642,14 +2509,16 @@ Return Value:
     status
 
 --*/
+NTAPI NTSTATUS DiskFdoExecuteWmiMethod(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
+				       IN ULONG GuidIndex, IN ULONG MethodId,
+				       IN ULONG InBufferSize, IN ULONG OutBufferSize,
+				       IN PUCHAR Buffer)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
     ULONG sizeNeeded = 0;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_WMI,
 		"Disk: DiskExecuteWmiMethod, DeviceObject %p, Irp %p, Guid Id %d, "
