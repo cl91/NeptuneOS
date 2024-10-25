@@ -24,30 +24,25 @@ Revision History:
 #include "disk.h"
 #include "ntddstor.h"
 
-#ifdef DEBUG_USE_WPP
-#include "geometry.tmh"
+#ifdef DEBUG_USE_WPP #include "geometry.tmh"
 #endif
 
 #if defined(_X86_) || defined(_AMD64_)
 
-DISK_GEOMETRY_SOURCE
-DiskUpdateGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION DeviceExtension);
+DISK_GEOMETRY_SOURCE DiskUpdateGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION DeviceExtension);
 
-NTSTATUS
-DiskUpdateRemovableGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
+NTSTATUS DiskUpdateRemovableGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
 VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey);
 
-NTSTATUS
-DiskSaveBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE TargetKey,
-		      IN ULONG DiskNumber);
+NTSTATUS DiskSaveBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE TargetKey,
+			       IN ULONG DiskNumber);
 
-NTSTATUS
-DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey);
+NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject,
+				    IN HANDLE HardwareKey);
 
-NTSTATUS
-DiskGetPortGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-		    OUT PDISK_GEOMETRY Geometry);
+NTSTATUS DiskGetPortGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     OUT PDISK_GEOMETRY Geometry);
 
 typedef struct _DISK_DETECT_INFO {
     BOOLEAN Initialized;
@@ -120,23 +115,6 @@ typedef struct _PARTITION_DESCRIPTOR {
 
 #define BOOT_RECORD_SIGNATURE (0xaa55)
 
-#ifdef ALLOC_PRAGMA
-#pragma alloc_text(INIT, DiskSaveDetectInfo)
-#pragma alloc_text(INIT, DiskScanBusDetectInfo)
-#pragma alloc_text(INIT, DiskSaveBusDetectInfo)
-#pragma alloc_text(INIT, DiskSaveGeometryDetectInfo)
-
-#pragma alloc_text(PAGE, DiskUpdateGeometry)
-#pragma alloc_text(PAGE, DiskUpdateRemovableGeometry)
-#pragma alloc_text(PAGE, DiskGetPortGeometry)
-#pragma alloc_text(PAGE, DiskIsNT4Geometry)
-#pragma alloc_text(PAGE, DiskGetDetectInfo)
-#pragma alloc_text(PAGE, DiskReadSignature)
-#endif
-
-NTSTATUS
-DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject)
-
 /*++
 
 Routine Description:
@@ -157,7 +135,7 @@ Return Value:
     status.
 
 --*/
-
+NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject)
 {
     OBJECT_ATTRIBUTES objectAttributes = { 0 };
     HANDLE hardwareKey;
@@ -166,8 +144,6 @@ Return Value:
     HANDLE busKey;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     InitializeObjectAttributes(&objectAttributes, DriverObject->HardwareDatabase,
 			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
@@ -238,7 +214,6 @@ Return Value:
     return STATUS_SUCCESS;
 }
 
-VOID DiskCleanupDetectInfo(IN PDRIVER_OBJECT DriverObject)
 /*++
 
 Routine Description:
@@ -254,15 +229,14 @@ Return Value:
     none
 
 --*/
-
+VOID DiskCleanupDetectInfo(IN PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
     FREE_POOL(DetectInfoList);
     return;
 }
 
-NTSTATUS
-DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey)
+NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey)
 {
     UNICODE_STRING unicodeString;
     PKEY_VALUE_FULL_INFORMATION keyData;
@@ -278,7 +252,6 @@ DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey
 
     NTSTATUS status;
 
-    PAGED_CODE();
     UNREFERENCED_PARAMETER(DriverObject);
 
     //
@@ -287,7 +260,7 @@ DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey
 
     RtlInitUnicodeString(&unicodeString, L"Configuration Data");
 
-    keyData = ExAllocatePoolWithTag(PagedPool, VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
+    keyData = ExAllocatePoolWithTag(VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
 
     if (keyData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -349,7 +322,7 @@ DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey
     //
 
     length = sizeof(DISK_DETECT_INFO) * numberOfDrives;
-    DetectInfoList = ExAllocatePoolWithTag(PagedPool, length, DISK_TAG_UPDATE_GEOM);
+    DetectInfoList = ExAllocatePoolWithTag(length, DISK_TAG_UPDATE_GEOM);
 
     if (DetectInfoList == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -371,8 +344,7 @@ DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey
     //
 
     for (i = 0; i < numberOfDrives; i++) {
-#ifdef _MSC_VER
-#pragma warning( \
+#ifdef _MSC_VER #pragma warning( \
     suppress : 6386) // PREFast bug means it doesn't correctly remember the size of DetectInfoList
 #endif
 	DetectInfoList[i].DriveParameters = driveParameters[i];
@@ -382,7 +354,6 @@ DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE HardwareKey
     return STATUS_SUCCESS;
 }
 
-VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 /*++
 
 Routine Description:
@@ -401,6 +372,7 @@ Return Value:
     status
 
 --*/
+VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 {
     ULONG busNumber;
 
@@ -558,9 +530,6 @@ Return Value:
     return;
 }
 
-NTSTATUS
-DiskSaveBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE TargetKey,
-		      IN ULONG DiskNumber)
 /*++
 
 Routine Description:
@@ -583,6 +552,8 @@ Return Value:
     status
 
 --*/
+NTSTATUS DiskSaveBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE TargetKey,
+			       IN ULONG DiskNumber)
 {
     PDISK_DETECT_INFO diskInfo;
 
@@ -593,7 +564,6 @@ Return Value:
 
     NTSTATUS status;
 
-    PAGED_CODE();
     UNREFERENCED_PARAMETER(DriverObject);
 
     if (DiskNumber >= DetectInfoCount) {
@@ -613,7 +583,7 @@ Return Value:
 
     RtlInitUnicodeString(&unicodeString, L"Identifier");
 
-    keyData = ExAllocatePoolWithTag(PagedPool, VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
+    keyData = ExAllocatePoolWithTag(VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
 
     if (keyData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -660,8 +630,7 @@ Return Value:
 	identifier.MaximumLength = (USHORT)keyData->DataLength;
 
 	//
-	// Get the first value out of the identifier - this will be the MBR
-	// checksum.
+	// Get the first value out of the identifier - this will be the MBR 	// checksum.
 	//
 
 	status = RtlUnicodeStringToInteger(&identifier, 16, &value);
@@ -713,8 +682,6 @@ Return Value:
     return STATUS_SUCCESS;
 }
 
-DISK_GEOMETRY_SOURCE
-DiskUpdateGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 /*++
 
 Routine Description:
@@ -738,7 +705,7 @@ Return Value:
     Inidicates whether the "RealGeometry" in the data block is now valid.
 
 --*/
-
+DISK_GEOMETRY_SOURCE DiskUpdateGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PDISK_DATA diskData = FdoExtension->CommonExtension.DriverData;
 
@@ -748,8 +715,6 @@ Return Value:
     BOOLEAN found = FALSE;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     NT_ASSERT((FdoExtension->DeviceObject->Characteristics & FILE_REMOVABLE_MEDIA) == 0);
 
@@ -907,9 +872,6 @@ Return Value:
     return diskData->GeometrySource;
 }
 
-NTSTATUS
-DiskUpdateRemovableGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
-
 /*++
 
 Routine Description:
@@ -931,14 +893,13 @@ Return Value:
     Returns the status of the opertion.
 
 --*/
+NTSTATUS DiskUpdateRemovableGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = &(FdoExtension->CommonExtension);
     PDISK_DATA diskData = commonExtension->DriverData;
     PDISK_GEOMETRY geometry = &(diskData->RealGeometry);
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     if (FdoExtension->DeviceDescriptor) {
 	NT_ASSERT(FdoExtension->DeviceDescriptor->RemovableMedia);
@@ -961,9 +922,6 @@ Return Value:
     return status;
 }
 
-NTSTATUS
-DiskGetPortGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-		    OUT PDISK_GEOMETRY Geometry)
 /*++
 
 Routine Description:
@@ -985,6 +943,8 @@ Return Value:
     error status indicating why it can't.
 
 --*/
+NTSTATUS DiskGetPortGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			     OUT PDISK_GEOMETRY Geometry)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = &(FdoExtension->CommonExtension);
     PIRP irp;
@@ -992,8 +952,6 @@ Return Value:
     KEVENT event;
 
     NTSTATUS status;
-
-    PAGED_CODE();
 
     //
     // Build an irp to send IOCTL_DISK_GET_DRIVE_GEOMETRY to the lower driver.
@@ -1029,9 +987,6 @@ Return Value:
     return status;
 }
 
-BOOLEAN
-DiskIsNT4Geometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
-
 /*++
 
 Routine Description:
@@ -1058,15 +1013,12 @@ Routine Description:
     the remaining 10% we will look at the ending CHS number to determine the geometry
 
 --*/
-
+BOOLEAN DiskIsNT4Geometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PUSHORT readBuffer = NULL;
     BOOLEAN bFoundNT4 = FALSE;
 
-    PAGED_CODE();
-
-    readBuffer = ExAllocatePoolWithTag(NonPagedPoolNx,
-				       FdoExtension->DiskGeometry.BytesPerSector,
+    readBuffer = ExAllocatePoolWithTag(FdoExtension->DiskGeometry.BytesPerSector,
 				       DISK_TAG_UPDATE_GEOM);
 
     if (readBuffer) {
@@ -1159,8 +1111,6 @@ Routine Description:
     return bFoundNT4;
 }
 
-NTSTATUS
-DiskReadDriveCapacity(IN PDEVICE_OBJECT Fdo)
 /*++
 
 Routine Description:
@@ -1182,7 +1132,7 @@ Return Value:
     status of ClassReadDriveCapacity.
 
 --*/
-
+NTSTATUS DiskReadDriveCapacity(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     NTSTATUS status;
@@ -1198,8 +1148,6 @@ Return Value:
     return status;
 }
 
-VOID DiskDriverReinitialization(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing,
-				IN ULONG Count)
 /*++
 
 Routine Description:
@@ -1225,7 +1173,8 @@ Return Value:
     none
 
 --*/
-
+VOID DiskDriverReinitialization(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing,
+				IN ULONG Count)
 {
     PDEVICE_OBJECT deviceObject;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
@@ -1277,9 +1226,9 @@ Return Value:
     //
     unmatchedDiskCount = 0;
     for (deviceObject = DriverObject->DeviceObject; deviceObject != NULL;
-#ifdef _MSC_VER
-#pragma prefast(suppress : 28175, \
-		"Need to access the opaque field to scan through the list of disks")
+#ifdef _MSC_VER #pragma prefast( \
+    suppress : 28175,            \
+    "Need to access the opaque field to scan through the list of disks")
 #endif
 	 deviceObject = deviceObject->NextDevice) {
 
@@ -1446,9 +1395,6 @@ Return Value:
     return;
 }
 
-NTSTATUS
-DiskGetDetectInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-		  OUT PDISK_DETECTION_INFO DetectInfo)
 /*++
 
 Routine Description:
@@ -1467,13 +1413,13 @@ Return Value:
     NTSTATUS code.
 
 --*/
+NTSTATUS DiskGetDetectInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			   OUT PDISK_DETECTION_INFO DetectInfo)
 {
     ULONG i;
     BOOLEAN found = FALSE;
     PDISK_DETECT_INFO diskInfo = NULL;
     PDISK_DATA diskData = FdoExtension->CommonExtension.DriverData;
-
-    PAGED_CODE();
 
     //
     // Fail for non-fixed drives.
@@ -1527,9 +1473,6 @@ Return Value:
     return (found ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL);
 }
 
-NTSTATUS
-DiskReadSignature(IN PDEVICE_OBJECT Fdo)
-
 /*++
 
 Routine Description:
@@ -1548,14 +1491,12 @@ Return Value:
     NTSTATUS code.
 
 --*/
-
+NTSTATUS DiskReadSignature(IN PDEVICE_OBJECT Fdo)
 {
     NTSTATUS Status;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PDISK_DATA diskData = fdoExtension->CommonExtension.DriverData;
     DISK_SIGNATURE Signature = { 0 };
-
-    PAGED_CODE();
 
     Status = IoReadDiskSignature(Fdo, fdoExtension->DiskGeometry.BytesPerSector,
 				 &Signature);
