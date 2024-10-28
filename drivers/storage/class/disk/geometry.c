@@ -24,7 +24,8 @@ Revision History:
 #include "disk.h"
 #include "ntddstor.h"
 
-#ifdef DEBUG_USE_WPP #include "geometry.tmh"
+#ifdef DEBUG_USE_WPP
+#include "geometry.tmh"
 #endif
 
 #if defined(_X86_) || defined(_AMD64_)
@@ -152,7 +153,7 @@ NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject)
     // Create the hardware base key.
     //
 
-    status = ZwOpenKey(&hardwareKey, KEY_READ, &objectAttributes);
+    status = NtOpenKey(&hardwareKey, KEY_READ, &objectAttributes);
 
     if (!NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -169,7 +170,7 @@ NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject)
 		    "DiskSaveDetectInfo: Can't query configuration data "
 		    "(%#08lx)\n",
 		    status));
-	ZwClose(hardwareKey);
+	NtClose(hardwareKey);
 	return status;
     }
 
@@ -182,13 +183,13 @@ NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject)
 			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, hardwareKey,
 			       NULL);
 
-    status = ZwOpenKey(&busKey, KEY_READ, &objectAttributes);
+    status = NtOpenKey(&busKey, KEY_READ, &objectAttributes);
 
     if (NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 		    "DiskSaveDetectInfo: Opened EisaAdapter key\n"));
 	DiskScanBusDetectInfo(DriverObject, busKey);
-	ZwClose(busKey);
+	NtClose(busKey);
     }
 
     //
@@ -200,16 +201,16 @@ NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject)
 			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, hardwareKey,
 			       NULL);
 
-    status = ZwOpenKey(&busKey, KEY_READ, &objectAttributes);
+    status = NtOpenKey(&busKey, KEY_READ, &objectAttributes);
 
     if (NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 		    "DiskSaveDetectInfo: Opened MultifunctionAdapter key\n"));
 	DiskScanBusDetectInfo(DriverObject, busKey);
-	ZwClose(busKey);
+	NtClose(busKey);
     }
 
-    ZwClose(hardwareKey);
+    NtClose(hardwareKey);
 
     return STATUS_SUCCESS;
 }
@@ -269,7 +270,7 @@ NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE Ha
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    status = ZwQueryValueKey(HardwareKey, &unicodeString, KeyValueFullInformation,
+    status = NtQueryValueKey(HardwareKey, &unicodeString, KeyValueFullInformation,
 			     keyData, VALUE_BUFFER_SIZE, &length);
 
     if (!NT_SUCCESS(status)) {
@@ -412,7 +413,7 @@ VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, BusKey,
 				   NULL);
 
-	status = ZwOpenKey(&spareKey, KEY_READ, &objectAttributes);
+	status = NtOpenKey(&spareKey, KEY_READ, &objectAttributes);
 
 	if (!NT_SUCCESS(status)) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -431,8 +432,8 @@ VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, spareKey,
 				   NULL);
 
-	status = ZwOpenKey(&adapterKey, KEY_READ, &objectAttributes);
-	ZwClose(spareKey);
+	status = NtOpenKey(&adapterKey, KEY_READ, &objectAttributes);
+	NtClose(spareKey);
 
 	if (!NT_SUCCESS(status)) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -471,7 +472,7 @@ VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 				       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 				       adapterKey, NULL);
 
-	    status = ZwOpenKey(&diskKey, KEY_READ, &objectAttributes);
+	    status = NtOpenKey(&diskKey, KEY_READ, &objectAttributes);
 
 	    if (!NT_SUCCESS(status)) {
 		TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -506,7 +507,7 @@ VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 					   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 					   diskKey, NULL);
 
-		status = ZwOpenKey(&targetKey, KEY_READ, &objectAttributes);
+		status = NtOpenKey(&targetKey, KEY_READ, &objectAttributes);
 
 		if (!NT_SUCCESS(status)) {
 		    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -518,13 +519,13 @@ VOID DiskScanBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE BusKey)
 
 		DiskSaveBusDetectInfo(DriverObject, targetKey, diskNumber);
 
-		ZwClose(targetKey);
+		NtClose(targetKey);
 	    }
 
-	    ZwClose(diskKey);
+	    NtClose(diskKey);
 	}
 
-	ZwClose(adapterKey);
+	NtClose(adapterKey);
     }
 
     return;
@@ -596,7 +597,7 @@ NTSTATUS DiskSaveBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE TargetK
     // Get disk peripheral identifier.
     //
 
-    status = ZwQueryValueKey(TargetKey, &unicodeString, KeyValueFullInformation, keyData,
+    status = NtQueryValueKey(TargetKey, &unicodeString, KeyValueFullInformation, keyData,
 			     VALUE_BUFFER_SIZE, &length);
 
     if (!NT_SUCCESS(status)) {
@@ -1391,8 +1392,6 @@ VOID DiskDriverReinitialization(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing
 	    NT_ASSERT(!"RealGeometry not set to non-zero bps\n");
 	}
     }
-
-    return;
 }
 
 /*++
