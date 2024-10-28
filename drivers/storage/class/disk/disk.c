@@ -41,8 +41,6 @@ Revision History:
 //
 BOOLEAN DiskETWEnabled = FALSE;
 
-BOOLEAN DiskIsPastReinit = FALSE;
-
 const GUID GUID_NULL = { 0 };
 #define DiskCompareGuid(_First, _Second) (memcmp((_First), (_Second), sizeof(GUID)))
 
@@ -66,27 +64,12 @@ const GUID GUID_NULL = { 0 };
 NTAPI VOID DiskDriverReinit(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing,
 			    IN ULONG Count)
 {
+#if defined(_X86_) || defined(_AMD64_)
+    DiskDriverReinitialization(DriverObject, Nothing, Count);
+#else
     UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(Nothing);
     UNREFERENCED_PARAMETER(Count);
-
-    DiskIsPastReinit = TRUE;
-}
-
-NTAPI VOID DiskBootDriverReinit(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing,
-				IN ULONG Count)
-{
-    IoRegisterDriverReinitialization(DriverObject, DiskDriverReinit, NULL);
-
-#if defined(_X86_) || defined(_AMD64_)
-
-    DiskDriverReinitialization(DriverObject, Nothing, Count);
-
-#else
-
-    UNREFERENCED_PARAMETER(Nothing);
-    UNREFERENCED_PARAMETER(Count);
-
 #endif
 }
 
@@ -181,7 +164,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     status = ClassInitialize(DriverObject, RegistryPath, &InitData);
 
     if (NT_SUCCESS(status)) {
-	IoRegisterBootDriverReinitialization(DriverObject, DiskBootDriverReinit, NULL);
+	IoRegisterDriverReinitialization(DriverObject, DiskDriverReinit, NULL);
     }
 
     //
@@ -303,7 +286,7 @@ NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
 	TracePrint((TRACE_LEVEL_FATAL, TRACE_FLAG_PNP,
 		    "DiskCreateFdo: Could not create directory - %lx\n", status));
 
-	return (status);
+	return status;
     }
 
     //
@@ -1840,7 +1823,6 @@ Retry:
 // This routine is structured as a work-item routine
 //
 NTAPI VOID DisableWriteCache(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
-
 {
     PFUNCTIONAL_DEVICE_EXTENSION FdoExt = (PFUNCTIONAL_DEVICE_EXTENSION)Fdo->DeviceExtension;
     DISK_CACHE_INFORMATION cacheInfo = { 0 };

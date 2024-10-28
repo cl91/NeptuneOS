@@ -28,7 +28,6 @@ Revision History:
 
 extern PULONG InitSafeBootMode;
 ULONG diskDeviceSequenceNumber = 0;
-extern BOOLEAN DiskIsPastReinit;
 
 #define FDO_NAME_FORMAT "\\Device\\Harddisk%d\\DR%d"
 

@@ -1048,9 +1048,10 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		} else if (fdoData->HotplugInfo.DeviceHotplug &&
 			   (busType == BusTypeUsb || busType == BusType1394)) {
 		    /*
-                        This device is reported as DeviceHotplug but since the busType is Usb or 1394, don't log an event
-                        Note that some storage arrays may report DeviceHotplug and we would like to log an event in those cases
-                        */
+		     * This device is reported as DeviceHotplug but since the busType is
+		     * Usb or 1394, don't log an event. Note that some storage arrays may
+		     * report DeviceHotplug and we would like to log an event in those cases
+		     */
 
 		    logSurpriseRemove = FALSE;
 		}
@@ -1074,21 +1075,21 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    lockReleased = TRUE;
 
 	    /*
-                 *  Set IsRemoved before propagating the REMOVE down the stack.
-                 *  This keeps class-initiated I/O (e.g. the MCN irp) from getting sent
-                 *  after we propagate the remove.
-                 */
+	     *  Set IsRemoved before propagating the REMOVE down the stack.
+	     *  This keeps class-initiated I/O (e.g. the MCN irp) from getting sent
+	     *  after we propagate the remove.
+	     */
 	    commonExtension->IsRemoved = REMOVE_PENDING;
 
 	    /*
-                 *  If a timer was started on the device, stop it.
-                 */
+	     *  If a timer was started on the device, stop it.
+	     */
 	    ClasspDisableTimer((PFUNCTIONAL_DEVICE_EXTENSION)commonExtension);
 
 	    /*
-                 *  "Fire-and-forget" the remove irp to the lower stack.
-                 *  Don't touch the irp (or the irp stack!) after this.
-                 */
+	     *  "Fire-and-forget" the remove irp to the lower stack.
+	     *  Don't touch the irp (or the irp stack!) after this.
+	     */
 	    if (isFdo) {
 		IoCopyCurrentIrpStackLocationToNext(Irp);
 		status = IoCallDriver(commonExtension->LowerDeviceObject, Irp);
@@ -1132,8 +1133,9 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		NT_ASSERT(commonExtension->IsInitialized);
 
 		/*
-                         *  Ensure that this user thread is not suspended while we are holding the PathCountEvent.
-                         */
+		 *  Ensure that this user thread is not suspended while we are holding
+		 * the PathCountEvent.
+		 */
 		KeEnterCriticalRegion();
 
 		(VOID) KeWaitForSingleObject(&commonExtension->PathCountEvent, Executive,
@@ -1390,9 +1392,10 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			    ->PrivateFdoData;
 
 		    //
-		    // If boot disk has removal policy as RemovalPolicyExpectSurpriseRemoval (e.g. disk is hotplug-able),
-		    // change the removal policy to RemovalPolicyExpectOrderlyRemoval.
-		    // This will cause the write cache of disk to be enabled on subsequent start Fdo (next boot).
+		    // If boot disk has removal policy as RemovalPolicyExpectSurpriseRemoval
+		    // (e.g. disk is hotplug-able), change the removal policy to
+		    // RemovalPolicyExpectOrderlyRemoval. This will cause the write cache of
+		    // disk to be enabled on subsequent start Fdo (next boot).
 		    //
 		    if ((fdoData != NULL) && fdoData->HotplugInfo.DeviceHotplug) {
 			fdoData->HotplugInfo.DeviceHotplug = FALSE;
