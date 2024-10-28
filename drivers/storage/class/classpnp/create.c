@@ -53,8 +53,6 @@ NTAPI NTSTATUS ClassCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     ULONG removeState;
     NTSTATUS status;
 
-    PAGED_CODE();
-
     //
     // If we're getting a close request then we know the device object hasn't
     // been completely destroyed.  Let the driver cleanup if necessary.
@@ -112,8 +110,6 @@ NTSTATUS ClasspCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     PFILE_OBJECT fileObject = irpStack->FileObject;
 
     NTSTATUS status = STATUS_SUCCESS;
-
-    PAGED_CODE();
 
     //
     // ISSUE-2000/3/28-henrygab - if lower stack fails create/close, we end up
@@ -233,8 +229,6 @@ VOID ClasspCleanupProtectedLocks(IN PFILE_OBJECT_EXTENSION FsContext)
 
     ULONG newDeviceLockCount = 1;
 
-    PAGED_CODE();
-
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
 		"ClasspCleanupProtectedLocks called for %p\n", FsContext->DeviceObject));
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
@@ -345,8 +339,6 @@ VOID ClasspCleanupDisableMcn(IN PFILE_OBJECT_EXTENSION FsContext)
 
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = commonExtension->PartitionZeroExtension;
 
-    PAGED_CODE();
-
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
 		"ClasspCleanupDisableMcn called for %p\n", FsContext->DeviceObject));
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
@@ -386,8 +378,6 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
     PSCSI_REQUEST_BLOCK srb = NULL;
     BOOLEAN countChanged = FALSE;
 
-    PAGED_CODE();
-
     /*
      *  Ensure that the user thread is not suspended while we are holding EjectSynchronizationEvent.
      */
@@ -403,8 +393,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 		"Received request for %s lock type\n",
 		LockTypeStrings[LockType]));
 
-    _SEH2_TRY
-    {
+    __try {
 	PCDB cdb = NULL;
 
 	//
@@ -431,7 +420,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 		//
 
 		status = STATUS_INVALID_PARAMETER;
-		_SEH2_LEAVE;
+		__leave;
 	    }
 	}
 
@@ -484,7 +473,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 	    case SecureMediaLock: {
 		if (fsContext->LockCount == 0) {
 		    status = STATUS_INVALID_DEVICE_STATE;
-		    _SEH2_LEAVE;
+		    __leave;
 		}
 		fsContext->LockCount--;
 		FdoExtension->ProtectedLockCount--;
@@ -509,7 +498,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 		(FdoExtension->InternalLockCount != 0) ||
 		(FdoExtension->LockCount != 0)) {
 		status = STATUS_SUCCESS;
-		_SEH2_LEAVE;
+		__leave;
 	    }
 	}
 
@@ -519,7 +508,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 
 	    if (srb == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
-		_SEH2_LEAVE;
+		__leave;
 	    }
 
 	    if (FdoExtension->AdapterDescriptor->SrbType ==
@@ -534,7 +523,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 						       1, SrbExDataTypeScsiCdb16);
 		if (!NT_SUCCESS(status)) {
 		    NT_ASSERT(FALSE);
-		    _SEH2_LEAVE;
+		    __leave;
 		}
 
 	    } else {
@@ -568,9 +557,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 	    status = ClassSendSrbSynchronous(FdoExtension->DeviceObject, srb, NULL, 0,
 					     FALSE);
 	}
-    }
-    _SEH2_FINALLY
-    {
+    } __finally {
 	if (!NT_SUCCESS(status)) {
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 			"ClasspEjectionControl: FAILED status %x -- "
@@ -641,7 +628,6 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 	    ClassFreeOrReuseSrb(FdoExtension, srb);
 	}
     }
-    _SEH2_END;
     return status;
 }
 
@@ -664,8 +650,6 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
     BOOLEAN fileHandleOk = TRUE;
     BOOLEAN countChanged = FALSE;
     NTSTATUS status;
-
-    PAGED_CODE();
 
     status = KeWaitForSingleObject(&fdoExt->EjectSynchronizationEvent, UserRequest,
 				   KernelMode, FALSE, NULL);
