@@ -1,5 +1,5 @@
 /*
- * Derived from reactos/sdk/include/asm/asm.inc
+ * Defines some useful macros for i386 and amd64 assembly code
  */
 
 #ifndef __ASM_H__

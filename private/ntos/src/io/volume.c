@@ -231,7 +231,7 @@ static VOID IopVcbDetachSubobject(IN POBJECT Object,
 VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 		       IN BOOLEAN Force)
 {
-    assert(Vcb && !Vcb->MountInProgress);
+    assert(Vcb);
     if (!Vcb || Vcb->MountInProgress) {
 	return;
     }

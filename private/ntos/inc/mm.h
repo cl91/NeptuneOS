@@ -16,11 +16,6 @@
 
 #define NTOS_MM_TAG			(EX_POOL_TAG('n','t','m','m'))
 
-#define PAGE_TABLE_OBJ_LOG2SIZE		(seL4_PageTableBits)
-#define PAGE_TABLE_WINDOW_LOG2SIZE	(seL4_PageBits + seL4_PageDirIndexBits)
-#define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageDirBits)
-#define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
-
 #define PAGE_ALIGNED_DATA		__aligned(PAGE_SIZE)
 #define LARGE_PAGE_ALIGN(p)		((MWORD)(p) & ~(LARGE_PAGE_SIZE - 1))
 #define LARGE_PAGE_ALIGN_UP(p)		(LARGE_PAGE_ALIGN((MWORD)(p)+LARGE_PAGE_SIZE-1))
@@ -29,48 +24,35 @@
 #define NTOS_CNODE_CAP			(seL4_CapInitThreadCNode)
 #define NTOS_VSPACE_CAP			(seL4_CapInitThreadVSpace)
 
-#ifdef _M_IX86
-#define MWORD_LOG2SIZE			(2)
-#define seL4_VSpaceObject		seL4_X86_PageDirectoryObject
-#define PDPT_OBJ_LOG2SIZE		(0)
-#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE)
-#define PML4_OBJ_LOG2SIZE		(0)
-#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE)
-#elif defined(_M_AMD64)
+#ifdef _WIN64
 #define MWORD_LOG2SIZE			(3)
-#define seL4_VSpaceObject		seL4_X64_PML4Object
-#define PDPT_OBJ_LOG2SIZE		(seL4_PDPTBits)
-#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE + seL4_PDPTIndexBits)
-#define PML4_OBJ_LOG2SIZE		(seL4_PML4Bits)
-#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE + seL4_PDPTIndexBits)
-#else
-#error "Unsupported architecture"
-#endif
-
-#ifdef _M_IX86
-#define ADDRESS_SPACE_MULTIPLIER	(1)
-#elif defined(_M_AMD64)
-/* For amd64 build we make the ExPool and other hard-coded address spaces bigger */
+/* For 64-bit build we make the ExPool and other hard-coded address spaces bigger */
 #define ADDRESS_SPACE_MULTIPLIER	(0x100)
 #else
-#error "Unsupported architecture"
+#define MWORD_LOG2SIZE			(2)
+#define ADDRESS_SPACE_MULTIPLIER	(1)
 #endif
 
 /* All hard-coded addresses in the address space of the NTOS root task go here. */
 #define FRAMEBUFFER_VADDR_START			(0x08000000ULL)
 #define FRAMEBUFFER_MAX_SIZE			(0x06000000ULL)
 /* System thread region is 16MB. Each system thread gets one page of IPC buffer and
- * one 4K page of stack. Every page is seperated by an uncommitted page to catch
- * stack overflow and underflow.  */
+ * four pages of stack. Every region is seperated by an uncommitted page to catch
+ * stack overflow and underflow. In other words the memory organization is as follows
+ *
+ *    |---------------|-----------|------------|---------------|
+ *    |    Stack      | Unmapped  | IPC Buffer |   Unmapped    |
+ *    | 4 * PAGE_SIZE | PAGE_SIZE | PAGE_SIZE  | 2 * PAGE_SIZE |
+ *    |---------------|-----------|------------|---------------|
+ * (Lower address)                                      (Higher address)
+ *
+ * We can have a maximum of 16MB/32KB == 512 system threads.
+ */
 #define SYSTEM_THREAD_REGION_START		(FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE)
 #define SYSTEM_THREAD_REGION_SIZE		(0x01000000ULL)
 #define SYSTEM_THREAD_REGION_END		(SYSTEM_THREAD_REGION_START + SYSTEM_THREAD_REGION_SIZE)
-/* We can have a maximum of 16MB/32KB == 512 system threads */
-#define SYSTEM_THREAD_IPC_RESERVE		(2 * PAGE_SIZE)
-#define SYSTEM_THREAD_IPC_COMMIT		(PAGE_SIZE)
-/* There is one uncommitted page above and below every system stack */
-#define SYSTEM_THREAD_STACK_RESERVE		(4 * PAGE_SIZE)
-#define SYSTEM_THREAD_STACK_COMMIT		(2 * PAGE_SIZE)
+#define SYSTEM_THREAD_STACK_COMMIT		(4 * PAGE_SIZE)
+#define SYSTEM_THREAD_IPC_OFFSET		(SYSTEM_THREAD_STACK_COMMIT + PAGE_SIZE)
 /* Hyperspace is 16MB */
 #define HYPERSPACE_START			(SYSTEM_THREAD_REGION_END)
 /* We have LARGE_PAGE_SIZE / PAGE_SIZE slots for 4K pages in the hyperspace */
@@ -89,24 +71,35 @@
 #define EX_LARGE_POOL_START			(EX_POOL_END)
 #define EX_LARGE_POOL_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_LARGE_POOL_END			(EX_LARGE_POOL_START + EX_LARGE_POOL_SIZE)
-/* Region for the PEB/TEB pages mapped in root task address space */
-#define EX_PEB_TEB_REGION_START			(EX_LARGE_POOL_END)
-#define EX_PEB_TEB_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
-#define EX_PEB_TEB_REGION_END			(EX_PEB_TEB_REGION_START + EX_PEB_TEB_REGION_SIZE)
-/* Region where the client thread's ipc buffers are mapped */
-#define EX_IPC_BUFFER_REGION_START		(EX_PEB_TEB_REGION_END)
-#define EX_IPC_BUFFER_REGION_SIZE		(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
-#define EX_IPC_BUFFER_REGION_END		(EX_IPC_BUFFER_REGION_START + EX_IPC_BUFFER_REGION_SIZE)
-/* Region where the driver processes' IO packet buffers are allocated */
-#define EX_DRIVER_IO_PACKET_REGION_START	(EX_IPC_BUFFER_REGION_END)
-#define EX_DRIVER_IO_PACKET_REGION_SIZE		(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
-#define EX_DRIVER_IO_PACKET_REGION_END		(EX_DRIVER_IO_PACKET_REGION_START + EX_DRIVER_IO_PACKET_REGION_SIZE)
+/* Region where the client thread's pages are mapped. This region is managed with bitmaps. */
+#define EX_CLIENT_REGION_START			(EX_LARGE_POOL_END)
+#define EX_CLIENT_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_CLIENT_REGION_END			(EX_CLIENT_REGION_START + EX_CLIENT_REGION_SIZE)
+/* Region where the driver processes' IO packet buffers are allocated, managed with bitmaps. */
+#define EX_DRIVER_REGION_START			(EX_CLIENT_REGION_END)
+#define EX_DRIVER_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_DRIVER_REGION_END			(EX_DRIVER_REGION_START + EX_DRIVER_REGION_SIZE)
 /* Region of the dynamically managed Executive virtual address space */
-#define EX_DYN_VSPACE_START			(EX_DRIVER_IO_PACKET_REGION_END)
+#define EX_DYN_VSPACE_START			(EX_DRIVER_REGION_END)
 #define EX_DYN_VSPACE_END			(seL4_UserTop)
 
 #if HYPERSPACE_END > EX_POOL_START
 #error "Hyperspace too large."
+#endif
+
+/* Allocation granularity for the system thread region, the client region and
+ * the driver region. For the client region we reserve two pages but only
+ * map one, so any buffer overflow or underflow is caught immediately. */
+#define SYSTEM_THREAD_REGION_LOW_ZERO_BITS	(PAGE_LOG2SIZE + 3)
+#define EX_CLIENT_REGION_LOW_ZERO_BITS		(PAGE_LOG2SIZE + 1)
+#define EX_DRIVER_REGION_LOW_ZERO_BITS		(PAGE_LOG2SIZE + 4)
+
+#if (1ULL << EX_CLIENT_REGION_LOW_ZERO_BITS) < IPC_BUFFER_RESERVE
+#error "Client region allocation granularity too small."
+#endif
+
+#if (1ULL << EX_DRIVER_REGION_LOW_ZERO_BITS) < DRIVER_IO_PACKET_BUFFER_RESERVE
+#error "Driver region allocation granularity too small."
 #endif
 
 /*
@@ -295,6 +288,7 @@ typedef union _MMVAD_FLAGS {
 	ULONG FileMap : 1;  /* Node is a view of a file section */
 	ULONG CacheMap : 1; /* Node is managed by the cache manager */
 	ULONG PhysicalMapping : 1; /* Node is a view of the physical memory */
+	ULONG BitmapManaged : 1; /* Commitment status of node is managed by bitmaps */
 	ULONG LargePages : 1; /* Use large pages when possible */
 	ULONG OwnedMemory : 1; /* True if pages are owned by this VSpace */
 	ULONG MirroredMemory : 1; /* True if this VAD is a mirror of another VAD */
@@ -307,25 +301,27 @@ typedef union _MMVAD_FLAGS {
 #define MEM_RESERVE_NO_ACCESS		(0x1UL << 0)
 #define MEM_RESERVE_READ_ONLY		(0x1UL << 1)
 /* VADs representing a section view will be marked as IMAGE_MAP or FILE_MAP or
- * PHYSICAL_MAPPING. VADs for cache view will be marked as CACHE_MAP. VADs for
- * memory allocated by NtAllocateVirtualMemory and related internal Mm routines
- * will be marked as either "owned memory" or what we call "mirrored memory". */
+ * PHYSICAL_MAPPING. VADs for cache view will be marked as CACHE_MAP. VADs marked
+ * with BITMAP_MANAGED will have their commitment status managed by bitmaps. VADs
+ * for memory allocated by NtAllocateVirtualMemory and related internal Mm routines
+ * will be marked as either "owned memory" or "mirrored memory". */
 #define MEM_RESERVE_IMAGE_MAP		(0x1UL << 2)
 #define MEM_RESERVE_FILE_MAP		(0x1UL << 3)
 #define MEM_RESERVE_CACHE_MAP		(0x1UL << 4)
 #define MEM_RESERVE_PHYSICAL_MAPPING	(0x1UL << 5)
+#define MEM_RESERVE_BITMAP_MANAGED	(0x1UL << 6)
 /* Memory pages are owned by this VSpace */
-#define MEM_RESERVE_OWNED_MEMORY	(0x1UL << 6)
+#define MEM_RESERVE_OWNED_MEMORY	(0x1UL << 7)
 /* Memory pages are derived from pages in other VSpace via seL4_CNode_Copy */
-#define MEM_RESERVE_MIRRORED_MEMORY	(0x1UL << 7)
+#define MEM_RESERVE_MIRRORED_MEMORY	(0x1UL << 8)
 /* If set, Mm will try to reserve an address window aligned by the large page size
  * and commit large pages when available. */
-#define MEM_RESERVE_LARGE_PAGES		(0x1UL << 8)
+#define MEM_RESERVE_LARGE_PAGES		(0x1UL << 9)
 /* Search from higher address to lower address */
-#define MEM_RESERVE_TOP_DOWN		(0x1UL << 9)
+#define MEM_RESERVE_TOP_DOWN		(0x1UL << 10)
 /* Find unused address window only. Do not actually insert the VAD into the
  * process address space */
-#define MEM_RESERVE_NO_INSERT		(0x1UL << 10)
+#define MEM_RESERVE_NO_INSERT		(0x1UL << 11)
 
 typedef struct _MMVAD {
     AVL_NODE AvlNode; /* Starting virtual address of the node, page aligned */
@@ -351,7 +347,14 @@ typedef struct _MMVAD {
 				   * in the case of map register memory. */
 	    MEMORY_CACHING_TYPE CacheType; /* Cache type of the page mappings. */
 	} PhysicalSectionView;	/* Physical section is neither owned
-				 * or mirrored memory */
+				 * nor mirrored memory */
+	struct {
+	    union {
+		MWORD *Bitmap;	 /* Bitmap tracking the commitment status. */
+		MWORD **Bitmaps; /* Array of bitmaps tracking the commitment status. */
+	    };
+	    ULONG LowZeroBits;	/* Allocation granularity. */
+	} CommitmentStatus;
 	struct {
 	    struct _VIRT_ADDR_SPACE *Master; /* The VSpace that is been mapped
 					      * into this VSpace */
@@ -366,6 +369,130 @@ typedef struct _MMVAD {
 	PAVL_NODE __node = (Node);					\
 	__node ? CONTAINING_RECORD(__node, MMVAD, AvlNode) : NULL;	\
     })
+
+/*
+ * We support a maximum of four levels of paging structures. The lowest level
+ * is PAGE, followed by PAGE TABLE, PAGE DIRECTORY, PDPT, and PML4. Some
+ * non-X86 architectures may use different names for these paging structures,
+ * but their functions are equivalent.
+ */
+#define PAGE_TABLE_OBJ_LOG2SIZE		(seL4_PageTableBits)
+#define PAGE_TABLE_WINDOW_LOG2SIZE	(seL4_PageBits + seL4_PageTableIndexBits)
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+
+#define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageDirBits)
+#define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageDirIndexBits)
+
+#ifdef _M_IX86
+#define PDPT_OBJ_LOG2SIZE		(0)
+#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE)
+#define PML4_OBJ_LOG2SIZE		(0)
+#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE)
+#define seL4_VSpaceObject		seL4_X86_PageDirectoryObject
+#else
+#define PDPT_OBJ_LOG2SIZE		(seL4_PDPTBits)
+#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE + seL4_PDPTIndexBits)
+#define PML4_OBJ_LOG2SIZE		(seL4_PML4Bits)
+#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE + seL4_PDPTIndexBits)
+#define seL4_VSpaceObject		seL4_X64_PML4Object
+#endif
+
+typedef enum _PAGING_STRUCTURE_TYPE {
+    PAGING_TYPE_PAGE = seL4_X86_4K,
+    PAGING_TYPE_LARGE_PAGE = seL4_X86_LargePageObject,
+    PAGING_TYPE_PAGE_TABLE = seL4_X86_PageTableObject,
+    PAGING_TYPE_PAGE_DIRECTORY = seL4_X86_PageDirectoryObject,
+#ifdef _M_IX86
+    PAGING_TYPE_PDPT = 0,
+    PAGING_TYPE_PML4 = 0,
+#else
+    PAGING_TYPE_PDPT = seL4_X86_PDPTObject,
+    PAGING_TYPE_PML4 = seL4_X64_PML4Object,
+#endif
+    PAGING_TYPE_ROOT_PAGING_STRUCTURE = seL4_VSpaceObject,
+} PAGING_STRUCTURE_TYPE;
+
+typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
+
+#define MM_ATTRIBUTES_DEFAULT		(seL4_X86_Default_VMAttributes)
+
+FORCEINLINE VOID MmApplyNoCacheAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
+{
+    *Attr |= seL4_X86_CacheDisabled;
+}
+
+FORCEINLINE VOID MmApplyWriteCombineAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
+{
+    *Attr |= seL4_X86_WriteCombining;
+}
+
+typedef seL4_X86_Page_GetAddress_t seL4_Page_GetAddress_t;
+#define seL4_Page_GetAddress seL4_X86_Page_GetAddress
+#define seL4_Page_Map seL4_X86_Page_Map
+#define seL4_Page_Unmap seL4_X86_Page_Unmap
+#define seL4_PageTable_Map seL4_X86_PageTable_Map
+#define seL4_PageTable_Unmap seL4_X86_PageTable_Unmap
+#define seL4_PageDirectory_Map seL4_X86_PageDirectory_Map
+#define seL4_PageDirectory_Unmap seL4_X86_PageDirectory_Unmap
+#define seL4_PDPT_Map seL4_X86_PDPT_Map
+#define seL4_PDPT_Unmap seL4_X86_PDPT_Unmap
+#define seL4_ASIDPool_Assign seL4_X86_ASIDPool_Assign
+
+#elif defined(_M_ARM64)
+
+#define PAGE_DIRECTORY_OBJ_LOG2SIZE	(seL4_PageTableBits)
+#define PAGE_DIRECTORY_WINDOW_LOG2SIZE	(PAGE_TABLE_WINDOW_LOG2SIZE + seL4_PageTableIndexBits)
+#define PDPT_OBJ_LOG2SIZE		(seL4_PageTableBits)
+#define PDPT_WINDOW_LOG2SIZE		(PAGE_DIRECTORY_WINDOW_LOG2SIZE + seL4_PageTableIndexBits)
+#define PML4_OBJ_LOG2SIZE		(seL4_VSpaceBits)
+#define PML4_WINDOW_LOG2SIZE		(PDPT_WINDOW_LOG2SIZE + seL4_VSpaceIndexBits)
+#define seL4_VSpaceObject		seL4_ARM_VSpaceObject
+
+typedef enum _PAGING_STRUCTURE_TYPE {
+    PAGING_TYPE_PAGE = seL4_ARM_SmallPageObject,
+    PAGING_TYPE_LARGE_PAGE = seL4_ARM_LargePageObject,
+    PAGING_TYPE_PAGE_TABLE = seL4_ARM_PageTableObject,
+    PAGING_TYPE_PAGE_DIRECTORY = seL4_ARM_PageTableObject,
+    PAGING_TYPE_PDPT = seL4_ARM_PageTableObject,
+    PAGING_TYPE_PML4 = seL4_VSpaceObject,
+    PAGING_TYPE_ROOT_PAGING_STRUCTURE = seL4_VSpaceObject,
+} PAGING_STRUCTURE_TYPE;
+
+typedef seL4_ARM_VMAttributes PAGING_ATTRIBUTES;
+
+#define MM_ATTRIBUTES_DEFAULT		(seL4_ARM_Default_VMAttributes)
+
+FORCEINLINE VOID MmApplyNoCacheAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
+{
+    *Attr &= ~seL4_ARM_PageCacheable;
+}
+
+FORCEINLINE VOID MmApplyWriteCombineAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
+{
+    /* ARM64 doesn't seem to have a paging attribute for write combining memory. */
+}
+
+typedef seL4_ARM_Page_GetAddress_t seL4_Page_GetAddress_t;
+#define seL4_Page_GetAddress seL4_ARM_Page_GetAddress
+#define seL4_Page_Map seL4_ARM_Page_Map
+#define seL4_Page_Unmap seL4_ARM_Page_Unmap
+#define seL4_PageTable_Map seL4_ARM_PageTable_Map
+#define seL4_PageTable_Unmap seL4_ARM_PageTable_Unmap
+#define seL4_PageDirectory_Map seL4_ARM_PageTable_Map
+#define seL4_PageDirectory_Unmap seL4_ARM_PageTable_Unmap
+#define seL4_PDPT_Map seL4_ARM_PageTable_Map
+#define seL4_PDPT_Unmap seL4_ARM_PageTable_Unmap
+#define seL4_ASIDPool_Assign seL4_ARM_ASIDPool_Assign
+
+#else
+#error "Unsupported architecture"
+#endif
+
+typedef seL4_CapRights_t PAGING_RIGHTS;
+
+#define MM_RIGHTS_RW	(seL4_ReadWrite)
+#define MM_RIGHTS_RO	(seL4_CanRead)
 
 /*
  * A paging structure represents a capability to either a page,
@@ -394,35 +521,6 @@ typedef struct _MMVAD {
  * one level above the current paging structure. The top level paging
  * structure is recorded in the process's virtual address space descriptor.
  */
-typedef enum _PAGING_STRUCTURE_TYPE {
-    PAGING_TYPE_PAGE = seL4_X86_4K,
-    PAGING_TYPE_LARGE_PAGE = seL4_X86_LargePageObject,
-    PAGING_TYPE_PAGE_TABLE = seL4_X86_PageTableObject,
-    PAGING_TYPE_PAGE_DIRECTORY = seL4_X86_PageDirectoryObject,
-    PAGING_TYPE_ROOT_PAGING_STRUCTURE = seL4_VSpaceObject,
-#ifdef _M_IX86
-    PAGING_TYPE_PDPT = 0,
-    PAGING_TYPE_PML4 = 0,
-#elif defined(_M_AMD64)
-    PAGING_TYPE_PDPT = seL4_X86_PDPTObject,
-    PAGING_TYPE_PML4 = seL4_X64_PML4Object,
-#else
-#error "Unsupported architecture"
-#endif
-} PAGING_STRUCTURE_TYPE;
-
-typedef seL4_CapRights_t PAGING_RIGHTS;
-typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
-
-#define MM_RIGHTS_RW	(seL4_ReadWrite)
-#define MM_RIGHTS_RO	(seL4_CanRead)
-
-#define MM_ATTRIBUTES_DEFAULT		(seL4_X86_Default_VMAttributes)
-#define MM_ATTRIBUTES_NO_CACHE		(seL4_X86_CacheDisabled)
-#define MM_ATTRIBUTES_WRITE_BACK	(seL4_X86_WriteBack)
-#define MM_ATTRIBUTES_WRITE_THROUGH	(seL4_X86_WriteThrough)
-#define MM_ATTRIBUTES_WRITE_COMBINE	(seL4_X86_WriteCombining)
-
 typedef struct _PAGING_STRUCTURE {
     CAP_TREE_NODE TreeNode; /* Cap tree node of the page cap. Must be first member. */
     AVL_NODE AvlNode; /* AVL node of parent structure's SubStructureTree. Key is virt addr */
@@ -702,6 +800,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 			       IN MWORD StartAddr,
 			       IN MWORD WindowSize);
+MWORD MmFindAndMarkUncommittedSubregion(IN PMMVAD Vad);
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN ULONG Length,
 					      IN MWORD HighestPhyAddr,
@@ -732,15 +831,6 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD TargetVaddrEnd,
 			   OUT MWORD *TargetStartAddr,
 			   IN BOOLEAN ReadOnly);
-NTSTATUS MmMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
-			   IN MWORD SrcWindowStart,
-			   IN MWORD SrcWindowSize,
-			   IN PVIRT_ADDR_SPACE TargetVSpace,
-			   IN MWORD TargetVaddrStart,
-			   IN MWORD TargetVaddrEnd,
-			   IN MWORD TargetReserveFlag,
-			   IN MWORD TargetCommitSize,
-			   OUT PMMVAD *TargetVad);
 VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
 		   IN MWORD MappedRegionStart);
 NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,

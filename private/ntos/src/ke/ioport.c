@@ -1,5 +1,7 @@
 #include "ki.h"
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+
 NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
 			  IN USHORT PortNum,
 			  IN USHORT Count,
@@ -58,3 +60,5 @@ NTSTATUS KeWritePort8(IN PX86_IOPORT Port,
     }
     return STATUS_SUCCESS;
 }
+
+#endif

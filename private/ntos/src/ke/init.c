@@ -1,7 +1,9 @@
 #include <stdint.h>
 #include <printf.h>
 #include <ntos.h>
+#if defined(_M_IX86) || defined(_M_AMD64)
 #include <sel4/arch/bootinfo_types.h>
+#endif
 #include "ki.h"
 
 PCSTR RtlpDbgTraceModuleName = "NTOS";
@@ -37,6 +39,11 @@ __thread char __sel4_print_error;
 static inline void KiSetTlsBase(uintptr_t tls_base)
 {
     __asm__ __volatile__("wrfsbase %0" :: "r"(tls_base));
+}
+#elif defined(_M_ARM64)
+static inline void KiSetTlsBase(uintptr_t tls_base)
+{
+    __asm__ __volatile__("msr tpidr_el0,%0" :: "r"(tls_base));
 }
 #elif defined(CONFIG_SET_TLS_BASE_SELF)
 static inline void KiSetTlsBase(uintptr_t tls_base)
@@ -120,6 +127,7 @@ static void KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)bootinfo + PAGE_SIZE);
 	while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
 	    switch (BootInfoHeader->id) {
+#if defined(_M_IX86) || defined(_M_AMD64)
 	    case SEL4_BOOTINFO_HEADER_X86_VBE:
 		/* TODO: Record x86 VBE information */
 		break;
@@ -135,6 +143,7 @@ static void KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 		KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
 		break;
+#endif
 	    case SEL4_BOOTINFO_HEADER_FDT:
 		/* TODO: Record FDT information */
 		break;
@@ -183,6 +192,7 @@ static char *KiDumpBootInfoSlotRegion(char *buf,
     return buf;
 }
 
+#if defined(_M_IX86) || defined(_M_AMD64)
 static void KiDumpBootInfoVbe(seL4_X86_BootInfo_VBE *VbeInfo)
 {
     DbgPrint("        vbe signature %c%c%c%c version 0x%x total memory %d*64KB\n",
@@ -221,6 +231,7 @@ static void KiDumpBootInfoFrameBuffer(seL4_X86_BootInfo_fb_t *FbInfo)
     DbgPrint("        bpp = %d\n", FbInfo->BitsPerPixel);
     DbgPrint("        type = %d\n", FbInfo->Type);
 }
+#endif
 
 static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 {
@@ -251,6 +262,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 	    case SEL4_BOOTINFO_HEADER_PADDING:
 		DbgPrint("    empty bootinfo padding of size 0x%zx\n", BootInfoHeader->len);
 		break;
+#if defined(_M_IX86) || defined(_M_AMD64)
 	    case SEL4_BOOTINFO_HEADER_X86_VBE:
 		DbgPrint("    x86 vbe info of size 0x%zx\n", BootInfoHeader->len);
 		KiDumpBootInfoVbe((seL4_X86_BootInfo_VBE *)(BootInfoHeader+1));
@@ -271,6 +283,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
 		DbgPrint("    tsc freq is %d MHz\n", KeX86TscFreq);
 		break;
+#endif
 	    case SEL4_BOOTINFO_HEADER_FDT:
 		DbgPrint("    fdt of size 0x%zx\n", BootInfoHeader->len);
 		break;
@@ -290,8 +303,8 @@ static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
     DbgPrint("Initial root task user image frames:\n"
 	     "    frame cap = [%zd, %zd] ([0x%zx, 0x%zx]) paddr = [%p, %p]\n",
 	     slots.start, slots.end-1, slots.start, slots.end-1,
-	     (PVOID) seL4_X86_Page_GetAddress(slots.start).paddr,
-	     (PVOID) (seL4_X86_Page_GetAddress(slots.end-1).paddr + PAGE_SIZE - 1));
+	     (PVOID) seL4_Page_GetAddress(slots.start).paddr,
+	     (PVOID) (seL4_Page_GetAddress(slots.end-1).paddr + PAGE_SIZE - 1));
 }
 
 static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
@@ -319,17 +332,20 @@ static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
 
 static void KiRecordProcessorInformation()
 {
-    /* Call cpuid to fill in other CPU info
-     * mode 1 => get extended family id, model id, proc type, family id, model and stepping id */
-    int CPUInfo[4];
-    __cpuid(CPUInfo, 1);
 #ifdef _M_IX86
     KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;
 #elif defined(_M_AMD64)
     KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
+#elif defined(_M_ARM64)
+    KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM;
 #else
 #error "Unsupported architecture"
 #endif
+#if defined(_M_IX86) || defined(_M_AMD64)
+    /* Call cpuid to fill in other CPU info
+     * mode 1 => get extended family id, model id, proc type, family id, model and stepping id */
+    int CPUInfo[4];
+    __cpuid(CPUInfo, 1);
     KeProcessorLevel = (CPUInfo[0] & 0x0F00);
     KeProcessorLevel >>= 8;
     KeProcessorRevision = (CPUInfo[0] & 0x00F0);
@@ -339,6 +355,7 @@ static void KiRecordProcessorInformation()
     /* TODO: translate various cpuid information into Microsoft Feature Bits.
      * See ReactOS work on this part */
     KeFeatureBits = 0;
+#endif
 }
 
 #define OS_BANNER	"Neptune OS [Version " VER_PRODUCTVERSION_STRING "]"

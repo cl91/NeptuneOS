@@ -13,6 +13,13 @@
 #endif
 #endif
 
+#ifdef __aarch64__
+#ifndef _M_ARM64
+#define _M_ARM64
+#define _WIN64
+#endif
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 #include <excpt.h>
@@ -500,10 +507,17 @@ extern "C++" {
 #endif
 
 /*
- * Use intrinsics for 32-bit and 64-bit multiplications
+ * Use intrinsics for 32-bit and 64-bit multiplications on i386
  */
+#ifdef _M_IX86
 #define Int32x32To64(a,b) __emul(a,b)
 #define UInt32x32To64(a,b) __emulu(a,b)
-#define Int64ShllMod32(a,b) __ll_lshift(a,b)
-#define Int64ShraMod32(a,b) __ll_rshift(a,b)
-#define Int64ShrlMod32(a,b) __ull_rshift(a,b)
+#else
+#define Int32x32To64(a,b) (((__int64)(long)(a))*((__int64)(long)(b)))
+#define UInt32x32To64(a,b)						\
+    ((unsigned __int64)(unsigned int)(a) * (unsigned __int64)(unsigned int)(b))
+#endif
+
+#define Int64ShllMod32(a,b) ((unsigned __int64)(a)<<(b))
+#define Int64ShraMod32(a,b) (((__int64)(a))>>(b))
+#define Int64ShrlMod32(a,b) (((unsigned __int64)(a))>>(b))

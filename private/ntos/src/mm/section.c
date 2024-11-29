@@ -593,7 +593,7 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
 
-    if (ReserveFlags & !(MEM_RESERVE_TOP_DOWN | MEM_RESERVE_LARGE_PAGES)) {
+    if (ReserveFlags & ~(MEM_RESERVE_TOP_DOWN | MEM_RESERVE_LARGE_PAGES)) {
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -618,14 +618,14 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	 * of the user address space. */
 	PMMVAD ImageVad = NULL;
 	RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
-					 USER_IMAGE_REGION_END,
+					 USER_ADDRESS_END,
 					 ImageVirtualSize, 0, HighZeroBits,
 					 MEM_RESERVE_NO_INSERT | TopDownFlag,
 					 &ImageVad));
 	assert(ImageVad != NULL);
 	BaseAddress = ImageVad->AvlNode.Key;
 	assert(BaseAddress >= USER_IMAGE_REGION_START);
-	assert(BaseAddress < USER_IMAGE_REGION_END);
+	assert(BaseAddress < USER_ADDRESS_END);
 	/* Since we have specified MEM_RESERVE_NO_INSERT above we can simply
 	 * free the pool memory of ImageVad here. Calling MmDeleteVad would
 	 * be incorrect here as the VAD has never been inserted. */
@@ -707,8 +707,10 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
     if (Vad->PhysicalSectionView.RootUntyped) {
 	assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
     }
-    PAGING_ATTRIBUTES Attributes = (PageProtection & PAGE_WRITECOMBINE) ?
-	MM_ATTRIBUTES_WRITE_COMBINE : MM_ATTRIBUTES_DEFAULT;
+    PAGING_ATTRIBUTES Attributes = MM_ATTRIBUTES_DEFAULT;
+    if (PageProtection & PAGE_WRITECOMBINE) {
+	MmApplyWriteCombineAttribute(&Attributes);
+    }
     BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhysicalBase) &&
 	IS_LARGE_PAGE_ALIGNED(VirtualBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
     RET_ERR_EX(MiMapIoMemory(Vad->VSpace, PhysicalBase, VirtualBase, WindowSize,

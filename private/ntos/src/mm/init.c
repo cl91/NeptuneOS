@@ -48,11 +48,11 @@ static NTSTATUS MiInitMapLargePage(IN MWORD Untyped,
     assert(IS_LARGE_PAGE_ALIGNED(Vaddr));
     RET_ERR(MiInitRetypeIntoLargePage(Untyped, PageCap));
 
-    int Error = seL4_X86_Page_Map(PageCap,
-				  NTOS_VSPACE_CAP,
-				  Vaddr,
-				  MM_RIGHTS_RW,
-				  seL4_X86_Default_VMAttributes);
+    int Error = seL4_Page_Map(PageCap,
+			      NTOS_VSPACE_CAP,
+			      Vaddr,
+			      MM_RIGHTS_RW,
+			      MM_ATTRIBUTES_DEFAULT);
 
     if (Error) {
 	return SEL4_ERROR(Error);

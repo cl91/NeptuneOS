@@ -10,52 +10,6 @@ typedef struct _CLIENT_ID {
 } CLIENT_ID, *PCLIENT_ID;
 
 /*
- * Current Directory Structures
- */
-typedef struct _CURDIR {
-    UNICODE_STRING DosPath;
-    PVOID Handle;
-} CURDIR, *PCURDIR;
-
-typedef struct _RTLP_CURDIR_REF {
-    LONG RefCount;
-    HANDLE Handle;
-} RTLP_CURDIR_REF, *PRTLP_CURDIR_REF;
-
-typedef struct _RTL_RELATIVE_NAME_U {
-    UNICODE_STRING RelativeName;
-    HANDLE ContainingDirectory;
-    PRTLP_CURDIR_REF CurDirRef;
-} RTL_RELATIVE_NAME_U, *PRTL_RELATIVE_NAME_U;
-
-typedef struct RTL_DRIVE_LETTER_CURDIR {
-    USHORT Flags;
-    USHORT Length;
-    ULONG TimeStamp;
-    UNICODE_STRING DosPath;
-} RTL_DRIVE_LETTER_CURDIR, *PRTL_DRIVE_LETTER_CURDIR;
-
-typedef struct _RTL_PERTHREAD_CURDIR {
-    PRTL_DRIVE_LETTER_CURDIR CurrentDirectories;
-    PUNICODE_STRING ImageName;
-    PVOID Environment;
-} RTL_PERTHREAD_CURDIR, *PRTL_PERTHREAD_CURDIR;
-
-/*
- * RTL Path Types
- */
-typedef enum _RTL_PATH_TYPE {
-    RtlPathTypeUnknown,
-    RtlPathTypeUncAbsolute,
-    RtlPathTypeDriveAbsolute,
-    RtlPathTypeDriveRelative,
-    RtlPathTypeRooted,
-    RtlPathTypeRelative,
-    RtlPathTypeLocalDevice,
-    RtlPathTypeRootLocalDevice,
-} RTL_PATH_TYPE;
-
-/*
  * Time Structure for RTL Time calls
  */
 typedef struct _TIME_FIELDS {
@@ -76,51 +30,10 @@ typedef struct _RTL_BITMAP {
 
 typedef const RTL_BITMAP *PCRTL_BITMAP;
 
-#define RTL_MAX_DRIVE_LETTERS 32
-
 /*
- * Thread and Process Start Routines for RtlCreateUserThread/Process
+ * Thread Entrypoint
  */
 typedef ULONG (NTAPI *PTHREAD_START_ROUTINE)(PVOID Parameter);
-
-typedef struct _RTL_USER_PROCESS_PARAMETERS {
-    ULONG MaximumLength;
-    ULONG Length;
-    ULONG Flags;
-    ULONG DebugFlags;
-    HANDLE ConsoleHandle;
-    ULONG ConsoleFlags;
-    HANDLE StandardInput;
-    HANDLE StandardOutput;
-    HANDLE StandardError;
-    CURDIR CurrentDirectory;
-    UNICODE_STRING DllPath;
-    UNICODE_STRING ImagePathName;
-    UNICODE_STRING CommandLine;
-    PWSTR Environment;
-    ULONG StartingX;
-    ULONG StartingY;
-    ULONG CountX;
-    ULONG CountY;
-    ULONG CountCharsX;
-    ULONG CountCharsY;
-    ULONG FillAttribute;
-    ULONG WindowFlags;
-    ULONG ShowWindowFlags;
-    UNICODE_STRING WindowTitle;
-    UNICODE_STRING DesktopInfo;
-    UNICODE_STRING ShellInfo;
-    UNICODE_STRING RuntimeData;
-    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
-    SIZE_T EnvironmentSize;
-    SIZE_T EnvironmentVersion;
-} RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
-
-typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
-    struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME *Previous;
-    struct _ACTIVATION_CONTEXT                 *ActivationContext;
-    ULONG                                       Flags;
-} RTL_ACTIVATION_CONTEXT_STACK_FRAME, *PRTL_ACTIVATION_CONTEXT_STACK_FRAME;
 
 /* Exception record flags */
 #define EXCEPTION_NONCONTINUABLE  0x01
@@ -148,11 +61,6 @@ typedef struct _EXCEPTION_RECORD {
     ULONG NumberParameters;
     ULONG_PTR ExceptionInformation[EXCEPTION_MAXIMUM_PARAMETERS];
 } EXCEPTION_RECORD, *PEXCEPTION_RECORD;
-
-typedef struct _EXCEPTION_POINTERS {
-  PEXCEPTION_RECORD ExceptionRecord;
-  PCONTEXT ContextRecord;
-} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
 
 /* Pseudo handle values for current process and thread */
 static inline HANDLE NtCurrentProcess(VOID)
@@ -253,6 +161,6 @@ NTAPI NTSYSAPI BOOLEAN RtlTimeToSecondsSince1980(IN PLARGE_INTEGER Time,
 NTAPI NTSYSAPI VOID RtlSecondsSince1980ToTime(IN ULONG ElapsedSeconds,
 					      OUT PLARGE_INTEGER Time);
 
-#ifndef _NTOSKRNL_
+#if defined(_MSC_VER) && !defined(_NTOSKRNL_)
 #include <nturtl.h>
-#endif	/* _NTOSKRNL_ */
+#endif

@@ -6,13 +6,13 @@
 
 CCHAR NTAPI RtlFindMostSignificantBit(ULONGLONG Value)
 {
-    ULONG Position;
-
-#ifdef _M_AMD64
+#ifdef _WIN64
+    ULONGLONG Position;
     if (BitScanReverse64(&Position, Value)) {
 	return (CCHAR) Position;
     }
 #else
+    ULONG Position;
     if (BitScanReverse(&Position, Value >> _BITCOUNT)) {
 	return (CCHAR) (Position + _BITCOUNT);
     } else if (BitScanReverse(&Position, (ULONG) Value)) {
@@ -24,13 +24,13 @@ CCHAR NTAPI RtlFindMostSignificantBit(ULONGLONG Value)
 
 CCHAR NTAPI RtlFindLeastSignificantBit(ULONGLONG Value)
 {
-    ULONG Position;
-
-#ifdef _M_AMD64
+#ifdef _WIN64
+    ULONGLONG Position;
     if (BitScanForward64(&Position, Value)) {
 	return (CCHAR) Position;
     }
 #else
+    ULONG Position;
     if (BitScanForward(&Position, (ULONG) Value)) {
 	return (CCHAR) Position;
     } else if (BitScanForward(&Position, Value >> _BITCOUNT)) {

@@ -372,6 +372,4 @@ static inline NTSTATUS CmpMarshalKeyValueInfoBuffer(IN OPTIONAL PVOID ClientBuff
     return STATUS_SUCCESS;
 }
 
-extern __thread seL4_CPtr KiSystemServiceCap;
-
 #include <ntdll_syssvc_gen.c>

@@ -1,7 +1,6 @@
 # Kernel configuration
-set(KernelPlatform "pc99" CACHE STRING "")
 set(KernelVerificationBuild OFF CACHE BOOL "")
-set(KernelMaxNumNodes "1" CACHE STRING "")
+set(KernelMaxNumNodes "4" CACHE STRING "")
 set(KernelOptimisation "-O2" CACHE STRING "")
 set(KernelRetypeFanOutLimit "256" CACHE STRING "")
 set(KernelBenchmarks "none" CACHE STRING "")
@@ -19,31 +18,37 @@ else()
     set(KernelPrinting OFF CACHE BOOL "")
 endif()
 set(KernelNumDomains 1 CACHE STRING "")
-set(KernelSupportPCID OFF CACHE BOOL "")
-set(KernelIOMMU OFF CACHE BOOL "")
-set(KernelFPU FXSAVE CACHE STRING "")
-set(KernelHugePage OFF CACHE BOOL "")
-set(KernelIRQController "PIC" CACHE STRING "")
 
 # For small memory systems, reduce the root cnode size.
 # For large memory systems, increase the root cnode size.
 # The numbers below are for a moderate system (256MB for x32, 4G for x64).
-# On x32 each CNode slot costs 16 bytes. 2^18 slots cost 4M.
-# On x64 each CNode slot costs 32 bytes. 2^20 slots cost 32M.
-if(KernelSel4Arch STREQUAL "ia32")
-    set(Arch "i386" CACHE STRING "")
-    set(KernelFSGSBase gdt CACHE STRING "")
-    set(KernelSetTLSBaseSelf ON CACHE BOOL "")
+# On 32-bit systems each CNode slot costs 16 bytes. 2^18 slots cost 4M.
+# On 64-bit systems each CNode slot costs 32 bytes. 2^20 slots cost 32M.
+if(KernelWordSize EQUAL 32)
     set(KernelRootCNodeSizeBits 18 CACHE STRING "")
     set(KernelMaxNumBootinfoUntypedCaps 256 CACHE STRING "")
-elseif(KernelSel4Arch STREQUAL "x86_64")
-    set(Arch "amd64" CACHE STRING "")
-    set(KernelFSGSBase inst CACHE STRING "")
-    set(KernelSetTLSBaseSelf OFF CACHE BOOL "")
+else()
     set(KernelRootCNodeSizeBits 20 CACHE STRING "")
     set(KernelMaxNumBootinfoUntypedCaps 230 CACHE STRING "")
+endif()
+
+if(Arch STREQUAL "i386")
+    set(KernelFSGSBase gdt CACHE STRING "")
+    set(KernelSetTLSBaseSelf ON CACHE BOOL "")
+elseif(Arch STREQUAL "amd64")
+    set(KernelFSGSBase inst CACHE STRING "")
+    set(KernelSetTLSBaseSelf OFF CACHE BOOL "")
+elseif(Arch STREQUAL "arm64")
 else()
-    message(FATAL_ERROR "Unsupported architecture: ${KernelSel4Arch}")
+    message(FATAL_ERROR "Unsupported architecture: ${Arch}")
+endif()
+
+if ("${Arch}" MATCHES "^(i386|amd64)$")
+    set(KernelSupportPCID OFF CACHE BOOL "")
+    set(KernelIOMMU OFF CACHE BOOL "")
+    set(KernelFPU FXSAVE CACHE STRING "")
+    set(KernelHugePage OFF CACHE BOOL "")
+    set(KernelIRQController "PIC" CACHE STRING "")
 endif()
 
 include(${KERNEL_PATH}/configs/seL4Config.cmake)

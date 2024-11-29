@@ -19,7 +19,7 @@ target_include_directories(
 	src/inc
 	src/inc/${Arch}
 	${STRUCTURES_GEN_DIR}
-	../../sel4/libsel4/include
+	${SANITIZED_SEL4_INCLUDE_DIR}
 	../../sel4/libsel4/mode_include/${KernelWordSize}
 	../../sel4/libsel4/sel4_plat_include/${KernelPlatform}
 	../../sel4/libsel4/arch_include/${KernelArch}

@@ -253,7 +253,7 @@ static NTSTATUS IopMapUserBuffer(IN PVIRT_ADDR_SPACE UserVSpace,
 	RET_ERR(MmMapUserBufferEx(UserVSpace, UserBufferStart,
 				  UserBufferLength, DriverVSpace,
 				  USER_IMAGE_REGION_START,
-				  USER_IMAGE_REGION_END,
+				  USER_ADDRESS_END,
 				  DriverBufferStart, ReadOnly));
 	DbgTrace("Mapped driver buffer for %s at %p\n",
 		 Driver->DriverImagePath, (PVOID)*DriverBufferStart);

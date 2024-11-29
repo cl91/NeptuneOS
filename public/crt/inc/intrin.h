@@ -1,31 +1,6 @@
 #pragma once
 
 /*
- * Yields processor time
- */
-static inline void _mm_pause(void)
-{
-    __asm__ __volatile__("pause" : : : "memory");
-}
-
-/*
- * 64-bit maths
- */
-static inline long long __emul(int a, int b)
-{
-    long long retval;
-    __asm__("imull %[b]" : "=A" (retval) : [a] "a" (a), [b] "rm" (b));
-    return retval;
-}
-
-static inline unsigned long long __emulu(unsigned int a, unsigned int b)
-{
-    unsigned long long retval;
-    __asm__("mull %[b]" : "=A" (retval) : [a] "a" (a), [b] "rm" (b));
-    return retval;
-}
-
-/*
  * Stack frame addresses
  */
 #define _AddressOfReturnAddress() (&(((void **)(__builtin_frame_address(0)))[1]))
@@ -33,7 +8,6 @@ static inline unsigned long long __emulu(unsigned int a, unsigned int b)
 /*
  * Atomic operations
  */
-
 static inline char InterlockedCompareExchange8(volatile char *Destination,
 					       char Exchange,
 					       char Comperand)
@@ -51,13 +25,6 @@ static inline short InterlockedCompareExchange16(volatile short *Destination,
 static inline __cdecl int InterlockedCompareExchange(volatile int *Destination,
 						     int Exchange,
 						     int Comperand)
-{
-    return __sync_val_compare_and_swap(Destination, Comperand, Exchange);
-}
-
-static inline long long InterlockedCompareExchange64(volatile long long *Destination,
-						     long long Exchange,
-						     long long Comperand)
 {
     return __sync_val_compare_and_swap(Destination, Comperand, Exchange);
 }
@@ -97,13 +64,6 @@ static inline void *InterlockedExchangePointer(void *volatile *Target, void *Val
     return (void *)__sync_lock_test_and_set(Target, Value);
 }
 
-static inline long long InterlockedExchange64(volatile long long *Target, long long Value)
-{
-    /* NOTE: __sync_lock_test_and_set would be an acquire barrier, so we force a full barrier */
-    __sync_synchronize();
-    return __sync_lock_test_and_set(Target, Value);
-}
-
 static inline char InterlockedExchangeAdd8(char volatile *Addend, char Value)
 {
     return __sync_fetch_and_add(Addend, Value);
@@ -115,11 +75,6 @@ static inline short InterlockedExchangeAdd16(volatile short *Addend, short Value
 }
 
 static inline __cdecl int InterlockedExchangeAdd(volatile int *Addend, int Value)
-{
-    return __sync_fetch_and_add(Addend, Value);
-}
-
-static inline long long InterlockedExchangeAdd64(volatile long long *Addend, long long Value)
 {
     return __sync_fetch_and_add(Addend, Value);
 }
@@ -139,11 +94,6 @@ static inline int InterlockedAnd(volatile int *value, int mask)
     return __sync_fetch_and_and(value, mask);
 }
 
-static inline long long InterlockedAnd64(volatile long long *value, long long mask)
-{
-    return __sync_fetch_and_and(value, mask);
-}
-
 static inline char InterlockedOr8(volatile char *value, char mask)
 {
     return __sync_fetch_and_or(value, mask);
@@ -155,11 +105,6 @@ static inline short InterlockedOr16(volatile short *value, short mask)
 }
 
 static inline int InterlockedOr(volatile int *value, int mask)
-{
-    return __sync_fetch_and_or(value, mask);
-}
-
-static inline long long InterlockedOr64(volatile long long *value, long long mask)
 {
     return __sync_fetch_and_or(value, mask);
 }
@@ -179,14 +124,9 @@ static inline int InterlockedXor(volatile int *value, int mask)
     return __sync_fetch_and_xor(value, mask);
 }
 
-static inline long long InterlockedXor64(volatile long long *value, long long mask)
+static inline short InterlockedIncrement16(volatile short *lpAddend)
 {
-    return __sync_fetch_and_xor(value, mask);
-}
-
-static inline __cdecl int InterlockedDecrement(volatile int *lpAddend)
-{
-    return __sync_sub_and_fetch(lpAddend, 1);
+    return __sync_add_and_fetch(lpAddend, 1);
 }
 
 static inline __cdecl int InterlockedIncrement(volatile int *lpAddend)
@@ -199,9 +139,80 @@ static inline short InterlockedDecrement16(volatile short *lpAddend)
     return __sync_sub_and_fetch(lpAddend, 1);
 }
 
-static inline short InterlockedIncrement16(volatile short *lpAddend)
+static inline __cdecl int InterlockedDecrement(volatile int *lpAddend)
 {
-    return __sync_add_and_fetch(lpAddend, 1);
+    return __sync_sub_and_fetch(lpAddend, 1);
+}
+
+static inline long long InterlockedCompareExchange64(volatile long long *Destination,
+						     long long Exchange,
+						     long long Comperand)
+{
+    return __sync_val_compare_and_swap(Destination, Comperand, Exchange);
+}
+
+static inline long long InterlockedExchange64(volatile long long *Target, long long Value)
+{
+    /* NOTE: __sync_lock_test_and_set would be an acquire barrier, so we force a full barrier */
+    __sync_synchronize();
+    return __sync_lock_test_and_set(Target, Value);
+}
+
+static inline long long InterlockedExchangeAdd64(volatile long long *Addend, long long Value)
+{
+    return __sync_fetch_and_add(Addend, Value);
+}
+
+static inline long long InterlockedAnd64(volatile long long *value, long long mask)
+{
+    return __sync_fetch_and_and(value, mask);
+}
+
+static inline long long InterlockedOr64(volatile long long *value, long long mask)
+{
+    return __sync_fetch_and_or(value, mask);
+}
+
+static inline long long InterlockedXor64(volatile long long *value, long long mask)
+{
+    return __sync_fetch_and_xor(value, mask);
+}
+
+static inline long long InterlockedIncrement64(volatile long long *lpAddend)
+{
+        return __sync_add_and_fetch(lpAddend, 1);
+}
+
+static inline long long InterlockedDecrement64(volatile long long *lpAddend)
+{
+    return __sync_sub_and_fetch(lpAddend, 1);
+}
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+
+/*
+ * Yields processor time
+ */
+static inline void _mm_pause(void)
+{
+    __asm__ __volatile__("pause" : : : "memory");
+}
+
+/*
+ * 64-bit maths
+ */
+static inline long long __emul(int a, int b)
+{
+    long long retval;
+    __asm__("imull %[b]" : "=A" (retval) : [a] "a" (a), [b] "rm" (b));
+    return retval;
+}
+
+static inline unsigned long long __emulu(unsigned int a, unsigned int b)
+{
+    unsigned long long retval;
+    __asm__("mull %[b]" : "=A" (retval) : [a] "a" (a), [b] "rm" (b));
+    return retval;
 }
 
 /*
@@ -229,6 +240,8 @@ static inline unsigned char BitScanReverse(unsigned int *Index,
 */
 void __cpuid(int CPUInfo[4], int InfoType);
 void __cpuidex(int CPUInfo[4], int InfoType, int ECXValue);
+
+#endif	/* defined(_M_IX86) || defined(_M_AMD64) */
 
 #ifdef _M_IX86
 
@@ -265,11 +278,11 @@ static inline unsigned long __readfsdword(unsigned long offset)
  */
 
 /*
-	NOTE: in __ll_lshift, __ll_rshift and __ull_rshift we use the "A"
-	constraint (edx:eax) for the Mask argument, because it's the only way GCC
-	can pass 64-bit operands around - passing the two 32 bit parts separately
-	just confuses it. Also we declare Bit as an int and then truncate it to
-	match Visual C++ behavior
+  NOTE: in __ll_lshift, __ll_rshift and __ull_rshift we use the "A"
+  constraint (edx:eax) for the Mask argument, because it's the only way GCC
+  can pass 64-bit operands around - passing the two 32 bit parts separately
+  just confuses it. Also we declare Bit as an int and then truncate it to
+  match Visual C++ behavior
 */
 static inline unsigned long long __ll_lshift(unsigned long long Mask, int Bit)
 {
@@ -302,23 +315,6 @@ static inline unsigned long long __ull_rshift(unsigned long long Mask, int Bit)
 	    [Bit] "Nc" ((unsigned char)((unsigned long)Bit) & 0xFF));
 
     return retval;
-}
-
-FORCEINLINE LONG64 InterlockedAdd64(IN OUT volatile LONG64 *Target,
-				    IN LONG64 Value)
-{
-    LONG64 Old, Prev, New;
-    for (Old = *Target; ; Old = Prev) {
-        New = Old + Value;
-        Prev = InterlockedCompareExchange64(Target, New, Old);
-        if (Prev == Old)
-            return New;
-    }
-}
-
-FORCEINLINE LONG64 InterlockedIncrement64(IN OUT volatile LONG64 *Target)
-{
-    return InterlockedAdd64(Target, 1);
 }
 
 #elif defined(_M_AMD64)
@@ -374,7 +370,7 @@ static inline void __stosq(unsigned long long *Dest,
 /*
  * Bit manipulation
  */
-static inline unsigned char BitScanForward64(unsigned int *Index,
+static inline unsigned char BitScanForward64(unsigned long long *Index,
 					     unsigned long long Mask)
 {
     unsigned long long Index64;
@@ -384,7 +380,7 @@ static inline unsigned char BitScanForward64(unsigned int *Index,
     return Mask ? 1 : 0;
 }
 
-static inline unsigned char BitScanReverse64(unsigned int *Index,
+static inline unsigned char BitScanReverse64(unsigned long long *Index,
 					     unsigned long long Mask)
 {
     unsigned long long Index64;
@@ -432,19 +428,6 @@ static inline unsigned char _bittest64(const long long *a, long long b)
 }
 #define BitTest64 _bittest64
 
-/*
- * Atomic operations
- */
-static inline long long InterlockedDecrement64(volatile long long *lpAddend)
-{
-    return __sync_sub_and_fetch(lpAddend, 1);
-}
-
-static inline long long InterlockedIncrement64(volatile long long *lpAddend)
-{
-    return __sync_add_and_fetch(lpAddend, 1);
-}
-
 static inline unsigned long long __ll_lshift(unsigned long long Mask, int Bit)
 {
     unsigned long long retval;
@@ -454,6 +437,65 @@ static inline unsigned long long __ll_lshift(unsigned long long Mask, int Bit)
 	    [Mask] "0"(Mask), [shift] "c"(shift));
 
     return retval;
+}
+
+#elif defined(_M_ARM64)
+
+#define _ReadWriteBarrier() __sync_synchronize()
+
+unsigned __int64 __getReg(int);
+
+static inline void __yield(void)
+{
+    __asm__ __volatile__("yield");
+}
+
+static inline void __break(unsigned int value)
+{
+    __asm__ __volatile__("bkpt %0" : : "M"(value));
+}
+
+static inline unsigned short _byteswap_ushort(unsigned short value)
+{
+    return (value >> 8) | (value << 8);
+}
+
+static inline unsigned _CountLeadingZeros(int Mask)
+{
+    return Mask ? __builtin_clz(Mask) : 32;
+}
+
+static inline unsigned _CountTrailingZeros(int Mask)
+{
+    return Mask ? __builtin_ctz(Mask) : 32;
+}
+
+static inline unsigned char BitScanForward(unsigned int *const Index,
+					   const unsigned int Mask)
+{
+    *Index = __builtin_ctz(Mask);
+    return Mask ? 1 : 0;
+}
+
+static inline unsigned char BitScanForward64(unsigned long long *const Index,
+					     const unsigned long long Mask)
+{
+    *Index = __builtin_ctz(Mask);
+    return Mask ? 1 : 0;
+}
+
+static inline unsigned char BitScanReverse(unsigned int *const Index,
+					   const unsigned int Mask)
+{
+    *Index = 31 - __builtin_clz(Mask);
+    return Mask ? 1 : 0;
+}
+
+static inline unsigned char BitScanReverse64(unsigned long long *const Index,
+					   const unsigned long long Mask)
+{
+    *Index = 63 - __builtin_clz(Mask);
+    return Mask ? 1 : 0;
 }
 
 #else

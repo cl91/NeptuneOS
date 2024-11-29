@@ -7,15 +7,15 @@ static inline NTSTATUS MiTestMapPage(IN MWORD PageCap,
 				     IN MWORD Addr,
 				     IN PAGING_RIGHTS Rights)
 {
-    int Error = seL4_X86_Page_Map(PageCap,
-				  NTOS_VSPACE_CAP,
-				  Addr,
-				  Rights,
-				  seL4_X86_Default_VMAttributes);
+    int Error = seL4_Page_Map(PageCap,
+			      NTOS_VSPACE_CAP,
+			      Addr,
+			      Rights,
+			      MM_ATTRIBUTES_DEFAULT);
     if (Error != 0) {
-	DbgTrace("seL4_X86_Page_Map(%zd, %d, 0x%zx, 0x%zx, 0x%x) failed with error %d\n",
+	DbgTrace("seL4_Page_Map(%zd, %d, 0x%zx, 0x%zx, 0x%x) failed with error %d\n",
 		 PageCap, NTOS_VSPACE_CAP, Addr, Rights.words[0],
-		 seL4_X86_Default_VMAttributes, Error);
+		 MM_ATTRIBUTES_DEFAULT, Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }

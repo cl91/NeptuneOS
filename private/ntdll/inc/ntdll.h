@@ -5,8 +5,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <nt.h>
-#include <sel4/sel4.h>
 #include <services.h>
+#include <sel4/sel4.h>
 #include <ntdll_syssvc_gen.h>
 #include <debug.h>
 #include <assert.h>

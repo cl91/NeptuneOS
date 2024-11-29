@@ -1,5 +1,6 @@
 #include <nt.h>
 #include <debug.h>
+#include <services.h>
 #include <sel4/sel4.h>
 
 static PCSTR KiDbgErrorCodeToStr(IN int Error)

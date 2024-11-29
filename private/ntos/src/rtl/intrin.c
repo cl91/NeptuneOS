@@ -1,3 +1,6 @@
+#include <ntos.h>
+
+#if defined(_M_IX86) || defined(_M_AMD64)
 /*
  * This file provides the implementations for MSVC intrinsic functions.
  * These are compiler builtins for PE targets but since we are ELF targets
@@ -22,3 +25,4 @@ void __cpuidex(int CPUInfo[4],
 			 "=c" (CPUInfo[2]), "=d" (CPUInfo[3])
 			 : "a" (InfoType), "c" (ECXValue));
 }
+#endif

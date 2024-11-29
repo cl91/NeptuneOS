@@ -719,7 +719,7 @@ static inline VOID KeUninitializeEvent(IN PKEVENT Event)
  */
 typedef struct POINTER_ALIGNMENT _KMUTEX {
     NOTIFICATION Notification;	/* Notification object */
-    LONG Counter;		/* 0 == Mutex available.
+    volatile LONG Counter;	/* 0 == Mutex available.
 				 * 1 == Lock is held by the main event loop thread.
 				 * 2 == Lock is held by the main event loop thread AND
 				 *      the timer interrupt handler is sleeping on the

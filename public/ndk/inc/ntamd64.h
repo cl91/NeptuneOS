@@ -185,8 +185,7 @@ typedef struct _DISPATCHER_CONTEXT {
 
 typedef struct _SCOPE_TABLE {
     ULONG Count;
-    struct
-    {
+    struct {
         ULONG BeginAddress;
         ULONG EndAddress;
         ULONG HandlerAddress;

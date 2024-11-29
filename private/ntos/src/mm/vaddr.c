@@ -4,6 +4,9 @@
 
 #include "mi.h"
 
+#define LOW_BITMAP_MAX_LOG2SIZE	(PAGE_LOG2SIZE + 3)
+#define LOW_BITMAP_MAXSIZE	(1ULL << LOW_BITMAP_MAX_LOG2SIZE)
+
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
 			IN PPAGING_STRUCTURE RootPagingStructure)
 {
@@ -77,8 +80,8 @@ VOID MmDestroyVSpace(IN PVIRT_ADDR_SPACE Self)
 NTSTATUS MmAssignASID(IN PVIRT_ADDR_SPACE VaddrSpace)
 {
     /* TODO: Create ASID pool if there are not enough ASID slots */
-    int Error = seL4_X86_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
-					 VaddrSpace->VSpaceCap);
+    int Error = seL4_ASIDPool_Assign(seL4_CapInitThreadASIDPool,
+				     VaddrSpace->VSpaceCap);
 
     if (Error != 0) {
 	return SEL4_ERROR(Error);
@@ -153,6 +156,9 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
  * one large page size, then we will attempt to locate an address window that
  * starts at the large page boundary (failing so, a regular search will be conducted).
  *
+ * For MEM_RESERVE_BITMAP_MANAGED, LowZeroBits specifies the granularity of the
+ * commitment status tracking. Commitment status is tracked in units of 1 << LowZeroBits.
+ *
  * If LowZeroBits is larger than PAGE_LOG2SIZE, the address window will be aligned
  * such that the lowest LowZeroBits bits of the starting address are zero.
  */
@@ -170,8 +176,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     /* At least one flag must be set. */
     assert(Flags);
     /* Thw following "reserve type" flags are mutually exclusive. */
-    MWORD TypeFlags = MEM_RESERVE_IMAGE_MAP | MEM_RESERVE_FILE_MAP
-	| MEM_RESERVE_CACHE_MAP | MEM_RESERVE_PHYSICAL_MAPPING
+    MWORD TypeFlags = MEM_RESERVE_IMAGE_MAP | MEM_RESERVE_FILE_MAP | MEM_RESERVE_CACHE_MAP
+	| MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_BITMAP_MANAGED
 	| MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_MIRRORED_MEMORY;
     assert(IsPow2OrZero(Flags & TypeFlags));
     /* Unless NO_ACCESS or NO_INSERT is set, at least one of the "reserve type"
@@ -357,6 +363,27 @@ retry:
 
 insert:
     MiAllocatePool(Vad, MMVAD);
+    MWORD *Bitmap = NULL;
+    if ((Flags & MEM_RESERVE_BITMAP_MANAGED) && !(Flags & MEM_RESERVE_NO_INSERT)) {
+	if (LowZeroBits < PageLog2Size) {
+	    LowZeroBits = PageLog2Size;
+	}
+	MWORD AllocationUnits = WindowSize >> LowZeroBits;
+	if (!AllocationUnits) {
+	    MiFreePool(Vad);
+	    return STATUS_INVALID_PARAMETER;
+	}
+	if (AllocationUnits > LOW_BITMAP_MAXSIZE) {
+	    MWORD HighBitmapSize = AllocationUnits / LOW_BITMAP_MAXSIZE;
+	    Bitmap = ExAllocatePoolWithTag(HighBitmapSize * sizeof(PVOID), NTOS_MM_TAG);
+	} else {
+	    Bitmap = ExAllocatePoolWithTag(AllocationUnits / 8, NTOS_MM_TAG);
+	}
+	if (!Bitmap) {
+	    MiFreePool(Vad);
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+    }
     MMVAD_FLAGS VadFlags;
     VadFlags.Word = 0;
     VadFlags.NoAccess = !!(Flags & MEM_RESERVE_NO_ACCESS);
@@ -365,6 +392,7 @@ insert:
     VadFlags.FileMap = !!(Flags & MEM_RESERVE_FILE_MAP);
     VadFlags.CacheMap = !!(Flags & MEM_RESERVE_CACHE_MAP);
     VadFlags.PhysicalMapping = !!(Flags & MEM_RESERVE_PHYSICAL_MAPPING);
+    VadFlags.BitmapManaged = !!(Flags & MEM_RESERVE_BITMAP_MANAGED);
     VadFlags.LargePages = !!(Flags & MEM_RESERVE_LARGE_PAGES) && TryLargePages;
     VadFlags.OwnedMemory = !!(Flags & MEM_RESERVE_OWNED_MEMORY);
     VadFlags.MirroredMemory = !!(Flags & MEM_RESERVE_MIRRORED_MEMORY);
@@ -382,6 +410,8 @@ insert:
 	return STATUS_SUCCESS;
     }
 
+    Vad->CommitmentStatus.Bitmap = Bitmap;
+    Vad->CommitmentStatus.LowZeroBits = LowZeroBits;
     AvlTreeInsertNode(&VSpace->VadTree, &Parent->AvlNode, &Vad->AvlNode);
 
     MmDbg("Successfully reserved [%p, %p) for vspacecap 0x%zx\n",
@@ -389,6 +419,100 @@ insert:
 	  (PVOID)(Vad->AvlNode.Key + Vad->WindowSize),
 	  VSpace ? VSpace->VSpaceCap : 0);
     return STATUS_SUCCESS;
+}
+
+/*
+ * Find an uncommitted allocation unit in the bitmap managed memory region.
+ * If full, or if the VAD does not describe a bitmap managed memory region,
+ * return zero.
+ */
+MWORD MmFindAndMarkUncommittedSubregion(IN PMMVAD Vad)
+{
+    if (!Vad->Flags.BitmapManaged) {
+	assert(FALSE);
+	return 0;
+    }
+    if (!Vad->CommitmentStatus.Bitmaps) {
+	assert(FALSE);
+	return 0;
+    }
+    MWORD AllocationUnits = Vad->WindowSize >> Vad->CommitmentStatus.LowZeroBits;
+    if (!AllocationUnits) {
+	assert(FALSE);
+	return 0;
+    }
+    if (AllocationUnits > LOW_BITMAP_MAXSIZE) {
+	MWORD HighBitmapSize = AllocationUnits / LOW_BITMAP_MAXSIZE;
+	for (MWORD i = 0; i < HighBitmapSize; i++) {
+	    if (Vad->CommitmentStatus.Bitmaps[i]) {
+		for (MWORD j = 0; j < LOW_BITMAP_MAXSIZE; j++) {
+		    if (!GetBit(Vad->CommitmentStatus.Bitmaps[i], j)) {
+			SetBit(Vad->CommitmentStatus.Bitmaps[i], j);
+			MWORD Offset = (i << LOW_BITMAP_MAX_LOG2SIZE) | j;
+			return Vad->AvlNode.Key + (Offset << Vad->CommitmentStatus.LowZeroBits);
+		    }
+		}
+	    } else {
+		Vad->CommitmentStatus.Bitmaps[i] = ExAllocatePoolWithTag(LOW_BITMAP_MAXSIZE / 8,
+									 NTOS_MM_TAG);
+		if (!Vad->CommitmentStatus.Bitmaps[i]) {
+		    return 0;
+		}
+		SetBit(Vad->CommitmentStatus.Bitmaps[i], 0);
+		return Vad->AvlNode.Key + (i << (LOW_BITMAP_MAX_LOG2SIZE +
+						 Vad->CommitmentStatus.LowZeroBits));
+	    }
+	}
+    } else {
+	for (MWORD i = 0; i < AllocationUnits; i++) {
+	    if (!GetBit(Vad->CommitmentStatus.Bitmap, i)) {
+		SetBit(Vad->CommitmentStatus.Bitmap, i);
+		return Vad->AvlNode.Key + (i << Vad->CommitmentStatus.LowZeroBits);
+	    }
+	}
+    }
+    return 0;
+}
+
+/*
+ * Unset the bitmap corresponding to the address of the committed unit in a
+ * bitmap managed memory region.
+ */
+static VOID MiUnmarkCommittedSubregion(IN PMMVAD Vad, IN MWORD Addr)
+{
+    if (!Vad->Flags.BitmapManaged) {
+	assert(FALSE);
+	return;
+    }
+    if (!Vad->CommitmentStatus.Bitmaps) {
+	assert(FALSE);
+	return;
+    }
+    if (Addr < Vad->AvlNode.Key) {
+	assert(FALSE);
+	return;
+    }
+    MWORD Offset = Addr - Vad->AvlNode.Key;
+    if (Offset >= Vad->WindowSize) {
+	assert(FALSE);
+	return;
+    }
+    Offset >>= Vad->CommitmentStatus.LowZeroBits;
+    MWORD AllocationUnits = Vad->WindowSize >> Vad->CommitmentStatus.LowZeroBits;
+    if (!AllocationUnits) {
+	assert(FALSE);
+	return;
+    }
+    if (AllocationUnits > LOW_BITMAP_MAXSIZE) {
+	MWORD *Bitmap = Vad->CommitmentStatus.Bitmaps[Offset >> LOW_BITMAP_MAX_LOG2SIZE];
+	if (!Bitmap) {
+	    assert(FALSE);
+	    return;
+	}
+	ClearBit(Bitmap, Offset & ((1ULL << LOW_BITMAP_MAX_LOG2SIZE) - 1));
+    } else {
+	ClearBit(Vad->CommitmentStatus.Bitmap, Offset);
+    }
 }
 
 /*
@@ -772,6 +896,18 @@ static VOID MiUncommitVad(IN PMMVAD Vad)
     MWORD StartAddr = Vad->AvlNode.Key;
     MWORD WindowSize = Vad->WindowSize;
     MiUncommitWindow(Vad->VSpace, &StartAddr, &WindowSize);
+    if (Vad->Flags.BitmapManaged && Vad->CommitmentStatus.Bitmaps) {
+	MWORD AllocationUnits = Vad->WindowSize >> Vad->CommitmentStatus.LowZeroBits;
+	if (AllocationUnits > LOW_BITMAP_MAXSIZE) {
+	    for (MWORD i = 0; i < AllocationUnits / LOW_BITMAP_MAXSIZE; i++) {
+		if (Vad->CommitmentStatus.Bitmaps[i]) {
+		    MiFreePool(Vad->CommitmentStatus.Bitmaps[i]);
+		}
+	    }
+	}
+	MiFreePool(Vad->CommitmentStatus.Bitmaps);
+	Vad->CommitmentStatus.Bitmaps = NULL;
+    }
 }
 
 /*
@@ -817,15 +953,15 @@ VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
  * address space and map the source window into it (up to the specified commit
  * size), returning the resulting VAD in the target address space.
  */
-NTSTATUS MmMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
-			   IN MWORD SrcWindowStart,
-			   IN MWORD SrcWindowSize,
-			   IN PVIRT_ADDR_SPACE TargetVSpace,
-			   IN MWORD TargetVaddrStart,
-			   IN MWORD TargetVaddrEnd,
-			   IN MWORD TargetReserveFlag,
-			   IN MWORD TargetCommitSize,
-			   OUT PMMVAD *pTargetVad)
+static NTSTATUS MiMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
+				  IN MWORD SrcWindowStart,
+				  IN MWORD SrcWindowSize,
+				  IN PVIRT_ADDR_SPACE TargetVSpace,
+				  IN MWORD TargetVaddrStart,
+				  IN MWORD TargetVaddrEnd,
+				  IN MWORD TargetReserveFlag,
+				  IN MWORD TargetCommitSize,
+				  OUT PMMVAD *pTargetVad)
 {
     assert(pTargetVad != NULL);
     PMMVAD TargetVad = NULL;
@@ -876,12 +1012,12 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
     RET_ERR_EX(MiEnsureWindowMapped(VSpace, &UserWindowStart, &WindowSize, !ReadOnly),
 	       {
 		   MmDbg("User window not mapped [%p, %p)\n",
-			 (PVOID)UserWindowStart, (PVOID)WindowSize);
+			 (PVOID)UserWindowStart, (PVOID)(UserWindowStart+WindowSize));
 		   MmDbgDumpVSpace(VSpace);
 	       });
 
     PMMVAD TargetBufferVad = NULL;
-    RET_ERR(MmMapSharedRegion(VSpace, UserWindowStart, WindowSize,
+    RET_ERR(MiMapSharedRegion(VSpace, UserWindowStart, WindowSize,
 			      TargetVSpace, TargetVaddrStart,
 			      TargetVaddrEnd,
 			      ReadOnly ? MEM_RESERVE_READ_ONLY : 0,
@@ -894,15 +1030,24 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
  * Unmap the memory region that was previously mapped into the target
  * address space.
  */
-VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
-		   IN MWORD MappedRegionStart)
+VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE VSpace,
+		   IN MWORD StartAddr)
 {
     MmDbg("Unmapping region starting %p for vspace cap 0x%zx\n",
-	  (PVOID)MappedRegionStart, MappedVSpace->VSpaceCap);
-    PMMVAD Vad = MiVSpaceFindVadNode(MappedVSpace, MappedRegionStart);
-    assert(Vad != NULL);
-    assert(MiVadNodeContainsAddr(Vad, MappedRegionStart));
-    if (Vad != NULL) {
+	  (PVOID)StartAddr, VSpace->VSpaceCap);
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, StartAddr);
+    if (!Vad) {
+	assert(FALSE);
+	return;
+    }
+    assert(MiVadNodeContainsAddr(Vad, StartAddr));
+    if (Vad->Flags.BitmapManaged) {
+	ULONG LowZeroBits = Vad->CommitmentStatus.LowZeroBits;
+	StartAddr >>= LowZeroBits;
+	StartAddr <<= LowZeroBits;
+	MiUnmarkCommittedSubregion(Vad, StartAddr);
+	MmUncommitVirtualMemoryEx(VSpace, StartAddr, 1ULL << LowZeroBits);
+    } else {
 	MmDeleteVad(Vad);
     }
 }
@@ -987,7 +1132,7 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
     PMMVAD Vad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, Length, 0, 0, Flags, &Vad));
+				     USER_ADDRESS_END, Length, 0, 0, Flags, &Vad));
     assert(Vad != NULL);
     PUNTYPED Untyped = NULL;
     ULONG Log2Size = 0;
@@ -1319,8 +1464,8 @@ NTSTATUS WdmReserveIoMemoryWindow(IN ASYNC_STATE AsyncState,
     }
     PMMVAD Vad = NULL;
     NTSTATUS Status = MmReserveVirtualMemoryEx(&Thread->Process->VSpace,
-					       LOWEST_USER_ADDRESS,
-					       USER_IMAGE_REGION_END,
+					       USER_IMAGE_REGION_START,
+					       USER_ADDRESS_END,
 					       1ULL << WindowBits, WindowBits, 0,
 					       MEM_RESERVE_PHYSICAL_MAPPING, &Vad);
     if (!NT_SUCCESS(Status)) {
@@ -1363,9 +1508,9 @@ NTSTATUS WdmMapIoMemory(IN ASYNC_STATE AsyncState,
     MEMORY_CACHING_TYPE CacheType = Vad->PhysicalSectionView.CacheType;
     PAGING_ATTRIBUTES Attributes = MM_ATTRIBUTES_DEFAULT;
     if (CacheType == MmNonCached) {
-	Attributes = MM_ATTRIBUTES_NO_CACHE;
+	MmApplyNoCacheAttribute(&Attributes);
     } else if (CacheType == MmWriteCombined) {
-	Attributes = MM_ATTRIBUTES_WRITE_COMBINE;
+	MmApplyWriteCombineAttribute(&Attributes);
     }
     BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyBase) &&
 	IS_LARGE_PAGE_ALIGNED(VirtBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
@@ -1383,9 +1528,12 @@ VOID MmDbgDumpVad(PMMVAD Vad)
     }
 
     MmDbgPrint("    vaddr start = %p  window size = 0x%zx\n"
-	       "   %s%s%s%s%s\n",
+	       "   %s%s%s%s%s%s%s%s\n",
 	       (PVOID) Vad->AvlNode.Key, Vad->WindowSize,
 	       Vad->Flags.ImageMap ? " image-map" : "",
+	       Vad->Flags.FileMap ? " file-map" : "",
+	       Vad->Flags.CacheMap ? " cache-map" : "",
+	       Vad->Flags.BitmapManaged ? " bitmap-managed" : "",
 	       Vad->Flags.LargePages ? " large-pages" : "",
 	       Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
 	       Vad->Flags.OwnedMemory ? " owned-memory" : "",
@@ -1403,6 +1551,10 @@ VOID MmDbgDumpVad(PMMVAD Vad)
     if (Vad->Flags.MirroredMemory) {
 	MmDbgPrint("    master vspace = %p\n", Vad->MirroredMemory.Master);
 	MmDbgPrint("    start vaddr in master vspace = 0x%zx\n", Vad->MirroredMemory.StartAddr);
+    }
+    if (Vad->Flags.BitmapManaged) {
+	MmDbgPrint("    bitmap(s) = %p\n", Vad->CommitmentStatus.Bitmap);
+	MmDbgPrint("    low zero bits = %d\n", Vad->CommitmentStatus.LowZeroBits);
     }
 #endif
 }

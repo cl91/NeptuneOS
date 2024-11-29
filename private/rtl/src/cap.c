@@ -22,8 +22,6 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type)
 	return "frame";
     case cap_page_table_cap:
 	return "page-table";
-    case cap_page_directory_cap:
-	return "page-directory";
     case cap_asid_control_cap:
 	return "asid-control";
     case cap_asid_pool_cap:
@@ -36,15 +34,29 @@ PCSTR RtlDbgCapTypeToStr(cap_tag_t Type)
 	return "zombie";
     case cap_domain_cap:
 	return "domain";
+#ifdef CONFIG_IOMMU
+    case cap_io_space_cap:
+	return "io-space";
+    case cap_io_page_table_cap:
+	return "io-page-table";
+#endif
+#if defined(_M_IX86) || defined(_M_AMD64)
+    case cap_page_directory_cap:
+	return "page-directory";
     case cap_io_port_cap:
 	return "io-port";
     case cap_io_port_control_cap:
 	return "io-port-control";
+#endif
 #ifdef _M_AMD64
     case cap_pdpt_cap:
 	return "pdpt";
     case cap_pml4_cap:
 	return "pml4";
+#endif
+#ifdef _M_ARM64
+    case cap_vspace_cap:
+	return "vspace";
 #endif
     }
     return "unknown";

@@ -10,10 +10,10 @@
 #include <gnu.h>
 #include <nt.h>
 
-#ifdef __i386__
+#ifndef _WIN64
 #define BITS_PER_LONG (32)
 #define BITS_PER_LONG_LONG (64)
-#elif defined(__x86_64)
+#else
 #ifdef _MSC_VER
 #define BITS_PER_LONG (32)
 #else

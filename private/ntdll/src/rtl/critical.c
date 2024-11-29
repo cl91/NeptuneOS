@@ -69,7 +69,7 @@ static NTSTATUS RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection
      * critical sections by force (the loader lock in particular)
      */
     if (LdrpShutdownInProgress &&
-	LdrpShutdownThreadId == NtCurrentTeb()->RealClientId.UniqueThread) {
+	LdrpShutdownThreadId == NtCurrentTib()->ClientId.UniqueThread) {
 	DPRINT("Forcing ownership of critical section %p\n", CriticalSection);
 	return STATUS_SUCCESS;
     }
@@ -211,17 +211,17 @@ static VOID RtlpFreeDebugInfo(PRTL_CRITICAL_SECTION_DEBUG DebugInfo)
 	/* Mark as free */
 	SIZE_T EntryId = (DebugInfo - RtlpStaticDebugInfo);
 	DPRINT("Freeing from Buffer: %p. Entry: %Iu inside Process: %p\n",
-	       DebugInfo, EntryId, NtCurrentTeb()->ClientId.UniqueProcess);
+	       DebugInfo, EntryId, NtCurrentTib()->ClientId.UniqueProcess);
 	RtlClearBit(&RtlpStaticDebugInfoFreeMap, EntryId);
     } else if (!DebugInfo->Flags) {
 	/* It's a dynamic one, so free from the heap */
 	DPRINT("Freeing from Heap: %p inside Process: %p\n",
-	       DebugInfo, NtCurrentTeb()->ClientId.UniqueProcess);
+	       DebugInfo, NtCurrentTib()->ClientId.UniqueProcess);
 	RtlFreeHeap(NtCurrentPeb()->ProcessHeap, 0, DebugInfo);
     } else {
 	/* Wine stores a section name pointer in the Flags member */
 	DPRINT("Assuming static: %p inside Process: %p\n",
-	       DebugInfo, NtCurrentTeb()->ClientId.UniqueProcess);
+	       DebugInfo, NtCurrentTib()->ClientId.UniqueProcess);
     }
 }
 
@@ -327,7 +327,7 @@ NTAPI ULONG RtlSetCriticalSectionSpinCount(PRTL_CRITICAL_SECTION CriticalSection
  *--*/
 NTAPI NTSTATUS RtlEnterCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 {
-    HANDLE Thread = (HANDLE) NtCurrentTeb()->ClientId.UniqueThread;
+    HANDLE Thread = (HANDLE)NtCurrentTib()->ClientId.UniqueThread;
 
     /* Try to lock it */
     if (InterlockedIncrement(&CriticalSection->LockCount) != 0) {
@@ -408,7 +408,7 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
     /* Allocate the Debug Data */
     CriticalSectionDebugData = RtlpAllocateDebugInfo();
     DPRINT("Allocated Debug Data: %p inside Process: %p\n",
-	   CriticalSectionDebugData, NtCurrentTeb()->ClientId.UniqueProcess);
+	   CriticalSectionDebugData, NtCurrentTib()->ClientId.UniqueProcess);
 
     if (!CriticalSectionDebugData) {
 	/* This is bad! */
@@ -538,7 +538,7 @@ RtlInitializeCriticalSectionAndSpinCount(PRTL_CRITICAL_SECTION CriticalSection,
  *--*/
 NTAPI LONG RtlGetCriticalSectionRecursionCount(PRTL_CRITICAL_SECTION CriticalSection)
 {
-    if (CriticalSection->OwningThread == NtCurrentTeb()->ClientId.UniqueThread) {
+    if (CriticalSection->OwningThread == NtCurrentTib()->ClientId.UniqueThread) {
 	/*
 	 * The critical section is owned by the current thread,
 	 * therefore retrieve its actual recursion count.
@@ -571,7 +571,7 @@ NTAPI LONG RtlGetCriticalSectionRecursionCount(PRTL_CRITICAL_SECTION CriticalSec
  *--*/
 NTAPI NTSTATUS RtlLeaveCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 {
-    HANDLE Thread = (HANDLE) NtCurrentTeb()->ClientId.UniqueThread;
+    HANDLE Thread = (HANDLE)NtCurrentTib()->ClientId.UniqueThread;
     /*
      * This isn't checked in Windows but it's a valid check so we do it.
      */
@@ -633,10 +633,10 @@ NTAPI BOOLEAN RtlTryEnterCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
     /* Try to take control */
     if (InterlockedCompareExchange(&CriticalSection->LockCount, 0, -1) == -1) {
 	/* It's ours */
-	CriticalSection->OwningThread = NtCurrentTeb()->ClientId.UniqueThread;
+	CriticalSection->OwningThread = NtCurrentTib()->ClientId.UniqueThread;
 	CriticalSection->RecursionCount = 1;
 	return TRUE;
-    } else if (CriticalSection->OwningThread == NtCurrentTeb()->ClientId.UniqueThread) {
+    } else if (CriticalSection->OwningThread == NtCurrentTib()->ClientId.UniqueThread) {
 	/* It's already ours */
 	InterlockedIncrement(&CriticalSection->LockCount);
 	CriticalSection->RecursionCount++;
@@ -659,6 +659,6 @@ NTAPI ULONG RtlIsCriticalSectionLocked(PRTL_CRITICAL_SECTION CriticalSection)
 
 NTAPI ULONG RtlIsCriticalSectionLockedByThread(PRTL_CRITICAL_SECTION CriticalSection)
 {
-    return CriticalSection->OwningThread == NtCurrentTeb()->ClientId.UniqueThread
+    return CriticalSection->OwningThread == NtCurrentTib()->ClientId.UniqueThread
 	&& CriticalSection->RecursionCount != 0;
 }

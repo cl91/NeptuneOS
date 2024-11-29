@@ -59,7 +59,7 @@ static inline PAGING_STRUCTURE_TYPE MiPagingSuperStructureType(PAGING_STRUCTURE_
     } else if (Type == PAGING_TYPE_LARGE_PAGE) {
 	return PAGING_TYPE_PAGE_DIRECTORY;
     }
-#ifdef _M_AMD64
+#if defined(_M_AMD64) || defined(_M_ARM64)
     if (Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	return PAGING_TYPE_PDPT;
     } else if (Type == PAGING_TYPE_PDPT) {
@@ -222,39 +222,39 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
     int Error = 0;
     if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
 #ifdef MMDBG
-	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
+	seL4_Page_GetAddress_t Reply = seL4_Page_GetAddress(Page->TreeNode.Cap);
 	MmDbg("Mapping %spage cap 0x%zx (paddr %p%s) into vspacecap 0x%zx at vaddr %p\n",
 	      (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
 	      Page->TreeNode.Cap, (PVOID) Reply.paddr, (Reply.error == 0) ? "" : " ???",
 	      Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 #endif
-	Error = seL4_X86_Page_Map(Page->TreeNode.Cap,
-				  Page->VSpaceCap,
-				  Page->AvlNode.Key,
-				  Page->Rights,
-				  Page->Attributes);
+	Error = seL4_Page_Map(Page->TreeNode.Cap,
+			      Page->VSpaceCap,
+			      Page->AvlNode.Key,
+			      Page->Rights,
+			      Page->Attributes);
     } else if (Page->Type == PAGING_TYPE_PAGE_TABLE) {
 	MmDbg("Mapping page table cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
 	      Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PageTable_Map(Page->TreeNode.Cap,
-				       Page->VSpaceCap,
-				       Page->AvlNode.Key,
-				       Page->Attributes);
-#ifdef _M_AMD64
+	Error = seL4_PageTable_Map(Page->TreeNode.Cap,
+				   Page->VSpaceCap,
+				   Page->AvlNode.Key,
+				   Page->Attributes);
+#if defined(_M_AMD64) || defined(_M_ARM64)
     } else if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	MmDbg("Mapping page directory cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
 	      Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PageDirectory_Map(Page->TreeNode.Cap,
-					   Page->VSpaceCap,
-					   Page->AvlNode.Key,
-					   Page->Attributes);
+	Error = seL4_PageDirectory_Map(Page->TreeNode.Cap,
+				       Page->VSpaceCap,
+				       Page->AvlNode.Key,
+				       Page->Attributes);
     } else if (Page->Type == PAGING_TYPE_PDPT) {
 	MmDbg("Mapping PDPT cap 0x%zx into vspacecap 0x%zx at vaddr %p\n",
 	      Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PDPT_Map(Page->TreeNode.Cap,
-				  Page->VSpaceCap,
-				  Page->AvlNode.Key,
-				  Page->Attributes);
+	Error = seL4_PDPT_Map(Page->TreeNode.Cap,
+			      Page->VSpaceCap,
+			      Page->AvlNode.Key,
+			      Page->Attributes);
 #endif
     } else {
 	return STATUS_INVALID_PARAMETER;
@@ -287,26 +287,26 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
     int Error = 0;
     if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
 #ifdef MMDBG
-	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Page->TreeNode.Cap);
+	seL4_Page_GetAddress_t Reply = seL4_Page_GetAddress(Page->TreeNode.Cap);
 	MmDbg("Unmapping %spage cap 0x%zx (paddr %p%s) from vspacecap 0x%zx originally at vaddr %p\n",
 	      (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
 	      Page->TreeNode.Cap, (PVOID) Reply.paddr, (Reply.error == 0) ? "" : " ???",
 	      Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
 #endif
-	Error = seL4_X86_Page_Unmap(Page->TreeNode.Cap);
+	Error = seL4_Page_Unmap(Page->TreeNode.Cap);
     } else if (Page->Type == PAGING_TYPE_PAGE_TABLE) {
 	MmDbg("Unmapping page table cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 	      Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PageTable_Unmap(Page->TreeNode.Cap);
-#ifdef _M_AMD64
+	Error = seL4_PageTable_Unmap(Page->TreeNode.Cap);
+#if defined(_M_AMD64) || defined(_M_ARM64)
     } else if (Page->Type == PAGING_TYPE_PAGE_DIRECTORY) {
 	MmDbg("Unmapping page directory cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 	      Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PageDirectory_Unmap(Page->TreeNode.Cap);
+	Error = seL4_PageDirectory_Unmap(Page->TreeNode.Cap);
     } else if (Page->Type == PAGING_TYPE_PDPT) {
 	MmDbg("Unmapping PDPT cap 0x%zx from vspacecap 0x%zx originally at vaddr %p\n",
 	      Page->TreeNode.Cap, Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
-	Error = seL4_X86_PDPT_Unmap(Page->TreeNode.Cap);
+	Error = seL4_PDPT_Unmap(Page->TreeNode.Cap);
 #endif
     } else {
 	return STATUS_INVALID_PARAMETER;
@@ -1013,7 +1013,7 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
 	       (PVOID) Paging->AvlNode.Key, MiPagingTypeToStr(Paging->Type));
     if (MiPagingTypeIsPageOrLargePage(Paging->Type)) {
 	MmDbgPrint("  Physical address ");
-	seL4_X86_Page_GetAddress_t Reply = seL4_X86_Page_GetAddress(Paging->TreeNode.Cap);
+	seL4_Page_GetAddress_t Reply = seL4_Page_GetAddress(Paging->TreeNode.Cap);
 	if (Reply.error == 0) {
 	    MmDbgPrint("%p", (PVOID) Reply.paddr);
 	} else {

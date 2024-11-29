@@ -1740,11 +1740,11 @@ again:
 	    assert(!Env->EnvToWakeUp);
 	    IopOldEnvToWakeUp = NULL;
 	    PTEB Teb = NtCurrentTeb();
-	    Teb->WdmCoroutineStackHigh = Stack;
-	    Teb->WdmCoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
+	    Teb->Wdm.CoroutineStackHigh = Stack;
+	    Teb->Wdm.CoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
 	    Status = KiStartCoroutine(Stack, Env->EntryPoint, Env->Context);
 	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
-	    Teb->WdmCoroutineStackHigh = Teb->WdmCoroutineStackLow = NULL;
+	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
 	} else {
 	    /* We are resuming a coroutine suspended due to IoCallDriver. */
 	    DbgTrace("Resuming coroutine stack top %p. Saved SP %p\n",
@@ -1752,12 +1752,12 @@ again:
 		     KiGetCoroutineSavedSP(Env->CoroutineStackTop));
 	    PUCHAR Stack = Env->CoroutineStackTop;
 	    PTEB Teb = NtCurrentTeb();
-	    Teb->WdmCoroutineStackHigh = Stack;
-	    Teb->WdmCoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
+	    Teb->Wdm.CoroutineStackHigh = Stack;
+	    Teb->Wdm.CoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
 	    IopOldEnvToWakeUp = Env->EnvToWakeUp;
 	    Status = KiResumeCoroutine(Env->CoroutineStackTop);
 	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
-	    Teb->WdmCoroutineStackHigh = Teb->WdmCoroutineStackLow = NULL;
+	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
 	}
 	IopCurrentEnv = NULL;
 	IopOldEnvToWakeUp = NULL;

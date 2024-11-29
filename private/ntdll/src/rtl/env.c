@@ -95,7 +95,7 @@ NTAPI VOID RtlDestroyEnvironment(PWSTR Environment)
     SIZE_T Size = 0;
 
     NtFreeVirtualMemory(NtCurrentProcess(),
-			(PVOID) & Environment, &Size, MEM_RELEASE);
+			(PVOID)&Environment, &Size, MEM_RELEASE);
 }
 
 /*

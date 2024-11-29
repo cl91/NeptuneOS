@@ -247,6 +247,10 @@ typedef struct DECLSPEC_ALIGN(16) _XSAVE_FORMAT {
 #include <ntamd64.h>
 #endif
 
+#ifdef _M_ARM64
+#include <ntarm64.h>
+#endif
+
 FORCEINLINE KAFFINITY AFFINITY_MASK(ULONG Index)
 {
     return (KAFFINITY)1 << Index;

@@ -51,8 +51,10 @@ VOID PspSystemThreadStartup(IN seL4_IPCBuffer *IpcBuffer,
 /* init.c */
 extern LIST_ENTRY PspProcessList;
 extern PSECTION PspSystemDllSection;
-extern PSUBSECTION PspSystemDllTlsSubsection;
 extern PMMVAD PspUserSharedDataVad;
+extern PMMVAD PspSystemThreadRegionVad;
+extern PMMVAD PspClientRegionServerVad;
+extern PMMVAD PspDriverRegionServerVad;
 
 /* kill.c */
 VOID PspThreadObjectDeleteProc(IN POBJECT Object);

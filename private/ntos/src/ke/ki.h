@@ -36,6 +36,11 @@ static inline MWORD seL4_Fault_UserException_get_FLAGS(IN seL4_Fault_t Fault)
 {
     return seL4_Fault_UserException_get_EFLAGS(Fault);
 }
+#elif defined(_M_ARM64)
+static inline MWORD seL4_Fault_UserException_get_FLAGS(IN seL4_Fault_t Fault)
+{
+    return seL4_Fault_UserException_get_SPSR(Fault);
+}
 #endif
 
 /* Helper function for dumping thread fault */

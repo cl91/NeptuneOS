@@ -71,7 +71,7 @@ if [[ $BOOT_TYPE == "direct" ]]; then
 elif [[ $BOOT_TYPE == "iso" ]]; then
     $QEMU -m size=400M -serial stdio -cdrom $BUILDDIR/boot.iso "${ARGS[@]}"
 elif [[ $BOOT_TYPE == "uefi" ]]; then
-    $QEMU -m size=400M -serial stdio -cdrom $BUILDDIR/boot.iso -bios /usr/share/ovmf/$OVMFARCH/OVMF.fd "${ARGS[@]}"
+    $QEMU -m size=400M -serial stdio -cdrom $BUILDDIR/boot.iso -bios /usr/share/ovmf/$OVMFARCH/OVMF.4m.fd "${ARGS[@]}"
 else
     $QEMU -m size=400M -serial stdio -fda $BUILDDIR/floppy.img "${ARGS[@]}"
 fi

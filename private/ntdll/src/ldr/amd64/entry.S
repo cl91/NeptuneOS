@@ -6,6 +6,14 @@
 .seh_proc LdrInitializeThunk
 LdrInitializeThunk:
     /*
+     * This entry point serves both as the initial entry point for a
+     * thread and as the entry point for an exception. The latter case
+     * is distinguished by the second parameter being non-zero.
+     */
+    test %rdx, %rdx
+    jnz KiUserExceptionDispatcher
+
+    /*
      * Note that since this function is entered from "kernel space",
      * ie. dispatched by the server rather than called, we push a zero
      * as the return address. Later when an exception happens RtlUnwindEx
@@ -30,10 +38,7 @@ LdrInitializeThunk:
     .seh_stackalloc 0x20
     .seh_endprologue
 
-    /*
-     * The virtual address of the IPC buffer is in %rcx.
-     * The system dll tls region address is in %rdx.
-     */
+    /* %rcx contains the address of the TEB */
     call LdrpInitialize
 
     /* Should not return. */

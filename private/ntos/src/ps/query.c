@@ -454,7 +454,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	/* Basic process information */
 	PPROCESS_BASIC_INFORMATION ProcessBasicInfo = (PPROCESS_BASIC_INFORMATION)ProcessInformation;
 	ProcessBasicInfo->ExitStatus = Process->ExitStatus;
-	ProcessBasicInfo->PebBaseAddress = (PPEB)Process->PebClientAddr;
+	ProcessBasicInfo->PebBaseAddress = (PVOID)Process->InitInfo.PebAddress;
 	ProcessBasicInfo->AffinityMask = Process->AffinityMask;
 	ProcessBasicInfo->UniqueProcessId = OBJECT_TO_GLOBAL_HANDLE(Process);
 	ProcessBasicInfo->InheritedFromUniqueProcessId = Process->InheritedFromUniqueProcessId;

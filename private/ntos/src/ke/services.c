@@ -4,9 +4,6 @@
  * (before the return address is pushed onto the stack). Do not change this. */
 #define GCC_STACK_ALIGNMENT		(16)
 
-/* ps/init.c */
-extern MWORD PspUserExceptionDispatcherAddress;
-
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 
@@ -452,8 +449,8 @@ static VOID KiDumpThreadFault(IN seL4_Fault_t Fault,
     }
     KiDumpThreadContext(&Context, DbgPrinter);
     DbgPrinter("MODULE %s  MAPPED [%p, %p)\n", KEDBG_THREAD_TO_FILENAME(Thread),
-	       (PVOID)Process->ImageBaseAddress,
-	       (PVOID)(Process->ImageBaseAddress + Process->ImageVirtualSize));
+	       (PVOID)Process->InitInfo.ImageBase,
+	       (PVOID)(Process->InitInfo.ImageBase + Process->ImageVirtualSize));
     DbgPrinter("MODULE ntdll.dll  MAPPED [%p, %p)\n",
 	       (PVOID)Process->InitInfo.NtdllViewBase,
 	       (PVOID)(Process->InitInfo.NtdllViewBase + Process->InitInfo.NtdllViewSize));
@@ -598,12 +595,12 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
     Context._FASTCALL_FIRST_PARAM = AlignedStackPointer - ExceptionRecordSize;
     Context._FASTCALL_SECOND_PARAM = NewStackPointer;
     Context._STACK_POINTER = NewStackPointer;
-    Context._INSTRUCTION_POINTER = PspUserExceptionDispatcherAddress;
+    Context._INSTRUCTION_POINTER = Thread->Process->UserExceptionDispatcher;
     RET_ERR_EX(KeSetThreadContext(Thread->TreeNode.Cap, &Context),
 	       MmUnmapUserBuffer(MappedUserStack));
     MmUnmapUserBuffer(MappedUserStack);
-    DbgTrace("Dispatched thread %s to ntdll!" USER_EXCEPTION_DISPATCHER_NAME "\n",
-	     Thread->DebugName);
+    DbgTrace("Dispatched thread %s to client address %p\n",
+	     Thread->DebugName, (PVOID)Thread->Process->UserExceptionDispatcher);
     return STATUS_SUCCESS;
 }
 

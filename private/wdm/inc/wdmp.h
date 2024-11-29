@@ -200,7 +200,6 @@ extern LIST_ENTRY IopX86PortList;
 
 /* main.c */
 extern DRIVER_OBJECT IopDriverObject;
-extern __thread seL4_CPtr KiWdmServiceCap;
 
 /* timer.c */
 extern LIST_ENTRY IopTimerList;

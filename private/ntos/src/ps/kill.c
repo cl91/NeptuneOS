@@ -73,23 +73,13 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	PspFreePool(Thread->DebugName);
     }
 
-    /* Release the IPC buffer of the thread. Note that both the client
-     * side frame and the server side frame is unmapped. The frame object
-     * itself is then freed. */
+    /* Release the IPC buffers and the TEB of the thread. Note that both the
+     * client side frames and the server side frames are unmapped and then freed. */
     PspUnmapSharedRegion(Thread->IpcBufferServerAddr, Thread->Process,
 			 Thread->IpcBufferClientAddr);
 
-    /* Unmap and release the memory of the thread environment block. */
-    PspUnmapSharedRegion(Thread->TebServerAddr, Thread->Process,
-			 Thread->TebClientAddr);
-
     /* Clean up the service endpoints of the THREAD object */
     KeDisableThreadServices(Thread);
-
-    /* If the thread is not the initial thread, unmap the ntdll tls region */
-    if (!Thread->InitialThread && Thread->SystemDllTlsBase) {
-	MmUnmapRegion(&Thread->Process->VSpace, Thread->SystemDllTlsBase);
-    }
 
     /* If we are in the ready list, remove us from it. */
     extern LIST_ENTRY KiReadyThreadList;

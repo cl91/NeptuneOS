@@ -9,7 +9,7 @@
 #define _INC_CRTDEFS
 
 #ifndef _WIN64
-#if defined(_M_X64) || defined(__amd64__)
+#if __SIZEOF_POINTER__ == 8
 #define _WIN64
 #endif
 #endif

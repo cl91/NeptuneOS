@@ -7,34 +7,6 @@
 
 DRIVER_OBJECT IopDriverObject;
 
-__thread seL4_IPCBuffer *__sel4_ipc_buffer;
-__thread seL4_CPtr KiWdmServiceCap;
-
-ULONG _tls_index;
-
-/*
- * TLS raw template data start and end.
- *
- * Note that we merge the .tls section and the .data section to save space.
- * In doing so we need to make sure that the .tls section comes before
- * the .data section, since clang generates code that expects that tls
- * data are at the very beginning of a section. This is done by passing
- * /merge:.data=.tls to the linker (note that the ordering matters).
- *
- * We use here pointer-types for start/end so that tls-data remains
- * aligned on pointer-size-width.
- */
-__declspec(allocate(".tls")) char *_tls_start = NULL;
-__declspec(allocate(".tls$ZZZ")) char *_tls_end = NULL;
-
-/*
- * TLS directory. Must be called _tls_used as the linker expects this name.
- */
-const IMAGE_TLS_DIRECTORY _tls_used = {
-    (ULONG_PTR) &_tls_start, (ULONG_PTR) &_tls_end,
-    (ULONG_PTR) &_tls_index, 0, 0, 0
-};
-
 static NTSTATUS IopCallDriverEntry(IN PUNICODE_STRING RegistryPath)
 {
     PLDR_DATA_TABLE_ENTRY LdrDriverImage = NULL;
@@ -76,16 +48,14 @@ static NTSTATUS IopDriverEventLoop()
     }
 }
 
-VOID WdmStartup(IN seL4_IPCBuffer *IpcBuffer,
-		IN seL4_CPtr WdmServiceCap,
+VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
 		IN PNTDLL_DRIVER_INIT_INFO InitInfo,
 		IN PUNICODE_STRING RegistryPath)
 {
-    __sel4_ipc_buffer = IpcBuffer;
-    KiWdmServiceCap = WdmServiceCap;
-    IopIncomingIoPacketBuffer = (PIO_PACKET) InitInfo->IncomingIoPacketBuffer;
-    IopOutgoingIoPacketBuffer = (PIO_PACKET) InitInfo->OutgoingIoPacketBuffer;
-    KiCoroutineStackChainHead = (PVOID) InitInfo->InitialCoroutineStackTop;
+    NtCurrentTeb()->Wdm.ServiceCap = WdmServiceCap;
+    IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
+    IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;
+    KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
     IopDriverObject.DriverStart = NtCurrentPeb()->ImageBaseAddress;
     InitializeListHead(&IopDeviceList);

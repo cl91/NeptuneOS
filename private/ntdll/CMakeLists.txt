@@ -25,7 +25,7 @@ set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG -DDBG=1 -DDEBUG" CAC
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -Xclang -gcodeview" CACHE STRING "" FORCE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector -ftls-model=global-dynamic")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-stack-protector")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
@@ -33,16 +33,18 @@ set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --target=${TRIPLE} -fuse-ld=lld-link -nostdlib -Wl,-subsystem:native -Wl,-safeseh:no -Wl,-errorlimit:0"
 )
 
-set(KernelPlatform "pc99")
-set(KernelArch "x86")
 if(Arch STREQUAL "i386")
+    set(KernelArch "x86")
     set(KernelWordSize 32)
-    set(KernelSel4Arch "ia32")
     set(GENINC_FILENAME "ks386.h")
 elseif(Arch STREQUAL "amd64")
+    set(KernelArch "x86")
     set(KernelWordSize 64)
-    set(KernelSel4Arch "x86_64")
     set(GENINC_FILENAME "ksamd64.h")
+elseif(Arch STREQUAL "arm64")
+    set(KernelArch "arm")
+    set(KernelWordSize 64)
+    set(GENINC_FILENAME "ksarm64.h")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${Arch}")
 endif()
@@ -87,7 +89,7 @@ target_include_directories(
 	${STRUCTURES_GEN_DIR}
 	${CMAKE_CURRENT_BINARY_DIR}
 	inc
-	../../sel4/libsel4/include
+	${SANITIZED_SEL4_INCLUDE_DIR}
 	../../sel4/libsel4/mode_include/${KernelWordSize}
 	../../sel4/libsel4/sel4_plat_include/${KernelPlatform}
 	../../sel4/libsel4/arch_include/${KernelArch}

@@ -19,7 +19,7 @@ set(CMAKE_CXX_COMPILER_TARGET ${TRIPLE})
 string(APPEND c_common_flags " -Qunused-arguments")
 string(APPEND c_common_flags " -Wno-constant-logical-operand")
 
-set(CMAKE_MC_COMPILER "${CLANG_ARCH}-w64-mingw32-windmc")
+set(CMAKE_MC_COMPILER "${MC_COMPILER_ARCH}-w64-mingw32-windmc")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

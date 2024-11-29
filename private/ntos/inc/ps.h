@@ -47,12 +47,6 @@ typedef struct _THREAD {
     PVOID EntryPoint;
     MWORD IpcBufferClientAddr;
     MWORD IpcBufferServerAddr;
-    MWORD TebClientAddr;
-    MWORD TebServerAddr;
-    MWORD SystemDllTlsBase; /* Address in the client's virtual address space */
-    MWORD InitialStackTop;
-    MWORD InitialStackReserve;
-    MWORD InitialStackCommit;
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN InitialThread;
@@ -84,14 +78,12 @@ typedef struct _PROCESS {
     PCNODE CSpace;
     HANDLE_TABLE HandleTable;
     VIRT_ADDR_SPACE VSpace;	/* Virtual address space of the process */
+    PMMVAD IpcRegionVad;
     PSECTION ImageSection;
-    MWORD ImageBaseAddress;
     MWORD ImageVirtualSize;
-    LIST_ENTRY ProcessListEntry;
+    MWORD UserExceptionDispatcher; /* Address to dispatch to when an exception occurs. */
     MWORD PebClientAddr;
-    MWORD PebServerAddr;
-    MWORD LoaderSharedDataClientAddr;
-    MWORD LoaderSharedDataServerAddr;
+    LIST_ENTRY ProcessListEntry;
     NTDLL_PROCESS_INIT_INFO InitInfo;
     PIO_DRIVER_OBJECT DriverObject;
     NTSTATUS ExitStatus;	    /* Exit status of process */

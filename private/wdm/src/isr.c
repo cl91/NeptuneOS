@@ -61,8 +61,7 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
     PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
-    __sel4_ipc_buffer = Interrupt->ThreadIpcBuffer;
-    KiWdmServiceCap = Interrupt->WdmServiceCap;
+    NtCurrentTeb()->Wdm.ServiceCap = Interrupt->WdmServiceCap;
     assert(Interrupt->ServiceRoutine != NULL);
     while (TRUE) {
 	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);

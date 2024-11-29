@@ -7,7 +7,7 @@
 #include <services.h>
 
 #define OFFSET_TO_ARG(Offset, Type)				\
-    SVC_MSGBUF_OFFSET_TO_ARG(__sel4_ipc_buffer, Offset, Type)
+    SVC_MSGBUF_OFFSET_TO_ARG(seL4_GetIPCBuffer(), Offset, Type)
 
 static inline NTSTATUS KiServiceMarshalArgument(OUT SERVICE_ARGUMENT *SvcArg,
 						IN OPTIONAL PVOID Argument,
@@ -122,8 +122,8 @@ static inline NTSTATUS KiMarshalObjectAttributesA(OUT SERVICE_ARGUMENT *Arg,
  */
 static inline BOOLEAN KiPtrInSvcMsgBuf(IN PVOID Ptr)
 {
-    return ((MWORD)Ptr >= (MWORD)__sel4_ipc_buffer) &&
-	((MWORD)Ptr < ((MWORD)__sel4_ipc_buffer + IPC_BUFFER_COMMIT));
+    return ((MWORD)Ptr >= (MWORD)seL4_GetIPCBuffer()) &&
+	((MWORD)Ptr < ((MWORD)seL4_GetIPCBuffer() + IPC_BUFFER_COMMIT));
 }
 
 static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,

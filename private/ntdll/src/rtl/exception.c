@@ -172,6 +172,24 @@ static VOID RtlpDumpContextEx(IN PCONTEXT pc,
     DbgPrinter("R8: %lx   R9: %lx  R10: %lx   R11: %lx\n", pc->R8, pc->R9,
 	       pc->R10, pc->R11);
     DbgPrinter("R12: %lx\n", pc->R12);
+#elif defined(_M_ARM64)
+    DbgPrinter("Pc: %llx   Lr: %llx   Sp: %llx    Cpsr: %llx\n", pc->Pc, pc->Lr,
+	       pc->Sp, pc->Cpsr);
+    DbgPrinter("X0: %llx   X1: %llx   X2: %llx    X3: %llx\n", pc->X0, pc->X1,
+	       pc->X2, pc->X3);
+    DbgPrinter("X4: %llx   X5: %llx   X6: %llx    X7: %llx\n", pc->X4, pc->X5,
+	       pc->X6, pc->X7);
+    DbgPrinter("X8: %llx   X9: %llx  X10: %llx   X11: %llx\n", pc->X8, pc->X9,
+	       pc->X10, pc->X11);
+    DbgPrinter("X12: %llx   X13: %llx  X14: %llx   X15: %llx\n", pc->X12, pc->X13,
+	       pc->X14, pc->X15);
+    DbgPrinter("X16: %llx   X17: %llx  X18: %llx   X19: %llx\n", pc->X16, pc->X17,
+	       pc->X18, pc->X19);
+    DbgPrinter("X20: %llx   X21: %llx  X22: %llx   X23: %llx\n", pc->X20, pc->X21,
+	       pc->X22, pc->X23);
+    DbgPrinter("X24: %llx   X25: %llx  X26: %llx   X27: %llx\n", pc->X24, pc->X25,
+	       pc->X26, pc->X27);
+    DbgPrinter("X28: %llx   X29(Fp): %llx\n", pc->X28, pc->Fp);
 #else
 #error "Unknown architecture"
 #endif
@@ -218,8 +236,8 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	       ExceptionRecord->ExceptionCode,
 	       RtlpExceptionCodeToString(ExceptionRecord->ExceptionCode),
 	       RtlpDbgTraceModuleName,
-	       NtCurrentTeb()->RealClientId.UniqueProcess,
-	       NtCurrentTeb()->RealClientId.UniqueThread);
+	       NtCurrentTib()->ClientId.UniqueProcess,
+	       NtCurrentTib()->ClientId.UniqueThread);
 
     if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
 	ExceptionRecord->NumberParameters == 2) {
@@ -258,7 +276,7 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     DbgPrinter("Backtrace:\n");
 #ifdef _M_IX86
     __try {
-	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->BASE_POINTER;
+	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->Ebp;
 
 	for (UINT i = 0; i < 16; i++) {
 	    if (Frame[1] == 0) {

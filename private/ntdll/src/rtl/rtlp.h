@@ -101,11 +101,11 @@ static inline BOOLEAN RtlpIsStackPtrOk(IN PVOID Ptr)
     PTEB Teb = NtCurrentTeb();
     return (Ptr >= Teb->NtTib.StackLimit &&
 	    Ptr <= (Teb->NtTib.StackBase - sizeof(ULONG_PTR))) ||
-	(Teb->WdmCoroutineStackLow &&
-	 Teb->WdmCoroutineStackHigh &&
-	 Teb->WdmCoroutineStackLow < Teb->WdmCoroutineStackHigh &&
-	 Ptr >= Teb->WdmCoroutineStackLow &&
-	 Ptr <= (Teb->WdmCoroutineStackHigh - sizeof(ULONG_PTR)));
+	(Teb->Wdm.CoroutineStackLow &&
+	 Teb->Wdm.CoroutineStackHigh &&
+	 Teb->Wdm.CoroutineStackLow < Teb->Wdm.CoroutineStackHigh &&
+	 Ptr >= Teb->Wdm.CoroutineStackLow &&
+	 Ptr <= (Teb->Wdm.CoroutineStackHigh - sizeof(ULONG_PTR)));
 }
 
 /* vectoreh.c */

@@ -504,7 +504,7 @@ class SimplePointerMarshaller(SingleParameterMarshaller):
         # For output parameters, we need to copy the server response in the
         # service message buffer back to the client buffer.
         self.tmpl_client_unmarshaling = """assert({{name}}Arg.Word != 0);
-memcpy({{name}}, KiServiceGetArgument((MWORD)__sel4_ipc_buffer, {{name}}Arg.Word), sizeof({{base_type}}));"""
+memcpy({{name}}, KiServiceGetArgument((MWORD)seL4_GetIPCBuffer(), {{name}}Arg.Word), sizeof({{base_type}}));"""
         # On server side we retrives the pointer to the object in the thread's
         # service message buffer using the offset and buffer size passed in.
         # The server checks if the offset passed lies within the thread's service
@@ -969,23 +969,21 @@ def generate_file(tmplstr, svc_list, out_file, wdmsvc, server_side):
     if wdmsvc:
         svc_group = "Wdm"
         svc_group_upper = "WDM"
-        svc_ipc_cap = "KiWdmServiceCap"
+        svc_ipc_cap = "NtCurrentTeb()->Wdm.ServiceCap"
         handler_func = "KiHandleWdmService"
         resume_func = "KiResumeWdmService"
         extra_headers = """
 #include <wdmsvc.h>
 #include "wdmsvc_gen.h"
 #include "ntos_wdmsvc_gen.h"
-
-extern __thread seL4_CPtr KiWdmServiceCap;"""
+"""
     else:
         svc_group = "System"
         svc_group_upper = "SYSTEM"
-        svc_ipc_cap = "KiSystemServiceCap"
+        svc_ipc_cap = "NtCurrentTeb()->NtTib.SystemServiceCap"
         handler_func = "KiHandleSystemService"
         resume_func = "KiResumeSystemService"
-        extra_headers = """
-extern __thread seL4_CPtr KiSystemServiceCap;"""
+        extra_headers = ""
     handler_func_indent = " " * len(handler_func)
     resume_func_indent = " " * len(resume_func)
     data = template.render({ 'svc_list': svc_list,

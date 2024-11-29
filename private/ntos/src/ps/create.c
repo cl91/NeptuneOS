@@ -3,6 +3,16 @@
 #include "psp.h"
 #include <wdmsvc.h>
 
+extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+
+/* For the client address space we reserve four pages and map the first page for the
+ * IPC buffer and the third page as the thread information block. The second and
+ * fourth pages are unmapped. */
+#define CLIENT_IPC_REGION_LOW_ZERO_BITS (PAGE_LOG2SIZE + 2)
+
+#define PEB_RESERVE	(16 * PAGE_SIZE)
+#define PEB_COMMIT	(PAGE_SIZE)
+
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
 				   IN PCNODE CNode,
@@ -104,13 +114,11 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PSYSTEM_THREAD_ENTRY EntryPoint,
 			      IN BOOLEAN Suspended)
 {
-    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     extern CNODE MiNtosCNode;
     assert(Thread != NULL);
 
     PUNTYPED TcbUntyped = NULL;
-    PMMVAD IpcBufferVad = NULL;
-    PMMVAD StackVad = NULL;
+    MWORD StackStart = 0;
 
     NTSTATUS Status;
     IF_ERR_GOTO(Fail, Status, MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
@@ -129,35 +137,30 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     Thread->DebugName = DebugName;
     Thread->EntryPoint = EntryPoint;
 
-    IF_ERR_GOTO(Fail, Status,
-		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
-				       SYSTEM_THREAD_IPC_RESERVE, 0, MEM_RESERVE_OWNED_MEMORY,
-				       &IpcBufferVad));
-    assert(IpcBufferVad != NULL);
-    IF_ERR_GOTO(Fail, Status,
-		MmCommitVirtualMemory(IpcBufferVad->AvlNode.Key, SYSTEM_THREAD_IPC_COMMIT));
-    PPAGING_STRUCTURE IpcBufferPage = MmQueryPage(IpcBufferVad->AvlNode.Key);
+    /* See comments in mm.h for the organization of the system thread subregions. */
+    StackStart = MmFindAndMarkUncommittedSubregion(PspSystemThreadRegionVad);
+    if (!StackStart) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto Fail;
+    }
+    IF_ERR_GOTO(Fail, Status, MmCommitOwnedMemory(StackStart,
+						  SYSTEM_THREAD_STACK_COMMIT,
+						  MM_RIGHTS_RW, FALSE));
+    Thread->StackTop = (PVOID)(StackStart + SYSTEM_THREAD_STACK_COMMIT);
+
+    MWORD IpcBuffer = StackStart + SYSTEM_THREAD_IPC_OFFSET;
+    IF_ERR_GOTO(Fail, Status, MmCommitOwnedMemory(IpcBuffer, PAGE_SIZE,
+						  MM_RIGHTS_RW, FALSE));
+    PPAGING_STRUCTURE IpcBufferPage = MmQueryPage(IpcBuffer);
     assert(IpcBufferPage != NULL);
+    assert(IpcBufferPage->AvlNode.Key == IpcBuffer);
     IF_ERR_GOTO(Fail, Status, KeEnableSystemThreadFaultHandler(Thread));
     IF_ERR_GOTO(Fail, Status, PspConfigureThread(Thread->TreeNode.Cap,
 						 Thread->FaultEndpoint->TreeNode.Cap,
 						 &MiNtosCNode,
 						 &MiNtosVaddrSpace,
 						 IpcBufferPage));
-    Thread->IpcBuffer = (PVOID)IpcBufferVad->AvlNode.Key;
-
-    IF_ERR_GOTO(Fail, Status,
-		MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
-				       SYSTEM_THREAD_STACK_RESERVE, 0, MEM_RESERVE_OWNED_MEMORY,
-				       &StackVad));
-    assert(StackVad != NULL);
-    assert(SYSTEM_THREAD_STACK_RESERVE >= (2 * PAGE_SIZE + SYSTEM_THREAD_STACK_COMMIT));
-    /* There is one uncommitted page above and one uncommitted page below
-     * every system thread stack */
-    IF_ERR_GOTO(Fail, Status,
-		MmCommitVirtualMemory(StackVad->AvlNode.Key + PAGE_SIZE,
-				      SYSTEM_THREAD_STACK_COMMIT));
-    Thread->StackTop = (PVOID)(StackVad->AvlNode.Key + PAGE_SIZE + SYSTEM_THREAD_STACK_COMMIT);
+    Thread->IpcBuffer = (PVOID)IpcBuffer;
 
     PspAllocateArrayEx(TlsBase, CHAR, NTOS_TLS_AREA_SIZE,
 		       {
@@ -180,42 +183,13 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     return STATUS_SUCCESS;
 
 Fail:
-    if (StackVad != NULL) {
-	MmDeleteVad(StackVad);
-    }
-    if (IpcBufferVad != NULL) {
-	MmDeleteVad(IpcBufferVad);
+    if (StackStart) {
+	MmUnmapServerRegion(StackStart);
     }
     if (TcbUntyped != NULL) {
 	MmReleaseUntyped(TcbUntyped);
     }
     return Status;
-}
-
-VOID PspPopulateTeb(IN PTHREAD Thread)
-{
-    assert(Thread != NULL);
-    assert(Thread->InitialStackTop > Thread->InitialStackCommit);
-    assert(Thread->InitialStackTop > Thread->InitialStackReserve);
-    assert(Thread->InitialStackReserve >= Thread->InitialStackCommit);
-    PTEB Teb = (PTEB) Thread->TebServerAddr;
-    Teb->ThreadLocalStoragePointer = (PVOID) Thread->SystemDllTlsBase;
-    Teb->NtTib.Self = (PNT_TIB) Thread->TebClientAddr;
-    Teb->ProcessEnvironmentBlock = (PPEB) Thread->Process->PebClientAddr;
-    Teb->NtTib.StackBase = (PVOID)Thread->InitialStackTop;
-    /* Note that since we have marked the stack of the initial thread as
-     * commit-on-demand, the stack limit should be the whole stack. */
-    Teb->NtTib.StackLimit = Teb->DeallocationStack =
-	(PVOID)(Thread->InitialStackTop - Thread->InitialStackReserve);
-}
-
-VOID PspPopulatePeb(IN PPROCESS Process)
-{
-    PPEB Peb = (PPEB)Process->PebServerAddr;
-    Peb->ImageBaseAddress = (HMODULE)Process->ImageBaseAddress;
-    Peb->MaximumNumberOfHeaps = (PAGE_SIZE - sizeof(PEB)) / sizeof(PVOID);
-    /* Place the process heap book keeping structures immediately after the PEB */
-    Peb->ProcessHeaps = (PPVOID)(Process->PebClientAddr + sizeof(PEB));
 }
 
 static inline NTSTATUS PspSetThreadDebugName(IN PTHREAD Thread)
@@ -238,41 +212,62 @@ static inline NTSTATUS PspSetThreadDebugName(IN PTHREAD Thread)
 
 
 static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
-				   IN MWORD ServerStart,
-				   IN MWORD ServerEnd,
-				   IN MWORD ReserveSize,
-				   IN MWORD CommitSize,
-				   IN MWORD ClientStart,
-				   IN MWORD ClientEnd,
-				   IN MWORD ClientReserveFlag,
-				   OUT PMMVAD *pServerVad,
-				   OUT PMMVAD *ClientVad)
+				   IN PMMVAD ServerVad,
+				   IN OPTIONAL PMMVAD ClientVad,
+				   IN MWORD InitialCommitSize,
+				   IN BOOLEAN ClientReadOnly,
+				   OUT MWORD *pServerAddr,
+				   OUT MWORD *pClientAddr)
 {
-    PMMVAD ServerVad = NULL;
-    RET_ERR(MmReserveVirtualMemory(ServerStart, ServerEnd, ReserveSize,
-				   0, MEM_RESERVE_OWNED_MEMORY, &ServerVad));
-    assert(ServerVad != NULL);
-    assert(ServerVad->AvlNode.Key != 0);
-    RET_ERR_EX(MmCommitVirtualMemory(ServerVad->AvlNode.Key, CommitSize),
-	       MmDeleteVad(ServerVad));
+    assert(ServerVad);
+    assert(ServerVad->Flags.BitmapManaged);
+    MWORD ServerAddr = MmFindAndMarkUncommittedSubregion(ServerVad);
+    if (!ServerAddr) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    MWORD ReserveSize = 1ULL << ServerVad->CommitmentStatus.LowZeroBits;
+    BOOLEAN DeleteClientVad = FALSE;
+    NTSTATUS Status = STATUS_SUCCESS;
+    MWORD ClientAddr = 0;
+    if (ClientVad) {
+	ClientAddr = MmFindAndMarkUncommittedSubregion(ClientVad);
+	if (!ClientAddr) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto Fail;
+	}
+    } else {
+	MWORD Flags = MEM_RESERVE_MIRRORED_MEMORY;
+	if (ClientReadOnly) {
+	    Flags |= MEM_RESERVE_READ_ONLY;
+	}
+	IF_ERR_GOTO(Fail, Status, MmReserveVirtualMemoryEx(&ClientProcess->VSpace,
+							   USER_IMAGE_REGION_START,
+							   USER_ADDRESS_END, ReserveSize,
+							   0, 0, Flags, &ClientVad));
+	DeleteClientVad = TRUE;
+	MmRegisterMirroredMemory(ClientVad, &MiNtosVaddrSpace, ReserveSize);
+	ClientAddr = ClientVad->AvlNode.Key;
+    }
+    assert(ClientVad != NULL);
+    assert(ClientAddr != 0);
 
-    RET_ERR_EX(MmMapSharedRegion(ServerVad->VSpace,
-				 ServerVad->AvlNode.Key,
-				 ServerVad->WindowSize,
-				 &ClientProcess->VSpace,
-				 ClientStart,
-				 ClientEnd,
-				 ClientReserveFlag,
-				 CommitSize,
-				 ClientVad),
-	       MmDeleteVad(ServerVad));
-    assert(*ClientVad != NULL);
-    assert((*ClientVad)->AvlNode.Key != 0);
-    assert((*ClientVad)->WindowSize == ServerVad->WindowSize);
+    IF_ERR_GOTO(Fail, Status, MmCommitOwnedMemory(ServerAddr, InitialCommitSize,
+						  MM_RIGHTS_RW, FALSE));
+    IF_ERR_GOTO(Fail, Status, MmMapMirroredMemory(&MiNtosVaddrSpace, ServerAddr,
+						  &ClientProcess->VSpace, ClientAddr,
+						  InitialCommitSize,
+						  ClientReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW,
+						  MM_ATTRIBUTES_DEFAULT));
 
-    *pServerVad = ServerVad;
-
+    *pServerAddr = ServerAddr;
+    *pClientAddr = ClientAddr;
     return STATUS_SUCCESS;
+Fail:
+    if (DeleteClientVad) {
+	MmDeleteVad(ClientVad);
+    }
+    MmUnmapServerRegion(ServerAddr);
+    return Status;
 }
 
 static NTSTATUS PspCopyString(IN PCHAR Dest,
@@ -310,7 +305,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	 !Ctx->InitialTeb->AllocatedStackBase ||
 	 /* Stack reserve must be at least stack commit */
 	 Ctx->InitialTeb->AllocatedStackBase > Ctx->InitialTeb->StackLimit ||
-	 /* Stack commit cannot be zero */
+	 /* Stack commitment cannot be zero */
 	 Ctx->InitialTeb->StackLimit >= Ctx->InitialTeb->StackBase)) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -338,53 +333,28 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 
     RET_ERR(PspSetThreadDebugName(Thread));
 
-    PMMVAD ServerIpcBufferVad = NULL;
-    PMMVAD ClientIpcBufferVad = NULL;
-    RET_ERR(PspMapSharedRegion(Process,
-			       EX_IPC_BUFFER_REGION_START,
-			       EX_IPC_BUFFER_REGION_END,
-			       IPC_BUFFER_RESERVE,
-			       IPC_BUFFER_COMMIT,
-			       IPC_BUFFER_START,
-			       IPC_BUFFER_END,
-			       0,
-			       &ServerIpcBufferVad,
-			       &ClientIpcBufferVad));
-    Thread->IpcBufferServerAddr = ServerIpcBufferVad->AvlNode.Key;
-    Thread->IpcBufferClientAddr = ClientIpcBufferVad->AvlNode.Key;
+    /* Allocate and map the IPC buffer page */
+    assert(Process->IpcRegionVad);
+    RET_ERR(PspMapSharedRegion(Process, PspClientRegionServerVad, Process->IpcRegionVad,
+			       PAGE_SIZE, FALSE, &Thread->IpcBufferServerAddr,
+			       &Thread->IpcBufferClientAddr));
+    assert(Thread->IpcBufferServerAddr);
+    assert(Thread->IpcBufferClientAddr);
 
     PPAGING_STRUCTURE IpcBufferClientPage = MmQueryPageEx(&Process->VSpace,
 							  Thread->IpcBufferClientAddr,
 							  FALSE);
     assert(IpcBufferClientPage != NULL);
+    assert(IpcBufferClientPage->AvlNode.Key == Thread->IpcBufferClientAddr);
     RET_ERR(KeEnableThreadFaultHandler(Thread));
-    RET_ERR(PspConfigureThread(Thread->TreeNode.Cap,
-			       Thread->FaultEndpoint->TreeNode.Cap,
-			       Process->CSpace,
-			       &Process->VSpace,
-			       IpcBufferClientPage));
+    RET_ERR(PspConfigureThread(Thread->TreeNode.Cap, Thread->FaultEndpoint->TreeNode.Cap,
+			       Process->CSpace, &Process->VSpace, IpcBufferClientPage));
 
-    if (Thread->InitialThread) {
-	/* Thread is the initial thread in the process. Use the .tls subsection
-	 * of the mapped NTDLL PE image for SystemDll TLS region */
-	assert(PspSystemDllTlsSubsection != NULL);
-	assert(PspSystemDllTlsSubsection->ImageSection != NULL);
-	Thread->SystemDllTlsBase = PspSystemDllTlsSubsection->ImageSection->ImageBase +
-	    PspSystemDllTlsSubsection->SubSectionBase;
-    } else {
-	/* Allocate SystemDll TLS region */
-	assert(PspSystemDllTlsSubsection != NULL);
-	PMMVAD SystemDllTlsVad = NULL;
-	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, SYSTEM_DLL_TLS_REGION_START,
-					 SYSTEM_DLL_TLS_REGION_END,
-					 PspSystemDllTlsSubsection->SubSectionSize,
-					 0, 0, MEM_RESERVE_OWNED_MEMORY, &SystemDllTlsVad));
-	assert(SystemDllTlsVad != NULL);
-	RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace, SystemDllTlsVad->AvlNode.Key,
-					   SystemDllTlsVad->WindowSize),
-		   MmDeleteVad(SystemDllTlsVad));
-	Thread->SystemDllTlsBase = SystemDllTlsVad->AvlNode.Key;
-    }
+    /* Allocate the subsystem-independent Thread Information Block for the client */
+    RET_ERR(MmCommitOwnedMemoryEx(&Process->VSpace,
+				  Thread->IpcBufferClientAddr + NT_TIB_OFFSET,
+				  PAGE_SIZE, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT,
+				  FALSE, NULL, 0));
 
     if (Ctx->InitialTeb == NULL) {
 	PIMAGE_SECTION_OBJECT ImageSectionObject = Process->ImageSection->ImageSectionObject;
@@ -396,39 +366,20 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	PMMVAD StackVad = NULL;
 	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, THREAD_STACK_START,
 					 HIGHEST_USER_ADDRESS, StackReserve, 0, 0,
-					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES | MEM_COMMIT_ON_DEMAND,
-					 &StackVad));
+					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES
+					 | MEM_COMMIT_ON_DEMAND, &StackVad));
 	assert(StackVad != NULL);
-	Thread->InitialStackTop = StackVad->AvlNode.Key + StackVad->WindowSize;
-	Thread->InitialStackReserve = StackReserve;
-	Thread->InitialStackCommit = StackCommit;
+	Thread->InitInfo.StackTop = StackVad->AvlNode.Key + StackVad->WindowSize;
+	Thread->InitInfo.StackReserve = StackReserve;
 	RET_ERR_EX(MmCommitVirtualMemoryEx(&Process->VSpace,
-					   Thread->InitialStackTop - StackCommit,
+					   Thread->InitInfo.StackTop - StackCommit,
 					   StackCommit),
 		   MmDeleteVad(StackVad));
     } else {
-	Thread->InitialStackTop = (MWORD)Ctx->InitialTeb->StackBase;
-	Thread->InitialStackReserve = Ctx->InitialTeb->StackBase - Ctx->InitialTeb->AllocatedStackBase;
-	Thread->InitialStackCommit = Ctx->InitialTeb->StackBase - Ctx->InitialTeb->StackLimit;
+	Thread->InitInfo.StackTop = (MWORD)Ctx->InitialTeb->StackBase;
+	Thread->InitInfo.StackReserve =
+	    Ctx->InitialTeb->StackBase - Ctx->InitialTeb->AllocatedStackBase;
     }
-
-    /* Allocate and populate the Thread Environment Block */
-    PMMVAD ServerTebVad = NULL;
-    PMMVAD ClientTebVad = NULL;
-    RET_ERR(PspMapSharedRegion(Process,
-			       EX_PEB_TEB_REGION_START,
-			       EX_PEB_TEB_REGION_END,
-			       sizeof(TEB),
-			       sizeof(TEB),
-			       WIN32_TEB_START,
-			       WIN32_TEB_END,
-			       MEM_RESERVE_TOP_DOWN,
-			       &ServerTebVad,
-			       &ClientTebVad));
-    Thread->TebServerAddr = ServerTebVad->AvlNode.Key;
-    Thread->TebClientAddr = ClientTebVad->AvlNode.Key;
-    /* Populate the Thread Environment Block */
-    PspPopulateTeb(Thread);
 
     /* Note that this is the initial thread context immediately after a new thread
      * starts running (ie. immediately after LdrInitializeThunk is jumped into),
@@ -440,10 +391,10 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     PspInitializeThreadContext(Thread, &Context);
     RET_ERR(KeSetThreadContext(Thread->TreeNode.Cap, &Context));
     RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
-    /* Thread->InitInfo.InitialContext is initialized as zero so if the caller
-     * did not supply Ctx->Context we simply leave InitialContext as zero. */
+    /* Thread->InitInfo.Context is initialized as zero so if the caller
+     * did not supply Ctx->Context we simply leave Context as zero. */
     if (Ctx->Context != NULL) {
-	Thread->InitInfo.InitialContext = *(Ctx->Context);
+	Thread->InitInfo.Context = *(Ctx->Context);
     }
     Thread->CurrentPriority = PASSIVE_LEVEL;
     RET_ERR(KeEnableSystemServices(Thread));
@@ -504,7 +455,7 @@ NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 
     PMMVAD Vad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, DRIVER_COROUTINE_STACK_RESERVE,
+				     USER_ADDRESS_END, DRIVER_COROUTINE_STACK_RESERVE,
 				     0, 0, MEM_RESERVE_OWNED_MEMORY, &Vad));
     assert(Vad != NULL);
     RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, Vad->AvlNode.Key + PAGE_SIZE,
@@ -560,8 +511,10 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 			       0, ViewUnmap, 0, TRUE));
     assert(ImageBaseAddress != 0);
     assert(ImageVirtualSize != 0);
-    Process->ImageBaseAddress = ImageBaseAddress;
+    Process->InitInfo.ImageBase = ImageBaseAddress;
     Process->ImageVirtualSize = ImageVirtualSize;
+    Process->UserExceptionDispatcher = (MWORD)
+	PspSystemDllSection->ImageSectionObject->ImageInformation.TransferAddress;
 
     if (DriverObject != NULL) {
 	Process->InitInfo.DriverProcess = TRUE;
@@ -572,7 +525,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     /* Reserve and commit the loader private heap */
     PMMVAD LoaderHeapVad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, NTDLL_LOADER_HEAP_RESERVE, 0, 0,
+				     USER_ADDRESS_END, NTDLL_LOADER_HEAP_RESERVE, 0, 0,
 				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
 				     &LoaderHeapVad));
     assert(LoaderHeapVad != NULL);
@@ -601,7 +554,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     }
     PMMVAD ProcessHeapVad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
-				     USER_IMAGE_REGION_END, ProcessHeapReserve, 0, 0,
+				     USER_ADDRESS_END, ProcessHeapReserve, 0, 0,
 				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
 				     &ProcessHeapVad));
     assert(ProcessHeapVad != NULL);
@@ -611,22 +564,22 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     Process->InitInfo.ProcessHeapReserve = ProcessHeapReserve;
     Process->InitInfo.ProcessHeapCommit = ProcessHeapCommit;
 
-    /* Map and initialize the Process Environment Block */
-    PMMVAD ServerPebVad = NULL;
-    PMMVAD ClientPebVad = NULL;
-    RET_ERR(PspMapSharedRegion(Process,
-			       EX_PEB_TEB_REGION_START,
-			       EX_PEB_TEB_REGION_END,
-			       sizeof(PEB),
-			       sizeof(PEB),
-			       WIN32_PEB_START,
-			       0, 0,
-			       &ServerPebVad,
-			       &ClientPebVad));
-    Process->PebServerAddr = ServerPebVad->AvlNode.Key;
-    Process->PebClientAddr = ClientPebVad->AvlNode.Key;
-    /* Populate the Process Environment Block */
-    PspPopulatePeb(Process);
+    /* Reserve and commit the process environment block. */
+    PMMVAD PebVad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
+				     USER_ADDRESS_END, PEB_RESERVE, 0, 0,
+				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_TOP_DOWN,
+				     &PebVad));
+    assert(PebVad != NULL);
+    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, PebVad->AvlNode.Key,
+				    PEB_COMMIT));
+    Process->InitInfo.PebAddress = PebVad->AvlNode.Key;
+
+    /* Reserve the client address space dedicated for IPC buffers and TEBs. */
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START,
+				     IPC_BUFFER_END, IPC_BUFFER_END - IPC_BUFFER_START,
+				     CLIENT_IPC_REGION_LOW_ZERO_BITS, 0,
+				     MEM_RESERVE_BITMAP_MANAGED, &Process->IpcRegionVad));
 
     /* Map the KUSER_SHARED_DATA into the client address space (read-only). */
     PMMVAD ClientSharedDataVad = NULL;
@@ -641,34 +594,14 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 				    sizeof(KUSER_SHARED_DATA)));
 
     if (DriverObject) {
-	PMMVAD ServerIncomingIoPacketsVad = NULL;
-	PMMVAD ClientIncomingIoPacketsVad = NULL;
-	RET_ERR(PspMapSharedRegion(Process,
-				   EX_DRIVER_IO_PACKET_REGION_START,
-				   EX_DRIVER_IO_PACKET_REGION_END,
-				   DRIVER_IO_PACKET_BUFFER_RESERVE,
-				   DRIVER_IO_PACKET_BUFFER_COMMIT,
-				   USER_IMAGE_REGION_START,
-				   USER_IMAGE_REGION_END,
-				   MEM_RESERVE_READ_ONLY,
-				   &ServerIncomingIoPacketsVad,
-				   &ClientIncomingIoPacketsVad));
-	DriverObject->IncomingIoPacketsServerAddr = ServerIncomingIoPacketsVad->AvlNode.Key;
-	DriverObject->IncomingIoPacketsClientAddr = ClientIncomingIoPacketsVad->AvlNode.Key;
-	PMMVAD ServerOutgoingIoPacketsVad = NULL;
-	PMMVAD ClientOutgoingIoPacketsVad = NULL;
-	RET_ERR(PspMapSharedRegion(Process,
-				   EX_DRIVER_IO_PACKET_REGION_START,
-				   EX_DRIVER_IO_PACKET_REGION_END,
-				   DRIVER_IO_PACKET_BUFFER_RESERVE,
-				   DRIVER_IO_PACKET_BUFFER_COMMIT,
-				   USER_IMAGE_REGION_START,
-				   USER_IMAGE_REGION_END,
-				   0,
-				   &ServerOutgoingIoPacketsVad,
-				   &ClientOutgoingIoPacketsVad));
-	DriverObject->OutgoingIoPacketsServerAddr = ServerOutgoingIoPacketsVad->AvlNode.Key;
-	DriverObject->OutgoingIoPacketsClientAddr = ClientOutgoingIoPacketsVad->AvlNode.Key;
+	RET_ERR(PspMapSharedRegion(Process, PspDriverRegionServerVad, NULL,
+				   DRIVER_IO_PACKET_BUFFER_COMMIT, TRUE,
+				   &DriverObject->IncomingIoPacketsServerAddr,
+				   &DriverObject->IncomingIoPacketsClientAddr));
+	RET_ERR(PspMapSharedRegion(Process, PspDriverRegionServerVad, NULL,
+				   DRIVER_IO_PACKET_BUFFER_COMMIT, FALSE,
+				   &DriverObject->OutgoingIoPacketsServerAddr,
+				   &DriverObject->OutgoingIoPacketsClientAddr));
 	PNTDLL_DRIVER_INIT_INFO DriverInitInfo = &Process->InitInfo.DriverInitInfo;
 	DriverInitInfo->IncomingIoPacketBuffer = DriverObject->IncomingIoPacketsClientAddr;
 	DriverInitInfo->OutgoingIoPacketBuffer = DriverObject->OutgoingIoPacketsClientAddr;

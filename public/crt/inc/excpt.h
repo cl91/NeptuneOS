@@ -21,7 +21,7 @@ typedef enum _EXCEPTION_DISPOSITION {
     ExceptionCollidedUnwind,
 } EXCEPTION_DISPOSITION;
 
-#if defined(__i386__) || (defined(_X86_) && !defined(__x86_64))
+#ifdef __i386__
   struct _EXCEPTION_RECORD;
   struct _CONTEXT;
 
@@ -33,7 +33,7 @@ typedef enum _EXCEPTION_DISPOSITION {
     _Inout_ struct _CONTEXT *_ContextRecord,
     _Inout_ void *_DispatcherContext);
 
-#elif defined(__x86_64) || defined(_M_ARM)
+#elif defined(__x86_64) || defined(__aarch64__)
 
   struct _EXCEPTION_RECORD;
   struct _CONTEXT;
@@ -49,9 +49,7 @@ typedef enum _EXCEPTION_DISPOSITION {
     _Inout_ struct _DISPATCHER_CONTEXT *_DispatcherContext);
 
 #else
-
   #error "Unsupported architecture."
-
 #endif
 
 #if defined(_MSC_VER) || (defined(__clang__) && defined(__SEH__))

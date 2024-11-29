@@ -1377,7 +1377,7 @@ NTSTATUS RtlpDphProcessStartupInitialization(VOID)
     RtlpDphPageHeapListInitialized = TRUE;
 
     DPRINT1("Page heap: pid 0x%p: page heap enabled with flags 0x%X.\n",
-	    Teb->ClientId.UniqueProcess, RtlpDphGlobalFlags);
+	    Teb->NtTib.ClientId.UniqueProcess, RtlpDphGlobalFlags);
 
     return Status;
 }
@@ -1521,7 +1521,7 @@ HANDLE RtlpPageHeapCreate(ULONG Flags,
     if (RtlpDphDebugOptions & DPH_DEBUG_VERBOSE) {
 	DPRINT1
 	    ("Page heap: process 0x%p created heap @ %p (%p, flags 0x%X)\n",
-	     NtCurrentTeb()->ClientId.UniqueProcess,
+	     NtCurrentTib()->ClientId.UniqueProcess,
 	     (PUCHAR) DphRoot - PAGE_SIZE, DphRoot->NormalHeap,
 	     DphRoot->ExtraFlags);
     }
@@ -1609,7 +1609,7 @@ PVOID RtlpPageHeapDestroy(HANDLE HeapPtr)
     /* Report success */
     if (RtlpDphDebugOptions & DPH_DEBUG_VERBOSE)
 	DPRINT1("Page heap: process 0x%p destroyed heap @ %p (%p)\n",
-		NtCurrentTeb()->ClientId.UniqueProcess, HeapPtr,
+		NtCurrentTib()->ClientId.UniqueProcess, HeapPtr,
 		NormalHeap);
 
     return NULL;

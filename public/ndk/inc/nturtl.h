@@ -9,6 +9,10 @@
 #error "Do not include <nturtl.h> for the NTOS root task"
 #endif
 
+#ifndef _MSC_VER
+#error "Only PE targets support the APIs defined in this file."
+#endif
+
 #include <ntmmapi.h>
 #include <ntpsapi.h>
 #include <ntseapi.h>
@@ -139,6 +143,246 @@ typedef struct _COMPRESSED_DATA_INFO {
     ULONG CompressedChunkSizes[ANYSIZE_ARRAY];
 } COMPRESSED_DATA_INFO, *PCOMPRESSED_DATA_INFO;
 
+/*
+ * Current Directory Structures
+ */
+typedef struct _CURDIR {
+    UNICODE_STRING DosPath;
+    PVOID Handle;
+} CURDIR, *PCURDIR;
+
+typedef struct _RTLP_CURDIR_REF {
+    LONG RefCount;
+    HANDLE Handle;
+} RTLP_CURDIR_REF, *PRTLP_CURDIR_REF;
+
+typedef struct _RTL_RELATIVE_NAME_U {
+    UNICODE_STRING RelativeName;
+    HANDLE ContainingDirectory;
+    PRTLP_CURDIR_REF CurDirRef;
+} RTL_RELATIVE_NAME_U, *PRTL_RELATIVE_NAME_U;
+
+typedef struct RTL_DRIVE_LETTER_CURDIR {
+    USHORT Flags;
+    USHORT Length;
+    ULONG TimeStamp;
+    UNICODE_STRING DosPath;
+} RTL_DRIVE_LETTER_CURDIR, *PRTL_DRIVE_LETTER_CURDIR;
+
+typedef struct _RTL_PERTHREAD_CURDIR {
+    PRTL_DRIVE_LETTER_CURDIR CurrentDirectories;
+    PUNICODE_STRING ImageName;
+    PVOID Environment;
+} RTL_PERTHREAD_CURDIR, *PRTL_PERTHREAD_CURDIR;
+
+#define RTL_MAX_DRIVE_LETTERS 32
+
+/*
+ * RTL Path Types
+ */
+typedef enum _RTL_PATH_TYPE {
+    RtlPathTypeUnknown,
+    RtlPathTypeUncAbsolute,
+    RtlPathTypeDriveAbsolute,
+    RtlPathTypeDriveRelative,
+    RtlPathTypeRooted,
+    RtlPathTypeRelative,
+    RtlPathTypeLocalDevice,
+    RtlPathTypeRootLocalDevice,
+} RTL_PATH_TYPE;
+
+/*
+ * Process Parameters Flags
+ */
+#define RTL_USER_PROCESS_PARAMETERS_NORMALIZED              0x01
+#define RTL_USER_PROCESS_PARAMETERS_PROFILE_USER            0x02
+#define RTL_USER_PROCESS_PARAMETERS_PROFILE_KERNEL          0x04
+#define RTL_USER_PROCESS_PARAMETERS_PROFILE_SERVER          0x08
+#define RTL_USER_PROCESS_PARAMETERS_UNKNOWN                 0x10
+#define RTL_USER_PROCESS_PARAMETERS_RESERVE_1MB             0x20
+#define RTL_USER_PROCESS_PARAMETERS_RESERVE_16MB            0x40
+#define RTL_USER_PROCESS_PARAMETERS_CASE_SENSITIVE          0x80
+#define RTL_USER_PROCESS_PARAMETERS_DISABLE_HEAP_CHECKS     0x100
+#define RTL_USER_PROCESS_PARAMETERS_PROCESS_OR_1            0x200
+#define RTL_USER_PROCESS_PARAMETERS_PROCESS_OR_2            0x400
+#define RTL_USER_PROCESS_PARAMETERS_PRIVATE_DLL_PATH        0x1000
+#define RTL_USER_PROCESS_PARAMETERS_LOCAL_DLL_PATH          0x2000
+#define RTL_USER_PROCESS_PARAMETERS_IMAGE_KEY_MISSING       0x4000
+#define RTL_USER_PROCESS_PARAMETERS_NX                      0x20000
+
+typedef struct _RTL_USER_PROCESS_PARAMETERS {
+    ULONG MaximumLength;
+    ULONG Length;
+    ULONG Flags;
+    ULONG DebugFlags;
+    HANDLE ConsoleHandle;
+    ULONG ConsoleFlags;
+    HANDLE StandardInput;
+    HANDLE StandardOutput;
+    HANDLE StandardError;
+    CURDIR CurrentDirectory;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    PWSTR Environment;
+    ULONG StartingX;
+    ULONG StartingY;
+    ULONG CountX;
+    ULONG CountY;
+    ULONG CountCharsX;
+    ULONG CountCharsY;
+    ULONG FillAttribute;
+    ULONG WindowFlags;
+    ULONG ShowWindowFlags;
+    UNICODE_STRING WindowTitle;
+    UNICODE_STRING DesktopInfo;
+    UNICODE_STRING ShellInfo;
+    UNICODE_STRING RuntimeData;
+    RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+    SIZE_T EnvironmentSize;
+    SIZE_T EnvironmentVersion;
+} RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
+
+typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
+    struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME *Previous;
+    struct _ACTIVATION_CONTEXT                 *ActivationContext;
+    ULONG                                       Flags;
+} RTL_ACTIVATION_CONTEXT_STACK_FRAME, *PRTL_ACTIVATION_CONTEXT_STACK_FRAME;
+
+typedef struct _ACTIVATION_CONTEXT_STACK {
+    ULONG Flags;
+    ULONG NextCookieSequenceNumber;
+    RTL_ACTIVATION_CONTEXT_STACK_FRAME *ActiveFrame;
+    LIST_ENTRY FrameListCache;
+} ACTIVATION_CONTEXT_STACK, *PACTIVATION_CONTEXT_STACK;
+
+typedef VOID (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE)(VOID);
+typedef VOID (NTAPI *PFLS_CALLBACK_FUNCTION)(PVOID);
+
+/*
+ * Fiber local storage data
+ */
+#define RTL_FLS_MAXIMUM_AVAILABLE 128
+typedef struct _RTL_FLS_DATA {
+    LIST_ENTRY ListEntry;
+    PVOID Data[RTL_FLS_MAXIMUM_AVAILABLE];
+} RTL_FLS_DATA, *PRTL_FLS_DATA;
+
+#include <pshpack4.h>
+typedef struct _PEB {                                                 /* win32/win64 */
+    BOOLEAN                          InheritedAddressSpace;             /* 000/000 */
+    BOOLEAN                          ReadImageFileExecOptions;          /* 001/001 */
+    BOOLEAN                          BeingDebugged;                     /* 002/002 */
+    BOOLEAN                          SpareBool;                         /* 003/003 */
+    HANDLE                           Mutant;                            /* 004/008 */
+    HMODULE                          ImageBaseAddress;                  /* 008/010 */
+    PPEB_LDR_DATA                    LdrData;                           /* 00c/018 */
+    RTL_USER_PROCESS_PARAMETERS     *ProcessParameters;                 /* 010/020 */
+    PVOID                            SubSystemData;                     /* 014/028 */
+    HANDLE                           ProcessHeap;                       /* 018/030 */
+    struct _RTL_CRITICAL_SECTION    *FastPebLock;                       /* 01c/038 */
+    PVOID /*PPEBLOCKROUTINE*/        FastPebLockRoutine;                /* 020/040 */
+    PVOID /*PPEBLOCKROUTINE*/        FastPebUnlockRoutine;              /* 024/048 */
+    ULONG                            EnvironmentUpdateCount;            /* 028/050 */
+    PVOID                            KernelCallbackTable;               /* 02c/058 */
+    ULONG                            Reserved[2];                       /* 030/060 */
+    PVOID /*PPEB_FREE_BLOCK*/        FreeList;                          /* 038/068 */
+    ULONG                            TlsExpansionCounter;               /* 03c/070 */
+    PRTL_BITMAP                      TlsBitmap;                         /* 040/078 */
+    ULONG                            TlsBitmapBits[2];                  /* 044/080 */
+    PVOID                            ReadOnlySharedMemoryBase;          /* 04c/088 */
+    PVOID                            ReadOnlySharedMemoryHeap;          /* 050/090 */
+    PVOID                           *ReadOnlyStaticServerData;          /* 054/098 */
+    PVOID                            AnsiCodePageData;                  /* 058/0a0 */
+    PVOID                            OemCodePageData;                   /* 05c/0a8 */
+    PVOID                            UnicodeCaseTableData;              /* 060/0b0 */
+    ULONG                            NumberOfProcessors;                /* 064/0b8 */
+    ULONG                            NtGlobalFlag;                      /* 068/0bc */
+    LARGE_INTEGER                    CriticalSectionTimeout;            /* 070/0c0 */
+    SIZE_T                           HeapSegmentReserve;                /* 078/0c8 */
+    SIZE_T                           HeapSegmentCommit;                 /* 07c/0d0 */
+    SIZE_T                           HeapDeCommitTotalFreeThreshold;    /* 080/0d8 */
+    SIZE_T                           HeapDeCommitFreeBlockThreshold;    /* 084/0e0 */
+    ULONG                            NumberOfHeaps;                     /* 088/0e8 */
+    ULONG                            MaximumNumberOfHeaps;              /* 08c/0ec */
+    PVOID                           *ProcessHeaps;                      /* 090/0f0 */
+    PVOID                            GdiSharedHandleTable;              /* 094/0f8 */
+    PVOID                            ProcessStarterHelper;              /* 098/100 */
+    PVOID                            GdiDCAttributeList;                /* 09c/108 */
+    PVOID                            LoaderLock;                        /* 0a0/110 */
+    ULONG                            OSMajorVersion;                    /* 0a4/118 */
+    ULONG                            OSMinorVersion;                    /* 0a8/11c */
+    ULONG                            OSBuildNumber;                     /* 0ac/120 */
+    ULONG                            OSPlatformId;                      /* 0b0/124 */
+    ULONG                            ImageSubSystem;                    /* 0b4/128 */
+    ULONG                            ImageSubSystemMajorVersion;        /* 0b8/12c */
+    ULONG                            ImageSubSystemMinorVersion;        /* 0bc/130 */
+    ULONG                            ImageProcessAffinityMask;          /* 0c0/134 */
+    HANDLE                           GdiHandleBuffer[28];               /* 0c4/138 */
+    ULONG                            Unknown[6];                        /* 134/218 */
+    PPS_POST_PROCESS_INIT_ROUTINE    PostProcessInitRoutine;            /* 14c/230 */
+    PRTL_BITMAP                      TlsExpansionBitmap;                /* 150/238 */
+    ULONG                            TlsExpansionBitmapBits[32];        /* 154/240 */
+    ULONG                            SessionId;                         /* 1d4/2c0 */
+    ULARGE_INTEGER                   AppCompatFlags;                    /* 1d8/2c8 */
+    ULARGE_INTEGER                   AppCompatFlagsUser;                /* 1e0/2d0 */
+    PVOID                            ShimData;                          /* 1e8/2d8 */
+    PVOID                            AppCompatInfo;                     /* 1ec/2e0 */
+    UNICODE_STRING                   CSDVersion;                        /* 1f0/2e8 */
+    PVOID                            ActivationContextData;             /* 1f8/2f8 */
+    PVOID                            ProcessAssemblyStorageMap;         /* 1fc/300 */
+    PVOID                            SystemDefaultActivationData;       /* 200/308 */
+    PVOID                            SystemAssemblyStorageMap;          /* 204/310 */
+    SIZE_T                           MinimumStackCommit;                /* 208/318 */
+    PFLS_CALLBACK_FUNCTION          *FlsCallback;                       /* 20c/320 */
+    LIST_ENTRY                       FlsListHead;                       /* 210/328 */
+    PRTL_BITMAP                      FlsBitmap;                         /* 218/338 */
+    ULONG                            FlsBitmapBits[4];                  /* 21c/340 */
+    ULONG                            FlsHighIndex;                      /* 22c/350 */
+    LCID                             SessionDefaultLocale;              /* 230/358 */
+} PEB, *PPEB;
+#include <poppack.h>
+
+C_ASSERT(sizeof(PEB) < PAGE_SIZE);
+
+#include <pshpack4.h>
+typedef struct _TEB {                                        /* win32/win64 */
+    NT_TIB                  NtTib;                             /* 000/000 */
+    PVOID                   ExceptionAddress;                  /* 028/050 */
+    PVOID                   ThreadLocalStoragePointer;         /* 02c/058 */
+    PPEB                    ProcessEnvironmentBlock;           /* 030/060 */
+    ULONG                   LastErrorValue;                    /* 034/068 */
+    ULONG                   LastStatusValue;                   /* 038/06c */
+    PVOID                   CsrClientThread;                   /* 03c/070 */
+    ULONG                   CurrentLocale;                     /* 040/078 */
+    ULONG                   HardErrorMode;                     /* 044/07c */
+    PVOID                   DeallocationStack;                 /* 048/080 */
+    PRTL_FLS_DATA           FlsData;                           /* 04c/088 */
+    PVOID                   TlsSlots[64];                      /* 050/090 */
+    LIST_ENTRY              TlsLinks;                          /* 150/290 */
+    PVOID                  *TlsExpansionSlots;                 /* 158/300 */
+    PVOID                   DebuggerHandle;                    /* 15c/308 */
+    union {
+	struct {
+	    ULONG_PTR       ServiceCap;                        /* 160/310 */
+	    PVOID           CoroutineStackLow;                 /* 164/318 */
+	    PVOID           CoroutineStackHigh;                /* 168/320 */
+	} Wdm;
+	struct {
+            CLIENT_ID       RealClientId;                      /* 160/310 */
+	    PVOID           ThreadInfo;                        /* 168/320 */
+	    ULONG           ClientInfo[31];                    /* 1e8/328 (user32) */
+            ULONG           GuaranteedStackBytes;              /* 1ec/3a4 */
+	    PVOID           SystemReserved1[54];               /* 1f0/3b0 (kernel32) */
+	    UNICODE_STRING  StaticUnicodeString;               /* 2c8/560 (advapi32) */
+	    WCHAR           StaticUnicodeBuffer[261];          /* 2d0/570 (advapi32) */
+	} Win32;
+    };
+} TEB, *PTEB;
+#include <poppack.h>
+
+C_ASSERT(sizeof(TEB) < PAGE_SIZE);
+
 typedef struct _RTL_USER_PROCESS_INFORMATION {
     ULONG Size;
     HANDLE ProcessHandle;
@@ -169,28 +413,25 @@ typedef struct _RTL_PROCESS_MODULES {
 } RTL_PROCESS_MODULES, *PRTL_PROCESS_MODULES;
 
 /*
- * Process Parameters Flags
- */
-#define RTL_USER_PROCESS_PARAMETERS_NORMALIZED              0x01
-#define RTL_USER_PROCESS_PARAMETERS_PROFILE_USER            0x02
-#define RTL_USER_PROCESS_PARAMETERS_PROFILE_KERNEL          0x04
-#define RTL_USER_PROCESS_PARAMETERS_PROFILE_SERVER          0x08
-#define RTL_USER_PROCESS_PARAMETERS_UNKNOWN                 0x10
-#define RTL_USER_PROCESS_PARAMETERS_RESERVE_1MB             0x20
-#define RTL_USER_PROCESS_PARAMETERS_RESERVE_16MB            0x40
-#define RTL_USER_PROCESS_PARAMETERS_CASE_SENSITIVE          0x80
-#define RTL_USER_PROCESS_PARAMETERS_DISABLE_HEAP_CHECKS     0x100
-#define RTL_USER_PROCESS_PARAMETERS_PROCESS_OR_1            0x200
-#define RTL_USER_PROCESS_PARAMETERS_PROCESS_OR_2            0x400
-#define RTL_USER_PROCESS_PARAMETERS_PRIVATE_DLL_PATH        0x1000
-#define RTL_USER_PROCESS_PARAMETERS_LOCAL_DLL_PATH          0x2000
-#define RTL_USER_PROCESS_PARAMETERS_IMAGE_KEY_MISSING       0x4000
-#define RTL_USER_PROCESS_PARAMETERS_NX                      0x20000
-
-/*
  * End of Exception List
  */
 #define EXCEPTION_CHAIN_END		((PEXCEPTION_REGISTRATION_RECORD)-1)
+
+/*
+ * Exception registration record
+ */
+typedef struct _EXCEPTION_REGISTRATION_RECORD {
+    struct _EXCEPTION_REGISTRATION_RECORD *Next;
+    PEXCEPTION_ROUTINE Handler;
+} EXCEPTION_REGISTRATION_RECORD, *PEXCEPTION_REGISTRATION_RECORD;
+
+/*
+ * Exception pointers
+ */
+typedef struct _EXCEPTION_POINTERS {
+  PEXCEPTION_RECORD ExceptionRecord;
+  PCONTEXT ContextRecord;
+} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
 
 /*
  * Unhandled Exception Filter
@@ -1771,25 +2012,15 @@ NTAPI NTSYSAPI USHORT RtlQueryDepthSList(IN PSLIST_HEADER ListHead);
  * Process Management Functions
  */
 
-#ifdef _M_IX86
-#define __TLSBASE_READ	__readfsdword
-#elif defined(_M_AMD64)
-#define __TLSBASE_READ	__readgsqword
-#else
-#error "Unsupported architecture"
-#endif
-
 FORCEINLINE NTAPI PTEB NtCurrentTeb(VOID)
 {
-    return (PTEB)__TLSBASE_READ(FIELD_OFFSET(NT_TIB, Self));
+    return (PVOID)NtCurrentTib();
 }
 
 FORCEINLINE NTAPI PPEB NtCurrentPeb(VOID)
 {
     return NtCurrentTeb()->ProcessEnvironmentBlock;
 }
-
-#undef __TLSBASE_READ
 
 #define RtlGetCurrentPeb NtCurrentPeb
 

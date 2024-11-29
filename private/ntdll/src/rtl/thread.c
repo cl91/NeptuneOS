@@ -237,8 +237,7 @@ NTAPI VOID RtlFreeUserThreadStack(HANDLE ProcessHandle,
 
     /* Get the deallocation stack */
     Status = NtReadVirtualMemory(ProcessHandle,
-				 &((PTEB) ThreadBasicInfo.
-				   TebBaseAddress)->DeallocationStack,
+				 &((PTEB)ThreadBasicInfo.TebBaseAddress)->DeallocationStack,
 				 &StackLocation, sizeof(PVOID), &Dummy);
     if (!NT_SUCCESS(Status) || !StackLocation)
 	return;

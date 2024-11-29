@@ -1,16 +1,12 @@
 # Default architecture and build type
 ARCH=i386
+DEFAULT_PLATFORM=pc99
 BUILD_TYPE=Debug
 TOOLCHAIN=llvm
 
-if [[ $ARCH == "i386" ]]; then
-    ARCH_SUFFIX="-m32"
-else
-    ARCH_SUFFIX="-m64"
-fi
-
 if [[ $TOOLCHAIN != "llvm" ]]; then
-    echo "There is a GCC build profile but it is totally untested. Use LLVM toolchain unless you want to try to make GCC work."
+    echo "There is a GCC build profile but it is totally untested."
+    echo "Use the LLVM toolchain unless you want to try to make GCC work."
     exit 1
 fi
 
@@ -26,18 +22,35 @@ if [[ ${args[@]} =~ "amd64" ]]; then
     ARCH=amd64
 fi
 
+if [[ ${args[@]} =~ "arm64" ]]; then
+    ARCH=arm64
+fi
+
 if [[ ${ARCH} == "i386" ]]; then
-    CLANG_ARCH=i686
     SEL4_ARCH=ia32
     RTLIB_ARCH=i386
+    MC_COMPILER_ARCH=i686
+    ELF_TRIPLE=i686-pc-linux-gnu
+    PE_TRIPLE=i686-pc-windows-msvc
 elif [[ ${ARCH} == "amd64" ]]; then
-    CLANG_ARCH=x86_64
     SEL4_ARCH=x86_64
     RTLIB_ARCH=x86_64
+    MC_COMPILER_ARCH=x86_64
+    ELF_TRIPLE=x86_64-pc-linux-gnu
+    PE_TRIPLE=x86_64-pc-windows-msvc
+elif [[ ${ARCH} == "arm64" ]]; then
+    SEL4_ARCH=aarch64
+    RTLIB_ARCH=aarch64
+    MC_COMPILER_ARCH=x86_64
+    ELF_TRIPLE=aarch64-elf
+    PE_TRIPLE=aarch64-pc-windows-msvc
+    DEFAULT_PLATFORM=rockpro64
 else
     echo "Unsupported arch ${ARCH}"
     exit 1
 fi
+
+PLATFORM=${PLATFORM:=$DEFAULT_PLATFORM}
 
 BUILDDIR="build-$ARCH-${BUILD_TYPE,,}"
 IMAGEDIR="images-$ARCH-${BUILD_TYPE,,}"
@@ -79,20 +92,25 @@ echo
 echo "---- Building ELF targets ----"
 echo
 cmake ../../private/ntos \
-      -DCLANG_ARCH=${CLANG_ARCH} \
-      -DTRIPLE=${CLANG_ARCH}-pc-linux-gnu \
+      -DArch=${ARCH} \
+      -DTRIPLE=${ELF_TRIPLE} \
+      -DKernelPlatform=${PLATFORM} \
+      -DKernelSel4Arch=${SEL4_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DSANITIZED_SEL4_INCLUDE_DIR="${PWD}/../../sel4/libsel4/include" \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
       -DSEL4_GENERATED_HEADERS_DIR=${PWD} \
       -DSTRUCTURES_GEN_H_ORIG=${PWD}/kernel/generated/arch/object/structures_gen.h \
       -DSTRUCTURES_GEN_DIR=${PWD} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
-      -DKernelSel4Arch=$SEL4_ARCH -G Ninja
+      -G Ninja
 ninja all-elf || build_failed
 
-# For amd64 PE targets, since the ELF toolchain assumes sizeof(long) == 8
+# For PE targets, we modify how libsel4 retrives the IPC buffer address
+# so it does not rely on the thread-local variable __sel4_ipc_buffer. Also,
+# for 64-bit PE targets, since the ELF toolchain assumes sizeof(long) == 8
 # and the PE toolchain assumes sizeof(long) == 4, we need to modify the
 # libsel4 sel4_arch headers to undefine the macro SEL4_INT64_IS_LONG and
 # define SEL4_INT64_IS_LONG_LONG. So far this seems to work and produce
@@ -101,14 +119,34 @@ cd ../pe_inc
 echo
 echo "---- Building private PE targets ----"
 echo
-mkdir -p {kernel,libsel4}
+mkdir -p {kernel,libsel4,sel4_include/sel4,sel4_arch_include/sel4/sel4_arch}
 cp ../elf/structures_gen.h . || build_failed
-cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH sel4_arch_include || build_failed
+cp -r ../../sel4/libsel4/include/sel4/* sel4_include/sel4 || build_failed
+cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH/sel4/sel4_arch/* \
+   sel4_arch_include/sel4/sel4_arch || build_failed
 cp -r ../elf/kernel/gen_config kernel || build_failed
 for i in gen_config autoconf include arch_include sel4_arch_include; do
     cp -r ../elf/libsel4/$i libsel4 || build_failed
 done
-if [[ $ARCH == "amd64" ]]; then
+cat <<EOF > sel4_get_ipc_buffer.h
+LIBSEL4_INLINE_FUNC seL4_IPCBuffer *seL4_GetIPCBuffer(void)
+{
+    PCHAR NtTib = (PVOID)NtCurrentTib();
+    return (PVOID)(NtTib - NT_TIB_OFFSET);
+}
+EOF
+sed -i '/__sel4_ipc_buffer/d' sel4_include/sel4/functions.h
+sed -i '/void seL4_SetIPCBuffer/,/\}/d' sel4_include/sel4/functions.h
+sed -i '/LIBSEL4_INLINE_FUNC seL4_IPCBuffer \*seL4_GetIPCBuffer/,/\}/d' sel4_include/sel4/functions.h
+sed -i '/CONFIG_KERNEL_INVOCATION_REPORT_ERROR_IPC/,/#endif/d' sel4_include/sel4/functions.h
+sed -i '/#include <sel4\/syscalls.h>/r sel4_get_ipc_buffer.h' sel4_include/sel4/functions.h
+cat <<EOF >> sel4_include/sel4/functions.h
+LIBSEL4_INLINE_FUNC char seL4_CanPrintError(void)
+{
+    return 1;
+}
+EOF
+if [[ $ARCH == "amd64" || $ARCH == "arm64" ]]; then
     cat <<EOF > sel4_arch_include/sel4/sel4_arch/simple_types.h
 #pragma once
 
@@ -117,16 +155,21 @@ if [[ $ARCH == "amd64" ]]; then
 EOF
     sed -i '/assert_size_correct(long/d' libsel4/include/interfaces/sel4_client.h || build_failed
     sed -i '/assert_size_correct(seL4_X86_VMAttributes,/d' libsel4/include/interfaces/sel4_client.h || build_failed
+    sed -i '/assert_size_correct(seL4_ARM_VMAttributes,/d' libsel4/include/interfaces/sel4_client.h || build_failed
+    sed -i '/assert_size_correct(seL4_VCPUReg,/d' libsel4/include/interfaces/sel4_client.h || build_failed
 fi
 
 # Build ntdll.dll with the PE toolchain
 cd ../ntdll
 cmake ../../private/ntdll \
       -DArch=${ARCH} \
-      -DCLANG_ARCH=${CLANG_ARCH} \
-      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DTRIPLE=${PE_TRIPLE} \
+      -DKernelPlatform=${PLATFORM} \
+      -DKernelSel4Arch=${SEL4_ARCH} \
+      -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DSANITIZED_SEL4_INCLUDE_DIR="${PE_INC}/sel4_include" \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PE_INC}/sel4_arch_include" \
       -DSEL4_GENERATED_HEADERS_DIR="${PE_INC}" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}" \
@@ -145,10 +188,13 @@ echo
 cd ../wdm
 cmake ../../private/wdm \
       -DArch=${ARCH} \
-      -DCLANG_ARCH=${CLANG_ARCH} \
-      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DTRIPLE=${PE_TRIPLE} \
+      -DKernelPlatform=${PLATFORM} \
+      -DKernelSel4Arch=${SEL4_ARCH} \
+      -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DSANITIZED_SEL4_INCLUDE_DIR="${PE_INC}/sel4_include" \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PE_INC}/sel4_arch_include" \
       -DSEL4_GENERATED_HEADERS_DIR="${PE_INC}" \
       -DSTRUCTURES_GEN_DIR="${PE_INC}" \
@@ -170,8 +216,8 @@ echo "---- Building drivers ----"
 echo
 cmake ../../drivers \
       -DArch=${ARCH} \
-      -DCLANG_ARCH=${CLANG_ARCH} \
-      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DTRIPLE=${PE_TRIPLE} \
+      -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
@@ -189,8 +235,8 @@ echo
 echo "---- Building base NT clients ----"
 echo
 cmake ../../base \
-      -DCLANG_ARCH=${CLANG_ARCH} \
-      -DTRIPLE=${CLANG_ARCH}-pc-windows-msvc \
+      -DTRIPLE=${PE_TRIPLE} \
+      -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
@@ -205,16 +251,17 @@ echo
 echo "---- Building INITCPIO ----"
 echo
 cd ../initcpio
-if [[ ${CLANG_ARCH} == i686 ]]; then
-    ELF_TARGET=elf32-i386
-    ELF_ARCH=i386
-    LLD_TARGET=elf_i386
-elif [[ ${CLANG_ARCH} == x86_64 ]]; then
-    ELF_TARGET=elf64-x86-64
-    ELF_ARCH=i386:x86-64
-    LLD_TARGET=elf_x86_64
+if [[ ${ARCH} == i386 ]]; then
+    OUTPUT_TARGET=elf32-i386
+    LINKER_EMULATION=elf_i386
+elif [[ ${ARCH} == amd64 ]]; then
+    OUTPUT_TARGET=elf64-x86-64
+    LINKER_EMULATION=elf_x86_64
+elif [[ ${ARCH} == arm64 ]]; then
+    OUTPUT_TARGET=elf64-aarch64
+    LINKER_EMULATION=elf_aarch64
 else
-    echo "Unsupported architecture ${CLANG_ARCH}"
+    echo "Unsupported architecture ${ARCH}"
     exit 1
 fi
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
@@ -235,7 +282,7 @@ done
 { for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
 { for i in ${DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
 cpio -H newc -o < image-list > initcpio || build_failed
-llvm-objcopy -I binary -O ${ELF_TARGET} --binary-architecture ${ELF_ARCH} \
+llvm-objcopy -I binary -O ${OUTPUT_TARGET} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
 	initcpio initcpio.o
 if [[ $? == 0 ]]; then
@@ -255,7 +302,7 @@ if [[ ${BUILD_TYPE} == Release ]]; then
 else
     LLD_OPTIONS=""
 fi
-ld.lld -m ${LLD_TARGET} ${LLD_OPTIONS} ${RTLIB} \
+ld.lld -m ${LINKER_EMULATION} ${LLD_OPTIONS} ${RTLIB} \
        --allow-multiple-definition \
        ../elf/libntos.a \
        ../elf/rtl/librtl.a \
