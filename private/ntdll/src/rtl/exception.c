@@ -230,52 +230,49 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     PCONTEXT ContextRecord = ExceptionInfo->ContextRecord;
 
     /* Print a stack trace. */
-    DbgPrinter("\n==============================================================================\n");
-    DbgPrinter("%s exception 0x%x (%s) in process %s (PID/TID %p/%p)\n",
-	       Unhandled ? "Unhandled" : "Caught",
-	       ExceptionRecord->ExceptionCode,
-	       RtlpExceptionCodeToString(ExceptionRecord->ExceptionCode),
-	       RtlpDbgTraceModuleName,
-	       NtCurrentTib()->ClientId.UniqueProcess,
-	       NtCurrentTib()->ClientId.UniqueThread);
+    __try {
+	DbgPrinter("\n==============================================================================\n");
+	DbgPrinter("%s exception 0x%x (%s) in process %s (PID/TID %p/%p)\n",
+		   Unhandled ? "Unhandled" : "Caught",
+		   ExceptionRecord->ExceptionCode,
+		   RtlpExceptionCodeToString(ExceptionRecord->ExceptionCode),
+		   RtlpDbgTraceModuleName,
+		   NtCurrentTib()->ClientId.UniqueProcess,
+		   NtCurrentTib()->ClientId.UniqueThread);
 
-    if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
-	ExceptionRecord->NumberParameters == 2) {
-	DbgPrinter("Faulting Address: %p\n",
-		   (PVOID)ExceptionRecord->ExceptionInformation[1]);
-    }
+	if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
+	    ExceptionRecord->NumberParameters == 2) {
+	    DbgPrinter("Faulting Address: %p\n",
+		       (PVOID)ExceptionRecord->ExceptionInformation[1]);
+	}
 
-    /* Trace the wine special error and show the modulename and functionname */
-    if (ExceptionRecord->ExceptionCode == 0x80000100 /* EXCEPTION_WINE_STUB */ &&
-	ExceptionRecord->NumberParameters == 2) {
-	DbgPrinter("Missing function: %s!%s\n",
-		   (PSZ)ExceptionRecord->ExceptionInformation[0],
-		   (PSZ)ExceptionRecord->ExceptionInformation[1]);
-    }
+	/* Trace the wine special error and show the modulename and functionname */
+	if (ExceptionRecord->ExceptionCode == 0x80000100 /* EXCEPTION_WINE_STUB */ &&
+	    ExceptionRecord->NumberParameters == 2) {
+	    DbgPrinter("Missing function: %s!%s\n",
+		       (PSZ)ExceptionRecord->ExceptionInformation[0],
+		       (PSZ)ExceptionRecord->ExceptionInformation[1]);
+	}
 
-    RtlpDumpContextEx(ContextRecord, DbgPrinter);
-    PVOID StartAddr;
-    UNICODE_STRING BaseDllName;
-    RtlpGetModuleNameFromAddr(ExceptionRecord->ExceptionAddress, &StartAddr, &BaseDllName);
-    DbgPrinter("Address:\n   %p+%08zx   %wZ\n", (PVOID)StartAddr,
-	       (ULONG_PTR)ExceptionRecord->ExceptionAddress - (ULONG_PTR)StartAddr,
-	       &BaseDllName);
+	RtlpDumpContextEx(ContextRecord, DbgPrinter);
+	PVOID StartAddr;
+	UNICODE_STRING BaseDllName;
+	RtlpGetModuleNameFromAddr(ExceptionRecord->ExceptionAddress, &StartAddr, &BaseDllName);
+	DbgPrinter("Address:\n   %p+%08zx   %wZ\n", (PVOID)StartAddr,
+		   (ULONG_PTR)ExceptionRecord->ExceptionAddress - (ULONG_PTR)StartAddr,
+		   &BaseDllName);
 
-    /* Don't print the stack content on screen due to screen size limitation. */
-    if (DbgPrinter != RtlpVgaPrint) {
-	__try {
+	/* Don't print the stack content on screen due to screen size limitation. */
+	if (DbgPrinter != RtlpVgaPrint) {
 	    DbgPrinter("Stack:\n");
 	    PPVOID Stack = (PPVOID)ContextRecord->STACK_POINTER;
 	    for (INT i = 0; i < 32; i++) {
 		DbgPrinter("   %p: %p\n", &Stack[i], Stack[i]);
 	    }
-	}  __except (EXCEPTION_EXECUTE_HANDLER) {
 	}
-    }
 
-    DbgPrinter("Backtrace:\n");
+	DbgPrinter("Backtrace:\n");
 #ifdef _M_IX86
-    __try {
 	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->Ebp;
 
 	for (UINT i = 0; i < 16; i++) {
@@ -292,23 +289,23 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 
 	    Frame = (PULONG_PTR) Frame[0];
 	}
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-    }
 #else
-    DbgPrinter("   NOT IMPLEMENTED YET\n");
+	DbgPrinter("   NOT IMPLEMENTED YET\n");
 #endif
 
-    if (NtCurrentPeb()->LdrData && NtCurrentPeb()->LdrData->Initialized) {
-	DbgPrinter("Modules:\n");
-	LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
-		     LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
-	    DbgPrinter("   %wZ (%wZ) @ [%p, %p)\n",
-		       &LdrEntry->FullDllName, &LdrEntry->BaseDllName,
-		       LdrEntry->DllBase, (PCHAR)LdrEntry->DllBase + LdrEntry->SizeOfImage);
+	if (NtCurrentPeb()->LdrData && NtCurrentPeb()->LdrData->Initialized) {
+	    DbgPrinter("Modules:\n");
+	    LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
+			 LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
+		DbgPrinter("   %wZ (%wZ) @ [%p, %p)\n",
+			   &LdrEntry->FullDllName, &LdrEntry->BaseDllName,
+			   LdrEntry->DllBase, (PCHAR)LdrEntry->DllBase + LdrEntry->SizeOfImage);
+	    }
 	}
-    }
 
-    DbgPrinter("==============================================================================\n");
+	DbgPrinter("==============================================================================\n");
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
 }
 
 VOID RtlpDumpContext(IN PCONTEXT pc)
