@@ -547,7 +547,7 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
     assert(SubSection->ImageSection->ImageCacheFile);
 
     PAGING_RIGHTS Rights = Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
-    if (SubSection->RawDataSize) {
+    if (SubSection->RawDataSize && SubSection->ImageCacheFileOffset != ULONG_MAX) {
 	ULONG BytesMapped = 0;
 	while (BytesMapped < SubSection->SubSectionSize) {
 	    ULONG MappedLength = 0;
