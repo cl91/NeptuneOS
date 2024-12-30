@@ -873,10 +873,16 @@ VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
 	}
     }
     if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	/* If Page is an empty paging structure, this is a no-op. */
-	Page = MiGetFirstPage(Page);
+	if (Page->AvlNode.Key == StartAddr) {
+	    /* If Page is an empty paging structure, this is a no-op. */
+	    Page = MiGetFirstPage(Page);
+	} else {
+	    /* In this case the page table contains no pages with an address
+	     * greater than or equal to StartAddr, so go to the next page. */
+	    Page = MiGetNextPagingStructure(Page);
+	}
     }
-    /* Delete the all paging structures till EndAddr is reached. */
+    /* Delete all the paging structures till EndAddr is reached. */
     while (Page && Page->AvlNode.Key < EndAddr) {
 	PPAGING_STRUCTURE NextPage = MiGetNextPagingStructure(Page);
 	/* MiDeletePage will delete the parent paging structure if
