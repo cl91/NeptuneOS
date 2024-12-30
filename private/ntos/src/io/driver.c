@@ -90,7 +90,14 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     }
     if (Driver->DriverProcess) {
 	ObDereferenceObject(Driver->DriverProcess);
-	Driver->DriverProcess->DriverObject = NULL;
+	/* After dereferencing the DriverProcess might have become NULL.
+	 * This can happen if the driver process has crashed. In the case
+	 * it is not NULL, we set its DriverObject to NULL so the delete
+	 * routine of the PROCESS object will not try to access the driver
+	 * object being deleted. */
+	if (Driver->DriverProcess) {
+	    Driver->DriverProcess->DriverObject = NULL;
+	}
     }
     if (Driver->DriverImagePath) {
 	IopFreePool(Driver->DriverImagePath);
