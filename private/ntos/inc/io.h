@@ -90,6 +90,7 @@ typedef struct _IO_DEVICE_OBJECT {
     LIST_ENTRY CloseMsgList; /* List of CLOSE_DEVICE_MESSAGE. */
     IO_DEVICE_INFO DeviceInfo;
     KEVENT MountCompleted; /* Used by the volume mount logic to signal mount completion. */
+    BOOLEAN Removed; /* TRUE if the driver has crashed and the device is being removed. */
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 

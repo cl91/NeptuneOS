@@ -309,7 +309,9 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
-    /* This is the starting point when the function is resumed. */
+    /* This is the starting point when the function is resumed. Note if the driver
+     * crashed during handling of the IO packet, IopUnloadDriver will have manually
+     * completed the IO request with an error. */
     assert(Locals.FileObject != NULL);
 
     if (Locals.PendingIrp->IoResponseDataSize && Locals.FileObject->Fcb) {
@@ -493,9 +495,10 @@ VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
     if (DevObj->Vcb) {
 	IopDismountVolume(DevObj->Vcb, TRUE);
     }
-    /* At this point the device object should have exactly one reference. */
-    assert(ObGetObjectRefCount(DevObj) == 1);
-    /* Delete the device object */
+    DevObj->Removed = TRUE;
+    /* At this point the device object may still have more than one references
+     * if it is being opened. Dereference the object so when the open routine
+     * returns an error status, it will be deleted. */
     ObDereferenceObject(DevObj);
 }
 

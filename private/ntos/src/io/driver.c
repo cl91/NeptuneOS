@@ -352,7 +352,10 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 	IopForceRemoveDevice(DevObj);
     }
 
-    assert(ObGetObjectRefCount(DriverObject) == 1);
+    /* At this point the driver object may still have more than one references
+     * if one of its device objects is being opened. Dereference the driver object so
+     * when the open routine returns an error status, the device object(s) and the
+     * driver object itself will be deleted. */
     ObDereferenceObject(DriverObject);
 
     Status = STATUS_SUCCESS;

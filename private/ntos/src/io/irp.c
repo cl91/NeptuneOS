@@ -1201,6 +1201,13 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
 	       IopFreeIoPacket(IoPacket));
     assert(PendingIrp != NULL);
 
+    /* If the device object is being removed, complete the IRP with error. */
+    if (DeviceObject->Removed) {
+	IO_STATUS_BLOCK IoStatus = { .Status = STATUS_DEVICE_REMOVED };
+	IopCompletePendingIrp(PendingIrp, IoStatus, NULL, 0);
+	return STATUS_SUCCESS;
+    }
+
     /* If the IRP has an interception callback, run it, and stop if it returns FALSE. */
     PIRP_CALLBACK Callback = IoPacket->Request.ServerPrivate.Callback;
     if ((IoPacket->Request.Flags & IOP_IRP_INTERCEPTION_CALLBACK) && Callback) {

@@ -1,5 +1,3 @@
-#include "ntdef.h"
-#include "ntstatus.h"
 #include <wdmp.h>
 #include <avltree.h>
 
@@ -423,6 +421,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     }
 
     /* Forward the IRPs to the lower driver. Wait on the first IRP. */
+    NTSTATUS ErrorStatus = STATUS_SUCCESS;
     ReverseLoopOverList(Req, &ReqList, READ_REQUEST, Link) {
 	DPRINT("Calling storage device driver with irp %p\n", Req->Irp);
 	Status = IoCallDriver(Vpb->DeviceObject, Req->Irp);
@@ -435,7 +434,11 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 		   Stack->Parameters.Read.Length, Req->Irp->IoStatus.Status,
 		   Req->Irp->IoStatus.Information);
 	    Req->Bcb->Length = 0;
+	    ErrorStatus = Status;
 	}
+    }
+    if (!NT_SUCCESS(ErrorStatus)) {
+	Status = ErrorStatus;
     }
 
     /* Now that all IO operations are done, insert the BCBs into the cache map.
@@ -493,7 +496,7 @@ map:
     PBUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(AvlTreeFindNodeOrPrev(&CacheMap->BcbTree,
 								      AlignedOffset));
     if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, AlignedOffset)) {
-	return STATUS_NONE_MAPPED;
+	return NT_SUCCESS(Status) ? STATUS_NONE_MAPPED : Status;
     }
     PPINNED_BUFFER PinnedBuf = ExAllocatePool(sizeof(PINNED_BUFFER));
     if (!PinnedBuf) {
@@ -508,7 +511,9 @@ map:
     PinnedBuf->MappedAddress = *pBuffer;
     PinnedBuf->Length = *MappedLength;
     InsertHeadList(&Bcb->PinList, &PinnedBuf->Link);
-    Status = (*MappedLength == Length) ? STATUS_SUCCESS : STATUS_SOME_NOT_MAPPED;
+    if (NT_SUCCESS(Status)) {
+	Status = (*MappedLength == Length) ? STATUS_SUCCESS : STATUS_SOME_NOT_MAPPED;
+    }
 
 out:
     /* Free all the allocated BCBs that have not been inserted into the cache map. */

@@ -57,6 +57,11 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	assert(!DevObj->Vcb->MountInProgress);
 	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
+    /* If the driver crashed during the mount, the device will be marked as removed,
+     * in which case we return error. */
+    if (DevObj->Removed) {
+	ASYNC_RETURN(State, STATUS_IO_DEVICE_ERROR);
+    }
 
     DevObj->Vcb = ExAllocatePoolWithTag(sizeof(IO_VOLUME_CONTROL_BLOCK), NTOS_IO_TAG);
     if (!DevObj->Vcb) {
@@ -132,6 +137,13 @@ next:
 	PIO_DEVICE_OBJECT VolumeDevice = IopGetDeviceObject(Response->VolumeMounted.VolumeDeviceHandle,
 							    Locals.CurrentFs->FsctlDevObj->DriverObject);
 	if (!VolumeDevice) {
+	    assert(FALSE);
+	    Status = STATUS_UNRECOGNIZED_VOLUME;
+	    goto out;
+	}
+	if (!DevObj->Vcb) {
+	    /* If the storage driver crashed, the file system driver should complete the IRP with
+	     * an error status. We assert on debug build so we can fix the file system driver. */
 	    assert(FALSE);
 	    Status = STATUS_UNRECOGNIZED_VOLUME;
 	    goto out;
@@ -232,7 +244,7 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 		       IN BOOLEAN Force)
 {
     assert(Vcb);
-    if (!Vcb || Vcb->MountInProgress) {
+    if (!Vcb) {
 	return;
     }
     DbgTrace("Dismounting volume with Vcb %p\n", Vcb);
@@ -248,36 +260,60 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	}
 	ObDereferenceObject(Vcb->VolumeFile);
     }
-    /* Dereference the volume device object that the file system driver created
-     * when mounting the volume. Note the refcount of the volume device should
-     * be greater than one at this point, so the deref will not delete the object. */
-    assert(ObGetObjectRefCount(Vcb->VolumeDevice) > 1);
-    ObDereferenceObject(Vcb->VolumeDevice);
+    /* VolumeDevice may be NULL if we are in the middle of a mounting process (and the
+     * storage driver crashed). */
+    if (Vcb->VolumeDevice) {
+	/* Dereference the volume device object that the file system driver created
+	 * when mounting the volume. Note the refcount of the volume device should
+	 * be greater than one at this point, so the deref will not delete the object. */
+	assert(ObGetObjectRefCount(Vcb->VolumeDevice) > 1);
+	ObDereferenceObject(Vcb->VolumeDevice);
+    }
     /* If we are forcing the dismount due to for instance media change or a driver
-     * crashing, queue the ForceDismount message to the file system driver. */
+     * crashing, queue the ForceDismount message to the file system driver. Note if
+     * the file system driver has already crashed at this point, the queued IO packet
+     * will be deleted soon, by the delete routine of the driver object. */
     if (Force) {
-	assert(Vcb->ForceDismountMsg);
-	PIO_PACKET Msg = Vcb->ForceDismountMsg;
-	Vcb->ForceDismountMsg = NULL;
-	Msg->Type = IoPacketTypeServerMessage;
-	Msg->Size = sizeof(IO_PACKET);
-	Msg->ServerMsg.Type = IoSrvMsgForceDismount;
-	Msg->ServerMsg.ForceDismount.VolumeDevice = OBJECT_TO_GLOBAL_HANDLE(Vcb->VolumeDevice);
-	InsertTailList(&Vcb->VolumeDevice->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
-	KeSetEvent(&Vcb->VolumeDevice->DriverObject->IoPacketQueuedEvent);
-	/* Detach the file objects of this volume from the volume control block.
-	 * This is only needed if we are forcing the dismount. For normal dismount
-	 * the subobject directory should be empty. */
-	ObDirectoryObjectVisitObject(Vcb->Subobjects, IopVcbDetachSubobject, NULL);
-	assert(ObGetObjectRefCount(Vcb->Subobjects) == 1);
-	ObDereferenceObject(Vcb->Subobjects);
-	/* At this point the volume FCB should be deleted (by IopForceRemoveDevice).
-	 * We make sure this is done. */
-	assert(!Vcb->VolumeFcb);
+	if (Vcb->VolumeDevice) {
+	    assert(Vcb->ForceDismountMsg);
+	    PIO_PACKET Msg = Vcb->ForceDismountMsg;
+	    Vcb->ForceDismountMsg = NULL;
+	    Msg->Type = IoPacketTypeServerMessage;
+	    Msg->Size = sizeof(IO_PACKET);
+	    Msg->ServerMsg.Type = IoSrvMsgForceDismount;
+	    Msg->ServerMsg.ForceDismount.VolumeDevice = OBJECT_TO_GLOBAL_HANDLE(Vcb->VolumeDevice);
+	    InsertTailList(&Vcb->VolumeDevice->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
+	    KeSetEvent(&Vcb->VolumeDevice->DriverObject->IoPacketQueuedEvent);
+	}
+	if (Vcb->Subobjects) {
+	    /* Detach the file objects of this volume from the volume control block.
+	     * This is only needed if we are forcing the dismount. For normal dismount
+	     * the subobject directory should be empty. */
+	    ObDirectoryObjectVisitObject(Vcb->Subobjects, IopVcbDetachSubobject, NULL);
+	    assert(ObGetObjectRefCount(Vcb->Subobjects) == 1);
+	    ObDereferenceObject(Vcb->Subobjects);
+	}
+	if (Vcb->VolumeFcb) {
+	    /* This can only happen when we are dismounting during the mounting process
+	     * due to a driver crash. Otherwise the FCB should have been deleted (by
+	     * IopForceRemoveDevice) at this point. */
+	    assert(Vcb->MountInProgress);
+	    IopDeleteFcb(Vcb->VolumeFcb);
+	}
+	/* If we are force dismounting during the process of mounting the volume
+	 * (this happens for instance, when the storage driver has crashed),
+	 * signal the mount completion event. */
+	if (Vcb->MountInProgress) {
+	    KeSetEvent(&Vcb->StorageDevice->MountCompleted);
+	}
 	/* Detach the VCB from the device objects. Note in the normal dismount case,
 	 * this is done when the volume device is deleted. */
-	Vcb->VolumeDevice = NULL;
-	Vcb->StorageDevice = NULL;
+	if (Vcb->VolumeDevice) {
+	    Vcb->VolumeDevice->Vcb = NULL;
+	}
+	if (Vcb->StorageDevice) {
+	    Vcb->StorageDevice->Vcb = NULL;
+	}
 	IopFreePool(Vcb);
     }
 }
