@@ -940,9 +940,6 @@ VOID MmDeleteVad(IN PMMVAD Vad)
 	assert(Vad->MirroredMemory.ViewerLink.Blink != NULL);
 	assert(!IsListEmpty(&Vad->MirroredMemory.ViewerLink));
 	RemoveEntryList(&Vad->MirroredMemory.ViewerLink);
-    } else if (Vad->Flags.PhysicalMapping && Vad->PhysicalSectionView.RootUntyped) {
-	/* MiUncommitVad should have already freed the untyped, so just check that. */
-	assert(MiUntypedIsInFreeLists(Vad->PhysicalSectionView.RootUntyped));
     }
     MiFreePool(Vad);
 }
