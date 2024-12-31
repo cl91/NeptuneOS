@@ -58,10 +58,15 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     }
 
     PCSTR Type = "Unknown";
+    PCSTR Annotation = "";
     if (Node->Type == CAP_TREE_NODE_CNODE) {
 	Type = "CNODE";
     } else if (Node->Type == CAP_TREE_NODE_UNTYPED) {
-	Type = "UNTYPED";
+	PUNTYPED Untyped = TREE_NODE_TO_UNTYPED(Node);
+	Type =  Untyped->IsDevice ? "DEVICE-UNTYPED" : "UNTYPED";
+	if (Untyped->Requested) {
+	    Annotation = " (requested)";
+	}
     } else if (Node->Type == CAP_TREE_NODE_TCB) {
 	Type = "TCB";
     } else if (Node->Type == CAP_TREE_NODE_PAGING_STRUCTURE) {
@@ -79,7 +84,8 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     if (Node->CSpace != &MiNtosCNode) {
 	CapType = "in client process's CSpace";
     }
-    MmDbgPrint("Cap 0x%zx (Type %s seL4 Cap %s)", Node->Cap, Type, CapType);
+    MmDbgPrint("Cap 0x%zx (Type %s%s seL4 Cap %s)",
+	       Node->Cap, Type, Annotation, CapType);
 #endif
 }
 
