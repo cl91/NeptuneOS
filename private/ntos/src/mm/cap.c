@@ -119,9 +119,7 @@ VOID MmDbgDumpCapTree(IN PCAP_TREE_NODE Node,
 {
 #ifdef MMDBG
     RtlDbgPrintIndentation(Indentation);
-    MmDbgPrint("Node %p, CL.FL %p CL.BL %p SL.FL %p SL.BL %p   ",
-	     Node, Node->ChildrenList.Flink, Node->ChildrenList.Blink,
-	     Node->SiblingLink.Flink, Node->SiblingLink.Blink);
+    MmDbgPrint("Node %p   ", Node);
     MmDbgDumpCapTreeNode(Node);
     MmDbgPrint("\n");
     CapTreeLoopOverChildren(Child, Node) {
