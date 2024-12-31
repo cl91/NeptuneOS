@@ -641,7 +641,10 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     }
 
     DeviceExt->LastAvailableCluster = 2;
-    CountAvailableClusters(DeviceExt, NULL);
+    Status = CountAvailableClusters(DeviceExt, NULL);
+    if (!NT_SUCCESS(Status)) {
+	goto ByeBye;
+    }
 
     InitializeListHead(&DeviceExt->FcbListHead);
     InsertHeadList(&FatGlobalData->VolumeListHead, &DeviceExt->VolumeListEntry);
@@ -655,8 +658,11 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 	.Length = 0,
 	.MaximumLength = sizeof(DeviceObject->Vpb->VolumeLabel)
     };
-    ReadVolumeLabel(DeviceExt, 0, FatVolumeIsFatX(DeviceExt),
-		    DeviceExt->FatInfo.BytesPerCluster, &VolumeLabelU);
+    Status = ReadVolumeLabel(DeviceExt, 0, FatVolumeIsFatX(DeviceExt),
+			     DeviceExt->FatInfo.BytesPerCluster, &VolumeLabelU);
+    if (!NT_SUCCESS(Status)) {
+	goto ByeBye;
+    }
     Vpb->VolumeLabelLength = VolumeLabelU.Length;
 
     /* Read dirty bit status */
@@ -669,7 +675,10 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     /* The volume wasn't dirty, it was properly dismounted */
     if (!Dirty) {
 	/* Mark it dirty now! */
-	SetDirtyStatus(DeviceExt, TRUE);
+	Status = SetDirtyStatus(DeviceExt, TRUE);
+	if (!NT_SUCCESS(Status)) {
+	    goto ByeBye;
+	}
 	VolumeFcb->Flags |= VCB_CLEAR_DIRTY;
     } else {
 	DPRINT1("Mounting a dirty volume\n");

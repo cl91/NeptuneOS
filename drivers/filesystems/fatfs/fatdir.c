@@ -462,8 +462,10 @@ static NTSTATUS DelEntry(IN PDEVICE_EXTENSION DeviceExt,
     /* In case of moving, don't delete data */
     if (!MoveContext) {
 	while (CurrentCluster && CurrentCluster != 0xffffffff) {
-	    GetNextCluster(DeviceExt, CurrentCluster, &NextCluster);
-	    /* FIXME: check status */
+	    Status = GetNextCluster(DeviceExt, CurrentCluster, &NextCluster);
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
 	    WriteCluster(DeviceExt, CurrentCluster, 0);
 	    CurrentCluster = NextCluster;
 	}
