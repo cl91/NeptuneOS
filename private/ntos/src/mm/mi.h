@@ -76,10 +76,15 @@ static inline PCAP_TREE_NODE MiCapTreeGetNextSibling(IN PCAP_TREE_NODE Node)
 	return NULL;
     }
     assert(!IsListEmpty(&Node->SiblingLink));
-    if (Node->SiblingLink.Flink == &Node->Parent->ChildrenList) {
+    assert(GetListLength(&Node->Parent->ChildrenList) == GetListLength(&Node->SiblingLink));
+    PLIST_ENTRY NextNode = Node->SiblingLink.Flink;
+    if (NextNode == &Node->Parent->ChildrenList) {
+	NextNode = NextNode->Flink;
+    }
+    if (NextNode == &Node->Parent->ChildrenList) {
 	return NULL;
     }
-    return CONTAINING_RECORD(Node->SiblingLink.Flink, CAP_TREE_NODE, SiblingLink);
+    return CONTAINING_RECORD(NextNode, CAP_TREE_NODE, SiblingLink);
 }
 
 /* Initialize an empty CNode. The zeroth slot is always
