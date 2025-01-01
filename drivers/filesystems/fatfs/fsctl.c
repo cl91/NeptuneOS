@@ -91,6 +91,7 @@ NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
+/* Returns TRUE if Val matches one of the values in Set. */
 FORCEINLINE BOOLEAN ValidateValue(IN ULONG Val,
 				  IN ULONG *Set,
 				  IN ULONG Size)
