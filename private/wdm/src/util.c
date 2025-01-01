@@ -49,7 +49,7 @@ NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
 	ULONG_PTR NextVa = CurrentVa + PageCount * PageSize;
 	if (CurrentVa <= (ULONG_PTR)StartVa && (ULONG_PTR)StartVa < NextVa) {
 	    PhyAddr.QuadPart = MDL_PFN_PAGE_ADDRESS(Mdl->PfnEntries[i]) +
-		(ULONG_PTR)StartVa & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]) - 1);
+		((ULONG_PTR)StartVa & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]) - 1));
 	    break;
 	}
 	CurrentVa = NextVa;
