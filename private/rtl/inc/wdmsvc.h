@@ -595,6 +595,32 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		 (PVOID)IoPacket->Request.OutputBuffer,
 		 IoPacket->Request.OutputBufferLength,
 		 IoPacket->Request.OutputBufferPfnCount);
+	if (IoPacket->Request.InputBufferPfnCount) {
+	    DbgPrint("    Input PFN(s):");
+	    for (ULONG i = 0; i < IoPacket->Request.InputBufferPfnCount; i++) {
+		if (ClientSide) {
+		    PULONG_PTR PfnDb = (PULONG_PTR)((PUCHAR)IoPacket + IoPacket->Request.InputBufferPfn);
+		    DbgPrint("  %p", (PVOID)PfnDb[i]);
+		} else {
+		    PULONG_PTR PfnDb = (PVOID)IoPacket->Request.InputBufferPfn;
+		    DbgPrint("  %p", (PVOID)PfnDb[i]);
+		}
+	    }
+	    DbgPrint("\n");
+	}
+	if (IoPacket->Request.OutputBufferPfnCount) {
+	    DbgPrint("    Output PFN(s):");
+	    for (ULONG i = 0; i < IoPacket->Request.OutputBufferPfnCount; i++) {
+		if (ClientSide) {
+		    PULONG_PTR PfnDb = (PULONG_PTR)((PUCHAR)IoPacket + IoPacket->Request.OutputBufferPfn);
+		    DbgPrint("  %p", (PVOID)PfnDb[i]);
+		} else {
+		    PULONG_PTR PfnDb = (PVOID)IoPacket->Request.OutputBufferPfn;
+		    DbgPrint("  %p", (PVOID)PfnDb[i]);
+		}
+	    }
+	    DbgPrint("\n");
+	}
 	DbgPrint("    Major function %d.  Minor function %d.  DataSize 0x%x.  Flags 0x%x\n",
 		 IoPacket->Request.MajorFunction, IoPacket->Request.MinorFunction,
 		 IoPacket->Request.DataSize, IoPacket->Request.Flags);
