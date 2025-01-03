@@ -71,7 +71,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,elf,pe_inc,ntdll,wdm,base,drivers,initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,elf,pe_inc,ntdll,wdm,ntlnxshim,base,drivers,initcpio,ndk_lib,ddk_lib,ldk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -107,6 +107,8 @@ cmake ../../private/ntos \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja all-elf || build_failed
+cp rtl/syssvc_gen.h ../pe_inc || build_failed
+cp rtl/wdmsvc_gen.h ../pe_inc || build_failed
 
 # For PE targets, we modify how libsel4 retrives the IPC buffer address
 # so it does not rely on the thread-local variable __sel4_ipc_buffer. Also,
@@ -178,6 +180,7 @@ cmake ../../private/ntdll \
       -DGENINC_PATH=${PWD}/../host/geninc/geninc \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -DSVCGEN_TYPE="--client" \
       -G Ninja
 ninja || build_failed
 cp ntdll.lib ../ndk_lib || build_failed
@@ -205,9 +208,36 @@ cmake ../../private/wdm \
       -DGEN_INC_DIR=${PWD}/../ntdll \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -DSVCGEN_TYPE="--client" \
       -G Ninja
 ninja || build_failed
 cp wdm.lib ../ddk_lib || build_failed
+
+# Build ntlnxshim.so with the ELF toolchain. Note for ntlnxshim, even though it is an
+# ELF target, we use the modified sel4_include headers so the seL4 IPC buffer address
+# is obtained from the NtCurrentTib() call, rather than from a thread-local variable.
+cd ../ntlnxshim
+cp ../elf/structures_gen.h . || build_failed
+cp ../elf/rtl/syssvc_gen.h . || build_failed
+cp ../elf/rtl/wdmsvc_gen.h . || build_failed
+cmake ../../private/ntlnxshim \
+      -DArch=${ARCH} \
+      -DTRIPLE=${ELF_TRIPLE} \
+      -DKernelPlatform=${PLATFORM} \
+      -DKernelSel4Arch=${SEL4_ARCH} \
+      -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DSANITIZED_SEL4_INCLUDE_DIR="${PE_INC}/sel4_include" \
+      -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
+      -DSEL4_GENERATED_HEADERS_DIR="${PWD}/../elf" \
+      -DSTRUCTURES_GEN_DIR="${PWD}" \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -DSVCGEN_TYPE="--utf8_client" \
+      -G Ninja
+ninja || build_failed
+cp libntlnxshimk.a ../ldk_lib || build_failed
+cp libntlnxshimu.a ../ldk_lib || build_failed
 
 # Build drivers with the PE toolchain
 cd ../drivers

@@ -116,16 +116,6 @@
 #include <ntdll.h>
 #include <client_svc_helpers.h>
 
-static inline PVOID CmpAllocateHeap(ULONG Bytes)
-{
-    return RtlAllocateHeap(RtlGetProcessHeap(), 0, Bytes);
-}
-
-static inline VOID CmpFreeHeap(PVOID Mem)
-{
-    RtlFreeHeap(RtlGetProcessHeap(), 0, Mem);
-}
-
 static inline BOOLEAN CmpCheckSimpleTypes(IN ULONG Type,
 					  IN ULONG DataSize)
 {
@@ -141,13 +131,24 @@ static inline BOOLEAN CmpCheckSimpleTypes(IN ULONG Type,
     return TRUE;
 }
 
+#define MAX_MSG_BUF_OFFSET	(IPC_BUFFER_COMMIT - 128)
+
+#ifdef _MSC_VER
+static inline PVOID CmpAllocateHeap(ULONG Bytes)
+{
+    return RtlAllocateHeap(RtlGetProcessHeap(), 0, Bytes);
+}
+
+static inline VOID CmpFreeHeap(PVOID Mem)
+{
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Mem);
+}
+
 static inline BOOLEAN CmpIsStringType(IN ULONG Type)
 {
     return Type == REG_SZ || Type == REG_EXPAND_SZ ||
 	Type == REG_LINK || Type == REG_MULTI_SZ;
 }
-
-#define MAX_MSG_BUF_OFFSET	(IPC_BUFFER_COMMIT - 128)
 
 /*
  * Marshal the string data from UTF-16LE to UTF-8
@@ -264,6 +265,7 @@ static VOID CmpFreeMarshaledRegData(IN PVOID Data,
 	CmpFreeHeap((PVOID)DataArg.Word);
     }
 }
+#endif
 
 /*
  * Get the actual data size of UTF-8 string data.

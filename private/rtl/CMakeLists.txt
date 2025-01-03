@@ -34,7 +34,7 @@ target_include_directories(
 
 add_custom_target(
     syssvc_gen_h ALL
-    COMMAND python ${CMAKE_CURRENT_LIST_DIR}/syssvc-gen.py --syssvc_xml ${CMAKE_CURRENT_LIST_DIR}/syssvc.xml --wdmsvc_xml ${CMAKE_CURRENT_LIST_DIR}/wdmsvc.xml --out_dir ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND python ${CMAKE_CURRENT_LIST_DIR}/syssvc-gen.py ${SVCGEN_TYPE} --syssvc_xml ${CMAKE_CURRENT_LIST_DIR}/syssvc.xml --wdmsvc_xml ${CMAKE_CURRENT_LIST_DIR}/wdmsvc.xml --out_dir ${CMAKE_CURRENT_BINARY_DIR}
     VERBATIM
 )
 add_dependencies(rtl syssvc_gen_h)

@@ -1007,12 +1007,16 @@ def parse_args():
                         help='Full path of the wdmsvc.xml file', required=True)
     parser.add_argument('--out_dir', type=str,
                         help='Output directory for the generated files', required=True)
+    parser.add_argument('--client', action='store_true',
+                        help='Generate client stubs instead of server stubs')
+    parser.add_argument('--utf8_client', action='store_true',
+                        help='Generate UTF-16 client stubs')
 
     result = parser.parse_args()
 
     return result
 
-def parse_svcxml(xml_file, wdmsvc):
+def parse_svcxml(xml_file, wdmsvc, utf8_client):
     doc = xml.dom.minidom.parse(xml_file)
     svcs = doc.getElementsByTagName("services")[0]
     svc_list = []
@@ -1048,10 +1052,12 @@ def parse_svcxml(xml_file, wdmsvc):
         # on the client side). The input parameters on the server side are always in UTF-8,
         # because we marshal Unicode input parameters on the client side.
         if has_unicode_out_param:
-            svc_list.append(Service(name+"W", name, params, client_only = False, wdmsvc = wdmsvc))
+            if not utf8_client:
+                svc_list.append(Service(name+"W", name, params, client_only = False, wdmsvc = wdmsvc))
             svc_list.append(Service(name+"A", name+"A", ansi_params, client_only = False, wdmsvc = wdmsvc))
         else:
-            svc_list.append(Service(name, name, params, client_only = False, wdmsvc = wdmsvc))
+            if not has_unicode_string or not utf8_client:
+                svc_list.append(Service(name, name, params, client_only = False, wdmsvc = wdmsvc))
             if has_unicode_string:
                 svc_list.append(Service(name, name+"A", ansi_params, client_only = True, wdmsvc = wdmsvc))
 
@@ -1059,50 +1065,36 @@ def parse_svcxml(xml_file, wdmsvc):
     assert len(svc_list) != 0
     return svc_list
 
-# For system services with UnicodeString parameters, we generate an ANSI (UTF-8)
-# version such that client can call it without first converting to UTF-16
-def generate_client_svc_list(svcs):
-    client_svc_list = []
-    for svc in svcs:
-        has_unicode_string = False
-        params = []
-        if has_unicode_string:
-            client_svc_list.append(Service(svc.name + "A", enum_tag, params))
-    return client_svc_list
-
 if __name__ == "__main__":
     args = parse_args()
-    syssvc_list = parse_svcxml(args.syssvc_xml, wdmsvc = False)
+    syssvc_list = parse_svcxml(args.syssvc_xml, wdmsvc = False, utf8_client = args.utf8_client)
+    wdmsvc_list = parse_svcxml(args.wdmsvc_xml, wdmsvc = True, utf8_client = args.utf8_client)
+
     server_syssvc_list = [syssvc for syssvc in syssvc_list if not syssvc.client_only]
-    wdmsvc_list = parse_svcxml(args.wdmsvc_xml, wdmsvc = True)
     server_wdmsvc_list = [svc for svc in wdmsvc_list if not svc.client_only]
 
-    svc_params_gen_h = open(os.path.join(args.out_dir, "ntos_svc_params_gen.h"), "w")
-    generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_syssvc_list + server_wdmsvc_list, svc_params_gen_h, wdmsvc = False, server_side = True)
+    if not args.client and not args.utf8_client:
+        syssvc_gen_h = open(os.path.join(args.out_dir, "syssvc_gen.h"), "w")
+        generate_file(SVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, wdmsvc = False, server_side = True)
+        wdmsvc_gen_h = open(os.path.join(args.out_dir, "wdmsvc_gen.h"), "w")
+        generate_file(SVC_GEN_H_TEMPLATE, server_wdmsvc_list, wdmsvc_gen_h, wdmsvc = True, server_side = True)
+        svc_params_gen_h = open(os.path.join(args.out_dir, "ntos_svc_params_gen.h"), "w")
+        generate_file(SVC_PARAMS_GEN_H_TEMPLATE, server_syssvc_list + server_wdmsvc_list, svc_params_gen_h, wdmsvc = False, server_side = True)
+        ntos_syssvc_gen_h = open(os.path.join(args.out_dir, "ntos_syssvc_gen.h"), "w")
+        generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, wdmsvc = False, server_side = True)
+        ntos_syssvc_gen_c = open(os.path.join(args.out_dir, "ntos_syssvc_gen.c"), "w")
+        generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, wdmsvc = False, server_side = True)
+        ntos_wdmsvc_gen_h = open(os.path.join(args.out_dir, "ntos_wdmsvc_gen.h"), "w")
+        generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_wdmsvc_list, ntos_wdmsvc_gen_h, wdmsvc = True, server_side = True)
+        ntos_wdmsvc_gen_c = open(os.path.join(args.out_dir, "ntos_wdmsvc_gen.c"), "w")
+        generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_wdmsvc_list, ntos_wdmsvc_gen_c, wdmsvc = True, server_side = True)
 
-    syssvc_gen_h = open(os.path.join(args.out_dir, "syssvc_gen.h"), "w")
-    generate_file(SVC_GEN_H_TEMPLATE, server_syssvc_list, syssvc_gen_h, wdmsvc = False, server_side = True)
-
-    ntos_syssvc_gen_h = open(os.path.join(args.out_dir, "ntos_syssvc_gen.h"), "w")
-    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_h, wdmsvc = False, server_side = True)
-    ntos_syssvc_gen_c = open(os.path.join(args.out_dir, "ntos_syssvc_gen.c"), "w")
-    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_syssvc_list, ntos_syssvc_gen_c, wdmsvc = False, server_side = True)
-
-    client_syssvc_list = generate_client_svc_list(syssvc_list)
-    ntdll_syssvc_gen_h = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.h"), "w")
-    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, wdmsvc = False, server_side = False)
-    ntdll_syssvc_gen_c = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.c"), "w")
-    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, wdmsvc = False, server_side = False)
-
-    wdmsvc_gen_h = open(os.path.join(args.out_dir, "wdmsvc_gen.h"), "w")
-    generate_file(SVC_GEN_H_TEMPLATE, server_wdmsvc_list, wdmsvc_gen_h, wdmsvc = True, server_side = True)
-    ntos_wdmsvc_gen_h = open(os.path.join(args.out_dir, "ntos_wdmsvc_gen.h"), "w")
-    generate_file(NTOS_SVC_GEN_H_TEMPLATE, server_wdmsvc_list, ntos_wdmsvc_gen_h, wdmsvc = True, server_side = True)
-    ntos_wdmsvc_gen_c = open(os.path.join(args.out_dir, "ntos_wdmsvc_gen.c"), "w")
-    generate_file(NTOS_SVC_GEN_C_TEMPLATE, server_wdmsvc_list, ntos_wdmsvc_gen_c, wdmsvc = True, server_side = True)
-
-    client_wdmsvc_list = generate_client_svc_list(wdmsvc_list)
-    wdm_wdmsvc_gen_h = open(os.path.join(args.out_dir, "wdm_wdmsvc_gen.h"), "w")
-    generate_file(CLIENT_SVC_GEN_H_TEMPLATE, wdmsvc_list, wdm_wdmsvc_gen_h, wdmsvc = True, server_side = False)
-    wdm_wdmsvc_gen_c = open(os.path.join(args.out_dir, "wdm_wdmsvc_gen.c"), "w")
-    generate_file(CLIENT_SVC_GEN_C_TEMPLATE, wdmsvc_list, wdm_wdmsvc_gen_c, wdmsvc = True, server_side = False)
+    else:
+        ntdll_syssvc_gen_h = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.h"), "w")
+        generate_file(CLIENT_SVC_GEN_H_TEMPLATE, syssvc_list, ntdll_syssvc_gen_h, wdmsvc = False, server_side = False)
+        ntdll_syssvc_gen_c = open(os.path.join(args.out_dir, "ntdll_syssvc_gen.c"), "w")
+        generate_file(CLIENT_SVC_GEN_C_TEMPLATE, syssvc_list, ntdll_syssvc_gen_c, wdmsvc = False, server_side = False)
+        wdm_wdmsvc_gen_h = open(os.path.join(args.out_dir, "wdm_wdmsvc_gen.h"), "w")
+        generate_file(CLIENT_SVC_GEN_H_TEMPLATE, wdmsvc_list, wdm_wdmsvc_gen_h, wdmsvc = True, server_side = False)
+        wdm_wdmsvc_gen_c = open(os.path.join(args.out_dir, "wdm_wdmsvc_gen.c"), "w")
+        generate_file(CLIENT_SVC_GEN_C_TEMPLATE, wdmsvc_list, wdm_wdmsvc_gen_c, wdmsvc = True, server_side = False)

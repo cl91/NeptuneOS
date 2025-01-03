@@ -87,7 +87,7 @@ FORCEINLINE ULONG RtlpHashStringEx(IN PCSTR Str,
     return Hash;
 }
 
-#ifndef _NTOSKRNL_
+#if !defined(_NTOSKRNL_) && defined(_MSC_VER)
 #include <nturtl.h>
 FORCEINLINE NTSTATUS RtlpUtf8ToUnicodeString(IN PVOID Heap,
 					     IN PCSTR String,

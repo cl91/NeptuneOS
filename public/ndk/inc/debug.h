@@ -17,7 +17,7 @@
 #include <stdarg.h>
 #include <dpfilter.h>
 
-#ifdef _NTOSKRNL_
+#ifndef _MSC_VER
 
 #if (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) && !defined(NDEBUG)
 
