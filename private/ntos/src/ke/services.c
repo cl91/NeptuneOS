@@ -4,6 +4,22 @@
  * (before the return address is pushed onto the stack). Do not change this. */
 #define GCC_STACK_ALIGNMENT		(16)
 
+#ifdef _M_IX86
+#define REDZONE_SIZE	(0)
+#elif defined(_M_AMD64)
+/* The SysV ABI on AMD64 mandates a 128-byte redzone (MSVC does not). */
+#define REDZONE_SIZE	(128)
+#elif defined(_M_ARM64)
+/* The MSVC ABI on ARM64 requires a 16-byte redzone (SysV does not). */
+#define REDZONE_SIZE	(16)
+#else
+#error "Unsupported architecture"
+#endif
+
+#if REDZONE_SIZE & (GCC_STACK_ALIGNMENT - 1)
+#error "REDZONE_SIZE must be aligned by GCC_STACK_ALIGNMENT"
+#endif
+
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 
@@ -529,9 +545,10 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
     MWORD AlignedStackPointer = ALIGN_DOWN_BY(StackPointer, GCC_STACK_ALIGNMENT);
     MWORD ContextSize = ALIGN_UP_BY(sizeof(CONTEXT), GCC_STACK_ALIGNMENT);
     MWORD ExceptionRecordSize = ALIGN_UP_BY(sizeof(EXCEPTION_RECORD), GCC_STACK_ALIGNMENT);
-    /* In addition to the CONTEXT and EXCEPTION_RECORD we also include
-     * the minimal stack space needed to handle an exception. */
-    MWORD MinFreeUserStack = ContextSize + ExceptionRecordSize + MIN_USER_EXCEPTION_STACK;
+    /* In addition to the CONTEXT and EXCEPTION_RECORD we also include the minimal stack
+     * space needed to handle an exception and the redzone required by the ABI(s). */
+    MWORD MinFreeUserStack = ContextSize + ExceptionRecordSize +
+	MIN_USER_EXCEPTION_STACK + REDZONE_SIZE;
 
     /* Check if the user stack is valid and has enough space. If ok,
      * map the user stack into server address space so we can copy the
@@ -565,20 +582,16 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
     /*
      * The stack organization is as follows (left is lower address):
      *
-     * |------------------------|------------------------|
-     * |MIN_USER_EXCEPTION_STACK|CONTEXT|EXCEPTION_RECORD|
-     * |------------------------|------------------------|
-     * ^                        ^                        ^
-     * ^                        NewStackPointer          AlignedStackPointer
+     * |------------------------|------------------------|---------|
+     * |MIN_USER_EXCEPTION_STACK|CONTEXT|EXCEPTION_RECORD| REDZONE |
+     * |------------------------|------------------------|---------|
+     * ^                        ^                                  ^
+     * ^                        NewStackPointer                    AlignedStackPointer
      * ^
      * MappedUserStack (in server address space)
      *
      * Pointer to ExceptionRecord is passed via FASTCALL_FIRST_PARAM (ecx/rcx).
      * Pointer to Context is passed via FASTCALL_SECOND_PARAM (edx/rdx).
-     *
-     * Note: The Windows AMD64 ABI does NOT have the 128-byte red zone that
-     * the SystemV AMD64 ABI has. Therefore we are free to clobber the stack
-     * space below %rsp.
      */
     PCONTEXT UserContext = (PCONTEXT)(MappedUserStack + MIN_USER_EXCEPTION_STACK);
     memset(UserContext, 0, ContextSize + ExceptionRecordSize);
@@ -591,8 +604,9 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
     ExceptionRecord->ExceptionInformation[0] = ExceptionParameter;
 
     /* Set the thread context to dispatch to KiUserExceptionDispatcher */
-    MWORD NewStackPointer = AlignedStackPointer - ExceptionRecordSize - ContextSize;
-    Context._FASTCALL_FIRST_PARAM = AlignedStackPointer - ExceptionRecordSize;
+    MWORD NewStackPointer = AlignedStackPointer - ExceptionRecordSize -
+	ContextSize - REDZONE_SIZE;
+    Context._FASTCALL_FIRST_PARAM = AlignedStackPointer - REDZONE_SIZE - ExceptionRecordSize;
     Context._FASTCALL_SECOND_PARAM = NewStackPointer;
     Context._STACK_POINTER = NewStackPointer;
     Context._INSTRUCTION_POINTER = Thread->Process->UserExceptionDispatcher;
