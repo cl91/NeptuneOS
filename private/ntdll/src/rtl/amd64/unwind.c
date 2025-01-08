@@ -103,19 +103,28 @@ NTAPI PRUNTIME_FUNCTION RtlLookupFunctionTable(IN ULONG64 ControlPc,
 }
 
 /*
- *! RtlpLookupFunctionEntry
+ *! RtlLookupFunctionEntry
  * \brief Locates the RUNTIME_FUNCTION entry corresponding to a code address.
  * \ref http://msdn.microsoft.com/en-us/library/ms680597(VS.85).aspx
  * \todo Implement HistoryTable
  */
-static PRUNTIME_FUNCTION RtlpLookupFunctionEntry(IN ULONG64 ControlPc,
-						 IN ULONG64 ImageBase,
-						 IN PRUNTIME_FUNCTION FunctionTable,
-						 IN ULONG TableLength,
-						 OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable)
+NTAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(IN ULONG64 ControlPc,
+					       OUT PULONG64 ImageBase,
+					       OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable)
 {
+    /* Find the corresponding table */
+    ULONG TableLength;
+    PRUNTIME_FUNCTION FunctionTable = RtlLookupFunctionTable(ControlPc,
+							     ImageBase,
+							     &TableLength);
+
+    /* Fail, if no table is found */
+    if (!FunctionTable) {
+	return NULL;
+    }
+
     /* Use relative virtual address */
-    ControlPc -= ImageBase;
+    ControlPc -= *ImageBase;
 
     /* Do a binary search */
     ULONG IndexLo = 0, IndexHi = TableLength;
@@ -137,29 +146,6 @@ static PRUNTIME_FUNCTION RtlpLookupFunctionEntry(IN ULONG64 ControlPc,
 
     /* Nothing found, return NULL */
     return NULL;
-}
-
-/*
- * !RtlLookupFunctionEntry
- */
-NTAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(IN ULONG64 ControlPc,
-					       OUT PULONG64 ImageBase,
-					       OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable)
-{
-    /* Find the corresponding table */
-    ULONG TableLength;
-    PRUNTIME_FUNCTION FunctionTable = RtlLookupFunctionTable(ControlPc,
-							     ImageBase,
-							     &TableLength);
-
-    /* Fail, if no table is found */
-    if (!FunctionTable) {
-	return NULL;
-    }
-
-    return RtlpLookupFunctionEntry(ControlPc, *ImageBase,
-				   FunctionTable, TableLength,
-				   HistoryTable);
 }
 
 NTAPI BOOLEAN RtlAddFunctionTable(IN PRUNTIME_FUNCTION FunctionTable,
@@ -617,24 +603,13 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	.TargetIp = (ULONG64)TargetIp
     };
 
-    ULONG64 ImageBase;
-    ULONG TableLength;
-    PRUNTIME_FUNCTION FunctionTable = RtlLookupFunctionTable(UnwindContext.Rip,
-							     &ImageBase,
-							     &TableLength);
-
-    if (FunctionTable == NULL) {
-	return FALSE;
-    }
-
     /* Start looping */
     while (TRUE){
+	ULONG64 ImageBase;
 	/* Lookup the FunctionEntry for the current RIP */
-	PRUNTIME_FUNCTION FunctionEntry = RtlpLookupFunctionEntry(UnwindContext.Rip,
-								  ImageBase,
-								  FunctionTable,
-								  TableLength,
-								  NULL);
+	PRUNTIME_FUNCTION FunctionEntry = RtlLookupFunctionEntry(UnwindContext.Rip,
+								 &ImageBase,
+								 NULL);
 
 	if (FunctionEntry == NULL) {
 	    /*
@@ -846,26 +821,15 @@ NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
     RtlCaptureContext(&Context);
     ULONG64 ControlPc = Context.Rip;
 
-    ULONG64 ImageBase;
-    ULONG TableLength;
-    PRUNTIME_FUNCTION FunctionTable = RtlLookupFunctionTable(ControlPc,
-							     &ImageBase,
-							     &TableLength);
-
-    if (FunctionTable == NULL) {
-	return 0;
-    }
-
     ULONG i;
     __try {
 	/* Loop the frames */
 	for (i = 0; i < FramesToSkip + Count; i++) {
+	    ULONG64 ImageBase;
 	    /* Lookup the FunctionEntry for the current ControlPc */
-	    PRUNTIME_FUNCTION FunctionEntry = RtlpLookupFunctionEntry(ControlPc,
-								      ImageBase,
-								      FunctionTable,
-								      TableLength,
-								      NULL);
+	    PRUNTIME_FUNCTION FunctionEntry = RtlLookupFunctionEntry(ControlPc,
+								     &ImageBase,
+								     NULL);
 
 	    /* Is this a leaf function? */
 	    if (!FunctionEntry) {
