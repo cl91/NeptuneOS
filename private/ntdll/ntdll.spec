@@ -141,7 +141,7 @@
 @ stdcall RtlInterlockedPushEntrySList(ptr ptr)
 @ stdcall RtlInterlockedPopEntrySList(ptr)
 @ stdcall RtlInterlockedFlushSList(ptr)
-@ fastcall -arch=i386 RtlInterlockedPushListSList(ptr ptr ptr long)
+@ fastcall RtlInterlockedPushListSList(ptr ptr ptr long)
 @ stdcall RtlInitializeRangeList(ptr)
 @ stdcall RtlAddRange(ptr long long long long long long ptr ptr)
 @ stdcall RtlGetFirstRange(ptr ptr ptr)

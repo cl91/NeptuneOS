@@ -151,6 +151,19 @@ static inline long long InterlockedCompareExchange64(volatile long long *Destina
     return __sync_val_compare_and_swap(Destination, Comperand, Exchange);
 }
 
+#ifdef _WIN64
+static inline unsigned char InterlockedCompareExchange128(long long volatile *Destination,
+							  long long ExchangeHigh,
+							  long long ExchangeLow,
+							  long long *ComparandResult)
+{
+    long long xchg[2] = { ExchangeLow, ExchangeHigh };
+    return __sync_bool_compare_and_swap((__uint128_t *)Destination,
+					*((__uint128_t *)ComparandResult),
+					*((__uint128_t *)xchg));
+}
+#endif
+
 static inline long long InterlockedExchange64(volatile long long *Target, long long Value)
 {
     /* NOTE: __sync_lock_test_and_set would be an acquire barrier, so we force a full barrier */

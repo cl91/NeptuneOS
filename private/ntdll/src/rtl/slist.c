@@ -11,10 +11,6 @@
 
 #include <ntdll.h>
 
-#ifdef _WIN64
-BOOLEAN RtlpUse16ByteSLists = -1;
-#endif
-
 /* FUNCTIONS ***************************************************************/
 
 NTAPI VOID RtlInitializeSListHead(OUT PSLIST_HEADER SListHead)
@@ -79,13 +75,44 @@ NTAPI USHORT RtlQueryDepthSList(IN PSLIST_HEADER SListHead)
 #endif
 }
 
-/* This is not yet implemented for amd64 */
-#ifndef _WIN64
 FASTCALL PSLIST_ENTRY RtlInterlockedPushListSList(IN OUT PSLIST_HEADER SListHead,
 						  IN OUT PSLIST_ENTRY List,
 						  IN OUT PSLIST_ENTRY ListEnd,
 						  IN ULONG Count)
 {
+#ifdef _WIN64
+    SLIST_HEADER OldSListHead, NewSListHead;
+    PSLIST_ENTRY FirstEntry;
+
+    ASSERT(((ULONG_PTR)SListHead & 0xF) == 0);
+    ASSERT(((ULONG_PTR)List & 0xF) == 0);
+
+    BOOLEAN Exchanged;
+    do {
+	/* Capture the current SListHead */
+	OldSListHead = *SListHead;
+
+	/* Link the last list entry */
+	FirstEntry = (PSLIST_ENTRY)(SListHead->Region & ~0xFLL);
+	ListEnd->Next = FirstEntry;
+
+	/* Set up new SListHead */
+	NewSListHead = OldSListHead;
+	NewSListHead.Header16.Depth += Count;
+	NewSListHead.Header16.Sequence++;
+	NewSListHead.Region = (ULONG64)List;
+	NewSListHead.Header16.HeaderType = 1;
+	NewSListHead.Header16.Init = 1;
+
+	/* Atomically exchange the SlistHead with the new one */
+	Exchanged = InterlockedCompareExchange128((PLONG64)SListHead,
+						  NewSListHead.Region,
+						  NewSListHead.Alignment,
+						  (PLONG64)&OldSListHead);
+    } while (!Exchanged);
+
+    return FirstEntry;
+#else
     SLIST_HEADER OldHeader, NewHeader;
     ULONGLONG Compare;
 
@@ -111,5 +138,5 @@ FASTCALL PSLIST_ENTRY RtlInterlockedPushListSList(IN OUT PSLIST_HEADER SListHead
 
     /* Return the old first entry */
     return OldHeader.Next.Next;
+#endif /* _WIN64 */
 }
-#endif	/* !defined(_WIN64) */
