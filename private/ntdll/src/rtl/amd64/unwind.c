@@ -9,13 +9,6 @@
 
 #include "../rtlp.h"
 
-/* Change this to 1 to disable debug trace */
-#if 0
-#undef DbgTrace
-#define DbgTrace(...)
-#define RtlpDumpContext(...)
-#endif
-
 #define UNWIND_HISTORY_TABLE_NONE 0
 #define UNWIND_HISTORY_TABLE_GLOBAL 1
 #define UNWIND_HISTORY_TABLE_LOCAL 2
@@ -31,7 +24,6 @@
 #define UWOP_SAVE_XMM128 8
 #define UWOP_SAVE_XMM128_FAR 9
 #define UWOP_PUSH_MACHFRAME 10
-
 
 typedef unsigned char UBYTE;
 
@@ -102,6 +94,10 @@ NTAPI PRUNTIME_FUNCTION RtlLookupFunctionTable(IN ULONG64 ControlPc,
     return Table;
 }
 
+PRUNTIME_FUNCTION RtlpLookupDynamicFunctionEntry(IN DWORD64 ControlPc,
+						 OUT PDWORD64 ImageBase,
+						 IN PUNWIND_HISTORY_TABLE HistoryTable);
+
 /*
  *! RtlLookupFunctionEntry
  * \brief Locates the RUNTIME_FUNCTION entry corresponding to a code address.
@@ -118,9 +114,9 @@ NTAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(IN ULONG64 ControlPc,
 							     ImageBase,
 							     &TableLength);
 
-    /* Fail, if no table is found */
+    /* If no table is found, try dynamic function tables */
     if (!FunctionTable) {
-	return NULL;
+        return RtlpLookupDynamicFunctionEntry(ControlPc, ImageBase, HistoryTable);
     }
 
     /* Use relative virtual address */
@@ -146,31 +142,6 @@ NTAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(IN ULONG64 ControlPc,
 
     /* Nothing found, return NULL */
     return NULL;
-}
-
-NTAPI BOOLEAN RtlAddFunctionTable(IN PRUNTIME_FUNCTION FunctionTable,
-				  IN DWORD EntryCount,
-				  IN ULONG64 BaseAddress)
-{
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-NTAPI BOOLEAN RtlDeleteFunctionTable(IN PRUNTIME_FUNCTION FunctionTable)
-{
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-NTAPI BOOLEAN RtlInstallFunctionTableCallback(IN ULONG64 TableIdentifier,
-					      IN ULONG64 BaseAddress,
-					      IN DWORD Length,
-					      IN PGET_RUNTIME_FUNCTION_CALLBACK Callback,
-					      IN PVOID Context,
-					      IN PCWSTR OutOfProcessCallbackDll)
-{
-    UNIMPLEMENTED;
-    return FALSE;
 }
 
 static inline ULONG UnwindOpSlots(IN UNWIND_CODE UnwindCode)

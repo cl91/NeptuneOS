@@ -201,6 +201,50 @@ static inline long long InterlockedDecrement64(volatile long long *lpAddend)
     return __sync_sub_and_fetch(lpAddend, 1);
 }
 
+#ifdef _MSC_VER
+#if defined(_M_IX86) || defined(_M_AMD64) || defined(_M_ARM64)
+#define __ACQ_(x) x
+#define __REL_(x) x
+#define __NF_(x) x
+#else
+#error "Unsupported architecture"
+#endif
+
+#define InterlockedBitTestAndSet _interlockedbittestandset
+#define InterlockedBitTestAndSetAcquire __ACQ_(_interlockedbittestandset)
+#define InterlockedBitTestAndSetRelease __REL_(_interlockedbittestandset)
+#define InterlockedBitTestAndSetNoFence __NF_(_interlockedbittestandset)
+
+#define InterlockedBitTestAndReset _interlockedbittestandreset
+#define InterlockedBitTestAndResetAcquire __ACQ_(_interlockedbittestandreset)
+#define InterlockedBitTestAndResetRelease __REL_(_interlockedbittestandreset)
+#define InterlockedBitTestAndResetNoFence __NF_(_interlockedbittestandreset)
+
+#ifdef _WIN64
+#define InterlockedBitTestAndSet64 _interlockedbittestandset64
+#define InterlockedBitTestAndSet64Acquire __ACQ_(_interlockedbittestandset64)
+#define InterlockedBitTestAndSet64Release __REL_(_interlockedbittestandset64)
+#define InterlockedBitTestAndSet64NoFence __NF_(_interlockedbittestandset64)
+
+#define InterlockedBitTestAndReset64 _interlockedbittestandreset64
+#define InterlockedBitTestAndReset64Acquire __ACQ_(_interlockedbittestandreset64)
+#define InterlockedBitTestAndReset64Release __REL_(_interlockedbittestandreset64)
+#define InterlockedBitTestAndReset64NoFence __NF_(_interlockedbittestandreset64)
+
+#define InterlockedBitTestAndSetPointer(ptr, val) \
+    InterlockedBitTestAndSet64((PLONGLONG)ptr, (LONGLONG)val)
+#define InterlockedAddPointer(ptr, val) InterlockedAdd64((PLONGLONG)ptr, (LONGLONG)val)
+#define InterlockedAndPointer(ptr, val) InterlockedAnd64((PLONGLONG)ptr, (LONGLONG)val)
+#define InterlockedOrPointer(ptr, val) InterlockedOr64((PLONGLONG)ptr, (LONGLONG)val)
+#else
+#define InterlockedBitTestAndSetPointer(ptr, val) \
+    InterlockedBitTestAndSet((PLONG)ptr, (LONG)val)
+#define InterlockedAddPointer(ptr, val) InterlockedAdd((PLONG)ptr, (LONG)val)
+#define InterlockedAndPointer(ptr, val) InterlockedAnd((PLONG)ptr, (LONG)val)
+#define InterlockedOrPointer(ptr, val) InterlockedOr((PLONG)ptr, (LONG)val)
+#endif /* _WIN64 */
+#endif /* _MSC_VER */
+
 #if defined(_M_IX86) || defined(_M_AMD64)
 
 /*

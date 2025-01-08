@@ -805,6 +805,15 @@ typedef struct _RTL_RESOURCE {
 #define RTL_RESOURCE_TYPE	1
 
 /*
+ * Slim Read/Write lock
+ */
+#define RTL_SRWLOCK_INIT {0}
+
+typedef struct _RTL_SRWLOCK {
+    PVOID Ptr;
+} RTL_SRWLOCK, *PRTL_SRWLOCK;
+
+/*
  * Trace Database
  */
 
@@ -1452,6 +1461,23 @@ NTAPI NTSYSAPI VOID RtlDumpResource(IN PRTL_RESOURCE Resource);
 NTAPI NTSYSAPI VOID RtlInitializeResource(IN PRTL_RESOURCE Resource);
 
 NTAPI NTSYSAPI VOID RtlReleaseResource(IN PRTL_RESOURCE Resource);
+
+/*
+ * Slim Read/Write lock functions
+ */
+NTAPI NTSYSAPI VOID RtlInitializeSRWLock(OUT PRTL_SRWLOCK SRWLock);
+
+NTAPI NTSYSAPI VOID RtlAcquireSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTAPI NTSYSAPI VOID RtlAcquireSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTAPI NTSYSAPI VOID RtlReleaseSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTAPI NTSYSAPI VOID RtlReleaseSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTAPI NTSYSAPI BOOLEAN RtlTryAcquireSRWLockShared(PRTL_SRWLOCK SRWLock);
+
+NTAPI NTSYSAPI BOOLEAN RtlTryAcquireSRWLockExclusive(PRTL_SRWLOCK SRWLock);
 
 /*
  * Memory functions

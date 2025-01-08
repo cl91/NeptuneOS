@@ -36,19 +36,13 @@
 #define STDAPICALLTYPE		__stdcall
 
 #define DECLSPEC_IMPORT		__declspec(dllimport)
-#define DECLSPEC_NORETURN	__declspec(noreturn)
 
-#ifdef _MSC_VER
-#define DECLSPEC_ALIGN(x)	__declspec(align(x))
-#define DECLSPEC_DEPRECATED	__declspec(deprecated)
-#define DEPRECATED(x)		__declspec(deprecated(x))
-#define FORCEINLINE		__forceinline
-#else
-#define DECLSPEC_ALIGN(x)	__attribute__((aligned(x)))
+#define DECLSPEC_NORETURN	__attribute__((noreturn))
 #define DECLSPEC_DEPRECATED	__attribute__((deprecated))
 #define DEPRECATED(x)		__attribute__((deprecated(x)))
 #define FORCEINLINE		static inline __attribute__((always_inline))
-#endif
+#define __ALIGNED(x)		__attribute__((aligned(x)))
+#define DECLSPEC_ALIGN(x)	__ALIGNED(x)
 
 #if defined(_AMD64_) || defined(_X86_)
 #define SYSTEM_CACHE_ALIGNMENT_SIZE 64

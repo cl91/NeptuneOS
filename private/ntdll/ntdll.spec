@@ -80,6 +80,7 @@
 @ stdcall RtlInitializeSListHead(ptr)
 @ stdcall RtlPcToFileHeader(ptr ptr)
 @ cdecl -arch=x86_64 RtlRestoreContext(ptr ptr)
+@ stdcall -arch=x86_64 RtlGetFunctionTableListHead()
 @ stdcall RtlInitAnsiString(ptr str)
 @ stdcall RtlInitAnsiStringEx(ptr str)
 @ stdcall RtlAllocateHeap(ptr long ptr)
