@@ -472,6 +472,80 @@ typedef LONG (NTAPI *PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS ExceptionP
 #define CONTROL_C_EXIT				STATUS_CONTROL_C_EXIT
 
 /*
+ * Data structures for table-based structured exception handling
+ */
+#ifndef _M_IX86
+
+#define UNW_FLAG_NHANDLER 0x0
+#define UNW_FLAG_EHANDLER 0x1
+#define UNW_FLAG_UHANDLER 0x2
+
+typedef PRUNTIME_FUNCTION GET_RUNTIME_FUNCTION_CALLBACK(IN DWORD64 ControlPc,
+							IN OPTIONAL PVOID Context);
+typedef GET_RUNTIME_FUNCTION_CALLBACK *PGET_RUNTIME_FUNCTION_CALLBACK;
+
+#define UNWIND_HISTORY_TABLE_SIZE 12
+
+typedef struct _UNWIND_HISTORY_TABLE_ENTRY {
+    ULONG64 ImageBase;
+    PRUNTIME_FUNCTION FunctionEntry;
+} UNWIND_HISTORY_TABLE_ENTRY, *PUNWIND_HISTORY_TABLE_ENTRY;
+
+#define UNWIND_HISTORY_TABLE_NONE 0
+#define UNWIND_HISTORY_TABLE_GLOBAL 1
+#define UNWIND_HISTORY_TABLE_LOCAL 2
+
+typedef struct _UNWIND_HISTORY_TABLE {
+    ULONG Count;
+    BYTE  LocalHint;
+    BYTE  GlobalHint;
+    BYTE  Search;
+    BYTE  Once;
+    ULONG64 LowAddress;
+    ULONG64 HighAddress;
+    UNWIND_HISTORY_TABLE_ENTRY Entry[UNWIND_HISTORY_TABLE_SIZE];
+} UNWIND_HISTORY_TABLE, *PUNWIND_HISTORY_TABLE;
+
+typedef struct _DISPATCHER_CONTEXT {
+    ULONG64 ControlPc;
+    ULONG64 ImageBase;
+    PRUNTIME_FUNCTION FunctionEntry;
+    ULONG64 EstablisherFrame;
+    ULONG64 TargetIp;
+    PCONTEXT ContextRecord;
+    PEXCEPTION_ROUTINE LanguageHandler;
+    PVOID HandlerData;
+    struct _UNWIND_HISTORY_TABLE *HistoryTable;
+    ULONG ScopeIndex;
+#ifdef _M_AMD64
+    ULONG Fill0;
+#elif defined(_M_ARM64)
+    BOOLEAN ControlPcIsUnwound;
+    PBYTE NonVolatileRegisters;
+#else
+#error "Unsupported architecture"
+#endif
+} DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
+
+typedef struct _SCOPE_TABLE {
+    ULONG Count;
+    struct {
+        ULONG BeginAddress;
+        ULONG EndAddress;
+        ULONG HandlerAddress;
+        ULONG JumpTarget;
+    } ScopeRecord[1];
+} SCOPE_TABLE, *PSCOPE_TABLE;
+
+typedef LONG (*PEXCEPTION_FILTER)(PEXCEPTION_POINTERS ExceptionPointers,
+				  PVOID EstablisherFrame);
+
+typedef VOID (*PTERMINATION_HANDLER)(BOOLEAN TerminationIsAbnormal,
+				     PVOID EstablisherFrame);
+
+#endif	/* !defined(_M_IX86) */
+
+/*
  * Thread local storage slots
  */
 #define TLS_MINIMUM_AVAILABLE 64
@@ -1380,7 +1454,7 @@ NTAPI NTSYSAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 			      IN PEXCEPTION_RECORD ExceptionRecord OPTIONAL,
 			      IN PVOID ReturnValue);
 
-#ifdef _M_AMD64
+#ifndef _M_IX86
 NTAPI NTSYSAPI VOID RtlUnwindEx(IN PVOID TargetFrame OPTIONAL,
 				IN PVOID TargetIp OPTIONAL,
 				IN PEXCEPTION_RECORD ExceptionRecord OPTIONAL,
@@ -1390,6 +1464,19 @@ NTAPI NTSYSAPI VOID RtlUnwindEx(IN PVOID TargetFrame OPTIONAL,
 
 NTAPI NTSYSAPI VOID RtlRestoreContext(IN PCONTEXT ContextRecord,
 				      OUT OPTIONAL PEXCEPTION_RECORD ExceptionRecord);
+
+NTAPI NTSYSAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(IN DWORD64 ControlPc,
+							OUT PDWORD64 ImageBase,
+							IN OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable);
+
+NTAPI NTSYSAPI PEXCEPTION_ROUTINE RtlVirtualUnwind(IN ULONG HandlerType,
+						   IN ULONG64 ImageBase,
+						   IN ULONG64 ControlPc,
+						   IN PRUNTIME_FUNCTION FunctionEntry,
+						   IN OUT PCONTEXT Context,
+						   OUT PVOID *HandlerData,
+						   OUT PULONG64 EstablisherFrame,
+						   IN OUT OPTIONAL PKNONVOLATILE_CONTEXT_POINTERS ContextPointers);
 #endif
 
 NTAPI NTSYSAPI PVOID RtlPcToFileHeader(IN PVOID PcValue,

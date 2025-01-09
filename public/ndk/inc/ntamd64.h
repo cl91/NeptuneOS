@@ -122,16 +122,6 @@ typedef struct _KNONVOLATILE_CONTEXT_POINTERS {
     };
 } KNONVOLATILE_CONTEXT_POINTERS, *PKNONVOLATILE_CONTEXT_POINTERS;
 
-struct _EXCEPTION_POINTERS;
-typedef LONG (*PEXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *ExceptionPointers,
-				  PVOID EstablisherFrame);
-
-typedef VOID (*PTERMINATION_HANDLER)(BOOLEAN AbnormalTermination,
-				     PVOID EstablisherFrame);
-
-#define UNW_FLAG_NHANDLER 0x0
-#define UNW_FLAG_EHANDLER 0x1
-#define UNW_FLAG_UHANDLER 0x2
 #define UNW_FLAG_CHAININFO 0x4
 #define UNW_FLAG_NO_EPILOGUE  0x80000000UL
 
@@ -142,56 +132,6 @@ typedef struct _RUNTIME_FUNCTION {
     ULONG EndAddress;
     ULONG UnwindData;
 } RUNTIME_FUNCTION, *PRUNTIME_FUNCTION;
-
-typedef PRUNTIME_FUNCTION GET_RUNTIME_FUNCTION_CALLBACK(IN DWORD64 ControlPc,
-							IN OPTIONAL PVOID Context);
-typedef GET_RUNTIME_FUNCTION_CALLBACK *PGET_RUNTIME_FUNCTION_CALLBACK;
-
-#define UNWIND_HISTORY_TABLE_SIZE 12
-
-typedef struct _UNWIND_HISTORY_TABLE_ENTRY {
-    ULONG64 ImageBase;
-    PRUNTIME_FUNCTION FunctionEntry;
-} UNWIND_HISTORY_TABLE_ENTRY, *PUNWIND_HISTORY_TABLE_ENTRY;
-
-#define UNWIND_HISTORY_TABLE_NONE 0
-#define UNWIND_HISTORY_TABLE_GLOBAL 1
-#define UNWIND_HISTORY_TABLE_LOCAL 2
-
-typedef struct _UNWIND_HISTORY_TABLE {
-    ULONG Count;
-    BYTE  LocalHint;
-    BYTE  GlobalHint;
-    BYTE  Search;
-    BYTE  Once;
-    ULONG64 LowAddress;
-    ULONG64 HighAddress;
-    UNWIND_HISTORY_TABLE_ENTRY Entry[UNWIND_HISTORY_TABLE_SIZE];
-} UNWIND_HISTORY_TABLE, *PUNWIND_HISTORY_TABLE;
-
-typedef struct _DISPATCHER_CONTEXT {
-    ULONG64 ControlPc;
-    ULONG64 ImageBase;
-    struct _RUNTIME_FUNCTION *FunctionEntry;
-    ULONG64 EstablisherFrame;
-    ULONG64 TargetIp;
-    PCONTEXT ContextRecord;
-    PEXCEPTION_ROUTINE LanguageHandler;
-    PVOID HandlerData;
-    struct _UNWIND_HISTORY_TABLE *HistoryTable;
-    ULONG ScopeIndex;
-    ULONG Fill0;
-} DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
-
-typedef struct _SCOPE_TABLE {
-    ULONG Count;
-    struct {
-        ULONG BeginAddress;
-        ULONG EndAddress;
-        ULONG HandlerAddress;
-        ULONG JumpTarget;
-    } ScopeRecord[1];
-} SCOPE_TABLE, *PSCOPE_TABLE;
 
 #define CONTEXT_AMD64 0x100000
 

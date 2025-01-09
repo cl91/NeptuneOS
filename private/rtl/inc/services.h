@@ -101,6 +101,7 @@ typedef seL4_Word MWORD;
 #define NTDLL_LOADER_HEAP_COMMIT	(4 * PAGE_SIZE)
 
 #ifdef _M_IX86
+#define RETURN_VALUE		Eax
 #define INSTRUCTION_POINTER	Eip
 #define STACK_POINTER		Esp
 #define FASTCALL_FIRST_PARAM	Ecx
@@ -110,6 +111,7 @@ typedef seL4_Word MWORD;
 #define _FASTCALL_FIRST_PARAM	ecx
 #define _FASTCALL_SECOND_PARAM	edx
 #elif defined(_M_AMD64)
+#define RETURN_VALUE		Rax
 #define INSTRUCTION_POINTER	Rip
 #define STACK_POINTER		Rsp
 #define FASTCALL_FIRST_PARAM	Rcx
@@ -119,6 +121,7 @@ typedef seL4_Word MWORD;
 #define _FASTCALL_FIRST_PARAM	rcx
 #define _FASTCALL_SECOND_PARAM	rdx
 #elif defined(_M_ARM64)
+#define RETURN_VALUE		X0
 #define INSTRUCTION_POINTER	Pc
 #define STACK_POINTER		Sp
 #define FASTCALL_FIRST_PARAM	X0

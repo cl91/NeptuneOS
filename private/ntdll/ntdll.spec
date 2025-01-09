@@ -211,9 +211,8 @@
 @ cdecl -arch=i386 -ret64 _aullrem(double double)
 @ cdecl -arch=i386 _aullshr()
 @ cdecl -arch=i386 _except_handler3(ptr ptr ptr ptr)
-@ cdecl -arch=x86_64 __C_specific_handler(ptr long ptr ptr)
+@ cdecl -arch=x86_64,arm64 __C_specific_handler(ptr long ptr ptr)
 @ cdecl _assert(str str long)
-@ cdecl -arch=x86_64 __chkstk()
+@ cdecl -arch=x86_64,arm64 __chkstk()
 @ extern -arch=i386 _chkstk
 @ extern RtlpDbgTraceModuleName
-@ extern KiUserExceptionDispatcher

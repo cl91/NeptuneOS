@@ -123,3 +123,26 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 /* nls.c */
 WCHAR RtlpUpcaseUnicodeChar(IN WCHAR Source);
 WCHAR RtlpDowncaseUnicodeChar(IN WCHAR Source);
+
+#ifndef _M_IX86
+/* dynfntbl.c */
+PRUNTIME_FUNCTION RtlpLookupDynamicFunctionEntry(IN DWORD64 ControlPc,
+						 OUT PDWORD64 ImageBase,
+						 IN PUNWIND_HISTORY_TABLE HistoryTable);
+
+/* unwind.c */
+BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
+			   IN OPTIONAL PVOID TargetIp,
+			   IN PEXCEPTION_RECORD ExceptionRecord,
+			   IN PVOID ReturnValue,
+			   IN PCONTEXT ContextRecord,
+			   IN OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable,
+			   IN ULONG HandlerType);
+
+/* arch/unwind.c */
+PRUNTIME_FUNCTION RtlpLookupFunctionEntry(IN ULONG64 ControlPc,
+					  IN ULONG64 ImageBase,
+					  IN PRUNTIME_FUNCTION FunctionTable,
+					  IN ULONG TableLength,
+					  OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable);
+#endif

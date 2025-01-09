@@ -1,18 +1,13 @@
 /*
  * PROJECT:     ReactOS CRT library
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     C specific exception/unwind handler for AMD64
+ * PURPOSE:     C specific exception/unwind handler for AMD64 and ARM64
  * COPYRIGHT:   Copyright 2018-2021 Timo Kreuzer <timo.kreuzer@reactos.org>
 */
 
-#include "../rtlp.h"
+#include "rtlp.h"
 
-/* Change this to 1 to disable debug trace */
-#if 0
-#undef DbgTrace
-#define DbgTrace(...)
-#define RtlpDumpContext(...)
-#endif
+#ifndef _M_IX86
 
 VOID RtlpDumpDispatcherContext(IN PDISPATCHER_CONTEXT DispatcherContext)
 {
@@ -81,8 +76,17 @@ EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
     ULONG64 ImageBase = (ULONG64)DispatcherContext->ImageBase;
 
     /* Get the image base relative instruction pointers */
-    ULONG64 IpOffset = DispatcherContext->ControlPc - ImageBase;
-    ULONG64 TargetIpOffset = DispatcherContext->TargetIp - ImageBase;
+    ULONG64 ControlPc = DispatcherContext->ControlPc - ImageBase;
+    ULONG64 TargetIp = DispatcherContext->TargetIp - ImageBase;
+
+#ifdef _M_ARM64
+    /* If ControlPcIsUnwound is set, ControlPc points to a return address.
+     * Move ControlPc back by one instruction so it points to the original scope. */
+    if (DispatcherContext->ControlPcIsUnwound) {
+	ControlPc -= 4;
+    }
+    LONG __C_ExecuteExceptionFilter(PVOID, PVOID, PVOID, PVOID);
+#endif
 
     /* Get the scope table and current index */
     PSCOPE_TABLE ScopeTable = (PSCOPE_TABLE)DispatcherContext->HandlerData;
@@ -97,10 +101,10 @@ EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
 	ULONG BeginAddress = ScopeTable->ScopeRecord[i].BeginAddress;
 	ULONG EndAddress = ScopeTable->ScopeRecord[i].EndAddress;
 	DbgTrace("IpOffset 0x%llx BeginAddress 0x%x EndAddress 0x%x\n",
-		 IpOffset, BeginAddress, EndAddress);
+		 ControlPc, BeginAddress, EndAddress);
 
 	/* Skip this scope if we are not within the bounds */
-	if ((IpOffset < BeginAddress) || (IpOffset >= EndAddress)) {
+	if ((ControlPc < BeginAddress) || (ControlPc >= EndAddress)) {
 	    continue;
 	}
 
@@ -110,7 +114,7 @@ EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
 	    /* Check if this is a target unwind */
 	    if (ExceptionRecord->ExceptionFlags & EXCEPTION_TARGET_UNWIND) {
 		/* Check if the target is within the scope itself */
-		if ((TargetIpOffset >= BeginAddress) && (TargetIpOffset < EndAddress)) {
+		if ((TargetIp >= BeginAddress) && (TargetIp < EndAddress)) {
 		    return ExceptionContinueSearch;
 		}
 	    }
@@ -120,8 +124,16 @@ EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
 		/* Call the handler */
 		ULONG Handler = ScopeTable->ScopeRecord[i].HandlerAddress;
 		PTERMINATION_HANDLER TerminationHandler = (PTERMINATION_HANDLER)(ImageBase + Handler);
+#ifdef _M_AMD64
 		TerminationHandler(TRUE, EstablisherFrame);
-	    } else if (ScopeTable->ScopeRecord[i].JumpTarget == TargetIpOffset) {
+#elif defined(_M_ARM64)
+		__C_ExecuteExceptionFilter(ULongToPtr(TRUE),
+					   EstablisherFrame, TerminationHandler,
+					   DispatcherContext->NonVolatileRegisters);
+#else
+#error "Unsupported architecture"
+#endif
+	    } else if (ScopeTable->ScopeRecord[i].JumpTarget == TargetIp) {
 		return ExceptionContinueSearch;
 	    }
 	} else {
@@ -143,7 +155,15 @@ EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
 	    } else {
 		/* Otherwise we need to call the handler */
 		PEXCEPTION_FILTER ExceptionFilter = (PEXCEPTION_FILTER)(ImageBase + Handler);
+#ifdef _M_AMD64
 		FilterResult = ExceptionFilter(&ExceptionPointers, EstablisherFrame);
+#elif defined(_M_ARM64)
+		FilterResult = __C_ExecuteExceptionFilter(&ExceptionPointers,
+							  EstablisherFrame, ExceptionFilter,
+							  DispatcherContext->NonVolatileRegisters);
+#else
+#error "Unsupported architecture"
+#endif
 	    }
 	    DbgTrace("FilterResult is %d\n", FilterResult);
 
@@ -183,3 +203,5 @@ void _local_unwind(void *frame, void *target)
 {
     RtlUnwind(frame, target, NULL, 0);
 }
+
+#endif

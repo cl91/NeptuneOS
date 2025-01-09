@@ -9,10 +9,6 @@
 
 #include "../rtlp.h"
 
-#define UNWIND_HISTORY_TABLE_NONE 0
-#define UNWIND_HISTORY_TABLE_GLOBAL 1
-#define UNWIND_HISTORY_TABLE_LOCAL 2
-
 #define UWOP_PUSH_NONVOL 0
 #define UWOP_ALLOC_LARGE 1
 #define UWOP_ALLOC_SMALL 2
@@ -25,24 +21,22 @@
 #define UWOP_SAVE_XMM128_FAR 9
 #define UWOP_PUSH_MACHFRAME 10
 
-typedef unsigned char UBYTE;
-
 typedef union _UNWIND_CODE {
     struct {
-	UBYTE CodeOffset;
-	UBYTE UnwindOp : 4;
-	UBYTE OpInfo : 4;
+	UCHAR CodeOffset;
+	UCHAR UnwindOp : 4;
+	UCHAR OpInfo : 4;
     };
     USHORT FrameOffset;
 } UNWIND_CODE, *PUNWIND_CODE;
 
 typedef struct _UNWIND_INFO {
-    UBYTE Version : 3;
-    UBYTE Flags : 5;
-    UBYTE SizeOfProlog;
-    UBYTE CountOfCodes;
-    UBYTE FrameRegister : 4;
-    UBYTE FrameOffset : 4;
+    UCHAR Version : 3;
+    UCHAR Flags : 5;
+    UCHAR SizeOfProlog;
+    UCHAR CountOfCodes;
+    UCHAR FrameRegister : 4;
+    UCHAR FrameOffset : 4;
     UNWIND_CODE UnwindCode[1];
 /*    union {
       OPTIONAL ULONG ExceptionHandler;
@@ -54,73 +48,14 @@ typedef struct _UNWIND_INFO {
 
 /* FUNCTIONS *****************************************************************/
 
-/*
- *! RtlLookupFunctionTable
- *
- * \brief Locates the table of RUNTIME_FUNCTION entries for a code address.
- * \param ControlPc
- *            Address of the code, for which the table should be searched.
- * \param ImageBase
- *            Pointer to a ULONG64 that receives the base address of the
- *            corresponding executable image.
- * \param Length
- *            Pointer to an ULONG that receives the number of table entries
- *            present in the table.
- */
-NTAPI PRUNTIME_FUNCTION RtlLookupFunctionTable(IN ULONG64 ControlPc,
-					       OUT PULONG64 ImageBase,
-					       OUT PULONG Length)
+PRUNTIME_FUNCTION RtlpLookupFunctionEntry(IN ULONG64 ControlPc,
+					  IN ULONG64 ImageBase,
+					  IN PRUNTIME_FUNCTION FunctionTable,
+					  IN ULONG TableLength,
+					  OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable)
 {
-    ULONG Size;
-
-    /* Find corresponding file header from code address */
-    if (!RtlPcToFileHeader((PVOID)ControlPc, (PVOID *)ImageBase)) {
-	/* Nothing found */
-	return NULL;
-    }
-
-    /* Locate the exception directory */
-    PVOID Table = RtlImageDirectoryEntryToData((PVOID)(*ImageBase),
-					       TRUE,
-					       IMAGE_DIRECTORY_ENTRY_EXCEPTION,
-					       &Size);
-
-    /* Return the number of entries */
-    if (Length != NULL) {
-	*Length = Size / sizeof(RUNTIME_FUNCTION);
-    }
-
-    /* Return the address of the table */
-    return Table;
-}
-
-PRUNTIME_FUNCTION RtlpLookupDynamicFunctionEntry(IN DWORD64 ControlPc,
-						 OUT PDWORD64 ImageBase,
-						 IN PUNWIND_HISTORY_TABLE HistoryTable);
-
-/*
- *! RtlLookupFunctionEntry
- * \brief Locates the RUNTIME_FUNCTION entry corresponding to a code address.
- * \ref http://msdn.microsoft.com/en-us/library/ms680597(VS.85).aspx
- * \todo Implement HistoryTable
- */
-NTAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(IN ULONG64 ControlPc,
-					       OUT PULONG64 ImageBase,
-					       OUT OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable)
-{
-    /* Find the corresponding table */
-    ULONG TableLength;
-    PRUNTIME_FUNCTION FunctionTable = RtlLookupFunctionTable(ControlPc,
-							     ImageBase,
-							     &TableLength);
-
-    /* If no table is found, try dynamic function tables */
-    if (!FunctionTable) {
-        return RtlpLookupDynamicFunctionEntry(ControlPc, ImageBase, HistoryTable);
-    }
-
     /* Use relative virtual address */
-    ControlPc -= *ImageBase;
+    ControlPc -= ImageBase;
 
     /* Do a binary search */
     ULONG IndexLo = 0, IndexHi = TableLength;
@@ -350,7 +285,7 @@ static ULONG64 GetEstablisherFrame(IN PCONTEXT Context,
 	return Context->Rsp;
     }
 
-    if ((CodeOffset >= UnwindInfo->SizeOfProlog) || ((UnwindInfo->Flags & UNW_FLAG_CHAININFO) != 0)) {
+    if ((CodeOffset >= UnwindInfo->SizeOfProlog) || (UnwindInfo->Flags & UNW_FLAG_CHAININFO)) {
 	return GetReg(Context, UnwindInfo->FrameRegister) - UnwindInfo->FrameOffset * 16;
     }
 
@@ -534,344 +469,6 @@ Exit:
     }
 
     return NULL;
-}
-
-/*!
-  \remark The implementation is based on the description in this blog: http://www.nynaeve.net/?p=106
-
-  Differences to the desciption:
-  - Instead of using 2 pointers to the unwind context and previous context,
-  that are being swapped and the context copied, the unwind context is
-  kept in the local context and copied back into the context passed in
-  by the caller.
-
-  \see http://www.nynaeve.net/?p=106
-*/
-BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
-			   IN OPTIONAL PVOID TargetIp,
-			   IN PEXCEPTION_RECORD ExceptionRecord,
-			   IN PVOID ReturnValue,
-			   IN PCONTEXT ContextRecord,
-			   IN OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable,
-			   IN ULONG HandlerType)
-{
-    DbgTrace("Unwinding target IP %p target frame %p with context\n",
-	     TargetIp, TargetFrame);
-    if (ContextRecord != NULL) {
-	RtlpDumpContext(ContextRecord);
-    }
-
-    /* If we have a target frame, then this is our high limit */
-    ULONG64 StackHigh = TargetFrame ? (ULONG64)TargetFrame + 1 : 0;
-
-    /* Copy the context */
-    CONTEXT UnwindContext = *ContextRecord;
-
-    /* Set up the constant fields of the dispatcher context */
-    DISPATCHER_CONTEXT DispatcherContext = {
-	.ContextRecord = ContextRecord,
-	.HistoryTable = HistoryTable,
-	.TargetIp = (ULONG64)TargetIp
-    };
-
-    /* Start looping */
-    while (TRUE){
-	ULONG64 ImageBase;
-	/* Lookup the FunctionEntry for the current RIP */
-	PRUNTIME_FUNCTION FunctionEntry = RtlLookupFunctionEntry(UnwindContext.Rip,
-								 &ImageBase,
-								 NULL);
-
-	if (FunctionEntry == NULL) {
-	    /*
-	     * No function entry, so this must be a leaf function, or a malformed PE
-	     * file. In the first case, pop the return address from the stack and
-	     * continue unwinding. In the case of a malformed PE file there isn't a
-	     * lot we can do here. If the stack pointer points to invalid memory
-	     * another exception will be generated and this can potentially lead to
-	     * an infinite recursion until the stack space of the thread is exhausted.
-	     */
-	    UnwindContext.Rip = ContextRecord->Rip = *(PULONG64)UnwindContext.Rsp;
-	    UnwindContext.Rsp = ContextRecord->Rsp += sizeof(ULONG64);
-	    DbgTrace("Got leaf function with new RIP %p and RSP %p\n",
-		     (PVOID)ContextRecord->Rip, (PVOID)ContextRecord->Rsp);
-	    continue;
-	}
-
-	/* Do a virtual unwind to get the next frame */
-	ULONG64 EstablisherFrame;
-	PEXCEPTION_ROUTINE ExceptionRoutine = RtlVirtualUnwind(HandlerType,
-							       ImageBase,
-							       UnwindContext.Rip,
-							       FunctionEntry,
-							       &UnwindContext,
-							       &DispatcherContext.HandlerData,
-							       &EstablisherFrame,
-							       NULL);
-	DbgTrace("ExceptionRoutine is %p. New context is\n", ExceptionRoutine);
-	RtlpDumpContext(&UnwindContext);
-
-	if (UnwindContext.Rip == 0) {
-	    DbgTrace("Hit user space entry point (Old RIP %p Old RSP %p New RSP %p). "
-		     "Stop unwinding.\n", (PVOID)ContextRecord->Rip,
-		     (PVOID)ContextRecord->Rsp, (PVOID)UnwindContext.Rsp);
-	    return FALSE;
-	}
-
-	/* Check if we are still within the stack boundaries */
-	if (!RtlpIsStackPtrOk((PVOID)EstablisherFrame) ||
-	    (StackHigh && EstablisherFrame >= StackHigh) || (EstablisherFrame & 7)) {
-	    /* If we are handling an exception, we are done here. */
-	    if (HandlerType == UNW_FLAG_EHANDLER) {
-		ExceptionRecord->ExceptionFlags |= EXCEPTION_STACK_INVALID;
-		return FALSE;
-	    }
-
-	    __debugbreak();
-	    RtlRaiseStatus(STATUS_BAD_STACK);
-	}
-
-	/* Check if we have an exception routine */
-	if (ExceptionRoutine != NULL) {
-	    /* Check if this is the target frame */
-	    if (EstablisherFrame == (ULONG64)TargetFrame) {
-		/* Set flag to inform the language handler */
-		ExceptionRecord->ExceptionFlags |= EXCEPTION_TARGET_UNWIND;
-	    }
-
-	    /* Set up the variable fields of the dispatcher context */
-	    DispatcherContext.ControlPc = ContextRecord->Rip;
-	    DispatcherContext.ImageBase = ImageBase;
-	    DispatcherContext.FunctionEntry = FunctionEntry;
-	    DispatcherContext.LanguageHandler = ExceptionRoutine;
-	    DispatcherContext.EstablisherFrame = EstablisherFrame;
-	    DispatcherContext.ScopeIndex = 0;
-
-	    /* Store the return value in the unwind context */
-	    UnwindContext.Rax = (ULONG64)ReturnValue;
-
-	    /* Loop all nested handlers */
-	    do {
-		/// TODO: call RtlpExecuteHandlerForUnwind instead
-		/* Call the language specific handler */
-		EXCEPTION_DISPOSITION Disposition = ExceptionRoutine(ExceptionRecord,
-								     (PVOID)EstablisherFrame,
-								     &UnwindContext,
-								     &DispatcherContext);
-		DbgTrace("Disposition is %d\n", Disposition);
-
-		/* Clear exception flags for the next iteration */
-		ExceptionRecord->ExceptionFlags &= ~(EXCEPTION_TARGET_UNWIND | EXCEPTION_COLLIDED_UNWIND);
-
-		/* Check if we do exception handling */
-		if (HandlerType == UNW_FLAG_EHANDLER) {
-		    if (Disposition == ExceptionContinueExecution) {
-			/* Check if it was non-continuable */
-			if (ExceptionRecord->ExceptionFlags & EXCEPTION_NONCONTINUABLE) {
-			    __debugbreak();
-			    RtlRaiseStatus(EXCEPTION_NONCONTINUABLE_EXCEPTION);
-			}
-
-			/* Execution continues */
-			return TRUE;
-		    } else if (Disposition == ExceptionNestedException) {
-			/// TODO
-			__debugbreak();
-		    }
-		}
-
-		if (Disposition == ExceptionCollidedUnwind) {
-		    /// TODO
-		    __debugbreak();
-		}
-
-		/* This must be ExceptionContinueSearch now */
-		if (Disposition != ExceptionContinueSearch) {
-		    __debugbreak();
-		    RtlRaiseStatus(STATUS_INVALID_DISPOSITION);
-		}
-	    } while (ExceptionRecord->ExceptionFlags & EXCEPTION_COLLIDED_UNWIND);
-	}
-
-	/* Check, if we have left our stack (8.) */
-	if (!RtlpIsStackPtrOk((PVOID)EstablisherFrame) ||
-	    (StackHigh && EstablisherFrame > StackHigh) || (EstablisherFrame & 7)) {
-	    __debugbreak();
-
-	    if (UnwindContext.Rip == ContextRecord->Rip) {
-		RtlRaiseStatus(STATUS_BAD_FUNCTION_TABLE);
-	    } else {
-		NtRaiseException(ExceptionRecord, ContextRecord, FALSE);
-	    }
-	}
-
-	if (EstablisherFrame == (ULONG64)TargetFrame) {
-	    break;
-	}
-
-	/* We have successfully unwound a frame. Copy the unwind context back. */
-	*ContextRecord = UnwindContext;
-    }
-
-    if (ExceptionRecord->ExceptionCode != STATUS_UNWIND_CONSOLIDATE) {
-	ContextRecord->Rip = (ULONG64)TargetIp;
-    }
-
-    /* Set the return value */
-    ContextRecord->Rax = (ULONG64)ReturnValue;
-
-    /* Restore the context */
-    DbgTrace("restoring context\n");
-    RtlpDumpContext(ContextRecord);
-    RtlRestoreContext(ContextRecord, ExceptionRecord);
-
-    /* Should never get here! */
-    ASSERT(FALSE);
-    return FALSE;
-}
-
-NTAPI VOID RtlUnwindEx(IN OPTIONAL PVOID TargetFrame,
-		       IN OPTIONAL PVOID TargetIp,
-		       IN OPTIONAL PEXCEPTION_RECORD ExceptionRecord,
-		       IN PVOID ReturnValue,
-		       IN PCONTEXT ContextRecord,
-		       IN OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable)
-{
-    DbgTrace("Unwinding target IP %p target frame %p with context\n",
-	     TargetIp, TargetFrame);
-    EXCEPTION_RECORD LocalExceptionRecord;
-
-    /* Capture the current context */
-    RtlCaptureContext(ContextRecord);
-    RtlpDumpContext(ContextRecord);
-
-    /* Check if we have an exception record */
-    if (ExceptionRecord == NULL) {
-	/* No exception record was passed, so set up a local one */
-	LocalExceptionRecord.ExceptionCode = STATUS_UNWIND;
-	LocalExceptionRecord.ExceptionAddress = (PVOID)ContextRecord->Rip;
-	LocalExceptionRecord.ExceptionRecord = NULL;
-	LocalExceptionRecord.NumberParameters = 0;
-	ExceptionRecord = &LocalExceptionRecord;
-    }
-
-    /* Let the langauge handlers know that we are unwinding (as opposed to
-     * dispatching exceptions). */
-    ExceptionRecord->ExceptionFlags = EXCEPTION_UNWINDING;
-    if (TargetFrame == NULL) {
-	ExceptionRecord->ExceptionFlags = EXCEPTION_EXIT_UNWIND;
-    }
-
-    /* Call the internal function */
-    RtlpUnwindInternal(TargetFrame, TargetIp, ExceptionRecord, ReturnValue,
-		       ContextRecord, HistoryTable, UNW_FLAG_UHANDLER);
-}
-
-NTAPI VOID RtlUnwind(IN PVOID TargetFrame,
-		     IN PVOID TargetIp,
-		     IN PEXCEPTION_RECORD ExceptionRecord,
-		     IN PVOID ReturnValue)
-{
-    CONTEXT Context;
-    memset(&Context, 0, sizeof(CONTEXT));
-    return RtlUnwindEx(TargetFrame, TargetIp, ExceptionRecord,
-		       ReturnValue, &Context, NULL);
-}
-
-NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
-			      IN ULONG Count,
-			      IN ULONG Flags)
-{
-    DPRINT("Enter RtlWalkFrameChain\n");
-
-    /* The upper bits in Flags define how many frames to skip */
-    ULONG FramesToSkip = Flags >> 8;
-
-    /* Capture the current Context */
-    CONTEXT Context;
-    RtlCaptureContext(&Context);
-    ULONG64 ControlPc = Context.Rip;
-
-    ULONG i;
-    __try {
-	/* Loop the frames */
-	for (i = 0; i < FramesToSkip + Count; i++) {
-	    ULONG64 ImageBase;
-	    /* Lookup the FunctionEntry for the current ControlPc */
-	    PRUNTIME_FUNCTION FunctionEntry = RtlLookupFunctionEntry(ControlPc,
-								     &ImageBase,
-								     NULL);
-
-	    /* Is this a leaf function? */
-	    if (!FunctionEntry) {
-		/* Either this is a leaf function/user space entry point. */
-		ULONG64 NewIp = *(PULONG64)Context.Rsp;
-		if (NewIp == 0) {
-		    /* This is a user space entry point. Stop unwinding. */
-		    break;
-		}
-		Context.Rip = NewIp;
-		Context.Rsp += sizeof(ULONG64);
-		DPRINT("leaf funtion, new Rip = %p, new Rsp = %p\n",
-		       (PVOID)Context.Rip, (PVOID)Context.Rsp);
-	    } else {
-		PVOID HandlerData;
-		ULONG64 EstablisherFrame;
-		RtlVirtualUnwind(UNW_FLAG_NHANDLER,
-				 ImageBase,
-				 ControlPc,
-				 FunctionEntry,
-				 &Context,
-				 &HandlerData, &EstablisherFrame, NULL);
-		DPRINT("normal funtion, new Rip = %p, new Rsp = %p\n",
-		       (PVOID)Context.Rip, (PVOID)Context.Rsp);
-	    }
-
-	    /* Check if we left the user range */
-	    if ((Context.Rip < 0x10000) || (Context.Rip > 0x000007FFFFFEFFFFULL)) {
-		break;
-	    }
-
-	    /* Check, if we have left our stack */
-	    if (!RtlpIsStackPtrOk((PVOID)Context.Rsp)) {
-		break;
-	    }
-
-	    /* Continue with new Rip */
-	    ControlPc = Context.Rip;
-
-	    /* Save value, if we are past the frames to skip */
-	    if (i >= FramesToSkip) {
-		Callers[i - FramesToSkip] = (PVOID)ControlPc;
-	    }
-	}
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-	DPRINT1("Exception while getting callers!\n");
-	i = 0;
-    }
-
-    DPRINT("RtlWalkFrameChain returns %d\n", i);
-    return i;
-}
-
-/*! RtlGetCallersAddress
- * \ref http://undocumented.ntinternals.net/UserMode/Undocumented%20Functions/Debug/RtlGetCallersAddress.html
- */
-#undef RtlGetCallersAddress
-NTAPI VOID RtlGetCallersAddress(OUT PVOID *CallersAddress,
-				OUT PVOID *CallersCaller)
-{
-    PVOID Callers[4];
-    ULONG Number;
-
-    /* Get callers:
-     * RtlWalkFrameChain -> RtlGetCallersAddress -> x -> y */
-    Number = RtlWalkFrameChain(Callers, 4, 0);
-
-    *CallersAddress = (Number >= 3) ? Callers[2] : NULL;
-    *CallersCaller = (Number == 4) ? Callers[3] : NULL;
-
-    return;
 }
 
 static VOID

@@ -19,7 +19,7 @@ typedef union NEON128 {
     UCHAR B[16];
 } NEON128, *PNEON128;
 
-typedef struct _CONTEXT {
+typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     //
     // Control flags.
     //
@@ -86,9 +86,90 @@ typedef struct _CONTEXT {
 } CONTEXT, *PCONTEXT;
 
 /* The following flags control the contents of the CONTEXT structure. */
-#define CONTEXT_ARM             0x200000L
-#define CONTEXT_CONTROL         (CONTEXT_ARM | 0x00000001L)
-#define CONTEXT_INTEGER         (CONTEXT_ARM | 0x00000002L)
-#define CONTEXT_FLOATING_POINT  (CONTEXT_ARM | 0x00000004L)
-#define CONTEXT_DEBUG_REGISTERS (CONTEXT_ARM | 0x00000008L)
-#define CONTEXT_FULL            (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+#define CONTEXT_ARM64           0x400000UL
+#define CONTEXT_CONTROL         (CONTEXT_ARM64 | 0x00000001UL)
+#define CONTEXT_INTEGER         (CONTEXT_ARM64 | 0x00000002UL)
+#define CONTEXT_FLOATING_POINT  (CONTEXT_ARM64 | 0x00000004UL)
+#define CONTEXT_DEBUG_REGISTERS (CONTEXT_ARM64 | 0x00000008UL)
+#define CONTEXT_ARM64_X18       (CONTEXT_ARM64 | 0x00000010UL)
+#define CONTEXT_FULL		(CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+#define CONTEXT_ALL		(CONTEXT_FULL | CONTEXT_DEBUG_REGISTERS | CONTEXT_ARM64_X18)
+#define CONTEXT_UNWOUND_TO_CALL 0x20000000UL
+
+typedef struct _RUNTIME_FUNCTION {
+    ULONG BeginAddress;
+    union {
+        ULONG UnwindData;
+        struct {
+            ULONG Flag : 2;
+            ULONG FunctionLength : 11;
+            ULONG RegF : 3;
+            ULONG RegI : 4;
+            ULONG H : 1;
+            ULONG CR : 2;
+            ULONG FrameSize : 9;
+        };
+    };
+} RUNTIME_FUNCTION, *PRUNTIME_FUNCTION;
+
+typedef union RUNTIME_FUNCTION_XDATA {
+    ULONG HeaderData;
+    struct {
+        ULONG FunctionLength : 18;
+        ULONG Version : 2;
+        ULONG ExceptionDataPresent : 1;
+        ULONG EpilogInHeader : 1;
+        ULONG EpilogCount : 5;
+        ULONG CodeWords : 5;
+    };
+} RUNTIME_FUNCTION_XDATA, *PRUNTIME_FUNCTION_XDATA;
+
+typedef enum ARM64_FNPDATA_FLAGS {
+    PdataRefToFullXdata = 0,
+    PdataPackedUnwindFunction = 1,
+    PdataPackedUnwindFragment = 2,
+} ARM64_FNPDATA_FLAGS;
+
+typedef enum ARM64_FNPDATA_CR {
+    PdataCrUnchained = 0,
+    PdataCrUnchainedSavedLr = 1,
+    PdataCrChainedWithPac = 2,
+    PdataCrChained = 3,
+} ARM64_FNPDATA_CR;
+
+typedef struct _KNONVOLATILE_CONTEXT_POINTERS {
+    PULONG64 X19;
+    PULONG64 X20;
+    PULONG64 X21;
+    PULONG64 X22;
+    PULONG64 X23;
+    PULONG64 X24;
+    PULONG64 X25;
+    PULONG64 X26;
+    PULONG64 X27;
+    PULONG64 X28;
+    PULONG64 Fp;
+    PULONG64 Lr;
+    PULONG64 D8;
+    PULONG64 D9;
+    PULONG64 D10;
+    PULONG64 D11;
+    PULONG64 D12;
+    PULONG64 D13;
+    PULONG64 D14;
+    PULONG64 D15;
+} KNONVOLATILE_CONTEXT_POINTERS, *PKNONVOLATILE_CONTEXT_POINTERS;
+
+#define NONVOL_INT_NUMREG_ARM64 11
+#define NONVOL_FP_NUMREG_ARM64  8
+
+#define NONVOL_INT_SIZE_ARM64 (NONVOL_INT_NUMREG_ARM64 * sizeof(ULONG64))
+#define NONVOL_FP_SIZE_ARM64  (NONVOL_FP_NUMREG_ARM64 * sizeof(double))
+
+typedef union _DISPATCHER_CONTEXT_NONVOLREG_ARM64 {
+    BYTE Buffer[NONVOL_INT_SIZE_ARM64 + NONVOL_FP_SIZE_ARM64];
+    struct {
+        DWORD64 GpNvRegs[NONVOL_INT_NUMREG_ARM64];
+        double  FpNvRegs[NONVOL_FP_NUMREG_ARM64];
+    };
+} DISPATCHER_CONTEXT_NONVOLREG_ARM64;

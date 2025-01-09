@@ -5,15 +5,17 @@
  * COPYRIGHT:   Copyright 2022 Timo Kreuzer (timo.kreuzer@reactos.org)
  */
 
-#include "../rtlp.h"
+#include "rtlp.h"
+
+#ifndef _M_IX86
 
 #define TAG_RTLDYNFNTBL 'tfDP'
 
-typedef PRUNTIME_FUNCTION GET_RUNTIME_FUNCTION_CALLBACK(IN DWORD64 ControlPc,
+typedef PRUNTIME_FUNCTION GET_RUNTIME_FUNCTION_CALLBACK(IN ULONG64 ControlPc,
 							IN OPTIONAL PVOID Context);
 typedef GET_RUNTIME_FUNCTION_CALLBACK *PGET_RUNTIME_FUNCTION_CALLBACK;
 
-typedef DWORD OUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK(IN HANDLE Process,
+typedef ULONG OUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK(IN HANDLE Process,
 						     IN PVOID TableAddress,
 						     OUT PULONG Entries,
 						     OUT PRUNTIME_FUNCTION *Functions);
@@ -87,8 +89,8 @@ static VOID RtlpInsertDynamicFunctionTable(PDYNAMIC_FUNCTION_TABLE DynamicTable)
 }
 
 NTAPI BOOLEAN RtlAddFunctionTable(IN PRUNTIME_FUNCTION FunctionTable,
-				  IN DWORD EntryCount,
-				  IN DWORD64 BaseAddress)
+				  IN ULONG EntryCount,
+				  IN ULONG64 BaseAddress)
 {
     PDYNAMIC_FUNCTION_TABLE DynamicTable;
 
@@ -107,14 +109,20 @@ NTAPI BOOLEAN RtlAddFunctionTable(IN PRUNTIME_FUNCTION FunctionTable,
     DynamicTable->Context = NULL;
     DynamicTable->Type = RF_UNSORTED;
 
-    /* Loop all entries to find the margins */
-    DynamicTable->MinimumAddress = ULONG64_MAX;
-    DynamicTable->MaximumAddress = 0;
-    for (ULONG i = 0; i < EntryCount; i++) {
-	DynamicTable->MinimumAddress = min(DynamicTable->MinimumAddress,
-					   FunctionTable[i].BeginAddress);
-	DynamicTable->MaximumAddress = max(DynamicTable->MaximumAddress,
-					   FunctionTable[i].EndAddress);
+    /* The function table supplied by the user is assumed to be sorted, so compute
+     * the end address using this assumption. */
+    if (EntryCount) {
+	DynamicTable->MinimumAddress = FunctionTable[0].BeginAddress;
+#ifdef _M_AMD64
+	DynamicTable->MaximumAddress = FunctionTable[EntryCount-1].EndAddress;
+#elif defined(_M_ARM64)
+        PRUNTIME_FUNCTION LastEntry = &FunctionTable[EntryCount-1];
+        ULONG FunctionLength = LastEntry->Flag ? LastEntry->FunctionLength :
+            ((PRUNTIME_FUNCTION_XDATA)(BaseAddress + LastEntry->UnwindData))->FunctionLength;
+        DynamicTable->MaximumAddress = LastEntry->BeginAddress + 4 * FunctionLength;
+#else
+#error "Unsupported architecture"
+#endif
     }
 
     /* Insert the table into the list */
@@ -123,9 +131,9 @@ NTAPI BOOLEAN RtlAddFunctionTable(IN PRUNTIME_FUNCTION FunctionTable,
     return TRUE;
 }
 
-NTAPI BOOLEAN RtlInstallFunctionTableCallback(IN DWORD64 TableIdentifier,
-					      IN DWORD64 BaseAddress,
-					      IN DWORD Length,
+NTAPI BOOLEAN RtlInstallFunctionTableCallback(IN ULONG64 TableIdentifier,
+					      IN ULONG64 BaseAddress,
+					      IN ULONG Length,
 					      IN PGET_RUNTIME_FUNCTION_CALLBACK Callback,
 					      IN PVOID Context,
 					      IN OPTIONAL PCWSTR OutOfProcessCallbackDll)
@@ -210,44 +218,40 @@ NTAPI BOOLEAN RtlDeleteFunctionTable(IN PRUNTIME_FUNCTION FunctionTable)
     return Removed;
 }
 
-NTAPI PRUNTIME_FUNCTION RtlpLookupDynamicFunctionEntry(IN DWORD64 ControlPc,
-						       OUT PDWORD64 ImageBase,
+NTAPI PRUNTIME_FUNCTION RtlpLookupDynamicFunctionEntry(IN ULONG64 ControlPc,
+						       OUT PULONG64 ImageBase,
 						       IN PUNWIND_HISTORY_TABLE HistoryTable)
 {
-    PLIST_ENTRY ListLink;
-    PDYNAMIC_FUNCTION_TABLE DynamicTable;
-    PRUNTIME_FUNCTION FunctionTable, FoundEntry = NULL;
-    PGET_RUNTIME_FUNCTION_CALLBACK Callback;
+    PRUNTIME_FUNCTION FoundEntry = NULL;
 
     AcquireDynamicFunctionTableLockShared();
 
     /* Loop all tables to find the one matching ControlPc */
-    for (ListLink = RtlpDynamicFunctionTableList.Flink;
+    for (PLIST_ENTRY ListLink = RtlpDynamicFunctionTableList.Flink;
 	 ListLink != &RtlpDynamicFunctionTableList; ListLink = ListLink->Flink) {
-	DynamicTable = CONTAINING_RECORD(ListLink, DYNAMIC_FUNCTION_TABLE, ListEntry);
+	PDYNAMIC_FUNCTION_TABLE DynamicTable = CONTAINING_RECORD(ListLink,
+								 DYNAMIC_FUNCTION_TABLE,
+								 ListEntry);
 
 	if ((ControlPc >= DynamicTable->MinimumAddress) &&
 	    (ControlPc < DynamicTable->MaximumAddress)) {
 	    /* Check if there is a callback */
-	    Callback = DynamicTable->Callback;
+	    PGET_RUNTIME_FUNCTION_CALLBACK Callback = DynamicTable->Callback;
 	    if (Callback != NULL) {
-		PVOID context = DynamicTable->Context;
+		PVOID Context = DynamicTable->Context;
 
 		*ImageBase = DynamicTable->BaseAddress;
 		ReleaseDynamicFunctionTableLockShared();
-		return Callback(ControlPc, context);
+		return Callback(ControlPc, Context);
 	    }
 
 	    /* Loop all entries in the function table */
-	    FunctionTable = DynamicTable->FunctionTable;
-	    for (ULONG i = 0; i < DynamicTable->EntryCount; i++) {
-		/* Check if this entry contains the address */
-		if ((ControlPc >= FunctionTable[i].BeginAddress) &&
-		    (ControlPc < FunctionTable[i].EndAddress)) {
-		    FoundEntry = &FunctionTable[i];
-		    *ImageBase = DynamicTable->BaseAddress;
-		    goto Exit;
-		}
+	    FoundEntry = RtlpLookupFunctionEntry(ControlPc, DynamicTable->BaseAddress,
+						 DynamicTable->FunctionTable,
+						 DynamicTable->EntryCount, NULL);
+	    if (FoundEntry) {
+		*ImageBase = DynamicTable->BaseAddress;
+		goto Exit;
 	    }
 	}
     }
@@ -257,3 +261,5 @@ Exit:
 
     return FoundEntry;
 }
+
+#endif

@@ -19,51 +19,6 @@ PRTLP_UNHANDLED_EXCEPTION_FILTER RtlpUnhandledExceptionFilter;
 
 /* FUNCTIONS ***************************************************************/
 
-#ifdef _M_AMD64
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Winfinite-recursion"
-
-/*
- * @implemented
- */
-NTAPI VOID RtlRaiseStatus(IN NTSTATUS Status)
-{
-    EXCEPTION_RECORD ExceptionRecord;
-    CONTEXT Context;
-
-    /* Capture the context */
-    RtlCaptureContext(&Context);
-
-    /* Create an exception record */
-    ExceptionRecord.ExceptionAddress = _ReturnAddress();
-    ExceptionRecord.ExceptionCode = Status;
-    ExceptionRecord.ExceptionRecord = NULL;
-    ExceptionRecord.NumberParameters = 0;
-    ExceptionRecord.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
-
-    /* Write the context flag */
-    Context.ContextFlags = CONTEXT_FULL;
-
-    /* Check if user mode debugger is active */
-    if (RtlpCheckForActiveDebugger()) {
-	/* Raise an exception immediately */
-	NtRaiseException(&ExceptionRecord, &Context, TRUE);
-    } else {
-	/* Dispatch the exception */
-	RtlDispatchException(&ExceptionRecord, &Context);
-	/* Raise exception if we got here */
-	Status = NtRaiseException(&ExceptionRecord, &Context, FALSE);
-    }
-
-    /* If we returned, raise a status */
-    RtlRaiseStatus(Status);
-}
-
-#pragma GCC diagnostic pop
-
-#endif	/* _M_AMD64 */
-
 /*
  * @implemented
  */
@@ -356,3 +311,121 @@ NTAPI VOID RtlSetUnhandledExceptionFilter(IN PRTLP_UNHANDLED_EXCEPTION_FILTER To
     /* Set the filter which is used by the CriticalSection package */
     RtlpUnhandledExceptionFilter = RtlEncodePointer(TopLevelExceptionFilter);
 }
+
+#ifndef _M_IX86
+
+NTAPI VOID RtlRaiseException(IN PEXCEPTION_RECORD ExceptionRecord)
+{
+    CONTEXT Context;
+    NTSTATUS Status = STATUS_INVALID_DISPOSITION;
+
+    /* Capture the current context */
+    RtlCaptureContext(&Context);
+
+    /* Set the instruction pointer in the exception context to the caller */
+    Context.INSTRUCTION_POINTER = (ULONG64)_ReturnAddress();
+
+    /* Set the stack pointer in the exception context to the caller's stack pointer
+     * immediately before calling this function. */
+#ifdef _M_AMD64
+    Context.Rsp = (ULONG64)_AddressOfReturnAddress() + 8;
+#elif defined(_M_ARM64)
+    Context.Sp = (ULONG64)__builtin_frame_address(0);
+#else
+#error "Unsupported architecture"
+#endif
+
+    /* Save the exception address */
+    ExceptionRecord->ExceptionAddress = (PVOID)Context.INSTRUCTION_POINTER;
+
+    /* Check if user mode debugger is active */
+    if (RtlpCheckForActiveDebugger()) {
+	/* Raise an exception immediately */
+	Status = NtRaiseException(ExceptionRecord, &Context, TRUE);
+    } else {
+	/* Dispatch the exception and check if we should continue */
+	if (!RtlDispatchException(ExceptionRecord, &Context)) {
+	    /* Raise the exception */
+	    Status = NtRaiseException(ExceptionRecord, &Context, FALSE);
+	} else {
+	    /* Continue, go back to previous context */
+	    Status = NtContinue(&Context, FALSE);
+	}
+    }
+
+    /* If we returned, raise a status */
+    RtlRaiseStatus(Status);
+}
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN RtlDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
+				   IN PCONTEXT ContextRecord)
+{
+    /* Perform vectored exception handling for user mode */
+    if (RtlCallVectoredExceptionHandlers(ExceptionRecord, ContextRecord)) {
+	/* Exception handled, now call vectored continue handlers */
+	RtlCallVectoredContinueHandlers(ExceptionRecord, ContextRecord);
+
+	/* Continue execution */
+	return TRUE;
+    }
+
+    /* Call the internal unwind routine */
+    BOOLEAN Handled = RtlpUnwindInternal(NULL,	// TargetFrame
+					 NULL,	// TargetIp
+					 ExceptionRecord,
+					 0,	// ReturnValue
+					 ContextRecord,
+					 NULL,	// HistoryTable
+					 UNW_FLAG_EHANDLER);
+
+    /* In user mode, call any registered vectored continue handlers */
+    RtlCallVectoredContinueHandlers(ExceptionRecord, ContextRecord);
+
+    return Handled;
+}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winfinite-recursion"
+
+/*
+ * @implemented
+ */
+NTAPI VOID RtlRaiseStatus(IN NTSTATUS Status)
+{
+    EXCEPTION_RECORD ExceptionRecord;
+    CONTEXT Context;
+
+    /* Capture the context */
+    RtlCaptureContext(&Context);
+
+    /* Create an exception record */
+    ExceptionRecord.ExceptionAddress = _ReturnAddress();
+    ExceptionRecord.ExceptionCode = Status;
+    ExceptionRecord.ExceptionRecord = NULL;
+    ExceptionRecord.NumberParameters = 0;
+    ExceptionRecord.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
+
+    /* Write the context flag */
+    Context.ContextFlags = CONTEXT_FULL;
+
+    /* Check if user mode debugger is active */
+    if (RtlpCheckForActiveDebugger()) {
+	/* Raise an exception immediately */
+	NtRaiseException(&ExceptionRecord, &Context, TRUE);
+    } else {
+	/* Dispatch the exception */
+	RtlDispatchException(&ExceptionRecord, &Context);
+	/* Raise exception if we got here */
+	Status = NtRaiseException(&ExceptionRecord, &Context, FALSE);
+    }
+
+    /* If we returned, raise a status */
+    RtlRaiseStatus(Status);
+}
+
+#pragma GCC diagnostic pop
+
+#endif
