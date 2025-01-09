@@ -257,9 +257,10 @@ static BOOLEAN RtlpTryToUnwindEpilog(IN OUT PCONTEXT Context,
 	return FALSE;
     }
 
-    /* Make sure this is really a ret instruction */
+    /* Make sure this is really a ret instruction. Clang may generate int 3 (0xcc)
+     * instead of a ret instruction after a call to RtlRaiseStatus so this may not
+     * always be true.*/
     if (*InstrPtr != 0xc3) {
-	ASSERT(FALSE);
 	return FALSE;
     }
 
