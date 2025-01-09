@@ -15,21 +15,16 @@
 
 NTAPI VOID RtlInitializeSListHead(OUT PSLIST_HEADER SListHead)
 {
-#if defined(_WIN64)
+#ifdef _WIN64
     /* Make sure the header is 16 byte aligned */
-    if (((ULONG_PTR) SListHead & 0xf) != 0) {
+    if (((ULONG_PTR)SListHead & 0xf) != 0) {
 	DPRINT1("Unaligned SListHead: 0x%p\n", SListHead);
 	RtlRaiseStatus(STATUS_DATATYPE_MISALIGNMENT);
     }
 
-    /* Initialize the Region member */
-#if defined(_IA64_)
-    /* On Itanium we store the region in the list head */
-    SListHead->Region = (ULONG_PTR) SListHead & VRN_MASK;
-#else
-    /* On amd64 we don't need to store anything */
     SListHead->Region = 0;
-#endif				/* _IA64_ */
+    /* We always use the 16-byte header on 64-bit architectures */
+    SListHead->Header16.HeaderType = 1;
 #endif				/* _WIN64 */
 
     SListHead->Alignment = 0;
@@ -37,30 +32,10 @@ NTAPI VOID RtlInitializeSListHead(OUT PSLIST_HEADER SListHead)
 
 NTAPI PSLIST_ENTRY RtlFirstEntrySList(IN const SLIST_HEADER *SListHead)
 {
-#if defined(_WIN64)
-    /* Check if the header is initialized as 16 byte header */
-    if (SListHead->Header16.HeaderType) {
-	return (PVOID) (SListHead->Region & ~0xFLL);
-    } else {
-	union {
-	    ULONG64 Region;
-	    struct {
-		ULONG64 Reserved:4;
-		ULONG64 NextEntry:39;
-		ULONG64 Reserved2:21;
-	    } Bits;
-	} Pointer;
-
-#if defined(_IA64_)
-	/* On Itanium we stored the region in the list head */
-	Pointer.Region = SListHead->Region;
-#else
-	/* On amd64 we just use the list head itself */
-	Pointer.Region = (ULONG64) SListHead;
-#endif
-	Pointer.Bits.NextEntry = SListHead->Header8.NextEntry;
-	return (PVOID) Pointer.Region;
-    }
+#ifdef _WIN64
+    /* Make sure the header is initialized as 16 byte header */
+    assert(SListHead->Header16.HeaderType);
+    return (PSLIST_ENTRY)((ULONG_PTR)SListHead->Header16.NextEntry << 4);
 #else
     return SListHead->Next.Next;
 #endif
@@ -68,8 +43,8 @@ NTAPI PSLIST_ENTRY RtlFirstEntrySList(IN const SLIST_HEADER *SListHead)
 
 NTAPI USHORT RtlQueryDepthSList(IN PSLIST_HEADER SListHead)
 {
-#if defined(_WIN64)
-    return (USHORT) (SListHead->Alignment & 0xffff);
+#ifdef _WIN64
+    return SListHead->Header16.Depth;
 #else
     return SListHead->Depth;
 #endif
@@ -139,4 +114,105 @@ FASTCALL PSLIST_ENTRY RtlInterlockedPushListSList(IN OUT PSLIST_HEADER SListHead
     /* Return the old first entry */
     return OldHeader.Next.Next;
 #endif /* _WIN64 */
+}
+
+PSLIST_ENTRY RtlInterlockedFlushSList(PSLIST_HEADER SListHead)
+{
+    SLIST_HEADER OldList, NewList;
+
+#ifdef _WIN64
+    if (!SListHead->Header16.NextEntry) {
+	return NULL;
+    }
+    NewList.Alignment = NewList.Region = 0;
+    /* We always use the 16-byte header on WIN64 */
+    NewList.Header16.HeaderType = 1;
+    do {
+        OldList = *SListHead;
+        NewList.Header16.Sequence = OldList.Header16.Sequence + 1;
+    } while (!InterlockedCompareExchange128((PLONG64)SListHead, NewList.Region,
+					    NewList.Alignment, (PLONG64)&OldList));
+    return (PSLIST_ENTRY)((ULONG_PTR)OldList.Header16.NextEntry << 4);
+#else
+    if (!SListHead->Next.Next) {
+	return NULL;
+    }
+    NewList.Alignment = 0;
+    do {
+        OldList = *SListHead;
+        NewList.Sequence = OldList.Sequence + 1;
+    } while (InterlockedCompareExchange64((PLONG64)&SListHead->Alignment, NewList.Alignment,
+                                          OldList.Alignment) != OldList.Alignment);
+    return OldList.Next.Next;
+#endif
+}
+
+PSLIST_ENTRY RtlInterlockedPushEntrySList(PSLIST_HEADER SListHead, PSLIST_ENTRY Entry)
+{
+    SLIST_HEADER OldList, NewList;
+
+#ifdef _WIN64
+    NewList.Header16.HeaderType = 1;
+    NewList.Header16.NextEntry = (ULONG_PTR)Entry >> 4;
+    do {
+        OldList = *SListHead;
+        Entry->Next = (PSLIST_ENTRY)((ULONG_PTR)OldList.Header16.NextEntry << 4);
+        NewList.Header16.Depth = OldList.Header16.Depth + 1;
+        NewList.Header16.Sequence = OldList.Header16.Sequence + 1;
+    } while (!InterlockedCompareExchange128((PLONG64)SListHead, NewList.Region,
+					    NewList.Alignment, (PLONG64)&OldList));
+    return (PSLIST_ENTRY)((ULONG_PTR)OldList.Header16.NextEntry << 4);
+#else
+    NewList.Next.Next = Entry;
+    do {
+        OldList = *SListHead;
+        Entry->Next = OldList.Next.Next;
+        NewList.Depth = OldList.Depth + 1;
+        NewList.Sequence = OldList.Sequence + 1;
+    } while (InterlockedCompareExchange64((PLONG64)&SListHead->Alignment, NewList.Alignment,
+                                          OldList.Alignment) != OldList.Alignment);
+    return OldList.Next.Next;
+#endif
+}
+
+PSLIST_ENTRY RtlInterlockedPopEntrySList(PSLIST_HEADER SListHead)
+{
+    SLIST_HEADER OldList, NewList;
+    PSLIST_ENTRY Entry;
+
+#ifdef _WIN64
+    do {
+        OldList = *SListHead;
+	Entry = (PSLIST_ENTRY)((ULONG_PTR)OldList.Header16.NextEntry << 4);
+        if (!Entry) {
+	    return NULL;
+	}
+        /* Entry could be deleted by another thread */
+	__try {
+	    NewList.Header16.HeaderType = 1;
+            NewList.Header16.NextEntry = (ULONG_PTR)Entry->Next >> 4;
+            NewList.Header16.Depth = OldList.Header16.Depth - 1;
+            NewList.Header16.Sequence = OldList.Header16.Sequence + 1;
+        } __except(GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) {
+        }
+    } while (!InterlockedCompareExchange128((PLONG64)SListHead, NewList.Region,
+					    NewList.Alignment, (PLONG64)&OldList));
+#else
+    do {
+        OldList = *SListHead;
+	Entry = OldList.Next.Next;
+        if (!Entry) {
+	    return NULL;
+	}
+        /* Entry could be deleted by another thread */
+        __try {
+            NewList.Next.Next = Entry->Next;
+            NewList.Depth = OldList.Depth - 1;
+            NewList.Sequence = OldList.Sequence + 1;
+        } __except(GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION) {
+        }
+    } while (InterlockedCompareExchange64((PLONG64)&SListHead->Alignment, NewList.Alignment,
+                                          OldList.Alignment) != OldList.Alignment);
+#endif
+    return Entry;
 }
