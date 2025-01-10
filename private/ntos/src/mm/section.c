@@ -11,6 +11,7 @@ static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSectio
 					    IN PIO_FILE_OBJECT File)
 {
     InitializeListHead(&ImageSection->SubSectionList);
+    InitializeListHead(&ImageSection->SectionList);
 }
 
 /*
@@ -409,6 +410,7 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     Section->Flags.Reserve = 1;
     Section->Flags.Commit = 1;
     Section->ImageSectionObject = ImageSection;
+    InsertTailList(&ImageSection->SectionList, &Section->Link);
 
     return STATUS_SUCCESS;
 }
@@ -424,18 +426,24 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 	MmDeleteVad(Vad);
     }
     if (Section->Flags.Image && Section->ImageSectionObject) {
-	if (Section->ImageSectionObject->ImageCacheFile) {
-	    ObDereferenceObject(Section->ImageSectionObject->ImageCacheFile);
+	PIMAGE_SECTION_OBJECT ImageSectionObject = Section->ImageSectionObject;
+	assert(ListHasEntry(&ImageSectionObject->SectionList, &Section->Link));
+	RemoveEntryList(&Section->Link);
+	if (!IsListEmpty(&ImageSectionObject->SectionList)) {
+	    return;
 	}
-	PIO_FILE_CONTROL_BLOCK Fcb = Section->ImageSectionObject->Fcb;
+	if (ImageSectionObject->ImageCacheFile) {
+	    ObDereferenceObject(ImageSectionObject->ImageCacheFile);
+	}
+	PIO_FILE_CONTROL_BLOCK Fcb = ImageSectionObject->Fcb;
 	if (Fcb) {
-	    assert(Fcb->ImageSectionObject == Section->ImageSectionObject);
+	    assert(Fcb->ImageSectionObject == ImageSectionObject);
 	    Fcb->ImageSectionObject = NULL;
 	    if (Fcb->MasterFileObject) {
 		ObDereferenceObject(Fcb->MasterFileObject);
 	    }
 	}
-	MiFreePool(Section->ImageSectionObject);
+	MiFreePool(ImageSectionObject);
     } else if (Section->Flags.File) {
 	/* TODO! */
 	assert(FALSE);
@@ -1010,6 +1018,10 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
     MmDbgPrint("    ImageCacheFileSize = 0x%x\n", ImageSection->ImageCacheFileSize);
     MmDbgPrint("    ImageCacheFile = %p\n", ImageSection->ImageCacheFile);
     IoDbgDumpFileObject(ImageSection->ImageCacheFile, 4);
+    MmDbgPrint("    Section objects:\n");
+    LoopOverList(SectionObject, &ImageSection->SectionList, SECTION, Link) {
+	MmDbgPrint("      %p\n", SectionObject);
+    }
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
 	MiDbgDumpSubSection(SubSection);
     }

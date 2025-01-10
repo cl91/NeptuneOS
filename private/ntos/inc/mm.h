@@ -635,6 +635,8 @@ typedef struct _SECTION {
 	struct _IMAGE_SECTION_OBJECT *ImageSectionObject;
 	struct _DATA_SECTION_OBJECT *DataSectionObject;
     };
+    LIST_ENTRY Link;	/* For image sections and data sections, links all SECTION
+			 * objects that share the same IMAGE/DATA_SECTION_OBJECT. */
     LIST_ENTRY VadList;	/* List of VADs that map a view of this section
 			 * For image section, this includes all subsections. */
     MMSECTION_FLAGS Flags;
@@ -648,15 +650,17 @@ struct _IO_FILE_OBJECT;
 typedef struct _IMAGE_SECTION_OBJECT {
     struct _IO_FILE_CONTROL_BLOCK *Fcb;
     struct _IO_FILE_OBJECT *ImageCacheFile;
-    ULONG ImageCacheFileSize;
     LIST_ENTRY SubSectionList;
+    LIST_ENTRY SectionList; /* List of all SECTION objects that share this image section */
     MWORD ImageBase;
+    ULONG ImageCacheFileSize;
     LONG NumSubSections;
     SECTION_IMAGE_INFORMATION ImageInformation;
 } IMAGE_SECTION_OBJECT, *PIMAGE_SECTION_OBJECT;
 
 typedef struct _DATA_SECTION_OBJECT {
     struct _IO_FILE_CONTROL_BLOCK *Fcb;
+    LIST_ENTRY SectionList;
 } DATA_SECTION_OBJECT, *PDATA_SECTION_OBJECT;
 
 /*
