@@ -645,6 +645,11 @@ typedef struct _SECTION {
     MWORD Size;
 } SECTION, *PSECTION;
 
+typedef enum _IMAGE_SECTION_TYPE {
+    PeImageSection,
+    ElfImageSection
+} IMAGE_SECTION_TYPE;
+
 struct _IO_FILE_CONTROL_BLOCK;
 struct _IO_FILE_OBJECT;
 typedef struct _IMAGE_SECTION_OBJECT {
@@ -654,8 +659,8 @@ typedef struct _IMAGE_SECTION_OBJECT {
     LIST_ENTRY SectionList; /* List of all SECTION objects that share this image section */
     MWORD ImageBase;
     ULONG ImageCacheFileSize;
-    LONG NumSubSections;
     SECTION_IMAGE_INFORMATION ImageInformation;
+    IMAGE_SECTION_TYPE Type;
 } IMAGE_SECTION_OBJECT, *PIMAGE_SECTION_OBJECT;
 
 typedef struct _DATA_SECTION_OBJECT {

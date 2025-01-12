@@ -479,6 +479,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     if (!Section->Flags.Image) {
 	return STATUS_INVALID_PARAMETER;
     }
+    BOOLEAN PeImage = Section->ImageSectionObject->Type == PeImageSection;
 
     ObpReferenceObject(Section);
     Process->ImageSection = Section;
@@ -494,15 +495,17 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     /* Assign an ASID for the virtual address space just created */
     RET_ERR(MmAssignASID(&Process->VSpace));
 
-    MWORD NtdllBase = 0;
-    MWORD NtdllViewSize = 0;
-    RET_ERR(MmMapViewOfSection(&Process->VSpace, PspSystemDllSection,
-			       &NtdllBase, NULL, &NtdllViewSize, 0,
-			       ViewShare, 0, TRUE));
-    assert(NtdllBase != 0);
-    assert(NtdllViewSize != 0);
-    Process->InitInfo.NtdllViewBase = NtdllBase;
-    Process->InitInfo.NtdllViewSize = NtdllViewSize;
+    if (PeImage) {
+	MWORD NtdllBase = 0;
+	MWORD NtdllViewSize = 0;
+	RET_ERR(MmMapViewOfSection(&Process->VSpace, PspSystemDllSection,
+				   &NtdllBase, NULL, &NtdllViewSize, 0,
+				   ViewShare, 0, TRUE));
+	assert(NtdllBase != 0);
+	assert(NtdllViewSize != 0);
+	Process->InitInfo.NtdllViewBase = NtdllBase;
+	Process->InitInfo.NtdllViewSize = NtdllViewSize;
+    }
 
     MWORD ImageBaseAddress = 0;
     MWORD ImageVirtualSize = 0;
@@ -513,8 +516,10 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     assert(ImageVirtualSize != 0);
     Process->InitInfo.ImageBase = ImageBaseAddress;
     Process->ImageVirtualSize = ImageVirtualSize;
-    Process->UserExceptionDispatcher = (MWORD)
-	PspSystemDllSection->ImageSectionObject->ImageInformation.TransferAddress;
+    PSECTION TransferTarget = PeImage ? PspSystemDllSection : Section;
+    Process->UserExceptionDispatcher =
+	(MWORD)TransferTarget->ImageSectionObject->ImageInformation.TransferAddress;
+    assert(Process->UserExceptionDispatcher);
 
     if (DriverObject != NULL) {
 	Process->InitInfo.DriverProcess = TRUE;
@@ -533,36 +538,38 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 				    NTDLL_LOADER_HEAP_COMMIT));
     Process->InitInfo.LoaderHeapStart = LoaderHeapVad->AvlNode.Key;
 
-    /* Reserve and commit the process heap */
-    PIO_FILE_CONTROL_BLOCK Fcb = Section->ImageSectionObject->Fcb;
-    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Fcb);
-    if (!NtHeader) {
-	/* This shouldn't happen since we have already verified the image above. */
-	assert(FALSE);
-	return STATUS_INVALID_IMAGE_FORMAT;
+    /* Reserve and commit the process heap if target is a PE image */
+    if (PeImage) {
+	PIO_FILE_CONTROL_BLOCK Fcb = Section->ImageSectionObject->Fcb;
+	PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Fcb);
+	if (!NtHeader) {
+	    /* This shouldn't happen since we have already verified the image above. */
+	    assert(FALSE);
+	    return STATUS_INVALID_IMAGE_FORMAT;
+	}
+	MWORD ProcessHeapReserve = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapReserve);
+	MWORD ProcessHeapCommit = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapCommit);
+	if (ProcessHeapReserve == 0) {
+	    ProcessHeapReserve = PROCESS_HEAP_DEFAULT_RESERVE;
+	}
+	if (ProcessHeapCommit == 0) {
+	    ProcessHeapCommit = PROCESS_HEAP_DEFAULT_COMMIT;
+	}
+	if (ProcessHeapReserve < ProcessHeapCommit) {
+	    ProcessHeapReserve = ProcessHeapCommit;
+	}
+	PMMVAD ProcessHeapVad = NULL;
+	RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
+					 USER_ADDRESS_END, ProcessHeapReserve, 0, 0,
+					 MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
+					 &ProcessHeapVad));
+	assert(ProcessHeapVad != NULL);
+	RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, ProcessHeapVad->AvlNode.Key,
+					ProcessHeapCommit));
+	Process->InitInfo.ProcessHeapStart = ProcessHeapVad->AvlNode.Key;
+	Process->InitInfo.ProcessHeapReserve = ProcessHeapReserve;
+	Process->InitInfo.ProcessHeapCommit = ProcessHeapCommit;
     }
-    MWORD ProcessHeapReserve = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapReserve);
-    MWORD ProcessHeapCommit = PAGE_ALIGN_UP(NtHeader->OptionalHeader.SizeOfHeapCommit);
-    if (ProcessHeapReserve == 0) {
-	ProcessHeapReserve = PROCESS_HEAP_DEFAULT_RESERVE;
-    }
-    if (ProcessHeapCommit == 0) {
-	ProcessHeapCommit = PROCESS_HEAP_DEFAULT_COMMIT;
-    }
-    if (ProcessHeapReserve < ProcessHeapCommit) {
-	ProcessHeapReserve = ProcessHeapCommit;
-    }
-    PMMVAD ProcessHeapVad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_IMAGE_REGION_START,
-				     USER_ADDRESS_END, ProcessHeapReserve, 0, 0,
-				     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
-				     &ProcessHeapVad));
-    assert(ProcessHeapVad != NULL);
-    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, ProcessHeapVad->AvlNode.Key,
-				    ProcessHeapCommit));
-    Process->InitInfo.ProcessHeapStart = ProcessHeapVad->AvlNode.Key;
-    Process->InitInfo.ProcessHeapReserve = ProcessHeapReserve;
-    Process->InitInfo.ProcessHeapCommit = ProcessHeapCommit;
 
     /* Reserve and commit the process environment block. */
     PMMVAD PebVad = NULL;

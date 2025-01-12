@@ -13,16 +13,9 @@
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 #define MiFreePool(Var) ExFreePoolWithTag(Var, NTOS_MM_TAG)
 
-static inline BOOLEAN IsPowerOf2(IN ULONG Number)
-{
-    if(Number == 0)
-	return FALSE;
-    return (Number & (Number - 1)) == 0;
-}
-
 static inline ULONG ModPow2(IN ULONG Address, IN ULONG Alignment)
 {
-    assert(IsPowerOf2(Alignment));
+    assert(IsPow2(Alignment));
     return Address & (Alignment - 1);
 }
 

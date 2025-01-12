@@ -11,7 +11,7 @@ add_compile_options(
     -Wall
     -nostdinc
     -fno-pic
-    -fpie
+    -fno-pie
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
@@ -67,11 +67,16 @@ include_directories(
 
 list(APPEND COMMON_SRC
     ../ntdll/src/ke/services.c
+    ../ntdll/src/rtl/debug.c
+    src/${Arch}/entry.S
+    src/init.c
+    src/except.c
 )
 
 list(APPEND KRNL_SRC
     ${COMMON_SRC}
     ../wdm/src/wdmsvc.c
+    src/krnl.c
 )
 
 list(APPEND USER_SRC

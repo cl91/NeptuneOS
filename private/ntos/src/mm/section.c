@@ -1,5 +1,28 @@
 #include "mi.h"
 #include "intsafe.h"
+#include <ntelf.h>
+
+#ifdef _M_IX86
+#define NT_IMAGE_MACHINE IMAGE_FILE_MACHINE_I386
+#define ELF_IMAGE_MACHINE ELF_ARCHITECTURE_I386
+#elif defined(_M_AMD64)
+#define NT_IMAGE_MACHINE IMAGE_FILE_MACHINE_AMD64
+#define ELF_IMAGE_MACHINE ELF_ARCHITECTURE_AMD64
+#elif defined(_M_ARM64)
+#define NT_IMAGE_MACHINE IMAGE_FILE_MACHINE_ARM64
+#define ELF_IMAGE_MACHINE ELF_ARCHITECTURE_ARM64
+#else
+#error "Unsupported architecture"
+#endif
+
+#ifdef _WIN64
+#define ELF_CLASS   ELF_CLASS64
+#else
+#define ELF_CLASS   ELF_CLASS32
+#endif
+
+#define ELF_IMAGE_STACK_RESERVE	    (1UL << 20)
+#define ELF_IMAGE_STACK_COMMIT	    (4 * PAGE_SIZE)
 
 PSECTION MiPhysicalSection;
 
@@ -53,6 +76,11 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
     assert(NtHeader);
     assert(NtHeaderOffset);
 
+    if (NtHeader->FileHeader.Machine != NT_IMAGE_MACHINE) {
+	DIE("Invalid image architecture (expected %d, got %d)",
+	    NT_IMAGE_MACHINE, NtHeader->FileHeader.Machine);
+    }
+
     ULONG OptHeaderSize = NtHeader->FileHeader.SizeOfOptionalHeader;
     ULONG64 OptHeaderOffset = NtHeaderOffset + FIELD_OFFSET(IMAGE_NT_HEADERS, OptionalHeader);
     PIMAGE_OPTIONAL_HEADER OptHeader = NULL;
@@ -80,7 +108,7 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
     }
     ULONG SectionAlignment = OptHeader->SectionAlignment;
     ULONG FileAlignment = OptHeader->FileAlignment;
-    if (!IsPowerOf2(SectionAlignment) || !IsPowerOf2(FileAlignment)) {
+    if (!IsPow2(SectionAlignment) || !IsPow2(FileAlignment)) {
 	DIE("The section alignment (%u) and file alignment (%u)"
 	    " must both be powers of two\n", SectionAlignment, FileAlignment);
     }
@@ -223,7 +251,6 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
 	MiInitializeSubSection(SubSection, ImageSection);
 	SubSectionsArray[i] = SubSection;
     }
-    ImageSection->NumSubSections = NumSubSections;
 
     /* The zeroth subsection of the image section is the image headers */
     SubSectionsArray[0]->SubSectionSize = ALIGN_UP_BY(AllHeadersSize, SectionAlignment);
@@ -297,6 +324,201 @@ static NTSTATUS MiParseImageHeaders(IN PIO_FILE_OBJECT FileObject,
     *pSectionSize = SectionSize;
     return STATUS_SUCCESS;
 }
+
+static NTSTATUS MiParseElfImage(IN PIO_FILE_OBJECT FileObject,
+				IN PIMAGE_SECTION_OBJECT ImageSection,
+				OUT MWORD *pSectionSize)
+{
+    assert(FileObject);
+    assert(FileObject->Fcb);
+    assert(FileObject->Fcb->SharedCacheMap);
+    assert(ImageSection);
+    assert(pSectionSize);
+
+    PELF_HEADER ElfHeader = NULL;
+    RET_ERR(CcMapData(FileObject->Fcb, 0, sizeof(ELF_HEADER), NULL, (PVOID *)&ElfHeader));
+
+    if ((ElfHeader->Magic[0] != ELF_MAGIC0) || (ElfHeader->Magic[1] != ELF_MAGIC1) ||
+	(ElfHeader->Magic[2] != ELF_MAGIC2) || (ElfHeader->Magic[3] != ELF_MAGIC3)) {
+	DIE("Invalid ELF header magic (got 0x%x 0x%x 0x%x 0x%x)\n", ElfHeader->Magic[0],
+	    ElfHeader->Magic[1], ElfHeader->Magic[2], ElfHeader->Magic[3]);
+    }
+
+    if (ElfHeader->Class != ELF_CLASS) {
+	DIE("Invalid ELF class (got %d)\n", ElfHeader->Class);
+    }
+
+    if (ElfHeader->ByteOrder != ELF_LITTLE_ENDIAN) {
+	DIE("Invalid ELF byte order (got %d)\n", ElfHeader->ByteOrder);
+    }
+
+    if (ElfHeader->HeaderVersion != ELF_CURRENT_VERSION) {
+	DIE("Invalid ELF header version (got %d)\n", ElfHeader->HeaderVersion);
+    }
+
+    if ((ElfHeader->ImageType != ELF_IMAGE_TYPE_DLL) &&
+	(ElfHeader->ImageType != ELF_IMAGE_TYPE_EXE)) {
+	DIE("Invalid ELF image type (got %d)\n", ElfHeader->ImageType);
+    }
+
+    if (ElfHeader->Architecture != ELF_IMAGE_MACHINE) {
+	DIE("Invalid ELF image architecture (got %d)\n", ElfHeader->Architecture);
+    }
+
+    if (!ElfHeader->EntryPoint) {
+	DIE("ELF entry point is NULL\n");
+    }
+
+    PELF_PROGRAM_HEADER ProgramHeaders = NULL;
+    ULONG ProgramHeaderTableSize = (ULONG)ElfHeader->ProgramHeaderEntrySize *
+	ElfHeader->NumberfOfProgramHeaderEntries;
+    RET_ERR(CcMapData(FileObject->Fcb, ElfHeader->OffsetToProgramHeaders,
+		      ProgramHeaderTableSize, NULL, (PVOID *)&ProgramHeaders));
+
+    ULONG_PTR ImageBase = ULONG_PTR_MAX;
+    ULONG NumSubSections = 0;
+    BOOLEAN ImageContainsCode = FALSE;
+    for (ULONG i = 0; i < ElfHeader->NumberfOfProgramHeaderEntries; i++) {
+	if (ProgramHeaders[i].Type != ELF_PROGRAM_HEADER_TYPE_LOAD) {
+	    continue;
+	}
+	if (ProgramHeaders[i].VirtualAddress != ProgramHeaders[i].PhysicalAddress) {
+	    DIE("Program header %d virtual address does not match load address\n", i);
+	}
+	if (!IsPow2(ProgramHeaders[i].Alignment)) {
+	    DIE("Program header %d alignment (0x%llx) is not a power of two\n",
+		i, (ULONG64)ProgramHeaders[i].Alignment);
+	}
+	if (ProgramHeaders[i].Alignment < PAGE_SIZE) {
+	    DIE("Program header %d alignment (0x%llx) is smaller than page size\n",
+		i, (ULONG64)ProgramHeaders[i].Alignment);
+	}
+	if (!IS_ALIGNED_BY(ProgramHeaders[i].VirtualAddress - ProgramHeaders[i].FileOffset,
+			   ProgramHeaders[i].Alignment)) {
+	    DIE("Program header %d load address and file offset misaligned\n", i);
+	}
+	if (!(ProgramHeaders[i].Flags & (ELF_PROGRAM_HEADER_FLAG_EXECUTE |
+					 ELF_PROGRAM_HEADER_FLAG_READ |
+					 ELF_PROGRAM_HEADER_FLAG_WRITE))) {
+	    DIE("Program header %d has no r/w/x attribute\n", i);
+	}
+#ifdef _WIN64
+	/* We don't support images larger than 4GB */
+	if (ProgramHeaders[i].FileOffset > ULONG_MAX) {
+	    DIE("Program header %d file offset is larger than 4GB\n", i);
+	}
+	if (ProgramHeaders[i].SizeOnDisk > ULONG_MAX) {
+	    DIE("Program header %d size on disk is larger than 4GB\n", i);
+	}
+	if (ProgramHeaders[i].SizeInMemory > ULONG_MAX) {
+	    DIE("Program header %d size in memory is larger than 4GB\n", i);
+	}
+#endif
+	if (ImageBase > ProgramHeaders[i].VirtualAddress) {
+	    ImageBase = ProgramHeaders[i].VirtualAddress;
+	}
+	if (ProgramHeaders[i].Flags & ELF_PROGRAM_HEADER_FLAG_EXECUTE) {
+	    ImageContainsCode = TRUE;
+	}
+	NumSubSections++;
+    }
+
+    if (!NumSubSections) {
+	DIE("ELF image does not contain any loadable segment\n");
+    }
+
+    if (ImageBase % PAGE_SIZE) {
+	DIE("ELF ImageBase is not aligned on page boundary\n");
+    }
+
+    /*
+     * Allocate SUBSECTIONS for the image section object.
+     */
+    MiAllocateArray(SubSectionsArray, PSUBSECTION, NumSubSections, {});
+    for (LONG i = 0; i < NumSubSections; i++) {
+	MiAllocatePoolEx(SubSection, SUBSECTION,
+			 {
+			     for (LONG j = 0; j < i; j++) {
+				 assert(SubSectionsArray[j]);
+				 MiFreePool(SubSectionsArray[j]);
+			     }
+			     MiFreePool(SubSectionsArray);
+			 });
+	MiInitializeSubSection(SubSection, ImageSection);
+	SubSectionsArray[i] = SubSection;
+    }
+
+    ImageSection->ImageBase = ImageBase;
+
+    /* Populate image information of the image section object. */
+    PSECTION_IMAGE_INFORMATION ImageInformation = &ImageSection->ImageInformation;
+    ImageInformation->ImageFileSize = FileObject->Fcb->FileSize;
+    ImageInformation->MaximumStackSize = ELF_IMAGE_STACK_RESERVE;
+    ImageInformation->CommittedStackSize = ELF_IMAGE_STACK_COMMIT;
+    ImageInformation->SubSystemType = IMAGE_SUBSYSTEM_POSIX_CUI;
+    ImageInformation->SubSystemMinorVersion = 0;
+    ImageInformation->SubSystemMajorVersion = 0;
+    ImageInformation->TransferAddress = (PVOID)ElfHeader->EntryPoint;
+    ImageInformation->ImageContainsCode = ImageContainsCode;
+    ImageInformation->LoaderFlags = 0;
+    ImageInformation->DllCharacteristics = 0;
+    ImageInformation->ImageCharacteristics = 0;
+    ImageInformation->Machine = NT_IMAGE_MACHINE;
+    ImageInformation->GpValue = 0;
+    ImageInformation->ZeroBits = 0;
+
+    PSUBSECTION *SubSection = SubSectionsArray;
+    for (LONG i = 0; i < ElfHeader->NumberfOfProgramHeaderEntries; i++) {
+	if (ProgramHeaders[i].Type != ELF_PROGRAM_HEADER_TYPE_LOAD) {
+	    continue;
+	}
+	ULONG FileOffset = ALIGN_DOWN_BY(ProgramHeaders[i].FileOffset,
+					 ProgramHeaders[i].Alignment);
+	ULONG NumExtraBytes = ProgramHeaders[i].FileOffset - FileOffset;
+	ULONG_PTR VirtualAddress = ALIGN_DOWN_BY(ProgramHeaders[i].VirtualAddress,
+						 ProgramHeaders[i].Alignment);
+	ULONG SizeOnDisk = ProgramHeaders[i].SizeOnDisk + NumExtraBytes;
+	ULONG SizeInMemory = ALIGN_UP_BY(ProgramHeaders[i].SizeInMemory + NumExtraBytes,
+					 ProgramHeaders[i].Alignment);
+	(*SubSection)->RawDataSize = SizeOnDisk;
+	(*SubSection)->FileOffset = FileOffset;
+
+	if (ProgramHeaders[i].Flags & ELF_PROGRAM_HEADER_FLAG_EXECUTE) {
+	    (*SubSection)->Characteristics |= IMAGE_SCN_MEM_EXECUTE;
+	}
+	if (ProgramHeaders[i].Flags & ELF_PROGRAM_HEADER_FLAG_READ) {
+	    (*SubSection)->Characteristics |= IMAGE_SCN_MEM_READ;
+	}
+	if (ProgramHeaders[i].Flags & ELF_PROGRAM_HEADER_FLAG_WRITE) {
+	    (*SubSection)->Characteristics |= IMAGE_SCN_MEM_WRITE;
+	}
+
+        (*SubSection)->SubSectionSize = SizeInMemory;
+        (*SubSection)->SubSectionBase = VirtualAddress - ImageBase;
+	memcpy((*SubSection)->Name, "PT_LOAD", sizeof("PT_LOAD"));
+
+	/* Although we don't use the image cache file for ELF images, set the
+	 * image cache file offset so MiCommitImageVad can save an if clause. */
+	(*SubSection)->ImageCacheFileOffset = FileOffset;
+
+	/* Make sure the subsection list is in ascending order of virtual address */
+	PLIST_ENTRY Node = ImageSection->SubSectionList.Flink;
+	for (; Node != &ImageSection->SubSectionList; Node = Node->Flink) {
+	    PSUBSECTION Entry = CONTAINING_RECORD(Node, SUBSECTION, Link);
+	    if (Entry->SubSectionBase >= (VirtualAddress - ImageBase + SizeInMemory)) {
+		break;
+	    }
+	}
+	InsertTailList(Node, &(*SubSection)->Link);
+	SubSection++;
+    }
+
+    MiFreePool(SubSectionsArray);
+    PSUBSECTION LastSubSection = CONTAINING_RECORD(ImageSection->SubSectionList.Blink,
+						   SUBSECTION, Link);
+    *pSectionSize = LastSubSection->SubSectionBase + LastSubSection->SubSectionSize;
+    return STATUS_SUCCESS;
+}
 #undef DIE
 
 static VOID MiImageSectionPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
@@ -321,7 +543,7 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 
     NTSTATUS Status;
     PIO_FILE_OBJECT ImageCacheFile = NULL;
-    IF_ERR_GOTO(out, Status, MiParseImageHeaders(File, ImageSection, pSectionSize));
+    IF_ERR_GOTO(elf, Status, MiParseImageHeaders(File, ImageSection, pSectionSize));
     IF_ERR_GOTO(out, Status, IoCreateDevicelessFile(NULL, NULL,
 						    ImageSection->ImageCacheFileSize,
 						    0, &ImageCacheFile));
@@ -350,7 +572,15 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 	    BytesCopied += MappedLength;
 	}
     }
+    ImageSection->Type = PeImageSection;
+    goto done;
 
+elf:
+    /* Try parsing the file as an ELF image */
+    IF_ERR_GOTO(out, Status, MiParseElfImage(File, ImageSection, pSectionSize));
+    ImageSection->Type = ElfImageSection;
+
+done:
     assert(File->Fcb);
     assert(File->Fcb->MasterFileObject);
     ObpReferenceObject(File->Fcb->MasterFileObject);
@@ -434,6 +664,8 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 	}
 	if (ImageSectionObject->ImageCacheFile) {
 	    ObDereferenceObject(ImageSectionObject->ImageCacheFile);
+	} else {
+	    CcUnpinData(ImageSectionObject->Fcb, 0, ImageSectionObject->Fcb->FileSize);
 	}
 	PIO_FILE_CONTROL_BLOCK Fcb = ImageSectionObject->Fcb;
 	if (Fcb) {
@@ -511,7 +743,7 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
 			   IN PIO_FILE_OBJECT FileObject,
 			   IN ULONG PageProtection,
 			   IN ULONG SectionAttributes,
-			   OUT PSECTION *SectionObject)
+			   OUT PSECTION *pSectionObject)
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
@@ -523,7 +755,7 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
     }
 
     /* For image section creation, we need to load the image file from disk
-     * before calling MmCreateSection, because it needs to read the PE headers
+     * before calling MmCreateSection, because it needs to read the image headers
      * to create the image section. */
     AWAIT_EX_IF(FileObject && (SectionAttributes & SEC_IMAGE), Status, CcPinData,
 		State, _, Thread, FileObject->Fcb, 0, FileObject->Fcb->FileSize);
@@ -531,12 +763,18 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, Status);
     }
 
+    PSECTION SectionObject = NULL;
     Status = MmCreateSection(FileObject, PageProtection,
-			     SectionAttributes, SectionObject);
+			     SectionAttributes, &SectionObject);
 
-    if (FileObject && (SectionAttributes & SEC_IMAGE)) {
+    /* If the section is a PE image section (or if section creation failed),
+     * we unpin the original file since the image section is mapped using the
+     * image cache file. */
+    if (FileObject && (SectionAttributes & SEC_IMAGE) &&
+	(!NT_SUCCESS(Status) || SectionObject->ImageSectionObject->ImageCacheFile)) {
 	CcUnpinData(FileObject->Fcb, 0, FileObject->Fcb->FileSize);
     }
+    *pSectionObject = SectionObject;
 
     ASYNC_END(State, Status);
 }
@@ -552,7 +790,6 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
     PSUBSECTION SubSection = Vad->ImageSectionView.SubSection;
     assert(SubSection);
     assert(SubSection->ImageSection);
-    assert(SubSection->ImageSection->ImageCacheFile);
 
     PAGING_RIGHTS Rights = Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
     if (SubSection->RawDataSize && SubSection->ImageCacheFileOffset != ULONG_MAX) {
@@ -560,25 +797,45 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 	while (BytesMapped < SubSection->SubSectionSize) {
 	    ULONG MappedLength = 0;
 	    PVOID Buffer = NULL;
-	    RET_ERR(CcMapData(SubSection->ImageSection->ImageCacheFile->Fcb,
-			      SubSection->ImageCacheFileOffset + BytesMapped,
+	    PIO_FILE_CONTROL_BLOCK Fcb = NULL;
+	    if (SubSection->ImageSection->ImageCacheFile) {
+		Fcb = SubSection->ImageSection->ImageCacheFile->Fcb;
+	    } else {
+		Fcb = SubSection->ImageSection->Fcb;
+	    }
+	    if (!Fcb) {
+		assert(FALSE);
+		return STATUS_INTERNAL_ERROR;
+	    }
+	    if (SubSection->ImageCacheFileOffset + BytesMapped >= Fcb->FileSize) {
+		/* This case can only happen for ELF files. */
+		assert(!SubSection->ImageSection->ImageCacheFile);
+		RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
+					      SubSection->SubSectionSize - BytesMapped,
+					      Rights, MM_ATTRIBUTES_DEFAULT,
+					      Vad->Flags.LargePages, NULL, 0));
+		break;
+	    }
+	    RET_ERR(CcMapData(Fcb, SubSection->ImageCacheFileOffset + BytesMapped,
 			      SubSection->SubSectionSize - BytesMapped,
 			      &MappedLength, &Buffer));
 	    assert(MappedLength);
 	    assert(Buffer);
-	    assert(IS_PAGE_ALIGNED(MappedLength));
+	    assert(IS_PAGE_ALIGNED(MappedLength) ||
+		   (Fcb->FileSize == SubSection->FileOffset + BytesMapped + MappedLength));
 	    assert(IS_PAGE_ALIGNED(BytesMapped));
 	    if (Vad->Flags.ReadOnly) {
 		RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
 					    Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
-					    MappedLength, Rights, MM_ATTRIBUTES_DEFAULT));
+					    PAGE_ALIGN_UP(MappedLength),
+					    Rights, MM_ATTRIBUTES_DEFAULT));
 	    } else {
-		RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace,
-					      Vad->AvlNode.Key + BytesMapped,
-					      MappedLength, Rights, MM_ATTRIBUTES_DEFAULT,
-					      FALSE, Buffer, MappedLength));
+		RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
+					      PAGE_ALIGN_UP(MappedLength), Rights,
+					      MM_ATTRIBUTES_DEFAULT, Vad->Flags.LargePages,
+					      Buffer, SubSection->RawDataSize));
 	    }
-	    BytesMapped += MappedLength;
+	    BytesMapped += PAGE_ALIGN_UP(MappedLength);
 	}
     } else {
 	RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, Vad->AvlNode.Key,
@@ -977,7 +1234,8 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
 	MmDbgPrint("    (nil)\n");
 	return;
     }
-    MmDbgPrint("    Number of subsections = %d\n", ImageSection->NumSubSections);
+    MmDbgPrint("    Number of subsections = %d\n",
+	       GetListLength(&ImageSection->SubSectionList));
     MmDbgPrint("    Image base = %p\n", (PVOID) ImageSection->ImageBase);
     MmDbgPrint("    TransferAddress = %p\n",
 	       (PVOID)ImageSection->ImageInformation.TransferAddress);

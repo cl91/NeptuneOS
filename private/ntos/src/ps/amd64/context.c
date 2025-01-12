@@ -10,7 +10,7 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Context != NULL);
     MWORD TibClientAddr = Thread->IpcBufferClientAddr + NT_TIB_OFFSET;
     Context->_FASTCALL_FIRST_PARAM = TibClientAddr;
-    Context->rip = (MWORD)PspSystemDllSection->ImageSectionObject->ImageInformation.TransferAddress;
+    Context->rip = Thread->Process->UserExceptionDispatcher;
     Context->rsp = Thread->InitInfo.StackTop;
     Context->rbp = Thread->InitInfo.StackTop;
     Context->gs_base = TibClientAddr;
