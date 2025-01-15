@@ -238,7 +238,7 @@ static inline long long InterlockedDecrement64(volatile long long *lpAddend)
 #define InterlockedOrPointer(ptr, val) InterlockedOr64((PLONGLONG)ptr, (LONGLONG)val)
 #else
 #define InterlockedBitTestAndSetPointer(ptr, val) \
-    InterlockedBitTestAndSet((PLONG)ptr, (LONG)val)
+    InterlockedBitTestAndSet((volatile long *)ptr, (LONG)val)
 #define InterlockedAddPointer(ptr, val) InterlockedAdd((PLONG)ptr, (LONG)val)
 #define InterlockedAndPointer(ptr, val) InterlockedAnd((PLONG)ptr, (LONG)val)
 #define InterlockedOrPointer(ptr, val) InterlockedOr((PLONG)ptr, (LONG)val)
