@@ -69,7 +69,7 @@ NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
     return 0;
 }
 
-#else
+#elif defined(_MSC_VER)
 
 VOID vDbgPrint(PCSTR Format, va_list args)
 {
