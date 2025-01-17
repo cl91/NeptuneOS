@@ -98,35 +98,16 @@
 .ENDP
 
 /*
- * VOID NTAPI
- * RtlRestoreContext(IN PCONTEXT ContextRecord@<rcx>,
- *                   IN PEXCEPTION_RECORD *ExceptionRecord@<rdx>);
+ * VOID
+ * RtlpRestoreFpuContext(IN PCONTEXT ContextRecord@<rcx>);
  */
-.global RtlRestoreContext
-.PROC RtlRestoreContext
-
-    /* Allocate space */
-    sub rsp, HEX(8)
-    .allocstack 8
+.global RtlpRestoreFpuContext
+.PROC RtlpRestoreFpuContext
     .endprolog
-
-    // TODO: Handle ExceptionRecord
 
     /* Restore legacy floating point registers (It's slow, so do it first) */
     ldmxcsr [rcx + CxMxCsr]
     fxrstor [rcx + CxFltSave]
-
-    /* Load the target stack pointer into rdx */
-    mov rdx, [rcx + CxRsp]
-
-    /* Load EFlags into rax (zero extended) */
-    mov eax, [rcx + CxEFlags]
-
-    /* Load the return address into r8 */
-    mov r8, [rcx + CxRip]
-
-    /* Load rdx restore value into r9 */
-    mov r9, [rcx + CxRdx]
 
     /* Restore xmm registers */
     movaps xmm0, [rcx + CxXmm0]
@@ -146,45 +127,6 @@
     movaps xmm14, [rcx + CxXmm14]
     movaps xmm15, [rcx + CxXmm15]
 
-    /* Copy Return address (now in r8) to the target stack */
-    mov [rdx - 2 * 8], r8
-
-    /* Copy Eflags (now in rax) to the target stack */
-    mov [rdx - 3 * 8], rax
-
-    /* Copy the value for rdx (now in r9) to the target stack */
-    mov [rdx - 4 * 8], r9
-
-    /* Restore the integer registers */
-    mov rbx, [rcx + CxRbx]
-    mov rsi, [rcx + CxRsi]
-    mov rdi, [rcx + CxRdi]
-    mov rbp, [rcx + CxRbp]
-    mov r10, [rcx + CxR10]
-    mov r11, [rcx + CxR11]
-    mov r12, [rcx + CxR12]
-    mov r13, [rcx + CxR13]
-    mov r14, [rcx + CxR14]
-    mov r15, [rcx + CxR15]
-
-    /* Restore the registers we used */
-    mov r8,  [rcx + CxR8]
-    mov r9,  [rcx + CxR9]
-
-    /* Restore rax and rcx */
-    mov rax, [rcx + CxRax]
-    mov rcx, [rcx + CxRcx]
-
-    /* Switch to the target stack */
-    lea rsp, [rdx - 4 * 8]
-
-    /* Pop rdx from the stack */
-    pop rdx
-
-    /* Pop Eflags from the stack */
-    popfq
-
-    /* Return and fix up the stack */
-    ret 8
+    ret
 
 .ENDP

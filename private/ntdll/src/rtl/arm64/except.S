@@ -90,7 +90,8 @@
     blr x1
     str x0, [sp, #0x108] /* Context->Pc */
     mov x0, sp
-    b KiContinue
+    mov w1, #0
+    b NtContinue
 .ENDP
 
 .PROC RtlpCallConsolidateCallback

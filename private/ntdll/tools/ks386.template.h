@@ -12,7 +12,6 @@ OFFSET(TbThreadLocalStoragePointer, TEB, ThreadLocalStoragePointer),
 OFFSET(TbCsrClientThread, TEB, CsrClientThread),
 OFFSET(TbDeallocationStack, TEB, DeallocationStack),
 OFFSET(TebPeb, TEB, ProcessEnvironmentBlock),
-OFFSET(TebExceptionAddress, TEB, ExceptionAddress),
 
 HEADER("EXCEPTION_RECORD"),
 OFFSET(EXCEPTION_RECORD_EXCEPTION_CODE, EXCEPTION_RECORD, ExceptionCode),

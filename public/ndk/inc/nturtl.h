@@ -348,7 +348,7 @@ C_ASSERT(sizeof(PEB) < PAGE_SIZE);
 #include <pshpack4.h>
 typedef struct _TEB {                                        /* win32/win64 */
     NT_TIB                  NtTib;                             /* 000/000 */
-    PVOID                   ExceptionAddress;                  /* 028/050 */
+    PVOID                   SparePointer;                      /* 028/050 */
     PVOID                   ThreadLocalStoragePointer;         /* 02c/058 */
     PPEB                    ProcessEnvironmentBlock;           /* 030/060 */
     ULONG                   LastErrorValue;                    /* 034/068 */

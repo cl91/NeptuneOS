@@ -15,8 +15,6 @@
 struct _THREAD;
 struct _SYSTEM_THREAD;
 
-/* Not to be confused with CONTEXT, defined in the NT headers */
-typedef seL4_UserContext THREAD_CONTEXT, *PTHREAD_CONTEXT;
 typedef enum _THREAD_PRIORITY {
     PASSIVE_LEVEL = 1,
     DEVICE_INTERRUPT_MIN_LEVEL = 10,

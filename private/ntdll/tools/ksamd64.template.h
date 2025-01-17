@@ -1,5 +1,4 @@
 HEADER("TEB offsets (duplicates Te* definitions!)"),
-OFFSET(TebExceptionAddress, TEB, ExceptionAddress),
 
 HEADER("Argument Home Address"),
 CONSTANT(P1Home),

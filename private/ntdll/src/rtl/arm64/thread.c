@@ -52,8 +52,6 @@ VOID DECLSPEC_NORETURN RtlpCallConsolidateCallback(PCONTEXT Context,
 						   PVOID (*Callback)(PEXCEPTION_RECORD),
 						   PEXCEPTION_RECORD ExceptionRecord);
 
-VOID KiContinue(PCONTEXT Context);
-
 VOID RtlRestoreContext(IN PCONTEXT Context,
 		       IN PEXCEPTION_RECORD ExceptionRecord)
 {
@@ -88,5 +86,5 @@ VOID RtlRestoreContext(IN PCONTEXT Context,
     }
 
     DPRINT("returning to %I64x stack %I64x\n", Context->Pc, Context->Sp);
-    KiContinue(Context);
+    NtContinue(Context, NULL);
 }

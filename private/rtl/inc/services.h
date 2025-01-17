@@ -153,6 +153,11 @@ static inline VOID KeGetEntryPointFromThreadContext(IN PCONTEXT Context,
     *Parameter = (PVOID)Context->FASTCALL_FIRST_PARAM;
 }
 
+/* This is the thread context as defined by seL4, which contains mostly
+ * integer registers and a small number of control registers. Not to be
+ * confused with the full CONTEXT, defined in the NT headers. */
+typedef seL4_UserContext THREAD_CONTEXT, *PTHREAD_CONTEXT;
+
 typedef struct _NTDLL_THREAD_INIT_INFO {
     MWORD SystemServiceCap;
     MWORD WdmServiceCap;

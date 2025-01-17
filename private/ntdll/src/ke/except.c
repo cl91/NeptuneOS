@@ -80,7 +80,9 @@ FASTCALL VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
     RtlRaiseException(&NestedExceptionRecord);
 }
 
-FASTCALL VOID KiContinue(IN PCONTEXT Context);
+VOID KiPopulateThreadContext(OUT PTHREAD_CONTEXT ThreadContext,
+			     IN PCONTEXT Context);
+FASTCALL VOID RtlpRestoreFpuContext(IN PCONTEXT Context);
 
 NTAPI NTSTATUS NtContinue(IN PCONTEXT Context,
 			  IN BOOLEAN TestAlert)
@@ -88,8 +90,17 @@ NTAPI NTSTATUS NtContinue(IN PCONTEXT Context,
     if (TestAlert) {
 	NtTestAlert();
     }
-    KiContinue(Context);
-    /* KiContinue should never return. */
+    PTHREAD_CONTEXT ThreadContext = &SVC_MSGBUF_OFFSET_TO_ARG(seL4_GetIPCBuffer(),
+							      0, THREAD_CONTEXT);
+    KiPopulateThreadContext(ThreadContext, Context);
+    RtlpRestoreFpuContext(Context);
+    seL4_MessageInfo_t Request = seL4_MessageInfo_new(KE_CONTINUE, 0, 0, 2);
+    SERVICE_ARGUMENT ContextArg = { .BufferSize = sizeof(THREAD_CONTEXT) };
+    seL4_SetMR(0, ContextArg.Word);
+    seL4_SetMR(1, ALIGN_UP_BY(sizeof(THREAD_CONTEXT), SVC_MSGBUF_ALIGN));
+    seL4_Call(NtCurrentTeb()->NtTib.SystemServiceCap, Request);
+    /* This should not return. */
+    RtlRaiseStatus(STATUS_UNSUCCESSFUL);
     return STATUS_UNSUCCESSFUL;
 }
 

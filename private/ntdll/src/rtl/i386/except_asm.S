@@ -113,6 +113,10 @@ _RtlCaptureContext@4:
     pop %ebx
     ret $4
 
+.global @RtlpRestoreFpuContext@4
+@RtlpRestoreFpuContext@4:
+    /* TODO */
+    ret
 
 /* See RtlpExecuteHandler for stack and register usage */
 .global _RtlpExecuteHandlerForException@20
