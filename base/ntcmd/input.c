@@ -208,7 +208,7 @@ PCHAR RtlCliGetLine(IN HANDLE hDriver)
     //
     // Wait for a new character
     //
-    while (CurrentPosition < sizeof(Line)) {
+    while (CurrentPosition >= 0 && CurrentPosition < sizeof(Line)) {
 	//
 	// Get the character that was pressed
 	//
@@ -269,6 +269,12 @@ PCHAR RtlCliGetLine(IN HANDLE hDriver)
 	RtlCliPutChar(Char);
     }
 
-    Line[sizeof(Line)-1] = '\0';
+    if (CurrentPosition < 0) {
+	CurrentPosition = 0;
+    }
+    if (CurrentPosition >= sizeof(Line)) {
+	CurrentPosition = sizeof(Line) - 1;
+    }
+    Line[CurrentPosition] = '\0';
     return Line;
 }
