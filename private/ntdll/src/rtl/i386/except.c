@@ -234,6 +234,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 
     /* Get the current frame */
     PEXCEPTION_REGISTRATION_RECORD RegistrationFrame = RtlpGetExceptionList();
+    DPRINT("RegistrationFrame %p. Target frame %p\n", RegistrationFrame, TargetFrame);
 
     /* Now loop every frame */
     while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
@@ -253,6 +254,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	    ExceptionRecord2.NumberParameters = 0;
 
 	    /* Raise the exception */
+	    DbgTrace("Invalid unwind target: frame address too low.\n");
 	    RtlRaiseException(&ExceptionRecord2);
 	}
 
@@ -269,6 +271,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	    ExceptionRecord2.NumberParameters = 0;
 
 	    /* Raise the exception */
+	    DbgTrace("BAD STACK: end of exception frame is outside valid stack.\n");
 	    RtlRaiseException(&ExceptionRecord2);
 	} else {
 	    /* Call the handler */
