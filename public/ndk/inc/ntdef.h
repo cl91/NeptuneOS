@@ -44,7 +44,7 @@
 #define __ALIGNED(x)		__attribute__((aligned(x)))
 #define DECLSPEC_ALIGN(x)	__ALIGNED(x)
 
-#if defined(_AMD64_) || defined(_X86_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 #define SYSTEM_CACHE_ALIGNMENT_SIZE 64
 #else
 #define SYSTEM_CACHE_ALIGNMENT_SIZE 128
