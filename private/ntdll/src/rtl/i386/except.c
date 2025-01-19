@@ -234,6 +234,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 
     /* Get the current frame */
     PEXCEPTION_REGISTRATION_RECORD RegistrationFrame = RtlpGetExceptionList();
+    DPRINT("RegistrationFrame %p. Target frame %p\n", RegistrationFrame, TargetFrame);
 
     /* Now loop every frame */
     while ((RegistrationFrame != NULL) && (RegistrationFrame != EXCEPTION_CHAIN_END)) {
@@ -243,6 +244,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 	    DbgTrace("Hit target frame. Stop unwinding.\n");
 	    NtContinue(&LocalContext, FALSE);
 	}
+	while (1);
 
 	/* Check if the frame is too low */
 	if (TargetFrame && ((ULONG_PTR)TargetFrame < (ULONG_PTR)RegistrationFrame)) {

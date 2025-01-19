@@ -888,6 +888,13 @@ FASTCALL VOID LdrpInitialize(PNT_TIB NtTib)
 	    goto err;
 	}
 
+	__try {
+	    PCHAR p = (PCHAR)0x233;
+	    *p = 0xd;
+	} __except(EXCEPTION_EXECUTE_HANDLER) {
+	    NtDisplayStringA("EEEEEEEEEEEEEEE\n");
+	}
+
 	if (InitInfo.DriverProcess) {
 	    PLDR_DATA_TABLE_ENTRY WdmDllEntry = NULL;
 	    LdrpCheckForLoadedDll("wdm.dll", &WdmDllEntry);

@@ -210,8 +210,8 @@ _RtlpExecuteHandlerForUnwind@20:
  *     ------------------------------------------------------
  *     |RetAddr|ExRec...ExRoutine|OldEDI|OldESI|OldEBX|Ret...
  *     ------------------------------------------------------
- *     ^       ^                 ^     ^      ^      ^
- *     ESP     ESP+4          ESP+20  (PUSHED BY 1ST STAGE)
+ *     ^       ^                 ^      ^      ^      ^
+ *     ESP     ESP+4          ESP+20    (PUSHED BY 1ST STAGE)
  *
  *     On entry, EDX has the address to the exception/unwind
  *     protector. EAX, EBX, ECX, ESI, and EDI are set to zero.

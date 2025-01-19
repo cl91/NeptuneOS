@@ -15,10 +15,14 @@
 
 #define CDECL		__cdecl
 
+#undef DbgTrace
 #undef DPRINT
 #undef DPRINT1
-#define DPRINT DbgTrace
-#define DPRINT1 DbgTrace
+ULONG RtlpVgaPrint(IN PCSTR Format, ...);
+#define __DbgTrace(...) { RtlpVgaPrint("%s %s(%d):  ", RtlpDbgTraceModuleName, __func__, __LINE__); RtlpVgaPrint(__VA_ARGS__); }
+#define DbgTrace __DbgTrace
+#define DPRINT __DbgTrace
+#define DPRINT1 __DbgTrace
 
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
 #define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
