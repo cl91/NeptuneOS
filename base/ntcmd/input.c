@@ -205,12 +205,10 @@ PCHAR RtlCliGetLine(IN HANDLE hDriver)
 {
     CHAR Char;
 
-    //memset(Line, 0x00, 1024);
-
     //
     // Wait for a new character
     //
-    while (TRUE) {
+    while (CurrentPosition < sizeof(Line)) {
 	//
 	// Get the character that was pressed
 	//
@@ -270,4 +268,7 @@ PCHAR RtlCliGetLine(IN HANDLE hDriver)
 	//
 	RtlCliPutChar(Char);
     }
+
+    Line[sizeof(Line)-1] = '\0';
+    return Line;
 }

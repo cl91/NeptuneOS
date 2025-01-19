@@ -51,7 +51,7 @@ NTAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
     }
 
     /* Nothing found */
-    DbgTrace("LDR: data table entry for module %p not found\n", Address)
+    DbgTrace("LDR: data table entry for module %p not found\n", Address);
     return STATUS_NO_MORE_ENTRIES;
 }
 
