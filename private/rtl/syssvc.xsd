@@ -16,6 +16,7 @@
 
     <xsd:complexType name="ServiceType">
         <xsd:attribute name="name" type="xsd:string" />
+	<xsd:attribute name="nofpu" type="xsd:boolean" default="false" />
         <xsd:sequence>
             <xsd:element name="parameter" minOccurs="0" maxOccurs="unbounded" type="ParameterType" />
         </xsd:sequence>

@@ -13,6 +13,4 @@ VOID KiPopulateThreadContext(OUT PTHREAD_CONTEXT ThreadContext,
     ThreadContext->esi = Context->Esi;
     ThreadContext->edi = Context->Edi;
     ThreadContext->ebp = Context->Ebp;
-    ThreadContext->fs_base = Context->SegFs;
-    ThreadContext->gs_base = Context->SegGs;
 }

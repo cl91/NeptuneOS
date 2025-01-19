@@ -292,6 +292,13 @@ static inline BOOLEAN KiServiceValidateArgument(IN MWORD MsgWord,
     return TRUE;
 }
 
+static inline BOOLEAN KiValidateThreadContext(IN MWORD IpcBufferServerAddr,
+					      IN MWORD MsgWord,
+					      IN BOOLEAN Optional)
+{
+    return KiServiceValidateArgument(MsgWord, sizeof(THREAD_CONTEXT), Optional);
+}
+
 static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
 					      IN MWORD MsgWord,
 					      IN BOOLEAN Optional)

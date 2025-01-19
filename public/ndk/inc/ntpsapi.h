@@ -412,7 +412,7 @@ NTAPI NTSYSAPI NTSTATUS NtTerminateThread(IN HANDLE ThreadHandle,
 NTAPI NTSYSAPI NTSTATUS NtResumeThread(IN HANDLE ThreadHandle,
 				       OUT OPTIONAL PULONG SuspendCount);
 
-FORCEINLINE NTAPI PNT_TIB NtCurrentTib(VOID)
+FORCEINLINE DECLSPEC_NOFPU NTAPI PNT_TIB NtCurrentTib(VOID)
 {
 #ifdef _M_IX86
     return (PNT_TIB)__readfsdword(FIELD_OFFSET(NT_TIB, Self));

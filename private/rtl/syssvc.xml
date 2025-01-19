@@ -505,8 +505,8 @@
   <svc name="NtPlugPlayInitialize">
   </svc>
 
-  <svc name="KeContinue">
-    <parameter annotation="in" type="ptr::THREAD_CONTEXT" name="Context" />
+  <svc name="KeContinue" nofpu="true">
+    <parameter annotation="in" type="ThreadContext" name="Context" />
   </svc>
 
 </services>

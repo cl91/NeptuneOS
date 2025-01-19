@@ -29,6 +29,28 @@ static inline NTSTATUS KiServiceMarshalArgument(OUT SERVICE_ARGUMENT *SvcArg,
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS KiMarshalThreadContext(OUT SERVICE_ARGUMENT *SvcArg,
+					      IN PCONTEXT Context,
+					      IN OUT ULONG *MsgBufOffset)
+{
+    VOID KiPopulateThreadContext(OUT PTHREAD_CONTEXT ThreadContext,
+				 IN PCONTEXT Context);
+    if (*MsgBufOffset > SVC_MSGBUF_SIZE) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if (SVC_MSGBUF_SIZE - *MsgBufOffset < sizeof(THREAD_CONTEXT)) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if (!Context) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    KiPopulateThreadContext(&OFFSET_TO_ARG(*MsgBufOffset, THREAD_CONTEXT), Context);
+    SvcArg->BufferStart = *MsgBufOffset;
+    SvcArg->BufferSize = sizeof(THREAD_CONTEXT);
+    *MsgBufOffset += sizeof(THREAD_CONTEXT);
+    return STATUS_SUCCESS;
+}
+
 static inline NTSTATUS KiMarshalUnicodeString(OUT SERVICE_ARGUMENT *Arg,
 					      IN PUNICODE_STRING String,
 					      IN OUT ULONG *MsgBufOffset)

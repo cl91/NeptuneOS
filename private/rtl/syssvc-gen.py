@@ -279,14 +279,14 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread)
 
 CLIENT_SVC_GEN_H_TEMPLATE = """#pragma once
 {% for svc in svc_list %}
-{% if svc.ntapi %}NTAPI {% endif %}NTSTATUS {{svc.client_name}}({%- for param in svc.params %}{{param.annotations}} {{param.client_decl}}{%- if not loop.last %},
+{% if svc.ntapi %}NTAPI {% endif %}{% if svc.nofpu %}DECLSPEC_NOFPU {% endif %}NTSTATUS {{svc.client_name}}({%- for param in svc.params %}{{param.annotations}} {{param.client_decl}}{%- if not loop.last %},
 {{svc.client_param_indent}}
 {%- endif %}{%- endfor %});
 {% endfor %}
 """
 
 CLIENT_SVC_GEN_C_TEMPLATE = """
-{% for svc in svc_list %}{% if svc.ntapi %}NTAPI {% endif %}NTSTATUS {{svc.client_name}}({%- for param in svc.params %}{{param.annotations}} {{param.client_decl}}{%- if not loop.last %},
+{% for svc in svc_list %}{% if svc.ntapi %}NTAPI {% endif %}{% if svc.nofpu %}DECLSPEC_NOFPU {% endif %}NTSTATUS {{svc.client_name}}({%- for param in svc.params %}{{param.annotations}} {{param.client_decl}}{%- if not loop.last %},
 {{svc.client_param_indent}}
 {%- endif %}{%- endfor %})
 {
@@ -872,12 +872,13 @@ class ServiceParameter:
 class Service:
     # Record the service name, tag, parameter list, and invoke the marshallers
     # to generate the parameter marshaling code.
-    def __init__(self, server_name, client_name, params, client_only, wdmsvc):
+    def __init__(self, server_name, client_name, params, client_only, wdmsvc, nofpu):
         self.server_name = server_name
         self.client_name = client_name
         self.enum_tag = camel_case_to_upper_snake_case(server_name)
         self.params = params
         self.client_only = client_only
+        self.nofpu = nofpu
         self.server_param_indent = " " * (len("NTSTATUS") + len(server_name) + 2)
         self.msglength = len(params)+1
         if len(params) == 0 or wdmsvc:
@@ -888,6 +889,8 @@ class Service:
             self.client_param_indent = " " * (len("NTSTATUS NTAPI") + len(client_name) + 2)
         else:
             self.client_param_indent = " " * (len("NTSTATUS") + len(client_name) + 2)
+        if nofpu:
+            self.client_param_indent += " " * len(" DECLSPEC_NOFPU")
         marshallers = [
             SimpleTypeMarshaller(server_name),
             SimplePointerMarshaller(server_name),
@@ -915,6 +918,12 @@ class Service:
                                    marshal_func = "KiMarshalObjectAttributesA",
                                    validate_func = "KiValidateObjectAttributesA",
                                    unmarshal_func = "KiUnmarshalObjectAttributesA"),
+            SingleObjectMarshaller(server_name, object_type = "ThreadContext",
+                                   server_type = "PTHREAD_CONTEXT",
+                                   client_type = "PCONTEXT",
+                                   marshal_func = "KiMarshalThreadContext",
+                                   validate_func = "KiValidateThreadContext",
+                                   unmarshal_func = "KiServiceGetArgument"),
             BufferMarshaller(server_name, buffer_type = "Void",
                              server_type = "PVOID", client_type = "PVOID",
                              client_marshal_func = "KiServiceMarshalBuffer",
@@ -980,7 +989,7 @@ def generate_file(tmplstr, svc_list, out_file, wdmsvc, server_side):
     else:
         svc_group = "System"
         svc_group_upper = "SYSTEM"
-        svc_ipc_cap = "NtCurrentTeb()->NtTib.SystemServiceCap"
+        svc_ipc_cap = "NtCurrentTib()->SystemServiceCap"
         handler_func = "KiHandleSystemService"
         resume_func = "KiResumeSystemService"
         extra_headers = ""
@@ -1022,6 +1031,7 @@ def parse_svcxml(xml_file, wdmsvc, utf8_client):
     svc_list = []
     for svc in svcs.getElementsByTagName("svc"):
         name = str(svc.getAttribute("name"))
+        nofpu = svc.getAttribute("nofpu")
         params = []
         ansi_params = []
         has_unicode_string = False
@@ -1053,13 +1063,13 @@ def parse_svcxml(xml_file, wdmsvc, utf8_client):
         # because we marshal Unicode input parameters on the client side.
         if has_unicode_out_param:
             if not utf8_client:
-                svc_list.append(Service(name+"W", name, params, client_only = False, wdmsvc = wdmsvc))
-            svc_list.append(Service(name+"A", name+"A", ansi_params, client_only = False, wdmsvc = wdmsvc))
+                svc_list.append(Service(name+"W", name, params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu))
+            svc_list.append(Service(name+"A", name+"A", ansi_params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu))
         else:
             if not has_unicode_string or not utf8_client:
-                svc_list.append(Service(name, name, params, client_only = False, wdmsvc = wdmsvc))
+                svc_list.append(Service(name, name, params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu))
             if has_unicode_string:
-                svc_list.append(Service(name, name+"A", ansi_params, client_only = True, wdmsvc = wdmsvc))
+                svc_list.append(Service(name, name+"A", ansi_params, client_only = True, wdmsvc = wdmsvc, nofpu = nofpu))
 
     # sanity check
     assert len(svc_list) != 0

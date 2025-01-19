@@ -50,6 +50,14 @@
 #define SYSTEM_CACHE_ALIGNMENT_SIZE 128
 #endif
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+#define DECLSPEC_NOFPU		__attribute__((target("general-regs-only")))
+#elif defined(_M_ARM64)
+#define DECLSPEC_NOFPU		__attribute__((target("nofp")))
+#else
+#error "Unsupported architecture"
+#endif
+
 #define DECLSPEC_CACHEALIGN DECLSPEC_ALIGN(SYSTEM_CACHE_ALIGNMENT_SIZE)
 
 #define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg " Use " #repl ".", #repl)))
