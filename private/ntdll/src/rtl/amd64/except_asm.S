@@ -8,7 +8,7 @@
 
 /* INCLUDES ******************************************************************/
 
-#include <asm.h>
+#include <x86asm.h>
 #include <ksamd64.h>
 .intel_syntax noprefix
 

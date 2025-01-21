@@ -6,7 +6,7 @@
 
 /* INCLUDES******************************************************************/
 
-#include <asm.h>
+#include <x86asm.h>
 #include <ks386.h>
 
 DISPOSITION_DISMISS = 0

@@ -34,7 +34,8 @@
  * SUCH DAMAGE.
  */
 
-#include <asm.inc>
+#include <x86asm.h>
+.intel_syntax noprefix
 
 PUBLIC __allshr
 

@@ -6,7 +6,7 @@
  * PROGRAMER:         KJK::Hyperion <noog@libero.it>
  */
 
-#include <asm.inc>
+#include <x86asm.h>
 #include <ks386.h>
 
 #define PAGE_SIZE 4096
@@ -15,6 +15,7 @@ PUBLIC __chkstk
 PUBLIC __alloca_probe
 PUBLIC __alloca_probe_16
 .code
+.intel_syntax noprefix
 
     /* 16 byte aligned alloca probe
      * EAX = size to be allocated */

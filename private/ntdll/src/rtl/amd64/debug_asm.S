@@ -6,7 +6,7 @@
  * PROGRAMER:         Timo Kreuzer (timo.kreuzer@reactos.org)
  */
 
-#include <asm.h>
+#include <x86asm.h>
 .intel_syntax noprefix
 
 /* GLOBALS ****************************************************************/

@@ -9,7 +9,7 @@
 
 /* INCLUDES******************************************************************/
 
-#include <asm.h>
+#include <x86asm.h>
 #include <ks386.h>
 
 ExceptionContinueSearch = 1

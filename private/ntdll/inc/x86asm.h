@@ -72,6 +72,18 @@
 #define REPEAT .rept
 #define ENDR .endr
 
+/* MASM compatible PUBLIC */
+.macro PUBLIC symbol
+    .global \symbol
+.endm
+
+/* MASM compatible EXTERN */
+.macro EXTERN name
+.endm
+
+/* MASM needs an END tag */
+#define END
+
 .macro ljmp segment, offset
     jmp far ptr \segment:\offset
 .endm

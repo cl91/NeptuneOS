@@ -9,11 +9,12 @@
 
 /* INCLUDES ******************************************************************/
 
-#include <asm.inc>
+#include <x86asm.h>
 #define PAGE_SIZE 4096
 
 /* CODE **********************************************************************/
 .code64
+.intel_syntax noprefix
 
 PUBLIC __chkstk
 PUBLIC ___chkstk_ms
