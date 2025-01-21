@@ -176,7 +176,10 @@ CHAR RtlCliGetChar(IN HANDLE hDriver)
     KBD_RECORD kbd_rec;
     ULONG BufferLength = sizeof(KEYBOARD_INPUT_DATA);
 
-    RtlClipWaitForInput(hDriver, &KeyboardData, &BufferLength);
+    NTSTATUS Status = RtlClipWaitForInput(hDriver, &KeyboardData, &BufferLength);
+    if (!NT_SUCCESS(Status) || !BufferLength) {
+	return '\0';
+    }
 
     IntTranslateKey(&KeyboardData, &kbd_rec);
 
@@ -276,5 +279,6 @@ PCHAR RtlCliGetLine(IN HANDLE hDriver)
 	CurrentPosition = sizeof(Line) - 1;
     }
     Line[CurrentPosition] = '\0';
+    CurrentPosition = 0;
     return Line;
 }
