@@ -58,6 +58,14 @@ FASTCALL VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
 {
     DbgTrace("ExceptionRecord %p Context %p\n", ExceptionRecord, Context);
     KiConvertExceptionRecord(ExceptionRecord);
+    /* NTDLL is compiled with SIMD enabled so we might modify FPU registers
+     * when handling an exception. Therefore the user space entry point saves
+     * the FPU state before calling us. Mark the context as so.  */
+#ifdef _M_IX86
+    Context->ContextFlags |= CONTEXT_EXTENDED_REGISTERS;
+#else
+    Context->ContextFlags |= CONTEXT_FLOATING_POINT;
+#endif
 
     /* Dispatch the exception and check the result */
     NTSTATUS Status;

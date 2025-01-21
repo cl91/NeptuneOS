@@ -57,37 +57,17 @@
     mov [rcx + CxR14], r14
     mov [rcx + CxR15], r15
 
+    /* Save the FPU context */
+    call RtlpSaveFpuContext
+
     /* Load former stack pointer in rax */
     lea rax, [rsp + 16]
 
     /* Store stack pointer */
     mov [rcx + CxRsp], rax
 
-    /* Store xmm registers */
-    movaps [rcx + CxXmm0], xmm0
-    movaps [rcx + CxXmm1], xmm1
-    movaps [rcx + CxXmm2], xmm2
-    movaps [rcx + CxXmm3], xmm3
-    movaps [rcx + CxXmm4], xmm4
-    movaps [rcx + CxXmm5], xmm5
-    movaps [rcx + CxXmm6], xmm6
-    movaps [rcx + CxXmm7], xmm7
-
     /* Load rflags into eax */
     mov eax, [rsp]
-
-    movaps [rcx + CxXmm8], xmm8
-    movaps [rcx + CxXmm9], xmm9
-    movaps [rcx + CxXmm10], xmm10
-    movaps [rcx + CxXmm11], xmm11
-    movaps [rcx + CxXmm12], xmm12
-    movaps [rcx + CxXmm13], xmm13
-    movaps [rcx + CxXmm14], xmm14
-    movaps [rcx + CxXmm15], xmm15
-
-    /* Store legacy floating point registers */
-    fxsave [rcx + CxFltSave]
-    stmxcsr [rcx + CxMxCsr]
 
     /* Store rflags */
     mov [rcx + CxEFlags], eax
@@ -99,34 +79,22 @@
 
 /*
  * VOID
+ * RtlpSaveFpuContext(IN PCONTEXT ContextRecord@<rcx>);
+ */
+.global RtlpSaveFpuContext
+.PROC RtlpSaveFpuContext
+    .endprolog
+    fxsave [rcx + CxFltSave]
+    ret
+.ENDP
+
+/*
+ * VOID
  * RtlpRestoreFpuContext(IN PCONTEXT ContextRecord@<rcx>);
  */
 .global RtlpRestoreFpuContext
 .PROC RtlpRestoreFpuContext
     .endprolog
-
-    /* Restore legacy floating point registers (It's slow, so do it first) */
-    ldmxcsr [rcx + CxMxCsr]
     fxrstor [rcx + CxFltSave]
-
-    /* Restore xmm registers */
-    movaps xmm0, [rcx + CxXmm0]
-    movaps xmm1, [rcx + CxXmm1]
-    movaps xmm2, [rcx + CxXmm2]
-    movaps xmm3, [rcx + CxXmm3]
-    movaps xmm4, [rcx + CxXmm4]
-    movaps xmm5, [rcx + CxXmm5]
-    movaps xmm6, [rcx + CxXmm6]
-    movaps xmm7, [rcx + CxXmm7]
-    movaps xmm8, [rcx + CxXmm8]
-    movaps xmm9, [rcx + CxXmm9]
-    movaps xmm10, [rcx + CxXmm10]
-    movaps xmm11, [rcx + CxXmm11]
-    movaps xmm12, [rcx + CxXmm12]
-    movaps xmm13, [rcx + CxXmm13]
-    movaps xmm14, [rcx + CxXmm14]
-    movaps xmm15, [rcx + CxXmm15]
-
     ret
-
 .ENDP

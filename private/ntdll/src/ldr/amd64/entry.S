@@ -45,7 +45,6 @@ LdrInitializeThunk:
 1:  jmp  1b
 .seh_endproc
 
-.global KiUserExceptionDispatcher
 .seh_proc KiUserExceptionDispatcher
 KiUserExceptionDispatcher:
     /* We push a machine frame so that RtlUnwindEx can correctly unwind
@@ -63,6 +62,15 @@ KiUserExceptionDispatcher:
     .seh_pushframe
     .seh_stackalloc 0x28        /* shadow-area plus the error code */
     .seh_endprologue
+    /* Capture the floating point context. The server does not modify any
+     * FPU state when dispatching exceptions, so what we capture here is
+     * what the program sees when the exception happens. */
+    mov %rcx, %rax
+    mov %rdx, %rcx
+    /* RtlpSaveFpuContext does not modify any registers, so there is no need
+     * to save any registers other than rcx */
+    call RtlpSaveFpuContext
+    mov %rax, %rcx
     call KiDispatchUserException
     /* This should never return. If it did, just loop forever */
 1:  jmp 1b

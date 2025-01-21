@@ -3,8 +3,6 @@
 #define PAGE_SIZE			0x1000
 #define PAGE_SHIFT			12L
 
-typedef XSAVE_FORMAT XMM_SAVE_AREA32, *PXMM_SAVE_AREA32;
-
 typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     ULONG64 P1Home;
     ULONG64 P2Home;

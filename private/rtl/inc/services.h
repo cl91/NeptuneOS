@@ -197,7 +197,10 @@ typedef struct _NTDLL_PROCESS_INIT_INFO {
     MWORD NtdllViewSize; /* Total virtual memory size of the ntdll image */
     CHAR NtdllPath[INIT_INFO_NTDLL_PATH_SIZE]; /* Full path of the ntdll image */
     CHAR ImageName[INIT_INFO_IMAGE_NAME_SIZE]; /* Base name of the image (eg smss.exe) */
-    BOOLEAN DriverProcess;
+    union {
+	BOOLEAN DriverProcess;
+	MWORD Padding;
+    };
     NTDLL_DRIVER_INIT_INFO DriverInitInfo;
     NTDLL_THREAD_INIT_INFO ThreadInitInfo;
 } NTDLL_PROCESS_INIT_INFO, *PNTDLL_PROCESS_INIT_INFO;

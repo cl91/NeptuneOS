@@ -208,12 +208,13 @@ typedef struct _KUSER_SHARED_DATA {
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 #include <poppack.h>
 
+#if defined(_M_IX86) || defined(_M_AMD64)
 typedef struct DECLSPEC_ALIGN(16) _M128A {
     ULONGLONG Low;
     LONGLONG High;
 } M128A, *PM128A;
 
-typedef struct DECLSPEC_ALIGN(16) _XSAVE_FORMAT {
+typedef struct DECLSPEC_ALIGN(16) _XMM_SAVE_AREA32 {
     USHORT ControlWord;
     USHORT StatusWord;
     UCHAR TagWord;
@@ -237,7 +238,8 @@ typedef struct DECLSPEC_ALIGN(16) _XSAVE_FORMAT {
     ULONG StackControl[7];
     ULONG Cr0NpxState;
 #endif
-} XSAVE_FORMAT, *PXSAVE_FORMAT;
+} XMM_SAVE_AREA32, *PXMM_SAVE_AREA32;
+#endif
 
 #ifdef _M_IX86
 #include <nti386.h>

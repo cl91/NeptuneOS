@@ -113,9 +113,14 @@ _RtlCaptureContext@4:
     pop %ebx
     ret $4
 
+.global @RtlpSaveFpuContext@4
+@RtlpSaveFpuContext@4:
+    fxsave CONTEXT_XMM_SAVE_AREA(%ecx)
+    ret
+
 .global @RtlpRestoreFpuContext@4
 @RtlpRestoreFpuContext@4:
-    /* TODO */
+    fxrstor CONTEXT_XMM_SAVE_AREA(%ecx)
     ret
 
 /* See RtlpExecuteHandler for stack and register usage */

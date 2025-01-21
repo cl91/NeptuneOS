@@ -9,7 +9,7 @@ _LdrInitializeThunk:
      * is distinguished by the second parameter being non-zero.
      */
     test %edx, %edx
-    jnz _KiUserExceptionDispatcher
+    jnz KiUserExceptionDispatcher
 
     /* If we got here, we are being called as the initial entry point of
      * a new thread. In this case %ecx contains the address of the TEB */
@@ -18,8 +18,16 @@ _LdrInitializeThunk:
     /* Should not return. */
 1:  jmp  1b
 
-.global _KiUserExceptionDispatcher
-_KiUserExceptionDispatcher:
+KiUserExceptionDispatcher:
+    /* Capture the floating point context. The server does not modify any
+     * FPU state when dispatching exceptions, so what we capture here is
+     * what the program sees when the exception happens. */
+    mov %ecx, %eax
+    mov %edx, %ecx
+    /* RtlpSaveFpuContext does not modify any registers, so there is no need
+     * to save any registers other than rcx */
+    call @RtlpSaveFpuContext@4
+    mov %eax, %ecx
     call @KiDispatchUserException@8
     /* Should not return. */
 1:  jmp 1b
