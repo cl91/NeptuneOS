@@ -21,4 +21,6 @@ VOID KiPopulateThreadContext(OUT PTHREAD_CONTEXT ThreadContext,
     ThreadContext->r13 = Context->R13;
     ThreadContext->r14 = Context->R14;
     ThreadContext->r15 = Context->R15;
+    ThreadContext->fs_base = Context->FsBase;
+    ThreadContext->gs_base = Context->GsBase;
 }

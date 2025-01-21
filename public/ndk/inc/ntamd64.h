@@ -11,14 +11,9 @@ typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     ULONG64 P5Home;
     ULONG64 P6Home;
     ULONG ContextFlags;
-    ULONG MxCsr;
-    USHORT SegCs;
-    USHORT SegDs;
-    USHORT SegEs;
-    USHORT SegFs;
-    USHORT SegGs;
-    USHORT SegSs;
     ULONG EFlags;
+    ULONG64 FsBase;
+    ULONG64 GsBase;
     ULONG64 Dr0;
     ULONG64 Dr1;
     ULONG64 Dr2;

@@ -40,6 +40,8 @@ VOID KiPopulateUserExceptionContext(IN PCONTEXT UserCtx,
 {
     UserCtx->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
     UserCtx->EFlags = Ctx->rflags;
+    UserCtx->FsBase = Ctx->fs_base;
+    UserCtx->GsBase = Ctx->gs_base;
     UserCtx->Rax = Ctx->rax;
     UserCtx->Rcx = Ctx->rcx;
     UserCtx->Rdx = Ctx->rdx;

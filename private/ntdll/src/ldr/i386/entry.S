@@ -31,7 +31,3 @@ KiUserExceptionDispatcher:
     call @KiDispatchUserException@8
     /* Should not return. */
 1:  jmp 1b
-
-/* Must match offset of ThreadLocalStoragePointer in TEB struct */
-.global __tls_array
-.equ __tls_array, TbThreadLocalStoragePointer

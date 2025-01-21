@@ -5,20 +5,17 @@
 
 #define MAXIMUM_SUPPORTED_EXTENSION	512
 
-#include "pshpack4.h"
 typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     ULONG ContextFlags;
     ULONG Dr0;
     ULONG Dr1;
     ULONG Dr2;
     ULONG Dr3;
-    ULONG Dr5;
     ULONG Dr6;
     ULONG Dr7;
-    ULONG SegGs;
-    ULONG SegFs;
-    ULONG SegEs;
-    ULONG SegDs;
+    ULONG Padding;
+    ULONG FsBase;
+    ULONG GsBase;
     ULONG Edi;
     ULONG Esi;
     ULONG Ebx;
@@ -27,16 +24,13 @@ typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     ULONG Eax;
     ULONG Ebp;
     ULONG Eip;
-    ULONG SegCs;
     ULONG EFlags;
     ULONG Esp;
-    ULONG SegSs;
     union {
 	UCHAR ExtendedRegisters[MAXIMUM_SUPPORTED_EXTENSION];
 	XMM_SAVE_AREA32 FltSave;
     };
 } CONTEXT, *PCONTEXT;
-#include "poppack.h"
 
 #define CONTEXT_i386               0x10000
 #define CONTEXT_i486               0x10000

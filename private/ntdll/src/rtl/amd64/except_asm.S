@@ -72,6 +72,12 @@
     /* Store rflags */
     mov [rcx + CxEFlags], eax
 
+    /* Save fs and gs base */
+    rdfsbase rax
+    mov [rcx + CxFsBase], rax
+    rdgsbase rax
+    mov [rcx + CxGsBase], rax
+
     /* Cleanup stack and return */
     add rsp, 8
     ret

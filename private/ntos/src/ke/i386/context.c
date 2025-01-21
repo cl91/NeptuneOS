@@ -24,6 +24,8 @@ VOID KiPopulateUserExceptionContext(IN PCONTEXT UserCtx,
 				    IN PTHREAD_CONTEXT Ctx)
 {
     UserCtx->ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    UserCtx->FsBase = Ctx->fs_base;
+    UserCtx->GsBase = Ctx->gs_base;
     UserCtx->Edi = Ctx->edi;
     UserCtx->Esi = Ctx->esi;
     UserCtx->Ebx = Ctx->ebx;

@@ -216,10 +216,11 @@ NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 
 static NTSTATUS KiSetThreadContext(IN MWORD ThreadCap,
 				   IN PTHREAD_CONTEXT Context,
-				   IN ULONG NumRegs)
+				   IN BOOLEAN ResumeThread)
 {
     assert(ThreadCap != 0);
-    int Error = seL4_TCB_WriteRegisters(ThreadCap, 0, 0, NumRegs,
+    int Error = seL4_TCB_WriteRegisters(ThreadCap, ResumeThread, 0,
+					sizeof(THREAD_CONTEXT) / sizeof(MWORD),
 					Context);
 
     if (Error != 0) {
@@ -234,21 +235,7 @@ static NTSTATUS KiSetThreadContext(IN MWORD ThreadCap,
 NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
 			    IN PTHREAD_CONTEXT Context)
 {
-    return KiSetThreadContext(ThreadCap, Context, sizeof(THREAD_CONTEXT) / sizeof(MWORD));
-}
-
-/*
- * Set the thread integer context only, without the thread pointer registers.
- */
-static NTSTATUS KiSetThreadIntegerContext(IN MWORD ThreadCap,
-					  IN PTHREAD_CONTEXT Context)
-{
-#if !defined(_M_IX86) && !defined(_M_AMD64) && !defined(_M_ARM64)
-#error "Unsupported architecture"
-#endif
-    /* On i386, amd64, arm32, and arm64, the last two registers are the thread
-     * pointer registers, so skip them when writing the thread context. */
-    return KiSetThreadContext(ThreadCap, Context, sizeof(THREAD_CONTEXT) / sizeof(MWORD) - 2);
+    return KiSetThreadContext(ThreadCap, Context, FALSE);
 }
 
 /*
@@ -258,7 +245,8 @@ NTSTATUS KeContinue(IN ASYNC_STATE AsyncState,
                     IN PTHREAD Thread,
                     IN PTHREAD_CONTEXT Context)
 {
-    return KiSetThreadIntegerContext(Thread->TreeNode.Cap, Context);
+    NTSTATUS Status = KiSetThreadContext(Thread->TreeNode.Cap, Context, TRUE);
+    return NT_SUCCESS(Status) ? STATUS_NTOS_NO_REPLY : Status;
 }
 
 static inline BOOLEAN KiServiceValidateArgument(IN MWORD MsgWord,

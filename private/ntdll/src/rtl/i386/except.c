@@ -224,6 +224,7 @@ NTAPI VOID RtlUnwind(IN PVOID TargetFrame OPTIONAL,
 #pragma GCC diagnostic ignored "-Wframe-address"
     CONTEXT LocalContext = {
 	.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL,
+	.FsBase = (ULONG)NtCurrentTib()->Self,
 	.Eax = (ULONG)ReturnValue,
 	.Eip = (ULONG)_ReturnAddress(),
 	.Ebp = (ULONG)__builtin_frame_address(1),

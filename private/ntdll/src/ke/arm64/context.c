@@ -37,4 +37,6 @@ VOID KiPopulateThreadContext(OUT PTHREAD_CONTEXT ThreadContext,
     ThreadContext->x28 = Context->X28;
     ThreadContext->x29 = Context->Fp;
     ThreadContext->x30 = Context->Lr;
+    ThreadContext->tpidr_el0 = Context->X18;
+    ThreadContext->tpidrro_el0 = 0;
 }

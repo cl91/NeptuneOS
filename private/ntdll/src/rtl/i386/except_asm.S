@@ -53,11 +53,8 @@ _RtlpSetExceptionList@4:
  *     the call instruction when the caller's caller called the caller.
  *
  * ADDITIONAL INFORMATION:
- *     Note that this is not used by RtlUnwind. We only expose this
- *     because it is a public function.
- *
- *     Also note that in order for this function to work correctly,
- *     the caller must NOT have its frame pointer omitted. Since most
+ *     Note that in order for this function to work correctly, the
+ *     caller must NOT have its frame pointer omitted. Since most
  *     modern compilers WILL omit the frame pointers, you are strongly
  *     advised to NOT call this function unless you are sure the frame
  *     pointer is not omitted. RtlRaiseStatus and RtlRaiseException do
@@ -105,9 +102,17 @@ _RtlCaptureContext@4:
     mov 0(%ebp), %eax
     mov %eax, CONTEXT_EBP(%ebx)
 
-    /* And get ESP */
+    /* Get ESP */
     lea 8(%ebp), %eax
     mov %eax, CONTEXT_ESP(%ebx)
+
+    /* Get the FS base */
+    mov %fs:TEB_SELF, %eax
+    mov %eax, CONTEXT_FS_BASE(%ebx)
+
+    /* Set the GS base to 0 */
+    xor %eax, %eax
+    mov %eax, CONTEXT_GS_BASE(%ebx)
 
     /* Return to the caller */
     pop %ebx

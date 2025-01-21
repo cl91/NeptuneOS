@@ -30,9 +30,6 @@ NTAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
     /* Initialize everything to 0 */
     RtlZeroMemory(ThreadContext, sizeof(*ThreadContext));
 
-    /* Set the Selectors */
-    ThreadContext->SegFs = (ULONG) NtCurrentTeb();
-
     /* Enable Interrupts */
     ThreadContext->EFlags = EFLAGS_INTERRUPT_MASK;
 

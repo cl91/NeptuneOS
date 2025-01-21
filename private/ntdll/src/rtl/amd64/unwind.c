@@ -445,9 +445,8 @@ RepeatChainedInfo:
 	    /* Now pop the MACHINE_FRAME (RIP/RSP only. Yes, "magic numbers", deal with it) */
 	    Context->Rip = *(PULONG64)(Context->Rsp + 0x00);
 	    Context->Rsp = *(PULONG64)(Context->Rsp + 0x18);
-	    DbgTrace("New RIP %p CS 0x%x EFlags 0x%x SS 0x%x RSP %p\n",
-		     (PVOID)Context->Rip, Context->SegCs, Context->EFlags,
-		     Context->SegSs, (PVOID)Context->Rsp);
+	    DbgTrace("New RIP %p EFlags 0x%x RSP %p\n",
+		     (PVOID)Context->Rip, Context->EFlags, (PVOID)Context->Rsp);
 	    ASSERT((i + 1) == UnwindInfo->CountOfCodes);
 	    goto Exit;
 	}
