@@ -340,7 +340,7 @@ NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
     ULONG i = 0;
 
     /* Use a SEH block for maximum protection */
-    _SEH2_TRY {
+    __try {
 	/* Loop the frames */
 	for (i = 0; i < Count; i++) {
 	    /*
@@ -379,11 +379,10 @@ NTAPI ULONG RtlWalkFrameChain(OUT PVOID *Callers,
 	    /* Move to the next stack */
 	    Stack = NewStack;
 	}
-    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
 	/* No index */
 	i = 0;
     }
-    _SEH2_END;
 
     /* Return frames parsed */
     return i;

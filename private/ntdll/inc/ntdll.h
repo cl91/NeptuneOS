@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <nt.h>
+#include <excpt.h>
 #include <services.h>
 #include <sel4/sel4.h>
 #include <ntdll_syssvc_gen.h>
@@ -34,19 +35,6 @@ static inline unsigned long PtrToUlong(const void *p)
 {
     return ((unsigned long)(ULONG_PTR)p);
 }
-
-/* Use native clang/gcc implementation of structured exception handling */
-#include <excpt.h>
-#define _SEH2_TRY __try
-#define _SEH2_FINALLY __finally
-#define _SEH2_EXCEPT(...) __except(__VA_ARGS__)
-#define _SEH2_END
-#define _SEH2_GetExceptionInformation() (GetExceptionInformation())
-#define _SEH2_GetExceptionCode() (GetExceptionCode())
-#define _SEH2_AbnormalTermination() (AbnormalTermination())
-#define _SEH2_YIELD(STMT_) STMT_
-#define _SEH2_LEAVE __leave
-#define _SEH2_VOLATILE
 
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
 

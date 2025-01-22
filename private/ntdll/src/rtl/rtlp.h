@@ -30,7 +30,7 @@ static inline NTSTATUS RtlpSafeCopyMemory(OUT VOID UNALIGNED *Destination,
     __try {
         RtlCopyMemory((PVOID)Destination, (PCVOID)Source, Length);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return _SEH2_GetExceptionCode();
+        return GetExceptionCode();
     }
 
     return STATUS_SUCCESS;

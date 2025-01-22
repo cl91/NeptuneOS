@@ -20,19 +20,18 @@ NTAPI BOOLEAN RtlValidSid(IN PSID Sid_)
     PISID Sid = Sid_;
 
     /* Use SEH in case any pointer is invalid */
-    _SEH2_TRY {
+    __try {
 	/* Validate the revision and subauthority count */
 	if ((Sid) &&
 	    (((Sid->Revision & 0xF) != SID_REVISION) ||
 	     (Sid->SubAuthorityCount > SID_MAX_SUB_AUTHORITIES))) {
 	    /* It's not, fail */
-	    _SEH2_YIELD(return FALSE);
+	    return FALSE;
 	}
-    } _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
 	/* Access violation, SID is not valid */
-	_SEH2_YIELD(return FALSE);
+	return FALSE;
     }
-    _SEH2_END;
 
     /* All good */
     return TRUE;

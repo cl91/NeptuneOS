@@ -1297,7 +1297,6 @@ BOOLEAN RtlpDphIsPageHeapBlock(PDPH_HEAP_ROOT DphRoot,
     ASSERT(ValidationInformation != NULL);
     *ValidationInformation = 0;
 
-    // _SEH2_TRY {
     BlockInfo = (PDPH_BLOCK_INFORMATION) Block - 1;
 
     /* Check stamps */

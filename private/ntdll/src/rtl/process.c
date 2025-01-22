@@ -231,7 +231,7 @@ NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 
     /* Duplicate the standard handles */
     Status = STATUS_SUCCESS;
-    _SEH2_TRY {
+    __try {
 	if (ProcessParameters->StandardInput) {
 	    Status = NtDuplicateObject(ParentProcess,
 				       ProcessParameters->StandardInput,
@@ -242,7 +242,7 @@ NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 				       DUPLICATE_SAME_ACCESS |
 				       DUPLICATE_SAME_ATTRIBUTES);
 	    if (!NT_SUCCESS(Status)) {
-		_SEH2_LEAVE;
+		__leave;
 	    }
 	}
 
@@ -256,7 +256,7 @@ NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 				       DUPLICATE_SAME_ACCESS |
 				       DUPLICATE_SAME_ATTRIBUTES);
 	    if (!NT_SUCCESS(Status)) {
-		_SEH2_LEAVE;
+		__leave;
 	    }
 	}
 
@@ -270,10 +270,10 @@ NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 				       DUPLICATE_SAME_ACCESS |
 				       DUPLICATE_SAME_ATTRIBUTES);
 	    if (!NT_SUCCESS(Status)) {
-		_SEH2_LEAVE;
+		__leave;
 	    }
 	}
-    } _SEH2_FINALLY {
+    } __finally {
 	if (!NT_SUCCESS(Status)) {
 	    NtClose(ProcessInfo->ProcessHandle);
 	    NtClose(hSection);

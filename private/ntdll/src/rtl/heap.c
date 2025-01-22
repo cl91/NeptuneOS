@@ -2322,7 +2322,7 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
     HeapEntry = (PHEAP_ENTRY) Ptr - 1;
 
     /* Protect with SEH in case the pointer is not valid */
-    _SEH2_TRY {
+    __try {
 	/* Check this entry, fail if it's invalid */
 	if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY) ||
 	    (((ULONG_PTR) Ptr & 0x7) != 0) ||
@@ -2331,17 +2331,15 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 	    DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
 	    ASSERT(FALSE);
 	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
-	    _SEH2_YIELD(return FALSE);
+	    return FALSE;
 	}
-    }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
 	/* The pointer was invalid */
 	DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
 	ASSERT(FALSE);
 	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
-	_SEH2_YIELD(return FALSE);
+	return FALSE;
     }
-    _SEH2_END;
 
     /* Lock if necessary */
     if (!(Flags & HEAP_NO_SERIALIZE)) {
@@ -4036,21 +4034,17 @@ ULONG NTAPI RtlMultipleFreeHeap(IN PVOID HeapHandle,
 	if (Array[Index] == NULL)
 	    continue;
 
-	_SEH2_TRY {
+	__try {
 	    if (!RtlFreeHeap(HeapHandle, Flags, Array[Index])) {
 		/* ERROR_INVALID_PARAMETER */
-		RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-		    (STATUS_INVALID_PARAMETER);
+		RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 		break;
 	    }
-	}
-	_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    /* ERROR_INVALID_PARAMETER */
-	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-		(STATUS_INVALID_PARAMETER);
+	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	    break;
 	}
-	_SEH2_END;
     }
 
     return Index;
