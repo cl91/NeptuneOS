@@ -494,19 +494,9 @@ extern "C++" {
     ADDRESS_AND_SIZE_TO_SPAN_PAGES(Va,Size)
 
 
-#if defined(_WIN64)
-#define POINTER_ALIGNMENT DECLSPEC_ALIGN(8)
-#else
-#define POINTER_ALIGNMENT
-#endif
-
-#if defined(_WIN64) || defined(_M_ALPHA)
-#define MAX_NATURAL_ALIGNMENT sizeof(ULONGLONG)
 #define MEMORY_ALLOCATION_ALIGNMENT 16
-#else
-#define MAX_NATURAL_ALIGNMENT sizeof(ULONG)
-#define MEMORY_ALLOCATION_ALIGNMENT 8
-#endif
+#define MAX_NATURAL_ALIGNMENT sizeof(ULONG_PTR)
+#define POINTER_ALIGNMENT DECLSPEC_ALIGN(MAX_NATURAL_ALIGNMENT)
 
 /*
  * Use intrinsics for 32-bit and 64-bit multiplications on i386

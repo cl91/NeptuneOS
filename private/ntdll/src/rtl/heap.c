@@ -200,6 +200,9 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
     PHEAP_UCR_DESCRIPTOR UcrDescriptor;
     SIZE_T DeCommitFreeBlockThreshold;
 
+    /* Memory allocation is always 16-byte aligned, even on 32-bit architectures/ */
+    Flags |= HEAP_CREATE_ALIGN_16;
+
     /* Preconditions */
     ASSERT(Heap != NULL);
     ASSERT(Parameters != NULL);
@@ -284,10 +287,10 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
 
     /* Initialise the Heap alignment info */
     if (Flags & HEAP_CREATE_ALIGN_16) {
-	Heap->AlignMask = (ULONG) ~ 15;
+	Heap->AlignMask = (ULONG)~15;
 	Heap->AlignRound = 15 + sizeof(HEAP_ENTRY);
     } else {
-	Heap->AlignMask = (ULONG) ~ (sizeof(HEAP_ENTRY) - 1);
+	Heap->AlignMask = (ULONG)~(sizeof(HEAP_ENTRY) - 1);
 	Heap->AlignRound = 2 * sizeof(HEAP_ENTRY) - 1;
     }
 
@@ -1416,7 +1419,7 @@ static NTSTATUS RtlpRegisterHeap(IN PHEAP Heap,
     }
 
     /* Initialize heap's first segment */
-    Status = RtlpInitializeHeapSegment(Heap, (PHEAP_SEGMENT) (Heap), 0,
+    Status = RtlpInitializeHeapSegment(Heap, (PHEAP_SEGMENT)(Heap), 0,
 				       HeapSegmentFlags, TotalSize, CommitSize);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Failed to initialize heap segment (%x)\n", Status);
@@ -1567,19 +1570,19 @@ NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
     RtlpInitializeCriticalSection(&RtlpProcessHeapListLock, InitInfo->ProcessHeapListLockSemaphore, 0);
 
     DPRINT("Creating process heap\n");
-    RET_ERR(LdrpCreateHeap((PVOID) InitInfo->ProcessHeapStart, ProcessHeapFlags,
+    RET_ERR(LdrpCreateHeap((PVOID)InitInfo->ProcessHeapStart, ProcessHeapFlags,
 			   InitInfo->ProcessHeapReserve,
 			   InitInfo->ProcessHeapCommit,
 			   InitInfo->ProcessHeapLockSemaphore,
 			   ProcessHeapParams));
-    Peb->ProcessHeap = (HANDLE) InitInfo->ProcessHeapStart;
+    Peb->ProcessHeap = (HANDLE)InitInfo->ProcessHeapStart;
 
     DPRINT("Creating loader heap\n");
     RTL_HEAP_PARAMETERS LoaderHeapParams;
     RtlZeroMemory(&LoaderHeapParams, sizeof(LoaderHeapParams));
     ULONG LoaderHeapFlags = HEAP_GROWABLE | HEAP_CLASS_1;
     LoaderHeapParams.Length = sizeof(LoaderHeapParams);
-    RET_ERR(LdrpCreateHeap((PVOID) InitInfo->LoaderHeapStart, LoaderHeapFlags,
+    RET_ERR(LdrpCreateHeap((PVOID)InitInfo->LoaderHeapStart, LoaderHeapFlags,
 			   NTDLL_LOADER_HEAP_RESERVE, NTDLL_LOADER_HEAP_COMMIT,
 			   InitInfo->LoaderHeapLockSemaphore,
 			   &LoaderHeapParams));
@@ -1613,7 +1616,7 @@ NTAPI HANDLE RtlCreateHeap(ULONG Flags,
 	}
 
 	/* Reset a special Parameters == -1 hack */
-	if ((ULONG_PTR) Parameters == (ULONG_PTR) - 1) {
+	if ((ULONG_PTR)Parameters == (ULONG_PTR)-1) {
 	    Parameters = NULL;
 	} else {
 	    DPRINT1("Enabling page heap failed\n");
