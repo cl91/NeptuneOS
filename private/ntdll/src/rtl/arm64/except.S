@@ -1,4 +1,5 @@
 #include <arm64asm.h>
+#include <ksarm64.h>
 
 .PROC RtlCaptureContext
     str xzr, [x0, #0x8]        /* Context->X0 */
@@ -19,22 +20,11 @@
     stp x29, xzr, [x0, #0xf0]  /* Context->Fp,Lr */
     mov x1, sp
     stp x1, x30, [x0, #0x100]  /* Context->Sp,Pc */
-    stp q0,  q1,  [x0, #0x110] /* Context->V[0-1] */
-    stp q2,  q3,  [x0, #0x130] /* Context->V[2-3] */
-    stp q4,  q5,  [x0, #0x150] /* Context->V[4-5] */
-    stp q6,  q7,  [x0, #0x170] /* Context->V[6-7] */
-    stp q8,  q9,  [x0, #0x190] /* Context->V[8-9] */
-    stp q10, q11, [x0, #0x1b0] /* Context->V[10-11] */
-    stp q12, q13, [x0, #0x1d0] /* Context->V[12-13] */
-    stp q14, q15, [x0, #0x1f0] /* Context->V[14-15] */
-    stp q16, q17, [x0, #0x210] /* Context->V[16-17] */
-    stp q18, q19, [x0, #0x230] /* Context->V[18-19] */
-    stp q20, q21, [x0, #0x250] /* Context->V[20-21] */
-    stp q22, q23, [x0, #0x270] /* Context->V[22-23] */
-    stp q24, q25, [x0, #0x290] /* Context->V[24-25] */
-    stp q26, q27, [x0, #0x2b0] /* Context->V[26-27] */
-    stp q28, q29, [x0, #0x2d0] /* Context->V[28-29] */
-    stp q30, q31, [x0, #0x2f0] /* Context->V[30-31] */
+    /* RtlpSaveFpuContext does not modify x0--x29, so we can use
+     * x1 as a non-volatile register here. */
+    mov x1, x30
+    bl RtlpSaveFpuContext
+    mov x30, x1
     mov w1, #0x400000          /* CONTEXT_ARM64 */
     movk w1, #0x7              /* CONTEXT_FULL */
     str w1, [x0]               /* Context->ContextFlags */
@@ -88,7 +78,7 @@
     .seh_context
     .seh_endprologue
     blr x1
-    str x0, [sp, #0x108] /* Context->Pc */
+    str x0, [sp, CONTEXT_PC] /* Context->Pc */
     mov x0, sp
     mov w1, #0
     b NtContinue
@@ -109,4 +99,44 @@
     b.ne 1b
     mov x0, x2
     b RtlpInvokeCallback
+.ENDP
+
+.PROC RtlpSaveFpuContext
+    stp q0,  q1,  [x0, #0x110] /* Context->V[0-1] */
+    stp q2,  q3,  [x0, #0x130] /* Context->V[2-3] */
+    stp q4,  q5,  [x0, #0x150] /* Context->V[4-5] */
+    stp q6,  q7,  [x0, #0x170] /* Context->V[6-7] */
+    stp q8,  q9,  [x0, #0x190] /* Context->V[8-9] */
+    stp q10, q11, [x0, #0x1b0] /* Context->V[10-11] */
+    stp q12, q13, [x0, #0x1d0] /* Context->V[12-13] */
+    stp q14, q15, [x0, #0x1f0] /* Context->V[14-15] */
+    stp q16, q17, [x0, #0x210] /* Context->V[16-17] */
+    stp q18, q19, [x0, #0x230] /* Context->V[18-19] */
+    stp q20, q21, [x0, #0x250] /* Context->V[20-21] */
+    stp q22, q23, [x0, #0x270] /* Context->V[22-23] */
+    stp q24, q25, [x0, #0x290] /* Context->V[24-25] */
+    stp q26, q27, [x0, #0x2b0] /* Context->V[26-27] */
+    stp q28, q29, [x0, #0x2d0] /* Context->V[28-29] */
+    stp q30, q31, [x0, #0x2f0] /* Context->V[30-31] */
+    ret
+.ENDP
+
+.PROC RtlpRestoreFpuContext
+    ldp q0,  q1,  [x0, #0x110] /* Context->V[0-1] */
+    ldp q2,  q3,  [x0, #0x130] /* Context->V[2-3] */
+    ldp q4,  q5,  [x0, #0x150] /* Context->V[4-5] */
+    ldp q6,  q7,  [x0, #0x170] /* Context->V[6-7] */
+    ldp q8,  q9,  [x0, #0x190] /* Context->V[8-9] */
+    ldp q10, q11, [x0, #0x1b0] /* Context->V[10-11] */
+    ldp q12, q13, [x0, #0x1d0] /* Context->V[12-13] */
+    ldp q14, q15, [x0, #0x1f0] /* Context->V[14-15] */
+    ldp q16, q17, [x0, #0x210] /* Context->V[16-17] */
+    ldp q18, q19, [x0, #0x230] /* Context->V[18-19] */
+    ldp q20, q21, [x0, #0x250] /* Context->V[20-21] */
+    ldp q22, q23, [x0, #0x270] /* Context->V[22-23] */
+    ldp q24, q25, [x0, #0x290] /* Context->V[24-25] */
+    ldp q26, q27, [x0, #0x2b0] /* Context->V[26-27] */
+    ldp q28, q29, [x0, #0x2d0] /* Context->V[28-29] */
+    ldp q30, q31, [x0, #0x2f0] /* Context->V[30-31] */
+    ret
 .ENDP

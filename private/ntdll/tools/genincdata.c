@@ -51,8 +51,8 @@ ASMGENDATA Table[] = {
 #include "ks386.template.h"
 #elif defined(_M_AMD64)
 #include "ksamd64.template.h"
-#elif defined(_M_ARM)
-#include "ksarm.template.h"
+#elif defined(_M_ARM64)
+#include "ksarm64.template.h"
 #endif
 
     /* End of list */
