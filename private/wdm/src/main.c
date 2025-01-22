@@ -62,7 +62,9 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopEventList);
     InitializeListHead(&IopTimerList);
+#if defined(_M_IX86) || defined(_M_AMD64)
     InitializeListHead(&IopX86PortList);
+#endif
     InitializeListHead(&IopDriverObject.ReinitListHead);
     RtlInitializeSListHead(&IopWorkItemQueue);
     InitializeListHead(&IopDpcQueue);

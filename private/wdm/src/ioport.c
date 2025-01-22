@@ -1,5 +1,7 @@
 #include <wdmp.h>
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+
 LIST_ENTRY IopX86PortList;
 
 static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
@@ -102,3 +104,5 @@ DEFINE_READ_PORT_HELPER(32, ULONG);
 DEFINE_WRITE_PORT_HELPER(32, ULONG);
 DEFINE_PORT_IN_FUNC(dword, 32, ULONG);
 DEFINE_PORT_OUT_FUNC(dword, 32, ULONG);
+
+#endif
