@@ -220,16 +220,21 @@ typedef struct DECLSPEC_ALIGN(16) _XMM_SAVE_AREA32 {
     UCHAR TagWord;
     UCHAR Reserved1;
     USHORT ErrorOpcode;
+#ifdef _WIN64
+    ULONG64 ErrorOffset;
+    ULONG64 DataOffset;
+#else
     ULONG ErrorOffset;
     USHORT ErrorSelector;
     USHORT Reserved2;
     ULONG DataOffset;
     USHORT DataSelector;
     USHORT Reserved3;
+#endif
     ULONG MxCsr;
     ULONG MxCsr_Mask;
     M128A FloatRegisters[8];
-#if defined(_WIN64)
+#ifdef _WIN64
     M128A XmmRegisters[16];
     UCHAR Reserved4[96];
 #else

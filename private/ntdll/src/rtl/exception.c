@@ -91,7 +91,7 @@ static VOID RtlpGetModuleNameFromAddr(IN PVOID Addr,
 
 typedef ULONG (*RTLP_DBG_PRINTER)(PCSTR Fmt, ...);
 
-static VOID RtlpDumpContextEx(IN PCONTEXT pc,
+static VOID RtlpDumpContextEx(IN PCONTEXT Ctx,
 			      IN RTLP_DBG_PRINTER DbgPrinter)
 {
 #ifdef _M_IX86
@@ -99,54 +99,76 @@ static VOID RtlpDumpContextEx(IN PCONTEXT pc,
      * Print out the CPU registers
      */
     DbgPrinter("EIP: %.8x   EFLAGS: %.8x\n",
-	       pc->Eip, pc->EFlags);
+	       Ctx->Eip, Ctx->EFlags);
     DbgPrinter("EAX: %.8x   EBX: %.8x   ECX: %.8x   EDX: %.8x\n",
-	       pc->Eax, pc->Ebx, pc->Ecx, pc->Edx);
+	       Ctx->Eax, Ctx->Ebx, Ctx->Ecx, Ctx->Edx);
     DbgPrinter("EDI: %.8x   ESI: %.8x   EBP: %.8x   ESP: %.8x\n",
-	       pc->Edi, pc->Esi, pc->Ebp, pc->Esp);
+	       Ctx->Edi, Ctx->Esi, Ctx->Ebp, Ctx->Esp);
 #elif defined(_M_AMD64)
     DbgPrinter("RIP: %.16llx   RSP: %.16llx   EFLAGS: %.8x\n",
-	       pc->Rip, pc->Rsp, pc->EFlags);
+	       Ctx->Rip, Ctx->Rsp, Ctx->EFlags);
     DbgPrinter("RAX: %.16llx   RBX: %.16llx   RCX: %.16llx\n",
-	       pc->Rax, pc->Rbx, pc->Rcx);
+	       Ctx->Rax, Ctx->Rbx, Ctx->Rcx);
     DbgPrinter("RDX: %.16llx   RDI: %.16llx   RSI: %.16llx\n",
-	       pc->Rdx, pc->Rdi, pc->Rsi);
+	       Ctx->Rdx, Ctx->Rdi, Ctx->Rsi);
     DbgPrinter("RBP: %.16llx   R8:  %.16llx   R9:  %.16llx\n",
-	       pc->Rbp, pc->R8, pc->R9);
+	       Ctx->Rbp, Ctx->R8, Ctx->R9);
     DbgPrinter("R10: %.16llx   R11: %.16llx   R12: %.16llx\n",
-	       pc->R10, pc->R11, pc->R12);
+	       Ctx->R10, Ctx->R11, Ctx->R12);
     DbgPrinter("R13: %.16llx   R14: %.16llx   R15: %.16llx\n",
-	       pc->R13, pc->R14, pc->R15);
+	       Ctx->R13, Ctx->R14, Ctx->R15);
 #elif defined(_M_ARM)
-    DbgPrinter("Pc: %lx   Lr: %lx   Sp: %lx    Cpsr: %lx\n", pc->Pc, pc->Lr,
-	       pc->Sp, pc->Cpsr);
-    DbgPrinter("R0: %lx   R1: %lx   R2: %lx    R3: %lx\n", pc->R0, pc->R1,
-	       pc->R2, pc->R3);
-    DbgPrinter("R4: %lx   R5: %lx   R6: %lx    R7: %lx\n", pc->R4, pc->R5,
-	       pc->R6, pc->R7);
-    DbgPrinter("R8: %lx   R9: %lx  R10: %lx   R11: %lx\n", pc->R8, pc->R9,
-	       pc->R10, pc->R11);
-    DbgPrinter("R12: %lx\n", pc->R12);
+    DbgPrinter("Pc: %lx   Lr: %lx   Sp: %lx    Cpsr: %lx\n", Ctx->Pc, Ctx->Lr,
+	       Ctx->Sp, Ctx->Cpsr);
+    DbgPrinter("R0: %lx   R1: %lx   R2: %lx    R3: %lx\n", Ctx->R0, Ctx->R1,
+	       Ctx->R2, Ctx->R3);
+    DbgPrinter("R4: %lx   R5: %lx   R6: %lx    R7: %lx\n", Ctx->R4, Ctx->R5,
+	       Ctx->R6, Ctx->R7);
+    DbgPrinter("R8: %lx   R9: %lx  R10: %lx   R11: %lx\n", Ctx->R8, Ctx->R9,
+	       Ctx->R10, Ctx->R11);
+    DbgPrinter("R12: %lx\n", Ctx->R12);
 #elif defined(_M_ARM64)
-    DbgPrinter("Pc: %llx   Lr: %llx   Sp: %llx    Cpsr: %llx\n", pc->Pc, pc->Lr,
-	       pc->Sp, pc->Cpsr);
-    DbgPrinter("X0: %llx   X1: %llx   X2: %llx    X3: %llx\n", pc->X0, pc->X1,
-	       pc->X2, pc->X3);
-    DbgPrinter("X4: %llx   X5: %llx   X6: %llx    X7: %llx\n", pc->X4, pc->X5,
-	       pc->X6, pc->X7);
-    DbgPrinter("X8: %llx   X9: %llx  X10: %llx   X11: %llx\n", pc->X8, pc->X9,
-	       pc->X10, pc->X11);
-    DbgPrinter("X12: %llx   X13: %llx  X14: %llx   X15: %llx\n", pc->X12, pc->X13,
-	       pc->X14, pc->X15);
-    DbgPrinter("X16: %llx   X17: %llx  X18: %llx   X19: %llx\n", pc->X16, pc->X17,
-	       pc->X18, pc->X19);
-    DbgPrinter("X20: %llx   X21: %llx  X22: %llx   X23: %llx\n", pc->X20, pc->X21,
-	       pc->X22, pc->X23);
-    DbgPrinter("X24: %llx   X25: %llx  X26: %llx   X27: %llx\n", pc->X24, pc->X25,
-	       pc->X26, pc->X27);
-    DbgPrinter("X28: %llx   X29(Fp): %llx\n", pc->X28, pc->Fp);
+    DbgPrinter("Pc: %llx   Lr: %llx   Sp: %llx    Cpsr: %llx\n", Ctx->Pc, Ctx->Lr,
+	       Ctx->Sp, Ctx->Cpsr);
+    DbgPrinter("X0: %llx   X1: %llx   X2: %llx    X3: %llx\n", Ctx->X0, Ctx->X1,
+	       Ctx->X2, Ctx->X3);
+    DbgPrinter("X4: %llx   X5: %llx   X6: %llx    X7: %llx\n", Ctx->X4, Ctx->X5,
+	       Ctx->X6, Ctx->X7);
+    DbgPrinter("X8: %llx   X9: %llx  X10: %llx   X11: %llx\n", Ctx->X8, Ctx->X9,
+	       Ctx->X10, Ctx->X11);
+    DbgPrinter("X12: %llx   X13: %llx  X14: %llx   X15: %llx\n", Ctx->X12, Ctx->X13,
+	       Ctx->X14, Ctx->X15);
+    DbgPrinter("X16: %llx   X17: %llx  X18: %llx   X19: %llx\n", Ctx->X16, Ctx->X17,
+	       Ctx->X18, Ctx->X19);
+    DbgPrinter("X20: %llx   X21: %llx  X22: %llx   X23: %llx\n", Ctx->X20, Ctx->X21,
+	       Ctx->X22, Ctx->X23);
+    DbgPrinter("X24: %llx   X25: %llx  X26: %llx   X27: %llx\n", Ctx->X24, Ctx->X25,
+	       Ctx->X26, Ctx->X27);
+    DbgPrinter("X28: %llx   X29(Fp): %llx\n", Ctx->X28, Ctx->Fp);
 #else
 #error "Unknown architecture"
+#endif
+#if defined(_M_IX86) || defined(_M_AMD64)
+    DbgPrinter("FCW: %x  FSW: %x  FTW: %x  FOP: %x\n",
+	       Ctx->FltSave.ControlWord, Ctx->FltSave.StatusWord,
+	       Ctx->FltSave.TagWord, Ctx->FltSave.ErrorOpcode);
+    DbgPrinter("FIP: %zx  FDP: %zx  MXCSR: %x  MXCSR_MASK: %x\n",
+	       Ctx->FltSave.ErrorOffset, Ctx->FltSave.DataOffset,
+	       Ctx->FltSave.MxCsr, Ctx->FltSave.MxCsr_Mask);
+    for (ULONG i = 0; i < 4; i++) {
+	DbgPrinter("MM%d: %llx %llx  MM%d: %llx %llx\n", 2*i,
+		   Ctx->FltSave.FloatRegisters[2*i].High,
+		   Ctx->FltSave.FloatRegisters[2*i].Low, 2*i+1,
+		   Ctx->FltSave.FloatRegisters[2*i+1].High,
+		   Ctx->FltSave.FloatRegisters[2*i+1].Low);
+    }
+    for (ULONG i = 0; i < sizeof(MWORD); i++) {
+	DbgPrinter("XMM%d: %llx %llx  XMM%d: %llx %llx\n", 2*i,
+		   Ctx->FltSave.XmmRegisters[2*i].High,
+		   Ctx->FltSave.XmmRegisters[2*i].Low,  2*i+1,
+		   Ctx->FltSave.XmmRegisters[2*i+1].High,
+		   Ctx->FltSave.XmmRegisters[2*i+1].Low);
+    }
 #endif
 }
 
