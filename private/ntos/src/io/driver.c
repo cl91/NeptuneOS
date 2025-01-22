@@ -390,6 +390,7 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 			  IN USHORT Count,
                           OUT MWORD *Cap)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     assert(Thread != NULL);
     assert(Cap != NULL);
     PPROCESS Process = Thread->Process;
@@ -403,6 +404,9 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
     InsertTailList(&DriverObject->IoPortList, &IoPort->Link);
     *Cap = IoPort->TreeNode.Cap;
     return STATUS_SUCCESS;
+#else
+    return STATUS_NOT_SUPPORTED;
+#endif
 }
 
 static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObject,

@@ -114,6 +114,7 @@ static inline VOID KeSignalNotification(IN PNOTIFICATION Notification)
     seL4_Signal(Notification->TreeNode.Cap);
 }
 
+#if defined(_M_IX86) || defined(_M_AMD64)
 /*
  * X86 IO Port
  */
@@ -123,6 +124,7 @@ typedef struct _X86_IOPORT {
     USHORT Count;	    /* This equals port size in bytes.  */
     LIST_ENTRY Link;	    /* Links all enabled ports of a process */
 } X86_IOPORT, *PX86_IOPORT;
+#endif
 
 /*
  * IRQ Handler
@@ -830,6 +832,7 @@ NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
 			    IN PTHREAD_CONTEXT Context);
 BOOLEAN KePtrInSvcMsgBuf(IN MWORD Ptr, IN struct _THREAD *Thread);
 
+#if defined(_M_IX86) || defined(_M_AMD64)
 /* ioport.c */
 NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
 			  IN USHORT PortNum,
@@ -847,6 +850,7 @@ static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
     extern CNODE MiNtosCNode;
     return KeEnableIoPortEx(&MiNtosCNode, PortNum, Count, IoPort);
 }
+#endif
 
 /* init.c */
 extern ULONG KeX86TscFreq;

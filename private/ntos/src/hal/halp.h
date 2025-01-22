@@ -2,6 +2,8 @@
 
 #include <ntos.h>
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+
 /* Conversion functions */
 #define BCD_INT(bcd)				\
     (((bcd & 0xF0) >> 4) * 10 + (bcd & 0x0F))
@@ -123,6 +125,25 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
 #define READ_PORT_UCHAR(PortNum)	__inbyte((ULONG_PTR)(PortNum))
 #define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte((ULONG_PTR)(PortNum), Data)
 
+/* beep.c */
+NTSTATUS HalpInitBeep(VOID);
+
+/* cmos.c */
+NTSTATUS HalpInitCmos(VOID);
+
+/* init.c */
+NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count);
+UCHAR __inbyte(IN USHORT PortNum);
+VOID __outbyte(IN USHORT PortNum,
+	       IN UCHAR Data);
+
+#else
+
+FORCEINLINE NTSTATUS HalpInitBeep() { return STATUS_SUCCESS; }
+FORCEINLINE NTSTATUS HalpInitCmos() { return STATUS_SUCCESS; }
+
+#endif
+
 #define NTOS_HAL_TAG	(EX_POOL_TAG('n','h','a','l'))
 
 #define HalpAllocatePoolEx(Var, Type, OnError)				\
@@ -134,20 +155,8 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
     HalpAllocateArrayEx(Var, Type, Size, {})
 #define HalpFreePool(Var) ExFreePoolWithTag(Var, NTOS_HAL_TAG)
 
-/* beep.c */
-NTSTATUS HalpInitBeep(VOID);
-
-/* cmos.c */
-NTSTATUS HalpInitCmos(VOID);
-
 /* dma.c */
 NTSTATUS HalpInitDma(VOID);
-
-/* init.c */
-NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count);
-UCHAR __inbyte(IN USHORT PortNum);
-VOID __outbyte(IN USHORT PortNum,
-	       IN UCHAR Data);
 
 /* vga.c */
 NTSTATUS HalpInitVga(VOID);

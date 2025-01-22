@@ -2,6 +2,7 @@
 
 #include <ntddk.h>
 
+#if defined(_M_IX86) || defined(_M_AMD64)
 /*
  * X86 Port routines
  */
@@ -21,6 +22,14 @@ __cdecl NTSYSAPI VOID __outdword(IN USHORT PortNum,
 #define WRITE_PORT_USHORT(Port, Data)	__outword((ULONG_PTR)(Port), Data)
 #define READ_PORT_ULONG(Port)		__indword((ULONG_PTR)(Port))
 #define WRITE_PORT_ULONG(Port, Data)	__outdword((ULONG_PTR)(Port), Data)
+#else
+#define READ_PORT_UCHAR(Port)		RtlRaiseStatus(STATUS_NOT_SUPPORTED)
+#define WRITE_PORT_UCHAR(Port, Data)	RtlRaiseStatus(STATUS_NOT_SUPPORTED)
+#define READ_PORT_USHORT(Port)		RtlRaiseStatus(STATUS_NOT_SUPPORTED)
+#define WRITE_PORT_USHORT(Port, Data)	RtlRaiseStatus(STATUS_NOT_SUPPORTED)
+#define READ_PORT_ULONG(Port)		RtlRaiseStatus(STATUS_NOT_SUPPORTED)
+#define WRITE_PORT_ULONG(Port, Data)	RtlRaiseStatus(STATUS_NOT_SUPPORTED)
+#endif
 
 /*
  * DMA data types and routines

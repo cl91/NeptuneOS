@@ -436,6 +436,7 @@ ACPI_STATUS AcpiOsReadPort(ACPI_IO_ADDRESS Address,
 {
     DPRINT("AcpiOsReadPort 0x%llx, width %d\n", Address, Width);
 
+#if defined(_M_IX86) || defined(_M_AMD64)
     switch (Width) {
     case 8:
 	*Value = READ_PORT_UCHAR((PUCHAR)(ULONG_PTR)Address);
@@ -455,12 +456,16 @@ ACPI_STATUS AcpiOsReadPort(ACPI_IO_ADDRESS Address,
 	break;
     }
     return AE_OK;
+#else
+    return AE_NOT_IMPLEMENTED;
+#endif
 }
 
 ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS Address,
 			    UINT32 Value,
 			    UINT32 Width)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     DPRINT("AcpiOsWritePort 0x%llx, width %d\n", Address, Width);
     switch (Width) {
     case 8:
@@ -481,6 +486,9 @@ ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS Address,
 	break;
     }
     return AE_OK;
+#else
+    return AE_NOT_IMPLEMENTED;
+#endif
 }
 
 #define CFG_SHIFT	12

@@ -8,6 +8,8 @@
 
 /* FUNCTIONS *****************************************************************/
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+
 /*
  * @implemented
  */
@@ -100,3 +102,14 @@ NTSTATUS HalpInitBeep()
     RET_ERR(HalpEnableIoPort(TIMER_CHANNEL2_DATA_PORT, 1));
     return STATUS_SUCCESS;
 }
+
+#else
+
+NTSTATUS WdmHalMakeBeep(IN ASYNC_STATE AsyncState,
+			IN PTHREAD Thread,
+			IN ULONG Frequency)
+{
+    return STATUS_NOT_SUPPORTED;
+}
+
+#endif

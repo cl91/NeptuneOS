@@ -1,21 +1,25 @@
 #include "halp.h"
 #include <ctype_inline.h>
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+#define VGA_CURSOR_CONTROL_PORT		(0x3D4)
+#define VGA_CURSOR_DATA_PORT		(0x3D5)
+#endif
+
 #define VGA_BLUE			(1)
 #define VGA_WHITE			(15)
 #define VGA_BG_COLOR			(VGA_BLUE << 4)
 #define VGA_FG_COLOR			(VGA_WHITE)
 #define VGA_TEXT_COLOR			(VGA_BG_COLOR | VGA_FG_COLOR)
+
 #define VGA_VIDEO_PAGE_PADDR		(0x000b8000ULL)
 
 #define VGA_MODE_COLUMNS		(80)
 #define VGA_MODE_ROWS			(25)
-#define VGA_CURSOR_CONTROL_PORT		(0x3D4)
-#define VGA_CURSOR_DATA_PORT		(0x3D5)
 
 #define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED	0
 #define MULTIBOOT_FRAMEBUFFER_TYPE_RGB		1
-#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT 2
+#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT	2
 
 #define FRAMEBUFFER_BACKGROUND_COLOR_R	(0x3A)
 #define FRAMEBUFFER_BACKGROUND_COLOR_G	(0x6E)
@@ -2370,12 +2374,6 @@ FORCEINLINE ULONG HalpGetFrameBufferPixels()
     return HalpGetFrameBufferSize() * 8 / HalpFramebuffer.BitsPerPixel;
 }
 
-static VOID HalpVgaDisableCursor()
-{
-    WRITE_PORT_UCHAR(VGA_CURSOR_CONTROL_PORT, 0x0A);
-    WRITE_PORT_UCHAR(VGA_CURSOR_DATA_PORT, 0x20);
-}
-
 static VOID HalpVgaBlitCharEx(IN CHAR Chr,
 			      IN ULONG Row,
 			      IN ULONG Column)
@@ -2498,12 +2496,23 @@ static inline VOID HalpVgaClearScreen()
     memset(HalpVgaConsoleBuffer, ' ', sizeof(HalpVgaConsoleBuffer));
 }
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+static VOID HalpVgaDisableCursor()
+{
+    WRITE_PORT_UCHAR(VGA_CURSOR_CONTROL_PORT, 0x0A);
+    WRITE_PORT_UCHAR(VGA_CURSOR_DATA_PORT, 0x20);
+}
+
 static inline NTSTATUS HalpInitVgaIoPort()
 {
     RET_ERR(HalpEnableIoPort(VGA_CURSOR_CONTROL_PORT, 1));
     RET_ERR(HalpEnableIoPort(VGA_CURSOR_DATA_PORT, 1));
     return STATUS_SUCCESS;
 }
+#else
+FORCEINLINE VOID HalpVgaDisableCursor() {}
+FORCEINLINE NTSTATUS HalpInitVgaIoPort() { return STATUS_SUCCESS; }
+#endif
 
 NTSTATUS HalpInitVga()
 {

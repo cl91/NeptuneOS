@@ -1,5 +1,6 @@
 #include "halp.h"
 
+#if defined(_M_IX86) || defined(_M_AMD64)
 /*
  * DMA Page  Register   Structure
  * 080       DMA        RESERVED
@@ -446,6 +447,48 @@ NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
     ObDereferenceObject(AdapterObject);
     return STATUS_SUCCESS;
 }
+
+#else
+
+NTSTATUS HalpInitDma()
+{
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
+				    IN PTHREAD Thread,
+				    IN UCHAR DmaChannel,
+				    OUT HANDLE *Handle)
+{
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
+				IN PTHREAD Thread,
+				IN HANDLE AdapterHandle,
+				IN UCHAR DmaMode,
+				IN USHORT TransferOffset,
+				IN USHORT TransferLength,
+				IN UCHAR HighByte)
+{
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS WdmHalDmaDisableChannel(IN ASYNC_STATE AsyncState,
+				 IN PTHREAD Thread,
+				 IN HANDLE AdapterHandle)
+{
+    return STATUS_NOT_SUPPORTED;
+}
+
+NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
+				      IN PTHREAD Thread,
+				      IN HANDLE AdapterHandle,
+				      OUT ULONG *pCount)
+{
+    return STATUS_NOT_SUPPORTED;
+}
+#endif
 
 NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
 				 IN PTHREAD Thread,

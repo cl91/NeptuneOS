@@ -1,5 +1,7 @@
 #include "halp.h"
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+
 static LIST_ENTRY HalpX86IoPortList;
 
 NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count)
@@ -61,9 +63,13 @@ VOID __outbyte(IN USHORT PortNum,
     }
 }
 
+#endif	/* defined(_M_IX86) || defined(_M_AMD64) */
+
 NTSTATUS HalInitSystemPhase0(VOID)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     InitializeListHead(&HalpX86IoPortList);
+#endif
     RET_ERR(HalpInitVga());
     RET_ERR(HalpInitCmos());
     return STATUS_SUCCESS;

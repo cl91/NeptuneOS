@@ -10,6 +10,8 @@
 
 #include "halp.h"
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+
 /* PRIVATE FUNCTIONS *********************************************************/
 
 static UCHAR HalpReadCmos(IN UCHAR Reg)
@@ -173,3 +175,13 @@ BOOLEAN HalSetRealTimeClock(IN PTIME_FIELDS Time)
     /* Always return TRUE */
     return TRUE;
 }
+
+#elif defined(_M_ARM64)
+
+BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time)
+{
+    /* TODO */
+    return FALSE;
+}
+
+#endif
