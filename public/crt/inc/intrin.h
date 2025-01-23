@@ -555,6 +555,14 @@ static inline unsigned char BitScanReverse64(unsigned long long *const Index,
     return Mask ? 1 : 0;
 }
 
+/* Read the CNTVCT cpu system register which provides a consistent value of
+ * the virtual system counter across the system */
+static inline unsigned long long __rdtsc() {
+    unsigned long long cntvct;
+    asm volatile ("mrs %0, cntvct_el0; " : "=r"(cntvct));
+    return cntvct;
+}
+
 #else
 #error "Unsupported architecture"
 #endif

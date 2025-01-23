@@ -56,7 +56,6 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
-    KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
     IopDriverObject.DriverStart = NtCurrentPeb()->ImageBaseAddress;
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
@@ -64,6 +63,13 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     InitializeListHead(&IopTimerList);
 #if defined(_M_IX86) || defined(_M_AMD64)
     InitializeListHead(&IopX86PortList);
+    KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
+#elif defined(_M_ARM64)
+    ULONG64 KiStallScaleFactor64;
+    asm volatile ("mrs %0, cntfrq_el0; isb;" : "=r"(KiStallScaleFactor64) :: "memory");
+    KiStallScaleFactor = KiStallScaleFactor64;
+#else
+#error "Unsupported architecture"
 #endif
     InitializeListHead(&IopDriverObject.ReinitListHead);
     RtlInitializeSListHead(&IopWorkItemQueue);
