@@ -389,13 +389,14 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
 	    return Status;
 	}
 
+	CHAR AnsiBuffer[64];
+	memset(AnsiBuffer, 0, sizeof(AnsiBuffer));
+#if defined(_M_IX86) || defined(_M_AMD64)
 	/* Check if we have extended CPUID that supports name ID. If we do,
 	 * populate the ProcessorNameString value in the registry. */
 	int CPUID[4];
 	__cpuid(CPUID, 0x80000000);
 	int ExtendedId = CPUID[0];
-	CHAR AnsiBuffer[64];
-	memset(AnsiBuffer, 0, sizeof(AnsiBuffer));
 	PCHAR Ptr = AnsiBuffer;
 	if (ExtendedId >= 0x80000004) {
 	    /* Do all the CPUIDs required to get the full name */
@@ -411,10 +412,16 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
 	    }
 	}
 	Status = PnpSetRegStringValue(KeyHandle, L"ProcessorNameString", AnsiBuffer);
+#elif defined(_M_ARM64)
+	Status = PnpSetRegStringValue(KeyHandle, L"ProcessorNameString", "ARMv8 Processor");
+#else
+#error "Unsupported architecture"
+#endif
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}
 
+#if defined(_M_IX86) || defined(_M_AMD64)
         /* Get the Vendor ID and add it to the registry */
 	__cpuid(CPUID, 0);
 	memset(AnsiBuffer, 0, sizeof(AnsiBuffer));
@@ -423,6 +430,11 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
 	((PULONG)Ptr)[1] = CPUID[3];
 	((PULONG)Ptr)[2] = CPUID[2];
 	Status = PnpSetRegStringValue(KeyHandle, L"VendorIdentifier", AnsiBuffer);
+#elif defined(_M_ARM64)
+	Status = PnpSetRegStringValue(KeyHandle, L"VendorIdentifier", "ARM");
+#else
+#error "Unsupported architecture"
+#endif
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}
