@@ -32,12 +32,16 @@ if [[ ${ARCH} == "i386" ]]; then
     MC_COMPILER_ARCH=i686
     ELF_TRIPLE=i686-pc-linux-gnu
     PE_TRIPLE=i686-pc-windows-msvc
+    OUTPUT_TARGET=elf32-i386
+    LINKER_EMULATION=elf_i386
 elif [[ ${ARCH} == "amd64" ]]; then
     SEL4_ARCH=x86_64
     RTLIB_ARCH=x86_64
     MC_COMPILER_ARCH=x86_64
     ELF_TRIPLE=x86_64-pc-linux-gnu
     PE_TRIPLE=x86_64-pc-windows-msvc
+    OUTPUT_TARGET=elf64-x86-64
+    LINKER_EMULATION=elf_x86_64
 elif [[ ${ARCH} == "arm64" ]]; then
     SEL4_ARCH=aarch64
     RTLIB_ARCH=aarch64
@@ -45,6 +49,8 @@ elif [[ ${ARCH} == "arm64" ]]; then
     ELF_TRIPLE=aarch64-elf
     PE_TRIPLE=aarch64-pc-windows-msvc
     DEFAULT_PLATFORM=rockpro64
+    OUTPUT_TARGET=elf64-aarch64
+    LINKER_EMULATION=aarch64elf
 else
     echo "Unsupported arch ${ARCH}"
     exit 1
@@ -94,6 +100,7 @@ echo
 cmake ../../private/ntos \
       -DArch=${ARCH} \
       -DTRIPLE=${ELF_TRIPLE} \
+      -DOUTPUT_TARGET=${OUTPUT_TARGET} \
       -DKernelPlatform=${PLATFORM} \
       -DKernelSel4Arch=${SEL4_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
@@ -281,24 +288,11 @@ echo
 echo "---- Building INITCPIO ----"
 echo
 cd ../initcpio
-if [[ ${ARCH} == i386 ]]; then
-    OUTPUT_TARGET=elf32-i386
-    LINKER_EMULATION=elf_i386
-elif [[ ${ARCH} == amd64 ]]; then
-    OUTPUT_TARGET=elf64-x86-64
-    LINKER_EMULATION=elf_x86_64
-elif [[ ${ARCH} == arm64 ]]; then
-    OUTPUT_TARGET=elf64-aarch64
-    LINKER_EMULATION=elf_aarch64
-else
-    echo "Unsupported architecture ${ARCH}"
-    exit 1
-fi
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
 BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
 DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys base/pnp/pnp.sys
-bus/acpi/acpi.sys bus/pci/pci.sys input/kbdclass/kbdclass.sys
-input/i8042prt/i8042prt.sys storage/fdc/fdc.sys filesystems/fatfs/fatfs.sys'
+bus/acpi/acpi.sys bus/pci/pci.sys input/kbdclass/kbdclass.sys filesystems/fatfs/fatfs.sys'
+X86_DRIVER_COPY_LIST='input/i8042prt/i8042prt.sys storage/fdc/fdc.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
 done
@@ -308,9 +302,17 @@ done
 for i in ${DRIVER_COPY_LIST}; do
     cp ../drivers/$i . || build_failed
 done
+if [[ "${ARCH}" == "i386" || "${ARCH}" == "amd64" ]]; then
+    for i in ${X86_DRIVER_COPY_LIST}; do
+	cp ../drivers/$i . || build_failed
+    done
+fi
 { for i in ${PE_COPY_LIST}; do echo $(basename $i); done } > image-list
 { for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
 { for i in ${DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
+if [[ "${ARCH}" == "i386" || "${ARCH}" == "amd64" ]]; then
+    { for i in ${X86_DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
+fi
 cpio -H newc -o < image-list > initcpio || build_failed
 llvm-objcopy -I binary -O ${OUTPUT_TARGET} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
@@ -326,7 +328,7 @@ echo
 echo "---- Linking NTOS image ----"
 echo
 cd ../$IMAGEDIR
-cp ../elf/kernel-$SEL4_ARCH-pc99 kernel || build_failed
+cp ../elf/kernel-$SEL4_ARCH-$PLATFORM kernel || build_failed
 if [[ ${BUILD_TYPE} == Release ]]; then
     LLD_OPTIONS="--gc-sections -O 3"
 else

@@ -50,7 +50,7 @@ if(Kernel64)
     add_custom_command(
         OUTPUT "${KERNEL_IMAGE_NAME}"
         COMMAND
-            ${CMAKE_OBJCOPY} -O elf32-i386 $<TARGET_FILE:kernel.elf> "${KERNEL_IMAGE_NAME}"
+            ${CMAKE_OBJCOPY} -O ${OUTPUT_TARGET} $<TARGET_FILE:kernel.elf> "${KERNEL_IMAGE_NAME}"
         VERBATIM
         DEPENDS kernel.elf
         COMMENT "objcopy kernel into bootable elf"
