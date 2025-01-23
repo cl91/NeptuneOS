@@ -198,7 +198,22 @@ int main(int argc, char* argv[])
                 }
                 else
                 {
-                    fprintf(output, "%s = 0x%"PRIx64"\n", data.Name, data.Value);
+                    if (Machine == IMAGE_FILE_MACHINE_ARMNT || Machine == IMAGE_FILE_MACHINE_ARM64)
+                    {
+			fprintf(output, "#define %s 0x%"PRIx64"\n", data.Name, data.Value);
+			fprintf(output, "#define %s_WORD0 0x%x\n",
+				data.Name, (unsigned int)(data.Value & 0xFFFF));
+			fprintf(output, "#define %s_WORD1 0x%x\n",
+				data.Name, (unsigned int)((data.Value >> 16) & 0xFFFF));
+			fprintf(output, "#define %s_WORD2 0x%x\n",
+				data.Name, (unsigned int)((data.Value >> 32) & 0xFFFF));
+			fprintf(output, "#define %s_WORD3 0x%x\n",
+				data.Name, (unsigned int)(data.Value >> 48));
+		    }
+		    else
+		    {
+			fprintf(output, "%s = 0x%"PRIx64"\n", data.Name, data.Value);
+		    }
                 }
                 continue;
 

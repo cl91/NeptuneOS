@@ -105,5 +105,6 @@ target_include_directories(
     ntdllp
     PRIVATE
 	${CMAKE_CURRENT_BINARY_DIR}
-	${CMAKE_CURRENT_LIST_DIR}/inc
+	inc
+	../rtl/inc
 )
