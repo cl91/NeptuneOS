@@ -1044,6 +1044,8 @@ NTAPI BOOLEAN HalpFlushAdapterBuffers(IN PDMA_ADAPTER DmaAdapter,
     PADAPTER_OBJECT AdapterObject = (PADAPTER_OBJECT)DmaAdapter;
     ASSERT(AdapterObject);
 
+    KeFlushIoBuffers(Mdl, !WriteToDevice, TRUE);
+
     /* No map register is needed. Simply return. Note that this can never
      * happen for slave DMA. */
     if (MapReg == NULL)

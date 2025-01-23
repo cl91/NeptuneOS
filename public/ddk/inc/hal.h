@@ -508,7 +508,8 @@ FORCEINLINE NTAPI PHYSICAL_ADDRESS IoMapTransfer(IN PDMA_ADAPTER DmaAdapter,
 
 /* Flush the memory region described by an MDL from caches of all processors.
  * On x86 and amd64 this is a NOOP because these architectures maintain cache
- * coherency without programmer's manual intervention. */
+ * coherency without programmer's manual intervention. On RISC architectures
+ * we need to manually flush cache lines. */
 #if defined(_M_IX86) || defined(_M_AMD64)
 FORCEINLINE NTAPI VOID KeFlushIoBuffers(IN PMDL Mdl,
 					IN BOOLEAN ReadOperation,
@@ -519,7 +520,9 @@ FORCEINLINE NTAPI VOID KeFlushIoBuffers(IN PMDL Mdl,
     UNREFERENCED_PARAMETER(DmaOperation);
 }
 #else
-#error "Unsupported architecture"
+NTAPI NTSYSAPI VOID KeFlushIoBuffers(IN PMDL Mdl,
+				     IN BOOLEAN ReadOperation,
+				     IN BOOLEAN DmaOperation);
 #endif
 
 FORCEINLINE NTAPI PVOID HalAllocateCommonBuffer(IN PDMA_ADAPTER DmaAdapter,

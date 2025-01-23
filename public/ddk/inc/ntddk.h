@@ -397,7 +397,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
  */
 typedef struct _MDL {
     struct _MDL *Next;
-    PVOID MappedSystemVa;
+    PVOID MappedSystemVa; /* Virtual address of the start of the buffer */
     ULONG Flags;
     ULONG ByteOffset;	/* Page offset to the start of the buffer */
     ULONG ByteCount;	/* Number of bytes of this buffer */

@@ -54,6 +54,7 @@
 @ stdcall KeSetEvent(ptr)
 @ stdcall KeResetEvent(ptr)
 @ stdcall KeClearEvent(ptr)
+@ stdcall -arch=arm KeFlushIoBuffers(ptr long long)
 @ stdcall ObDereferenceObject(ptr)
 @ stdcall HalMakeBeep(long)
 @ stdcall HalGetAdapter(ptr ptr)

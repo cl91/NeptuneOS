@@ -44,11 +44,8 @@
 #define __ALIGNED(x)		__attribute__((aligned(x)))
 #define DECLSPEC_ALIGN(x)	__ALIGNED(x)
 
-#if defined(_M_IX86) || defined(_M_AMD64)
+/* 64 bytes seem to be a safe assumption for most modern Intel and ARM64 systems. */
 #define SYSTEM_CACHE_ALIGNMENT_SIZE 64
-#else
-#define SYSTEM_CACHE_ALIGNMENT_SIZE 128
-#endif
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 #define DECLSPEC_NOFPU		__attribute__((target("general-regs-only")))
