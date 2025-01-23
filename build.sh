@@ -365,6 +365,41 @@ else
     fi
 fi
 
+if [[ ${ARCH} == "arm64" ]]; then
+    echo
+    echo "---- Generate the final ELF boot image ----"
+    echo
+    cd ..
+    mkdir elfloader
+    cd elfloader
+    cmake -DElfloaderImage=elf \
+	  -DElfloaderHashInstructions=hash_none \
+	  -DKernelArch=arm \
+	  -DKernelSel4Arch=${SEL4_ARCH} \
+	  -DKernelArchARM=1 \
+	  -DKernelSel4ArchAarch64=1 \
+	  -DKernelWordSize=64 \
+	  -DKernelPlatform=${PLATFORM} \
+	  -DTRIPLE=${ELF_TRIPLE} \
+	  -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
+	  -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+	  -DPLATFORM=${PLATFORM} \
+	  -DKernelDTBPath=$PWD/../elf/kernel/kernel.dtb \
+	  -DHARDWARE_GEN_PATH=$PWD/../../sel4/tools/hardware_gen.py \
+	  -DIMAGE_START_ADDR=0x80000000 \
+	  -DKERNEL_IMAGE=$PWD/../$IMAGEDIR/kernel \
+	  -DNTOS_IMAGE=$PWD/../$IMAGEDIR/ntos \
+	  -DKERNEL_GEN_CONFIG_DIR=$PWD/../elf/kernel/gen_config \
+	  -G Ninja ../../tools/elfloader || build_failed
+    ninja elfloader || build_failed
+    cp elfloader ../$IMAGEDIR/bootimg-$SEL4_ARCH-$PLATFORM-${BUILD_TYPE,,}
+    if [[ $? == 0 ]]; then
+	echo "Success."
+    else
+	build_failed
+    fi
+fi
+
 echo
 echo "---- Merge compile_commands.json ----"
 echo
