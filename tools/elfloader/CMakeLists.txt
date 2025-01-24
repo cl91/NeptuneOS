@@ -332,9 +332,10 @@ if(ElfloaderImageEFI)
         APPEND_STRING
         PROPERTY
             LINK_FLAGS
+	    # --shared builds a shared library (with the _DYNAMIC and _end symbol)
             # -Bsymbolic forces symbols to bind to their definitions within the elfloader
             # EFI_SUBSYSTEM=0xa indicates that we're building an EFI application.
-            " -fuse-ld=lld -Wl,-T ${linkerScript} -nostdlib -Wl,-Bsymbolic,--defsym=EFI_SUBSYSTEM=0xa -Wl,--build-id=none"
+            " -fuse-ld=lld -Wl,-T ${linkerScript} -Wl,--shared -nostdlib -Wl,-Bsymbolic,--defsym=EFI_SUBSYSTEM=0xa -Wl,--build-id=none"
     )
     add_custom_command(
         OUTPUT "elfloader-bin"
