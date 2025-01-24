@@ -21,16 +21,12 @@ It can also provide seL4 with a DTB - either from the bootloader or included in 
 3. Elfloader `_start` is called. This is in `arch-arm/<arch_bitness>/crt0.S`.
 4. Elfloader initialises the [driver framework](#driver-framework), which enables UART/printf.
 5. Elfloader loads the kernel, user image, and DTB, determining where the kernel needs to be mapped in memory.
-6. If the kernel window overlaps the elfloader's code:
-    * (AArch32 EFI only) the elfloader relocates itself.
-     See `relocate_below_kernel` for a detailed explanation of the relocation logic.
-    * (Other platforms) the elfloader aborts.
-7. The elfloader resumes booting. If it relocated itself, it will re-initialise the driver model.
-8. If the elfloader is in HYP mode but seL4 is not configured to support HYP, it will leave HYP mode.
-9. The elfloader sets up the initial page tables for the kernel (see `init_hyp_boot_vspace` or `init_boot_vspace`).
-10. If SMP is enabled, the elfloader boots all secondary cores.
-11. The elfloader enables the MMU.
-12. The elfloader launches seL4, passing information about the user image and the DTB.
+6. If the kernel window overlaps the elfloader's code, the elfloader aborts.
+7. If the elfloader is in HYP mode but seL4 is not configured to support HYP, it will leave HYP mode.
+8. The elfloader sets up the initial page tables for the kernel (see `init_hyp_boot_vspace` or `init_boot_vspace`).
+9. If SMP is enabled, the elfloader boots all secondary cores.
+10. The elfloader enables the MMU.
+11. The elfloader launches seL4, passing information about the user image and the DTB.
 
 ### Binary
 

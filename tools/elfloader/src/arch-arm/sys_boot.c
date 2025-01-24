@@ -35,65 +35,6 @@ struct image_info user_info;
 void const *dtb;
 size_t dtb_size;
 
-extern void finish_relocation(int offset, void *_dynamic, unsigned int total_offset);
-void continue_boot(int was_relocated);
-
-/*
- * Make sure the ELF loader is below the kernel's first virtual address
- * so that when we enable the MMU we can keep executing.
- */
-extern char _DYNAMIC[];
-void relocate_below_kernel(void)
-{
-    /*
-     * These are the ELF loader's physical addresses,
-     * since we are either running with MMU off or
-     * identity-mapped.
-     */
-    uintptr_t UNUSED start = (uintptr_t)_text;
-    uintptr_t end = (uintptr_t)_end;
-
-    if (end <= kernel_info.virt_region_start) {
-        /*
-         * If the ELF loader is already below the kernel,
-         * skip relocation.
-         */
-        continue_boot(0);
-        return;
-    }
-
-#ifdef CONFIG_IMAGE_EFI
-    /*
-     * Note: we make the (potentially incorrect) assumption
-     * that there is enough physical RAM below the kernel's first vaddr
-     * to fit the ELF loader.
-     * FIXME: do we need to make sure we don't accidentally wipe out the DTB too?
-     */
-    uintptr_t size = end - start;
-
-    /*
-     * we ROUND_UP size in this calculation so that all aligned things
-     * (interrupt vectors, stack, etc.) end up in similarly aligned locations.
-     * The strictes alignment requirement we have is the 64K-aligned AArch32
-     * page tables, so we use that to calculate the new base of the elfloader.
-     */
-    uintptr_t new_base = kernel_info.virt_region_start - (ROUND_UP(size, MAX_ALIGN_BITS));
-    uint32_t offset = start - new_base;
-    printf("relocating from %p-%p to %p-%p... size=0x%x (padded size = 0x%x)\n", start, end, new_base, new_base + size,
-           size, ROUND_UP(size, MAX_ALIGN_BITS));
-
-    memmove((void *)new_base, (void *)start, size);
-
-    /* call into assembly to do the finishing touches */
-    finish_relocation(offset, _DYNAMIC, new_base);
-#else
-    printf("ERROR: The ELF loader does not support relocating itself. You"
-           " probably need to move the kernel window higher, or the load"
-           " address lower.\n");
-    abort();
-#endif
-}
-
 /*
  * Entry point.
  *
@@ -156,6 +97,15 @@ void main(UNUSED void *arg)
                num_apps);
         abort();
     }
+
+    /*
+     * These are the ELF loader's physical addresses,
+     * since we are either running with MMU off or
+     * identity-mapped.
+     */
+    uintptr_t UNUSED start = (uintptr_t)_text;
+    uintptr_t end = (uintptr_t)_end;
+
     /*
      * We don't really know where we've been loaded.
      * It's possible that EFI loaded us in a place
@@ -163,29 +113,13 @@ void main(UNUSED void *arg)
      * once we switch to the boot page tables.
      * Make sure this is not the case.
      */
-    relocate_below_kernel();
-    printf("ERROR: Relocation failed, aborting!\n");
-    abort();
-}
-
-void continue_boot(int was_relocated)
-{
-    if (was_relocated) {
-        printf("ELF loader relocated, continuing boot...\n");
+    if (end > kernel_info.virt_region_start) {
+	printf("ERROR: Image loaded too high, aborting!\n");
+	abort();
     }
 
-    /*
-     * If we were relocated, we need to re-initialise the
-     * driver model so all its pointers are set up properly.
-     */
-    if (was_relocated) {
-        if (initialise_devices()) {
-            printf("ERROR: Did not successfully return from initialise_devices()\n");
-            abort();
-        }
-    }
-
-#if (defined(CONFIG_ARCH_ARM_V7A) || defined(CONFIG_ARCH_ARM_V8A)) && !defined(CONFIG_ARM_HYPERVISOR_SUPPORT)
+#if (defined(CONFIG_ARCH_ARM_V7A) || defined(CONFIG_ARCH_ARM_V8A)) && \
+    !defined(CONFIG_ARM_HYPERVISOR_SUPPORT)
     if (is_hyp_mode()) {
         extern void leave_hyp(void);
         leave_hyp();

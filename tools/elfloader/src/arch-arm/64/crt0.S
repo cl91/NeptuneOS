@@ -105,17 +105,6 @@ image_ok:
 END_FUNC(fixup_image_base)
 #endif
 
-/* Move the elf loader out of the kernel's way */
-BEGIN_FUNC(finish_relocation)
-    /*
-     * On aarch64 the kernel is loaded at a very high address:
-     * at least above 0x0000ff8080000000. We assume that
-     * the ELF loader will never get loaded in a way that overlaps
-     * with the kernel, so reaching this function is an error.
-     */
-    b abort // should never get here!
-END_FUNC(finish_relocation)
-
 /* secondary cpu startup */
 BEGIN_FUNC(secondary_startup)
     /*

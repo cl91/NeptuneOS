@@ -53,52 +53,6 @@ BEGIN_FUNC(_start32)
     b       main
 END_FUNC(_start)
 
-/* Move the elf loader out of the kernel's way */
-BEGIN_FUNC(finish_relocation)
-#if CONFIG_IMAGE_EFI
-    // r0 = offset between current base address and new base address
-    // r1 = _DYNAMIC pointer (current base address)
-    // r2 = total offset (new_base)
-    mov r8, r1 // move to r8
-
-    // figure out relocated address of continue_boot
-    adr r1, LC2
-    ldmia r1, {r3, r4, r5}
-
-    // r3 = stack pointer (in current program)
-    // r4 = continue_boot (in current program)
-    // r5 = current base address (_text, the start of the binary)
-
-    sub sp, r3, r0                  // point sp to new stack
-    sub r4, r4, r0                  // continue_boot address in relocated elfloader
-
-    // self_reloc expects:
-    // r0 = current base address
-    // r1 = dynamic section pointer
-    // r2 = new base address
-    // r3 = 0
-
-    mov r0, r5                      // current base address
-    mov r1, r8                      // put _DYNAMIC back
-    // r2 is new base address, passed from relocate_below_kernel()
-    mov r3, #0                      // NULL r3
-
-    push {r4}                       // save continue_boot address
-
-    bl _relocate
-
-    pop {r4}
-    mov r0, #1
-    blx r4
-    b abort // should never get here!
-#else
-    /* On non-EFI, the image cannot be relocated.
-     * If you hit this, you probably need to modify the ELF loader
-     * load address.
-     */
-    mov pc, lr
-#endif
-END_FUNC(finish_relocation)
 .align 2
 .type LC2, #object
 LC2:
