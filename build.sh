@@ -336,6 +336,7 @@ else
 fi
 ld.lld -m ${LINKER_EMULATION} ${LLD_OPTIONS} ${RTLIB} \
        --allow-multiple-definition \
+       -z max-page-size=0x1000 \
        ../elf/libntos.a \
        ../elf/rtl/librtl.a \
        ../initcpio/initcpio.o \

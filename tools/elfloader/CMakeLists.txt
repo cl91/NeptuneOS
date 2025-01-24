@@ -316,7 +316,7 @@ else()
         APPEND_STRING
         PROPERTY
             LINK_FLAGS
-            " -Wl,-T ${CMAKE_CURRENT_BINARY_DIR}/linker.lds_pp -nostdlib -static -Wl,--build-id=none"
+            " -Wl,-T ${CMAKE_CURRENT_BINARY_DIR}/linker.lds_pp -nostdlib -static -Wl,--build-id=none -Wl,-z -Wl,max-page-size=0x1000"
     )
 endif()
 
