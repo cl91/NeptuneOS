@@ -30,6 +30,13 @@ SECTIONS
 	*(.data)
 	_data_end = . ;
     }
+    .tdata :
+    {
+	. = ALIGN(16) ;
+	_tdata_start = . ;
+	*(.tdata .tdata.* .gnu.linkonce.td.*)
+	_tdata_end = . ;
+    }
     .bss :
     {
 	. = ALIGN(16) ;
@@ -37,13 +44,6 @@ SECTIONS
 	*(.bss)
 	*(.stack)
 	_bss_end = . ;
-    }
-    .tdata :
-    {
-	. = ALIGN(16) ;
-	_tdata_start = . ;
-	*(.tdata .tdata.* .gnu.linkonce.td.*)
-	_tdata_end = . ;
     }
     .tbss :
     {
