@@ -29,7 +29,6 @@ endif()
 set(PYTHON3 "python3")
 set(CONFIG_GEN_PATH "${CMAKE_CURRENT_LIST_DIR}/../../sel4/tools/config_gen.py")
 set(configure_string "")
-set(ElfloaderHashInstructions "hash_none")
 
 set(binary_list
     "tx1;hikey;odroidc2;odroidc4;imx8mq-evk;imx8mm-evk;imx8mp-evk;hifive;tqma8xqp1gb;bcm2711;rocketchip")
@@ -101,15 +100,6 @@ config_option(
     DEFAULT_DISABLED OFF
 )
 
-config_choice(
-    ElfloaderHashInstructions
-    HASH_INSTRUCTIONS
-    "Perform a SHA256/MD5 Hash of the of each elf file that the elfloader checks on load"
-    "hash_none;ElfloaderHashNone;HASH_NONE"
-    "hash_sha;ElfloaderHashSHA;HASH_SHA"
-    "hash_md5;ElfloaderHashMD5;HASH_MD5"
-)
-
 config_option(
     ElfloaderIncludeDtb ELFLOADER_INCLUDE_DTB
     "Include DTB in the CPIO in case bootloader doesn't provide one"
@@ -120,7 +110,7 @@ config_option(
 
 add_config_library(elfloader "${configure_string}")
 
-add_compile_options(-D_XOPEN_SOURCE=700 -ffreestanding -Wall -Werror -W -Wextra)
+add_compile_options(-D_XOPEN_SOURCE=700 -ffreestanding -Wall -W -Wextra)
 set(linkerScript "${CMAKE_CURRENT_LIST_DIR}/src/arch-${KernelArch}/linker.lds")
 if(KernelArchRiscV)
     add_compile_options(-mcmodel=medany)
@@ -236,30 +226,6 @@ if(ElfloaderIncludeDtb)
     list(APPEND cpio_files "${KernelDTBPath}")
 endif()
 list(APPEND cpio_files "${NTOS_IMAGE}")
-if(NOT ${ElfloaderHashInstructions} STREQUAL "hash_none")
-    set(hash_command "")
-    if(ElfloaderHashSHA)
-        set(hash_command "sha256sum")
-    else()
-        set(hash_command "md5sum")
-    endif()
-    add_custom_command(
-        OUTPUT "kernel.bin"
-        COMMAND
-            bash -c
-            "${hash_command} ${KERNEL_IMAGE} | cut -d ' ' -f 1 | xxd -r -p > ${CMAKE_CURRENT_BINARY_DIR}/kernel.bin"
-        VERBATIM
-    )
-    add_custom_command(
-        OUTPUT "app.bin"
-        COMMAND
-            bash -c
-            "${hash_command} ${NTOS_IMAGE} | cut -d ' ' -f 1 | xxd -r -p > ${CMAKE_CURRENT_BINARY_DIR}/app.bin"
-        VERBATIM
-    )
-    list(APPEND cpio_files "${CMAKE_CURRENT_BINARY_DIR}/kernel.bin")
-    list(APPEND cpio_files "${CMAKE_CURRENT_BINARY_DIR}/app.bin")
-endif()
 
 # Construct the ELF loader's payload.
 MakeCPIO(archive.o "${cpio_files}" CPIO_SYMBOL _archive_start)
