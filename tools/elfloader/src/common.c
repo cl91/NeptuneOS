@@ -303,8 +303,6 @@ static int load_elf(
 int load_images(
     struct image_info *kernel_info,
     struct image_info *user_info,
-    unsigned int max_user_images,
-    unsigned int *num_images,
     void const *bootloader_dtb,
     void const **chosen_dtb,
     size_t *chosen_dtb_size)
@@ -313,8 +311,6 @@ int load_images(
     uint64_t kernel_phys_start, kernel_phys_end;
     uintptr_t dtb_phys_start, dtb_phys_end;
     paddr_t next_phys_addr;
-    const char *elf_filename;
-    int has_dtb_cpio = 0;
 
     void const *cpio = _archive_start;
     size_t cpio_len = _archive_start_end - _archive_start;
@@ -350,6 +346,20 @@ int load_images(
         return -1;
     }
 
+    /* Load NTOS Executive */
+    void const *ntos_elf_blob = cpio_get_file(cpio,
+					      cpio_len,
+					      "ntos",
+					      &cpio_file_size);
+    if (ntos_elf_blob == NULL) {
+        printf("ERROR: No NTOS Executive image present in archive\n");
+        return -1;
+    }
+
+    /* Ensure we can safely cast the CPIO API type to our preferred type. */
+    _Static_assert(sizeof(cpio_file_size) <= sizeof(size_t),
+                   "integer model mismatch");
+
     void const *dtb = NULL;
 
 #ifdef CONFIG_ELFLOADER_INCLUDE_DTB
@@ -367,7 +377,6 @@ int load_images(
         if (dtb == NULL) {
             printf("not found.\n");
         } else {
-            has_dtb_cpio = 1;
             printf("found at %p.\n", dtb);
         }
     }
@@ -429,59 +438,16 @@ int load_images(
     }
 
     /*
-     * Load userspace images.
-     *
-     * We assume (and check) that the kernel is the first file in the archive,
-     * that the DTB is the second if present,
-     * and then load the (n+user_elf_offset)'th file in the archive onto the
-     * (n)'th CPU.
+     * Load the NTOS Executive image.
      */
-    unsigned int user_elf_offset = 2;
-    cpio_get_entry(cpio, cpio_len, 0, &elf_filename, NULL);
-    ret = strcmp(elf_filename, "kernel");
+    ret = load_elf("ntos",
+		   ntos_elf_blob,
+		   next_phys_addr,
+		   1,  // keep ELF headers
+		   user_info,
+		   NULL);
     if (0 != ret) {
-        printf("ERROR: Kernel image not first image in archive\n");
-        return -1;
-    }
-    cpio_get_entry(cpio, cpio_len, 1, &elf_filename, NULL);
-    ret = strcmp(elf_filename, "kernel.dtb");
-    if (0 != ret) {
-        if (has_dtb_cpio) {
-            printf("ERROR: Kernel DTB not second image in archive\n");
-            return -1;
-        }
-        user_elf_offset = 1;
-    }
-
-    *num_images = 0;
-    for (unsigned int i = 0; i < max_user_images; i++) {
-        /* Fetch info about the next ELF file in the archive. */
-        unsigned long cpio_file_size = 0;
-        void const *user_elf = cpio_get_entry(cpio,
-                                              cpio_len,
-                                              i + user_elf_offset,
-                                              &elf_filename,
-                                              &cpio_file_size);
-        if (user_elf == NULL) {
-            break;
-        }
-
-        /* Ensure we can safely cast the CPIO API type to our preferred type. */
-        _Static_assert(sizeof(cpio_file_size) <= sizeof(size_t),
-                       "integer model mismatch");
-
-        /* Load the file into memory. */
-        ret = load_elf(elf_filename,
-                       user_elf,
-                       next_phys_addr,
-                       1,  // keep ELF headers
-                       &user_info[*num_images],
-                       &next_phys_addr);
-        if (0 != ret) {
-            printf("ERROR: Could not load user image ELF\n");
-        }
-
-        *num_images = i + 1;
+	printf("ERROR: Could not load NTOS Executive\n");
     }
 
     return 0;

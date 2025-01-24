@@ -84,17 +84,10 @@ void main(UNUSED void *arg)
     }
 
     /* Unpack ELF images into memory. */
-    unsigned int num_apps = 0;
-    int ret = load_images(&kernel_info, &user_info, 1, &num_apps,
+    int ret = load_images(&kernel_info, &user_info,
                           bootloader_dtb, &dtb, &dtb_size);
     if (0 != ret) {
         printf("ERROR: image loading failed\n");
-        abort();
-    }
-
-    if (num_apps != 1) {
-        printf("ERROR: expected to load just 1 app, actually loaded %u apps\n",
-               num_apps);
         abort();
     }
 

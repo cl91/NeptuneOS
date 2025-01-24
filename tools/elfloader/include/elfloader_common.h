@@ -91,8 +91,6 @@ void clear_bss(void);
 int load_images(
     struct image_info *kernel_info,
     struct image_info *user_info,
-    unsigned int max_user_images,
-    unsigned int *num_images,
     void const *bootloader_dtb,
     void const **chosen_dtb,
     size_t *chosen_dtb_size);

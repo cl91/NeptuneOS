@@ -220,12 +220,10 @@ endif()
 # Sort files to make build reproducible
 list(SORT files)
 
-set(cpio_files "")
-list(APPEND cpio_files "${KERNEL_IMAGE}")
+set(cpio_files "${KERNEL_IMAGE};${NTOS_IMAGE}")
 if(ElfloaderIncludeDtb)
     list(APPEND cpio_files "${KernelDTBPath}")
 endif()
-list(APPEND cpio_files "${NTOS_IMAGE}")
 
 # Construct the ELF loader's payload.
 MakeCPIO(archive.o "${cpio_files}" CPIO_SYMBOL _archive_start)
