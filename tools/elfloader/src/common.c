@@ -398,7 +398,7 @@ int load_images(
     unsigned long cpio_file_size = 0;
     void const *kernel_elf_blob = cpio_get_file(cpio,
                                                 cpio_len,
-                                                "kernel.elf",
+                                                "kernel",
                                                 &cpio_file_size);
     if (kernel_elf_blob == NULL) {
         printf("ERROR: No kernel image present in archive\n");
@@ -518,7 +518,7 @@ int load_images(
      */
     unsigned int user_elf_offset = 2;
     cpio_get_entry(cpio, cpio_len, 0, &elf_filename, NULL);
-    ret = strcmp(elf_filename, "kernel.elf");
+    ret = strcmp(elf_filename, "kernel");
     if (0 != ret) {
         printf("ERROR: Kernel image not first image in archive\n");
         return -1;
