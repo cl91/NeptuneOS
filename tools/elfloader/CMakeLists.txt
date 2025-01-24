@@ -8,18 +8,56 @@ cmake_minimum_required(VERSION 3.7.2)
 
 project(elfloader C ASM)
 
-if(KernelArchX86)
-    # This project is only used on Arm or RISC-V
-    return()
-endif()
-
 include(../../sel4/tools/flags.cmake)
 include(../../sel4/tools/helpers.cmake)
 include(cpio.cmake)
 
+if(${KernelArch} STREQUAL "arm")
+set(KernelArchARM ON)
+endif()
+
+if(${KernelSel4Arch} STREQUAL "aarch64")
+    set(KernelSel4ArchAarch64 ON)
+    set(KernelWordSize 64)
+    set(KernelArmArmV "armv8-a" CACHE INTERNAL "")
+elseif(${KernelSel4Arch} STREQUAL "aarch32")
+    set(KernelSel4ArchAarch32 ON)
+    set(KernelWordSize 32)
+    set(KernelArmArmV "armv7-a" CACHE INTERNAL "")
+endif()
+
 set(PYTHON3 "python3")
 set(CONFIG_GEN_PATH "${CMAKE_CURRENT_LIST_DIR}/../../sel4/tools/config_gen.py")
 set(configure_string "")
+set(ElfloaderHashInstructions "hash_none")
+
+set(binary_list
+    "tx1;hikey;odroidc2;odroidc4;imx8mq-evk;imx8mm-evk;imx8mp-evk;hifive;tqma8xqp1gb;bcm2711;rocketchip")
+set(efi_list "tk1;rockpro64;quartz64")
+set(uimage_list "tx2;am335x")
+if(${KernelPlatform} IN_LIST efi_list
+   OR (${KernelPlatform} STREQUAL "hikey" AND ${KernelSel4Arch} STREQUAL "aarch64"))
+    set(ElfloaderImage "efi" CACHE STRING "" FORCE)
+elseif(${KernelPlatform} IN_LIST uimage_list)
+    set(ElfloaderImage "uimage" CACHE STRING "" FORCE)
+    #rpi3
+elseif(${KernelPlatform} STREQUAL "bcm2837" AND ${KernelSel4Arch} STREQUAL "aarch64")
+    set(ElfloaderImage "binary" CACHE STRING "" FORCE)
+elseif(${KernelPlatform} IN_LIST binary_list)
+    set(ElfloaderImage "binary" CACHE STRING "" FORCE)
+else()
+    set(ElfloaderImage "elf" CACHE STRING "" FORCE)
+endif()
+
+if(${KernelPlatform} STREQUAL "tk1" AND ${KernelSel4Arch} STREQUAL "arm_hyp")
+    set(ElfloaderMode "hypervisor" CACHE STRING "" FORCE)
+    set(ElfloaderMonitorHook ON CACHE BOOL "" FORCE)
+endif()
+if(${KernelPlatform} STREQUAL "bcm2711")
+    set(IMAGE_START_ADDR 0x10000000 CACHE INTERNAL "" FORCE)
+else()
+    set(IMAGE_START_ADDR 0x80000000 CACHE INTERNAL "" FORCE)
+endif()
 
 config_choice(
     ElfloaderImage
@@ -81,12 +119,6 @@ config_option(
 )
 
 add_config_library(elfloader "${configure_string}")
-
-if(KernelSel4ArchAarch64)
-    set(KernelArmArmV "armv8-a" CACHE INTERNAL "")
-else()
-    set(KernelArmArmV "armv7-a" CACHE INTERNAL "")
-endif()
 
 add_compile_options(-D_XOPEN_SOURCE=700 -ffreestanding -Wall -Werror -W -Wextra)
 set(linkerScript "${CMAKE_CURRENT_LIST_DIR}/src/arch-${KernelArch}/linker.lds")
@@ -294,7 +326,6 @@ add_custom_target(elfloader_linker DEPENDS linker.lds_pp)
 add_executable(elfloader EXCLUDE_FROM_ALL ${files} archive.o)
 
 if(ElfloaderImageEFI)
-    set_property(TARGET elfloader APPEND_STRING PROPERTY LINK_FLAGS " -pie ")
     set_target_properties(elfloader PROPERTIES LINK_DEPENDS ${linkerScript})
     set_property(
         TARGET elfloader
@@ -303,7 +334,13 @@ if(ElfloaderImageEFI)
             LINK_FLAGS
             # -Bsymbolic forces symbols to bind to their definitions within the elfloader
             # EFI_SUBSYSTEM=0xa indicates that we're building an EFI application.
-            " -Wl,-T ${linkerScript} -nostdlib -shared -Wl,-Bsymbolic,--defsym=EFI_SUBSYSTEM=0xa -Wl,--build-id=none"
+            " -fuse-ld=lld -Wl,-T ${linkerScript} -nostdlib -Wl,-Bsymbolic,--defsym=EFI_SUBSYSTEM=0xa -Wl,--build-id=none"
+    )
+    add_custom_command(
+        OUTPUT "elfloader-bin"
+            COMMAND
+                llvm-objcopy -O binary elfloader elfloader-bin
+            DEPENDS elfloader
     )
 else()
     set_target_properties(
@@ -317,6 +354,12 @@ else()
         PROPERTY
             LINK_FLAGS
             " -Wl,-T ${CMAKE_CURRENT_BINARY_DIR}/linker.lds_pp -nostdlib -static -Wl,--build-id=none -Wl,-z -Wl,max-page-size=0x1000"
+    )
+    add_custom_command(
+        OUTPUT "elfloader-bin"
+            COMMAND
+                cp elfloader elfloader-bin
+            DEPENDS elfloader
     )
 endif()
 
@@ -345,4 +388,11 @@ target_link_libraries(
     elfloader
     PRIVATE
         elfloader_Config
+)
+
+add_custom_target(
+    bootimg ALL
+    DEPENDS
+        elfloader
+        "elfloader-bin"
 )

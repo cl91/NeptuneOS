@@ -23,7 +23,11 @@ SECTIONS
   }
   _etext = .;
   _text_size = . - _text;
-  .dynamic  : { *(.dynamic) }
+  .dynamic  :
+  {
+   _DYNAMIC = .;
+   *(.dynamic)
+  }
   .data : ALIGN(4096)
   {
    _data = .;
@@ -61,6 +65,8 @@ SECTIONS
   .dynstr   : { *(.dynstr) }
   . = ALIGN(4096);
   .note.gnu.build-id : { *(.note.gnu.build-id) }
+
+  _end = .;
   /DISCARD/ :
   {
     *(.rel.reloc)

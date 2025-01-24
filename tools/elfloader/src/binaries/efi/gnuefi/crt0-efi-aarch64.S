@@ -112,6 +112,7 @@ section_table:
 	.long	0xc0000040	// Characteristics (section flags)
 
 	.align		12
+	.globl _gnuefi_start
 _gnuefi_start:
 	stp		x29, x30, [sp, #-32]!
 	mov		x29, sp

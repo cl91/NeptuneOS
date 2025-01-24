@@ -373,13 +373,8 @@ if [[ ${ARCH} == "arm64" ]]; then
     cd ..
     mkdir elfloader
     cd elfloader
-    cmake -DElfloaderImage=elf \
-	  -DElfloaderHashInstructions=hash_none \
-	  -DKernelArch=arm \
+    cmake -DKernelArch=arm \
 	  -DKernelSel4Arch=${SEL4_ARCH} \
-	  -DKernelArchARM=1 \
-	  -DKernelSel4ArchAarch64=1 \
-	  -DKernelWordSize=64 \
 	  -DKernelPlatform=${PLATFORM} \
 	  -DTRIPLE=${ELF_TRIPLE} \
 	  -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
@@ -387,13 +382,13 @@ if [[ ${ARCH} == "arm64" ]]; then
 	  -DPLATFORM=${PLATFORM} \
 	  -DKernelDTBPath=$PWD/../elf/kernel/kernel.dtb \
 	  -DHARDWARE_GEN_PATH=$PWD/../../sel4/tools/hardware_gen.py \
-	  -DIMAGE_START_ADDR=0x80000000 \
 	  -DKERNEL_IMAGE=$PWD/../$IMAGEDIR/kernel \
 	  -DNTOS_IMAGE=$PWD/../$IMAGEDIR/ntos \
 	  -DKERNEL_GEN_CONFIG_DIR=$PWD/../elf/kernel/gen_config \
+	  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
 	  -G Ninja ../../tools/elfloader || build_failed
-    ninja elfloader || build_failed
-    cp elfloader ../$IMAGEDIR/bootimg-$SEL4_ARCH-$PLATFORM-${BUILD_TYPE,,}
+    ninja bootimg || build_failed
+    cp elfloader-bin ../$IMAGEDIR/bootimg-$SEL4_ARCH-$PLATFORM-${BUILD_TYPE,,}
     if [[ $? == 0 ]]; then
 	echo "Success."
     else
