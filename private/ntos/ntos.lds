@@ -11,28 +11,28 @@ SECTIONS
     }
     .rodata :
     {
-	. = ALIGN(4096) ;
+	. = ALIGN(16) ;
 	_rodata_start = . ;
 	*(.rodata)
 	_rodata_end = . ;
     }
     .initcpio :
     {
-	. = ALIGN(4096) ;
+	. = ALIGN(16) ;
 	_initcpio_start = . ;
 	*(initcpio)
 	_initcpio_end = . ;
     }
     .data :
     {
-	. = ALIGN(4096) ;
+	. = ALIGN(16) ;
 	_data_start = . ;
 	*(.data)
 	_data_end = . ;
     }
     .bss :
     {
-	. = ALIGN(32) ;
+	. = ALIGN(16) ;
 	_bss_start = . ;
 	*(.bss)
 	*(.stack)
@@ -40,14 +40,14 @@ SECTIONS
     }
     .tdata :
     {
-	. = ALIGN(4096) ;
+	. = ALIGN(16) ;
 	_tdata_start = . ;
 	*(.tdata .tdata.* .gnu.linkonce.td.*)
 	_tdata_end = . ;
     }
     .tbss :
     {
-	. = ALIGN(32) ;
+	. = ALIGN(16) ;
 	_tbss_start = . ;
 	*(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon)
 	_tbss_end = . ;
