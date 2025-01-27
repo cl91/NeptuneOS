@@ -33,7 +33,7 @@ typedef enum _EXCEPTION_DISPOSITION {
     _Inout_ struct _CONTEXT *_ContextRecord,
     _Inout_ void *_DispatcherContext);
 
-#elif defined(__x86_64) || defined(__aarch64__)
+#elif defined(__x86_64) || defined(__aarch64__) || defined(__riscv)
 
   struct _EXCEPTION_RECORD;
   struct _CONTEXT;

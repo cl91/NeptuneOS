@@ -26,6 +26,10 @@ if [[ ${args[@]} =~ "arm64" ]]; then
     ARCH=arm64
 fi
 
+if [[ ${args[@]} =~ "riscv64" ]]; then
+    ARCH=riscv64
+fi
+
 if [[ ${ARCH} == "i386" ]]; then
     SEL4_ARCH=ia32
     RTLIB_ARCH=i386
@@ -51,6 +55,15 @@ elif [[ ${ARCH} == "arm64" ]]; then
     DEFAULT_PLATFORM=rockpro64
     OUTPUT_TARGET=elf64-aarch64
     LINKER_EMULATION=aarch64elf
+elif [[ ${ARCH} == "riscv64" ]]; then
+    SEL4_ARCH=riscv64
+    RTLIB_ARCH=riscv64
+    MC_COMPILER_ARCH=x86_64
+    ELF_TRIPLE=riscv64-elf
+    PE_TRIPLE=riscv64-pc-windows-msvc
+    DEFAULT_PLATFORM=star64
+    OUTPUT_TARGET=elf64-riscv64
+    LINKER_EMULATION=riscv64elf
 else
     echo "Unsupported arch ${ARCH}"
     exit 1

@@ -20,6 +20,13 @@
 #endif
 #endif
 
+#ifdef __riscv64__
+#ifndef _M_RISCV64
+#define _M_RISCV64
+#define _WIN64
+#endif
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 #include <excpt.h>
