@@ -148,18 +148,26 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	     * an infinite recursion until the stack space of the thread is exhausted.
 	     */
 #ifdef _M_AMD64
-	    UnwindContext.Rip = ContextRecord->Rip = *(PULONG64)UnwindContext.Rsp;
-	    UnwindContext.Rsp = ContextRecord->Rsp += sizeof(ULONG64);
+	    UnwindContext.Rip = *(PULONG64)UnwindContext.Rsp;
+	    UnwindContext.Rsp += sizeof(ULONG64);
 #elif defined(_M_ARM64)
-	    UnwindContext.Pc = ContextRecord->Pc = UnwindContext.Lr;
+	    UnwindContext.Pc = UnwindContext.Lr;
 #else
 #error "Unsupported architecture"
 #endif
 	    DbgTrace("Got leaf function with new IP %p and SP %p\n",
 		     (PVOID)ContextRecord->INSTRUCTION_POINTER,
 		     (PVOID)ContextRecord->STACK_POINTER);
+
+            if (HandlerType == UNW_FLAG_UHANDLER) {
+                /* Copy the context back for the next iteration */
+                *ContextRecord = UnwindContext;
+            }
 	    continue;
 	}
+
+	/* Save the current instruction pointer before the virtual unwind */
+        DispatcherContext.ControlPc = UnwindContext.INSTRUCTION_POINTER;
 
 	/* Do a virtual unwind to get the next frame */
 	ULONG64 EstablisherFrame;
@@ -175,9 +183,8 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	RtlpDumpContext(&UnwindContext);
 
 	if (UnwindContext.INSTRUCTION_POINTER == 0) {
-	    DbgTrace("Hit user space entry point (Old IP %p Old SP %p New SP %p). "
-		     "Stop unwinding.\n", (PVOID)ContextRecord->INSTRUCTION_POINTER,
-		     (PVOID)ContextRecord->STACK_POINTER,
+	    DbgTrace("Hit user space entry point (Old IP %p New SP %p). "
+		     "Stop unwinding.\n", (PVOID)DispatcherContext.ControlPc,
 		     (PVOID)UnwindContext.STACK_POINTER);
 	    return FALSE;
 	}
@@ -204,7 +211,6 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	    }
 
 	    /* Set up the variable fields of the dispatcher context */
-	    DispatcherContext.ControlPc = ContextRecord->INSTRUCTION_POINTER;
 	    DispatcherContext.ImageBase = ImageBase;
 	    DispatcherContext.FunctionEntry = FunctionEntry;
 	    DispatcherContext.LanguageHandler = ExceptionRoutine;
@@ -273,8 +279,10 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	    break;
 	}
 
-	/* We have successfully unwound a frame. Copy the unwind context back. */
-	*ContextRecord = UnwindContext;
+	if (HandlerType == UNW_FLAG_UHANDLER) {
+	    /* We have successfully unwound a frame. Copy the unwind context back. */
+	    *ContextRecord = UnwindContext;
+	}
     }
 
     if (ExceptionRecord->ExceptionCode != STATUS_UNWIND_CONSOLIDATE) {

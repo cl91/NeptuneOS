@@ -61,8 +61,8 @@ EXCEPTION_DISPOSITION __C_specific_handler(PEXCEPTION_RECORD ExceptionRecord,
 					   PCONTEXT ContextRecord,
 					   PDISPATCHER_CONTEXT DispatcherContext)
 {
-    DbgTrace("ExceptionRecord %p EstablisherFrame %p ContextRecord %p\n",
-	     ExceptionRecord, EstablisherFrame, ContextRecord);
+    DbgTrace("ExceptionRecord %p EstablisherFrame %p ContextRecord %p DispatcherContext %p\n",
+	     ExceptionRecord, EstablisherFrame, ContextRecord, DispatcherContext);
     RtlpDumpContext(ContextRecord);
     RtlpDumpDispatcherContext(DispatcherContext);
 
