@@ -285,9 +285,9 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     }
 }
 
-VOID RtlpDumpContext(IN PCONTEXT pc)
+VOID RtlpDumpContext(IN PCONTEXT Ctx)
 {
-    RtlpDumpContextEx(pc, DbgPrint);
+    RtlpDumpContextEx(Ctx, DbgPrint);
 }
 
 VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,

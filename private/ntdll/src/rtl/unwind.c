@@ -105,8 +105,8 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 			   IN OPTIONAL PUNWIND_HISTORY_TABLE HistoryTable,
 			   IN ULONG HandlerType)
 {
-    DbgTrace("Unwinding target IP %p target frame %p with context\n",
-	     TargetIp, TargetFrame);
+    DbgTrace("Unwinding target IP %p target frame %p with context %p\n",
+	     TargetIp, TargetFrame, ContextRecord);
     if (ContextRecord != NULL) {
 	RtlpDumpContext(ContextRecord);
     }
