@@ -122,7 +122,7 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
     DISPATCHER_CONTEXT_NONVOLREG_ARM64 NonvolatileRegs;
 #endif
     DISPATCHER_CONTEXT DispatcherContext = {
-	.ContextRecord = ContextRecord,
+	.ContextRecord = &UnwindContext,
 	.HistoryTable = HistoryTable,
 	.TargetIp = (ULONG64)TargetIp,
 #ifdef _M_ARM64
@@ -220,7 +220,7 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 		/* Call the language specific handler */
 		EXCEPTION_DISPOSITION Disposition = ExceptionRoutine(ExceptionRecord,
 								     (PVOID)EstablisherFrame,
-								     &UnwindContext,
+								     ContextRecord,
 								     &DispatcherContext);
 		DbgTrace("Disposition is %d\n", Disposition);
 
