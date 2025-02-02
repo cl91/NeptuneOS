@@ -1,7 +1,7 @@
 #include <wdmasm.h>
 #include <arm64asm.h>
 
-#define COROUTINE_EXEC_PROLOGUE				;\
+#define COROUTINE_START_PROLOGUE			;\
     /* KiCurrentCoroutineStackTop = StackTop (x0); */	;\
     adr x3, KiCurrentCoroutineStackTop			;\
     str x0, [x3]					;\
@@ -26,7 +26,7 @@
  *                           IN PVOID Context)                         // x2
  */
 .PROC KiStartCoroutine
-    COROUTINE_EXEC_PROLOGUE
+    COROUTINE_START_PROLOGUE
     /* Switch to the stack pointer given by StackTop (x0). */
     mov sp, x0
     /* Skip the KI_COROUTINE_STACK struct */
@@ -91,7 +91,7 @@ KiExitCoroutine:
  * NTSTATUS KiResumeCoroutine(IN PVOID StackTop)   // x0
  */
 .PROC KiResumeCoroutine
-    COROUTINE_EXEC_PROLOGUE
+    COROUTINE_START_PROLOGUE
     /* Load the saved coroutine stack pointer */
     ldr x1, [x0, -0x10]
     mov sp, x1

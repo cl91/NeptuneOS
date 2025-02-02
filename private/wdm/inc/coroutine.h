@@ -39,13 +39,18 @@ typedef struct _KI_COROUTINE_STACK {
     PVOID NextStackTop; /* Pointer to the next coroutine stack. */
 } KI_COROUTINE_STACK, *PKI_COROUTINE_STACK;
 
+#ifdef _M_AMD64
+#define MS_ABI __attribute__((__ms_abi__))
+#else
+#define MS_ABI
+#endif
 
 /*
  * Coroutine entry point. This is called by KiStartCoroutine
  *
  * Context is passed via %ecx (i386) or %rcx (amd64)
  */
-typedef NTSTATUS (FASTCALL *KI_COROUTINE_ENTRYPOINT)(IN PVOID Context);
+typedef NTSTATUS (FASTCALL MS_ABI *KI_COROUTINE_ENTRYPOINT)(IN PVOID Context);
 
 struct _IOP_EXEC_ENV;
 typedef VOID (*PIOP_EXEC_ENV_FINALIZER)(struct _IOP_EXEC_ENV *Env, NTSTATUS Status);
@@ -89,8 +94,8 @@ static inline PVOID KiGetCoroutineSavedSP(PVOID StackTop)
 }
 
 /* arch/coroutine.S */
-NTSTATUS KiStartCoroutine(IN PVOID StackTop,
-			  IN KI_COROUTINE_ENTRYPOINT EntryPoint,
-			  IN PVOID Context);
-VOID KiYieldCoroutine();
-FASTCALL NTSTATUS KiResumeCoroutine(IN PVOID StackTop);
+MS_ABI NTSTATUS KiStartCoroutine(IN PVOID StackTop,
+				 IN KI_COROUTINE_ENTRYPOINT EntryPoint,
+				 IN PVOID Context);
+MS_ABI VOID KiYieldCoroutine();
+FASTCALL MS_ABI NTSTATUS KiResumeCoroutine(IN PVOID StackTop);
