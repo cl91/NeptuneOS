@@ -3496,13 +3496,7 @@ NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Cont
 	    retry = TRUE;
 	}
 
-#ifndef __REACTOS__
-#pragma warning(suppress : 4213) // okay to cast Arg4 as a ulong for this use case
-	if (retry && ((ULONG)(ULONG_PTR)irpStack->Parameters.Others.Argument4)--) {
-#else
 	if (retry && (*(ULONG *)&irpStack->Parameters.Others.Argument4)--) {
-#endif
-
 	    //
 	    // Retry request.
 	    //
@@ -6794,36 +6788,16 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	// For pass through EX: as the handler will validate the size anyway,
 	//                      do not apply the similar check and leave the work to the handler.
 	//
-	if ((controlCode == IOCTL_SCSI_PASS_THROUGH) ||
-	    (controlCode == IOCTL_SCSI_PASS_THROUGH_DIRECT)) {
-#if BUILD_WOW64_ENABLED && defined(_WIN64)
+	if ((controlCode == IOCTL_SCSI_PASS_THROUGH ||
+	     controlCode == IOCTL_SCSI_PASS_THROUGH_DIRECT) &&
+	    irpStack->Parameters.DeviceIoControl.InputBufferLength < sizeof(SCSI_PASS_THROUGH)) {
+	    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
 
-	    if (IoIs32bitProcess(Irp)) {
-		if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
-		    sizeof(SCSI_PASS_THROUGH32)) {
-		    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+	    ClassReleaseRemoveLock(DeviceObject, Irp);
+	    ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
 
-		    ClassReleaseRemoveLock(DeviceObject, Irp);
-		    ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
-
-		    status = STATUS_INVALID_PARAMETER;
-		    goto SetStatusAndReturn;
-		}
-	    } else
-#endif
-
-	    {
-		if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
-		    sizeof(SCSI_PASS_THROUGH)) {
-		    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-
-		    ClassReleaseRemoveLock(DeviceObject, Irp);
-		    ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
-
-		    status = STATUS_INVALID_PARAMETER;
-		    goto SetStatusAndReturn;
-		}
-	    }
+	    status = STATUS_INVALID_PARAMETER;
+	    goto SetStatusAndReturn;
 	}
 
 	IoCopyCurrentIrpStackLocationToNext(Irp);
@@ -6919,8 +6893,8 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    break;
 	}
 
-	valueName = ExAllocatePoolWithTag(
-	    PagedPool, commonExtension->DeviceName.Length + sizeof(WCHAR), '8CcS');
+	valueName = ExAllocatePoolWithTag(commonExtension->DeviceName.Length + sizeof(WCHAR),
+					  '8CcS');
 
 	if (!valueName) {
 	    status = STATUS_INSUFFICIENT_RESOURCES;
@@ -7028,7 +7002,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    sizeNeeded = sizeof(SCSI_REQUEST_BLOCK);
 	}
 
-	srb = ExAllocatePoolWithTag(NonPagedPoolNx, sizeNeeded + (sizeof(ULONG_PTR) * 2),
+	srb = ExAllocatePoolWithTag(sizeNeeded + (sizeof(ULONG_PTR) * 2),
 				    '9CcS');
 
 	if (srb == NULL) {
@@ -8715,15 +8689,14 @@ NTAPI ULONG ClassQueryTimeOutRegistryValue(IN PDEVICE_OBJECT DeviceObject)
 	return 0;
     }
 
-    parameters = ExAllocatePoolWithTag(NonPagedPoolNx,
-				       sizeof(RTL_QUERY_REGISTRY_TABLE) * 2, '1BcS');
+    parameters = ExAllocatePoolWithTag(sizeof(RTL_QUERY_REGISTRY_TABLE) * 2, '1BcS');
 
     if (!parameters) {
 	return 0;
     }
 
     size = registryPath->MaximumLength + sizeof(WCHAR);
-    path = ExAllocatePoolWithTag(NonPagedPoolNx, size, '2BcS');
+    path = ExAllocatePoolWithTag(size, '2BcS');
 
     if (!path) {
 	FREE_POOL(parameters);
@@ -8911,7 +8884,7 @@ NTAPI NTSTATUS ClassGetDescriptor(IN PDEVICE_OBJECT DeviceObject,
     NT_ASSERT(length >= sizeof(STORAGE_PROPERTY_QUERY));
     length = max(length, sizeof(STORAGE_PROPERTY_QUERY));
 
-    descriptor = ExAllocatePoolWithTag(NonPagedPoolNx, length, '4BcS');
+    descriptor = ExAllocatePoolWithTag(length, '4BcS');
 
     if (descriptor == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
@@ -9213,7 +9186,7 @@ NTSTATUS ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo,
 
     relationsSize = (sizeof(DEVICE_RELATIONS) + (count * sizeof(PDEVICE_OBJECT)));
 
-    deviceRelations = ExAllocatePoolWithTag(PagedPool, relationsSize, '5BcS');
+    deviceRelations = ExAllocatePoolWithTag(relationsSize, '5BcS');
 
     if (deviceRelations == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_ENUM,
@@ -10179,9 +10152,9 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     //
     case METHOD_BUFFERED: {
 	if ((InputBufferLength != 0) || (OutputBufferLength != 0)) {
-	    irp->AssociatedIrp.SystemBuffer = ExAllocatePoolWithTag(
-		NonPagedPoolNxCacheAligned, max(InputBufferLength, OutputBufferLength),
-		CLASS_TAG_DEVICE_CONTROL);
+	    irp->AssociatedIrp.SystemBuffer =
+		ExAllocatePoolWithTag(max(InputBufferLength, OutputBufferLength),
+				      CLASS_TAG_DEVICE_CONTROL);
 	    if (irp->AssociatedIrp.SystemBuffer == NULL) {
 		IoFreeIrp(irp);
 
@@ -10611,8 +10584,8 @@ NTSTATUS ClasspAllocateReleaseQueueIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
 
     NT_ASSERT(!(FdoExtension->ReleaseQueueInProgress));
 
-    FdoExtension->PrivateFdoData->ReleaseQueueIrp = ExAllocatePoolWithTag(
-	NonPagedPoolNx, IoSizeOfIrp(lowerStackSize), CLASS_TAG_RELEASE_QUEUE);
+    FdoExtension->PrivateFdoData->ReleaseQueueIrp =
+	ExAllocatePoolWithTag(IoSizeOfIrp(lowerStackSize), CLASS_TAG_RELEASE_QUEUE);
 
     if (FdoExtension->PrivateFdoData->ReleaseQueueIrp == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
@@ -10654,7 +10627,7 @@ NTSTATUS ClasspAllocatePowerProcessIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
     stackSize = FdoExtension->CommonExtension.LowerDeviceObject->StackSize + 1;
 
     FdoExtension->PrivateFdoData->PowerProcessIrp =
-	ExAllocatePoolWithTag(NonPagedPoolNx, IoSizeOfIrp(stackSize), CLASS_TAG_POWER);
+	ExAllocatePoolWithTag(IoSizeOfIrp(stackSize), CLASS_TAG_POWER);
 
     if (FdoExtension->PrivateFdoData->PowerProcessIrp == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -11760,11 +11733,10 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    supportedPages = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-					   allocationBufferLength, '3CcS');
+    supportedPages = ExAllocatePoolWithTag(allocationBufferLength, '3CcS');
 
 #else
-    supportedPages = ExAllocatePoolWithTag(NonPagedPoolNx, bufferLength, '3CcS');
+    supportedPages = ExAllocatePoolWithTag(bufferLength, '3CcS');
 #endif
 
     if (supportedPages == NULL) {
@@ -11931,7 +11903,7 @@ NTSTATUS ClasspGetLBProvisioningInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExte
 	    srbSize = sizeof(SCSI_REQUEST_BLOCK);
 	}
 
-	srb = ExAllocatePoolWithTag(NonPagedPoolNx, srbSize, '0DcS');
+	srb = ExAllocatePoolWithTag(srbSize, '0DcS');
 
 	if (srb == NULL) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
@@ -12062,7 +12034,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 	srbSize = sizeof(SCSI_REQUEST_BLOCK);
     }
 
-    srb = ExAllocatePoolWithTag(NonPagedPoolNx, srbSize, CLASSPNP_POOL_TAG_SRB);
+    srb = ExAllocatePoolWithTag(srbSize, CLASSPNP_POOL_TAG_SRB);
 
     if (!srb) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
@@ -12080,10 +12052,10 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    dataBuffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned, allocationBufferLength,
+    dataBuffer = ExAllocatePoolWithTag(allocationBufferLength,
 				       CLASSPNP_POOL_TAG_VPD);
 #else
-    dataBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, bufferLength,
+    dataBuffer = ExAllocatePoolWithTag(bufferLength,
 				       CLASSPNP_POOL_TAG_VPD);
 #endif
 
@@ -12662,7 +12634,7 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
 
     allocationSize = sizeof(OFFLOAD_READ_CONTEXT) + bufferLength;
 
-    offloadReadContext = ExAllocatePoolWithTag(NonPagedPoolNx, allocationSize,
+    offloadReadContext = ExAllocatePoolWithTag(allocationSize,
 					       CLASSPNP_POOL_TAG_TOKEN_OPERATION);
 
     if (!offloadReadContext) {
@@ -13663,7 +13635,7 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     allocationSize = sizeof(OFFLOAD_WRITE_CONTEXT) + bufferLength;
 
-    offloadWriteContext = ExAllocatePoolWithTag(NonPagedPoolNx, allocationSize,
+    offloadWriteContext = ExAllocatePoolWithTag(allocationSize,
 						CLASSPNP_POOL_TAG_TOKEN_OPERATION);
 
     if (!offloadWriteContext) {
@@ -15043,7 +15015,7 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
 	srbSize = sizeof(SCSI_REQUEST_BLOCK);
     }
 
-    srb = ExAllocatePoolWithTag(NonPagedPoolNx, srbSize, '1DcS');
+    srb = ExAllocatePoolWithTag(srbSize, '1DcS');
     if (srb == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

@@ -30,15 +30,11 @@ DRIVER_DISPATCH ClassDispatchUnimplemented;
 //
 VOID ClassInitializeDispatchTables(PCLASS_DRIVER_EXTENSION DriverExtension)
 {
-    ULONG idx;
-
-    PAGED_CODE();
-
     //
     // Initialize the standard device dispatch table
     //
 
-    for (idx = 0; idx <= IRP_MJ_MAXIMUM_FUNCTION; idx++) {
+    for (ULONG idx = 0; idx <= IRP_MJ_MAXIMUM_FUNCTION; idx++) {
 	DriverExtension->DeviceMajorFunctionTable[idx] = ClassDispatchUnimplemented;
     }
 
@@ -46,16 +42,13 @@ VOID ClassInitializeDispatchTables(PCLASS_DRIVER_EXTENSION DriverExtension)
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_CLOSE] = ClassCreateClose;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_READ] = ClassReadWrite;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_WRITE] = ClassReadWrite;
-    DriverExtension->DeviceMajorFunctionTable[IRP_MJ_DEVICE_CONTROL] =
-	ClassDeviceControlDispatch;
+    DriverExtension->DeviceMajorFunctionTable[IRP_MJ_DEVICE_CONTROL] = ClassDeviceControlDispatch;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_SCSI] = ClassInternalIoControl;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_SHUTDOWN] = ClassShutdownFlush;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_FLUSH_BUFFERS] = ClassShutdownFlush;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_PNP] = ClassDispatchPnp;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_POWER] = ClassDispatchPower;
     DriverExtension->DeviceMajorFunctionTable[IRP_MJ_SYSTEM_CONTROL] = ClassSystemControl;
-
-    return;
 }
 
 NTAPI NTSTATUS ClassGlobalDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
