@@ -338,7 +338,6 @@ typedef struct _DICTIONARY_HEADER DICTIONARY_HEADER, *PDICTIONARY_HEADER;
 typedef struct _DICTIONARY {
     ULONGLONG Signature;
     struct _DICTIONARY_HEADER *List;
-    KSPIN_LOCK SpinLock;
 } DICTIONARY, *PDICTIONARY;
 
 typedef struct _CLASSPNP_SCAN_FOR_SPECIAL_INFO {
@@ -564,9 +563,6 @@ typedef struct _COMMON_DEVICE_EXTENSION {
     PDEVICE_OBJECT LowerDeviceObject;
     struct _FUNCTIONAL_DEVICE_EXTENSION *PartitionZeroExtension;
     PCLASS_DRIVER_EXTENSION DriverExtension;
-    LONG RemoveLock;
-    KEVENT RemoveEvent;
-    KSPIN_LOCK RemoveTrackingSpinlock;
     PVOID RemoveTrackingList;
     LONG RemoveTrackingUntrackedCount;
     PVOID DriverData;
@@ -748,7 +744,6 @@ typedef struct _CLASS_VPD_ECOP_BLOCK_DEVICE_ROD_LIMITS {
 } CLASS_VPD_ECOP_BLOCK_DEVICE_ROD_LIMITS, *PCLASS_VPD_ECOP_BLOCK_DEVICE_ROD_LIMITS;
 
 typedef struct _CLASS_FUNCTION_SUPPORT_INFO {
-    KSPIN_LOCK SyncLock;
     ULONG GenerationCount;
     volatile ULONG ChangeRequestCount;
     struct {
@@ -838,7 +833,6 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     FILE_OBJECT_EXTENSION KernelModeMcnContext;
     ULONG MediaChangeCount;
     HANDLE DeviceDirectory;
-    KSPIN_LOCK ReleaseQueueSpinLock;
     PIRP ReleaseQueueIrp;
     SCSI_REQUEST_BLOCK ReleaseQueueSrb;
     BOOLEAN ReleaseQueueNeeded;
@@ -849,9 +843,6 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     struct _FAILURE_PREDICTION_INFO *FailurePredictionInfo;
     BOOLEAN PowerDownInProgress;
     ULONG EnumerationInterlock;
-    KEVENT ChildLock;
-    PKTHREAD ChildLockOwner;
-    ULONG ChildLockAcquisitionCount;
     ULONG ScanForSpecialFlags;
     KDPC PowerRetryDpc;
     KTIMER PowerRetryTimer;

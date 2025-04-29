@@ -59,12 +59,6 @@
 
 #define MAXIMUM_CDB_SIZE 12
 
-#if DBG
-#define DebugPrint(x) ScsiDebugPrint x
-#else
-#define DebugPrint(x)
-#endif
-
 #define SCSI_COMBINE_BUS_TARGET(Bus, Target)                            \
     (((((UCHAR)(Target)) & ~(0x20 - 1)) << 8) | (((UCHAR)(Bus)) << 5) | \
      (((UCHAR)(Target)) & (0x20 - 1)))

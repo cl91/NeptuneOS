@@ -1,10 +1,8 @@
 #ifndef _SRBHELPER_H_
 #define _SRBHELPER_H_
 
-#if !defined(_NTSTORPORT_) && !defined(_NTSTORPORTP_) && !defined(_NTSRB_)
 #include <scsi.h>
 #include <srb.h>
-#endif
 
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 

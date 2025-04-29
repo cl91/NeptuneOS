@@ -125,16 +125,6 @@ typedef struct _DISK_GROUP_CONTEXT {
     SCSI_REQUEST_BLOCK Srb;
 #endif
 
-    //
-    // The spinlock that will synchronize access to this context
-    //
-    KSPIN_LOCK Spinlock;
-
-    //
-    // This event will allow for the requests to be sent down synchronously
-    //
-    KEVENT Event;
-
 #if DBG
 
     //
@@ -343,14 +333,6 @@ typedef struct _DISK_DATA {
 
     DISK_GEOMETRY RealGeometry;
 #endif
-
-    //
-    // This mutex prevents more than one IOCTL_DISK_VERIFY from being
-    // sent down to the disk. This greatly reduces the possibility of
-    // a Denial-of-Service attack
-    //
-
-    KMUTEX VerifyMutex;
 
     //
     // This allows for parallel flush requests to be combined into one so as to

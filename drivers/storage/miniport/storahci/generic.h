@@ -21,7 +21,6 @@ Revision History:
 #include <storport.h>
 #include "ata.h"
 
-#include "devioctl.h"
 #include "ntddscsi.h"
 #include "ntddstor.h"
 #include "srbhelper.h"

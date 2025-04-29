@@ -212,7 +212,6 @@ extern LIST_ENTRY IdlePowerFDOList;
 extern PVOID PowerSettingNotificationHandle;
 extern PVOID ScreenStateNotificationHandle;
 extern BOOLEAN ClasspScreenOff;
-extern KGUARDED_MUTEX IdlePowerFDOListMutex;
 extern ULONG DiskIdleTimeoutInMS;
 
 //
@@ -234,12 +233,6 @@ extern CONST LARGE_INTEGER Magic10000;
     (RtlExtendedIntegerMultiply((MILLISECONDS), 10000))
 
 typedef struct _MEDIA_CHANGE_DETECTION_INFO {
-    //
-    // Mutex to synchronize enable/disable requests and media state changes
-    //
-
-    KMUTEX MediaChangeMutex;
-
     //
     // The current state of the media (present, not present, unknown)
     // protected by MediaChangeSynchronizationEvent
@@ -634,11 +627,10 @@ struct _CLASS_PRIVATE_FDO_DATA {
     // and class tick function.
     //
 
+    KTIMER TickTimer;
 #if (NTDDI_VERSION >= NTDDI_WINBLUE)
-    PEX_TIMER TickTimer;
     LONGLONG CurrentNoWakeTolerance;
 #else
-    KTIMER TickTimer;
     KDPC TickTimerDpc;
 #endif // (NTDDI_VERSION >= NTDDI_WINBLUE)
 
@@ -706,7 +698,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
 	LARGE_INTEGER Tick; // when it should fire
 	PCLASS_RETRY_INFO ListHead; // singly-linked list
 	ULONG Granularity; // static
-	KSPIN_LOCK Lock; // protective spin lock
 	KDPC Dpc; // DPC routine object
 	KTIMER Timer; // timer to fire DPC
     } Retry;
@@ -753,8 +744,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
 #else
     SCSI_REQUEST_BLOCK SrbTemplate;
 #endif
-
-    KSPIN_LOCK SpinLock;
 
     /*
      *  For non-removable media, we read the drive capacity at start time and cache it.
@@ -832,11 +821,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
     ULONG DbgPacketLogNextIndex;
     TRANSFER_PACKET DbgPacketLogs[DBG_NUM_PACKET_LOG_ENTRIES];
 #endif
-
-    //
-    // Spin lock for low priority I/O list
-    //
-    KSPIN_LOCK IdleListLock;
 
     //
     // Queue for low priority I/O
