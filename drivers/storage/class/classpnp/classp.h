@@ -1443,7 +1443,6 @@ VOID ClasspPerfIncrementSuccessfulIo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 
 IO_WORKITEM_ROUTINE ClasspUpdateDiskProperties;
 
-PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo);
 VOID DestroyTransferPacket(IN PTRANSFER_PACKET Pkt);
 VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo,
 			       PTRANSFER_PACKET Pkt);

@@ -24,6 +24,173 @@ Revision History:
 #include "classp.h"
 #include "debug.h"
 
+static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
+{
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
+    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
+    PTRANSFER_PACKET newPkt = NULL;
+    ULONG transferLength = (ULONG)-1;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (NT_SUCCESS(status)) {
+	status = RtlULongAdd(fdoData->HwMaxXferLen, PAGE_SIZE, &transferLength);
+	if (!NT_SUCCESS(status)) {
+	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
+			"Integer overflow in calculating transfer packet size."));
+	    status = STATUS_INTEGER_OVERFLOW;
+	}
+    }
+
+    /*
+     *  Allocate the actual packet.
+     */
+    if (NT_SUCCESS(status)) {
+	newPkt = ExAllocatePoolWithTag(sizeof(TRANSFER_PACKET), 'pnPC');
+	if (newPkt == NULL) {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
+			"Failed to allocate transfer packet."));
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	} else {
+	    RtlZeroMemory(newPkt, sizeof(TRANSFER_PACKET));
+	    newPkt->AllocateNode = KeGetCurrentNodeNumber();
+	    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
+#if (NTDDI_VERSION >= NTDDI_WINBLUE)
+		if ((fdoExt->MiniportDescriptor != NULL) &&
+		    (fdoExt->MiniportDescriptor->Size >=
+		     RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
+					      ExtraIoInfoSupported)) &&
+		    (fdoExt->MiniportDescriptor->ExtraIoInfoSupported == TRUE)) {
+		    status = CreateStorageRequestBlock(
+			(PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
+			fdoExt->AdapterDescriptor->AddressType,
+			DefaultStorageRequestBlockAllocateRoutine, NULL, 2,
+			SrbExDataTypeScsiCdb16, SrbExDataTypeIoInfo);
+		} else {
+		    status = CreateStorageRequestBlock(
+			(PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
+			fdoExt->AdapterDescriptor->AddressType,
+			DefaultStorageRequestBlockAllocateRoutine, NULL, 1,
+			SrbExDataTypeScsiCdb16);
+		}
+#else
+		status =
+		    CreateStorageRequestBlock((PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
+					      fdoExt->AdapterDescriptor->AddressType,
+					      DefaultStorageRequestBlockAllocateRoutine,
+					      NULL, 1, SrbExDataTypeScsiCdb16);
+#endif
+	    } else {
+		newPkt->Srb = ExAllocatePoolWithTag(NonPagedPoolNx,
+						    sizeof(SCSI_REQUEST_BLOCK), '-brs');
+		if (newPkt->Srb == NULL) {
+		    status = STATUS_INSUFFICIENT_RESOURCES;
+		}
+	    }
+
+	    if (status != STATUS_SUCCESS) {
+		TracePrint(
+		    (TRACE_LEVEL_WARNING, TRACE_FLAG_RW, "Failed to allocate SRB."));
+		FREE_POOL(newPkt);
+	    }
+	}
+    }
+
+    /*
+     *  Allocate Irp for the packet.
+     */
+    if (NT_SUCCESS(status) && newPkt != NULL) {
+	newPkt->Irp = IoAllocateIrp(Fdo->StackSize, FALSE);
+	if (newPkt->Irp == NULL) {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
+			"Failed to allocate IRP for transfer packet."));
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	}
+    }
+
+    /*
+     * Allocate a MDL.  Add one page to the length to insure an extra page
+     * entry is allocated if the buffer does not start on page boundaries.
+     */
+    if (NT_SUCCESS(status) && newPkt != NULL) {
+	NT_ASSERT(transferLength != (ULONG)-1);
+
+	newPkt->PartialMdl = IoAllocateMdl(NULL, transferLength, FALSE, FALSE, NULL);
+	if (newPkt->PartialMdl == NULL) {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
+			"Failed to allocate MDL for transfer packet."));
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	} else {
+	    NT_ASSERT(newPkt->PartialMdl->Size >=
+		      (CSHORT)(sizeof(MDL) + BYTES_TO_PAGES(fdoData->HwMaxXferLen) *
+						 sizeof(PFN_NUMBER)));
+	}
+    }
+
+    /*
+     * Allocate per-packet retry history, if required
+     */
+    if (NT_SUCCESS(status) && (fdoData->InterpretSenseInfo != NULL) && (newPkt != NULL)) {
+	// attempt to allocate also the history
+	ULONG historyByteCount = 0;
+
+	// SAL annotation and ClassInitializeEx() should both catch this case
+	NT_ASSERT(fdoData->InterpretSenseInfo->HistoryCount != 0);
+	_Analysis_assume_(fdoData->InterpretSenseInfo->HistoryCount != 0);
+
+	historyByteCount = sizeof(SRB_HISTORY_ITEM) *
+			   fdoData->InterpretSenseInfo->HistoryCount;
+	historyByteCount += sizeof(SRB_HISTORY) - sizeof(SRB_HISTORY_ITEM);
+
+	newPkt->RetryHistory = (PSRB_HISTORY)ExAllocatePoolWithTag(NonPagedPoolNx,
+								   historyByteCount,
+								   'hrPC');
+
+	if (newPkt->RetryHistory == NULL) {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
+			"Failed to allocate MDL for transfer packet."));
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	} else {
+	    // call this routine directly once since it's the first initialization of
+	    // the structure and the internal maximum count field is not yet setup.
+	    HistoryInitializeRetryLogs(newPkt->RetryHistory,
+				       fdoData->InterpretSenseInfo->HistoryCount);
+	}
+    }
+
+    /*
+     *  Enqueue the packet in our static AllTransferPacketsList
+     *  (just so we can find it during debugging if its stuck somewhere).
+     */
+    if (NT_SUCCESS(status) && newPkt != NULL) {
+	KIRQL oldIrql;
+	newPkt->Fdo = Fdo;
+#if DBG
+	newPkt->DbgPktId = InterlockedIncrement((volatile LONG *)&fdoData->DbgMaxPktId);
+#endif
+	KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
+	InsertTailList(&fdoData->AllTransferPacketsList, &newPkt->AllPktsListEntry);
+	KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
+
+    } else {
+	// free any resources acquired above (in reverse order)
+	if (newPkt != NULL) {
+	    FREE_POOL(newPkt->RetryHistory);
+	    if (newPkt->PartialMdl != NULL) {
+		IoFreeMdl(newPkt->PartialMdl);
+	    }
+	    if (newPkt->Irp != NULL) {
+		IoFreeIrp(newPkt->Irp);
+	    }
+	    if (newPkt->Srb != NULL) {
+		FREE_POOL(newPkt->Srb);
+	    }
+	    FREE_POOL(newPkt);
+	}
+    }
+
+    return newPkt;
+}
+
 /*
  *  InitializeTransferPackets
  *
@@ -48,8 +215,6 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
 
     NTSTATUS status = STATUS_SUCCESS;
 
-    PAGED_CODE();
-
     //
     //  Precompute the maximum transfer length
     //
@@ -67,10 +232,8 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
     // Allocate per-node free packet lists
     //
     arraySize = KeQueryHighestNodeNumber() + 1;
-    fdoData->FreeTransferPacketsLists = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-							      sizeof(PNL_SLIST_HEADER) *
-								  arraySize,
-							      CLASS_TAG_PRIVATE_DATA);
+    fdoData->FreeTransferPacketsLists =
+	ExAllocatePoolWithTag(sizeof(PNL_SLIST_HEADER) * arraySize, CLASS_TAG_PRIVATE_DATA);
 
     if (fdoData->FreeTransferPacketsLists == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -250,8 +413,7 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
 		NT_ASSERT(FALSE);
 	    }
 	} else {
-	    fdoData->SrbTemplate = ExAllocatePoolWithTag(NonPagedPoolNx,
-							 sizeof(SCSI_REQUEST_BLOCK),
+	    fdoData->SrbTemplate = ExAllocatePoolWithTag(sizeof(SCSI_REQUEST_BLOCK),
 							 '-brs');
 	    if (fdoData->SrbTemplate == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
@@ -280,8 +442,6 @@ VOID DestroyAllTransferPackets(PDEVICE_OBJECT Fdo)
     ULONG index;
     ULONG arraySize;
 
-    PAGED_CODE();
-
     //
     // fdoData->FreeTransferPacketsLists could be NULL if
     // there was an error during start device.
@@ -299,179 +459,11 @@ VOID DestroyAllTransferPackets(PDEVICE_OBJECT Fdo)
 		pkt = DequeueFreeTransferPacketEx(Fdo, FALSE, index);
 	    }
 
-	    NT_ASSERT(fdoData->FreeTransferPacketsLists[index].NumTotalTransferPackets ==
-		      0);
+	    NT_ASSERT(fdoData->FreeTransferPacketsLists[index].NumTotalTransferPackets == 0);
 	}
     }
 
     FREE_POOL(fdoData->SrbTemplate);
-}
-
-PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
-{
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
-    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    PTRANSFER_PACKET newPkt = NULL;
-    ULONG transferLength = (ULONG)-1;
-    NTSTATUS status = STATUS_SUCCESS;
-
-    if (NT_SUCCESS(status)) {
-	status = RtlULongAdd(fdoData->HwMaxXferLen, PAGE_SIZE, &transferLength);
-	if (!NT_SUCCESS(status)) {
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
-			"Integer overflow in calculating transfer packet size."));
-	    status = STATUS_INTEGER_OVERFLOW;
-	}
-    }
-
-    /*
-     *  Allocate the actual packet.
-     */
-    if (NT_SUCCESS(status)) {
-	newPkt = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(TRANSFER_PACKET), 'pnPC');
-	if (newPkt == NULL) {
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"Failed to allocate transfer packet."));
-	    status = STATUS_INSUFFICIENT_RESOURCES;
-	} else {
-	    RtlZeroMemory(newPkt, sizeof(TRANSFER_PACKET));
-	    newPkt->AllocateNode = KeGetCurrentNodeNumber();
-	    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-		if ((fdoExt->MiniportDescriptor != NULL) &&
-		    (fdoExt->MiniportDescriptor->Size >=
-		     RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
-					      ExtraIoInfoSupported)) &&
-		    (fdoExt->MiniportDescriptor->ExtraIoInfoSupported == TRUE)) {
-		    status = CreateStorageRequestBlock(
-			(PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
-			fdoExt->AdapterDescriptor->AddressType,
-			DefaultStorageRequestBlockAllocateRoutine, NULL, 2,
-			SrbExDataTypeScsiCdb16, SrbExDataTypeIoInfo);
-		} else {
-		    status = CreateStorageRequestBlock(
-			(PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
-			fdoExt->AdapterDescriptor->AddressType,
-			DefaultStorageRequestBlockAllocateRoutine, NULL, 1,
-			SrbExDataTypeScsiCdb16);
-		}
-#else
-		status =
-		    CreateStorageRequestBlock((PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
-					      fdoExt->AdapterDescriptor->AddressType,
-					      DefaultStorageRequestBlockAllocateRoutine,
-					      NULL, 1, SrbExDataTypeScsiCdb16);
-#endif
-	    } else {
-		newPkt->Srb = ExAllocatePoolWithTag(NonPagedPoolNx,
-						    sizeof(SCSI_REQUEST_BLOCK), '-brs');
-		if (newPkt->Srb == NULL) {
-		    status = STATUS_INSUFFICIENT_RESOURCES;
-		}
-	    }
-
-	    if (status != STATUS_SUCCESS) {
-		TracePrint(
-		    (TRACE_LEVEL_WARNING, TRACE_FLAG_RW, "Failed to allocate SRB."));
-		FREE_POOL(newPkt);
-	    }
-	}
-    }
-
-    /*
-     *  Allocate Irp for the packet.
-     */
-    if (NT_SUCCESS(status) && newPkt != NULL) {
-	newPkt->Irp = IoAllocateIrp(Fdo->StackSize, FALSE);
-	if (newPkt->Irp == NULL) {
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"Failed to allocate IRP for transfer packet."));
-	    status = STATUS_INSUFFICIENT_RESOURCES;
-	}
-    }
-
-    /*
-     * Allocate a MDL.  Add one page to the length to insure an extra page
-     * entry is allocated if the buffer does not start on page boundaries.
-     */
-    if (NT_SUCCESS(status) && newPkt != NULL) {
-	NT_ASSERT(transferLength != (ULONG)-1);
-
-	newPkt->PartialMdl = IoAllocateMdl(NULL, transferLength, FALSE, FALSE, NULL);
-	if (newPkt->PartialMdl == NULL) {
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"Failed to allocate MDL for transfer packet."));
-	    status = STATUS_INSUFFICIENT_RESOURCES;
-	} else {
-	    NT_ASSERT(newPkt->PartialMdl->Size >=
-		      (CSHORT)(sizeof(MDL) + BYTES_TO_PAGES(fdoData->HwMaxXferLen) *
-						 sizeof(PFN_NUMBER)));
-	}
-    }
-
-    /*
-     * Allocate per-packet retry history, if required
-     */
-    if (NT_SUCCESS(status) && (fdoData->InterpretSenseInfo != NULL) && (newPkt != NULL)) {
-	// attempt to allocate also the history
-	ULONG historyByteCount = 0;
-
-	// SAL annotation and ClassInitializeEx() should both catch this case
-	NT_ASSERT(fdoData->InterpretSenseInfo->HistoryCount != 0);
-	_Analysis_assume_(fdoData->InterpretSenseInfo->HistoryCount != 0);
-
-	historyByteCount = sizeof(SRB_HISTORY_ITEM) *
-			   fdoData->InterpretSenseInfo->HistoryCount;
-	historyByteCount += sizeof(SRB_HISTORY) - sizeof(SRB_HISTORY_ITEM);
-
-	newPkt->RetryHistory = (PSRB_HISTORY)ExAllocatePoolWithTag(NonPagedPoolNx,
-								   historyByteCount,
-								   'hrPC');
-
-	if (newPkt->RetryHistory == NULL) {
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"Failed to allocate MDL for transfer packet."));
-	    status = STATUS_INSUFFICIENT_RESOURCES;
-	} else {
-	    // call this routine directly once since it's the first initialization of
-	    // the structure and the internal maximum count field is not yet setup.
-	    HistoryInitializeRetryLogs(newPkt->RetryHistory,
-				       fdoData->InterpretSenseInfo->HistoryCount);
-	}
-    }
-
-    /*
-     *  Enqueue the packet in our static AllTransferPacketsList
-     *  (just so we can find it during debugging if its stuck somewhere).
-     */
-    if (NT_SUCCESS(status) && newPkt != NULL) {
-	KIRQL oldIrql;
-	newPkt->Fdo = Fdo;
-#if DBG
-	newPkt->DbgPktId = InterlockedIncrement((volatile LONG *)&fdoData->DbgMaxPktId);
-#endif
-	KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-	InsertTailList(&fdoData->AllTransferPacketsList, &newPkt->AllPktsListEntry);
-	KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
-
-    } else {
-	// free any resources acquired above (in reverse order)
-	if (newPkt != NULL) {
-	    FREE_POOL(newPkt->RetryHistory);
-	    if (newPkt->PartialMdl != NULL) {
-		IoFreeMdl(newPkt->PartialMdl);
-	    }
-	    if (newPkt->Irp != NULL) {
-		IoFreeIrp(newPkt->Irp);
-	    }
-	    if (newPkt->Srb != NULL) {
-		FREE_POOL(newPkt->Srb);
-	    }
-	    FREE_POOL(newPkt);
-	}
-    }
-
-    return newPkt;
 }
 
 /*
@@ -1308,8 +1300,6 @@ VOID SetupEjectionTransferPacket(TRANSFER_PACKET *Pkt,
     PCDB pCdb;
     ULONG srbLength;
 
-    PAGED_CODE();
-
     if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
 	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
@@ -1363,8 +1353,6 @@ VOID SetupModeSenseTransferPacket(TRANSFER_PACKET *Pkt,
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
     PCDB pCdb;
     ULONG srbLength;
-
-    PAGED_CODE();
 
     if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
@@ -1580,8 +1568,6 @@ NTAPI VOID CleanupTransferPacketToWorkingSetSizeWorker(IN PVOID Fdo,
 						       IN PIO_WORKITEM IoWorkItem)
 {
     ULONG node = (ULONG)(ULONG_PTR)Context;
-
-    PAGED_CODE();
 
     CleanupTransferPacketToWorkingSetSize((PDEVICE_OBJECT)Fdo, FALSE, node);
 

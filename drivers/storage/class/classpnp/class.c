@@ -2193,7 +2193,7 @@ NTAPI NTSTATUS ClassReadWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	currentIrpStack->MinorFunction = CLASSP_VOLUME_VERIFY_CHECKED;
 
 	/*
-         *  Call the miniport driver's pre-pass filter to check if we
+         *  Call the miniclass driver's pre-pass filter to check if we
          *  should continue with this transfer.
          */
 	NT_ASSERT(commonExtension->DevInfo->ClassReadWriteVerification);
