@@ -964,7 +964,6 @@ NTAPI VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Commo
 
 VOID ClasspInitializeCScanList(IN PCSCAN_LIST List)
 {
-    PAGED_CODE();
     RtlZeroMemory(List, sizeof(CSCAN_LIST));
     InitializeListHead(&(List->CurrentSweep));
     InitializeListHead(&(List->NextSweep));

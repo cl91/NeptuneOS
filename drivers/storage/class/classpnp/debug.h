@@ -62,8 +62,7 @@ typedef struct _CLASSPNP_GLOBALS {
     //
 
     ULONG Index; // index into buffer
-    KSPIN_LOCK SpinLock;
-    PUCHAR Buffer; // requires spinlock to access
+    PUCHAR Buffer;
     ULONG NumberOfBuffers; // number of buffers available
     SIZE_T EachBufferSize; // size of each buffer
 

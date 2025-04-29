@@ -1169,39 +1169,22 @@ FORCEINLINE BOOLEAN SimpleIsSlistEmpty(SINGLE_LIST_ENTRY *SListHdr)
 FORCEINLINE BOOLEAN ClasspIsIdleRequestSupported(PCLASS_PRIVATE_FDO_DATA FdoData,
 						 PIRP Irp)
 {
-#ifndef __REACTOS__
-    IO_PRIORITY_HINT ioPriority = IoGetIoPriorityHint(Irp);
-    return ((ioPriority <= IoPriorityLow) && (FdoData->IdlePrioritySupported == TRUE));
-#else
     return (FdoData->IdlePrioritySupported == TRUE);
-#endif
 }
 
 FORCEINLINE VOID ClasspMarkIrpAsIdle(PIRP Irp, BOOLEAN Idle)
 {
-    ((PULONG_PTR)Irp->Tail.Overlay.DriverContext)[1] = Idle;
+    ((PULONG_PTR)Irp->Tail.DriverContext)[1] = Idle;
 }
 
 FORCEINLINE BOOLEAN ClasspIsIdleRequest(PIRP Irp)
 {
-#ifdef _MSC_VER
-#pragma warning(suppress : 4305) // truncation is not an issue for this use case
-#endif
-    return ((BOOLEAN)Irp->Tail.Overlay.DriverContext[1]);
+    return ((BOOLEAN)Irp->Tail.DriverContext[1]);
 }
 
 FORCEINLINE LARGE_INTEGER ClasspGetCurrentTime(VOID)
 {
-    LARGE_INTEGER currentTime;
-
-#ifndef __REACTOS__
-    currentTime.QuadPart = KeQueryUnbiasedInterruptTimePrecise(
-	(ULONG64 *)&currentTime.QuadPart);
-#else
-    currentTime = KeQueryPerformanceCounter(NULL);
-#endif
-
-    return currentTime;
+    return KeQueryPerformanceCounter(NULL);
 }
 
 FORCEINLINE ULONGLONG ClasspTimeDiffToMs(ULONGLONG TimeDiff)

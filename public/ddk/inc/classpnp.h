@@ -96,23 +96,7 @@
 #define ClassAcquireRemoveLock(devobj, tag)			\
     ClassAcquireRemoveLockEx(devobj, tag, __FILE__, __LINE__)
 
-#ifdef TRY
-#undef TRY
-#endif
-#ifdef LEAVE
-#undef LEAVE
-#endif
-
-#ifdef FINALLY
-#undef FINALLY
-#endif
-
-#define TRY
-#define LEAVE goto __tryLabel;
-#define FINALLY					\
-    __tryLabel:
-
-#if defined DebugPrint
+#ifdef DebugPrint
 #undef DebugPrint
 #endif
 
@@ -673,7 +657,13 @@ typedef struct _COMPLETION_CONTEXT {
 #endif
 } COMPLETION_CONTEXT, *PCOMPLETION_CONTEXT;
 
-NTAPI SCSIPORT_API ULONG ClassInitialize(IN PVOID Argument1, IN PVOID Argument2,
+#ifdef _CLASSPNP_
+#define CLASSPNP_API
+#else
+#define CLASSPNP_API DECLSPEC_IMPORT
+#endif
+
+NTAPI CLASSPNP_API ULONG ClassInitialize(IN PVOID Argument1, IN PVOID Argument2,
 					 IN PCLASS_INIT_DATA InitializationData);
 
 typedef struct _CLASS_QUERY_WMI_REGINFO_EX_LIST {
@@ -855,36 +845,36 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     ULONG_PTR Reserved4;
 } FUNCTIONAL_DEVICE_EXTENSION, *PFUNCTIONAL_DEVICE_EXTENSION;
 
-NTAPI SCSIPORT_API ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
+NTAPI CLASSPNP_API ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 					   IN LPGUID Guid,
 					   IN PVOID Data);
 
-NTAPI SCSIPORT_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
+NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 						    IN PCCHAR ObjectNameBuffer,
 						    IN PDEVICE_OBJECT LowerDeviceObject,
 						    IN BOOLEAN IsFdo,
 						    OUT PDEVICE_OBJECT *DeviceObject);
 
-NTAPI SCSIPORT_API NTSTATUS ClassReadDriveCapacity(IN PDEVICE_OBJECT DeviceObject);
+NTAPI CLASSPNP_API NTSTATUS ClassReadDriveCapacity(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI SCSIPORT_API VOID ClassReleaseQueue(IN PDEVICE_OBJECT DeviceObject);
+NTAPI CLASSPNP_API VOID ClassReleaseQueue(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI SCSIPORT_API VOID ClassSplitRequest(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API VOID ClassSplitRequest(IN PDEVICE_OBJECT DeviceObject,
 					  IN PIRP Irp,
 					  IN ULONG MaximumBytes);
 
-NTAPI SCSIPORT_API NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 					       IN OUT PIRP Irp);
 
-NTAPI SCSIPORT_API NTSTATUS ClassIoComplete(PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassIoComplete(PDEVICE_OBJECT DeviceObject,
 					    PIRP Irp,
 					    PVOID Context);
 
-NTAPI SCSIPORT_API NTSTATUS ClassIoCompleteAssociated(PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassIoCompleteAssociated(PDEVICE_OBJECT DeviceObject,
 						      PIRP Irp,
 						      PVOID Context);
 
-NTAPI SCSIPORT_API BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT DeviceObject,
 						   IN PSCSI_REQUEST_BLOCK Srb,
 						   IN UCHAR MajorFunctionCode,
 						   IN ULONG IoDeviceCode,
@@ -900,107 +890,107 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
 					       IN BOOLEAN InternalDeviceIoControl,
 					       OUT PIO_STATUS_BLOCK IoStatus);
 
-NTAPI SCSIPORT_API NTSTATUS ClassSendIrpSynchronous(IN PDEVICE_OBJECT TargetDeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassSendIrpSynchronous(IN PDEVICE_OBJECT TargetDeviceObject,
 						    IN PIRP Irp);
 
-NTAPI SCSIPORT_API NTSTATUS ClassForwardIrpSynchronous(IN PCOMMON_DEVICE_EXTENSION Ext,
+NTAPI CLASSPNP_API NTSTATUS ClassForwardIrpSynchronous(IN PCOMMON_DEVICE_EXTENSION Ext,
 						       IN PIRP Irp);
 
-NTAPI SCSIPORT_API NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT DeviceObject,
 						    IN OUT PSCSI_REQUEST_BLOCK Srb,
 						    IN OPTIONAL PVOID BufferAddress,
 						    IN ULONG BufferLength,
 						    IN BOOLEAN WriteToDevice);
 
-NTAPI SCSIPORT_API NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT DeviceObject,
 						     IN OUT PSCSI_REQUEST_BLOCK Srb,
 						     IN PIRP Irp,
 						     IN PVOID BufferAddress,
 						     IN ULONG BufferLength,
 						     IN BOOLEAN WriteToDevice);
 
-NTAPI SCSIPORT_API NTSTATUS ClassBuildRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTAPI CLASSPNP_API NTSTATUS ClassBuildRequest(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTAPI SCSIPORT_API ULONG ClassModeSense(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API ULONG ClassModeSense(IN PDEVICE_OBJECT DeviceObject,
 					IN PCHAR ModeSenseBuffer,
 					IN ULONG Length,
 					IN UCHAR PageMode);
 
-NTAPI SCSIPORT_API PVOID ClassFindModePage(IN PCHAR ModeSenseBuffer,
+NTAPI CLASSPNP_API PVOID ClassFindModePage(IN PCHAR ModeSenseBuffer,
 					   IN ULONG Length,
 					   IN UCHAR PageMode,
 					   IN BOOLEAN Use6Byte);
 
-NTAPI SCSIPORT_API NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
 					     IN BOOLEAN Release);
 
-NTAPI SCSIPORT_API NTSTATUS ClassInternalIoControl(PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassInternalIoControl(PDEVICE_OBJECT DeviceObject,
 						   PIRP Irp);
 
-NTAPI SCSIPORT_API VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Ext,
+NTAPI CLASSPNP_API VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Ext,
 							IN ULONG NumberElements);
 
-NTAPI SCSIPORT_API VOID ClassDeleteSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassDeleteSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Ext);
 
-NTAPI SCSIPORT_API ULONG ClassQueryTimeOutRegistryValue(IN PDEVICE_OBJECT DeviceObject);
+NTAPI CLASSPNP_API ULONG ClassQueryTimeOutRegistryValue(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI SCSIPORT_API NTSTATUS ClassGetDescriptor(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassGetDescriptor(IN PDEVICE_OBJECT DeviceObject,
 					       IN PSTORAGE_PROPERTY_ID PropertyId,
 					       OUT PVOID *Descriptor);
 
-NTAPI SCSIPORT_API VOID ClassInvalidateBusRelations(IN PDEVICE_OBJECT Fdo);
+NTAPI CLASSPNP_API VOID ClassInvalidateBusRelations(IN PDEVICE_OBJECT Fdo);
 
-NTAPI SCSIPORT_API VOID ClassMarkChildrenMissing(IN PFUNCTIONAL_DEVICE_EXTENSION Fdo);
+NTAPI CLASSPNP_API VOID ClassMarkChildrenMissing(IN PFUNCTIONAL_DEVICE_EXTENSION Fdo);
 
-NTAPI SCSIPORT_API BOOLEAN ClassMarkChildMissing(IN PPHYSICAL_DEVICE_EXTENSION PdoExtension,
+NTAPI CLASSPNP_API BOOLEAN ClassMarkChildMissing(IN PPHYSICAL_DEVICE_EXTENSION PdoExtension,
 						 IN BOOLEAN AcquireChildLock);
 
-SCSIPORT_API VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
+CLASSPNP_API VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
 				  IN PCCHAR DebugMessage, ...);
 
-NTAPI SCSIPORT_API PCLASS_DRIVER_EXTENSION ClassGetDriverExtension(IN PDRIVER_OBJECT Drv);
+NTAPI CLASSPNP_API PCLASS_DRIVER_EXTENSION ClassGetDriverExtension(IN PDRIVER_OBJECT Drv);
 
-NTAPI SCSIPORT_API VOID ClassCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API VOID ClassCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
 					     IN PIRP Irp,
 					     IN CCHAR PriorityBoost);
 
-NTAPI SCSIPORT_API VOID ClassReleaseRemoveLock(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API VOID ClassReleaseRemoveLock(IN PDEVICE_OBJECT DeviceObject,
 					       PIRP Tag);
 
-NTAPI SCSIPORT_API ULONG ClassAcquireRemoveLockEx(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API ULONG ClassAcquireRemoveLockEx(IN PDEVICE_OBJECT DeviceObject,
 						  PVOID Tag,
 						  IN PCSTR File,
 						  IN ULONG Line);
 
-NTAPI SCSIPORT_API VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
+NTAPI CLASSPNP_API VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 							 IN PCHAR DeviceName,
 							 IN ULONG DeviceNumber,
 							 IN OPTIONAL PINQUIRYDATA InquiryData,
 							 IN ULONG InquiryDataLength);
 
-NTAPI SCSIPORT_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
 						    IN OUT PIRP Irp,
 						    IN NTSTATUS Status,
 						    IN ULONG BufferUsed,
 						    IN CCHAR PriorityBoost);
 
-NTAPI SCSIPORT_API NTSTATUS ClassWmiFireEvent(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassWmiFireEvent(IN PDEVICE_OBJECT DeviceObject,
 					      IN LPGUID Guid,
 					      IN ULONG InstanceIndex,
 					      IN ULONG EventDataSize,
 					      IN PVOID EventData);
 
-NTAPI SCSIPORT_API VOID ClassResetMediaChangeTimer(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassResetMediaChangeTimer(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
-NTAPI SCSIPORT_API VOID ClassInitializeMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
+NTAPI CLASSPNP_API VOID ClassInitializeMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
 							    IN PUCHAR EventPrefix);
 
-NTAPI SCSIPORT_API NTSTATUS ClassInitializeTestUnitPolling(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
+NTAPI CLASSPNP_API NTSTATUS ClassInitializeTestUnitPolling(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
 							   IN BOOLEAN AllowDriveToSleep);
 
-NTAPI SCSIPORT_API PVPB ClassGetVpb(IN PDEVICE_OBJECT DeviceObject);
+NTAPI CLASSPNP_API PVPB ClassGetVpb(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI SCSIPORT_API NTSTATUS ClassSpinDownPowerHandler(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassSpinDownPowerHandler(IN PDEVICE_OBJECT DeviceObject,
 						      IN PIRP Irp);
 
 NTAPI NTSTATUS ClassStopUnitPowerHandler(IN PDEVICE_OBJECT DeviceObject,
@@ -1019,36 +1009,36 @@ NTAPI VOID ClassNotifyFailurePredicted(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
 				       IN UCHAR TargetId,
 				       IN UCHAR Lun);
 
-NTAPI SCSIPORT_API VOID ClassAcquireChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassAcquireChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
-NTAPI SCSIPORT_API VOID ClassReleaseChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassReleaseChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
 IO_COMPLETION_ROUTINE ClassSignalCompletion;
 
 NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT DeviceObject);
 
-NTAPI SCSIPORT_API NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 					      IN UCHAR RemoveType);
 
-NTAPI SCSIPORT_API NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
 							PIRP Irp,
 							PVOID Event);
 
-NTAPI SCSIPORT_API VOID ClassCheckMediaState(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassCheckMediaState(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
-NTAPI SCSIPORT_API NTSTATUS ClassCheckVerifyComplete(PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassCheckVerifyComplete(PDEVICE_OBJECT DeviceObject,
 						     PIRP Irp,
 						     PVOID Context);
 
-NTAPI SCSIPORT_API VOID ClassSetMediaChangeState(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
+NTAPI CLASSPNP_API VOID ClassSetMediaChangeState(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
 						 IN MEDIA_CHANGE_DETECTION_STATE State,
 						 IN BOOLEAN Wait);
 
-NTAPI SCSIPORT_API VOID ClassEnableMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassEnableMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
-NTAPI SCSIPORT_API VOID ClassDisableMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassDisableMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
-NTAPI SCSIPORT_API VOID ClassCleanupMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
+NTAPI CLASSPNP_API VOID ClassCleanupMediaChangeDetection(IN PFUNCTIONAL_DEVICE_EXTENSION Ext);
 
 NTAPI VOID ClassGetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				   IN OPTIONAL PWSTR SubkeyName,

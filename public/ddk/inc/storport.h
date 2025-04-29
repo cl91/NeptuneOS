@@ -22,9 +22,75 @@
 
 #include <ntddk.h>
 #include <hal.h>
+#include <scsi.h>
+#include <srb.h>
 
 #ifndef _NTSTORPORT_
 #define _NTSTORPORT_
+
+typedef PHYSICAL_ADDRESS STOR_PHYSICAL_ADDRESS, *PSTOR_PHYSICAL_ADDRESS;
+
+typedef struct _ACCESS_RANGE {
+    STOR_PHYSICAL_ADDRESS RangeStart;
+    ULONG RangeLength;
+    BOOLEAN RangeInMemory;
+} ACCESS_RANGE, *PACCESS_RANGE;
+
+typedef struct _PORT_CONFIGURATION_INFORMATION {
+    ULONG Length;
+    ULONG SystemIoBusNumber;
+    INTERFACE_TYPE AdapterInterfaceType;
+    ULONG BusInterruptLevel;
+    ULONG BusInterruptVector;
+    KINTERRUPT_MODE InterruptMode;
+    ULONG MaximumTransferLength;
+    ULONG NumberOfPhysicalBreaks;
+    ULONG DmaChannel;
+    ULONG DmaPort;
+    DMA_WIDTH DmaWidth;
+    DMA_SPEED DmaSpeed;
+    ULONG AlignmentMask;
+    ULONG NumberOfAccessRanges;
+    ACCESS_RANGE (*AccessRanges)[];
+    PVOID Reserved;
+    UCHAR NumberOfBuses;
+    UCHAR InitiatorBusId[8];
+    BOOLEAN ScatterGather;
+    BOOLEAN Master;
+    BOOLEAN CachesData;
+    BOOLEAN AdapterScansDown;
+    BOOLEAN AtdiskPrimaryClaimed;
+    BOOLEAN AtdiskSecondaryClaimed;
+    BOOLEAN Dma32BitAddresses;
+    BOOLEAN DemandMode;
+    BOOLEAN MapBuffers;
+    BOOLEAN NeedPhysicalAddresses;
+    BOOLEAN TaggedQueuing;
+    BOOLEAN AutoRequestSense;
+    BOOLEAN MultipleRequestPerLu;
+    BOOLEAN ReceiveEvent;
+    BOOLEAN RealModeInitialized;
+    BOOLEAN BufferAccessScsiPortControlled;
+    UCHAR MaximumNumberOfTargets;
+    UCHAR ReservedUchars[2];
+    ULONG SlotNumber;
+    ULONG BusInterruptLevel2;
+    ULONG BusInterruptVector2;
+    KINTERRUPT_MODE InterruptMode2;
+    ULONG DmaChannel2;
+    ULONG DmaPort2;
+    DMA_WIDTH DmaWidth2;
+    DMA_SPEED DmaSpeed2;
+    ULONG DeviceExtensionSize;
+    ULONG SpecificLuExtensionSize;
+    ULONG SrbExtensionSize;
+    UCHAR Dma64BitAddresses;
+    BOOLEAN ResetTargetSupported;
+    UCHAR MaximumNumberOfLogicalUnits;
+    BOOLEAN WmiDataProvider;
+} PORT_CONFIGURATION_INFORMATION, *PPORT_CONFIGURATION_INFORMATION;
+
+#define CONFIG_INFO_VERSION_2 sizeof(PORT_CONFIGURATION_INFORMATION)
 
 #define STOR_MAP_NO_BUFFERS (0)
 #define STOR_MAP_ALL_BUFFERS (1)
@@ -88,12 +154,6 @@ typedef enum _GETSGSTATUS {
 } GETSGSTATUS, *PGETSGSTATUS;
 
 typedef PHYSICAL_ADDRESS STOR_PHYSICAL_ADDRESS;
-
-typedef struct _ACCESS_RANGE {
-    STOR_PHYSICAL_ADDRESS RangeStart;
-    ULONG RangeLength;
-    BOOLEAN RangeInMemory;
-} ACCESS_RANGE, *PACCESS_RANGE;
 
 typedef struct _MEMORY_REGION {
     PUCHAR VirtualBase;
@@ -189,70 +249,81 @@ typedef struct _MESSAGE_INTERRUPT_INFORMATION {
     KINTERRUPT_MODE InterruptMode;
 } MESSAGE_INTERRUPT_INFORMATION, *PMESSAGE_INTERRUPT_INFORMATION;
 
-typedef BOOLEAN(NTAPI *PHW_INITIALIZE)(_In_ PVOID DeviceExtension);
+typedef BOOLEAN (NTAPI HW_INITIALIZE)(_In_ PVOID DeviceExtension);
+typedef HW_INITIALIZE *PHW_INITIALIZE;
 
-typedef BOOLEAN(NTAPI *PHW_BUILDIO)(_In_ PVOID DeviceExtension,
-				    _In_ PSCSI_REQUEST_BLOCK Srb);
+typedef BOOLEAN (NTAPI HW_BUILDIO)(_In_ PVOID DeviceExtension,
+				   _In_ PSCSI_REQUEST_BLOCK Srb);
+typedef HW_BUILDIO *PHW_BUILDIO;
 
-typedef BOOLEAN(NTAPI *PHW_STARTIO)(_In_ PVOID DeviceExtension,
-				    _In_ PSCSI_REQUEST_BLOCK Srb);
+typedef BOOLEAN (NTAPI HW_STARTIO)(_In_ PVOID DeviceExtension,
+				   _In_ PSCSI_REQUEST_BLOCK Srb);
+typedef HW_STARTIO *PHW_STARTIO;
 
-typedef BOOLEAN(NTAPI *PHW_INTERRUPT)(_In_ PVOID DeviceExtension);
+typedef BOOLEAN (NTAPI HW_INTERRUPT)(_In_ PVOID DeviceExtension);
+typedef HW_INTERRUPT *PHW_INTERRUPT;
 
-typedef VOID(NTAPI *PHW_TIMER)(_In_ PVOID DeviceExtension);
+typedef VOID (NTAPI HW_TIMER)(_In_ PVOID DeviceExtension);
+typedef HW_TIMER *PHW_TIMER;
 
-typedef VOID(NTAPI *PHW_DMA_STARTED)(_In_ PVOID DeviceExtension);
+typedef VOID (NTAPI HW_DMA_STARTED)(_In_ PVOID DeviceExtension);
+typedef HW_DMA_STARTED *PHW_DMA_STARTED;
 
-typedef ULONG(NTAPI *PHW_FIND_ADAPTER)(IN PVOID DeviceExtension, IN PVOID HwContext,
-				       IN PVOID BusInformation, IN PCHAR ArgumentString,
-				       IN OUT PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-				       OUT PBOOLEAN Again);
+typedef ULONG (NTAPI HW_FIND_ADAPTER)(IN PVOID DeviceExtension, IN PVOID HwContext,
+				      IN PVOID BusInformation, IN PCHAR ArgumentString,
+				      IN OUT PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+				      OUT PBOOLEAN Again);
+typedef HW_FIND_ADAPTER *PHW_FIND_ADAPTER;
 
-typedef BOOLEAN(NTAPI *PHW_RESET_BUS)(IN PVOID DeviceExtension, IN ULONG PathId);
+typedef BOOLEAN (NTAPI HW_RESET_BUS)(IN PVOID DeviceExtension, IN ULONG PathId);
+typedef HW_RESET_BUS *PHW_RESET_BUS;
 
-typedef BOOLEAN(NTAPI *PHW_ADAPTER_STATE)(IN PVOID DeviceExtension, IN PVOID Context,
-					  IN BOOLEAN SaveState);
+typedef BOOLEAN (NTAPI HW_ADAPTER_STATE)(IN PVOID DeviceExtension, IN PVOID Context,
+					 IN BOOLEAN SaveState);
+typedef HW_ADAPTER_STATE *PHW_ADAPTER_STATE;
 
-typedef SCSI_ADAPTER_CONTROL_STATUS(NTAPI *PHW_ADAPTER_CONTROL)(
+typedef SCSI_ADAPTER_CONTROL_STATUS (NTAPI HW_ADAPTER_CONTROL)(
     IN PVOID DeviceExtension, IN SCSI_ADAPTER_CONTROL_TYPE ControlType,
     IN PVOID Parameters);
+typedef HW_ADAPTER_CONTROL *PHW_ADAPTER_CONTROL;
 
-typedef BOOLEAN (*PHW_PASSIVE_INITIALIZE_ROUTINE)(_In_ PVOID DeviceExtension);
+typedef BOOLEAN (HW_PASSIVE_INITIALIZE_ROUTINE)(_In_ PVOID DeviceExtension);
+typedef HW_PASSIVE_INITIALIZE_ROUTINE *PHW_PASSIVE_INITIALIZE_ROUTINE;
 
-typedef VOID (*PHW_DPC_ROUTINE)(_In_ PSTOR_DPC Dpc, _In_ PVOID HwDeviceExtension,
-				_In_ PVOID SystemArgument1, _In_ PVOID SystemArgument2);
+typedef VOID (HW_DPC_ROUTINE)(_In_ PSTOR_DPC Dpc, _In_ PVOID HwDeviceExtension,
+			      _In_ PVOID SystemArgument1, _In_ PVOID SystemArgument2);
+typedef HW_DPC_ROUTINE *PHW_DPC_ROUTINE;
 
-typedef BOOLEAN(NTAPI STOR_SYNCHRONIZED_ACCESS)(_In_ PVOID HwDeviceExtension,
-						_In_ PVOID Context);
-
+typedef BOOLEAN (NTAPI STOR_SYNCHRONIZED_ACCESS)(_In_ PVOID HwDeviceExtension,
+						 _In_ PVOID Context);
 typedef STOR_SYNCHRONIZED_ACCESS *PSTOR_SYNCHRONIZED_ACCESS;
 
-typedef VOID(NTAPI *PpostScaterGatherExecute)(_In_ PVOID *DeviceObject, _In_ PVOID *Irp,
-					      _In_ PSTOR_SCATTER_GATHER_LIST ScatterGather,
-					      _In_ PVOID Context);
+typedef VOID (NTAPI *PpostScaterGatherExecute)(_In_ PVOID *DeviceObject, _In_ PVOID *Irp,
+					       _In_ PSTOR_SCATTER_GATHER_LIST ScatterGather,
+					       _In_ PVOID Context);
 
-typedef BOOLEAN(NTAPI *PStorPortGetMessageInterruptInformation)(
+typedef BOOLEAN (NTAPI *PStorPortGetMessageInterruptInformation)(
     _In_ PVOID HwDeviceExtension, _In_ ULONG MessageId,
     _Out_ PMESSAGE_INTERRUPT_INFORMATION InterruptInfo);
 
-typedef VOID(NTAPI *PStorPortPutScatterGatherList)(
+typedef VOID (NTAPI *PStorPortPutScatterGatherList)(
     _In_ PVOID HwDeviceExtension, _In_ PSTOR_SCATTER_GATHER_LIST ScatterGatherList,
     _In_ BOOLEAN WriteToDevice);
 
-typedef GETSGSTATUS(NTAPI *PStorPortBuildScatterGatherList)(
+typedef GETSGSTATUS (NTAPI *PStorPortBuildScatterGatherList)(
     _In_ PVOID HwDeviceExtension, _In_ PVOID Mdl, _In_ PVOID CurrentVa, _In_ ULONG Length,
     _In_ PpostScaterGatherExecute ExecutionRoutine, _In_ PVOID Context,
     _In_ BOOLEAN WriteToDevice, _Inout_ PVOID ScatterGatherBuffer,
     _In_ ULONG ScatterGatherBufferLength);
 
-typedef VOID(NTAPI *PStorPortFreePool)(_In_ PVOID PMemory, _In_ PVOID HwDeviceExtension,
-				       _In_opt_ PVOID PMdl);
+typedef VOID (NTAPI *PStorPortFreePool)(_In_ PVOID PMemory, _In_ PVOID HwDeviceExtension,
+					_In_opt_ PVOID PMdl);
 
-typedef PVOID(NTAPI *PStorPortAllocatePool)(_In_ ULONG NumberOfBytes, _In_ ULONG Tag,
-					    _In_ PVOID HwDeviceExtension,
-					    _Out_ PVOID *PMdl);
+typedef PVOID (NTAPI *PStorPortAllocatePool)(_In_ ULONG NumberOfBytes, _In_ ULONG Tag,
+					     _In_ PVOID HwDeviceExtension,
+					     _Out_ PVOID *PMdl);
 
-typedef PVOID(NTAPI *PStorPortGetSystemAddress)(_In_ PSCSI_REQUEST_BLOCK Srb);
+typedef PVOID (NTAPI *PStorPortGetSystemAddress)(_In_ PSCSI_REQUEST_BLOCK Srb);
 
 typedef struct _STORPORT_EXTENDED_FUNCTIONS {
     ULONG Version;
@@ -266,7 +337,7 @@ typedef struct _STORPORT_EXTENDED_FUNCTIONS {
 
 typedef struct _HW_INITIALIZATION_DATA {
     ULONG HwInitializationDataSize;
-    INTERFACE_TYPE AdapterInterfaceType;
+    INTERFACE_TYPE  AdapterInterfaceType;
     PHW_INITIALIZE HwInitialize;
     PHW_STARTIO HwStartIo;
     PHW_INTERRUPT HwInterrupt;
@@ -294,8 +365,38 @@ typedef struct _HW_INITIALIZATION_DATA {
     PHW_BUILDIO HwBuildIo;
 } HW_INITIALIZATION_DATA, *PHW_INITIALIZATION_DATA;
 
+typedef enum _SCSI_NOTIFICATION_TYPE {
+    RequestComplete,
+    NextRequest,
+    NextLuRequest,
+    ResetDetected,
+    _obsolete1,
+    _obsolete2,
+    RequestTimerCall,
+    BusChangeDetected,
+    WMIEvent,
+    WMIReregister,
+    LinkUp,
+    LinkDown,
+    QueryTickCount,
+    BufferOverrunDetected,
+    TraceNotification,
+    GetExtendedFunctionTable,
+    EnablePassiveInitialization = 0x1000,
+    InitializeDpc,
+    IssueDpc,
+    AcquireSpinLock,
+    ReleaseSpinLock
+} SCSI_NOTIFICATION_TYPE, *PSCSI_NOTIFICATION_TYPE;
+
 #define StorPortCopyMemory(Destination, Source, Length) \
     memcpy((Destination), (Source), (Length))
+
+#ifdef _STORPORT_
+#define STORPORT_API
+#else
+#define STORPORT_API DECLSPEC_IMPORT
+#endif
 
 STORPORT_API
 PUCHAR

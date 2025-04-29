@@ -27,8 +27,6 @@ Revision History:
 
 #define ATA_BLOCK_SIZE                      512     //0x200
 
-#define MAXULONG                            0xFFFFFFFF  // winnt
-
 #define ATA_INQUIRYDATA_SIZE                0x3C  // contains 1 Version Descriptor for 1667
 
 #define DEFAULT_DSM_DATA_SIZE_CAP_IN_BLOCKS 0x8

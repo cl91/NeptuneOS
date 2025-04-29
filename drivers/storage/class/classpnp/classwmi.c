@@ -633,110 +633,8 @@ NTSTATUS ClassQueryInternalDataBlock(IN PDEVICE_OBJECT DeviceObject,
 				     OUT PUCHAR Buffer)
 {
     NTSTATUS status;
-#ifndef __REACTOS__ // WMI in not a thing on ReactOS yet
-    ULONG sizeNeeded = 0, i;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = DeviceObject->DeviceExtension;
-    if (GuidIndex == MSStorageDriver_ClassErrorLogGuid_Index) {
-	//
-	// NOTE - ClassErrorLog is still using SCSI_REQUEST_BLOCK and will not be
-	// updated to support extended SRB until classpnp is updated to send >16
-	// byte CDBs. Extended SRBs will be translated to SCSI_REQUEST_BLOCK.
-	//
-	sizeNeeded = MSStorageDriver_ClassErrorLog_SIZE;
-	if (BufferAvail >= sizeNeeded) {
-	    PMSStorageDriver_ClassErrorLog errorLog = (PMSStorageDriver_ClassErrorLog)
-		Buffer;
-	    PMSStorageDriver_ClassErrorLogEntry logEntry;
-	    PMSStorageDriver_ScsiRequestBlock srbBlock;
-	    PMSStorageDriver_SenseData senseData;
-	    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-	    PCLASS_ERROR_LOG_DATA fdoLogEntry;
-	    PSCSI_REQUEST_BLOCK fdoSRBBlock;
-	    PSENSE_DATA fdoSenseData;
-	    errorLog->numEntries = NUM_ERROR_LOG_ENTRIES;
-	    for (i = 0; i < NUM_ERROR_LOG_ENTRIES; i++) {
-		fdoLogEntry = &fdoData->ErrorLogs[i];
-		fdoSRBBlock = &fdoLogEntry->Srb;
-		fdoSenseData = &fdoLogEntry->SenseData;
-		logEntry = &errorLog->logEntries[i];
-		srbBlock = &logEntry->srb;
-		senseData = &logEntry->senseData;
-		logEntry->tickCount = fdoLogEntry->TickCount.QuadPart;
-		logEntry->portNumber = fdoLogEntry->PortNumber;
-		logEntry->errorPaging = fdoLogEntry->ErrorPaging;
-		logEntry->errorRetried = fdoLogEntry->ErrorRetried;
-		logEntry->errorUnhandled = fdoLogEntry->ErrorUnhandled;
-		logEntry->errorReserved = fdoLogEntry->ErrorReserved;
-		RtlMoveMemory(logEntry->reserved, fdoLogEntry->Reserved,
-			      sizeof(logEntry->reserved));
-		ConvertTickToDateTime(fdoLogEntry->TickCount, logEntry->eventTime);
-
-		srbBlock->length = fdoSRBBlock->Length;
-		srbBlock->function = fdoSRBBlock->Function;
-		srbBlock->srbStatus = fdoSRBBlock->SrbStatus;
-		srbBlock->scsiStatus = fdoSRBBlock->ScsiStatus;
-		srbBlock->pathID = fdoSRBBlock->PathId;
-		srbBlock->targetID = fdoSRBBlock->TargetId;
-		srbBlock->lun = fdoSRBBlock->Lun;
-		srbBlock->queueTag = fdoSRBBlock->QueueTag;
-		srbBlock->queueAction = fdoSRBBlock->QueueAction;
-		srbBlock->cdbLength = fdoSRBBlock->CdbLength;
-		srbBlock->senseInfoBufferLength = fdoSRBBlock->SenseInfoBufferLength;
-		srbBlock->srbFlags = fdoSRBBlock->SrbFlags;
-		srbBlock->dataTransferLength = fdoSRBBlock->DataTransferLength;
-		srbBlock->timeOutValue = fdoSRBBlock->TimeOutValue;
-		srbBlock->dataBuffer = (ULONGLONG)fdoSRBBlock->DataBuffer;
-		srbBlock->senseInfoBuffer = (ULONGLONG)fdoSRBBlock->SenseInfoBuffer;
-		srbBlock->nextSRB = (ULONGLONG)fdoSRBBlock->NextSrb;
-		srbBlock->originalRequest = (ULONGLONG)fdoSRBBlock->OriginalRequest;
-		srbBlock->srbExtension = (ULONGLONG)fdoSRBBlock->SrbExtension;
-		srbBlock->internalStatus = fdoSRBBlock->InternalStatus;
-#if defined(_WIN64)
-		srbBlock->reserved = fdoSRBBlock->Reserved;
-#else
-		srbBlock->reserved = 0;
-#endif
-		RtlMoveMemory(srbBlock->cdb, fdoSRBBlock->Cdb, sizeof(srbBlock->cdb));
-
-		//
-		// Note: Sense data has been converted into Fixed format before it was
-		//       put in the log.  Therefore, no conversion is needed here.
-		//
-		senseData->errorCode = fdoSenseData->ErrorCode;
-		senseData->valid = fdoSenseData->Valid;
-		senseData->segmentNumber = fdoSenseData->SegmentNumber;
-		senseData->senseKey = fdoSenseData->SenseKey;
-		senseData->reserved = fdoSenseData->Reserved;
-		senseData->incorrectLength = fdoSenseData->IncorrectLength;
-		senseData->endOfMedia = fdoSenseData->EndOfMedia;
-		senseData->fileMark = fdoSenseData->FileMark;
-		RtlMoveMemory(senseData->information, fdoSenseData->Information,
-			      sizeof(senseData->information));
-		senseData->additionalSenseLength = fdoSenseData->AdditionalSenseLength;
-		RtlMoveMemory(senseData->commandSpecificInformation,
-			      fdoSenseData->CommandSpecificInformation,
-			      sizeof(senseData->commandSpecificInformation));
-		senseData->additionalSenseCode = fdoSenseData->AdditionalSenseCode;
-		senseData->additionalSenseCodeQualifier =
-		    fdoSenseData->AdditionalSenseCodeQualifier;
-		senseData->fieldReplaceableUnitCode =
-		    fdoSenseData->FieldReplaceableUnitCode;
-		RtlMoveMemory(senseData->senseKeySpecific, fdoSenseData->SenseKeySpecific,
-			      sizeof(senseData->senseKeySpecific));
-	    }
-	    status = STATUS_SUCCESS;
-	} else {
-	    status = STATUS_BUFFER_TOO_SMALL;
-	}
-    } else if (GuidIndex > 0 && GuidIndex < NUM_CLASS_WMI_GUIDS) {
-	status = STATUS_WMI_INSTANCE_NOT_FOUND;
-    } else {
-	status = STATUS_WMI_GUID_NOT_FOUND;
-    }
-#else
     ULONG sizeNeeded = 0;
     status = STATUS_WMI_GUID_NOT_FOUND;
-#endif
     status = ClassWmiCompleteRequest(DeviceObject, Irp, status, sizeNeeded,
 				     IO_NO_INCREMENT);
     return status;
@@ -822,7 +720,7 @@ Return Value:
     status
 
 --*/
-NTAPI SCSIPORT_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
+NTAPI CLASSPNP_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObject,
 						    IN OUT PIRP Irp,
 						    IN NTSTATUS Status,
 						    IN ULONG BufferUsed,
