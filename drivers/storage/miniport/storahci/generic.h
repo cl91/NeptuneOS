@@ -18,9 +18,8 @@ Revision History:
 
 
 // common header files
-#include "miniport.h"
-#include "storport.h"
-#include "ata.h"  
+#include <storport.h>
+#include "ata.h"
 
 #include "devioctl.h"
 #include "ntddscsi.h"
