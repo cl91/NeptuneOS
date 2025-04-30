@@ -54,11 +54,8 @@ IO_COMPLETION_ROUTINE ClasspPowerUpCompletion;
 IO_COMPLETION_ROUTINE ClasspStartNextPowerIrpCompletion;
 IO_COMPLETION_ROUTINE ClasspDeviceLockFailurePowerIrpCompletion;
 
-NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-			    IN CLASS_POWER_OPTIONS Options);
-
-VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
-		       PCLASS_POWER_CONTEXT Context);
+static VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
+			      PCLASS_POWER_CONTEXT Context);
 
 /*++////////////////////////////////////////////////////////////////////////////
 
@@ -96,7 +93,6 @@ NTAPI NTSTATUS ClassDispatchPower(IN PDEVICE_OBJECT DeviceObject,
     //
 
     if (!commonExtension->IsInitialized) {
-	PoStartNextPowerIrp(Irp);
 	IoSkipCurrentIrpStackLocation(Irp);
 	return PoCallDriver(commonExtension->LowerDeviceObject, Irp);
     }
@@ -106,7 +102,6 @@ NTAPI NTSTATUS ClassDispatchPower(IN PDEVICE_OBJECT DeviceObject,
     if (isRemoved) {
 	ClassReleaseRemoveLock(DeviceObject, Irp);
 	Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
-	PoStartNextPowerIrp(Irp);
 	ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
 	return STATUS_DEVICE_DOES_NOT_EXIST;
     }
@@ -229,8 +224,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 	IoCopyCurrentIrpStackLocationToNext(OriginalIrp);
 
-	if ((PowerContext->Options.LockQueue == TRUE) &&
-	    (!NT_SUCCESS(Irp->IoStatus.Status))) {
+	if (PowerContext->Options.LockQueue && !NT_SUCCESS(Irp->IoStatus.Status)) {
 	    //
 	    // Lock was not successful:
 	    // Issue the original power request to the lower driver and next power irp will be started in completion routine.
@@ -466,7 +460,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    // guaranteed not to have high bits set per SAL annotations
 	    PowerContext->RetryInterval = (ULONG)(delta100nsUnits);
 
-	    if ((retry == TRUE) && (PowerContext->RetryCount-- != 0)) {
+	    if (retry && (PowerContext->RetryCount-- != 0)) {
 		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			    "(%p)\tRetrying failed request\n", Irp));
 
@@ -660,8 +654,6 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 	PowerContext->InUse = FALSE;
 
-	PoStartNextPowerIrp(OriginalIrp);
-
 	// prevent from completing the irp allocated by ourselves
 	if ((fdoExtension->PrivateFdoData) &&
 	    (Irp == fdoExtension->PrivateFdoData->PowerProcessIrp)) {
@@ -768,7 +760,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
     srbFlags = SrbGetSrbFlags(srbHeader);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
-    NT_ASSERT(PowerContext->Options.PowerDown == TRUE);
+    NT_ASSERT(PowerContext->Options.PowerDown);
     NT_ASSERT(PowerContext->Options.HandleSpinDown);
 
     if ((Irp == OriginalIrp) && (Irp->PendingReturned)) {
@@ -783,8 +775,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 		    "(%p)\tPreviously sent power lock\n", Irp));
 
-	if ((PowerContext->Options.LockQueue == TRUE) &&
-	    (!NT_SUCCESS(Irp->IoStatus.Status))) {
+	if (PowerContext->Options.LockQueue && !NT_SUCCESS(Irp->IoStatus.Status)) {
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			"(%p)\tIrp status was %lx\n", Irp, Irp->IoStatus.Status));
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
@@ -808,7 +799,6 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    // so it can do it's notification stuff.
 	    //
 
-	    IoCopyCurrentIrpStackLocationToNext(OriginalIrp);
 	    IoSetCompletionRoutine(OriginalIrp, ClasspStartNextPowerIrpCompletion,
 				   PowerContext, TRUE, TRUE, TRUE);
 
@@ -820,7 +810,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 	    ClassReleaseRemoveLock(commonExtension->DeviceObject, OriginalIrp);
 
-	    PoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
+	    IoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
 
 	    return STATUS_MORE_PROCESSING_REQUIRED;
 
@@ -1021,8 +1011,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    retry = InterpretSenseInfoWithoutHistory(
 		fdoExtension->DeviceObject, Irp, (PSCSI_REQUEST_BLOCK)srbHeader,
 		IRP_MJ_SCSI, IRP_MJ_POWER,
-		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount -
-		    PowerContext->RetryCount,
+		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount - PowerContext->RetryCount,
 		&status, &delta100nsUnits);
 
 	    // NOTE: Power context is a public structure, and thus cannot be
@@ -1034,7 +1023,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    // guaranteed not to have high bits set per SAL annotations
 	    PowerContext->RetryInterval = (ULONG)(delta100nsUnits);
 
-	    if ((retry == TRUE) && (PowerContext->RetryCount-- != 0)) {
+	    if (retry && (PowerContext->RetryCount-- != 0)) {
 		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			    "(%p)\tRetrying failed request\n", Irp));
 
@@ -1126,8 +1115,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 	    } else {
 		// do not know how long, use default values.
-		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount =
-		    MAXIMUM_RETRIES;
+		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount = MAXIMUM_RETRIES;
 		timeoutValue = DEFAULT_IO_TIMEOUT_VALUE;
 	    }
 
@@ -1135,11 +1123,9 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    // Issue STOP UNIT command to the device.
 	    //
 
-	    PowerContext->RetryCount =
-		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount;
+	    PowerContext->RetryCount = fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount;
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
+	    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 		status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srbHeader,
 						       STORAGE_ADDRESS_TYPE_BTL8,
 						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
@@ -1249,7 +1235,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    // guaranteed not to have high bits set per SAL annotations
 	    PowerContext->RetryInterval = (ULONG)(delta100nsUnits);
 
-	    if ((retry == TRUE) && (PowerContext->RetryCount-- != 0)) {
+	    if (retry && (PowerContext->RetryCount-- != 0)) {
 		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			    "(%p)\tRetrying failed request\n", Irp));
 
@@ -1441,8 +1427,6 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 	PowerContext->InUse = FALSE;
 
-	PoStartNextPowerIrp(OriginalIrp);
-
 	fdoExtension->PowerDownInProgress = FALSE;
 
 	// prevent from completing the irp allocated by ourselves
@@ -1483,9 +1467,9 @@ Arguments:
 Return Value:
 
 --*/
-NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
-			    IN PIRP Irp,
-			    IN CLASS_POWER_OPTIONS Options) // ISSUE-2000/02/20-henrygab - pass pointer, not whole struct
+static NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
+				   IN PIRP Irp,
+				   IN CLASS_POWER_OPTIONS Options)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDEVICE_OBJECT lowerDevice = commonExtension->LowerDeviceObject;
@@ -1516,7 +1500,6 @@ NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
 
 	ClassReleaseRemoveLock(DeviceObject, Irp);
 	Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-	PoStartNextPowerIrp(Irp);
 	ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
 	return STATUS_NOT_SUPPORTED;
     }
@@ -1808,7 +1791,6 @@ NTAPI NTSTATUS ClassMinimalPowerHandler(IN PDEVICE_OBJECT DeviceObject,
     NTSTATUS status;
 
     ClassReleaseRemoveLock(DeviceObject, Irp);
-    PoStartNextPowerIrp(Irp);
 
     switch (irpStack->MinorFunction) {
     case IRP_MN_SET_POWER: {
@@ -1977,8 +1959,8 @@ Return Value:
     None
 
 --*/
-VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
-		       PCLASS_POWER_CONTEXT Context)
+static VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
+			      PCLASS_POWER_CONTEXT Context)
 {
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension =
@@ -2097,7 +2079,6 @@ NTAPI NTSTATUS ClasspStartNextPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	PowerContext->InUse = FALSE;
     }
 
-    PoStartNextPowerIrp(Irp);
     return STATUS_SUCCESS;
 } // end ClasspStartNextPowerIrpCompletion()
 
@@ -2189,8 +2170,6 @@ NTAPI NTSTATUS ClasspDeviceLockFailurePowerIrpCompletion(IN PDEVICE_OBJECT Devic
     if (Irp->PendingReturned) {
 	IoMarkIrpPending(Irp);
     }
-
-    PoStartNextPowerIrp(Irp);
 
     return STATUS_SUCCESS;
 }

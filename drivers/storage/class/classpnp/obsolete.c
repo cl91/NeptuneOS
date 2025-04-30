@@ -100,7 +100,7 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PSCSI_REQUEST_BLOCK srb = Context;
 
-    PIRP originalIrp = Irp->AssociatedIrp.MasterIrp;
+    PIRP originalIrp = Irp->MasterIrp;
     LONG irpCount;
 
     NTSTATUS status;
@@ -257,15 +257,12 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
 	    // irp until after we start the next packet(s).
 	    //
 
-	    KIRQL oldIrql;
 	    UCHAR uniqueAddress = 0;
 	    ClassAcquireRemoveLock(Fdo, (PIRP)&uniqueAddress);
 	    ClassReleaseRemoveLock(Fdo, originalIrp);
 	    ClassCompleteRequest(Fdo, originalIrp, IO_DISK_INCREMENT);
 
-	    KeRaiseIrql(DISPATCH_LEVEL, &oldIrql);
 	    IoStartNextPacket(Fdo, TRUE); // yes, some IO is now cancellable
-	    KeLowerIrql(oldIrql);
 
 	    ClassReleaseRemoveLock(Fdo, (PIRP)&uniqueAddress);
 
@@ -875,14 +872,12 @@ Return Value:
 --*/
 NTAPI VOID ClassDeleteSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION CommonExtension)
 {
-    PAGED_CODE();
-
     // This function is obsolete, but is still called by some of our code.
     // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "ClassDeleteSrbLookasideList is OBSOLETE !"));
 
     if (CommonExtension->IsSrbLookasideListInitialized) {
 	CommonExtension->IsSrbLookasideListInitialized = FALSE;
-	ExDeleteNPagedLookasideList(&CommonExtension->SrbLookasideList);
+	ExDeleteLookasideList(&CommonExtension->SrbLookasideList);
     } else {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
 		    "ClassDeleteSrbLookasideList: attempt to delete uninitialized or "
@@ -921,8 +916,6 @@ NTAPI VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Commo
     size_t sizeNeeded;
     PFUNCTIONAL_DEVICE_EXTENSION fdo;
 
-    PAGED_CODE();
-
     // This function is obsolete, but still called by DISK.SYS .
     // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "ClassInitializeSrbLookasideList is OBSOLETE !"));
 
@@ -954,9 +947,9 @@ NTAPI VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Commo
 			     CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE);
 	}
 
-	ExInitializeNPagedLookasideList(&CommonExtension->SrbLookasideList, NULL, NULL,
-					POOL_NX_ALLOCATION, sizeNeeded, '$scS',
-					(USHORT)NumberElements);
+	ExInitializeLookasideList(&CommonExtension->SrbLookasideList, NULL, NULL,
+				  sizeNeeded, '$scS',
+				  (USHORT)NumberElements);
 
 	CommonExtension->IsSrbLookasideListInitialized = TRUE;
     }
@@ -1033,5 +1026,5 @@ PIRP ClassRemoveCScanList(IN PCSCAN_LIST List)
 
     List->BlockNumber = entry->BlockNumber;
 
-    return CONTAINING_RECORD(entry, IRP, Tail.Overlay.DriverContext);
+    return CONTAINING_RECORD(entry, IRP, Tail.DriverContext);
 }

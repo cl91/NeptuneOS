@@ -860,14 +860,18 @@ FORCEINLINE NTAPI PIRP IoAllocateIrp()
     return Irp;
 }
 
-FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
+FORCEINLINE NTAPI VOID IoFreeMdl(IN PMDL Mdl)
 {
-    PMDL Mdl = Irp->MdlAddress;
     while (Mdl) {
 	PMDL Next = Mdl->Next;
 	ExFreePool(Mdl);
 	Mdl = Next;
     }
+}
+
+FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
+{
+    IoFreeMdl(Irp->MdlAddress);
     ExFreePool(Irp);
 }
 
@@ -1021,6 +1025,11 @@ NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
 NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 				  IN LARGE_INTEGER DueTime,
 				  IN OPTIONAL PKDPC Dpc);
+
+NTAPI NTSYSAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
+				    IN LARGE_INTEGER DueTime,
+				    IN LONG Period,
+				    IN OPTIONAL PKDPC Dpc);
 
 /* TODO: Inform the server to actually cancel the timer */
 FORCEINLINE NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
@@ -1680,3 +1689,19 @@ typedef struct _HWPROFILE_CHANGE_NOTIFICATION {
     USHORT Size;
     GUID Event;
 } HWPROFILE_CHANGE_NOTIFICATION, *PHWPROFILE_CHANGE_NOTIFICATION;
+
+typedef struct _TARGET_DEVICE_CUSTOM_NOTIFICATION {
+    USHORT Version;
+    USHORT Size;
+    GUID Event;
+    PFILE_OBJECT FileObject;
+    LONG NameBufferOffset;
+    UCHAR CustomDataBuffer[1];
+} TARGET_DEVICE_CUSTOM_NOTIFICATION, *PTARGET_DEVICE_CUSTOM_NOTIFICATION;
+
+typedef struct _TARGET_DEVICE_REMOVAL_NOTIFICATION {
+    USHORT Version;
+    USHORT Size;
+    GUID Event;
+    PFILE_OBJECT FileObject;
+} TARGET_DEVICE_REMOVAL_NOTIFICATION, *PTARGET_DEVICE_REMOVAL_NOTIFICATION;

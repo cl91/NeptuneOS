@@ -623,7 +623,7 @@ NTSTATUS ClasspDuidGetDeviceIdProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP I
     }
 
     queryLength = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
-    descHeader = Irp->AssociatedIrp.SystemBuffer;
+    descHeader = Irp->SystemBuffer;
 
     //
     // Adjust required size and potential destination location.
@@ -645,7 +645,7 @@ NTSTATUS ClasspDuidGetDeviceIdProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP I
 	goto FnExit;
     }
 
-    storageDuid = Irp->AssociatedIrp.SystemBuffer;
+    storageDuid = Irp->SystemBuffer;
     storageDuid->StorageDeviceIdOffset = offset;
 
     RtlCopyMemory(dest, deviceIdDescriptor, deviceIdDescriptor->Size);
@@ -701,7 +701,7 @@ NTSTATUS ClasspDuidGetDeviceProperty(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     }
 
     queryLength = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
-    descHeader = Irp->AssociatedIrp.SystemBuffer;
+    descHeader = Irp->SystemBuffer;
 
     //
     // Use this info only if serial number is available.
@@ -731,7 +731,7 @@ NTSTATUS ClasspDuidGetDeviceProperty(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	goto FnExit;
     }
 
-    storageDuid = Irp->AssociatedIrp.SystemBuffer;
+    storageDuid = Irp->SystemBuffer;
     storageDuid->StorageDeviceOffset = offset;
 
     RtlCopyMemory(dest, deviceDescriptor, deviceDescriptor->Size);
@@ -803,7 +803,7 @@ NTSTATUS ClasspDuidGetDriveLayout(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     }
 
     queryLength = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
-    descHeader = Irp->AssociatedIrp.SystemBuffer;
+    descHeader = Irp->SystemBuffer;
 
     //
     // Adjust required size and potential destination location.
@@ -826,7 +826,7 @@ NTSTATUS ClasspDuidGetDriveLayout(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	goto FnExit;
     }
 
-    storageDuid = Irp->AssociatedIrp.SystemBuffer;
+    storageDuid = Irp->SystemBuffer;
 
     driveLayoutSignature->Size = sizeof(STORAGE_DEVICE_LAYOUT_SIGNATURE);
     driveLayoutSignature->Version = DUID_VERSION_1;
@@ -877,7 +877,7 @@ Return Value:
 --*/
 NTSTATUS ClasspDuidQueryProperty(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
-    PSTORAGE_PROPERTY_QUERY query = Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = Irp->SystemBuffer;
     PSTORAGE_DESCRIPTOR_HEADER descHeader;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
 
@@ -945,7 +945,7 @@ NTSTATUS ClasspDuidQueryProperty(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
     useStatus = FALSE;
 
-    descHeader = Irp->AssociatedIrp.SystemBuffer;
+    descHeader = Irp->SystemBuffer;
     RtlZeroMemory(descHeader, outLength);
 
     descHeader->Version = DUID_VERSION_1;
@@ -1032,8 +1032,8 @@ FnExit:
 	    //
 
 	    NT_ASSERT(DuidExactMatch ==
-		      CompareStorageDuids(Irp->AssociatedIrp.SystemBuffer,
-					  Irp->AssociatedIrp.SystemBuffer));
+		      CompareStorageDuids(Irp->SystemBuffer,
+					  Irp->SystemBuffer));
 
 	} else {
 	    status = STATUS_NOT_FOUND;
@@ -1073,7 +1073,7 @@ NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PSTORAGE_WRITE_CACHE_PROPERTY writeCache;
-    PSTORAGE_PROPERTY_QUERY query = Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PMODE_PARAMETER_HEADER modeData = NULL;
     PMODE_CACHING_PAGE pageData = NULL;
@@ -1112,7 +1112,7 @@ NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
 	goto WriteCacheExit;
     }
 
-    writeCache = (PSTORAGE_WRITE_CACHE_PROPERTY)Irp->AssociatedIrp.SystemBuffer;
+    writeCache = (PSTORAGE_WRITE_CACHE_PROPERTY)Irp->SystemBuffer;
     RtlZeroMemory(writeCache, length);
 
     //
@@ -1562,8 +1562,7 @@ NTSTATUS ClasspAccessAlignmentProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP I
 						   DeviceObject->DeviceExtension;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
-    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)
-					Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     ULONG length = 0;
     ULONG information = 0;
@@ -1616,8 +1615,7 @@ NTSTATUS ClasspAccessAlignmentProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP I
     }
 
     // do not touch this buffer because it can still be used as input buffer for lower layer in 'SupportUnknown' case.
-    accessAlignment = (PSTORAGE_ACCESS_ALIGNMENT_DESCRIPTOR)
-			  Irp->AssociatedIrp.SystemBuffer;
+    accessAlignment = (PSTORAGE_ACCESS_ALIGNMENT_DESCRIPTOR)Irp->SystemBuffer;
 
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
@@ -1797,10 +1795,9 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
-    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)
-					Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)Irp->SystemBuffer;
     PSTORAGE_MEDIUM_PRODUCT_TYPE_DESCRIPTOR pDesc =
-	(PSTORAGE_MEDIUM_PRODUCT_TYPE_DESCRIPTOR)Irp->AssociatedIrp.SystemBuffer;
+	(PSTORAGE_MEDIUM_PRODUCT_TYPE_DESCRIPTOR)Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack;
     ULONG length = 0;
     ULONG information = 0;
@@ -2028,8 +2025,7 @@ NTSTATUS ClasspDeviceSeekPenaltyProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP
 						   DeviceObject->DeviceExtension;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
-    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)
-					Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     ULONG length = 0;
     ULONG information = 0;
@@ -2073,7 +2069,7 @@ NTSTATUS ClasspDeviceSeekPenaltyProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP
     }
 
     // do not touch this buffer because it can still be used as input buffer for lower layer in 'SupportUnknown' case.
-    seekPenalty = (PDEVICE_SEEK_PENALTY_DESCRIPTOR)Irp->AssociatedIrp.SystemBuffer;
+    seekPenalty = (PDEVICE_SEEK_PENALTY_DESCRIPTOR)Irp->SystemBuffer;
 
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
@@ -2591,8 +2587,7 @@ NTSTATUS ClasspDeviceTrimProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
 						   DeviceObject->DeviceExtension;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
-    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)
-					Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     ULONG length = 0;
     ULONG information = 0;
@@ -2638,7 +2633,7 @@ NTSTATUS ClasspDeviceTrimProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
     }
 
     // do not touch this buffer because it can still be used as input buffer for lower layer in 'SupportUnknown' case.
-    trimDescr = (PDEVICE_TRIM_DESCRIPTOR)Irp->AssociatedIrp.SystemBuffer;
+    trimDescr = (PDEVICE_TRIM_DESCRIPTOR)Irp->SystemBuffer;
 
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
@@ -2751,8 +2746,7 @@ NTSTATUS ClasspDeviceLBProvisioningProperty(IN PDEVICE_OBJECT DeviceObject,
     NTSTATUS blockLimitsStatus;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
-    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)
-					Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PROPERTY_QUERY query = (PSTORAGE_PROPERTY_QUERY)Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     ULONG length = 0;
     ULONG information = 0;
@@ -2785,7 +2779,7 @@ NTSTATUS ClasspDeviceLBProvisioningProperty(IN PDEVICE_OBJECT DeviceObject,
 	goto Exit;
     }
 
-    lbpDescr = (PDEVICE_LB_PROVISIONING_DESCRIPTOR)Irp->AssociatedIrp.SystemBuffer;
+    lbpDescr = (PDEVICE_LB_PROVISIONING_DESCRIPTOR)Irp->SystemBuffer;
 
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
@@ -3339,7 +3333,7 @@ NTSTATUS ClasspDeviceTrimProcess(IN PDEVICE_OBJECT DeviceObject,
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
 
-    PDEVICE_MANAGE_DATA_SET_ATTRIBUTES dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+    PDEVICE_MANAGE_DATA_SET_ATTRIBUTES dsmAttributes = Irp->SystemBuffer;
 
     PDEVICE_DATA_SET_RANGE dataSetRanges;
     ULONG dataSetRangesCount;
@@ -3735,10 +3729,10 @@ NTSTATUS ClasspDeviceGetLBAStatus(IN PDEVICE_OBJECT DeviceObject,
 						    DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PDEVICE_MANAGE_DATA_SET_ATTRIBUTES dsmAttributes =
-	(PDEVICE_MANAGE_DATA_SET_ATTRIBUTES)Irp->AssociatedIrp.SystemBuffer;
+	(PDEVICE_MANAGE_DATA_SET_ATTRIBUTES)Irp->SystemBuffer;
     PDEVICE_DATA_SET_RANGE dataSetRanges = NULL;
     PDEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT dsmOutput =
-	(PDEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT)Irp->AssociatedIrp.SystemBuffer;
+	(PDEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT)Irp->SystemBuffer;
     ULONG dsmOutputLength;
     NTSTATUS finalStatus;
     NTSTATUS getLBAWorkerStatus;
@@ -4921,7 +4915,7 @@ NTSTATUS ClassDeviceGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
     NTSTATUS status;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PSTORAGE_LB_PROVISIONING_MAP_RESOURCES mapResources =
-	(PSTORAGE_LB_PROVISIONING_MAP_RESOURCES)Irp->AssociatedIrp.SystemBuffer;
+	(PSTORAGE_LB_PROVISIONING_MAP_RESOURCES)Irp->SystemBuffer;
 
     status = ClassGetLBProvisioningResources(
 	DeviceObject, Srb, irpStack->Parameters.DeviceIoControl.OutputBufferLength,
@@ -5961,7 +5955,7 @@ NTSTATUS ClasspPersistentReserve(IN PDEVICE_OBJECT DeviceObject,
 {
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PCDB cdb = NULL;
-    PPERSISTENT_RESERVE_COMMAND prCommand = Irp->AssociatedIrp.SystemBuffer;
+    PPERSISTENT_RESERVE_COMMAND prCommand = Irp->SystemBuffer;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
 
     NTSTATUS status;
@@ -6202,7 +6196,7 @@ NTSTATUS ClasspPriorityHint(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
-    PSTORAGE_PRIORITY_HINT_SUPPORT priSupport = Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_PRIORITY_HINT_SUPPORT priSupport = Irp->SystemBuffer;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -6625,12 +6619,12 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
     ULONG length;
     ULONG information;
     PDEVICE_COPY_OFFLOAD_DESCRIPTOR copyOffloadDescr =
-	(PDEVICE_COPY_OFFLOAD_DESCRIPTOR)Irp->AssociatedIrp.SystemBuffer;
+	(PDEVICE_COPY_OFFLOAD_DESCRIPTOR)Irp->SystemBuffer;
 
     UNREFERENCED_PARAMETER(Srb);
 
     fdoExtension = DeviceObject->DeviceExtension;
-    query = (PSTORAGE_PROPERTY_QUERY)Irp->AssociatedIrp.SystemBuffer;
+    query = (PSTORAGE_PROPERTY_QUERY)Irp->SystemBuffer;
     irpStack = IoGetCurrentIrpStackLocation(Irp);
     length = 0;
     information = 0;
@@ -6888,7 +6882,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 
     fdoExtension = DeviceObject->DeviceExtension;
     irpStack = IoGetCurrentIrpStackLocation(Irp);
-    dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+    dsmAttributes = Irp->SystemBuffer;
     status = STATUS_SUCCESS;
 
     if (!dsmAttributes) {
@@ -7474,7 +7468,7 @@ NTSTATUS ClasspStorageEventNotification(IN PDEVICE_OBJECT DeviceObject,
 
     fdoExtension = DeviceObject->DeviceExtension;
     irpStack = IoGetCurrentIrpStackLocation(Irp);
-    storageEvents = Irp->AssociatedIrp.SystemBuffer;
+    storageEvents = Irp->SystemBuffer;
     status = STATUS_SUCCESS;
 
     if (!storageEvents) {
@@ -7950,8 +7944,7 @@ NTSTATUS ClassDeviceHwFirmwareGetInfoProcess(IN PDEVICE_OBJECT DeviceObject,
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSTORAGE_HW_FIRMWARE_INFO_QUERY query = (PSTORAGE_HW_FIRMWARE_INFO_QUERY)
-						Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_HW_FIRMWARE_INFO_QUERY query = (PSTORAGE_HW_FIRMWARE_INFO_QUERY)Irp->SystemBuffer;
     BOOLEAN passDown = FALSE;
     BOOLEAN copyData = FALSE;
 
@@ -8037,7 +8030,7 @@ Exit_Firmware_Get_Info:
 	ULONG dataLength = min(irpStack->Parameters.DeviceIoControl.OutputBufferLength,
 			       fdoExtension->FunctionSupportInfo->HwFirmwareInfo->Size);
 
-	memcpy(Irp->AssociatedIrp.SystemBuffer,
+	memcpy(Irp->SystemBuffer,
 	       fdoExtension->FunctionSupportInfo->HwFirmwareInfo, dataLength);
 
 	KeReleaseInStackQueuedSpinLock(&lockHandle);
@@ -8103,8 +8096,8 @@ NTSTATUS ClassDeviceHwFirmwareDownloadProcess(IN PDEVICE_OBJECT DeviceObject,
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
 
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSTORAGE_HW_FIRMWARE_DOWNLOAD firmwareDownload = (PSTORAGE_HW_FIRMWARE_DOWNLOAD)
-							 Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_HW_FIRMWARE_DOWNLOAD firmwareDownload =
+	(PSTORAGE_HW_FIRMWARE_DOWNLOAD)Irp->SystemBuffer;
     BOOLEAN passDown = FALSE;
     ULONG i;
     ULONG bufferSize = 0;
@@ -8464,8 +8457,8 @@ NTSTATUS ClassDeviceHwFirmwareActivateProcess(IN PDEVICE_OBJECT DeviceObject,
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
 
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSTORAGE_HW_FIRMWARE_ACTIVATE firmwareActivate = (PSTORAGE_HW_FIRMWARE_ACTIVATE)
-							 Irp->AssociatedIrp.SystemBuffer;
+    PSTORAGE_HW_FIRMWARE_ACTIVATE firmwareActivate =
+	(PSTORAGE_HW_FIRMWARE_ACTIVATE)Irp->SystemBuffer;
     BOOLEAN passDown = FALSE;
     PCDB cdb = NULL;
     ULONG i;

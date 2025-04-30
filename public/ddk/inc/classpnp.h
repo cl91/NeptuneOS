@@ -116,17 +116,17 @@
 #ifdef ALLOCATE_SRB_FROM_POOL
 
 #define ClasspAllocateSrb(ext)						\
-    ExAllocatePoolWithTag(NonPagedPool, sizeof(SCSI_REQUEST_BLOCK), 'sBRS')
+    ExAllocatePoolWithTag(sizeof(SCSI_REQUEST_BLOCK), 'sBRS')
 
 #define ClasspFreeSrb(ext, srb) ExFreePool((srb));
 
 #else /* ALLOCATE_SRB_FROM_POOL */
 
 #define ClasspAllocateSrb(ext)						\
-    ExAllocateFromNPagedLookasideList(&((ext)->CommonExtension.SrbLookasideList))
+    ExAllocateFromLookasideList(&((ext)->CommonExtension.SrbLookasideList))
 
 #define ClasspFreeSrb(ext, srb)						\
-    ExFreeToNPagedLookasideList(&((ext)->CommonExtension.SrbLookasideList), (srb))
+    ExFreeToLookasideList(&((ext)->CommonExtension.SrbLookasideList), (srb))
 
 #endif /* ALLOCATE_SRB_FROM_POOL */
 

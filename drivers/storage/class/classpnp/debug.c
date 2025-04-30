@@ -76,13 +76,7 @@ DISK_SPINUP_TRACES DiskSpinupTraces[NUMBER_OF_DISK_SPINUP_TRACES];
 
 VOID ClasspInitializeDebugGlobals()
 {
-    KIRQL irql;
-
     if (InterlockedCompareExchange(&ClasspnpGlobals.Initializing, 1, 0) == 0) {
-	KeInitializeSpinLock(&ClasspnpGlobals.SpinLock);
-
-	KeAcquireSpinLock(&ClasspnpGlobals.SpinLock, &irql);
-
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
 		    "CLASSPNP.SYS => Initializing ClasspnpGlobals...\n"));
 
@@ -99,8 +93,6 @@ VOID ClasspInitializeDebugGlobals()
 	//
 
 	ClasspnpGlobals.UseBufferedDebugPrint = CLASS_GLOBAL_BUFFERED_DEBUG_PRINT;
-
-	KeReleaseSpinLock(&ClasspnpGlobals.SpinLock, irql);
 
 	InterlockedExchange(&ClasspnpGlobals.Initialized, 1);
     }
@@ -138,10 +130,6 @@ VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
 	    // this double-check prevents always taking
 	    // a spinlock just to ensure we have a buffer
 	    //
-
-	    KIRQL irql;
-
-	    KeAcquireSpinLock(&ClasspnpGlobals.SpinLock, &irql);
 	    if (ClasspnpGlobals.Buffer == NULL) {
 		SIZE_T bufferSize;
 		if (NT_SUCCESS(RtlSIZETMult(ClasspnpGlobals.NumberOfBuffers,
@@ -152,8 +140,7 @@ VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
 			       "classdebugprint buffer\n",
 			       (ULONG)bufferSize);
 		    ClasspnpGlobals.Index = (ULONG)-1;
-		    ClasspnpGlobals.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx,
-								   bufferSize, 'bDcS');
+		    ClasspnpGlobals.Buffer = ExAllocatePoolWithTag(bufferSize, 'bDcS');
 		    DbgPrintEx(DPFLTR_CLASSPNP_ID, DPFLTR_ERROR_LEVEL,
 			       "ClassDebugPrint: Allocated buffer at %p\n",
 			       ClasspnpGlobals.Buffer);
@@ -163,7 +150,6 @@ VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
 		    }
 		}
 	    }
-	    KeReleaseSpinLock(&ClasspnpGlobals.SpinLock, irql);
 	}
 
 	if (ClasspnpGlobals.UseBufferedDebugPrint && ClasspnpGlobals.Buffer != NULL) {
@@ -319,7 +305,6 @@ VOID DbgLogSendPacket(TRANSFER_PACKET *Pkt)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    KIRQL oldIrql;
 
     if (Pkt->OriginalIrp) {
 	Pkt->DbgOriginalIrpCopy = *Pkt->OriginalIrp;
@@ -331,18 +316,15 @@ VOID DbgLogSendPacket(TRANSFER_PACKET *Pkt)
     KeQueryTickCount(&Pkt->DbgTimeSent);
     Pkt->DbgTimeReturned.QuadPart = 0L;
 
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
     fdoData->DbgPacketLogs[fdoData->DbgPacketLogNextIndex] = *Pkt;
     fdoData->DbgPacketLogNextIndex++;
     fdoData->DbgPacketLogNextIndex %= DBG_NUM_PACKET_LOG_ENTRIES;
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 }
 
 VOID DbgLogReturnPacket(TRANSFER_PACKET *Pkt)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    KIRQL oldIrql;
 
     KeQueryTickCount(&Pkt->DbgTimeReturned);
 
@@ -368,11 +350,9 @@ VOID DbgLogReturnPacket(TRANSFER_PACKET *Pkt)
             }
 #endif
 
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
     fdoData->DbgPacketLogs[fdoData->DbgPacketLogNextIndex] = *Pkt;
     fdoData->DbgPacketLogNextIndex++;
     fdoData->DbgPacketLogNextIndex %= DBG_NUM_PACKET_LOG_ENTRIES;
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 }
 
 /*++////////////////////////////////////////////////////////////////////////////

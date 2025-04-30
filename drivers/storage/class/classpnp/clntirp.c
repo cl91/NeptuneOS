@@ -59,12 +59,7 @@ VOID EnqueueDeferredClientIrp(PDEVICE_OBJECT Fdo, PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
-    KIRQL oldIrql;
-
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-    InsertTailList(&fdoData->DeferredClientIrpList, &Irp->Tail.Overlay.ListEntry);
-
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
+    InsertTailList(&fdoData->DeferredClientIrpList, &Irp->Tail.ListEntry);
 }
 
 /*++
@@ -99,23 +94,19 @@ PIRP DequeueDeferredClientIrp(PDEVICE_OBJECT Fdo)
 	irp = NULL;
     } else {
 	PLIST_ENTRY listEntry;
-	KIRQL oldIrql;
-
-	KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 	if (IsListEmpty(&fdoData->DeferredClientIrpList)) {
 	    listEntry = NULL;
 	} else {
 	    listEntry = RemoveHeadList(&fdoData->DeferredClientIrpList);
 	}
-	KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 
 	if (listEntry == NULL) {
 	    irp = NULL;
 	} else {
-	    irp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
+	    irp = CONTAINING_RECORD(listEntry, IRP, Tail.ListEntry);
 	    NT_ASSERT(irp->Type == IO_TYPE_IRP);
 
-	    InitializeListHead(&irp->Tail.Overlay.ListEntry);
+	    InitializeListHead(&irp->Tail.ListEntry);
 	}
     }
 
@@ -177,7 +168,6 @@ VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     }
 
     fdoData->IdlePrioritySupported = TRUE;
-    KeInitializeSpinLock(&fdoData->IdleListLock);
     KeInitializeTimer(&fdoData->IdleTimer);
     KeInitializeDpc(&fdoData->IdleDpc, ClasspIdleTimerDpc, FdoExtension);
     InitializeListHead(&fdoData->IdleIrpList);
@@ -352,7 +342,7 @@ Return Value:
     TRUE if sufficient idle duration has elapsed to issue the next idle request.
 
 --*/
-LOGICAL ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
+BOOLEAN ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
 				     OUT LARGE_INTEGER **CurrentTimeIn)
 {
     ULONGLONG idleInterval;
@@ -519,7 +509,6 @@ NTSTATUS ClasspEnqueueIdleRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
-    KIRQL oldIrql;
     BOOLEAN issueRequest = TRUE;
     LARGE_INTEGER currentTime;
     LARGE_INTEGER *pCurrentTime;
@@ -545,11 +534,10 @@ NTSTATUS ClasspEnqueueIdleRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	issueRequest = FALSE;
     }
 
-    KeAcquireSpinLock(&fdoData->IdleListLock, &oldIrql);
     if (IsListEmpty(&fdoData->IdleIrpList)) {
 	NT_ASSERT(fdoData->IdleIoCount == 0);
     }
-    InsertTailList(&fdoData->IdleIrpList, &Irp->Tail.Overlay.ListEntry);
+    InsertTailList(&fdoData->IdleIrpList, &Irp->Tail.ListEntry);
 
     fdoData->IdleIoCount++;
     if (!fdoData->IdleTimerStarted) {
@@ -559,8 +547,6 @@ NTSTATUS ClasspEnqueueIdleRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     if (fdoData->IdleIoCount != 1) {
 	issueRequest = FALSE;
     }
-
-    KeReleaseSpinLock(&fdoData->IdleListLock, oldIrql);
 
     if (issueRequest) {
 	ClasspServiceIdleRequest(fdoExtension, FALSE);
@@ -592,9 +578,6 @@ PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
     PLIST_ENTRY listEntry = NULL;
     PIRP irp = NULL;
-    KIRQL oldIrql;
-
-    KeAcquireSpinLock(&fdoData->IdleListLock, &oldIrql);
 
     if (fdoData->IdleIoCount > 0) {
 	listEntry = RemoveHeadList(&fdoData->IdleIrpList);
@@ -612,13 +595,11 @@ PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 	if (fdoData->IdleIoCount == 0) {
 	    ClasspStopIdleTimer(fdoData);
 	}
-	irp = CONTAINING_RECORD(listEntry, IRP, Tail.Overlay.ListEntry);
+	irp = CONTAINING_RECORD(listEntry, IRP, Tail.ListEntry);
 	NT_ASSERT(irp->Type == IO_TYPE_IRP);
 
-	InitializeListHead(&irp->Tail.Overlay.ListEntry);
+	InitializeListHead(&irp->Tail.ListEntry);
     }
-
-    KeReleaseSpinLock(&fdoData->IdleListLock, oldIrql);
 
     return irp;
 }

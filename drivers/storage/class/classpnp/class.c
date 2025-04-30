@@ -523,8 +523,7 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 	    } else if (info->Interpret == NULL) {
 		// Updated interpret sense info function is required
 		status = STATUS_INVALID_PARAMETER;
-	    } else if (driverExtension->InitData.FdoData.DeviceType !=
-		       FILE_DEVICE_CD_ROM) {
+	    } else if (driverExtension->InitData.FdoData.DeviceType != FILE_DEVICE_CD_ROM) {
 		// classpnp developer wants to restrict this code path
 		// for now to CDROM devices only.
 		status = STATUS_INVALID_DEVICE_REQUEST;

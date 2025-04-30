@@ -149,7 +149,7 @@ NTAPI VOID ClassSendNotification(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	return;
     }
 
-    notification = ExAllocatePoolWithTag(NonPagedPoolNx, requiredSize, 'oNcS');
+    notification = ExAllocatePoolWithTag(requiredSize, 'oNcS');
 
     //
     // if none allocated, exit
@@ -1650,7 +1650,7 @@ NTSTATUS ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	return STATUS_SUCCESS;
     }
 
-    info = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(MEDIA_CHANGE_DETECTION_INFO),
+    info = ExAllocatePoolWithTag(sizeof(MEDIA_CHANGE_DETECTION_INFO),
 				 CLASS_TAG_MEDIA_CHANGE_DETECTION);
 
     if (info != NULL) {
@@ -1672,8 +1672,7 @@ NTSTATUS ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	    PVOID buffer;
 	    BOOLEAN GesnSupported = FALSE;
 
-	    buffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-					   SENSE_BUFFER_SIZE_EX,
+	    buffer = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE_EX,
 					   CLASS_TAG_MEDIA_CHANGE_DETECTION);
 
 	    if (buffer != NULL) {
@@ -1828,8 +1827,7 @@ NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     //
 
     if (Info->Gesn.Buffer == NULL) {
-	Info->Gesn.Buffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-						  GESN_BUFFER_SIZE, '??cS');
+	Info->Gesn.Buffer = ExAllocatePoolWithTag(GESN_BUFFER_SIZE, '??cS');
     }
     if (Info->Gesn.Buffer == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -2509,8 +2507,7 @@ BOOLEAN ClasspIsMediaChangeDisabledDueToHardwareLimitation(IN PFUNCTIONAL_DEVICE
 
 	deviceString.Length = (USHORT)(length);
 	deviceString.MaximumLength = deviceString.Length + 1;
-	deviceString.Buffer = (PCHAR)ExAllocatePoolWithTag(NonPagedPoolNx,
-							   deviceString.MaximumLength,
+	deviceString.Buffer = (PCHAR)ExAllocatePoolWithTag(deviceString.MaximumLength,
 							   CLASS_TAG_AUTORUN_DISABLE);
 	if (deviceString.Buffer == NULL) {
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
@@ -3798,7 +3795,7 @@ NTAPI NTSTATUS ClassSetFailurePredictionPoll(IN OUT PFUNCTIONAL_DEVICE_EXTENSION
 
     if (FdoExtension->FailurePredictionInfo == NULL) {
 	if (FailurePredictionMethod != FailurePredictionNone) {
-	    info = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(FAILURE_PREDICTION_INFO),
+	    info = ExAllocatePoolWithTag(sizeof(FAILURE_PREDICTION_INFO),
 					 CLASS_TAG_FAILURE_PREDICT);
 
 	    if (info == NULL) {

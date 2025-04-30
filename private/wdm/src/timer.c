@@ -58,10 +58,11 @@ static NTAPI VOID IopTimerExpired(IN PVOID Context,
  * it will be implicitly canceled. If specified, returns the previous
  * state of the timer (ie. TRUE if timer was set before the call).
  */
-NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
-		    IN LARGE_INTEGER DueTime,
-		    IN OPTIONAL PKDPC Dpc,
-		    OUT PBOOLEAN PreviousState)
+static NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
+			   IN LARGE_INTEGER DueTime,
+			   IN OPTIONAL PKDPC Dpc,
+			   IN LONG Period,
+			   OUT PBOOLEAN PreviousState)
 {
     assert(Timer);
     assert(Timer->Header.Handle != NULL);
@@ -71,7 +72,7 @@ NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
     }
     Timer->Dpc = Dpc;
     NTSTATUS Status = NtSetTimer(Timer->Header.Handle, &DueTime, IopTimerExpired,
-				 Timer, TRUE, 0, PreviousState);
+				 Timer, TRUE, Period, PreviousState);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -79,16 +80,24 @@ NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
     return STATUS_SUCCESS;
 }
 
-NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-			 IN LARGE_INTEGER DueTime,
-			 IN OPTIONAL PKDPC Dpc)
+NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
+			   IN LARGE_INTEGER DueTime,
+			   IN LONG Period,
+			   IN OPTIONAL PKDPC Dpc)
 {
     BOOLEAN PreviousState;
-    NTSTATUS Status = KiSetTimer(Timer, DueTime, Dpc, &PreviousState);
+    NTSTATUS Status = KiSetTimer(Timer, DueTime, Dpc, Period, &PreviousState);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
     return PreviousState;
+}
+
+NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+			 IN LARGE_INTEGER DueTime,
+			 IN OPTIONAL PKDPC Dpc)
+{
+    return KeSetTimerEx(Timer, DueTime, 0, Dpc);
 }
 
 /*
@@ -157,7 +166,7 @@ NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
 	return Status;
     }
     BOOLEAN PreviousState;
-    Status = KiSetTimer(&Timer, *Interval, NULL, &PreviousState);
+    Status = KiSetTimer(&Timer, *Interval, NULL, 0, &PreviousState);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }

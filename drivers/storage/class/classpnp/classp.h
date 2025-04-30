@@ -27,6 +27,13 @@
 
 #define RTL_USE_AVL_TABLES 0
 
+//
+// Set component ID for DbgPrintEx calls
+//
+#ifndef DEBUG_COMP_ID
+#define DEBUG_COMP_ID DPFLTR_CLASSPNP_ID
+#endif
+
 #include <stddef.h>
 #include <ntddk.h>
 #include <scsi.h>
@@ -48,13 +55,6 @@
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 #include <ntpoapi.h>
 #include <srbhelper.h>
-#endif
-
-//
-// Set component ID for DbgPrintEx calls
-//
-#ifndef DEBUG_COMP_ID
-#define DEBUG_COMP_ID DPFLTR_CLASSPNP_ID
 #endif
 
 //
@@ -1184,7 +1184,8 @@ FORCEINLINE BOOLEAN ClasspIsIdleRequest(PIRP Irp)
 
 FORCEINLINE LARGE_INTEGER ClasspGetCurrentTime(VOID)
 {
-    return KeQueryPerformanceCounter(NULL);
+    LARGE_INTEGER CurrentTime = { .QuadPart = KeQueryInterruptTime() };
+    return CurrentTime;
 }
 
 FORCEINLINE ULONGLONG ClasspTimeDiffToMs(ULONGLONG TimeDiff)
@@ -2004,7 +2005,6 @@ FORCEINLINE BOOLEAN ClasspLowerLayerNotSupport(IN NTSTATUS Status)
 	    (Status == STATUS_INVALID_PARAMETER_1));
 }
 
-#if defined(__REACTOS__) && (NTDDI_VERSION >= NTDDI_WINBLUE)
 FORCEINLINE BOOLEAN ClasspSrbTimeOutStatus(IN PSTORAGE_REQUEST_BLOCK_HEADER Srb)
 {
     UCHAR srbStatus = SrbGetSrbStatus(Srb);
@@ -2012,7 +2012,6 @@ FORCEINLINE BOOLEAN ClasspSrbTimeOutStatus(IN PSTORAGE_REQUEST_BLOCK_HEADER Srb)
 	    (srbStatus == SRB_STATUS_COMMAND_TIMEOUT) ||
 	    (srbStatus == SRB_STATUS_ABORTED));
 }
-#endif
 
 NTSTATUS ClassDeviceHwFirmwareGetInfoProcess(IN PDEVICE_OBJECT DeviceObject,
 					     IN OUT PIRP Irp);

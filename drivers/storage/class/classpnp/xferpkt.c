@@ -141,8 +141,7 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 			   fdoData->InterpretSenseInfo->HistoryCount;
 	historyByteCount += sizeof(SRB_HISTORY) - sizeof(SRB_HISTORY_ITEM);
 
-	newPkt->RetryHistory = (PSRB_HISTORY)ExAllocatePoolWithTag(NonPagedPoolNx,
-								   historyByteCount,
+	newPkt->RetryHistory = (PSRB_HISTORY)ExAllocatePoolWithTag(historyByteCount,
 								   'hrPC');
 
 	if (newPkt->RetryHistory == NULL) {
@@ -162,14 +161,11 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
      *  (just so we can find it during debugging if its stuck somewhere).
      */
     if (NT_SUCCESS(status) && newPkt != NULL) {
-	KIRQL oldIrql;
 	newPkt->Fdo = Fdo;
 #if DBG
 	newPkt->DbgPktId = InterlockedIncrement((volatile LONG *)&fdoData->DbgMaxPktId);
 #endif
-	KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 	InsertTailList(&fdoData->AllTransferPacketsList, &newPkt->AllPktsListEntry);
-	KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 
     } else {
 	// free any resources acquired above (in reverse order)
@@ -205,7 +201,7 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
 	commonExt->PartitionZeroExtension->AdapterDescriptor;
     PSTORAGE_DEVICE_IO_CAPABILITY_DESCRIPTOR devIoCapabilityDesc = NULL;
     STORAGE_PROPERTY_ID propertyId;
-    OSVERSIONINFOEXW osVersionInfo;
+    RTL_OSVERSIONINFOEX osVersionInfo;
     ULONG hwMaxPages;
     ULONG arraySize;
     ULONG index;
@@ -241,7 +237,7 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
     }
 
     for (index = 0; index < arraySize; index++) {
-	InitializeSListHead(&(fdoData->FreeTransferPacketsLists[index].SListHeader));
+	RtlInitializeSListHead(&(fdoData->FreeTransferPacketsLists[index].SListHeader));
 	fdoData->FreeTransferPacketsLists[index].NumTotalTransferPackets = 0;
 	fdoData->FreeTransferPacketsLists[index].NumFreeTransferPackets = 0;
     }
@@ -474,12 +470,9 @@ VOID DestroyTransferPacket(IN PTRANSFER_PACKET Pkt)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    KIRQL oldIrql;
 
     NT_ASSERT(!Pkt->SlistEntry.Next);
     //    NT_ASSERT(!Pkt->OriginalIrp);
-
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 
     /*
      *  Delete the packet from our all-packets queue.
@@ -488,8 +481,6 @@ VOID DestroyTransferPacket(IN PTRANSFER_PACKET Pkt)
     NT_ASSERT(!IsListEmpty(&fdoData->AllTransferPacketsList));
     RemoveEntryList(&Pkt->AllPktsListEntry);
     InitializeListHead(&Pkt->AllPktsListEntry);
-
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 
     IoFreeMdl(Pkt->PartialMdl);
     IoFreeIrp(Pkt->Irp);
@@ -503,12 +494,11 @@ VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo, PTRANSFER_PACKET Pkt)
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
     ULONG allocateNode;
-    KIRQL oldIrql;
 
     NT_ASSERT(!Pkt->SlistEntry.Next);
 
     allocateNode = Pkt->AllocateNode;
-    InterlockedPushEntrySList(
+    RtlInterlockedPushEntrySList(
 	&(fdoData->FreeTransferPacketsLists[allocateNode].SListHeader), &Pkt->SlistEntry);
     InterlockedIncrement((volatile LONG *)&(
 	fdoData->FreeTransferPacketsLists[allocateNode].NumFreeTransferPackets));
@@ -596,7 +586,6 @@ VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo, PTRANSFER_PACKET Pkt)
 		 fdoData->FreeTransferPacketsLists[allocateNode].NumTotalTransferPackets,
 		 fdoData->LocalMinWorkingSetTransferPackets, allocateNode));
 
-	    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 	    if ((fdoData->FreeTransferPacketsLists[allocateNode].NumFreeTransferPackets >=
 		 fdoData->FreeTransferPacketsLists[allocateNode].NumTotalTransferPackets) &&
 		(fdoData->FreeTransferPacketsLists[allocateNode].NumTotalTransferPackets >
@@ -617,7 +606,6 @@ VOID EnqueueFreeTransferPacket(PDEVICE_OBJECT Fdo, PTRANSFER_PACKET Pkt)
 				allocateNode));
 		}
 	    }
-	    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 
 	    if (pktToDelete) {
 		DestroyTransferPacket(pktToDelete);
@@ -641,7 +629,7 @@ PTRANSFER_PACKET DequeueFreeTransferPacketEx(IN PDEVICE_OBJECT Fdo,
     PTRANSFER_PACKET pkt;
     PSLIST_ENTRY slistEntry;
 
-    slistEntry = InterlockedPopEntrySList(
+    slistEntry = RtlInterlockedPopEntrySList(
 	&(fdoData->FreeTransferPacketsLists[Node].SListHeader));
 
     if (slistEntry) {
@@ -833,8 +821,6 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     BOOLEAN idleRequest = FALSE;
     PIO_STACK_LOCATION nextSp;
-
-    NT_ASSERT(Pkt->Irp->CurrentLocation == Pkt->Irp->StackCount + 1);
 
     /*
      *  Attach the SRB to the IRP.
@@ -1152,7 +1138,6 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 		    (TEST_FLAG(pkt->OriginalIrp->Flags, IRP_PAGING_IO)) ?
 			IoGetPagingIoPriority(pkt->OriginalIrp) :
 			IoPagingPriorityInvalid;
-		KIRQL oldIrql;
 
 		if (NT_SUCCESS(pkt->OriginalIrp->IoStatus.Status)) {
 		    NT_ASSERT((ULONG)pkt->OriginalIrp->IoStatus.Information ==
@@ -1186,8 +1171,6 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 		//
 
 		if (priority == IoPagingPriorityHigh) {
-		    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-
 		    if (fdoData->MaxInterleavedNormalIo <
 			ClassMaxInterleavePerCriticalIo) {
 			fdoData->MaxInterleavedNormalIo = 0;
@@ -1211,8 +1194,6 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 			fdoData->LongestThrottlePeriod.QuadPart =
 			    max(fdoData->LongestThrottlePeriod.QuadPart, period.QuadPart);
 		    }
-
-		    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 		}
 
 		if (idleRequest) {
@@ -1233,9 +1214,7 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 				    "SRB_FLAGS_DONT_START_NEXT_PACKET should never be "
 				    "set here (?)"));
 		    } else {
-			KeRaiseIrql(DISPATCH_LEVEL, &oldIrql);
 			IoStartNextPacket(Fdo, TRUE); // yes, some IO is now cancellable
-			KeLowerIrql(oldIrql);
 		    }
 		}
 	    }
@@ -1599,7 +1578,6 @@ VOID CleanupTransferPacketToWorkingSetSize(IN PDEVICE_OBJECT Fdo,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    KIRQL oldIrql;
     SINGLE_LIST_ENTRY pktList;
     PSINGLE_LIST_ENTRY slistEntry;
     PTRANSFER_PACKET pktToDelete;
@@ -1627,7 +1605,6 @@ VOID CleanupTransferPacketToWorkingSetSize(IN PDEVICE_OBJECT Fdo,
      *  from deciding to free too many extra packets at once.
      */
     SimpleInitSlistHdr(&pktList);
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
     while ((fdoData->FreeTransferPacketsLists[Node].NumFreeTransferPackets >=
 	    fdoData->FreeTransferPacketsLists[Node].NumTotalTransferPackets) &&
 	   (fdoData->FreeTransferPacketsLists[Node].NumTotalTransferPackets >
@@ -1648,7 +1625,6 @@ VOID CleanupTransferPacketToWorkingSetSize(IN PDEVICE_OBJECT Fdo,
 	    break;
 	}
     }
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 
     slistEntry = SimplePopSlist(&pktList);
     while (slistEntry) {

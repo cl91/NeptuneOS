@@ -95,8 +95,6 @@ BOOLEAN ClassFindGuid(PGUIDREGINFO GuidList,
 {
     ULONG i;
 
-    PAGED_CODE();
-
     for (i = 0; i < GuidCount; i++) {
 	if (IsEqualGUID(Guid, &GuidList[i].Guid)) {
 	    *GuidIndex = i;
