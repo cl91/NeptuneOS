@@ -80,8 +80,7 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 					      NULL, 1, SrbExDataTypeScsiCdb16);
 #endif
 	    } else {
-		newPkt->Srb = ExAllocatePoolWithTag(NonPagedPoolNx,
-						    sizeof(SCSI_REQUEST_BLOCK), '-brs');
+		newPkt->Srb = ExAllocatePoolWithTag(sizeof(SCSI_REQUEST_BLOCK), '-brs');
 		if (newPkt->Srb == NULL) {
 		    status = STATUS_INSUFFICIENT_RESOURCES;
 		}

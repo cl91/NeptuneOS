@@ -669,7 +669,7 @@ PWCHAR ConvertTickToDateTime(IN LARGE_INTEGER Tick,
     //
     KeQueryTickCount(&nowTick);
     maxInc = KeQueryTimeIncrement();
-    KeQuerySystemTime(&nowTime);
+    NtQuerySystemTime(&nowTime);
     time.QuadPart = nowTime.QuadPart - ((nowTick.QuadPart - Tick.QuadPart) * maxInc);
 
     RtlTimeToTimeFields(&time, &timeFields);
@@ -745,7 +745,7 @@ NTAPI CLASSPNP_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObje
 	if (NT_SUCCESS(Status)) {
 	    retSize = bufferNeeded;
 	    wnode->WnodeHeader.BufferSize = bufferNeeded;
-	    KeQuerySystemTime(&wnode->WnodeHeader.TimeStamp);
+	    NtQuerySystemTime(&wnode->WnodeHeader.TimeStamp);
 	    wnode->WnodeHeader.Flags |= WNODE_FLAG_FIXED_INSTANCE_SIZE;
 	    wnode->FixedInstanceSize = BufferUsed;
 	    wnode->InstanceCount = 1;
@@ -776,7 +776,7 @@ NTAPI CLASSPNP_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObje
 	if (NT_SUCCESS(Status)) {
 	    retSize = bufferNeeded;
 	    wnode->WnodeHeader.BufferSize = bufferNeeded;
-	    KeQuerySystemTime(&wnode->WnodeHeader.TimeStamp);
+	    NtQuerySystemTime(&wnode->WnodeHeader.TimeStamp);
 	    wnode->SizeDataBlock = BufferUsed;
 
 	} else if (Status == STATUS_BUFFER_TOO_SMALL) {
@@ -805,7 +805,7 @@ NTAPI CLASSPNP_API NTSTATUS ClassWmiCompleteRequest(IN PDEVICE_OBJECT DeviceObje
 	if (NT_SUCCESS(Status)) {
 	    retSize = bufferNeeded;
 	    wnode->WnodeHeader.BufferSize = bufferNeeded;
-	    KeQuerySystemTime(&wnode->WnodeHeader.TimeStamp);
+	    NtQuerySystemTime(&wnode->WnodeHeader.TimeStamp);
 	    wnode->SizeDataBlock = BufferUsed;
 
 	} else if (Status == STATUS_BUFFER_TOO_SMALL) {
@@ -882,7 +882,7 @@ NTAPI NTSTATUS ClassWmiFireEvent(IN PDEVICE_OBJECT DeviceObject,
 
     sizeNeeded = sizeof(WNODE_SINGLE_INSTANCE) + EventDataSize;
 
-    event = ExAllocatePoolWithTag(NonPagedPoolNx, sizeNeeded, CLASS_TAG_WMI);
+    event = ExAllocatePoolWithTag(sizeNeeded, CLASS_TAG_WMI);
     if (event != NULL) {
 	RtlZeroMemory(event, sizeNeeded);
 	event->WnodeHeader.Guid = *Guid;
@@ -890,7 +890,7 @@ NTAPI NTSTATUS ClassWmiFireEvent(IN PDEVICE_OBJECT DeviceObject,
 	event->WnodeHeader.BufferSize = sizeNeeded;
 	event->WnodeHeader.Flags = WNODE_FLAG_SINGLE_INSTANCE | WNODE_FLAG_EVENT_ITEM |
 				   WNODE_FLAG_STATIC_INSTANCE_NAMES;
-	KeQuerySystemTime(&event->WnodeHeader.TimeStamp);
+	NtQuerySystemTime(&event->WnodeHeader.TimeStamp);
 
 	event->InstanceIndex = InstanceIndex;
 	event->SizeDataBlock = EventDataSize;
