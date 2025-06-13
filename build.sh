@@ -103,7 +103,7 @@ cmake ../../private/ntos \
       -DOUTPUT_TARGET=${OUTPUT_TARGET} \
       -DKernelPlatform=${PLATFORM} \
       -DKernelSel4Arch=${SEL4_ARCH} \
-      -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DSANITIZED_SEL4_INCLUDE_DIR="${PWD}/../../sel4/libsel4/include" \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
@@ -232,7 +232,7 @@ cmake ../../private/ntlnxshim \
       -DTRIPLE=${ELF_TRIPLE} \
       -DKernelPlatform=${PLATFORM} \
       -DKernelSel4Arch=${SEL4_ARCH} \
-      -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DSANITIZED_SEL4_INCLUDE_DIR="${PE_INC}/sel4_include" \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
@@ -377,7 +377,7 @@ if [[ ${ARCH} == "arm64" ]]; then
 	  -DKernelSel4Arch=${SEL4_ARCH} \
 	  -DKernelPlatform=${PLATFORM} \
 	  -DTRIPLE=${ELF_TRIPLE} \
-	  -DCMAKE_TOOLCHAIN_FILE=../../sel4/${TOOLCHAIN}.cmake \
+	  -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
 	  -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
 	  -DPLATFORM=${PLATFORM} \
 	  -DKernelDTBPath=$PWD/../elf/kernel/kernel.dtb \
