@@ -21,6 +21,9 @@ typedef struct _BEEP_DEVICE_EXTENSION {
     BOOLEAN TimerActive;
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION;
 
+/* GLOBALS *******************************************************************/
+static PDEVICE_OBJECT GlobalDeviceObject;
+
 /* FUNCTIONS *****************************************************************/
 
 NTAPI VOID BeepDPC(IN PKDPC Dpc,
@@ -150,11 +153,8 @@ DRIVER_UNLOAD BeepUnload;
 NTAPI VOID BeepUnload(IN PDRIVER_OBJECT DriverObject)
 {
     PDEVICE_EXTENSION DeviceExtension;
-    PDEVICE_OBJECT DeviceObject;
-
     /* Get DO and DE */
-    DeviceObject = DriverObject->DeviceObject;
-    DeviceExtension = DeviceObject->DeviceExtension;
+    DeviceExtension = GlobalDeviceObject->DeviceExtension;
 
     /* Check if the timer is active */
     if (DeviceExtension->TimerActive) {
@@ -166,7 +166,8 @@ NTAPI VOID BeepUnload(IN PDRIVER_OBJECT DriverObject)
     }
 
     /* Delete the object */
-    IoDeleteDevice(DeviceObject);
+    IoDeleteDevice(GlobalDeviceObject);
+    GlobalDeviceObject = NULL;
 }
 
 DRIVER_STARTIO BeepStartIo;
@@ -224,7 +225,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
     PDEVICE_EXTENSION DeviceExtension;
-    PDEVICE_OBJECT DeviceObject;
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(DD_BEEP_DEVICE_NAME_U);
     NTSTATUS Status;
 
@@ -232,7 +232,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     /* Create the device object with BUFFERED_IO as the IO transfer type */
     Status = IoCreateDevice(DriverObject, sizeof(DEVICE_EXTENSION), &DeviceName,
-			    FILE_DEVICE_BEEP, DO_BUFFERED_IO, FALSE, &DeviceObject);
+			    FILE_DEVICE_BEEP, DO_BUFFERED_IO, FALSE, &GlobalDeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;
 
@@ -245,9 +245,9 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->DriverStartIo = BeepStartIo;
 
     /* Set up device extension */
-    DeviceExtension = DeviceObject->DeviceExtension;
+    DeviceExtension = GlobalDeviceObject->DeviceExtension;
     DeviceExtension->TimerActive = FALSE;
-    IoInitializeDpcRequest(DeviceObject, BeepDPC);
+    IoInitializeDpcRequest(GlobalDeviceObject, BeepDPC);
     KeInitializeTimer(&DeviceExtension->Timer);
 
     return STATUS_SUCCESS;

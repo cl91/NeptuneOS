@@ -134,7 +134,6 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     /* Set the correct sector size. */
     DeviceObject->SectorSize = IopDeviceTypeToSectorSize(DeviceType);
 
-    DriverObject->DeviceObject = DeviceObject;
     *pDeviceObject = DeviceObject;
     DbgTrace("Created device object %p handle %p extension %p name %ws\n",
 	     DeviceObject, (PVOID)DeviceHandle, DeviceObject->DeviceExtension,

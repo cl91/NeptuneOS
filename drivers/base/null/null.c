@@ -10,6 +10,9 @@
 
 #include <ntddk.h>
 
+/* GLOBALS *******************************************************************/
+static PDEVICE_OBJECT GlobalDeviceObject;
+
 /* FUNCTIONS *****************************************************************/
 
 NTAPI NTSTATUS NullQueryFileInformation(OUT PVOID Buffer,
@@ -119,24 +122,21 @@ NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 
 NTAPI VOID NullUnload(IN PDRIVER_OBJECT DriverObject)
 {
-    PDEVICE_OBJECT DeviceObject = DriverObject->DeviceObject;
-
     /* Delete the Null device */
-    IoDeleteDevice(DeviceObject);
+    IoDeleteDevice(GlobalDeviceObject);
 }
 
 NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
     NTSTATUS Status;
-    PDEVICE_OBJECT DeviceObject;
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\Null");
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
     /* Create the Null device */
     Status = IoCreateDevice(DriverObject, 0, &DeviceName, FILE_DEVICE_NULL,
-			    FILE_DEVICE_SECURE_OPEN, FALSE, &DeviceObject);
+			    FILE_DEVICE_SECURE_OPEN, FALSE, &GlobalDeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;
 

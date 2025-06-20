@@ -242,11 +242,6 @@ NTAPI VOID CmBattUnload(IN PDRIVER_OBJECT DriverObject)
     /* Free the registry buffer if it exists */
     if (GlobalRegistryPath.Buffer)
 	ExFreePool(GlobalRegistryPath.Buffer);
-
-    /* Make sure we don't still have references to the DO */
-    if ((DriverObject->DeviceObject) && (CmBattDebug & CMBATT_GENERIC_WARNING)) {
-	DbgPrint("Unload called before all devices removed.\n");
-    }
 }
 
 NTSTATUS CmBattVerifyStaticInfo(PCMBATT_DEVICE_EXTENSION DeviceExtension,
