@@ -56,6 +56,10 @@
 @ stdcall NtGetCurrentProcessorNumber()
 @ stdcall LdrGetProcedureAddress(ptr ptr long ptr)
 @ stdcall LdrFindEntryForAddress(ptr ptr)
+@ stdcall LdrLoadDll(wstr long ptr ptr)
+@ stdcall LdrUnloadDll(ptr)
+@ stdcall LdrLockLoaderLock(long ptr ptr)
+@ stdcall LdrUnlockLoaderLock(long ptr)
 @ stdcall DbgBreakPoint()
 @ varargs DbgPrint(str)
 @ varargs DbgPrintEx(long long str)
@@ -106,6 +110,7 @@
 @ stdcall RtlCompareUnicodeString (ptr ptr long)
 @ stdcall RtlCopyUnicodeString(ptr ptr)
 @ stdcall RtlAppendUnicodeToString(ptr wstr)
+@ stdcall RtlFindCharInUnicodeString(long ptr ptr ptr)
 @ stdcall RtlIntegerToChar(long long long ptr)
 @ stdcall RtlIntegerToUnicodeString(long long ptr)
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)
@@ -214,5 +219,5 @@
 @ cdecl -arch=x86_64,arm64 __C_specific_handler(ptr long ptr ptr)
 @ cdecl _assert(str str long)
 @ cdecl -arch=x86_64,arm64 __chkstk()
-@ extern -arch=i386 _chkstk
+@ cdecl -arch=i386 _chkstk()
 @ extern RtlpDbgTraceModuleName

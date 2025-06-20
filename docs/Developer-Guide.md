@@ -197,6 +197,29 @@ name).
 
 Minidrivers: miniclass and miniport drivers
 
+Class and filter drivers are loaded in two places: once as a standalone driver in their
+own address space, and for each port driver to which the class/filter driver is attached,
+the `.sys` image file of the class/driver object is also loaded in the port driver's address
+space. During driver initialization, the `DriverEntry` of the class/filter driver is called
+once the port driver's `DriverEntry` returns `STATUS_SUCCESS`. The class/filter driver
+running inside the port driver process will process IRPs directed at its device objects in
+the same process as the port driver. This is done so that passing an IRP from, for instance,
+the hard disk class driver to the underlying port driver does not incur any performance
+penalties due to context switches. If the class/filter driver creates or manages global
+resources, it should do so in the standalone, singleton driver process. The routine
+`IoIsSingletonMode` returns `TRUE` if the driver image is loaded in their standalone
+address space.
+
+The `AddDevice` routine of the class or filter driver should use the `IoIsSingletonMode`
+routine to indicate to the NT Executive whether it wishes to process the IO in its own
+standalone process (ie. the singleton mode) or in the driver process of the function
+driver. In the former case, the `AddDevice` routine should do nothing and return
+`STATUS_SUCCESS` if `IoIsSingletonMode` returns `FALSE`. In the latter case, it should
+do so when `IoIsSingletonMode` returns `TRUE`. Failure to do so will lead to two device
+objects being registered for one physical device object, one in the standalone process,
+one in the function driver process. Although the system does not explicitly forbid this,
+it is generally considered an anti-pattern to do so.
+
 ### File System Drivers
 
 Due to the fact that file system drivers run in their separate processes, significant

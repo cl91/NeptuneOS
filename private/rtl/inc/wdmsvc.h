@@ -246,6 +246,7 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	struct {
 	    IO_DEVICE_INFO PhysicalDeviceInfo; /* Request.Device is the physical
 						* device object */
+	    CHAR BaseName[64];    /* Driver object to which this AddDevice is sent */
 	} AddDevice; /* Used by the PNP manager to inform the
 		      * driver to add a new device */
 	struct {
@@ -363,6 +364,7 @@ typedef struct _IO_COMPLETED_MESSAGE {
  */
 typedef enum _IO_SERVER_MESSAGE_TYPE {
     IoSrvMsgIoCompleted,
+    IoSrvMsgLoadDriver,
     IoSrvMsgCacheFlushed,
     IoSrvMsgCloseFile,
     IoSrvMsgCloseDevice,
@@ -376,6 +378,10 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
     IO_SERVER_MESSAGE_TYPE Type;
     union {
 	IO_COMPLETED_MESSAGE IoCompleted;
+	struct {
+	    ULONG BaseNameLength; /* Including trailing '\0' */
+	    CHAR BaseName[];
+	} LoadDriver;
 	struct {
 	    GLOBAL_HANDLE DeviceObject;
 	    GLOBAL_HANDLE FileObject;
@@ -745,6 +751,11 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		     IoPacket->ServerMsg.IoCompleted.IoStatus.Status,
 		     (PVOID)IoPacket->ServerMsg.IoCompleted.IoStatus.Information,
 		     IoPacket->ServerMsg.IoCompleted.ResponseDataSize);
+	    break;
+	case IoSrvMsgLoadDriver:
+	    DbgPrint("    SERVER-MSG LOAD-DRIVER BaseNameLength %d BaseName %s\n",
+		     IoPacket->ServerMsg.LoadDriver.BaseNameLength,
+		     IoPacket->ServerMsg.LoadDriver.BaseName);
 	    break;
 	case IoSrvMsgCacheFlushed:
 	    DbgPrint("    SERVER-MSG CACHE-FLUSHED DeviceHandle %p FileHandle %p "

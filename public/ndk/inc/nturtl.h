@@ -2419,6 +2419,38 @@ NTAPI NTSYSAPI NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
 NTAPI NTSYSAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
 					       OUT PLDR_DATA_TABLE_ENTRY *Module);
 
+NTAPI NTSTATUS LdrLoadDll(IN OPTIONAL PWSTR SearchPath,
+			  IN OPTIONAL PULONG DllCharacteristics,
+			  IN PUNICODE_STRING DllName,
+			  OUT PVOID *BaseAddress);
+
+NTAPI NTSYSAPI NTSTATUS LdrUnloadDll(IN PVOID BaseAddress);
+
+/*
+ * LdrLockLoaderLock Flags
+ */
+#define LDR_LOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS   0x00000001
+#define LDR_LOCK_LOADER_LOCK_FLAG_TRY_ONLY          0x00000002
+
+/*
+ * LdrLockLoaderLock Dispositions
+ */
+#define LDR_LOCK_LOADER_LOCK_DISPOSITION_INVALID           0
+#define LDR_LOCK_LOADER_LOCK_DISPOSITION_LOCK_ACQUIRED     1
+#define LDR_LOCK_LOADER_LOCK_DISPOSITION_LOCK_NOT_ACQUIRED 2
+
+/*
+ * LdrUnlockLoaderLock Flags
+ */
+#define LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS 0x00000001
+
+NTAPI NTSYSAPI NTSTATUS LdrLockLoaderLock(IN ULONG Flags,
+					  OUT OPTIONAL PULONG Disposition,
+					  OUT OPTIONAL PULONG_PTR Cookie);
+
+NTAPI NTSYSAPI NTSTATUS LdrUnlockLoaderLock(IN ULONG Flags,
+					    IN OPTIONAL ULONG_PTR Cookie);
+
 /*
  * Registry routines
  */

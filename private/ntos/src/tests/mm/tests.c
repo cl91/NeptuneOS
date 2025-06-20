@@ -13,7 +13,7 @@ static inline NTSTATUS MiTestMapPage(IN MWORD PageCap,
 			      Rights,
 			      MM_ATTRIBUTES_DEFAULT);
     if (Error != 0) {
-	DbgTrace("seL4_Page_Map(%zd, %d, 0x%zx, 0x%zx, 0x%x) failed with error %d\n",
+	DbgTrace("seL4_Page_Map(%zd, %d, 0x%zx, 0x%zx, 0x%zx) failed with error %d\n",
 		 PageCap, NTOS_VSPACE_CAP, Addr, Rights.words[0],
 		 MM_ATTRIBUTES_DEFAULT, Error);
 	KeDbgDumpIPCError(Error);

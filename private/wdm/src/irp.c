@@ -466,12 +466,19 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     PDEVICE_OBJECT DeviceObject = NULL;
     PFILE_OBJECT FileObject = NULL;
     if (Src->Request.MajorFunction == IRP_MJ_ADD_DEVICE) {
+	PDRIVER_OBJECT DriverObject = IopLocateDriverObject(Src->Request.AddDevice.BaseName);
+	if (!DriverObject) {
+	    assert(FALSE);
+	    return STATUS_INTERNAL_ERROR;
+	}
 	GLOBAL_HANDLE PhyDevHandle = Src->Request.Device.Handle;
 	IO_DEVICE_INFO PhyDevInfo = Src->Request.AddDevice.PhysicalDeviceInfo;
 	DeviceObject = IopGetDeviceObjectOrCreate(PhyDevHandle, PhyDevInfo);
 	if (!DeviceObject) {
 	    return STATUS_NO_MEMORY;
 	}
+	/* Store the driver object in the IRP so later we can call the correct AddDevice. */
+	Irp->Tail.DriverContext[0] = DriverObject;
     } else {
 	DeviceObject = IopGetDeviceObject(Src->Request.Device.Handle);
 	if (!DeviceObject) {
@@ -1280,9 +1287,11 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 {
     DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 	     Stack->MajorFunction, Stack->MinorFunction, Stack->Flags, Stack->Control);
-    DbgPrint("    DeviceObject %p(%p, ext %p) FileObject %p(%p, fcb %p) CompletionRoutine %p Context %p\n",
+    DbgPrint("    DeviceObject %p(%p, ext %p, drv %p) FileObject %p(%p, fcb %p) "
+	     "CompletionRoutine %p Context %p\n",
 	     Stack->DeviceObject, (PVOID)IopGetDeviceHandle(Stack->DeviceObject),
 	     Stack->DeviceObject ? Stack->DeviceObject->DeviceExtension : NULL,
+	     Stack->DeviceObject ? Stack->DeviceObject->DriverObject : NULL,
 	     Stack->FileObject, (PVOID)IopGetFileHandle(Stack->FileObject),
 	     Stack->FileObject ? Stack->FileObject->FsContext : NULL,
 	     Stack->CompletionRoutine, Stack->Context);
@@ -1467,9 +1476,11 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject);
     if (IoStack->MajorFunction == IRP_MJ_ADD_DEVICE) {
-	PDRIVER_ADD_DEVICE AddDevice = IopDriverObject.AddDevice;
+	PDRIVER_OBJECT DriverObject = Irp->Tail.DriverContext[0];
+	assert(DriverObject);
+	PDRIVER_ADD_DEVICE AddDevice = DriverObject->AddDevice;
 	if (AddDevice) {
-	    return AddDevice(&IopDriverObject, IoStack->DeviceObject);
+	    return AddDevice(DriverObject, IoStack->DeviceObject);
 	} else {
 	    Irp->IoStatus.Information = 0;
 	    return Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
@@ -1493,6 +1504,15 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
  */
 static VOID IopCompleteIrp(IN PIRP Irp)
 {
+    /* If there is an execution environment that was suspended waiting
+     * for the completion of this IRP, wake it up now. Note this must
+     * be done even if the IRP has been marked as completed, because
+     * it might have been forwarded multiple times. */
+    if (Irp->Private.EnvToWakeUp) {
+	((PIOP_EXEC_ENV)Irp->Private.EnvToWakeUp)->Suspended = FALSE;
+	Irp->Private.EnvToWakeUp = NULL;
+    }
+
     if (Irp->Completed) {
 	return;
     }
@@ -1537,13 +1557,6 @@ static VOID IopCompleteIrp(IN PIRP Irp)
      * originated from the server (not to locally generated IRPs). */
     if (Irp->Private.OriginalRequestor) {
 	IopUnmarshalIoBuffer(Irp);
-    }
-
-    /* If there is an execution environment that was suspended waiting
-     * for the completion of this IRP, wake it up now. */
-    if (Irp->Private.EnvToWakeUp) {
-	((PIOP_EXEC_ENV)Irp->Private.EnvToWakeUp)->Suspended = FALSE;
-	Irp->Private.EnvToWakeUp = NULL;
     }
 
     /* If the IRP is an associated IRP of a master IRP, detach it from
@@ -1598,6 +1611,18 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
     /* We should never get here. If we do, either server sent an invalid IRP
      * identifier pair or we forgot to keep some IRPs in the pending IRP list. */
     assert(FALSE);
+}
+
+static VOID IopHandleLoadDriverServerMessage(PIO_PACKET SrvMsg)
+{
+    assert(SrvMsg != NULL);
+    assert(SrvMsg->Type == IoPacketTypeServerMessage);
+    assert(SrvMsg->ServerMsg.Type == IoSrvMsgLoadDriver);
+    NTSTATUS Status = IopLoadDriver(SrvMsg->ServerMsg.LoadDriver.BaseName);
+    /* If we failed, we have no other option other than raising an exception. */
+    if (!NT_SUCCESS(Status)) {
+	RtlRaiseStatus(Status);
+    }
 }
 
 static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
@@ -1867,6 +1892,8 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 	    IoDbgDumpIoPacket(SrcIoPacket, TRUE);
 	    if (SrcIoPacket->ServerMsg.Type == IoSrvMsgIoCompleted) {
 		IopHandleIoCompleteServerMessage(SrcIoPacket);
+	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgLoadDriver) {
+		IopHandleLoadDriverServerMessage(SrcIoPacket);
 	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCacheFlushed) {
 		CiHandleCacheFlushedServerMessage(SrcIoPacket);
 	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseFile) {
@@ -1988,10 +2015,14 @@ workitem:
 	     * one, drivers can only set one IoCompeltion routine even if it forwards
 	     * an IRP multiple times, and likewise the DeviceObject in the IO request
 	     * stack always points to the current device object that this IRP has been
-	     * forwarded to. Additionally, for IRPs generated locally and forwarded to
-	     * local device objects, the IO tranfer type is ignored and NEITHER IO is
-	     * always assumed, so the relevant dispatch routine will need to handle this
-	     * case separately. */
+	     * forwarded to. Secondly, the IO transfer type of the target device must
+	     * match that of the source device. Finally, for IRPs generated locally and
+	     * forwarded to local device objects, the IO tranfer type is ignored and
+	     * NEITHER IO is always assumed, so the relevant dispatch routine will need
+	     * to handle this case separately. */
+	    assert((Irp->Private.ForwardedTo->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO)) ==
+		   (IoGetCurrentIrpStackLocation(Irp)->DeviceObject->Flags &
+		    (DO_BUFFERED_IO | DO_DIRECT_IO)));
 	    InsertTailList(&IopIrpQueue, &Irp->Private.Link);
 	    IoGetCurrentIrpStackLocation(Irp)->DeviceObject = Irp->Private.ForwardedTo;
 	    Irp->Private.ForwardedTo = NULL;

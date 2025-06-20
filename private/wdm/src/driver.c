@@ -1,5 +1,177 @@
 #include <wdmp.h>
 
+#define SERVICE_KEY_NAME	(CONTROL_KEY_NAME L"Services\\")
+
+static LIST_ENTRY IopDriverList;
+
+static NTSTATUS IopCallDriverEntry(IN PDRIVER_OBJECT DriverObject)
+{
+    assert(DriverObject);
+    PLDR_DATA_TABLE_ENTRY DriverImage = NULL;
+    NTSTATUS Status = LdrFindEntryForAddress(DriverObject->DriverStart,
+					     &DriverImage);
+    if (!NT_SUCCESS(Status)) {
+	return STATUS_DRIVER_ENTRYPOINT_NOT_FOUND;
+    }
+    assert(DriverImage);
+    PDRIVER_INITIALIZE DriverEntry = DriverImage->EntryPoint;
+    DbgTrace("Driver entry %p. Registry path %wZ\n",
+	     DriverEntry, &DriverObject->RegistryPath);
+    Status = DriverEntry(DriverObject, &DriverObject->RegistryPath);
+    if (!NT_SUCCESS(Status)) {
+	return STATUS_FAILED_DRIVER_ENTRY;
+    }
+    return STATUS_SUCCESS;
+}
+
+static VOID IopCallReinitRoutine(IN PDRIVER_OBJECT DriverObject)
+{
+    DriverObject->Flags &= ~DRVO_REINIT_REGISTERED;
+    LoopOverList(Entry, &DriverObject->ReinitListHead, DRIVER_REINIT_ITEM, ItemEntry) {
+	Entry->Count++;
+	Entry->ReinitRoutine(Entry->DriverObject, Entry->Context, Entry->Count);
+    }
+}
+
+static NTSTATUS IopCreateDriverObject(IN PUNICODE_STRING RegistryPath,
+				      IN PVOID BaseAddress,
+				      OUT PDRIVER_OBJECT *pDriverObject)
+{
+    /* Get the base name of the driver service from the registry path */
+    const UNICODE_STRING PathDividers = RTL_CONSTANT_STRING(L"\\/");
+    USHORT Position;
+    if (!NT_SUCCESS(RtlFindCharInUnicodeString(RTL_FIND_CHAR_IN_UNICODE_STRING_START_AT_END,
+					       RegistryPath, &PathDividers, &Position))) {
+	assert(FALSE);
+	return STATUS_INTERNAL_ERROR;
+    }
+    Position += sizeof(WCHAR);
+    if (Position >= RegistryPath->Length) {
+	assert(FALSE);
+	return STATUS_INTERNAL_ERROR;
+    }
+    IopAllocateObject(DriverObject, DRIVER_OBJECT);
+    DriverObject->DriverStart = BaseAddress;
+    DriverObject->RegistryPath = *RegistryPath;
+    DriverObject->DriverName.Buffer = RegistryPath->Buffer + Position / sizeof(WCHAR);
+    DriverObject->DriverName.MaximumLength = DriverObject->DriverName.Length =
+	RegistryPath->Length - Position;
+    InsertHeadList(&IopDriverList, &DriverObject->ListEntry);
+    InitializeListHead(&DriverObject->ReinitListHead);
+    *pDriverObject = DriverObject;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS IopInitDriverObject(IN PUNICODE_STRING RegistryPath)
+{
+    InitializeListHead(&IopDriverList);
+
+    PDRIVER_OBJECT DriverObject = NULL;
+    NTSTATUS Status = IopCreateDriverObject(RegistryPath,
+					    NtCurrentPeb()->ImageBaseAddress,
+					    &DriverObject);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    Status = IopCallDriverEntry(DriverObject);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    IopCallReinitRoutine(DriverObject);
+
+    return Status;
+}
+
+PDRIVER_OBJECT IopLocateDriverObject(IN PCSTR BaseName)
+{
+    ULONG BaseNameLength = strlen(BaseName);
+    WCHAR BaseNameBuffer[BaseNameLength];
+    ULONG UnicodeLength = 0;
+    RtlUTF8ToUnicodeN(BaseNameBuffer, BaseNameLength * sizeof(WCHAR),
+		      &UnicodeLength, BaseName, BaseNameLength);
+    UNICODE_STRING BaseNameU = {
+	.Buffer = BaseNameBuffer,
+	.Length = UnicodeLength,
+	.MaximumLength = sizeof(BaseNameBuffer)
+    };
+    LoopOverList(DriverObject, &IopDriverList, DRIVER_OBJECT, ListEntry) {
+	if (BaseNameLength) {
+	    if (!RtlCompareUnicodeString(&BaseNameU, &DriverObject->DriverName, TRUE)) {
+		return DriverObject;
+	    }
+	} else {
+	    if (IoIsSingletonMode(DriverObject)) {
+		return DriverObject;
+	    }
+	}
+    }
+    return NULL;
+}
+
+NTSTATUS IopLoadDriver(IN PCSTR BaseName)
+{
+    if (IopLocateDriverObject(BaseName)) {
+	return STATUS_SUCCESS;
+    }
+
+    ULONG ServiceBufSize = sizeof(SERVICE_KEY_NAME) + strlen(BaseName) * sizeof(WCHAR) - sizeof(WCHAR);
+    IopAllocatePool(DriverService, WCHAR, ServiceBufSize);
+    memcpy(DriverService, SERVICE_KEY_NAME, sizeof(SERVICE_KEY_NAME));
+    PWCHAR BaseNameU = &DriverService[sizeof(SERVICE_KEY_NAME) / sizeof(WCHAR) - 1];
+    ULONG BaseNameLength = 0;
+    RET_ERR_EX(RtlUTF8ToUnicodeN(BaseNameU, strlen(BaseName) * sizeof(WCHAR),
+				 &BaseNameLength, BaseName, strlen(BaseName)),
+	       IopFreePool(DriverService));
+    UNICODE_STRING DriverServiceKey = {
+	.Buffer = DriverService,
+	.Length = sizeof(SERVICE_KEY_NAME) - sizeof(WCHAR) + BaseNameLength,
+	.MaximumLength = ServiceBufSize
+    };
+    PDRIVER_OBJECT DriverObject = NULL;
+    HANDLE KeyHandle = NULL;
+    PKEY_VALUE_PARTIAL_INFORMATION PartialInfo = NULL;
+    NTSTATUS Status;
+    IF_ERR_GOTO(out, Status, IopOpenKey(DriverServiceKey, &KeyHandle));
+    assert(KeyHandle != NULL);
+    IF_ERR_GOTO(out, Status, IopQueryValueKey(KeyHandle, L"ImagePath", &PartialInfo));
+    if (!(PartialInfo->Type == REG_SZ || PartialInfo->Type == REG_EXPAND_SZ)) {
+	assert(FALSE);
+	Status = STATUS_OBJECT_TYPE_MISMATCH;
+	goto out;
+    }
+    PVOID BaseAddress = NULL;
+    UNICODE_STRING ImagePath = {
+	.Buffer = (PWSTR)PartialInfo->Data,
+	.Length = PartialInfo->DataLength,
+	.MaximumLength = PartialInfo->DataLength
+    };
+    IF_ERR_GOTO(out, Status, LdrLoadDll(NULL, NULL, &ImagePath, &BaseAddress));
+    Status = IopCreateDriverObject(&DriverServiceKey, BaseAddress, &DriverObject);
+    if (!NT_SUCCESS(Status)) {
+	LdrUnloadDll(BaseAddress);
+	goto out;
+    }
+    Status = IopCallDriverEntry(DriverObject);
+    if (NT_SUCCESS(Status)) {
+	IopCallReinitRoutine(DriverObject);
+	Status = STATUS_SUCCESS;
+    }
+
+out:
+    if (!NT_SUCCESS(Status) && !DriverObject) {
+	IopFreePool(DriverService);
+    }
+    if (KeyHandle) {
+	NtClose(KeyHandle);
+    }
+    if (PartialInfo) {
+	ExFreePool(PartialInfo);
+    }
+    return Status;
+}
+
 /*
  * @implemented
  *

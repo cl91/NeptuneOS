@@ -10,6 +10,7 @@
 #define LDRP_HASH_TABLE_ENTRIES 32
 #define LDRP_GET_HASH_ENTRY(x) (RtlpHashString((x)) & (LDRP_HASH_TABLE_ENTRIES - 1))
 extern LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
+extern BOOLEAN LdrpInLdrInit;
 extern PVOID LdrpHeap;
 extern RTL_CRITICAL_SECTION LdrpLoaderLock;
 extern PLDR_DATA_TABLE_ENTRY LdrpImageEntry;

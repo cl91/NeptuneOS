@@ -209,22 +209,22 @@ static NTSTATUS LdrpSetProtection(PVOID ViewBase)
 }
 
 static NTSTATUS LdrpMapDll(IN PCSTR DllName,
+			   IN PCSTR DllPath,
 			   IN BOOLEAN Static,
 			   OUT PLDR_DATA_TABLE_ENTRY *DataTableEntry)
 {
+    assert(DllName);
+    assert(DllPath);
     HANDLE SectionHandle = NULL;
     PVOID ViewBase = NULL;
     PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
-    DPRINT1("LDR: LdrpMapDll: Image Name %s\n", DllName);
+    DPRINT1("LDR: LdrpMapDll: Image Name %s, Full Path %s\n", DllName, DllPath);
 
-    /* For now we will hard code the search path to \??\BootModules */
-    CHAR PathBuf[512];
-    snprintf(PathBuf, sizeof(PathBuf), "\\??\\BootModules\\%s", DllName);
     UNICODE_STRING BaseDllName = {};
     UNICODE_STRING FullDllPath = {};
     NTSTATUS Status;
     IF_ERR_GOTO(err, Status, LdrpUtf8ToUnicodeString(DllName, &BaseDllName));
-    IF_ERR_GOTO(err, Status, LdrpUtf8ToUnicodeString(PathBuf, &FullDllPath));
+    IF_ERR_GOTO(err, Status, LdrpUtf8ToUnicodeString(DllPath, &FullDllPath));
 
     /* Open the dll file and create an image section for it */
     IF_ERR_GOTO(err, Status, LdrpCreateDllSection(&FullDllPath, NULL,
@@ -337,10 +337,17 @@ err:
     return Status;
 }
 
+/*
+ * Load the specified import module. The import name can be a fully qualified
+ * path to the dll file, or it can be the base dll name. If no extension is
+ * specified, the extension .dll is appended to the file name. In the latter
+ * case the import name cannot be a full path and must be the base dll name.
+ */
 NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
 			      OUT PLDR_DATA_TABLE_ENTRY *DataTableEntry,
 			      OUT OPTIONAL PBOOLEAN Existing)
 {
+    PCSTR FullDllPath = ImportName;
     ULONG ImportNameLength = strlen(ImportName);
     NTSTATUS Status = STATUS_SUCCESS;
     PPEB Peb = RtlGetCurrentPeb();
@@ -373,6 +380,27 @@ NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
 	ImportName = ImportNameExt;
     }
 
+    CHAR PathBuf[512];
+    if (ImportName[0] != '\\') {
+	/* If the full path is not given, for now we will hard code the DLL search path to
+	 * \??\BootModules. Eventually we will need to implement a proper searching semantics. */
+	snprintf(PathBuf, sizeof(PathBuf), "\\??\\BootModules\\%s", ImportName);
+	FullDllPath = PathBuf;
+    } else if (GotExtension) {
+	for (ULONG i = ImportNameLength; i > 0; i--) {
+	    if (ImportName[i] == '\\') {
+		ImportName += i + 1;
+		break;
+	    }
+	}
+	if (ImportName[0] == '\0') {
+	    return STATUS_OBJECT_PATH_INVALID;
+	}
+    } else {
+	Status = STATUS_INVALID_PARAMETER;
+	goto done;
+    }
+
     /* Check if it's loaded */
     if (LdrpCheckForLoadedDll(ImportName, DataTableEntry)) {
 	/* It's already existing in the list */
@@ -389,7 +417,7 @@ NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
     }
 
     /* Map it */
-    Status = LdrpMapDll(ImportName, TRUE, DataTableEntry);
+    Status = LdrpMapDll(ImportName, FullDllPath, TRUE, DataTableEntry);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("LDR: LdrpMapDll failed with status %x for dll %s\n",
 		Status, ImportName);
@@ -405,7 +433,7 @@ NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
 	    /* Set the proper protection for the image if it is relocated. */
 	    Status = LdrpSetProtection((*DataTableEntry)->DllBase);
 	    if (!NT_SUCCESS(Status)) {
-		DPRINT1("LDR: Unable to set protection for image base %p\n",
+		DPRINT1("LDR: Unable to set protection for image base %p, but keep going\n",
 			(*DataTableEntry)->DllBase);
 		/* This error is non-fatal, so return success. */
 		Status = STATUS_SUCCESS;

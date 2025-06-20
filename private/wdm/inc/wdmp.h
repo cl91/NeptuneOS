@@ -6,10 +6,6 @@
 #include <assert.h>
 #include <debug.h>
 #include "coroutine.h"
-#include "ntdef.h"
-
-extern PCSTR IopDbgTraceModuleName;
-#define RTLP_DBGTRACE_MODULE_NAME	IopDbgTraceModuleName
 
 #include <util.h>
 #include <wdmsvc.h>
@@ -18,6 +14,8 @@ extern PCSTR IopDbgTraceModuleName;
 #define TAG_DRIVER_EXTENSION	'EVRD'
 #define TAG_REINIT		'iRoI'
 #define TAG_SYS_BUF		'BSYS'
+
+#define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 
 /* Shared kernel data that is accessible from user space */
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
@@ -42,6 +40,49 @@ extern PCSTR IopDbgTraceModuleName;
 
 #define IopFreePool(Ptr)			\
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
+
+
+/*
+ * Open the specified registry key
+ */
+static inline NTSTATUS IopOpenKey(IN UNICODE_STRING Key,
+				  OUT HANDLE *KeyHandle)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, &Key,
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+    TRACE_(NTOSPNP, "Opening key %wZ\n", &Key);
+    return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
+}
+
+
+static inline NTSTATUS IopQueryValueKey(IN HANDLE KeyHandle,
+					IN PWCHAR ValueName,
+					OUT PKEY_VALUE_PARTIAL_INFORMATION *PartialInfo)
+{
+    ULONG BufferSize;
+    UNICODE_STRING ValueNameU;
+    RtlInitUnicodeString(&ValueNameU, ValueName);
+    NTSTATUS Status = NtQueryValueKey(KeyHandle, &ValueNameU,
+				      KeyValuePartialInformation,
+				      NULL, 0, &BufferSize);
+    if (Status != STATUS_BUFFER_TOO_SMALL) {
+	return Status;
+    }
+
+    *PartialInfo = ExAllocatePool(BufferSize);
+    if (!*PartialInfo) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Status = NtQueryValueKey(KeyHandle, &ValueNameU,
+			     KeyValuePartialInformation, *PartialInfo,
+			     BufferSize, &BufferSize);
+    if (!NT_SUCCESS(Status)) {
+	ExFreePool(*PartialInfo);
+    }
+    return Status;
+}
 
 /*
  * Driver Re-Initialization Entry
@@ -167,6 +208,11 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 /* dma.c */
 VOID HalpInitDma(VOID);
 
+/* driver.c */
+NTSTATUS IopInitDriverObject(IN PUNICODE_STRING RegistryPath);
+PDRIVER_OBJECT IopLocateDriverObject(IN PCSTR BaseName);
+NTSTATUS IopLoadDriver(IN PCSTR BaseName);
+
 /* event.c */
 extern LIST_ENTRY IopEventList;
 
@@ -197,9 +243,6 @@ VOID IopProcessDpcQueue();
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;
-
-/* main.c */
-extern DRIVER_OBJECT IopDriverObject;
 
 /* timer.c */
 extern LIST_ENTRY IopTimerList;

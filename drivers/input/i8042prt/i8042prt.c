@@ -424,6 +424,7 @@ static NTSTATUS FillEntries(IN PDEVICE_OBJECT DeviceObject,
     if (DeviceObject->Flags & DO_BUFFERED_IO) {
 	RtlCopyMemory(Irp->SystemBuffer, DataStart, Size);
     } else if (DeviceObject->Flags & DO_DIRECT_IO) {
+	assert(Irp->MdlAddress);
 	PVOID DestAddress = MmGetSystemAddressForMdlSafe(Irp->MdlAddress);
 	if (DestAddress) {
 	    RtlCopyMemory(DestAddress, DataStart, Size);
@@ -431,6 +432,7 @@ static NTSTATUS FillEntries(IN PDEVICE_OBJECT DeviceObject,
 	    Status = STATUS_UNSUCCESSFUL;
 	}
     } else {
+	assert(Irp->UserBuffer);
 	RtlCopyMemory(Irp->UserBuffer, DataStart, Size);
     }
 

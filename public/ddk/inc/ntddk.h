@@ -495,7 +495,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	     * the StartIo routine to serialize IO processing. */
 	    KDEVICE_QUEUE_ENTRY DeviceQueueEntry;
 	    /* If driver does not use the device queue, these are
-	     * available for driver use */
+	     * available for driver use. */
 	    PVOID DriverContext[4];
 	};
 	/* Available for driver use. Typically used to queue IRP to
@@ -586,11 +586,9 @@ typedef struct _IO_CLIENT_EXTENSION {
 typedef struct _DRIVER_OBJECT {
     CSHORT Type;
     CSHORT Size;
-    PDEVICE_OBJECT DeviceObject; /* Points to the last device created by IoCreateDevice.
-				  * Deprecated! Do not use in PnP drivers. */
     ULONG Flags;
     PVOID DriverStart;
-    UNICODE_STRING ServiceKeyName;
+    UNICODE_STRING RegistryPath;
     UNICODE_STRING DriverName;
     PUNICODE_STRING HardwareDatabase;
     PIO_CLIENT_EXTENSION ClientDriverExtension;
@@ -600,6 +598,7 @@ typedef struct _DRIVER_OBJECT {
     PDRIVER_ADD_DEVICE AddDevice;
     PDRIVER_UNLOAD DriverUnload;
     PDRIVER_DISPATCH MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
+    LIST_ENTRY ListEntry;
 } DRIVER_OBJECT, *PDRIVER_OBJECT;
 
 /*
@@ -608,6 +607,16 @@ typedef struct _DRIVER_OBJECT {
 typedef VOID (NTAPI *PDRIVER_REINITIALIZE)(IN PDRIVER_OBJECT DriverObject,
 					   IN OPTIONAL PVOID Context,
 					   IN ULONG Count);
+
+/*
+ * This routine returns TRUE if the driver object is being loaded in its own
+ * address space. Class and filter drivers can use this to determine whether
+ * they should register global resources.
+ */
+FORCEINLINE BOOLEAN IoIsSingletonMode(IN PDRIVER_OBJECT DriverObject)
+{
+    return DriverObject->DriverStart == NtCurrentPeb()->ImageBaseAddress;
+}
 
 typedef struct _IO_SECURITY_CONTEXT {
     ACCESS_MASK DesiredAccess;
@@ -1155,6 +1164,9 @@ FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdl(IN PMDL Mdl)
 
 FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl)
 {
+    if (!Mdl) {
+	return NULL;
+    }
     /* Note that if the driver wants to access the memory described by the MDL,
      * it must enable DO_MAP_IO_BUFFER when creating the device to map the memory
      * into driver address space. Otherwise Mdl->MappedSystemVa is always NULL. */

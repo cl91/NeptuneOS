@@ -32,10 +32,10 @@
  *                              ^
  *                              |
  *                        |------------|          |-----------|
- *                        |  i8042prt  |          |  pnp.sys  |
+ *                        |  i8042prt  |          |  acpi.sys |
  *                        |------------|          |-----------|
- *                             PDO   ============  Enumerated
- *                          [unnamed]              by root bus
+ *                             PDO   ============  Enumerated by
+ *                          [unnamed]              the ACPI bus
  *
  * The ClassDO aggregates the keyboard input of port devices that
  * it has connected to. This is done by generating read IRPs for
@@ -43,17 +43,25 @@
  * read IRPs are completed their IO completion routines copy the
  * port data into the aggregated class data buffer. On Windows the
  * class driver implements a ClassCallback which the port driver
- * will then call in their interrupt service routines. Since on
- * NeptuneOS drivers run in their own address space this is not
- * possible, so instead we simply let the port driver handle read
- * IRPs and have the class driver generate the read requests and
- * then forward them to the port driver.
+ * will then call in their interrupt service routines. On Neptune OS,
+ * class and filter drivers are loaded in two places: once as a
+ * standalone driver in their own address space, and for each port
+ * driver above which the class/filter drivers are attached, the
+ * required class/filter driver is loaded inside the port driver's
+ * address space. The latter is done so that passing an IRP from
+ * upper drivers to lower drivers does not require context switches.
+ * In order to unify the IRP handling in both cases, we remove the
+ * ClassCallback mechanism and simply have the class driver generate
+ * read IRPs and then forward them to the port driver.
  *
  * In the case where ConnectMultiplePorts is set to zero, there
  * will be one ClassDO for each port FDO. Instead of generating
  * read IRPs we will simply forward the read IRPs to the port FDO.
  * This applies also to the case where ConnectMultiplePorts is one
- * but there is only one port device connected to it.
+ * but there is only one port device connected to it. If you are
+ * certain that the system will only have one keyboard device,
+ * setting ConnectMultiplePorts to zero can improve performace, as
+ * in this case IRP passing does not require context switches.
  */
 
 #include "kbdclass.h"
@@ -151,6 +159,14 @@ static NTAPI NTSTATUS ClassRead(IN PDEVICE_OBJECT DeviceObject,
 
     if (!((PCOMMON_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->IsClassDO)
 	return ForwardIrpAndForget(DeviceObject, Irp);
+
+    /* If there is no port device connected, simply return failure. */
+    if (!GetListSize(&DeviceExtension->PortDeviceList)) {
+	Irp->IoStatus.Status = STATUS_NO_SUCH_DEVICE;
+	Irp->IoStatus.Information = 0;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	return STATUS_NO_SUCH_DEVICE;
+    }
 
     /* If there is only one port device connected to this class device object,
      * simply forward the read IRP to the port device. */
@@ -341,6 +357,7 @@ static NTSTATUS ReadRegistryEntries(IN PUNICODE_STRING RegistryPath,
 }
 
 static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
+					IN OPTIONAL PDEVICE_OBJECT Fdo,
 					OUT PDEVICE_OBJECT *ClassDO OPTIONAL)
 {
     PCLASS_DRIVER_EXTENSION DriverExtension;
@@ -348,7 +365,7 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
     ULONG PrefixLength;
     UNICODE_STRING DeviceNameU;
     PWSTR DeviceIdW = NULL;	/* Pointer into DeviceNameU.Buffer */
-    PDEVICE_OBJECT Fdo;
+    PDEVICE_OBJECT DeviceObject;
     NTSTATUS Status;
 
     TRACE_(CLASS_NAME, "CreateClassDeviceObject(0x%p)\n", DriverObject);
@@ -384,10 +401,19 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
     while (DeviceId < 9999) {
 	DeviceNameU.Length = (USHORT)(PrefixLength +
 				      swprintf(DeviceIdW, L"%lu", DeviceId) * sizeof(WCHAR));
+	ULONG64 Flags = FILE_DEVICE_SECURE_OPEN | DO_POWER_PAGABLE;
+	if (Fdo) {
+	    if (Fdo->Flags & DO_BUFFERED_IO) {
+		Flags |= DO_BUFFERED_IO;
+	    } else if (Fdo->Flags & DO_DIRECT_IO) {
+		Flags |= DO_DIRECT_IO;
+	    }
+	} else {
+	    Flags |= DO_BUFFERED_IO;
+	}
 	Status = IoCreateDevice(DriverObject, sizeof(CLASS_DEVICE_EXTENSION),
-				&DeviceNameU, FILE_DEVICE_KEYBOARD,
-				FILE_DEVICE_SECURE_OPEN | DO_POWER_PAGABLE | DO_BUFFERED_IO,
-				FALSE, &Fdo);
+				&DeviceNameU, FILE_DEVICE_KEYBOARD, Flags,
+				FALSE, &DeviceObject);
 	if (NT_SUCCESS(Status))
 	    goto cleanup;
 	else if (Status != STATUS_OBJECT_NAME_COLLISION) {
@@ -406,7 +432,7 @@ cleanup:
 	return Status;
     }
 
-    PCLASS_DEVICE_EXTENSION DeviceExtension = (PCLASS_DEVICE_EXTENSION)Fdo->DeviceExtension;
+    PCLASS_DEVICE_EXTENSION DeviceExtension = (PCLASS_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     RtlZeroMemory(DeviceExtension, sizeof(CLASS_DEVICE_EXTENSION));
     DeviceExtension->Common.IsClassDO = TRUE;
     DeviceExtension->DriverExtension = DriverExtension;
@@ -420,7 +446,7 @@ cleanup:
 	return STATUS_NO_MEMORY;
     }
     DeviceExtension->DeviceName = DeviceNameU.Buffer;
-    Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
+    DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
     /* Add entry entry to HKEY_LOCAL_MACHINE\Hardware\DeviceMap\[DeviceBaseName] */
     RtlWriteRegistryValue(RTL_REGISTRY_DEVICEMAP,
@@ -431,7 +457,7 @@ cleanup:
 			  DriverExtension->RegistryPath.MaximumLength);
 
     if (ClassDO)
-	*ClassDO = Fdo;
+	*ClassDO = DeviceObject;
 
     return STATUS_SUCCESS;
 }
@@ -440,8 +466,8 @@ cleanup:
 static NTSTATUS ConnectPortDriver(IN PDEVICE_OBJECT PortDO,
 				  IN PDEVICE_OBJECT ClassDO)
 {
-    TRACE_(CLASS_NAME, "Connecting PortDO %p to ClassDO %p\n", PortDO,
-	   ClassDO);
+    TRACE_(CLASS_NAME, "Connecting PortDO %p (drv %p) to ClassDO %p (drv %p)\n",
+	   PortDO, PortDO->DriverObject, ClassDO, ClassDO->DriverObject);
 
     CONNECT_DATA ConnectData = {
 	.Dummy = 0
@@ -511,9 +537,23 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     TRACE_(CLASS_NAME, "ClassAddDevice called. Pdo = 0x%p\n", Pdo);
 
-    if (Pdo == NULL)
-	/* We may get a NULL Pdo at the first call as we're a legacy driver. Ignore it */
+    /* We may get a NULL Pdo at the first call as we're a legacy driver. Ignore it */
+    if (Pdo == NULL) {
 	return STATUS_SUCCESS;
+    }
+
+    /* If we are running inside the function driver but ConnectMultiplePorts is
+     * specified, do nothing. The singleton object will handle all the IO. */
+    if (DriverExtension->ConnectMultiplePorts && !IoIsSingletonMode(DriverObject)) {
+	return STATUS_SUCCESS;
+    }
+
+    /* If we are the singleton object, but are not connecting to multiple ports,
+     * do nothing. The driver code running in the function driver process will
+     * handle all the IO. */
+    if (!DriverExtension->ConnectMultiplePorts && IoIsSingletonMode(DriverObject)) {
+	return STATUS_SUCCESS;
+    }
 
     /* Create new device object */
     ULONG64 Flags = 0;
@@ -546,11 +586,13 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 	goto cleanup;
     }
 
-    if (DriverExtension->ConnectMultiplePorts)
+    if (DriverExtension->ConnectMultiplePorts) {
+	assert(IoIsSingletonMode(DriverObject));
+	assert(DriverExtension->MainClassDeviceObject);
 	DeviceExtension->ClassDO = DriverExtension->MainClassDeviceObject;
-    else {
+    } else {
 	/* We need a new class device object for this Fdo */
-	Status = CreateClassDeviceObject(DriverObject,
+	Status = CreateClassDeviceObject(DriverObject, Fdo,
 					 &DeviceExtension->ClassDO);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(CLASS_NAME,
@@ -799,8 +841,8 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
-    if (DriverExtension->ConnectMultiplePorts == 1) {
-	Status = CreateClassDeviceObject(DriverObject,
+    if (IoIsSingletonMode(DriverObject) && DriverExtension->ConnectMultiplePorts == 1) {
+	Status = CreateClassDeviceObject(DriverObject, NULL,
 					 &DriverExtension->MainClassDeviceObject);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(CLASS_NAME,
@@ -823,9 +865,11 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = ForwardIrpAndForget;
 
     /* We will detect the legacy devices later */
-    IoRegisterDriverReinitialization(DriverObject,
-				     SearchForLegacyDrivers,
-				     DriverExtension);
+    if (IoIsSingletonMode(DriverObject)) {
+	IoRegisterDriverReinitialization(DriverObject,
+					 SearchForLegacyDrivers,
+					 DriverExtension);
+    }
 
     return STATUS_SUCCESS;
 }

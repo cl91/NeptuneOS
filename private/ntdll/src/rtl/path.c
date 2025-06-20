@@ -487,7 +487,7 @@ NTAPI NTSTATUS RtlGetLengthWithoutLastFullDosOrNtPathElement(IN ULONG Flags,
 							     IN PCUNICODE_STRING Path,
 							     OUT PULONG LengthOut)
 {
-    static const UNICODE_STRING PathDividers = RTL_CONSTANT_STRING(L"\\/");
+    const UNICODE_STRING PathDividers = RTL_CONSTANT_STRING(L"\\/");
     USHORT Position;
     RTL_PATH_TYPE PathType;
 

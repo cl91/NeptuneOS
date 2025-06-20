@@ -12,15 +12,13 @@ typedef struct _LDRP_TLS_DATA {
 CHAR RtlpDbgTraceModuleNameBuffer[128] = "NTDLL";
 PCSTR RtlpDbgTraceModuleName = RtlpDbgTraceModuleNameBuffer;
 
+BOOLEAN LdrpInLdrInit = TRUE;
 BOOLEAN LdrpShutdownInProgress;
 HANDLE LdrpShutdownThreadId;
 
 LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
 PLDR_DATA_TABLE_ENTRY LdrpNtdllEntry;
-
-/* Used by LdrLoadDll to show currently initializing dll name */
-PLDR_DATA_TABLE_ENTRY LdrpCurrentDllInitializer;
 
 RTL_BITMAP TlsBitMap;
 RTL_BITMAP TlsExpansionBitMap;
@@ -396,9 +394,6 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 			NtCurrentTib()->ClientId.UniqueThread,
 			NtCurrentTib()->ClientId.UniqueProcess,
 			&LdrEntry->FullDllName, LdrEntry->EntryPoint);
-		/* Save the old Dll Initializer and write the current one */
-		PLDR_DATA_TABLE_ENTRY OldInitializer = LdrpCurrentDllInitializer;
-		LdrpCurrentDllInitializer = LdrEntry;
 
 		BOOLEAN DllStatus;
 		__try {
@@ -421,9 +416,6 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 			    "LdrpCallInitRoutine(DLL_PROCESS_ATTACH) for %wZ\n",
 			    GetExceptionCode(), &LdrEntry->BaseDllName);
 		}
-
-		/* Save the Current DLL Initializer */
-		LdrpCurrentDllInitializer = OldInitializer;
 
 		/* Mark the entry as processed */
 		LdrEntry->Flags |= LDRP_PROCESS_ATTACH_CALLED;
@@ -883,6 +875,9 @@ FASTCALL VOID LdrpInitialize(PNT_TIB NtTib)
 
 	/* Initialize the Process */
 	Status = LdrpInitializeProcess(&InitInfo);
+
+        /* We're not initializing anymore */
+        LdrpInLdrInit = FALSE;
 
 	if (!NT_SUCCESS(Status)) {
 	    goto err;

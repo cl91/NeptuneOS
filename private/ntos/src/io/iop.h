@@ -15,6 +15,19 @@
     IopAllocateArrayEx(Var, Type, Size, {})
 #define IopFreePool(Var) ExFreePoolWithTag(Var, NTOS_IO_TAG)
 
+FORCEINLINE NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
+					 IN ULONG Size,
+					 OUT PIO_PACKET *pIoPacket)
+{
+    assert(pIoPacket != NULL);
+    assert(Size >= sizeof(IO_PACKET));
+    ExAllocatePoolEx(IoPacket, IO_PACKET, Size, NTOS_IO_TAG, {});
+    IoPacket->Type = Type;
+    IoPacket->Size = Size;
+    *pIoPacket = IoPacket;
+    return STATUS_SUCCESS;
+}
+
 /* Pseudo requestor object that represents the NTOS Executive thread.
  * This is used by the cache manager to generate the paging IO requests. */
 #define IOP_PAGING_IO_REQUESTOR		(PTHREAD)((MWORD)(~0ULL))

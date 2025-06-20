@@ -2,7 +2,6 @@
 #define TEXT(x) L##x
 #include <regstr.h>
 
-#define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 #define PROFILE_KEY_NAME L"Hardware Profiles\\Current\\System\\CurrentControlSet\\"
 #define CLASS_KEY_NAME L"Control\\Class\\"
 #define ENUM_KEY_NAME L"Enum\\"
@@ -46,7 +45,6 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 					     IN GLOBAL_HANDLE DeviceHandle,
 					     IN PDRIVER_OBJECT DriverObject)
 {
-    assert(DriverObject == NULL || DriverObject == &IopDriverObject);
     ObInitializeObject(DeviceObject, CLIENT_OBJECT_DEVICE, DEVICE_OBJECT);
     DeviceObject->Header.Size += DevExtSize;
     DeviceObject->DriverObject = DriverObject;
@@ -94,12 +92,6 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     assert(DriverObject != NULL);
     assert(pDeviceObject != NULL);
 
-    /* We don't support creating device objects for a different driver. */
-    if (DriverObject != &IopDriverObject) {
-	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
-    }
-
     /* Both device object and device extension are aligned by MEMORY_ALLOCATION_ALIGNMENT */
     SIZE_T AlignedDevExtSize = ALIGN_UP_BY(DeviceExtensionSize,
 					   MEMORY_ALLOCATION_ALIGNMENT);
@@ -120,7 +112,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     assert(IopGetDeviceObject(DeviceHandle) == NULL);
 
     IopInitializeDeviceObject(DeviceObject, DeviceExtensionSize,
-			      DevInfo, DeviceHandle, &IopDriverObject);
+			      DevInfo, DeviceHandle, DriverObject);
     DeviceObject->Flags |= DO_DEVICE_INITIALIZING;
     if (Exclusive) {
 	DeviceObject->Flags |= DO_EXCLUSIVE;
@@ -135,9 +127,12 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     DeviceObject->SectorSize = IopDeviceTypeToSectorSize(DeviceType);
 
     *pDeviceObject = DeviceObject;
-    DbgTrace("Created device object %p handle %p extension %p name %ws\n",
+    DbgTrace("Created device object %p handle %p extension %p driver %p name %ws "
+	     "buffered-io %d direct-io %d\n",
 	     DeviceObject, (PVOID)DeviceHandle, DeviceObject->DeviceExtension,
-	     DeviceName ? DeviceName->Buffer : L"(nil)");
+	     DeviceObject->DriverObject, DeviceName ? DeviceName->Buffer : L"(nil)",
+	     !!(DeviceObject->Flags & DO_BUFFERED_IO),
+	     !!(DeviceObject->Flags & DO_DIRECT_IO));
     return STATUS_SUCCESS;
 }
 
@@ -399,40 +394,13 @@ cleanup:
     return Status;
 }
 
-static NTSTATUS IopQueryValueKey(IN HANDLE KeyHandle,
-				 IN PWCHAR ValueName,
-				 OUT PKEY_VALUE_PARTIAL_INFORMATION *PartialInfo)
-{
-    ULONG BufferSize;
-    UNICODE_STRING ValueNameU;
-    RtlInitUnicodeString(&ValueNameU, ValueName);
-    NTSTATUS Status = NtQueryValueKey(KeyHandle, &ValueNameU,
-				      KeyValuePartialInformation,
-				      NULL, 0, &BufferSize);
-    if (Status != STATUS_BUFFER_TOO_SMALL) {
-	return Status;
-    }
 
-    *PartialInfo = ExAllocatePool(BufferSize);
-    if (!*PartialInfo) {
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = NtQueryValueKey(KeyHandle, &ValueNameU,
-			     KeyValuePartialInformation, *PartialInfo,
-			     BufferSize, &BufferSize);
-    if (!NT_SUCCESS(Status)) {
-	ExFreePool(*PartialInfo);
-    }
-    return Status;
-}
-
-static NTSTATUS IopReadRegValue(IN HANDLE KeyHandle,
-				IN PWCHAR ValueName,
-				IN ULONG ValueType,
-				IN ULONG BufferSize,
-				OUT PVOID Data,
-				OUT OPTIONAL ULONG *DataLength)
+static inline NTSTATUS IopReadRegValue(IN HANDLE KeyHandle,
+				       IN PWCHAR ValueName,
+				       IN ULONG ValueType,
+				       IN ULONG BufferSize,
+				       OUT PVOID Data,
+				       OUT OPTIONAL ULONG *DataLength)
 {
     PKEY_VALUE_PARTIAL_INFORMATION PartialInfo = NULL;
     NTSTATUS Status = IopQueryValueKey(KeyHandle, ValueName, &PartialInfo);
@@ -797,10 +765,10 @@ NTAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
     return Status;
 }
 
-static NTSTATUS IopOpenKey(OUT PHANDLE KeyHandle,
-			   IN HANDLE ParentKey,
-			   IN PUNICODE_STRING Name,
-			   IN ACCESS_MASK DesiredAccess)
+static NTSTATUS IopOpenKeyEx(OUT PHANDLE KeyHandle,
+			     IN HANDLE ParentKey,
+			     IN PUNICODE_STRING Name,
+			     IN ACCESS_MASK DesiredAccess)
 {
     *KeyHandle = NULL;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -899,7 +867,7 @@ NTAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Open the base key. */
-    Status = IopOpenKey(DevInstRegKey, NULL, &KeyName, DesiredAccess);
+    Status = IopOpenKeyEx(DevInstRegKey, NULL, &KeyName, DesiredAccess);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("IoOpenDeviceRegistryKey(%wZ): failed to open base key, status 0x%08x\n",
 		&KeyName, Status);

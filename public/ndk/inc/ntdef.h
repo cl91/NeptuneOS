@@ -186,6 +186,8 @@ typedef PVOID HANDLE, HMODULE, HINSTANCE;
 typedef HANDLE *PHANDLE;
 typedef LONG HRESULT;
 
+#define HandleToUlong(h) ((ULONG)(ULONG_PTR)(h))
+
 typedef union _LARGE_INTEGER {
     struct {
         ULONG LowPart;

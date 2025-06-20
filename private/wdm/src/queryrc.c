@@ -117,19 +117,6 @@ static NTSTATUS IopAppendArcTypeSubKey(OUT PUNICODE_STRING String,
 }
 
 /*
- * Open the specified registry key
- */
-static inline NTSTATUS IopOpenKey(IN UNICODE_STRING Key,
-				  OUT HANDLE *KeyHandle)
-{
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    InitializeObjectAttributes(&ObjectAttributes, &Key,
-			       OBJ_CASE_INSENSITIVE, NULL, NULL);
-    TRACE_(NTOSPNP, "Opening key %wZ\n", &Key);
-    return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
-}
-
-/*
  * Query the registry and find out how many subkeys the given key has
  */
 static NTSTATUS IopGetSubKeyCount(IN UNICODE_STRING Key,

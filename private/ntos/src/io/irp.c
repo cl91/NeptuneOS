@@ -7,19 +7,6 @@ LIST_ENTRY IopNtosPendingIrpList;
 #define CLIENT_HANDLE_TO_SERVER_OBJECT(o)				\
     ((o) == (MWORD)IOP_PAGING_IO_REQUESTOR ? (PVOID)(o) : GLOBAL_HANDLE_TO_OBJECT(o))
 
-static NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
-				    IN ULONG Size,
-				    OUT PIO_PACKET *pIoPacket)
-{
-    assert(pIoPacket != NULL);
-    assert(Size >= sizeof(IO_PACKET));
-    ExAllocatePoolEx(IoPacket, IO_PACKET, Size, NTOS_IO_TAG, {});
-    IoPacket->Type = Type;
-    IoPacket->Size = Size;
-    *pIoPacket = IoPacket;
-    return STATUS_SUCCESS;
-}
-
 static VOID IopFreeIoPacket(IN PIO_PACKET IoPacket)
 {
     if (IoPacket->Type == IoPacketTypeRequest) {
