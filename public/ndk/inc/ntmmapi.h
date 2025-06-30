@@ -172,6 +172,12 @@ NTAPI NTSYSAPI NTSTATUS NtCreateSection(OUT PHANDLE SectionHandle,
 					IN ULONG AllocationAttributes,
 					IN OPTIONAL HANDLE FileHandle);
 
+NTAPI NTSYSAPI NTSTATUS NtQuerySection(IN HANDLE SectionHandle,
+				       IN SECTION_INFORMATION_CLASS SectionInformationClass,
+				       OUT PVOID SectionInformation,
+				       IN ULONG Length,
+				       OUT OPTIONAL ULONG *pResultLength);
+
 NTAPI NTSYSAPI NTSTATUS NtMapViewOfSection(IN HANDLE SectionHandle,
 					   IN HANDLE ProcessHandle,
 					   IN OUT PVOID *BaseAddress,

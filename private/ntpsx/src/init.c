@@ -53,7 +53,7 @@ static VOID LdrpInitialize(PNT_TIB NtTib)
 	    goto err;
 	}
 
-	LnxProcessStartup(&InitInfo);
+	PsxProcessStartup();
     } else {
 	/* At thread startup the thread init info is placed at the beginning
 	 * of the ipc buffer. */

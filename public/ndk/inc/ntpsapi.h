@@ -403,6 +403,36 @@ typedef struct _THREAD_BASIC_INFORMATION {
  */
 #ifndef _NTOSKRNL_
 
+NTAPI NTSYSAPI NTSTATUS NtCreateProcess(OUT PHANDLE ProcessHandle,
+					IN ACCESS_MASK DesiredAccess,
+					IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
+					IN HANDLE ParentProcess,
+					IN BOOLEAN InheritObjectTable,
+					IN OPTIONAL HANDLE SectionHandle,
+					IN OPTIONAL HANDLE DebugPort,
+					IN OPTIONAL HANDLE ExceptionPort);
+
+NTAPI NTSYSAPI NTSTATUS NtCreateThread(OUT PHANDLE ThreadHandle,
+				       IN ACCESS_MASK DesiredAccess,
+				       IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
+				       IN HANDLE ProcessHandle,
+				       OUT PCLIENT_ID ClientId,
+				       IN PCONTEXT ThreadContext,
+				       IN PINITIAL_TEB UserStack,
+				       IN BOOLEAN CreateSuspended);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryInformationProcess(IN HANDLE ProcessHandle,
+						  IN PROCESSINFOCLASS ProcessInformationClass,
+						  OUT PVOID ProcessInformation,
+						  IN ULONG ProcessInformationLength,
+						  OUT OPTIONAL PULONG ReturnLength);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryInformationThread(IN HANDLE ThreadHandle,
+						 IN THREADINFOCLASS ThreadInformationClass,
+						 OUT PVOID ThreadInformation,
+						 IN ULONG ThreadInformationLength,
+						 OUT OPTIONAL PULONG ReturnLength);
+
 NTAPI NTSYSAPI NTSTATUS NtTerminateProcess(IN HANDLE ProcessHandle,
 					   IN NTSTATUS ExitStatus);
 

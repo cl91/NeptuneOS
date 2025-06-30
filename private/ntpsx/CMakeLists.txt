@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12.0)
 
 set(CMAKE_SYSTEM_NAME Linux)
 
-project(ntlnxshim C ASM)
+project(ntpsx C ASM)
 
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../rtl)
@@ -15,8 +15,7 @@ add_compile_options(
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
-    -D_NTDLL_
-    -D_NTSYSTEM_
+    -D_NTPSX_
 )
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -D_DEBUG -DDBG=1" CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG" CACHE STRING "" FORCE)
@@ -63,28 +62,16 @@ include_directories(
     ../../public/ndk/inc
     ../../public/crt/inc
     ../../public/crt/inc/${Arch}
+    ../../public/posix/inc
 )
 
-list(APPEND COMMON_SRC
+file(GLOB SRC src/*.[cS] src/${Arch}/*.[cS])
+
+list(APPEND SRC
     ../ntdll/src/ke/services.c
+    ../ntdll/src/ke/${Arch}/context.c
     ../ntdll/src/rtl/debug.c
-    src/${Arch}/entry.S
-    src/init.c
-    src/except.c
 )
 
-list(APPEND KRNL_SRC
-    ${COMMON_SRC}
-    ../wdm/src/wdmsvc.c
-    src/krnl.c
-)
-
-list(APPEND USER_SRC
-    ${COMMON_SRC}
-)
-
-add_library(ntlnxshimk STATIC ${KRNL_SRC})
-add_library(ntlnxshimu STATIC ${USER_SRC})
-add_dependencies(ntlnxshimk rtl)
-add_dependencies(ntlnxshimu rtl)
-target_compile_options(ntlnxshimk PRIVATE -DKRNLMODE -D_NTDDK_)
+add_library(ntpsx STATIC ${SRC})
+target_link_libraries(ntpsx PRIVATE rtl)

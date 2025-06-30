@@ -1,8 +1,6 @@
 #include <printf.h>
 #include <ntdll.h>
 
-// TODO: Replace with ReactOS code
-
 #ifdef CONFIG_DEBUG_BUILD
 
 VOID vDbgPrint(IN PCSTR Format, IN va_list args)

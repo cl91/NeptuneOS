@@ -228,7 +228,7 @@ VOID KeDbgDumpIPCError(IN int Error);
 #define KeDbgDumpIPCError(x)
 #endif	/* DEBUG */
 
-#if defined(_NTOSKRNL_) || defined(_NTDLL_)
+#if defined(_NTOSKRNL_) || defined(_NTDLL_) || defined(_NTPSX_)
 extern PCSTR RtlpDbgTraceModuleName;
 #else
 extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;

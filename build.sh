@@ -77,7 +77,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,elf,pe_inc,ntdll,wdm,ntlnxshim,base,drivers,initcpio,ndk_lib,ddk_lib,ldk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -93,9 +93,9 @@ cmake ../../tools -G Ninja
 ninja
 
 # Build ntos with the ELF toolchain
-cd ../elf
+cd ../ntos
 echo
-echo "---- Building ELF targets ----"
+echo "---- Building seL4 kernel and NT Executive ----"
 echo
 cmake ../../private/ntos \
       -DArch=${ARCH} \
@@ -129,13 +129,13 @@ echo
 echo "---- Building private PE targets ----"
 echo
 mkdir -p {kernel,libsel4,sel4_include/sel4,sel4_arch_include/sel4/sel4_arch}
-cp ../elf/structures_gen.h . || build_failed
+cp ../ntos/structures_gen.h . || build_failed
 cp -r ../../sel4/libsel4/include/sel4/* sel4_include/sel4 || build_failed
 cp -r ../../sel4/libsel4/sel4_arch_include/$SEL4_ARCH/sel4/sel4_arch/* \
    sel4_arch_include/sel4/sel4_arch || build_failed
-cp -r ../elf/kernel/gen_config kernel || build_failed
+cp -r ../ntos/kernel/gen_config kernel || build_failed
 for i in gen_config autoconf include arch_include sel4_arch_include; do
-    cp -r ../elf/libsel4/$i libsel4 || build_failed
+    cp -r ../ntos/libsel4/$i libsel4 || build_failed
 done
 cat <<EOF > sel4_get_ipc_buffer.h
 LIBSEL4_INLINE_FUNC seL4_IPCBuffer *seL4_GetIPCBuffer(void)
@@ -220,14 +220,17 @@ cmake ../../private/wdm \
 ninja || build_failed
 cp wdm.lib ../ddk_lib || build_failed
 
-# Build ntlnxshim.so with the ELF toolchain. Note for ntlnxshim, even though it is an
-# ELF target, we use the modified sel4_include headers so the seL4 IPC buffer address
-# is obtained from the NtCurrentTib() call, rather than from a thread-local variable.
-cd ../ntlnxshim
-cp ../elf/structures_gen.h . || build_failed
-cp ../elf/rtl/syssvc_gen.h . || build_failed
-cp ../elf/rtl/wdmsvc_gen.h . || build_failed
-cmake ../../private/ntlnxshim \
+# Build libntpsx.a with the ELF toolchain. Note for ntpsx, even though it is an ELF target,
+# we use the modified sel4_include headers so the seL4 IPC buffer address is obtained from
+# the NtCurrentTib() call, rather than from a thread-local variable.
+echo
+echo "---- Building NT Posix shim library ----"
+echo
+cd ../ntpsx
+cp ../ntos/structures_gen.h . || build_failed
+cp ../ntos/rtl/syssvc_gen.h . || build_failed
+cp ../ntos/rtl/wdmsvc_gen.h . || build_failed
+cmake ../../private/ntpsx \
       -DArch=${ARCH} \
       -DTRIPLE=${ELF_TRIPLE} \
       -DKernelPlatform=${PLATFORM} \
@@ -236,15 +239,13 @@ cmake ../../private/ntlnxshim \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DSANITIZED_SEL4_INCLUDE_DIR="${PE_INC}/sel4_include" \
       -DSANITIZED_SEL4_ARCH_INCLUDE_DIR="${PWD}/../../sel4/libsel4/sel4_arch_include/${SEL4_ARCH}" \
-      -DSEL4_GENERATED_HEADERS_DIR="${PWD}/../elf" \
+      -DSEL4_GENERATED_HEADERS_DIR="${PWD}/../ntos" \
       -DSTRUCTURES_GEN_DIR="${PWD}" \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -DSVCGEN_TYPE="--utf8_client" \
       -G Ninja
 ninja || build_failed
-cp libntlnxshimk.a ../ldk_lib || build_failed
-cp libntlnxshimu.a ../ldk_lib || build_failed
 
 # Build drivers with the PE toolchain
 cd ../drivers
@@ -283,11 +284,43 @@ cmake ../../base \
       -G Ninja
 ninja || build_failed
 
+# Build the Posix subsystem DLL using the ELF toolchain
+cd ../posix/psxdll
+echo
+echo "---- Building Posix subsystem DLL ----"
+echo
+cmake ../../../posix/psxdll \
+      -DTRIPLE=${ELF_TRIPLE} \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DNTPSX_LIB_PATH=${PWD}/../../ntpsx \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -G Ninja
+ninja || build_failed
+
+# Build the Posix subsystem server using the PE toolchain
+cd ../psxss
+echo
+echo "---- Building Posix subsystem server ----"
+echo
+cmake ../../../posix/psxss \
+      -DTRIPLE=${PE_TRIPLE} \
+      -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DNDK_LIB_PATH=${PWD}/../../ndk_lib \
+      -DUTF16LE_PATH=${UTF16LE_PATH} \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -G Ninja
+ninja || build_failed
+
 # Build initcpio
 echo
 echo "---- Building INITCPIO ----"
 echo
-cd ../initcpio
+cd ../../initcpio
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
 BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
 DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys base/pnp/pnp.sys
@@ -328,7 +361,7 @@ echo
 echo "---- Linking NTOS image ----"
 echo
 cd ../$IMAGEDIR
-cp ../elf/kernel-$SEL4_ARCH-$PLATFORM kernel || build_failed
+cp ../ntos/kernel-$SEL4_ARCH-$PLATFORM kernel || build_failed
 if [[ ${BUILD_TYPE} == Release ]]; then
     LLD_OPTIONS="--gc-sections -O 3"
 else
@@ -337,8 +370,8 @@ fi
 ld.lld -m ${LINKER_EMULATION} ${LLD_OPTIONS} ${RTLIB} \
        --allow-multiple-definition \
        -z max-page-size=0x1000 \
-       ../elf/libntos.a \
-       ../elf/rtl/librtl.a \
+       ../ntos/libntos.a \
+       ../ntos/rtl/librtl.a \
        ../initcpio/initcpio.o \
        -T ../../private/ntos/ntos.lds \
        -o ntos
@@ -380,11 +413,11 @@ if [[ ${ARCH} == "arm64" ]]; then
 	  -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
 	  -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
 	  -DPLATFORM=${PLATFORM} \
-	  -DKernelDTBPath=$PWD/../elf/kernel/kernel.dtb \
+	  -DKernelDTBPath=$PWD/../ntos/kernel/kernel.dtb \
 	  -DHARDWARE_GEN_PATH=$PWD/../../sel4/tools/hardware_gen.py \
 	  -DKERNEL_IMAGE=$PWD/../$IMAGEDIR/kernel \
 	  -DNTOS_IMAGE=$PWD/../$IMAGEDIR/ntos \
-	  -DKERNEL_GEN_CONFIG_DIR=$PWD/../elf/kernel/gen_config \
+	  -DKERNEL_GEN_CONFIG_DIR=$PWD/../ntos/kernel/gen_config \
 	  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
 	  -G Ninja ../../tools/elfloader || build_failed
     ninja bootimg || build_failed
@@ -400,8 +433,8 @@ echo
 echo "---- Merge compile_commands.json ----"
 echo
 if [[ $(which jq) ]]; then
-    jq -s add ../*/*.json > ../compile_commands.json
-    rm ../*/compile_commands.json
+    jq -s add ../*/compile_commands.json ../*/*/compile_commands.json > ../compile_commands.json
+    rm ../*/compile_commands.json ../*/*/*.json
     echo "Done."
 else
     echo "You'll need to install jq (https://jqlang.github.io/jq)."

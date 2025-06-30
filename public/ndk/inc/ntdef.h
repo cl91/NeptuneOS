@@ -59,7 +59,7 @@
 
 #define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg " Use " #repl ".", #repl)))
 
-#if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_)
+#if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_) && !defined(_NTPSX_)
 #define NTSYSAPI	DECLSPEC_IMPORT
 #define NTSYSCALLAPI	DECLSPEC_IMPORT
 #else

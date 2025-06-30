@@ -1,12 +1,9 @@
 #pragma once
 
-#ifdef KRNLMODE
-#define RTLP_DBGTRACE_MODULE_NAME	"NTLNXSHIMK"
-#else
-#define RTLP_DBGTRACE_MODULE_NAME	"NTLNXSHIMU"
-#endif
+#define RTLP_DBGTRACE_MODULE_NAME	"NTPSX"
 
 #include <nt.h>
+#include <ntpsx.h>
 #include <services.h>
 #include <sel4/sel4.h>
 #include <ntdll_syssvc_gen.h>
@@ -38,5 +35,3 @@ FORCEINLINE VOID RtlRaiseStatus(NTSTATUS Status)
 /* except.c */
 VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
 			     IN PCONTEXT Context);
-
-VOID LnxProcessStartup(PNTDLL_PROCESS_INIT_INFO InitInfo);
