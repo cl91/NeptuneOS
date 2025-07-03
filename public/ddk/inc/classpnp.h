@@ -663,7 +663,8 @@ typedef struct _COMPLETION_CONTEXT {
 #define CLASSPNP_API DECLSPEC_IMPORT
 #endif
 
-NTAPI CLASSPNP_API ULONG ClassInitialize(IN PVOID Argument1, IN PVOID Argument2,
+NTAPI CLASSPNP_API ULONG ClassInitialize(IN PDRIVER_OBJECT DriverObject,
+					 IN PUNICODE_STRING RegistryPath,
 					 IN PCLASS_INIT_DATA InitializationData);
 
 typedef struct _CLASS_QUERY_WMI_REGINFO_EX_LIST {

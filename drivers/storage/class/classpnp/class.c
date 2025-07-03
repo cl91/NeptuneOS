@@ -132,8 +132,8 @@ Routine Description:
 
 Arguments:
 
-    Argument1          - Driver Object.
-    Argument2          - Registry Path.
+    DriverObject       - Driver Object of the miniclass driver.
+    RegistryPath       - Registry Path of the miniclass driver.
     InitializationData - Device-specific driver's initialization data.
 
 Return Value:
@@ -141,13 +141,10 @@ Return Value:
     A valid return code for a DriverEntry routine.
 
 --*/
-NTAPI ULONG ClassInitialize(IN PVOID Argument1,
-			    IN PVOID Argument2,
+NTAPI ULONG ClassInitialize(IN PDRIVER_OBJECT DriverObject,
+			    IN PUNICODE_STRING RegistryPath,
 			    IN PCLASS_INIT_DATA InitializationData)
 {
-    PDRIVER_OBJECT DriverObject = Argument1;
-    PUNICODE_STRING RegistryPath = Argument2;
-
     PCLASS_DRIVER_EXTENSION driverExtension;
 
     NTSTATUS status;
@@ -590,8 +587,6 @@ Status:
 NTAPI VOID ClassUnload(IN PDRIVER_OBJECT DriverObject)
 {
     PCLASS_DRIVER_EXTENSION driverExtension;
-
-    NT_ASSERT(DriverObject->DeviceObject == NULL);
 
     driverExtension = IoGetDriverObjectExtension(DriverObject,
 						 CLASS_DRIVER_EXTENSION_KEY);
