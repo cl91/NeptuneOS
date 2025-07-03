@@ -333,7 +333,7 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
 	DriverObject->DriverUnload = NULL;
     }
 
-    DriverObject->DriverExtension->AddDevice = ClassAddDevice;
+    DriverObject->AddDevice = ClassAddDevice;
 
     //
     // Register for event tracing
