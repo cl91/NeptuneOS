@@ -362,7 +362,7 @@ ClassInitializeEx()
 
 Routine Description:
 
-    This routine is allows the caller to do any extra initialization or
+    This routine allows the caller to do any extra initialization or
     setup that is not done in ClassInitialize. The operation is
     controlled by the GUID that is passed and the contents of the Data
     parameter is dependent upon the GUID.

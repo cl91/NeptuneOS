@@ -99,7 +99,7 @@ Return Value:
     hwInitializationData.AutoRequestSense = TRUE;
     hwInitializationData.NeedPhysicalAddresses = TRUE;
     hwInitializationData.NumberOfAccessRanges = NUM_ACCESS_RANGES;
-    
+
     //
     // Support both PCI/ACPI enumerations on ARM64 platform for SATA device.
     // Miniport uses flag to indicate storport to query/override the interface type reported here.
@@ -2116,7 +2116,7 @@ Return Values:
     serr.AsUlong = 0;
 
     pxis.AsUlong = StorPortReadRegisterUlong(ChannelExtension->AdapterExtension, &ChannelExtension->Px->IS.AsUlong);
-    
+
     if (pxis.IFS || pxis.HBDS || pxis.HBFS || pxis.TFES || pxis.PCS || pxis.PRCS) {
         serr.AsUlong = StorPortReadRegisterUlong(ChannelExtension->AdapterExtension, &ChannelExtension->Px->SERR.AsUlong);
     }
@@ -2405,8 +2405,7 @@ Return Values:
         }
 
         AhciPortErrorRecovery(ChannelExtension);
-    }
-    else {
+    } else {
         ChannelExtension->TaskFileData.AsUlong = 0x40;
     }
 
@@ -2511,7 +2510,7 @@ Return Values:
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
 
     is = StorPortReadRegisterUlong(AdapterExtension, adapterExtension->IS);
-        
+
     if (adapterExtension->StateFlags.Removed) {
         return FALSE;
     }
@@ -2702,7 +2701,7 @@ Return Value:
 
                 StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n", 
                     adapterExtension->SystemIoBusNumber, storAddrBtl8->Path, unitControlPower->PowerState == StorPowerDeviceD0 ? "D0" : "D3");
-                
+
                 if (unitControlPower->PowerState == StorPowerDeviceD0) {
                     AhciPortPowerUp(channelExtension);
                     channelExtension->DevicePowerState = StorPowerDeviceD0;
@@ -2877,7 +2876,7 @@ Return Value:
 
                 channelExtension->StateFlags.PoFxActive = activeContext->Active ? 1 : 0;
 
-                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n", 
+                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n",
                     adapterExtension->SystemIoBusNumber, channelExtension->PortNumber, activeContext->Active ? "ACTIVE" : "IDLE");
 
                 if (activeContext->Active) {
@@ -2935,11 +2934,11 @@ Return Value:
                                                             channelExtension->AutoPartialToSlumberInterval * 1000, 20000);
 
                         if (status == STOR_STATUS_SUCCESS) {
-                            StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Scheduled\n", 
+                            StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Scheduled\n",
                                 adapterExtension->SystemIoBusNumber, channelExtension->PortNumber);
                         }
                     }
-                    
+
                 }
             } else {
                 status = ScsiUnitControlUnsuccessful;
@@ -2955,10 +2954,10 @@ Return Value:
 
             if (IsPortValid(adapterExtension, storAddrBtl8->Path) && PortPoFxEnabled(channelExtension)) {
 
-                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transition from F%u to F%u\n", 
+                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transition from F%u to F%u\n",
                     adapterExtension->SystemIoBusNumber, channelExtension->PortNumber, channelExtension->PoFxFState, fStateContext->FState);
 
-                channelExtension->PoFxFState = (UCHAR)fStateContext->FState;                
+                channelExtension->PoFxFState = (UCHAR)fStateContext->FState;
 
                 if (fStateContext->FState == 0) {
                 } else if (fStateContext->FState == 1) {
@@ -2995,8 +2994,8 @@ Return Value:
                 channelExtension->SlotManager.NormalQueueSliceIssued = 0;
                 channelExtension->SlotManager.SingleIoSliceIssued = 0;
                 channelExtension->SlotManager.HighPriorityAttribute &= ~channelExtension->SlotManager.CommandsToComplete;
-                
-                AhciCompleteIssuedSRBs(channelExtension, SRB_STATUS_NO_DEVICE, TRUE); 
+
+                AhciCompleteIssuedSRBs(channelExtension, SRB_STATUS_NO_DEVICE, TRUE);
 
                 //
                 // Complete all other commands miniport owns for this device.

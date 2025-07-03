@@ -44,12 +44,12 @@ Revision History:
 
 #include <pshpack1.h>
 typedef struct _GETVERSIONINPARAMS {
-        UCHAR    bVersion;               // Binary driver version.
-        UCHAR    bRevision;              // Binary driver revision.
-        UCHAR    bReserved;              // Not used.
-        UCHAR    bIDEDeviceMap;          // Bit map of IDE devices.
-        ULONG   fCapabilities;          // Bit mask of driver capabilities.
-        ULONG   dwReserved[4];          // For future use.
+    UCHAR   bVersion;               // Binary driver version.
+    UCHAR   bRevision;              // Binary driver revision.
+    UCHAR   bReserved;              // Not used.
+    UCHAR   bIDEDeviceMap;          // Bit map of IDE devices.
+    ULONG   fCapabilities;          // Bit mask of driver capabilities.
+    ULONG   dwReserved[4];          // For future use.
 } GETVERSIONINPARAMS, *PGETVERSIONINPARAMS, *LPGETVERSIONINPARAMS;
 #include <poppack.h>
 
@@ -85,12 +85,12 @@ typedef struct _GETVERSIONINPARAMS {
 
 #include <pshpack1.h>
 typedef struct _SENDCMDINPARAMS {
-        ULONG   cBufferSize;             // Buffer size in bytes
-        ATAREGISTERS irDriveRegs;        // Structure with drive register values.
-        UCHAR    bDriveNumber;           // Physical drive number to send command to.
-        UCHAR    bReserved[3];           // Reserved for future expansion.
-        ULONG    dwReserved[4];          // For future use.
-        UCHAR    bBuffer[1];             // Input buffer.
+    ULONG   cBufferSize;             // Buffer size in bytes
+    ATAREGISTERS irDriveRegs;        // Structure with drive register values.
+    UCHAR    bDriveNumber;           // Physical drive number to send command to.
+    UCHAR    bReserved[3];           // Reserved for future expansion.
+    ULONG    dwReserved[4];          // For future use.
+    UCHAR    bBuffer[1];             // Input buffer.
 } SENDCMDINPARAMS, *PSENDCMDINPARAMS, *LPSENDCMDINPARAMS;
 #include <poppack.h>
 
@@ -100,13 +100,13 @@ typedef struct _SENDCMDINPARAMS {
 
 #include <pshpack1.h>
 typedef struct _DRIVERSTATUS {
-        UCHAR    bDriverError;           // Error code from driver,
-                                                                // or 0 if no error.
-        UCHAR    bIDEError;                      // Contents of IDE Error register.
-                                                                // Only valid when bDriverError
-                                                                // is SMART_IDE_ERROR.
-        UCHAR    bReserved[2];           // Reserved for future expansion.
-        ULONG   dwReserved[2];          // Reserved for future expansion.
+    UCHAR    bDriverError;           // Error code from driver,
+    // or 0 if no error.
+    UCHAR    bIDEError;                      // Contents of IDE Error register.
+    // Only valid when bDriverError
+    // is SMART_IDE_ERROR.
+    UCHAR    bReserved[2];           // Reserved for future expansion.
+    ULONG   dwReserved[2];          // Reserved for future expansion.
 } DRIVERSTATUS, *PDRIVERSTATUS, *LPDRIVERSTATUS;
 #include <poppack.h>
 
@@ -126,6 +126,7 @@ typedef struct _DRIVERSTATUS {
 #define SMART_NOT_SUPPORTED     9       // Invalid cmd flag set
 #define SMART_NO_IDE_DEVICE     10      // Cmd issued to device not present
                                         // although drive number is valid
+
 //
 // SMART sub commands for execute offline diags
 //
@@ -138,9 +139,10 @@ typedef struct _DRIVERSTATUS {
 
 #include <pshpack1.h>
 typedef struct _SENDCMDOUTPARAMS {
-        ULONG                   cBufferSize;            // Size of bBuffer in bytes
-        DRIVERSTATUS            DriverStatus;           // Driver status structure.
-        UCHAR                   bBuffer[1];             // Buffer of arbitrary length in which to store the data read from the                                                                                  // drive.
+    ULONG cBufferSize;            // Size of bBuffer in bytes
+    DRIVERSTATUS DriverStatus;    // Driver status structure.
+    UCHAR bBuffer[1];             // Buffer of arbitrary length in which to
+                                  // store the data read from the drive.
 } SENDCMDOUTPARAMS, *PSENDCMDOUTPARAMS, *LPSENDCMDOUTPARAMS;
 #include <poppack.h>
 
