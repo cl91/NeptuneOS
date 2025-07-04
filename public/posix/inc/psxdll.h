@@ -15,7 +15,7 @@ typedef struct _POSIX_STAT {
 } POSIX_STAT, *PPOSIX_STAT;
 
 /*
- * System call table for POSIX processes
+ * System call table for POSIX processes.
  */
 typedef struct _POSIX_SYSCALL_TABLE {
     /* File I/O */
