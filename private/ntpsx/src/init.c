@@ -1,6 +1,6 @@
 #include <ntdll.h>
 
-PCSTR RtlpDbgTraceModuleName = "NTDLL";
+PCSTR RtlpDbgTraceModuleName = "NTPSX";
 
 static PPEB Peb;
 
@@ -44,7 +44,7 @@ static VOID LdrpInitialize(PNT_TIB NtTib)
 				    InitInfo.ThreadInitInfo.StackReserve);
 
 	/* Set up the process environment block address in the thread environment block */
-	Peb = ((PTEB)NtTib)->ProcessEnvironmentBlock = (PVOID)InitInfo.PebAddress;
+	Peb = ((PTEB)NtTib)->Peb = (PVOID)InitInfo.PebAddress;
 
 	/* Initialize the Process */
 	Status = LdrpInitializeProcess(&InitInfo);
@@ -70,7 +70,7 @@ static VOID LdrpInitialize(PNT_TIB NtTib)
 
 	/* Set up the process environment block address in the thread environment block.
 	 * Note we need to do this for each thread. */
-	((PTEB)NtTib)->ProcessEnvironmentBlock = Peb;
+	((PTEB)NtTib)->Peb = Peb;
 
 	/* This is a new thread initializing */
 	Status = LdrpInitializeThread();
