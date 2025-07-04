@@ -32,19 +32,36 @@ typedef struct _POSIX_SYSCALL_TABLE {
     INT     (*Access)(PCSTR Pathname, INT Mode);
     INT     (*Unlink)(PCSTR Pathname);
     INT     (*Rename)(PCSTR OldPath, PCSTR NewPath);
+    UINT    (*SetFileMask)(UINT NewMask);
+
+    /* Directory Control */
     INT     (*MakeDir)(PCSTR Pathname, UINT Mode);
     INT     (*RemoveDir)(PCSTR Pathname);
-
-    /* Directory */
     INT     (*GetDirectoryEntries)(INT DirFd, PVOID DirEntryBuffer, UINT BufferLength);
+    INT     (*ChangeDirectory)(PCSTR Path);
+    PCHAR   (*GetCurrentDirectory)(PCHAR Buffer, SIZE_T Size);
+    SSIZE_T (*ReadLink)(PCSTR Pathname, PCHAR Buffer, SIZE_T Size);
+
+    /* File Descriptors */
+    INT     (*DuplicateHandle)(INT OldFd);
+    INT     (*DuplicateHandleTo)(INT OldFd, INT NewFd);
+
+    /* Pipes & Events */
+    INT     (*CreatePipe)(INT PipeHandles[2]);
+    INT     (*PollHandles)(PVOID Fds, UINT Count, INT Timeout);
+    INT     (*SelectHandles)(INT Nfds, PVOID ReadFds, PVOID WriteFds,
+			     PVOID ExceptFds, PVOID Timeout);
+
+    /* Device Io Control */
+    INT     (*IoControl)(INT FileHandle, INT Command, ...);
 
     /* Memory Management */
     PVOID   (*MapView)(PVOID BaseAddress, SIZE_T Length, INT Protection,
 		       INT Flags, INT FileHandle, INT64 Offset);
     INT     (*UnmapView)(PVOID BaseAddress, SIZE_T Length);
     PVOID   (*RemapView)(PVOID OldAddress, SIZE_T OldSize, SIZE_T NewSize, INT Flags);
-    PVOID   (*SetBreak)(PVOID EndAddress);
     INT     (*ProtectView)(PVOID Address, SIZE_T Length, INT Protection);
+    PVOID   (*SetHeapBreak)(PVOID EndAddress);
 
     /* Process Control */
     INT     (*Fork)(VOID);
@@ -52,22 +69,6 @@ typedef struct _POSIX_SYSCALL_TABLE {
     INT     (*WaitForProcess)(INT Pid, PLONG ExitCode, INT Options, PVOID Usage);
     VOID    (*ExitProcess)(INT ExitCode);
     VOID    (*ExitThread)(INT ExitCode);
-
-    /* File Descriptors */
-    INT     (*DuplicateHandle)(INT OldFd);
-    INT     (*DuplicateHandleTo)(INT OldFd, INT NewFd);
-    INT     (*ControlFile)(INT FileHandle, INT Command, ...);
-
-    /* Path Navigation */
-    INT     (*ChangeDirectory)(PCSTR Path);
-    PCHAR   (*GetCurrentDirectory)(PCHAR Buffer, SIZE_T Size);
-    SSIZE_T (*ReadLink)(PCSTR Pathname, PCHAR Buffer, SIZE_T Size);
-
-    /* Pipes & Events */
-    INT     (*CreatePipe)(INT PipeHandles[2]);
-    INT     (*PollHandles)(PVOID Fds, UINT Count, INT Timeout);
-    INT     (*SelectHandles)(INT Nfds, PVOID ReadFds, PVOID WriteFds,
-			     PVOID ExceptFds, PVOID Timeout);
 
     /* Signal Handling */
     INT     (*SetSignalHandler)(INT Signal, PVOID Action, PVOID OldAction);
@@ -88,9 +89,6 @@ typedef struct _POSIX_SYSCALL_TABLE {
 
     /* System Info */
     INT     (*GetSystemInfo)(PVOID UtsName);
-
-    /* Umask */
-    UINT    (*SetFileMask)(UINT NewMask);
 } POSIX_SYSCALL_TABLE, *PPOSIX_SYSCALL_TABLE;
 
 /*
