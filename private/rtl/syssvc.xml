@@ -107,6 +107,41 @@
     <parameter annotation="in" type="HANDLE" name="EventHandle" />
   </svc>
 
+  <svc name="NtCreatePort">
+    <parameter annotation="out" type="ptr::HANDLE" name="PortHandle" />
+    <parameter annotation="out" type="ptr::HANDLE" name="CommPortHandle" />
+    <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="ULONG" name="MaxMessageLength" />
+  </svc>
+
+  <svc name="NtListenPort">
+    <parameter annotation="in" type="HANDLE" name="PortHandle" />
+    <parameter annotation="out" type="ptr::CLIENT_ID" name="ClientId" />
+    <parameter annotation="out opt" type="buf::Void" name="ConnectionInformation" />
+    <parameter annotation="in" type="bufsize::ULONG" name="MaxConnectionInfoLength" />
+    <parameter annotation="out opt" type="bufsize::ULONG" name="ConnectionInformationLength" />
+  </svc>
+
+  <svc name="NtAcceptPort">
+    <parameter annotation="in" type="HANDLE" name="PortHandle" />
+    <parameter annotation="in" type="ULONG_PTR" name="PortContext" />
+    <parameter annotation="in" type="ptr::CLIENT_ID" name="ClientId" />
+    <parameter annotation="in" type="BOOLEAN" name="AcceptConnection" />
+    <parameter annotation="in out opt" type="ptr::PORT_VIEW" name="ServerView" />
+    <parameter annotation="out opt" type="ptr::REMOTE_PORT_VIEW" name="ClientView" />
+  </svc>
+
+  <svc name="NtConnectPort">
+    <parameter annotation="in out" type="ptr::HANDLE" name="PortHandle" />
+    <parameter annotation="in opt" type="UnicodeString" name="PortName" />
+    <parameter annotation="in" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />
+    <parameter annotation="in out opt" type="ptr::PORT_VIEW" name="ClientView" />
+    <parameter annotation="out opt" type="ptr::REMOTE_PORT_VIEW" name="ServerView" />
+    <parameter annotation="out opt" type="ptr::ULONG" name="MaxMessageLength" />
+    <parameter annotation="in opt" type="buf::Void" name="ConnectionInformation" />
+    <parameter annotation="in" type="bufsize::ULONG" name="ConnectionInformationLength" />
+  </svc>
+
   <svc name="NtTestAlert" />
 
   <svc name="NtWaitForSingleObject">

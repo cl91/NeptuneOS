@@ -22,4 +22,5 @@
 #include <ntcmapi.h>
 #include <ntpoapi.h>
 #include <ntexapi.h>
+#include <ntlpc.h>
 #include <ntverp.h>

@@ -292,3 +292,20 @@ typedef struct _APC_OBJECT {
 #include <syssvc_gen.h>
 
 compile_assert(TOO_MANY_SYSTEM_SERVICES, NUMBER_OF_SYSTEM_SERVICES < 0x1000UL);
+
+/*
+ * For the NT LPC communication port handle, the second lowest bit is set
+ * to distinguish it from regular NT handles. These special handles are
+ * local in the sense that they are simply a cap in the client CSpace.
+ */
+#define LOCAL_HANDLE_FLAG	(2ULL)
+#define LOCAL_HANDLE_SHIFT	(2)
+#define IS_LOCAL_HANDLE(h)	(!!((ULONG_PTR)(h) & LOCAL_HANDLE_FLAG))
+#define LOCAL_HANDLE_TO_CAP(h)	((ULONG_PTR)(h) >> LOCAL_HANDLE_SHIFT)
+#define CAP_TO_LOCAL_HANDLE(c)	((HANDLE)(((c) << LOCAL_HANDLE_SHIFT) | LOCAL_HANDLE_FLAG))
+
+/*
+ * Maximum message length that can be sent through the seL4 message buffer
+ * for the NT LPC messages. Longer messages are sent through shared memory.
+ */
+#define NT_LPC_MAX_SHORT_MESSAGE_LENGTH (seL4_MsgMaxLength * MWORD_BYTES)

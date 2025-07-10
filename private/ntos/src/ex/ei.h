@@ -4,3 +4,6 @@
 
 /* event.c */
 NTSTATUS EiInitEventObject();
+
+/* port.c */
+NTSTATUS EiInitPortObject();

@@ -36,6 +36,14 @@ typedef struct _EVENT_OBJECT {
 } EVENT_OBJECT, *PEVENT_OBJECT;
 
 /*
+ * LPC port object.
+ */
+typedef struct _PORT_OBJECT {
+    IPC_ENDPOINT Endpoint;
+    LIST_ENTRY Link;
+} PORT_OBJECT, *PPORT_OBJECT;
+
+/*
  * This can only be called in non-async functions
  */
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
