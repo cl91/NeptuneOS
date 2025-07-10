@@ -100,6 +100,7 @@ static NTSTATUS EiCreateObjectTypes()
 {
     RET_ERR(EiCreateTimerType());
     RET_ERR(EiInitEventObject());
+    RET_ERR(EiInitPortObject());
     return STATUS_SUCCESS;
 }
 

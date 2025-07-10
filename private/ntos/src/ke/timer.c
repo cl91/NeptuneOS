@@ -188,7 +188,7 @@ NTSTATUS KiInitTimer()
 			    SERVICE_TYPE_NOTIFICATION);
     RET_ERR(MmCapTreeDeriveBadgedNode(&KiTimerServiceNotification.TreeNode,
 				      &KiExecutiveServiceEndpoint.TreeNode,
-				      ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
+				      ENDPOINT_RIGHTS_SEND_GRANTREPLY,
 				      SERVICE_TYPE_NOTIFICATION));
 
     TIME_FIELDS ClockTime;

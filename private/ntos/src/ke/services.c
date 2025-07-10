@@ -94,7 +94,7 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
     KeInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, IPCBadge);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
-					 ENDPOINT_RIGHTS_WRITE_GRANTREPLY,
+					 ENDPOINT_RIGHTS_SEND_GRANTREPLY,
 					 IPCBadge),
 	       KiFreePool(ServiceEndpoint));
 

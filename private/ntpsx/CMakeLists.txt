@@ -69,6 +69,7 @@ file(GLOB SRC src/*.[cS] src/${Arch}/*.[cS])
 
 list(APPEND SRC
     ../ntdll/src/ke/services.c
+    ../ntdll/src/ke/lpc.c
     ../ntdll/src/ke/${Arch}/context.c
     ../ntdll/src/rtl/debug.c
 )

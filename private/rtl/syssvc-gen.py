@@ -727,7 +727,7 @@ class BufferMarshaller(BaseMarshaller):
     # p == buffer parameter, marked with buf(#[0-9]+)?::BASE_TYPE
     # sp == buffer size input parameter, marked with bufsize(#[0-9]+)?::BASE_TYPE
     # tp == buffer type parameter, marked with buftype(#[0-9]+)?::BASE_TYPE
-    # lp == output length parameter, marked with bufsize::(#[0-9]+)?::BASE_TYPE
+    # lp == output length parameter, marked with bufsize(#[0-9]+)?::BASE_TYPE
     # tp and lp may be None, in which case they don't exist
     def marshal_buffer_params(self, p, sp, tp, lp):
         assert not p.marshaled

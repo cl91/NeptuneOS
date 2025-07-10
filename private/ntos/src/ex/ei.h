@@ -49,3 +49,6 @@ typedef struct _EX_FREE_PAGE {
 
 /* event.c */
 NTSTATUS EiInitEventObject();
+
+/* port.c */
+NTSTATUS EiInitPortObject();
