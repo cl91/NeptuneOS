@@ -38,14 +38,14 @@ typedef struct _RTL_POOL_HEADER {
 C_ASSERT(RTL_POOL_OVERHEAD == RTL_POOL_SMALLEST_BLOCK);
 C_ASSERT(sizeof(RTL_POOL_BLOCK) == RTL_POOL_SMALLEST_BLOCK);
 
-typedef struct _RTL_POOL {
+typedef struct _RTL_SMALL_POOL {
     LONG TotalPages;	/* Number of pages. Each page is PAGE_SIZE. */
     LONG UsedPages;	/* Always equals TotalPages - GetListLength(FreePageList) */
     MWORD HeapStart;
     MWORD HeapEnd;
     LIST_ENTRY FreePageList;		      /* List of RTL_FREE_PAGE. */
     LIST_ENTRY FreeLists[RTL_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
-} RTL_POOL, *PRTL_POOL;
+} RTL_SMALL_POOL, *PRTL_SMALL_POOL;
 
 typedef struct _RTL_FREE_PAGE {
     LIST_ENTRY Link;	 /* Must be the first member of this struct */
@@ -59,20 +59,20 @@ typedef struct _RTL_FREE_PAGE {
 #define RtlDivCeilUnsigned(x,y)	(((x)+(y)-1)/(y))
 
 #if DBG
-static VOID EiAssertPool(IN PCSTR Expr,
+static VOID RtlpAssertPool(IN PCSTR Expr,
 			 IN PCSTR File,
 			 IN ULONG Line);
 #undef assert
 #define assert(_Expr)							\
-    (void)((!!(_Expr)) || (EiAssertPool(#_Expr, __FILE__, __LINE__), 0))
+    (void)((!!(_Expr)) || (RtlpAssertPool(#_Expr, __FILE__, __LINE__), 0))
 #endif	/* DBG */
 
-static RTL_POOL EiPool;
+static RTL_SMALL_POOL RtlpSmallPool;
 
 /*
  * Get the previous pool block header, if any.
  */
-static inline PRTL_POOL_HEADER EiGetPrevPoolHeader(IN PRTL_POOL_HEADER Header)
+static inline PRTL_POOL_HEADER RtlpGetPrevPoolHeader(IN PRTL_POOL_HEADER Header)
 {
     PRTL_POOL_HEADER Prev = NULL;
     if (Header->PreviousSize) {
@@ -89,7 +89,7 @@ static inline PRTL_POOL_HEADER EiGetPrevPoolHeader(IN PRTL_POOL_HEADER Header)
  * Note since we always allocate blocks within a page, if a block ends on page
  * boundary it is the last block within this page. In this case we return NULL.
  */
-static inline PRTL_POOL_HEADER EiGetNextPoolHeader(IN PRTL_POOL_HEADER Header)
+static inline PRTL_POOL_HEADER RtlpGetNextPoolHeader(IN PRTL_POOL_HEADER Header)
 {
     PRTL_POOL_HEADER Next = (PRTL_POOL_HEADER)((MWORD)Header + RTL_POOL_OVERHEAD +
 					     Header->BlockSize * RTL_POOL_SMALLEST_BLOCK);
@@ -100,14 +100,14 @@ static inline PRTL_POOL_HEADER EiGetNextPoolHeader(IN PRTL_POOL_HEADER Header)
     return Next;
 }
 
-static inline VOID EiDbgDumpPoolHeader(IN PRTL_POOL_HEADER Header)
+static inline VOID RtlpDbgDumpPoolHeader(IN PRTL_POOL_HEADER Header)
 {
     DbgPrint("  %s %p PS %d BS %d",
 	     Header->Used ? "USED" : "FREE", Header,
 	     Header->PreviousSize, Header->BlockSize);
 }
 
-static inline VOID EiDbgDumpPoolPage(IN MWORD Page)
+static inline VOID RtlpDbgDumpPoolPage(IN MWORD Page)
 {
     PRTL_POOL_HEADER Header = (PRTL_POOL_HEADER)Page;
     DbgPrint("Pool page %p", (PVOID)Page);
@@ -116,8 +116,8 @@ static inline VOID EiDbgDumpPoolPage(IN MWORD Page)
 	if (Index % 4 == 0) {
 	    DbgPrint("\n");
 	}
-	EiDbgDumpPoolHeader(Header);
-	Header = EiGetNextPoolHeader(Header);
+	RtlpDbgDumpPoolHeader(Header);
+	Header = RtlpGetNextPoolHeader(Header);
 	if ((Header != NULL) && (((MWORD)Header - Page) >= PAGE_SIZE)) {
 	    DbgPrint("**ERROR**");
 	    break;
@@ -127,32 +127,33 @@ static inline VOID EiDbgDumpPoolPage(IN MWORD Page)
     DbgPrint("\n");
 }
 
-static inline VOID EiDbgDumpFreeList(IN ULONG Index)
+static inline VOID RtlpDbgDumpFreeList(IN ULONG Index)
 {
     DbgPrint("Dumping free list index %d\n", Index);
-    LoopOverList(FreeEntry, &EiPool.FreeLists[Index], RTL_POOL_BLOCK, FreeListEntry) {
+    LoopOverList(FreeEntry, &RtlpSmallPool.FreeLists[Index], RTL_POOL_BLOCK, FreeListEntry) {
 	PRTL_POOL_HEADER Header = RTL_POOL_BLOCK_TO_HEADER(FreeEntry);
-	EiDbgDumpPoolHeader(Header);
+	RtlpDbgDumpPoolHeader(Header);
     }
-    if (!IsListEmpty(&EiPool.FreeLists[Index])) {
+    if (!IsListEmpty(&RtlpSmallPool.FreeLists[Index])) {
 	DbgPrint("\n");
     }
 }
 
-static VOID EiDbgDumpPool()
+static VOID RtlpDbgDumpPool()
 {
     DbgTrace("Dumping RTL_POOL TotalPages 0x%x UsedPages 0x%x HeapStart %p HeapEnd %p\n",
-	     EiPool.TotalPages, EiPool.UsedPages, (PVOID)EiPool.HeapStart, (PVOID)EiPool.HeapEnd);
-    EiDbgDumpPoolPage(EiPool.HeapStart);
+	     RtlpSmallPool.TotalPages, RtlpSmallPool.UsedPages,
+	     (PVOID)RtlpSmallPool.HeapStart, (PVOID)RtlpSmallPool.HeapEnd);
+    RtlpDbgDumpPoolPage(RtlpSmallPool.HeapStart);
     for (ULONG i = 0; i < RTL_POOL_FREE_LISTS; i++) {
-	EiDbgDumpFreeList(i);
+	RtlpDbgDumpFreeList(i);
     }
 }
 
 #if DBG
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-address"
-static VOID EiAssertPool(IN PCSTR Expr,
+static VOID RtlpAssertPool(IN PCSTR Expr,
 			 IN PCSTR File,
 			 IN ULONG Line)
 {
@@ -166,7 +167,7 @@ static VOID EiAssertPool(IN PCSTR Expr,
 	     __builtin_return_address(4));
     if (FirstTime) {
 	FirstTime = FALSE;
-	EiDbgDumpPool();
+	RtlpDbgDumpPool();
     }
     KeBugCheckMsg("Fatal error: assertion %s at %s:%d failed\n"
 		  "Callstack: %p %p %p %p\n",
@@ -180,7 +181,7 @@ static VOID EiAssertPool(IN PCSTR Expr,
 #endif	/* DBG */
 
 /* Add the free space to the FreeLists */
-static inline VOID EiAddFreeSpaceToPool(IN PRTL_POOL Pool,
+static inline VOID RtlpAddFreeSpaceToPool(IN PRTL_SMALL_POOL Pool,
 					IN MWORD Addr,
 					IN USHORT PreviousSize,
 					IN USHORT BlockSize)
@@ -196,19 +197,19 @@ static inline VOID EiAddFreeSpaceToPool(IN PRTL_POOL Pool,
 }
 
 /* Add the free page to the FreeLists */
-static inline VOID EiAddPageToFreeLists(IN PRTL_POOL Pool,
+static inline VOID RtlpAddPageToFreeLists(IN PRTL_SMALL_POOL Pool,
 					IN MWORD Addr)
 {
-    EiAddFreeSpaceToPool(Pool, Addr, 0, RTL_POOL_FREE_LISTS);
+    RtlpAddFreeSpaceToPool(Pool, Addr, 0, RTL_POOL_FREE_LISTS);
 }
 
 /* We require at least 3 consecutive pages mapped at RTL_POOL_START */
 NTSTATUS ExInitializePool(IN MWORD HeapStart,
 			  IN LONG NumPages)
 {
-    InitializeListHead(&EiPool.FreePageList);
+    InitializeListHead(&RtlpSmallPool.FreePageList);
     for (int i = 0; i < RTL_POOL_FREE_LISTS; i++) {
-	InitializeListHead(&EiPool.FreeLists[i]);
+	InitializeListHead(&RtlpSmallPool.FreeLists[i]);
     }
 
     if (!IS_PAGE_ALIGNED(HeapStart) || NumPages < 3) {
@@ -216,16 +217,16 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
     }
 
     /* Add pages to the pool */
-    EiPool.TotalPages = NumPages;
-    EiPool.UsedPages = 1;
-    EiPool.HeapStart = HeapStart;
-    EiPool.HeapEnd = HeapStart + NumPages * PAGE_SIZE;
-    EiAddPageToFreeLists(&EiPool, HeapStart);
+    RtlpSmallPool.TotalPages = NumPages;
+    RtlpSmallPool.UsedPages = 1;
+    RtlpSmallPool.HeapStart = HeapStart;
+    RtlpSmallPool.HeapEnd = HeapStart + NumPages * PAGE_SIZE;
+    RtlpAddPageToFreeLists(&RtlpSmallPool, HeapStart);
 
     /* Add the remaining free pages to the free page list */
     for (LONG Page = 1; Page < NumPages; Page++) {
 	PRTL_FREE_PAGE FreePage = (PRTL_FREE_PAGE)(HeapStart + PAGE_SIZE * Page);
-	InsertTailList(&EiPool.FreePageList, &FreePage->Link);
+	InsertTailList(&RtlpSmallPool.FreePageList, &FreePage->Link);
     }
 
     return STATUS_SUCCESS;
@@ -242,7 +243,7 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
  * order to build the capability derivation tree and paging structure
  * descriptors.
  */
-static MWORD EiRequestFreePage(IN PRTL_POOL Pool,
+static MWORD RtlpRequestFreePage(IN PRTL_SMALL_POOL Pool,
 			       IN BOOLEAN AddToFreeLists)
 {
     LONG AvailablePages = Pool->TotalPages - Pool->UsedPages;
@@ -259,7 +260,7 @@ static MWORD EiRequestFreePage(IN PRTL_POOL Pool,
     Pool->UsedPages++;
     AvailablePages--;
     if (AddToFreeLists) {
-	EiAddPageToFreeLists(Pool, PageAddr);
+	RtlpAddPageToFreeLists(Pool, PageAddr);
     }
 
     if (AvailablePages >= 4) {
@@ -343,7 +344,7 @@ static PVOID EiAllocateFromLargePool(IN MWORD NumberOfBytes)
  * no greater than one page, just allocate a whole page. Otherwise,
  * allocate from the free list. Memory is cleared before returning.
  */
-static PVOID EiAllocatePoolWithTag(IN PRTL_POOL Pool,
+static PVOID RtlpAllocatePoolWithTag(IN PRTL_SMALL_POOL Pool,
 				   IN MWORD NumberOfBytes,
 				   IN ULONG Tag)
 {
@@ -362,7 +363,7 @@ static PVOID EiAllocatePoolWithTag(IN PRTL_POOL Pool,
     }
 
     if (NumberOfBytes > RTL_POOL_LARGEST_BLOCK) {
-	PVOID Page = (PVOID)EiRequestFreePage(Pool, FALSE);
+	PVOID Page = (PVOID)RtlpRequestFreePage(Pool, FALSE);
 	if (Page) {
 	    memset(Page, 0, PAGE_SIZE);
 	}
@@ -386,7 +387,7 @@ static PVOID EiAllocatePoolWithTag(IN PRTL_POOL Pool,
     if (FreeListIndex >= RTL_POOL_FREE_LISTS) {
 	/* Request one free page from the list of free pages and add it
 	 * to the pool. */
-	MWORD PageAddr = EiRequestFreePage(Pool, TRUE);
+	MWORD PageAddr = RtlpRequestFreePage(Pool, TRUE);
 	if (!PageAddr) {
 	    return NULL;
 	}
@@ -416,9 +417,9 @@ static PVOID EiAllocatePoolWithTag(IN PRTL_POOL Pool,
     /* Note this is LONG not ULONG so it can be negative */
     LONG LeftOverBlocks = AvailableBlocks - NumberOfBlocks - 1;
     if (LeftOverBlocks > 0) {
-	PRTL_POOL_HEADER Next = EiGetNextPoolHeader(PoolHeader);
+	PRTL_POOL_HEADER Next = RtlpGetNextPoolHeader(PoolHeader);
 	PoolHeader->BlockSize = NumberOfBlocks;
-	EiAddFreeSpaceToPool(Pool, BlockStart + NumberOfBytes,
+	RtlpAddFreeSpaceToPool(Pool, BlockStart + NumberOfBytes,
 			     NumberOfBlocks, LeftOverBlocks);
 	if (Next != NULL) {
 	    Next->PreviousSize = LeftOverBlocks;
@@ -445,7 +446,7 @@ static PVOID EiAllocatePoolWithTag(IN PRTL_POOL Pool,
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-address"
-static VOID EiFreePoolWithTag(IN PRTL_POOL Pool,
+static VOID RtlpFreePoolWithTag(IN PRTL_SMALL_POOL Pool,
 			      IN PCVOID Ptr,
 			      IN ULONG Tag)
 {
@@ -492,15 +493,15 @@ static VOID EiFreePoolWithTag(IN PRTL_POOL Pool,
 		      __builtin_return_address(4), __builtin_return_address(5));
     }
     DbgTrace("Header %p PS %d BS %d\n", Header, Header->PreviousSize, Header->BlockSize);
-    PRTL_POOL_HEADER Prev = EiGetPrevPoolHeader(Header);
+    PRTL_POOL_HEADER Prev = RtlpGetPrevPoolHeader(Header);
     DbgTrace("Prev %p PS %d BS %d\n", Prev, Prev ? Prev->PreviousSize : 0,
 	     Prev ? Prev->BlockSize : 0);
-    PRTL_POOL_HEADER Next = EiGetNextPoolHeader(Header);
+    PRTL_POOL_HEADER Next = RtlpGetNextPoolHeader(Header);
     DbgTrace("Next %p PS %d BS %d\n", Next, Next ? Next->PreviousSize : 0,
 	     Next ? Next->BlockSize : 0);
     /* We also need to update the next block after Next in the case where we merge
      * the current free block with Next. */
-    PRTL_POOL_HEADER NextNext = Next ? EiGetNextPoolHeader(Next) : NULL;
+    PRTL_POOL_HEADER NextNext = Next ? RtlpGetNextPoolHeader(Next) : NULL;
     DbgTrace("NextNext %p PS %d BS %d\n", NextNext,
 	     NextNext ? NextNext->PreviousSize : 0,
 	     NextNext ? NextNext->BlockSize : 0);
@@ -546,12 +547,12 @@ static VOID EiFreePoolWithTag(IN PRTL_POOL Pool,
  */
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes, IN ULONG Tag)
 {
-    return EiAllocatePoolWithTag(&EiPool, NumberOfBytes, Tag);
+    return EiAllocatePoolWithTag(&RtlpSmallPool, NumberOfBytes, Tag);
 }
 
 VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag)
 {
-    EiFreePoolWithTag(&EiPool, Ptr, Tag);
+    EiFreePoolWithTag(&RtlpSmallPool, Ptr, Tag);
 }
 
 /* Check if tag is correct */
