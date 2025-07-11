@@ -25,11 +25,9 @@
 #define NTOS_VSPACE_CAP			(seL4_CapInitThreadVSpace)
 
 #ifdef _WIN64
-#define MWORD_LOG2SIZE			(3)
 /* For 64-bit build we make the ExPool and other hard-coded address spaces bigger */
 #define ADDRESS_SPACE_MULTIPLIER	(0x100)
 #else
-#define MWORD_LOG2SIZE			(2)
 #define ADDRESS_SPACE_MULTIPLIER	(1)
 #endif
 

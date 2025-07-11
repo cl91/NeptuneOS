@@ -43,9 +43,11 @@ typedef seL4_Word MWORD;
 #define MM_MAXIMUM_ZERO_HIGH_BITS	(MWORD_BITS - PAGE_LOG2SIZE - 1)
 
 #ifdef _WIN64
-#define ADDRSPACE_SHIFT	16
+#define MWORD_LOG2SIZE			(3)
+#define ADDRSPACE_SHIFT			(16)
 #else
-#define ADDRSPACE_SHIFT	0
+#define MWORD_LOG2SIZE			(2)
+#define ADDRSPACE_SHIFT			(0)
 #endif
 
 /* All hard-coded addresses in client processes' address space go here. */

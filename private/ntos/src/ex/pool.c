@@ -1,4 +1,55 @@
-#include "ei.h"
+/*
+ * This file implements a simple pool that allocates memory from a single
+ * contiguous region of pages. It is used by the NT Executive server and
+ * the POSIX subsystem dll.
+ */
+
+#include <pool.h>
+
+/*
+ * For a free block, we keep the free list entry at the beginning of the block
+ */
+typedef struct _RTL_POOL_BLOCK {
+    LIST_ENTRY FreeListEntry;
+} RTL_POOL_BLOCK, *PRTL_POOL_BLOCK;
+
+typedef struct _RTL_POOL_HEADER {
+    union {
+	struct {
+	    struct {
+		ULONG Used : 1;	/* Set if the block has been allocated. Cleared when this block is freed. */
+		ULONG PreviousSize : 15; /* does not include PoolHeader, divided by RTL_POOL_SMALLEST_BLOCK */
+		ULONG Dummy : 1;	 /* Reserved bit */
+		ULONG BlockSize : 15; /* does not include PoolHeader, divided by RTL_POOL_SMALLEST_BLOCK */
+	    };
+	    ULONG Tag;
+	} __packed;
+	RTL_POOL_BLOCK Strut; /* Make sure POOL_HEADER has the same size as the smallest block */
+    };
+} RTL_POOL_HEADER, *PRTL_POOL_HEADER;
+
+#define RTL_POOL_OVERHEAD	(sizeof(RTL_POOL_HEADER))
+#define RTL_POOL_LARGEST_BLOCK	(PAGE_SIZE - RTL_POOL_OVERHEAD)
+#define RTL_POOL_FREE_LISTS	(RTL_POOL_LARGEST_BLOCK / RTL_POOL_SMALLEST_BLOCK)
+
+#define RTL_POOL_HEADER_TO_BLOCK(h)	((PRTL_POOL_BLOCK)((MWORD)(h) + RTL_POOL_OVERHEAD))
+#define RTL_POOL_BLOCK_TO_HEADER(b)	((PRTL_POOL_HEADER)((MWORD)(b) - RTL_POOL_OVERHEAD))
+
+C_ASSERT(RTL_POOL_OVERHEAD == RTL_POOL_SMALLEST_BLOCK);
+C_ASSERT(sizeof(RTL_POOL_BLOCK) == RTL_POOL_SMALLEST_BLOCK);
+
+typedef struct _RTL_POOL {
+    LONG TotalPages;	/* Number of pages. Each page is PAGE_SIZE. */
+    LONG UsedPages;	/* Always equals TotalPages - GetListLength(FreePageList) */
+    MWORD HeapStart;
+    MWORD HeapEnd;
+    LIST_ENTRY FreePageList;		      /* List of RTL_FREE_PAGE. */
+    LIST_ENTRY FreeLists[RTL_POOL_FREE_LISTS]; /* Indexed by (BlockSize - 1) */
+} RTL_POOL, *PRTL_POOL;
+
+typedef struct _RTL_FREE_PAGE {
+    LIST_ENTRY Link;	 /* Must be the first member of this struct */
+} RTL_FREE_PAGE, *PRTL_FREE_PAGE;
 
 /* Comment this out to enable debug tracing on debug build */
 #undef DbgTrace
@@ -16,17 +67,17 @@ static VOID EiAssertPool(IN PCSTR Expr,
     (void)((!!(_Expr)) || (EiAssertPool(#_Expr, __FILE__, __LINE__), 0))
 #endif	/* DBG */
 
-static EX_POOL EiPool;
+static RTL_POOL EiPool;
 
 /*
  * Get the previous pool block header, if any.
  */
-static inline PEX_POOL_HEADER EiGetPrevPoolHeader(IN PEX_POOL_HEADER Header)
+static inline PRTL_POOL_HEADER EiGetPrevPoolHeader(IN PRTL_POOL_HEADER Header)
 {
-    PEX_POOL_HEADER Prev = NULL;
+    PRTL_POOL_HEADER Prev = NULL;
     if (Header->PreviousSize) {
-	Prev = (PEX_POOL_HEADER)((MWORD)Header - EX_POOL_OVERHEAD
-				 - Header->PreviousSize * EX_POOL_SMALLEST_BLOCK);
+	Prev = (PRTL_POOL_HEADER)((MWORD)Header - RTL_POOL_OVERHEAD
+				 - Header->PreviousSize * RTL_POOL_SMALLEST_BLOCK);
 	assert(Prev->BlockSize == Header->PreviousSize);
     }
     return Prev;
@@ -38,10 +89,10 @@ static inline PEX_POOL_HEADER EiGetPrevPoolHeader(IN PEX_POOL_HEADER Header)
  * Note since we always allocate blocks within a page, if a block ends on page
  * boundary it is the last block within this page. In this case we return NULL.
  */
-static inline PEX_POOL_HEADER EiGetNextPoolHeader(IN PEX_POOL_HEADER Header)
+static inline PRTL_POOL_HEADER EiGetNextPoolHeader(IN PRTL_POOL_HEADER Header)
 {
-    PEX_POOL_HEADER Next = (PEX_POOL_HEADER)((MWORD)Header + EX_POOL_OVERHEAD +
-					     Header->BlockSize * EX_POOL_SMALLEST_BLOCK);
+    PRTL_POOL_HEADER Next = (PRTL_POOL_HEADER)((MWORD)Header + RTL_POOL_OVERHEAD +
+					     Header->BlockSize * RTL_POOL_SMALLEST_BLOCK);
     if (IS_PAGE_ALIGNED(Next)) {
 	return NULL;
     }
@@ -49,7 +100,7 @@ static inline PEX_POOL_HEADER EiGetNextPoolHeader(IN PEX_POOL_HEADER Header)
     return Next;
 }
 
-static inline VOID EiDbgDumpPoolHeader(IN PEX_POOL_HEADER Header)
+static inline VOID EiDbgDumpPoolHeader(IN PRTL_POOL_HEADER Header)
 {
     DbgPrint("  %s %p PS %d BS %d",
 	     Header->Used ? "USED" : "FREE", Header,
@@ -58,7 +109,7 @@ static inline VOID EiDbgDumpPoolHeader(IN PEX_POOL_HEADER Header)
 
 static inline VOID EiDbgDumpPoolPage(IN MWORD Page)
 {
-    PEX_POOL_HEADER Header = (PEX_POOL_HEADER)Page;
+    PRTL_POOL_HEADER Header = (PRTL_POOL_HEADER)Page;
     DbgPrint("Pool page %p", (PVOID)Page);
     ULONG Index = 0;
     do {
@@ -79,8 +130,8 @@ static inline VOID EiDbgDumpPoolPage(IN MWORD Page)
 static inline VOID EiDbgDumpFreeList(IN ULONG Index)
 {
     DbgPrint("Dumping free list index %d\n", Index);
-    LoopOverList(FreeEntry, &EiPool.FreeLists[Index], EX_POOL_BLOCK, FreeListEntry) {
-	PEX_POOL_HEADER Header = EX_POOL_BLOCK_TO_HEADER(FreeEntry);
+    LoopOverList(FreeEntry, &EiPool.FreeLists[Index], RTL_POOL_BLOCK, FreeListEntry) {
+	PRTL_POOL_HEADER Header = RTL_POOL_BLOCK_TO_HEADER(FreeEntry);
 	EiDbgDumpPoolHeader(Header);
     }
     if (!IsListEmpty(&EiPool.FreeLists[Index])) {
@@ -90,10 +141,10 @@ static inline VOID EiDbgDumpFreeList(IN ULONG Index)
 
 static VOID EiDbgDumpPool()
 {
-    DbgTrace("Dumping EX_POOL TotalPages 0x%x UsedPages 0x%x HeapStart %p HeapEnd %p\n",
+    DbgTrace("Dumping RTL_POOL TotalPages 0x%x UsedPages 0x%x HeapStart %p HeapEnd %p\n",
 	     EiPool.TotalPages, EiPool.UsedPages, (PVOID)EiPool.HeapStart, (PVOID)EiPool.HeapEnd);
     EiDbgDumpPoolPage(EiPool.HeapStart);
-    for (ULONG i = 0; i < EX_POOL_FREE_LISTS; i++) {
+    for (ULONG i = 0; i < RTL_POOL_FREE_LISTS; i++) {
 	EiDbgDumpFreeList(i);
     }
 }
@@ -129,34 +180,34 @@ static VOID EiAssertPool(IN PCSTR Expr,
 #endif	/* DBG */
 
 /* Add the free space to the FreeLists */
-static inline VOID EiAddFreeSpaceToPool(IN PEX_POOL Pool,
+static inline VOID EiAddFreeSpaceToPool(IN PRTL_POOL Pool,
 					IN MWORD Addr,
 					IN USHORT PreviousSize,
 					IN USHORT BlockSize)
 {
     DbgTrace("Adding free space %p PS %d BS %d to pool\n", (PVOID)Addr,
 	     PreviousSize, BlockSize);
-    PEX_POOL_HEADER PoolHeader = (PEX_POOL_HEADER)Addr;
-    memset(PoolHeader, 0, sizeof(EX_POOL_HEADER));
+    PRTL_POOL_HEADER PoolHeader = (PRTL_POOL_HEADER)Addr;
+    memset(PoolHeader, 0, sizeof(RTL_POOL_HEADER));
     PoolHeader->PreviousSize = PreviousSize;
     PoolHeader->BlockSize = BlockSize;
-    PLIST_ENTRY FreeEntry = &EX_POOL_HEADER_TO_BLOCK(Addr)->FreeListEntry;
+    PLIST_ENTRY FreeEntry = &RTL_POOL_HEADER_TO_BLOCK(Addr)->FreeListEntry;
     InsertHeadList(&Pool->FreeLists[BlockSize-1], FreeEntry);
 }
 
 /* Add the free page to the FreeLists */
-static inline VOID EiAddPageToFreeLists(IN PEX_POOL Pool,
+static inline VOID EiAddPageToFreeLists(IN PRTL_POOL Pool,
 					IN MWORD Addr)
 {
-    EiAddFreeSpaceToPool(Pool, Addr, 0, EX_POOL_FREE_LISTS);
+    EiAddFreeSpaceToPool(Pool, Addr, 0, RTL_POOL_FREE_LISTS);
 }
 
-/* We require at least 3 consecutive pages mapped at EX_POOL_START */
+/* We require at least 3 consecutive pages mapped at RTL_POOL_START */
 NTSTATUS ExInitializePool(IN MWORD HeapStart,
 			  IN LONG NumPages)
 {
     InitializeListHead(&EiPool.FreePageList);
-    for (int i = 0; i < EX_POOL_FREE_LISTS; i++) {
+    for (int i = 0; i < RTL_POOL_FREE_LISTS; i++) {
 	InitializeListHead(&EiPool.FreeLists[i]);
     }
 
@@ -173,7 +224,7 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
 
     /* Add the remaining free pages to the free page list */
     for (LONG Page = 1; Page < NumPages; Page++) {
-	PEX_FREE_PAGE FreePage = (PEX_FREE_PAGE)(HeapStart + PAGE_SIZE * Page);
+	PRTL_FREE_PAGE FreePage = (PRTL_FREE_PAGE)(HeapStart + PAGE_SIZE * Page);
 	InsertTailList(&EiPool.FreePageList, &FreePage->Link);
     }
 
@@ -191,7 +242,7 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart,
  * order to build the capability derivation tree and paging structure
  * descriptors.
  */
-static MWORD EiRequestFreePage(IN PEX_POOL Pool,
+static MWORD EiRequestFreePage(IN PRTL_POOL Pool,
 			       IN BOOLEAN AddToFreeLists)
 {
     LONG AvailablePages = Pool->TotalPages - Pool->UsedPages;
@@ -219,7 +270,7 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
     /* We are running low on free pages, so we should allocate more
      * before we totally run out. Check if we have enough ExPool
      * virtual space first, and then request more pages from mm. */
-    if (Pool->HeapEnd >= EX_POOL_END) {
+    if (Pool->HeapEnd >= RTL_POOL_END) {
 	return PageAddr;
     }
     /* If we are already asking Mm for more memory, make sure we don't
@@ -238,8 +289,8 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
 	/* Otherwise we are critically low on memory, just get one page */
     }
     /* Make sure we don't run over the end of ExPool space. */
-    if (Pool->HeapEnd + Size >= EX_POOL_END) {
-	Size = EX_POOL_END - Pool->HeapEnd;
+    if (Pool->HeapEnd + Size >= RTL_POOL_END) {
+	Size = RTL_POOL_END - Pool->HeapEnd;
     }
     NTSTATUS Status = MmCommitVirtualMemory(Pool->HeapEnd, Size);
     if (!NT_SUCCESS(Status)) {
@@ -260,7 +311,7 @@ static MWORD EiRequestFreePage(IN PEX_POOL Pool,
     Pool->TotalPages += Size >> PAGE_LOG2SIZE;
     /* Add the newly allocated pages to the free page list. */
     for (MWORD Offset = 0; Offset < Size; Offset += PAGE_SIZE) {
-	PEX_FREE_PAGE FreePage = (PEX_FREE_PAGE)(Pool->HeapEnd + Offset);
+	PRTL_FREE_PAGE FreePage = (PRTL_FREE_PAGE)(Pool->HeapEnd + Offset);
 	InsertTailList(&Pool->FreePageList, &FreePage->Link);
     }
     Pool->HeapEnd += Size;
@@ -272,7 +323,7 @@ static PVOID EiAllocateFromLargePool(IN MWORD NumberOfBytes)
 {
     assert(NumberOfBytes > PAGE_SIZE);
     PMMVAD Vad = NULL;
-    NTSTATUS Status = MmReserveVirtualMemory(EX_LARGE_POOL_START, EX_LARGE_POOL_END,
+    NTSTATUS Status = MmReserveVirtualMemory(RTL_LARGE_POOL_START, RTL_LARGE_POOL_END,
 					     NumberOfBytes, 0,
 					     MEM_RESERVE_OWNED_MEMORY | MEM_RESERVE_LARGE_PAGES,
 					     &Vad);
@@ -288,20 +339,20 @@ static PVOID EiAllocateFromLargePool(IN MWORD NumberOfBytes)
 }
 
 /* If request size is larger than the page size, allocate from the large
- * object pool. If request size is larger than EX_POOL_LARGEST_BLOCK but
+ * object pool. If request size is larger than RTL_POOL_LARGEST_BLOCK but
  * no greater than one page, just allocate a whole page. Otherwise,
  * allocate from the free list. Memory is cleared before returning.
  */
-static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
+static PVOID EiAllocatePoolWithTag(IN PRTL_POOL Pool,
 				   IN MWORD NumberOfBytes,
 				   IN ULONG Tag)
 {
     DbgTrace("Trying to allocate %zd bytes tag %c%c%c%c\n",
 	     NumberOfBytes,
-	     EX_POOL_GET_TAG0(Tag),
-	     EX_POOL_GET_TAG1(Tag),
-	     EX_POOL_GET_TAG2(Tag),
-	     EX_POOL_GET_TAG3(Tag));
+	     RTL_POOL_GET_TAG0(Tag),
+	     RTL_POOL_GET_TAG1(Tag),
+	     RTL_POOL_GET_TAG2(Tag),
+	     RTL_POOL_GET_TAG3(Tag));
     if (NumberOfBytes == 0) {
 	return NULL;
     }
@@ -310,7 +361,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	return EiAllocateFromLargePool(NumberOfBytes);
     }
 
-    if (NumberOfBytes > EX_POOL_LARGEST_BLOCK) {
+    if (NumberOfBytes > RTL_POOL_LARGEST_BLOCK) {
 	PVOID Page = (PVOID)EiRequestFreePage(Pool, FALSE);
 	if (Page) {
 	    memset(Page, 0, PAGE_SIZE);
@@ -319,20 +370,20 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     }
 
     ULONG NumberOfBlocks = RtlDivCeilUnsigned(NumberOfBytes,
-					      EX_POOL_SMALLEST_BLOCK);
-    NumberOfBytes = NumberOfBlocks * EX_POOL_SMALLEST_BLOCK;
+					      RTL_POOL_SMALLEST_BLOCK);
+    NumberOfBytes = NumberOfBlocks * RTL_POOL_SMALLEST_BLOCK;
     ULONG FreeListIndex = NumberOfBlocks - 1;
 
     /* Search FreeLists for available space */
     while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	FreeListIndex++;
-	if (FreeListIndex >= EX_POOL_FREE_LISTS) {
+	if (FreeListIndex >= RTL_POOL_FREE_LISTS) {
 	    break;
 	}
     }
 
     /* If not found, try adding more pages to the pool and try again */
-    if (FreeListIndex >= EX_POOL_FREE_LISTS) {
+    if (FreeListIndex >= RTL_POOL_FREE_LISTS) {
 	/* Request one free page from the list of free pages and add it
 	 * to the pool. */
 	MWORD PageAddr = EiRequestFreePage(Pool, TRUE);
@@ -342,7 +393,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
 	FreeListIndex = NumberOfBlocks - 1;
 	while (IsListEmpty(&Pool->FreeLists[FreeListIndex])) {
 	    FreeListIndex++;
-	    if (FreeListIndex >= EX_POOL_FREE_LISTS) {
+	    if (FreeListIndex >= RTL_POOL_FREE_LISTS) {
 		/* When requesting for more free pages, MmCommitVirtualMemory
 		 * might have done too many allocations to exhaust the free
 		 * lists again. If this happens, there is really nothing we
@@ -355,7 +406,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     LONG AvailableBlocks = FreeListIndex + 1;
     PLIST_ENTRY FreeEntry = Pool->FreeLists[FreeListIndex].Flink;
     MWORD BlockStart = (MWORD)FreeEntry;
-    PEX_POOL_HEADER PoolHeader = EX_POOL_BLOCK_TO_HEADER(BlockStart);
+    PRTL_POOL_HEADER PoolHeader = RTL_POOL_BLOCK_TO_HEADER(BlockStart);
     DbgTrace("PoolHeader %p PS %d BS %d USED %s\n", PoolHeader,
 	     PoolHeader->PreviousSize, PoolHeader->BlockSize,
 	     PoolHeader->Used ? "TRUE" : "FALSE");
@@ -365,7 +416,7 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
     /* Note this is LONG not ULONG so it can be negative */
     LONG LeftOverBlocks = AvailableBlocks - NumberOfBlocks - 1;
     if (LeftOverBlocks > 0) {
-	PEX_POOL_HEADER Next = EiGetNextPoolHeader(PoolHeader);
+	PRTL_POOL_HEADER Next = EiGetNextPoolHeader(PoolHeader);
 	PoolHeader->BlockSize = NumberOfBlocks;
 	EiAddFreeSpaceToPool(Pool, BlockStart + NumberOfBytes,
 			     NumberOfBlocks, LeftOverBlocks);
@@ -394,13 +445,13 @@ static PVOID EiAllocatePoolWithTag(IN PEX_POOL Pool,
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wframe-address"
-static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
+static VOID EiFreePoolWithTag(IN PRTL_POOL Pool,
 			      IN PCVOID Ptr,
 			      IN ULONG Tag)
 {
     assert(Pool != NULL);
     assert(Ptr != NULL);
-    if ((MWORD)Ptr >= EX_LARGE_POOL_START && (MWORD)Ptr < EX_LARGE_POOL_END) {
+    if ((MWORD)Ptr >= RTL_LARGE_POOL_START && (MWORD)Ptr < RTL_LARGE_POOL_END) {
 	if (!IS_PAGE_ALIGNED(Ptr)) {
 	    KeBugCheckMsg("ExPool: Freeing unaligned object %p. Call stack: %p %p %p %p %p %p\n",
 			  Ptr, __builtin_return_address(0), __builtin_return_address(1),
@@ -418,18 +469,18 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
     }
     /* If the pointer is page aligned, simpy add it to the list of free pages. */
     if (IS_PAGE_ALIGNED(Ptr)) {
-	PEX_FREE_PAGE Page = (PEX_FREE_PAGE)Ptr;
+	PRTL_FREE_PAGE Page = (PRTL_FREE_PAGE)Ptr;
 	InsertHeadList(&Pool->FreePageList, &Page->Link);
 	Pool->UsedPages--;
 	return;
     }
 
     DbgTrace("Freeing %p tag %c%c%c%c\n", Ptr,
-	     EX_POOL_GET_TAG0(Tag),
-	     EX_POOL_GET_TAG1(Tag),
-	     EX_POOL_GET_TAG2(Tag),
-	     EX_POOL_GET_TAG3(Tag));
-    PEX_POOL_HEADER Header = EX_POOL_BLOCK_TO_HEADER(Ptr);
+	     RTL_POOL_GET_TAG0(Tag),
+	     RTL_POOL_GET_TAG1(Tag),
+	     RTL_POOL_GET_TAG2(Tag),
+	     RTL_POOL_GET_TAG3(Tag));
+    PRTL_POOL_HEADER Header = RTL_POOL_BLOCK_TO_HEADER(Ptr);
     assert(Header->Used);
     /* Check if tag is correct */
     if (Header->Tag != Tag) {
@@ -441,22 +492,22 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
 		      __builtin_return_address(4), __builtin_return_address(5));
     }
     DbgTrace("Header %p PS %d BS %d\n", Header, Header->PreviousSize, Header->BlockSize);
-    PEX_POOL_HEADER Prev = EiGetPrevPoolHeader(Header);
+    PRTL_POOL_HEADER Prev = EiGetPrevPoolHeader(Header);
     DbgTrace("Prev %p PS %d BS %d\n", Prev, Prev ? Prev->PreviousSize : 0,
 	     Prev ? Prev->BlockSize : 0);
-    PEX_POOL_HEADER Next = EiGetNextPoolHeader(Header);
+    PRTL_POOL_HEADER Next = EiGetNextPoolHeader(Header);
     DbgTrace("Next %p PS %d BS %d\n", Next, Next ? Next->PreviousSize : 0,
 	     Next ? Next->BlockSize : 0);
     /* We also need to update the next block after Next in the case where we merge
      * the current free block with Next. */
-    PEX_POOL_HEADER NextNext = Next ? EiGetNextPoolHeader(Next) : NULL;
+    PRTL_POOL_HEADER NextNext = Next ? EiGetNextPoolHeader(Next) : NULL;
     DbgTrace("NextNext %p PS %d BS %d\n", NextNext,
 	     NextNext ? NextNext->PreviousSize : 0,
 	     NextNext ? NextNext->BlockSize : 0);
     /* If the previous block is free, merge it with the current block */
     if (Prev != NULL && !Prev->Used) {
 	DbgTrace("Merging with Prev\n");
-	RemoveEntryList(&EX_POOL_HEADER_TO_BLOCK(Prev)->FreeListEntry);
+	RemoveEntryList(&RTL_POOL_HEADER_TO_BLOCK(Prev)->FreeListEntry);
 	Prev->BlockSize += 1 + Header->BlockSize;
 	Header = Prev;
 	if (Next != NULL) {
@@ -466,20 +517,20 @@ static VOID EiFreePoolWithTag(IN PEX_POOL Pool,
     /* If the next block is free, merge it with the current block */
     if (Next != NULL && !Next->Used) {
 	DbgTrace("Merging with Next\n");
-	RemoveEntryList(&EX_POOL_HEADER_TO_BLOCK(Next)->FreeListEntry);
+	RemoveEntryList(&RTL_POOL_HEADER_TO_BLOCK(Next)->FreeListEntry);
 	Header->BlockSize += 1 + Next->BlockSize;
 	if (NextNext != NULL) {
 	    NextNext->PreviousSize = Header->BlockSize;
 	}
     }
     /* Clear the memory of the block */
-    DbgTrace("clearing memory %p size 0x%llx\n", EX_POOL_HEADER_TO_BLOCK(Header),
-	     Header->BlockSize * EX_POOL_SMALLEST_BLOCK);
-    memset(EX_POOL_HEADER_TO_BLOCK(Header), 0, Header->BlockSize * EX_POOL_SMALLEST_BLOCK);
+    DbgTrace("clearing memory %p size 0x%llx\n", RTL_POOL_HEADER_TO_BLOCK(Header),
+	     Header->BlockSize * RTL_POOL_SMALLEST_BLOCK);
+    memset(RTL_POOL_HEADER_TO_BLOCK(Header), 0, Header->BlockSize * RTL_POOL_SMALLEST_BLOCK);
     /* Insert the block to the free list */
     Header->Used = FALSE;
-    PLIST_ENTRY FreeEntry = &EX_POOL_HEADER_TO_BLOCK(Header)->FreeListEntry;
-    assert(Header->BlockSize <= EX_POOL_FREE_LISTS);
+    PLIST_ENTRY FreeEntry = &RTL_POOL_HEADER_TO_BLOCK(Header)->FreeListEntry;
+    assert(Header->BlockSize <= RTL_POOL_FREE_LISTS);
     InsertHeadList(&Pool->FreeLists[Header->BlockSize - 1], FreeEntry);
     DbgTrace("Prev %p PS %d BS %d Header %p PS %d BS %d Next %p PS %d BS %d NextNext %p PS %d BS %d\n",
 	     Prev, Prev ? Prev->PreviousSize : 0, Prev ? Prev->BlockSize : 0,
@@ -506,7 +557,7 @@ VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag)
 /* Check if tag is correct */
 BOOLEAN ExCheckPoolObjectTag(IN PCVOID Ptr, IN ULONG Tag)
 {
-    PEX_POOL_HEADER Header = EX_POOL_BLOCK_TO_HEADER(Ptr);
+    PRTL_POOL_HEADER Header = RTL_POOL_BLOCK_TO_HEADER(Ptr);
     assert(Header->Used);
     return Header->Used && Header->Tag == Tag;
 }
