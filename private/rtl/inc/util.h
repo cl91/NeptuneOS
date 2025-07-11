@@ -10,6 +10,12 @@ FORCEINLINE BOOLEAN IsPow2OrZero(ULONG64 n) { return !(n & (n-1)); }
 FORCEINLINE BOOLEAN IsPow2(ULONG64 n) { return n && IsPow2OrZero(n); }
 
 /*
+ * Additional alignment macros
+ */
+#define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))
+#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN(addr, type))
+
+/*
  * Helper functions for MWORD array as bitmaps
  */
 FORCEINLINE BOOLEAN GetBit(MWORD *Map, ULONG Bit)

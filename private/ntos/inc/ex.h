@@ -2,6 +2,7 @@
 
 #include <nt.h>
 #include <sel4/sel4.h>
+#include <pool.h>
 #include "ke.h"
 #include "mm.h"
 
@@ -12,11 +13,8 @@
 #error "Executive pool too large"
 #endif
 
-/* Two machine words for smallest EX_POOL_BLOCK. The unused lowest EX_POOL_BLOCK_SHIFT
- * bits are used by the Object Manager to encode the flags of the global handle.
- */
-#define EX_POOL_BLOCK_SHIFT	(1 + MWORD_LOG2SIZE)
-#define EX_POOL_SMALLEST_BLOCK	(1ULL << EX_POOL_BLOCK_SHIFT)
+#define EX_POOL_SMALLEST_BLOCK	(RTL_POOL_SMALLEST_BLOCK)
+#define EX_POOL_BLOCK_SHIFT	(RTL_POOL_BLOCK_SHIFT)
 
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \
