@@ -1,5 +1,4 @@
 #include "ei.h"
-#include "ob.h"
 
 static LIST_ENTRY EiEventObjectList;
 
@@ -50,6 +49,16 @@ NTSTATUS EiInitEventObject()
     return EiCreateEventType();
 }
 
+NTSTATUS EiCreateEvent(IN PPROCESS Process,
+		       IN EVENT_TYPE EventType,
+		       OUT PEVENT_OBJECT *Event)
+{
+    EVENT_OBJ_CREATE_CONTEXT Ctx = {
+	.EventType = EventType
+    };
+    return ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)Event, &Ctx);
+}
+
 NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
                        OUT HANDLE *EventHandle,
@@ -58,18 +67,44 @@ NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
                        IN EVENT_TYPE EventType,
                        IN BOOLEAN InitialState)
 {
+    POBJECT RootDirectory = NULL;
+    if (ObjectAttributes.RootDirectory) {
+	RET_ERR(ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
+					  OBJECT_TYPE_ANY, &RootDirectory));
+    }
+
+    NTSTATUS Status = STATUS_NTOS_BUG;
     PEVENT_OBJECT Event = NULL;
-    EVENT_OBJ_CREATE_CONTEXT Ctx = {
-	.EventType = EventType
-    };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)&Event, &Ctx));
+    IF_ERR_GOTO(out, Status,
+		EiCreateEvent(Thread->Process, EventType, &Event));
     assert(Event != NULL);
-    RET_ERR_EX(ObCreateHandle(Thread->Process, Event, FALSE, EventHandle),
-	       ObDereferenceObject(Event));
+
+    if (ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0]) {
+	IF_ERR_GOTO(out, Status, ObInsertObject(RootDirectory, Event,
+						ObjectAttributes.ObjectNameBuffer, 0));
+    }
+
+    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Event, FALSE, EventHandle));
+
+    /* Even if the object is inserted into the NT namespace, NT API semantics says that
+     * it is still a temporary object. */
+    ObMakeTemporaryObject(Event);
+
     if (InitialState) {
 	KeSetEvent(&Event->Event);
     }
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+
+out:
+    if (RootDirectory) {
+	ObDereferenceObject(RootDirectory);
+    }
+    if (!NT_SUCCESS(Status)) {
+	/* ObRemoveObject is a no-op if Event is not inserted. */
+	ObRemoveObject(Event);
+	ObDereferenceObject(Event);
+    }
+    return Status;
 }
 
 NTSTATUS NtSetEvent(IN ASYNC_STATE State,

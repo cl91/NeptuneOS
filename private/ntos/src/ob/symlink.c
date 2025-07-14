@@ -126,18 +126,22 @@ NTSTATUS NtCreateSymbolicLinkObject(IN ASYNC_STATE AsyncState,
     POBJECT_SYMBOLIC_LINK Symlink = NULL;
     POBJECT RootDirectory = NULL;
     NTSTATUS Status = STATUS_NTOS_BUG;
+    if (!(ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0])) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
     if (ObjectAttributes.RootDirectory) {
 	RET_ERR(ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
-					  OBJECT_TYPE_ANY, RootDirectory));
+					  OBJECT_TYPE_ANY, &RootDirectory));
     }
     /* The reparse path in the symbolic link object created by this routine is
      * always absolute, ie. with respect to the global root directory. */
     IF_ERR_GOTO(out, Status,
 		ObCreateSymbolicLink(LinkTarget, NULL, &Symlink));
-    if (ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0]) {
-	IF_ERR_GOTO(out, Status, ObInsertObject(RootDirectory, Symlink,
-						ObjectAttributes.ObjectNameBuffer, 0));
-    }
+    IF_ERR_GOTO(out, Status, ObInsertObject(RootDirectory, Symlink,
+					    ObjectAttributes.ObjectNameBuffer, 0));
+    /* Note here ObCreateHandle increases the refcount to two (ObInsertObject does
+     * NOT increase refcount of the object), making the object permanent as per
+     * NT API semantics. */
     IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Symlink,
 					    FALSE, SymbolicLinkHandle));
 

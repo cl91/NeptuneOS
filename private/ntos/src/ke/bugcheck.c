@@ -130,7 +130,7 @@ NTSTATUS KiInitBugCheck()
 	return STATUS_NO_MEMORY;
     }
     RET_ERR(PsCreateSystemThread(KiBugCheckThread, "NTOS Bugcheck", KiBugCheckSystem, TRUE));
-    RET_ERR(KiCreateEndpoint(&KiExecutiveThreadFaultHandler));
+    RET_ERR(KeCreateEndpoint(&KiExecutiveThreadFaultHandler));
     RET_ERR(KiSetThreadSpace(seL4_CapInitThreadTCB, KiExecutiveThreadFaultHandler.TreeNode.Cap,
 			     &MiNtosCNode, seL4_CapInitThreadVSpace));
     RET_ERR(PsResumeSystemThread(KiBugCheckThread));

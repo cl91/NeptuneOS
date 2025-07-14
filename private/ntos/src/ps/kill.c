@@ -68,6 +68,11 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	RemoveEntryList(&Timer->ThreadLink);
     }
 
+    /* Close all LPC port connections established by the thread */
+    LoopOverList(Connection, &Thread->LpcConnectionList, LPC_PORT_CONNECTION, ThreadLink) {
+	ExClosePortConnection(Connection, TRUE);
+    }
+
     /* Free the debug name allocated during thread creation */
     if (Thread->DebugName != NULL) {
 	PspFreePool(Thread->DebugName);

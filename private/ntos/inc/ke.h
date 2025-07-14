@@ -33,31 +33,28 @@ typedef enum _THREAD_PRIORITY {
  */
 typedef struct _IPC_ENDPOINT {
     CAP_TREE_NODE TreeNode;	/* Must be first member */
-    MWORD Badge;
 } IPC_ENDPOINT, *PIPC_ENDPOINT;
 
 #define ENDPOINT_RIGHTS_RECV		seL4_CanRead
 #define ENDPOINT_RIGHTS_SEND		seL4_CanWrite
 #define ENDPOINT_RIGHTS_SEND_GRANTREPLY	seL4_CapRights_new(1, 0, 0, 1)
 
-static inline VOID KeInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
-					   IN PCNODE CSpace,
-					   IN MWORD Cap,
-					   IN MWORD Badge)
+NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
+			    IN PCNODE CSpace);
+
+static inline NTSTATUS KeCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
 {
-    assert(Self != NULL);
-    assert(CSpace != NULL);
-    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_ENDPOINT, Cap,
-			    CSpace, NULL);
-    Self->Badge = Badge;
+    extern CNODE MiNtosCNode;
+    return KeCreateEndpointEx(Endpoint, &MiNtosCNode);
 }
+
+VOID KeDestroyEndpoint(IN PIPC_ENDPOINT Endpoint);
 
 /*
  * Notification Object
  */
 typedef struct _NOTIFICATION {
     CAP_TREE_NODE TreeNode;	/* Must be first member */
-    MWORD Badge;
 } NOTIFICATION, *PNOTIFICATION;
 
 static inline VOID KeInitializeNotification(IN PNOTIFICATION Self,
@@ -69,7 +66,7 @@ static inline VOID KeInitializeNotification(IN PNOTIFICATION Self,
     assert(CSpace != NULL);
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_NOTIFICATION, Cap,
 			    CSpace, NULL); /* Parent will be set when retyping */
-    Self->Badge = Badge;
+    Self->TreeNode.Badge = Badge;
 }
 
 static inline NTSTATUS KeCreateNotificationEx(IN PNOTIFICATION Notification,

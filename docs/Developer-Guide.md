@@ -180,6 +180,15 @@ Open routines do not need to be concered with handle assignment.
 #### Cache manager (Cc)
 ### Configuration manager (Cm)
 ### Executive objects (Ex)
+
+#### LPC (Local Procedure Call) Port Objects
+
+Built as a thin wrapper over the seL4 endpoint API. Differences from the NT LPC port object API in Windows NT (3.1 till 5.0):
+
+- NtAcceptConnectPort is renamed to NtAcceptPort. NtRequestWaitReplyPort is renamed to NtRequestWaitReceivePort.
+- Single threaded synchronous IPC: there is one server communication port for each connection port (rather than one per client), server communication port is created in NtCreatePort rather than NtAcceptPort. To increase throughput and prevent a long running request from blocking other clients, the server is encouraged to create an event object for each connected client, and return pending status for long running requests and signal the event when the request is completed. The client can wait on the event for the completion signal of the request. The result of the request can be delivered in the shared memory or via another call to the server.
+- You don't need to call NtCompleteConnectPort as this is automatically done when NtAcceptPort returns success
+
 ### Security reference manager (Se)
 ### Hardware abstraction layer (Hal)
 ### System loader (Ldr)

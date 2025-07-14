@@ -70,12 +70,21 @@ typedef enum _OBJECT_TYPE_ENUM {
 typedef PVOID POBJECT;
 typedef struct _OBJECT_HEADER {
     struct _OBJECT_TYPE *Type;
+    union {
+	struct {
+	    MWORD Permanent : 1;
+	};
+	MWORD Flags;
+    };
     LIST_ENTRY ObjectLink;
     LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
     POBJECT ParentObject; /* Parent object under which this object is inserted */
     PVOID ParentLink;	  /* Pointer that the parent object can freely use to
 			   * point to bookkeeping information. */
     LONGLONG RefCount;
+#ifdef _WIN64
+    MWORD Padding; /* Padding to make this structure 16-byte aligned */
+#endif
 } OBJECT_HEADER, *POBJECT_HEADER;
 
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
@@ -543,6 +552,18 @@ VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
 VOID ObDbgDumpObjectHandles(IN POBJECT Object,
 			    IN ULONG Indentation);
+
+/*
+ * By default, an unnamed object created after ObCreateObject followed by
+ * ObCreateHandle will have refcount == 2, making it a permanent object.
+ * Executive components can call this routine to decrease its refcount to
+ * one so NtClose will delete the object.
+ */
+FORCEINLINE VOID ObMakeTemporaryObject(IN POBJECT Object)
+{
+    assert(ObGetObjectRefCount(Object) > 1);
+    ObDereferenceObject(Object);
+}
 
 /* open.c */
 NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,

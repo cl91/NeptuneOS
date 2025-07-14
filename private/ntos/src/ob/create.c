@@ -59,6 +59,10 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
  * If OBJ_CREATE_DIR_IF flag is specified, intermediate directory objects
  * will be created if they don't yet exist. You cannot specify OBJ_NO_PARSE
  * if you have specified OBJ_CREATE_DIR_IF.
+ *
+ * Calling ObInsertObject does not increase the refcount of the object
+ * itself, but will increase the refcount of the parent object, so the
+ * parent object will not be deleted.
  */
 NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 			IN POBJECT Object,
@@ -127,10 +131,11 @@ out:
 }
 
 /*
- * Request the correct amount of memory (object header + body)
- * from the Executive Pool (allocated memory is zeroed by ExPool), invoke the
+ * Request the correct amount of memory (object header + body) from the
+ * Executive Pool (allocated memory is zeroed by ExPool), invoke the
  * initialization procedure of the object type, and insert the object
- * into the global object list.
+ * into the global object list. By default, the refcount of a newly
+ * created object is one.
  */
 NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 			OUT POBJECT *pObject,

@@ -23,12 +23,13 @@
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 
-NTSTATUS KiCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
+NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
+			    IN PCNODE CSpace)
 {
     PUNTYPED Untyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
     assert(Untyped != NULL);
-    KeInitializeIpcEndpoint(Endpoint, Untyped->TreeNode.CSpace, 0, 0);
+    KiInitializeIpcEndpoint(Endpoint, CSpace, 0, 0);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
 				  &Endpoint->TreeNode),
 	       MmReleaseUntyped(Untyped));
@@ -41,7 +42,7 @@ NTSTATUS KiCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
  *
  * IMPORTANT: The endpoint being destroyed cannot have any derived cap.
  */
-static VOID KiDestroyEndpoint(IN PIPC_ENDPOINT Endpoint)
+VOID KeDestroyEndpoint(IN PIPC_ENDPOINT Endpoint)
 {
     assert(Endpoint != NULL);
     assert(!MmCapTreeNodeHasChildren(&Endpoint->TreeNode));
@@ -56,7 +57,7 @@ static VOID KiDestroyEndpoint(IN PIPC_ENDPOINT Endpoint)
  */
 NTSTATUS KiInitExecutiveServices()
 {
-    RET_ERR(KiCreateEndpoint(&KiExecutiveServiceEndpoint));
+    RET_ERR(KeCreateEndpoint(&KiExecutiveServiceEndpoint));
     InitializeListHead(&KiReadyThreadList);
     return STATUS_SUCCESS;
 }
@@ -87,11 +88,11 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
     if (ReplyEndpoint->TreeNode.Cap == 0) {
 	RET_ERR(MmAllocateCapRange(&MiNtosCNode, &ReplyCap, 1));
 	assert(ReplyCap != 0);
-	KeInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
+	KiInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
     }
 
     KiAllocatePool(ServiceEndpoint, IPC_ENDPOINT);
-    KeInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, IPCBadge);
+    KiInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, 0);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
 					 ENDPOINT_RIGHTS_SEND_GRANTREPLY,
@@ -141,7 +142,7 @@ NTSTATUS KeEnableSystemServices(IN PTHREAD Thread)
 VOID KiDeleteThreadEndpoint(IN OPTIONAL PIPC_ENDPOINT Endpoint)
 {
     if (Endpoint != NULL) {
-	KiDestroyEndpoint(Endpoint);
+	KeDestroyEndpoint(Endpoint);
 	KiFreePool(Endpoint);
     }
 }

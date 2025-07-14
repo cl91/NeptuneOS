@@ -4,7 +4,7 @@ FORCEINLINE NTSTATUS KiMarshalPortMessage(IN PPORT_MESSAGE PortMessage,
 					  IN OPTIONAL PPORT_VIEW LocalView,
 					  OUT seL4_MessageInfo_t *MessageInfo)
 {
-    ULONG MessageLength = PortMessage->MessageLength;
+    ULONG MessageLength = PortMessage->TotalLength;
     PORT_MESSAGE ShortMsg;
     if (MessageLength > NT_LPC_MAX_SHORT_MESSAGE_LENGTH) {
 	/* If the message is larger than the amount of space in seL4 message
@@ -80,7 +80,7 @@ NTAPI NTSTATUS NtReceivePort(IN HANDLE CommPort,
 	assert(FALSE);
 	return STATUS_INVALID_PORT_HANDLE;
     }
-    ULONG_PTR Badge = 0;
+    MWORD Badge = 0;
     seL4_MessageInfo_t Msg = seL4_Recv(LOCAL_HANDLE_TO_CAP(CommPort), &Badge);
     return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage, LocalView);
 }
@@ -101,7 +101,7 @@ NTAPI NTSTATUS NtReplyWaitReceivePort(IN HANDLE CommPort,
 
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(ReplyMessage, ServerView, &MsgInfo));
-    ULONG_PTR Badge = 0;
+    MWORD Badge = 0;
     seL4_MessageInfo_t Msg = seL4_ReplyRecv(LOCAL_HANDLE_TO_CAP(CommPort), MsgInfo, &Badge);
     return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage, ServerView);
 }

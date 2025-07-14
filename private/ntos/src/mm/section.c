@@ -1068,11 +1068,14 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     assert(Section);
     assert(SectionHandle);
     Status = ObCreateHandle(Thread->Process, Section, FALSE, SectionHandle);
-    /* Note here regardless of the return value we want to dereference the
-     * section object, because in a successful creation, the returned section
-     * object has refcount of one (instead of two, one from ObCreateObject,
-     * one from ObCreateHandle). A subsequent NtClose will delete the section. */
-    ObDereferenceObject(Section);
+    if (!NT_SUCCESS(Status)) {
+	ObDereferenceObject(Section);
+    }
+    /* Note here since NT semantics requires that section objects are always created
+     * as temporary objects by default, we decrease the refcount from two (one from
+     * ObCreateObject, one from ObCreateHandle) to one so a subsequent NtClose will
+     * delete the section. */
+    ObMakeTemporaryObject(Section);
 
 out:
     if (Locals.FileObject) {

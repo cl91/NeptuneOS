@@ -326,6 +326,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Thread->PendingIrpList);
     InitializeListHead(&Thread->QueuedApcList);
     InitializeListHead(&Thread->TimerApcList);
+    InitializeListHead(&Thread->LpcConnectionList);
     KeInitializeTimer(&Thread->WaitTimer, SynchronizationTimer);
 
     Thread->InitialThread = !Process->Initialized;
@@ -706,6 +707,10 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
      * object and decrease it when the thread exits or is terminated. */
     RET_ERR(PsCreateThread(Process, ThreadContext, InitialTeb,
 			   CreateSuspended, &CreatedThread));
+    /* The newly created thread object will have refcount 2. Although NT API semantics
+     * states that thread object is always created as a temporary object, we don't make
+     * it temporary at this point. The refcount decrement is done in PsTerminateThread,
+     * when the thread exits. */
     RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, FALSE, ThreadHandle),
 	       ObDereferenceObject(CreatedThread));
     return STATUS_SUCCESS;
@@ -743,6 +748,9 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
     /* The newly created process will increase the reference count of the image section
      * object and decrease it when the process exits or is terminated. */
     RET_ERR(PsCreateProcess(Section, NULL, &Process));
+    /* Like the case of thread objects, the newly created thread object will have
+     * refcount 2, but we don't make decrement its refcount at this point. That is
+     * done in PsTerminateProcess, when the process exits. */
     RET_ERR_EX(ObCreateHandle(Thread->Process, Process, FALSE, ProcessHandle),
 	       ObDereferenceObject(Process));
 

@@ -38,10 +38,36 @@ typedef struct _EVENT_OBJECT {
 /*
  * LPC port object.
  */
-typedef struct _PORT_OBJECT {
+typedef struct _LPC_PORT_OBJECT {
     IPC_ENDPOINT Endpoint;
     LIST_ENTRY Link;
-} PORT_OBJECT, *PPORT_OBJECT;
+    AVL_TREE Connections;
+    KEVENT ConnectionRequested;
+    LIST_ENTRY QueuedConnections;
+    ULONG MaxMessageLength;
+} LPC_PORT_OBJECT, *PLPC_PORT_OBJECT;
+
+typedef struct _LPC_PORT_CONNECTION {
+    union {
+	AVL_NODE Node;	    /* Key is thread id. */
+	LIST_ENTRY Link;    /* List link for queued connection list */
+    };
+    PLPC_PORT_OBJECT PortObject;
+    struct _THREAD *ClientThread;
+    IPC_ENDPOINT ClientEndpoint;
+    union {
+	LIST_ENTRY ThreadLink;
+	CLIENT_ID OldClientId;	/* Client ID of the dead client. */
+    };
+    KEVENT Connected;
+    PEVENT_OBJECT EventObject;
+    ULONG_PTR PortContext;
+    PVOID ConnectionInformation;
+    ULONG ConnectionInformationLength;
+    BOOLEAN ConnectionInserted;	/* TRUE if the connection is inserted into the AVL tree. */
+    BOOLEAN ConnectionRefused;
+    BOOLEAN ClientDied;
+} LPC_PORT_CONNECTION, *PLPC_PORT_CONNECTION;
 
 /*
  * This can only be called in non-async functions
@@ -89,3 +115,9 @@ NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);
 PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes, IN ULONG Tag);
 VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag);
 BOOLEAN ExCheckPoolObjectTag(IN PCVOID Ptr, IN ULONG Tag);
+
+/* lpc.c */
+VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
+			   IN BOOLEAN ThreadIsTerminating);
+NTSTATUS ExCloseLocalHandle(IN struct _THREAD *Thread,
+			    IN HANDLE Handle);

@@ -184,8 +184,7 @@ NTSTATUS KiInitTimer()
     if (KiTimerIrqThread == NULL) {
 	return STATUS_NO_MEMORY;
     }
-    KeInitializeIpcEndpoint(&KiTimerServiceNotification, &MiNtosCNode, 0,
-			    SERVICE_TYPE_NOTIFICATION);
+    KiInitializeIpcEndpoint(&KiTimerServiceNotification, &MiNtosCNode, 0, 0);
     RET_ERR(MmCapTreeDeriveBadgedNode(&KiTimerServiceNotification.TreeNode,
 				      &KiExecutiveServiceEndpoint.TreeNode,
 				      ENDPOINT_RIGHTS_SEND_GRANTREPLY,
@@ -332,7 +331,9 @@ NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
     RET_ERR(KeCreateTimer(TimerType, &Timer));
     assert(Timer != NULL);
 
-    RET_ERR(ObCreateHandle(Thread->Process, Timer, FALSE, Handle));
+    RET_ERR_EX(ObCreateHandle(Thread->Process, Timer, FALSE, Handle),
+	       KeUninitializeTimer(Timer));
+    ObMakeTemporaryObject(Timer);
     assert(*Handle != NULL);
 
     return STATUS_SUCCESS;

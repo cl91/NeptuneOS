@@ -123,6 +123,7 @@
   </svc>
 
   <svc name="NtAcceptPort">
+    <parameter annotation="out opt" type="ptr::HANDLE" name="EventHandle" />
     <parameter annotation="in" type="HANDLE" name="PortHandle" />
     <parameter annotation="in" type="ULONG_PTR" name="PortContext" />
     <parameter annotation="in" type="ptr::CLIENT_ID" name="ClientId" />
@@ -135,6 +136,7 @@
     <parameter annotation="in out" type="ptr::HANDLE" name="PortHandle" />
     <parameter annotation="in opt" type="UnicodeString" name="PortName" />
     <parameter annotation="in" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />
+    <parameter annotation="out opt" type="ptr::HANDLE" name="EventHandle" />
     <parameter annotation="in out opt" type="ptr::PORT_VIEW" name="ClientView" />
     <parameter annotation="out opt" type="ptr::REMOTE_PORT_VIEW" name="ServerView" />
     <parameter annotation="out opt" type="ptr::ULONG" name="MaxMessageLength" />

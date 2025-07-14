@@ -37,6 +37,7 @@ typedef struct _THREAD {
 			      * this list are the TIMER objects. Note additionally that
 			      * the APCs here may or may not be queued (this depends on
 			      * whether they have expired). */
+    LIST_ENTRY LpcConnectionList; /* List of all queued or connected LPC port connections. */
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;
@@ -110,6 +111,25 @@ typedef struct _SYSTEM_THREAD {
 } SYSTEM_THREAD, *PSYSTEM_THREAD;
 
 typedef VOID (*PSYSTEM_THREAD_ENTRY)();
+
+FORCEINLINE GLOBAL_HANDLE PsGetProcessId(IN PPROCESS Process)
+{
+    return OBJECT_TO_GLOBAL_HANDLE(Process);
+}
+
+FORCEINLINE GLOBAL_HANDLE PsGetThreadId(IN PTHREAD Thread)
+{
+    return OBJECT_TO_GLOBAL_HANDLE(Thread);
+}
+
+FORCEINLINE CLIENT_ID PsGetClientId(IN PTHREAD Thread)
+{
+    CLIENT_ID Cid = {
+	.UniqueProcess = (HANDLE)PsGetProcessId(Thread->Process),
+	.UniqueThread = (HANDLE)PsGetThreadId(Thread)
+    };
+    return Cid;
+}
 
 /* init.c */
 NTSTATUS PsInitSystemPhase0();

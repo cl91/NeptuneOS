@@ -4,20 +4,13 @@
 #include "ntseapi.h"
 
 typedef struct _PORT_MESSAGE {
-    ULONG MessageLength;
-    union {
-        struct {
-            CSHORT Type;
-            CSHORT DataInfoOffset;
-        };
-        ULONG ZeroInit;
-    };
+    ULONG TotalLength;
+    ULONG Type;
 } PORT_MESSAGE, *PPORT_MESSAGE;
 
 C_ASSERT(sizeof(PORT_MESSAGE) == 8);
 
 typedef struct _PORT_VIEW {
-    ULONG Length;
     HANDLE SectionHandle;
     ULONG SectionOffset;
     SIZE_T ViewSize;
@@ -26,7 +19,6 @@ typedef struct _PORT_VIEW {
 } PORT_VIEW, *PPORT_VIEW;
 
 typedef struct _REMOTE_PORT_VIEW {
-    ULONG Length;
     SIZE_T ViewSize;
     PVOID ViewBase;
 } REMOTE_PORT_VIEW, *PREMOTE_PORT_VIEW;
@@ -53,7 +45,8 @@ NTAPI NTSYSAPI NTSTATUS NtListenPort(IN HANDLE PortHandle,
 /*
  * Port accept (server)
  */
-NTAPI NTSYSAPI NTSTATUS NtAcceptPort(IN HANDLE PortHandle,
+NTAPI NTSYSAPI NTSTATUS NtAcceptPort(OUT OPTIONAL HANDLE *EventHandle,
+				     IN HANDLE PortHandle,
 				     IN ULONG_PTR PortContext,
 				     IN PCLIENT_ID ClientId,
 				     IN BOOLEAN AcceptConnection,
@@ -67,6 +60,7 @@ NTAPI NTSYSAPI NTSTATUS NtAcceptPort(IN HANDLE PortHandle,
 NTAPI NTSYSAPI NTSTATUS NtConnectPort(IN OUT PHANDLE PortHandle,
 				      IN OPTIONAL PUNICODE_STRING PortName,
 				      IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
+				      OUT OPTIONAL HANDLE *EventHandle,
 				      IN OUT OPTIONAL PPORT_VIEW ClientView,
 				      IN OUT OPTIONAL PREMOTE_PORT_VIEW ServerView,
 				      OUT OPTIONAL PULONG MaxMessageLength,
@@ -76,6 +70,7 @@ NTAPI NTSYSAPI NTSTATUS NtConnectPort(IN OUT PHANDLE PortHandle,
 NTAPI NTSYSAPI NTSTATUS NtConnectPortA(IN OUT PHANDLE PortHandle,
 				       IN OPTIONAL PCSTR PortName,
 				       IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
+				       OUT OPTIONAL HANDLE *EventHandle,
 				       IN OUT OPTIONAL PPORT_VIEW ClientView,
 				       IN OUT OPTIONAL PREMOTE_PORT_VIEW ServerView,
 				       OUT OPTIONAL PULONG MaxMessageLength,
