@@ -1,19 +1,79 @@
 #pragma once
 
-#include <debug.h>
 #include <nt.h>
+#include <debug.h>
 #include <structures_gen.h>
 #include <services.h>
 #include <ctype.h>
+#include <pool.h>
+
+#define EX_POOL_SMALLEST_BLOCK	(RTL_POOL_SMALLEST_BLOCK)
+#define EX_POOL_BLOCK_SHIFT	(RTL_POOL_BLOCK_SHIFT)
+
+C_ASSERT(EX_POOL_SMALLEST_BLOCK == (1ULL << EX_POOL_BLOCK_SHIFT));
+
+FORCEINLINE MWORD PsThreadIdToCSpaceGuard(IN ULONG_PTR ThreadId)
+{
+    assert(IS_ALIGNED_BY(ThreadId, EX_POOL_SMALLEST_BLOCK));
+    return (ThreadId >> EX_POOL_BLOCK_SHIFT) <<
+	(PROCESS_SHARED_CNODE_LOG2SIZE + THREAD_PRIVATE_CNODE_LOG2SIZE);
+}
+
+FORCEINLINE MWORD PsGetGuardValueOfCap(IN MWORD Cap)
+{
+    ULONG Bits = PROCESS_SHARED_CNODE_LOG2SIZE + THREAD_PRIVATE_CNODE_LOG2SIZE;
+    return (Cap >> Bits) << Bits;
+}
+
+FORCEINLINE MWORD PsGetThreadCNodeIndexOfCap(IN MWORD Cap)
+{
+    return (Cap >> PROCESS_SHARED_CNODE_LOG2SIZE) &
+	((1ULL << THREAD_PRIVATE_CNODE_LOG2SIZE) - 1);
+}
+
+FORCEINLINE BOOLEAN PsCapIsProcessShared(IN MWORD Cap)
+{
+    BOOLEAN Value = !PsGetThreadCNodeIndexOfCap(Cap) && !PsGetGuardValueOfCap(Cap);
+    if (Value) {
+	/* In this case the server should NOT have marked the cap with a guard value. */
+	assert(!PsGetGuardValueOfCap(Cap));
+    }
+    return Value;
+}
+
+FORCEINLINE BOOLEAN PsCapIsThreadPrivate(IN MWORD Cap)
+{
+    return !!PsGetThreadCNodeIndexOfCap(Cap);
+}
+
+#ifndef _NTOSKRNL_
+FORCEINLINE MWORD RtlGetThreadCSpaceGuard()
+{
+    PNT_TIB NtTib = NtCurrentTib();
+    assert(NtTib->ClientId.UniqueProcess);
+    assert(NtTib->ClientId.UniqueThread);
+    return PsThreadIdToCSpaceGuard((ULONG_PTR)NtTib->ClientId.UniqueThread);
+}
+
+/* This routine must only be called for the caps in the process-wide shared CNode */
+FORCEINLINE MWORD RtlGetGuardedCapInProcessCNode(IN MWORD Cap)
+{
+    assert(!PsGetThreadCNodeIndexOfCap(Cap));
+    assert(!PsGetGuardValueOfCap(Cap));
+    return Cap | RtlGetThreadCSpaceGuard();
+}
+
+FORCEINLINE BOOLEAN PsCapHasCorrectGuard(IN MWORD Cap)
+{
+    assert(NtCurrentTib()->ClientId.UniqueProcess);
+    assert(NtCurrentTib()->ClientId.UniqueThread);
+    return PsGetGuardValueOfCap(Cap) ==
+	   PsThreadIdToCSpaceGuard((MWORD)NtCurrentTib()->ClientId.UniqueThread);
+}
+#endif
 
 FORCEINLINE BOOLEAN IsPow2OrZero(ULONG64 n) { return !(n & (n-1)); }
 FORCEINLINE BOOLEAN IsPow2(ULONG64 n) { return n && IsPow2OrZero(n); }
-
-/*
- * Additional alignment macros
- */
-#define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))
-#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN(addr, type))
 
 /*
  * Helper functions for MWORD array as bitmaps

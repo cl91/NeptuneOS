@@ -80,23 +80,28 @@ static inline PCAP_TREE_NODE MiCapTreeGetNextSibling(IN PCAP_TREE_NODE Node)
     return CONTAINING_RECORD(NextNode, CAP_TREE_NODE, SiblingLink);
 }
 
-/* Initialize an empty CNode. The zeroth slot is always
- * used since it represents the null capability.
+/*
+ * Initialize an empty CNode. We mark the zeroth slot as used since it is
+ * either empty and reserved as the null capability (for a single-level CSpace),
+ * or contains the CNode cap for the inner CNode (for a two-level CSpace).
  */
 static inline VOID MiInitializeCNode(IN PCNODE Self,
 				     IN MWORD Cap,
 				     IN ULONG Log2Size,
-				     IN ULONG Depth,
 				     IN PCNODE CSpace,
 				     IN OPTIONAL PCAP_TREE_NODE Parent,
-				     IN MWORD *UsedMap)
+				     IN MWORD *UsedMap,
+				     IN MWORD GuardValue,
+				     IN ULONG GuardBits)
 {
     assert(Self != NULL);
     assert(UsedMap != NULL);
+    /* This has to be set before MmInitializeCapTreeNode in the case of
+     * initializing the NT Executive root task CNode. */
+    Self->Log2Size = Log2Size;
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_CNODE,
 			    Cap, CSpace, Parent);
-    Self->Log2Size = Log2Size;
-    Self->Depth = Depth;
+    Self->TreeNode.Badge = seL4_CNode_CapData_new(GuardValue, GuardBits).words[0];
     Self->RecentFree = 1;
     Self->TotalUsed = 1;
     SetBit(UsedMap, 0);

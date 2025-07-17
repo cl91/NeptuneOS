@@ -17,13 +17,16 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
 				   IN PCNODE CNode,
 				   IN PVIRT_ADDR_SPACE VaddrSpace,
-				   IN PPAGING_STRUCTURE IpcPage)
+				   IN PPAGING_STRUCTURE IpcPage,
+				   IN MWORD GuardValue)
 {
     assert(CNode != NULL);
     assert(VaddrSpace != NULL);
     assert(IpcPage != NULL);
-    int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap,
-				   seL4_CNode_CapData_new(0, MWORD_BITS - CNode->Log2Size).words[0],
+    ULONG Radix = GuardValue ? THREAD_PRIVATE_CNODE_LOG2SIZE + PROCESS_SHARED_CNODE_LOG2SIZE :
+	CNode->Log2Size;
+    seL4_CNode_CapData_t CapData = seL4_CNode_CapData_new(GuardValue, MWORD_BITS - Radix);
+    int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap, CapData.words[0],
 				   VaddrSpace->VSpaceCap, 0, IpcPage->AvlNode.Key,
 				   IpcPage->TreeNode.Cap);
 
@@ -122,8 +125,8 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 
     NTSTATUS Status;
     IF_ERR_GOTO(Fail, Status, MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
-    Thread->TreeNode.CSpace = &MiNtosCNode;
-    assert(TcbUntyped->TreeNode.CSpace == &MiNtosCNode);
+    Thread->TreeNode.CNode = &MiNtosCNode;
+    assert(TcbUntyped->TreeNode.CNode == &MiNtosCNode);
     MmInitializeCapTreeNode(&Thread->TreeNode, CAP_TREE_NODE_TCB,
 			    0, &MiNtosCNode, NULL);
     IF_ERR_GOTO(Fail, Status, MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
@@ -159,7 +162,8 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 						 Thread->FaultEndpoint->TreeNode.Cap,
 						 &MiNtosCNode,
 						 &MiNtosVaddrSpace,
-						 IpcBufferPage));
+						 IpcBufferPage,
+						 0));
     Thread->IpcBuffer = (PVOID)IpcBuffer;
 
     PspAllocateArrayEx(TlsBase, CHAR, NTOS_TLS_AREA_SIZE,
@@ -313,12 +317,21 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
-    assert(TcbUntyped->TreeNode.CSpace != NULL);
+    assert(TcbUntyped->TreeNode.CNode != NULL);
     MmInitializeCapTreeNode(&Thread->TreeNode, CAP_TREE_NODE_TCB,
-			    0, TcbUntyped->TreeNode.CSpace, NULL);
+			    0, TcbUntyped->TreeNode.CNode, NULL);
     RET_ERR_EX(MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
 				  seL4_TCBBits, &Thread->TreeNode),
 	       MmReleaseUntyped(TcbUntyped));
+
+    RET_ERR(MmCreateCNode(THREAD_PRIVATE_CNODE_LOG2SIZE, &Thread->CSpace));
+    /* Copy the process shared CNode into the zeroth slot of the thread private CNode.
+     * Note we don't track the cap tree derivation of this cap in a CAP_TREE_NODE, since
+     * it is only used as a pointer into the process-wide shared CNode. Deleting the
+     * thread-private CNode itself will automatically revoke this cap (and every other cap
+     * in the thread-private CNode). */
+    RET_ERR(MmCopyCap(Thread->CSpace, 0, Process->SharedCNode->TreeNode.CNode,
+		      Process->SharedCNode->TreeNode.Cap, seL4_AllRights));
 
     Thread->Process = Process;
     ObpReferenceObject(Process);
@@ -348,8 +361,13 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     assert(IpcBufferClientPage != NULL);
     assert(IpcBufferClientPage->AvlNode.Key == Thread->IpcBufferClientAddr);
     RET_ERR(KeEnableThreadFaultHandler(Thread));
-    RET_ERR(PspConfigureThread(Thread->TreeNode.Cap, Thread->FaultEndpoint->TreeNode.Cap,
-			       Process->CSpace, &Process->VSpace, IpcBufferClientPage));
+    /* Note the TCB cap is in the NT Executive CSpace while the fault handler cap is
+     * in the client thread's CSpace. */
+    MWORD FaultHandlerCap = PsThreadCNodeIndexToGuardedCap(Thread->FaultEndpoint->TreeNode.Cap,
+							   Thread);
+    RET_ERR(PspConfigureThread(Thread->TreeNode.Cap, FaultHandlerCap,
+			       Thread->CSpace, &Process->VSpace, IpcBufferClientPage,
+			       PsGetThreadId(Thread) >> EX_POOL_BLOCK_SHIFT));
 
     /* Allocate the subsystem-independent Thread Information Block for the client */
     RET_ERR(MmCommitOwnedMemoryEx(&Process->VSpace,
@@ -403,6 +421,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	RET_ERR(KeEnableWdmServices(Thread));
     }
 
+    Thread->InitInfo.ClientId = PsGetClientId(Thread);
     if (Thread->InitialThread) {
 	/* Populate the process init info used by ntdll on process startup */
 	Process->InitInfo.ThreadInitInfo = Thread->InitInfo;
@@ -486,7 +505,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     Process->ImageSection = Section;
     KeInitializeDispatcherHeader(&Process->Header, NotificationEvent);
 
-    RET_ERR(MmCreateCNode(PROCESS_INIT_CNODE_LOG2SIZE, &Process->CSpace));
+    RET_ERR(MmCreateCNode(PROCESS_SHARED_CNODE_LOG2SIZE, &Process->SharedCNode));
     RET_ERR(MmCreateVSpace(&Process->VSpace));
 
     InitializeListHead(&Process->ThreadList);
@@ -616,7 +635,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	MWORD InitialCoroutineStackTop = 0;
 	RET_ERR(PsMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
-	RET_ERR(KeCreateNotificationEx(&Process->DpcMutex, Process->CSpace));
+	RET_ERR(KeCreateNotificationEx(&Process->DpcMutex, Process->SharedCNode));
 	Process->InitInfo.DriverInitInfo.DpcMutexCap = Process->DpcMutex.TreeNode.Cap;
     }
 
@@ -713,6 +732,7 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
      * when the thread exits. */
     RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, FALSE, ThreadHandle),
 	       ObDereferenceObject(CreatedThread));
+    *ClientId = PsGetClientId(CreatedThread);
     return STATUS_SUCCESS;
 }
 

@@ -40,7 +40,7 @@ typedef struct _IPC_ENDPOINT {
 #define ENDPOINT_RIGHTS_SEND_GRANTREPLY	seL4_CapRights_new(1, 0, 0, 1)
 
 NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
-			    IN PCNODE CSpace);
+			    IN PCNODE CNode);
 
 static inline NTSTATUS KeCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
 {
@@ -58,24 +58,24 @@ typedef struct _NOTIFICATION {
 } NOTIFICATION, *PNOTIFICATION;
 
 static inline VOID KeInitializeNotification(IN PNOTIFICATION Self,
-					    IN PCNODE CSpace,
+					    IN PCNODE CNode,
 					    IN MWORD Cap,
 					    IN MWORD Badge)
 {
     assert(Self != NULL);
-    assert(CSpace != NULL);
+    assert(CNode != NULL);
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_NOTIFICATION, Cap,
-			    CSpace, NULL); /* Parent will be set when retyping */
+			    CNode, NULL); /* Parent will be set when retyping */
     Self->TreeNode.Badge = Badge;
 }
 
 static inline NTSTATUS KeCreateNotificationEx(IN PNOTIFICATION Notification,
-					      IN PCNODE CSpace)
+					      IN PCNODE CNode)
 {
     PUNTYPED Untyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_NotificationBits, &Untyped));
     assert(Untyped != NULL);
-    KeInitializeNotification(Notification, CSpace, 0, 0);
+    KeInitializeNotification(Notification, CNode, 0, 0);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_NotificationObject,
 				  seL4_NotificationBits,
 				  &Notification->TreeNode),
@@ -134,14 +134,14 @@ typedef struct _IRQ_HANDLER {
 } IRQ_HANDLER, *PIRQ_HANDLER;
 
 static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
-					  IN PCNODE CSpace,
+					  IN PCNODE CNode,
 					  IN MWORD Cap,
 					  IN MWORD Irq)
 {
     assert(Self != NULL);
-    assert(CSpace != NULL);
+    assert(CNode != NULL);
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_IRQ_HANDLER, Cap,
-			    CSpace, NULL);
+			    CNode, NULL);
     Self->Irq = Irq;
 }
 
@@ -832,7 +832,7 @@ BOOLEAN KePtrInSvcMsgBuf(IN MWORD Ptr, IN struct _THREAD *Thread);
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 /* ioport.c */
-NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
+NTSTATUS KeEnableIoPortEx(IN PCNODE CNode,
 			  IN USHORT PortNum,
 			  IN USHORT Count,
 			  IN PX86_IOPORT IoPort);
@@ -861,7 +861,7 @@ extern ULONG KeFeatureBits;
 /* irq.c */
 NTSTATUS KeCreateIrqHandlerEx(IN PIRQ_HANDLER IrqHandler,
 			      IN MWORD IrqLine,
-			      IN PCNODE CSpace);
+			      IN PCNODE CNode);
 NTSTATUS KeConnectIrqNotification(IN PIRQ_HANDLER IrqHandler,
 				  IN PNOTIFICATION Notification);
 

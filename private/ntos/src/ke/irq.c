@@ -2,21 +2,21 @@
 
 NTSTATUS KeCreateIrqHandlerEx(IN PIRQ_HANDLER IrqHandler,
 			      IN MWORD IrqLine,
-			      IN PCNODE CSpace)
+			      IN PCNODE CNode)
 {
     assert(IrqHandler != NULL);
     MWORD Cap = 0;
-    RET_ERR(MmAllocateCap(CSpace, &Cap));
+    RET_ERR(MmAllocateCap(CNode, &Cap));
     assert(Cap != 0);
     int Error = seL4_IRQControl_Get(seL4_CapIRQControl, IrqLine,
-				    CSpace->TreeNode.Cap,
-				    Cap, CSpace->Depth);
+				    CNode->TreeNode.Cap,
+				    Cap, MmCNodeGetDepth(CNode));
     if (Error != 0) {
-	MmDeallocateCap(CSpace, Cap);
+	MmDeallocateCap(CNode, Cap);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
-    KeInitializeIrqHandler(IrqHandler, CSpace, Cap, IrqLine);
+    KeInitializeIrqHandler(IrqHandler, CNode, Cap, IrqLine);
     assert(Cap == IrqHandler->TreeNode.Cap);
     return STATUS_SUCCESS;
 }

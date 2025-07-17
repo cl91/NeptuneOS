@@ -6,16 +6,6 @@
 #include "ke.h"
 #include "mm.h"
 
-/* Since we use the object header's offset from the start of Executive pool as the
- * unique global object handle (badge), and on i386 the seL4 kernel ignores the highest
- * four bits of a badge, the Executive pool cannot be larger than 256MB. */
-#if defined(_M_IX86) && (EX_POOL_MAX_SIZE > 0x10000000ULL)
-#error "Executive pool too large"
-#endif
-
-#define EX_POOL_SMALLEST_BLOCK	(RTL_POOL_SMALLEST_BLOCK)
-#define EX_POOL_BLOCK_SHIFT	(RTL_POOL_BLOCK_SHIFT)
-
 #define EX_POOL_TAG(Tag0, Tag1, Tag2, Tag3)	((((Tag3) & 0x7fUL) << 24) \
 						 | (((Tag2) & 0x7fUL) << 16) \
 						 | (((Tag1) & 0x7fUL) << 8) \

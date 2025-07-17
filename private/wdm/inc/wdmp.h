@@ -152,7 +152,7 @@ static inline VOID KeAcquireMutex(IN PKMUTEX Mutex)
     assert(Mutex != NULL);
     assert(Mutex->Notification != 0);
     if (InterlockedIncrement(&Mutex->Counter) != 1) {
-	seL4_Wait(Mutex->Notification, NULL);
+	seL4_Wait(RtlGetGuardedCapInProcessCNode(Mutex->Notification), NULL);
     }
 }
 
@@ -168,7 +168,7 @@ static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
     LONG Counter = InterlockedDecrement(&Mutex->Counter);
     assert(Counter >= 0);
     if (Counter >= 1) {
-	seL4_Signal(Mutex->Notification);
+	seL4_Signal(RtlGetGuardedCapInProcessCNode(Mutex->Notification));
     }
 }
 

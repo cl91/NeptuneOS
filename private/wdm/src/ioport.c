@@ -34,12 +34,13 @@ static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
 				     OUT Type *Out)		\
     {								\
 	assert(Out != NULL);					\
+	MWORD Cap = RtlGetGuardedCapInProcessCNode(Port->Cap);	\
 	seL4_X86_IOPort_In##Len##_t Reply =			\
-	    seL4_X86_IOPort_In##Len(Port->Cap, Port->PortNum);	\
+	    seL4_X86_IOPort_In##Len(Cap, Port->PortNum);	\
 	if (Reply.error != 0) {					\
 	    DbgTrace("Reading IO port 0x%x (cap 0x%zx) failed "	\
 		     "with error %d\n",				\
-		     Port->PortNum, Port->Cap, Reply.error);	\
+		     Port->PortNum, Cap, Reply.error);		\
 	    KeDbgDumpIPCError(Reply.error);			\
 	    return SEL4_ERROR(Reply.error);			\
 	}							\
@@ -51,12 +52,12 @@ static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
     static NTSTATUS IopWritePort##Len(IN PX86_IOPORT Port,		\
 				      IN Type Data)			\
     {									\
-	int Error = seL4_X86_IOPort_Out##Len(Port->Cap,			\
-					     Port->PortNum, Data);	\
+	MWORD Cap = RtlGetGuardedCapInProcessCNode(Port->Cap);		\
+	int Error = seL4_X86_IOPort_Out##Len(Cap, Port->PortNum, Data);	\
 	if (Error != 0) {						\
 	    DbgTrace("Writing IO port 0x%x (cap 0x%zx) with "		\
 		     "data 0x%x failed with error %d\n",		\
-		     Port->PortNum, Port->Cap, Data, Error);		\
+		     Port->PortNum, Cap, Data, Error);			\
 	    KeDbgDumpIPCError(Error);					\
 	    return SEL4_ERROR(Error);					\
 	}								\

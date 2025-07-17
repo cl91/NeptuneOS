@@ -58,11 +58,33 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
     return Queued;
 }
 
+static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
+					 IN MWORD NotificationCap)
+{
+    assert(IrqHandlerCap != 0);
+    assert(NotificationCap != 0);
+    int Error = seL4_IRQHandler_SetNotification(IrqHandlerCap,
+						NotificationCap);
+    if (Error != 0) {
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
 static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
     PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
     NtCurrentTeb()->Wdm.ServiceCap = Interrupt->WdmServiceCap;
     assert(Interrupt->ServiceRoutine != NULL);
+
+    NTSTATUS Status = KiConnectIrqNotification(Interrupt->IrqHandlerCap,
+					       Interrupt->NotificationCap);
+    if (!NT_SUCCESS(Status)) {
+	RtlRaiseStatus(Status);
+	return Status;
+    }
+
     while (TRUE) {
 	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
 	if (AckError != 0) {
@@ -92,20 +114,6 @@ static inline NTSTATUS PspResumeThread(IN MWORD ThreadCap)
 	return SEL4_ERROR(Error);
     }
 
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
-					 IN MWORD NotificationCap)
-{
-    assert(IrqHandlerCap != 0);
-    assert(NotificationCap != 0);
-    int Error = seL4_IRQHandler_SetNotification(IrqHandlerCap,
-						NotificationCap);
-    if (Error != 0) {
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
-    }
     return STATUS_SUCCESS;
 }
 
@@ -176,12 +184,28 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				&InterruptObject->IrqHandlerCap,
 				&InterruptObject->NotificationCap,
 				&MutexCap));
+    /* The WDM service cap should be a private cap within the ISR thread CSpace */
+    assert(PsGetGuardValueOfCap(InterruptObject->WdmServiceCap));
+    assert(PsGetGuardValueOfCap(InterruptObject->WdmServiceCap) !=
+	   RtlGetThreadCSpaceGuard());
     assert(InterruptObject->ThreadCap != 0);
+    /* The ISR thread cap should be a private cap within the calling thread CSpace. */
+    assert(PsCapIsThreadPrivate(InterruptObject->ThreadCap));
     assert(InterruptObject->ThreadIpcBuffer != 0);
     assert(InterruptObject->IrqHandlerCap != 0);
     assert(InterruptObject->NotificationCap != 0);
+    /* Both the IRQ handler cap and the notification cap is in the thread private
+     * CNode of the ISR thread. */
+    assert(PsGetGuardValueOfCap(InterruptObject->IrqHandlerCap));
+    assert(PsGetGuardValueOfCap(InterruptObject->IrqHandlerCap) !=
+	   RtlGetThreadCSpaceGuard());
+    assert(PsGetGuardValueOfCap(InterruptObject->NotificationCap));
+    assert(PsGetGuardValueOfCap(InterruptObject->NotificationCap) !=
+	   RtlGetThreadCSpaceGuard());
     assert(MutexCap != 0);
     KeInitializeMutex(&InterruptObject->Mutex, MutexCap);
+    /* The mutex cap should be in the process shared CNode. */
+    assert(PsCapIsProcessShared(MutexCap));
 
     DbgTrace("Created interrupt object %p ThreadCap %zd IpcBuffer %p "
 	     "IrqHandler %zd Notification %zd Mutex %zd\n",
@@ -190,9 +214,6 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 	     InterruptObject->IrqHandlerCap,
 	     InterruptObject->NotificationCap,
 	     InterruptObject->Mutex.Notification);
-    RET_ERR_EX(KiConnectIrqNotification(InterruptObject->IrqHandlerCap,
-					InterruptObject->NotificationCap),
-	       IoDisconnectInterrupt(InterruptObject));
     RET_ERR_EX(PspResumeThread(InterruptObject->ThreadCap),
 	       IoDisconnectInterrupt(InterruptObject));
     *pInterruptObject = InterruptObject;

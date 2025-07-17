@@ -95,6 +95,9 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	}
     }
 
+    /* Delete the thread-private CNode. This will revoke all caps within it. */
+    MmDeleteCNode(Thread->CSpace);
+
     /* Finally, delete the TCB object */
     MmCapTreeDeleteNode(&Thread->TreeNode);
 }
@@ -119,7 +122,7 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
 	KeDestroyNotification(&Process->DpcMutex);
     }
     MmDestroyVSpace(&Process->VSpace);
-    MmDeleteCNode(Process->CSpace);
+    MmDeleteCNode(Process->SharedCNode);
     RemoveEntryList(&Process->ProcessListEntry);
 }
 

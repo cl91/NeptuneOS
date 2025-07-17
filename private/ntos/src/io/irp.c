@@ -503,7 +503,7 @@ static VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
     PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
     Irp->OriginalRequestor = SERVER_OBJECT_TO_CLIENT_HANDLE(Thread);
     /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
-    Irp->Identifier = (HANDLE)POINTER_TO_GLOBAL_HANDLE(PendingIrp->IoPacket);
+    Irp->Identifier = (HANDLE)OBJECT_TO_GLOBAL_HANDLE(PendingIrp->IoPacket);
     if (Thread == IOP_PAGING_IO_REQUESTOR) {
 	InsertTailList(&IopNtosPendingIrpList, &PendingIrp->Link);
     } else {

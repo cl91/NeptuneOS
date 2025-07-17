@@ -24,6 +24,10 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
 		IN PNTDLL_DRIVER_INIT_INFO InitInfo,
 		IN PUNICODE_STRING RegistryPath)
 {
+    /* WdmServiceCap must be a cap within the thread-private CNode and has
+     * the correct guard value. */
+    assert(PsCapIsThreadPrivate(WdmServiceCap));
+    assert(PsCapHasCorrectGuard(WdmServiceCap));
     NtCurrentTeb()->Wdm.ServiceCap = WdmServiceCap;
     IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;

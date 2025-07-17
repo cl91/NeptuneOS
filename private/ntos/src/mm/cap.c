@@ -1,6 +1,6 @@
 /*++
 
-Copyright (c) 2022  Dr. Chang Liu, PhD.
+Copyright (c) 2025  Dr. Chang Liu, PhD.
 
 Module Name:
 
@@ -25,14 +25,17 @@ Abstract:
     This is 256MB for x32 and 4G for x64. Users with larger
     or smaller RAM should adjust the numbers accordingly.
 
-    Each process will have a CSpace with only a single level
-    of CNode, namely the root CNode of the CSpace. The NTOS
+    Each client thread will have a two-level CSpace with
+    the outer CNode containing the private caps of the thread.
+    The zeroth slot of the outer CNode points to the inner CNode
+    containing the caps shared within the same process. The NTOS
     root task has a large root CNode (with, say 2^16 slots),
     since all capabilities to kernel objects are stored in
     the NTOS CSpace. These include all TCBs, all pages, and
-    all untyped caps. Client processes will have a much smaller
-    root CNode (of order, say 16 slots), since we only store
-    the relevant per-process endpoint capabilities there.
+    all untyped caps. Client threads have much smaller CNodes
+    (each CNode gets 32 or 64 slots, depending on the architecture
+    bit size), since we only store the relevant per-thread and
+    per-process endpoint capabilities there.
 
     Each CNode has a bitmap to keep track of the slot usage.
     Allocation and deallocation of a cap slot modify the
@@ -44,6 +47,10 @@ Revision History:
     2021-07-16  Revised the design to use a large root CNode
                 for the root task CSpace and a small CNode
                 for each client process.
+
+    2025-07-18  Modify the client CSpace to use a two-level
+                design with thread-private and process-shared
+		caps, rather than a single level of CNode.
 
 --*/
 
@@ -81,11 +88,11 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
 	Type = "IRQ_HANDLER";
     }
     PCSTR CapType = RtlDbgCapTypeToStr(seL4_DebugCapIdentify(Node->Cap));
-    if (Node->CSpace != &MiNtosCNode) {
+    if (Node->CNode != &MiNtosCNode) {
 	CapType = "in client process's CSpace";
     }
-    MmDbgPrint("Cap 0x%zx (Type %s%s seL4 Cap %s)",
-	       Node->Cap, Type, Annotation, CapType);
+    MmDbgPrint("Cap 0x%zx (Type %s%s Badge/Guard 0x%zx seL4 Cap %s)",
+	       Node->Cap, Type, Annotation, Node->Badge, CapType);
 #endif
 }
 
@@ -95,13 +102,13 @@ VOID MmDbgDumpCNode(IN PCNODE CNode)
     MmDbg("Dumping CNode %p\n", CNode);
     MmDbgPrint("    TREE-NODE ");
     MmDbgDumpCapTreeNode(&CNode->TreeNode);
-    MmDbgPrint("\n    Log2Size %d  Depth %d\n  TotalUsed %d\n    UsedMap",
-	     CNode->Log2Size, CNode->Depth, CNode->TotalUsed);
+    MmDbgPrint("\n    Log2Size %d  TotalUsed %d\n    UsedMap",
+	     CNode->Log2Size, CNode->TotalUsed);
     for (ULONG i = 0; i < (1 << CNode->Log2Size) / MWORD_BITS; i++) {
 	MmDbgPrint("  %p", (PVOID)CNode->UsedMap[i]);
     }
     MmDbgPrint("\n");
-    if (CNode->TreeNode.CSpace == &MiNtosCNode) {
+    if (CNode->TreeNode.CNode == &MiNtosCNode) {
 	for (ULONG i = 0; i < (1 << CNode->Log2Size); i++) {
 	    if (GetBit(CNode->UsedMap, i)) {
 		MmDbgPrint("Cap 0x%x Type %s\n", i,
@@ -230,7 +237,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
     PUNTYPED Untyped = NULL;
     ULONG Log2SizeUntyped = Log2Size + LOG2SIZE_PER_CNODE_SLOT;
     RET_ERR(MmRequestUntyped(Log2SizeUntyped, &Untyped));
-    assert(Untyped->TreeNode.CSpace == &MiNtosCNode);
+    assert(Untyped->TreeNode.CNode == &MiNtosCNode);
 
     MiAllocatePoolEx(CNode, CNODE, MmReleaseUntyped(Untyped));
     MiAllocateArray(UsedMap, MWORD, (MWORD)((1ULL << Log2Size) / MWORD_BITS),
@@ -238,7 +245,7 @@ NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 			MmReleaseUntyped(Untyped);
 			MiFreePool(CNode);
 		    });
-    MiInitializeCNode(CNode, 0, Log2Size, Log2Size, &MiNtosCNode, NULL, UsedMap);
+    MiInitializeCNode(CNode, 0, Log2Size, &MiNtosCNode, NULL, UsedMap, 0, 0);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_CapTableObject,
 				  Log2Size, &CNode->TreeNode),
 	       {
@@ -277,29 +284,30 @@ VOID MmDeleteCNode(IN PCNODE CNode)
 }
 
 /*
- * Copy a capability into a new slot in the root task's CSpace, setting
+ * Copy a capability into a new slot in the target CNode, setting
  * the access rights of the new capability
  */
-static NTSTATUS MiCopyCap(IN PCNODE DestCSpace,
-			  IN MWORD DestCap,
-			  IN PCNODE SrcCSpace,
-			  IN MWORD SrcCap,
-			  IN seL4_CapRights_t NewRights)
+NTSTATUS MmCopyCap(IN PCNODE DestCNode,
+		   IN MWORD DestCap,
+		   IN PCNODE SrcCNode,
+		   IN MWORD SrcCap,
+		   IN seL4_CapRights_t NewRights)
 {
-    assert(DestCSpace != NULL);
-    assert(DestCSpace->TreeNode.Cap != 0);
-    assert(SrcCSpace != NULL);
-    assert(SrcCSpace->TreeNode.Cap != 0);
-    assert(DestCap != 0);
+    assert(DestCNode != NULL);
+    assert(DestCNode->TreeNode.Cap != 0);
+    assert(SrcCNode != NULL);
+    assert(SrcCNode->TreeNode.Cap != 0);
+    /* The destination cap can be zero since we copy the process shared CNode cap
+     * into the zeroth slot of the thread-private CNode. */
     assert(SrcCap != 0);
-    int Error = seL4_CNode_Copy(DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
-				SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+    int Error = seL4_CNode_Copy(DestCNode->TreeNode.Cap, DestCap, MmCNodeGetDepth(DestCNode),
+				SrcCNode->TreeNode.Cap, SrcCap, MmCNodeGetDepth(SrcCNode),
 				NewRights);
 
     if (Error != 0) {
 	MmDbg("CNode_Copy(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx) failed with error %d\n",
-	      DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
-	      SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+	      DestCNode->TreeNode.Cap, DestCap, MmCNodeGetDepth(DestCNode),
+	      SrcCNode->TreeNode.Cap, SrcCap, MmCNodeGetDepth(SrcCNode),
 	      NewRights.words[0], Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
@@ -307,27 +315,27 @@ static NTSTATUS MiCopyCap(IN PCNODE DestCSpace,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
+static NTSTATUS MiMintCap(IN PCNODE DestCNode,
 			  IN MWORD DestCap,
-			  IN PCNODE SrcCSpace,
+			  IN PCNODE SrcCNode,
 			  IN MWORD SrcCap,
 			  IN seL4_CapRights_t Rights,
 			  IN MWORD Badge)
 {
-    assert(DestCSpace != NULL);
-    assert(DestCSpace->TreeNode.Cap != 0);
-    assert(SrcCSpace != NULL);
-    assert(SrcCSpace->TreeNode.Cap != 0);
+    assert(DestCNode != NULL);
+    assert(DestCNode->TreeNode.Cap != 0);
+    assert(SrcCNode != NULL);
+    assert(SrcCNode->TreeNode.Cap != 0);
     assert(DestCap != 0);
     assert(SrcCap != 0);
-    int Error = seL4_CNode_Mint(DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
-				SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+    int Error = seL4_CNode_Mint(DestCNode->TreeNode.Cap, DestCap, MmCNodeGetDepth(DestCNode),
+				SrcCNode->TreeNode.Cap, SrcCap, MmCNodeGetDepth(SrcCNode),
 				Rights, Badge);
 
     if (Error != 0) {
 	MmDbg("CNode_Mint(0x%zx, 0x%zx, %d, 0x%zx, 0x%zx, %d, 0x%zx, 0x%zx) failed with error %d\n",
-	      DestCSpace->TreeNode.Cap, DestCap, DestCSpace->Depth,
-	      SrcCSpace->TreeNode.Cap, SrcCap, SrcCSpace->Depth,
+	      DestCNode->TreeNode.Cap, DestCap, MmCNodeGetDepth(DestCNode),
+	      SrcCNode->TreeNode.Cap, SrcCap, MmCNodeGetDepth(SrcCNode),
 	      Rights.words[0], Badge, Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
@@ -344,14 +352,14 @@ static NTSTATUS MiMintCap(IN PCNODE DestCSpace,
 static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
-    PCNODE CSpace = Node->CSpace;
-    MmDbg("Deleting cap 0x%zx for cspace 0x%zx\n", Node->Cap, CSpace->TreeNode.Cap);
-    int Error = seL4_CNode_Delete(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
+    PCNODE CNode = Node->CNode;
+    MmDbg("Deleting cap 0x%zx for cspace 0x%zx\n", Node->Cap, CNode->TreeNode.Cap);
+    int Error = seL4_CNode_Delete(CNode->TreeNode.Cap, Node->Cap, MmCNodeGetDepth(CNode));
     if (Error != 0) {
 	MmDbg("CNode_Delete(0x%zx, 0x%zx, %d) failed with error %d\n",
-	      CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+	      CNode->TreeNode.Cap, Node->Cap, MmCNodeGetDepth(CNode), Error);
 	KeDbgDumpIPCError(Error);
 	/* This should always succeed. On debug build we assert if it didn't. */
 	assert(FALSE);
@@ -367,14 +375,14 @@ static NTSTATUS MiDeleteCap(IN PCAP_TREE_NODE Node)
 static NTSTATUS MiRevokeCap(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
-    PCNODE CSpace = Node->CSpace;
-    int Error = seL4_CNode_Revoke(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
-    MmDbg("Revoking cap 0x%zx for cspace 0x%zx\n", Node->Cap, CSpace->TreeNode.Cap);
+    PCNODE CNode = Node->CNode;
+    int Error = seL4_CNode_Revoke(CNode->TreeNode.Cap, Node->Cap, MmCNodeGetDepth(CNode));
+    MmDbg("Revoking cap 0x%zx for cspace 0x%zx\n", Node->Cap, CNode->TreeNode.Cap);
     if (Error != 0) {
 	MmDbg("CNode_Revoke(0x%zx, 0x%zx, %d) failed with error %d\n",
-	      CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+	      CNode->TreeNode.Cap, Node->Cap, MmCNodeGetDepth(CNode), Error);
 	KeDbgDumpIPCError(Error);
 	/* This should always succeed. On debug build we assert if it didn't. */
 	assert(FALSE);
@@ -394,7 +402,7 @@ static NTSTATUS MiRevokeCap(IN PCAP_TREE_NODE Node)
 VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
     MmDbg("Before deleting cap 0x%zx\n", Node->Cap);
     if (Node->Parent != NULL) {
@@ -403,7 +411,7 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 	MmDbgDumpCapTree(Node, 0);
     }
     MiDeleteCap(Node);
-    MmDeallocateCap(Node->CSpace, Node->Cap);
+    MmDeallocateCap(Node->CNode, Node->Cap);
     Node->Cap = 0;
     PCAP_TREE_NODE Parent = Node->Parent;
     if (Parent != NULL) {
@@ -432,9 +440,9 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
 static VOID MiCapTreeDeallocateCapRecursively(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
-    MmDeallocateCap(Node->CSpace, Node->Cap);
+    MmDeallocateCap(Node->CNode, Node->Cap);
     Node->Cap = 0;
     CapTreeLoopOverChildren(Child, Node) {
 	MiCapTreeDeallocateCapRecursively(Child);
@@ -450,7 +458,7 @@ static VOID MiCapTreeDeallocateCapRecursively(IN PCAP_TREE_NODE Node)
 VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
     /* This should always succeed. On debug build we assert if it didn't. */
     UNUSED NTSTATUS Status = MiRevokeCap(Node);
@@ -463,7 +471,7 @@ VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
 /*
  * Allocate a new cap slot and copy the old cap into the new cap slot.
  * The new node must have already been initialized (via MmInitializeCapTreeNode)
- * with the desired CSpace to copy the old cap into.
+ * with the desired CNode to copy the old cap into.
  *
  * IMPORTANT NOTES:
  *
@@ -512,8 +520,8 @@ NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
 {
     assert(NewNode != NULL);
     assert(OldNode != NULL);
-    assert(NewNode->CSpace != NULL);
-    assert(OldNode->CSpace != NULL);
+    assert(NewNode->CNode != NULL);
+    assert(OldNode->CNode != NULL);
     assert(NewNode->Cap == 0);
     /* We never copy untyped caps so OldNode always have a parent */
     assert(OldNode->Parent != NULL);
@@ -526,12 +534,12 @@ NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
     assert(OldNode->Type != CAP_TREE_NODE_CNODE);
 
     MWORD NewCap = 0;
-    RET_ERR(MmAllocateCapRange(NewNode->CSpace, &NewCap, 1));
+    RET_ERR(MmAllocateCapRange(NewNode->CNode, &NewCap, 1));
     assert(NewCap != 0);
 
-    RET_ERR_EX(MiCopyCap(NewNode->CSpace, NewCap, OldNode->CSpace,
+    RET_ERR_EX(MmCopyCap(NewNode->CNode, NewCap, OldNode->CNode,
 			 OldNode->Cap, NewRights),
-	       MmDeallocateCap(NewNode->CSpace, NewCap));
+	       MmDeallocateCap(NewNode->CNode, NewCap));
     NewNode->Cap = NewCap;
     NewNode->Type = OldNode->Type;
 
@@ -582,8 +590,8 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     assert(OldNode != NULL);
     assert(OldNode->Type == CAP_TREE_NODE_ENDPOINT ||
 	   OldNode->Type == CAP_TREE_NODE_NOTIFICATION);
-    assert(NewNode->CSpace != NULL);
-    assert(OldNode->CSpace != NULL);
+    assert(NewNode->CNode != NULL);
+    assert(OldNode->CNode != NULL);
     assert(NewNode->Cap == 0);
     assert(OldNode->Badge == 0);
     assert(NewNode->Badge == 0);
@@ -593,12 +601,12 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     assert(Badge != 0);
 
     MWORD NewCap = 0;
-    RET_ERR(MmAllocateCapRange(NewNode->CSpace, &NewCap, 1));
+    RET_ERR(MmAllocateCapRange(NewNode->CNode, &NewCap, 1));
     assert(NewCap != 0);
 
-    RET_ERR_EX(MiMintCap(NewNode->CSpace, NewCap, OldNode->CSpace,
+    RET_ERR_EX(MiMintCap(NewNode->CNode, NewCap, OldNode->CNode,
 			 OldNode->Cap, NewRights, Badge),
-	       MmDeallocateCap(NewNode->CSpace, NewCap));
+	       MmDeallocateCap(NewNode->CNode, NewCap));
     NewNode->Cap = NewCap;
     NewNode->Type = OldNode->Type;
     NewNode->Badge = Badge;

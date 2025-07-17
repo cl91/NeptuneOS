@@ -38,9 +38,9 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN PCAP_TREE_NODE TreeNode)
 {
     assert(Untyped != NULL);
-    assert(Untyped->TreeNode.CSpace != NULL);
+    assert(Untyped->TreeNode.CNode != NULL);
     assert(Untyped->TreeNode.Cap != 0);
-    assert(TreeNode->CSpace != NULL);
+    assert(TreeNode->CNode != NULL);
     assert(TreeNode->Cap == 0);
     if (TreeNode->Parent == NULL) {
 	assert(!MmCapTreeNodeHasChildren(&Untyped->TreeNode));
@@ -49,18 +49,18 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
     }
 
     MWORD ObjCap = 0;
-    RET_ERR(MmAllocateCapRange(TreeNode->CSpace, &ObjCap, 1));
+    RET_ERR(MmAllocateCapRange(TreeNode->CNode, &ObjCap, 1));
     assert(ObjCap);
     MWORD Error = seL4_Untyped_Retype(Untyped->TreeNode.Cap,
 				      ObjType, ObjBits,
-				      TreeNode->CSpace->TreeNode.Cap,
+				      TreeNode->CNode->TreeNode.Cap,
 				      0, 0, ObjCap, 1);
     if (Error != seL4_NoError) {
 	MmDbgDumpCapTree(&Untyped->TreeNode, 0);
-	MmDbgDumpCNode(TreeNode->CSpace);
+	MmDbgDumpCNode(TreeNode->CNode);
 	MmDbgDumpUntypedForest();
 	KeDbgDumpIPCError(Error);
-	MmDeallocateCap(TreeNode->CSpace, ObjCap);
+	MmDeallocateCap(TreeNode->CNode, ObjCap);
 	return SEL4_ERROR(Error);
     }
     TreeNode->Cap = ObjCap;
@@ -91,22 +91,22 @@ NTSTATUS MiSplitUntyped(IN PUNTYPED Src,
     assert(Src != NULL);
     assert(LeftChild != NULL);
     assert(RightChild != NULL);
-    assert(Src->TreeNode.CSpace != NULL);
+    assert(Src->TreeNode.CNode != NULL);
     assert(!MmCapTreeNodeHasChildren(&Src->TreeNode));
 
     MWORD NewCap = 0;
-    RET_ERR(MmAllocateCapRange(Src->TreeNode.CSpace, &NewCap, 2));
+    RET_ERR(MmAllocateCapRange(Src->TreeNode.CNode, &NewCap, 2));
     RET_ERR_EX(MiSplitUntypedCap(Src->TreeNode.Cap, Src->Log2Size,
-				 Src->TreeNode.CSpace->TreeNode.Cap, NewCap),
+				 Src->TreeNode.CNode->TreeNode.Cap, NewCap),
 	       {
-		   MmDeallocateCap(Src->TreeNode.CSpace, NewCap+1);
-		   MmDeallocateCap(Src->TreeNode.CSpace, NewCap);
+		   MmDeallocateCap(Src->TreeNode.CNode, NewCap+1);
+		   MmDeallocateCap(Src->TreeNode.CNode, NewCap);
 	       });
 
     Src->Requested = TRUE;
-    MiInitializeUntyped(LeftChild, Src->TreeNode.CSpace, Src, NewCap, Src->AvlNode.Key,
+    MiInitializeUntyped(LeftChild, Src->TreeNode.CNode, Src, NewCap, Src->AvlNode.Key,
 			Src->Log2Size - 1, Src->IsDevice);
-    MiInitializeUntyped(RightChild, Src->TreeNode.CSpace, Src, NewCap + 1,
+    MiInitializeUntyped(RightChild, Src->TreeNode.CNode, Src, NewCap + 1,
 			Src->AvlNode.Key + (1ULL << LeftChild->Log2Size),
 			Src->Log2Size - 1, Src->IsDevice);
 

@@ -2,31 +2,31 @@
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 
-NTSTATUS KeEnableIoPortEx(IN PCNODE CSpace,
+NTSTATUS KeEnableIoPortEx(IN PCNODE CNode,
 			  IN USHORT PortNum,
 			  IN USHORT Count,
 			  IN PX86_IOPORT IoPort)
 {
-    assert(CSpace != NULL);
+    assert(CNode != NULL);
     assert(IoPort != NULL);
     MWORD Cap = 0;
-    RET_ERR(MmAllocateCap(CSpace, &Cap));
+    RET_ERR(MmAllocateCap(CNode, &Cap));
     assert(Cap != 0);
     int Error = seL4_X86_IOPortControl_Issue(seL4_CapIOPortControl,
 					     PortNum, PortNum + Count - 1,
-					     CSpace->TreeNode.Cap,
-					     Cap, CSpace->Depth);
+					     CNode->TreeNode.Cap,
+					     Cap, MmCNodeGetDepth(CNode));
     if (Error != 0) {
-	MmDeallocateCap(CSpace, Cap);
+	MmDeallocateCap(CNode, Cap);
 	DbgTrace("seL4_X86_IOPortControl_Issue(0x%x, 0x%x, 0x%x, 0x%zx, 0x%zx, %d) failed\n",
 		 seL4_CapIOPortControl, PortNum, PortNum + Count - 1,
-		 CSpace->TreeNode.Cap, Cap, CSpace->Depth);
+		 CNode->TreeNode.Cap, Cap, MmCNodeGetDepth(CNode));
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
     MmInitializeCapTreeNode(&IoPort->TreeNode,
 			    CAP_TREE_NODE_X86_IOPORT,
-			    Cap, CSpace, NULL);
+			    Cap, CNode, NULL);
     IoPort->PortNum = PortNum;
     IoPort->Count = Count;
     return STATUS_SUCCESS;

@@ -259,8 +259,9 @@ static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo)
     RET_ERR(ExInitializePool(EX_POOL_START, LARGE_PAGE_SIZE / PAGE_SIZE));
 
     /* Initialize root CNode. Record used cap slots at this point. */
-    MiInitializeCNode(&MiNtosCNode, NTOS_CNODE_CAP, ROOT_CNODE_LOG2SIZE, MWORD_BITS,
-		      &MiNtosCNode, NULL, MiNtosCNodeUsedMap);
+    MiInitializeCNode(&MiNtosCNode, NTOS_CNODE_CAP, ROOT_CNODE_LOG2SIZE,
+		      &MiNtosCNode, NULL, MiNtosCNodeUsedMap,
+		      0, MWORD_BITS - ROOT_CNODE_LOG2SIZE);
     for (ULONG i = 0; i < FreeCapStart; i++) {
 	SetBit(MiNtosCNode.UsedMap, i);
     }

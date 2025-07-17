@@ -65,7 +65,11 @@ typedef enum _OBJECT_TYPE_ENUM {
  * Note: (POBJECT) Self always points to the beginning of the
  * object body, not the object header. To avoid confusion we
  * always pass OBJECT pointers across function boundary, and
- * never pass OBJECT_HEADER pointers.
+ * never pass OBJECT_HEADER pointers. Also, OBJECT_HEADER must
+ * be aligned by EX_POOL_SMALLEST_BLOCK, because we use the
+ * difference between the object pointer (not pointer to the
+ * object header) and the start of the ExPool as the unique
+ * identifier of the object in the client-side.
  */
 typedef PVOID POBJECT;
 typedef struct _OBJECT_HEADER {
@@ -87,6 +91,8 @@ typedef struct _OBJECT_HEADER {
 #endif
 } OBJECT_HEADER, *POBJECT_HEADER;
 
+C_ASSERT(IS_ALIGNED_BY(sizeof(OBJECT_HEADER), EX_POOL_SMALLEST_BLOCK));
+
 #define OBJECT_HEADER_TO_OBJECT(Ptr)			\
     ((Ptr) == NULL ? NULL : (POBJECT)(((MWORD)(Ptr)) + sizeof(OBJECT_HEADER)))
 
@@ -99,19 +105,26 @@ FORCEINLINE LONGLONG ObGetObjectRefCount(IN POBJECT Object)
 }
 
 /*
- * We use the offset of an object header pointer from the start of the
- * Executive pool as the global handle of an object. Since the
- * lowest EX_POOL_BLOCK_SHIFT (== 3 on x86 and 4 on amd64) bits are
- * always zero for any memory allocated on the ExPool we use the lowest
- * bits to indicate the nature of the handle.
+ * We use the offset of an object pointer from the start of the
+ * Executive pool as the global handle of an object. Global handles
+ * are often used as unique IDs for server-side objects, and can be
+ * embedded into the badge of an IPC endpoint or used as the guard
+ * bits of a CSpace. Since the lowest EX_POOL_BLOCK_SHIFT (== 3 on x86
+ * and 4 on amd64) bits are always zero for any memory allocated on the
+ * ExPool, we are free to OR the the lowest bits of the global handle
+ * with flags to form, for instance, the badge of an IPC endpoint.
  *
  * We cannot just use the server-side pointer as the global handle.
- * The reason is that on i386, the highest bits of the badge are ignored
- * by seL4, due to the way that seL4 implements IPC on i386. On amd64
- * there is presumably no such limitation, but we need to be portable.
+ * The reasons are two-fold: firstly, on i386, the highest bits of the
+ * badge are ignored by seL4, due to the way that seL4 implements IPC
+ * on i386, so we cannot use the full 32 bits as the badge. Secondly,
+ * the number of guard bits is usually much less than the number of bits
+ * in a machine word (in order to leave bits for the actual addressing
+ * of objects in the CNode), so the global handles must not have more
+ * non-trivial bits than the number of guard bits.
  *
- * For the NTOS executive services we use the global handle of the
- * thread as the badge of the IPC endpoint to distinguish the sender
+ * For the NT executive services we use the global handle of the thread
+ * to form the badge of the IPC endpoint to distinguish the sender
  * of the service messages. Since the lowest three bits of the global
  * handle are guaranteed to be zero, we are free to use the three bits
  * to indicate the service type, since there are more than one types
@@ -136,30 +149,24 @@ typedef enum _SERVICE_TYPE {
 
 compile_assert(TOO_MANY_SERVICE_TYPES, NUM_SERVICE_TYPES <= (1 << EX_POOL_BLOCK_SHIFT));
 
-/* For structures that are not managed by the Object Manager (for
- * instance IO_PACKET and IO_DEVICE_OBJECT) we simply take the offset
- * of the pointer from EX_POOL_START */
-#define POINTER_TO_GLOBAL_HANDLE(Ptr)		\
-    ObpPtrToGlobalHandle((MWORD)(Ptr))
-
-/* For objects managed by the Object Manager, use the offset of the
- * object header from the ExPool start address */
+/* We use the offset of the object pointer from the ExPool start address
+ * as the globally unique (at one time) identifier of the object on the
+ * client-side. Note this applies to both objects managed by the Object
+ * Manager and those that are not (such as IO_PACKET and IO_DEVICE_OBJECT).
+ * This requires that OBJECT_HEADER be aligned by EX_POOL_SMALLEST_BLOCK. */
 #define OBJECT_TO_GLOBAL_HANDLE(Ptr)				\
-    POINTER_TO_GLOBAL_HANDLE(OBJECT_TO_OBJECT_HEADER(Ptr))
+    ObpPtrToGlobalHandle((MWORD)(Ptr))
 
 /*
  * We convert the global handle into an object header pointer by masking
  * off the lowest EX_POOL_BLOCK_SHIFT bits and the bits higher than
  * EX_POOL_MAX_SIZE
  */
-#define GLOBAL_HANDLE_TO_POINTER(Handle)				\
+#define GLOBAL_HANDLE_TO_OBJECT(Handle)				\
     ((Handle) == 0 ? NULL :						\
 	((PVOID)((((((MWORD)(Handle) >> EX_POOL_BLOCK_SHIFT)		\
 		    << EX_POOL_BLOCK_SHIFT)				\
 		   & (EX_POOL_MAX_SIZE - 1)) + EX_POOL_START))))
-
-#define GLOBAL_HANDLE_TO_OBJECT(Handle)					\
-    OBJECT_HEADER_TO_OBJECT(GLOBAL_HANDLE_TO_POINTER(Handle))
 
 #define GLOBAL_HANDLE_GET_FLAG(Handle)			\
     ((MWORD)Handle & ((1 << EX_POOL_BLOCK_SHIFT) - 1))

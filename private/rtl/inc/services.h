@@ -36,6 +36,8 @@ typedef seL4_Word MWORD;
 #define PAGE_ALIGN64(p)			ALIGN_DOWN_64(p, PAGE_SIZE)
 #define PAGE_ALIGN_UP64(p)		ALIGN_UP_64(p, PAGE_SIZE)
 #define IS_PAGE_ALIGNED64(p)		(PAGE_ALIGN64(p) == (ULONG64)(p))
+#define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))
+#define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN(addr, type))
 
 /* The maximum number of zero bits (starting from the most significant bit) in
  * the virtual address that the user can specify in virtual memory allocation.
@@ -49,6 +51,8 @@ typedef seL4_Word MWORD;
 #define MWORD_LOG2SIZE			(2)
 #define ADDRSPACE_SHIFT			(0)
 #endif
+
+#define MWORD_BITS_LOG2SIZE		(MWORD_LOG2SIZE + 3)
 
 /* All hard-coded addresses in client processes' address space go here. */
 #define LOWEST_USER_ADDRESS		(1ULL << PAGE_LOG2SIZE)
@@ -97,6 +101,14 @@ typedef seL4_Word MWORD;
  * the typical sector size (512 bytes).
  */
 #define IRP_DATA_BUFFER_SIZE	(512)
+
+/* Each client thread gets its own private CSpace, with the zeroth slot pointing
+ * to the shared CNode for its process. We don't neeed a huge CNode for either
+ * the private or the shared CNode, since we only use client-side cap slots for
+ * IPC endpoints. Even the most heavy RPC services need more than 20 LPC connections
+ * per thread. */
+#define PROCESS_SHARED_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE)
+#define THREAD_PRIVATE_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE)
 
 /* Private heap reserved for the Ldr component of NTDLL */
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
@@ -165,6 +177,7 @@ typedef struct _NTDLL_THREAD_INIT_INFO {
     MWORD WdmServiceCap;
     MWORD StackTop;
     MWORD StackReserve;
+    CLIENT_ID ClientId;
     CONTEXT Context;
 } NTDLL_THREAD_INIT_INFO, *PNTDLL_THREAD_INIT_INFO;
 

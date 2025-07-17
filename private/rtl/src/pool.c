@@ -5,6 +5,7 @@
  */
 
 #include <pool.h>
+#include <util.h>
 
 /* Comment this out to enable debug tracing on debug build */
 #undef DbgTrace

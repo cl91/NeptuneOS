@@ -13,7 +13,7 @@ static NTSTATUS EiPortObjectCreateProc(IN POBJECT Object,
     PLPC_PORT_OBJECT Port = (PLPC_PORT_OBJECT)Object;
     PPORT_OBJ_CREATE_CONTEXT Ctx = (PPORT_OBJ_CREATE_CONTEXT)CreaCtx;
 
-    RET_ERR(KeCreateEndpointEx(&Port->Endpoint, Ctx->ServerProcess->CSpace));
+    RET_ERR(KeCreateEndpointEx(&Port->Endpoint, Ctx->ServerProcess->SharedCNode));
     Port->MaxMessageLength = Ctx->MaxMessageLength;
     AvlInitializeTree(&Port->Connections);
     KeInitializeEvent(&Port->ConnectionRequested, SynchronizationEvent);

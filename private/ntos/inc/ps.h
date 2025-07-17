@@ -13,12 +13,6 @@
 
 #define NTOS_TCB_CAP			(seL4_CapInitThreadTCB)
 
-/* Initial CNode for client processes has 256 slots */
-#define PROCESS_INIT_CNODE_LOG2SIZE	(8)
-
-compile_assert(CNODE_USEDMAP_NOT_AT_LEAST_ONE_MWORD,
-	       (1ULL << PROCESS_INIT_CNODE_LOG2SIZE) >= MWORD_BITS);
-
 #define NTOS_PS_TAG		EX_POOL_TAG('n', 't', 'p', 's')
 
 /*
@@ -28,6 +22,7 @@ typedef struct _THREAD {
     CAP_TREE_NODE TreeNode;	/* Must be first member */
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
+    PCNODE CSpace;
     LIST_ENTRY ThreadListEntry;	/* List link for the PROCESS object's ThreadList */
     LIST_ENTRY QueuedApcList; /* List of all queued APCs. Note the objects in this
 			       * list are the APC objects that have been queued on
@@ -73,7 +68,7 @@ typedef struct _PROCESS {
     BOOLEAN Initialized; /* FALSE when process is first created. TRUE once
 			  * the initial thread has been successfully created. */
     LIST_ENTRY ThreadList;
-    PCNODE CSpace;
+    PCNODE SharedCNode;
     HANDLE_TABLE HandleTable;
     VIRT_ADDR_SPACE VSpace;	/* Virtual address space of the process */
     PMMVAD IpcRegionVad;
@@ -129,6 +124,16 @@ FORCEINLINE CLIENT_ID PsGetClientId(IN PTHREAD Thread)
 	.UniqueThread = (HANDLE)PsGetThreadId(Thread)
     };
     return Cid;
+}
+
+FORCEINLINE MWORD PsThreadCNodeIndexToGuardedCap(IN MWORD Cap,
+						 IN PTHREAD Thread)
+{
+    assert(Cap);
+    assert(Cap < (1ULL << THREAD_PRIVATE_CNODE_LOG2SIZE));
+    assert(!PsGetGuardValueOfCap(Cap));
+    return (Cap << PROCESS_SHARED_CNODE_LOG2SIZE) |
+	PsThreadIdToCSpaceGuard(PsGetThreadId(Thread));
 }
 
 /* init.c */

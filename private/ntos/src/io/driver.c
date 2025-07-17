@@ -399,7 +399,7 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
     assert(DriverObject != NULL);
 
     IopAllocatePool(IoPort, X86_IOPORT);
-    RET_ERR_EX(KeEnableIoPortEx(Process->CSpace, PortNum, Count, IoPort),
+    RET_ERR_EX(KeEnableIoPortEx(Process->SharedCNode, PortNum, Count, IoPort),
 	       IopFreePool(IoPort));
     InsertTailList(&DriverObject->IoPortList, &IoPort->Link);
     *Cap = IoPort->TreeNode.Cap;
@@ -409,69 +409,72 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 #endif
 }
 
-static NTSTATUS IopCreateInterruptServiceThread(IN PIO_DRIVER_OBJECT DriverObject,
+static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 						IN ULONG Vector,
 						IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 						IN PVOID ClientSideContext,
 						OUT PINTERRUPT_SERVICE *pSvc)
 {
+    PPROCESS DriverProcess = DriverThread->Process;
+    assert(DriverProcess != NULL);
+    PIO_DRIVER_OBJECT DriverObject = DriverProcess->DriverObject;
     assert(DriverObject != NULL);
-    assert(DriverObject->DriverProcess != NULL);
+    assert(DriverObject->DriverProcess == DriverProcess);
     assert(pSvc != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
     IopAllocatePool(Svc, INTERRUPT_SERVICE);
-
-    /* Create a notification for client side to use as the interrupt notification */
-    IF_ERR_GOTO(out, Status,
-		KeCreateNotificationEx(&Svc->Notification,
-				       DriverObject->DriverProcess->CSpace));
 
     CONTEXT Context;
     memset(&Context, 0, sizeof(CONTEXT));
     KeSetThreadContextFromEntryPoint(&Context, EntryPoint, ClientSideContext);
 
-    /* Also create the mutex object (which is simply a notification) for the
-     * client side to synchronize data access between ISR and the rest of the driver. */
-    IF_ERR_GOTO(out, Status,
-		KeCreateNotificationEx(&Svc->InterruptMutex,
-				       DriverObject->DriverProcess->CSpace));
-
-    IF_ERR_GOTO(out, Status,
-		PsCreateThread(DriverObject->DriverProcess, &Context, NULL,
-			       TRUE, &Svc->IsrThread));
+    /* Create the driver ISR thread and copy its thread cap into the CSpace of the
+     * calling thread, which will usually be the driver's main event loop thread. */
+    IF_ERR_GOTO(err, Status,
+		PsCreateThread(DriverProcess, &Context, NULL, TRUE, &Svc->IsrThread));
     assert(Svc->IsrThread != NULL);
     MmInitializeCapTreeNode(&Svc->IsrThreadClientCap, CAP_TREE_NODE_TCB,
-			    0, DriverObject->DriverProcess->CSpace, NULL);
-    IF_ERR_GOTO(out, Status,
+			    0, DriverThread->CSpace, NULL);
+    IF_ERR_GOTO(err, Status,
 		PsSetThreadPriority(Svc->IsrThread, DEVICE_INTERRUPT_MIN_LEVEL + Vector));
-    IF_ERR_GOTO(out, Status,
+    IF_ERR_GOTO(err, Status,
 		MmCapTreeCopyNode(&Svc->IsrThreadClientCap,
 				  &Svc->IsrThread->TreeNode,
 				  seL4_AllRights));
-    InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
+
+    /* Create a notification for driver ISR thread to use as the interrupt notification */
+    IF_ERR_GOTO(err, Status,
+		KeCreateNotificationEx(&Svc->Notification,
+				       Svc->IsrThread->CSpace));
+
+    /* Also create the mutex object (which is simply a notification) for the
+     * client side to synchronize data access between ISR and the rest of the driver. */
+    IF_ERR_GOTO(err, Status,
+		KeCreateNotificationEx(&Svc->InterruptMutex, DriverProcess->SharedCNode));
 
     /* Connect the given interrupt vector to the interrupt thread */
-    IF_ERR_GOTO(out, Status,
+    IF_ERR_GOTO(err, Status,
 		KeCreateIrqHandlerEx(&Svc->IrqHandler, Vector,
-				     Svc->IsrThread->Process->CSpace));
-    Svc->Vector = Vector;
+				     Svc->IsrThread->CSpace));
 
+    Svc->Vector = Vector;
+    InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
     *pSvc = Svc;
     return STATUS_SUCCESS;
 
-out:
+err:
     if (Svc != NULL) {
 	if (Svc->IsrThreadClientCap.Cap != 0) {
 	    MmCapTreeDeleteNode(&Svc->IsrThreadClientCap);
-	}
-	if (Svc->IsrThread != NULL) {
-	    ObDereferenceObject(Svc->IsrThread);
 	}
 	if (Svc->Notification.TreeNode.Cap != 0) {
 	    KeDestroyNotification(&Svc->Notification);
 	}
 	if (Svc->InterruptMutex.TreeNode.Cap != 0) {
 	    KeDestroyNotification(&Svc->InterruptMutex);
+	}
+	if (Svc->IsrThread != NULL) {
+	    ObDereferenceObject(Svc->IsrThread);
 	}
 	IopFreePool(Svc);
     }
@@ -501,15 +504,20 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     /* Create the interrupt service thread, together with the interrupt notification
      * and interrupt mutex object */
     PINTERRUPT_SERVICE Svc = NULL;
-    RET_ERR(IopCreateInterruptServiceThread(Thread->Process->DriverObject, Vector,
+    RET_ERR(IopCreateInterruptServiceThread(Thread, Vector,
 					    EntryPoint, ClientSideContext, &Svc));
     assert(Svc != NULL);
 
-    *WdmServiceCap = Svc->IsrThread->WdmServiceEndpoint->TreeNode.Cap;
-    *ThreadCap = Svc->IsrThreadClientCap.Cap;
+    *WdmServiceCap =
+	PsThreadCNodeIndexToGuardedCap(Svc->IsrThread->WdmServiceEndpoint->TreeNode.Cap,
+				       Svc->IsrThread);
+    *ThreadCap = PsThreadCNodeIndexToGuardedCap(Svc->IsrThreadClientCap.Cap,
+						Thread);
     *ThreadIpcBuffer = (PVOID)Svc->IsrThread->IpcBufferClientAddr;
-    *IrqHandler = Svc->IrqHandler.TreeNode.Cap;
-    *InterruptNotification = Svc->Notification.TreeNode.Cap;
+    *IrqHandler = PsThreadCNodeIndexToGuardedCap(Svc->IrqHandler.TreeNode.Cap,
+						 Svc->IsrThread);
+    *InterruptNotification = PsThreadCNodeIndexToGuardedCap(Svc->Notification.TreeNode.Cap,
+							    Svc->IsrThread);
     *InterruptMutex = Svc->InterruptMutex.TreeNode.Cap;
     return STATUS_SUCCESS;
 }

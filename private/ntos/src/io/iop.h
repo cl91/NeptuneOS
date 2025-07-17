@@ -285,9 +285,9 @@ typedef struct _INTERRUPT_SERVICE {
     LIST_ENTRY Link;
     IRQ_HANDLER IrqHandler;
     PTHREAD IsrThread;
-    CAP_TREE_NODE IsrThreadClientCap; /* Client side cap of the ISR thread cap */
-    NOTIFICATION Notification;	      /* Client side capability */
-    NOTIFICATION InterruptMutex;      /* Client side capability */
+    CAP_TREE_NODE IsrThreadClientCap; /* ISR thread cap in the driver main thread CSpace */
+    NOTIFICATION Notification;	      /* Cap in the driver ISR thread CSpace */
+    NOTIFICATION InterruptMutex;      /* Cap in the driver process shared CNode */
 } INTERRUPT_SERVICE, *PINTERRUPT_SERVICE;
 
 /*

@@ -62,28 +62,42 @@
  * Additionally, for amd64 EX_POOL_START must be within the first GB (since the initial
  * page directory and PDPT only cover the first GB). */
 #define EX_POOL_START				(0x10000000ULL)
-#define EX_POOL_MAX_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_POOL_MAX_SIZE			(0x02000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_POOL_END				(EX_POOL_START + EX_POOL_MAX_SIZE)
 /* Region for the Large Object Executive Pool. Objects larger than one page size are
  * allocated from this pool. */
 #define EX_LARGE_POOL_START			(EX_POOL_END)
-#define EX_LARGE_POOL_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_LARGE_POOL_SIZE			(0x02000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_LARGE_POOL_END			(EX_LARGE_POOL_START + EX_LARGE_POOL_SIZE)
-/* Region where the client thread's pages are mapped. This region is managed with bitmaps. */
-#define EX_CLIENT_REGION_START			(EX_LARGE_POOL_END)
-#define EX_CLIENT_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
-#define EX_CLIENT_REGION_END			(EX_CLIENT_REGION_START + EX_CLIENT_REGION_SIZE)
 /* Region where the driver processes' IO packet buffers are allocated, managed with bitmaps. */
-#define EX_DRIVER_REGION_START			(EX_CLIENT_REGION_END)
-#define EX_DRIVER_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_DRIVER_REGION_START			(EX_LARGE_POOL_END)
+#define EX_DRIVER_REGION_SIZE			(0x04000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_DRIVER_REGION_END			(EX_DRIVER_REGION_START + EX_DRIVER_REGION_SIZE)
+/* Region where the client thread's pages are mapped. This region is managed with bitmaps. */
+#define EX_CLIENT_REGION_START			(EX_DRIVER_REGION_END)
+#define EX_CLIENT_REGION_SIZE			(0x08000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_CLIENT_REGION_END			(EX_CLIENT_REGION_START + EX_CLIENT_REGION_SIZE)
 /* Region of the dynamically managed Executive virtual address space */
-#define EX_DYN_VSPACE_START			(EX_DRIVER_REGION_END)
+#define EX_DYN_VSPACE_START			(EX_CLIENT_REGION_END)
 #define EX_DYN_VSPACE_END			(seL4_UserTop)
 
 #if HYPERSPACE_END > EX_POOL_START
 #error "Hyperspace too large."
 #endif
+
+/* Since we use the object header's offset from the start of Executive pool as the
+ * unique global object handle (badge), and on i386 the seL4 kernel ignores the highest
+ * four bits of a badge, the Executive pool cannot be larger than 256MB. */
+#if defined(_M_IX86) && (EX_POOL_MAX_SIZE > 0x10000000ULL)
+#error "Executive pool too large"
+#endif
+
+/* Since we use the global handle of the thread object as the guard value of
+ * its CSpace, the log2size of the ExPool cannot exceed of the number of guard
+ * bits plus EX_POOL_BLOCK_SHIFT. */
+C_ASSERT(EX_POOL_MAX_SIZE <=
+	 (1ULL << (MWORD_BITS - THREAD_PRIVATE_CNODE_LOG2SIZE
+		   - PROCESS_SHARED_CNODE_LOG2SIZE + EX_POOL_BLOCK_SHIFT)));
 
 /* Allocation granularity for the system thread region, the client region and
  * the driver region. For the client region we reserve two pages but only
@@ -147,12 +161,15 @@ typedef enum _CAP_TREE_NODE_TYPE {
  */
 typedef struct _CAP_TREE_NODE {
     CAP_TREE_NODE_TYPE Type;
-    MWORD Cap;
-    MWORD Badge;
-    struct _CNODE *CSpace;
-    struct _CAP_TREE_NODE *Parent;
-    LIST_ENTRY ChildrenList;	/* List head of the sibling list of children */
-    LIST_ENTRY SiblingLink;	/* Chains all siblings together */
+    MWORD Cap; /* Index into the CNode in which this cap is inserted. Note if this cap
+		* is inserted into the outer CNode of a client thread (containing the
+		* private caps of the thread objects) this index does not contain the
+		* guard value of the outer CNode and the index bits of the inner CNode. */
+    MWORD Badge; /* Badge (for IPC endpoint) or guard (if this cap is a CNode). */
+    struct _CNODE *CNode;  /* CNode into which this cap is inserted. */
+    struct _CAP_TREE_NODE *Parent; /* Cap from which this cap is derived. */
+    LIST_ENTRY ChildrenList; /* List head of the sibling list of children. */
+    LIST_ENTRY SiblingLink;  /* Chains all siblings together. */
 } CAP_TREE_NODE, *PCAP_TREE_NODE;
 
 static inline BOOLEAN MmCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
@@ -177,22 +194,34 @@ static inline SIZE_T MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
  * untyped capability in the capability derivation tree.
  *
  * The root task starts with a (large) CNode as the single
- * layer of its CSpace. Each client process gets a (small)
- * CNode as its single layer of CSpace. The guard bits are
- * always zero and are suitably sized such that no remaining
- * bits are to be resolved in a capability lookup.
+ * layer of its CSpace. Each client thread gets a (small)
+ * two-level CSpace where the outer CNode contains the
+ * private caps of the thread object, with the zeroth cap
+ * pointing to the inner CNode that contains the shared caps
+ * of the thread object's process object. The guard bits of
+ * the client thread's CSpace is set to its global handle
+ * (right shifted by EX_POOL_BLOCK_SHIFT). Since the global
+ * handle is the address of the object in the ExPool, the
+ * log2size of the ExPool cannot exceed the number of guard
+ * bits plus EX_POOL_BLOCK_SHIFT.
  */
 typedef struct _CNODE {
     CAP_TREE_NODE TreeNode;	/* Must be first entry */
     MWORD *UsedMap;		/* Bitmap of used slots */
     ULONG Log2Size;		/* Called 'radix' in seL4 manual */
-    ULONG Depth;	  /* Equals Log2Size for client process CNode,
-			     MWORD_BITS for root task CNODe */
     ULONG RecentFree;		/* Most recently freed bit */
     ULONG TotalUsed;		/* Number of used slots */
 } CNODE, *PCNODE;
 
 #define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
+
+/* The sum of PROCESS_SHARED_CNODE_LOG2SIZE and THREAD_PRIVATE_CNODE_LOG2SIZE
+ * cannot be less than MWORD_BIT_LOG2SIZE, because seL4 does not support guard
+ * bits larger than MWORD_BITS - MWORD_BITS_LOG2SIZE. Additionally, our BitMap
+ * implementation requires that the number of bits is divisible by MWORD_BITS.
+ * Therefore we require that the smallest CNode has MWORD_BITS slots. */
+C_ASSERT(PROCESS_SHARED_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
+C_ASSERT(THREAD_PRIVATE_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
 
 static inline VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
 					  IN PCAP_TREE_NODE Parent)
@@ -213,12 +242,34 @@ static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
 					   IN OPTIONAL PCAP_TREE_NODE Parent)
 {
     assert(Self != NULL);
+    assert(Cap < (1ULL << CSpace->Log2Size));
     Self->Type = Type;
     Self->Cap = Cap;
-    Self->CSpace = CSpace;
+    Self->CNode = CSpace;
     InitializeListHead(&Self->ChildrenList);
     InitializeListHead(&Self->SiblingLink);
     MiCapTreeNodeSetParent(Self, Parent);
+}
+
+/*
+ * Get the depth of the CPtr traversal needed for a capability in the given
+ * CNode. This equals the radix of the CNode plus its number of guard bits.
+ */
+static inline ULONG MmCNodeGetDepth(IN PCNODE CNode)
+{
+    seL4_CNode_CapData_t GuardData = { .words[0] = CNode->TreeNode.Badge };
+    ULONG GuardBits = seL4_CNode_CapData_get_guardSize(GuardData);
+    return CNode->Log2Size + GuardBits;
+}
+
+/*
+ * Get the depth of the CPtr traversal for the given cap tree node relative
+ * to the CNode into which it is inserted. This depth value is supplied to
+ * the seL4 CNode manipulation routines such as seL4_CNode_Copy.
+ */
+static inline ULONG MmCapTreeNodeGetDepth(IN PCAP_TREE_NODE Node)
+{
+    return MmCNodeGetDepth(Node->CNode);
 }
 
 /*
@@ -702,6 +753,11 @@ VOID MmDeallocateCap(IN PCNODE CNode,
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
 VOID MmDeleteCNode(IN PCNODE CNode);
+NTSTATUS MmCopyCap(IN PCNODE DestCSpace,
+		   IN MWORD DestCap,
+		   IN PCNODE SrcCSpace,
+		   IN MWORD SrcCap,
+		   IN seL4_CapRights_t NewRights);
 NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
 			   IN PCAP_TREE_NODE OldNode,
 			   IN seL4_CapRights_t NewRights);

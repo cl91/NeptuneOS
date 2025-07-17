@@ -870,6 +870,9 @@ FASTCALL VOID LdrpInitialize(PNT_TIB NtTib)
 	NtTib->StackLimit = ((PTEB)NtTib)->DeallocationStack =
 	    (PVOID)(InitInfo.ThreadInitInfo.StackTop - InitInfo.ThreadInitInfo.StackReserve);
 
+	/* Set up the client id in the thread information block */
+	NtTib->ClientId = InitInfo.ThreadInitInfo.ClientId;
+
 	/* Set up the process environment block address in the thread environment block */
 	Peb = ((PTEB)NtTib)->ProcessEnvironmentBlock = (PVOID)InitInfo.PebAddress;
 
@@ -930,6 +933,9 @@ FASTCALL VOID LdrpInitialize(PNT_TIB NtTib)
 	NtTib->StackBase = (PVOID)InitInfo.StackTop;
 	NtTib->StackLimit = ((PTEB)NtTib)->DeallocationStack =
 	    (PVOID)(InitInfo.StackTop - InitInfo.StackReserve);
+
+	/* Set up the client id in the thread information block */
+	NtTib->ClientId = InitInfo.ClientId;
 
 	/* Set up the process environment block address in the thread environment block.
 	 * Note we need to do this for each thread. */

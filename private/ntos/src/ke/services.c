@@ -86,7 +86,7 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
     MWORD ReplyCap = 0;
     extern CNODE MiNtosCNode;
     if (ReplyEndpoint->TreeNode.Cap == 0) {
-	RET_ERR(MmAllocateCapRange(&MiNtosCNode, &ReplyCap, 1));
+	RET_ERR(MmAllocateCap(&MiNtosCNode, &ReplyCap));
 	assert(ReplyCap != 0);
 	KiInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
     }
@@ -108,7 +108,7 @@ static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    assert(Thread->Process->CSpace != NULL);
+    assert(Thread->CSpace != NULL);
     assert(ServiceType < NUM_SERVICE_TYPES);
     assert(ServiceType != SERVICE_TYPE_NOTIFICATION);
     assert(ServiceType != SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER);
@@ -117,17 +117,22 @@ static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
     PIPC_ENDPOINT ServiceEndpoint = NULL;
     RET_ERR(KiEnableClientServiceEndpoint(&Thread->ReplyEndpoint,
 					  &ServiceEndpoint,
-					  Thread->Process->CSpace,
+					  Thread->CSpace,
 					  IPCBadge));
     assert(ServiceEndpoint != NULL);
 
     if (ServiceType == SERVICE_TYPE_SYSTEM_SERVICE) {
 	Thread->SystemServiceEndpoint = ServiceEndpoint;
-	Thread->InitInfo.SystemServiceCap = ServiceEndpoint->TreeNode.Cap;
+	Thread->InitInfo.SystemServiceCap =
+	    PsThreadCNodeIndexToGuardedCap(ServiceEndpoint->TreeNode.Cap, Thread);
     } else if (ServiceType == SERVICE_TYPE_WDM_SERVICE) {
 	Thread->WdmServiceEndpoint = ServiceEndpoint;
-	Thread->InitInfo.WdmServiceCap = ServiceEndpoint->TreeNode.Cap;
+	Thread->InitInfo.WdmServiceCap =
+	    PsThreadCNodeIndexToGuardedCap(ServiceEndpoint->TreeNode.Cap, Thread);
     } else {
+	/* Note the endpoint cap for the fault handler of a client thread is also
+	 * in the CSpace of the client thread. When configuring the thread TCB, we
+	 * will need to convert the raw index into the CNode into a guarded cap ptr. */
 	assert(ServiceType == SERVICE_TYPE_FAULT_HANDLER);
 	Thread->FaultEndpoint = ServiceEndpoint;
     }
@@ -186,7 +191,7 @@ NTSTATUS KeEnableSystemThreadFaultHandler(IN PSYSTEM_THREAD Thread)
     assert(Thread != NULL);
     extern CNODE MiNtosCNode;
 
-    MWORD Handle = POINTER_TO_GLOBAL_HANDLE(Thread);
+    MWORD Handle = OBJECT_TO_GLOBAL_HANDLE(Thread);
     assert(Handle != 0);
     MWORD IPCBadge = Handle | SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER;
     RET_ERR(KiEnableClientServiceEndpoint(&Thread->ReplyEndpoint,
@@ -440,10 +445,10 @@ static inline VOID KiServiceUnmapBuffer4(IN BOOLEAN Mapped,
 
 static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
 {
-    assert(Thread->ReplyEndpoint.TreeNode.CSpace != NULL);
-    int Error = seL4_CNode_SaveCaller(Thread->ReplyEndpoint.TreeNode.CSpace->TreeNode.Cap,
+    assert(Thread->ReplyEndpoint.TreeNode.CNode != NULL);
+    int Error = seL4_CNode_SaveCaller(Thread->ReplyEndpoint.TreeNode.CNode->TreeNode.Cap,
 				      Thread->ReplyEndpoint.TreeNode.Cap,
-				      Thread->ReplyEndpoint.TreeNode.CSpace->Depth);
+				      MmCapTreeNodeGetDepth(&Thread->ReplyEndpoint.TreeNode));
     if (Error != 0) {
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
@@ -689,7 +694,7 @@ VOID KiDispatchExecutiveServices()
 	    }
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
 	    /* The system thread has faulted. For system threads we always terminate the thread. */
-	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_POINTER(Badge);
+	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
 #ifdef CONFIG_DEBUG_BUILD
 	    KiDumpSystemThreadFault(Fault, Thread, DbgPrint);

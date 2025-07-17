@@ -1,7 +1,7 @@
 #pragma once
 
+#include <nt.h>
 #include <services.h>
-#include <util.h>
 
 /*
  * For a free block, we keep the free list entry at the beginning of the block

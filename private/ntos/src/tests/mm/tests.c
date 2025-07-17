@@ -25,13 +25,14 @@ static inline NTSTATUS MiTestMapPage(IN MWORD PageCap,
 static inline NTSTATUS MiTestDeleteCap(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
-    PCNODE CSpace = Node->CSpace;
-    int Error = seL4_CNode_Delete(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
+    PCNODE CNode = Node->CNode;
+    int Error = seL4_CNode_Delete(CNode->TreeNode.Cap,
+				  Node->Cap, MmCapTreeNodeGetDepth(Node));
     if (Error != 0) {
 	DbgTrace("CNode_Delete(0x%zx, 0x%zx, %d) failed with error %d\n",
-		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+		 CNode->TreeNode.Cap, Node->Cap, MmCapTreeNodeGetDepth(Node), Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
@@ -41,13 +42,14 @@ static inline NTSTATUS MiTestDeleteCap(IN PCAP_TREE_NODE Node)
 static inline NTSTATUS MiTestRevokeCap(IN PCAP_TREE_NODE Node)
 {
     assert(Node != NULL);
-    assert(Node->CSpace != NULL);
+    assert(Node->CNode != NULL);
     assert(Node->Cap);
-    PCNODE CSpace = Node->CSpace;
-    int Error = seL4_CNode_Revoke(CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth);
+    PCNODE CNode = Node->CNode;
+    int Error = seL4_CNode_Revoke(CNode->TreeNode.Cap,
+				  Node->Cap, MmCapTreeNodeGetDepth(Node));
     if (Error != 0) {
 	DbgTrace("CNode_Revoke(0x%zx, 0x%zx, %d) failed with error %d\n",
-		 CSpace->TreeNode.Cap, Node->Cap, CSpace->Depth, Error);
+		 CNode->TreeNode.Cap, Node->Cap, MmCapTreeNodeGetDepth(Node), Error);
 	KeDbgDumpIPCError(Error);
 	return SEL4_ERROR(Error);
     }
@@ -86,17 +88,17 @@ NTSTATUS MmRunPagingTests()
     memset(&Page2, 0, sizeof(CAP_TREE_NODE));
     memset(&Page3, 0, sizeof(CAP_TREE_NODE));
     MmInitializeCapTreeNode(&Untyped1, CAP_TREE_NODE_UNTYPED,
-			    0, Untyped0->TreeNode.CSpace, NULL);
+			    0, Untyped0->TreeNode.CNode, NULL);
     MmInitializeCapTreeNode(&Untyped2, CAP_TREE_NODE_UNTYPED,
-			    0, Untyped0->TreeNode.CSpace, NULL);
+			    0, Untyped0->TreeNode.CNode, NULL);
     MmInitializeCapTreeNode(&Page0, CAP_TREE_NODE_PAGING_STRUCTURE,
-			    0, Untyped0->TreeNode.CSpace, NULL);
+			    0, Untyped0->TreeNode.CNode, NULL);
     MmInitializeCapTreeNode(&Page1, CAP_TREE_NODE_PAGING_STRUCTURE,
-			    0, Untyped0->TreeNode.CSpace, NULL);
+			    0, Untyped0->TreeNode.CNode, NULL);
     MmInitializeCapTreeNode(&Page2, CAP_TREE_NODE_PAGING_STRUCTURE,
-			    0, Untyped0->TreeNode.CSpace, NULL);
+			    0, Untyped0->TreeNode.CNode, NULL);
     MmInitializeCapTreeNode(&Page3, CAP_TREE_NODE_PAGING_STRUCTURE,
-			    0, Untyped0->TreeNode.CSpace, NULL);
+			    0, Untyped0->TreeNode.CNode, NULL);
     /* If we uncomment this, we get an error when we retype untyped0 into
      * page0, with error "IPC Error code 10 (Not enough memory)". */
 //    RET_ERR(MmCapTreeCopyNode(&Untyped1, &Untyped0->TreeNode, seL4_AllRights));
