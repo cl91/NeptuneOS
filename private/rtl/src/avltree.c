@@ -360,38 +360,6 @@ PAVL_NODE AvlTreeFindNode(IN PAVL_TREE Tree,
 }
 
 /*
- * Insert the node as the last element of the tree, overriding its
- * key with the key of the original last element plus the given
- * increment. The increment cannot be zero. The increment cannot
- * be so large that the new key overflows. If the tree is empty,
- * the node will have the given increment as the key.
- */
-VOID AvlTreeAppendNode(IN PAVL_TREE Tree,
-		       IN OUT PAVL_NODE Node,
-		       IN ULONG64 Increment)
-{
-    assert(Tree != NULL);
-    assert(Node != NULL);
-    assert(Increment != 0);
-    DbgTrace("append node %p to tree %p\n", Node, Tree);
-    if (AvlTreeIsEmpty(Tree)) {
-	Node->Key = Increment;
-	AvlTreeInsertNode(Tree, NULL, Node);
-    } else {
-	/* Find the last node in the tree */
-	PAVL_NODE Last = AvlGetLastNode(Tree);
-	DbgTrace("got last node %p key 0x%llx\n", Last, Last->Key);
-	assert(Last != NULL);
-	Node->Key = Last->Key + Increment;
-	if (Node->Key < Last->Key) {
-	    /* Integer overflow. We simply return in this case. */
-	    return;
-	}
-	AvlTreeInsertNode(Tree, Last, Node);
-    }
-}
-
-/*
  * Insert tree node under Parent.
  */
 VOID AvlTreeInsertNode(IN PAVL_TREE Tree,

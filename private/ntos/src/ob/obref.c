@@ -42,6 +42,92 @@ static NTSTATUS ObpLookupObjectHandleWithType(IN PPROCESS Process,
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
+NTSTATUS ObAllocateHandle(IN PPROCESS Process,
+			  OUT PHANDLE_TABLE_ENTRY *pEntry,
+			  OUT PAVL_NODE *Parent)
+{
+    ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
+    /* Check if we have enough unused handle slot at the end of the
+     * handle table. If not, find an unused handle slot in the middle
+     * of the handle table. */
+    PAVL_NODE Last = AvlGetLastNode(&Process->HandleTable.Tree);
+    if (!Last) {
+	Entry->AvlNode.Key = HANDLE_VALUE_INC;
+	*pEntry = Entry;
+	*Parent = NULL;
+	return STATUS_SUCCESS;
+    }
+    ULONG64 Key = Last->Key + HANDLE_VALUE_INC;
+    if ((MWORD)Key < (MWORD)Last->Key) {
+	/* Handle value has overflown. Find an unused handle slot instead. */
+	PAVL_NODE Node = AvlGetFirstNode(&Process->HandleTable.Tree);
+	assert(Node);
+	assert(IS_ALIGNED_BY(Node->Key, HANDLE_VALUE_INC));
+	/* If there is an unused handle before the first node, insert it there. */
+	if (Node->Key > HANDLE_VALUE_INC) {
+	    Entry->AvlNode.Key = Node->Key - HANDLE_VALUE_INC;
+	    *pEntry = Entry;
+	    *Parent = Node;
+	    return STATUS_SUCCESS;
+	}
+	/* Otherwise, loop until we found an unused handle. */
+	PAVL_NODE Next = AvlGetNextNode(Node);
+	while (Next && (Next->Key - Node->Key) <= HANDLE_VALUE_INC) {
+	    Node = Next;
+	    Next = AvlGetNextNode(Node);
+	}
+	if (!Next) {
+	    *pEntry = NULL;
+	    *Parent = NULL;
+	    ObpFreePool(Entry);
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	/* If the right child of Node is empty, insert there. Otherwise
+	 * insert as the left child of Next. */
+	*pEntry = Entry;
+	if (!Node->RightChild) {
+	    Entry->AvlNode.Key = Node->Key + HANDLE_VALUE_INC;
+	    *Parent = Node;
+	} else {
+	    Entry->AvlNode.Key = Next->Key - HANDLE_VALUE_INC;
+	    assert(!Next->LeftChild);
+	    *Parent = Next;
+	}
+	return STATUS_SUCCESS;
+    } else {
+	Entry->AvlNode.Key = Key;
+	*pEntry = Entry;
+	*Parent = Last;
+	return STATUS_SUCCESS;
+    }
+}
+
+VOID ObFreeHandleTableEntry(IN PHANDLE_TABLE_ENTRY Entry)
+{
+    ObpFreePool(Entry);
+}
+
+VOID ObInsertHandle(IN PPROCESS Process,
+		    IN POBJECT Object,
+		    IN BOOLEAN ObjectOpened,
+		    IN PHANDLE_TABLE_ENTRY Entry,
+		    IN PAVL_NODE Parent,
+		    OUT HANDLE *pHandle)
+{
+    assert(Entry);
+    assert(Entry->AvlNode.Key);
+    assert(Entry->AvlNode.Key == (MWORD)Entry->AvlNode.Key);
+    POBJECT_HEADER Header = OBJECT_TO_OBJECT_HEADER(Object);
+    Entry->Object = Object;
+    Entry->Process = Process;
+    Entry->InvokeClose = ObjectOpened;
+    InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
+    AvlTreeInsertNode(&Process->HandleTable.Tree, Parent, &Entry->AvlNode);
+    /* Increase the reference count since we now exposing it to client space */
+    ObpReferenceObject(Object);
+    *pHandle = (HANDLE)Entry->AvlNode.Key;
+}
+
 /*
  * Create a client handle for the given object.
  */
@@ -52,17 +138,10 @@ NTSTATUS ObCreateHandle(IN PPROCESS Process,
 {
     assert(Object != NULL);
     assert(pHandle != NULL);
-    POBJECT_HEADER Header = OBJECT_TO_OBJECT_HEADER(Object);
-    ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
-    Entry->Object = Object;
-    Entry->Process = Process;
-    Entry->InvokeClose = ObjectOpened;
-    InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
-    AvlTreeAppendNode(&Process->HandleTable.Tree,
-		      &Entry->AvlNode, HANDLE_VALUE_INC);
-    /* Increase the reference count since we now exposing it to client space */
-    ObpReferenceObject(Object);
-    *pHandle = (HANDLE)Entry->AvlNode.Key;
+    PHANDLE_TABLE_ENTRY Entry = NULL;
+    PAVL_NODE Parent = NULL;
+    RET_ERR(ObAllocateHandle(Process, &Entry, &Parent));
+    ObInsertHandle(Process, Object, ObjectOpened, Entry, Parent, pHandle);
     return STATUS_SUCCESS;
 }
 

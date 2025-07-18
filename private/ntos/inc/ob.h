@@ -551,6 +551,16 @@ NTSTATUS ObReferenceObjectByHandle(IN struct _THREAD *Thread,
 				   IN HANDLE Handle,
 				   IN OBJECT_TYPE_ENUM Type,
 				   OUT POBJECT *pObject);
+NTSTATUS ObAllocateHandle(IN struct _PROCESS *Process,
+			  OUT PHANDLE_TABLE_ENTRY *pEntry,
+			  OUT PAVL_NODE *Parent);
+VOID ObFreeHandleTableEntry(IN PHANDLE_TABLE_ENTRY Entry);
+VOID ObInsertHandle(IN struct _PROCESS *Process,
+		    IN POBJECT Object,
+		    IN BOOLEAN ObjectOpened,
+		    IN PHANDLE_TABLE_ENTRY Entry,
+		    IN PAVL_NODE Parent,
+		    OUT HANDLE *pHandle);
 NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			IN POBJECT Object,
 			IN BOOLEAN ObjectOpened,

@@ -569,11 +569,9 @@ NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
  *
  * We enforce the following rules:
  *
- *   1. Badge cannot be zero. To derive into an unbadged node, use
- *      MmCapTreeCopyNode.
- *   2. The old node must not have already been badged.
- *   3. Only IPC endpoint and notification caps can be badged.
- *   4. Only the original cap can be badged. In other words, if you
+ *   1. The old node must not have already been badged.
+ *   2. Only IPC endpoint and notification caps can be badged.
+ *   3. Only the original cap can be badged. In other words, if you
  *      copy original endpoint cap Ep0 to Ep1, you cannot badge Ep1.
  *      This is not a seL4 restriction but to simplify our algorithms.
  *
@@ -598,10 +596,9 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     assert(OldNode->Parent != NULL);
     assert(OldNode->Parent->Type == CAP_TREE_NODE_UNTYPED);
     assert(NewNode->Parent == NULL || NewNode->Parent == OldNode);
-    assert(Badge != 0);
 
     MWORD NewCap = 0;
-    RET_ERR(MmAllocateCapRange(NewNode->CNode, &NewCap, 1));
+    RET_ERR(MmAllocateCap(NewNode->CNode, &NewCap));
     assert(NewCap != 0);
 
     RET_ERR_EX(MiMintCap(NewNode->CNode, NewCap, OldNode->CNode,

@@ -167,9 +167,6 @@ PAVL_NODE AvlTreeFindNodeOrNextEx(IN PAVL_TREE Tree,
 				  OUT OPTIONAL PAVL_NODE *pParent);
 PAVL_NODE AvlTreeFindNode(IN PAVL_TREE Tree,
 			  IN ULONG64 Key);
-VOID AvlTreeAppendNode(IN PAVL_TREE Tree,
-		       IN OUT PAVL_NODE Node,
-		       IN ULONG64 Increment);
 VOID AvlTreeInsertNode(IN PAVL_TREE Tree,
 		       IN PAVL_NODE Parent,
 		       IN PAVL_NODE Node);

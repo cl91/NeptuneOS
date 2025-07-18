@@ -10,7 +10,25 @@
         goto out;					\
     }
 
-NTAPI VOID NtProcessStartup(PPEB Peb)
+static NTSTATUS PsxCreatePort(OUT PHANDLE PortHandle,
+			      OUT PHANDLE CommPortHandle)
+{
+    UNICODE_STRING ObjectPath;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+
+    RtlInitUnicodeString(&ObjectPath, L"\\PsxssApi");
+    InitializeObjectAttributes(&ObjectAttributes, &ObjectPath,
+			       OBJ_PERMANENT, NULL, NULL);
+
+    NTSTATUS Status = NtCreatePort(PortHandle, CommPortHandle,
+				   &ObjectAttributes, 256);
+    CHECK_STATUS(Status, "NtCreatePort");
+
+out:
+    return Status;
+}
+
+static NTSTATUS PsxCreateClientProcess()
 {
     HANDLE FileHandle = NULL;
     HANDLE SectionHandle = NULL;
@@ -20,19 +38,18 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     UNICODE_STRING FileName;
     OBJECT_ATTRIBUTES ObjectAttributes;
     IO_STATUS_BLOCK IoStatusBlock;
-    NTSTATUS Status;
 
     WCHAR NtPath[] = L"\\??\\A:\\psxdll.so";
     RtlInitUnicodeString(&FileName, NtPath);
     InitializeObjectAttributes(&ObjectAttributes, &FileName, OBJ_CASE_INSENSITIVE, NULL, NULL);
 
     /* Open executable file */
-    Status = NtOpenFile(&FileHandle,
-                        FILE_EXECUTE | SYNCHRONIZE,
-                        &ObjectAttributes,
-                        &IoStatusBlock,
-                        FILE_SHARE_READ,
-                        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+    NTSTATUS Status = NtOpenFile(&FileHandle,
+				 FILE_EXECUTE | SYNCHRONIZE,
+				 &ObjectAttributes,
+				 &IoStatusBlock,
+				 FILE_SHARE_READ,
+				 FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
     CHECK_STATUS(Status, "NtOpenFile");
 
     /* Create image section */
@@ -78,9 +95,9 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 				 NULL);
     CHECK_STATUS(Status, "RtlCreateUserThread");
 
-    /* Wait for process to finish */
-    Status = NtWaitForSingleObject(ProcessHandle, FALSE, NULL);
-    CHECK_STATUS(Status, "NtWaitForSingleObject");
+    /* /\* Wait for process to finish *\/ */
+    /* Status = NtWaitForSingleObject(ProcessHandle, FALSE, NULL); */
+    /* CHECK_STATUS(Status, "NtWaitForSingleObject"); */
 
 out:
     // Cleanup
@@ -97,6 +114,38 @@ out:
 	NtClose(FileHandle);
     }
 
+    return Status;
+}
+
+NTAPI VOID NtProcessStartup(PPEB Peb)
+{
+    HANDLE PortHandle = NULL;
+    HANDLE CommPortHandle = NULL;
+    NTSTATUS Status = PsxCreatePort(&PortHandle, &CommPortHandle);
+    CHECK_STATUS(Status, "PsxCreatePort");
+
+    Status = PsxCreateClientProcess();
+    CHECK_STATUS(Status, "PsxCreateClientProcess");
+
+    CLIENT_ID ClientId = {};
+    Status = NtListenPort(PortHandle, &ClientId, NULL, 0, NULL);
+    CHECK_STATUS(Status, "NtListenPort");
+
+    Status = NtAcceptPort(NULL, PortHandle, (ULONG_PTR)ClientId.UniqueThread, &ClientId,
+			  TRUE, NULL, NULL);
+    CHECK_STATUS(Status, "NtAcceptPort");
+
+    while (TRUE) {
+	ULONG_PTR PortContext = 0;
+	PORT_MESSAGE PortMessage;
+	Status = NtReceivePort(CommPortHandle, &PortContext, &PortMessage, NULL);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+	DbgPrint("Got message length 0x%x\n", PortMessage.TotalLength);
+    }
+
+out:
     NtTerminateProcess(NtCurrentProcess(), Status);
 }
 

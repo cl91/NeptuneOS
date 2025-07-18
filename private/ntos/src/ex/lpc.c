@@ -128,7 +128,8 @@ NTSTATUS NtCreatePort(IN ASYNC_STATE AsyncState,
      * it is still a temporary object. */
     ObMakeTemporaryObject(Port);
 
-    *CommPortHandle = CAP_TO_LOCAL_HANDLE(Port->Endpoint.TreeNode.Cap);
+    *CommPortHandle = (HANDLE)((Port->Endpoint.TreeNode.Cap << LOCAL_HANDLE_SHIFT) |
+			       LOCAL_HANDLE_FLAG);
     Status = STATUS_SUCCESS;
 
 out:
@@ -257,6 +258,7 @@ NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
 	Status = STATUS_INVALID_CID;
 	goto out;
     }
+    PHANDLE_TABLE_ENTRY Entry = NULL;
     PLPC_PORT_CONNECTION Connection = CONTAINING_RECORD(Node, LPC_PORT_CONNECTION, Node);
     assert(Node->Key == PsGetThreadId(Connection->ClientThread));
     assert(ClientId->UniqueProcess == (HANDLE)PsGetProcessId(Connection->ClientThread->Process));
@@ -268,20 +270,28 @@ NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
     /* Create an event object if the server has requested so. Note if an error has
      * occurred here, the system is likely in a very low memory state, so we refuse
      * the connection. */
+    PAVL_NODE Parent = NULL;
     if (EventHandle) {
 	IF_ERR_GOTO(refuse, Status,
 		    EiCreateEvent(Thread->Process, SynchronizationEvent,
 				  &Connection->EventObject));
 	IF_ERR_GOTO(refuse, Status,
-		    ObCreateHandle(Thread->Process, Connection->EventObject,
-				   FALSE, EventHandle));
+		    ObAllocateHandle(Thread->Process, &Entry, &Parent));
     }
+
     Connection->PortContext = PortContext;
+    if (EventHandle) {
+	ObInsertHandle(Thread->Process, Connection->EventObject,
+		       FALSE, Entry, Parent, EventHandle);
+    }
     Status = STATUS_SUCCESS;
     goto ok;
 
 refuse:
     Connection->ConnectionRefused = TRUE;
+    if (Entry) {
+	ObFreeHandleTableEntry(Entry);
+    }
 ok:
     KeSetEvent(&Connection->Connected);
 out:
@@ -374,14 +384,28 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 	goto err;
     }
 
+    PHANDLE_TABLE_ENTRY Entry = NULL;
+    PAVL_NODE Parent = NULL;
     if (EventHandle && Locals.Connection->EventObject) {
-	Status = ObCreateHandle(Thread->Process, Locals.Connection->EventObject,
-				NULL, EventHandle);
-	if (!NT_SUCCESS(Status)) {
-	    Status = STATUS_INSUFFICIENT_RESOURCES;
-	    goto err;
-	}
+	IF_ERR_GOTO(err, Status, ObAllocateHandle(Thread->Process, &Entry, &Parent));
     }
+
+    /* Mint the server communication endpoint with the specified badge and
+     * place it into the thread-private CNode of the client thread. */
+    Locals.Connection->ClientEndpoint.TreeNode.CNode = Thread->CSpace;
+    IF_ERR_GOTO(err, Status,
+		MmCapTreeDeriveBadgedNode(&Locals.Connection->ClientEndpoint.TreeNode,
+					  &Locals.PortObject->Endpoint.TreeNode,
+					  ENDPOINT_RIGHTS_SEND,
+					  Locals.Connection->PortContext));
+
+    if (EventHandle && Locals.Connection->EventObject) {
+	ObInsertHandle(Thread->Process, Locals.Connection->EventObject,
+		       FALSE, Entry, Parent, EventHandle);
+    }
+    *PortHandle =
+	(HANDLE)(PsThreadCNodeIndexToGuardedCap(Locals.Connection->ClientEndpoint.TreeNode.Cap,
+						Thread) | LOCAL_HANDLE_FLAG);
     Status = STATUS_SUCCESS;
     goto out;
 

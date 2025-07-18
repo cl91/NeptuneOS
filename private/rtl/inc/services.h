@@ -314,8 +314,9 @@ compile_assert(TOO_MANY_SYSTEM_SERVICES, NUMBER_OF_SYSTEM_SERVICES < 0x1000UL);
 #define LOCAL_HANDLE_FLAG	(2ULL)
 #define LOCAL_HANDLE_SHIFT	(2)
 #define IS_LOCAL_HANDLE(h)	(!!((ULONG_PTR)(h) & LOCAL_HANDLE_FLAG))
-#define LOCAL_HANDLE_TO_CAP(h)	((ULONG_PTR)(h) >> LOCAL_HANDLE_SHIFT)
-#define CAP_TO_LOCAL_HANDLE(c)	((HANDLE)(((c) << LOCAL_HANDLE_SHIFT) | LOCAL_HANDLE_FLAG))
+#define LOCAL_HANDLE_TO_CAP(h)						\
+    (PsGetGuardValueOfCap((ULONG_PTR)(h)) ? (ULONG_PTR)(h) :		\
+     (((ULONG_PTR)(h) >> LOCAL_HANDLE_SHIFT) | RtlGetThreadCSpaceGuard()))
 
 /*
  * Maximum message length that can be sent through the seL4 message buffer
