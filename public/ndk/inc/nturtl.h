@@ -367,6 +367,11 @@ typedef struct _TEB {                                        /* win32/win64 */
 	    ULONG_PTR       ServiceCap;                        /* 160/310 */
 	    PVOID           CoroutineStackLow;                 /* 164/318 */
 	    PVOID           CoroutineStackHigh;                /* 168/320 */
+	    BOOLEAN         DpcQueued;			       /* 16c/328 */
+	    BOOLEAN         IoWorkItemQueued;		       /* 16d/329 */
+	    BOOLEAN         EventSignaled;		       /* 16e/32a */
+	    BOOLEAN         IsDpcThread;		       /* 16f/32b */
+	    BOOLEAN         IsIsrThread;		       /* 170/32c */
 	} Wdm;
 	struct {
             CLIENT_ID       RealClientId;                      /* 160/310 */

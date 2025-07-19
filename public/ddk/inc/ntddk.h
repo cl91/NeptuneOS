@@ -3,7 +3,6 @@
 #define _NTDDK_
 
 #include <nt.h>
-#include <string.h>
 #include <assert.h>
 
 #define UNUSED	__attribute__((unused))
@@ -266,7 +265,7 @@ typedef KDEFERRED_ROUTINE *PKDEFERRED_ROUTINE;
  * to ease porting Windows/ReactOS drivers.
  */
 typedef struct _KDPC {
-    LIST_ENTRY Entry;
+    SLIST_ENTRY QueueEntry;
     PKDEFERRED_ROUTINE DeferredRoutine;
     PVOID DeferredContext;
     PVOID SystemArgument1;
@@ -274,16 +273,9 @@ typedef struct _KDPC {
     BOOLEAN Queued;
 } KDPC, *PKDPC;
 
-/*
- * DPC initialization function
- */
-FORCEINLINE NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
-				       IN PKDEFERRED_ROUTINE DeferredRoutine,
-				       IN PVOID DeferredContext)
-{
-    Dpc->DeferredRoutine = DeferredRoutine;
-    Dpc->DeferredContext = DeferredContext;
-}
+NTAPI NTSYSAPI VOID KeInitializeDpc(IN PKDPC Dpc,
+				    IN PKDEFERRED_ROUTINE DeferredRoutine,
+				    IN PVOID DeferredContext);
 
 /*
  * Insert the DPC to the DPC queue
@@ -291,6 +283,14 @@ FORCEINLINE NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
 NTAPI NTSYSAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 					IN PVOID SystemArgument1,
 					IN PVOID SystemArgument2);
+
+/*
+ * DPC routines run in a dedicated DPC thread (which is scheduled with priority
+ * DISPATCH_LEVEL). If a data structure is modified by both DPC routines and
+ * regular IRP dispatch routines, you must protect it with the DPC mutex.
+ */
+NTSYSAPI VOID IoAcquireDpcMutex();
+NTSYSAPI VOID IoReleaseDpcMutex();
 
 /*
  * Device queue. Used for queuing an IRP for serialized IO processing
@@ -310,11 +310,14 @@ typedef struct _KDEVICE_QUEUE_ENTRY {
 } KDEVICE_QUEUE_ENTRY, *PKDEVICE_QUEUE_ENTRY;
 
 /*
- * Device queue initialization function
+ * Device queue initialization function. This routine can only be
+ * called at PASSIVE_LEVEL (ie. not in an ISR thread or DPC thread).
  */
 FORCEINLINE NTAPI VOID KeInitializeDeviceQueue(IN PKDEVICE_QUEUE Queue)
 {
     assert(Queue != NULL);
+    assert(!NtCurrentTeb()->Wdm.IsDpcThread);
+    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
     InitializeListHead(&Queue->DeviceListHead);
     Queue->Busy = FALSE;
 }
@@ -354,11 +357,14 @@ FORCEINLINE NTAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
 {
     assert(Queue != NULL);
     assert(Queue->Busy);
+    IoAcquireDpcMutex();
     if (Entry->Inserted) {
         Entry->Inserted = FALSE;
         RemoveEntryList(&Entry->DeviceListEntry);
+	IoReleaseDpcMutex();
 	return TRUE;
     }
+    IoReleaseDpcMutex();
     return FALSE;
 }
 

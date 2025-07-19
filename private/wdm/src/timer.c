@@ -1,7 +1,3 @@
-#include "debug.h"
-#include "ntddk.h"
-#include "ntstatus.h"
-#include "util.h"
 #include <wdmp.h>
 
 LIST_ENTRY IopTimerList;
@@ -116,7 +112,7 @@ NTAPI ULONGLONG KeQueryInterruptTime(VOID)
  * @name KeStallExecutionProcessor
  *
  * Stalls the execution of the current thread for the specified interval.
- * This routine should not be used for delays that are longer than 50us.
+ * This routine should not be used for delays that are longer than 5us.
  *
  * @param MicroSeconds
  *        Specifies the amount of microseconds to stall.

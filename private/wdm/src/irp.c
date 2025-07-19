@@ -1919,9 +1919,6 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
     RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount*sizeof(IO_PACKET);
     DestIrp = IopOutgoingIoPacketBuffer + ResponseCount;
 
-    /* Process all the queued DPC objects first. */
-    IopProcessDpcQueue();
-
 again:
     /* Process all queued IRP now. Once processed, the IRPs may be moved to the
      * ReplyIrpList or the CleanupIrpList, or not be part of any list. */
@@ -2073,6 +2070,13 @@ delete:
     if (!IsListEmpty(&IopIrpQueue)) {
 	goto again;
     }
+
+    /* If any of the IRP dispatch routine or work item queued DPC, now
+     * is the time to wake up the DPC thread. Note we don't care about
+     * IO work items at this point because they should have all been
+     * processed above. */
+    NtCurrentTeb()->Wdm.IoWorkItemQueued = FALSE;
+    IopSignalDpcNotification();
 
     *pNumResponses = ResponseCount;
 }

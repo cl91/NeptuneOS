@@ -40,7 +40,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
-    RET_ERR(PsCreateThread(Process, NULL, NULL, FALSE, &Thread));
+    RET_ERR(PsCreateThread(Process, NULL, NULL, 0, &Thread));
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
     ObpReferenceObject(Thread);
@@ -431,16 +431,12 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
     /* Create the driver ISR thread and copy its thread cap into the CSpace of the
      * calling thread, which will usually be the driver's main event loop thread. */
     IF_ERR_GOTO(err, Status,
-		PsCreateThread(DriverProcess, &Context, NULL, TRUE, &Svc->IsrThread));
+		PsCreateThread(DriverProcess, &Context, NULL,
+			       PS_CREATE_ISR_THREAD | PS_CREATE_THREAD_SUSPENDED,
+			       &Svc->IsrThread));
     assert(Svc->IsrThread != NULL);
-    MmInitializeCapTreeNode(&Svc->IsrThreadClientCap, CAP_TREE_NODE_TCB,
-			    0, DriverThread->CSpace, NULL);
     IF_ERR_GOTO(err, Status,
 		PsSetThreadPriority(Svc->IsrThread, DEVICE_INTERRUPT_MIN_LEVEL + Vector));
-    IF_ERR_GOTO(err, Status,
-		MmCapTreeCopyNode(&Svc->IsrThreadClientCap,
-				  &Svc->IsrThread->TreeNode,
-				  seL4_AllRights));
 
     /* Create a notification for driver ISR thread to use as the interrupt notification */
     IF_ERR_GOTO(err, Status,
@@ -457,6 +453,10 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 		KeCreateIrqHandlerEx(&Svc->IrqHandler, Vector,
 				     Svc->IsrThread->CSpace));
 
+    /* Assign a handle for the ISR thread in the driver process */
+    IF_ERR_GOTO(err, Status, ObCreateHandle(DriverProcess, Svc->IsrThread, FALSE,
+					    &Svc->ThreadHandle));
+
     Svc->Vector = Vector;
     InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
     *pSvc = Svc;
@@ -464,9 +464,7 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 
 err:
     if (Svc != NULL) {
-	if (Svc->IsrThreadClientCap.Cap != 0) {
-	    MmCapTreeDeleteNode(&Svc->IsrThreadClientCap);
-	}
+	assert(!Svc->ThreadHandle);
 	if (Svc->Notification.TreeNode.Cap != 0) {
 	    KeDestroyNotification(&Svc->Notification);
 	}
@@ -487,9 +485,7 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 			     IN BOOLEAN ShareVector,
 			     IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 			     IN PVOID ClientSideContext, /* Context as in EntryPoint(Context) */
-			     OUT MWORD *WdmServiceCap,
-			     OUT MWORD *ThreadCap,
-			     OUT PVOID *ThreadIpcBuffer,
+			     OUT HANDLE *ThreadHandle,
 			     OUT MWORD *IrqHandler,
 			     OUT MWORD *InterruptNotification,
 			     OUT MWORD *InterruptMutex)
@@ -497,6 +493,7 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     assert(Thread->Process->DriverObject != NULL);
+    assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
     if (ShareVector) {
 	UNIMPLEMENTED;
     }
@@ -508,12 +505,7 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 					    EntryPoint, ClientSideContext, &Svc));
     assert(Svc != NULL);
 
-    *WdmServiceCap =
-	PsThreadCNodeIndexToGuardedCap(Svc->IsrThread->WdmServiceEndpoint->TreeNode.Cap,
-				       Svc->IsrThread);
-    *ThreadCap = PsThreadCNodeIndexToGuardedCap(Svc->IsrThreadClientCap.Cap,
-						Thread);
-    *ThreadIpcBuffer = (PVOID)Svc->IsrThread->IpcBufferClientAddr;
+    *ThreadHandle = Svc->ThreadHandle;
     *IrqHandler = PsThreadCNodeIndexToGuardedCap(Svc->IrqHandler.TreeNode.Cap,
 						 Svc->IsrThread);
     *InterruptNotification = PsThreadCNodeIndexToGuardedCap(Svc->Notification.TreeNode.Cap,
@@ -522,14 +514,66 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
+			    IN PTHREAD Thread,
+			    IN PVOID EntryPoint,
+			    OUT HANDLE *ThreadHandle,
+			    OUT MWORD *WdmServiceCap,
+			    OUT MWORD *DpcNotificationCap)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    assert(Thread == DriverObject->MainEventLoopThread);
+
+    CONTEXT Context;
+    memset(&Context, 0, sizeof(CONTEXT));
+    KeSetThreadContextFromEntryPoint(&Context, EntryPoint, NULL);
+
+    NTSTATUS Status = PsCreateThread(Thread->Process, &Context, NULL,
+				     PS_CREATE_THREAD_SUSPENDED,
+				     &DriverObject->DpcThread);
+    if (!NT_SUCCESS(Status)) {
+	goto err;
+    }
+    assert(DriverObject->DpcThread != NULL);
+    IF_ERR_GOTO(err, Status,
+		PsSetThreadPriority(DriverObject->DpcThread, DISPATCH_LEVEL));
+
+    /* Create a notification for DPC thread to synchronize access with the main thread */
+    IF_ERR_GOTO(err, Status,
+		KeCreateNotificationEx(&DriverObject->DpcNotification,
+				       Thread->Process->SharedCNode));
+    assert(DriverObject->DpcNotification.TreeNode.Cap);
+
+    /* Assign a handle for the DPC thread in the driver process */
+    IF_ERR_GOTO(err, Status, ObCreateHandle(Thread->Process, DriverObject->DpcThread,
+					    FALSE, ThreadHandle));
+    *WdmServiceCap =
+	PsThreadCNodeIndexToGuardedCap(DriverObject->DpcThread->WdmServiceEndpoint->TreeNode.Cap,
+				       DriverObject->DpcThread);
+    *DpcNotificationCap = DriverObject->DpcNotification.TreeNode.Cap;
+    return STATUS_SUCCESS;
+
+err:
+    if (DriverObject->DpcThread) {
+	ObDereferenceObject(DriverObject->DpcThread);
+    }
+    if (DriverObject->DpcNotification.TreeNode.Cap) {
+	KeDestroyNotification(&DriverObject->DpcNotification);
+    }
+    return Status;
+}
+
 NTSTATUS WdmCreateCoroutineStack(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 OUT PVOID *pStackTop)
 {
     assert(Thread->Process != NULL);
     assert(Thread->Process->DriverObject != NULL);
-    return PsMapDriverCoroutineStack(Thread->Process,
-				     (MWORD *)pStackTop);
+    assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
+    return PsMapDriverCoroutineStack(Thread->Process, (MWORD *)pStackTop);
 }
 
 NTSTATUS WdmNotifyMainThread(IN ASYNC_STATE State,
@@ -537,6 +581,8 @@ NTSTATUS WdmNotifyMainThread(IN ASYNC_STATE State,
 {
     assert(Thread->Process != NULL);
     assert(Thread->Process->DriverObject != NULL);
+    assert(Thread != Thread->Process->DriverObject->MainEventLoopThread);
+    assert(Thread == Thread->Process->DriverObject->DpcThread);
     /* Signal the driver to check for DPC queue and IO work item queue */
     KeSetEvent(&Thread->Process->DriverObject->IoPacketQueuedEvent);
     return STATUS_SUCCESS;

@@ -80,6 +80,8 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
  * the device object.
  *
  * Note: DeviceName must be a full path.
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			      IN ULONG DeviceExtensionSize,
@@ -91,6 +93,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 {
     assert(DriverObject != NULL);
     assert(pDeviceObject != NULL);
+    assert(IopThreadIsAtPassiveLevel());
 
     /* Both device object and device extension are aligned by MEMORY_ALLOCATION_ALIGNMENT */
     SIZE_T AlignedDevExtSize = ALIGN_UP_BY(DeviceExtensionSize,
@@ -138,6 +141,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
 NTAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject)
 {
+    assert(IopThreadIsAtPassiveLevel());
 }
 
 NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
@@ -145,6 +149,7 @@ NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 					OUT PFILE_OBJECT *FileObject,
 					OUT PDEVICE_OBJECT *DeviceObject)
 {
+    assert(IopThreadIsAtPassiveLevel());
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -154,10 +159,13 @@ NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
  * Call the server to attach the SourceDevice on top of the device
  * stack of TargetDevice, returning the previous topmost device
  * object in the device stack.
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 						 IN PDEVICE_OBJECT TargetDevice)
 {
+    assert(IopThreadIsAtPassiveLevel());
     GLOBAL_HANDLE SourceHandle = IopGetDeviceHandle(SourceDevice);
     GLOBAL_HANDLE TargetHandle = IopGetDeviceHandle(TargetDevice);
     if ((SourceHandle == 0) || (TargetHandle == 0)) {
@@ -193,9 +201,12 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
  * Returns the pointer to the highest level device object in the device stack
  * of the given device object. This routine makes a call to the server so
  * that we always get the most up-to-date device object.
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
 {
+    assert(IopThreadIsAtPassiveLevel());
     GLOBAL_HANDLE Handle = IopGetDeviceHandle(DeviceObject);
     if (Handle == 0) {
 	return NULL;
@@ -221,9 +232,12 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject
 
 /*
  * @unimplemented
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
 {
+    assert(IopThreadIsAtPassiveLevel());
 }
 
 /*++
@@ -251,13 +265,17 @@ NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
  *        Pointer to the resulting unicode string
  *
  * @return Returns STATUS_SUCCESS if the interface registration is successful.
- *        Returns STATUS_INVALID_DEVICE_REQUEST if registration failed.
+ *         Returns STATUS_INVALID_DEVICE_REQUEST if registration failed.
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
+ *
  *--*/
 NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
 					 IN CONST GUID *InterfaceClassGuid,
 					 IN OPTIONAL PUNICODE_STRING ReferenceString,
 					 OUT PUNICODE_STRING SymbolicLinkName)
 {
+    assert(IopThreadIsAtPassiveLevel());
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -277,13 +295,12 @@ NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
  *
  * @return Usual NTSTATUS
  *
- * @remarks Must be called at IRQL = PASSIVE_LEVEL in the context of a
- *          system thread
- *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
  *--*/
 NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
 					 IN BOOLEAN Enable)
 {
+    assert(IopThreadIsAtPassiveLevel());
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -459,7 +476,7 @@ out:
  *
  * @return Usual NTSTATUS
  *
- * @remarks None
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
  *
  *--*/
 NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
@@ -467,6 +484,7 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 				     IN ULONG Flags,
 				     OUT PWSTR *SymbolicLinkList)
 {
+    assert(IopThreadIsAtPassiveLevel());
     UNICODE_STRING Control = RTL_CONSTANT_STRING(L"Control");
     HANDLE InterfaceKey = NULL;
     HANDLE DeviceKey = NULL;
@@ -748,10 +766,13 @@ cleanup:
 
 /*
  * @implemented
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
 				    IN PUNICODE_STRING DeviceName)
 {
+    assert(IopThreadIsAtPassiveLevel());
     OBJECT_ATTRIBUTES ObjectAttributes;
     InitializeObjectAttributes(&ObjectAttributes, SymbolicLinkName,
                                OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
@@ -792,12 +813,15 @@ static NTSTATUS IopOpenKeyEx(OUT PHANDLE KeyHandle,
  * @return Status.
  *
  * @implemented
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
 				       IN ULONG DevInstKeyType,
 				       IN ACCESS_MASK DesiredAccess,
 				       OUT PHANDLE DevInstRegKey)
 {
+    assert(IopThreadIsAtPassiveLevel());
     ULONG KeyNameLength;
     PWSTR KeyNameBuffer;
     UNICODE_STRING KeyName;
@@ -905,6 +929,8 @@ out:
 
 /*
  * @implemented
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 				   IN DEVICE_REGISTRY_PROPERTY DeviceProperty,
@@ -912,6 +938,7 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 				   OUT PVOID PropertyBuffer,
 				   OUT PULONG ResultLength)
 {
+    assert(IopThreadIsAtPassiveLevel());
     PWSTR ValueName = NULL;
     ULONG ValueType;
     switch (DeviceProperty) {
@@ -980,6 +1007,7 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
 {
     assert(Queue != NULL);
     assert(Entry != NULL);
+    IoAcquireDpcMutex();
     if (!Queue->Busy) {
         Entry->Inserted = FALSE;
         Queue->Busy = TRUE;
@@ -987,6 +1015,7 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
         Entry->Inserted = TRUE;
         InsertTailList(&Queue->DeviceListHead, &Entry->DeviceListEntry);
     }
+    IoReleaseDpcMutex();
     return Entry->Inserted;
 }
 
@@ -1007,6 +1036,7 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
     assert(Entry != NULL);
     Entry->SortKey = SortKey;
 
+    IoAcquireDpcMutex();
     if (!Queue->Busy) {
         Entry->Inserted = FALSE;
         Queue->Busy = TRUE;
@@ -1035,6 +1065,7 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
         InsertTailList(NextEntry, &Entry->DeviceListEntry);
         Entry->Inserted = TRUE;
     }
+    IoReleaseDpcMutex();
     return Entry->Inserted;
 }
 
@@ -1049,6 +1080,7 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
 
     assert(Queue != NULL);
     assert(Queue->Busy);
+    IoAcquireDpcMutex();
 
     /* Check if this is an empty queue */
     if (IsListEmpty(&Queue->DeviceListHead)) {
@@ -1060,6 +1092,7 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
         Entry = CONTAINING_RECORD(ListEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
         Entry->Inserted = FALSE;
     }
+    IoReleaseDpcMutex();
     return Entry;
 }
 
@@ -1080,6 +1113,7 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
 
     assert(Queue != NULL);
     assert(Queue->Busy);
+    IoAcquireDpcMutex();
 
     /* Check if this is an empty queue */
     if (IsListEmpty(&Queue->DeviceListHead)) {
@@ -1109,5 +1143,6 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
         RemoveEntryList(&Entry->DeviceListEntry);
         Entry->Inserted = FALSE;
     }
+    IoReleaseDpcMutex();
     return Entry;
 }

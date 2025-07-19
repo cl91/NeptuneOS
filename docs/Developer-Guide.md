@@ -388,14 +388,16 @@ buffer. Low-level drivers should generally process IRPs synchronously. If the de
 busy processing the IRP, the driver should simply wait till the device finishes. This does
 not negatively impact system responsiveness since drivers run in their own separate process.
 That being said, the StartIo mechanism is still present on Neptune OS in order to make
-driver porting easier.
+driver porting easier. For instance, you can use the StartIo routine or device queues in a
+DPC routine in response to an interrupt to schedule the main thread to start processing the
+relevant IRP. Alternatively, you can also use a KEVENT and have the IRP dispatch routine
+wait on the KEVENT and the interrupt service routine signal the KEVENT.
 
 ##### Work items
 In addition to queuing IRPs due to rate limits, it is a common pattern on Windows/ReactOS
 for DPCs to queue a lengthy processing task to a system worker thread, which runs at
-a lower IRQL. This is also generally speaking unnecessary since DPCs are processed in the
-same thread as regular IRPs. That being said, Neptune OS drivers can use work items to run
-long tasks that are of lower priority than regular IRP processing.
+a lower IRQL. Work items are scheduled to run at PASSIVE_LEVEL, ie. in the main event loop
+thread.
 
 #### File System Drivers
 
@@ -403,12 +405,13 @@ long tasks that are of lower priority than regular IRP processing.
 Since all IRPs are processed in a single thread unless they are moved to a work queue,
 you can remove the KSPIN_LOCK, FAST_MUTEX, or similar locks that protect data structures
 that are only accessed by the main IRP processing thread. If you have data structures
-that are accessed by the interrupt service thread, or by the worker thread, you DO need
-to keep the relevant locks. Otherwise synchronization issues will arise in SMP systems.
-However, you should generally avoid queuing IRPs in a work queue as we explained above.
+that are accessed by the interrupt service thread, or by a DPC routine, or by a worker
+thread that you have created yourself, you DO need to keep the relevant locks. Otherwise
+synchronization issues will arise in SMP systems.
 
-In particular DPCs are processed in the same thread as the IRPs (albeit with a higher
-priority), so you do not need any special synchronization considerations for DPCs.
+To protect concurrent access by an interrupt service thread, use `IoAcquireInterruptMutex`
+and `IoReleaseInterruptMutex`. To protect concurrent access by a DPC routine, use
+`IoAcquireDpcMutex` and `IoReleaseDpcMutex`.
 
 ##### FCB and FILE_OBJECT:
 1. For the common FCB header, remove SECTION_OBJECT_POINTERS as it is no longer needed.

@@ -1,35 +1,81 @@
 #include <wdmp.h>
 
-LIST_ENTRY IopDpcQueue;
+DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopDpcQueue;
+
+static ULONG_PTR IopDpcNotificationCap;
+static ULONG_PTR IopDpcThreadWdmServiceCap;
+static HANDLE IopDpcThreadHandle;
 KMUTEX IopDpcMutex;
 
-VOID IopProcessDpcQueue()
+VOID IoAcquireDpcMutex()
 {
-    PLIST_ENTRY Entry;
-    PKDPC Dpc;
     KeAcquireMutex(&IopDpcMutex);
-    Entry = IopDpcQueue.Flink;
-Next:
-    if (Entry == &IopDpcQueue) {
-	KeReleaseMutex(&IopDpcMutex);
-	return;
-    }
-    Dpc = CONTAINING_RECORD(Entry, KDPC, Entry);
-    assert(Dpc->Queued);
+}
+
+VOID IoReleaseDpcMutex()
+{
     KeReleaseMutex(&IopDpcMutex);
+}
 
-    if (Dpc->DeferredRoutine != NULL) {
-	Dpc->DeferredRoutine(Dpc,
-			     Dpc->DeferredContext,
-			     Dpc->SystemArgument1,
-			     Dpc->SystemArgument1);
+static VOID IopProcessDpcQueue()
+{
+    NtCurrentTeb()->Wdm.ServiceCap = IopDpcThreadWdmServiceCap;
+    PSLIST_ENTRY Entry;
+    while (TRUE) {
+	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), NULL);
+	while ((Entry = RtlInterlockedPopEntrySList(&IopDpcQueue)) != NULL) {
+	    PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, QueueEntry);
+	    assert(Dpc->Queued);
+	    if (Dpc->DeferredRoutine != NULL) {
+		Dpc->DeferredRoutine(Dpc,
+				     Dpc->DeferredContext,
+				     Dpc->SystemArgument1,
+				     Dpc->SystemArgument1);
+	    }
+	    Dpc->Queued = FALSE;
+	}
+	WdmNotifyMainThread();
     }
+}
 
-    KeAcquireMutex(&IopDpcMutex);
-    Entry = Entry->Flink;
-    Dpc->Queued = FALSE;
-    RemoveEntryList(&Dpc->Entry);
-    goto Next;
+VOID IopSignalDpcNotification()
+{
+    PTEB Teb = NtCurrentTeb();
+    if ((Teb->Wdm.DpcQueued || Teb->Wdm.IoWorkItemQueued) && IopDpcNotificationCap) {
+	assert(PsCapIsProcessShared(IopDpcNotificationCap));
+	Teb->Wdm.DpcQueued = FALSE;
+	Teb->Wdm.IoWorkItemQueued = FALSE;
+	seL4_Signal(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap));
+    }
+}
+
+/*
+ * DPC initialization function
+ */
+NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
+			   IN PKDEFERRED_ROUTINE DeferredRoutine,
+			   IN PVOID DeferredContext)
+{
+    if (!IopDpcNotificationCap) {
+	NTSTATUS Status = WdmCreateDpcThread(IopProcessDpcQueue,
+					     &IopDpcThreadHandle,
+					     &IopDpcThreadWdmServiceCap,
+					     &IopDpcNotificationCap);
+	if (!NT_SUCCESS(Status)) {
+	    RtlRaiseStatus(Status);
+	    return;
+	}
+	assert(IopDpcNotificationCap);
+	assert(PsCapIsProcessShared(IopDpcNotificationCap));
+	assert(IopDpcThreadHandle);
+	Status = NtResumeThread(IopDpcThreadHandle, NULL);
+	if (!NT_SUCCESS(Status)) {
+	    RtlRaiseStatus(Status);
+	    return;
+	}
+    }
+    Dpc->DeferredRoutine = DeferredRoutine;
+    Dpc->DeferredContext = DeferredContext;
 }
 
 /*
@@ -42,19 +88,18 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 			       IN PVOID SystemArgument2)
 {
     BOOLEAN Queued = FALSE;
-    KeAcquireMutex(&IopDpcMutex);
     if (!Dpc->Queued) {
 	DbgTrace("Inserting DPC %p args %p %p\n",
 		 Dpc, SystemArgument1, SystemArgument2);
 	Dpc->SystemArgument1 = SystemArgument1;
 	Dpc->SystemArgument2 = SystemArgument2;
-	InsertTailList(&IopDpcQueue, &Dpc->Entry);
+	RtlInterlockedPushEntrySList(&IopDpcQueue, &Dpc->QueueEntry);
 	Dpc->Queued = TRUE;
 	Queued = TRUE;
+	NtCurrentTeb()->Wdm.DpcQueued = TRUE;
     } else {
 	DbgTrace("DPC %p already inserted. Not inserting\n", Dpc);
     }
-    KeReleaseMutex(&IopDpcMutex);
     return Queued;
 }
 
@@ -75,7 +120,6 @@ static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
 static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
     PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
-    NtCurrentTeb()->Wdm.ServiceCap = Interrupt->WdmServiceCap;
     assert(Interrupt->ServiceRoutine != NULL);
 
     NTSTATUS Status = KiConnectIrqNotification(Interrupt->IrqHandlerCap,
@@ -92,29 +136,14 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 		     Interrupt->IrqHandlerCap, Interrupt->Vector);
 	    KeDbgDumpIPCError(AckError);
 	}
+	/* Signal the DPC thread to check for the DPC queue */
+	IopSignalDpcNotification();
 	seL4_Wait(Interrupt->NotificationCap, NULL);
 	IoAcquireInterruptMutex(Interrupt);
 	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
 	IoReleaseInterruptMutex(Interrupt);
-	/* Signal the main thread to check for DPC queue and IO work item queue */
-	WdmNotifyMainThread();
     }
     return 0;
-}
-
-static inline NTSTATUS PspResumeThread(IN MWORD ThreadCap)
-{
-    assert(ThreadCap != 0);
-    int Error = seL4_TCB_Resume(ThreadCap);
-
-    if (Error != 0) {
-	DbgTrace("seL4_TCB_Resume failed for thread cap 0x%zx with error %d\n",
-		 ThreadCap, Error);
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
-    }
-
-    return STATUS_SUCCESS;
 }
 
 /*
@@ -178,20 +207,11 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				ShareVector,
 				IopInterruptServiceThreadEntry,
 				InterruptObject,
-				&InterruptObject->WdmServiceCap,
-				&InterruptObject->ThreadCap,
-				&InterruptObject->ThreadIpcBuffer,
+				&InterruptObject->ThreadHandle,
 				&InterruptObject->IrqHandlerCap,
 				&InterruptObject->NotificationCap,
 				&MutexCap));
-    /* The WDM service cap should be a private cap within the ISR thread CSpace */
-    assert(PsGetGuardValueOfCap(InterruptObject->WdmServiceCap));
-    assert(PsGetGuardValueOfCap(InterruptObject->WdmServiceCap) !=
-	   RtlGetThreadCSpaceGuard());
-    assert(InterruptObject->ThreadCap != 0);
-    /* The ISR thread cap should be a private cap within the calling thread CSpace. */
-    assert(PsCapIsThreadPrivate(InterruptObject->ThreadCap));
-    assert(InterruptObject->ThreadIpcBuffer != 0);
+    assert(InterruptObject->ThreadHandle);
     assert(InterruptObject->IrqHandlerCap != 0);
     assert(InterruptObject->NotificationCap != 0);
     /* Both the IRQ handler cap and the notification cap is in the thread private
@@ -207,14 +227,13 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     /* The mutex cap should be in the process shared CNode. */
     assert(PsCapIsProcessShared(MutexCap));
 
-    DbgTrace("Created interrupt object %p ThreadCap %zd IpcBuffer %p "
+    DbgTrace("Created interrupt object %p ThreadHandle %p "
 	     "IrqHandler %zd Notification %zd Mutex %zd\n",
-	     InterruptObject, InterruptObject->ThreadCap,
-	     InterruptObject->ThreadIpcBuffer,
+	     InterruptObject, InterruptObject->ThreadHandle,
 	     InterruptObject->IrqHandlerCap,
 	     InterruptObject->NotificationCap,
 	     InterruptObject->Mutex.Notification);
-    RET_ERR_EX(PspResumeThread(InterruptObject->ThreadCap),
+    RET_ERR_EX(NtResumeThread(InterruptObject->ThreadHandle, NULL),
 	       IoDisconnectInterrupt(InterruptObject));
     *pInterruptObject = InterruptObject;
     return STATUS_SUCCESS;

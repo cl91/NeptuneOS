@@ -23,6 +23,7 @@ typedef struct _THREAD_CREATION_CONTEXT {
     IN PCONTEXT Context;
     IN PINITIAL_TEB InitialTeb;
     IN BOOLEAN CreateSuspended;
+    IN BOOLEAN IsrThread;
 } THREAD_CREATION_CONTEXT, *PTHREAD_CREATION_CONTEXT;
 
 /*

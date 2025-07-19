@@ -285,8 +285,8 @@ typedef struct _INTERRUPT_SERVICE {
     LIST_ENTRY Link;
     IRQ_HANDLER IrqHandler;
     PTHREAD IsrThread;
-    CAP_TREE_NODE IsrThreadClientCap; /* ISR thread cap in the driver main thread CSpace */
-    NOTIFICATION Notification;	      /* Cap in the driver ISR thread CSpace */
+    HANDLE ThreadHandle; /* Handle of the ISR thread in the driver process */
+    NOTIFICATION Notification;	      /* Cap in the driver ISR thread private CNode */
     NOTIFICATION InterruptMutex;      /* Cap in the driver process shared CNode */
 } INTERRUPT_SERVICE, *PINTERRUPT_SERVICE;
 
@@ -575,6 +575,14 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
 		       IN PCSTR DriverServicePath,
 		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject);
+
+FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
+{
+    assert(Thread->Process);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject);
+    return DriverObject->DpcThread != Thread && !Thread->IsrThread;
+}
 
 /* cache.c */
 NTSTATUS CcInitializeCacheManager();

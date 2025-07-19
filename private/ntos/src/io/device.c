@@ -557,6 +557,7 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
     assert(Thread != NULL);
     assert(Thread->Process->DriverObject != NULL);
     assert(DeviceHandle != NULL);
+    assert(IopThreadIsAtPassiveLevel(Thread));
 
     PIO_DEVICE_OBJECT DeviceObject = NULL;
     DEVICE_OBJ_CREATE_CONTEXT CreaCtx = {
@@ -583,6 +584,7 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 				      OUT GLOBAL_HANDLE *PrevTopDevHandle,
 				      OUT IO_DEVICE_INFO *PrevTopDevInfo)
 {
+    assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
@@ -615,6 +617,7 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
                               OUT IO_DEVICE_INFO *TopDeviceInfo)
 {
+    assert(IopThreadIsAtPassiveLevel(Thread));
     if (!DeviceHandle) {
 	return STATUS_INVALID_PARAMETER;
     }

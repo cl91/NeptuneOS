@@ -41,6 +41,11 @@
 #define IopFreePool(Ptr)			\
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
 
+FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel()
+{
+    PTEB Teb = NtCurrentTeb();
+    return !Teb->Wdm.IsDpcThread && !Teb->Wdm.IsIsrThread;
+}
 
 /*
  * Open the specified registry key
@@ -183,9 +188,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
     KMUTEX Mutex;
     PKSERVICE_ROUTINE ServiceRoutine;
     PVOID ServiceContext;
-    MWORD WdmServiceCap;
-    MWORD ThreadCap;
-    PVOID ThreadIpcBuffer;
+    HANDLE ThreadHandle;
     MWORD IrqHandlerCap;
     MWORD NotificationCap;
 } KINTERRUPT;
@@ -237,9 +240,9 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
-extern LIST_ENTRY IopDpcQueue;
+extern SLIST_HEADER IopDpcQueue;
 extern KMUTEX IopDpcMutex;
-VOID IopProcessDpcQueue();
+VOID IopSignalDpcNotification();
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;

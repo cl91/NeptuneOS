@@ -25,7 +25,7 @@ NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
 }
 
 /*
- * Create the worker thread if necessary and queue the work item into the work queue.
+ * Insert the work item into the work queue.
  *
  * NOTE: The QueueType is ignored for now and every work item has the same priority.
  * The queue type was needed in Windows due to performance reasons since work items
@@ -46,6 +46,7 @@ NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
     IoWorkItem->Context = Context;
     IoWorkItem->ExtendedRoutine = FALSE;
     RtlInterlockedPushEntrySList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
+    NtCurrentTeb()->Wdm.IoWorkItemQueued = TRUE;
 }
 
 /*

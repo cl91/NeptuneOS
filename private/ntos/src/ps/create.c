@@ -417,7 +417,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     }
     Thread->CurrentPriority = PASSIVE_LEVEL;
     RET_ERR(KeEnableSystemServices(Thread));
-    if (Process->InitInfo.DriverProcess) {
+    if (Process->InitInfo.DriverProcess && !Thread->IsrThread) {
 	RET_ERR(KeEnableWdmServices(Thread));
     }
 
@@ -656,7 +656,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 NTSTATUS PsCreateThread(IN PPROCESS Process,
                         IN PCONTEXT ThreadContext,
                         IN PINITIAL_TEB InitialTeb,
-                        IN BOOLEAN CreateSuspended,
+                        IN ULONG Flags,
 			OUT PTHREAD *pThread)
 {
     assert(Process != NULL);
@@ -678,9 +678,10 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	.Process = Process,
 	.Context = ThreadContext,
 	.InitialTeb = InitialTeb,
-	.CreateSuspended = CreateSuspended
+	.CreateSuspended = !!(Flags & PS_CREATE_THREAD_SUSPENDED),
+	.IsrThread = !!(Flags & PS_CREATE_ISR_THREAD)
     };
-    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *) &Thread, &CreaCtx));
+    RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *)&Thread, &CreaCtx));
     *pThread = Thread;
     return STATUS_SUCCESS;
 }
@@ -725,7 +726,8 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
     /* The newly created thread will increase the reference count of the process
      * object and decrease it when the thread exits or is terminated. */
     RET_ERR(PsCreateThread(Process, ThreadContext, InitialTeb,
-			   CreateSuspended, &CreatedThread));
+			   CreateSuspended ? PS_CREATE_THREAD_SUSPENDED : 0,
+			   &CreatedThread));
     /* The newly created thread object will have refcount 2. Although NT API semantics
      * states that thread object is always created as a temporary object, we don't make
      * it temporary at this point. The refcount decrement is done in PsTerminateThread,

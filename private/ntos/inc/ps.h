@@ -43,6 +43,7 @@ typedef struct _THREAD {
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN InitialThread;
+    BOOLEAN IsrThread; /* TRUE if the thread is an interrupt service thread of a driver */
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
     LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The objects of this list
@@ -136,6 +137,10 @@ FORCEINLINE MWORD PsThreadCNodeIndexToGuardedCap(IN MWORD Cap,
 	PsThreadIdToCSpaceGuard(PsGetThreadId(Thread));
 }
 
+/* Flags for PsCreateThread */
+#define PS_CREATE_THREAD_SUSPENDED	(1)
+#define PS_CREATE_ISR_THREAD		(2)
+
 /* init.c */
 NTSTATUS PsInitSystemPhase0();
 NTSTATUS PsInitSystemPhase1();
@@ -145,7 +150,7 @@ PKUSER_SHARED_DATA PsGetUserSharedData();
 NTSTATUS PsCreateThread(IN PPROCESS Process,
                         IN PCONTEXT ThreadContext,
                         IN PINITIAL_TEB InitialTeb,
-                        IN BOOLEAN CreateSuspended,
+                        IN ULONG Flags,
 			OUT PTHREAD *pThread);
 NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 			      IN PCSTR DebugName,
