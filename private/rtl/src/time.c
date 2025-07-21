@@ -29,11 +29,11 @@
 #define TICKSTO1970         0x019db1ded53e8000LL
 #define TICKSTO1980         0x01a8e79fe1d58000LL
 
-static const unsigned int YearLengths[2] = {
+static const unsigned int YEAR_LENGTHS[2] = {
     DAYSPERNORMALYEAR, DAYSPERLEAPYEAR
 };
 
-static const UCHAR MonthLengths[2][MONSPERYEAR] = {
+static const UCHAR MONTH_LENGTHS[2][MONSPERYEAR] = {
     { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 },
     { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
 };
@@ -125,7 +125,7 @@ NTAPI BOOLEAN RtlCutoverTimeToSystemTime(IN PTIME_FIELDS CutoverTimeFields,
 	/* Adjust the number of weeks */
 	if (CutoverTimeFields->Day > 1) {
 	    Days = DAYSPERWEEK * (CutoverTimeFields->Day - 1);
-	    MonthLength = MonthLengths[IsLeapYear(AdjustedTimeFields.Year)][AdjustedTimeFields.Month - 1];
+	    MonthLength = MONTH_LENGTHS[IsLeapYear(AdjustedTimeFields.Year)][AdjustedTimeFields.Month - 1];
 	    if ((AdjustedTimeFields.Day + Days) > MonthLength) {
 		Days -= DAYSPERWEEK;
 	    }
@@ -166,7 +166,7 @@ NTAPI BOOLEAN RtlTimeFieldsToTime(IN PTIME_FIELDS TimeFields,
 	TimeFields->Hour < 0 || TimeFields->Hour > 23 ||
 	TimeFields->Month < 1 || TimeFields->Month > 12 ||
 	TimeFields->Day < 1 ||
-	TimeFields->Day > MonthLengths[IsLeapYear(TimeFields->Year)][TimeFields->Month - 1] ||
+	TimeFields->Day > MONTH_LENGTHS[IsLeapYear(TimeFields->Year)][TimeFields->Month - 1] ||
 	TimeFields->Year < 1601) {
 	return FALSE;
     }
@@ -174,7 +174,7 @@ NTAPI BOOLEAN RtlTimeFieldsToTime(IN PTIME_FIELDS TimeFields,
     /* Compute the time */
     Time->QuadPart = DaysSinceEpoch(IntTimeFields.Year);
     for (CurMonth = 1; CurMonth < IntTimeFields.Month; CurMonth++) {
-	Time->QuadPart += MonthLengths[IsLeapYear(IntTimeFields.Year)][CurMonth - 1];
+	Time->QuadPart += MONTH_LENGTHS[IsLeapYear(IntTimeFields.Year)][CurMonth - 1];
     }
     Time->QuadPart += IntTimeFields.Day - 1;
     Time->QuadPart *= SECSPERDAY;
@@ -256,17 +256,17 @@ NTAPI VOID RtlTimeToTimeFields(IN PLARGE_INTEGER Time,
     Days -= DaysSinceEpoch(CurYear);
     while (TRUE) {
 	LeapYear = IsLeapYear(CurYear);
-	if (Days < YearLengths[LeapYear]) {
+	if (Days < YEAR_LENGTHS[LeapYear]) {
 	    break;
 	}
 	CurYear++;
-	Days = Days - YearLengths[LeapYear];
+	Days = Days - YEAR_LENGTHS[LeapYear];
     }
     TimeFields->Year = (CSHORT) CurYear;
 
     /* Compute month of year */
     LeapYear = IsLeapYear(CurYear);
-    Months = MonthLengths[LeapYear];
+    Months = MONTH_LENGTHS[LeapYear];
     for (CurMonth = 0; Days >= Months[CurMonth]; CurMonth++) {
 	Days = Days - Months[CurMonth];
     }
