@@ -98,6 +98,7 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
 			     IN PCM_RESOURCE_LIST ResourceList,
 			     IN PCM_RESOURCE_LIST ResourceListTranslated)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     if (ResourceList == NULL || ResourceListTranslated == NULL) {
 	DPRINT1("No allocated resources sent to driver\n");
@@ -191,6 +192,7 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 			    PIO_STACK_LOCATION IrpStack,
 			    PFDO_DEVICE_DATA DeviceData)
 {
+    PAGED_CODE();
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     ULONG Length, PrevCount, NumPdosPresent;
     PLIST_ENTRY Entry;
@@ -343,6 +345,7 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 
 NTAPI NTSTATUS Bus_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
+    PAGED_CODE();
     PIO_STACK_LOCATION IrpStack;
     NTSTATUS Status;
     PCOMMON_DEVICE_DATA CommonData;

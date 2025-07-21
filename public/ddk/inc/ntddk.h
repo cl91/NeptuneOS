@@ -7,8 +7,17 @@
 
 #define UNUSED	__attribute__((unused))
 
-/* We are running in user space. */
-FORCEINLINE DECLSPEC_DEPRECATED VOID PAGED_CODE() {}
+FORCEINLINE BOOLEAN IoThreadIsAtPassiveLevel()
+{
+    PTEB Teb = NtCurrentTeb();
+    return !Teb->Wdm.IsDpcThread && !Teb->Wdm.IsIsrThread;
+}
+
+/* This routines asserts that we are at PASSIVE_LEVEL. */
+FORCEINLINE VOID PAGED_CODE()
+{
+    assert(IoThreadIsAtPassiveLevel());
+}
 
 /*
  * Returned by IoCallDriver to indicate that the IRP has been
@@ -185,6 +194,7 @@ FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
 /*
  * Object manager routines
  */
+NTAPI NTSYSAPI VOID ObReferenceObject(IN PVOID Obj);
 NTAPI NTSYSAPI VOID ObDereferenceObject(IN PVOID Obj);
 
 struct _DEVICE_OBJECT;
@@ -866,6 +876,15 @@ FORCEINLINE NTAPI PIRP IoAllocateIrp()
     return Irp;
 }
 
+/*
+ * Returns the current (and only) IO stack location pointer. The (only)
+ * IO stack location follows immediately after the IRP header.
+ */
+FORCEINLINE NTAPI PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
+{
+    return (PIO_STACK_LOCATION)(Irp + 1);
+}
+
 FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
 {
     PMDL Mdl = Irp->MdlAddress;
@@ -874,16 +893,20 @@ FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
 	ExFreePool(Mdl);
 	Mdl = Next;
     }
+    if (Irp->Private.ForwardedTo) {
+	ObDereferenceObject(Irp->Private.ForwardedTo);
+    }
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    if (IoStack->DeviceObject) {
+	ObDereferenceObject(IoStack->DeviceObject);
+    }
+    if (IoStack->FileObject) {
+	ObDereferenceObject(IoStack->FileObject);
+    }
+#if DBG
+    RtlZeroMemory(Irp, IO_SIZE_OF_IRP);
+#endif
     ExFreePool(Irp);
-}
-
-/*
- * Returns the current (and only) IO stack location pointer. The (only)
- * IO stack location follows immediately after the IRP header.
- */
-FORCEINLINE NTAPI PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
-{
-    return (PIO_STACK_LOCATION)(Irp + 1);
 }
 
 /*
@@ -1015,6 +1038,8 @@ typedef struct _KTIMER {
     OBJECT_HEADER Header;	/* Must be first member. */
     LIST_ENTRY TimerListEntry;
     PKDPC Dpc;
+    ULONGLONG AbsoluteDueTime;
+    LONG Period;
     BOOLEAN State;		/* TRUE if the timer is set. */
     BOOLEAN Canceled;
 } KTIMER, *PKTIMER;
@@ -1042,6 +1067,7 @@ FORCEINLINE NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 /*
  * System time and interrupt time routines
  */
+NTAPI NTSYSAPI ULONGLONG KeQuerySystemTime(VOID);
 NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
 
 /*
@@ -1381,13 +1407,8 @@ FORCEINLINE NTAPI VOID KeReleaseInterruptSpinLock(IN PKINTERRUPT Interrupt,
 }
 
 /*
- * Returns the pointer to the highest level device object in a device stack
- */
-NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject);
-
-/*
- * This is the same function as IoGetAttachedDevice, but we increase the reference
- * count of the attached device object.
+ * Returns the pointer to the highest level device object in a device stack and
+ * increase the reference count of the attached device object.
  */
 NTAPI NTSYSAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject);
 

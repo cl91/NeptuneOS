@@ -14,6 +14,7 @@
 
 BOOLEAN PciAreBusNumbersConfigured(IN PPCI_PDO_EXTENSION PdoExtension)
 {
+    PAGED_CODE();
     UCHAR PrimaryBus, BaseBus, SecondaryBus, SubordinateBus;
 
     /* Get all relevant bus number details */

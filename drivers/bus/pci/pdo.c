@@ -427,6 +427,7 @@ static PCI_MJ_DISPATCH_TABLE PciPdoDispatchTable = {
 NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
 		      IN PCI_SLOT_NUMBER Slot, OUT PDEVICE_OBJECT *PdoDeviceObject)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     PDEVICE_OBJECT DeviceObject;
     PPCI_PDO_EXTENSION PdoExtension;

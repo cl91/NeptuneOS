@@ -31,6 +31,7 @@ PCI_CONFIGURATOR PciConfigurators[] = {
 BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 				     IN PCM_RESOURCE_LIST ResourceList)
 {
+    PAGED_CODE();
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, InterruptResource;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR BaseResource, CurrentDescriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PreviousDescriptor;
@@ -274,6 +275,7 @@ PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNumber)
 NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 			   OUT PCM_RESOURCE_LIST *Buffer)
 {
+    PAGED_CODE();
     PPCI_FUNCTION_RESOURCES PciResources;
     BOOLEAN HaveVga, HaveMemSpace, HaveIoSpace;
     USHORT BridgeControl, PciCommand;
@@ -421,6 +423,7 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 				       IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
+    PAGED_CODE();
     PDEVICE_RELATIONS DeviceRelations;
 
     /* If there were existing relations, free them */
@@ -486,6 +489,7 @@ NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
 NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
 			      IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     PCI_COMMON_HEADER PciHeader;
 
@@ -960,6 +964,7 @@ BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER Sl
 VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 				IN PPCI_COMMON_HEADER PciData)
 {
+    PAGED_CODE();
     ULONG HeaderType, CapPtr, TargetAgpCapabilityId;
     DEVICE_POWER_STATE WakeLevel;
     PCI_CAPABILITIES_HEADER AgpCapability;
@@ -1103,6 +1108,7 @@ VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
 
 NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
+    PAGED_CODE();
     PPCI_CONFIGURATOR Configurator;
     PPCI_COMMON_HEADER PciData, Current;
     PPCI_PDO_EXTENSION PdoExtension;
@@ -1203,6 +1209,7 @@ NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
 			      IN PPCI_COMMON_HEADER Current, IN ULONGLONG HackFlags)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     PPCI_COMMON_HEADER PciData;
     PCI_CONFIGURATOR_CONTEXT Context;
@@ -1232,6 +1239,7 @@ NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
 
 VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
     PPCI_PDO_EXTENSION PdoExtension;
     PDEVICE_OBJECT PhysicalDeviceObject;
 
@@ -1661,6 +1669,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
 				 IN OUT PDEVICE_RELATIONS *pDeviceRelations)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     PPCI_PDO_EXTENSION PdoExtension;
     ULONG PdoCount = 0;

@@ -19,6 +19,7 @@ NTAPI NTSTATUS NullQueryFileInformation(OUT PVOID Buffer,
 					IN PULONG Length,
 					IN FILE_INFORMATION_CLASS InformationClass)
 {
+    PAGED_CODE();
     PFILE_STANDARD_INFORMATION StandardInfo = Buffer;
 
     /* We only support one class */
@@ -45,6 +46,7 @@ NTAPI BOOLEAN NullRead(IN PFILE_OBJECT FileObject,
 		       OUT PIO_STATUS_BLOCK IoStatus,
 		       IN PDEVICE_OBJECT DeviceObject)
 {
+    PAGED_CODE();
     /* Complete successfully */
     IoStatus->Status = STATUS_END_OF_FILE;
     IoStatus->Information = 0;
@@ -60,6 +62,7 @@ NTAPI BOOLEAN NullWrite(IN PFILE_OBJECT FileObject,
 			OUT PIO_STATUS_BLOCK IoStatus,
 			IN PDEVICE_OBJECT DeviceObject)
 {
+    PAGED_CODE();
     /* Complete successfully */
     IoStatus->Status = STATUS_SUCCESS;
     IoStatus->Information = Length;
@@ -69,6 +72,7 @@ NTAPI BOOLEAN NullWrite(IN PFILE_OBJECT FileObject,
 NTAPI NTSTATUS NullDispatch(IN PDEVICE_OBJECT DeviceObject,
 			    IN PIRP Irp)
 {
+    PAGED_CODE();
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
 
     /* Get the file object and check what kind of request this is */
@@ -129,6 +133,7 @@ NTAPI VOID NullUnload(IN PDRIVER_OBJECT DriverObject)
 NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\Null");
 

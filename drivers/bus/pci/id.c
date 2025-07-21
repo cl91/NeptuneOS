@@ -192,6 +192,7 @@ ULONG PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
 NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 		    IN BUS_QUERY_ID_TYPE QueryType, OUT PWCHAR *Buffer)
 {
+    PAGED_CODE();
     ULONG SubsysId;
     CHAR VendorString[22];
     PPCI_PDO_EXTENSION PdoExtension;

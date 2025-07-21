@@ -32,6 +32,9 @@ NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
  * are processed in system worker threads which are shared by system components and
  * device drivers. We process work items in the main event loop thread of the driver
  * process so we don't have that problem.
+ *
+ * This routine can be called at any IRQL (ie. in the main event loop thread, in the
+ * DPC thread, and in an ISR thread).
  */
 NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
 			   IN PIO_WORKITEM_ROUTINE WorkerRoutine,

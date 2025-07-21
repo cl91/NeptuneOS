@@ -231,6 +231,7 @@ static NTSTATUS PciFdoQueryLegacyBusInformation(IN PIRP Irp,
 
 static VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
 {
+    PAGED_CODE();
     ACPI_EVAL_INPUT_BUFFER InputBuffer;
     PACPI_EVAL_OUTPUT_BUFFER OutputBuffer;
     ULONG Length;
@@ -346,6 +347,7 @@ static VOID PciInitializeFdoExtensionCommonFields(PPCI_FDO_EXTENSION FdoExtensio
 NTAPI NTSTATUS PciAddDevice(IN PDRIVER_OBJECT DriverObject,
 			    IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
+    PAGED_CODE();
     PDEVICE_OBJECT AttachedTo;
     PPCI_FDO_EXTENSION FdoExtension;
     PPCI_FDO_EXTENSION ParentExtension;

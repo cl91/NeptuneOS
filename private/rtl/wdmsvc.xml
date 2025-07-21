@@ -60,6 +60,15 @@
     <parameter annotation="out" type="ptr::MWORD" name="DpcNotificationCap" />
   </svc>
 
+  <svc name="WdmCreateTimer">
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="GlobalHandle" />
+  </svc>
+
+  <svc name="WdmSetTimer">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="GlobalHandle" />
+    <parameter annotation="in" type="ptr::ULARGE_INTEGER" name="AbsoluteDueTime" />
+  </svc>
+
   <svc name="WdmCreateCoroutineStack">
     <parameter annotation="out" type="ptr::PVOID" name="StackTop" />
   </svc>

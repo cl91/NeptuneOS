@@ -12,6 +12,9 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
     assert(!IopGetFileObject(Handle));
     IopAllocateObject(FileObject, FILE_OBJECT);
     FileObject->DeviceObject = DeviceObject;
+    if (DeviceObject) {
+	ObReferenceObject(DeviceObject);
+    }
     UNICODE_STRING FileName = {0};
     if (Params->FileNameOffset) {
 	RET_ERR_EX(RtlpUtf8ToUnicodeString(RtlGetProcessHeap(),
@@ -39,16 +42,28 @@ VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject)
     assert(FileObject != NULL);
     assert(FileObject->Private.Link.Flink != NULL);
     assert(FileObject->Private.Link.Blink != NULL);
-    assert(FileObject->Header.GlobalHandle != 0);
+    assert(ListHasEntry(&IopFileObjectList, &FileObject->Private.Link));
     RemoveEntryList(&FileObject->Private.Link);
+    if (FileObject->DeviceObject) {
+	ObDereferenceObject(FileObject->DeviceObject);
+    }
     if (FileObject->FileName.Buffer) {
 	IopFreePool(FileObject->FileName.Buffer);
     }
+#if DBG
+    RtlZeroMemory(FileObject, sizeof(FILE_OBJECT));
+#endif
     IopFreePool(FileObject);
 }
 
+/*
+ * Register the file system device object to the NT Executive.
+ *
+ * This routine must be called at PASSIVE_LEVEL.
+ */
 NTAPI NTSTATUS IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject)
 {
+    PAGED_CODE();
     GLOBAL_HANDLE Handle = IopGetDeviceHandle(DeviceObject);
     if (Handle == 0) {
 	return STATUS_INVALID_PARAMETER;
@@ -63,9 +78,12 @@ NTAPI NTSTATUS IoRegisterFileSystem(IN PDEVICE_OBJECT DeviceObject)
  * create a stream file object from the device object, and invoke the necessary
  * cache manager API against this stream file object. A stream file object is
  * strictly local and does not have a server-side object.
+ *
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI PFILE_OBJECT IoCreateStreamFileObject(IN PDEVICE_OBJECT DeviceObject)
 {
+    PAGED_CODE();
     if (!DeviceObject) {
 	return NULL;
     }
@@ -78,5 +96,6 @@ NTAPI PFILE_OBJECT IoCreateStreamFileObject(IN PDEVICE_OBJECT DeviceObject)
     ObInitializeObject(FileObject, CLIENT_OBJECT_FILE, FILE_OBJECT);
     FileObject->DeviceObject = DeviceObject;
     FileObject->Flags = FO_STREAM_FILE;
+    InsertTailList(&IopFileObjectList, &FileObject->Private.Link);
     return FileObject;
 }

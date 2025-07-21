@@ -333,6 +333,21 @@ Include `ntddk.h` (under `public/ddk/inc`) as the master header file.
 `DEVICE_OBJECT.Characteristics` has been merged with `DEVICE_OBJECT.Flags` to form a 64-bit
 flag, so replace `DEVICE_OBJECT.Characteristics` with `DEVICE_OBJECT.Flags`.
 
+##### Reference Counting
+
+Objects that have `OBJECT_HEADER` as the first member of its structure are reference counted.
+These include the device objects and file objects (see `ntddk.h` for the full list). In
+particular, when you set the device object and file object of an IRP, you must increase
+their reference counting. The system-provided helper routines such as
+`IoBuildAsynchronousFsdRequest` already takes care of increasing the refcount of the
+device object. If you set the file object pointer of the IO stack location, you must
+increase the refcount of the file object manually.
+
+If your driver increased the reference counting of the file object in the CREATE dispatch
+routine (or any other IRP dispatch routine), you should dereference the file object in the
+CLOSE dispatch routine. Otherwise, you should NOT dereference the file object, because
+wdm.dll will dereference the file object as a response to the CloseFile server message.
+
 ##### IO Transfer Type
 
 Elaborate on how our architecture (running drivers in separate address spaces)
@@ -393,11 +408,16 @@ DPC routine in response to an interrupt to schedule the main thread to start pro
 relevant IRP. Alternatively, you can also use a KEVENT and have the IRP dispatch routine
 wait on the KEVENT and the interrupt service routine signal the KEVENT.
 
+Microsoft [discourages](https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/startio-routines-in-higher-level-drivers)
+higher-level drivers from having a StartIo routine. This recommendation applies to Neptune OS
+drivers as well. For instance, class drivers should not have a StartIo routine and should not
+use the `IoStartPacket` routine to queue and start IRP processing.
+
 ##### Work items
 In addition to queuing IRPs due to rate limits, it is a common pattern on Windows/ReactOS
 for DPCs to queue a lengthy processing task to a system worker thread, which runs at
 a lower IRQL. Work items are scheduled to run at PASSIVE_LEVEL, ie. in the main event loop
-thread.
+thread. It is recommended that ISRs and DPCs queue IO work items to process IRPs.
 
 #### File System Drivers
 

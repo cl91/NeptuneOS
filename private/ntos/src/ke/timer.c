@@ -53,6 +53,7 @@ static KMUTEX KiTimerDatabaseLock;
  * protected by the timer database lock */
 static LIST_ENTRY KiQueuedTimerList;
 static LIST_ENTRY KiExpiredTimerList;
+static LIST_ENTRY KiQueuedIoTimerList;
 /* END of timer database lock protected data structure */
 
 static inline VOID KiAcquireTimerDatabaseLock()
@@ -95,26 +96,37 @@ static VOID KiTimerInterruptService()
 	 * read the High1Time first, then LowPart, then High2Time. If the two
 	 * high times differ, the user space retries the read. */
 	PKUSER_SHARED_DATA UserSharedData = PsGetUserSharedData();
+	ULONGLONG SystemTime = KiTimerTickCountToSystemTime(TimerTicks);
 	if (UserSharedData != NULL) {
 	    ULONGLONG InterruptTime = KiTimerTickCountToInterruptTime(TimerTicks);
 	    UserSharedData->InterruptTime.High2Time = (LONG)(InterruptTime >> 32);
 	    UserSharedData->InterruptTime.LowPart = (ULONG)InterruptTime;
 	    UserSharedData->InterruptTime.High1Time = (LONG)(InterruptTime >> 32);
-	    ULONGLONG SystemTime = KiTimerTickCountToSystemTime(TimerTicks);
 	    UserSharedData->SystemTime.High2Time = (LONG)(SystemTime >> 32);
 	    UserSharedData->SystemTime.LowPart = (ULONG)SystemTime;
 	    UserSharedData->SystemTime.High1Time = (LONG)(SystemTime >> 32);
 	}
-	/* If a timer has a due time smaller than MaxDueTime, then it has expired */
-	ULONGLONG MaxDueTime = KiTimerTickCountToSystemTime(TimerTicks + 1);
-	/* Traverse the queued timer list and see if any of them expired */
+	/* If a timer has a due time smaller than or equal to the system time, then it
+	 * has expired. Traverse the queued timer list and wake up the expired timers. */
 	KiAcquireTimerDatabaseLock();
 	LoopOverList(Timer, &KiQueuedTimerList, TIMER, QueueEntry) {
-	    if (Timer->DueTime.QuadPart < MaxDueTime) {
+	    if (Timer->DueTime.QuadPart <= SystemTime) {
 		/* TODO: For periodic timer, we should compute the new DueTime
 		 * and reinsert it in KiSignalExpiredTimer */
 		RemoveEntryList(&Timer->QueueEntry);
 		InsertTailList(&KiExpiredTimerList, &Timer->ExpiredListEntry);
+	    }
+	}
+	LoopOverList(Timer, &KiQueuedIoTimerList, IO_TIMER, QueueLink) {
+	    assert(Timer->State);
+	    if (Timer->DueTime.QuadPart <= SystemTime) {
+		/* TODO: For periodic timer, we should compute the new DueTime
+		 * and reinsert it in KiSignalExpiredTimer */
+		RemoveEntryList(&Timer->QueueLink);
+		Timer->State = FALSE;
+		assert(Timer->DriverObject);
+		assert(Timer->DriverObject->TimerNotification.Cap);
+		seL4_Signal(Timer->DriverObject->TimerNotification.Cap);
 	    }
 	}
 	KiReleaseTimerDatabaseLock();
@@ -178,6 +190,7 @@ NTSTATUS KiInitTimer()
     InitializeListHead(&KiTimerList);
     InitializeListHead(&KiQueuedTimerList);
     InitializeListHead(&KiExpiredTimerList);
+    InitializeListHead(&KiQueuedIoTimerList);
     KeCreateMutex(&KiTimerDatabaseLock);
     KiTimerIrqThread = (PSYSTEM_THREAD)ExAllocatePoolWithTag(sizeof(SYSTEM_THREAD),
 							     NTOS_KE_TAG);
@@ -314,6 +327,32 @@ VOID KeUninitializeTimer(IN PTIMER Timer)
 	RemoveEntryList(&Timer->ThreadLink);
     }
     KeRemoveTimer(Timer);
+}
+
+VOID KeQueueIoTimer(IN PIO_TIMER Timer,
+		    IN ULARGE_INTEGER DueTime,
+		    IN LONG Period)
+{
+    KiAcquireTimerDatabaseLock();
+    Timer->DueTime = DueTime;
+    Timer->Period = Period;
+    /* If the timer is not set, we need to queue the IO timer. Otherwise we don't need
+     * to do anything other than updating the due time. */
+    if (!Timer->State) {
+	assert(!ListHasEntry(&KiQueuedIoTimerList, &Timer->QueueLink));
+	InsertHeadList(&KiQueuedIoTimerList, &Timer->QueueLink);
+	Timer->State = TRUE;
+    }
+    KiReleaseTimerDatabaseLock();
+}
+
+VOID KeRemoveIoTimerFromQueue(IN PIO_TIMER Timer)
+{
+    KiAcquireTimerDatabaseLock();
+    if (Timer->State) {
+	RemoveEntryList(&Timer->QueueLink);
+    }
+    KiReleaseTimerDatabaseLock();
 }
 
 NTSTATUS NtCreateTimer(IN ASYNC_STATE State,

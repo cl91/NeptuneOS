@@ -477,6 +477,9 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	if (!DeviceObject) {
 	    return STATUS_NO_MEMORY;
 	}
+	/* The physical device object must remain valid even after this IRP is freed, so
+	 * we increase its refcount. */
+	ObReferenceObject(DeviceObject);
 	/* Store the driver object in the IRP so later we can call the correct AddDevice. */
 	Irp->Tail.DriverContext[0] = DriverObject;
     } else {
@@ -485,14 +488,23 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	    assert(FALSE);
 	    return STATUS_INVALID_HANDLE;
 	}
+	ObReferenceObject(DeviceObject);
 	if ((Src->Request.MajorFunction == IRP_MJ_CREATE) ||
 	    (Src->Request.MajorFunction == IRP_MJ_CREATE_MAILSLOT) ||
 	    (Src->Request.MajorFunction == IRP_MJ_CREATE_NAMED_PIPE)) {
 	    RET_ERR(IopCreateFileObject(Src, DeviceObject,
 					&Src->Request.Create.FileObjectParameters,
 					Src->Request.File.Handle, &FileObject));
+	    /* Increase the refcount of the file object so it won't get deleted
+	     * when the IRP is freed. We need the file object to stay even if
+	     * the CREATE has failed. The server will send a CloseFile message
+	     * when the server-side file object is being deleted. */
+	    ObReferenceObject(FileObject);
 	} else {
 	    FileObject = IopGetFileObject(Src->Request.File.Handle);
+	    if (FileObject) {
+		ObReferenceObject(FileObject);
+	    }
 	}
     }
 
@@ -511,11 +523,12 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     IoStack->FileObject = FileObject;
     IoStack->CompletionRoutine = NULL;
     IoStack->Context = NULL;
+    /* If we have an error below, we do not need to dereference DeviceObject and
+     * FileObject, because they are dereferenced by IoFreeIrp. */
     switch (Src->Request.MajorFunction) {
     case IRP_MJ_CREATE:
     {
-	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
-			    IopDeleteFileObject(FileObject));
+	IopAllocateObject(SecurityContext, IO_SECURITY_CONTEXT);
 	Irp->AllocationSize.QuadPart = Src->Request.Create.FileObjectParameters.AllocationSize;
 	IoStack->Parameters.Create.SecurityContext = SecurityContext;
 	IoStack->Parameters.Create.Options = Src->Request.Create.Options;
@@ -530,14 +543,10 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 
     case IRP_MJ_CREATE_NAMED_PIPE:
     {
-	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
-			    IopDeleteFileObject(FileObject));
+	IopAllocateObject(SecurityContext, IO_SECURITY_CONTEXT);
 	assert(FileObject != NULL);
 	IopAllocateObjectEx(NamedPipeCreateParameters, NAMED_PIPE_CREATE_PARAMETERS,
-			    {
-				IopDeleteFileObject(FileObject);
-				IopFreePool(SecurityContext);
-			    });
+			    IopFreePool(SecurityContext));
 	Irp->AllocationSize.QuadPart = Src->Request.Create.FileObjectParameters.AllocationSize;
 	IoStack->Parameters.CreatePipe.SecurityContext = SecurityContext;
 	IoStack->Parameters.CreatePipe.Options = Src->Request.CreatePipe.Options;
@@ -550,14 +559,10 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 
     case IRP_MJ_CREATE_MAILSLOT:
     {
-	IopAllocateObjectEx(SecurityContext, IO_SECURITY_CONTEXT,
-			    IopDeleteFileObject(FileObject));
+	IopAllocateObject(SecurityContext, IO_SECURITY_CONTEXT);
 	assert(FileObject != NULL);
 	IopAllocateObjectEx(MailslotCreateParameters, MAILSLOT_CREATE_PARAMETERS,
-			    {
-				IopDeleteFileObject(FileObject);
-				IopFreePool(SecurityContext);
-			    });
+			    IopFreePool(SecurityContext));
 	Irp->AllocationSize.QuadPart = Src->Request.Create.FileObjectParameters.AllocationSize;
 	IoStack->Parameters.CreateMailslot.SecurityContext = SecurityContext;
 	IoStack->Parameters.CreateMailslot.Options = Src->Request.CreateMailslot.Options;
@@ -596,20 +601,25 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     {
 	FILE_INFORMATION_CLASS FileInfoClass = Src->Request.SetFile.FileInformationClass;
 	IoStack->Parameters.SetFile.FileInformationClass = FileInfoClass;
+	PFILE_OBJECT Target = NULL;
 	if (FileInfoClass == FileRenameInformation || FileInfoClass == FileLinkInformation ||
 	    FileInfoClass == FileMoveClusterInformation) {
-	    PFILE_OBJECT Target = IopGetFileObject(Src->Request.SetFile.TargetDirectory);
+	    Target = IopGetFileObject(Src->Request.SetFile.TargetDirectory);
 	    if (!Target) {
 		assert(FALSE);
 		return STATUS_INTERNAL_ERROR;
 	    }
 	    IoStack->Parameters.SetFile.FileObject = Target;
+	    ObReferenceObject(Target);
 	}
 	ULONG BufferLength = Src->Request.InputBufferLength;
 	IoStack->Parameters.SetFile.Length = BufferLength;
-	RET_ERR(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.InputBuffer,
-				    BufferLength, Src->Request.InputBufferPfn,
-				    Src->Request.InputBufferPfnCount, TRUE));
+	RET_ERR_EX(IopMarshalIoBuffers(Irp, Src, (PVOID)Src->Request.InputBuffer,
+				       BufferLength, Src->Request.InputBufferPfn,
+				       Src->Request.InputBufferPfnCount, TRUE),
+		   if (Target) {
+		       ObDereferenceObject(Target);
+		   });
 	if (FileInfoClass == FileRenameInformation || FileInfoClass == FileLinkInformation) {
 	    PFILE_RENAME_INFORMATION RenameInfo = Irp->SystemBuffer;
 	    IoStack->Parameters.SetFile.ReplaceIfExists = RenameInfo->ReplaceIfExists;
@@ -833,6 +843,15 @@ static VOID IopDeleteIrp(PIRP Irp)
 	    IopFreePool(IoStack->Parameters.CreateMailslot.Parameters);
 	}
 	break;
+    case IRP_MJ_SET_INFORMATION:
+    {
+	FILE_INFORMATION_CLASS FileInfoClass = IoStack->Parameters.SetFile.FileInformationClass;
+	if (FileInfoClass == FileRenameInformation || FileInfoClass == FileLinkInformation ||
+	    FileInfoClass == FileMoveClusterInformation) {
+	    ObDereferenceObject(IoStack->Parameters.SetFile.FileObject);
+	}
+	break;
+    }
     case IRP_MJ_DIRECTORY_CONTROL:
 	switch (IoStack->MinorFunction) {
 	case IRP_MN_QUERY_DIRECTORY:
@@ -859,6 +878,10 @@ static VOID IopDeleteIrp(PIRP Irp)
 		/* Unlink the VPB from the volume device objects, if needed. */
 		if (IoStack->Parameters.MountVolume.Vpb->DeviceObject) {
 		    IoStack->Parameters.MountVolume.Vpb->DeviceObject->Vpb = NULL;
+		    /* In this case we should dereference the DeviceObject in the VPB
+		     * because we increased it when creating the IRP. Note if the mount
+		     * succeeded, we should not do this as the FS driver now needs it. */
+		    ObDereferenceObject(IoStack->Parameters.MountVolume.DeviceObject);
 		}
 		if (IoStack->Parameters.MountVolume.Vpb->RealDevice) {
 		    IoStack->Parameters.MountVolume.Vpb->RealDevice->Vpb = NULL;
@@ -900,9 +923,6 @@ static VOID IopDeleteIrp(PIRP Irp)
 	    AssociatedIrp->MasterIrp = NULL;
 	}
     }
-#if DBG
-    RtlZeroMemory(Irp, IO_SIZE_OF_IRP);
-#endif
     IoFreeIrp(Irp);
 }
 
@@ -1287,13 +1307,16 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 {
     DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 	     Stack->MajorFunction, Stack->MinorFunction, Stack->Flags, Stack->Control);
-    DbgPrint("    DeviceObject %p(%p, ext %p, drv %p) FileObject %p(%p, fcb %p) "
+    DbgPrint("    DeviceObject %p(%p, ext %p, drv %p, refcount %d) "
+	     "FileObject %p(%p, fcb %p, refcount %d) "
 	     "CompletionRoutine %p Context %p\n",
 	     Stack->DeviceObject, (PVOID)IopGetDeviceHandle(Stack->DeviceObject),
 	     Stack->DeviceObject ? Stack->DeviceObject->DeviceExtension : NULL,
 	     Stack->DeviceObject ? Stack->DeviceObject->DriverObject : NULL,
+	     Stack->DeviceObject ? ObGetObjectRefCount(Stack->DeviceObject) : 0,
 	     Stack->FileObject, (PVOID)IopGetFileHandle(Stack->FileObject),
 	     Stack->FileObject ? Stack->FileObject->FsContext : NULL,
+	     Stack->FileObject ? ObGetObjectRefCount(Stack->FileObject) : 0,
 	     Stack->CompletionRoutine, Stack->Context);
     switch (Stack->MajorFunction) {
     case IRP_MJ_CREATE:
@@ -1343,13 +1366,15 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	break;
     case IRP_MJ_SET_INFORMATION:
 	DbgPrint("    SET-INFORMATION  FileInformationClass %d Length 0x%x "
-		 "FileObject %p(%p, fcb %p)",
+		 "FileObject %p(%p, fcb %p, refcount %d)",
 		 Stack->Parameters.SetFile.FileInformationClass,
 		 Stack->Parameters.SetFile.Length,
 		 Stack->Parameters.SetFile.FileObject,
 		 (PVOID)IopGetFileHandle(Stack->Parameters.SetFile.FileObject),
 		 Stack->Parameters.SetFile.FileObject
-		 ? Stack->Parameters.SetFile.FileObject->FsContext : NULL);
+		 ? Stack->Parameters.SetFile.FileObject->FsContext : NULL,
+		 Stack->Parameters.SetFile.FileObject
+		 ? ObGetObjectRefCount(Stack->Parameters.SetFile.FileObject) : 0);
 	if (Stack->Parameters.SetFile.FileInformationClass == FileRenameInformation ||
 	    Stack->Parameters.SetFile.FileInformationClass == FileLinkInformation) {
 	    DbgPrint(" ReplaceIfExists %d\n", Stack->Parameters.SetFile.ReplaceIfExists);
@@ -1451,10 +1476,11 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p OutputBuffer %p\n",
 	     (PVOID)Irp->Private.OriginalRequestor, Irp->Private.Identifier,
 	     Irp->Private.OutputBuffer);
-    DbgPrint("    PRIV ForwardedTo %p(0x%zx, ext %p) ExecEnv %p "
+    DbgPrint("    PRIV ForwardedTo %p(0x%zx, ext %p, refcount %d) ExecEnv %p "
 	     "EnvToWakeUp %p NotifyCompletion %s\n",
 	     Irp->Private.ForwardedTo, IopGetDeviceHandle(Irp->Private.ForwardedTo),
 	     Irp->Private.ForwardedTo ? Irp->Private.ForwardedTo->DeviceExtension : NULL,
+	     Irp->Private.ForwardedTo ? ObGetObjectRefCount(Irp->Private.ForwardedTo) : 0,
 	     Irp->Private.ExecEnv, Irp->Private.EnvToWakeUp,
 	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE");
     IoDbgDumpIoStackLocation(IoGetCurrentIrpStackLocation(Irp));
@@ -1475,6 +1501,9 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     assert(Irp->Private.ForwardedTo == NULL);
     PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject);
+    /* The IRP_MJ_CLOSE routine is called in IopHandleCloseFileServerMessage,
+     * as a response of a server message. */
+    assert(IoStack->MajorFunction != IRP_MJ_CLOSE);
     if (IoStack->MajorFunction == IRP_MJ_ADD_DEVICE) {
 	PDRIVER_OBJECT DriverObject = Irp->Tail.DriverContext[0];
 	assert(DriverObject);
@@ -1634,13 +1663,10 @@ static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
     }
     if (FileObj->Header.GlobalHandle) {
 	FileObj->Header.GlobalHandle = 0;
-	assert(ListHasEntry(&IopFileObjectList, &FileObj->Private.Link));
-	RemoveEntryList(&FileObj->Private.Link);
     }
     if (!FileObj->DeviceObject) {
 	assert(FALSE);
-	ObDereferenceObject(FileObj);
-	return;
+	goto done;
     }
     PDRIVER_OBJECT DriverObject = FileObj->DeviceObject->DriverObject;
     assert(DriverObject);
@@ -1648,21 +1674,25 @@ static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
      * should always succeed. We ignore any error that it returns. */
     PDRIVER_DISPATCH Close = DriverObject->MajorFunction[IRP_MJ_CLOSE];
     if (!Close) {
-	ObDereferenceObject(FileObj);
-	return;
+	goto done;
     }
     PIRP Irp = IoAllocateIrp();
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     Stack->DeviceObject = FileObj->DeviceObject;
+    ObReferenceObject(Stack->DeviceObject);
     Stack->FileObject = FileObj;
+    ObReferenceObject(Stack->FileObject);
     Stack->MajorFunction = IRP_MJ_CLOSE;
     if (!NT_SUCCESS(Close(FileObj->DeviceObject, Irp))) {
 	assert(FALSE);
     }
     /* If the dispatch routine did not complete the IRP, do it now.
-    * This will move the IRP to the reply list and eventually to the
-    * delete list so it gets freed. */
+     * This will move the IRP to the reply list and eventually to the
+     * delete list so it gets freed. */
     IoCompleteRequest(Irp, 0);
+    /* Dereference the file object since we increased its refcount after CREATE. */
+done:
+    ObDereferenceObject(FileObj);
 }
 
 static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
@@ -1674,8 +1704,6 @@ static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
     }
     if (DevObj->Header.GlobalHandle) {
 	DevObj->Header.GlobalHandle = 0;
-	assert(ListHasEntry(&IopDeviceList, &DevObj->Private.Link));
-	RemoveEntryList(&DevObj->Private.Link);
     }
     ObDereferenceObject(DevObj);
 }
@@ -2021,7 +2049,11 @@ workitem:
 		   (IoGetCurrentIrpStackLocation(Irp)->DeviceObject->Flags &
 		    (DO_BUFFERED_IO | DO_DIRECT_IO)));
 	    InsertTailList(&IopIrpQueue, &Irp->Private.Link);
-	    IoGetCurrentIrpStackLocation(Irp)->DeviceObject = Irp->Private.ForwardedTo;
+	    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+	    if (IoStack->DeviceObject) {
+		ObDereferenceObject(IoStack->DeviceObject);
+	    }
+	    IoStack->DeviceObject = Irp->Private.ForwardedTo;
 	    Irp->Private.ForwardedTo = NULL;
 	    continue;
 	} else {
@@ -2083,10 +2115,13 @@ delete:
 
 /*
  * Complete the IRP.
+ *
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoCompleteRequest(IN PIRP Irp,
 			     IN CHAR PriorityBoost)
 {
+    PAGED_CODE();
     DbgTrace("Completing IRP %p\n", Irp);
     IoDbgDumpIrp(Irp);
     assert(Irp != NULL);
@@ -2102,10 +2137,14 @@ NTAPI VOID IoCompleteRequest(IN PIRP Irp,
 }
 
 /*
- * Cancel the IRP.
+ * Cancel the IRP. A driver can only cancel the IRP that is has initiated.
+ * If a driver does own the IRP, a status is raised.
+ *
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoCancelIrp(IN PIRP Irp)
 {
+    PAGED_CODE();
     /* UNIMPLEMENTED */
 }
 
@@ -2142,23 +2181,20 @@ NTAPI VOID IoCancelIrp(IN PIRP Irp)
  * stack location there can only be one IO completion routine (the top-level
  * one) for each IRP.
  *
- * NOTE: Synchronous forwarding of IRP must occur in a coroutine. IoCallDriverEx
- * asserts if synchronous IRP forwarding is specified but no current coroutine
- * stack is found. In particular, you cannot forward IRPs synchronously in a DPC
- * or StartIO routine. This behavior is the same on Windows/ReactOS: DPC and
- * StartIO routines run in DISPATCH_LEVEL so you cannot sleep.
  *
  * Microsoft discourages higher-level drivers from having a StartIO routine,
  * let alone calling lower-level drivers in a StartIO routines [1] on Windows.
  * On Neptune OS, doing so is also discouraged, although it is nonetheless
  * possible, if you forward the IRP asynchronously.
  *
- * [1] docs.microsoft.com/en-us/windows-hardware/drivers/kernel/startio-routines-in-higher-level-drivers
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 			      IN OUT PIRP Irp,
 			      IN PLARGE_INTEGER Timeout)
 {
+    PAGED_CODE();
+
     /* TODO: Implement the case with a non-zero timeout. Add a new Timeout
      * member to the Irp->Private struct and inform the server of the timeout.
      * We will need to calculate the absolute time if timeout is relative. */
@@ -2188,6 +2224,7 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
      * the IRP queue. */
     assert(!Irp->Private.ForwardedTo);
     Irp->Private.ForwardedTo = DeviceObject;
+    ObReferenceObject(DeviceObject);
 
     /* Add the IRP to the ReplyList which we will examine towards the end of
      * the IRP processing. If the IRP is forwarded to a foreign driver, it
@@ -2222,7 +2259,8 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 		       &Irp->Private.AssociatedIrp.Link);
     }
 
-    /* If we are not waiting for the completion of the IRP, simply return */
+    /* If we are not waiting for the completion of the IRP, release the DPC mutex
+     * and return. */
     if (!Wait) {
 	return STATUS_IRP_FORWARDED;
     }

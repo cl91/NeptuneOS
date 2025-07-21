@@ -141,6 +141,7 @@ BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
 		   IN ACCESS_MASK DesiredAccess, OUT PHANDLE KeyHandle,
 		   OUT PNTSTATUS KeyStatus)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING KeyString;
@@ -306,6 +307,7 @@ PPCI_FDO_EXTENSION PciFindParentPciFdoExtension(IN PDEVICE_OBJECT DeviceObject)
 VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
 			  IN PPCI_FDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
     PSINGLE_LIST_ENTRY NextEntry;
 
     /* Loop the list until we get to the end, then insert this entry there */
@@ -317,6 +319,7 @@ VOID PciInsertEntryAtTail(IN PSINGLE_LIST_ENTRY ListHead,
 VOID PciInsertEntryAtHead(IN PSINGLE_LIST_ENTRY ListHead,
 			  IN PSINGLE_LIST_ENTRY Entry)
 {
+    PAGED_CODE();
     /* Make the entry point to the current head and make the head point to it */
     Entry->Next = ListHead->Next;
     ListHead->Next = Entry;
@@ -326,6 +329,7 @@ NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
 		      IN PVOID InputBuffer, IN ULONG InputBufferLength,
 		      IN PVOID OutputBuffer, IN ULONG OutputBufferLength)
 {
+    PAGED_CODE();
     PIRP Irp;
     IO_STATUS_BLOCK IoStatusBlock;
 
@@ -441,6 +445,7 @@ PPCI_PDO_EXTENSION PciFindPdoByFunction(IN PPCI_FDO_EXTENSION DeviceExtension,
 
 BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 {
+    PAGED_CODE();
     UNREFERENCED_PARAMETER(DeviceExtension);
 
     /* Check for too many, or no, debug ports */
@@ -456,6 +461,7 @@ BOOLEAN PciIsDeviceOnDebugPath(IN PPCI_PDO_EXTENSION DeviceExtension)
 NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 			  OUT PPCI_COMMON_HEADER PciData)
 {
+    PAGED_CODE();
     HANDLE KeyHandle, SubKeyHandle;
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING KeyName, KeyValue;
@@ -502,6 +508,7 @@ NTSTATUS PciGetBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 			   IN PPCI_COMMON_HEADER PciData)
 {
+    PAGED_CODE();
     HANDLE KeyHandle, SubKeyHandle;
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING KeyName, KeyValue;
@@ -719,6 +726,7 @@ ULONG_PTR PciExecuteCriticalSystemRoutine(IN ULONG_PTR IpiContext)
 BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
 				       IN ULONG Method)
 {
+    PAGED_CODE();
     BOOLEAN FoundSlot;
     PACPI_METHOD_ARGUMENT Argument;
     ACPI_EVAL_INPUT_BUFFER InputBuffer;
@@ -969,6 +977,7 @@ static NTSTATUS PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
 static NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
 					 IN OUT PDEVICE_CAPABILITIES DeviceCapability)
 {
+    PAGED_CODE();
     PIRP Irp;
     NTSTATUS Status;
     PDEVICE_OBJECT AttachedDevice;

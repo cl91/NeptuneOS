@@ -25,6 +25,8 @@ static NTAPI NTSTATUS PopRequestPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObjec
 
 /*
  * @implemented
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
 				 IN UCHAR MinorFunction,
@@ -33,6 +35,8 @@ NTAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
 				 IN OPTIONAL PVOID Context,
 				 OUT OPTIONAL PIRP *pIrp)
 {
+    PAGED_CODE();
+
     if (MinorFunction != IRP_MN_QUERY_POWER && MinorFunction != IRP_MN_SET_POWER
         && MinorFunction != IRP_MN_WAIT_WAKE) {
         return STATUS_INVALID_PARAMETER_2;

@@ -785,7 +785,7 @@ typedef struct _TIMER {
 	LIST_ENTRY QueueEntry;  /* List entry for KiQueuedTimerList */
 	LIST_ENTRY ExpiredListEntry; /* List entry KiExpiredTimerList */
     };
-    LONG Period;
+    LONG Period;		/* Periodicity of the timer */
     BOOLEAN State;		/* TRUE if timer is set */
 } TIMER, *PTIMER;
 
@@ -884,6 +884,11 @@ BOOLEAN KeSetTimer(IN PTIMER Timer,
 		   IN PVOID TimerApcContext,
 		   IN LONG Period);
 VOID KeUninitializeTimer(IN PTIMER Timer);
+struct _IO_TIMER;
+VOID KeQueueIoTimer(IN struct _IO_TIMER *Timer,
+		    IN ULARGE_INTEGER DueTime,
+		    IN LONG Period);
+VOID KeRemoveIoTimerFromQueue(IN struct _IO_TIMER *Timer);
 ULONGLONG KeQuerySystemTime(VOID);
 ULONGLONG KeQueryInterruptTime(VOID);
 

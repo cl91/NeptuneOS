@@ -4,15 +4,14 @@
 #include <services.h>
 #include <wdmsvc.h>
 #include "ke.h"
-#include "ntdef.h"
 #include "ob.h"
-#include "ex.h"
 
 #define DRIVER_OBJECT_DIRECTORY		"\\Driver"
 #define DEVICE_OBJECT_DIRECTORY		"\\Device"
 #define FILE_SYSTEM_OBJECT_DIRECTORY	"\\FileSystem"
 
 struct _PROCESS;
+struct _IO_FILE_SYSTEM;
 struct _IO_FILE_OBJECT;
 struct _IO_FILE_CONTROL_BLOCK;
 struct _CC_CACHE_MAP;
@@ -30,8 +29,10 @@ typedef struct _IO_DRIVER_OBJECT {
     struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
     struct _THREAD *DpcThread;		 /* DPC thread of the driver process */
     NOTIFICATION DpcNotification;	 /* DPC notification cap (in the process shared CNode) */
+    CAP_TREE_NODE TimerNotification;	 /* Derived from the DPC notification cap */
     struct _CC_CACHE_SPACE *CacheSpace; /* Non-NULL if the driver initialized cache support. */
     LIST_ENTRY IoPortList; /* List of all X86 IO ports enabled for this driver */
+    LIST_ENTRY IoTimerList;  /* List of all IO_TIMER of this driver. */
     LIST_ENTRY IoPacketQueue; /* IO packets queued on this driver object but has not
 			       * been processed yet. */
     LIST_ENTRY PendingIoPacketList; /* IO packets that have already been moved to driver
@@ -62,6 +63,20 @@ typedef struct _IO_DRIVER_OBJECT {
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*
+ * Server-side object for the driver-client-side KTIMER. This object is
+ * different from the regular TIMER in the sense that driver timer expiry
+ * is delivered through DPC and therefore has higher accuracy.
+ */
+typedef struct _IO_TIMER {
+    PIO_DRIVER_OBJECT DriverObject;
+    LIST_ENTRY DriverLink; /* List entry for IO_DRIVER_OBJECT::TimerList */
+    LIST_ENTRY QueueLink;  /* List entry for KiQueuedIoTimerList */
+    ULARGE_INTEGER DueTime;  /* Absolute due time in units of 100ns */
+    LONG Period;	     /* Periodicity of the timer */
+    BOOLEAN State;	     /* TRUE if timer is set */
+} IO_TIMER, *PIO_TIMER;
+
+/*
  * Server-side object of the client side DEVICE_OBJECT
  *
  * IRP flows from higher-level device to lower-level device in a device stack,
@@ -88,6 +103,7 @@ typedef struct _IO_DEVICE_OBJECT {
     struct _IO_DEVICE_OBJECT *AttachedTo; /* Lower device object immediately below */
     struct _DEVICE_NODE *DeviceNode; /* Only PDOs in PnP drivers have this. Otherwise NULL. */
     struct _IO_VOLUME_CONTROL_BLOCK *Vcb; /* Only mounted volume devices can have this. */
+    struct _IO_FILE_SYSTEM *FsObj; /* Only file system control device object has this. */
     LIST_ENTRY OpenFileList; /* List of opened instances of this device object. */
     LIST_ENTRY CloseMsgList; /* List of CLOSE_DEVICE_MESSAGE. */
     IO_DEVICE_INFO DeviceInfo;
@@ -95,6 +111,11 @@ typedef struct _IO_DEVICE_OBJECT {
     BOOLEAN Removed; /* TRUE if the driver has crashed and the device is being removed. */
     BOOLEAN Exclusive;
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
+
+typedef struct _IO_FILE_SYSTEM {
+    PIO_DEVICE_OBJECT FsctlDevObj; /* Device object to which we send FS control IRPs. */
+    LIST_ENTRY ListEntry;
+} IO_FILE_SYSTEM, *PIO_FILE_SYSTEM;
 
 /*
  * Volume control block. This structure represents a mounted volume and

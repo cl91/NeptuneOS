@@ -23,6 +23,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     }
     InitializeListHead(&Driver->DeviceList);
     InitializeListHead(&Driver->IoPortList);
+    InitializeListHead(&Driver->IoTimerList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     InitializeListHead(&Driver->ForwardedIrpList);
@@ -83,6 +84,13 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	assert(Irp->Type != IoPacketTypeRequest);
 	RemoveEntryList(&Irp->IoPacketLink);
 	IopFreePool(Irp);
+    }
+
+    /* If the driver has registered IO timer, delete them. */
+    LoopOverList(IoTimer, &Driver->IoTimerList, IO_TIMER, DriverLink) {
+	KeRemoveIoTimerFromQueue(IoTimer);
+	RemoveEntryList(&IoTimer->DriverLink);
+	IopFreePool(IoTimer);
     }
 
     if (Driver->MainEventLoopThread) {
@@ -547,6 +555,15 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 				       Thread->Process->SharedCNode));
     assert(DriverObject->DpcNotification.TreeNode.Cap);
 
+    /* Derive the notification cap in the server CSpace so we can signal for timer
+     * expiration. The cap has a badge indicating its purpose. */
+    extern CNODE MiNtosCNode;
+    DriverObject->TimerNotification.CNode = &MiNtosCNode;
+    IF_ERR_GOTO(err, Status,
+		MmCapTreeDeriveBadgedNode(&DriverObject->TimerNotification,
+					  &DriverObject->DpcNotification.TreeNode,
+					  seL4_AllRights, TIMER_NOTIFICATION_BADGE));
+
     /* Assign a handle for the DPC thread in the driver process */
     IF_ERR_GOTO(err, Status, ObCreateHandle(Thread->Process, DriverObject->DpcThread,
 					    FALSE, ThreadHandle));
@@ -560,10 +577,46 @@ err:
     if (DriverObject->DpcThread) {
 	ObDereferenceObject(DriverObject->DpcThread);
     }
+    if (DriverObject->TimerNotification.Cap) {
+	MmCapTreeDeleteNode(&DriverObject->TimerNotification);
+    }
     if (DriverObject->DpcNotification.TreeNode.Cap) {
 	KeDestroyNotification(&DriverObject->DpcNotification);
     }
     return Status;
+}
+
+NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
+			OUT GLOBAL_HANDLE *GlobalHandle)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject);
+    IopAllocatePool(IoTimer, IO_TIMER);
+    IoTimer->DriverObject = DriverObject;
+    InsertHeadList(&DriverObject->IoTimerList, &IoTimer->DriverLink);
+    *GlobalHandle = OBJECT_TO_GLOBAL_HANDLE(IoTimer);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
+		     IN PTHREAD Thread,
+		     IN GLOBAL_HANDLE GlobalHandle,
+		     IN PULARGE_INTEGER AbsoluteDueTime)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject);
+    LoopOverList(IoTimer, &DriverObject->IoTimerList, IO_TIMER, DriverLink) {
+	if (OBJECT_TO_GLOBAL_HANDLE(IoTimer) == GlobalHandle) {
+	    KeQueueIoTimer(IoTimer, *AbsoluteDueTime, 0);
+	    return STATUS_SUCCESS;
+	}
+    }
+    return STATUS_INVALID_HANDLE;
 }
 
 NTSTATUS WdmCreateCoroutineStack(IN ASYNC_STATE State,

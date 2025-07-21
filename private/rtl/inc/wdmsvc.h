@@ -15,6 +15,10 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 
+/* When the driver DPC thread gets notified, we use the following flag to
+ * indicate that it comes from timer expiration. */
+#define TIMER_NOTIFICATION_BADGE	(1)
+
 #define VIEWS_PER_TABLE		(PAGE_SIZE / sizeof(PVOID))
 #define VIEW_TABLE_ADDRESS_BITS	(PAGE_LOG2SIZE - MWORD_LOG2SIZE)
 #define VIEW_TABLE_BITMAP_SIZE	(VIEWS_PER_TABLE / MWORD_BITS)

@@ -70,6 +70,8 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 	    return NULL;
 	}
 	IopInitializeDeviceObject(DeviceObject, 0, DevInfo, DeviceHandle, NULL);
+    } else {
+	ObReferenceObject(DeviceObject);
     }
     assert(DeviceObject != NULL);
     return DeviceObject;
@@ -93,7 +95,7 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 {
     assert(DriverObject != NULL);
     assert(pDeviceObject != NULL);
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
 
     /* Both device object and device extension are aligned by MEMORY_ALLOCATION_ALIGNMENT */
     SIZE_T AlignedDevExtSize = ALIGN_UP_BY(DeviceExtensionSize,
@@ -141,7 +143,15 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
 NTAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
+    UNIMPLEMENTED;
+    assert(ListHasEntry(&IopDeviceList, &DeviceObject->Private.Link));
+    RemoveEntryList(&DeviceObject->Private.Link);
+#if DBG
+    RtlZeroMemory(DeviceObject, sizeof(DEVICE_OBJECT));
+#endif
+    IopFreePool(DeviceObject);
 }
 
 NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
@@ -149,7 +159,8 @@ NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 					OUT PFILE_OBJECT *FileObject,
 					OUT PDEVICE_OBJECT *DeviceObject)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -165,7 +176,8 @@ NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 						 IN PDEVICE_OBJECT TargetDevice)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     GLOBAL_HANDLE SourceHandle = IopGetDeviceHandle(SourceDevice);
     GLOBAL_HANDLE TargetHandle = IopGetDeviceHandle(TargetDevice);
     if ((SourceHandle == 0) || (TargetHandle == 0)) {
@@ -202,11 +214,14 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
  * of the given device object. This routine makes a call to the server so
  * that we always get the most up-to-date device object.
  *
+ * This routine increases the refcount of the object.
+ *
  * This routine can only be called at PASSIVE_LEVEL.
  */
-NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
+NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     GLOBAL_HANDLE Handle = IopGetDeviceHandle(DeviceObject);
     if (Handle == 0) {
 	return NULL;
@@ -220,16 +235,6 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDevice(IN PDEVICE_OBJECT DeviceObject)
     return IopGetDeviceObjectOrCreate(TopHandle, DevInfo);
 }
 
-NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject)
-{
-    PDEVICE_OBJECT DevObj = IoGetAttachedDevice(DeviceObject);
-    if (!DevObj) {
-	return NULL;
-    }
-    DevObj->Header.RefCount++;
-    return DevObj;
-}
-
 /*
  * @unimplemented
  *
@@ -237,7 +242,9 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject
  */
 NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
+    UNIMPLEMENTED;
 }
 
 /*++
@@ -275,7 +282,8 @@ NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
 					 IN OPTIONAL PUNICODE_STRING ReferenceString,
 					 OUT PUNICODE_STRING SymbolicLinkName)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -300,7 +308,8 @@ NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
 NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
 					 IN BOOLEAN Enable)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -484,7 +493,8 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 				     IN ULONG Flags,
 				     OUT PWSTR *SymbolicLinkList)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     UNICODE_STRING Control = RTL_CONSTANT_STRING(L"Control");
     HANDLE InterfaceKey = NULL;
     HANDLE DeviceKey = NULL;
@@ -772,7 +782,8 @@ cleanup:
 NTAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
 				    IN PUNICODE_STRING DeviceName)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     OBJECT_ATTRIBUTES ObjectAttributes;
     InitializeObjectAttributes(&ObjectAttributes, SymbolicLinkName,
                                OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
@@ -821,7 +832,8 @@ NTAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
 				       IN ACCESS_MASK DesiredAccess,
 				       OUT PHANDLE DevInstRegKey)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     ULONG KeyNameLength;
     PWSTR KeyNameBuffer;
     UNICODE_STRING KeyName;
@@ -938,7 +950,8 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 				   OUT PVOID PropertyBuffer,
 				   OUT PULONG ResultLength)
 {
-    assert(IopThreadIsAtPassiveLevel());
+    PAGED_CODE();
+
     PWSTR ValueName = NULL;
     ULONG ValueType;
     switch (DeviceProperty) {
@@ -1005,6 +1018,7 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
 				  IN PKDEVICE_QUEUE_ENTRY Entry)
 {
+    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
     assert(Queue != NULL);
     assert(Entry != NULL);
     IoAcquireDpcMutex();
@@ -1027,11 +1041,14 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
  *
  * NOTE: Queue must be already sorted (or empty). Otherwise the function
  * behaves unpredictably.
+ *
+ * This routine must be called at DISPATCH_LEVEL and below.
  */
 NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
 				       IN PKDEVICE_QUEUE_ENTRY Entry,
 				       IN ULONG SortKey)
 {
+    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
     assert(Queue != NULL);
     assert(Entry != NULL);
     Entry->SortKey = SortKey;
@@ -1073,9 +1090,12 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
  * Removes the entry from the head and returns the removed entry. If queue
  * is empty, return NULL. This function should only be called when the queue
  * is set to busy state, otherwise it asserts.
+ *
+ * This routine must be called at DISPATCH_LEVEL and below.
  */
 NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
 {
+    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
     PKDEVICE_QUEUE_ENTRY Entry = NULL;
 
     assert(Queue != NULL);
@@ -1105,10 +1125,13 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
  * The queue must be busy, otherwise the function asserts in debug build.
  *
  * NOTE: Queue must be already sorted. Otherwise the function behaves unpredictably.
+ *
+ * This routine must be called at DISPATCH_LEVEL and below.
  */
 NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
 						    IN ULONG SortKey)
 {
+    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
     PKDEVICE_QUEUE_ENTRY Entry = NULL;
 
     assert(Queue != NULL);

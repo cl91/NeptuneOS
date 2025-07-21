@@ -1,10 +1,5 @@
 #include "iop.h"
 
-typedef struct _IO_FILE_SYSTEM {
-    PIO_DEVICE_OBJECT FsctlDevObj; /* Device object to which we send FS control IRPs. */
-    LIST_ENTRY ListEntry;
-} IO_FILE_SYSTEM, *PIO_FILE_SYSTEM;
-
 static LIST_ENTRY IopDiskFileSystemList;
 static LIST_ENTRY IopNetworkFileSystemList;
 static LIST_ENTRY IopCdRomFileSystemList;
@@ -97,6 +92,7 @@ next:
     /* Loop over the fs list and send the mount request to each FS, until one of them
      * is able to mount the volume. */
     if (Locals.Entry == Locals.FsList) {
+	Locals.CurrentFs = NULL;
 	goto out;
     }
     Locals.CurrentFs = CONTAINING_RECORD(Locals.Entry, IO_FILE_SYSTEM, ListEntry);
@@ -115,6 +111,9 @@ next:
 					     &Irp.MountVolume.StorageDevice));
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
+    /* Increase the refcount of the FSCTL device object, so it won't get deleted
+     * if the file system driver crashed during the mount. */
+    ObpReferenceObject(Locals.CurrentFs->FsctlDevObj);
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
@@ -157,12 +156,16 @@ next:
 	IopCleanupPendingIrp(Locals.PendingIrp);
 	Locals.PendingIrp = NULL;
 	Locals.Entry = Locals.Entry->Flink;
+	ObDereferenceObject(Locals.CurrentFs->FsctlDevObj);
 	goto next;
     }
 
 out:
     if (Locals.PendingIrp) {
 	IopCleanupPendingIrp(Locals.PendingIrp);
+    }
+    if (Locals.CurrentFs && Locals.CurrentFs->FsctlDevObj) {
+	ObDereferenceObject(Locals.CurrentFs->FsctlDevObj);
     }
     if (DevObj->Vcb && !NT_SUCCESS(Status)) {
 	if (DevObj->Vcb->VolumeFcb) {
@@ -220,7 +223,25 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
      * file system driver that the system tries when mounting a volume. */
     InsertHeadList(FsList, &FsObj->ListEntry);
     FsObj->FsctlDevObj = DevObj;
+    DevObj->FsObj = FsObj;
+    DbgTrace("Registered file system control device object %p\n", DevObj);
     return STATUS_SUCCESS;
+}
+
+VOID IopUnregisterFileSystem(IN PIO_DEVICE_OBJECT DevObj)
+{
+    DbgTrace("Unregistering FSCTL dev obj %p\n", DevObj);
+    PIO_FILE_SYSTEM FsObj = DevObj->FsObj;
+    assert(FsObj);
+    assert(FsObj->ListEntry.Blink);
+    assert(FsObj->ListEntry.Flink);
+    assert(ListHasEntry(&IopDiskFileSystemList, &FsObj->ListEntry) ||
+	   ListHasEntry(&IopCdRomFileSystemList, &FsObj->ListEntry) ||
+	   ListHasEntry(&IopNetworkFileSystemList, &FsObj->ListEntry) ||
+	   ListHasEntry(&IopTapeFileSystemList, &FsObj->ListEntry));
+    RemoveEntryList(&FsObj->ListEntry);
+    IopFreePool(FsObj);
+    DevObj->FsObj = NULL;
 }
 
 static VOID IopVcbDetachSubobject(IN POBJECT Object,
@@ -259,15 +280,6 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	    assert(!Vcb->VolumeFile->Fcb);
 	}
 	ObDereferenceObject(Vcb->VolumeFile);
-    }
-    /* VolumeDevice may be NULL if we are in the middle of a mounting process (and the
-     * storage driver crashed). */
-    if (Vcb->VolumeDevice) {
-	/* Dereference the volume device object that the file system driver created
-	 * when mounting the volume. Note the refcount of the volume device should
-	 * be greater than one at this point, so the deref will not delete the object. */
-	assert(ObGetObjectRefCount(Vcb->VolumeDevice) > 1);
-	ObDereferenceObject(Vcb->VolumeDevice);
     }
     /* If we are forcing the dismount due to for instance media change or a driver
      * crashing, queue the ForceDismount message to the file system driver. Note if
@@ -315,6 +327,12 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	    Vcb->StorageDevice->Vcb = NULL;
 	}
 	IopFreePool(Vcb);
+    } else {
+	/* Else, just dereference the volume device object that the file system driver
+	 * created when mounting the volume. Note the refcount of the volume device should
+	 * be greater than one at this point, so the deref will not delete the object. */
+	assert(ObGetObjectRefCount(Vcb->VolumeDevice) > 1);
+	ObDereferenceObject(Vcb->VolumeDevice);
     }
 }
 

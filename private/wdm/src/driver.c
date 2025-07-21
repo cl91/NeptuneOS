@@ -180,12 +180,16 @@ out:
  * records the identifier and chains all extensions of one driver. The pointer
  * to the beginning of the per-driver context area (ie. the memory immediately
  * after the header) is returned via pDriverExtension.
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoAllocateDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
 					       IN PVOID ClientIdentAddr,
 					       IN ULONG DriverExtensionSize,
 					       OUT PVOID *pDriverExtension)
 {
+    PAGED_CODE();
+
     /* Assume failure */
     *pDriverExtension = NULL;
 
@@ -222,10 +226,13 @@ NTAPI NTSTATUS IoAllocateDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
  *
  * Returns the pointer to the beginning of the per-driver context area
  * (ie. the memory immediately after the header) matching the given identifer.
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI PVOID IoGetDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
 				       IN PVOID ClientIdentAddr)
 {
+    PAGED_CODE();
     /* Loop the list until we find the right one */
     for (PIO_CLIENT_EXTENSION DrvExt = DriverObject->ClientDriverExtension;
 	 DrvExt != NULL; DrvExt = DrvExt->NextExtension) {
@@ -240,11 +247,14 @@ NTAPI PVOID IoGetDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
 
 /*
  * @implemented
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
 					    IN PDRIVER_REINITIALIZE ReinitRoutine,
 					    IN PVOID Context)
 {
+    PAGED_CODE();
     /* Allocate the entry */
     PDRIVER_REINIT_ITEM ReinitItem = ExAllocatePoolWithTag(sizeof(DRIVER_REINIT_ITEM),
 							   TAG_REINIT);
@@ -272,6 +282,7 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
 			       IN OUT OPTIONAL PVOID Context,
 			       OUT PVOID *NotificationEntry)
 {
+    PAGED_CODE();
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
@@ -441,10 +452,14 @@ static BOOLEAN MiIsIoWindowMapped(IN PIO_MEMORY_WINDOW Window,
     return TRUE;
 }
 
+/*
+ * @remarks This routine must be called at PASSIVE_LEVEL.
+ */
 NTAPI PVOID MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
 			 IN SIZE_T NumberOfBytes,
 			 IN MEMORY_CACHING_TYPE CacheType)
 {
+    PAGED_CODE();
     /* Make sure the address window to be mapped does not span more than one
      * IO memory window. */
     ULONG64 StartAddress = PAGE_ALIGN64(PhysicalAddress.QuadPart);
@@ -480,14 +495,11 @@ NTAPI PVOID MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
     return (PVOID)VirtAddr;
 }
 
+/*
+ * @remarks This routine must be called at PASSIVE_LEVEL.
+ */
 NTAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 			  IN SIZE_T NumberOfBytes)
 {
-}
-
-NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID BaseAddress)
-{
-    assert(FALSE);
-    PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
-    return PhyAddr;
+    PAGED_CODE();
 }

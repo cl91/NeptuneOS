@@ -607,6 +607,8 @@ NTAPI PCONFIGURATION_INFORMATION IoGetConfigurationInformation()
  *
  * IMPLEMENTATION STATUS:
  *     @unimplemented
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
 				     IN PDRIVER_OBJECT DriverObject,
@@ -618,6 +620,8 @@ NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
 				     IN BOOLEAN OverrideConflict,
 				     OUT PBOOLEAN ConflictDetected)
 {
+    PAGED_CODE();
+
     DPRINT1("IoReportResourceUsage is half-implemented!\n");
 
     if (!DriverList && !DeviceList) {
@@ -672,6 +676,8 @@ NTAPI NTSTATUS IoReportResourceUsage(IN PUNICODE_STRING DriverClassName,
  *
  * STATUS:
  *     @implemented
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 					IN OPTIONAL PULONG BusNumber,
@@ -682,6 +688,8 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 					IN PIO_QUERY_DEVICE_ROUTINE CalloutRoutine,
 					IN OUT OPTIONAL PVOID Context)
 {
+    PAGED_CODE();
+
     if (BusType == NULL) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -820,12 +828,15 @@ out:
  *
  * RETURNS:
  *      Status.
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoReportHalResourceUsage(IN PUNICODE_STRING HalDescription,
 					IN PCM_RESOURCE_LIST RawList,
 					IN PCM_RESOURCE_LIST TranslatedList,
 					IN ULONG ListSize)
 {
+    PAGED_CODE();
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING Name;
     ULONG Disposition;

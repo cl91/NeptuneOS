@@ -18,7 +18,7 @@
 #define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 
 /* Shared kernel data that is accessible from user space */
-#define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
+#define SharedUserData ((const volatile KUSER_SHARED_DATA *const) KUSER_SHARED_DATA_CLIENT_ADDR)
 
 #define IopAllocatePoolEx(Ptr, Type, Size, OnError)		\
     Type *Ptr = (Type *)RtlAllocateHeap(RtlGetProcessHeap(),	\
@@ -40,12 +40,6 @@
 
 #define IopFreePool(Ptr)			\
     RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr)
-
-FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel()
-{
-    PTEB Teb = NtCurrentTeb();
-    return !Teb->Wdm.IsDpcThread && !Teb->Wdm.IsIsrThread;
-}
 
 /*
  * Open the specified registry key
@@ -243,6 +237,7 @@ VOID IoDbgDumpIrp(IN PIRP Irp);
 extern SLIST_HEADER IopDpcQueue;
 extern KMUTEX IopDpcMutex;
 VOID IopSignalDpcNotification();
+VOID KiInitializeDpcThread();
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;
@@ -250,6 +245,7 @@ extern LIST_ENTRY IopX86PortList;
 /* timer.c */
 extern LIST_ENTRY IopTimerList;
 extern ULONG KiStallScaleFactor;
+VOID IopProcessTimerList();
 
 /* workitem.c */
 extern SLIST_HEADER IopWorkItemQueue;
@@ -303,3 +299,8 @@ FORCEINLINE BOOLEAN ObjectTypeIsWaitable(IN CLIENT_OBJECT_TYPE Ty)
 	(Obj)->Header.Size = sizeof(TyName);			\
 	(Obj)->Header.RefCount = 1;				\
     }
+
+FORCEINLINE LONG ObGetObjectRefCount(PVOID Obj)
+{
+    return ((POBJECT_HEADER)Obj)->RefCount;
+}

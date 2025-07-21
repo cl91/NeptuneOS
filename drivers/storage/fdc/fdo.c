@@ -74,6 +74,7 @@ static NTAPI VOID MotorStopDpcFunc(PKDPC UnusedDpc,
  */
 VOID StartMotor(PDRIVE_INFO DriveInfo)
 {
+    PAGED_CODE();
     ASSERT(DriveInfo);
 
     TRACE_(FLOPPY, "StartMotor called\n");
@@ -123,6 +124,7 @@ VOID StopMotor(PCONTROLLER_INFO ControllerInfo)
 NTSTATUS WaitForControllerInterrupt(PCONTROLLER_INFO ControllerInfo,
 				    PLARGE_INTEGER Timeout)
 {
+    PAGED_CODE();
     ASSERT(ControllerInfo);
 
     NTSTATUS Status = KeWaitForSingleObject(&ControllerInfo->SynchEvent, Executive,
@@ -145,6 +147,7 @@ NTSTATUS WaitForControllerInterrupt(PCONTROLLER_INFO ControllerInfo,
  */
 NTSTATUS Recalibrate(PDRIVE_INFO DriveInfo)
 {
+    PAGED_CODE();
     ASSERT(DriveInfo);
 
     /* First turn on the motor.
@@ -265,6 +268,7 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
  *     STATUS_IO_DEVICE_ERROR otherwise
  */
 {
+    PAGED_CODE();
     UCHAR HeadLoadTime;
     UCHAR HeadUnloadTime;
     UCHAR StepRateTime;

@@ -159,15 +159,19 @@ VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
     POBJECT_DIRECTORY ParentDir = ObGetParentDirectory(Subobject);
     if (ParentDir) {
 	assert(ObObjectIsType(Subobject, OBJECT_TYPE_FILE));
-	PIO_FILE_OBJECT FileObj = Subobject;
-	assert(FileObj->Fcb);
-	PIO_VOLUME_CONTROL_BLOCK Vcb = FileObj->Fcb->Vcb;
-	assert(Vcb);
 	ObDirectoryObjectRemoveObject(Subobject);
-	/* If the parent directory is empty, delete it, unless it's the root subobject
-	 * directory. */
-	if (!ObDirectoryGetObjectCount(ParentDir) && ParentDir != Vcb->Subobjects) {
-	    ObDereferenceObject(ParentDir);
+	PIO_FILE_OBJECT FileObj = Subobject;
+	/* The file may be a zombie object (whose device object has been forcibly
+	 * removed). In this case we simply detach the file from the object directory.
+	 * IopVcbDetachSubobject will dereference the object directory itself. */
+	if (FileObj->Fcb) {
+	    PIO_VOLUME_CONTROL_BLOCK Vcb = FileObj->Fcb->Vcb;
+	    assert(Vcb);
+	    /* If the parent directory is empty, delete it, unless it's the root subobject
+	     * directory. */
+	    if (!ObDirectoryGetObjectCount(ParentDir) && ParentDir != Vcb->Subobjects) {
+		ObDereferenceObject(ParentDir);
+	    }
 	}
     }
 }
@@ -439,6 +443,9 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 	Vcb->VolumeDevice->Vcb = NULL;
 	IopFreePool(Vcb);
     }
+    if (DevObj->FsObj) {
+	IopUnregisterFileSystem(DevObj);
+    }
     if (DevObj->DeviceNode) {
 	assert(DevObj->DeviceNode->PhyDevObj == DevObj);
 	DevObj->DeviceNode->PhyDevObj = NULL;
@@ -514,6 +521,7 @@ NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject
 				      OUT GLOBAL_HANDLE *DeviceHandle)
 {
     assert(DeviceHandle);
+    assert(DriverObject);
     if (!DeviceObject) {
 	*DeviceHandle = 0;
 	return STATUS_SUCCESS;

@@ -8,6 +8,7 @@
 
 static NTSTATUS Bus_PDO_QueryDeviceCaps(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
+    PAGED_CODE();
     PIO_STACK_LOCATION Stack;
     PDEVICE_CAPABILITIES DeviceCapabilities;
     PACPI_DEVICE Device = NULL;
@@ -109,6 +110,7 @@ static NTSTATUS Bus_PDO_QueryDeviceCaps(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
+    PAGED_CODE();
     PIO_STACK_LOCATION Stack;
     PWCHAR Buffer, Src;
     WCHAR Temp[256];
@@ -302,6 +304,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
+    PAGED_CODE();
     PWCHAR Buffer, Temp;
     PIO_STACK_LOCATION Stack;
     NTSTATUS Status = STATUS_NOT_SUPPORTED;
@@ -912,6 +915,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
+    PAGED_CODE();
     ULONG NumberOfResources = 0;
     ACPI_STATUS AcpiStatus;
     ACPI_BUFFER Buffer;
@@ -1515,6 +1519,7 @@ Return Value:
 --*/
 static NTSTATUS Bus_PDO_QueryDeviceRelations(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
+    PAGED_CODE();
     PIO_STACK_LOCATION Stack;
     PDEVICE_RELATIONS DeviceRelations;
     NTSTATUS Status;
@@ -1585,6 +1590,7 @@ Return Value:
 --*/
 static NTSTATUS Bus_PDO_QueryBusInformation(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 {
+    PAGED_CODE();
     PPNP_BUS_INFORMATION BusInfo;
 
     BusInfo = ExAllocatePoolWithTag(sizeof(PNP_BUS_INFORMATION), ACPI_TAG);
@@ -1607,6 +1613,7 @@ static NTSTATUS Bus_PDO_QueryBusInformation(PPDO_DEVICE_DATA DeviceData, PIRP Ir
 static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
 					  PDEVICE_CAPABILITIES DeviceCapabilities)
 {
+    PAGED_CODE();
     IO_STATUS_BLOCK IoStatus;
     NTSTATUS Status;
     PDEVICE_OBJECT TargetObject;
@@ -1672,6 +1679,7 @@ GetDeviceCapabilitiesExit:
 NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpStack,
 		     PPDO_DEVICE_DATA DeviceData)
 {
+    PAGED_CODE();
     NTSTATUS Status;
     POWER_STATE State;
     PACPI_DEVICE Device = NULL;

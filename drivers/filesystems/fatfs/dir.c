@@ -436,6 +436,7 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 
     PIO_STACK_LOCATION Stack = IrpContext->Stack;
 
+    assert(IrpContext->FileObject);
     Ccb = (PFATCCB)IrpContext->FileObject->FsContext2;
     assert(Ccb);
     Fcb = (PFATFCB)IrpContext->FileObject->FsContext;

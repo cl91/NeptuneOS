@@ -137,23 +137,6 @@ VOID AcpiOsUnmapMemory(PVOID Virt, ACPI_SIZE Length)
     MmUnmapIoSpace(Virt, Length);
 }
 
-ACPI_STATUS AcpiOsGetPhysicalAddress(PVOID LogicalAddress,
-				     ACPI_PHYSICAL_ADDRESS *PhysicalAddress)
-{
-    PHYSICAL_ADDRESS PhysAddr;
-
-    if (!LogicalAddress || !PhysicalAddress) {
-	DPRINT1("Bad parameter\n");
-	return AE_BAD_PARAMETER;
-    }
-
-    PhysAddr = MmGetPhysicalAddress(LogicalAddress);
-
-    *PhysicalAddress = (ACPI_PHYSICAL_ADDRESS)PhysAddr.QuadPart;
-
-    return AE_OK;
-}
-
 PVOID AcpiOsAllocate(ACPI_SIZE Size)
 {
     return ExAllocatePoolWithTag(Size, ACPI_TAG);

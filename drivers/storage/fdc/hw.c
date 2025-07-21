@@ -115,6 +115,7 @@ static BOOLEAN ReadyForRead(PCONTROLLER_INFO ControllerInfo)
 static NTSTATUS SendByte(PCONTROLLER_INFO ControllerInfo,
 			  UCHAR Byte)
 {
+    PAGED_CODE();
     int i;
 
     for (i = 0; i < 5; i++) {
@@ -152,6 +153,7 @@ static NTSTATUS SendByte(PCONTROLLER_INFO ControllerInfo,
 static NTSTATUS GetByte(PCONTROLLER_INFO ControllerInfo,
 			 PUCHAR Byte)
 {
+    PAGED_CODE();
     int i;
 
     for (i = 0; i < 5; i++) {
@@ -228,6 +230,7 @@ NTSTATUS HwTurnOffMotor(PCONTROLLER_INFO ControllerInfo)
  */
 NTSTATUS HwTurnOnMotor(PDRIVE_INFO DriveInfo)
 {
+    PAGED_CODE();
     PCONTROLLER_INFO ControllerInfo = DriveInfo->ControllerInfo;
     UCHAR Unit = DriveInfo->UnitNumber;
 
@@ -267,6 +270,7 @@ NTSTATUS HwTurnOnMotor(PDRIVE_INFO DriveInfo)
  */
 NTSTATUS HwSenseDriveStatus(PDRIVE_INFO DriveInfo)
 {
+    PAGED_CODE();
     UCHAR Buffer[2];
 
     TRACE_(FLOPPY, "HwSenseDriveStatus called\n");
@@ -316,6 +320,7 @@ NTSTATUS HwReadWriteData(PCONTROLLER_INFO ControllerInfo,
 			 UCHAR Gap3Length,
 			 UCHAR DataLength)
 {
+    PAGED_CODE();
     UCHAR Buffer[9];
 
     /* Shouldn't be using DataLength in this driver */
@@ -370,6 +375,7 @@ NTSTATUS HwReadWriteData(PCONTROLLER_INFO ControllerInfo,
  */
 NTSTATUS HwRecalibrateResult(PCONTROLLER_INFO ControllerInfo)
 {
+    PAGED_CODE();
     UCHAR Buffer[2];
 
     NTSTATUS Status = SendByte(ControllerInfo, COMMAND_SENSE_INTERRUPT_STATUS);
@@ -436,6 +442,7 @@ NTSTATUS HwRecalibrateResult(PCONTROLLER_INFO ControllerInfo)
  */
 NTSTATUS HwReadWriteResult(PCONTROLLER_INFO ControllerInfo)
 {
+    PAGED_CODE();
     UCHAR Buffer[7];
 
     for (int i = 0; i < 7; i++) {
@@ -472,6 +479,7 @@ NTSTATUS HwReadWriteResult(PCONTROLLER_INFO ControllerInfo)
  */
 NTSTATUS HwRecalibrate(PDRIVE_INFO DriveInfo)
 {
+    PAGED_CODE();
     PCONTROLLER_INFO ControllerInfo = DriveInfo->ControllerInfo;
     UCHAR Unit = DriveInfo->UnitNumber;
     UCHAR Buffer[2];
@@ -503,6 +511,7 @@ NTSTATUS HwRecalibrate(PDRIVE_INFO DriveInfo)
  */
 NTSTATUS HwSenseInterruptStatus(PCONTROLLER_INFO ControllerInfo)
 {
+    PAGED_CODE();
     UCHAR Buffer[2];
 
     NTSTATUS Status = SendByte(ControllerInfo, COMMAND_SENSE_INTERRUPT_STATUS);
@@ -542,6 +551,7 @@ NTSTATUS HwSenseInterruptStatus(PCONTROLLER_INFO ControllerInfo)
  */
 NTSTATUS HwReadId(PDRIVE_INFO DriveInfo, UCHAR Head)
 {
+    PAGED_CODE();
     UCHAR Buffer[2];
 
     TRACE_(FLOPPY, "HwReadId called\n");
@@ -583,6 +593,7 @@ NTSTATUS HwFormatTrack(PCONTROLLER_INFO ControllerInfo,
 		       UCHAR Gap3Length,
 		       UCHAR FillerPattern)
 {
+    PAGED_CODE();
     UCHAR Buffer[6];
 
     TRACE_(FLOPPY, "HwFormatTrack called\n");
@@ -620,6 +631,7 @@ NTSTATUS HwFormatTrack(PCONTROLLER_INFO ControllerInfo,
  */
 NTSTATUS HwSeek(PDRIVE_INFO DriveInfo, UCHAR Cylinder)
 {
+    PAGED_CODE();
     LARGE_INTEGER Delay;
     UCHAR Buffer[3];
 
@@ -670,6 +682,7 @@ NTSTATUS HwConfigure(PCONTROLLER_INFO ControllerInfo,
 		     UCHAR FIFOTHR,
 		     UCHAR PRETRK)
 {
+    PAGED_CODE();
     UCHAR Buffer[4];
 
     TRACE_(FLOPPY, "HwConfigure called\n");
@@ -704,6 +717,7 @@ NTSTATUS HwConfigure(PCONTROLLER_INFO ControllerInfo,
  */
 UCHAR HwGetVersion(PCONTROLLER_INFO ControllerInfo)
 {
+    PAGED_CODE();
     UCHAR Buffer;
 
     NTSTATUS Status = SendByte(ControllerInfo, COMMAND_VERSION);
@@ -780,6 +794,7 @@ NTSTATUS HwDiskChanged(PDRIVE_INFO DriveInfo,
 NTSTATUS HwSenseDriveStatusResult(PCONTROLLER_INFO ControllerInfo,
 				  PUCHAR DriveStatus)
 {
+    PAGED_CODE();
     NTSTATUS Status = GetByte(ControllerInfo, DriveStatus);
     if (!NT_SUCCESS(Status)) {
 	WARN_(FLOPPY, "HwSenseDriveStatus: unable to read fifo. Error = 0x%x\n",
@@ -812,6 +827,7 @@ NTSTATUS HwReadIdResult(PCONTROLLER_INFO ControllerInfo,
 			PUCHAR CurCylinder,
 			PUCHAR CurHead)
 {
+    PAGED_CODE();
     UCHAR Buffer[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
     for (int i = 0; i < 7; i++) {

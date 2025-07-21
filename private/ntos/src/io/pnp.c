@@ -1390,7 +1390,7 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 {
     PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle, NULL);
     if (!DeviceObject) {
-	return STATUS_INVALID_PARAMETER;
+	return STATUS_INVALID_HANDLE;
     }
     PDEVICE_NODE DeviceNode = IopGetDeviceNode(DeviceObject);
     if (!DeviceNode) {

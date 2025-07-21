@@ -1,12 +1,24 @@
 #include <wdmp.h>
 
+NTAPI VOID ObReferenceObject(IN PVOID Obj)
+{
+    POBJECT_HEADER Header = Obj;
+    Header->RefCount++;
+}
+
 NTAPI VOID ObDereferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;
     Header->RefCount--;
     if (Header->RefCount <= 0) {
 	assert(Header->RefCount == 0);
-	IopFreePool(Obj);
+	if (Header->Type == CLIENT_OBJECT_FILE) {
+	    IopDeleteFileObject(Obj);
+	} else if (Header->Type == CLIENT_OBJECT_DEVICE) {
+	    IoDeleteDevice(Obj);
+	} else {
+	    IopFreePool(Obj);
+	}
     }
 }
 
@@ -151,6 +163,7 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 
     PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
     StackPtr->DeviceObject = DeviceObject;
+    ObReferenceObject(DeviceObject);
     StackPtr->MajorFunction = InternalDeviceIoControl ?
 	IRP_MJ_INTERNAL_DEVICE_CONTROL : IRP_MJ_DEVICE_CONTROL;
 
@@ -190,6 +203,7 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 
     PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
     StackPtr->DeviceObject = DeviceObject;
+    ObReferenceObject(DeviceObject);
     StackPtr->MajorFunction = (UCHAR)MajorFunction;
     if (!Buffer && Length) {
 	/* If Buffer is NULL but Length is not zero, in the case of a READ

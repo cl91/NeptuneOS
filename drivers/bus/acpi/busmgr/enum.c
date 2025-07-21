@@ -19,6 +19,7 @@ extern PACPI_DEVICE AcpiRoot;
 
 static VOID Bus_InitializePdo(PDEVICE_OBJECT Pdo, PFDO_DEVICE_DATA FdoData)
 {
+    PAGED_CODE();
     PPDO_DEVICE_DATA PdoData;
     INT AcpiState;
     DEVICE_POWER_STATE PowerState;
@@ -73,6 +74,7 @@ static VOID Bus_InitializePdo(PDEVICE_OBJECT Pdo, PFDO_DEVICE_DATA FdoData)
 
 static NTSTATUS Bus_DestroyPdo(PDEVICE_OBJECT Device, PPDO_DEVICE_DATA PdoData)
 {
+    PAGED_CODE();
     //
     // BusEnum does not queue any irps at this time so we have nothing to do.
     //
@@ -93,6 +95,7 @@ static NTSTATUS Bus_DestroyPdo(PDEVICE_OBJECT Device, PPDO_DEVICE_DATA PdoData)
 
 static NTSTATUS Bus_PlugInDevice(PACPI_DEVICE Device, PFDO_DEVICE_DATA FdoData)
 {
+    PAGED_CODE();
     PDEVICE_OBJECT Pdo;
     PPDO_DEVICE_DATA PdoData;
     NTSTATUS Status;

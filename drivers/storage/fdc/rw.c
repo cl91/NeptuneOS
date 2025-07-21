@@ -98,6 +98,7 @@ static NTAPI IO_ALLOCATION_ACTION MapRegisterCallback(PDEVICE_OBJECT DeviceObjec
  */
 NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo, BOOLEAN OneShot)
 {
+    PAGED_CODE();
     UCHAR HeadLoadTime;
     UCHAR HeadUnloadTime;
     UCHAR StepRateTime;
@@ -214,6 +215,7 @@ NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo, BOOLEAN OneShot)
  */
 static NTSTATUS RWSeekToCylinder(PDRIVE_INFO DriveInfo, UCHAR Cylinder)
 {
+    PAGED_CODE();
     UCHAR CurCylinder;
 
     TRACE_(FLOPPY, "RWSeekToCylinder called drive 0x%p cylinder %d\n",
@@ -373,6 +375,7 @@ NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp)
  */
 NTSTATUS ResetChangeFlag(PDRIVE_INFO DriveInfo)
 {
+    PAGED_CODE();
     BOOLEAN DiskChanged;
 
     ASSERT(DriveInfo);

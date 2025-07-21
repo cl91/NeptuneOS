@@ -19,10 +19,13 @@ VOID IoReleaseDpcMutex()
 
 static VOID IopProcessDpcQueue()
 {
-    NtCurrentTeb()->Wdm.ServiceCap = IopDpcThreadWdmServiceCap;
+    PTEB Teb = NtCurrentTeb();
+    Teb->Wdm.ServiceCap = IopDpcThreadWdmServiceCap;
+    Teb->Wdm.IsDpcThread = TRUE;
     PSLIST_ENTRY Entry;
     while (TRUE) {
-	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), NULL);
+	MWORD Badge = 0;
+	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), &Badge);
 	while ((Entry = RtlInterlockedPopEntrySList(&IopDpcQueue)) != NULL) {
 	    PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, QueueEntry);
 	    assert(Dpc->Queued);
@@ -33,6 +36,9 @@ static VOID IopProcessDpcQueue()
 				     Dpc->SystemArgument1);
 	    }
 	    Dpc->Queued = FALSE;
+	}
+	if (Badge & TIMER_NOTIFICATION_BADGE) {
+	    IopProcessTimerList();
 	}
 	WdmNotifyMainThread();
     }
@@ -49,14 +55,10 @@ VOID IopSignalDpcNotification()
     }
 }
 
-/*
- * DPC initialization function
- */
-NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
-			   IN PKDEFERRED_ROUTINE DeferredRoutine,
-			   IN PVOID DeferredContext)
+VOID KiInitializeDpcThread()
 {
     if (!IopDpcNotificationCap) {
+	PAGED_CODE();
 	NTSTATUS Status = WdmCreateDpcThread(IopProcessDpcQueue,
 					     &IopDpcThreadHandle,
 					     &IopDpcThreadWdmServiceCap,
@@ -74,6 +76,16 @@ NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
 	    return;
 	}
     }
+}
+
+/*
+ * DPC initialization function
+ */
+NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
+			   IN PKDEFERRED_ROUTINE DeferredRoutine,
+			   IN PVOID DeferredContext)
+{
+    KiInitializeDpcThread();
     Dpc->DeferredRoutine = DeferredRoutine;
     Dpc->DeferredContext = DeferredContext;
 }
@@ -119,6 +131,7 @@ static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
 
 static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 {
+    NtCurrentTeb()->Wdm.IsIsrThread = TRUE;
     PKINTERRUPT Interrupt = (PKINTERRUPT)Context;
     assert(Interrupt->ServiceRoutine != NULL);
 
@@ -181,6 +194,7 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
  *
  * REMARKS:
  *     When porting from ReactOS/Windows, remove the Spinlock argument.
+ *     This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				  IN PKSERVICE_ROUTINE ServiceRoutine,
@@ -193,6 +207,7 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 				  IN KAFFINITY ProcessorEnableMask,
 				  IN BOOLEAN FloatingSave)
 {
+    PAGED_CODE();
     assert(pInterruptObject);
     IopAllocateObject(InterruptObject, KINTERRUPT);
     InterruptObject->ServiceRoutine = ServiceRoutine;
@@ -241,6 +256,7 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 
 NTAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject)
 {
+    PAGED_CODE();
 }
 
 NTAPI VOID IoAcquireInterruptMutex(IN PKINTERRUPT Interrupt)

@@ -575,8 +575,6 @@ NTAPI NTSYSAPI PVOID MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
 NTAPI NTSYSAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 				   IN SIZE_T NumberOfBytes);
 
-NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID BaseAddress);
-
 /*
  * PC speaker access routine
  */

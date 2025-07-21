@@ -189,7 +189,6 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 	FatCheckForDismount(DeviceExt, FALSE);
     }
 
-    ObDereferenceObject(FileObject);
     return Status;
 }
 

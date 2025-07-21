@@ -252,10 +252,14 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
  * @return The DMA adapter on success, NULL otherwise.
  *
  * @implemented
+ *
+ * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
 				 OUT PULONG NumberOfMapRegisters)
 {
+    PAGED_CODE();
+
     /* Validate parameters in device description */
     if (DeviceDescription->Version > DEVICE_DESCRIPTION_VERSION2) {
 	return NULL;

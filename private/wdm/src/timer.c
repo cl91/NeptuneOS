@@ -5,21 +5,27 @@ ULONG KiStallScaleFactor;
 
 static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
 {
-    NTSTATUS Status = NtCreateTimer(&Timer->Header.Handle, TIMER_ALL_ACCESS,
-				    NULL, NotificationTimer);
+    KiInitializeDpcThread();
+    NTSTATUS Status = WdmCreateTimer(&Timer->Header.GlobalHandle);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
     ObInitializeObject(Timer, CLIENT_OBJECT_TIMER, KTIMER);
-    InsertTailList(&IopTimerList, &Timer->TimerListEntry);
-    Timer->Dpc = NULL;
     Timer->State = FALSE;
     Timer->Canceled = FALSE;
+    /* IopTimerList is modified by IopProcessTimerList which runs in the DPC
+     * thread, so we need to acquire the DPC mutex. */
+    IoAcquireDpcMutex();
+    InsertTailList(&IopTimerList, &Timer->TimerListEntry);
+    IoReleaseDpcMutex();
     return STATUS_SUCCESS;
 }
 
 /*
  * Call the server to create a timer object.
+ *
+ * If the DPC thread has not been created, this routine can only be called at
+ * PASSIVE_LEVEL. Otherwise, this routine can also be called at DISPATCH_LEVEL.
  */
 NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
@@ -29,24 +35,35 @@ NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
     }
 }
 
-static NTAPI VOID IopTimerExpired(IN PVOID Context,
-				  IN ULONG TimerLowValue,
-				  IN LONG TimerHighValue)
+/*
+ * This routine is called by the DPC thread to process the timer list.
+ */
+VOID IopProcessTimerList()
 {
-    PKTIMER Timer = (PKTIMER)Context;
-    DbgTrace("Timer expired %p\n", Timer);
-    assert(Timer != NULL);
-    /* If the timer has already been canceled, do nothing. */
-    if (Timer->Canceled) {
-	return;
+    /* Acquire the DPC mutex because IopTimerList may be modified by KiInitializeTimer. */
+    IoAcquireDpcMutex();
+    LoopOverList(Timer, &IopTimerList, KTIMER, TimerListEntry) {
+	/* If the timer has not been set, or has already been canceled, do nothing. */
+	if (!Timer->State || Timer->Canceled) {
+	    return;
+	}
+	/* Check if the timer has expired. */
+	ULONGLONG SystemTime = KeQuerySystemTime();
+	if (SystemTime >= Timer->AbsoluteDueTime) {
+	    Timer->State = FALSE;
+	    if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
+		/* DPC routines are called with the DPC mutex released (since it
+		 * may call functions that try to acquire the DPC mutex). */
+		IoReleaseDpcMutex();
+		Timer->Dpc->DeferredRoutine(Timer->Dpc,
+					    Timer->Dpc->DeferredContext,
+					    Timer->Dpc->SystemArgument1,
+					    Timer->Dpc->SystemArgument2);
+		IoAcquireDpcMutex();
+	    }
+	}
     }
-    Timer->State = FALSE;
-    if (Timer->Dpc != NULL && Timer->Dpc->DeferredRoutine != NULL) {
-	Timer->Dpc->DeferredRoutine(Timer->Dpc,
-				    Timer->Dpc->DeferredContext,
-				    Timer->Dpc->SystemArgument1,
-				    Timer->Dpc->SystemArgument2);
-    }
+    IoReleaseDpcMutex();
 }
 
 /*
@@ -56,31 +73,40 @@ static NTAPI VOID IopTimerExpired(IN PVOID Context,
  */
 NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
 		    IN LARGE_INTEGER DueTime,
-		    IN OPTIONAL PKDPC Dpc,
-		    OUT PBOOLEAN PreviousState)
+		    IN OPTIONAL PKDPC Dpc)
 {
     assert(Timer);
-    assert(Timer->Header.Handle != NULL);
-    assert(PreviousState);
-    if (Timer->Header.Handle == NULL) {
+    assert(Timer->Header.GlobalHandle);
+    if (!Timer->Header.GlobalHandle) {
 	RtlRaiseStatus(STATUS_INVALID_HANDLE);
     }
-    Timer->Dpc = Dpc;
-    NTSTATUS Status = NtSetTimer(Timer->Header.Handle, &DueTime, IopTimerExpired,
-				 Timer, TRUE, 0, PreviousState);
+    /* Compute the absolute due time of the timer. */
+    ULARGE_INTEGER AbsoluteDueTime = {
+	.QuadPart = DueTime.QuadPart
+    };
+    if (DueTime.QuadPart < 0) {
+	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + KeQuerySystemTime();
+    }
+    NTSTATUS Status = WdmSetTimer(Timer->Header.GlobalHandle, &AbsoluteDueTime);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
+    /* We don't need to acquire the DPC mutex here, since we update the timer state last. */
+    Timer->Dpc = Dpc;
+    Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
     Timer->State = TRUE;
     return STATUS_SUCCESS;
 }
 
+/*
+ * This routine must be called at DISPATCH_LEVEL and below.
+ */
 NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 			 IN LARGE_INTEGER DueTime,
 			 IN OPTIONAL PKDPC Dpc)
 {
-    BOOLEAN PreviousState;
-    NTSTATUS Status = KiSetTimer(Timer, DueTime, Dpc, &PreviousState);
+    BOOLEAN PreviousState = Timer->State;
+    NTSTATUS Status = KiSetTimer(Timer, DueTime, Dpc);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
@@ -100,6 +126,27 @@ NTAPI ULONGLONG KeQueryInterruptTime(VOID)
         CurrentTime.HighPart = SharedUserData->InterruptTime.High1Time;
         CurrentTime.LowPart = SharedUserData->InterruptTime.LowPart;
         if (CurrentTime.HighPart == SharedUserData->InterruptTime.High2Time)
+	    break;
+        YieldProcessor();
+    }
+
+    /* Return the time value */
+    return CurrentTime.QuadPart;
+}
+
+/*
+ * @implemented
+ */
+NTAPI ULONGLONG KeQuerySystemTime(VOID)
+{
+    LARGE_INTEGER CurrentTime;
+
+    /* Loop until we get a perfect match */
+    for (;;) {
+        /* Read the time value */
+        CurrentTime.HighPart = SharedUserData->SystemTime.High1Time;
+        CurrentTime.LowPart = SharedUserData->SystemTime.LowPart;
+        if (CurrentTime.HighPart == SharedUserData->SystemTime.High2Time)
 	    break;
         YieldProcessor();
     }
@@ -142,18 +189,20 @@ NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
  *        Specifies the absolute or relative time, in units of 100
  *        nanoseconds, for which the wait is to occur. A negative value
  *        indicates relative time.
+ * @remarks
+ *        This routine can only be called at PASSIVE_LEVEL, because it sleeps.
  */
 NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
 				IN PLARGE_INTEGER Interval)
 {
+    PAGED_CODE();
     assert(Interval);
     KTIMER Timer;
     NTSTATUS Status = KiInitializeTimer(&Timer);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    BOOLEAN PreviousState;
-    Status = KiSetTimer(&Timer, *Interval, NULL, &PreviousState);
+    Status = KiSetTimer(&Timer, *Interval, NULL);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }

@@ -102,6 +102,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     PFDO_DEVICE_EXTENSION FdoDeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     PPORT_DEVICE_EXTENSION PortDeviceExtension = FdoDeviceExtension->PortDeviceExtension;
 
+    PDEVICE_OBJECT TopOfStack = NULL;
     ULONG IoControlCode;
     PVOID InputBuffer;
     ULONG InputBufferLength;
@@ -132,7 +133,10 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     }
     }
 
-    PDEVICE_OBJECT TopOfStack = IoGetAttachedDeviceReference(DeviceObject);
+    TopOfStack = IoGetAttachedDeviceReference(DeviceObject);
+    if (!TopOfStack) {
+	goto cleanup;
+    }
 
     IO_STATUS_BLOCK IoStatus;
     PIRP NewIrp = IoBuildDeviceIoControlRequest(IoControlCode,
@@ -170,6 +174,9 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     WorkItemData->Irp->IoStatus.Status = STATUS_SUCCESS;
 
 cleanup:
+    if (TopOfStack) {
+	ObDereferenceObject(TopOfStack);
+    }
     WorkItemData->Irp->IoStatus.Information = 0;
     IoCompleteRequest(WorkItemData->Irp, IO_NO_INCREMENT);
 
