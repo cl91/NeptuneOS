@@ -171,11 +171,11 @@ static NTSTATUS FatGetFileDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		pInfo->EndOfFile.QuadPart = 0;
 		pInfo->AllocationSize.QuadPart = 0;
 	    } else {
-		pInfo->EndOfFile.u.HighPart = 0;
-		pInfo->EndOfFile.u.LowPart = DirContext->DirEntry.FatX.FileSize;
+		pInfo->EndOfFile.HighPart = 0;
+		pInfo->EndOfFile.LowPart = DirContext->DirEntry.FatX.FileSize;
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
-		pInfo->AllocationSize.u.HighPart = 0;
-		pInfo->AllocationSize.u.LowPart =
+		pInfo->AllocationSize.HighPart = 0;
+		pInfo->AllocationSize.LowPart =
 		    ROUND_UP_32(DirContext->DirEntry.FatX.FileSize,
 				DeviceExt->FatInfo.BytesPerCluster);
 	    }
@@ -202,11 +202,11 @@ static NTSTATUS FatGetFileDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		pInfo->EndOfFile.QuadPart = 0;
 		pInfo->AllocationSize.QuadPart = 0;
 	    } else {
-		pInfo->EndOfFile.u.HighPart = 0;
-		pInfo->EndOfFile.u.LowPart = DirContext->DirEntry.Fat.FileSize;
+		pInfo->EndOfFile.HighPart = 0;
+		pInfo->EndOfFile.LowPart = DirContext->DirEntry.Fat.FileSize;
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
-		pInfo->AllocationSize.u.HighPart = 0;
-		pInfo->AllocationSize.u.LowPart =
+		pInfo->AllocationSize.HighPart = 0;
+		pInfo->AllocationSize.LowPart =
 		    ROUND_UP_32(DirContext->DirEntry.Fat.FileSize,
 				DeviceExt->FatInfo.BytesPerCluster);
 	    }
@@ -272,11 +272,11 @@ static NTSTATUS FatGetFileFullDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirCont
 				       UpdateTime, &pInfo->LastWriteTime);
 
 	    pInfo->ChangeTime = pInfo->LastWriteTime;
-	    pInfo->EndOfFile.u.HighPart = 0;
-	    pInfo->EndOfFile.u.LowPart = DirContext->DirEntry.FatX.FileSize;
+	    pInfo->EndOfFile.HighPart = 0;
+	    pInfo->EndOfFile.LowPart = DirContext->DirEntry.FatX.FileSize;
 	    /* Make allocsize a rounded up multiple of BytesPerCluster */
-	    pInfo->AllocationSize.u.HighPart = 0;
-	    pInfo->AllocationSize.u.LowPart =
+	    pInfo->AllocationSize.HighPart = 0;
+	    pInfo->AllocationSize.LowPart =
 		ROUND_UP_32(DirContext->DirEntry.FatX.FileSize,
 			    DeviceExt->FatInfo.BytesPerCluster);
 	    pInfo->FileAttributes = DirContext->DirEntry.FatX.Attrib & 0x3f;
@@ -295,11 +295,11 @@ static NTSTATUS FatGetFileFullDirectoryInformation(PFAT_DIRENTRY_CONTEXT DirCont
 				       &pInfo->LastWriteTime);
 
 	    pInfo->ChangeTime = pInfo->LastWriteTime;
-	    pInfo->EndOfFile.u.HighPart = 0;
-	    pInfo->EndOfFile.u.LowPart = DirContext->DirEntry.Fat.FileSize;
+	    pInfo->EndOfFile.HighPart = 0;
+	    pInfo->EndOfFile.LowPart = DirContext->DirEntry.Fat.FileSize;
 	    /* Make allocsize a rounded up multiple of BytesPerCluster */
-	    pInfo->AllocationSize.u.HighPart = 0;
-	    pInfo->AllocationSize.u.LowPart =
+	    pInfo->AllocationSize.HighPart = 0;
+	    pInfo->AllocationSize.LowPart =
 		ROUND_UP_32(DirContext->DirEntry.Fat.FileSize,
 			    DeviceExt->FatInfo.BytesPerCluster);
 	    pInfo->FileAttributes = DirContext->DirEntry.Fat.Attrib & 0x3f;
@@ -365,11 +365,11 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		pInfo->EndOfFile.QuadPart = 0;
 		pInfo->AllocationSize.QuadPart = 0;
 	    } else {
-		pInfo->EndOfFile.u.HighPart = 0;
-		pInfo->EndOfFile.u.LowPart = DirContext->DirEntry.FatX.FileSize;
+		pInfo->EndOfFile.HighPart = 0;
+		pInfo->EndOfFile.LowPart = DirContext->DirEntry.FatX.FileSize;
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
-		pInfo->AllocationSize.u.HighPart = 0;
-		pInfo->AllocationSize.u.LowPart =
+		pInfo->AllocationSize.HighPart = 0;
+		pInfo->AllocationSize.LowPart =
 		    ROUND_UP_32(DirContext->DirEntry.FatX.FileSize,
 				DeviceExt->FatInfo.BytesPerCluster);
 	    }
@@ -403,11 +403,11 @@ static NTSTATUS FatGetFileBothInformation(PFAT_DIRENTRY_CONTEXT DirContext,
 		pInfo->EndOfFile.QuadPart = 0;
 		pInfo->AllocationSize.QuadPart = 0;
 	    } else {
-		pInfo->EndOfFile.u.HighPart = 0;
-		pInfo->EndOfFile.u.LowPart = DirContext->DirEntry.Fat.FileSize;
+		pInfo->EndOfFile.HighPart = 0;
+		pInfo->EndOfFile.LowPart = DirContext->DirEntry.Fat.FileSize;
 		/* Make allocsize a rounded up multiple of BytesPerCluster */
-		pInfo->AllocationSize.u.HighPart = 0;
-		pInfo->AllocationSize.u.LowPart =
+		pInfo->AllocationSize.HighPart = 0;
+		pInfo->AllocationSize.LowPart =
 		    ROUND_UP_32(DirContext->DirEntry.Fat.FileSize,
 				DeviceExt->FatInfo.BytesPerCluster);
 	    }

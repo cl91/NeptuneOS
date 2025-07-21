@@ -551,11 +551,11 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
     /* Set up parameters for read or write */
     if (Stack->MajorFunction == IRP_MJ_READ) {
 	Length = Stack->Parameters.Read.Length;
-	DiskByteOffset = Stack->Parameters.Read.ByteOffset.u.LowPart;
+	DiskByteOffset = Stack->Parameters.Read.ByteOffset.LowPart;
 	WriteToDevice = FALSE;
     } else {
 	Length = Stack->Parameters.Write.Length;
-	DiskByteOffset = Stack->Parameters.Write.ByteOffset.u.LowPart;
+	DiskByteOffset = Stack->Parameters.Write.ByteOffset.LowPart;
 	WriteToDevice = TRUE;
     }
 

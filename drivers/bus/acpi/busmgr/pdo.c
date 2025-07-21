@@ -567,9 +567,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 					     CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 					     CM_RESOURCE_INTERRUPT_LATCHED);
-		ResourceDescriptor->u.Interrupt.Level =
-		    ResourceDescriptor->u.Interrupt.Vector = IrqData->Interrupts[i];
-		ResourceDescriptor->u.Interrupt.Affinity = (KAFFINITY)(-1);
+		ResourceDescriptor->Interrupt.Level =
+		    ResourceDescriptor->Interrupt.Vector = IrqData->Interrupts[i];
+		ResourceDescriptor->Interrupt.Affinity = (KAFFINITY)(-1);
 
 		ResourceDescriptor++;
 	    }
@@ -586,9 +586,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 					     CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 					     CM_RESOURCE_INTERRUPT_LATCHED);
-		ResourceDescriptor->u.Interrupt.Level =
-		    ResourceDescriptor->u.Interrupt.Vector = IrqData->Interrupts[i];
-		ResourceDescriptor->u.Interrupt.Affinity = (KAFFINITY)(-1);
+		ResourceDescriptor->Interrupt.Level =
+		    ResourceDescriptor->Interrupt.Vector = IrqData->Interrupts[i];
+		ResourceDescriptor->Interrupt.Affinity = (KAFFINITY)(-1);
 
 		ResourceDescriptor++;
 	    }
@@ -623,7 +623,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_DMA_8_AND_16;
 		    break;
 		}
-		ResourceDescriptor->u.Dma.Channel = DmaData->Channels[i];
+		ResourceDescriptor->Dma.Channel = DmaData->Channels[i];
 
 		ResourceDescriptor++;
 	    }
@@ -638,8 +638,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags |= CM_RESOURCE_PORT_16_BIT_DECODE;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_PORT_10_BIT_DECODE;
-	    ResourceDescriptor->u.Port.Start.QuadPart = IoData->Minimum;
-	    ResourceDescriptor->u.Port.Length = IoData->AddressLength;
+	    ResourceDescriptor->Port.Start.QuadPart = IoData->Minimum;
+	    ResourceDescriptor->Port.Length = IoData->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
@@ -649,8 +649,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    ResourceDescriptor->Type = CmResourceTypePort;
 	    ResourceDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
 	    ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
-	    ResourceDescriptor->u.Port.Start.QuadPart = IoData->Address;
-	    ResourceDescriptor->u.Port.Length = IoData->AddressLength;
+	    ResourceDescriptor->Port.Start.QuadPart = IoData->Address;
+	    ResourceDescriptor->Port.Length = IoData->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
@@ -664,8 +664,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = Addr16Data->Address.Minimum;
-		ResourceDescriptor->u.BusNumber.Length =
+		ResourceDescriptor->BusNumber.Start = Addr16Data->Address.Minimum;
+		ResourceDescriptor->BusNumber.Length =
 		    Addr16Data->Address.AddressLength;
 	    } else if (Addr16Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
@@ -673,8 +673,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr16Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = Addr16Data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = Addr16Data->Address.AddressLength;
+		ResourceDescriptor->Port.Start.QuadPart = Addr16Data->Address.Minimum;
+		ResourceDescriptor->Port.Length = Addr16Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -694,8 +694,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = Addr16Data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = Addr16Data->Address.AddressLength;
+		ResourceDescriptor->Memory.Start.QuadPart = Addr16Data->Address.Minimum;
+		ResourceDescriptor->Memory.Length = Addr16Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
@@ -709,8 +709,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = Addr32Data->Address.Minimum;
-		ResourceDescriptor->u.BusNumber.Length =
+		ResourceDescriptor->BusNumber.Start = Addr32Data->Address.Minimum;
+		ResourceDescriptor->BusNumber.Length =
 		    Addr32Data->Address.AddressLength;
 	    } else if (Addr32Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
@@ -718,8 +718,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr32Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = Addr32Data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = Addr32Data->Address.AddressLength;
+		ResourceDescriptor->Port.Start.QuadPart = Addr32Data->Address.Minimum;
+		ResourceDescriptor->Port.Length = Addr32Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -739,8 +739,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = Addr32Data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = Addr32Data->Address.AddressLength;
+		ResourceDescriptor->Memory.Start.QuadPart = Addr32Data->Address.Minimum;
+		ResourceDescriptor->Memory.Length = Addr32Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
@@ -755,9 +755,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = (ULONG)
+		ResourceDescriptor->BusNumber.Start = (ULONG)
 							    Addr64Data->Address.Minimum;
-		ResourceDescriptor->u.BusNumber.Length =
+		ResourceDescriptor->BusNumber.Length =
 		    Addr64Data->Address.AddressLength;
 	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
@@ -765,8 +765,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = Addr64Data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
+		ResourceDescriptor->Port.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -786,8 +786,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = Addr64Data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = Addr64Data->Address.AddressLength;
+		ResourceDescriptor->Memory.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->Memory.Length = Addr64Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
@@ -802,8 +802,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->u.BusNumber.Start = (ULONG)Addr64Data->Address.Minimum;
-		ResourceDescriptor->u.BusNumber.Length =
+		ResourceDescriptor->BusNumber.Start = (ULONG)Addr64Data->Address.Minimum;
+		ResourceDescriptor->BusNumber.Length =
 		    Addr64Data->Address.AddressLength;
 	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		ResourceDescriptor->Type = CmResourceTypePort;
@@ -811,8 +811,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		ResourceDescriptor->u.Port.Start.QuadPart = Addr64Data->Address.Minimum;
-		ResourceDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
+		ResourceDescriptor->Port.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		ResourceDescriptor->Type = CmResourceTypeMemory;
 		ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -832,8 +832,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		    ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		ResourceDescriptor->u.Memory.Start.QuadPart = Addr64Data->Address.Minimum;
-		ResourceDescriptor->u.Memory.Length = Addr64Data->Address.AddressLength;
+		ResourceDescriptor->Memory.Start.QuadPart = Addr64Data->Address.Minimum;
+		ResourceDescriptor->Memory.Length = Addr64Data->Address.AddressLength;
 	    }
 	    ResourceDescriptor++;
 	    break;
@@ -847,8 +847,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    ResourceDescriptor->u.Memory.Start.QuadPart = Mem24Data->Minimum;
-	    ResourceDescriptor->u.Memory.Length = Mem24Data->AddressLength;
+	    ResourceDescriptor->Memory.Start.QuadPart = Mem24Data->Minimum;
+	    ResourceDescriptor->Memory.Length = Mem24Data->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
@@ -862,8 +862,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    ResourceDescriptor->u.Memory.Start.QuadPart = Mem32Data->Minimum;
-	    ResourceDescriptor->u.Memory.Length = Mem32Data->AddressLength;
+	    ResourceDescriptor->Memory.Start.QuadPart = Mem32Data->Minimum;
+	    ResourceDescriptor->Memory.Length = Mem32Data->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
@@ -878,8 +878,8 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		ResourceDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    ResourceDescriptor->u.Memory.Start.QuadPart = Memfixed32Data->Address;
-	    ResourceDescriptor->u.Memory.Length = Memfixed32Data->AddressLength;
+	    ResourceDescriptor->Memory.Start.QuadPart = Memfixed32Data->Address;
+	    ResourceDescriptor->Memory.Length = Memfixed32Data->AddressLength;
 
 	    ResourceDescriptor++;
 	    break;
@@ -896,13 +896,13 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	ACPI_PCI_ID PciBus = { .Segment = SegmentNumber };
 	ResourceDescriptor->Type = CmResourceTypeMemory;
 	ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-	ResourceDescriptor->u.Memory.Length = PCI_SEGMENT_ECMA_SIZE;
-	ResourceDescriptor->u.Memory.Start.QuadPart = OslGetPciConfigurationAddress(&PciBus);
+	ResourceDescriptor->Memory.Length = PCI_SEGMENT_ECMA_SIZE;
+	ResourceDescriptor->Memory.Start.QuadPart = OslGetPciConfigurationAddress(&PciBus);
 	ResourceDescriptor++;
 	ResourceDescriptor->Type = CmResourceTypeBusNumber;
 	ResourceDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-	ResourceDescriptor->u.BusNumber.Start = BusNumber;
-	ResourceDescriptor->u.BusNumber.Length = 1;
+	ResourceDescriptor->BusNumber.Start = BusNumber;
+	ResourceDescriptor->BusNumber.Length = 1;
     }
 
     ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
@@ -1068,10 +1068,10 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 			 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 			 CM_RESOURCE_INTERRUPT_LATCHED);
-		RequirementDescriptor->u.Interrupt.MinimumVector =
-		    RequirementDescriptor->u.Interrupt.MaximumVector =
+		RequirementDescriptor->Interrupt.MinimumVector =
+		    RequirementDescriptor->Interrupt.MaximumVector =
 			IrqData->Interrupts[i];
-		RequirementDescriptor->u.Interrupt.TargetedProcessors = (KAFFINITY)-1;
+		RequirementDescriptor->Interrupt.TargetedProcessors = (KAFFINITY)-1;
 
 		RequirementDescriptor++;
 	    }
@@ -1090,10 +1090,10 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 			 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 			 CM_RESOURCE_INTERRUPT_LATCHED);
-		RequirementDescriptor->u.Interrupt.MinimumVector =
-		    RequirementDescriptor->u.Interrupt.MaximumVector =
+		RequirementDescriptor->Interrupt.MinimumVector =
+		    RequirementDescriptor->Interrupt.MaximumVector =
 			IrqData->Interrupts[i];
-		RequirementDescriptor->u.Interrupt.TargetedProcessors = (KAFFINITY)-1;
+		RequirementDescriptor->Interrupt.TargetedProcessors = (KAFFINITY)-1;
 
 		RequirementDescriptor++;
 	    }
@@ -1132,8 +1132,8 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Option = (i == 0) ? IO_RESOURCE_PREFERRED :
 							   IO_RESOURCE_ALTERNATIVE;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
-		RequirementDescriptor->u.Dma.MinimumChannel =
-		    RequirementDescriptor->u.Dma.MaximumChannel = DmaData->Channels[i];
+		RequirementDescriptor->Dma.MinimumChannel =
+		    RequirementDescriptor->Dma.MaximumChannel = DmaData->Channels[i];
 		RequirementDescriptor++;
 	    }
 	    break;
@@ -1145,13 +1145,13 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags |= CM_RESOURCE_PORT_16_BIT_DECODE;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_PORT_10_BIT_DECODE;
-	    RequirementDescriptor->u.Port.Length = IoData->AddressLength;
+	    RequirementDescriptor->Port.Length = IoData->AddressLength;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypePort;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
-	    RequirementDescriptor->u.Port.Alignment = IoData->Alignment;
-	    RequirementDescriptor->u.Port.MinimumAddress.QuadPart = IoData->Minimum;
-	    RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
+	    RequirementDescriptor->Port.Alignment = IoData->Alignment;
+	    RequirementDescriptor->Port.MinimumAddress.QuadPart = IoData->Minimum;
+	    RequirementDescriptor->Port.MaximumAddress.QuadPart =
 		IoData->Maximum + IoData->AddressLength - 1;
 
 	    RequirementDescriptor++;
@@ -1160,13 +1160,13 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	case ACPI_RESOURCE_TYPE_FIXED_IO: {
 	    ACPI_RESOURCE_FIXED_IO *IoData = &Resource->Data.FixedIo;
 	    RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
-	    RequirementDescriptor->u.Port.Length = IoData->AddressLength;
+	    RequirementDescriptor->Port.Length = IoData->AddressLength;
 	    RequirementDescriptor->Option = CurrentRes ? 0 : IO_RESOURCE_PREFERRED;
 	    RequirementDescriptor->Type = CmResourceTypePort;
 	    RequirementDescriptor->ShareDisposition = CmResourceShareDriverExclusive;
-	    RequirementDescriptor->u.Port.Alignment = 1;
-	    RequirementDescriptor->u.Port.MinimumAddress.QuadPart = IoData->Address;
-	    RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
+	    RequirementDescriptor->Port.Alignment = 1;
+	    RequirementDescriptor->Port.MinimumAddress.QuadPart = IoData->Address;
+	    RequirementDescriptor->Port.MaximumAddress.QuadPart =
 		IoData->Address + IoData->AddressLength - 1;
 
 	    RequirementDescriptor++;
@@ -1181,11 +1181,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
-		RequirementDescriptor->u.BusNumber.MinBusNumber =
+		RequirementDescriptor->BusNumber.MinBusNumber =
 		    Addr16Data->Address.Minimum;
-		RequirementDescriptor->u.BusNumber.MaxBusNumber =
+		RequirementDescriptor->BusNumber.MaxBusNumber =
 		    Addr16Data->Address.Maximum + Addr16Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.BusNumber.Length =
+		RequirementDescriptor->BusNumber.Length =
 		    Addr16Data->Address.AddressLength;
 	    } else if (Addr16Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
@@ -1193,11 +1193,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr16Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
+		RequirementDescriptor->Port.MinimumAddress.QuadPart =
 		    Addr16Data->Address.Minimum;
-		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
+		RequirementDescriptor->Port.MaximumAddress.QuadPart =
 		    Addr16Data->Address.Maximum + Addr16Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = Addr16Data->Address.AddressLength;
+		RequirementDescriptor->Port.Length = Addr16Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -1217,11 +1217,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+		RequirementDescriptor->Memory.MinimumAddress.QuadPart =
 		    Addr16Data->Address.Minimum;
-		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+		RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		    Addr16Data->Address.Maximum + Addr16Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Memory.Length =
+		RequirementDescriptor->Memory.Length =
 		    Addr16Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
@@ -1236,11 +1236,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
-		RequirementDescriptor->u.BusNumber.MinBusNumber =
+		RequirementDescriptor->BusNumber.MinBusNumber =
 		    Addr32Data->Address.Minimum;
-		RequirementDescriptor->u.BusNumber.MaxBusNumber =
+		RequirementDescriptor->BusNumber.MaxBusNumber =
 		    Addr32Data->Address.Maximum + Addr32Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.BusNumber.Length =
+		RequirementDescriptor->BusNumber.Length =
 		    Addr32Data->Address.AddressLength;
 	    } else if (Addr32Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
@@ -1248,11 +1248,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr32Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
+		RequirementDescriptor->Port.MinimumAddress.QuadPart =
 		    Addr32Data->Address.Minimum;
-		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
+		RequirementDescriptor->Port.MaximumAddress.QuadPart =
 		    Addr32Data->Address.Maximum + Addr32Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = Addr32Data->Address.AddressLength;
+		RequirementDescriptor->Port.Length = Addr32Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -1272,11 +1272,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+		RequirementDescriptor->Memory.MinimumAddress.QuadPart =
 		    Addr32Data->Address.Minimum;
-		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+		RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		    Addr32Data->Address.Maximum + Addr32Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Memory.Length =
+		RequirementDescriptor->Memory.Length =
 		    Addr32Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
@@ -1292,12 +1292,12 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
-		RequirementDescriptor->u.BusNumber.MinBusNumber =
+		RequirementDescriptor->BusNumber.MinBusNumber =
 		    (ULONG)Addr64Data->Address.Minimum;
-		RequirementDescriptor->u.BusNumber.MaxBusNumber =
+		RequirementDescriptor->BusNumber.MaxBusNumber =
 		    (ULONG)Addr64Data->Address.Maximum +
 		    Addr64Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.BusNumber.Length =
+		RequirementDescriptor->BusNumber.Length =
 		    Addr64Data->Address.AddressLength;
 	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
@@ -1305,11 +1305,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
+		RequirementDescriptor->Port.MinimumAddress.QuadPart =
 		    Addr64Data->Address.Minimum;
-		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
+		RequirementDescriptor->Port.MaximumAddress.QuadPart =
 		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
+		RequirementDescriptor->Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -1329,11 +1329,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+		RequirementDescriptor->Memory.MinimumAddress.QuadPart =
 		    Addr64Data->Address.Minimum;
-		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+		RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Memory.Length =
+		RequirementDescriptor->Memory.Length =
 		    Addr64Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
@@ -1349,12 +1349,12 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Type = CmResourceTypeBusNumber;
 		RequirementDescriptor->ShareDisposition = CmResourceShareShared;
 		RequirementDescriptor->Flags = 0;
-		RequirementDescriptor->u.BusNumber.MinBusNumber =
+		RequirementDescriptor->BusNumber.MinBusNumber =
 		    (ULONG)Addr64Data->Address.Minimum;
-		RequirementDescriptor->u.BusNumber.MaxBusNumber =
+		RequirementDescriptor->BusNumber.MaxBusNumber =
 		    (ULONG)Addr64Data->Address.Maximum +
 		    Addr64Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.BusNumber.Length =
+		RequirementDescriptor->BusNumber.Length =
 		    Addr64Data->Address.AddressLength;
 	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
 		RequirementDescriptor->Type = CmResourceTypePort;
@@ -1362,11 +1362,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags = CM_RESOURCE_PORT_IO;
 		if (Addr64Data->Decode == ACPI_POS_DECODE)
 		    RequirementDescriptor->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE;
-		RequirementDescriptor->u.Port.MinimumAddress.QuadPart =
+		RequirementDescriptor->Port.MinimumAddress.QuadPart =
 		    Addr64Data->Address.Minimum;
-		RequirementDescriptor->u.Port.MaximumAddress.QuadPart =
+		RequirementDescriptor->Port.MaximumAddress.QuadPart =
 		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Port.Length = Addr64Data->Address.AddressLength;
+		RequirementDescriptor->Port.Length = Addr64Data->Address.AddressLength;
 	    } else {
 		RequirementDescriptor->Type = CmResourceTypeMemory;
 		RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
@@ -1386,11 +1386,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_PREFETCHABLE;
 		    break;
 		}
-		RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+		RequirementDescriptor->Memory.MinimumAddress.QuadPart =
 		    Addr64Data->Address.Minimum;
-		RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+		RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		    Addr64Data->Address.Maximum + Addr64Data->Address.AddressLength - 1;
-		RequirementDescriptor->u.Memory.Length =
+		RequirementDescriptor->Memory.Length =
 		    Addr64Data->Address.AddressLength;
 	    }
 	    RequirementDescriptor++;
@@ -1406,10 +1406,10 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart = Mem24Data->Minimum;
-	    RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+	    RequirementDescriptor->Memory.MinimumAddress.QuadPart = Mem24Data->Minimum;
+	    RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		Mem24Data->Maximum + Mem24Data->AddressLength - 1;
-	    RequirementDescriptor->u.Memory.Length = Mem24Data->AddressLength;
+	    RequirementDescriptor->Memory.Length = Mem24Data->AddressLength;
 
 	    RequirementDescriptor++;
 	    break;
@@ -1424,10 +1424,10 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart = Mem32Data->Minimum;
-	    RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+	    RequirementDescriptor->Memory.MinimumAddress.QuadPart = Mem32Data->Minimum;
+	    RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		Mem32Data->Maximum + Mem32Data->AddressLength - 1;
-	    RequirementDescriptor->u.Memory.Length = Mem32Data->AddressLength;
+	    RequirementDescriptor->Memory.Length = Mem32Data->AddressLength;
 
 	    RequirementDescriptor++;
 	    break;
@@ -1442,11 +1442,11 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_ONLY;
 	    else
 		RequirementDescriptor->Flags |= CM_RESOURCE_MEMORY_READ_WRITE;
-	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+	    RequirementDescriptor->Memory.MinimumAddress.QuadPart =
 		Fixedmem32Data->Address;
-	    RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
+	    RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 		Fixedmem32Data->Address + Fixedmem32Data->AddressLength - 1;
-	    RequirementDescriptor->u.Memory.Length = Fixedmem32Data->AddressLength;
+	    RequirementDescriptor->Memory.Length = Fixedmem32Data->AddressLength;
 
 	    RequirementDescriptor++;
 	    break;
@@ -1464,17 +1464,17 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	ACPI_PCI_ID PciBus = { .Segment = SegmentNumber, .Bus = BusNumber };
 	RequirementDescriptor->Type = CmResourceTypeMemory;
 	RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-	RequirementDescriptor->u.Memory.Length = PCI_SEGMENT_ECMA_SIZE;
-	RequirementDescriptor->u.Memory.MinimumAddress.QuadPart =
+	RequirementDescriptor->Memory.Length = PCI_SEGMENT_ECMA_SIZE;
+	RequirementDescriptor->Memory.MinimumAddress.QuadPart =
 	    OslGetPciConfigurationAddress(&PciBus);
-	RequirementDescriptor->u.Memory.MaximumAddress.QuadPart =
-	    RequirementDescriptor->u.Memory.MinimumAddress.QuadPart + PCI_SEGMENT_ECMA_SIZE - 1;
+	RequirementDescriptor->Memory.MaximumAddress.QuadPart =
+	    RequirementDescriptor->Memory.MinimumAddress.QuadPart + PCI_SEGMENT_ECMA_SIZE - 1;
 	RequirementDescriptor++;
 	RequirementDescriptor->Type = CmResourceTypeBusNumber;
 	RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-	RequirementDescriptor->u.BusNumber.MinBusNumber = BusNumber;
-	RequirementDescriptor->u.BusNumber.MaxBusNumber = BusNumber;
-	RequirementDescriptor->u.BusNumber.Length = 1;
+	RequirementDescriptor->BusNumber.MinBusNumber = BusNumber;
+	RequirementDescriptor->BusNumber.MaxBusNumber = BusNumber;
+	RequirementDescriptor->BusNumber.Length = 1;
     }
 
     Irp->IoStatus.Information = (ULONG_PTR)RequirementsList;

@@ -41,7 +41,7 @@ CmiGetNextPartialDescriptor(IN CONST CM_PARTIAL_RESOURCE_DESCRIPTOR *PartialDesc
 	/* Add the size of the variable section as well */
 	NextDescriptor =
 	    (PCM_PARTIAL_RESOURCE_DESCRIPTOR)((ULONG_PTR)NextDescriptor +
-					      PartialDescriptor->u.DeviceSpecificData.DataSize);
+					      PartialDescriptor->DeviceSpecificData.DataSize);
 	ASSERT(NextDescriptor >= PartialDescriptor + 1);
     }
 

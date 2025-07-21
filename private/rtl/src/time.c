@@ -285,10 +285,10 @@ NTAPI BOOLEAN RtlTimeToSecondsSince1970(IN PLARGE_INTEGER Time,
     IntTime.QuadPart = Time->QuadPart - TICKSTO1970;
     IntTime.QuadPart = IntTime.QuadPart / TICKSPERSEC;
 
-    if (IntTime.u.HighPart != 0)
+    if (IntTime.HighPart != 0)
 	return FALSE;
 
-    *SecondsSince1970 = IntTime.u.LowPart;
+    *SecondsSince1970 = IntTime.LowPart;
 
     return TRUE;
 }
@@ -304,10 +304,10 @@ NTAPI BOOLEAN RtlTimeToSecondsSince1980(IN PLARGE_INTEGER Time,
     IntTime.QuadPart = Time->QuadPart - TICKSTO1980;
     IntTime.QuadPart = IntTime.QuadPart / TICKSPERSEC;
 
-    if (IntTime.u.HighPart != 0)
+    if (IntTime.HighPart != 0)
 	return FALSE;
 
-    *SecondsSince1980 = IntTime.u.LowPart;
+    *SecondsSince1980 = IntTime.LowPart;
 
     return TRUE;
 }

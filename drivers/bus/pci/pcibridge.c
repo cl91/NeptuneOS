@@ -246,7 +246,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Decode the base address, and write down the length */
 		Base.LowPart = Bar & BarMask;
 		DPRINT1("ROM BAR Base: %x\n", Base.LowPart);
-		CmDescriptor->u.Memory.Length = IoDescriptor->u.Memory.Length;
+		CmDescriptor->Memory.Length = IoDescriptor->Memory.Length;
 	    } else {
 		/* Otherwise, get the BAR from the array */
 		Bar = BarArray[i];
@@ -271,7 +271,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Decode the base address, and write down the length */
 		Base.LowPart = Bar & BarMask;
 		DPRINT1("BAR Base: %x\n", Base.LowPart);
-		CmDescriptor->u.Generic.Length = IoDescriptor->u.Generic.Length;
+		CmDescriptor->Generic.Length = IoDescriptor->Generic.Length;
 	    }
 	} else {
 	    /* Reset loop conditions */
@@ -330,19 +330,19 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	    /* Set the length to be the limit - the base; should always be 32-bit */
 	    Length.QuadPart = Limit.LowPart - Base.LowPart + 1;
 	    ASSERT(Length.HighPart == 0);
-	    CmDescriptor->u.Generic.Length = Length.LowPart;
+	    CmDescriptor->Generic.Length = Length.LowPart;
 
 	    /* Check if alignment should be set */
 	    if (CheckAlignment) {
 		/* Compute the required alignment for this length */
-		ASSERT(CmDescriptor->u.Memory.Length > 0);
-		IoDescriptor->u.Memory.Alignment = PciBridgeMemoryWorstCaseAlignment(
-		    CmDescriptor->u.Memory.Length);
+		ASSERT(CmDescriptor->Memory.Length > 0);
+		IoDescriptor->Memory.Alignment = PciBridgeMemoryWorstCaseAlignment(
+		    CmDescriptor->Memory.Length);
 	    }
 	}
 
 	/* Now set the base address */
-	CmDescriptor->u.Generic.Start.LowPart = Base.LowPart;
+	CmDescriptor->Generic.Start.LowPart = Base.LowPart;
     }
 
     /* Save PCI settings into the PDO extension for easy access later */
@@ -447,7 +447,7 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	for (i = PCI_TYPE1_ADDRESSES; i < 5; i++) {
 	    /* No 64-bit memory addresses, and set the address to 0 to begin */
 	    MemoryLimit.HighPart = 0;
-	    (&Limit[i])->u.Port.MinimumAddress.QuadPart = 0;
+	    (&Limit[i])->Port.MinimumAddress.QuadPart = 0;
 
 	    /* Are we getting the I/O limit? */
 	    if (i == 2) {
@@ -460,10 +460,10 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		(&Limit[i])->Type = CmResourceTypePort;
 		(&Limit[i])->Flags = CM_RESOURCE_PORT_WINDOW_DECODE |
 		    CM_RESOURCE_PORT_POSITIVE_DECODE;
-		(&Limit[i])->u.Port.Alignment = 0x1000;
-		(&Limit[i])->u.Port.MinimumAddress.QuadPart = 0;
-		(&Limit[i])->u.Port.MaximumAddress = MemoryLimit;
-		(&Limit[i])->u.Port.Length = 0;
+		(&Limit[i])->Port.Alignment = 0x1000;
+		(&Limit[i])->Port.MinimumAddress.QuadPart = 0;
+		(&Limit[i])->Port.MaximumAddress = MemoryLimit;
+		(&Limit[i])->Port.Length = 0;
 	    } else if (i == 3) {
 		/* There should be a valid memory limit, get it */
 		ASSERT((Working->Type1.MemoryLimit & 0xF) == 0);
@@ -472,10 +472,10 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Build the descriptor for it */
 		(&Limit[i])->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
 		(&Limit[i])->Type = CmResourceTypeMemory;
-		(&Limit[i])->u.Memory.Alignment = 0x100000;
-		(&Limit[i])->u.Memory.MinimumAddress.QuadPart = 0;
-		(&Limit[i])->u.Memory.MaximumAddress = MemoryLimit;
-		(&Limit[i])->u.Memory.Length = 0;
+		(&Limit[i])->Memory.Alignment = 0x100000;
+		(&Limit[i])->Memory.MinimumAddress.QuadPart = 0;
+		(&Limit[i])->Memory.MaximumAddress = MemoryLimit;
+		(&Limit[i])->Memory.Length = 0;
 	    } else if (Working->Type1.PrefetchLimit) {
 		/* Get the prefetch memory limit, if there is one */
 		MemoryLimit = PciBridgePrefetchMemoryLimit(Working);
@@ -483,10 +483,10 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Write out the descriptor for it */
 		(&Limit[i])->Flags = CM_RESOURCE_MEMORY_PREFETCHABLE;
 		(&Limit[i])->Type = CmResourceTypeMemory;
-		(&Limit[i])->u.Memory.Alignment = 0x100000;
-		(&Limit[i])->u.Memory.MinimumAddress.QuadPart = 0;
-		(&Limit[i])->u.Memory.MaximumAddress = MemoryLimit;
-		(&Limit[i])->u.Memory.Length = 0;
+		(&Limit[i])->Memory.Alignment = 0x100000;
+		(&Limit[i])->Memory.MinimumAddress.QuadPart = 0;
+		(&Limit[i])->Memory.MaximumAddress = MemoryLimit;
+		(&Limit[i])->Memory.Length = 0;
 	    } else {
 		/* Blank descriptor */
 		(&Limit[i])->Type = CmResourceTypeNull;
@@ -555,34 +555,34 @@ VOID PCIBridge_GetAdditionalResourceDescriptors(
     if (PciData->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
 	/* Build a private descriptor with 3 entries */
 	IoDescriptor->Type = CmResourceTypeDevicePrivate;
-	IoDescriptor->u.DevicePrivate.Data[0] = 3;
-	IoDescriptor->u.DevicePrivate.Data[1] = 3;
+	IoDescriptor->DevicePrivate.Data[0] = 3;
+	IoDescriptor->DevicePrivate.Data[1] = 3;
 
 	/* First, the VGA range at 0xA0000 */
 	IoDescriptor[1].Type = CmResourceTypeMemory;
 	IoDescriptor[1].Flags = CM_RESOURCE_MEMORY_READ_WRITE;
-	IoDescriptor[1].u.Port.Length = 0x20000;
-	IoDescriptor[1].u.Port.Alignment = 1;
-	IoDescriptor[1].u.Port.MinimumAddress.QuadPart = 0xA0000;
-	IoDescriptor[1].u.Port.MaximumAddress.QuadPart = 0xBFFFF;
+	IoDescriptor[1].Port.Length = 0x20000;
+	IoDescriptor[1].Port.Alignment = 1;
+	IoDescriptor[1].Port.MinimumAddress.QuadPart = 0xA0000;
+	IoDescriptor[1].Port.MaximumAddress.QuadPart = 0xBFFFF;
 
 	/* Then, the VGA registers at 0x3B0 */
 	IoDescriptor[2].Type = CmResourceTypePort;
 	IoDescriptor[2].Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
 	    CM_RESOURCE_PORT_10_BIT_DECODE;
-	IoDescriptor[2].u.Port.Length = 12;
-	IoDescriptor[2].u.Port.Alignment = 1;
-	IoDescriptor[2].u.Port.MinimumAddress.QuadPart = 0x3B0;
-	IoDescriptor[2].u.Port.MaximumAddress.QuadPart = 0x3BB;
+	IoDescriptor[2].Port.Length = 12;
+	IoDescriptor[2].Port.Alignment = 1;
+	IoDescriptor[2].Port.MinimumAddress.QuadPart = 0x3B0;
+	IoDescriptor[2].Port.MaximumAddress.QuadPart = 0x3BB;
 
 	/* And finally the VGA registers at 0x3C0 */
 	IoDescriptor[3].Type = CmResourceTypePort;
 	IoDescriptor[3].Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
 	    CM_RESOURCE_PORT_10_BIT_DECODE;
-	IoDescriptor[3].u.Port.Length = 32;
-	IoDescriptor[3].u.Port.Alignment = 1;
-	IoDescriptor[3].u.Port.MinimumAddress.QuadPart = 0x3C0;
-	IoDescriptor[3].u.Port.MaximumAddress.QuadPart = 0x3DF;
+	IoDescriptor[3].Port.Length = 32;
+	IoDescriptor[3].Port.Alignment = 1;
+	IoDescriptor[3].Port.MinimumAddress.QuadPart = 0x3C0;
+	IoDescriptor[3].Port.MaximumAddress.QuadPart = 0x3DF;
     }
 }
 

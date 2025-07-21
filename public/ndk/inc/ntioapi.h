@@ -1011,7 +1011,7 @@ typedef struct _IO_RESOURCE_DESCRIPTOR {
 	    ULONG Reserved1;
 	    ULONG Reserved2;
 	} ConfigData;
-    } u;
+    };
 } IO_RESOURCE_DESCRIPTOR, *PIO_RESOURCE_DESCRIPTOR;
 
 typedef struct _IO_RESOURCE_LIST {

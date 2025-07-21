@@ -18,7 +18,7 @@ CM_PARTIAL_RESOURCE_DESCRIPTOR HalAcpiGetRsdtResource()
     ULONG Length = HalpAcpiRsdp.XsdtAddress && HalpAcpiRsdp.Revision ? 8 : 4;
     CM_PARTIAL_RESOURCE_DESCRIPTOR Rsdt = {
 	.Type = CmResourceTypeMemory,
-	.u.Memory = {
+	.Memory = {
 	    .Start.QuadPart = Address,
 	    .Length = Length
 	}

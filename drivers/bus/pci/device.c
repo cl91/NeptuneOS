@@ -38,8 +38,8 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	    continue;
 	CmDescriptor->Flags = IoDescriptor->Flags;
 	CmDescriptor->ShareDisposition = IoDescriptor->ShareDisposition;
-	CmDescriptor->u.Generic.Start.HighPart = 0;
-	CmDescriptor->u.Generic.Length = IoDescriptor->u.Generic.Length;
+	CmDescriptor->Generic.Start.HighPart = 0;
+	CmDescriptor->Generic.Length = IoDescriptor->Generic.Length;
 
 	/* Check if we're handling PCI BARs, or the ROM BAR */
 	if (i < PCI_TYPE0_ADDRESSES) {
@@ -59,7 +59,7 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		/* Check if it's a 64-bit BAR */
 		if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT) {
 		    /* The next BAR value is actually the high 32-bits */
-		    CmDescriptor->u.Memory.Start.HighPart = BarArray[i + 1];
+		    CmDescriptor->Memory.Start.HighPart = BarArray[i + 1];
 		} else if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_20BIT) {
 		    /* Legacy BAR, don't read more than 20 bits of the address */
 		    BarMask = 0xFFFF0;
@@ -82,10 +82,10 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
 	/* Now we have the right mask, read the actual address from the BAR */
 	Bar &= BarMask;
-	CmDescriptor->u.Memory.Start.LowPart = Bar;
+	CmDescriptor->Memory.Start.LowPart = Bar;
 
 	/* And check for invalid BAR addresses */
-	if (!(CmDescriptor->u.Memory.Start.HighPart | Bar)) {
+	if (!(CmDescriptor->Memory.Start.HighPart | Bar)) {
 	    /* Skip these descriptors */
 	    CmDescriptor->Type = CmResourceTypeNull;
 	    DPRINT1("Invalid BAR\n");

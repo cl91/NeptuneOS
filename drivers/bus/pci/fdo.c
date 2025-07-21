@@ -48,20 +48,20 @@ static NTSTATUS PciFdoStartDevice(IN PIRP Irp,
 		/* We will not use the legacy 0xCF8 port to access the PCI
 		 * configuration space so we simply ignore the port resource. */
 		DPRINT("PCI Config Port: 0x%x (%u)\n",
-		       Desc->u.Port.Start.u.LowPart,
-		       Desc->u.Port.Length);
+		       Desc->Port.Start.LowPart,
+		       Desc->Port.Length);
 		break;
 	    case CmResourceTypeMemory:
 		DPRINT("PCI Config Memory: 0x%llx (0x%x)\n",
-		       Desc->u.Memory.Start.QuadPart,
-		       Desc->u.Memory.Length);
-		DeviceExtension->ConfigBase = Desc->u.Memory.Start;
+		       Desc->Memory.Start.QuadPart,
+		       Desc->Memory.Length);
+		DeviceExtension->ConfigBase = Desc->Memory.Start;
 		break;
 	    case CmResourceTypeBusNumber:
 		DPRINT("PCI Root Bus Number: 0x%x (0x%x)\n",
-		       Desc->u.BusNumber.Start,
-		       Desc->u.BusNumber.Length);
-		DeviceExtension->BaseBus = Desc->u.BusNumber.Start;
+		       Desc->BusNumber.Start,
+		       Desc->BusNumber.Length);
+		DeviceExtension->BaseBus = Desc->BusNumber.Start;
 		break;
 	    }
 	}

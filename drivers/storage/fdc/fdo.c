@@ -444,8 +444,8 @@ static NTAPI NTSTATUS FdcFdoConfigCallback(PVOID Context,
 	DPRINT("Got partial resource descriptor type %d\n", PartialDescriptor->Type);
 	if (PartialDescriptor->Type == CmResourceTypePort) {
 	    DPRINT("Got fdc controller port address 0x%llx. Checking if it matches.\n",
-		   PartialDescriptor->u.Port.Start.QuadPart);
-	    if ((PUCHAR)PartialDescriptor->u.Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress) {
+		   PartialDescriptor->Port.Start.QuadPart);
+	    if ((PUCHAR)PartialDescriptor->Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress) {
 		ControllerFound = TRUE;
 		DPRINT("Matches!\n");
 	    }
@@ -558,19 +558,19 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	switch (PartialDescriptor->Type) {
 	case CmResourceTypePort:
 	    DPRINT("Port: 0x%x (%u)\n",
-		   PartialDescriptor->u.Port.Start.u.LowPart,
-		   PartialDescriptor->u.Port.Length);
-	    DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)(PartialDescriptor->u.Port.Start.QuadPart & ~0xFUL);
+		   PartialDescriptor->Port.Start.LowPart,
+		   PartialDescriptor->Port.Length);
+	    DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)(PartialDescriptor->Port.Start.QuadPart & ~0xFUL);
 	    FoundPort = TRUE;
 	    break;
 
 	case CmResourceTypeInterrupt:
 	    DPRINT("Interrupt: Level %u  Vector %u\n",
-		   PartialDescriptor->u.Interrupt.Level,
-		   PartialDescriptor->u.Interrupt.Vector);
-	    DeviceExtension->ControllerInfo.Level = (KIRQL)PartialDescriptorTranslated->u.Interrupt.Level;
-	    DeviceExtension->ControllerInfo.Vector = PartialDescriptorTranslated->u.Interrupt.Vector;
-	    DeviceExtension->ControllerInfo.Affinity = PartialDescriptorTranslated->u.Interrupt.Affinity;
+		   PartialDescriptor->Interrupt.Level,
+		   PartialDescriptor->Interrupt.Vector);
+	    DeviceExtension->ControllerInfo.Level = (KIRQL)PartialDescriptorTranslated->Interrupt.Level;
+	    DeviceExtension->ControllerInfo.Vector = PartialDescriptorTranslated->Interrupt.Vector;
+	    DeviceExtension->ControllerInfo.Affinity = PartialDescriptorTranslated->Interrupt.Affinity;
 	    if (PartialDescriptorTranslated->Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
 		DeviceExtension->ControllerInfo.InterruptMode = Latched;
 	    } else {
@@ -582,13 +582,13 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	    break;
 
 	case CmResourceTypeDma:
-	    DPRINT("Dma: Channel %u\n", PartialDescriptor->u.Dma.Channel);
-	    if (PartialDescriptor->u.Dma.Channel != 2) {
+	    DPRINT("Dma: Channel %u\n", PartialDescriptor->Dma.Channel);
+	    if (PartialDescriptor->Dma.Channel != 2) {
 		DPRINT("WARNING: BUGGY ACPI. FDC is hard-coded to use DMA channel 2. "
-		       "Changing DMA channel %u to channel 2.\n", PartialDescriptor->u.Dma.Channel);
+		       "Changing DMA channel %u to channel 2.\n", PartialDescriptor->Dma.Channel);
 		DeviceExtension->ControllerInfo.Dma = 2;
 	    } else {
-		DeviceExtension->ControllerInfo.Dma = PartialDescriptorTranslated->u.Dma.Channel;
+		DeviceExtension->ControllerInfo.Dma = PartialDescriptorTranslated->Dma.Channel;
 	    }
 	    assert(!FoundDma);
 	    FoundDma = TRUE;

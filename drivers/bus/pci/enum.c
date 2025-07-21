@@ -94,13 +94,13 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 		/* Make sure it's a compatible (and the only) PCI interrupt */
 		ASSERT(InterruptResource == NULL);
-		ASSERT(Partial->u.Interrupt.Level == Partial->u.Interrupt.Vector);
+		ASSERT(Partial->Interrupt.Level == Partial->Interrupt.Vector);
 		InterruptResource = Partial;
 
 		/* Only 255 interrupts on x86/x64 hardware */
-		if (Partial->u.Interrupt.Level < 256) {
+		if (Partial->Interrupt.Level < 256) {
 		    /* Use the passed interrupt line */
-		    PdoExtension->AdjustedInterruptLine = Partial->u.Interrupt.Level;
+		    PdoExtension->AdjustedInterruptLine = Partial->Interrupt.Level;
 		} else {
 		    /* Invalid vector, so ignore it */
 		    PdoExtension->AdjustedInterruptLine = 0;
@@ -112,7 +112,7 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	    case CmResourceTypeDevicePrivate:
 
 		/* Check what kind of data this was */
-		switch (Partial->u.DevicePrivate.Data[0]) {
+		switch (Partial->DevicePrivate.Data[0]) {
 		    /* Not used in the driver yet */
 		case 1:
 		    UNIMPLEMENTED_DBGBREAK();
@@ -127,7 +127,7 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 		case 3:
 		    /* Shouldn't be a base resource, this is a drain */
 		    ASSERT(BaseResource == NULL);
-		    DrainPartial = Partial->u.DevicePrivate.Data[1];
+		    DrainPartial = Partial->DevicePrivate.Data[1];
 		    ASSERT(DrainPartial == TRUE);
 		    break;
 		}
@@ -164,9 +164,9 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	/* Check if this new descriptor is different than the old one */
 	if (((Partial->Type != CurrentDescriptor->Type) ||
 	     (Partial->Type != CmResourceTypeNull)) &&
-	    ((Partial->u.Generic.Start.QuadPart !=
-	      CurrentDescriptor->u.Generic.Start.QuadPart) ||
-	     (Partial->u.Generic.Length != CurrentDescriptor->u.Generic.Length))) {
+	    ((Partial->Generic.Start.QuadPart !=
+	      CurrentDescriptor->Generic.Start.QuadPart) ||
+	     (Partial->Generic.Length != CurrentDescriptor->Generic.Length))) {
 	    /* Record a change */
 	    RangeChange = TRUE;
 
@@ -186,8 +186,8 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	    /* Update to new range */
 	    CurrentDescriptor->Type = Partial->Type;
-	    PreviousDescriptor->u.Generic.Start = Partial->u.Generic.Start;
-	    PreviousDescriptor->u.Generic.Length = Partial->u.Generic.Length;
+	    PreviousDescriptor->Generic.Start = Partial->Generic.Start;
+	    PreviousDescriptor->Generic.Length = Partial->Generic.Length;
 	    CurrentDescriptor = PreviousDescriptor;
 	}
     }
@@ -368,10 +368,10 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	if (HaveMemSpace) {
 	    /* Build a memory descriptor for a 128KB framebuffer at 0xA0000 */
 	    Resource->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
-	    Resource->u.Generic.Start.HighPart = 0;
+	    Resource->Generic.Start.HighPart = 0;
 	    Resource->Type = CmResourceTypeMemory;
-	    Resource->u.Generic.Start.LowPart = 0xA0000;
-	    Resource->u.Generic.Length = 0x20000;
+	    Resource->Generic.Start.LowPart = 0xA0000;
+	    Resource->Generic.Length = 0x20000;
 	    Resource++;
 	}
 
@@ -381,16 +381,16 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	    Resource->Type = CmResourceTypePort;
 	    Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
 		CM_RESOURCE_PORT_10_BIT_DECODE;
-	    Resource->u.Port.Start.QuadPart = 0x3B0u;
-	    Resource->u.Port.Length = 0xC;
+	    Resource->Port.Start.QuadPart = 0x3B0u;
+	    Resource->Port.Length = 0xC;
 	    Resource++;
 
 	    /* Build an I/O descriptor for the graphic ports at 0x3C0 */
 	    Resource->Type = CmResourceTypePort;
 	    Resource->Flags = CM_RESOURCE_PORT_POSITIVE_DECODE |
 		CM_RESOURCE_PORT_10_BIT_DECODE;
-	    Resource->u.Port.Start.QuadPart = 0x3C0u;
-	    Resource->u.Port.Length = 0x20;
+	    Resource->Port.Start.QuadPart = 0x3C0u;
+	    Resource->Port.Length = 0x20;
 	    Resource++;
 	}
     }
@@ -407,9 +407,9 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	    Resource->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
 	    Resource->Type = CmResourceTypeInterrupt;
 	    Resource->ShareDisposition = CmResourceShareShared;
-	    Resource->u.Interrupt.Affinity = -1;
-	    Resource->u.Interrupt.Level = InterruptLine;
-	    Resource->u.Interrupt.Vector = InterruptLine;
+	    Resource->Interrupt.Affinity = -1;
+	    Resource->Interrupt.Level = InterruptLine;
+	    Resource->Interrupt.Vector = InterruptLine;
 	}
     }
 

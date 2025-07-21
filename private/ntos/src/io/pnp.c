@@ -731,33 +731,33 @@ static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DE
 
     case CmResourceTypePort:
 	/* Assign the first available port */
-	Res.u.Port.Start = Desc.u.Port.MinimumAddress;
-	Res.u.Port.Length = Desc.u.Port.Length;
+	Res.Port.Start = Desc.Port.MinimumAddress;
+	Res.Port.Length = Desc.Port.Length;
 	break;
 
     case CmResourceTypeInterrupt:
 	/* Assign the first available interrupt vector */
-	Res.u.Interrupt.Level = Desc.u.Interrupt.MinimumVector;
-	Res.u.Interrupt.Vector = Desc.u.Interrupt.MinimumVector;
-	Res.u.Interrupt.Affinity = Desc.u.Interrupt.TargetedProcessors;
+	Res.Interrupt.Level = Desc.Interrupt.MinimumVector;
+	Res.Interrupt.Vector = Desc.Interrupt.MinimumVector;
+	Res.Interrupt.Affinity = Desc.Interrupt.TargetedProcessors;
 	break;
 
     case CmResourceTypeDma:
 	/* Assign the first available DMA channel */
-	Res.u.Dma.Channel = Desc.u.Dma.MinimumChannel;
-	Res.u.Dma.Port = 0;
+	Res.Dma.Channel = Desc.Dma.MinimumChannel;
+	Res.Dma.Port = 0;
 	break;
 
     case CmResourceTypeMemory:
 	/* Assign the first available memory-mapped IO region */
-	Res.u.Memory.Start = Desc.u.Memory.MinimumAddress;
-	Res.u.Memory.Length = Desc.u.Memory.Length;
+	Res.Memory.Start = Desc.Memory.MinimumAddress;
+	Res.Memory.Length = Desc.Memory.Length;
 	break;
 
     case CmResourceTypeBusNumber:
 	/* Assign the first available bus number */
-	Res.u.BusNumber.Start = Desc.u.BusNumber.MinBusNumber;
-	Res.u.BusNumber.Length = Desc.u.BusNumber.Length;
+	Res.BusNumber.Start = Desc.BusNumber.MinBusNumber;
+	Res.BusNumber.Length = Desc.BusNumber.Length;
 	break;
 
     default:

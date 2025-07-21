@@ -805,9 +805,9 @@ BOOLEAN PciCreateIoDescriptorFromBarLimit(
 
     /* Set default flag and clear high words */
     ResourceDescriptor->Flags = 0;
-    ResourceDescriptor->u.Generic.MaximumAddress.HighPart = 0;
-    ResourceDescriptor->u.Generic.MinimumAddress.LowPart = 0;
-    ResourceDescriptor->u.Generic.MinimumAddress.HighPart = 0;
+    ResourceDescriptor->Generic.MaximumAddress.HighPart = 0;
+    ResourceDescriptor->Generic.MinimumAddress.LowPart = 0;
+    ResourceDescriptor->Generic.MinimumAddress.HighPart = 0;
 
     /* Check for ROM Address */
     if (Rom) {
@@ -825,8 +825,8 @@ BOOLEAN PciCreateIoDescriptorFromBarLimit(
 
     /* Compute the length, assume it's the alignment for now */
     BarLength = PciGetLengthFromBar(CurrentBar);
-    ResourceDescriptor->u.Generic.Length = BarLength;
-    ResourceDescriptor->u.Generic.Alignment = BarLength;
+    ResourceDescriptor->Generic.Length = BarLength;
+    ResourceDescriptor->Generic.Alignment = BarLength;
 
     /* Check what kind of BAR this is */
     if (CurrentBar & PCI_ADDRESS_IO_SPACE) {
@@ -846,7 +846,7 @@ BOOLEAN PciCreateIoDescriptorFromBarLimit(
 	/* Check if it's 64-bit or 20-bit decode */
 	if ((CurrentBar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT) {
 	    /* The next BAR has the high word, read it */
-	    ResourceDescriptor->u.Port.MaximumAddress.HighPart = BarArray[1];
+	    ResourceDescriptor->Port.MaximumAddress.HighPart = BarArray[1];
 	    Is64BitBar = TRUE;
 	} else if ((CurrentBar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_20BIT) {
 	    /* Use the correct mask to decode the address */
@@ -861,7 +861,7 @@ BOOLEAN PciCreateIoDescriptorFromBarLimit(
     }
 
     /* Now write down the maximum address based on the base + length */
-    ResourceDescriptor->u.Port.MaximumAddress.QuadPart = (CurrentBar & BarMask) +
+    ResourceDescriptor->Port.MaximumAddress.QuadPart = (CurrentBar & BarMask) +
 	BarLength - 1;
 
     /* Return if this is a 64-bit BAR, so the loop code knows to skip the next one */

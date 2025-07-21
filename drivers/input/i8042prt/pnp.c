@@ -498,37 +498,37 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	switch (ResourceDescriptor->Type) {
 	case CmResourceTypePort:
 	{
-	    if (ResourceDescriptor->u.Port.Length == 1) {
+	    if (ResourceDescriptor->Port.Length == 1) {
 		/* We assume that the first resource will
 		 * be the data port and the second one
 		 * will be the control port...
 		 */
 		if (!FoundDataPort) {
-		    PortDeviceExtension->DataPort = ResourceDescriptor->u.Port.Start.u.LowPart;
+		    PortDeviceExtension->DataPort = ResourceDescriptor->Port.Start.LowPart;
 		    INFO_(I8042PRT, "Found data port: 0x%x\n", PortDeviceExtension->DataPort);
 		    FoundDataPort = TRUE;
 		} else if (!FoundControlPort) {
-		    PortDeviceExtension->ControlPort = ResourceDescriptor->u.Port.Start.u.LowPart;
+		    PortDeviceExtension->ControlPort = ResourceDescriptor->Port.Start.LowPart;
 		    INFO_(I8042PRT, "Found control port: 0x%x\n", PortDeviceExtension->ControlPort);
 		    FoundControlPort = TRUE;
 		} else {
 		    /* FIXME: implement PS/2 Active Multiplexing */
 		    ERR_(I8042PRT,
 			 "Unhandled I/O ranges provided: 0x%x\n",
-			 ResourceDescriptor->u.Port.Length);
+			 ResourceDescriptor->Port.Length);
 		}
 	    } else
 		WARN_(I8042PRT, "Invalid I/O range length: 0x%x\n",
-		      ResourceDescriptor->u.Port.Length);
+		      ResourceDescriptor->Port.Length);
 	    break;
 	}
 	case CmResourceTypeInterrupt:
 	{
 	    if (FoundIrq)
 		return STATUS_INVALID_PARAMETER;
-	    InterruptData.Dirql = (KIRQL)ResourceDescriptorTranslated->u.Interrupt.Level;
-	    InterruptData.Vector = ResourceDescriptorTranslated->u.Interrupt.Vector;
-	    InterruptData.Affinity = ResourceDescriptorTranslated->u.Interrupt.Affinity;
+	    InterruptData.Dirql = (KIRQL)ResourceDescriptorTranslated->Interrupt.Level;
+	    InterruptData.Vector = ResourceDescriptorTranslated->Interrupt.Vector;
+	    InterruptData.Affinity = ResourceDescriptorTranslated->Interrupt.Affinity;
 	    if (ResourceDescriptorTranslated->Flags & CM_RESOURCE_INTERRUPT_LATCHED)
 		InterruptData.InterruptMode = Latched;
 	    else
@@ -536,7 +536,7 @@ static NTSTATUS i8042PnpStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	    InterruptData.ShareInterrupt =
 		(ResourceDescriptorTranslated->ShareDisposition == CmResourceShareShared);
 	    INFO_(I8042PRT, "Found irq resource: %u\n",
-		  ResourceDescriptor->u.Interrupt.Level);
+		  ResourceDescriptor->Interrupt.Level);
 	    FoundIrq = TRUE;
 	    break;
 	}

@@ -64,11 +64,9 @@ static IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
 	.Type = CmResourceTypeInterrupt,
 	.ShareDisposition = CmResourceShareDeviceExclusive,
 	.Flags = 0,
-	.u = {
-	    .Interrupt = {
-		.MinimumVector = 1, /* IRQ1 is the first keyboard IRQ */
-		.MaximumVector = 1
-	    }
+	.Interrupt = {
+	    .MinimumVector = 1, /* IRQ1 is the first keyboard IRQ */
+	    .MaximumVector = 1
 	}
     },
 
@@ -77,12 +75,10 @@ static IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
 	.Type = CmResourceTypePort,
 	.ShareDisposition = CmResourceShareDeviceExclusive,
 	.Flags = CM_RESOURCE_PORT_IO,
-	.u = {
-	    .Port = {
-		.Length = 1,
-		.MinimumAddress = { .QuadPart = 0x60ULL }, /* Data port must be first */
-		.MaximumAddress = { .QuadPart = 0x60ULL }
-	    }
+	.Port = {
+	    .Length = 1,
+	    .MinimumAddress = { .QuadPart = 0x60ULL }, /* Data port must be first */
+	    .MaximumAddress = { .QuadPart = 0x60ULL }
 	}
     },
 
@@ -91,12 +87,10 @@ static IO_RESOURCE_DESCRIPTOR I8042ResourceDescriptors[] = {
 	.Type = CmResourceTypePort,
 	.ShareDisposition = CmResourceShareDeviceExclusive,
 	.Flags = CM_RESOURCE_PORT_IO,
-	.u = {
-	    .Port = {
-		.Length = 1,
-		.MinimumAddress = { .QuadPart = 0x64ULL }, /* Control port must be second */
-		.MaximumAddress = { .QuadPart = 0x64ULL }
-	    }
+	.Port = {
+	    .Length = 1,
+	    .MinimumAddress = { .QuadPart = 0x64ULL }, /* Control port must be second */
+	    .MaximumAddress = { .QuadPart = 0x64ULL }
 	}
     },
 };
@@ -107,11 +101,9 @@ static IO_RESOURCE_DESCRIPTOR FdcResourceDescriptors[] = {
 	.Type = CmResourceTypeInterrupt,
 	.ShareDisposition = CmResourceShareUndetermined,
 	.Flags = CM_RESOURCE_INTERRUPT_LATCHED,
-	.u = {
-	    .Interrupt = {
-		.MinimumVector = 6, /* IRQ6 is the floppy disk controller IRQ */
-		.MaximumVector = 6,
-	    }
+	.Interrupt = {
+	    .MinimumVector = 6, /* IRQ6 is the floppy disk controller IRQ */
+	    .MaximumVector = 6,
 	}
     },
 
@@ -120,12 +112,10 @@ static IO_RESOURCE_DESCRIPTOR FdcResourceDescriptors[] = {
 	.Type = CmResourceTypePort,
 	.ShareDisposition = CmResourceShareDeviceExclusive,
 	.Flags = CM_RESOURCE_PORT_IO,
-	.u = {
-	    .Port = {
-		.Length = 8,
-		.MinimumAddress = { .QuadPart = 0x03F0ULL },
-		.MaximumAddress = { .QuadPart = 0x03F8ULL },
-	    }
+	.Port = {
+	    .Length = 8,
+	    .MinimumAddress = { .QuadPart = 0x03F0ULL },
+	    .MaximumAddress = { .QuadPart = 0x03F8ULL },
 	}
     },
 
@@ -134,11 +124,9 @@ static IO_RESOURCE_DESCRIPTOR FdcResourceDescriptors[] = {
 	.Type = CmResourceTypeDma,
 	.ShareDisposition = CmResourceShareUndetermined,
 	.Flags = 0,
-	.u = {
-	    .Dma = {
-		.MinimumChannel = 2,
-		.MaximumChannel = 2,
-	    }
+	.Dma = {
+	    .MinimumChannel = 2,
+	    .MaximumChannel = 2,
 	}
     }
 };
@@ -196,19 +184,19 @@ static NTSTATUS IsaPnpSetupFdcControllerKey(IN PCONFIGURATION_COMPONENT_DATA Bus
 	/* Set IO Port */
 	switch (PartialDescriptor->Type) {
 	case CmResourceTypePort:
-	    PartialDescriptor->u.Port.Start.QuadPart = FdcResourceDescriptors[i].u.Port.MinimumAddress.QuadPart;
-	    PartialDescriptor->u.Port.Length = FdcResourceDescriptors[i].u.Port.Length;
+	    PartialDescriptor->Port.Start.QuadPart = FdcResourceDescriptors[i].Port.MinimumAddress.QuadPart;
+	    PartialDescriptor->Port.Length = FdcResourceDescriptors[i].Port.Length;
 	    break;
 
 	case CmResourceTypeInterrupt:
-	    PartialDescriptor->u.Interrupt.Level = FdcResourceDescriptors[i].u.Interrupt.MinimumVector;
-	    PartialDescriptor->u.Interrupt.Vector = FdcResourceDescriptors[i].u.Interrupt.MinimumVector;
-	    PartialDescriptor->u.Interrupt.Affinity = 0xFFFFFFFF;
+	    PartialDescriptor->Interrupt.Level = FdcResourceDescriptors[i].Interrupt.MinimumVector;
+	    PartialDescriptor->Interrupt.Vector = FdcResourceDescriptors[i].Interrupt.MinimumVector;
+	    PartialDescriptor->Interrupt.Affinity = 0xFFFFFFFF;
 	    break;
 
 	case CmResourceTypeDma:
-	    PartialDescriptor->u.Dma.Channel = FdcResourceDescriptors[i].u.Dma.MinimumChannel;
-	    PartialDescriptor->u.Dma.Port = 0;
+	    PartialDescriptor->Dma.Channel = FdcResourceDescriptors[i].Dma.MinimumChannel;
+	    PartialDescriptor->Dma.Port = 0;
 	    break;
 
 	default:
@@ -247,7 +235,7 @@ static NTSTATUS IsaPnpSetupFdcPeripheralKey(IN PCONFIGURATION_COMPONENT_DATA Bus
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor = &PartialResourceList->PartialDescriptors[0];
     PartialDescriptor->Type = CmResourceTypeDeviceSpecific;
     PartialDescriptor->ShareDisposition = CmResourceShareUndetermined;
-    PartialDescriptor->u.DeviceSpecificData.DataSize = sizeof(CM_FLOPPY_DEVICE_DATA);
+    PartialDescriptor->DeviceSpecificData.DataSize = sizeof(CM_FLOPPY_DEVICE_DATA);
 
     /* Floppy data follows immediately after the partial descriptor above. */
     PCM_FLOPPY_DEVICE_DATA FloppyData = (PCM_FLOPPY_DEVICE_DATA)&PartialResourceList->PartialDescriptors[1];
@@ -808,15 +796,15 @@ static NTSTATUS PnpRootStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	assert(FALSE);
 	return STATUS_DEVICE_ENUMERATION_ERROR;
     }
-    if (!Res->u.Memory.Start.QuadPart || !Res->u.Memory.Length) {
+    if (!Res->Memory.Start.QuadPart || !Res->Memory.Length) {
 	DPRINT1("Invalid IO memory 0x%llx length 0x%x\n",
-		Res->u.Memory.Start.QuadPart, Res->u.Memory.Length);
+		Res->Memory.Start.QuadPart, Res->Memory.Length);
 	assert(FALSE);
 	return STATUS_DEVICE_ENUMERATION_ERROR;
     }
-    AcpiResourceDescriptors[0].u.Memory.MinimumAddress = Res->u.Memory.Start;
-    AcpiResourceDescriptors[0].u.Memory.MaximumAddress = Res->u.Memory.Start;
-    AcpiResourceDescriptors[0].u.Memory.Length = Res->u.Memory.Length;
+    AcpiResourceDescriptors[0].Memory.MinimumAddress = Res->Memory.Start;
+    AcpiResourceDescriptors[0].Memory.MaximumAddress = Res->Memory.Start;
+    AcpiResourceDescriptors[0].Memory.Length = Res->Memory.Length;
 
     /* Allocate the resource requirement lists */
     NTSTATUS Status = PnpBuildDeviceRequirementLists(&AcpiBus);

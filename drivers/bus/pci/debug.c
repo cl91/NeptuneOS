@@ -239,7 +239,7 @@ VOID PciDebugPrintIoResource(IN PIO_RESOURCE_DESCRIPTOR Descriptor)
     DPRINT1("        Flags            = 0x%04X\n", Descriptor->Flags);
 
     /* Loop private data */
-    Data = (PULONG)&Descriptor->u.DevicePrivate;
+    Data = (PULONG)&Descriptor->DevicePrivate;
     for (i = 0; i < 6; i += 3) {
 	/* Dump it in 32-bit triplets */
 	DPRINT1("        Data[%u] = %08x  %08x  %08x\n", i, Data[0], Data[1], Data[2]);
@@ -299,8 +299,8 @@ VOID PciDebugPrintPartialResource(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialReso
     DPRINT1("        ShareDisposition = %u\n", PartialResource->ShareDisposition);
     DPRINT1("        Flags            = 0x%04X\n", PartialResource->Flags);
     DPRINT1("        Data[%d] = %08x  %08x  %08x\n", 0,
-	    PartialResource->u.Generic.Start.LowPart,
-	    PartialResource->u.Generic.Start.HighPart, PartialResource->u.Generic.Length);
+	    PartialResource->Generic.Start.LowPart,
+	    PartialResource->Generic.Start.HighPart, PartialResource->Generic.Length);
 }
 
 VOID PciDebugPrintCmResList(IN PCM_RESOURCE_LIST PartialList)

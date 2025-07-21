@@ -193,10 +193,6 @@ typedef union _LARGE_INTEGER {
         ULONG LowPart;
         LONG HighPart;
     };
-    struct {
-        ULONG LowPart;
-        LONG HighPart;
-    } u;
     LONGLONG QuadPart;
 } LARGE_INTEGER, *PLARGE_INTEGER;
 
@@ -205,10 +201,6 @@ typedef union _ULARGE_INTEGER {
         ULONG LowPart;
         ULONG HighPart;
     };
-    struct {
-        ULONG LowPart;
-        ULONG HighPart;
-    } u;
     ULONGLONG QuadPart;
 } ULARGE_INTEGER, *PULARGE_INTEGER;
 
