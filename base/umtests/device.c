@@ -10,27 +10,22 @@
 static BOOLEAN Beep(IN ULONG dwFreq,
 		    IN ULONG dwDuration)
 {
-    /* The beep driver will stop the beep as soon as we close the handle.
-     * Since we don't want to set up a timer to close the handle after the
-     * beep timeout we will intentionally leak the handle and never close it. */
-    static HANDLE hBeep;
+    HANDLE hBeep;
     UNICODE_STRING BeepDevice;
     OBJECT_ATTRIBUTES ObjectAttributes;
     IO_STATUS_BLOCK IoStatusBlock;
     NTSTATUS Status = STATUS_SUCCESS;
 
     /* Open the device */
-    if (!hBeep) {
-	RtlInitUnicodeString(&BeepDevice, DD_BEEP_DEVICE_NAME_U);
-	InitializeObjectAttributes(&ObjectAttributes, &BeepDevice, 0, NULL, NULL);
-	Status = NtCreateFile(&hBeep, FILE_READ_DATA | FILE_WRITE_DATA,
-			      &ObjectAttributes, &IoStatusBlock, NULL, 0,
-			      FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
-			      0, NULL, 0);
-	if (!NT_SUCCESS(Status)) {
-	    DbgTrace("NtCreateFile returned error status 0x%x\n", Status);
-	    return FALSE;
-	}
+    RtlInitUnicodeString(&BeepDevice, DD_BEEP_DEVICE_NAME_U);
+    InitializeObjectAttributes(&ObjectAttributes, &BeepDevice, 0, NULL, NULL);
+    Status = NtCreateFile(&hBeep, FILE_READ_DATA | FILE_WRITE_DATA,
+			  &ObjectAttributes, &IoStatusBlock, NULL, 0,
+			  FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN_IF,
+			  0, NULL, 0);
+    if (!NT_SUCCESS(Status)) {
+	DbgTrace("NtCreateFile returned error status 0x%x\n", Status);
+	return FALSE;
     }
 
     /* Check the parameters */
