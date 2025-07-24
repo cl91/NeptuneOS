@@ -110,9 +110,6 @@ NTAPI VOID i8042KbdStartIo(IN PDEVICE_OBJECT DeviceObject,
 
 static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 {
-    BOOLEAN FinishIrp = FALSE;
-    NTSTATUS Result = STATUS_INTERNAL_ERROR;	/* Shouldn't happen */
-
     /* If the interrupt happens before this is setup, the key
      * was already in the buffer. Too bad! */
     if (!DeviceExtension->HighestDIRQLInterrupt)
@@ -121,23 +118,10 @@ static VOID i8042PacketDpc(IN PPORT_DEVICE_EXTENSION DeviceExtension)
     IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
 
     if (DeviceExtension->Packet.State == Idle && DeviceExtension->PacketComplete) {
-	FinishIrp = TRUE;
-	Result = DeviceExtension->PacketResult;
 	DeviceExtension->PacketComplete = FALSE;
     }
 
     IoReleaseInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
-
-    if (!FinishIrp)
-	return;
-
-    if (DeviceExtension->CurrentIrp) {
-	DeviceExtension->CurrentIrp->IoStatus.Status = Result;
-	IoCompleteRequest(DeviceExtension->CurrentIrp, IO_NO_INCREMENT);
-	IoStartNextPacket(DeviceExtension->CurrentIrpDevice, FALSE);
-	DeviceExtension->CurrentIrp = NULL;
-	DeviceExtension->CurrentIrpDevice = NULL;
-    }
 }
 
 static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
@@ -212,6 +196,13 @@ static NTAPI VOID i8042PowerWorkItem(IN PDEVICE_OBJECT DeviceObject,
     }
 }
 
+static NTAPI VOID i8042IrpWorkItem(IN PDEVICE_OBJECT DeviceObject,
+				   IN PVOID Context)
+{
+    PI8042_KEYBOARD_EXTENSION DeviceExtension = Context;
+    ProcessPendingReadIrps(DeviceExtension->Common.Fdo);
+}
+
 /* Return TRUE if it was a power key */
 static BOOLEAN HandlePowerKeys(IN PI8042_KEYBOARD_EXTENSION DeviceExtension)
 {
@@ -267,7 +258,8 @@ static NTAPI VOID i8042KbdDpcRoutine(IN PKDPC Dpc,
     i8042PacketDpc(PortDeviceExtension);
 
     assert(DeviceExtension == DeviceExtension->Common.Fdo->DeviceExtension);
-    ProcessPendingReadIrps(DeviceExtension->Common.Fdo);
+    IoQueueWorkItem(DeviceExtension->IrpWorkItem, &i8042IrpWorkItem,
+		    DelayedWorkQueue, DeviceExtension);
 }
 
 /*
@@ -436,6 +428,12 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	RtlZeroMemory(DeviceExtension->Common.Buffer, Size);
 	KeInitializeDpc(&DeviceExtension->DpcKeyboard,
 			i8042KbdDpcRoutine, DeviceExtension);
+	DeviceExtension->IrpWorkItem = IoAllocateWorkItem(DeviceObject);
+	if (!DeviceExtension->IrpWorkItem) {
+	    WARN_(I8042PRT, "IoAllocateWorkItem() failed\n");
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto cleanup;
+	}
 	DeviceExtension->PowerWorkItem = IoAllocateWorkItem(DeviceObject);
 	if (!DeviceExtension->PowerWorkItem) {
 	    WARN_(I8042PRT, "IoAllocateWorkItem() failed\n");
@@ -465,6 +463,8 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     cleanup:
 	if (DeviceExtension->Common.Buffer)
 	    ExFreePoolWithTag(DeviceExtension->Common.Buffer, I8042PRT_TAG);
+	if (DeviceExtension->IrpWorkItem)
+	    IoFreeWorkItem(DeviceExtension->IrpWorkItem);
 	if (DeviceExtension->PowerWorkItem)
 	    IoFreeWorkItem(DeviceExtension->PowerWorkItem);
 	if (DeviceExtension->DebugWorkItem)

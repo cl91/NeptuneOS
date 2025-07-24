@@ -1,6 +1,7 @@
 #include <wdmp.h>
 
-DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopDpcQueue;
+/* The DPC queue is protected by the DPC mutex. */
+LIST_ENTRY IopDpcQueue;
 
 static ULONG_PTR IopDpcNotificationCap;
 static ULONG_PTR IopDpcThreadWdmServiceCap;
@@ -22,21 +23,32 @@ static VOID IopProcessDpcQueue()
     PTEB Teb = NtCurrentTeb();
     Teb->Wdm.ServiceCap = IopDpcThreadWdmServiceCap;
     Teb->Wdm.IsDpcThread = TRUE;
-    PSLIST_ENTRY Entry;
+    PLIST_ENTRY Entry;
     while (TRUE) {
 	MWORD Badge = 0;
 	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), &Badge);
-	while ((Entry = RtlInterlockedPopEntrySList(&IopDpcQueue)) != NULL) {
-	    PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, QueueEntry);
-	    assert(Dpc->Queued);
-	    if (Dpc->DeferredRoutine != NULL) {
-		Dpc->DeferredRoutine(Dpc,
-				     Dpc->DeferredContext,
-				     Dpc->SystemArgument1,
-				     Dpc->SystemArgument1);
-	    }
-	    Dpc->Queued = FALSE;
+	IoAcquireDpcMutex();
+	Entry = IopDpcQueue.Flink;
+    check:
+	if (Entry == &IopDpcQueue) {
+	    IoReleaseDpcMutex();
+	    goto done;
 	}
+	PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, QueueEntry);
+	assert(Dpc->Queued);
+	Dpc->Queued = FALSE;
+	Entry = Dpc->QueueEntry.Flink;
+	RemoveEntryList(&Dpc->QueueEntry);
+	IoReleaseDpcMutex();
+	if (Dpc->DeferredRoutine != NULL) {
+	    Dpc->DeferredRoutine(Dpc,
+				 Dpc->DeferredContext,
+				 Dpc->SystemArgument1,
+				 Dpc->SystemArgument1);
+	}
+	IoAcquireDpcMutex();
+	goto check;
+    done:
 	if (Badge & TIMER_NOTIFICATION_BADGE) {
 	    IopProcessTimerList();
 	}
@@ -55,7 +67,7 @@ VOID IopSignalDpcNotification()
     }
 }
 
-VOID KiInitializeDpcThread()
+VOID IopInitializeDpcThread()
 {
     if (!IopDpcNotificationCap) {
 	PAGED_CODE();
@@ -85,7 +97,7 @@ NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
 			   IN PKDEFERRED_ROUTINE DeferredRoutine,
 			   IN PVOID DeferredContext)
 {
-    KiInitializeDpcThread();
+    IopInitializeDpcThread();
     Dpc->DeferredRoutine = DeferredRoutine;
     Dpc->DeferredContext = DeferredContext;
 }
@@ -100,18 +112,20 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 			       IN PVOID SystemArgument2)
 {
     BOOLEAN Queued = FALSE;
+    IoAcquireDpcMutex();
     if (!Dpc->Queued) {
 	DbgTrace("Inserting DPC %p args %p %p\n",
 		 Dpc, SystemArgument1, SystemArgument2);
 	Dpc->SystemArgument1 = SystemArgument1;
 	Dpc->SystemArgument2 = SystemArgument2;
-	RtlInterlockedPushEntrySList(&IopDpcQueue, &Dpc->QueueEntry);
+	InsertHeadList(&IopDpcQueue, &Dpc->QueueEntry);
 	Dpc->Queued = TRUE;
 	Queued = TRUE;
 	NtCurrentTeb()->Wdm.DpcQueued = TRUE;
     } else {
 	DbgTrace("DPC %p already inserted. Not inserting\n", Dpc);
     }
+    IoReleaseDpcMutex();
     return Queued;
 }
 

@@ -46,9 +46,10 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
 #else
 #error "Unsupported architecture"
 #endif
-    RtlInitializeSListHead(&IopWorkItemQueue);
-    RtlInitializeSListHead(&IopDpcQueue);
+    InitializeListHead(&IopDpcQueue);
+    InitializeListHead(&IopWorkItemQueue);
     KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
+    KeInitializeMutex(&IopWorkItemMutex, InitInfo->WorkItemMutexCap);
     IopInitIrpProcessing();
     HalpInitDma();
     CiInitialzeCacheManager();

@@ -1,13 +1,16 @@
 #include <wdmp.h>
 #include "coroutine.h"
 
-DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) SLIST_HEADER IopWorkItemQueue;
+/* The IO work item queue is protected by the IO work item mutex below. */
+LIST_ENTRY IopWorkItemQueue;
+KMUTEX IopWorkItemMutex;
 
 /*
  * @implemented
  */
 NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
 {
+    IopInitializeDpcThread();
     PIO_WORKITEM IoWorkItem = ExAllocatePool(sizeof(IO_WORKITEM));
     if (IoWorkItem == NULL) {
 	return NULL;
@@ -43,12 +46,20 @@ NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
 {
     DbgTrace("Queuing workitem %p worker routine %p\n", IoWorkItem, WorkerRoutine);
     assert(IoWorkItem != NULL);
-    /* We want to make sure that all work items are dequeued before re-queuing them */
-    assert(IoWorkItem->WorkerRoutine == NULL);
+    KeAcquireMutex(&IopWorkItemMutex);
+    if (IoWorkItem->Queued) {
+	/* We want to make sure the same worker routine and context are used. */
+	assert(IoWorkItem->WorkerRoutine == WorkerRoutine);
+	assert(IoWorkItem->Context == Context);
+	KeReleaseMutex(&IopWorkItemMutex);
+	return;
+    }
     IoWorkItem->WorkerRoutine = WorkerRoutine;
     IoWorkItem->Context = Context;
     IoWorkItem->ExtendedRoutine = FALSE;
-    RtlInterlockedPushEntrySList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
+    IoWorkItem->Queued = TRUE;
+    InsertHeadList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
+    KeReleaseMutex(&IopWorkItemMutex);
     NtCurrentTeb()->Wdm.IoWorkItemQueued = TRUE;
 }
 
@@ -73,20 +84,36 @@ FASTCALL NTSTATUS IopCallWorkItemRoutine(IN PVOID Context) /* %ecx/%rcx */
 
 VOID IopProcessWorkItemQueue()
 {
-    PSLIST_ENTRY Entry;
-    while ((Entry = RtlInterlockedPopEntrySList(&IopWorkItemQueue)) != NULL) {
-	PIO_WORKITEM WorkItem = CONTAINING_RECORD(Entry, IO_WORKITEM, QueueEntry);
-	/* Allocate an execution environment for this IO work item. If we run out of
-	 * memory here, not much can be done, so we just stop. */
-	PIOP_EXEC_ENV Env = ExAllocatePool(sizeof(IOP_EXEC_ENV));
-	if (!Env) {
-	    break;
-	}
-	/* Initialize the execution environment and add it to the list */
-	Env->Context = WorkItem;
-	Env->EntryPoint = IopCallWorkItemRoutine;
-	InsertTailList(&IopExecEnvList, &Env->Link);
+    PLIST_ENTRY Entry;
+    KeAcquireMutex(&IopWorkItemMutex);
+    Entry = IopWorkItemQueue.Flink;
+
+check:
+    if (Entry == &IopWorkItemQueue) {
+	KeReleaseMutex(&IopWorkItemMutex);
+	goto done;
     }
+    PIO_WORKITEM WorkItem = CONTAINING_RECORD(Entry, IO_WORKITEM, QueueEntry);
+    WorkItem->Queued = FALSE;
+    Entry = WorkItem->QueueEntry.Flink;
+    RemoveEntryList(&WorkItem->QueueEntry);
+    KeReleaseMutex(&IopWorkItemMutex);
+
+    /* Allocate an execution environment for this IO work item. If we run out of
+     * memory here, not much can be done, so we just stop. */
+    PIOP_EXEC_ENV Env = ExAllocatePool(sizeof(IOP_EXEC_ENV));
+    if (!Env) {
+	goto done;
+    }
+    /* Initialize the execution environment and add it to the list */
+    Env->Context = WorkItem;
+    Env->EntryPoint = IopCallWorkItemRoutine;
+    InsertTailList(&IopExecEnvList, &Env->Link);
+
+    KeAcquireMutex(&IopWorkItemMutex);
+    goto check;
+done:
+    return;
 }
 
 VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem)

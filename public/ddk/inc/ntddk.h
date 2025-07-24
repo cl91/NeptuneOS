@@ -275,7 +275,7 @@ typedef KDEFERRED_ROUTINE *PKDEFERRED_ROUTINE;
  * to ease porting Windows/ReactOS drivers.
  */
 typedef struct _KDPC {
-    SLIST_ENTRY QueueEntry;
+    LIST_ENTRY QueueEntry;
     PKDEFERRED_ROUTINE DeferredRoutine;
     PVOID DeferredContext;
     PVOID SystemArgument1;

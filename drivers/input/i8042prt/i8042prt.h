@@ -142,6 +142,9 @@ typedef struct _I8042_KEYBOARD_EXTENSION {
 
     KEYBOARD_SCAN_STATE KeyboardScanState;
 
+    /* IRP processing work item */
+    PIO_WORKITEM IrpWorkItem;
+
     /* Power keys items */
     ULONG ReportedCaps;
     ULONG NewCaps;

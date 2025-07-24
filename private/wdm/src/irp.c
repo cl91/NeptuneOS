@@ -1965,9 +1965,12 @@ workitem:
 
     /* Dispatch functions and work items can both queue work items, so
      * go back and process the work item queue again, until it is empty. */
-    if (RtlFirstEntrySList(&IopWorkItemQueue)) {
+    KeAcquireMutex(&IopWorkItemMutex);
+    if (!IsListEmpty(&IopWorkItemQueue)) {
+	KeReleaseMutex(&IopWorkItemMutex);
 	goto workitem;
     }
+    KeReleaseMutex(&IopWorkItemMutex);
 
     /* Process the dirty buffer list and inform the server of them. */
     ULONG DirtyBufferMsgCount = CiProcessDirtyBufferList(RemainingBufferSize, DestIrp);

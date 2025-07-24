@@ -121,6 +121,9 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     if (Process->DpcMutex.TreeNode.Cap) {
 	KeDestroyNotification(&Process->DpcMutex);
     }
+    if (Process->WorkItemMutex.TreeNode.Cap) {
+	KeDestroyNotification(&Process->WorkItemMutex);
+    }
     MmDestroyVSpace(&Process->VSpace);
     MmDeleteCNode(Process->SharedCNode);
     RemoveEntryList(&Process->ProcessListEntry);

@@ -109,12 +109,13 @@ typedef struct _X86_IOPORT {
  */
 typedef struct _IO_WORKITEM {
     PDEVICE_OBJECT DeviceObject;
-    SLIST_ENTRY DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) QueueEntry;
+    LIST_ENTRY QueueEntry;
     union {
 	PIO_WORKITEM_ROUTINE WorkerRoutine;
 	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
     };
     PVOID Context;
+    BOOLEAN Queued;
     BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
 } IO_WORKITEM;
 
@@ -234,10 +235,10 @@ VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
-extern SLIST_HEADER IopDpcQueue;
+extern LIST_ENTRY IopDpcQueue;
 extern KMUTEX IopDpcMutex;
 VOID IopSignalDpcNotification();
-VOID KiInitializeDpcThread();
+VOID IopInitializeDpcThread();
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;
@@ -248,8 +249,9 @@ extern ULONG KiStallScaleFactor;
 VOID IopProcessTimerList();
 
 /* workitem.c */
-extern SLIST_HEADER IopWorkItemQueue;
+extern LIST_ENTRY IopWorkItemQueue;
 extern LIST_ENTRY IopSuspendedWorkItemList;
+extern KMUTEX IopWorkItemMutex;
 VOID IopProcessWorkItemQueue();
 BOOLEAN IopWorkItemIsInSuspendedList(IN PIO_WORKITEM Item);
 VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);

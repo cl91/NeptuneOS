@@ -637,6 +637,8 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
 	RET_ERR(KeCreateNotificationEx(&Process->DpcMutex, Process->SharedCNode));
 	Process->InitInfo.DriverInitInfo.DpcMutexCap = Process->DpcMutex.TreeNode.Cap;
+	RET_ERR(KeCreateNotificationEx(&Process->WorkItemMutex, Process->SharedCNode));
+	Process->InitInfo.DriverInitInfo.WorkItemMutexCap = Process->WorkItemMutex.TreeNode.Cap;
     }
 
     /* Create the Event objects used by the NTDLL ldr component */
