@@ -93,6 +93,8 @@ static VOID PspPopulateUserSharedData()
 {
     PKUSER_SHARED_DATA Data = (PKUSER_SHARED_DATA)PspUserSharedDataVad->AvlNode.Key;
     RtlCopyMemory(Data->NtSystemRoot, INITIAL_SYSTEM_ROOT_U, sizeof(INITIAL_SYSTEM_ROOT_U));
+    Data->TickCountMultiplier = ((ULONGLONG)TIMER_RESOLUTION_IN_100NS << 24) / 10000;
+    Data->TickTimeIncrement = TIMER_RESOLUTION_IN_100NS;
 }
 
 PKUSER_SHARED_DATA PsGetUserSharedData()

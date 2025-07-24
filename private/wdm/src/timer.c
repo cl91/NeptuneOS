@@ -154,6 +154,31 @@ NTAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
 }
 
 /*
+ * @implemented
+ */
+NTAPI VOID KeQueryTickCount(OUT PLARGE_INTEGER CurrentCount)
+{
+    /* Loop until we get a perfect match */
+    for (;;) {
+        /* Read the time value */
+        CurrentCount->HighPart = SharedUserData->TickCount.High1Time;
+        CurrentCount->LowPart = SharedUserData->TickCount.LowPart;
+        if (CurrentCount->HighPart == SharedUserData->TickCount.High2Time)
+	    break;
+        YieldProcessor();
+    }
+}
+
+/*
+ * Returns the the number of 100-nanosecond units that are added to the
+ * system time each time the interval clock interrupts.
+ */
+NTAPI ULONG KeQueryTimeIncrement()
+{
+    return SharedUserData->TickTimeIncrement;
+}
+
+/*
  * @name KeStallExecutionProcessor
  *
  * Stalls the execution of the current thread for the specified interval.

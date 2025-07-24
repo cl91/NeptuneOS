@@ -1069,6 +1069,8 @@ FORCEINLINE NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
  */
 NTAPI NTSYSAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
 NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
+NTAPI NTSYSAPI VOID KeQueryTickCount(OUT PLARGE_INTEGER CurrentCount);
+NTAPI NTSYSAPI ULONG KeQueryTimeIncrement(VOID);
 
 /*
  * Stalls the current processor for the given microseconds. This is the preferred

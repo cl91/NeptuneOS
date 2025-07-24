@@ -105,6 +105,9 @@ static VOID KiTimerInterruptService()
 	    UserSharedData->SystemTime.High2Time = (LONG)(SystemTime >> 32);
 	    UserSharedData->SystemTime.LowPart = (ULONG)SystemTime;
 	    UserSharedData->SystemTime.High1Time = (LONG)(SystemTime >> 32);
+	    UserSharedData->TickCount.High2Time = (LONG)(KiTimerTickCount >> 32);
+	    UserSharedData->TickCount.LowPart = (ULONG)KiTimerTickCount;
+	    UserSharedData->TickCount.High1Time = (LONG)(KiTimerTickCount >> 32);
 	}
 	/* If a timer has a due time smaller than or equal to the system time, then it
 	 * has expired. Traverse the queued timer list and wake up the expired timers. */

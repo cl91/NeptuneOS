@@ -145,7 +145,8 @@ typedef struct _KUSER_SHARED_DATA {
     ULONG CryptoExponent;
     ULONG TimeZoneId;
     ULONG LargePageMinimum;
-    ULONG Reserved2[7];
+    ULONGLONG TickTimeIncrement;
+    ULONG Reserved2[5];
     NT_PRODUCT_TYPE NtProductType;
     BOOLEAN ProductTypeIsValid;
     ULONG NtMajorVersion;
