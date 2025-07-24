@@ -48,8 +48,9 @@ VOID IopProcessTimerList()
 	    return;
 	}
 	/* Check if the timer has expired. */
-	ULONGLONG SystemTime = KeQuerySystemTime();
-	if (SystemTime >= Timer->AbsoluteDueTime) {
+	LARGE_INTEGER SystemTime;
+	KeQuerySystemTime(&SystemTime);
+	if (SystemTime.QuadPart >= Timer->AbsoluteDueTime) {
 	    Timer->State = FALSE;
 	    if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
 		/* DPC routines are called with the DPC mutex released (since it
@@ -85,7 +86,9 @@ NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
 	.QuadPart = DueTime.QuadPart
     };
     if (DueTime.QuadPart < 0) {
-	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + KeQuerySystemTime();
+	LARGE_INTEGER SystemTime;
+	KeQuerySystemTime(&SystemTime);
+	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + SystemTime.QuadPart;
     }
     NTSTATUS Status = WdmSetTimer(Timer->Header.GlobalHandle, &AbsoluteDueTime);
     if (!NT_SUCCESS(Status)) {
@@ -137,22 +140,17 @@ NTAPI ULONGLONG KeQueryInterruptTime(VOID)
 /*
  * @implemented
  */
-NTAPI ULONGLONG KeQuerySystemTime(VOID)
+NTAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
 {
-    LARGE_INTEGER CurrentTime;
-
     /* Loop until we get a perfect match */
     for (;;) {
         /* Read the time value */
-        CurrentTime.HighPart = SharedUserData->SystemTime.High1Time;
-        CurrentTime.LowPart = SharedUserData->SystemTime.LowPart;
-        if (CurrentTime.HighPart == SharedUserData->SystemTime.High2Time)
+        CurrentTime->HighPart = SharedUserData->SystemTime.High1Time;
+        CurrentTime->LowPart = SharedUserData->SystemTime.LowPart;
+        if (CurrentTime->HighPart == SharedUserData->SystemTime.High2Time)
 	    break;
         YieldProcessor();
     }
-
-    /* Return the time value */
-    return CurrentTime.QuadPart;
 }
 
 /*

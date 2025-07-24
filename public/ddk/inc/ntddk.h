@@ -1067,7 +1067,7 @@ FORCEINLINE NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 /*
  * System time and interrupt time routines
  */
-NTAPI NTSYSAPI ULONGLONG KeQuerySystemTime(VOID);
+NTAPI NTSYSAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
 NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
 
 /*
