@@ -413,11 +413,19 @@ higher-level drivers from having a StartIo routine. This recommendation applies 
 drivers as well. For instance, class drivers should not have a StartIo routine and should not
 use the `IoStartPacket` routine to queue and start IRP processing.
 
+As opposed to Windows, you cannot call `IoStartPacket`, `IoStartNextPacket`, and related
+routines in a DPC routine. To call the `StartIo` routine in a DPC routine, schedule an IO
+work item to start IRP processing.
+
 ##### Work items
 In addition to queuing IRPs due to rate limits, it is a common pattern on Windows/ReactOS
 for DPCs to queue a lengthy processing task to a system worker thread, which runs at
 a lower IRQL. Work items are scheduled to run at PASSIVE_LEVEL, ie. in the main event loop
-thread. It is recommended that ISRs and DPCs queue IO work items to process IRPs.
+thread. It is recommended that ISRs and DPCs queue IO work items to process IRPs. As opposed
+to Windows, You cannot call `IoCompleteIrp` and related functions in a DPC routine. Also as
+opposed to Windows, you can re-queue IO work items and you do not need to free the IO work
+item at the end of its worker routine. On Neptune OS, IO work items are not one-shot objects
+and can be safely reused.
 
 #### File System Drivers
 

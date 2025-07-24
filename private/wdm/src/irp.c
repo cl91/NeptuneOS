@@ -2406,12 +2406,15 @@ static VOID IopStartNextPacketByKeyEx(IN PDEVICE_OBJECT DeviceObject,
  * the IRP to the device queue. Also set the supplied cancel function
  * as the cancel routine of the IRP. If the IRP has been canceled for some
  * reason, call the cancel routine.
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoStartPacket(IN PDEVICE_OBJECT DeviceObject,
 			 IN PIRP Irp,
 			 IN PULONG Key,
 			 IN PDRIVER_CANCEL CancelFunction)
 {
+    PAGED_CODE();
     if (CancelFunction) {
         Irp->CancelRoutine = CancelFunction;
     }
@@ -2462,10 +2465,13 @@ NTAPI VOID IoStartPacket(IN PDEVICE_OBJECT DeviceObject,
 
 /*
  * @implemented
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
 			     IN BOOLEAN Cancelable)
 {
+    PAGED_CODE();
     /* Check if deferred start was requested */
     if (DeviceObject->StartIoFlags & DOE_SIO_DEFERRED) {
         /* Call our internal function to handle the defered case */
@@ -2480,11 +2486,14 @@ NTAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
 
 /*
  * @implemented
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
  */
 NTAPI VOID IoStartNextPacketByKey(IN PDEVICE_OBJECT DeviceObject,
 				  IN BOOLEAN Cancelable,
 				  IN ULONG Key)
 {
+    PAGED_CODE();
     /* Check if deferred start was requested */
     if (DeviceObject->StartIoFlags & DOE_SIO_DEFERRED) {
         /* Call our internal function to handle the defered case */
