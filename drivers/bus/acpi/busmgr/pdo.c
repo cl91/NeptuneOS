@@ -1618,6 +1618,7 @@ static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
     NTSTATUS Status;
     PDEVICE_OBJECT TargetObject;
     PIO_STACK_LOCATION IrpStack;
+    KEVENT Event;
     PIRP PnpIrp;
 
     //
@@ -1629,13 +1630,14 @@ static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
     DeviceCapabilities->Address = -1;
     DeviceCapabilities->UINumber = -1;
 
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     TargetObject = IoGetAttachedDeviceReference(DeviceObject);
 
     //
     // Build an Irp
     //
     PnpIrp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP, TargetObject, NULL,
-					  0, NULL, &IoStatus);
+					  0, NULL, &Event, &IoStatus);
     if (PnpIrp == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto GetDeviceCapabilitiesExit;
@@ -1649,7 +1651,7 @@ static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
     //
     // Get the top of stack
     //
-    IrpStack = IoGetCurrentIrpStackLocation(PnpIrp);
+    IrpStack = IoGetNextIrpStackLocation(PnpIrp);
 
     //
     // Set the top of stack
@@ -1660,9 +1662,13 @@ static NTSTATUS Bus_GetDeviceCapabilities(PDEVICE_OBJECT DeviceObject,
     IrpStack->Parameters.DeviceCapabilities.Capabilities = DeviceCapabilities;
 
     //
-    // Call the driver
+    // Call the driver and wait for the result
     //
     Status = IoCallDriver(TargetObject, PnpIrp);
+    if (Status == STATUS_PENDING) {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
+    }
 
 GetDeviceCapabilitiesExit:
     //

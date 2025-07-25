@@ -15,12 +15,14 @@
     <parameter annotation="in" type="GLOBAL_HANDLE" name="TargetDeviceHandle" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="PreviousTopDeviceHandle" />
     <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="PreviousTopDeviceInfo" />
+    <parameter annotation="out" type="ptr::ULONG" name="PreviousTopStackSize" />
   </svc>
 
   <svc name="WdmGetAttachedDevice">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
     <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="TopDeviceInfo" />
+    <parameter annotation="out" type="ptr::ULONG" name="StackSize" />
   </svc>
 
   <svc name="WdmGetDeviceProperty">

@@ -213,7 +213,7 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
 {
     PREAD_REQUEST Req = Context;
     assert(Req);
-    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION Stack = IoGetNextIrpStackLocation(Irp);
     if (!NT_SUCCESS(Irp->IoStatus.Status)) {
 	DPRINT("IO failed!!! Error code: %x, FileObj %p DeviceObj %p, "
 	       "ReadOffset 0x%llx, ReadLength 0x%x\n",
@@ -364,7 +364,8 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     PBUFFER_CONTROL_BLOCK CurrentBcb = AVL_NODE_TO_BCB(
 	AvlTreeFindNodeOrPrev(&CacheMap->BcbTree, AlignedOffset));
     PIRP FirstIrp = NULL;
-    IO_STATUS_BLOCK IoStatus;
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     while (CurrentOffset < EndOffset) {
 	/* Determine the starting file offset of the new BCB. */
 	if (CurrentBcb && AvlNodeContainsAddr(&CurrentBcb->Node,
@@ -399,7 +400,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	       FileObject, Vpb->DeviceObject, FileOffset->QuadPart, Length,
 	       Vpb->ClusterSize, CurrentOffset, CurrentLength);
 	Req->Irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ, Vpb->DeviceObject, NULL,
-						 CurrentLength, &ReadOffset);
+						 CurrentLength, &ReadOffset, NULL);
 	if (!Req->Irp) {
 	    ExFreePool(NewBcb);
 	    ExFreePool(Req);
@@ -410,9 +411,9 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	    Req->Irp->MasterIrp = FirstIrp;
 	} else {
 	    FirstIrp = Req->Irp;
-	    FirstIrp->UserIosb = &IoStatus;
+	    FirstIrp->UserEvent = &Event;
 	}
-	PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Req->Irp);
+	PIO_STACK_LOCATION Stack = IoGetNextIrpStackLocation(Req->Irp);
 	Stack->FileObject = FileObject;
 	ObReferenceObject(FileObject);
 	IoSetCompletionRoutine(Req->Irp, CiReadCompleted, Req, TRUE, TRUE, TRUE);
@@ -422,24 +423,19 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     }
 
     /* Forward the IRPs to the lower driver. Wait on the first IRP. */
-    NTSTATUS ErrorStatus = STATUS_SUCCESS;
-    ReverseLoopOverList(Req, &ReqList, READ_REQUEST, Link) {
+    LoopOverList(Req, &ReqList, READ_REQUEST, Link) {
 	DPRINT("Calling storage device driver with irp %p\n", Req->Irp);
 	Status = IoCallDriver(Vpb->DeviceObject, Req->Irp);
 	if (!NT_SUCCESS(Status)) {
-	    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Req->Irp);
-	    DPRINT("IO failed!!! Error code: %x, FileObj %p DeviceObj %p, "
-		   "ReadOffset 0x%llx, ReadLength 0x%x, Status 0x%x Info 0x%zx\n",
-		   Status, Stack->FileObject, Stack->DeviceObject,
-		   Stack->Parameters.Read.ByteOffset.QuadPart,
-		   Stack->Parameters.Read.Length, Req->Irp->IoStatus.Status,
-		   Req->Irp->IoStatus.Information);
+	    DPRINT("IoCallDriver failed with error code %x\n", Status);
 	    Req->Bcb->Length = 0;
-	    ErrorStatus = Status;
 	}
     }
-    if (!NT_SUCCESS(ErrorStatus)) {
-	Status = ErrorStatus;
+
+    /* Wait for the IO to complete. Note this event is only signaled if all IRPs
+     * have been completed. */
+    if (!IsListEmpty(&ReqList)) {
+	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
     }
 
     /* Now that all IO operations are done, insert the BCBs into the cache map.
@@ -846,7 +842,6 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
 	}
 	return;
     }
-    assert(!IopOldEnvToWakeUp);
     PFSRTL_COMMON_FCB_HEADER Fcb = FileObject->FsContext;
     PVPB Vpb = NULL;
     if (Fcb && Fcb->CacheMap) {
@@ -869,7 +864,6 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
     DbgTrace("Suspending coroutine stack %p\n", KiCurrentCoroutineStackTop);
     KiYieldCoroutine();
 
-    assert(!IopOldEnvToWakeUp);
     if (IoStatus) {
 	*IoStatus = Req->IoStatus;
     }

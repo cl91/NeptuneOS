@@ -42,6 +42,7 @@ NTAPI NTSTATUS CompBattSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp
     /* Are we attached yet? */
     if (DeviceExtension->AttachedDevice) {
 	/* Send it up the stack */
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
     } else {
 	/* We don't support WMI */
@@ -99,6 +100,7 @@ NTAPI NTSTATUS CompBattIoctl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     if (Status == STATUS_NOT_SUPPORTED) {
 	/* It failed, try the next driver up the stack */
 	Irp->IoStatus.Status = Status;
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
     }
 
@@ -186,6 +188,8 @@ static NTSTATUS BatteryIoctl(IN ULONG IoControlCode, IN PDEVICE_OBJECT DeviceObj
     IO_STATUS_BLOCK IoStatusBlock;
     NTSTATUS Status;
     PIRP Irp;
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, 0);
 
     if (CompBattDebug & 0x100)
 	DbgPrint("CompBatt: ENTERING BatteryIoctl\n");
@@ -194,10 +198,14 @@ static NTSTATUS BatteryIoctl(IN ULONG IoControlCode, IN PDEVICE_OBJECT DeviceObj
     Irp = IoBuildDeviceIoControlRequest(IoControlCode, DeviceObject, InputBuffer,
 					InputBufferLength, OutputBuffer,
 					OutputBufferLength, InternalDeviceIoControl,
-					&IoStatusBlock);
+					&Event, &IoStatusBlock);
     if (Irp) {
 	/* Call the class driver miniport */
 	Status = IoCallDriver(DeviceObject, Irp);
+        if (Status == STATUS_PENDING) {
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+            Status = IoStatusBlock.Status;
+        }
 
 	/* Print failure */
 	if (!(NT_SUCCESS(Status)) && (CompBattDebug & 8))

@@ -15,6 +15,7 @@
 static NTSTATUS PciPassIrpFromFdoToPdo(IN PPCI_FDO_EXTENSION DeviceExtension, IN PIRP Irp)
 {
     DPRINT1("Pci PassIrp ...\n");
+    IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(DeviceExtension->AttachedDeviceObject, Irp);
 }
 
@@ -101,13 +102,16 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	 * lowest-level driver first, and then travels upward, so call the lower
 	 * driver and wait for it to complete the IRP. */
 	if (DispatchStyle == IRP_BOTTOM_UP) {
-	    Status = IoCallDriverEx(DeviceExtension->AttachedDeviceObject, Irp, NULL);
+	    if (!IoForwardIrpSynchronously(DeviceExtension->AttachedDeviceObject, Irp)) {
+		return STATUS_INTERNAL_ERROR;
+	    }
+	    Status = Irp->IoStatus.Status;
 	    if (!NT_SUCCESS(Status)) {
 		return Status;
 	    }
 	}
 
-	/* Call the our driver's handler for this IRP and deal with the IRP */
+	/* Call our driver's handler for this IRP and deal with the IRP */
 	Status = DispatchFunction(Irp, IoStackLocation, DeviceExtension);
 	PassToPdo = DispatchStyle == IRP_FORWARD;
     }

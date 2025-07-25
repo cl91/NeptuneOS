@@ -13,13 +13,20 @@
 
 static NTSTATUS FatDiskShutDown(PVCB Vcb)
 {
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     IO_STATUS_BLOCK IoStatus;
     PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_SHUTDOWN, Vcb->StorageDevice,
-					    NULL, 0, NULL, &IoStatus);
+					    NULL, 0, NULL, &Event, &IoStatus);
     if (!Irp) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    return IoCallDriver(Vcb->StorageDevice, Irp);
+    NTSTATUS Status = IoCallDriver(Vcb->StorageDevice, Irp);
+    if (Status == STATUS_PENDING) {
+	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+	Status = IoStatus.Status;
+    }
+    return Status;
 }
 
 NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)

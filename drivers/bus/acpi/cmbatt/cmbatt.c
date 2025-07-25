@@ -313,6 +313,7 @@ NTAPI NTSTATUS CmBattIoctl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     /* There's nothing to do for an AC adapter */
     if (DeviceExtension->FdoType == CmBattAcAdapter) {
 	/* Pass it down */
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
 	return Status;
     }
@@ -441,6 +442,7 @@ NTAPI NTSTATUS CmBattIoctl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	} else {
 	    /* Still unsupported, try ACPI */
+	    IoSkipCurrentIrpStackLocation(Irp);
 	    Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
 	}
     }

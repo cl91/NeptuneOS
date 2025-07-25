@@ -108,7 +108,7 @@ check:
     /* Initialize the execution environment and add it to the list */
     Env->Context = WorkItem;
     Env->EntryPoint = IopCallWorkItemRoutine;
-    InsertTailList(&IopExecEnvList, &Env->Link);
+    InsertTailList(&IopExecEnvList, &Env->QueueListEntry);
 
     KeAcquireMutex(&IopWorkItemMutex);
     goto check;

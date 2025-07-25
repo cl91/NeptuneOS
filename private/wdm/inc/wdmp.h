@@ -201,7 +201,8 @@ extern LIST_ENTRY IopDeviceList;
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle);
 GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device);
 PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
-					  IN IO_DEVICE_INFO DevInfo);
+					  IN IO_DEVICE_INFO DevInfo,
+					  IN CHAR StackSize);
 
 /* dma.c */
 VOID HalpInitDma(VOID);
@@ -212,9 +213,13 @@ PDRIVER_OBJECT IopLocateDriverObject(IN PCSTR BaseName);
 NTSTATUS IopLoadDriver(IN PCSTR BaseName);
 
 /* event.c */
-extern LIST_ENTRY IopEventList;
+BOOLEAN KiSignalWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
+			       IN BOOLEAN AcquireLock);
+BOOLEAN KiCancelWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
+			       IN BOOLEAN AcquireLock);
 
 /* file.c */
+extern LIST_ENTRY IopFileObjectList;
 NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 			     IN PDEVICE_OBJECT DeviceObject,
 			     IN PFILE_OBJECT_CREATE_PARAMETERS Params,
@@ -225,10 +230,9 @@ VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject);
 /* irp.c */
 extern PIO_PACKET IopIncomingIoPacketBuffer;
 extern PIO_PACKET IopOutgoingIoPacketBuffer;
+extern LIST_ENTRY IopSignaledObjectList;
 extern LIST_ENTRY IopExecEnvList;
-extern LIST_ENTRY IopFileObjectList;
 extern PIOP_EXEC_ENV IopCurrentEnv;
-extern PIOP_EXEC_ENV IopOldEnvToWakeUp;
 VOID IopInitIrpProcessing();
 VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
 			 IN ULONG NumRequests);
@@ -244,7 +248,7 @@ VOID IopInitializeDpcThread();
 extern LIST_ENTRY IopX86PortList;
 
 /* timer.c */
-extern LIST_ENTRY IopTimerList;
+extern LIST_ENTRY IopPendingTimerList;
 extern ULONG KiStallScaleFactor;
 VOID IopProcessTimerList();
 
@@ -290,16 +294,15 @@ typedef enum _CLIENT_OBJECT_TYPE {
 
 FORCEINLINE BOOLEAN ObjectTypeIsWaitable(IN CLIENT_OBJECT_TYPE Ty)
 {
-    return Ty <= CLIENT_OBJECT_EVENT;
+    return Ty == CLIENT_OBJECT_TIMER || Ty == CLIENT_OBJECT_EVENT;
 }
 
-#define ObInitializeObject(Obj, Ty, TyName)			\
-    {								\
-	(Obj)->Header.Type = Ty;				\
-	(Obj)->Header.Flags = ObjectTypeIsWaitable(Ty) ?	\
-	    OBJ_WAITABLE_OBJECT : 0;				\
-	(Obj)->Header.Size = sizeof(TyName);			\
-	(Obj)->Header.RefCount = 1;				\
+#define ObInitializeObject(Obj, Ty, TyName)	\
+    {						\
+	(Obj)->Header.Type = Ty;		\
+	(Obj)->Header.Flags = 0;		\
+	(Obj)->Header.Size = sizeof(TyName);	\
+	(Obj)->Header.RefCount = 1;		\
     }
 
 FORCEINLINE LONG ObGetObjectRefCount(PVOID Obj)

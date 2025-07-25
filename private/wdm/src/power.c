@@ -18,9 +18,7 @@ static NTAPI NTSTATUS PopRequestPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObjec
                           &Irp->IoStatus);
     }
 
-    IoFreeIrp(Irp);
-    ObDereferenceObject(DeviceObject);
-    return STATUS_MORE_PROCESSING_REQUIRED;
+    return STATUS_CONTINUE_COMPLETION;
 }
 
 /*
@@ -45,7 +43,7 @@ NTAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
     /* Always call the top of the device stack */
     PDEVICE_OBJECT TopDeviceObject = IoGetAttachedDeviceReference(DeviceObject);
 
-    PIRP Irp = IoAllocateIrp();
+    PIRP Irp = IoAllocateIrp(TopDeviceObject->StackSize);
     if (!Irp) {
         ObDereferenceObject(TopDeviceObject);
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -54,7 +52,7 @@ NTAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
     Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
     Irp->IoStatus.Information = 0;
 
-    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION Stack = IoGetNextIrpStackLocation(Irp);
     Stack->DeviceObject = TopDeviceObject;
     Stack->MajorFunction = IRP_MJ_POWER;
     Stack->MinorFunction = MinorFunction;
@@ -87,10 +85,8 @@ NTAPI POWER_STATE PoSetPowerState(IN PDEVICE_OBJECT DeviceObject,
 				  IN POWER_STATE_TYPE Type,
 				  IN POWER_STATE State)
 {
-    POWER_STATE ps;
-
-    ps.SystemState = PowerSystemWorking;  // Fully on
-    ps.DeviceState = PowerDeviceD0;       // Fully on
-
-    return ps;
+    POWER_STATE PowerState = {
+	.SystemState = PowerSystemWorking, // Fully on
+    };
+    return PowerState;
 }

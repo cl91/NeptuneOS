@@ -91,6 +91,7 @@ static NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
     PDEVICE_OBJECT LowerDevice =
 	((PPORT_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
 
+    IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(LowerDevice, Irp);
 }
 
@@ -217,6 +218,7 @@ static NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 							      PORT_DEVICE_EXTENSION,
 							      PortDeviceListEntry);
 	    IoGetCurrentIrpStackLocation(Irp)->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
+	    IoSkipCurrentIrpStackLocation(Irp);
 	    return IoCallDriver(DevExt->DeviceObject, Irp);
 	}
 	break;
@@ -267,6 +269,7 @@ static NTAPI NTSTATUS ClassPower(IN PDEVICE_OBJECT DeviceObject,
     PPORT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     if (!DeviceExtension->Common.IsClassDO) {
 	/* Forward port DO IRPs to lower device */
+	IoSkipCurrentIrpStackLocation(Irp);
 	return IoCallDriver(DeviceExtension->LowerDevice, Irp);
     }
 
@@ -473,14 +476,20 @@ static NTSTATUS ConnectPortDriver(IN PDEVICE_OBJECT PortDO,
 	.Dummy = 0
     };
 
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     IO_STATUS_BLOCK IoStatus;
     PIRP Irp = IoBuildDeviceIoControlRequest(IOCTL_INTERNAL_KEYBOARD_CONNECT, PortDO,
 					     &ConnectData, sizeof(CONNECT_DATA),
-					     NULL, 0, TRUE, &IoStatus);
+					     NULL, 0, TRUE, &Event, &IoStatus);
     if (!Irp)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
     IoStatus.Status = IoCallDriver(PortDO, Irp);
+    if (IoStatus.Status == STATUS_PENDING) {
+	KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+    }
+    assert(IoStatus.Status != STATUS_PENDING);
 
     if (NT_SUCCESS(IoStatus.Status)) {
 	InsertTailList(&((PCLASS_DEVICE_EXTENSION)ClassDO->DeviceExtension)->PortDeviceList,
@@ -501,12 +510,18 @@ static VOID DestroyPortDriver(IN PDEVICE_OBJECT PortDO)
 									 PortDO->DriverObject);
 
     /* Send IOCTL_INTERNAL_*_DISCONNECT */
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     IO_STATUS_BLOCK IoStatus;
     PIRP Irp = IoBuildDeviceIoControlRequest(IOCTL_INTERNAL_KEYBOARD_DISCONNECT,
 					     PortDO, NULL, 0, NULL, 0, TRUE,
-					     &IoStatus);
+					     &Event, &IoStatus);
     if (Irp) {
-	IoCallDriver(PortDO, Irp);
+	IoStatus.Status = IoCallDriver(PortDO, Irp);
+	if (IoStatus.Status == STATUS_PENDING) {
+	    KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+	}
+	assert(IoStatus.Status != STATUS_PENDING);
     }
 
     /* Remove from ClassDeviceExtension->PortDeviceList list */
@@ -672,6 +687,7 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    NtClose(DeviceExtension->FileHandle);
 	    DeviceExtension->FileHandle = NULL;
 	}
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->LowerDevice, Irp);
 	DestroyPortDriver(DeviceObject);
 	return Status;
@@ -683,6 +699,7 @@ static NTAPI NTSTATUS ClassPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     Irp->IoStatus.Status = Status;
     if (NT_SUCCESS(Status) || Status == STATUS_NOT_SUPPORTED) {
+	IoSkipCurrentIrpStackLocation(Irp);
 	return IoCallDriver(DeviceExtension->LowerDevice, Irp);
     } else {
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);

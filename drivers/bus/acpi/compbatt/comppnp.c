@@ -19,6 +19,7 @@ NTAPI NTSTATUS CompBattPowerDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp
     PCOMPBATT_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     if (CompBattDebug & 1)
 	DbgPrint("CompBatt: PowerDispatch received power IRP.\n");
+    IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(DeviceExtension->AttachedDevice, Irp);
 }
 
@@ -118,13 +119,13 @@ static NTSTATUS CompBattAddNewBattery(IN PUNICODE_STRING BatteryName,
 		ObDereferenceObject(FileObject);
 
 		/* Allocate the battery IRP */
-		Irp = IoAllocateIrp();
+		Irp = IoAllocateIrp(BatteryData->DeviceObject->StackSize + 1);
 		if (Irp) {
 		    /* Save it */
 		    BatteryData->Irp = Irp;
 
 		    /* Setup the stack location */
-		    IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
+		    IoStackLocation = IoGetNextIrpStackLocation(Irp);
 		    IoStackLocation->Parameters.Others.Argument1 = DeviceExtension;
 		    IoStackLocation->Parameters.Others.Argument2 = BatteryData;
 
@@ -401,6 +402,7 @@ NTAPI NTSTATUS CompBattPnpDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     /* Did someone pick it up? */
     if ((NT_SUCCESS(Status)) || (Status == STATUS_NOT_SUPPORTED)) {
 	/* Still unsupported, try ACPI */
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
     } else {
 	/* Complete the request */

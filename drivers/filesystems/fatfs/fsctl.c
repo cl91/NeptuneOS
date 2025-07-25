@@ -27,20 +27,26 @@ static NTSTATUS FatReadDisk(IN PDEVICE_OBJECT DeviceObject,
     DPRINT("FatReadDisk(DeviceObject %p, Offset 0x%llx, Length 0x%x, Buffer %p)\n",
 	   DeviceObject, ReadOffset ? ReadOffset->QuadPart : 0ULL, ReadLength, Buffer);
 
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     IO_STATUS_BLOCK IoStatus;
     PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer,
-					    ReadLength, ReadOffset, &IoStatus);
+					    ReadLength, ReadOffset, &Event, &IoStatus);
     if (Irp == NULL) {
 	DPRINT("IoBuildSynchronousFsdRequest failed\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     if (OverrideVerify) {
-	IoGetCurrentIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+	IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
     }
 
     DPRINT("Calling storage device driver with irp %p\n", Irp);
     NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
+    }
 
     if (!NT_SUCCESS(Status)) {
 	DPRINT("IO failed!!! FatReadDisk : Error code: %x\n", Status);
@@ -66,22 +72,28 @@ NTSTATUS FatBlockDeviceIoControl(IN PDEVICE_OBJECT DeviceObject,
 	   InputBuffer, InputBufferSize, OutputBuffer, OutputBufferSize,
 	   OutputBufferSize ? *OutputBufferSize : 0);
 
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     IO_STATUS_BLOCK IoStatus;
     PIRP Irp = IoBuildDeviceIoControlRequest(CtlCode, DeviceObject, InputBuffer,
 					     InputBufferSize, OutputBuffer,
 					     OutputBufferSize ? *OutputBufferSize : 0,
-					     FALSE, &IoStatus);
+					     FALSE, &Event, &IoStatus);
     if (Irp == NULL) {
 	DPRINT("IoBuildDeviceIoControlRequest failed\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     if (OverrideVerify) {
-	IoGetCurrentIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+	IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
     }
 
     DPRINT("Calling storage device driver with irp %p\n", Irp);
     NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+        KeWaitForSingleObject (&Event, Suspended, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
+    }
 
     if (OutputBufferSize) {
 	*OutputBufferSize = IoStatus.Information;

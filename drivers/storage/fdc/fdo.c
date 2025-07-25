@@ -25,6 +25,7 @@ NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
 
     ASSERT(LowerDevice);
 
+    IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(LowerDevice, Irp);
 }
 

@@ -552,6 +552,15 @@ out:
     return STATUS_SUCCESS;
 }
 
+static ULONG IopGetDeviceStackSize(IN PIO_DEVICE_OBJECT DeviceObject)
+{
+    ULONG StackSize = 1;
+    while ((DeviceObject = DeviceObject->AttachedTo) != NULL) {
+	StackSize++;
+    }
+    return StackSize;
+}
+
 /*
  * Note: DeviceName must be a full path.
  */
@@ -590,7 +599,8 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 				      IN GLOBAL_HANDLE SrcDevHandle,
 				      IN GLOBAL_HANDLE TgtDevHandle,
 				      OUT GLOBAL_HANDLE *PrevTopDevHandle,
-				      OUT IO_DEVICE_INFO *PrevTopDevInfo)
+				      OUT IO_DEVICE_INFO *PrevTopDevInfo,
+				      OUT ULONG *PrevTopStackSize)
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
@@ -616,6 +626,7 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
     SrcDev->AttachedTo = PrevTop;
     PrevTop->AttachedDevice = SrcDev;
     *PrevTopDevInfo = PrevTop->DeviceInfo;
+    *PrevTopStackSize = IopGetDeviceStackSize(PrevTop);
     return STATUS_SUCCESS;
 }
 
@@ -623,7 +634,8 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
                               IN PTHREAD Thread,
                               IN GLOBAL_HANDLE DeviceHandle,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
-                              OUT IO_DEVICE_INFO *TopDeviceInfo)
+                              OUT IO_DEVICE_INFO *TopDeviceInfo,
+			      OUT ULONG *StackSize)
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     if (!DeviceHandle) {
@@ -639,6 +651,7 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
     Device = IopGetTopDevice(Device);
     RET_ERR(IopGrantDeviceHandleToDriver(Device, DriverObject, TopDeviceHandle));
     *TopDeviceInfo = Device->DeviceInfo;
+    *StackSize = IopGetDeviceStackSize(Device);
     return STATUS_SUCCESS;
 }
 

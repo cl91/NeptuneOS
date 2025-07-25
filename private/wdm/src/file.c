@@ -1,5 +1,8 @@
 #include <wdmp.h>
 
+/* List of all file objects created by this driver */
+LIST_ENTRY IopFileObjectList;
+
 NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 			     IN PDEVICE_OBJECT DeviceObject,
 			     IN PFILE_OBJECT_CREATE_PARAMETERS Params,

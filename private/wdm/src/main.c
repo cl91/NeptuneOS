@@ -34,8 +34,8 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
-    InitializeListHead(&IopEventList);
-    InitializeListHead(&IopTimerList);
+    InitializeListHead(&IopSignaledObjectList);
+    InitializeListHead(&IopPendingTimerList);
 #if defined(_M_IX86) || defined(_M_AMD64)
     InitializeListHead(&IopX86PortList);
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;

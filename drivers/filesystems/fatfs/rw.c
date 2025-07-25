@@ -9,9 +9,6 @@
 /* INCLUDES *****************************************************************/
 
 #include "fatfs.h"
-#include "ntddk.h"
-#include "ntioapi.h"
-#include "ntstatus.h"
 
 /* FUNCTIONS *****************************************************************/
 
@@ -95,6 +92,7 @@ static NTSTATUS FatForwardReadIrp(PDEVICE_EXTENSION DeviceExt, PIRP Irp)
 	return CcMdlRead(DeviceExt->VolumeFcb->FileObject, &Stack->Parameters.Read.ByteOffset,
 			 Stack->Parameters.Read.Length, &Irp->MdlAddress, &Irp->IoStatus);
     } else {
+	IoSkipCurrentIrpStackLocation(Irp);
 	return IoCallDriver(DeviceExt->StorageDevice, Irp);
     }
 }
@@ -187,7 +185,7 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
 	    Req->Irp = IoBuildAsynchronousFsdRequest(Write ? IRP_MJ_WRITE : IRP_MJ_READ,
 						     DeviceExt->StorageDevice, Buffer,
 						     ClusterCount * BytesPerCluster,
-						     &VolumeOffset);
+						     &VolumeOffset, NULL);
 	    if (!Req->Irp) {
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto ByeBye;
@@ -207,6 +205,7 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
 		break;
 	    }
 	} else {
+	    IoSkipCurrentIrpStackLocation(Req->Irp);
 	    IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
 	    Req->Irp = NULL;
 	}
@@ -230,8 +229,8 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
 	}
 	Status = STATUS_SUCCESS;
     } else {
-	IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
-	Status = STATUS_IRP_FORWARDED;
+	IoSkipCurrentIrpStackLocation(IrpContext->Irp);
+	Status = IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
     }
 
 ByeBye:
@@ -339,6 +338,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
     if (IsVolume) {
 	/* In the cases of a volume file read, simply pass the read request
 	 * to the underlying storage device driver. */
+	IoSkipCurrentIrpStackLocation(IrpContext->Irp);
 	return IoCallDriver(DeviceExt->StorageDevice, IrpContext->Irp);
     } else if (IsPageFile || IsFatFile) {
 	/* For page file or FAT file read, if MDL read is specified, go through

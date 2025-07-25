@@ -1,67 +1,126 @@
 #include <wdmp.h>
 
-LIST_ENTRY IopEventList;
-
+/*
+ * Initialize an event.
+ *
+ * This routine can be called at any IRQL.
+ */
 NTAPI VOID KeInitializeEvent(OUT PKEVENT Event,
 			     IN EVENT_TYPE Type,
 			     IN BOOLEAN InitialState)
 {
-    NTSTATUS Status = NtCreateEvent(&Event->Header.Handle, EVENT_ALL_ACCESS,
-				    NULL, Type, InitialState);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
+    RtlZeroMemory(Event, sizeof(KEVENT));
+    ObInitializeObject(&Event->Header, CLIENT_OBJECT_EVENT, KEVENT);
+    Event->Header.Type = Type;
+    InitializeListHead(&Event->Header.EnvList);
+    if (InitialState) {
+	KeSetEvent(Event);
     }
-    ObInitializeObject(Event, CLIENT_OBJECT_EVENT, KEVENT);
-    InsertTailList(&IopEventList, &Event->EventListEntry);
-    Event->State = InitialState;
 }
 
-/* Porting guide: remove the Increment and Wait arguments in Windows/ReactOS.
- * They are meaningless in Neptune OS due to architectural differences. */
+/*
+ * Set the given waitable object to the signaled state.
+ *
+ * This routine can be called at any IRQL. You must not have acquired the
+ * DPC mutex before calling this routine.
+ */
+BOOLEAN KiSignalWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
+			       IN BOOLEAN AcquireLock)
+{
+    if (AcquireLock) {
+	IoAcquireDpcMutex();
+    }
+    BOOLEAN PreviousState = Object->Signaled;
+    if (PreviousState) {
+	goto out;
+    }
+    Object->Signaled = TRUE;
+    assert(!ListHasEntry(&IopSignaledObjectList, &Object->QueueListEntry));
+    InsertTailList(&IopSignaledObjectList, &Object->QueueListEntry);
+out:
+    if (AcquireLock) {
+	IoReleaseDpcMutex();
+    }
+    NtCurrentTeb()->Wdm.EventSignaled = TRUE;
+    return PreviousState;
+}
+
+BOOLEAN KiCancelWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
+			       IN BOOLEAN AcquireLock)
+{
+    if (AcquireLock) {
+	IoAcquireDpcMutex();
+    }
+    LONG PreviousState = Object->Signaled;
+    if (!PreviousState) {
+	goto out;
+    }
+    Object->Signaled = FALSE;
+    assert(ListHasEntry(&IopSignaledObjectList, &Object->QueueListEntry));
+    RemoveEntryList(&Object->QueueListEntry);
+out:
+    if (AcquireLock) {
+	IoReleaseDpcMutex();
+    }
+    return PreviousState;
+}
+
+/*
+ * Set the given KEVENT object to the signaled state.
+ *
+ * Porting guide: remove the Increment and Wait arguments in Windows/ReactOS.
+ * They are meaningless in Neptune OS due to architectural differences.
+ *
+ * This routine can be called at any IRQL.
+ */
 NTAPI LONG KeSetEvent(IN PKEVENT Event)
 {
-    /* For a notification event, since it remains in the signaled state
-     * unless it is cleared explicitly, we do not need to call the server
-     * if the client side state indicates that it has been signaled. */
-    if (Event->Type == NotificationEvent && Event->State) {
-	return TRUE;
-    }
-    /* Otherwise, call the server to set the event. */
-    LONG PreviousState;
-    NTSTATUS Status = NtSetEvent(Event->Header.Handle, &PreviousState);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
-    }
-    Event->State = TRUE;
-    return PreviousState;
+    return KiSignalWaitableObject(&Event->Header, TRUE);
 }
 
 NTAPI LONG KeResetEvent(IN PKEVENT Event)
 {
-    /* If the event has already been cleared, simply return. */
-    if (!Event->State) {
-	return FALSE;
-    }
-    /* Otherwise, call the server to clear the event. */
-    LONG PreviousState;
-    NTSTATUS Status = NtResetEvent(Event->Header.Handle, &PreviousState);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
-    }
-    Event->State = FALSE;
-    return PreviousState;
+    return KiCancelWaitableObject(&Event->Header, TRUE);
 }
 
 NTAPI VOID KeClearEvent(IN PKEVENT Event)
 {
-    /* If the event has already been cleared, simply return. */
-    if (!Event->State) {
-	return;
+    KeResetEvent(Event);
+}
+
+NTAPI NTSTATUS KeWaitForSingleObject(IN PVOID Object,
+				     IN KWAIT_REASON WaitReason,
+				     IN KPROCESSOR_MODE WaitMode,
+				     IN BOOLEAN Alertable,
+				     IN PLARGE_INTEGER Timeout)
+{
+    /* Object must be waitable. */
+    PWAITABLE_OBJECT_HEADER Header = Object;
+    assert(ObjectTypeIsWaitable(Header->Header.Type));
+
+    /* KeWaitForSingleObject must always be called in a context where we are
+     * allowed to sleep. */
+    PAGED_CODE();
+    assert(KiCurrentCoroutineStackTop);
+
+    /* If the object has already been signaled, don't wait and simply return. */
+    if (Header->Signaled) {
+	return STATUS_SUCCESS;
     }
-    /* Otherwise, call the server to clear the event. */
-    NTSTATUS Status = NtClearEvent(Event->Header.Handle);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
-    }
-    Event->State = FALSE;
+
+    /* Add the current execution environment to the dispatcher object
+     * so we can wake it up when the dispatcher object is signaled. */
+    assert(IopCurrentEnv);
+    assert(!ListHasEntry(&Header->EnvList, &IopCurrentEnv->EventLink));
+    InsertHeadList(&Header->EnvList, &IopCurrentEnv->EventLink);
+
+    DbgTrace("Suspending execution environment %p coroutine stack %p waiting for object %p\n",
+	     IopCurrentEnv, KiCurrentCoroutineStackTop, Object);
+    /* Yield the current coroutine to the main thread. The control flow will
+     * return to either KiStartCoroutine or KiResumeCoroutine. */
+    KiYieldCoroutine();
+
+    /* Where the coroutine resumes, this is where the control jumps to. We
+     * simply return success. */
+    return STATUS_SUCCESS;
 }

@@ -147,6 +147,7 @@ static VOID FatFreeIrpContext(PFAT_IRP_CONTEXT IrpContext)
 
 static NTSTATUS FatDeviceControl(IN PFAT_IRP_CONTEXT IrpContext)
 {
+    IoSkipCurrentIrpStackLocation(IrpContext->Irp);
     return IoCallDriver(IrpContext->DeviceExt->StorageDevice,
 			IrpContext->Irp);
 }

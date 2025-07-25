@@ -64,8 +64,8 @@ typedef struct _IOP_EXEC_ENV {
     PVOID Context;
     KI_COROUTINE_ENTRYPOINT EntryPoint;
     PIOP_EXEC_ENV_FINALIZER Finalizer;
-    struct _IOP_EXEC_ENV *EnvToWakeUp; /* Saved Irp->Private.EnvToWakeUp pointer */
-    LIST_ENTRY Link;
+    LIST_ENTRY QueueListEntry;
+    LIST_ENTRY EventLink; /* List entry for WAITABLE_OBJECT_HEADER::EnvList */
     BOOLEAN Suspended;
 } IOP_EXEC_ENV, *PIOP_EXEC_ENV;
 

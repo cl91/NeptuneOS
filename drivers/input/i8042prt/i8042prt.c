@@ -29,6 +29,7 @@ NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT DeviceObject,
     PDEVICE_OBJECT LowerDevice = ((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->LowerDevice;
     assert(LowerDevice != NULL);
 
+    IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(LowerDevice, Irp);
 }
 
@@ -109,7 +110,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     switch (FdoDeviceExtension->Type) {
     case Keyboard:
     {
-	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION) FdoDeviceExtension;
+	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)FdoDeviceExtension;
 	IoControlCode = IOCTL_INTERNAL_I8042_HOOK_KEYBOARD;
 	InputBuffer = &DeviceExtension->KeyboardHook;
 	InputBufferLength = sizeof(INTERNAL_I8042_HOOK_KEYBOARD);
@@ -138,13 +139,15 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
 	goto cleanup;
     }
 
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     IO_STATUS_BLOCK IoStatus;
     PIRP NewIrp = IoBuildDeviceIoControlRequest(IoControlCode,
 						TopOfStack,
 						InputBuffer,
 						InputBufferLength,
-						NULL,
-						0, TRUE, &IoStatus);
+						NULL, 0, TRUE,
+						&Event, &IoStatus);
 
     if (!NewIrp) {
 	WARN_(I8042PRT, "IoBuildDeviceIoControlRequest() failed\n");
@@ -153,6 +156,10 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     }
 
     NTSTATUS Status = IoCallDriver(TopOfStack, NewIrp);
+    if (Status == STATUS_PENDING) {
+	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+	Status = IoStatus.Status;
+    }
 
     if (FdoDeviceExtension->Type == Keyboard) {
 	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)FdoDeviceExtension;
@@ -526,6 +533,7 @@ static NTAPI NTSTATUS i8042Power(IN PDEVICE_OBJECT DeviceObject,
     PFDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     PDEVICE_OBJECT LowerDevice = DeviceExtension->LowerDevice;
 
+    IoSkipCurrentIrpStackLocation(Irp);
     return IoCallDriver(LowerDevice, Irp);
 }
 

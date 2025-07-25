@@ -71,11 +71,17 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
     Status = FatFlushFile(DeviceExt, Fcb);
 
     /* Prepare an IRP to flush device buffers */
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_FLUSH_BUFFERS,
 				       DeviceExt->StorageDevice,
-				       NULL, 0, NULL, &IoStatusBlock);
+				       NULL, 0, NULL, &Event, &IoStatusBlock);
     if (Irp != NULL) {
 	Status = IoCallDriver(DeviceExt->StorageDevice, Irp);
+        if (Status == STATUS_PENDING) {
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+            Status = IoStatusBlock.Status;
+        }
 
 	/* Ignore device not supporting flush operation */
 	if (Status == STATUS_INVALID_DEVICE_REQUEST || Status == STATUS_NOT_IMPLEMENTED) {

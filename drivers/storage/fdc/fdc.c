@@ -61,7 +61,7 @@ static NTSTATUS NTAPI FdcAddDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
     KeInitializeEvent(&DeviceExtension->ControllerInfo.SynchEvent,
-		      NotificationEvent, FALSE);
+		      SynchronizationEvent, FALSE);
 
     Fdo->Flags &= ~DO_DEVICE_INITIALIZING;
     return STATUS_SUCCESS;
@@ -163,6 +163,7 @@ static NTAPI NTSTATUS FdcPower(IN PDEVICE_OBJECT DeviceObject,
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (DeviceExtension->Common.IsFDO) {
+	IoSkipCurrentIrpStackLocation(Irp);
 	return IoCallDriver(DeviceExtension->LowerDevice, Irp);
     } else {
 	switch (IrpSp->MinorFunction) {

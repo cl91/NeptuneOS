@@ -134,6 +134,7 @@ NTAPI NTSTATUS CmBattPowerDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     /* Start the next IRP and see if we're attached */
     if (DeviceExtension->AttachedDevice) {
 	/* Call ACPI */
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
     } else {
 	/* Complete the request here */
@@ -162,7 +163,11 @@ NTAPI NTSTATUS CmBattPnpDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     switch (IoStackLocation->MinorFunction) {
     case IRP_MN_QUERY_PNP_DEVICE_STATE:
 	/* Now call ACPI to inherit its PnP Device State */
-	Status = IoCallDriverEx(DeviceExtension->AttachedDevice, Irp, NULL);
+	if (!IoForwardIrpSynchronously(DeviceExtension->AttachedDevice, Irp)) {
+	    Status = STATUS_UNSUCCESSFUL;
+	} else {
+	    Status = Irp->IoStatus.Status;
+	}
 
 	/* However, a battery CAN be disabled */
 	Irp->IoStatus.Information &= ~PNP_DEVICE_NOT_DISABLEABLE;
@@ -266,7 +271,11 @@ NTAPI NTSTATUS CmBattPnpDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     case IRP_MN_QUERY_CAPABILITIES:
 	/* Now call ACPI */
-	Status = IoCallDriverEx(DeviceExtension->AttachedDevice, Irp, NULL);
+	if (!IoForwardIrpSynchronously(DeviceExtension->AttachedDevice, Irp)) {
+	    Status = STATUS_UNSUCCESSFUL;
+	} else {
+	    Status = Irp->IoStatus.Status;
+	}
 
 	/* Get the wake power state */
 	DeviceExtension->PowerState.SystemState =
@@ -311,6 +320,7 @@ NTAPI NTSTATUS CmBattPnpDispatch(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     /* Did someone pick it up? */
     if ((NT_SUCCESS(Status)) || (Status == STATUS_NOT_SUPPORTED)) {
 	/* Still unsupported, try ACPI */
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
     } else {
 	/* Complete the request */

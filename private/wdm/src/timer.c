@@ -1,34 +1,32 @@
 #include <wdmp.h>
 
-LIST_ENTRY IopTimerList;
+/* List of timers that have been set but have not expired. */
+LIST_ENTRY IopPendingTimerList;
+
 ULONG KiStallScaleFactor;
 
 static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
 {
     IopInitializeDpcThread();
-    NTSTATUS Status = WdmCreateTimer(&Timer->Header.GlobalHandle);
+    NTSTATUS Status = WdmCreateTimer(&Timer->Header.Header.GlobalHandle);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    ObInitializeObject(Timer, CLIENT_OBJECT_TIMER, KTIMER);
-    Timer->State = FALSE;
-    Timer->Canceled = FALSE;
-    /* IopTimerList is modified by IopProcessTimerList which runs in the DPC
-     * thread, so we need to acquire the DPC mutex. */
-    IoAcquireDpcMutex();
-    InsertTailList(&IopTimerList, &Timer->TimerListEntry);
-    IoReleaseDpcMutex();
+    ObInitializeObject(&Timer->Header, CLIENT_OBJECT_TIMER, KTIMER);
+    Timer->Header.Type = NotificationEvent;
+    InitializeListHead(&Timer->Header.EnvList);
     return STATUS_SUCCESS;
 }
 
 /*
- * Call the server to create a timer object.
+ * Create a timer object.
  *
  * If the DPC thread has not been created, this routine can only be called at
  * PASSIVE_LEVEL. Otherwise, this routine can also be called at DISPATCH_LEVEL.
  */
 NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
+    RtlZeroMemory(Timer, sizeof(KTIMER));
     NTSTATUS Status = KiInitializeTimer(Timer);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
@@ -42,16 +40,16 @@ VOID IopProcessTimerList()
 {
     /* Acquire the DPC mutex because IopTimerList may be modified by KiInitializeTimer. */
     IoAcquireDpcMutex();
-    LoopOverList(Timer, &IopTimerList, KTIMER, TimerListEntry) {
-	/* If the timer has not been set, or has already been canceled, do nothing. */
-	if (!Timer->State || Timer->Canceled) {
-	    return;
-	}
+    LoopOverList(Timer, &IopPendingTimerList, KTIMER, Header.QueueListEntry) {
+	/* If the timer is in the pending timer list, it must have been set. */
+	assert(Timer->State);
 	/* Check if the timer has expired. */
 	LARGE_INTEGER SystemTime;
 	KeQuerySystemTime(&SystemTime);
 	if (SystemTime.QuadPart >= Timer->AbsoluteDueTime) {
 	    Timer->State = FALSE;
+	    RemoveEntryList(&Timer->Header.QueueListEntry);
+	    KiSignalWaitableObject(&Timer->Header, FALSE);
 	    if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
 		/* DPC routines are called with the DPC mutex released (since it
 		 * may call functions that try to acquire the DPC mutex). */
@@ -68,17 +66,19 @@ VOID IopProcessTimerList()
 }
 
 /*
- * Call the server to set the timer. If the timer was set before,
- * it will be implicitly canceled. If specified, returns the previous
- * state of the timer (ie. TRUE if timer was set before the call).
+ * Call the server to set the timer. If the timer was set before, it will
+ * be set to the new due time. If specified, returns the previous state of
+ * the timer (ie. TRUE if timer was set before the call).
+ *
+ * This routine must be called at DISPATCH_LEVEL and below.
  */
-NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
-		    IN LARGE_INTEGER DueTime,
-		    IN OPTIONAL PKDPC Dpc)
+NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+			 IN LARGE_INTEGER DueTime,
+			 IN OPTIONAL PKDPC Dpc)
 {
     assert(Timer);
-    assert(Timer->Header.GlobalHandle);
-    if (!Timer->Header.GlobalHandle) {
+    assert(Timer->Header.Header.GlobalHandle);
+    if (!Timer->Header.Header.GlobalHandle) {
 	RtlRaiseStatus(STATUS_INVALID_HANDLE);
     }
     /* Compute the absolute due time of the timer. */
@@ -90,29 +90,48 @@ NTSTATUS KiSetTimer(IN OUT PKTIMER Timer,
 	KeQuerySystemTime(&SystemTime);
 	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + SystemTime.QuadPart;
     }
-    NTSTATUS Status = WdmSetTimer(Timer->Header.GlobalHandle, &AbsoluteDueTime);
+    NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle, &AbsoluteDueTime);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    /* We don't need to acquire the DPC mutex here, since we update the timer state last. */
     Timer->Dpc = Dpc;
     Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
-    Timer->State = TRUE;
-    return STATUS_SUCCESS;
+    IoAcquireDpcMutex();
+    /* If the timer has expired (but hasn't been processed by the main event loop), we
+     * need to remove it from the signaled object list. */
+    if (Timer->Header.Signaled) {
+	KiCancelWaitableObject(&Timer->Header, FALSE);
+    }
+    BOOLEAN PreviousState = Timer->State;
+    if (!PreviousState) {
+	Timer->State = TRUE;
+	assert(!Timer->Header.Signaled);
+	assert(!ListHasEntry(&IopSignaledObjectList, &Timer->Header.QueueListEntry));
+	assert(!ListHasEntry(&IopPendingTimerList, &Timer->Header.QueueListEntry));
+	InsertHeadList(&IopPendingTimerList, &Timer->Header.QueueListEntry);
+    }
+    IoReleaseDpcMutex();
+    return PreviousState;
 }
 
-/*
- * This routine must be called at DISPATCH_LEVEL and below.
- */
-NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-			 IN LARGE_INTEGER DueTime,
-			 IN OPTIONAL PKDPC Dpc)
+NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 {
-    BOOLEAN PreviousState = Timer->State;
-    NTSTATUS Status = KiSetTimer(Timer, DueTime, Dpc);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
+    IoAcquireDpcMutex();
+    /* If the timer has been signaled (but the main event loop has not processed
+     * it), remove the timer from the waitable object list. */
+    if (Timer->Header.Signaled) {
+	KiCancelWaitableObject(&Timer->Header, FALSE);
     }
+    /* Remove the timer from the pending timer list. We won't inform the server
+     * of timer cancellation. When the timer expiry message comes in, we will
+     * simply ignore the message. */
+    BOOLEAN PreviousState = Timer->State;
+    if (PreviousState) {
+	assert(ListHasEntry(&IopPendingTimerList, &Timer->Header.QueueListEntry));
+	RemoveEntryList(&Timer->Header.QueueListEntry);
+	Timer->State = FALSE;
+    }
+    IoReleaseDpcMutex();
     return PreviousState;
 }
 
@@ -202,7 +221,7 @@ NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
 /**
  * @name KeDelayExecutionThread
  *
- * Puts the current thread into an alertable or nonalertable wait
+ * Puts the current coroutine into an alertable or nonalertable wait
  * state for a specified interval. This routine calls the server and
  * should be used for delays that are longer than 1us.
  *
@@ -225,9 +244,6 @@ NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    Status = KiSetTimer(&Timer, *Interval, NULL);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
+    KeSetTimer(&Timer, *Interval, NULL);
     return KeWaitForSingleObject(&Timer, 0, 0, Alertable, NULL);
 }

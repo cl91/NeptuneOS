@@ -121,6 +121,7 @@ static NTSTATUS Bus_FDO_Power(PFDO_DEVICE_DATA Data, PIRP Irp)
 	    }
 	}
     }
+    IoSkipCurrentIrpStackLocation(Irp);
     Status = IoCallDriver(Data->NextLowerDriver, Irp);
     return Status;
 }

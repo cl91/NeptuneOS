@@ -59,10 +59,12 @@ static VOID IopProcessDpcQueue()
 VOID IopSignalDpcNotification()
 {
     PTEB Teb = NtCurrentTeb();
-    if ((Teb->Wdm.DpcQueued || Teb->Wdm.IoWorkItemQueued) && IopDpcNotificationCap) {
+    if ((Teb->Wdm.DpcQueued || Teb->Wdm.IoWorkItemQueued || Teb->Wdm.EventSignaled) &&
+	IopDpcNotificationCap) {
 	assert(PsCapIsProcessShared(IopDpcNotificationCap));
 	Teb->Wdm.DpcQueued = FALSE;
 	Teb->Wdm.IoWorkItemQueued = FALSE;
+	Teb->Wdm.EventSignaled = FALSE;
 	seL4_Signal(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap));
     }
 }

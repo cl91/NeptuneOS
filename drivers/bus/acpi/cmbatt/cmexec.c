@@ -75,11 +75,13 @@ NTSTATUS CmBattSendDownStreamIrp(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoCont
     PIRP Irp;
     NTSTATUS Status;
     IO_STATUS_BLOCK IoStatusBlock;
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Allocate the IRP */
     Irp = IoBuildDeviceIoControlRequest(IoControlCode, DeviceObject, InputBuffer,
 					InputBufferLength, (PVOID)OutputBuffer,
-					OutputBufferLength, 0, &IoStatusBlock);
+					OutputBufferLength, 0, &Event, &IoStatusBlock);
     if (!Irp) {
 	/* No IRP, fail */
 	if (CmBattDebug & 0x4C)
@@ -91,6 +93,10 @@ NTSTATUS CmBattSendDownStreamIrp(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoCont
     if (CmBattDebug & 0x40)
 	DbgPrint("CmBattSendDownStreamIrp: Irp %p\n", Irp);
     Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+	KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+	Status = IoStatusBlock.Status;
+    }
 
     /* Check if caller wanted output */
     if (OutputBuffer) {

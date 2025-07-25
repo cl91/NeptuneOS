@@ -140,6 +140,10 @@ NTAPI BOOLEAN HalMakeBeep(IN ULONG Frequency)
 
 /*
  * @implemented
+ *
+ * @remarks
+ *     A driver that calls IoBuildDeviceIoControlRequest must NOT call IoFreeIrp.
+ *     The IO manager will free these IRPs after IoCompleteRequest has been called.
  */
 NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 					 IN PDEVICE_OBJECT DeviceObject,
@@ -148,6 +152,7 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 					 IN PVOID OutputBuffer,
 					 IN ULONG OutputBufferLength,
 					 IN BOOLEAN InternalDeviceIoControl,
+					 IN PKEVENT Event,
 					 IN PIO_STATUS_BLOCK IoStatusBlock)
 {
     if ((InputBuffer && !InputBufferLength) || (!InputBuffer && InputBufferLength)) {
@@ -157,11 +162,11 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 	return NULL;
     }
 
-    PIRP Irp = IoAllocateIrp();
+    PIRP Irp = IoAllocateIrp(DeviceObject->StackSize);
     if (!Irp)
 	return NULL;
 
-    PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION StackPtr = IoGetNextIrpStackLocation(Irp);
     StackPtr->DeviceObject = DeviceObject;
     ObReferenceObject(DeviceObject);
     StackPtr->MajorFunction = InternalDeviceIoControl ?
@@ -179,6 +184,7 @@ NTAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
     StackPtr->Parameters.DeviceIoControl.Type3InputBuffer = InputBuffer;
 
     Irp->UserIosb = IoStatusBlock;
+    Irp->UserEvent = Event;
 
     return Irp;
 }
@@ -190,18 +196,19 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 					 IN PDEVICE_OBJECT DeviceObject,
 					 IN PVOID Buffer,
 					 IN ULONG Length,
-					 IN PLARGE_INTEGER StartingOffset)
+					 IN PLARGE_INTEGER StartingOffset,
+					 IN OPTIONAL PIO_STATUS_BLOCK IoStatusBlock)
 {
     if (Buffer && !Length) {
 	assert(FALSE);
 	return NULL;
     }
 
-    PIRP Irp = IoAllocateIrp();
+    PIRP Irp = IoAllocateIrp(DeviceObject->StackSize);
     if (!Irp)
 	return NULL;
 
-    PIO_STACK_LOCATION StackPtr = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION StackPtr = IoGetNextIrpStackLocation(Irp);
     StackPtr->DeviceObject = DeviceObject;
     ObReferenceObject(DeviceObject);
     StackPtr->MajorFunction = (UCHAR)MajorFunction;
@@ -234,27 +241,78 @@ NTAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 	}
     }
 
+    Irp->UserIosb = IoStatusBlock;
     return Irp;
 }
 
+/*
+ * @implemented
+ *
+ * @remarks
+ *     A driver that calls IoBuildSynchronousFsdRequest must NOT call IoFreeIrp.
+ *     The IO manager will free these IRPs after IoCompleteRequest has been called.
+ */
 NTAPI PIRP IoBuildSynchronousFsdRequest(IN ULONG MajorFunction,
 					IN PDEVICE_OBJECT DeviceObject,
 					IN PVOID Buffer,
 					IN ULONG Length,
 					IN PLARGE_INTEGER StartingOffset,
+					IN PKEVENT Event,
 					IN PIO_STATUS_BLOCK IoStatusBlock)
 {
+    assert(Event);
     /* Do the big work to set up the IRP */
     PIRP Irp = IoBuildAsynchronousFsdRequest(MajorFunction,
 					     DeviceObject,
 					     Buffer,
 					     Length,
-					     StartingOffset);
+					     StartingOffset,
+					     IoStatusBlock);
     if (!Irp)
 	return NULL;
 
-    /* Set the IO status block which makes it Synchronous */
-    Irp->UserIosb = IoStatusBlock;
+    /* Set the user event which makes the IRP synchronous */
+    Irp->UserEvent = Event;
 
     return Irp;
+}
+
+static NTAPI NTSTATUS IopSynchronousCompletion(IN PDEVICE_OBJECT DeviceObject,
+					       IN PIRP Irp,
+					       IN PVOID Context)
+{
+    KeSetEvent((PKEVENT)Context);
+    /* Returns STATUS_MORE_PROCESSING_REQUIRED so the IRP processing is stopped.
+     * The caller of IoForwardIrpSynchronously can take control of the IRP,
+     * usually either completing it (if the IRP comes from a thread) or free it
+     * (if the driver has requested the IO itself). */
+    return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+/*
+ * Forward the IRP to a lower device object, and wait for its completion.
+ * After this routine returns, the caller is given full control of the IRP
+ * object. It may complete the IRP if it comes from the IO manager, or free
+ * it if the IRP is created by the device driver itself.
+ */
+NTAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp)
+{
+    /* Check if next stack location is available */
+    if (Irp->CurrentLocation > Irp->StackCount || Irp->CurrentLocation <= 1) {
+	/* This should not happen. It usually means we did not track the
+	 * StackSize of the device object correctly. */
+	assert(FALSE);
+        return FALSE;
+    }
+
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    IoCopyCurrentIrpStackLocationToNext(Irp);
+    IoSetCompletionRoutine(Irp, IopSynchronousCompletion, &Event, TRUE, TRUE, TRUE);
+    NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+    }
+    return TRUE;
 }

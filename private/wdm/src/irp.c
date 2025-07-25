@@ -83,13 +83,13 @@
  *            driver must manually call IoCompleteRequest
  *            to clean it up.)
  *
- * Case 4 (processing a server-originated IRP, invoking IoCallDriver on it synchronously):
+ * Case 4 (processing a server-originated IRP, invoking IoCallDriver and wait synchronously):
  *
  * |----------|
- * | Incoming | Copy |----------| Dispatch ret.    |--------------|---------------------|
- * | IoPacket | ---> | IrpQueue | ---------------> | ReplyIrpList | Private.EnvToWakeUp |
- * |----------|      |----------| ASYNC_PENDING    |              | = IopCurrentEnv     |
- *                                                 |--------------|---------------------|
+ * | Incoming | Copy |----------| Dispatch ret.    |--------------|----------------------|
+ * | IoPacket | ---> | IrpQueue | ---------------> | ReplyIrpList | Add IopCurrentEnv to |
+ * |----------|      |----------| ASYNC_PENDING    |              |   KEVENT::EnvList    |
+ *                                                 |--------------|----------------------|
  *                                                         |
  *                                                         |Forward  |----------|
  *                                                         |-------> | Outgoing |
@@ -104,9 +104,11 @@
  *                                                   Not in any list
  *                                                  Resumes coroutine
  *
- * What happens in this situation (invoking IoCallDriver on an IRP synchronously) is
- * that IoCallDriver records the IopCurrentEnv in Irp->Private.EnvToWakeUp and suspends
- * the current execution environment (ie. coroutine). The control flow is then returned
+ * In this case, the driver either sets the UserEvent member of the IRP or sets an IO
+ * completion routine that will signal an event object when the IRP is completed. The
+ * driver then invokes IoCallDriver and waits on the event object associated with the
+ * IRP. KeWaitForSingleObject adds IopCurrentEnv to KEVENT::EnvList and suspends the
+ * current execution environment (ie. coroutine). The control flow is then returned
  * to the IopExecuteCoroutines function which will process the next queued execution
  * environment.
  *
@@ -128,24 +130,21 @@
  * Case 6 (calling IoCallDriver on a locally generated IRP, synchronously):
  *
  *   NewIrp
- *  |---------------------|        |----------------|          |----------------|
- *  |     ReplyIrpList    | -----> | PendingIrpList | -------> | CleanupIrpList |
- *  |---------------------| |      |----------------|  |       |----------------|
- *  | Private.EnvToWakeUp | |                          |
- *  | = IopCurrentEnv     | |---> Sent to server      (IoCompleted message
- *  |---------------------|       for processing      received and completion
- *                                                    routine returns Continue).
+ *  |----------------------|        |----------------|          |----------------|
+ *  |     ReplyIrpList     | -----> | PendingIrpList | -------> | CleanupIrpList |
+ *  |----------------------| |      |----------------|  |       |----------------|
+ *  | Add IopCurrentEnv to | |                          |
+ *  |   KEVENT::EnvList    | |---> Sent to server      (IoCompleted message
+ *  |----------------------|       for processing      received and completion
+ *                                                     routine returns Continue).
  *
- * Just like Case 4, the private member EnvToWakeUp of the IRP will be used to wake
- * up the execution environment that was suspended due to the synchronous wait. In
- * this particular case where we synchronously forward a locally generated new IRP
- * (as opposed to Case 4 which is synchronous forward of a server-originated IRP),
- * the private member ExecEnv of the IRP will be different from EnvToWakeUp. This
- * allows us to distinguish these two cases.
+ * Just like Case 4, the IRP will be added to the ReplyIrpList by IoCallDriver and
+ * eventualy moved to the PendingIrpList. The current execution environment will be
+ * suspended due to the synchronous wait.
  *
- * For associated IRPs, if its master IRP has NotifyCompletion == TRUE, then the
- * associated IRP's NotifyCompletion state is implicitly set to TRUE, regardless of
- * whether the associated IRP itself requires completion notification. The master
+ * In all cases, for associated IRPs, if its master IRP has NotifyCompletion set, then
+ * the associated IRP's NotifyCompletion state is implicitly set to TRUE, regardless
+ * of whether the associated IRP itself requires completion notification. The master
  * IRP is completed only when all its associated IRPs are completed. If the master
  * IRP has NotifyCompletion == FALSE, then the associated IRPs are forwarded normally
  * as if they do not have a master IRP.
@@ -153,16 +152,11 @@
  * Note a special situation in all of the cases above is that if the driver forwards
  * an IRP (whether it's the one being processed or a new IRP generated locally) to a
  * local device object. In this case all of the above still apply, with the exception
- * that when examining the ReplyList, the IRP will not be sent to the server but
- * will be detached and reinserted into the IRP queue for local processing. The
- * dispatch function for it may decide to forward it a second time, potentially
- * to a foreign driver. This can be done indefinitely. However since on Neptune OS
- * the IO stack size is always one, there can only be one IO completion routine
- * set for an IRP, and once forwarded, the original device object of the IO stack
- * is overwritten with the device object that the IRP is forwarded to. The dispatch
- * function for the IRP will not be able to retrieve the original device object from
- * the IRP. Drivers that forward IRPs back to its local device objects need to be
- * aware of this issue and store the original device object appropriately if needed.
+ * that when examining the ReplyList, the IRP will not be sent to the server but will
+ * be detached and reinserted into the IRP queue for local processing. The dispatch
+ * function for it may decide to forward it a second time, potentially to a foreign
+ * driver. This can be done indefinitely. Note in this case the IO transfer type of
+ * the target device must match that of the source device.
  *
  * [1] See https://community.osr.com/discussion/162053/iomarkirppending
  *  The allowed combinations of dispatch routine return status and
@@ -182,13 +176,6 @@
  */
 
 #include <wdmp.h>
-#include "coroutine.h"
-#include "debug.h"
-#include "ntddk.h"
-#include "ntioapi.h"
-#include "ntstatus.h"
-#include "util.h"
-#include "wdmsvc.h"
 
 PIO_PACKET IopIncomingIoPacketBuffer;
 PIO_PACKET IopOutgoingIoPacketBuffer;
@@ -202,17 +189,13 @@ static LIST_ENTRY IopPendingIrpList;
 /* List of all IRPs that are to be deleted */
 static LIST_ENTRY IopCleanupIrpList;
 
+/* List of signaled waitable objects. */
+LIST_ENTRY IopSignaledObjectList;
 /* List of execution environments that are either running or suspended. */
 static LIST_ENTRY IopExecEnvList;
-/* Current execution environment. This may be a dispatch function
+/* Current execution environment. It may correspond to a dispatch function
  * (IOP_DISPATCH_FUNCTION) or an IO work item. */
 PIOP_EXEC_ENV IopCurrentEnv;
-/* Used for saving the Irp->Private.EnvToWakeUp member when the driver
- * calls IoCallDriver synchronously. */
-PIOP_EXEC_ENV IopOldEnvToWakeUp;
-
-/* List of all file objects created by this driver */
-LIST_ENTRY IopFileObjectList;
 
 #if DBG
 static inline BOOLEAN IrpIsInReplyList(IN PIRP Irp)
@@ -394,7 +377,8 @@ static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
     /* The MDL will be freed by IoFreeIrp so we don't need to free it here. */
     if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
 	if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_NEITHER) {
-	    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+	    assert(Irp->CurrentLocation == Irp->StackCount + 1);
+	    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
 	    IopFreePool(IoStack->Parameters.DeviceIoControl.Type3InputBuffer);
 	    IoStack->Parameters.DeviceIoControl.Type3InputBuffer = NULL;
 	} else {
@@ -406,7 +390,8 @@ static VOID IopUnmarshalIoctlBuffers(IN PIRP Irp,
 
 static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 {
-    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    assert(Irp->CurrentLocation == Irp->StackCount + 1);
+    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
     switch (IoStack->MajorFunction) {
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
@@ -457,31 +442,31 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
 /*
  * Populate the local IRP object from the server IO packet
  */
-static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
-						      IN PIO_PACKET Src)
+static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
+						   OUT PIRP *pIrp)
 {
-    assert(Irp != NULL);
+    assert(pIrp != NULL);
     assert(Src != NULL);
     assert(Src->Type == IoPacketTypeRequest);
     PDEVICE_OBJECT DeviceObject = NULL;
     PFILE_OBJECT FileObject = NULL;
+    PDRIVER_OBJECT DriverObject = NULL;
     if (Src->Request.MajorFunction == IRP_MJ_ADD_DEVICE) {
-	PDRIVER_OBJECT DriverObject = IopLocateDriverObject(Src->Request.AddDevice.BaseName);
+	DriverObject = IopLocateDriverObject(Src->Request.AddDevice.BaseName);
 	if (!DriverObject) {
 	    assert(FALSE);
 	    return STATUS_INTERNAL_ERROR;
 	}
 	GLOBAL_HANDLE PhyDevHandle = Src->Request.Device.Handle;
 	IO_DEVICE_INFO PhyDevInfo = Src->Request.AddDevice.PhysicalDeviceInfo;
-	DeviceObject = IopGetDeviceObjectOrCreate(PhyDevHandle, PhyDevInfo);
+	/* The physical device object will have a device stack size of one. */
+	DeviceObject = IopGetDeviceObjectOrCreate(PhyDevHandle, PhyDevInfo, 1);
 	if (!DeviceObject) {
 	    return STATUS_NO_MEMORY;
 	}
 	/* The physical device object must remain valid even after this IRP is freed, so
 	 * we increase its refcount. */
 	ObReferenceObject(DeviceObject);
-	/* Store the driver object in the IRP so later we can call the correct AddDevice. */
-	Irp->Tail.DriverContext[0] = DriverObject;
     } else {
 	DeviceObject = IopGetDeviceObject(Src->Request.Device.Handle);
 	if (!DeviceObject) {
@@ -511,7 +496,21 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
     DbgTrace("Populating local IRP from server IO packet %p, devobj %p, fileobj %p\n",
 	     Src, DeviceObject, FileObject);
     IoDbgDumpIoPacket(Src, TRUE);
-    IoInitializeIrp(Irp);
+    PIRP Irp = IoAllocateIrp(DeviceObject->StackSize);
+    if (!Irp) {
+	*pIrp = NULL;
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    /* If we errored out below, the caller will need to free the allocated Irp object. */
+    *pIrp = Irp;
+    IoSetNextIrpStackLocation(Irp);
+    Irp->Private.OriginalRequestor = Src->Request.OriginalRequestor;
+    Irp->Private.Identifier = Src->Request.Identifier;
+    if (Src->Request.MajorFunction == IRP_MJ_ADD_DEVICE) {
+	/* Store the driver object in the IRP so later we can call the correct AddDevice. */
+	assert(DriverObject);
+	Irp->Tail.DriverContext[0] = DriverObject;
+    }
 
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     IoStack->MajorFunction = Src->Request.MajorFunction;
@@ -703,9 +702,10 @@ static NTSTATUS IopPopulateLocalIrpFromServerIoPacket(OUT PIRP Irp,
 	    if (!IoStack->Parameters.MountVolume.Vpb) {
 		return STATUS_NO_MEMORY;
 	    }
+	    /* The storage device object will have a device stack size of one. */
 	    IoStack->Parameters.MountVolume.DeviceObject =
 		IopGetDeviceObjectOrCreate(Src->Request.MountVolume.StorageDevice,
-					   Src->Request.MountVolume.StorageDeviceInfo);
+					   Src->Request.MountVolume.StorageDeviceInfo, 1);
 	    if (!IoStack->Parameters.MountVolume.DeviceObject) {
 		IopFreePool(IoStack->Parameters.MountVolume.Vpb);
 		IoStack->Parameters.MountVolume.Vpb = NULL;
@@ -814,13 +814,49 @@ static VOID IopPopulateLocalIrpFromServerIoResponse(OUT PIRP Irp,
     }
 }
 
+NTAPI VOID IoFreeIrp(IN PIRP Irp)
+{
+    assert(Irp->Size);
+    if (Irp->MasterIrp) {
+	/* The IRP is an associated IRP of a master IRP. This can happen if the driver
+	 * forwards an associated IRP without expecting a completion notification.
+	 * Detach the IRP from its master. */
+	assert(ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
+			    &Irp->Private.AssociatedIrp.Link));
+	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
+	Irp->MasterIrp = NULL;
+    } else {
+	/* If the IRP is a master IRP itself, detach it from all its associated IRPs. */
+	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList, IRP,
+		     Private.AssociatedIrp.Link) {
+	    RemoveEntryList(&AssociatedIrp->Private.AssociatedIrp.Link);
+	    InitializeListHead(&AssociatedIrp->Private.AssociatedIrp.PendingList);
+	    AssociatedIrp->MasterIrp = NULL;
+	}
+    }
+
+    PMDL Mdl = Irp->MdlAddress;
+    while (Mdl) {
+	PMDL Next = Mdl->Next;
+	ExFreePool(Mdl);
+	Mdl = Next;
+    }
+    /* At this point the IRP should not have any IO stack locations. */
+    assert(Irp->CurrentLocation == Irp->StackCount + 1);
+#if DBG
+    RtlZeroMemory(Irp, Irp->Size);
+#endif
+    ExFreePool(Irp);
+}
+
 /*
  * This will also free the memory allocated when creating the IRP
  * (in IopPopulateLocalIrpFromServerIoPacket);
  */
 static VOID IopDeleteIrp(PIRP Irp)
 {
-    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    assert(Irp->CurrentLocation == Irp->StackCount + 1);
+    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
     switch (IoStack->MajorFunction) {
     case IRP_MJ_CREATE:
 	if (IoStack->Parameters.Create.SecurityContext) {
@@ -906,23 +942,6 @@ static VOID IopDeleteIrp(PIRP Irp)
     default:
 	break;
     }
-    if (Irp->MasterIrp) {
-	/* The IRP is an associated IRP of a master IRP. This can happen if the driver
-	 * forwards an associated IRP without expecting a completion notification.
-	 * Detach the IRP from its master. */
-	assert(ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
-			    &Irp->Private.AssociatedIrp.Link));
-	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
-	Irp->MasterIrp = NULL;
-    } else {
-	/* If the IRP is a master IRP itself, detach it from all its associated IRPs. */
-	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList, IRP,
-		     Private.AssociatedIrp.Link) {
-	    RemoveEntryList(&AssociatedIrp->Private.AssociatedIrp.Link);
-	    InitializeListHead(&AssociatedIrp->Private.AssociatedIrp.PendingList);
-	    AssociatedIrp->MasterIrp = NULL;
-	}
-    }
     IoFreeIrp(Irp);
 }
 
@@ -950,7 +969,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 							IN ULONG BufferSize)
 {
     ULONG Size = sizeof(IO_PACKET);
-    PIO_STACK_LOCATION IoSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IoSp = IoGetNextIrpStackLocation(Irp);
     switch (IoSp->MajorFunction) {
     case IRP_MJ_CREATE:
 	assert(IoSp->FileObject);
@@ -1152,19 +1171,17 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     assert(IoStack);
     assert(IoStack->MajorFunction <= IRP_MJ_MAXIMUM_FUNCTION);
-    PDEVICE_OBJECT DeviceObject = Irp->Private.ForwardedTo;
+    PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject != NULL);
-    assert(DeviceObject != IoStack->DeviceObject);
     assert(DeviceObject->DriverObject == NULL);
     assert(DeviceObject->Header.GlobalHandle != 0);
-    assert(IoStack->DeviceObject != NULL);
-    assert(IopDeviceObjectIsLocal(IoStack->DeviceObject));
     assert(Irp->Private.OriginalRequestor != 0);
     /* We are forwarding an IRP originated from the server,
      * simply send the ForwardIrp client message */
     if (BufferSize < sizeof(IO_PACKET)) {
 	return FALSE;
     }
+    memset(Dest, 0, sizeof(IO_PACKET));
     Dest->Type = IoPacketTypeClientMessage;
     Dest->Size = sizeof(IO_PACKET);
     Dest->ClientMsg.Type = IoCliMsgForwardIrp;
@@ -1205,13 +1222,12 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 					   IN ULONG BufferSize)
 {
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    PDEVICE_OBJECT DeviceObject = Irp->Private.ForwardedTo;
+    PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject != NULL);
     assert(DeviceObject->DriverObject == NULL);
     assert(DeviceObject->Header.GlobalHandle != 0);
     assert(IoStack);
     assert(IoStack->MajorFunction <= IRP_MJ_MAXIMUM_FUNCTION);
-    assert(IoStack->DeviceObject != NULL);
     assert(Irp->Private.OriginalRequestor == 0);
     ULONG Size = sizeof(IO_PACKET);
     if (BufferSize < Size) {
@@ -1467,23 +1483,23 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 VOID IoDbgDumpIrp(IN PIRP Irp)
 {
     DbgTrace("Dumping IRP %p type %d size %d\n", Irp, Irp->Type, Irp->Size);
-    DbgPrint("    MdlAddress %p Flags 0x%08x IO Stack Location %p\n",
-	     Irp->MdlAddress, Irp->Flags, IoGetCurrentIrpStackLocation(Irp));
+    DbgPrint("    MdlAddress %p Flags 0x%08x StackCount %d CurrentLocation %d (Ptr %p)\n",
+	     Irp->MdlAddress, Irp->Flags, Irp->StackCount, Irp->CurrentLocation,
+	     IoGetCurrentIrpStackLocation(Irp));
     DbgPrint("    System Buffer %p User Buffer %p Completed %d AllocationSize 0x%llx\n",
-	     Irp->SystemBuffer, Irp->UserBuffer, Irp->Completed, Irp->AllocationSize.QuadPart);
-    DbgPrint("    IO Status Block Status 0x%08x Information %p\n",
-	     Irp->IoStatus.Status, (PVOID) Irp->IoStatus.Information);
-    DbgPrint("    PRIV OriginalRequestor %p Identifier %p OutputBuffer %p\n",
-	     (PVOID)Irp->Private.OriginalRequestor, Irp->Private.Identifier,
-	     Irp->Private.OutputBuffer);
-    DbgPrint("    PRIV ForwardedTo %p(0x%zx, ext %p, refcount %d) ExecEnv %p "
-	     "EnvToWakeUp %p NotifyCompletion %s\n",
-	     Irp->Private.ForwardedTo, IopGetDeviceHandle(Irp->Private.ForwardedTo),
-	     Irp->Private.ForwardedTo ? Irp->Private.ForwardedTo->DeviceExtension : NULL,
-	     Irp->Private.ForwardedTo ? ObGetObjectRefCount(Irp->Private.ForwardedTo) : 0,
-	     Irp->Private.ExecEnv, Irp->Private.EnvToWakeUp,
+	     Irp->SystemBuffer, Irp->UserBuffer, Irp->Completed,
+	     Irp->AllocationSize.QuadPart);
+    DbgPrint("    IO Status Block Status 0x%08x Information %p UserIosb %p UserEvent %p\n",
+	     Irp->IoStatus.Status, (PVOID) Irp->IoStatus.Information,
+	     Irp->UserIosb, Irp->UserEvent);
+    DbgPrint("    PRIV OriginalRequestor %p Identifier %p "
+	     "OutputBuffer %p NotifyCompletion %s\n",
+	     (PVOID)Irp->Private.OriginalRequestor,
+	     Irp->Private.Identifier, Irp->Private.OutputBuffer,
 	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE");
-    IoDbgDumpIoStackLocation(IoGetCurrentIrpStackLocation(Irp));
+    if (Irp->CurrentLocation <= Irp->StackCount && Irp->CurrentLocation >= 1) {
+	IoDbgDumpIoStackLocation(IoGetCurrentIrpStackLocation(Irp));
+    }
 }
 
 /*
@@ -1497,8 +1513,6 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     assert(Context != NULL);
     PIRP Irp = (PIRP)Context;
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    /* Irp cannot have been forwarded to a different driver. */
-    assert(Irp->Private.ForwardedTo == NULL);
     PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject);
     /* The IRP_MJ_CLOSE routine is called in IopHandleCloseFileServerMessage,
@@ -1533,15 +1547,6 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
  */
 static VOID IopCompleteIrp(IN PIRP Irp)
 {
-    /* If there is an execution environment that was suspended waiting
-     * for the completion of this IRP, wake it up now. Note this must
-     * be done even if the IRP has been marked as completed, because
-     * it might have been forwarded multiple times. */
-    if (Irp->Private.EnvToWakeUp) {
-	((PIOP_EXEC_ENV)Irp->Private.EnvToWakeUp)->Suspended = FALSE;
-	Irp->Private.EnvToWakeUp = NULL;
-    }
-
     if (Irp->Completed) {
 	return;
     }
@@ -1559,14 +1564,32 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	return;
     }
 
+    /* If an user IO status block is specified, copy the IO status to it. */
+    if (Irp->UserIosb) {
+	*Irp->UserIosb = Irp->IoStatus;
+    }
+
     /* Execute the completion routine if one is registered. If it returns
-     * StopCompletion, IRP completion is halted and the IRP remains in
+     * StopCompletion, IRP completion is halted and the IRP remains in a
      * pending state. Otherwise, IRP is completed.*/
-    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    if (IoStack->CompletionRoutine) {
-	NTSTATUS Status = IoStack->CompletionRoutine(IoStack->DeviceObject,
-						     Irp, IoStack->Context);
+    assert(Irp->CurrentLocation >= 1);
+    assert(Irp->CurrentLocation <= Irp->StackCount);
+    while (Irp->CurrentLocation <= Irp->StackCount) {
+	PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+	IoSkipCurrentIrpStackLocation(Irp);
+	NTSTATUS Status = STATUS_CONTINUE_COMPLETION;
+	if (IoStack->CompletionRoutine) {
+	    Status = IoStack->CompletionRoutine(IoStack->DeviceObject,
+						Irp, IoStack->Context);
+	}
+	if (IoStack->DeviceObject) {
+	    ObDereferenceObject(IoStack->DeviceObject);
+	}
+	if (IoStack->FileObject) {
+	    ObDereferenceObject(IoStack->FileObject);
+	}
 	if (Status == StopCompletion) {
+	    IoGetCurrentIrpStackLocation(Irp)->Control |= SL_COMPLETION_STOPPED;
 	    return;
 	}
     }
@@ -1602,6 +1625,11 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	    IopCompleteIrp(MasterIrp);
 	}
     }
+
+    /* If an event has been associated with the IRP, signal the event. */
+    if (Irp->UserEvent) {
+	KeSetEvent(Irp->UserEvent);
+    }
 }
 
 static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
@@ -1611,29 +1639,16 @@ static VOID IopHandleIoCompleteServerMessage(PIO_PACKET SrvMsg)
     assert(SrvMsg->ServerMsg.Type == IoSrvMsgIoCompleted);
     GLOBAL_HANDLE Orig = SrvMsg->ServerMsg.IoCompleted.OriginalRequestor;
     HANDLE Id = SrvMsg->ServerMsg.IoCompleted.Identifier;
-    /* Check the pending IRP list for all pending IRPs (this includes both
-     * asynchronously pending IRPs and IRPs suspended in a coroutine stack) */
+    /* Check the pending IRP list for all pending IRPs */
     LoopOverList(Irp, &IopPendingIrpList, IRP, Private.Link) {
 	if (Irp->Private.OriginalRequestor == Orig && Irp->Private.Identifier == Id) {
 	    /* Update the data in the local IRP with the result in the server message */
 	    IopPopulateLocalIrpFromServerIoResponse(Irp, &SrvMsg->ServerMsg.IoCompleted);
 	    /* Detach the IRP from the pending IRP list. */
 	    RemoveEntryList(&Irp->Private.Link);
-	    /* If the execution environment associated with this IRP is different
-	     * from the one that was suspended waiting for its completion, we
-	     * should complete the IRP. If they are equal, the dispatch routine
-	     * must have called IoCallDriver on the IRP itself (synchronously),
-	     * so the right thing to do in this case is to resume the suspended
-	     * coroutine, rather than completing the IRP. */
-	    if (Irp->Private.ExecEnv != Irp->Private.EnvToWakeUp) {
-		IopCompleteIrp(Irp);
-	    }
-	    /* If there is an execution environment that was suspended waiting
-	     * for the completion of this IRP, wake it up now. */
-	    if (Irp->Private.EnvToWakeUp) {
-		((PIOP_EXEC_ENV)Irp->Private.EnvToWakeUp)->Suspended = FALSE;
-		Irp->Private.EnvToWakeUp = NULL;
-	    }
+	    /* Complete the IRP. This will signal the KEVENT and wake up the execution
+	     * environment suspended on it. */
+	    IopCompleteIrp(Irp);
 	    return;
 	}
     }
@@ -1676,7 +1691,8 @@ static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
     if (!Close) {
 	goto done;
     }
-    PIRP Irp = IoAllocateIrp();
+    PIRP Irp = IoAllocateIrp(1);
+    IoSetNextIrpStackLocation(Irp);
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     Stack->DeviceObject = FileObj->DeviceObject;
     ObReferenceObject(Stack->DeviceObject);
@@ -1699,7 +1715,8 @@ static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
 {
     PDEVICE_OBJECT DevObj = IopGetDeviceObject(SrvMsg->ServerMsg.CloseDevice.DeviceObject);
     if (!DevObj) {
-	assert(FALSE);
+	/* It is ok if the client has deleted the device object at this point.
+	 * In this case we simply do nothing. */
 	return;
     }
     if (DevObj->Header.GlobalHandle) {
@@ -1723,12 +1740,12 @@ static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
     DbgTrace("Running finalizer for exec env %p context %p suspended %d "
-	     "EnvToWakeUp %p, status 0x%08x:\n", Env, Env->Context,
-	     Env->Suspended, Env->EnvToWakeUp, Status);
+	     "status 0x%08x:\n", Env, Env->Context, Env->Suspended, Status);
     PIRP Irp = Env->Context;
     IoDbgDumpIrp(Irp);
-    Irp->Private.ExecEnv = NULL;
-    if (Status != STATUS_PENDING) {
+    BOOLEAN CompletionStopped = (Irp->CurrentLocation <= Irp->StackCount) &&
+	(IoGetCurrentIrpStackLocation(Irp)->Control & SL_COMPLETION_STOPPED);
+    if (!CompletionStopped && Status != STATUS_PENDING) {
 	assert(Irp->IoStatus.Status == Status);
 	Irp->IoStatus.Status = Status;
 	/* This will execute the completion routine of the IRP if registered,
@@ -1757,21 +1774,59 @@ static VOID IopProcessIrpQueue()
 	    break;
 	}
 	/* Initialize the execution environment and add it to the list */
-	Irp->Private.ExecEnv = Env;
 	Env->Context = Irp;
 	Env->EntryPoint = IopCallDispatchRoutine;
 	Env->Finalizer = IopDispatchFcnExecEnvFinalizer;
-	InsertTailList(&IopExecEnvList, &Env->Link);
+	InsertTailList(&IopExecEnvList, &Env->QueueListEntry);
     }
+}
+
+static VOID IopProcessSignaledObjectList()
+{
+    IoAcquireDpcMutex();
+    LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
+	LoopOverList(Env, &Object->EnvList, IOP_EXEC_ENV, EventLink) {
+	    Env->Suspended = FALSE;
+	    RemoveEntryList(&Env->EventLink);
+	    /* If the object is a synchronization event, only wake up the first coroutine
+	     * waiting on it. */
+	    if (Object->Type == SynchronizationEvent) {
+		break;
+	    }
+	}
+	/* If the object is a synchronization event, reset the event to non-signaled state. */
+	if (Object->Type == SynchronizationEvent) {
+	    RemoveEntryList(&Object->QueueListEntry);
+	    Object->Signaled = FALSE;
+	} else {
+	    assert(Object->Type == NotificationEvent);
+	    /* If the object is a notification event, we should have woken up all coroutines
+	     * waiting on it, but the object remains in signaled state. */
+	    assert(IsListEmpty(&Object->EnvList));
+	    assert(Object->Signaled);
+	}
+    }
+    IoReleaseDpcMutex();
+}
+
+static BOOLEAN IopHasEnvToWakeUp()
+{
+    IoAcquireDpcMutex();
+    LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
+	if (!IsListEmpty(&Object->EnvList)) {
+	    IoReleaseDpcMutex();
+	    return TRUE;
+	}
+    }
+    IoReleaseDpcMutex();
+    return FALSE;
 }
 
 static VOID IopExecuteCoroutines()
 {
-again:
-    LoopOverList(Env, &IopExecEnvList, IOP_EXEC_ENV, Link) {
-	DbgTrace("Processing execution environment %p context %p suspended %d "
-		 "EnvToWakeUp %p:\n", Env, Env->Context, Env->Suspended,
-		 Env->EnvToWakeUp);
+    LoopOverList(Env, &IopExecEnvList, IOP_EXEC_ENV, QueueListEntry) {
+	DbgTrace("Processing execution environment %p context %p suspended %d:\n",
+		 Env, Env->Context, Env->Suspended);
 	if (Env->Suspended) {
 	    continue;
 	}
@@ -1790,16 +1845,13 @@ again:
 	    Env->CoroutineStackTop = Stack;
 	    /* Switch to the coroutine stack and call the dispatch routine */
 	    DbgTrace("Switching to coroutine stack top %p\n", Stack);
-	    assert(!Env->EnvToWakeUp);
-	    IopOldEnvToWakeUp = NULL;
 	    PTEB Teb = NtCurrentTeb();
 	    Teb->Wdm.CoroutineStackHigh = Stack;
 	    Teb->Wdm.CoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
 	    Status = KiStartCoroutine(Stack, Env->EntryPoint, Env->Context);
-	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
 	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
 	} else {
-	    /* We are resuming a coroutine suspended due to IoCallDriver. */
+	    /* We are resuming a coroutine suspended due to KeWaitForSingleObject. */
 	    DbgTrace("Resuming coroutine stack top %p. Saved SP %p\n",
 		     Env->CoroutineStackTop,
 		     KiGetCoroutineSavedSP(Env->CoroutineStackTop));
@@ -1807,43 +1859,38 @@ again:
 	    PTEB Teb = NtCurrentTeb();
 	    Teb->Wdm.CoroutineStackHigh = Stack;
 	    Teb->Wdm.CoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
-	    IopOldEnvToWakeUp = Env->EnvToWakeUp;
 	    Status = KiResumeCoroutine(Env->CoroutineStackTop);
-	    Env->EnvToWakeUp = IopOldEnvToWakeUp;
 	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
 	}
 	IopCurrentEnv = NULL;
-	IopOldEnvToWakeUp = NULL;
 	if (Status == STATUS_ASYNC_PENDING) {
 	    /* Mark the execution environment as suspended. */
 	    DbgTrace("Suspending exec env %p, coroutine stack %p, saved SP %p, "
-		     "context %p, EnvToWakeUp %p\n", Env, Env->CoroutineStackTop,
-		     KiGetCoroutineSavedSP(Env->CoroutineStackTop),
-		     Env->Context, Env->EnvToWakeUp);
+		     "context %p\n", Env, Env->CoroutineStackTop,
+		     KiGetCoroutineSavedSP(Env->CoroutineStackTop), Env->Context);
 	    Env->Suspended = TRUE;
 	} else {
 	    /* The dispatch function returns without suspending the coroutine.
 	     * Release the coroutine stack and execute the finalizer. */
 	    assert(Env->CoroutineStackTop);
 	    KiReleaseCoroutineStack(Env->CoroutineStackTop);
-	    RemoveEntryList(&Env->Link);
+	    RemoveEntryList(&Env->QueueListEntry);
 	    if (Env->Finalizer) {
 		Env->Finalizer(Env, Status);
 	    }
+	    /* Make sure we (or the driver author) did not accidentally leave a KEVENT
+	     * that was allocated on the coroutine stack in the signaled object list. */
+#if DBG
+	    IoAcquireDpcMutex();
+	    LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
+		assert(!((ULONG_PTR)Object < (ULONG_PTR)Env->CoroutineStackTop &&
+			 (ULONG_PTR)Object >= (ULONG_PTR)Env->CoroutineStackTop -
+			 DRIVER_COROUTINE_STACK_COMMIT));
+	    }
+	    IoReleaseDpcMutex();
+#endif
 	    ExFreePool(Env);
 	}
-    }
-
-    /* If there are still execution environments running, repeat the process. */
-    BOOLEAN Running = FALSE;
-    LoopOverList(Env, &IopExecEnvList, IOP_EXEC_ENV, Link) {
-	if (!Env->Suspended) {
-	    Running = TRUE;
-	    break;
-	}
-    }
-    if (Running) {
-	goto again;
     }
 }
 
@@ -1860,13 +1907,8 @@ again:
 static inline NTSTATUS IopQueueRequestIoPacket(IN PIO_PACKET SrcIoPacket)
 {
     assert(SrcIoPacket->Type == IoPacketTypeRequest);
-    PIRP Irp = IoAllocateIrp();
-    if (!Irp) {
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    Irp->Private.OriginalRequestor = SrcIoPacket->Request.OriginalRequestor;
-    Irp->Private.Identifier = SrcIoPacket->Request.Identifier;
-    NTSTATUS Status = IopPopulateLocalIrpFromServerIoPacket(Irp, SrcIoPacket);
+    PIRP Irp = NULL;
+    NTSTATUS Status = IopBuildLocalIrpFromServerIoPacket(SrcIoPacket, &Irp);
     if (!NT_SUCCESS(Status)) {
 	IoFreeIrp(Irp);
 	return Status;
@@ -1955,22 +1997,16 @@ again:
      * an IRP in the queue, unless we ran out of memory. */
     assert(IsListEmpty(&IopIrpQueue));
 
-workitem:
     /* Now process the IO work item queue */
     IopProcessWorkItemQueue();
+
+    /* Check the list of signaled waitable objects and wake up the execution
+     * environments suspended on them. */
+    IopProcessSignaledObjectList();
 
     /* Process the execution environments. This is where the dispatch
      * functions and work items are actually executed. */
     IopExecuteCoroutines();
-
-    /* Dispatch functions and work items can both queue work items, so
-     * go back and process the work item queue again, until it is empty. */
-    KeAcquireMutex(&IopWorkItemMutex);
-    if (!IsListEmpty(&IopWorkItemQueue)) {
-	KeReleaseMutex(&IopWorkItemMutex);
-	goto workitem;
-    }
-    KeReleaseMutex(&IopWorkItemMutex);
 
     /* Process the dirty buffer list and inform the server of them. */
     ULONG DirtyBufferMsgCount = CiProcessDirtyBufferList(RemainingBufferSize, DestIrp);
@@ -2013,13 +2049,11 @@ workitem:
     LoopOverList(Irp, &IopReplyIrpList, IRP, Private.Link) {
 	/* This will become FALSE if remaining size is too small for the IO packet */
 	BOOLEAN Ok = TRUE;
-	/* Either the IRP is completed, or it is forwarded (someone called IoCallDriver
-	 * on it). We assert if these conditions have not been met. */
-	assert(Irp->Completed || Irp->Private.ForwardedTo);
 	/* Detach this IRP from the ReplyIrp list first. We will insert it to other
 	 * lists below. */
 	RemoveEntryList(&Irp->Private.Link);
 	if (Irp->Completed) {
+	    assert(Irp->CurrentLocation == Irp->StackCount + 1);
 	    /* If the IRP being completed is not locally generated, notify server
 	     * that we have finished processing it. */
 	    if (Irp->Private.OriginalRequestor) {
@@ -2036,28 +2070,15 @@ workitem:
 		    continue;
 		}
 	    }
-	} else if (IopDeviceObjectIsLocal(Irp->Private.ForwardedTo)) {
+	} else if (IopDeviceObjectIsLocal(IoGetCurrentIrpStackLocation(Irp)->DeviceObject)) {
 	    /* If we are forwarding this IRP to a local device object, requeue it to
 	     * the IRP queue. Note drivers should be careful when forwarding IRPs
-	     * locally. In particular, since on Neptune OS the IRP stack size is always
-	     * one, drivers can only set one IoCompeltion routine even if it forwards
-	     * an IRP multiple times, and likewise the DeviceObject in the IO request
-	     * stack always points to the current device object that this IRP has been
-	     * forwarded to. Secondly, the IO transfer type of the target device must
-	     * match that of the source device. Finally, for IRPs generated locally and
-	     * forwarded to local device objects, the IO tranfer type is ignored and
-	     * NEITHER IO is always assumed, so the relevant dispatch routine will need
+	     * locally. More specifically, the IO transfer type of the target device must
+	     * match that of the source device, and for IRPs generated locally (and
+	     * forwarded to local device objects), the IO tranfer type is ignored and
+	     * NEITHER IO is always assumed, so the relevant dispatch routines will need
 	     * to handle this case separately. */
-	    assert((Irp->Private.ForwardedTo->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO)) ==
-		   (IoGetCurrentIrpStackLocation(Irp)->DeviceObject->Flags &
-		    (DO_BUFFERED_IO | DO_DIRECT_IO)));
 	    InsertTailList(&IopIrpQueue, &Irp->Private.Link);
-	    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-	    if (IoStack->DeviceObject) {
-		ObDereferenceObject(IoStack->DeviceObject);
-	    }
-	    IoStack->DeviceObject = Irp->Private.ForwardedTo;
-	    Irp->Private.ForwardedTo = NULL;
 	    continue;
 	} else {
 	    if (Irp->Private.OriginalRequestor) {
@@ -2071,6 +2092,12 @@ workitem:
 		if (IopIrpNeedsCompletionNotification(Irp)) {
 		    InsertTailList(&IopPendingIrpList, &Irp->Private.Link);
 		} else {
+		    /* If the IRP has not been completed, advance the current IO stack
+		     * location pointer as if we had implicitly completed the IRP, so
+		     * IopDeleteIrp can free the full IRP correctly. */
+		    if (!Irp->Completed) {
+			IoSkipCurrentIrpStackLocation(Irp);
+		    }
 		    InsertTailList(&IopCleanupIrpList, &Irp->Private.Link);
 		}
 	    }
@@ -2100,17 +2127,24 @@ delete:
 	IopDeleteIrp(Irp);
     }
 
-    /* If there are IRPs requeued (due to them being forwarded to a local
-     * device object), restart the whole process again. */
-    if (!IsListEmpty(&IopIrpQueue)) {
+    /* If there are IRPs requeued (due to them being forwarded to a local device
+     * object) or waitable objects signaled, or work items queued, restart the
+     * whole process again. */
+    BOOLEAN WorkItemsQueued = FALSE;
+    KeAcquireMutex(&IopWorkItemMutex);
+    WorkItemsQueued = !IsListEmpty(&IopWorkItemQueue);
+    KeReleaseMutex(&IopWorkItemMutex);
+
+    if (!IsListEmpty(&IopIrpQueue) || IopHasEnvToWakeUp() || WorkItemsQueued) {
 	goto again;
     }
 
     /* If any of the IRP dispatch routine or work item queued DPC, now
      * is the time to wake up the DPC thread. Note we don't care about
-     * IO work items at this point because they should have all been
-     * processed above. */
+     * IO work items or event objects at this point because they should
+     * have all been processed above. */
     NtCurrentTeb()->Wdm.IoWorkItemQueued = FALSE;
+    NtCurrentTeb()->Wdm.EventSignaled = FALSE;
     IopSignalDpcNotification();
 
     *pNumResponses = ResponseCount;
@@ -2152,82 +2186,54 @@ NTAPI VOID IoCancelIrp(IN PIRP Irp)
 }
 
 /*
- * Forward the IRP to the specified device object for processing.
+ * Forward the IRP to the specified device object for processing. Before
+ * calling this routine, the caller must set up the next IO stack location
+ * appropriately, by calling either IoSkipCurrentIrpStackLocation or by
+ * calling IoCopyCurrentIrpStackLocationToNext.
  *
- * If the IRP has a user IO status block, IoCallDriverEx will forward the
- * IRP to the driver object corresponding to the device object and then
- * yield the current coroutine and return to the main event loop thread.
- * The suspended coroutine will resume once the IRP is completed, or if the
- * specified non-zero timeout is lapsed. The status returned is the final IO
- * status of the IRP, or STATUS_TIMEOUT if the timeout is lapsed before the
- * lower-level driver has responded. A NULL Timeout or a zero timeout (ie.
- * Timeout is not NULL and *Timeout equals zero) is ignored. We call this
- * synchronous IRP forwarding.
- *
- * If no user IO status block is specified, the behavior of this routine is
- * determined by the Timeout parameter. If the *Timeout is zero (ie. Timeout
- * is not NULL and *Timeout equals zero), the routine forwards the IRP and
- * returns immediately with STATUS_IRP_FORWARDED. We call this asynchronous
- * IRP forwarding. If no IO completion routine is specified, the IRP object
- * is deleted immediately after it has been forwarded. If an IO completion
- * routine is specified, the IRP is saved to a pending IRP queue and will be
- * processed once the server has informed us of its completion, by which time
- * its IO completion routine will be invoke. On the other hand, if Timeout
- * is NULL, or if *Timeout is not zero, the IRP is forwarded synchronously
- * just like the case of having a user IO status block. If an IO completion
- * routine is specified in this case, it will be invoked as soon as the
- * coroutine is resumed.
+ * If no IO completion routine is specified, the IRP object is deleted
+ * immediately after it has been forwarded. If an IO completion routine is
+ * specified, the IRP is saved to a pending IRP queue and will be processed
+ * once the server has informed us of its completion, by which time its IO
+ * completion routine will be invoke.
  *
  * A special case is when DeviceObject refers to a device object created by
  * the driver itself. In this case the dispatch routine is not sent to the
- * server and processed locally. Note that since our IRP stack has exacly one
- * stack location there can only be one IO completion routine (the top-level
- * one) for each IRP.
- *
- *
- * Microsoft discourages higher-level drivers from having a StartIO routine,
- * let alone calling lower-level drivers in a StartIO routines [1] on Windows.
- * On Neptune OS, doing so is also discouraged, although it is nonetheless
- * possible, if you forward the IRP asynchronously.
+ * server and processed locally. A additional requirement in this case is
+ * that the IO transfer type of the target device match that of the source
+ * device.
  *
  * This routine must be called at PASSIVE_LEVEL.
  */
-NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
-			      IN OUT PIRP Irp,
-			      IN PLARGE_INTEGER Timeout)
+NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
+			      IN OUT PIRP Irp)
 {
     PAGED_CODE();
 
-    /* TODO: Implement the case with a non-zero timeout. Add a new Timeout
-     * member to the Irp->Private struct and inform the server of the timeout.
-     * We will need to calculate the absolute time if timeout is relative. */
-    assert(Timeout == NULL || Timeout->QuadPart == 0);
     assert(DeviceObject);
-    assert(Irp != NULL);
+    assert(Irp);
+
+    IoSetNextIrpStackLocation(Irp);
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     assert(IoStack->DeviceObject);
 
-    /* Determine whether we should forward the IRP synchronously or asynchronously */
-    BOOLEAN Wait = Irp->UserIosb || !Timeout || Timeout->QuadPart;
-    DbgTrace("Forwarding Irp %p to DeviceObject %p(%p) %ssynchronously\n", Irp,
-	     DeviceObject, (PVOID)IopGetDeviceHandle(DeviceObject),
-	     Wait ? "" : "a");
+    DbgTrace("Forwarding Irp %p to DeviceObject %p(%p)\n", Irp,
+	     DeviceObject, (PVOID)IopGetDeviceHandle(DeviceObject));
     IoDbgDumpIrp(Irp);
-    if (Wait && !KiCurrentCoroutineStackTop) {
-	/* Synchronous IoCallDriver should always be called in a context where
-	 * we are allowed to sleep. Note on release build this leaks the IRP
-	 * as it is never correctly completed and cleaned up, but we don't have
-	 * a lot of options here. */
-	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
+
+    /* If we are forwarding the IRP to a local device object, make sure the IO
+     * transfer type of the target device match that of the source device. */
+    if (IopDeviceObjectIsLocal(DeviceObject)) {
+	assert((IoStack->DeviceObject->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO)) ==
+	       (DeviceObject->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO)));
     }
 
-    /* IRPs can only be forwarded once. Note in the case of forwarding to a local
-     * device object, the ForwardedTo member is cleared when the IRP was moved to
-     * the IRP queue. */
-    assert(!Irp->Private.ForwardedTo);
-    Irp->Private.ForwardedTo = DeviceObject;
+    /* Dereference the device object since we increased its refcount when
+     * putting its pointer into the IO stack location. Note this needs to
+     * be done for both the skip and the copy case. */
     ObReferenceObject(DeviceObject);
+    ObDereferenceObject(IoStack->DeviceObject);
+    IoStack->DeviceObject = DeviceObject;
 
     /* Add the IRP to the ReplyList which we will examine towards the end of
      * the IRP processing. If the IRP is forwarded to a foreign driver, it
@@ -2241,9 +2247,9 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
     InsertTailList(&IopReplyIrpList, &Irp->Private.Link);
 
     /* If we are forwarding the IRP synchronously, or if an IO completion routine
-     * has been set, then we ask the server to notify us so we can either resume
-     * the coroutine or run the IO completion routine. */
-    Irp->Private.NotifyCompletion = (Wait || IoStack->CompletionRoutine != NULL);
+     * has been set, then we ask the server to notify us so we can either signal
+     * the event or run the IO completion routine. */
+    Irp->Private.NotifyCompletion = (Irp->UserEvent || IoStack->CompletionRoutine);
 
     /* If the IRP is locally generated, set its server-side identifier to the
      * local address of the IRP. */
@@ -2262,34 +2268,7 @@ NTAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
 		       &Irp->Private.AssociatedIrp.Link);
     }
 
-    /* If we are not waiting for the completion of the IRP, release the DPC mutex
-     * and return. */
-    if (!Wait) {
-	return STATUS_IRP_FORWARDED;
-    }
-
-    /* Otherwise, we are forwarding the IRP synchronously. We must have a
-     * coroutine stack in this case.  */
-    assert(KiCurrentCoroutineStackTop);
-    /* Record the object associated with the current coroutine stack so we can
-     * wake it up when we receive a IoCompleted message for this IRP. */
-    assert(!IopOldEnvToWakeUp);
-    IopOldEnvToWakeUp = Irp->Private.EnvToWakeUp;
-    Irp->Private.EnvToWakeUp = IopCurrentEnv;
-
-    DbgTrace("Suspending coroutine stack %p\n", KiCurrentCoroutineStackTop);
-    /* Yield the current coroutine to the main thread. The control flow will
-     * return to either KiStartCoroutine or KiResumeCoroutine. */
-    KiYieldCoroutine();
-
-    /* Where the coroutine resumes, this is where the control jumps to. We
-     * restore the EnvToWakeUp member and return the final IO status of the
-     * IRP back to the caller. */
-    Irp->Private.EnvToWakeUp = IopOldEnvToWakeUp;
-    IopOldEnvToWakeUp = NULL;
-    assert(Irp->IoStatus.Status != STATUS_ASYNC_PENDING);
-    assert(Irp->IoStatus.Status != STATUS_PENDING);
-    return Irp->IoStatus.Status;
+    return STATUS_PENDING;
 }
 
 static VOID IopStartNextPacketByKey(IN PDEVICE_OBJECT DeviceObject,

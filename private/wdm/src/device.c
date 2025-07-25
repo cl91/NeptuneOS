@@ -43,8 +43,10 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 					     IN ULONG DevExtSize,
 					     IN IO_DEVICE_INFO DevInfo,
 					     IN GLOBAL_HANDLE DeviceHandle,
+					     IN CHAR StackSize,
 					     IN PDRIVER_OBJECT DriverObject)
 {
+    assert(StackSize > 0);
     ObInitializeObject(DeviceObject, CLIENT_OBJECT_DEVICE, DEVICE_OBJECT);
     DeviceObject->Header.Size += DevExtSize;
     DeviceObject->DriverObject = DriverObject;
@@ -52,6 +54,7 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
     DeviceObject->DeviceType = DevInfo.DeviceType;
     DeviceObject->Flags = DevInfo.Flags;
     DeviceObject->Header.GlobalHandle = DeviceHandle;
+    DeviceObject->StackSize = StackSize;
     assert(IopGetDeviceObject(DeviceHandle) == NULL);
     InsertTailList(&IopDeviceList, &DeviceObject->Private.Link);
 }
@@ -61,7 +64,8 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
  * create the device and return the device object. Return NULL if out of memory.
  */
 PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
-					  IN IO_DEVICE_INFO DevInfo)
+					  IN IO_DEVICE_INFO DevInfo,
+					  IN CHAR StackSize)
 {
     PDEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle);
     if (DeviceObject == NULL) {
@@ -69,9 +73,11 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 	if (DeviceObject == NULL) {
 	    return NULL;
 	}
-	IopInitializeDeviceObject(DeviceObject, 0, DevInfo, DeviceHandle, NULL);
+	IopInitializeDeviceObject(DeviceObject, 0, DevInfo, DeviceHandle, StackSize, NULL);
     } else {
 	ObReferenceObject(DeviceObject);
+	assert(StackSize >= DeviceObject->StackSize);
+	DeviceObject->StackSize = StackSize;
     }
     assert(DeviceObject != NULL);
     return DeviceObject;
@@ -116,8 +122,9 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
     assert(DeviceHandle != 0);
     assert(IopGetDeviceObject(DeviceHandle) == NULL);
 
+    /* Initially the device object will have a device stack size of one. */
     IopInitializeDeviceObject(DeviceObject, DeviceExtensionSize,
-			      DevInfo, DeviceHandle, DriverObject);
+			      DevInfo, DeviceHandle, 1, DriverObject);
     DeviceObject->Flags |= DO_DEVICE_INITIALIZING;
     if (Exclusive) {
 	DeviceObject->Flags |= DO_EXCLUSIVE;
@@ -190,19 +197,22 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
     }
     GLOBAL_HANDLE OldTopHandle = 0;
     IO_DEVICE_INFO DevInfo;
+    ULONG StackSize = 0;
     if (!NT_SUCCESS(WdmAttachDeviceToDeviceStack(SourceHandle, TargetHandle,
-						 &OldTopHandle, &DevInfo))) {
+						 &OldTopHandle, &DevInfo, &StackSize))) {
 	IopFreePool(OldTopDevice);
 	return NULL;
     }
     assert(OldTopHandle != 0);
+    assert(StackSize);
     PDEVICE_OBJECT RetVal = IopGetDeviceObject(OldTopHandle);
     if (RetVal == NULL) {
-	IopInitializeDeviceObject(OldTopDevice, 0, DevInfo, OldTopHandle, NULL);
+	IopInitializeDeviceObject(OldTopDevice, 0, DevInfo, OldTopHandle, StackSize, NULL);
 	RetVal = OldTopDevice;
     } else {
 	IopFreePool(OldTopDevice);
     }
+    SourceDevice->StackSize = StackSize + 1;
     return RetVal;
 }
 
@@ -228,11 +238,12 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject
     }
     GLOBAL_HANDLE TopHandle = 0;
     IO_DEVICE_INFO DevInfo;
-    if (!NT_SUCCESS(WdmGetAttachedDevice(Handle, &TopHandle, &DevInfo))) {
+    ULONG StackSize = 0;
+    if (!NT_SUCCESS(WdmGetAttachedDevice(Handle, &TopHandle, &DevInfo, &StackSize))) {
 	return NULL;
     }
     assert(TopHandle != 0);
-    return IopGetDeviceObjectOrCreate(TopHandle, DevInfo);
+    return IopGetDeviceObjectOrCreate(TopHandle, DevInfo, StackSize);
 }
 
 /*

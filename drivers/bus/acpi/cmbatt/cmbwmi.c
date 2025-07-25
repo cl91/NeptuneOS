@@ -159,6 +159,7 @@ NTAPI NTSTATUS CmBattSystemControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	/* Forward it to ACPI */
 	if (CmBattDebug & 2)
 	    DbgPrint("CmBatt: SystemControl: Irp Forward.\n");
+	IoSkipCurrentIrpStackLocation(Irp);
 	Status = IoCallDriver(DeviceExtension->AttachedDevice, Irp);
 	break;
 

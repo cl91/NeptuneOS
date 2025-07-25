@@ -20,13 +20,6 @@ FORCEINLINE VOID PAGED_CODE()
 }
 
 /*
- * Returned by IoCallDriver to indicate that the IRP has been
- * forwarded to the lower-level drivers and will be deallocated
- * in the current driver.
- */
-#define STATUS_IRP_FORWARDED		STATUS_PENDING
-
-/*
  * Returned by IO completion routines to indicate that the system
  * should continue to execute the higher-level completion routines.
  *
@@ -78,6 +71,7 @@ typedef enum _IO_COMPLETION_ROUTINE_RESULT {
 /* IO_STACK_LOCATION.Control */
 #define SL_PENDING_RETURNED               0x01
 #define SL_ERROR_RETURNED                 0x02
+#define SL_COMPLETION_STOPPED             0x04
 #define SL_INVOKE_ON_CANCEL               0x20
 #define SL_INVOKE_ON_SUCCESS              0x40
 #define SL_INVOKE_ON_ERROR                0x80
@@ -228,11 +222,106 @@ typedef struct _OBJECT_HEADER {
     UCHAR Flags;
     USHORT Size;
     LONG RefCount;
-    union {
-	ULONG_PTR GlobalHandle;   /* Unique handle supplied by the server */
-	HANDLE Handle;		  /* Regular NT handle */
-    };
+    ULONG_PTR GlobalHandle;   /* Unique handle supplied by the server */
 } OBJECT_HEADER, *POBJECT_HEADER;
+
+/*
+ * Header for the waitable objects, such as KTIMER and KEVENT. These
+ * are called dispatcher objects in NT terminology, and there is an
+ * NT Executive server-side structure called DISPATCHER_HEADER that
+ * represents waitable objects on the server. However we avoid using
+ * this name on the driver side due to potential confusion with the
+ * dispatch routines of IRPs (dispatcher objects have nothing to do
+ * with dispatch routines of IRPs). The waitable objects on the driver
+ * side may or may not have a corresponding server-side object (KTIMER
+ * does have a server-side object, but KEVENT does not).
+ */
+typedef struct _WAITABLE_OBJECT_HEADER {
+    OBJECT_HEADER Header;
+    LIST_ENTRY QueueListEntry;
+    LIST_ENTRY EnvList;	/* List of execution environments suspended on the object */
+    EVENT_TYPE Type;
+    BOOLEAN Signaled;
+} WAITABLE_OBJECT_HEADER, *PWAITABLE_OBJECT_HEADER;
+
+/*
+ * EVENT object.
+ */
+typedef struct _KEVENT {
+    WAITABLE_OBJECT_HEADER Header; /* Must be first member */
+} KEVENT, *PKEVENT;
+
+NTAPI NTSYSAPI VOID KeInitializeEvent(OUT PKEVENT Event,
+				      IN EVENT_TYPE Type,
+				      IN BOOLEAN InitialState);
+
+NTAPI NTSYSAPI LONG KeSetEvent(IN PKEVENT Event);
+
+NTAPI NTSYSAPI LONG KeResetEvent(IN PKEVENT Event);
+
+NTAPI NTSYSAPI VOID KeClearEvent(IN PKEVENT Event);
+
+/*
+ * Specify the reason for the wait in KeWaitForSingleObject.
+ */
+typedef enum _KWAIT_REASON {
+    Executive,
+    FreePage,
+    PageIn,
+    PoolAllocation,
+    DelayExecution,
+    Suspended,
+    UserRequest,
+    WrExecutive,
+    WrFreePage,
+    WrPageIn,
+    WrPoolAllocation,
+    WrDelayExecution,
+    WrSuspended,
+    WrUserRequest,
+    WrEventPair,
+    WrQueue,
+    WrLpcReceive,
+    WrLpcReply,
+    WrVirtualMemory,
+    WrPageOut,
+    WrRendezvous,
+    WrKeyedEvent,
+    WrTerminated,
+    WrProcessInSwap,
+    WrCpuRateControl,
+    WrCalloutStack,
+    WrKernel,
+    WrResource,
+    WrPushLock,
+    WrMutex,
+    WrQuantumEnd,
+    WrDispatchInt,
+    WrPreempted,
+    WrYieldExecution,
+    WrFastMutex,
+    WrGuardedMutex,
+    WrRundown,
+    MaximumWaitReason
+} KWAIT_REASON;
+
+/*
+ * Processor Execution Modes. This is only used by KeWaitForSingleObject
+ * in order to remain compatible with NTDDK API, and does not refer to the
+ * actual processor mode in which the drivers run (the drivers always run
+ * in user mode).
+ */
+typedef enum _KPROCESSOR_MODE {
+    KernelMode,
+    UserMode,
+    MaximumMode
+} KPROCESSOR_MODE;
+
+NTAPI NTSYSAPI NTSTATUS KeWaitForSingleObject(IN PVOID Object,
+					      IN KWAIT_REASON WaitReason,
+					      IN KPROCESSOR_MODE WaitMode,
+					      IN BOOLEAN Alertable,
+					      IN PLARGE_INTEGER Timeout);
 
 /*
  * File Object
@@ -297,7 +386,9 @@ NTAPI NTSYSAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 /*
  * DPC routines run in a dedicated DPC thread (which is scheduled with priority
  * DISPATCH_LEVEL). If a data structure is modified by both DPC routines and
- * regular IRP dispatch routines, you must protect it with the DPC mutex.
+ * regular IRP dispatch routines, you must protect it with the DPC mutex. Note
+ * since many routines that can be called at DISPATCH level or above will acquire
+ * the DPC mutex, you must release the DPC mutex before calling them.
  */
 NTSYSAPI VOID IoAcquireDpcMutex();
 NTSYSAPI VOID IoReleaseDpcMutex();
@@ -394,6 +485,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     KDPC Dpc;
     PSECURITY_DESCRIPTOR SecurityDescriptor;
     USHORT SectorSize;
+    CCHAR StackSize;
     ULONG PowerFlags;
     ULONG ExtensionFlags;
     LONG StartIoCount;
@@ -426,7 +518,9 @@ typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
 typedef DRIVER_CANCEL *PDRIVER_CANCEL;
 
 /*
- * Client (ie. driver) side data structure for the IO request packet.
+ * Client (ie. driver) side data structure for the IO request packet. This
+ * structure defines the header of the IO request packet. It is followed by
+ * one or more IO stack locations.
  */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     SHORT Type;
@@ -446,21 +540,38 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     IO_STATUS_BLOCK IoStatus;
 
     /* IO status block supplied by the client driver that will be populated
-     * once the IRP has been completed. This makes the IRP synchronous. */
+     * once the IRP has been completed. */
     PIO_STATUS_BLOCK UserIosb;
+
+    /* Event object which will be signaled when the IRP is completed. */
+    PKEVENT UserEvent;
+
+    /* The priority boost that is to be added to the thread which
+     * originally initiated this IO request when the IRP is completed */
+    CHAR PriorityBoost;
+
+    /* Total number of IO stack locations. Must be greater than zero. */
+    CHAR StackCount;
+
+    /* Current IO stack location. The stack grows downward (ie. toward lower
+     * memory address). The stack top is at (StackCount + 1) which points to
+     * the stack location immediately after the stack space. The stack location
+     * for the highest-level driver has CurrentLocation == StackCount which
+     * points to the stack location immediately below the stack top. As the
+     * IRP is passed on to lower drivers, CurrentLocation decreases. The lowest-
+     * level driver has CurrentLocation == 1 which points to the stack location
+     * immediately after the IRP header. A newly allocation IRP has CurrentLocation
+     * pointing to the stack top, indicating that its IO stack is empty. */
+    CHAR CurrentLocation;
+
+    /* Indicates that this IRP has been completed */
+    BOOLEAN Completed;
 
     /* Indicates whether this IRP has been canceled */
     BOOLEAN Cancel;
 
     /* Cancel routine to call when canceling this IRP */
     PDRIVER_CANCEL CancelRoutine;
-
-    /* Indicates that this IRP has been completed */
-    BOOLEAN Completed;
-
-    /* The priority boost that is to be added to the thread which
-     * originally initiated this IO request when the IRP is completed */
-    CHAR PriorityBoost;
 
     /* User buffer for NEITHER_IO */
     PVOID UserBuffer;
@@ -478,11 +589,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 			     * process, mapped here */
 	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList,
 			     * CleanupIrpList, and ReplyIrpList */
-	PDEVICE_OBJECT ForwardedTo; /* Device object that the IRP is
-				     * being forwarded to */
-	PVOID ExecEnv; /* Execution environment associated with this IRP */
-	PVOID EnvToWakeUp; /* Execution environment to wake up when this IRP
-			    * is completed. */
 	union {
 	    LIST_ENTRY PendingList; /* For master IRP, this is the list of
 				     * all pending assoicated IRPs. */
@@ -523,7 +629,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	/* The following member is used by the network packet filter
 	 * to queue IRP to an I/O completion queue. */
 	ULONG PacketType;
-	PFILE_OBJECT OriginalFileObject;
     } Tail;
 } IRP, *PIRP;
 
@@ -835,104 +940,115 @@ typedef struct _IO_STACK_LOCATION {
     PVOID Context; /* Driver-defined context for the IO Completion routine */
 } IO_STACK_LOCATION, *PIO_STACK_LOCATION;
 
-#define IO_SIZE_OF_IRP	(sizeof(IRP) + sizeof(IO_STACK_LOCATION))
-
 /*
  * Returns the full size of an IRP object including the header and the
  * IO stack location.
  */
-DEPRECATED("IRPs always have exactly one stack location. Use IO_SIZE_OF_IRP instead.")
 FORCEINLINE NTAPI USHORT IoSizeOfIrp(IN CCHAR StackSize)
 {
-    return IO_SIZE_OF_IRP;
+    return sizeof(IRP) + sizeof(IO_STACK_LOCATION) * StackSize;
 }
 
 /*
  * Note: The Irp object must be zeroed before calling this function.
- *
- * Porting guide: IRPs always have exactly one stack location, so remove
- * the PacketSize and StackSize argument if you are porting from ReactOS.
  */
-FORCEINLINE NTAPI VOID IoInitializeIrp(IN PIRP Irp)
+FORCEINLINE NTAPI VOID IoInitializeIrp(IN PIRP Irp,
+				       IN USHORT PacketSize,
+				       IN CCHAR StackSize)
 {
+    assert(StackSize > 0);
+    assert(PacketSize >= IoSizeOfIrp(StackSize));
     /* Set the Header and other data */
     Irp->Type = IO_TYPE_IRP;
-    Irp->Size = IO_SIZE_OF_IRP;
+    Irp->Size = PacketSize;
+    Irp->StackCount = StackSize;
+    /* CurrentLocation points to the top of the IO stack, ie. immediately
+     * after the IO stack space, indicating that the IO stack is empty. */
+    Irp->CurrentLocation = StackSize + 1;
     InitializeListHead(&Irp->Private.AssociatedIrp.PendingList);
 }
 
 /*
- * Porting guide: IRPs always have exactly one stack location, and we don't
- * have "pool memory" since we are running in userspace, so remove the
- * StackSize and ChargeQuota argument if you are porting from ReactOS.
+ * Porting guide: remove the second parameter (ChargeQuota). In Windows this
+ * parameter is used to determine whether IRP allocation should charge quota
+ * against the process initiating the IO. This only makes sense if drivers
+ * are running in kernel mode, so we have removed this parameter.
  */
-FORCEINLINE NTAPI PIRP IoAllocateIrp()
+FORCEINLINE NTAPI PIRP IoAllocateIrp(IN CCHAR StackSize)
 {
-    PIRP Irp = (PIRP)ExAllocatePool(IO_SIZE_OF_IRP);
-    if (Irp == NULL) {
+    assert(StackSize > 0);
+    PIRP Irp = (PIRP)ExAllocatePool(IoSizeOfIrp(StackSize));
+    if (!Irp) {
 	return NULL;
     }
-    IoInitializeIrp(Irp);
+    IoInitializeIrp(Irp, IoSizeOfIrp(StackSize), StackSize);
     return Irp;
 }
 
+NTAPI NTSYSAPI VOID IoFreeIrp(IN PIRP Irp);
+
 /*
- * Returns the current (and only) IO stack location pointer. The (only)
- * IO stack location follows immediately after the IRP header.
+ * Returns the current IO stack location pointer.
  */
 FORCEINLINE NTAPI PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(IN PIRP Irp)
 {
-    return (PIO_STACK_LOCATION)(Irp + 1);
-}
-
-FORCEINLINE NTAPI VOID IoFreeIrp(IN PIRP Irp)
-{
-    PMDL Mdl = Irp->MdlAddress;
-    while (Mdl) {
-	PMDL Next = Mdl->Next;
-	ExFreePool(Mdl);
-	Mdl = Next;
-    }
-    if (Irp->Private.ForwardedTo) {
-	ObDereferenceObject(Irp->Private.ForwardedTo);
-    }
-    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    if (IoStack->DeviceObject) {
-	ObDereferenceObject(IoStack->DeviceObject);
-    }
-    if (IoStack->FileObject) {
-	ObDereferenceObject(IoStack->FileObject);
-    }
-#if DBG
-    RtlZeroMemory(Irp, IO_SIZE_OF_IRP);
-#endif
-    ExFreePool(Irp);
+    assert(Irp->CurrentLocation >= 1);
+    assert(Irp->CurrentLocation <= Irp->StackCount + 1);
+    return (PIO_STACK_LOCATION)(Irp + 1) + Irp->CurrentLocation - 1;
 }
 
 /*
- * IO stack location manipulation routines. These are all deprecated and
- * are effectively no-op since our IRPs always have exactly one stack location.
+ * Skip the current IO stack location, ie. set the current IO stack
+ * location to point to the one for the immediate higher-level driver.
  */
-DEPRECATED("IRPs always have exactly one stack location. Remove this.")
 FORCEINLINE NTAPI VOID IoSkipCurrentIrpStackLocation(IN OUT PIRP Irp)
 {
+    assert(Irp->CurrentLocation >= 1);
+    assert(Irp->CurrentLocation <= Irp->StackCount);
+    Irp->CurrentLocation++;
 }
 
-DEPRECATED("IRPs always have exactly one stack location. Remove this.")
-FORCEINLINE NTAPI VOID IoCopyCurrentIrpStackLocationToNext(IN OUT PIRP Irp)
-{
-}
-
-DEPRECATED("IRPs always have exactly one stack location. Remove this")
+/*
+ * Set the IO stack location to point to the one immediately below the
+ * current IO stack location.
+ */
 FORCEINLINE NTAPI VOID IoSetNextIrpStackLocation(IN OUT PIRP Irp)
 {
+    assert(Irp->CurrentLocation >= 2);
+    assert(Irp->CurrentLocation <= Irp->StackCount + 1);
+    Irp->CurrentLocation--;
 }
 
-DEPRECATED_BY("IRPs always have exactly one stack location.",
-	      IoGetCurrentIrpStackLocation)
+/*
+ * Returns the IO stack location immediately below the current IO stack
+ * location.
+ */
 FORCEINLINE NTAPI PIO_STACK_LOCATION IoGetNextIrpStackLocation(IN PIRP Irp)
 {
-    return IoGetCurrentIrpStackLocation(Irp);
+    assert(Irp->CurrentLocation >= 2);
+    assert(Irp->CurrentLocation <= Irp->StackCount + 1);
+    return IoGetCurrentIrpStackLocation(Irp) - 1;
+}
+
+/*
+ * Copy the content in the current IO stack location to the next, ie. the
+ * one for the lower-level driver immediately below the current driver.
+ */
+FORCEINLINE NTAPI VOID IoCopyCurrentIrpStackLocationToNext(IN OUT PIRP Irp)
+{
+    assert(Irp->CurrentLocation >= 2);
+    assert(Irp->CurrentLocation <= Irp->StackCount);
+    PIO_STACK_LOCATION Current = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION Next = IoGetNextIrpStackLocation(Irp);
+    RtlCopyMemory(Next, Current, sizeof(IO_STACK_LOCATION));
+    Next->CompletionRoutine = NULL;
+    Next->Control = 0;
+    if (Next->DeviceObject) {
+	ObReferenceObject(Next->DeviceObject);
+    }
+    if (Next->FileObject) {
+	ObReferenceObject(Next->FileObject);
+    }
 }
 
 /*
@@ -1035,13 +1151,11 @@ NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
  * include files under public/ddk.
  */
 typedef struct _KTIMER {
-    OBJECT_HEADER Header;	/* Must be first member. */
-    LIST_ENTRY TimerListEntry;
+    WAITABLE_OBJECT_HEADER Header;	/* Must be first member. */
     PKDPC Dpc;
     ULONGLONG AbsoluteDueTime;
     LONG Period;
-    BOOLEAN State;		/* TRUE if the timer is set. */
-    BOOLEAN Canceled;
+    BOOLEAN State;
 } KTIMER, *PKTIMER;
 
 /*
@@ -1053,16 +1167,7 @@ NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 				  IN LARGE_INTEGER DueTime,
 				  IN OPTIONAL PKDPC Dpc);
 
-/* TODO: Inform the server to actually cancel the timer */
-FORCEINLINE NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
-{
-    BOOLEAN PreviousState = Timer->State;
-    /* Mark the timer as canceled. The driver process will
-     * later inform the server about timer cancellation. */
-    Timer->Canceled = TRUE;
-    Timer->State = FALSE;
-    return PreviousState;
-}
+NTAPI NTSYSAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer);
 
 /*
  * System time and interrupt time routines
@@ -1078,37 +1183,6 @@ NTAPI NTSYSAPI ULONG KeQueryTimeIncrement(VOID);
  * without involving the scheduler, for instance, in an interrupt service routine.
  */
 NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
-
-/*
- * EVENT object.
- */
-typedef struct _KEVENT {
-    OBJECT_HEADER Header;	/* Must be first member */
-    LIST_ENTRY EventListEntry;
-    EVENT_TYPE Type;
-    BOOLEAN State;
-} KEVENT, *PKEVENT;
-
-NTAPI NTSYSAPI VOID KeInitializeEvent(OUT PKEVENT Event,
-				      IN EVENT_TYPE Type,
-				      IN BOOLEAN InitialState);
-
-NTAPI NTSYSAPI LONG KeSetEvent(IN PKEVENT Event);
-
-NTAPI NTSYSAPI LONG KeResetEvent(IN PKEVENT Event);
-
-NTAPI NTSYSAPI VOID KeClearEvent(IN PKEVENT Event);
-
-/* As should be apparent from the code below, the only objects
- * waitable are those that has OBJECT_HEADER as the first member and
- * OBJ_WAITABLE_OBJECT set. These include KTIMER, KEVENT, etc. */
-#define OBJ_WAITABLE_OBJECT	(1)
-#define KeWaitForSingleObject(obj, _1, _2, alert, timeout)	\
-    ({								\
-	POBJECT_HEADER Header = &(obj)->Header;			\
-	assert(Header->Flags & OBJ_WAITABLE_OBJECT);		\
-	NtWaitForSingleObject(Header->Handle, alert, timeout);	\
-    })
 
 /*
  * Set the IO cancel routine of the given IRP, returning the previous one.
@@ -1231,53 +1305,34 @@ NTAPI NTSYSAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 						  IN PVOID OutputBuffer,
 						  IN ULONG OutputBufferLength,
 						  IN BOOLEAN InternalDeviceIoControl,
-						  IN PIO_STATUS_BLOCK IoStatusBlock);
+						  IN OPTIONAL PKEVENT Event,
+						  IN OPTIONAL PIO_STATUS_BLOCK IoStatusBlock);
 
 NTAPI NTSYSAPI PIRP IoBuildAsynchronousFsdRequest(IN ULONG MajorFunction,
 						  IN PDEVICE_OBJECT DeviceObject,
 						  IN PVOID Buffer,
 						  IN ULONG Length,
-						  IN PLARGE_INTEGER StartingOffset);
+						  IN PLARGE_INTEGER StartingOffset,
+						  IN OPTIONAL PIO_STATUS_BLOCK IoStatusBlock);
 
 NTAPI NTSYSAPI PIRP IoBuildSynchronousFsdRequest(IN ULONG MajorFunction,
 						 IN PDEVICE_OBJECT DeviceObject,
 						 IN PVOID Buffer,
 						 IN ULONG Length,
 						 IN PLARGE_INTEGER StartingOffset,
+						 IN PKEVENT Event,
 						 IN PIO_STATUS_BLOCK IoStatusBlock);
 
-/*
- * See private/wdm/src/irp.c for documentation.
- */
-NTAPI NTSYSAPI NTSTATUS IoCallDriverEx(IN PDEVICE_OBJECT DeviceObject,
-				       IN OUT PIRP Irp,
-				       IN PLARGE_INTEGER Timeout);
-
-/*
- * Forward the specified IRP to the specified device and return immediately,
- * with STATUS_IRP_FORWARDED, unless the IRP has supplied a UserIosb,
- * in which case the current coroutine is suspended and waits for the
- * completion of the IRP.
- */
-FORCEINLINE NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
-					IN OUT PIRP Irp)
-{
-    LARGE_INTEGER Timeout = { .QuadPart = 0 };
-    return IoCallDriverEx(DeviceObject, Irp, &Timeout);
-}
+NTAPI NTSYSAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
+				     IN OUT PIRP Irp);
 
 /*
  * @implemented
  *
  * Forward the IRP to the device object and wait for its completion.
  */
-FORCEINLINE NTAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
-						    IN PIRP Irp)
-{
-    UNUSED NTSTATUS Status = IoCallDriverEx(DeviceObject, Irp, NULL);
-    assert(Status == Irp->IoStatus.Status);
-    return TRUE;
-}
+NTAPI NTSYSAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
+						 IN PIRP Irp);
 
 /*
  * This was needed by the power manager in Windows XP/ReactOS and is
@@ -1626,7 +1681,10 @@ FORCEINLINE VOID IoSetCompletionRoutine(IN PIRP Irp,
     if (InvokeOnSuccess || InvokeOnError || InvokeOnCancel) {
 	ASSERT(CompletionRoutine);
     }
-    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    if (Irp->CurrentLocation <= Irp->StackCount) {
+	IoGetCurrentIrpStackLocation(Irp)->Control &= ~SL_COMPLETION_STOPPED;
+    }
+    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
     IoStack->CompletionRoutine = CompletionRoutine;
     IoStack->Context = Context;
     IoStack->Control = 0;
