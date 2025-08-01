@@ -235,7 +235,7 @@ retry:
     }
 
     if (HighZeroBits) {
-	MWORD MaxAddr = 1 << (MWORD_BITS - HighZeroBits);
+	MWORD MaxAddr = 1ULL << (MWORD_BITS - HighZeroBits);
 	if (EndAddr > MaxAddr) {
 	    EndAddr = MaxAddr;
 	}
@@ -877,7 +877,7 @@ VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
 	}
     }
     if (!MiPagingTypeIsPageOrLargePage(Page->Type)) {
-	if (Page->AvlNode.Key == StartAddr) {
+	if (Page->AvlNode.Key >= StartAddr) {
 	    /* If Page is an empty paging structure, this is a no-op. */
 	    Page = MiGetFirstPage(Page);
 	} else {
