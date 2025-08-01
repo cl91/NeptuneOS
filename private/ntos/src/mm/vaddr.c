@@ -270,10 +270,12 @@ retry:
 	    MWORD CurrentAddr = EndAddr - WindowSize;
 	    CurrentAddr = ALIGN_DOWN_BY(CurrentAddr, Alignment);
 	    if (Parent->AvlNode.Key + Parent->WindowSize <= CurrentAddr) {
+		/* There is enough space between Parent and EndAddr. Insert
+		 * after Parent. */
+		VirtAddr = CurrentAddr;
 		goto insert;
 	    } else {
-		/* Else, retreat to the address immediately before Parent,
-		 * unless EndAddr is already smaller than start of Parent */
+		/* Else, retreat to the address immediately before Parent. */
 		VirtAddr = Parent->AvlNode.Key;
 	    }
 	}
@@ -362,6 +364,8 @@ retry:
     return STATUS_CONFLICTING_ADDRESSES;
 
 insert:
+    assert(VirtAddr >= StartAddr);
+    assert(VirtAddr + WindowSize <= EndAddr);
     MiAllocatePool(Vad, MMVAD);
     MWORD *Bitmap = NULL;
     if ((Flags & MEM_RESERVE_BITMAP_MANAGED) && !(Flags & MEM_RESERVE_NO_INSERT)) {
