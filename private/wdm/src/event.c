@@ -28,7 +28,7 @@ BOOLEAN KiSignalWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
 			       IN BOOLEAN AcquireLock)
 {
     if (AcquireLock) {
-	IoAcquireDpcMutex();
+	IopAcquireDpcMutex();
     }
     BOOLEAN PreviousState = Object->Signaled;
     if (PreviousState) {
@@ -39,7 +39,7 @@ BOOLEAN KiSignalWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
     InsertTailList(&IopSignaledObjectList, &Object->QueueListEntry);
 out:
     if (AcquireLock) {
-	IoReleaseDpcMutex();
+	IopReleaseDpcMutex();
     }
     NtCurrentTeb()->Wdm.EventSignaled = TRUE;
     return PreviousState;
@@ -49,7 +49,7 @@ BOOLEAN KiCancelWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
 			       IN BOOLEAN AcquireLock)
 {
     if (AcquireLock) {
-	IoAcquireDpcMutex();
+	IopAcquireDpcMutex();
     }
     LONG PreviousState = Object->Signaled;
     if (!PreviousState) {
@@ -60,7 +60,7 @@ BOOLEAN KiCancelWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
     RemoveEntryList(&Object->QueueListEntry);
 out:
     if (AcquireLock) {
-	IoReleaseDpcMutex();
+	IopReleaseDpcMutex();
     }
     return PreviousState;
 }

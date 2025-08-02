@@ -1778,7 +1778,7 @@ static VOID IopProcessIrpQueue()
 
 static VOID IopProcessSignaledObjectList()
 {
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
 	BOOLEAN HasEnvToWakeUp = !IsListEmpty(&Object->EnvList);
 	LoopOverList(Env, &Object->EnvList, IOP_EXEC_ENV, EventLink) {
@@ -1804,19 +1804,19 @@ static VOID IopProcessSignaledObjectList()
 	    assert(Object->Signaled);
 	}
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
 }
 
 static BOOLEAN IopHasEnvToWakeUp()
 {
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
 	if (!IsListEmpty(&Object->EnvList)) {
-	    IoReleaseDpcMutex();
+	    IopReleaseDpcMutex();
 	    return TRUE;
 	}
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return FALSE;
 }
 
@@ -1879,13 +1879,13 @@ static VOID IopExecuteCoroutines()
 	    /* Make sure we (or the driver author) did not accidentally leave a KEVENT
 	     * that was allocated on the coroutine stack in the signaled object list. */
 #if DBG
-	    IoAcquireDpcMutex();
+	    IopAcquireDpcMutex();
 	    LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
 		assert(!((ULONG_PTR)Object < (ULONG_PTR)Env->CoroutineStackTop &&
 			 (ULONG_PTR)Object >= (ULONG_PTR)Env->CoroutineStackTop -
 			 DRIVER_COROUTINE_STACK_COMMIT));
 	    }
-	    IoReleaseDpcMutex();
+	    IopReleaseDpcMutex();
 #endif
 	    ExFreePool(Env);
 	}

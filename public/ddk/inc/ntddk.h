@@ -384,16 +384,6 @@ NTAPI NTSYSAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 					IN PVOID SystemArgument2);
 
 /*
- * DPC routines run in a dedicated DPC thread (which is scheduled with priority
- * DISPATCH_LEVEL). If a data structure is modified by both DPC routines and
- * regular IRP dispatch routines, you must protect it with the DPC mutex. Note
- * since many routines that can be called at DISPATCH level or above will acquire
- * the DPC mutex, you must release the DPC mutex before calling them.
- */
-NTSYSAPI VOID IoAcquireDpcMutex();
-NTSYSAPI VOID IoReleaseDpcMutex();
-
-/*
  * Device queue. Used for queuing an IRP for serialized IO processing
  */
 typedef struct _KDEVICE_QUEUE {
@@ -449,25 +439,8 @@ FORCEINLINE NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueueIfBusy(IN PKDEVIC
     return KeRemoveByKeyDeviceQueue(Queue, SortKey);
 }
 
-/*
- * Removes the specified entry from the queue, returning TRUE.
- * If the entry is not inserted, nothing is done and we return FALSE.
- */
-FORCEINLINE NTAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
-						   IN PKDEVICE_QUEUE_ENTRY Entry)
-{
-    assert(Queue != NULL);
-    assert(Queue->Busy);
-    IoAcquireDpcMutex();
-    if (Entry->Inserted) {
-        Entry->Inserted = FALSE;
-        RemoveEntryList(&Entry->DeviceListEntry);
-	IoReleaseDpcMutex();
-	return TRUE;
-    }
-    IoReleaseDpcMutex();
-    return FALSE;
-}
+NTAPI NTSYSAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
+						IN PKDEVICE_QUEUE_ENTRY Entry);
 
 /*
  * Device object.

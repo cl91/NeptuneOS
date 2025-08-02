@@ -39,8 +39,8 @@ NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
  */
 VOID IopProcessTimerList()
 {
-    /* Acquire the DPC mutex because IopTimerList may be modified by KiInitializeTimer. */
-    IoAcquireDpcMutex();
+    /* Acquire the DPC mutex because IopPendingTimerList may be modified by KeSetTimer. */
+    IopAcquireDpcMutex();
     LoopOverList(Timer, &IopPendingTimerList, KTIMER, Header.QueueListEntry) {
 	/* If the timer is in the pending timer list, it must have been set. */
 	assert(Timer->State);
@@ -54,16 +54,16 @@ VOID IopProcessTimerList()
 	    if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
 		/* DPC routines are called with the DPC mutex released (since it
 		 * may call functions that try to acquire the DPC mutex). */
-		IoReleaseDpcMutex();
+		IopReleaseDpcMutex();
 		Timer->Dpc->DeferredRoutine(Timer->Dpc,
 					    Timer->Dpc->DeferredContext,
 					    Timer->Dpc->SystemArgument1,
 					    Timer->Dpc->SystemArgument2);
-		IoAcquireDpcMutex();
+		IopAcquireDpcMutex();
 	    }
 	}
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
 }
 
 /*
@@ -94,7 +94,7 @@ NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
     Timer->Dpc = Dpc;
     Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
     Timer->Period = Period;
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     /* If the timer has expired (but hasn't been processed by the main event loop), we
      * need to remove it from the signaled object list. */
     if (Timer->Header.Signaled) {
@@ -108,13 +108,13 @@ NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
 	assert(!ListHasEntry(&IopPendingTimerList, &Timer->Header.QueueListEntry));
 	InsertHeadList(&IopPendingTimerList, &Timer->Header.QueueListEntry);
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return PreviousState;
 }
 
 NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 {
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     /* If the timer has been signaled (but the main event loop has not processed
      * it), remove the timer from the waitable object list. */
     if (Timer->Header.Signaled) {
@@ -129,7 +129,7 @@ NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 	RemoveEntryList(&Timer->Header.QueueListEntry);
 	Timer->State = FALSE;
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return PreviousState;
 }
 

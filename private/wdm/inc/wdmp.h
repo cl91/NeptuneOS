@@ -243,6 +243,8 @@ extern LIST_ENTRY IopDpcQueue;
 extern KMUTEX IopDpcMutex;
 VOID IopSignalDpcNotification();
 VOID IopInitializeDpcThread();
+VOID IopAcquireDpcMutex();
+VOID IopReleaseDpcMutex();
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;

@@ -1032,7 +1032,7 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
     assert(!NtCurrentTeb()->Wdm.IsIsrThread);
     assert(Queue != NULL);
     assert(Entry != NULL);
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     if (!Queue->Busy) {
         Entry->Inserted = FALSE;
         Queue->Busy = TRUE;
@@ -1040,7 +1040,7 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
         Entry->Inserted = TRUE;
         InsertTailList(&Queue->DeviceListHead, &Entry->DeviceListEntry);
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return Entry->Inserted;
 }
 
@@ -1064,7 +1064,7 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
     assert(Entry != NULL);
     Entry->SortKey = SortKey;
 
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     if (!Queue->Busy) {
         Entry->Inserted = FALSE;
         Queue->Busy = TRUE;
@@ -1093,7 +1093,7 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
         InsertTailList(NextEntry, &Entry->DeviceListEntry);
         Entry->Inserted = TRUE;
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return Entry->Inserted;
 }
 
@@ -1111,7 +1111,7 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
 
     assert(Queue != NULL);
     assert(Queue->Busy);
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
 
     /* Check if this is an empty queue */
     if (IsListEmpty(&Queue->DeviceListHead)) {
@@ -1123,7 +1123,7 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
         Entry = CONTAINING_RECORD(ListEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
         Entry->Inserted = FALSE;
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return Entry;
 }
 
@@ -1147,7 +1147,7 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
 
     assert(Queue != NULL);
     assert(Queue->Busy);
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
 
     /* Check if this is an empty queue */
     if (IsListEmpty(&Queue->DeviceListHead)) {
@@ -1177,6 +1177,26 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
         RemoveEntryList(&Entry->DeviceListEntry);
         Entry->Inserted = FALSE;
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return Entry;
+}
+
+/*
+ * Removes the specified entry from the queue, returning TRUE.
+ * If the entry is not inserted, nothing is done and we return FALSE.
+ */
+NTAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
+				       IN PKDEVICE_QUEUE_ENTRY Entry)
+{
+    assert(Queue != NULL);
+    assert(Queue->Busy);
+    IopAcquireDpcMutex();
+    if (Entry->Inserted) {
+        Entry->Inserted = FALSE;
+        RemoveEntryList(&Entry->DeviceListEntry);
+	IopReleaseDpcMutex();
+	return TRUE;
+    }
+    IopReleaseDpcMutex();
+    return FALSE;
 }

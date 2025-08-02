@@ -6,14 +6,15 @@ LIST_ENTRY IopDpcQueue;
 static ULONG_PTR IopDpcNotificationCap;
 static ULONG_PTR IopDpcThreadWdmServiceCap;
 static HANDLE IopDpcThreadHandle;
+/* Protects the pending timer list and signaled object list. */
 KMUTEX IopDpcMutex;
 
-VOID IoAcquireDpcMutex()
+VOID IopAcquireDpcMutex()
 {
     KeAcquireMutex(&IopDpcMutex);
 }
 
-VOID IoReleaseDpcMutex()
+VOID IopReleaseDpcMutex()
 {
     KeReleaseMutex(&IopDpcMutex);
 }
@@ -27,11 +28,11 @@ static VOID IopProcessDpcQueue()
     while (TRUE) {
 	MWORD Badge = 0;
 	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), &Badge);
-	IoAcquireDpcMutex();
+	IopAcquireDpcMutex();
 	Entry = IopDpcQueue.Flink;
     check:
 	if (Entry == &IopDpcQueue) {
-	    IoReleaseDpcMutex();
+	    IopReleaseDpcMutex();
 	    goto done;
 	}
 	PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, QueueEntry);
@@ -39,14 +40,14 @@ static VOID IopProcessDpcQueue()
 	Dpc->Queued = FALSE;
 	Entry = Dpc->QueueEntry.Flink;
 	RemoveEntryList(&Dpc->QueueEntry);
-	IoReleaseDpcMutex();
+	IopReleaseDpcMutex();
 	if (Dpc->DeferredRoutine != NULL) {
 	    Dpc->DeferredRoutine(Dpc,
 				 Dpc->DeferredContext,
 				 Dpc->SystemArgument1,
 				 Dpc->SystemArgument1);
 	}
-	IoAcquireDpcMutex();
+	IopAcquireDpcMutex();
 	goto check;
     done:
 	if (Badge & TIMER_NOTIFICATION_BADGE) {
@@ -114,7 +115,7 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 			       IN PVOID SystemArgument2)
 {
     BOOLEAN Queued = FALSE;
-    IoAcquireDpcMutex();
+    IopAcquireDpcMutex();
     if (!Dpc->Queued) {
 	DbgTrace("Inserting DPC %p args %p %p\n",
 		 Dpc, SystemArgument1, SystemArgument2);
@@ -127,7 +128,7 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
     } else {
 	DbgTrace("DPC %p already inserted. Not inserting\n", Dpc);
     }
-    IoReleaseDpcMutex();
+    IopReleaseDpcMutex();
     return Queued;
 }
 
