@@ -378,3 +378,12 @@ VOID ObDirectoryObjectVisitObject(IN POBJECT_DIRECTORY DirObj,
 	}
     }
 }
+
+NTSTATUS NtCreateDirectoryObject(IN ASYNC_STATE AsyncState,
+                                 IN PTHREAD Thread,
+                                 OUT HANDLE *DirectoryHandle,
+                                 IN ACCESS_MASK DesiredAccess,
+                                 IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    UNIMPLEMENTED;
+}

@@ -23,6 +23,9 @@ Revision History:
 
 #include "classp.h"
 #include "debug.h"
+#ifdef _WIN64
+#include <memaccess.h>
+#endif
 
 static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 {
@@ -52,9 +55,16 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 	    status = STATUS_INSUFFICIENT_RESOURCES;
 	} else {
 	    RtlZeroMemory(newPkt, sizeof(TRANSFER_PACKET));
+	    newPkt->RetryWorkItem = IoAllocateWorkItem(Fdo);
+	    if (!newPkt->RetryWorkItem) {
+		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
+			    "Failed to allocate transfer packet."));
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		FREE_POOL(newPkt);
+		return NULL;
+	    }
 	    newPkt->AllocateNode = KeGetCurrentNodeNumber();
 	    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
 		if ((fdoExt->MiniportDescriptor != NULL) &&
 		    (fdoExt->MiniportDescriptor->Size >=
 		     RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
@@ -72,13 +82,6 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 			DefaultStorageRequestBlockAllocateRoutine, NULL, 1,
 			SrbExDataTypeScsiCdb16);
 		}
-#else
-		status =
-		    CreateStorageRequestBlock((PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
-					      fdoExt->AdapterDescriptor->AddressType,
-					      DefaultStorageRequestBlockAllocateRoutine,
-					      NULL, 1, SrbExDataTypeScsiCdb16);
-#endif
 	    } else {
 		newPkt->Srb = ExAllocatePoolWithTag(sizeof(SCSI_REQUEST_BLOCK), '-brs');
 		if (newPkt->Srb == NULL) {
@@ -98,30 +101,11 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
      *  Allocate Irp for the packet.
      */
     if (NT_SUCCESS(status) && newPkt != NULL) {
-	newPkt->Irp = IoAllocateIrp(Fdo->StackSize, FALSE);
+	newPkt->Irp = IoAllocateIrp(Fdo->StackSize);
 	if (newPkt->Irp == NULL) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
 			"Failed to allocate IRP for transfer packet."));
 	    status = STATUS_INSUFFICIENT_RESOURCES;
-	}
-    }
-
-    /*
-     * Allocate a MDL.  Add one page to the length to insure an extra page
-     * entry is allocated if the buffer does not start on page boundaries.
-     */
-    if (NT_SUCCESS(status) && newPkt != NULL) {
-	NT_ASSERT(transferLength != (ULONG)-1);
-
-	newPkt->PartialMdl = IoAllocateMdl(NULL, transferLength, FALSE, FALSE, NULL);
-	if (newPkt->PartialMdl == NULL) {
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"Failed to allocate MDL for transfer packet."));
-	    status = STATUS_INSUFFICIENT_RESOURCES;
-	} else {
-	    NT_ASSERT(newPkt->PartialMdl->Size >=
-		      (CSHORT)(sizeof(MDL) + BYTES_TO_PAGES(fdoData->HwMaxXferLen) *
-						 sizeof(PFN_NUMBER)));
 	}
     }
 
@@ -170,8 +154,8 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 	// free any resources acquired above (in reverse order)
 	if (newPkt != NULL) {
 	    FREE_POOL(newPkt->RetryHistory);
-	    if (newPkt->PartialMdl != NULL) {
-		IoFreeMdl(newPkt->PartialMdl);
+	    if (newPkt->RetryWorkItem) {
+		IoFreeWorkItem(newPkt->RetryWorkItem);
 	    }
 	    if (newPkt->Irp != NULL) {
 		IoFreeIrp(newPkt->Irp);
@@ -216,8 +200,7 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
     NT_ASSERT(adapterDesc->MaximumTransferLength);
 
     hwMaxPages = adapterDesc->MaximumPhysicalPages ?
-		     adapterDesc->MaximumPhysicalPages - 1 :
-		     0;
+	(adapterDesc->MaximumPhysicalPages - 1) : 0;
 
     fdoData->HwMaxXferLen = MIN(adapterDesc->MaximumTransferLength,
 				hwMaxPages << PAGE_SHIFT);
@@ -247,8 +230,8 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
     // Set the packet threshold numbers based on the Windows Client or Server SKU.
     //
 
-    osVersionInfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
-    status = RtlGetVersion((POSVERSIONINFOW)&osVersionInfo);
+    osVersionInfo.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEX);
+    status = RtlGetVersion((PRTL_OSVERSIONINFO)&osVersionInfo);
 
     NT_ASSERT(NT_SUCCESS(status));
 
@@ -376,7 +359,6 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
 	if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
 	    ULONG ByteSize = 0;
 
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
 	    if ((fdoExt->MiniportDescriptor != NULL) &&
 		(fdoExt->MiniportDescriptor->Size >=
 		 RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
@@ -394,13 +376,6 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
 		    DefaultStorageRequestBlockAllocateRoutine, &ByteSize, 1,
 		    SrbExDataTypeScsiCdb16);
 	    }
-#else
-	    status =
-		CreateStorageRequestBlock((PSTORAGE_REQUEST_BLOCK *)&fdoData->SrbTemplate,
-					  fdoExt->AdapterDescriptor->AddressType,
-					  DefaultStorageRequestBlockAllocateRoutine,
-					  &ByteSize, 1, SrbExDataTypeScsiCdb16);
-#endif
 	    if (NT_SUCCESS(status)) {
 		((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbFunction =
 		    SRB_FUNCTION_EXECUTE_SCSI;
@@ -481,7 +456,6 @@ VOID DestroyTransferPacket(IN PTRANSFER_PACKET Pkt)
     RemoveEntryList(&Pkt->AllPktsListEntry);
     InitializeListHead(&Pkt->AllPktsListEntry);
 
-    IoFreeMdl(Pkt->PartialMdl);
     IoFreeIrp(Pkt->Irp);
     FREE_POOL(Pkt->RetryHistory);
     FREE_POOL(Pkt->Srb);
@@ -795,10 +769,6 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt,
     Pkt->NumRetries = fdoData->MaxNumberOfIoRetries;
     Pkt->SyncEventPtr = NULL;
     Pkt->CompleteOriginalIrpWhenLastPacketCompletes = TRUE;
-#if !defined(__REACTOS__) && NTDDI_VERSION >= NTDDI_WINBLUE
-    Pkt->NumIoTimeoutRetries = fdoData->MaxNumberOfIoRetries;
-    Pkt->NumThinProvisioningRetries = 0;
-#endif
 
     if (pCdb) {
 	DBGLOGFLUSHINFO(fdoData, TRUE, (BOOLEAN)(pCdb->CDB10.ForceUnitAccess), FALSE);
@@ -858,9 +828,12 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     if (Pkt->UsePartialMdl == FALSE) {
 	Pkt->Irp->MdlAddress = Pkt->OriginalIrp->MdlAddress;
     } else {
-	IoBuildPartialMdl(Pkt->OriginalIrp->MdlAddress, Pkt->PartialMdl,
-			  SrbGetDataBuffer(Pkt->Srb), SrbGetDataTransferLength(Pkt->Srb));
-	Pkt->Irp->MdlAddress = Pkt->PartialMdl;
+	Pkt->Irp->MdlAddress = IoBuildPartialMdl(Pkt->OriginalIrp->MdlAddress,
+						 SrbGetDataBuffer(Pkt->Srb),
+						 SrbGetDataTransferLength(Pkt->Srb));
+	if (!Pkt->Irp->MdlAddress) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
     }
 
     DBGLOGSENDPACKET(Pkt);
@@ -920,16 +893,10 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
     //
 
 #ifdef _WIN64
-#ifndef __REACTOS__
     lastIoCompletionTime = ReadULong64NoFence(
 	(volatile ULONG64 *)&fdoData->LastIoCompletionTime.QuadPart);
     WriteULong64NoFence((volatile ULONG64 *)&fdoData->LastIoCompletionTime.QuadPart,
 			completionTime.QuadPart);
-#else
-    lastIoCompletionTime = *(volatile ULONG64 *)&fdoData->LastIoCompletionTime.QuadPart;
-    *((volatile ULONG64 *)&fdoData->LastIoCompletionTime.QuadPart) =
-	completionTime.QuadPart;
-#endif
 #else
     lastIoCompletionTime = InterlockedExchangeNoFence64(
 	(volatile LONG64 *)&fdoData->LastIoCompletionTime.QuadPart,
@@ -946,14 +913,6 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 	    InterlockedDecrement(&fdoData->ActiveIoCount);
 	    NT_ASSERT(fdoData->ActiveIoCount >= 0);
 	}
-    }
-
-    //
-    // If partial MDL was used, unmap the pages.  When the packet is retried, the
-    // MDL will be recreated.  If the packet is done, the MDL will be ready to be reused.
-    //
-    if (pkt->UsePartialMdl) {
-	MmPrepareMdlForReuse(pkt->PartialMdl);
     }
 
     if (SRB_STATUS(pkt->Srb->SrbStatus) == SRB_STATUS_SUCCESS) {
@@ -1076,7 +1035,8 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
          *  to report transfer errors, e.g. when the default sense buffer
          *  is too small.  If so, it is up to us to free it.
          *  Now that we're done using the sense info, free it if appropriate.
-         *  Then clear the sense buffer so it doesn't pollute future errors returned in this packet.
+         *  Then clear the sense buffer so it doesn't pollute future errors
+	 *  returned in this packet.
          */
 	if (PORT_ALLOCATED_SENSE_EX(fdoExt, pkt->Srb)) {
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_RW,
@@ -1098,28 +1058,12 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
          */
 	IoSetMasterIrpStatus(pkt->OriginalIrp, Irp->IoStatus.Status);
 
-	if (!NT_SUCCESS(Irp->IoStatus.Status)) {
-	    /*
-             *  If the original I/O originated in user space (i.e. it is thread-queued),
-             *  and the error is user-correctable (e.g. media is missing, for removable media),
-             *  alert the user.
-             *  Since this is only one of possibly several packets completing for the original IRP,
-             *  we may do this more than once for a single request.  That's ok; this allows
-             *  us to test each returned status with IoIsErrorUserInduced().
-             */
-	    if (IoIsErrorUserInduced(Irp->IoStatus.Status) &&
-		pkt->CompleteOriginalIrpWhenLastPacketCompletes &&
-		pkt->OriginalIrp->Tail.Overlay.Thread) {
-		IoSetHardErrorOrVerifyDevice(pkt->OriginalIrp, Fdo);
-	    }
-	}
-
 	/*
          *  We use a field in the original IRP to count
          *  down the transfer pieces as they complete.
          */
 	numPacketsRemaining = InterlockedDecrement(
-	    (PLONG)&pkt->OriginalIrp->Tail.Overlay.DriverContext[0]);
+	    (PLONG)&pkt->OriginalIrp->Tail.DriverContext[0]);
 
 	if (numPacketsRemaining > 0) {
 	    /*
@@ -1133,11 +1077,6 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
              */
 	    NT_ASSERT(numPacketsRemaining == 0);
 	    if (pkt->CompleteOriginalIrpWhenLastPacketCompletes) {
-		IO_PAGING_PRIORITY priority =
-		    (TEST_FLAG(pkt->OriginalIrp->Flags, IRP_PAGING_IO)) ?
-			IoGetPagingIoPriority(pkt->OriginalIrp) :
-			IoPagingPriorityInvalid;
-
 		if (NT_SUCCESS(pkt->OriginalIrp->IoStatus.Status)) {
 		    NT_ASSERT((ULONG)pkt->OriginalIrp->IoStatus.Information ==
 			      IoGetCurrentIrpStackLocation(pkt->OriginalIrp)
@@ -1149,51 +1088,20 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 		/*
                  *  We submitted all the downward irps, including this last one, on the thread
                  *  that the OriginalIrp came in on.  So the OriginalIrp is completing on a
-                 *  different thread iff this last downward irp is completing on a different thread.
-                 *  If BlkCache is loaded, for example, it will often complete
-                 *  requests out of the cache on the same thread, therefore not marking the downward
-                 *  irp pending and not requiring us to do so here.  If the downward request is completing
-                 *  on the same thread, then by not marking the OriginalIrp pending we can save an APC
-                 *  and get extra perf benefit out of BlkCache.
-                 *  Note that if the packet ever cycled due to retry or LowMemRetry,
-                 *  we set the pending bit in those codepaths.
+                 *  different thread iff this last downward irp is completing on a different
+		 *  thread. If BlkCache is loaded, for example, it will often complete requests
+		 *  out of the cache on the same thread, therefore not marking the downward
+                 *  irp pending and not requiring us to do so here.  If the downward request
+		 *  is completing on the same thread, then by not marking the OriginalIrp
+		 *  pending we can save an APC and get extra perf benefit out of BlkCache.
+                 *  Note that if the packet ever cycled due to retry or LowMemRetry, we set
+		 *  the pending bit in those codepaths.
                  */
 		if (pkt->Irp->PendingReturned) {
 		    IoMarkIrpPending(pkt->OriginalIrp);
 		}
 
 		ClassCompleteRequest(Fdo, pkt->OriginalIrp, IO_DISK_INCREMENT);
-
-		//
-		// Drop the count only after completing the request, to give
-		// Mm some amount of time to issue its next critical request
-		//
-
-		if (priority == IoPagingPriorityHigh) {
-		    if (fdoData->MaxInterleavedNormalIo <
-			ClassMaxInterleavePerCriticalIo) {
-			fdoData->MaxInterleavedNormalIo = 0;
-		    } else {
-			fdoData->MaxInterleavedNormalIo -= ClassMaxInterleavePerCriticalIo;
-		    }
-
-		    fdoData->NumHighPriorityPagingIo--;
-
-		    if (fdoData->NumHighPriorityPagingIo == 0) {
-			LARGE_INTEGER period;
-
-			//
-			// Exiting throttle mode
-			//
-
-			KeQuerySystemTime(&fdoData->ThrottleStopTime);
-
-			period.QuadPart = fdoData->ThrottleStopTime.QuadPart -
-					  fdoData->ThrottleStartTime.QuadPart;
-			fdoData->LongestThrottlePeriod.QuadPart =
-			    max(fdoData->LongestThrottlePeriod.QuadPart, period.QuadPart);
-		    }
-		}
 
 		if (idleRequest) {
 		    ClasspCompleteIdleRequest(fdoExt);
@@ -1220,11 +1128,11 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
 	}
 
 	/*
-         *  If the packet was synchronous, write the final result back to the issuer's status buffer
-         *  and signal his event.
+         *  If the packet was synchronous, write the final result back to the
+	 *  issuer's status buffer and signal his event.
          */
 	if (pkt->SyncEventPtr) {
-	    KeSetEvent(pkt->SyncEventPtr, 0, FALSE);
+	    KeSetEvent(pkt->SyncEventPtr);
 	    pkt->SyncEventPtr = NULL;
 	}
 
@@ -1488,9 +1396,6 @@ VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt,
 
     Pkt->OriginalIrp = OriginalIrp;
     Pkt->NumRetries = NUM_DRIVECAPACITY_RETRIES;
-#if !defined(__REACTOS__) && NTDDI_VERSION >= NTDDI_WINBLUE
-    Pkt->NumIoTimeoutRetries = NUM_DRIVECAPACITY_RETRIES;
-#endif
 
     Pkt->SyncEventPtr = SyncEventPtr;
     Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
@@ -1784,15 +1689,12 @@ VOID ClasspSetupReceivePopulateTokenInformationTransferPacket(IN POFFLOAD_READ_C
     SrbSetDataTransferLength(Pkt->Srb, Length);
 
     SrbAssignSrbFlags(Pkt->Srb, fdoExt->SrbFlags | SRB_FLAGS_DATA_IN |
-				    SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
-				    SRB_FLAGS_NO_QUEUE_FREEZE);
+		      SRB_FLAGS_DISABLE_SYNCH_TRANSFER | SRB_FLAGS_NO_QUEUE_FREEZE);
 
     pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
-	pCdb->RECEIVE_TOKEN_INFORMATION.OperationCode =
-	    SCSIOP_RECEIVE_ROD_TOKEN_INFORMATION;
-	pCdb->RECEIVE_TOKEN_INFORMATION.ServiceAction =
-	    SERVICE_ACTION_RECEIVE_TOKEN_INFORMATION;
+	pCdb->RECEIVE_TOKEN_INFORMATION.OperationCode = SCSIOP_RECEIVE_ROD_TOKEN_INFORMATION;
+	pCdb->RECEIVE_TOKEN_INFORMATION.ServiceAction = SERVICE_ACTION_RECEIVE_TOKEN_INFORMATION;
 
 	REVERSE_BYTES(&pCdb->RECEIVE_TOKEN_INFORMATION.ListIdentifier, &ListIdentifier);
 	REVERSE_BYTES(&pCdb->RECEIVE_TOKEN_INFORMATION.AllocationLength, &Length);

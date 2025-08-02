@@ -129,13 +129,12 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
 	retry = InterpretSenseInfoWithoutHistory(
 	    Fdo, Irp, srb, irpStack->MajorFunction,
 	    irpStack->MajorFunction == IRP_MJ_DEVICE_CONTROL ?
-		irpStack->Parameters.DeviceIoControl.IoControlCode :
-		0,
+		irpStack->Parameters.DeviceIoControl.IoControlCode : 0,
 	    MAXIMUM_RETRIES - ((ULONG)(ULONG_PTR)irpStack->Parameters.Others.Argument4),
 	    &status, &retryInterval);
 
 	//
-	// If the status is verified required and the this request
+	// If the status is verified required and this request
 	// should bypass verify required then retry the request.
 	//
 
@@ -151,8 +150,8 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
 	    // call it directly for retries.
 	    //
 
-	    TracePrint(
-		(TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL, "Retry request %p\n", Irp));
+	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
+			"Retry request %p\n", Irp));
 
 	    if (PORT_ALLOCATED_SENSE(fdoExtension, srb)) {
 		FREE_PORT_ALLOCATED_SENSE_BUFFER(fdoExtension, srb);
@@ -210,18 +209,6 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
     if (!NT_SUCCESS(status)) {
 	originalIrp->IoStatus.Status = status;
 	originalIrp->IoStatus.Information = 0;
-
-	//
-	// Set the hard error if necessary.
-	//
-
-	if (IoIsErrorUserInduced(status) && (originalIrp->Tail.Overlay.Thread != NULL)) {
-	    //
-	    // Store DeviceObject for filesystem.
-	    //
-
-	    IoSetHardErrorOrVerifyDevice(originalIrp, Fdo);
-	}
     }
 
     //
@@ -292,9 +279,9 @@ RetryRequest()
 
 Routine Description:
 
-    This is a wrapper around the delayed retry DPC routine, RetryRequestDPC.
+    This is a wrapper around the delayed retry timer routine, ClassRetryRequest.
     This reinitalizes the necessary fields, queues the request, and sets
-    a timer to call the DPC if someone hasn't already done so.
+    a timer to call the IO work item if someone hasn't already done so.
 
 Arguments:
 
@@ -319,7 +306,6 @@ VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSCSI_REQUEST_BLOCK Srb
     PIO_STACK_LOCATION currentIrpStack = IoGetCurrentIrpStackLocation(Irp);
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
     ULONG transferByteCount;
-    ULONG dataTransferLength;
     PSTORAGE_REQUEST_BLOCK_HEADER srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER)Srb;
 
     // This function is obsolete but is still used by some of our class drivers.
@@ -332,7 +318,6 @@ VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSCSI_REQUEST_BLOCK Srb
     // transfer length must be zero.
     //
 
-    dataTransferLength = SrbGetDataTransferLength(srbHeader);
     if (currentIrpStack->MajorFunction == IRP_MJ_READ ||
 	currentIrpStack->MajorFunction == IRP_MJ_WRITE) {
 	_Analysis_assume_(currentIrpStack->Parameters.Read.Length <= dataTransferLength);
@@ -774,7 +759,7 @@ Return Value:
 VOID ClassInsertCScanList(IN PCSCAN_LIST List, IN PIRP Irp, IN ULONGLONG BlockNumber,
 			  IN BOOLEAN LowPriority)
 {
-    PCSCAN_LIST_ENTRY entry = (PCSCAN_LIST_ENTRY)Irp->Tail.Overlay.DriverContext;
+    PCSCAN_LIST_ENTRY entry = (PCSCAN_LIST_ENTRY)Irp->Tail.DriverContext;
 
     TracePrint(
 	(TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "ClassInsertCScanList is OBSOLETE !"));
@@ -948,8 +933,7 @@ NTAPI VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION Commo
 	}
 
 	ExInitializeLookasideList(&CommonExtension->SrbLookasideList, NULL, NULL,
-				  sizeNeeded, '$scS',
-				  (USHORT)NumberElements);
+				  sizeNeeded, '$scS');
 
 	CommonExtension->IsSrbLookasideListInitialized = TRUE;
     }

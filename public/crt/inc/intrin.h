@@ -243,6 +243,19 @@ static inline long long InterlockedDecrement64(volatile long long *lpAddend)
 #define InterlockedAndPointer(ptr, val) InterlockedAnd((PLONG)ptr, (LONG)val)
 #define InterlockedOrPointer(ptr, val) InterlockedOr((PLONG)ptr, (LONG)val)
 #endif /* _WIN64 */
+
+#define InterlockedExchangeAcquire16 __ACQ_(InterlockedExchange16)
+#define InterlockedExchangeNoFence16 __NF_(InterlockedExchange16)
+
+#define InterlockedExchangeAcquire __ACQ_(InterlockedExchange)
+#define InterlockedExchangeNoFence __NF_(InterlockedExchange)
+
+#define InterlockedExchangeAcquire64 __ACQ_(InterlockedExchange64)
+#define InterlockedExchangeNoFence64 __NF_(InterlockedExchange64)
+
+#define InterlockedExchangePointerAcquire __ACQ_(InterlockedExchangePointer)
+#define InterlockedExchangePointerNoFence __NF_(InterlockedExchangePointer)
+
 #endif /* _MSC_VER */
 
 #if defined(_M_IX86) || defined(_M_AMD64)
@@ -494,6 +507,12 @@ static inline unsigned long long __ll_lshift(unsigned long long Mask, int Bit)
 	    [Mask] "0"(Mask), [shift] "c"(shift));
 
     return retval;
+}
+
+static inline void __faststorefence(void)
+{
+    long local;
+    __asm__ __volatile__("lock; orl $0, %0;" : : "m"(local));
 }
 
 #elif defined(_M_ARM64)

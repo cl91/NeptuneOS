@@ -5,6 +5,8 @@
 #include <wdmp.h>
 #include "coroutine.h"
 
+ULONG InitSafeBootMode = 0;
+
 /*
  * This is the main event loop of the driver process
  */
@@ -29,6 +31,7 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     assert(PsCapIsThreadPrivate(WdmServiceCap));
     assert(PsCapHasCorrectGuard(WdmServiceCap));
     NtCurrentTeb()->Wdm.ServiceCap = WdmServiceCap;
+    NtCurrentTeb()->Wdm.IsMainThread = TRUE;
     IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;

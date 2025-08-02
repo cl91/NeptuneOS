@@ -22,13 +22,13 @@ Revision History:
 --*/
 
 #include "disk.h"
-#include "ntddstor.h"
+#include <hal.h>
 
 #ifdef DEBUG_USE_WPP
 #include "geometry.tmh"
 #endif
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 
 DISK_GEOMETRY_SOURCE DiskUpdateGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION DeviceExtension);
 
@@ -289,7 +289,7 @@ NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE Ha
     fullDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)(((PUCHAR)keyData) +
 						    keyData->DataOffset);
     partialDescriptor = fullDescriptor->PartialResourceList.PartialDescriptors;
-    length = partialDescriptor->u.DeviceSpecificData.DataSize;
+    length = partialDescriptor->DeviceSpecificData.DataSize;
 
     if ((keyData->DataLength < sizeof(CM_FULL_RESOURCE_DESCRIPTOR)) ||
 	(fullDescriptor->PartialResourceList.Count == 0) ||
@@ -345,9 +345,6 @@ NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE Ha
     //
 
     for (i = 0; i < numberOfDrives; i++) {
-#ifdef _MSC_VER #pragma warning( \
-    suppress : 6386) // PREFast bug means it doesn't correctly remember the size of DetectInfoList
-#endif
 	DetectInfoList[i].DriveParameters = driveParameters[i];
     }
 
@@ -717,7 +714,7 @@ DISK_GEOMETRY_SOURCE DiskUpdateGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 
     NTSTATUS status;
 
-    NT_ASSERT((FdoExtension->DeviceObject->Characteristics & FILE_REMOVABLE_MEDIA) == 0);
+    NT_ASSERT((FdoExtension->DeviceObject->Flags & FILE_REMOVABLE_MEDIA) == 0);
 
     //
     // If we've already set a non-default geometry for this drive then there's
@@ -906,7 +903,7 @@ NTSTATUS DiskUpdateRemovableGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 	NT_ASSERT(FdoExtension->DeviceDescriptor->RemovableMedia);
     }
     NT_ASSERT(
-	TEST_FLAG(FdoExtension->DeviceObject->Characteristics, FILE_REMOVABLE_MEDIA));
+	TEST_FLAG(FdoExtension->DeviceObject->Flags, FILE_REMOVABLE_MEDIA));
 
     //
     // Attempt to determine the disk geometry.  First we'll check with the
@@ -958,7 +955,7 @@ NTSTATUS DiskGetPortGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     // Build an irp to send IOCTL_DISK_GET_DRIVE_GEOMETRY to the lower driver.
     //
 
-    irp = IoAllocateIrp(commonExtension->LowerDeviceObject->StackSize, FALSE);
+    irp = IoAllocateIrp(commonExtension->LowerDeviceObject->StackSize);
 
     if (irp == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -971,7 +968,7 @@ NTSTATUS DiskGetPortGeometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     irpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_DISK_GET_DRIVE_GEOMETRY;
     irpStack->Parameters.DeviceIoControl.OutputBufferLength = sizeof(DISK_GEOMETRY);
 
-    irp->AssociatedIrp.SystemBuffer = Geometry;
+    irp->SystemBuffer = Geometry;
 
     KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
@@ -1138,7 +1135,7 @@ NTSTATUS DiskReadDriveCapacity(IN PDEVICE_OBJECT Fdo)
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     NTSTATUS status;
 
-    if (TEST_FLAG(Fdo->Characteristics, FILE_REMOVABLE_MEDIA)) {
+    if (TEST_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA)) {
 	DiskUpdateRemovableGeometry(fdoExtension);
     } else {
 	DiskUpdateGeometry(fdoExtension);
@@ -1177,221 +1174,7 @@ Return Value:
 VOID DiskDriverReinitialization(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing,
 				IN ULONG Count)
 {
-    PDEVICE_OBJECT deviceObject;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
-    PDISK_DATA diskData;
-
-    ULONG unmatchedDiskCount;
-    PDEVICE_OBJECT unmatchedDisk = NULL;
-
-    ULONG i;
-    PDISK_DETECT_INFO diskInfo = NULL;
-
-    UNREFERENCED_PARAMETER(Nothing);
-
-    if (Count != 1) {
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-		    "DiskDriverReinitialization: ignoring call %d\n", Count));
-	return;
-    }
-
-    //
-    // Check to see how many entries in the detect info list have been matched.
-    // If there's only one remaining we'll see if we can find a disk to go with
-    // it.
-    //
-
-    if (DetectInfoCount == 0) {
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-		    "DiskDriverReinitialization: no detect info saved\n"));
-	return;
-    }
-
-    if ((DetectInfoCount - DetectInfoUsedCount) != 1) {
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-		    "DiskDriverReinitialization: %d of %d geometry entries "
-		    "used - will not attempt match\n",
-		    DetectInfoUsedCount, DetectInfoCount));
-	return;
-    }
-
-    //
-    // Scan through the list of disks and see if any of them are missing
-    // geometry information.  If there is only one such disk we'll try to
-    // match it to the unmatched geometry.
-    //
-
-    //
-    // ISSUE-2000/5/24-henrygab - figure out if there's a way to keep
-    //                            removals from happening while doing this.
-    //
-    unmatchedDiskCount = 0;
-    for (deviceObject = DriverObject->DeviceObject; deviceObject != NULL;
-#ifdef _MSC_VER #pragma prefast( \
-    suppress : 28175,            \
-    "Need to access the opaque field to scan through the list of disks")
-#endif
-	 deviceObject = deviceObject->NextDevice) {
-
-	fdoExtension = deviceObject->DeviceExtension;
-
-	if (!fdoExtension->CommonExtension.IsFdo) {
-	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-			"DiskDriverReinit: %#p is not an FDO\n", deviceObject));
-	    continue;
-	}
-
-	//
-	// If the geometry for this one is already known then skip it.
-	//
-
-	diskData = fdoExtension->CommonExtension.DriverData;
-	if (diskData->GeometrySource != DiskGeometryUnknown) {
-	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-			"DiskDriverReinit: FDO %#p has a geometry\n", deviceObject));
-	    continue;
-	}
-
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-		    "DiskDriverReinit: FDO %#p has no geometry\n", deviceObject));
-
-	//
-	// Mark this one as using the default.  It's past the time when disk
-	// might blunder across the geometry info.  If we set the geometry
-	// from the bios we'll reset this field down below.
-	//
-
-	diskData->GeometrySource = DiskGeometryFromDefault;
-
-	//
-	// As long as we've only got one unmatched disk we're fine.
-	//
-
-	unmatchedDiskCount++;
-	if (unmatchedDiskCount > 1) {
-	    NT_ASSERT(unmatchedDisk != NULL);
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-			"DiskDriverReinit: FDO %#p also has no geometry\n",
-			unmatchedDisk));
-	    unmatchedDisk = NULL;
-	    break;
-	}
-
-	unmatchedDisk = deviceObject;
-    }
-
-    //
-    // If there's more or less than one ungeometried disk then we can't do
-    // anything about the geometry.
-    //
-
-    if (unmatchedDiskCount != 1) {
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
-		    "DiskDriverReinit: Unable to match geometry\n"));
-	return;
-    }
-
-    fdoExtension = unmatchedDisk->DeviceExtension;
-    diskData = fdoExtension->CommonExtension.DriverData;
-
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-		"DiskDriverReinit: Found possible match\n"));
-
-    //
-    // Find the geometry which wasn't assigned.
-    //
-
-    for (i = 0; i < DetectInfoCount; i++) {
-	if (DetectInfoList[i].Device == NULL) {
-	    diskInfo = &(DetectInfoList[i]);
-	    break;
-	}
-    }
-
-    if (diskInfo != NULL) {
-	//
-	// Save the geometry information away in the disk data block and
-	// set the bit indicating that we found a valid one.
-	//
-
-	ULONG cylinders;
-	ULONG sectorsPerTrack;
-	ULONG tracksPerCylinder;
-
-	ULONG length;
-
-	//
-	// Point to the array of drive parameters.
-	//
-
-	cylinders = diskInfo->DriveParameters.MaxCylinders + 1;
-	sectorsPerTrack = diskInfo->DriveParameters.SectorsPerTrack;
-	tracksPerCylinder = diskInfo->DriveParameters.MaxHeads + 1;
-
-	//
-	// Since the BIOS may not report the full drive, recalculate the drive
-	// size based on the volume size and the BIOS values for tracks per
-	// cylinder and sectors per track..
-	//
-
-	length = tracksPerCylinder * sectorsPerTrack;
-
-	if (length == 0) {
-	    //
-	    // The BIOS information is bogus.
-	    //
-
-	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-			"DiskDriverReinit: H (%d) or S(%d) is zero\n", tracksPerCylinder,
-			sectorsPerTrack));
-	    return;
-	}
-
-	//
-	// since we are copying the structure RealGeometry here, we should
-	// really initialize all the fields, especially since a zero'd
-	// BytesPerSector field would cause a trap in xHalReadPartitionTable()
-	//
-
-	diskData->RealGeometry = fdoExtension->DiskGeometry;
-
-	//
-	// Save the geometry information away in the disk data block and
-	// set the bit indicating that we found a valid one.
-	//
-
-	diskData->RealGeometry.SectorsPerTrack = sectorsPerTrack;
-	diskData->RealGeometry.TracksPerCylinder = tracksPerCylinder;
-	diskData->RealGeometry.Cylinders.QuadPart = (LONGLONG)cylinders;
-
-	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-		    "DiskDriverReinit: BIOS spt %#x, #heads %#x, "
-		    "#cylinders %#x\n",
-		    sectorsPerTrack, tracksPerCylinder, cylinders));
-
-	diskData->GeometrySource = DiskGeometryGuessedFromBios;
-	diskInfo->Device = unmatchedDisk;
-
-	//
-	// Now copy the geometry over to the fdo extension and call
-	// classpnp to redetermine the disk size and cylinder count.
-	//
-
-	fdoExtension->DiskGeometry = diskData->RealGeometry;
-
-	(VOID) ClassReadDriveCapacity(unmatchedDisk);
-
-	if (diskData->RealGeometry.BytesPerSector == 0) {
-	    //
-	    // if the BytesPerSector field is set to zero for a disk
-	    // listed in the bios, then the system will bugcheck in
-	    // xHalReadPartitionTable().  assert here since it is
-	    // easier to determine what is happening this way.
-	    //
-
-	    NT_ASSERT(!"RealGeometry not set to non-zero bps\n");
-	}
-    }
+    // Do nothing
 }
 
 /*++
@@ -1424,7 +1207,7 @@ NTSTATUS DiskGetDetectInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     // Fail for non-fixed drives.
     //
 
-    if (TEST_FLAG(FdoExtension->DeviceObject->Characteristics, FILE_REMOVABLE_MEDIA)) {
+    if (TEST_FLAG(FdoExtension->DeviceObject->Flags, FILE_REMOVABLE_MEDIA)) {
 	return STATUS_NOT_SUPPORTED;
     }
 
@@ -1519,4 +1302,4 @@ NTSTATUS DiskReadSignature(IN PDEVICE_OBJECT Fdo)
     return Status;
 }
 
-#endif // defined(_X86_) || defined(_AMD64_)
+#endif // defined(_M_IX86) || defined(_M_AMD64)

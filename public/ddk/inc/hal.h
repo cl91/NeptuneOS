@@ -1,6 +1,8 @@
 #pragma once
 
 #include <ntddk.h>
+#include <memaccess.h>
+#include <ntdddisk.h>
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 /*
@@ -16,12 +18,45 @@ __cdecl NTSYSAPI ULONG __indword(IN USHORT PortNum);
 __cdecl NTSYSAPI VOID __outdword(IN USHORT PortNum,
 				 IN ULONG Data);
 
+__cdecl NTSYSAPI VOID __inbytestring(IN USHORT PortNum,
+				     OUT PUCHAR Data,
+				     IN ULONG Count);
+__cdecl NTSYSAPI VOID __outbytestring(IN USHORT PortNum,
+				      IN PUCHAR Data,
+				      IN ULONG Count);
+__cdecl NTSYSAPI VOID __inwordstring(IN USHORT PortNum,
+				     OUT PUSHORT Data,
+				     IN ULONG Count);
+__cdecl NTSYSAPI VOID __outwordstring(IN USHORT PortNum,
+				      IN PUSHORT Data,
+				      IN ULONG Count);
+__cdecl NTSYSAPI VOID __indwordstring(IN USHORT PortNum,
+				      OUT PULONG Data,
+				      IN ULONG Count);
+__cdecl NTSYSAPI VOID __outdwordstring(IN USHORT PortNum,
+				       IN PULONG Data,
+				       IN ULONG Count);
+
 #define READ_PORT_UCHAR(Port)		__inbyte((ULONG_PTR)(Port))
 #define WRITE_PORT_UCHAR(Port, Data)	__outbyte((ULONG_PTR)(Port), Data)
 #define READ_PORT_USHORT(Port)		__inword((ULONG_PTR)(Port))
 #define WRITE_PORT_USHORT(Port, Data)	__outword((ULONG_PTR)(Port), Data)
 #define READ_PORT_ULONG(Port)		__indword((ULONG_PTR)(Port))
 #define WRITE_PORT_ULONG(Port, Data)	__outdword((ULONG_PTR)(Port), Data)
+
+#define READ_PORT_BUFFER_UCHAR(Port, Buffer, Count)		\
+    __inbytestring((USHORT)(ULONG_PTR)Port, Buffer, Count)
+#define READ_PORT_BUFFER_USHORT(Port, Buffer, Count)		\
+    __inwordstring((USHORT)(ULONG_PTR)Port, Buffer, Count)
+#define READ_PORT_BUFFER_ULONG(Port, Buffer, Count)		\
+    __indwordstring((USHORT)(ULONG_PTR)Port, Buffer, Count)
+#define WRITE_PORT_BUFFER_UCHAR(Port, Buffer, Count)		\
+    __outbytestring((USHORT)(ULONG_PTR)Port, Buffer, Count)
+#define WRITE_PORT_BUFFER_USHORT(Port, Buffer, Count)		\
+    __outwordstring((USHORT)(ULONG_PTR)Port, Buffer, Count)
+#define WRITE_PORT_BUFFER_ULONG(Port, Buffer, Count)		\
+    __outdwordstring((USHORT)(ULONG_PTR)Port, Buffer, Count)
+
 #else
 #define READ_PORT_UCHAR(Port)		RtlRaiseStatus(STATUS_NOT_SUPPORTED)
 #define WRITE_PORT_UCHAR(Port, Data)	RtlRaiseStatus(STATUS_NOT_SUPPORTED)
@@ -30,6 +65,122 @@ __cdecl NTSYSAPI VOID __outdword(IN USHORT PortNum,
 #define READ_PORT_ULONG(Port)		RtlRaiseStatus(STATUS_NOT_SUPPORTED)
 #define WRITE_PORT_ULONG(Port, Data)	RtlRaiseStatus(STATUS_NOT_SUPPORTED)
 #endif
+
+/*
+ * The READ/WRITE_REGISTER_Xxx macros need compiler and memory barriers.
+ */
+#define READ_REGISTER_UCHAR(x) \
+    (MemoryBarrier(), *(volatile UCHAR * const)(x))
+
+#define READ_REGISTER_USHORT(x) \
+    (MemoryBarrier(), *(volatile USHORT * const)(x))
+
+#define READ_REGISTER_ULONG(x) \
+    (MemoryBarrier(), *(volatile ULONG * const)(x))
+
+#define READ_REGISTER_ULONG64(x) \
+    (MemoryBarrier(), *(volatile ULONG64 * const)(x))
+
+#define READ_REGISTER_BUFFER_UCHAR(x, y, z) {                           \
+    PUCHAR registerBuffer = x;                                          \
+    PUCHAR readBuffer = y;                                              \
+    ULONG readCount;                                                    \
+    MemoryBarrier();                                                    \
+    for (readCount = z; readCount--; readBuffer++, registerBuffer++) {  \
+        *readBuffer = *(volatile UCHAR * const)(registerBuffer);        \
+    }                                                                   \
+}
+
+#define READ_REGISTER_BUFFER_USHORT(x, y, z) {                          \
+    PUSHORT registerBuffer = x;                                         \
+    PUSHORT readBuffer = y;                                             \
+    ULONG readCount;                                                    \
+    MemoryBarrier();                                                    \
+    for (readCount = z; readCount--; readBuffer++, registerBuffer++) {  \
+        *readBuffer = *(volatile USHORT * const)(registerBuffer);       \
+    }                                                                   \
+}
+
+#define READ_REGISTER_BUFFER_ULONG(x, y, z) {                           \
+    PULONG registerBuffer = x;                                          \
+    PULONG readBuffer = y;                                              \
+    ULONG readCount;                                                    \
+    MemoryBarrier();                                                    \
+    for (readCount = z; readCount--; readBuffer++, registerBuffer++) {  \
+        *readBuffer = *(volatile ULONG * const)(registerBuffer);        \
+    }                                                                   \
+}
+
+#define READ_REGISTER_BUFFER_ULONG64(x, y, z) {                         \
+    PULONG64 registerBuffer = x;                                        \
+    PULONG64 readBuffer = y;                                            \
+    ULONG readCount;                                                    \
+    MemoryBarrier();                                                    \
+    for (readCount = z; readCount--; readBuffer++, registerBuffer++) {  \
+        *readBuffer = *(volatile ULONG64 * const)(registerBuffer);      \
+    }                                                                   \
+}
+
+#define WRITE_REGISTER_UCHAR(x, y) {    \
+    *(volatile UCHAR * const)(x) = y;   \
+    MemoryBarrier();                    \
+}
+
+#define WRITE_REGISTER_USHORT(x, y) {   \
+    *(volatile USHORT * const)(x) = y;  \
+    MemoryBarrier();               \
+}
+
+#define WRITE_REGISTER_ULONG(x, y) {    \
+    *(volatile ULONG * const)(x) = y;   \
+    MemoryBarrier();                    \
+}
+
+#define WRITE_REGISTER_ULONG64(x, y) {  \
+    *(volatile ULONG64 * const)(x) = y; \
+    MemoryBarrier();                    \
+}
+
+#define WRITE_REGISTER_BUFFER_UCHAR(x, y, z) {                            \
+    PUCHAR registerBuffer = x;                                            \
+    PUCHAR writeBuffer = y;                                               \
+    ULONG writeCount;                                                     \
+    for (writeCount = z; writeCount--; writeBuffer++, registerBuffer++) { \
+        *(volatile UCHAR * const)(registerBuffer) = *writeBuffer;         \
+    }                                                                     \
+    MemoryBarrier();                                                      \
+}
+
+#define WRITE_REGISTER_BUFFER_USHORT(x, y, z) {                           \
+    PUSHORT registerBuffer = x;                                           \
+    PUSHORT writeBuffer = y;                                              \
+    ULONG writeCount;                                                     \
+    for (writeCount = z; writeCount--; writeBuffer++, registerBuffer++) { \
+        *(volatile USHORT * const)(registerBuffer) = *writeBuffer;        \
+    }                                                                     \
+    MemoryBarrier();                                                      \
+}
+
+#define WRITE_REGISTER_BUFFER_ULONG(x, y, z) {                            \
+    PULONG registerBuffer = x;                                            \
+    PULONG writeBuffer = y;                                               \
+    ULONG writeCount;                                                     \
+    for (writeCount = z; writeCount--; writeBuffer++, registerBuffer++) { \
+        *(volatile ULONG * const)(registerBuffer) = *writeBuffer;         \
+    }                                                                     \
+    MemoryBarrier();                                                      \
+}
+
+#define WRITE_REGISTER_BUFFER_ULONG64(x, y, z) {                          \
+    PULONG64 registerBuffer = x;                                          \
+    PULONG64 writeBuffer = y;                                             \
+    ULONG writeCount;                                                     \
+    for (writeCount = z; writeCount--; writeBuffer++, registerBuffer++) { \
+        *(volatile ULONG64 * const)(registerBuffer) = *writeBuffer;       \
+    }                                                                     \
+    MemoryBarrier();                                                      \
+}
+
 
 /*
  * DMA data types and routines
@@ -70,6 +221,15 @@ typedef enum _IO_ALLOCATION_ACTION {
 } IO_ALLOCATION_ACTION, *PIO_ALLOCATION_ACTION;
 
 typedef ULONG NODE_REQUIREMENT;
+
+/* Valid values for NOTE_REQUIREMENT */
+#define MM_DONT_ZERO_ALLOCATION                  0x00000001
+#define MM_ALLOCATE_FROM_LOCAL_NODE_ONLY         0x00000002
+#define MM_ALLOCATE_FULLY_REQUIRED               0x00000004
+#define MM_ALLOCATE_NO_WAIT                      0x00000008
+#define MM_ALLOCATE_PREFER_CONTIGUOUS            0x00000010
+#define MM_ALLOCATE_REQUIRE_CONTIGUOUS_CHUNKS    0x00000020
+#define MM_ANY_NODE_OK                           0x80000000
 
 /* DEVICE_DESCRIPTION.Version */
 
@@ -575,7 +735,48 @@ NTAPI NTSYSAPI PVOID MmMapIoSpace(IN PHYSICAL_ADDRESS PhysicalAddress,
 NTAPI NTSYSAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 				   IN SIZE_T NumberOfBytes);
 
+NTAPI NTSYSAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
+							       IN PHYSICAL_ADDRESS HighestAddr,
+							       IN PHYSICAL_ADDRESS Alignment,
+							       IN MEMORY_CACHING_TYPE MmCached,
+							       OUT PVOID *VirtBase,
+							       OUT PHYSICAL_ADDRESS *PhysBase);
+
 /*
  * PC speaker access routine
  */
 NTAPI NTSYSAPI BOOLEAN HalMakeBeep(IN ULONG Frequency);
+
+/*
+ * Disk partition related routines
+ */
+NTAPI NTSYSAPI VOID HalExamineMBR(IN PDEVICE_OBJECT DeviceObject,
+				  IN ULONG SectorSize,
+				  IN ULONG MbrTypeIdentifier,
+				  OUT PVOID *MbrBuffer);
+
+NTAPI NTSYSAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
+					     IN ULONG SectorSize,
+					     IN BOOLEAN ReturnRecognizedPartitions,
+					     IN OUT PDRIVE_LAYOUT_INFORMATION *PartitionBuffer);
+
+NTAPI NTSTATUS IoReadPartitionTableEx(IN PDEVICE_OBJECT DeviceObject,
+				      IN PDRIVE_LAYOUT_INFORMATION_EX *DriveLayout);
+
+NTAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
+				     IN ULONG SectorSize,
+				     IN ULONG SectorsPerTrack,
+				     IN ULONG NumberOfHeads,
+				     IN PDRIVE_LAYOUT_INFORMATION PartitionBuffer);
+
+NTAPI NTSTATUS IoWritePartitionTableEx(IN PDEVICE_OBJECT DeviceObject,
+				       IN PDRIVE_LAYOUT_INFORMATION_EX DriveLayout);
+
+NTAPI NTSTATUS IoSetPartitionInformation(IN PDEVICE_OBJECT DeviceObject,
+					 IN ULONG SectorSize,
+					 IN ULONG PartitionNumber,
+					 IN ULONG PartitionType);
+
+NTAPI NTSTATUS IoReadDiskSignature(IN PDEVICE_OBJECT DeviceObject,
+				   IN ULONG BytesPerSector,
+				   OUT PDISK_SIGNATURE Signature);

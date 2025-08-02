@@ -23,8 +23,7 @@
 #ifndef _NTSRB_
 #define _NTSRB_
 
-#include <nt.h>
-#include "hal.h"
+#include <ntddk.h>
 
 /* NOTE: the current SCSI_MAXIMUM_TARGETS_PER_BUS is applicable
  * only on scsiport miniports. For storport miniports, the max
@@ -171,9 +170,11 @@
 #define SRB_HEAD_OF_QUEUE_TAG_REQUEST 0x21
 #define SRB_ORDERED_QUEUE_TAG_REQUEST 0x22
 
-#define SRB_WMI_FLAGS_ADAPTER_REQUEST 0x0001
-#define SRB_POWER_FLAGS_ADAPTER_REQUEST 0x0001
-#define SRB_PNP_FLAGS_ADAPTER_REQUEST 0x0001
+#define SRB_WMI_FLAGS_ADAPTER_REQUEST       0x01
+#define SRB_POWER_FLAGS_ADAPTER_REQUEST     0x01
+#define SRB_PNP_FLAGS_ADAPTER_REQUEST       0x01
+#define SRB_IOCTL_FLAGS_ADAPTER_REQUEST     0x01
+#define SRB_PROTOCOL_FLAGS_ADAPTER_REQUEST  0x01
 
 #define SP_BUS_PARITY_ERROR 0x0001
 #define SP_UNEXPECTED_DISCONNECT 0x0002
@@ -200,6 +201,19 @@ typedef enum _SCSI_ADAPTER_CONTROL_TYPE {
     ScsiRestartAdapter,
     ScsiSetBootConfig,
     ScsiSetRunningConfig,
+    ScsiPowerSettingNotification,
+    ScsiAdapterPower,
+    ScsiAdapterPoFxPowerRequired,
+    ScsiAdapterPoFxPowerActive,
+    ScsiAdapterPoFxPowerSetFState,
+    ScsiAdapterPoFxPowerControl,
+    ScsiAdapterPrepareForBusReScan,
+    ScsiAdapterSystemPowerHints,
+    ScsiAdapterFilterResourceRequirements,
+    ScsiAdapterPoFxMaxOperationalPower,
+    ScsiAdapterPoFxSetPerfState,
+    ScsiAdapterSurpriseRemoval,
+    ScsiAdapterSerialNumber,
     ScsiAdapterControlMax,
     MakeAdapterControlTypeSizeOfUlong = 0xffffffff
 } SCSI_ADAPTER_CONTROL_TYPE, *PSCSI_ADAPTER_CONTROL_TYPE;
@@ -229,16 +243,16 @@ typedef struct _SCSI_REQUEST_BLOCK {
     ULONG SrbFlags;
     ULONG DataTransferLength;
     ULONG TimeOutValue;
-    _Field_size_bytes_(DataTransferLength) PVOID DataBuffer;
+    PVOID DataBuffer;
     PVOID SenseInfoBuffer;
     struct _SCSI_REQUEST_BLOCK *NextSrb;
     PVOID OriginalRequest;
     PVOID SrbExtension;
-    _ANONYMOUS_UNION union {
+    union {
 	ULONG InternalStatus;
 	ULONG QueueSortKey;
 	ULONG LinkTimeoutValue;
-    } DUMMYUNIONNAME;
+    };
 #if defined(_WIN64)
     ULONG Reserved;
 #endif
@@ -340,6 +354,31 @@ typedef struct _STOR_DEVICE_CAPABILITIES {
     ULONG SurpriseRemovalOK : 1;
     ULONG NoDisplayInUI : 1;
 } STOR_DEVICE_CAPABILITIES, *PSTOR_DEVICE_CAPABILITIES;
+
+#define STOR_DEVICE_CAPABILITIES_EX_VERSION_1    0x1
+
+typedef struct _STOR_DEVICE_CAPABILITIES_EX {
+    USHORT Version;
+    USHORT Size;
+    ULONG  DeviceD1:1;
+    ULONG  DeviceD2:1;
+    ULONG  LockSupported:1;
+    ULONG  EjectSupported:1;
+    ULONG  Removable:1;
+    ULONG  DockDevice:1;
+    ULONG  UniqueID:1;
+    ULONG  SilentInstall:1;
+    ULONG  RawDeviceOK:1;
+    ULONG  SurpriseRemovalOK:1;
+    ULONG  NoDisplayInUI:1;
+    ULONG  DefaultWriteCacheEnabled:1;
+    ULONG  Reserved0:20;
+
+    ULONG  Address;
+    ULONG  UINumber;
+
+    ULONG  Reserved1[2];
+} STOR_DEVICE_CAPABILITIES_EX, *PSTOR_DEVICE_CAPABILITIES_EX;
 
 typedef struct _SCSI_PNP_REQUEST_BLOCK {
     USHORT Length;

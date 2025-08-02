@@ -1,3 +1,5 @@
+#include <ntddk.h>
+
 #ifndef _NTATA_
 #define _NTATA_
 
@@ -583,6 +585,685 @@ typedef struct _IDENTIFY_PACKET_DATA {
     USHORT CheckSum : 8;
 } IDENTIFY_PACKET_DATA, *PIDENTIFY_PACKET_DATA;
 
+typedef struct _REGISTER_FIS {
+    UCHAR FisType;
+    UCHAR Reserved0 : 7;
+    UCHAR CmdReg : 1;
+    UCHAR Command;
+    UCHAR Features;
+    UCHAR SectorNumber;
+    UCHAR CylinderLow;
+    UCHAR CylinderHigh;
+    UCHAR DeviceHead;
+    UCHAR SectorNumberExp;
+    UCHAR CylinderLowExp;
+    UCHAR CylinderHighExp;
+    UCHAR FeaturesExp;
+    UCHAR SectorCount;
+    UCHAR SectorCountExp;
+    UCHAR Reserved2;
+    UCHAR Control;
+    ULONG Reserved3;
+} REGISTER_FIS, *PREGISTER_FIS;
+
+typedef union _ATA_HYBRID_INFO_FIELDS {
+    _ANONYMOUS_STRUCT struct {
+	UCHAR HybridPriority : 4;
+	UCHAR Reserved0 : 1;
+	UCHAR InfoValid : 1;
+	UCHAR Reserved1 : 2;
+    } DUMMYSTRUCTNAME;
+    UCHAR AsUchar;
+} ATA_HYBRID_INFO_FIELDS, *PATA_HYBRID_INFO_FIELDS;
+
+typedef struct _DEVICE_SET_PASSWORD {
+    struct {
+	USHORT PasswordIdentifier : 1;
+	USHORT Reserved1 : 7;
+	USHORT MasterPasswordCapability : 1;
+	USHORT Reserved2 : 7;
+    } ControlWord;
+    USHORT Password[16];
+    USHORT MasterPasswordIdentifier;
+    USHORT Reserved[238];
+} DEVICE_SET_PASSWORD, *PDEVICE_SET_PASSWORD;
+
+typedef struct _IDENTIFY_DEVICE_DATA_LOG_PAGE_HEADER {
+    ULONGLONG RevisionNumber : 16;
+    ULONGLONG PageNumber : 8;
+    ULONGLONG Reserved : 39;
+    ULONGLONG Valid : 1;
+} IDENTIFY_DEVICE_DATA_LOG_PAGE_HEADER, *PIDENTIFY_DEVICE_DATA_LOG_PAGE_HEADER;
+
+typedef struct _IDENTIFY_DEVICE_DATA_LOG_PAGE_SUPPORTED_CAPABILITIES {
+    IDENTIFY_DEVICE_DATA_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG WRV : 1;
+	ULONGLONG WriteUncorrectable : 1;
+	ULONGLONG GplDma : 1;
+	ULONGLONG DmMode3 : 1;
+	ULONGLONG FreeFall : 1;
+	ULONGLONG SenseData : 1;
+	ULONGLONG EPC : 1;
+	ULONGLONG SmartErrorLogging : 1;
+	ULONGLONG SmartSelfTest : 1;
+	ULONGLONG Reserved9 : 1;
+	ULONGLONG Streaming : 1;
+	ULONGLONG GPL : 1;
+	ULONGLONG WriteFuaExt : 1;
+	ULONGLONG Unload : 1;
+	ULONGLONG DownloadMicrocode : 1;
+	ULONGLONG Reserved15ForCFA : 1;
+	ULONGLONG APM : 1;
+	ULONGLONG PUIS : 1;
+	ULONGLONG SpinUp : 1;
+	ULONGLONG Reserved19 : 1;
+	ULONGLONG Cmd48Bit : 1;
+	ULONGLONG Reserved21 : 1;
+	ULONGLONG FlushCacheExt : 1;
+	ULONGLONG Smart : 1;
+	ULONGLONG VolatileWriteCache : 1;
+	ULONGLONG ReadLookahead : 1;
+	ULONGLONG Reserved26 : 1;
+	ULONGLONG WriteBuffer : 1;
+	ULONGLONG ReadBuffer : 1;
+	ULONGLONG NOP : 1;
+	ULONGLONG Reserved30 : 1;
+	ULONGLONG RZAT : 1;
+	ULONGLONG Cmd28bit : 1;
+	ULONGLONG DownloadMicrocodeDma : 1;
+	ULONGLONG Reserved34 : 1;
+	ULONGLONG WriteBufferDma : 1;
+	ULONGLONG ReadBufferDma : 1;
+	ULONGLONG Reserved37 : 1;
+	ULONGLONG LpsMisalignmentReporting : 1;
+	ULONGLONG DRAT : 1;
+	ULONGLONG Reserved40ForCFA : 1;
+	ULONGLONG AmaxAddr : 1;
+	ULONGLONG SetEpcPowerSource : 1;
+	ULONGLONG LowPowerStandby : 1;
+	ULONGLONG DSN : 1;
+	ULONGLONG RequestSenseDeviceFault : 1;
+	ULONGLONG Reserved : 17;
+	ULONGLONG Valid : 1;
+    } SupportedCapabilities;
+    struct {
+	ULONGLONG DmMinTransferSize : 16;
+	ULONGLONG DmMaxTransferSize : 16;
+	ULONGLONG DmOffsetsImmediateSupported : 1;
+	ULONGLONG DmImmediateSupported : 1;
+	ULONGLONG DmOffsetsDeferredSupported : 1;
+	ULONGLONG Reserved : 28;
+	ULONGLONG Valid : 1;
+    } DownloadMicrocodeCapabilities;
+    struct {
+	ULONGLONG Rate : 16;
+	ULONGLONG Reserved : 47;
+	ULONGLONG Valid : 1;
+    } NominalMediaRotationRate;
+    struct {
+	ULONGLONG Factor : 4;
+	ULONGLONG Reserved : 59;
+	ULONGLONG Valid : 1;
+    } NominalFormFactor;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 31;
+	ULONGLONG Valid : 1;
+    } WRVSectorCountMode3;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 31;
+	ULONGLONG Valid : 1;
+    } WRVSectorCountMode2;
+    struct {
+	ULONGLONG Name;
+	ULONGLONG Reserved : 63;
+	ULONGLONG Valid : 1;
+    } WorldWideName;
+    struct {
+	ULONGLONG TrimSupported : 1;
+	ULONGLONG Reserved : 62;
+	ULONGLONG Valid : 1;
+    } DataSetManagement;
+    struct {
+	ULONGLONG UtilizationA : 32;
+	ULONGLONG UtilizationB : 32;
+	ULONGLONG Reserved0 : 32;
+	ULONGLONG UtilizationInterval : 8;
+	ULONGLONG UtilizationUnit : 8;
+	ULONGLONG UtilizationType : 8;
+	ULONGLONG Reserved1 : 7;
+	ULONGLONG Valid : 1;
+    } UtilizationPerUnitTime;
+    struct {
+	ULONGLONG DateTimeRateBasisSupported : 1;
+	ULONGLONG Reserved0 : 3;
+	ULONGLONG PowerOnHoursRateBasisSupported : 1;
+	ULONGLONG Reserved1 : 3;
+	ULONGLONG SincePowerOnRateBasisSupported : 1;
+	ULONGLONG Reserved2 : 14;
+	ULONGLONG SettingRateBasisSupported : 1;
+	ULONGLONG Reserved3 : 39;
+	ULONGLONG Valid : 1;
+    } UtilizationUsageRateSupport;
+    struct {
+	ULONGLONG Zoned : 2;
+	ULONGLONG Reserved : 61;
+	ULONGLONG Valid : 1;
+    } ZonedCapabilities;
+    struct {
+	ULONGLONG ReportZonesExtSupported : 1;
+	ULONGLONG NonDataOpenZoneExtSupported : 1;
+	ULONGLONG NonDataCloseZoneExtSupported : 1;
+	ULONGLONG NonDataFinishZoneExtSupported : 1;
+	ULONGLONG NonDataResetWritePointersExtSupported : 1;
+	ULONGLONG Reserved : 58;
+	ULONGLONG Valid : 1;
+    } SupportedZacCapabilities;
+    UCHAR Reserved[392];
+} IDENTIFY_DEVICE_DATA_LOG_PAGE_SUPPORTED_CAPABILITIES, *PIDENTIFY_DEVICE_DATA_LOG_PAGE_SUPPORTED_CAPABILITIES;
+
+typedef struct _IDENTIFY_DEVICE_DATA_LOG_PAGE_ZONED_DEVICE_INFO {
+    IDENTIFY_DEVICE_DATA_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG URSWRZ : 1;
+	ULONGLONG Reserved : 62;
+	ULONGLONG Valid : 1;
+    } ZonedDeviceCapabilities;
+    struct {
+	ULONGLONG Reserved : 63;
+	ULONGLONG Valid : 1;
+    } ZonedDeviceSettings;
+    struct {
+	ULONGLONG Number : 32;
+	ULONGLONG Reserved : 31;
+	ULONGLONG Valid : 1;
+    } OptimalNumberOfOpenSequentialWritePreferredZones;
+    struct {
+	ULONGLONG Number : 32;
+	ULONGLONG Reserved : 31;
+	ULONGLONG Valid : 1;
+    } OptimalNumberOfNonSequentiallyWrittenSequentialWritePreferredZones;
+    struct {
+	ULONGLONG Number : 32;
+	ULONGLONG Reserved : 31;
+	ULONGLONG Valid : 1;
+    } MaxNumberOfOpenSequentialWriteRequiredZones;
+    struct {
+	ULONGLONG ZacMinorVersion : 16;
+	ULONGLONG Reserved0 : 47;
+	ULONGLONG Valid : 1;
+    } Version;
+    UCHAR Reserved[456];
+} IDENTIFY_DEVICE_DATA_LOG_PAGE_ZONED_DEVICE_INFO, *PIDENTIFY_DEVICE_DATA_LOG_PAGE_ZONED_DEVICE_INFO;
+
+typedef struct _CURRENT_DEVICE_INTERNAL_STATUS_LOG {
+    UCHAR LogAddress;
+    UCHAR Reserved0[3];
+    ULONG OrganizationID;
+    USHORT Area1LastLogPage;
+    USHORT Area2LastLogPage;
+    USHORT Area3LastLogPage;
+    UCHAR Reserved2[368];
+    UCHAR SavedDataAvailable;
+    UCHAR SavedDataGenerationNumber;
+    UCHAR ReasonIdentifier[128];
+} CURRENT_DEVICE_INTERNAL_STATUS_LOG, *PCURRENT_DEVICE_INTERNAL_STATUS_LOG;
+
+typedef struct _SAVED_DEVICE_INTERNAL_STATUS_LOG {
+    UCHAR LogAddress;
+    UCHAR Reserved0[3];
+    ULONG OrganizationID;
+    USHORT Area1LastLogPage;
+    USHORT Area2LastLogPage;
+    USHORT Area3LastLogPage;
+    UCHAR Reserved2[368];
+    UCHAR SavedDataAvailable;
+    UCHAR GenerationNumber;
+    UCHAR ReasonIdentifier[128];
+} SAVED_DEVICE_INTERNAL_STATUS_LOG, *PSAVED_DEVICE_INTERNAL_STATUS_LOG;
+
+typedef struct _DEVICE_STATISTICS_LOG_PAGE_HEADER {
+    ULONGLONG RevisionNumber : 16;
+    ULONGLONG PageNumber : 8;
+    ULONGLONG Reserved : 40;
+} DEVICE_STATISTICS_LOG_PAGE_HEADER, *PDEVICE_STATISTICS_LOG_PAGE_HEADER;
+
+typedef struct _GP_LOG_SUPPORTED_DEVICE_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    UCHAR NumberOfEntries;
+    UCHAR LogPageNumbers[503];
+} GP_LOG_SUPPORTED_DEVICE_STATISTICS, *PGP_LOG_SUPPORTED_DEVICE_STATISTICS;
+
+typedef struct _GP_LOG_GENERAL_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } LifeTimePoweronResets;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } PoweronHours;
+    struct {
+	ULONGLONG Count : 48;
+	ULONGLONG Reserved : 8;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } LogicalSectorsWritten;
+    struct {
+	ULONGLONG Count : 48;
+	ULONGLONG Reserved : 8;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } WriteCommandCount;
+    struct {
+	ULONGLONG Count : 48;
+	ULONGLONG Reserved : 8;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } LogicalSectorsRead;
+    struct {
+	ULONGLONG Count : 48;
+	ULONGLONG Reserved : 8;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } ReadCommandCount;
+    struct {
+	ULONGLONG TimeStamp : 48;
+	ULONGLONG Reserved : 8;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } DateAndTime;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } PendingErrorCount;
+    struct {
+	ULONGLONG Value : 16;
+	ULONGLONG Reserved : 40;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } WorkloadUtilizaton;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved0 : 28;
+	ULONGLONG RateBasis : 4;
+	ULONGLONG RateValidity : 8;
+	ULONGLONG Reserved1 : 8;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } UtilizationUsageRate;
+    UCHAR Reserved[424];
+} GP_LOG_GENERAL_STATISTICS, *PGP_LOG_GENERAL_STATISTICS;
+
+typedef struct _GP_LOG_FREE_FALL_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberofFreeFallEventsDetected;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } OverlimitShockEvents;
+    UCHAR Reserved[488];
+} GP_LOG_FREE_FALL_STATISTICS, *PGP_LOG_FREE_FALL_STATISTICS;
+
+typedef struct _GP_LOG_ROTATING_MEDIA_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } SpindleMotorPoweronHours;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } HeadFlyingHours;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } HeadLoadEvents;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfReallocatedLogicalSectors;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } ReadRecoveryAttempts;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfMechanicalStartFailures;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfReallocationCandidateLogicalSectors;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfHighPriorityUnloadEvents;
+    UCHAR Reserved[440];
+} GP_LOG_ROTATING_MEDIA_STATISTICS, *PGP_LOG_ROTATING_MEDIA_STATISTICS;
+
+typedef struct _GP_LOG_GENERAL_ERROR_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfReportedUncorrectableErrors;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfResetsBetweenCommandAcceptanceAndCommandCompletion;
+    UCHAR Reserved[488];
+} GP_LOG_GENERAL_ERROR_STATISTICS, *PGP_LOG_GENERAL_ERROR_STATISTICS;
+
+typedef struct _GP_LOG_TEMPERATURE_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } CurrentTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } AverageShortTermTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } AverageLongTermTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } HighestTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } LowestTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } HighestAverageShortTermTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } LowestAverageShortTermTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } HighstAverageLongTermTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } LowestAverageLongTermTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } TimeInOverTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } SpecifiedMaximumOperatingTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } TimeInUnderTemperature;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } SpecifiedMinimumOperatingTemperature;
+    UCHAR Reserved[400];
+} GP_LOG_TEMPERATURE_STATISTICS, *PGP_LOG_TEMPERATURE_STATISTICS;
+
+typedef struct _GP_LOG_TRANSPORT_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Count : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfHardwareResets;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfAsrEvents;
+    struct {
+	ULONGLONG Count : 32;
+	ULONGLONG Reserved : 24;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } NumberOfInterfaceCrcErrors;
+    UCHAR Reserved[480];
+} GP_LOG_TRANSPORT_STATISTICS, *PGP_LOG_TRANSPORT_STATISTICS;
+
+typedef struct _GP_LOG_SOLID_STATE_DEVICE_STATISTICS {
+    DEVICE_STATISTICS_LOG_PAGE_HEADER Header;
+    struct {
+	ULONGLONG Value : 8;
+	ULONGLONG Reserved : 48;
+	ULONGLONG ReservedFlags : 3;
+	ULONGLONG MonitoredConditionMet : 1;
+	ULONGLONG StatisticsSupportsDsn : 1;
+	ULONGLONG Normalized : 1;
+	ULONGLONG ValidValue : 1;
+	ULONGLONG Supported : 1;
+    } PercentageUsedEnduranceIndicator;
+    UCHAR Reserved[496];
+} GP_LOG_SOLID_STATE_DEVICE_STATISTICS, *PGP_LOG_SOLID_STATE_DEVICE_STATISTICS;
+
 typedef struct _GP_LOG_NCQ_COMMAND_ERROR {
     UCHAR NcqTag : 5;
     UCHAR Reserved0 : 1;
@@ -608,6 +1289,168 @@ typedef struct _GP_LOG_NCQ_COMMAND_ERROR {
     UCHAR Vendor[255];
     UCHAR Checksum;
 } GP_LOG_NCQ_COMMAND_ERROR, *PGP_LOG_NCQ_COMMAND_ERROR;
+
+typedef struct _GP_LOG_NCQ_NON_DATA {
+    struct {
+	ULONG AbortNcq : 1;
+	ULONG AbortAll : 1;
+	ULONG AbortStreaming : 1;
+	ULONG AbortNonStreaming : 1;
+	ULONG AbortSelectedTTag : 1;
+	ULONG Reserved : 27;
+    } SubCmd0;
+    struct {
+	ULONG DeadlineHandling : 1;
+	ULONG WriteDataNotContinue : 1;
+	ULONG ReadDataNotContinue : 1;
+	ULONG Reserved : 29;
+    } SubCmd1;
+    struct {
+	ULONG HybridDemoteBySize : 1;
+	ULONG Reserved : 31;
+    } SubCmd2;
+    struct {
+	ULONG HybridChangeByLbaRange : 1;
+	ULONG Reserved : 31;
+    } SubCmd3;
+    struct {
+	ULONG HybridControl : 1;
+	ULONG Reserved : 31;
+    } SubCmd4;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmd5;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmd6;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmd7;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmd8;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmd9;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmdA;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmdB;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmdC;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmdD;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmdE;
+    struct {
+	ULONG Reserved : 32;
+    } SubCmdF;
+    ULONG Reserved[112];
+} GP_LOG_NCQ_NON_DATA, *PGP_LOG_NCQ_NON_DATA;
+
+typedef struct _GP_LOG_NCQ_SEND_RECEIVE {
+    struct {
+	ULONG DataSetManagement : 1;
+	ULONG HybridEvict : 1;
+	ULONG Reserved : 30;
+    } SubCmd;
+    struct {
+	ULONG Trim : 1;
+	ULONG Reserved : 31;
+    } DataSetManagement;
+    ULONG Reserved[126];
+} GP_LOG_NCQ_SEND_RECEIVE, *PGP_LOG_NCQ_SEND_RECEIVE;
+
+typedef struct _GP_LOG_HYBRID_INFORMATION_HEADER {
+    USHORT HybridInfoDescrCount : 4;
+    USHORT Reserved0 : 12;
+    UCHAR Enabled;
+    UCHAR HybridHealth;
+    UCHAR DirtyLowThreshold;
+    UCHAR DirtyHighThreshold;
+    UCHAR OptimalWriteGranularity;
+    UCHAR MaximumHybridPriorityLevel : 4;
+    UCHAR Reserved1 : 4;
+    UCHAR PowerCondidtion;
+    UCHAR CachingMediumEnabled ;
+    struct {
+	UCHAR MaximumPriorityBehavior : 1;
+	UCHAR SupportCacheBehavior : 1;
+	UCHAR Reserved : 6;
+    } SupportedOptions;
+    UCHAR Reserved2;
+    ULONG TimeSinceEnabled;
+    ULONGLONG NVMSize;
+    ULONGLONG EnableCount;
+    USHORT MaximumEvictionCommands : 5;
+    USHORT Reserved3 : 11;
+    USHORT MaximumEvictionDataBlocks;
+    UCHAR Reserved[28];
+} GP_LOG_HYBRID_INFORMATION_HEADER, *PGP_LOG_HYBRID_INFORMATION_HEADER;
+
+typedef struct _GP_LOG_HYBRID_INFORMATION_DESCRIPTOR {
+    UCHAR HybridPriority;
+    UCHAR ConsumedNVMSizeFraction;
+    UCHAR ConsumedMappingResourcesFraction;
+    UCHAR ConsumedNVMSizeForDirtyDataFraction;
+    UCHAR ConsumedMappingResourcesForDirtyDataFraction;
+    UCHAR Reserved[11];
+} GP_LOG_HYBRID_INFORMATION_DESCRIPTOR, *PGP_LOG_HYBRID_INFORMATION_DESCRIPTOR;
+
+typedef struct _GP_LOG_HYBRID_INFORMATION {
+    GP_LOG_HYBRID_INFORMATION_HEADER Header;
+    GP_LOG_HYBRID_INFORMATION_DESCRIPTOR Descriptor[0];
+} GP_LOG_HYBRID_INFORMATION, *PGP_LOG_HYBRID_INFORMATION;
+
+typedef struct _REPORT_ZONES_EXT_DATA {
+    ULONG ZoneListLength;
+    UCHAR SAME : 4;
+    UCHAR Reserved0 : 4;
+    UCHAR Reserved1[3];
+    ULONGLONG MaxLBA : 48;
+    ULONGLONG Reserved2 : 16;
+    UCHAR Reserved3[48];
+} REPORT_ZONES_EXT_DATA, *PREPORT_ZONES_EXT_DATA;
+
+typedef struct _ATA_ZONE_DESCRIPTOR {
+    UCHAR ZoneType : 4;
+    UCHAR Reserved0 : 4;
+    UCHAR Reset : 1;
+    UCHAR NonSeq : 1;
+    UCHAR Reserved1 : 2;
+    UCHAR ZoneCondition : 4;
+    UCHAR Reserved2[6];
+    ULONGLONG ZoneLength : 48;
+    ULONGLONG Reserved3 : 16;
+    ULONGLONG ZoneStartLBA : 48;
+    ULONGLONG Reserved4 : 16;
+    ULONGLONG WritePointerLBA : 48;
+    ULONGLONG Reserved5 : 16;
+    UCHAR Reserved6[32];
+} ATA_ZONE_DESCRIPTOR, *PATA_ZONE_DESCRIPTOR;
+
+typedef struct _ATA_PHYSICAL_ELEMENT_STATUS_DESCRIPTOR {
+    UCHAR Reserved1[4];
+    ULONG ElementIdentifier;
+    UCHAR Reserved2[6];
+    UCHAR PhysicalElementType;
+    UCHAR PhysicalElementHealth;
+    ULONGLONG AssociatedCapacity;
+    UCHAR Reserved3[8];
+} ATA_PHYSICAL_ELEMENT_STATUS_DESCRIPTOR, *PATA_PHYSICAL_ELEMENT_STATUS_DESCRIPTOR;
+
+typedef struct _ATA_GET_PHYSICAL_ELEMENT_STATUS_PARAMETER_DATA {
+    ULONG NumberOfDescriptors;
+    ULONG NumberOfDescriptorsReturned;
+    ULONG ElementIdentifierBeingDepoped;
+    UCHAR Reserved[20];
+    ATA_PHYSICAL_ELEMENT_STATUS_DESCRIPTOR Descriptors[ANYSIZE_ARRAY];
+} ATA_GET_PHYSICAL_ELEMENT_STATUS_PARAMETER_DATA, *PATA_GET_PHYSICAL_ELEMENT_STATUS_PARAMETER_DATA;
 #include <poppack.h>
 
 #define IDE_LBA_MODE (1 << 6)
@@ -708,6 +1551,12 @@ typedef struct _GP_LOG_NCQ_COMMAND_ERROR {
 #define IDE_COMMAND_SECURITY_DISABLE_PASSWORD 0xF6
 #define IDE_COMMAND_NOT_VALID 0xFF
 
+#define IDE_SET_DEFAULT_PIO_MODE(mode)      ((UCHAR)1)
+#define IDE_SET_ADVANCE_PIO_MODE(mode)      ((UCHAR)((1 << 3) | (mode)))
+#define IDE_SET_SWDMA_MODE(mode)            ((UCHAR)((1 << 4) | (mode)))
+#define IDE_SET_MWDMA_MODE(mode)            ((UCHAR)((1 << 5) | (mode)))
+#define IDE_SET_UDMA_MODE(mode)             ((UCHAR)((1 << 6) | (mode)))
+
 #define IDE_FEATURE_ENABLE_WRITE_CACHE 0x2
 #define IDE_FEATURE_SET_TRANSFER_MODE 0x3
 #define IDE_FEATURE_ENABLE_PUIS 0x6
@@ -719,5 +1568,155 @@ typedef struct _GP_LOG_NCQ_COMMAND_ERROR {
 #define IDE_FEATURE_DISABLE_PUIS 0x86
 #define IDE_FEATURE_DISABLE_SATA_FEATURE 0x90
 #define IDE_FEATURE_ENABLE_MSN 0x95
+
+#define IDE_SATA_FEATURE_NON_ZERO_DMA_BUFFER_OFFSET         0x1
+#define IDE_SATA_FEATURE_DMA_SETUP_FIS_AUTO_ACTIVATE        0x2
+#define IDE_SATA_FEATURE_DEVICE_INITIATED_POWER_MANAGEMENT  0x3
+#define IDE_SATA_FEATURE_GUARANTEED_IN_ORDER_DELIVERY       0x4
+#define IDE_SATA_FEATURE_ASYNCHRONOUS_NOTIFICATION          0x5
+#define IDE_SATA_FEATURE_SOFTWARE_SETTINGS_PRESERVATION     0x6
+#define IDE_SATA_FEATURE_DEVICE_AUTO_PARTIAL_TO_SLUMBER     0x7
+#define IDE_SATA_FEATURE_ENABLE_HARDWARE_FEATURE_CONTROL    0x8
+#define IDE_SATA_FEATURE_DEVSLP                             0x9
+#define IDE_SATA_FEATURE_HYBRID_INFORMATION                 0xA
+
+#define IDE_SMART_READ_ATTRIBUTES               0xD0
+#define IDE_SMART_READ_THRESHOLDS               0xD1
+#define IDE_SMART_ENABLE_DISABLE_AUTOSAVE       0xD2
+#define IDE_SMART_SAVE_ATTRIBUTE_VALUES         0xD3
+#define IDE_SMART_EXECUTE_OFFLINE_DIAGS         0xD4
+#define IDE_SMART_READ_LOG                      0xD5
+#define IDE_SMART_WRITE_LOG                     0xD6
+#define IDE_SMART_ENABLE                        0xD8
+#define IDE_SMART_DISABLE                       0xD9
+#define IDE_SMART_RETURN_STATUS                 0xDA
+#define IDE_SMART_ENABLE_DISABLE_AUTO_OFFLINE   0xDB
+
+#define IDE_DSM_FEATURE_TRIM                  0x0001
+
+#define IDE_NCQ_NON_DATA_ABORT_NCQ_QUEUE                0x00
+#define IDE_NCQ_NON_DATA_DEADLINE_HANDLING              0x01
+#define IDE_NCQ_NON_DATA_HYBRID_CHANGE_BY_SIZE          0x02
+#define IDE_NCQ_NON_DATA_HYBRID_DEMOTE_BY_SIZE          0x02
+#define IDE_NCQ_NON_DATA_HYBRID_CHANGE_BY_LBA_RANGE     0x03
+#define IDE_NCQ_NON_DATA_HYBRID_CONTROL                 0x04
+
+#define IDE_NCQ_SEND_DATA_SET_MANAGEMENT                0x00
+#define IDE_NCQ_SEND_HYBRID_EVICT                       0x01
+
+#define ATA_DEVICE_SET_PASSWORD_MASTER       0x01
+#define ATA_DEVICE_SET_PASSWORD_USER         0x00
+
+#define IDE_GP_LOG_DIRECTORY_ADDRESS                0x00
+#define IDE_GP_SUMMARY_SMART_ERROR                  0x01
+#define IDE_GP_COMPREHENSIVE_SMART_ERROR            0x02
+#define IDE_GP_EXTENDED_COMPREHENSIVE_SMART_ERROR   0x03
+#define IDE_GP_LOG_DEVICE_STATISTICS_ADDRESS        0x04
+#define IDE_GP_SMART_SELF_TEST                      0x06
+#define IDE_GP_EXTENDED_SMART_SELF_TEST             0x07
+#define IDE_GP_LOG_POWER_CONDITIONS                 0x08
+#define IDE_GP_SELECTIVE_SELF_TEST                  0x09
+#define IDE_GP_DEVICE_STATISTICS_NOTIFICATION       0x0A
+#define IDE_GP_PENDING_DEFECTS                      0x0C
+#define IDE_GP_LPS_MISALIGNMENT                     0x0D
+#define IDE_GP_LOG_NCQ_COMMAND_ERROR_ADDRESS        0x10
+#define IDE_GP_LOG_PHY_EVENT_COUNTER_ADDRESS        0x11
+#define IDE_GP_LOG_NCQ_NON_DATA_ADDRESS             0x12
+#define IDE_GP_LOG_NCQ_SEND_RECEIVE_ADDRESS         0x13
+#define IDE_GP_LOG_HYBRID_INFO_ADDRESS              0x14
+#define IDE_GP_LOG_REBUILD_ASSIST                   0x15
+#define IDE_GP_LOG_LBA_STATUS                       0x19
+#define IDE_GP_LOG_WRITE_STREAM_ERROR               0x21
+#define IDE_GP_LOG_READ_STREAM_ERROR                0x22
+#define IDE_GP_LOG_CURRENT_DEVICE_INTERNAL_STATUS   0x24
+#define IDE_GP_LOG_SAVED_DEVICE_INTERNAL_STATUS     0x25
+#define IDE_GP_LOG_IDENTIFY_DEVICE_DATA_ADDRESS     0x30
+#define IDE_GP_LOG_SCT_COMMAND_STATUS               0xE0
+#define IDE_GP_LOG_SCT_DATA_TRANSFER                0xE1
+
+#define IDE_GP_LOG_SECTOR_SIZE                      0x200
+
+#define IDE_GP_LOG_VERSION                          0x0001
+
+#define IDE_GP_LOG_SUPPORTED_PAGES                  0x00
+
+#define IDE_GP_LOG_IDENTIFY_DEVICE_DATA_SUPPORTED_CAPABILITIES_PAGE     0x03
+#define IDE_GP_LOG_IDENTIFY_DEVICE_DATA_SATA_PAGE                       0x08
+#define IDE_GP_LOG_IDENTIFY_DEVICE_DATA_ZONED_DEVICE_INFORMATION_PAGE   0x09
+
+#define ATA_ZONED_CAPABILITIES_NOT_REPORTED       0x0
+#define ATA_ZONED_CAPABILITIES_HOST_AWARE         0x1
+#define ATA_ZONED_CAPABILITIES_DEVICE_MANAGED     0x2
+
+#define ZAC_REVISION_NOT_REPORTED_1     0x0000
+#define ZAC_REVISION_NOT_REPORTED_2     0xFFFF
+#define ZAC_REVISION_01                 0xB6E8
+#define ZAC_REVISION_04                 0xA36C
+
+#define CURRENT_DEVICE_INTERNAL_STATUS_DATA_LOG_ADDRESS     0x24
+#define SAVED_DEVICE_INTERNAL_STATUS_DATA_LOG_ADDRESS       0x25
+
+#define IDE_GP_LOG_DEVICE_STATISTICS_GENERAL_PAGE           0x01
+#define IDE_GP_LOG_DEVICE_STATISTICS_FREE_FALL_PAGE         0x02
+#define IDE_GP_LOG_DEVICE_STATISTICS_ROTATING_MEDIA_PAGE    0x03
+#define IDE_GP_LOG_DEVICE_STATISTICS_GENERAL_ERROR_PAGE     0x04
+#define IDE_GP_LOG_DEVICE_STATISTICS_TEMPERATURE_PAGE       0x05
+#define IDE_GP_LOG_DEVICE_STATISTICS_TRANSPORT_PAGE         0x06
+#define IDE_GP_LOG_DEVICE_STATISTICS_SSD_PAGE               0x07
+
+#define HYBRID_INFORMATION_DISABLED             0x00
+#define HYBRID_INFORMATION_DISABLE_IN_PROCESS   0x80
+#define HYBRID_INFORMATION_ENABLED              0xFF
+
+#define HYBRID_HEALTH_UNUSEABLE                 0x01
+#define HYBRID_HEALTH_NVM_SIZE_CHANGED          0x02
+#define HYBRID_HEALTH_READ_ONLY                 0x04
+#define HYBRID_HEALTH_DATA_LOSS                 0x08
+
+#define ATA_DEVICE_SIGNATURE_ATA                0x00000101
+#define ATA_DEVICE_SIGNATURE_ATAPI              0xEB140101
+#define ATA_DEVICE_SIGNATURE_HOST_ZONED         0xABCD0101
+#define ATA_DEVICE_SIGNATURE_ENCLOSURE          0xC33C0101
+#define ATA_DEVICE_SIGNATURE_PORT_MULTIPLIER    0x96690101
+
+#define ZM_ACTION_REPORT_ZONES          0x00
+#define ZM_ACTION_CLOSE_ZONE            0x01
+#define ZM_ACTION_FINISH_ZONE           0x02
+#define ZM_ACTION_OPEN_ZONE             0x03
+#define ZM_ACTION_RESET_WRITE_POINTER   0x04
+
+#define ZM_ALL_ZONES_BIT                (1 << 8)
+
+#define ATA_REPORT_ZONES_OPTION_LIST_ALL_ZONES                  0x00
+#define ATA_REPORT_ZONES_OPTION_LIST_EMPTY_ZONES                0x01
+#define ATA_REPORT_ZONES_OPTION_LIST_IMPLICITLY_OPENED_ZONES    0x02
+#define ATA_REPORT_ZONES_OPTION_LIST_EXPLICITLY_OPENED_ZONES    0x03
+#define ATA_REPORT_ZONES_OPTION_LIST_CLOSED_ZONES               0x04
+#define ATA_REPORT_ZONES_OPTION_LIST_FULL_ZONES                 0x05
+#define ATA_REPORT_ZONES_OPTION_LIST_READ_ONLY_ZONES            0x06
+#define ATA_REPORT_ZONES_OPTION_LIST_OFFLINE_ZONES              0x07
+
+#define ATA_REPORT_ZONES_OPTION_LIST_RWP_ZONES                                      0x10
+#define ATA_REPORT_ZONES_OPTION_LIST_NON_SEQUENTIAL_WRITE_RESOURCES_ACTIVE_ZONES    0x11
+
+#define ATA_REPORT_ZONES_OPTION_LIST_NOT_WRITE_POINTER_ZONES    0x3F
+
+#define ATA_ZONES_TYPE_AND_LENGTH_MAY_DIFFERENT          0x0
+#define ATA_ZONES_TYPE_SAME_LENGTH_SAME                  0x1
+#define ATA_ZONES_TYPE_SAME_LAST_ZONE_LENGTH_DIFFERENT   0x2
+#define ATA_ZONES_TYPE_MAY_DIFFERENT_LENGTH_SAME         0x3
+
+#define ATA_ZONE_TYPE_CONVENTIONAL                          0x1
+#define ATA_ZONE_TYPE_SEQUENTIAL_WRITE_REQUIRED             0x2
+#define ATA_ZONE_TYPE_SEQUENTIAL_WRITE_PREFERRED            0x3
+
+#define ATA_ZONE_CONDITION_NOT_WRITE_POINTER                0x0
+#define ATA_ZONE_CONDITION_EMPTY                            0x1
+#define ATA_ZONE_CONDITION_IMPLICITLY_OPENED                0x2
+#define ATA_ZONE_CONDITION_EXPLICITLY_OPENED                0x3
+#define ATA_ZONE_CONDITION_CLOSED                           0x4
+#define ATA_ZONE_CONDITION_READ_ONLY                        0xD
+#define ATA_ZONE_CONDITION_FULL                             0xE
+#define ATA_ZONE_CONDITION_OFFLINE                          0xF
 
 #endif

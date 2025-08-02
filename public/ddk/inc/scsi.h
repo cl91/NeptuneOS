@@ -23,7 +23,7 @@
 #ifndef _NTSCSI_
 #define _NTSCSI_
 
-#include <nt.h>
+#include <ntddk.h>
 
 #define NOTIFICATION_OPERATIONAL_CHANGE_CLASS_MASK 0x02
 #define NOTIFICATION_POWER_MANAGEMENT_CLASS_MASK 0x04
@@ -942,6 +942,12 @@
 #define IOCTL_SCSI_MINIPORT_NOT_QUORUM_CAPABLE ((FILE_DEVICE_SCSI << 16) + 0x0520)
 #define IOCTL_SCSI_MINIPORT_NOT_CLUSTER_CAPABLE ((FILE_DEVICE_SCSI << 16) + 0x0521)
 
+#define IOCTL_SCSI_MINIPORT_NVCACHE           ((FILE_DEVICE_SCSI << 16) + 0x0600)
+#define IOCTL_SCSI_MINIPORT_HYBRID            ((FILE_DEVICE_SCSI << 16) + 0x0620)
+#define IOCTL_SCSI_MINIPORT_DSM               ((FILE_DEVICE_SCSI << 16) + 0x0720)
+#define IOCTL_SCSI_MINIPORT_DSM_GENERAL       ((FILE_DEVICE_SCSI << 16) + 0x0721)
+#define IOCTL_SCSI_MINIPORT_FIRMWARE          ((FILE_DEVICE_SCSI << 16) + 0x0780)
+
 #define MODE_FD_SINGLE_SIDE 0x01
 #define MODE_FD_DOUBLE_SIDE 0x02
 #define MODE_FD_MAXIMUM_TYPE 0x1E
@@ -1091,6 +1097,46 @@ typedef union _CDB {
 	UCHAR Reserved2;
 	UCHAR Control;
     } CDB16, *PCDB16;
+    struct _READ_BUFFER_10 {
+        UCHAR OperationCode;    // 0x3c - SCSIOP_READ_DATA_BUFF
+        UCHAR Mode : 5;
+        UCHAR ModeSpecific : 3;
+        UCHAR BufferId;
+        UCHAR BufferOffset[3];
+        UCHAR AllocationLength[3];
+        UCHAR Control;
+    } READ_BUFFER_10;
+    struct _READ_BUFFER_16 {
+        UCHAR OperationCode;    // 0x9b - SCSIOP_READ_DATA_BUFF16
+        UCHAR Mode : 5;
+        UCHAR ModeSpecific : 3;
+        UCHAR BufferOffset[8];
+        UCHAR AllocationLength[4];
+        UCHAR BufferId;
+        UCHAR Control;
+    } READ_BUFFER_16;
+    struct _SECURITY_PROTOCOL_IN {
+        UCHAR OperationCode;
+        UCHAR SecurityProtocol;
+        UCHAR SecurityProtocolSpecific[2];
+        UCHAR Reserved1 : 7;
+        UCHAR INC_512 : 1;
+        UCHAR Reserved2;
+        UCHAR AllocationLength[4];
+        UCHAR Reserved3;
+        UCHAR Control;
+    } SECURITY_PROTOCOL_IN;
+    struct _SECURITY_PROTOCOL_OUT {
+        UCHAR OperationCode;
+        UCHAR SecurityProtocol;
+        UCHAR SecurityProtocolSpecific[2];
+        UCHAR Reserved1 : 7;
+        UCHAR INC_512 : 1;
+        UCHAR Reserved2;
+        UCHAR AllocationLength[4];
+        UCHAR Reserved3;
+        UCHAR Control;
+    } SECURITY_PROTOCOL_OUT;
     struct _PAUSE_RESUME {
 	UCHAR OperationCode;
 	UCHAR Reserved1 : 5;
@@ -1939,6 +1985,31 @@ typedef union _CDB {
 	UCHAR Reserved2 : 7;
 	UCHAR Control;
     } READ_CAPACITY16;
+    struct _ATA_PASSTHROUGH16 {
+        UCHAR OperationCode;      // 0x85 - SCSIOP_ATA_PASSTHROUGH16
+        UCHAR Extend            : 1;
+        UCHAR Protocol          : 4;
+        UCHAR MultipleCount     : 3;
+        UCHAR TLength       : 2;
+        UCHAR ByteBlock     : 1;
+        UCHAR TDir          : 1;
+        UCHAR Reserved1     : 1;
+        UCHAR CkCond        : 1;
+        UCHAR Offline       : 2;
+        UCHAR Features15_8;
+        UCHAR Features7_0;
+        UCHAR SectorCount15_8;
+        UCHAR SectorCount7_0;
+        UCHAR LbaLow15_8;
+        UCHAR LbaLow7_0;
+        UCHAR LbaMid15_8;
+        UCHAR LbaMid7_0;
+        UCHAR LbaHigh15_8;
+        UCHAR LbaHigh7_0;
+        UCHAR Device;
+        UCHAR Command;
+        UCHAR Control;
+    } ATA_PASSTHROUGH16;
     struct _TOKEN_OPERATION {
 	UCHAR OperationCode;
 	UCHAR ServiceAction : 5;
@@ -1960,6 +2031,15 @@ typedef union _CDB {
 	UCHAR Reserved3;
 	UCHAR Control;
     } RECEIVE_TOKEN_INFORMATION;
+    struct _WRITE_BUFFER {
+        UCHAR OperationCode;        // 0x3B SCSIOP_WRITE_DATA_BUFF
+        UCHAR Mode : 5;
+        UCHAR ModeSpecific : 3;
+        UCHAR BufferID;
+        UCHAR BufferOffset[3];
+        UCHAR ParameterListLength[3];
+        UCHAR Control;
+    } WRITE_BUFFER;
     struct _UNMAP {
 	UCHAR OperationCode;
 	UCHAR Anchor : 1;
@@ -1979,6 +2059,27 @@ typedef union _CDB {
 	UCHAR Reserved2;
 	UCHAR Control;
     } GET_LBA_STATUS;
+    struct _GET_PHYSICAL_ELEMENT_STATUS {
+        UCHAR OperationCode;            // 0x9E - SCSIOP_GET_PHYSICAL_ELEMENT_STATUS
+        UCHAR ServiceAction     : 5;        // 0x17 - SERVICE_ACTION_GET_PHYSICAL_ELEMENT_STATUS
+        UCHAR Reserved1         : 3;
+        UCHAR Reserved2[4];
+        UCHAR StartingElement[4];
+        UCHAR AllocationLength[4];
+        UCHAR ReportType        : 4;
+        UCHAR Reserved3         : 2;
+        UCHAR Filter            : 2;
+        UCHAR Control;
+    } GET_PHYSICAL_ELEMENT_STATUS;
+    struct _REMOVE_ELEMENT_AND_TRUNCATE {
+        UCHAR OperationCode;            // 0x9E - SCSIOP_REMOVE_ELEMENT_AND_TRUNCATE
+        UCHAR ServiceAction     : 5;        // 0x18 - SERVICE_ACTION_REMOVE_ELEMENT_AND_TRUNCATE
+        UCHAR Reserved1         : 3;
+        UCHAR RequestedCapacity[8];
+        UCHAR ElementIdentifier[4];
+        UCHAR Reserved2;
+        UCHAR Control;
+    } REMOVE_ELEMENT_AND_TRUNCATE;
     ULONG AsUlong[4];
     UCHAR AsByte[16];
 } CDB, *PCDB;
@@ -2319,48 +2420,21 @@ typedef struct _SCSI_EXTENDED_MESSAGE {
 
 #define INQUIRYDATABUFFERSIZE 36
 
-#if (NTDDI_VERSION < NTDDI_WINXP)
+typedef USHORT VERSION_DESCRIPTOR, *PVERSION_DESCRIPTOR;
+
 typedef struct _INQUIRYDATA {
     UCHAR DeviceType : 5;
     UCHAR DeviceTypeQualifier : 3;
     UCHAR DeviceTypeModifier : 7;
     UCHAR RemovableMedia : 1;
-    UCHAR Versions;
-    UCHAR ResponseDataFormat : 4;
-    UCHAR HiSupport : 1;
-    UCHAR NormACA : 1;
-    UCHAR ReservedBit : 1;
-    UCHAR AERC : 1;
-    UCHAR AdditionalLength;
-    UCHAR Reserved[2];
-    UCHAR SoftReset : 1;
-    UCHAR CommandQueue : 1;
-    UCHAR Reserved2 : 1;
-    UCHAR LinkedCommands : 1;
-    UCHAR Synchronous : 1;
-    UCHAR Wide16Bit : 1;
-    UCHAR Wide32Bit : 1;
-    UCHAR RelativeAddressing : 1;
-    UCHAR VendorId[8];
-    UCHAR ProductId[16];
-    UCHAR ProductRevisionLevel[4];
-    UCHAR VendorSpecific[20];
-    UCHAR Reserved3[40];
-} INQUIRYDATA, *PINQUIRYDATA;
-#else
-typedef struct _INQUIRYDATA {
-    UCHAR DeviceType : 5;
-    UCHAR DeviceTypeQualifier : 3;
-    UCHAR DeviceTypeModifier : 7;
-    UCHAR RemovableMedia : 1;
-    _ANONYMOUS_UNION union {
+    union {
 	UCHAR Versions;
-	_ANONYMOUS_STRUCT struct {
+	struct {
 	    UCHAR ANSIVersion : 3;
 	    UCHAR ECMAVersion : 3;
 	    UCHAR ISOVersion : 2;
-	} DUMMYSTRUCTNAME;
-    } DUMMYUNIONNAME;
+	};
+    };
     UCHAR ResponseDataFormat : 4;
     UCHAR HiSupport : 1;
     UCHAR NormACA : 1;
@@ -2389,10 +2463,21 @@ typedef struct _INQUIRYDATA {
     UCHAR ProductRevisionLevel[4];
     UCHAR VendorSpecific[20];
     UCHAR Reserved3[40];
+    VERSION_DESCRIPTOR VersionDescriptors[8];
+    UCHAR Reserved4[30];
 } INQUIRYDATA, *PINQUIRYDATA;
-#endif /* (NTDDI_VERSION < NTDDI_WINXP) */
 
 #endif /* _INQUIRYDATA_DEFINED */
+
+#define VER_DESCRIPTOR_SPC4_NOVERSION       0x0460
+#define VER_DESCRIPTOR_SPC4_T10_1731D_R16   0x0461
+#define VER_DESCRIPTOR_SPC4_T10_1731D_R18   0x0462
+#define VER_DESCRIPTOR_SPC4_T10_1731D_R23   0x0463
+#define VER_DESCRIPTOR_SBC3                 0x04C0
+
+#define VER_DESCRIPTOR_1667_NOVERSION       0xFFC0
+#define VER_DESCRIPTOR_1667_2006            0xFFC1
+#define VER_DESCRIPTOR_1667_2009            0xFFC2
 
 #define VPD_MAX_BUFFER_SIZE 0xff
 
@@ -3674,6 +3759,288 @@ typedef enum _TRANSFER_COUNT_UNITS {
 
 #include <poppack.h>
 #endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+
+//
+// Definitions related to 0x9E - SCSIOP_GET_PHYSICAL_ELEMENT_STATUS
+//
+
+//
+// Input: Report type
+//
+#define GET_PHYSICAL_ELEMENT_STATUS_REPORT_TYPE_PHYSICAL_ELEMENT    0x0
+#define GET_PHYSICAL_ELEMENT_STATUS_REPORT_TYPE_STORAGE_ELEMENT     0x1
+
+//
+// Input: Filter
+//
+#define GET_PHYSICAL_ELEMENT_STATUS_ALL                             0x0
+#define GET_PHYSICAL_ELEMENT_STATUS_FILTER_NEED_ATTENTION           0x1
+
+//
+// Output: Physical element type
+//
+#define PHYSICAL_ELEMENT_TYPE_STORAGE_ELEMENT                       0x01
+
+//
+// Output: Physical element health
+//
+#define PHYSICAL_ELEMENT_HEALTH_NOT_REPORTED                        0x00
+#define PHYSICAL_ELEMENT_HEALTH_MANUFACTURER_SPECIFICATION_LIMIT    0x64
+#define PHYSICAL_ELEMENT_HEALTH_RESERVED_LOWER_BOUNDARY             0xD0
+#define PHYSICAL_ELEMENT_HEALTH_RESERVED_UPPER_BOUNDARY             0xFC
+#define PHYSICAL_ELEMENT_HEALTH_DEPOPULATION_COMPLETED_WITH_ERROR   0xFD
+#define PHYSICAL_ELEMENT_HEALTH_DEPOPULATION_IN_PROGRESS            0xFE
+#define PHYSICAL_ELEMENT_HEALTH_DEPOPULATION_COMPLETED_SUCCESS      0xFF
+
+#include <pshpack1.h>
+typedef struct _PHYSICAL_ELEMENT_STATUS_DATA_DESCRIPTOR {
+    UCHAR Reserved1[4];
+    UCHAR ElementIdentifier[4];
+    UCHAR Reserved2[6];
+    UCHAR PhysicalElementType;
+    UCHAR PhysicalElementHealth;
+    UCHAR AssociatedCapacity[8];
+    UCHAR Reserved3[8];
+} PHYSICAL_ELEMENT_STATUS_DATA_DESCRIPTOR, *PPHYSICAL_ELEMENT_STATUS_DATA_DESCRIPTOR;
+
+typedef struct _PHYSICAL_ELEMENT_STATUS_PARAMETER_DATA {
+    UCHAR DescriptorCount[4];
+    UCHAR ReturnedDescriptorCount[4];
+    UCHAR ElementIdentifierBeingDepoped[4];
+    UCHAR Reserved[20];
+    PHYSICAL_ELEMENT_STATUS_DATA_DESCRIPTOR Descriptors[ANYSIZE_ARRAY];
+} PHYSICAL_ELEMENT_STATUS_PARAMETER_DATA, *PPHYSICAL_ELEMENT_STATUS_PARAMETER_DATA;
+#include <poppack.h>
+
+typedef struct _VPD_EXTENDED_INQUIRY_DATA_PAGE {
+    UCHAR DeviceType : 5;
+    UCHAR DeviceTypeQualifier : 3;
+    UCHAR PageCode;
+    UCHAR PageLength[2];
+    UCHAR RefChk : 1;
+    UCHAR AppChk : 1;
+    UCHAR GrdChk : 1;
+    UCHAR Spt : 3;
+    UCHAR ActivateMicrocode : 2;
+    UCHAR SimpSup : 1;
+    UCHAR OrdSup : 1;
+    UCHAR HeadSup : 1;
+    UCHAR PriorSup : 1;
+    UCHAR GroupSup : 1;
+    UCHAR UaskSup : 1;
+    UCHAR Reserved0 : 2;
+    UCHAR VSup : 1;
+    UCHAR NvSup : 1;
+    UCHAR Obsolete0 : 1;
+    UCHAR WuSup : 1;
+    UCHAR Reserved1 : 4;
+    UCHAR LuiClr : 1;
+    UCHAR Reserved2 : 3;
+    UCHAR PiiSup : 1;
+    UCHAR NoPiChk : 1;
+    UCHAR Reserved3 : 2;
+    UCHAR Obsolete1 : 1;
+    UCHAR HssRelef : 1;
+    UCHAR Reserved4 : 1;
+    UCHAR RtdSup : 1;
+    UCHAR RSup : 1;
+    UCHAR LuCollectionType : 3;
+    UCHAR Multi_i_t_Nexus_Microcode_Download : 4;
+    UCHAR Reserved5 : 4;
+    UCHAR ExtendedSelfTestCompletionMinutes[2];
+    UCHAR Reserved6 : 5;
+    UCHAR VsaSup : 1;
+    UCHAR HraSup : 1;
+    UCHAR PoaSup : 1;
+    UCHAR MaxSupportedSenseDataLength;
+    UCHAR Nrd0 : 1;
+    UCHAR Nrd1 : 1;
+    UCHAR Sac : 1;
+    UCHAR Reserved7 : 3;
+    UCHAR Ias : 1;
+    UCHAR Ibs : 1;
+    UCHAR MaxInquiryChangeLogs[2];
+    UCHAR MaxModePageChangeLogs[2];
+    UCHAR Reserved8[45];
+} VPD_EXTENDED_INQUIRY_DATA_PAGE, *PVPD_EXTENDED_INQUIRY_DATA_PAGE;
+
+//
+// SCSIOP_WRITE_DATA_BUFF related definition
+//
+#define SCSI_WRITE_BUFFER_MODE_DOWNLOAD_MICROCODE_WITH_OFFSETS_SAVE_DEFER_ACTIVATE  0x0E
+#define SCSI_WRITE_BUFFER_MODE_ACTIVATE_DEFERRED_MICROCODE                          0x0F
+
+#define SCSI_WRITE_BUFFER_MODE_0D_MODE_SPECIFIC_VSE_ACT   0x01
+#define SCSI_WRITE_BUFFER_MODE_0D_MODE_SPECIFIC_HR_ACT    0x02
+#define SCSI_WRITE_BUFFER_MODE_0D_MODE_SPECIFIC_PO_ACT    0x04
+
+//
+// Definitions related to 0x9B - SCSIOP_READ_DATA_BUFF16(Mode 0x1C: Error History)
+//
+
+//
+// Input: Mode field for Read buffer command
+//
+
+#define READ_BUFFER_MODE_ERROR_HISTORY                                              0x1C
+
+//
+// Input: Mode specific field for Read buffer command
+//
+
+#define MODE_SPECIFIC_CREATE_VENDOR_SPECIFIC_DATA                                   0x0
+#define MODE_SPECIFIC_CREATE_CURRENT_INTERNAL_STATUS_DATA                           0x1
+
+//
+// Input: Buffer ID field for Read buffer command
+//
+
+//
+// Return error history directory.
+//
+#define BUFFER_ID_RETURN_ERROR_HISTORY_DIRECTORY                                    0x0
+
+//
+// Return error history directory and create new error history snapshot.
+//
+#define BUFFER_ID_RETURN_ERROR_HISTORY_DIRECTORY_CREATE_NEW_ERROR_HISTORY_SNAPSHOT  0x1
+
+//
+// Return error history directory and establish new error history I_T nexus.
+//
+#define BUFFER_ID_RETURN_ERROR_HISTORY_DIRECTORY_ESTABLISH_NEW_NEXUS                0x2
+
+//
+// Return error history directory, establish new error history I_T nexus,
+// and create new error history snapshot.
+//
+#define BUFFER_ID_RETURN_ERROR_HISTORY_DIRECTORY_ESTABLISH_NEW_NEXUS_AND_SNAPSHOT   0x3
+
+//
+// 0x04h - 0x0Fh    Reserved.
+//
+
+//
+// 0x10h - 0xEFh    Return error history.
+//
+#define BUFFER_ID_RETURN_ERROR_HISTORY_MINIMUM_THRESHOLD                            0x10
+
+#define BUFFER_ID_RETURN_ERROR_HISTORY_MAXIMUM_THRESHOLD                            0xEF
+
+//
+// 0xF0h - 0xFDh    Reserved.
+//
+
+//
+// Clear error history I_T nexus.
+//
+#define BUFFER_ID_CLEAR_ERROR_HISTORY_NEXUS                                         0xFE
+
+//
+// Clear error history I_T nexus and release any error history snapshots.
+//
+#define BUFFER_ID_CLEAR_ERROR_HISTORY_AND_RELEASE_ANY_SNAPSHOT                      0xFF
+
+//
+// Output: Error history source field
+//
+
+#define ERROR_HISTORY_SOURCE_CREATED_BY_DEVICE_SERVER                               0x0
+#define ERROR_HISTORY_SOURCE_CREATED_DUE_TO_CURRENT_READ_BUFFER_COMMAND             0x1
+#define ERROR_HISTORY_SOURCE_CREATED_DUE_TO_PREVIOUS_READ_BUFFER_COMMAND            0x2
+#define ERROR_HISTORY_SOURCE_INDICATED_IN_BUFFER_SOURCE_FIELD                       0x3
+
+//
+// Output: Error history retrieved field
+//
+
+#define ERROR_HISTORY_RETRIEVED_NO_INFORMATION                                      0x0
+
+//
+// The error history I_T nexus has requested buffer ID FEh (i.e., clear error history I_T nexus)
+// or buffer ID FFh (i.e., clear error history I_T nexus and release snapshot) for the current
+// error history snapshot.
+//
+#define ERROR_HISTORY_RETRIEVED_BUFFER_ID_FE_OR_FF                                  0x1
+
+//
+// An error history I_T nexus has not requested buffer ID FEh (i.e., clear error history I_T nexus)
+// or buffer ID FFh (i.e., clear error history I_T nexus and release snapshot) for the current error
+// history snapshot.
+//
+#define ERROR_HISTORY_RETRIEVED_NOT_BUFFER_ID_FE_OR_FF                              0x2
+#define ERROR_HISTORY_RETRIEVED_RESERVED                                            0x3
+
+//
+// Output: Buffer format
+//
+
+#define BUFFER_FORMAT_VENDOR_SPECIFIC                                               0x0
+#define BUFFER_FORMAT_CURRENT_INTERNAL_STATUS_DATA                                  0x1
+#define BUFFER_FORMAT_SAVED_INTERNAL_STATUS_DATA                                    0x2
+
+//
+// Output: Buffer source
+//
+
+#define BUFFER_SOURCE_INDICATED_IN_EHS_SOURCE_FIELD                                 0x0
+#define BUFFER_SOURCE_UNKNOWN                                                       0x1
+#define BUFFER_SOURCE_CREATED_BY_DEVICE_SERVER                                      0x2
+#define BUFFER_SOURCE_CREATED_DUE_TO_CURRENT_COMMAND                                0x3
+#define BUFFER_SOURCE_CREATED_DUE_TO_PREVIOUS_COMMAND                               0x4
+
+#define STATUS_DATA_SET_SIZE_INCREMENT_IN_BYTES                                     0x200
+
+#include <pshpack1.h>
+typedef struct _ERROR_HISTORY_DIRECTORY_ENTRY {
+    UCHAR SupportedBufferId;
+    UCHAR BufferFormat;
+    UCHAR BufferSource : 4;
+    UCHAR Reserved0 : 4;
+    UCHAR Reserved1;
+    UCHAR MaxAvailableLength[4];
+} ERROR_HISTORY_DIRECTORY_ENTRY, *PERROR_HISTORY_DIRECTORY_ENTRY;
+
+typedef struct _ERROR_HISTORY_DIRECTORY {
+    UCHAR T10VendorId[8];
+    UCHAR ErrorHistoryVersion;
+    UCHAR ClearSupport : 1;
+    UCHAR ErrorHistorySource : 2;
+    UCHAR ErrorHistoryRetrieved : 2;
+    UCHAR Reserved0 : 3;
+    UCHAR Reserved1[20];
+    UCHAR DirectoryLength[2];
+    ERROR_HISTORY_DIRECTORY_ENTRY ErrorHistoryDirectoryList[ANYSIZE_ARRAY];
+} ERROR_HISTORY_DIRECTORY, *PERROR_HISTORY_DIRECTORY;
+
+typedef struct _CURRENT_INTERNAL_STATUS_PARAMETER_DATA {
+    UCHAR Reserved0[4];
+    UCHAR IEEECompanyId[4];
+    UCHAR CurrentInternalStatusDataSetOneLength[2];
+    UCHAR CurrentInternalStatusDataSetTwoLength[2];
+    UCHAR CurrentInternalStatusDataSetThreeLength[2];
+    UCHAR CurrentInternalStatusDataSetFourLength[4];
+    UCHAR Reserved1[364];
+    UCHAR NewSavedDataAvailable;
+    UCHAR SavedDataGenerationNumber;
+    UCHAR CurrentReasonIdentifier[128];
+    UCHAR CurrentInternalStatusData[ANYSIZE_ARRAY];
+} CURRENT_INTERNAL_STATUS_PARAMETER_DATA, *PCURRENT_INTERNAL_STATUS_PARAMETER_DATA;
+
+typedef struct _SAVED_INTERNAL_STATUS_PARAMETER_DATA {
+    UCHAR Reserved0[4];
+    UCHAR IEEECompanyId[4];
+    UCHAR SavedInternalStatusDataSetOneLength[2];
+    UCHAR SavedInternalStatusDataSetTwoLength[2];
+    UCHAR SavedInternalStatusDataSetThreeLength[2];
+    UCHAR SavedInternalStatusDataSetFourLength[4];
+    UCHAR Reserved1[364];
+    UCHAR NewSavedDataAvailable;
+    UCHAR SavedDataGenerationNumber;
+    UCHAR SavedReasonIdentifier[128];
+    UCHAR SavedInternalStatusData[ANYSIZE_ARRAY];
+} SAVED_INTERNAL_STATUS_PARAMETER_DATA, *PSAVED_INTERNAL_STATUS_PARAMETER_DATA;
+#include <poppack.h>
 
 // SCSI utility functions
 

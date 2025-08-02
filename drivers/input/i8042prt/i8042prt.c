@@ -65,7 +65,7 @@ NTAPI NTSTATUS i8042AddDevice(IN PDRIVER_OBJECT DriverObject,
 
     DeviceExtension = (PFDO_DEVICE_EXTENSION)Fdo->DeviceExtension;
     RtlZeroMemory(DeviceExtension, DeviceExtensionSize);
-    DeviceExtension->Type = Unknown;
+    DeviceExtension->Type = UnknownDeviceType;
     DeviceExtension->Fdo = Fdo;
     DeviceExtension->Pdo = Pdo;
     DeviceExtension->PortDeviceExtension = &DriverExtension->Port;
@@ -362,7 +362,7 @@ static NTAPI NTSTATUS i8042InternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     switch (DeviceExtension->Type) {
-    case Unknown:
+    case UnknownDeviceType:
     {
 	ULONG ControlCode = IoGetCurrentIrpStackLocation(Irp)->Parameters.DeviceIoControl.IoControlCode;
 	switch (ControlCode) {

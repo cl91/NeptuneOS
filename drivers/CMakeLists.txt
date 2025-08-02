@@ -12,6 +12,7 @@ add_compile_options(
     -fno-pic
     -fno-pie
     -Wno-incompatible-library-redeclaration
+    -Wno-gnu-variable-sized-type-not-at-end
     -fasync-exceptions
     --target=${TRIPLE}
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"

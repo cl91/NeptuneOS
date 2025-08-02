@@ -420,7 +420,7 @@ typedef struct _AHCI_CHANNEL_EXTENSION {
     PSTOR_POFX_DEVICE_V3    PoFxDevice;
     UCHAR                   PoFxFState;         // Current F-State of the unit
     STOR_DEVICE_POWER_STATE DevicePowerState;   // Current D-State of the unit.
-    
+
     //
     // AutoPartialToSlumber statistics to aid in debugging.
     //
@@ -648,7 +648,7 @@ typedef struct _ATA_COMMAND_ERROR_LOG {
 
 
 // Storport miniport driver entry routines, with prefix: "AhciHw"
-sp_DRIVER_INITIALIZE DriverEntry;
+DRIVER_INITIALIZE DriverEntry;
 
 HW_FIND_ADAPTER AhciHwFindAdapter;
 

@@ -24,16 +24,8 @@ Revision History:
 #include "classp.h"
 #include "debug.h"
 
-VOID ClasspStartIdleTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData);
-
-VOID ClasspStopIdleTimer(PCLASS_PRIVATE_FDO_DATA FdoData);
-
-KDEFERRED_ROUTINE ClasspIdleTimerDpc;
-
-VOID ClasspServiceIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			      BOOLEAN PostToDpc);
-
-PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
+static VOID ClasspServiceIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				     BOOLEAN PostToTimer);
 
 /*++
 
@@ -130,7 +122,8 @@ Return Value:
     None
 
 --*/
-VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+NTSTATUS ClasspInitializeIdleTimer(IN PDEVICE_OBJECT Fdo,
+				   IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
     ULONG idleInterval = CLASS_IDLE_INTERVAL;
@@ -154,7 +147,7 @@ VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 	fdoData->IdlePrioritySupported = FALSE;
 	fdoData->IdleIoCount = 0;
 	fdoData->ActiveIoCount = 0;
-	return;
+	return STATUS_SUCCESS;
     }
 
     ClassGetDeviceParameter(FdoExtension, CLASSP_REG_SUBKEY_NAME,
@@ -169,7 +162,10 @@ VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 
     fdoData->IdlePrioritySupported = TRUE;
     KeInitializeTimer(&fdoData->IdleTimer);
-    KeInitializeDpc(&fdoData->IdleDpc, ClasspIdleTimerDpc, FdoExtension);
+    fdoData->IdleWorkItem = IoAllocateWorkItem(Fdo);
+    if (!fdoData->IdleWorkItem) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
     InitializeListHead(&fdoData->IdleIrpList);
     fdoData->IdleTimerStarted = FALSE;
     fdoData->StarvationDuration = CLASS_STARVATION_INTERVAL;
@@ -186,91 +182,7 @@ VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 
     fdoData->IdleActiveIoMax = (USHORT)activeIdleIoMax;
 
-    return;
-}
-
-/*++
-
-ClasspStartIdleTimer
-
-Routine Description:
-
-    Start the idle timer if not already running. Reset the
-    timer counters before starting the timer. Use the IdleInterval
-    in the private fdo data to setup the timer.
-
-Arguments:
-
-    FdoData - Pointer to the private fdo data
-
-Return Value:
-
-    None
-
---*/
-VOID ClasspStartIdleTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
-{
-    LARGE_INTEGER dueTime;
-    LONG mstotimer;
-    LONG timerStarted;
-
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
-		"ClasspStartIdleTimer: Start idle timer\n"));
-
-    timerStarted = InterlockedCompareExchange(&FdoData->IdleTimerStarted, 1, 0);
-
-    if (!timerStarted) {
-	//
-	// Reset the anti-starvation start time.
-	//
-	FdoData->AntiStarvationStartTime = ClasspGetCurrentTime();
-
-	//
-	// convert milliseconds to a relative 100ns
-	//
-	mstotimer = (-10) * 1000;
-
-	//
-	// multiply the period
-	//
-	dueTime.QuadPart = Int32x32To64(FdoData->IdleInterval, mstotimer);
-
-	KeSetTimerEx(&FdoData->IdleTimer, dueTime, FdoData->IdleInterval,
-		     &FdoData->IdleDpc);
-    }
-    return;
-}
-
-/*++
-
-ClasspStopIdleTimer
-
-Routine Description:
-
-    Stop the idle timer if running. Also reset the timer counters.
-
-Arguments:
-
-    FdoData - Pointer to the private fdo data
-
-Return Value:
-
-    None
-
---*/
-VOID ClasspStopIdleTimer(PCLASS_PRIVATE_FDO_DATA FdoData)
-{
-    LONG timerStarted;
-
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
-		"ClasspStopIdleTimer: Stop idle timer\n"));
-
-    timerStarted = InterlockedCompareExchange(&FdoData->IdleTimerStarted, 0, 1);
-
-    if (timerStarted) {
-	(VOID) KeCancelTimer(&FdoData->IdleTimer);
-    }
-    return;
+    return STATUS_SUCCESS;
 }
 
 /*++
@@ -291,8 +203,8 @@ Return Value:
     The idle interval in ms.
 
 --*/
-ULONGLONG ClasspGetIdleTime(IN PCLASS_PRIVATE_FDO_DATA FdoData,
-			    IN LARGE_INTEGER CurrentTime)
+static ULONGLONG ClasspGetIdleTime(IN PCLASS_PRIVATE_FDO_DATA FdoData,
+				   IN LARGE_INTEGER CurrentTime)
 {
     ULONGLONG idleTime;
     NTSTATUS status;
@@ -342,8 +254,8 @@ Return Value:
     TRUE if sufficient idle duration has elapsed to issue the next idle request.
 
 --*/
-BOOLEAN ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
-				     OUT LARGE_INTEGER **CurrentTimeIn)
+static BOOLEAN ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
+					    OUT LARGE_INTEGER **CurrentTimeIn)
 {
     ULONGLONG idleInterval;
     LARGE_INTEGER CurrentTime;
@@ -380,41 +292,33 @@ BOOLEAN ClasspIdleDurationSufficient(IN PCLASS_PRIVATE_FDO_DATA FdoData,
 
 /*++
 
-ClasspIdleTimerDpc
+ClasspIdleTimerWorkerRoutine
 
 Routine Description:
 
-    Timer dpc function. This function will be called once every
+    Timer worker function. This function will be called once every
     IdleInterval. An idle request will be queued if sufficient idle time
     has elapsed since the last non-idle request.
 
 Arguments:
 
-    Dpc             - Pointer to DPC object
-    Context         - Pointer to the fdo device extension
-    SystemArgument1 - Not used
-    SystemArgument2 - Not used
+    DeviceObject    - Pointer to device object
+    Context         - Pointer to the private FDO data
 
 Return Value:
 
     None
 
 --*/
-NTAPI VOID ClasspIdleTimerDpc(IN PKDPC Dpc,
-			      IN PVOID Context,
-			      IN PVOID SystemArgument1,
-			      IN PVOID SystemArgument2)
+static NTAPI VOID ClasspIdleTimerWorkerRoutine(IN PDEVICE_OBJECT DevObj,
+					       IN PVOID Context)
 {
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Context;
-    PCLASS_PRIVATE_FDO_DATA fdoData;
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DevObj->DeviceExtension;
+    PCLASS_PRIVATE_FDO_DATA fdoData = Context;
     ULONGLONG idleTime;
     NTSTATUS status;
     LARGE_INTEGER currentTime;
     LARGE_INTEGER *pCurrentTime;
-
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(SystemArgument1);
-    UNREFERENCED_PARAMETER(SystemArgument2);
 
     if (fdoExtension == NULL) {
 	NT_ASSERT(fdoExtension != NULL);
@@ -479,8 +383,92 @@ NTAPI VOID ClasspIdleTimerDpc(IN PKDPC Dpc,
     if (idleTime >= fdoData->StarvationDuration) {
 	fdoData->AntiStarvationStartTime = currentTime;
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
-		    "ClasspIdleTimerDpc: Starvation timer. Send one idle request\n"));
+		    "ClasspIdleTimerWorkerRoutine: Starvation timer. Send one idle request\n"));
 	ClasspServiceIdleRequest(fdoExtension, FALSE);
+    }
+    return;
+}
+
+/*++
+
+ClasspStartIdleTimer
+
+Routine Description:
+
+    Start the idle timer if not already running. Reset the
+    timer counters before starting the timer. Use the IdleInterval
+    in the private fdo data to setup the timer.
+
+Arguments:
+
+    FdoData - Pointer to the private fdo data
+
+Return Value:
+
+    None
+
+--*/
+static VOID ClasspStartIdleTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
+{
+    LARGE_INTEGER dueTime;
+    LONG mstotimer;
+    LONG timerStarted;
+
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		"ClasspStartIdleTimer: Start idle timer\n"));
+
+    timerStarted = InterlockedCompareExchange(&FdoData->IdleTimerStarted, 1, 0);
+
+    if (!timerStarted) {
+	//
+	// Reset the anti-starvation start time.
+	//
+	FdoData->AntiStarvationStartTime = ClasspGetCurrentTime();
+
+	//
+	// convert milliseconds to a relative 100ns
+	//
+	mstotimer = (-10) * 1000;
+
+	//
+	// multiply the period
+	//
+	dueTime.QuadPart = Int32x32To64(FdoData->IdleInterval, mstotimer);
+
+	KeSetLowPriorityTimer(&FdoData->IdleTimer, dueTime, FdoData->IdleInterval,
+			      FdoData->IdleWorkItem, ClasspIdleTimerWorkerRoutine, FdoData);
+    }
+    return;
+}
+
+/*++
+
+ClasspStopIdleTimer
+
+Routine Description:
+
+    Stop the idle timer if running. Also reset the timer counters.
+
+Arguments:
+
+    FdoData - Pointer to the private fdo data
+
+Return Value:
+
+    None
+
+--*/
+static VOID ClasspStopIdleTimer(PCLASS_PRIVATE_FDO_DATA FdoData)
+{
+    LONG timerStarted;
+
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_TIMER,
+		"ClasspStopIdleTimer: Stop idle timer\n"));
+
+    timerStarted = InterlockedCompareExchange(&FdoData->IdleTimerStarted, 0, 1);
+
+    if (timerStarted) {
+	(VOID) KeCancelTimer(&FdoData->IdleTimer);
     }
     return;
 }
@@ -573,7 +561,7 @@ Return Value:
     Pointer to removed IRP
 
 --*/
-PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
+static PIRP ClasspDequeueIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
     PLIST_ENTRY listEntry = NULL;
@@ -656,7 +644,7 @@ Routine Description:
 Arguments:
 
     FdoExtension    - Pointer to the device extension
-    PostToDpc       - Flag to pass to ServiceTransferRequest to indicate if request must be posted to a DPC
+    PostToTimer  - Flag to pass to ServiceTransferRequest to indicate if request must be posted to a timer work item
 
 Return Value:
 
@@ -664,13 +652,13 @@ Return Value:
 
 --*/
 VOID ClasspServiceIdleRequest(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			      BOOLEAN PostToDpc)
+			      BOOLEAN PostToTimer)
 {
     PIRP irp;
 
     irp = ClasspDequeueIdleRequest(FdoExtension);
     if (irp != NULL) {
-	ServiceTransferRequest(FdoExtension->DeviceObject, irp, PostToDpc);
+	ServiceTransferRequest(FdoExtension->DeviceObject, irp, PostToTimer);
     }
     return;
 }

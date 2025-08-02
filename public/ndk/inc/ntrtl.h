@@ -159,6 +159,10 @@ NTAPI NTSYSAPI BOOLEAN RtlTimeToSecondsSince1980(IN PLARGE_INTEGER Time,
 NTAPI NTSYSAPI VOID RtlSecondsSince1980ToTime(IN ULONG ElapsedSeconds,
 					      OUT PLARGE_INTEGER Time);
 
+NTAPI NTSYSAPI ULONG RtlComputeCrc32(IN ULONG InitialCrc,
+				     IN const UCHAR *Data,
+				     IN ULONG Length);
+
 #if defined(_MSC_VER) && !defined(_NTOSKRNL_)
 #include <nturtl.h>
 #endif

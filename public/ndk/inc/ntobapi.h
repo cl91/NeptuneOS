@@ -90,8 +90,21 @@ NTAPI NTSYSAPI NTSTATUS NtWaitForSingleObject(IN HANDLE WaitObject,
                                               IN BOOLEAN Alertable,
                                               IN PLARGE_INTEGER Time);
 
+NTAPI NTSYSAPI NTSTATUS NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
+						IN ACCESS_MASK DesiredAccess,
+						IN POBJECT_ATTRIBUTES ObjectAttributes);
+
 NTAPI NTSYSAPI NTSTATUS NtCreateSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
 						   IN ACCESS_MASK DesiredAccess,
 						   IN POBJECT_ATTRIBUTES ObjectAttributes,
 						   IN PUNICODE_STRING Name);
+
+NTAPI NTSYSAPI NTSTATUS NtOpenSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
+						 IN ACCESS_MASK DesiredAccess,
+						 IN POBJECT_ATTRIBUTES ObjectAttributes);
+
+NTAPI NTSYSAPI NTSTATUS NtMakePermanentObject(IN HANDLE Object);
+
+NTAPI NTSYSAPI NTSTATUS NtMakeTemporaryObject(IN HANDLE Handle);
+
 #endif

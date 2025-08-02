@@ -526,11 +526,31 @@
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
 
+  <svc name="NtCreateDirectoryObject">
+    <parameter annotation="out" type="ptr::HANDLE" name="DirectoryHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
   <svc name="NtCreateSymbolicLinkObject">
     <parameter annotation="out" type="ptr::HANDLE" name="SymbolicLinkHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
     <parameter annotation="in" type="UnicodeString" name="LinkTarget" />
+  </svc>
+
+  <svc name="NtOpenSymbolicLinkObject">
+    <parameter annotation="out" type="ptr::HANDLE" name="SymbolicLinkHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
+  <svc name="NtMakeTemporaryObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+  </svc>
+
+  <svc name="NtMakePermanentObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
   </svc>
 
   <svc name="NtPlugPlayControl">

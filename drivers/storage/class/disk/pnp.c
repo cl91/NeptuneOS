@@ -21,12 +21,13 @@ Revision History:
 --*/
 
 #include "disk.h"
+#include <hal.h>
 
 #ifdef DEBUG_USE_WPP
 #include "pnp.tmh"
 #endif
 
-extern PULONG InitSafeBootMode;
+extern NTSYSAPI ULONG InitSafeBootMode;
 ULONG diskDeviceSequenceNumber = 0;
 
 #define FDO_NAME_FORMAT "\\Device\\Harddisk%d\\DR%d"
@@ -55,7 +56,6 @@ NTAPI NTSTATUS DiskAddDevice(IN PDRIVER_OBJECT DriverObject,
 {
     ULONG rootPartitionMountable = FALSE;
 
-    PCONFIGURATION_INFORMATION configurationInformation;
     ULONG diskCount;
 
     NTSTATUS status;
@@ -139,20 +139,6 @@ NTAPI NTSTATUS DiskAddDevice(IN PDRIVER_OBJECT DriverObject,
     status = DiskCreateFdo(DriverObject, PhysicalDeviceObject, &diskCount,
 			   (BOOLEAN)!rootPartitionMountable);
 
-    //
-    // Get the number of disks already initialized.
-    //
-
-    configurationInformation = IoGetConfigurationInformation();
-
-    if (NT_SUCCESS(status)) {
-	//
-	// Increment system disk device count.
-	//
-
-	configurationInformation->DiskCount++;
-    }
-
     return status;
 
 } // end DiskAddDevice()
@@ -196,7 +182,7 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
 				    PARTITION0_LIST_SIZE);
 
     if (fdoExtension->DeviceDescriptor->RemovableMedia) {
-	SET_FLAG(Fdo->Characteristics, FILE_REMOVABLE_MEDIA);
+	SET_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA);
     }
 
     //
@@ -237,8 +223,7 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     // Allocate request sense buffer.
     //
 
-    fdoExtension->SenseData = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-						    SENSE_BUFFER_SIZE_EX, DISK_TAG_START);
+    fdoExtension->SenseData = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE_EX, DISK_TAG_START);
 
     if (fdoExtension->SenseData == NULL) {
 	//
@@ -293,7 +278,7 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     // note: only do this after the timeout value is set, above.
     //
 
-    if (TEST_FLAG(Fdo->Characteristics, FILE_REMOVABLE_MEDIA)) {
+    if (TEST_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA)) {
 	ClassUpdateInformationInRegistry(Fdo, "PhysicalDrive", fdoExtension->DeviceNumber,
 					 NULL, 0);
 	//
@@ -374,7 +359,7 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
 	FREE_POOL(dmSkew);
     }
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 
     //
     // Try to read the signature off the disk and determine the correct drive
@@ -382,7 +367,7 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     // the cylinder count updated correctly.
     //
 
-    if (!TEST_FLAG(Fdo->Characteristics, FILE_REMOVABLE_MEDIA)) {
+    if (!TEST_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA)) {
 	DiskReadSignature(Fdo);
 	DiskReadDriveCapacity(Fdo);
 
@@ -484,10 +469,10 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     }
 
     //
-    // Initialize the verify mutex
+    // Initialize the verify event
     //
 
-    KeInitializeMutex(&diskData->VerifyMutex, MAX_SECTORS_PER_VERIFY);
+    KeInitializeEvent(&diskData->VerifyEvent, SynchronizationEvent, TRUE);
 
     //
     // Initialize the flush group context
@@ -498,7 +483,6 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     InitializeListHead(&diskData->FlushContext.CurrList);
     InitializeListHead(&diskData->FlushContext.NextList);
 
-    KeInitializeSpinLock(&diskData->FlushContext.Spinlock);
     KeInitializeEvent(&diskData->FlushContext.Event, SynchronizationEvent, FALSE);
 
     //
@@ -554,7 +538,7 @@ NTSTATUS DiskGenerateDeviceName(IN ULONG DeviceNumber, OUT PCCHAR *RawName)
 	return status;
     }
 
-    *RawName = ExAllocatePoolWithTag(PagedPool, strlen(rawName) + 1, DISK_TAG_NAME);
+    *RawName = ExAllocatePoolWithTag(strlen(rawName) + 1, DISK_TAG_NAME);
 
     if (*RawName == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -763,8 +747,6 @@ NTAPI NTSTATUS DiskRemoveDevice(IN PDEVICE_OBJECT DeviceObject, IN UCHAR Type)
 
     if (Type == IRP_MN_REMOVE_DEVICE) {
 	FREE_POOL(fdoExtension->SenseData);
-
-	IoGetConfigurationInformation()->DiskCount--;
     }
 
     DiskDeleteSymbolicLinks(DeviceObject);

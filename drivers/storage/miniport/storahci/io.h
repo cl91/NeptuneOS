@@ -79,13 +79,13 @@ CfistoATA_CFIS(
 
 ULONG
 SRBtoPRDT(
-    _In_ PVOID ChannelExtension,
+    _In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     _In_ PSLOT_CONTENT SlotContent
   );
 
 VOID
 SRBtoCmdHeader(
-    _In_ PVOID ChannelExtension,
+    _In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     _In_ PSLOT_CONTENT SlotContent,
     _In_ ULONG Length,
     _In_ BOOLEAN Reset

@@ -814,6 +814,25 @@ static VOID IopPopulateLocalIrpFromServerIoResponse(OUT PIRP Irp,
     }
 }
 
+NTAPI VOID IoReuseIrp(IN OUT PIRP Irp,
+		      IN NTSTATUS Status)
+{
+    /* Make sure it's OK to reuse it */
+    assert(!Irp->CancelRoutine);
+    assert(!IrpIsInIrpQueue(Irp));
+    assert(!IrpIsInCleanupList(Irp));
+    assert(!IrpIsInPendingList(Irp));
+    assert(!IrpIsInReplyList(Irp));
+
+    /* Reinitialize the IRP */
+    assert(Irp->Size == IoSizeOfIrp(Irp->StackCount));
+    RtlZeroMemory(Irp, Irp->Size);
+    IoInitializeIrp(Irp, Irp->Size, Irp->StackCount);
+
+    /* Duplicate the status */
+    Irp->IoStatus.Status = Status;
+}
+
 NTAPI VOID IoFreeIrp(IN PIRP Irp)
 {
     assert(Irp->Size);
@@ -1202,7 +1221,7 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
 	assert(!Irp->Private.AssociatedIrpCount);
     } else {
 	/* If the IRP itself is a master IRP, set the MasterSent member of all its
-	 * assoicated IRPs to TRUE. */
+	 * associated IRPs to TRUE. */
 	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
 		     IRP, Private.AssociatedIrp.Link) {
 	    AssociatedIrp->Private.MasterIrpSent = TRUE;
@@ -2071,11 +2090,12 @@ again:
 	} else if (IopDeviceObjectIsLocal(IoGetCurrentIrpStackLocation(Irp)->DeviceObject)) {
 	    /* If we are forwarding this IRP to a local device object, requeue it to
 	     * the IRP queue. Note drivers should be careful when forwarding IRPs
-	     * locally. More specifically, the IO transfer type of the target device must
-	     * match that of the source device, and for IRPs generated locally (and
-	     * forwarded to local device objects), the IO tranfer type is ignored and
-	     * NEITHER IO is always assumed, so the relevant dispatch routines will need
-	     * to handle this case separately. */
+	     * locally. More specifically, the IO transfer type of the target device
+	     * must match that of the source device, and for IRPs generated locally
+	     * (by IoBuildDeviceIoControlRequest, IoBuildAsynchronousFsdRequest, and
+	     * IoBuildSynchronousFsdRequest), the IO tranfer type is ignored and
+	     * NEITHER IO is always assumed, so the relevant dispatch routines will
+	     * need to handle this case separately. */
 	    InsertTailList(&IopIrpQueue, &Irp->Private.Link);
 	    continue;
 	} else {
@@ -2201,6 +2221,11 @@ NTAPI VOID IoCancelIrp(IN PIRP Irp)
  * that the IO transfer type of the target device match that of the source
  * device.
  *
+ * Note if you send associated IRPs, you must send all of them (that belong
+ * to the same master IRP) before you leave the dispatch routine or the IO
+ * work item. Failing to do so may lead to the master IRP being completed
+ * prematurely.
+ *
  * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
@@ -2257,6 +2282,8 @@ NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
 
     /* If the IRP has specified a master IRP, add us as its associated IRP. */
     if (Irp->MasterIrp) {
+	/* We don't support forwarding associated IRPs in the DPC or ISR thread. */
+	assert(IoThreadIsAtPassiveLevel());
 	/* The master IRP cannot be an associated IRP of another IRP. */
 	assert(!Irp->MasterIrp->MasterIrp);
 	assert(!ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,

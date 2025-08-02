@@ -51,15 +51,23 @@ VOID IopProcessTimerList()
 	    Timer->State = FALSE;
 	    RemoveEntryList(&Timer->Header.QueueListEntry);
 	    KiSignalWaitableObject(&Timer->Header, FALSE);
-	    if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
-		/* DPC routines are called with the DPC mutex released (since it
-		 * may call functions that try to acquire the DPC mutex). */
-		IopReleaseDpcMutex();
-		Timer->Dpc->DeferredRoutine(Timer->Dpc,
-					    Timer->Dpc->DeferredContext,
-					    Timer->Dpc->SystemArgument1,
-					    Timer->Dpc->SystemArgument2);
-		IopAcquireDpcMutex();
+	    if (Timer->LowPriority) {
+		/* If the timer is a low priority timer, queue the IO work item. */
+		if (Timer->WorkItem && Timer->WorkerRoutine) {
+		    IoQueueWorkItem(Timer->WorkItem, Timer->WorkerRoutine,
+				    DelayedWorkQueue, Timer->WorkerContext);
+		}
+	    } else {
+		if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
+		    /* DPC routines are called with the DPC mutex released (since it
+		     * may call functions that try to acquire the DPC mutex). */
+		    IopReleaseDpcMutex();
+		    Timer->Dpc->DeferredRoutine(Timer->Dpc,
+						Timer->Dpc->DeferredContext,
+						Timer->Dpc->SystemArgument1,
+						Timer->Dpc->SystemArgument2);
+		    IopAcquireDpcMutex();
+		}
 	    }
 	}
     }
@@ -73,10 +81,13 @@ VOID IopProcessTimerList()
  *
  * This routine must be called at DISPATCH_LEVEL and below.
  */
-NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
-			   IN LARGE_INTEGER DueTime,
-			   IN LONG Period,
-			   IN OPTIONAL PKDPC Dpc)
+static BOOLEAN KiSetTimer(IN OUT PKTIMER Timer,
+			  IN LARGE_INTEGER DueTime,
+			  IN LONG Period,
+			  IN OPTIONAL PVOID DpcOrWorkItem,
+			  IN OPTIONAL PIO_WORKITEM_ROUTINE WorkerRoutine,
+			  IN OPTIONAL PVOID WorkerContext,
+			  IN BOOLEAN LowPriorityTimer)
 {
     /* Compute the absolute due time of the timer. */
     ULARGE_INTEGER AbsoluteDueTime = {
@@ -87,13 +98,16 @@ NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
 	KeQuerySystemTime(&SystemTime);
 	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + SystemTime.QuadPart;
     }
+    Timer->Dpc = DpcOrWorkItem;
+    Timer->WorkerRoutine = WorkerRoutine;
+    Timer->WorkerContext = WorkerContext;
+    Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
+    Timer->Period = Period;
+    Timer->LowPriority = LowPriorityTimer;
     NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle, &AbsoluteDueTime, Period);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-    Timer->Dpc = Dpc;
-    Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
-    Timer->Period = Period;
     IopAcquireDpcMutex();
     /* If the timer has expired (but hasn't been processed by the main event loop), we
      * need to remove it from the signaled object list. */
@@ -133,11 +147,30 @@ NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
     return PreviousState;
 }
 
+NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
+			   IN LARGE_INTEGER DueTime,
+			   IN LONG Period,
+			   IN OPTIONAL PKDPC Dpc)
+{
+    return KiSetTimer(Timer, DueTime, Period, Dpc, NULL, NULL, FALSE);
+}
+
 NTAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
 			 IN LARGE_INTEGER DueTime,
 			 IN OPTIONAL PKDPC Dpc)
 {
     return KeSetTimerEx(Timer, DueTime, 0, Dpc);
+}
+
+NTAPI BOOLEAN KeSetLowPriorityTimer(IN OUT PKTIMER Timer,
+				    IN LARGE_INTEGER DueTime,
+				    IN LONG Period,
+				    IN PIO_WORKITEM WorkItem,
+				    IN PIO_WORKITEM_ROUTINE WorkerRoutine,
+				    IN OPTIONAL PVOID WorkerContext)
+{
+    return KiSetTimer(Timer, DueTime, Period,
+		      WorkItem, WorkerRoutine, WorkerContext, TRUE);
 }
 
 /*

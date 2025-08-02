@@ -577,7 +577,7 @@ out:
 /*
  * @implemented
  */
-NTAPI PCONFIGURATION_INFORMATION IoGetConfigurationInformation()
+PCONFIGURATION_INFORMATION IoGetConfigurationInformation()
 {
     return (&_SystemConfigurationInformation);
 }

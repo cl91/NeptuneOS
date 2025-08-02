@@ -90,3 +90,26 @@ NTAPI POWER_STATE PoSetPowerState(IN PDEVICE_OBJECT DeviceObject,
     };
     return PowerState;
 }
+
+NTAPI BOOLEAN PoQueryWatchdogTime(IN PDEVICE_OBJECT Pdo,
+				  OUT PULONG SecondsRemaining)
+{
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+NTAPI NTSTATUS PoRegisterPowerSettingCallback(IN OPTIONAL PDEVICE_OBJECT DeviceObject,
+					      IN LPCGUID SettingGuid,
+					      IN PPOWER_SETTING_CALLBACK Callback,
+					      IN OPTIONAL PVOID Context,
+					      OUT OPTIONAL PVOID *Handle)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTAPI NTSTATUS PoUnregisterPowerSettingCallback(IN OUT PVOID Handle)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <nt.h>
+#include <ntddk.h>
 
 /*
  * PCI/PCIE data types and routines

@@ -23,6 +23,8 @@ Revision History:
 #define MS_TO_US(ms) ((ULONGLONG)1000 *(ms))      // Converts milliseconds to microseconds.
 #define TICKS_TO_US(ticks) ((ticks / 10)) // Converts ticks (100ns) to microseconds.
 
+typedef PCHAR PSTR;
+
 _At_buffer_(Buffer, _I_, BufferSize, _Post_equal_to_(0))
 __inline
 VOID
@@ -995,8 +997,6 @@ Return Value:
 
 --*/
 {
-    _Analysis_assume_lock_acquired_(LockHandle);
-
     if ((AdapterExtension->StateFlags.InterruptMessagePerPort == 0) ||
         (MessageId == MAXULONG)) {
 
@@ -1263,7 +1263,7 @@ PartialToSlumberTransitionIsAllowed (
         return FALSE;
     }
 
-    if ((ChannelExtension->AutoPartialToSlumberInterval == 0)) {
+    if (ChannelExtension->AutoPartialToSlumberInterval == 0) {
         //Software auto Partial to Slumber is not enabled yet.
         return FALSE;
     }
@@ -1693,9 +1693,9 @@ AhciPortMarkDeviceFailed(
 _Success_(return != FALSE)
 BOOLEAN
 CompareId (
-    _In_opt_ PSTR DeviceId,
+    _In_opt_ PCHAR DeviceId,
     _In_ ULONG  DeviceIdLength,
-    _In_opt_ PZZSTR TargetId,
+    _In_opt_ PCHAR TargetId,
     _In_ ULONG  TargetIdLength,
     _Inout_opt_ PULONG Value
 );
@@ -1760,7 +1760,8 @@ AhciTelemetryLog(
 
     event.DriverVersion = DriverVersion;
     event.EventId = EventId;
-    StorPortCopyMemory(event.EventName, EventName, GetStringLength(EventName, EVENT_NAME_MAX_LENGTH));
+    StorPortCopyMemory(event.EventName, EventName,
+		       GetStringLength(EventName, EVENT_NAME_MAX_LENGTH));
     event.EventVersion = EventVersion;
     event.Flags = Flags;
 
@@ -1770,42 +1771,50 @@ AhciTelemetryLog(
     }
 
     if (Parameter0Name != NULL) {
-        StorPortCopyMemory(event.ParameterName0, Parameter0Name, GetStringLength(Parameter0Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName0, Parameter0Name,
+			   GetStringLength(Parameter0Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue0 = Parameter0Value;
     }
 
     if (Parameter1Name != NULL) {
-        StorPortCopyMemory(event.ParameterName1, Parameter1Name, GetStringLength(Parameter1Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName1, Parameter1Name,
+			   GetStringLength(Parameter1Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue1 = Parameter1Value;
     }
 
     if (Parameter2Name != NULL) {
-        StorPortCopyMemory(event.ParameterName2, Parameter2Name, GetStringLength(Parameter2Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName2, Parameter2Name,
+			   GetStringLength(Parameter2Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue2 = Parameter2Value;
     }
 
     if (Parameter3Name != NULL) {
-        StorPortCopyMemory(event.ParameterName3, Parameter3Name, GetStringLength(Parameter3Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName3, Parameter3Name,
+			   GetStringLength(Parameter3Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue3 = Parameter3Value;
     }
 
     if (Parameter4Name != NULL) {
-        StorPortCopyMemory(event.ParameterName4, Parameter4Name, GetStringLength(Parameter4Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName4, Parameter4Name,
+			   GetStringLength(Parameter4Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue4 = Parameter4Value;
     }
 
     if (Parameter5Name != NULL) {
-        StorPortCopyMemory(event.ParameterName5, Parameter5Name, GetStringLength(Parameter5Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName5, Parameter5Name,
+			   GetStringLength(Parameter5Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue5 = Parameter5Value;
     }
 
     if (Parameter6Name != NULL) {
-        StorPortCopyMemory(event.ParameterName6, Parameter6Name, GetStringLength(Parameter6Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName6, Parameter6Name,
+			   GetStringLength(Parameter6Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue6 = Parameter6Value;
     }
 
     if (Parameter7Name != NULL) {
-        StorPortCopyMemory(event.ParameterName7, Parameter7Name, GetStringLength(Parameter7Name, EVENT_MAX_PARAM_NAME_LEN));
+        StorPortCopyMemory(event.ParameterName7, Parameter7Name,
+			   GetStringLength(Parameter7Name, EVENT_MAX_PARAM_NAME_LEN));
         event.ParameterValue7 = Parameter7Value;
     }
 
@@ -1891,7 +1900,7 @@ AhciTelemetryLogPowerSettingChange(
     _In_ ULONG Ipm,
     _In_ ULONG LpmMode
     )
-{   
+{
     if (ChannelExtension != NULL) {
 
         AhciTelemetryLog(ChannelExtension->AdapterExtension,
@@ -1936,7 +1945,7 @@ AhciTelemetryLogPortStart(
     _In_reads_or_z_(EVENT_MAX_PARAM_NAME_LEN) PSTR AdditionalParameterName,
     _In_ ULONGLONG AdditionalParameterValue
     )
-{   
+{
     if (ChannelExtension != NULL) {
         //
         // Log the telemetry event only when at least one of below conditions is true:

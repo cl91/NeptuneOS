@@ -125,6 +125,18 @@ typedef uint64_t ULONG64, *PULONG64;
 typedef uint64_t DWORD64, *PDWORD64;
 typedef uint64_t UINT64,  *PUINT64;
 
+#if defined(_MSC_VER) && !defined(MIDL_PASS) && !defined(RC_INVOKED)
+#define POINTER_64 __ptr64
+#ifdef _WIN64
+#define POINTER_32 __ptr32
+#else
+#define POINTER_32
+#endif
+#else
+#define POINTER_64
+#define POINTER_32
+#endif /* defined(_MSC_VER) && !defined(MIDL_PASS) && !defined(RC_INVOKED) */
+
 #define BYTE_MAX INT8_MAX
 #define SHORT_MAX INT16_MAX
 #define USHORT_MAX UINT16_MAX
@@ -167,8 +179,10 @@ typedef uint64_t UINT64,  *PUINT64;
 #define SSIZE_T_MIN INTPTR_MIN
 #define _SIZE_T_MIN SIZE_T_MIN
 
+#define MAXUCHAR	(0xFF)
 #define MAXUSHORT	USHORT_MAX
 #define MAXULONG	ULONG_MAX
+#define MAXULONGLONG	ULONG64_MAX
 #define MAXULONG_PTR	ULONG_PTR_MAX
 #define MAXLONG_PTR	LONG_PTR_MAX
 #define MAXLONG		LONG_MAX
@@ -176,6 +190,7 @@ typedef uint64_t UINT64,  *PUINT64;
 
 #define MINUSHORT	USHORT_MIN
 #define MINULONG	ULONG_MIN
+#define MINULONGLONG	ULONG64_MIN
 #define MINULONG_PTR	ULONG_PTR_MIN
 #define MINLONG_PTR	LONG_PTR_MIN
 #define MINLONG		LONG_MIN
@@ -187,6 +202,25 @@ typedef HANDLE *PHANDLE;
 typedef LONG HRESULT;
 
 #define HandleToUlong(h) ((ULONG)(ULONG_PTR)(h))
+#define HandleToLong(h) ((LONG)(LONG_PTR)(h))
+#define ULongToHandle(h) ((HANDLE)(ULONG_PTR) (h))
+#define LongToHandle(h) ((HANDLE)(LONG_PTR) (h))
+#define PtrToUlong(p) ((ULONG)(ULONG_PTR) (p))
+#define PtrToLong(p) ((LONG)(LONG_PTR) (p))
+#define PtrToUint(p) ((UINT)(UINT_PTR) (p))
+#define PtrToInt(p) ((INT)(INT_PTR) (p))
+#define PtrToUshort(p) ((USHORT)(ULONG_PTR)(p))
+#define PtrToShort(p) ((SHORT)(LONG_PTR)(p))
+#define IntToPtr(i)    ((VOID*)(INT_PTR)((INT)i))
+#define UIntToPtr(ui)  ((VOID*)(UINT_PTR)((UINT)ui))
+#define LongToPtr(l)   ((VOID*)(LONG_PTR)((LONG)l))
+#define ULongToPtr(ul)  ((VOID*)(ULONG_PTR)((ULONG)ul))
+
+#define HandleToULong(h) HandleToUlong(h)
+
+#define UlongToHandle(ul) ULongToHandle(ul)
+#define UlongToPtr(ul) ULongToPtr(ul)
+#define UintToPtr(ui) UIntToPtr(ui)
 
 typedef union _LARGE_INTEGER {
     struct {
@@ -223,6 +257,8 @@ typedef union _ULARGE_INTEGER {
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
+#define ARGUMENT_PRESENT(ArgumentPointer)			\
+    ((CHAR*)((ULONG_PTR)(ArgumentPointer)) != (CHAR*)NULL)
 #define C_ASSERT(expr) extern char (*c_assert(void)) [(expr) ? 1 : -1]
 
 #define UNICODE_NULL ((WCHAR)0)

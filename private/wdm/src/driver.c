@@ -503,3 +503,15 @@ NTAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 {
     PAGED_CODE();
 }
+
+NTAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
+						      IN PHYSICAL_ADDRESS HighestAddr,
+						      IN PHYSICAL_ADDRESS Alignment,
+						      IN MEMORY_CACHING_TYPE MmCached,
+						      OUT PVOID *VirtBase,
+						      OUT PHYSICAL_ADDRESS *PhysBase)
+{
+    PAGED_CODE();
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}

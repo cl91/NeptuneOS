@@ -321,6 +321,21 @@ NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
     UNIMPLEMENTED;
 }
 
+
+NTSTATUS NtMakeTemporaryObject(IN ASYNC_STATE AsyncState,
+                               IN PTHREAD Thread,
+                               IN HANDLE ObjectHandle)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtMakePermanentObject(IN ASYNC_STATE AsyncState,
+                               IN PTHREAD Thread,
+                               IN HANDLE ObjectHandle)
+{
+    UNIMPLEMENTED;
+}
+
 VOID ObDbgDumpObjectHandles(IN POBJECT Object,
 			    IN ULONG Indentation)
 {

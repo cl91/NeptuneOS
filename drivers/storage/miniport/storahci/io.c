@@ -15,13 +15,6 @@ Revision History:
 
 --*/
 
-#if _MSC_VER >= 1200
-#pragma warning(push)
-#endif
-
-#pragma warning(disable:4214) // bit field types other than int
-#pragma warning(disable:4201) // nameless struct/union
-
 #include "generic.h"
 
 
@@ -180,7 +173,6 @@ Input Parameters:
 */
 {
     PVOID tempTail, foundSrb;
-    ULONG srbsFound;
 
     UNREFERENCED_PARAMETER(ChannelExtension);
 
@@ -199,15 +191,10 @@ Input Parameters:
 
     }
     Queue->CurrentDepth++;
-    if (Queue->Head == NULL) {              //It is impossible for Head to be NULL here
-
-        srbsFound = 0;
-    } else {
+    if (Queue->Head) {              //It is impossible for Head to be NULL here
         foundSrb = Queue->Head;
-        srbsFound = 1;
         foundSrb = SrbGetNextSrb(foundSrb);
         while (foundSrb) {
-            srbsFound++;
             foundSrb = SrbGetNextSrb(foundSrb);
         }
     }
@@ -232,7 +219,6 @@ RemoveQueue(
     )
 {
     PVOID nextSrb, foundSrb;
-    ULONG srbsFound;
 
     UNREFERENCED_PARAMETER(ChannelExtension);
 
@@ -252,14 +238,10 @@ RemoveQueue(
         Queue->Tail = NULL;
     }
     Queue->CurrentDepth--;
-    if (Queue->Head == NULL) {
-        srbsFound = 0;
-    } else {
+    if (Queue->Head) {
         foundSrb = Queue->Head;
-        srbsFound = 1;
         foundSrb = SrbGetNextSrb(foundSrb);
         while (foundSrb) {
-            srbsFound++;
             foundSrb = SrbGetNextSrb(foundSrb);
         }
     }
@@ -315,7 +297,7 @@ Return Values:
     int i;
 
     PAHCI_ADAPTER_EXTENSION adapterExtension = ChannelExtension->AdapterExtension;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, 0 };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock, {0} };
 
     // 1.1 Initialize variables
     if (LogExecuteFullDetail(adapterExtension->LogFlags)) {
@@ -901,7 +883,7 @@ Affected Variables/Registers:
     // When write a hiber file, the request can be retried.
     // Retry the command without Hybrid Hinting info.
     //
-    if (IsDumpHiberMode(ChannelExtension->AdapterExtension) && 
+    if (IsDumpHiberMode(ChannelExtension->AdapterExtension) &&
         IsNCQWriteCommand(srbExtension) &&
         (srbExtension->RetryCount > 0) &&
         (ChannelExtension->StateFlags.HybridInfoEnabledOnHiberFile == 0)) {
@@ -1095,7 +1077,7 @@ Note: This routine can be called even the Port is stopped.
     UCHAR pathId = 0;
     UCHAR targetId = 0;
     UCHAR lun = 0;
-    STOR_LOCK_HANDLE lockHandle = { InterruptLock, 0 };
+    STOR_LOCK_HANDLE lockHandle = { InterruptLock, {0} };
 
     SrbGetPathTargetLun(Srb, &pathId, &targetId, &lun);
 
@@ -1176,7 +1158,7 @@ Note: This routine can be called even the Port is stopped.
 
             } else {
 
-                // Other devices types, such as with signature ATA_DEVICE_SIGNATURE_ENCLOSURE, or 
+                // Other devices types, such as with signature ATA_DEVICE_SIGNATURE_ENCLOSURE, or
                 // ATA_DEVICE_SIGNATURE_PORT_MULTIPLIER, are not supported.
                 // IDENTIFY PACKET DEVICE command will fail on these devices.
                 srbExtension->TaskFile.Current.bCommandReg = IDE_COMMAND_ATAPI_IDENTIFY;
@@ -1242,7 +1224,7 @@ Note: This routine can be called even the Port is stopped.
 #endif
 
     //srbExtension->QueueTag and Slot[srbExtension->QueueTag] are now guaranteed ready.
-    
+
     AhciFormIo (ChannelExtension, Srb, TRUE);
 
 exit:
@@ -1266,7 +1248,6 @@ AhciFormIo(
 {
     PAHCI_SRB_EXTENSION srbExtension;
     PSLOT_CONTENT slotContent;
-    PAHCI_COMMAND_TABLE cmdTable;
     PAHCI_COMMAND_HEADER cmdHeader;
     STOR_PHYSICAL_ADDRESS cmdTablePhysicalAddress;
     ULONG prdtLength = 0;
@@ -1334,8 +1315,6 @@ AhciFormIo(
     // just like what's done in: ReleaseSlottedCommand()
 
     // 2. Program the CFIS in the CommandTable (allocated in srbExtension)
-    cmdTable = (PAHCI_COMMAND_TABLE)srbExtension;
-
     if (IsAtapiCommand(srbExtension->AtaFunction)) {
         SRBtoATAPI_CFIS(ChannelExtension, slotContent);
     } else if (IsAtaCfisPayload(srbExtension->AtaFunction)) {
@@ -1516,13 +1495,12 @@ AhciPortSrbCompletionDpcRoutine(
   )
 {
     PAHCI_CHANNEL_EXTENSION channelExtension = (PAHCI_CHANNEL_EXTENSION)SystemArgument1;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, 0 };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock, {0} };
     PSTORAGE_REQUEST_BLOCK srb = NULL;
     PSRB_COMPLETION_ROUTINE completionRoutine = NULL;
     BOOLEAN reservedSlotInUse = FALSE;
     BOOLEAN sendCommand = FALSE;
     BOOLEAN sendCommandForLocalSrb = FALSE;
-    ULONGLONG count = 0; // record the number of Srb being completed in this routine. It's for diagnostic purpose. 
 
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument2);
@@ -1647,8 +1625,6 @@ AhciPortSrbCompletionDpcRoutine(
             }
         }
 
-        count++;
-
     } while (srb != NULL);
 
     //
@@ -1670,10 +1646,3 @@ AhciPortSrbCompletionDpcRoutine(
 
     return;
 }
-
-#if _MSC_VER >= 1200
-#pragma warning(pop)
-#else
-#pragma warning(default:4214)
-#pragma warning(default:4201)
-#endif

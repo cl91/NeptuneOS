@@ -158,3 +158,12 @@ out:
     }
     return Status;
 }
+
+NTSTATUS NtOpenSymbolicLinkObject(IN ASYNC_STATE AsyncState,
+                                  IN PTHREAD Thread,
+                                  OUT HANDLE *SymbolicLinkHandle,
+                                  IN ACCESS_MASK DesiredAccess,
+                                  IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    UNIMPLEMENTED;
+}

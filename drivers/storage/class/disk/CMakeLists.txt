@@ -19,4 +19,4 @@ target_compile_options(disk PRIVATE
     -Wno-format -Wno-pointer-sign -Wno-pointer-to-int-cast -Wno-switch
     -Wno-unused-but-set-variable -Wno-gnu-variable-sized-type-not-at-end)
 
-target_link_libraries(disk wdmguid)
+target_link_libraries(disk wdmguid classpnp)

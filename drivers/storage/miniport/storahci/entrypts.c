@@ -17,6 +17,7 @@ Revision History:
 
 --*/
 
+#include "pci.h"
 #if _MSC_VER >= 1200
 #pragma warning(push)
 #endif
@@ -54,10 +55,10 @@ AhciGPLogPageIntoPrivate =  IDE_GP_LOG_CURRENT_DEVICE_INTERNAL_STATUS;
 
 //
 
-ULONG
+NTAPI NTSTATUS
 DriverEntry(
-    _In_ PVOID Argument1,    //IN PDRIVER_OBJECT  DriverObject,
-    _In_ PVOID Argument2     //IN PUNICODE_STRING  RegistryPath
+    IN PDRIVER_OBJECT  DriverObject,
+    IN PUNICODE_STRING  RegistryPath
     )
 
 /*++
@@ -99,7 +100,7 @@ Return Value:
     hwInitializationData.AutoRequestSense = TRUE;
     hwInitializationData.NeedPhysicalAddresses = TRUE;
     hwInitializationData.NumberOfAccessRanges = NUM_ACCESS_RANGES;
-    
+
     //
     // Support both PCI/ACPI enumerations on ARM64 platform for SATA device.
     // Miniport uses flag to indicate storport to query/override the interface type reported here.
@@ -137,8 +138,8 @@ Return Value:
     hwInitializationData.SrbTypeFlags = SRB_TYPE_FLAG_STORAGE_REQUEST_BLOCK;
 
     // call StorPort to register HW init data
-    status = StorPortInitialize(Argument1,
-                                Argument2,
+    status = StorPortInitialize(DriverObject,
+                                RegistryPath,
                                 &hwInitializationData,
                                 NULL);
 
@@ -152,7 +153,7 @@ _In_ PAHCI_ADAPTER_EXTENSION    AdapterExtension
 )
 /*++
     This function determines the interrupt/synchronization model that StorAHCI uses.
-    StorAHCI supports two interrupt/synchronization model: 
+    StorAHCI supports two interrupt/synchronization model:
     1. More than one port share interrupt (line based, single message MSI or there are ports share same interrupt message using MSI).
        StorAHCI looks into IS register to understand which port triggers the interrupt.
        Synchronization will acquire interrupt spinlock for the whole adapter.
@@ -511,11 +512,11 @@ Note:
                                            (ULONG)0x30);
             if (pcicfgLen == 0x30) {
                 PPCI_COMMON_CONFIG pciConfigData = (PPCI_COMMON_CONFIG)pcicfgBuffer;
-                adapterExtension->VendorID = pciConfigData->VendorID;
-                adapterExtension->DeviceID = pciConfigData->DeviceID;
-                adapterExtension->RevisionID = pciConfigData->RevisionID;
+                adapterExtension->VendorID = pciConfigData->Header.VendorID;
+                adapterExtension->DeviceID = pciConfigData->Header.DeviceID;
+                adapterExtension->RevisionID = pciConfigData->Header.RevisionID;
                 // on PCI bus, AHCI Base Address is BAR5. Bits 0-3 defined for other usages, not part of address value.
-                adapterExtension->AhciBaseAddress = pciConfigData->u.type0.BaseAddresses[5] & (0xFFFFFFF0);
+                adapterExtension->AhciBaseAddress = pciConfigData->Header.Type0.BaseAddresses[5] & (0xFFFFFFF0);
             } else {
                 NT_ASSERT(FALSE);
                 return SP_RETURN_ERROR;
@@ -697,7 +698,7 @@ Note:
 
     //4.2.2 Configure DMA 64 bit support settings.
     if (adapterExtension->CAP.S64A) {
-#if defined (_ARM64_) 
+#if defined (_ARM64_)
         ConfigInfo->Dma64BitAddresses = SCSI_DMA64_MINIPORT_FULL64BIT_NO_BOUNDARY_REQ_SUPPORTED;
 #else
         ConfigInfo->Dma64BitAddresses = SCSI_DMA64_MINIPORT_SUPPORTED;
@@ -828,7 +829,7 @@ AhciHwInitialize (
     //
     perfConfigData.Version = STOR_PERF_VERSION;
     perfConfigData.Size = sizeof(PERF_CONFIGURATION_DATA);
-    
+
     status = StorPortInitializePerfOpts(AdapterExtension, TRUE, &perfConfigData);
 
     //
@@ -911,7 +912,7 @@ AhciHwPassiveInitialize (
     AhciAdapterEvaluateDSMMethod(adapterExtension);
 
     //
-    // Get and cache D3Cold support.  
+    // Get and cache D3Cold support.
     //
     status = StorPortGetD3ColdSupport(AdapterExtension,
                                         NULL,
@@ -919,7 +920,7 @@ AhciHwPassiveInitialize (
     if (status == STOR_STATUS_SUCCESS) {
         adapterExtension->StateFlags.D3ColdSupported = d3ColdSupported;
     }
-    
+
     if (reportF1State) {
         bufferSize += STOR_POFX_COMPONENT_IDLE_STATE_SIZE;
     }
@@ -946,7 +947,7 @@ AhciHwPassiveInitialize (
 
     // Indicate miniport opt-in adapter D3 wake support.
     adapterExtension->PoFxDevice->Flags |= STOR_POFX_DEVICE_FLAG_ADAPTER_D3_WAKE;
-    
+
     // Indicate dump miniport can't bring adapter to active
     adapterExtension->PoFxDevice->Flags |= STOR_POFX_DEVICE_FLAG_NO_DUMP_ACTIVE;
 
@@ -1079,7 +1080,7 @@ AhciAdapterStop (
         return;
     }
 
-    adapterStopInProcess = InterlockedBitTestAndSet((LONG*)&AdapterExtension->PoFxPendingWork, 0);  //AdapterStop is at bit 0
+    adapterStopInProcess = InterlockedBitTestAndSet((volatile long*)&AdapterExtension->PoFxPendingWork, 0);  //AdapterStop is at bit 0
 
     if (adapterStopInProcess == 1) {
         // adapter Stop is pending in another process.
@@ -1090,7 +1091,7 @@ AhciAdapterStop (
 
     if (!adapterIdle) {
         ULONG   adapterStopPending;
-        adapterStopPending = InterlockedBitTestAndReset((LONG*)&AdapterExtension->PoFxPendingWork, 0);  //AdapterStop is at bit 0
+        adapterStopPending = InterlockedBitTestAndReset((volatile long*)&AdapterExtension->PoFxPendingWork, 0);  //AdapterStop is at bit 0
 
         // adapter was in active state, perform AdapterStop.
         // if adapter was in idle state, this work will be done in PoFxActive callback
@@ -1289,17 +1290,17 @@ Return Value:
 
                 if (activeContext->Active) {
                     ULONG   adapterStopPending;
-                    adapterStopPending = InterlockedBitTestAndReset((LONG*)&adapterExtension->PoFxPendingWork, 0);  //AdapterStop is at bit 0
+                    adapterStopPending = InterlockedBitTestAndReset((volatile long*)&adapterExtension->PoFxPendingWork, 0);  //AdapterStop is at bit 0
 
                     if (adapterStopPending == 1) {
                         //perform pending Adapter Stop work
-                        STOR_LOCK_HANDLE lockhandle = {StartIoLock, 0};
+                        STOR_LOCK_HANDLE lockhandle = {StartIoLock, {0}};
 
                         NT_ASSERT(adapterExtension->StateFlags.StoppedState == 0);
 
-                        // Storport does not acquire any spinlock before calling 
+                        // Storport does not acquire any spinlock before calling
                         // miniport's HwAdapterControl routine. Need to acquire
-                        // StartIo spin lock before calling AdapterStop as this is 
+                        // StartIo spin lock before calling AdapterStop as this is
                         // required by AdapterStop.
                         StorPortAcquireSpinLock(AdapterExtension, StartIoLock, NULL, &lockhandle);
                         AdapterStop(adapterExtension);
@@ -1319,7 +1320,7 @@ Return Value:
 
             NT_ASSERT(adapterPower != NULL);
 
-            StorPortDebugPrint(3, "StorAHCI - LPM: Adapter SystemIoBusNumber:%d - %s\n", 
+            StorPortDebugPrint(3, "StorAHCI - LPM: Adapter SystemIoBusNumber:%d - %s\n",
                 adapterExtension->SystemIoBusNumber, adapterPower->PowerState == StorPowerDeviceD0 ? "D0" : "D3");
 
             if (adapterPower->PowerState == StorPowerDeviceD0) {
@@ -1338,11 +1339,11 @@ Return Value:
             break;
 
         case ScsiAdapterSystemPowerHints: {
-            PSTOR_SYSTEM_POWER_HINTS powerHints = (PSTOR_SYSTEM_POWER_HINTS)Parameters;            
+            PSTOR_SYSTEM_POWER_HINTS powerHints = (PSTOR_SYSTEM_POWER_HINTS)Parameters;
 
             if (powerHints->Size >= sizeof(STOR_SYSTEM_POWER_HINTS)) {
 
-                StorPortDebugPrint(3, "StorAHCI - LPM: Adapter SystemIoBusNumber:%d - System Power Hint - State: %u - Latency: %u ms\n", 
+                StorPortDebugPrint(3, "StorAHCI - LPM: Adapter SystemIoBusNumber:%d - System Power Hint - State: %u - Latency: %u ms\n",
                     adapterExtension->SystemIoBusNumber, powerHints->SystemPower, powerHints->ResumeLatencyMSec);
 
                 adapterExtension->SystemPowerHintState = powerHints->SystemPower;
@@ -1399,7 +1400,7 @@ AhciHwResetBus (
 */
 {
     BOOLEAN status = FALSE;
-    STOR_LOCK_HANDLE lockhandle = {InterruptLock, 0};
+    STOR_LOCK_HANDLE lockhandle = {InterruptLock, {0}};
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
 
     if ( IsPortValid(adapterExtension, PathId) ) {
@@ -1598,7 +1599,7 @@ AhciHwStartIo (
 
 */
 {
-    STOR_LOCK_HANDLE lockhandle = {InterruptLock, 0};
+    STOR_LOCK_HANDLE lockhandle = {InterruptLock, {0}};
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
     ULONG function = SrbGetSrbFunction(Srb);
     UCHAR pathId = SrbGetPathId(Srb);
@@ -1735,7 +1736,7 @@ AhciHwStartIo (
         case SRB_FUNCTION_RESET_BUS:    // this one may come from class driver, not port driver. same as AhciHwResetBus
         case SRB_FUNCTION_RESET_DEVICE:
         case SRB_FUNCTION_RESET_LOGICAL_UNIT: {
-            
+
             // these reset requests target to Port
             AhciInterruptSpinlockAcquire(adapterExtension, pathId, &lockhandle);
             Srb->SrbStatus = AhciPortReset(adapterExtension->PortExtension[pathId], TRUE) ? SRB_STATUS_SUCCESS : SRB_STATUS_ERROR;
@@ -1979,7 +1980,7 @@ AhciHwStartIo (
         default: {
             // for unsupported SRB: complete with status: SRB_STATUS_INVALID_REQUEST
             Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
-            
+
             StorPortEtwEvent2(adapterExtension,
                               storAddress,
                               AhciEtwEventStartIO,
@@ -2116,7 +2117,7 @@ Return Values:
     serr.AsUlong = 0;
 
     pxis.AsUlong = StorPortReadRegisterUlong(ChannelExtension->AdapterExtension, &ChannelExtension->Px->IS.AsUlong);
-    
+
     if (pxis.IFS || pxis.HBDS || pxis.HBFS || pxis.TFES || pxis.PCS || pxis.PRCS) {
         serr.AsUlong = StorPortReadRegisterUlong(ChannelExtension->AdapterExtension, &ChannelExtension->Px->SERR.AsUlong);
     }
@@ -2511,7 +2512,7 @@ Return Values:
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
 
     is = StorPortReadRegisterUlong(AdapterExtension, adapterExtension->IS);
-        
+
     if (adapterExtension->StateFlags.Removed) {
         return FALSE;
     }
@@ -2700,9 +2701,9 @@ Return Value:
             if (IsPortValid(adapterExtension, storAddrBtl8->Path)) {
                 PAHCI_CHANNEL_EXTENSION channelExtension = adapterExtension->PortExtension[storAddrBtl8->Path];
 
-                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n", 
+                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n",
                     adapterExtension->SystemIoBusNumber, storAddrBtl8->Path, unitControlPower->PowerState == StorPowerDeviceD0 ? "D0" : "D3");
-                
+
                 if (unitControlPower->PowerState == StorPowerDeviceD0) {
                     AhciPortPowerUp(channelExtension);
                     channelExtension->DevicePowerState = StorPowerDeviceD0;
@@ -2877,7 +2878,7 @@ Return Value:
 
                 channelExtension->StateFlags.PoFxActive = activeContext->Active ? 1 : 0;
 
-                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n", 
+                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n",
                     adapterExtension->SystemIoBusNumber, channelExtension->PortNumber, activeContext->Active ? "ACTIVE" : "IDLE");
 
                 if (activeContext->Active) {
@@ -2892,11 +2893,11 @@ Return Value:
                                          AhciAutoPartialToSlumber,
                                          channelExtension,
                                          0, 0);
-                    StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Canceled\n", 
+                    StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Canceled\n",
                         adapterExtension->SystemIoBusNumber, channelExtension->PortNumber);
 
-                    busChangePending = InterlockedBitTestAndReset((LONG*)&channelExtension->PoFxPendingWork, 1);  //BusChange is at bit 1
-                    restorePreservedSettingsPending = InterlockedBitTestAndReset((LONG*)&channelExtension->PoFxPendingWork, 0);  //RestorePreservedSettings is at bit 0
+                    busChangePending = InterlockedBitTestAndReset((volatile long*)&channelExtension->PoFxPendingWork, 1);  //BusChange is at bit 1
+                    restorePreservedSettingsPending = InterlockedBitTestAndReset((volatile long*)&channelExtension->PoFxPendingWork, 0);  //RestorePreservedSettings is at bit 0
 
                     //perform pending Unit PoFx work
                     if (busChangePending == 1) {
@@ -2935,11 +2936,11 @@ Return Value:
                                                             channelExtension->AutoPartialToSlumberInterval * 1000, 20000);
 
                         if (status == STOR_STATUS_SUCCESS) {
-                            StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Scheduled\n", 
+                            StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Scheduled\n",
                                 adapterExtension->SystemIoBusNumber, channelExtension->PortNumber);
                         }
                     }
-                    
+
                 }
             } else {
                 status = ScsiUnitControlUnsuccessful;
@@ -2955,10 +2956,10 @@ Return Value:
 
             if (IsPortValid(adapterExtension, storAddrBtl8->Path) && PortPoFxEnabled(channelExtension)) {
 
-                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transition from F%u to F%u\n", 
+                StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transition from F%u to F%u\n",
                     adapterExtension->SystemIoBusNumber, channelExtension->PortNumber, channelExtension->PoFxFState, fStateContext->FState);
 
-                channelExtension->PoFxFState = (UCHAR)fStateContext->FState;                
+                channelExtension->PoFxFState = (UCHAR)fStateContext->FState;
 
                 if (fStateContext->FState == 0) {
                 } else if (fStateContext->FState == 1) {
@@ -2979,7 +2980,7 @@ Return Value:
         //
         case ScsiUnitSurpriseRemoval: {
             PSTOR_ADDR_BTL8 storAddrBtl8 = (PSTOR_ADDR_BTL8)Parameters;
-            STOR_LOCK_HANDLE lockhandle = {InterruptLock, 0};
+            STOR_LOCK_HANDLE lockhandle = {InterruptLock, {0}};
 
             if (IsPortValid(adapterExtension, storAddrBtl8->Path)) {
 
@@ -2995,8 +2996,8 @@ Return Value:
                 channelExtension->SlotManager.NormalQueueSliceIssued = 0;
                 channelExtension->SlotManager.SingleIoSliceIssued = 0;
                 channelExtension->SlotManager.HighPriorityAttribute &= ~channelExtension->SlotManager.CommandsToComplete;
-                
-                AhciCompleteIssuedSRBs(channelExtension, SRB_STATUS_NO_DEVICE, TRUE); 
+
+                AhciCompleteIssuedSRBs(channelExtension, SRB_STATUS_NO_DEVICE, TRUE);
 
                 //
                 // Complete all other commands miniport owns for this device.
@@ -3027,12 +3028,3 @@ Return Value:
 
     return status;
 }
-
-#if _MSC_VER >= 1200
-#pragma warning(pop)
-#else
-#pragma warning(default:4152)
-#pragma warning(default:4214)
-#pragma warning(default:4201)
-#endif
-

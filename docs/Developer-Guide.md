@@ -384,7 +384,7 @@ length struct will have zero dimension. This differs from the Window/ReactOS con
 where a variable-length struct is defined with the last array member having dimension one.
 When computing the size of the full struct, use `sizeof(STRUCT_NAME) + NumElem * ELEM_SIZE`,
 without subtracting one from `NumElem` as you would in Windows/ReactOS. An example is
-the `IO_RESOURCE_REQUIREMENT_LIST` structure used in the PnP driver interface.
+the `IO_RESOURCE_REQUIREMENTS_LIST` structure used in the PnP driver interface.
 
 #### Low-level Device Drivers
 

@@ -227,11 +227,6 @@ typedef struct _HAL_SYSYEM_ADAPTER {
 
 static PHAL_SYSTEM_ADAPTER HalpEisaSystemAdapters[8];
 
-static inline void *ULongToPtr(const unsigned long ul)
-{
-    return (void*)((ULONG_PTR)ul);
-}
-
 typedef struct _ADAPTER_OBJ_CREATE_CTX {
     UCHAR DmaChannel;
 } ADAPTER_OBJ_CREATE_CTX, *PADAPTER_OBJ_CREATE_CTX;

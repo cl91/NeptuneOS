@@ -68,7 +68,7 @@ Revision History:
 #define DISK_TAG_UPDATE_CAP 'UDcS' // "ScDU" - update capacity path
 #define DISK_TAG_WI_CONTEXT 'WDcS' // "ScDW" - work-item context
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 
 //
 // Disk device data
@@ -124,6 +124,11 @@ typedef struct _DISK_GROUP_CONTEXT {
 #else
     SCSI_REQUEST_BLOCK Srb;
 #endif
+
+    //
+    // This event will allow for the requests to be sent down synchronously
+    //
+    KEVENT Event;
 
 #if DBG
 
@@ -316,7 +321,7 @@ typedef struct _DISK_DATA {
     //
     BOOLEAN FailurePredictionEnabled;
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
     //
     // This flag indiciates that a non-default geometry for this drive has
     // already been determined by the disk driver.  This field is ignored
@@ -333,6 +338,14 @@ typedef struct _DISK_DATA {
 
     DISK_GEOMETRY RealGeometry;
 #endif
+
+    //
+    // This event prevents more than one IOCTL_DISK_VERIFY from being
+    // sent down to the disk. This greatly reduces the possibility of
+    // a Denial-of-Service attack
+    //
+
+    KEVENT VerifyEvent;
 
     //
     // This allows for parallel flush requests to be combined into one so as to
@@ -386,7 +399,7 @@ typedef struct _DISK_MEDIA_TYPES_LIST {
 // WMI reregistration structures used for reregister work item
 //
 typedef struct {
-    SINGLE_LIST_ENTRY Next;
+    SLIST_ENTRY Next;
     PDEVICE_OBJECT DeviceObject;
     PIRP Irp;
 } DISKREREGREQUEST, *PDISKREREGREQUEST;
@@ -584,13 +597,13 @@ NTSTATUS DiskInitializeReregistration(VOID);
 
 extern GUIDREGINFO DiskWmiFdoGuidList[];
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 NTSTATUS DiskReadDriveCapacity(IN PDEVICE_OBJECT Fdo);
 #else
 #define DiskReadDriveCapacity(Fdo) ClassReadDriveCapacity(Fdo)
 #endif
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 
 NTSTATUS DiskSaveDetectInfo(PDRIVER_OBJECT DriverObject);
 
@@ -601,7 +614,7 @@ VOID DiskDriverReinitialization(IN PDRIVER_OBJECT DriverObject, IN PVOID Nothing
 
 #endif
 
-#if defined(_X86_) || defined(_AMD64_)
+#if defined(_M_IX86) || defined(_M_AMD64)
 NTSTATUS DiskGetDetectInfo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			   OUT PDISK_DETECTION_INFO DetectInfo);
 

@@ -300,7 +300,7 @@ GetStringLength (
 
 VOID
 WMultiStringToAscii(
-    _Inout_ PZZSTR Strings,
+    _Inout_ PSTR Strings,
     _In_  ULONG StringBufferLength
     )
 /*+++
@@ -386,7 +386,7 @@ BOOLEAN
 CompareId (
     _In_opt_ PSTR DeviceId,
     _In_ ULONG  DeviceIdLength,
-    _In_opt_ PZZSTR TargetId,
+    _In_opt_ PSTR TargetId,
     _In_ ULONG  TargetIdLength,
     _Inout_opt_ PULONG Value
 )
@@ -512,7 +512,7 @@ PortBusChangeProcess (
     )
 {
     AHCI_SERIAL_ATA_CONTROL sctl;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, 0 };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock, {0} };
     ULONG status = STOR_STATUS_UNSUCCESSFUL;
 
     // 1 if link speed was limited, restore the supported value.
@@ -547,10 +547,10 @@ PortBusChangeProcess (
             StorPortInitializeTimer(ChannelExtension->AdapterExtension, &ChannelExtension->BusChangeTimer);
         }
 
-        status = StorPortRequestTimer(ChannelExtension->AdapterExtension, 
-                                     ChannelExtension->BusChangeTimer, 
+        status = StorPortRequestTimer(ChannelExtension->AdapterExtension,
+                                     ChannelExtension->BusChangeTimer,
                                      AhciBusChangeTimerCallback,
-                                     ChannelExtension, 
+                                     ChannelExtension,
                                      100000, // 100 milliseconds
                                      0);
 
@@ -603,7 +603,7 @@ Affected Variables/Registers:
         return;
     }
 
-    busChangeInProcess = InterlockedBitTestAndSet((LONG*)&channelExtension->PoFxPendingWork, 1);  //BusChange is at bit 1
+    busChangeInProcess = InterlockedBitTestAndSet((volatile long*)&channelExtension->PoFxPendingWork, 1);  //BusChange is at bit 1
 
     if (busChangeInProcess == 1) {
         // bus change is pending in another process.
@@ -618,7 +618,7 @@ Affected Variables/Registers:
     // otherwise, it will be processed when port gets into Active state
     if (!portIdle) {
         ULONG   busChangePending;
-        busChangePending = InterlockedBitTestAndReset((LONG*)&channelExtension->PoFxPendingWork, 1);  //BusChange is at bit 1
+        busChangePending = InterlockedBitTestAndReset((volatile long*)&channelExtension->PoFxPendingWork, 1);  //BusChange is at bit 1
 
         if (busChangePending == 1) {
             PortBusChangeProcess(channelExtension);
@@ -638,15 +638,15 @@ AhciBusChangeTimerCallback(
 
     if ( (channelExtension == NULL) || (channelExtension->Px == NULL) ) {
 
-        // The port has been stopped. 
+        // The port has been stopped.
         //
-        // Note: 
+        // Note:
         // Px is set to NULL in AhciPortStop function. StartIo spin lock is utilized to
-        // prevent race condition with AhciPortStop function. StartIo spin lock is acquired 
+        // prevent race condition with AhciPortStop function. StartIo spin lock is acquired
         // before AhciPortStop is called. When we are here in AhciBusChangeTimerCallback, because
         // it is a timer callback function, StartIo spin lock is already held - Storport holds
         // StartIo spin lock before invoking miniport timer callback function.
-        //       
+        //
 
         return;
     }
@@ -704,7 +704,7 @@ Affected Variables/Registers:
     srbExtension = GetSrbExtension(slotContent->Srb);
     isSenseSrb = IsRequestSenseSrb(srbExtension->AtaFunction);
 
-    if ((slotContent->Srb == (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb) && 
+    if ((slotContent->Srb == (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb) &&
         (ChannelExtension->StateFlags.NcqErrorRecoveryInProcess == 1)) {
 
         isReadLogExtSrbIssuedInNCQErrorRecovery = TRUE;
@@ -824,11 +824,11 @@ Affected Variables/Registers:
     // There is a bad timing will break the error recovery and cause IO hang eventually, typically happen in SSD but not limited to.
     // 1. NCQ error happen first, which will issue the ReadLogExtCommand;
     // 2. Then Nonqueued error happen before the ReadLogExtCommand complete.
-    //    In ReleaseSlottedCommand, ReadLogExtCommand may got chance to be retried, which will result in SingleIoSlice set to 1, 
+    //    In ReleaseSlottedCommand, ReadLogExtCommand may got chance to be retried, which will result in SingleIoSlice set to 1,
     //    and SingleIoSlice will skip the PreservedSettingCommand(the ReservedSlotInUse is already set).
     // 3. Then ReservedSlotInUse never got chance to be cleared because it relies on PreservedSettingCommand execution.
     //    ReservedSlotInUse will block the queue activation, finally the IO will hang and AhciPortReset will be repeatedly issued by upper layer.
-    //   
+    //
     // Do not retry ReadLogExtCommand when NCQ error recovery in process, which makes sense since ReadLogExtCommand is sense-like command as well.
     //
     if (retrySrb && isReadLogExtSrbIssuedInNCQErrorRecovery) {
@@ -860,7 +860,7 @@ AhciCompleteJustSlottedRequest(
     PAHCI_SRB_EXTENSION     srbExtension;
     BOOLEAN                 isSenseSrb;
     PSTORAGE_REQUEST_BLOCK  srbToComplete;
-    STOR_LOCK_HANDLE        lockHandle = {InterruptLock, 0};
+    STOR_LOCK_HANDLE        lockHandle = {InterruptLock, {0}};
 
     srbExtension = GetSrbExtension(Srb);
     slotContent = &ChannelExtension->Slot[srbExtension->QueueTag];
@@ -949,7 +949,7 @@ NOTE:
          (srbExtension->CompletionRoutine != NULL) ) {
 
         if (AtDIRQL == FALSE) {
-            STOR_LOCK_HANDLE lockhandle = {InterruptLock, 0};
+            STOR_LOCK_HANDLE lockhandle = {InterruptLock, {0}};
 
             AhciInterruptSpinlockAcquire(ChannelExtension->AdapterExtension, ChannelExtension->PortNumber, &lockhandle);
             AddQueue(ChannelExtension, &ChannelExtension->CompletionQueue, Srb, 0xDEADBEEF, 0x90);
@@ -1171,7 +1171,7 @@ Affected Variables/Registers:
 
     //1 Reinitialize all the commands to send
     ChannelExtension->PersistentSettings.SlotsToSend = ChannelExtension->PersistentSettings.Slots;
-    reservedSlotInUse = InterlockedBitTestAndSet((LONG*)&ChannelExtension->StateFlags, 3);    //ReservedSlotInUse field is at bit 3
+    reservedSlotInUse = InterlockedBitTestAndSet((volatile long*)&ChannelExtension->StateFlags, 3);    //ReservedSlotInUse field is at bit 3
 
     if (reservedSlotInUse == 1) {
 
@@ -1187,7 +1187,7 @@ Affected Variables/Registers:
         ULONG   restorePreservedSettingsInProcess;
         BOOLEAN portIdle = FALSE;
 
-        restorePreservedSettingsInProcess = InterlockedBitTestAndSet((LONG*)&ChannelExtension->PoFxPendingWork, 0);  //RestorePreservedSettings is at bit 0
+        restorePreservedSettingsInProcess = InterlockedBitTestAndSet((volatile long*)&ChannelExtension->PoFxPendingWork, 0);  //RestorePreservedSettings is at bit 0
 
         if (restorePreservedSettingsInProcess == 1) {
 
@@ -1207,7 +1207,7 @@ Affected Variables/Registers:
             return;
         } else {
             ULONG   restorePreservedSettingsPending;
-            restorePreservedSettingsPending = InterlockedBitTestAndReset((LONG*)&ChannelExtension->PoFxPendingWork, 0);  //RestorePreservedSettings is at bit 0
+            restorePreservedSettingsPending = InterlockedBitTestAndReset((volatile long*)&ChannelExtension->PoFxPendingWork, 0);  //RestorePreservedSettings is at bit 0
 
             if (restorePreservedSettingsPending == 0) {
 
@@ -1220,7 +1220,7 @@ Affected Variables/Registers:
     }
 
     //2 Start the first command
-    IssuePreservedSettingCommands(ChannelExtension, NULL);    
+    IssuePreservedSettingCommands(ChannelExtension, NULL);
 
     //3 Starts processing the command. Only need to do the first command if it exists. all others will be done by processing completion routine.
     if (ChannelExtension->Local.Srb.SrbExtension != NULL) {
@@ -1257,7 +1257,7 @@ Affected Variables/Registers:
 
     //1 Reinitialize all the commands to send
     ChannelExtension->DeviceInitCommands.CommandToSend = 0;
-    reservedSlotInUse = InterlockedBitTestAndSet((LONG*)&ChannelExtension->StateFlags, 3);    //ReservedSlotInUse field is at bit 3
+    reservedSlotInUse = InterlockedBitTestAndSet((volatile long*)&ChannelExtension->StateFlags, 3);    //ReservedSlotInUse field is at bit 3
 
     if (reservedSlotInUse == 1) {
 
@@ -1444,12 +1444,3 @@ Return Value:
         }
     }
 }
-
-#if _MSC_VER >= 1200
-#pragma warning(pop)
-#else
-#pragma warning(default:4054)
-#pragma warning(default:4055)
-#pragma warning(default:4214)
-#pragma warning(default:4201)
-#endif

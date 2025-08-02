@@ -307,12 +307,6 @@ typedef struct _CLASS_INIT_DATA CLASS_INIT_DATA, *PCLASS_INIT_DATA;
 struct _CLASS_PRIVATE_FDO_DATA;
 typedef struct _CLASS_PRIVATE_FDO_DATA CLASS_PRIVATE_FDO_DATA, *PCLASS_PRIVATE_FDO_DATA;
 
-struct _CLASS_PRIVATE_PDO_DATA;
-typedef struct _CLASS_PRIVATE_PDO_DATA CLASS_PRIVATE_PDO_DATA, *PCLASS_PRIVATE_PDO_DATA;
-
-struct _CLASS_PRIVATE_COMMON_DATA;
-typedef struct _CLASS_PRIVATE_COMMON_DATA CLASS_PRIVATE_COMMON_DATA, *PCLASS_PRIVATE_COMMON_DATA;
-
 struct _MEDIA_CHANGE_DETECTION_INFO;
 typedef struct _MEDIA_CHANGE_DETECTION_INFO MEDIA_CHANGE_DETECTION_INFO, *PMEDIA_CHANGE_DETECTION_INFO;
 
@@ -525,20 +519,14 @@ typedef struct _CLASS_DRIVER_EXTENSION {
     UNICODE_STRING RegistryPath;
     CLASS_INIT_DATA InitData;
     ULONG DeviceCount;
-#if (NTDDI_VERSION >= NTDDI_WINXP)
     PCLASS_QUERY_WMI_REGINFO_EX ClassFdoQueryWmiRegInfoEx;
     PCLASS_QUERY_WMI_REGINFO_EX ClassPdoQueryWmiRegInfoEx;
-#endif
-#if (NTDDI_VERSION >= NTDDI_VISTA)
     REGHANDLE EtwHandle;
     PDRIVER_DISPATCH DeviceMajorFunctionTable[IRP_MJ_MAXIMUM_FUNCTION + 1];
     PDRIVER_DISPATCH MpDeviceMajorFunctionTable[IRP_MJ_MAXIMUM_FUNCTION + 1];
     PCLASS_INTERPRET_SENSE_INFO2 InterpretSenseInfo;
     PCLASS_WORKING_SET WorkingSet;
-#endif
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     ULONG SrbSupport;
-#endif
 } CLASS_DRIVER_EXTENSION, *PCLASS_DRIVER_EXTENSION;
 
 typedef struct _COMMON_DEVICE_EXTENSION {
@@ -547,8 +535,7 @@ typedef struct _COMMON_DEVICE_EXTENSION {
     PDEVICE_OBJECT LowerDeviceObject;
     struct _FUNCTIONAL_DEVICE_EXTENSION *PartitionZeroExtension;
     PCLASS_DRIVER_EXTENSION DriverExtension;
-    PVOID RemoveTrackingList;
-    LONG RemoveTrackingUntrackedCount;
+    KEVENT RemoveEvent;
     PVOID DriverData;
     struct {
 	BOOLEAN IsFdo : 1;
@@ -575,16 +562,8 @@ typedef struct _COMMON_DEVICE_EXTENSION {
     ULONG GuidCount;
     PGUIDREGINFO GuidRegInfo;
     DICTIONARY FileObjectDictionary;
-#if (NTDDI_VERSION >= NTDDI_WINXP)
-    PCLASS_PRIVATE_COMMON_DATA PrivateCommonData;
-#else
     ULONG_PTR Reserved1;
-#endif
-#if (NTDDI_VERSION >= NTDDI_VISTA)
     PDRIVER_DISPATCH *DispatchTable;
-#else
-    ULONG_PTR Reserved2;
-#endif
     ULONG_PTR Reserved3;
     ULONG_PTR Reserved4;
 } COMMON_DEVICE_EXTENSION, *PCOMMON_DEVICE_EXTENSION;
@@ -599,11 +578,7 @@ typedef struct _PHYSICAL_DEVICE_EXTENSION {
     };
     BOOLEAN IsMissing;
     BOOLEAN IsEnumerated;
-#if (NTDDI_VERSION >= NTDDI_WINXP)
-    PCLASS_PRIVATE_PDO_DATA PrivatePdoData;
-#else
     ULONG_PTR Reserved1;
-#endif
     ULONG_PTR Reserved2;
     ULONG_PTR Reserved3;
     ULONG_PTR Reserved4;
@@ -915,6 +890,17 @@ NTAPI CLASSPNP_API ULONG ClassModeSense(IN PDEVICE_OBJECT DeviceObject,
 					IN PCHAR ModeSenseBuffer,
 					IN ULONG Length,
 					IN UCHAR PageMode);
+
+NTAPI CLASSPNP_API ULONG ClassModeSenseEx(IN PDEVICE_OBJECT Fdo,
+					  IN PCHAR ModeSenseBuffer,
+					  IN ULONG Length,
+					  IN UCHAR PageMode,
+					  IN UCHAR PageControl);
+
+NTAPI CLASSPNP_API NTSTATUS ClassModeSelect(IN PDEVICE_OBJECT Fdo,
+					    IN PCHAR ModeSelectBuffer,
+					    IN ULONG Length,
+					    IN BOOLEAN SavePages);
 
 NTAPI CLASSPNP_API PVOID ClassFindModePage(IN PCHAR ModeSenseBuffer,
 					   IN ULONG Length,

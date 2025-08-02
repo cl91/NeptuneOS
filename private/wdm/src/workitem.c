@@ -39,10 +39,11 @@ NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
  * This routine can be called at any IRQL (ie. in the main event loop thread, in the
  * DPC thread, and in an ISR thread).
  */
-NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
-			   IN PIO_WORKITEM_ROUTINE WorkerRoutine,
-			   IN WORK_QUEUE_TYPE QueueType,
-			   IN OPTIONAL PVOID Context)
+static VOID IopQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
+			     IN PVOID WorkerRoutine,
+			     IN WORK_QUEUE_TYPE QueueType,
+			     IN OPTIONAL PVOID Context,
+			     IN BOOLEAN ExtendedRoutine)
 {
     DbgTrace("Queuing workitem %p worker routine %p\n", IoWorkItem, WorkerRoutine);
     assert(IoWorkItem != NULL);
@@ -56,11 +57,27 @@ NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
     }
     IoWorkItem->WorkerRoutine = WorkerRoutine;
     IoWorkItem->Context = Context;
-    IoWorkItem->ExtendedRoutine = FALSE;
+    IoWorkItem->ExtendedRoutine = ExtendedRoutine;
     IoWorkItem->Queued = TRUE;
     InsertHeadList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
     KeReleaseMutex(&IopWorkItemMutex);
     NtCurrentTeb()->Wdm.IoWorkItemQueued = TRUE;
+}
+
+NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
+			   IN PIO_WORKITEM_ROUTINE WorkerRoutine,
+			   IN WORK_QUEUE_TYPE QueueType,
+			   IN OPTIONAL PVOID Context)
+{
+    IopQueueWorkItem(IoWorkItem, WorkerRoutine, QueueType, Context, FALSE);
+}
+
+NTAPI VOID IoQueueWorkItemEx(IN OUT PIO_WORKITEM IoWorkItem,
+			     IN PIO_WORKITEM_ROUTINE_EX WorkerRoutine,
+			     IN WORK_QUEUE_TYPE QueueType,
+			     IN OPTIONAL PVOID Context)
+{
+    IopQueueWorkItem(IoWorkItem, WorkerRoutine, QueueType, Context, TRUE);
 }
 
 /*

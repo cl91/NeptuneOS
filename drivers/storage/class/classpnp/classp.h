@@ -138,27 +138,16 @@ extern ULONG ClassMaxInterleavePerCriticalIo;
 #define NUM_DRIVECAPACITY_RETRIES 1
 #define NUM_THIN_PROVISIONING_RETRIES 32
 
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-
-//
-// New code should use the MAXIMUM_RETRIES value.
-//
-#define NUM_IO_RETRIES MAXIMUM_RETRIES
-#define LEGACY_NUM_IO_RETRIES 8
-
-#else
-
 /*
  *  We retry failed I/O requests at 1-second intervals.
- *  In the case of a failure due to bus reset, we want to make sure that we retry after the allowable
- *  reset time.  For SCSI, the allowable reset time is 5 seconds.  ScsiPort queues requests during
- *  a bus reset, which should cause us to retry after the reset is over; but the requests queued in
- *  the miniport are failed all the way back to us immediately.  In any event, in order to make
- *  extra sure that our retries span the allowable reset time, we should retry more than 5 times.
+ *  In the case of a failure due to bus reset, we want to make sure that we retry
+ *  after the allowable reset time.  For SCSI, the allowable reset time is 5 seconds.
+ *  ScsiPort queues requests during a bus reset, which should cause us to retry after
+ *  the reset is over; but the requests queued in the miniport are failed all the way
+ *  back to us immediately.  In any event, in order to make extra sure that our retries
+ *  span the allowable reset time, we should retry more than 5 times.
  */
 #define NUM_IO_RETRIES 8
-
-#endif // NTDDI_VERSION >= NTDDI_WINBLUE
 
 #define CLASS_FILE_OBJECT_EXTENSION_KEY 'eteP'
 #define CLASSP_VOLUME_VERIFY_CHECKED 0x34
@@ -277,7 +266,6 @@ typedef struct _MEDIA_CHANGE_DETECTION_INFO {
 	UCHAR EventMask;
 	UCHAR NoChangeEventMask;
 	PUCHAR Buffer;
-	PMDL Mdl;
 	ULONG BufferSize;
     } Gesn;
 
@@ -470,19 +458,11 @@ typedef struct _TRANSFER_PACKET {
     /*
      *  Stuff for retrying the transfer.
      */
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-    UCHAR NumRetries; // Total number of retries remaining.
-    UCHAR NumThinProvisioningRetries; //Number of retries carried out so far for a request failed with THIN_PROVISIONING_SOFT_THRESHOLD_ERROR
-    UCHAR NumIoTimeoutRetries; // Number of retries remaining for a timed-out request.
-    UCHAR TimedOut; // Indicates if this packet has timed-out.
-#else
     ULONG NumRetries;
-#endif
     KTIMER RetryTimer;
-    KDPC RetryTimerDPC;
+    PIO_WORKITEM RetryWorkItem;
 
-    _Field_range_(0,
-		  MAXIMUM_RETRY_FOR_SINGLE_IO_IN_100NS_UNITS) LONGLONG RetryIn100nsUnits;
+    _Field_range_(0, MAXIMUM_RETRY_FOR_SINGLE_IO_IN_100NS_UNITS) LONGLONG RetryIn100nsUnits;
 
     /*
      *  Event for synchronizing the transfer (optional).
@@ -498,8 +478,7 @@ typedef struct _TRANSFER_PACKET {
      *  NOTE: These fields are also used for StartIO-based
      *  class drivers, even when not in low memory conditions.
      */
-    BOOLEAN
-    DriverUsesStartIO; // if this is set, then the below low-mem flags are always used
+    BOOLEAN DriverUsesStartIO; // if this is set, then the below low-mem flags are always used
     BOOLEAN InLowMemRetry;
     PUCHAR LowMemRetry_remainingBufPtr;
     ULONG LowMemRetry_remainingBufLen;
@@ -552,7 +531,6 @@ typedef struct _TRANSFER_PACKET {
 #endif
 
     BOOLEAN UsePartialMdl;
-    PMDL PartialMdl;
 
     PSRB_HISTORY RetryHistory;
 
@@ -620,19 +598,13 @@ struct _CLASS_PRIVATE_FDO_DATA {
     //
     ULONG CopyOffloadMaxTargetDuration;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-
     //
     // Periodic timer for polling for media change detection, failure prediction
     // and class tick function.
     //
 
     KTIMER TickTimer;
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-    LONGLONG CurrentNoWakeTolerance;
-#else
-    KDPC TickTimerDpc;
-#endif // (NTDDI_VERSION >= NTDDI_WINBLUE)
+    PIO_WORKITEM TickTimerWorkItem;
 
     //
     // Power related and release queue SRBs
@@ -646,8 +618,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
 	STORAGE_REQUEST_BLOCK SrbEx;
 	UCHAR ReleaseQueueSrbBuffer[CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE];
     } ReleaseQueueSrb;
-
-#endif
 
     ULONG TrackingFlags;
 
@@ -698,8 +668,8 @@ struct _CLASS_PRIVATE_FDO_DATA {
 	LARGE_INTEGER Tick; // when it should fire
 	PCLASS_RETRY_INFO ListHead; // singly-linked list
 	ULONG Granularity; // static
-	KDPC Dpc; // DPC routine object
-	KTIMER Timer; // timer to fire DPC
+	PIO_WORKITEM WorkItem; // IO work item object
+	KTIMER Timer; // timer to fire IO work item
     } Retry;
 
     BOOLEAN TimerInitialized;
@@ -833,9 +803,9 @@ struct _CLASS_PRIVATE_FDO_DATA {
     KTIMER IdleTimer;
 
     //
-    // DPC for low priority I/O
+    // IO work item for low priority I/O
     //
-    KDPC IdleDpc;
+    PIO_WORKITEM IdleWorkItem;
 
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 
@@ -927,52 +897,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
     BOOLEAN DisableThrottling;
 };
 
-//
-// !!! WARNING !!!
-// DO NOT use the following structure in code outside of classpnp
-// as structure will not be guaranteed between OS versions.
-//
-// EX_RUNDOWN_REF_CACHE_AWARE is variable size and follows
-// RemoveLockFailAcquire. EX_RUNDOWN_REF_CACHE_AWARE must be part
-// of the device extension allocation to avoid issues with a device
-// that has been PNP remove but still has outstanding references.
-// In this case, the removed object may still receive incoming requests.
-//
-// There are code dependencies on the structure layout. To minimize
-// code changes, new fields to _CLASS_PRIVATE_COMMON_DATA should be
-// added based on the following guidance.
-// - Fixed size: beginning of _CLASS_PRIVATE_COMMON_DATA
-// - Variable size: at the end of _CLASS_PRIVATE_COMMON_DATA after the
-//   last variable size field.
-//
-
-struct _CLASS_PRIVATE_COMMON_DATA {
-    //
-    // Cacheaware rundown lock reference
-    //
-
-    LONG RemoveLockFailAcquire;
-
-    //
-    // N.B. EX_RUNDOWN_REF_CACHE_AWARE begins with a pointer-sized item that is
-    //      accessed interlocked, and must be aligned on ARM platforms. In order
-    //      for this to work on ARM64, an additional 32-bit slot must be allocated.
-    //
-
-#if defined(_WIN64)
-    LONG Align;
-#endif
-
-    // EX_RUNDOWN_REF_CACHE_AWARE (variable size) follows
-};
-
-//
-// Verify that the size of _CLASS_PRIVATE_COMMON_DATA is pointer size aligned
-// to ensure the EX_RUNDOWN_REF_CACHE_AWARE following it is properly aligned.
-//
-
-C_ASSERT((sizeof(struct _CLASS_PRIVATE_COMMON_DATA) % sizeof(PVOID)) == 0);
-
 typedef struct _IDLE_POWER_FDO_LIST_ENTRY {
     LIST_ENTRY ListEntry;
     PDEVICE_OBJECT Fdo;
@@ -990,7 +914,7 @@ typedef struct _OFFLOAD_READ_CONTEXT {
     //
     // A pseudo-irp is used despite the operation being async.  This is in
     // contrast to normal read and write, which let TransferPktComplete()
-    // complete the upper IRP directly.  Offload requests are enough different
+    // complete the upper IRP directly.  Offload requests are different enough
     // that it makes more sense to let them manage their own async steps with
     // minimal help from TransferPktComplete() (just a continuation function
     // call during TransferPktComplete()).
@@ -1006,8 +930,6 @@ typedef struct _OFFLOAD_READ_CONTEXT {
     //
 
     PTRANSFER_PACKET Pkt;
-
-    PMDL PopulateTokenMdl;
 
     ULONG BufferLength;
 
@@ -1073,8 +995,6 @@ typedef struct _OFFLOAD_WRITE_CONTEXT {
     ULONG ReceiveTokenInformationBufferLength;
 
     IRP PseudoIrp;
-
-    PMDL WriteUsingTokenMdl;
 
     ULONGLONG TotalSectorsProcessedSuccessfully;
     ULONG DataSetRangeIndex;
@@ -1308,11 +1228,6 @@ NTSTATUS ClasspInitializeTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
 VOID ClasspDeleteTimer(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-BOOLEAN
-ClasspUpdateTimerNoWakeTolerance(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
-#endif
-
 NTSTATUS ClasspDuidQueryProperty(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 DRIVER_DISPATCH ClassGlobalDispatch;
@@ -1376,10 +1291,6 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
 					    IN PPHYSICAL_DEVICE_EXTENSION Child,
 					    IN BOOLEAN AcquireLock);
 
-VOID ClasspRetryDpcTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData);
-
-KDEFERRED_ROUTINE ClasspRetryRequestDpc;
-
 VOID ClassFreeOrReuseSrb(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			 IN PSCSI_REQUEST_BLOCK Srb);
 
@@ -1428,9 +1339,8 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt);
 IO_COMPLETION_ROUTINE TransferPktComplete;
 NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo,
 				PIRP Irp,
-				BOOLEAN PostToDpc);
-VOID TransferPacketQueueRetryDpc(PTRANSFER_PACKET Pkt);
-KDEFERRED_ROUTINE TransferPacketRetryTimerDpc;
+				BOOLEAN PostToTimer);
+VOID TransferPacketSetRetryTimer(PTRANSFER_PACKET Pkt);
 BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt);
 BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt);
 VOID EnqueueDeferredClientIrp(PDEVICE_OBJECT Fdo, PIRP Irp);
@@ -1464,13 +1374,6 @@ VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt,
 				      PKEVENT SyncEventPtr,
 				      PIRP OriginalIrp,
 				      BOOLEAN Use16ByteCdb);
-PMDL BuildDeviceInputMdl(PVOID Buffer,
-			 ULONG BufferLen);
-PMDL ClasspBuildDeviceMdl(PVOID Buffer,
-			  ULONG BufferLen,
-			  BOOLEAN WriteToDevice);
-VOID FreeDeviceInputMdl(PMDL Mdl);
-VOID ClasspFreeDeviceMdl(PMDL Mdl);
 NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo);
 VOID DestroyAllTransferPackets(PDEVICE_OBJECT Fdo);
 VOID InterpretCapacityData(PDEVICE_OBJECT Fdo,
@@ -1694,7 +1597,8 @@ FORCEINLINE BOOLEAN ClasspIsOffloadDataTransferCommand(IN PCDB Cdb)
 
 extern LIST_ENTRY AllFdosList;
 
-VOID ClasspInitializeIdleTimer(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
+NTSTATUS ClasspInitializeIdleTimer(IN PDEVICE_OBJECT Fdo,
+				   IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
 NTSTATUS ClasspIsPortable(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			  OUT PBOOLEAN IsPortable);
@@ -1714,9 +1618,6 @@ NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
 NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
 					IN PIRP Irp,
 					IN OUT PSCSI_REQUEST_BLOCK Srb);
-
-NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
-						   IN PIRP Irp);
 
 VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadContext);
 
@@ -1832,10 +1733,6 @@ BOOLEAN ClasspMyStringMatches(IN OPTIONAL PCHAR StringToMatch, IN PCHAR TargetSt
 #define TRACKING_FORWARD_PROGRESS_PATH1 (0x00000001)
 #define TRACKING_FORWARD_PROGRESS_PATH2 (0x00000002)
 #define TRACKING_FORWARD_PROGRESS_PATH3 (0x00000004)
-
-VOID ClasspInitializeRemoveTracking(IN PDEVICE_OBJECT DeviceObject);
-
-VOID ClasspUninitializeRemoveTracking(IN PDEVICE_OBJECT DeviceObject);
 
 RTL_GENERIC_COMPARE_ROUTINE RemoveTrackingCompareRoutine;
 

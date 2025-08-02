@@ -208,28 +208,6 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 	    if (Pkt->Irp->IoStatus.Status == STATUS_VERIFY_REQUIRED) {
 		shouldRetry = TRUE;
 	    }
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-	    else if (ClasspSrbTimeOutStatus(Pkt->Srb)) {
-
-		Pkt->TimedOut = TRUE;
-
-		if (shouldRetry) {
-		    //
-		    // For requests that have timed-out we may only perform a limited
-		    // number of retries.  This is typically less than the general
-		    // number of retries allowed.
-		    //
-		    if (Pkt->NumIoTimeoutRetries == 0) {
-			shouldRetry = FALSE;
-		    } else {
-			Pkt->NumIoTimeoutRetries--;
-			//
-			// We expect to be able to retry if there are some general retries remaining.
-			//
-		    }
-		}
-	    }
-#endif
 
 	    if (shouldRetry) {
 		Pkt->RetryIn100nsUnits = retryIntervalSeconds;
@@ -269,28 +247,6 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 		shouldRetry = TRUE;
 
 	    }
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-	    else if (ClasspSrbTimeOutStatus(Pkt->Srb)) {
-
-		Pkt->TimedOut = TRUE;
-
-		if (shouldRetry) {
-		    //
-		    // For requests that have timed-out we may only perform a limited
-		    // number of retries.  This is typically less than the general
-		    // number of retries allowed.
-		    //
-		    if (Pkt->NumIoTimeoutRetries == 0) {
-			shouldRetry = FALSE;
-		    } else {
-			Pkt->NumIoTimeoutRetries--;
-			//
-			// We expect to be able to retry if there are some general retries remaining.
-			//
-		    }
-		}
-	    }
-#endif
 
 	    if (shouldRetry) {
 		Pkt->RetryIn100nsUnits = retryIntervalSeconds;
@@ -416,22 +372,8 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     PCDB pCdb = SrbGetCdb(Pkt->Srb);
 
-#if !defined(__REACTOS__) && NTDDI_VERSION >= NTDDI_WINBLUE
-    if (ClasspIsThinProvisioningError((PSCSI_REQUEST_BLOCK)Pkt->Srb) && (pCdb != NULL) &&
-	IS_SCSIOP_READWRITE(pCdb->CDB10.OperationCode)) {
-	if (Pkt->NumThinProvisioningRetries >= NUM_THIN_PROVISIONING_RETRIES) {
-	    //We've already retried this the maximum times.  Bail out.
-	    return TRUE;
-	}
-	Pkt->NumThinProvisioningRetries++;
-    } else {
-	NT_ASSERT(Pkt->NumRetries > 0 || Pkt->RetryHistory);
-	Pkt->NumRetries--;
-    }
-#else
     NT_ASSERT(Pkt->NumRetries > 0 || Pkt->RetryHistory);
     Pkt->NumRetries--;
-#endif
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 		"retrying failed transfer (pkt=%ph, op=%s)", Pkt,
@@ -448,16 +390,6 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
 	    !ClasspIsThinProvisioningError((PSCSI_REQUEST_BLOCK)Pkt->Srb)) {
 	    scaleDown = TRUE;
 	}
-
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-	//
-	// If this request previously timed-out and there are no more retries left
-	// for timed-out requests, then we should also apply the scale down.
-	//
-	if (Pkt->TimedOut && Pkt->NumIoTimeoutRetries == 0) {
-	    scaleDown = TRUE;
-	}
-#endif
     }
 
     if (scaleDown) {
@@ -540,7 +472,7 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
 	SrbSetDataBuffer(Pkt->Srb, Pkt->BufPtrCopy);
 	SrbSetDataTransferLength(Pkt->Srb, Pkt->BufLenCopy);
 
-	TransferPacketQueueRetryDpc(Pkt);
+	TransferPacketSetRetryTimer(Pkt);
 
 	packetDone = FALSE;
     }
@@ -548,28 +480,8 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
     return packetDone;
 }
 
-VOID TransferPacketQueueRetryDpc(PTRANSFER_PACKET Pkt)
-{
-    KeInitializeDpc(&Pkt->RetryTimerDPC, TransferPacketRetryTimerDpc, Pkt);
-
-    if (Pkt->RetryIn100nsUnits == 0) {
-	KeInsertQueueDpc(&Pkt->RetryTimerDPC, NULL, NULL);
-    } else {
-	LARGE_INTEGER timerPeriod;
-
-	NT_ASSERT(Pkt->RetryIn100nsUnits <
-		  100 * 1000 * 1000 *
-		      10); // sanity check -- 100 seconds is normally too long
-	timerPeriod.QuadPart = -(Pkt->RetryIn100nsUnits);
-	KeInitializeTimer(&Pkt->RetryTimer);
-	KeSetTimer(&Pkt->RetryTimer, timerPeriod, &Pkt->RetryTimerDPC);
-    }
-}
-
-NTAPI VOID TransferPacketRetryTimerDpc(IN PKDPC Dpc,
-				       IN PVOID DeferredContext,
-				       IN PVOID SystemArgument1,
-				       IN PVOID SystemArgument2)
+static NTAPI VOID TransferPacketRetryTimerWorkerRoutine(IN PDEVICE_OBJECT DeviceObject,
+							IN PVOID Context)
 {
     PTRANSFER_PACKET pkt;
     PDEVICE_OBJECT fdo;
@@ -577,14 +489,11 @@ NTAPI VOID TransferPacketRetryTimerDpc(IN PKDPC Dpc,
 
     _Analysis_assume_(DeferredContext != NULL);
 
-    pkt = (PTRANSFER_PACKET)DeferredContext;
+    pkt = (PTRANSFER_PACKET)Context;
 
     fdo = pkt->Fdo;
+    assert(fdo == DeviceObject);
     fdoExtension = fdo->DeviceExtension;
-
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(SystemArgument1);
-    UNREFERENCED_PARAMETER(SystemArgument2);
 
     /*
      *  Sometimes the port driver can allocates a new 'sense' buffer
@@ -608,6 +517,25 @@ NTAPI VOID TransferPacketRetryTimerDpc(IN PKDPC Dpc,
     RtlZeroMemory(&pkt->SrbErrorSenseData, sizeof(pkt->SrbErrorSenseData));
 
     SubmitTransferPacket(pkt);
+}
+
+VOID TransferPacketSetRetryTimer(PTRANSFER_PACKET Pkt)
+{
+    assert(Pkt->RetryWorkItem);
+
+    if (Pkt->RetryIn100nsUnits == 0) {
+	IoQueueWorkItem(Pkt->RetryWorkItem, TransferPacketRetryTimerWorkerRoutine,
+			DelayedWorkQueue, Pkt);
+    } else {
+	LARGE_INTEGER timerPeriod;
+
+	// sanity check -- 100 seconds is normally too long
+	NT_ASSERT(Pkt->RetryIn100nsUnits < 100 * 1000 * 1000 * 10);
+	timerPeriod.QuadPart = -(Pkt->RetryIn100nsUnits);
+	KeInitializeTimer(&Pkt->RetryTimer);
+	KeSetLowPriorityTimer(&Pkt->RetryTimer, timerPeriod, 0, Pkt->RetryWorkItem,
+			      TransferPacketRetryTimerWorkerRoutine, Pkt);
+    }
 }
 
 VOID InitLowMemRetry(PTRANSFER_PACKET Pkt, PVOID BufPtr, ULONG Len,
@@ -726,7 +654,7 @@ BOOLEAN StepLowMemRetry(PTRANSFER_PACKET Pkt)
 	//
 	Pkt->UsePartialMdl = TRUE;
 
-	TransferPacketQueueRetryDpc(Pkt);
+	TransferPacketSetRetryTimer(Pkt);
 
 	packetDone = FALSE;
     }

@@ -530,7 +530,7 @@ AtapiModeSenseRequest (
     srbExtension->DataBufferPhysicalAddress.QuadPart = modeSensePhysicalAddress.QuadPart;
     srbExtension->DataTransferLength = modeSenseBufferSize;
     srbExtension->CompletionRoutine = AtapiModeCommandRequestCompletion;
-    srbExtension->CompletionContext = (PVOID)modeSenseBufferSize;    // preserve the buffer size, it's needed for freeing the memory
+    srbExtension->CompletionContext = (PVOID)(ULONG_PTR)modeSenseBufferSize;    // preserve the buffer size, it's needed for freeing the memory
 
     srbExtension->LocalSgl.NumberOfElements = 1;
     srbExtension->LocalSgl.List[0].PhysicalAddress.LowPart = modeSensePhysicalAddress.LowPart;
@@ -667,7 +667,7 @@ AtapiModeSelectRequest (
     srbExtension->DataBufferPhysicalAddress.QuadPart = modeSelectPhysicalAddress.QuadPart;
     srbExtension->DataTransferLength = modeSelectBufferSize;
     srbExtension->CompletionRoutine = AtapiModeCommandRequestCompletion;
-    srbExtension->CompletionContext = (PVOID)modeSelectBufferSize;    // preserve the buffer size, it's needed for freeing the memory
+    srbExtension->CompletionContext = (PVOID)(ULONG_PTR)modeSelectBufferSize;    // preserve the buffer size, it's needed for freeing the memory
 
     cdb = (PCDB)&srbExtension->Cdb;
 
@@ -1164,7 +1164,6 @@ Notes:
     LARGE_INTEGER   startingSector;
     ULONG           bytesPerSector;
     ULONG           sectorCount;
-    BOOLEAN         hybridPriorityPassedIn = FALSE;
 
     PAHCI_SRB_EXTENSION     srbExtension = GetSrbExtension(Srb);
     ULONG                   srbDataBufferLength = SrbGetDataTransferLength(Srb);
@@ -1279,8 +1278,6 @@ Notes:
 
                 srbExtension->CompletionRoutine = HybridWriteThroughCompletion;
             }
-
-            hybridPriorityPassedIn = TRUE;
         }
     }
 
@@ -1892,7 +1889,7 @@ AtaReadCapacityCompletion (
 
                 if (IsDeviceSupportsTrim(ChannelExtension)) {
                     readCap16->LBPME = ChannelExtension->DeviceExtension->IdentifyDeviceData->AdditionalSupported.DeterministicReadAfterTrimSupported ? 1 : 0;
-                    readCap16->LBPRZ = (ChannelExtension->DeviceExtension->IdentifyDeviceData->AdditionalSupported.DeterministicReadAfterTrimSupported && 
+                    readCap16->LBPRZ = (ChannelExtension->DeviceExtension->IdentifyDeviceData->AdditionalSupported.DeterministicReadAfterTrimSupported &&
                                         ChannelExtension->DeviceExtension->IdentifyDeviceData->AdditionalSupported.ReadZeroAfterTrimSupported) ? 1 : 0;
                 } else {
                     readCap16->LBPME = 0;
@@ -2287,7 +2284,7 @@ AtaInquiryRequest(
         if (IsDumpMode(ChannelExtension->AdapterExtension) && !DeviceIdentificationCompletedSuccess(ChannelExtension->AdapterExtension)) {
             // the enumeration command from dump stack.
             IssueIdentifyCommand(ChannelExtension, Srb);
-        } else if (ChannelExtension->DeviceExtension->DeviceParameters.StateFlags.NeedUpdateIdentifyDeviceData == 1) {            
+        } else if (ChannelExtension->DeviceExtension->DeviceParameters.StateFlags.NeedUpdateIdentifyDeviceData == 1) {
             IssueIdentifyCommand(ChannelExtension, Srb);
         } else {
             status = InquiryComplete(ChannelExtension, Srb);
@@ -2645,22 +2642,22 @@ AtaStartStopUnitRequest (
         //
         // If 48Bit LBA supported and its not SSD, spin up the device right away using
         // mechanism suggested by SCSI to ATA translation specification (SAT-4 Rev 2 Table 73)
-        // Ignore if this is an eHDD (1667 supported) as immediate spin up may not be needed 
+        // Ignore if this is an eHDD (1667 supported) as immediate spin up may not be needed
         //
         if (Support48Bit(&ChannelExtension->DeviceExtension->DeviceParameters) &&
             (!DeviceIncursNoSeekPenalty(ChannelExtension)) &&
             (ChannelExtension->DeviceExtension->IdentifyDeviceData->AdditionalSupported.IEEE1667 == 0)) {
             srbExtension->AtaFunction = ATA_FUNCTION_ATA_COMMAND;
             srbExtension->CompletionRoutine = AtaAlwaysSuccessRequestCompletion;
-     
+
             SetSectorCount((&srbExtension->TaskFile.Current), 1);
             SetDeviceReg((&srbExtension->TaskFile.Current), IDE_LBA_MODE);
-            SetCommandReg((&srbExtension->TaskFile.Current), IDE_COMMAND_VERIFY_EXT); 
+            SetCommandReg((&srbExtension->TaskFile.Current), IDE_COMMAND_VERIFY_EXT);
         } else {
             //no action needed
             Srb->SrbStatus = SRB_STATUS_SUCCESS;
         }
-        
+
     }
 
     return STOR_STATUS_SUCCESS;
@@ -2744,7 +2741,7 @@ AtaFlushCommandRequest (
         srbExtension->AtaFunction = ATA_FUNCTION_ATA_FLUSH;
         srbExtension->CompletionRoutine = AtaAlwaysSuccessRequestCompletion;    //legacy behavior: Flush Command will be always completed successfully.
 
-        if ((ChannelExtension->DeviceExtension->DeviceParameters.StateFlags.SystemPoweringDown == TRUE) ) {
+        if (ChannelExtension->DeviceExtension->DeviceParameters.StateFlags.SystemPoweringDown) {
             //Final Flush goes down alone
             if (ChannelExtension->SlotManager.NormalQueueSlice != 0) {
                 NT_ASSERT(FALSE);
@@ -3313,47 +3310,47 @@ VOID UpdateFirmwareIoctlReturnCode(
     }
 
     if (srbExtension->AtaError & IDE_ERROR_CRC_ERROR) {
-        
+
         // bit 7: Interface CRC error.
         srbControl->ReturnCode = FIRMWARE_STATUS_INTERFACE_CRC_ERROR;
 
     } else if (srbExtension->AtaError & IDE_ERROR_DATA_ERROR) {
-    
+
         // bit 6: Uncorrectable Error.
         srbControl->ReturnCode = FIRMWARE_STATUS_DEVICE_ERROR;
-            
+
     } else if (srbExtension->AtaError & IDE_ERROR_MEDIA_CHANGE) {
-    
+
         // bit 5: Media Changed (legacy).
         srbControl->ReturnCode = FIRMWARE_STATUS_MEDIA_CHANGE;
 
     } else if (srbExtension->AtaError & IDE_ERROR_ID_NOT_FOUND) {
-    
+
         // bit 4: ID Not Found.
         srbControl->ReturnCode = FIRMWARE_STATUS_ID_NOT_FOUND;
 
     } else if (srbExtension->AtaError & IDE_ERROR_MEDIA_CHANGE_REQ) {
-    
+
         // bit 3: Media Change Request (legacy).
         srbControl->ReturnCode = FIRMWARE_STATUS_MEDIA_CHANGE_REQUEST;
 
     } else if (srbExtension->AtaError & IDE_ERROR_COMMAND_ABORTED) {
-    
+
         // bit 2: Command Aborted.
         srbControl->ReturnCode = FIRMWARE_STATUS_COMMAND_ABORT;
-        
+
     } else if (srbExtension->AtaError & IDE_ERROR_END_OF_MEDIA) {
-    
+
         // bit 1: End of Media (legacy).
         srbControl->ReturnCode = FIRMWARE_STATUS_END_OF_MEDIA;
-        
+
     } else if (srbExtension->AtaError & IDE_ERROR_ILLEGAL_LENGTH) {
-    
+
         // bit 0: Media Error (legacy).
         srbControl->ReturnCode = FIRMWARE_STATUS_ILLEGAL_LENGTH;
-        
+
     } else {
-    
+
         // Should not be here, need investigation if get here.
         NT_ASSERT(FALSE);
         srbControl->ReturnCode = FIRMWARE_STATUS_ERROR;
@@ -3368,7 +3365,7 @@ AtaFirmwareDownloadCompletion (
     _In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     _In_ PSTORAGE_REQUEST_BLOCK  Srb
     )
-{           
+{
     if (Srb->SrbStatus != SRB_STATUS_SUCCESS) {
 
         PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
@@ -3688,8 +3685,8 @@ AtaGetPhysicalElementStatusCompletion (
     )
 /*++
     This is the completion point of Get Physical Element Status command for ATA devices.
-    
-    This routine translates an ATA output of Get Physical Element Status command into 
+
+    This routine translates an ATA output of Get Physical Element Status command into
     SCSI format if the command is successful.
 
 Arguments:
@@ -3789,7 +3786,7 @@ AtaGetPhysicalElementStatusRequest (
     _In_ PCDB                    Cdb
     )
 /*++
-    This routine translates a SCSI - Get Physical Element Status command into 
+    This routine translates a SCSI - Get Physical Element Status command into
     ATA - Get Physical Element Status command.
 
 Arguments:
@@ -3813,7 +3810,7 @@ Return Value:
     PAHCI_H2D_REGISTER_FIS cfis = &srbExtension->Cfis;
     ULONG tempUlong = 0;
 
-    if ((srbDataBuffer == NULL) || 
+    if ((srbDataBuffer == NULL) ||
         (srbDataBufferLength < sizeof(PHYSICAL_ELEMENT_STATUS_PARAMETER_DATA))) {
 
         Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
@@ -3852,7 +3849,7 @@ Return Value:
     srbExtension->DataBuffer = physicalElementStatusBuffer;
     srbExtension->DataBufferPhysicalAddress.QuadPart = physicalElementStatusPhysicalAddress.QuadPart;
     srbExtension->DataTransferLength = physicalElementStatusBufferSize;
-    srbExtension->CompletionContext = (PVOID)physicalElementStatusBufferSize;    // preserve the buffer size, it's needed for freeing the memory
+    srbExtension->CompletionContext = (PVOID)(ULONG_PTR)physicalElementStatusBufferSize;    // preserve the buffer size, it's needed for freeing the memory
 
     srbExtension->LocalSgl.NumberOfElements = 1;
     srbExtension->LocalSgl.List[0].PhysicalAddress.LowPart = physicalElementStatusPhysicalAddress.LowPart;
@@ -3938,7 +3935,7 @@ AtaRemoveElementAndTruncateRequest (
     _In_ PCDB                    Cdb
     )
 /*++
-    This routine translates a SCSI - Remove Element and Truncate command into 
+    This routine translates a SCSI - Remove Element and Truncate command into
     ATA - Remove Element and Truncate command.
 
 Arguments:
@@ -3963,7 +3960,7 @@ Return Value:
     // -  If requested capacity is 0, SATL shall set the ATA REQUESTED MAX field to 0;
     // -  If requested capacity is 1, remove element and truncate command shall be terminated with a checked condition status
     //    with the sense key set to illegal request and additional sense code set to INVALID FIELD IN CDB;
-    // -  If requested capacity is greater than 1, SATL shall set ATA REQUESTED MAX field in the ATA REMOVE ELEMENT AND 
+    // -  If requested capacity is greater than 1, SATL shall set ATA REQUESTED MAX field in the ATA REMOVE ELEMENT AND
     //    TRUNCATE command to the value of the REQUESTED CAPACITY field minus 1.
     //
     REVERSE_BYTES_QUAD(&tempUlonglong, Cdb->REMOVE_ELEMENT_AND_TRUNCATE.RequestedCapacity);
@@ -4178,7 +4175,7 @@ Return Value:
 
         NT_ASSERT((srbExtension->DataBuffer != NULL) &&
                   (srbExtension->DataTransferLength >= sizeof(CURRENT_DEVICE_INTERNAL_STATUS_LOG)) &&
-                  (scsiCurrentInternalStatusData != NULL) && 
+                  (scsiCurrentInternalStatusData != NULL) &&
                   (srbDataBufferLength >= transferLength));
 
         NT_ASSERT((transferLength % IDE_GP_LOG_SECTOR_SIZE) == 0);
@@ -4232,13 +4229,13 @@ Return Value:
             //
             // Assume that size of this log hadn't changed since we read the directory.
             //
-            NT_ASSERT(transferLength <= 
+            NT_ASSERT(transferLength <=
                       (sizeof(CURRENT_DEVICE_INTERNAL_STATUS_LOG) + (ULONG)(ataCurrentDeviceInternalStatusDataHeader->Area3LastLogPage) * IDE_GP_LOG_SECTOR_SIZE));
 
             if ((transferLength > sizeof(CURRENT_DEVICE_INTERNAL_STATUS_LOG)) &&
                 (srbDataBufferLength >= transferLength) &&
                 (!IsDumpMode(ChannelExtension->AdapterExtension))) {
-                StorPortCopyMemory(scsiCurrentInternalStatusData->CurrentInternalStatusData, 
+                StorPortCopyMemory(scsiCurrentInternalStatusData->CurrentInternalStatusData,
                                    (PUCHAR)(ataCurrentDeviceInternalStatusDataHeader + 1),
                                    (transferLength - IDE_GP_LOG_SECTOR_SIZE));
             }
@@ -4246,7 +4243,7 @@ Return Value:
             if ((transferLength > sizeof(CURRENT_DEVICE_INTERNAL_STATUS_LOG)) &&
                 (srbDataBufferLength >= transferLength) &&
                 (!IsDumpMode(ChannelExtension->AdapterExtension))) {
-                StorPortCopyMemory((PUCHAR)scsiCurrentInternalStatusData, 
+                StorPortCopyMemory((PUCHAR)scsiCurrentInternalStatusData,
                                    (PUCHAR)ataCurrentDeviceInternalStatusDataHeader,
                                    transferLength);
             }
@@ -4366,7 +4363,7 @@ Return Value:
     AhciZeroMemory((PCHAR)srbExtension, sizeof(AHCI_SRB_EXTENSION));
 
     srbExtension->DataTransferLength = bufferSize;
-    srbExtension->CompletionContext = (PVOID)((ULONG)(bufferOffset / IDE_GP_LOG_SECTOR_SIZE));
+    srbExtension->CompletionContext = (PVOID)((ULONG_PTR)(bufferOffset / IDE_GP_LOG_SECTOR_SIZE));
 
     IssueReadLogExtCommand(ChannelExtension,
                            Srb,
@@ -4647,11 +4644,11 @@ Routine Description:
 
 Arguments:
 
-    Srb - 
-    SrbStatus - 
+    Srb -
+    SrbStatus -
     SenseKey -
-    ASC - 
-    ASCQ - 
+    ASC -
+    ASCQ -
 
 Return Value:
 
@@ -4679,8 +4676,8 @@ Return Value:
     //
     // Copy sensedata into buffer associated with Srb.
     //
-    if ((senseBuffer.Valid == 1) && 
-        (senseInfoBuffer != NULL) && 
+    if ((senseBuffer.Valid == 1) &&
+        (senseInfoBuffer != NULL) &&
         (senseInfoBufferLength > 0)) {
 
         length = min(sizeof(SENSE_DATA), senseInfoBufferLength);
@@ -5069,8 +5066,8 @@ Routine Description:
 
 Arguments:
 
-    AdapterExtension - 
-    Srb - 
+    AdapterExtension -
+    Srb -
 
 Return Value:
 
@@ -5083,11 +5080,8 @@ Return Value:
 
     switch (srbControl->ControlCode) {
         case IOCTL_STORAGE_QUERY_PROPERTY:
-            if (CompareId(IOCTL_MINIPORT_SIGNATURE_QUERY_PHYSICAL_TOPOLOGY,
-                          8,
-                          (PSTR)srbControl->Signature,
-                          8,
-                          NULL)) {
+            if (CompareId(IOCTL_MINIPORT_SIGNATURE_QUERY_PHYSICAL_TOPOLOGY, 8,
+                          (PSTR)srbControl->Signature, 8, NULL)) {
 
                 QueryPhysicalTopologyIoctlProcess(AdapterExtension, Srb);
                 processed = TRUE;
@@ -5152,7 +5146,7 @@ IOCTLtoATA(
 
             // general NVCACHE parameter validation
             PNVCACHE_REQUEST_BLOCK      nvCacheRequest;
-            
+
             if ( srbDataBufferLength < (sizeof(SRB_IO_CONTROL) + sizeof(NVCACHE_REQUEST_BLOCK)) ) {
                 Srb->SrbStatus = SRB_STATUS_BAD_SRB_BLOCK_LENGTH;
                 status = STOR_STATUS_BUFFER_TOO_SMALL;
@@ -5161,7 +5155,7 @@ IOCTLtoATA(
 
             nvCacheRequest = (PNVCACHE_REQUEST_BLOCK)(srbControl + 1);
 
-            if ( ((srbDataBufferLength - sizeof(SRB_IO_CONTROL) - sizeof(NVCACHE_REQUEST_BLOCK)) < nvCacheRequest->DataBufSize) || 
+            if ( ((srbDataBufferLength - sizeof(SRB_IO_CONTROL) - sizeof(NVCACHE_REQUEST_BLOCK)) < nvCacheRequest->DataBufSize) ||
                  (nvCacheRequest->DataBufSize > AHCI_MAX_TRANSFER_LENGTH_DEFAULT) ) {
 
                 nvCacheRequest->NRBStatus = NRB_INVALID_PARAMETER;
@@ -5338,7 +5332,7 @@ FillClippedSGL(
                 }
                 BytesLeft = 0;
                 j++;
-                
+
             } else if (BytesLeft == SourceSgl->List[i].Length) {
                 //Done! Cut off this element
                 BytesLeft = 0;
@@ -5387,7 +5381,7 @@ SmartIdentifyData(
     buffer = (PUCHAR)SrbGetDataBuffer(Srb) + sizeof(SRB_IO_CONTROL);
 #pragma warning (suppress: 28930) // Temporarily suppress warning due to OACR false positive.
     outParams = (PSENDCMDOUTPARAMS)buffer;
-    
+
     if ( srbDataBufferLength < (sizeof(SRB_IO_CONTROL) + sizeof(SENDCMDOUTPARAMS) - 1 + sizeof(IDENTIFY_DEVICE_DATA)) ) {
         NT_ASSERT(FALSE);
         if ( srbDataBufferLength >= sizeof(SRB_IO_CONTROL) + RTL_SIZEOF_THROUGH_FIELD(SENDCMDOUTPARAMS, DriverStatus) ) {
@@ -5602,7 +5596,7 @@ NVCacheGeneric(
     ULONG                       srbFlags = SrbGetSrbFlags(Srb);
     PVOID                       resultBuffer = NULL;
     PHYSICAL_ADDRESS            resultBufferPhysicalAddress = {0};
-            
+
     srbExtension = GetSrbExtension(Srb);
     srbControl = (PSRB_IO_CONTROL)SrbGetDataBuffer(Srb);
     nRB = ((PNVCACHE_REQUEST_BLOCK) ( (PSRB_IO_CONTROL)srbControl + 1) );
@@ -7837,8 +7831,8 @@ Routine Description:
     IOCTL handling routine processes FIRMWARE request - Get Info.
 
 Arguments:
-    ChannelExtension - 
-    Srb - 
+    ChannelExtension -
+    Srb -
 
 Return Value:
 
@@ -8257,8 +8251,8 @@ Routine Description:
     IOCTL handling routine processes Query Protocol Data - Identify Device data.
 
 Arguments:
-    ChannelExtension - 
-    Srb - 
+    ChannelExtension -
+    Srb -
 
 Return Value:
 
@@ -8325,8 +8319,8 @@ Routine Description:
     IOCTL handling routine processes Query Protocol Data - Log Page data.
 
 Arguments:
-    ChannelExtension - 
-    Srb - 
+    ChannelExtension -
+    Srb -
 
 Return Value:
 
@@ -8603,7 +8597,7 @@ Return Value:
                                        FIELD_OFFSET(STORAGE_PROTOCOL_DATA_DESCRIPTOR, ProtocolSpecificData) +
                                        protocolDataRequest->ProtocolSpecificData.ProtocolDataOffset;
 
-    if ((ULONGLONG)srbDataBufferLength < (protocolSpecificDataBufferOffset + 
+    if ((ULONGLONG)srbDataBufferLength < (protocolSpecificDataBufferOffset +
                                           protocolDataRequest->ProtocolSpecificData.ProtocolDataLength)) {
         Srb->SrbStatus = SRB_STATUS_BAD_SRB_BLOCK_LENGTH;
         status = STOR_STATUS_INVALID_PARAMETER;
@@ -8694,20 +8688,20 @@ QueryTemperatureInfoCompletion(
         if ((temperatureLog->Header.PageNumber == IDE_GP_LOG_DEVICE_STATISTICS_TEMPERATURE_PAGE) &&
             (temperatureLog->Header.RevisionNumber == IDE_GP_LOG_VERSION)) {
 
-            if ((temperatureLog->CurrentTemperature.Supported == 1) && 
+            if ((temperatureLog->CurrentTemperature.Supported == 1) &&
                 (temperatureLog->CurrentTemperature.ValidValue == 1)) {
 
                 temperatureDescr->TemperatureInfo[0].Temperature = (SHORT)temperatureLog->CurrentTemperature.Value;
             }
 
-            if ((temperatureLog->SpecifiedMaximumOperatingTemperature.Supported == 1) && 
+            if ((temperatureLog->SpecifiedMaximumOperatingTemperature.Supported == 1) &&
                 (temperatureLog->SpecifiedMaximumOperatingTemperature.ValidValue == 1)) {
 
                 temperatureDescr->TemperatureInfo[0].OverThreshold = (SHORT)temperatureLog->SpecifiedMaximumOperatingTemperature.Value;
                 temperatureDescr->WarningTemperature = (SHORT)temperatureLog->SpecifiedMaximumOperatingTemperature.Value;
             }
 
-            if ((temperatureLog->SpecifiedMinimumOperatingTemperature.Supported == 1) && 
+            if ((temperatureLog->SpecifiedMinimumOperatingTemperature.Supported == 1) &&
                 (temperatureLog->SpecifiedMinimumOperatingTemperature.ValidValue == 1)) {
 
                 temperatureDescr->TemperatureInfo[0].UnderThreshold = (SHORT)temperatureLog->SpecifiedMinimumOperatingTemperature.Value;
@@ -8757,13 +8751,11 @@ Return Value:
 {
     ULONG                   status = STOR_STATUS_SUCCESS;
     ULONG                   srbDataBufferLength = 0;
-    PSRB_IO_CONTROL         srbControl = NULL;
     ULONG                   srbFlags = SrbGetSrbFlags(Srb);
 
     PVOID                   buffer = NULL;
     STOR_PHYSICAL_ADDRESS   bufferPhysicalAddress = {0};
 
-    srbControl = (PSRB_IO_CONTROL)SrbGetDataBuffer(Srb);
     srbDataBufferLength = SrbGetDataTransferLength(Srb);
 
     //
@@ -8951,7 +8943,7 @@ Return Value:
     }
 
     //
-    // Output buffer contains: STORAGE_PHYSICAL_TOPOLOGY_DESCRIPTOR (before field - Node), 
+    // Output buffer contains: STORAGE_PHYSICAL_TOPOLOGY_DESCRIPTOR (before field - Node),
     //                         STORAGE_PHYSICAL_NODE_DATA,
     //                         STORAGE_PHYSICAL_ADAPTER_DATA * 1,
     //                         STORAGE_PHYSICAL_DEVICE_DATA * deviceCount
@@ -9088,11 +9080,3 @@ exit:
 
     return status;
 }
-
-#if _MSC_VER >= 1200
-#pragma warning(pop)
-#else
-#pragma warning(default:4214)
-#pragma warning(default:4201)
-#pragma warning(default:26015)
-#endif

@@ -99,6 +99,11 @@ C_ASSERT(EX_POOL_MAX_SIZE <=
 	 (1ULL << (MWORD_BITS - THREAD_PRIVATE_CNODE_LOG2SIZE
 		   - PROCESS_SHARED_CNODE_LOG2SIZE + EX_POOL_BLOCK_SHIFT)));
 
+/* Since we use a device object's global handle right shifted by EX_POOL_BLOCK_SHIFT
+ * as its (32-bit) WMI provider ID, the ExPool size cannot exceed 64GB on amd64. */
+C_ASSERT(EX_POOL_MAX_SIZE <=
+	 (1ULL << (32 + EX_POOL_BLOCK_SHIFT)));
+
 /* Allocation granularity for the system thread region, the client region and
  * the driver region. For the client region we reserve two pages but only
  * map one, so any buffer overflow or underflow is caught immediately. */

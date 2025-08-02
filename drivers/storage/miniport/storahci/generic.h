@@ -18,6 +18,7 @@ Revision History:
 
 
 // common header files
+#include <ntddk.h>
 #include <storport.h>
 #include "ata.h"
 
@@ -34,24 +35,6 @@ Revision History:
 #include "hbastat.h"
 #include "io.h"
 #include "util.h"
-
-//
-// Data structures for SMART drive fault prediction.
-//
-// GETVERSIONINPARAMS contains the data returned from the
-// Get Driver Version function.
-//
-
-#include <pshpack1.h>
-typedef struct _GETVERSIONINPARAMS {
-        UCHAR    bVersion;               // Binary driver version.
-        UCHAR    bRevision;              // Binary driver revision.
-        UCHAR    bReserved;              // Not used.
-        UCHAR    bIDEDeviceMap;          // Bit map of IDE devices.
-        ULONG   fCapabilities;          // Bit mask of driver capabilities.
-        ULONG   dwReserved[4];          // For future use.
-} GETVERSIONINPARAMS, *PGETVERSIONINPARAMS, *LPGETVERSIONINPARAMS;
-#include <poppack.h>
 
 //
 // Valid values for the bCommandReg member of IDEREGS.
@@ -79,38 +62,6 @@ typedef struct _GETVERSIONINPARAMS {
 #define CAP_SMART_CMD           4       // SMART commands supported
 
 //
-// SENDCMDINPARAMS contains the input parameters for the
-// Send Command to Drive function.
-//
-
-#include <pshpack1.h>
-typedef struct _SENDCMDINPARAMS {
-        ULONG   cBufferSize;             // Buffer size in bytes
-        ATAREGISTERS irDriveRegs;        // Structure with drive register values.
-        UCHAR    bDriveNumber;           // Physical drive number to send command to.
-        UCHAR    bReserved[3];           // Reserved for future expansion.
-        ULONG    dwReserved[4];          // For future use.
-        UCHAR    bBuffer[1];             // Input buffer.
-} SENDCMDINPARAMS, *PSENDCMDINPARAMS, *LPSENDCMDINPARAMS;
-#include <poppack.h>
-
-//
-// Status returned from driver
-//
-
-#include <pshpack1.h>
-typedef struct _DRIVERSTATUS {
-        UCHAR    bDriverError;           // Error code from driver,
-                                                                // or 0 if no error.
-        UCHAR    bIDEError;                      // Contents of IDE Error register.
-                                                                // Only valid when bDriverError
-                                                                // is SMART_IDE_ERROR.
-        UCHAR    bReserved[2];           // Reserved for future expansion.
-        ULONG   dwReserved[2];          // Reserved for future expansion.
-} DRIVERSTATUS, *PDRIVERSTATUS, *LPDRIVERSTATUS;
-#include <poppack.h>
-
-//
 // bDriverError values
 //
 
@@ -135,15 +86,6 @@ typedef struct _DRIVERSTATUS {
 #define SMART_ABORT_OFFLINE_SELFTEST        127
 #define SMART_SHORT_SELFTEST_CAPTIVE        129
 #define SMART_EXTENDED_SELFTEST_CAPTIVE     130
-
-#include <pshpack1.h>
-typedef struct _SENDCMDOUTPARAMS {
-        ULONG                   cBufferSize;            // Size of bBuffer in bytes
-        DRIVERSTATUS            DriverStatus;           // Driver status structure.
-        UCHAR                   bBuffer[1];             // Buffer of arbitrary length in which to store the data read from the                                                                                  // drive.
-} SENDCMDOUTPARAMS, *PSENDCMDOUTPARAMS, *LPSENDCMDOUTPARAMS;
-#include <poppack.h>
-
 
 #define READ_ATTRIBUTE_BUFFER_SIZE  512
 #define IDENTIFY_BUFFER_SIZE        512

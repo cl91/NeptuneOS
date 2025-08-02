@@ -12,7 +12,7 @@ Abstract:
 
 Notes:
 
-Revision History: 
+Revision History:
 
 --*/
 
@@ -387,7 +387,7 @@ Return value:
     if ( supportsCLO && (cmd.CLO == 0) ) {
         for (i = 1; i < 101; i++) {
             cmd.AsUlong = StorPortReadRegisterUlong(adapterExtension, &Px->CMD.AsUlong);
-            if( (cmd.CLO == 0) ) {
+            if (cmd.CLO == 0) {
                 break;
             }
             StorPortStallExecution(5000);    //  5 milliseconds
@@ -495,7 +495,7 @@ Affected Variables/Registers:
     none
 */
 {
-    STOR_LOCK_HANDLE    lockhandle = {InterruptLock, 0};
+    STOR_LOCK_HANDLE    lockhandle = {InterruptLock, {0}};
 
     if (!AtDIRQL) {
         AhciInterruptSpinlockAcquire(ChannelExtension->AdapterExtension, ChannelExtension->PortNumber, &lockhandle);
@@ -546,7 +546,7 @@ P_Running_Callback(
 
     // only clear the bit if this is the first timer callback in Port Start process
     if (callbackIndex == 1) {
-        STOR_LOCK_HANDLE    lockhandle = {InterruptLock, 0};
+        STOR_LOCK_HANDLE    lockhandle = {InterruptLock, {0}};
 
         AhciInterruptSpinlockAcquire(AdapterExtension, channelExtension->PortNumber, &lockhandle);
 
@@ -1116,7 +1116,7 @@ WaitOnBSYDRQ_Start:
     }
     //3.1 Set ST to 1
     if ( ( tfd.STS.BSY == 0) && ( tfd.STS.DRQ == 0) ) {
-        STOR_LOCK_HANDLE lockhandle = { InterruptLock, 0 };
+        STOR_LOCK_HANDLE lockhandle = { InterruptLock, {0} };
         BOOLEAN needSpinLock;
 
         if ( TimerCallbackProcess && (ChannelExtension->StartState.DirectStartInProcess == 1) ) {
@@ -1267,7 +1267,7 @@ Affected Variables/Registers:
     none
 */
 {
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, 0 };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock, {0} };
     BOOLEAN needSpinLock;
 
     ++(ChannelExtension->TotalCountRunningStartFailed);
@@ -1501,7 +1501,7 @@ Affected Variables/Registers:
 
         // Check whether the failed command is paging IO, if so, return busy status to indicate storport to retry it.
         storStatus = StorPortGetRequestInfo(ChannelExtension, (PSCSI_REQUEST_BLOCK)ChannelExtension->Slot[failingCommand].Srb, &requestInfo);
-        if ((storStatus == STOR_STATUS_SUCCESS) && 
+        if ((storStatus == STOR_STATUS_SUCCESS) &&
             (requestInfo.Flags & REQUEST_INFO_PAGING_IO_FLAG)) {
             ChannelExtension->Slot[failingCommand].Srb->SrbStatus = SRB_STATUS_BUSY;
         } else {
@@ -1587,7 +1587,7 @@ NcqErrorRecoveryCompletion (
 {
     PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
     ULONG issuedCommands = (ULONG)(ULONG_PTR)srbExtension->CompletionContext;
-    STOR_LOCK_HANDLE lockhandle = {InterruptLock, 0};
+    STOR_LOCK_HANDLE lockhandle = {InterruptLock, {0}};
     BOOLEAN fallBacktoReset = FALSE;
 
     RecordExecutionHistory(ChannelExtension, 0x0000001b);   //Enter NcqErrorRecoveryCompletion
@@ -1648,7 +1648,7 @@ NcqErrorRecoveryCompletion (
 
                 //
                 // Record error and status
-                // 
+                //
                 failingSrbExtension->AtaStatus = ncqErrorLog->Status;
                 failingSrbExtension->AtaError = ncqErrorLog->Error;
 
@@ -1662,7 +1662,7 @@ NcqErrorRecoveryCompletion (
                 if ((ChannelExtension->DeviceExtension->IdentifyDeviceData->SerialAtaFeaturesSupported.NCQAutosense == 1) &&
                     (ncqErrorLog->SenseKey != SCSI_SENSE_NO_SENSE)) {
 
-                    StorPortDebugPrint(3, "StorAHCI - Port %02d - NCQ Error Recovery: NCQ Error Log read successfully. Sense Data returned: %02X/%02X/%02X\n", 
+                    StorPortDebugPrint(3, "StorAHCI - Port %02d - NCQ Error Recovery: NCQ Error Log read successfully. Sense Data returned: %02X/%02X/%02X\n",
                                            ChannelExtension->PortNumber, ncqErrorLog->SenseKey, ncqErrorLog->ASC, ncqErrorLog->ASCQ);
 
                     AhciSetSenseData(failingSrb, SRB_STATUS_ERROR, ncqErrorLog->SenseKey, ncqErrorLog->ASC, ncqErrorLog->ASCQ);
@@ -1929,7 +1929,7 @@ Called by:
     ChannelExtension->Sense.Srb.OriginalRequest = &ChannelExtension->Sense.Srb;
 
     NT_ASSERT(((ci | sact) & ~ChannelExtension->SlotManager.CommandsIssued) == 0);
-    ChannelExtension->Sense.SrbExtension->CompletionContext = (PVOID)ChannelExtension->SlotManager.CommandsIssued;
+    ChannelExtension->Sense.SrbExtension->CompletionContext = (PVOID)(ULONG_PTR)ChannelExtension->SlotManager.CommandsIssued;
 
     //
     // Put the issued commands back to NCQ Slices.

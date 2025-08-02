@@ -57,7 +57,6 @@ volatile ULONG TokenOperationListIdentifier = (ULONG)-1;
 // List of FDOs that have enabled idle power management.
 //
 LIST_ENTRY IdlePowerFDOList = { 0 };
-KGUARDED_MUTEX IdlePowerFDOListMutex;
 
 //
 // Handle used to register for power setting notifications.
@@ -76,6 +75,9 @@ PVOID ScreenStateNotificationHandle;
 // manager calls us back with a different value.
 //
 ULONG DiskIdleTimeoutInMS = 0xFFFFFFFF;
+
+static NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
+							  IN PIRP Irp);
 
 NTSTATUS DllUnload(VOID)
 {
@@ -352,7 +354,6 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
     //
     if (IdlePowerFDOList.Flink == NULL) {
 	InitializeListHead(&IdlePowerFDOList);
-	KeInitializeGuardedMutex(&IdlePowerFDOListMutex);
     }
 
     status = STATUS_SUCCESS;
@@ -365,7 +366,7 @@ ClassInitializeEx()
 
 Routine Description:
 
-    This routine is allows the caller to do any extra initialization or
+    This routine allows the caller to do any extra initialization or
     setup that is not done in ClassInitialize. The operation is
     controlled by the GUID that is passed and the contents of the Data
     parameter is dependent upon the GUID.
@@ -1608,9 +1609,6 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 	    if (fdoExtension->FunctionSupportInfo == NULL) {
 		ClasspDeleteTimer(fdoExtension);
 		FREE_POOL(fdoExtension->PrivateFdoData);
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-		FREE_POOL(fdoExtension->AdditionalFdoData);
-#endif
 		TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
 			    "ClassPnpStartDevice: Cannot allocate for "
 			    "FunctionSupportInfo\n"));
@@ -1622,7 +1620,6 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 	    //
 	    RtlZeroMemory(fdoExtension->FunctionSupportInfo,
 			  sizeof(CLASS_FUNCTION_SUPPORT_INFO));
-	    KeInitializeSpinLock(&fdoExtension->FunctionSupportInfo->SyncLock);
 
 	    //
 	    // intialize the CommandStatus to -1 indicates that no effort made yet to retrieve the info.
@@ -1640,14 +1637,10 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 	    fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData.CommandStatus = -1;
 
 	    KeInitializeTimer(&fdoExtension->PrivateFdoData->Retry.Timer);
-	    KeInitializeDpc(&fdoExtension->PrivateFdoData->Retry.Dpc,
-			    ClasspRetryRequestDpc, DeviceObject);
-	    KeInitializeSpinLock(&fdoExtension->PrivateFdoData->Retry.Lock);
+	    fdoExtension->PrivateFdoData->Retry.WorkItem = IoAllocateWorkItem(DeviceObject);
 	    fdoExtension->PrivateFdoData->Retry.Granularity = KeQueryTimeIncrement();
 	    commonExtension->Reserved4 = (ULONG_PTR)(' GPH'); // debug aid
 	    InitializeListHead(&fdoExtension->PrivateFdoData->DeferredClientIrpList);
-
-	    KeInitializeSpinLock(&fdoExtension->PrivateFdoData->SpinLock);
 
 	    //
 	    // keep a pointer to the senseinfo2 stuff locally also (used in every read/write).
@@ -1868,13 +1861,15 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 		(!TEST_FLAG(DeviceObject->Flags, FILE_FLOPPY_DISKETTE))) {
 		ULONG accessAlignmentNotSupported = 0;
 		ULONG qerrOverrideMode = QERR_SET_ZERO_ODX_OR_TP_ONLY;
-		ULONG legacyErrorHandling = FALSE;
 
 		TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_PNP,
 			    "ClassPnpStartDevice: Enabling idle timer for %p\n",
 			    DeviceObject));
 		// Initialize idle timer for disk devices
-		ClasspInitializeIdleTimer(fdoExtension);
+		status = ClasspInitializeIdleTimer(DeviceObject, fdoExtension);
+		if (!NT_SUCCESS(status)) {
+		    return status;
+		}
 
 		if (ClasspIsObsoletePortDriver(fdoExtension) == FALSE) {
 		    // get INQUIRY VPD support information. It's safe to send command as everything is ready in ClassInitDevice().
@@ -1926,8 +1921,8 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 			STATUS_UNSUCCESSFUL;
 		    fdoExtension->FunctionSupportInfo->BlockLimitsData.CommandStatus =
 			STATUS_UNSUCCESSFUL;
-		    fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData
-			.CommandStatus = STATUS_UNSUCCESSFUL;
+		    fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData.CommandStatus =
+			STATUS_UNSUCCESSFUL;
 		}
 
 		// Get registry setting of failing the IOCTL for AccessAlignment Property.
@@ -1936,40 +1931,17 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 					&accessAlignmentNotSupported);
 
 		if (accessAlignmentNotSupported > 0) {
-		    fdoExtension->FunctionSupportInfo
-			->RegAccessAlignmentQueryNotSupported = TRUE;
+		    fdoExtension->FunctionSupportInfo->RegAccessAlignmentQueryNotSupported = TRUE;
 		}
-
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-
-		//
-		// See if the user has specified legacy error handling.
-		//
-		ClassGetDeviceParameter(fdoExtension, CLASSP_REG_SUBKEY_NAME,
-					CLASSP_REG_LEGACY_ERROR_HANDLING,
-					&legacyErrorHandling);
-
-		if (legacyErrorHandling) {
-		    //
-		    // Legacy error handling means that the maximum number of
-		    // retries allowd for an IO request is 8 instead of 4.
-		    //
-		    fdoExtension->PrivateFdoData->MaxNumberOfIoRetries =
-			LEGACY_NUM_IO_RETRIES;
-		    fdoExtension->PrivateFdoData->LegacyErrorHandling = TRUE;
-		}
-#else
-		UNREFERENCED_PARAMETER(legacyErrorHandling);
-#endif
 
 		//
 		// Get the copy offload max target duration value.
 		// This function will set the default value if one hasn't been
 		// specified in the registry.
 		//
-		ClasspGetCopyOffloadMaxDuration(
-		    DeviceObject, REG_DISK_CLASS_CONTROL,
-		    &(fdoExtension->PrivateFdoData->CopyOffloadMaxTargetDuration));
+		ClasspGetCopyOffloadMaxDuration(DeviceObject,
+						REG_DISK_CLASS_CONTROL,
+						&(fdoExtension->PrivateFdoData->CopyOffloadMaxTargetDuration));
 	    }
 	}
     }
@@ -2140,9 +2112,6 @@ NTAPI NTSTATUS ClassReadWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
          *  but this request is not itself a verify request.
          *  So fail this request.
          */
-	if (Irp->Tail.Overlay.Thread != NULL) {
-	    IoSetHardErrorOrVerifyDevice(Irp, DeviceObject);
-	}
 	Irp->IoStatus.Status = STATUS_VERIFY_REQUIRED;
 	Irp->IoStatus.Information = 0;
 	ClassReleaseRemoveLock(DeviceObject, Irp);
@@ -2270,23 +2239,25 @@ NTAPI NTSTATUS ClassReadWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			    UCHAR uniqueAddr = 0;
 
 			    //
-			    // Since we're touching fdoData after servicing the transfer packet, this opens us up to
-			    // a potential window, where the device may be removed between the time that
-			    // ServiceTransferPacket completes and we've had a chance to access fdoData. In order
-			    // to guard against this, we acquire the removelock an additional time here. This
-			    // acquire is guaranteed to succeed otherwise we wouldn't be here (because of the
-			    // outer acquire).
-			    // The sequence of events we're guarding against with this remLock acquire is:
+			    // Since we're touching fdoData after servicing the transfer packet,
+			    // this opens us up to a potential window, where the device may be
+			    // removed between the time that ServiceTransferPacket completes and
+			    // we've had a chance to access fdoData. In order to guard against
+			    // this, we acquire the removelock an additional time here. This
+			    // acquire is guaranteed to succeed otherwise we wouldn't be here
+			    // (because of the outer acquire). The sequence of events we're
+			    // guarding against with this remLock acquire is:
 			    // 1. This UL IRP acquired the lock.
-			    // 2. Device gets surprised removed, then gets IRP_MN_REMOVE_DEVICE; ClassRemoveDevice
-			    //    waits for the above RemoveLock.
+			    // 2. Device gets surprised removed, then gets IRP_MN_REMOVE_DEVICE;
+			    //    ClassRemoveDevice waits for the above RemoveLock.
 			    // 3. ServiceTransferRequest breaks the UL IRP into DL IRPs.
-			    // 4. DL IRPs complete with STATUS_NO_SUCH_DEVICE and TransferPktComplete completes the UL
-			    //    IRP with STATUS_NO_SUCH_DEVICE; releases the RemoveLock.
-			    // 5. ClassRemoveDevice is now unblocked, continues running and frees resources (including
-			    //    fdoData).
-			    // 6. Finally ClassReadWrite gets to run again and accesses a freed fdoData when trying to
-			    //    check/update idle-related fields.
+			    // 4. DL IRPs complete with STATUS_NO_SUCH_DEVICE and
+			    //    TransferPktComplete completes the UL IRP with
+			    //    STATUS_NO_SUCH_DEVICE; releases the RemoveLock.
+			    // 5. ClassRemoveDevice is now unblocked, continues running and
+			    //    frees resources (including fdoData).
+			    // 6. Finally ClassReadWrite gets to run again and accesses a freed
+			    //    fdoData when trying to check/update idle-related fields.
 			    //
 			    ClassAcquireRemoveLock(DeviceObject, (PVOID)&uniqueAddr);
 
@@ -2430,7 +2401,6 @@ NTAPI NTSTATUS ClassReadDriveCapacity(IN PDEVICE_OBJECT Fdo)
     READ_CAPACITY_DATA_EX PTRALIGN readCapacityData = { 0 };
     PTRANSFER_PACKET pkt;
     NTSTATUS status;
-    PMDL driveCapMdl = NULL;
     KEVENT event;
     IRP pseudoIrp = { 0 };
     ULONG readCapacityDataSize;
@@ -2447,20 +2417,6 @@ RetryRequest:
 	readCapacityDataSize = sizeof(READ_CAPACITY_DATA);
     }
 
-    if (driveCapMdl != NULL) {
-	FreeDeviceInputMdl(driveCapMdl);
-	driveCapMdl = NULL;
-    }
-
-    //
-    // Allocate the MDL based on the Read Capacity command.
-    //
-    driveCapMdl = BuildDeviceInputMdl(&readCapacityData, readCapacityDataSize);
-    if (driveCapMdl == NULL) {
-	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto SafeExit;
-    }
-
     pkt = DequeueFreeTransferPacket(Fdo, TRUE);
     if (pkt == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -2473,10 +2429,10 @@ RetryRequest:
     //  Just use a pretend irp for this.
     //
 
-    pseudoIrp.Tail.Overlay.DriverContext[0] = LongToPtr(1);
+    pseudoIrp.Tail.DriverContext[0] = LongToPtr(1);
     pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
     pseudoIrp.IoStatus.Information = 0;
-    pseudoIrp.MdlAddress = driveCapMdl;
+    pseudoIrp.UserBuffer = &readCapacityData;
 
     //
     //  Set this up as a SYNCHRONOUS transfer, submit it,
@@ -2505,7 +2461,7 @@ RetryRequest:
 
 	pkt = DequeueFreeTransferPacket(Fdo, TRUE);
 	if (pkt) {
-	    pseudoIrp.Tail.Overlay.DriverContext[0] = LongToPtr(1);
+	    pseudoIrp.Tail.DriverContext[0] = LongToPtr(1);
 	    pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
 	    pseudoIrp.IoStatus.Information = 0;
 	    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
@@ -2592,13 +2548,15 @@ RetryRequest:
 	if (match == FALSE) {
 	    if (commonExtension->CurrentState != IRP_MN_START_DEVICE) {
 		//
-		// This can happen if a disk reports Parameters Changed / Capacity Data Changed sense data.
+		// This can happen if a disk reports Parameters Changed / Capacity Data Changed
+		// sense data.
 		// NT_ASSERT(!"Drive capacity has changed while the device wasn't started!");
 		//
 	    } else {
 		//
-		// state of (commonExtension->CurrentState == IRP_MN_START_DEVICE) indicates that the device has been started.
-		// UpdateDiskPropertiesWorkItemActive is used as a flag to ensure we only have one work item updating the disk
+		// state of (commonExtension->CurrentState == IRP_MN_START_DEVICE) indicates
+		// that the device has been started. UpdateDiskPropertiesWorkItemActive is
+		// used as a flag to ensure we only have one work item updating the disk
 		// properties at a time.
 		//
 		if (InterlockedCompareExchange(
@@ -2682,10 +2640,6 @@ SafeExit:
 	fdoData->HwMaxXferLen = min(cdb10MaxBlocks, fdoData->HwMaxXferLen);
     }
 
-    if (driveCapMdl != NULL) {
-	FreeDeviceInputMdl(driveCapMdl);
-    }
-
     //
     // If the request failed for some reason then invalidate the cached
     // capacity data for removable devices. So that we won't return
@@ -2697,10 +2651,11 @@ SafeExit:
     }
 
     //
-    //  Don't let memory failures (either here or in the port driver) in the ReadDriveCapacity call
-    //  put the paging disk in an error state such that paging fails.
-    //  Return the last known drive capacity (which may possibly be slightly out of date, even on
-    //  fixed media, e.g. for storage cabinets that can grow a logical disk).
+    //  Don't let memory failures (either here or in the port driver) in the
+    //  ReadDriveCapacity call put the paging disk in an error state such that
+    //  paging fails. Return the last known drive capacity (which may possibly
+    //  be slightly out of date, even on fixed media, e.g. for storage cabinets
+    //  that can grow a logical disk).
     //
     if ((status == STATUS_INSUFFICIENT_RESOURCES) &&
 	(fdoData->IsCachedDriveCapDataValid) &&
@@ -2767,7 +2722,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 	// It needs to be changed to survive low-memory conditions.
 	//
 
-	KeBugCheck(SCSI_DISK_DRIVER_INTERNAL);
+	RtlRaiseStatus(STATUS_DRIVER_INTERNAL_ERROR);
     }
 
     //
@@ -2834,11 +2789,9 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 
     //
     // Build the asynchronous request to be sent to the port driver.
-    // Since this routine is called from a DPC the IRP should always be
-    // available.
     //
 
-    irp = IoAllocateIrp(Fdo->StackSize, FALSE);
+    irp = IoAllocateIrp(Fdo->StackSize);
 
     if (irp == NULL) {
 	//
@@ -2847,7 +2800,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 	// It needs to be changed to survive low-memory conditions.
 	//
 
-	KeBugCheck(SCSI_DISK_DRIVER_INTERNAL);
+	RtlRaiseStatus(STATUS_DRIVER_INTERNAL_ERROR);
     }
 
     ClassAcquireRemoveLock(Fdo, irp);
@@ -2964,7 +2917,6 @@ NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
     //
 
     if (Irp->MdlAddress != NULL) {
-	MmUnlockPages(Irp->MdlAddress);
 	IoFreeMdl(Irp->MdlAddress);
 
 	Irp->MdlAddress = NULL;
@@ -3000,27 +2952,23 @@ Arguments:
 
     Fdo - The functional device object processing the request
     Irp - The Io request to be processed
-    PostToDpc - Flag that indicates that this IRP must be posted to a DPC
+    PostToTimer - Flag that indicates that this IRP must be posted to a timer
 
 Return Value:
 
     STATUS_SUCCESS if successful, an error code otherwise
 
 --*/
-NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
+NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToTimer)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = Fdo->DeviceExtension;
     PSTORAGE_ADAPTER_DESCRIPTOR adapterDesc =
 	commonExtension->PartitionZeroExtension->AdapterDescriptor;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    IO_PAGING_PRIORITY priority = (TEST_FLAG(Irp->Flags, IRP_PAGING_IO)) ?
-				      IoGetPagingIoPriority(Irp) :
-				      IoPagingPriorityInvalid;
     BOOLEAN deferClientIrp = FALSE;
     BOOLEAN driverUsesStartIO =
 	(commonExtension->DriverExtension->InitData.ClassStartIo != NULL);
-    KIRQL oldIrql;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PIO_STACK_LOCATION currentIrpStack = IoGetCurrentIrpStackLocation(Irp);
 
@@ -3049,44 +2997,19 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
 	Irp->IoStatus.Status = STATUS_SUCCESS;
     }
 
-    //
-    // If this is a high priority request, hold off all other Io requests
-    //
+    if (fdoData->NumHighPriorityPagingIo != 0) {
+	//
+	// This request wasn't flagged as critical and atleast one critical request
+	// is currently outstanding. Queue this request until all of those are done
+	// but only if the interleave threshold has been reached
+	//
 
-    if (priority == IoPagingPriorityHigh) {
-	KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-
-	if (fdoData->NumHighPriorityPagingIo == 0) {
-	    //
-	    // Entering throttle mode
-	    //
-
-	    KeQuerySystemTime(&fdoData->ThrottleStartTime);
-	}
-
-	fdoData->NumHighPriorityPagingIo++;
-	fdoData->MaxInterleavedNormalIo += ClassMaxInterleavePerCriticalIo;
-
-	KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
-    } else {
 	if (fdoData->NumHighPriorityPagingIo != 0) {
-	    //
-	    // This request wasn't flagged as critical and atleast one critical request
-	    // is currently outstanding. Queue this request until all of those are done
-	    // but only if the interleave threshold has been reached
-	    //
-
-	    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-
-	    if (fdoData->NumHighPriorityPagingIo != 0) {
-		if (fdoData->MaxInterleavedNormalIo == 0) {
-		    deferClientIrp = TRUE;
-		} else {
-		    fdoData->MaxInterleavedNormalIo--;
-		}
+	    if (fdoData->MaxInterleavedNormalIo == 0) {
+		deferClientIrp = TRUE;
+	    } else {
+		fdoData->MaxInterleavedNormalIo--;
 	    }
-
-	    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 	}
     }
 
@@ -3172,7 +3095,7 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
              *  Store the number of transfer pieces inside the original IRP.
              *  It will be used to count down the pieces as they complete.
              */
-	    Irp->Tail.Overlay.DriverContext[0] = LongToPtr(numPackets);
+	    Irp->Tail.DriverContext[0] = LongToPtr(numPackets);
 
 	    /*
              *  For the common 1-packet case, we want to allow for an optimization by BlkCache
@@ -3223,11 +3146,11 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
                  *  the call stack.
                  *  In order to prevent this from happening, we need to ensure that deferred
                  *  IRPs that are dequeued in the context of a request's completion routine
-                 *  get posted to a DPC.
+                 *  get posted to a timer.
                  */
-		if (PostToDpc) {
+		if (PostToTimer) {
 		    pkt->RetryIn100nsUnits = 0;
-		    TransferPacketQueueRetryDpc(pkt);
+		    TransferPacketSetRetryTimer(pkt);
 		    status = STATUS_PENDING;
 
 		} else {
@@ -3235,9 +3158,9 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
 
 		    /*
                      *  If any of the packets completes with pending, we MUST return pending.
-                     *  Also, if a packet completes with an error, return pending; this is because
-                     *  in the completion routine we mark the original irp pending if the packet failed
-                     *  (since we may retry, thereby switching threads).
+                     *  Also, if a packet completes with an error, return pending; this is
+		     *  because in the completion routine we mark the original irp pending
+		     *  if the packet failed (since we may retry, thereby switching threads).
                      */
 		    if (pktStat != STATUS_SUCCESS) {
 			status = STATUS_PENDING;
@@ -3289,7 +3212,7 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
              *  inside the original irp.
              */
 	    Irp->IoStatus.Information = 0;
-	    Irp->Tail.Overlay.DriverContext[0] = LongToPtr(1);
+	    Irp->Tail.DriverContext[0] = LongToPtr(1);
 	    IoMarkIrpPending(Irp);
 
 	    /*
@@ -3309,35 +3232,6 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToDpc)
 			"No packets available in ServiceTransferRequest - deferring "
 			"transfer (Irp=%p)...",
 			Irp));
-
-	    if (priority == IoPagingPriorityHigh) {
-		KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
-
-		if (fdoData->MaxInterleavedNormalIo < ClassMaxInterleavePerCriticalIo) {
-		    fdoData->MaxInterleavedNormalIo = 0;
-		} else {
-		    fdoData->MaxInterleavedNormalIo -= ClassMaxInterleavePerCriticalIo;
-		}
-
-		fdoData->NumHighPriorityPagingIo--;
-
-		if (fdoData->NumHighPriorityPagingIo == 0) {
-		    LARGE_INTEGER period;
-
-		    //
-		    // Exiting throttle mode
-		    //
-
-		    KeQuerySystemTime(&fdoData->ThrottleStopTime);
-
-		    period.QuadPart = fdoData->ThrottleStopTime.QuadPart -
-				      fdoData->ThrottleStartTime.QuadPart;
-		    fdoData->LongestThrottlePeriod.QuadPart =
-			max(fdoData->LongestThrottlePeriod.QuadPart, period.QuadPart);
-		}
-
-		KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
-	    }
 
 	    deferClientIrp = TRUE;
 	}
@@ -3555,21 +3449,6 @@ NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Cont
     Irp->IoStatus.Status = status;
 
     //
-    // Set the hard error if necessary.
-    //
-
-    if (!NT_SUCCESS(status) && IoIsErrorUserInduced(status) &&
-	(Irp->Tail.Overlay.Thread != NULL)) {
-	//
-	// Store DeviceObject for filesystem, and clear
-	// in IoStatus.Information field.
-	//
-
-	IoSetHardErrorOrVerifyDevice(Irp, Fdo);
-	Irp->IoStatus.Information = 0;
-    }
-
-    //
     // If disk firmware update succeeded, log a system event.
     //
 
@@ -3590,10 +3469,7 @@ NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Cont
 
     if (fdoExtension->CommonExtension.DriverExtension->InitData.ClassStartIo) {
 	if (callStartNextPacket) {
-	    KIRQL oldIrql;
-	    KeRaiseIrql(DISPATCH_LEVEL, &oldIrql);
 	    IoStartNextPacket(Fdo, TRUE); // Yes, some IO must now be cancellable.
-	    KeLowerIrql(oldIrql);
 	}
     }
 
@@ -3634,9 +3510,11 @@ Return Value:
        Srb->DataTransferLength
 
 --*/
-NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo, IN OUT PSCSI_REQUEST_BLOCK _Srb,
-			_In_reads_bytes_opt_(BufferLength) PVOID BufferAddress,
-			IN ULONG BufferLength, IN BOOLEAN WriteToDevice)
+NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
+				       IN OUT PSCSI_REQUEST_BLOCK Req,
+				       IN PVOID BufferAddress,
+				       IN ULONG BufferLength,
+				       IN BOOLEAN WriteToDevice)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
@@ -3649,7 +3527,7 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo, IN OUT PSCSI_REQUE
     ULONG retryCount = MAXIMUM_RETRIES;
     NTSTATUS status;
     BOOLEAN retry;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)_Srb;
+    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Req;
 
     //
     // NOTE: This code is only pagable because we are not freezing
@@ -3661,7 +3539,6 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo, IN OUT PSCSI_REQUE
     //       flag in the SRB.
     //
 
-    NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
     NT_ASSERT(fdoExtension->CommonExtension.IsFdo);
 
     if (Srb->Function != SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
@@ -3765,8 +3642,7 @@ retry:
     // We'll queue a completion routine to cleanup the MDL's and such ourself.
     //
 
-    irp = IoAllocateIrp(
-	(CCHAR)(fdoExtension->CommonExtension.LowerDeviceObject->StackSize + 1), FALSE);
+    irp = IoAllocateIrp(fdoExtension->CommonExtension.LowerDeviceObject->StackSize + 1);
 
     if (irp == NULL) {
 	FREE_POOL(senseInfoBuffer);
@@ -3774,7 +3650,7 @@ retry:
 	SrbSetSenseInfoBufferLength(Srb, 0);
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
 		    "ClassSendSrbSynchronous: Can't allocate Irp\n"));
-	return (STATUS_INSUFFICIENT_RESOURCES);
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     //
@@ -3796,50 +3672,9 @@ retry:
     irp->UserIosb = &ioStatus;
     irp->UserEvent = &event;
 
-    if (BufferAddress) {
-	//
-	// Build an MDL for the data buffer and stick it into the irp.  The
-	// completion routine will unlock the pages and free the MDL.
-	//
-
-	irp->MdlAddress = IoAllocateMdl(BufferAddress, BufferLength, FALSE, FALSE, irp);
-	if (irp->MdlAddress == NULL) {
-	    FREE_POOL(senseInfoBuffer);
-	    SrbSetSenseInfoBuffer(Srb, NULL);
-	    SrbSetSenseInfoBufferLength(Srb, 0);
-	    IoFreeIrp(irp);
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
-			"ClassSendSrbSynchronous: Can't allocate MDL\n"));
-	    return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	_SEH2_TRY
-	{
-	    //
-	    // the io manager unlocks these pages upon completion
-	    //
-
-	    MmProbeAndLockPages(irp->MdlAddress, KernelMode,
-				(WriteToDevice ? IoReadAccess : IoWriteAccess));
-	}
-	_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-	{
-	    status = _SEH2_GetExceptionCode();
-
-	    FREE_POOL(senseInfoBuffer);
-	    SrbSetSenseInfoBuffer(Srb, NULL);
-	    SrbSetSenseInfoBufferLength(Srb, 0);
-	    IoFreeMdl(irp->MdlAddress);
-	    IoFreeIrp(irp);
-
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
-			"ClassSendSrbSynchronous: Exception %lx "
-			"locking buffer\n",
-			status));
-	    _SEH2_YIELD(return status);
-	}
-	_SEH2_END;
-    }
+    // Since the class driver is loaded in the same process as the port driver,
+    // the IO transfer type is always NEITHER IO.
+    irp->UserBuffer = BufferAddress;
 
     //
     // Set the transfer length.
@@ -3942,7 +3777,7 @@ retry:
 		// Stall for a while to let the device become ready
 		//
 
-		KeDelayExecutionThread(KernelMode, FALSE, &delay);
+		KeDelayExecutionThread(FALSE, &delay);
 	    }
 
 	    //
@@ -4013,7 +3848,7 @@ Return Value:
 
 --*/
 NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
-				      IN PSCSI_REQUEST_BLOCK _Srb,
+				      IN PSCSI_REQUEST_BLOCK Req,
 				      IN UCHAR MajorFunctionCode,
 				      IN ULONG IoDeviceCode,
 				      IN ULONG RetryCount,
@@ -4022,7 +3857,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)_Srb;
+    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Req;
     PVOID senseBuffer = SrbGetSenseInfoBuffer(Srb);
     BOOLEAN retry = TRUE;
     BOOLEAN logError = FALSE;
@@ -4049,7 +3884,6 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
     ULONG index;
 
     ULONG retryInterval = 0;
-    KIRQL oldIrql;
     PCDB cdb = SrbGetCdb(Srb);
     UCHAR cdbOpcode = 0;
     ULONG cdbLength = SrbGetCdbLength(Srb);
@@ -4135,7 +3969,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 	    }
 
 	    if (!validSense) {
-		goto __ClassInterpretSenseInfo_ProcessingInvalidSenseBuffer;
+		goto ProcessingInvalidSenseBuffer;
 	    }
 
 	    errorCode = ScsiGetSenseErrorCode(senseBuffer);
@@ -5487,7 +5321,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 	    }
 	}
 
-    __ClassInterpretSenseInfo_ProcessingInvalidSenseBuffer:
+    ProcessingInvalidSenseBuffer:
 
 	if (!validSense) {
 	    //
@@ -5734,7 +5568,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
     // If the caller wants to know the suggested retry interval tell them.
     //
 
-    if (ARGUMENT_PRESENT(RetryInterval)) {
+    if (RetryInterval) {
 	*RetryInterval = retryInterval;
     }
 
@@ -5973,11 +5807,9 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
          *  We only save the default sense buffer length.
          */
 	if (logErrorInternal) {
-	    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 	    fdoData->ErrorLogs[fdoData->ErrorLogNextIndex] = staticErrLogData;
 	    fdoData->ErrorLogNextIndex++;
 	    fdoData->ErrorLogNextIndex %= NUM_ERROR_LOG_ENTRIES;
-	    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
 	}
 
 	/*
@@ -6167,54 +5999,48 @@ ULONG ClasspModeSense(IN PDEVICE_OBJECT Fdo,
 		      IN UCHAR PageControl)
 {
     ULONG lengthTransferred = 0;
-    PMDL senseBufferMdl;
 
-    senseBufferMdl = BuildDeviceInputMdl(ModeSenseBuffer, Length);
-    if (senseBufferMdl) {
-	TRANSFER_PACKET *pkt = DequeueFreeTransferPacket(Fdo, TRUE);
-	if (pkt) {
-	    KEVENT event;
-	    IRP pseudoIrp = { 0 };
+    TRANSFER_PACKET *pkt = DequeueFreeTransferPacket(Fdo, TRUE);
+    if (pkt) {
+	KEVENT event;
+	IRP pseudoIrp = { 0 };
 
+	/*
+	 *  Store the number of packets servicing the irp (one)
+	 *  inside the original IRP.  It will be used to counted down
+	 *  to zero when the packet completes.
+	 *  Initialize the original IRP's status to success.
+	 *  If the packet fails, we will set it to the error status.
+	 */
+	pseudoIrp.Tail.DriverContext[0] = LongToPtr(1);
+	pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
+	pseudoIrp.IoStatus.Information = 0;
+	pseudoIrp.UserBuffer = ModeSenseBuffer;
+
+	/*
+	 *  Set this up as a SYNCHRONOUS transfer, submit it,
+	 *  and wait for the packet to complete.  The result
+	 *  status will be written to the original irp.
+	 */
+	NT_ASSERT(Length <= 0x0ff);
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	SetupModeSenseTransferPacket(pkt, &event, ModeSenseBuffer, (UCHAR)Length,
+				     PageMode, 0, &pseudoIrp, PageControl);
+	SubmitTransferPacket(pkt);
+	(VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+
+	if (NT_SUCCESS(pseudoIrp.IoStatus.Status)) {
+	    lengthTransferred = (ULONG)pseudoIrp.IoStatus.Information;
+	} else {
 	    /*
-             *  Store the number of packets servicing the irp (one)
-             *  inside the original IRP.  It will be used to counted down
-             *  to zero when the packet completes.
-             *  Initialize the original IRP's status to success.
-             *  If the packet fails, we will set it to the error status.
-             */
-	    pseudoIrp.Tail.Overlay.DriverContext[0] = LongToPtr(1);
-	    pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
-	    pseudoIrp.IoStatus.Information = 0;
-	    pseudoIrp.MdlAddress = senseBufferMdl;
-
-	    /*
-             *  Set this up as a SYNCHRONOUS transfer, submit it,
-             *  and wait for the packet to complete.  The result
-             *  status will be written to the original irp.
-             */
-	    NT_ASSERT(Length <= 0x0ff);
-	    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
-	    SetupModeSenseTransferPacket(pkt, &event, ModeSenseBuffer, (UCHAR)Length,
-					 PageMode, 0, &pseudoIrp, PageControl);
-	    SubmitTransferPacket(pkt);
-	    (VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-
-	    if (NT_SUCCESS(pseudoIrp.IoStatus.Status)) {
-		lengthTransferred = (ULONG)pseudoIrp.IoStatus.Information;
-	    } else {
-		/*
-                 *  This request can sometimes fail legitimately
-                 *  (e.g. when a SCSI device is attached but turned off)
-                 *  so this is not necessarily a device/driver bug.
-                 */
-		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-			    "ClasspModeSense on Fdo %ph failed with status %xh.", Fdo,
-			    pseudoIrp.IoStatus.Status));
-	    }
+	     *  This request can sometimes fail legitimately
+	     *  (e.g. when a SCSI device is attached but turned off)
+	     *  so this is not necessarily a device/driver bug.
+	     */
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
+			"ClasspModeSense on Fdo %ph failed with status %xh.", Fdo,
+			pseudoIrp.IoStatus.Status));
 	}
-
-	FreeDeviceInputMdl(senseBufferMdl);
     }
 
     return lengthTransferred;
@@ -6357,57 +6183,49 @@ NTSTATUS ClasspModeSelect(IN PDEVICE_OBJECT Fdo,
 			  IN ULONG Length,
 			  IN BOOLEAN SavePages)
 {
-    PMDL senseBufferMdl;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
-    senseBufferMdl = BuildDeviceInputMdl(ModeSelectBuffer, Length);
-    if (senseBufferMdl) {
-	TRANSFER_PACKET *pkt = DequeueFreeTransferPacket(Fdo, TRUE);
-	if (pkt) {
-	    KEVENT event;
-	    IRP pseudoIrp = { 0 };
+    TRANSFER_PACKET *pkt = DequeueFreeTransferPacket(Fdo, TRUE);
+    if (pkt) {
+	KEVENT event;
+	IRP pseudoIrp = { 0 };
 
+	/*
+	 *  Store the number of packets servicing the irp (one)
+	 *  inside the original IRP.  It will be used to counted down
+	 *  to zero when the packet completes.
+	 *  Initialize the original IRP's status to success.
+	 *  If the packet fails, we will set it to the error status.
+	 */
+	pseudoIrp.Tail.DriverContext[0] = LongToPtr(1);
+	pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
+	pseudoIrp.IoStatus.Information = 0;
+	pseudoIrp.UserBuffer = ModeSelectBuffer;
+
+	/*
+	 *  Set this up as a SYNCHRONOUS transfer, submit it,
+	 *  and wait for the packet to complete.  The result
+	 *  status will be written to the original irp.
+	 */
+	NT_ASSERT(Length <= 0x0ff);
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+	SetupModeSelectTransferPacket(pkt, &event, ModeSelectBuffer, (UCHAR)Length,
+				      SavePages, &pseudoIrp);
+	SubmitTransferPacket(pkt);
+	(VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+
+	if (!NT_SUCCESS(pseudoIrp.IoStatus.Status)) {
 	    /*
-             *  Store the number of packets servicing the irp (one)
-             *  inside the original IRP.  It will be used to counted down
-             *  to zero when the packet completes.
-             *  Initialize the original IRP's status to success.
-             *  If the packet fails, we will set it to the error status.
-             */
-	    pseudoIrp.Tail.Overlay.DriverContext[0] = LongToPtr(1);
-	    pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
-	    pseudoIrp.IoStatus.Information = 0;
-	    pseudoIrp.MdlAddress = senseBufferMdl;
-
-	    /*
-             *  Set this up as a SYNCHRONOUS transfer, submit it,
-             *  and wait for the packet to complete.  The result
-             *  status will be written to the original irp.
-             */
-	    NT_ASSERT(Length <= 0x0ff);
-	    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
-	    SetupModeSelectTransferPacket(pkt, &event, ModeSelectBuffer, (UCHAR)Length,
-					  SavePages, &pseudoIrp);
-	    SubmitTransferPacket(pkt);
-	    (VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-
-	    if (!NT_SUCCESS(pseudoIrp.IoStatus.Status)) {
-		/*
-                 *  This request can sometimes fail legitimately
-                 *  (e.g. when a SCSI device is attached but turned off)
-                 *  so this is not necessarily a device/driver bug.
-                 */
-		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-			    "ClassModeSelect on Fdo %ph failed with status %xh.", Fdo,
-			    pseudoIrp.IoStatus.Status));
-	    }
-
-	    status = pseudoIrp.IoStatus.Status;
+	     *  This request can sometimes fail legitimately
+	     *  (e.g. when a SCSI device is attached but turned off)
+	     *  so this is not necessarily a device/driver bug.
+	     */
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
+			"ClassModeSelect on Fdo %ph failed with status %xh.", Fdo,
+			pseudoIrp.IoStatus.Status));
 	}
 
-	FreeDeviceInputMdl(senseBufferMdl);
-    } else {
-	status = STATUS_INSUFFICIENT_RESOURCES;
+	status = pseudoIrp.IoStatus.Status;
     }
 
     return status;
@@ -6452,7 +6270,7 @@ Return Value:
 
 --*/
 NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
-					IN OUT PSCSI_REQUEST_BLOCK _Srb,
+					IN OUT PSCSI_REQUEST_BLOCK Req,
 					IN PIRP Irp,
 					IN OPTIONAL PVOID BufferAddress,
 					IN ULONG BufferLength,
@@ -6460,7 +6278,7 @@ NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PIO_STACK_LOCATION irpStack;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)_Srb;
+    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Req;
 
     ULONG savedFlags;
 
@@ -6526,44 +6344,12 @@ NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
 	}
     }
 
-    if (BufferAddress != NULL) {
+    if (BufferAddress && Irp->MdlAddress) {
 	//
-	// Build Mdl if necessary.
+	// Make sure the buffer requested matches the MDL.
 	//
 
-	if (Irp->MdlAddress == NULL) {
-	    PMDL mdl;
-
-	    mdl = IoAllocateMdl(BufferAddress, BufferLength, FALSE, FALSE, Irp);
-
-	    if ((mdl == NULL) || (Irp->MdlAddress == NULL)) {
-		Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-
-		//
-		// ClassIoComplete() would have free'd the srb
-		//
-
-		if (PORT_ALLOCATED_SENSE_EX(fdoExtension, Srb)) {
-		    FREE_PORT_ALLOCATED_SENSE_BUFFER_EX(fdoExtension, Srb);
-		}
-		ClassFreeOrReuseSrb(fdoExtension, (PSCSI_REQUEST_BLOCK)Srb);
-		ClassReleaseRemoveLock(Fdo, Irp);
-		ClassCompleteRequest(Fdo, Irp, IO_NO_INCREMENT);
-
-		return STATUS_INSUFFICIENT_RESOURCES;
-	    }
-
-	    SET_FLAG(savedFlags, SRB_CLASS_FLAGS_FREE_MDL);
-
-	    MmBuildMdlForNonPagedPool(Irp->MdlAddress);
-
-	} else {
-	    //
-	    // Make sure the buffer requested matches the MDL.
-	    //
-
-	    NT_ASSERT(BufferAddress == MmGetMdlVirtualAddress(Irp->MdlAddress));
-	}
+	NT_ASSERT(BufferAddress == MmGetMdlVirtualAddress(Irp->MdlAddress));
 
 	//
 	// Set read flag.
@@ -6794,7 +6580,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    break;
 	}
 
-	uniqueId = Irp->AssociatedIrp.SystemBuffer;
+	uniqueId = Irp->SystemBuffer;
 	RtlZeroMemory(uniqueId, sizeof(MOUNTDEV_UNIQUE_ID));
 	uniqueId->UniqueIdLength = commonExtension->MountedDeviceInterfaceName.Length;
 
@@ -6826,7 +6612,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    break;
 	}
 
-	name = Irp->AssociatedIrp.SystemBuffer;
+	name = Irp->SystemBuffer;
 	RtlZeroMemory(name, sizeof(MOUNTDEV_NAME));
 	name->NameLength = commonExtension->DeviceName.Length;
 
@@ -6903,7 +6689,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    break;
 	}
 
-	suggestedName = Irp->AssociatedIrp.SystemBuffer;
+	suggestedName = Irp->SystemBuffer;
 	RtlZeroMemory(suggestedName, sizeof(MOUNTDEV_SUGGESTED_LINK_NAME));
 	suggestedName->UseOnlyIfThereAreNoOtherLinks = TRUE;
 	suggestedName->NameLength = 28;
@@ -7065,7 +6851,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    PSTORAGE_HOTPLUG_INFO info;
 
 	    fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)commonExtension;
-	    info = Irp->AssociatedIrp.SystemBuffer;
+	    info = Irp->SystemBuffer;
 
 	    *info = fdoExtension->PrivateFdoData->HotplugInfo;
 	    Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -7107,7 +6893,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	} else {
 	    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 		commonExtension;
-	    PSTORAGE_HOTPLUG_INFO info = Irp->AssociatedIrp.SystemBuffer;
+	    PSTORAGE_HOTPLUG_INFO info = Irp->SystemBuffer;
 
 	    status = STATUS_SUCCESS;
 
@@ -7236,7 +7022,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    // Allocate a new irp to send the TestUnitReady to the port driver
 	    //
 
-	    irp2 = IoAllocateIrp((CCHAR)(DeviceObject->StackSize + 3), FALSE);
+	    irp2 = IoAllocateIrp((CCHAR)(DeviceObject->StackSize + 3));
 
 	    if (irp2 == NULL) {
 		Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -7256,7 +7042,6 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 
 	    ClassAcquireRemoveLock(DeviceObject, irp2);
 
-	    irp2->Tail.Overlay.Thread = Irp->Tail.Overlay.Thread;
 	    IoSetNextIrpStackLocation(irp2);
 
 	    //
@@ -7336,7 +7121,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 
     case IOCTL_STORAGE_MEDIA_REMOVAL:
     case IOCTL_STORAGE_EJECTION_CONTROL: {
-	PPREVENT_MEDIA_REMOVAL mediaRemoval = Irp->AssociatedIrp.SystemBuffer;
+	PPREVENT_MEDIA_REMOVAL mediaRemoval = Irp->SystemBuffer;
 
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		    "DiskIoControl: ejection control\n"));
@@ -7544,7 +7329,6 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	// well as other eject/load requests.
 	//
 
-	KeEnterCriticalRegion();
 	(VOID) KeWaitForSingleObject(&(fdoExtension->EjectSynchronizationEvent),
 				     UserRequest, KernelMode, FALSE, NULL);
 
@@ -7562,8 +7346,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    ClassReleaseRemoveLock(DeviceObject, Irp);
 	    ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
 
-	    KeSetEvent(&fdoExtension->EjectSynchronizationEvent, IO_NO_INCREMENT, FALSE);
-	    KeLeaveCriticalRegion();
+	    KeSetEvent(&fdoExtension->EjectSynchronizationEvent);
 
 	    goto SetStatusAndReturn;
 	}
@@ -7587,8 +7370,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	SrbSetTimeOutValue(srb, fdoExtension->TimeOutValue);
 	status = ClassSendSrbAsynchronous(DeviceObject, srb, Irp, NULL, 0, FALSE);
 
-	KeSetEvent(&fdoExtension->EjectSynchronizationEvent, IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
+	KeSetEvent(&fdoExtension->EjectSynchronizationEvent);
 
 	break;
     }
@@ -7619,7 +7401,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 
 	if (irpStack->Parameters.DeviceIoControl.OutputBufferLength >=
 	    sizeof(STORAGE_DEVICE_NUMBER)) {
-	    PSTORAGE_DEVICE_NUMBER deviceNumber = Irp->AssociatedIrp.SystemBuffer;
+	    PSTORAGE_DEVICE_NUMBER deviceNumber = Irp->SystemBuffer;
 	    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension =
 		commonExtension->PartitionZeroExtension;
 
@@ -7673,7 +7455,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	} else {
 	    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = DeviceObject->DeviceExtension;
 	    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-	    PSTORAGE_READ_CAPACITY readCapacity = Irp->AssociatedIrp.SystemBuffer;
+	    PSTORAGE_READ_CAPACITY readCapacity = Irp->SystemBuffer;
 	    LARGE_INTEGER diskLength;
 
 	    status = ClassReadDriveCapacity(DeviceObject);
@@ -7719,7 +7501,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     }
 
     case IOCTL_STORAGE_QUERY_PROPERTY: {
-	PSTORAGE_PROPERTY_QUERY query = Irp->AssociatedIrp.SystemBuffer;
+	PSTORAGE_PROPERTY_QUERY query = Irp->SystemBuffer;
 
 	if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
 	    sizeof(STORAGE_PROPERTY_QUERY)) {
@@ -7826,7 +7608,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     }
 
     case IOCTL_STORAGE_MANAGE_DATA_SET_ATTRIBUTES: {
-	PDEVICE_MANAGE_DATA_SET_ATTRIBUTES dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+	PDEVICE_MANAGE_DATA_SET_ATTRIBUTES dsmAttributes = Irp->SystemBuffer;
 
 	if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
 	    sizeof(DEVICE_MANAGE_DATA_SET_ATTRIBUTES)) {
@@ -8151,11 +7933,11 @@ Return Value:
     NTSTATUS
 
 --*/
-NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
-						    IN PCCHAR ObjectNameBuffer,
-						    IN PDEVICE_OBJECT LowerDevice,
-						    IN BOOLEAN IsFdo,
-						    OUT PDEVICE_OBJECT *DeviceObject)
+NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
+				       IN PCCHAR ObjectNameBuffer,
+				       IN PDEVICE_OBJECT LowerDevice,
+				       IN BOOLEAN IsFdo,
+				       OUT PDEVICE_OBJECT *DeviceObject)
 {
     BOOLEAN isPartitionable;
     STRING ntNameString;
@@ -8164,8 +7946,6 @@ NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObje
     PDEVICE_OBJECT deviceObject = NULL;
 
     ULONG characteristics;
-    SIZE_T rundownSize = ExSizeOfRundownProtectionCacheAware();
-    PCHAR rundownAddr = NULL;
     ULONG devExtSize;
 
     PCLASS_DRIVER_EXTENSION driverExtension =
@@ -8233,8 +8013,7 @@ NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObje
 	RtlInitUnicodeString(&ntUnicodeString, NULL);
     }
 
-    devExtSize = devInfo->DeviceExtensionSize + (ULONG)sizeof(CLASS_PRIVATE_COMMON_DATA) +
-		 (ULONG)rundownSize;
+    devExtSize = devInfo->DeviceExtensionSize;
     status = IoCreateDevice(DriverObject, devExtSize, &ntUnicodeString,
 			    devInfo->DeviceType, characteristics, FALSE, &deviceObject);
 
@@ -8271,28 +8050,7 @@ NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObje
 
 	commonExtension->IsRemoved = NO_REMOVE;
 
-#if DBG
-
-	commonExtension->RemoveLock = 0;
-
-#endif
-
 	KeInitializeEvent(&commonExtension->RemoveEvent, SynchronizationEvent, FALSE);
-
-	ClasspInitializeRemoveTracking(deviceObject);
-
-	//
-	// Initialize the PrivateCommonData
-	//
-
-	commonExtension->PrivateCommonData =
-	    (PCLASS_PRIVATE_COMMON_DATA)((PCHAR)deviceObject->DeviceExtension +
-					 devInfo->DeviceExtensionSize);
-	rundownAddr = (PCHAR)commonExtension->PrivateCommonData +
-		      sizeof(CLASS_PRIVATE_COMMON_DATA);
-	ExInitializeRundownProtectionCacheAware((PEX_RUNDOWN_REF_CACHE_AWARE)rundownAddr,
-						rundownSize);
-	commonExtension->PrivateCommonData->RemoveLockFailAcquire = 0;
 
 	//
 	// Acquire the lock once.  This reference will be released when the
@@ -8358,8 +8116,6 @@ NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObje
 
 	    KeInitializeEvent(&fdoExtension->EjectSynchronizationEvent,
 			      SynchronizationEvent, TRUE);
-
-	    KeInitializeEvent(&fdoExtension->ChildLock, SynchronizationEvent, TRUE);
 
 	    status = ClasspAllocateReleaseRequest(deviceObject);
 
@@ -8744,13 +8500,13 @@ NTAPI NTSTATUS ClassCheckVerifyComplete(IN PDEVICE_OBJECT Fdo,
     // Copy the media change count and status
     //
 
-    *((PULONG)(originalIrp->AssociatedIrp.SystemBuffer)) = fdoExtension->MediaChangeCount;
+    *((PULONG)(originalIrp->SystemBuffer)) = fdoExtension->MediaChangeCount;
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		"ClassCheckVerifyComplete - Media change count for"
 		"device %d is %lx - saved as %lx\n",
 		fdoExtension->DeviceNumber, fdoExtension->MediaChangeCount,
-		*((PULONG)originalIrp->AssociatedIrp.SystemBuffer)));
+		*((PULONG)originalIrp->SystemBuffer)));
 
     originalIrp->IoStatus.Status = Irp->IoStatus.Status;
     originalIrp->IoStatus.Information = sizeof(ULONG);
@@ -8934,7 +8690,7 @@ NTAPI NTSTATUS ClassSignalCompletion(IN PDEVICE_OBJECT DeviceObject,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    KeSetEvent(Event, IO_NO_INCREMENT, FALSE);
+    KeSetEvent(Event);
 
     return STATUS_MORE_PROCESSING_REQUIRED;
 } // end ClassSignalCompletion()
@@ -9377,7 +9133,6 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
     PDEVICE_OBJECT lowerDeviceObject = commonExtension->LowerDeviceObject;
     BOOLEAN proceedWithRemove = TRUE;
     NTSTATUS status;
-    PEX_RUNDOWN_REF_CACHE_AWARE removeLockRundown = NULL;
 
     _Analysis_assume_(driverExtension != NULL);
 
@@ -9417,25 +9172,7 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 
 	ClassReleaseRemoveLock(DeviceObject, (PIRP)DeviceObject);
 
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_PNP,
-		    "ClasspRemoveDevice - Reference count is now %d\n",
-		    commonExtension->RemoveLock));
-
-	//
-	// The RemoveLockRundown allows fast protection of the device object
-	// structure that is torn down by a single thread. While in the rundown process (the call to
-	// ExWaitForRundownProtectionReleaseCacheAware returns), the rundown object becomes
-	// invalid and the subsequent calls to ExAcquireRundownProtectionCacheAware will return FALSE.
-	// ExReInitializeRundownProtectionCacheAware needs to be called to re-initialize the
-	// RemoveLockRundown protection.
-	//
-
-	removeLockRundown =
-	    (PEX_RUNDOWN_REF_CACHE_AWARE)((PCHAR)commonExtension->PrivateCommonData +
-					  sizeof(CLASS_PRIVATE_COMMON_DATA));
-	ExWaitForRundownProtectionReleaseCacheAware(removeLockRundown);
-
-	KeSetEvent(&commonExtension->RemoveEvent, IO_NO_INCREMENT, FALSE);
+	KeSetEvent(&commonExtension->RemoveEvent);
 
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_PNP,
 		    "ClasspRemoveDevice - removing device %p\n", DeviceObject));
@@ -9466,8 +9203,6 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 			    "ClasspRemoveDevice - PDO %p still exists and will be "
 			    "removed when it disappears",
 			    DeviceObject));
-
-		ExReInitializeRundownProtectionCacheAware(removeLockRundown);
 
 		//
 		// Reacquire the remove lock for the next time this comes around.
@@ -9516,7 +9251,6 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 		    fdoExtension->FunctionSupportInfo->IdlePower.IdlePowerEnabled) {
 		    PIDLE_POWER_FDO_LIST_ENTRY fdoEntry;
 
-		    KeAcquireGuardedMutex(&IdlePowerFDOListMutex);
 		    fdoEntry = (PIDLE_POWER_FDO_LIST_ENTRY)IdlePowerFDOList.Flink;
 		    while ((PLIST_ENTRY)fdoEntry != &IdlePowerFDOList) {
 			PIDLE_POWER_FDO_LIST_ENTRY nextEntry =
@@ -9528,7 +9262,6 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 			}
 			fdoEntry = nextEntry;
 		    }
-		    KeReleaseGuardedMutex(&IdlePowerFDOListMutex);
 		}
 
 		//
@@ -9612,20 +9345,11 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 		    FREE_POOL(fdoExtension->PrivateFdoData);
 		}
 
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-		FREE_POOL(fdoExtension->AdditionalFdoData);
-#endif
-
 		if (commonExtension->DeviceName.Buffer) {
 		    FREE_POOL(commonExtension->DeviceName.Buffer);
 		    RtlInitUnicodeString(&commonExtension->DeviceName, NULL);
 		}
 
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-		if (fdoExtension->FunctionSupportInfo != NULL) {
-		    FREE_POOL(fdoExtension->FunctionSupportInfo->HwFirmwareInfo);
-		}
-#endif
 		FREE_POOL(fdoExtension->FunctionSupportInfo);
 
 		FREE_POOL(fdoExtension->MiniportDescriptor);
@@ -9665,8 +9389,6 @@ NTAPI NTSTATUS ClassRemoveDevice(IN PDEVICE_OBJECT DeviceObject,
 	commonExtension->PartitionLength.QuadPart = 0;
 
 	if (RemoveType == IRP_MN_REMOVE_DEVICE) {
-	    ClasspUninitializeRemoveTracking(DeviceObject);
-
 	    IoDeleteDevice(DeviceObject);
 	}
     }
@@ -9788,8 +9510,7 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
     NT_ASSERT(DeviceName);
     targetKey = NULL;
 
-    _SEH2_TRY
-    {
+    __try {
 	//
 	// Issue GET_ADDRESS Ioctl to determine path, target, and lun information.
 	//
@@ -9801,7 +9522,7 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	    status = ioStatus.Status;
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
 			"UpdateInformationInRegistry: Get Address failed %lx\n", status));
-	    _SEH2_LEAVE;
+	    __leave;
 
 	} else {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
@@ -9818,7 +9539,7 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 				     scsiAddress.TargetId, scsiAddress.Lun);
 
 	if (!NT_SUCCESS(status)) {
-	    _SEH2_LEAVE;
+	    __leave;
 	}
 
 	RtlInitString(&string, (PCSZ)buffer);
@@ -9826,7 +9547,7 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	status = RtlAnsiStringToUnicodeString(&unicodeRegistryPath, &string, TRUE);
 
 	if (!NT_SUCCESS(status)) {
-	    _SEH2_LEAVE;
+	    __leave;
 	}
 
 	//
@@ -9837,10 +9558,10 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	InitializeObjectAttributes(&objectAttributes, &unicodeRegistryPath,
 				   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
 
-	status = ZwOpenKey(&targetKey, KEY_READ | KEY_WRITE, &objectAttributes);
+	status = NtOpenKey(&targetKey, KEY_READ | KEY_WRITE, &objectAttributes);
 
 	if (!NT_SUCCESS(status)) {
-	    _SEH2_LEAVE;
+	    __leave;
 	}
 
 	//
@@ -9854,13 +9575,13 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	status = RtlStringCchPrintfA((NTSTRSAFE_PSTR)buffer, sizeof(buffer) - 1, "%s%d",
 				     DeviceName, DeviceNumber);
 	if (!NT_SUCCESS(status)) {
-	    _SEH2_LEAVE;
+	    __leave;
 	}
 
 	RtlInitString(&string, (PCSZ)buffer);
 	status = RtlAnsiStringToUnicodeString(&unicodeData, &string, TRUE);
 	if (NT_SUCCESS(status)) {
-	    status = ZwSetValueKey(targetKey, &unicodeName, 0, REG_SZ, unicodeData.Buffer,
+	    status = NtSetValueKey(targetKey, &unicodeName, 0, REG_SZ, unicodeData.Buffer,
 				   unicodeData.Length);
 	}
 
@@ -9872,14 +9593,12 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	    NT_ASSERT(InquiryData);
 
 	    RtlInitUnicodeString(&unicodeName, L"InquiryData");
-	    status = ZwSetValueKey(targetKey, &unicodeName, 0, REG_BINARY, InquiryData,
+	    status = NtSetValueKey(targetKey, &unicodeName, 0, REG_BINARY, InquiryData,
 				   InquiryDataLength);
 	}
 
 	// that's all, except to clean up.
-    }
-    _SEH2_FINALLY
-    {
+    } __finally {
 	if (!NT_SUCCESS(status)) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
 			"Failure to update information in registry: %08x\n", status));
@@ -9892,10 +9611,9 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	    RtlFreeUnicodeString(&unicodeRegistryPath);
 	}
 	if (targetKey) {
-	    ZwClose(targetKey);
+	    NtClose(targetKey);
 	}
     }
-    _SEH2_END;
 
 } // end ClassUpdateInformationInRegistry()
 
@@ -9936,19 +9654,10 @@ NTAPI NTSTATUS ClasspSendSynchronousCompletion(IN PDEVICE_OBJECT DeviceObject,
     *(Irp->UserIosb) = Irp->IoStatus;
 
     //
-    // Unlock the pages for the data buffer.
-    //
-
-    if (Irp->MdlAddress) {
-	MmUnlockPages(Irp->MdlAddress);
-	IoFreeMdl(Irp->MdlAddress);
-    }
-
-    //
     // Signal the caller's event.
     //
 
-    KeSetEvent(Irp->UserEvent, IO_NO_INCREMENT, FALSE);
+    KeSetEvent(Irp->UserEvent);
 
     //
     // Free the MDL and the IRP.
@@ -10011,16 +9720,9 @@ ClassSendDeviceIoControlSynchronous()
 
 Routine Description:
 
-    This routine is based upon IoBuildDeviceIoControlRequest().  It has been
-    modified to reduce code and memory by not double-buffering the io, using
-    the same buffer for both input and output, allocating and deallocating
-    the mdl on behalf of the caller, and waiting for the io to complete.
-
-    This routine also works around the rare cases in which APC's are disabled.
-    Since IoBuildDeviceIoControl() used APC's to signal completion, this had
-    led to a number of difficult-to-detect hangs, where the irp was completed,
-    but the event passed to IoBuild..() was still being waited upon by the
-    caller.
+    This routine is based upon IoBuildDeviceIoControlRequest() and likewise
+    use the same buffer for both input and output (thus avoiding double-buffering
+    the IO). Additionally it waits for the IO to complete.
 
 Arguments:
 
@@ -10040,6 +9742,8 @@ Arguments:
 
 Return Value:
 
+    None
+
 --*/
 NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
 					       IN PDEVICE_OBJECT TargetDeviceObject,
@@ -10049,15 +9753,6 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
 					       IN BOOLEAN InternalDeviceIoControl,
 					       OUT PIO_STATUS_BLOCK IoStatus)
 {
-    PIRP irp;
-    PIO_STACK_LOCATION irpSp;
-    ULONG method;
-
-    irp = NULL;
-    method = IoControlCode & 3;
-
-#if DBG // Begin Argument Checking (nop in fre version)
-
     NT_ASSERT(ARGUMENT_PRESENT(IoStatus));
 
     if ((InputBufferLength != 0) || (OutputBufferLength != 0)) {
@@ -10065,14 +9760,13 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     } else {
 	NT_ASSERT(!ARGUMENT_PRESENT(Buffer));
     }
-#endif
 
     //
     // Begin by allocating the IRP for this request.  Do not charge quota to
     // the current process for this IRP.
     //
 
-    irp = IoAllocateIrp(TargetDeviceObject->StackSize, FALSE);
+    PIRP irp = IoAllocateIrp(TargetDeviceObject->StackSize);
     if (!irp) {
 	IoStatus->Information = 0;
 	IoStatus->Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -10084,7 +9778,7 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     // invoked.  This is where the function codes and the parameters are set.
     //
 
-    irpSp = IoGetNextIrpStackLocation(irp);
+    PIO_STACK_LOCATION irpSp = IoGetNextIrpStackLocation(irp);
 
     //
     // Set the major function code based on the type of device I/O control
@@ -10106,95 +9800,15 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     irpSp->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
     irpSp->Parameters.DeviceIoControl.IoControlCode = IoControlCode;
 
-    //
-    // Get the method bits from the I/O control code to determine how the
-    // buffers are to be passed to the driver.
-    //
-
-    switch (method) {
-    //
-    // case 0
-    //
-    case METHOD_BUFFERED: {
-	if ((InputBufferLength != 0) || (OutputBufferLength != 0)) {
-	    irp->AssociatedIrp.SystemBuffer =
-		ExAllocatePoolWithTag(max(InputBufferLength, OutputBufferLength),
-				      CLASS_TAG_DEVICE_CONTROL);
-	    if (irp->AssociatedIrp.SystemBuffer == NULL) {
-		IoFreeIrp(irp);
-
-		IoStatus->Information = 0;
-		IoStatus->Status = STATUS_INSUFFICIENT_RESOURCES;
-		return;
-	    }
-
-	    if (InputBufferLength != 0) {
-		RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, Buffer, InputBufferLength);
-	    }
-	}
-
-	irp->UserBuffer = Buffer;
-
-	break;
-    }
-
-    //
-    // case 1, case 2
-    //
-    case METHOD_IN_DIRECT:
-    case METHOD_OUT_DIRECT: {
-	if (InputBufferLength != 0) {
-	    irp->AssociatedIrp.SystemBuffer = Buffer;
-	}
-
-	if (OutputBufferLength != 0) {
-	    irp->MdlAddress = IoAllocateMdl(Buffer, OutputBufferLength, FALSE, FALSE,
-					    (PIRP)NULL);
-	    if (irp->MdlAddress == NULL) {
-		IoFreeIrp(irp);
-
-		IoStatus->Information = 0;
-		IoStatus->Status = STATUS_INSUFFICIENT_RESOURCES;
-		return;
-	    }
-
-	    _SEH2_TRY
-	    {
-		MmProbeAndLockPages(irp->MdlAddress, KernelMode,
-				    (method == METHOD_IN_DIRECT) ? IoReadAccess :
-								   IoWriteAccess);
-	    }
-	    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-	    {
-		IoFreeMdl(irp->MdlAddress);
-		IoFreeIrp(irp);
-
-		IoStatus->Information = 0;
-		IoStatus->Status = _SEH2_GetExceptionCode();
-		_SEH2_YIELD(return);
-	    }
-	    _SEH2_END;
-	}
-
-	break;
-    }
-
-    //
-    // case 3
-    //
-    case METHOD_NEITHER: {
-	NT_ASSERT(!"ClassSendDeviceIoControlSynchronous does not support METHOD_NEITHER "
-		   "Ioctls");
-
-	IoFreeIrp(irp);
-
-	IoStatus->Information = 0;
-	IoStatus->Status = STATUS_NOT_SUPPORTED;
-	return;
-    }
-    }
-
-    irp->Tail.Overlay.Thread = PsGetCurrentThread();
+    // Note unlike Windows/ReactOS we simply store the buffer pointers
+    // regardless of IO transfer type of the IOCTL code. Copying/mapping the
+    // IO buffers is taken care of automatically by the system. In the case
+    // where the target of the IO is a device object of a driver mapped in
+    // the same address space as the class driver (usually a port driver,
+    // such as storahci), no mapping or buffer copying is done.
+    irp->SystemBuffer = Buffer;
+    irp->UserBuffer = Buffer;
+    irpSp->Parameters.DeviceIoControl.Type3InputBuffer = Buffer;
 
     //
     // send the irp synchronously
@@ -10209,63 +9823,10 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     *IoStatus = irp->IoStatus;
 
     //
-    // free any allocated resources
-    //
-
-    switch (method) {
-    case METHOD_BUFFERED: {
-	NT_ASSERT(irp->UserBuffer == Buffer);
-
-	//
-	// first copy the buffered result, if any
-	// Note that there are no security implications in
-	// not checking for success since only drivers can
-	// call into this routine anyways...
-	//
-
-	if (OutputBufferLength != 0) {
-	    RtlCopyMemory(Buffer, // irp->UserBuffer
-			  irp->AssociatedIrp.SystemBuffer, OutputBufferLength);
-	}
-
-	//
-	// then free the memory allocated to buffer the io
-	//
-
-	if ((InputBufferLength != 0) || (OutputBufferLength != 0)) {
-	    FREE_POOL(irp->AssociatedIrp.SystemBuffer);
-	}
-	break;
-    }
-
-    case METHOD_IN_DIRECT:
-    case METHOD_OUT_DIRECT: {
-	//
-	// we alloc a mdl if there is an output buffer specified
-	// free it here after unlocking the pages
-	//
-
-	if (OutputBufferLength != 0) {
-	    NT_ASSERT(irp->MdlAddress != NULL);
-	    MmUnlockPages(irp->MdlAddress);
-	    IoFreeMdl(irp->MdlAddress);
-	    irp->MdlAddress = (PMDL)NULL;
-	}
-	break;
-    }
-
-    case METHOD_NEITHER: {
-	NT_ASSERT(!"Code is out of date");
-	break;
-    }
-    }
-
-    //
     // we always have allocated an irp.  free it here.
     //
 
     IoFreeIrp(irp);
-    irp = (PIRP)NULL;
 
     //
     // return the io status block's status to the caller
@@ -10323,7 +9884,6 @@ NTAPI NTSTATUS ClassSendIrpSynchronous(IN PDEVICE_OBJECT TargetDeviceObject,
     KEVENT event;
     NTSTATUS status;
 
-    NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
     NT_ASSERT(TargetDeviceObject != NULL);
     NT_ASSERT(Irp != NULL);
     NT_ASSERT(Irp->StackCount >= TargetDeviceObject->StackSize);
@@ -10415,8 +9975,6 @@ NTSTATUS ClasspAllocateReleaseRequest(IN PDEVICE_OBJECT Fdo)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
-    KeInitializeSpinLock(&(fdoExtension->ReleaseQueueSpinLock));
-
     fdoExtension->ReleaseQueueNeeded = FALSE;
     fdoExtension->ReleaseQueueInProgress = FALSE;
     fdoExtension->ReleaseQueueIrpFromPool = FALSE;
@@ -10475,35 +10033,6 @@ VOID ClasspFreeReleaseRequest(IN PDEVICE_OBJECT Fdo)
 
     return;
 } // end ClasspFreeReleaseRequest()
-
-/*++////////////////////////////////////////////////////////////////////////////
-
-ClassReleaseQueue()
-
-Routine Description:
-
-    This routine issues an internal device control command
-    to the port driver to release a frozen queue. The call
-    is issued asynchronously as ClassReleaseQueue will be invoked
-    from the IO completion DPC (and will have no context to
-    wait for a synchronous call to complete).
-
-    This routine must be called with the remove lock held.
-
-Arguments:
-
-    Fdo - The functional device object for the device with the frozen queue.
-
-Return Value:
-
-    None.
-
---*/
-NTAPI VOID ClassReleaseQueue(IN PDEVICE_OBJECT Fdo)
-{
-    ClasspReleaseQueue(Fdo, NULL);
-    return;
-} // end ClassReleaseQueue()
 
 /*++////////////////////////////////////////////////////////////////////////////
 
@@ -10613,7 +10142,7 @@ Routine Description:
     This routine issues an internal device control command
     to the port driver to release a frozen queue. The call
     is issued asynchronously as ClassReleaseQueue will be invoked
-    from the IO completion DPC (and will have no context to
+    from the IO completion routine (and will have no context to
     wait for a synchronous call to complete).
 
     This routine must be called with the remove lock held.
@@ -10634,27 +10163,17 @@ Return Value:
     None.
 
 --*/
-VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo, IN PIRP ReleaseQueueIrp OPTIONAL)
+static VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo,
+			       IN OPTIONAL PIRP ReleaseQueueIrp)
 {
     PIO_STACK_LOCATION irpStack;
     PIRP irp;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PDEVICE_OBJECT lowerDevice;
     PSTORAGE_REQUEST_BLOCK_HEADER srb;
-    KIRQL currentIrql;
     ULONG function;
 
     lowerDevice = fdoExtension->CommonExtension.LowerDeviceObject;
-
-    //
-    // we raise irql seperately so we're not swapped out or suspended
-    // while holding the release queue irp in this routine.  this lets
-    // us release the spin lock before lowering irql.
-    //
-
-    KeRaiseIrql(DISPATCH_LEVEL, &currentIrql);
-
-    KeAcquireSpinLockAtDpcLevel(&(fdoExtension->ReleaseQueueSpinLock));
 
     //
     // make sure that if they passed us an irp, it matches our allocated irp.
@@ -10674,7 +10193,7 @@ VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo, IN PIRP ReleaseQueueIrp OPTIONAL)
 	ClasspAllocateReleaseQueueIrp(fdoExtension);
     }
     if (!fdoExtension->PrivateFdoData->ReleaseQueueIrpAllocated) {
-	KeBugCheckEx(SCSI_DISK_DRIVER_INTERNAL, 0x12, (ULONG_PTR)Fdo, 0x0, 0x0);
+	RtlRaiseStatus(STATUS_DRIVER_INTERNAL_ERROR);
     }
 
     if ((fdoExtension->ReleaseQueueInProgress) && (ReleaseQueueIrp == NULL)) {
@@ -10684,8 +10203,6 @@ VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo, IN PIRP ReleaseQueueIrp OPTIONAL)
 	//
 
 	fdoExtension->ReleaseQueueNeeded = TRUE;
-	KeReleaseSpinLockFromDpcLevel(&(fdoExtension->ReleaseQueueSpinLock));
-	KeLowerIrql(currentIrql);
 	return;
     }
 
@@ -10706,8 +10223,6 @@ VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo, IN PIRP ReleaseQueueIrp OPTIONAL)
     } else {
 	srb = (PSTORAGE_REQUEST_BLOCK_HEADER) & (fdoExtension->ReleaseQueueSrb);
     }
-
-    KeReleaseSpinLockFromDpcLevel(&(fdoExtension->ReleaseQueueSpinLock));
 
     NT_ASSERT(irp != NULL);
 
@@ -10746,10 +10261,35 @@ VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo, IN PIRP ReleaseQueueIrp OPTIONAL)
 
     IoCallDriver(lowerDevice, irp);
 
-    KeLowerIrql(currentIrql);
+} // end ClassReleaseQueue()
 
+/*++////////////////////////////////////////////////////////////////////////////
+
+ClassReleaseQueue()
+
+Routine Description:
+
+    This routine issues an internal device control command
+    to the port driver to release a frozen queue. The call
+    is issued asynchronously as ClassReleaseQueue will be invoked
+    from the IO completion routine (and will have no context to
+    wait for a synchronous call to complete).
+
+    This routine must be called with the remove lock held.
+
+Arguments:
+
+    Fdo - The functional device object for the device with the frozen queue.
+
+Return Value:
+
+    None.
+
+--*/
+NTAPI VOID ClassReleaseQueue(IN PDEVICE_OBJECT Fdo)
+{
+    ClasspReleaseQueue(Fdo, NULL);
     return;
-
 } // end ClassReleaseQueue()
 
 /*++////////////////////////////////////////////////////////////////////////////
@@ -10782,7 +10322,6 @@ NTAPI NTSTATUS ClassReleaseQueueCompletion(PDEVICE_OBJECT DeviceObject,
 					   PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
-    KIRQL oldIrql;
 
     BOOLEAN releaseQueueNeeded;
 
@@ -10803,14 +10342,10 @@ NTAPI NTSTATUS ClassReleaseQueueCompletion(PDEVICE_OBJECT DeviceObject,
     // so that we can issue a new release queue outside the spinlock.
     //
 
-    KeAcquireSpinLock(&(fdoExtension->ReleaseQueueSpinLock), &oldIrql);
-
     releaseQueueNeeded = fdoExtension->ReleaseQueueNeeded;
 
     fdoExtension->ReleaseQueueNeeded = FALSE;
     fdoExtension->ReleaseQueueInProgress = FALSE;
-
-    KeReleaseSpinLock(&(fdoExtension->ReleaseQueueSpinLock), oldIrql);
 
     //
     // If we need a release queue then issue one now.  Another processor may
@@ -10840,6 +10375,11 @@ Routine Description:
     acquired recursively by the same thread, but must be release by the
     thread once for each acquisition.
 
+Neptune OS Notes:
+
+    Since on Neptune OS dispatch routines cannot be preempted, no locking
+    is required.
+
 Arguments:
 
     FdoExtension - the device whose child list is protected.
@@ -10851,20 +10391,7 @@ Return Value:
 --*/
 NTAPI VOID ClassAcquireChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
-    if (FdoExtension->ChildLockOwner != KeGetCurrentThread()) {
-	(VOID) KeWaitForSingleObject(&FdoExtension->ChildLock, Executive, KernelMode,
-				     FALSE, NULL);
-
-	NT_ASSERT(FdoExtension->ChildLockOwner == NULL);
-	NT_ASSERT(FdoExtension->ChildLockAcquisitionCount == 0);
-
-	FdoExtension->ChildLockOwner = KeGetCurrentThread();
-    } else {
-	NT_ASSERT(FdoExtension->ChildLockAcquisitionCount != 0);
-    }
-
-    FdoExtension->ChildLockAcquisitionCount++;
-    return;
+    /* Do nothing */
 }
 
 /*++////////////////////////////////////////////////////////////////////////////
@@ -10880,6 +10407,11 @@ Arguments:
 
     FdoExtension - the device whose child list is protected
 
+Neptune OS Notes:
+
+    Since on Neptune OS dispatch routines cannot be preempted, no locking
+    is required.
+
 Return Value:
 
     None.
@@ -10887,17 +10419,7 @@ Return Value:
 --*/
 NTAPI VOID ClassReleaseChildLock(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
-    NT_ASSERT(FdoExtension->ChildLockOwner == KeGetCurrentThread());
-    NT_ASSERT(FdoExtension->ChildLockAcquisitionCount != 0);
-
-    FdoExtension->ChildLockAcquisitionCount -= 1;
-
-    if (FdoExtension->ChildLockAcquisitionCount == 0) {
-	FdoExtension->ChildLockOwner = NULL;
-	KeSetEvent(&FdoExtension->ChildLock, IO_NO_INCREMENT, FALSE);
-    }
-
-    return;
+    /* Do nothing */
 } // end ClassReleaseChildLock(
 
 /*++////////////////////////////////////////////////////////////////////////////
@@ -10984,8 +10506,7 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
 	ClassAcquireChildLock(Parent);
     }
 
-    TRY
-    {
+    __try {
 	PCOMMON_DEVICE_EXTENSION previousChild = &Parent->CommonExtension;
 
 	//
@@ -10994,7 +10515,7 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
 
 	if (Parent->CommonExtension.ChildList == NULL) {
 	    Child = NULL;
-	    LEAVE;
+	    __leave;
 	}
 
 	//
@@ -11021,7 +10542,7 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
 
 	    if (previousChild == NULL) {
 		Child = NULL;
-		LEAVE;
+		__leave;
 	    }
 	}
 
@@ -11032,9 +10553,7 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
 	Child = previousChild->ChildList;
 	previousChild->ChildList = Child->CommonExtension.ChildList;
 	Child->CommonExtension.ChildList = NULL;
-    }
-    FINALLY
-    {
+    } __finally {
 	if (AcquireLock) {
 	    ClassReleaseChildLock(Parent);
 	}
@@ -11042,12 +10561,9 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
     return Child;
 } // end ClassRemoveChild()
 
-/*++
-
-    ISSUE-2000/02/20-henrygab Not documented ClasspRetryDpcTimer
-
---*/
-static VOID ClasspRetryDpcTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
+static NTAPI VOID ClasspRetryRequestWorkerRoutine(IN PDEVICE_OBJECT DeviceObject,
+						  IN PVOID Context);
+static VOID ClasspSetRetryTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
 {
     LARGE_INTEGER fire;
 
@@ -11084,83 +10600,63 @@ static VOID ClasspRetryDpcTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
     //
     // set the timer, since this is the first addition
     //
-    KeSetTimerEx(&FdoData->Retry.Timer, fire, 0, &FdoData->Retry.Dpc);
-} // end ClasspRetryDpcTimer()
+    KeSetLowPriorityTimer(&FdoData->Retry.Timer, fire, 0,
+			  FdoData->Retry.WorkItem,
+			  ClasspRetryRequestWorkerRoutine, NULL);
+}
 
-/*++
-
-    ISSUE-2000/02/20-henrygab Not documented ClasspRetryRequestDpc
-
---*/
-NTAPI VOID ClasspRetryRequestDpc(IN PKDPC Dpc,
-				 IN PVOID DeferredContext,
-				 IN PVOID Arg1,
-				 IN PVOID Arg2)
+static NTAPI VOID ClasspRetryRequestWorkerRoutine(IN PDEVICE_OBJECT DeviceObject,
+						  IN PVOID Context)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData;
     PCLASS_RETRY_INFO retryList;
-    KIRQL irql;
-    PDEVICE_OBJECT DeviceObject = (PDEVICE_OBJECT)DeferredContext;
 
-    UNREFERENCED_PARAMETER(Dpc);
-    UNREFERENCED_PARAMETER(Arg1);
-    UNREFERENCED_PARAMETER(Arg2);
-
-    if (DeferredContext == NULL) {
-	NT_ASSERT(DeferredContext != NULL);
-	return;
-    }
+    UNREFERENCED_PARAMETER(Context);
 
     commonExtension = DeviceObject->DeviceExtension;
     NT_ASSERT(commonExtension->IsFdo);
     fdoExtension = DeviceObject->DeviceExtension;
     fdoData = fdoExtension->PrivateFdoData;
 
-    KeAcquireSpinLock(&fdoData->Retry.Lock, &irql);
-    {
-	LARGE_INTEGER now;
-	KeQueryTickCount(&now);
+    LARGE_INTEGER now;
+    KeQueryTickCount(&now);
 
-	//
-	// if CurrentTick is less than now
-	//      fire another DPC
-	// else
-	//      retry entire list
-	// endif
-	//
+    //
+    // if CurrentTick is less than now
+    //      fire another timer
+    // else
+    //      retry entire list
+    // endif
+    //
 
-	if (now.QuadPart < fdoData->Retry.Tick.QuadPart) {
-	    ClasspRetryDpcTimer(fdoData);
-	    retryList = NULL;
+    if (now.QuadPart < fdoData->Retry.Tick.QuadPart) {
+	ClasspSetRetryTimer(fdoData);
+	retryList = NULL;
 
-	} else {
-	    retryList = fdoData->Retry.ListHead;
-	    fdoData->Retry.ListHead = NULL;
-	    fdoData->Retry.Delta.QuadPart = (LONGLONG)0;
-	    fdoData->Retry.Tick.QuadPart = (LONGLONG)0;
-	}
+    } else {
+	retryList = fdoData->Retry.ListHead;
+	fdoData->Retry.ListHead = NULL;
+	fdoData->Retry.Delta.QuadPart = (LONGLONG)0;
+	fdoData->Retry.Tick.QuadPart = (LONGLONG)0;
     }
-    KeReleaseSpinLock(&fdoData->Retry.Lock, irql);
 
     while (retryList != NULL) {
 	PIRP irp;
 
-	irp = CONTAINING_RECORD(retryList, IRP, Tail.Overlay.DriverContext[0]);
+	irp = CONTAINING_RECORD(retryList, IRP, Tail.DriverContext[0]);
 	TracePrint(
 	    (TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL, "ClassRetry:  -- %p\n", irp));
 	retryList = retryList->Next;
 #if DBG
-	irp->Tail.Overlay.DriverContext[0] = ULongToPtr(0xdddddddd); // invalidate data
-	irp->Tail.Overlay.DriverContext[1] = ULongToPtr(0xdddddddd); // invalidate data
-	irp->Tail.Overlay.DriverContext[2] = ULongToPtr(0xdddddddd); // invalidate data
-	irp->Tail.Overlay.DriverContext[3] = ULongToPtr(0xdddddddd); // invalidate data
+	irp->Tail.DriverContext[0] = ULongToPtr(0xdddddddd); // invalidate data
+	irp->Tail.DriverContext[1] = ULongToPtr(0xdddddddd); // invalidate data
+	irp->Tail.DriverContext[2] = ULongToPtr(0xdddddddd); // invalidate data
+	irp->Tail.DriverContext[3] = ULongToPtr(0xdddddddd); // invalidate data
 #endif
 
-	if (NO_REMOVE ==
-	    InterlockedCompareExchange((volatile LONG *)&commonExtension->IsRemoved,
-				       REMOVE_PENDING, REMOVE_PENDING)) {
+	if (NO_REMOVE == commonExtension->IsRemoved) {
 	    IoCallDriver(commonExtension->LowerDeviceObject, irp);
 
 	} else {
@@ -11195,9 +10691,7 @@ NTAPI VOID ClasspRetryRequestDpc(IN PKDPC Dpc,
 	    IoCompleteRequest(irp, IO_NO_INCREMENT);
 	}
     }
-    return;
-
-} // end ClasspRetryRequestDpc()
+}
 
 /*++
 
@@ -11212,7 +10706,6 @@ VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
     PCLASS_PRIVATE_FDO_DATA fdoData;
     PCLASS_RETRY_INFO retryInfo;
     LARGE_INTEGER delta;
-    KIRQL irql;
 
     //
     // this checks we aren't destroying irps
@@ -11241,8 +10734,8 @@ VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
     }
 
     /*
-     *  We are going to queue the irp and send it down in a timer DPC.
-     *  This means that we may be causing the irp to complete on a different thread than the issuing thread.
+     *  We are going to queue the irp and send it down in a timer IO workitem.
+     *  This means that we may be causing the irp to complete on a later time.
      *  So mark the irp pending.
      */
     IoMarkIrpPending(Irp);
@@ -11251,7 +10744,7 @@ VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
     // prepare what we can out of the loop
     //
 
-    retryInfo = (PCLASS_RETRY_INFO)(&Irp->Tail.Overlay.DriverContext[0]);
+    retryInfo = (PCLASS_RETRY_INFO)(&Irp->Tail.DriverContext[0]);
     RtlZeroMemory(retryInfo, sizeof(CLASS_RETRY_INFO));
 
     delta.QuadPart = (TimeDelta100ns / fdoData->Retry.Granularity);
@@ -11263,10 +10756,8 @@ VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
     }
 
     //
-    // now determine if we should fire another DPC or not
+    // now determine if we should fire another timer or not
     //
-
-    KeAcquireSpinLock(&fdoData->Retry.Lock, &irql);
 
     //
     // always add request to the list
@@ -11287,20 +10778,20 @@ VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
 	NT_ASSERT(fdoData->Retry.ListHead->Next == NULL);
 
 	//
-	// if currentDelta is zero, always fire a DPC
+	// if currentDelta is zero, always fire a timer
 	//
 
 	KeQueryTickCount(&fdoData->Retry.Tick);
 	fdoData->Retry.Tick.QuadPart += delta.QuadPart;
 	fdoData->Retry.Delta.QuadPart = delta.QuadPart;
-	ClasspRetryDpcTimer(fdoData);
+	ClasspSetRetryTimer(fdoData);
 
     } else if (delta.QuadPart > fdoData->Retry.Delta.QuadPart) {
 	//
 	// if delta is greater than the list's current delta,
-	// increase the DPC handling time by difference
+	// increase the timer handling time by difference
 	// and update the delta to new larger value
-	// allow the DPC to re-fire itself if needed
+	// allow the timer to re-fire itself if needed
 	//
 
 	TracePrint(
@@ -11326,8 +10817,6 @@ VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject,
 	TracePrint(
 	    (TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL, "ClassRetry:  ++ %p\n", Irp));
     }
-
-    IoReleaseDpcMutex();
 
 } // end ClassRetryRequest()
 
@@ -11487,7 +10976,7 @@ VOID ClasspScanForSpecialInRegistry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
 			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 			       deviceParameterHandle, NULL);
 
-    status = ZwOpenKey(&classParameterHandle, KEY_READ, &objectAttributes);
+    status = NtOpenKey(&classParameterHandle, KEY_READ, &objectAttributes);
 
     if (!NT_SUCCESS(status)) {
 	goto cleanupScanForSpecial;
@@ -11525,11 +11014,11 @@ VOID ClasspScanForSpecialInRegistry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
 cleanupScanForSpecial:
 
     if (deviceParameterHandle) {
-	ZwClose(deviceParameterHandle);
+	NtClose(deviceParameterHandle);
     }
 
     if (classParameterHandle) {
-	ZwClose(classParameterHandle);
+	NtClose(classParameterHandle);
     }
 
     //
@@ -12238,43 +11727,20 @@ NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
     //
     status = ClasspValidateOffloadSupported(DeviceObject, Irp);
     if (!NT_SUCCESS(status)) {
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
-    }
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClassDeviceProcessOffloadRead (%p): Called at raised IRQL.\n",
-		    DeviceObject));
-
-	status = STATUS_INVALID_LEVEL;
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
-    }
-
-    //
-    // Ensure that this DSM IOCTL was generated in kernel
-    //
-    if (Irp->RequestorMode != KernelMode) {
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClassDeviceProcessOffloadRead (%p): Called from user mode.\n",
-		    DeviceObject));
-
-	status = STATUS_ACCESS_DENIED;
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
     status = ClasspValidateOffloadInputParameters(DeviceObject, Irp);
     if (!NT_SUCCESS(status)) {
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
-    dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+    dsmAttributes = Irp->SystemBuffer;
 
     //
     // Validate that we were passed in correct sized parameter block.
     //
-    if (dsmAttributes->ParameterBlockLength <
-	sizeof(DEVICE_DSM_OFFLOAD_READ_PARAMETERS)) {
+    if (dsmAttributes->ParameterBlockLength < sizeof(DEVICE_DSM_OFFLOAD_READ_PARAMETERS)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "ClassDeviceProcessOffloadRead (%p): Parameter block size (%u) too "
 		    "small. Required %u.\n",
@@ -12282,7 +11748,7 @@ NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
 		    sizeof(DEVICE_DSM_OFFLOAD_READ_PARAMETERS)));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
     offloadReadParameters = Add2Ptr(dsmAttributes, dsmAttributes->ParameterBlockOffset);
@@ -12293,24 +11759,19 @@ NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
     // If the request TTL is greater than the max supported by this storage, the target will
     // end up failing this command, so might as well do the check up front.
     //
-    if ((fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData
-	     .MaximumInactivityTimer > 0) &&
-	(offloadReadParameters->TimeToLive >
-	 fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData
-	     .MaximumInactivityTimer)) {
+    if ((fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData.MaximumInactivityTimer > 0) &&
+	(offloadReadParameters->TimeToLive > fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData.MaximumInactivityTimer)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "ClassDeviceProcessOffloadRead (%p): Requested TTL (%u) greater than "
 		    "max supported (%u).\n",
 		    DeviceObject, offloadReadParameters->TimeToLive,
-		    fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData
-			.MaximumInactivityTimer));
+		    fdoExtension->FunctionSupportInfo->BlockDeviceRODLimitsData.MaximumInactivityTimer));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
-    if (irpStack->Parameters.DeviceIoControl.OutputBufferLength <
-	sizeof(STORAGE_OFFLOAD_READ_OUTPUT)) {
+    if (irpStack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(STORAGE_OFFLOAD_READ_OUTPUT)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "ClassDeviceProcessOffloadRead (%p): Output buffer size (%u) too "
 		    "small.\n",
@@ -12318,18 +11779,18 @@ NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
 		    irpStack->Parameters.DeviceIoControl.OutputBufferLength));
 
 	status = STATUS_BUFFER_TOO_SMALL;
-	goto __ClassDeviceProcessOffloadRead_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
     status = ClasspServicePopulateTokenTransferRequest(DeviceObject, Irp);
 
     if (status == STATUS_PENDING) {
-	goto __ClassDeviceProcessOffloadRead_Exit;
+	goto Exit;
     }
 
-__ClassDeviceProcessOffloadRead_CompleteAndExit:
+CompleteAndExit:
     ClasspCompleteOffloadRequest(DeviceObject, Irp, status);
-__ClassDeviceProcessOffloadRead_Exit:
+Exit:
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClassDeviceProcessOffloadRead (%p): Exiting function Irp %p with status "
 		"%x.\n",
@@ -12396,37 +11857,15 @@ NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
     //
     status = ClasspValidateOffloadSupported(DeviceObject, Irp);
     if (!NT_SUCCESS(status)) {
-	goto __ClassDeviceProcessOffloadWrite_CompleteAndExit;
-    }
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClassDeviceProcessOffloadWrite (%p): Called at raised IRQL.\n",
-		    DeviceObject));
-
-	status = STATUS_INVALID_LEVEL;
-	goto __ClassDeviceProcessOffloadWrite_CompleteAndExit;
-    }
-
-    //
-    // Ensure that this DSM IOCTL was generated in kernel
-    //
-    if (Irp->RequestorMode != KernelMode) {
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClassDeviceProcessOffloadWrite (%p): Called from user mode.\n",
-		    DeviceObject));
-
-	status = STATUS_ACCESS_DENIED;
-	goto __ClassDeviceProcessOffloadWrite_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
     status = ClasspValidateOffloadInputParameters(DeviceObject, Irp);
     if (!NT_SUCCESS(status)) {
-	goto __ClassDeviceProcessOffloadWrite_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
-    dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+    dsmAttributes = Irp->SystemBuffer;
 
     //
     // Validate that we were passed in correct sized parameter block.
@@ -12440,7 +11879,7 @@ NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
 		    sizeof(DEVICE_DSM_OFFLOAD_WRITE_PARAMETERS)));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClassDeviceProcessOffloadWrite_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
     if (irpStack->Parameters.DeviceIoControl.OutputBufferLength <
@@ -12452,18 +11891,18 @@ NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
 		    irpStack->Parameters.DeviceIoControl.OutputBufferLength));
 
 	status = STATUS_BUFFER_TOO_SMALL;
-	goto __ClassDeviceProcessOffloadWrite_CompleteAndExit;
+	goto CompleteAndExit;
     }
 
     status = ClasspServiceWriteUsingTokenTransferRequest(DeviceObject, Irp);
 
     if (status == STATUS_PENDING) {
-	goto __ClassDeviceProcessOffloadWrite_Exit;
+	goto Exit;
     }
 
-__ClassDeviceProcessOffloadWrite_CompleteAndExit:
+CompleteAndExit:
     ClasspCompleteOffloadRequest(DeviceObject, Irp, status);
-__ClassDeviceProcessOffloadWrite_Exit:
+Exit:
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClassDeviceProcessOffloadWrite (%p): Exiting function Irp %p with "
 		"status %x\n",
@@ -12489,10 +11928,11 @@ Return Value:
     STATUS_SUCCESS if successful, an error code otherwise
 
 --*/
-NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
+static NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
+							  IN PIRP Irp)
 {
     BOOLEAN allDataSetRangeFullyConverted;
-    UINT32 allocationSize;
+    UINT allocationSize;
     ULONG blockDescrIndex;
     PBLOCK_DEVICE_RANGE_DESCRIPTOR blockDescrPointer;
     PVOID buffer;
@@ -12513,7 +11953,6 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
     PTRANSFER_PACKET pkt;
     USHORT populateTokenDataLength;
     USHORT populateTokenDescriptorsLength;
-    PMDL populateTokenMdl;
     PIRP pseudoIrp;
     ULONG receiveTokenInformationBufferLength;
     NTSTATUS status;
@@ -12533,10 +11972,9 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
 
     fdoExt = Fdo->DeviceExtension;
     status = STATUS_SUCCESS;
-    dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+    dsmAttributes = Irp->SystemBuffer;
     buffer = NULL;
     pkt = NULL;
-    populateTokenMdl = NULL;
     offloadReadParameters = Add2Ptr(dsmAttributes, dsmAttributes->ParameterBlockOffset);
     dataSetRanges = Add2Ptr(dsmAttributes, dsmAttributes->DataSetRangesOffset);
     dataSetRangesCount = dsmAttributes->DataSetRangesLength /
@@ -12603,7 +12041,7 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
 		    Fdo));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspServicePopulateTokenTransferRequest_ErrorExit;
+	goto ErrorExit;
     }
 
     RtlZeroMemory(offloadReadContext, allocationSize);
@@ -12628,7 +12066,7 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
 		    Fdo));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspServicePopulateTokenTransferRequest_ErrorExit;
+	goto ErrorExit;
     }
 
     offloadReadContext->Pkt = pkt;
@@ -12666,7 +12104,7 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
     tempDataSetRangeFullyConverted = TRUE;
     dataSetRangeIndex = (ULONG)-1;
 
-    blockDescrPointer = (PBLOCK_DEVICE_RANGE_DESCRIPTOR) &
+    blockDescrPointer = (PBLOCK_DEVICE_RANGE_DESCRIPTOR)&
 			((PPOPULATE_TOKEN_HEADER)buffer)->BlockDeviceRangeDescriptor[0];
 
     RtlZeroMemory(&tempDataSetRange, sizeof(tempDataSetRange));
@@ -12677,8 +12115,7 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
     //
     // Send PopulateToken command when the buffer is full or all input entries are converted.
     //
-    while (!((blockDescrIndex ==
-	      maxBlockDescrCount) || // buffer full or block descriptor count reached
+    while (!((blockDescrIndex == maxBlockDescrCount) || // buffer full or block descriptor count reached
 	     (lbaCount == maxLbaCount) || // block LBA count reached
 	     (allDataSetRangeFullyConverted))) { // all DataSetRanges have been converted
 
@@ -12736,32 +12173,16 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
 	&populateTokenDescriptorsLength);
 
     //
-    // Reuse a single buffer for both TokenOperation and ReceiveTokenInformation. This has the one disadvantage
-    // that we'll be marking the page(s) as IoWriteAccess even though we only need read access for token
-    // operation command. However, the advantage is that we eliminate the possibility of any potential failures
-    // when trying to allocate an MDL for the ReceiveTokenInformation later on.
+    // Reuse a single buffer for both TokenOperation and ReceiveTokenInformation.
     //
     bufferLength = max(transferSize, receiveTokenInformationBufferLength);
-
-    populateTokenMdl = ClasspBuildDeviceMdl(buffer, bufferLength, FALSE);
-    if (!populateTokenMdl) {
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClasspServicePopulateTokenTransferRequest (%p): Failed to allocate "
-		    "MDL for PopulateToken operations.\n",
-		    Fdo));
-
-	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspServicePopulateTokenTransferRequest_ErrorExit;
-    }
-
-    offloadReadContext->PopulateTokenMdl = populateTokenMdl;
 
     pseudoIrp = &offloadReadContext->PseudoIrp;
 
     pseudoIrp->IoStatus.Status = STATUS_SUCCESS;
     pseudoIrp->IoStatus.Information = 0;
-    pseudoIrp->Tail.Overlay.DriverContext[0] = LongToPtr(1);
-    pseudoIrp->MdlAddress = populateTokenMdl;
+    pseudoIrp->Tail.DriverContext[0] = LongToPtr(1);
+    pseudoIrp->UserBuffer = buffer;
 
     InterlockedCompareExchange((volatile LONG *)&TokenOperationListIdentifier, -1,
 			       MaxTokenOperationListIdentifier);
@@ -12770,13 +12191,15 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
     ClasspSetupPopulateTokenTransferPacket(offloadReadContext, pkt, transferSize,
 					   (PUCHAR)buffer, pseudoIrp, listIdentifier);
 
-    TracePrint(
-	(TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
-	 "ClasspServicePopulateTokenTransferRequest (%p): Generate token for %I64u bytes (versus %I64u) [via %u descriptors]. \
-                \n\t\t\tDataLength: %u, DescriptorsLength: %u. Pkt %p (list id %x). Requested TTL: %u secs.\n",
-	 Fdo, totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector, entireXferLen,
-	 blockDescrIndex, populateTokenDataLength, populateTokenDescriptorsLength, pkt,
-	 listIdentifier, offloadReadParameters->TimeToLive));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
+		"ClasspServicePopulateTokenTransferRequest (%p): "
+		"Generate token for %I64u bytes (versus %I64u) [via %u descriptors].\n"
+		"\t\t\tDataLength: %u, DescriptorsLength: %u. "
+		"Pkt %p (list id %x). Requested TTL: %u secs.\n",
+		Fdo, totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector,
+		entireXferLen,blockDescrIndex, populateTokenDataLength,
+		populateTokenDescriptorsLength, pkt,
+		listIdentifier, offloadReadParameters->TimeToLive));
 
     //
     // Save (into the offloadReadContext) any remaining things that
@@ -12796,13 +12219,13 @@ NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo, IN PIR
     SubmitTransferPacket(pkt);
 
     status = STATUS_PENDING;
-    goto __ClasspServicePopulateTokenTransferRequest_Exit;
+    goto Exit;
 
     //
     // Error cleanup label only - not used in success case:
     //
 
-__ClasspServicePopulateTokenTransferRequest_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(status != STATUS_PENDING);
 
@@ -12811,7 +12234,7 @@ __ClasspServicePopulateTokenTransferRequest_ErrorExit:
 	offloadReadContext = NULL;
     }
 
-__ClasspServicePopulateTokenTransferRequest_Exit:
+Exit:
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspServicePopulateTokenTransferRequest (%p): Exiting function (Irp "
@@ -12866,7 +12289,7 @@ VOID ClasspPopulateTokenTransferPacketDone(IN PVOID Context)
 		    "ClasspPopulateTokenTransferPacketDone (%p): Generate token for list "
 		    "Id %x failed with %x (Pkt %p).\n",
 		    fdo, listIdentifier, status, pkt));
-	goto __ClasspPopulateTokenTransferPacketDone_ErrorExit;
+	goto ErrorExit;
     }
 
     //
@@ -12887,7 +12310,7 @@ VOID ClasspPopulateTokenTransferPacketDone(IN PVOID Context)
     // Error cleanup label only - not used in success case:
     //
 
-__ClasspPopulateTokenTransferPacketDone_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(!NT_SUCCESS(status));
 
@@ -12932,7 +12355,7 @@ VOID ClasspCompleteOffloadRead(IN POFFLOAD_READ_CONTEXT OffloadReadContext,
     ULONGLONG totalSectorsProcessed;
 
     status = CompletionStatus;
-    dsmAttributes = OffloadReadContext->OffloadReadDsmIrp->AssociatedIrp.SystemBuffer;
+    dsmAttributes = OffloadReadContext->OffloadReadDsmIrp->SystemBuffer;
     totalSectorsProcessed = OffloadReadContext->TotalSectorsProcessed;
     fdoExt = OffloadReadContext->Fdo->DeviceExtension;
     entireXferLen = OffloadReadContext->EntireXferLen;
@@ -12997,18 +12420,7 @@ Return Value:
 --*/
 VOID ClasspCleanupOffloadReadContext(IN POFFLOAD_READ_CONTEXT OffloadReadContext)
 {
-    PMDL populateTokenMdl;
-
-    populateTokenMdl = OffloadReadContext->PopulateTokenMdl;
-
-    NT_ASSERT(OffloadReadContext != NULL);
-
-    if (populateTokenMdl) {
-	ClasspFreeDeviceMdl(populateTokenMdl);
-    }
     FREE_POOL(OffloadReadContext);
-
-    return;
 }
 
 /*++
@@ -13076,7 +12488,7 @@ VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadC
 		    fdo));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspReceivePopulateTokenInformation_ErrorExit;
+	goto ErrorExit;
     }
 
     OffloadReadContext->Pkt = pkt;
@@ -13092,8 +12504,8 @@ VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadC
 
     pseudoIrp->IoStatus.Status = STATUS_SUCCESS;
     pseudoIrp->IoStatus.Information = 0;
-    pseudoIrp->Tail.Overlay.DriverContext[0] = LongToPtr(1);
-    pseudoIrp->MdlAddress = OffloadReadContext->PopulateTokenMdl;
+    pseudoIrp->Tail.DriverContext[0] = LongToPtr(1);
+    pseudoIrp->UserBuffer = buffer;
 
     ClasspSetupReceivePopulateTokenInformationTransferPacket(
 	OffloadReadContext, pkt, receiveTokenInformationBufferLength, (PUCHAR)buffer,
@@ -13117,7 +12529,7 @@ VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadC
     // Error cleanup label only - not used in success case:
     //
 
-__ClasspReceivePopulateTokenInformation_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(!NT_SUCCESS(status));
 
@@ -13526,7 +12938,6 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     NTSTATUS tempStatus;
     BOOLEAN tokenInvalidated;
     ULONG tokenOperationBufferLength;
-    PMDL writeUsingTokenMdl;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspServiceWriteUsingTokenTransferRequest (%p): Entering function. "
@@ -13536,9 +12947,8 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     fdoExt = Fdo->DeviceExtension;
     status = STATUS_SUCCESS;
     tempStatus = STATUS_SUCCESS;
-    dsmAttributes = Irp->AssociatedIrp.SystemBuffer;
+    dsmAttributes = Irp->SystemBuffer;
     buffer = NULL;
-    writeUsingTokenMdl = NULL;
     offloadWriteParameters = Add2Ptr(dsmAttributes, dsmAttributes->ParameterBlockOffset);
     dataSetRanges = Add2Ptr(dsmAttributes, dsmAttributes->DataSetRangesOffset);
     dataSetRangesCount = dsmAttributes->DataSetRangesLength /
@@ -13604,7 +13014,7 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 		    Fdo));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspServiceWriteUsingTokenTransferRequest_ErrorExit;
+	goto ErrorExit;
     }
 
     //
@@ -13696,24 +13106,8 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     offloadWriteContext->MaxLbaCount = maxLbaCount;
 
     //
-    // Reuse a single buffer for both TokenOperation and ReceiveTokenInformation. This has the one disadvantage
-    // that we'll be marking the page(s) as IoWriteAccess even though we only need read access for token
-    // operation command and we may not even need to send down a ReceiveTokenInformation (in case of a successful
-    // synchronous transfer). However, the advantage is that we eliminate the possibility of any potential
-    // failures when trying to allocate an MDL for the ReceiveTokenInformation later on if we need to send it.
+    // Reuse a single buffer for both TokenOperation and ReceiveTokenInformation.
     //
-    writeUsingTokenMdl = ClasspBuildDeviceMdl(buffer, bufferLength, FALSE);
-    if (!writeUsingTokenMdl) {
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClasspServiceWriteUsingTokenTransferRequest (%p): Failed to "
-		    "allocate MDL for WriteUsingToken operations.\n",
-		    Fdo));
-
-	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspServiceWriteUsingTokenTransferRequest_ErrorExit;
-    }
-
-    offloadWriteContext->WriteUsingTokenMdl = writeUsingTokenMdl;
 
     //
     // There are potentially two approaches that we can take:
@@ -13754,13 +13148,13 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     ClasspContinueOffloadWrite(offloadWriteContext);
 
     status = STATUS_PENDING;
-    goto __ClasspServiceWriteUsingTokenTransferRequest_Exit;
+    goto Exit;
 
     //
     // Error label only - not used in success case:
     //
 
-__ClasspServiceWriteUsingTokenTransferRequest_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(status != STATUS_PENDING);
 
@@ -13769,7 +13163,7 @@ __ClasspServiceWriteUsingTokenTransferRequest_ErrorExit:
 	offloadWriteContext = NULL;
     }
 
-__ClasspServiceWriteUsingTokenTransferRequest_Exit:
+Exit:
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspServiceWriteUsingTokenTransferRequest (%p): Exiting function (Irp "
@@ -13834,7 +13228,6 @@ VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
     ULONG transferSize;
     USHORT writeUsingTokenDataLength;
     USHORT writeUsingTokenDescriptorsLength;
-    PMDL writeUsingTokenMdl;
 
     tokenAscii = NULL;
     tokenSize = BLOCK_DEVICE_TOKEN_SIZE;
@@ -13848,7 +13241,6 @@ VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
     dataSetRanges = OffloadWriteContext->DataSetRanges;
     offloadWriteParameters = OffloadWriteContext->OffloadWriteParameters;
     pseudoIrp = &OffloadWriteContext->PseudoIrp;
-    writeUsingTokenMdl = OffloadWriteContext->WriteUsingTokenMdl;
     entireXferLen = OffloadWriteContext->EntireXferLen;
 
     RtlZeroMemory(buffer, bufferLength);
@@ -13981,8 +13373,8 @@ VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 
     pseudoIrp->IoStatus.Status = STATUS_SUCCESS;
     pseudoIrp->IoStatus.Information = 0;
-    pseudoIrp->Tail.Overlay.DriverContext[0] = LongToPtr(1);
-    pseudoIrp->MdlAddress = writeUsingTokenMdl;
+    pseudoIrp->Tail.DriverContext[0] = LongToPtr(1);
+    pseudoIrp->UserBuffer = buffer;
 
     InterlockedCompareExchange((volatile LONG *)&TokenOperationListIdentifier, -1,
 			       MaxTokenOperationListIdentifier);
@@ -14467,14 +13859,7 @@ Return Value:
 --*/
 VOID ClasspCleanupOffloadWriteContext(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
-    PMDL writeUsingTokenMdl = OffloadWriteContext->WriteUsingTokenMdl;
-
-    if (writeUsingTokenMdl) {
-	ClasspFreeDeviceMdl(writeUsingTokenMdl);
-    }
     FREE_POOL(OffloadWriteContext);
-
-    return;
 }
 
 /*++
@@ -14512,7 +13897,6 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
     PSCSI_REQUEST_BLOCK srb;
     NTSTATUS status;
     ULONG tempSizeUlong;
-    PMDL writeUsingTokenMdl;
 
     fdo = OffloadWriteContext->Fdo;
     irp = OffloadWriteContext->OffloadWriteDsmIrp;
@@ -14521,7 +13905,6 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
     bufferLength = OffloadWriteContext->BufferLength;
     receiveTokenInformationBufferLength =
 	OffloadWriteContext->ReceiveTokenInformationBufferLength;
-    writeUsingTokenMdl = OffloadWriteContext->WriteUsingTokenMdl;
     listIdentifier = OffloadWriteContext->ListIdentifier;
     srb = &OffloadWriteContext->Srb;
     status = STATUS_SUCCESS;
@@ -14564,8 +13947,8 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
 
     pseudoIrp->IoStatus.Status = STATUS_SUCCESS;
     pseudoIrp->IoStatus.Information = 0;
-    pseudoIrp->Tail.Overlay.DriverContext[0] = LongToPtr(1);
-    pseudoIrp->MdlAddress = writeUsingTokenMdl;
+    pseudoIrp->Tail.DriverContext[0] = LongToPtr(1);
+    pseudoIrp->UserBuffer = buffer;
 
     ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(OffloadWriteContext, pkt,
 							       bufferLength,
@@ -14944,7 +14327,6 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
     ULONG srbSize;
     CLASS_VPD_B0_DATA blockLimitsDataNew;
     PCLASS_VPD_B0_DATA blockLimitsDataOriginal;
-    KLOCK_QUEUE_HANDLE lockHandle;
     ULONG generationCount;
     ULONG changeRequestCount;
 
@@ -14983,9 +14365,6 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
 					       &blockLimitsDataNew);
 
     if (NT_SUCCESS(status)) {
-	KeAcquireInStackQueuedSpinLock(&FdoExtension->FunctionSupportInfo->SyncLock,
-				       &lockHandle);
-
 	//
 	// If the generationCount didn't change since we looked at it last time, it means
 	// no one has tried to update the CLASS_FUNCTION_SUPPORT_INFO data; otherwise, someone
@@ -15012,8 +14391,6 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
 	    }
 	    FdoExtension->FunctionSupportInfo->GenerationCount = changeRequestCount;
 	}
-
-	KeReleaseInStackQueuedSpinLock(&lockHandle);
     }
 
     FREE_POOL(srb);
@@ -15054,16 +14431,10 @@ NTSTATUS ClasspBlockLimitsDataSnapshot(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 				       OUT PCLASS_VPD_B0_DATA BlockLimitsData,
 				       OUT PULONG GenerationCount)
 {
-    NTSTATUS status;
-    KLOCK_QUEUE_HANDLE lockHandle;
+    NTSTATUS status = ClasspRefreshFunctionSupportInfo(FdoExtension, ForceQuery);
 
-    status = ClasspRefreshFunctionSupportInfo(FdoExtension, ForceQuery);
-
-    KeAcquireInStackQueuedSpinLock(&FdoExtension->FunctionSupportInfo->SyncLock,
-				   &lockHandle);
     *BlockLimitsData = FdoExtension->FunctionSupportInfo->BlockLimitsData;
     *GenerationCount = FdoExtension->FunctionSupportInfo->GenerationCount;
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
 
     return status;
 }

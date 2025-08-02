@@ -8,10 +8,7 @@
 #ifndef _STORPORT_PCH_
 #define _STORPORT_PCH_
 
-#include <wdm.h>
 #include <ntddk.h>
-#include <stdio.h>
-#include <memory.h>
 
 /* Declare STORPORT_API functions as exports rather than imports */
 #define _STORPORT_
@@ -60,7 +57,6 @@ typedef struct _DRIVER_OBJECT_EXTENSION
     EXTENSION_TYPE ExtensionType;
     PDRIVER_OBJECT DriverObject;
 
-    KSPIN_LOCK AdapterListLock;
     LIST_ENTRY AdapterListHead;
     ULONG AdapterCount;
 
@@ -102,8 +98,6 @@ typedef struct _FDO_DEVICE_EXTENSION
     ULONG SlotNumber;
     PCM_RESOURCE_LIST AllocatedResources;
     PCM_RESOURCE_LIST TranslatedResources;
-    BUS_INTERFACE_STANDARD BusInterface;
-    BOOLEAN BusInitialized;
     PMAPPED_ADDRESS MappedAddressList;
     PVOID UncachedExtensionVirtualBase;
     PHYSICAL_ADDRESS UncachedExtensionPhysicalBase;
@@ -112,7 +106,6 @@ typedef struct _FDO_DEVICE_EXTENSION
     PKINTERRUPT Interrupt;
     ULONG InterruptIrql;
 
-    KSPIN_LOCK PdoListLock;
     LIST_ENTRY PdoListHead;
     ULONG PdoCount;
 } FDO_DEVICE_EXTENSION, *PFDO_DEVICE_EXTENSION;
@@ -189,18 +182,7 @@ GetBusInterface(
     PDEVICE_OBJECT DeviceObject);
 
 PCM_RESOURCE_LIST
-CopyResourceList(
-    POOL_TYPE PoolType,
-    PCM_RESOURCE_LIST Source);
-
-NTSTATUS
-QueryBusInterface(
-    PDEVICE_OBJECT DeviceObject,
-    PGUID Guid,
-    USHORT Size,
-    USHORT Version,
-    PBUS_INTERFACE_STANDARD Interface,
-    PVOID InterfaceSpecificData);
+CopyResourceList(PCM_RESOURCE_LIST Source);
 
 BOOLEAN
 TranslateResourceListAddress(

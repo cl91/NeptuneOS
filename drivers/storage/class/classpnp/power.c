@@ -94,7 +94,7 @@ NTAPI NTSTATUS ClassDispatchPower(IN PDEVICE_OBJECT DeviceObject,
 
     if (!commonExtension->IsInitialized) {
 	IoSkipCurrentIrpStackLocation(Irp);
-	return PoCallDriver(commonExtension->LowerDeviceObject, Irp);
+	return IoCallDriver(commonExtension->LowerDeviceObject, Irp);
     }
 
     isRemoved = ClassAcquireRemoveLock(DeviceObject, Irp);
@@ -238,7 +238,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    IoSetCompletionRoutine(OriginalIrp, ClasspDeviceLockFailurePowerIrpCompletion,
 				   PowerContext, TRUE, TRUE, TRUE);
 
-	    PoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
+	    IoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
 
 	    return STATUS_MORE_PROCESSING_REQUIRED;
 
@@ -253,7 +253,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	IoSetCompletionRoutine(OriginalIrp, ClasspPowerUpCompletion, PowerContext, TRUE,
 			       TRUE, TRUE);
 
-	status = PoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
+	status = IoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
 
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 		    "(%p)\tIoCallDriver returned %lx\n", OriginalIrp, status));
@@ -1305,10 +1305,10 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    IoSetCompletionRoutine(OriginalIrp, ClasspPowerDownCompletion, PowerContext,
 				   TRUE, TRUE, TRUE);
 
-	    status = PoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
+	    status = IoCallDriver(commonExtension->LowerDeviceObject, OriginalIrp);
 
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
-			"(%p)\tPoCallDriver returned %lx\n", OriginalIrp, status));
+			"(%p)\tIoCallDriver returned %lx\n", OriginalIrp, status));
 	    break;
 	}
 
@@ -1770,7 +1770,7 @@ ClasspPowerHandlerCleanup:
     IoCopyCurrentIrpStackLocationToNext(Irp);
     IoSetCompletionRoutine(Irp, ClasspStartNextPowerIrpCompletion, NULL, TRUE, TRUE,
 			   TRUE);
-    return PoCallDriver(lowerDevice, Irp);
+    return IoCallDriver(lowerDevice, Irp);
 } // end ClasspPowerHandler()
 
 /*++////////////////////////////////////////////////////////////////////////////
@@ -1798,7 +1798,7 @@ NTAPI NTSTATUS ClassMinimalPowerHandler(IN PDEVICE_OBJECT DeviceObject,
 	case PowerActionNone:
 	case PowerActionSleep:
 	case PowerActionHibernate: {
-	    if (TEST_FLAG(DeviceObject->Characteristics, FILE_REMOVABLE_MEDIA)) {
+	    if (TEST_FLAG(DeviceObject->Flags, FILE_REMOVABLE_MEDIA)) {
 		if ((ClassGetVpb(DeviceObject) != NULL) &&
 		    (ClassGetVpb(DeviceObject)->Flags & VPB_MOUNTED)) {
 		    //
@@ -1826,7 +1826,7 @@ NTAPI NTSTATUS ClassMinimalPowerHandler(IN PDEVICE_OBJECT DeviceObject,
 
     if (commonExtension->IsFdo) {
 	IoCopyCurrentIrpStackLocationToNext(Irp);
-	status = PoCallDriver(commonExtension->LowerDeviceObject, Irp);
+	status = IoCallDriver(commonExtension->LowerDeviceObject, Irp);
     } else {
 	status = Irp->IoStatus.Status;
 	ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
@@ -1971,7 +1971,7 @@ static VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     ULONG srbFunction;
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
-		"(%p)\tDelaying retry by queueing DPC\n", Irp));
+		"(%p)\tDelaying retry by queueing IO workitem\n", Irp));
 
     //NT_ASSERT(Context->Irp == Irp);
     if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
@@ -2277,7 +2277,6 @@ NTAPI NTSTATUS ClasspPowerSettingCallback(_In_ LPCGUID SettingGuid,
 	// IOCTL_STORAGE_ENABLE_IDLE_POWER to the port driver to update the
 	// idle timeout value.
 	//
-	KeAcquireGuardedMutex(&IdlePowerFDOListMutex);
 	fdoEntry = (PIDLE_POWER_FDO_LIST_ENTRY)IdlePowerFDOList.Flink;
 	while ((PLIST_ENTRY)fdoEntry != &IdlePowerFDOList) {
 	    ULONG isRemoved = ClassAcquireRemoveLock(fdoEntry->Fdo, removeLockTag);
@@ -2300,7 +2299,6 @@ NTAPI NTSTATUS ClasspPowerSettingCallback(_In_ LPCGUID SettingGuid,
 
 	    fdoEntry = (PIDLE_POWER_FDO_LIST_ENTRY)fdoEntry->ListEntry.Flink;
 	}
-	KeReleaseGuardedMutex(&IdlePowerFDOListMutex);
 
     } else if (IsEqualGUID(SettingGuid, &GUID_CONSOLE_DISPLAY_STATE)) {
 	//
@@ -2316,7 +2314,6 @@ NTAPI NTSTATUS ClasspPowerSettingCallback(_In_ LPCGUID SettingGuid,
 		ClasspScreenOff = FALSE;
 	    }
 
-	    KeAcquireGuardedMutex(&IdlePowerFDOListMutex);
 	    fdoEntry = (PIDLE_POWER_FDO_LIST_ENTRY)IdlePowerFDOList.Flink;
 	    while ((PLIST_ENTRY)fdoEntry != &IdlePowerFDOList) {
 		ULONG isRemoved = ClassAcquireRemoveLock(fdoEntry->Fdo, removeLockTag);
@@ -2352,20 +2349,11 @@ NTAPI NTSTATUS ClasspPowerSettingCallback(_In_ LPCGUID SettingGuid,
 			    }
 			}
 		    }
-
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-		    //
-		    // Screen state has changed so attempt to update the tick
-		    // timer's no-wake tolerance accordingly.
-		    //
-		    ClasspUpdateTimerNoWakeTolerance(fdoExtension);
-#endif
 		}
 		ClassReleaseRemoveLock(fdoEntry->Fdo, removeLockTag);
 
 		fdoEntry = (PIDLE_POWER_FDO_LIST_ENTRY)fdoEntry->ListEntry.Flink;
 	    }
-	    KeReleaseGuardedMutex(&IdlePowerFDOListMutex);
 	}
     }
 
@@ -2450,17 +2438,14 @@ NTSTATUS ClasspEnableIdlePower(_In_ PDEVICE_OBJECT DeviceObject)
 	//
 	// Put this FDO on the list of devices that are idle power managed.
 	//
-	fdoEntry = ExAllocatePoolWithTag(NonPagedPoolNx,
-					 sizeof(IDLE_POWER_FDO_LIST_ENTRY),
+	fdoEntry = ExAllocatePoolWithTag(sizeof(IDLE_POWER_FDO_LIST_ENTRY),
 					 CLASS_TAG_POWER);
 	if (fdoEntry) {
 	    fdoExtension->FunctionSupportInfo->IdlePower.IdlePowerEnabled = TRUE;
 
 	    fdoEntry->Fdo = DeviceObject;
 
-	    KeAcquireGuardedMutex(&IdlePowerFDOListMutex);
 	    InsertHeadList(&IdlePowerFDOList, &(fdoEntry->ListEntry));
-	    KeReleaseGuardedMutex(&IdlePowerFDOListMutex);
 
 	    //
 	    // If not registered already, register for disk idle timeout power

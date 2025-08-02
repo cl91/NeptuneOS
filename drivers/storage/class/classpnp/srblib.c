@@ -67,11 +67,11 @@ Return Value:
     NTSTATUS
 
 --*/
-NTSTATUS pInitializeStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
-					IN USHORT AddressType,
-					IN ULONG ByteSize,
-					IN ULONG NumSrbExData,
-					IN va_list ap)
+static NTSTATUS InitializeStorageRequestBlockVaList(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
+						    IN USHORT AddressType,
+						    IN ULONG ByteSize,
+						    IN ULONG NumSrbExData,
+						    IN va_list ap)
 {
     NTSTATUS status = STATUS_SUCCESS;
     PSTOR_ADDRESS address;
@@ -219,7 +219,7 @@ NTSTATUS InitializeStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
     NTSTATUS status;
     va_list ap;
     va_start(ap, NumSrbExData);
-    status = pInitializeStorageRequestBlock(Srb, AddressType, ByteSize, NumSrbExData, ap);
+    status = InitializeStorageRequestBlockVaList(Srb, AddressType, ByteSize, NumSrbExData, ap);
     va_end(ap);
     return status;
 }
@@ -325,8 +325,8 @@ NTSTATUS CreateStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK *Srb,
 
 	if (*Srb) {
 	    va_start(ap, NumSrbExData);
-	    status = pInitializeStorageRequestBlock(*Srb, AddressType, sizeNeeded,
-						    NumSrbExData, ap);
+	    status = InitializeStorageRequestBlockVaList(*Srb, AddressType, sizeNeeded,
+							 NumSrbExData, ap);
 	    va_end(ap);
 	}
     }

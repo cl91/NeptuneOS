@@ -27,7 +27,7 @@ Revision History:
 
 ULONG BreakOnClose = 0;
 
-const PCSZ LockTypeStrings[] = { "Simple", "Secure", "Internal" };
+const PCSZ LOCK_TYPE_STRINGS[] = { "Simple", "Secure", "Internal" };
 
 VOID ClasspCleanupDisableMcn(IN PFILE_OBJECT_EXTENSION FsContext);
 
@@ -242,7 +242,6 @@ VOID ClasspCleanupProtectedLocks(IN PFILE_OBJECT_EXTENSION FsContext)
     // Synchronize with ejection and ejection control requests.
     //
 
-    KeEnterCriticalRegion();
     (VOID) KeWaitForSingleObject(&(fdoExtension->EjectSynchronizationEvent), UserRequest,
 				 KernelMode, FALSE, NULL);
 
@@ -328,8 +327,7 @@ VOID ClasspCleanupProtectedLocks(IN PFILE_OBJECT_EXTENSION FsContext)
 	}
     }
 
-    KeSetEvent(&fdoExtension->EjectSynchronizationEvent, IO_NO_INCREMENT, FALSE);
-    KeLeaveCriticalRegion();
+    KeSetEvent(&fdoExtension->EjectSynchronizationEvent);
     return;
 }
 
@@ -378,11 +376,6 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
     PSCSI_REQUEST_BLOCK srb = NULL;
     BOOLEAN countChanged = FALSE;
 
-    /*
-     *  Ensure that the user thread is not suspended while we are holding EjectSynchronizationEvent.
-     */
-    KeEnterCriticalRegion();
-
     status = KeWaitForSingleObject(&(FdoExtension->EjectSynchronizationEvent),
 				   UserRequest, KernelMode, FALSE, NULL);
 
@@ -391,7 +384,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		"ClasspEjectionControl: "
 		"Received request for %s lock type\n",
-		LockTypeStrings[LockType]));
+		LOCK_TYPE_STRINGS[LockType]));
 
     __try {
 	PCDB cdb = NULL;
@@ -503,7 +496,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 	}
 
 	status = STATUS_SUCCESS;
-	if (TEST_FLAG(Fdo->Characteristics, FILE_REMOVABLE_MEDIA)) {
+	if (TEST_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA)) {
 	    srb = (PSCSI_REQUEST_BLOCK)ClasspAllocateSrb(FdoExtension);
 
 	    if (srb == NULL) {
@@ -621,8 +614,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 		    FdoExtension->InternalLockCount, FdoExtension->ProtectedLockCount,
 		    FdoExtension->LockCount));
 
-	KeSetEvent(&(FdoExtension->EjectSynchronizationEvent), IO_NO_INCREMENT, FALSE);
-	KeLeaveCriticalRegion();
+	KeSetEvent(&FdoExtension->EjectSynchronizationEvent);
 
 	if (srb) {
 	    ClassFreeOrReuseSrb(FdoExtension, srb);

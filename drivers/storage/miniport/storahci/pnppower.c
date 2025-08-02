@@ -350,18 +350,18 @@ It assumes:
     AhciAdapterStop is called after all the ports are stopped.
 
     StartIo spin lock must be held before this function is invoked.
-    
-    Note: 
-    Currently this function has only one caller - AdapterStop, which has the 
+
+    Note:
+    Currently this function has only one caller - AdapterStop, which has the
     following callers. Every respective code path has StartIo spin lock acquired.
 
-    1. AhciAdapterStop. 
+    1. AhciAdapterStop.
 
        It has one caller - AhciHwStartIo. Storport has already acquired StartIo spin lock
        before calling AhciHwStartIo.
 
     2. AhciHwAdapterControl.
-             
+
        AhciHwAdapterControl has already acquired StartIo spin lock before calling AdapterStop.
 
 Called by:
@@ -442,7 +442,7 @@ Return Values:
     pxis.AsUlong = StorPortReadRegisterUlong(ChannelExtension->AdapterExtension, &ChannelExtension->Px->IS.AsUlong);
 
     // 1.0 Reinitialize the StateFlags. e.g. ChannelExtension->StateFlags.PowerDown = FALSE;
-    portPowerDown = InterlockedBitTestAndReset((LONG*)&ChannelExtension->StateFlags, 12);    //StateFlags.PownDown field is at bit 12
+    portPowerDown = InterlockedBitTestAndReset((volatile long*)&ChannelExtension->StateFlags, 12);    //StateFlags.PownDown field is at bit 12
 
     if (portPowerDown == FALSE) {
 
@@ -466,14 +466,14 @@ Return Values:
     //
     if (ChannelExtension->DevicePowerState == StorPowerDeviceD3 && IsPortD3ColdEnabled(ChannelExtension)) {
 
-        STOR_LOCK_HANDLE lockhandle = { InterruptLock, 0 };
+        STOR_LOCK_HANDLE lockhandle = { InterruptLock, {0} };
         BOOLEAN powerUpInitializationInProgress = 0;
 
         // 1.4.1 Re-issue init commands (this will also restore preserved settings).
         AhciPortIssueInitCommands(ChannelExtension);
 
         // Set PowerUpInitializationInProgress flag, which will be cleared when preserved settings command done.
-        powerUpInitializationInProgress = InterlockedBitTestAndSet((LONG*)&ChannelExtension->StateFlags, 22); //PowerUpInitializationInProgress field is at bit 22
+        powerUpInitializationInProgress = InterlockedBitTestAndSet((volatile long*)&ChannelExtension->StateFlags, 22); //PowerUpInitializationInProgress field is at bit 22
 
         if (powerUpInitializationInProgress == 1) {
 
@@ -667,30 +667,30 @@ Return Value:
 --*/
 {
     NT_ASSERT(ChannelExtension->PortNumber <= 255);
-    
+
     if (ValueNameLength >= 14) {
 
         ULONG portNumber = ChannelExtension->PortNumber;
-        ULONG remainder = 0; 
-        
+        ULONG remainder = 0;
+
         StorPortCopyMemory(ValueName, "LogPageInfo", 12);
         ValueName[13] = '\0';
-        
+
         remainder = portNumber % 16;  // use HEX value, base is 16.
         ValueName[12] = (CHAR)((remainder < 10) ? (remainder + '0') : (remainder - 10 + 'A'));
-        
+
         portNumber /= 16;
         remainder = portNumber % 16;
         ValueName[11] = (CHAR)((remainder < 10) ? (remainder + '0') : (remainder - 10 + 'A'));
     }
-    
+
     return;
 }
 
 _Function_class_(HW_WORKITEM)
 VOID
 AhciRegistryWriteWorker(
-    _In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
+    _In_ PVOID Ext,
     _In_ PVOID Context,
     _In_ PVOID WorkItem
     )
@@ -715,6 +715,7 @@ Return Value:
 
 --*/
 {
+    PAHCI_ADAPTER_EXTENSION AdapterExtension = Ext;
     PAHCI_CHANNEL_EXTENSION channelExtension = (PAHCI_CHANNEL_EXTENSION)Context;
     ULONG storStatus;
     CHAR valueName[16] = { 0 };
@@ -724,7 +725,7 @@ Return Value:
     NT_ASSERT(WorkItem != NULL);
 
     GetLogInfoRegValueName(channelExtension, valueName, sizeof(valueName));
- 
+
     StorPortCopyMemory((PVOID)&logPageInfo.QueryLogPages, &channelExtension->DeviceExtension[0].QueryLogPages, sizeof(ATA_GPL_PAGES_TO_QUERY));
     StorPortCopyMemory((PVOID)&logPageInfo.SupportedGPLPages, &channelExtension->DeviceExtension[0].SupportedGPLPages, sizeof(ATA_SUPPORTED_GPL_PAGES));
     StorPortCopyMemory((PVOID)&logPageInfo.SupportedCommands, &channelExtension->DeviceExtension[0].SupportedCommands, sizeof(ATA_COMMAND_SUPPORTED));
@@ -814,7 +815,7 @@ Return Values:
     PUSHORT index = &ChannelExtension->DeviceExtension->QueryLogPages.TotalPageCount;
 
     //
-    // Log Page only applies to ATA device; General Purpose Logging feature should be supported; 
+    // Log Page only applies to ATA device; General Purpose Logging feature should be supported;
     // 48bit command should be supported as READ LOG EXT is a 48bit command.
     //
     if (!IsDeviceGeneralPurposeLoggingSupported(ChannelExtension)) {
@@ -1072,7 +1073,7 @@ Return Values:
     for (i = 0; i < ChannelExtension->DeviceExtension->QueryLogPages.TotalPageCount; i++) {
         if ((ChannelExtension->DeviceExtension->QueryLogPages.LogPage[i].LogAddress == LogAddress) &&
             (ChannelExtension->DeviceExtension->QueryLogPages.LogPage[i].PageNumber == PageNumber)) {
-            
+
             ChannelExtension->DeviceExtension->QueryLogPages.LogPage[i].Query = Supported;
             return;
         }
@@ -1421,7 +1422,7 @@ LogPageDiscoveryCompletion (
                 (supportedCapabilities->Header.PageNumber == IDE_GP_LOG_IDENTIFY_DEVICE_DATA_SUPPORTED_CAPABILITIES_PAGE)) {
 
                 UpdateDownloadMicrocodeSupport(ChannelExtension, supportedCapabilities);
-                
+
             }
 
         } else {
@@ -1541,10 +1542,7 @@ AhciPortIdentifyDevice(
     _In_ PSTORAGE_REQUEST_BLOCK  Srb
   )
 {
-    PAHCI_SRB_EXTENSION srbExtension;
     PCDB                cdb = SrbGetCdb(Srb);
-
-    srbExtension = GetSrbExtension(Srb);
 
     if (Srb->SrbStatus == SRB_STATUS_BUS_RESET) {
         return;
@@ -1613,7 +1611,7 @@ AhciPortIdentifyDevice(
                                                           (PULONG)(&cachedLogPageInfoUsable));
 
             cachedLogPageInfoUsable = (cachedLogPageInfoUsable && (ChannelExtension->DeviceExtension[0].UpdateCachedLogPageInfo == FALSE));
-            
+
             if (cachedLogPageInfoUsable) {
                 // In case this is not a newly plugged in device and it's allowed to use cached Log Page Information.
                 CHAR valueName[16] = { 0 };
@@ -1666,7 +1664,7 @@ AhciPortIdentifyDevice(
         } else {
             ReportLunsComplete(ChannelExtension, Srb);
         }
-    } else if (IsDumpMode(ChannelExtension->AdapterExtension) && 
+    } else if (IsDumpMode(ChannelExtension->AdapterExtension) &&
                (cdb != NULL) && (cdb->CDB10.OperationCode == SCSIOP_INQUIRY)) {
 
         if (IsDumpResumeMode(ChannelExtension->AdapterExtension) &&
@@ -1697,15 +1695,15 @@ AhciPortIdentifyDevice(
         // We are refreshing Identify information because of a firmware update.
         // The firmware update support information is contained in the Supported
         // Capabilities log page so we need to make sure we query that page as well.
-        // 
+        //
         ChannelExtension->DeviceExtension->DeviceParameters.StateFlags.NeedUpdateIdentifyDeviceData = 0;
 
         //
         // Finish processing the Inquiry command before re-using the SRB to get
         // the Supported Capabilities log page.
-        //        
+        //
         InquiryComplete(ChannelExtension, Srb);
-              
+
         if (IsDeviceGeneralPurposeLoggingSupported(ChannelExtension)) {
             GetDownloadMicrocodeSupport(ChannelExtension, Srb);
         }
@@ -1928,8 +1926,8 @@ Affected Variables/Registers:
 
         RecordExecutionHistory(ChannelExtension, 0x10020043); // IssuePreservedSettingCommands done and clear flag
 
-        InterlockedBitTestAndReset((LONG*)&ChannelExtension->StateFlags, 3); //ReservedSlotInUse field is at bit 3
-        InterlockedBitTestAndReset((LONG*)&ChannelExtension->StateFlags, 22); //PowerUpInitializationInProgress field is at bit 22
+        InterlockedBitTestAndReset((volatile long*)&ChannelExtension->StateFlags, 3); //ReservedSlotInUse field is at bit 3
+        InterlockedBitTestAndReset((volatile long*)&ChannelExtension->StateFlags, 22); //PowerUpInitializationInProgress field is at bit 22
 
         return;
     }
@@ -2434,7 +2432,7 @@ AhciPortPowerSettingNotification(
     IN PAHCI_CHANNEL_EXTENSION ChannelExtension,
     IN PSTOR_POWER_SETTING_INFO PowerInfo
     )
-{                
+{
     // do nothing if there is no device connected
     if ( (ChannelExtension->StartState.ChannelNextStartState == StartFailed) ||
          (ChannelExtension->DeviceExtension->DeviceParameters.AtaDeviceType == DeviceNotExist) ) {
@@ -2519,16 +2517,16 @@ AhciAutoPartialToSlumber(
 
     if (channelExtension->Px == NULL) {
 
-        // The port has been stopped. Do not touch its registers.    
+        // The port has been stopped. Do not touch its registers.
         // There is no need to transit the link power state to Slumber state.
         //
-        // Note: 
+        // Note:
         // Px is set to NULL in AhciPortStop function. StartIo spin lock is utilized to
-        // prevent race condition with AhciPortStop function. StartIo spin lock is acquired 
+        // prevent race condition with AhciPortStop function. StartIo spin lock is acquired
         // before AhciPortStop is called. When we are here in AhciAutoPartialToSlumber, because
         // it is a timer callback function, StartIo spin lock is already held - Storport holds
         // StartIo spin lock before invoking miniport timer callback function.
-        //       
+        //
 
         return;
     }
@@ -2573,7 +2571,7 @@ AhciAutoPartialToSlumber(
         // Attempt to transition the link to Active.
         // By spec, Partial to Active transition should be completed in 10us. Reading register already takes sometime.
         // Poll for a little bit to give the link some time to go Active.
-        // 
+        //
         cmd.ICC = 1;
         StorPortWriteRegisterUlong(channelExtension->AdapterExtension, &channelExtension->Px->CMD.AsUlong, cmd.AsUlong);
         ssts.AsUlong = StorPortReadRegisterUlong(channelExtension->AdapterExtension, &channelExtension->Px->SSTS.AsUlong);
@@ -2750,7 +2748,7 @@ AhciPortGetInitCommands(
         if (ChannelExtension->DeviceExtension->SupportedCommands.SetDateAndTime == 0x1) {
             ChannelExtension->DeviceInitCommands.CommandCount++;
         }
-        
+
         if (sendSecureFreezeLock) {
             ChannelExtension->DeviceInitCommands.CommandCount++;
         }
@@ -2794,7 +2792,7 @@ AhciPortGetInitCommands(
         //
         for (gtfIndex = 0; gtfIndex < gtfCommandCount; gtfIndex++, i++) {
             StorPortCopyMemory(ChannelExtension->DeviceInitCommands.CommandTaskFile + i,
-                               argument->Data + (gtfIndex * sizeof(ACPI_GTF_IDE_REGISTERS)),
+                               (PVOID)(argument->Data + (gtfIndex * sizeof(ACPI_GTF_IDE_REGISTERS))),
                                sizeof(ACPI_GTF_IDE_REGISTERS)
                                );
         }
@@ -2811,7 +2809,7 @@ AhciPortGetInitCommands(
         if (IsAtaDevice(&ChannelExtension->DeviceExtension[0].DeviceParameters)) {
 
             if (sendSecureFreezeLock) {
-                
+
                 if ((ChannelExtension->DeviceInitCommands.CommandCount - i) >= 1) {
                     taskFile = ChannelExtension->DeviceInitCommands.CommandTaskFile + i;
                     taskFile->Current.bCommandReg = IDE_COMMAND_SECURITY_FREEZE_LOCK;
@@ -2874,7 +2872,7 @@ AhciPortEvaluateSDDMethod(
     argument = inputData->Argument;
     argument->Type = ACPI_METHOD_ARGUMENT_BUFFER;
     argument->DataLength = sizeof(IDENTIFY_DEVICE_DATA);
-    StorPortCopyMemory(argument->Data, ChannelExtension->DeviceExtension[0].IdentifyDeviceData, sizeof(IDENTIFY_DEVICE_DATA));
+    StorPortCopyMemory((PVOID)argument->Data, ChannelExtension->DeviceExtension[0].IdentifyDeviceData, sizeof(IDENTIFY_DEVICE_DATA));
 
     status = StorPortInvokeAcpiMethod(ChannelExtension->AdapterExtension,
                                       (PSTOR_ADDRESS)&ChannelExtension->DeviceExtension[0].DeviceAddress,
@@ -2966,7 +2964,7 @@ AhciAdapterEvaluateDSMMethod(
     argument = &inputData->Argument[0];
     argument->Type = ACPI_METHOD_ARGUMENT_BUFFER;
     argument->DataLength = sizeof(GUID);
-    StorPortCopyMemory(&argument->Data[0], &LINK_POWER_ACPI_DSM_GUID, sizeof(GUID));
+    StorPortCopyMemory((PVOID)argument->Data, (PVOID)&LINK_POWER_ACPI_DSM_GUID, sizeof(GUID));
 
     // argument 1 - Revision number
     argument = ACPI_METHOD_NEXT_ARGUMENT(argument);
@@ -2989,7 +2987,7 @@ AhciAdapterEvaluateDSMMethod(
                                       ACPI_METHOD_DSM,
                                       (PVOID)inputData,
                                       inputDataSize,
-                                      outputData,
+                                      (PVOID)outputData,
                                       outputDataSize,
                                       &returnedLength
                                       );
@@ -3019,7 +3017,7 @@ Exit:
     }
 
     if (outputData != NULL) {
-        StorPortFreePool(AdapterExtension, outputData);
+        StorPortFreePool(AdapterExtension, (PVOID)outputData);
     }
 
     return;
@@ -3068,7 +3066,7 @@ AhciPortAcpiDSMControl(
     argument = &inputData->Argument[0];
     argument->Type = ACPI_METHOD_ARGUMENT_BUFFER;
     argument->DataLength = sizeof(GUID);
-    StorPortCopyMemory(&argument->Data[0], &LINK_POWER_ACPI_DSM_GUID, sizeof(GUID));
+    StorPortCopyMemory((PVOID)argument->Data, &LINK_POWER_ACPI_DSM_GUID, sizeof(GUID));
 
     // argument 1 - Revision number
     argument = ACPI_METHOD_NEXT_ARGUMENT(argument);
@@ -3117,7 +3115,3 @@ Exit:
 
     return;
 }
-
-
-#pragma warning(pop) // un-sets any local warning changes
-

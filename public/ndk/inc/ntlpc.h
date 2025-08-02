@@ -23,6 +23,12 @@ typedef struct _REMOTE_PORT_VIEW {
     PVOID ViewBase;
 } REMOTE_PORT_VIEW, *PREMOTE_PORT_VIEW;
 
+#ifdef _WIN64
+#define PORT_MAXIMUM_MESSAGE_LENGTH 512
+#else
+#define PORT_MAXIMUM_MESSAGE_LENGTH 256
+#endif
+
 #ifndef _NTOSKRNL_
 
 /*

@@ -3,6 +3,7 @@
 #define _NTDDK_
 
 #include <nt.h>
+#include <devpropdef.h>
 #include <assert.h>
 
 #define UNUSED	__attribute__((unused))
@@ -10,7 +11,11 @@
 FORCEINLINE BOOLEAN IoThreadIsAtPassiveLevel()
 {
     PTEB Teb = NtCurrentTeb();
-    return !Teb->Wdm.IsDpcThread && !Teb->Wdm.IsIsrThread;
+    BOOLEAN Val = Teb->Wdm.IsMainThread;
+    if (Val) {
+	assert(!Teb->Wdm.IsDpcThread && !Teb->Wdm.IsIsrThread);
+    }
+    return Val;
 }
 
 /* This routines asserts that we are at PASSIVE_LEVEL. */
@@ -190,6 +195,10 @@ FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
  */
 NTAPI NTSYSAPI VOID ObReferenceObject(IN PVOID Obj);
 NTAPI NTSYSAPI VOID ObDereferenceObject(IN PVOID Obj);
+#define ObReferenceObjectByPointer(Obj, _1, _2, _3) ({	\
+	    ObReferenceObject(Obj);			\
+	    STATUS_SUCCESS;				\
+	})
 
 struct _DEVICE_OBJECT;
 struct _DRIVER_OBJECT;
@@ -539,6 +548,9 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 
     /* Indicates that this IRP has been completed */
     BOOLEAN Completed;
+
+    /* Indicates that a lower driver has returned pending in its dispatch routine */
+    BOOLEAN PendingReturned;
 
     /* Indicates whether this IRP has been canceled */
     BOOLEAN Cancel;
@@ -958,6 +970,9 @@ FORCEINLINE NTAPI PIRP IoAllocateIrp(IN CCHAR StackSize)
     return Irp;
 }
 
+NTAPI NTSYSAPI VOID IoReuseIrp(IN OUT PIRP Irp,
+			       IN NTSTATUS Status);
+
 NTAPI NTSYSAPI VOID IoFreeIrp(IN PIRP Irp);
 
 FORCEINLINE NTAPI VOID IoFreeMdl(IN PMDL Mdl)
@@ -1108,8 +1123,19 @@ NTAPI NTSYSAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 					    OUT PVOID PropertyBuffer,
 					    OUT PULONG ResultLength);
 
+NTAPI NTSYSAPI NTSTATUS IoGetDevicePropertyData(IN PDEVICE_OBJECT Pdo,
+						IN CONST DEVPROPKEY *PropertyKey,
+						IN LCID Lcid,
+						IN ULONG Flags,
+						IN ULONG Size,
+						OUT PVOID Data,
+						OUT PULONG RequiredSize,
+						OUT PDEVPROPTYPE Type);
+
 NTAPI NTSYSAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
 					     IN PUNICODE_STRING DeviceName);
+
+NTAPI NTSYSAPI NTSTATUS IoDeleteSymbolicLink(IN PUNICODE_STRING SymbolicLinkName);
 
 #define PLUGPLAY_REGKEY_DEVICE                            1
 #define PLUGPLAY_REGKEY_DRIVER                            2
@@ -1125,51 +1151,6 @@ NTAPI NTSYSAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice);
 
 DEPRECATED("Drivers run in userspace and are always paged entirely. Remove this.")
 NTAPI NTSYSAPI PVOID MmPageEntireDriver(IN PVOID AddressWithinSection);
-
-/*
- * TIMER object. Note: just like KDPC despite being called 'KTIMER'
- * this is the client-side handle to the server side KTIMER object.
- * There is no name collision because the NTOS server does not
- * include files under public/ddk.
- */
-typedef struct _KTIMER {
-    WAITABLE_OBJECT_HEADER Header;	/* Must be first member. */
-    PKDPC Dpc;
-    ULONGLONG AbsoluteDueTime;
-    LONG Period;
-    BOOLEAN State;
-} KTIMER, *PKTIMER;
-
-/*
- * Timer routines
- */
-NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
-
-NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
-				  IN LARGE_INTEGER DueTime,
-				  IN OPTIONAL PKDPC Dpc);
-
-NTAPI NTSYSAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
-				    IN LARGE_INTEGER DueTime,
-				    IN LONG Period,
-				    IN OPTIONAL PKDPC Dpc);
-
-NTAPI NTSYSAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer);
-
-/*
- * System time and interrupt time routines
- */
-NTAPI NTSYSAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
-NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
-NTAPI NTSYSAPI VOID KeQueryTickCount(OUT PLARGE_INTEGER CurrentCount);
-NTAPI NTSYSAPI ULONG KeQueryTimeIncrement(VOID);
-
-/*
- * Stalls the current processor for the given microseconds. This is the preferred
- * routine to call if you want to stall the processor for a small amount of time
- * without involving the scheduler, for instance, in an interrupt service routine.
- */
-NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
 
 /*
  * Set the IO cancel routine of the given IRP, returning the previous one.
@@ -1285,6 +1266,10 @@ NTAPI NTSYSAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 						       IN PVOID StartVa,
 						       IN ULONG BoundAddrBits);
 
+NTAPI NTSYSAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
+				      IN PVOID VirtualAddress,
+				      IN ULONG Length);
+
 NTAPI NTSYSAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 						  IN PDEVICE_OBJECT DeviceObject,
 						  IN PVOID InputBuffer,
@@ -1341,6 +1326,21 @@ FORCEINLINE NTAPI VOID PoStartNextPowerIrp(IN OUT PIRP Irp)
 }
 
 /*
+ * Power management support routines
+ */
+
+NTAPI NTSYSAPI BOOLEAN PoQueryWatchdogTime(IN PDEVICE_OBJECT Pdo,
+					   OUT PULONG SecondsRemaining);
+
+NTAPI NTSYSAPI NTSTATUS PoRegisterPowerSettingCallback(IN OPTIONAL PDEVICE_OBJECT DeviceObject,
+						       IN LPCGUID SettingGuid,
+						       IN PPOWER_SETTING_CALLBACK Callback,
+						       IN OPTIONAL PVOID Context,
+						       OUT OPTIONAL PVOID *Handle);
+
+NTAPI NTSYSAPI NTSTATUS PoUnregisterPowerSettingCallback(IN OUT PVOID Handle);
+
+/*
  * IO Work item. This is an opaque object.
  */
 typedef struct _IO_WORKITEM *PIO_WORKITEM;
@@ -1381,6 +1381,70 @@ NTAPI NTSYSAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
 				    IN PIO_WORKITEM_ROUTINE WorkerRoutine,
 				    IN WORK_QUEUE_TYPE QueueType,
 				    IN OPTIONAL PVOID Context);
+
+NTAPI NTSYSAPI VOID IoQueueWorkItemEx(IN OUT PIO_WORKITEM IoWorkItem,
+				      IN PIO_WORKITEM_ROUTINE_EX WorkerRoutine,
+				      IN WORK_QUEUE_TYPE QueueType,
+				      IN OPTIONAL PVOID Context);
+
+
+/*
+ * TIMER object. Note: just like KDPC despite being called 'KTIMER'
+ * this is the client-side handle to the server side KTIMER object.
+ * There is no name collision because the NTOS server does not
+ * include files under public/ddk.
+ */
+typedef struct _KTIMER {
+    WAITABLE_OBJECT_HEADER Header;	/* Must be first member. */
+    union {
+	PKDPC Dpc;
+	PIO_WORKITEM WorkItem;
+    };
+    PIO_WORKITEM_ROUTINE WorkerRoutine;
+    PVOID WorkerContext;
+    ULONGLONG AbsoluteDueTime;
+    LONG Period;
+    BOOLEAN State;
+    BOOLEAN LowPriority;    /* If TRUE, the union is a PIO_WORKITEM */
+} KTIMER, *PKTIMER;
+
+/*
+ * Timer routines
+ */
+NTAPI NTSYSAPI VOID KeInitializeTimer(OUT PKTIMER Timer);
+
+NTAPI NTSYSAPI BOOLEAN KeSetTimer(IN OUT PKTIMER Timer,
+				  IN LARGE_INTEGER DueTime,
+				  IN OPTIONAL PKDPC Dpc);
+
+NTAPI NTSYSAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
+				    IN LARGE_INTEGER DueTime,
+				    IN LONG Period,
+				    IN OPTIONAL PKDPC Dpc);
+
+NTAPI BOOLEAN KeSetLowPriorityTimer(IN OUT PKTIMER Timer,
+				    IN LARGE_INTEGER DueTime,
+				    IN LONG Period,
+				    IN PIO_WORKITEM WorkItem,
+				    IN PIO_WORKITEM_ROUTINE WorkerRoutine,
+				    IN OPTIONAL PVOID WorkerContext);
+
+NTAPI NTSYSAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer);
+
+/*
+ * System time and interrupt time routines
+ */
+NTAPI NTSYSAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
+NTAPI NTSYSAPI ULONGLONG KeQueryInterruptTime(VOID);
+NTAPI NTSYSAPI VOID KeQueryTickCount(OUT PLARGE_INTEGER CurrentCount);
+NTAPI NTSYSAPI ULONG KeQueryTimeIncrement(VOID);
+
+/*
+ * Stalls the current processor for the given microseconds. This is the preferred
+ * routine to call if you want to stall the processor for a small amount of time
+ * without involving the scheduler, for instance, in an interrupt service routine.
+ */
+NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
 
 /*
  * Interrupt Object. We keep the name KINTERRUPT to remain compatible
@@ -1464,6 +1528,9 @@ typedef struct _DEVICE_RELATIONS {
     PDEVICE_OBJECT Objects[];
 } DEVICE_RELATIONS, *PDEVICE_RELATIONS;
 
+NTAPI NTSYSAPI VOID IoInvalidateDeviceRelations(IN PDEVICE_OBJECT DeviceObject,
+						IN DEVICE_RELATION_TYPE Type);
+
 /*
  * Controller or peripheral type.
  */
@@ -1511,6 +1578,23 @@ typedef enum _CONFIGURATION_TYPE {
     RealModePCIEnumeration,
     MaximumType
 } CONFIGURATION_TYPE, *PCONFIGURATION_TYPE;
+
+typedef enum _BUS_DATA_TYPE {
+    ConfigurationSpaceUndefined = -1,
+    Cmos,
+    EisaConfiguration,
+    Pos,
+    CbusConfiguration,
+    PCIConfiguration,
+    VMEConfiguration,
+    NuBusConfiguration,
+    PCMCIAConfiguration,
+    MPIConfiguration,
+    MPSAConfiguration,
+    PNPISAConfiguration,
+    SgiInternalConfiguration,
+    MaximumBusDataType
+} BUS_DATA_TYPE, *PBUS_DATA_TYPE;
 
 /*
  * Call-back routine for IoQueryDeviceDescription
@@ -1565,6 +1649,21 @@ typedef struct _CONFIGURATION_INFORMATION {
     ULONG MediumChangerCount;
 } CONFIGURATION_INFORMATION, *PCONFIGURATION_INFORMATION;
 
+NTSYSAPI PCONFIGURATION_INFORMATION IoGetConfigurationInformation();
+
+typedef struct _DISK_SIGNATURE {
+    ULONG PartitionStyle;
+    union {
+	struct {
+	    ULONG Signature;
+	    ULONG CheckSum;
+	} Mbr;
+	struct {
+	    GUID DiskId;
+	} Gpt;
+    };
+} DISK_SIGNATURE, *PDISK_SIGNATURE;
+
 /*
  * Porting guide: remove the WaitMode parameter as all wait happens
  * in user mode.
@@ -1609,7 +1708,8 @@ FORCEINLINE NTAPI VOID ExInitializeLookasideList(OUT PLOOKASIDE_LIST List,
 						 IN OPTIONAL PALLOCATE_FUNCTION Allocate,
 						 IN OPTIONAL PFREE_FUNCTION Free,
 						 IN SIZE_T Size,
-						 IN ULONG Tag) {
+						 IN ULONG Tag)
+{
     List->Tag = Tag;
     List->Size = Size;
     List->MaximumDepth = 256;
@@ -1658,6 +1758,18 @@ FORCEINLINE NTAPI VOID ExFreeToLookasideList(IN OUT PLOOKASIDE_LIST Lookaside,
     }
 }
 
+FORCEINLINE NTAPI VOID ExDeleteLookasideList(IN PLOOKASIDE_LIST Lookaside)
+{
+    /* Pop all entries off the stack and release their resources */
+    while (TRUE) {
+	PVOID Entry = RtlInterlockedPopEntrySList(&Lookaside->ListHead);
+        if (!Entry) {
+	    break;
+	}
+        (*Lookaside->Free)(Entry);
+    }
+}
+
 FORCEINLINE VOID IoSetCompletionRoutine(IN PIRP Irp,
 					IN OPTIONAL PIO_COMPLETION_ROUTINE CompletionRoutine,
 					IN OPTIONAL PVOID Context,
@@ -1683,6 +1795,22 @@ FORCEINLINE VOID IoSetCompletionRoutine(IN PIRP Irp,
     }
     if (InvokeOnCancel) {
 	IoStack->Control |= SL_INVOKE_ON_CANCEL;
+    }
+}
+
+FORCEINLINE VOID IoSetMasterIrpStatus(IN OUT PIRP MasterIrp,
+				      IN NTSTATUS Status)
+{
+    NTSTATUS MasterStatus = MasterIrp->IoStatus.Status;
+
+    if (Status == STATUS_FT_READ_FROM_COPY) {
+        return;
+    }
+
+    if ((Status == STATUS_VERIFY_REQUIRED) ||
+        (MasterStatus == STATUS_SUCCESS && !NT_SUCCESS(Status)) ||
+        (!NT_SUCCESS(MasterStatus) && !NT_SUCCESS(Status) && Status > MasterStatus)) {
+        MasterIrp->IoStatus.Status = Status;
     }
 }
 
@@ -1720,11 +1848,197 @@ NTAPI NTSYSAPI NTSTATUS PoRequestPowerIrp(IN PDEVICE_OBJECT DeviceObject,
 
 typedef ULONGLONG REGHANDLE, *PREGHANDLE;
 
+#define MAX_EVENT_DATA_DESCRIPTORS           (128)
+#define MAX_EVENT_FILTER_DATA_SIZE           (1024)
+
+#define EVENT_FILTER_TYPE_SCHEMATIZED        (0x80000000)
+
+typedef struct _EVENT_DATA_DESCRIPTOR {
+    ULONGLONG Ptr;
+    ULONG Size;
+    ULONG Reserved;
+} EVENT_DATA_DESCRIPTOR, *PEVENT_DATA_DESCRIPTOR;
+
+typedef struct _EVENT_DESCRIPTOR {
+    USHORT Id;
+    UCHAR Version;
+    UCHAR Channel;
+    UCHAR Level;
+    UCHAR Opcode;
+    USHORT Task;
+    ULONGLONG Keyword;
+} EVENT_DESCRIPTOR, *PEVENT_DESCRIPTOR;
+typedef const EVENT_DESCRIPTOR *PCEVENT_DESCRIPTOR;
+
+typedef struct _EVENT_FILTER_DESCRIPTOR {
+    ULONGLONG Ptr;
+    ULONG Size;
+    ULONG Type;
+} EVENT_FILTER_DESCRIPTOR, *PEVENT_FILTER_DESCRIPTOR;
+
+typedef struct _EVENT_FILTER_HEADER {
+    USHORT Id;
+    UCHAR Version;
+    UCHAR Reserved[5];
+    ULONGLONG InstanceId;
+    ULONG Size;
+    ULONG NextOffset;
+} EVENT_FILTER_HEADER, *PEVENT_FILTER_HEADER;
+
 typedef VOID (NTAPI *WMI_NOTIFICATION_CALLBACK)(PVOID Wnode,
 						PVOID Context);
 
+typedef VOID (NTAPI *PETWENABLECALLBACK)(IN LPCGUID SourceId,
+					 IN ULONG ControlCode,
+					 IN UCHAR Level,
+					 IN ULONGLONG MatchAnyKeyword,
+					 IN ULONGLONG MatchAllKeyword,
+					 IN OPTIONAL PEVENT_FILTER_DESCRIPTOR FilterData,
+					 IN OUT OPTIONAL PVOID CallbackContext);
+
 NTAPI NTSYSAPI NTSTATUS IoWMIRegistrationControl(IN PDEVICE_OBJECT DeviceObject,
 						 IN ULONG Action);
+
+NTAPI NTSYSAPI ULONG IoWMIDeviceObjectToProviderId(IN PDEVICE_OBJECT DeviceObject);
+
+NTAPI NTSYSAPI NTSTATUS IoWMIWriteEvent(IN OUT PVOID WnodeEventItem);
+
+NTAPI NTSYSAPI NTSTATUS EtwRegister(IN LPCGUID ProviderId,
+				    IN OPTIONAL PETWENABLECALLBACK EnableCallback,
+				    IN OPTIONAL PVOID CallbackContext,
+				    OUT PREGHANDLE RegHandle);
+
+NTAPI NTSYSAPI NTSTATUS EtwUnregister(IN REGHANDLE RegHandle);
+
+NTAPI NTSYSAPI NTSTATUS EtwWrite(IN REGHANDLE RegHandle,
+				 IN PCEVENT_DESCRIPTOR EventDescriptor,
+				 IN OPTIONAL LPCGUID ActivityId,
+				 IN ULONG UserDataCount,
+				 IN PEVENT_DATA_DESCRIPTOR UserData);
+
+FORCEINLINE VOID EventDataDescCreate(OUT PEVENT_DATA_DESCRIPTOR EventDataDescriptor,
+				     IN const VOID* DataPtr,
+				     IN ULONG DataSize)
+{
+    EventDataDescriptor->Ptr = (ULONGLONG)(ULONG_PTR)DataPtr;
+    EventDataDescriptor->Size = DataSize;
+    EventDataDescriptor->Reserved = 0;
+}
+
+FORCEINLINE VOID EventDescCreate(OUT PEVENT_DESCRIPTOR EventDescriptor,
+				 IN USHORT Id,
+				 IN UCHAR Version,
+				 IN UCHAR Channel,
+				 IN UCHAR Level,
+				 IN USHORT Task,
+				 IN UCHAR Opcode,
+				 IN ULONGLONG Keyword)
+{
+    EventDescriptor->Id = Id;
+    EventDescriptor->Version = Version;
+    EventDescriptor->Channel = Channel;
+    EventDescriptor->Level = Level;
+    EventDescriptor->Task = Task;
+    EventDescriptor->Opcode = Opcode;
+    EventDescriptor->Keyword = Keyword;
+}
+
+FORCEINLINE VOID EventDescZero(OUT PEVENT_DESCRIPTOR EventDescriptor)
+{
+    memset(EventDescriptor, 0, sizeof(EVENT_DESCRIPTOR));
+}
+
+FORCEINLINE USHORT EventDescGetId(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Id;
+}
+
+FORCEINLINE UCHAR EventDescGetVersion(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Version;
+}
+
+FORCEINLINE USHORT EventDescGetTask(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Task;
+}
+
+FORCEINLINE UCHAR EventDescGetOpcode(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Opcode;
+}
+
+FORCEINLINE UCHAR EventDescGetChannel(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Channel;
+}
+
+FORCEINLINE UCHAR EventDescGetLevel(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Level;
+}
+
+FORCEINLINE ULONGLONG EventDescGetKeyword(IN PCEVENT_DESCRIPTOR EventDescriptor)
+{
+    return EventDescriptor->Keyword;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetId(IN PEVENT_DESCRIPTOR EventDescriptor,
+					     IN USHORT Id)
+{
+    EventDescriptor->Id = Id;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetVersion(IN PEVENT_DESCRIPTOR EventDescriptor,
+						  IN UCHAR Version)
+{
+    EventDescriptor->Version = Version;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetTask(IN PEVENT_DESCRIPTOR EventDescriptor,
+					       IN USHORT Task)
+{
+    EventDescriptor->Task = Task;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetOpcode(IN PEVENT_DESCRIPTOR EventDescriptor,
+						 IN UCHAR Opcode)
+{
+    EventDescriptor->Opcode = Opcode;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetLevel(IN PEVENT_DESCRIPTOR EventDescriptor,
+						IN UCHAR  Level)
+{
+    EventDescriptor->Level = Level;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetChannel(IN PEVENT_DESCRIPTOR EventDescriptor,
+						  IN UCHAR Channel)
+{
+    EventDescriptor->Channel = Channel;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescSetKeyword(IN PEVENT_DESCRIPTOR EventDescriptor,
+						  IN ULONGLONG Keyword)
+{
+    EventDescriptor->Keyword = Keyword;
+    return EventDescriptor;
+}
+
+FORCEINLINE PEVENT_DESCRIPTOR EventDescOrKeyword(IN PEVENT_DESCRIPTOR EventDescriptor,
+						 IN ULONGLONG Keyword)
+{
+    EventDescriptor->Keyword |= Keyword;
+    return EventDescriptor;
+}
+
 
 /*
  * PnP notification data types and routines
@@ -1770,3 +2084,40 @@ typedef struct _TARGET_DEVICE_REMOVAL_NOTIFICATION {
     GUID Event;
     PFILE_OBJECT FileObject;
 } TARGET_DEVICE_REMOVAL_NOTIFICATION, *PTARGET_DEVICE_REMOVAL_NOTIFICATION;
+
+typedef VOID (NTAPI DEVICE_CHANGE_COMPLETE_CALLBACK)(IN OUT OPTIONAL PVOID Context);
+typedef DEVICE_CHANGE_COMPLETE_CALLBACK *PDEVICE_CHANGE_COMPLETE_CALLBACK;
+
+NTAPI NTSYSAPI NTSTATUS
+IoReportTargetDeviceChangeAsynchronous(IN PDEVICE_OBJECT Pdo,
+				       IN PVOID Notification,
+				       IN OPTIONAL PDEVICE_CHANGE_COMPLETE_CALLBACK Callback,
+				       IN OPTIONAL PVOID Context);
+
+#define IoAdjustPagingPathCount(_Count, _Increment)	\
+    {							\
+	if (_Increment) {				\
+	    InterlockedIncrement(_Count);		\
+	} else {					\
+	    InterlockedDecrement(_Count);		\
+	}						\
+    }
+
+NTAPI NTSYSAPI PVOID IoAllocateErrorLogEntry(IN PVOID IoObject,
+					     IN UCHAR EntrySize);
+NTAPI NTSYSAPI VOID IoWriteErrorLogEntry(IN PVOID ElEntry);
+
+FORCEINLINE USHORT KeQueryHighestNodeNumber()
+{
+    return 0;
+}
+
+FORCEINLINE USHORT KeGetCurrentNodeNumber()
+{
+    return 0;
+}
+
+FORCEINLINE IO_PRIORITY_HINT IoGetIoPriorityHint(IN PIRP Irp)
+{
+    return IoPriorityNormal;
+}

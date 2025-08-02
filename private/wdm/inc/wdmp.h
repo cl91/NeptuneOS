@@ -14,6 +14,8 @@
 #define TAG_DRIVER_EXTENSION	'EVRD'
 #define TAG_REINIT		'iRoI'
 #define TAG_SYS_BUF		'BSYS'
+#define TAG_FSTUB               'BtsF'
+#define TAG_FILE_SYSTEM         'SYSF'
 
 #define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 

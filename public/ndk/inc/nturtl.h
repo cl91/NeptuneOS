@@ -372,6 +372,7 @@ typedef struct _TEB {                                        /* win32/win64 */
 	    BOOLEAN         EventSignaled;		       /* 16e/32a */
 	    BOOLEAN         IsDpcThread;		       /* 16f/32b */
 	    BOOLEAN         IsIsrThread;		       /* 170/32c */
+	    BOOLEAN         IsMainThread;		       /* 171/32d */
 	} Wdm;
 	struct {
             CLIENT_ID       RealClientId;                      /* 160/310 */

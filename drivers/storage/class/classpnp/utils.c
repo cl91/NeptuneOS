@@ -23,6 +23,7 @@ Revision History:
 
 #include "classp.h"
 #include "debug.h"
+#include <hal.h>
 #include <ntiologc.h>
 
 //
@@ -359,10 +360,7 @@ NTAPI VOID ClassScanForSpecial(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 VOID ClasspPerfIncrementErrorCount(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
-    KIRQL oldIrql;
     ULONG errors;
-
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 
     fdoData->Perf.SuccessfulIO = 0; // implicit interlock
     errors = InterlockedIncrement((volatile LONG *)&FdoExtension->ErrorCount);
@@ -401,14 +399,12 @@ VOID ClasspPerfIncrementErrorCount(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 	}
     }
 
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
     return;
 }
 
 VOID ClasspPerfIncrementSuccessfulIo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
-    KIRQL oldIrql;
     ULONG errors;
     ULONG succeeded = 0;
 
@@ -429,14 +425,6 @@ VOID ClasspPerfIncrementSuccessfulIo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     if (succeeded < fdoData->Perf.ReEnableThreshhold) {
 	return;
     }
-
-    //
-    // if we hit the threshold, grab the spinlock and verify we've
-    // actually done so.  this allows us to ignore the spinlock 99%
-    // of the time.
-    //
-
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
 
     //
     // re-read the value, so we don't run this multiple times
@@ -489,54 +477,6 @@ VOID ClasspPerfIncrementSuccessfulIo(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 	}
     } // end of threshhold definitely being hit for first time
 
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
-    return;
-}
-
-PMDL ClasspBuildDeviceMdl(PVOID Buffer, ULONG BufferLen, BOOLEAN WriteToDevice)
-{
-    PMDL mdl;
-
-    mdl = IoAllocateMdl(Buffer, BufferLen, FALSE, FALSE, NULL);
-    if (mdl) {
-	_SEH2_TRY
-	{
-	    MmProbeAndLockPages(mdl, KernelMode,
-				WriteToDevice ? IoReadAccess : IoWriteAccess);
-	}
-	_SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-	{
-	    NTSTATUS status = _SEH2_GetExceptionCode();
-
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
-			"ClasspBuildDeviceMdl: MmProbeAndLockPages failed with %xh.",
-			status));
-	    IoFreeMdl(mdl);
-	    mdl = NULL;
-	}
-	_SEH2_END;
-    } else {
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
-		    "ClasspBuildDeviceMdl: IoAllocateMdl failed"));
-    }
-
-    return mdl;
-}
-
-PMDL BuildDeviceInputMdl(PVOID Buffer, ULONG BufferLen)
-{
-    return ClasspBuildDeviceMdl(Buffer, BufferLen, FALSE);
-}
-
-VOID ClasspFreeDeviceMdl(PMDL Mdl)
-{
-    MmUnlockPages(Mdl);
-    IoFreeMdl(Mdl);
-}
-
-VOID FreeDeviceInputMdl(PMDL Mdl)
-{
-    ClasspFreeDeviceMdl(Mdl);
     return;
 }
 
@@ -544,9 +484,7 @@ VOID FreeDeviceInputMdl(PMDL Mdl)
 VOID ClasspPerfResetCounters(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
     PCLASS_PRIVATE_FDO_DATA fdoData = FdoExtension->PrivateFdoData;
-    KIRQL oldIrql;
 
-    KeAcquireSpinLock(&fdoData->SpinLock, &oldIrql);
     TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL, "ClasspPerfResetCounters: "
 		"Resetting all perf counters.\n"));
     fdoData->Perf.SuccessfulIO = 0;
@@ -572,7 +510,6 @@ VOID ClasspPerfResetCounters(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 	SET_FLAG(FdoExtension->SrbFlags,
 		 SRB_FLAGS_NO_QUEUE_FREEZE);
     }
-    KeReleaseSpinLock(&fdoData->SpinLock, oldIrql);
     return;
 }
 #endif
@@ -810,8 +747,7 @@ NTSTATUS ClasspDuidGetDriveLayout(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     //
 
     offset = descHeader->Size;
-    driveLayoutSignature = (PSTORAGE_DEVICE_LAYOUT_SIGNATURE)((PUCHAR)descHeader +
-							      offset);
+    driveLayoutSignature = (PSTORAGE_DEVICE_LAYOUT_SIGNATURE)((PUCHAR)descHeader + offset);
 
     descHeader->Size += sizeof(STORAGE_DEVICE_LAYOUT_SIGNATURE);
 
@@ -888,18 +824,7 @@ NTSTATUS ClasspDuidQueryProperty(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     BOOLEAN includeOptionalIds;
     BOOLEAN overflow = FALSE;
     BOOLEAN infoFound = FALSE;
-    BOOLEAN useStatus =
-	TRUE; // Use the status directly instead of relying on overflow and infoFound flags.
-
-    //
-    // Must run at less then dispatch.
-    //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto FnExit;
-    }
+    BOOLEAN useStatus = TRUE; // Use the status directly instead of relying on overflow and infoFound flags.
 
     //
     // Check proper query type.
@@ -1082,16 +1007,6 @@ NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
     PCDB cdb;
 
     //
-    // Must run at less then dispatch.
-    //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto WriteCacheExit;
-    }
-
-    //
     // Check proper query type.
     //
 
@@ -1172,8 +1087,7 @@ NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
 	status = STATUS_SUCCESS;
     }
 
-    modeData = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned, MODE_PAGE_DATA_SIZE,
-				     CLASS_TAG_MODE_DATA);
+    modeData = ExAllocatePoolWithTag(MODE_PAGE_DATA_SIZE, CLASS_TAG_MODE_DATA);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL,
@@ -1465,12 +1379,10 @@ NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-							      allocationBufferLength,
+    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(allocationBufferLength,
 							      '4CcS');
 #else
-    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(NonPagedPoolNx,
-							      bufferLength, '4CcS');
+    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(bufferLength, '4CcS');
 #endif
 
     if (dataBuffer == NULL) {
@@ -1579,7 +1491,7 @@ NTSTATUS ClasspAccessAlignmentProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP I
     }
 
     if ((DeviceObject->DeviceType != FILE_DEVICE_DISK) ||
-	(TEST_FLAG(DeviceObject->Characteristics, FILE_FLOPPY_DISKETTE)) ||
+	(TEST_FLAG(DeviceObject->Flags, FILE_FLOPPY_DISKETTE)) ||
 	(fdoExtension->FunctionSupportInfo->LowerLayerSupport.AccessAlignmentProperty ==
 	 Supported)) {
 	// if it's not disk, forward the request to lower layer,
@@ -1607,12 +1519,6 @@ NTSTATUS ClasspAccessAlignmentProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP I
     // Request validation.
     // Note that InputBufferLength and IsFdo have been validated before entering this routine.
     //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto Exit;
-    }
 
     // do not touch this buffer because it can still be used as input buffer for lower layer in 'SupportUnknown' case.
     accessAlignment = (PSTORAGE_ACCESS_ALIGNMENT_DESCRIPTOR)Irp->SystemBuffer;
@@ -1834,18 +1740,6 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
     // InputBufferLength and IsFdo have already been validated.
     //
 
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClasspDeviceMediaTypeProperty (%p): Query property for media type "
-		    "at incorrect IRQL.\n",
-		    DeviceObject));
-
-	status = STATUS_INVALID_LEVEL;
-	goto __ClasspDeviceMediaTypeProperty_Exit;
-    }
-
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
     if (length >= sizeof(STORAGE_DESCRIPTOR_HEADER)) {
@@ -1952,11 +1846,11 @@ NTSTATUS ClasspDeviceGetBlockDeviceCharacteristicsVPDPage(IN PFUNCTIONAL_DEVICE_
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
     dataBuffer = (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)
-	ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned, allocationBufferLength, '5CcS');
+	ExAllocatePoolWithTag(allocationBufferLength, '5CcS');
 #else
 
     dataBuffer = (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)
-	ExAllocatePoolWithTag(NonPagedPoolNx, bufferLength, '5CcS');
+	ExAllocatePoolWithTag(bufferLength, '5CcS');
 #endif
     if (dataBuffer == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -2033,7 +1927,7 @@ NTSTATUS ClasspDeviceSeekPenaltyProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP
     PDEVICE_SEEK_PENALTY_DESCRIPTOR seekPenalty;
 
     if ((DeviceObject->DeviceType != FILE_DEVICE_DISK) ||
-	(TEST_FLAG(DeviceObject->Characteristics, FILE_FLOPPY_DISKETTE)) ||
+	(TEST_FLAG(DeviceObject->Flags, FILE_FLOPPY_DISKETTE)) ||
 	(fdoExtension->FunctionSupportInfo->LowerLayerSupport.SeekPenaltyProperty ==
 	 Supported)) {
 	// if it's not disk, forward the request to lower layer,
@@ -2061,12 +1955,6 @@ NTSTATUS ClasspDeviceSeekPenaltyProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP
     // Request validation.
     // Note that InputBufferLength and IsFdo have been validated beforing entering this routine.
     //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto Exit;
-    }
 
     // do not touch this buffer because it can still be used as input buffer for lower layer in 'SupportUnknown' case.
     seekPenalty = (PDEVICE_SEEK_PENALTY_DESCRIPTOR)Irp->SystemBuffer;
@@ -2244,10 +2132,9 @@ NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
 	//
 	allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					     KeGetRecommendedSharedDataAlignment());
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-					   allocationBufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(allocationBufferLength, '0CcS');
 #else
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, bufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(bufferLength, '0CcS');
 #endif
 	if (dataBuffer == NULL) {
 	    // return without updating FdoExtension->FunctionSupportInfo->LBProvisioningData.CommandStatus
@@ -2419,10 +2306,9 @@ NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoEx
 	//
 	allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					     KeGetRecommendedSharedDataAlignment());
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-					   allocationBufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(allocationBufferLength, '0CcS');
 #else
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, bufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(bufferLength, '0CcS');
 #endif
 	if (dataBuffer == NULL) {
 	    // return without updating FdoExtension->FunctionSupportInfo->BlockLimitsData.CommandStatus
@@ -2597,7 +2483,7 @@ NTSTATUS ClasspDeviceTrimProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
     UNREFERENCED_PARAMETER(Srb);
 
     if ((DeviceObject->DeviceType != FILE_DEVICE_DISK) ||
-	(TEST_FLAG(DeviceObject->Characteristics, FILE_FLOPPY_DISKETTE)) ||
+	(TEST_FLAG(DeviceObject->Flags, FILE_FLOPPY_DISKETTE)) ||
 	(fdoExtension->FunctionSupportInfo->LowerLayerSupport.TrimProperty ==
 	 Supported)) {
 	// if it's not disk, forward the request to lower layer,
@@ -2625,12 +2511,6 @@ NTSTATUS ClasspDeviceTrimProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
     // Request validation.
     // Note that InputBufferLength and IsFdo have been validated beforing entering this routine.
     //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto Exit;
-    }
 
     // do not touch this buffer because it can still be used as input buffer for lower layer in 'SupportUnknown' case.
     trimDescr = (PDEVICE_TRIM_DESCRIPTOR)Irp->SystemBuffer;
@@ -2773,12 +2653,6 @@ NTSTATUS ClasspDeviceLBProvisioningProperty(IN PDEVICE_OBJECT DeviceObject,
     // Note that InputBufferLength and IsFdo have been validated beforing entering this routine.
     //
 
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto Exit;
-    }
-
     lbpDescr = (PDEVICE_LB_PROVISIONING_DESCRIPTOR)Irp->SystemBuffer;
 
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
@@ -2862,18 +2736,6 @@ NTSTATUS ClasspDeviceLBProvisioningProperty(IN PDEVICE_OBJECT DeviceObject,
 	lbpDescr->UnmapGranularityAlignment =
 	    (ULONGLONG)blockLimitsData.UnmapGranularityAlignment *
 	    fdoExtension->DiskGeometry.BytesPerSector;
-
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-	//
-	// If the output buffer is large enough (i.e. not a V1 structure) copy
-	// over the max UNMAP LBA count and max UNMAP block descriptor count.
-	//
-	if (length >= sizeof(DEVICE_LB_PROVISIONING_DESCRIPTOR)) {
-	    lbpDescr->MaxUnmapLbaCount = blockLimitsData.MaxUnmapLbaCount;
-	    lbpDescr->MaxUnmapBlockDescriptorCount =
-		blockLimitsData.MaxUnmapBlockDescrCount;
-	}
-#endif
     }
 
 Exit:
@@ -3043,7 +2905,6 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     ULONG i;
 
     BOOLEAN allDataSetRangeFullyConverted;
-    BOOLEAN needToSendCommand;
     BOOLEAN tempDataSetRangeFullyConverted;
 
     ULONG dataSetRangeIndex;
@@ -3160,11 +3021,10 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     // based platforms. We are taking the conservative approach here.
     //
     bufferLength = ALIGN_UP_BY(bufferLength, KeGetRecommendedSharedDataAlignment());
-    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned,
-						       bufferLength,
+    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(bufferLength,
 						       CLASS_TAG_LB_PROVISIONING);
 #else
-    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(NonPagedPoolNx, bufferLength,
+    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(bufferLength,
 						       CLASS_TAG_LB_PROVISIONING);
 #endif
 
@@ -3178,7 +3038,6 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     blockDescrPointer = &buffer->Descriptors[0];
 
     allDataSetRangeFullyConverted = FALSE;
-    needToSendCommand = FALSE;
     tempDataSetRangeFullyConverted = TRUE;
     dataSetRangeIndex = 0;
     RtlZeroMemory(&tempDataSetRange, sizeof(tempDataSetRange));
@@ -3347,7 +3206,7 @@ NTSTATUS ClasspDeviceTrimProcess(IN PDEVICE_OBJECT DeviceObject,
     ULONG generationCount;
 
     if ((DeviceObject->DeviceType != FILE_DEVICE_DISK) ||
-	(TEST_FLAG(DeviceObject->Characteristics, FILE_FLOPPY_DISKETTE)) ||
+	(TEST_FLAG(DeviceObject->Flags, FILE_FLOPPY_DISKETTE)) ||
 	(fdoExtension->FunctionSupportInfo->LowerLayerSupport.TrimProcess == Supported)) {
 	// if it's not disk, forward the request to lower layer,
 	// if the IOCTL is supported by lower stack, forward it down.
@@ -3367,12 +3226,6 @@ NTSTATUS ClasspDeviceTrimProcess(IN PDEVICE_OBJECT DeviceObject,
     // Request validation.
     // Note that InputBufferLength and IsFdo have been validated beforing entering this routine.
     //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto Exit;
-    }
 
     //
     // If the caller has not set the "entire dataset range" flag then at least
@@ -3790,25 +3643,6 @@ NTSTATUS ClasspDeviceGetLBAStatus(IN PDEVICE_OBJECT DeviceObject,
     // structure.  Othwerwise, default to V1.
     //
     outputVersion = DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V1;
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-    if ((dsmAttributes->ParameterBlockOffset >=
-	 sizeof(DEVICE_MANAGE_DATA_SET_ATTRIBUTES)) &&
-	(dsmAttributes->ParameterBlockLength >=
-	 sizeof(DEVICE_DATA_SET_LBP_STATE_PARAMETERS))) {
-	PDEVICE_DATA_SET_LBP_STATE_PARAMETERS parameters =
-	    Add2Ptr(dsmAttributes, dsmAttributes->ParameterBlockOffset);
-	if ((parameters->Version == DEVICE_DATA_SET_LBP_STATE_PARAMETERS_VERSION_V1) &&
-	    (parameters->Size >= sizeof(DEVICE_DATA_SET_LBP_STATE_PARAMETERS))) {
-	    outputVersion = parameters->OutputVersion;
-
-	    if ((outputVersion != DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V1) &&
-		(outputVersion != DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V2)) {
-		finalStatus = STATUS_INVALID_PARAMETER;
-		goto Exit;
-	    }
-	}
-    }
-#endif
 
     //
     // Take a snapshot of the block limits data for the worker function to use.
@@ -3958,9 +3792,8 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 						    DeviceObject->DeviceExtension;
 
     PDEVICE_DATA_SET_LB_PROVISIONING_STATE lbpState;
-    ULONG bitMapGranularityInBits = FIELD_SIZE(DEVICE_DATA_SET_LB_PROVISIONING_STATE,
-					       SlabAllocationBitMap[0]) *
-				    8;
+    ULONG bitMapGranularityInBits = RTL_FIELD_SIZE(DEVICE_DATA_SET_LB_PROVISIONING_STATE,
+						   SlabAllocationBitMap[0]) * 8;
     ULONG requiredOutputLength;
     ULONG outputLength = *DsmOutputLength;
 
@@ -3987,15 +3820,6 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     // This flag tells the caller if it should retry with a newer block limits data
     //
     *BlockLimitsDataMayHaveChanged = FALSE;
-
-    //
-    // Make sure we're running at PASSIVE_LEVEL
-    //
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-	status = STATUS_INVALID_LEVEL;
-	goto Exit;
-    }
 
     //
     // Don't send down a Get LBA Status command if UNMAP isn't supported.
@@ -4118,27 +3942,15 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     //  3. The size of a ULONG array large enough to hold a bit for each slab requested.
     //     (The first element is already allocated in DEVICE_DATA_SET_LB_PROVISIONING_STATE(_V2).)
     //
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-    if (OutputVersion == DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V2) {
-	requiredOutputLength =
-	    (ULONG)(sizeof(DEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT) +
-		    sizeof(DEVICE_DATA_SET_LB_PROVISIONING_STATE_V2) +
-		    (((requestedSlabs - 1) / bitMapGranularityInBits)) *
-			FIELD_SIZE(DEVICE_DATA_SET_LB_PROVISIONING_STATE_V2,
-				   SlabAllocationBitMap[0]));
-
-    } else
-#else
     UNREFERENCED_PARAMETER(OutputVersion);
-#endif
     {
 
 	requiredOutputLength =
 	    (ULONG)(sizeof(DEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT) +
 		    sizeof(DEVICE_DATA_SET_LB_PROVISIONING_STATE) +
 		    (((requestedSlabs - 1) / bitMapGranularityInBits)) *
-			FIELD_SIZE(DEVICE_DATA_SET_LB_PROVISIONING_STATE,
-				   SlabAllocationBitMap[0]));
+			RTL_FIELD_SIZE(DEVICE_DATA_SET_LB_PROVISIONING_STATE,
+				       SlabAllocationBitMap[0]));
     }
 
     //
@@ -4191,11 +4003,11 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     // based platforms. We are taking the conservative approach here.
     //
     lbaStatusSize = ALIGN_UP_BY(lbaStatusSize, KeGetRecommendedSharedDataAlignment());
-    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)ExAllocatePoolWithTag(
-	NonPagedPoolNxCacheAligned, lbaStatusSize, CLASS_TAG_LB_PROVISIONING);
+    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)ExAllocatePoolWithTag(lbaStatusSize,
+									 CLASS_TAG_LB_PROVISIONING);
 #else
     lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)
-	ExAllocatePoolWithTag(NonPagedPoolNx, lbaStatusSize, CLASS_TAG_LB_PROVISIONING);
+	ExAllocatePoolWithTag(lbaStatusSize, CLASS_TAG_LB_PROVISIONING);
 #endif
 
     if (lbaStatusListHeader == NULL) {
@@ -4362,19 +4174,8 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 						    bitMapGranularityInBits;
 				ULONG bitPos = totalProcessedSlabs %
 					       bitMapGranularityInBits;
-
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-				if (OutputVersion ==
-				    DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V2) {
-				    ((PDEVICE_DATA_SET_LB_PROVISIONING_STATE_V2)lbpState)
-					->SlabAllocationBitMap[bitMapIndex] |=
-					(mapped << bitPos);
-				} else
-#endif
-				{
-				    lbpState->SlabAllocationBitMap[bitMapIndex] |=
-					(mapped << bitPos);
-				}
+				lbpState->SlabAllocationBitMap[bitMapIndex] |=
+				    (mapped << bitPos);
 			    }
 			}
 
@@ -4436,48 +4237,22 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     // Update the output buffer sizes, offsets, etc. accordingly.
     //
     if (totalProcessedSlabs > 0) {
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-	if (OutputVersion == DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V2) {
-	    PDEVICE_DATA_SET_LB_PROVISIONING_STATE_V2 lbpStateV2 =
-		(PDEVICE_DATA_SET_LB_PROVISIONING_STATE_V2)lbpState;
 
-	    lbpStateV2->SlabSizeInBytes = bytesPerSlab;
-	    lbpStateV2->SlabOffsetDeltaInBytes = startingOffsetDelta;
-	    lbpStateV2->SlabAllocationBitMapBitCount = totalProcessedSlabs;
-	    lbpStateV2->SlabAllocationBitMapLength =
-		((totalProcessedSlabs - 1) / (ULONGLONG)bitMapGranularityInBits) + 1;
-	    lbpStateV2->Version = DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V2;
+	lbpState->SlabSizeInBytes = bytesPerSlab;
+	lbpState->SlabOffsetDeltaInBytes = (ULONG)startingOffsetDelta;
+	lbpState->SlabAllocationBitMapBitCount = totalProcessedSlabs;
+	lbpState->SlabAllocationBitMapLength = ((totalProcessedSlabs - 1) /
+						bitMapGranularityInBits) + 1;
+	lbpState->Version = DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V1;
 
-	    //
-	    // Note that there is already one element of the bitmap array allocated
-	    // in the DEVICE_DATA_SET_LB_PROVISIONING_STATE_V2 structure itself, which
-	    // is why we subtract 1 from SlabAllocationBitMapLength.
-	    //
-	    lbpStateV2->Size = sizeof(DEVICE_DATA_SET_LB_PROVISIONING_STATE_V2) +
-			       ((lbpStateV2->SlabAllocationBitMapLength - 1) *
-				sizeof(lbpStateV2->SlabAllocationBitMap[0]));
-
-	} else
-#endif
-	{
-
-	    lbpState->SlabSizeInBytes = bytesPerSlab;
-	    lbpState->SlabOffsetDeltaInBytes = (ULONG)startingOffsetDelta;
-	    lbpState->SlabAllocationBitMapBitCount = totalProcessedSlabs;
-	    lbpState->SlabAllocationBitMapLength = ((totalProcessedSlabs - 1) /
-						    bitMapGranularityInBits) +
-						   1;
-	    lbpState->Version = DEVICE_DATA_SET_LB_PROVISIONING_STATE_VERSION_V1;
-
-	    //
-	    // Note that there is already one element of the bitmap array allocated
-	    // in the DEVICE_DATA_SET_LB_PROVISIONING_STATE structure itself, which
-	    // is why we subtract 1 from SlabAllocationBitMapLength.
-	    //
-	    lbpState->Size = sizeof(DEVICE_DATA_SET_LB_PROVISIONING_STATE) +
-			     ((lbpState->SlabAllocationBitMapLength - 1) *
-			      sizeof(lbpState->SlabAllocationBitMap[0]));
-	}
+	//
+	// Note that there is already one element of the bitmap array allocated
+	// in the DEVICE_DATA_SET_LB_PROVISIONING_STATE structure itself, which
+	// is why we subtract 1 from SlabAllocationBitMapLength.
+	//
+	lbpState->Size = sizeof(DEVICE_DATA_SET_LB_PROVISIONING_STATE) +
+	    ((lbpState->SlabAllocationBitMapLength - 1) *
+	     sizeof(lbpState->SlabAllocationBitMap[0]));
 
 	DsmOutput->OutputBlockLength =
 	    lbpState->Size; // Size is at the same offset in all versions of the structure.
@@ -4853,11 +4628,11 @@ NTSTATUS ClassGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
     // based platforms. We are taking the conservative approach here.
     //
     logPageSize = ALIGN_UP_BY(logPageSize, KeGetRecommendedSharedDataAlignment());
-    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)ExAllocatePoolWithTag(
-	NonPagedPoolNxCacheAligned, logPageSize, CLASS_TAG_LB_PROVISIONING);
+    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)ExAllocatePoolWithTag(logPageSize,
+									  CLASS_TAG_LB_PROVISIONING);
 #else
     logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)
-	ExAllocatePoolWithTag(NonPagedPoolNx, logPageSize, CLASS_TAG_LB_PROVISIONING);
+	ExAllocatePoolWithTag(logPageSize, CLASS_TAG_LB_PROVISIONING);
 #endif
     if (logPage != NULL) {
 	//
@@ -4972,7 +4747,7 @@ NTAPI VOID ClassLogThresholdEvent(IN PDEVICE_OBJECT DeviceObject,
 	srbSize = sizeof(SCSI_REQUEST_BLOCK);
     }
 
-    srb = ExAllocatePoolWithTag(NonPagedPoolNx, srbSize, 'ACcS');
+    srb = ExAllocatePoolWithTag(srbSize, 'ACcS');
     if (srb != NULL) {
 	//
 	// Try to get the LBP resources from the device so we can report them in
@@ -5806,7 +5581,7 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
     }
 
     if (SenseBufferSize) {
-	senseData = ExAllocatePoolWithTag(NonPagedPoolNx, SenseBufferSize,
+	senseData = ExAllocatePoolWithTag(SenseBufferSize,
 					  CLASSPNP_POOL_TAG_LOG_MESSAGE);
 	if (senseData) {
 	    senseBufferSize = SenseBufferSize;
@@ -5831,7 +5606,7 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
 	PIO_RETRIED_LOG_MESSAGE_CONTEXT ioLogMessageContext = NULL;
 
 	ioLogMessageContext =
-	    ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(IO_RETRIED_LOG_MESSAGE_CONTEXT),
+	    ExAllocatePoolWithTag(sizeof(IO_RETRIED_LOG_MESSAGE_CONTEXT),
 				  CLASSPNP_POOL_TAG_LOG_MESSAGE);
 	if (!ioLogMessageContext) {
 	    goto __ClasspQueueLogIOEventWithContextWorker_ExitWithMessage;
@@ -6612,6 +6387,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 					 IN OUT PIRP Irp,
 					 IN OUT PSCSI_REQUEST_BLOCK Srb)
 {
+    PAGED_CODE();
     NTSTATUS status;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension;
     PSTORAGE_PROPERTY_QUERY query;
@@ -6658,18 +6434,6 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
     // Request validation.
     // Note that InputBufferLength and IsFdo have been validated beforing entering this routine.
     //
-
-    if (KeGetCurrentIrql() >= DISPATCH_LEVEL) {
-	NT_ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
-
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClasspDeviceCopyOffloadProperty (%p): Query property for Copy "
-		    "Offload called at incorrect IRQL.\n",
-		    DeviceObject));
-
-	status = STATUS_INVALID_LEVEL;
-	goto __ClasspDeviceCopyOffloadProperty_Exit;
-    }
 
     length = irpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
@@ -6806,7 +6570,7 @@ NTSTATUS ClasspValidateOffloadSupported(IN PDEVICE_OBJECT DeviceObject,
     // For now this command is only supported by disk devices
     //
     if ((DeviceObject->DeviceType == FILE_DEVICE_DISK) &&
-	(!TEST_FLAG(DeviceObject->Characteristics, FILE_FLOPPY_DISKETTE))) {
+	(!TEST_FLAG(DeviceObject->Flags, FILE_FLOPPY_DISKETTE))) {
 	if (!fdoExt->FunctionSupportInfo->ValidInquiryPages.BlockDeviceRODLimits) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 			"ClasspValidateOffloadSupported (%p): Command not supported on "
@@ -7394,7 +7158,7 @@ PUCHAR ClasspBinaryToAscii(IN PUCHAR HexBuffer,
     //
     // Allocate the buffer.
     //
-    buffer = ExAllocatePoolWithTag(NonPagedPoolNx, actualLength,
+    buffer = ExAllocatePoolWithTag(actualLength,
 				   CLASSPNP_POOL_TAG_TOKEN_OPERATION);
     if (!buffer) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -7556,7 +7320,7 @@ VOID ClasspZeroQERR(IN PDEVICE_OBJECT DeviceObject)
     PMODE_CONTROL_PAGE pageData = NULL;
     ULONG size = 0;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPoolNxCacheAligned, MODE_PAGE_DATA_SIZE,
+    modeData = ExAllocatePoolWithTag(MODE_PAGE_DATA_SIZE,
 				     CLASS_TAG_MODE_DATA);
 
     if (modeData == NULL) {
@@ -7747,178 +7511,6 @@ NTSTATUS ClasspPowerIdleDevice(IN PDEVICE_OBJECT DeviceObject)
     return status;
 }
 
-NTSTATUS ClasspGetHwFirmwareInfo(IN PDEVICE_OBJECT DeviceObject)
-{
-    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-
-    PSTORAGE_HW_FIRMWARE_INFO firmwareInfo = NULL;
-    PSTORAGE_HW_FIRMWARE_INFO_QUERY query = NULL;
-
-    IO_STATUS_BLOCK ioStatus = { 0 };
-    ULONG dataLength = sizeof(STORAGE_HW_FIRMWARE_INFO);
-    ULONG iteration = 1;
-
-    CLASS_FUNCTION_SUPPORT oldState;
-    KLOCK_QUEUE_HANDLE lockHandle;
-
-    //
-    // Try to get firmware information that contains only one slot.
-    // We will retry the query if the required buffer size is bigger than that.
-    //
-retry:
-
-    firmwareInfo = ExAllocatePoolWithTag(dataLength, CLASSPNP_POOL_TAG_FIRMWARE);
-
-    if (firmwareInfo == NULL) {
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
-		    "ClasspGetHwFirmwareInfo: cannot allocate memory to hold data. \n"));
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    RtlZeroMemory(firmwareInfo, dataLength);
-
-    //
-    // Set up query data, making sure the "Flags" field indicating the request is for device itself.
-    //
-    query = (PSTORAGE_HW_FIRMWARE_INFO_QUERY)firmwareInfo;
-
-    query->Version = sizeof(STORAGE_HW_FIRMWARE_INFO_QUERY);
-    query->Size = sizeof(STORAGE_HW_FIRMWARE_INFO_QUERY);
-    query->Flags = 0;
-
-    //
-    // On the first pass we just want to get the first few
-    // bytes of the descriptor so we can read it's size
-    //
-    ClassSendDeviceIoControlSynchronous(IOCTL_STORAGE_FIRMWARE_GET_INFO,
-					commonExtension->LowerDeviceObject, query,
-					sizeof(STORAGE_HW_FIRMWARE_INFO_QUERY),
-					dataLength, FALSE, &ioStatus);
-
-    if (!NT_SUCCESS(ioStatus.Status) && (ioStatus.Status != STATUS_BUFFER_OVERFLOW)) {
-	if (ClasspLowerLayerNotSupport(ioStatus.Status)) {
-	    oldState = InterlockedCompareExchange(
-		(PLONG)(&fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport),
-		(LONG)NotSupported, (ULONG)SupportUnknown);
-	}
-
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
-		    "ClasspGetHwFirmwareInfo: error %lx trying to "
-		    "query hardware firmware information #%d \n",
-		    ioStatus.Status, iteration));
-	FREE_POOL(firmwareInfo);
-	return ioStatus.Status;
-    }
-
-    //
-    // Catch implementation issues from lower level driver.
-    //
-    if ((firmwareInfo->Version < sizeof(STORAGE_HW_FIRMWARE_INFO)) ||
-	(firmwareInfo->Size < sizeof(STORAGE_HW_FIRMWARE_INFO)) ||
-	(firmwareInfo->SlotCount == 0) ||
-	(firmwareInfo->ImagePayloadMaxSize >
-	 fdoExtension->AdapterDescriptor->MaximumTransferLength)) {
-	oldState = InterlockedCompareExchange(
-	    (PLONG)(&fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport),
-	    (LONG)NotSupported, (ULONG)SupportUnknown);
-
-	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
-		    "ClasspGetHwFirmwareInfo: error in returned data! "
-		    "Version: 0x%X, Size: 0x%X, SlotCount: 0x%X, ActiveSlot: 0x%X, "
-		    "PendingActiveSlot: 0x%X, ImagePayloadMaxSize: 0x%X \n",
-		    firmwareInfo->Version, firmwareInfo->Size, firmwareInfo->SlotCount,
-		    firmwareInfo->ActiveSlot, firmwareInfo->PendingActivateSlot,
-		    firmwareInfo->ImagePayloadMaxSize));
-
-	FREE_POOL(firmwareInfo);
-	return STATUS_UNSUCCESSFUL;
-    }
-
-    //
-    // If the data size is bigger than sizeof(STORAGE_HW_FIRMWARE_INFO), e.g. device has more than one firmware slot,
-    // allocate a buffer to get all the data.
-    //
-    if ((firmwareInfo->Size > sizeof(STORAGE_HW_FIRMWARE_INFO)) && (iteration < 2)) {
-	dataLength = max(firmwareInfo->Size, sizeof(STORAGE_HW_FIRMWARE_INFO) +
-						 sizeof(STORAGE_HW_FIRMWARE_SLOT_INFO) *
-						     (firmwareInfo->SlotCount - 1));
-
-	//
-	// Retry the query with required buffer length.
-	//
-	FREE_POOL(firmwareInfo);
-	iteration++;
-	goto retry;
-    }
-
-    //
-    // Set the support status and use the memory we've allocated as caching buffer.
-    // In case of a competing thread already set the state, it will assign the caching buffer so release the current allocated one.
-    //
-    KeAcquireInStackQueuedSpinLock(&fdoExtension->FunctionSupportInfo->SyncLock,
-				   &lockHandle);
-
-    oldState = InterlockedCompareExchange(
-	(PLONG)(&fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport),
-	(LONG)Supported, (ULONG)SupportUnknown);
-
-    if (oldState == SupportUnknown) {
-	fdoExtension->FunctionSupportInfo->HwFirmwareInfo = firmwareInfo;
-    } else if (oldState == Supported) {
-	//
-	// swap the buffers to keep the latest version.
-	//
-	PSTORAGE_HW_FIRMWARE_INFO cachedInfo =
-	    fdoExtension->FunctionSupportInfo->HwFirmwareInfo;
-
-	fdoExtension->FunctionSupportInfo->HwFirmwareInfo = firmwareInfo;
-
-	FREE_POOL(cachedInfo);
-    } else {
-	FREE_POOL(firmwareInfo);
-    }
-
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
-
-    return ioStatus.Status;
-} // end ClasspGetHwFirmwareInfo()
-
-/*
-Routine Description:
-
-    This function informs the caller whether the port driver supports hardware firmware requests.
-
-Arguments:
-    DeviceObject: The target object.
-
-Return Value:
-
-    TRUE if the port driver is supported.
-
---*/
-static BOOLEAN ClassDeviceHwFirmwareIsPortDriverSupported(IN PDEVICE_OBJECT DeviceObject)
-{
-    //
-    // If the request is for a FDO, process the request for Storport, SDstor and Spaceport only.
-    // Don't process it if we don't have a miniport descriptor.
-    //
-    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-
-    BOOLEAN isSupported = FALSE;
-    if (commonExtension->IsFdo && (fdoExtension->MiniportDescriptor != NULL)) {
-	isSupported = ((fdoExtension->MiniportDescriptor->Portdriver ==
-			StoragePortCodeSetStorport) ||
-		       (fdoExtension->MiniportDescriptor->Portdriver ==
-			StoragePortCodeSetSpaceport) ||
-		       (fdoExtension->MiniportDescriptor->Portdriver ==
-			StoragePortCodeSetSDport));
-    }
-
-    return isSupported;
-}
-
 /*
 Routine Description:
 
@@ -7937,113 +7529,8 @@ Return Value:
 NTSTATUS ClassDeviceHwFirmwareGetInfoProcess(IN PDEVICE_OBJECT DeviceObject,
 					     IN OUT PIRP Irp)
 {
-    NTSTATUS status = STATUS_SUCCESS;
-
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-
-    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSTORAGE_HW_FIRMWARE_INFO_QUERY query = (PSTORAGE_HW_FIRMWARE_INFO_QUERY)Irp->SystemBuffer;
-    BOOLEAN passDown = FALSE;
-    BOOLEAN copyData = FALSE;
-
-    //
-    // Input buffer is not big enough to contain required input information.
-    //
-    if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
-	sizeof(STORAGE_HW_FIRMWARE_INFO_QUERY)) {
-	status = STATUS_INFO_LENGTH_MISMATCH;
-	goto Exit_Firmware_Get_Info;
-    }
-
-    //
-    // Output buffer is too small to contain return data.
-    //
-    if (irpStack->Parameters.DeviceIoControl.OutputBufferLength <
-	sizeof(STORAGE_HW_FIRMWARE_INFO)) {
-	status = STATUS_BUFFER_TOO_SMALL;
-	goto Exit_Firmware_Get_Info;
-    }
-
-    //
-    // Only process the request for a supported port driver.
-    //
-    if (!ClassDeviceHwFirmwareIsPortDriverSupported(DeviceObject)) {
-	status = STATUS_NOT_IMPLEMENTED;
-	goto Exit_Firmware_Get_Info;
-    }
-
-    //
-    // Buffer "FunctionSupportInfo" is allocated during start device process. Following check defends against the situation
-    // of receiving this IOCTL when the device is created but not started, or device start failed but did not get removed yet.
-    //
-    if (commonExtension->IsFdo && (fdoExtension->FunctionSupportInfo == NULL)) {
-	status = STATUS_UNSUCCESSFUL;
-	goto Exit_Firmware_Get_Info;
-    }
-
-    //
-    // Process the situation that request should be forwarded to lower level.
-    //
-    if (!commonExtension->IsFdo) {
-	passDown = TRUE;
-    }
-
-    if ((query->Flags & STORAGE_HW_FIRMWARE_REQUEST_FLAG_CONTROLLER) != 0) {
-	passDown = TRUE;
-    }
-
-    if (passDown) {
-	IoCopyCurrentIrpStackLocationToNext(Irp);
-
-	ClassReleaseRemoveLock(DeviceObject, Irp);
-	status = IoCallDriver(commonExtension->LowerDeviceObject, Irp);
-	return status;
-    }
-
-    //
-    // The request is for a FDO. Process the request.
-    //
-    if (fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport == NotSupported) {
-	status = STATUS_NOT_IMPLEMENTED;
-	goto Exit_Firmware_Get_Info;
-    } else {
-	//
-	// Retrieve information from lower layer for the request. The cached information is not used
-	// in case device firmware information changed.
-	//
-	status = ClasspGetHwFirmwareInfo(DeviceObject);
-	copyData = NT_SUCCESS(status);
-    }
-
-Exit_Firmware_Get_Info:
-
-    if (copyData) {
-	//
-	// Firmware information is already cached in classpnp. Return a copy.
-	//
-	KLOCK_QUEUE_HANDLE lockHandle;
-	KeAcquireInStackQueuedSpinLock(&fdoExtension->FunctionSupportInfo->SyncLock,
-				       &lockHandle);
-
-	ULONG dataLength = min(irpStack->Parameters.DeviceIoControl.OutputBufferLength,
-			       fdoExtension->FunctionSupportInfo->HwFirmwareInfo->Size);
-
-	memcpy(Irp->SystemBuffer,
-	       fdoExtension->FunctionSupportInfo->HwFirmwareInfo, dataLength);
-
-	KeReleaseInStackQueuedSpinLock(&lockHandle);
-
-	Irp->IoStatus.Information = dataLength;
-    }
-
+    NTSTATUS status = STATUS_NOT_IMPLEMENTED;
     Irp->IoStatus.Status = status;
-
-#else
-    status = STATUS_NOT_IMPLEMENTED;
-    Irp->IoStatus.Status = status;
-#endif // #if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
 
     ClassReleaseRemoveLock(DeviceObject, Irp);
     ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
@@ -8051,391 +7538,13 @@ Exit_Firmware_Get_Info:
     return status;
 }
 
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-NTSTATUS ClassHwFirmwareDownloadComplete(IN PDEVICE_OBJECT Fdo,
-					 IN PIRP Irp,
-					 IN OPTIONAL PVOID Context)
-{
-    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-
-    PIRP originalIrp;
-
-    //
-    // Free the allocated buffer for firmware image.
-    //
-    if (Context != NULL) {
-	FREE_POOL(Context);
-    }
-
-    originalIrp = irpStack->Parameters.Others.Argument1;
-
-    NT_ASSERT(originalIrp != NULL);
-
-    originalIrp->IoStatus.Status = Irp->IoStatus.Status;
-    originalIrp->IoStatus.Information = Irp->IoStatus.Information;
-
-    ClassReleaseRemoveLock(Fdo, originalIrp);
-    ClassCompleteRequest(Fdo, originalIrp, IO_DISK_INCREMENT);
-
-    IoFreeIrp(Irp);
-
-    return STATUS_MORE_PROCESSING_REQUIRED;
-
-} // end ClassHwFirmwareDownloadComplete()
-#endif // #if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
 
 NTSTATUS ClassDeviceHwFirmwareDownloadProcess(IN PDEVICE_OBJECT DeviceObject,
 					      IN OUT PIRP Irp,
 					      IN OUT PSCSI_REQUEST_BLOCK Srb)
 {
-    NTSTATUS status = STATUS_SUCCESS;
-
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-
-    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-
-    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSTORAGE_HW_FIRMWARE_DOWNLOAD firmwareDownload =
-	(PSTORAGE_HW_FIRMWARE_DOWNLOAD)Irp->SystemBuffer;
-    BOOLEAN passDown = FALSE;
-    ULONG i;
-    ULONG bufferSize = 0;
-    PUCHAR firmwareImageBuffer = NULL;
-    PIRP irp2 = NULL;
-    PIO_STACK_LOCATION newStack = NULL;
-    PCDB cdb = NULL;
-    BOOLEAN lockHeld = FALSE;
-    KLOCK_QUEUE_HANDLE lockHandle;
-
-    //
-    // Input buffer is not big enough to contain required input information.
-    //
-    if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
-	sizeof(STORAGE_HW_FIRMWARE_DOWNLOAD)) {
-	status = STATUS_INFO_LENGTH_MISMATCH;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Input buffer basic validation.
-    //
-    if ((firmwareDownload->Version < sizeof(STORAGE_HW_FIRMWARE_DOWNLOAD)) ||
-	(firmwareDownload->Size >
-	 irpStack->Parameters.DeviceIoControl.InputBufferLength) ||
-	((firmwareDownload->BufferSize +
-	  FIELD_OFFSET(STORAGE_HW_FIRMWARE_DOWNLOAD, ImageBuffer)) >
-	 firmwareDownload->Size)) {
-	status = STATUS_INVALID_PARAMETER;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Only process the request for a supported port driver.
-    //
-    if (!ClassDeviceHwFirmwareIsPortDriverSupported(DeviceObject)) {
-	status = STATUS_NOT_IMPLEMENTED;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Buffer "FunctionSupportInfo" is allocated during start device process. Following check defends against the situation
-    // of receiving this IOCTL when the device is created but not started, or device start failed but did not get removed yet.
-    //
-    if (commonExtension->IsFdo && (fdoExtension->FunctionSupportInfo == NULL)) {
-	status = STATUS_UNSUCCESSFUL;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Process the situation that request should be forwarded to lower level.
-    //
-    if (!commonExtension->IsFdo) {
-	passDown = TRUE;
-    }
-
-    if ((firmwareDownload->Flags & STORAGE_HW_FIRMWARE_REQUEST_FLAG_CONTROLLER) != 0) {
-	passDown = TRUE;
-    }
-
-    if (passDown) {
-	IoCopyCurrentIrpStackLocationToNext(Irp);
-
-	ClassReleaseRemoveLock(DeviceObject, Irp);
-	status = IoCallDriver(commonExtension->LowerDeviceObject, Irp);
-	FREE_POOL(Srb);
-	return status;
-    }
-
-    //
-    // If firmware information hasn't been cached in classpnp, retrieve it.
-    //
-    if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo == NULL) {
-	if (fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport == NotSupported) {
-	    status = STATUS_NOT_IMPLEMENTED;
-	    goto Exit_Firmware_Download;
-	} else {
-	    //
-	    // If this is the first time of retrieving firmware information,
-	    // send request to lower level to get it.
-	    //
-	    status = ClasspGetHwFirmwareInfo(DeviceObject);
-
-	    if (!NT_SUCCESS(status)) {
-		goto Exit_Firmware_Download;
-	    }
-	}
-    }
-
-    //
-    // Fail the request if the firmware information cannot be retrieved.
-    //
-    if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo == NULL) {
-	if (fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport == NotSupported) {
-	    status = STATUS_NOT_IMPLEMENTED;
-	} else {
-	    status = STATUS_UNSUCCESSFUL;
-	}
-
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Acquire the SyncLock to ensure the HwFirmwareInfo pointer doesn't change
-    // while we're dereferencing it.
-    //
-    lockHeld = TRUE;
-    KeAcquireInStackQueuedSpinLock(&fdoExtension->FunctionSupportInfo->SyncLock,
-				   &lockHandle);
-
-    //
-    // Validate the device support
-    //
-    if ((fdoExtension->FunctionSupportInfo->HwFirmwareInfo->SupportUpgrade == FALSE) ||
-	(fdoExtension->FunctionSupportInfo->HwFirmwareInfo->ImagePayloadAlignment == 0)) {
-	status = STATUS_NOT_SUPPORTED;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Check if the slot can be used to hold firmware image.
-    //
-    for (i = 0; i < fdoExtension->FunctionSupportInfo->HwFirmwareInfo->SlotCount; i++) {
-	if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo->Slot[i].SlotNumber ==
-	    firmwareDownload->Slot) {
-	    break;
-	}
-    }
-
-    if ((i >= fdoExtension->FunctionSupportInfo->HwFirmwareInfo->SlotCount) ||
-	(fdoExtension->FunctionSupportInfo->HwFirmwareInfo->Slot[i].ReadOnly == TRUE)) {
-	//
-	// Either the slot number is out of scope or the slot is read-only.
-	//
-	status = STATUS_INVALID_PARAMETER;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Buffer size and alignment validation.
-    // Max Offset and Buffer Size can be represented by SCSI command is max value for 3 bytes.
-    //
-    if ((firmwareDownload->BufferSize == 0) ||
-	((firmwareDownload->BufferSize %
-	  fdoExtension->FunctionSupportInfo->HwFirmwareInfo->ImagePayloadAlignment) !=
-	 0) ||
-	(firmwareDownload->BufferSize >
-	 fdoExtension->FunctionSupportInfo->HwFirmwareInfo->ImagePayloadMaxSize) ||
-	(firmwareDownload->BufferSize >
-	 fdoExtension->AdapterDescriptor->MaximumTransferLength) ||
-	((firmwareDownload->Offset %
-	  fdoExtension->FunctionSupportInfo->HwFirmwareInfo->ImagePayloadAlignment) !=
-	 0) ||
-	(firmwareDownload->Offset > 0xFFFFFF) ||
-	(firmwareDownload->BufferSize > 0xFFFFFF)) {
-	status = STATUS_INVALID_PARAMETER;
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Process the request by translating it into WRITE BUFFER command.
-    //
-    if (((ULONG_PTR)firmwareDownload->ImageBuffer %
-	 fdoExtension->FunctionSupportInfo->HwFirmwareInfo->ImagePayloadAlignment) != 0) {
-	//
-	// Allocate buffer aligns to ImagePayloadAlignment to accommodate the alignment requirement.
-	//
-	bufferSize = ALIGN_UP_BY(
-	    firmwareDownload->BufferSize,
-	    fdoExtension->FunctionSupportInfo->HwFirmwareInfo->ImagePayloadAlignment);
-
-	//
-	// We're done accessing HwFirmwareInfo at this point so we can release
-	// the SyncLock.
-	//
-	NT_ASSERT(lockHeld);
-	KeReleaseInStackQueuedSpinLock(&lockHandle);
-	lockHeld = FALSE;
-
-	firmwareImageBuffer = ExAllocatePoolWithTag(NonPagedPoolNx, bufferSize,
-						    CLASSPNP_POOL_TAG_FIRMWARE);
-
-	if (firmwareImageBuffer == NULL) {
-	    status = STATUS_INSUFFICIENT_RESOURCES;
-	    goto Exit_Firmware_Download;
-	}
-
-	RtlZeroMemory(firmwareImageBuffer, bufferSize);
-
-	RtlCopyMemory(firmwareImageBuffer, firmwareDownload->ImageBuffer,
-		      (ULONG)firmwareDownload->BufferSize);
-
-    } else {
-	NT_ASSERT(lockHeld);
-	KeReleaseInStackQueuedSpinLock(&lockHandle);
-	lockHeld = FALSE;
-
-	firmwareImageBuffer = firmwareDownload->ImageBuffer;
-	bufferSize = (ULONG)firmwareDownload->BufferSize;
-    }
-
-    //
-    // Allocate a new irp to send the WRITE BUFFER command down.
-    // Similar process as IOCTL_STORAGE_CHECK_VERIFY.
-    //
-    irp2 = IoAllocateIrp((CCHAR)(DeviceObject->StackSize + 3), FALSE);
-
-    if (irp2 == NULL) {
-	status = STATUS_INSUFFICIENT_RESOURCES;
-
-	if (firmwareImageBuffer != firmwareDownload->ImageBuffer) {
-	    FREE_POOL(firmwareImageBuffer);
-	}
-
-	goto Exit_Firmware_Download;
-    }
-
-    //
-    // Make sure to acquire the lock for the new irp.
-    //
-    ClassAcquireRemoveLock(DeviceObject, irp2);
-
-    irp2->Tail.Overlay.Thread = Irp->Tail.Overlay.Thread;
-    IoSetNextIrpStackLocation(irp2);
-
-    //
-    // Set the top stack location and shove the master Irp into the
-    // top location
-    //
-    newStack = IoGetCurrentIrpStackLocation(irp2);
-    newStack->Parameters.Others.Argument1 = Irp;
-    newStack->DeviceObject = DeviceObject;
-
-    //
-    // Stick the firmware download completion routine onto the stack
-    // and prepare the irp for the port driver
-    //
-    IoSetCompletionRoutine(irp2, ClassHwFirmwareDownloadComplete,
-			   (firmwareImageBuffer != firmwareDownload->ImageBuffer) ?
-			       firmwareImageBuffer :
-			       NULL,
-			   TRUE, TRUE, TRUE);
-
-    IoSetNextIrpStackLocation(irp2);
-    newStack = IoGetCurrentIrpStackLocation(irp2);
-    newStack->DeviceObject = DeviceObject;
-    newStack->MajorFunction = irpStack->MajorFunction;
-    newStack->MinorFunction = irpStack->MinorFunction;
-    newStack->Flags = irpStack->Flags;
-
-    //
-    // Mark the master irp as pending - whether the lower level
-    // driver completes it immediately or not this should allow it
-    // to go all the way back up.
-    //
-    IoMarkIrpPending(Irp);
-
-    //
-    // Setup the CDB.
-    //
-    SrbSetCdbLength(Srb, CDB10GENERIC_LENGTH);
-    cdb = SrbGetCdb(Srb);
-    cdb->WRITE_BUFFER.OperationCode = SCSIOP_WRITE_DATA_BUFF;
-    cdb->WRITE_BUFFER.Mode =
-	SCSI_WRITE_BUFFER_MODE_DOWNLOAD_MICROCODE_WITH_OFFSETS_SAVE_DEFER_ACTIVATE;
-    cdb->WRITE_BUFFER.ModeSpecific = 0; //Reserved for Mode 0x0E
-    cdb->WRITE_BUFFER.BufferID = firmwareDownload->Slot;
-
-    cdb->WRITE_BUFFER.BufferOffset[0] = *((PCHAR)&firmwareDownload->Offset + 2);
-    cdb->WRITE_BUFFER.BufferOffset[1] = *((PCHAR)&firmwareDownload->Offset + 1);
-    cdb->WRITE_BUFFER.BufferOffset[2] = *((PCHAR)&firmwareDownload->Offset);
-
-    cdb->WRITE_BUFFER.ParameterListLength[0] = *((PCHAR)&bufferSize + 2);
-    cdb->WRITE_BUFFER.ParameterListLength[1] = *((PCHAR)&bufferSize + 1);
-    cdb->WRITE_BUFFER.ParameterListLength[2] = *((PCHAR)&bufferSize);
-
-    //
-    // Send as a tagged command.
-    //
-    SrbSetRequestAttribute(Srb, SRB_HEAD_OF_QUEUE_TAG_REQUEST);
-    SrbSetSrbFlags(Srb, SRB_FLAGS_NO_QUEUE_FREEZE | SRB_FLAGS_QUEUE_ACTION_ENABLE);
-
-    //
-    // Set timeout value.
-    //
-    SrbSetTimeOutValue(Srb, fdoExtension->TimeOutValue);
-
-    //
-    // This routine uses a completion routine so we don't want to release
-    // the remove lock until then.
-    //
-    status = ClassSendSrbAsynchronous(DeviceObject, Srb, irp2, firmwareImageBuffer,
-				      bufferSize, TRUE);
-
-    if (status != STATUS_PENDING) {
-	//
-	// If the new irp cannot be sent down, free allocated memory and bail out.
-	//
-	if (firmwareImageBuffer != firmwareDownload->ImageBuffer) {
-	    FREE_POOL(firmwareImageBuffer);
-	}
-
-	//
-	// If the irp cannot be sent down, the Srb has been freed. NULL it to prevent from freeing it again.
-	//
-	Srb = NULL;
-
-	ClassReleaseRemoveLock(DeviceObject, irp2);
-
-	IoFreeIrp(irp2);
-
-	goto Exit_Firmware_Download;
-    }
-
-    return status;
-
-Exit_Firmware_Download:
-
-    //
-    // Release the SyncLock if it's still held.
-    // This should only happen in the failure path.
-    //
-    if (lockHeld) {
-	KeReleaseInStackQueuedSpinLock(&lockHandle);
-	lockHeld = FALSE;
-    }
-
-    //
-    // Firmware Download request will be failed.
-    //
-    NT_ASSERT(!NT_SUCCESS(status));
-
+    NTSTATUS status = STATUS_NOT_IMPLEMENTED;
     Irp->IoStatus.Status = status;
-
-#else
-    status = STATUS_NOT_IMPLEMENTED;
-    Irp->IoStatus.Status = status;
-#endif // #if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
 
     ClassReleaseRemoveLock(DeviceObject, Irp);
     ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
@@ -8449,211 +7558,8 @@ NTSTATUS ClassDeviceHwFirmwareActivateProcess(IN PDEVICE_OBJECT DeviceObject,
 					      IN OUT PIRP Irp,
 					      IN OUT PSCSI_REQUEST_BLOCK Srb)
 {
-    NTSTATUS status = STATUS_SUCCESS;
-
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-
-    PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
-
-    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSTORAGE_HW_FIRMWARE_ACTIVATE firmwareActivate =
-	(PSTORAGE_HW_FIRMWARE_ACTIVATE)Irp->SystemBuffer;
-    BOOLEAN passDown = FALSE;
-    PCDB cdb = NULL;
-    ULONG i;
-    BOOLEAN lockHeld = FALSE;
-    KLOCK_QUEUE_HANDLE lockHandle;
-
-    //
-    // Input buffer is not big enough to contain required input information.
-    //
-    if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
-	sizeof(STORAGE_HW_FIRMWARE_ACTIVATE)) {
-	status = STATUS_INFO_LENGTH_MISMATCH;
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // Input buffer basic validation.
-    //
-    if ((firmwareActivate->Version < sizeof(STORAGE_HW_FIRMWARE_ACTIVATE)) ||
-	(firmwareActivate->Size >
-	 irpStack->Parameters.DeviceIoControl.InputBufferLength)) {
-	status = STATUS_INVALID_PARAMETER;
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // Only process the request for a supported port driver.
-    //
-    if (!ClassDeviceHwFirmwareIsPortDriverSupported(DeviceObject)) {
-	status = STATUS_NOT_IMPLEMENTED;
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // Buffer "FunctionSupportInfo" is allocated during start device process. Following check defends against the situation
-    // of receiving this IOCTL when the device is created but not started, or device start failed but did not get removed yet.
-    //
-    if (commonExtension->IsFdo && (fdoExtension->FunctionSupportInfo == NULL)) {
-	status = STATUS_UNSUCCESSFUL;
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // Process the situation that request should be forwarded to lower level.
-    //
-    if (!commonExtension->IsFdo) {
-	passDown = TRUE;
-    }
-
-    if ((firmwareActivate->Flags & STORAGE_HW_FIRMWARE_REQUEST_FLAG_CONTROLLER) != 0) {
-	passDown = TRUE;
-    }
-
-    if (passDown) {
-	IoCopyCurrentIrpStackLocationToNext(Irp);
-
-	ClassReleaseRemoveLock(DeviceObject, Irp);
-	status = IoCallDriver(commonExtension->LowerDeviceObject, Irp);
-	FREE_POOL(Srb);
-	return status;
-    }
-
-    //
-    // If firmware information hasn't been cached in classpnp, retrieve it.
-    //
-    if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo == NULL) {
-	if (fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport == NotSupported) {
-	    status = STATUS_NOT_IMPLEMENTED;
-	    goto Exit_Firmware_Activate;
-	} else {
-	    //
-	    // If this is the first time of retrieving firmware information,
-	    // send request to lower level to get it.
-	    //
-	    status = ClasspGetHwFirmwareInfo(DeviceObject);
-
-	    if (!NT_SUCCESS(status)) {
-		goto Exit_Firmware_Activate;
-	    }
-	}
-    }
-
-    //
-    // Fail the request if the firmware information cannot be retrieved.
-    //
-    if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo == NULL) {
-	if (fdoExtension->FunctionSupportInfo->HwFirmwareGetInfoSupport == NotSupported) {
-	    status = STATUS_NOT_IMPLEMENTED;
-	} else {
-	    status = STATUS_UNSUCCESSFUL;
-	}
-
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // Acquire the SyncLock to ensure the HwFirmwareInfo pointer doesn't change
-    // while we're dereferencing it.
-    //
-    lockHeld = TRUE;
-    KeAcquireInStackQueuedSpinLock(&fdoExtension->FunctionSupportInfo->SyncLock,
-				   &lockHandle);
-
-    //
-    // Validate the device support
-    //
-    if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo->SupportUpgrade == FALSE) {
-	status = STATUS_NOT_SUPPORTED;
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // Check if the slot number is valid.
-    //
-    for (i = 0; i < fdoExtension->FunctionSupportInfo->HwFirmwareInfo->SlotCount; i++) {
-	if (fdoExtension->FunctionSupportInfo->HwFirmwareInfo->Slot[i].SlotNumber ==
-	    firmwareActivate->Slot) {
-	    break;
-	}
-    }
-
-    if (i >= fdoExtension->FunctionSupportInfo->HwFirmwareInfo->SlotCount) {
-	//
-	// Either the slot number is out of scope or the slot is read-only.
-	//
-	status = STATUS_INVALID_PARAMETER;
-	goto Exit_Firmware_Activate;
-    }
-
-    //
-    // We're done accessing HwFirmwareInfo at this point so we can release
-    // the SyncLock.
-    //
-    NT_ASSERT(lockHeld);
-    KeReleaseInStackQueuedSpinLock(&lockHandle);
-    lockHeld = FALSE;
-
-    //
-    // Process the request by translating it into WRITE BUFFER command.
-    //
-    //
-    // Setup the CDB. This should be an untagged request.
-    //
-    SrbSetCdbLength(Srb, CDB10GENERIC_LENGTH);
-    cdb = SrbGetCdb(Srb);
-    cdb->WRITE_BUFFER.OperationCode = SCSIOP_WRITE_DATA_BUFF;
-    cdb->WRITE_BUFFER.Mode = SCSI_WRITE_BUFFER_MODE_ACTIVATE_DEFERRED_MICROCODE;
-    cdb->WRITE_BUFFER.ModeSpecific = 0; //Reserved for Mode 0x0F
-    cdb->WRITE_BUFFER.BufferID =
-	firmwareActivate->Slot; //NOTE: this field will be ignored by SCSI device.
-
-    //
-    // Set timeout value.
-    //
-    SrbSetTimeOutValue(Srb, FIRMWARE_ACTIVATE_TIMEOUT_VALUE);
-
-    //
-    // This routine uses a completion routine - ClassIoComplete() so we don't want to release
-    // the remove lock until then.
-    //
-    status = ClassSendSrbAsynchronous(DeviceObject, Srb, Irp, NULL, 0, FALSE);
-
-    if (status != STATUS_PENDING) {
-	//
-	// If the irp cannot be sent down, the Srb has been freed. NULL it to prevent from freeing it again.
-	//
-	Srb = NULL;
-
-	goto Exit_Firmware_Activate;
-    }
-
-    return status;
-
-Exit_Firmware_Activate:
-
-    //
-    // Release the SyncLock if it's still held.
-    // This should only happen in the failure path.
-    //
-    if (lockHeld) {
-	KeReleaseInStackQueuedSpinLock(&lockHandle);
-	lockHeld = FALSE;
-    }
-
-    //
-    // Firmware Activate request will be failed.
-    //
-    NT_ASSERT(!NT_SUCCESS(status));
-
+    NTSTATUS status = STATUS_NOT_IMPLEMENTED;
     Irp->IoStatus.Status = status;
-
-#else
-    status = STATUS_NOT_IMPLEMENTED;
-    Irp->IoStatus.Status = status;
-#endif // #if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
 
     ClassReleaseRemoveLock(DeviceObject, Irp);
     ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);

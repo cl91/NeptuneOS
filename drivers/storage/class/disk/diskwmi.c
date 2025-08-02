@@ -21,6 +21,7 @@ Revision History:
 --*/
 
 #include "disk.h"
+#include <hal.h>
 
 #ifdef DEBUG_USE_WPP
 #include "diskwmi.tmh"
@@ -63,8 +64,10 @@ IO_COMPLETION_ROUTINE DiskInfoExceptionComplete;
 // by a single work item that is fired off only when the stack
 // transitions from empty to non empty.
 //
-SINGLE_LIST_ENTRY DiskReregHead;
-KSPIN_LOCK DiskReregSpinlock;
+// Neptune OS Note: This is unnecessary since we run IO completion routines
+// in the main event loop thread, but I can't be bothered to remove it.
+//
+SLIST_HEADER DiskReregHead;
 LONG DiskReregWorkItems;
 
 GUIDREGINFO DiskWmiFdoGuidList[] = {
@@ -1157,8 +1160,7 @@ NTAPI VOID DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
     NT_ASSERT(Context != NULL);
 
     do {
-	reregRequest = (PDISKREREGREQUEST)ExInterlockedPopEntryList(&DiskReregHead,
-								    &DiskReregSpinlock);
+	reregRequest = (PDISKREREGREQUEST)RtlInterlockedPopEntrySList(&DiskReregHead);
 
 	if (reregRequest != NULL) {
 	    deviceObject = reregRequest->DeviceObject;
@@ -1195,13 +1197,8 @@ NTAPI VOID DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
 
 NTSTATUS DiskInitializeReregistration(VOID)
 {
-    //
-    // Initialize the spinlock used to manage the
-    // list of disks reregistering their guids
-    //
-    KeInitializeSpinLock(&DiskReregSpinlock);
-
-    return (STATUS_SUCCESS);
+    // Do nothing
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
@@ -1226,8 +1223,7 @@ NTSTATUS DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	//
 	reregRequest->DeviceObject = DeviceObject;
 	reregRequest->Irp = Irp;
-	ExInterlockedPushEntryList(&DiskReregHead, &reregRequest->Next,
-				   &DiskReregSpinlock);
+	RtlInterlockedPushEntrySList(&DiskReregHead, &reregRequest->Next);
 
 	if (InterlockedIncrement(&DiskReregWorkItems) == 1) {
 	    //
@@ -1568,8 +1564,7 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     // We'll queue a completion routine to cleanup the MDL's and such ourself.
     //
 
-    irp = IoAllocateIrp(
-	(CCHAR)(FdoExtension->CommonExtension.LowerDeviceObject->StackSize + 1), FALSE);
+    irp = IoAllocateIrp((CCHAR)(FdoExtension->CommonExtension.LowerDeviceObject->StackSize + 1));
 
     if (irp == NULL) {
 	FREE_POOL(senseInfoBuffer);
@@ -1623,19 +1618,7 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 
     IoSetCompletionRoutine(irp, DiskInfoExceptionComplete, srb, TRUE, TRUE, TRUE);
 
-    irp->MdlAddress = IoAllocateMdl(modeData, MODE_DATA_SIZE, FALSE, FALSE, irp);
-    if (irp->MdlAddress == NULL) {
-	ClassReleaseRemoveLock(FdoExtension->DeviceObject, irp);
-	FREE_POOL(srb);
-	FREE_POOL(modeData);
-	FREE_POOL(senseInfoBuffer);
-	IoFreeIrp(irp);
-	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_WMI,
-		    "DiskINfoExceptionCheck: Can't allocate MDL\n"));
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    MmBuildMdlForNonPagedPool(irp->MdlAddress);
+    irp->UserBuffer = modeData;
 
     //
     // Build the MODE SENSE CDB.
@@ -2191,7 +2174,7 @@ NTAPI NTSTATUS DiskFdoQueryWmiDataBlock(IN PDEVICE_OBJECT DeviceObject, IN PIRP 
     case DiskGeometryGuid: {
 	sizeNeeded = sizeof(DISK_GEOMETRY);
 	if (BufferAvail >= sizeNeeded) {
-	    if (DeviceObject->Characteristics & FILE_REMOVABLE_MEDIA) {
+	    if (DeviceObject->Flags & FILE_REMOVABLE_MEDIA) {
 		//
 		// Issue ReadCapacity to update device extension
 		// with information for current media.

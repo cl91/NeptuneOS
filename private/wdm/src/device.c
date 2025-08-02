@@ -258,6 +258,23 @@ NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
     UNIMPLEMENTED;
 }
 
+NTAPI VOID IoInvalidateDeviceRelations(IN PDEVICE_OBJECT DeviceObject,
+				       IN DEVICE_RELATION_TYPE Type)
+{
+    /* TODO: Queue device relation invalidation message */
+}
+
+
+NTAPI NTSTATUS
+IoReportTargetDeviceChangeAsynchronous(IN PDEVICE_OBJECT Pdo,
+				       IN PVOID Notification,
+				       IN OPTIONAL PDEVICE_CHANGE_COMPLETE_CALLBACK Callback,
+				       IN OPTIONAL PVOID Context)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /*++
  * @name IoRegisterDeviceInterface
  * @implemented
@@ -808,6 +825,37 @@ NTAPI NTSTATUS IoCreateSymbolicLink(IN PUNICODE_STRING SymbolicLinkName,
     return Status;
 }
 
+/*
+ * @implemented
+ *
+ * This routine can only be called at PASSIVE_LEVEL.
+ */
+NTAPI NTSTATUS IoDeleteSymbolicLink(IN PUNICODE_STRING SymbolicLinkName)
+{
+    PAGED_CODE();
+
+    /* Initialize the object attributes and open the link */
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes,
+                               SymbolicLinkName,
+                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
+    HANDLE Handle;
+    NTSTATUS Status = NtOpenSymbolicLinkObject(&Handle, DELETE, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    /* Make the link temporary and close its handle */
+    Status = NtMakeTemporaryObject(Handle);
+    if (NT_SUCCESS(Status)) {
+	NtClose(Handle);
+    }
+
+    return Status;
+}
+
 static NTSTATUS IopOpenKeyEx(OUT PHANDLE KeyHandle,
 			     IN HANDLE ParentKey,
 			     IN PUNICODE_STRING Name,
@@ -1016,6 +1064,18 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 			     BufferLength, PropertyBuffer, ResultLength);
     NtClose(KeyHandle);
     return Status;
+}
+
+NTAPI NTSTATUS IoGetDevicePropertyData(IN PDEVICE_OBJECT Pdo,
+				       IN CONST DEVPROPKEY *PropertyKey,
+				       IN LCID Lcid,
+				       IN ULONG Flags,
+				       IN ULONG Size,
+				       OUT PVOID Data,
+				       OUT PULONG RequiredSize,
+				       OUT PDEVPROPTYPE Type)
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 /*

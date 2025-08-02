@@ -337,6 +337,8 @@ FORCEINLINE PCDB SrbGetScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
 		    SRBHELPER_ASSERT(FALSE);
 		}
 		break;
+	    default:
+		SRBHELPER_ASSERT(FALSE);
 	    }
 
 	    if (FoundEntry) {
@@ -471,6 +473,8 @@ FORCEINLINE VOID SrbSetScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
 		    SRBHELPER_ASSERT(FALSE);
 		}
 		break;
+	    default:
+		SRBHELPER_ASSERT(FALSE);
 	    }
 
 	    if (FoundEntry) {

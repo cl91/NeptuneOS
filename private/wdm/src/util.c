@@ -22,6 +22,14 @@ NTAPI VOID ObDereferenceObject(IN PVOID Obj)
     }
 }
 
+NTAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
+			     IN PVOID VirtualAddress,
+			     IN ULONG Length)
+{
+    UNIMPLEMENTED;
+    return NULL;
+}
+
 /*
  * @implemented
  */
