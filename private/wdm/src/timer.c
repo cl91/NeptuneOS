@@ -7,6 +7,7 @@ ULONG KiStallScaleFactor;
 
 static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
 {
+    RtlZeroMemory(Timer, sizeof(KTIMER));
     IopInitializeDpcThread();
     NTSTATUS Status = WdmCreateTimer(&Timer->Header.Header.GlobalHandle);
     if (!NT_SUCCESS(Status)) {
@@ -26,7 +27,6 @@ static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
  */
 NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
-    RtlZeroMemory(Timer, sizeof(KTIMER));
     NTSTATUS Status = KiInitializeTimer(Timer);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
