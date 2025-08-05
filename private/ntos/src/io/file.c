@@ -36,6 +36,13 @@ VOID IopDeleteFcb(IN PIO_FILE_CONTROL_BLOCK Fcb)
 	Slave->Fcb = NULL;
 	RemoveEntryList(&Slave->SlaveLink);
     }
+    if (Fcb->MasterFileObject) {
+	assert(Fcb->MasterFileObject->Fcb == Fcb);
+	Fcb->MasterFileObject->Fcb = NULL;
+    }
+    if (Fcb->Vcb && Fcb->Vcb->VolumeFcb == Fcb) {
+	Fcb->Vcb->VolumeFcb = NULL;
+    }
     if (Fcb->ImageSectionObject) {
 	assert(Fcb == Fcb->ImageSectionObject->Fcb);
 	Fcb->ImageSectionObject->Fcb = NULL;
