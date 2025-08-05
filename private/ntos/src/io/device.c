@@ -502,11 +502,10 @@ VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
     if (DevObj->Vcb) {
 	IopDismountVolume(DevObj->Vcb, TRUE);
     }
-    DevObj->Removed = TRUE;
     /* At this point the device object may still have more than one references
-     * if it is being opened. Dereference the object so when the open routine
-     * returns an error status, it will be deleted. */
-    ObDereferenceObject(DevObj);
+     * if it is being opened. ObOpenObjectByNameEx will dereference the object
+     * when the open routine returns, at which point the object will be deleted. */
+    DevObj->Removed = TRUE;
 }
 
 /*
