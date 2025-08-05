@@ -777,6 +777,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    DbgPrint("    SERVER-MSG CLOSE-DEVICE DeviceHandle %p\n",
 		     (PVOID)IoPacket->ServerMsg.CloseDevice.DeviceObject);
 	    break;
+	case IoSrvMsgForceDismount:
+	    DbgPrint("    SERVER-MSG FORCE-DISMOUNT VolumeDevice %p\n",
+		     (PVOID)IoPacket->ServerMsg.ForceDismount.VolumeDevice);
+	    break;
 	default:
 	    DbgPrint("    INVALID SERVER MESSAGE TYPE %d\n", IoPacket->ServerMsg.Type);
 	    assert(FALSE);
