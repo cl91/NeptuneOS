@@ -253,10 +253,6 @@ static VOID IopVcbDetachSubobject(IN POBJECT Object,
 	ObDereferenceObject(Object);
     } else {
 	assert(ObObjectIsType(Object, OBJECT_TYPE_FILE));
-	PIO_FILE_OBJECT FileObj = Object;
-	assert(FileObj->Zombie);
-	assert(!FileObj->DeviceObject);
-	assert(!FileObj->Fcb);
 	ObRemoveObject(Object);
     }
 }
@@ -274,11 +270,6 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
     /* Decrease the refcount of the volume file that we increased in IopOpenDevice,
      * when the volume file was first opened. */
     if (Vcb->VolumeFile) {
-	if (Force) {
-	    assert(Vcb->VolumeFile->Zombie);
-	    assert(!Vcb->VolumeFile->DeviceObject);
-	    assert(!Vcb->VolumeFile->Fcb);
-	}
 	ObDereferenceObject(Vcb->VolumeFile);
     }
     /* If we are forcing the dismount due to for instance media change or a driver
@@ -306,10 +297,6 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	    ObDereferenceObject(Vcb->Subobjects);
 	}
 	if (Vcb->VolumeFcb) {
-	    /* This can only happen when we are dismounting during the mounting process
-	     * due to a driver crash. Otherwise the FCB should have been deleted (by
-	     * IopForceRemoveDevice) at this point. */
-	    assert(Vcb->MountInProgress);
 	    IopDeleteFcb(Vcb->VolumeFcb);
 	}
 	/* If we are force dismounting during the process of mounting the volume
