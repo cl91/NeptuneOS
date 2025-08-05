@@ -1785,6 +1785,7 @@ static VOID IopProcessSignaledObjectList()
 {
     IoAcquireDpcMutex();
     LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
+	BOOLEAN HasEnvToWakeUp = !IsListEmpty(&Object->EnvList);
 	LoopOverList(Env, &Object->EnvList, IOP_EXEC_ENV, EventLink) {
 	    Env->Suspended = FALSE;
 	    RemoveEntryList(&Env->EventLink);
@@ -1796,8 +1797,10 @@ static VOID IopProcessSignaledObjectList()
 	}
 	/* If the object is a synchronization event, reset the event to non-signaled state. */
 	if (Object->Type == SynchronizationEvent) {
-	    RemoveEntryList(&Object->QueueListEntry);
-	    Object->Signaled = FALSE;
+	    if (HasEnvToWakeUp) {
+		RemoveEntryList(&Object->QueueListEntry);
+		Object->Signaled = FALSE;
+	    }
 	} else {
 	    assert(Object->Type == NotificationEvent);
 	    /* If the object is a notification event, we should have woken up all coroutines
