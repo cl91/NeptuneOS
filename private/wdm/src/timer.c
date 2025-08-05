@@ -5,7 +5,8 @@ LIST_ENTRY IopPendingTimerList;
 
 ULONG KiStallScaleFactor;
 
-static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
+static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer,
+				  IN EVENT_TYPE EventType)
 {
     RtlZeroMemory(Timer, sizeof(KTIMER));
     IopInitializeDpcThread();
@@ -14,7 +15,7 @@ static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
 	return Status;
     }
     ObInitializeObject(&Timer->Header, CLIENT_OBJECT_TIMER, KTIMER);
-    Timer->Header.Type = NotificationEvent;
+    Timer->Header.Type = EventType;
     InitializeListHead(&Timer->Header.EnvList);
     return STATUS_SUCCESS;
 }
@@ -27,7 +28,7 @@ static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer)
  */
 NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
-    NTSTATUS Status = KiInitializeTimer(Timer);
+    NTSTATUS Status = KiInitializeTimer(Timer, NotificationEvent);
     if (!NT_SUCCESS(Status)) {
 	RtlRaiseStatus(Status);
     }
@@ -240,7 +241,7 @@ NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
     PAGED_CODE();
     assert(Interval);
     KTIMER Timer;
-    NTSTATUS Status = KiInitializeTimer(&Timer);
+    NTSTATUS Status = KiInitializeTimer(&Timer, SynchronizationEvent);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
