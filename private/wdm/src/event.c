@@ -105,6 +105,9 @@ NTAPI NTSTATUS KeWaitForSingleObject(IN PVOID Object,
 
     /* If the object has already been signaled, don't wait and simply return. */
     if (Header->Signaled) {
+	if (Header->Type == SynchronizationEvent) {
+	    KiCancelWaitableObject(Header, TRUE);
+	}
 	return STATUS_SUCCESS;
     }
 
