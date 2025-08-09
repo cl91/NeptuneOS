@@ -443,6 +443,204 @@ static inline VOID KiServiceUnmapBuffer4(IN BOOLEAN Mapped,
     KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmapBuffer4,	\
 		   KiServiceUnmapBuffer3)(__VA_ARGS__)
 
+static inline NTSTATUS KiServiceMapPnpControlBuffer(IN PTHREAD Thread,
+						    OUT BOOLEAN *Mapped,
+						    OUT PVOID *ServerAddress,
+						    IN MWORD ClientAddress,
+						    IN MWORD BufferLength,
+						    IN PLUGPLAY_CONTROL_CLASS ControlClass)
+{
+    RET_ERR(KiServiceMapBuffer6(Thread, Mapped, ServerAddress, ClientAddress,
+				BufferLength, ControlClass));
+    PVOID Buffer = *ServerAddress;
+    assert(Buffer);
+
+    switch (ControlClass) {
+    case PlugPlayControlEnumerateDevice:
+    {
+	PIO_PNP_CONTROL_ENUMERATE_DEVICE_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_ENUMERATE_DEVICE_DATA) +
+	    Data->DeviceInstanceLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlRegisterNewDevice:
+    case PlugPlayControlDeregisterDevice:
+    case PlugPlayControlInitializeDevice:
+    case PlugPlayControlStartDevice:
+    case PlugPlayControlUnlockDevice:
+    case PlugPlayControlResetDevice:
+    case PlugPlayControlHaltDevice:
+    {
+	PIO_PNP_CONTROL_DEVICE_CONTROL_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_DEVICE_CONTROL_DATA) +
+	    Data->DeviceInstanceLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlQueryAndRemoveDevice:
+    {
+	PIO_PNP_CONTROL_QUERY_REMOVE_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_QUERY_REMOVE_DATA) +
+	    Data->DeviceInstanceLength + Data->VetoNameLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlUserResponse:
+	if (BufferLength != sizeof(PLUGPLAY_CONTROL_USER_RESPONSE_DATA)) {
+	    goto err;
+	}
+	break;
+
+    case PlugPlayControlGetInterfaceDeviceList:
+    {
+	PIO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA) +
+	    Data->DeviceInstanceLength + Data->BufferSize) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlProperty:
+    {
+	PIO_PNP_CONTROL_PROPERTY_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_PROPERTY_DATA) +
+	    Data->DeviceInstanceLength + Data->BufferSize) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlDeviceClassAssociation:
+    {
+	PIO_PNP_CONTROL_CLASS_ASSOCIATION_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_CLASS_ASSOCIATION_DATA) +
+	    Data->DeviceInstanceLength + Data->ReferenceNameLength +
+	    Data->SymbolicLinkNameLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength + Data->ReferenceNameLength - 1] !=
+	    '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlGetRelatedDevice:
+    {
+	PIO_PNP_CONTROL_RELATED_DEVICE_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_RELATED_DEVICE_DATA) +
+	    Data->TargetDeviceInstanceLength + Data->RelatedDeviceInstanceLength) {
+	    goto err;
+	}
+	if (Data->TargetDeviceInstance[Data->TargetDeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlGetInterfaceDeviceAlias:
+    {
+	PIO_PNP_CONTROL_INTERFACE_ALIAS_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_INTERFACE_ALIAS_DATA) +
+	    Data->SymbolicLinkNameLength + Data->AliasSymbolicLinkNameLength) {
+	    goto err;
+	}
+	if (Data->SymbolicLinkName[Data->SymbolicLinkNameLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlDeviceStatus:
+    {
+	PIO_PNP_CONTROL_STATUS_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_STATUS_DATA) +
+	    Data->DeviceInstanceLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlGetDeviceDepth:
+    {
+	PIO_PNP_CONTROL_DEPTH_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_DEPTH_DATA) +
+	    Data->DeviceInstanceLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlQueryDeviceRelations:
+    {
+	PIO_PNP_CONTROL_DEVICE_RELATIONS_DATA Data =Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_DEVICE_RELATIONS_DATA) +
+	    Data->DeviceInstanceLength + Data->BufferSize) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    case PlugPlayControlRetrieveDock:
+    {
+	PIO_PNP_CONTROL_RETRIEVE_DOCK_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_RETRIEVE_DOCK_DATA) +
+	    Data->DeviceInstanceLength) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
+    default:
+	/* Unimplemented control class */
+	assert(FALSE);
+    }
+    return STATUS_SUCCESS;
+
+err:
+    KiServiceUnmapBuffer3(*Mapped, Buffer, BufferLength);
+    *ServerAddress = NULL;
+    return STATUS_INVALID_PARAMETER;
+}
+
 static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
 {
     assert(Thread->ReplyEndpoint.TreeNode.CNode != NULL);

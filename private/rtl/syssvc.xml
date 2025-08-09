@@ -476,8 +476,8 @@
   <svc name="NtQueryValueKey">
     <parameter annotation="in" type="HANDLE" name="KeyHandle" />
     <parameter annotation="in" type="UnicodeString" name="ValueName" />
-    <parameter annotation="in" type="buftype::KEY_VALUE_INFORMATION_CLASS" name="KeyValueInformationClass" />
-    <parameter annotation="out opt unicode" type="buf::KeyValueInfoBuffer" name="InformationBuffer" />
+    <parameter annotation="in" type="buftype::KEY_VALUE_INFORMATION_CLASS" name="InfoClass" />
+    <parameter annotation="out opt unicode" type="buf::KeyValueInfoBuffer" name="Buffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
@@ -512,7 +512,7 @@
   <svc name="NtEnumerateValueKey">
     <parameter annotation="in" type="HANDLE" name="KeyHandle" />
     <parameter annotation="in" type="ULONG" name="Index" />
-    <parameter annotation="in" type="KEY_VALUE_INFORMATION_CLASS" name="KeyValueInformationClass" />
+    <parameter annotation="in" type="KEY_VALUE_INFORMATION_CLASS" name="InfoClass" />
     <parameter annotation="out" type="buf::Void" name="InformationBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
@@ -554,8 +554,8 @@
   </svc>
 
   <svc name="NtPlugPlayControl">
-    <parameter annotation="in" type="PLUGPLAY_CONTROL_CLASS" name="PlugPlayControlClass" />
-    <parameter annotation="in" type="buf::Void" name="Buffer" />
+    <parameter annotation="in" type="buftype::PLUGPLAY_CONTROL_CLASS" name="ControlClass" />
+    <parameter annotation="in out" type="buf::PnpControl" name="Buffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
   </svc>
 

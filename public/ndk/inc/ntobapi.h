@@ -84,7 +84,6 @@ typedef struct _OBJECT_DIRECTORY_INFORMATION {
 #ifndef _NTOSKRNL_
 
 NTAPI NTSYSAPI NTSTATUS NtClose(IN HANDLE Handle);
-#define ZwClose NtClose
 
 NTAPI NTSYSAPI NTSTATUS NtWaitForSingleObject(IN HANDLE WaitObject,
                                               IN BOOLEAN Alertable,

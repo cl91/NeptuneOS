@@ -251,7 +251,7 @@ NTSTATUS RtlCliListDirectory(VOID)
     //
     // Open the directory
     //
-    Status = ZwCreateFile(&DirectoryHandle,
+    Status = NtCreateFile(&DirectoryHandle,
 			  FILE_LIST_DIRECTORY,
 			  &ObjectAttributes,
 			  &IoStatusBlock,
@@ -290,7 +290,7 @@ NTSTATUS RtlCliListDirectory(VOID)
 	//
 	// Get the contents of the directory, adding up the size as we go
 	//
-	Status = ZwQueryDirectoryFile(DirectoryHandle,
+	Status = NtQueryDirectoryFile(DirectoryHandle,
 				      EventHandle,
 				      NULL,
 				      0,
@@ -313,7 +313,7 @@ NTSTATUS RtlCliListDirectory(VOID)
 	    //
 	    // Nothing left to enumerate. Close handles and free memory
 	    //
-	    ZwClose(DirectoryHandle);
+	    NtClose(DirectoryHandle);
 	    RtlFreeHeap(RtlGetProcessHeap(), 0, DirectoryInfo);
 	    return STATUS_SUCCESS;
 	}

@@ -139,7 +139,7 @@ ULONG PciIdPrintf(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
     /* Calculate the final size of the string, in Unicode */
     Size = RtlAnsiStringToUnicodeSize(AnsiString);
 
-    /* Update hte buffer with the size,and update the character pointer */
+    /* Update the buffer with the size, and update the character pointer */
     IdBuffer->StringSize[IdBuffer->Count] = Size;
     IdBuffer->TotalLength += Size;
     Length = AnsiString->Length + sizeof(ANSI_NULL);

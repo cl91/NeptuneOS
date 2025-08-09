@@ -381,8 +381,7 @@ VOID MmReleaseUntyped(IN PUNTYPED Untyped)
      * of whether the children of the untyped have been deleted (we always
      * delete the children before releasing the untyped, but it seems that
      * just deleting the children is insufficient for releasing the untyped.
-     * seL4 actually seems to require you to call Revoke on the untyped itself).
-     * If any one is familiar with seL4, please let me know if this is correct. */
+     * seL4 actually seems to require you to call Revoke on the untyped itself). */
     MiCapTreeRevokeNode(&Untyped->TreeNode);
     PCAP_TREE_NODE SiblingNode = MiCapTreeGetNextSibling(&Untyped->TreeNode);
     if (SiblingNode != NULL) {

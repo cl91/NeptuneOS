@@ -133,17 +133,17 @@ static inline BOOLEAN CmpCheckSimpleTypes(IN ULONG Type,
 
 #define MAX_MSG_BUF_OFFSET	(IPC_BUFFER_COMMIT - 128)
 
-#ifdef _MSC_VER
-static inline PVOID CmpAllocateHeap(ULONG Bytes)
+static inline PVOID KiAllocateHeap(ULONG Bytes)
 {
     return RtlAllocateHeap(RtlGetProcessHeap(), 0, Bytes);
 }
 
-static inline VOID CmpFreeHeap(PVOID Mem)
+static inline VOID KiFreeHeap(PVOID Mem)
 {
     RtlFreeHeap(RtlGetProcessHeap(), 0, Mem);
 }
 
+#ifdef _MSC_VER
 static inline BOOLEAN CmpIsStringType(IN ULONG Type)
 {
     return Type == REG_SZ || Type == REG_EXPAND_SZ ||
@@ -232,14 +232,14 @@ static NTSTATUS CmpMarshalRegData(IN PVOID Data,
 	    Buffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
 	    MarshaledDataSize = BufferSize;
 	} else {
-	    Buffer = CmpAllocateHeap(BufferSize);
+	    Buffer = KiAllocateHeap(BufferSize);
 	    if (Buffer == NULL) {
 		return STATUS_NO_MEMORY;
 	    }
 	}
 	RET_ERR_EX(RtlUnicodeToUTF8N(Buffer, BufferSize, &BufferSize,
 				     Data, DataSize),
-		   CmpFreeHeap(Buffer));
+		   KiFreeHeap(Buffer));
 	DataSize = BufferSize;
     } else if (*MsgBufOffset + DataSize < MAX_MSG_BUF_OFFSET) {
 	Buffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
@@ -262,7 +262,7 @@ static VOID CmpFreeMarshaledRegData(IN PVOID Data,
 				    IN SERVICE_ARGUMENT DataTypeArg)
 {
     if (CmpIsStringType(DataTypeArg.Word) && !KiPtrInSvcMsgBuf((PVOID)DataArg.Word)) {
-	CmpFreeHeap((PVOID)DataArg.Word);
+	KiFreeHeap((PVOID)DataArg.Word);
     }
 }
 #endif
@@ -372,6 +372,397 @@ static inline NTSTATUS CmpMarshalKeyValueInfoBuffer(IN OPTIONAL PVOID ClientBuff
     RET_ERR(KiServiceMarshalBuffer(ClientBuffer, BufferSize, BufferArg,
 				   SizeArg, Copy, MsgBufOffset));
     return STATUS_SUCCESS;
+}
+
+#define IOP_MARSHAL_PNP_CONTROL_DATA_EX(ClientType, ServerType,		\
+					Field, DeviceInstanceBuffer,	\
+					DeviceInstanceLength,		\
+					PreMarshal, PostMarshal)	\
+    if (BufferLength < sizeof(ClientType)) {				\
+	return STATUS_INVALID_PARAMETER_3;				\
+    }									\
+    ClientType *Data = Buffer;						\
+    ULONG DeviceInstanceSize = 0;					\
+    RET_ERR(RtlUnicodeToUTF8N(NULL, 0, &DeviceInstanceSize,		\
+			      Data->DeviceInstanceBuffer,		\
+			      Data->DeviceInstanceLength));		\
+    if (Data->DeviceInstanceBuffer[					\
+	    Data->DeviceInstanceLength/sizeof(WCHAR) - 1] != L'\0') {	\
+	DeviceInstanceSize++;						\
+    }									\
+    MarshaledDataSize += sizeof(ServerType) + DeviceInstanceSize;	\
+    PreMarshal;								\
+    if (*MsgBufOffset + MarshaledDataSize < MAX_MSG_BUF_OFFSET) {	\
+	DestBuffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);		\
+	MsgBufDataSize = MarshaledDataSize;				\
+    } else {								\
+	DestBuffer = KiAllocateHeap(MarshaledDataSize);			\
+	if (DestBuffer == NULL) {					\
+	    return STATUS_NO_MEMORY;					\
+	}								\
+    }									\
+    ServerType *DestData = DestBuffer;					\
+    RET_ERR_EX(RtlUnicodeToUTF8N(DestData->Field, DeviceInstanceSize,	\
+				 &DeviceInstanceSize,			\
+				 Data->DeviceInstanceBuffer,		\
+				 Data->DeviceInstanceLength),		\
+	       KiFreeHeap(Buffer));					\
+    if (Data->DeviceInstanceBuffer[					\
+	    Data->DeviceInstanceLength/sizeof(WCHAR) - 1] != L'\0') {	\
+	DestData->Field[DeviceInstanceSize++] = '\0';			\
+    }									\
+    PostMarshal
+
+#define IOP_MARSHAL_PNP_CONTROL_DATA(ClientType, ServerType,		\
+				     PreMarshal, PostMarshal)		\
+    IOP_MARSHAL_PNP_CONTROL_DATA_EX(ClientType, ServerType,		\
+				    DeviceInstance,			\
+				    DeviceInstance.Buffer,		\
+				    DeviceInstance.Length,		\
+				    PreMarshal, {			\
+					PostMarshal;			\
+					DestData->DeviceInstanceLength = \
+					    DeviceInstanceSize;		\
+				    })
+
+static NTSTATUS IopMarshalPnpControlData(IN PVOID Buffer,
+					 IN ULONG BufferLength,
+					 IN PLUGPLAY_CONTROL_CLASS ControlClass,
+					 OUT SERVICE_ARGUMENT *DataArg,
+					 OUT SERVICE_ARGUMENT *DataSizeArg,
+					 OUT SERVICE_ARGUMENT *DataTypeArg,
+					 IN BOOLEAN InParam,
+					 OUT ULONG *MsgBufOffset)
+{
+    assert(MsgBufOffset != NULL);
+    assert(*MsgBufOffset < SVC_MSGBUF_SIZE);
+    if (*MsgBufOffset >= SVC_MSGBUF_SIZE) {
+	return STATUS_INTERNAL_ERROR;
+    }
+    if (!Buffer) {
+	return STATUS_INVALID_PARAMETER_2;
+    }
+    if (KiPtrInSvcMsgBuf(Buffer)) {
+	return STATUS_INVALID_USER_BUFFER;
+    }
+    PVOID DestBuffer = NULL;
+    ULONG MarshaledDataSize = 0;
+    ULONG MsgBufDataSize = 0;
+
+    switch (ControlClass) {
+    case PlugPlayControlEnumerateDevice:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA,
+				     IO_PNP_CONTROL_ENUMERATE_DEVICE_DATA, ,
+				     DestData->Flags = Data->Flags);
+	break;
+    }
+
+    case PlugPlayControlRegisterNewDevice:
+    case PlugPlayControlDeregisterDevice:
+    case PlugPlayControlInitializeDevice:
+    case PlugPlayControlStartDevice:
+    case PlugPlayControlUnlockDevice:
+    case PlugPlayControlResetDevice:
+    case PlugPlayControlHaltDevice:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_DEVICE_CONTROL_DATA,
+				     IO_PNP_CONTROL_DEVICE_CONTROL_DATA,,);
+	break;
+    }
+
+    case PlugPlayControlQueryAndRemoveDevice:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(
+	    PLUGPLAY_CONTROL_QUERY_REMOVE_DATA,
+	    IO_PNP_CONTROL_QUERY_REMOVE_DATA,
+
+	    ULONG VetoNameLength = 0;
+	    RET_ERR(RtlUnicodeToUTF8N(NULL, 0, &VetoNameLength,
+				      Data->VetoName,
+				      wcslen(Data->VetoName)+1));
+	    MarshaledDataSize += VetoNameLength;,
+
+	    RET_ERR_EX(RtlUnicodeToUTF8N(DestData->DeviceInstance + DeviceInstanceSize,
+					 VetoNameLength,
+					 &VetoNameLength,
+					 Data->VetoName,
+					 wcslen(Data->VetoName)+1),
+		       KiFreeHeap(Buffer));
+	    DestData->Flags = Data->Flags;
+	    DestData->VetoType = Data->VetoType;
+	    DestData->VetoNameLength = VetoNameLength);
+	break;
+    }
+
+    case PlugPlayControlUserResponse:
+    {
+	ULONG DataSize = sizeof(PLUGPLAY_CONTROL_USER_RESPONSE_DATA);
+	if (BufferLength < DataSize) {
+	    return STATUS_INVALID_PARAMETER_3;
+	}
+	if (*MsgBufOffset + DataSize < MAX_MSG_BUF_OFFSET) {
+	    DestBuffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
+	    MsgBufDataSize = MarshaledDataSize = DataSize;
+	} else {
+	    assert(FALSE);
+	    return STATUS_INTERNAL_ERROR;
+	}
+	RtlCopyMemory(DestBuffer, Buffer, DataSize);
+	break;
+    }
+
+    case PlugPlayControlGetInterfaceDeviceList:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_INTERFACE_DEVICE_LIST_DATA,
+				     IO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA,
+				     MarshaledDataSize += Data->BufferSize / sizeof(WCHAR),
+				     DestData->BufferSize = Data->BufferSize / sizeof(WCHAR);
+				     DestData->FilterGuid = *Data->FilterGuid;
+				     DestData->Flags = Data->Flags);
+	break;
+    }
+
+    case PlugPlayControlProperty:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_PROPERTY_DATA,
+				     IO_PNP_CONTROL_PROPERTY_DATA,
+				     MarshaledDataSize += Data->BufferSize / sizeof(WCHAR),
+				     DestData->BufferSize = Data->BufferSize / sizeof(WCHAR);
+				     DestData->Property = Data->Property);
+	break;
+    }
+
+    case PlugPlayControlDeviceClassAssociation:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(
+	    PLUGPLAY_CONTROL_CLASS_ASSOCIATION_DATA,
+	    IO_PNP_CONTROL_CLASS_ASSOCIATION_DATA,
+
+	    ULONG ReferenceNameLength = 0;
+	    RET_ERR(RtlUnicodeToUTF8N(NULL, 0, &ReferenceNameLength,
+				      Data->Reference.Buffer,
+				      Data->Reference.Length));
+	    if (Data->Reference.Buffer[Data->Reference.Length/sizeof(WCHAR)-1] != L'\0') {
+		ReferenceNameLength++;
+	    }
+	    ULONG OutputSize = Data->SymbolicLinkNameLength / sizeof(WCHAR);
+	    MarshaledDataSize += ReferenceNameLength + OutputSize,
+
+	    RET_ERR_EX(RtlUnicodeToUTF8N(DestData->DeviceInstance + DeviceInstanceSize,
+					 ReferenceNameLength,
+					 &ReferenceNameLength,
+					 Data->Reference.Buffer,
+					 Data->Reference.Length),
+		       KiFreeHeap(Buffer));
+	    if (Data->Reference.Buffer[Data->Reference.Length/sizeof(WCHAR)-1] != L'\0') {
+		DestData->DeviceInstance[DeviceInstanceSize + ReferenceNameLength++] = '\0';
+	    }
+	    DestData->InterfaceGuid = *Data->InterfaceGuid;
+	    DestData->Register = Data->Register;
+	    DestData->ReferenceNameLength = ReferenceNameLength;
+	    DestData->SymbolicLinkNameLength = OutputSize);
+	break;
+    }
+
+    case PlugPlayControlGetRelatedDevice:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA_EX(
+	    PLUGPLAY_CONTROL_RELATED_DEVICE_DATA,
+	    IO_PNP_CONTROL_RELATED_DEVICE_DATA,
+	    TargetDeviceInstance,
+	    TargetDeviceInstance.Buffer,
+	    TargetDeviceInstance.Length,
+
+	    ULONG OutputSize = Data->RelatedDeviceInstanceLength / sizeof(WCHAR);
+	    MarshaledDataSize += OutputSize,
+
+	    DestData->Relation = Data->Relation;
+	    DestData->TargetDeviceInstanceLength = DeviceInstanceSize;
+	    DestData->RelatedDeviceInstanceLength = OutputSize);
+	break;
+    }
+
+    case PlugPlayControlGetInterfaceDeviceAlias:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA_EX(
+	    PLUGPLAY_CONTROL_INTERFACE_ALIAS_DATA,
+	    IO_PNP_CONTROL_INTERFACE_ALIAS_DATA,
+	    SymbolicLinkName,
+	    SymbolicLinkName.Buffer,
+	    SymbolicLinkName.Length,
+
+	    ULONG AliasNameLength = 0;
+	    RET_ERR(RtlUnicodeToUTF8N(NULL, 0, &AliasNameLength,
+				      Data->AliasSymbolicLinkName,
+				      Data->AliasSymbolicLinkNameLength));
+	    if (Data->AliasSymbolicLinkName[Data->AliasSymbolicLinkNameLength/sizeof(WCHAR)-1] !=
+		L'\0') {
+		AliasNameLength++;
+	    }
+	    MarshaledDataSize += AliasNameLength,
+
+	    RET_ERR_EX(RtlUnicodeToUTF8N(DestData->SymbolicLinkName + DeviceInstanceSize,
+					 AliasNameLength,
+					 &AliasNameLength,
+					 Data->AliasSymbolicLinkName,
+					 Data->AliasSymbolicLinkNameLength),
+		       KiFreeHeap(Buffer));
+	    if (Data->AliasSymbolicLinkName[Data->AliasSymbolicLinkNameLength/sizeof(WCHAR)-1] !=
+		L'\0') {
+		DestData->SymbolicLinkName[DeviceInstanceSize + AliasNameLength++] = '\0';
+	    }
+	    DestData->AliasInterfaceClassGuid = *Data->AliasInterfaceClassGuid;
+	    DestData->SymbolicLinkNameLength = DeviceInstanceSize;
+	    DestData->AliasSymbolicLinkNameLength = AliasNameLength);
+	break;
+    }
+
+    case PlugPlayControlDeviceStatus:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_STATUS_DATA,
+				     IO_PNP_CONTROL_STATUS_DATA, ,
+				     DestData->Operation = Data->Operation;
+				     DestData->DeviceStatus = Data->DeviceStatus;
+				     DestData->DeviceProblem = Data->DeviceProblem);
+	break;
+    }
+
+    case PlugPlayControlGetDeviceDepth:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_DEPTH_DATA,
+				     IO_PNP_CONTROL_DEPTH_DATA, ,
+				     DestData->Depth = Data->Depth);
+	break;
+    }
+
+    case PlugPlayControlQueryDeviceRelations:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_DEVICE_RELATIONS_DATA,
+				     IO_PNP_CONTROL_DEVICE_RELATIONS_DATA,
+				     MarshaledDataSize += Data->BufferSize / sizeof(WCHAR),
+				     DestData->BufferSize = Data->BufferSize / sizeof(WCHAR);
+				     DestData->Relations = Data->Relations);
+	break;
+    }
+
+    case PlugPlayControlRetrieveDock:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA_EX(PLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA,
+					IO_PNP_CONTROL_RETRIEVE_DOCK_DATA,
+					DeviceInstance,
+					DeviceInstance,
+					DeviceInstanceLength,,);
+	break;
+    }
+
+    default:
+	/* Unimplemented control class */
+	assert(FALSE);
+    }
+
+    DataArg->Word = (MWORD)DestBuffer;
+    DataSizeArg->Word = MarshaledDataSize;
+    DataTypeArg->Word = ControlClass;
+    *MsgBufOffset += MsgBufDataSize;
+    return STATUS_SUCCESS;
+}
+
+static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
+				       IN SERVICE_ARGUMENT BufferArg,
+				       IN MWORD BufferSize,
+				       IN PLUGPLAY_CONTROL_CLASS ControlClass)
+{
+    switch (ControlClass) {
+    case PlugPlayControlEnumerateDevice:
+    case PlugPlayControlRegisterNewDevice:
+    case PlugPlayControlDeregisterDevice:
+    case PlugPlayControlInitializeDevice:
+    case PlugPlayControlStartDevice:
+    case PlugPlayControlUnlockDevice:
+    case PlugPlayControlResetDevice:
+    case PlugPlayControlHaltDevice:
+    case PlugPlayControlUserResponse:
+	/* Do nothing */
+	break;
+
+    case PlugPlayControlGetRelatedDevice:
+    {
+	PPLUGPLAY_CONTROL_RELATED_DEVICE_DATA Data = ClientBuffer;
+	PIO_PNP_CONTROL_RELATED_DEVICE_DATA SrcBuffer = (PVOID)BufferArg.Word;
+	ULONG BytesWritten;
+#if DBG
+	NTSTATUS Status =
+#endif
+	RtlUTF8ToUnicodeN(Data->RelatedDeviceInstance, Data->RelatedDeviceInstanceLength,
+			  &BytesWritten,
+			  SrcBuffer->TargetDeviceInstance + SrcBuffer->TargetDeviceInstanceLength,
+			  SrcBuffer->RelatedDeviceInstanceLength);
+	assert(NT_SUCCESS(Status));
+	break;
+    }
+
+    case PlugPlayControlGetInterfaceDeviceList:
+    {
+	PPLUGPLAY_CONTROL_INTERFACE_DEVICE_LIST_DATA Data = ClientBuffer;
+	PIO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA SrcBuffer = (PVOID)BufferArg.Word;
+	ULONG BytesWritten;
+#if DBG
+	NTSTATUS Status =
+#endif
+	RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+			  SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+			  SrcBuffer->BufferSize);
+	assert(NT_SUCCESS(Status));
+	break;
+    }
+
+    case PlugPlayControlProperty:
+    {
+	PPLUGPLAY_CONTROL_PROPERTY_DATA Data = ClientBuffer;
+	PIO_PNP_CONTROL_PROPERTY_DATA SrcBuffer = (PVOID)BufferArg.Word;
+	ULONG BytesWritten;
+#if DBG
+	NTSTATUS Status =
+#endif
+	RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+			  SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+			  SrcBuffer->BufferSize);
+	assert(NT_SUCCESS(Status));
+	break;
+    }
+
+    case PlugPlayControlQueryDeviceRelations:
+    {
+	PPLUGPLAY_CONTROL_DEVICE_RELATIONS_DATA Data = ClientBuffer;
+	PIO_PNP_CONTROL_DEVICE_RELATIONS_DATA SrcBuffer = (PVOID)BufferArg.Word;
+	ULONG BytesWritten;
+#if DBG
+	NTSTATUS Status =
+#endif
+	RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+			  SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+			  SrcBuffer->BufferSize);
+	assert(NT_SUCCESS(Status));
+	break;
+    }
+
+    default:
+	/* Unimplemented control code */
+	assert(FALSE);
+	UNIMPLEMENTED;
+	break;
+    }
+}
+
+static VOID IopFreeMarshaledPnpControlData(IN PVOID Data,
+					   IN SERVICE_ARGUMENT DataArg,
+					   IN SERVICE_ARGUMENT DataSizeArg,
+					   IN SERVICE_ARGUMENT DataTypeArg)
+{
+    if (!KiPtrInSvcMsgBuf((PVOID)DataArg.Word)) {
+	KiFreeHeap((PVOID)DataArg.Word);
+    }
 }
 
 #include <ntdll_syssvc_gen.c>

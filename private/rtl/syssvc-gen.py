@@ -689,11 +689,6 @@ class BufferMarshaller(BaseMarshaller):
                 bufsize_params.append(q)
             if len(bufsize_params) == 0:
                 raise ValueError(self.svc_name + ": Expected buffer size parameter")
-            # We don't support buffers that are both IN and OUT. NT doesn't
-            # have these anyway (all IN OUT parameters of NT system services
-            # are covered by the case of SimplePointerMarshaller).
-            if p.dir_in and p.dir_out:
-                raise ValueError(self.svc_name + ": Buffer parameter " + p.name + " is marked both IN and OUT")
             if p.dir_in and len(bufsize_params) != 1:
                 raise ValueError(self.svc_name + ": Invalid number of buffer size annotations")
             if p.dir_out and len(bufsize_params) > 2:
@@ -754,7 +749,7 @@ if (!NT_SUCCESS(Status)) {
         p.client_post_marshaling = self.format(pp, """{%- if client_post_marshal_func %}
 {{client_post_marshal_func}}({{p.name}}, {{p.name}}Arg, {{sp.name}}Arg{% if tp %}, {{tp.name}}Arg{% endif %});
 {%- endif %}""")
-        p.client_unmarshaling = self.format(pp, "{%- if client_unmarshal_func %}{{client_unmarshal_func}}({{p.name}}, {{p.name}}Arg, {% if lp %}OFFSET_TO_ARG({{lp.name}}Arg.BufferStart, {{get_base_type(lp)}}){% else %}{{sp.name}}Arg.Word{% endif %});{%- endif %}")
+        p.client_unmarshaling = self.format(pp, "{%- if client_unmarshal_func %}{{client_unmarshal_func}}({{p.name}}, {{p.name}}Arg, {% if lp %}OFFSET_TO_ARG({{lp.name}}Arg.BufferStart, {{get_base_type(lp)}}){% else %}{{sp.name}}Arg.Word{% endif %}{% if tp %}, {{tp.name}}{% endif %});{%- endif %}")
         p.marshaler_state_decl = self.format(pp, "BOOLEAN {{p.name}}Mapped")
         p.server_pre_marshaling = self.format(pp, """SERVICE_ARGUMENT {{p.name}}Arg = { .Word = seL4_GetMR({{p.idx}}) };
 {{server_type}} {{p.name}} = NULL;""")
@@ -958,6 +953,13 @@ class Service:
                              client_post_marshal_func = "",
                              client_unmarshal_func = "",
                              server_marshal_func = "KiServiceMapBuffer",
+                             server_post_marshal_func = "KiServiceUnmapBuffer"),
+            BufferMarshaller(server_name, buffer_type = "PnpControl",
+                             server_type = "PVOID", client_type = "PVOID",
+                             client_marshal_func = "IopMarshalPnpControlData",
+                             client_post_marshal_func = "IopFreeMarshaledPnpControlData",
+                             client_unmarshal_func = "IopUnmarshalPnpControlData",
+                             server_marshal_func = "KiServiceMapPnpControlBuffer",
                              server_post_marshal_func = "KiServiceUnmapBuffer")
         ]
         for m in marshallers:

@@ -1045,10 +1045,25 @@ out:
     ASYNC_END(AsyncState, Status);
 }
 
-typedef NTSTATUS (*PDEVICE_NODE_VISITOR_EX)(IN ASYNC_STATE AsyncState,
-					    IN PTHREAD Thread,
-					    IN PDEVICE_NODE DeviceNode,
-					    IN PVOID Context);
+typedef BOOLEAN (*PDEVICE_NODE_VISITOR)(IN PDEVICE_NODE DeviceNode,
+					IN PVOID Context);
+
+static VOID IopDeviceNodeTraverseChildren(IN PDEVICE_NODE DeviceNode,
+					  IN PDEVICE_NODE_VISITOR Visitor,
+					  IN PVOID Context)
+{
+    LoopOverList(Child, &DeviceNode->ChildrenList, DEVICE_NODE, SiblingLink) {
+	if (!Visitor(Child, Context)) {
+	    break;
+	}
+	IopDeviceNodeTraverseChildren(Child, Visitor, Context);
+    }
+}
+
+typedef NTSTATUS (*PDEVICE_NODE_SYNC_VISITOR_EX)(IN ASYNC_STATE AsyncState,
+						 IN PTHREAD Thread,
+						 IN PDEVICE_NODE DeviceNode,
+						 IN PVOID Context);
 
 /*
  * Traverse the child device nodes of the given device node (but not the node
@@ -1059,12 +1074,12 @@ typedef NTSTATUS (*PDEVICE_NODE_VISITOR_EX)(IN ASYNC_STATE AsyncState,
  * any error is encountered during the traversal. Otherwise error status is
  * returned if an error is encountered.
  */
-static NTSTATUS IopDeviceNodeTraverseChildrenEx(IN ASYNC_STATE AsyncState,
-						IN PTHREAD Thread,
-						IN PDEVICE_NODE DeviceNode,
-						IN PDEVICE_NODE_VISITOR_EX Visitor,
-						IN PVOID Context,
-						IN BOOLEAN StopOnError)
+static NTSTATUS IopDeviceNodeTraverseChildrenSyncEx(IN ASYNC_STATE AsyncState,
+						    IN PTHREAD Thread,
+						    IN PDEVICE_NODE DeviceNode,
+						    IN PDEVICE_NODE_SYNC_VISITOR_EX Visitor,
+						    IN PVOID Context,
+						    IN BOOLEAN StopOnError)
 {
     NTSTATUS Status;
     ASYNC_BEGIN(AsyncState, Locals, {
@@ -1092,26 +1107,26 @@ end:
     ASYNC_END(AsyncState, StopOnError ? Status : STATUS_SUCCESS);
 }
 
-typedef NTSTATUS (*PDEVICE_NODE_VISITOR)(IN ASYNC_STATE AsyncState,
-					 IN PTHREAD Thread,
-					 IN PDEVICE_NODE DeviceNode);
+typedef NTSTATUS (*PDEVICE_NODE_SYNC_VISITOR)(IN ASYNC_STATE AsyncState,
+					      IN PTHREAD Thread,
+					      IN PDEVICE_NODE DeviceNode);
 
-static NTSTATUS IopDeviceNodeVisit(IN ASYNC_STATE AsyncState,
-				   IN PTHREAD Thread,
-				   IN PDEVICE_NODE DeviceNode,
-				   IN PVOID Context)
+static NTSTATUS IopDeviceNodeSyncVisit(IN ASYNC_STATE AsyncState,
+				       IN PTHREAD Thread,
+				       IN PDEVICE_NODE DeviceNode,
+				       IN PVOID Context)
 {
-    PDEVICE_NODE_VISITOR Visitor = (PDEVICE_NODE_VISITOR)Context;
+    PDEVICE_NODE_SYNC_VISITOR Visitor = (PDEVICE_NODE_SYNC_VISITOR)Context;
     return Visitor(AsyncState, Thread, DeviceNode);
 }
 
-static NTSTATUS IopDeviceNodeTraverseChildren(IN ASYNC_STATE AsyncState,
-					      IN PTHREAD Thread,
-					      IN PDEVICE_NODE DeviceNode,
-					      IN PDEVICE_NODE_VISITOR Visitor)
+static NTSTATUS IopDeviceNodeTraverseChildrenSync(IN ASYNC_STATE AsyncState,
+						  IN PTHREAD Thread,
+						  IN PDEVICE_NODE DeviceNode,
+						  IN PDEVICE_NODE_SYNC_VISITOR Visitor)
 {
-    return IopDeviceNodeTraverseChildrenEx(AsyncState, Thread, DeviceNode,
-					   IopDeviceNodeVisit, Visitor, FALSE);
+    return IopDeviceNodeTraverseChildrenSyncEx(AsyncState, Thread, DeviceNode,
+					       IopDeviceNodeSyncVisit, Visitor, FALSE);
 }
 
 /*
@@ -1147,7 +1162,7 @@ static NTSTATUS IopDeviceTreeEnumerate(IN ASYNC_STATE AsyncState,
 
     /* For each child node, recursively enumerate it. This will build the entire
      * device tree in a depth-first fashion. */
-    AWAIT_EX(Status, IopDeviceNodeTraverseChildren, AsyncState, _, Thread,
+    AWAIT_EX(Status, IopDeviceNodeTraverseChildrenSync, AsyncState, _, Thread,
 	     DeviceNode, IopDeviceTreeEnumerate);
 
 out:
@@ -1232,6 +1247,179 @@ static NTSTATUS IopRootNodeAssignResources()
 	HalAcpiGetRsdtResource();
     IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeResourcesAssigned);
     return STATUS_SUCCESS;
+}
+
+typedef struct _IOP_FIND_DEVICE_INSTANCE_CONTEXT {
+    OUT PIO_DEVICE_OBJECT DeviceObject;
+    IN PCSTR DeviceInstance;
+} IOP_FIND_DEVICE_INSTANCE_CONTEXT, *PIOP_FIND_DEVICE_INSTANCE_CONTEXT;
+
+static BOOLEAN IopFindDeviceInstanceVisitor(IN PDEVICE_NODE DeviceNode,
+					    IN OUT PVOID Ctx)
+{
+    PIOP_FIND_DEVICE_INSTANCE_CONTEXT Context = Ctx;
+    ULONG LastSeperator = ObLocateLastPathSeparator(Context->DeviceInstance);
+    if (!LastSeperator) {
+	/* Device instance is invalid. Return NULL. */
+	Context->DeviceObject = NULL;
+	return FALSE;
+    }
+    if (!_strnicmp(DeviceNode->DeviceId, Context->DeviceInstance, LastSeperator) &&
+	!_stricmp(DeviceNode->InstanceId, Context->DeviceInstance + LastSeperator + 1)) {
+        Context->DeviceObject = DeviceNode->PhyDevObj;
+        /* Stop enumeration */
+        return FALSE;
+    }
+    /* Continue enumeration */
+    return TRUE;
+}
+
+static PIO_DEVICE_OBJECT IopGetDeviceObjectFromDeviceInstance(IN PCSTR DeviceInstance)
+{
+    if (IopRootDeviceNode == NULL)
+        return NULL;
+
+    if (DeviceInstance == NULL || DeviceInstance[0] == '\0') {
+        if (IopRootDeviceNode->PhyDevObj) {
+            ObpReferenceObject(IopRootDeviceNode->PhyDevObj);
+            return IopRootDeviceNode->PhyDevObj;
+        } else {
+            return NULL;
+	}
+    }
+
+    IOP_FIND_DEVICE_INSTANCE_CONTEXT Context = {
+	.DeviceInstance = DeviceInstance
+    };
+    if (!IopFindDeviceInstanceVisitor(IopRootDeviceNode, &Context)) {
+	goto out;
+    }
+
+    /* Traverse the device tree to find the matching device node */
+    IopDeviceNodeTraverseChildren(IopRootDeviceNode,
+				  IopFindDeviceInstanceVisitor, &Context);
+out:
+    if (Context.DeviceObject) {
+	ObpReferenceObject(Context.DeviceObject);
+    }
+    return Context.DeviceObject;
+}
+
+static NTSTATUS PiPerformSyncDeviceAction(IN ASYNC_STATE State,
+					  IN PTHREAD Thread,
+					  IN PIO_DEVICE_OBJECT PhyDevObj,
+					  IN PIO_PNP_CONTROL_DEVICE_CONTROL_DATA Data,
+					  IN PLUGPLAY_CONTROL_CLASS ControlClass)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS PiControlSyncDeviceAction(IN ASYNC_STATE State,
+					  IN PTHREAD Thread,
+					  IN PIO_PNP_CONTROL_DEVICE_CONTROL_DATA Data,
+					  IN PLUGPLAY_CONTROL_CLASS ControlClass)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_DEVICE_OBJECT DeviceObject;
+	});
+
+    assert(ControlClass == PlugPlayControlEnumerateDevice ||
+           ControlClass == PlugPlayControlStartDevice ||
+           ControlClass == PlugPlayControlResetDevice);
+
+    Locals.DeviceObject = IopGetDeviceObjectFromDeviceInstance(Data->DeviceInstance);
+    if (!Locals.DeviceObject) {
+        ASYNC_RETURN(State, STATUS_NO_SUCH_DEVICE);
+    }
+
+    AWAIT_EX(Status, PiPerformSyncDeviceAction, State, Locals, Thread,
+	     Locals.DeviceObject, Data, ControlClass);
+    ObDereferenceObject(Locals.DeviceObject);
+    ASYNC_END(State, Status);
+}
+
+static NTSTATUS PiControlQueryRemoveDevice(IN ASYNC_STATE State,
+					   IN PTHREAD Thread,
+					   IN PIO_PNP_CONTROL_QUERY_REMOVE_DATA Data)
+{
+    PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObjectFromDeviceInstance(Data->DeviceInstance);
+    if (!DeviceObject) {
+        return STATUS_NO_SUCH_DEVICE;
+    }
+
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS IopGetRelatedDevice(IN ASYNC_STATE State,
+				    IN PTHREAD Thread,
+				    IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA Data)
+{
+    PIO_DEVICE_OBJECT DeviceObject =
+	IopGetDeviceObjectFromDeviceInstance(Data->TargetDeviceInstance);
+    if (!DeviceObject) {
+	return STATUS_NO_SUCH_DEVICE;
+    }
+
+    PDEVICE_NODE DeviceNode = DeviceObject->DeviceNode;
+    PDEVICE_NODE RelatedDeviceNode = NULL;
+    switch (Data->Relation) {
+    case PNP_GET_PARENT_DEVICE:
+	RelatedDeviceNode = DeviceNode->Parent;
+	break;
+
+    case PNP_GET_CHILD_DEVICE:
+	if (!IsListEmpty(&DeviceNode->ChildrenList)) {
+	    RelatedDeviceNode = CONTAINING_RECORD(DeviceNode->ChildrenList.Flink,
+						  DEVICE_NODE, SiblingLink);
+	}
+	break;
+
+    case PNP_GET_SIBLING_DEVICE:
+	if (DeviceNode->Parent) {
+	    PLIST_ENTRY Flink = DeviceNode->SiblingLink.Flink;
+	    assert(Flink != &DeviceNode->SiblingLink);
+	    assert(ListHasEntry(&DeviceNode->Parent->ChildrenList, &DeviceNode->SiblingLink));
+	    if (Flink != &DeviceNode->Parent->ChildrenList) {
+		RelatedDeviceNode = CONTAINING_RECORD(Flink, DEVICE_NODE, SiblingLink);
+	    }
+	    assert(RelatedDeviceNode != DeviceNode);
+	}
+	break;
+
+    default:
+	assert(FALSE);
+    }
+
+    NTSTATUS Status = STATUS_NO_SUCH_DEVICE;
+    if (!RelatedDeviceNode) {
+	goto out;
+    }
+
+    ULONG BufferSize = strlen(RelatedDeviceNode->DeviceId) +
+	strlen(RelatedDeviceNode->InstanceId) + 2;
+    if (BufferSize > Data->RelatedDeviceInstanceLength) {
+        Status = STATUS_BUFFER_TOO_SMALL;
+	goto out;
+    }
+    Data->RelatedDeviceInstanceLength = BufferSize;
+
+    /* TargetDeviceInstanceLength may be zero if the caller passed a NUL string. */
+    assert(!Data->TargetDeviceInstanceLength ||
+	   Data->TargetDeviceInstance[Data->TargetDeviceInstanceLength-1] == '\0');
+#if DBG
+    ULONG BytesWritten =
+#endif
+    snprintf(Data->TargetDeviceInstance + Data->TargetDeviceInstanceLength, BufferSize,
+	     "%s\\%s", RelatedDeviceNode->DeviceId, RelatedDeviceNode->InstanceId);
+    assert(BytesWritten + 1 == BufferSize);
+    Status = STATUS_SUCCESS;
+
+out:
+    ObDereferenceObject(DeviceObject);
+    return Status;
 }
 
 /*
@@ -1352,7 +1540,7 @@ out:
  *    BufferSize
  *       Size of the buffer pointed by the Buffer parameter. If the
  *       buffer size specifies incorrect value for specified control
- *       code, error ??? is returned.
+ *       code, STATUS_INVALID_PARAMETER is returned.
  *
  * Return Values
  *    STATUS_PRIVILEGE_NOT_HELD
@@ -1361,13 +1549,73 @@ out:
  *
  * @unimplemented
  */
-NTSTATUS NtPlugPlayControl(IN ASYNC_STATE AsyncState,
+NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
                            IN PTHREAD Thread,
-                           IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
+                           IN PLUGPLAY_CONTROL_CLASS ControlClass,
                            IN PVOID Buffer,
                            IN ULONG BufferSize)
 {
-    UNIMPLEMENTED;
+    assert(Buffer);
+    switch (ControlClass) {
+    case PlugPlayControlEnumerateDevice:
+	return PiControlSyncDeviceAction(State, Thread, Buffer, ControlClass);
+
+//        case PlugPlayControlRegisterNewDevice:
+//        case PlugPlayControlDeregisterDevice:
+
+        /* case PlugPlayControlInitializeDevice: */
+        /*     return PiControlInitializeDevice(State, Thread, Buffer); */
+
+        case PlugPlayControlStartDevice:
+        case PlugPlayControlResetDevice:
+            return PiControlSyncDeviceAction(State, Thread, Buffer, ControlClass);
+
+        case PlugPlayControlUnlockDevice:
+            return STATUS_NOT_IMPLEMENTED;
+
+        case PlugPlayControlQueryAndRemoveDevice:
+              return PiControlQueryRemoveDevice(State, Thread, Buffer);
+
+        /* case PlugPlayControlUserResponse: */
+        /*     return IopRemovePlugPlayEvent(State, Thread, Buffer); */
+
+//        case PlugPlayControlGenerateLegacyDevice:
+
+        /* case PlugPlayControlGetInterfaceDeviceList: */
+        /*     return IopGetInterfaceDeviceList(State, Thread, Buffer); */
+
+        /* case PlugPlayControlProperty: */
+        /*     return IopGetDeviceProperty(State, Thread, Buffer); */
+
+        /* case PlugPlayControlDeviceClassAssociation: */
+        /*     return PiControlDeviceClassAssociation(State, Thread, Buffer); */
+
+        case PlugPlayControlGetRelatedDevice:
+            return IopGetRelatedDevice(State, Thread, Buffer);
+
+        /* case PlugPlayControlGetInterfaceDeviceAlias: */
+        /*     return PiControlGetInterfaceDeviceAlias(State, Thread, Buffer); */
+
+        /* case PlugPlayControlDeviceStatus: */
+        /*     return IopDeviceStatus(State, Thread, Buffer); */
+
+        /* case PlugPlayControlGetDeviceDepth: */
+        /*     return IopGetDeviceDepth(State, Thread, Buffer); */
+
+        /* case PlugPlayControlQueryDeviceRelations: */
+        /*     return IopGetDeviceRelations(State, Thread, Buffer); */
+
+//        case PlugPlayControlTargetDeviceRelation:
+//        case PlugPlayControlQueryConflictList:
+//        case PlugPlayControlRetrieveDock:
+//        case PlugPlayControlHaltDevice:
+//        case PlugPlayControlGetBlockedDriverList:
+
+        default:
+	    break;
+    }
+
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 NTSTATUS WdmOpenDeviceRegistryKey(IN ASYNC_STATE AsyncState,

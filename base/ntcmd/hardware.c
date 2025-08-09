@@ -25,10 +25,7 @@ Revision History:
 #define MAX_DEVICE_ID_LEN   200
 #define ROOT_NAME           L"HTREE\\ROOT\\0"
 
-ULONG Level = 0;
-HANDLE RootKey = 0;
-
-NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
+static NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
     UNICODE_STRING KeyName =
@@ -46,9 +43,9 @@ NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
     return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
 }
 
-NTSTATUS RtlCliGetChildOrSibling(IN PWCHAR Name,
-				 OUT PWCHAR ChildName,
-				 IN ULONG Type)
+static NTSTATUS RtlCliGetChildOrSibling(IN PWCHAR Name,
+					OUT PWCHAR ChildName,
+					IN ULONG Type)
 {
     NTSTATUS Status;
     PLUGPLAY_CONTROL_RELATED_DEVICE_DATA PlugPlayData;
@@ -74,160 +71,161 @@ NTSTATUS RtlCliGetChildOrSibling(IN PWCHAR Name,
     return Status;
 }
 
-NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name)
+static NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name,
+				      IN ULONG Level,
+				      IN HANDLE RootKey)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    HANDLE RegHandle;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    UNICODE_STRING KeyName;
     PKEY_VALUE_FULL_INFORMATION FullInformation;
     ULONG ResultLength;
-    WCHAR Buffer[MAX_DEVICE_ID_LEN];
-    ULONG i;
+    CHAR Indentation[MAX_DEVICE_ID_LEN];
 
     //
-    // If we don't already have a root key, get it now
+    // We must have a root key
     //
-    if (!RootKey)
-	Status = RtlCliGetEnumKey(&RootKey);
-    if (NT_SUCCESS(Status)) {
-	//
-	// Root key opened, now initialize the device instance key name
-	//
-	RtlInitUnicodeString(&KeyName, Name);
-
-	//
-	// Setup the object attributes and open the key
-	//
-	InitializeObjectAttributes(&ObjectAttributes,
-				   &KeyName, 0, RootKey, NULL);
-	Status = NtOpenKey(&RegHandle, KEY_READ, &ObjectAttributes);
-	if (NT_SUCCESS(Status)) {
-	    //
-	    // Setup and allocate the key data structure
-	    //
-	    ResultLength = sizeof(*FullInformation) + 256;
-	    FullInformation = RtlAllocateHeap(RtlGetProcessHeap(),
-					      0, ResultLength);
-
-	    //
-	    // Now check for a friendly name
-	    //
-	    RtlInitUnicodeString(&KeyName, L"FriendlyName");
-	    Status = NtQueryValueKey(RegHandle,
-				     &KeyName,
-				     KeyValueFullInformation,
-				     FullInformation,
-				     ResultLength, &ResultLength);
-	    if (!NT_SUCCESS(Status)) {
-		//
-		// No friendly name found, try the device description key
-		//
-		RtlInitUnicodeString(&KeyName, L"DeviceDesc");
-		Status = NtQueryValueKey(RegHandle,
-					 &KeyName,
-					 KeyValueFullInformation,
-					 FullInformation,
-					 ResultLength, &ResultLength);
-	    }
-	    //
-	    // Check if we have success until here
-	    //
-	    if (NT_SUCCESS(Status)) {
-		//
-		// Get the pointer to the name
-		//
-		Name = (PWCHAR)((ULONG_PTR)FullInformation + FullInformation->DataOffset);
-
-		//
-		// Indent the name to create the appeareance of a tree
-		//
-		for (i = 0; i < (Level * 2); i++)
-		    Buffer[i] = ' ';
-		Buffer[i] = UNICODE_NULL;
-
-		//
-		// Add the device name or description, and display it
-		//
-		wcscat_s(Buffer, MAX_DEVICE_ID_LEN, Name);
-		RtlCliDisplayString("%ws\n", Buffer);
-		DbgPrint("%ws\n", Buffer);
-	    }
-	    //
-	    // Close the key to the device instance name
-	    //
-	    NtClose(RegHandle);
-	}
+    if (!RootKey) {
+	return STATUS_INVALID_HANDLE;
     }
+
+    //
+    // Root key opened, now initialize the device instance key name
+    //
+    UNICODE_STRING KeyName;
+    RtlInitUnicodeString(&KeyName, Name);
+
+    //
+    // Setup the object attributes and open the key
+    //
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes,
+			       &KeyName, 0, RootKey, NULL);
+    HANDLE RegHandle = NULL;
+    Status = NtOpenKey(&RegHandle, KEY_READ, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    //
+    // Setup and allocate the key data structure
+    //
+    ResultLength = sizeof(*FullInformation) + 256;
+    FullInformation = RtlAllocateHeap(RtlGetProcessHeap(),
+				      0, ResultLength);
+
+    //
+    // Now check for a friendly name
+    //
+    RtlInitUnicodeString(&KeyName, L"FriendlyName");
+    Status = NtQueryValueKey(RegHandle,
+			     &KeyName,
+			     KeyValueFullInformation,
+			     FullInformation,
+			     ResultLength, &ResultLength);
+    if (!NT_SUCCESS(Status)) {
+	//
+	// No friendly name found, try the device description key
+	//
+	RtlInitUnicodeString(&KeyName, L"DeviceDesc");
+	Status = NtQueryValueKey(RegHandle,
+				 &KeyName,
+				 KeyValueFullInformation,
+				 FullInformation,
+				 ResultLength, &ResultLength);
+    }
+
+    //
+    // Check if we have success until here
+    //
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    //
+    // Get the pointer to the name
+    //
+    Name = (PWCHAR)((ULONG_PTR)FullInformation + FullInformation->DataOffset);
+
+    //
+    // Indent the name to create the appeareance of a tree
+    //
+out:
+    for (ULONG i = 0; i < (Level * 2); i++)
+	Indentation[i] = ' ';
+    Indentation[Level * 2] = '\0';
+
+    //
+    // Add the device name or description, and display it
+    //
+    RtlCliDisplayString("%s%ws\n", Indentation, Name);
+
+    //
+    // Close the key to the device instance name
+    //
+    if (RegHandle) {
+	NtClose(RegHandle);
+    }
+
     //
     // Return status to caller
     //
     return Status;
 }
 
-NTSTATUS RtlCliListSubNodes(IN PWCHAR Parent,
-			    IN PWCHAR Sibling,
-			    IN PWCHAR Current)
+static VOID RtlCliListSubNodes(IN PWCHAR DeviceInstance,
+			       IN HANDLE RootKey,
+			       IN ULONG Level)
 {
     NTSTATUS Status;
-    WCHAR FoundSibling[MAX_DEVICE_ID_LEN];
-    WCHAR FoundChild[MAX_DEVICE_ID_LEN];
+    WCHAR RelatedDevice[MAX_DEVICE_ID_LEN] = L"\0";
 
     //
-    // Start looping
+    // Print the node name
     //
-    do {
-	//
-	// Get the first sibling
-	//
-	Status = RtlCliGetChildOrSibling(Current, FoundSibling,
-					 PNP_GET_SIBLING_DEVICE);
-	if (!NT_SUCCESS(Status))
-	    *FoundSibling = UNICODE_NULL;
+again:
+    RtlCliPrintDeviceName(DeviceInstance, Level, RootKey);
 
+    //
+    // Get its children
+    //
+    Status = RtlCliGetChildOrSibling(DeviceInstance, RelatedDevice,
+				     PNP_GET_CHILD_DEVICE);
+    if (NT_SUCCESS(Status)) {
 	//
-	// Print its name
+	// Get its children's subnodes
 	//
-	Status = RtlCliPrintDeviceName(Current);
+	RtlCliListSubNodes(RelatedDevice, RootKey, Level + 1);
+    }
 
-	//
-	// Get its children
-	//
-	Status = RtlCliGetChildOrSibling(Current, FoundChild,
-					 PNP_GET_CHILD_DEVICE);
-	if (NT_SUCCESS(Status)) {
-	    //
-	    // Get it's children's subnodes
-	    //
-	    Level++;
-	    RtlCliListSubNodes(Current, NULL, FoundChild);
-	    Level--;
-	}
+    //
+    // Get the first sibling
+    //
+    Status = RtlCliGetChildOrSibling(DeviceInstance, RelatedDevice,
+				     PNP_GET_SIBLING_DEVICE);
+    if (NT_SUCCESS(Status)) {
 	//
 	// Move to the next sibling
 	//
-	Current = FoundSibling;
-    } while (*Current);
-
-    //
-    // Return status
-    //
-    return Status;
+	RtlCopyMemory(DeviceInstance, RelatedDevice,
+		      (wcslen(RelatedDevice)+1) * sizeof(WCHAR));
+	goto again;
+    }
 }
 
 NTSTATUS RtlCliListHardwareTree(VOID)
 {
     NTSTATUS Status;
-    WCHAR Buffer[MAX_DEVICE_ID_LEN];
 
-    //
-    // Get the root node's child
-    //
-    Status = RtlCliGetChildOrSibling(ROOT_NAME, Buffer, PNP_GET_CHILD_DEVICE);
+    HANDLE RootKey = NULL;
+    Status = RtlCliGetEnumKey(&RootKey);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
 
     //
     // Now get the entire tree
     //
-    Status = RtlCliListSubNodes(ROOT_NAME, NULL, Buffer);
-    return Status;
+    WCHAR DeviceInstance[MAX_DEVICE_ID_LEN] = ROOT_NAME;
+    RtlCliListSubNodes(DeviceInstance, RootKey, 0);
+    NtClose(RootKey);
+    return STATUS_SUCCESS;
 }

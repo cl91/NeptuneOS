@@ -413,7 +413,7 @@ NTAPI NTSTATUS CmBattCreateFdo(IN PDRIVER_OBJECT DriverObject,
 	}
 
 	/* Close the handle */
-	ZwClose(KeyHandle);
+	NtClose(KeyHandle);
     }
 
     /* Return success and the new FDO */
@@ -579,7 +579,7 @@ NTAPI NTSTATUS CmBattAddDevice(IN PDRIVER_OBJECT DriverObject,
     RtlInitUnicodeString(&KeyString, L"PowerSourceType");
     Status = NtQueryValueKey(KeyHandle, &KeyString, KeyValuePartialInformation,
 			     PartialInfo, sizeof(Buffer), &ResultLength);
-    ZwClose(KeyHandle);
+    NtClose(KeyHandle);
     if (!NT_SUCCESS(Status)) {
 	/* We need the data, fail without it */
 	if (CmBattDebug & 0xC)

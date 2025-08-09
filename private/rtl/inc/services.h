@@ -324,3 +324,110 @@ compile_assert(TOO_MANY_SYSTEM_SERVICES, NUMBER_OF_SYSTEM_SERVICES < 0x1000UL);
  * for the NT LPC messages. Longer messages are sent through shared memory.
  */
 #define NT_LPC_MAX_SHORT_MESSAGE_LENGTH (seL4_MsgMaxLength * MWORD_BYTES)
+
+/*
+ * Server-side data structures for NtPlugPlayControl
+ */
+
+// PlugPlayControlEnumerateDevice (0x00)
+typedef struct _IO_PNP_CONTROL_ENUMERATE_DEVICE_DATA {
+    ULONG Flags;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    CHAR DeviceInstance[];
+} IO_PNP_CONTROL_ENUMERATE_DEVICE_DATA, *PIO_PNP_CONTROL_ENUMERATE_DEVICE_DATA;
+
+// PlugPlayControlRegisterNewDevice (0x1)
+// PlugPlayControlDeregisterDevice (0x2)
+// PlugPlayControlInitializeDevice (0x3)
+// PlugPlayControlStartDevice (0x4)
+// PlugPlayControlUnlockDevice (0x5)
+// PlugPlayControlResetDevice (0x14)
+// PlugPlayControlHaltDevice (0x15)
+typedef struct _IO_PNP_CONTROL_DEVICE_CONTROL_DATA {
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    CHAR DeviceInstance[];
+} IO_PNP_CONTROL_DEVICE_CONTROL_DATA, *PIO_PNP_CONTROL_DEVICE_CONTROL_DATA;
+
+// PlugPlayControlQueryAndRemoveDevice (0x06)
+typedef struct _IO_PNP_CONTROL_QUERY_REMOVE_DATA {
+    ULONG Flags;
+    PNP_VETO_TYPE VetoType;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    ULONG VetoNameLength;	/* Including trailing NUL */
+    CHAR DeviceInstance[];	/* Veto name follows the device instance */
+} IO_PNP_CONTROL_QUERY_REMOVE_DATA, *PIO_PNP_CONTROL_QUERY_REMOVE_DATA;
+
+// PlugPlayControlUserResponse (0x07) is the same as the client-side struct
+
+// PlugPlayControlGetInterfaceDeviceList (0x09)
+typedef struct _IO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA {
+    GUID FilterGuid;
+    IN OUT ULONG BufferSize;
+    ULONG Flags;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    IN OUT CHAR DeviceInstance[]; /* Output buffer follows device instance */
+} IO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA, *PIO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA;
+
+// PlugPlayControlProperty (0x0A)
+typedef struct _IO_PNP_CONTROL_PROPERTY_DATA {
+    IN OUT ULONG BufferSize;
+    ULONG Property;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    IN OUT CHAR DeviceInstance[]; /* Output buffer follows device instance */
+} IO_PNP_CONTROL_PROPERTY_DATA, *PIO_PNP_CONTROL_PROPERTY_DATA;
+
+// PlugPlayControlDeviceClassAssociation (0x0B)
+typedef struct _IO_PNP_CONTROL_CLASS_ASSOCIATION_DATA {
+    GUID InterfaceGuid;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    ULONG ReferenceNameLength;	/* Including trailing NUL. Follows device instance. */
+    IN OUT ULONG SymbolicLinkNameLength; /* Including trailing NUL. Follows reference name. */
+    BOOLEAN Register;
+    IN OUT CHAR DeviceInstance[];
+} IO_PNP_CONTROL_CLASS_ASSOCIATION_DATA, *PIO_PNP_CONTROL_CLASS_ASSOCIATION_DATA;
+
+// PlugPlayControlGetRelatedDevice (0x0C)
+typedef struct _IO_PNP_CONTROL_RELATED_DEVICE_DATA {
+    ULONG Relation;
+    ULONG TargetDeviceInstanceLength; /* Including trailing NUL */
+    IN OUT ULONG RelatedDeviceInstanceLength; /* Including trailing NUL */
+    IN OUT CHAR TargetDeviceInstance[]; /* Related device name follows target name */
+} IO_PNP_CONTROL_RELATED_DEVICE_DATA, *PIO_PNP_CONTROL_RELATED_DEVICE_DATA;
+
+// PlugPlayControlGetInterfaceDeviceAlias (0x0D)
+typedef struct _IO_PNP_CONTROL_INTERFACE_ALIAS_DATA {
+    GUID AliasInterfaceClassGuid;
+    ULONG SymbolicLinkNameLength; /* Including trailing NUL */
+    IN OUT ULONG AliasSymbolicLinkNameLength; /* Including trailing NUL */
+    IN OUT CHAR SymbolicLinkName[]; /* Alias symbolic name follows symbolic name */
+} IO_PNP_CONTROL_INTERFACE_ALIAS_DATA, *PIO_PNP_CONTROL_INTERFACE_ALIAS_DATA;
+
+// PlugPlayControlDeviceStatus (0x0E)
+typedef struct _IO_PNP_CONTOL_STATUS_DATA {
+    ULONG Operation;
+    ULONG DeviceStatus;
+    ULONG DeviceProblem;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    CHAR DeviceInstance[];
+} IO_PNP_CONTROL_STATUS_DATA, *PIO_PNP_CONTROL_STATUS_DATA;
+
+// PlugPlayControlGetDeviceDepth (0x0F)
+typedef struct _IO_PNP_CONTROL_DEPTH_DATA {
+    ULONG Depth;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    CHAR DeviceInstance[];
+} IO_PNP_CONTROL_DEPTH_DATA, *PIO_PNP_CONTROL_DEPTH_DATA;
+
+// PlugPlayControlQueryDeviceRelations (0x10)
+typedef struct _IO_PNP_CONTROL_DEVICE_RELATIONS_DATA {
+    IN OUT ULONG BufferSize;
+    ULONG Relations;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    IN OUT CHAR DeviceInstance[]; /* Output buffer follows device instance */
+} IO_PNP_CONTROL_DEVICE_RELATIONS_DATA, *PIO_PNP_CONTROL_DEVICE_RELATIONS_DATA;
+
+// PlugPlayControlRetrieveDock (0x13)
+typedef struct _IO_PNP_CONTROL_RETRIEVE_DOCK_DATA {
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    CHAR DeviceInstance[];
+} IO_PNP_CONTROL_RETRIEVE_DOCK_DATA, *PIO_PNP_CONTROL_RETRIEVE_DOCK_DATA;

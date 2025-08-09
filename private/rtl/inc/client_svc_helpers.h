@@ -187,9 +187,9 @@ static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,
     return STATUS_SUCCESS;
 }
 
-static inline VOID KiServiceUnmarshalBuffer(IN PVOID ClientBuffer,
-					    IN SERVICE_ARGUMENT BufferArg,
-					    IN MWORD BufferSize)
+static inline VOID KiServiceUnmarshalBuffer3(IN PVOID ClientBuffer,
+					     IN SERVICE_ARGUMENT BufferArg,
+					     IN MWORD BufferSize)
 {
     assert(ClientBuffer != NULL);
     if (KiPtrInSvcMsgBuf((PVOID)BufferArg.Word)) {
@@ -199,6 +199,19 @@ static inline VOID KiServiceUnmarshalBuffer(IN PVOID ClientBuffer,
 	memcpy(ClientBuffer, (PVOID)BufferArg.Word, BufferSize);
     }
 }
+
+static inline VOID KiServiceUnmarshalBuffer4(IN PVOID ClientBuffer,
+					     IN SERVICE_ARGUMENT BufferArg,
+					     IN MWORD BufferSize,
+					     IN UNUSED MWORD BufferType)
+{
+    KiServiceUnmarshalBuffer3(ClientBuffer, BufferArg, BufferSize);
+}
+
+#define KI_GET_5TH_ARG(_1,_2,_3,_4,_5,...)	_5
+#define KiServiceUnmarshalBuffer(...)				\
+    KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer4,	\
+		   KiServiceUnmarshalBuffer3)(__VA_ARGS__)
 
 static inline VOID KiDeliverApc(IN ULONG MsgBufOffset,
                                 IN ULONG NumApc)

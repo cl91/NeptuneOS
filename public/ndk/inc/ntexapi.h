@@ -875,6 +875,5 @@ NTAPI NTSYSAPI NTSTATUS NtQuerySystemInformation(IN SYSTEM_INFORMATION_CLASS Sys
 						 OUT OPTIONAL PULONG ReturnLength);
 
 NTAPI NTSYSAPI NTSTATUS NtShutdownSystem(IN SHUTDOWN_ACTION Action);
-#define ZwShutdownSystem NtShutdownSystem
 
 #endif

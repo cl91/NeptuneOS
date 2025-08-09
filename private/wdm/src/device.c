@@ -431,7 +431,7 @@ static NTSTATUS IopOpenInterfaceKey(IN CONST GUID *InterfaceClassGuid,
 			       OBJ_CASE_INSENSITIVE, NULL, NULL);
     Status = NtOpenKey(&InterfaceKey, DesiredAccess, &ObjectAttributes);
     if (!NT_SUCCESS(Status)) {
-	DPRINT("ZwOpenKey() failed with status 0x%08x\n", Status);
+	DPRINT("NtOpenKey() failed with status 0x%08x\n", Status);
 	goto cleanup;
     }
 
@@ -441,7 +441,7 @@ static NTSTATUS IopOpenInterfaceKey(IN CONST GUID *InterfaceClassGuid,
 cleanup:
     if (!NT_SUCCESS(Status)) {
 	if (InterfaceKey != NULL)
-	    ZwClose(InterfaceKey);
+	    NtClose(InterfaceKey);
     }
     RtlFreeUnicodeString(&GuidString);
     RtlFreeUnicodeString(&KeyName);

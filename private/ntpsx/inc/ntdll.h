@@ -16,6 +16,10 @@ FORCEINLINE VOID RtlRaiseStatus(NTSTATUS Status)
     NtTerminateThread(NtCurrentProcess(), Status);
 }
 
+/* FIXME: Implement pool */
+#define RtlAllocateHeap(...)	(NULL)
+#define RtlFreeHeap(...)
+
 /* except.c */
 VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
 			     IN PCONTEXT Context);

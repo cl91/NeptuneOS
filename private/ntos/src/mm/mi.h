@@ -61,6 +61,11 @@ static inline PCAP_TREE_NODE MiCapTreeNodeGetSecondChild(IN PCAP_TREE_NODE Node)
 #define CapTreeLoopOverChildren(Child, Node)				\
     LoopOverList(Child, &(Node)->ChildrenList, CAP_TREE_NODE, SiblingLink)
 
+/*
+ * Note for the last sibling in the sibling list, this routine returns the first
+ * sibling in the list. In other words the traversal rewinds. If you use this
+ * routine to traverse the sibling list, you need to properly detect the rewinding.
+ */
 static inline PCAP_TREE_NODE MiCapTreeGetNextSibling(IN PCAP_TREE_NODE Node)
 {
     assert(Node->SiblingLink.Flink != NULL);
@@ -75,6 +80,9 @@ static inline PCAP_TREE_NODE MiCapTreeGetNextSibling(IN PCAP_TREE_NODE Node)
 	NextNode = NextNode->Flink;
     }
     if (NextNode == &Node->Parent->ChildrenList) {
+	return NULL;
+    }
+    if (NextNode == &Node->SiblingLink) {
 	return NULL;
     }
     return CONTAINING_RECORD(NextNode, CAP_TREE_NODE, SiblingLink);

@@ -42,7 +42,7 @@ NTSTATUS RtlCliShutdown(VOID)
     // Get the shutdown privilege and shutdown the system
     //
     RtlAdjustPrivilege(SE_SHUTDOWN_PRIVILEGE, TRUE, FALSE, &Old);
-    return ZwShutdownSystem(ShutdownNoReboot);
+    return NtShutdownSystem(ShutdownNoReboot);
 }
 
 /*++
@@ -65,7 +65,7 @@ NTSTATUS RtlCliReboot(VOID)
     // Get the shutdown privilege and shutdown the system
     //
     RtlAdjustPrivilege(SE_SHUTDOWN_PRIVILEGE, TRUE, FALSE, &Old);
-    return ZwShutdownSystem(ShutdownReboot);
+    return NtShutdownSystem(ShutdownReboot);
 }
 
 /*++
@@ -88,7 +88,7 @@ NTSTATUS RtlCliPowerOff(VOID)
     // Get the shutdown privilege and shutdown the system
     //
     RtlAdjustPrivilege(SE_SHUTDOWN_PRIVILEGE, TRUE, FALSE, &Old);
-    return ZwShutdownSystem(ShutdownPowerOff);
+    return NtShutdownSystem(ShutdownPowerOff);
 }
 
 /*++

@@ -1067,7 +1067,6 @@ NTAPI NTSYSAPI NTSTATUS NtCreateFile(OUT PHANDLE FileHandle,
 				     IN ULONG CreateOptions,
 				     IN PVOID EaBuffer,
 				     IN ULONG EaLength);
-#define ZwCreateFile NtCreateFile
 
 NTAPI NTSYSAPI NTSTATUS NtOpenFile(OUT PHANDLE FileHandle,
 				   IN ACCESS_MASK DesiredAccess,
@@ -1075,7 +1074,6 @@ NTAPI NTSYSAPI NTSTATUS NtOpenFile(OUT PHANDLE FileHandle,
 				   OUT PIO_STATUS_BLOCK IoStatusBlock,
 				   IN ULONG ShareAccess,
 				   IN ULONG OpenOptions);
-#define ZwOpenFile NtOpenFile
 
 NTAPI NTSYSAPI NTSTATUS NtReadFile(IN HANDLE FileHandle,
 				   IN OPTIONAL HANDLE Event,
@@ -1086,7 +1084,6 @@ NTAPI NTSYSAPI NTSTATUS NtReadFile(IN HANDLE FileHandle,
 				   IN ULONG Length,
 				   IN OPTIONAL PLARGE_INTEGER ByteOffset,
 				   IN OPTIONAL PULONG Key);
-#define ZwReadFile NtReadFile
 
 NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
 				    IN OPTIONAL HANDLE Event,
@@ -1097,7 +1094,6 @@ NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
 				    IN ULONG Length,
 				    IN OPTIONAL PLARGE_INTEGER ByteOffset,
 				    IN OPTIONAL PULONG Key);
-#define ZwWriteFile NtWriteFile
 
 NTAPI NTSYSAPI NTSTATUS NtDeleteFile(IN POBJECT_ATTRIBUTES ObjectAttributes);
 
@@ -1143,7 +1139,6 @@ NTAPI NTSYSAPI NTSTATUS NtQueryDirectoryFile(IN HANDLE FileHandle,
 					     IN BOOLEAN ReturnSingleEntry,
 					     IN OPTIONAL PUNICODE_STRING FileName,
 					     IN BOOLEAN RestartScan);
-#define ZwQueryDirectoryFile NtQueryDirectoryFile
 
 NTAPI NTSYSAPI NTSTATUS NtQueryInformationFile(IN HANDLE FileHandle,
 					       OUT PIO_STATUS_BLOCK IoStatusBlock,
