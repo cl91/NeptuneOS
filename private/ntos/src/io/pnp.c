@@ -55,7 +55,14 @@ Abstract:
 #define REG_CLASS_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Class"
 #define REG_ENUM_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Enum"
 
+typedef struct _PNP_EVENT_ENTRY {
+    LIST_ENTRY ListEntry;
+    IO_PNP_EVENT_BLOCK Event;
+} PNP_EVENT_ENTRY, *PPNP_EVENT_ENTRY;
+
 static PDEVICE_NODE IopRootDeviceNode;
+static LIST_ENTRY IopPnpEventQueueHead;
+static KEVENT IopPnpNotifyEvent;
 
 /*
  * The created device node is in the DeviceNodeUnspecified state.
@@ -693,6 +700,16 @@ call:
     goto check;
 
 end:
+    if (DeviceNode == IopRootDeviceNode && NT_SUCCESS(Status)) {
+	/* We need to manually set the PDO of the root device node */
+	PIO_DEVICE_OBJECT RootEnumerator = NULL;
+	IF_ERR_GOTO(out, Status,
+		    ObReferenceObjectByName(PNP_ROOT_ENUMERATOR, OBJECT_TYPE_DEVICE,
+					    NULL, FALSE, (POBJECT *)&RootEnumerator));
+	assert(RootEnumerator != NULL);
+	IopSetDeviceNode(RootEnumerator, IopRootDeviceNode);
+    }
+out:
     if (NT_SUCCESS(Status)) {
 	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeDevicesAdded);
     } else {
@@ -1169,88 +1186,8 @@ out:
     ASYNC_END(AsyncState, Status);
 }
 
-static inline PCSTR IopSanitizeName(IN PCSTR Name)
-{
-    return Name ? Name : "????";
-}
-
-static VOID IopPrintDeviceNode(IN PDEVICE_NODE DeviceNode,
-			       IN ULONG IndentLevel)
-{
-    CHAR Indent[32];
-    if (IndentLevel >= ARRAYSIZE(Indent)) {
-	IndentLevel = ARRAYSIZE(Indent)-1;
-    }
-    for (ULONG i = 0; i < IndentLevel; i++) {
-	Indent[i] = ' ';
-    }
-    Indent[IndentLevel] = '\0';
-    HalVgaPrint("%sFound device \\%s\\%s.", Indent,
-		IopSanitizeName(DeviceNode->DeviceId),
-		IopSanitizeName(DeviceNode->InstanceId));
-    if (IopDeviceNodeGetCurrentState(DeviceNode) >= DeviceNodeDriversLoaded) {
-	assert(DeviceNode->DriverServiceName != NULL);
-	if (DeviceNode->UpperFilterCount != 0 || DeviceNode->LowerFilterCount != 0) {
-	    HalVgaPrint(" Loaded drivers:");
-	    for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
-		HalVgaPrint(" %s", DeviceNode->LowerFilterDriverNames[i]);
-	    }
-	    HalVgaPrint(" %s", DeviceNode->DriverServiceName);
-	    for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
-		HalVgaPrint(" %s", DeviceNode->UpperFilterDriverNames[i]);
-	    }
-	} else {
-	    HalVgaPrint(" Loaded driver: %s", DeviceNode->DriverServiceName);
-	}
-	if (IopDeviceNodeGetCurrentState(DeviceNode) == DeviceNodeStarted ||
-	    IopDeviceNodeGetCurrentState(DeviceNode) == DeviceNodeEnumerateCompletion) {
-	    HalVgaPrint(". STARTED.\n");
-	} else {
-	    HalVgaPrint(". START FAIL.\n");
-	}
-    } else if (DeviceNode->DriverServiceName != NULL) {
-	HalVgaPrint(" FAILED to load driver %s.\n", DeviceNode->DriverServiceName);
-    } else {
-	HalVgaPrint("\n");
-    }
-}
-
-#define DEVICE_TREE_INDENTATION	2
-static VOID IopPrintDeviceTree(IN PDEVICE_NODE RootDeviceNode,
-			       IN ULONG IndentLevel)
-{
-    LoopOverList(DeviceNode, &RootDeviceNode->ChildrenList, DEVICE_NODE, SiblingLink) {
-	IopPrintDeviceNode(DeviceNode, IndentLevel);
-	IopPrintDeviceTree(DeviceNode, IndentLevel + DEVICE_TREE_INDENTATION);
-    }
-}
-
-/*
- * Assign resources to the root device node. We simply pass the address and size
- * of the XSDT (eXtended System Descriptor Table) to the root PnP enumerator.
- */
-static NTSTATUS IopRootNodeAssignResources()
-{
-    ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
-	sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-    IopRootDeviceNode->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
-    if (IopRootDeviceNode->Resources == NULL) {
-	return STATUS_NO_MEMORY;
-    }
-    IopRootDeviceNode->Resources->Count = 1;
-    IopRootDeviceNode->Resources->List[0].InterfaceType = Internal;
-    IopRootDeviceNode->Resources->List[0].BusNumber = 0;
-    IopRootDeviceNode->Resources->List[0].PartialResourceList.Version = 1;
-    IopRootDeviceNode->Resources->List[0].PartialResourceList.Revision = 1;
-    IopRootDeviceNode->Resources->List[0].PartialResourceList.Count = 1;
-    IopRootDeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors[0] =
-	HalAcpiGetRsdtResource();
-    IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeResourcesAssigned);
-    return STATUS_SUCCESS;
-}
-
 typedef struct _IOP_FIND_DEVICE_INSTANCE_CONTEXT {
-    OUT PIO_DEVICE_OBJECT DeviceObject;
+    OUT PDEVICE_NODE DeviceNode;
     IN PCSTR DeviceInstance;
 } IOP_FIND_DEVICE_INSTANCE_CONTEXT, *PIOP_FIND_DEVICE_INSTANCE_CONTEXT;
 
@@ -1261,31 +1198,26 @@ static BOOLEAN IopFindDeviceInstanceVisitor(IN PDEVICE_NODE DeviceNode,
     ULONG LastSeperator = ObLocateLastPathSeparator(Context->DeviceInstance);
     if (!LastSeperator) {
 	/* Device instance is invalid. Return NULL. */
-	Context->DeviceObject = NULL;
+	Context->DeviceNode = NULL;
 	return FALSE;
     }
     if (!_strnicmp(DeviceNode->DeviceId, Context->DeviceInstance, LastSeperator) &&
 	!_stricmp(DeviceNode->InstanceId, Context->DeviceInstance + LastSeperator + 1)) {
-        Context->DeviceObject = DeviceNode->PhyDevObj;
-        /* Stop enumeration */
+        Context->DeviceNode = DeviceNode;
+        /* Stop traversal */
         return FALSE;
     }
-    /* Continue enumeration */
+    /* Continue traversal */
     return TRUE;
 }
 
-static PIO_DEVICE_OBJECT IopGetDeviceObjectFromDeviceInstance(IN PCSTR DeviceInstance)
+static PDEVICE_NODE IopGetDeviceNodeFromDeviceInstance(IN PCSTR DeviceInstance)
 {
     if (IopRootDeviceNode == NULL)
         return NULL;
 
     if (DeviceInstance == NULL || DeviceInstance[0] == '\0') {
-        if (IopRootDeviceNode->PhyDevObj) {
-            ObpReferenceObject(IopRootDeviceNode->PhyDevObj);
-            return IopRootDeviceNode->PhyDevObj;
-        } else {
-            return NULL;
-	}
+	return IopRootDeviceNode;
     }
 
     IOP_FIND_DEVICE_INSTANCE_CONTEXT Context = {
@@ -1299,53 +1231,124 @@ static PIO_DEVICE_OBJECT IopGetDeviceObjectFromDeviceInstance(IN PCSTR DeviceIns
     IopDeviceNodeTraverseChildren(IopRootDeviceNode,
 				  IopFindDeviceInstanceVisitor, &Context);
 out:
-    if (Context.DeviceObject) {
-	ObpReferenceObject(Context.DeviceObject);
-    }
-    return Context.DeviceObject;
+    return Context.DeviceNode;
 }
 
-static NTSTATUS PiPerformSyncDeviceAction(IN ASYNC_STATE State,
-					  IN PTHREAD Thread,
-					  IN PIO_DEVICE_OBJECT PhyDevObj,
-					  IN PIO_PNP_CONTROL_DEVICE_CONTROL_DATA Data,
-					  IN PLUGPLAY_CONTROL_CLASS ControlClass)
+static NTSTATUS PiControlEnumerateDevice(IN ASYNC_STATE State,
+					 IN PTHREAD Thread,
+					 IN PDEVICE_NODE DevNode)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	});
+
+    AWAIT_EX(Status, IopDeviceTreeEnumerate, State, Locals, Thread, DevNode);
+    ASYNC_END(State, Status);
+}
+
+static NTSTATUS PiControlStartDevice(IN ASYNC_STATE State,
+				     IN PTHREAD Thread,
+				     IN PDEVICE_NODE DevNode)
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
 }
 
-static NTSTATUS PiControlSyncDeviceAction(IN ASYNC_STATE State,
-					  IN PTHREAD Thread,
-					  IN PIO_PNP_CONTROL_DEVICE_CONTROL_DATA Data,
-					  IN PLUGPLAY_CONTROL_CLASS ControlClass)
+static NTSTATUS PiControlResetDevice(IN ASYNC_STATE State,
+				     IN PTHREAD Thread,
+				     IN PDEVICE_NODE DevNode)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS PiControlPerformDeviceAction(IN ASYNC_STATE State,
+					     IN PTHREAD Thread,
+					     IN PCSTR DeviceInstance,
+					     IN PLUGPLAY_CONTROL_CLASS ControlClass)
 {
     NTSTATUS Status;
     ASYNC_BEGIN(State, Locals, {
-	    PIO_DEVICE_OBJECT DeviceObject;
+	    PDEVICE_NODE DeviceNode;
+	    BOOLEAN Deref;
 	});
 
     assert(ControlClass == PlugPlayControlEnumerateDevice ||
            ControlClass == PlugPlayControlStartDevice ||
            ControlClass == PlugPlayControlResetDevice);
 
-    Locals.DeviceObject = IopGetDeviceObjectFromDeviceInstance(Data->DeviceInstance);
-    if (!Locals.DeviceObject) {
+    Locals.DeviceNode = IopGetDeviceNodeFromDeviceInstance(DeviceInstance);
+    if (!Locals.DeviceNode) {
         ASYNC_RETURN(State, STATUS_NO_SUCH_DEVICE);
     }
+    /* Reference the PDO so the device node won't get deleted during the
+     * device action below. Note for the root PnP device node the PDO may
+     * be NULL if we are doing the very first PnP enumeration. */
+    if (Locals.DeviceNode->PhyDevObj) {
+	ObpReferenceObject(Locals.DeviceNode->PhyDevObj);
+	Locals.Deref = TRUE;
+    }
 
-    AWAIT_EX(Status, PiPerformSyncDeviceAction, State, Locals, Thread,
-	     Locals.DeviceObject, Data, ControlClass);
-    ObDereferenceObject(Locals.DeviceObject);
+    if (ControlClass == PlugPlayControlEnumerateDevice) {
+	goto enumerate;
+    } else if (ControlClass == PlugPlayControlStartDevice) {
+	goto start;
+    } else {
+	goto reset;
+    }
+
+enumerate:
+    AWAIT_EX(Status, PiControlEnumerateDevice, State, Locals, Thread,
+	     Locals.DeviceNode);
+    goto out;
+
+start:
+    AWAIT_EX(Status, PiControlStartDevice, State, Locals, Thread,
+	     Locals.DeviceNode);
+    goto out;
+
+reset:
+    AWAIT_EX(Status, PiControlResetDevice, State, Locals, Thread,
+	     Locals.DeviceNode);
+    goto out;
+
+out:
+    if (Locals.Deref) {
+	assert(Locals.DeviceNode);
+	assert(Locals.DeviceNode->PhyDevObj);
+	ObDereferenceObject(Locals.DeviceNode->PhyDevObj);
+    }
     ASYNC_END(State, Status);
+}
+
+/*
+ * Remove the current PnP event from the tail of the event queue
+ * and signal IopPnpNotifyEvent if there is yet another event in the queue.
+ */
+static NTSTATUS IopRemovePlugPlayEvent(IN ASYNC_STATE State,
+				       IN PTHREAD Thread,
+				       IN PPLUGPLAY_CONTROL_USER_RESPONSE_DATA ResponseData)
+{
+    /* Remove a pnp event entry from the tail of the queue */
+    if (!IsListEmpty(&IopPnpEventQueueHead)) {
+        IopFreePool(CONTAINING_RECORD(RemoveTailList(&IopPnpEventQueueHead),
+				      PNP_EVENT_ENTRY, ListEntry));
+    }
+
+    /* Signal the next pnp event if there is one in the queue */
+    if (!IsListEmpty(&IopPnpEventQueueHead)) {
+        KeSetEvent(&IopPnpNotifyEvent);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS PiControlQueryRemoveDevice(IN ASYNC_STATE State,
 					   IN PTHREAD Thread,
 					   IN PIO_PNP_CONTROL_QUERY_REMOVE_DATA Data)
 {
-    PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObjectFromDeviceInstance(Data->DeviceInstance);
-    if (!DeviceObject) {
+    PDEVICE_NODE DeviceNode = IopGetDeviceNodeFromDeviceInstance(Data->DeviceInstance);
+    if (!DeviceNode) {
         return STATUS_NO_SUCH_DEVICE;
     }
 
@@ -1357,13 +1360,11 @@ static NTSTATUS IopGetRelatedDevice(IN ASYNC_STATE State,
 				    IN PTHREAD Thread,
 				    IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA Data)
 {
-    PIO_DEVICE_OBJECT DeviceObject =
-	IopGetDeviceObjectFromDeviceInstance(Data->TargetDeviceInstance);
-    if (!DeviceObject) {
+    PDEVICE_NODE DeviceNode = IopGetDeviceNodeFromDeviceInstance(Data->TargetDeviceInstance);
+    if (!DeviceNode) {
 	return STATUS_NO_SUCH_DEVICE;
     }
 
-    PDEVICE_NODE DeviceNode = DeviceObject->DeviceNode;
     PDEVICE_NODE RelatedDeviceNode = NULL;
     switch (Data->Relation) {
     case PNP_GET_PARENT_DEVICE:
@@ -1393,16 +1394,14 @@ static NTSTATUS IopGetRelatedDevice(IN ASYNC_STATE State,
 	assert(FALSE);
     }
 
-    NTSTATUS Status = STATUS_NO_SUCH_DEVICE;
     if (!RelatedDeviceNode) {
-	goto out;
+	return STATUS_NO_SUCH_DEVICE;
     }
 
     ULONG BufferSize = strlen(RelatedDeviceNode->DeviceId) +
 	strlen(RelatedDeviceNode->InstanceId) + 2;
     if (BufferSize > Data->RelatedDeviceInstanceLength) {
-        Status = STATUS_BUFFER_TOO_SMALL;
-	goto out;
+        return STATUS_BUFFER_TOO_SMALL;
     }
     Data->RelatedDeviceInstanceLength = BufferSize;
 
@@ -1415,82 +1414,112 @@ static NTSTATUS IopGetRelatedDevice(IN ASYNC_STATE State,
     snprintf(Data->TargetDeviceInstance + Data->TargetDeviceInstanceLength, BufferSize,
 	     "%s\\%s", RelatedDeviceNode->DeviceId, RelatedDeviceNode->InstanceId);
     assert(BytesWritten + 1 == BufferSize);
-    Status = STATUS_SUCCESS;
-
-out:
-    ObDereferenceObject(DeviceObject);
-    return Status;
+    return STATUS_SUCCESS;
 }
 
-/*
- * Before calling this system service the session manager needs to
- * initialize the hardware database in the registry.
- */
-NTSTATUS NtPlugPlayInitialize(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread)
+NTSTATUS IopInitPnpManager()
 {
-    NTSTATUS Status;
-    ASYNC_BEGIN(AsyncState);
+    /* We can only be called once (during system startup). */
+    assert(!IopRootDeviceNode);
 
-    /* We can only be called once (typically during system startup). */
-    if (IopRootDeviceNode != NULL) {
-	ASYNC_RETURN(AsyncState, STATUS_INVALID_SYSTEM_SERVICE);
-    }
-
-    HalVgaPrint("Enumerating Plug and Play devices...\n");
+    /* Initialize the PnP event notification and the event queue. */
+    InitializeListHead(&IopPnpEventQueueHead);
+    KeInitializeEvent(&IopPnpNotifyEvent, SynchronizationEvent);
 
     /* Create the root device node. This is the device node for the root PnP enumerator. */
-    IF_ERR_GOTO(out, Status, IopCreateDeviceNode(NULL, &IopRootDeviceNode));
+    RET_ERR(IopCreateDeviceNode(NULL, &IopRootDeviceNode));
     assert(IopRootDeviceNode != NULL);
 
     /* Set the device and instance ID of the root enumerator. */
-    IF_ERR_GOTO(out, Status,
-		IopDeviceNodeSetDeviceId(IopRootDeviceNode, "HTREE\\ROOT", BusQueryDeviceID));
-    IF_ERR_GOTO(out, Status,
-		IopDeviceNodeSetDeviceId(IopRootDeviceNode, "0", BusQueryInstanceID));
-
-    /* Load the root PnP enumerator driver and call AddDevice to create the root enumerator. */
+    RET_ERR(IopDeviceNodeSetDeviceId(IopRootDeviceNode, "HTREE\\ROOT", BusQueryDeviceID));
+    RET_ERR(IopDeviceNodeSetDeviceId(IopRootDeviceNode, "0", BusQueryInstanceID));
     IopDeviceNodeSetCurrentState(IopRootDeviceNode, DeviceNodeInitialized);
-    AWAIT_EX(Status, IopDeviceNodeLoadDrivers, AsyncState, _, Thread, IopRootDeviceNode);
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * NtGetPlugPlayEvent
+ *
+ * Returns one Plug & Play event from a global queue.
+ *
+ * Parameters
+ *    Poll
+ *       If TRUE, this routine will always return immediately even if
+ *       there is no pending PnP event.
+ *
+ *    Buffer
+ *       The buffer that will be filled with the event information on
+ *       successful return from the function.
+ *
+ *    BufferSize
+ *       Size of the buffer pointed by the Buffer parameter. If the
+ *       buffer size is not large enough to hold the whole event
+ *       information, error STATUS_BUFFER_TOO_SMALL is returned and
+ *       the buffer remains untouched.
+ *
+ * Plug and Play event structure used by NtGetPlugPlayEvent.
+ *
+ *    EventGuid
+ *       Can be one of the following values:
+ *         GUID_HWPROFILE_QUERY_CHANGE
+ *         GUID_HWPROFILE_CHANGE_CANCELLED
+ *         GUID_HWPROFILE_CHANGE_COMPLETE
+ *         GUID_TARGET_DEVICE_QUERY_REMOVE
+ *         GUID_TARGET_DEVICE_REMOVE_CANCELLED
+ *         GUID_TARGET_DEVICE_REMOVE_COMPLETE
+ *         GUID_PNP_CUSTOM_NOTIFICATION
+ *         GUID_PNP_POWER_NOTIFICATION
+ *         GUID_DEVICE_*
+ *
+ *    EventCategory
+ *       Type of the event that happened.
+ *
+ *    TotalSize
+ *       Size of the event block including the device IDs and other
+ *       per category specific fields.
+ *
+ * Return Values
+ *    STATUS_PRIVILEGE_NOT_HELD
+ *    STATUS_BUFFER_TOO_SMALL
+ *    STATUS_NO_MORE_ENTRIES
+ *    STATUS_SUCCESS
+ *
+ * @implemented
+ */
+NTSTATUS NtGetPlugPlayEvent(IN ASYNC_STATE State,
+			    IN PTHREAD Thread,
+			    IN BOOLEAN Poll,
+			    OUT PIO_PNP_EVENT_BLOCK Buffer,
+			    IN ULONG BufferSize)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ASYNC_BEGIN(State);
+
+    /* TODO: check for Tcb privilege */
+
+    /* Wait for a PnP event */
+    AWAIT_EX_IF(!Poll, Status, KeWaitForSingleObject, State, _, Thread,
+		&IopPnpNotifyEvent.Header, FALSE, NULL);
     if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
-    AWAIT_EX(Status, IopDeviceNodeAddDevice, AsyncState, _, Thread, IopRootDeviceNode);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
+	ASYNC_RETURN(State, Status);
     }
 
-    /* We need to manually set the PDO of the root device node */
-    PIO_DEVICE_OBJECT RootEnumerator = NULL;
-    IF_ERR_GOTO(out, Status,
-		ObReferenceObjectByName(PNP_ROOT_ENUMERATOR, OBJECT_TYPE_DEVICE,
-					NULL, FALSE, (POBJECT *)&RootEnumerator));
-    assert(RootEnumerator != NULL);
-    IopSetDeviceNode(RootEnumerator, IopRootDeviceNode);
-
-    /* Assign resources for the root enumerator, and start its device node. */
-    Status = IopRootNodeAssignResources();
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
-    AWAIT(IopDeviceNodeStartDevice, AsyncState, _, Thread, IopRootDeviceNode);
-
-    /* Recursively enumerate the root node and start all boot devices.
-     * This will build the entire boot-time device tree. */
-    AWAIT_EX(Status, IopDeviceTreeEnumerate, AsyncState, _, Thread, IopRootDeviceNode);
-
-    /* Inform the user of device enumeration results */
-    IopPrintDeviceTree(IopRootDeviceNode, 2);
-
-    ASYNC_RETURN(AsyncState, STATUS_SUCCESS);
-
-out:
-    if (IopRootDeviceNode) {
-	IopFreeDeviceNode(IopRootDeviceNode);
-	IopRootDeviceNode = NULL;
+    if (IsListEmpty(&IopPnpEventQueueHead)) {
+	ASYNC_RETURN(State, STATUS_NO_MORE_ENTRIES);
     }
 
-    ASYNC_END(AsyncState, Status);
+    /* Get entry from the tail of the queue and copy it to the client. Note we
+     * do not remove the event from the queue. The event is removed by the
+     * PlugPlayControlUserResponse control class of NtPlugPlayControl. */
+    PPNP_EVENT_ENTRY Entry = CONTAINING_RECORD(IopPnpEventQueueHead.Blink,
+					       PNP_EVENT_ENTRY,
+					       ListEntry);
+    if (BufferSize < Entry->Event.TotalSize) {
+        ASYNC_RETURN(State, STATUS_BUFFER_TOO_SMALL);
+    }
+    RtlCopyMemory(Buffer, &Entry->Event, Entry->Event.TotalSize);
+    ASYNC_END(State, STATUS_SUCCESS);
 }
 
 /*
@@ -1558,28 +1587,45 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
     assert(Buffer);
     switch (ControlClass) {
     case PlugPlayControlEnumerateDevice:
-	return PiControlSyncDeviceAction(State, Thread, Buffer, ControlClass);
+    {
+	PIO_PNP_CONTROL_ENUMERATE_DEVICE_DATA Data = Buffer;
+	return PiControlPerformDeviceAction(State, Thread,
+					    Data->DeviceInstance, ControlClass);
+    }
 
-//        case PlugPlayControlRegisterNewDevice:
-//        case PlugPlayControlDeregisterDevice:
+    case PlugPlayControlRegisterNewDevice:
+    case PlugPlayControlDeregisterDevice:
+	/* These two control class are used on Windows NT to register and deregister
+	 * the driver service registry keys of a device node. We do not support these
+	 * two control classes as the relevant functions are implement client-side. */
+	return STATUS_NOT_SUPPORTED;
 
-        /* case PlugPlayControlInitializeDevice: */
-        /*     return PiControlInitializeDevice(State, Thread, Buffer); */
+    case PlugPlayControlInitializeDevice:
+	/* This is used on Windows NT to add an ad-hoc device node (under the PnP root
+	 * device node) for legacy non-PnP devices added manually by the user. We do
+	 * not plan to support this on Neptune OS at this point in time. */
+	return STATUS_NOT_SUPPORTED;
 
-        case PlugPlayControlStartDevice:
-        case PlugPlayControlResetDevice:
-            return PiControlSyncDeviceAction(State, Thread, Buffer, ControlClass);
+    case PlugPlayControlStartDevice:
+    case PlugPlayControlResetDevice:
+    {
+	PIO_PNP_CONTROL_DEVICE_CONTROL_DATA Data = Buffer;
+	return PiControlPerformDeviceAction(State, Thread,
+					    Data->DeviceInstance, ControlClass);
+    }
 
-        case PlugPlayControlUnlockDevice:
-            return STATUS_NOT_IMPLEMENTED;
+    case PlugPlayControlUnlockDevice:
+	return STATUS_NOT_IMPLEMENTED;
 
-        case PlugPlayControlQueryAndRemoveDevice:
-              return PiControlQueryRemoveDevice(State, Thread, Buffer);
+    case PlugPlayControlQueryAndRemoveDevice:
+	return PiControlQueryRemoveDevice(State, Thread, Buffer);
 
-        /* case PlugPlayControlUserResponse: */
-        /*     return IopRemovePlugPlayEvent(State, Thread, Buffer); */
+    case PlugPlayControlUserResponse:
+	return IopRemovePlugPlayEvent(State, Thread, Buffer);
 
-//        case PlugPlayControlGenerateLegacyDevice:
+    case PlugPlayControlGenerateLegacyDevice:
+	/* We do not support legacy device nodes. */
+	return STATUS_NOT_SUPPORTED;
 
         /* case PlugPlayControlGetInterfaceDeviceList: */
         /*     return IopGetInterfaceDeviceList(State, Thread, Buffer); */
@@ -1590,8 +1636,8 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
         /* case PlugPlayControlDeviceClassAssociation: */
         /*     return PiControlDeviceClassAssociation(State, Thread, Buffer); */
 
-        case PlugPlayControlGetRelatedDevice:
-            return IopGetRelatedDevice(State, Thread, Buffer);
+    case PlugPlayControlGetRelatedDevice:
+	return IopGetRelatedDevice(State, Thread, Buffer);
 
         /* case PlugPlayControlGetInterfaceDeviceAlias: */
         /*     return PiControlGetInterfaceDeviceAlias(State, Thread, Buffer); */
@@ -1611,8 +1657,8 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
 //        case PlugPlayControlHaltDevice:
 //        case PlugPlayControlGetBlockedDriverList:
 
-        default:
-	    break;
+    default:
+	break;
     }
 
     return STATUS_NOT_IMPLEMENTED;

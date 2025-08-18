@@ -668,11 +668,12 @@ static NTSTATUS IopMarshalPnpControlData(IN PVOID Buffer,
     return STATUS_SUCCESS;
 }
 
-static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
-				       IN SERVICE_ARGUMENT BufferArg,
-				       IN MWORD BufferSize,
-				       IN PLUGPLAY_CONTROL_CLASS ControlClass)
+static NTSTATUS IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
+					   IN SERVICE_ARGUMENT BufferArg,
+					   IN MWORD BufferSize,
+					   IN PLUGPLAY_CONTROL_CLASS ControlClass)
 {
+    NTSTATUS Status = STATUS_SUCCESS;
     switch (ControlClass) {
     case PlugPlayControlEnumerateDevice:
     case PlugPlayControlRegisterNewDevice:
@@ -691,14 +692,11 @@ static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
 	PPLUGPLAY_CONTROL_RELATED_DEVICE_DATA Data = ClientBuffer;
 	PIO_PNP_CONTROL_RELATED_DEVICE_DATA SrcBuffer = (PVOID)BufferArg.Word;
 	ULONG BytesWritten;
-#if DBG
-	NTSTATUS Status =
-#endif
-	RtlUTF8ToUnicodeN(Data->RelatedDeviceInstance, Data->RelatedDeviceInstanceLength,
-			  &BytesWritten,
-			  SrcBuffer->TargetDeviceInstance + SrcBuffer->TargetDeviceInstanceLength,
-			  SrcBuffer->RelatedDeviceInstanceLength);
-	assert(NT_SUCCESS(Status));
+	Status = RtlUTF8ToUnicodeN(Data->RelatedDeviceInstance,
+				   Data->RelatedDeviceInstanceLength,
+				   &BytesWritten,
+				   SrcBuffer->TargetDeviceInstance + SrcBuffer->TargetDeviceInstanceLength,
+				   SrcBuffer->RelatedDeviceInstanceLength);
 	break;
     }
 
@@ -707,13 +705,9 @@ static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
 	PPLUGPLAY_CONTROL_INTERFACE_DEVICE_LIST_DATA Data = ClientBuffer;
 	PIO_PNP_CONTROL_INTERFACE_DEVICE_LIST_DATA SrcBuffer = (PVOID)BufferArg.Word;
 	ULONG BytesWritten;
-#if DBG
-	NTSTATUS Status =
-#endif
-	RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
-			  SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
-			  SrcBuffer->BufferSize);
-	assert(NT_SUCCESS(Status));
+	Status = RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+				   SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+				   SrcBuffer->BufferSize);
 	break;
     }
 
@@ -722,13 +716,9 @@ static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
 	PPLUGPLAY_CONTROL_PROPERTY_DATA Data = ClientBuffer;
 	PIO_PNP_CONTROL_PROPERTY_DATA SrcBuffer = (PVOID)BufferArg.Word;
 	ULONG BytesWritten;
-#if DBG
-	NTSTATUS Status =
-#endif
-	RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
-			  SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
-			  SrcBuffer->BufferSize);
-	assert(NT_SUCCESS(Status));
+	Status = RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+				   SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+				   SrcBuffer->BufferSize);
 	break;
     }
 
@@ -737,13 +727,9 @@ static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
 	PPLUGPLAY_CONTROL_DEVICE_RELATIONS_DATA Data = ClientBuffer;
 	PIO_PNP_CONTROL_DEVICE_RELATIONS_DATA SrcBuffer = (PVOID)BufferArg.Word;
 	ULONG BytesWritten;
-#if DBG
-	NTSTATUS Status =
-#endif
-	RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
-			  SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
-			  SrcBuffer->BufferSize);
-	assert(NT_SUCCESS(Status));
+	Status = RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+				   SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+				   SrcBuffer->BufferSize);
 	break;
     }
 
@@ -753,12 +739,168 @@ static VOID IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
 	UNIMPLEMENTED;
 	break;
     }
+    assert(NT_SUCCESS(Status));
+    return Status;
 }
 
 static VOID IopFreeMarshaledPnpControlData(IN PVOID Data,
 					   IN SERVICE_ARGUMENT DataArg,
 					   IN SERVICE_ARGUMENT DataSizeArg,
 					   IN SERVICE_ARGUMENT DataTypeArg)
+{
+    if (!KiPtrInSvcMsgBuf((PVOID)DataArg.Word)) {
+	KiFreeHeap((PVOID)DataArg.Word);
+    }
+}
+
+static NTSTATUS IopMarshalPnpEventData(IN PPLUGPLAY_EVENT_BLOCK Buffer,
+				       IN ULONG BufferLength,
+				       OUT SERVICE_ARGUMENT *DataArg,
+				       OUT SERVICE_ARGUMENT *DataSizeArg,
+				       IN BOOLEAN InParam,
+				       OUT ULONG *MsgBufOffset)
+{
+    assert(!InParam);
+    assert(MsgBufOffset != NULL);
+    assert(*MsgBufOffset < SVC_MSGBUF_SIZE);
+    if (*MsgBufOffset >= SVC_MSGBUF_SIZE) {
+	return STATUS_INTERNAL_ERROR;
+    }
+    if (!Buffer) {
+	return STATUS_INVALID_PARAMETER_2;
+    }
+    if (KiPtrInSvcMsgBuf(Buffer)) {
+	return STATUS_INVALID_USER_BUFFER;
+    }
+    if (BufferLength < FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass)) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    PVOID DestBuffer;
+    ULONG MsgBufDataSize = 0;
+    if (*MsgBufOffset + BufferLength < MAX_MSG_BUF_OFFSET) {
+	DestBuffer = &OFFSET_TO_ARG(*MsgBufOffset, CHAR);
+	MsgBufDataSize = BufferLength;
+    } else {
+	DestBuffer = KiAllocateHeap(BufferLength);
+	if (!DestBuffer) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+    }
+    DataArg->Word = (MWORD)DestBuffer;
+    DataSizeArg->Word = BufferLength;
+    *MsgBufOffset += MsgBufDataSize;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopUnmarshalPnpEventData(IN PPLUGPLAY_EVENT_BLOCK DestBuffer,
+					 IN SERVICE_ARGUMENT BufferArg,
+					 IN MWORD BufferSize)
+{
+    PIO_PNP_EVENT_BLOCK SrcBuffer = (PVOID)BufferArg.Word;
+    DestBuffer->EventGuid = SrcBuffer->EventGuid;
+    DestBuffer->EventCategory = SrcBuffer->EventCategory;
+    DestBuffer->TotalSize = FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass);
+    assert(SrcBuffer->TotalSize > FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass));
+    ULONG PayloadSize = SrcBuffer->TotalSize - FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass);
+    assert(BufferSize >= FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass));
+    BufferSize -= FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass);
+    NTSTATUS Status = STATUS_SUCCESS;
+    switch (SrcBuffer->EventCategory) {
+    case TargetDeviceChangeEvent:
+    case DeviceInstallEvent:
+    {
+	ULONG UnicodeSize = 0;
+	Status = RtlUTF8ToUnicodeN(DestBuffer->TargetDevice.DeviceIds,
+				   BufferSize, &UnicodeSize,
+				   SrcBuffer->TargetDevice.DeviceIds,
+				   PayloadSize);
+	DestBuffer->TotalSize += UnicodeSize;
+	break;
+    }
+
+    case CustomDeviceEvent:
+    {
+	ULONG UnicodeSize = 0;
+	Status = RtlUTF8ToUnicodeN(DestBuffer->CustomNotification.DeviceIds,
+				   BufferSize, &UnicodeSize,
+				   SrcBuffer->CustomNotification.DeviceIds,
+				   PayloadSize);
+	DestBuffer->TotalSize += sizeof(PVOID) + UnicodeSize;
+	break;
+    }
+
+    case DeviceClassChangeEvent:
+    {
+	assert(PayloadSize > sizeof(SrcBuffer->DeviceClass));
+	ULONG UnicodeSize = 0;
+	if (BufferSize < sizeof(GUID)) {
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	} else {
+	    Status = RtlUTF8ToUnicodeN(DestBuffer->DeviceClass.SymbolicLinkName,
+				       BufferSize - sizeof(GUID), &UnicodeSize,
+				       SrcBuffer->DeviceClass.SymbolicLinkName,
+				       PayloadSize - sizeof(GUID));
+	}
+	DestBuffer->TotalSize += sizeof(GUID) + UnicodeSize;
+	break;
+    }
+
+    case PowerEvent:
+	if (BufferSize < sizeof(DestBuffer->PowerNotification)) {
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	} else {
+	    RtlCopyMemory(&DestBuffer->PowerNotification,
+			  &SrcBuffer->PowerNotification,
+			  sizeof(DestBuffer->PowerNotification));
+	}
+	DestBuffer->TotalSize += sizeof(DestBuffer->PowerNotification);
+	break;
+
+    case VetoEvent:
+    {
+	assert(PayloadSize > sizeof(SrcBuffer->VetoNotification));
+	ULONG UnicodeSize = 0;
+	if (BufferSize < sizeof(PNP_VETO_TYPE)) {
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	} else {
+	    Status = RtlUTF8ToUnicodeN(DestBuffer->DeviceClass.SymbolicLinkName,
+				       BufferSize - sizeof(PNP_VETO_TYPE), &UnicodeSize,
+				       SrcBuffer->DeviceClass.SymbolicLinkName,
+				       PayloadSize - sizeof(PNP_VETO_TYPE));
+	}
+	DestBuffer->TotalSize += sizeof(PNP_VETO_TYPE) + UnicodeSize;
+	break;
+    }
+
+    case BlockedDriverEvent:
+	if (BufferSize < sizeof(DestBuffer->BlockedDriverNotification)) {
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	} else {
+	    RtlCopyMemory(&DestBuffer->BlockedDriverNotification,
+			  &SrcBuffer->BlockedDriverNotification,
+			  sizeof(DestBuffer->BlockedDriverNotification));
+	}
+	DestBuffer->TotalSize += sizeof(DestBuffer->BlockedDriverNotification);
+	break;
+
+    case HardwareProfileChangeEvent:
+    case DeviceArrivalEvent:
+	UNIMPLEMENTED;
+	assert(FALSE);
+	Status = STATUS_NOT_IMPLEMENTED;
+	break;
+
+    default:
+	/* Invalid PnP event category */
+	assert(FALSE);
+	Status = STATUS_INTERNAL_ERROR;
+    }
+    return Status;
+}
+
+static VOID IopFreeMarshaledPnpEventData(IN PVOID Data,
+					 IN SERVICE_ARGUMENT DataArg,
+					 IN SERVICE_ARGUMENT DataSizeArg)
 {
     if (!KiPtrInSvcMsgBuf((PVOID)DataArg.Word)) {
 	KiFreeHeap((PVOID)DataArg.Word);

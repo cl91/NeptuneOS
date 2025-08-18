@@ -71,6 +71,7 @@ NTSTATUS IoInitSystemPhase0()
 NTSTATUS IoInitSystemPhase1()
 {
     RET_ERR(IopInitFileSystem());
+    RET_ERR(IopInitPnpManager());
 
     return STATUS_SUCCESS;
 }

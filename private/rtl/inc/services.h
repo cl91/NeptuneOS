@@ -431,3 +431,38 @@ typedef struct _IO_PNP_CONTROL_RETRIEVE_DOCK_DATA {
     ULONG DeviceInstanceLength;	/* Including trailing NUL */
     CHAR DeviceInstance[];
 } IO_PNP_CONTROL_RETRIEVE_DOCK_DATA, *PIO_PNP_CONTROL_RETRIEVE_DOCK_DATA;
+
+/*
+ * Server-side data structure for PLUGPLAY_EVENT_BLOCK
+ */
+typedef struct _IO_PNP_EVENT_BLOCK {
+    GUID EventGuid;
+    PLUGPLAY_EVENT_CATEGORY EventCategory;
+    ULONG TotalSize;
+    union {
+	struct {
+	    GUID ClassGuid;
+	    CHAR SymbolicLinkName[];
+	} DeviceClass;
+	struct {
+	    CHAR DeviceIds[];
+	} TargetDevice;
+	struct {
+	    CHAR DeviceId[];
+	} InstallDevice;
+	struct {
+	    CHAR DeviceIds[];
+	} CustomNotification; /* Used for IoReportTargetDeviceChange */
+	struct {
+	    ULONG NotificationCode;
+	    ULONG NotificationData;
+	} PowerNotification;
+	struct {
+	    PNP_VETO_TYPE VetoType;
+	    CHAR DeviceIdVetoNameBuffer[];
+	} VetoNotification;
+	struct {
+	    GUID BlockedDriverGuid;
+	} BlockedDriverNotification;
+    };
+} IO_PNP_EVENT_BLOCK, *PIO_PNP_EVENT_BLOCK;

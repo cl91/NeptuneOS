@@ -150,10 +150,20 @@ static NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
 
 static NTSTATUS SmInitPnp()
 {
-    RET_ERR_EX(NtPlugPlayInitialize(),
-	       SmPrint("Failed to initialize the Plug and"
-		       " Play subsystem. Status = 0x%x\n", Status));
+    SmPrint("Enumerating Plug and Play devices...\n");
+
+    PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA Buffer = {};
+    RtlInitUnicodeString(&Buffer.DeviceInstance, L"HTREE\\ROOT\\0");
+    NTSTATUS Status = NtPlugPlayControl(PlugPlayControlEnumerateDevice, &Buffer,
+					sizeof(PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA));
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
     return STATUS_SUCCESS;
+
+out:
+    SmPrint("Failed to initialize the Plug and Play subsystem. Error = 0x%x\n", Status);
+    return Status;
 }
 
 NTSTATUS SmInitHardwareDatabase()

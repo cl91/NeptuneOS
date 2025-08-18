@@ -129,4 +129,9 @@
     <parameter annotation="out" type="ptr::ULONG" name="Count" />
   </svc>
 
+  <svc name="WdmHalAcpiGetRsdt">
+    <parameter annotation="out" type="ptr::ULONG64" name="Address" />
+    <parameter annotation="out" type="ptr::ULONG" name="Length" />
+  </svc>
+
 </services>

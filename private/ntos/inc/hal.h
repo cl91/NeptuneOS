@@ -44,7 +44,6 @@ NTSTATUS HalInitSystemPhase1(VOID);
 
 /* acpi.c */
 VOID HalAcpiRegisterRsdp(IN PHAL_ACPI_RSDP Rsdp);
-CM_PARTIAL_RESOURCE_DESCRIPTOR HalAcpiGetRsdtResource();
 VOID HalAcpiDumpRsdp(IN PHAL_ACPI_RSDP Rsdp, IN ULONG Indentation);
 
 /* cmos.c */

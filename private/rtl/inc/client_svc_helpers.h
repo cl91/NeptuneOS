@@ -210,8 +210,11 @@ static inline VOID KiServiceUnmarshalBuffer4(IN PVOID ClientBuffer,
 
 #define KI_GET_5TH_ARG(_1,_2,_3,_4,_5,...)	_5
 #define KiServiceUnmarshalBuffer(...)				\
-    KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer4,	\
-		   KiServiceUnmarshalBuffer3)(__VA_ARGS__)
+    ({								\
+	KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer4,	\
+		       KiServiceUnmarshalBuffer3)(__VA_ARGS__);	\
+	STATUS_SUCCESS;						\
+    })
 
 static inline VOID KiDeliverApc(IN ULONG MsgBufOffset,
                                 IN ULONG NumApc)

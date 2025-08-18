@@ -748,6 +748,12 @@ NTAPI NTSYSAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberO
 NTAPI NTSYSAPI BOOLEAN HalMakeBeep(IN ULONG Frequency);
 
 /*
+ * Returns the physical address and the length of the ACPI RSDT/XSDT
+ */
+NTSTATUS HalAcpiGetRsdt(OUT ULONG64 *Address,
+			OUT ULONG *Length);
+
+/*
  * Disk partition related routines
  */
 NTAPI NTSYSAPI VOID HalExamineMBR(IN PDEVICE_OBJECT DeviceObject,

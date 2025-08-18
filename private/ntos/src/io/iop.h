@@ -379,6 +379,9 @@ FORCEINLINE VOID IopDeviceNodeSetCurrentState(IN PDEVICE_NODE Node,
 /* init.c */
 extern LIST_ENTRY IopDriverList;
 
+/* pnp.c */
+NTSTATUS IopInitPnpManager();
+
 /*
  * Returns the device object of the given device handle, optionally
  * checking whether the device belongs to the driver object

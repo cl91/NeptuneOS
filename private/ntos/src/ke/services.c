@@ -641,6 +641,73 @@ err:
     return STATUS_INVALID_PARAMETER;
 }
 
+static inline NTSTATUS KiServiceMapPnpEventBuffer(IN PTHREAD Thread,
+						  OUT BOOLEAN *Mapped,
+						  OUT PIO_PNP_EVENT_BLOCK *Buffer,
+						  IN MWORD ClientAddress,
+						  IN MWORD BufferLength)
+{
+    RET_ERR(KiServiceMapBuffer5(Thread, Mapped, (PPVOID)Buffer,
+				ClientAddress, BufferLength));
+    assert(Buffer);
+
+    if (BufferLength < FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass)) {
+	goto err;
+    }
+    BufferLength -= FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass);
+
+    switch ((*Buffer)->EventCategory) {
+    case TargetDeviceChangeEvent:
+    case DeviceInstallEvent:
+    case CustomDeviceEvent:
+	if (!BufferLength) {
+	    goto err;
+	}
+	break;
+
+    case DeviceClassChangeEvent:
+	if (BufferLength <= sizeof((*Buffer)->DeviceClass)) {
+	    goto err;
+	}
+	break;
+
+    case PowerEvent:
+	if (BufferLength != sizeof((*Buffer)->PowerNotification)) {
+	    goto err;
+	}
+	break;
+
+    case VetoEvent:
+	if (BufferLength <= sizeof((*Buffer)->VetoNotification)) {
+	    goto err;
+	}
+	break;
+
+    case BlockedDriverEvent:
+	if (BufferLength != sizeof((*Buffer)->BlockedDriverNotification)) {
+	    goto err;
+	}
+	break;
+
+    case HardwareProfileChangeEvent:
+    case DeviceArrivalEvent:
+	UNIMPLEMENTED;
+	assert(FALSE);
+	break;
+
+    default:
+	/* Invalid PnP event category */
+	assert(FALSE);
+	goto err;
+    }
+    return STATUS_SUCCESS;
+
+err:
+    KiServiceUnmapBuffer3(*Mapped, Buffer, BufferLength);
+    *Buffer = NULL;
+    return STATUS_INVALID_PARAMETER;
+}
+
 static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
 {
     assert(Thread->ReplyEndpoint.TreeNode.CNode != NULL);

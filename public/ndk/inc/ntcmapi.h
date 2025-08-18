@@ -982,8 +982,7 @@ NTAPI NTSYSAPI NTSTATUS NtPlugPlayControl(IN PLUGPLAY_CONTROL_CLASS PlugPlayCont
 					  IN OUT PVOID Buffer,
 					  IN ULONG BufferSize);
 
-NTAPI NTSYSAPI NTSTATUS NtGetPlugPlayEvent(IN ULONG Reserved1,
-					   IN ULONG Reserved2,
+NTAPI NTSYSAPI NTSTATUS NtGetPlugPlayEvent(IN BOOLEAN Poll,
 					   OUT PPLUGPLAY_EVENT_BLOCK Buffer,
 					   IN ULONG BufferSize);
 

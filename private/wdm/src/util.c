@@ -147,6 +147,15 @@ NTAPI BOOLEAN HalMakeBeep(IN ULONG Frequency)
 }
 
 /*
+ * Return the physical address and length of the ACPI RSDT/XSDT
+ */
+NTSTATUS HalAcpiGetRsdt(OUT ULONG64 *Address,
+			OUT ULONG *Length)
+{
+    return WdmHalAcpiGetRsdt(Address, Length);
+}
+
+/*
  * @implemented
  *
  * @remarks

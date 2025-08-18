@@ -559,7 +559,10 @@
     <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
   </svc>
 
-  <svc name="NtPlugPlayInitialize">
+  <svc name="NtGetPlugPlayEvent">
+    <parameter annotation="in" type="BOOLEAN" name="Poll" />
+    <parameter annotation="out" type="buf::PnpEvent" name="Buffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
   </svc>
 
   <svc name="KeContinue" nofpu="true">

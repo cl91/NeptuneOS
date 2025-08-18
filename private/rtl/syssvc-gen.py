@@ -749,7 +749,7 @@ if (!NT_SUCCESS(Status)) {
         p.client_post_marshaling = self.format(pp, """{%- if client_post_marshal_func %}
 {{client_post_marshal_func}}({{p.name}}, {{p.name}}Arg, {{sp.name}}Arg{% if tp %}, {{tp.name}}Arg{% endif %});
 {%- endif %}""")
-        p.client_unmarshaling = self.format(pp, "{%- if client_unmarshal_func %}{{client_unmarshal_func}}({{p.name}}, {{p.name}}Arg, {% if lp %}OFFSET_TO_ARG({{lp.name}}Arg.BufferStart, {{get_base_type(lp)}}){% else %}{{sp.name}}Arg.Word{% endif %}{% if tp %}, {{tp.name}}{% endif %});{%- endif %}")
+        p.client_unmarshaling = self.format(pp, "{%- if client_unmarshal_func %}Status = {{client_unmarshal_func}}({{p.name}}, {{p.name}}Arg, {% if lp %}OFFSET_TO_ARG({{lp.name}}Arg.BufferStart, {{get_base_type(lp)}}){% else %}{{sp.name}}Arg.Word{% endif %}{% if tp %}, {{tp.name}}{% endif %});{%- endif %}")
         p.marshaler_state_decl = self.format(pp, "BOOLEAN {{p.name}}Mapped")
         p.server_pre_marshaling = self.format(pp, """SERVICE_ARGUMENT {{p.name}}Arg = { .Word = seL4_GetMR({{p.idx}}) };
 {{server_type}} {{p.name}} = NULL;""")
@@ -960,6 +960,14 @@ class Service:
                              client_post_marshal_func = "IopFreeMarshaledPnpControlData",
                              client_unmarshal_func = "IopUnmarshalPnpControlData",
                              server_marshal_func = "KiServiceMapPnpControlBuffer",
+                             server_post_marshal_func = "KiServiceUnmapBuffer"),
+            BufferMarshaller(server_name, buffer_type = "PnpEvent",
+                             server_type = "PIO_PNP_EVENT_BLOCK",
+                             client_type = "PPLUGPLAY_EVENT_BLOCK",
+                             client_marshal_func = "IopMarshalPnpEventData",
+                             client_post_marshal_func = "IopFreeMarshaledPnpEventData",
+                             client_unmarshal_func = "IopUnmarshalPnpEventData",
+                             server_marshal_func = "KiServiceMapPnpEventBuffer",
                              server_post_marshal_func = "KiServiceUnmapBuffer")
         ]
         for m in marshallers:
