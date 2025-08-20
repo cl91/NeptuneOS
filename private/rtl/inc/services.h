@@ -432,6 +432,14 @@ typedef struct _IO_PNP_CONTROL_RETRIEVE_DOCK_DATA {
     CHAR DeviceInstance[];
 } IO_PNP_CONTROL_RETRIEVE_DOCK_DATA, *PIO_PNP_CONTROL_RETRIEVE_DOCK_DATA;
 
+// PlugPlayControlQueryHardwareIDs
+// PlugPlayControlQueryCompatibleIDs
+typedef struct _IO_PNP_CONTROL_QUERY_IDS_DATA {
+    IN OUT ULONG BufferSize;
+    ULONG DeviceInstanceLength;	/* Including trailing NUL */
+    IN OUT CHAR DeviceInstance[]; /* Output buffer follows device instance */
+} IO_PNP_CONTROL_QUERY_IDS_DATA, *PIO_PNP_CONTROL_QUERY_IDS_DATA;
+
 /*
  * Server-side data structure for PLUGPLAY_EVENT_BLOCK
  */

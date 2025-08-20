@@ -1,4 +1,6 @@
+#include <initguid.h>
 #include "smss.h"
+#include <pnpguid.h>
 
 #define SYSTEM_KEY_PATH				"\\Registry\\Machine\\System"
 #define HARDWARE_KEY_PATH			"\\Registry\\Machine\\Hardware"
@@ -27,32 +29,25 @@ static DRIVER_SERVICE_PARAMETER KbdclassParameters[] = {
     { "ConnectMultiplePorts", REG_DWORD, sizeof(ULONG), &DefaultConnectMultiplePorts }
 };
 
-/* For now this is hard-coded */
+/* For now these are hard-coded, Eventually we want to move this to a
+ * registry file (boot configuration database). */
 static struct {
     PCSTR ServiceName;
+    PWSTR MatchString;		/* MULTI_SZ */
     ULONG_PTR ServiceParameterCount;
     PDRIVER_SERVICE_PARAMETER ServiceParameters;
-    PCSTR BusId;
-    PCSTR DeviceId;
-    PCSTR InstanceId;
     PCSTR ClassGuid;
 } BootDrivers[] = {
-    { "null", 0, NULL, NULL, NULL, NULL, NULL },
-    { "beep", 0, NULL, NULL, NULL, NULL, NULL },
-    { "fatfs", 0, NULL, NULL, NULL, NULL, NULL },
-    { "pnp", 0, NULL, "HTREE", "ROOT", "0", NULL },
-    { "acpi", 0, NULL, "ROOT", "ACPI", "0", NULL },
-    { "pci", 0, NULL, "ACPI", "PNP0A03", "0", NULL },
-    { "pci", 0, NULL, "ACPI", "PNP0A08", "0", NULL },
-    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters,
-      "Root", "PNP0303", "0", KBDCLASS_GUID },
-    { "i8042prt", ARRAYSIZE(I8042prtParameters), I8042prtParameters,
-      "ACPI", "PNP0303", "0", KBDCLASS_GUID },
-    { "kbdclass", ARRAYSIZE(KbdclassParameters), KbdclassParameters,
-      NULL, NULL, NULL, NULL },
-    { "fdc", 0, NULL, "Root", "PNP0700", "0", NULL },
-    { "fdc", 0, NULL, "ACPI", "PNP0700", "0", NULL },
-    { "fdc", 0, NULL, "FDC", "GENERIC_FLOPPY_DRIVE", "00", NULL },
+    { "null" },
+    { "beep" },
+    { "fatfs" },
+    { "pnp", L"HTREE\\ROOT\\0\0" },
+    { "acpi", L"ROOT\\ACPI\\0\0" },
+    { "pci", L"*PNP0A03\0*PNP0A08\0" },
+    { "fdc", L"*PNP0700\0FDC\\GENERIC_FLOPPY_DRIVE\0" },
+    { "i8042prt", L"*PNP0303\0",
+      ARRAYSIZE(I8042prtParameters), I8042prtParameters, KBDCLASS_GUID },
+    { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
 };
 
 static struct {
@@ -91,29 +86,6 @@ static NTSTATUS SmInitBootDriverConfigs()
 				     BootDrivers[i].ServiceParameters[j].Data,
 				     BootDrivers[i].ServiceParameters[j].DataSize));
 	}
-	if (BootDrivers[i].BusId != NULL) {
-	    assert(BootDrivers[i].DeviceId != NULL);
-	    assert(BootDrivers[i].InstanceId != NULL);
-	    CHAR EnumKeyPath[256];
-	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s",
-		     BootDrivers[i].BusId);
-	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, NULL));
-	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s\\%s",
-		     BootDrivers[i].BusId, BootDrivers[i].DeviceId);
-	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, NULL));
-	    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%s\\%s\\%s",
-		     BootDrivers[i].BusId, BootDrivers[i].DeviceId,
-		     BootDrivers[i].InstanceId);
-	    HANDLE EnumKey = NULL;
-	    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, &EnumKey));
-	    assert(EnumKey != NULL);
-	    RET_ERR(SmSetRegKeyValue(EnumKey, "Service", REG_SZ,
-				     (PVOID)BootDrivers[i].ServiceName, 0));
-	    if (BootDrivers[i].ClassGuid != NULL) {
-		RET_ERR(SmSetRegKeyValue(EnumKey, "ClassGUID", REG_SZ,
-					 (PVOID)BootDrivers[i].ClassGuid, 0));
-	    }
-	}
     }
     CHAR ClassKeyPath[256];
     for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
@@ -148,6 +120,149 @@ static NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS SmQueryIds(IN BOOLEAN CompatibleIds,
+			   IN PWCHAR DeviceId,
+			   OUT PWCHAR *pBuffer)
+{
+    ULONG BufferSize = 512;
+    PWCHAR Buffer = SmAllocatePool(BufferSize);
+    if (!Buffer) {
+	return STATUS_NO_MEMORY;
+    }
+    PLUGPLAY_CONTROL_QUERY_IDS_DATA Data = {
+	.Buffer = Buffer,
+	.BufferSize = BufferSize
+    };
+    RtlInitUnicodeString(&Data.DeviceInstance, DeviceId);
+    PLUGPLAY_CONTROL_CLASS Class = CompatibleIds ? PlugPlayControlQueryCompatibleIDs :
+	PlugPlayControlQueryHardwareIDs;
+    NTSTATUS Status = NtPlugPlayControl(Class, &Data,
+					sizeof(PLUGPLAY_CONTROL_QUERY_IDS_DATA));
+    if (Status == STATUS_BUFFER_TOO_SMALL) {
+	SmFreePool(Buffer);
+	BufferSize = Data.BufferSize;
+	Buffer = SmAllocatePool(BufferSize);
+	if (!Buffer) {
+	    return STATUS_NO_MEMORY;
+	}
+	Data.Buffer = Buffer;
+	Data.BufferSize = BufferSize;
+	Status = NtPlugPlayControl(Class, &Data,
+				   sizeof(PLUGPLAY_CONTROL_QUERY_IDS_DATA));
+    }
+    if (!NT_SUCCESS(Status)) {
+	SmFreePool(Buffer);
+	*pBuffer = NULL;
+	return Status;
+    }
+    *pBuffer = Buffer;
+    return STATUS_SUCCESS;
+}
+
+static BOOLEAN SmMatchMultiSz(IN PWCHAR Target,
+			      IN PWCHAR Src)
+{
+    for (PWCHAR Id = Src; *Id != L'\0'; Id += wcslen(Id) + 1) {
+	if (!_wcsicmp(Target, Id)) {
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+
+static LONG SmFindDriver(IN PWCHAR InstancePath)
+{
+    /* First try if we can find an exact match for the device instance path. */
+    for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
+	if (BootDrivers[i].MatchString &&
+	    SmMatchMultiSz(InstancePath, BootDrivers[i].MatchString)) {
+	    return i;
+	}
+    }
+
+    PWCHAR Buffer = NULL;
+    /* Query the hardware IDs of the device and try finding a matching driver for it. */
+    NTSTATUS Status = SmQueryIds(FALSE, InstancePath, &Buffer);
+    if (!NT_SUCCESS(Status)) {
+	goto compat;
+    }
+    for (PWCHAR Id = Buffer; *Id != L'\0'; Id += wcslen(Id) + 1) {
+	DPRINT("Got hardware ids %ws\n", Id);
+	for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
+	    if (BootDrivers[i].MatchString &&
+		SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
+		return i;
+	    }
+	}
+    }
+
+    /* Query the compatible IDs of the device and try finding a matching driver for it. */
+compat:
+    Status = SmQueryIds(TRUE, InstancePath, &Buffer);
+    if (!NT_SUCCESS(Status)) {
+	return -1;
+    }
+    for (PWCHAR Id = Buffer; *Id != L'\0'; Id += wcslen(Id) + 1) {
+	DPRINT("Got compatible ids %ws\n", Id);
+	for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
+	    if (BootDrivers[i].MatchString &&
+		SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
+		return i;
+	    }
+	}
+    }
+
+    return -1;
+}
+
+static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
+{
+    DPRINT("Trying to install device %ws\n", InstancePath);
+    LONG Index = SmFindDriver(InstancePath);
+    if (Index < 0) {
+	DPRINT("No matching driver found for %ws\n", InstancePath);
+	return STATUS_UNSUCCESSFUL;
+    }
+    DPRINT("Found driver %s for %ws\n", BootDrivers[Index].ServiceName, InstancePath);
+
+    CHAR EnumKeyPath[256];
+    snprintf(EnumKeyPath, sizeof(EnumKeyPath), ENUM_KEY_PATH "\\%ws",
+	     InstancePath);
+    /* Find the last and second to last path separators */
+    LONG InstanceId = strlen(EnumKeyPath);
+    assert(EnumKeyPath[InstanceId] == '\0');
+    while (EnumKeyPath[--InstanceId] != '\\') {}
+    if (InstanceId <= 0) {
+	assert(FALSE);
+	return STATUS_INTERNAL_ERROR;
+    }
+    EnumKeyPath[InstanceId] = '\0';
+    LONG DeviceId = strlen(EnumKeyPath);
+    assert(EnumKeyPath[DeviceId] == '\0');
+    while (EnumKeyPath[--DeviceId] != '\\') {}
+    if (DeviceId <= 0) {
+	assert(FALSE);
+	return STATUS_INTERNAL_ERROR;
+    }
+    EnumKeyPath[DeviceId] = '\0';
+
+    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, NULL));
+    EnumKeyPath[DeviceId] = '\\';
+    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, NULL));
+    EnumKeyPath[InstanceId] = '\\';
+    HANDLE EnumKey = NULL;
+    RET_ERR(SmCreateRegistryKey(EnumKeyPath, FALSE, &EnumKey));
+    assert(EnumKey != NULL);
+    RET_ERR(SmSetRegKeyValue(EnumKey, "Service", REG_SZ,
+			     (PVOID)BootDrivers[Index].ServiceName, 0));
+    if (BootDrivers[Index].ClassGuid != NULL) {
+	RET_ERR(SmSetRegKeyValue(EnumKey, "ClassGUID", REG_SZ,
+				 (PVOID)BootDrivers[Index].ClassGuid, 0));
+    }
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS SmInitPnp()
 {
     SmPrint("Enumerating Plug and Play devices...\n");
@@ -156,13 +271,79 @@ static NTSTATUS SmInitPnp()
     RtlInitUnicodeString(&Buffer.DeviceInstance, L"HTREE\\ROOT\\0");
     NTSTATUS Status = NtPlugPlayControl(PlugPlayControlEnumerateDevice, &Buffer,
 					sizeof(PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA));
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) && Status != STATUS_INVALID_DEVICE_STATE) {
 	goto out;
     }
-    return STATUS_SUCCESS;
+
+    /* NtPlugPlayControl is guaranteed to finish emitting plug and play events
+     * before returning, so we can simply poll the PnP event queue without waiting. */
+    ULONG BufferSize = sizeof(PLUGPLAY_EVENT_BLOCK) + 512;
+    PPLUGPLAY_EVENT_BLOCK Event = SmAllocatePool(BufferSize);
+    if (!Event) {
+	Status = STATUS_NO_MEMORY;
+	goto out;
+    }
+    while (TRUE) {
+	Status = NtGetPlugPlayEvent(TRUE, Event, BufferSize);
+	if (Status == STATUS_BUFFER_TOO_SMALL) {
+	    assert(Event->TotalSize > BufferSize);
+	    BufferSize = Event->TotalSize;
+	    SmFreePool(Event);
+	    Event = SmAllocatePool(BufferSize);
+	    if (!Event) {
+		Status = STATUS_NO_MEMORY;
+		goto out;
+	    }
+	    continue;
+	} else if (Status == STATUS_NO_MORE_ENTRIES) {
+	    Status = STATUS_SUCCESS;
+	    break;
+	} else if (!NT_SUCCESS(Status)) {
+	    break;
+	}
+
+	/* We have a PnP event. Process the event. */
+	if (Event->EventCategory == DeviceInstallEvent) {
+	    if (IsEqualGUID(&Event->EventGuid, &GUID_DEVICE_ENUMERATED)) {
+		Status = SmInstallDevice(Event->InstallDevice.DeviceId);
+		/* If we successfully installed a driver for a device, re-enumerate it. */
+		if (NT_SUCCESS(Status)) {
+		    RtlInitUnicodeString(&Buffer.DeviceInstance,
+					 Event->InstallDevice.DeviceId);
+		    NtPlugPlayControl(PlugPlayControlEnumerateDevice, &Buffer,
+				      sizeof(PLUGPLAY_CONTROL_ENUMERATE_DEVICE_DATA));
+		}
+	    } else {
+		DPRINT("Unknown PnP event, GUID "
+		       "{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}\n",
+		       Event->EventGuid.Data1, Event->EventGuid.Data2,
+		       Event->EventGuid.Data3, Event->EventGuid.Data4[0],
+		       Event->EventGuid.Data4[1], Event->EventGuid.Data4[2],
+		       Event->EventGuid.Data4[3], Event->EventGuid.Data4[4],
+		       Event->EventGuid.Data4[5], Event->EventGuid.Data4[6],
+		       Event->EventGuid.Data4[7]);
+		assert(FALSE);
+	    }
+	} else {
+	    DPRINT("Unknown PnP event category %d\n", Event->EventCategory);
+	    assert(FALSE);
+	}
+
+	/* Dequeue the PnP event so we can get the next one. */
+	PLUGPLAY_CONTROL_USER_RESPONSE_DATA ResponseData = {};
+	Status = NtPlugPlayControl(PlugPlayControlUserResponse,
+				   &ResponseData, sizeof(ResponseData));
+	if (!NT_SUCCESS(Status)) {
+	    break;
+	}
+    }
+    SmFreePool(Event);
 
 out:
-    SmPrint("Failed to initialize the Plug and Play subsystem. Error = 0x%x\n", Status);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to initialize the Plug and Play subsystem. Error = 0x%x\n",
+		Status);
+    }
     return Status;
 }
 

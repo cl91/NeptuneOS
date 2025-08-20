@@ -692,7 +692,7 @@ err:
     return Status;
 }
 
-static NTSTATUS PciCreateHardwareIDsString(PUNICODE_STRING HardwareIDs)
+static NTSTATUS FdcCreateHardwareIDsString(PUNICODE_STRING HardwareIDs)
 {
     WCHAR Buffer[256];
     ULONG Index = swprintf(Buffer, L"FDC\\GENERIC_FLOPPY_DRIVE") + 1;
@@ -707,7 +707,7 @@ static NTSTATUS PciCreateHardwareIDsString(PUNICODE_STRING HardwareIDs)
     return RtlDuplicateUnicodeString(0, &BufferU, HardwareIDs);
 }
 
-static NTSTATUS PciCreateCompatibleIDsString(PUNICODE_STRING CompatibleIDs)
+static NTSTATUS FdcCreateCompatibleIDsString(PUNICODE_STRING CompatibleIDs)
 {
     WCHAR Buffer[256];
     ULONG Index = swprintf(Buffer, L"GenFloppyDisk") + 1;
@@ -796,13 +796,13 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 	    DPRINT("DeviceID: %ws\n", PdoDevExt->DeviceId.Buffer);
 
 	    /* Add Hardware IDs string */
-	    Status = PciCreateHardwareIDsString(&PdoDevExt->HardwareIds);
+	    Status = FdcCreateHardwareIDsString(&PdoDevExt->HardwareIds);
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
 
 	    /* Add Compatible IDs string */
-	    Status = PciCreateCompatibleIDsString(&PdoDevExt->CompatibleIds);
+	    Status = FdcCreateCompatibleIDsString(&PdoDevExt->CompatibleIds);
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }

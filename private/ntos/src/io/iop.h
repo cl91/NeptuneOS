@@ -296,7 +296,6 @@ typedef struct _INTERRUPT_SERVICE {
 typedef enum _DEVICE_NODE_STATE {
     DeviceNodeUnspecified,
     DeviceNodeInitialized,
-    DeviceNodeLoadDriverFailed,
     DeviceNodeDriversLoaded,
     DeviceNodeAddDeviceFailed,
     DeviceNodeDevicesAdded,
@@ -335,6 +334,10 @@ typedef struct _DEVICE_NODE {
     PIO_DEVICE_OBJECT PhyDevObj;
     PCSTR DeviceId;
     PCSTR InstanceId;
+    PCSTR HardwareIds;		/* REG_MULTI_SZ */
+    PCSTR CompatibleIds;	/* REG_MULTI_SZ */
+    ULONG HardwareIdsLength;	/* Including trailing NUL */
+    ULONG CompatibleIdsLength;	/* Including trailing NUL */
     struct _DEVICE_NODE *Parent;
     LIST_ENTRY ChildrenList;
     LIST_ENTRY SiblingLink;

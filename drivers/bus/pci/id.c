@@ -112,81 +112,43 @@ PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClass)
 
 static VOID PciInitIdBuffer(IN PPCI_ID_BUFFER IdBuffer)
 {
-    /* Initialize the sizes to zero and the pointer to the start of the buffer */
-    IdBuffer->TotalLength = 0;
-    IdBuffer->Count = 0;
-    IdBuffer->CharBuffer = IdBuffer->BufferData;
+    RtlZeroMemory(IdBuffer, sizeof(PCI_ID_BUFFER));
 }
 
-ULONG PciIdPrintf(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
+static VOID PciIdPrintf(IN PPCI_ID_BUFFER IdBuffer, IN PWCHAR Format, ...)
 {
-    ULONG Size, Length;
-    PANSI_STRING AnsiString;
-    va_list va;
-
-    ASSERT(IdBuffer->Count < MAX_ANSI_STRINGS);
+    ULONG RemainingWchars = sizeof(IdBuffer->BufferData)/sizeof(WCHAR) - IdBuffer->TotalWchars;
+    if (RemainingWchars < 1) {
+	return;
+    }
 
     /* Do the actual string formatting into the character buffer */
+    va_list va;
     va_start(va, Format);
-    vsnprintf(IdBuffer->CharBuffer,
-	      sizeof(IdBuffer->BufferData) - IdBuffer->TotalLength, Format, va);
+    ULONG WcharsWritten = _vsnwprintf(IdBuffer->BufferData + IdBuffer->TotalWchars,
+				      RemainingWchars - 1, Format, va) + 1;
     va_end(va);
 
-    /* Initialize the ANSI_STRING that will hold this string buffer */
-    AnsiString = &IdBuffer->Strings[IdBuffer->Count];
-    RtlInitAnsiString(AnsiString, IdBuffer->CharBuffer);
-
-    /* Calculate the final size of the string, in Unicode */
-    Size = RtlAnsiStringToUnicodeSize(AnsiString);
-
-    /* Update the buffer with the size, and update the character pointer */
-    IdBuffer->StringSize[IdBuffer->Count] = Size;
-    IdBuffer->TotalLength += Size;
-    Length = AnsiString->Length + sizeof(ANSI_NULL);
-    IdBuffer->CharBuffer += Length;
-
-    /* Move to the next string for next time */
-    IdBuffer->Count++;
-
-    /* Return the length */
-    return Length;
+    IdBuffer->TotalWchars += WcharsWritten;
+    assert(IdBuffer->TotalWchars <= sizeof(IdBuffer->BufferData) / sizeof(WCHAR));
+    assert(IdBuffer->BufferData[IdBuffer->TotalWchars - 1] == L'\0');
 }
 
-ULONG PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer, IN PCCH Format, ...)
+static VOID PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer, IN PWCHAR Format, ...)
 {
-    ULONG NextId, Size, Length, MaxLength;
-    PANSI_STRING AnsiString;
+    if (IdBuffer->TotalWchars) {
+	assert(IdBuffer->BufferData[IdBuffer->TotalWchars - 1] == L'\0');
+	IdBuffer->TotalWchars--;
+    }
+    ULONG RemainingWchars = sizeof(IdBuffer->BufferData)/sizeof(WCHAR) - IdBuffer->TotalWchars;
     va_list va;
-
-    ASSERT(IdBuffer->Count);
-
-    /* Choose the next static ANSI_STRING to use */
-    NextId = IdBuffer->Count - 1;
-
-    /* Max length is from the end of the buffer up until the current pointer */
-    MaxLength = (PCHAR)(IdBuffer + 1) - IdBuffer->CharBuffer;
-
-    /* Do the actual append, and return the length this string took */
     va_start(va, Format);
-    Length = vsnprintf(IdBuffer->CharBuffer - 1, MaxLength, Format, va);
+    ULONG WcharsWritten = _vsnwprintf(IdBuffer->BufferData + IdBuffer->TotalWchars,
+				      RemainingWchars - 1, Format, va) + 1;
     va_end(va);
-    ASSERT(Length < MaxLength);
-
-    /* Select the static ANSI_STRING, and update its length information */
-    AnsiString = &IdBuffer->Strings[NextId];
-    AnsiString->Length += Length;
-    AnsiString->MaximumLength += Length;
-
-    /* Calculate the final size of the string, in Unicode */
-    Size = RtlAnsiStringToUnicodeSize(AnsiString);
-
-    /* Update the buffer with the size, and update the character pointer */
-    IdBuffer->StringSize[NextId] = Size;
-    IdBuffer->TotalLength += Size;
-    IdBuffer->CharBuffer += Length;
-
-    /* Return the size */
-    return Size;
+    IdBuffer->TotalWchars += WcharsWritten;
+    assert(IdBuffer->TotalWchars <= sizeof(IdBuffer->BufferData) / sizeof(WCHAR));
+    assert(IdBuffer->BufferData[IdBuffer->TotalWchars - 1] == L'\0');
 }
 
 NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
@@ -194,17 +156,11 @@ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 {
     PAGED_CODE();
     ULONG SubsysId;
-    CHAR VendorString[22];
+    CHAR VendorString[64] = {};
     PPCI_PDO_EXTENSION PdoExtension;
     PPCI_FDO_EXTENSION ParentExtension;
-    PWCHAR StringBuffer;
-    ULONG i, Size;
-    NTSTATUS Status;
-    PANSI_STRING NextString;
-    UNICODE_STRING DestinationString;
     PCI_ID_BUFFER IdBuffer;
     /* Assume failure */
-    Status = STATUS_SUCCESS;
     *Buffer = NULL;
 
     /* Start with the genric vendor string, which is the vendor ID + device ID */
@@ -222,77 +178,74 @@ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     switch (QueryType) {
     case BusQueryDeviceID:
 	/* A single ID, the vendor string + the revision ID */
-	PciIdPrintf(&IdBuffer, "%s&SUBSYS_%08X&REV_%02X", VendorString, SubsysId,
+	PciIdPrintf(&IdBuffer, L"%S&SUBSYS_%08X&REV_%02X", VendorString, SubsysId,
 		    DeviceExtension->RevisionId);
 	break;
 
     case BusQueryHardwareIDs:
 	/* First the vendor string + the subsystem ID + the revision ID */
-	PciIdPrintf(&IdBuffer, "%s&SUBSYS_%08X&REV_%02X", VendorString, SubsysId,
+	PciIdPrintf(&IdBuffer, L"%S&SUBSYS_%08X&REV_%02X", VendorString, SubsysId,
 		    DeviceExtension->RevisionId);
 
 	/* Next, without the revision */
-	PciIdPrintf(&IdBuffer, "%s&SUBSYS_%08X", VendorString, SubsysId);
+	PciIdPrintf(&IdBuffer, L"%S&SUBSYS_%08X", VendorString, SubsysId);
 
 	/* Next, the vendor string + the base class + sub class + progif */
-	PciIdPrintf(&IdBuffer, "%s&CC_%02X%02X%02X", VendorString,
+	PciIdPrintf(&IdBuffer, L"%S&CC_%02X%02X%02X", VendorString,
 		    DeviceExtension->BaseClass, DeviceExtension->SubClass,
 		    DeviceExtension->ProgIf);
 
 	/* Next, without the progif */
-	PciIdPrintf(&IdBuffer, "%s&CC_%02X%02X", VendorString, DeviceExtension->BaseClass,
+	PciIdPrintf(&IdBuffer, L"%S&CC_%02X%02X", VendorString, DeviceExtension->BaseClass,
 		    DeviceExtension->SubClass);
 
 	/* And finally, a terminator */
-	PciIdPrintf(&IdBuffer, "\0");
+	PciIdPrintf(&IdBuffer, L"");
 	break;
 
     case BusQueryCompatibleIDs:
 	/* First, the vendor + revision ID only */
-	PciIdPrintf(&IdBuffer, "%s&REV_%02X", VendorString, DeviceExtension->RevisionId);
+	PciIdPrintf(&IdBuffer, L"%S&REV_%02X", VendorString, DeviceExtension->RevisionId);
 
 	/* Next, the vendor string alone */
-	PciIdPrintf(&IdBuffer, "%s", VendorString);
+	PciIdPrintf(&IdBuffer, L"%S", VendorString);
 
 	/* Next, the vendor ID + the base class + the sub class + progif */
-	PciIdPrintf(&IdBuffer, "PCI\\VEN_%04X&CC_%02X%02X%02X", DeviceExtension->VendorId,
+	PciIdPrintf(&IdBuffer, L"PCI\\VEN_%04X&CC_%02X%02X%02X", DeviceExtension->VendorId,
 		    DeviceExtension->BaseClass, DeviceExtension->SubClass,
 		    DeviceExtension->ProgIf);
 
 	/* Now without the progif */
-	PciIdPrintf(&IdBuffer, "PCI\\VEN_%04X&CC_%02X%02X", DeviceExtension->VendorId,
+	PciIdPrintf(&IdBuffer, L"PCI\\VEN_%04X&CC_%02X%02X", DeviceExtension->VendorId,
 		    DeviceExtension->BaseClass, DeviceExtension->SubClass);
 
 	/* And then just the vendor ID itself */
-	PciIdPrintf(&IdBuffer, "PCI\\VEN_%04X", DeviceExtension->VendorId);
+	PciIdPrintf(&IdBuffer, L"PCI\\VEN_%04X", DeviceExtension->VendorId);
 
 	/* Then the base class + subclass + progif, without any vendor */
-	PciIdPrintf(&IdBuffer, "PCI\\CC_%02X%02X%02X", DeviceExtension->BaseClass,
+	PciIdPrintf(&IdBuffer, L"PCI\\CC_%02X%02X%02X", DeviceExtension->BaseClass,
 		    DeviceExtension->SubClass, DeviceExtension->ProgIf);
 
 	/* Next, without the progif */
-	PciIdPrintf(&IdBuffer, "PCI\\CC_%02X%02X", DeviceExtension->BaseClass,
+	PciIdPrintf(&IdBuffer, L"PCI\\CC_%02X%02X", DeviceExtension->BaseClass,
 		    DeviceExtension->SubClass);
 
 	/* And finally, a terminator */
-	PciIdPrintf(&IdBuffer, "\0");
+	PciIdPrintf(&IdBuffer, L"");
 	break;
 
     case BusQueryInstanceID:
-	/* Start with a terminator */
-	PciIdPrintf(&IdBuffer, "\0");
-
-	/* And then encode the device and function number */
-	PciIdPrintfAppend(&IdBuffer, "%02X",
-			  (DeviceExtension->Slot.Bits.DeviceNumber << 3) |
-			      DeviceExtension->Slot.Bits.FunctionNumber);
+	/* Encode the device and function number */
+	PciIdPrintf(&IdBuffer, L"%02X",
+		    (DeviceExtension->Slot.Bits.DeviceNumber << 3) |
+		    DeviceExtension->Slot.Bits.FunctionNumber);
 
 	/* Loop every parent until the root */
 	ParentExtension = DeviceExtension->ParentFdoExtension;
 	while (!PCI_IS_ROOT_FDO(ParentExtension)) {
 	    /* And encode the parent's device and function number as well */
 	    PdoExtension = ParentExtension->PhysicalDeviceObject->DeviceExtension;
-	    PciIdPrintfAppend(&IdBuffer, "%02X",
+	    PciIdPrintfAppend(&IdBuffer, L"%02X",
 			      (PdoExtension->Slot.Bits.DeviceNumber << 3) |
 				  PdoExtension->Slot.Bits.FunctionNumber);
 	}
@@ -304,38 +257,14 @@ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 	return STATUS_NOT_SUPPORTED;
     }
 
-    /* Something should've been generated if this has been reached */
-    ASSERT(IdBuffer.Count > 0);
-
     /* Allocate the final string buffer to hold the ID */
-    StringBuffer = ExAllocatePoolWithTag(IdBuffer.TotalLength, 'BicP');
+    PWCHAR StringBuffer = ExAllocatePoolWithTag(IdBuffer.TotalWchars * sizeof(WCHAR),
+						'BicP');
     if (!StringBuffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
-
-    /* Build the UNICODE_STRING structure for it */
-    DPRINT1("PciQueryId(%d)\n", QueryType);
-    DestinationString.Buffer = StringBuffer;
-    DestinationString.MaximumLength = IdBuffer.TotalLength;
-
-    /* Loop every ID in the buffer */
-    for (i = 0; i < IdBuffer.Count; i++) {
-	/* Select the ANSI_STRING for the ID */
-	NextString = &IdBuffer.Strings[i];
-	DPRINT1("    <- \"%s\"\n", NextString->Buffer);
-
-	/* Convert it to a UNICODE_STRING */
-	Status = RtlAnsiStringToUnicodeString(&DestinationString, NextString, FALSE);
-	ASSERT(NT_SUCCESS(Status));
-
-	/* Add it into the final destination buffer */
-	Size = IdBuffer.StringSize[i];
-	DestinationString.MaximumLength -= Size;
-	DestinationString.Buffer += (Size / sizeof(WCHAR));
-    }
-
-    /* Return the buffer to the caller and return status (should be success) */
+    RtlCopyMemory(StringBuffer, IdBuffer.BufferData, IdBuffer.TotalWchars * sizeof(WCHAR));
     *Buffer = StringBuffer;
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,

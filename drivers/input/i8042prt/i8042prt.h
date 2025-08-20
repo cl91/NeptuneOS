@@ -3,6 +3,7 @@
 #include <ntddk.h>
 #include <kbdmou.h>
 #include "ntdd8042.h"
+#include <poclass.h>
 
 /*-----------------------------------------------------
  * Structures

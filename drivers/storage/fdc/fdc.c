@@ -32,6 +32,12 @@ static NTSTATUS NTAPI FdcAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     ASSERT(DriverObject);
     ASSERT(Pdo);
+    /* If we are called for the class DO (the \Device\Floopy0 device object),
+     * do nothing. These PDOs are distinguished from the PDOs enumerated by
+     * the parent bus by having a device extension. */
+    if (Pdo->DeviceExtension) {
+	return STATUS_SUCCESS;
+    }
 
     /* Create functional device object for the controller */
     PDEVICE_OBJECT Fdo = NULL;

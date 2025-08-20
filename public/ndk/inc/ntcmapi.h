@@ -464,6 +464,8 @@ typedef enum _PLUGPLAY_CONTROL_CLASS {
     PlugPlayControlResetDevice,
     PlugPlayControlHaltDevice,
     PlugPlayControlGetBlockedDriverList,
+    PlugPlayControlQueryHardwareIDs,
+    PlugPlayControlQueryCompatibleIDs,
     MaxPlugPlayControl
 } PLUGPLAY_CONTROL_CLASS;
 
@@ -800,6 +802,14 @@ typedef struct _PLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA {
     ULONG DeviceInstanceLength;
     PWSTR DeviceInstance;
 } PLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA, *PPLUGPLAY_CONTROL_RETRIEVE_DOCK_DATA;
+
+// PlugPlayControlQueryHardwareIDs
+// PlugPlayControlQueryCompatibleIDs
+typedef struct _PLUGPLAY_CONTROL_QUERY_IDS_DATA {
+    UNICODE_STRING DeviceInstance;
+    ULONG BufferSize;
+    PWCHAR Buffer;
+} PLUGPLAY_CONTROL_QUERY_IDS_DATA, *PPLUGPLAY_CONTROL_QUERY_IDS_DATA;
 
 //
 // Plug and Play Bus Type Definition

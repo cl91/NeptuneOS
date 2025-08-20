@@ -629,6 +629,20 @@ static inline NTSTATUS KiServiceMapPnpControlBuffer(IN PTHREAD Thread,
 	break;
     }
 
+    case PlugPlayControlQueryHardwareIDs:
+    case PlugPlayControlQueryCompatibleIDs:
+    {
+	PIO_PNP_CONTROL_QUERY_IDS_DATA Data = Buffer;
+	if (BufferLength != sizeof(IO_PNP_CONTROL_QUERY_IDS_DATA) +
+	    Data->DeviceInstanceLength + Data->BufferSize) {
+	    goto err;
+	}
+	if (Data->DeviceInstance[Data->DeviceInstanceLength - 1] != '\0') {
+	    goto err;
+	}
+	break;
+    }
+
     default:
 	/* Unimplemented control class */
 	assert(FALSE);
@@ -647,65 +661,12 @@ static inline NTSTATUS KiServiceMapPnpEventBuffer(IN PTHREAD Thread,
 						  IN MWORD ClientAddress,
 						  IN MWORD BufferLength)
 {
-    RET_ERR(KiServiceMapBuffer5(Thread, Mapped, (PPVOID)Buffer,
-				ClientAddress, BufferLength));
-    assert(Buffer);
-
     if (BufferLength < FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass)) {
-	goto err;
+	return STATUS_BUFFER_TOO_SMALL;
     }
-    BufferLength -= FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass);
 
-    switch ((*Buffer)->EventCategory) {
-    case TargetDeviceChangeEvent:
-    case DeviceInstallEvent:
-    case CustomDeviceEvent:
-	if (!BufferLength) {
-	    goto err;
-	}
-	break;
-
-    case DeviceClassChangeEvent:
-	if (BufferLength <= sizeof((*Buffer)->DeviceClass)) {
-	    goto err;
-	}
-	break;
-
-    case PowerEvent:
-	if (BufferLength != sizeof((*Buffer)->PowerNotification)) {
-	    goto err;
-	}
-	break;
-
-    case VetoEvent:
-	if (BufferLength <= sizeof((*Buffer)->VetoNotification)) {
-	    goto err;
-	}
-	break;
-
-    case BlockedDriverEvent:
-	if (BufferLength != sizeof((*Buffer)->BlockedDriverNotification)) {
-	    goto err;
-	}
-	break;
-
-    case HardwareProfileChangeEvent:
-    case DeviceArrivalEvent:
-	UNIMPLEMENTED;
-	assert(FALSE);
-	break;
-
-    default:
-	/* Invalid PnP event category */
-	assert(FALSE);
-	goto err;
-    }
-    return STATUS_SUCCESS;
-
-err:
-    KiServiceUnmapBuffer3(*Mapped, Buffer, BufferLength);
-    *Buffer = NULL;
-    return STATUS_INVALID_PARAMETER;
+    return KiServiceMapBuffer5(Thread, Mapped, (PPVOID)Buffer,
+			       ClientAddress, BufferLength);
 }
 
 static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)

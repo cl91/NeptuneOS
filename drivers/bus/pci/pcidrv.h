@@ -77,11 +77,6 @@
 #define PCI_VERIFIER_CODES 0x04
 
 //
-// PCI ID Buffer ANSI Strings
-//
-#define MAX_ANSI_STRINGS 0x08
-
-//
 // Device Extension, Interface, Translator and Arbiter Signatures
 //
 typedef enum _PCI_SIGNATURE {
@@ -320,12 +315,8 @@ typedef struct _PCI_MJ_DISPATCH_TABLE {
 // PCI ID Buffer Descriptor
 //
 typedef struct _PCI_ID_BUFFER {
-    ULONG Count;
-    ANSI_STRING Strings[MAX_ANSI_STRINGS];
-    ULONG StringSize[MAX_ANSI_STRINGS];
-    ULONG TotalLength;
-    PCHAR CharBuffer;
-    CHAR BufferData[256];
+    ULONG TotalWchars;
+    WCHAR BufferData[512];
 } PCI_ID_BUFFER, *PPCI_ID_BUFFER;
 
 //

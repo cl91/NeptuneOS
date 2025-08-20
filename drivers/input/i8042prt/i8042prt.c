@@ -11,6 +11,7 @@
 
 /* INCLUDES ******************************************************************/
 
+#include <initguid.h>
 #include "i8042prt.h"
 #include <debug.h>
 

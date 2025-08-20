@@ -182,7 +182,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	}
 
 	RtlCopyMemory(Buffer, Temp, Length * sizeof(WCHAR));
-	DPRINT("BusQueryInstanceID: %ls\n", Buffer);
+	DPRINT("BusQueryInstanceID: %ws\n", Buffer);
 	Irp->IoStatus.Information = (ULONG_PTR)Buffer;
 	break;
 
@@ -236,7 +236,10 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	RtlCopyMemory(Buffer, Src, Length * sizeof(WCHAR));
 	Irp->IoStatus.Information = (ULONG_PTR)Buffer;
-	DPRINT("BusQueryHardwareIDs: %ls\n", Buffer);
+	DPRINT("BusQueryHardwareIDs: Length %d, ", Length);
+	for (ULONG i = 0; i < Length; i++) {
+	    DbgPrint("%wc", Buffer[i]);
+	}
 	Status = STATUS_SUCCESS;
 	break;
 
@@ -291,7 +294,10 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	    RtlCopyMemory(Buffer, Temp, Length * sizeof(WCHAR));
 	    Irp->IoStatus.Information = (ULONG_PTR)Buffer;
-	    DPRINT("BusQueryCompatibleIDs: %ls\n", Buffer);
+	    DPRINT("BusQueryCompatibleIDs: Length %d, ", Length);
+	    for (ULONG i = 0; i < Length; i++) {
+		DbgPrint("%wc", Buffer[i]);
+	    }
 	    Status = STATUS_SUCCESS;
 	}
 	break;

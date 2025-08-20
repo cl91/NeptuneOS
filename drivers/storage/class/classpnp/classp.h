@@ -34,6 +34,10 @@
 #define DEBUG_COMP_ID DPFLTR_CLASSPNP_ID
 #endif
 
+#if CLASS_INIT_GUID
+#include <initguid.h>
+#endif
+
 #include <stddef.h>
 #include <ntddk.h>
 #include <scsi.h>
@@ -41,10 +45,6 @@
 #include <wmidata.h>
 #include <classpnp.h>
 #include <storduid.h>
-
-#if CLASS_INIT_GUID
-#include <initguid.h>
-#endif
 
 #include <mountdev.h>
 #include <ioevent.h>

@@ -64,7 +64,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #endif
 
 #ifndef assert
-#if DBG && !defined(NASSERT)
+#if (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) && !defined(NASSERT)
 #define assert(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, NULL))
 #else
 #define assert(x) ((VOID) 0)
@@ -72,7 +72,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #endif
 
 #ifndef ASSERT
-#if DBG && !defined(NASSERT)
+#if (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) && !defined(NASSERT)
 #define ASSERT(x) ((x) || RtlAssert((PVOID)#x, (PVOID)__RELFILE__, __LINE__, NULL))
 #else
 #define ASSERT(x) ((VOID) 0)
@@ -80,7 +80,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #endif
 
 #ifndef ASSERTMSG
-#if DBG && !defined(NASSERT)
+#if (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) && !defined(NASSERT)
 #define ASSERTMSG(m, x) ((x) || RtlAssert((PVOID)#x, __RELFILE__, __LINE__, m))
 #else
 #define ASSERTMSG(m, x) ((VOID) 0)
@@ -94,7 +94,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #define __NOTICE(level, fmt, ...)   DbgPrint(#level ":  %s at %s:%d " fmt, __FUNCTION__, __RELFILE__, __LINE__, ##__VA_ARGS__)
 
 /* Print stuff only on Debug Builds*/
-#if DBG
+#if (defined(DBG) || defined(_DEBUG) || defined(DEBUG))
 
 /* These are always printed */
 #define DPRINT1(fmt, ...)	DbgPrint("(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
@@ -129,7 +129,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #define TRACE__(ch, fmt, ...)  DbgPrintEx(ch, DPFLTR_TRACE_LEVEL, "(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
 #define INFO__(ch, fmt, ...)   DbgPrintEx(ch, DPFLTR_INFO_LEVEL, "(%s:%d) " fmt, __RELFILE__, __LINE__, ##__VA_ARGS__)
 
-#else /* not DBG */
+#else /* not (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) */
 
 /* On non-debug builds, we never show these */
 #ifndef _NTOSKRNL_
@@ -165,7 +165,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #define INFO__(ch, ...)
 #endif /* _MSC_VER */
 
-#endif /* not DBG */
+#endif /* not (defined(DBG) || defined(_DEBUG) || defined(DEBUG)) */
 
 /******************************************************************************/
 /*

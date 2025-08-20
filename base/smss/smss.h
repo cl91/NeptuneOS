@@ -19,6 +19,16 @@
     UNICODE_STRING Name = { .Length = Len, .MaximumLength = Len,	\
 	.Buffer = Ptr }
 
+FORCEINLINE PVOID SmAllocatePool(IN ULONG Size)
+{
+    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+}
+
+FORCEINLINE VOID SmFreePool(IN PVOID Ptr)
+{
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Ptr);
+}
+
 typedef struct _KBD_RECORD {
     USHORT wVirtualScanCode;
     ULONG dwControlKeyState;

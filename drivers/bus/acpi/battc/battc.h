@@ -8,9 +8,9 @@
 
 #pragma once
 
+#include <initguid.h>
 #include <ntddk.h>
 #include <wmilib.h>
-#include <initguid.h>
 #include <batclass.h>
 
 typedef struct _BATTERY_CLASS_DATA {

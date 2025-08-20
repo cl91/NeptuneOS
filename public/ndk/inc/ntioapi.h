@@ -1155,7 +1155,7 @@ NTAPI NTSYSAPI NTSTATUS NtSetInformationFile(IN HANDLE FileHandle,
 NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
 					   OUT PIO_STATUS_BLOCK IoStatusBlock);
 
-#endif
+#endif	/* !defined(_NTOSKRNL_) */
 
 /*
  * Macros and data structures shared between the ntos root server
@@ -1425,4 +1425,4 @@ typedef enum _DEVICE_REGISTRY_PROPERTY {
     DevicePropertyInstancePath
 } DEVICE_REGISTRY_PROPERTY;
 
-#endif	/*  */
+#endif	/* defined(_NTOSKRNL_) || defined(_NTDDK_) */

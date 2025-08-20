@@ -219,7 +219,9 @@
 @ cdecl wcsncpy_s(wstr long wstr long)
 @ cdecl wcscat_s(wstr long wstr)
 @ cdecl wcsncat_s(wstr long wstr long)
+@ cdecl wcscmp(wstr wstr)
 @ cdecl wcsncmp(wstr wstr long)
+@ cdecl _wcsicmp(wstr wstr)
 @ cdecl _strcmpi(str str) _stricmp
 @ cdecl _stricmp(str str)
 @ cdecl _strnicmp(str str long)

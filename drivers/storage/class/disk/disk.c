@@ -20,14 +20,14 @@ Revision History:
 
 --*/
 
-#define DEBUG_MAIN_SOURCE 1
-#include "disk.h"
-
 //
 // Now instantiate the GUIDs
 //
-
 #include "initguid.h"
+
+#define DEBUG_MAIN_SOURCE 1
+#include "disk.h"
+
 #include "ntddstor.h"
 #include "ntddvol.h"
 #include "ioevent.h"

@@ -978,6 +978,33 @@ static VOID IopPopulateIoCompleteMessageFromIoStatus(OUT PIO_PACKET Dest,
     Dest->ClientMsg.IoCompleted.IoStatus.Status = Status;
 }
 
+static ULONG IopGetQueryIdResponseDataSize(IN PWSTR String,
+					   IN BUS_QUERY_ID_TYPE IdType)
+{
+    /* For HardwareIDs and CompatibleIDs, the string is a REG_MULTI_SZ. */
+    if (IdType == BusQueryHardwareIDs || IdType == BusQueryCompatibleIDs) {
+	if (String[0] == L'\0') {
+	    return 0;
+	}
+	ULONG Size = 0;
+	while (TRUE) {
+	    Size++;
+	    if (String[0] == L'\0') {
+		if (String[1] == L'\0') {
+		    Size++;
+		    break;
+		}
+	    }
+	    String++;
+	}
+	return Size;
+    } else {
+	/* For UTF-16 strings that are legal device IDs its characters are
+	 * always representable in two bytes. */
+	return wcslen(String) + 1;
+    }
+}
+
 static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 							IN PIRP Irp,
 							IN ULONG BufferSize)
@@ -1001,9 +1028,9 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    break;
 
 	case IRP_MN_QUERY_ID:
-	    /* For UTF-16 strings that are legal device IDs its characters are always within ASCII */
 	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
-		Size += wcslen((PWSTR)Irp->IoStatus.Information) + 1;
+		Size += IopGetQueryIdResponseDataSize((PWSTR)Irp->IoStatus.Information,
+						      IoSp->Parameters.QueryId.IdType);
 	    }
 	    break;
 
@@ -1106,11 +1133,14 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		 * ResponseDataSize is the size of the string including terminating NUL.
 		 * Dest->...IoStatus.Information is cleared. */
 		PWSTR String = (PWSTR)Irp->IoStatus.Information;
-		ULONG ResponseDataSize = wcslen(String) + 1;
+		BUS_QUERY_ID_TYPE IdType = IoSp->Parameters.QueryId.IdType;
+		ULONG ResponseDataSize = IopGetQueryIdResponseDataSize(String, IdType);
 		Dest->ClientMsg.IoCompleted.IoStatus.Information = 0;
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
 		PCHAR DestStr = (PCHAR)Dest->ClientMsg.IoCompleted.ResponseData;
 		for (ULONG i = 0; i < ResponseDataSize; i++) {
+		    /* A simple cast works for ASCII characters as their values are
+		     * identical in both 8-bit ASCII and UCS-2 or UTF-16. */
 		    DestStr[i] = (CHAR)String[i];
 		}
 		IopFreePool(String);

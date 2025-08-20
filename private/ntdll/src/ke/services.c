@@ -656,6 +656,16 @@ static NTSTATUS IopMarshalPnpControlData(IN PVOID Buffer,
 	break;
     }
 
+    case PlugPlayControlQueryHardwareIDs:
+    case PlugPlayControlQueryCompatibleIDs:
+    {
+	IOP_MARSHAL_PNP_CONTROL_DATA(PLUGPLAY_CONTROL_QUERY_IDS_DATA,
+				     IO_PNP_CONTROL_QUERY_IDS_DATA,
+				     MarshaledDataSize += Data->BufferSize / sizeof(WCHAR),
+				     DestData->BufferSize = Data->BufferSize / sizeof(WCHAR));
+	break;
+    }
+
     default:
 	/* Unimplemented control class */
 	assert(FALSE);
@@ -726,6 +736,18 @@ static NTSTATUS IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
     {
 	PPLUGPLAY_CONTROL_DEVICE_RELATIONS_DATA Data = ClientBuffer;
 	PIO_PNP_CONTROL_DEVICE_RELATIONS_DATA SrcBuffer = (PVOID)BufferArg.Word;
+	ULONG BytesWritten;
+	Status = RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
+				   SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,
+				   SrcBuffer->BufferSize);
+	break;
+    }
+
+    case PlugPlayControlQueryHardwareIDs:
+    case PlugPlayControlQueryCompatibleIDs:
+    {
+	PPLUGPLAY_CONTROL_QUERY_IDS_DATA Data = ClientBuffer;
+	PIO_PNP_CONTROL_QUERY_IDS_DATA SrcBuffer = (PVOID)BufferArg.Word;
 	ULONG BytesWritten;
 	Status = RtlUTF8ToUnicodeN(Data->Buffer, Data->BufferSize, &BytesWritten,
 				   SrcBuffer->DeviceInstance + SrcBuffer->DeviceInstanceLength,

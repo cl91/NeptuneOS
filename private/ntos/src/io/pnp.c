@@ -45,11 +45,14 @@ Abstract:
     state DeviceNodeInitialized. DeviceNodeUnspecified represents an
     invalid state.
 
-    DeviceNodeInitialized ---> DeviceNodeDriversLoaded
+    DeviceNodeInitialized ---> DeviceNodeDevicesAdded
+    DeviceNodeInitialized ---> DeviceNodeAddDeviceFailed
     When...
  */
 
+#include <initguid.h>
 #include "iop.h"
+#include <pnpguid.h>
 
 #define REG_SERVICE_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Services"
 #define REG_CLASS_KEY	"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Class"
@@ -138,6 +141,31 @@ static inline VOID IopSetDeviceNode(IN PIO_DEVICE_OBJECT DeviceObject,
     DeviceNode->PhyDevObj = Pdo;
 }
 
+static PCHAR IopDuplicateMultiSz(IN PCSTR String,
+				 OUT ULONG *Length)
+{
+    *Length = 0;
+    if (String[0] == '\0') {
+	return NULL;
+    }
+    while (TRUE) {
+	(*Length)++;
+	if (String[*Length] == '\0') {
+	    if (String[*Length+1] == L'\0') {
+		(*Length)++;
+		break;
+	    }
+	}
+    }
+    (*Length)++;
+    PCHAR Dest = ExAllocatePoolWithTag(*Length, NTOS_IO_TAG);
+    if (!Dest) {
+	return NULL;
+    }
+    RtlCopyMemory(Dest, String, *Length);
+    return Dest;
+}
+
 static inline NTSTATUS IopDeviceNodeSetDeviceId(IN PDEVICE_NODE DeviceNode,
 						IN PCSTR DeviceId,
 						IN BUS_QUERY_ID_TYPE IdType)
@@ -158,6 +186,24 @@ static inline NTSTATUS IopDeviceNodeSetDeviceId(IN PDEVICE_NODE DeviceNode,
 	assert(DeviceNode->InstanceId == NULL);
 	DeviceNode->InstanceId = RtlDuplicateString(DeviceId, NTOS_IO_TAG);
 	if (DeviceNode->InstanceId == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	break;
+    case BusQueryHardwareIDs:
+	assert(DeviceNode->HardwareIds == NULL);
+	assert(DeviceNode->HardwareIdsLength == 0);
+	DeviceNode->HardwareIds = IopDuplicateMultiSz(DeviceId,
+						      &DeviceNode->HardwareIdsLength);
+	if (DeviceNode->HardwareIdsLength && !DeviceNode->HardwareIds) {
+	    return STATUS_NO_MEMORY;
+	}
+	break;
+    case BusQueryCompatibleIDs:
+	assert(DeviceNode->CompatibleIds == NULL);
+	assert(DeviceNode->CompatibleIdsLength == 0);
+	DeviceNode->CompatibleIds = IopDuplicateMultiSz(DeviceId,
+							&DeviceNode->CompatibleIdsLength);
+	if (DeviceNode->CompatibleIdsLength && !DeviceNode->CompatibleIds) {
 	    return STATUS_NO_MEMORY;
 	}
 	break;
@@ -325,6 +371,26 @@ static NTSTATUS IopQueueLoadDriverMsg(IN PIO_DRIVER_OBJECT TargetDriver,
     /* Signal the driver that an IO packet has been queued */
     KeSetEvent(&TargetDriver->IoPacketQueuedEvent);
 
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopQueueDeviceInstallEvent(IN const GUID *EventGuid,
+					   IN PDEVICE_NODE DeviceNode)
+{
+    ULONG StringSize = strlen(DeviceNode->DeviceId) + strlen(DeviceNode->InstanceId) + 2;
+    ULONG TotalSize = FIELD_OFFSET(PNP_EVENT_ENTRY, Event.InstallDevice) + StringSize;
+    PPNP_EVENT_ENTRY EventEntry = ExAllocatePoolWithTag(TotalSize, NTOS_IO_TAG);
+    if (!EventEntry) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(&EventEntry->Event.EventGuid, EventGuid, sizeof(GUID));
+    EventEntry->Event.EventCategory = DeviceInstallEvent;
+    EventEntry->Event.TotalSize = TotalSize;
+    snprintf(EventEntry->Event.InstallDevice.DeviceId, StringSize,
+	     "%s\\%s", DeviceNode->DeviceId, DeviceNode->InstanceId);
+    InsertHeadList(&IopPnpEventQueueHead, &EventEntry->ListEntry);
+    KeSetEvent(&IopPnpNotifyEvent);
     return STATUS_SUCCESS;
 }
 
@@ -538,8 +604,11 @@ out:
     if (NT_SUCCESS(Status)) {
         IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeDriversLoaded);
     } else {
-        IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeLoadDriverFailed);
-	DeviceNode->ErrorStatus = Status;
+	/* If we failed to load the drivers for the device node, queue a PnP event
+	 * so the client can install the drivers and re-enumerate the device node. */
+        IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeInitialized);
+	DeviceNode->ErrorStatus = IopQueueDeviceInstallEvent(&GUID_DEVICE_ENUMERATED,
+							     DeviceNode);
     }
     /* Dereference the enum key object because the CmReadKeyValueByPath routine
      * increases its reference count. */
@@ -982,7 +1051,7 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
      * PendingIrp will be freed at the end of the routine. Now allocate the PPENDING_IRP
      * array so we can query the child devices of their IDs. Note that we need two pointers
      * for each child device because we need to send two IRPs each. */
-    Locals.PendingIrps = ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * Locals.DeviceCount * 2,
+    Locals.PendingIrps = ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * Locals.DeviceCount * 4,
 					       NTOS_IO_TAG);
     if (Locals.PendingIrps == NULL) {
 	Status = STATUS_NO_MEMORY;
@@ -1007,19 +1076,25 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 	IopSetDeviceNode(ChildPhyDev, ChildNode);
 	IF_ERR_GOTO(out, Status,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryDeviceID,
-					      &Locals.PendingIrps[2*i]));
+					      &Locals.PendingIrps[4*i]));
 	IF_ERR_GOTO(out, Status,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryInstanceID,
-					      &Locals.PendingIrps[2*i+1]));
+					      &Locals.PendingIrps[4*i+1]));
+	IF_ERR_GOTO(out, Status,
+		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryHardwareIDs,
+					      &Locals.PendingIrps[4*i+2]));
+	IF_ERR_GOTO(out, Status,
+		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryCompatibleIDs,
+					      &Locals.PendingIrps[4*i+3]));
     }
     AWAIT_EX(Status, IopWaitForMultipleIoCompletions, AsyncState, Locals, Thread,
-	     FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 2);
+	     FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 4);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
 
     /* Set the device IDs of the child nodes. */
-    for (ULONG i = 0; i < Locals.DeviceCount * 2; i++) {
+    for (ULONG i = 0; i < Locals.DeviceCount * 4; i++) {
 	PPENDING_IRP PendingIrp = Locals.PendingIrps[i];
 	assert(PendingIrp != NULL);
 	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
@@ -1029,8 +1104,11 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 	PIO_DEVICE_OBJECT DeviceObject = PendingIrp->IoPacket->Request.Device.Object;
 	PDEVICE_NODE DeviceNode = IopGetDeviceNode(DeviceObject);
 	assert(DeviceNode != NULL);
-	IF_ERR_GOTO(out, Status,
-		    IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType));
+	Status = IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType);
+	if (!NT_SUCCESS(Status) &&
+	    (IdType == BusQueryDeviceID || IdType == BusQueryInstanceID)) {
+	    goto out;
+	}
 	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeInitialized);
     }
 
@@ -1052,7 +1130,7 @@ out:
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
     if (Locals.PendingIrps != NULL) {
-	for (ULONG i = 0; i < Locals.DeviceCount * 2; i++) {
+	for (ULONG i = 0; i < Locals.DeviceCount * 4; i++) {
 	    if (Locals.PendingIrps[i] != NULL) {
 		IopCleanupPendingIrp(Locals.PendingIrps[i]);
 	    }
@@ -1325,9 +1403,7 @@ out:
  * Remove the current PnP event from the tail of the event queue
  * and signal IopPnpNotifyEvent if there is yet another event in the queue.
  */
-static NTSTATUS IopRemovePlugPlayEvent(IN ASYNC_STATE State,
-				       IN PTHREAD Thread,
-				       IN PPLUGPLAY_CONTROL_USER_RESPONSE_DATA ResponseData)
+static NTSTATUS IopRemovePlugPlayEvent(IN PPLUGPLAY_CONTROL_USER_RESPONSE_DATA ResponseData)
 {
     /* Remove a pnp event entry from the tail of the queue */
     if (!IsListEmpty(&IopPnpEventQueueHead)) {
@@ -1356,9 +1432,35 @@ static NTSTATUS PiControlQueryRemoveDevice(IN ASYNC_STATE State,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-static NTSTATUS IopGetRelatedDevice(IN ASYNC_STATE State,
-				    IN PTHREAD Thread,
-				    IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA Data)
+static NTSTATUS PiControlQueryIds(IN OUT PIO_PNP_CONTROL_QUERY_IDS_DATA Data,
+				  IN PLUGPLAY_CONTROL_CLASS Class)
+{
+    PDEVICE_NODE DeviceNode = IopGetDeviceNodeFromDeviceInstance(Data->DeviceInstance);
+    if (!DeviceNode) {
+	return STATUS_NO_SUCH_DEVICE;
+    }
+
+    assert(Class == PlugPlayControlQueryHardwareIDs ||
+	   Class == PlugPlayControlQueryCompatibleIDs);
+    PCSTR String = DeviceNode->HardwareIds;
+    ULONG BufferSize = DeviceNode->HardwareIdsLength;
+    if (Class == PlugPlayControlQueryCompatibleIDs) {
+	String = DeviceNode->CompatibleIds;
+	BufferSize = DeviceNode->CompatibleIdsLength;
+    }
+    if (BufferSize > Data->BufferSize) {
+	Data->BufferSize = BufferSize;
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+    Data->BufferSize = BufferSize;
+    if (String) {
+	RtlCopyMemory(Data->DeviceInstance + Data->DeviceInstanceLength,
+		      String, BufferSize);
+    }
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopGetRelatedDevice(IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA Data)
 {
     PDEVICE_NODE DeviceNode = IopGetDeviceNodeFromDeviceInstance(Data->TargetDeviceInstance);
     if (!DeviceNode) {
@@ -1401,6 +1503,7 @@ static NTSTATUS IopGetRelatedDevice(IN ASYNC_STATE State,
     ULONG BufferSize = strlen(RelatedDeviceNode->DeviceId) +
 	strlen(RelatedDeviceNode->InstanceId) + 2;
     if (BufferSize > Data->RelatedDeviceInstanceLength) {
+	Data->RelatedDeviceInstanceLength = BufferSize;
         return STATUS_BUFFER_TOO_SMALL;
     }
     Data->RelatedDeviceInstanceLength = BufferSize;
@@ -1515,9 +1618,12 @@ NTSTATUS NtGetPlugPlayEvent(IN ASYNC_STATE State,
     PPNP_EVENT_ENTRY Entry = CONTAINING_RECORD(IopPnpEventQueueHead.Blink,
 					       PNP_EVENT_ENTRY,
 					       ListEntry);
+    assert(BufferSize >= FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass));
     if (BufferSize < Entry->Event.TotalSize) {
+	Buffer->TotalSize = Entry->Event.TotalSize;
         ASYNC_RETURN(State, STATUS_BUFFER_TOO_SMALL);
     }
+    Buffer->TotalSize = Entry->Event.TotalSize;
     RtlCopyMemory(Buffer, &Entry->Event, Entry->Event.TotalSize);
     ASYNC_END(State, STATUS_SUCCESS);
 }
@@ -1621,7 +1727,7 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
 	return PiControlQueryRemoveDevice(State, Thread, Buffer);
 
     case PlugPlayControlUserResponse:
-	return IopRemovePlugPlayEvent(State, Thread, Buffer);
+	return IopRemovePlugPlayEvent(Buffer);
 
     case PlugPlayControlGenerateLegacyDevice:
 	/* We do not support legacy device nodes. */
@@ -1637,7 +1743,7 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
         /*     return PiControlDeviceClassAssociation(State, Thread, Buffer); */
 
     case PlugPlayControlGetRelatedDevice:
-	return IopGetRelatedDevice(State, Thread, Buffer);
+	return IopGetRelatedDevice(Buffer);
 
         /* case PlugPlayControlGetInterfaceDeviceAlias: */
         /*     return PiControlGetInterfaceDeviceAlias(State, Thread, Buffer); */
@@ -1656,6 +1762,10 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
 //        case PlugPlayControlRetrieveDock:
 //        case PlugPlayControlHaltDevice:
 //        case PlugPlayControlGetBlockedDriverList:
+
+    case PlugPlayControlQueryHardwareIDs:
+    case PlugPlayControlQueryCompatibleIDs:
+	return PiControlQueryIds(Buffer, ControlClass);
 
     default:
 	break;

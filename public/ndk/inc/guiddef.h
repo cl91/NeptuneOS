@@ -16,6 +16,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#pragma once
+
 #include <string.h>
 #include <ntdef.h>
 
@@ -32,14 +34,18 @@ typedef struct _GUID {
     unsigned short Data3;
     unsigned char Data4[8];
 } GUID;
-#endif
+#endif	/* !defined(GUID_DEFINED) */
 
 #ifndef FAR
 #define FAR
 #endif
 
 #ifndef DECLSPEC_SELECTANY
+#ifdef _MSC_VER
 #define DECLSPEC_SELECTANY __declspec(selectany)
+#else
+#define DECLSPEC_SELECTANY
+#endif
 #endif
 
 #ifndef EXTERN_C
@@ -63,14 +69,9 @@ typedef struct _GUID {
     { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
 #endif
 #else
-#if __GNUC__ >= 8
-#define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8)	\
-    EXTERN_C const GUID DECLSPEC_SELECTANY name
-#else
 #define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8)	\
     EXTERN_C const GUID name
-#endif				// __GNUC__ >= 7
-#endif
+#endif	/* defined(INITGUID) */
 
 #define DEFINE_OLEGUID(name, l, w1, w2)			\
     DEFINE_GUID(name, l, w1, w2, 0xC0,0,0,0,0,0,0,0x46)
@@ -115,43 +116,56 @@ typedef GUID FMTID, *LPFMTID;
 #define REFIID              const IID &
 #define REFFMTID            const FMTID &
 #else
-#define REFGUID             const GUID* __MIDL_CONST
-#define REFCLSID            const CLSID* __MIDL_CONST
-#define REFIID              const IID* __MIDL_CONST
-#define REFFMTID            const FMTID* __MIDL_CONST
+#define REFGUID             const GUID * __MIDL_CONST
+#define REFCLSID            const CLSID * __MIDL_CONST
+#define REFIID              const IID * __MIDL_CONST
+#define REFFMTID            const FMTID * __MIDL_CONST
 #endif
 
 FORCEINLINE int InlineIsEqualGUID(REFGUID rguid1, REFGUID rguid2)
 {
-    return (((unsigned long *) &rguid1)[0] ==
-	    ((unsigned long *) &rguid2)[0]
-	    && ((unsigned long *) &rguid1)[1] ==
-	    ((unsigned long *) &rguid2)[1]
-	    && ((unsigned long *) &rguid1)[2] ==
-	    ((unsigned long *) &rguid2)[2]
-	    && ((unsigned long *) &rguid1)[3] ==
-	    ((unsigned long *) &rguid2)[3]);
+#ifdef __cplusplus
+    return (((unsigned long *) &rguid1)[0] == ((unsigned long *) &rguid2)[0]
+	    && ((unsigned long *) &rguid1)[1] == ((unsigned long *) &rguid2)[1]
+	    && ((unsigned long *) &rguid1)[2] == ((unsigned long *) &rguid2)[2]
+	    && ((unsigned long *) &rguid1)[3] == ((unsigned long *) &rguid2)[3]);
+#else
+    return (((unsigned long *)rguid1)[0] == ((unsigned long *)rguid2)[0]
+	    && ((unsigned long *)rguid1)[1] == ((unsigned long *)rguid2)[1]
+	    && ((unsigned long *)rguid1)[2] == ((unsigned long *)rguid2)[2]
+	    && ((unsigned long *)rguid1)[3] == ((unsigned long *)rguid2)[3]);
+#endif
 }
 
 FORCEINLINE int IsEqualGUID(REFGUID rguid1, REFGUID rguid2)
 {
+#ifdef __cplusplus
     return !memcmp(&rguid1, &rguid2, sizeof(GUID));
+#else
+    return !memcmp(rguid1, rguid2, sizeof(GUID));
+#endif
 }
 
 FORCEINLINE int IsEqualGUIDAligned(REFGUID guid1, REFGUID guid2)
 {
+#ifdef __cplusplus
     return (*(long long *)(&guid1) == *(long long *)(&guid2)) &&
 	(*((long long *)(&guid1) + 1) == *((long long *)(&guid2) + 1));
+#else
+    return (*(long long *)(guid1) == *(long long *)(guid2)) &&
+	(*((long long *)(guid1) + 1) == *((long long *)(guid2) + 1));
+#endif
 }
 
-#if defined(__cplusplus) && !defined(_SYS_GUID_OPERATOR_EQ_) && defined(_NO_SYS_GUID_OPERATOR_EQ_)
+#if defined(__cplusplus) && !defined(_SYS_GUID_OPERATOR_EQ_) && \
+    defined(_NO_SYS_GUID_OPERATOR_EQ_)
 #define _SYS_GUID_OPERATOR_EQ_
-inline bool operator==(const GUID & guidOne, const GUID & guidOther)
+inline bool operator==(const GUID &guidOne, const GUID &guidOther)
 {
     return !memcmp(&guidOne, &guidOther, sizeof(GUID));
 }
 
-inline bool operator!=(const GUID & guidOne, const GUID & guidOther)
+inline bool operator!=(const GUID &guidOne, const GUID &guidOther)
 {
     return !(guidOne == guidOther);
 }
