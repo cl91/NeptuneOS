@@ -1,7 +1,13 @@
 #include "halp.h"
 
 #if defined(_M_IX86) || defined(_M_AMD64)
+
 /*
+ * R/W Page Address Register for each ISA DMA channel
+ *
+ * The first column of this table is the IO port number
+ * of each page address register.
+ *
  * DMA Page  Register   Structure
  * 080       DMA        RESERVED
  * 081       DMA        Page Register (channel 2)
@@ -36,7 +42,7 @@ typedef struct _DMA_PAGE {
 } DMA_PAGE, *PDMA_PAGE;
 
 /*
- * DMA Channel Mask Register Structure
+ * DMA Channel Mask Registers (0x0A and 0xD4, Write) Structure
  *
  * MSB                             LSB
  *       x   x   x   x     x   x   x   x
@@ -76,35 +82,43 @@ typedef struct _DMA2_ADDRESS_COUNT {
     UCHAR Reserved2;
 } DMA2_ADDRESS_COUNT, *PDMA2_ADDRESS_COUNT;
 
+/*
+ * DMA controller registers. Each 8237A has 18 registers, addressed via
+ * the I/O Port bus. The starting IO port number for the DMA1 controller
+ * is 0x00.
+ */
 typedef struct _DMA1_CONTROL {
     DMA1_ADDRESS_COUNT DmaAddressCount[4];
-    UCHAR DmaStatus;
-    UCHAR DmaRequest;
-    UCHAR SingleMask;
-    UCHAR Mode;
-    UCHAR ClearBytePointer;
-    UCHAR MasterClear;
-    UCHAR ClearMask;
-    UCHAR AllMask;
+    UCHAR DmaStatus;		/* 0x08 */
+    UCHAR DmaRequest;		/* 0x09 */
+    UCHAR SingleMask;		/* 0x0A */
+    UCHAR Mode;			/* 0x0B */
+    UCHAR ClearBytePointer;	/* 0x0C */
+    UCHAR MasterClear;		/* 0x0D */
+    UCHAR ClearMask;		/* 0x0E */
+    UCHAR AllMask;		/* 0x0F */
 } DMA1_CONTROL, *PDMA1_CONTROL;
 
+/*
+ * The starting IO port number for the DMA2 controller is 0xC0.
+ */
 typedef struct _DMA2_CONTROL {
     DMA2_ADDRESS_COUNT DmaAddressCount[4];
-    UCHAR DmaStatus;
+    UCHAR DmaStatus;		/* 0xD0 */
     UCHAR Reserved1;
-    UCHAR DmaRequest;
+    UCHAR DmaRequest;		/* 0xD2 */
     UCHAR Reserved2;
-    UCHAR SingleMask;
+    UCHAR SingleMask;		/* 0xD4 */
     UCHAR Reserved3;
-    UCHAR Mode;
+    UCHAR Mode;			/* 0xD6 */
     UCHAR Reserved4;
-    UCHAR ClearBytePointer;
+    UCHAR ClearBytePointer;	/* 0xD8 */
     UCHAR Reserved5;
-    UCHAR MasterClear;
+    UCHAR MasterClear;		/* 0xDA */
     UCHAR Reserved6;
-    UCHAR ClearMask;
+    UCHAR ClearMask;		/* 0xDC */
     UCHAR Reserved7;
-    UCHAR AllMask;
+    UCHAR AllMask;		/* 0xDE */
     UCHAR Reserved8;
 } DMA2_CONTROL, *PDMA2_CONTROL;
 
@@ -122,7 +136,7 @@ typedef struct _DMA_CHANNEL_STOP {
 typedef struct _EISA_CONTROL {
     /* DMA Controller 1 */
     DMA1_CONTROL DmaController1; /* 00h-0Fh */
-    UCHAR Reserved1[16];	 /* 0Fh-1Fh */
+    UCHAR Reserved1[16];	 /* 10h-1Fh */
 
     /* Interrupt Controller 1 (PIC) */
     UCHAR Pic1Operation;	/* 20h     */
@@ -160,10 +174,10 @@ typedef struct _EISA_CONTROL {
     UCHAR Reserved9[30];	/* 0A2h-0BFh */
 
     /* DMA Controller 2 */
-    DMA1_CONTROL DmaController2; /* 0C0h-0CFh */
+    DMA2_CONTROL DmaController2; /* 0C0h-0DFh */
 
     /* System Reserved Ports */
-    UCHAR SystemReserved[816];	/* 0D0h-3FFh */
+    UCHAR SystemReserved[0x320]; /* 0E0h-3FFh */
 
     /* Extended DMA Registers, Controller 1 */
     UCHAR DmaHighByteCount1[8];	/* 400h-407h */
@@ -199,6 +213,10 @@ typedef struct _EISA_CONTROL {
     /* DMA Stop Registers */
     DMA_CHANNEL_STOP DmaChannelStop[8];	/* 4E0h-4FFh */
 } EISA_CONTROL, *PEISA_CONTROL;
+
+C_ASSERT(FIELD_OFFSET(EISA_CONTROL, DmaController2) == 0xC0);
+C_ASSERT(FIELD_OFFSET(EISA_CONTROL, SystemReserved) == 0xE0);
+C_ASSERT(FIELD_OFFSET(EISA_CONTROL, DmaHighByteCount1) == 0x400);
 
 static const ULONG_PTR HalpEisaPortPage[8] = {
     FIELD_OFFSET(DMA_PAGE, Channel0),

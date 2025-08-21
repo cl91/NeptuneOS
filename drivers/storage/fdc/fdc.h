@@ -105,6 +105,7 @@
  * 1.2M     5 1/4   80      2      15       2       14        14        F9
  * 720K     3 1/2   80      2       9       2        6         7        F9
  * 1.44M    3 1/2   80      2      18       2       18        14        F0
+ * 2.88M    3 1/2   80      2      36       2       18        14        F0
  */
 
 #define GEOMETRY_144_MEDIATYPE		F3_1Pt44_512
@@ -112,6 +113,12 @@
 #define GEOMETRY_144_TRACKSPERCYLINDER	2
 #define GEOMETRY_144_SECTORSPERTRACK	18
 #define GEOMETRY_144_BYTESPERSECTOR	512
+
+#define GEOMETRY_288_MEDIATYPE		F3_2Pt88_512
+#define GEOMETRY_288_CYLINDERS		80
+#define GEOMETRY_288_TRACKSPERCYLINDER	2
+#define GEOMETRY_288_SECTORSPERTRACK	32
+#define GEOMETRY_288_BYTESPERSECTOR	512
 
 #define MAX_DEVICE_NAME		256
 
@@ -229,7 +236,7 @@ NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
 /* rw.h */
 VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp);
-NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo, BOOLEAN OneShot);
+NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo);
 NTSTATUS SignalMediaChanged(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS ResetChangeFlag(PDRIVE_INFO DriveInfo);
 

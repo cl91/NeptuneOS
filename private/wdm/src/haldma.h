@@ -5,7 +5,7 @@
 #include <hal.h>
 
 /*
- * DMA Mask Register Structure
+ * DMA Mode Registers 0x0B and 0xD6 (Write)
  *
  * MSB                             LSB
  *    x   x   x   x     x   x   x   x

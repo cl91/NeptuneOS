@@ -83,6 +83,102 @@ static NTAPI IO_ALLOCATION_ACTION MapRegisterCallback(PDEVICE_OBJECT DeviceObjec
 }
 
 /*
+ * This algorithm assumes that a 1.44MB or 2.88MB floppy is in the drive and try
+ * reading the a sector to determine the media type.
+ */
+static NTSTATUS RWTryReadingSector(PDRIVE_INFO DriveInfo, BOOLEAN Try288)
+{
+    /* Program data rate */
+    UCHAR DataRate = Try288 ? DRSR_DSEL_1MBPS : DRSR_DSEL_500KBPS;
+    if (HwSetDataRate(DriveInfo->ControllerInfo, DataRate) !=
+	STATUS_SUCCESS) {
+	WARN_(FLOPPY,
+	      "RWDetermineMediaType(): unable to set data rate\n");
+	return STATUS_UNRECOGNIZED_MEDIA;
+    }
+
+    /* Specify */
+    UCHAR HeadLoadTime = Try288 ? SPECIFY_HLT_1M : SPECIFY_HLT_500K;
+    UCHAR HeadUnloadTime = Try288 ? SPECIFY_HUT_1M : SPECIFY_HUT_500K;
+    UCHAR StepRateTime = Try288 ? SPECIFY_SRT_1M : SPECIFY_SRT_500K;
+
+    /* Don't disable DMA --> enable dma (dumb & confusing) */
+    if (HwSpecify(DriveInfo->ControllerInfo, HeadLoadTime, HeadUnloadTime,
+		  StepRateTime, FALSE) != STATUS_SUCCESS) {
+	WARN_(FLOPPY, "RWDetermineMediaType(): specify failed\n");
+	return STATUS_UNRECOGNIZED_MEDIA;
+    }
+
+    /* clear any spurious interrupts in preparation for recalibrate */
+    KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);
+
+    /* Recalibrate --> head over first track */
+    for (int i = 0; i < 2; i++) {
+	NTSTATUS RecalStatus;
+
+	if (HwRecalibrate(DriveInfo) != STATUS_SUCCESS) {
+	    WARN_(FLOPPY,
+		  "RWDetermineMediaType(): Recalibrate failed\n");
+	    return STATUS_UNRECOGNIZED_MEDIA;
+	}
+
+	/* Wait for the recalibrate to finish */
+	WaitForControllerInterrupt(DriveInfo->ControllerInfo, NULL);
+
+	RecalStatus = HwRecalibrateResult(DriveInfo->ControllerInfo);
+
+	if (RecalStatus == STATUS_SUCCESS)
+	    break;
+
+	if (i == 1) {	/* failed for 2nd time */
+	    WARN_(FLOPPY,
+		  "RWDetermineMediaType(): RecalibrateResult failed\n");
+	    return STATUS_UNRECOGNIZED_MEDIA;
+	}
+    }
+
+    /* clear any spurious interrupts */
+    KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);
+
+    /* Try to read an ID. Read the first ID we find, from head 0. */
+    if (HwReadId(DriveInfo, 0) != STATUS_SUCCESS) {
+	WARN_(FLOPPY, "RWDetermineMediaType(): ReadId failed\n");
+	/* if we can't even write to the controller, it's hopeless */
+	return STATUS_UNRECOGNIZED_MEDIA;
+    }
+
+    /* Wait for the ReadID to finish */
+    LARGE_INTEGER Timeout = {
+	.QuadPart = -10000000	/* 1 second. Is that enough? */
+    };
+    NTSTATUS Status = WaitForControllerInterrupt(DriveInfo->ControllerInfo,
+						 &Timeout);
+
+    if (Status == STATUS_TIMEOUT ||
+	HwReadIdResult(DriveInfo->ControllerInfo, NULL, NULL) != STATUS_SUCCESS) {
+	WARN_(FLOPPY, "RWDetermineMediaType(): ReadIdResult failed\n");
+	return STATUS_UNRECOGNIZED_MEDIA;
+    }
+
+    /* Found the media; populate the geometry now */
+    INFO_(FLOPPY,
+	  "RWDetermineMediaType(): Found %sMB media; returning success\n",
+	  Try288 ? "2.88" : "1.44");
+    DriveInfo->DiskGeometry.MediaType =
+	Try288 ? GEOMETRY_288_MEDIATYPE: GEOMETRY_144_MEDIATYPE;
+    DriveInfo->DiskGeometry.Cylinders.QuadPart =
+	Try288 ? GEOMETRY_288_CYLINDERS : GEOMETRY_144_CYLINDERS;
+    DriveInfo->DiskGeometry.TracksPerCylinder =
+	Try288 ? GEOMETRY_288_TRACKSPERCYLINDER : GEOMETRY_144_TRACKSPERCYLINDER;
+    DriveInfo->DiskGeometry.SectorsPerTrack =
+	Try288 ? GEOMETRY_288_SECTORSPERTRACK : GEOMETRY_144_SECTORSPERTRACK;
+    DriveInfo->DiskGeometry.BytesPerSector =
+	Try288 ? GEOMETRY_288_BYTESPERSECTOR : GEOMETRY_144_BYTESPERSECTOR;
+    DriveInfo->BytesPerSectorCode = HW_512_BYTES_PER_SECTOR;
+    return STATUS_SUCCESS;
+}
+
+/*
  * FUNCTION: Determine the media type of the disk in the drive and fill in the geometry
  * ARGUMENTS:
  *     DriveInfo: drive to look at
@@ -92,116 +188,20 @@ static NTAPI IO_ALLOCATION_ACTION MapRegisterCallback(PDEVICE_OBJECT DeviceObjec
  *     STATUS_UNSUCCESSFUL if the controller can't be talked to
  * NOTES:
  *     - Expects the motor to already be running
- *     - Currently only supports 1.44MB 3.5" disks
+ *     - Currently only supports 1.44MB or 2.88MB 3.5" disks
  * TODO:
  *     - Support more disk types
  */
-NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo, BOOLEAN OneShot)
+NTSTATUS RWDetermineMediaType(PDRIVE_INFO DriveInfo)
 {
     PAGED_CODE();
-    UCHAR HeadLoadTime;
-    UCHAR HeadUnloadTime;
-    UCHAR StepRateTime;
-    LARGE_INTEGER Timeout;
-
     TRACE_(FLOPPY, "RWDetermineMediaType called\n");
 
-    /*
-     * This algorithm assumes that a 1.44MB floppy is in the drive.  If it's not,
-     * it works backwards until the read works unless OneShot try is asked.
-     * Note that only 1.44 has been tested at all.
-     */
-
-    Timeout.QuadPart = -10000000;	/* 1 second. Is that enough? */
-
-    do {
-	/* Program data rate */
-	if (HwSetDataRate(DriveInfo->ControllerInfo, DRSR_DSEL_500KBPS) !=
-	    STATUS_SUCCESS) {
-	    WARN_(FLOPPY,
-		  "RWDetermineMediaType(): unable to set data rate\n");
-	    return STATUS_UNSUCCESSFUL;
-	}
-
-	/* Specify */
-	HeadLoadTime = SPECIFY_HLT_500K;
-	HeadUnloadTime = SPECIFY_HUT_500K;
-	StepRateTime = SPECIFY_SRT_500K;
-
-	/* Don't disable DMA --> enable dma (dumb & confusing) */
-	if (HwSpecify(DriveInfo->ControllerInfo, HeadLoadTime, HeadUnloadTime,
-		      StepRateTime, FALSE) != STATUS_SUCCESS) {
-	    WARN_(FLOPPY, "RWDetermineMediaType(): specify failed\n");
-	    return STATUS_UNSUCCESSFUL;
-	}
-
-	/* clear any spurious interrupts in preparation for recalibrate */
-	KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);
-
-	/* Recalibrate --> head over first track */
-	for (int i = 0; i < 2; i++) {
-	    NTSTATUS RecalStatus;
-
-	    if (HwRecalibrate(DriveInfo) != STATUS_SUCCESS) {
-		WARN_(FLOPPY,
-		      "RWDetermineMediaType(): Recalibrate failed\n");
-		return STATUS_UNSUCCESSFUL;
-	    }
-
-	    /* Wait for the recalibrate to finish */
-	    WaitForControllerInterrupt(DriveInfo->ControllerInfo, NULL);
-
-	    RecalStatus = HwRecalibrateResult(DriveInfo->ControllerInfo);
-
-	    if (RecalStatus == STATUS_SUCCESS)
-		break;
-
-	    if (i == 1) {	/* failed for 2nd time */
-		WARN_(FLOPPY,
-		      "RWDetermineMediaType(): RecalibrateResult failed\n");
-		return STATUS_UNSUCCESSFUL;
-	    }
-	}
-
-	/* clear any spurious interrupts */
-	KeClearEvent(&DriveInfo->ControllerInfo->SynchEvent);
-
-	/* Try to read an ID. Read the first ID we find, from head 0. */
-	if (HwReadId(DriveInfo, 0) != STATUS_SUCCESS) {
-	    WARN_(FLOPPY, "RWDetermineMediaType(): ReadId failed\n");
-	    /* if we can't even write to the controller, it's hopeless */
-	    return STATUS_UNSUCCESSFUL;
-	}
-
-	/* Wait for the ReadID to finish */
-	NTSTATUS Status = WaitForControllerInterrupt(DriveInfo->ControllerInfo,
-						     &Timeout);
-
-	if (Status == STATUS_TIMEOUT ||
-	    HwReadIdResult(DriveInfo->ControllerInfo, NULL, NULL) != STATUS_SUCCESS) {
-	    WARN_(FLOPPY, "RWDetermineMediaType(): ReadIdResult failed\n");
-	    if (OneShot) {
-		break;
-	    } else {
-		continue;
-	    }
-	}
-
-	/* Found the media; populate the geometry now */
-	WARN_(FLOPPY, "Hardcoded media type!\n");
-	INFO_(FLOPPY,
-	      "RWDetermineMediaType(): Found 1.44 media; returning success\n");
-	DriveInfo->DiskGeometry.MediaType = GEOMETRY_144_MEDIATYPE;
-	DriveInfo->DiskGeometry.Cylinders.QuadPart = GEOMETRY_144_CYLINDERS;
-	DriveInfo->DiskGeometry.TracksPerCylinder = GEOMETRY_144_TRACKSPERCYLINDER;
-	DriveInfo->DiskGeometry.SectorsPerTrack = GEOMETRY_144_SECTORSPERTRACK;
-	DriveInfo->DiskGeometry.BytesPerSector = GEOMETRY_144_BYTESPERSECTOR;
-	DriveInfo->BytesPerSectorCode = HW_512_BYTES_PER_SECTOR;
+    if (NT_SUCCESS(RWTryReadingSector(DriveInfo, TRUE))) {
 	return STATUS_SUCCESS;
-    } while (TRUE);
+    }
 
-    TRACE_(FLOPPY, "RWDetermineMediaType(): failed to find media\n");
-    return STATUS_UNRECOGNIZED_MEDIA;
+    return RWTryReadingSector(DriveInfo, FALSE);
 }
 
 /*
@@ -536,7 +536,7 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
      * Figure out the media type, if we don't know it already
      */
     if (DriveInfo->DiskGeometry.MediaType == Unknown) {
-	Status = RWDetermineMediaType(DriveInfo, FALSE);
+	Status = RWDetermineMediaType(DriveInfo);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "ReadWrite(): unable to determine media type, "
 		  "error = 0x%x\n", Status);

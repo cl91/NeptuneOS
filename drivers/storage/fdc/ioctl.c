@@ -27,7 +27,6 @@
  *     - This driver tries to support all of the IOCTLs that the DDK floppy
  *       sample does
  *
- * TODO: Add support to GET_MEDIA_TYPES for non-1.44 disks
  * TODO: Implement format
  */
 
@@ -57,39 +56,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
     Irp->IoStatus.Information = 0;
 
     /*
-     * First the non-change-sensitive ioctls
-     */
-    if (Code == IOCTL_DISK_GET_MEDIA_TYPES) {
-	PDISK_GEOMETRY Geometry = OutputBuffer;
-	INFO_(FLOPPY, "IOCTL_DISK_GET_MEDIA_TYPES Called\n");
-
-	if (OutputLength < sizeof(DISK_GEOMETRY)) {
-	    INFO_(FLOPPY, "IOCTL_DISK_GET_MEDIA_TYPES: insufficient buffer; "
-		  "returning STATUS_INVALID_PARAMETER\n");
-	    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	    return;
-	}
-
-	/*
-	 * for now, this driver only supports 3.5" HD media
-	 */
-	Geometry->MediaType = F3_1Pt44_512;
-	Geometry->Cylinders.QuadPart = 80;
-	Geometry->TracksPerCylinder = 2 * 18;
-	Geometry->SectorsPerTrack = 18;
-	Geometry->BytesPerSector = 512;
-
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
-	INFO_(FLOPPY, "Ioctl: completing with STATUS_SUCCESS\n");
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	return;
-    }
-
-    /*
-     * Now, check to see if the volume needs to be verified.  If so,
+     * Check to see if the volume needs to be verified.  If so,
      * return STATUS_VERIFY_REQUIRED.
      */
     if (DriveInfo->DeviceObject->Flags & DO_VERIFY_VOLUME
@@ -135,7 +102,7 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
      * Figure out the media type, if we don't know it already
      */
     if (DriveInfo->DiskGeometry.MediaType == Unknown) {
-	NTSTATUS Status = RWDetermineMediaType(DriveInfo, FALSE);
+	NTSTATUS Status = RWDetermineMediaType(DriveInfo);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(FLOPPY, "DeviceIoctl(): unable to determine media type, "
 		  "error = 0x%x\n", Status);
@@ -209,9 +176,9 @@ VOID DeviceIoctl(PDRIVE_INFO DriveInfo, PIRP Irp)
 	}
 	break;
 
+    case IOCTL_DISK_GET_MEDIA_TYPES:
     case IOCTL_DISK_GET_DRIVE_GEOMETRY:
     {
-	INFO_(FLOPPY, "IOCTL_DISK_GET_DRIVE_GEOMETRY Called\n");
 	if (OutputLength < sizeof(DISK_GEOMETRY)) {
 	    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
 	    break;

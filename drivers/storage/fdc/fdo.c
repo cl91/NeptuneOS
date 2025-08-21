@@ -135,6 +135,23 @@ NTSTATUS WaitForControllerInterrupt(PCONTROLLER_INFO ControllerInfo,
     return Status;
 }
 
+static BOOLEAN TrySettingDataRate(PCONTROLLER_INFO ControllerInfo,
+				  BOOLEAN Try288)
+{
+    UCHAR DataRate = Try288 ? DRSR_DSEL_500KBPS : DRSR_DSEL_1MBPS;
+
+    INFO_(FLOPPY, "InitController: setting data rate\n");
+
+    /* Set data rate */
+    NTSTATUS Status = HwSetDataRate(ControllerInfo, DataRate);
+    if (!NT_SUCCESS(Status)) {
+	WARN_(FLOPPY, "InitController: unable to set data rate for %s. "
+	      "Error = 0x%x.\n", Try288 ? "1Mbps" : "500Kbps", Status);
+	return FALSE;
+    }
+    return TRUE;
+}
+
 /*
  * FUNCTION: Start the recalibration process
  * ARGUMENTS:
@@ -156,13 +173,12 @@ NTSTATUS Recalibrate(PDRIVE_INFO DriveInfo)
     StartMotor(DriveInfo);
 
     /* Set the data rate */
-    WARN_(FLOPPY, "FIXME: UN-HARDCODE DATA RATE\n");
-    NTSTATUS Status = HwSetDataRate(DriveInfo->ControllerInfo, 0);
-    if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY, "Recalibrate: HwSetDataRate failed with error 0x%x\n",
-	      Status);
-	Status = STATUS_IO_DEVICE_ERROR;
-	goto out;
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (!HwSetDataRate(DriveInfo->ControllerInfo, TRUE)) {
+	if (!HwSetDataRate(DriveInfo->ControllerInfo, FALSE)) {
+	    Status = STATUS_IO_DEVICE_ERROR;
+	    goto out;
+	}
     }
 
     /* clear the event just in case the last call forgot */
@@ -270,9 +286,6 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
  */
 {
     PAGED_CODE();
-    UCHAR HeadLoadTime;
-    UCHAR HeadUnloadTime;
-    UCHAR StepRateTime;
     UCHAR ControllerVersion;
 
     ASSERT(ControllerInfo);
@@ -368,21 +381,18 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
 	ControllerInfo->Model30 = FALSE;
     }
 
-    /* Specify */
-    WARN_(FLOPPY, "FIXME: Figure out speed\n");
-    HeadLoadTime = SPECIFY_HLT_500K;
-    HeadUnloadTime = SPECIFY_HUT_500K;
-    StepRateTime = SPECIFY_SRT_500K;
-
-    INFO_(FLOPPY, "InitController: setting data rate\n");
-
-    /* Set data rate */
-    Status = HwSetDataRate(ControllerInfo, DRSR_DSEL_500KBPS);
-    if (!NT_SUCCESS(Status)) {
-	WARN_(FLOPPY, "InitController: unable to set data rate. Error = 0x%x\n",
-	      Status);
-	return STATUS_IO_DEVICE_ERROR;
+    /* Determine data rate */
+    BOOLEAN MediaIs288 = TrySettingDataRate(ControllerInfo, TRUE);
+    if (!MediaIs288) {
+	if (!TrySettingDataRate(ControllerInfo, FALSE)) {
+	    return STATUS_IO_DEVICE_ERROR;
+	}
     }
+
+    /* Specify */
+    UCHAR HeadLoadTime = MediaIs288 ? SPECIFY_HLT_1M : SPECIFY_HLT_500K;
+    UCHAR HeadUnloadTime = MediaIs288 ? SPECIFY_HUT_1M : SPECIFY_HUT_500K;
+    UCHAR StepRateTime = MediaIs288 ? SPECIFY_SRT_1M : SPECIFY_SRT_500K;
 
     INFO_(FLOPPY,
 	  "InitController: issuing specify command to controller\n");
@@ -658,7 +668,7 @@ static NTSTATUS FdcFdoStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	.DmaChannel = DeviceExtension->ControllerInfo.Dma,
 	.InterfaceType = DeviceExtension->ControllerInfo.InterfaceType,
 	.BusNumber = DeviceExtension->ControllerInfo.BusNumber,
-	.MaximumLength = 2 * 18 * 512, /* based on a 1.44MB floppy */
+	.MaximumLength = 2 * 36 * 512, /* based on a 2.88MB floppy */
 	.DemandMode = TRUE,
 	/* DMA 0,1,2,3 are 8-bit; 4,5,6,7 are 16-bit (4 is chain) */
 	.DmaWidth = (DeviceExtension->ControllerInfo.Dma > 3) ? Width16Bits : Width8Bits

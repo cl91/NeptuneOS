@@ -108,7 +108,7 @@
  *   Since Neptune OS requires at least a Pentium II, we have removed the
  *   support for the EISA bus in the original ReactOS DMA implementation.
  *   The older ISA bus is still supported because it is used by the floppy
- *   controller and some sound cards such as Sound Blaster. However its
+ *   controller and some sound cards such as the Sound Blaster. However its
  *   function is limited to the first 8 DMA channel with slave DMA mode. No
  *   ISA bus mastering devices are supported.
  *
@@ -352,7 +352,7 @@ NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
      * are on a 64-bit system but the device can only access the lowest 4GB
      * of physical memory, then a contiguous intermediate buffer might be needed
      * depending whether the MDL is physically contiguous. In this case the
-     * number of map registers we need is determined by the IO buffers' maximum
+     * number of map registers we need is determined by the IO buffer's maximum
      * size, which is specified by the MaximumLength member of the device
      * description. Additionally, for ISA devices this is capped to 64KB because
      * the ISA DMA controller can only access one 64KB bank per DMA transfer.

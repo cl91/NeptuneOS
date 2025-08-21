@@ -13,10 +13,12 @@ fi
 ARCH=i386
 BUILD_TYPE=Debug
 BUILD_TAG=CHK
+FLPSIZE=2880
 
 if [[ ${1,,} == "release" || ${2,,} == "release" ]]; then
     BUILD_TYPE=Release
     BUILD_TAG=FRE
+    FLPSIZE=1440
 fi
 
 if [[ $1 == "amd64" || $2 == "amd64" ]]; then
@@ -41,7 +43,7 @@ if [[ -e $FLOPPYIMG ]]; then
     rm $FLOPPYIMG
 fi
 SYSLINUXCFGTMP=$(mktemp /tmp/syslinux.XXXXXXXX)
-mkfs.msdos -C $FLOPPYIMG 1440 -n NT${ARCH^^}${BUILD_TAG}
+mkfs.msdos -C $FLOPPYIMG $FLPSIZE -n NT${ARCH^^}${BUILD_TAG}
 syslinux --install $FLOPPYIMG
 cat <<EOF > $SYSLINUXCFGTMP
 DEFAULT neptune

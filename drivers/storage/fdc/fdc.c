@@ -14,9 +14,7 @@
  *
  * ---- Support for proper media detection ----
  * TODO: Handle MFM flag
- * TODO: Un-hardcode the data rate from various places
- * TODO: Proper media detection (right now we're hardcoded to 1.44)
- * TODO: Media detection based on sector 1
+ * TODO: Media detection for media types other than 1.44MB and 2.88MB
  */
 
 /* INCLUDES *******************************************************************/
