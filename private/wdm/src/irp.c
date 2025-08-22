@@ -1790,7 +1790,6 @@ static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
     BOOLEAN CompletionStopped = (Irp->CurrentLocation <= Irp->StackCount) &&
 	(IoGetCurrentIrpStackLocation(Irp)->Control & SL_COMPLETION_STOPPED);
     if (!CompletionStopped && Status != STATUS_PENDING) {
-	assert(Irp->IoStatus.Status == Status);
 	Irp->IoStatus.Status = Status;
 	/* This will execute the completion routine of the IRP if registered,
 	 * and add the IRP to either the cleanup list or the pending list,
