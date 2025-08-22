@@ -385,5 +385,35 @@ NTSTATUS NtCreateDirectoryObject(IN ASYNC_STATE AsyncState,
                                  IN ACCESS_MASK DesiredAccess,
                                  IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    UNIMPLEMENTED;
+    POBJECT RootDirectory = NULL;
+    NTSTATUS Status = STATUS_NTOS_BUG;
+    if (!(ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0])) {
+	return STATUS_OBJECT_NAME_INVALID;
+    }
+    if (ObjectAttributes.RootDirectory) {
+	RET_ERR(ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
+					  OBJECT_TYPE_ANY, &RootDirectory));
+    }
+    POBJECT_DIRECTORY DirObj = NULL;
+    IF_ERR_GOTO(out, Status,
+		ObCreateDirectoryEx(RootDirectory,
+				    ObjectAttributes.ObjectNameBuffer, &DirObj));
+    assert(DirObj);
+    /* Note here ObCreateHandle increases the refcount to two (ObInsertObject does
+     * NOT increase refcount of the object), making the object permanent as per
+     * NT API semantics. */
+    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, DirObj, FALSE,
+					    DirectoryHandle));
+    Status = STATUS_SUCCESS;
+
+out:
+    if (RootDirectory) {
+	ObDereferenceObject(RootDirectory);
+    }
+    if (!NT_SUCCESS(Status) && DirObj) {
+	/* ObRemoveObject is a no-op if DirObj is not inserted. */
+	ObRemoveObject(DirObj);
+	ObDereferenceObject(DirObj);
+    }
+    return Status;
 }

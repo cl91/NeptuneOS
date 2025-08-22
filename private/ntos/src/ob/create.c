@@ -165,8 +165,9 @@ NTSTATUS ObCreateObject(IN OBJECT_TYPE_ENUM Type,
 		   ObpFreePool(ObjectHeader);
 	       });
     InsertHeadList(&ObpObjectList, &ObjectHeader->ObjectLink);
-    ObpReferenceObjectHeader(ObjectHeader);
-
+    /* By default, all objects are created as permanent objects. The caller
+     * should call ObMakeTemporaryObject if it wants a temporary object. */
+    ObMakePermanentObject(Object);
     *pObject = Object;
     return STATUS_SUCCESS;
 }

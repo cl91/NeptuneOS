@@ -74,12 +74,7 @@ typedef enum _OBJECT_TYPE_ENUM {
 typedef PVOID POBJECT;
 typedef struct _OBJECT_HEADER {
     struct _OBJECT_TYPE *Type;
-    union {
-	struct {
-	    MWORD Permanent : 1;
-	};
-	MWORD Flags;
-    };
+    MWORD Flags;
     LIST_ENTRY ObjectLink;
     LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
     POBJECT ParentObject; /* Parent object under which this object is inserted */
@@ -570,6 +565,21 @@ VOID ObDereferenceObject(IN POBJECT Object);
 VOID ObDbgDumpObjectHandles(IN POBJECT Object,
 			    IN ULONG Indentation);
 
+FORCEINLINE BOOLEAN ObObjectIsPermanent(IN POBJECT Object)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->Flags & OBJ_PERMANENT;
+}
+
+FORCEINLINE VOID ObSetPermanentFlag(IN POBJECT Object)
+{
+    OBJECT_TO_OBJECT_HEADER(Object)->Flags |= OBJ_PERMANENT;
+}
+
+FORCEINLINE VOID ObClearPermanentFlag(IN POBJECT Object)
+{
+    OBJECT_TO_OBJECT_HEADER(Object)->Flags &= ~((MWORD)OBJ_PERMANENT);
+}
+
 /*
  * By default, an unnamed object created after ObCreateObject followed by
  * ObCreateHandle will have refcount == 2, making it a permanent object.
@@ -579,7 +589,18 @@ VOID ObDbgDumpObjectHandles(IN POBJECT Object,
 FORCEINLINE VOID ObMakeTemporaryObject(IN POBJECT Object)
 {
     assert(ObGetObjectRefCount(Object) > 1);
-    ObDereferenceObject(Object);
+    if (ObObjectIsPermanent(Object)) {
+	ObClearPermanentFlag(Object);
+	ObDereferenceObject(Object);
+    }
+}
+
+FORCEINLINE VOID ObMakePermanentObject(IN POBJECT Object)
+{
+    if (!ObObjectIsPermanent(Object)) {
+	ObSetPermanentFlag(Object);
+	ObpReferenceObject(Object);
+    }
 }
 
 /* open.c */

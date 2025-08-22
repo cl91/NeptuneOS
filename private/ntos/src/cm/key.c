@@ -13,6 +13,10 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
 	InitializeListHead(&Key->HashBuckets[i]);
     }
     InitializeListHead(&Key->SubKeyList);
+    /* TODO: We will need to implement the on-disk permanent storage
+     * of the registry. For now we will simply increase the refcount
+     * so the key object in memory won't ever get deleted. */
+    ObpReferenceObject(Object);
     return STATUS_SUCCESS;
 }
 
@@ -254,11 +258,6 @@ NTSTATUS CmpKeyObjectCloseProc(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN POBJECT Object)
 {
-    /* TODO: We will need to implement the NT semantics of a permanent
-     * object (objects with the OBJ_PERMANENT attribute) that doesn't
-     * get deleted even if all open handles to it are closed. For now
-     * we will simply increase the refcount so the key won't get deleted. */
-    ObpReferenceObject(Object);
     return STATUS_SUCCESS;
 }
 

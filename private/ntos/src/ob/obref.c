@@ -326,14 +326,26 @@ NTSTATUS NtMakeTemporaryObject(IN ASYNC_STATE AsyncState,
                                IN PTHREAD Thread,
                                IN HANDLE ObjectHandle)
 {
-    UNIMPLEMENTED;
+    POBJECT Object = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, ObjectHandle,
+				      OBJECT_TYPE_ANY, &Object));
+    assert(Object);
+    ObMakeTemporaryObject(Object);
+    ObDereferenceObject(Object);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtMakePermanentObject(IN ASYNC_STATE AsyncState,
                                IN PTHREAD Thread,
                                IN HANDLE ObjectHandle)
 {
-    UNIMPLEMENTED;
+    POBJECT Object = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, ObjectHandle,
+				      OBJECT_TYPE_ANY, &Object));
+    assert(Object);
+    ObMakePermanentObject(Object);
+    ObDereferenceObject(Object);
+    return STATUS_SUCCESS;
 }
 
 VOID ObDbgDumpObjectHandles(IN POBJECT Object,
