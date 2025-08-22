@@ -150,6 +150,13 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
     PDRIVER_OBJECT DriverObject = Argument1;
     PUNICODE_STRING RegistryPath = Argument2;
 
+    /* Storage class drivers always run in the same process as the port driver,
+     * in order to reduce the number of context switches. */
+    if (IoIsSingletonMode(DriverObject)) {
+	DriverObject->AddDevice = ClassAddDevice;
+	return STATUS_SUCCESS;
+    }
+
     PCLASS_DRIVER_EXTENSION driverExtension;
 
     NTSTATUS status;
@@ -410,6 +417,11 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 			      IN LPGUID Guid,
 			      IN PVOID Data)
 {
+    /* Do nothing, if we are in running as a singleton. */
+    if (IoIsSingletonMode(DriverObject)) {
+	return STATUS_SUCCESS;
+    }
+
     PCLASS_DRIVER_EXTENSION driverExtension;
 
     NTSTATUS status;
@@ -661,6 +673,11 @@ Status: STATUS_NO_SUCH_DEVICE if the class driver did not want this device
 NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
 			      IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
+    /* Do nothing, if we are in running as a singleton. */
+    if (IoIsSingletonMode(DriverObject)) {
+	return STATUS_SUCCESS;
+    }
+
     PCLASS_DRIVER_EXTENSION driverExtension =
 	IoGetDriverObjectExtension(DriverObject, CLASS_DRIVER_EXTENSION_KEY);
 
