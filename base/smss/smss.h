@@ -19,6 +19,12 @@
     UNICODE_STRING Name = { .Length = Len, .MaximumLength = Len,	\
 	.Buffer = Ptr }
 
+#define LoopOverList(Entry, ListHead, Type, Field)			\
+    for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
+	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \
+	 &(Entry)->Field != (ListHead); Entry = __LoopOverList_flink,	\
+	     __LoopOverList_flink = CONTAINING_RECORD((__LoopOverList_flink)->Field.Flink, Type, Field))
+
 FORCEINLINE PVOID SmAllocatePool(IN ULONG Size)
 {
     return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);

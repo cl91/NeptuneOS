@@ -12,7 +12,8 @@
 #define ENUM_KEY_PATH				CURRENT_CONTROL_SET_KEY_PATH "\\Enum"
 #define PARAMETERS_KEY_NAME			"Parameters"
 
-#define KBDCLASS_GUID		"{4D36E96B-E325-11CE-BFC1-08002BE10318}"
+#define KBD_CLASS_GUID		"{4D36E96B-E325-11CE-BFC1-08002BE10318}"
+#define DISK_CLASS_GUID		"{4D36E967-E325-11CE-BFC1-08002BE10318}"
 
 typedef struct _DRIVER_SERVICE_PARAMETER {
     PCSTR Name;
@@ -37,6 +38,7 @@ static struct {
     ULONG_PTR ServiceParameterCount;
     PDRIVER_SERVICE_PARAMETER ServiceParameters;
     PCSTR ClassGuid;
+    BOOLEAN LoadFailed;
 } BootDrivers[] = {
     { "null" },
     { "beep" },
@@ -46,8 +48,10 @@ static struct {
     { "pci", L"*PNP0A03\0*PNP0A08\0" },
     { "fdc", L"*PNP0700\0FDC\\GENERIC_FLOPPY_DRIVE\0" },
     { "i8042prt", L"*PNP0303\0",
-      ARRAYSIZE(I8042prtParameters), I8042prtParameters, KBDCLASS_GUID },
+      ARRAYSIZE(I8042prtParameters), I8042prtParameters, KBD_CLASS_GUID },
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
+    { "storahci", L"PCI\\CC_0106", 0, NULL, DISK_CLASS_GUID },
+    { "disk" }
 };
 
 static struct {
@@ -56,8 +60,17 @@ static struct {
     PCSTR LowerFilters;		/* MULTI_SZ */
     PCSTR UpperFilters;		/* MULTI_SZ */
 } ClassDrivers[] = {
-    { "Keyboard", KBDCLASS_GUID, NULL, "kbdclass\0" }
+    { "Keyboard", KBD_CLASS_GUID, NULL, "kbdclass\0" },
+    { "Disk", DISK_CLASS_GUID, NULL, "disk\0" }
 };
+
+static LIST_ENTRY SmKnownDeviceList;
+
+typedef struct _SM_KNOWN_DEVICE {
+    UNICODE_STRING InstancePath;
+    LIST_ENTRY Link;
+    BOOLEAN Installed;
+} SM_KNOWN_DEVICE, *PSM_KNOWN_DEVICE;
 
 static NTSTATUS SmInitBootDriverConfigs()
 {
@@ -217,7 +230,30 @@ compat:
 
 static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
 {
+    UNICODE_STRING InstancePathU = {};
+    if (!RtlCreateUnicodeString(&InstancePathU, InstancePath)) {
+	return STATUS_UNSUCCESSFUL;
+    }
+    PSM_KNOWN_DEVICE InstalledDevice = SmAllocatePool(sizeof(SM_KNOWN_DEVICE));
+    if (!InstalledDevice) {
+	RtlFreeUnicodeString(&InstancePathU);
+	return STATUS_NO_MEMORY;
+    }
+
     DPRINT("Trying to install device %ws\n", InstancePath);
+    LoopOverList(Device, &SmKnownDeviceList, SM_KNOWN_DEVICE, Link) {
+	if (!RtlCompareUnicodeString(&Device->InstancePath, &InstancePathU, TRUE)) {
+	    DPRINT("Known device %wZ (%s). Skipping installation.\n",
+		   &Device->InstancePath,
+		   Device->Installed ? "installed" : "installation failed");
+	    RtlFreeUnicodeString(&InstancePathU);
+	    SmFreePool(InstalledDevice);
+	    return STATUS_UNSUCCESSFUL;
+	}
+    }
+    InstalledDevice->InstancePath = InstancePathU;
+    InsertTailList(&SmKnownDeviceList, &InstalledDevice->Link);
+
     LONG Index = SmFindDriver(InstancePath);
     if (Index < 0) {
 	DPRINT("No matching driver found for %ws\n", InstancePath);
@@ -260,6 +296,7 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
 				 (PVOID)BootDrivers[Index].ClassGuid, 0));
     }
 
+    InstalledDevice->Installed = TRUE;
     return STATUS_SUCCESS;
 }
 
@@ -349,6 +386,7 @@ out:
 
 NTSTATUS SmInitHardwareDatabase()
 {
+    InitializeListHead(&SmKnownDeviceList);
     RET_ERR(SmCreateRegistryKey(SYSTEM_KEY_PATH, TRUE, NULL));
     RET_ERR(SmCreateRegistryKey(HARDWARE_KEY_PATH, TRUE, NULL));
     RET_ERR(SmCreateRegistryKey(DEVICEMAP_KEY_PATH, TRUE, NULL));
