@@ -283,18 +283,25 @@ static NTSTATUS LdrpMapDll(IN PCSTR DllName,
     if ((ULONG_PTR)ViewBase != ImageBase) {
 	/* In this case the image must not have its relocation information stripped. */
 	if (NtHeaders->FileHeader.Characteristics & IMAGE_FILE_RELOCS_STRIPPED) {
+	    DPRINT("Image relocation stripped. Cannot relocate image\n");
 	    Status = STATUS_INVALID_IMAGE_FORMAT;
 	    goto err;
 	}
+#ifdef _M_IX86
+	/* This check is only needed on i386 as the .reloc section is usually empty
+	 * on AMD64 and ARM64. */
 	ULONG RelocDataSize = 0;
 	PVOID RelocData = RtlImageDirectoryEntryToData(ViewBase, TRUE,
 						       IMAGE_DIRECTORY_ENTRY_BASERELOC,
 						       &RelocDataSize);
 
 	if (!RelocData && !RelocDataSize) {
+	    DPRINT("Empty image relocation data (%p, size 0x%x). Cannot relocate image\n",
+		   RelocData, RelocDataSize);
 	    Status = STATUS_INVALID_IMAGE_FORMAT;
 	    goto err;
 	}
+#endif
 
 	DPRINT("LDR: LdrpMapDll Relocating Image Name %s (%p-%p -> %p-%p)\n",
 	       DllName, (PVOID)ImageBase, (PVOID)((SIZE_T)ImageBase + ViewSize),
