@@ -2,6 +2,8 @@
 #include <printf.h>
 
 #define LDR_DLL_DEFAULT_EXTENSION	".dll"
+#define LDR_DRIVER_DLL_EXTENSION	".sys"
+C_ASSERT(sizeof(LDR_DRIVER_DLL_EXTENSION) == sizeof(LDR_DLL_DEFAULT_EXTENSION));
 
 PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress)
 {
@@ -375,7 +377,8 @@ NTSTATUS LdrpLoadImportModule(IN PCSTR ImportName,
 	    return STATUS_NO_MEMORY;
 	}
 	memcpy(ImportNameExt, ImportName, ImportNameLength);
-	memcpy(&ImportNameExt[ImportNameLength], LDR_DLL_DEFAULT_EXTENSION,
+	memcpy(&ImportNameExt[ImportNameLength],
+	       LdrpDriverProcess ? LDR_DLL_DEFAULT_EXTENSION : LDR_DRIVER_DLL_EXTENSION,
 	       sizeof(LDR_DLL_DEFAULT_EXTENSION));
 	ImportName = ImportNameExt;
     }

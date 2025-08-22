@@ -14,6 +14,7 @@ PCSTR RtlpDbgTraceModuleName = RtlpDbgTraceModuleNameBuffer;
 
 BOOLEAN LdrpInLdrInit = TRUE;
 BOOLEAN LdrpShutdownInProgress;
+BOOLEAN LdrpDriverProcess;
 HANDLE LdrpShutdownThreadId;
 
 LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
@@ -465,6 +466,8 @@ static VOID LdrpSetBaseDllName(IN PUNICODE_STRING FullDllName,
 
 static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 {
+    LdrpDriverProcess = InitInfo->DriverProcess;
+
     /* Set up the image base address in the process environment block. */
     Peb->ImageBaseAddress = (HMODULE)InitInfo->ImageBase;
 
