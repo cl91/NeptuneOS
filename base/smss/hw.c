@@ -12,9 +12,6 @@
 #define ENUM_KEY_PATH				CURRENT_CONTROL_SET_KEY_PATH "\\Enum"
 #define PARAMETERS_KEY_NAME			"Parameters"
 
-#define KBD_CLASS_GUID		"{4D36E96B-E325-11CE-BFC1-08002BE10318}"
-#define DISK_CLASS_GUID		"{4D36E967-E325-11CE-BFC1-08002BE10318}"
-
 typedef struct _DRIVER_SERVICE_PARAMETER {
     PCSTR Name;
     ULONG Type;
@@ -37,7 +34,6 @@ static struct {
     PWSTR MatchString;		/* MULTI_SZ */
     ULONG_PTR ServiceParameterCount;
     PDRIVER_SERVICE_PARAMETER ServiceParameters;
-    PCSTR ClassGuid;
     BOOLEAN LoadFailed;
 } BootDrivers[] = {
     { "null" },
@@ -48,20 +44,23 @@ static struct {
     { "pci", L"*PNP0A03\0*PNP0A08\0" },
     { "fdc", L"*PNP0700\0FDC\\GENERIC_FLOPPY_DRIVE\0" },
     { "i8042prt", L"*PNP0303\0",
-      ARRAYSIZE(I8042prtParameters), I8042prtParameters, KBD_CLASS_GUID },
+      ARRAYSIZE(I8042prtParameters), I8042prtParameters },
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
-    { "storahci", L"PCI\\CC_0106", 0, NULL, DISK_CLASS_GUID },
+    { "storahci", L"PCI\\CC_0106", 0, NULL },
     { "disk" }
 };
 
 static struct {
     PCSTR ClassName;
     PCSTR ClassGuid;
+    PWSTR MatchString;		/* MULTI_SZ */
     PCSTR LowerFilters;		/* MULTI_SZ */
     PCSTR UpperFilters;		/* MULTI_SZ */
 } ClassDrivers[] = {
-    { "Keyboard", KBD_CLASS_GUID, NULL, "kbdclass\0" },
-    { "Disk", DISK_CLASS_GUID, NULL, "disk\0" }
+    { "Keyboard", "{4D36E96B-E325-11CE-BFC1-08002BE10318}",
+      L"*PNP0303\0", NULL, "kbdclass\0" },
+    { "Disk", "{4D36E967-E325-11CE-BFC1-08002BE10318}",
+      L"SCSI\\Disk\0", NULL, "disk\0" }
 };
 
 static LIST_ENTRY SmKnownDeviceList;
@@ -183,13 +182,25 @@ static BOOLEAN SmMatchMultiSz(IN PWCHAR Target,
     return FALSE;
 }
 
-static LONG SmFindDriver(IN PWCHAR InstancePath)
+static LONG SmFindDriver(IN PWCHAR InstancePath, OUT PCSTR *ClassGuid)
 {
+    *ClassGuid = NULL;
+    LONG Driver = -1;
     /* First try if we can find an exact match for the device instance path. */
     for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
 	if (BootDrivers[i].MatchString &&
 	    SmMatchMultiSz(InstancePath, BootDrivers[i].MatchString)) {
-	    return i;
+	    Driver = i;
+	    break;
+	}
+    }
+    /* Also try finding the class driver from the device instance path */
+    for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
+	assert(ClassDrivers[i].ClassGuid);
+	if (ClassDrivers[i].MatchString &&
+	    SmMatchMultiSz(InstancePath, ClassDrivers[i].MatchString)) {
+	    *ClassGuid = ClassDrivers[i].ClassGuid;
+	    break;
 	}
     }
 
@@ -201,10 +212,21 @@ static LONG SmFindDriver(IN PWCHAR InstancePath)
     }
     for (PWCHAR Id = Buffer; *Id != L'\0'; Id += wcslen(Id) + 1) {
 	DPRINT("Got hardware ids %ws\n", Id);
+	if (!*ClassGuid) {
+	    for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
+		assert(ClassDrivers[i].ClassGuid);
+		if (ClassDrivers[i].MatchString &&
+		    SmMatchMultiSz(Id, ClassDrivers[i].MatchString)) {
+		    *ClassGuid = ClassDrivers[i].ClassGuid;
+		    break;
+		}
+	    }
+	}
 	for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
 	    if (BootDrivers[i].MatchString &&
 		SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
-		return i;
+		Driver = i;
+		break;
 	    }
 	}
     }
@@ -213,19 +235,31 @@ static LONG SmFindDriver(IN PWCHAR InstancePath)
 compat:
     Status = SmQueryIds(TRUE, InstancePath, &Buffer);
     if (!NT_SUCCESS(Status)) {
-	return -1;
+	goto out;
     }
     for (PWCHAR Id = Buffer; *Id != L'\0'; Id += wcslen(Id) + 1) {
 	DPRINT("Got compatible ids %ws\n", Id);
+	if (!*ClassGuid) {
+	    for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
+		assert(ClassDrivers[i].ClassGuid);
+		if (ClassDrivers[i].MatchString &&
+		    SmMatchMultiSz(Id, ClassDrivers[i].MatchString)) {
+		    *ClassGuid = ClassDrivers[i].ClassGuid;
+		    break;
+		}
+	    }
+	}
 	for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
 	    if (BootDrivers[i].MatchString &&
 		SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
-		return i;
+		Driver = i;
+		break;
 	    }
 	}
     }
 
-    return -1;
+out:
+    return Driver;
 }
 
 static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
@@ -254,7 +288,8 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
     InstalledDevice->InstancePath = InstancePathU;
     InsertTailList(&SmKnownDeviceList, &InstalledDevice->Link);
 
-    LONG Index = SmFindDriver(InstancePath);
+    PCSTR ClassGuid = NULL;
+    LONG Index = SmFindDriver(InstancePath, &ClassGuid);
     if (Index < 0) {
 	DPRINT("No matching driver found for %ws\n", InstancePath);
 	return STATUS_UNSUCCESSFUL;
@@ -291,9 +326,8 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
     assert(EnumKey != NULL);
     RET_ERR(SmSetRegKeyValue(EnumKey, "Service", REG_SZ,
 			     (PVOID)BootDrivers[Index].ServiceName, 0));
-    if (BootDrivers[Index].ClassGuid != NULL) {
-	RET_ERR(SmSetRegKeyValue(EnumKey, "ClassGUID", REG_SZ,
-				 (PVOID)BootDrivers[Index].ClassGuid, 0));
+    if (ClassGuid) {
+	RET_ERR(SmSetRegKeyValue(EnumKey, "ClassGUID", REG_SZ, (PVOID)ClassGuid, 0));
     }
 
     InstalledDevice->Installed = TRUE;
