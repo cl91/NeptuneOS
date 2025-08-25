@@ -205,8 +205,10 @@ VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Con
     }
 
     /* Set all the bits on, which will allow us to recover the limit data */
-    for (i = 0; i < PCI_TYPE0_ADDRESSES; i++)
+    do {
 	BarArray[i] = 0xFFFFFFFF;
+	i++;
+    } while (i < PCI_TYPE0_ADDRESSES);
 
     /* Do the same for the PCI ROM BAR */
     PciData->Type0.ROMBaseAddress = PCI_ADDRESS_ROM_ADDRESS_MASK;
@@ -214,36 +216,66 @@ VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Con
 
 VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
-    UNREFERENCED_PARAMETER(Context);
     /* Nothing to do for devices */
-    return;
+    UNREFERENCED_PARAMETER(Context);
 }
 
 VOID Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
 					     IN PPCI_COMMON_HEADER PciData,
 					     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
+    /* Nothing to do for devices */
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(PciData);
     UNREFERENCED_PARAMETER(IoDescriptor);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
 }
 
 VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
 			IN PPCI_COMMON_HEADER PciData)
 {
+    /* Nothing to do for devices */
     UNREFERENCED_PARAMETER(PdoExtension);
     UNREFERENCED_PARAMETER(PciData);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
 }
 
 VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 				   IN PPCI_COMMON_HEADER PciData)
 {
-    UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
-    /* Not yet implemented */
-    UNIMPLEMENTED_DBGBREAK();
+    if (!PdoExtension->Resources) {
+        return;
+    }
+
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = PdoExtension->Resources->Current;
+    PULONG BaseAddress = PciData->Type0.BaseAddresses;
+
+    for (ULONG i = 0; i <= PCI_TYPE0_ADDRESSES; i++, Res++, BaseAddress++) {
+        if (Res->Type == CmResourceTypeNull) {
+            continue;
+        }
+
+	ULONG LowPart = Res->Generic.Start.LowPart;
+	ULONG Bar = *BaseAddress;
+        if (i == PCI_TYPE0_ADDRESSES) {
+            ASSERT(Res->Type == CmResourceTypeMemory);
+            Bar = PciData->Type0.ROMBaseAddress;
+            Bar &= ~PCI_ADDRESS_ROM_ADDRESS_MASK;
+            Bar |= (LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK);
+            PciData->Type0.ROMBaseAddress = Bar;
+        } else if (Bar & PCI_ADDRESS_IO_SPACE) {
+            ASSERT(Res->Type == CmResourceTypePort);
+            *BaseAddress = LowPart;
+        } else {
+            ASSERT(Res->Type == CmResourceTypeMemory);
+            *BaseAddress = LowPart;
+            if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT) {
+		/* A 64-bit address consumes two 32-bit bars. */
+                BaseAddress++;
+                *BaseAddress = Res->Generic.Start.HighPart;
+                i++;
+                Res++;
+            } else if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_20BIT) {
+		ASSERT((LowPart & 0xfff00000) == 0);
+            }
+        }
+    }
 }
