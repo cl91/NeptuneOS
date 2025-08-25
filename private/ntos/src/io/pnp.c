@@ -649,6 +649,18 @@ static NTSTATUS IopQueueBusQueryIdRequest(IN PTHREAD Thread,
     return IopCallDriver(Thread, &Irp, PendingIrp);
 }
 
+static NTSTATUS IopQueueBusQueryInformationRequest(IN PTHREAD Thread,
+						   IN PIO_DEVICE_OBJECT ChildPhyDev,
+						   OUT PPENDING_IRP *PendingIrp)
+{
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_PNP,
+	.MinorFunction = IRP_MN_QUERY_BUS_INFORMATION,
+	.Device.Object = ChildPhyDev,
+    };
+    return IopCallDriver(Thread, &Irp, PendingIrp);
+}
+
 static NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
 					 IN PDEVICE_NODE DeviceNode,
 					 IN PIO_DRIVER_OBJECT DriverObject,
@@ -1051,7 +1063,7 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
      * PendingIrp will be freed at the end of the routine. Now allocate the PPENDING_IRP
      * array so we can query the child devices of their IDs. Note that we need two pointers
      * for each child device because we need to send two IRPs each. */
-    Locals.PendingIrps = ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * Locals.DeviceCount * 4,
+    Locals.PendingIrps = ExAllocatePoolWithTag(sizeof(PPENDING_IRP) * Locals.DeviceCount * 5,
 					       NTOS_IO_TAG);
     if (Locals.PendingIrps == NULL) {
 	Status = STATUS_NO_MEMORY;
@@ -1076,40 +1088,54 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 	IopSetDeviceNode(ChildPhyDev, ChildNode);
 	IF_ERR_GOTO(out, Status,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryDeviceID,
-					      &Locals.PendingIrps[4*i]));
+					      &Locals.PendingIrps[5*i]));
 	IF_ERR_GOTO(out, Status,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryInstanceID,
-					      &Locals.PendingIrps[4*i+1]));
+					      &Locals.PendingIrps[5*i+1]));
 	IF_ERR_GOTO(out, Status,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryHardwareIDs,
-					      &Locals.PendingIrps[4*i+2]));
+					      &Locals.PendingIrps[5*i+2]));
 	IF_ERR_GOTO(out, Status,
 		    IopQueueBusQueryIdRequest(Thread, ChildPhyDev, BusQueryCompatibleIDs,
-					      &Locals.PendingIrps[4*i+3]));
+					      &Locals.PendingIrps[5*i+3]));
+	IF_ERR_GOTO(out, Status,
+		    IopQueueBusQueryInformationRequest(Thread, ChildPhyDev,
+						       &Locals.PendingIrps[5*i+4]));
     }
     AWAIT_EX(Status, IopWaitForMultipleIoCompletions, AsyncState, Locals, Thread,
-	     FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 4);
+	     FALSE, WaitAll, Locals.PendingIrps, Locals.DeviceCount * 5);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
 
     /* Set the device IDs of the child nodes. */
-    for (ULONG i = 0; i < Locals.DeviceCount * 4; i++) {
+    for (ULONG i = 0; i < Locals.DeviceCount * 5; i++) {
 	PPENDING_IRP PendingIrp = Locals.PendingIrps[i];
 	assert(PendingIrp != NULL);
 	assert(PendingIrp->IoPacket->Type == IoPacketTypeRequest);
 	assert(PendingIrp->IoPacket->Request.MajorFunction == IRP_MJ_PNP);
-	assert(PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_ID);
-	BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.QueryId.IdType;
 	PIO_DEVICE_OBJECT DeviceObject = PendingIrp->IoPacket->Request.Device.Object;
 	PDEVICE_NODE DeviceNode = IopGetDeviceNode(DeviceObject);
-	assert(DeviceNode != NULL);
-	Status = IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType);
-	if (!NT_SUCCESS(Status) &&
-	    (IdType == BusQueryDeviceID || IdType == BusQueryInstanceID)) {
-	    goto out;
+	if (PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_ID) {
+	    BUS_QUERY_ID_TYPE IdType = PendingIrp->IoPacket->Request.QueryId.IdType;
+	    assert(DeviceNode != NULL);
+	    Status = IopDeviceNodeSetDeviceId(DeviceNode, PendingIrp->IoResponseData, IdType);
+	    if (!NT_SUCCESS(Status) &&
+		(IdType == BusQueryDeviceID || IdType == BusQueryInstanceID)) {
+		goto out;
+	    }
+	} else {
+	    assert(PendingIrp->IoPacket->Request.MinorFunction == IRP_MN_QUERY_BUS_INFORMATION);
+	    assert(!PendingIrp->IoResponseData ||
+		   PendingIrp->IoResponseDataSize == sizeof(PNP_BUS_INFORMATION));
+	    if (PendingIrp->IoResponseData &&
+		PendingIrp->IoResponseDataSize == sizeof(PNP_BUS_INFORMATION)) {
+		DeviceNode->BusInformation = PendingIrp->IoResponseData;
+		/* Detach the IO response data from the PENDING_IRP so it won't get freed. */
+		PendingIrp->IoResponseData = NULL;
+		PendingIrp->IoResponseDataSize = 0;
+	    }
 	}
-	IopDeviceNodeSetCurrentState(DeviceNode, DeviceNodeInitialized);
     }
 
     /* All done! */
@@ -1118,6 +1144,9 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 out:
     if (NT_SUCCESS(Status)) {
 	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeEnumerateCompletion);
+	LoopOverList(ChildDev, &DevNode->ChildrenList, DEVICE_NODE, SiblingLink) {
+	    IopDeviceNodeSetCurrentState(ChildDev, DeviceNodeInitialized);
+	}
     } else {
 	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeEnumerateFailed);
 	DevNode->ErrorStatus = Status;
@@ -1130,7 +1159,7 @@ out:
 	IopCleanupPendingIrp(Locals.PendingIrp);
     }
     if (Locals.PendingIrps != NULL) {
-	for (ULONG i = 0; i < Locals.DeviceCount * 4; i++) {
+	for (ULONG i = 0; i < Locals.DeviceCount * 5; i++) {
 	    if (Locals.PendingIrps[i] != NULL) {
 		IopCleanupPendingIrp(Locals.PendingIrps[i]);
 	    }
@@ -1805,10 +1834,16 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
     ULONG ResultLength = 0;
     BOOLEAN UnicodeOutput = FALSE;
     CHAR Buffer[512];
+    *pResultLength = 0;
 
     switch (DeviceProperty) {
     case DevicePropertyBusTypeGuid:
-	UNIMPLEMENTED;
+	if (DeviceNode->BusInformation) {
+	    Data = &DeviceNode->BusInformation->BusTypeGuid;
+	    ResultLength = sizeof(GUID);
+	} else {
+	    return STATUS_OBJECT_NAME_NOT_FOUND;
+	}
 	break;
 
     case DevicePropertyLegacyBusType:

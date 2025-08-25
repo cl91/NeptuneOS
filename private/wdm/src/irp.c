@@ -734,6 +734,7 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	    break;
 
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	case IRP_MN_QUERY_BUS_INFORMATION:
 	    /* No parameters to marshal. Do nothing. */
 	    break;
 
@@ -1047,6 +1048,12 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    }
 	    break;
 
+	case IRP_MN_QUERY_BUS_INFORMATION:
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
+		Size += sizeof(PNP_BUS_INFORMATION);
+	    }
+	    break;
+
 	case IRP_MN_START_DEVICE:
 	    /* Do nothing */
 	    break;
@@ -1161,6 +1168,21 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
 		memcpy(Dest->ClientMsg.IoCompleted.ResponseData, Res, ResponseDataSize);
 		IopFreePool(Res);
+		Irp->IoStatus.Information = 0;
+	    }
+	    break;
+
+	case IRP_MN_QUERY_BUS_INFORMATION:
+	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
+		/* ResponseData[] is the PNP_BUS_INFORMATION, copied verbatim.
+		 * ResponseDataSize is its size in bytes.
+		 * Dest->...IoStatus.Information is cleared. */
+		PPNP_BUS_INFORMATION Info = (PPNP_BUS_INFORMATION)Irp->IoStatus.Information;
+		ULONG ResponseDataSize = sizeof(PNP_BUS_INFORMATION);
+		Dest->ClientMsg.IoCompleted.IoStatus.Information = 0;
+		Dest->ClientMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
+		memcpy(Dest->ClientMsg.IoCompleted.ResponseData, Info, ResponseDataSize);
+		IopFreePool(Info);
 		Irp->IoStatus.Information = 0;
 	    }
 	    break;
@@ -1538,6 +1560,9 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    break;
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
 	    DbgPrint("    PNP  QUERY-RESOURCE-REQUIREMENTS\n");
+	    break;
+	case IRP_MN_QUERY_BUS_INFORMATION:
+	    DbgPrint("    PNP  QUERY-BUS-INFORMATION\n");
 	    break;
 	case IRP_MN_START_DEVICE:
 	    DbgPrint("    PNP  START-DEVICE  AllocatedResources %p (count %d) "

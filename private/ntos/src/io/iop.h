@@ -350,6 +350,7 @@ typedef struct _DEVICE_NODE {
     PIO_DRIVER_OBJECT *UpperFilterDrivers;
     PIO_DRIVER_OBJECT *LowerFilterDrivers;
     PCM_RESOURCE_LIST Resources;
+    PPNP_BUS_INFORMATION BusInformation;
 } DEVICE_NODE, *PDEVICE_NODE;
 
 /*

@@ -732,6 +732,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
 		DbgPrint("    PNP  QUERY-RESOURCE-REQUIREMENTS\n");
 		break;
+	    case IRP_MN_QUERY_BUS_INFORMATION:
+		DbgPrint("    PNP  QUERY-BUS-INFORMATION\n");
+		break;
 	    case IRP_MN_START_DEVICE:
 		DbgPrint("    PNP  START-DEVICE  ResourceListSize %d TranslatedListSize %d\n",
 			 IoPacket->Request.StartDevice.ResourceListSize,
