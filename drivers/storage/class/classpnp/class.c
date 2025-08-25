@@ -161,7 +161,7 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
 
     NTSTATUS status;
 
-    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT, "\n\nSCSI Class Driver\n"));
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT, "SCSI Class Driver\n"));
 
     ClasspInitializeDebugGlobals();
 
@@ -1599,8 +1599,7 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 
 	    if (fdoExtension->PrivateFdoData == NULL) {
 		TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
-			    "ClassPnpStartDevice: Cannot allocate for private fdo "
-			    "data\n"));
+			    "ClassPnpStartDevice: Cannot allocate for private fdo data\n"));
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
 
@@ -1730,10 +1729,9 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 		//
 		// function ClassGetDescriptor returns succeed with buffer "fdoExtension->MiniportDescriptor" allocated.
 		//
-		if (NT_SUCCESS(status) && (fdoExtension->MiniportDescriptor->Portdriver !=
-					       StoragePortCodeSetStorport &&
-					   fdoExtension->MiniportDescriptor->Portdriver !=
-					       StoragePortCodeSetUSBport)) {
+		if (NT_SUCCESS(status) &&
+		    (fdoExtension->MiniportDescriptor->Portdriver != StoragePortCodeSetStorport &&
+		     fdoExtension->MiniportDescriptor->Portdriver != StoragePortCodeSetUSBport)) {
 		    //
 		    // field "IoTimeoutValue" supported for either Storport or USBStor
 		    //
@@ -9549,9 +9547,9 @@ NTAPI VOID ClassUpdateInformationInRegistry(IN PDEVICE_OBJECT Fdo,
 	}
 
 	status = RtlStringCchPrintfA((NTSTRSAFE_PSTR)buffer, sizeof(buffer) - 1,
-				     "\\Registry\\Machine\\Hardware\\DeviceMap\\Scsi\\Scs"
-				     "i Port %d\\Scsi Bus %d\\Target Id %d\\Logical Unit "
-				     "Id %d",
+				     "\\Registry\\Machine\\Hardware\\DeviceMap\\Scsi\\"
+				     "Scsi Port %d\\Scsi Bus %d\\Target Id %d\\"
+				     "Logical Unit Id %d",
 				     scsiAddress.PortNumber, scsiAddress.PathId,
 				     scsiAddress.TargetId, scsiAddress.Lun);
 

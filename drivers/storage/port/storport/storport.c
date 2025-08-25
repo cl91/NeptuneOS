@@ -150,17 +150,15 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     /* Create the port device */
     Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_EXTENSION), &DeviceName,
-			    FILE_DEVICE_CONTROLLER, FILE_DEVICE_SECURE_OPEN, FALSE, &Fdo);
+			    FILE_DEVICE_CONTROLLER,
+			    FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO | DO_POWER_PAGABLE,
+			    FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("IoCreateDevice() failed (Status 0x%08x)\n", Status);
 	return Status;
     }
 
     DPRINT1("Created device: %wZ (%p)\n", &DeviceName, Fdo);
-
-    /* Initialize the device */
-    Fdo->Flags |= DO_DIRECT_IO;
-    Fdo->Flags |= DO_POWER_PAGABLE;
 
     /* Initialize the device extension */
     DeviceExtension = (PFDO_DEVICE_EXTENSION)Fdo->DeviceExtension;
