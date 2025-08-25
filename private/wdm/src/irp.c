@@ -765,6 +765,20 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	    }
 	    break;
 
+	case IRP_MN_READ_CONFIG:
+	case IRP_MN_WRITE_CONFIG:
+	    IoStack->Parameters.ReadWriteConfig.WhichSpace =
+		Src->Request.ReadWriteConfig.WhichSpace;
+	    IoStack->Parameters.ReadWriteConfig.Offset =
+		Src->Request.ReadWriteConfig.Offset;
+	    IoStack->Parameters.ReadWriteConfig.Buffer =
+		(Src->Request.MinorFunction == IRP_MN_READ_CONFIG) ?
+		(PVOID)Src->Request.OutputBuffer : (PVOID)Src->Request.InputBuffer;
+	    IoStack->Parameters.ReadWriteConfig.Length =
+		(Src->Request.MinorFunction == IRP_MN_READ_CONFIG) ?
+		Src->Request.OutputBufferLength : Src->Request.InputBufferLength;
+	    break;
+
 	default:
 	    UNIMPLEMENTED;
 	    assert(FALSE);
@@ -1055,6 +1069,8 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    break;
 
 	case IRP_MN_START_DEVICE:
+	case IRP_MN_READ_CONFIG:
+	case IRP_MN_WRITE_CONFIG:
 	    /* Do nothing */
 	    break;
 
@@ -1188,6 +1204,8 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    break;
 
 	case IRP_MN_START_DEVICE:
+	case IRP_MN_READ_CONFIG:
+	case IRP_MN_WRITE_CONFIG:
 	    /* Do nothing */
 	    break;
 
@@ -1370,6 +1388,27 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     }
     case IRP_MJ_FLUSH_BUFFERS:
 	/* Do nothing */
+	break;
+    case IRP_MJ_PNP:
+	switch (IoStack->MinorFunction) {
+	case IRP_MN_READ_CONFIG:
+	case IRP_MN_WRITE_CONFIG:
+	    Dest->Request.ReadWriteConfig.WhichSpace =
+		IoStack->Parameters.ReadWriteConfig.WhichSpace;
+	    Dest->Request.ReadWriteConfig.Offset =
+		IoStack->Parameters.ReadWriteConfig.Offset;
+	    if (IoStack->MinorFunction == IRP_MN_READ_CONFIG) {
+		Dest->Request.OutputBuffer = (MWORD)IoStack->Parameters.ReadWriteConfig.Buffer;
+		Dest->Request.OutputBufferLength = IoStack->Parameters.ReadWriteConfig.Length;
+	    } else {
+		Dest->Request.InputBuffer = (MWORD)IoStack->Parameters.ReadWriteConfig.Buffer;
+		Dest->Request.InputBufferLength = IoStack->Parameters.ReadWriteConfig.Length;
+	    }
+	    break;
+	default:
+	    assert(FALSE);
+	    return FALSE;
+	}
 	break;
     default:
 	/* UNIMPLEMENTED */
@@ -1573,6 +1612,15 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		     Stack->Parameters.StartDevice.AllocatedResourcesTranslated,
 		     Stack->Parameters.StartDevice.AllocatedResourcesTranslated ?
 		     Stack->Parameters.StartDevice.AllocatedResourcesTranslated->List[0].PartialResourceList.Count : 0);
+	    break;
+	case IRP_MN_READ_CONFIG:
+	case IRP_MN_WRITE_CONFIG:
+	    DbgPrint("    PNP  %s-CONFIG  WhichSpace %d Buffer %p Offset 0x%x Length 0x%x\n",
+		     Stack->MinorFunction == IRP_MN_READ_CONFIG ? "READ" : "WRITE",
+		     Stack->Parameters.ReadWriteConfig.WhichSpace,
+		     Stack->Parameters.ReadWriteConfig.Buffer,
+		     Stack->Parameters.ReadWriteConfig.Offset,
+		     Stack->Parameters.ReadWriteConfig.Length);
 	    break;
 	default:
 	    DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");

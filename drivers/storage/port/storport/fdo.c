@@ -11,8 +11,8 @@
 
 /* FUNCTIONS ******************************************************************/
 
-static NTAPI BOOLEAN PortFdoInterruptRoutine(_In_ PKINTERRUPT Interrupt,
-					     _In_ PVOID ServiceContext)
+static NTAPI BOOLEAN PortFdoInterruptRoutine(IN PKINTERRUPT Interrupt,
+					     IN PVOID ServiceContext)
 {
     PFDO_DEVICE_EXTENSION DeviceExtension;
 
@@ -23,7 +23,7 @@ static NTAPI BOOLEAN PortFdoInterruptRoutine(_In_ PKINTERRUPT Interrupt,
     return MiniportHwInterrupt(&DeviceExtension->Miniport);
 }
 
-static NTSTATUS PortFdoConnectInterrupt(_In_ PFDO_DEVICE_EXTENSION DeviceExtension)
+static NTSTATUS PortFdoConnectInterrupt(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 {
     ULONG Vector;
     KIRQL Irql;
@@ -67,13 +67,13 @@ static NTSTATUS PortFdoConnectInterrupt(_In_ PFDO_DEVICE_EXTENSION DeviceExtensi
     return Status;
 }
 
-static NTSTATUS PortFdoStartMiniport(_In_ PFDO_DEVICE_EXTENSION DeviceExtension)
+static NTSTATUS PortFdoStartMiniport(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 {
     PHW_INITIALIZATION_DATA InitData;
     INTERFACE_TYPE InterfaceType;
     NTSTATUS Status;
 
-    DPRINT1("PortFdoStartDevice(%p)\n", DeviceExtension);
+    DPRINT1("PortFdoStartMiniport(%p)\n", DeviceExtension);
 
     /* Get the interface type of the lower device */
     InterfaceType = GetBusInterface(DeviceExtension->LowerDevice);
@@ -126,8 +126,8 @@ static NTSTATUS PortFdoStartMiniport(_In_ PFDO_DEVICE_EXTENSION DeviceExtension)
     return STATUS_SUCCESS;
 }
 
-static NTAPI NTSTATUS PortFdoStartDevice(_In_ PFDO_DEVICE_EXTENSION DeviceExtension,
-					 _In_ PIRP Irp)
+static NTAPI NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtension,
+					 IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     NTSTATUS Status;
@@ -157,6 +157,8 @@ static NTAPI NTSTATUS PortFdoStartDevice(_In_ PFDO_DEVICE_EXTENSION DeviceExtens
     DeviceExtension->PnpState = dsStarted;
 
     /* Copy the raw and translated resource lists into the device extension */
+    assert(Stack->Parameters.StartDevice.AllocatedResources);
+    assert(Stack->Parameters.StartDevice.AllocatedResourcesTranslated);
     if (Stack->Parameters.StartDevice.AllocatedResources != NULL &&
 	Stack->Parameters.StartDevice.AllocatedResourcesTranslated != NULL) {
 	DeviceExtension->AllocatedResources = CopyResourceList(
@@ -180,12 +182,11 @@ static NTAPI NTSTATUS PortFdoStartDevice(_In_ PFDO_DEVICE_EXTENSION DeviceExtens
     return Status;
 }
 
-static NTSTATUS PortSendInquiry(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
+static NTSTATUS PortSendInquiry(IN PPDO_DEVICE_EXTENSION PdoExtension)
 {
     IO_STATUS_BLOCK IoStatusBlock;
     PIO_STACK_LOCATION IrpStack;
     KEVENT Event;
-    //    KIRQL Irql;
     PIRP Irp;
     NTSTATUS Status;
     PSENSE_DATA SenseBuffer;
@@ -352,7 +353,7 @@ static NTSTATUS PortSendInquiry(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
     return Status;
 }
 
-static NTSTATUS PortFdoScanBus(_In_ PFDO_DEVICE_EXTENSION DeviceExtension)
+static NTSTATUS PortFdoScanBus(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 {
     PPDO_DEVICE_EXTENSION PdoExtension;
     ULONG Bus, Target; //, Lun;
@@ -396,8 +397,7 @@ static NTSTATUS PortFdoScanBus(_In_ PFDO_DEVICE_EXTENSION DeviceExtension)
 
 #if 0
             /* Scan all logical units */
-            for (Lun = 1; Lun < DeviceExtension->Miniport.PortConfig.MaximumNumberOfLogicalUnits; Lun++)
-            {
+            for (Lun = 1; Lun < DeviceExtension->Miniport.PortConfig.MaximumNumberOfLogicalUnits; Lun++) {
                 DPRINT("    Scanning logical unit %d:%d:%d\n", Bus, Target, Lun);
                 Status = PortSendInquiry(DeviceExtension->Device, Bus, Target, Lun);
                 DPRINT("PortSendInquiry returned 0x%08x\n", Status);
@@ -413,11 +413,10 @@ static NTSTATUS PortFdoScanBus(_In_ PFDO_DEVICE_EXTENSION DeviceExtension)
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PortFdoQueryBusRelations(_In_ PFDO_DEVICE_EXTENSION DeviceExtension,
-					 _Out_ PULONG_PTR Information)
+static NTSTATUS PortFdoQueryBusRelations(IN PFDO_DEVICE_EXTENSION DeviceExtension,
+					 OUT PULONG_PTR Information)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    ;
 
     DPRINT1("PortFdoQueryBusRelations(%p %p)\n", DeviceExtension, Information);
 
@@ -425,7 +424,9 @@ static NTSTATUS PortFdoQueryBusRelations(_In_ PFDO_DEVICE_EXTENSION DeviceExtens
 
     DPRINT1("Units found: %u\n", DeviceExtension->PdoCount);
 
-    *Information = 0;
+    /* TODO */
+    assert(FALSE);
+    //    *Information = PdoCount;
 
     return Status;
 }
@@ -446,33 +447,22 @@ static NTSTATUS PortFdoFilterRequirements(PFDO_DEVICE_EXTENSION DeviceExtension,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-NTAPI
-PortFdoScsi(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+NTAPI NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension;
-    //    PIO_STACK_LOCATION Stack;
-    ULONG_PTR Information = 0;
-    NTSTATUS Status = STATUS_NOT_SUPPORTED;
-
     DPRINT("PortFdoScsi(%p %p)\n", DeviceObject, Irp);
 
-    DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-    ASSERT(DeviceExtension);
-    ASSERT(DeviceExtension->ExtensionType == FdoExtension);
+    ASSERT((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension);
+    ASSERT(((PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension)->ExtensionType == FdoExtension);
 
-    //    Stack = IoGetCurrentIrpStackLocation(Irp);
-
-    Irp->IoStatus.Information = Information;
+    /* IRP_MJ_SCSI requests should be sent to the PDO, so we fail the IRP. */
+    NTSTATUS Status = STATUS_NOT_SUPPORTED;
+    Irp->IoStatus.Information = 0;
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
     return Status;
 }
 
-NTSTATUS
-NTAPI
-PortFdoPnp(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+NTAPI NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     PFDO_DEVICE_EXTENSION DeviceExtension;
     PIO_STACK_LOCATION Stack;

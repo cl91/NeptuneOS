@@ -9,6 +9,7 @@
 
 #include "precomp.h"
 #include <stdio.h>
+#include <pci.h>
 
 /* GLOBALS ********************************************************************/
 
@@ -150,17 +151,15 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     /* Create the port device */
     Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_EXTENSION), &DeviceName,
-			    FILE_DEVICE_CONTROLLER, FILE_DEVICE_SECURE_OPEN, FALSE, &Fdo);
+			    FILE_DEVICE_CONTROLLER,
+			    FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO | DO_POWER_PAGABLE,
+			    FALSE, &Fdo);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("IoCreateDevice() failed (Status 0x%08x)\n", Status);
 	return Status;
     }
 
     DPRINT1("Created device: %wZ (%p)\n", &DeviceName, Fdo);
-
-    /* Initialize the device */
-    Fdo->Flags |= DO_DIRECT_IO;
-    Fdo->Flags |= DO_POWER_PAGABLE;
 
     /* Initialize the device extension */
     DeviceExtension = (PFDO_DEVICE_EXTENSION)Fdo->DeviceExtension;
@@ -683,8 +682,65 @@ NTAPI PSCSI_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
     return NULL;
 }
 
+static ULONG StorPortReadWriteBusData(IN PVOID DeviceExtension,
+				      IN ULONG BusDataType,
+				      IN ULONG SystemIoBusNumber,
+				      IN ULONG SlotNumber,
+				      OUT PVOID Buffer,
+				      IN ULONG Length,
+				      BOOLEAN Write)
+{
+    if (!DeviceExtension) {
+	assert(FALSE);
+	return 0;
+    }
+
+    /* Get the miniport extension */
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(DeviceExtension,
+								     MINIPORT_DEVICE_EXTENSION,
+								     HwDeviceExtension);
+    DPRINT1("DeviceExtension %p  MiniportExtension %p\n",
+            DeviceExtension, MiniportExtension);
+
+    PMINIPORT Miniport = MiniportExtension->Miniport;
+    if (!Miniport) {
+	assert(FALSE);
+	return 0;
+    }
+
+    if (BusDataType != PCIConfiguration) {
+	assert(FALSE);
+	return 0;
+    }
+
+    if (SystemIoBusNumber != Miniport->PortConfig.SystemIoBusNumber) {
+	assert(FALSE);
+	return 0;
+    }
+
+    if (SlotNumber != Miniport->PortConfig.SlotNumber) {
+	assert(FALSE);
+	return 0;
+    }
+
+    if (!Miniport->DeviceExtension) {
+	assert(FALSE);
+	return 0;
+    }
+
+    PDEVICE_OBJECT Pdo = Miniport->DeviceExtension->PhysicalDevice;
+    if (!Pdo) {
+	assert(FALSE);
+	return 0;
+    }
+
+    NTSTATUS Status = Write ? IoWritePciConfigSpace(Pdo, Buffer, 0, &Length) :
+	IoReadPciConfigSpace(Pdo, Buffer, 0, &Length);
+    return NT_SUCCESS(Status) ? Length : 0;
+}
+
 /*
- * @unimplemented
+ * @implemented
  */
 NTAPI ULONG StorPortGetBusData(IN PVOID DeviceExtension,
 			       IN ULONG BusDataType,
@@ -696,18 +752,12 @@ NTAPI ULONG StorPortGetBusData(IN PVOID DeviceExtension,
     DPRINT1("StorPortGetBusData(%p %u %u %u %p %u)\n",
             DeviceExtension, BusDataType, SystemIoBusNumber, SlotNumber, Buffer, Length);
 
-    /* Get the miniport extension */
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(DeviceExtension,
-								     MINIPORT_DEVICE_EXTENSION,
-								     HwDeviceExtension);
-    DPRINT1("DeviceExtension %p  MiniportExtension %p\n",
-            DeviceExtension, MiniportExtension);
-    UNIMPLEMENTED;
-    return STOR_STATUS_NOT_IMPLEMENTED;
+    return StorPortReadWriteBusData(DeviceExtension, BusDataType, SystemIoBusNumber,
+				    SlotNumber, Buffer, Length, FALSE);
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 NTAPI ULONG StorPortSetBusDataByOffset(IN PVOID DeviceExtension,
 				       IN ULONG BusDataType,
@@ -721,12 +771,8 @@ NTAPI ULONG StorPortSetBusDataByOffset(IN PVOID DeviceExtension,
             DeviceExtension, BusDataType, SystemIoBusNumber,
 	    SlotNumber, Buffer, Offset, Length);
 
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(DeviceExtension,
-								     MINIPORT_DEVICE_EXTENSION,
-								     HwDeviceExtension);
-    DPRINT1("DeviceExtension %p  MiniportExtension %p\n",
-            DeviceExtension, MiniportExtension);
-    return STOR_STATUS_NOT_IMPLEMENTED;
+    return StorPortReadWriteBusData(DeviceExtension, BusDataType, SystemIoBusNumber,
+				    SlotNumber, Buffer, Length, TRUE);
 }
 
 /*

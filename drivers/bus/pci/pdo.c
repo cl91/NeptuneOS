@@ -304,28 +304,56 @@ static NTSTATUS PciPdoQueryBusInformation(IN PIRP Irp,
 				  (PPNP_BUS_INFORMATION *)&Irp->IoStatus.Information);
 }
 
+static NTSTATUS PciPdoReadWriteConfig(IN PIRP Irp,
+				      IN PIO_STACK_LOCATION IoStack,
+				      IN PPCI_PDO_EXTENSION DeviceExtension,
+				      IN BOOLEAN Write)
+{
+    ASSERT_PDO(DeviceExtension);
+    Irp->IoStatus.Information = 0;
+    if (IoStack->Parameters.ReadWriteConfig.WhichSpace != PCI_WHICHSPACE_CONFIG) {
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    ULONG Offset = IoStack->Parameters.ReadWriteConfig.Offset;
+    ULONG Length = IoStack->Parameters.ReadWriteConfig.Length;
+    ULONG ConfigSpaceSize = DeviceExtension->InterfaceType == PciExpress ?
+	PCI_EXTENDED_CONFIG_LENGTH : sizeof(PCI_COMMON_CONFIG);
+    if (Offset + Length > ConfigSpaceSize) {
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    __try {
+	if (Write) {
+	    PciWriteDeviceConfig(DeviceExtension,
+				 IoStack->Parameters.ReadWriteConfig.Buffer,
+				 Offset, Length);
+	} else {
+	    PciReadDeviceConfig(DeviceExtension,
+				IoStack->Parameters.ReadWriteConfig.Buffer,
+				Offset, Length);
+	}
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+	/* If we have a PDO the device must have been enumerated and is assumed to
+	 * exist. If the IO failed, it is likely a hardware error. */
+	return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+    Irp->IoStatus.Information = Length;
+
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS PciPdoReadConfig(IN PIRP Irp,
-				 IN PIO_STACK_LOCATION IoStackLocation,
+				 IN PIO_STACK_LOCATION IoStack,
 				 IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    return PciPdoReadWriteConfig(Irp, IoStack, DeviceExtension, FALSE);
 }
 
 static NTSTATUS PciPdoWriteConfig(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PIO_STACK_LOCATION IoStack,
 				  IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    UNREFERENCED_PARAMETER(Irp);
-    UNREFERENCED_PARAMETER(IoStackLocation);
-    UNREFERENCED_PARAMETER(DeviceExtension);
-
-    UNIMPLEMENTED_DBGBREAK();
-    return STATUS_NOT_SUPPORTED;
+    return PciPdoReadWriteConfig(Irp, IoStack, DeviceExtension, TRUE);
 }
 
 static NTSTATUS PciPdoQueryDeviceState(IN PIRP Irp,

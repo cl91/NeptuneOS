@@ -1,4 +1,5 @@
 #include <wdmp.h>
+#include <pci.h>
 
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
@@ -332,4 +333,68 @@ NTAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
         KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
     }
     return TRUE;
+}
+
+static NTSTATUS IopReadWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
+					   IN BOOLEAN Write,
+					   IN OUT PVOID Buffer,
+					   IN ULONG Offset,
+					   IN OUT ULONG *Length)
+{
+    PAGED_CODE();
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    IO_STATUS_BLOCK IoStatusBlock;
+    PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP,
+					    DeviceObject,
+					    NULL,
+					    0,
+					    NULL,
+					    &Event,
+					    &IoStatusBlock);
+    if (Irp == NULL) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
+    if (Write) {
+        IoStack->MinorFunction = IRP_MN_WRITE_CONFIG;
+    } else {
+        IoStack->MinorFunction = IRP_MN_READ_CONFIG;
+    }
+    IoStack->Parameters.ReadWriteConfig.WhichSpace = PCI_WHICHSPACE_CONFIG;
+    IoStack->Parameters.ReadWriteConfig.Buffer = Buffer;
+    IoStack->Parameters.ReadWriteConfig.Offset = Offset;
+    IoStack->Parameters.ReadWriteConfig.Length = *Length;
+
+    NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+        Status = IoStatusBlock.Status;
+    }
+    *Length = Irp->IoStatus.Information;
+    return Status;
+}
+
+/*
+ * Read the PCI config data into the given buffer. The DeviceObject must be part
+ * of a PCI device stack.
+ */
+NTSTATUS IoReadPciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
+			      OUT PVOID Buffer,
+			      IN ULONG Offset,
+			      IN OUT ULONG *Length)
+{
+    return IopReadWritePciConfigSpace(DeviceObject, FALSE, Buffer, Offset, Length);
+}
+
+/*
+ * Write the PCI config data from the given buffer. The DeviceObject must be part
+ * of a PCI device stack.
+ */
+NTSTATUS IoWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
+			       IN PVOID Buffer,
+			       IN ULONG Offset,
+			       IN OUT ULONG *Length)
+{
+    return IopReadWritePciConfigSpace(DeviceObject, TRUE, Buffer, Offset, Length);
 }

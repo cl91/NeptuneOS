@@ -11,9 +11,9 @@
 
 /* FUNCTIONS ******************************************************************/
 
-static NTSTATUS InitializeConfiguration(_In_ PPORT_CONFIGURATION_INFORMATION PortConfig,
-					_In_ PHW_INITIALIZATION_DATA InitData,
-					_In_ ULONG BusNumber, _In_ ULONG SlotNumber)
+static NTSTATUS InitializeConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortConfig,
+					IN PHW_INITIALIZATION_DATA InitData,
+					IN ULONG BusNumber, IN ULONG SlotNumber)
 {
     PCONFIGURATION_INFORMATION ConfigInfo;
     ULONG i;
@@ -78,9 +78,9 @@ static NTSTATUS InitializeConfiguration(_In_ PPORT_CONFIGURATION_INFORMATION Por
     return STATUS_SUCCESS;
 }
 
-static VOID AssignResourcesToConfiguration(
-    _In_ PPORT_CONFIGURATION_INFORMATION PortConfiguration,
-    _In_ PCM_RESOURCE_LIST ResourceList, _In_ ULONG NumberOfAccessRanges)
+static VOID AssignResourcesToConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortConfiguration,
+					   IN PCM_RESOURCE_LIST ResourceList,
+					   IN ULONG NumberOfAccessRanges)
 {
     PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
@@ -91,6 +91,7 @@ static VOID AssignResourcesToConfiguration(
 
     DPRINT1("AssignResourceToConfiguration(%p %p %u)\n", PortConfiguration, ResourceList,
 	    NumberOfAccessRanges);
+    assert(ResourceList);
 
     FullDescriptor = &ResourceList->List[0];
     for (i = 0; i < ResourceList->Count; i++) {
@@ -101,7 +102,7 @@ static VOID AssignResourcesToConfiguration(
 
 	    switch (PartialDescriptor->Type) {
 	    case CmResourceTypePort:
-		DPRINT1("Port: 0x%I64x (0x%x)\n", PartialDescriptor->Port.Start.QuadPart,
+		DPRINT1("Port: 0x%llx (0x%x)\n", PartialDescriptor->Port.Start.QuadPart,
 			PartialDescriptor->Port.Length);
 		if (RangeNumber < NumberOfAccessRanges) {
 		    AccessRange = &((*(PortConfiguration->AccessRanges))[RangeNumber]);
@@ -113,7 +114,7 @@ static VOID AssignResourcesToConfiguration(
 		break;
 
 	    case CmResourceTypeMemory:
-		DPRINT1("Memory: 0x%I64x (0x%x)\n",
+		DPRINT1("Memory: 0x%llx (0x%x)\n",
 			PartialDescriptor->Memory.Start.QuadPart,
 			PartialDescriptor->Memory.Length);
 		if (RangeNumber < NumberOfAccessRanges) {
@@ -204,24 +205,21 @@ static VOID AssignResourcesToConfiguration(
     }
 }
 
-NTSTATUS
-MiniportInitialize(_In_ PMINIPORT Miniport, _In_ PFDO_DEVICE_EXTENSION DeviceExtension,
-		   _In_ PHW_INITIALIZATION_DATA InitData)
+NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
+			    IN PFDO_DEVICE_EXTENSION DeviceExtension,
+			    IN PHW_INITIALIZATION_DATA InitData)
 {
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension;
-    ULONG Size;
-    NTSTATUS Status;
-
     DPRINT1("MiniportInitialize(%p %p %p)\n", Miniport, DeviceExtension, InitData);
 
     Miniport->DeviceExtension = DeviceExtension;
     Miniport->InitData = InitData;
 
     /* Calculate the miniport device extension size */
-    Size = sizeof(MINIPORT_DEVICE_EXTENSION) + Miniport->InitData->DeviceExtensionSize;
+    ULONG Size = sizeof(MINIPORT_DEVICE_EXTENSION) + Miniport->InitData->DeviceExtensionSize;
 
     /* Allocate and initialize the miniport device extension */
-    MiniportExtension = ExAllocatePoolWithTag(Size, TAG_MINIPORT_DATA);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension = ExAllocatePoolWithTag(Size,
+									 TAG_MINIPORT_DATA);
     if (MiniportExtension == NULL)
 	return STATUS_NO_MEMORY;
 
@@ -231,9 +229,9 @@ MiniportInitialize(_In_ PMINIPORT Miniport, _In_ PFDO_DEVICE_EXTENSION DeviceExt
     Miniport->MiniportExtension = MiniportExtension;
 
     /* Initialize the port configuration */
-    Status = InitializeConfiguration(&Miniport->PortConfig, InitData,
-				     DeviceExtension->BusNumber,
-				     DeviceExtension->SlotNumber);
+    NTSTATUS Status = InitializeConfiguration(&Miniport->PortConfig, InitData,
+					      DeviceExtension->BusNumber,
+					      DeviceExtension->SlotNumber);
     if (!NT_SUCCESS(Status))
 	return Status;
 
@@ -245,8 +243,7 @@ MiniportInitialize(_In_ PMINIPORT Miniport, _In_ PFDO_DEVICE_EXTENSION DeviceExt
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-MiniportFindAdapter(_In_ PMINIPORT Miniport)
+NTSTATUS MiniportFindAdapter(IN PMINIPORT Miniport)
 {
     BOOLEAN Reserved = FALSE;
     ULONG Result;
@@ -291,8 +288,7 @@ MiniportFindAdapter(_In_ PMINIPORT Miniport)
     return Status;
 }
 
-NTSTATUS
-MiniportHwInitialize(_In_ PMINIPORT Miniport)
+NTSTATUS MiniportHwInitialize(IN PMINIPORT Miniport)
 {
     BOOLEAN Result;
 
@@ -306,8 +302,7 @@ MiniportHwInitialize(_In_ PMINIPORT Miniport)
     return Result ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
-BOOLEAN
-MiniportHwInterrupt(_In_ PMINIPORT Miniport)
+BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport)
 {
     BOOLEAN Result;
 
@@ -320,8 +315,8 @@ MiniportHwInterrupt(_In_ PMINIPORT Miniport)
     return Result;
 }
 
-BOOLEAN
-MiniportStartIo(_In_ PMINIPORT Miniport, _In_ PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN MiniportStartIo(IN PMINIPORT Miniport,
+			IN PSCSI_REQUEST_BLOCK Srb)
 {
     BOOLEAN Result;
 
@@ -333,5 +328,3 @@ MiniportStartIo(_In_ PMINIPORT Miniport, _In_ PSCSI_REQUEST_BLOCK Srb)
 
     return Result;
 }
-
-/* EOF */

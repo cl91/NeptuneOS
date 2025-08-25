@@ -269,6 +269,7 @@ typedef struct _PCI_PDO_EXTENSION {
     BOOLEAN IoSpaceUnderNativeIdeControl;
     BOOLEAN OnDebugPath;
     BOOLEAN IoSpaceNotRequired;
+    PCI_HARDWARE_INTERFACE InterfaceType;
     PCI_POWER_STATE PowerState;
     PCI_HEADER_TYPE_DEPENDENT Dependent;
     ULONGLONG HackFlags;

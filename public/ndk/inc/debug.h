@@ -115,7 +115,7 @@ FORCEINLINE ULONG RtlAssert(IN PVOID FailedAssertion,
 #endif
 
 #ifndef _NTOSKRNL_
-#define UNIMPLEMENTED         __NOTICE(WARNING, "is UNIMPLEMENTED!\n")
+#define UNIMPLEMENTED         __NOTICE(WARNING, "%s is UNIMPLEMENTED!\n", __func__)
 #define UNIMPLEMENTED_ONCE    do { static int bWarnedOnce = 0; if (!bWarnedOnce) { bWarnedOnce++; UNIMPLEMENTED; } } while (0)
 #endif
 

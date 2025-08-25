@@ -49,7 +49,7 @@ static ULONG GetResourceListSize(PCM_RESOURCE_LIST ResourceList)
 
     Size = sizeof(CM_RESOURCE_LIST);
     if (ResourceList->Count == 0) {
-	DPRINT1("Size: 0x%zx (%u)\n", Size, Size);
+	DPRINT1("Size: 0x%x (%u)\n", Size, Size);
 	return Size;
     }
 
@@ -64,7 +64,7 @@ static ULONG GetResourceListSize(PCM_RESOURCE_LIST ResourceList)
 	Size += (Descriptor->PartialResourceList.Count - 1) *
 	    sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
 
-    DPRINT1("Size: 0x%zx (%u)\n", Size, Size);
+    DPRINT1("Size: 0x%x (%u)\n", Size, Size);
     return Size;
 }
 
@@ -111,7 +111,7 @@ BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
 
 	    switch (PartialDescriptorA->Type) {
 	    case CmResourceTypePort:
-		DPRINT1("Port: 0x%I64x (0x%x)\n", PartialDescriptorA->Port.Start.QuadPart,
+		DPRINT1("Port: 0x%llx (0x%x)\n", PartialDescriptorA->Port.Start.QuadPart,
 			PartialDescriptorA->Port.Length);
 		if (InIoSpace &&
 		    IoAddress.QuadPart >= PartialDescriptorA->Port.Start.QuadPart &&
@@ -126,7 +126,7 @@ BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
 		break;
 
 	    case CmResourceTypeMemory:
-		DPRINT1("Memory: 0x%I64x (0x%x)\n",
+		DPRINT1("Memory: 0x%llx (0x%x)\n",
 			PartialDescriptorA->Memory.Start.QuadPart,
 			PartialDescriptorA->Memory.Length);
 		if (!InIoSpace &&

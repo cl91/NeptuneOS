@@ -577,7 +577,7 @@ out:
 
     ASSERT(ReqList->ListSize == (ULONG_PTR)Res - (ULONG_PTR)ReqList);
     DPRINT1("Final resource count == %d\n",
-	    Res - ReqList->List[0].Descriptors);
+	    (ULONG)(Res - ReqList->List[0].Descriptors));
     ASSERT((Res - ReqList->List[0].Descriptors) != 0);
     *Buffer = ReqList;
 
@@ -1113,6 +1113,24 @@ static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 		    DPRINT1("AGP ID: %x\n", TargetAgpCapabilityId);
 		    PdoExtension->TargetAgpCapabilityId = TargetAgpCapabilityId;
 		}
+	    }
+
+	    /* Check if the device is a PCI express device. */
+	    PCI_CAPABILITIES_HEADER CapHeader = {};
+	    if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+					PCI_CAPABILITY_ID_PCI_EXPRESS, &CapHeader,
+					sizeof(PCI_CAPABILITIES_HEADER))) {
+		assert(CapHeader.CapabilityID == PCI_CAPABILITY_ID_PCI_EXPRESS);
+		PdoExtension->InterfaceType = PciExpress;
+	    } else if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+					PCI_CAPABILITY_ID_PCIX, &CapHeader,
+					sizeof(PCI_CAPABILITIES_HEADER))) {
+		assert(CapHeader.CapabilityID == PCI_CAPABILITY_ID_PCIX);
+		/* We won't bother detecting whether it's PCI-X Mode1 or Mode2.
+		 * PCI-X is incredibly rare as of 2025, and Mode2 is even rarer. */
+		PdoExtension->InterfaceType = PciXMode1;
+	    } else {
+		PdoExtension->InterfaceType = PciConventional;
 	    }
 
 	    /* Check for devices that are known not to have proper power management */

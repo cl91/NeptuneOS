@@ -88,6 +88,8 @@ typedef struct _PCI_COMMON_CONFIG {
 } PCI_COMMON_CONFIG, *PPCI_COMMON_CONFIG;
 #define PCI_COMMON_HDR_LENGTH (FIELD_OFFSET(PCI_COMMON_CONFIG, DeviceSpecific))
 
+C_ASSERT(sizeof(PCI_COMMON_CONFIG) == 256);
+
 #define PCI_EXTENDED_CONFIG_LENGTH               0x1000
 
 #define PCI_MAX_DEVICES        32
@@ -1066,3 +1068,15 @@ typedef struct _PCI_CARD_DESCRIPTOR {
     USHORT SubsystemID;
     USHORT Reserved;
 } PCI_CARD_DESCRIPTOR, *PPCI_CARD_DESCRIPTOR;
+
+/*
+ * Helper functions to read or write the PCI config space
+ */
+NTSTATUS IoReadPciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
+			      OUT PVOID Buffer,
+			      IN ULONG Offset,
+			      IN OUT ULONG *Length);
+NTSTATUS IoWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
+			       IN PVOID Buffer,
+			       IN ULONG Offset,
+			       IN OUT ULONG *Length);

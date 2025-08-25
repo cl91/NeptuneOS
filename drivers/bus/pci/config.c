@@ -35,8 +35,11 @@ UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
 #define CFG_SHIFT	12
 
 static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
-				    IN PCI_SLOT_NUMBER Slot, IN PCHAR Buffer,
-				    IN ULONG Offset, IN ULONG Length, IN BOOLEAN Read)
+				    IN PCI_SLOT_NUMBER Slot,
+				    IN PCHAR Buffer,
+				    IN ULONG Offset,
+				    IN ULONG Length,
+				    IN BOOLEAN Read)
 {
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(DeviceExtension->BusRootFdoExtension));
@@ -71,19 +74,25 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     }
 }
 
-VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
-			  IN ULONG Offset, IN ULONG Length)
+VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
+			  IN PVOID Buffer,
+			  IN ULONG Offset,
+			  IN ULONG Length)
 {
     /* Call the generic worker function */
-    PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension, DeviceExtension->Slot,
+    PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension,
+			    DeviceExtension->Slot,
 			    Buffer, Offset, Length, FALSE);
 }
 
-VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
-			 IN ULONG Offset, IN ULONG Length)
+VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
+			 IN PVOID Buffer,
+			 IN ULONG Offset,
+			 IN ULONG Length)
 {
     /* Call the generic worker function */
-    PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension, DeviceExtension->Slot,
+    PciReadWriteConfigSpace(DeviceExtension->ParentFdoExtension,
+			    DeviceExtension->Slot,
 			    Buffer, Offset, Length, TRUE);
 }
 

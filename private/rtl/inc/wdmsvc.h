@@ -313,6 +313,11 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 			  * the non-translated list */
 	} StartDevice;
 	struct {
+	    ULONG WhichSpace;
+	    ULONG Offset;
+	} ReadWriteConfig;  /* For write, client buffer is in InputBuffer.
+			     * For read, client buffer is in OutputBuffer. */
+	struct {
 	    GLOBAL_HANDLE StorageDevice;
 	    IO_DEVICE_INFO StorageDeviceInfo;
 	} MountVolume;
@@ -739,6 +744,13 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		DbgPrint("    PNP  START-DEVICE  ResourceListSize %d TranslatedListSize %d\n",
 			 IoPacket->Request.StartDevice.ResourceListSize,
 			 IoPacket->Request.StartDevice.TranslatedListSize);
+		break;
+	    case IRP_MN_READ_CONFIG:
+	    case IRP_MN_WRITE_CONFIG:
+		DbgPrint("    PNP  %s-CONFIG  WhichSpace %d  Offset 0x%x\n",
+			 IoPacket->Request.MinorFunction == IRP_MN_READ_CONFIG ? "READ" : "WRITE",
+			 IoPacket->Request.ReadWriteConfig.WhichSpace,
+			 IoPacket->Request.ReadWriteConfig.Offset);
 		break;
 	    default:
 		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");

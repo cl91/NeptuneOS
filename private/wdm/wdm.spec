@@ -41,6 +41,8 @@
 @ stdcall IoAcquireInterruptMutex(ptr)
 @ stdcall IoReleaseInterruptMutex(ptr long)
 @ stdcall IoGetConfigurationInformation()
+@ stdcall IoReadPciConfigSpace(ptr ptr long ptr)
+@ stdcall IoWritePciConfigSpace(ptr ptr long ptr)
 @ stdcall IoReadPartitionTableEx(ptr ptr)
 @ stdcall IoReadDiskSignature(ptr long ptr)
 @ stdcall IoRegisterPlugPlayNotification(long long ptr ptr ptr ptr ptr)
