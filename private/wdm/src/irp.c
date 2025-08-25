@@ -176,6 +176,8 @@
  */
 
 #include <wdmp.h>
+#include <scsi.h>
+#include <srb.h>
 
 PIO_PACKET IopIncomingIoPacketBuffer;
 PIO_PACKET IopOutgoingIoPacketBuffer;
@@ -1460,13 +1462,48 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	break;
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
-	DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x OutputBufferLength 0x%x "
-		 "InputBufferLength 0x%x Type3InputBuffer %p\n",
-		 Stack->MajorFunction == IRP_MJ_DEVICE_CONTROL ? "" : "INTERNAL-",
-		 Stack->Parameters.DeviceIoControl.IoControlCode,
-		 Stack->Parameters.DeviceIoControl.OutputBufferLength,
-		 Stack->Parameters.DeviceIoControl.InputBufferLength,
-		 Stack->Parameters.DeviceIoControl.Type3InputBuffer);
+	if ((DEVICE_TYPE_FROM_CTL_CODE(Stack->Parameters.DeviceIoControl.IoControlCode) ==
+	     FILE_DEVICE_SCSI) && Stack->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
+	    DbgPrint("    SCSI  SRB %p Length 0x%x Function 0x%x SrbStatus 0x%x ScsiStatus 0x%x\n"
+		     "      PathId 0x%x TargetId 0x%x Lun 0x%x QueueTag 0x%x QueueAction 0x%x\n"
+		     "      CdbLength 0x%x SenseInfoBufferLength 0x%x SrbFlags 0x%x\n"
+		     "      DataTransferLength 0x%x TimeOutValue 0x%x DataBuffer %p\n"
+		     "      SenseInfoBuffer %p NextSrb %p OriginalRequest %p SrbExtension %p\n"
+		     "      InternalStatus 0x%x CDB 0x%08x 0x%08x 0x%08x 0x%08x\n",
+		     Stack->Parameters.Scsi.Srb,
+		     Stack->Parameters.Scsi.Srb->Length,
+		     Stack->Parameters.Scsi.Srb->Function,
+		     Stack->Parameters.Scsi.Srb->SrbStatus,
+		     Stack->Parameters.Scsi.Srb->ScsiStatus,
+		     Stack->Parameters.Scsi.Srb->PathId,
+		     Stack->Parameters.Scsi.Srb->TargetId,
+		     Stack->Parameters.Scsi.Srb->Lun,
+		     Stack->Parameters.Scsi.Srb->QueueTag,
+		     Stack->Parameters.Scsi.Srb->QueueAction,
+		     Stack->Parameters.Scsi.Srb->CdbLength,
+		     Stack->Parameters.Scsi.Srb->SenseInfoBufferLength,
+		     Stack->Parameters.Scsi.Srb->SrbFlags,
+		     Stack->Parameters.Scsi.Srb->DataTransferLength,
+		     Stack->Parameters.Scsi.Srb->TimeOutValue,
+		     Stack->Parameters.Scsi.Srb->DataBuffer,
+		     Stack->Parameters.Scsi.Srb->SenseInfoBuffer,
+		     Stack->Parameters.Scsi.Srb->NextSrb,
+		     Stack->Parameters.Scsi.Srb->OriginalRequest,
+		     Stack->Parameters.Scsi.Srb->SrbExtension,
+		     Stack->Parameters.Scsi.Srb->InternalStatus,
+		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[0],
+		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[1],
+		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[2],
+		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[3]);
+	} else {
+	    DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x OutputBufferLength 0x%x "
+		     "InputBufferLength 0x%x Type3InputBuffer %p\n",
+		     Stack->MajorFunction == IRP_MJ_DEVICE_CONTROL ? "" : "INTERNAL-",
+		     Stack->Parameters.DeviceIoControl.IoControlCode,
+		     Stack->Parameters.DeviceIoControl.OutputBufferLength,
+		     Stack->Parameters.DeviceIoControl.InputBufferLength,
+		     Stack->Parameters.DeviceIoControl.Type3InputBuffer);
+	}
 	break;
     case IRP_MJ_FILE_SYSTEM_CONTROL:
 	DbgPrint("    FILE-SYSTEM-CONTROL  ");
