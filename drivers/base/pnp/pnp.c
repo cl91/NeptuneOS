@@ -757,6 +757,8 @@ static NTSTATUS PnpBuildDeviceRequirementLists(IN PPNP_DEVICE PnpDevice)
 	return STATUS_NO_MEMORY;
     }
     ResList->ListSize = Size;
+    ResList->InterfaceType = PNPBus;
+    ResList->AlternativeLists = 1;
     ResList->List[0].Version = 1;
     ResList->List[0].Revision = 1;
     ResList->List[0].Count = PnpDevice->ResourceDescriptorCount;
@@ -789,6 +791,7 @@ static NTSTATUS PnpRootQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObject,
     }
     Dest->ListSize = ListSize;
     Dest->InterfaceType = Internal;
+    Dest->AlternativeLists = 1;
     Dest->List[0].Count = 1;
     Dest->List[0].Version = 1;
     Dest->List[0].Revision = 1;

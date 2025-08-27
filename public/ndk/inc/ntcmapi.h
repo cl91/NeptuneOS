@@ -287,14 +287,6 @@ typedef enum _CM_SHARE_DISPOSITION {
 
 #define CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN   ((ULONG)-2)
 
-//
-// NtInitializeRegistry Flags
-//
-#define CM_BOOT_FLAG_SMSS                 0x0000
-#define CM_BOOT_FLAG_SETUP                0x0001
-#define CM_BOOT_FLAG_ACCEPTED             0x0002
-#define CM_BOOT_FLAG_MAX                  (CM_BOOT_FLAG_ACCEPTED + 999)
-
 /* KEY_VALUE_Xxx.Type */
 #define REG_NONE                           0
 #define REG_SZ                             1
@@ -1149,4 +1141,217 @@ NTAPI NTSYSAPI NTSTATUS NtSetValueKeyA(IN HANDLE KeyHandle,
 
 NTAPI NTSYSAPI NTSTATUS NtUnloadKey(IN POBJECT_ATTRIBUTES KeyObjectAttributes);
 
-#endif	/* NTOSKRNL */
+#endif	/* !NTOSKRNL */
+
+#if defined(_NTOSKRNL_) || defined(_NTDDK_)
+
+/*
+ * Helper functions for printing the IO resource requirements list
+ */
+
+FORCEINLINE PCHAR CmDbgResourceTypeToText(IN UCHAR Type)
+{
+    /* What kind of resource it this? */
+    switch (Type) {
+	/* Pick the correct identifier string based on the type */
+    case CmResourceTypeDeviceSpecific:
+	return "CmResourceTypeDeviceSpecific";
+    case CmResourceTypePort:
+	return "CmResourceTypePort";
+    case CmResourceTypeInterrupt:
+	return "CmResourceTypeInterrupt";
+    case CmResourceTypeMemory:
+	return "CmResourceTypeMemory";
+    case CmResourceTypeDma:
+	return "CmResourceTypeDma";
+    case CmResourceTypeBusNumber:
+	return "CmResourceTypeBusNumber";
+    case CmResourceTypeConfigData:
+	return "CmResourceTypeConfigData";
+    case CmResourceTypeDevicePrivate:
+	return "CmResourceTypeDevicePrivate";
+    case CmResourceTypePcCardConfig:
+	return "CmResourceTypePcCardConfig";
+    default:
+	return "*** INVALID RESOURCE TYPE ***";
+    }
+}
+
+FORCEINLINE PCSTR IoDbgResourceOptionToStr(ULONG Option)
+{
+    if (!Option) {
+	return "required";
+    } else if (Option & IO_RESOURCE_PREFERRED) {
+	return "preferred";
+    } else if (Option & IO_RESOURCE_ALTERNATIVE) {
+	return "alternative";
+    } else {
+	return "invalid";
+    }
+}
+
+FORCEINLINE VOID IoDbgPrintResourceDescriptor(IN PIO_RESOURCE_DESCRIPTOR Descriptor)
+{
+    /* Print out the header */
+    DbgPrint("     IoResource Descriptor dump:  Descriptor @ %p\n", Descriptor);
+    DbgPrint("        Option           = 0x%x (%s)\n", Descriptor->Option,
+	     IoDbgResourceOptionToStr(Descriptor->Option));
+    DbgPrint("        Type             = %u (%s)\n", Descriptor->Type,
+	     CmDbgResourceTypeToText(Descriptor->Type));
+    DbgPrint("        ShareDisposition = %u\n", Descriptor->ShareDisposition);
+    DbgPrint("        Flags            = 0x%04X\n", Descriptor->Flags);
+
+    /* Loop private data */
+    PULONG Data = Descriptor->DevicePrivate.Data;
+    for (ULONG i = 0; i < 6; i += 3) {
+	/* Dump it in 32-bit triplets */
+	DbgPrint("        Data[%u] = %08x  %08x  %08x\n", i, Data[i], Data[i+1], Data[i+2]);
+    }
+}
+
+FORCEINLINE VOID IoDbgPrintResouceRequirementsList(IN PIO_RESOURCE_REQUIREMENTS_LIST ReqList)
+{
+    /* Make sure there's a list */
+    if (!ReqList)
+	return;
+
+    /* Grab the main list and the alternates as well */
+    ULONG AlternativeLists = ReqList->AlternativeLists;
+    PIO_RESOURCE_LIST List = ReqList->List;
+
+    /* Print out the initial header*/
+    DbgPrint("  IO_RESOURCE_REQUIREMENTS_LIST:\n");
+    DbgPrint("     InterfaceType        %d\n", ReqList->InterfaceType);
+    DbgPrint("     BusNumber            0x%x\n", ReqList->BusNumber);
+    if (ReqList->InterfaceType == PCIBus) {
+	DbgPrint("     SlotNumber           %d (0x%x), (d/f = 0x%x/0x%x)\n",
+		ReqList->SlotNumber, ReqList->SlotNumber,
+		((PCI_SLOT_NUMBER *)&ReqList->SlotNumber)->Bits.DeviceNumber,
+		((PCI_SLOT_NUMBER *)&ReqList->SlotNumber)->Bits.FunctionNumber);
+    } else {
+	DbgPrint("     SlotNumber           %d (0x%x)\n",
+		ReqList->SlotNumber, ReqList->SlotNumber);
+    }
+    DbgPrint("     AlternativeLists     %u\n", AlternativeLists);
+
+    /* Scan alternative lists */
+    for (ULONG i = 0; i < AlternativeLists; i++) {
+	/* Get the descriptor array, and the count of descriptors */
+	PIO_RESOURCE_DESCRIPTOR Descriptor = List->Descriptors;
+	ULONG Count = List->Count;
+
+	/* Print out each descriptor */
+	DbgPrint("     List[%u].Count = %u\n", i, Count);
+	while (Count--)
+	    IoDbgPrintResourceDescriptor(Descriptor++);
+
+	/* Should've reached a new list now */
+	List = (PIO_RESOURCE_LIST)Descriptor;
+    }
+
+    /* Terminate the dump */
+    DbgPrint("\n");
+}
+
+/*
+ * Usage note:
+ *
+ * As there can be only one variable-sized CM_PARTIAL_RESOURCE_DESCRIPTOR
+ * in the list (and it must be the last one), a correct looping through resources
+ * can look like this:
+ *
+ *   PCM_FULL_RESOURCE_DESCRIPTOR FullDesc = &ResourceList->List[0];
+ *   for (ULONG i = 0; i < ResourceList->Count;
+ *        i++, FullDesc = CmiGetNextResourceDescriptor(FullDesc)) {
+ *       for (ULONG j = 0; j < FullDesc->PartialResourceList.Count; j++) {
+ *           PartialDesc = &FullDesc->PartialResourceList.PartialDescriptors[j];
+ *            // work with PartialDesc
+ *       }
+ *   }
+ */
+FORCEINLINE PCM_PARTIAL_RESOURCE_DESCRIPTOR
+CmiGetNextPartialDescriptor(IN CONST CM_PARTIAL_RESOURCE_DESCRIPTOR *PartialDescriptor)
+{
+    const CM_PARTIAL_RESOURCE_DESCRIPTOR *NextDescriptor;
+
+    /* Assume the descriptors are the fixed size ones */
+    NextDescriptor = PartialDescriptor + 1;
+
+    /* But check if this is actually a variable-sized descriptor */
+    if (PartialDescriptor->Type == CmResourceTypeDeviceSpecific) {
+	/* Add the size of the variable section as well */
+	NextDescriptor =
+	    (PCM_PARTIAL_RESOURCE_DESCRIPTOR)((ULONG_PTR)NextDescriptor +
+					      PartialDescriptor->DeviceSpecificData.DataSize);
+	ASSERT(NextDescriptor >= PartialDescriptor + 1);
+    }
+
+    /* Now the correct pointer has been computed, return it */
+    return (PCM_PARTIAL_RESOURCE_DESCRIPTOR)NextDescriptor;
+}
+
+FORCEINLINE PCM_FULL_RESOURCE_DESCRIPTOR
+CmiGetNextResourceDescriptor(IN CONST CM_FULL_RESOURCE_DESCRIPTOR *ResourceDescriptor)
+{
+    const CM_PARTIAL_RESOURCE_DESCRIPTOR *LastPartialDescriptor;
+
+    /* Calculate the location of the last partial descriptor, which can have a
+       variable size! */
+    LastPartialDescriptor =
+	&ResourceDescriptor->PartialResourceList
+	     .PartialDescriptors[ResourceDescriptor->PartialResourceList.Count - 1];
+
+    /* Next full resource descriptor follows the last partial descriptor */
+    return (PCM_FULL_RESOURCE_DESCRIPTOR)CmiGetNextPartialDescriptor(
+	LastPartialDescriptor);
+}
+
+FORCEINLINE VOID CmDbgPrintResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Res)
+{
+    /* Dump all the data in the partial */
+    DbgPrint("     Partial Resource Descriptor @ %p\n", Res);
+    DbgPrint("        Type             = %u (%s)\n", Res->Type,
+	     CmDbgResourceTypeToText(Res->Type));
+    DbgPrint("        ShareDisposition = %u\n", Res->ShareDisposition);
+    DbgPrint("        Flags            = 0x%04X\n", Res->Flags);
+    DbgPrint("        Data[%d] = %08x  %08x  %08x\n", 0,
+	     Res->Generic.Start.LowPart,
+	     Res->Generic.Start.HighPart, Res->Generic.Length);
+}
+
+FORCEINLINE VOID CmDbgPrintResourceList(IN PCM_RESOURCE_LIST PartialList)
+{
+    /* Make sure there's something to dump */
+    if (!PartialList)
+	return;
+
+    /* Get the full list count */
+    ULONG ListCount = PartialList->Count;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor = PartialList->List;
+    DbgPrint("  CM_RESOURCE_LIST (List Count = %u)\n",
+	     PartialList->Count);
+
+    /* Loop full list */
+    for (ULONG i = 0; i < ListCount; i++) {
+	/* Loop full descriptor */
+	DbgPrint("     InterfaceType        %d\n", FullDescriptor->InterfaceType);
+	DbgPrint("     BusNumber            0x%x\n", FullDescriptor->BusNumber);
+
+	/* Get partial count and loop partials */
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor =
+	    FullDescriptor->PartialResourceList.PartialDescriptors;
+	for (ULONG Count = FullDescriptor->PartialResourceList.Count; Count; Count--) {
+	    /* Print each partial resource descriptor */
+	    CmDbgPrintResourceDescriptor(PartialDescriptor);
+	    PartialDescriptor = CmiGetNextPartialDescriptor(PartialDescriptor);
+	}
+
+	/* Go to the next full descriptor */
+	FullDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)PartialDescriptor;
+    }
+
+    /* Done printing data */
+    DbgPrint("\n");
+}
+
+#endif	/* defined(_NTOSKRNL_) || defined(_NTDDK_) */

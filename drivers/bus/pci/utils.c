@@ -325,6 +325,21 @@ VOID PciInsertEntryAtHead(IN PSINGLE_LIST_ENTRY ListHead,
     ListHead->Next = Entry;
 }
 
+VOID PciRemoveEntryFromList(IN PSINGLE_LIST_ENTRY ListHead,
+			    IN PSINGLE_LIST_ENTRY Entry)
+{
+    /* We cannot remove the list head. */
+    assert(ListHead != Entry);
+    for (PSINGLE_LIST_ENTRY Prev = ListHead; Prev; Prev = Prev->Next) {
+        if (Prev->Next == Entry) {
+	    Prev->Next = Entry->Next;
+	    Entry->Next = NULL;
+        }
+    }
+    /* If we got here, Entry was not part of the list, which is an error. */
+    assert(FALSE);
+}
+
 NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
 		      IN PVOID InputBuffer, IN ULONG InputBufferLength,
 		      IN PVOID OutputBuffer, IN ULONG OutputBufferLength)
@@ -554,8 +569,10 @@ NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 }
 
 UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
-			      IN UCHAR Offset, IN ULONG CapabilityId,
-			      OUT PPCI_CAPABILITIES_HEADER Buffer, IN ULONG Length)
+			      IN UCHAR Offset,
+			      IN ULONG CapabilityId,
+			      OUT PPCI_CAPABILITIES_HEADER Buffer,
+			      IN ULONG Length)
 {
     ULONG CapabilityCount = 0;
 
@@ -579,16 +596,15 @@ UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
 			    sizeof(PCI_CAPABILITIES_HEADER));
 
 	/* Check if this is the capability being looked up */
-	if ((Buffer->CapabilityID == CapabilityId) || !(CapabilityId)) {
+	if ((Buffer->CapabilityID == CapabilityId) || !CapabilityId) {
 	    /* Check if was at a valid offset and length */
-	    if ((Offset) && (Length > sizeof(PCI_CAPABILITIES_HEADER))) {
+	    if (Offset && (Length > sizeof(PCI_CAPABILITIES_HEADER))) {
 		/* Sanity check */
 		ASSERT(Length <= (sizeof(PCI_COMMON_CONFIG) - Offset));
 
 		/* Now read the whole capability data into the buffer */
 		PciReadDeviceConfig(DeviceExtension,
-				    (PVOID)((ULONG_PTR)Buffer +
-					    sizeof(PCI_CAPABILITIES_HEADER)),
+				    (PCHAR)Buffer + sizeof(PCI_CAPABILITIES_HEADER),
 				    Offset + sizeof(PCI_CAPABILITIES_HEADER),
 				    Length - sizeof(PCI_CAPABILITIES_HEADER));
 	    }

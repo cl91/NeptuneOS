@@ -12,7 +12,7 @@
 
 /* FUNCTIONS ******************************************************************/
 
-ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
+static ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is32Bit;
     ULONG Base, IoBase;
@@ -36,7 +36,7 @@ ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
     return IoBase;
 }
 
-ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
+static ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is32Bit;
     ULONG Limit, IoLimit;
@@ -60,7 +60,7 @@ ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
     return IoLimit | 0xFFF;
 }
 
-ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
+static ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
 {
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
@@ -68,7 +68,7 @@ ULONG PciBridgeMemoryBase(IN PPCI_COMMON_HEADER PciData)
     return (PciData->Type1.MemoryBase << 16);
 }
 
-ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
+static ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
 {
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
@@ -76,7 +76,7 @@ ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
     return (PciData->Type1.MemoryLimit << 16) | 0xFFFFF;
 }
 
-PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
+static PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is64Bit;
     LARGE_INTEGER Base;
@@ -100,7 +100,7 @@ PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
     return Base;
 }
 
-PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciData)
+static PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN Is64Bit;
     LARGE_INTEGER Limit;
@@ -124,7 +124,7 @@ PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciData)
     return Limit;
 }
 
-ULONG PciBridgeMemoryWorstCaseAlignment(IN ULONG Length)
+static ULONG PciBridgeMemoryWorstCaseAlignment(IN ULONG Length)
 {
     ULONG Alignment;
     ASSERT(Length != 0);
@@ -140,13 +140,13 @@ ULONG PciBridgeMemoryWorstCaseAlignment(IN ULONG Length)
     return Alignment;
 }
 
-BOOLEAN PciBridgeIsPositiveDecode(IN PPCI_PDO_EXTENSION PdoExtension)
+static BOOLEAN PciBridgeIsPositiveDecode(IN PPCI_PDO_EXTENSION PdoExtension)
 {
     /* Undocumented ACPI Method PDEC to get positive decode settings */
     return PciIsSlotPresentInParentMethod(PdoExtension, 'CEDP');
 }
 
-BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
+static BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER Current, PciData;
     PPCI_PDO_EXTENSION PdoExtension;
@@ -447,7 +447,7 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	for (i = PCI_TYPE1_ADDRESSES; i < 5; i++) {
 	    /* No 64-bit memory addresses, and set the address to 0 to begin */
 	    MemoryLimit.HighPart = 0;
-	    (&Limit[i])->Port.MinimumAddress.QuadPart = 0;
+	    Limit[i].Port.MinimumAddress.QuadPart = 0;
 
 	    /* Are we getting the I/O limit? */
 	    if (i == 2) {
@@ -457,39 +457,39 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		MemoryLimit.LowPart = PciBridgeIoLimit(Working);
 
 		/* Build a descriptor for this limit */
-		(&Limit[i])->Type = CmResourceTypePort;
-		(&Limit[i])->Flags = CM_RESOURCE_PORT_WINDOW_DECODE |
+		Limit[i].Type = CmResourceTypePort;
+		Limit[i].Flags = CM_RESOURCE_PORT_WINDOW_DECODE |
 		    CM_RESOURCE_PORT_POSITIVE_DECODE;
-		(&Limit[i])->Port.Alignment = 0x1000;
-		(&Limit[i])->Port.MinimumAddress.QuadPart = 0;
-		(&Limit[i])->Port.MaximumAddress = MemoryLimit;
-		(&Limit[i])->Port.Length = 0;
+		Limit[i].Port.Alignment = 0x1000;
+		Limit[i].Port.MinimumAddress.QuadPart = 0;
+		Limit[i].Port.MaximumAddress = MemoryLimit;
+		Limit[i].Port.Length = 0;
 	    } else if (i == 3) {
 		/* There should be a valid memory limit, get it */
 		ASSERT((Working->Type1.MemoryLimit & 0xF) == 0);
 		MemoryLimit.LowPart = PciBridgeMemoryLimit(Working);
 
 		/* Build the descriptor for it */
-		(&Limit[i])->Flags = CM_RESOURCE_MEMORY_READ_WRITE;
-		(&Limit[i])->Type = CmResourceTypeMemory;
-		(&Limit[i])->Memory.Alignment = 0x100000;
-		(&Limit[i])->Memory.MinimumAddress.QuadPart = 0;
-		(&Limit[i])->Memory.MaximumAddress = MemoryLimit;
-		(&Limit[i])->Memory.Length = 0;
+		Limit[i].Flags = CM_RESOURCE_MEMORY_READ_WRITE;
+		Limit[i].Type = CmResourceTypeMemory;
+		Limit[i].Memory.Alignment = 0x100000;
+		Limit[i].Memory.MinimumAddress.QuadPart = 0;
+		Limit[i].Memory.MaximumAddress = MemoryLimit;
+		Limit[i].Memory.Length = 0;
 	    } else if (Working->Type1.PrefetchLimit) {
 		/* Get the prefetch memory limit, if there is one */
 		MemoryLimit = PciBridgePrefetchMemoryLimit(Working);
 
 		/* Write out the descriptor for it */
-		(&Limit[i])->Flags = CM_RESOURCE_MEMORY_PREFETCHABLE;
-		(&Limit[i])->Type = CmResourceTypeMemory;
-		(&Limit[i])->Memory.Alignment = 0x100000;
-		(&Limit[i])->Memory.MinimumAddress.QuadPart = 0;
-		(&Limit[i])->Memory.MaximumAddress = MemoryLimit;
-		(&Limit[i])->Memory.Length = 0;
+		Limit[i].Flags = CM_RESOURCE_MEMORY_PREFETCHABLE;
+		Limit[i].Type = CmResourceTypeMemory;
+		Limit[i].Memory.Alignment = 0x100000;
+		Limit[i].Memory.MinimumAddress.QuadPart = 0;
+		Limit[i].Memory.MaximumAddress = MemoryLimit;
+		Limit[i].Memory.Length = 0;
 	    } else {
 		/* Blank descriptor */
-		(&Limit[i])->Type = CmResourceTypeNull;
+		Limit[i].Type = CmResourceTypeNull;
 	    }
 	}
     }
@@ -502,8 +502,7 @@ VOID PCIBridge_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 }
 
-VOID
-PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PPCI_COMMON_HEADER PciData, Current;
 
@@ -545,17 +544,18 @@ VOID PCIBridge_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
     Context->Current->Type1.SecondaryStatus = Context->SecondaryStatus;
 }
 
-VOID PCIBridge_GetAdditionalResourceDescriptors(
-    IN PPCI_CONFIGURATOR_CONTEXT Context, IN PPCI_COMMON_HEADER PciData,
-    IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
+VOID PCIBridge_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
+						IN PPCI_COMMON_HEADER PciData,
+						IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
     UNREFERENCED_PARAMETER(Context);
 
     /* Does this bridge have VGA decodes on it? */
     if (PciData->Type1.BridgeControl & PCI_ENABLE_BRIDGE_VGA) {
-	/* Build a private descriptor with 3 entries */
+	/* Build a private descriptor so PciComputeNewCurrentSettings
+	 * can skip the next 3 entries. */
 	IoDescriptor->Type = CmResourceTypeDevicePrivate;
-	IoDescriptor->DevicePrivate.Data[0] = 3;
+	IoDescriptor->DevicePrivate.Data[0] = PciLockResource;
 	IoDescriptor->DevicePrivate.Data[1] = 3;
 
 	/* First, the VGA range at 0xA0000 */

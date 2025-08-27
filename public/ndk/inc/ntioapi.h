@@ -3,6 +3,7 @@
 #include <ntdef.h>
 #include <ntseapi.h>
 #include <ntkeapi.h>
+#include <debug.h>
 
 #define METHOD_BUFFERED                   0
 #define METHOD_IN_DIRECT                  1
@@ -965,7 +966,6 @@ typedef enum _IRQ_GROUP_POLICY {
 
 /* IO_RESOURCE_DESCRIPTOR.Option */
 #define IO_RESOURCE_PREFERRED             0x01
-#define IO_RESOURCE_DEFAULT               0x02
 #define IO_RESOURCE_ALTERNATIVE           0x08
 
 typedef struct _IO_RESOURCE_DESCRIPTOR {
@@ -1047,6 +1047,19 @@ typedef struct _IO_RESOURCE_REQUIREMENTS_LIST {
 #define MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE			\
     (sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST))
 
+/*
+ * IO_RESOURCE_REQUIREMENTS_LIST::SlotNumber for the PCI bus
+ */
+typedef struct _PCI_SLOT_NUMBER {
+    union {
+	struct {
+	    ULONG DeviceNumber:5;
+	    ULONG FunctionNumber:3;
+	    ULONG Reserved:24;
+	} Bits;
+	ULONG AsULONG;
+    };
+} PCI_SLOT_NUMBER, *PPCI_SLOT_NUMBER;
 
 /*
  * System service interface of the IO manager.

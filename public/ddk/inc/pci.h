@@ -6,17 +6,6 @@
  * PCI/PCIE data types and routines
  */
 
-typedef struct _PCI_SLOT_NUMBER {
-    union {
-	struct {
-	    ULONG DeviceNumber:5;
-	    ULONG FunctionNumber:3;
-	    ULONG Reserved:24;
-	} Bits;
-	ULONG AsULONG;
-    };
-} PCI_SLOT_NUMBER, *PPCI_SLOT_NUMBER;
-
 #define PCI_TYPE0_ADDRESSES               6
 #define PCI_TYPE1_ADDRESSES               2
 #define PCI_TYPE2_ADDRESSES               5

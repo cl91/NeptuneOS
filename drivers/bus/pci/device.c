@@ -19,7 +19,7 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
     PPCI_FUNCTION_RESOURCES Resources;
     PULONG BarArray;
-    ULONG Bar, BarMask, i;
+    ULONG Bar, BarMask;
 
     /* Get variables from context */
     PciData = Context->Current;
@@ -27,7 +27,7 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
     /* Loop all the PCI BARs */
     BarArray = PciData->Type0.BaseAddresses;
-    for (i = 0; i <= PCI_TYPE0_ADDRESSES; i++) {
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
 	/* Get the resource descriptor and limit descriptor for this BAR */
 	CmDescriptor = &Resources->Current[i];
 	IoDescriptor = &Resources->Limit[i];
@@ -103,7 +103,6 @@ VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     PPCI_PDO_EXTENSION PdoExtension;
     PULONG BarArray;
     PIO_RESOURCE_DESCRIPTOR Limit;
-    ULONG i;
 
     /* Get pointers from the context */
     PdoExtension = Context->PdoExtension;
@@ -132,7 +131,7 @@ VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
          * The 968/868 claims to require 32 MB of memory, but it actually decodes
          * 64 MB of memory.
          */
-	for (i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
+	for (ULONG i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
 	    /* Find its 32MB RAM BAR */
 	    if (BarArray[i] == 0xFE000000) {
 		/* Increase it to 64MB to make sure nobody touches the buffer */
@@ -168,7 +167,7 @@ VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 
     /* Finally, process all the limit descriptors */
     Limit = PdoExtension->Resources->Limit;
-    for (i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
+    for (ULONG i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
 	/* And build them based on the BARs */
 	if (PciCreateIoDescriptorFromBarLimit(&Limit[i], &BarArray[i], FALSE)) {
 	    /* This function returns TRUE if the BAR was 64-bit, handle this */
@@ -179,7 +178,8 @@ VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     }
 
     /* Create the last descriptor based on the ROM address */
-    PciCreateIoDescriptorFromBarLimit(&Limit[i], &PciData->Type0.ROMBaseAddress, TRUE);
+    PciCreateIoDescriptorFromBarLimit(&Limit[PCI_TYPE0_ADDRESSES],
+				      &PciData->Type0.ROMBaseAddress, TRUE);
 }
 
 VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)

@@ -815,53 +815,153 @@ static NTSTATUS IopQueueQueryResourceRequirementsRequest(IN PTHREAD Thread,
     return IopCallDriver(Thread, &Irp, PendingIrp);
 }
 
-static inline CM_PARTIAL_RESOURCE_DESCRIPTOR IopAssignResource(IN IO_RESOURCE_DESCRIPTOR Desc)
+static inline ULONG IopGetPartialResourceCount(IN PIO_RESOURCE_DESCRIPTOR List,
+					       ULONG ListLength)
 {
-    CM_PARTIAL_RESOURCE_DESCRIPTOR Res = {
-	.Type = Desc.Type,
-	.ShareDisposition = Desc.ShareDisposition,
-	.Flags = Desc.Flags
-    };
-    switch (Res.Type) {
+    ULONG Count = 0;
+    for (ULONG i = 0; i < ListLength; i++) {
+	if (List[i].Option == 0) {
+	    Count++;
+	} else if (List[i].Option == IO_RESOURCE_PREFERRED) {
+	    Count++;
+	    /* Skip all of the following descriptors marked as alternative resources */
+	    while (i < ListLength) {
+		if (List[i+1].Option & IO_RESOURCE_ALTERNATIVE) {
+		    i++;
+		} else {
+		    break;
+		}
+	    }
+	} else {
+	    /* The client drivers should send the alternative descriptors after the
+	     * preferred descriptor, so we assert if it did not maintain this order. */
+	    assert(FALSE);
+	}
+    }
+    return Count;
+}
+
+/*
+ * Assign the IO resource given the preferred and alternative resource descriptor(s).
+ *
+ * For now we simply assign the first available slot.
+ * TODO: Implement proper resource arbitration.
+ */
+static inline NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR List,
+					 IN OUT ULONG *i,
+					 IN ULONG MaxIndex,
+					 OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial)
+{
+    PIO_RESOURCE_DESCRIPTOR Desc = &List[*i];
+    /* For now we skip the alternative descriptors. Eventually we need to implement
+     * proper resource arbitration by taking them into account. */
+    while ((Desc->Option & IO_RESOURCE_ALTERNATIVE) && (*i < MaxIndex)) {
+	DbgTrace("Skipping alternative descriptor %p (idx %d)\n", Desc, *i);
+	IoDbgPrintResourceDescriptor(Desc);
+	Desc++;
+	++*i;
+    }
+    assert(*i <= MaxIndex);
+    if (*i >= MaxIndex) {
+	return STATUS_INTERNAL_ERROR;
+    }
+    Partial->Type = Desc->Type;
+    Partial->ShareDisposition = Desc->ShareDisposition;
+    Partial->Flags = Desc->Flags;
+
+    switch (Desc->Type) {
     case CmResourceTypeNull:
 	/* Do nothing */
 	break;
 
     case CmResourceTypePort:
 	/* Assign the first available port */
-	Res.Port.Start = Desc.Port.MinimumAddress;
-	Res.Port.Length = Desc.Port.Length;
+	Partial->Port.Start = Desc->Port.MinimumAddress;
+	Partial->Port.Length = Desc->Port.Length;
 	break;
 
     case CmResourceTypeInterrupt:
 	/* Assign the first available interrupt vector */
-	Res.Interrupt.Level = Desc.Interrupt.MinimumVector;
-	Res.Interrupt.Vector = Desc.Interrupt.MinimumVector;
-	Res.Interrupt.Affinity = Desc.Interrupt.TargetedProcessors;
+	Partial->Interrupt.Level = Desc->Interrupt.MinimumVector;
+	Partial->Interrupt.Vector = Desc->Interrupt.MinimumVector;
+	Partial->Interrupt.Affinity = Desc->Interrupt.TargetedProcessors;
 	break;
 
     case CmResourceTypeDma:
 	/* Assign the first available DMA channel */
-	Res.Dma.Channel = Desc.Dma.MinimumChannel;
-	Res.Dma.Port = 0;
+	Partial->Dma.Channel = Desc->Dma.MinimumChannel;
+	Partial->Dma.Port = 0;
 	break;
 
     case CmResourceTypeMemory:
 	/* Assign the first available memory-mapped IO region */
-	Res.Memory.Start = Desc.Memory.MinimumAddress;
-	Res.Memory.Length = Desc.Memory.Length;
+	Partial->Memory.Start = Desc->Memory.MinimumAddress;
+	Partial->Memory.Length = Desc->Memory.Length;
 	break;
 
     case CmResourceTypeBusNumber:
 	/* Assign the first available bus number */
-	Res.BusNumber.Start = Desc.BusNumber.MinBusNumber;
-	Res.BusNumber.Length = Desc.BusNumber.Length;
+	Partial->BusNumber.Start = Desc->BusNumber.MinBusNumber;
+	Partial->BusNumber.Length = Desc->BusNumber.Length;
+	break;
+
+    case CmResourceTypeDevicePrivate:
+	/* Pass the device private verbatim */
+	RtlCopyMemory(&Partial->DevicePrivate, &Desc->DevicePrivate,
+		      sizeof(Desc->DevicePrivate));
 	break;
 
     default:
 	assert(FALSE);
     }
-    return Res;
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * Assign resources for the entire IO_RESOURCE_LIST.
+ */
+static NTSTATUS IopAssignResourcesForList(IN PDEVICE_NODE DeviceNode,
+					  IN PIO_RESOURCE_REQUIREMENTS_LIST Header,
+					  IN OUT PIO_RESOURCE_LIST *pResList)
+{
+    assert(pResList);
+    PIO_RESOURCE_LIST ResList = *pResList;
+    assert(ResList);
+    assert(ResList->Count);
+    *pResList = (PVOID)&ResList->Descriptors[ResList->Count];
+    /* Allocate the CM_RESOURCE_LIST. Note since the resource requirements list
+     * can have both preferred resources and alternative resources, the resource
+     * count in the CM_RESOURCE_LIST may be less than the number of IO requirement
+     * descriptors supplied by the bus driver. */
+    ULONG PartialDescCount = IopGetPartialResourceCount(ResList->Descriptors,
+							ResList->Count);
+    ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
+	PartialDescCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+    assert(!DeviceNode->Resources);
+    DeviceNode->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
+    if (DeviceNode->Resources == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    DeviceNode->Resources->Count = 1;
+    DeviceNode->Resources->List[0].InterfaceType = Header->InterfaceType;
+    DeviceNode->Resources->List[0].BusNumber = Header->BusNumber;
+    DeviceNode->Resources->List[0].PartialResourceList.Version = ResList->Version;
+    DeviceNode->Resources->List[0].PartialResourceList.Revision = ResList->Revision;
+    DeviceNode->Resources->List[0].PartialResourceList.Count = PartialDescCount;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+	DeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors;
+    for (ULONG i = 0; i < ResList->Count; i++) {
+	NTSTATUS Status = IopAssignResource(ResList->Descriptors, &i,
+					    ResList->Count, Partial);
+	if (!NT_SUCCESS(Status)) {
+	    IopFreePool(DeviceNode->Resources);
+	    DeviceNode->Resources = NULL;
+	    return Status;
+	}
+	Partial++;
+    }
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
@@ -905,24 +1005,30 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 	Status = STATUS_INVALID_PARAMETER;
 	goto out;
     }
-    ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
-	Res->List[0].Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-    DeviceNode->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
-    if (DeviceNode->Resources == NULL) {
-	Status = STATUS_NO_MEMORY;
-	goto out;
+    DbgTrace("Trying to satisfy the following resource requirements for "
+	     "device node %s\\%s:\n", DeviceNode->DeviceId, DeviceNode->InstanceId);
+    IoDbgPrintResouceRequirementsList(Res);
+    assert(Res->AlternativeLists);
+
+    /* For each alternative list, see if we can satisfy its resource requirements.
+     * Each list represents a set of resources that must be satisfied simultaneously,
+     * and we need at least one list satisfied for the resource arbitration to succeed. */
+    PIO_RESOURCE_LIST List = Res->List;
+    for (ULONG i = 0; i < Res->AlternativeLists; i++) {
+	if (!List->Count) {
+	    assert(FALSE);
+	    Status = STATUS_INVALID_PARAMETER;
+	    goto out;
+	}
+	DbgTrace("Trying to assign resources for list %d\n", i);
+	Status = IopAssignResourcesForList(DeviceNode, Res, &List);
+	if (NT_SUCCESS(Status)) {
+	    DbgTrace("Successfully assigned resources for list %d\n", i);
+	    break;
+	} else {
+	    DbgTrace("Failed to resources for list %d, error 0x%x\n", i, Status);
+	}
     }
-    DeviceNode->Resources->Count = 1;
-    DeviceNode->Resources->List[0].InterfaceType = Res->InterfaceType;
-    DeviceNode->Resources->List[0].BusNumber = Res->BusNumber;
-    DeviceNode->Resources->List[0].PartialResourceList.Version = Res->List[0].Version;
-    DeviceNode->Resources->List[0].PartialResourceList.Revision = Res->List[0].Revision;
-    DeviceNode->Resources->List[0].PartialResourceList.Count = Res->List[0].Count;
-    for (ULONG i = 0; i < Res->List[0].Count; i++) {
-	DeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors[i] =
-	    IopAssignResource(Res->List[0].Descriptors[i]);
-    }
-    Status = STATUS_SUCCESS;
 
 out:
     if (!NT_SUCCESS(Status)) {
@@ -963,6 +1069,9 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
 	memcpy(Irp->StartDevice.Data, Res, ResSize);
 	memcpy(&Irp->StartDevice.Data[ResSize], Res, ResSize);
     }
+    DbgTrace("Starting device node %s\\%s with the following assigned resources\n",
+	     DeviceNode->DeviceId, DeviceNode->InstanceId);
+    CmDbgPrintResourceList(Res);
     return IopCallDriver(Thread, Irp, PendingIrp);
 }
 

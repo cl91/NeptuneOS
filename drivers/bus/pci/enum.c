@@ -12,8 +12,6 @@
 
 /* GLOBALS ********************************************************************/
 
-PIO_RESOURCE_REQUIREMENTS_LIST PciZeroIoResourceRequirements;
-
 PCI_CONFIGURATOR PciConfigurators[] = {
     { Device_MassageHeaderForLimitsDetermination, Device_RestoreCurrent,
       Device_SaveLimits, Device_SaveCurrentSettings, Device_ChangeResourceSettings,
@@ -32,25 +30,13 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 				     IN PCM_RESOURCE_LIST ResourceList)
 {
     PAGED_CODE();
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, InterruptResource;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR BaseResource, CurrentDescriptor;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR PreviousDescriptor;
-    CM_PARTIAL_RESOURCE_DESCRIPTOR ResourceArray[7];
-    PCM_FULL_RESOURCE_DESCRIPTOR FullList;
-    BOOLEAN DrainPartial, RangeChange;
-    ULONG i, j;
-    PPCI_FUNCTION_RESOURCES PciResources;
+    BOOLEAN RangeChange = FALSE;
 
     /* Make sure we have either no resources, or at least one */
     ASSERT((ResourceList == NULL) || (ResourceList->Count == 1));
 
-    /* Initialize no partial, interrupt descriptor, or range change */
-    Partial = NULL;
-    InterruptResource = NULL;
-    RangeChange = FALSE;
-
     /* Check if there's not actually any resources */
-    if (!(ResourceList) || !(ResourceList->Count)) {
+    if (!ResourceList || !ResourceList->Count) {
 	/* Then just return the hardware update state */
 	return PdoExtension->UpdateHardware;
     }
@@ -59,108 +45,106 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     PciDebugPrintCmResList(ResourceList);
 
     /* Clear the temporary resource array */
-    for (i = 0; i < 7; i++)
+    CM_PARTIAL_RESOURCE_DESCRIPTOR ResourceArray[PCI_MAX_RESOURCE_COUNT];
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
 	ResourceArray[i].Type = CmResourceTypeNull;
+    }
 
-    /* Loop the full resource descriptor */
-    FullList = ResourceList->List;
-    for (i = 0; i < ResourceList->Count; i++) {
-	/* Initialize loop variables */
-	DrainPartial = FALSE;
-	BaseResource = NULL;
-
+    /* Copy the caller supplied resource list into ResourceArray, making sure
+     * the order is the same as the current settings in PCI_FUNCTION_RESOURCES. */
+    PCM_FULL_RESOURCE_DESCRIPTOR FullList = ResourceList->List;
+    for (ULONG i = 0; i < ResourceList->Count; i++) {
 	/* Loop the partial descriptors */
-	Partial = FullList->PartialResourceList.PartialDescriptors;
-	for (j = 0; j < FullList->PartialResourceList.Count; j++) {
-	    /* Check if we were supposed to drain a partial due to device data */
-	    if (DrainPartial) {
-		/* Draining complete, move on to the next descriptor then */
-		DrainPartial--;
-		continue;
-	    }
-
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Prev = NULL, Partial =
+	    FullList->PartialResourceList.PartialDescriptors;
+	for (ULONG j = 0; j < FullList->PartialResourceList.Count; j++) {
 	    /* Check what kind of descriptor this was */
 	    switch (Partial->Type) {
-		/* Base BAR resources */
+	    /* Base BAR resources */
 	    case CmResourceTypePort:
 	    case CmResourceTypeMemory:
-
-		/* Set it as the base */
-		ASSERT(BaseResource == NULL);
-		BaseResource = Partial;
+		/* We don't need to do anything for base BAR resources */
 		break;
 
-		/* Interrupt resource */
+	    /* Interrupt resource */
 	    case CmResourceTypeInterrupt:
 
 		/* Make sure it's a compatible (and the only) PCI interrupt */
-		ASSERT(InterruptResource == NULL);
 		ASSERT(Partial->Interrupt.Level == Partial->Interrupt.Vector);
-		InterruptResource = Partial;
 
-		/* Only 255 interrupts on x86/x64 hardware */
-		if (Partial->Interrupt.Level < 256) {
-		    /* Use the passed interrupt line */
-		    PdoExtension->AdjustedInterruptLine = Partial->Interrupt.Level;
-		} else {
-		    /* Invalid vector, so ignore it */
-		    PdoExtension->AdjustedInterruptLine = 0;
+		/* For the legacy IRQL field, some firmware might write 0xFF or garbage
+		 * data, so make sure we don't use that. */
+		if (!(Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+		    if (Partial->Interrupt.Level < 256) {
+			/* Use the passed interrupt line */
+			PdoExtension->AdjustedInterruptLine = Partial->Interrupt.Level;
+		    } else {
+			/* Invalid vector, so ignore it */
+			PdoExtension->AdjustedInterruptLine = 0;
+		    }
 		}
 
 		break;
 
-		/* Check for specific device data */
+	    /* Check for specific device data */
 	    case CmResourceTypeDevicePrivate:
 
 		/* Check what kind of data this was */
 		switch (Partial->DevicePrivate.Data[0]) {
-		    /* Not used in the driver yet */
-		case 1:
-		    UNIMPLEMENTED_DBGBREAK();
+		case PciBarIndex:
+		    /* PciBarIndex means the device private data records the BAR
+		     * index that the previous resource descriptor corresponds to.
+		     * Copy the previous descriptor into the ResourceArray. */
+		    assert(Prev);
+		    assert(Partial->DevicePrivate.Data[1] < PCI_MAX_RESOURCE_COUNT);
+		    ResourceArray[Partial->DevicePrivate.Data[1]] = *Prev;
 		    break;
 
-		    /* Not used in the driver yet */
-		case 2:
-		    UNIMPLEMENTED_DBGBREAK();
+		case PciLockResource:
+		    /* PciLockResource device private means we should skip the next
+		     * several resource descriptors, the amount of which is given in
+		     * the device private data. This is so these resources won't be
+		     * changed below. */
+		    assert(Partial->DevicePrivate.Data[1]);
+		    ULONG NumberToSkip = min(Partial->DevicePrivate.Data[1],
+					     FullList->PartialResourceList.Count-j-1);
+		    j += NumberToSkip;
+		    for (ULONG k = 0; k < NumberToSkip; k++) {
+			Partial = CmiGetNextPartialDescriptor(Partial);
+		    }
 		    break;
 
-		    /* A drain request */
-		case 3:
-		    /* Shouldn't be a base resource, this is a drain */
-		    ASSERT(BaseResource == NULL);
-		    DrainPartial = Partial->DevicePrivate.Data[1];
-		    ASSERT(DrainPartial == TRUE);
-		    break;
+		default:
+		    assert(FALSE);
 		}
 		break;
+
+	    default:
+		assert(FALSE);
 	    }
 
 	    /* Move to the next descriptor */
+	    Prev = Partial;
 	    Partial = CmiGetNextPartialDescriptor(Partial);
 	}
 
 	/* We should be starting a new list now */
-	ASSERT(BaseResource == NULL);
 	FullList = (PVOID)Partial;
     }
 
     /* Check the current assigned PCI resources */
-    PciResources = PdoExtension->Resources;
+    PPCI_FUNCTION_RESOURCES PciResources = PdoExtension->Resources;
     if (!PciResources)
 	return FALSE;
 
-    //if... // MISSING CODE
-    UNIMPLEMENTED;
-    DPRINT1("Missing sanity checking code!\n");
-
     /* Loop all the PCI function resources */
-    for (i = 0; i < 7; i++) {
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
 	/* Get the current function resource descriptor, and the new one */
-	CurrentDescriptor = &PciResources->Current[i];
-	Partial = &ResourceArray[i];
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR CurrentDescriptor = &PciResources->Current[i];
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial = &ResourceArray[i];
 
-	/* Previous is current during the first loop iteration */
-	PreviousDescriptor = &PciResources->Current[(i == 0) ? (0) : (i - 1)];
+	/* Prev is current during the first loop iteration */
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Prev = &PciResources->Current[(i == 0) ? 0 : (i-1)];
 
 	/* Check if this new descriptor is different than the old one */
 	if (((Partial->Type != CurrentDescriptor->Type) ||
@@ -187,14 +171,14 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	    /* Update to new range */
 	    CurrentDescriptor->Type = Partial->Type;
-	    PreviousDescriptor->Generic.Start = Partial->Generic.Start;
-	    PreviousDescriptor->Generic.Length = Partial->Generic.Length;
-	    CurrentDescriptor = PreviousDescriptor;
+	    Prev->Generic.Start = Partial->Generic.Start;
+	    Prev->Generic.Length = Partial->Generic.Length;
+	    CurrentDescriptor = Prev;
 	}
     }
 
     /* Either the hardware was updated, or a resource range changed */
-    return ((RangeChange) || (PdoExtension->UpdateHardware));
+    return RangeChange || PdoExtension->UpdateHardware;
 }
 
 static VOID PciUpdateHardware(IN PPCI_PDO_EXTENSION PdoExtension,
@@ -220,14 +204,12 @@ static PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Cou
 								    IN ULONG BusNumber,
 								    IN ULONG SlotNumber)
 {
-    SIZE_T Size;
-    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
-
     /* Calculate the final size of the list, including each descriptor */
-    Size = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_DESCRIPTOR) * Count;
+    SIZE_T Size = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
+	sizeof(IO_RESOURCE_DESCRIPTOR) * Count;
 
     /* Allocate the list */
-    RequirementsList = ExAllocatePoolWithTag(Size, 'BicP');
+    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList = ExAllocatePoolWithTag(Size, 'BicP');
     if (!RequirementsList)
 	return NULL;
 
@@ -246,16 +228,14 @@ static PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Cou
     return RequirementsList;
 }
 
-PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNumber)
+static PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusNumber)
 {
-    SIZE_T Size;
-    PCM_RESOURCE_LIST ResourceList;
-
     /* Calculate the final size of the list, including each descriptor */
-    Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * Count;
+    SIZE_T Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
+	sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * Count;
 
     /* Allocate the list */
-    ResourceList = ExAllocatePoolWithTag(Size, 'BicP');
+    PCM_RESOURCE_LIST ResourceList = ExAllocatePoolWithTag(Size, 'BicP');
     if (!ResourceList)
 	return NULL;
 
@@ -276,21 +256,18 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 			   OUT PCM_RESOURCE_LIST *Buffer)
 {
     PAGED_CODE();
-    PPCI_FUNCTION_RESOURCES PciResources;
-    BOOLEAN HaveVga, HaveMemSpace, HaveIoSpace;
     USHORT BridgeControl, PciCommand;
-    ULONG Count, i;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, Resource, LastResource;
     PCM_RESOURCE_LIST ResourceList;
     CHAR InterruptLine;
 
     /* Assume failure */
-    Count = 0;
-    HaveVga = FALSE;
+    ULONG Count = 0;
+    BOOLEAN HaveVga = FALSE;
     *Buffer = NULL;
 
     /* Make sure there's some resources to query */
-    PciResources = PdoExtension->Resources;
+    PPCI_FUNCTION_RESOURCES PciResources = PdoExtension->Resources;
     if (!PciResources)
 	return STATUS_SUCCESS;
 
@@ -299,25 +276,25 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 			FIELD_OFFSET(PCI_COMMON_HEADER, Command), sizeof(USHORT));
 
     /* Check which ones are turned on */
-    HaveIoSpace = PciCommand & PCI_ENABLE_IO_SPACE;
-    HaveMemSpace = PciCommand & PCI_ENABLE_MEMORY_SPACE;
+    BOOLEAN HaveIoSpace = PciCommand & PCI_ENABLE_IO_SPACE;
+    BOOLEAN HaveMemSpace = PciCommand & PCI_ENABLE_MEMORY_SPACE;
 
     /* Loop maximum possible descriptors */
-    for (i = 0; i < 7; i++) {
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
 	/* Check if the decode for this descriptor is actually turned on */
 	Partial = &PciResources->Current[i];
-	if (((HaveMemSpace) && (Partial->Type == CmResourceTypeMemory)) ||
-	    ((HaveIoSpace) && (Partial->Type == CmResourceTypePort))) {
+	if ((HaveMemSpace && Partial->Type == CmResourceTypeMemory) ||
+	    (HaveIoSpace && Partial->Type == CmResourceTypePort)) {
 	    /* One more fully active descriptor */
 	    Count++;
 	}
     }
 
     /* If there's an interrupt pin associated, check at least one decode is on */
-    if ((PdoExtension->InterruptPin) && ((HaveMemSpace) || (HaveIoSpace))) {
+    if (PdoExtension->InterruptPin && (HaveMemSpace || HaveIoSpace)) {
 	/* Read the interrupt line for the pin, add a descriptor if it's valid */
 	InterruptLine = PdoExtension->AdjustedInterruptLine;
-	if ((InterruptLine) && (InterruptLine != -1))
+	if (InterruptLine && InterruptLine != -1)
 	    Count++;
     }
 
@@ -354,11 +331,11 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
     LastResource = Resource + Count + 1;
 
     /* Loop maximum possible descriptors */
-    for (i = 0; i < 7; i++) {
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
 	/* Check if the decode for this descriptor is actually turned on */
 	Partial = &PciResources->Current[i];
-	if (((HaveMemSpace) && (Partial->Type == CmResourceTypeMemory)) ||
-	    ((HaveIoSpace) && (Partial->Type == CmResourceTypePort))) {
+	if ((HaveMemSpace && (Partial->Type == CmResourceTypeMemory)) ||
+	    (HaveIoSpace && (Partial->Type == CmResourceTypePort))) {
 	    /* Copy the descriptor into the resource list */
 	    *Resource++ = *Partial;
 	}
@@ -398,10 +375,10 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* If there's an interrupt pin associated, check at least one decode is on */
-    if ((PdoExtension->InterruptPin) && ((HaveMemSpace) || (HaveIoSpace))) {
+    if (PdoExtension->InterruptPin && (HaveMemSpace || HaveIoSpace)) {
 	/* Read the interrupt line for the pin, check if it's valid */
 	InterruptLine = PdoExtension->AdjustedInterruptLine;
-	if ((InterruptLine) && (InterruptLine != -1)) {
+	if (InterruptLine && InterruptLine != -1) {
 	    /* Make sure there's still space */
 	    ASSERT(Resource < LastResource);
 
@@ -456,33 +433,154 @@ NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
-				  IN PPCI_COMMON_HEADER PciData,
-				  OUT PIO_RESOURCE_REQUIREMENTS_LIST *Buffer)
+/*
+ * Returns TRUE if the given IO resource descriptor that describes the port/memory
+ * range limits (which we obtained from probing the device during enumeration) is
+ * valid for reporting to the PNP manager. We only report a resource descriptor for
+ * port or memory windows that have a non-zero length.
+ */
+FORCEINLINE BOOLEAN IsValidResource(IN PIO_RESOURCE_DESCRIPTOR Limit)
 {
-    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList;
+    return (Limit->Type == CmResourceTypePort || Limit->Type == CmResourceTypeMemory) &&
+	Limit->Generic.Length;
+}
 
-    UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
+/*
+ * Returns TRUE if the specified partial resource descriptor represents a valid
+ * resource setting, assigned (usually) by the boot firmware. This requires additionally
+ * that the starting address of the port or memory be non-zero.
+ */
+FORCEINLINE BOOLEAN IsResourceAssigned(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc)
+{
+    return (Desc->Type == CmResourceTypePort || Desc->Type == CmResourceTypeMemory) &&
+	Desc->Generic.Length && Desc->Generic.Start.QuadPart;
+}
 
-    {
-	/* There aren't, so use the zero descriptor */
-	RequirementsList = PciZeroIoResourceRequirements;
+static NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
+					 IN PPCI_COMMON_HEADER PciData,
+					 OUT PIO_RESOURCE_REQUIREMENTS_LIST *Buffer)
+{
 
-	/* Does it actually exist yet? */
-	if (!PciZeroIoResourceRequirements) {
-	    /* Allocate it, and use it for future use */
-	    RequirementsList = PciAllocateIoRequirementsList(0, 0, 0);
-	    PciZeroIoResourceRequirements = RequirementsList;
-	    if (!PciZeroIoResourceRequirements)
-		return STATUS_INSUFFICIENT_RESOURCES;
+    DPRINT1("PciBuildRequirementsList: Bus 0x%x, Dev 0x%x, Func 0x%x.\n",
+	    PdoExtension->ParentFdoExtension->BaseBus,
+	    PdoExtension->Slot.Bits.DeviceNumber,
+	    PdoExtension->Slot.Bits.FunctionNumber);
+
+    ULONG ResCount = 0;
+    if (!PdoExtension->Resources) {
+	goto out;
+    }
+
+    /* Find out how many resource descriptors we need */
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
+	if (IsValidResource(&PdoExtension->Resources->Limit[i])) {
+	    /* For each valid resource we generate the follwing resource descriptors:
+	     * first the preferred resource descriptor, if the resource has been
+	     * assigned (usually by the boot firmware), followed by the alternative
+	     * resource requirement from the range limit we probed during device
+	     * enumeration, followed by a CmResourceTypeDevicePrivate indicating
+	     * the corresponding BAR index. Note this relies on the PNP manager
+	     * respecting the order of the IO resource descriptors list. */
+	    ResCount += 2;
+	    if (IsResourceAssigned(&PdoExtension->Resources->Current[i])) {
+		ResCount++;
+	    }
 	}
+    }
+    if (PdoExtension->InterruptPin) {
+        ResCount++;
+    }
+    ResCount += PdoExtension->AdditionalResourceCount;
 
-	/* Return the zero requirements list to the caller */
-	*Buffer = RequirementsList;
+out:
+    DPRINT1("PCI - build resource reqs - baseResourceCount = %d\n",
+	    ResCount);
+
+    if (!ResCount) {
+	/* No resource needed, return success */
+	*Buffer = NULL;
 	DPRINT1("PCI - build resource reqs - early out, 0 resources\n");
 	return STATUS_SUCCESS;
     }
+
+    PIO_RESOURCE_REQUIREMENTS_LIST ReqList =
+	PciAllocateIoRequirementsList(ResCount,
+				      PdoExtension->ParentFdoExtension->BaseBus,
+				      PdoExtension->Slot.AsULONG);
+    if (!ReqList) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Now build the resource requirements list */
+    PIO_RESOURCE_DESCRIPTOR Res = ReqList->List[0].Descriptors;
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Current = &PdoExtension->Resources->Current[i];
+	PIO_RESOURCE_DESCRIPTOR Limit = &PdoExtension->Resources->Limit[i];
+
+        if (!IsValidResource(Limit)) {
+            continue;
+        }
+
+	/* Write the resource requirement. If the current assigned resource has a
+	 * non-zero base address, we make it a preferred resource. Otherwise, tell
+	 * the PnP manager the acceptable resource window. */
+        *Res = *Limit;
+	assert(Res->Option == 0);
+        Res->ShareDisposition = CmResourceShareDeviceExclusive;
+        /* Set the positive decode bit and 16 bit decode for all IO port resources. */
+        if (Limit->Type == CmResourceTypePort) {
+            Res->Flags |= CM_RESOURCE_PORT_POSITIVE_DECODE | CM_RESOURCE_PORT_16_BIT_DECODE;
+        }
+	if (IsResourceAssigned(Current)) {
+	    Res[1] = *Res;
+	    Res[1].Option = IO_RESOURCE_ALTERNATIVE;
+	    Res->Option = IO_RESOURCE_PREFERRED;
+            Res->Generic.MinimumAddress = Current->Generic.Start;
+            Res->Generic.MaximumAddress.QuadPart =
+		Res->Generic.MinimumAddress.QuadPart + Res->Generic.Length - 1;
+	    /* Since the preferred resource setting is a fixed window, we don't
+	     * care about alignment. */
+            Res->Generic.Alignment = 1;
+	    Res++;
+	}
+	Res++;
+	/* Populate a device private descriptor so we can know which BAR this resource
+	 * come from in PciComputeNewCurrentSettings. */
+	RtlZeroMemory(Res, sizeof(IO_RESOURCE_DESCRIPTOR));
+	Res->Type = CmResourceTypeDevicePrivate;
+	Res->ShareDisposition = CmResourceShareDeviceExclusive;
+	Res->DevicePrivate.Data[0] = PciBarIndex;
+	Res->DevicePrivate.Data[1] = i;
+	Res++;
+    }
+
+    if (PdoExtension->InterruptPin) {
+        Res->Type = CmResourceTypeInterrupt;
+        Res->ShareDisposition = CmResourceShareShared;
+        Res->Option = 0;
+        Res->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        Res->Interrupt.MinimumVector = 0;
+        Res->Interrupt.MaximumVector = MAXULONG;
+        Res++;
+    }
+
+    if (PdoExtension->AdditionalResourceCount != 0) {
+	PCI_CONFIGURATOR_CONTEXT Context = {
+	    .PdoExtension = PdoExtension,
+	};
+	PPCI_CONFIGURATOR Configurator = &PciConfigurators[PdoExtension->HeaderType];
+        Configurator->GetAdditionalResourceDescriptors(&Context,
+						       PciData,
+						       Res);
+        Res += PdoExtension->AdditionalResourceCount;
+    }
+
+    ASSERT(ReqList->ListSize == (ULONG_PTR)Res - (ULONG_PTR)ReqList);
+    DPRINT1("Final resource count == %d\n",
+	    Res - ReqList->List[0].Descriptors);
+    ASSERT((Res - ReqList->List[0].Descriptors) != 0);
+    *Buffer = ReqList;
+
     return STATUS_SUCCESS;
 }
 
@@ -490,32 +588,27 @@ NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
 			      IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList)
 {
     PAGED_CODE();
-    NTSTATUS Status;
-    PCI_COMMON_HEADER PciHeader;
+    *RequirementsList = NULL;
 
     /* Check if the PDO has any resources, or at least an interrupt pin */
-    if ((PdoExtension->Resources) || (PdoExtension->InterruptPin)) {
+    if (PdoExtension->Resources || PdoExtension->InterruptPin) {
 	/* Read the current PCI header */
+	PCI_COMMON_HEADER PciHeader;
 	PciReadDeviceConfig(PdoExtension, &PciHeader, 0, PCI_COMMON_HDR_LENGTH);
 
 	/* Use it to build a list of requirements */
-	Status = PciBuildRequirementsList(PdoExtension, &PciHeader, RequirementsList);
+	NTSTATUS Status = PciBuildRequirementsList(PdoExtension,
+						   &PciHeader,
+						   RequirementsList);
 	if (!NT_SUCCESS(Status))
 	    return Status;
 
-	/* Check if the requirements are actually the zero list */
-	if (*RequirementsList == PciZeroIoResourceRequirements) {
-	    /* A simple NULL will suffice for the PnP Manager */
-	    *RequirementsList = NULL;
-	    DPRINT1("Returning NULL requirements list\n");
-	} else {
-	    /* Otherwise, print out the requirements list */
+	if (*RequirementsList) {
 	    PciDebugPrintIoResReqList(*RequirementsList);
 	}
     } else {
 	/* There aren't any resources, so simply return NULL */
 	DPRINT1("PciQueryRequirements returning NULL requirements list\n");
-	*RequirementsList = NULL;
     }
 
     /* This call always succeeds (but maybe with no requirements) */
@@ -540,8 +633,9 @@ NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
  *    the PCI Configuration space for this device is accurate. The operating system
  *    re-reads this data after previously ignoring it.
  */
-BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
-				  IN PPCI_COMMON_HEADER PciData, IN BOOLEAN Initial)
+static BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
+					 IN PPCI_COMMON_HEADER PciData,
+					 IN BOOLEAN Initial)
 {
     UCHAR MasterMode, SlaveMode, MasterFixed, SlaveFixed, ProgIf, NewProgIf;
     BOOLEAN Switched;
@@ -653,9 +747,11 @@ BOOLEAN PciConfigureIdeController(IN PPCI_PDO_EXTENSION PdoExtension,
     return Switched;
 }
 
-VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
-		   IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER SlotNumber,
-		   IN ULONG OperationType, PPCI_PDO_EXTENSION PdoExtension)
+static VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
+			  IN PPCI_COMMON_HEADER PciData,
+			  IN PCI_SLOT_NUMBER SlotNumber,
+			  IN ULONG OperationType,
+			  PPCI_PDO_EXTENSION PdoExtension)
 {
     ULONG LegacyBaseAddress;
     USHORT Command;
@@ -865,8 +961,8 @@ VOID PciApplyHacks(IN PPCI_FDO_EXTENSION DeviceExtension,
     }
 }
 
-BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
-			 IN PPCI_COMMON_HEADER PciData)
+static BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
+				IN PPCI_COMMON_HEADER PciData)
 {
     BOOLEAN IdMatch, RevMatch, SubsysMatch;
     ULONGLONG HackFlags = DeviceExtension->HackFlags;
@@ -899,8 +995,10 @@ BOOLEAN PcipIsSameDevice(IN PPCI_PDO_EXTENSION DeviceExtension,
     return SubsysMatch;
 }
 
-BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER Slot,
-			    IN UCHAR OperationType, IN ULONGLONG HackFlags)
+static BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData,
+				   IN PCI_SLOT_NUMBER Slot,
+				   IN UCHAR OperationType,
+				   IN ULONGLONG HackFlags)
 {
     do {
 	/* Check if this is device enumeration */
@@ -961,8 +1059,8 @@ BOOLEAN PciSkipThisFunction(IN PPCI_COMMON_HEADER PciData, IN PCI_SLOT_NUMBER Sl
     return TRUE;
 }
 
-VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
-				IN PPCI_COMMON_HEADER PciData)
+static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
+				       IN PPCI_COMMON_HEADER PciData)
 {
     PAGED_CODE();
     ULONG HeaderType, CapPtr, TargetAgpCapabilityId;
@@ -1069,7 +1167,7 @@ VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 }
 
-VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
+static VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
 {
     PPCI_CONFIGURATOR_CONTEXT Context = Context2;
     PPCI_COMMON_HEADER PciData, Current;
@@ -1106,13 +1204,12 @@ VOID PciWriteLimitsAndRestoreCurrent(IN PVOID Reserved, IN PVOID Context2)
     Context->Configurator->RestoreCurrent(Context);
 }
 
-NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
+static NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
 {
     PAGED_CODE();
     PPCI_CONFIGURATOR Configurator;
     PPCI_COMMON_HEADER PciData, Current;
     PPCI_PDO_EXTENSION PdoExtension;
-    PIO_RESOURCE_DESCRIPTOR IoDescriptor;
     ULONG Offset;
 
     /* Grab all parameters from the context */
@@ -1182,37 +1279,32 @@ NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     /* ...and then store the current resources being used */
     Configurator->SaveCurrentSettings(Context);
 
-    /* Loop all the limit descriptors backwards */
-    IoDescriptor = &PdoExtension->Resources->Limit[PCI_TYPE0_ADDRESSES + 1];
-    while (TRUE) {
-	/* Keep going until a non-null descriptor is found */
-	IoDescriptor--;
-	if (IoDescriptor->Type != CmResourceTypeNull)
-	    break;
-
-	/* This is a null descriptor, is it the last one? */
-	if (IoDescriptor == &PdoExtension->Resources->Limit[PCI_TYPE0_ADDRESSES + 1]) {
-	    /* This means the descriptor is NULL, which means discovery failed */
-	    DPRINT1("PCI Resources fail!\n");
-
-	    /* No resources will be assigned for the device */
-	    ExFreePoolWithTag(PdoExtension->Resources, 0);
-	    PdoExtension->Resources = NULL;
+    /* Loop all the limit descriptors and check if we have at least one resource */
+    BOOLEAN HasResource = FALSE;
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
+	if (PdoExtension->Resources->Limit[i].Type != CmResourceTypeNull) {
+	    HasResource = TRUE;
 	    break;
 	}
+    }
+    if (!HasResource) {
+	/* This means the descriptor is NULL, which means discovery failed */
+	DPRINT1("No PCI resource discovered!\n");
+
+	/* No resources will be assigned for the device */
+	ExFreePoolWithTag(PdoExtension->Resources, 'BicP');
+	PdoExtension->Resources = NULL;
     }
 
     /* Return success here, even if the device has no assigned resources */
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
-			      IN PPCI_COMMON_HEADER Current, IN ULONGLONG HackFlags)
+static NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
+				     IN PPCI_COMMON_HEADER Current,
+				     IN ULONGLONG HackFlags)
 {
     PAGED_CODE();
-    NTSTATUS Status;
-    PPCI_COMMON_HEADER PciData;
-    PCI_CONFIGURATOR_CONTEXT Context;
 
     /* Do the hackflags indicate this device should be skipped? */
     if (PciSkipThisFunction(Current, PdoExtension->Slot, PCI_SKIP_RESOURCE_ENUMERATION,
@@ -1222,22 +1314,24 @@ NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Allocate a buffer to hold two PCI configuration headers */
-    PciData = ExAllocatePoolWithTag(2 * PCI_COMMON_HDR_LENGTH, 'BicP');
+    PPCI_COMMON_HEADER PciData = ExAllocatePoolWithTag(2 * PCI_COMMON_HDR_LENGTH, 'BicP');
     if (!PciData)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
     /* Set up the context for the resource enumeration, and do it */
-    Context.Current = Current;
-    Context.PciData = PciData;
-    Context.PdoExtension = PdoExtension;
-    Status = PcipGetFunctionLimits(&Context);
+    PCI_CONFIGURATOR_CONTEXT Context = {
+	.Current = Current,
+	.PciData = PciData,
+	.PdoExtension = PdoExtension
+    };
+    NTSTATUS Status = PcipGetFunctionLimits(&Context);
 
     /* Enumeration is completed, free the PCI headers and return the status */
     ExFreePoolWithTag(PciData, 0);
     return Status;
 }
 
-VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
+static VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PAGED_CODE();
     PPCI_PDO_EXTENSION PdoExtension;
@@ -1282,55 +1376,33 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     ULONG MaxDevice = PCI_MAX_DEVICES;
     BOOLEAN ProcessFlag = FALSE;
-    ULONG i, j, k, Size;
-    USHORT CapOffset, TempOffset;
-    LONGLONG HackFlags;
-    PDEVICE_OBJECT DeviceObject;
     UCHAR Buffer[PCI_COMMON_HDR_LENGTH] = {};
     UCHAR BiosBuffer[PCI_COMMON_HDR_LENGTH] = {};
     PPCI_COMMON_HEADER PciData = (PVOID)Buffer;
     PPCI_COMMON_HEADER BiosData = (PVOID)BiosBuffer;
-    PCI_SLOT_NUMBER PciSlot;
-    PCHAR Name;
-    NTSTATUS Status;
-    PPCI_PDO_EXTENSION PdoExtension, NewExtension;
-    PPCI_PDO_EXTENSION *BridgeExtension;
-    PWCHAR DescriptionText;
-    USHORT SubVendorId, SubSystemId;
-    PCI_CAPABILITIES_HEADER CapHeader, PcixCapHeader;
-    UCHAR SecondaryBus;
     DPRINT1("PCI Scan Bus: FDO Extension @ 0x%p, Base Bus = 0x%x\n", DeviceExtension,
 	    DeviceExtension->BaseBus);
 
-    /* Is this the root FDO? */
+    /* If we are not scanning the root bus, check if we should apply the PCI hack
+     * that only allows the bus to have one single child device. */
     if (!PCI_IS_ROOT_FDO(DeviceExtension)) {
 	/* Get the PDO for the child bus */
-	PdoExtension = DeviceExtension->PhysicalDeviceObject->DeviceExtension;
+	PPCI_PDO_EXTENSION PdoExtension = DeviceExtension->PhysicalDeviceObject->DeviceExtension;
 	ASSERT_PDO(PdoExtension);
 
 	/* Check for hack which only allows bus to have one child device */
 	if (PdoExtension->HackFlags & PCI_HACK_ONE_CHILD)
 	    MaxDevice = 1;
-
-	/* Check if the secondary bus number has changed */
-	PciReadDeviceConfig(PdoExtension, &SecondaryBus,
-			    FIELD_OFFSET(PCI_COMMON_HEADER, Type1.SecondaryBus),
-			    sizeof(UCHAR));
-	if (SecondaryBus != PdoExtension->Dependent.Type1.SecondaryBus) {
-	    UNIMPLEMENTED_DBGBREAK("PCI: Bus numbers have been changed!  Restoring "
-				   "originals.\n");
-	}
     }
 
     /* Loop every device on the bus */
-    PciSlot.Bits.Reserved = 0;
-    i = DeviceExtension->BaseBus;
-    for (j = 0; j < MaxDevice; j++) {
+    PCI_SLOT_NUMBER PciSlot = {};
+    for (ULONG i = 0; i < MaxDevice; i++) {
 	/* Loop every function of each device */
-	PciSlot.Bits.DeviceNumber = j;
-	for (k = 0; k < PCI_MAX_FUNCTION; k++) {
+	PciSlot.Bits.DeviceNumber = i;
+	for (ULONG j = 0; j < PCI_MAX_FUNCTION; j++) {
 	    /* Build the final slot structure */
-	    PciSlot.Bits.FunctionNumber = k;
+	    PciSlot.Bits.FunctionNumber = j;
 
 	    /* Read the vendor for this slot */
 	    PciReadSlotConfig(DeviceExtension, PciSlot, PciData, 0, sizeof(USHORT));
@@ -1349,21 +1421,22 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 	    /* Dump device that was found */
 	    DPRINT1("Scan Found Device 0x%x (b=0x%x, d=0x%x, f=0x%x)\n",
-		    PciSlot.AsULONG, i, j, k);
+		    PciSlot.AsULONG, DeviceExtension->BaseBus, i, j);
 
 	    /* Dump the device's header */
 	    PciDebugDumpCommonConfig(PciData);
 
 	    /* Find description for this device for the debugger's sake */
-	    DescriptionText = PciGetDeviceDescriptionMessage(PciData->BaseClass,
-							     PciData->SubClass);
+	    PWCHAR DescriptionText = PciGetDeviceDescriptionMessage(PciData->BaseClass,
+								    PciData->SubClass);
 	    DPRINT1("Device Description \"%ws\".\n",
 		    DescriptionText ? DescriptionText : L"(NULL)");
 	    if (DescriptionText)
 		ExFreePoolWithTag(DescriptionText, 0);
 
 	    /* Check for non-simple devices */
-	    if ((PCI_MULTIFUNCTION_DEVICE(PciData)) ||
+	    USHORT SubVendorId, SubSystemId;
+	    if (PCI_MULTIFUNCTION_DEVICE(PciData) ||
 		(PciData->BaseClass == PCI_CLASS_BRIDGE_DEV)) {
 		/* No subsystem data defined for these kinds of bridges */
 		SubVendorId = 0;
@@ -1375,8 +1448,9 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    }
 
 	    /* Get any hack flags for this device */
-	    HackFlags = PciGetHackFlags(PciData->VendorID, PciData->DeviceID, SubVendorId,
-					SubSystemId, PciData->RevisionID);
+	    LONGLONG HackFlags = PciGetHackFlags(PciData->VendorID,
+						 PciData->DeviceID, SubVendorId,
+						 SubSystemId, PciData->RevisionID);
 
 	    /* Check if this device is considered critical by the OS */
 	    if (PciIsCriticalDeviceClass(PciData->BaseClass, PciData->SubClass)) {
@@ -1406,8 +1480,9 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    }
 
 	    /* Check if a PDO has already been created for this device */
-	    PdoExtension = PciFindPdoByFunction(DeviceExtension, PciSlot.AsULONG,
-						PciData);
+	    PPCI_PDO_EXTENSION PdoExtension = PciFindPdoByFunction(DeviceExtension,
+								   PciSlot.AsULONG,
+								   PciData);
 	    if (PdoExtension) {
 		/* Rescan scenarios are not yet implemented */
 		UNIMPLEMENTED_DBGBREAK();
@@ -1417,9 +1492,13 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    ProcessFlag = TRUE;
 
 	    /* Create the PDO for this device */
-	    Status = PciPdoCreate(DeviceExtension, PciSlot, &DeviceObject);
-	    ASSERT(NT_SUCCESS(Status));
-	    NewExtension = (PPCI_PDO_EXTENSION)DeviceObject->DeviceExtension;
+	    PDEVICE_OBJECT DeviceObject = NULL;
+	    NTSTATUS Status = PciPdoCreate(DeviceExtension, PciSlot, &DeviceObject);
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
+	    ASSERT(DeviceObject);
+	    PPCI_PDO_EXTENSION NewExtension = (PPCI_PDO_EXTENSION)DeviceObject->DeviceExtension;
 
 	    /* Check for broken devices with wrong/no class codes */
 	    if (HackFlags & PCI_HACK_FAKE_CLASS_CODE) {
@@ -1445,6 +1524,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		((NewExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) ||
 		 (NewExtension->SubClass == PCI_SUBCLASS_BR_CARDBUS))) {
 		/* Scan the bridge list until the first free entry */
+		PPCI_PDO_EXTENSION *BridgeExtension;
 		for (BridgeExtension = &DeviceExtension->ChildBridgePdoList;
 		     *BridgeExtension; BridgeExtension = &(*BridgeExtension)->NextBridge)
 		    ;
@@ -1467,8 +1547,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		    Status = STATUS_UNSUCCESSFUL;
 		} else {
 		    /* Data is still correct, check for interrupt line change */
-		    if (BiosData->Type0.InterruptLine !=
-			PciData->Type0.InterruptLine) {
+		    if (BiosData->Type0.InterruptLine != PciData->Type0.InterruptLine) {
 			/* Update the current BIOS with the saved interrupt line */
 			PciWriteDeviceConfig(NewExtension,
 					     &BiosData->Type0.InterruptLine,
@@ -1504,6 +1583,11 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    /* Now configure the BARs */
 	    Status = PciGetFunctionLimits(NewExtension, PciData, HackFlags);
 
+	    if (!NT_SUCCESS(Status)) {
+		PciPdoDestroy(DeviceObject);
+		return Status;
+	    }
+
 	    /* Power up the device */
 	    PciSetPowerManagedDevicePowerState(NewExtension, PowerDeviceD0, FALSE);
 
@@ -1534,12 +1618,17 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    }
 
 	    /* Scan all capabilities */
-	    CapOffset = NewExtension->CapabilitiesPtr;
+	    USHORT CapOffset = NewExtension->CapabilitiesPtr;
 	    while (CapOffset) {
 		/* Read this header */
-		TempOffset = PciReadDeviceCapability(NewExtension, CapOffset, 0,
-						     &CapHeader,
-						     sizeof(PCI_CAPABILITIES_HEADER));
+		union {
+		    PCI_PM_CAPABILITY PmCap;
+		    PCI_AGP_CAPABILITY AgpCap;
+		    PCI_CAPABILITIES_HEADER Header;
+		} Cap;
+		USHORT TempOffset = PciReadDeviceCapability(NewExtension, CapOffset, 0,
+							    &Cap.Header,
+							    sizeof(PCI_CAPABILITIES_HEADER));
 		if (TempOffset != CapOffset) {
 		    /* This is a strange issue that shouldn't happen normally */
 		    DPRINT1("PCI - Failed to read PCI capability at offset 0x%02x\n",
@@ -1548,8 +1637,10 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		}
 
 		/* Check for capabilities that this driver cares about */
-		switch (CapHeader.CapabilityID) {
-		    /* Power management capability is heavily used by the bus */
+		ULONG Size = 0;
+		PCHAR Name = NULL;
+		switch (Cap.Header.CapabilityID) {
+		/* Power management capability is heavily used by the bus */
 		case PCI_CAPABILITY_ID_POWER_MANAGEMENT:
 
 		    /* Dump the capability */
@@ -1557,7 +1648,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		    Size = sizeof(PCI_PM_CAPABILITY);
 		    break;
 
-		    /* AGP capability is required for AGP bus functionality */
+		/* AGP capability is required for AGP bus functionality */
 		case PCI_CAPABILITY_ID_AGP:
 
 		    /* Dump the capability */
@@ -1565,12 +1656,11 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		    Size = sizeof(PCI_AGP_CAPABILITY);
 		    break;
 
-		    /* This driver doesn't really use anything other than that */
+		/* This driver doesn't really use anything other than that */
 		default:
 
 		    /* Windows prints this, we could do a translation later */
 		    Name = "UNKNOWN CAPABILITY";
-		    Size = 0;
 		    break;
 		}
 
@@ -1578,8 +1668,8 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		if (Size) {
 		    /* Read the whole capability data */
 		    TempOffset = PciReadDeviceCapability(NewExtension, CapOffset,
-							 CapHeader.CapabilityID,
-							 &CapHeader, Size);
+							 Cap.Header.CapabilityID,
+							 &Cap.Header, Size);
 
 		    if (TempOffset != CapOffset) {
 			/* Again, a strange issue that shouldn't be seen */
@@ -1589,14 +1679,14 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		}
 
 		/* Dump this capability */
-		DPRINT1("CAP @%02x ID %02x (%s)\n", CapOffset, CapHeader.CapabilityID,
+		DPRINT1("CAP @%02x ID %02x (%s)\n", CapOffset, Cap.Header.CapabilityID,
 			Name);
-		for (i = 0; i < Size; i += 2)
-		    DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&CapHeader + i));
+		for (ULONG k = 0; k < Size; k += 2)
+		    DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&Cap.Header + k));
 		DPRINT1("\n");
 
 		/* Check the next capability */
-		CapOffset = CapHeader.Next;
+		CapOffset = Cap.Header.Next;
 	    }
 
 	    /* Check for IDE controllers */
@@ -1625,14 +1715,14 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    if (!PciData->CacheLineSize) {
 		/* Check if the device is disabled */
 		if (!(NewExtension->CommandEnables &
-		      (PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE |
-		       PCI_ENABLE_BUS_MASTER))) {
+		      (PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE | PCI_ENABLE_BUS_MASTER))) {
 		    /* Check if this is a PCI-X device*/
-		    TempOffset = PciReadDeviceCapability(NewExtension,
-							 NewExtension->CapabilitiesPtr,
-							 PCI_CAPABILITY_ID_PCIX,
-							 &PcixCapHeader,
-							 sizeof(PCI_CAPABILITIES_HEADER));
+		    PCI_CAPABILITIES_HEADER PcixCapHeader;
+		    USHORT TempOffset = PciReadDeviceCapability(NewExtension,
+								NewExtension->CapabilitiesPtr,
+								PCI_CAPABILITY_ID_PCIX,
+								&PcixCapHeader,
+								sizeof(PCI_CAPABILITIES_HEADER));
 
 		    /*
                      * A device with default cache line size and latency timer
@@ -1641,8 +1731,8 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
                      * header is 64, not 0, hence why the check for PCI-X caps
                      * was required, and the value used here below.
                      */
-		    if (!(PciData->LatencyTimer) ||
-			((TempOffset) && (PciData->LatencyTimer == 64))) {
+		    if (!PciData->LatencyTimer ||
+			(TempOffset && (PciData->LatencyTimer == 64))) {
 			/* Keep track of the fact that it needs configuration */
 			DPRINT1("PCI - ScanBus, PDOx %p found unconfigured\n",
 				NewExtension);
@@ -1795,7 +1885,7 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset)
     }
 
     /* Check if an IDE controller is being reset */
-    if ((DoReset) && (PdoExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
+    if (DoReset && (PdoExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
 	(PdoExtension->SubClass == PCI_SUBCLASS_MSC_IDE_CTLR)) {
 	/* Turn off native mode */
 	Native = PciConfigureIdeController(PdoExtension, &PciData, FALSE);

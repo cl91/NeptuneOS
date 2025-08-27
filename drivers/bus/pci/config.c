@@ -18,22 +18,15 @@ BOOLEAN PciAssignBusNumbers;
 
 UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
 {
-    UCHAR InterruptLine = 0, PciInterruptLine;
-    ULONG Length;
+    UCHAR InterruptLine = 0;
 
-    /* TODO! */
-#if 0
     /* Does the device have an interrupt pin? */
     if (PdoExtension->InterruptPin) {
 	/* Find the associated line on the parent bus */
-	Length = HalGetBusDataByOffset(
-	    PCIConfiguration, PdoExtension->ParentFdoExtension->BaseBus,
-	    PdoExtension->Slot.AsULONG, &PciInterruptLine,
-	    FIELD_OFFSET(PCI_COMMON_HEADER, Type0.InterruptLine), sizeof(UCHAR));
-	if (Length)
-	    InterruptLine = PciInterruptLine;
+	PciReadDeviceConfig(PdoExtension, &InterruptLine,
+			    FIELD_OFFSET(PCI_COMMON_HEADER, Type0.InterruptLine),
+			    sizeof(UCHAR));
     }
-#endif
 
     /* Either keep the original interrupt line, or the one on the master bus */
     return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
@@ -61,7 +54,7 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
 	RtlRaiseStatus(STATUS_ACCESS_DENIED);
     }
 #if DBG
-    PPCI_COMMON_CONFIG PciCfg = (PVOID)Ptr;
+    volatile PPCI_COMMON_CONFIG PciCfg = (PVOID)Ptr;
     if (PciCfg->Header.VendorID == PCI_INVALID_VENDORID) {
 	DPRINT("Invalid vendor ID in PCI configuration space.\n");
     } else {

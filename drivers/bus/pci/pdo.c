@@ -476,3 +476,24 @@ NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
     *PdoDeviceObject = DeviceObject;
     return STATUS_SUCCESS;
 }
+
+VOID PciPdoDestroy(IN PDEVICE_OBJECT Pdo)
+{
+    PPCI_PDO_EXTENSION PdoExtension = (PPCI_PDO_EXTENSION)Pdo->DeviceExtension;
+    ASSERT_PDO(PdoExtension);
+    PPCI_FDO_EXTENSION ParentFdo = PdoExtension->ParentFdoExtension;
+    PciRemoveEntryFromList((PSINGLE_LIST_ENTRY)&ParentFdo->ChildPdoList,
+                           (PSINGLE_LIST_ENTRY)PdoExtension);
+    for (PPCI_PDO_EXTENSION *PrevBridge = &ParentFdo->ChildBridgePdoList;
+         *PrevBridge; PrevBridge = &((*PrevBridge)->NextBridge)) {
+        if (*PrevBridge == PdoExtension) {
+            *PrevBridge = PdoExtension->NextBridge;
+            PdoExtension->NextBridge = NULL;
+            break;
+        }
+    }
+    if (PdoExtension->Resources) {
+        ExFreePool(PdoExtension->Resources);
+    }
+    IoDeleteDevice(Pdo);
+}
