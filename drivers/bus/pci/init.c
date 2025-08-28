@@ -310,7 +310,7 @@ static NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
 			 Entry->SubVendorID);
 	    if (Entry->Flags & PCI_HACK_HAS_REVISION_INFO)
 		DbgPrint("Revision:0x%02x", Entry->RevisionID);
-	    DbgPrint(" = 0x%I64x\n", Entry->HackFlags);
+	    DbgPrint(" = 0x%llx\n", Entry->HackFlags);
 #endif
 	}
 

@@ -4675,8 +4675,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 				 lastLBA.QuadPart)) {
 				TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
 					    "ClassInterpretSenseInfo: "
-					    "Request beyond boundary. Last LBA: 0x%I64X "
-					    "Read LBA: 0x%I64X Length: 0x%X\n",
+					    "Request beyond boundary. Last LBA: 0x%llX "
+					    "Read LBA: 0x%llX Length: 0x%X\n",
 					    (__int64)lastLBA.QuadPart,
 					    (__int64)logicalBlockAddr.QuadPart,
 					    numTransferBlocks));
@@ -10605,7 +10605,7 @@ static VOID ClasspSetRetryTimer(IN PCLASS_PRIVATE_FDO_DATA FdoData)
     }
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-		"ClassRetry: ======= %I64x ticks\n", fire.QuadPart));
+		"ClassRetry: ======= %llx ticks\n", fire.QuadPart));
 
     //
     // must use negative to specify relative time to fire
@@ -11637,7 +11637,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 		TRACE_LEVEL_INFORMATION, TRACE_FLAG_PNP,
 		"ClasspGetBlockDeviceTokenLimitsInfo (%p): %s %s (rev %s) reported following parameters: \
                         \n\t\t\tMaxRangeDescriptors: %u\n\t\t\tMaxIAT: %u\n\t\t\tDefaultIAT: %u \
-                        \n\t\t\tMaxTokenTransferSize: %I64u\n\t\t\tOptimalTransferCount: %I64u\n\t\t\tOptimalTransferLengthGranularity: %u \
+                        \n\t\t\tMaxTokenTransferSize: %llu\n\t\t\tOptimalTransferCount: %llu\n\t\t\tOptimalTransferLengthGranularity: %u \
                         \n\t\t\tOptimalTransferLength: %u\n\t\t\tMaxTransferLength: %u\n",
 		DeviceObject,
 		(PCSZ)(((PUCHAR)fdoExtension->DeviceDescriptor) +
@@ -12112,7 +12112,7 @@ static NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		"ClasspServicePopulateTokenTransferRequest (%p): Using "
-		"MaxBlockDescrCount %u and MaxLbaCount %I64u.\n",
+		"MaxBlockDescrCount %u and MaxLbaCount %llu.\n",
 		Fdo, maxBlockDescrCount, maxLbaCount));
 
     allDataSetRangeFullyConverted = FALSE;
@@ -12208,7 +12208,7 @@ static NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		"ClasspServicePopulateTokenTransferRequest (%p): "
-		"Generate token for %I64u bytes (versus %I64u) [via %u descriptors].\n"
+		"Generate token for %llu bytes (versus %llu) [via %u descriptors].\n"
 		"\t\t\tDataLength: %u, DescriptorsLength: %u. "
 		"Pkt %p (list id %x). Requested TTL: %u secs.\n",
 		Fdo, totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector,
@@ -12389,7 +12389,7 @@ VOID ClasspCompleteOffloadRead(IN POFFLOAD_READ_CONTEXT OffloadReadContext,
 							   TRACE_LEVEL_WARNING,
 		    TRACE_FLAG_IOCTL,
 		    "ClasspCompleteOffloadRead (%p): Successfully populated token with "
-		    "%I64u (out of %I64u) bytes (list Id %x).\n",
+		    "%llu (out of %llu) bytes (list Id %x).\n",
 		    fdo, totalBytesProcessed, entireXferLen,
 		    OffloadReadContext->ListIdentifier));
 
@@ -12778,7 +12778,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 		     TRACE_FLAG_IOCTL,
 		     "ClasspReceivePopulateTokenInformationTransferPacketDone (%p): "
 		     "%wsToken %s generated successfully for list Id %x for data size "
-		     "%I64u bytes.\n",
+		     "%llu bytes.\n",
 		     fdo,
 		     transferBlockCount == totalSectorsToProcess ? L"" :
 								   L"Target truncated "
@@ -12792,7 +12792,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 			"ClasspReceivePopulateTokenInformationTransferPacketDone (%p): "
 			"Target failed to generate a token for list Id %x for data size "
-			"%I64u bytes (requested %I64u bytes).\n",
+			"%llu bytes (requested %llu bytes).\n",
 			fdo, listIdentifier,
 			transferBlockCount * fdoExt->DiskGeometry.BytesPerSector,
 			totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector));
@@ -12836,7 +12836,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL,
 			    "ClasspReceivePopulateTokenInformationTransferPacketDone "
 			    "(%p): Reason for truncation/failure: %x - for list Id %x "
-			    "for data size %I64u bytes.\n",
+			    "for data size %llu bytes.\n",
 			    fdo, status, listIdentifier,
 			    transferBlockCount * fdoExt->DiskGeometry.BytesPerSector));
 	    } else {
@@ -12844,7 +12844,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 			    "ClasspReceivePopulateTokenInformationTransferPacketDone "
 			    "(%p): No sense data available but reason for "
 			    "truncation/failure, possibly: %x - for list Id %x for data "
-			    "size %I64u bytes.\n",
+			    "size %llu bytes.\n",
 			    fdo, completionStatus, listIdentifier,
 			    transferBlockCount * fdoExt->DiskGeometry.BytesPerSector));
 	    }
@@ -13114,7 +13114,7 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		"ClasspServiceWriteUsingTokenTransferRequest (%p): Using "
-		"MaxBlockDescrCount %u and MaxLbaCount %I64u.\n",
+		"MaxBlockDescrCount %u and MaxLbaCount %llu.\n",
 		Fdo, maxBlockDescrCount, maxLbaCount));
 
     offloadWriteContext->MaxBlockDescrCount = maxBlockDescrCount;
@@ -13403,7 +13403,7 @@ VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 
     TracePrint(
 	(TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
-	 "ClasspContinueOffloadWrite (%p): Offloading write for %I64u bytes (versus %I64u) [via %u descriptors]. \
+	 "ClasspContinueOffloadWrite (%p): Offloading write for %llu bytes (versus %llu) [via %u descriptors]. \
                 \n\t\t\tDataLength: %u, DescriptorsLength: %u. Pkt %p (list id %x) [Token: %s]\n",
 	 fdo, totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector, entireXferLen,
 	 blockDescrIndex, writeUsingTokenDataLength, writeUsingTokenDescriptorsLength,
@@ -13605,7 +13605,7 @@ VOID ClasspWriteUsingTokenTransferPacketDone(IN PVOID Context)
 	    offloadWriteContext->TotalSectorsProcessed = totalSectorsToProcess;
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 			"ClasspWriteUsingTokenTransferPacketDone (%p): Successfully "
-			"wrote using token %I64u (out of %I64u) bytes (list Id %x).\n",
+			"wrote using token %llu (out of %llu) bytes (list Id %x).\n",
 			fdo, totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector,
 			entireXferLen, listIdentifier));
 	} else {
@@ -13620,7 +13620,7 @@ VOID ClasspWriteUsingTokenTransferPacketDone(IN PVOID Context)
 		pkt->TransferCount;
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 			"ClasspWriteUsingTokenTransferPacketDone (%p): Target truncated "
-			"write using token %I64u (out of %I64u) bytes (list Id %x).\n",
+			"write using token %llu (out of %llu) bytes (list Id %x).\n",
 			fdo, totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector,
 			entireXferLen, listIdentifier));
 	}
@@ -13815,8 +13815,8 @@ VOID ClasspCompleteOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
     TracePrint((totalBytesProcessed == entireXferLen ? TRACE_LEVEL_INFORMATION :
 						       TRACE_LEVEL_WARNING,
 		TRACE_FLAG_IOCTL,
-		"ClasspCompleteOffloadWrite (%p): %ws wrote using token %I64u (out of "
-		"%I64u) bytes (Irp %p).\n",
+		"ClasspCompleteOffloadWrite (%p): %ws wrote using token %llu (out of "
+		"%llu) bytes (Irp %p).\n",
 		fdo, NT_SUCCESS(status) ? L"Successful" : L"Failed", totalBytesProcessed,
 		entireXferLen, irp));
 
@@ -13833,8 +13833,8 @@ VOID ClasspCompleteOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext,
     if (!NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL,
 		    "ClasspCompleteOffloadWrite (%p): TokenOperation for WriteUsingToken "
-		    "(list Id %u) completed with %x writing %I64u blocks (currentTotal "
-		    "%I64u blocks).\n",
+		    "(list Id %u) completed with %x writing %llu blocks (currentTotal "
+		    "%llu blocks).\n",
 		    fdo, listIdentifier, status, totalSectorsProcessed,
 		    *totalSectorsProcessedSuccessfully));
 
@@ -14090,7 +14090,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "ClasspReceiveWriteUsingTokenInformationTransferPacketDone (%p): "
 		    "Failed with %x to retrieve write results for list Id %x for data "
-		    "size %I64u bytes.\n",
+		    "size %llu bytes.\n",
 		    fdo, status, listIdentifier,
 		    totalSectorsToProcess * fdoExt->DiskGeometry.BytesPerSector));
 
@@ -14186,7 +14186,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 			TRACE_LEVEL_WARNING,
 		    TRACE_FLAG_IOCTL,
 		    "ClasspReceiveWriteUsingTokenInformationTransferPacketDone (%p): "
-		    "%wsSuccessfully wrote (for list Id %x) for data size %I64u bytes\n",
+		    "%wsSuccessfully wrote (for list Id %x) for data size %llu bytes\n",
 		    fdo,
 		    transferBlockCount == totalSectorsToProcess ? L"" :
 								  L"Target truncated "
@@ -14228,7 +14228,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL,
 			    "ClasspReceiveWriteUsingTokenInformationTransferPacketDone "
 			    "(%p): Reason for truncation/failure: %x - for list Id %x "
-			    "for data size %I64u bytes.\n",
+			    "for data size %llu bytes.\n",
 			    fdo, status, listIdentifier,
 			    transferBlockCount * fdoExt->DiskGeometry.BytesPerSector));
 
@@ -14244,7 +14244,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 			    "ClasspReceiveWriteUsingTokenInformationTransferPacketDone "
 			    "(%p): No sense data available but reason for "
 			    "truncation/failure, possibly: %x - for list Id %x for data "
-			    "size %I64u bytes.\n",
+			    "size %llu bytes.\n",
 			    fdo, completionStatus, listIdentifier,
 			    transferBlockCount * fdoExt->DiskGeometry.BytesPerSector));
 	    }

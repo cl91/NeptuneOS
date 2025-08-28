@@ -680,7 +680,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 
 		/* Also update the maximum sector */
 		MaxSector = GET_PARTITION_LENGTH(PartitionDescriptor);
-		DPRINT1("FSTUB: MaxSector now = %I64d\n", MaxSector);
+		DPRINT1("FSTUB: MaxSector now = %lld\n", MaxSector);
 		break;
 	    }
 	}
@@ -713,7 +713,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	    DPRINT1("FSTUB: Drive %p has no valid MBR. Make it into a "
 		    "super-floppy\n",
 		    DeviceObject);
-	    DPRINT1("FSTUB: Drive has %I64d sectors and is %#016I64x "
+	    DPRINT1("FSTUB: Drive has %lld sectors and is %#016I64x "
 		    "bytes large\n",
 		    EndSector, DiskGeometryEx.DiskSize.QuadPart);
 

@@ -85,6 +85,6 @@ VOID RtlRestoreContext(IN PCONTEXT Context,
 	}
     }
 
-    DPRINT("returning to %I64x stack %I64x\n", Context->Pc, Context->Sp);
+    DPRINT("returning to %llx stack %llx\n", Context->Pc, Context->Sp);
     NtContinue(Context, NULL);
 }

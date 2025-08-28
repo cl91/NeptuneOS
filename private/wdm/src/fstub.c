@@ -482,9 +482,9 @@ static VOID FstubDbgPrintDriveLayoutEx(IN PDRIVE_LAYOUT_INFORMATION_EX DriveLayo
     case PARTITION_STYLE_GPT:
 	FstubDbgGuidToString(&(DriveLayout->Gpt.DiskId), Guid, sizeof(Guid));
 	DPRINT("DiskId: %s\n", Guid);
-	DPRINT("StartingUsableOffset: %I64x\n",
+	DPRINT("StartingUsableOffset: %llx\n",
 	       DriveLayout->Gpt.StartingUsableOffset.QuadPart);
-	DPRINT("UsableLength: %I64x\n", DriveLayout->Gpt.UsableLength.QuadPart);
+	DPRINT("UsableLength: %llx\n", DriveLayout->Gpt.UsableLength.QuadPart);
 	DPRINT("MaxPartitionCount: %u\n", DriveLayout->Gpt.MaxPartitionCount);
 	for (i = 0; i < DriveLayout->PartitionCount; i++) {
 	    FstubDbgPrintPartitionEx(DriveLayout->PartitionEntry, i);
@@ -507,9 +507,9 @@ static VOID FstubDbgPrintPartitionEx(IN PPARTITION_INFORMATION_EX PartitionEntry
 
     switch (PartitionEntry[PartitionNumber].PartitionStyle) {
     case PARTITION_STYLE_MBR:
-	DPRINT("  StartingOffset: %I64x\n",
+	DPRINT("  StartingOffset: %llx\n",
 	       PartitionEntry[PartitionNumber].StartingOffset.QuadPart);
-	DPRINT("  PartitionLength: %I64x\n",
+	DPRINT("  PartitionLength: %llx\n",
 	       PartitionEntry[PartitionNumber].PartitionLength.QuadPart);
 	DPRINT("  RewritePartition: %u\n",
 	       PartitionEntry[PartitionNumber].RewritePartition);
@@ -524,9 +524,9 @@ static VOID FstubDbgPrintPartitionEx(IN PPARTITION_INFORMATION_EX PartitionEntry
 
 	break;
     case PARTITION_STYLE_GPT:
-	DPRINT("  StartingOffset: %I64x\n",
+	DPRINT("  StartingOffset: %llx\n",
 	       PartitionEntry[PartitionNumber].StartingOffset.QuadPart);
-	DPRINT("  PartitionLength: %I64x\n",
+	DPRINT("  PartitionLength: %llx\n",
 	       PartitionEntry[PartitionNumber].PartitionLength.QuadPart);
 	DPRINT("  RewritePartition: %u\n",
 	       PartitionEntry[PartitionNumber].RewritePartition);
@@ -536,7 +536,7 @@ static VOID FstubDbgPrintPartitionEx(IN PPARTITION_INFORMATION_EX PartitionEntry
 	FstubDbgGuidToString(&(PartitionEntry[PartitionNumber].Gpt.PartitionId),
 			     Guid, sizeof(Guid));
 	DPRINT("  PartitionId: %s\n", Guid);
-	DPRINT("  Attributes: %I64x\n", PartitionEntry[PartitionNumber].Gpt.Attributes);
+	DPRINT("  Attributes: %llx\n", PartitionEntry[PartitionNumber].Gpt.Attributes);
 	DPRINT("  Name: %ws\n", PartitionEntry[PartitionNumber].Gpt.Name);
 
 	break;
@@ -564,7 +564,7 @@ VOID NTAPI FstubDbgPrintSetPartitionEx(IN PSET_PARTITION_INFORMATION_EX Partitio
 	DPRINT("  PartitionType: %s\n", Guid);
 	FstubDbgGuidToString(&(PartitionEntry->Gpt.PartitionId), Guid, sizeof(Guid));
 	DPRINT("  PartitionId: %s\n", Guid);
-	DPRINT("  Attributes: %I64x\n", PartitionEntry->Gpt.Attributes);
+	DPRINT("  Attributes: %llx\n", PartitionEntry->Gpt.Attributes);
 	DPRINT("  Name: %ws\n", PartitionEntry->Gpt.Name);
 
 	break;
@@ -741,7 +741,7 @@ NTAPI NTSTATUS FstubReadHeaderEFI(IN PDISK_INFORMATION Disk,
 	EFIHeader->Revision != EFI_HEADER_REVISION_1 ||
 	EFIHeader->HeaderSize != sizeof(EFI_PARTITION_HEADER)) {
 	DPRINT("EFI::Wrong signature/version/header size!\n");
-	DPRINT("%I64x (expected: %I64x)\n", EFIHeader->Signature, EFI_HEADER_SIGNATURE);
+	DPRINT("%llx (expected: %llx)\n", EFIHeader->Signature, EFI_HEADER_SIGNATURE);
 	DPRINT("%03x (expected: %03x)\n", EFIHeader->Revision, EFI_HEADER_REVISION_1);
 	DPRINT("%02x (expected: %02zx)\n", EFIHeader->HeaderSize,
 	       sizeof(EFI_PARTITION_HEADER));
@@ -1416,15 +1416,15 @@ static NTSTATUS FstubWriteHeaderEFI(IN PDISK_INFORMATION Disk,
     /* Debug the way we'll break disk, to let user pray */
     DPRINT("FSTUB: About to write the following header for %s table\n",
 	   (WriteBackupTable ? "backup" : "primary"));
-    DPRINT(" Signature: %I64x\n", EFIHeader->Signature);
+    DPRINT(" Signature: %llx\n", EFIHeader->Signature);
     DPRINT(" Revision: %x\n", EFIHeader->Revision);
     DPRINT(" HeaderSize: %x\n", EFIHeader->HeaderSize);
     DPRINT(" HeaderCRC32: %x\n", EFIHeader->HeaderCRC32);
-    DPRINT(" MyLBA: %I64x\n", EFIHeader->MyLBA);
-    DPRINT(" AlternateLBA: %I64x\n", EFIHeader->AlternateLBA);
-    DPRINT(" FirstUsableLBA: %I64x\n", EFIHeader->FirstUsableLBA);
-    DPRINT(" LastUsableLBA: %I64x\n", EFIHeader->LastUsableLBA);
-    DPRINT(" PartitionEntryLBA: %I64x\n", EFIHeader->PartitionEntryLBA);
+    DPRINT(" MyLBA: %llx\n", EFIHeader->MyLBA);
+    DPRINT(" AlternateLBA: %llx\n", EFIHeader->AlternateLBA);
+    DPRINT(" FirstUsableLBA: %llx\n", EFIHeader->FirstUsableLBA);
+    DPRINT(" LastUsableLBA: %llx\n", EFIHeader->LastUsableLBA);
+    DPRINT(" PartitionEntryLBA: %llx\n", EFIHeader->PartitionEntryLBA);
     DPRINT(" NumberOfEntries: %x\n", EFIHeader->NumberOfEntries);
     DPRINT(" SizeOfPartitionEntry: %x\n", EFIHeader->SizeOfPartitionEntry);
     DPRINT(" PartitionEntryCRC32: %x\n", EFIHeader->PartitionEntryCRC32);

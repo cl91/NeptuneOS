@@ -2234,7 +2234,7 @@ NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
                         \n\t\t\tProvisioningType: %u \
                         \n\t\t\tLBPRZ: %u \
                         \n\t\t\tLBPU: %u \
-                        \n\t\t\tANC_SUP: %I64u \
+                        \n\t\t\tANC_SUP: %llu \
                         \n\t\t\tThresholdExponent: %u\n",
 		 DeviceObject,
 		 (PCSZ)(((PUCHAR)fdoExtension->DeviceDescriptor) +
@@ -2810,8 +2810,8 @@ VOID ConvertDataSetRangeToUnmapBlockDescr(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExt
     TracePrint(
 	(TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 	 "ConvertDataSetRangeToUnmapBlockDescr (%p): Generating UNMAP Block Descriptors from DataSetRange: \
-                     \n\t\tStartingOffset = %I64u bytes \
-                     \n\t\tLength = %I64u bytes\n",
+                     \n\t\tStartingOffset = %llu bytes \
+                     \n\t\tLength = %llu bytes\n",
 	 FdoExtension->DeviceObject, DataSetRange->StartingOffset,
 	 DataSetRange->LengthInBytes));
 
@@ -2857,8 +2857,8 @@ VOID ConvertDataSetRangeToUnmapBlockDescr(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExt
 	TracePrint(
 	    (TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 	     "ConvertDataSetRangeToUnmapBlockDescr (%p): Generated UNMAP Block Descriptor: \
-                     \n\t\t\tStartingLBA = %I64u \
-                     \n\t\t\tLBACount = %I64u\n",
+                     \n\t\t\tStartingLBA = %llu \
+                     \n\t\t\tLBACount = %llu\n",
 	     FdoExtension->DeviceObject, startingSector, sectorCount));
     }
 
@@ -3380,8 +3380,8 @@ NTSTATUS ClasspDeviceTrimProcess(IN PDEVICE_OBJECT DeviceObject,
 			     fdoExtension->CommonExtension.PartitionLength.QuadPart)) {
 			TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 				    "ClasspDeviceTrimProcess (%p): Invalid dataset "
-				    "range.  StartingOffset = %I64x, LengthInBytes = "
-				    "%I64x\n",
+				    "range.  StartingOffset = %llx, LengthInBytes = "
+				    "%llx\n",
 				    DeviceObject, dataSetRanges[i].StartingOffset,
 				    dataSetRanges[i].LengthInBytes));
 
@@ -3505,8 +3505,8 @@ NTSTATUS GetLBAStatus(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     REVERSE_BYTES(&(cdb->GET_LBA_STATUS.AllocationLength), &LBAStatusSize);
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
-		"GetLBAStatus (%p): sending command with StartingLBA = 0x%I64x, "
-		"AllocationLength = 0x%I64x, ConsolidateableBlocksOnly = %u\n",
+		"GetLBAStatus (%p): sending command with StartingLBA = 0x%llx, "
+		"AllocationLength = 0x%llx, ConsolidateableBlocksOnly = %u\n",
 		FdoExtension->DeviceObject, StartingLBA, LBAStatusSize,
 		ConsolidateableBlocksOnly));
 
@@ -3860,9 +3860,9 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 	StartingOffset + LengthInBytes >
 	    (ULONGLONG)fdoExtension->CommonExtension.PartitionLength.QuadPart) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClasspDeviceGetLBAStatusWorker (%p): Invalid range, length is %I64u "
-		    "bytes, starting offset is %I64u bytes, Unmap alignment is %I64u "
-		    "bytes, and disk size is %I64u bytes\n",
+		    "ClasspDeviceGetLBAStatusWorker (%p): Invalid range, length is %llu "
+		    "bytes, starting offset is %llu bytes, Unmap alignment is %llu "
+		    "bytes, and disk size is %llu bytes\n",
 		    DeviceObject, LengthInBytes, StartingOffset, alignmentInBytes,
 		    (ULONGLONG)fdoExtension->CommonExtension.PartitionLength.QuadPart));
 
@@ -3917,7 +3917,7 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     //
     if (requestedSlabs == 0) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-		    "ClasspDeviceGetLBAStatusWorker (%p): Invalid number (%I64u) of "
+		    "ClasspDeviceGetLBAStatusWorker (%p): Invalid number (%llu) of "
 		    "slabs requested\n",
 		    DeviceObject, requestedSlabs));
 
@@ -4120,7 +4120,7 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 			    //
 			    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 					"ClasspDeviceGetLBAStatusWorker (%p): Device "
-					"returned starting LBA = %I64x when %I64x was "
+					"returned starting LBA = %llx when %llx was "
 					"expected.\n",
 					DeviceObject, returnedStartingLBA, startingLBA));
 
@@ -4809,7 +4809,7 @@ NTAPI VOID ClassLogThresholdEvent(IN PDEVICE_OBJECT DeviceObject,
 		    stringIndex += (wcslen(stringIndex) + 1);
 		    stringSize -= (LONG)(wcslen(stringIndex) + 1) * sizeof(WCHAR);
 
-		    status = RtlStringCbPrintfW(stringIndex, stringSize, L"%I64u",
+		    status = RtlStringCbPrintfW(stringIndex, stringSize, L"%llu",
 						resources.UsedMappingResources);
 
 		    if (NT_SUCCESS(status)) {
@@ -4821,7 +4821,7 @@ NTAPI VOID ClassLogThresholdEvent(IN PDEVICE_OBJECT DeviceObject,
 			stringIndex += (wcslen(stringIndex) + 1);
 			stringSize -= (LONG)(wcslen(stringIndex) + 1) * sizeof(WCHAR);
 
-			status = RtlStringCbPrintfW(stringIndex, stringSize, L"%I64u",
+			status = RtlStringCbPrintfW(stringIndex, stringSize, L"%llu",
 						    resources.AvailableMappingResources);
 
 			if (NT_SUCCESS(status)) {
@@ -5460,7 +5460,7 @@ NTAPI VOID ClasspLogIOEventWithContext(IN PDEVICE_OBJECT DeviceObject,
 	    // The first is a "0x" plus ULONGLONG in hex representing the LBA plus the NULL character.
 	    // The second is a ULONG representing the disk number plus the NULL character.
 	    //
-	    status = RtlStringCbPrintfW(stringIndex, stringSize, L"0x%I64x",
+	    status = RtlStringCbPrintfW(stringIndex, stringSize, L"0x%llx",
 					ioLogMessageContext->Lba.QuadPart);
 	    if (NT_SUCCESS(status)) {
 		errorLogEntry->NumberOfStrings++;
@@ -6731,7 +6731,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 	    (dataSetRanges[i].LengthInBytes == 0)) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 			"ClasspValidateOffloadInputParameters (%p): Incorrect "
-			"DataSetRanges entry %u [offset %I64x, length %I64x].\n",
+			"DataSetRanges entry %u [offset %llx, length %llx].\n",
 			DeviceObject, i, dataSetRanges[i].StartingOffset,
 			dataSetRanges[i].LengthInBytes));
 
@@ -6743,8 +6743,8 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 	    (ULONGLONG)fdoExtension->CommonExtension.PartitionLength.QuadPart) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 			"ClasspValidateOffloadInputParameters (%p): Error! DataSetRange "
-			"%u (starting LBA %I64x) specified length %I64x exceeds the "
-			"medium's capacity (%I64x).\n",
+			"%u (starting LBA %llx) specified length %llx exceeds the "
+			"medium's capacity (%llx).\n",
 			DeviceObject, i, dataSetRanges[i].StartingOffset,
 			dataSetRanges[i].LengthInBytes,
 			fdoExtension->CommonExtension.PartitionLength.QuadPart));
@@ -6930,7 +6930,7 @@ NTSTATUS ClasspGetTokenOperationDescriptorLimits(IN PDEVICE_OBJECT Fdo,
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspGetTokenOperationDescriptorLimits (%p): Exiting function with "
-		"MaxDescr %u, MaxXferBlocks %I64u.\n",
+		"MaxDescr %u, MaxXferBlocks %llu.\n",
 		Fdo, *MaxBlockDescriptorsCount, *MaxBlockDescriptorsLength));
 
     return STATUS_SUCCESS;
@@ -6989,7 +6989,7 @@ VOID ClasspConvertDataSetRangeToBlockDescr(IN PDEVICE_OBJECT Fdo,
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspConvertDataSetRangeToBlockDescr (%p): Entering function. Starting "
-		"offset %I64x.\n",
+		"offset %llx.\n",
 		Fdo, DataSetRange->StartingOffset));
 
     fdoExtension = Fdo->DeviceExtension;
@@ -7089,7 +7089,7 @@ VOID ClasspConvertDataSetRangeToBlockDescr(IN PDEVICE_OBJECT Fdo,
 
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		    "ClasspConvertDataSetRangeToBlockDescr (%p): Descriptor: %u, "
-		    "starting LBA: %I64x, length: %I64x bytes, media size: %I64x.\n",
+		    "starting LBA: %llx, length: %llx bytes, media size: %llx.\n",
 		    Fdo, *CurrentBlockDescrIndex - 1, startingSector,
 		    sectorCount * fdoExtension->DiskGeometry.BytesPerSector,
 		    (ULONGLONG)fdoExtension->CommonExtension.PartitionLength.QuadPart));
@@ -7099,7 +7099,7 @@ VOID ClasspConvertDataSetRangeToBlockDescr(IN PDEVICE_OBJECT Fdo,
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspConvertDataSetRangeToBlockDescr (%p): Exiting function (starting "
-		"offset %I64x). Total sectors processed %I64u.\n",
+		"offset %llx). Total sectors processed %llu.\n",
 		Fdo, DataSetRange->StartingOffset, totalSectorCount));
 
     return;

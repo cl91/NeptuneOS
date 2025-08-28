@@ -315,7 +315,7 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
      * if this is a read of the page file, simply increment the byte offset. */
     if (IsPageFile) {
 	Stack->Parameters.Read.ByteOffset.QuadPart += FatInfo->DataStart * BytesPerSector;
-	DPRINT("Read from page file, disk offset %I64x\n",
+	DPRINT("Read from page file, disk offset %llx\n",
 	       Stack->Parameters.Read.ByteOffset.QuadPart);
     }
 

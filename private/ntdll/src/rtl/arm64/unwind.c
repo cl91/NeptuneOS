@@ -302,7 +302,7 @@ static PVOID RtlpUnwindPackedData(IN ULONG_PTR ImageBase,
     ULONG SavedRegSize, LocalSize;
     ULONG NumIntRegs, NumFpRegs, NumSavedRegs, NumLocalRegs;
 
-    DPRINT("function %I64x-%I64x: len=%#x flag=%x regF=%u regI=%u H=%u CR=%u frame=%x\n",
+    DPRINT("function %llx-%llx: len=%#x flag=%x regF=%u regI=%u H=%u CR=%u frame=%x\n",
 	   ImageBase + FunctionEntry->BeginAddress,
 	   ImageBase + FunctionEntry->BeginAddress + FunctionEntry->FunctionLength * 4,
 	   FunctionEntry->FunctionLength, FunctionEntry->Flag, FunctionEntry->RegF,
@@ -488,7 +488,7 @@ static PVOID RtlpUnwindFullData(IN ULONG_PTR ImageBase,
     Offset = ((ControlPc - ImageBase) - FunctionEntry->BeginAddress) / 4;
     End = (BYTE *)Data + Codes * 4;
 
-    DPRINT("function %I64x-%I64x: len=%#x ver=%u X=%u E=%u epilogs=%u codes=%u\n",
+    DPRINT("function %llx-%llx: len=%#x ver=%u X=%u E=%u epilogs=%u codes=%u\n",
 	   ImageBase + FunctionEntry->BeginAddress,
 	   ImageBase + FunctionEntry->BeginAddress + UnwindData->FunctionLength * 4,
 	   UnwindData->FunctionLength, UnwindData->Version,
@@ -581,7 +581,7 @@ PEXCEPTION_ROUTINE RtlVirtualUnwind(IN ULONG HandlerType,
 				    OUT PULONG_PTR EstablisherFrame,
 				    IN OUT OPTIONAL PKNONVOLATILE_CONTEXT_POINTERS CtxPtrs)
 {
-    DPRINT("type %x base %I64x pc %I64x rva %I64x sp %I64x\n",
+    DPRINT("type %x base %llx pc %llx rva %llx sp %llx\n",
 	   HandlerType, ImageBase, ControlPc, ControlPc - ImageBase, Context->Sp);
 
     if (!FunctionEntry && ControlPc == Context->Lr) {
@@ -608,7 +608,7 @@ PEXCEPTION_ROUTINE RtlVirtualUnwind(IN ULONG HandlerType,
     if (FinalPcIsFromLr)
 	Context->Pc = Context->Lr;
 
-    DPRINT("ret: pc=%I64x lr=%I64x sp=%I64x handler=%p\n",
+    DPRINT("ret: pc=%llx lr=%llx sp=%llx handler=%p\n",
 	   Context->Pc, Context->Lr, Context->Sp, *Handler);
     *EstablisherFrame = Context->Sp;
     return Handler;

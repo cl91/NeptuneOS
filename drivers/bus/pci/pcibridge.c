@@ -307,7 +307,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		Limit = PciBridgePrefetchMemoryLimit(Current);
 
 		/* If it's there, check the alignment */
-		DPRINT1("Bridge Prefetch MEM Base and Limit: %I64x %I64x\n",
+		DPRINT1("Bridge Prefetch MEM Base and Limit: %llx %llx\n",
 			Base.QuadPart, Limit.QuadPart);
 		CheckAlignment = TRUE;
 	    }

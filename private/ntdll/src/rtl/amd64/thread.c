@@ -42,6 +42,6 @@ NTAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
 VOID RtlRestoreContext(IN PCONTEXT Context,
 		       IN PEXCEPTION_RECORD ExceptionRecord)
 {
-    DPRINT("returning to %I64x stack %I64x\n", Context->Rip, Context->Rsp);
+    DPRINT("returning to %llx stack %llx\n", Context->Rip, Context->Rsp);
     NtContinue(Context, NULL);
 }

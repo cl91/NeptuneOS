@@ -458,8 +458,8 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     //
     // Display I/O Information
     //
-    RtlCliDisplayString("[I/O] Reads: %d/%I64dKB. Writes: %d/%I64dKB. "
-			"Others: %d/%I64dKB\n",
+    RtlCliDisplayString("[I/O] Reads: %d/%lldKB. Writes: %d/%lldKB. "
+			"Others: %d/%lldKB\n",
 			PerfInfo.IoReadOperationCount,
 			PerfInfo.IoReadTransferCount.QuadPart / 1024,
 			PerfInfo.IoWriteOperationCount,

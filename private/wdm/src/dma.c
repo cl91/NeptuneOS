@@ -1157,7 +1157,7 @@ NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT Dev
 	if (TempElements[ElementCount].Length == 0)
 	    break;
 
-	DPRINT("Allocated one S/G element: 0x%I64u with length: 0x%x\n",
+	DPRINT("Allocated one S/G element: 0x%llu with length: 0x%x\n",
 	       TempElements[ElementCount].Address.QuadPart,
 	       TempElements[ElementCount].Length);
 

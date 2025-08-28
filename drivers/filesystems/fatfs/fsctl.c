@@ -50,7 +50,7 @@ static NTSTATUS FatReadDisk(IN PDEVICE_OBJECT DeviceObject,
 
     if (!NT_SUCCESS(Status)) {
 	DPRINT("IO failed!!! FatReadDisk : Error code: %x\n", Status);
-	DPRINT("(DeviceObject %p, Offset %I64x, Size %u, Buffer %p\n",
+	DPRINT("(DeviceObject %p, Offset %llx, Size %u, Buffer %p\n",
 	       DeviceObject, ReadOffset->QuadPart, ReadLength, Buffer);
 	return Status;
     }

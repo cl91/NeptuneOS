@@ -479,7 +479,7 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
     PVOID MappedAddress;
     NTSTATUS Status;
 
-    DPRINT1("StorPortGetDeviceBase(%p %u %u 0x%I64x %u %u)\n", HwDeviceExtension, BusType,
+    DPRINT1("StorPortGetDeviceBase(%p %u %u 0x%llx %u %u)\n", HwDeviceExtension, BusType,
 	    SystemIoBusNumber, IoAddress.QuadPart, NumberOfBytes, InIoSpace);
 
     /* Get the miniport extension */
@@ -495,7 +495,7 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
 	return NULL;
     }
 
-    DPRINT1("Translated Address: 0x%I64x\n", TranslatedAddress.QuadPart);
+    DPRINT1("Translated Address: 0x%llx\n", TranslatedAddress.QuadPart);
 
     /* In I/O space */
     if (InIoSpace) {
@@ -589,7 +589,7 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
 NTAPI PVOID StorPortGetVirtualAddress(IN PVOID HwDeviceExtension,
 				      IN STOR_PHYSICAL_ADDRESS PhysicalAddress)
 {
-    DPRINT1("StorPortGetVirtualAddress(%p %I64x)\n", HwDeviceExtension,
+    DPRINT1("StorPortGetVirtualAddress(%p %llx)\n", HwDeviceExtension,
 	    PhysicalAddress.QuadPart);
     /* Get the miniport extension */
     PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(HwDeviceExtension,
