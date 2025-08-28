@@ -63,6 +63,7 @@
 @ stdcall MmMapIoSpace(long long long long)
 @ stdcall MmUnmapIoSpace(ptr long)
 @ stdcall MmAllocateContiguousMemorySpecifyCache(long long long long long long ptr ptr)
+@ stdcall MmFreeContiguousMemorySpecifyCache(ptr ptr long)
 @ stdcall KeInsertDeviceQueue(ptr ptr)
 @ stdcall KeInsertByKeyDeviceQueue(ptr ptr long)
 @ stdcall KeRemoveDeviceQueue(ptr)

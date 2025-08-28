@@ -76,7 +76,8 @@ PHW_INITIALIZATION_DATA PortGetDriverInitData(PDRIVER_OBJECT_EXTENSION DriverExt
 }
 
 static VOID PortAcquireSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
-				STOR_SPINLOCK SpinLock, PVOID LockContext,
+				STOR_SPINLOCK SpinLock,
+				PVOID LockContext,
 				PSTOR_LOCK_HANDLE LockHandle)
 {
     DPRINT1("PortAcquireSpinLock(%p %u %p %p)\n", DeviceExtension, SpinLock, LockContext,
@@ -213,7 +214,8 @@ static NTAPI VOID PortUnload(IN PDRIVER_OBJECT DriverObject)
     }
 }
 
-static NTAPI NTSTATUS PortDispatchCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+static NTAPI NTSTATUS PortDispatchCreate(IN PDEVICE_OBJECT DeviceObject,
+					 IN PIRP Irp)
 {
     DPRINT1("PortDispatchCreate(%p %p)\n", DeviceObject, Irp);
 
@@ -225,7 +227,8 @@ static NTAPI NTSTATUS PortDispatchCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP
     return STATUS_SUCCESS;
 }
 
-static NTAPI NTSTATUS PortDispatchClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+static NTAPI NTSTATUS PortDispatchClose(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp)
 {
     DPRINT1("PortDispatchClose(%p %p)\n", DeviceObject, Irp);
 
@@ -250,7 +253,8 @@ static NTAPI NTSTATUS PortDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_SUCCESS;
 }
 
-static NTAPI NTSTATUS PortDispatchScsi(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+static NTAPI NTSTATUS PortDispatchScsi(IN PDEVICE_OBJECT DeviceObject,
+				       IN PIRP Irp)
 {
     PFDO_DEVICE_EXTENSION DeviceExtension;
 
@@ -289,7 +293,8 @@ static NTAPI NTSTATUS PortDispatchSystemControl(IN PDEVICE_OBJECT DeviceObject,
     return STATUS_SUCCESS;
 }
 
-static NTAPI NTSTATUS PortDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+static NTAPI NTSTATUS PortDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
+				      IN PIRP Irp)
 {
     PFDO_DEVICE_EXTENSION DeviceExtension;
 
@@ -313,7 +318,8 @@ static NTAPI NTSTATUS PortDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Ir
     }
 }
 
-static NTAPI NTSTATUS PortDispatchPower(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+static NTAPI NTSTATUS PortDispatchPower(IN PDEVICE_OBJECT DeviceObject,
+					IN PIRP Irp)
 {
     DPRINT1("PortDispatchPower(%p %p)\n", DeviceObject, Irp);
 
@@ -363,8 +369,10 @@ NTAPI BOOLEAN StorPortBusy(IN PVOID HwDeviceExtension,
  * @unimplemented
  */
 NTAPI VOID StorPortCompleteRequest(IN PVOID HwDeviceExtension,
-				   IN UCHAR PathId, IN UCHAR TargetId,
-				   IN UCHAR Lun, IN UCHAR SrbStatus)
+				   IN UCHAR PathId,
+				   IN UCHAR TargetId,
+				   IN UCHAR Lun,
+				   IN UCHAR SrbStatus)
 {
     DPRINT1("StorPortCompleteRequest()\n");
     UNIMPLEMENTED;
@@ -375,8 +383,6 @@ NTAPI VOID StorPortCompleteRequest(IN PVOID HwDeviceExtension,
  */
 NTAPI ULONG StorPortConvertPhysicalAddressToUlong(IN STOR_PHYSICAL_ADDRESS Address)
 {
-    DPRINT1("StorPortConvertPhysicalAddressToUlong()\n");
-
     return Address.LowPart;
 }
 
@@ -386,9 +392,6 @@ NTAPI ULONG StorPortConvertPhysicalAddressToUlong(IN STOR_PHYSICAL_ADDRESS Addre
 NTAPI STOR_PHYSICAL_ADDRESS StorPortConvertUlongToPhysicalAddress(IN ULONG_PTR Addr)
 {
     STOR_PHYSICAL_ADDRESS Address;
-
-    DPRINT1("StorPortConvertUlongToPhysicalAddress()\n");
-
     Address.QuadPart = Addr;
     return Address;
 }
@@ -400,7 +403,6 @@ VOID StorPortDebugPrint(IN ULONG DebugPrintLevel,
 			IN PCHAR DebugMessage, ...)
 {
     va_list ap;
-
     DbgPrintEx(0x58, DebugPrintLevel, "STORMINI: ");
     va_start(ap, DebugMessage);
     vDbgPrintEx(0x58, DebugPrintLevel, DebugMessage, ap);
@@ -434,6 +436,99 @@ NTAPI BOOLEAN StorPortDeviceReady(IN PVOID HwDeviceExtension,
     return FALSE;
 }
 
+static ULONG StorExtAllocatePool(IN PVOID HwDeviceExtension,
+				 IN ULONG NumberOfBytes,
+				 IN ULONG Tag,
+				 PVOID *BufferPointer)
+{
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(Tag);
+    if (!BufferPointer) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    *BufferPointer = ExAllocatePoolWithTag(NumberOfBytes, 0);
+    if (*BufferPointer == NULL) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtFreePool(IN PVOID HwDeviceExtension,
+			     IN PVOID BufferPointer)
+{
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    if (!BufferPointer) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    ExFreePoolWithTag(BufferPointer, 0);
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG
+StorExtAllocateContiguousMemorySpecifyCacheNode(IN PVOID HwDeviceExtension,
+						IN SIZE_T NumberOfBytes,
+						IN PHYSICAL_ADDRESS LowestAcceptableAddress,
+						IN PHYSICAL_ADDRESS HighestAcceptableAddress,
+						IN OPTIONAL PHYSICAL_ADDRESS BoundaryAddrMultiple,
+						IN MEMORY_CACHING_TYPE CacheType,
+						IN NODE_REQUIREMENT PreferredNode,
+						PVOID *VirtAddr)
+{
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(PreferredNode);
+
+    if (!VirtAddr) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+
+    /* We don't allow non-zero lowest acceptable address */
+    if (LowestAcceptableAddress.QuadPart) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+
+    *VirtAddr = NULL;
+    PHYSICAL_ADDRESS PhyAddr = {};
+    MmAllocateContiguousMemorySpecifyCache(NumberOfBytes,
+					   HighestAcceptableAddress,
+					   BoundaryAddrMultiple,
+					   CacheType, VirtAddr, &PhyAddr);
+    if (*VirtAddr == NULL || PhyAddr.QuadPart == 0) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtFreeContiguousMemorySpecifyCache(IN PVOID HwDeviceExtension,
+						     IN PVOID BaseAddress,
+						     IN SIZE_T NumberOfBytes,
+						     IN MEMORY_CACHING_TYPE CacheType)
+{
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+
+    MmFreeContiguousMemorySpecifyCache(BaseAddress, NumberOfBytes, CacheType);
+
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtInitializeTimer(IN PVOID HwDeviceExtension,
+				    OUT PVOID *TimerHandle)
+{
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(TimerHandle);
+
+    return STOR_STATUS_NOT_IMPLEMENTED;
+}
+
+static ULONG StorExtFreeTimer(IN PVOID HwDeviceExtension,
+			      IN PVOID TimerHandle)
+{
+    UNREFERENCED_PARAMETER(HwDeviceExtension);
+    UNREFERENCED_PARAMETER(TimerHandle);
+
+    return STOR_STATUS_NOT_IMPLEMENTED;
+}
+
 /*
  * @unimplemented
  */
@@ -441,8 +536,87 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
 			       IN PVOID HwDeviceExtension, ...)
 {
     DPRINT1("StorPortExtendedFunction(%d %p ...)\n", FunctionCode, HwDeviceExtension);
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+
+    if (!HwDeviceExtension) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+
+    va_list VaList;
+    va_start(VaList, HwDeviceExtension);
+
+    ULONG Status;
+    switch (FunctionCode) {
+    case ExtFunctionAllocatePool:
+    {
+	ULONG NumberOfBytes = va_arg(VaList, ULONG);
+	ULONG Tag = va_arg(VaList, ULONG);
+	PVOID *Ptr = va_arg(VaList, PVOID*);
+	Status = StorExtAllocatePool(HwDeviceExtension, NumberOfBytes, Tag, Ptr);
+	break;
+    }
+
+    case ExtFunctionFreePool:
+    {
+	PVOID Ptr = va_arg(VaList, PVOID);
+	Status = StorExtFreePool(HwDeviceExtension, Ptr);
+	break;
+    }
+
+    case ExtFunctionAllocateContiguousMemorySpecifyCacheNode:
+    {
+	SIZE_T NumberOfBytes = va_arg(VaList, SIZE_T);
+	PHYSICAL_ADDRESS LowestAcceptableAddress = va_arg(VaList, PHYSICAL_ADDRESS);
+	PHYSICAL_ADDRESS HighestAcceptableAddress = va_arg(VaList, PHYSICAL_ADDRESS);
+	PHYSICAL_ADDRESS BoundaryAddressMultiple = va_arg(VaList, PHYSICAL_ADDRESS);
+	MEMORY_CACHING_TYPE CacheType = va_arg(VaList, MEMORY_CACHING_TYPE);
+	NODE_REQUIREMENT PreferredNode = va_arg(VaList, NODE_REQUIREMENT);
+	PVOID *DestPtr = va_arg(VaList, PVOID *);
+	Status = StorExtAllocateContiguousMemorySpecifyCacheNode(HwDeviceExtension,
+								 NumberOfBytes,
+								 LowestAcceptableAddress,
+								 HighestAcceptableAddress,
+								 BoundaryAddressMultiple,
+								 CacheType, PreferredNode,
+								 DestPtr);
+	break;
+    }
+
+    case ExtFunctionFreeContiguousMemorySpecifyCache:
+    {
+	PVOID BaseAddress = va_arg(VaList, PVOID);
+	SIZE_T NumberOfBytes = va_arg(VaList, SIZE_T);
+	MEMORY_CACHING_TYPE CacheType = va_arg(VaList, MEMORY_CACHING_TYPE);
+
+	Status = StorExtFreeContiguousMemorySpecifyCache(HwDeviceExtension,
+							 BaseAddress,
+							 NumberOfBytes,
+							 CacheType);
+	break;
+    }
+
+    case ExtFunctionInitializeTimer:
+    {
+	PVOID *TimerHandle = va_arg(VaList, PVOID *);
+	Status = StorExtInitializeTimer(HwDeviceExtension, TimerHandle);
+	break;
+    }
+
+    case ExtFunctionFreeTimer:
+    {
+	PVOID TimerHandle = va_arg(VaList, PVOID);
+	Status = StorExtFreeTimer(HwDeviceExtension, TimerHandle);
+	break;
+    }
+
+    default:
+	DPRINT1("StorPortPatchExtendedFunction: unimplemented function code %d\n",
+		FunctionCode);
+	Status = STOR_STATUS_NOT_IMPLEMENTED;
+	break;
+    }
+
+    va_end(VaList);
+    return Status;
 }
 
 /*
@@ -551,15 +725,14 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
 	    VirtualAddress, Length);
 
     /* Get the miniport extension */
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(HwDeviceExtension,
-								     MINIPORT_DEVICE_EXTENSION,
-								     HwDeviceExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(
+	HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
     DPRINT1("HwDeviceExtension %p  MiniportExtension %p\n", HwDeviceExtension,
 	    MiniportExtension);
 
     PFDO_DEVICE_EXTENSION DeviceExtension = MiniportExtension->Miniport->DeviceExtension;
 
-    STOR_PHYSICAL_ADDRESS PhysicalAddress = {0};
+    STOR_PHYSICAL_ADDRESS PhysicalAddress = { 0 };
     ULONG_PTR Offset;
     /* Inside of the uncached extension? */
     if (((ULONG_PTR)VirtualAddress >=
@@ -579,7 +752,6 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
     return PhysicalAddress;
 }
 
-
 /*
  * Return the correspoinding virtual address if the physical address falls
  * within the uncached extension. Otherwise, return NULL.
@@ -592,9 +764,8 @@ NTAPI PVOID StorPortGetVirtualAddress(IN PVOID HwDeviceExtension,
     DPRINT1("StorPortGetVirtualAddress(%p %llx)\n", HwDeviceExtension,
 	    PhysicalAddress.QuadPart);
     /* Get the miniport extension */
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(HwDeviceExtension,
-								     MINIPORT_DEVICE_EXTENSION,
-								     HwDeviceExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(
+	HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
     DPRINT1("HwDeviceExtension %p  MiniportExtension %p\n", HwDeviceExtension,
 	    MiniportExtension);
 
@@ -641,10 +812,8 @@ NTAPI PVOID StorPortGetUncachedExtension(IN PVOID HwDeviceExtension,
     PHYSICAL_ADDRESS HighestAddress = { .QuadPart = 0x00000000FFFFFFFF };
     PHYSICAL_ADDRESS Alignment = {}, PhysicalBase = {};
     PVOID VirtualBase = NULL;
-    if (!NT_SUCCESS(MmAllocateContiguousMemorySpecifyCache(NumberOfBytes,
-							   HighestAddress,
-							   Alignment,
-							   MmCached,
+    if (!NT_SUCCESS(MmAllocateContiguousMemorySpecifyCache(NumberOfBytes, HighestAddress,
+							   Alignment, MmCached,
 							   &VirtualBase,
 							   &PhysicalBase))) {
 	return NULL;
@@ -696,11 +865,10 @@ static ULONG StorPortReadWriteBusData(IN PVOID DeviceExtension,
     }
 
     /* Get the miniport extension */
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(DeviceExtension,
-								     MINIPORT_DEVICE_EXTENSION,
-								     HwDeviceExtension);
-    DPRINT1("DeviceExtension %p  MiniportExtension %p\n",
-            DeviceExtension, MiniportExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension =
+	CONTAINING_RECORD(DeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
+    DPRINT1("DeviceExtension %p  MiniportExtension %p\n", DeviceExtension,
+	    MiniportExtension);
 
     PMINIPORT Miniport = MiniportExtension->Miniport;
     if (!Miniport) {
@@ -749,8 +917,8 @@ NTAPI ULONG StorPortGetBusData(IN PVOID DeviceExtension,
 			       OUT PVOID Buffer,
 			       IN ULONG Length)
 {
-    DPRINT1("StorPortGetBusData(%p %u %u %u %p %u)\n",
-            DeviceExtension, BusDataType, SystemIoBusNumber, SlotNumber, Buffer, Length);
+    DPRINT1("StorPortGetBusData(%p %u %u %u %p %u)\n", DeviceExtension, BusDataType,
+	    SystemIoBusNumber, SlotNumber, Buffer, Length);
 
     return StorPortReadWriteBusData(DeviceExtension, BusDataType, SystemIoBusNumber,
 				    SlotNumber, Buffer, Length, FALSE);
@@ -767,9 +935,8 @@ NTAPI ULONG StorPortSetBusDataByOffset(IN PVOID DeviceExtension,
 				       IN ULONG Offset,
 				       IN ULONG Length)
 {
-    DPRINT1("StorPortSetBusData(%p %u %u %u %p %u %u)\n",
-            DeviceExtension, BusDataType, SystemIoBusNumber,
-	    SlotNumber, Buffer, Offset, Length);
+    DPRINT1("StorPortSetBusData(%p %u %u %u %p %u %u)\n", DeviceExtension, BusDataType,
+	    SystemIoBusNumber, SlotNumber, Buffer, Offset, Length);
 
     return StorPortReadWriteBusData(DeviceExtension, BusDataType, SystemIoBusNumber,
 				    SlotNumber, Buffer, Length, TRUE);
@@ -788,11 +955,10 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
     PDRIVER_OBJECT_EXTENSION DriverObjectExtension;
     NTSTATUS Status = STATUS_SUCCESS;
 
-    DPRINT1("StorPortInitialize(%p %p %p %p)\n", Argument1, Argument2,
-	    InitData, HwContext);
+    DPRINT1("StorPortInitialize(%p %p %p %p)\n", Argument1, Argument2, InitData,
+	    HwContext);
 
-    DPRINT1("HwInitializationDataSize: %u\n",
-	    InitData->HwInitializationDataSize);
+    DPRINT1("HwInitializationDataSize: %u\n", InitData->HwInitializationDataSize);
     DPRINT1("AdapterInterfaceType: %u\n", InitData->AdapterInterfaceType);
     DPRINT1("HwInitialize: %p\n", InitData->HwInitialize);
     DPRINT1("HwStartIo: %p\n", InitData->HwStartIo);
@@ -802,25 +968,20 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
     DPRINT1("HwDmaStarted: %p\n", InitData->HwDmaStarted);
     DPRINT1("HwAdapterState: %p\n", InitData->HwAdapterState);
     DPRINT1("DeviceExtensionSize: %u\n", InitData->DeviceExtensionSize);
-    DPRINT1("SpecificLuExtensionSize: %u\n",
-	    InitData->SpecificLuExtensionSize);
+    DPRINT1("SpecificLuExtensionSize: %u\n", InitData->SpecificLuExtensionSize);
     DPRINT1("SrbExtensionSize: %u\n", InitData->SrbExtensionSize);
     DPRINT1("NumberOfAccessRanges: %u\n", InitData->NumberOfAccessRanges);
 
     /* Check parameters */
-    if ((DriverObject == NULL) || (RegistryPath == NULL) ||
-	(InitData == NULL)) {
+    if ((DriverObject == NULL) || (RegistryPath == NULL) || (InitData == NULL)) {
 	DPRINT1("Invalid parameter!\n");
 	return STATUS_INVALID_PARAMETER;
     }
 
     /* Check initialization data */
-    if ((InitData->HwInitializationDataSize <
-	 sizeof(HW_INITIALIZATION_DATA)) ||
-	(InitData->HwInitialize == NULL) ||
-	(InitData->HwStartIo == NULL) ||
-	(InitData->HwFindAdapter == NULL) ||
-	(InitData->HwResetBus == NULL)) {
+    if ((InitData->HwInitializationDataSize < sizeof(HW_INITIALIZATION_DATA)) ||
+	(InitData->HwInitialize == NULL) || (InitData->HwStartIo == NULL) ||
+	(InitData->HwFindAdapter == NULL) || (InitData->HwResetBus == NULL)) {
 	DPRINT1("Revision mismatch!\n");
 	return STATUS_REVISION_MISMATCH;
     }
@@ -875,8 +1036,11 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
  */
 NTAPI VOID StorPortLogError(IN PVOID HwDeviceExtension,
 			    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
-			    IN UCHAR PathId, IN UCHAR TargetId, IN UCHAR Lun,
-			    IN ULONG ErrorCode, IN ULONG UniqueId)
+			    IN UCHAR PathId,
+			    IN UCHAR TargetId,
+			    IN UCHAR Lun,
+			    IN ULONG ErrorCode,
+			    IN ULONG UniqueId)
 {
     DPRINT1("ScsiPortLogError() called\n");
     DPRINT1("PathId: 0x%02x  TargetId: 0x%02x  Lun: 0x%02x  ErrorCode: 0x%08x  UniqueId: "
@@ -889,7 +1053,8 @@ NTAPI VOID StorPortLogError(IN PVOID HwDeviceExtension,
 /*
  * @implemented
  */
-NTAPI VOID StorPortMoveMemory(OUT PVOID Destination, IN PVOID Source,
+NTAPI VOID StorPortMoveMemory(OUT PVOID Destination,
+			      IN PVOID Source,
 			      IN ULONG Length)
 {
     RtlMoveMemory(Destination, Source, Length);
@@ -1004,7 +1169,8 @@ VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
 /*
  * @unimplemented
  */
-NTAPI BOOLEAN StorPortPause(IN PVOID HwDeviceExtension, IN ULONG TimeOut)
+NTAPI BOOLEAN StorPortPause(IN PVOID HwDeviceExtension,
+			    IN ULONG TimeOut)
 {
     DPRINT1("StorPortPause()\n");
     UNIMPLEMENTED;
@@ -1015,8 +1181,10 @@ NTAPI BOOLEAN StorPortPause(IN PVOID HwDeviceExtension, IN ULONG TimeOut)
  * @unimplemented
  */
 NTAPI BOOLEAN StorPortPauseDevice(IN PVOID HwDeviceExtension,
-				  IN UCHAR PathId, IN UCHAR TargetId,
-				  IN UCHAR Lun, IN ULONG TimeOut)
+				  IN UCHAR PathId,
+				  IN UCHAR TargetId,
+				  IN UCHAR Lun,
+				  IN ULONG TimeOut)
 {
     DPRINT1("StorPortPauseDevice()\n");
     UNIMPLEMENTED;
@@ -1049,8 +1217,10 @@ NTAPI BOOLEAN StorPortReady(IN PVOID HwDeviceExtension)
  * @unimplemented
  */
 NTAPI BOOLEAN StorPortRegistryRead(IN PVOID HwDeviceExtension,
-				   IN PUCHAR ValueName, IN ULONG Global,
-				   IN ULONG Type, IN PUCHAR Buffer,
+				   IN PUCHAR ValueName,
+				   IN ULONG Global,
+				   IN ULONG Type,
+				   IN PUCHAR Buffer,
 				   IN PULONG BufferLength)
 {
     DPRINT1("StorPortRegistryRead()\n");
@@ -1062,8 +1232,10 @@ NTAPI BOOLEAN StorPortRegistryRead(IN PVOID HwDeviceExtension,
  * @unimplemented
  */
 NTAPI BOOLEAN StorPortRegistryWrite(IN PVOID HwDeviceExtension,
-				    IN PUCHAR ValueName, IN ULONG Global,
-				    IN ULONG Type, IN PUCHAR Buffer,
+				    IN PUCHAR ValueName,
+				    IN ULONG Global,
+				    IN ULONG Type,
+				    IN PUCHAR Buffer,
 				    IN ULONG BufferLength)
 {
     DPRINT1("StorPortRegistryWrite()\n");
@@ -1085,7 +1257,8 @@ NTAPI BOOLEAN StorPortResume(IN PVOID HwDeviceExtension)
  * @unimplemented
  */
 NTAPI BOOLEAN StorPortResumeDevice(IN PVOID HwDeviceExtension,
-				   IN UCHAR PathId, IN UCHAR TargetId,
+				   IN UCHAR PathId,
+				   IN UCHAR TargetId,
 				   IN UCHAR Lun)
 {
     DPRINT1("StorPortResumeDevice()\n");
@@ -1097,8 +1270,10 @@ NTAPI BOOLEAN StorPortResumeDevice(IN PVOID HwDeviceExtension,
  * @unimplemented
  */
 NTAPI BOOLEAN StorPortSetDeviceQueueDepth(IN PVOID HwDeviceExtension,
-					  IN UCHAR PathId, IN UCHAR TargetId,
-					  IN UCHAR Lun, IN ULONG Depth)
+					  IN UCHAR PathId,
+					  IN UCHAR TargetId,
+					  IN UCHAR Lun,
+					  IN ULONG Depth)
 {
     DPRINT1("StorPortSetDeviceQueueDepth()\n");
     UNIMPLEMENTED;

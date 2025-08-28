@@ -742,6 +742,10 @@ NTAPI NTSYSAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberO
 							       OUT PVOID *VirtBase,
 							       OUT PHYSICAL_ADDRESS *PhysBase);
 
+NTAPI NTSYSAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
+						       IN SIZE_T NumberOfBytes,
+						       IN MEMORY_CACHING_TYPE CacheType);
+
 /*
  * PC speaker access routine
  */
