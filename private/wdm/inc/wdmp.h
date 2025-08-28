@@ -107,21 +107,6 @@ typedef struct _X86_IOPORT {
 } X86_IOPORT, *PX86_IOPORT;
 
 /*
- * IO work item object.
- */
-typedef struct _IO_WORKITEM {
-    PDEVICE_OBJECT DeviceObject;
-    LIST_ENTRY QueueEntry;
-    union {
-	PIO_WORKITEM_ROUTINE WorkerRoutine;
-	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
-    };
-    PVOID Context;
-    BOOLEAN Queued;
-    BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
-} IO_WORKITEM;
-
-/*
  * Lightweight mutex, used to synchronize data shared between two driver threads.
  *
  * This is used to implement what the Windows driver model calls the "interrupt

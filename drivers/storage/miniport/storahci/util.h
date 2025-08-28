@@ -750,12 +750,9 @@ __inline VOID AhciInterruptSpinlockAcquire(_In_ PAHCI_ADAPTER_EXTENSION AdapterE
 	(MessageId == MAXULONG)) {
 	StorPortAcquireSpinLock(AdapterExtension, InterruptLock, NULL, LockHandle);
     } else {
-	ULONG oldIrql = 0;
-
 	NT_ASSERT(MessageId <= AdapterExtension->HighestPort);
 
-	StorPortAcquireMSISpinLock(AdapterExtension, MessageId, &oldIrql);
-	LockHandle->Context.OldIrql = (UCHAR)oldIrql;
+	StorPortAcquireMSISpinLock(AdapterExtension, MessageId);
     }
 }
 
@@ -763,7 +760,7 @@ __inline VOID AhciInterruptSpinlockAcquire(_In_ PAHCI_ADAPTER_EXTENSION AdapterE
     This routine releases spinlock based on interrupt mode StorAHCI operates in.
 
     It releases the adapter interrupt spinlock if it's not in InterruptMessagePerPort
-mode, or the caller asks for it by using 0xFFFFFFFF as MessageId value.
+    mode, or the caller asks for it by using 0xFFFFFFFF as MessageId value.
 
 Return Value:
     None
@@ -777,8 +774,7 @@ __inline VOID AhciInterruptSpinlockRelease(_In_ PAHCI_ADAPTER_EXTENSION AdapterE
 	(MessageId == MAXULONG)) {
 	StorPortReleaseSpinLock(AdapterExtension, LockHandle);
     } else {
-	StorPortReleaseMSISpinLock(AdapterExtension, MessageId,
-				   LockHandle->Context.OldIrql);
+	StorPortReleaseMSISpinLock(AdapterExtension, MessageId);
     }
 
     return;

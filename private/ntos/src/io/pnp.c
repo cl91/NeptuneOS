@@ -1047,13 +1047,7 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
 					   OUT PPENDING_IRP *PendingIrp)
 {
     PCM_RESOURCE_LIST Res = DeviceNode->Resources;
-    ULONG ResSize = 0;
-    if (Res) {
-	ResSize = sizeof(CM_RESOURCE_LIST) + Res->Count * sizeof(CM_FULL_RESOURCE_DESCRIPTOR);
-	for (ULONG i = 0; i < Res->Count; i++) {
-	    ResSize += Res->List[i].PartialResourceList.Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-	}
-    }
+    ULONG ResSize = CmGetResourceListSize(Res);
     PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + ResSize*2,
 						       NTOS_IO_TAG);
     if (!Irp) {

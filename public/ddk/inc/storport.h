@@ -476,34 +476,20 @@ typedef struct _STOR_SCATTER_GATHER_LIST {
     STOR_SCATTER_GATHER_ELEMENT List[];
 } STOR_SCATTER_GATHER_LIST, *PSTOR_SCATTER_GATHER_LIST;
 
-typedef struct _DPC_BUFFER {
-    CSHORT Type;
-    UCHAR Number;
-    UCHAR Importance;
-    struct {
-	PVOID F;
-	PVOID B;
-    };
-    PVOID DeferredRoutine;
-    PVOID DeferredContext;
+typedef struct _STOR_DPC STOR_DPC, *PSTOR_DPC;
+typedef VOID (HW_DPC_ROUTINE)(IN PSTOR_DPC Dpc, IN PVOID HwDeviceExtension,
+			      IN PVOID SystemArgument1, IN PVOID SystemArgument2);
+typedef HW_DPC_ROUTINE *PHW_DPC_ROUTINE;
+
+struct _STOR_DPC {
+    IO_WORKITEM WorkItem;
+    PHW_DPC_ROUTINE HwDpcRoutine;
     PVOID SystemArgument1;
     PVOID SystemArgument2;
-    PVOID DpcData;
-} DPC_BUFFER;
-
-typedef struct _STOR_DPC {
-    DPC_BUFFER Dpc;
-} STOR_DPC, *PSTOR_DPC;
+};
 
 typedef struct _STOR_LOCK_HANDLE {
     STOR_SPINLOCK Lock;
-    struct {
-	struct {
-	    PVOID Next;
-	    PVOID Lock;
-	} LockQueue;
-	KIRQL OldIrql;
-    } Context;
 } STOR_LOCK_HANDLE, *PSTOR_LOCK_HANDLE;
 
 typedef struct _STOR_UNICODE_STRING {
@@ -1042,10 +1028,6 @@ typedef HW_ADAPTER_CONTROL *PHW_ADAPTER_CONTROL;
 
 typedef BOOLEAN (HW_PASSIVE_INITIALIZE_ROUTINE)(IN PVOID DeviceExtension);
 typedef HW_PASSIVE_INITIALIZE_ROUTINE *PHW_PASSIVE_INITIALIZE_ROUTINE;
-
-typedef VOID (HW_DPC_ROUTINE)(IN PSTOR_DPC Dpc, IN PVOID HwDeviceExtension,
-			      IN PVOID SystemArgument1, IN PVOID SystemArgument2);
-typedef HW_DPC_ROUTINE *PHW_DPC_ROUTINE;
 
 typedef VOID HW_FREE_ADAPTER_RESOURCES (IN PVOID DeviceExtension);
 typedef HW_FREE_ADAPTER_RESOURCES *PHW_FREE_ADAPTER_RESOURCES;
@@ -1694,10 +1676,9 @@ FORCEINLINE BOOLEAN StorPortIssueDpc(IN PVOID DeviceExtension,
 				     IN PVOID SystemArgument1,
 				     IN PVOID SystemArgument2)
 {
-    LONG Success = FALSE;
     StorPortNotification(IssueDpc, DeviceExtension, Dpc,
-			 SystemArgument1, SystemArgument2, &Success);
-    return (BOOLEAN)Success;
+			 SystemArgument1, SystemArgument2);
+    return TRUE;
 }
 
 FORCEINLINE VOID StorPortAcquireSpinLock(IN PVOID DeviceExtension,
@@ -1823,21 +1804,17 @@ FORCEINLINE ULONG StorPortPutScatterGatherList(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortAcquireMSISpinLock(IN PVOID HwDeviceExtension,
-					     IN ULONG MessageId,
-					     IN PULONG OldIrql)
+					     IN ULONG MessageId)
 {
     return StorPortExtendedFunction(ExtFunctionAcquireMSISpinLock,
-				    HwDeviceExtension,
-				    MessageId, OldIrql);
+				    HwDeviceExtension, MessageId);
 }
 
 FORCEINLINE ULONG StorPortReleaseMSISpinLock(IN PVOID HwDeviceExtension,
-					     IN ULONG MessageId,
-					     IN ULONG OldIrql)
+					     IN ULONG MessageId)
 {
     return StorPortExtendedFunction(ExtFunctionReleaseMSISpinLock,
-				    HwDeviceExtension,
-				    MessageId, OldIrql);
+				    HwDeviceExtension, MessageId);
 }
 
 FORCEINLINE ULONG StorPortGetMSIInfo(IN PVOID HwDeviceExtension,

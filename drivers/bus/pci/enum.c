@@ -110,7 +110,7 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 					     FullList->PartialResourceList.Count-j-1);
 		    j += NumberToSkip;
 		    for (ULONG k = 0; k < NumberToSkip; k++) {
-			Partial = CmiGetNextPartialDescriptor(Partial);
+			Partial = CmGetNextPartialDescriptor(Partial);
 		    }
 		    break;
 
@@ -125,7 +125,7 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	    /* Move to the next descriptor */
 	    Prev = Partial;
-	    Partial = CmiGetNextPartialDescriptor(Partial);
+	    Partial = CmGetNextPartialDescriptor(Partial);
 	}
 
 	/* We should be starting a new list now */

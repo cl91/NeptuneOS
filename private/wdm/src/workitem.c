@@ -10,13 +10,23 @@ KMUTEX IopWorkItemMutex;
  */
 NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
 {
-    IopInitializeDpcThread();
     PIO_WORKITEM IoWorkItem = ExAllocatePool(sizeof(IO_WORKITEM));
     if (IoWorkItem == NULL) {
 	return NULL;
     }
-    IoWorkItem->DeviceObject = DeviceObject;
+    IoInitializeWorkItem(DeviceObject, IoWorkItem);
     return IoWorkItem;
+}
+
+/*
+ * @remarks
+ *  This routine does not exist on Windows/ReactOS and is an Neptune OS addition.
+ */
+NTAPI VOID IoInitializeWorkItem(IN PDEVICE_OBJECT DeviceObject,
+				OUT PIO_WORKITEM WorkItem)
+{
+    IopInitializeDpcThread();
+    WorkItem->DeviceObject = DeviceObject;
 }
 
 /*

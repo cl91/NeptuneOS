@@ -1146,7 +1146,7 @@ NTAPI NTSYSAPI NTSTATUS NtUnloadKey(IN POBJECT_ATTRIBUTES KeyObjectAttributes);
 #if defined(_NTOSKRNL_) || defined(_NTDDK_)
 
 /*
- * Helper functions for printing the IO resource requirements list
+ * Helper functions for the IO resource requirements list
  */
 
 FORCEINLINE PCHAR CmDbgResourceTypeToText(IN UCHAR Type)
@@ -1270,40 +1270,47 @@ FORCEINLINE VOID IoDbgPrintResouceRequirementsList(IN PIO_RESOURCE_REQUIREMENTS_
  *   }
  */
 FORCEINLINE PCM_PARTIAL_RESOURCE_DESCRIPTOR
-CmiGetNextPartialDescriptor(IN CONST CM_PARTIAL_RESOURCE_DESCRIPTOR *PartialDescriptor)
+CmGetNextPartialDescriptor(IN CONST CM_PARTIAL_RESOURCE_DESCRIPTOR *Partial)
 {
-    const CM_PARTIAL_RESOURCE_DESCRIPTOR *NextDescriptor;
-
     /* Assume the descriptors are the fixed size ones */
-    NextDescriptor = PartialDescriptor + 1;
+    const CM_PARTIAL_RESOURCE_DESCRIPTOR *Next = Partial + 1;
 
     /* But check if this is actually a variable-sized descriptor */
-    if (PartialDescriptor->Type == CmResourceTypeDeviceSpecific) {
+    if (Partial->Type == CmResourceTypeDeviceSpecific) {
 	/* Add the size of the variable section as well */
-	NextDescriptor =
-	    (PCM_PARTIAL_RESOURCE_DESCRIPTOR)((ULONG_PTR)NextDescriptor +
-					      PartialDescriptor->DeviceSpecificData.DataSize);
-	ASSERT(NextDescriptor >= PartialDescriptor + 1);
+	Next = (PCM_PARTIAL_RESOURCE_DESCRIPTOR)((ULONG_PTR)Next +
+						 Partial->DeviceSpecificData.DataSize);
+	ASSERT(Next >= Partial + 1);
     }
 
     /* Now the correct pointer has been computed, return it */
-    return (PCM_PARTIAL_RESOURCE_DESCRIPTOR)NextDescriptor;
+    return (PCM_PARTIAL_RESOURCE_DESCRIPTOR)Next;
 }
 
 FORCEINLINE PCM_FULL_RESOURCE_DESCRIPTOR
-CmiGetNextResourceDescriptor(IN CONST CM_FULL_RESOURCE_DESCRIPTOR *ResourceDescriptor)
+CmGetNextResourceDescriptor(IN CONST CM_FULL_RESOURCE_DESCRIPTOR *Res)
 {
-    const CM_PARTIAL_RESOURCE_DESCRIPTOR *LastPartialDescriptor;
-
     /* Calculate the location of the last partial descriptor, which can have a
        variable size! */
-    LastPartialDescriptor =
-	&ResourceDescriptor->PartialResourceList
-	     .PartialDescriptors[ResourceDescriptor->PartialResourceList.Count - 1];
+    const CM_PARTIAL_RESOURCE_DESCRIPTOR *Last =
+	&Res->PartialResourceList.PartialDescriptors[Res->PartialResourceList.Count - 1];
 
     /* Next full resource descriptor follows the last partial descriptor */
-    return (PCM_FULL_RESOURCE_DESCRIPTOR)CmiGetNextPartialDescriptor(
-	LastPartialDescriptor);
+    return (PCM_FULL_RESOURCE_DESCRIPTOR)CmGetNextPartialDescriptor(Last);
+}
+
+FORCEINLINE ULONG CmGetResourceListSize(IN PCM_RESOURCE_LIST Res)
+{
+    if (!Res) {
+	return 0;
+    }
+    ULONG ResSize = sizeof(CM_RESOURCE_LIST) + Res->Count * sizeof(CM_FULL_RESOURCE_DESCRIPTOR);
+    PCM_FULL_RESOURCE_DESCRIPTOR Desc = Res->List;
+    for (ULONG i = 0; i < Res->Count; i++) {
+	ResSize += Desc->PartialResourceList.Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+	Desc = CmGetNextResourceDescriptor(Desc);
+    }
+    return ResSize;
 }
 
 FORCEINLINE VOID CmDbgPrintResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Res)
@@ -1343,7 +1350,7 @@ FORCEINLINE VOID CmDbgPrintResourceList(IN PCM_RESOURCE_LIST PartialList)
 	for (ULONG Count = FullDescriptor->PartialResourceList.Count; Count; Count--) {
 	    /* Print each partial resource descriptor */
 	    CmDbgPrintResourceDescriptor(PartialDescriptor);
-	    PartialDescriptor = CmiGetNextPartialDescriptor(PartialDescriptor);
+	    PartialDescriptor = CmGetNextPartialDescriptor(PartialDescriptor);
 	}
 
 	/* Go to the next full descriptor */

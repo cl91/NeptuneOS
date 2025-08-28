@@ -536,7 +536,7 @@ Affected Variables/Registers:
 VOID P_Running_StartAttempt(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			    _In_ BOOLEAN AtDIRQL)
 {
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 
     if (!AtDIRQL) {
 	AhciInterruptSpinlockAcquire(ChannelExtension->AdapterExtension,
@@ -585,7 +585,7 @@ VOID P_Running_Callback(_In_ PVOID AdapterExtension, _In_opt_ PVOID ChannelExten
 
     // only clear the bit if this is the first timer callback in Port Start process
     if (callbackIndex == 1) {
-	STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+	STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 
 	AhciInterruptSpinlockAcquire(AdapterExtension, channelExtension->PortNumber,
 				     &lockhandle);
@@ -1196,7 +1196,7 @@ WaitOnBSYDRQ_Start:
     }
     // 3.1 Set ST to 1
     if ((tfd.STS.BSY == 0) && (tfd.STS.DRQ == 0)) {
-	STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+	STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 	BOOLEAN needSpinLock;
 
 	if (TimerCallbackProcess &&
@@ -1378,7 +1378,7 @@ Affected Variables/Registers:
 VOID P_Running_StartFailed(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			   _In_ BOOLEAN TimerCallbackProcess)
 {
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     BOOLEAN needSpinLock;
 
     ++(ChannelExtension->TotalCountRunningStartFailed);
@@ -1748,7 +1748,7 @@ VOID NcqErrorRecoveryCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 {
     PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
     ULONG issuedCommands = (ULONG)(ULONG_PTR)srbExtension->CompletionContext;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     BOOLEAN fallBacktoReset = FALSE;
 
     RecordExecutionHistory(ChannelExtension,

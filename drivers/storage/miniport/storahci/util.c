@@ -606,12 +606,9 @@ VOID AhciBusChangeCallback(_In_ PVOID AdapterExtension, _In_opt_ PVOID Context,
 	StorPortStateChangeDetected(AdapterExtension, STATE_CHANGE_TARGET,
 				    (PSTOR_ADDRESS)&adapterExtension
 					->PortExtension[storAddrBtl8->Path]
-					->DeviceExtension[0]
-					.DeviceAddress,
+					->DeviceExtension[0].DeviceAddress,
 				    0, AhciBusChangeCallback, NULL);
     }
-
-    return;
 }
 
 VOID PortBusChangeProcess(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)

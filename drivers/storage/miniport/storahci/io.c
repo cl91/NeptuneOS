@@ -286,7 +286,7 @@ BOOLEAN ActivateQueue(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     int i;
 
     PAHCI_ADAPTER_EXTENSION adapterExtension = ChannelExtension->AdapterExtension;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 
     // 1.1 Initialize variables
     if (LogExecuteFullDetail(adapterExtension->LogFlags)) {
@@ -1108,7 +1108,7 @@ BOOLEAN AhciProcessIo(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     UCHAR pathId = 0;
     UCHAR targetId = 0;
     UCHAR lun = 0;
-    STOR_LOCK_HANDLE lockHandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockHandle = { InterruptLock };
 
     SrbGetPathTargetLun(Srb, &pathId, &targetId, &lun);
 
@@ -1565,7 +1565,7 @@ VOID AhciPortSrbCompletionDpcRoutine(_In_ PSTOR_DPC Dpc, _In_ PVOID AdapterExten
 				     _In_opt_ PVOID SystemArgument2)
 {
     PAHCI_CHANNEL_EXTENSION channelExtension = (PAHCI_CHANNEL_EXTENSION)SystemArgument1;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     PSTORAGE_REQUEST_BLOCK srb = NULL;
     PSRB_COMPLETION_ROUTINE completionRoutine = NULL;
     BOOLEAN reservedSlotInUse = FALSE;

@@ -1340,9 +1340,6 @@ NTAPI NTSYSAPI NTSTATUS PoRegisterPowerSettingCallback(IN OPTIONAL PDEVICE_OBJEC
 
 NTAPI NTSYSAPI NTSTATUS PoUnregisterPowerSettingCallback(IN OUT PVOID Handle);
 
-/*
- * IO Work item. This is an opaque object.
- */
 typedef struct _IO_WORKITEM *PIO_WORKITEM;
 
 typedef VOID (NTAPI IO_WORKITEM_ROUTINE)(IN PDEVICE_OBJECT DeviceObject,
@@ -1355,6 +1352,21 @@ typedef VOID (NTAPI IO_WORKITEM_ROUTINE_EX)(IN PVOID IoObject,
 typedef IO_WORKITEM_ROUTINE_EX *PIO_WORKITEM_ROUTINE_EX;
 
 /*
+ * IO work item object.
+ */
+typedef struct _IO_WORKITEM {
+    PDEVICE_OBJECT DeviceObject;
+    LIST_ENTRY QueueEntry;
+    union {
+	PIO_WORKITEM_ROUTINE WorkerRoutine;
+	PIO_WORKITEM_ROUTINE_EX WorkerRoutineEx;
+    };
+    PVOID Context;
+    BOOLEAN Queued;
+    BOOLEAN ExtendedRoutine; /* TRUE if the union above is WorkerRoutineEx */
+} IO_WORKITEM;
+
+/*
  * Work queue type
  */
 typedef enum _WORK_QUEUE_TYPE {
@@ -1365,9 +1377,17 @@ typedef enum _WORK_QUEUE_TYPE {
 } WORK_QUEUE_TYPE;
 
 /*
- * Work item allocation
+ * Work item allocation. This routine allocates and initializes the work item, so
+ * you do not need to call IoInitializeWorkItem for the object you just allocated.
  */
 NTAPI NTSYSAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject);
+
+/*
+ * Work item initialization. You should only call this routine if you allocate the
+ * space for the IO_WORKITEM yourself.
+ */
+NTAPI VOID IoInitializeWorkItem(IN PDEVICE_OBJECT DeviceObject,
+				OUT PIO_WORKITEM WorkItem);
 
 /*
  * Work item deallocation
