@@ -1124,6 +1124,17 @@ BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
 					      PAGE_ALIGN(Addr), PAGE_SIZE));
 }
 
+FORCEINLINE PAGING_ATTRIBUTES MiGetPagingAttributesFromCacheType(MEMORY_CACHING_TYPE CacheType)
+{
+    PAGING_ATTRIBUTES Attributes = MM_ATTRIBUTES_DEFAULT;
+    if (CacheType == MmNonCached) {
+	MmApplyNoCacheAttribute(&Attributes);
+    } else if (CacheType == MmWriteCombined) {
+	MmApplyWriteCombineAttribute(&Attributes);
+    }
+    return Attributes;
+}
+
 /*
  * Allocate physically contiguous memory of given size. The physical memory
  * allocated is always aligned on the smallest power of two that is at least
@@ -1131,8 +1142,9 @@ BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
  * 2^n >= Length, then the returned physical address is always aligned by 2^n.
  */
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
-					      IN ULONG Length,
+					      IN MWORD Length,
 					      IN MWORD HighestPhyAddr,
+					      IN MEMORY_CACHING_TYPE CacheType,
 					      OUT MWORD *VirtAddr,
 					      OUT MWORD *PhyAddr)
 {
@@ -1152,7 +1164,9 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     Vad->PhysicalSectionView.PhysicalBase = Untyped->AvlNode.Key;
     Vad->PhysicalSectionView.RootUntyped = Untyped;
     RET_ERR_EX(MiMapIoMemory(VSpace, Untyped->AvlNode.Key, Vad->AvlNode.Key,
-			     Length, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, FALSE, FALSE),
+			     Length, MM_RIGHTS_RW,
+			     MiGetPagingAttributesFromCacheType(CacheType),
+			     FALSE, FALSE),
 	       MmDeleteVad(Vad));
     *VirtAddr = Vad->AvlNode.Key;
     *PhyAddr = Untyped->AvlNode.Key;
@@ -1513,12 +1527,7 @@ NTSTATUS WdmMapIoMemory(IN ASYNC_STATE AsyncState,
     MWORD PhyBase = Vad->PhysicalSectionView.PhysicalBase;
     MWORD PhyAddr = PhyBase + VirtAddr - VirtBase;
     MEMORY_CACHING_TYPE CacheType = Vad->PhysicalSectionView.CacheType;
-    PAGING_ATTRIBUTES Attributes = MM_ATTRIBUTES_DEFAULT;
-    if (CacheType == MmNonCached) {
-	MmApplyNoCacheAttribute(&Attributes);
-    } else if (CacheType == MmWriteCombined) {
-	MmApplyWriteCombineAttribute(&Attributes);
-    }
+    PAGING_ATTRIBUTES Attributes = MiGetPagingAttributesFromCacheType(CacheType);
     BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyBase) &&
 	IS_LARGE_PAGE_ALIGNED(VirtBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
     return MiMapIoMemory(&Thread->Process->VSpace, PhyAddr, VirtAddr, WindowSize,

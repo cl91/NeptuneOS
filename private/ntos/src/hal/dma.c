@@ -505,9 +505,10 @@ NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
 
 NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
 				 IN PTHREAD Thread,
-				 IN ULONG Length,
+				 IN MWORD Length,
 				 IN PPHYSICAL_ADDRESS HighestAddr,
 				 IN ULONG BoundaryAddressBits,
+				 IN MEMORY_CACHING_TYPE CacheType,
 				 OUT PVOID *pVirtAddr,
 				 OUT PHYSICAL_ADDRESS *pPhyAddr)
 {
@@ -515,7 +516,7 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
      * DMA controller/device can access. For instance, if the
      * DMA adapter is the ISA DMA controller, than Length must
      * be less than 64KB (BoundaryAddressBits == 16). */
-    if (Length > (1ULL << BoundaryAddressBits)) {
+    if (BoundaryAddressBits && (Length > (1ULL << BoundaryAddressBits))) {
 	return STATUS_INVALID_PARAMETER;
     }
     MWORD VirtAddr = 0;
@@ -523,6 +524,7 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
     RET_ERR(MmAllocatePhysicallyContiguousMemory(&Thread->Process->VSpace,
 						 Length,
 						 HighestAddr->QuadPart,
+						 CacheType,
 						 &VirtAddr, &PhyAddr));
     *pVirtAddr = (PVOID)VirtAddr;
     pPhyAddr->QuadPart = PhyAddr;

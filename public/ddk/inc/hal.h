@@ -738,7 +738,7 @@ NTAPI NTSYSAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 NTAPI NTSYSAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
 							       IN PHYSICAL_ADDRESS HighestAddr,
 							       IN PHYSICAL_ADDRESS Alignment,
-							       IN MEMORY_CACHING_TYPE MmCached,
+							       IN MEMORY_CACHING_TYPE CacheType,
 							       OUT PVOID *VirtBase,
 							       OUT PHYSICAL_ADDRESS *PhysBase);
 

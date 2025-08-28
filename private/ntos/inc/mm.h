@@ -870,8 +870,9 @@ VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 			       IN MWORD WindowSize);
 MWORD MmFindAndMarkUncommittedSubregion(IN PMMVAD Vad);
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
-					      IN ULONG Length,
+					      IN MWORD Length,
 					      IN MWORD HighestPhyAddr,
+					      IN MEMORY_CACHING_TYPE CacheType,
 					      OUT MWORD *VirtAddr,
 					      OUT MWORD *PhyAddr);
 NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,

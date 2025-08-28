@@ -507,11 +507,12 @@ NTAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 NTAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
 						      IN PHYSICAL_ADDRESS HighestAddr,
 						      IN PHYSICAL_ADDRESS Alignment,
-						      IN MEMORY_CACHING_TYPE MmCached,
+						      IN MEMORY_CACHING_TYPE CacheType,
 						      OUT PVOID *VirtBase,
 						      OUT PHYSICAL_ADDRESS *PhysBase)
 {
-    PAGED_CODE();
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    ULONG BoundaryAddressBits = RtlFindLeastSignificantBit(Alignment.QuadPart) + 1;
+    return WdmHalAllocateDmaBuffer(NumberOfBytes, &HighestAddr,
+				   BoundaryAddressBits, CacheType,
+				   VirtBase, PhysBase);
 }
