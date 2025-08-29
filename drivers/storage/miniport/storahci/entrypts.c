@@ -2879,7 +2879,9 @@ Return Value:
                 channelExtension->StateFlags.PoFxActive = activeContext->Active ? 1 : 0;
 
                 StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - %s\n",
-                    adapterExtension->SystemIoBusNumber, channelExtension->PortNumber, activeContext->Active ? "ACTIVE" : "IDLE");
+				   adapterExtension->SystemIoBusNumber,
+				   channelExtension->PortNumber,
+				   activeContext->Active ? "ACTIVE" : "IDLE");
 
                 if (activeContext->Active) {
                     ULONG busChangePending;
@@ -2930,14 +2932,16 @@ Return Value:
                     if (PartialToSlumberTransitionIsAllowed(channelExtension, NULL)) {
 
                         status = StorPortRequestTimer(channelExtension->AdapterExtension,
-                                                            channelExtension->WorkerTimer,
-                                                            AhciAutoPartialToSlumber,
-                                                            channelExtension,
-                                                            channelExtension->AutoPartialToSlumberInterval * 1000, 20000);
+						      channelExtension->WorkerTimer,
+						      AhciAutoPartialToSlumber,
+						      channelExtension,
+						      channelExtension->AutoPartialToSlumberInterval * 1000,
+						      20000);
 
                         if (status == STOR_STATUS_SUCCESS) {
                             StorPortDebugPrint(3, "StorAHCI - LPM: SystemIoBusNumber:%d Port:%02d - Transit into Slumber from Partial - Scheduled\n",
-                                adapterExtension->SystemIoBusNumber, channelExtension->PortNumber);
+					       adapterExtension->SystemIoBusNumber,
+					       channelExtension->PortNumber);
                         }
                     }
 

@@ -1,4 +1,4 @@
-﻿/*++
+/*++
 
 Copyright (C) Microsoft Corporation, 2009
 
@@ -783,8 +783,11 @@ WaitOnDET_Start:
                 StorPortStallExecution(10000); //10 milliseconds
                 goto WaitOnDET_Start;
             } else {
-                ULONG status;
-                status = StorPortRequestTimer(adapterExtension, ChannelExtension->StartPortTimer, P_Running_Callback, ChannelExtension, 10000, 0);     //10 milliseconds
+                ULONG status = StorPortRequestTimer(adapterExtension,
+						    ChannelExtension->StartPortTimer,
+						    P_Running_Callback,
+						    ChannelExtension,
+						    10000, 0);     //10 milliseconds
                 if ((status != STOR_STATUS_SUCCESS) && (status != STOR_STATUS_BUSY)) {
                     StorPortStallExecution(10000); //10 milliseconds
                     goto WaitOnDET_Start;
