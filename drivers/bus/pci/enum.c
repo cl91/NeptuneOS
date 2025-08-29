@@ -1102,10 +1102,8 @@ static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 		((PdoExtension->SubClass == PCI_SUBCLASS_BR_HOST) ||
 		 (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI))) {
 		/* Query either the raw AGP capabilitity, or the Target AGP one */
-		TargetAgpCapabilityId = (PdoExtension->SubClass ==
-					 PCI_SUBCLASS_BR_PCI_TO_PCI) ?
-		    PCI_CAPABILITY_ID_AGP_TARGET :
-		    PCI_CAPABILITY_ID_AGP;
+		TargetAgpCapabilityId = (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) ?
+		    PCI_CAPABILITY_ID_AGP_TARGET : PCI_CAPABILITY_ID_AGP;
 		if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
 					    TargetAgpCapabilityId, &AgpCapability,
 					    sizeof(PCI_CAPABILITIES_HEADER))) {
@@ -1182,6 +1180,82 @@ static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 	    PowerDeviceD3;
 	DPRINT1("PM is off, so assumed device is: %d based on enables\n",
 		PdoExtension->PowerState.CurrentDeviceState);
+    }
+}
+
+static VOID PciDumpCapabilities(IN PPCI_PDO_EXTENSION NewExtension)
+{
+    ASSERT_PDO(NewExtension);
+    /* Scan all capabilities and dump them */
+    USHORT CapOffset = NewExtension->CapabilitiesPtr;
+    while (CapOffset) {
+	/* Read this header */
+	union {
+	    PCI_PM_CAPABILITY PmCap;
+	    PCI_AGP_CAPABILITY AgpCap;
+	    PCI_CAPABILITIES_HEADER Header;
+	} Cap;
+	USHORT TempOffset = PciReadDeviceCapability(NewExtension, CapOffset, 0,
+						    &Cap.Header,
+						    sizeof(PCI_CAPABILITIES_HEADER));
+	if (TempOffset != CapOffset) {
+	    /* This is a strange issue that shouldn't happen normally */
+	    DPRINT1("PCI - Failed to read PCI capability at offset 0x%02x\n",
+		    CapOffset);
+	    ASSERT(TempOffset == CapOffset);
+	}
+
+	/* Check for capabilities that this driver cares about */
+	ULONG Size = 0;
+	PCHAR Name = NULL;
+	switch (Cap.Header.CapabilityID) {
+	    /* Power management capability is heavily used by the bus */
+	case PCI_CAPABILITY_ID_POWER_MANAGEMENT:
+
+	    /* Dump the capability */
+	    Name = "POWER";
+	    Size = sizeof(PCI_PM_CAPABILITY);
+	    break;
+
+	    /* AGP capability is required for AGP bus functionality */
+	case PCI_CAPABILITY_ID_AGP:
+
+	    /* Dump the capability */
+	    Name = "AGP";
+	    Size = sizeof(PCI_AGP_CAPABILITY);
+	    break;
+
+	    /* This driver doesn't really use anything other than that */
+	default:
+
+	    /* Windows prints this, we could do a translation later */
+	    Name = "UNKNOWN CAPABILITY";
+	    break;
+	}
+
+	/* Check if this is a capability that should be dumped */
+	if (Size) {
+	    /* Read the whole capability data */
+	    TempOffset = PciReadDeviceCapability(NewExtension, CapOffset,
+						 Cap.Header.CapabilityID,
+						 &Cap.Header, Size);
+
+	    if (TempOffset != CapOffset) {
+		/* Again, a strange issue that shouldn't be seen */
+		DPRINT1("- Failed to read capability data. ***\n");
+		ASSERT(TempOffset == CapOffset);
+	    }
+	}
+
+	/* Dump this capability */
+	DPRINT1("CAP @%02x ID %02x (%s)\n", CapOffset, Cap.Header.CapabilityID,
+		Name);
+	for (ULONG k = 0; k < Size; k += 2)
+	    DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&Cap.Header + k));
+	DPRINT1("\n");
+
+	/* Check the next capability */
+	CapOffset = Cap.Header.Next;
     }
 }
 
@@ -1597,6 +1671,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 
 	    /* Get power, AGP, and other capability data */
 	    PciGetEnhancedCapabilities(NewExtension, PciData);
+	    PciDumpCapabilities(NewExtension);
 
 	    /* Now configure the BARs */
 	    Status = PciGetFunctionLimits(NewExtension, PciData, HackFlags);
@@ -1635,78 +1710,6 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		NewExtension->SubsystemId = 0;
 	    }
 
-	    /* Scan all capabilities */
-	    USHORT CapOffset = NewExtension->CapabilitiesPtr;
-	    while (CapOffset) {
-		/* Read this header */
-		union {
-		    PCI_PM_CAPABILITY PmCap;
-		    PCI_AGP_CAPABILITY AgpCap;
-		    PCI_CAPABILITIES_HEADER Header;
-		} Cap;
-		USHORT TempOffset = PciReadDeviceCapability(NewExtension, CapOffset, 0,
-							    &Cap.Header,
-							    sizeof(PCI_CAPABILITIES_HEADER));
-		if (TempOffset != CapOffset) {
-		    /* This is a strange issue that shouldn't happen normally */
-		    DPRINT1("PCI - Failed to read PCI capability at offset 0x%02x\n",
-			    CapOffset);
-		    ASSERT(TempOffset == CapOffset);
-		}
-
-		/* Check for capabilities that this driver cares about */
-		ULONG Size = 0;
-		PCHAR Name = NULL;
-		switch (Cap.Header.CapabilityID) {
-		/* Power management capability is heavily used by the bus */
-		case PCI_CAPABILITY_ID_POWER_MANAGEMENT:
-
-		    /* Dump the capability */
-		    Name = "POWER";
-		    Size = sizeof(PCI_PM_CAPABILITY);
-		    break;
-
-		/* AGP capability is required for AGP bus functionality */
-		case PCI_CAPABILITY_ID_AGP:
-
-		    /* Dump the capability */
-		    Name = "AGP";
-		    Size = sizeof(PCI_AGP_CAPABILITY);
-		    break;
-
-		/* This driver doesn't really use anything other than that */
-		default:
-
-		    /* Windows prints this, we could do a translation later */
-		    Name = "UNKNOWN CAPABILITY";
-		    break;
-		}
-
-		/* Check if this is a capability that should be dumped */
-		if (Size) {
-		    /* Read the whole capability data */
-		    TempOffset = PciReadDeviceCapability(NewExtension, CapOffset,
-							 Cap.Header.CapabilityID,
-							 &Cap.Header, Size);
-
-		    if (TempOffset != CapOffset) {
-			/* Again, a strange issue that shouldn't be seen */
-			DPRINT1("- Failed to read capability data. ***\n");
-			ASSERT(TempOffset == CapOffset);
-		    }
-		}
-
-		/* Dump this capability */
-		DPRINT1("CAP @%02x ID %02x (%s)\n", CapOffset, Cap.Header.CapabilityID,
-			Name);
-		for (ULONG k = 0; k < Size; k += 2)
-		    DPRINT1("  %04x\n", *(PUSHORT)((ULONG_PTR)&Cap.Header + k));
-		DPRINT1("\n");
-
-		/* Check the next capability */
-		CapOffset = Cap.Header.Next;
-	    }
-
 	    /* Check for IDE controllers */
 	    if ((NewExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
 		(NewExtension->SubClass == PCI_SUBCLASS_MSC_IDE_CTLR)) {
@@ -1735,22 +1738,17 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		if (!(NewExtension->CommandEnables &
 		      (PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE | PCI_ENABLE_BUS_MASTER))) {
 		    /* Check if this is a PCI-X device*/
-		    PCI_CAPABILITIES_HEADER PcixCapHeader;
-		    USHORT TempOffset = PciReadDeviceCapability(NewExtension,
-								NewExtension->CapabilitiesPtr,
-								PCI_CAPABILITY_ID_PCIX,
-								&PcixCapHeader,
-								sizeof(PCI_CAPABILITIES_HEADER));
+		    BOOLEAN IsPcix = NewExtension->InterfaceType == PciXMode1 ||
+			NewExtension->InterfaceType == PciXMode2;
 
 		    /*
                      * A device with default cache line size and latency timer
                      * settings is considered to be unconfigured. Note that on
                      * PCI-X, the reset value of the latency timer field in the
-                     * header is 64, not 0, hence why the check for PCI-X caps
-                     * was required, and the value used here below.
+                     * header is 64, not 0, hence the value used here below.
                      */
 		    if (!PciData->LatencyTimer ||
-			(TempOffset && (PciData->LatencyTimer == 64))) {
+			(IsPcix && (PciData->LatencyTimer == 64))) {
 			/* Keep track of the fact that it needs configuration */
 			DPRINT1("PCI - ScanBus, PDOx %p found unconfigured\n",
 				NewExtension);
