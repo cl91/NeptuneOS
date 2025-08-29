@@ -1146,7 +1146,7 @@ NTAPI NTSYSAPI NTSTATUS NtUnloadKey(IN POBJECT_ATTRIBUTES KeyObjectAttributes);
 #if defined(_NTOSKRNL_) || defined(_NTDDK_)
 
 /*
- * Helper functions for printing the IO resource requirements list
+ * Helper functions for the IO resource requirements list
  */
 
 FORCEINLINE PCHAR CmDbgResourceTypeToText(IN UCHAR Type)
@@ -1304,6 +1304,20 @@ CmiGetNextResourceDescriptor(IN CONST CM_FULL_RESOURCE_DESCRIPTOR *ResourceDescr
     /* Next full resource descriptor follows the last partial descriptor */
     return (PCM_FULL_RESOURCE_DESCRIPTOR)CmiGetNextPartialDescriptor(
 	LastPartialDescriptor);
+}
+
+FORCEINLINE ULONG CmGetResourceListSize(IN PCM_RESOURCE_LIST Res)
+{
+    if (!Res) {
+	return 0;
+    }
+    ULONG ResSize = sizeof(CM_RESOURCE_LIST) + Res->Count * sizeof(CM_FULL_RESOURCE_DESCRIPTOR);
+    PCM_FULL_RESOURCE_DESCRIPTOR Desc = Res->List;
+    for (ULONG i = 0; i < Res->Count; i++) {
+	ResSize += Desc->PartialResourceList.Count * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
+	Desc = CmiGetNextResourceDescriptor(Desc);
+    }
+    return ResSize;
 }
 
 FORCEINLINE VOID CmDbgPrintResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Res)

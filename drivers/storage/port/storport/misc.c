@@ -40,46 +40,15 @@ INTERFACE_TYPE GetBusInterface(PDEVICE_OBJECT DeviceObject)
     return InterfaceTypeUndefined;
 }
 
-static ULONG GetResourceListSize(PCM_RESOURCE_LIST ResourceList)
-{
-    PCM_FULL_RESOURCE_DESCRIPTOR Descriptor;
-    ULONG Size;
-
-    DPRINT1("GetResourceListSize(%p)\n", ResourceList);
-
-    Size = sizeof(CM_RESOURCE_LIST);
-    if (ResourceList->Count == 0) {
-	DPRINT1("Size: 0x%x (%u)\n", Size, Size);
-	return Size;
-    }
-
-    DPRINT1("ResourceList->Count: %u\n", ResourceList->Count);
-
-    Descriptor = &ResourceList->List[0];
-
-    DPRINT1("PartialResourceList->Count: %u\n", Descriptor->PartialResourceList.Count);
-
-    /* Add the size of the partial descriptors */
-    if (Descriptor->PartialResourceList.Count > 1)
-	Size += (Descriptor->PartialResourceList.Count - 1) *
-	    sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-
-    DPRINT1("Size: 0x%x (%u)\n", Size, Size);
-    return Size;
-}
-
 PCM_RESOURCE_LIST CopyResourceList(PCM_RESOURCE_LIST Source)
 {
-    PCM_RESOURCE_LIST Destination;
-    ULONG Size;
-
     DPRINT1("CopyResourceList(%p)\n", Source);
 
     /* Get the size of the resource list */
-    Size = GetResourceListSize(Source);
+    ULONG Size = CmGetResourceListSize(Source);
 
     /* Allocate a new buffer */
-    Destination = ExAllocatePoolWithTag(Size, TAG_RESOURCE_LIST);
+    PCM_RESOURCE_LIST Destination = ExAllocatePoolWithTag(Size, TAG_RESOURCE_LIST);
     if (Destination == NULL)
 	return NULL;
 
@@ -162,17 +131,14 @@ NTSTATUS GetResourceListInterrupt(PFDO_DEVICE_EXTENSION DeviceExtension, PULONG 
 				  PKIRQL Irql, KINTERRUPT_MODE *InterruptMode,
 				  PBOOLEAN ShareVector, PKAFFINITY Affinity)
 {
-    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
-    INT i, j;
 
     DPRINT1("GetResourceListInterrupt(%p)\n", DeviceExtension);
 
-    FullDescriptor = DeviceExtension->TranslatedResources->List;
-    for (i = 0; i < DeviceExtension->TranslatedResources->Count; i++) {
-	for (j = 0; j < FullDescriptor->PartialResourceList.Count; j++) {
-	    PartialDescriptor = FullDescriptor->PartialResourceList.PartialDescriptors +
-		j;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor = DeviceExtension->TranslatedResources->List;
+    for (ULONG i = 0; i < DeviceExtension->TranslatedResources->Count; i++) {
+	for (ULONG j = 0; j < FullDescriptor->PartialResourceList.Count; j++) {
+	    PartialDescriptor = FullDescriptor->PartialResourceList.PartialDescriptors + j;
 
 	    switch (PartialDescriptor->Type) {
 	    case CmResourceTypeInterrupt:
@@ -182,14 +148,9 @@ NTSTATUS GetResourceListInterrupt(PFDO_DEVICE_EXTENSION DeviceExtension, PULONG 
 
 		*Vector = PartialDescriptor->Interrupt.Vector;
 		*Irql = (KIRQL)PartialDescriptor->Interrupt.Level;
-		*InterruptMode = (PartialDescriptor->Flags &
-				  CM_RESOURCE_INTERRUPT_LATCHED) ?
-		    Latched :
-		    LevelSensitive;
-		*ShareVector = (PartialDescriptor->ShareDisposition ==
-				CmResourceShareShared) ?
-		    TRUE :
-		    FALSE;
+		*InterruptMode = (PartialDescriptor->Flags & CM_RESOURCE_INTERRUPT_LATCHED) ?
+		    Latched : LevelSensitive;
+		*ShareVector = (PartialDescriptor->ShareDisposition == CmResourceShareShared);
 		*Affinity = PartialDescriptor->Interrupt.Affinity;
 
 		return STATUS_SUCCESS;

@@ -29,8 +29,7 @@
 #define TAG_INQUIRY_DATA    'QItS'
 #define TAG_SENSE_DATA      'NStS'
 
-typedef enum
-{
+typedef enum {
     dsStopped,
     dsStarted,
     dsPaused,
@@ -38,22 +37,19 @@ typedef enum
     dsSurpriseRemoved
 } DEVICE_STATE;
 
-typedef enum
-{
+typedef enum {
     InvalidExtension = 0,
     DriverExtension,
     FdoExtension,
     PdoExtension
 } EXTENSION_TYPE;
 
-typedef struct _DRIVER_INIT_DATA
-{
+typedef struct _DRIVER_INIT_DATA {
     LIST_ENTRY Entry;
     HW_INITIALIZATION_DATA HwInitData;
 } DRIVER_INIT_DATA, *PDRIVER_INIT_DATA;
 
-typedef struct _DRIVER_OBJECT_EXTENSION
-{
+typedef struct _DRIVER_OBJECT_EXTENSION {
     EXTENSION_TYPE ExtensionType;
     PDRIVER_OBJECT DriverObject;
 
@@ -63,28 +59,24 @@ typedef struct _DRIVER_OBJECT_EXTENSION
     LIST_ENTRY InitDataListHead;
 } DRIVER_OBJECT_EXTENSION, *PDRIVER_OBJECT_EXTENSION;
 
-typedef struct _MINIPORT_DEVICE_EXTENSION
-{
+typedef struct _MINIPORT_DEVICE_EXTENSION {
     struct _MINIPORT *Miniport;
     UCHAR HwDeviceExtension[0];
 } MINIPORT_DEVICE_EXTENSION, *PMINIPORT_DEVICE_EXTENSION;
 
-typedef struct _MINIPORT
-{
+typedef struct _MINIPORT {
     struct _FDO_DEVICE_EXTENSION *DeviceExtension;
     PHW_INITIALIZATION_DATA InitData;
     PORT_CONFIGURATION_INFORMATION PortConfig;
     PMINIPORT_DEVICE_EXTENSION MiniportExtension;
 } MINIPORT, *PMINIPORT;
 
-typedef struct _UNIT_DATA
-{
+typedef struct _UNIT_DATA {
     LIST_ENTRY ListEntry;
     INQUIRYDATA InquiryData;
 } UNIT_DATA, *PUNIT_DATA;
 
-typedef struct _FDO_DEVICE_EXTENSION
-{
+typedef struct _FDO_DEVICE_EXTENSION {
     EXTENSION_TYPE ExtensionType;
 
     PDEVICE_OBJECT Device;
@@ -110,9 +102,7 @@ typedef struct _FDO_DEVICE_EXTENSION
     ULONG PdoCount;
 } FDO_DEVICE_EXTENSION, *PFDO_DEVICE_EXTENSION;
 
-
-typedef struct _PDO_DEVICE_EXTENSION
-{
+typedef struct _PDO_DEVICE_EXTENSION {
     EXTENSION_TYPE ExtensionType;
 
     PDEVICE_OBJECT Device;
@@ -124,131 +114,86 @@ typedef struct _PDO_DEVICE_EXTENSION
     ULONG Target;
     ULONG Lun;
     PINQUIRYDATA InquiryBuffer;
-
-
 } PDO_DEVICE_EXTENSION, *PPDO_DEVICE_EXTENSION;
 
 
 /* fdo.c */
 
-NTSTATUS
-NTAPI
-PortFdoScsi(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp);
+NTAPI NTSTATUS PortFdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
+			   _In_ PIRP Irp);
 
-NTSTATUS
-NTAPI
-PortFdoPnp(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp);
+NTAPI NTSTATUS PortFdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
+			  _In_ PIRP Irp);
 
 
 /* miniport.c */
 
-NTSTATUS
-MiniportInitialize(
-    _In_ PMINIPORT Miniport,
-    _In_ PFDO_DEVICE_EXTENSION DeviceExtension,
-    _In_ PHW_INITIALIZATION_DATA HwInitializationData);
+NTSTATUS MiniportInitialize(_In_ PMINIPORT Miniport,
+			    _In_ PFDO_DEVICE_EXTENSION DeviceExtension,
+			    _In_ PHW_INITIALIZATION_DATA HwInitializationData);
 
-NTSTATUS
-MiniportFindAdapter(
-    _In_ PMINIPORT Miniport);
+NTSTATUS MiniportFindAdapter(_In_ PMINIPORT Miniport);
 
-NTSTATUS
-MiniportHwInitialize(
-    _In_ PMINIPORT Miniport);
+NTSTATUS MiniportHwInitialize(_In_ PMINIPORT Miniport);
 
-BOOLEAN
-MiniportHwInterrupt(
-    _In_ PMINIPORT Miniport);
+BOOLEAN MiniportHwInterrupt(_In_ PMINIPORT Miniport);
 
-BOOLEAN
-MiniportStartIo(
-    _In_ PMINIPORT Miniport,
-    _In_ PSCSI_REQUEST_BLOCK Srb);
+BOOLEAN MiniportStartIo(_In_ PMINIPORT Miniport,
+			_In_ PSCSI_REQUEST_BLOCK Srb);
 
 /* misc.c */
 
-NTSTATUS
-NTAPI
-ForwardIrpAndForget(
-    _In_ PDEVICE_OBJECT LowerDevice,
-    _In_ PIRP Irp);
+NTAPI NTSTATUS ForwardIrpAndForget(_In_ PDEVICE_OBJECT LowerDevice,
+				   _In_ PIRP Irp);
 
-INTERFACE_TYPE
-GetBusInterface(
-    PDEVICE_OBJECT DeviceObject);
+INTERFACE_TYPE GetBusInterface(PDEVICE_OBJECT DeviceObject);
 
-PCM_RESOURCE_LIST
-CopyResourceList(PCM_RESOURCE_LIST Source);
+PCM_RESOURCE_LIST CopyResourceList(PCM_RESOURCE_LIST Source);
 
-BOOLEAN
-TranslateResourceListAddress(
-    PFDO_DEVICE_EXTENSION DeviceExtension,
-    INTERFACE_TYPE BusType,
-    ULONG SystemIoBusNumber,
-    STOR_PHYSICAL_ADDRESS IoAddress,
-    ULONG NumberOfBytes,
-    BOOLEAN InIoSpace,
-    PPHYSICAL_ADDRESS TranslatedAddress);
+BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
+				     INTERFACE_TYPE BusType,
+				     ULONG SystemIoBusNumber,
+				     STOR_PHYSICAL_ADDRESS IoAddress,
+				     ULONG NumberOfBytes,
+				     BOOLEAN InIoSpace,
+				     PPHYSICAL_ADDRESS TranslatedAddress);
 
-NTSTATUS
-GetResourceListInterrupt(
-    PFDO_DEVICE_EXTENSION DeviceExtension,
-    PULONG Vector,
-    PKIRQL Irql,
-    KINTERRUPT_MODE *InterruptMode,
-    PBOOLEAN ShareVector,
-    PKAFFINITY Affinity);
+NTSTATUS GetResourceListInterrupt(PFDO_DEVICE_EXTENSION DeviceExtension,
+				  PULONG Vector,
+				  PKIRQL Irql,
+				  KINTERRUPT_MODE *InterruptMode,
+				  PBOOLEAN ShareVector,
+				  PKAFFINITY Affinity);
 
-NTSTATUS
-AllocateAddressMapping(
-    PMAPPED_ADDRESS *MappedAddressList,
-    STOR_PHYSICAL_ADDRESS IoAddress,
-    PVOID MappedAddress,
-    ULONG NumberOfBytes,
-    ULONG BusNumber);
+NTSTATUS AllocateAddressMapping(PMAPPED_ADDRESS *MappedAddressList,
+				STOR_PHYSICAL_ADDRESS IoAddress,
+				PVOID MappedAddress,
+				ULONG NumberOfBytes,
+				ULONG BusNumber);
 
 /* pdo.c */
 
-NTSTATUS
-PortCreatePdo(
-    _In_ PFDO_DEVICE_EXTENSION FdoExtension,
-    _In_ ULONG Bus,
-    _In_ ULONG Target,
-    _In_ ULONG Lun,
-    _Out_ PPDO_DEVICE_EXTENSION *PdoExtension);
+NTSTATUS PortCreatePdo(_In_ PFDO_DEVICE_EXTENSION FdoExtension,
+		       _In_ ULONG Bus,
+		       _In_ ULONG Target,
+		       _In_ ULONG Lun,
+		       _Out_ PPDO_DEVICE_EXTENSION *PdoExtension);
 
-NTSTATUS
-PortDeletePdo(
-    _In_ PPDO_DEVICE_EXTENSION PdoExtension);
+NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension);
 
-NTSTATUS
-NTAPI
-PortPdoScsi(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp);
+NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
+			   _In_ PIRP Irp);
 
-NTSTATUS
-NTAPI
-PortPdoPnp(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp);
+NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
+			  _In_ PIRP Irp);
 
 
 /* storport.c */
 
-PHW_INITIALIZATION_DATA
-PortGetDriverInitData(
-    PDRIVER_OBJECT_EXTENSION DriverExtension,
-    INTERFACE_TYPE InterfaceType);
+PHW_INITIALIZATION_DATA PortGetDriverInitData(PDRIVER_OBJECT_EXTENSION DriverExtension,
+					      INTERFACE_TYPE InterfaceType);
 
-NTSTATUS
-NTAPI
-DriverEntry(
-    _In_ PDRIVER_OBJECT DriverObject,
-    _In_ PUNICODE_STRING RegistryPath);
+NTAPI NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
+			   _In_ PUNICODE_STRING RegistryPath);
 
 #endif /* _STORPORT_PCH_ */

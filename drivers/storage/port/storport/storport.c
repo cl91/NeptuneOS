@@ -515,8 +515,24 @@ static ULONG StorExtInitializeTimer(IN PVOID HwDeviceExtension,
 				    OUT PVOID *TimerHandle)
 {
     UNREFERENCED_PARAMETER(HwDeviceExtension);
-    UNREFERENCED_PARAMETER(TimerHandle);
 
+    PKTIMER Timer = ExAllocatePool(sizeof(KTIMER));
+    if (!Timer) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+    KeInitializeTimer(Timer);
+    *TimerHandle = Timer;
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtRequestTimer(IN PVOID HwDeviceExtension,
+				 IN PVOID TimerHandle,
+				 IN PHW_TIMER_EX TimerCallback,
+				 IN OPTIONAL PVOID CallbackContext,
+				 IN ULONGLONG TimerValue,
+				 IN ULONGLONG TolerableDelay)
+{
+    // TODO: workitem or dpc?
     return STOR_STATUS_NOT_IMPLEMENTED;
 }
 
@@ -524,9 +540,11 @@ static ULONG StorExtFreeTimer(IN PVOID HwDeviceExtension,
 			      IN PVOID TimerHandle)
 {
     UNREFERENCED_PARAMETER(HwDeviceExtension);
-    UNREFERENCED_PARAMETER(TimerHandle);
-
-    return STOR_STATUS_NOT_IMPLEMENTED;
+    if (!TimerHandle) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    ExFreePool(TimerHandle);
+    return STOR_STATUS_SUCCESS;
 }
 
 /*
@@ -598,6 +616,22 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
     {
 	PVOID *TimerHandle = va_arg(VaList, PVOID *);
 	Status = StorExtInitializeTimer(HwDeviceExtension, TimerHandle);
+	break;
+    }
+
+    case ExtFunctionRequestTimer:
+    {
+	PVOID TimerHandle = va_arg(VaList, PVOID);
+	PHW_TIMER_EX TimerCallback = va_arg(VaList, PHW_TIMER_EX);
+	PVOID CallbackContext = va_arg(VaList, PVOID);
+	ULONGLONG TimerValue = va_arg(VaList, ULONGLONG);
+	ULONGLONG TolerableDelay = va_arg(VaList, ULONGLONG);
+	Status = StorExtRequestTimer(HwDeviceExtension,
+				     TimerHandle,
+				     TimerCallback,
+				     CallbackContext,
+				     TimerValue,
+				     TolerableDelay);
 	break;
     }
 
