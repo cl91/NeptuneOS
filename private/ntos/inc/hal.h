@@ -41,6 +41,7 @@ typedef struct _HAL_ACPI_RSDP {
 /* init.c */
 NTSTATUS HalInitSystemPhase0(VOID);
 NTSTATUS HalInitSystemPhase1(VOID);
+NTSTATUS HalMaskUnusableInterrupts(VOID);
 
 /* acpi.c */
 VOID HalAcpiRegisterRsdp(IN PHAL_ACPI_RSDP Rsdp);

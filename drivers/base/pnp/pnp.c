@@ -54,7 +54,7 @@ static IO_RESOURCE_DESCRIPTOR AcpiResourceDescriptors[] = {
     {
 	.Option = IO_RESOURCE_PREFERRED,
 	.Type = CmResourceTypeMemory,
-	.ShareDisposition = CmResourceShareDeviceExclusive,
+	.ShareDisposition = CmResourceShareBusShared,
 	.Flags = 0,
     },
 };
@@ -799,8 +799,9 @@ static NTSTATUS PnpRootQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObject,
     Dest->List[0].Descriptors[0].Option = IO_RESOURCE_PREFERRED;
     Dest->List[0].Descriptors[0].ShareDisposition = CmResourceShareDeviceExclusive;
     Dest->List[0].Descriptors[0].Memory.Length = XsdtLength;
+    Dest->List[0].Descriptors[0].Memory.Alignment = 1;
     Dest->List[0].Descriptors[0].Memory.MinimumAddress.QuadPart = XsdtAddress;
-    Dest->List[0].Descriptors[0].Memory.MaximumAddress.QuadPart = XsdtAddress;
+    Dest->List[0].Descriptors[0].Memory.MaximumAddress.QuadPart = XsdtAddress + XsdtLength - 1;
     Irp->IoStatus.Information = (ULONG_PTR)Dest;
     return STATUS_SUCCESS;
 }
@@ -842,9 +843,11 @@ static NTSTATUS PnpRootStartDevice(IN PDEVICE_OBJECT DeviceObject,
 	assert(FALSE);
 	return STATUS_DEVICE_ENUMERATION_ERROR;
     }
-    AcpiResourceDescriptors[0].Memory.MinimumAddress = Res->Memory.Start;
-    AcpiResourceDescriptors[0].Memory.MaximumAddress = Res->Memory.Start;
     AcpiResourceDescriptors[0].Memory.Length = Res->Memory.Length;
+    AcpiResourceDescriptors[0].Memory.Alignment = 1;
+    AcpiResourceDescriptors[0].Memory.MinimumAddress = Res->Memory.Start;
+    AcpiResourceDescriptors[0].Memory.MaximumAddress.QuadPart =
+	Res->Memory.Start.QuadPart + Res->Memory.Length - 1;
 
     /* Allocate the resource requirement lists */
     NTSTATUS Status = PnpBuildDeviceRequirementLists(&AcpiBus);

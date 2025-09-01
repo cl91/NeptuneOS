@@ -598,6 +598,10 @@ VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
 VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb);
 VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb);
 
+/* pnp.c */
+BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
+				     IN ULONG Vector);
+
 /* volume.c */
 NTSTATUS IopInitFileSystem();
 NTSTATUS IopMountVolume(IN ASYNC_STATE State,

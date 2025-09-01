@@ -503,7 +503,11 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     assert(Thread->Process->DriverObject != NULL);
     assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
     if (ShareVector) {
-	UNIMPLEMENTED;
+	DbgTrace("WARNING: Interrupt sharing is disallowed.\n");
+    }
+    /* Check if the interrupt level has been connected. */
+    if (IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector)) {
+	return STATUS_ACCESS_DENIED;
     }
 
     /* Create the interrupt service thread, together with the interrupt notification

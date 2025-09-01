@@ -67,6 +67,12 @@ static PDEVICE_NODE IopRootDeviceNode;
 static LIST_ENTRY IopPnpEventQueueHead;
 static KEVENT IopPnpNotifyEvent;
 
+static RTL_RANGE_LIST IopDmaChannelsInUse;
+static RTL_RANGE_LIST IopPortRangesInUse;
+static RTL_RANGE_LIST IopMemoryRangesInUse;
+static RTL_RANGE_LIST IopInterruptVectorsInUse;
+static RTL_RANGE_LIST IopBusNumbersInUse;
+
 /*
  * The created device node is in the DeviceNodeUnspecified state.
  */
@@ -841,34 +847,64 @@ static inline ULONG IopGetPartialResourceCount(IN PIO_RESOURCE_DESCRIPTOR List,
     return Count;
 }
 
-/*
- * Assign the IO resource given the preferred and alternative resource descriptor(s).
- *
- * For now we simply assign the first available slot.
- * TODO: Implement proper resource arbitration.
- */
-static inline NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR List,
-					 IN OUT ULONG *i,
-					 IN ULONG MaxIndex,
-					 OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial)
+FORCEINLINE NTSTATUS IopAllocateResource(IN PRTL_RANGE_LIST RangeList,
+					 IN PIO_RESOURCE_DESCRIPTOR Desc,
+					 IN PDEVICE_NODE DevNode,
+					 IN ULONGLONG Minimum,
+					 IN ULONGLONG Maximum,
+					 IN ULONG Length,
+					 IN ULONG Alignment,
+					 OUT PULONGLONG Start)
 {
-    PIO_RESOURCE_DESCRIPTOR Desc = &List[*i];
-    /* For now we skip the alternative descriptors. Eventually we need to implement
-     * proper resource arbitration by taking them into account. */
-    while ((Desc->Option & IO_RESOURCE_ALTERNATIVE) && (*i < MaxIndex)) {
-	DbgTrace("Skipping alternative descriptor %p (idx %d)\n", Desc, *i);
-	IoDbgPrintResourceDescriptor(Desc);
-	Desc++;
-	++*i;
+    assert(DevNode);
+    BOOLEAN Shared = Desc->ShareDisposition == CmResourceShareShared;
+    RTL_RANGE_LIST_ITERATOR Iter;
+    NTSTATUS Status = RtlFindRange(RangeList, Minimum, Maximum, Length,
+				   Alignment ? Alignment : 1,
+				   Shared ? RTL_RANGE_SHARED : 0, 0, NULL, NULL, Start);
+    if (NT_SUCCESS(Status)) {
+	Status = RtlAddRange(RangeList, *Start, *Start + Length - 1, 0,
+			     Shared ? RTL_RANGE_LIST_ADD_SHARED : 0, NULL, DevNode);
+	assert(NT_SUCCESS(Status));
+	return Status;
     }
-    assert(*i <= MaxIndex);
-    if (*i >= MaxIndex) {
-	return STATUS_INTERNAL_ERROR;
+    /* TODO: Handle CmResourceShareDriverExclusive */
+    if (Desc->ShareDisposition == CmResourceShareBusShared && Minimum &&
+	(Desc->Type == CmResourceTypePort || Desc->Type == CmResourceTypeMemory)) {
+	/* If the parent bus has been assigned this resource, also allow the child PDO
+	 * to have it. */
+	if (!DevNode->Parent || !DevNode->Parent->Resources) {
+	    return STATUS_CONFLICTING_ADDRESSES;
+	}
+	PCM_FULL_RESOURCE_DESCRIPTOR FullDesc = DevNode->Parent->Resources->List;
+	for (ULONG i = 0; i < DevNode->Parent->Resources->Count; i++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+		FullDesc->PartialResourceList.PartialDescriptors;
+	    for (ULONG j = 0; j < FullDesc->PartialResourceList.Count; j++) {
+		ULONGLONG RangeStart = Partial->Generic.Start.QuadPart;
+		ULONG RangeLength = Partial->Generic.Length;
+		ULONGLONG RangeEnd = RangeStart + RangeLength;
+		if (Partial->Type == Desc->Type && Minimum >= RangeStart &&
+		    Maximum + 1 <= RangeEnd && Length <= RangeLength) {
+		    *Start = Minimum;
+		    return STATUS_SUCCESS;
+		}
+	    }
+	    FullDesc = CmGetNextResourceDescriptor(FullDesc);
+	}
     }
-    Partial->Type = Desc->Type;
-    Partial->ShareDisposition = Desc->ShareDisposition;
-    Partial->Flags = Desc->Flags;
+    return STATUS_CONFLICTING_ADDRESSES;
+}
 
+/*
+ * Assign the IO resource given the preferred or alternative resource descriptor(s).
+ */
+static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
+				  IN PDEVICE_NODE DevNode,
+				  OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONGLONG Start = 0;
     switch (Desc->Type) {
     case CmResourceTypeNull:
 	/* Do nothing */
@@ -876,33 +912,67 @@ static inline NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR List,
 
     case CmResourceTypePort:
 	/* Assign the first available port */
-	Partial->Port.Start = Desc->Port.MinimumAddress;
-	Partial->Port.Length = Desc->Port.Length;
+	Status = IopAllocateResource(&IopPortRangesInUse, Desc, DevNode,
+				     Desc->Port.MinimumAddress.QuadPart,
+				     Desc->Port.MaximumAddress.QuadPart,
+				     Desc->Port.Length,
+				     Desc->Port.Alignment,
+				     &Start);
+	if (NT_SUCCESS(Status)) {
+	    Partial->Port.Start.QuadPart = Start;
+	    Partial->Port.Length = Desc->Port.Length;
+	}
 	break;
 
     case CmResourceTypeInterrupt:
 	/* Assign the first available interrupt vector */
-	Partial->Interrupt.Level = Desc->Interrupt.MinimumVector;
-	Partial->Interrupt.Vector = Desc->Interrupt.MinimumVector;
-	Partial->Interrupt.Affinity = Desc->Interrupt.TargetedProcessors;
+	Status = IopAllocateResource(&IopInterruptVectorsInUse, Desc, DevNode,
+				     Desc->Interrupt.MinimumVector,
+				     Desc->Interrupt.MaximumVector,
+				     1, 1, &Start);
+	if (NT_SUCCESS(Status)) {
+	    Partial->Interrupt.Vector = Start;
+	    Partial->Interrupt.Level = Start;
+	    Partial->Interrupt.Affinity = Desc->Interrupt.TargetedProcessors;
+	}
 	break;
 
     case CmResourceTypeDma:
 	/* Assign the first available DMA channel */
-	Partial->Dma.Channel = Desc->Dma.MinimumChannel;
-	Partial->Dma.Port = 0;
+	Status = IopAllocateResource(&IopDmaChannelsInUse, Desc, DevNode,
+				     Desc->Dma.MinimumChannel,
+				     Desc->Dma.MaximumChannel,
+				     1, 1, &Start);
+	if (NT_SUCCESS(Status)) {
+	    Partial->Dma.Channel = Start;
+	    Partial->Dma.Port = 0;
+	}
 	break;
 
     case CmResourceTypeMemory:
 	/* Assign the first available memory-mapped IO region */
-	Partial->Memory.Start = Desc->Memory.MinimumAddress;
-	Partial->Memory.Length = Desc->Memory.Length;
+	Status = IopAllocateResource(&IopMemoryRangesInUse, Desc, DevNode,
+				     Desc->Memory.MinimumAddress.QuadPart,
+				     Desc->Memory.MaximumAddress.QuadPart,
+				     Desc->Memory.Length,
+				     Desc->Memory.Alignment, &Start);
+	if (NT_SUCCESS(Status)) {
+	    Partial->Memory.Start.QuadPart = Start;
+	    Partial->Memory.Length = Desc->Memory.Length;
+	}
 	break;
 
     case CmResourceTypeBusNumber:
 	/* Assign the first available bus number */
-	Partial->BusNumber.Start = Desc->BusNumber.MinBusNumber;
-	Partial->BusNumber.Length = Desc->BusNumber.Length;
+	Status = IopAllocateResource(&IopBusNumbersInUse, Desc, DevNode,
+				     Desc->BusNumber.MinBusNumber,
+				     Desc->BusNumber.MaxBusNumber,
+				     Desc->BusNumber.Length,
+				     1, &Start);
+	if (NT_SUCCESS(Status)) {
+	    Partial->BusNumber.Start = Start;
+	    Partial->BusNumber.Length = Desc->BusNumber.Length;
+	}
 	break;
 
     case CmResourceTypeDevicePrivate:
@@ -913,9 +983,17 @@ static inline NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR List,
 
     default:
 	assert(FALSE);
+	Status = STATUS_INVALID_PARAMETER;
     }
 
-    return STATUS_SUCCESS;
+    if (NT_SUCCESS(Status)) {
+	Partial->Type = Desc->Type;
+	Partial->ShareDisposition = Desc->ShareDisposition;
+	Partial->Flags = Desc->Flags;
+	return STATUS_SUCCESS;
+    } else {
+	return STATUS_CONFLICTING_ADDRESSES;
+    }
 }
 
 /*
@@ -951,15 +1029,39 @@ static NTSTATUS IopAssignResourcesForList(IN PDEVICE_NODE DeviceNode,
     DeviceNode->Resources->List[0].PartialResourceList.Count = PartialDescCount;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
 	DeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors;
+    BOOLEAN Failed = FALSE;
     for (ULONG i = 0; i < ResList->Count; i++) {
-	NTSTATUS Status = IopAssignResource(ResList->Descriptors, &i,
-					    ResList->Count, Partial);
-	if (!NT_SUCCESS(Status)) {
-	    IopFreePool(DeviceNode->Resources);
-	    DeviceNode->Resources = NULL;
-	    return Status;
+	PIO_RESOURCE_DESCRIPTOR Desc = &ResList->Descriptors[i];
+	if (Failed) {
+	    /* If previous resource assignment failed, check if the bus driver has
+	     * supplied alternative IO resources, and try satisfying them. */
+	    if (Desc->Option & IO_RESOURCE_ALTERNATIVE) {
+		goto assign;
+	    } else {
+		break;
+	    }
+	} else {
+	    while ((Desc->Option & IO_RESOURCE_ALTERNATIVE) && (i < ResList->Count)) {
+		DbgTrace("Skipping alternative descriptor %p (idx %d)\n", Desc, i);
+		IoDbgPrintResourceDescriptor(Desc);
+		Desc++;
+		++i;
+	    }
+	    assert(i <= ResList->Count);
+	    if (i >= ResList->Count) {
+		return STATUS_INTERNAL_ERROR;
+	    }
 	}
-	Partial++;
+    assign:
+	Failed = !NT_SUCCESS(IopAssignResource(Desc, DeviceNode, Partial));
+	if (!Failed) {
+	    Partial++;
+	}
+    }
+    if (Failed) {
+	IopFreePool(DeviceNode->Resources);
+	DeviceNode->Resources = NULL;
+	return STATUS_CONFLICTING_ADDRESSES;
     }
     return STATUS_SUCCESS;
 }
@@ -1652,10 +1754,63 @@ static NTSTATUS IopGetRelatedDevice(IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA D
     return STATUS_SUCCESS;
 }
 
+BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
+				     IN ULONG Vector)
+{
+    BOOLEAN Available = FALSE;
+    RtlIsRangeAvailable(&IopInterruptVectorsInUse, Vector, Vector,
+			0, 0, NULL, NULL, &Available);
+    if (Available) {
+	return FALSE;
+    }
+    /* Check the device objects created by the driver object and see if
+     * one of them has been assigned the interrupt resource. If none,
+     * return FALSE. */
+    LoopOverList(Device, &DriverObject->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	if (!Device->DeviceNode || !Device->DeviceNode->Resources) {
+	    continue;
+	}
+	PCM_FULL_RESOURCE_DESCRIPTOR Desc = Device->DeviceNode->Resources->List;
+	for (ULONG i = 0; i < Device->DeviceNode->Resources->Count; i++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+		Desc->PartialResourceList.PartialDescriptors;
+	    for (ULONG j = 0; j < Desc->PartialResourceList.Count; j++) {
+		if (Partial->Type == CmResourceTypeInterrupt &&
+		    Partial->Interrupt.Vector == Vector) {
+		    return TRUE;
+		}
+	    }
+	    Desc = CmGetNextResourceDescriptor(Desc);
+	}
+    }
+    return FALSE;
+}
+
+NTSTATUS IoMaskInterrupt(IN ULONG Vector)
+{
+    BOOLEAN Available = FALSE;
+    RtlIsRangeAvailable(&IopInterruptVectorsInUse, Vector, Vector,
+			0, 0, NULL, NULL, &Available);
+    if (Available) {
+	return RtlAddRange(&IopInterruptVectorsInUse, Vector, Vector, 1, 0, NULL, NULL);
+    }
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS IopInitPnpManager()
 {
     /* We can only be called once (during system startup). */
     assert(!IopRootDeviceNode);
+
+    /* Initialize the RTL_RANGE_LISTs needed for resource arbitration. */
+    RtlInitializeRangeList(&IopDmaChannelsInUse);
+    RtlInitializeRangeList(&IopPortRangesInUse);
+    RtlInitializeRangeList(&IopMemoryRangesInUse);
+    RtlInitializeRangeList(&IopInterruptVectorsInUse);
+    RtlInitializeRangeList(&IopBusNumbersInUse);
+
+    /* Ask HAL to mask the unusable IRQLs so we won't assign it to devices later. */
+    RET_ERR(HalMaskUnusableInterrupts());
 
     /* Initialize the PnP event notification and the event queue. */
     InitializeListHead(&IopPnpEventQueueHead);

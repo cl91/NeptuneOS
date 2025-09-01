@@ -234,7 +234,8 @@ typedef enum _CM_SHARE_DISPOSITION {
     CmResourceShareUndetermined,
     CmResourceShareDeviceExclusive,
     CmResourceShareDriverExclusive,
-    CmResourceShareShared
+    CmResourceShareShared,
+    CmResourceShareBusShared /* Resource is shared between the parent bus and child PDO */
 } CM_SHARE_DISPOSITION;
 
 //

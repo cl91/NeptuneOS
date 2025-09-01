@@ -300,6 +300,9 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 NTSTATUS IoInitSystemPhase0();
 NTSTATUS IoInitSystemPhase1();
 
+/* pnp.c */
+NTSTATUS IoMaskInterrupt(IN ULONG Vector);
+
 /*
  * Debug helper functions
  */

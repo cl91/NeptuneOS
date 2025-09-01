@@ -8,7 +8,20 @@
 
 /* INCLUDES *****************************************************************/
 
-#include "rtlp.h"
+#include <nt.h>
+#include <util.h>
+
+#define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
+
+#if defined(_NTOSKRNL_) || defined(_NTPSX_)
+PVOID ExAllocatePoolWithTag(IN ULONG_PTR NumberOfBytes, IN ULONG Tag);
+VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag);
+#define RtlpAllocateMemory(Bytes, Tag) ExAllocatePoolWithTag(Bytes, Tag)
+#define RtlpFreeMemory(Mem, Tag) ExFreePoolWithTag(Mem, Tag)
+#else
+#define RtlpAllocateMemory(Bytes, Tag) RtlAllocateHeap(RtlGetProcessHeap(), 0, Bytes)
+#define RtlpFreeMemory(Mem, Tag) RtlFreeHeap(RtlGetProcessHeap(), 0, Mem)
+#endif
 
 /* TYPES ********************************************************************/
 
@@ -270,57 +283,33 @@ NTAPI NTSTATUS RtlFindRange(IN PRTL_RANGE_LIST RangeList, IN ULONGLONG Minimum,
 			    IN PRTL_CONFLICT_RANGE_CALLBACK Callback OPTIONAL,
 			    OUT PULONGLONG Start)
 {
-    PRTL_RANGE_ENTRY CurrentEntry;
-    PRTL_RANGE_ENTRY NextEntry;
-    PLIST_ENTRY Entry;
-    ULONGLONG RangeMin;
-    ULONGLONG RangeMax;
-
-    if (Alignment == 0 || Length == 0) {
+    if (!Alignment || !Length || Maximum < Minimum || ((Minimum + Length) > (Maximum + 1))) {
 	return STATUS_INVALID_PARAMETER;
     }
 
     if (IsListEmpty(&RangeList->ListHead)) {
-	*Start = ROUND_DOWN(Maximum - (Length - 1), Alignment);
+	*Start = Minimum;
 	return STATUS_SUCCESS;
     }
 
-    NextEntry = NULL;
-    Entry = RangeList->ListHead.Blink;
-    while (Entry != &RangeList->ListHead) {
-	CurrentEntry = CONTAINING_RECORD(Entry, RTL_RANGE_ENTRY, Entry);
-
-	RangeMax = NextEntry ? (NextEntry->Range.Start - 1) : Maximum;
-	if (RangeMax + (Length - 1) < Minimum) {
-	    return STATUS_RANGE_NOT_FOUND;
-	}
-
-	RangeMin = ROUND_DOWN(RangeMax - (Length - 1), Alignment);
-	if (RangeMin < Minimum || (RangeMax - RangeMin) < (Length - 1)) {
-	    return STATUS_RANGE_NOT_FOUND;
-	}
-
-	if (RangeMin > CurrentEntry->Range.End) {
-	    *Start = RangeMin;
+    LoopOverList(Entry, &RangeList->ListHead, RTL_RANGE_ENTRY, Entry) {
+	/* Check if there is enough space before the entry. The range between
+	 * Minimum and the start of the entry is assumed to be empty. */
+	if (Entry->Range.Start >= (Minimum + Length)) {
+	    *Start = Minimum;
 	    return STATUS_SUCCESS;
 	}
-
-	NextEntry = CurrentEntry;
-	Entry = Entry->Blink;
+	/* There is not. Since nowhere before the end of the current range can be
+	 * used, move the Minimum forward, unless it already is far ahead enough. */
+	Minimum = max(Minimum, Entry->Range.End + 1);
+	/* If the search window is now closed, fail. Otherwise, continue the loop. */
+	if ((Minimum + Length - 1) > Maximum) {
+	    return STATUS_RANGE_NOT_FOUND;
+	}
     }
-
-    RangeMax = NextEntry ? (NextEntry->Range.Start - 1) : Maximum;
-    if (RangeMax + (Length - 1) < Minimum) {
-	return STATUS_RANGE_NOT_FOUND;
-    }
-
-    RangeMin = ROUND_DOWN(RangeMax - (Length - 1), Alignment);
-    if (RangeMin < Minimum || (RangeMax - RangeMin) < (Length - 1)) {
-	return STATUS_RANGE_NOT_FOUND;
-    }
-
-    *Start = RangeMin;
-
+    /* If we got here, it means that the space after Minimum is empty. */
+    assert(Minimum + Length <= Maximum + 1);
+    *Start = Minimum;
     return STATUS_SUCCESS;
 }
 
