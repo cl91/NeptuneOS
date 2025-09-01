@@ -621,10 +621,10 @@ typedef struct _PLUGPLAY_EVENT_BLOCK {
 	    WCHAR SymbolicLinkName[ANYSIZE_ARRAY];
 	} DeviceClass;
 	struct {
-	    WCHAR DeviceIds[1];
+	    WCHAR DeviceIds[ANYSIZE_ARRAY];
 	} TargetDevice;
 	struct {
-	    WCHAR DeviceId[1];
+	    WCHAR DeviceId[ANYSIZE_ARRAY];
 	} InstallDevice;
 	struct {
 	    PVOID NotificationStructure;

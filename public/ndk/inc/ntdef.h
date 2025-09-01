@@ -251,7 +251,7 @@ typedef union _ULARGE_INTEGER {
 #define DUMMYSTRUCTNAME5
 #define DUMMYUNIONNAME
 #define DUMMYUNIONNAME2
-#define ANYSIZE_ARRAY
+#define ANYSIZE_ARRAY 1
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
