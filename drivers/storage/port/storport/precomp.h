@@ -28,6 +28,8 @@
 #define TAG_ADDRESS_MAPPING 'MAtS'
 #define TAG_INQUIRY_DATA    'QItS'
 #define TAG_SENSE_DATA      'NStS'
+#define TAG_LUN_LIST        'LLtS'
+#define TAG_DEV_RELATIONS   'RDtS'
 
 typedef enum {
     dsStopped,
@@ -77,7 +79,7 @@ typedef struct _UNIT_DATA {
 } UNIT_DATA, *PUNIT_DATA;
 
 typedef struct _FDO_DEVICE_EXTENSION {
-    EXTENSION_TYPE ExtensionType;
+    EXTENSION_TYPE ExtensionType; /* Must be first member */
 
     PDEVICE_OBJECT Device;
     PDEVICE_OBJECT LowerDevice;
@@ -103,7 +105,7 @@ typedef struct _FDO_DEVICE_EXTENSION {
 } FDO_DEVICE_EXTENSION, *PFDO_DEVICE_EXTENSION;
 
 typedef struct _PDO_DEVICE_EXTENSION {
-    EXTENSION_TYPE ExtensionType;
+    EXTENSION_TYPE ExtensionType; /* Must be first member */
 
     PDEVICE_OBJECT Device;
     PFDO_DEVICE_EXTENSION FdoExtension;

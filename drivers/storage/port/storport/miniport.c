@@ -290,41 +290,22 @@ NTSTATUS MiniportFindAdapter(IN PMINIPORT Miniport)
 
 NTSTATUS MiniportHwInitialize(IN PMINIPORT Miniport)
 {
-    BOOLEAN Result;
-
     DPRINT1("MiniportHwInitialize(%p)\n", Miniport);
-
-    /* Call the miniport HwInitialize routine */
-    Result = Miniport->InitData->HwInitialize(
-	&Miniport->MiniportExtension->HwDeviceExtension);
+    BOOLEAN Result =
+	Miniport->InitData->HwInitialize(&Miniport->MiniportExtension->HwDeviceExtension);
     DPRINT1("HwInitialize() returned %u\n", Result);
-
     return Result ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
 BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport)
 {
-    BOOLEAN Result;
-
-    DPRINT1("MiniportHwInterrupt(%p)\n", Miniport);
-
-    Result = Miniport->InitData->HwInterrupt(
-	&Miniport->MiniportExtension->HwDeviceExtension);
-    DPRINT1("HwInterrupt() returned %u\n", Result);
-
-    return Result;
+    return Miniport->InitData->HwInterrupt(&Miniport->MiniportExtension->HwDeviceExtension);
 }
 
 BOOLEAN MiniportStartIo(IN PMINIPORT Miniport,
 			IN PSCSI_REQUEST_BLOCK Srb)
 {
-    BOOLEAN Result;
-
     DPRINT1("MiniportHwStartIo(%p %p)\n", Miniport, Srb);
-
-    Result = Miniport->InitData->HwStartIo(
-	&Miniport->MiniportExtension->HwDeviceExtension, Srb);
-    DPRINT1("HwStartIo() returned %u\n", Result);
-
-    return Result;
+    return Miniport->InitData->HwStartIo(&Miniport->MiniportExtension->HwDeviceExtension,
+					 Srb);
 }

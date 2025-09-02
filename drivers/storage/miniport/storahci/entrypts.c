@@ -1073,8 +1073,7 @@ AhciHwPassiveInitialize(_In_ PVOID AdapterExtension)
     adapterExtension->PoFxDevice->Components[0].Size = STOR_POFX_COMPONENT_SIZE;
     adapterExtension->PoFxDevice->Components[0].FStateCount = reportF1State ? 2 : 1;
     adapterExtension->PoFxDevice->Components[0].DeepestWakeableFState = reportF1State ?
-									    1 :
-									    0;
+									    1 : 0;
     adapterExtension->PoFxDevice->Components[0].Id = STORPORT_POFX_ADAPTER_GUID;
 
     PSTOR_POFX_COMPONENT_IDLE_STATE FStates = adapterExtension->PoFxDevice->Components[0].FStates;

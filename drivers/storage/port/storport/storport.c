@@ -258,11 +258,9 @@ static NTAPI NTSTATUS PortDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 static NTAPI NTSTATUS PortDispatchScsi(IN PDEVICE_OBJECT DeviceObject,
 				       IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension;
-
     DPRINT1("PortDispatchScsi(%p %p)\n", DeviceObject, Irp);
 
-    DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     DPRINT1("ExtensionType: %u\n", DeviceExtension->ExtensionType);
 
     switch (DeviceExtension->ExtensionType) {
@@ -1129,12 +1127,9 @@ NTAPI VOID StorPortLogError(IN PVOID HwDeviceExtension,
 			    IN ULONG ErrorCode,
 			    IN ULONG UniqueId)
 {
-    DPRINT1("ScsiPortLogError() called\n");
     DPRINT1("PathId: 0x%02x  TargetId: 0x%02x  Lun: 0x%02x  ErrorCode: 0x%08x  UniqueId: "
 	    "0x%08x\n",
 	    PathId, TargetId, Lun, ErrorCode, UniqueId);
-
-    DPRINT1("ScsiPortLogError() done\n");
 }
 
 /*
