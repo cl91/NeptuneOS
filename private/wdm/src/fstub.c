@@ -657,7 +657,7 @@ static NTSTATUS FstubGetDiskGeometry(IN PDEVICE_OBJECT DeviceObject,
 	goto Cleanup;
     }
     /* Initialize the waiting event */
-    KeInitializeEvent(Event, NotificationEvent, FALSE);
+    KeInitializeEvent(Event, SynchronizationEvent, FALSE);
 
     /* Build the request to get disk geometry */
     Irp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, DeviceObject, 0,
@@ -1067,7 +1067,7 @@ static NTSTATUS FstubReadSector(IN PDEVICE_OBJECT DeviceObject,
     StartingOffset.QuadPart = StartingSector * SectorSize;
 
     /* Initialize waiting event */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Prepare IRP */
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer, SectorSize,
@@ -1546,7 +1546,7 @@ static NTSTATUS FstubWriteSector(IN PDEVICE_OBJECT DeviceObject,
     StartingOffset.QuadPart = StartingSector * SectorSize;
 
     /* Initialize waiting event */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Prepare IRP */
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_WRITE, DeviceObject, Buffer, SectorSize,

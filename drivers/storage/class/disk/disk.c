@@ -4962,7 +4962,7 @@ NTSTATUS DiskIoctlSmartReceiveDriveData(IN PDEVICE_OBJECT DeviceObject, IN OUT P
     // request completion.
     //
 
-    KeInitializeEvent(&event, NotificationEvent, FALSE);
+    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
     //
     // use controlCode as a sort of 'STATUS_SUCCESS' to see if it's
@@ -5176,7 +5176,7 @@ NTSTATUS DiskIoctlSmartSendDriveCommand(IN PDEVICE_OBJECT DeviceObject, IN OUT P
     // request completion.
     //
 
-    KeInitializeEvent(&event, NotificationEvent, FALSE);
+    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
     if (cmdInParameters->irDriveRegs.bCommandReg == SMART_CMD) {
 	switch (cmdInParameters->irDriveRegs.bFeaturesReg) {

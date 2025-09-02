@@ -213,7 +213,7 @@ static NTSTATUS PortSendInquiry(IN PPDO_DEVICE_EXTENSION PdoExtension)
 
     while (KeepTrying) {
 	/* Initialize event for waiting */
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
 	/* Create an IRP */
 	Irp = IoBuildDeviceIoControlRequest(IOCTL_SCSI_EXECUTE_IN, PdoExtension->Device,

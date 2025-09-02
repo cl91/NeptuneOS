@@ -59,7 +59,7 @@ static NTSTATUS HalpGetFullGeometry(IN PDEVICE_OBJECT DeviceObject,
 	return STATUS_INSUFFICIENT_RESOURCES;
 
     /* Initialize it */
-    KeInitializeEvent(Event, NotificationEvent, FALSE);
+    KeInitializeEvent(Event, SynchronizationEvent, FALSE);
 
     /* Build the IRP */
     Irp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, DeviceObject,
@@ -223,7 +223,7 @@ static VOID HalpGetPartialGeometry(IN PDEVICE_OBJECT DeviceObject,
 	goto Cleanup;
 
     /* Initialize the event */
-    KeInitializeEvent(Event, NotificationEvent, FALSE);
+    KeInitializeEvent(Event, SynchronizationEvent, FALSE);
 
     /* Build the IRP */
     Irp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_DRIVE_GEOMETRY, DeviceObject, NULL,
@@ -297,7 +297,7 @@ NTAPI VOID HalExamineMBR(IN PDEVICE_OBJECT DeviceObject,
 	return;
 
     /* Initialize the Event */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Build the IRP */
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer, BufferSize,
@@ -448,7 +448,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	IsValid = TRUE;
 
 	/* Initialize the event */
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
 	/* Clear the buffer and build the IRP */
 	RtlZeroMemory(Buffer, InputSize);
@@ -807,7 +807,7 @@ NTAPI NTSTATUS IoSetPartitionInformation(IN PDEVICE_OBJECT DeviceObject,
 	return STATUS_INSUFFICIENT_RESOURCES;
 
     /* Initialize the event we'll use and loop partitions */
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     do {
 	/* Reset the event since we reuse it */
 	KeClearEvent(&Event);
@@ -1028,7 +1028,7 @@ NTAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	IsMbr = (BOOLEAN)!i;
 
 	/* Initialize th event */
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
 	/* Build the read IRP */
 	Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ, DeviceObject, Buffer, BufferSize,
@@ -1149,7 +1149,7 @@ NTAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	    DoRewrite = FALSE;
 
 	    /* Initialize the event */
-	    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
 	    /* If we unbiased for EZ-Drive, rebias now */
 	    if (IsEzDrive && !Offset.QuadPart)

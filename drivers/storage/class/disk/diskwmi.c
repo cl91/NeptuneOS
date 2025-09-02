@@ -434,7 +434,7 @@ NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     //
     // Create and send irp
     //
-    KeInitializeEvent(&event, NotificationEvent, FALSE);
+    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
     startingOffset.QuadPart = (LONGLONG)1;
 

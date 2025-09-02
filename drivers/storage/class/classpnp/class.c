@@ -3650,7 +3650,7 @@ retry:
     // It will be used to signal request completion.
     //
 
-    KeInitializeEvent(&event, NotificationEvent, FALSE);
+    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
     //
     // Build device I/O control request with METHOD_NEITHER data transfer.

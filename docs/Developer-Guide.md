@@ -391,6 +391,15 @@ the `IO_RESOURCE_REQUIREMENTS_LIST` structure used in the PnP driver interface.
 ##### Synchronization
 
 KEVENT (only between different threads within the same driver process)
+
+If you allocate the `KEVENT` on the stack and call `KeWaitForSingleObject` to wait for
+the completion of an IRP, you should in general initialize a synchronization event rather
+than a notification event. If you initialize a notification event, you will need to manually
+reset it to the unsignaled state before returning from the dispatch routine, since it does
+not automatically get reset and will remain in the signaled object list. When the coroutine
+stack gets released when control leaves the dispatch routine, the driver's list of signaled
+object will be in a inconsistent state.
+
 ERESOURCE (removed)
 
 ##### Queuing IRP

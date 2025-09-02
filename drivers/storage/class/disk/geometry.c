@@ -1025,7 +1025,7 @@ BOOLEAN DiskIsNT4Geometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 	IO_STATUS_BLOCK ioStatus = { 0 };
 	PIRP irp;
 
-	KeInitializeEvent(&event, NotificationEvent, FALSE);
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
 	//
 	// Read the Master Boot Record at disk offset 0
