@@ -526,7 +526,7 @@ VOID AhciPortPowerUp(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)
     //
     if (ChannelExtension->DevicePowerState == StorPowerDeviceD3 &&
 	IsPortD3ColdEnabled(ChannelExtension)) {
-	STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+	STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 	BOOLEAN powerUpInitializationInProgress = 0;
 
 	// 1.4.1 Re-issue init commands (this will also restore preserved settings).

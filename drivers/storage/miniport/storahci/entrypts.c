@@ -1077,25 +1077,21 @@ AhciHwPassiveInitialize(_In_ PVOID AdapterExtension)
 									    0;
     adapterExtension->PoFxDevice->Components[0].Id = STORPORT_POFX_ADAPTER_GUID;
 
-    adapterExtension->PoFxDevice->Components[0].FStates[0].Version =
-	STOR_POFX_COMPONENT_IDLE_STATE_VERSION_V1;
-    adapterExtension->PoFxDevice->Components[0].FStates[0].Size =
-	STOR_POFX_COMPONENT_IDLE_STATE_SIZE;
-    adapterExtension->PoFxDevice->Components[0].FStates[0].TransitionLatency = 0;
-    adapterExtension->PoFxDevice->Components[0].FStates[0].ResidencyRequirement = 0;
-    adapterExtension->PoFxDevice->Components[0].FStates[0].NominalPower =
-	STOR_POFX_UNKNOWN_POWER;
+    PSTOR_POFX_COMPONENT_IDLE_STATE FStates = adapterExtension->PoFxDevice->Components[0].FStates;
+    FStates->Version = STOR_POFX_COMPONENT_IDLE_STATE_VERSION_V1;
+    FStates->Size = STOR_POFX_COMPONENT_IDLE_STATE_SIZE;
+    FStates->TransitionLatency = 0;
+    FStates->ResidencyRequirement = 0;
+    FStates->NominalPower = STOR_POFX_UNKNOWN_POWER;
 
     if (reportF1State) {
+	FStates++;
 	adapterExtension->StateFlags.UseAdapterF1InsteadOfD3 = FALSE;
-	adapterExtension->PoFxDevice->Components[0].FStates[1].Version =
-	    STOR_POFX_COMPONENT_IDLE_STATE_VERSION_V1;
-	adapterExtension->PoFxDevice->Components[0].FStates[1].Size =
-	    STOR_POFX_COMPONENT_IDLE_STATE_SIZE;
-	adapterExtension->PoFxDevice->Components[0].FStates[1].TransitionLatency = 1;
-	adapterExtension->PoFxDevice->Components[0].FStates[1].ResidencyRequirement = 0;
-	adapterExtension->PoFxDevice->Components[0].FStates[1].NominalPower =
-	    STOR_POFX_UNKNOWN_POWER;
+	FStates->Version = STOR_POFX_COMPONENT_IDLE_STATE_VERSION_V1;
+	FStates->Size = STOR_POFX_COMPONENT_IDLE_STATE_SIZE;
+	FStates->TransitionLatency = 1;
+	FStates->ResidencyRequirement = 0;
+	FStates->NominalPower = STOR_POFX_UNKNOWN_POWER;
     }
 
     // registry runtime power management for Adapter
@@ -1426,7 +1422,7 @@ AhciHwAdapterControl(_In_ PVOID AdapterExtension,
 
 		if (adapterStopPending == 1) {
 		    // perform pending Adapter Stop work
-		    STOR_LOCK_HANDLE lockhandle = { StartIoLock, { 0 } };
+		    STOR_LOCK_HANDLE lockhandle = { StartIoLock };
 
 		    NT_ASSERT(adapterExtension->StateFlags.StoppedState == 0);
 
@@ -1526,7 +1522,7 @@ AhciHwAdapterControl(_In_ PVOID AdapterExtension,
 BOOLEAN AhciHwResetBus(_In_ PVOID AdapterExtension, _In_ ULONG PathId)
 {
     BOOLEAN status = FALSE;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
 
     if (IsPortValid(adapterExtension, PathId)) {
@@ -1716,7 +1712,7 @@ exit:
 */
 BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 {
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
     ULONG function = SrbGetSrbFunction(Srb);
     UCHAR pathId = SrbGetPathId(Srb);
@@ -3103,7 +3099,7 @@ SCSI_UNIT_CONTROL_STATUS AhciHwUnitControl(_In_ PVOID AdapterExtension,
     //
     case ScsiUnitSurpriseRemoval: {
 	PSTOR_ADDR_BTL8 storAddrBtl8 = (PSTOR_ADDR_BTL8)Parameters;
-	STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+	STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 
 	if (IsPortValid(adapterExtension, storAddrBtl8->Path)) {
 	    PAHCI_CHANNEL_EXTENSION channelExtension =

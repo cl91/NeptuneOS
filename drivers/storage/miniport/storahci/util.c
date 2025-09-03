@@ -614,7 +614,7 @@ VOID AhciBusChangeCallback(_In_ PVOID AdapterExtension, _In_opt_ PVOID Context,
 VOID PortBusChangeProcess(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)
 {
     AHCI_SERIAL_ATA_CONTROL sctl;
-    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     ULONG status = STOR_STATUS_UNSUCCESSFUL;
 
     // 1 if link speed was limited, restore the supported value.
@@ -979,7 +979,7 @@ VOID AhciCompleteJustSlottedRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
     PAHCI_SRB_EXTENSION srbExtension;
     BOOLEAN isSenseSrb;
     PSTORAGE_REQUEST_BLOCK srbToComplete;
-    STOR_LOCK_HANDLE lockHandle = { InterruptLock, { 0 } };
+    STOR_LOCK_HANDLE lockHandle = { InterruptLock };
 
     srbExtension = GetSrbExtension(Srb);
     slotContent = &ChannelExtension->Slot[srbExtension->QueueTag];
@@ -1076,7 +1076,7 @@ VOID AhciCompleteRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     if (((srbExtension->Flags & ATA_FLAGS_ACTIVE_REFERENCE) != 0) ||
 	(srbExtension->CompletionRoutine != NULL)) {
 	if (AtDIRQL == FALSE) {
-	    STOR_LOCK_HANDLE lockhandle = { InterruptLock, { 0 } };
+	    STOR_LOCK_HANDLE lockhandle = { InterruptLock };
 
 	    AhciInterruptSpinlockAcquire(ChannelExtension->AdapterExtension,
 					 ChannelExtension->PortNumber, &lockhandle);
