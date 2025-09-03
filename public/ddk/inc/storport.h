@@ -1849,6 +1849,14 @@ FORCEINLINE ULONG StorPortLogSystemEvent(IN PVOID HwDeviceExtension,
 				    LogDetails, MaximumSize);
 }
 
+ULONG FORCEINLINE StorPortGetCurrentProcessorNumber(IN PVOID HwDeviceExtension,
+						    OUT PPROCESSOR_NUMBER ProcNumber)
+{
+    return StorPortExtendedFunction(ExtFunctionGetCurrentProcessorNumber,
+                                    HwDeviceExtension,
+                                    ProcNumber);
+}
+
 FORCEINLINE ULONG StorPortGetGroupAffinity(IN PVOID HwDeviceExtension,
 					   IN USHORT GroupNumber,
 					   OUT PKAFFINITY GroupAffinityMask)

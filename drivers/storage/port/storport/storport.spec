@@ -39,3 +39,5 @@
 @ stdcall StorPortValidateRange(ptr long long long long long long)
 @ stdcall StorPortAllocateDmaMemory(ptr ptr long long long long long long long long ptr ptr)
 @ stdcall StorPortFreeDmaMemory(ptr ptr ptr long long long)
+@ stdcall ScsiPortWmiDispatchFunction(ptr long ptr ptr ptr long ptr)
+@ stdcall ScsiPortWmiPostProcess(ptr long long)

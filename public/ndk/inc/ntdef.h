@@ -84,7 +84,7 @@ typedef CHAR *LPCH, *PCH, *PNZCH, *PSZ;
 typedef CONST CHAR *LPCCH, *PCCH, *PCNZCH;
 
 typedef int8_t INT8;
-typedef uint8_t UINT8;
+typedef uint8_t UINT8, *PUINT8;
 
 typedef wchar_t WCHAR;
 typedef WCHAR *PWCHAR, *PWCH, *PWSTR, *LPWSTR;
@@ -103,15 +103,13 @@ typedef USHORT *PUSHORT;
 typedef unsigned short WORD;
 
 typedef int16_t INT16;
-typedef uint16_t UINT16;
+typedef uint16_t UINT16, *PUINT16;
 
 typedef int INT;
 typedef unsigned int UINT;
 
-typedef int32_t LONG;
-typedef uint32_t ULONG, DWORD;
-typedef LONG *PLONG;
-typedef ULONG *PULONG, CLONG, *PCLONG, *LPDWORD;
+typedef int32_t LONG,*PLONG;
+typedef uint32_t ULONG, *PULONG, CLONG, *PCLONG, UINT32, *PUINT32, DWORD, *LPDWORD;
 
 typedef uint64_t ULONGLONG, *PULONGLONG;
 typedef int64_t LONGLONG, *PLONGLONG;

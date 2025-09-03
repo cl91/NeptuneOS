@@ -28,6 +28,12 @@ typedef struct _GROUP_AFFINITY {
     USHORT Reserved[3];
 } GROUP_AFFINITY, *PGROUP_AFFINITY;
 
+typedef struct _PROCESSOR_NUMBER {
+    USHORT Group;
+    UCHAR Number;
+    UCHAR Reserved;
+} PROCESSOR_NUMBER, *PPROCESSOR_NUMBER;
+
 /*
  * System Time Structure
  */

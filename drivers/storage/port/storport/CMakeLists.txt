@@ -6,6 +6,7 @@ list(APPEND SOURCE
     misc.c
     pdo.c
     storport.c
+    wmi.c
     guid.c)
 
 add_driver(storport ${SOURCE} storport.rc)
