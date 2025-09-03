@@ -1017,13 +1017,13 @@ typedef struct _NVME_DEVICE_EXTENSION {
     BOOLEAN                     MultipleCoresToSingleQueueFlag;
 
     /* Flag to indicate hardReset is in progress in polled mode */
-	BOOLEAN                     polledResetInProg;
+    BOOLEAN                     polledResetInProg;
 
-   /* Array to hold group affinity data */
-   PGROUP_AFFINITY             pArrGrpAff;
+    /* Array to hold group affinity data */
+    PGROUP_AFFINITY             pArrGrpAff;
 
-   /* Flag to check if StorPortInitializePerfOpts API executed succesfully.. */
-   BOOLEAN                     IsMsiMappingComplete;
+    /* Flag to check if StorPortInitializePerfOpts API executed succesfully.. */
+    BOOLEAN                     IsMsiMappingComplete;
 
 #if DBG
     /* part of debug code to sanity check learning */
@@ -1087,7 +1087,7 @@ typedef struct _NVME_SRB_EXTENSION {
     /* Callback completion routine, if needed */
     PNVME_COMPLETION_ROUTINE     pNvmeCompletionRoutine;
 
-    BOOLEAN ModeSenseWaitState;
+    CHAR ModeSenseWaitState;
 
     /* WMI */
 
@@ -1109,8 +1109,7 @@ typedef struct _NVME_SRB_EXTENSION {
 
     union {
         // To allow for alignment of dsmBuffer on 16-byte boundary, add 1 extra element
-        UINT32                       dsmBuffer[(PAGE_SIZE_IN_DWORDS + 4) -
-            PRP_LIST_SIZE / sizeof(UINT32)];
+        UINT32 dsmBuffer[(PAGE_SIZE_IN_DWORDS + 4) - PRP_LIST_SIZE / sizeof(UINT32)];
 
         // Buffer may also be used for reservation commands.
         // Allocate an extra 4 bytes for buffer alignment
@@ -1205,10 +1204,10 @@ VOID NVMeMsiMapCores(IN PNVME_DEVICE_EXTENSION pAE);
 
 VOID NVMeCompleteResMapTbl(IN PNVME_DEVICE_EXTENSION pAE);
 
-ULONG NVMeMapCore2Queue(IN PNVME_DEVICE_EXTENSION pAE,
-			IN PPROCESSOR_NUMBER pPN,
-			IN OUT USHORT *pSubQueue,
-			IN OUT USHORT *pCplQueue);
+ULONG NVMeMapCoreToQueue(IN PNVME_DEVICE_EXTENSION pAE,
+			 IN PPROCESSOR_NUMBER pPN,
+			 IN OUT USHORT *pSubQueue,
+			 IN OUT USHORT *pCplQueue);
 
 
 VOID IoCompletionRoutine(IN PSTOR_DPC  pDpc,
@@ -1356,8 +1355,6 @@ VOID NVMeRunningWaitOnNamespaceReady(PNVME_DEVICE_EXTENSION pAE);
 
 VOID NVMeDriverFatalError(PNVME_DEVICE_EXTENSION pAE,
 			  ULONG ErrorNum);
-
-BOOLEAN NvmeReset(PNVME_DEVICE_EXTENSION pAE);
 
 /* Storport miniport driver entry routines, implemented in std.c */
 

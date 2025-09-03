@@ -279,11 +279,7 @@
 /* For Win 8 UNMAP support, there are additional VPD pages
    we provide such as logical block provisioning
 */
-#if (NTDDI_VERSION > NTDDI_WIN7)
 #define INQ_NUM_SUPPORTED_VPD_PAGES                   6
-#else
-#define INQ_NUM_SUPPORTED_VPD_PAGES                   3
-#endif
 #define INQ_RESERVED                                  0
 #define BLOCK_LIMITS_PAGE_LENGTH                   0x3C
 #define BLOCK_DEVICE_CHAR_PAGE_LENGTH              0x3C

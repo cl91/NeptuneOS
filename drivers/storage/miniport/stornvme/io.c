@@ -42,7 +42,7 @@
 **/
 
 /*
- * File: nvmeIo.c
+ * File: io.c
  */
 
 #include "precomp.h"
@@ -252,7 +252,7 @@ BOOLEAN ProcessIo(__in PNVME_DEVICE_EXTENSION pAdapterExtension,
 
 	/* 1 - Select Queue based on CPU */
 	if (QueueType == NVME_QUEUE_TYPE_IO) {
-            StorStatus =  NVMeMapCore2Queue(pAdapterExtension,
+            StorStatus =  NVMeMapCoreToQueue(pAdapterExtension,
 					    &ProcNumber,
 					    &SubQueue,
 					    &CplQueue);

@@ -852,9 +852,9 @@ SNTI_TRANSLATION_STATUS SntiBuildPersReserveRegisterCmd(PSTORAGE_REQUEST_BLOCK p
 SNTI_TRANSLATION_STATUS SntiTranslateInformationalExceptionsResponse(PSTORAGE_REQUEST_BLOCK pSrb,
 								     UINT16 allocLength);
 
-SNTI_STATUS SntiTranslateTemperatureResponse(PSTORAGE_REQUEST_BLOCK pSrb,
-					     PNVMe_COMPLETION_QUEUE_ENTRY pCQEntry,
-					     UINT16 allocLength);
+SNTI_TRANSLATION_STATUS SntiTranslateTemperatureResponse(PSTORAGE_REQUEST_BLOCK pSrb,
+							 PNVMe_COMPLETION_QUEUE_ENTRY pCQEntry,
+							 UINT16 allocLength);
 
 SNTI_TRANSLATION_STATUS SntiTranslateModeSenseResponse(PSTORAGE_REQUEST_BLOCK pSrb,
 						       PNVMe_COMPLETION_QUEUE_ENTRY pCQEntry);

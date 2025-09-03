@@ -267,7 +267,6 @@ NTAPI BOOLEAN ExecuteWmiMethod(_In_ PVOID pContext,
     PSCSI_WMI_REQUEST_BLOCK pSrb = (PSCSI_WMI_REQUEST_BLOCK)pDispatchContext->UserContext;
     ULONG                   sizeNeeded = 0;
     UCHAR                   status = SRB_STATUS_SUCCESS;
-    UINT8 strSize = 0;
 
     UNREFERENCED_PARAMETER(InstanceIndex);
 
