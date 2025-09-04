@@ -8302,7 +8302,6 @@ NTAPI NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
 	return status;
     }
 
-    NT_ASSERT(srb.DataBuffer != NULL);
     NT_ASSERT(!TEST_FLAG(srb.SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
 
     return status;

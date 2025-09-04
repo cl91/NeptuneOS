@@ -404,27 +404,25 @@ ERESOURCE (removed)
 
 ##### Queuing IRP
 A common pattern in Windows/ReactOS drivers is that the driver will queue an IRP to an
-internal queue when IRPs come in faster than they can be processed by the driver. Common
-mechanisms include the StartIo routine, device queues, interlocked queues, and cancel-safe
-queues. These are generally speaking unnecessary on Neptune OS as the Executive limits
-the rate of IRP flows to a driver by setting an upper limit to the incoming driver IRP
-buffer. Low-level drivers should generally process IRPs synchronously. If the device is
-busy processing the IRP, the driver should simply wait till the device finishes. This does
-not negatively impact system responsiveness since drivers run in their own separate process.
-That being said, the StartIo mechanism is still present on Neptune OS in order to make
-driver porting easier. For instance, you can use the StartIo routine or device queues in a
-DPC routine in response to an interrupt to schedule the main thread to start processing the
-relevant IRP. Alternatively, you can also use a KEVENT and have the IRP dispatch routine
-wait on the KEVENT and the interrupt service routine signal the KEVENT.
+internal queue when IRPs come in faster than they can be processed by the driver. For this
+purpose, the system provides a default device queue for every device object that it has
+created. Driver authors can use call `KeInsertDeviceQueue`, `KeRemoveDeviceQueue`, and
+related routines to insert and remove IRPs from the queue. When processing an IRP, the
+driver can call `IoStartPacket` which depending on the busy status of the device, will
+either queue the IO (when the device queue is not empty, meaning the device is busy) or
+start the IO processing (when the device queue is empty), by calling the `StartIo` routine
+supplied by the driver. When the device finishes the previous IO processing, the driver
+can call `IoStartNextPacket` to start the next IO packet. Note as opposed to Windows,
+you cannot call `IoStartPacket`, `IoStartNextPacket`, and related device queue management
+routines in a DPC routine. To start IO processing in a DPC routine, queue an work item
+that will be scheduled in the PASSIVE_LEVEL thread. This also means that the `StartIo`
+routine is executed in PASSIVE_LEVEL, as opposed to Windows (which runs `StartIo` routines
+in DISPATCH_LEVEL).
 
 Microsoft [discourages](https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/startio-routines-in-higher-level-drivers)
 higher-level drivers from having a StartIo routine. This recommendation applies to Neptune OS
 drivers as well. For instance, class drivers should not have a StartIo routine and should not
 use the `IoStartPacket` routine to queue and start IRP processing.
-
-As opposed to Windows, you cannot call `IoStartPacket`, `IoStartNextPacket`, and related
-routines in a DPC routine. To call the `StartIo` routine in a DPC routine, schedule an IO
-work item to start IRP processing.
 
 ##### Work items
 In addition to queuing IRPs due to rate limits, it is a common pattern on Windows/ReactOS

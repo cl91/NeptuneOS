@@ -1097,7 +1097,7 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
 
 	/* Set handlers */
 	DriverObject->AddDevice = PortAddDevice;
-	//        DriverObject->DriverStartIo = PortStartIo;
+	DriverObject->DriverStartIo = PortStartIo;
 	DriverObject->DriverUnload = PortUnload;
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = PortDispatchCreate;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = PortDispatchClose;
@@ -1128,8 +1128,7 @@ NTAPI VOID StorPortLogError(IN PVOID HwDeviceExtension,
 			    IN ULONG UniqueId)
 {
     DPRINT1("PathId: 0x%02x  TargetId: 0x%02x  Lun: 0x%02x  ErrorCode: 0x%08x  UniqueId: "
-	    "0x%08x\n",
-	    PathId, TargetId, Lun, ErrorCode, UniqueId);
+	    "0x%08x\n", PathId, TargetId, Lun, ErrorCode, UniqueId);
 }
 
 /*

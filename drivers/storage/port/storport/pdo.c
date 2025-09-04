@@ -82,15 +82,138 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
     return STATUS_SUCCESS;
 }
 
+NTAPI VOID PortStartIo(IN OUT PDEVICE_OBJECT DeviceObject,
+		       IN OUT PIRP Irp)
+{
+    // TODO
+    assert(FALSE);
+}
+
 NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 			   _In_ PIRP Irp)
 {
     DPRINT1("PortPdoScsi(%p %p)\n", DeviceObject, Irp);
-
     Irp->IoStatus.Information = 0;
-    Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PSCSI_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
+    PPDO_DEVICE_EXTENSION PdoExt = DeviceObject->DeviceExtension;
+    ASSERT(PdoExt);
+    ASSERT(PdoExt->ExtensionType == PdoExtension);
+    PFDO_DEVICE_EXTENSION FdoExt = PdoExt->FdoExtension;
+    ASSERT(FdoExt);
+    ASSERT(FdoExt->ExtensionType == FdoExtension);
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (!Srb) {
+        DPRINT1("PortPdoScsi() called with Srb = NULL!\n");
+        Status = STATUS_UNSUCCESSFUL;
+	goto done;
+    }
+
+    DPRINT("Srb: %p, Srb->Function: %u\n", Srb, Srb->Function);
+
+    if (Srb->PathId != PdoExt->Bus || Srb->TargetId != PdoExt->Target ||
+	Srb->Lun != PdoExt->Lun) {
+        DPRINT("SRB SCSI address %d:%d:%d does not match PDO %d:%d:%d\n",
+	       Srb->PathId, Srb->TargetId, Srb->Lun,
+	       PdoExt->Bus, PdoExt->Target, PdoExt->Lun);
+        Status = STATUS_NO_SUCH_DEVICE;
+        Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
+	goto done;
+    }
+
+    switch (Srb->Function) {
+    case SRB_FUNCTION_SHUTDOWN:
+	DPRINT("  SRB_FUNCTION_SHUTDOWN\n");
+	goto submit;
+    case SRB_FUNCTION_FLUSH:
+	DPRINT("  SRB_FUNCTION_FLUSH\n");
+	goto submit;
+    case SRB_FUNCTION_EXECUTE_SCSI:
+	DPRINT("  SRB_FUNCTION_EXECUTE_SCSI\n");
+	goto submit;
+    case SRB_FUNCTION_IO_CONTROL:
+	DPRINT("  SRB_FUNCTION_IO_CONTROL\n");
+    submit:
+	/* Mark IRP as pending in all cases */
+	IoMarkIrpPending(Irp);
+
+	if (Srb->SrbFlags & SRB_FLAGS_BYPASS_FROZEN_QUEUE) {
+	    /* Start IO directly */
+	    IoStartPacket(FdoExt->Device, Irp, NULL, NULL);
+	} else {
+	    /* Insert IRP into the queue */
+	    if (!KeInsertByKeyDeviceQueue(&PdoExt->Device->DeviceQueue,
+					  &Irp->Tail.DeviceQueueEntry,
+					  Srb->QueueSortKey)) {
+		/* It means the queue is empty, and we just start this request */
+		IoStartPacket(FdoExt->Device, Irp, NULL, NULL);
+	    }
+	}
+	return STATUS_PENDING;
+
+    case SRB_FUNCTION_CLAIM_DEVICE:
+	DPRINT("  SRB_FUNCTION_CLAIM_DEVICE\n");
+	goto attach;
+    case SRB_FUNCTION_ATTACH_DEVICE:
+	DPRINT("  SRB_FUNCTION_ATTACH_DEVICE\n");
+    attach:
+	if (PdoExt->DeviceClaimed) {
+	    Srb->SrbStatus = SRB_STATUS_INTERNAL_ERROR;
+	    Srb->InternalStatus = STATUS_DEVICE_BUSY;
+	    Status = STATUS_DEVICE_BUSY;
+	} else {
+	    PdoExt->DeviceClaimed = TRUE;
+	    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	    Status = STATUS_SUCCESS;
+	}
+	break;
+
+    case SRB_FUNCTION_RELEASE_DEVICE:
+	DPRINT("  SRB_FUNCTION_RELEASE_DEVICE\n");
+        PdoExt->DeviceClaimed = FALSE;
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
+	break;
+
+    case SRB_FUNCTION_RELEASE_QUEUE:
+	DPRINT("  SRB_FUNCTION_RELEASE_QUEUE\n");
+	PdoExt->QueueFrozen = FALSE;
+	Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
+	break;
+
+    case SRB_FUNCTION_FLUSH_QUEUE:
+	DPRINT("  SRB_FUNCTION_FLUSH_QUEUE\n");
+	if (!PdoExt->QueueFrozen) {
+	    DPRINT("Queue is not frozen really\n");
+	    Status = STATUS_INVALID_DEVICE_REQUEST;
+	    break;
+	}
+	PKDEVICE_QUEUE_ENTRY Entry;
+	while ((Entry = KeRemoveDeviceQueue(&PdoExt->Device->DeviceQueue))) {
+	    PIRP QueuedIrp = CONTAINING_RECORD(Entry, IRP, Tail.DeviceQueueEntry);
+	    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(QueuedIrp);
+	    PSCSI_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
+	    Srb->SrbStatus = SRB_STATUS_REQUEST_FLUSHED;
+	    QueuedIrp->IoStatus.Status = STATUS_UNSUCCESSFUL;
+	    IoCompleteRequest(QueuedIrp, 0);
+	}
+	PdoExt->QueueFrozen = FALSE;
+	Status = STATUS_SUCCESS;
+	break;
+
+    default:
+	DPRINT1("SRB function not implemented (Function %u)\n", Srb->Function);
+	Status = STATUS_NOT_IMPLEMENTED;
+	break;
+    }
+
+done:
+    Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,

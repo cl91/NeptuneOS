@@ -246,13 +246,12 @@ NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
 NTSTATUS MiniportFindAdapter(IN PMINIPORT Miniport)
 {
     BOOLEAN Reserved = FALSE;
-    ULONG Result;
     NTSTATUS Status;
 
     DPRINT1("MiniportFindAdapter(%p)\n", Miniport);
 
     /* Call the miniport HwFindAdapter routine */
-    Result = Miniport->InitData->HwFindAdapter(
+    ULONG Result = Miniport->InitData->HwFindAdapter(
 	&Miniport->MiniportExtension->HwDeviceExtension, NULL, NULL, NULL,
 	&Miniport->PortConfig, &Reserved);
     DPRINT1("HwFindAdapter() returned %u\n", Result);
@@ -266,7 +265,14 @@ NTSTATUS MiniportFindAdapter(IN PMINIPORT Miniport)
 
     case SP_RETURN_FOUND:
 	DPRINT1("SP_RETURN_FOUND\n");
-	Status = STATUS_SUCCESS;
+	if (Miniport->PortConfig.SynchronizationModel != StorSynchronizeFullDuplex) {
+	    DPRINT("ERROR: half-duplex IO is NOT supported.\n");
+	    /* Fix the miniport driver to use full-duplex IO. */
+	    assert(FALSE);
+	    Status = STATUS_DEVICE_CONFIGURATION_ERROR;
+	} else {
+	    Status = STATUS_SUCCESS;
+	}
 	break;
 
     case SP_RETURN_ERROR:

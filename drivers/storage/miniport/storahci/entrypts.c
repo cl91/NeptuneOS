@@ -261,10 +261,6 @@ VOID GetInterruptMode(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension)
     return;
 }
 
-BOOLEAN
-AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
-			    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-			    _In_range_(1, AHCI_MAX_PORT_COUNT) ULONG PortCount)
 /*
     Internal function to allocate required memory for Ports
 
@@ -291,6 +287,9 @@ AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
    boundary. Therefore the number of Command Headers must be 256/32 = 8. Round cap.NCS to
    the next multiple of 8
 */
+BOOLEAN AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
+				    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+				    _In_range_(1, AHCI_MAX_PORT_COUNT) ULONG PortCount)
 {
     ULONG alignment = 0x400; // 1K
     BOOLEAN dumpMode = IsDumpMode(AdapterExtension);
@@ -459,10 +458,6 @@ AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
     return TRUE;
 }
 
-ULONG AhciHwFindAdapter(_In_ PVOID AdapterExtension, _In_ PVOID HwContext,
-			_In_ PVOID BusInformation, _In_z_ PCHAR ArgumentString,
-			_Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-			_In_ PBOOLEAN Reserved3)
 /*++
     This function is called by the Storport driver indirectly when handling an IRP_MJ_PnP,
     IRP_MN_START_DEVICE. The adapter is being started. This function is called at PASSIVE
@@ -532,6 +527,10 @@ Note:
     always fully specify all adapter resources that are required to start the adapter.
 
 --*/
+ULONG AhciHwFindAdapter(_In_ PVOID AdapterExtension, _In_ PVOID HwContext,
+			_In_ PVOID BusInformation, _In_z_ PCHAR ArgumentString,
+			_Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+			_In_ PBOOLEAN Reserved3)
 {
     ULONG storStatus = STOR_STATUS_UNSUCCESSFUL;
     PAHCI_ADAPTER_EXTENSION adapterExtension = NULL;
@@ -1005,8 +1004,7 @@ BOOLEAN AhciHwInitialize(_In_ PVOID AdapterExtension)
     return TRUE;
 }
 
-BOOLEAN
-AhciHwPassiveInitialize(_In_ PVOID AdapterExtension)
+BOOLEAN AhciHwPassiveInitialize(_In_ PVOID AdapterExtension)
 {
     ULONG i;
     ULONG status = STOR_STATUS_SUCCESS;
